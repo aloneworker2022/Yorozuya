@@ -1,0 +1,5 @@
+__pycache__/
+data/
+assets/portraits/
+assets/album/
+.venv/
