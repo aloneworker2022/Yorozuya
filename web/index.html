@@ -2,62 +2,123 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>魅魔萬事屋</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; }
-  body {
-    background: #16101f;
-    color: #d8cfe8;
-    font-family: "Cubic 11", "Fusion Pixel", monospace;
-    display: flex; align-items: center; justify-content: center;
-    background-image: radial-gradient(ellipse at 50% 120%, #2a1440 0%, #16101f 70%);
-  }
-  /* CRT 掃描線 */
-  body::after {
-    content: ""; position: fixed; inset: 0; pointer-events: none;
-    background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.18) 2px 4px);
-  }
-  .panel {
-    background: rgba(20, 12, 32, .68);
-    padding: 2.5rem 3rem; max-width: 30rem; width: 90%;
-    text-align: center;
-  }
-  h1 { color: #ff4fd8; font-size: 1.6rem; letter-spacing: .3em; margin-bottom: .4rem; }
-  .sub { color: #6fe3e1; font-size: .8rem; letter-spacing: .2em; margin-bottom: 2rem; }
-  .row {
-    display: flex; justify-content: space-between; font-size: .85rem;
-    padding: .55rem .2rem; border-bottom: 1px solid rgba(216,207,232,.08);
-  }
-  .row:last-of-type { border-bottom: none; }
-  .val { color: #6fe3e1; }
-  .val.err { color: #ff5f7a; }
-  .hint { margin-top: 2rem; font-size: .7rem; color: rgba(216,207,232,.45); letter-spacing: .1em; }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="panel">
-    <h1>魅魔萬事屋</h1>
-    <div class="sub">— M0 伺服器骨架 —</div>
-    <div class="row"><span>伺服器</span><span class="val" id="srv">連線中…</span></div>
-    <div class="row"><span>存檔版本</span><span class="val" id="ver">—</span></div>
-    <div class="hint">遊戲本體施工中。召喚書還沒送到。</div>
+
+<!-- z1:看板娘層(無魅魔時 = 召喚書) -->
+<div id="kanban">
+  <div id="book">
+    <div id="book-bubble" class="hidden"></div>
+    <svg viewBox="0 0 48 40" width="192" height="160" shape-rendering="crispEdges">
+      <rect x="6"  y="4"  width="36" height="32" fill="#3b2158"/>
+      <rect x="8"  y="6"  width="32" height="28" fill="#4b2a70"/>
+      <rect x="22" y="4"  width="4"  height="32" fill="#2a1440"/>
+      <rect x="6"  y="34" width="36" height="2"  fill="#241333"/>
+      <path d="M24 12 l3 6 6 1 -4 4 1 6 -6 -3 -6 3 1 -6 -4 -4 6 -1 z" fill="#ff4fd8"/>
+      <rect x="10" y="10" width="2" height="2" fill="#6fe3e1"/>
+      <rect x="36" y="26" width="2" height="2" fill="#6fe3e1"/>
+    </svg>
+    <div id="magic-circle"></div>
   </div>
-<script>
-(async () => {
-  const srv = document.getElementById("srv");
-  const ver = document.getElementById("ver");
-  try {
-    const h = await fetch("/api/health").then(r => r.json());
-    srv.textContent = h.ok ? "OK" : "異常";
-    const s = await fetch("/api/save").then(r => r.json());
-    ver.textContent = s.version === 0 ? "無存檔(新的開始)" : "v" + s.version;
-  } catch (e) {
-    srv.textContent = "連線失敗";
-    srv.classList.add("err");
-  }
-})();
-</script>
+</div>
+
+<!-- z3:頂部 HUD -->
+<header id="hud">
+  <span id="hud-gold">⟡ 0</span>
+  <span id="hud-debt" class="hidden">負債中</span>
+</header>
+
+<!-- z2:功能面板(四分頁滑動) -->
+<main id="track-wrap">
+  <div id="track">
+
+    <section class="page" id="page-quests">
+      <div class="panel">
+        <h2>執行中 <span id="exec-count" class="dim"></span></h2>
+        <div id="list-exec" class="qlist"></div>
+      </div>
+      <div class="panel sub">
+        <h2>已承接</h2>
+        <div id="list-accepted" class="qlist"></div>
+      </div>
+      <div class="panel sub">
+        <h2>發現</h2>
+        <div id="list-found" class="qlist"></div>
+      </div>
+      <div id="quest-input-row">
+        <input id="quest-input" type="text" maxlength="80" placeholder="輸入現實中的待辦…(Enter 送出)">
+        <button id="quest-add">發現</button>
+      </div>
+    </section>
+
+    <section class="page" id="page-shop">
+      <div class="panel center-note">
+        <h2>祭品商店</h2>
+        <p class="dim">「今天休市。商人還在路上……」</p>
+        <p class="dim small">(M1 開張:每日進貨 3~6 名祭品)</p>
+      </div>
+      <div class="panel sub center-note">
+        <h2>地牢</h2>
+        <p class="dim small">空無一人。</p>
+      </div>
+    </section>
+
+    <section class="page" id="page-succubi">
+      <div class="panel center-note">
+        <h2>魅魔名冊</h2>
+        <p class="dim">一個魅魔都沒有。桌上只有那本召喚之書。</p>
+      </div>
+      <div class="panel sub center-note" id="summon-block">
+        <h2>召喚</h2>
+        <p class="dim small">獻祭祭品以召喚魅魔(M1 解鎖)</p>
+        <div id="summon-counts">
+          <button disabled>1</button><button disabled>2</button><button disabled>3</button>
+          <button disabled>4</button><button disabled>5</button><button disabled>6</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-settings">
+      <div class="panel">
+        <h2>設定</h2>
+        <div class="setting-row"><label>玩家稱呼</label><input id="set-player" type="text" maxlength="12" placeholder="主人"></div>
+        <div class="setting-row"><label>睡眠時段</label>
+          <span><input id="set-sleep-start" type="time"> ~ <input id="set-sleep-end" type="time"></span>
+        </div>
+      </div>
+      <div class="panel sub">
+        <h2>存檔</h2>
+        <div class="setting-row"><label>伺服器</label><span id="set-srv" class="dim">—</span></div>
+        <div class="setting-row"><label>存檔版本</label><span id="set-ver" class="dim">—</span></div>
+        <div class="btn-row">
+          <button id="btn-export">匯出</button>
+          <button id="btn-import">匯入</button>
+          <button id="btn-reset" class="danger-btn">重置</button>
+        </div>
+        <input id="import-file" type="file" accept="application/json" class="hidden">
+      </div>
+      <div class="panel sub">
+        <h2>記錄</h2>
+        <div id="log-list" class="dim small"></div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<!-- z3:底部分頁列 -->
+<nav id="tabs">
+  <button data-tab="0" class="active">委託</button>
+  <button data-tab="1">商店</button>
+  <button data-tab="2">魅魔</button>
+  <button data-tab="3">設定</button>
+</nav>
+
+<div id="toasts"></div>
+
+<script type="module" src="app.js"></script>
 </body>
 </html>

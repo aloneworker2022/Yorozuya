@@ -1,0 +1,189 @@
+/* ===== PC-98 復古像素風 ===== */
+:root {
+  --bg: #16101f;
+  --panel: rgba(20, 12, 32, .68);
+  --panel2: rgba(20, 12, 32, .45);
+  --text: #d8cfe8;
+  --dim: rgba(216, 207, 232, .45);
+  --line: rgba(216, 207, 232, .08);
+  --pink: #ff4fd8;
+  --cyan: #6fe3e1;
+  --red: #ff5f7a;
+  --gold: #ffd75f;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--bg);
+  background-image: radial-gradient(ellipse at 50% 120%, #2a1440 0%, #16101f 70%);
+  color: var(--text);
+  font-family: "Cubic 11", "Fusion Pixel", monospace;
+  font-size: 15px;
+  image-rendering: pixelated;
+}
+/* CRT 掃描線 + 暗角 */
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.16) 2px 4px),
+    radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.35) 100%);
+}
+.hidden { display: none !important; }
+.dim { color: var(--dim); }
+.small { font-size: .78em; }
+
+/* ===== z1 看板娘層(召喚書) ===== */
+#kanban {
+  position: fixed; inset: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  filter: brightness(.45);
+  transition: filter .3s;
+}
+body[data-tab="2"] #kanban { filter: brightness(1); pointer-events: auto; }
+/* 魅魔分頁:面板層空白處點擊穿透到召喚書(z1),面板本身照常可點 */
+body[data-tab="2"] #track-wrap { pointer-events: none; }
+body[data-tab="2"] .panel { pointer-events: auto; }
+#book { position: relative; cursor: pointer; animation: float 4s ease-in-out infinite; }
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+#magic-circle {
+  position: absolute; left: 50%; top: 105%; transform: translateX(-50%);
+  width: 240px; height: 56px; border-radius: 50%;
+  border: 2px dashed rgba(255, 79, 216, .5);
+  box-shadow: 0 0 24px rgba(255, 79, 216, .25) inset;
+  animation: pulse 3s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: .5; } 50% { opacity: 1; } }
+#book-bubble {
+  position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: 240px;
+  background: var(--panel); padding: .6em .9em; font-size: .85em;
+  color: var(--pink);
+}
+
+/* ===== z3 HUD / 分頁列 ===== */
+#hud {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+  padding: .7em 1em 1.6em;
+  background: linear-gradient(to bottom, rgba(10, 6, 18, .85), transparent);
+  display: flex; align-items: baseline; gap: .8em;
+}
+#hud-gold { color: var(--gold); font-size: 1.15em; letter-spacing: .08em; }
+#hud-gold.debt { color: var(--red); }
+#hud-debt { color: var(--red); font-size: .75em; animation: pulse 1.2s infinite; }
+#tabs {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+  display: flex;
+  background: linear-gradient(to top, rgba(10, 6, 18, .9), transparent);
+  padding: 1.2em 0 .5em;
+}
+#tabs button {
+  flex: 1; background: none; border: none; color: var(--dim);
+  font: inherit; font-size: .95em; letter-spacing: .3em; text-indent: .3em;
+  padding: .5em 0; cursor: pointer;
+}
+#tabs button.active { color: var(--cyan); }
+
+/* ===== z2 分頁滑動 ===== */
+#track-wrap { position: fixed; inset: 0; z-index: 5; overflow: hidden; }
+#track {
+  display: flex; width: 400%; height: 100%;
+  transition: transform .28s ease;
+}
+.page {
+  width: 25%; height: 100%; overflow-y: auto;
+  padding: 3.6em .8em 4.5em;
+  scrollbar-width: none;
+}
+.page::-webkit-scrollbar { display: none; }
+
+/* ===== 面板 ===== */
+.panel {
+  background: var(--panel);
+  padding: 1em 1.1em; margin: 0 auto .6em; max-width: 520px;
+}
+.panel.sub { background: var(--panel2); }
+.panel h2 {
+  font-size: .85em; font-weight: normal; letter-spacing: .25em;
+  color: var(--cyan); margin-bottom: .7em;
+}
+.center-note { text-align: center; }
+.center-note p { margin: .4em 0; }
+
+/* ===== 委託卡 ===== */
+.qcard { padding: .7em .2em; border-bottom: 1px solid var(--line); }
+.qcard:last-child { border-bottom: none; }
+.qtext { word-break: break-all; }
+.qtext.editable { cursor: pointer; }
+.qmeta { font-size: .75em; color: var(--dim); margin-top: .25em; }
+.qmeta .reward { color: var(--gold); }
+.qbtns { display: flex; gap: .4em; margin-top: .5em; flex-wrap: wrap; }
+.qbtns button, #summon-counts button, .btn-row button, #quest-add {
+  background: rgba(216, 207, 232, .1); border: none; color: var(--text);
+  font: inherit; font-size: .8em; padding: .35em .8em; cursor: pointer;
+}
+.qbtns button:hover { background: rgba(216, 207, 232, .2); }
+.qbtns button.primary { background: rgba(255, 79, 216, .22); color: var(--pink); }
+.qbtns button.go { background: rgba(111, 227, 225, .18); color: var(--cyan); }
+.qbtns button:disabled, #summon-counts button:disabled { opacity: .35; cursor: default; }
+.danger-btn { color: var(--red) !important; }
+.empty { font-size: .8em; color: var(--dim); padding: .4em .2em; }
+
+/* 報酬選擇 chips */
+.chooser { display: flex; gap: .35em; flex-wrap: wrap; margin-top: .5em; }
+.chooser button { background: rgba(255, 215, 95, .12); color: var(--gold); }
+.chooser button:hover { background: rgba(255, 215, 95, .25); }
+.chooser button small { color: var(--dim); }
+
+/* 倒數條(分段像素) */
+.bar-wrap { margin-top: .5em; height: 10px; background: rgba(0, 0, 0, .4); position: relative; }
+.bar {
+  height: 100%; background: var(--cyan); transition: width 1s linear;
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 8px);
+  mask-image: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 8px);
+}
+.bar.danger { background: var(--red); animation: pulse .8s infinite; }
+.qcard .remain { font-size: .75em; color: var(--dim); margin-top: .3em; }
+.qcard .remain .warn { color: var(--red); }
+
+/* ===== 委託輸入列 ===== */
+#quest-input-row {
+  display: flex; gap: .5em; max-width: 520px; margin: 0 auto;
+  background: var(--panel); padding: .6em;
+  position: sticky; bottom: 0;
+}
+#quest-input {
+  flex: 1; background: rgba(0, 0, 0, .35); border: none; color: var(--text);
+  font: inherit; padding: .45em .6em; outline: none;
+}
+#quest-input::placeholder { color: var(--dim); }
+
+/* ===== 召喚 / 設定 ===== */
+#summon-counts { display: flex; gap: .4em; justify-content: center; margin-top: .6em; }
+.setting-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 1em;
+  padding: .5em 0; border-bottom: 1px solid var(--line); font-size: .85em;
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-row input {
+  background: rgba(0, 0, 0, .35); border: none; color: var(--text);
+  font: inherit; padding: .3em .5em; outline: none;
+}
+.setting-row input[type="text"] { width: 9em; text-align: right; }
+.btn-row { display: flex; gap: .5em; margin-top: .8em; }
+#log-list div { padding: .25em 0; border-bottom: 1px solid var(--line); }
+
+/* ===== Toast ===== */
+#toasts {
+  position: fixed; bottom: 4.5em; left: 50%; transform: translateX(-50%);
+  z-index: 50; display: flex; flex-direction: column; gap: .4em; align-items: center;
+  pointer-events: none; width: max-content; max-width: 90vw;
+}
+.toast {
+  background: var(--panel); color: var(--text); font-size: .82em;
+  padding: .55em 1em; animation: toast-in .2s ease, toast-out .4s ease 2.6s forwards;
+}
+.toast.bad { color: var(--red); }
+.toast.good { color: var(--cyan); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes toast-out { to { opacity: 0; } }
