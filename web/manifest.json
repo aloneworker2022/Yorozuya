@@ -1,0 +1,16 @@
+{
+  "name": "魅魔萬事屋",
+  "short_name": "萬事屋",
+  "description": "Todo 積分驅動的魅魔召喚養成遊戲",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#16101f",
+  "theme_color": "#16101f",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

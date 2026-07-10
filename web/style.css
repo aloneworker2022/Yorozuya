@@ -73,7 +73,7 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 /* ===== z3 HUD / 分頁列 ===== */
 #hud {
   position: fixed; top: 0; left: 0; right: 0; z-index: 10;
-  padding: .7em 1em 1.6em;
+  padding: calc(.7em + env(safe-area-inset-top)) 1em 1.6em;
   background: linear-gradient(to bottom, rgba(10, 6, 18, .85), transparent);
   display: flex; align-items: baseline; gap: .8em;
 }
@@ -90,7 +90,7 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
   display: flex;
   background: linear-gradient(to top, rgba(10, 6, 18, .9), transparent);
-  padding: 1.2em 0 .5em;
+  padding: 1.2em 0 calc(.5em + env(safe-area-inset-bottom));
 }
 #tabs button {
   flex: 1; background: none; border: none; color: var(--dim);
@@ -107,7 +107,7 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 }
 .page {
   width: 25%; height: 100%; overflow-y: auto;
-  padding: 3.6em .8em 4.5em;
+  padding: calc(3.6em + env(safe-area-inset-top)) .8em calc(4.5em + env(safe-area-inset-bottom));
   scrollbar-width: none;
 }
 .page::-webkit-scrollbar { display: none; }
