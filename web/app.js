@@ -1,6 +1,9 @@
 // 魅魔萬事屋 遊戲核心
 // M0:委託狀態機 + 金幣 + 違約結算 + 伺服器存檔
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
+// M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
+
+import { buildSystemPrompt } from "./content/persona_builder.js";
 
 // ===== 常數 =====
 
@@ -15,7 +18,7 @@ const CHAT_GAP = { N: 3, R: 2, S: 1, SS: 1, SSR: 1 };  // 每 X 天至少聊 1 �
 const DATE_GAP = { SS: 5, SSR: 3 };                     // 每 X 天至少約 1 次
 const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 30], ["girlfriend", "女友", 90], ["wife", "妻子", 180]];
 const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
-const CHAT_COST = 1, DATE_COST = 5, DATE_LIMIT = 2, NTR_WINDOW = 7;
+const DATE_COST = 5, DATE_LIMIT = 2, NTR_WINDOW = 7; // 聊天計費:每 2 則玩家訊息 1 金
 const DATE_LOCS = ["夜景", "咖啡廳", "遊樂園", "海邊", "圖書館"];
 const THEMES = [["aqua", "霓虹水藍"], ["pink", "品紅魔宴"], ["green", "駭客終端"], ["amber", "琥珀映像管"], ["ice", "冰藍幽域"]];
 
@@ -75,7 +78,7 @@ function defaultState() {
     kanbanId: null,
     lastSettledDay: null,
     log: [],
-    settings: { player: "", sleepStart: "01:00", sleepEnd: "06:00", theme: "aqua" },
+    settings: { player: "", sleepStart: "01:00", sleepEnd: "06:00", theme: "aqua", ollamaUrl: "http://localhost:11434", model: "", rating: "sfw" },
   };
 }
 
@@ -392,7 +395,11 @@ function needStatus(s) {
   return (chatDue || dateDue) ? "due" : "ok";
 }
 
-// ===== 互動(M1:罐頭版;M2 換 LLM)=====
+// ===== 互動:聊天/約會 session(LLM;無模型時罐頭模式)=====
+
+let chatWith = null;      // 對話中的魅魔 id
+let chatSession = null;   // {type:'chat'|'date', location, playerMsgs, gotReply, busy}
+let chatAbort = null;
 
 function interactGuard(s, cost) {
   if (isAsleep()) return "睡眠時段——她回夢境了";
@@ -402,36 +409,180 @@ function interactGuard(s, cost) {
   return null;
 }
 
-function chat(id) {
+function enterChat(id, type = "chat", location = null) {
   const s = state.succubi.find(x => x.id === id);
   if (!s) return;
-  const err = interactGuard(s, CHAT_COST);
+  const err = interactGuard(s, type === "date" ? DATE_COST : 0);
   if (err) { toast(err, "bad"); return; }
-  state.gold -= CHAT_COST;
-  s.lastChatDay = dayNum();
-  const d = applyAffection(s, randInt(-1, 2));
-  s._say = pick(CHAT_LINES[s.stage] || CHAT_LINES.stranger);
-  log(`與 ${s.name} 聊天 -${CHAT_COST} 金,情感 ${d >= 0 ? "+" : ""}${d}`);
+  const today = dayNum();
+  if (type === "date") {
+    if (s.datesToday?.day !== today) s.datesToday = { day: today, count: 0 };
+    if (s.datesToday.count >= DATE_LIMIT) { toast("今天約會夠多了,她需要休息", "bad"); return; }
+    state.gold -= DATE_COST;
+    s.datesToday.count++;
+    s.lastDateDay = today;
+    s.lastChatDay = today;
+    log(`與 ${s.name} 去${location}約會 -${DATE_COST} 金`);
+  }
+  chatWith = id;
+  chatSession = { type, location, playerMsgs: 0, gotReply: false, busy: false };
+  dateChooser = false;
+  document.body.classList.add("chat-mode");
+  scheduleSave(); renderAll();
+  renderChatLog(s);
+  if (type === "date") appendMsg("sys", `—— ${location}・約會開始 ——`);
+  document.getElementById("chat-input").focus();
+}
+
+function exitChat() {
+  const s = state.succubi.find(x => x.id === chatWith);
+  if (s && chatSession) {
+    if (chatSession.type === "date") {
+      const d = applyAffection(s, randInt(1, 5));
+      log(`與 ${s.name} 的${chatSession.location}約會結束,情感 +${d}`);
+      toast(`約會結束,情感 +${d}`, "good");
+    } else if (chatSession.gotReply) {
+      const d = applyAffection(s, randInt(-1, 2));
+      log(`與 ${s.name} 聊了一會,情感 ${d >= 0 ? "+" : ""}${d}`);
+      toast(`聊天結束,情感 ${d >= 0 ? "+" : ""}${d}`, d >= 0 ? "good" : "bad");
+    }
+  }
+  chatAbort?.abort();
+  chatWith = null; chatSession = null;
+  document.body.classList.remove("chat-mode");
   scheduleSave(); renderAll();
 }
 
-function dateOut(id, loc) {
-  const s = state.succubi.find(x => x.id === id);
-  if (!s) return;
-  const err = interactGuard(s, DATE_COST);
-  if (err) { toast(err, "bad"); return; }
-  const today = dayNum();
-  if (s.datesToday?.day !== today) s.datesToday = { day: today, count: 0 };
-  if (s.datesToday.count >= DATE_LIMIT) { toast("今天約會夠多了,她需要休息", "bad"); return; }
-  state.gold -= DATE_COST;
-  s.datesToday.count++;
-  s.lastDateDay = today;
-  s.lastChatDay = today; // 約會當然也算說到話
-  const d = applyAffection(s, randInt(1, 5));
-  s._say = `(${loc})` + pick(DATE_LINES[s.stage] || DATE_LINES.stranger);
-  dateChooser = false;
-  log(`與 ${s.name} 去${loc}約會 -${DATE_COST} 金,情感 +${d}`);
-  scheduleSave(); renderAll();
+function buildCtx(s) {
+  const h = new Date().getHours();
+  return {
+    character: {
+      name: s.name, rarity: s.rarity, personality: s.personality,
+      speech_style: s.speech, appearance_dna: s.dna, backstory: "",
+    },
+    relationship: {
+      stage: s.stage, affection: s.affection,
+      days_since_summon: Math.floor((Date.now() - s.summonedAt) / 86400000),
+    },
+    scene: {
+      type: chatSession.type, location: chatSession.location,
+      time_of_day: h < 6 ? "night" : h < 12 ? "morning" : h < 18 ? "afternoon" : "evening",
+    },
+    content_rating: state.settings.rating || "sfw",
+    player: { name: state.settings.player || "主人" },
+  };
+}
+
+async function llmReply(s, aiEl) {
+  // 無模型設定 → 罐頭模式(M1 行為,遊戲照樣可玩)
+  if (!state.settings.model) {
+    await new Promise(r => setTimeout(r, 400));
+    const pool = chatSession.type === "date" ? DATE_LINES : CHAT_LINES;
+    const line = pick(pool[s.stage] || pool.stranger);
+    aiEl.textContent = line;
+    return line;
+  }
+  chatAbort = new AbortController();
+  const res = await fetch("/api/llm/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      endpoint: state.settings.ollamaUrl,
+      model: state.settings.model,
+      stream: true,
+      messages: [
+        { role: "system", content: buildSystemPrompt(buildCtx(s)) },
+        ...(s.history || []).slice(-40).map(m => ({ role: m.role, content: m.content })),
+      ],
+      options: { temperature: 0.9 },
+    }),
+    signal: chatAbort.signal,
+  });
+  if (!res.ok) throw new Error("proxy error");
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", acc = "";
+  const msgs = document.getElementById("chat-msgs");
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trim();
+      buf = buf.slice(i + 1);
+      if (!line) continue;
+      const o = JSON.parse(line);
+      if (o.error) throw new Error(o.error);
+      acc += o.message?.content || "";
+      aiEl.textContent = acc;
+      msgs.scrollTop = msgs.scrollHeight;
+      if (o.done) { if (!acc.trim()) throw new Error("empty"); return acc; }
+    }
+  }
+  if (!acc.trim()) throw new Error("empty");
+  return acc;
+}
+
+async function sendChatMsg() {
+  const s = state.succubi.find(x => x.id === chatWith);
+  const input = document.getElementById("chat-input");
+  if (!s || !chatSession || chatSession.busy) return;
+  const text = input.value.trim();
+  if (!text) return;
+  if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
+  // 計費:聊天 session 每 2 則玩家訊息 1 金(約會 session 訊息免費,入場已付 5 金)
+  const chargeable = chatSession.type === "chat" && (chatSession.playerMsgs + 1) % 2 === 0;
+  if (chargeable && state.gold < 1) { toast("金幣不夠了,先去做委託吧", "bad"); return; }
+
+  input.value = "";
+  s.history ??= [];
+  s.history.push({ role: "user", content: text, t: Date.now() });
+  appendMsg("user", text);
+  const aiEl = appendMsg("ai", "…");
+  chatSession.busy = true;
+  document.getElementById("chat-send").disabled = true;
+  try {
+    const reply = await llmReply(s, aiEl);
+    s.history.push({ role: "assistant", content: reply, t: Date.now() });
+    s.history = s.history.slice(-200);
+    chatSession.playerMsgs++;
+    if (chargeable) { state.gold -= 1; renderHud(); }
+    if (!chatSession.gotReply) { chatSession.gotReply = true; s.lastChatDay = dayNum(); }
+    scheduleSave();
+  } catch (e) {
+    s.history.pop();
+    aiEl.remove();
+    if (e.name !== "AbortError") {
+      appendMsg("sys", "(她恍神了……訊息不扣費,再說一次吧)");
+      input.value = text;
+    }
+  }
+  if (chatSession) {
+    chatSession.busy = false;
+    const btn = document.getElementById("chat-send");
+    if (btn) btn.disabled = false;
+    input.focus();
+  }
+}
+
+function appendMsg(role, text) {
+  const msgs = document.getElementById("chat-msgs");
+  const d = document.createElement("div");
+  d.className = "msg " + role;
+  d.textContent = text;
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+  return d;
+}
+
+function renderChatLog(s) {
+  const msgs = document.getElementById("chat-msgs");
+  msgs.innerHTML = "";
+  for (const m of (s.history || []).slice(-50)) {
+    appendMsg(m.role === "user" ? "user" : "ai", m.content);
+  }
+  if (!(s.history || []).length) appendMsg("sys", `(這是你與 ${s.name} 的第一次對話)`);
 }
 
 function ransom(id) {
@@ -520,7 +671,11 @@ setInterval(() => {
   lastTickDay = today;
 
   const asleep = isAsleep();
-  if (asleep !== lastSleepState) { lastSleepState = asleep; changed = true; }
+  if (asleep !== lastSleepState) {
+    if (asleep && chatWith) { toast("睡眠時段到了,她回夢境了", "bad"); exitChat(); }
+    lastSleepState = asleep;
+    changed = true;
+  }
 
   if (changed) { scheduleSave(); renderAll(); }
 }, 1000);
@@ -661,6 +816,26 @@ function renderShop() {
 function renderSuccubi() {
   const home = $("#succubi-home");
   const detail = $("#succubus-detail");
+  const chatV = $("#chat-view");
+
+  // 對話模式優先
+  if (chatWith) {
+    const cs = state.succubi.find(x => x.id === chatWith);
+    if (!cs) { // 對話對象消失(NTR 過期等)
+      chatWith = null; chatSession = null;
+      document.body.classList.remove("chat-mode");
+    } else {
+      home.classList.add("hidden");
+      detail.classList.add("hidden");
+      chatV.classList.remove("hidden");
+      $("#chat-title").textContent = chatSession.type === "date"
+        ? `${cs.name}・${chatSession.location}約會中`
+        : `${cs.name}・聊天中(每 2 則 1 金)`;
+      return;
+    }
+  }
+  chatV.classList.add("hidden");
+
   if (detailId) {
     const s = state.succubi.find(x => x.id === detailId);
     if (!s) { detailId = null; } else {
@@ -742,23 +917,23 @@ function renderDetail(s, root) {
       <div class="detail-actions">
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
-          : `<button id="act-chat" ${asleep ? "disabled" : ""}>聊天 ${CHAT_COST} 金</button>
+          : `<button id="act-chat" ${asleep ? "disabled" : ""}>聊天(每 2 則 1 金)</button>
              <button class="cyan" id="act-date" ${asleep || datesLeft <= 0 ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})</button>`}
       </div>
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${DATE_LOCS.map(l => `<button data-loc="${l}">${l}</button>`).join("")}</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
-      ${s._say && !asleep ? `<div class="say-bubble"><span class="who">${esc(s.name)}</span>${esc(s._say)}</div>` : ""}
     </div>`;
 
   root.querySelector("#detail-back").onclick = () => { detailId = null; dateChooser = false; renderAll(); };
-  root.querySelector("#act-chat")?.addEventListener("click", () => chat(s.id));
+  root.querySelector("#act-chat")?.addEventListener("click", () => enterChat(s.id));
   root.querySelector("#act-date")?.addEventListener("click", () => { dateChooser = !dateChooser; renderAll(); });
   root.querySelector("#act-ransom")?.addEventListener("click", () => ransom(s.id));
-  root.querySelectorAll("[data-loc]").forEach(b => b.onclick = () => dateOut(s.id, b.dataset.loc));
+  root.querySelectorAll("[data-loc]").forEach(b => b.onclick = () => enterChat(s.id, "date", b.dataset.loc));
 }
 
 function renderKanban() {
-  const s = kanbanSuccubus();
+  // 對話模式:看板娘換成正在對話的魅魔
+  const s = (chatWith && state.succubi.find(x => x.id === chatWith)) || kanbanSuccubus();
   const book = $("#book");
   const girl = $("#kanban-girl");
   const zzz = $("#kanban-zzz");
@@ -782,6 +957,9 @@ function renderSettings() {
   $("#set-player").value = state.settings.player || "";
   $("#set-sleep-start").value = state.settings.sleepStart;
   $("#set-sleep-end").value = state.settings.sleepEnd;
+  $("#set-ollama").value = state.settings.ollamaUrl || "";
+  $("#set-model").value = state.settings.model || "";
+  $("#set-rating").value = state.settings.rating || "sfw";
   $("#set-ver").textContent = version ? "v" + version : "(尚未寫入)";
 
   const sel = $("#set-kanban");
@@ -821,6 +999,27 @@ $("#set-sleep-start").addEventListener("change", e => { state.settings.sleepStar
 $("#set-sleep-end").addEventListener("change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); renderAll(); });
 $("#set-kanban").addEventListener("change", e => { state.kanbanId = e.target.value || null; scheduleSave(); renderAll(); });
 $("#set-theme").addEventListener("change", e => { state.settings.theme = e.target.value; scheduleSave(); renderAll(); });
+
+// 聊天室
+$("#chat-back").onclick = () => exitChat();
+$("#chat-send").onclick = () => sendChatMsg();
+$("#chat-input").addEventListener("keydown", e => { if (e.key === "Enter") sendChatMsg(); });
+
+// AI 設定
+$("#set-ollama").addEventListener("change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });
+$("#set-model").addEventListener("change", e => { state.settings.model = e.target.value.trim(); scheduleSave(); });
+$("#set-rating").addEventListener("change", e => { state.settings.rating = e.target.value; scheduleSave(); });
+$("#btn-llm-test").onclick = async () => {
+  const r = $("#llm-test-result");
+  r.textContent = "測試中…";
+  try {
+    const j = await fetch(`/api/llm/tags?endpoint=${encodeURIComponent(state.settings.ollamaUrl)}`)
+      .then(x => { if (!x.ok) throw 0; return x.json(); });
+    const names = (j.models || []).map(m => m.name);
+    $("#model-list").innerHTML = names.map(n => `<option value="${esc(n)}">`).join("");
+    r.textContent = names.length ? `OK,${names.length} 個模型(模型欄可下拉選)` : "OK,但沒有已安裝的模型";
+  } catch { r.textContent = "連線失敗——檢查端點與 Ollama 是否啟動"; }
+};
 
 $("#btn-export").onclick = () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });

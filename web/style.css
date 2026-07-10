@@ -68,7 +68,10 @@ body::after {
 body[data-tab="2"] #kanban { filter: brightness(1); pointer-events: auto; }
 /* 魅魔分頁:面板層空白處點擊穿透到召喚書(z1),面板本身照常可點 */
 body[data-tab="2"] #track-wrap { pointer-events: none; }
-body[data-tab="2"] .panel { pointer-events: auto; }
+body[data-tab="2"] .panel, body[data-tab="2"] #chat-view { pointer-events: auto; }
+/* 對話模式:看板娘點亮上移(galgame 式) */
+body.chat-mode #kanban { filter: brightness(1); pointer-events: none; }
+body.chat-mode #kanban-girl { transform: translateY(-8%); animation: none; }
 #book { position: relative; cursor: pointer; animation: float 4s ease-in-out infinite; }
 @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 #magic-circle {
@@ -215,6 +218,7 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
   font: inherit; padding: .3em .5em; outline: none;
 }
 .setting-row input[type="text"] { width: 9em; text-align: right; }
+.setting-row input.wide { width: 13em; text-align: left; }
 .btn-row { display: flex; gap: .5em; margin-top: .8em; }
 #log-list div { padding: .25em 0; border-bottom: 1px solid var(--line); }
 
@@ -291,6 +295,33 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
   background: none; border: none; color: var(--dim); font: inherit;
   cursor: pointer; padding: .2em .4em; margin-bottom: .4em;
 }
+
+/* ===== 聊天室(galgame 式對話) ===== */
+#chat-view {
+  height: 100%; display: flex; flex-direction: column;
+  max-width: 520px; margin: 0 auto;
+}
+.chat-top { display: flex; align-items: center; gap: .6em; flex-shrink: 0; }
+#chat-msgs {
+  flex: 1; overflow-y: auto; scrollbar-width: none;
+  display: flex; flex-direction: column; gap: .5em; padding: .5em 0;
+}
+#chat-msgs::-webkit-scrollbar { display: none; }
+.msg { max-width: 85%; padding: .5em .8em; font-size: .9em; word-break: break-word; }
+.msg.user { align-self: flex-end; background: var(--panel); }
+.msg.ai { align-self: flex-start; background: rgba(0, 0, 0, .4); color: var(--pink); }
+.msg.sys { align-self: center; color: var(--dim); font-size: .75em; background: none; }
+#chat-input-row { display: flex; gap: .5em; background: var(--panel); padding: .6em; flex-shrink: 0; }
+#chat-input {
+  flex: 1; background: rgba(0, 0, 0, .35); border: none; color: var(--text);
+  font: inherit; padding: .45em .6em; outline: none;
+}
+#chat-input::placeholder { color: var(--dim); }
+#chat-send {
+  background: rgba(255, 79, 216, .2); border: none; color: var(--pink);
+  font: inherit; font-size: .85em; padding: .35em .9em; cursor: pointer;
+}
+#chat-send:disabled { opacity: .35; }
 
 /* ===== 召喚 ===== */
 #summon-counts { display: flex; gap: .4em; justify-content: center; margin-top: .6em; }

@@ -11,7 +11,9 @@ import sqlite3
 import time
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -74,6 +76,36 @@ def put_save(body: SavePut):
             (new_version, json.dumps(body.data, ensure_ascii=False), time.time()),
         )
     return {"version": new_version}
+
+
+# ---- LLM 代理(瀏覽器 → RP5 → Ollama;免 CORS、免混合內容問題)----
+# 伺服器不檢視、不修改訊息內容,僅轉發位元組(8.1 零解析原則)
+
+
+@app.get("/api/llm/tags")
+async def llm_tags(endpoint: str = "http://localhost:11434"):
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get(endpoint.rstrip("/") + "/api/tags")
+            return r.json()
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Ollama 連不上")
+
+
+@app.post("/api/llm/chat")
+async def llm_chat(body: dict):
+    endpoint = str(body.pop("endpoint", "http://localhost:11434")).rstrip("/")
+
+    async def gen():
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=5)) as c:
+                async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
+                    async for chunk in r.aiter_bytes():
+                        yield chunk
+        except httpx.HTTPError:
+            yield json.dumps({"error": "Ollama 連線中斷"}).encode() + b"\n"
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson")
 
 
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)

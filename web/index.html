@@ -91,6 +91,17 @@
         </div>
       </div>
       <div id="succubus-detail" class="hidden"></div>
+      <div id="chat-view" class="hidden">
+        <div class="chat-top">
+          <button class="back-btn" id="chat-back">‹ 結束對話</button>
+          <span id="chat-title" class="dim small"></span>
+        </div>
+        <div id="chat-msgs"></div>
+        <div id="chat-input-row">
+          <input id="chat-input" type="text" maxlength="300" placeholder="說點什麼…(Enter 送出)">
+          <button id="chat-send">送出</button>
+        </div>
+      </div>
     </section>
 
     <section class="page" id="page-settings">
@@ -102,6 +113,13 @@
         </div>
         <div class="setting-row"><label>看板娘</label><select id="set-kanban"></select></div>
         <div class="setting-row"><label>配色</label><select id="set-theme"></select></div>
+      </div>
+      <div class="panel sub">
+        <h2>AI(Ollama)</h2>
+        <div class="setting-row"><label>端點</label><input id="set-ollama" type="text" class="wide" placeholder="http://<主機>:11434"></div>
+        <div class="setting-row"><label>模型</label><input id="set-model" type="text" class="wide" list="model-list" placeholder="(留空 = 罐頭模式)"><datalist id="model-list"></datalist></div>
+        <div class="setting-row"><label>內容分級</label><select id="set-rating"><option value="sfw">SFW</option><option value="nsfw">NSFW(依內容模組)</option></select></div>
+        <div class="btn-row"><button id="btn-llm-test">測試連線</button><span id="llm-test-result" class="dim small"></span></div>
       </div>
       <div class="panel sub">
         <h2>存檔</h2>
