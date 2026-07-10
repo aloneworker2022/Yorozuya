@@ -17,6 +17,7 @@ const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 30], ["girlfrien
 const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
 const CHAT_COST = 1, DATE_COST = 5, DATE_LIMIT = 2, NTR_WINDOW = 7;
 const DATE_LOCS = ["夜景", "咖啡廳", "遊樂園", "海邊", "圖書館"];
+const THEMES = [["aqua", "霓虹水藍"], ["pink", "品紅魔宴"], ["green", "駭客終端"], ["amber", "琥珀映像管"], ["ice", "冰藍幽域"]];
 
 // ===== 內容池(內建預設;之後歸 content/config.json 廠商件擴充)=====
 
@@ -74,7 +75,7 @@ function defaultState() {
     kanbanId: null,
     lastSettledDay: null,
     log: [],
-    settings: { player: "", sleepStart: "01:00", sleepEnd: "06:00" },
+    settings: { player: "", sleepStart: "01:00", sleepEnd: "06:00", theme: "aqua" },
   };
 }
 
@@ -529,7 +530,12 @@ setInterval(() => {
 const $ = s => document.querySelector(s);
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
+function applyTheme() {
+  document.body.dataset.theme = state.settings.theme || "aqua";
+}
+
 function renderAll() {
+  applyTheme();
   renderHud();
   renderQuests();
   renderShop();
@@ -782,6 +788,9 @@ function renderSettings() {
   sel.innerHTML = `<option value="">最新召喚(自動)</option>` +
     state.succubi.map(s => `<option value="${s.id}" ${state.kanbanId === s.id ? "selected" : ""}>${esc(s.name)}(${s.rarity})</option>`).join("");
 
+  $("#set-theme").innerHTML = THEMES.map(([k, label]) =>
+    `<option value="${k}" ${(state.settings.theme || "aqua") === k ? "selected" : ""}>${label}</option>`).join("");
+
   $("#log-list").innerHTML = state.log.length
     ? state.log.map(l => `<div>${esc(l)}</div>`).join("")
     : "還沒有任何記錄。";
@@ -811,6 +820,7 @@ $("#set-player").addEventListener("change", e => { state.settings.player = e.tar
 $("#set-sleep-start").addEventListener("change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
 $("#set-sleep-end").addEventListener("change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); renderAll(); });
 $("#set-kanban").addEventListener("change", e => { state.kanbanId = e.target.value || null; scheduleSave(); renderAll(); });
+$("#set-theme").addEventListener("change", e => { state.settings.theme = e.target.value; scheduleSave(); renderAll(); });
 
 $("#btn-export").onclick = () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });

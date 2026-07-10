@@ -1,22 +1,47 @@
-/* ===== PC-98 復古像素風 ===== */
-:root {
-  --bg: #16101f;
-  --panel: rgba(20, 12, 32, .68);
-  --panel2: rgba(20, 12, 32, .45);
-  --text: #d8cfe8;
-  --dim: rgba(216, 207, 232, .45);
-  --line: rgba(216, 207, 232, .08);
-  --pink: #ff4fd8;
-  --cyan: #6fe3e1;
-  --red: #ff5f7a;
-  --gold: #ffd75f;
+/* ===== PC-98 復古像素風・五配色 ===== */
+:root, body[data-theme="aqua"] {          /* 霓虹水藍(預設) */
+  --bg: #141021; --glow: #251440;
+  --panel: rgba(18, 12, 34, .68); --panel2: rgba(18, 12, 34, .45);
+  --text: #9df3ff;
+  --dim: rgba(157, 243, 255, .48); --line: rgba(157, 243, 255, .1);
+  --pink: #ff4fd8; --cyan: #55ffe0; --red: #ff5f7a; --gold: #ffd75f;
+}
+body[data-theme="pink"] {                 /* 品紅魔宴 */
+  --bg: #1c0e18; --glow: #3a1030;
+  --panel: rgba(34, 12, 28, .68); --panel2: rgba(34, 12, 28, .45);
+  --text: #ffb3f1;
+  --dim: rgba(255, 179, 241, .48); --line: rgba(255, 179, 241, .1);
+  --pink: #ff6ae0; --cyan: #8af8ff; --red: #ff6a8a; --gold: #ffdd7a;
+}
+body[data-theme="green"] {                /* 駭客終端 */
+  --bg: #0a140d; --glow: #10301c;
+  --panel: rgba(10, 26, 16, .68); --panel2: rgba(10, 26, 16, .45);
+  --text: #8dffb0;
+  --dim: rgba(141, 255, 176, .48); --line: rgba(141, 255, 176, .1);
+  --pink: #ffe66d; --cyan: #6dffe0; --red: #ff7a6a; --gold: #ffe66d;
+}
+body[data-theme="amber"] {                /* 琥珀映像管 */
+  --bg: #170f08; --glow: #33200a;
+  --panel: rgba(38, 24, 8, .68); --panel2: rgba(38, 24, 8, .45);
+  --text: #ffcf7d;
+  --dim: rgba(255, 207, 125, .48); --line: rgba(255, 207, 125, .1);
+  --pink: #ff9d4d; --cyan: #ffe9b8; --red: #ff6a5a; --gold: #ffd75f;
+}
+body[data-theme="ice"] {                  /* 冰藍幽域 */
+  --bg: #0c1220; --glow: #16294d;
+  --panel: rgba(12, 22, 44, .68); --panel2: rgba(12, 22, 44, .45);
+  --text: #b8dcff;
+  --dim: rgba(184, 220, 255, .48); --line: rgba(184, 220, 255, .1);
+  --pink: #7da5ff; --cyan: #9af0ff; --red: #ff7a9a; --gold: #ffe08a;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; overflow: hidden; }
 body {
   background: var(--bg);
-  background-image: radial-gradient(ellipse at 50% 120%, #2a1440 0%, #16101f 70%);
+  background-image: radial-gradient(ellipse at 50% 120%, var(--glow) 0%, var(--bg) 70%);
   color: var(--text);
+  /* 螢光感:文字按自身顏色發光 */
+  text-shadow: 0 0 6px color-mix(in srgb, currentColor 35%, transparent);
   font-family: "Cubic 11", "Fusion Pixel", monospace;
   font-size: 15px;
   image-rendering: pixelated;
@@ -115,12 +140,16 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 /* ===== 面板 ===== */
 .panel {
   background: var(--panel);
-  padding: 1em 1.1em; margin: 0 auto .6em; max-width: 520px;
+  padding: 1em 1.1em; margin: 0 auto .6em; max-width: 520px; width: 100%;
 }
+/* 委託頁:輸入列像聊天框一樣恆在底部 */
+#page-quests { display: flex; flex-direction: column; }
+#page-quests .panel { flex-shrink: 0; }
 .panel.sub { background: var(--panel2); }
 .panel h2 {
   font-size: .85em; font-weight: normal; letter-spacing: .25em;
   color: var(--cyan); margin-bottom: .7em;
+  text-shadow: 0 0 10px color-mix(in srgb, currentColor 60%, transparent);
 }
 .center-note { text-align: center; }
 .center-note p { margin: .4em 0; }
@@ -163,9 +192,11 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 
 /* ===== 委託輸入列 ===== */
 #quest-input-row {
-  display: flex; gap: .5em; max-width: 520px; margin: 0 auto;
+  display: flex; gap: .5em; max-width: 520px; width: 100%;
+  margin: auto auto 0;                /* 內容少時仍推到頁面最底 */
   background: var(--panel); padding: .6em;
-  position: sticky; bottom: 0;
+  position: sticky; bottom: 0;        /* 內容多時黏在捲動視窗底部 */
+  flex-shrink: 0;
 }
 #quest-input {
   flex: 1; background: rgba(0, 0, 0, .35); border: none; color: var(--text);
