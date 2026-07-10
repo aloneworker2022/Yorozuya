@@ -1,50 +1,124 @@
-// 魅魔萬事屋 遊戲核心(M0:委託狀態機 + 金幣 + 違約結算 + 伺服器存檔)
+// 魅魔萬事屋 遊戲核心
+// M0:委託狀態機 + 金幣 + 違約結算 + 伺服器存檔
+// M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
+
+// ===== 常數 =====
 
 const REWARDS = [1, 2, 3, 4, 6, 8, 12, 24]; // 24 的因數;期限 = 24/G 小時
 const HOUR = 3600 * 1000;
 const MAX_EXEC = 3;
 
-const TAUNTS = [
-  "哼,金幣呢?空著手就想召喚魅魔?",
-  "先去做點委託吧,窮鬼。",
-  "祭品。沒有祭品,一切免談。",
-  "你的錢包比夢境還要空。",
-  "急什麼。書頁翻爛了她們也不會出來。",
-];
+const RARITIES = ["N", "R", "S", "SS", "SSR"];
+const SUMMON_TABLE = { 1: [100], 2: [50, 50], 3: [50, 20, 30], 4: [40, 30, 20, 10], 5: [40, 30, 18, 10, 2], 6: [35, 25, 25, 10, 5] };
+const MULT = { N: 1.0, R: 1.1, S: 1.2, SS: 1.35, SSR: 1.5 };
+const CHAT_GAP = { N: 3, R: 2, S: 1, SS: 1, SSR: 1 };  // 每 X 天至少聊 1 次
+const DATE_GAP = { SS: 5, SSR: 3 };                     // 每 X 天至少約 1 次
+const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 30], ["girlfriend", "女友", 90], ["wife", "妻子", 180]];
+const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
+const CHAT_COST = 1, DATE_COST = 5, DATE_LIMIT = 2, NTR_WINDOW = 7;
+const DATE_LOCS = ["夜景", "咖啡廳", "遊樂園", "海邊", "圖書館"];
+
+// ===== 內容池(內建預設;之後歸 content/config.json 廠商件擴充)=====
+
+const NAME_POOL = ["莉莉絲", "莫莉安", "賽蓮", "薇兒", "露露姆", "妮克絲", "卡蜜拉", "阿爾緹", "梅菲", "伊芙", "茉璃", "諾瓦"];
+const PERSONALITY_POOL = ["傲嬌", "慵懶", "黏人", "高冷", "天然", "毒舌", "害羞", "元氣", "腹黑", "溫柔"];
+const SPEECH_POOL = ["敬語", "平語", "粗魯", "撒嬌"];
+const TRAIT_POOL = {
+  hair: ["silver_hair", "black_hair", "pink_hair", "blonde_hair", "blue_hair", "red_hair"],
+  eyes: ["red_eyes", "gold_eyes", "blue_eyes", "purple_eyes", "green_eyes"],
+  body: ["petite", "tall", "slender", "curvy"],
+  extra: ["long_hair", "short_hair", "twin_tails", "ponytail"],
+};
+const SACRIFICE_POOL = ["迷路的冒險者", "落魄的商人", "自願的信徒", "酒館的醉漢", "負債的賭徒", "失戀的詩人", "貪婪的盜賊", "無名的流浪者", "可疑的煉金術士", "逃兵"];
+const MERCHANT_LINES = ["今天的貨色不錯吧?", "都是自願的,大概。", "早買早享受,晚了就沒了。", "便宜貨也有便宜貨的用法。", "別問來歷。問了也不便宜。"];
+const TAUNTS = ["哼,金幣呢?空著手就想召喚魅魔?", "先去做點委託吧,窮鬼。", "祭品。沒有祭品,一切免談。", "你的錢包比夢境還要空。", "急什麼。書頁翻爛了她們也不會出來。"];
+const REACT = {
+  complete: ["幹得好♥", "今天也很可靠呢。", "嗯,不錯嘛。", "獎勵你一個微笑。"],
+  fail: ["喂……違約了啦。", "唉,金幣又飛走了。", "……我就這樣看著你。"],
+  hurry: ["喂,時間快到了!", "再不動手就要違約了喔!"],
+  stage: ["……關係,好像變了呢。"],
+  idle: ["……看什麼?", "嗯?怎麼了嗎。", "委託做完了嗎?", "無所事事的話,來陪我啊。"],
+  sleepClick: ["(睡著了)"],
+};
+const CHAT_LINES = {
+  stranger: ["……你是我的召喚者?哼。", "這裡就是人間嗎。", "別靠太近。", "有委託不去做嗎?"],
+  friend: ["喔,是你啊。今天如何?", "陪我說說話嘛。", "你做委託的樣子,還算能看。"],
+  girlfriend: ["等你好久了。", "今天……想我了嗎?", "牽手。快。"],
+  wife: ["歡迎回家,親愛的。", "今晚想夢見什麼?我織給你。", "有你在身邊,夢都是甜的。"],
+};
+const DATE_LINES = {
+  stranger: ["約、約會?算你有膽。", "哼,就陪你走走。"],
+  friend: ["好啊,走吧走吧!", "你挑的地方,品味還行。"],
+  girlfriend: ["嘿嘿,約會♥", "想去很久了,你怎麼知道?"],
+  wife: ["跟你去哪裡都好。", "下次,想去更遠的地方。"],
+};
+
+// ===== 狀態 =====
 
 let state = null;
 let version = 0;
 let dirty = false;
 let saveTimer = null;
-let chooserFor = null; // 展開報酬選擇的委託 id
-
-// ---------- 存檔 ----------
+let chooserFor = null;   // 展開報酬選擇的委託 id
+let detailId = null;     // 魅魔詳情頁
+let dateChooser = false; // 詳情頁展開約會地點
+let lastSleepState = null;
 
 function defaultState() {
   return {
     gold: 0,
-    quests: [], // {id, text, lv:0|1|2, reward?, startedAt?, deadline?}
+    quests: [],   // {id, text, lv:0|1|2, reward?, startedAt?, deadline?}
+    succubi: [],  // 見 summon()
+    dungeon: [],  // [{name}]
+    shop: null,   // {day, stock:[{id,name,price,sold}], line}
+    kanbanId: null,
+    lastSettledDay: null,
     log: [],
     settings: { player: "", sleepStart: "01:00", sleepEnd: "06:00" },
   };
 }
 
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function pick2(arr) { const a = [...arr]; const i = a.splice(Math.floor(Math.random() * a.length), 1)[0]; return [i, pick(a)]; }
+function randInt(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
+
+// ===== 時間:日界與睡眠時段 =====
+// 遊戲日以「睡眠結束時刻」為日界(醒來 = 新的一天)
+
+function minOf(hhmm) { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; }
+
+function dayNum(t = Date.now()) {
+  const d = new Date(t - minOf(state.settings.sleepEnd) * 60000);
+  return Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 86400000);
 }
+
+function isAsleep(t = Date.now()) {
+  const d = new Date(t);
+  const m = d.getHours() * 60 + d.getMinutes();
+  const s = minOf(state.settings.sleepStart), e = minOf(state.settings.sleepEnd);
+  return s <= e ? (m >= s && m < e) : (m >= s || m < e);
+}
+
+// ===== 存檔 =====
 
 async function load() {
   try {
     const j = await fetch("/api/save").then(r => r.json());
     version = j.version;
     state = j.data ?? defaultState();
-    state.quests ??= []; state.log ??= []; state.settings ??= defaultState().settings;
+    const def = defaultState();
+    for (const k of Object.keys(def)) state[k] ??= def[k];
+    state.settings = { ...def.settings, ...state.settings };
     document.getElementById("set-srv").textContent = "OK";
   } catch (e) {
     state = defaultState();
     document.getElementById("set-srv").textContent = "連線失敗(離線模式,進度不會保存)";
   }
+  if (state.lastSettledDay == null) state.lastSettledDay = dayNum();
   settleOffline();
+  settleDays();
+  ensureShop();
   renderAll();
 }
 
@@ -65,7 +139,6 @@ async function saveNow(keepalive = false) {
       keepalive,
     });
     if (r.status === 409) {
-      // 別的裝置寫過:採用伺服器版
       const j = await fetch("/api/save").then(x => x.json());
       version = j.version;
       state = j.data ?? defaultState();
@@ -77,13 +150,18 @@ async function saveNow(keepalive = false) {
     version = j.version;
     document.getElementById("set-ver").textContent = "v" + version;
   } catch (e) {
-    dirty = true; // 下次再試
+    dirty = true;
   }
 }
 
 window.addEventListener("beforeunload", () => { if (dirty) saveNow(true); });
 
-// ---------- 委託邏輯 ----------
+function log(msg) {
+  state.log.unshift(`[${new Date().toLocaleString("zh-TW", { hour12: false })}] ${msg}`);
+  state.log = state.log.slice(0, 50);
+}
+
+// ===== 委託 =====
 
 function penaltyOf(g) { return Math.max(1, Math.floor(g / 2)); }
 function execQuests() { return state.quests.filter(q => q.lv === 2); }
@@ -119,25 +197,24 @@ function complete(id) {
   state.quests = state.quests.filter(x => x.id !== id);
   log(`完成「${q.text}」 +${q.reward} 金`);
   toast(`委託完成!+${q.reward} 金`, "good");
+  kanbanReact("complete");
   scheduleSave(); renderAll();
 }
 
-function fail(q, silent = false) {
+function failQuest(q, silent = false) {
   const pen = penaltyOf(q.reward);
   state.gold -= pen;
   state.quests = state.quests.filter(x => x.id !== q.id);
   log(`「${q.text}」超時,違約金 -${pen} 金`);
-  if (!silent) toast(`委託超時!違約金 -${pen} 金`, "bad");
+  if (!silent) { toast(`委託超時!違約金 -${pen} 金`, "bad"); kanbanReact("fail"); }
 }
 
 function drop(id) {
-  const q = state.quests.find(q => q.id === id);
-  if (!q) return;
   state.quests = state.quests.filter(x => x.id !== id);
   scheduleSave(); renderAll();
 }
 
-function demote(id) { // 執行前退回 Lv0 重新編輯
+function demote(id) {
   const q = state.quests.find(q => q.id === id);
   if (!q) return;
   q.lv = 0; delete q.reward;
@@ -151,41 +228,313 @@ function editText(id) {
   if (t && t.trim()) { q.text = t.trim(); scheduleSave(); renderAll(); }
 }
 
-function log(msg) {
-  state.log.unshift(`[${new Date().toLocaleString("zh-TW", { hour12: false })}] ${msg}`);
-  state.log = state.log.slice(0, 50);
-}
-
-// 開頁結算離線期間的超時
 function settleOffline() {
   const now = Date.now();
   const expired = execQuests().filter(q => now >= q.deadline);
   if (!expired.length) return;
   let total = 0;
-  for (const q of expired) { total += penaltyOf(q.reward); fail(q, true); }
+  for (const q of expired) { total += penaltyOf(q.reward); failQuest(q, true); }
   toast(`離線結算:${expired.length} 件委託超時,違約金 -${total} 金`, "bad");
   scheduleSave();
 }
 
-// 每秒 tick:更新倒數條、處理超時
+// ===== 商店與地牢 =====
+
+function ensureShop() {
+  const today = dayNum();
+  if (state.shop && state.shop.day === today) return;
+  const n = randInt(3, 6);
+  state.shop = {
+    day: today,
+    stock: Array.from({ length: n }, () => ({ id: uid(), name: pick(SACRIFICE_POOL), price: randInt(5, 30), sold: false })),
+    line: pick(MERCHANT_LINES),
+  };
+  scheduleSave();
+}
+
+function buy(itemId) {
+  const it = state.shop.stock.find(i => i.id === itemId);
+  if (!it || it.sold) return;
+  if (state.gold < it.price) { toast("金幣不夠", "bad"); return; }
+  state.gold -= it.price;
+  it.sold = true;
+  state.dungeon.push({ name: it.name });
+  log(`購入祭品「${it.name}」 -${it.price} 金`);
+  scheduleSave(); renderAll();
+}
+
+// ===== 召喚 =====
+
+function rollRarity(n) {
+  const table = SUMMON_TABLE[n];
+  let r = Math.random() * 100, acc = 0;
+  for (let i = 0; i < table.length; i++) { acc += table[i]; if (r < acc) return RARITIES[i]; }
+  return RARITIES[table.length - 1];
+}
+
+function summon(n) {
+  if (state.dungeon.length < n || state.gold < 0) return;
+  state.dungeon.splice(0, n);
+  const today = dayNum();
+  const s = {
+    id: uid(),
+    name: pick(NAME_POOL),
+    rarity: rollRarity(n),
+    personality: pick2(PERSONALITY_POOL),
+    speech: pick(SPEECH_POOL),
+    dna: { seed: Math.floor(Math.random() * 1e9), traits: [pick(TRAIT_POOL.hair), pick(TRAIT_POOL.eyes), pick(TRAIT_POOL.body), pick(TRAIT_POOL.extra)] },
+    affection: 0,
+    stage: "stranger",
+    portraitReady: false,
+    summonedAt: Date.now(),
+    lastChatDay: today,
+    lastDateDay: today,
+    datesToday: { day: today, count: 0 },
+    ntr: null,
+  };
+  state.succubi.push(s);
+  log(`獻祭 ${n} 人,召喚出【${s.rarity}】${s.name}`);
+  scheduleSave();
+  showSummonOverlay(s, n);
+  renderAll();
+}
+
+function showSummonOverlay(s, n) {
+  const ov = document.getElementById("summon-overlay");
+  ov.classList.remove("hidden");
+  ov.innerHTML = `<div class="summon-circle"></div>`;
+  setTimeout(() => {
+    ov.innerHTML = `
+      <div class="summon-result r-${s.rarity}">
+        <div class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</div>
+        <h3>${esc(s.name)}</h3>
+        <div class="portrait">${girlSVG("#241333", 7)}</div>
+        <p>她還沒有形體……讓她今晚做個夢吧。</p>
+        <p class="small">${s.personality.join("・")} / ${s.speech}</p>
+        <button id="summon-close">接受契約</button>
+      </div>`;
+    document.getElementById("summon-close").onclick = () => { ov.classList.add("hidden"); ov.innerHTML = ""; renderAll(); };
+  }, 1400);
+}
+
+// ===== 情感、需求、NTR =====
+
+function stageInfo(key) { return STAGES.find(s => s[0] === key); }
+function nextStage(s) { const i = STAGES.findIndex(x => x[0] === s.stage); return STAGES[i + 1] || null; }
+function stageLabel(key) { return stageInfo(key)[1]; }
+
+function applyAffection(s, base) {
+  const d = Math.round(base * MULT[s.rarity] * 10) / 10;
+  s.affection = Math.round((s.affection + d) * 10) / 10;
+  // 升階(里程碑,不回退)
+  let ns = nextStage(s);
+  while (ns && s.affection >= ns[2]) {
+    s.stage = ns[0];
+    log(`${s.name} 與你的關係升級為【${ns[1]}】`);
+    toast(`${s.name} 成為你的${ns[1]}了!`, "good");
+    kanbanReact("stage");
+    ns = nextStage(s);
+  }
+  checkBreak(s);
+  return d;
+}
+
+function checkBreak(s) {
+  if (s.affection > -10 || s.ntr) return;
+  if (s.stage === "stranger") {
+    state.succubi = state.succubi.filter(x => x.id !== s.id);
+    if (detailId === s.id) detailId = null;
+    log(`${s.name} 離開了。再也不會回來。`);
+    toast(`${s.name} 離開了……`, "bad");
+  } else {
+    const today = dayNum();
+    s.ntr = { sinceDay: today, deadlineDay: today + NTR_WINDOW };
+    s.affection = -10;
+    log(`${s.name} 被另一位召喚師奪走了!${NTR_WINDOW} 天內可贖回(${RANSOM[s.stage]} 金)`);
+    toast(`${s.name} 被奪走了!`, "bad");
+  }
+}
+
+// 每日結算:逐日檢查需求逾期
+function settleDays() {
+  const today = dayNum();
+  if (state.lastSettledDay >= today) return;
+  for (let d = state.lastSettledDay + 1; d <= today; d++) {
+    for (const s of [...state.succubi]) {
+      if (s.ntr) {
+        if (d >= s.ntr.deadlineDay) {
+          state.succubi = state.succubi.filter(x => x.id !== s.id);
+          if (detailId === s.id) detailId = null;
+          log(`${s.name} 沒能等到你。她的一切都被那個男人帶走了。`);
+          toast(`${s.name} 永遠消失了……`, "bad");
+        }
+        continue;
+      }
+      let miss = (d - s.lastChatDay) > CHAT_GAP[s.rarity];
+      if (DATE_GAP[s.rarity] && (d - s.lastDateDay) > DATE_GAP[s.rarity]) miss = true;
+      if (miss) {
+        s.affection = Math.round((s.affection - 3) * 10) / 10;
+        checkBreak(s);
+      }
+    }
+  }
+  state.lastSettledDay = today;
+  scheduleSave();
+}
+
+function needStatus(s) {
+  if (s.ntr) return "ntr";
+  if (s.affection <= -7) return "danger";
+  const today = dayNum();
+  const chatDue = (today - s.lastChatDay) >= CHAT_GAP[s.rarity];
+  const dateDue = DATE_GAP[s.rarity] && (today - s.lastDateDay) >= DATE_GAP[s.rarity];
+  return (chatDue || dateDue) ? "due" : "ok";
+}
+
+// ===== 互動(M1:罐頭版;M2 換 LLM)=====
+
+function interactGuard(s, cost) {
+  if (isAsleep()) return "睡眠時段——她回夢境了";
+  if (s.ntr) return "她不在你身邊……";
+  if (state.gold < 0) return "負債中,先去做委託還債吧";
+  if (state.gold < cost) return "金幣不夠";
+  return null;
+}
+
+function chat(id) {
+  const s = state.succubi.find(x => x.id === id);
+  if (!s) return;
+  const err = interactGuard(s, CHAT_COST);
+  if (err) { toast(err, "bad"); return; }
+  state.gold -= CHAT_COST;
+  s.lastChatDay = dayNum();
+  const d = applyAffection(s, randInt(-1, 2));
+  s._say = pick(CHAT_LINES[s.stage] || CHAT_LINES.stranger);
+  log(`與 ${s.name} 聊天 -${CHAT_COST} 金,情感 ${d >= 0 ? "+" : ""}${d}`);
+  scheduleSave(); renderAll();
+}
+
+function dateOut(id, loc) {
+  const s = state.succubi.find(x => x.id === id);
+  if (!s) return;
+  const err = interactGuard(s, DATE_COST);
+  if (err) { toast(err, "bad"); return; }
+  const today = dayNum();
+  if (s.datesToday?.day !== today) s.datesToday = { day: today, count: 0 };
+  if (s.datesToday.count >= DATE_LIMIT) { toast("今天約會夠多了,她需要休息", "bad"); return; }
+  state.gold -= DATE_COST;
+  s.datesToday.count++;
+  s.lastDateDay = today;
+  s.lastChatDay = today; // 約會當然也算說到話
+  const d = applyAffection(s, randInt(1, 5));
+  s._say = `(${loc})` + pick(DATE_LINES[s.stage] || DATE_LINES.stranger);
+  dateChooser = false;
+  log(`與 ${s.name} 去${loc}約會 -${DATE_COST} 金,情感 +${d}`);
+  scheduleSave(); renderAll();
+}
+
+function ransom(id) {
+  const s = state.succubi.find(x => x.id === id);
+  if (!s || !s.ntr) return;
+  const cost = RANSOM[s.stage];
+  if (state.gold < cost) { toast(`贖金 ${cost} 金,你付不起`, "bad"); return; }
+  state.gold -= cost;
+  const today = dayNum();
+  s.ntr = null;
+  s.affection = 0;
+  s.lastChatDay = s.lastDateDay = today;
+  s.datesToday = { day: today, count: 0 };
+  log(`付出 ${cost} 金,把 ${s.name} 贖了回來。`);
+  toast(`${s.name} 回來了。別再冷落她了。`, "good");
+  scheduleSave(); renderAll();
+}
+
+// ===== 看板娘 =====
+
+function kanbanSuccubus() {
+  if (state.kanbanId) {
+    const s = state.succubi.find(x => x.id === state.kanbanId);
+    if (s && !s.ntr) return s;
+  }
+  const alive = state.succubi.filter(s => !s.ntr);
+  return alive[alive.length - 1] || null;
+}
+
+let bubbleTimer = null;
+function kanbanSay(text) {
+  const b = document.getElementById("kanban-bubble");
+  b.textContent = text;
+  b.classList.remove("hidden");
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => b.classList.add("hidden"), 2800);
+}
+
+function kanbanReact(type) {
+  if (isAsleep()) return;           // 睡眠中罐頭反應停用
+  if (!kanbanSuccubus()) return;    // 沒有看板娘
+  kanbanSay(pick(REACT[type]));
+}
+
+// ===== 像素剪影 =====
+
+function girlSVG(fill, scale = 6) {
+  const px = [
+    [6, 0, 1, 2], [9, 0, 1, 2],                 // 角
+    [4, 2, 8, 1], [3, 3, 10, 4],                // 髮/頭
+    [2, 4, 1, 7], [13, 4, 1, 7],                // 側髮
+    [4, 7, 8, 1],
+    [7, 8, 2, 1],                               // 頸
+    [5, 9, 6, 4],                               // 身
+    [4, 10, 1, 3], [11, 10, 1, 3],              // 臂
+    [0, 9, 2, 3], [14, 9, 2, 3],                // 翼
+    [1, 8, 1, 1], [14, 8, 1, 1],
+    [5, 13, 6, 3],                              // 裙
+    [6, 16, 1, 5], [9, 16, 1, 5],               // 腿
+    [5, 21, 2, 1], [9, 21, 2, 1],               // 足
+    [12, 14, 1, 3], [13, 16, 1, 2], [12, 18, 2, 1], // 尾
+  ];
+  return `<svg viewBox="0 0 16 22" width="${16 * scale}" height="${22 * scale}" shape-rendering="crispEdges">${px.map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`).join("")}</svg>`;
+}
+
+// ===== Tick =====
+
+let lastTickDay = null;
+
 setInterval(() => {
   if (!state) return;
   const now = Date.now();
   let changed = false;
+
   for (const q of [...execQuests()]) {
-    if (now >= q.deadline) { fail(q); changed = true; }
-    else updateBar(q, now);
+    if (now >= q.deadline) { failQuest(q); changed = true; }
+    else {
+      updateBar(q, now);
+      const frac = (q.deadline - now) / (q.deadline - q.startedAt);
+      if (frac <= 0.2 && !q._warned) { q._warned = true; kanbanReact("hurry"); }
+    }
   }
+
+  const today = dayNum();
+  if (lastTickDay !== null && today !== lastTickDay) { settleDays(); ensureShop(); changed = true; }
+  lastTickDay = today;
+
+  const asleep = isAsleep();
+  if (asleep !== lastSleepState) { lastSleepState = asleep; changed = true; }
+
   if (changed) { scheduleSave(); renderAll(); }
 }, 1000);
 
-// ---------- 渲染 ----------
+// ===== 渲染 =====
 
 const $ = s => document.querySelector(s);
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 function renderAll() {
   renderHud();
   renderQuests();
+  renderShop();
+  renderSuccubi();
+  renderKanban();
   renderSettings();
 }
 
@@ -194,6 +543,15 @@ function renderHud() {
   g.textContent = "⟡ " + state.gold;
   g.classList.toggle("debt", state.gold < 0);
   $("#hud-debt").classList.toggle("hidden", state.gold >= 0);
+
+  const needy = state.succubi.filter(s => needStatus(s) !== "ok").length;
+  const nb = $("#hud-need");
+  nb.classList.toggle("hidden", needy === 0);
+  nb.querySelector("span").textContent = needy;
+
+  const asleep = isAsleep();
+  $("#hud-sleep").classList.toggle("hidden", !asleep);
+  document.body.classList.toggle("asleep", asleep);
 }
 
 function fmtRemain(ms) {
@@ -215,7 +573,6 @@ function updateBar(q, now) {
 }
 
 function qcard(inner) { const d = document.createElement("div"); d.className = "qcard"; d.innerHTML = inner; return d; }
-function esc(s) { return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 function renderQuests() {
   const now = Date.now();
@@ -275,17 +632,162 @@ function renderQuests() {
   if (!found.length) lf.innerHTML = `<div class="empty">輸入現實中的待辦,發現新委託。</div>`;
 }
 
+function renderShop() {
+  ensureShop();
+  $("#merchant-line").textContent = "「" + state.shop.line + "」";
+  const st = $("#shop-stock"); st.innerHTML = "";
+  for (const it of state.shop.stock) {
+    const d = document.createElement("div");
+    d.className = "shop-item" + (it.sold ? " sold" : "");
+    d.innerHTML = `
+      <span class="sname">${esc(it.name)}</span>
+      <span class="sprice">${it.price} 金</span>
+      <button ${it.sold || state.gold < it.price ? "disabled" : ""}>${it.sold ? "已售出" : "購買"}</button>`;
+    if (!it.sold) d.querySelector("button").onclick = () => buy(it.id);
+    st.appendChild(d);
+  }
+  $("#dungeon-count").textContent = `(${state.dungeon.length} 人)`;
+  $("#dungeon-list").innerHTML = state.dungeon.length
+    ? state.dungeon.map(p => `<span>${esc(p.name)}</span>`).join("")
+    : `<span class="dim">空無一人。</span>`;
+}
+
+function renderSuccubi() {
+  const home = $("#succubi-home");
+  const detail = $("#succubus-detail");
+  if (detailId) {
+    const s = state.succubi.find(x => x.id === detailId);
+    if (!s) { detailId = null; } else {
+      home.classList.add("hidden");
+      detail.classList.remove("hidden");
+      renderDetail(s, detail);
+      return;
+    }
+  }
+  home.classList.remove("hidden");
+  detail.classList.add("hidden");
+
+  const roster = $("#roster"); roster.innerHTML = "";
+  for (const s of state.succubi) {
+    const st = needStatus(s);
+    const ns = nextStage(s);
+    const barW = s.affection >= 0
+      ? (ns ? Math.min(100, s.affection / ns[2] * 100) : 100)
+      : Math.min(100, -s.affection * 10);
+    const el = document.createElement("div");
+    el.className = `scard r-${s.rarity}` + (s.ntr ? " ntr" : "");
+    el.innerHTML = `
+      <div class="thumb">${girlSVG("#241333", 2.5)}</div>
+      <div class="sinfo">
+        <div class="sname"><b>${esc(s.name)}</b><span class="rbadge">${s.rarity}</span>
+          <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(s.stage)}</span></div>
+        <div class="aff-bar"><div class="${s.affection < 0 ? "neg" : ""}" style="width:${barW}%"></div></div>
+      </div>
+      <div class="status-dot ${st}"></div>`;
+    el.onclick = () => { detailId = s.id; dateChooser = false; renderAll(); };
+    roster.appendChild(el);
+  }
+  if (!state.succubi.length) roster.innerHTML = `<div class="empty">一個魅魔都沒有。桌上只有那本召喚之書。</div>`;
+
+  const hint = $("#summon-hint");
+  const counts = $("#summon-counts");
+  hint.textContent = state.gold < 0 ? "負債中不可召喚" : `地牢裡有 ${state.dungeon.length} 名祭品`;
+  counts.innerHTML = "";
+  for (let n = 1; n <= 6; n++) {
+    const b = document.createElement("button");
+    b.textContent = n;
+    b.disabled = state.dungeon.length < n || state.gold < 0;
+    b.title = `獻祭 ${n} 人`;
+    b.onclick = () => summon(n);
+    counts.appendChild(b);
+  }
+}
+
+function renderDetail(s, root) {
+  const asleep = isAsleep();
+  const st = needStatus(s);
+  const ns = nextStage(s);
+  const today = dayNum();
+  const datesLeft = s.datesToday?.day === today ? DATE_LIMIT - s.datesToday.count : DATE_LIMIT;
+
+  let needLine;
+  if (s.ntr) {
+    needLine = `<div class="ntr-note">她被另一位召喚師奪走了。剩 ${s.ntr.deadlineDay - today} 天可贖回(${RANSOM[s.stage]} 金)</div>`;
+  } else {
+    const bits = [`每 ${CHAT_GAP[s.rarity]} 天至少聊 1 次`];
+    if (DATE_GAP[s.rarity]) bits.push(`每 ${DATE_GAP[s.rarity]} 天至少約會 1 次`);
+    const stTxt = { ok: "心情不錯", due: "今天想見你", danger: "快要離開了!" }[st];
+    needLine = `<div class="aff-line dim small">${bits.join(" / ")} — ${stTxt}</div>`;
+  }
+
+  root.className = `r-${s.rarity}`;
+  root.innerHTML = `
+    <div class="panel">
+      <button class="back-btn" id="detail-back">‹ 名冊</button>
+      <div class="portrait">${girlSVG("#241333", 6)}</div>
+      <div class="aff-line">
+        <b>${esc(s.name)}</b> <span class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</span>
+        ・${s.ntr ? "被奪走" : stageLabel(s.stage)}
+      </div>
+      <div class="traits">${s.personality.map(p => `<span>${p}</span>`).join("")}<span>${s.speech}</span>${s.dna.traits.map(t => `<span>${t}</span>`).join("")}</div>
+      <div class="aff-line">情感 <b>${s.affection}</b>${ns && !s.ntr ? ` <span class="dim small">/ ${ns[2]} 升【${ns[1]}】</span>` : ""}</div>
+      ${needLine}
+      ${!s.portraitReady ? `<div class="aff-line dim small">尚未成形——今晚讓她織夢,明早見到她的臉(M3)</div>` : ""}
+      <div class="detail-actions">
+        ${s.ntr
+          ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
+          : `<button id="act-chat" ${asleep ? "disabled" : ""}>聊天 ${CHAT_COST} 金</button>
+             <button class="cyan" id="act-date" ${asleep || datesLeft <= 0 ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})</button>`}
+      </div>
+      ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${DATE_LOCS.map(l => `<button data-loc="${l}">${l}</button>`).join("")}</div>` : ""}
+      ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
+      ${s._say && !asleep ? `<div class="say-bubble"><span class="who">${esc(s.name)}</span>${esc(s._say)}</div>` : ""}
+    </div>`;
+
+  root.querySelector("#detail-back").onclick = () => { detailId = null; dateChooser = false; renderAll(); };
+  root.querySelector("#act-chat")?.addEventListener("click", () => chat(s.id));
+  root.querySelector("#act-date")?.addEventListener("click", () => { dateChooser = !dateChooser; renderAll(); });
+  root.querySelector("#act-ransom")?.addEventListener("click", () => ransom(s.id));
+  root.querySelectorAll("[data-loc]").forEach(b => b.onclick = () => dateOut(s.id, b.dataset.loc));
+}
+
+function renderKanban() {
+  const s = kanbanSuccubus();
+  const book = $("#book");
+  const girl = $("#kanban-girl");
+  const zzz = $("#kanban-zzz");
+  const asleep = isAsleep();
+  zzz.classList.toggle("hidden", !asleep);
+
+  if (s) {
+    book.classList.add("hidden");
+    girl.classList.remove("hidden");
+    girl.className = `r-${s.rarity}`;
+    girl.innerHTML = girlSVG("#241333", 9) + `<div class="kname">${esc(s.name)}</div>`;
+    girl.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(REACT.idle));
+  } else {
+    girl.classList.add("hidden");
+    book.classList.remove("hidden");
+    book.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(TAUNTS));
+  }
+}
+
 function renderSettings() {
   $("#set-player").value = state.settings.player || "";
   $("#set-sleep-start").value = state.settings.sleepStart;
   $("#set-sleep-end").value = state.settings.sleepEnd;
   $("#set-ver").textContent = version ? "v" + version : "(尚未寫入)";
+
+  const sel = $("#set-kanban");
+  sel.innerHTML = `<option value="">最新召喚(自動)</option>` +
+    state.succubi.map(s => `<option value="${s.id}" ${state.kanbanId === s.id ? "selected" : ""}>${esc(s.name)}(${s.rarity})</option>`).join("");
+
   $("#log-list").innerHTML = state.log.length
     ? state.log.map(l => `<div>${esc(l)}</div>`).join("")
     : "還沒有任何記錄。";
 }
 
-// ---------- 分頁滑動 ----------
+// ===== 分頁滑動 =====
 
 const tabButtons = document.querySelectorAll("#tabs button");
 function switchTab(i) {
@@ -296,16 +798,19 @@ function switchTab(i) {
 tabButtons.forEach(b => b.onclick = () => switchTab(+b.dataset.tab));
 switchTab(0);
 
-// ---------- 事件綁定 ----------
+// ===== 事件綁定 =====
 
 $("#quest-add").onclick = () => { addQuest($("#quest-input").value); $("#quest-input").value = ""; };
 $("#quest-input").addEventListener("keydown", e => {
   if (e.key === "Enter") { addQuest(e.target.value); e.target.value = ""; }
 });
 
+$("#hud-need").onclick = () => switchTab(2);
+
 $("#set-player").addEventListener("change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
-$("#set-sleep-start").addEventListener("change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); });
-$("#set-sleep-end").addEventListener("change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); });
+$("#set-sleep-start").addEventListener("change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
+$("#set-sleep-end").addEventListener("change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); renderAll(); });
+$("#set-kanban").addEventListener("change", e => { state.kanbanId = e.target.value || null; scheduleSave(); renderAll(); });
 
 $("#btn-export").onclick = () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -322,28 +827,26 @@ $("#import-file").addEventListener("change", async e => {
     const j = JSON.parse(await f.text());
     if (typeof j.gold !== "number" || !Array.isArray(j.quests)) throw new Error("格式不對");
     state = j;
-    settleOffline();
+    const def = defaultState();
+    for (const k of Object.keys(def)) state[k] ??= def[k];
+    settleOffline(); settleDays();
     scheduleSave(); renderAll();
     toast("存檔已匯入", "good");
   } catch { toast("匯入失敗:不是有效的存檔", "bad"); }
   e.target.value = "";
 });
 $("#btn-reset").onclick = () => {
-  if (!confirm("確定重置?金幣與委託將全部消失。")) return;
+  if (!confirm("確定重置?金幣、委託與所有魅魔將全部消失。")) return;
   state = defaultState();
-  scheduleSave(); renderAll();
+  state.lastSettledDay = null;
+  detailId = null;
+  scheduleSave();
+  state.lastSettledDay = dayNum();
+  ensureShop();
+  renderAll();
 };
 
-// 召喚書嘲諷
-document.getElementById("book").onclick = () => {
-  const b = document.getElementById("book-bubble");
-  b.textContent = TAUNTS[Math.floor(Math.random() * TAUNTS.length)];
-  b.classList.remove("hidden");
-  clearTimeout(b._t);
-  b._t = setTimeout(() => b.classList.add("hidden"), 2800);
-};
-
-// ---------- Toast ----------
+// ===== Toast =====
 
 function toast(msg, cls = "") {
   const d = document.createElement("div");
@@ -353,6 +856,14 @@ function toast(msg, cls = "") {
   setTimeout(() => d.remove(), 3200);
 }
 
-// ---------- 啟動 ----------
+// ===== 測試掛鉤(不影響遊戲)=====
+
+window.DBG = {
+  dayNum: () => dayNum(),
+  state: () => state,
+  isAsleep: () => isAsleep(),
+};
+
+// ===== 啟動 =====
 
 load();

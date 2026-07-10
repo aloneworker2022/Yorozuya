@@ -8,10 +8,11 @@
 </head>
 <body>
 
-<!-- z1:看板娘層(無魅魔時 = 召喚書) -->
+<!-- z1:看板娘層(有魅魔 = 剪影立繪;無魅魔 = 召喚書) -->
 <div id="kanban">
+  <div id="kanban-bubble" class="hidden"></div>
+  <div id="kanban-zzz" class="hidden">Z z z…</div>
   <div id="book">
-    <div id="book-bubble" class="hidden"></div>
     <svg viewBox="0 0 48 40" width="192" height="160" shape-rendering="crispEdges">
       <rect x="6"  y="4"  width="36" height="32" fill="#3b2158"/>
       <rect x="8"  y="6"  width="32" height="28" fill="#4b2a70"/>
@@ -23,12 +24,15 @@
     </svg>
     <div id="magic-circle"></div>
   </div>
+  <div id="kanban-girl" class="hidden"></div>
 </div>
 
 <!-- z3:頂部 HUD -->
 <header id="hud">
   <span id="hud-gold">⟡ 0</span>
   <span id="hud-debt" class="hidden">負債中</span>
+  <button id="hud-need" class="hidden">● <span>0</span></button>
+  <span id="hud-sleep" class="hidden">🌙 夢境時間</span>
 </header>
 
 <!-- z2:功能面板(四分頁滑動) -->
@@ -55,30 +59,30 @@
     </section>
 
     <section class="page" id="page-shop">
-      <div class="panel center-note">
+      <div class="panel">
         <h2>祭品商店</h2>
-        <p class="dim">「今天休市。商人還在路上……」</p>
-        <p class="dim small">(M1 開張:每日進貨 3~6 名祭品)</p>
+        <p id="merchant-line" class="dim small"></p>
+        <div id="shop-stock"></div>
       </div>
-      <div class="panel sub center-note">
-        <h2>地牢</h2>
-        <p class="dim small">空無一人。</p>
+      <div class="panel sub">
+        <h2>地牢 <span id="dungeon-count" class="dim"></span></h2>
+        <div id="dungeon-list" class="small"></div>
       </div>
     </section>
 
     <section class="page" id="page-succubi">
-      <div class="panel center-note">
-        <h2>魅魔名冊</h2>
-        <p class="dim">一個魅魔都沒有。桌上只有那本召喚之書。</p>
-      </div>
-      <div class="panel sub center-note" id="summon-block">
-        <h2>召喚</h2>
-        <p class="dim small">獻祭祭品以召喚魅魔(M1 解鎖)</p>
-        <div id="summon-counts">
-          <button disabled>1</button><button disabled>2</button><button disabled>3</button>
-          <button disabled>4</button><button disabled>5</button><button disabled>6</button>
+      <div id="succubi-home">
+        <div class="panel" id="roster-panel">
+          <h2>魅魔名冊</h2>
+          <div id="roster"></div>
+        </div>
+        <div class="panel sub center-note" id="summon-block">
+          <h2>召喚</h2>
+          <p class="dim small" id="summon-hint"></p>
+          <div id="summon-counts"></div>
         </div>
       </div>
+      <div id="succubus-detail" class="hidden"></div>
     </section>
 
     <section class="page" id="page-settings">
@@ -88,6 +92,7 @@
         <div class="setting-row"><label>睡眠時段</label>
           <span><input id="set-sleep-start" type="time"> ~ <input id="set-sleep-end" type="time"></span>
         </div>
+        <div class="setting-row"><label>看板娘</label><select id="set-kanban"></select></div>
       </div>
       <div class="panel sub">
         <h2>存檔</h2>
@@ -116,6 +121,9 @@
   <button data-tab="2">魅魔</button>
   <button data-tab="3">設定</button>
 </nav>
+
+<!-- 召喚演出 -->
+<div id="summon-overlay" class="hidden"></div>
 
 <div id="toasts"></div>
 

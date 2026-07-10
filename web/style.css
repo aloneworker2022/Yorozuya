@@ -54,12 +54,21 @@ body[data-tab="2"] .panel { pointer-events: auto; }
   animation: pulse 3s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100% { opacity: .5; } 50% { opacity: 1; } }
-#book-bubble {
-  position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
-  width: max-content; max-width: 240px;
+#kanban-bubble {
+  position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: 260px; z-index: 2;
   background: var(--panel); padding: .6em .9em; font-size: .85em;
-  color: var(--pink);
+  color: var(--pink); text-align: center;
 }
+#kanban-zzz {
+  position: absolute; top: 26%; left: 58%; z-index: 2;
+  color: var(--cyan); font-size: 1.1em; letter-spacing: .2em;
+  animation: float 3s ease-in-out infinite;
+}
+#kanban-girl { position: relative; cursor: pointer; animation: float 5s ease-in-out infinite; text-align: center; }
+#kanban-girl svg { filter: drop-shadow(0 0 14px var(--rc, #9aa0b5)); }
+#kanban-girl .kname { margin-top: .4em; font-size: .8em; color: var(--dim); letter-spacing: .3em; }
+body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 
 /* ===== z3 HUD / 分頁列 ===== */
 #hud {
@@ -71,6 +80,12 @@ body[data-tab="2"] .panel { pointer-events: auto; }
 #hud-gold { color: var(--gold); font-size: 1.15em; letter-spacing: .08em; }
 #hud-gold.debt { color: var(--red); }
 #hud-debt { color: var(--red); font-size: .75em; animation: pulse 1.2s infinite; }
+#hud-need {
+  background: rgba(255, 95, 122, .15); border: none; color: var(--red);
+  font: inherit; font-size: .75em; padding: .2em .6em; cursor: pointer;
+  animation: pulse 1.5s infinite;
+}
+#hud-sleep { color: var(--cyan); font-size: .75em; margin-left: auto; }
 #tabs {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
   display: flex;
@@ -158,20 +173,124 @@ body[data-tab="2"] .panel { pointer-events: auto; }
 }
 #quest-input::placeholder { color: var(--dim); }
 
-/* ===== 召喚 / 設定 ===== */
-#summon-counts { display: flex; gap: .4em; justify-content: center; margin-top: .6em; }
+/* ===== 設定 ===== */
 .setting-row {
   display: flex; justify-content: space-between; align-items: center; gap: 1em;
   padding: .5em 0; border-bottom: 1px solid var(--line); font-size: .85em;
 }
 .setting-row:last-child { border-bottom: none; }
-.setting-row input {
+.setting-row input, .setting-row select {
   background: rgba(0, 0, 0, .35); border: none; color: var(--text);
   font: inherit; padding: .3em .5em; outline: none;
 }
 .setting-row input[type="text"] { width: 9em; text-align: right; }
 .btn-row { display: flex; gap: .5em; margin-top: .8em; }
 #log-list div { padding: .25em 0; border-bottom: 1px solid var(--line); }
+
+/* ===== 稀有度色 ===== */
+.r-N   { --rc: #9aa0b5; }
+.r-R   { --rc: #5f9dff; }
+.r-S   { --rc: #b06fff; }
+.r-SS  { --rc: #ffd75f; }
+.r-SSR { --rc: #ff4fd8; }
+.r-SSR .rbadge, .r-SSR svg { animation: hue 3s linear infinite; }
+@keyframes hue { to { filter: hue-rotate(360deg); } }
+.rbadge { color: var(--rc); font-size: .75em; letter-spacing: .1em; }
+
+/* ===== 商店 ===== */
+.shop-item {
+  display: flex; align-items: center; gap: .8em;
+  padding: .6em .2em; border-bottom: 1px solid var(--line);
+}
+.shop-item:last-child { border-bottom: none; }
+.shop-item .sname { flex: 1; }
+.shop-item .sprice { color: var(--gold); font-size: .9em; }
+.shop-item button {
+  background: rgba(255, 215, 95, .12); border: none; color: var(--gold);
+  font: inherit; font-size: .8em; padding: .35em .8em; cursor: pointer;
+}
+.shop-item button:disabled { opacity: .35; cursor: default; }
+.shop-item.sold { opacity: .35; }
+#dungeon-list span { display: inline-block; margin: .15em .5em .15em 0; color: var(--dim); }
+
+/* ===== 魅魔名冊 ===== */
+.scard {
+  display: flex; align-items: center; gap: .8em; cursor: pointer;
+  padding: .6em .2em; border-bottom: 1px solid var(--line);
+}
+.scard:last-child { border-bottom: none; }
+.scard .thumb { flex-shrink: 0; filter: drop-shadow(0 0 5px var(--rc)); }
+.scard .sinfo { flex: 1; min-width: 0; }
+.scard .sname { display: flex; gap: .6em; align-items: baseline; }
+.scard .stage-chip { font-size: .7em; color: var(--cyan); }
+.scard .aff-bar { height: 6px; background: rgba(0, 0, 0, .4); margin-top: .35em; }
+.scard .aff-bar > div { height: 100%; background: var(--rc); }
+.scard .aff-bar > div.neg { background: var(--red); }
+.scard.ntr { filter: grayscale(1) brightness(.7); }
+.status-dot { width: 8px; height: 8px; flex-shrink: 0; }
+.status-dot.ok { background: var(--cyan); }
+.status-dot.due { background: var(--gold); animation: pulse 1.5s infinite; }
+.status-dot.danger { background: var(--red); animation: pulse .8s infinite; }
+.status-dot.ntr { background: #777; }
+
+/* ===== 魅魔詳情 ===== */
+#succubus-detail .portrait { text-align: center; margin: .8em 0; }
+#succubus-detail .portrait svg { filter: drop-shadow(0 0 18px var(--rc)); }
+#succubus-detail .traits { display: flex; gap: .4em; flex-wrap: wrap; justify-content: center; margin: .5em 0; }
+#succubus-detail .traits span {
+  font-size: .7em; color: var(--dim); background: rgba(216, 207, 232, .08); padding: .2em .6em;
+}
+#succubus-detail .aff-line { text-align: center; font-size: .85em; margin: .5em 0; }
+#succubus-detail .aff-line b { color: var(--rc); }
+.detail-actions { display: flex; gap: .5em; justify-content: center; flex-wrap: wrap; margin-top: .8em; }
+.detail-actions button {
+  background: rgba(255, 79, 216, .18); border: none; color: var(--pink);
+  font: inherit; font-size: .85em; padding: .5em 1em; cursor: pointer;
+}
+.detail-actions button.cyan { background: rgba(111, 227, 225, .15); color: var(--cyan); }
+.detail-actions button.gold { background: rgba(255, 215, 95, .15); color: var(--gold); }
+.detail-actions button:disabled { opacity: .35; cursor: default; }
+.say-bubble {
+  max-width: 90%; margin: .8em auto 0; padding: .6em .9em;
+  background: rgba(0, 0, 0, .35); font-size: .85em; text-align: center;
+}
+.say-bubble .who { color: var(--rc); margin-right: .5em; }
+.ntr-note { text-align: center; color: var(--red); font-size: .85em; margin: .6em 0; }
+.back-btn {
+  background: none; border: none; color: var(--dim); font: inherit;
+  cursor: pointer; padding: .2em .4em; margin-bottom: .4em;
+}
+
+/* ===== 召喚 ===== */
+#summon-counts { display: flex; gap: .4em; justify-content: center; margin-top: .6em; }
+#summon-counts button {
+  background: rgba(255, 79, 216, .15); border: none; color: var(--pink);
+  font: inherit; padding: .45em .9em; cursor: pointer;
+}
+#summon-counts button:disabled { opacity: .3; cursor: default; }
+#summon-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(5, 2, 10, .85);
+  display: flex; align-items: center; justify-content: center;
+}
+.summon-circle {
+  width: 60px; height: 60px; border-radius: 50%;
+  border: 3px dashed var(--pink);
+  animation: summon-spin 1.4s ease-in forwards;
+}
+@keyframes summon-spin {
+  0% { transform: rotate(0) scale(.3); opacity: .3; }
+  80% { transform: rotate(720deg) scale(4); opacity: 1; }
+  100% { transform: rotate(760deg) scale(5); opacity: 0; }
+}
+.summon-result { text-align: center; animation: toast-in .5s ease; }
+.summon-result h3 { font-size: 1.3em; letter-spacing: .3em; color: var(--rc); margin: .5em 0; }
+.summon-result .portrait svg { filter: drop-shadow(0 0 22px var(--rc)); }
+.summon-result p { color: var(--dim); font-size: .85em; margin: .8em 0; }
+.summon-result button {
+  background: rgba(255, 79, 216, .2); border: none; color: var(--pink);
+  font: inherit; padding: .5em 1.4em; cursor: pointer; margin-top: .5em;
+}
 
 /* ===== Toast ===== */
 #toasts {
