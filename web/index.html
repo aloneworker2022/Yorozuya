@@ -48,17 +48,36 @@
   <div id="track">
 
     <section class="page" id="page-quests">
-      <div class="panel">
-        <h2>執行中 <span id="exec-count" class="dim"></span></h2>
-        <div id="list-exec" class="qlist"></div>
-      </div>
-      <div class="panel sub">
-        <h2>已承接</h2>
-        <div id="list-accepted" class="qlist"></div>
-      </div>
-      <div class="panel sub">
-        <h2>發現</h2>
-        <div id="list-found" class="qlist"></div>
+      <div class="q-scenes">
+
+        <!-- 場景一:執行中三格(輪播,上滑完成) -->
+        <div class="q-scene" id="qs-exec">
+          <div class="pin-hdr">
+            <span class="pin-hdr-dot"></span>
+            <span class="pin-hdr-title" id="exec-count">執行中 0/3</span>
+            <span class="pin-hdr-dot"></span>
+          </div>
+          <div class="pin-carousel" id="pin-carousel">
+            <div class="pin-track" id="pin-track"></div>
+          </div>
+          <div class="pin-dots" id="pin-dots"></div>
+        </div>
+
+        <!-- 場景二:處理(發現/已承接,一次一張) -->
+        <div class="q-scene" id="qs-proc">
+          <div class="lv-hdr">
+            <button class="back-btn" id="q-back"><span class="back-icon">‹</span> 執行中</button>
+            <span class="lv-badge" id="q-badge"></span>
+          </div>
+          <div class="lv-area">
+            <div class="lv-inner">
+              <div id="q-stage"></div>
+              <div class="lv-nav" id="q-nav"></div>
+            </div>
+          </div>
+          <div class="q-force-tabs" id="q-force-tabs"></div>
+        </div>
+
       </div>
       <div id="quest-input-row">
         <input id="quest-input" type="text" maxlength="80" placeholder="輸入現實中的待辦…(Enter 送出)">
@@ -161,6 +180,16 @@
 
 <!-- 召喚演出 -->
 <div id="summon-overlay" class="hidden"></div>
+
+<!-- 承接定價 bottom sheet -->
+<div id="reward-overlay" class="hidden">
+  <div class="reward-sheet">
+    <h3>承接委託</h3>
+    <div class="reward-ctx" id="reward-ctx"></div>
+    <div class="reward-grid" id="reward-grid"></div>
+    <button class="reward-cancel" id="reward-cancel">取消</button>
+  </div>
+</div>
 
 <!-- 斷線重連畫面 -->
 <div id="conn-overlay" class="hidden">

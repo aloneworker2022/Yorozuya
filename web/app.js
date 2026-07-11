@@ -63,7 +63,6 @@ let state = null;
 let version = 0;
 let dirty = false;
 let saveTimer = null;
-let chooserFor = null;   // 展開報酬選擇的委託 id
 let detailId = null;     // 魅魔詳情頁
 let dateChooser = false; // 詳情頁展開約會地點
 let lastSleepState = null;
@@ -232,13 +231,14 @@ function addQuest(text) {
   text = text.trim();
   if (!text) return;
   state.quests.push({ id: uid(), text, lv: 0 });
+  toast("已加入發現池", "");
   scheduleSave(); renderAll();
 }
 
 function accept(id, g) {
   const q = state.quests.find(q => q.id === id);
   if (!q) return;
-  q.lv = 1; q.reward = g; chooserFor = null;
+  q.lv = 1; q.reward = g;
   scheduleSave(); renderAll();
 }
 
@@ -819,64 +819,273 @@ function updateBar(q, now) {
     : `剩 ${fmtRemain(q.deadline - now)}`;
 }
 
-function qcard(inner) { const d = document.createElement("div"); d.className = "qcard"; d.innerHTML = inner; return d; }
+// ===== 委託卡片場景(cthulhu-note 式:一次一張,手勢操作)=====
+
+let qScene = "exec";        // exec(執行中三格)| proc(處理)
+let pinIdx = 0;
+let procPool = null;        // 強制池:0 發現 | 1 已承接 | null 自動
+let procIdx = { 0: 0, 1: 0 };
+let _pinAbort = null;
+
+function poolItems(lv) { return state.quests.filter(q => q.lv === lv); }
+function curPool() {
+  if (procPool !== null && poolItems(procPool).length) return procPool;
+  procPool = null;
+  return poolItems(0).length ? 0 : 1;
+}
+function goProc() { qScene = "proc"; document.getElementById("page-quests").classList.add("on-proc"); renderQuests(); }
+function goExec() { qScene = "exec"; procPool = null; document.getElementById("page-quests").classList.remove("on-proc"); renderQuests(); }
 
 function renderQuests() {
-  const now = Date.now();
+  renderExec();
+  renderProc();
+}
+
+// --- 場景一:執行中三格輪播 ---
+
+function renderExec() {
   const exec = execQuests();
-  const accepted = state.quests.filter(q => q.lv === 1);
-  const found = state.quests.filter(q => q.lv === 0);
-
-  $("#exec-count").textContent = `(${exec.length}/${MAX_EXEC})`;
-
-  const le = $("#list-exec"); le.innerHTML = "";
-  for (const q of exec) {
-    const el = qcard(`
-      <div class="qtext">${esc(q.text)}</div>
-      <div class="bar-wrap"><div class="bar" data-bar="${q.id}"></div></div>
-      <div class="remain" data-remain="${q.id}"></div>
-      <div class="qbtns"><button class="primary" data-act="complete">完成 +${q.reward} 金</button></div>`);
-    el.querySelector("[data-act=complete]").onclick = () => complete(q.id);
-    le.appendChild(el);
-    updateBar(q, now);
+  $("#exec-count").textContent = `執行中 ${exec.length}/${MAX_EXEC}`;
+  const track = $("#pin-track");
+  let html = "";
+  for (let i = 0; i < MAX_EXEC; i++) {
+    const q = exec[i];
+    if (q) {
+      html += `<div class="pin-slide"><div class="q-card">
+        <span class="q-tag gold-tag">完成 +${q.reward} 金</span>
+        <div class="q-body">${esc(q.text)}</div>
+        <div>
+          <div class="bar-wrap"><div class="bar" data-bar="${q.id}"></div></div>
+          <div class="remain" data-remain="${q.id}"></div>
+          <div class="q-hints"><span class="hint">↑ 上滑完成</span><span class="hint">← → 切換</span></div>
+        </div>
+        <div class="swind"></div>
+      </div></div>`;
+    } else {
+      html += `<div class="pin-slide"><div class="pin-slot" data-slot>
+        <div class="pin-slot-icon">+</div>
+        <div class="pin-slot-txt">${poolItems(0).length + poolItems(1).length ? "去承接/開始委託" : "先在下方輸入待辦"}</div>
+      </div></div>`;
+    }
   }
-  if (!exec.length) le.innerHTML = `<div class="empty">沒有正在執行的委託。</div>`;
+  track.innerHTML = html;
+  pinIdx = Math.min(pinIdx, MAX_EXEC - 1);
+  track.style.transform = `translateX(-${pinIdx * 100}%)`;
+  $("#pin-dots").innerHTML = Array.from({ length: MAX_EXEC }, (_, i) => `<div class="dot${i === pinIdx ? " on" : ""}"></div>`).join("");
+  track.querySelectorAll("[data-slot]").forEach(el => el.onclick = () => goProc());
+  attachPinSwipe($("#pin-carousel"), exec);
+  const now = Date.now();
+  for (const q of exec) updateBar(q, now);
+}
 
-  const la = $("#list-accepted"); la.innerHTML = "";
-  for (const q of accepted) {
-    const full = exec.length >= MAX_EXEC;
-    const el = qcard(`
-      <div class="qtext">${esc(q.text)}</div>
-      <div class="qmeta"><span class="reward">${q.reward} 金</span> / 期限 ${24 / q.reward} 小時 / 違約金 ${penaltyOf(q.reward)} 金</div>
-      <div class="qbtns">
-        <button class="go" data-act="start" ${full ? "disabled" : ""}>${full ? "執行中已滿" : "開始執行 ▶"}</button>
-        <button data-act="demote">退回編輯</button>
-        <button data-act="drop">推掉</button>
-      </div>`);
-    el.querySelector("[data-act=start]").onclick = () => start(q.id);
-    el.querySelector("[data-act=demote]").onclick = () => demote(q.id);
-    el.querySelector("[data-act=drop]").onclick = () => drop(q.id);
-    la.appendChild(el);
-  }
-  if (!accepted.length) la.innerHTML = `<div class="empty">尚未承接任何委託。</div>`;
+function setPinIdx(i) {
+  pinIdx = Math.max(0, Math.min(MAX_EXEC - 1, i));
+  $("#pin-track").style.transform = `translateX(-${pinIdx * 100}%)`;
+  document.querySelectorAll("#pin-dots .dot").forEach((d, idx) => d.classList.toggle("on", idx === pinIdx));
+}
 
-  const lf = $("#list-found"); lf.innerHTML = "";
-  for (const q of found) {
-    const el = qcard(`
-      <div class="qtext editable" title="點擊編輯">${esc(q.text)}</div>
-      <div class="qbtns">
-        <button class="primary" data-act="accept">承接 ▾</button>
-        <button data-act="drop">推掉</button>
-      </div>
-      ${chooserFor === q.id ? `<div class="chooser">${REWARDS.map(g =>
-        `<button data-g="${g}">${g}金 <small>/${24 / g}h</small></button>`).join("")}</div>` : ""}`);
-    el.querySelector(".qtext").onclick = () => editText(q.id);
-    el.querySelector("[data-act=accept]").onclick = () => { chooserFor = chooserFor === q.id ? null : q.id; renderAll(); };
-    el.querySelector("[data-act=drop]").onclick = () => drop(q.id);
-    el.querySelectorAll(".chooser button").forEach(b => b.onclick = () => accept(q.id, +b.dataset.g));
-    lf.appendChild(el);
+function attachPinSwipe(el, exec) {
+  if (_pinAbort) _pinAbort.abort();
+  _pinAbort = new AbortController();
+  const sig = _pinAbort.signal;
+  const track = $("#pin-track");
+  const THRESH = 50;
+  let sx, sy, startIdx, dragging = false;
+
+  el.addEventListener("touchstart", e => {
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+    startIdx = pinIdx; dragging = true;
+    track.style.transition = "none";
+  }, { passive: true, signal: sig });
+  el.addEventListener("touchmove", e => {
+    if (!dragging) return;
+    const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      track.style.transform = `translateX(${-(startIdx * 100 - (dx / el.offsetWidth) * 100)}%)`;
+      if (e.cancelable) e.preventDefault();
+    }
+  }, { passive: false, signal: sig });
+  el.addEventListener("touchend", e => {
+    if (!dragging) return; dragging = false;
+    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    track.style.transition = "transform .3s cubic-bezier(.4,0,.2,1)";
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (dx < -THRESH) setPinIdx(startIdx + 1);
+      else if (dx > THRESH) setPinIdx(startIdx - 1);
+      else setPinIdx(startIdx);
+    } else {
+      track.style.transform = `translateX(-${pinIdx * 100}%)`;
+      if (dy < -THRESH) { const q = exec[pinIdx]; if (q) flyPinCard(() => complete(q.id)); }
+    }
+  }, { passive: true, signal: sig });
+
+  let mdown = false, msx, msy, msi;
+  el.addEventListener("mousedown", e => { mdown = true; msx = e.clientX; msy = e.clientY; msi = pinIdx; track.style.transition = "none"; }, { signal: sig });
+  window.addEventListener("mousemove", e => {
+    if (!mdown) return;
+    const dx = e.clientX - msx;
+    track.style.transform = `translateX(${-(msi * 100 - (dx / el.offsetWidth) * 100)}%)`;
+  }, { signal: sig });
+  window.addEventListener("mouseup", e => {
+    if (!mdown) return; mdown = false;
+    const dx = e.clientX - msx, dy = e.clientY - msy;
+    track.style.transition = "transform .3s cubic-bezier(.4,0,.2,1)";
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (dx < -THRESH) setPinIdx(msi + 1); else if (dx > THRESH) setPinIdx(msi - 1); else setPinIdx(msi);
+    } else {
+      track.style.transform = `translateX(-${pinIdx * 100}%)`;
+      if (dy < -THRESH) { const q = exec[pinIdx]; if (q) flyPinCard(() => complete(q.id)); }
+    }
+  }, { signal: sig });
+}
+
+function flyPinCard(action) {
+  const slide = document.querySelectorAll("#pin-track .pin-slide")[pinIdx];
+  const card = slide?.querySelector(".q-card");
+  if (!card) { action(); return; }
+  card.style.transition = "transform .26s ease,opacity .26s ease";
+  card.style.transform = "translateY(-130%)";
+  card.style.opacity = "0";
+  setTimeout(action, 260);
+}
+
+// --- 場景二:處理(發現/已承接) ---
+
+function renderProc() {
+  const stage = $("#q-stage");
+  const nav = $("#q-nav");
+  const badge = $("#q-badge");
+  const NAMES = { 0: "發現", 1: "已承接" };
+  const lv = curPool();
+  const list = poolItems(lv);
+
+  const tabs = $("#q-force-tabs");
+  tabs.innerHTML = [0, 1].map(l =>
+    `<button class="q-force-tab${l === lv ? " active" : ""}" data-pool="${l}">${NAMES[l]}<b>${poolItems(l).length}</b></button>`).join("");
+  tabs.querySelectorAll("button").forEach(b => b.onclick = () => { procPool = +b.dataset.pool; renderQuests(); });
+
+  const total = poolItems(0).length + poolItems(1).length;
+  if (!total) { badge.textContent = "全清 ✓"; badge.className = "lv-badge empty"; }
+  else { badge.textContent = NAMES[lv]; badge.className = "lv-badge"; }
+
+  if (!list.length) {
+    stage.innerHTML = total
+      ? `<div class="empty-state"><span class="e-icon">✓</span><span class="e-txt">${NAMES[lv]}池清空了</span></div>`
+      : `<div class="empty-state"><span class="e-icon">🌙</span><span class="e-txt">委託板清空了。去陪陪她們吧。</span></div>`;
+    nav.textContent = "";
+    return;
   }
-  if (!found.length) lf.innerHTML = `<div class="empty">輸入現實中的待辦,發現新委託。</div>`;
+  procIdx[lv] = Math.min(procIdx[lv], list.length - 1);
+  const i = procIdx[lv];
+  const q = list[i];
+  const full = execQuests().length >= MAX_EXEC;
+
+  const tag = lv === 0
+    ? `<span class="q-tag">發現・未定價</span>`
+    : `<span class="q-tag gold-tag">${q.reward} 金 / ${24 / q.reward} 小時 / 違約 ${penaltyOf(q.reward)} 金</span>`;
+  const hints = lv === 0
+    ? ["↑ 承接定價", "↓ 推掉", "← → 切換", "點兩下 編輯"]
+    : [full ? "執行中已滿" : "↑ 開始執行", "↓ 推掉", "← → 切換", "點兩下 退回"];
+
+  stage.innerHTML = `<div class="q-card" id="proc-card">
+    ${tag}
+    <div class="q-body">${esc(q.text)}</div>
+    <div class="q-hints">${hints.map(h => `<span class="hint">${h}</span>`).join("")}</div>
+    <div class="swind"></div>
+  </div>`;
+  nav.textContent = list.length > 1 ? `${i + 1} / ${list.length}` : "";
+
+  const card = $("#proc-card");
+  const nav2 = dir => {
+    const n = poolItems(lv).length;
+    const nx = procIdx[lv] + dir;
+    if (nx < 0 || nx >= n) return;
+    procIdx[lv] = nx;
+    renderProc();
+  };
+  const H = lv === 0 ? {
+    up: () => openRewardSheet(q),
+    down: () => flyCard(card, "down", () => drop(q.id)),
+    left: () => nav2(1), right: () => nav2(-1),
+    dbl: () => editText(q.id),
+  } : {
+    up: () => {
+      if (execQuests().length >= MAX_EXEC) { toast("執行中已滿 3 件", "bad"); return; }
+      flyCard(card, "up", () => { start(q.id); goExec(); });
+    },
+    down: () => flyCard(card, "down", () => drop(q.id)),
+    left: () => nav2(1), right: () => nav2(-1),
+    dbl: () => demote(q.id),
+  };
+  swipeable(card, H);
+}
+
+function flyCard(el, dir, action) {
+  if (!el) { action(); return; }
+  const T = { up: "translateY(-130%)", down: "translateY(130%)", left: "translateX(-130%)", right: "translateX(130%)" };
+  el.style.transition = "transform .24s ease,opacity .24s ease";
+  el.style.transform = T[dir];
+  el.style.opacity = "0";
+  setTimeout(action, 240);
+}
+
+// --- 滑動引擎(照抄 cthulhu-note)---
+
+function swipeable(el, { up, down, left, right, dbl }) {
+  let sx, sy, active = false, lastTap = 0;
+  const THRESH = 55, noLR = !left && !right;
+  const s = (cx, cy) => { sx = cx; sy = cy; active = true; el.style.transition = "none"; };
+  const m = (cx, cy) => {
+    if (!active) return;
+    const dx = cx - sx, dy = cy - sy, h = Math.abs(dx) > Math.abs(dy);
+    let tx = 0, ty = 0;
+    if (h && !noLR) tx = Math.sign(dx) * Math.min(Math.abs(dx), THRESH * 1.5);
+    else if (!h) ty = Math.sign(dy) * Math.min(Math.abs(dy), THRESH * 1.5);
+    el.style.transform = `translate(${tx}px,${ty}px) rotate(${tx * .025}deg)`;
+    const ov = el.querySelector(".swind");
+    if (ov) {
+      const abs = Math.max(Math.abs(tx), Math.abs(ty));
+      if (abs > 14) {
+        ov.style.opacity = Math.min(abs / (THRESH * 1.5), .85);
+        if (!h) { ov.textContent = dy < 0 ? "↑" : "↓"; ov.style.background = dy < 0 ? "rgba(111,227,225,.22)" : "rgba(255,95,122,.22)"; }
+        else { ov.textContent = dx > 0 ? "←" : "→"; ov.style.background = "rgba(255,255,255,.06)"; }
+      } else ov.style.opacity = 0;
+    }
+  };
+  const e = (cx, cy) => {
+    if (!active) return; active = false;
+    const dx = cx - sx, dy = cy - sy, h = Math.abs(dx) > Math.abs(dy);
+    el.style.transition = "transform .15s ease"; el.style.transform = "";
+    const ov = el.querySelector(".swind"); if (ov) ov.style.opacity = 0;
+    if (h && !noLR) { if (dx < -THRESH && left) { left(); return; } if (dx > THRESH && right) { right(); return; } }
+    else if (!h) { if (dy < -THRESH && up) { up(); return; } if (dy > THRESH && down) { down(); return; } }
+    if (dbl && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+      const now = Date.now();
+      if (now - lastTap < 320) { dbl(); lastTap = 0; } else lastTap = now;
+    }
+  };
+  el.addEventListener("touchstart", ev => { const t = ev.touches[0]; s(t.clientX, t.clientY); }, { passive: true });
+  el.addEventListener("touchmove", ev => { const t = ev.touches[0]; m(t.clientX, t.clientY); if (ev.cancelable) ev.preventDefault(); }, { passive: false });
+  el.addEventListener("touchend", ev => { const t = ev.changedTouches[0]; e(t.clientX, t.clientY); }, { passive: true });
+  el.addEventListener("mousedown", ev => s(ev.clientX, ev.clientY));
+  window.addEventListener("mousemove", ev => { if (ev.buttons === 1) m(ev.clientX, ev.clientY); });
+  window.addEventListener("mouseup", ev => { if (active) e(ev.clientX, ev.clientY); });
+}
+
+// --- 承接定價 bottom sheet ---
+
+function openRewardSheet(q) {
+  const ov = $("#reward-overlay");
+  $("#reward-ctx").textContent = q.text;
+  const grid = $("#reward-grid");
+  grid.innerHTML = REWARDS.map(g =>
+    `<button data-g="${g}">${g} 金<small>${24 / g} 小時</small></button>`).join("");
+  grid.querySelectorAll("button").forEach(b => b.onclick = () => {
+    ov.classList.add("hidden");
+    accept(q.id, +b.dataset.g);
+    toast(`已承接:${b.dataset.g} 金 / ${24 / +b.dataset.g} 小時`, "good");
+  });
+  ov.classList.remove("hidden");
 }
 
 function renderShop() {
@@ -1079,6 +1288,11 @@ $("#quest-input").addEventListener("keydown", e => {
 });
 
 $("#hud-need").onclick = () => switchTab(2);
+
+// 委託卡片場景
+$("#q-back").onclick = () => goExec();
+$("#reward-cancel").onclick = () => $("#reward-overlay").classList.add("hidden");
+$("#reward-overlay").addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.classList.add("hidden"); });
 
 $("#set-player").addEventListener("change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
 $("#set-sleep-start").addEventListener("change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
