@@ -77,7 +77,13 @@ function defaultState() {
     kanbanId: null,
     lastSettledDay: null,
     log: [],
-    settings: { player: "", sleepStart: "01:00", sleepEnd: "06:00", theme: "aqua", ollamaUrl: "http://localhost:11434", model: "", rating: "sfw" },
+    settings: {
+      player: "", sleepStart: "01:00", sleepEnd: "06:00", theme: "aqua",
+      ollamaUrl: "http://localhost:11434", model: "", rating: "sfw",
+      cardColors: null,   // null = 主題預設;{exec|found|acc|vn: {color,opacity}}
+      tabOpacity: 1,
+      bgImages: [], bgIndex: 0, bgInterval: 5,
+    },
   };
 }
 
@@ -136,6 +142,8 @@ function initState(j, offline) {
   settleDays();
   ensureShop();
   renderAll();
+  applyBg();
+  startBgRotation();
   if (offline) {
     toast("目前離線,進度會在恢復連線後自動同步", "bad");
     dirty = true;              // 讓 saveNow 的重試迴圈持續嘗試回推
@@ -773,6 +781,120 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
 
 function applyTheme() {
   document.body.dataset.theme = state.settings.theme || "aqua";
+  applyLayoutVars();
+}
+
+// ===== 版面:卡片顏色 + 反差字色 + 分頁列透明度(cthulhu-note 式)=====
+
+const CARD_KINDS = [["exec", "執行中卡"], ["found", "發現卡"], ["acc", "已承接卡"], ["vn", "對話框"]];
+
+function hexToRgba(hex, a) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// 反差字色:自訂色與深色底按透明度混合後算亮度,亮底配深字、暗底回主題螢光字
+function contrastText(hex, a) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  const blend = ch => ch * a + 20 * (1 - a);
+  const lum = (0.2126 * blend(r) + 0.7152 * blend(g) + 0.0722 * blend(b)) / 255;
+  return lum > 0.5 ? "#16101f" : "";
+}
+
+function applyLayoutVars() {
+  const root = document.documentElement.style;
+  const cc = state.settings.cardColors || {};
+  for (const [k] of CARD_KINDS) {
+    const c = cc[k];
+    if (!c) {
+      root.removeProperty(`--card-${k}`);
+      root.removeProperty(`--card-${k}-text`);
+      continue;
+    }
+    root.setProperty(`--card-${k}`, hexToRgba(c.color, c.opacity));
+    const t = contrastText(c.color, c.opacity);
+    if (t) root.setProperty(`--card-${k}-text`, t);
+    else root.removeProperty(`--card-${k}-text`);
+  }
+  document.getElementById("tabs").style.opacity = state.settings.tabOpacity ?? 1;
+}
+
+// ===== 全域背景圖 =====
+
+let bgTimer = null;
+
+function applyBg() {
+  const layer = document.getElementById("bg-layer");
+  const imgs = state.settings.bgImages || [];
+  if (!imgs.length) {
+    layer.classList.remove("on");
+    setTimeout(() => { layer.style.backgroundImage = ""; }, 800);
+    return;
+  }
+  if (state.settings.bgIndex >= imgs.length) state.settings.bgIndex = 0;
+  layer.style.backgroundImage = `url(/assets/backgrounds/${imgs[state.settings.bgIndex]})`;
+  requestAnimationFrame(() => layer.classList.add("on"));
+}
+
+function rotateBg() {
+  const imgs = state.settings.bgImages || [];
+  if (imgs.length < 2) return;
+  state.settings.bgIndex = (state.settings.bgIndex + 1) % imgs.length;
+  const layer = document.getElementById("bg-layer");
+  layer.style.opacity = "0";
+  setTimeout(() => { applyBg(); layer.style.opacity = ""; }, 800);
+  scheduleSave();
+}
+
+function startBgRotation() {
+  clearInterval(bgTimer);
+  if ((state.settings.bgImages || []).length > 1)
+    bgTimer = setInterval(rotateBg, (state.settings.bgInterval || 5) * 60 * 1000);
+}
+
+function resizeImageToBlob(file) {
+  return new Promise(res => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1280;
+        let w = img.width, h = img.height;
+        if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+        if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        c.toBlob(b => res(b), "image/jpeg", 0.78);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadBgFiles(input) {
+  for (const f of Array.from(input.files)) {
+    const blob = await resizeImageToBlob(f);
+    const fd = new FormData();
+    fd.append("file", new File([blob], "bg.jpg", { type: "image/jpeg" }));
+    const r = await fetch("/api/backgrounds", { method: "POST", body: fd });
+    if (r.ok) {
+      const d = await r.json();
+      state.settings.bgImages.push(d.name);
+    }
+  }
+  input.value = "";
+  scheduleSave(); applyBg(); startBgRotation(); renderSettings();
+  toast("背景圖已上傳", "good");
+}
+
+async function removeBgAt(i) {
+  const name = state.settings.bgImages[i];
+  try { await fetch(`/api/backgrounds/${name}`, { method: "DELETE" }); } catch { }
+  state.settings.bgImages.splice(i, 1);
+  if (state.settings.bgIndex >= state.settings.bgImages.length) state.settings.bgIndex = 0;
+  scheduleSave(); applyBg(); startBgRotation(); renderSettings();
 }
 
 function renderAll() {
@@ -851,7 +973,7 @@ function renderExec() {
   for (let i = 0; i < MAX_EXEC; i++) {
     const q = exec[i];
     if (q) {
-      html += `<div class="pin-slide"><div class="q-card">
+      html += `<div class="pin-slide"><div class="q-card c-exec">
         <span class="q-tag gold-tag">完成 +${q.reward} 金</span>
         <div class="q-body">${esc(q.text)}</div>
         <div>
@@ -987,7 +1109,7 @@ function renderProc() {
     ? ["↑ 承接定價", "↓ 推掉", "← → 切換", "點兩下 編輯"]
     : [full ? "執行中已滿" : "↑ 開始執行", "↓ 推掉", "← → 切換", "點兩下 退回"];
 
-  stage.innerHTML = `<div class="q-card" id="proc-card">
+  stage.innerHTML = `<div class="q-card ${lv === 0 ? "c-found" : "c-acc"}" id="proc-card">
     ${tag}
     <div class="q-body">${esc(q.text)}</div>
     <div class="q-hints">${hints.map(h => `<span class="hint">${h}</span>`).join("")}</div>
@@ -1264,6 +1386,44 @@ function renderSettings() {
   $("#set-theme").innerHTML = THEMES.map(([k, label]) =>
     `<option value="${k}" ${(state.settings.theme || "aqua") === k ? "selected" : ""}>${label}</option>`).join("");
 
+  // 版面:卡片顏色列
+  const THEME_CARD_DEFAULT = { aqua: "#120c22", pink: "#220c1c", green: "#0a1a10", amber: "#261808", ice: "#0c162c" };
+  const rows = $("#card-color-rows");
+  const cc = state.settings.cardColors || {};
+  const defHex = THEME_CARD_DEFAULT[state.settings.theme || "aqua"];
+  rows.innerHTML = CARD_KINDS.map(([k, label]) => {
+    const c = cc[k] || { color: defHex, opacity: 0.68 };
+    return `<div class="card-color-row" data-kind="${k}">
+      <span class="ccname">${label}</span>
+      <input type="color" value="${c.color}">
+      <input type="range" min="0" max="1" step="0.01" value="${c.opacity}">
+      <span class="ccval">${Math.round(c.opacity * 100)}%</span>
+    </div>`;
+  }).join("");
+  rows.querySelectorAll(".card-color-row").forEach(row => {
+    const k = row.dataset.kind;
+    const cp = row.querySelector("input[type=color]");
+    const ca = row.querySelector("input[type=range]");
+    const onchg = () => {
+      state.settings.cardColors ??= {};
+      state.settings.cardColors[k] = { color: cp.value, opacity: parseFloat(ca.value) };
+      row.querySelector(".ccval").textContent = Math.round(ca.value * 100) + "%";
+      applyLayoutVars(); scheduleSave();
+    };
+    cp.oninput = onchg;
+    ca.oninput = onchg;
+  });
+
+  $("#set-tab-op").value = state.settings.tabOpacity ?? 1;
+  $("#tab-op-val").textContent = Math.round((state.settings.tabOpacity ?? 1) * 100) + "%";
+  $("#set-bg-interval").value = state.settings.bgInterval || 5;
+  $("#bg-thumbs").innerHTML = (state.settings.bgImages || []).map((n, i) =>
+    `<div class="bg-thumb${i === state.settings.bgIndex ? " active-bg" : ""}">
+      <img src="/assets/backgrounds/${n}" loading="lazy">
+      <button class="bg-thumb-del" data-i="${i}">✕</button>
+    </div>`).join("") || `<span class="dim small">還沒有背景圖。</span>`;
+  $("#bg-thumbs").querySelectorAll(".bg-thumb-del").forEach(b => b.onclick = () => removeBgAt(+b.dataset.i));
+
   $("#log-list").innerHTML = state.log.length
     ? state.log.map(l => `<div>${esc(l)}</div>`).join("")
     : "還沒有任何記錄。";
@@ -1299,6 +1459,31 @@ $("#set-sleep-start").addEventListener("change", e => { state.settings.sleepStar
 $("#set-sleep-end").addEventListener("change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); renderAll(); });
 $("#set-kanban").addEventListener("change", e => { state.kanbanId = e.target.value || null; scheduleSave(); renderAll(); });
 $("#set-theme").addEventListener("change", e => { state.settings.theme = e.target.value; scheduleSave(); renderAll(); });
+
+// 版面設定
+$("#btn-card-reset").onclick = () => { state.settings.cardColors = null; applyLayoutVars(); scheduleSave(); renderSettings(); };
+$("#set-tab-op").addEventListener("input", e => {
+  state.settings.tabOpacity = parseFloat(e.target.value);
+  $("#tab-op-val").textContent = Math.round(e.target.value * 100) + "%";
+  applyLayoutVars(); scheduleSave();
+});
+$("#set-bg-interval").addEventListener("change", e => {
+  state.settings.bgInterval = Math.max(1, parseInt(e.target.value) || 5);
+  e.target.value = state.settings.bgInterval;
+  startBgRotation(); scheduleSave();
+});
+$("#btn-bg-upload").onclick = () => $("#bg-file").click();
+$("#bg-file").addEventListener("change", e => uploadBgFiles(e.target));
+$("#btn-bg-clear").onclick = async () => {
+  if (!confirm("刪除全部背景圖?")) return;
+  for (const n of state.settings.bgImages || []) {
+    try { await fetch(`/api/backgrounds/${n}`, { method: "DELETE" }); } catch { }
+  }
+  state.settings.bgImages = [];
+  state.settings.bgIndex = 0;
+  clearInterval(bgTimer);
+  scheduleSave(); applyBg(); renderSettings();
+};
 
 // 聊天室
 $("#chat-back").onclick = () => exitChat();

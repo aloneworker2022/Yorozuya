@@ -57,6 +57,15 @@ body::after {
 .dim { color: var(--dim); }
 .small { font-size: .78em; }
 
+/* ===== z0 全域背景圖層 ===== */
+#bg-layer {
+  position: fixed; inset: 0; z-index: 0;
+  background-size: cover; background-position: center;
+  opacity: 0; transition: opacity .8s ease;
+  filter: brightness(.72);
+}
+#bg-layer.on { opacity: 1; }
+
 /* ===== z1 看板娘層(召喚書) ===== */
 #kanban {
   position: fixed; inset: 0; z-index: 1;
@@ -172,9 +181,9 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 .dot { width: 6px; height: 6px; background: var(--line); transition: all .2s; }
 .dot.on { background: var(--cyan); width: 18px; box-shadow: 0 0 8px var(--cyan); }
 
-/* 大卡片 */
+/* 大卡片(顏色可自訂,字色自動反差) */
 .q-card {
-  width: 100%; max-width: 340px; background: var(--panel);
+  width: 100%; max-width: 340px; background: var(--panel); color: var(--text);
   border: 1px solid var(--line); padding: 26px 22px 20px;
   position: relative; overflow: hidden; min-height: 210px;
   display: flex; flex-direction: column; justify-content: space-between;
@@ -184,9 +193,12 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 }
 .q-card:active { cursor: grabbing; }
 @keyframes cIn { from { opacity: 0; transform: scale(.94) translateY(10px); } to { opacity: 1; transform: none; } }
+.q-card.c-exec { background: var(--card-exec, var(--panel)); color: var(--card-exec-text, var(--text)); }
+.q-card.c-found { background: var(--card-found, var(--panel)); color: var(--card-found-text, var(--text)); }
+.q-card.c-acc { background: var(--card-acc, var(--panel)); color: var(--card-acc-text, var(--text)); }
 .q-tag {
   font-size: .62em; letter-spacing: .08em; align-self: flex-start;
-  background: color-mix(in srgb, var(--text) 16%, transparent);
+  background: color-mix(in srgb, currentColor 16%, transparent);
   padding: 3px 8px; margin-bottom: 12px;
 }
 .q-tag.gold-tag { background: color-mix(in srgb, var(--gold) 22%, transparent); color: var(--gold); }
@@ -196,15 +208,15 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 }
 .q-hints { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
 .q-hints .hint {
-  font-size: .62em; color: var(--dim);
-  padding: 3px 8px; background: color-mix(in srgb, var(--text) 8%, transparent);
+  font-size: .62em; color: color-mix(in srgb, currentColor 60%, transparent);
+  padding: 3px 8px; background: color-mix(in srgb, currentColor 9%, transparent);
 }
 .q-card .swind {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 3.5rem; opacity: 0; pointer-events: none; z-index: 4;
 }
 .q-card .bar-wrap { margin-top: 12px; }
-.q-card .remain { font-size: .72em; color: var(--dim); margin-top: .4em; }
+.q-card .remain { font-size: .72em; color: color-mix(in srgb, currentColor 60%, transparent); margin-top: .4em; }
 .q-card .remain .warn { color: var(--red); }
 
 /* 空格(虛線 +) */
@@ -435,7 +447,8 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 
 /* ===== VN 對話框(日式文字冒險) ===== */
 #vn-box {
-  background: var(--panel); padding: .8em 1em 1.1em; position: relative;
+  background: var(--card-vn, var(--panel)); color: var(--card-vn-text, var(--text));
+  padding: .8em 1em 1.1em; position: relative;
   min-height: 6.8em; flex-shrink: 0;
   border-top: 1px solid var(--line);
 }
@@ -508,6 +521,35 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 .summon-result button {
   background: rgba(255, 79, 216, .2); border: none; color: var(--pink);
   font: inherit; padding: .5em 1.4em; cursor: pointer; margin-top: .5em;
+}
+
+/* ===== 版面設定(卡片顏色/背景圖) ===== */
+.card-color-row {
+  display: flex; align-items: center; gap: .7em;
+  padding: .45em 0; border-bottom: 1px solid var(--line); font-size: .85em;
+}
+.card-color-row:last-child { border-bottom: none; }
+.card-color-row .ccname { flex: 0 0 6.5em; }
+.card-color-row input[type="color"] {
+  width: 2.6em; height: 2em; padding: 2px; border: 1px solid var(--line);
+  background: none; cursor: pointer; flex-shrink: 0;
+}
+.card-color-row input[type="range"] { flex: 1; accent-color: var(--pink); }
+.card-color-row .ccval { font-size: .8em; color: var(--dim); min-width: 3em; text-align: right; }
+.range-wrap { display: flex; align-items: center; gap: .5em; }
+.range-wrap input[type="range"] { width: 8em; accent-color: var(--pink); }
+#set-bg-interval { width: 4.5em; text-align: center; }
+#bg-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: .8em; }
+.bg-thumb {
+  position: relative; width: 72px; height: 52px; overflow: hidden;
+  border: 1px solid var(--line); flex-shrink: 0;
+}
+.bg-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.bg-thumb.active-bg { outline: 2px solid var(--pink); outline-offset: 1px; }
+.bg-thumb-del {
+  position: absolute; top: 2px; right: 2px; width: 18px; height: 18px;
+  background: rgba(0, 0, 0, .65); border: none; color: #fff; cursor: pointer;
+  font-size: .65em; line-height: 1; display: flex; align-items: center; justify-content: center;
 }
 
 /* ===== 斷線重連 ===== */

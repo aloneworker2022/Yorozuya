@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -76,6 +76,29 @@ def put_save(body: SavePut):
             (new_version, json.dumps(body.data, ensure_ascii=False), time.time()),
         )
     return {"version": new_version}
+
+
+# ---- 全域背景圖(上傳進 assets/backgrounds,靜態伺服)----
+
+BG_DIR = ASSETS_DIR / "backgrounds"
+
+
+@app.post("/api/backgrounds")
+async def upload_bg(file: UploadFile = File(...)):
+    BG_DIR.mkdir(parents=True, exist_ok=True)
+    ext = Path(file.filename or "bg.jpg").suffix.lower() or ".jpg"
+    if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+        raise HTTPException(status_code=400, detail="只收圖片")
+    name = f"{int(time.time() * 1000)}{ext}"
+    (BG_DIR / name).write_bytes(await file.read())
+    return {"name": name}
+
+
+@app.delete("/api/backgrounds/{name}")
+def delete_bg(name: str):
+    p = BG_DIR / Path(name).name  # 防路徑跳脫
+    p.unlink(missing_ok=True)
+    return {"ok": True}
 
 
 # ---- LLM 代理(瀏覽器 → RP5 → Ollama;免 CORS、免混合內容問題)----
