@@ -302,11 +302,40 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
   max-width: 520px; margin: 0 auto;
 }
 .chat-top { display: flex; align-items: center; gap: .6em; flex-shrink: 0; }
-#chat-msgs {
-  flex: 1; overflow-y: auto; scrollbar-width: none;
-  display: flex; flex-direction: column; gap: .5em; padding: .5em 0;
+.chat-top #chat-log-btn { margin-left: auto; }
+#chat-view { position: relative; }
+#chat-spacer { flex: 1; }
+
+/* ===== VN 對話框(日式文字冒險) ===== */
+#vn-box {
+  background: var(--panel); padding: .8em 1em 1.1em; position: relative;
+  min-height: 6.8em; flex-shrink: 0;
+  border-top: 1px solid var(--line);
 }
-#chat-msgs::-webkit-scrollbar { display: none; }
+#vn-nameline { display: flex; align-items: center; gap: .6em; margin-bottom: .45em; }
+#vn-name {
+  font-size: .85em; letter-spacing: .15em; color: var(--pink);
+  text-shadow: 0 0 8px color-mix(in srgb, currentColor 55%, transparent);
+}
+#vn-text { font-size: .95em; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+#vn-cursor {
+  position: absolute; right: .9em; bottom: .5em;
+  color: var(--cyan); font-size: .8em; animation: pulse 1s infinite;
+}
+#vn-typing i {
+  display: inline-block; width: 5px; height: 5px; margin-right: 4px;
+  background: var(--pink); animation: pulse 1s infinite;
+}
+#vn-typing i:nth-child(2) { animation-delay: .25s; }
+#vn-typing i:nth-child(3) { animation-delay: .5s; }
+
+/* 對話紀錄(backlog)覆蓋層 */
+#chat-backlog {
+  position: absolute; inset: 0; z-index: 5;
+  background: rgba(5, 2, 10, .92);
+  overflow-y: auto; scrollbar-width: none; padding: 1em .5em;
+}
+#chat-backlog #chat-msgs { display: flex; flex-direction: column; gap: .5em; }
 .msg { max-width: 85%; padding: .5em .8em; font-size: .9em; word-break: break-word; }
 .msg.user { align-self: flex-end; background: var(--panel); }
 .msg.ai { align-self: flex-start; background: rgba(0, 0, 0, .4); color: var(--pink); }
@@ -352,6 +381,19 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 .summon-result button {
   background: rgba(255, 79, 216, .2); border: none; color: var(--pink);
   font: inherit; padding: .5em 1.4em; cursor: pointer; margin-top: .5em;
+}
+
+/* ===== 斷線重連 ===== */
+#conn-overlay {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(5, 2, 10, .9);
+  display: flex; align-items: center; justify-content: center;
+}
+.conn-box { text-align: center; }
+.conn-box div { margin-bottom: 1em; animation: pulse 1.5s infinite; }
+.conn-box button {
+  background: rgba(111, 227, 225, .15); border: none; color: var(--cyan);
+  font: inherit; padding: .5em 1.2em; cursor: pointer;
 }
 
 /* ===== Toast ===== */

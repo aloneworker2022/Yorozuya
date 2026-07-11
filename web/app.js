@@ -105,26 +105,79 @@ function isAsleep(t = Date.now()) {
 }
 
 // ===== 存檔 =====
+// 伺服器為權威;localStorage 只作斷線快取。連不上時絕不開空檔:
+// 有快取用快取(恢復連線自動回推),沒快取顯示重連畫面。
 
-async function load() {
-  try {
-    const j = await fetch("/api/save").then(r => r.json());
-    version = j.version;
-    state = j.data ?? defaultState();
-    const def = defaultState();
-    for (const k of Object.keys(def)) state[k] ??= def[k];
-    state.settings = { ...def.settings, ...state.settings };
-    document.getElementById("set-srv").textContent = "OK";
-  } catch (e) {
-    state = defaultState();
-    document.getElementById("set-srv").textContent = "連線失敗(離線模式,進度不會保存)";
-  }
+const CACHE_KEY = "yorozuya_cache";
+
+function cacheLocal() {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ version, data: state })); } catch { }
+}
+
+async function fetchSave() {
+  const r = await fetch("/api/save", { cache: "no-store" });
+  if (!r.ok) throw new Error("http " + r.status);
+  return r.json();
+}
+
+function showConnOverlay(show) {
+  document.getElementById("conn-overlay").classList.toggle("hidden", !show);
+}
+
+function initState(j, offline) {
+  version = j.version;
+  state = j.data ?? defaultState();
+  const def = defaultState();
+  for (const k of Object.keys(def)) state[k] ??= def[k];
+  state.settings = { ...def.settings, ...state.settings };
   if (state.lastSettledDay == null) state.lastSettledDay = dayNum();
+  showConnOverlay(false);
+  document.getElementById("set-srv").textContent = offline ? "離線(使用本地快取)" : "OK";
   settleOffline();
   settleDays();
   ensureShop();
   renderAll();
+  if (offline) {
+    toast("目前離線,進度會在恢復連線後自動同步", "bad");
+    dirty = true;              // 讓 saveNow 的重試迴圈持續嘗試回推
+    saveTimer = setTimeout(saveNow, 5000);
+  } else {
+    cacheLocal();
+  }
 }
+
+async function load() {
+  try {
+    initState(await fetchSave(), false);
+  } catch (e) {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try { initState(JSON.parse(cached), true); return; } catch { }
+    }
+    showConnOverlay(true);
+    setTimeout(load, 3000);
+  }
+}
+
+// 切回前景:對時結算 + 和伺服器對版本(避免背景太久資料過期)
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || !state) return;
+  try {
+    const j = await fetchSave();
+    if (j.version > version && !dirty) {
+      version = j.version;
+      state = j.data ?? state;
+      const def = defaultState();
+      for (const k of Object.keys(def)) state[k] ??= def[k];
+      state.settings = { ...def.settings, ...state.settings };
+    }
+    document.getElementById("set-srv").textContent = "OK";
+  } catch { }
+  settleOffline();
+  settleDays();
+  ensureShop();
+  renderAll();
+});
 
 function scheduleSave() {
   dirty = true;
@@ -152,9 +205,14 @@ async function saveNow(keepalive = false) {
     }
     const j = await r.json();
     version = j.version;
+    cacheLocal();
     document.getElementById("set-ver").textContent = "v" + version;
+    document.getElementById("set-srv").textContent = "OK";
   } catch (e) {
+    // 存不上(離線/伺服器重啟):5 秒後自動重試,直到成功
     dirty = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 5000);
   }
 }
 
@@ -430,7 +488,7 @@ function enterChat(id, type = "chat", location = null) {
   document.body.classList.add("chat-mode");
   scheduleSave(); renderAll();
   renderChatLog(s);
-  if (type === "date") appendMsg("sys", `—— ${location}・約會開始 ——`);
+  if (type === "date") vnShow("", `—— ${location}・約會開始 ——`, "sys");
   document.getElementById("chat-input").focus();
 }
 
@@ -473,13 +531,31 @@ function buildCtx(s) {
   };
 }
 
-async function llmReply(s, aiEl) {
-  // 無模型設定 → 罐頭模式(M1 行為,遊戲照樣可玩)
+// ===== VN 對話框(日式文字冒險演出)=====
+
+function vnShow(name, text, who = "ai") {
+  const n = $("#vn-name");
+  n.textContent = name;
+  n.style.color = who === "user" ? "var(--cyan)" : who === "sys" ? "var(--dim)" : "var(--pink)";
+  $("#vn-text").textContent = text;
+  $("#vn-cursor").classList.add("hidden");
+  vnTyping(false);
+}
+
+function vnTyping(show) { $("#vn-typing").classList.toggle("hidden", !show); }
+function vnDone() { $("#vn-cursor").classList.remove("hidden"); vnTyping(false); }
+
+async function llmReply(s, onToken) {
+  // 無模型設定 → 罐頭模式(逐字打字機演出)
   if (!state.settings.model) {
-    await new Promise(r => setTimeout(r, 400));
-    const pool = chatSession.type === "date" ? DATE_LINES : CHAT_LINES;
+    await new Promise(r => setTimeout(r, 600));
+    const pool = chatSession?.type === "date" ? DATE_LINES : CHAT_LINES;
     const line = pick(pool[s.stage] || pool.stranger);
-    aiEl.textContent = line;
+    for (let i = 1; i <= line.length; i++) {
+      if (!chatSession) { const e = new Error("aborted"); e.name = "AbortError"; throw e; }
+      onToken(line.slice(0, i));
+      await new Promise(r => setTimeout(r, 35));
+    }
     return line;
   }
   chatAbort = new AbortController();
@@ -502,7 +578,6 @@ async function llmReply(s, aiEl) {
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = "", acc = "";
-  const msgs = document.getElementById("chat-msgs");
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -515,8 +590,7 @@ async function llmReply(s, aiEl) {
       const o = JSON.parse(line);
       if (o.error) throw new Error(o.error);
       acc += o.message?.content || "";
-      aiEl.textContent = acc;
-      msgs.scrollTop = msgs.scrollHeight;
+      onToken(acc);
       if (o.done) { if (!acc.trim()) throw new Error("empty"); return acc; }
     }
   }
@@ -538,23 +612,27 @@ async function sendChatMsg() {
   input.value = "";
   s.history ??= [];
   s.history.push({ role: "user", content: text, t: Date.now() });
-  appendMsg("user", text);
-  const aiEl = appendMsg("ai", "…");
+  // 先亮出玩家台詞,名牌切「她・輸入中」
+  vnShow(state.settings.player || "你", text, "user");
+  vnTyping(true);
+  $("#vn-name").textContent = (state.settings.player || "你") + " → " + s.name;
   chatSession.busy = true;
   document.getElementById("chat-send").disabled = true;
   try {
-    const reply = await llmReply(s, aiEl);
+    const reply = await llmReply(s, acc => {
+      vnShow(s.name, acc, "ai");
+    });
     s.history.push({ role: "assistant", content: reply, t: Date.now() });
     s.history = s.history.slice(-200);
     chatSession.playerMsgs++;
     if (chargeable) { state.gold -= 1; renderHud(); }
     if (!chatSession.gotReply) { chatSession.gotReply = true; s.lastChatDay = dayNum(); }
+    vnDone();
     scheduleSave();
   } catch (e) {
     s.history.pop();
-    aiEl.remove();
     if (e.name !== "AbortError") {
-      appendMsg("sys", "(她恍神了……訊息不扣費,再說一次吧)");
+      vnShow("", "(她恍神了……訊息不扣費,再說一次吧)", "sys");
       input.value = text;
     }
   }
@@ -572,17 +650,25 @@ function appendMsg(role, text) {
   d.className = "msg " + role;
   d.textContent = text;
   msgs.appendChild(d);
-  msgs.scrollTop = msgs.scrollHeight;
   return d;
 }
 
-function renderChatLog(s) {
+function renderBacklog(s) {
   const msgs = document.getElementById("chat-msgs");
   msgs.innerHTML = "";
-  for (const m of (s.history || []).slice(-50)) {
+  for (const m of (s.history || []).slice(-100)) {
     appendMsg(m.role === "user" ? "user" : "ai", m.content);
   }
-  if (!(s.history || []).length) appendMsg("sys", `(這是你與 ${s.name} 的第一次對話)`);
+  if (!(s.history || []).length) appendMsg("sys", "(還沒有對話紀錄)");
+  const bl = document.getElementById("chat-backlog");
+  bl.scrollTop = bl.scrollHeight;
+}
+
+function renderChatLog(s) {
+  document.getElementById("chat-backlog").classList.add("hidden");
+  const lastAi = [...(s.history || [])].reverse().find(m => m.role === "assistant");
+  if (lastAi) { vnShow(s.name, lastAi.content, "ai"); vnDone(); }
+  else vnShow("", `(這是你與 ${s.name} 的第一次對話——她看著你,等你先開口)`, "sys");
 }
 
 function ransom(id) {
@@ -1004,6 +1090,15 @@ $("#set-theme").addEventListener("change", e => { state.settings.theme = e.targe
 $("#chat-back").onclick = () => exitChat();
 $("#chat-send").onclick = () => sendChatMsg();
 $("#chat-input").addEventListener("keydown", e => { if (e.key === "Enter") sendChatMsg(); });
+$("#chat-log-btn").onclick = () => {
+  const bl = $("#chat-backlog");
+  const s = state.succubi.find(x => x.id === chatWith);
+  if (!s) return;
+  if (bl.classList.contains("hidden")) { renderBacklog(s); bl.classList.remove("hidden"); }
+  else bl.classList.add("hidden");
+};
+$("#chat-backlog").onclick = () => $("#chat-backlog").classList.add("hidden");
+$("#conn-retry").onclick = () => load();
 
 // AI 設定
 $("#set-ollama").addEventListener("change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });

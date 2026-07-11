@@ -95,12 +95,22 @@
         <div class="chat-top">
           <button class="back-btn" id="chat-back">‹ 結束對話</button>
           <span id="chat-title" class="dim small"></span>
+          <button class="back-btn" id="chat-log-btn">紀錄</button>
         </div>
-        <div id="chat-msgs"></div>
+        <div id="chat-spacer"></div>
+        <div id="vn-box">
+          <div id="vn-nameline">
+            <span id="vn-name"></span>
+            <span id="vn-typing" class="hidden"><i></i><i></i><i></i></span>
+          </div>
+          <div id="vn-text"></div>
+          <span id="vn-cursor" class="hidden">▼</span>
+        </div>
         <div id="chat-input-row">
           <input id="chat-input" type="text" maxlength="300" placeholder="說點什麼…(Enter 送出)">
           <button id="chat-send">送出</button>
         </div>
+        <div id="chat-backlog" class="hidden"><div id="chat-msgs"></div></div>
       </div>
     </section>
 
@@ -151,6 +161,14 @@
 
 <!-- 召喚演出 -->
 <div id="summon-overlay" class="hidden"></div>
+
+<!-- 斷線重連畫面 -->
+<div id="conn-overlay" class="hidden">
+  <div class="conn-box">
+    <div>連線伺服器中…</div>
+    <button id="conn-retry">立刻重試</button>
+  </div>
+</div>
 
 <div id="toasts"></div>
 
