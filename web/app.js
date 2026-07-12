@@ -19,7 +19,45 @@ const DATE_GAP = { SS: 5, SSR: 3 };                     // 每 X 天至少約 1 
 const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 30], ["girlfriend", "女友", 90], ["wife", "妻子", 180]];
 const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
 const DATE_COST = 5, DATE_LIMIT = 2, NTR_WINDOW = 7; // 聊天計費:每 2 則玩家訊息 1 金
-const DATE_LOCS = ["夜景", "咖啡廳", "遊樂園", "海邊", "圖書館"];
+// 約會地點池(30 個情境;每次隨機抽 5 個給玩家選)
+const DATE_SPOTS = [
+  ["夜景展望台", "能俯瞰整座城市燈火的展望台,夜風微涼"],
+  ["咖啡廳", "巷弄裡的安靜咖啡廳,咖啡香氣與輕音樂"],
+  ["遊樂園", "熱鬧的遊樂園,摩天輪、雲霄飛車與棉花糖"],
+  ["海邊", "傍晚的海灘,浪聲、海風與逐漸下沉的夕陽"],
+  ["圖書館", "安靜的圖書館,只能咬耳朵小聲說話的緊張感"],
+  ["水族館", "幽藍的水族館,巨大水槽前魚群緩緩游過"],
+  ["動物園", "假日的動物園,看貓熊要排好長的隊"],
+  ["電影院", "飄著爆米花香的電影院,剛散場還在回味劇情"],
+  ["夏日祭典", "神社的夏日祭典,浴衣、撈金魚與蘋果糖"],
+  ["煙火大會", "河畔的煙火大會,人潮與夜空中綻放的煙火"],
+  ["溫泉街", "冒著白煙的溫泉街,散步吃溫泉蛋"],
+  ["貓咖啡廳", "被貓咪包圍的貓咖啡廳,腿上趴了一隻不肯走"],
+  ["電子遊樂場", "吵鬧的電子遊樂場,夾娃娃機與音樂遊戲對戰"],
+  ["保齡球館", "保齡球館,說好輸的人要接受懲罰遊戲"],
+  ["卡拉OK", "包廂卡拉OK,搶麥克風合唱到破音"],
+  ["深夜便利商店", "深夜的便利商店,買關東煮當宵夜的小小約會"],
+  ["屋頂天台", "大樓屋頂天台,吹著風喝罐裝飲料看星星"],
+  ["公園野餐", "晴天的公園草地野餐,鋪墊子分享便當"],
+  ["植物園", "溫室植物園,熱帶花草與玻璃屋頂灑下的光"],
+  ["美術館", "安靜的美術館,在同一幅畫前並肩駐足"],
+  ["商店街", "熱鬧的商店街,邊走邊分食剛炸好的可樂餅"],
+  ["服飾店", "逛服飾店,互相挑衣服試穿打分數"],
+  ["甜點吃到飽", "甜點吃到飽,蛋糕塔與無限續杯的紅茶"],
+  ["深夜拉麵店", "深夜拉麵店,並肩坐吧台呼嚕嚕吃麵"],
+  ["居酒屋", "熱鬧的居酒屋,串燒與微醺的氣氛"],
+  ["夜市", "台式夜市,牽著手擠過人潮掃街吃小吃"],
+  ["河堤散步", "黃昏的河堤,腳踏車鈴聲與拉得長長的影子"],
+  ["星空郊外", "郊外的觀星點,滿天星斗與清晰可見的銀河"],
+  ["滑雪場", "滑雪場,兩個人摔進雪堆裡笑成一團"],
+  ["泳池樂園", "夏天的泳池樂園,滑水道與融化太快的冰淇淋"],
+];
+function pickN(arr, n) {
+  const a = [...arr], out = [];
+  while (out.length < n && a.length) out.push(a.splice(Math.floor(Math.random() * a.length), 1)[0]);
+  return out;
+}
+let dateChoices = [];
 const THEMES = [["aqua", "霓虹水藍"], ["pink", "品紅魔宴"], ["green", "駭客終端"], ["amber", "琥珀映像管"], ["ice", "冰藍幽域"]];
 
 // ===== 內容池(內建預設;之後歸 content/config.json 廠商件擴充)=====
@@ -491,9 +529,14 @@ function enterChat(id, type = "chat", location = null) {
     log(`與 ${s.name} 去${location}約會 -${DATE_COST} 金`);
   }
   chatWith = id;
-  chatSession = { type, location, playerMsgs: 0, gotReply: false, busy: false };
+  const spot = DATE_SPOTS.find(x => x[0] === location);
+  chatSession = { type, location, locationDesc: spot ? spot[1] : null, playerMsgs: 0, gotReply: false, busy: false };
   dateChooser = false;
   document.body.classList.add("chat-mode");
+  if (type === "date") {
+    s.history ??= [];
+    s.history.push({ role: "sys", content: `兩人抵達「${location}」,約會開始`, t: Date.now() });
+  }
   scheduleSave(); renderAll();
   renderChatLog(s);
   if (type === "date") vnShow("", `—— ${location}・約會開始 ——`, "sys");
@@ -505,10 +548,12 @@ function exitChat() {
   if (s && chatSession) {
     if (chatSession.type === "date") {
       const d = applyAffection(s, randInt(1, 5));
+      s.history.push({ role: "sys", content: `「${chatSession.location}」的約會結束了,兩人回到日常`, t: Date.now() });
       log(`與 ${s.name} 的${chatSession.location}約會結束,情感 +${d}`);
       toast(`約會結束,情感 +${d}`, "good");
     } else if (chatSession.gotReply) {
       const d = applyAffection(s, randInt(-1, 2));
+      s.history.push({ role: "sys", content: "這次閒聊告一段落", t: Date.now() });
       log(`與 ${s.name} 聊了一會,情感 ${d >= 0 ? "+" : ""}${d}`);
       toast(`聊天結束,情感 ${d >= 0 ? "+" : ""}${d}`, d >= 0 ? "good" : "bad");
     }
@@ -532,6 +577,7 @@ function buildCtx(s) {
     },
     scene: {
       type: chatSession.type, location: chatSession.location,
+      scene_prompt: chatSession.locationDesc || null,
       time_of_day: h < 6 ? "night" : h < 12 ? "morning" : h < 18 ? "afternoon" : "evening",
     },
     content_rating: state.settings.rating || "sfw",
@@ -576,7 +622,11 @@ async function llmReply(s, onToken) {
       stream: true,
       messages: [
         { role: "system", content: buildSystemPrompt(buildCtx(s)) },
-        ...(s.history || []).slice(-40).map(m => ({ role: m.role, content: m.content })),
+        // sys 標記轉成場景提示,讓模型知道約會開始/結束,不延續舊場景話題
+        ...(s.history || []).slice(-40).map(m =>
+          m.role === "sys"
+            ? { role: "system", content: `(場景提示:${m.content})` }
+            : { role: m.role, content: m.content }),
       ],
       options: { temperature: 0.9 },
     }),
@@ -627,9 +677,16 @@ async function sendChatMsg() {
   chatSession.busy = true;
   document.getElementById("chat-send").disabled = true;
   try {
-    const reply = await llmReply(s, acc => {
-      vnShow(s.name, acc, "ai");
-    });
+    // 失敗自動重試一次(手機切回前景時網路常需要一秒回魂)
+    let reply;
+    try {
+      reply = await llmReply(s, acc => vnShow(s.name, acc, "ai"));
+    } catch (e1) {
+      if (e1.name === "AbortError") throw e1;
+      vnTyping(true);
+      await new Promise(r => setTimeout(r, 1000));
+      reply = await llmReply(s, acc => vnShow(s.name, acc, "ai"));
+    }
     s.history.push({ role: "assistant", content: reply, t: Date.now() });
     s.history = s.history.slice(-200);
     chatSession.playerMsgs++;
@@ -665,7 +722,8 @@ function renderBacklog(s) {
   const msgs = document.getElementById("chat-msgs");
   msgs.innerHTML = "";
   for (const m of (s.history || []).slice(-100)) {
-    appendMsg(m.role === "user" ? "user" : "ai", m.content);
+    appendMsg(m.role === "user" ? "user" : m.role === "sys" ? "sys" : "ai",
+      m.role === "sys" ? `—— ${m.content} ——` : m.content);
   }
   if (!(s.history || []).length) appendMsg("sys", "(還沒有對話紀錄)");
   const bl = document.getElementById("chat-backlog");
@@ -1337,14 +1395,19 @@ function renderDetail(s, root) {
           : `<button id="act-chat" ${asleep ? "disabled" : ""}>聊天(每 2 則 1 金)</button>
              <button class="cyan" id="act-date" ${asleep || datesLeft <= 0 ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})</button>`}
       </div>
-      ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${DATE_LOCS.map(l => `<button data-loc="${l}">${l}</button>`).join("")}</div>` : ""}
+      ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
     </div>`;
 
   root.querySelector("#detail-back").onclick = () => { detailId = null; dateChooser = false; renderAll(); };
   root.querySelector("#act-chat")?.addEventListener("click", () => enterChat(s.id));
-  root.querySelector("#act-date")?.addEventListener("click", () => { dateChooser = !dateChooser; renderAll(); });
+  root.querySelector("#act-date")?.addEventListener("click", () => {
+    dateChooser = !dateChooser;
+    if (dateChooser) dateChoices = pickN(DATE_SPOTS, 5);
+    renderAll();
+  });
   root.querySelector("#act-ransom")?.addEventListener("click", () => ransom(s.id));
+  root.querySelector("[data-reroll]")?.addEventListener("click", () => { dateChoices = pickN(DATE_SPOTS, 5); renderAll(); });
   root.querySelectorAll("[data-loc]").forEach(b => b.onclick = () => enterChat(s.id, "date", b.dataset.loc));
 }
 
