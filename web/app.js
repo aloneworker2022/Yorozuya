@@ -58,7 +58,8 @@ function pickN(arr, n) {
   return out;
 }
 let dateChoices = [];
-const THEMES = [["aqua", "霓虹水藍"], ["pink", "品紅魔宴"], ["green", "駭客終端"], ["amber", "琥珀映像管"], ["ice", "冰藍幽域"]];
+const THEMES = [["aqua", "霓虹水藍"], ["pink", "品紅魔宴"], ["green", "駭客終端"], ["amber", "琥珀映像管"], ["ice", "冰藍幽域"], ["day", "日光白晝(亮)"], ["sakura", "櫻花(亮)"]];
+const LIGHT_THEMES = new Set(["day", "sakura"]);
 
 // ===== 內容池(內建預設;之後歸 content/config.json 廠商件擴充)=====
 
@@ -865,12 +866,15 @@ function hexToRgba(hex, a) {
   return `rgba(${r},${g},${b},${a})`;
 }
 
-// 反差字色:自訂色與深色底按透明度混合後算亮度,亮底配深字、暗底回主題螢光字
+// 反差字色:自訂色與主題底色按透明度混合後算亮度,與主題字色反差不足時切反差字
 function contrastText(hex, a) {
+  const isLight = LIGHT_THEMES.has(state.settings.theme || "aqua");
+  const base = isLight ? 236 : 20;
   const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-  const blend = ch => ch * a + 20 * (1 - a);
+  const blend = ch => ch * a + base * (1 - a);
   const lum = (0.2126 * blend(r) + 0.7152 * blend(g) + 0.0722 * blend(b)) / 255;
-  return lum > 0.5 ? "#16101f" : "";
+  if (isLight) return lum <= 0.5 ? "#f4fbff" : "";   // 亮主題:暗底切亮字
+  return lum > 0.5 ? "#16101f" : "";                  // 暗主題:亮底切深字
 }
 
 function applyLayoutVars() {
@@ -1465,7 +1469,7 @@ function renderSettings() {
     `<option value="${k}" ${(state.settings.theme || "aqua") === k ? "selected" : ""}>${label}</option>`).join("");
 
   // 版面:卡片顏色列
-  const THEME_CARD_DEFAULT = { aqua: "#120c22", pink: "#220c1c", green: "#0a1a10", amber: "#261808", ice: "#0c162c" };
+  const THEME_CARD_DEFAULT = { aqua: "#120c22", pink: "#220c1c", green: "#0a1a10", amber: "#261808", ice: "#0c162c", day: "#ffffff", sakura: "#fff8fb" };
   const rows = $("#card-color-rows");
   const cc = state.settings.cardColors || {};
   const defHex = THEME_CARD_DEFAULT[state.settings.theme || "aqua"];

@@ -34,6 +34,29 @@ body[data-theme="ice"] {                  /* 冰藍幽域 */
   --dim: rgba(184, 220, 255, .48); --line: rgba(184, 220, 255, .1);
   --pink: #7da5ff; --cyan: #9af0ff; --red: #ff7a9a; --gold: #ffe08a;
 }
+body[data-theme="day"] {                  /* 日光白晝(亮色) */
+  --bg: #e9edf4; --glow: #ffffff;
+  --panel: rgba(255, 255, 255, .72); --panel2: rgba(255, 255, 255, .5);
+  --text: #17323f;
+  --dim: rgba(23, 50, 63, .55); --line: rgba(23, 50, 63, .14);
+  --pink: #c92878; --cyan: #0b7f95; --red: #d63352; --gold: #96700a;
+}
+body[data-theme="sakura"] {               /* 櫻花(亮色) */
+  --bg: #f9ecf1; --glow: #ffd9e8;
+  --panel: rgba(255, 250, 252, .75); --panel2: rgba(255, 250, 252, .52);
+  --text: #5a2438;
+  --dim: rgba(90, 36, 56, .55); --line: rgba(90, 36, 56, .14);
+  --pink: #e0407f; --cyan: #2f8f80; --red: #d63352; --gold: #a3781c;
+}
+/* 亮色主題:文字不發光(暗底才有霓虹感),掃描線減淡 */
+body[data-theme="day"], body[data-theme="sakura"] { text-shadow: none; }
+body[data-theme="day"] .panel h2, body[data-theme="sakura"] .panel h2,
+body[data-theme="day"] .pin-hdr-title, body[data-theme="sakura"] .pin-hdr-title { text-shadow: none; }
+body[data-theme="day"]::after, body[data-theme="sakura"]::after {
+  background:
+    repeating-linear-gradient(0deg, transparent 0 2px, rgba(0, 0, 0, .05) 2px 4px),
+    radial-gradient(ellipse at center, transparent 70%, rgba(0, 0, 0, .12) 100%);
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; overflow: hidden; }
 body {
@@ -349,13 +372,15 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 #quest-input-row {
   display: flex; gap: .5em; max-width: 520px; width: 100%;
   margin: auto auto 0;                /* 內容少時仍推到頁面最底 */
-  background: var(--panel); padding: .6em;
+  background: var(--panel); padding: .8em;
   position: sticky; bottom: 0;        /* 內容多時黏在捲動視窗底部 */
   flex-shrink: 0;
 }
 #quest-input {
-  flex: 1; background: rgba(0, 0, 0, .35); border: none; color: var(--text);
-  font: inherit; padding: .45em .6em; outline: none;
+  flex: 1; background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: none; color: var(--text);
+  font: inherit; font-size: 1.05em; padding: .75em .8em; outline: none;
+  min-width: 0;
 }
 #quest-input::placeholder { color: var(--dim); }
 
@@ -498,10 +523,12 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 .msg.user { align-self: flex-end; background: var(--panel); }
 .msg.ai { align-self: flex-start; background: rgba(0, 0, 0, .4); color: var(--pink); }
 .msg.sys { align-self: center; color: var(--dim); font-size: .75em; background: none; }
-#chat-input-row { display: flex; gap: .5em; background: var(--panel); padding: .6em; flex-shrink: 0; }
+#chat-input-row { display: flex; gap: .5em; background: var(--panel); padding: .8em; flex-shrink: 0; }
 #chat-input {
-  flex: 1; background: rgba(0, 0, 0, .35); border: none; color: var(--text);
-  font: inherit; padding: .45em .6em; outline: none;
+  flex: 1; background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: none; color: var(--text);
+  font: inherit; font-size: 1.05em; padding: .75em .8em; outline: none;
+  min-width: 0;
 }
 #chat-input::placeholder { color: var(--dim); }
 #chat-send {
