@@ -613,14 +613,15 @@ async function llmReply(s, onToken) {
     }
     return line;
   }
+  // Job 制:RP5 代跑 Ollama 收完整回覆,手機只輪詢——
+  // 切去別的 app、網路瞬斷都不會中斷生成,回前景自動補上。
   chatAbort = new AbortController();
-  const res = await fetch("/api/llm/chat", {
+  const startRes = await fetch("/api/llm/chat_job", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       endpoint: state.settings.ollamaUrl,
       model: state.settings.model,
-      stream: true,
       // 場景標記(sys)不進訊息列——部分模型模板不接受中段 system 角色。
       // 改為取最新一筆併入開頭 system prompt(見 buildCtx 的 scene.transition)。
       messages: [
@@ -633,28 +634,32 @@ async function llmReply(s, onToken) {
     }),
     signal: chatAbort.signal,
   });
-  if (!res.ok) throw new Error("proxy error");
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = "", acc = "";
+  if (!startRes.ok) throw new Error("連不上遊戲伺服器");
+  const { job_id } = await startRes.json();
+
+  const t0 = Date.now();
+  let acc = "", fails = 0;
   while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i;
-    while ((i = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, i).trim();
-      buf = buf.slice(i + 1);
-      if (!line) continue;
-      const o = JSON.parse(line);
-      if (o.error) throw new Error(o.error);
-      acc += o.message?.content || "";
-      if (acc) onToken(acc);            // 思考型模型前段 content 為空,別急著清掉輸入中指示
-      if (o.done) { if (!acc.trim()) throw new Error("模型回了空訊息"); return acc; }
+    if (chatAbort.signal.aborted) { const e = new Error("aborted"); e.name = "AbortError"; throw e; }
+    await new Promise(r => setTimeout(r, 400));
+    if (document.hidden) continue;                 // 背景時不打,回前景再拉
+    if (Date.now() - t0 > 300000) throw new Error("等太久了(逾時)");
+    let j;
+    try {
+      const r = await fetch(`/api/llm/chat_job/${job_id}`, { cache: "no-store" });
+      if (r.status === 404) throw new Error("expired");
+      if (!r.ok) throw new Error("http " + r.status);
+      j = await r.json();
+      fails = 0;
+    } catch (e) {
+      if (e.message === "expired") throw new Error("回覆已過期");
+      if (++fails > 40) throw new Error("網路中斷太久");
+      continue;                                    // 輪詢失敗照樣重試,job 在伺服器上繼續跑
     }
+    if (j.error) throw new Error(j.error);
+    if (j.text && j.text !== acc) { acc = j.text; onToken(acc); }
+    if (j.done) { if (!acc.trim()) throw new Error("模型回了空訊息"); return acc; }
   }
-  if (!acc.trim()) throw new Error("串流中斷");
-  return acc;
 }
 
 async function sendChatMsg() {

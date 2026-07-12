@@ -6,14 +6,15 @@
 啟動:uvicorn main:app --host 0.0.0.0 --port 8000
 """
 
+import asyncio
 import json
 import sqlite3
 import time
+import uuid
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -115,21 +116,53 @@ async def llm_tags(endpoint: str = "http://localhost:11434"):
         raise HTTPException(status_code=502, detail="Ollama 連不上")
 
 
-@app.post("/api/llm/chat")
-async def llm_chat(body: dict):
+# 聊天改為「job 制」:手機發起後由 RP5 對 Ollama 收完整回覆,
+# 手機只輪詢結果——切去別的 app、網路斷線都不會中斷生成。
+# 伺服器僅逐字累積原文,不檢視、不修改(8.1)。
+
+CHAT_JOBS: dict[str, dict] = {}
+
+
+async def _run_chat_job(job_id: str, endpoint: str, body: dict):
+    job = CHAT_JOBS[job_id]
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
+            async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
+                async for line in r.aiter_lines():
+                    if not line.strip():
+                        continue
+                    o = json.loads(line)
+                    if o.get("error"):
+                        job["error"] = str(o["error"])
+                        break
+                    job["text"] += (o.get("message") or {}).get("content", "")
+                    if o.get("done"):
+                        break
+    except Exception as e:
+        if not job["text"]:
+            job["error"] = f"Ollama 連線失敗({type(e).__name__})"
+    job["done"] = True
+
+
+@app.post("/api/llm/chat_job")
+async def create_chat_job(body: dict):
     endpoint = str(body.pop("endpoint", "http://localhost:11434")).rstrip("/")
+    body["stream"] = True
+    now = time.time()
+    for k in [k for k, v in CHAT_JOBS.items() if now - v["t"] > 600]:
+        CHAT_JOBS.pop(k, None)
+    job_id = uuid.uuid4().hex
+    CHAT_JOBS[job_id] = {"text": "", "done": False, "error": None, "t": now}
+    asyncio.create_task(_run_chat_job(job_id, endpoint, body))
+    return {"job_id": job_id}
 
-    async def gen():
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=5)) as c:
-                async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
-                    async for chunk in r.aiter_bytes():
-                        yield chunk
-        except httpx.HTTPError as e:
-            msg = f"Ollama 連線失敗({type(e).__name__})"
-            yield json.dumps({"error": msg}).encode() + b"\n"
 
-    return StreamingResponse(gen(), media_type="application/x-ndjson")
+@app.get("/api/llm/chat_job/{job_id}")
+def chat_job_status(job_id: str):
+    job = CHAT_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job 不存在或已過期")
+    return {"text": job["text"], "done": job["done"], "error": job["error"]}
 
 
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
