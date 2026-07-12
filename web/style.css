@@ -373,7 +373,6 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
   display: flex; gap: .5em; max-width: 520px; width: 100%;
   margin: auto auto 0;                /* 內容少時仍推到頁面最底 */
   background: var(--panel); padding: .8em;
-  border-radius: 14px 14px 0 0;
   position: sticky; bottom: 0;        /* 內容多時黏在捲動視窗底部 */
   flex-shrink: 0;
 }
@@ -528,7 +527,7 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 .msg.sys { align-self: center; color: var(--dim); font-size: .75em; background: none; }
 #chat-input-row {
   display: flex; gap: .5em; background: var(--panel); padding: .8em;
-  border-radius: 14px; margin-top: .5em; flex-shrink: 0;
+  margin-top: .5em; flex-shrink: 0;
 }
 #chat-input {
   flex: 1; background: color-mix(in srgb, var(--text) 8%, transparent);
@@ -631,3 +630,23 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 .toast.good { color: var(--cyan); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 @keyframes toast-out { to { opacity: 0; } }
+
+/* ===== 小圓角統一(容器 8px / 控件 6px / 小標籤 4px) ===== */
+.panel, .q-card, .pin-slot, #vn-box, #chat-input-row, #quest-input-row,
+.reward-sheet, .summon-result .portrait, .conn-box {
+  border-radius: 8px;
+}
+.msg, #quest-input, #chat-input, #quest-add, #chat-send,
+.qbtns button, .detail-actions button, .shop-item button, #summon-counts button,
+.btn-row button, .reward-grid button, .reward-cancel, .conn-box button,
+.summon-result button, .chooser button,
+.setting-row input, .setting-row select, .bg-thumb,
+.card-color-row input[type="color"] {
+  border-radius: 6px;
+}
+.q-tag, .q-hints .hint, .lv-badge, .stage-chip, .say-bubble,
+#kanban-bubble, .toast {
+  border-radius: 4px;
+}
+.q-force-tab { border-radius: 6px 0 0 6px; }   /* 貼右緣,只圓外側 */
+.bar-wrap, .aff-bar { border-radius: 3px; overflow: hidden; }
