@@ -205,9 +205,27 @@ async function load() {
   }
 }
 
+// ---- 前端版本偵測:git pull 後手機回前景自動載入新版 ----
+// 用 app.js 的 ETag/Last-Modified 當指紋,檔案一變就重整(對話中不打斷)
+
+let bootTag = null;
+async function assetTag() {
+  try {
+    const r = await fetch("app.js", { method: "HEAD", cache: "no-store" });
+    return r.headers.get("etag") || r.headers.get("last-modified") || "";
+  } catch { return null; }
+}
+assetTag().then(t => { bootTag = t; });
+
 // 切回前景:對時結算 + 和伺服器對版本(避免背景太久資料過期)
 document.addEventListener("visibilitychange", async () => {
   if (document.visibilityState !== "visible" || !state) return;
+  const tag = await assetTag();
+  if (tag && bootTag && tag !== bootTag && !chatSession && !dirty) {
+    toast("偵測到新版本,更新中…", "good");
+    setTimeout(() => location.reload(), 600);
+    return;
+  }
   try {
     const j = await fetchSave();
     if (j.version > version && !dirty) {
