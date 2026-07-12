@@ -125,8 +125,9 @@ async def llm_chat(body: dict):
                 async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
                     async for chunk in r.aiter_bytes():
                         yield chunk
-        except httpx.HTTPError:
-            yield json.dumps({"error": "Ollama 連線中斷"}).encode() + b"\n"
+        except httpx.HTTPError as e:
+            msg = f"Ollama 連線失敗({type(e).__name__})"
+            yield json.dumps({"error": msg}).encode() + b"\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
 

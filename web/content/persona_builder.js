@@ -36,6 +36,10 @@ export function buildSystemPrompt(ctx) {
     `現在是${TIME_LABEL[s.time_of_day] || ""}。`,
   ];
 
+  if (s.transition) {
+    lines.push(`(最近的場景變化:${s.transition}。以目前的場景為準,不要延續已結束場景的話題。)`);
+  }
+
   if (s.type === "date" && s.location) {
     lines.push(
       `【約會模式】你們現在正在「${s.location}」約會。場景:${s.scene_prompt || s.location}。`,
@@ -53,7 +57,7 @@ export function buildSystemPrompt(ctx) {
     "2. 每次回覆 1~3 句,像即時訊息一樣簡短口語,不寫長篇。",
     "3. 不使用動作描寫括號,只說話。",
     "4. 內容保持全年齡:可以曖昧、撒嬌、吃醋,但不出現露骨的性描寫。",
-    "5. 對話中出現(場景提示:…)代表場景切換:以最新的場景為準。約會結束後就回到日常,絕不延續已結束場景的話題。",
+    "5. 場景切換以上方「最近的場景變化」為準:約會結束後就回到日常,絕不延續已結束場景的話題。",
   );
 
   return lines.join("\n");

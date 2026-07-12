@@ -578,6 +578,7 @@ function buildCtx(s) {
     scene: {
       type: chatSession.type, location: chatSession.location,
       scene_prompt: chatSession.locationDesc || null,
+      transition: [...(s.history || [])].reverse().find(m => m.role === "sys")?.content || null,
       time_of_day: h < 6 ? "night" : h < 12 ? "morning" : h < 18 ? "afternoon" : "evening",
     },
     content_rating: state.settings.rating || "sfw",
@@ -620,13 +621,13 @@ async function llmReply(s, onToken) {
       endpoint: state.settings.ollamaUrl,
       model: state.settings.model,
       stream: true,
+      // 場景標記(sys)不進訊息列——部分模型模板不接受中段 system 角色。
+      // 改為取最新一筆併入開頭 system prompt(見 buildCtx 的 scene.transition)。
       messages: [
         { role: "system", content: buildSystemPrompt(buildCtx(s)) },
-        // sys 標記轉成場景提示,讓模型知道約會開始/結束,不延續舊場景話題
-        ...(s.history || []).slice(-40).map(m =>
-          m.role === "sys"
-            ? { role: "system", content: `(場景提示:${m.content})` }
-            : { role: m.role, content: m.content }),
+        ...(s.history || []).slice(-40)
+          .filter(m => m.role === "user" || m.role === "assistant")
+          .map(m => ({ role: m.role, content: m.content })),
       ],
       options: { temperature: 0.9 },
     }),
@@ -648,11 +649,11 @@ async function llmReply(s, onToken) {
       const o = JSON.parse(line);
       if (o.error) throw new Error(o.error);
       acc += o.message?.content || "";
-      onToken(acc);
-      if (o.done) { if (!acc.trim()) throw new Error("empty"); return acc; }
+      if (acc) onToken(acc);            // 思考型模型前段 content 為空,別急著清掉輸入中指示
+      if (o.done) { if (!acc.trim()) throw new Error("模型回了空訊息"); return acc; }
     }
   }
-  if (!acc.trim()) throw new Error("empty");
+  if (!acc.trim()) throw new Error("串流中斷");
   return acc;
 }
 
@@ -697,7 +698,9 @@ async function sendChatMsg() {
   } catch (e) {
     s.history.pop();
     if (e.name !== "AbortError") {
-      vnShow("", "(她恍神了……訊息不扣費,再說一次吧)", "sys");
+      console.error("LLM error:", e);
+      const why = e.message && e.message !== "proxy error" ? `原因:${e.message}` : "連不上 Ollama";
+      vnShow("", `(她恍神了……訊息不扣費,再說一次吧。${why})`, "sys");
       input.value = text;
     }
   }
