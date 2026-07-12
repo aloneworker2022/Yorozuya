@@ -373,15 +373,17 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
   display: flex; gap: .5em; max-width: 520px; width: 100%;
   margin: auto auto 0;                /* 內容少時仍推到頁面最底 */
   background: var(--panel); padding: .8em;
+  border-radius: 14px 14px 0 0;
   position: sticky; bottom: 0;        /* 內容多時黏在捲動視窗底部 */
   flex-shrink: 0;
 }
 #quest-input {
   flex: 1; background: color-mix(in srgb, var(--text) 8%, transparent);
-  border: none; color: var(--text);
-  font: inherit; font-size: 1.05em; padding: .75em .8em; outline: none;
+  border: none; border-radius: 10px; color: var(--text);
+  font: inherit; font-size: 1.05em; padding: .75em .9em; outline: none;
   min-width: 0;
 }
+#quest-add { border-radius: 10px; }
 #quest-input::placeholder { color: var(--dim); }
 
 /* ===== 設定 ===== */
@@ -391,7 +393,8 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 }
 .setting-row:last-child { border-bottom: none; }
 .setting-row input, .setting-row select {
-  background: rgba(0, 0, 0, .35); border: none; color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: none; border-radius: 8px; color: var(--text);
   font: inherit; padding: .3em .5em; outline: none;
 }
 .setting-row input[type="text"] { width: 9em; text-align: right; }
@@ -523,16 +526,20 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 .msg.user { align-self: flex-end; background: var(--panel); }
 .msg.ai { align-self: flex-start; background: rgba(0, 0, 0, .4); color: var(--pink); }
 .msg.sys { align-self: center; color: var(--dim); font-size: .75em; background: none; }
-#chat-input-row { display: flex; gap: .5em; background: var(--panel); padding: .8em; flex-shrink: 0; }
+#chat-input-row {
+  display: flex; gap: .5em; background: var(--panel); padding: .8em;
+  border-radius: 14px; margin-top: .5em; flex-shrink: 0;
+}
 #chat-input {
   flex: 1; background: color-mix(in srgb, var(--text) 8%, transparent);
-  border: none; color: var(--text);
-  font: inherit; font-size: 1.05em; padding: .75em .8em; outline: none;
+  border: none; border-radius: 10px; color: var(--text);
+  font: inherit; font-size: 1.05em; padding: .75em .9em; outline: none;
   min-width: 0;
 }
 #chat-input::placeholder { color: var(--dim); }
 #chat-send {
-  background: rgba(255, 79, 216, .2); border: none; color: var(--pink);
+  background: rgba(255, 79, 216, .2); border: none; border-radius: 10px;
+  color: var(--pink);
   font: inherit; font-size: .85em; padding: .35em .9em; cursor: pointer;
 }
 #chat-send:disabled { opacity: .35; }
