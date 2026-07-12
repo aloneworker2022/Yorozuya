@@ -77,10 +77,17 @@ body::after {
 body[data-tab="2"] #kanban { filter: brightness(1); pointer-events: auto; }
 /* 魅魔分頁:面板層空白處點擊穿透到召喚書(z1),面板本身照常可點 */
 body[data-tab="2"] #track-wrap { pointer-events: none; }
-body[data-tab="2"] .panel, body[data-tab="2"] #chat-view { pointer-events: auto; }
-/* 對話模式:看板娘點亮上移(galgame 式) */
+body[data-tab="2"] .panel { pointer-events: auto; }
+/* 對話模式:看板娘點亮上移(galgame 式),夢霧狀的模糊身影 */
 body.chat-mode #kanban { filter: brightness(1); pointer-events: none; }
-body.chat-mode #kanban-girl { transform: translateY(-8%); animation: none; }
+body.chat-mode #kanban-girl { transform: translateY(-10%) scale(1.25); animation: haze 5s ease-in-out infinite; }
+body.chat-mode #kanban-girl svg {
+  filter: blur(1.6px) drop-shadow(0 0 26px var(--rc, #9aa0b5)) drop-shadow(0 0 60px color-mix(in srgb, var(--rc, #9aa0b5) 40%, transparent));
+}
+@keyframes haze {
+  0%, 100% { transform: translateY(-10%) scale(1.25); opacity: .92; }
+  50% { transform: translateY(-11.5%) scale(1.27); opacity: 1; }
+}
 #book { position: relative; cursor: pointer; animation: float 4s ease-in-out infinite; }
 @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 #magic-circle {
@@ -435,14 +442,19 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
   cursor: pointer; padding: .2em .4em; margin-bottom: .4em;
 }
 
-/* ===== 聊天室(galgame 式對話) ===== */
+/* ===== 聊天室(galgame 式・全螢幕插播層) ===== */
 #chat-view {
-  height: 100%; display: flex; flex-direction: column;
-  max-width: 520px; margin: 0 auto;
+  position: fixed; top: 0; bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 100%; max-width: 560px;
+  z-index: 15;                 /* 蓋過分頁層,聊天不可被打斷 */
+  display: flex; flex-direction: column;
+  padding: calc(3.2em + env(safe-area-inset-top)) .8em calc(.8em + env(safe-area-inset-bottom));
 }
+/* 對話模式:面板與分頁列整層退場,只留背景、看板娘與對話 */
+body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 .chat-top { display: flex; align-items: center; gap: .6em; flex-shrink: 0; }
 .chat-top #chat-log-btn { margin-left: auto; }
-#chat-view { position: relative; }
 #chat-spacer { flex: 1; }
 
 /* ===== VN 對話框(日式文字冒險) ===== */

@@ -113,27 +113,6 @@
         </div>
       </div>
       <div id="succubus-detail" class="hidden"></div>
-      <div id="chat-view" class="hidden">
-        <div class="chat-top">
-          <button class="back-btn" id="chat-back">‹ 結束對話</button>
-          <span id="chat-title" class="dim small"></span>
-          <button class="back-btn" id="chat-log-btn">紀錄</button>
-        </div>
-        <div id="chat-spacer"></div>
-        <div id="vn-box">
-          <div id="vn-nameline">
-            <span id="vn-name"></span>
-            <span id="vn-typing" class="hidden"><i></i><i></i><i></i></span>
-          </div>
-          <div id="vn-text"></div>
-          <span id="vn-cursor" class="hidden">▼</span>
-        </div>
-        <div id="chat-input-row">
-          <input id="chat-input" type="text" maxlength="300" placeholder="說點什麼…(Enter 送出)">
-          <button id="chat-send">送出</button>
-        </div>
-        <div id="chat-backlog" class="hidden"><div id="chat-msgs"></div></div>
-      </div>
     </section>
 
     <section class="page" id="page-settings">
@@ -201,6 +180,29 @@
 
 <!-- 召喚演出 -->
 <div id="summon-overlay" class="hidden"></div>
+
+<!-- 聊天/約會:全螢幕插播層(不可被分頁切換打斷,結束對話才退出) -->
+<div id="chat-view" class="hidden">
+  <div class="chat-top">
+    <button class="back-btn" id="chat-back">‹ 結束對話</button>
+    <span id="chat-title" class="dim small"></span>
+    <button class="back-btn" id="chat-log-btn">紀錄</button>
+  </div>
+  <div id="chat-spacer"></div>
+  <div id="vn-box">
+    <div id="vn-nameline">
+      <span id="vn-name"></span>
+      <span id="vn-typing" class="hidden"><i></i><i></i><i></i></span>
+    </div>
+    <div id="vn-text"></div>
+    <span id="vn-cursor" class="hidden">▼</span>
+  </div>
+  <div id="chat-input-row">
+    <input id="chat-input" type="text" maxlength="300" placeholder="說點什麼…(Enter 送出)">
+    <button id="chat-send">送出</button>
+  </div>
+  <div id="chat-backlog" class="hidden"><div id="chat-msgs"></div></div>
+</div>
 
 <!-- 承接定價 bottom sheet -->
 <div id="reward-overlay" class="hidden">

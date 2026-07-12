@@ -262,6 +262,11 @@ async function saveNow(keepalive = false) {
 }
 
 window.addEventListener("beforeunload", () => { if (dirty) saveNow(true); });
+// 手機切走/關閉 PWA 時 beforeunload 常不觸發,pagehide 與隱藏時也強制沖存
+window.addEventListener("pagehide", () => { if (dirty) saveNow(true); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && dirty) saveNow(true);
+});
 
 function log(msg) {
   state.log.unshift(`[${new Date().toLocaleString("zh-TW", { hour12: false })}] ${msg}`);
@@ -699,7 +704,8 @@ async function sendChatMsg() {
     if (chargeable) { state.gold -= 1; renderHud(); }
     if (!chatSession.gotReply) { chatSession.gotReply = true; s.lastChatDay = dayNum(); }
     vnDone();
-    scheduleSave();
+    dirty = true;
+    saveNow();   // 對話內容立即寫入伺服器,不等防抖——關頁面也不掉字
   } catch (e) {
     s.history.pop();
     if (e.name !== "AbortError") {
@@ -969,6 +975,7 @@ function renderAll() {
   renderQuests();
   renderShop();
   renderSuccubi();
+  renderChatView();
   renderKanban();
   renderSettings();
 }
@@ -1296,20 +1303,15 @@ function renderShop() {
     : `<span class="dim">空無一人。</span>`;
 }
 
-function renderSuccubi() {
-  const home = $("#succubi-home");
-  const detail = $("#succubus-detail");
+// 聊天插播層:蓋在所有分頁之上,只有「結束對話」能退出
+function renderChatView() {
   const chatV = $("#chat-view");
-
-  // 對話模式優先
   if (chatWith) {
     const cs = state.succubi.find(x => x.id === chatWith);
     if (!cs) { // 對話對象消失(NTR 過期等)
       chatWith = null; chatSession = null;
       document.body.classList.remove("chat-mode");
     } else {
-      home.classList.add("hidden");
-      detail.classList.add("hidden");
       chatV.classList.remove("hidden");
       $("#chat-title").textContent = chatSession.type === "date"
         ? `${cs.name}・${chatSession.location}約會中`
@@ -1318,6 +1320,11 @@ function renderSuccubi() {
     }
   }
   chatV.classList.add("hidden");
+}
+
+function renderSuccubi() {
+  const home = $("#succubi-home");
+  const detail = $("#succubus-detail");
 
   if (detailId) {
     const s = state.succubi.find(x => x.id === detailId);
