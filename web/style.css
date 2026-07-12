@@ -89,6 +89,12 @@ body.chat-mode #kanban-girl svg {
   50% { transform: translateY(-11.5%) scale(1.27); opacity: 1; }
 }
 #book { position: relative; cursor: pointer; animation: float 4s ease-in-out infinite; }
+#book img {
+  width: min(74vw, 340px); height: auto; display: block;
+  image-rendering: auto;   /* 原圖已高解析,縮放用平滑避免鋸齒 */
+  filter: drop-shadow(0 14px 34px rgba(0, 0, 0, .55));
+  user-select: none; -webkit-user-drag: none;
+}
 @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 #magic-circle {
   position: absolute; left: 50%; top: 105%; transform: translateX(-50%);
