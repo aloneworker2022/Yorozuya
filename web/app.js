@@ -1640,6 +1640,20 @@ window.DBG = {
 
 // ===== 啟動 =====
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+// PWA 自動更新:回前景時檢查新版;新 service worker 接管後自動重整,
+// 手機不會再卡在舊版程式打已淘汰的 API
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").then(reg => {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") reg.update().catch(() => { });
+    });
+    setInterval(() => reg.update().catch(() => { }), 60 * 60 * 1000);
+  }).catch(() => { });
+  let hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadController && !chatSession) location.reload();
+    hadController = true;
+  });
+}
 
 load();

@@ -157,6 +157,26 @@ async def create_chat_job(body: dict):
     return {"job_id": job_id}
 
 
+# 相容端點:舊版前端(未更新的 PWA)仍打這裡;內部走同一套 job
+@app.post("/api/llm/chat")
+async def llm_chat_compat(body: dict):
+    from fastapi.responses import StreamingResponse
+
+    endpoint = str(body.pop("endpoint", "http://localhost:11434")).rstrip("/")
+    body["stream"] = True
+
+    async def gen():
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
+                async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
+                    async for chunk in r.aiter_bytes():
+                        yield chunk
+        except httpx.HTTPError as e:
+            yield json.dumps({"error": f"Ollama 連線失敗({type(e).__name__})"}).encode() + b"\n"
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson")
+
+
 @app.get("/api/llm/chat_job/{job_id}")
 def chat_job_status(job_id: str):
     job = CHAT_JOBS.get(job_id)
