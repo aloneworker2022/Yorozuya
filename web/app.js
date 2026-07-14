@@ -7,9 +7,20 @@ import { buildSystemPrompt } from "./content/persona_builder.js";
 
 // ===== 常數 =====
 
-const REWARDS = [1, 2, 3, 4, 6, 8, 12, 24]; // 24 的因數;期限 = 24/G 小時
 const HOUR = 3600 * 1000;
 const MAX_EXEC = 3;
+const QUEST_HOURS = 24;          // 期限統一 24 小時
+const DISCOVER_BONUS_CAP = 10;   // 每日前 N 次發現有 0~2 金獎勵
+
+// 完成報酬:開盲盒,1~24 金加權隨機(期望 ≈ 8,24 金為 1% 大獎)
+function rollReward() {
+  const r = Math.random() * 100;
+  if (r < 50) return randInt(1, 6);
+  if (r < 80) return randInt(7, 12);
+  if (r < 95) return randInt(13, 18);
+  if (r < 99) return randInt(19, 23);
+  return 24;
+}
 
 const RARITIES = ["N", "R", "S", "SS", "SSR"];
 const SUMMON_TABLE = { 1: [100], 2: [50, 50], 3: [50, 20, 30], 4: [40, 30, 20, 10], 5: [40, 30, 18, 10, 2], 6: [35, 25, 25, 10, 5] };
@@ -109,7 +120,8 @@ let lastSleepState = null;
 function defaultState() {
   return {
     gold: 0,
-    quests: [],   // {id, text, lv:0|1|2, reward?, startedAt?, deadline?}
+    quests: [],   // {id, text, lv:0|1|2, startedAt?, deadline?}
+    discover: null, // {day, count} 每日發現獎勵計數
     succubi: [],  // 見 summon()
     dungeon: [],  // [{name}]
     shop: null,   // {day, stock:[{id,name,price,sold}], line}
@@ -294,21 +306,31 @@ function log(msg) {
 
 // ===== 委託 =====
 
-function penaltyOf(g) { return Math.max(1, Math.floor(g / 2)); }
 function execQuests() { return state.quests.filter(q => q.lv === 2); }
 
 function addQuest(text) {
   text = text.trim();
   if (!text) return;
   state.quests.push({ id: uid(), text, lv: 0 });
-  toast("已加入發現池", "");
+  // 發現獎勵:每日前 N 次 +0~2 金
+  const today = dayNum();
+  if (state.discover?.day !== today) state.discover = { day: today, count: 0 };
+  if (state.discover.count < DISCOVER_BONUS_CAP) {
+    state.discover.count++;
+    const g = randInt(0, 2);
+    if (g > 0) {
+      state.gold += g;
+      log(`發現「${text}」 +${g} 金`);
+      toast(`發現委託!+${g} 金`, "good");
+    } else toast("已加入發現池", "");
+  } else toast("已加入發現池", "");
   scheduleSave(); renderAll();
 }
 
-function accept(id, g) {
+function accept(id) {
   const q = state.quests.find(q => q.id === id);
   if (!q) return;
-  q.lv = 1; q.reward = g;
+  q.lv = 1;
   scheduleSave(); renderAll();
 }
 
@@ -317,24 +339,25 @@ function start(id) {
   if (!q || execQuests().length >= MAX_EXEC) return;
   q.lv = 2;
   q.startedAt = Date.now();
-  q.deadline = q.startedAt + (24 / q.reward) * HOUR;
-  log(`開始執行「${q.text}」(${q.reward} 金/${24 / q.reward}h)`);
+  q.deadline = q.startedAt + QUEST_HOURS * HOUR;
+  log(`開始執行「${q.text}」(期限 ${QUEST_HOURS}h)`);
   scheduleSave(); renderAll();
 }
 
 function complete(id) {
   const q = state.quests.find(q => q.id === id);
   if (!q) return;
-  state.gold += q.reward;
+  const g = rollReward();
+  state.gold += g;
   state.quests = state.quests.filter(x => x.id !== id);
-  log(`完成「${q.text}」 +${q.reward} 金`);
-  toast(`委託完成!+${q.reward} 金`, "good");
+  log(`完成「${q.text}」 +${g} 金`);
+  toast(g >= 19 ? `大豐收!委託完成 +${g} 金!!` : `委託完成!+${g} 金`, "good");
   kanbanReact("complete");
   scheduleSave(); renderAll();
 }
 
 function failQuest(q, silent = false) {
-  const pen = penaltyOf(q.reward);
+  const pen = randInt(1, 6);
   state.gold -= pen;
   state.quests = state.quests.filter(x => x.id !== q.id);
   log(`「${q.text}」超時,違約金 -${pen} 金`);
@@ -364,9 +387,9 @@ function settleOffline() {
   const now = Date.now();
   const expired = execQuests().filter(q => now >= q.deadline);
   if (!expired.length) return;
-  let total = 0;
-  for (const q of expired) { total += penaltyOf(q.reward); failQuest(q, true); }
-  toast(`離線結算:${expired.length} 件委託超時,違約金 -${total} 金`, "bad");
+  const before = state.gold;
+  for (const q of expired) failQuest(q, true);
+  toast(`離線結算:${expired.length} 件委託超時,違約金 -${before - state.gold} 金`, "bad");
   scheduleSave();
 }
 
@@ -1032,7 +1055,7 @@ function updateBar(q, now) {
   bar.style.width = Math.max(0, frac * 100) + "%";
   bar.classList.toggle("danger", frac <= 0.2);
   if (rem) rem.innerHTML = frac <= 0.2
-    ? `剩 <span class="warn">${fmtRemain(q.deadline - now)}</span> — 違約金 <span class="warn">-${penaltyOf(q.reward)} 金</span>`
+    ? `剩 <span class="warn">${fmtRemain(q.deadline - now)}</span> — <span class="warn">超時要賠違約金!</span>`
     : `剩 ${fmtRemain(q.deadline - now)}`;
 }
 
@@ -1069,7 +1092,7 @@ function renderExec() {
     const q = exec[i];
     if (q) {
       html += `<div class="pin-slide"><div class="q-card c-exec">
-        <span class="q-tag gold-tag">完成 +${q.reward} 金</span>
+        <span class="q-tag gold-tag">完成 → ? 金(1~24)</span>
         <div class="q-body">${esc(q.text)}</div>
         <div>
           <div class="bar-wrap"><div class="bar" data-bar="${q.id}"></div></div>
@@ -1198,10 +1221,10 @@ function renderProc() {
   const full = execQuests().length >= MAX_EXEC;
 
   const tag = lv === 0
-    ? `<span class="q-tag">發現・未定價</span>`
-    : `<span class="q-tag gold-tag">${q.reward} 金 / ${24 / q.reward} 小時 / 違約 ${penaltyOf(q.reward)} 金</span>`;
+    ? `<span class="q-tag">發現</span>`
+    : `<span class="q-tag gold-tag">期限 ${QUEST_HOURS} 小時 / 完成擲 1~24 金</span>`;
   const hints = lv === 0
-    ? ["↑ 承接定價", "↓ 推掉", "← → 切換", "點兩下 編輯"]
+    ? ["↑ 承接", "↓ 推掉", "← → 切換", "點兩下 編輯"]
     : [full ? "執行中已滿" : "↑ 開始執行", "↓ 推掉", "← → 切換", "點兩下 退回"];
 
   stage.innerHTML = `<div class="q-card ${lv === 0 ? "c-found" : "c-acc"}" id="proc-card">
@@ -1221,7 +1244,7 @@ function renderProc() {
     renderProc();
   };
   const H = lv === 0 ? {
-    up: () => openRewardSheet(q),
+    up: () => flyCard(card, "up", () => { accept(q.id); toast("已承接", "good"); }),
     down: () => flyCard(card, "down", () => drop(q.id)),
     left: () => nav2(1), right: () => nav2(-1),
     dbl: () => editText(q.id),
@@ -1289,21 +1312,6 @@ function swipeable(el, { up, down, left, right, dbl }) {
   window.addEventListener("mouseup", ev => { if (active) e(ev.clientX, ev.clientY); });
 }
 
-// --- 承接定價 bottom sheet ---
-
-function openRewardSheet(q) {
-  const ov = $("#reward-overlay");
-  $("#reward-ctx").textContent = q.text;
-  const grid = $("#reward-grid");
-  grid.innerHTML = REWARDS.map(g =>
-    `<button data-g="${g}">${g} 金<small>${24 / g} 小時</small></button>`).join("");
-  grid.querySelectorAll("button").forEach(b => b.onclick = () => {
-    ov.classList.add("hidden");
-    accept(q.id, +b.dataset.g);
-    toast(`已承接:${b.dataset.g} 金 / ${24 / +b.dataset.g} 小時`, "good");
-  });
-  ov.classList.remove("hidden");
-}
 
 function renderShop() {
   ensureShop();
@@ -1551,8 +1559,6 @@ $("#hud-need").onclick = () => switchTab(2);
 
 // 委託卡片場景
 $("#q-back").onclick = () => goExec();
-$("#reward-cancel").onclick = () => $("#reward-overlay").classList.add("hidden");
-$("#reward-overlay").addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.classList.add("hidden"); });
 
 $("#set-player").addEventListener("change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
 $("#set-sleep-start").addEventListener("change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
