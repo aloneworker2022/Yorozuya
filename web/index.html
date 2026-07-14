@@ -206,6 +206,22 @@
 
 <div id="toasts"></div>
 
+<script>
+// 崩潰自癒:新舊版檔案混搭(PWA 快取不同步)會在啟動時炸掉整個 app。
+// 啟動 6 秒內出現未捕捉錯誤 → 清光快取硬重載一次,拿回成套的新版。
+window.addEventListener("error", function () {
+  if (performance.now() < 6000 && sessionStorage.getItem("crashReload") !== "1") {
+    sessionStorage.setItem("crashReload", "1");
+    var reload = function () { location.reload(); };
+    if (window.caches) {
+      caches.keys().then(function (ks) {
+        return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+      }).then(reload, reload);
+    } else reload();
+  }
+});
+setTimeout(function () { sessionStorage.removeItem("crashReload"); }, 10000);
+</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
