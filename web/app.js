@@ -134,6 +134,8 @@ function defaultState() {
     quests: [],   // {id, text, lv:0|1|2, startedAt?, deadline?}
     discover: null, // {day, count} 每日發現獎勵計數
     chatCharges: 0, // 淫紋層數(聊天入場券,委託操作隨機觸發,上限 5)
+    slots: 2,       // 眷屬名額(初始 2,商店隨機刷擴充)
+    dismiss: null,  // {day, price} 今日遣散費(每日重擲 20~2000)
     succubi: [],  // 見 summon()
     dungeon: [],  // [{name}]
     shop: null,   // {day, stock:[{id,name,price,sold}], line}
@@ -199,6 +201,8 @@ function initState(j, offline) {
   for (const k of Object.keys(def)) state[k] ??= def[k];
   state.settings = { ...def.settings, ...state.settings };
   if (state.lastSettledDay == null) state.lastSettledDay = dayNum();
+  // 名額制移轉:舊存檔已持有超過 2 隻照舊保留
+  state.slots = Math.max(state.slots ?? 2, state.succubi.length);
   showConnOverlay(false);
   document.getElementById("set-srv").textContent = offline ? "離線(使用本地快取)" : "OK";
   settleOffline();
@@ -426,9 +430,50 @@ function ensureShop() {
   state.shop = {
     day: today,
     stock: Array.from({ length: n }, () => ({ id: uid(), name: pick(SACRIFICE_POOL), price: randInt(5, 30), sold: false })),
+    // 眷屬契約:4 成機率進貨,100~500 金,買了名額 +1
+    slotItem: Math.random() < 0.4 ? { price: randInt(100, 500), sold: false } : null,
     line: pick(MERCHANT_LINES),
   };
   scheduleSave();
+}
+
+// 今日遣散費:每日重擲(偶爾佛心,常常黑心)
+function dismissPriceToday() {
+  const today = dayNum();
+  if (state.dismiss?.day !== today) {
+    const r = Math.random();
+    const price = r < 0.4 ? randInt(20, 150) : r < 0.75 ? randInt(150, 600) : randInt(600, 2000);
+    state.dismiss = { day: today, price };
+    scheduleSave();
+  }
+  return state.dismiss.price;
+}
+
+function buySlot() {
+  const it = state.shop?.slotItem;
+  if (!it || it.sold) return;
+  if (state.gold < it.price) { toast("金幣不夠", "bad"); return; }
+  state.gold -= it.price;
+  it.sold = true;
+  state.slots++;
+  log(`購入眷屬契約 -${it.price} 金,名額 ${state.slots}`);
+  toast(`眷屬名額擴充!現在 ${state.slots} 格`, "good");
+  scheduleSave(); renderAll();
+}
+
+function dismiss(id) {
+  const s = state.succubi.find(x => x.id === id);
+  if (!s || s.ntr) return;
+  const price = dismissPriceToday();
+  if (state.gold < price) { toast(`今日遣散費 ${price} 金,你付不起`, "bad"); return; }
+  if (!confirm(`確定遣散 ${s.name}?\n今日遣散費 ${price} 金。她與所有回憶將永遠消失。`)) return;
+  state.gold -= price;
+  state.succubi = state.succubi.filter(x => x.id !== id);
+  if (state.kanbanId === id) state.kanbanId = null;
+  if (detailId === id) detailId = null;
+  log(`付出 ${price} 金遣散了 ${s.name}。`);
+  toast(`${s.name} 離開了萬事屋……`, "bad");
+  scheduleSave(); renderAll();
 }
 
 function buy(itemId) {
@@ -453,6 +498,7 @@ function rollRarity(n) {
 
 function summon(n) {
   if (state.dungeon.length < n || state.gold < 0) return;
+  if (state.succubi.length >= state.slots) { toast(`眷屬名額已滿(${state.slots} 格)——商店偶爾會賣擴充契約`, "bad"); return; }
   state.dungeon.splice(0, n);
   const today = dayNum();
   const s = {
@@ -1345,6 +1391,18 @@ function renderShop() {
   ensureShop();
   $("#merchant-line").textContent = "「" + state.shop.line + "」";
   const st = $("#shop-stock"); st.innerHTML = "";
+  // 眷屬契約(稀有進貨)
+  const si = state.shop.slotItem;
+  if (si) {
+    const d = document.createElement("div");
+    d.className = "shop-item slot-item" + (si.sold ? " sold" : "");
+    d.innerHTML = `
+      <span class="sname">✦ 眷屬契約(名額 +1)</span>
+      <span class="sprice">${si.price} 金</span>
+      <button ${si.sold || state.gold < si.price ? "disabled" : ""}>${si.sold ? "已售出" : "購買"}</button>`;
+    if (!si.sold) d.querySelector("button").onclick = () => buySlot();
+    st.appendChild(d);
+  }
   for (const it of state.shop.stock) {
     const d = document.createElement("div");
     d.className = "shop-item" + (it.sold ? " sold" : "");
@@ -1409,7 +1467,8 @@ function renderSuccubi() {
       <div class="thumb">${girlSVG("#241333", 2.5)}</div>
       <div class="sinfo">
         <div class="sname"><b>${esc(s.name)}</b><span class="rbadge">${s.rarity}</span>
-          <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(s.stage)}</span></div>
+          <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(s.stage)}</span>
+          ${state.kanbanId === s.id ? `<span class="stage-chip" style="color:var(--gold)">★ 看板娘</span>` : ""}</div>
         <div class="aff-bar"><div class="${s.affection < 0 ? "neg" : ""}" style="width:${barW}%"></div></div>
       </div>
       <div class="status-dot ${st}"></div>`;
@@ -1418,14 +1477,18 @@ function renderSuccubi() {
   }
   if (!state.succubi.length) roster.innerHTML = `<div class="empty">一個魅魔都沒有。桌上只有那本召喚之書。</div>`;
 
+  document.querySelector("#roster-panel h2").textContent = `魅魔名冊(${state.succubi.length}/${state.slots})`;
   const hint = $("#summon-hint");
   const counts = $("#summon-counts");
-  hint.textContent = state.gold < 0 ? "負債中不可召喚" : `地牢裡有 ${state.dungeon.length} 名祭品`;
+  const full = state.succubi.length >= state.slots;
+  hint.textContent = state.gold < 0 ? "負債中不可召喚"
+    : full ? `眷屬名額已滿(${state.slots} 格)——去商店碰碰運氣找擴充契約`
+    : `地牢裡有 ${state.dungeon.length} 名祭品`;
   counts.innerHTML = "";
   for (let n = 1; n <= 6; n++) {
     const b = document.createElement("button");
     b.textContent = n;
-    b.disabled = state.dungeon.length < n || state.gold < 0;
+    b.disabled = state.dungeon.length < n || state.gold < 0 || full;
     b.title = `獻祭 ${n} 人`;
     b.onclick = () => summon(n);
     counts.appendChild(b);
@@ -1465,15 +1528,25 @@ function renderDetail(s, root) {
       <div class="detail-actions">
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
-          : `<button id="act-chat" ${asleep || !(state.chatCharges > 0) ? "disabled" : ""}>聊天(淫紋 ×${state.chatCharges || 0})</button>
-             <button class="cyan" id="act-date" ${asleep || datesLeft <= 0 ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})</button>`}
+          : `<button class="cyan" id="act-date" ${asleep || datesLeft <= 0 ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})</button>
+             ${state.kanbanId === s.id
+               ? `<button disabled>★ 看板娘</button>`
+               : `<button id="act-kanban">立為看板娘</button>`}`}
       </div>
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
+      ${!s.ntr ? `<div class="aff-line dim small">聊天請透過淫紋(做委託觸發)——看板娘才聽得見你的呼喚</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
+      ${!s.ntr ? `<div class="detail-actions"><button class="danger-btn" id="act-dismiss">遣散(今日 ${dismissPriceToday()} 金)</button></div>` : ""}
     </div>`;
 
   root.querySelector("#detail-back").onclick = () => { detailId = null; dateChooser = false; renderAll(); };
-  root.querySelector("#act-chat")?.addEventListener("click", () => enterChat(s.id));
+  root.querySelector("#act-kanban")?.addEventListener("click", () => {
+    state.kanbanId = s.id;
+    log(`${s.name} 成為看板娘`);
+    toast(`${s.name} 站上了看板位♥`, "good");
+    scheduleSave(); renderAll();
+  });
+  root.querySelector("#act-dismiss")?.addEventListener("click", () => dismiss(s.id));
   root.querySelector("#act-date")?.addEventListener("click", () => {
     dateChooser = !dateChooser;
     if (dateChooser) dateChoices = pickN(DATE_SPOTS, 5);
@@ -1514,10 +1587,6 @@ function renderSettings() {
   $("#set-model").value = state.settings.model || "";
   $("#set-rating").value = state.settings.rating || "sfw";
   $("#set-ver").textContent = version ? "v" + version : "(尚未寫入)";
-
-  const sel = $("#set-kanban");
-  sel.innerHTML = `<option value="">最新召喚(自動)</option>` +
-    state.succubi.map(s => `<option value="${s.id}" ${state.kanbanId === s.id ? "selected" : ""}>${esc(s.name)}(${s.rarity})</option>`).join("");
 
   $("#set-theme").innerHTML = THEMES.map(([k, label]) =>
     `<option value="${k}" ${(state.settings.theme || "aqua") === k ? "selected" : ""}>${label}</option>`).join("");
@@ -1597,7 +1666,6 @@ $("#crest").onclick = () => {
 $("#set-player").addEventListener("change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
 $("#set-sleep-start").addEventListener("change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
 $("#set-sleep-end").addEventListener("change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); renderAll(); });
-$("#set-kanban").addEventListener("change", e => { state.kanbanId = e.target.value || null; scheduleSave(); renderAll(); });
 $("#set-theme").addEventListener("change", e => { state.settings.theme = e.target.value; scheduleSave(); renderAll(); });
 
 // 版面設定
