@@ -12,6 +12,17 @@ const MAX_EXEC = 3;
 const QUEST_HOURS = 24;          // 期限統一 24 小時
 const DISCOVER_BONUS_CAP = 10;   // 每日前 N 次發現有 0~2 金獎勵
 
+const CREST_CAP = 5;             // 淫紋最多囤 5 層
+
+// 淫紋觸發:看板娘在、醒著、沒滿層時,委託操作有機率喚起她想聊天的慾望
+function grantCrest(chance) {
+  if (!kanbanSuccubus() || isAsleep()) return;
+  if ((state.chatCharges || 0) >= CREST_CAP) return;
+  if (Math.random() >= chance) return;
+  state.chatCharges = (state.chatCharges || 0) + 1;
+  toast("……淫紋在發燙。她想跟你說話。", "good");
+}
+
 // 完成報酬:開盲盒,1~24 金加權隨機(期望 ≈ 8,24 金為 1% 大獎)
 function rollReward() {
   const r = Math.random() * 100;
@@ -122,6 +133,7 @@ function defaultState() {
     gold: 0,
     quests: [],   // {id, text, lv:0|1|2, startedAt?, deadline?}
     discover: null, // {day, count} 每日發現獎勵計數
+    chatCharges: 0, // 淫紋層數(聊天入場券,委託操作隨機觸發,上限 5)
     succubi: [],  // 見 summon()
     dungeon: [],  // [{name}]
     shop: null,   // {day, stock:[{id,name,price,sold}], line}
@@ -324,6 +336,7 @@ function addQuest(text) {
       toast(`發現委託!+${g} 金`, "good");
     } else toast("已加入發現池", "");
   } else toast("已加入發現池", "");
+  grantCrest(0.25);
   scheduleSave(); renderAll();
 }
 
@@ -331,6 +344,7 @@ function accept(id) {
   const q = state.quests.find(q => q.id === id);
   if (!q) return;
   q.lv = 1;
+  grantCrest(0.25);
   scheduleSave(); renderAll();
 }
 
@@ -341,6 +355,7 @@ function start(id) {
   q.startedAt = Date.now();
   q.deadline = q.startedAt + QUEST_HOURS * HOUR;
   log(`開始執行「${q.text}」(期限 ${QUEST_HOURS}h)`);
+  grantCrest(0.25);
   scheduleSave(); renderAll();
 }
 
@@ -353,6 +368,7 @@ function complete(id) {
   log(`完成「${q.text}」 +${g} 金`);
   toast(g >= 19 ? `大豐收!委託完成 +${g} 金!!` : `委託完成!+${g} 金`, "good");
   kanbanReact("complete");
+  grantCrest(0.5);
   scheduleSave(); renderAll();
 }
 
@@ -365,6 +381,14 @@ function failQuest(q, silent = false) {
 }
 
 function drop(id) {
+  const q = state.quests.find(x => x.id === id);
+  if (!q) return;
+  if (q.lv === 1) {   // 承接了又反悔:信用受損
+    const pen = randInt(1, 3);
+    state.gold -= pen;
+    log(`推掉已承接的「${q.text}」 -${pen} 金`);
+    toast(`推掉承接的委託,信用受損 -${pen} 金`, "bad");
+  }
   state.quests = state.quests.filter(x => x.id !== id);
   scheduleSave(); renderAll();
 }
@@ -552,21 +576,15 @@ let chatWith = null;      // 對話中的魅魔 id
 let chatSession = null;   // {type:'chat'|'date', location, playerMsgs, gotReply, busy}
 let chatAbort = null;
 
-function interactGuard(s, cost) {
-  if (isAsleep()) return "睡眠時段——她回夢境了";
-  if (s.ntr) return "她不在你身邊……";
-  if (state.gold < 0) return "負債中,先去做委託還債吧";
-  if (state.gold < cost) return "金幣不夠";
-  return null;
-}
-
 function enterChat(id, type = "chat", location = null) {
   const s = state.succubi.find(x => x.id === id);
   if (!s) return;
-  const err = interactGuard(s, type === "date" ? DATE_COST : 0);
-  if (err) { toast(err, "bad"); return; }
+  if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
+  if (s.ntr) { toast("她不在你身邊……", "bad"); return; }
   const today = dayNum();
   if (type === "date") {
+    if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
+    if (state.gold < DATE_COST) { toast("金幣不夠", "bad"); return; }
     if (s.datesToday?.day !== today) s.datesToday = { day: today, count: 0 };
     if (s.datesToday.count >= DATE_LIMIT) { toast("今天約會夠多了,她需要休息", "bad"); return; }
     state.gold -= DATE_COST;
@@ -574,6 +592,11 @@ function enterChat(id, type = "chat", location = null) {
     s.lastDateDay = today;
     s.lastChatDay = today;
     log(`與 ${s.name} 去${location}約會 -${DATE_COST} 金`);
+  } else {
+    // 聊天不花金幣,吃 1 層淫紋(委託操作隨機觸發)
+    if ((state.chatCharges || 0) < 1) { toast("需要淫紋——去做委託,她就會想找你", "bad"); return; }
+    state.chatCharges--;
+    s.lastChatDay = today;
   }
   chatWith = id;
   const spot = DATE_SPOTS.find(x => x[0] === location);
@@ -716,9 +739,6 @@ async function sendChatMsg() {
   const text = input.value.trim();
   if (!text) return;
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
-  // 計費:聊天 session 每 2 則玩家訊息 1 金(約會 session 訊息免費,入場已付 5 金)
-  const chargeable = chatSession.type === "chat" && (chatSession.playerMsgs + 1) % 2 === 0;
-  if (chargeable && state.gold < 1) { toast("金幣不夠了,先去做委託吧", "bad"); return; }
 
   input.value = "";
   s.history ??= [];
@@ -743,7 +763,6 @@ async function sendChatMsg() {
     s.history.push({ role: "assistant", content: reply, t: Date.now() });
     s.history = s.history.slice(-200);
     chatSession.playerMsgs++;
-    if (chargeable) { state.gold -= 1; renderHud(); }
     if (!chatSession.gotReply) { chatSession.gotReply = true; s.lastChatDay = dayNum(); }
     vnDone();
     dirty = true;
@@ -1022,7 +1041,16 @@ function renderAll() {
   renderSuccubi();
   renderChatView();
   renderKanban();
+  renderCrest();
   renderSettings();
+}
+
+// 淫紋按鈕:有層數、看板娘在、醒著、不在對話中才顯示
+function renderCrest() {
+  const el = $("#crest");
+  const show = (state.chatCharges || 0) > 0 && kanbanSuccubus() && !isAsleep() && !chatWith;
+  el.classList.toggle("hidden", !show);
+  if (show) $("#crest-n").textContent = state.chatCharges;
 }
 
 function renderHud() {
@@ -1225,7 +1253,7 @@ function renderProc() {
     : `<span class="q-tag gold-tag">期限 ${QUEST_HOURS} 小時 / 完成擲 1~24 金</span>`;
   const hints = lv === 0
     ? ["↑ 承接", "↓ 推掉", "← → 切換", "點兩下 編輯"]
-    : [full ? "執行中已滿" : "↑ 開始執行", "↓ 推掉", "← → 切換", "點兩下 退回"];
+    : [full ? "執行中已滿" : "↑ 開始執行", "↓ 推掉(-1~3金)", "← → 切換", "點兩下 退回"];
 
   stage.innerHTML = `<div class="q-card ${lv === 0 ? "c-found" : "c-acc"}" id="proc-card">
     ${tag}
@@ -1345,7 +1373,7 @@ function renderChatView() {
       chatV.classList.remove("hidden");
       $("#chat-title").textContent = chatSession.type === "date"
         ? `${cs.name}・${chatSession.location}約會中`
-        : `${cs.name}・聊天中(每 2 則 1 金)`;
+        : `${cs.name}・聊天中`;
       return;
     }
   }
@@ -1437,7 +1465,7 @@ function renderDetail(s, root) {
       <div class="detail-actions">
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
-          : `<button id="act-chat" ${asleep ? "disabled" : ""}>聊天(每 2 則 1 金)</button>
+          : `<button id="act-chat" ${asleep || !(state.chatCharges > 0) ? "disabled" : ""}>聊天(淫紋 ×${state.chatCharges || 0})</button>
              <button class="cyan" id="act-date" ${asleep || datesLeft <= 0 ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})</button>`}
       </div>
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
@@ -1559,6 +1587,12 @@ $("#hud-need").onclick = () => switchTab(2);
 
 // 委託卡片場景
 $("#q-back").onclick = () => goExec();
+
+// 淫紋:點擊與看板娘開聊
+$("#crest").onclick = () => {
+  const s = kanbanSuccubus();
+  if (s) enterChat(s.id);
+};
 
 $("#set-player").addEventListener("change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
 $("#set-sleep-start").addEventListener("change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });

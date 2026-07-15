@@ -603,6 +603,28 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   font-size: .65em; line-height: 1; display: flex; align-items: center; justify-content: center;
 }
 
+/* ===== 淫紋(聊天入場券) ===== */
+#crest {
+  position: fixed; right: .9em; bottom: calc(4.8em + env(safe-area-inset-bottom));
+  z-index: 12; width: 58px; height: 58px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 50%;
+  color: var(--pink); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--pink) 65%, transparent));
+  animation: crest-pulse 1.6s ease-in-out infinite;
+}
+@keyframes crest-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pink) 50%, transparent)); }
+  50% { transform: scale(1.08); filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 85%, transparent)); }
+}
+#crest b {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 20px; height: 20px; border-radius: 50%;
+  background: var(--pink); color: var(--bg);
+  font-size: .72em; line-height: 20px; text-align: center;
+  text-shadow: none;
+}
+
 /* ===== 斷線重連 ===== */
 #conn-overlay {
   position: fixed; inset: 0; z-index: 80;
