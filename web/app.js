@@ -13,6 +13,9 @@ const QUEST_HOURS = 24;          // 期限統一 24 小時
 const DISCOVER_BONUS_CAP = 10;   // 每日前 N 次發現有 0~2 金獎勵
 
 const CREST_CAP = 5;             // 淫紋最多囤 5 層
+// 每次進對話隨機決定能聊幾個來回(玩家不知道她何時喊停,製造驚喜)
+const CHAT_TURNS = [1, 4];      // 聊天 1~4 來回
+const DATE_TURNS = [2, 5];      // 約會 2~5 來回(付了 5 金,多聊幾句)
 
 // 淫紋觸發:看板娘在、醒著、沒滿層時,委託操作有機率喚起她想聊天的慾望
 function grantCrest(chance) {
@@ -646,7 +649,8 @@ function enterChat(id, type = "chat", location = null) {
   }
   chatWith = id;
   const spot = DATE_SPOTS.find(x => x[0] === location);
-  chatSession = { type, location, locationDesc: spot ? spot[1] : null, playerMsgs: 0, gotReply: false, busy: false };
+  const turnCap = randInt(...(type === "date" ? DATE_TURNS : CHAT_TURNS));
+  chatSession = { type, location, locationDesc: spot ? spot[1] : null, playerMsgs: 0, turnCap, gotReply: false, busy: false };
   dateChooser = false;
   document.body.classList.add("chat-mode");
   if (type === "date") {
@@ -813,6 +817,17 @@ async function sendChatMsg() {
     vnDone();
     dirty = true;
     saveNow();   // 對話內容立即寫入伺服器,不等防抖——關頁面也不掉字
+
+    // 回合上限(每次隨機):達標後鎖輸入、顯示收尾,稍後自動結束(結算情感)
+    if (chatSession.playerMsgs >= chatSession.turnCap) {
+      chatSession.ended = true;
+      const inputEl = document.getElementById("chat-input");
+      if (inputEl) { inputEl.disabled = true; inputEl.placeholder = "這次對話結束了…"; }
+      const btn = document.getElementById("chat-send");
+      if (btn) btn.disabled = true;
+      setTimeout(() => { if (chatSession?.ended) exitChat(); }, 1600);
+      return;
+    }
   } catch (e) {
     s.history.pop();
     if (e.name !== "AbortError") {
@@ -822,7 +837,7 @@ async function sendChatMsg() {
       input.value = text;
     }
   }
-  if (chatSession) {
+  if (chatSession && !chatSession.ended) {
     chatSession.busy = false;
     const btn = document.getElementById("chat-send");
     if (btn) btn.disabled = false;
@@ -1741,7 +1756,7 @@ on("import-file", "change", async e => {
   e.target.value = "";
 });
 on("btn-reset", "click", () => {
-  if (!confirm("確定重置?金幣、委託與所有魅魔將全部消失。")) return;
+  if (!confirm("確定重置存檔?金幣、委託與所有魅魔將全部消失。")) return;
   state = defaultState();
   state.lastSettledDay = null;
   detailId = null;
@@ -1749,6 +1764,31 @@ on("btn-reset", "click", () => {
   state.lastSettledDay = dayNum();
   ensureShop();
   renderAll();
+});
+
+// 全部重來:硬重置——清伺服器存檔 + 本地快取 + service worker,回到全新遊戲。
+// 也是萬一再遇到卡死狀態的終極自救按鈕。
+on("btn-hard-reset", "click", async () => {
+  if (!confirm("全部重來?\n\n這會清空伺服器上的存檔、本地快取與所有進度,回到全新遊戲,無法復原。")) return;
+  if (!confirm("真的確定?所有魅魔、委託、金幣都會永遠消失。")) return;
+  dirty = false;
+  clearTimeout(saveTimer);
+  const fresh = defaultState();
+  fresh.lastSettledDay = dayNum();
+  // 直接以最新版本覆寫伺服器為全新狀態
+  try {
+    const j = await fetch("/api/save").then(r => r.json());
+    await fetch("/api/save", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base_version: j.version, data: fresh }),
+    });
+  } catch { }
+  try { localStorage.removeItem(CACHE_KEY); } catch { }
+  try { sessionStorage.clear(); } catch { }
+  try { if (window.caches) for (const k of await caches.keys()) await caches.delete(k); } catch { }
+  try { if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); } catch { }
+  location.reload();
 });
 
 // ===== Toast =====
