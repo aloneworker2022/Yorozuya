@@ -987,15 +987,23 @@ function hexToRgba(hex, a) {
   return `rgba(${r},${g},${b},${a})`;
 }
 
-// 反差字色:自訂色與主題底色按透明度混合後算亮度,與主題字色反差不足時切反差字
+// 相對亮度(WCAG),用來算對比度
+function relLum(r, g, b) {
+  const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+// 反差字色:把自訂色依透明度疊在主題底色上,算出實際底色,
+// 再從「近黑 / 近白」挑對比度較高的那個 → 任何底色都保證讀得清。
 function contrastText(hex, a) {
-  const isLight = LIGHT_THEMES.has(state.settings.theme || "aqua");
-  const base = isLight ? 236 : 20;
+  const base = LIGHT_THEMES.has(state.settings.theme || "aqua") ? 236 : 20;
   const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-  const blend = ch => ch * a + base * (1 - a);
-  const lum = (0.2126 * blend(r) + 0.7152 * blend(g) + 0.0722 * blend(b)) / 255;
-  if (isLight) return lum <= 0.5 ? "#f4fbff" : "";   // 亮主題:暗底切亮字
-  return lum > 0.5 ? "#16101f" : "";                  // 暗主題:亮底切深字
+  const R = r * a + base * (1 - a), G = g * a + base * (1 - a), B = b * a + base * (1 - a);
+  const L = relLum(R, G, B);
+  const dark = relLum(22, 16, 31), light = relLum(244, 251, 255);
+  const cDark = (Math.max(L, dark) + 0.05) / (Math.min(L, dark) + 0.05);
+  const cLight = (Math.max(L, light) + 0.05) / (Math.min(L, light) + 0.05);
+  return cLight >= cDark ? "#f4fbff" : "#16101f";
 }
 
 function applyLayoutVars() {
@@ -1009,11 +1017,17 @@ function applyLayoutVars() {
       continue;
     }
     root.setProperty(`--card-${k}`, hexToRgba(c.color, c.opacity));
+    // 一律設定明確反差字色,不再回退到可能撞色的主題字
     const t = contrastText(c.color, c.opacity);
-    if (t) root.setProperty(`--card-${k}-text`, t);
-    else root.removeProperty(`--card-${k}-text`);
+    root.setProperty(`--card-${k}-text`, t);
+    // 反向光暈:淺字配深暈、深字配淺暈,連中灰底也讓字浮出來
+    const halo = t === "#f4fbff"
+      ? "0 0 3px rgba(0,0,0,.9),0 1px 2px rgba(0,0,0,.7)"
+      : "0 0 3px rgba(255,255,255,.9),0 1px 2px rgba(255,255,255,.6)";
+    root.setProperty(`--card-${k}-halo`, halo);
   }
-  document.getElementById("tabs").style.opacity = state.settings.tabOpacity ?? 1;
+  const tabs = document.getElementById("tabs");
+  if (tabs) tabs.style.opacity = state.settings.tabOpacity ?? 1;
 }
 
 // ===== 全域背景圖 =====
@@ -1105,9 +1119,11 @@ function renderAll() {
 // 淫紋按鈕:有層數、看板娘在、醒著、不在對話中才顯示
 function renderCrest() {
   const el = $("#crest");
+  if (!el) return;
   const show = (state.chatCharges || 0) > 0 && kanbanSuccubus() && !isAsleep() && !chatWith;
   el.classList.toggle("hidden", !show);
-  if (show) $("#crest-n").textContent = state.chatCharges;
+  const n = $("#crest-n");
+  if (show && n) n.textContent = state.chatCharges;
 }
 
 function renderHud() {

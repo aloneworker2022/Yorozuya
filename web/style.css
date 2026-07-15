@@ -229,9 +229,11 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 }
 .q-card:active { cursor: grabbing; }
 @keyframes cIn { from { opacity: 0; transform: scale(.94) translateY(10px); } to { opacity: 1; transform: none; } }
-.q-card.c-exec { background: var(--card-exec, var(--panel)); color: var(--card-exec-text, var(--text)); }
-.q-card.c-found { background: var(--card-found, var(--panel)); color: var(--card-found-text, var(--text)); }
-.q-card.c-acc { background: var(--card-acc, var(--panel)); color: var(--card-acc-text, var(--text)); }
+.q-card.c-exec { background: var(--card-exec, var(--panel)); color: var(--card-exec-text, var(--text)); --halo: var(--card-exec-halo, none); }
+.q-card.c-found { background: var(--card-found, var(--panel)); color: var(--card-found-text, var(--text)); --halo: var(--card-found-halo, none); }
+.q-card.c-acc { background: var(--card-acc, var(--panel)); color: var(--card-acc-text, var(--text)); --halo: var(--card-acc-halo, none); }
+/* 只有自訂了卡片色才套光暈;預設(半透明面板)維持乾淨 */
+.q-card[class*="c-"] .q-body { text-shadow: var(--halo, none); }
 .q-tag {
   font-size: .62em; letter-spacing: .08em; align-self: flex-start;
   background: color-mix(in srgb, currentColor 16%, transparent);
@@ -497,6 +499,7 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   min-height: 6.8em; flex-shrink: 0;
   border-top: 1px solid var(--line);
 }
+#vn-text { text-shadow: var(--card-vn-halo, none); }
 #vn-nameline { display: flex; align-items: center; gap: .6em; margin-bottom: .45em; }
 #vn-name {
   font-size: .85em; letter-spacing: .15em; color: var(--pink);
