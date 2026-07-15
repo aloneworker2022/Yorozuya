@@ -1080,15 +1080,11 @@ async function removeBgAt(i) {
 }
 
 function renderAll() {
-  applyTheme();
-  renderHud();
-  renderQuests();
-  renderShop();
-  renderSuccubi();
-  renderChatView();
-  renderKanban();
-  renderCrest();
-  renderSettings();
+  // 每個子渲染獨立 try:單一區塊出錯(如半更新缺元素)不連累其他,
+  // 委託輸入等核心功能永遠保持可用。
+  for (const fn of [applyTheme, renderHud, renderQuests, renderShop, renderSuccubi, renderChatView, renderKanban, renderCrest, renderSettings]) {
+    try { fn(); } catch (e) { console.error(fn.name, e); }
+  }
 }
 
 // 淫紋按鈕:有層數、看板娘在、醒著、不在對話中才顯示
@@ -1638,51 +1634,48 @@ function renderSettings() {
 
 const tabButtons = document.querySelectorAll("#tabs button");
 function switchTab(i) {
-  document.getElementById("track").style.transform = `translateX(-${i * 25}%)`;
+  const tr = document.getElementById("track");
+  if (tr) tr.style.transform = `translateX(-${i * 25}%)`;
   tabButtons.forEach((b, j) => b.classList.toggle("active", j === i));
   document.body.dataset.tab = i;
 }
-tabButtons.forEach(b => b.onclick = () => switchTab(+b.dataset.tab));
+tabButtons.forEach(b => b.addEventListener("click", () => switchTab(+b.dataset.tab)));
 switchTab(0);
 
 // ===== 事件綁定 =====
+// 一律 null-safe:半更新(新舊 index/app 混搭)時缺失的元素靜默略過,
+// 絕不因單一 null 參照同步崩潰而讓整個 app 磚掉。
 
-$("#quest-add").onclick = () => { addQuest($("#quest-input").value); $("#quest-input").value = ""; };
-$("#quest-input").addEventListener("keydown", e => {
-  if (e.key === "Enter") { addQuest(e.target.value); e.target.value = ""; }
-});
+function on(id, ev, fn) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener(ev, fn);
+}
 
-$("#hud-need").onclick = () => switchTab(2);
+on("quest-add", "click", () => { const i = $("#quest-input"); if (i) { addQuest(i.value); i.value = ""; } });
+on("quest-input", "keydown", e => { if (e.key === "Enter") { addQuest(e.target.value); e.target.value = ""; } });
+on("hud-need", "click", () => switchTab(2));
+on("q-back", "click", () => goExec());
+on("crest", "click", () => { const s = kanbanSuccubus(); if (s) enterChat(s.id); });
 
-// 委託卡片場景
-$("#q-back").onclick = () => goExec();
+on("set-player", "change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
+on("set-sleep-start", "change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
+on("set-sleep-end", "change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); renderAll(); });
+on("set-theme", "change", e => { state.settings.theme = e.target.value; scheduleSave(); renderAll(); });
 
-// 淫紋:點擊與看板娘開聊
-$("#crest").onclick = () => {
-  const s = kanbanSuccubus();
-  if (s) enterChat(s.id);
-};
-
-$("#set-player").addEventListener("change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
-$("#set-sleep-start").addEventListener("change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
-$("#set-sleep-end").addEventListener("change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); renderAll(); });
-$("#set-theme").addEventListener("change", e => { state.settings.theme = e.target.value; scheduleSave(); renderAll(); });
-
-// 版面設定
-$("#btn-card-reset").onclick = () => { state.settings.cardColors = null; applyLayoutVars(); scheduleSave(); renderSettings(); };
-$("#set-tab-op").addEventListener("input", e => {
+on("btn-card-reset", "click", () => { state.settings.cardColors = null; applyLayoutVars(); scheduleSave(); renderSettings(); });
+on("set-tab-op", "input", e => {
   state.settings.tabOpacity = parseFloat(e.target.value);
-  $("#tab-op-val").textContent = Math.round(e.target.value * 100) + "%";
+  const v = $("#tab-op-val"); if (v) v.textContent = Math.round(e.target.value * 100) + "%";
   applyLayoutVars(); scheduleSave();
 });
-$("#set-bg-interval").addEventListener("change", e => {
+on("set-bg-interval", "change", e => {
   state.settings.bgInterval = Math.max(1, parseInt(e.target.value) || 5);
   e.target.value = state.settings.bgInterval;
   startBgRotation(); scheduleSave();
 });
-$("#btn-bg-upload").onclick = () => $("#bg-file").click();
-$("#bg-file").addEventListener("change", e => uploadBgFiles(e.target));
-$("#btn-bg-clear").onclick = async () => {
+on("btn-bg-upload", "click", () => $("#bg-file")?.click());
+on("bg-file", "change", e => uploadBgFiles(e.target));
+on("btn-bg-clear", "click", async () => {
   if (!confirm("刪除全部背景圖?")) return;
   for (const n of state.settings.bgImages || []) {
     try { await fetch(`/api/backgrounds/${n}`, { method: "DELETE" }); } catch { }
@@ -1691,47 +1684,48 @@ $("#btn-bg-clear").onclick = async () => {
   state.settings.bgIndex = 0;
   clearInterval(bgTimer);
   scheduleSave(); applyBg(); renderSettings();
-};
+});
 
 // 聊天室
-$("#chat-back").onclick = () => exitChat();
-$("#chat-send").onclick = () => sendChatMsg();
-$("#chat-input").addEventListener("keydown", e => { if (e.key === "Enter") sendChatMsg(); });
-$("#chat-log-btn").onclick = () => {
+on("chat-back", "click", () => exitChat());
+on("chat-send", "click", () => sendChatMsg());
+on("chat-input", "keydown", e => { if (e.key === "Enter") sendChatMsg(); });
+on("chat-log-btn", "click", () => {
   const bl = $("#chat-backlog");
   const s = state.succubi.find(x => x.id === chatWith);
-  if (!s) return;
+  if (!bl || !s) return;
   if (bl.classList.contains("hidden")) { renderBacklog(s); bl.classList.remove("hidden"); }
   else bl.classList.add("hidden");
-};
-$("#chat-backlog").onclick = () => $("#chat-backlog").classList.add("hidden");
-$("#conn-retry").onclick = () => load();
+});
+on("chat-backlog", "click", () => $("#chat-backlog")?.classList.add("hidden"));
+on("conn-retry", "click", () => load());
 
 // AI 設定
-$("#set-ollama").addEventListener("change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });
-$("#set-model").addEventListener("change", e => { state.settings.model = e.target.value.trim(); scheduleSave(); });
-$("#set-rating").addEventListener("change", e => { state.settings.rating = e.target.value; scheduleSave(); });
-$("#btn-llm-test").onclick = async () => {
+on("set-ollama", "change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });
+on("set-model", "change", e => { state.settings.model = e.target.value.trim(); scheduleSave(); });
+on("set-rating", "change", e => { state.settings.rating = e.target.value; scheduleSave(); });
+on("btn-llm-test", "click", async () => {
   const r = $("#llm-test-result");
+  if (!r) return;
   r.textContent = "測試中…";
   try {
     const j = await fetch(`/api/llm/tags?endpoint=${encodeURIComponent(state.settings.ollamaUrl)}`)
       .then(x => { if (!x.ok) throw 0; return x.json(); });
     const names = (j.models || []).map(m => m.name);
-    $("#model-list").innerHTML = names.map(n => `<option value="${esc(n)}">`).join("");
+    const dl = $("#model-list"); if (dl) dl.innerHTML = names.map(n => `<option value="${esc(n)}">`).join("");
     r.textContent = names.length ? `OK,${names.length} 個模型(模型欄可下拉選)` : "OK,但沒有已安裝的模型";
   } catch { r.textContent = "連線失敗——檢查端點與 Ollama 是否啟動"; }
-};
+});
 
-$("#btn-export").onclick = () => {
+on("btn-export", "click", () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `yorozuya-save-v${version}.json`;
   a.click();
-};
-$("#btn-import").onclick = () => $("#import-file").click();
-$("#import-file").addEventListener("change", async e => {
+});
+on("btn-import", "click", () => $("#import-file")?.click());
+on("import-file", "change", async e => {
   const f = e.target.files[0];
   if (!f) return;
   try {
@@ -1746,7 +1740,7 @@ $("#import-file").addEventListener("change", async e => {
   } catch { toast("匯入失敗:不是有效的存檔", "bad"); }
   e.target.value = "";
 });
-$("#btn-reset").onclick = () => {
+on("btn-reset", "click", () => {
   if (!confirm("確定重置?金幣、委託與所有魅魔將全部消失。")) return;
   state = defaultState();
   state.lastSettledDay = null;
@@ -1755,7 +1749,7 @@ $("#btn-reset").onclick = () => {
   state.lastSettledDay = dayNum();
   ensureShop();
   renderAll();
-};
+});
 
 // ===== Toast =====
 
