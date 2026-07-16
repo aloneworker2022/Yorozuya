@@ -226,6 +226,7 @@ function defaultState() {
     dungeon: [],  // [{name}]
     shop: null,   // {day, stock:[{id,name,price,sold}], line}
     kanbanId: null,
+    kanbanUntil: null,  // 看板娘召喚到期時間戳(限時)
     lastSettledDay: null,
     log: [],
     settings: {
@@ -298,6 +299,8 @@ function initState(j, offline) {
     if (!s.backstory) Object.assign(s, makeBackstory());
     else if (!s.schedule) s.schedule = makeSchedule(s.job);   // 有故事沒作息 → 補作息
   }
+  // 看板娘限時化移轉:舊的永久看板娘寬限一個時段,到期後改付費召喚
+  if (state.kanbanId && !state.kanbanUntil) state.kanbanUntil = Date.now() + kanbanHours() * HOUR;
   showConnOverlay(false);
   document.getElementById("set-srv").textContent = offline ? "離線(使用本地快取)" : "OK";
   settleOffline();
@@ -1033,13 +1036,39 @@ function ransom(id) {
 
 // ===== 看板娘 =====
 
+// 限時看板娘:必須付費召喚、到期自動解除、無自動遞補(過期即回召喚書)
 function kanbanSuccubus() {
-  if (state.kanbanId) {
+  if (!state.kanbanId || !state.kanbanUntil || Date.now() >= state.kanbanUntil) return null;
+  const s = state.succubi.find(x => x.id === state.kanbanId);
+  return (s && !s.ntr) ? s : null;
+}
+function kanbanRemainMs() {
+  return state.kanbanUntil ? Math.max(0, state.kanbanUntil - Date.now()) : 0;
+}
+const KANBAN_COST = 1;
+
+function summonKanban(id) {
+  const s = state.succubi.find(x => x.id === id);
+  if (!s || s.ntr) return;
+  if (state.gold < KANBAN_COST) { toast(`召喚看板娘需 ${KANBAN_COST} 金`, "bad"); return; }
+  state.gold -= KANBAN_COST;
+  state.kanbanId = id;
+  state.kanbanUntil = Date.now() + kanbanHours() * HOUR;
+  log(`召喚 ${s.name} 為看板娘(${kanbanHours()} 小時)`);
+  toast(`${s.name} 來到你身邊,陪伴 ${kanbanHours()} 小時♥`, "good");
+  scheduleSave(); renderAll();
+}
+
+// 到期解除(每秒 tick 呼叫);回傳是否有變化
+function expireKanban() {
+  if (state.kanbanId && (!state.kanbanUntil || Date.now() >= state.kanbanUntil)) {
     const s = state.succubi.find(x => x.id === state.kanbanId);
-    if (s && !s.ntr) return s;
+    state.kanbanId = null;
+    state.kanbanUntil = null;
+    if (s && !chatWith) toast(`${s.name} 的召喚時間結束,回到自己的生活了。`, "");
+    return true;
   }
-  const alive = state.succubi.filter(s => !s.ntr);
-  return alive[alive.length - 1] || null;
+  return false;
 }
 
 let bubbleTimer = null;
@@ -1099,6 +1128,12 @@ setInterval(() => {
   const today = dayNum();
   if (lastTickDay !== null && today !== lastTickDay) { settleDays(); ensureShop(); changed = true; }
   lastTickDay = today;
+
+  if (expireKanban()) changed = true;
+
+  // 看板娘倒數:每秒刷新剩餘時間顯示(不必整頁重繪)
+  const kt = document.getElementById("kanban-remain");
+  if (kt && kanbanSuccubus()) kt.textContent = "剩 " + fmtRemain(kanbanRemainMs());
 
   const asleep = isAsleep();
   if (asleep !== lastSleepState) {
@@ -1647,7 +1682,7 @@ function renderSuccubi() {
       <div class="sinfo">
         <div class="sname"><b>${esc(s.name)}</b><span class="rbadge">${s.rarity}</span>
           <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(s.stage)}</span>
-          ${state.kanbanId === s.id ? `<span class="stage-chip" style="color:var(--gold)">★ 看板娘</span>` : ""}</div>
+          ${kanbanSuccubus()?.id === s.id ? `<span class="stage-chip" style="color:var(--gold)">★ 看板娘</span>` : ""}</div>
         <div class="aff-bar"><div class="${s.affection < 0 ? "neg" : ""}" style="width:${barW}%"></div></div>
       </div>
       <div class="status-dot ${st}"></div>`;
@@ -1713,9 +1748,9 @@ function renderDetail(s, root) {
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
           : `<button class="cyan" id="act-date" ${asleep || datesLeft <= 0 ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})</button>
-             ${state.kanbanId === s.id
-               ? `<button disabled>★ 看板娘</button>`
-               : `<button id="act-kanban">立為看板娘</button>`}`}
+             ${kanbanSuccubus()?.id === s.id
+               ? `<button disabled>★ 看板娘 剩 ${fmtRemain(kanbanRemainMs())}</button>`
+               : `<button id="act-kanban">召喚為看板娘(${KANBAN_COST} 金 / ${kanbanHours()}h)</button>`}`}
       </div>
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">聊天請透過淫紋(做委託觸發)——看板娘才聽得見你的呼喚</div>` : ""}
@@ -1724,12 +1759,7 @@ function renderDetail(s, root) {
     </div>`;
 
   root.querySelector("#detail-back").onclick = () => { detailId = null; dateChooser = false; renderAll(); };
-  root.querySelector("#act-kanban")?.addEventListener("click", () => {
-    state.kanbanId = s.id;
-    log(`${s.name} 成為看板娘`);
-    toast(`${s.name} 站上了看板位♥`, "good");
-    scheduleSave(); renderAll();
-  });
+  root.querySelector("#act-kanban")?.addEventListener("click", () => summonKanban(s.id));
   root.querySelector("#act-dismiss")?.addEventListener("click", () => dismiss(s.id));
   root.querySelector("#act-date")?.addEventListener("click", () => {
     dateChooser = !dateChooser;
@@ -1754,7 +1784,8 @@ function renderKanban() {
     book.classList.add("hidden");
     girl.classList.remove("hidden");
     girl.className = `r-${s.rarity}`;
-    girl.innerHTML = girlSVG("#241333", 9) + `<div class="kname">${esc(s.name)}</div>`;
+    const remain = (!chatWith && kanbanSuccubus()) ? `<span id="kanban-remain" class="krem">剩 ${fmtRemain(kanbanRemainMs())}</span>` : "";
+    girl.innerHTML = girlSVG("#241333", 9) + `<div class="kname">${esc(s.name)}${remain}</div>`;
     girl.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(REACT.idle));
   } else {
     girl.classList.add("hidden");

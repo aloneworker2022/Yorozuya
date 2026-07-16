@@ -64,6 +64,7 @@
     <button onclick="refreshShop()">刷新商店</button>
     <button onclick="jumpDay()">跳過一天</button>
     <button onclick="addCrest()">+1 淫紋</button>
+    <button onclick="kanbanLong()">看板娘 +99h(測試)</button>
   </div>
   <div class="status" id="bd-status"></div>
 </section>
@@ -132,6 +133,13 @@ async function setGoldPrompt() { if (!ensure()) return; const v = prompt("設定
 async function refreshShop() { if (!ensure()) return; save.shop = null; await commit("商店已清空(回遊戲會重新進貨)"); }
 async function jumpDay() { if (!ensure()) return; save.lastSettledDay = (save.lastSettledDay || 0) - 1; await commit("日界 -1(回遊戲會結算一天)"); }
 async function addCrest() { if (!ensure()) return; save.chatCharges = (save.chatCharges || 0) + 1; await commit("淫紋 +1"); }
+async function kanbanLong() {
+  if (!ensure()) return;
+  const s = (save.succubi || [])[0];
+  if (!s) { status("bd-status", "沒有魅魔", true); return; }
+  save.kanbanId = s.id; save.kanbanUntil = Date.now() + 99 * 3600 * 1000;
+  await commit(`${s.name} 設為看板娘 99h`);
+}
 
 // ── 擴充等級 ──
 const EXP_AXES = {
