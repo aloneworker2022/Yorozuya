@@ -67,6 +67,7 @@
     <button onclick="kanbanLong()">看板娘 +99h(測試)</button>
     <button onclick="drawSummoner()">第一隻抽召喚師</button>
     <button onclick="clearSummoners()">清除所有召喚師</button>
+    <button onclick="watchScenario()">觀戰測試場景</button>
   </div>
   <div class="status" id="bd-status"></div>
 </section>
@@ -155,7 +156,24 @@ async function drawSummoner() {
 async function clearSummoners() {
   if (!ensure()) return;
   for (const s of save.succubi || []) s.summoner = null;
+  save.forceEncounter = false;
   await commit("清除所有召喚師");
+}
+// 觀戰測試場景:第一隻魅魔被召喚師纏上 + 下一次召喚/約會她「必」撞見對方
+async function watchScenario() {
+  if (!ensure()) return;
+  const s = (save.succubi || [])[0];
+  if (!s) { status("bd-status", "沒有魅魔,先召喚一隻", true); return; }
+  if (!s.summoner) {
+    const pool = await api("/content/summoners.json");
+    const su = (pool.summoners || [])[Math.floor(Math.random() * (pool.summoners || []).length)];
+    if (!su) { status("bd-status", "召喚師池為空", true); return; }
+    s.summoner = { id: su.id, affection: 0, sinceDay: 0 };
+  }
+  // 若她正是看板娘,先解除,回遊戲重新召喚她就會撞見
+  if (save.kanbanId === s.id) { save.kanbanId = null; save.kanbanUntil = null; }
+  save.forceEncounter = true;
+  await commit(`觀戰場景備妥:${s.name} 已被纏上——回遊戲召喚她當看板娘或約她,必觸發觀戰`);
 }
 
 // ── 擴充等級 ──

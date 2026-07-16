@@ -27,7 +27,7 @@ const EXPANSIONS = {
   offering: "商店祭品",     // 每日進貨 = 2 + lv
   roster:   "名冊名額",     // 名額 = 1 + lv
   kanban:   "看板娘時長",   // 小時 = 1 + lv
-  crest:    "淫紋機率",     // 分母 = max(3, 20 - lv)
+  crest:    "淫紋機率",     // 分母 = max(3, 10 - lv):基礎 1/10,極限 1/3
   drop:     "獻祭掉落率",   // 影響獻祭掉落(Phase 7)
 };
 // 天賦可能值:7 個擴充軸 + 特殊「取消召喚師」(獻祭刷到就清掉所有召喚師)
@@ -41,7 +41,7 @@ function expLv(k) {
 }
 function execCap() { return 1 + expLv("exec"); }
 function rosterCap() { return 1 + expLv("roster"); }
-function crestDenom() { return Math.max(3, 20 - expLv("crest")); }
+function crestDenom() { return Math.max(3, 10 - expLv("crest")); }
 function kanbanHours() { return 1 + expLv("kanban"); }
 const QUEST_HOURS = 24;          // 期限統一 24 小時
 const DISCOVER_BONUS_CAP = 10;   // 每日前 N 次發現有 0~2 金獎勵
@@ -867,7 +867,7 @@ function enterChat(id, type = "chat", location = null, skipEncounter = false) {
     if (s.datesToday?.day !== today) s.datesToday = { day: today, count: 0 };
     if (s.datesToday.count >= DATE_LIMIT) { toast("今天約會夠多了,她需要休息", "bad"); return; }
     // 被纏上時 1/5 撞見對方 → 約會失敗變觀戰(不扣費、不算今日約會);搶回後直接成立
-    if (!skipEncounter && s.summoner && Math.random() < ENCOUNTER_CHANCE) { enterWatch(s, "date", location); return; }
+    if (!skipEncounter && rollEncounter(s)) { enterWatch(s, "date", location); return; }
     state.gold -= DATE_COST;
     s.datesToday.count++;
     s.lastDateDay = today;
@@ -900,9 +900,13 @@ function enterChat(id, type = "chat", location = null, skipEncounter = false) {
   setChatWaiting(false);
   scheduleSave(); renderAll();
   renderChatLog(s);
-  if (type === "date") vnShow("", `—— ${location}・約會開始 ——`, "sys");
   inputEl?.focus();
-  sceneOpener(s);   // 她先開口:約會描述場景心情 / 聊天打招呼
+  if (type === "date") {
+    vnShow("", `—— ${location}・約會開始 ——`, "sys");
+    sceneOpener(s);   // 約會:她先開口,描述場景與心情
+  } else {
+    vnShow("", "(她看著你,等你開口)", "sys");  // 聊天:玩家先說話
+  }
 }
 
 // 送出後隱藏輸入列,等她回完才出現(避免連發沒人回)
@@ -911,15 +915,13 @@ function setChatWaiting(b) {
   if (row) row.style.visibility = b ? "hidden" : "";
 }
 
-// 進場自動開場白:不佔玩家回合、不寫入玩家訊息
+// 約會進場開場白:她先開口,不佔玩家回合、不寫入玩家訊息(聊天則由玩家先說話,不走這裡)
 async function sceneOpener(s) {
   if (!chatSession) return;
   chatSession.busy = true;
   setChatWaiting(true);
   vnTyping(true);
-  const inst = chatSession.type === "date"
-    ? `(旁白:你們剛抵達「${chatSession.location}」——${chatSession.locationDesc || ""}。請用一兩句話開場:描述你眼前看到的場景和此刻的真實感受,依你的個性可以期待興奮、也可以嫌棄抱怨。不要延續之前任何話題。)`
-    : "(旁白:他來找你說話了。請依你的個性與你們的關係,自然地打招呼開場,可以主動拋出一個新話題或聊聊你原本生活的事。不要延續之前任何話題。)";
+  const inst = `(旁白:你們剛抵達「${chatSession.location}」——${chatSession.locationDesc || ""}。請用一兩句話開場:描述你眼前看到的場景和此刻的真實感受,依你的個性可以期待興奮、也可以嫌棄抱怨。不要延續之前任何話題。)`;
   try {
     const reply = await llmReply(s, acc => vnShow(s.name, acc, "ai"), inst);
     s.history.push({ role: "assistant", content: reply, t: Date.now() });
@@ -929,9 +931,7 @@ async function sceneOpener(s) {
     saveNow();
   } catch (e) {
     if (e.name !== "AbortError") {
-      vnShow("", chatSession?.type === "date"
-        ? `—— ${chatSession.location}・約會開始 ——`
-        : `(她看著你,等你開口)`, "sys");
+      vnShow("", `—— ${chatSession.location}・約會開始 ——`, "sys");
     }
   }
   if (chatSession && !chatSession.ended) {
@@ -1336,6 +1336,13 @@ const KANBAN_COST = 1;
 const DRAW_CHANCE = 1 / 20;   // 每個間隔抽到召喚師的機率(未纏上時)
 const ENCOUNTER_CHANCE = 1 / 5; // 有召喚師後,招看板娘/約會時「她正在對方身邊」的機率
 
+// 撞見判定:testword 可設 state.forceEncounter=true,下一次判定必中(一次性,測試用)
+function rollEncounter(s) {
+  if (!s.summoner) return false;
+  if (state.forceEncounter) { state.forceEncounter = false; return true; }
+  return Math.random() < ENCOUNTER_CHANCE;
+}
+
 // 抽召喚師:每隻魅魔每 drawIvlH 小時擲一次;擋抽三條件——
 // ①已被纏上 ②正是我們的看板娘 ③正被我們約會(對話中)。回傳是否有變化。
 function checkSummonerDraws() {
@@ -1380,7 +1387,7 @@ function summonKanban(id, skipEncounter = false) {
   if (!s || s.ntr) return;
   if (state.gold < KANBAN_COST) { toast(`召喚看板娘需 ${KANBAN_COST} 金`, "bad"); return; }
   // 被纏上時 1/5 撞見對方 → 觀戰(她沒來,不扣費);搶回後 skipEncounter 直接成立
-  if (!skipEncounter && s.summoner && Math.random() < ENCOUNTER_CHANCE) { enterWatch(s, "kanban"); return; }
+  if (!skipEncounter && rollEncounter(s)) { enterWatch(s, "kanban"); return; }
   state.gold -= KANBAN_COST;
   state.kanbanId = id;
   state.lastKanbanId = id;
@@ -2411,6 +2418,7 @@ window.DBG = {
   state: () => state,
   isAsleep: () => isAsleep(),
   watch: (id, type = "kanban", loc = "海邊") => { const s = state.succubi.find(x => x.id === id); if (s) enterWatch(s, type, loc); },
+  summonKanban: (id) => summonKanban(id),
 };
 
 // ===== 啟動 =====
