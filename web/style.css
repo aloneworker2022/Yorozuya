@@ -472,6 +472,12 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 }
 .say-bubble .who { color: var(--rc); margin-right: .5em; }
 .ntr-note { text-align: center; color: var(--red); font-size: .85em; margin: .6em 0; }
+.schedule { max-width: 30em; margin: .7em auto 0; }
+.sch-row { display: flex; gap: .8em; font-size: .78em; padding: .3em 0; border-bottom: 1px solid var(--line); }
+.sch-row:last-child { border-bottom: none; }
+.sch-row .sch-t { flex: 0 0 3em; color: var(--dim); }
+.sch-row.now { color: var(--cyan); }
+.sch-row.now .sch-t { color: var(--cyan); }
 .back-btn {
   background: none; border: none; color: var(--dim); font: inherit;
   cursor: pointer; padding: .2em .4em; margin-bottom: .4em;

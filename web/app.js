@@ -140,11 +140,45 @@ const ATTITUDE_POOL = [
   "半信半疑,懷疑這是整人節目,或只是一場還沒醒的夢",
   "意外地看得開,覺得反正原本的日子也過膩了",
 ];
+// 每日作息:依職業給早/午/下午/晚四時段的生活(召喚來能聊上個時段做了什麼)
+const SCHEDULE_BY_JOB = {
+  "女高中生": ["在教室上課、偷傳紙條", "和同學擠在頂樓吃便當", "社團活動揮汗", "補習班或回家寫作業"],
+  "大學生": ["睡到快遲到才衝去上課", "學餐隨便扒兩口", "泡圖書館趕永遠寫不完的報告", "打工或系上聚餐"],
+  "便利商店大夜班店員": ["剛下大夜班回家補眠", "睡得正熟", "傍晚才起床發呆", "準備上工、清點貨架"],
+  "護理師": ["交接查房、忙得團團轉", "匆忙扒兩口冷掉的飯", "換藥打針跑不停", "下班累癱或接著上夜班"],
+  "咖啡店店員": ["開店磨豆、預熱機器", "出餐尖峰手忙腳亂", "顧店、偷練拉花", "打烊清潔擦桌子"],
+  "上班族 OL": ["擠地鐵進辦公室", "和同事吃午餐配八卦", "開一場又一場的會", "加班或下班小酌"],
+  "接案插畫家": ["昨晚爆肝、現在補眠中", "起床邊吃邊改稿", "畫圖畫到忘記時間", "進入交稿前的衝刺地獄"],
+  "偶像練習生": ["晨間發聲練習", "控制熱量的清淡午餐", "練舞練到腿軟", "上唱歌課、自主加練"],
+  "圖書館員": ["上架整理新書", "在員工休息室安靜吃飯", "幫讀者找書、蓋章", "閉館前盤點巡場"],
+  "電競隊青訓選手": ["補眠中(昨晚排位到天亮)", "起床邊吃邊打幾把", "團隊訓練賽", "直播或複盤到深夜"],
+  "麵包店學徒": ["凌晨就在揉麵、顧烤箱", "收拾忙碌的早晨", "回去補個眠", "備料、發酵準備明天"],
+  "家裡蹲網路寫手": ["還在睡", "醒來配泡麵當早午餐", "追劇、逛論壇筆戰", "開始碼字戰到深夜"],
+};
+const SCHEDULE_SLOTS = ["morning", "noon", "afternoon", "evening"];
+const SLOT_LABEL = { morning: "早上", noon: "中午", afternoon: "下午", evening: "晚上", night: "深夜" };
+function timeSlot(h = new Date().getHours()) {
+  if (h < 6) return "night";
+  if (h < 11) return "morning";
+  if (h < 14) return "noon";
+  if (h < 18) return "afternoon";
+  if (h < 23) return "evening";
+  return "night";
+}
+function makeSchedule(job) {
+  const acts = SCHEDULE_BY_JOB[job] || ["過著自己的生活", "吃頓飯歇口氣", "忙自己的事", "度過一個平凡的夜晚"];
+  const sch = {};
+  SCHEDULE_SLOTS.forEach((k, i) => sch[k] = acts[i]);
+  sch.night = "回到夢境織夢";
+  return sch;
+}
+
 function makeBackstory() {
   const [job, life] = pick(JOB_POOL);
   return {
     job,
     backstory: `她原本是現實世界的${job}——${life}。某天毫無預警地被召喚到魅魔萬事屋,成了所謂的「魅魔」。${pick(ATTITUDE_POOL)}。`,
+    schedule: makeSchedule(job),
   };
 }
 const MERCHANT_LINES = ["今天的貨色不錯吧?", "都是自願的,大概。", "早買早享受,晚了就沒了。", "便宜貨也有便宜貨的用法。", "別問來歷。問了也不便宜。"];
@@ -260,7 +294,10 @@ function initState(j, offline) {
   state.expansions.roster = Math.max(state.expansions.roster || 0, legacySlots - 1);
   delete state.slots;
   // 背景故事移轉:舊魅魔補發人生
-  for (const s of state.succubi) if (!s.backstory) Object.assign(s, makeBackstory());
+  for (const s of state.succubi) {
+    if (!s.backstory) Object.assign(s, makeBackstory());
+    else if (!s.schedule) s.schedule = makeSchedule(s.job);   // 有故事沒作息 → 補作息
+  }
   showConnOverlay(false);
   document.getElementById("set-srv").textContent = offline ? "離線(使用本地快取)" : "OK";
   settleOffline();
@@ -774,11 +811,14 @@ function exitChat() {
 }
 
 function buildCtx(s) {
-  const h = new Date().getHours();
+  const slot = timeSlot();
+  const sch = s.schedule || {};
   return {
     character: {
       name: s.name, rarity: s.rarity, personality: s.personality,
       speech_style: s.speech, appearance_dna: s.dna, backstory: s.backstory || "",
+      schedule: sch,
+      current_activity: sch[slot] || null,   // 這個時段她原本的生活在做什麼
     },
     relationship: {
       stage: s.stage, affection: s.affection,
@@ -788,7 +828,8 @@ function buildCtx(s) {
       type: chatSession.type, location: chatSession.location,
       scene_prompt: chatSession.locationDesc || null,
       transition: [...(s.history || [])].reverse().find(m => m.role === "sys")?.content || null,
-      time_of_day: h < 6 ? "night" : h < 12 ? "morning" : h < 18 ? "afternoon" : "evening",
+      time_of_day: slot,
+      time_label: SLOT_LABEL[slot],
     },
     content_rating: state.settings.rating || "sfw",
     player: { name: state.settings.player || "主人" },
@@ -1661,6 +1702,10 @@ function renderDetail(s, root) {
       </div>
       <div class="traits">${s.job ? `<span style="color:var(--cyan)">前${esc(s.job)}</span>` : ""}${s.personality.map(p => `<span>${p}</span>`).join("")}<span>${s.speech}</span>${s.dna.traits.map(t => `<span>${t}</span>`).join("")}</div>
       ${s.backstory ? `<div class="aff-line dim small" style="max-width:32em;margin:0 auto">${esc(s.backstory)}</div>` : ""}
+      ${s.schedule ? `<div class="schedule">${SCHEDULE_SLOTS.map(k => {
+        const now = timeSlot() === k;
+        return `<div class="sch-row${now ? " now" : ""}"><span class="sch-t">${SLOT_LABEL[k]}</span><span>${esc(s.schedule[k])}</span></div>`;
+      }).join("")}</div>` : ""}
       <div class="aff-line">情感 <b>${s.affection}</b>${ns && !s.ntr ? ` <span class="dim small">/ ${ns[2]} 升【${ns[1]}】</span>` : ""}</div>
       ${needLine}
       ${!s.portraitReady ? `<div class="aff-line dim small">尚未成形——今晚讓她織夢,明早見到她的臉(M3)</div>` : ""}

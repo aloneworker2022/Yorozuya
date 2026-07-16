@@ -51,6 +51,12 @@ export function buildSystemPrompt(ctx) {
     );
   }
 
+  if (c.current_activity) {
+    lines.push(
+      `現實作息:此刻是${s.time_label || ""},你原本的生活裡這個時段通常正在「${c.current_activity}」——結果被召喚過來了。可以自然提起、抱怨被打斷,或帶到相關的話題。`,
+    );
+  }
+
   lines.push(
     STAGE_TONE[r.stage] || STAGE_TONE.stranger,
     `你們認識 ${r.days_since_summon} 天了,目前好感 ${r.affection}。`,
