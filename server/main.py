@@ -37,6 +37,16 @@ def db() -> sqlite3.Connection:
             updated_at REAL    NOT NULL
         )"""
     )
+    # 內容腳本:獻祭手法等,由 /testword 編寫,遊戲隨機選用(核心零解析)
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS scripts (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,   -- 'sacrifice_offering' | 'sacrifice_succubus' | ...
+            method   TEXT NOT NULL,   -- 手法名(砍頭/油炸…)
+            body     TEXT NOT NULL,   -- 給 AI 的描述
+            created  REAL NOT NULL
+        )"""
+    )
     return conn
 
 
@@ -183,6 +193,68 @@ def chat_job_status(job_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail="job 不存在或已過期")
     return {"text": job["text"], "done": job["done"], "error": job["error"]}
+
+
+# ---- 內容腳本 API(/testword 編寫、遊戲隨機選用)----
+
+
+class ScriptIn(BaseModel):
+    category: str
+    method: str
+    body: str
+
+
+@app.get("/api/scripts")
+def list_scripts(category: str | None = None):
+    with db() as conn:
+        if category:
+            rows = conn.execute(
+                "SELECT id, category, method, body, created FROM scripts WHERE category = ? ORDER BY id DESC",
+                (category,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, category, method, body, created FROM scripts ORDER BY id DESC"
+            ).fetchall()
+    return [{"id": r[0], "category": r[1], "method": r[2], "body": r[3], "created": r[4]} for r in rows]
+
+
+@app.post("/api/scripts")
+def add_script(s: ScriptIn):
+    if not s.method.strip() or not s.body.strip():
+        raise HTTPException(status_code=400, detail="手法名與描述皆不可空白")
+    with db() as conn:
+        cur = conn.execute(
+            "INSERT INTO scripts (category, method, body, created) VALUES (?, ?, ?, ?)",
+            (s.category, s.method.strip(), s.body.strip(), time.time()),
+        )
+        return {"id": cur.lastrowid}
+
+
+@app.delete("/api/scripts/{sid}")
+def del_script(sid: int):
+    with db() as conn:
+        conn.execute("DELETE FROM scripts WHERE id = ?", (sid,))
+    return {"ok": True}
+
+
+@app.get("/api/scripts/random")
+def random_script(category: str):
+    import random
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, method, body FROM scripts WHERE category = ?", (category,)
+        ).fetchall()
+    if not rows:
+        return {"method": None, "body": None}
+    r = random.choice(rows)
+    return {"id": r[0], "method": r[1], "body": r[2]}
+
+
+@app.get("/testword")
+def testword():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "testword.html")
 
 
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)

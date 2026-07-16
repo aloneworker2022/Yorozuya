@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Testword — 魅魔萬事屋 後台</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #12101c; color: #d8d0ec; font-family: system-ui, "Cubic 11", monospace;
+    font-size: 15px; padding: 1em; max-width: 720px; margin: 0 auto; line-height: 1.5;
+  }
+  h1 { color: #ff4fd8; font-size: 1.2em; letter-spacing: .1em; margin-bottom: .2em; }
+  .warn { color: #ff9d4d; font-size: .8em; margin-bottom: 1.4em; }
+  section { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 10px; padding: 1em 1.1em; margin-bottom: 1.1em; }
+  h2 { color: #6fe3e1; font-size: .9em; letter-spacing: .1em; margin-bottom: .8em; }
+  label { display: block; font-size: .8em; color: #9a92b5; margin: .6em 0 .25em; }
+  input, textarea, select {
+    width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .55em .7em; outline: none;
+  }
+  textarea { min-height: 8em; resize: vertical; line-height: 1.6; }
+  .row { display: flex; gap: .5em; flex-wrap: wrap; align-items: center; }
+  .row > * { flex: 0 0 auto; }
+  button {
+    background: rgba(255,79,216,.18); border: none; border-radius: 7px; color: #ff8fe6;
+    font: inherit; padding: .5em 1em; cursor: pointer;
+  }
+  button:hover { background: rgba(255,79,216,.3); }
+  button.cy { background: rgba(111,227,225,.16); color: #6fe3e1; }
+  button.cy:hover { background: rgba(111,227,225,.28); }
+  button.del { background: rgba(255,95,122,.18); color: #ff8fa3; padding: .3em .7em; font-size: .8em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: .5em; }
+  .tabs { display: flex; gap: .4em; margin-bottom: .8em; }
+  .tabs button { background: rgba(255,255,255,.05); color: #9a92b5; }
+  .tabs button.on { background: rgba(111,227,225,.2); color: #6fe3e1; }
+  .script { border-top: 1px solid rgba(255,255,255,.07); padding: .7em 0; }
+  .script:first-child { border-top: none; }
+  .script .m { color: #ffd75f; font-size: .9em; }
+  .script .b { color: #b0a8cc; font-size: .82em; white-space: pre-wrap; margin: .3em 0; max-height: 6em; overflow: auto; }
+  .status { font-size: .8em; color: #6bcb77; min-height: 1.2em; margin-top: .5em; }
+  .status.err { color: #ff5f7a; }
+  .mini { font-size: .78em; color: #8a82a5; }
+  a { color: #6fe3e1; }
+</style>
+</head>
+<body>
+<h1>⚙ Testword 後台</h1>
+<div class="warn">開發/測試用後門與內容編寫。可直接改遊戲存檔與撰寫給 AI 讀的獻祭腳本。<a href="/">← 回遊戲</a></div>
+
+<!-- ── 後門:直接操作存檔 ── -->
+<section>
+  <h2>後門(直接改存檔)</h2>
+  <div class="row" style="margin-bottom:.6em">
+    <span class="mini">目前金幣:<b id="cur-gold">—</b> / 魅魔 <b id="cur-succ">—</b> 隻 / 名額 <b id="cur-slots">—</b></span>
+    <button class="cy" onclick="reloadSave()">重新讀取</button>
+  </div>
+  <div class="grid">
+    <button onclick="addGold(100)">+100 金</button>
+    <button onclick="addGold(1000)">+1000 金</button>
+    <button onclick="addGold(-100)">-100 金</button>
+    <button onclick="setGoldPrompt()">設定金幣…</button>
+    <button onclick="refreshShop()">刷新商店</button>
+    <button onclick="jumpDay()">跳過一天</button>
+    <button onclick="addCrest()">+1 淫紋</button>
+    <button onclick="addSlot()">+1 名額</button>
+  </div>
+  <div class="status" id="bd-status"></div>
+</section>
+
+<!-- ── 獻祭腳本編寫 ── -->
+<section>
+  <h2>獻祭腳本(給 AI 隨機選用)</h2>
+  <div class="tabs" id="cat-tabs">
+    <button data-cat="sacrifice_offering" class="on">祭品(男)</button>
+    <button data-cat="sacrifice_succubus">魅魔</button>
+  </div>
+  <label>手法名稱(例:砍頭、油炸、放血)</label>
+  <input id="sc-method" placeholder="給自己看的標籤,也會傳給 AI">
+  <label>給 AI 的描述(獻祭過程,越詳細 AI 演得越飽滿)</label>
+  <textarea id="sc-body" placeholder="描述這個手法的儀式過程……(此內容由你撰寫,遊戲核心不檢視,原樣傳給 AI)"></textarea>
+  <div class="row" style="margin-top:.7em">
+    <button onclick="saveScript()">製作(存入)</button>
+    <span class="status" id="sc-status"></span>
+  </div>
+  <div id="sc-list" style="margin-top:1em"></div>
+</section>
+
+<script>
+let save = null, ver = 0, curCat = "sacrifice_offering";
+
+async function api(path, method = "GET", body) {
+  const r = await fetch(path, {
+    method, headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+  return r.status === 204 ? null : r.json();
+}
+function status(id, msg, err) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.className = "status" + (err ? " err" : "");
+}
+
+// ── 後門 ──
+async function reloadSave() {
+  const j = await api("/api/save");
+  ver = j.version; save = j.data;
+  document.getElementById("cur-gold").textContent = save ? save.gold : "(無存檔)";
+  document.getElementById("cur-succ").textContent = save ? (save.succubi || []).length : "—";
+  document.getElementById("cur-slots").textContent = save ? (save.slots ?? "—") : "—";
+}
+async function commit(desc) {
+  try {
+    await api("/api/save", "PUT", { base_version: ver, data: save });
+    await reloadSave();
+    status("bd-status", "✓ " + desc);
+  } catch (e) { status("bd-status", "失敗:" + e.message + "(先按重新讀取)", true); }
+}
+function ensure() { if (!save) { status("bd-status", "沒有存檔,先在遊戲裡玩一下", true); return false; } return true; }
+async function addGold(n) { if (!ensure()) return; save.gold += n; await commit(`金幣 ${n >= 0 ? "+" : ""}${n}`); }
+async function setGoldPrompt() { if (!ensure()) return; const v = prompt("設定金幣為:", save.gold); if (v == null) return; save.gold = parseInt(v) || 0; await commit("設定金幣 " + save.gold); }
+async function refreshShop() { if (!ensure()) return; save.shop = null; await commit("商店已清空(回遊戲會重新進貨)"); }
+async function jumpDay() { if (!ensure()) return; save.lastSettledDay = (save.lastSettledDay || 0) - 1; await commit("日界 -1(回遊戲會結算一天)"); }
+async function addCrest() { if (!ensure()) return; save.chatCharges = (save.chatCharges || 0) + 1; await commit("淫紋 +1"); }
+async function addSlot() { if (!ensure()) return; save.slots = (save.slots || 2) + 1; await commit("名額 +1"); }
+
+// ── 腳本 ──
+document.querySelectorAll("#cat-tabs button").forEach(b => b.onclick = () => {
+  curCat = b.dataset.cat;
+  document.querySelectorAll("#cat-tabs button").forEach(x => x.classList.toggle("on", x === b));
+  loadScripts();
+});
+async function saveScript() {
+  const method = document.getElementById("sc-method").value.trim();
+  const bodyv = document.getElementById("sc-body").value.trim();
+  if (!method || !bodyv) { status("sc-status", "手法名與描述都要填", true); return; }
+  try {
+    await api("/api/scripts", "POST", { category: curCat, method, body: bodyv });
+    document.getElementById("sc-method").value = "";
+    document.getElementById("sc-body").value = "";
+    status("sc-status", "✓ 已存入");
+    loadScripts();
+  } catch (e) { status("sc-status", "失敗:" + e.message, true); }
+}
+async function delScript(id) {
+  if (!confirm("刪除這個腳本?")) return;
+  await api("/api/scripts/" + id, "DELETE");
+  loadScripts();
+}
+async function loadScripts() {
+  const list = await api("/api/scripts?category=" + curCat);
+  const el = document.getElementById("sc-list");
+  el.innerHTML = list.length
+    ? list.map(s => `<div class="script"><div class="row" style="justify-content:space-between">
+        <span class="m">▸ ${esc(s.method)}</span>
+        <button class="del" onclick="delScript(${s.id})">刪除</button></div>
+        <div class="b">${esc(s.body)}</div></div>`).join("")
+    : `<div class="mini">還沒有腳本。寫一個上面按製作。</div>`;
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+reloadSave();
+loadScripts();
+</script>
+</body>
+</html>

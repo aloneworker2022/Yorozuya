@@ -1542,6 +1542,21 @@ function renderShop() {
   $("#dungeon-list").innerHTML = state.dungeon.length
     ? state.dungeon.map(p => `<span>${esc(p.name)}</span>`).join("")
     : `<span class="dim">空無一人。</span>`;
+
+  renderPlayerAttrs();
+}
+
+// 玩家屬性面板(商店底部):金幣、名額、擴充(擴充系統將於後續階段填入)
+function renderPlayerAttrs() {
+  const el = $("#player-attrs");
+  if (!el) return;
+  const exps = state.expansions || {};
+  const expKeys = Object.keys(exps);
+  el.innerHTML = `
+    <div class="setting-row"><label>金幣</label><span>${state.gold} 金</span></div>
+    <div class="setting-row"><label>眷屬名額</label><span>${state.succubi.length} / ${state.slots}</span></div>
+    <div class="setting-row"><label>淫紋</label><span>${state.chatCharges || 0} 層</span></div>
+    <div class="setting-row"><label>永久擴充</label><span>${expKeys.length ? expKeys.map(k => `${k}×${exps[k]}`).join("、") : "(尚無)"}</span></div>`;
 }
 
 // 聊天插播層:蓋在所有分頁之上,只有「結束對話」能退出
