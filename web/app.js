@@ -13,7 +13,23 @@ fetch("content/world.md").then(r => r.ok ? r.text() : "").then(t => { WORLD_LORE
 // ===== 常數 =====
 
 const HOUR = 3600 * 1000;
-const MAX_EXEC = 3;
+// ===== 擴充系統(8 軸)=====
+// 取得方式:①看板娘自帶(暫時,Phase 4)②獻祭掉落(永久,Phase 7)。
+// 目前可用 /testword 後門調整以供測試。第 7 軸「取消召喚師」是一次性效果、非等級。
+const EXPANSIONS = {
+  exec:     "執行中格數",   // 執行中上限 = 1 + lv
+  reward:   "完成金額",     // 完成 = randInt(1+lv, 3+lv)
+  offering: "商店祭品",     // 每日進貨 = 2 + lv
+  roster:   "名冊名額",     // 名額 = 1 + lv
+  kanban:   "看板娘時長",   // 小時 = 1 + lv
+  crest:    "淫紋機率",     // 分母 = max(3, 20 - lv)
+  drop:     "獻祭掉落率",   // 影響獻祭掉落(Phase 7)
+};
+function expLv(k) { return (state.expansions && state.expansions[k]) || 0; }
+function execCap() { return 1 + expLv("exec"); }
+function rosterCap() { return 1 + expLv("roster"); }
+function crestDenom() { return Math.max(3, 20 - expLv("crest")); }
+function kanbanHours() { return 1 + expLv("kanban"); }
 const QUEST_HOURS = 24;          // 期限統一 24 小時
 const DISCOVER_BONUS_CAP = 10;   // 每日前 N 次發現有 0~2 金獎勵
 
@@ -23,22 +39,19 @@ const CHAT_TURNS = [1, 4];      // 聊天 1~4 來回
 const DATE_TURNS = [2, 5];      // 約會 2~5 來回(付了 5 金,多聊幾句)
 
 // 淫紋觸發:看板娘在、醒著、沒滿層時,委託操作有機率喚起她想聊天的慾望
-function grantCrest(chance) {
+// 基礎機率 1/crestDenom(擴充可從 1/20 提升到 1/3);完成委託 ×2
+function grantCrest(mult = 1) {
   if (!kanbanSuccubus() || isAsleep()) return;
   if ((state.chatCharges || 0) >= CREST_CAP) return;
-  if (Math.random() >= chance) return;
+  if (Math.random() >= mult / crestDenom()) return;
   state.chatCharges = (state.chatCharges || 0) + 1;
   toast("……淫紋在發燙。她想跟你說話。", "good");
 }
 
-// 完成報酬:開盲盒,1~24 金加權隨機(期望 ≈ 8,24 金為 1% 大獎)
+// 完成報酬:randInt(1+lv, 3+lv),由「完成金額」擴充提升上下限
 function rollReward() {
-  const r = Math.random() * 100;
-  if (r < 50) return randInt(1, 6);
-  if (r < 80) return randInt(7, 12);
-  if (r < 95) return randInt(13, 18);
-  if (r < 99) return randInt(19, 23);
-  return 24;
+  const lv = expLv("reward");
+  return randInt(1 + lv, 3 + lv);
 }
 
 const RARITIES = ["N", "R", "S", "SS", "SSR"];
@@ -173,8 +186,8 @@ function defaultState() {
     quests: [],   // {id, text, lv:0|1|2, startedAt?, deadline?}
     discover: null, // {day, count} 每日發現獎勵計數
     chatCharges: 0, // 淫紋層數(聊天入場券,委託操作隨機觸發,上限 5)
-    slots: 2,       // 眷屬名額(初始 2,商店隨機刷擴充)
-    dismiss: null,  // {day, price} 今日遣散費(每日重擲 20~2000)
+    expansions: {}, // 擴充等級(8 軸,見 EXPANSIONS);名額/格數等由此推導
+    dismiss: null,  // {day, price} 今日遣散費
     succubi: [],  // 見 summon()
     dungeon: [],  // [{name}]
     shop: null,   // {day, stock:[{id,name,price,sold}], line}
@@ -240,8 +253,12 @@ function initState(j, offline) {
   for (const k of Object.keys(def)) state[k] ??= def[k];
   state.settings = { ...def.settings, ...state.settings };
   if (state.lastSettledDay == null) state.lastSettledDay = dayNum();
-  // 名額制移轉:舊存檔已持有超過 2 隻照舊保留
-  state.slots = Math.max(state.slots ?? 2, state.succubi.length);
+  // 擴充制移轉:名額改由 expansions.roster 推導(名額 = 1 + roster)。
+  // 舊存檔的 slots / 已持有隻數換算成等值 roster 等級,進度不損失。
+  state.expansions ??= {};
+  const legacySlots = Math.max(state.slots ?? 2, state.succubi.length, 1);
+  state.expansions.roster = Math.max(state.expansions.roster || 0, legacySlots - 1);
+  delete state.slots;
   // 背景故事移轉:舊魅魔補發人生
   for (const s of state.succubi) if (!s.backstory) Object.assign(s, makeBackstory());
   showConnOverlay(false);
@@ -381,7 +398,7 @@ function addQuest(text) {
       toast(`發現委託!+${g} 金`, "good");
     } else toast("已加入發現池", "");
   } else toast("已加入發現池", "");
-  grantCrest(0.25);
+  grantCrest(1);
   scheduleSave(); renderAll();
 }
 
@@ -389,18 +406,18 @@ function accept(id) {
   const q = state.quests.find(q => q.id === id);
   if (!q) return;
   q.lv = 1;
-  grantCrest(0.25);
+  grantCrest(1);
   scheduleSave(); renderAll();
 }
 
 function start(id) {
   const q = state.quests.find(q => q.id === id);
-  if (!q || execQuests().length >= MAX_EXEC) return;
+  if (!q || execQuests().length >= execCap()) return;
   q.lv = 2;
   q.startedAt = Date.now();
   q.deadline = q.startedAt + QUEST_HOURS * HOUR;
   log(`開始執行「${q.text}」(期限 ${QUEST_HOURS}h)`);
-  grantCrest(0.25);
+  grantCrest(1);
   scheduleSave(); renderAll();
 }
 
@@ -413,7 +430,7 @@ function complete(id) {
   log(`完成「${q.text}」 +${g} 金`);
   toast(g >= 19 ? `大豐收!委託完成 +${g} 金!!` : `委託完成!+${g} 金`, "good");
   kanbanReact("complete");
-  grantCrest(0.5);
+  grantCrest(2);
   scheduleSave(); renderAll();
 }
 
@@ -467,12 +484,10 @@ function settleOffline() {
 function ensureShop() {
   const today = dayNum();
   if (state.shop && state.shop.day === today) return;
-  const n = randInt(3, 6);
+  const n = 2 + expLv("offering");   // 每日進貨數 = 2 + 「商店祭品」擴充
   state.shop = {
     day: today,
     stock: Array.from({ length: n }, () => ({ id: uid(), name: pick(SACRIFICE_POOL), price: randInt(5, 30), sold: false })),
-    // 眷屬契約:4 成機率進貨,100~500 金,買了名額 +1
-    slotItem: Math.random() < 0.4 ? { price: randInt(100, 500), sold: false } : null,
     line: pick(MERCHANT_LINES),
   };
   scheduleSave();
@@ -488,18 +503,6 @@ function dismissPriceToday() {
     scheduleSave();
   }
   return state.dismiss.price;
-}
-
-function buySlot() {
-  const it = state.shop?.slotItem;
-  if (!it || it.sold) return;
-  if (state.gold < it.price) { toast("金幣不夠", "bad"); return; }
-  state.gold -= it.price;
-  it.sold = true;
-  state.slots++;
-  log(`購入眷屬契約 -${it.price} 金,名額 ${state.slots}`);
-  toast(`眷屬名額擴充!現在 ${state.slots} 格`, "good");
-  scheduleSave(); renderAll();
 }
 
 function dismiss(id) {
@@ -539,7 +542,7 @@ function rollRarity(n) {
 
 function summon(n) {
   if (state.dungeon.length < n || state.gold < 0) return;
-  if (state.succubi.length >= state.slots) { toast(`眷屬名額已滿(${state.slots} 格)——商店偶爾會賣擴充契約`, "bad"); return; }
+  if (state.succubi.length >= rosterCap()) { toast(`名冊名額已滿(${rosterCap()} 格)——靠擴充增加名額`, "bad"); return; }
   state.dungeon.splice(0, n);
   const today = dayNum();
   const s = {
@@ -1284,10 +1287,10 @@ function renderQuests() {
 
 function renderExec() {
   const exec = execQuests();
-  $("#exec-count").textContent = `執行中 ${exec.length}/${MAX_EXEC}`;
+  $("#exec-count").textContent = `執行中 ${exec.length}/${execCap()}`;
   const track = $("#pin-track");
   let html = "";
-  for (let i = 0; i < MAX_EXEC; i++) {
+  for (let i = 0; i < execCap(); i++) {
     const q = exec[i];
     if (q) {
       html += `<div class="pin-slide"><div class="q-card c-exec">
@@ -1308,9 +1311,9 @@ function renderExec() {
     }
   }
   track.innerHTML = html;
-  pinIdx = Math.min(pinIdx, MAX_EXEC - 1);
+  pinIdx = Math.min(pinIdx, execCap() - 1);
   track.style.transform = `translateX(-${pinIdx * 100}%)`;
-  $("#pin-dots").innerHTML = Array.from({ length: MAX_EXEC }, (_, i) => `<div class="dot${i === pinIdx ? " on" : ""}"></div>`).join("");
+  $("#pin-dots").innerHTML = Array.from({ length: execCap() }, (_, i) => `<div class="dot${i === pinIdx ? " on" : ""}"></div>`).join("");
   track.querySelectorAll("[data-slot]").forEach(el => el.onclick = () => goProc());
   attachPinSwipe($("#pin-carousel"), exec);
   const now = Date.now();
@@ -1318,7 +1321,7 @@ function renderExec() {
 }
 
 function setPinIdx(i) {
-  pinIdx = Math.max(0, Math.min(MAX_EXEC - 1, i));
+  pinIdx = Math.max(0, Math.min(execCap() - 1, i));
   $("#pin-track").style.transform = `translateX(-${pinIdx * 100}%)`;
   document.querySelectorAll("#pin-dots .dot").forEach((d, idx) => d.classList.toggle("on", idx === pinIdx));
 }
@@ -1417,7 +1420,7 @@ function renderProc() {
   procIdx[lv] = Math.min(procIdx[lv], list.length - 1);
   const i = procIdx[lv];
   const q = list[i];
-  const full = execQuests().length >= MAX_EXEC;
+  const full = execQuests().length >= execCap();
 
   const tag = lv === 0
     ? `<span class="q-tag">發現</span>`
@@ -1449,7 +1452,7 @@ function renderProc() {
     dbl: () => editText(q.id),
   } : {
     up: () => {
-      if (execQuests().length >= MAX_EXEC) { toast("執行中已滿 3 件", "bad"); return; }
+      if (execQuests().length >= execCap()) { toast(`執行中已滿 ${execCap()} 件`, "bad"); return; }
       flyCard(card, "up", () => { start(q.id); goExec(); });
     },
     down: () => flyCard(card, "down", () => drop(q.id)),
@@ -1516,18 +1519,6 @@ function renderShop() {
   ensureShop();
   $("#merchant-line").textContent = "「" + state.shop.line + "」";
   const st = $("#shop-stock"); st.innerHTML = "";
-  // 眷屬契約(稀有進貨)
-  const si = state.shop.slotItem;
-  if (si) {
-    const d = document.createElement("div");
-    d.className = "shop-item slot-item" + (si.sold ? " sold" : "");
-    d.innerHTML = `
-      <span class="sname">✦ 眷屬契約(名額 +1)</span>
-      <span class="sprice">${si.price} 金</span>
-      <button ${si.sold || state.gold < si.price ? "disabled" : ""}>${si.sold ? "已售出" : "購買"}</button>`;
-    if (!si.sold) d.querySelector("button").onclick = () => buySlot();
-    st.appendChild(d);
-  }
   for (const it of state.shop.stock) {
     const d = document.createElement("div");
     d.className = "shop-item" + (it.sold ? " sold" : "");
@@ -1550,13 +1541,20 @@ function renderShop() {
 function renderPlayerAttrs() {
   const el = $("#player-attrs");
   if (!el) return;
-  const exps = state.expansions || {};
-  const expKeys = Object.keys(exps);
-  el.innerHTML = `
-    <div class="setting-row"><label>金幣</label><span>${state.gold} 金</span></div>
-    <div class="setting-row"><label>眷屬名額</label><span>${state.succubi.length} / ${state.slots}</span></div>
-    <div class="setting-row"><label>淫紋</label><span>${state.chatCharges || 0} 層</span></div>
-    <div class="setting-row"><label>永久擴充</label><span>${expKeys.length ? expKeys.map(k => `${k}×${exps[k]}`).join("、") : "(尚無)"}</span></div>`;
+  const derived = [
+    ["金幣", `${state.gold} 金`],
+    ["名冊名額", `${state.succubi.length} / ${rosterCap()}`],
+    ["執行中格數", `${execCap()} 格`],
+    ["淫紋", `${state.chatCharges || 0} 層`],
+    ["完成金額", `${1 + expLv("reward")}~${3 + expLv("reward")} 金`],
+    ["商店祭品", `每日 ${2 + expLv("offering")} 人`],
+    ["淫紋機率", `1/${crestDenom()}`],
+    ["看板娘時長", `${kanbanHours()} 小時`],
+  ];
+  const lvs = Object.keys(EXPANSIONS).map(k => `${EXPANSIONS[k]} Lv${expLv(k)}`).join("、");
+  el.innerHTML =
+    derived.map(([a, b]) => `<div class="setting-row"><label>${a}</label><span>${b}</span></div>`).join("") +
+    `<div class="setting-row"><label>擴充等級</label><span class="dim" style="text-align:right">${lvs}</span></div>`;
 }
 
 // 聊天插播層:蓋在所有分頁之上,只有「結束對話」能退出
@@ -1617,12 +1615,12 @@ function renderSuccubi() {
   }
   if (!state.succubi.length) roster.innerHTML = `<div class="empty">一個魅魔都沒有。桌上只有那本召喚之書。</div>`;
 
-  document.querySelector("#roster-panel h2").textContent = `魅魔名冊(${state.succubi.length}/${state.slots})`;
+  document.querySelector("#roster-panel h2").textContent = `魅魔名冊(${state.succubi.length}/${rosterCap()})`;
   const hint = $("#summon-hint");
   const counts = $("#summon-counts");
-  const full = state.succubi.length >= state.slots;
+  const full = state.succubi.length >= rosterCap();
   hint.textContent = state.gold < 0 ? "負債中不可召喚"
-    : full ? `眷屬名額已滿(${state.slots} 格)——去商店碰碰運氣找擴充契約`
+    : full ? `名冊名額已滿(${rosterCap()} 格)——靠擴充增加名額`
     : `地牢裡有 ${state.dungeon.length} 名祭品`;
   counts.innerHTML = "";
   for (let n = 1; n <= 6; n++) {

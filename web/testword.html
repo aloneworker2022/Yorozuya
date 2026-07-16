@@ -64,9 +64,16 @@
     <button onclick="refreshShop()">刷新商店</button>
     <button onclick="jumpDay()">跳過一天</button>
     <button onclick="addCrest()">+1 淫紋</button>
-    <button onclick="addSlot()">+1 名額</button>
   </div>
   <div class="status" id="bd-status"></div>
+</section>
+
+<!-- ── 擴充等級 ── -->
+<section>
+  <h2>擴充等級(8 軸)</h2>
+  <div class="mini" style="margin-bottom:.6em">名額/格數/金額等由等級推導;第 7 軸「取消召喚師」是一次性效果,之後接。</div>
+  <div id="exp-rows"></div>
+  <div class="status" id="exp-status"></div>
 </section>
 
 <!-- ── 獻祭腳本編寫 ── -->
@@ -109,7 +116,8 @@ async function reloadSave() {
   ver = j.version; save = j.data;
   document.getElementById("cur-gold").textContent = save ? save.gold : "(無存檔)";
   document.getElementById("cur-succ").textContent = save ? (save.succubi || []).length : "—";
-  document.getElementById("cur-slots").textContent = save ? (save.slots ?? "—") : "—";
+  document.getElementById("cur-slots").textContent = save ? (1 + ((save.expansions || {}).roster || 0)) : "—";
+  renderExpRows();
 }
 async function commit(desc) {
   try {
@@ -124,7 +132,32 @@ async function setGoldPrompt() { if (!ensure()) return; const v = prompt("設定
 async function refreshShop() { if (!ensure()) return; save.shop = null; await commit("商店已清空(回遊戲會重新進貨)"); }
 async function jumpDay() { if (!ensure()) return; save.lastSettledDay = (save.lastSettledDay || 0) - 1; await commit("日界 -1(回遊戲會結算一天)"); }
 async function addCrest() { if (!ensure()) return; save.chatCharges = (save.chatCharges || 0) + 1; await commit("淫紋 +1"); }
-async function addSlot() { if (!ensure()) return; save.slots = (save.slots || 2) + 1; await commit("名額 +1"); }
+
+// ── 擴充等級 ──
+const EXP_AXES = {
+  exec: "執行中格數", reward: "完成金額", offering: "商店祭品", roster: "名冊名額",
+  kanban: "看板娘時長", crest: "淫紋機率", drop: "獻祭掉落率",
+};
+function renderExpRows() {
+  const el = document.getElementById("exp-rows");
+  const ex = (save && save.expansions) || {};
+  el.innerHTML = Object.keys(EXP_AXES).map(k => `
+    <div class="row" style="justify-content:space-between;padding:.3em 0;border-top:1px solid rgba(255,255,255,.06)">
+      <span class="mini">${EXP_AXES[k]} <b style="color:#ffd75f">Lv${ex[k] || 0}</b></span>
+      <span><button class="del" onclick="bumpExp('${k}',-1)">−</button>
+            <button class="cy" style="padding:.3em .7em;font-size:.8em" onclick="bumpExp('${k}',1)">+</button></span>
+    </div>`).join("");
+}
+async function bumpExp(k, d) {
+  if (!ensure()) return;
+  save.expansions ??= {};
+  save.expansions[k] = Math.max(0, (save.expansions[k] || 0) + d);
+  try {
+    await api("/api/save", "PUT", { base_version: ver, data: save });
+    await reloadSave();
+    status("exp-status", `✓ ${EXP_AXES[k]} → Lv${save.expansions[k]}`);
+  } catch (e) { status("exp-status", "失敗:" + e.message, true); }
+}
 
 // ── 腳本 ──
 document.querySelectorAll("#cat-tabs button").forEach(b => b.onclick = () => {
