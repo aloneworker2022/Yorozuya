@@ -98,6 +98,37 @@ const TRAIT_POOL = {
   extra: ["long_hair", "short_hair", "twin_tails", "ponytail"],
 };
 const SACRIFICE_POOL = ["迷路的冒險者", "落魄的商人", "自願的信徒", "酒館的醉漢", "負債的賭徒", "失戀的詩人", "貪婪的盜賊", "無名的流浪者", "可疑的煉金術士", "逃兵"];
+
+// 背景故事:魅魔不是魔界來的,是被從現實世界召喚來的女子——
+// 召喚當下由核心擲骰生成並寫入存檔,人設永遠一致,AI 只負責「演」它
+const JOB_POOL = [
+  ["女高中生", "每天搭電車通學、和同學混社團,考試前才熬夜抱佛腳"],
+  ["大學生", "住便宜小套房,靠打工和獎學金過活,報告永遠拖到最後一天"],
+  ["便利商店大夜班店員", "習慣了凌晨四點的城市,收銀速度是店裡最快的"],
+  ["護理師", "在醫院輪三班,腳很痠,但被病人道謝時會偷偷開心"],
+  ["咖啡店店員", "拉花有兩下子,記得每個熟客的口味"],
+  ["上班族 OL", "每天擠地鐵、開不完的會,錢包裡塞滿超商集點貼紙"],
+  ["接案插畫家", "日夜顛倒,交稿前會變成另一種生物"],
+  ["偶像練習生", "練舞到深夜,夢想站上大舞台,飲食控制得很辛苦"],
+  ["圖書館員", "喜歡書頁的味道,對吵鬧的人會用眼神殺人"],
+  ["電競隊青訓選手", "手速驚人、作息毀滅,講話夾雜遊戲梗"],
+  ["麵包店學徒", "凌晨三點起床揉麵,身上總有一股奶油香"],
+  ["家裡蹲網路寫手", "足不出戶,靠外送維生,深夜論戰從沒輸過"],
+];
+const ATTITUDE_POOL = [
+  "對突然被召喚到這裡感到莫名其妙,滿腦子想著原本的生活",
+  "嘴上抱怨自己被綁架了,心裡卻對這個奇怪的地方有一點點好奇",
+  "非常不情願,認為這是非法拘禁,三不五時揚言要告你",
+  "半信半疑,懷疑這是整人節目,或只是一場還沒醒的夢",
+  "意外地看得開,覺得反正原本的日子也過膩了",
+];
+function makeBackstory() {
+  const [job, life] = pick(JOB_POOL);
+  return {
+    job,
+    backstory: `她原本是現實世界的${job}——${life}。某天毫無預警地被召喚到魅魔萬事屋,成了所謂的「魅魔」。${pick(ATTITUDE_POOL)}。`,
+  };
+}
 const MERCHANT_LINES = ["今天的貨色不錯吧?", "都是自願的,大概。", "早買早享受,晚了就沒了。", "便宜貨也有便宜貨的用法。", "別問來歷。問了也不便宜。"];
 const TAUNTS = ["哼,金幣呢?空著手就想召喚魅魔?", "先去做點委託吧,窮鬼。", "祭品。沒有祭品,一切免談。", "你的錢包比夢境還要空。", "急什麼。書頁翻爛了她們也不會出來。"];
 const REACT = {
@@ -206,6 +237,8 @@ function initState(j, offline) {
   if (state.lastSettledDay == null) state.lastSettledDay = dayNum();
   // 名額制移轉:舊存檔已持有超過 2 隻照舊保留
   state.slots = Math.max(state.slots ?? 2, state.succubi.length);
+  // 背景故事移轉:舊魅魔補發人生
+  for (const s of state.succubi) if (!s.backstory) Object.assign(s, makeBackstory());
   showConnOverlay(false);
   document.getElementById("set-srv").textContent = offline ? "離線(使用本地快取)" : "OK";
   settleOffline();
@@ -519,6 +552,7 @@ function summon(n) {
     lastDateDay: today,
     datesToday: { day: today, count: 0 },
     ntr: null,
+    ...makeBackstory(),   // job + backstory:她被召喚前的現實人生
   };
   state.succubi.push(s);
   log(`獻祭 ${n} 人,召喚出【${s.rarity}】${s.name}`);
@@ -539,6 +573,7 @@ function showSummonOverlay(s, n) {
         <div class="portrait">${girlSVG("#241333", 7)}</div>
         <p>她還沒有形體……讓她今晚做個夢吧。</p>
         <p class="small">${s.personality.join("・")} / ${s.speech}</p>
+        <p class="small dim">她原本是……${esc(s.job || "?")}</p>
         <button id="summon-close">接受契約</button>
       </div>`;
     document.getElementById("summon-close").onclick = () => { ov.classList.add("hidden"); ov.innerHTML = ""; renderAll(); };
@@ -653,14 +688,60 @@ function enterChat(id, type = "chat", location = null) {
   chatSession = { type, location, locationDesc: spot ? spot[1] : null, playerMsgs: 0, turnCap, gotReply: false, busy: false };
   dateChooser = false;
   document.body.classList.add("chat-mode");
-  if (type === "date") {
-    s.history ??= [];
-    s.history.push({ role: "sys", content: `兩人抵達「${location}」,約會開始`, t: Date.now() });
-  }
+  // 場景邊界標記:LLM 上下文只取此標記之後(本場景),話題不跨場景
+  s.history ??= [];
+  s.history.push({
+    role: "sys",
+    content: type === "date" ? `兩人抵達「${location}」,約會開始` : "日常閒聊",
+    t: Date.now(),
+  });
+  // 重置輸入狀態(修復:上一場達回合上限鎖住的輸入框會殘留到下一場)
+  const inputEl = document.getElementById("chat-input");
+  if (inputEl) { inputEl.disabled = false; inputEl.placeholder = "說點什麼…(Enter 送出)"; inputEl.value = ""; }
+  const sendBtn = document.getElementById("chat-send");
+  if (sendBtn) sendBtn.disabled = false;
+  setChatWaiting(false);
   scheduleSave(); renderAll();
   renderChatLog(s);
   if (type === "date") vnShow("", `—— ${location}・約會開始 ——`, "sys");
-  document.getElementById("chat-input").focus();
+  inputEl?.focus();
+  sceneOpener(s);   // 她先開口:約會描述場景心情 / 聊天打招呼
+}
+
+// 送出後隱藏輸入列,等她回完才出現(避免連發沒人回)
+function setChatWaiting(b) {
+  const row = document.getElementById("chat-input-row");
+  if (row) row.style.visibility = b ? "hidden" : "";
+}
+
+// 進場自動開場白:不佔玩家回合、不寫入玩家訊息
+async function sceneOpener(s) {
+  if (!chatSession) return;
+  chatSession.busy = true;
+  setChatWaiting(true);
+  vnTyping(true);
+  const inst = chatSession.type === "date"
+    ? `(旁白:你們剛抵達「${chatSession.location}」——${chatSession.locationDesc || ""}。請用一兩句話開場:描述你眼前看到的場景和此刻的真實感受,依你的個性可以期待興奮、也可以嫌棄抱怨。不要延續之前任何話題。)`
+    : "(旁白:他來找你說話了。請依你的個性與你們的關係,自然地打招呼開場,可以主動拋出一個新話題或聊聊你原本生活的事。不要延續之前任何話題。)";
+  try {
+    const reply = await llmReply(s, acc => vnShow(s.name, acc, "ai"), inst);
+    s.history.push({ role: "assistant", content: reply, t: Date.now() });
+    s.history = s.history.slice(-200);
+    vnDone();
+    dirty = true;
+    saveNow();
+  } catch (e) {
+    if (e.name !== "AbortError") {
+      vnShow("", chatSession?.type === "date"
+        ? `—— ${chatSession.location}・約會開始 ——`
+        : `(她看著你,等你開口)`, "sys");
+    }
+  }
+  if (chatSession && !chatSession.ended) {
+    chatSession.busy = false;
+    setChatWaiting(false);
+    document.getElementById("chat-input")?.focus();
+  }
 }
 
 function exitChat() {
@@ -689,7 +770,7 @@ function buildCtx(s) {
   return {
     character: {
       name: s.name, rarity: s.rarity, personality: s.personality,
-      speech_style: s.speech, appearance_dna: s.dna, backstory: "",
+      speech_style: s.speech, appearance_dna: s.dna, backstory: s.backstory || "",
     },
     relationship: {
       stage: s.stage, affection: s.affection,
@@ -720,7 +801,7 @@ function vnShow(name, text, who = "ai") {
 function vnTyping(show) { $("#vn-typing").classList.toggle("hidden", !show); }
 function vnDone() { $("#vn-cursor").classList.remove("hidden"); vnTyping(false); }
 
-async function llmReply(s, onToken) {
+async function llmReply(s, onToken, extraUser = null) {
   // 無模型設定 → 罐頭模式(逐字打字機演出)
   if (!state.settings.model) {
     await new Promise(r => setTimeout(r, 600));
@@ -742,14 +823,23 @@ async function llmReply(s, onToken) {
     body: JSON.stringify({
       endpoint: state.settings.ollamaUrl,
       model: state.settings.model,
-      // 場景標記(sys)不進訊息列——部分模型模板不接受中段 system 角色。
-      // 改為取最新一筆併入開頭 system prompt(見 buildCtx 的 scene.transition)。
-      messages: [
-        { role: "system", content: buildSystemPrompt(buildCtx(s)) },
-        ...(s.history || []).slice(-40)
-          .filter(m => m.role === "user" || m.role === "assistant")
-          .map(m => ({ role: m.role, content: m.content })),
-      ],
+      // 上下文只取「本場景」:最後一個場景標記(sys)之後的對話——
+      // 感情延續靠 system prompt 的數值與階段,話題不跨場景。
+      messages: (() => {
+        const hist = s.history || [];
+        let cut = 0;
+        for (let i = hist.length - 1; i >= 0; i--) {
+          if (hist[i].role === "sys") { cut = i + 1; break; }
+        }
+        const msgs = [
+          { role: "system", content: buildSystemPrompt(buildCtx(s)) },
+          ...hist.slice(cut).slice(-40)
+            .filter(m => m.role === "user" || m.role === "assistant")
+            .map(m => ({ role: m.role, content: m.content })),
+        ];
+        if (extraUser) msgs.push({ role: "user", content: extraUser });
+        return msgs;
+      })(),
       options: { temperature: 0.9 },
     }),
     signal: chatAbort.signal,
@@ -793,11 +883,12 @@ async function sendChatMsg() {
   input.value = "";
   s.history ??= [];
   s.history.push({ role: "user", content: text, t: Date.now() });
-  // 先亮出玩家台詞,名牌切「她・輸入中」
+  // 先亮出玩家台詞,名牌切「她・輸入中」;輸入列先收起,她回完才出現
   vnShow(state.settings.player || "你", text, "user");
   vnTyping(true);
   $("#vn-name").textContent = (state.settings.player || "你") + " → " + s.name;
   chatSession.busy = true;
+  setChatWaiting(true);
   document.getElementById("chat-send").disabled = true;
   try {
     // 失敗自動重試一次(手機切回前景時網路常需要一秒回魂)
@@ -839,6 +930,7 @@ async function sendChatMsg() {
   }
   if (chatSession && !chatSession.ended) {
     chatSession.busy = false;
+    setChatWaiting(false);
     const btn = document.getElementById("chat-send");
     if (btn) btn.disabled = false;
     input.focus();
@@ -1548,7 +1640,8 @@ function renderDetail(s, root) {
         <b>${esc(s.name)}</b> <span class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</span>
         ・${s.ntr ? "被奪走" : stageLabel(s.stage)}
       </div>
-      <div class="traits">${s.personality.map(p => `<span>${p}</span>`).join("")}<span>${s.speech}</span>${s.dna.traits.map(t => `<span>${t}</span>`).join("")}</div>
+      <div class="traits">${s.job ? `<span style="color:var(--cyan)">前${esc(s.job)}</span>` : ""}${s.personality.map(p => `<span>${p}</span>`).join("")}<span>${s.speech}</span>${s.dna.traits.map(t => `<span>${t}</span>`).join("")}</div>
+      ${s.backstory ? `<div class="aff-line dim small" style="max-width:32em;margin:0 auto">${esc(s.backstory)}</div>` : ""}
       <div class="aff-line">情感 <b>${s.affection}</b>${ns && !s.ntr ? ` <span class="dim small">/ ${ns[2]} 升【${ns[1]}】</span>` : ""}</div>
       ${needLine}
       ${!s.portraitReady ? `<div class="aff-line dim small">尚未成形——今晚讓她織夢,明早見到她的臉(M3)</div>` : ""}
