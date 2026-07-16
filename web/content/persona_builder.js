@@ -90,3 +90,38 @@ export function buildSystemPrompt(ctx) {
 
   return lines.join("\n");
 }
+
+/** 觀戰模式:生成「其他召喚師 × 這名魅魔」的一段互動(玩家在旁觀看)。
+ *  廠商替換點:可整包改寫。核心不檢視回傳值。 */
+export function buildWatchPrompt(ctx) {
+  const c = ctx.character;
+  const su = ctx.summoner || {};
+  const lines = [];
+
+  if (ctx.world) {
+    const lore = ctx.world.split("\n")
+      .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---").join("\n").trim();
+    if (lore) lines.push("【世界設定】", lore, "");
+  }
+
+  lines.push(
+    "【觀戰場景】你要同時扮演兩個角色,生成他們的一來一往:",
+    `● 男方「${su.name}」——另一位召喚師,把這名魅魔也召喚了過去。人設:${su.persona || "一個糾纏她的男人"}`,
+    `● 女方「${c.name}」——${c.personality?.join("、") || ""}。${c.backstory || ""}`,
+    ctx.scene?.type === "date"
+      ? `情境:男方硬拉著她在「${ctx.scene.location || "某處"}」約會。`
+      : "情境:她被召喚到男方身邊陪伴。",
+    "",
+    "演出要求:",
+    "- 男方依其人設主動進逼、言語上占她便宜(依猥瑣程度輕重);她表現出不情願、抗拒、嫌惡或無奈。",
+    "- 但依世界設定,她身為被召喚的魅魔,情感仍會不受控地微妙鬆動——排斥歸排斥,心底某處還是起了漣漪。",
+    ctx.content_rating === "nsfw"
+      ? "- 內容分級 NSFW:可露骨,依男方猥瑣程度描寫肢體與言語騷擾(具體尺度依你被賦予的內容)。"
+      : "- 內容分級全年齡:停在言語調戲與曖昧,不寫露骨性描寫。",
+    "",
+    "輸出格式(嚴格遵守,只輸出這兩行,不要旁白):",
+    `他:（${su.name}說的一句話）`,
+    `她:（${c.name}的一句回應）`,
+  );
+  return lines.join("\n");
+}

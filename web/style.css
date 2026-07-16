@@ -558,6 +558,14 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 }
 #chat-send:disabled { opacity: .35; }
 
+/* 觀戰控制列 */
+#watch-controls { display: flex; gap: .5em; background: var(--panel); padding: .8em; margin-top: .5em; border-radius: 8px; flex-shrink: 0; }
+#watch-next { flex: 1; background: rgba(255, 95, 122, .2); border: none; border-radius: 6px; color: var(--red); font: inherit; padding: .7em; cursor: pointer; }
+#watch-next:disabled { opacity: .4; }
+#watch-end { background: color-mix(in srgb, var(--text) 8%, transparent); border: none; border-radius: 6px; color: var(--dim); font: inherit; padding: .7em 1em; cursor: pointer; }
+#vn-text .w-him { color: var(--dim); }
+#vn-text .w-her { color: var(--pink); }
+
 /* ===== 召喚 ===== */
 #summon-counts { display: flex; gap: .4em; justify-content: center; margin-top: .6em; }
 #summon-counts button {

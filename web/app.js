@@ -3,7 +3,7 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
-import { buildSystemPrompt } from "./content/persona_builder.js";
+import { buildSystemPrompt, buildWatchPrompt } from "./content/persona_builder.js";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -722,7 +722,7 @@ let chatWith = null;      // 對話中的魅魔 id
 let chatSession = null;   // {type:'chat'|'date', location, playerMsgs, gotReply, busy}
 let chatAbort = null;
 
-function enterChat(id, type = "chat", location = null) {
+function enterChat(id, type = "chat", location = null, skipEncounter = false) {
   const s = state.succubi.find(x => x.id === id);
   if (!s) return;
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
@@ -733,6 +733,8 @@ function enterChat(id, type = "chat", location = null) {
     if (state.gold < DATE_COST) { toast("金幣不夠", "bad"); return; }
     if (s.datesToday?.day !== today) s.datesToday = { day: today, count: 0 };
     if (s.datesToday.count >= DATE_LIMIT) { toast("今天約會夠多了,她需要休息", "bad"); return; }
+    // 被纏上時 1/5 撞見對方 → 約會失敗變觀戰(不扣費、不算今日約會);搶回後直接成立
+    if (!skipEncounter && s.summoner && Math.random() < ENCOUNTER_CHANCE) { enterWatch(s, "date", location); return; }
     state.gold -= DATE_COST;
     s.datesToday.count++;
     s.lastDateDay = today;
@@ -827,6 +829,141 @@ function exitChat() {
   scheduleSave(); renderAll();
 }
 
+// ===== 觀戰模式:看她與其他召喚師的互動,伺機搶回 =====
+
+let watchWith = null;     // 觀戰中的魅魔 id
+let watchSession = null;  // {type:'kanban'|'date', location, turnCap, presses, busy, ended}
+
+const SUMMONER_STAGES = [["friend", 30], ["girlfriend", 90], ["wife", 180]];
+
+function enterWatch(s, type, location = null) {
+  watchWith = s.id;
+  const releaseChance = type === "date" ? 1 / 10 : 1 / 20;
+  watchSession = { type, location, turnCap: randInt(1, 4), presses: 0, releaseChance, busy: false, ended: false };
+  document.body.classList.add("chat-mode");
+  const su = summonerById(s.summoner?.id);
+  toast(`${su ? su.name : "另一位召喚師"} 搶先一步……`, "bad");
+  scheduleSave(); renderAll();
+  const opener = type === "date"
+    ? `你想約 ${s.name},卻撞見她正被 ${su?.name || "另一個男人"} 拉著約會……`
+    : `你召喚 ${s.name},她卻出現在 ${su?.name || "另一個男人"} 身邊……`;
+  vnShow("", `—— ${opener} ——`, "sys");
+  watchNext();   // 自動放第一句
+}
+
+async function watchNext() {
+  const s = state.succubi.find(x => x.id === watchWith);
+  if (!s || !watchSession || watchSession.busy || watchSession.ended) return;
+  const su = summonerById(s.summoner?.id);
+  if (!su) { exitWatch(); return; }
+  watchSession.busy = true;
+  setWatchBtns(false);
+  vnTyping(true);
+
+  const ctx = {
+    world: WORLD_LORE,
+    content_rating: state.settings.rating || "sfw",
+    character: { name: s.name, personality: s.personality, backstory: s.backstory },
+    summoner: su,
+    scene: { type: watchSession.type, location: watchSession.location },
+  };
+  const msgs = [
+    { role: "system", content: buildWatchPrompt(ctx) },
+    { role: "user", content: "生成他們接下來的一來一往,嚴格照「他:…／她:…」兩行輸出。" },
+  ];
+  try {
+    const raw = await llmJobRun(msgs, acc => vnShowWatch(su, s, acc), "他:哼,別扭什麼,乖一點嘛。\n她:……別碰我。");
+    vnShowWatch(su, s, raw, true);
+    vnDone();
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    vnShow("", "(畫面一陣模糊……再按一次下一句)", "sys");
+  }
+  watchSession.busy = false;
+  watchSession.presses++;
+
+  // 約會觀戰:對方好感 +0~2,可能養成妻子(永久失去)
+  if (watchSession.type === "date") {
+    const d = randInt(0, 2);
+    s.summoner.affection += d;
+    let ns = SUMMONER_STAGES.find(([, th]) => s.summoner.affection >= th && th === 180);
+    if (s.summoner.affection >= 180) {
+      log(`${s.name} 被 ${su.name} 娶走了,永遠離開了萬事屋。`);
+      toast(`${s.name} 成了 ${su.name} 的妻子,永遠消失了……`, "bad");
+      state.succubi = state.succubi.filter(x => x.id !== s.id);
+      if (state.kanbanId === s.id) state.kanbanId = null;
+      exitWatch(true);
+      return;
+    }
+  }
+
+  // 搶回判定
+  if (Math.random() < watchSession.releaseChance) {
+    rescueFromWatch(s);
+    return;
+  }
+  // 觀戰次數用盡:沒搶回,她繼續留在對方身邊
+  if (watchSession.presses >= watchSession.turnCap) {
+    watchSession.ended = true;
+    setWatchBtns(false);
+    vnShow("", "(你只能眼睜睜看著……這次沒能把她拉回來)", "sys");
+    setTimeout(() => { if (watchSession?.ended) exitWatch(); }, 1800);
+    return;
+  }
+  setWatchBtns(true);
+  scheduleSave();
+}
+
+// 搶回成功:結束觀戰,原本的動作(召喚看板娘/約會)接著成立
+function rescueFromWatch(s) {
+  const type = watchSession.type, location = watchSession.location;
+  watchSession.ended = true;
+  chatAbort?.abort();
+  vnShow("", `你排開那個男人,把 ${s.name} 拉了回來!`, "sys");
+  toast(`成功搶回 ${s.name}!`, "good");
+  setTimeout(() => {
+    watchWith = null; watchSession = null;
+    document.body.classList.remove("chat-mode");
+    if (type === "kanban") summonKanban(s.id, true);        // 召喚看板娘成立(不再擲撞見)
+    else enterChat(s.id, "date", location, true);           // 約會成立(不再擲撞見)
+  }, 1200);
+  scheduleSave();
+}
+
+function exitWatch(gone = false) {
+  chatAbort?.abort();
+  watchWith = null; watchSession = null;
+  document.body.classList.remove("chat-mode");
+  if (gone) detailId = null;
+  scheduleSave(); renderAll();
+}
+
+// 觀戰 VN:解析「他:…／她:…」,分兩行顯示;解析失敗則整段當旁白
+function vnShowWatch(su, s, raw, done = false) {
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  let him = "", her = "";
+  for (const l of lines) {
+    const m = l.replace(/^[「『]/, "").match(/^(.+?)[::](.*)$/);
+    if (!m) { if (!him) him = l; continue; }
+    const who = m[1], txt = m[2].trim();
+    if (who.includes("她") || who.includes(s.name)) her = txt;
+    else him = txt;
+  }
+  const box = $("#vn-text");
+  if (her) {
+    box.innerHTML = `<span class="w-him">${esc(su.name)}:${esc(him)}</span><br><span class="w-her">${esc(s.name)}:${esc(her)}</span>`;
+  } else {
+    box.textContent = raw;
+  }
+  $("#vn-name").textContent = `${su.emoji || "👤"} ${su.name} ／ ${s.name}`;
+  $("#vn-name").style.color = "var(--red)";
+}
+
+function setWatchBtns(enabled) {
+  const nx = document.getElementById("watch-next");
+  if (nx) nx.disabled = !enabled;
+}
+
 function buildCtx(s) {
   const slot = timeSlot();
   const sch = s.schedule || {};
@@ -868,58 +1005,32 @@ function vnShow(name, text, who = "ai") {
 function vnTyping(show) { $("#vn-typing").classList.toggle("hidden", !show); }
 function vnDone() { $("#vn-cursor").classList.remove("hidden"); vnTyping(false); }
 
-async function llmReply(s, onToken, extraUser = null) {
-  // 無模型設定 → 罐頭模式(逐字打字機演出)
-  if (!state.settings.model) {
+// 通用 LLM job 執行:RP5 代跑 Ollama、手機輪詢(切 app/瞬斷不中斷)
+async function llmJobRun(messages, onToken, cannedLine) {
+  if (!state.settings.model) {                     // 無模型 → 罐頭逐字
     await new Promise(r => setTimeout(r, 600));
-    const pool = chatSession?.type === "date" ? DATE_LINES : CHAT_LINES;
-    const line = pick(pool[s.stage] || pool.stranger);
+    const line = cannedLine || "……";
     for (let i = 1; i <= line.length; i++) {
-      if (!chatSession) { const e = new Error("aborted"); e.name = "AbortError"; throw e; }
+      if (chatAbort?.signal.aborted) { const e = new Error("aborted"); e.name = "AbortError"; throw e; }
       onToken(line.slice(0, i));
-      await new Promise(r => setTimeout(r, 35));
+      await new Promise(r => setTimeout(r, 32));
     }
     return line;
   }
-  // Job 制:RP5 代跑 Ollama 收完整回覆,手機只輪詢——
-  // 切去別的 app、網路瞬斷都不會中斷生成,回前景自動補上。
   chatAbort = new AbortController();
   const startRes = await fetch("/api/llm/chat_job", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      endpoint: state.settings.ollamaUrl,
-      model: state.settings.model,
-      // 上下文只取「本場景」:最後一個場景標記(sys)之後的對話——
-      // 感情延續靠 system prompt 的數值與階段,話題不跨場景。
-      messages: (() => {
-        const hist = s.history || [];
-        let cut = 0;
-        for (let i = hist.length - 1; i >= 0; i--) {
-          if (hist[i].role === "sys") { cut = i + 1; break; }
-        }
-        const msgs = [
-          { role: "system", content: buildSystemPrompt(buildCtx(s)) },
-          ...hist.slice(cut).slice(-40)
-            .filter(m => m.role === "user" || m.role === "assistant")
-            .map(m => ({ role: m.role, content: m.content })),
-        ];
-        if (extraUser) msgs.push({ role: "user", content: extraUser });
-        return msgs;
-      })(),
-      options: { temperature: 0.9 },
-    }),
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint: state.settings.ollamaUrl, model: state.settings.model, messages, options: { temperature: 0.9 } }),
     signal: chatAbort.signal,
   });
   if (!startRes.ok) throw new Error("連不上遊戲伺服器");
   const { job_id } = await startRes.json();
-
   const t0 = Date.now();
   let acc = "", fails = 0;
   while (true) {
     if (chatAbort.signal.aborted) { const e = new Error("aborted"); e.name = "AbortError"; throw e; }
     await new Promise(r => setTimeout(r, 400));
-    if (document.hidden) continue;                 // 背景時不打,回前景再拉
+    if (document.hidden) continue;
     if (Date.now() - t0 > 300000) throw new Error("等太久了(逾時)");
     let j;
     try {
@@ -931,12 +1042,26 @@ async function llmReply(s, onToken, extraUser = null) {
     } catch (e) {
       if (e.message === "expired") throw new Error("回覆已過期");
       if (++fails > 40) throw new Error("網路中斷太久");
-      continue;                                    // 輪詢失敗照樣重試,job 在伺服器上繼續跑
+      continue;
     }
     if (j.error) throw new Error(j.error);
     if (j.text && j.text !== acc) { acc = j.text; onToken(acc); }
     if (j.done) { if (!acc.trim()) throw new Error("模型回了空訊息"); return acc; }
   }
+}
+
+async function llmReply(s, onToken, extraUser = null) {
+  // 上下文只取「本場景」:最後一個場景標記(sys)之後的對話。
+  const hist = s.history || [];
+  let cut = 0;
+  for (let i = hist.length - 1; i >= 0; i--) if (hist[i].role === "sys") { cut = i + 1; break; }
+  const msgs = [
+    { role: "system", content: buildSystemPrompt(buildCtx(s)) },
+    ...hist.slice(cut).slice(-40).filter(m => m.role === "user" || m.role === "assistant").map(m => ({ role: m.role, content: m.content })),
+  ];
+  if (extraUser) msgs.push({ role: "user", content: extraUser });
+  const canned = pick((chatSession?.type === "date" ? DATE_LINES : CHAT_LINES)[s.stage] || CHAT_LINES.stranger);
+  return llmJobRun(msgs, onToken, canned);
 }
 
 async function sendChatMsg() {
@@ -1102,10 +1227,12 @@ function restingSuccubus() {
   return alive[alive.length - 1] || null;
 }
 
-function summonKanban(id) {
+function summonKanban(id, skipEncounter = false) {
   const s = state.succubi.find(x => x.id === id);
   if (!s || s.ntr) return;
   if (state.gold < KANBAN_COST) { toast(`召喚看板娘需 ${KANBAN_COST} 金`, "bad"); return; }
+  // 被纏上時 1/5 撞見對方 → 觀戰(她沒來,不扣費);搶回後 skipEncounter 直接成立
+  if (!skipEncounter && s.summoner && Math.random() < ENCOUNTER_CHANCE) { enterWatch(s, "kanban"); return; }
   state.gold -= KANBAN_COST;
   state.kanbanId = id;
   state.lastKanbanId = id;
@@ -1693,9 +1820,28 @@ function renderPlayerAttrs() {
 // 聊天插播層:蓋在所有分頁之上,只有「結束對話」能退出
 function renderChatView() {
   const chatV = $("#chat-view");
+  const inputRow = $("#chat-input-row");
+  const watchCtl = $("#watch-controls");
+
+  // 觀戰模式優先
+  if (watchWith) {
+    const s = state.succubi.find(x => x.id === watchWith);
+    if (!s) { watchWith = null; watchSession = null; document.body.classList.remove("chat-mode"); }
+    else {
+      chatV.classList.remove("hidden");
+      inputRow?.classList.add("hidden");
+      watchCtl?.classList.remove("hidden");
+      const su = summonerById(s.summoner?.id);
+      $("#chat-title").textContent = `觀戰:${s.name} 與 ${su?.name || "他"}`;
+      return;
+    }
+  }
+  watchCtl?.classList.add("hidden");
+  inputRow?.classList.remove("hidden");
+
   if (chatWith) {
     const cs = state.succubi.find(x => x.id === chatWith);
-    if (!cs) { // 對話對象消失(NTR 過期等)
+    if (!cs) {
       chatWith = null; chatSession = null;
       document.body.classList.remove("chat-mode");
     } else {
@@ -1985,8 +2131,10 @@ on("btn-bg-clear", "click", async () => {
 });
 
 // 聊天室
-on("chat-back", "click", () => exitChat());
+on("chat-back", "click", () => { if (watchWith) exitWatch(); else exitChat(); });
 on("chat-send", "click", () => sendChatMsg());
+on("watch-next", "click", () => watchNext());
+on("watch-end", "click", () => exitWatch());
 on("chat-input", "keydown", e => { if (e.key === "Enter") sendChatMsg(); });
 on("chat-log-btn", "click", () => {
   const bl = $("#chat-backlog");
@@ -2090,6 +2238,7 @@ window.DBG = {
   dayNum: () => dayNum(),
   state: () => state,
   isAsleep: () => isAsleep(),
+  watch: (id, type = "kanban", loc = "海邊") => { const s = state.succubi.find(x => x.id === id); if (s) enterWatch(s, type, loc); },
 };
 
 // ===== 啟動 =====
