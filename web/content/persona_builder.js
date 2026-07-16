@@ -125,3 +125,30 @@ export function buildWatchPrompt(ctx) {
   );
   return lines.join("\n");
 }
+
+/** 獻祭儀式旁白。廠商替換點:手法描述來自玩家在 Testword 撰寫的腳本。 */
+export function buildSacrificePrompt(ctx) {
+  const c = ctx.character;
+  const lines = [];
+  if (ctx.world) {
+    const lore = ctx.world.split("\n")
+      .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---").join("\n").trim();
+    if (lore) lines.push("【世界設定】", lore, "");
+  }
+  lines.push(
+    `你是敘述者,描寫一場將魅魔「${c.name}」獻祭給地獄惡魔的儀式。`,
+    `她的來歷:${c.backstory || "一名被召喚而來的女子"}。個性:${c.personality?.join("、") || ""}。`,
+  );
+  if (ctx.method) {
+    lines.push(`本次獻祭手法:「${ctx.method}」。手法細節(依此描寫):${ctx.method_desc}`);
+  } else {
+    lines.push("(尚無指定手法——請以一場陰森的魔法陣獻祭儀式概括描寫。)");
+  }
+  lines.push(
+    ctx.content_rating === "nsfw"
+      ? "內容分級 NSFW:可露骨描寫她的掙扎、身體與痛苦,依上方手法細節。"
+      : "內容分級全年齡:以陰森氛圍與象徵手法帶過,不寫血腥細節。",
+    "以第三人稱旁白,3~5 句,收在她化為獻祭之光、消散的瞬間。只輸出旁白。",
+  );
+  return lines.join("\n");
+}
