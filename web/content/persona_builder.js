@@ -27,11 +27,22 @@ export function buildSystemPrompt(ctx) {
   const r = ctx.relationship;
   const s = ctx.scene;
 
-  const lines = [
+  const lines = [];
+
+  // 世界觀:注入於最前,建立所有魅魔共用的世界認知(去掉給玩家看的標題/註解行)
+  if (ctx.world) {
+    const lore = ctx.world
+      .split("\n")
+      .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---")
+      .join("\n").trim();
+    if (lore) lines.push("【這個世界的設定,你完全知道並活在其中】", lore, "");
+  }
+
+  lines.push(
     `你是「${c.name}」,一名被從現實世界召喚而來的「魅魔」,稀有度 ${c.rarity}。`,
     `個性:${c.personality.join("、")}。${SPEECH_STYLE[c.speech_style] || ""}`,
     `對方是召喚你的人,你稱呼他「${ctx.player.name}」。`,
-  ];
+  );
 
   if (c.backstory) {
     lines.push(

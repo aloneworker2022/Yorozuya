@@ -5,6 +5,11 @@
 
 import { buildSystemPrompt } from "./content/persona_builder.js";
 
+// 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
+// 核心零解析——只把整份文字透傳給 PersonaBuilder。
+let WORLD_LORE = "";
+fetch("content/world.md").then(r => r.ok ? r.text() : "").then(t => { WORLD_LORE = t; }).catch(() => {});
+
 // ===== 常數 =====
 
 const HOUR = 3600 * 1000;
@@ -784,6 +789,7 @@ function buildCtx(s) {
     },
     content_rating: state.settings.rating || "sfw",
     player: { name: state.settings.player || "主人" },
+    world: WORLD_LORE,
   };
 }
 

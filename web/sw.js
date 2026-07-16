@@ -1,5 +1,5 @@
 // 網路優先、離線退回快取;/api/ 不快取(存檔永遠即時)
-const CACHE = "yorozuya-v2";
+const CACHE = "yorozuya-v3";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", e => e.waitUntil((async () => {
