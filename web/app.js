@@ -855,28 +855,39 @@ let chatWith = null;      // 對話中的魅魔 id
 let chatSession = null;   // {type:'chat'|'date', location, playerMsgs, gotReply, busy}
 let chatAbort = null;
 
-function enterChat(id, type = "chat", location = null, skipEncounter = false) {
+function enterChat(id, type = "chat", location = null, prepaid = false) {
   const s = state.succubi.find(x => x.id === id);
   if (!s) return;
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
   if (s.ntr) { toast("她不在你身邊……", "bad"); return; }
   const today = dayNum();
   if (type === "date") {
-    if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
-    if (state.gold < DATE_COST) { toast("金幣不夠", "bad"); return; }
+    if (!prepaid) {
+      if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
+      if (state.gold < DATE_COST) { toast("金幣不夠", "bad"); return; }
+      if (s.datesToday?.day !== today) s.datesToday = { day: today, count: 0 };
+      if (s.datesToday.count >= DATE_LIMIT) { toast("今天約會夠多了,她需要休息", "bad"); return; }
+      state.gold -= DATE_COST;
+      // 她被另一位召喚師召喚走了:錢照付,但看到的是他們的互動(觀戰);釋放成功會接回這場約會
+      if (s.summoner?.taken) {
+        log(`約 ${s.name} 出門 -${DATE_COST} 金——她卻被召喚到別人身邊`);
+        enterWatch(s, "date", location);
+        return;
+      }
+      log(`與 ${s.name} 去${location}約會 -${DATE_COST} 金`);
+    }
     if (s.datesToday?.day !== today) s.datesToday = { day: today, count: 0 };
-    if (s.datesToday.count >= DATE_LIMIT) { toast("今天約會夠多了,她需要休息", "bad"); return; }
-    // 被纏上時 1/5 撞見對方 → 約會失敗變觀戰(不扣費、不算今日約會);搶回後直接成立
-    if (!skipEncounter && rollEncounter(s)) { enterWatch(s, "date", location); return; }
-    state.gold -= DATE_COST;
     s.datesToday.count++;
     s.lastDateDay = today;
     s.lastChatDay = today;
-    log(`與 ${s.name} 去${location}約會 -${DATE_COST} 金`);
   } else {
     // 聊天不花金幣,吃 1 層淫紋(委託操作隨機觸發)
-    if ((state.chatCharges || 0) < 1) { toast("需要淫紋——去做委託,她就會想找你", "bad"); return; }
-    state.chatCharges--;
+    if (!prepaid) {
+      if ((state.chatCharges || 0) < 1) { toast("需要淫紋——去做委託,她就會想找你", "bad"); return; }
+      state.chatCharges--;
+      // 淫紋打開,她卻在別人那邊:這一層淫紋看到的是實況(觀戰)
+      if (s.summoner?.taken) { enterWatch(s, "chat"); return; }
+    }
     s.lastChatDay = today;
   }
   chatWith = id;
@@ -962,10 +973,10 @@ function exitChat() {
   scheduleSave(); renderAll();
 }
 
-// ===== 觀戰模式:看她與其他召喚師的互動,伺機搶回 =====
+// ===== 觀戰模式:她被另一位召喚師召喚走(持續狀態),聊天/約會變成看他們互動,伺機釋放 =====
 
 let watchWith = null;     // 觀戰中的魅魔 id
-let watchSession = null;  // {type:'kanban'|'date', location, turnCap, presses, busy, ended}
+let watchSession = null;  // {playerType:'chat'|'date', playerLocation, sceneType:'kanban'|'date', location, turnCap, presses, releaseChance, busy, ended}
 let sacrificeWith = null; // 獻祭儀式中的魅魔 id
 let sacResult = "";       // 獻祭結果文字
 let sacSummon = null;     // 召喚獻祭 session {count}
@@ -984,17 +995,24 @@ function exitSacrifice() {
 
 const SUMMONER_STAGES = [["friend", 30], ["girlfriend", 90], ["wife", 180]];
 
-function enterWatch(s, type, location = null) {
+// playerType = 玩家做的事(chat=淫紋聊天 / date=約會),決定釋放機率;
+// 她那邊的場景(被當看板娘陪伴 / 被拉著約會)來自 s.summoner.taken。
+function enterWatch(s, playerType, playerLocation = null) {
   watchWith = s.id;
-  const releaseChance = type === "date" ? 1 / 10 : 1 / 20;
-  watchSession = { type, location, turnCap: randInt(1, 4), presses: 0, releaseChance, busy: false, ended: false };
+  const taken = s.summoner?.taken || {};
+  const releaseChance = playerType === "date" ? 1 / 10 : 1 / 20;
+  watchSession = {
+    playerType, playerLocation,
+    sceneType: taken.type || "kanban", location: taken.location || null,
+    turnCap: randInt(1, 4), presses: 0, releaseChance, busy: false, ended: false,
+  };
   document.body.classList.add("chat-mode");
   const su = summonerById(s.summoner?.id);
-  toast(`${su ? su.name : "另一位召喚師"} 搶先一步……`, "bad");
+  toast(`${s.name} 被 ${su ? su.name : "另一位召喚師"} 召喚走了……`, "bad");
   scheduleSave(); renderAll();
-  const opener = type === "date"
-    ? `你想約 ${s.name},卻撞見她正被 ${su?.name || "另一個男人"} 拉著約會……`
-    : `你召喚 ${s.name},她卻出現在 ${su?.name || "另一個男人"} 身邊……`;
+  const opener = watchSession.sceneType === "date"
+    ? `${s.name} 不在你身邊——她正被 ${su?.name || "另一個男人"} 拉著在「${watchSession.location || "某處"}」約會……`
+    : `${s.name} 不在你身邊——她被召喚到 ${su?.name || "另一個男人"} 那裡……`;
   vnShow("", `—— ${opener} ——`, "sys");
   watchNext();   // 自動放第一句
 }
@@ -1013,7 +1031,7 @@ async function watchNext() {
     content_rating: state.settings.rating || "sfw",
     character: { name: s.name, personality: s.personality, backstory: s.backstory },
     summoner: su,
-    scene: { type: watchSession.type, location: watchSession.location },
+    scene: { type: watchSession.sceneType, location: watchSession.location },
   };
   const msgs = [
     { role: "system", content: buildWatchPrompt(ctx) },
@@ -1030,11 +1048,10 @@ async function watchNext() {
   watchSession.busy = false;
   watchSession.presses++;
 
-  // 約會觀戰:對方好感 +0~2,可能養成妻子(永久失去)
-  if (watchSession.type === "date") {
+  // 她正被對方拉著約會:對方好感 +0~2,可能養成妻子(永久失去)
+  if (watchSession.sceneType === "date") {
     const d = randInt(0, 2);
     s.summoner.affection += d;
-    let ns = SUMMONER_STAGES.find(([, th]) => s.summoner.affection >= th && th === 180);
     if (s.summoner.affection >= 180) {
       log(`${s.name} 被 ${su.name} 娶走了,永遠離開了萬事屋。`);
       toast(`${s.name} 成了 ${su.name} 的妻子,永遠消失了……`, "bad");
@@ -1045,16 +1062,16 @@ async function watchNext() {
     }
   }
 
-  // 搶回判定
+  // 釋放判定:聊天 1/20、約會 1/10
   if (Math.random() < watchSession.releaseChance) {
     rescueFromWatch(s);
     return;
   }
-  // 觀戰次數用盡:沒搶回,她繼續留在對方身邊
+  // 觀戰次數用盡:沒能釋放,她繼續被召喚在對方那邊(下次聊天/約會可再試)
   if (watchSession.presses >= watchSession.turnCap) {
     watchSession.ended = true;
     setWatchBtns(false);
-    vnShow("", "(你只能眼睜睜看著……這次沒能把她拉回來)", "sys");
+    vnShow("", "(你只能眼睜睜看著……她還被召喚在對方那邊)", "sys");
     setTimeout(() => { if (watchSession?.ended) exitWatch(); }, 1800);
     return;
   }
@@ -1062,18 +1079,18 @@ async function watchNext() {
   scheduleSave();
 }
 
-// 搶回成功:結束觀戰,原本的動作(召喚看板娘/約會)接著成立
+// 釋放成功:她脫離「被召喚」狀態回到你身邊,原本的動作(聊天/約會)接著開始(費用已在進觀戰時付過)
 function rescueFromWatch(s) {
-  const type = watchSession.type, location = watchSession.location;
+  const { playerType, playerLocation } = watchSession;
   watchSession.ended = true;
   chatAbort?.abort();
-  vnShow("", `你排開那個男人,把 ${s.name} 拉了回來!`, "sys");
-  toast(`成功搶回 ${s.name}!`, "good");
+  if (s.summoner) s.summoner.taken = null;
+  vnShow("", `${s.name} 掙脫了召喚,回到你身邊!`, "sys");
+  toast(`${s.name} 回來了!`, "good");
   setTimeout(() => {
     watchWith = null; watchSession = null;
     document.body.classList.remove("chat-mode");
-    if (type === "kanban") summonKanban(s.id, true);        // 召喚看板娘成立(不再擲撞見)
-    else enterChat(s.id, "date", location, true);           // 約會成立(不再擲撞見)
+    enterChat(s.id, playerType, playerLocation, true);
   }, 1200);
   scheduleSave();
 }
@@ -1334,17 +1351,12 @@ function kanbanRemainMs() {
 }
 const KANBAN_COST = 1;
 const DRAW_CHANCE = 1 / 20;   // 每個間隔抽到召喚師的機率(未纏上時)
-const ENCOUNTER_CHANCE = 1 / 5; // 有召喚師後,招看板娘/約會時「她正在對方身邊」的機率
+const TAKEN_CHANCE = 1 / 5;   // 已被纏上時,每個間隔被召喚師「召喚走」的機率(持續狀態)
 
-// 撞見判定:testword 可設 state.forceEncounter=true,下一次判定必中(一次性,測試用)
-function rollEncounter(s) {
-  if (!s.summoner) return false;
-  if (state.forceEncounter) { state.forceEncounter = false; return true; }
-  return Math.random() < ENCOUNTER_CHANCE;
-}
-
-// 抽召喚師:每隻魅魔每 drawIvlH 小時擲一次;擋抽三條件——
-// ①已被纏上 ②正是我們的看板娘 ③正被我們約會(對話中)。回傳是否有變化。
+// 召喚師擲骰:每隻魅魔每 drawIvlH 小時擲一次。
+// 未纏上 → 1/20 被召喚師纏上(擋:NTR、正是看板娘、正與玩家對話)。
+// 已纏上且未被召喚走 → 1/5 被召喚過去(持續狀態,不通知玩家——聊天/約會時才會發現;
+//   擋:NTR、正與玩家對話/觀戰中)。釋放後照樣繼續擲,循環不止。回傳是否有變化。
 function checkSummonerDraws() {
   if (!SUMMONERS.length) return false;
   const now = Date.now();
@@ -1355,13 +1367,19 @@ function checkSummonerDraws() {
     let rolls = 0;
     while (now >= s.nextDraw && rolls < 30) {
       rolls++;
-      const blocked = s.summoner || s.ntr || s.id === kanId ||
-        (chatWith === s.id && chatSession);
-      if (!blocked && Math.random() < DRAW_CHANCE) {
-        const su = pick(SUMMONERS);
-        s.summoner = { id: su.id, affection: 0, sinceDay: dayNum() };
-        log(`${su.name} 纏上了 ${s.name}!`);
-        toast(`⚠ ${su.name} 纏上了 ${s.name}`, "bad");
+      const busyWithPlayer = (chatWith === s.id && chatSession) || watchWith === s.id;
+      if (!s.summoner) {
+        const blocked = s.ntr || s.id === kanId || busyWithPlayer;
+        if (!blocked && Math.random() < DRAW_CHANCE) {
+          const su = pick(SUMMONERS);
+          s.summoner = { id: su.id, affection: 0, sinceDay: dayNum(), taken: null };
+          log(`${su.name} 纏上了 ${s.name}!`);
+          toast(`⚠ ${su.name} 纏上了 ${s.name}`, "bad");
+        }
+      } else if (!s.summoner.taken && !s.ntr && !busyWithPlayer && Math.random() < TAKEN_CHANCE) {
+        s.summoner.taken = Math.random() < 0.5
+          ? { type: "date", location: pick(DATE_SPOTS)[0] }
+          : { type: "kanban", location: null };
       }
       s.nextDraw += s.drawIvlH * HOUR;
       changed = true;
@@ -1382,12 +1400,10 @@ function restingSuccubus() {
   return alive[alive.length - 1] || null;
 }
 
-function summonKanban(id, skipEncounter = false) {
+function summonKanban(id) {
   const s = state.succubi.find(x => x.id === id);
   if (!s || s.ntr) return;
   if (state.gold < KANBAN_COST) { toast(`召喚看板娘需 ${KANBAN_COST} 金`, "bad"); return; }
-  // 被纏上時 1/5 撞見對方 → 觀戰(她沒來,不扣費);搶回後 skipEncounter 直接成立
-  if (!skipEncounter && rollEncounter(s)) { enterWatch(s, "kanban"); return; }
   state.gold -= KANBAN_COST;
   state.kanbanId = id;
   state.lastKanbanId = id;
@@ -2106,8 +2122,13 @@ function renderDetail(s, root) {
   let summonerLine = "";
   if (s.summoner && !s.ntr) {
     const su = summonerById(s.summoner.id);
-    if (su) summonerLine = `<div class="summoner-note">⚠ ${su.emoji} <b>${esc(su.name)}</b> 纏上了她(${esc(su.desc)})<br>
-      對方好感 ${s.summoner.affection} — 招她當看板娘或約會時,有機會撞見他們(Phase 6 觀戰/搶回)</div>`;
+    if (su) {
+      const takenTxt = s.summoner.taken
+        ? "她現在正被召喚到對方身邊——聊天/約會會看見他們的互動,有機會把她拉回來"
+        : "他隨時可能把她召喚過去";
+      summonerLine = `<div class="summoner-note">⚠ ${su.emoji} <b>${esc(su.name)}</b> 纏上了她(${esc(su.desc)})<br>
+      對方好感 ${s.summoner.affection} — ${takenTxt}</div>`;
+    }
   }
 
   root.className = `r-${s.rarity}`;
@@ -2417,7 +2438,14 @@ window.DBG = {
   dayNum: () => dayNum(),
   state: () => state,
   isAsleep: () => isAsleep(),
-  watch: (id, type = "kanban", loc = "海邊") => { const s = state.succubi.find(x => x.id === id); if (s) enterWatch(s, type, loc); },
+  // 測試:直接把她設成「被召喚走」並以玩家動作進觀戰
+  watch: (id, playerType = "chat", sceneType = "kanban", loc = "海邊") => {
+    const s = state.succubi.find(x => x.id === id);
+    if (!s) return;
+    s.summoner ??= { id: SUMMONERS[0]?.id, affection: 0, sinceDay: dayNum() };
+    s.summoner.taken = { type: sceneType, location: sceneType === "date" ? loc : null };
+    enterWatch(s, playerType, playerType === "date" ? loc : null);
+  },
   summonKanban: (id) => summonKanban(id),
 };
 

@@ -156,10 +156,11 @@ async function drawSummoner() {
 async function clearSummoners() {
   if (!ensure()) return;
   for (const s of save.succubi || []) s.summoner = null;
-  save.forceEncounter = false;
+  delete save.forceEncounter;
   await commit("清除所有召喚師");
 }
-// 觀戰測試場景:第一隻魅魔被召喚師纏上 + 下一次召喚/約會她「必」撞見對方
+// 觀戰測試場景:第一隻魅魔被召喚師「召喚走」(持續狀態),
+// 並直接設她為看板娘 + 給 1 淫紋——回遊戲點淫紋聊天或約她,即進觀戰
 async function watchScenario() {
   if (!ensure()) return;
   const s = (save.succubi || [])[0];
@@ -170,10 +171,15 @@ async function watchScenario() {
     if (!su) { status("bd-status", "召喚師池為空", true); return; }
     s.summoner = { id: su.id, affection: 0, sinceDay: 0 };
   }
-  // 若她正是看板娘,先解除,回遊戲重新召喚她就會撞見
-  if (save.kanbanId === s.id) { save.kanbanId = null; save.kanbanUntil = null; }
-  save.forceEncounter = true;
-  await commit(`觀戰場景備妥:${s.name} 已被纏上——回遊戲召喚她當看板娘或約她,必觸發觀戰`);
+  s.summoner.taken = Math.random() < 0.5
+    ? { type: "date", location: "遊樂園" }
+    : { type: "kanban", location: null };
+  save.kanbanId = s.id;
+  save.kanbanUntil = Date.now() + 99 * 3600 * 1000;
+  save.lastKanbanId = s.id;
+  save.chatCharges = (save.chatCharges || 0) + 1;
+  delete save.forceEncounter;
+  await commit(`觀戰場景備妥:${s.name} 已被召喚走(${s.summoner.taken.type === "date" ? "被拉去約會" : "被召去陪伴"})——回遊戲點淫紋聊天或約她`);
 }
 
 // ── 擴充等級 ──
