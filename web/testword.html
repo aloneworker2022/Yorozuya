@@ -65,6 +65,8 @@
     <button onclick="jumpDay()">跳過一天</button>
     <button onclick="addCrest()">+1 淫紋</button>
     <button onclick="kanbanLong()">看板娘 +99h(測試)</button>
+    <button onclick="drawSummoner()">第一隻抽召喚師</button>
+    <button onclick="clearSummoners()">清除所有召喚師</button>
   </div>
   <div class="status" id="bd-status"></div>
 </section>
@@ -139,6 +141,21 @@ async function kanbanLong() {
   if (!s) { status("bd-status", "沒有魅魔", true); return; }
   save.kanbanId = s.id; save.kanbanUntil = Date.now() + 99 * 3600 * 1000;
   await commit(`${s.name} 設為看板娘 99h`);
+}
+async function drawSummoner() {
+  if (!ensure()) return;
+  const s = (save.succubi || [])[0];
+  if (!s) { status("bd-status", "沒有魅魔", true); return; }
+  const pool = await api("/content/summoners.json");
+  const su = (pool.summoners || [])[Math.floor(Math.random() * (pool.summoners || []).length)];
+  if (!su) { status("bd-status", "召喚師池為空", true); return; }
+  s.summoner = { id: su.id, affection: 0, sinceDay: 0 };
+  await commit(`${su.name} 纏上 ${s.name}`);
+}
+async function clearSummoners() {
+  if (!ensure()) return;
+  for (const s of save.succubi || []) s.summoner = null;
+  await commit("清除所有召喚師");
 }
 
 // ── 擴充等級 ──

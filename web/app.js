@@ -10,6 +10,11 @@ import { buildSystemPrompt } from "./content/persona_builder.js";
 let WORLD_LORE = "";
 fetch("content/world.md").then(r => r.ok ? r.text() : "").then(t => { WORLD_LORE = t; }).catch(() => {});
 
+// 其他召喚師池(內容模組件,可自由編輯):開機載入一次
+let SUMMONERS = [];
+fetch("content/summoners.json").then(r => r.ok ? r.json() : null).then(j => { SUMMONERS = (j && j.summoners) || []; }).catch(() => {});
+function summonerById(id) { return SUMMONERS.find(x => x.id === id) || null; }
+
 // ===== 常數 =====
 
 const HOUR = 3600 * 1000;
@@ -302,6 +307,11 @@ function initState(j, offline) {
   }
   // 看板娘限時化移轉:舊的永久看板娘寬限一個時段,到期後改付費召喚
   if (state.kanbanId && !state.kanbanUntil) state.kanbanUntil = Date.now() + kanbanHours() * HOUR;
+  // 召喚師系統移轉:舊魅魔補發抽取間隔
+  for (const s of state.succubi) {
+    if (s.summoner === undefined) s.summoner = null;
+    if (s.nextDraw == null) { s.drawIvlH = randInt(2, 5); s.nextDraw = Date.now() + s.drawIvlH * HOUR; }
+  }
   showConnOverlay(false);
   document.getElementById("set-srv").textContent = offline ? "離線(使用本地快取)" : "OK";
   settleOffline();
@@ -601,6 +611,9 @@ function summon(n) {
     lastDateDay: today,
     datesToday: { day: today, count: 0 },
     ntr: null,
+    summoner: null,                                   // 被別的召喚師纏上時 = {id, affection, sinceDay}
+    drawIvlH: randInt(2, 5),                           // 隱藏:抽召喚師的間隔(小時)
+    nextDraw: Date.now() + randInt(2, 5) * HOUR,       // 下次抽取時間戳
     ...makeBackstory(),   // job + backstory:她被召喚前的現實人生
   };
   state.succubi.push(s);
@@ -1047,6 +1060,37 @@ function kanbanRemainMs() {
   return state.kanbanUntil ? Math.max(0, state.kanbanUntil - Date.now()) : 0;
 }
 const KANBAN_COST = 1;
+const DRAW_CHANCE = 1 / 20;   // 每個間隔抽到召喚師的機率(未纏上時)
+const ENCOUNTER_CHANCE = 1 / 5; // 有召喚師後,招看板娘/約會時「她正在對方身邊」的機率
+
+// 抽召喚師:每隻魅魔每 drawIvlH 小時擲一次;擋抽三條件——
+// ①已被纏上 ②正是我們的看板娘 ③正被我們約會(對話中)。回傳是否有變化。
+function checkSummonerDraws() {
+  if (!SUMMONERS.length) return false;
+  const now = Date.now();
+  let changed = false;
+  const kanId = kanbanSuccubus()?.id;
+  for (const s of state.succubi) {
+    if (s.nextDraw == null) { s.drawIvlH ??= randInt(2, 5); s.nextDraw = now + s.drawIvlH * HOUR; }
+    let rolls = 0;
+    while (now >= s.nextDraw && rolls < 30) {
+      rolls++;
+      const blocked = s.summoner || s.ntr || s.id === kanId ||
+        (chatWith === s.id && chatSession);
+      if (!blocked && Math.random() < DRAW_CHANCE) {
+        const su = pick(SUMMONERS);
+        s.summoner = { id: su.id, affection: 0, sinceDay: dayNum() };
+        log(`${su.name} 纏上了 ${s.name}!`);
+        toast(`⚠ ${su.name} 纏上了 ${s.name}`, "bad");
+      }
+      s.nextDraw += s.drawIvlH * HOUR;
+      changed = true;
+    }
+    // 保險:離線過久時 30 次追不回,直接跳到下個未來時點
+    if (s.nextDraw <= now) { s.nextDraw = now + s.drawIvlH * HOUR; changed = true; }
+  }
+  return changed;
+}
 
 // 無看板娘時背景顯示的「休息中」魅魔:優先最後一位看板娘,否則最新召喚(排除 NTR)
 function restingSuccubus() {
@@ -1142,6 +1186,7 @@ setInterval(() => {
   lastTickDay = today;
 
   if (expireKanban()) changed = true;
+  if (checkSummonerDraws()) changed = true;
 
   // 看板娘倒數:每秒刷新剩餘時間顯示(不必整頁重繪)
   const kt = document.getElementById("kanban-remain");
@@ -1694,7 +1739,8 @@ function renderSuccubi() {
       <div class="sinfo">
         <div class="sname"><b>${esc(s.name)}</b><span class="rbadge">${s.rarity}</span>
           <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(s.stage)}</span>
-          ${kanbanSuccubus()?.id === s.id ? `<span class="stage-chip" style="color:var(--gold)">★ 看板娘</span>` : ""}</div>
+          ${kanbanSuccubus()?.id === s.id ? `<span class="stage-chip" style="color:var(--gold)">★ 看板娘</span>` : ""}
+          ${s.summoner && !s.ntr ? `<span class="stage-chip" style="color:var(--red)">⚠ 被纏上</span>` : ""}</div>
         <div class="aff-bar"><div class="${s.affection < 0 ? "neg" : ""}" style="width:${barW}%"></div></div>
       </div>
       <div class="status-dot ${st}"></div>`;
@@ -1737,6 +1783,13 @@ function renderDetail(s, root) {
     const stTxt = { ok: "心情不錯", due: "今天想見你", danger: "快要離開了!" }[st];
     needLine = `<div class="aff-line dim small">${bits.join(" / ")} — ${stTxt}</div>`;
   }
+  // 被別的召喚師纏上
+  let summonerLine = "";
+  if (s.summoner && !s.ntr) {
+    const su = summonerById(s.summoner.id);
+    if (su) summonerLine = `<div class="summoner-note">⚠ ${su.emoji} <b>${esc(su.name)}</b> 纏上了她(${esc(su.desc)})<br>
+      對方好感 ${s.summoner.affection} — 招她當看板娘或約會時,有機會撞見他們(Phase 6 觀戰/搶回)</div>`;
+  }
 
   root.className = `r-${s.rarity}`;
   root.innerHTML = `
@@ -1755,6 +1808,7 @@ function renderDetail(s, root) {
       }).join("")}</div>` : ""}
       <div class="aff-line">情感 <b>${s.affection}</b>${ns && !s.ntr ? ` <span class="dim small">/ ${ns[2]} 升【${ns[1]}】</span>` : ""}</div>
       ${needLine}
+      ${summonerLine}
       ${!s.portraitReady ? `<div class="aff-line dim small">尚未成形——今晚讓她織夢,明早見到她的臉(M3)</div>` : ""}
       <div class="detail-actions">
         ${s.ntr

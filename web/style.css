@@ -476,6 +476,8 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 }
 .say-bubble .who { color: var(--rc); margin-right: .5em; }
 .ntr-note { text-align: center; color: var(--red); font-size: .85em; margin: .6em 0; }
+.summoner-note { text-align: center; color: var(--red); font-size: .8em; margin: .6em auto; max-width: 30em;
+  background: color-mix(in srgb, var(--red) 10%, transparent); padding: .6em .8em; border-radius: 6px; line-height: 1.5; }
 .schedule { max-width: 30em; margin: .7em auto 0; }
 .sch-row { display: flex; gap: .8em; font-size: .78em; padding: .3em 0; border-bottom: 1px solid var(--line); }
 .sch-row:last-child { border-bottom: none; }
