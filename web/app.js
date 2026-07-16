@@ -3,7 +3,7 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
-import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt } from "./content/persona_builder.js";
+import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt } from "./content/persona_builder.js";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -30,7 +30,9 @@ const EXPANSIONS = {
   crest:    "淫紋機率",     // 分母 = max(3, 20 - lv)
   drop:     "獻祭掉落率",   // 影響獻祭掉落(Phase 7)
 };
-const GIFT_KEYS = Object.keys(EXPANSIONS);   // 天賦可能的擴充軸
+// 天賦可能值:7 個擴充軸 + 特殊「取消召喚師」(獻祭刷到就清掉所有召喚師)
+const GIFT_KEYS = [...Object.keys(EXPANSIONS), "cleanse"];
+function giftLabel(g) { return g === "cleanse" ? "取消所有召喚師(特殊)" : (EXPANSIONS[g] || "?"); }
 function expLv(k) {
   let lv = (state.expansions && state.expansions[k]) || 0;
   const kg = kanbanSuccubus && kanbanSuccubus();   // 看板娘自帶擴充暫時加到玩家身上
@@ -611,10 +613,16 @@ async function sacrificeSuccubus(id) {
   const dropped = Math.random() < sacrificeDropChance(s.stage);
   let dropMsg = "";
   if (dropped) {
-    state.expansions ??= {};
-    const inc = s.stage === "wife" ? 2 : 1;   // 妻子最豐厚
-    state.expansions[s.gift] = (state.expansions[s.gift] || 0) + inc;
-    dropMsg = `\n\n✦ 你永久獲得了她的天賦:${EXPANSIONS[s.gift]} +${inc}!`;
+    if (s.gift === "cleanse") {
+      const n = state.succubi.filter(x => x.id !== id && x.summoner).length;
+      for (const x of state.succubi) if (x.id !== id) x.summoner = null;
+      dropMsg = `\n\n✦ 特殊天賦發動:所有魅魔身上的召喚師都被抹除了!(${n} 名解除)`;
+    } else {
+      state.expansions ??= {};
+      const inc = s.stage === "wife" ? 2 : 1;   // 妻子最豐厚
+      state.expansions[s.gift] = (state.expansions[s.gift] || 0) + inc;
+      dropMsg = `\n\n✦ 你永久獲得了她的天賦:${EXPANSIONS[s.gift]} +${inc}!`;
+    }
   }
   state.succubi = state.succubi.filter(x => x.id !== id);
   if (state.kanbanId === id) { state.kanbanId = null; state.kanbanUntil = null; }
@@ -647,10 +655,78 @@ function rollRarity(n) {
   return RARITIES[table.length - 1];
 }
 
-function summon(n) {
-  if (state.dungeon.length < n || state.gold < 0) return;
-  if (state.succubi.length >= rosterCap()) { toast(`名冊名額已滿(${rosterCap()} 格)——靠擴充增加名額`, "bad"); return; }
-  state.dungeon.splice(0, n);
+function canSummon() {
+  return state.dungeon.length >= 1 && state.gold >= 0 && state.succubi.length < rosterCap();
+}
+
+// 開始獻祭召喚:一位一位獻祭祭品,獻完再召喚
+function startSummonSacrifice() {
+  if (state.gold < 0) { toast("負債中不可召喚", "bad"); return; }
+  if (state.succubi.length >= rosterCap()) { toast(`名冊名額已滿(${rosterCap()} 格)`, "bad"); return; }
+  if (state.dungeon.length < 1) { toast("地牢裡沒有祭品", "bad"); return; }
+  sacSummon = { count: 0 };
+  document.body.classList.add("chat-mode");
+  renderAll();
+  sacrificeNextOffering();
+}
+
+// 獻祭下一位祭品(VN 描述)
+async function sacrificeNextOffering() {
+  if (!sacSummon) return;
+  const off = state.dungeon.shift();
+  sacSummon.count++;
+  renderChatView();   // 刷新標題「已獻 N 人」
+  setSummonSacBtns(false);
+  vnShow("", `—— 獻祭第 ${sacSummon.count} 位:${off.name} ——`, "sys");
+  vnTyping(true);
+
+  let script = { method: null, body: null };
+  try { script = await fetch("/api/scripts/random?category=sacrifice_offering").then(r => r.json()); } catch { }
+  const ctx = {
+    world: WORLD_LORE, content_rating: state.settings.rating || "sfw",
+    offering_name: off.name, method: script.method, method_desc: script.body,
+    nth: sacSummon.count,
+  };
+  const msgs = [
+    { role: "system", content: buildOfferingPrompt(ctx) },
+    { role: "user", content: "描述這場祭品獻祭的過程,3~5 句旁白。" },
+  ];
+  try {
+    await llmJobRun(msgs, acc => vnShow("祭壇", acc, "ai"),
+      `${off.name} 被拖上祭壇,魔法陣的光紋亮起,將他的血肉與魂魄一寸寸抽入召喚之書……祭壇上只剩一縷輕煙。`);
+    vnDone();
+  } catch (e) {
+    if (e.name === "AbortError") { exitSummonSacrifice(); return; }
+    vnShow("", "(儀式的細節模糊了……)", "sys");
+  }
+  scheduleSave();
+  setSummonSacBtns(true);
+}
+
+// 獻祭完畢 → 依人數擲稀有度召喚
+function doSummonNow() {
+  const n = sacSummon.count;
+  sacSummon = null;
+  document.body.classList.remove("chat-mode");
+  summonWithCount(n);
+}
+function exitSummonSacrifice() {
+  chatAbort?.abort();
+  const n = sacSummon?.count || 0;
+  sacSummon = null;
+  document.body.classList.remove("chat-mode");
+  if (n > 0) summonWithCount(n); else renderAll();
+}
+function setSummonSacBtns(enabled) {
+  const more = document.getElementById("ssac-more");
+  const done = document.getElementById("ssac-summon");
+  const canMore = sacSummon && state.dungeon.length > 0 && sacSummon.count < 6;
+  if (more) { more.disabled = !enabled || !canMore; more.textContent = canMore ? `繼續獻祭(地牢還有 ${state.dungeon.length})` : "地牢已空 / 已達 6 人"; }
+  if (done) { done.disabled = !enabled; done.textContent = sacSummon ? `召喚(已獻 ${sacSummon.count} 人)` : "召喚"; }
+}
+
+function summonWithCount(n) {
+  if (n < 1 || state.succubi.length >= rosterCap()) { renderAll(); return; }
   const today = dayNum();
   const s = {
     id: uid(),
@@ -892,6 +968,7 @@ let watchWith = null;     // 觀戰中的魅魔 id
 let watchSession = null;  // {type:'kanban'|'date', location, turnCap, presses, busy, ended}
 let sacrificeWith = null; // 獻祭儀式中的魅魔 id
 let sacResult = "";       // 獻祭結果文字
+let sacSummon = null;     // 召喚獻祭 session {count}
 
 function setSacBtns(enabled) {
   const d = document.getElementById("sac-done");
@@ -1875,9 +1952,9 @@ function renderPlayerAttrs() {
     ["完成金額", `${1 + expLv("reward")}~${3 + expLv("reward")} 金`],
     ["商店祭品", `每日 ${2 + expLv("offering")} 人`],
     ["淫紋機率", `1/${crestDenom()}`],
-    ["看板娘時長", `${kanbanHours()} 小時`],
   ];
-  const lvs = Object.keys(EXPANSIONS).map(k => `${EXPANSIONS[k]} Lv${expLv(k)}`).join("、");
+  // 看板娘時長刻意不顯示——玩家無法得知她何時解除,需自行察看
+  const lvs = Object.keys(EXPANSIONS).filter(k => k !== "kanban").map(k => `${EXPANSIONS[k]} Lv${expLv(k)}`).join("、");
   el.innerHTML =
     derived.map(([a, b]) => `<div class="setting-row"><label>${a}</label><span>${b}</span></div>`).join("") +
     `<div class="setting-row"><label>擴充等級</label><span class="dim" style="text-align:right">${lvs}</span></div>`;
@@ -1890,7 +1967,20 @@ function renderChatView() {
   const watchCtl = $("#watch-controls");
   const sacCtl = $("#sac-controls");
 
-  // 獻祭模式最優先
+  const ssacCtl = $("#ssac-controls");
+  // 召喚獻祭最優先
+  if (sacSummon) {
+    chatV.classList.remove("hidden");
+    inputRow?.classList.add("hidden");
+    watchCtl?.classList.add("hidden");
+    sacCtl?.classList.add("hidden");
+    ssacCtl?.classList.remove("hidden");
+    $("#chat-title").textContent = `召喚獻祭(已獻 ${sacSummon.count} 人)`;
+    return;
+  }
+  ssacCtl?.classList.add("hidden");
+
+  // 魅魔獻祭
   if (sacrificeWith) {
     chatV.classList.remove("hidden");
     inputRow?.classList.add("hidden");
@@ -1979,16 +2069,14 @@ function renderSuccubi() {
   const full = state.succubi.length >= rosterCap();
   hint.textContent = state.gold < 0 ? "負債中不可召喚"
     : full ? `名冊名額已滿(${rosterCap()} 格)——靠擴充增加名額`
-    : `地牢裡有 ${state.dungeon.length} 名祭品`;
+    : `地牢裡有 ${state.dungeon.length} 名祭品(獻越多、稀有度越高)`;
   counts.innerHTML = "";
-  for (let n = 1; n <= 6; n++) {
-    const b = document.createElement("button");
-    b.textContent = n;
-    b.disabled = state.dungeon.length < n || state.gold < 0 || full;
-    b.title = `獻祭 ${n} 人`;
-    b.onclick = () => summon(n);
-    counts.appendChild(b);
-  }
+  const b = document.createElement("button");
+  b.id = "start-summon";
+  b.textContent = "開始獻祭召喚";
+  b.disabled = !canSummon();
+  b.onclick = () => startSummonSacrifice();
+  counts.appendChild(b);
 }
 
 function renderDetail(s, root) {
@@ -2045,7 +2133,7 @@ function renderDetail(s, root) {
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">聊天請透過淫紋(做委託觸發)——看板娘才聽得見你的呼喚</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
-      ${!s.ntr ? `<div class="aff-line dim small">天賦:${EXPANSIONS[s.gift] || "?"}(當看板娘時暫時 +1;獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率永久獲得)</div>
+      ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
         <div class="detail-actions"><button class="danger-btn" id="act-dismiss">獻祭(${dismissPriceToday()} 金)</button></div>` : ""}
     </div>`;
 
@@ -2217,6 +2305,8 @@ on("chat-send", "click", () => sendChatMsg());
 on("watch-next", "click", () => watchNext());
 on("watch-end", "click", () => exitWatch());
 on("sac-done", "click", () => exitSacrifice());
+on("ssac-more", "click", () => sacrificeNextOffering());
+on("ssac-summon", "click", () => doSummonNow());
 on("chat-input", "keydown", e => { if (e.key === "Enter") sendChatMsg(); });
 on("chat-log-btn", "click", () => {
   const bl = $("#chat-backlog");

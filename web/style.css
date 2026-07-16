@@ -566,6 +566,11 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 #sac-controls { display: flex; background: var(--panel); padding: .8em; margin-top: .5em; border-radius: 8px; flex-shrink: 0; }
 #sac-done { flex: 1; background: rgba(255, 95, 122, .2); border: none; border-radius: 6px; color: var(--red); font: inherit; padding: .7em; cursor: pointer; }
 #sac-done:disabled { opacity: .4; }
+#ssac-controls { display: flex; gap: .5em; background: var(--panel); padding: .8em; margin-top: .5em; border-radius: 8px; flex-shrink: 0; }
+#ssac-more { flex: 1; background: rgba(255, 95, 122, .18); border: none; border-radius: 6px; color: var(--red); font: inherit; padding: .7em; cursor: pointer; }
+#ssac-summon { flex: 1; background: rgba(255, 79, 216, .22); border: none; border-radius: 6px; color: var(--pink); font: inherit; padding: .7em; cursor: pointer; }
+#ssac-more:disabled, #ssac-summon:disabled { opacity: .4; }
+#start-summon { padding: .6em 1.4em; }
 #vn-text .w-him { color: var(--dim); }
 #vn-text .w-her { color: var(--pink); }
 

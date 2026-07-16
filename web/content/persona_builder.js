@@ -126,6 +126,28 @@ export function buildWatchPrompt(ctx) {
   return lines.join("\n");
 }
 
+/** 祭品(人)獻祭旁白:獻祭以驅動召喚之書。手法來自 Testword 腳本。 */
+export function buildOfferingPrompt(ctx) {
+  const lines = [];
+  if (ctx.world) {
+    const lore = ctx.world.split("\n")
+      .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---").join("\n").trim();
+    if (lore) lines.push("【世界設定】", lore, "");
+  }
+  lines.push(
+    `你是敘述者,描寫一場將祭品「${ctx.offering_name || "一名祭品"}」獻祭以驅動召喚之書的儀式(這是召喚魅魔的代價)。`,
+  );
+  if (ctx.method) lines.push(`本次手法:「${ctx.method}」。細節(依此描寫):${ctx.method_desc}`);
+  else lines.push("(尚無指定手法——以陰森的魔法陣獻祭概括描寫。)");
+  lines.push(
+    ctx.content_rating === "nsfw"
+      ? "內容分級 NSFW:可露骨描寫祭品的掙扎、身體與痛苦,依上方手法。"
+      : "內容分級全年齡:以陰森氛圍與象徵手法帶過,不寫血腥細節。",
+    "以第三人稱旁白,3~5 句,收在祭品被召喚之書吸納、消散的瞬間。只輸出旁白。",
+  );
+  return lines.join("\n");
+}
+
 /** 獻祭儀式旁白。廠商替換點:手法描述來自玩家在 Testword 撰寫的腳本。 */
 export function buildSacrificePrompt(ctx) {
   const c = ctx.character;
