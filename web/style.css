@@ -142,6 +142,9 @@ body.chat-mode #kanban-girl svg {
 #kanban-girl svg { filter: drop-shadow(0 0 14px var(--rc, #9aa0b5)); }
 #kanban-girl .kname { margin-top: .4em; font-size: .8em; color: var(--dim); letter-spacing: .3em; }
 #kanban-girl .krem { display: block; letter-spacing: normal; font-size: .85em; color: var(--gold); margin-top: .2em; }
+/* 休息中(未召喚為看板娘):暗淡、去光暈,提示可再召喚 */
+#kanban-girl.resting { opacity: .5; }
+#kanban-girl.resting svg { filter: grayscale(.6) brightness(.8) drop-shadow(0 0 8px rgba(0,0,0,.5)); }
 body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 
 /* ===== z3 HUD / 分頁列 ===== */

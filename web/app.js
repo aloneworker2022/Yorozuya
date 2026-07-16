@@ -227,6 +227,7 @@ function defaultState() {
     shop: null,   // {day, stock:[{id,name,price,sold}], line}
     kanbanId: null,
     kanbanUntil: null,  // 看板娘召喚到期時間戳(限時)
+    lastKanbanId: null, // 最後一位看板娘(過期後背景顯示她的休息剪影)
     lastSettledDay: null,
     log: [],
     settings: {
@@ -1047,12 +1048,23 @@ function kanbanRemainMs() {
 }
 const KANBAN_COST = 1;
 
+// 無看板娘時背景顯示的「休息中」魅魔:優先最後一位看板娘,否則最新召喚(排除 NTR)
+function restingSuccubus() {
+  if (state.lastKanbanId) {
+    const s = state.succubi.find(x => x.id === state.lastKanbanId && !x.ntr);
+    if (s) return s;
+  }
+  const alive = state.succubi.filter(s => !s.ntr);
+  return alive[alive.length - 1] || null;
+}
+
 function summonKanban(id) {
   const s = state.succubi.find(x => x.id === id);
   if (!s || s.ntr) return;
   if (state.gold < KANBAN_COST) { toast(`召喚看板娘需 ${KANBAN_COST} 金`, "bad"); return; }
   state.gold -= KANBAN_COST;
   state.kanbanId = id;
+  state.lastKanbanId = id;
   state.kanbanUntil = Date.now() + kanbanHours() * HOUR;
   log(`召喚 ${s.name} 為看板娘(${kanbanHours()} 小時)`);
   toast(`${s.name} 來到你身邊,陪伴 ${kanbanHours()} 小時♥`, "good");
@@ -1772,21 +1784,34 @@ function renderDetail(s, root) {
 }
 
 function renderKanban() {
-  // 對話模式:看板娘換成正在對話的魅魔
-  const s = (chatWith && state.succubi.find(x => x.id === chatWith)) || kanbanSuccubus();
   const book = $("#book");
   const girl = $("#kanban-girl");
   const zzz = $("#kanban-zzz");
   const asleep = isAsleep();
   zzz.classList.toggle("hidden", !asleep);
 
+  // 三態:對話中的魅魔 / 現任看板娘(亮) → 休息中的魅魔(暗) → 召喚書(名冊全空)
+  const active = (chatWith && state.succubi.find(x => x.id === chatWith)) || kanbanSuccubus();
+  const s = active || restingSuccubus();
+
   if (s) {
     book.classList.add("hidden");
     girl.classList.remove("hidden");
-    girl.className = `r-${s.rarity}`;
-    const remain = (!chatWith && kanbanSuccubus()) ? `<span id="kanban-remain" class="krem">剩 ${fmtRemain(kanbanRemainMs())}</span>` : "";
-    girl.innerHTML = girlSVG("#241333", 9) + `<div class="kname">${esc(s.name)}${remain}</div>`;
-    girl.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(REACT.idle));
+    girl.className = `r-${s.rarity}` + (active ? "" : " resting");
+    if (active) {
+      const remain = (!chatWith && kanbanSuccubus()) ? `<span id="kanban-remain" class="krem">剩 ${fmtRemain(kanbanRemainMs())}</span>` : "";
+      girl.innerHTML = girlSVG("#241333", 9) + `<div class="kname">${esc(s.name)}${remain}</div>`;
+      girl.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(REACT.idle));
+    } else {
+      // 休息中:暗淡剪影,點擊花錢再召喚
+      girl.innerHTML = girlSVG("#241333", 9) +
+        `<div class="kname">${esc(s.name)}<span class="krem" style="color:var(--dim)">(回到自己的生活中)</span></div>`;
+      girl.onclick = () => {
+        if (asleep) { kanbanSay(pick(REACT.sleepClick)); return; }
+        if (state.gold < KANBAN_COST) { kanbanSay("哼,連 1 金都沒有,還想叫我來?"); return; }
+        summonKanban(s.id);
+      };
+    }
   } else {
     girl.classList.add("hidden");
     book.classList.remove("hidden");
