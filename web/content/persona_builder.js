@@ -90,6 +90,20 @@ export function buildSystemPrompt(ctx) {
     lines.push(`(最近的場景變化:${s.transition}。以目前的場景為準,不要延續已結束場景的話題。)`);
   }
 
+  // 委託清單:她看得見他的真實待辦,話題可以自然帶到(只評論,遊戲數字與她無關)
+  const q = ctx.quests;
+  if (q && (q.executing?.length || q.accepted?.length || q.discovered?.length)) {
+    const parts = [];
+    if (q.executing?.length) parts.push(`執行中:${q.executing.map(x => `「${x.title}」(剩 ${x.mins_left} 分)`).join("、")}`);
+    if (q.accepted?.length) parts.push(`已承接還沒動工:${q.accepted.map(x => `「${x}」`).join("、")}`);
+    if (q.discovered?.length) parts.push(`剛發現還沒決定:${q.discovered.map(x => `「${x}」`).join("、")}`);
+    lines.push(
+      "【他的委託清單——這些是他現實生活的待辦事項,你都看得見】",
+      parts.join("\n"),
+      "聊天時可以自然帶到:依你的個性催促、吐槽拖延、關心進度、或幫他盤算先做哪件;執行中剩沒幾分鐘的可以提醒。不要每句都講委託,更不要逐條唸清單。",
+    );
+  }
+
   // 變心滲透:另一個召喚師的存在,對她跟玩家的互動的影響(階段愈深愈明顯)
   if (ctx.rival) {
     lines.push(
@@ -119,6 +133,32 @@ export function buildSystemPrompt(ctx) {
     "6. 每次對話都是新的一段:呼應當下場景或主動開新話題;先前場景聊到一半的話題不要機械式接續(除非對方主動提起)。",
   );
 
+  return lines.join("\n");
+}
+
+/** 看板娘主動氣泡:她看著他的委託清單,主動想說的「一句話」。
+ *  背景預生成、點擊即顯示;廠商替換點,可整包改寫。 */
+export function buildQuipPrompt(ctx) {
+  const c = ctx.character;
+  const r = ctx.relationship;
+  const q = ctx.quests || {};
+  const lines = [
+    `你是「${c.name}」,被召喚而來的魅魔,正站在召喚者「${ctx.player.name}」的萬事屋店頭當看板娘。`,
+    `個性:${c.personality?.join("、") || ""}。${SPEECH_STYLE[c.speech_style] || ""}`,
+    STAGE_TONE[r.stage] || STAGE_TONE.stranger,
+  ];
+  const parts = [];
+  if (q.executing?.length) parts.push(`執行中:${q.executing.map(x => `「${x.title}」(剩 ${x.mins_left} 分)`).join("、")}`);
+  if (q.accepted?.length) parts.push(`已承接還沒動工:${q.accepted.map(x => `「${x}」`).join("、")}`);
+  if (q.discovered?.length) parts.push(`剛發現還沒決定:${q.discovered.map(x => `「${x}」`).join("、")}`);
+  lines.push(
+    "【他的委託清單(他現實的待辦)】",
+    parts.join("\n") || "(目前是空的)",
+    "",
+    "他剛好看向你。依你的個性,挑清單裡「最值得說」的一件事,對他說一句話——",
+    "催促、吐槽拖延、提醒快到期、稱讚進度、或慫恿他趕快做完來陪你,擇一即可。",
+    "規則:只輸出那一句話本身;繁體中文;40 字以內;不加引號、不加動作描寫、不提及清單以外的事。",
+  );
   return lines.join("\n");
 }
 

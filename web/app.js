@@ -3,7 +3,7 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
-import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt } from "./content/persona_builder.js";
+import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt } from "./content/persona_builder.js";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -441,6 +441,19 @@ function log(msg) {
 // ===== 委託 =====
 
 function execQuests() { return state.quests.filter(q => q.lv === 2); }
+
+// 委託快照:給 AI 看的真實待辦(唯讀素材,AI 只評論,碰不到任何數字)
+function questSnapshot() {
+  const cut = t => (t.length > 30 ? t.slice(0, 30) + "…" : t);
+  const now = Date.now();
+  return {
+    discovered: state.quests.filter(q => q.lv === 0).slice(-6).map(q => cut(q.text)),
+    accepted: state.quests.filter(q => q.lv === 1).slice(-6).map(q => cut(q.text)),
+    executing: execQuests().map(q => ({ title: cut(q.text), mins_left: Math.max(0, Math.round((q.deadline - now) / 60000)) })),
+  };
+}
+// 委託狀態指紋:變了就作廢已生成的氣泡(避免她講已完成/已丟棄的任務)
+function questHash() { return state.quests.map(q => q.id + ":" + q.lv).join(","); }
 
 function addQuest(text) {
   text = text.trim();
@@ -1126,11 +1139,31 @@ function actMsgs(s, su, act) {
   ];
 }
 
+// 安靜版 LLM job:背景生成用,不串流不碰 UI、不動 chatAbort
+async function llmJobQuiet(msgs) {
+  const r = await fetch("/api/llm/chat_job", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint: state.settings.ollamaUrl, model: state.settings.model, messages: msgs, options: { temperature: 0.9 } }),
+  });
+  if (!r.ok) throw new Error("server");
+  const { job_id } = await r.json();
+  const t0 = Date.now();
+  while (Date.now() - t0 < 120000) {
+    await new Promise(res => setTimeout(res, 1500));
+    const jr = await fetch(`/api/llm/chat_job/${job_id}`, { cache: "no-store" });
+    if (!jr.ok) throw new Error("poll");
+    const j = await jr.json();
+    if (j.error) throw new Error(j.error);
+    if (j.done) return (j.text || "").trim();
+  }
+  throw new Error("timeout");
+}
+
 // 背景佇列:把還沒有文字的紀錄一則一則生出來(玩家點開就是秒開)。
-// 連不上 AI 就留空下次再試;不與聊天/觀看/獻祭搶線。
-let actGenBusy = false;
+// 連不上 AI 就留空下次再試;不與聊天/觀看/獻祭搶線。genBusy 與氣泡生成共用互斥。
+let genBusy = false;
 async function pumpActTexts() {
-  if (actGenBusy || chatWith || watchWith || sacrificeWith || sacSummon) return;
+  if (genBusy || chatWith || watchWith || sacrificeWith || sacSummon) return;
   if (!state.settings.model) return;   // 無模型:等觀看時走罐頭
   let s = null, act = null;
   for (const g of state.succubi) {
@@ -1140,29 +1173,54 @@ async function pumpActTexts() {
   if (!act) return;
   const su = summonerById(s.summoner.id);
   if (!su) return;
-  actGenBusy = true;
+  genBusy = true;
   try {
-    const msgs = actMsgs(s, su, act);
-    const r = await fetch("/api/llm/chat_job", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ endpoint: state.settings.ollamaUrl, model: state.settings.model, messages: msgs, options: { temperature: 0.9 } }),
-    });
-    if (!r.ok) throw new Error("server");
-    const { job_id } = await r.json();
-    const t0 = Date.now();
-    while (Date.now() - t0 < 120000) {
-      await new Promise(res => setTimeout(res, 1500));
-      const jr = await fetch(`/api/llm/chat_job/${job_id}`, { cache: "no-store" });
-      if (!jr.ok) throw new Error("poll");
-      const j = await jr.json();
-      if (j.error) throw new Error(j.error);
-      if (j.done) {
-        if (j.text?.trim()) { act.text = j.text; dirty = true; scheduleSave(); }
-        break;
-      }
-    }
+    const text = await llmJobQuiet(actMsgs(s, su, act));
+    if (text) { act.text = text; dirty = true; scheduleSave(); }
   } catch (e) { /* 連不上就留空,之後再試 */ }
-  actGenBusy = false;
+  genBusy = false;
+}
+
+// ── 看板娘主動氣泡:依委託清單背景預生台詞,點她「秒冒」;快取沒貨就用罐頭,永遠零等待 ──
+const QUIP_STOCK = 3;   // 每個(看板娘×委託狀態)最多備幾句
+async function pumpQuips() {
+  if (genBusy || chatWith || watchWith || sacrificeWith || sacSummon || isAsleep()) return;
+  if (!state.settings.model || !state.quests.length) return;
+  const s = kanbanSuccubus();
+  if (!s) return;
+  const hash = questHash();
+  if (state.quips?.girlId !== s.id || state.quips?.hash !== hash) {
+    state.quips = { girlId: s.id, hash, lines: [] };   // 狀態變了:舊台詞作廢
+  }
+  if (state.quips.lines.length >= QUIP_STOCK) return;
+  genBusy = true;
+  try {
+    const line = await llmJobQuiet([
+      { role: "system", content: buildQuipPrompt({
+          character: { name: s.name, personality: s.personality, speech_style: s.speech, backstory: s.backstory || "" },
+          relationship: { stage: s.stage, affection: s.affection },
+          player: { name: state.settings.player || "主人" },
+          quests: questSnapshot(),
+          content_rating: state.settings.rating || "sfw",
+        }) },
+      { role: "user", content: "輸出她此刻想對他說的那一句話。" },
+    ]);
+    // 狀態沒變才收下(生成期間任務可能已完成)
+    if (line && state.quips?.girlId === s.id && state.quips?.hash === questHash()) {
+      state.quips.lines.push(line.split("\n")[0].slice(0, 60));
+      dirty = true; scheduleSave();
+    }
+  } catch (e) { /* 之後再試 */ }
+  genBusy = false;
+}
+
+// 點看板娘時取一句預生台詞(即取即消耗);沒有就回 null 讓罐頭上場
+function popQuip() {
+  const s = kanbanSuccubus();
+  if (!s || state.quips?.girlId !== s.id || state.quips?.hash !== questHash()) return null;
+  const line = state.quips.lines.shift();
+  if (line) scheduleSave();
+  return line || null;
 }
 
 // 釋放成功:她脫離「被召喚」狀態回到你身邊,原本的動作(聊天/約會)接著開始(費用已在進觀戰時付過)
@@ -1240,6 +1298,7 @@ function buildCtx(s) {
     content_rating: state.settings.rating || "sfw",
     player: { name: state.settings.player || "主人" },
     world: WORLD_LORE,
+    quests: questSnapshot(),   // 她看得見你的待辦清單(聊天話題素材)
     // 她被另一個召喚師纏上時,那段關係對「她跟你互動」的滲透(變心)
     rival: s.summoner ? (() => {
       const st = rivalStage(s.summoner.affection);
@@ -1643,6 +1702,7 @@ setInterval(() => {
   if (checkSummonerDraws()) changed = true;
   if (processTakenActs()) changed = true;
   pumpActTexts();   // 背景補生成紀錄文字(不阻塞、自帶互斥)
+  pumpQuips();      // 背景預生看板娘委託台詞(點她秒冒,不等 AI)
 
   const asleep = isAsleep();
   if (asleep !== lastSleepState) {
@@ -2361,7 +2421,8 @@ function renderKanban() {
     girl.className = `r-${s.rarity}` + (active ? "" : " resting");
     if (active) {
       girl.innerHTML = girlSVG("#241333", 9) + `<div class="kname">${esc(s.name)}</div>`;
-      girl.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(REACT.idle));
+      // 優先冒背景預生的委託台詞(秒出,零等待);沒貨才用罐頭
+      girl.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : (popQuip() || pick(REACT.idle)));
     } else {
       // 休息中:暗淡剪影,點擊花錢再召喚
       girl.innerHTML = girlSVG("#241333", 9) +
