@@ -22,8 +22,9 @@ const SPEECH_STYLE = {
 const TIME_LABEL = { morning: "早上", afternoon: "下午", evening: "傍晚", night: "深夜" };
 
 // ── 召喚師×她 七階段(隨附 SFW 版;Testword 撰寫的腳本會蓋掉這裡)──
+// export 給 Testword 顯示內建原文當範本。
 // 觀戰演出:每階段「她對他」的反應基調
-const RIVAL_WATCH_TONE = [
+export const RIVAL_WATCH_TONE = [
   "強烈嫌惡排斥——她激烈抗拒:斥責、掙脫、口出惡言,完全不給好臉色,每一句都在劃清界線。",
   "嫌惡抗拒——她還是嫌惡,但罵的力氣少了:以閃躲和冷語為主,偶爾被逼急了才爆發。",
   "抗拒冷淡——她不罵了,改用冷處理:句子很短、眼神不對焦、擺明把他當空氣,但沒有離開。",
@@ -33,7 +34,7 @@ const RIVAL_WATCH_TONE = [
   "妻子——她語氣溫柔安穩,像家人一樣自然,已經把身邊的位置讓給了他,只差一紙婚約。",
 ];
 // 變心滲透:每階段「她跟召喚她的主人(玩家)互動」受到的影響
-const RIVAL_CHAT_EFFECT = [
+export const RIVAL_CHAT_EFFECT = [
   "那個糾纏她的男人只讓她嫌惡,面對你時完全不受影響,頂多抱怨兩句被騷擾的事。",
   "她偶爾會跟你抱怨那個男人有多煩,講完會特別黏你一點,像在確認自己的歸屬。",
   "她提起那個男人的次數變少了,被問到會輕描淡寫帶過,轉移話題。",
@@ -136,10 +137,10 @@ export function buildWatchPrompt(ctx) {
 
   lines.push(
     "【觀戰場景】你要同時扮演兩個角色,生成他們的一來一往:",
-    `● 男方「${su.name}」——另一位召喚師,把這名魅魔也召喚了過去。人設:${su.persona || "一個糾纏她的男人"}`,
+    `● 男方「${su.name}」——另一位召喚師,把這名魅魔也召喚了過去。人設:${su.persona || "一個糾纏她的男人"}${su.body ? `體態外貌:${su.body}` : ""}`,
     `● 女方「${c.name}」——${c.personality?.join("、") || ""}。${c.backstory || ""}`,
     ctx.scene?.type === "date"
-      ? `情境:男方硬拉著她在「${ctx.scene.location || "某處"}」約會。`
+      ? `情境:男方硬拉著她在「${ctx.scene.location || "某處"}」約會。${ctx.scene.location_style ? `他在這個地點的互動習性:${ctx.scene.location_style}` : ""}`
       : "情境:她被召喚到男方身邊陪伴。",
     "",
     "演出要求:",
