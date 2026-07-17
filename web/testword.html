@@ -91,6 +91,24 @@
   </div>
 </section>
 
+<!-- ── 階段語氣腳本 ── -->
+<section>
+  <h2>召喚師×她 階段語氣(NSFW 版寫在這,蓋掉內建全年齡版)</h2>
+  <div class="mini" style="margin-bottom:.6em">七階段:強烈嫌惡排斥→嫌惡抗拒→抗拒冷淡→抗拒→偶爾互動→女友→妻子(240 被娶走)。留空=用內建版。內容原樣傳給 AI,遊戲重整後生效。</div>
+  <div class="tabs" id="st-tabs">
+    <button data-cat="watch_stage" class="on">觀戰演出(她對他)</button>
+    <button data-cat="chat_rival">變心滲透(她對你)</button>
+  </div>
+  <label>階段</label>
+  <select id="st-stage"></select>
+  <label>這個階段的演出指示(給 AI)</label>
+  <textarea id="st-body" placeholder="留空並儲存 = 刪除自訂版,回到內建全年齡版"></textarea>
+  <div class="row" style="margin-top:.7em">
+    <button onclick="saveStageScript()">儲存這個階段</button>
+    <span class="status" id="st-status"></span>
+  </div>
+</section>
+
 <!-- ── 獻祭腳本編寫 ── -->
 <section>
   <h2>獻祭腳本(給 AI 隨機選用)</h2>
@@ -245,6 +263,40 @@ async function saveSummoners() {
     status("su-status", "✓ 已寫回 summoners.json(遊戲重整後生效)");
   } catch (e) { status("su-status", "失敗:" + e.message, true); }
 }
+
+// ── 階段語氣腳本 ──
+const STAGE_NAMES = ["強烈嫌惡排斥","嫌惡抗拒","抗拒冷淡","抗拒","偶爾互動","女友","妻子"];
+let stCat = "watch_stage", stScripts = [];
+document.getElementById("st-stage").innerHTML =
+  STAGE_NAMES.map(n => `<option value="${n}">${n}</option>`).join("");
+document.querySelectorAll("#st-tabs button").forEach(b => b.onclick = () => {
+  stCat = b.dataset.cat;
+  document.querySelectorAll("#st-tabs button").forEach(x => x.classList.toggle("on", x === b));
+  loadStageScripts();
+});
+async function loadStageScripts() {
+  try { stScripts = await api("/api/scripts?category=" + stCat); } catch { stScripts = []; }
+  fillStageBody();
+}
+function fillStageBody() {
+  const name = document.getElementById("st-stage").value;
+  const hit = stScripts.find(x => x.method === name);
+  document.getElementById("st-body").value = hit ? hit.body : "";
+  status("st-status", hit ? "(目前使用你的自訂版)" : "(目前使用內建全年齡版)");
+}
+document.getElementById("st-stage").onchange = fillStageBody;
+async function saveStageScript() {
+  const name = document.getElementById("st-stage").value;
+  const bodyv = document.getElementById("st-body").value.trim();
+  try {
+    // 先刪同階段舊版,再存新版;留空=只刪(回到內建)
+    for (const old of stScripts.filter(x => x.method === name)) await api("/api/scripts/" + old.id, "DELETE");
+    if (bodyv) await api("/api/scripts", "POST", { category: stCat, method: name, body: bodyv });
+    status("st-status", bodyv ? `✓ 已儲存「${name}」自訂版(遊戲重整後生效)` : `✓ 已還原「${name}」為內建版`);
+    stScripts = await api("/api/scripts?category=" + stCat);
+  } catch (e) { status("st-status", "失敗:" + e.message, true); }
+}
+loadStageScripts();
 
 // ── 腳本 ──
 document.querySelectorAll("#cat-tabs button").forEach(b => b.onclick = () => {

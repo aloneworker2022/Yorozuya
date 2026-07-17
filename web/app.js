@@ -993,7 +993,26 @@ function exitSacrifice() {
   renderAll();
 }
 
-const SUMMONER_STAGES = [["friend", 30], ["girlfriend", 90], ["wife", 180]];
+// 召喚師×她的關係七階段(上限, 名稱);達 240 被娶走。演出基調由內容模組/Testword 腳本決定。
+const RIVAL_STAGES = [
+  [30, "強烈嫌惡排斥"], [60, "嫌惡抗拒"], [90, "抗拒冷淡"], [120, "抗拒"],
+  [150, "偶爾互動"], [180, "女友"], [240, "妻子"],
+];
+const MARRY_AT = 240;
+function rivalStage(aff) {
+  for (let i = 0; i < RIVAL_STAGES.length; i++)
+    if (aff < RIVAL_STAGES[i][0]) return { idx: i, name: RIVAL_STAGES[i][1] };
+  return { idx: RIVAL_STAGES.length - 1, name: RIVAL_STAGES[RIVAL_STAGES.length - 1][1] };
+}
+
+// Testword 撰寫的階段語氣腳本(watch_stage=觀戰演出 / chat_rival=她對你的變化)。
+// method=階段名;存在就蓋掉內容模組內建版。核心不檢視內容,原樣傳給 AI。
+const STAGE_SCRIPTS = { watch_stage: {}, chat_rival: {} };
+for (const cat of Object.keys(STAGE_SCRIPTS)) {
+  fetch(`/api/scripts?category=${cat}`).then(r => r.ok ? r.json() : []).then(list => {
+    for (const it of list || []) STAGE_SCRIPTS[cat][it.method] = it.body;
+  }).catch(() => {});
+}
 
 // 窺視紀錄:一淫紋(或一次約會費)看 1~2 則未讀,從最舊開始——照時間順序目睹他們的進展。
 // playerType 決定釋放機率(chat 1/20 / date 1/10);釋放只對「她此刻被召喚中」有意義,
@@ -1087,12 +1106,15 @@ async function watchNext() {
 
 // 生成單則紀錄文字的 LLM 訊息(觀看時現生/背景佇列共用)
 function actMsgs(s, su, act) {
+  const st = rivalStage(s.summoner?.affection || 0);
   const ctx = {
     world: WORLD_LORE,
     content_rating: state.settings.rating || "sfw",
     character: { name: s.name, personality: s.personality, backstory: s.backstory },
     summoner: su,
     scene: { type: act.type, location: act.location },
+    rival: { stage_idx: st.idx, stage_name: st.name, affection: s.summoner?.affection || 0,
+             tone_override: STAGE_SCRIPTS.watch_stage[st.name] || null },
   };
   return [
     { role: "system", content: buildWatchPrompt(ctx) },
@@ -1214,6 +1236,15 @@ function buildCtx(s) {
     content_rating: state.settings.rating || "sfw",
     player: { name: state.settings.player || "主人" },
     world: WORLD_LORE,
+    // 她被另一個召喚師纏上時,那段關係對「她跟你互動」的滲透(變心)
+    rival: s.summoner ? (() => {
+      const st = rivalStage(s.summoner.affection);
+      return {
+        summoner_name: summonerById(s.summoner.id)?.name || "另一個男人",
+        stage_idx: st.idx, stage_name: st.name, affection: s.summoner.affection,
+        tone_override: STAGE_SCRIPTS.chat_rival[st.name] || null,
+      };
+    })() : null,
   };
 }
 
@@ -1424,9 +1455,9 @@ function pushAct(s, act) {
 }
 function unseenActs(s) { return (s.summoner?.acts || []).filter(a => !a.seen); }
 
-// 好感達 180:被娶走,無聲無息地永久消失(只留日誌)
+// 好感達 MARRY_AT(240):被娶走,無聲無息地永久消失(只留日誌)
 function checkMarriage(s) {
-  if (!s.summoner || s.summoner.affection < 180) return false;
+  if (!s.summoner || s.summoner.affection < MARRY_AT) return false;
   const su = summonerById(s.summoner.id);
   log(`${s.name} 被 ${su?.name || "另一位召喚師"} 娶走了,永遠離開了萬事屋。`);
   toast(`${s.name} 成了 ${su?.name || "他"} 的妻子,永遠消失了……`, "bad");
@@ -2248,7 +2279,7 @@ function renderDetail(s, root) {
         ? "她現在正被召喚到對方身邊——聊天/約會會看見他們的互動,有機會把她拉回來"
         : "他隨時可能把她召喚過去";
       summonerLine = `<div class="summoner-note">⚠ ${su.emoji} <b>${esc(su.name)}</b> 纏上了她(${esc(su.desc)})<br>
-      對方好感 ${s.summoner.affection} — ${takenTxt}
+      她對他的態度:<b>${rivalStage(s.summoner.affection).name}</b> — ${takenTxt}
       ${unseen ? `<br><button class="danger-btn" id="act-peek" style="margin-top:.4em">窺視他們的互動紀錄(1 淫紋・${unseen} 則未讀)</button>` : ""}</div>`;
     }
   }
