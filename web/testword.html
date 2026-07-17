@@ -80,6 +80,17 @@
   <div class="status" id="exp-status"></div>
 </section>
 
+<!-- ── 召喚師行為 ── -->
+<section>
+  <h2>召喚師行為(dateChance)</h2>
+  <div class="mini" style="margin-bottom:.6em">他召喚妹子時「帶出門約會」的傾向(%);其餘機率為召去身邊陪伴。改完按儲存,直接寫回 summoners.json。</div>
+  <div id="su-rows"></div>
+  <div class="row" style="margin-top:.7em">
+    <button onclick="saveSummoners()">儲存召喚師設定</button>
+    <span class="status" id="su-status"></span>
+  </div>
+</section>
+
 <!-- ── 獻祭腳本編寫 ── -->
 <section>
   <h2>獻祭腳本(給 AI 隨機選用)</h2>
@@ -159,8 +170,8 @@ async function clearSummoners() {
   delete save.forceEncounter;
   await commit("清除所有召喚師");
 }
-// 觀戰測試場景:第一隻魅魔被召喚師「召喚走」(持續狀態),
-// 並直接設她為看板娘 + 給 1 淫紋——回遊戲點淫紋聊天或約她,即進觀戰
+// 觀戰測試場景:第一隻魅魔被召喚師「召喚中」(陪伴型,含 3 小時的既往紀錄),
+// 並直接設她為看板娘 + 給 3 淫紋——回遊戲點淫紋聊天/約她/名冊窺視,即看紀錄
 async function watchScenario() {
   if (!ensure()) return;
   const s = (save.succubi || [])[0];
@@ -171,15 +182,15 @@ async function watchScenario() {
     if (!su) { status("bd-status", "召喚師池為空", true); return; }
     s.summoner = { id: su.id, affection: 0, sinceDay: 0 };
   }
-  s.summoner.taken = Math.random() < 0.5
-    ? { type: "date", location: "遊樂園" }
-    : { type: "kanban", location: null };
+  const now = Date.now();
+  // actAt 設 3 小時前:回遊戲 tick 會補算出 3 批紀錄(9~15 則),背景開始生成文字
+  s.summoner.taken = { type: "kanban", location: null, until: now + 2 * 3600 * 1000, actAt: now - 3 * 3600 * 1000 };
   save.kanbanId = s.id;
-  save.kanbanUntil = Date.now() + 99 * 3600 * 1000;
+  save.kanbanUntil = now + 99 * 3600 * 1000;
   save.lastKanbanId = s.id;
-  save.chatCharges = (save.chatCharges || 0) + 1;
+  save.chatCharges = (save.chatCharges || 0) + 3;
   delete save.forceEncounter;
-  await commit(`觀戰場景備妥:${s.name} 已被召喚走(${s.summoner.taken.type === "date" ? "被拉去約會" : "被召去陪伴"})——回遊戲點淫紋聊天或約她`);
+  await commit(`觀戰場景備妥:${s.name} 被召喚中+3 小時既往紀錄——回遊戲點淫紋或名冊窺視`);
 }
 
 // ── 擴充等級 ──
@@ -206,6 +217,33 @@ async function bumpExp(k, d) {
     await reloadSave();
     status("exp-status", `✓ ${EXP_AXES[k]} → Lv${save.expansions[k]}`);
   } catch (e) { status("exp-status", "失敗:" + e.message, true); }
+}
+
+// ── 召喚師行為 ──
+let summonerPool = null;
+async function loadSummoners() {
+  try {
+    const j = await api("/content/summoners.json?ts=" + Date.now());
+    summonerPool = j.summoners || [];
+  } catch { summonerPool = []; }
+  const el = document.getElementById("su-rows");
+  el.innerHTML = summonerPool.length ? summonerPool.map((su, i) => `
+    <div class="row" style="justify-content:space-between;padding:.35em 0;border-top:1px solid rgba(255,255,255,.06)">
+      <span class="mini">${su.emoji || "👤"} <b style="color:#d8d0ec">${su.name}</b> <span style="color:#8a82a5">(猥瑣 ${su.creep})</span></span>
+      <span class="row" style="gap:.3em"><input type="number" min="0" max="100" step="5" data-su="${i}"
+        value="${Math.round((su.dateChance ?? .5) * 100)}" style="width:5.5em;text-align:right"> <span class="mini">% 約會</span></span>
+    </div>`).join("") : `<div class="mini">召喚師池為空(content/summoners.json)。</div>`;
+}
+async function saveSummoners() {
+  if (!summonerPool) return;
+  document.querySelectorAll("[data-su]").forEach(inp => {
+    const v = Math.max(0, Math.min(100, parseInt(inp.value) || 0));
+    summonerPool[+inp.dataset.su].dateChance = v / 100;
+  });
+  try {
+    await api("/api/summoners", "PUT", { summoners: summonerPool });
+    status("su-status", "✓ 已寫回 summoners.json(遊戲重整後生效)");
+  } catch (e) { status("su-status", "失敗:" + e.message, true); }
 }
 
 // ── 腳本 ──
@@ -245,6 +283,7 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
 
 reloadSave();
 loadScripts();
+loadSummoners();
 </script>
 </body>
 </html>

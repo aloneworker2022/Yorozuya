@@ -251,6 +251,23 @@ def random_script(category: str):
     return {"id": r[0], "method": r[1], "body": r[2]}
 
 
+# Testword 編輯召喚師池(dateChance 等行為參數);整包覆寫 content/summoners.json
+@app.put("/api/summoners")
+def put_summoners(body: dict):
+    if not isinstance(body.get("summoners"), list):
+        raise HTTPException(400, "需要 {summoners: [...]}")
+    path = WEB_DIR / "content" / "summoners.json"
+    current = {}
+    if path.exists():
+        try:
+            current = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            current = {}
+    current["summoners"] = body["summoners"]
+    path.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"ok": True, "count": len(body["summoners"])}
+
+
 @app.get("/testword")
 def testword():
     from fastapi.responses import FileResponse
