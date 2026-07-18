@@ -158,7 +158,10 @@ function phys(){
     const t=(y-topY)/Ltot;
     if(t<=0||t>=1) return 0;
     const tt=Math.pow(t,pw);
-    return rx*1.1*Math.sqrt(Math.max(0,4*tt*(1-tt)));
+    const raw=rx*1.1*Math.sqrt(Math.max(0,4*tt*(1-tt)));
+    // 根部固定:自附著點張開的斜率是常數(不隨水量/組成變),
+    // 水量只撐大「根部以下」的袋腹 → 長出的地方永遠一樣大
+    return Math.min(raw, 1.15*(y-topY));
   };
   return {fat,soft,vol,S,rx,ry,ax,topY,fy,yBot,Ltot,tiltK,dw};
 }
