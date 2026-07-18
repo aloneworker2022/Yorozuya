@@ -142,14 +142,15 @@ const P = { view: 'front', size: 1, gap: 1, gland: 0.3, skin: 'fair' };
 
 // ---- 液體物理(正面/側面共用):水量把袋子往下拉長,不是鼓成球 ----
 function phys(){
-  const fat=1-P.gland, soft=0.15+0.85*fat;      // 柔軟度(脂肪=軟)
+  // 乳腺也是軟組織:柔軟度下限 0.45(乳腺只是「較抗垂」,不是剛體)
+  const fat=1-P.gland, soft=0.45+0.55*fat;
   const vol=Math.max(0,Math.min(1,(P.size-0.7)/1.8)); // 水量 0..1(70%~250%)
-  const S=Math.min(1, soft*(0.15+0.85*vol));    // 下垂度 = 柔軟 × 水量
-  const rx=13+vol*(7+8*(1-soft));               // 袋寬:水多僅略寬,緊實才撐得寬
+  const S=Math.min(1, soft*(0.2+0.8*vol));      // 下垂度 = 柔軟 × 水量
+  const rx=13+vol*(5+6*(1-soft));               // 袋寬:成長有限(不會變大球)
   const ry=rx*0.55*(1+0.25*S);
   const ax=28*P.gap+S*4;                        // 乳軸距(垂 → 微外擴)
-  const topY=64;                                // 上緣附著點:固定
-  const L=24+vol*(18+46*soft);                  // 袋長:水量×柔軟 → 往下拉長
+  const topY=64;                                // 上緣附著點:固定(位置不隨大小變)
+  const L=24+vol*(30+34*soft);                  // 尺寸主要變成「往下長」:袋長隨水量大增
   const fy=Math.min(158, topY+L);               // 摺線(袋底)
   const yBot=fy+ry, Ltot=yBot-topY, pw=1+1.2*S;
   const tiltK=1.5+3.5*S;                        // 乳軸外傾
