@@ -248,7 +248,8 @@ function renderFront(){
   for(const s of [-1,1]){
     const cx=midX+s*ax;
     const y0=Math.round(topY), y1=Math.round(yBot);
-    let pL=null,pR=null,lastY=0,lastOff=0;
+    // 不再整塊填色:胸底色=軀幹色,體積靠明暗;線條只有 外緣線+底部收弧
+    let pO=null,pI=null,lastY=0,lastOff=0;
     for(let y=y0;y<=y1;y++){
       const t=(y-topY)/Ltot;
       const wRow=dw(y);
@@ -256,23 +257,34 @@ function renderFront(){
       const cxR=cx+s*tiltK*t*t;                  // 軸心隨深度外偏
       for(let x=Math.round(cxR-wRow);x<=Math.round(cxR+wRow);x++){
         const u=(x-cxR)/wRow;
-        // 上緣抖色淡出 → 無邊界融入胸口(公仔上緣看不到分界)
-        if(t<0.25){ const m=(y&1)*2+(x&1); if(t/0.25*4<=m) continue; }
-        let c=C[3];                              // 主色(比軀幹亮一階 → 凸起)
-        if(t>1-0.16*(1-u*u))c=C[1];              // 貼下緣的薄影
-        else if(t>1-0.30*(1-u*u))c=C[2];         // 中間調過渡(三層光影)
-        px(img,W,x,y,c);
+        let c=null;
+        if(t>1-0.16*(1-u*u)) c=C[1];             // 貼下緣的影
+        else if(t>1-0.30*(1-u*u)){ if(((x+y)&1)===0) c=C[1]; } // 抖色過渡影
+        else {
+          // 前凸面高光斑(照片:亮部在前凸中上,邊緣柔)
+          const dh=Math.pow(u/0.55,2)+Math.pow((t-0.52)/0.22,2);
+          if(dh<1){ c=C[3]; if(dh>0.55&&((x+y)&1)) c=null; }
+        }
+        if(c) px(img,W,x,y,c);
       }
-      // 摺線:只留下段中央,兩端淡出(不再整圈包住)
-      if(t>0.62){
-        const col=t>0.80?C[0]:C[1];
-        const xl=Math.round(cxR-wRow), xr=Math.round(cxR+wRow);
-        if(pL){ line(img,W,pL[0],pL[1],xl,y,col); line(img,W,pR[0],pR[1],xr,y,col); }
-        pL=[xl,y]; pR=[xr,y]; lastY=y; lastOff=s*tiltK*t*t;
+      // 外緣線:與身體側線同一條流線,自上段淡入(C1→C0)
+      if(t>0.30){
+        const xo=Math.round(cxR+s*wRow);
+        const colO=t>0.5?C[0]:C[1];
+        if(pO) line(img,W,pO[0],pO[1],xo,y,colO);
+        pO=[xo,y];
       }
+      // 內側只在底部收口露一小段(不畫整條內緣)
+      if(t>0.85){
+        const xi=Math.round(cxR-s*wRow);
+        if(pI) line(img,W,pI[0],pI[1],xi,y,C[0]);
+        pI=[xi,y];
+      }
+      lastY=y; lastOff=s*tiltK*t*t;
     }
-    if(pL){ line(img,W,pL[0],pL[1],Math.round(cx+lastOff),lastY+1,C[0]);
-            line(img,W,pR[0],pR[1],Math.round(cx+lastOff),lastY+1,C[0]); } // 底部收口
+    const xb=Math.round(cx+lastOff);
+    if(pO) line(img,W,pO[0],pO[1],xb,lastY+1,C[0]);   // 底部收弧(摺線)
+    if(pI) line(img,W,pI[0],pI[1],xb,lastY+1,C[0]);
     // 摺線下投影(公仔最深的暗部:摺線下方投在肋廓上,抖色柔化)
     for(let y=y0+3;y<=y1+4;y++){
       const tA=(y-3-topY)/Ltot;
