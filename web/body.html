@@ -206,16 +206,21 @@ function renderFront(){
   const topY=64+fr.drop*10;                 // 上緣附著點:固定,不隨水量動
   const L=26+vol*(14+30*soft)+fr.drop*20;   // 袋長:水量 × 柔軟 → 往下拉長
   const fy=Math.min(158, topY+L);           // 摺線位置(袋底)
-  const bTop=topY, bBot=fy+ry;              // 胸區行範圍
-  // 軀幹填色(含胸區外擴)
+  // 水滴寬度包絡(軀幹剪影與團塊共用 → 只有一條線,不會前後兩套輪廓)
+  const yBot=fy+ry, Ltot=yBot-topY, pw=1+1.2*S;
+  function dw(y){
+    const t=(y-topY)/Ltot;
+    if(t<=0||t>=1) return 0;
+    const tt=Math.pow(t,pw);
+    return rx*1.1*Math.sqrt(Math.max(0,4*tt*(1-tt)));
+  }
+  // 軀幹填色(剪影 = 軀幹 ∪ 水滴:胸大到超出軀幹才撐寬,小胸不鼓)
   for(let y=0;y<H;y++){
     const ny=(y-H/2)/(H/2);
     if(ny>0.92) continue;
     let hw=halfW(ny)*sc;
-    if(y>bTop&&y<bBot){                                    // 外擴:剪影加寬
-      const u=(y-bTop)/(bBot-bTop);
-      hw+=(fr.bulge+0.3*S)*10*k*Math.sin(Math.PI*Math.pow(u,1+0.6*S)); // 垂 → 外擴且鼓處下移
-    }
+    const wR=dw(y);
+    if(wR>0) hw=Math.max(hw, ax+wR);
     const x0=Math.round(midX-hw), x1=Math.round(midX+hw);
     for(let x=x0;x<=x1;x++){
       let c=C[2];
@@ -231,27 +236,28 @@ function renderFront(){
   px(img,W,midX,180,C[0]); px(img,W,midX,181,C[0]);
   for(const s of [-1,1]){
     const cx=midX+s*ax;
-    // 實心團塊:水滴形(上窄 → 下段最寬 → 底部收圓),不是蛋形/皮球
-    const yBot=fy+ry, Ltot=yBot-topY;
-    const pw=1+1.2*S;                          // 越垂 → 最寬處越靠下、上段越細長
+    // 實心團塊:水滴形(與剪影共用同一包絡)
     const y0=Math.round(topY), y1=Math.round(yBot);
+    let pL=null,pR=null,lastY=0;
     for(let y=y0;y<=y1;y++){
       const t=(y-topY)/Ltot;
-      if(t<=0||t>=1)continue;
-      const tt=Math.pow(t,pw);
-      const wRow=rx*1.1*Math.sqrt(Math.max(0,4*tt*(1-tt)));  // 水滴寬度包絡
+      const wRow=dw(y);
       if(wRow<0.8)continue;
       for(let x=Math.round(cx-wRow);x<=Math.round(cx+wRow);x++){
         const u=(x-cx)/wRow;
-        let c=C[3];                            // 主色(比軀幹亮一階 → 凸起)
-        if(t>0.55&&Math.abs(u)>0.60)c=C[1];    // 下段沿滴緣的暗影
+        let c=C[3];                              // 主色(比軀幹亮一階 → 凸起)
+        if(t>1-0.26*(1-u*u))c=C[1];              // 光從上方 → 貼滴底的彎月影(中央厚、兩側收)
         else if(t<0.30&&Math.abs(u)>0.75)c=C[2]; // 上段邊緣過渡融入軀幹
         px(img,W,x,y,c);
       }
-      // 下段輪廓線 = 水滴下緣(即下乳摺線,自然呈 U 弧收底)
-      if(t>0.48){ px(img,W,cx-wRow,y,C[0]); px(img,W,cx+wRow,y,C[0]);
-                  px(img,W,cx-wRow,y+1,C[1]); px(img,W,cx+wRow,y+1,C[1]); }
+      // 下乳摺線 = 水滴下緣,逐列連續描線
+      if(t>0.48){
+        const xl=Math.round(cx-wRow), xr=Math.round(cx+wRow);
+        if(pL){ line(img,W,pL[0],pL[1],xl,y,C[0]); line(img,W,pR[0],pR[1],xr,y,C[0]); }
+        pL=[xl,y]; pR=[xr,y]; lastY=y;
+      }
     }
+    if(pL){ line(img,W,pL[0],pL[1],cx,lastY+1,C[0]); line(img,W,pR[0],pR[1],cx,lastY+1,C[0]); } // 底部收口
     // 高光(上段斜彎月)
     arc(img,W,cx-s*rx*0.2,topY+Ltot*0.38,rx*0.32,Ltot*0.10,Math.PI*1.1,Math.PI*1.7,C[4]);
     // 乳頭(垂 → 下移、微外偏)
