@@ -118,10 +118,19 @@ F.style.width = F.width*2+'px'; F.style.height = F.height*2+'px';
 
 // ---- 調色盤(5 階賽璐璐:深線/影/主色/亮/高光)----
 const SKINS = {
+  porcelain: ['#7c4f52','#e2aca4','#f4d4c8','#fbe6dc','#fff5ee'],
   fair: ['#7a4a3a','#d99b72','#efb98d','#f9d3ac','#ffe9c9'],
   tan:  ['#6b452c','#bd8a58','#d3a672','#e6c18c','#f4d9a8'],
   pink: ['#8a5058','#e2a294','#f4bfa9','#ffd8bf','#ffe9d5'],
   deep: ['#4a2c1c','#8a6242','#a37c54','#bd9668','#d3ae80'],
+};
+// 乳暈配色 [深(乳頭), 中(暈)] — 隨膚色
+const NIP = {
+  porcelain: ['#c4747d','#eba4a6'],
+  fair: ['#b96a63','#e39a90'],
+  tan:  ['#8a5a44','#b47a5e'],
+  pink: ['#c06a70','#eb9a9c'],
+  deep: ['#5a3428','#7e4e3c'],
 };
 const P = { type: 'hemi', size: 1, gap: 1, gland: 0.3, skin: 'fair' };
 
@@ -220,7 +229,7 @@ function renderFront(){
     if(ny>0.92) continue;
     let hw=halfW(ny)*sc;
     const wR=dw(y);
-    if(wR>0) hw=Math.max(hw, ax+wR);
+    if(wR>0){ const t=(y-topY)/Ltot; hw=Math.max(hw, ax+(1.5+3.5*S)*t*t+wR); }
     const x0=Math.round(midX-hw), x1=Math.round(midX+hw);
     for(let x=x0;x<=x1;x++){
       let c=C[2];
@@ -234,35 +243,71 @@ function renderFront(){
   line(img,W,midX-6,34,midX-24,30,C[1]); line(img,W,midX+6,34,midX+24,30,C[1]);
   // 肚臍
   px(img,W,midX,180,C[0]); px(img,W,midX,181,C[0]);
+  const tiltK=1.5+3.5*S;                         // 乳軸外傾(八字):垂墜越大越明顯
+  const NIPC=(NIP[P.skin]||NIP.fair).map(hx);
   for(const s of [-1,1]){
     const cx=midX+s*ax;
-    // 實心團塊:水滴形(與剪影共用同一包絡)
     const y0=Math.round(topY), y1=Math.round(yBot);
-    let pL=null,pR=null,lastY=0;
+    let pL=null,pR=null,lastY=0,lastOff=0;
     for(let y=y0;y<=y1;y++){
       const t=(y-topY)/Ltot;
       const wRow=dw(y);
       if(wRow<0.8)continue;
-      for(let x=Math.round(cx-wRow);x<=Math.round(cx+wRow);x++){
-        const u=(x-cx)/wRow;
+      const cxR=cx+s*tiltK*t*t;                  // 軸心隨深度外偏
+      for(let x=Math.round(cxR-wRow);x<=Math.round(cxR+wRow);x++){
+        const u=(x-cxR)/wRow;
+        // 上緣抖色淡出 → 無邊界融入胸口(公仔上緣看不到分界)
+        if(t<0.25){ const m=(y&1)*2+(x&1); if(t/0.25*4<=m) continue; }
         let c=C[3];                              // 主色(比軀幹亮一階 → 凸起)
-        if(t>1-0.26*(1-u*u))c=C[1];              // 光從上方 → 貼滴底的彎月影(中央厚、兩側收)
-        else if(t<0.30&&Math.abs(u)>0.75)c=C[2]; // 上段邊緣過渡融入軀幹
+        if(t>1-0.16*(1-u*u))c=C[1];              // 貼下緣的薄影
+        else if(t>1-0.30*(1-u*u))c=C[2];         // 中間調過渡(三層光影)
         px(img,W,x,y,c);
       }
-      // 下乳摺線 = 水滴下緣,逐列連續描線
-      if(t>0.48){
-        const xl=Math.round(cx-wRow), xr=Math.round(cx+wRow);
-        if(pL){ line(img,W,pL[0],pL[1],xl,y,C[0]); line(img,W,pR[0],pR[1],xr,y,C[0]); }
-        pL=[xl,y]; pR=[xr,y]; lastY=y;
+      // 摺線:只留下段中央,兩端淡出(不再整圈包住)
+      if(t>0.62){
+        const col=t>0.80?C[0]:C[1];
+        const xl=Math.round(cxR-wRow), xr=Math.round(cxR+wRow);
+        if(pL){ line(img,W,pL[0],pL[1],xl,y,col); line(img,W,pR[0],pR[1],xr,y,col); }
+        pL=[xl,y]; pR=[xr,y]; lastY=y; lastOff=s*tiltK*t*t;
       }
     }
-    if(pL){ line(img,W,pL[0],pL[1],cx,lastY+1,C[0]); line(img,W,pR[0],pR[1],cx,lastY+1,C[0]); } // 底部收口
-    // 高光(上段斜彎月)
+    if(pL){ line(img,W,pL[0],pL[1],Math.round(cx+lastOff),lastY+1,C[0]);
+            line(img,W,pR[0],pR[1],Math.round(cx+lastOff),lastY+1,C[0]); } // 底部收口
+    // 摺線下投影(公仔最深的暗部:摺線下方投在肋廓上,抖色柔化)
+    for(let y=y0+3;y<=y1+4;y++){
+      const tA=(y-3-topY)/Ltot;
+      if(tA<0.5||tA>=1)continue;
+      const wA=dw(y-3); if(wA<=0)continue;
+      const cxA=cx+s*tiltK*tA*tA;
+      const wH=dw(y), tH=(y-topY)/Ltot, cxH=cx+s*tiltK*tH*tH;
+      for(let x=Math.round(cxA-wA*0.92);x<=Math.round(cxA+wA*0.92);x++){
+        if(wH>0&&Math.abs(x-cxH)<wH)continue;    // 還在滴內 → 略過
+        const p=((y|0)*W+(x|0))*4;
+        if(img.data[p+3]===0)continue;           // 身體外不畫
+        if(((x+y)&1)===0) px(img,W,x,y,C[1]);
+      }
+    }
+    // 乳暈(橢圓、粉調漸層)+ 乳頭 + 高光點:最凸點,垂墜時朝下外
+    const tN=0.60+0.16*S;
+    const nyy=Math.round(topY+tN*Ltot);
+    const nxx=Math.round(cx+s*(tiltK*tN*tN+1+2.5*S));
+    for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-3;dx2<=3;dx2++){
+      const dd=Math.pow(dx2/3.2,2)+Math.pow(dy2/2.2,2);
+      if(dd<=1) px(img,W,nxx+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
+    }
+    px(img,W,nxx-1,nyy-1,C[4]);
+    // 高光(上外側大面斜彎月)
     arc(img,W,cx-s*rx*0.2,topY+Ltot*0.38,rx*0.32,Ltot*0.10,Math.PI*1.1,Math.PI*1.7,C[4]);
-    // 乳頭(垂 → 下移、微外偏)
-    const nx=cx+s*(fr.nip[0]+0.15*S)*rx, nyy=fy-ry*0.9+fr.nip[1]*ry*2.2+S*ry*1.0;
-    px(img,W,nx,nyy,C[0]); px(img,W,nx+1,nyy,C[0]); px(img,W,nx,nyy+1,C[1]); px(img,W,nx+1,nyy+1,C[1]);
+  }
+  // 乳溝谷影(間距小、兩滴靠近時,中央柔影)
+  if(ax<rx*1.1+4){
+    for(let y=Math.round(topY+0.3*Ltot);y<=Math.round(yBot-2);y++){
+      for(let x=Math.round(midX-2);x<=Math.round(midX+2);x++){
+        const p=(y*W+x)*4;
+        if(img.data[p+3]===0)continue;
+        if(((x+y)&1)===0) px(img,W,x,y,C[2]);
+      }
+    }
   }
   fctx.putImageData(img,0,0);
   document.getElementById('cap').textContent=
@@ -281,7 +326,7 @@ Object.entries(TYPES).forEach(([key,t])=>{
   b.onclick=()=>{P.type=key;[...tw.children].forEach(c=>c.classList.toggle('on',c===b));render();};
   tw.appendChild(b);
 });
-const skinNames={fair:'白皙',tan:'小麥',pink:'櫻粉',deep:'深棕'};
+const skinNames={porcelain:'瓷白',fair:'白皙',tan:'小麥',pink:'櫻粉',deep:'深棕'};
 const sw=$('#skin');
 Object.keys(SKINS).forEach(key=>{
   const b=document.createElement('button');
