@@ -274,6 +274,13 @@ def testword():
     return FileResponse(WEB_DIR / "testword.html")
 
 
+@app.get("/body")
+def body():
+    # 虛擬設計台:偽 3D 點陣胸部人台,供胸罩/衣著版型預覽
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "body.html")
+
+
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

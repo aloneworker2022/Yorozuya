@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>虛擬設計・胸部 | 魅魔萬事屋</title>
+<meta name="theme-color" content="#16101f">
+<style>
+/* ===== PC-98 復古像素風・虛擬設計台 ===== */
+:root {
+  --bg: #141021; --glow: #251440;
+  --panel: rgba(18, 12, 34, .72); --panel2: rgba(18, 12, 34, .5);
+  --text: #9df3ff; --dim: rgba(157, 243, 255, .5);
+  --line: rgba(157, 243, 255, .14); --accent: #ff4fd8; --cyan: #55ffe0;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  background-image: radial-gradient(ellipse at 50% 120%, var(--glow) 0%, var(--bg) 72%);
+  color: var(--text);
+  text-shadow: 0 0 6px color-mix(in srgb, currentColor 32%, transparent);
+  font-family: "Cubic 11", "Fusion Pixel", ui-monospace, monospace;
+  font-size: 14px;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  min-height: 100%;
+  padding: 14px 12px 40px;
+}
+/* CRT 掃描線 + 暗角 */
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.14) 2px 4px),
+    radial-gradient(ellipse at center, transparent 62%, rgba(0,0,0,.34) 100%);
+}
+.wrap { max-width: 780px; margin: 0 auto; }
+header.top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 14px; }
+header.top h1 { font-size: 17px; letter-spacing: 1px; color: var(--accent); }
+header.top .sub { color: var(--dim); font-size: 12px; }
+header.top a.home { margin-left: auto; color: var(--cyan); text-decoration: none;
+  border: 1px solid var(--line); padding: 3px 8px; border-radius: 3px; }
+
+.stage-box {
+  position: relative; margin: 0 auto 14px; width: fit-content;
+  padding: 12px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--panel2);
+  box-shadow: inset 0 0 40px rgba(0,0,0,.4);
+}
+.stage-box .grid-bg {
+  position: absolute; inset: 12px; pointer-events: none; opacity: .16;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+canvas#stage {
+  display: block; position: relative; z-index: 1;
+  image-rendering: pixelated;
+  width: 320px; height: 400px;   /* 由 JS 依內部緩衝比例縮放 */
+  background: transparent;
+}
+.stage-cap { text-align: center; color: var(--dim); font-size: 11px; margin-top: 6px; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px 14px; margin-bottom: 12px; }
+.panel h2 { font-size: 13px; color: var(--cyan); margin-bottom: 10px; letter-spacing: 1px; }
+
+.row { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
+.row label { flex: 0 0 76px; color: var(--dim); font-size: 12px; }
+.row input[type=range] { flex: 1; accent-color: var(--accent); height: 4px; }
+.row .val { flex: 0 0 40px; text-align: right; color: var(--text); font-size: 12px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button, .toggle {
+  font-family: inherit; font-size: 12px; cursor: pointer; color: var(--text);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 4px;
+  padding: 5px 10px; text-shadow: inherit;
+}
+.chips button.on { border-color: var(--accent); color: var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent); }
+.chips button .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  margin-right: 5px; vertical-align: -1px; border: 1px solid rgba(255,255,255,.3); }
+
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.actions button { font-family: inherit; font-size: 13px; cursor: pointer;
+  color: var(--bg); background: var(--accent); border: none; border-radius: 4px;
+  padding: 8px 14px; text-shadow: none; font-weight: bold; }
+.actions button.ghost { background: var(--panel2); color: var(--cyan);
+  border: 1px solid var(--line); text-shadow: inherit; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+@media (max-width: 560px) { .two-col { grid-template-columns: 1fr; } }
+.note { color: var(--dim); font-size: 11px; line-height: 1.5; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>虛擬設計台・胸部</h1>
+    <span class="sub">偽 3D 點陣人台 · 胸罩/衣著版型預覽</span>
+    <a class="home" href="/">← 回萬事屋</a>
+  </header>
+
+  <div class="stage-box">
+    <div class="grid-bg"></div>
+    <canvas id="stage" width="160" height="200"></canvas>
+    <div class="stage-cap">低解析度點陣・即時著色</div>
+  </div>
+
+  <div class="panel">
+    <h2>◆ 體型參數</h2>
+    <div class="two-col">
+      <div class="row"><label>罩杯</label><input id="cup" type="range" min="10" max="60" value="34"><span class="val" id="cup-v"></span></div>
+      <div class="row"><label>間距</label><input id="gap" type="range" min="8" max="42" value="24"><span class="val" id="gap-v"></span></div>
+      <div class="row"><label>下垂</label><input id="droop" type="range" min="0" max="100" value="28"><span class="val" id="droop-v"></span></div>
+      <div class="row"><label>挺度</label><input id="perk" type="range" min="0" max="100" value="55"><span class="val" id="perk-v"></span></div>
+      <div class="row"><label>寬窄</label><input id="wide" type="range" min="70" max="130" value="100"><span class="val" id="wide-v"></span></div>
+      <div class="row"><label>光源</label><input id="light" type="range" min="0" max="100" value="30"><span class="val" id="light-v"></span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>◆ 著裝 / 版型</h2>
+    <div class="row" style="margin-top:0">
+      <label>模式</label>
+      <div class="chips" id="dress">
+        <button data-mode="bra" class="on">胸罩</button>
+        <button data-mode="nude">裸型人台</button>
+      </div>
+    </div>
+    <div id="bra-opts">
+      <div class="two-col">
+        <div class="row"><label>覆蓋</label><input id="cover" type="range" min="20" max="95" value="62"><span class="val" id="cover-v"></span></div>
+        <div class="row"><label>肩帶</label><input id="strap" type="range" min="0" max="100" value="70"><span class="val" id="strap-v"></span></div>
+      </div>
+      <div class="row"><label>布料</label>
+        <div class="chips" id="fabric"></div>
+      </div>
+      <div class="row"><label>蕾絲</label>
+        <div class="chips" id="lace">
+          <button data-lace="1" class="on">有</button>
+          <button data-lace="0">無</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>◆ 膚色 / 顯示</h2>
+    <div class="row" style="margin-top:0"><label>膚色</label><div class="chips" id="skin"></div></div>
+    <div class="row"><label>選項</label>
+      <div class="chips" id="opts">
+        <button data-opt="breathe" class="on">呼吸動畫</button>
+        <button data-opt="rim" class="on">霓虹描邊</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>◆ 輸出</h2>
+    <div class="actions">
+      <button id="export">匯出 PNG</button>
+      <button id="reset" class="ghost">重設參數</button>
+    </div>
+    <div class="note">
+      本頁為版型設計用途:以低解析度點陣即時著色出偽 3D 胸部人台,供胸罩、內衣、上衣的覆蓋與剪裁預覽。
+      參數與著裝可即時調整,匯出的 PNG 可作為 ComfyUI / 立繪流程的構圖底稿。
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const cv = document.getElementById('stage');
+  const CW = cv.width, CH = cv.height;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(CW, CH);
+  const buf = img.data;
+  // 視覺放大:CSS 顯示尺寸為緩衝的 2 倍,像素化
+  cv.style.width = (CW * 2) + 'px';
+  cv.style.height = (CH * 2) + 'px';
+
+  // ---- 調色盤 ----
+  const SKINS = {
+    fair:   ['#5f3128','#83483a','#a9634c','#cd8666','#eaad84','#ffd0a6'],
+    tan:    ['#4c2d20','#6b4530','#8e6142','#b1855b','#d3aa80','#f0cfa2'],
+    olive:  ['#4a3320','#664a2e','#886b45','#a98d63','#cbb088','#ead2ab'],
+    pink:   ['#6f3a42','#96555c','#bd7a7c','#dc9d99','#f4bfb4','#ffdccb'],
+    deep:   ['#2f1c15','#472a1e','#61402c','#7d5a3e','#9a7754','#bd976f'],
+  };
+  const FABRICS = {
+    magenta: {name:'品紅', ramp:['#5a0a44','#8f1670','#c02b9c','#e85fc4','#ff9ade']},
+    noir:    {name:'黑',   ramp:['#0c0c14','#1b1b28','#2c2c40','#414160','#5c5c82']},
+    ivory:   {name:'象牙', ramp:['#8a8172','#b3a893','#d4c9b2','#ebe2cf','#fbf6ea']},
+    aqua:    {name:'水藍', ramp:['#0a4a52','#127a86','#2bb0bd','#5fe0e8','#9af6ff']},
+    ruby:    {name:'酒紅', ramp:['#4a0a18','#7a1428','#b0263f','#e05068','#ff8aa0']},
+  };
+
+  const P = {
+    cup: .34, gap: .24, droop: .28, perk: .55, wide: 1.0, light: .30,
+    mode: 'bra', cover: .62, strap: .70, fabric: 'magenta', lace: true,
+    skin: 'fair', breathe: true, rim: true,
+  };
+
+  // ---- 幾何 ----
+  const BY = -0.14;            // 乳房中心高度(nx,ny∈[-1,1])
+  function halfW(ny){          // 軀幹半寬(隨高度收窄)
+    const t = (ny + 1) / 2;
+    let w = 0.84 - 0.24 * Math.pow(t, 1.5);
+    w += 0.05 * Math.exp(-Math.pow((ny + 0.9) / 0.18, 2)); // 肩部微鼓
+    return w * P.wide;
+  }
+  function torsoZ(nx, ny){     // 軀幹當作圓柱 → 中央凸、兩側收
+    const hw = halfW(ny);
+    const u = nx / hw;
+    if (Math.abs(u) >= 1) return -1; // 輪廓外
+    return 0.34 * Math.sqrt(1 - u * u);
+  }
+  function oneBulge(nx, ny, cx){
+    const rx = 0.30 * P.wide, ry = 0.30 + 0.06 * P.droop;
+    let lx = (nx - cx) / rx, ly = (ny - BY) / ry;
+    if (ly > 0) ly /= (1 + 0.55 * P.droop);            // 下半部拉長 = 下垂
+    const d2 = lx * lx + ly * ly;
+    if (d2 >= 1) return 0;
+    const round = 0.75 - 0.25 * P.perk;                // 挺度越高越尖挺
+    return P.cup * Math.pow(1 - d2, round);
+  }
+  function bodyZ(nx, ny, breath){
+    const tz = torsoZ(nx, ny);
+    if (tz < 0) return -1;
+    const g = P.gap;
+    const bl = oneBulge(nx, ny, -g);
+    const br = oneBulge(nx, ny, g);
+    return tz + Math.max(bl, br) * breath;
+  }
+
+  // ---- 光照 ----
+  function lightDir(){
+    const az = (0.55 + P.light * 0.9) * Math.PI;   // 方位
+    const el = 0.72;                                // 仰角(固定微俯)
+    const c = Math.cos, s = Math.sin;
+    let L = [Math.cos(el) * c(az), Math.cos(el) * s(az) - 0.35, s(el)];
+    const n = Math.hypot(L[0], L[1], L[2]);
+    return [L[0]/n, L[1]/n, L[2]/n];
+  }
+
+  const hexCache = {};
+  function hex(h){
+    if (hexCache[h]) return hexCache[h];
+    const v = [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+    return (hexCache[h] = v);
+  }
+  function ramp(arr, t){ // t∈[0,1] → 索引取樣(離散,像素風)
+    const n = arr.length;
+    let i = Math.floor(t * n);
+    if (!(i >= 0)) i = 0; else if (i >= n) i = n - 1; // NaN → 最暗
+    return hex(arr[i]);
+  }
+
+  // 胸罩覆蓋:回傳 {covered, edge, lace}
+  function braAt(nx, ny){
+    if (P.mode !== 'bra') return null;
+    const g = P.gap;
+    for (const cx of [-g, g]){
+      const rx = 0.30 * P.wide, ry = 0.30 + 0.06 * P.droop;
+      const lx = (nx - cx) / rx, lyc = (ny - BY) / ry;
+      const d2 = lx * lx + lyc * lyc;
+      if (d2 < 1){
+        // 上緣線(含蕾絲波浪),覆蓋下方
+        let top = 1 - 2 * P.cover;
+        if (P.lace) top += 0.07 * Math.sin(lx * Math.PI * 4.5);
+        if (lyc > top){
+          const edge = (lyc - top) < 0.10;
+          return { covered: true, edge, laceHole: P.lace && edge && ((((nx*90|0)+(ny*90|0)) % 3) === 0) };
+        }
+      }
+    }
+    // 下扣帶(underband)
+    const bandY = BY + (0.30 + 0.06 * P.droop) * 0.92;
+    if (ny > bandY && ny < bandY + 0.085 && Math.abs(nx) < halfW(ny) - 0.02)
+      return { covered: true, edge: false, laceHole: false };
+    // 肩帶
+    if (P.strap > 0.05){
+      for (const cx of [-g, g]){
+        const ax = cx + 0.20 * Math.sign(cx || 1), ay = BY - 0.42; // 杯上外緣
+        const bx = (cx < 0 ? -0.58 : 0.58), by = -1.02;            // 肩點
+        const t = seg(nx, ny, ax, ay, bx, by);
+        if (t.d < 0.028 && t.on) return { covered: true, edge: false, laceHole: false };
+      }
+    }
+    return null;
+  }
+  function seg(px, py, ax, ay, bx, by){
+    const dx = bx - ax, dy = by - ay, l2 = dx*dx + dy*dy;
+    let t = l2 ? ((px-ax)*dx + (py-ay)*dy) / l2 : 0;
+    const on = t >= 0 && t <= 1;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + t*dx, cy = ay + t*dy;
+    return { d: Math.hypot(px-cx, py-cy), on };
+  }
+
+  // ---- 主繪製 ----
+  let phase = 0;
+  function render(){
+    const breath = P.breathe ? 1 + 0.03 * Math.sin(phase) : 1;
+    const L = lightDir();
+    const skin = SKINS[P.skin];
+    const fab = FABRICS[P.fabric].ramp;
+    const acc = hex('#ff4fd8');
+    const e = 2 / (CW / 2); // 法線微分步長
+
+    for (let y = 0; y < CH; y++){
+      const ny = (y - CH/2) / (CH/2);
+      for (let x = 0; x < CW; x++){
+        const nx = (x - CW/2) / (CW/2);
+        const idx = (y * CW + x) * 4;
+        const z = bodyZ(nx, ny, breath);
+        if (z < 0){ buf[idx+3] = 0; continue; } // 輪廓外 = 透明
+
+        // 描邊:內側但鄰接輪廓外
+        if (P.rim && (bodyZ(nx+e,ny,breath)<0 || bodyZ(nx-e,ny,breath)<0 ||
+                      bodyZ(nx,ny+e,breath)<0 || bodyZ(nx,ny-e,breath)<0)){
+          buf[idx]=acc[0]; buf[idx+1]=acc[1]; buf[idx+2]=acc[2]; buf[idx+3]=255; continue;
+        }
+
+        // 法線(有限差分)
+        const zx = (bodyZ(nx+e,ny,breath) - bodyZ(nx-e,ny,breath)) / (2*e);
+        const zy = (bodyZ(nx,ny+e,breath) - bodyZ(nx,ny-e,breath)) / (2*e);
+        let nlen = Math.hypot(zx, zy, 1);
+        const Nx = -zx/nlen, Ny = -zy/nlen, Nz = 1/nlen;
+
+        let diff = Nx*L[0] + Ny*L[1] + Nz*L[2];
+        if (diff < 0) diff = 0;
+        let inten = 0.30 + 0.70 * diff;
+
+        // 乳溝陰影(兩球重疊處)
+        const bl = oneBulge(nx, ny, -P.gap) * breath;
+        const br = oneBulge(nx, ny, P.gap) * breath;
+        const crease = Math.min(bl, br) > 0 ? Math.min(bl, br) / (P.cup || 1) : 0;
+        inten *= 1 - 0.45 * Math.min(1, crease * 2.2);
+
+        // Blinn 高光(皮膚光澤)
+        const Hx=L[0], Hy=L[1], Hz=L[2]+1, hl=Math.hypot(Hx,Hy,Hz);
+        let spec = Math.pow(Math.max(0,(Nx*Hx+Ny*Hy+Nz*Hz)/hl), 22) * 0.5;
+
+        inten = Math.max(0, Math.min(1, inten));
+
+        const bra = braAt(nx, ny);
+        let col;
+        if (bra){
+          let t = inten;
+          if (bra.edge) t = Math.min(1, t + 0.12);   // 邊緣提亮
+          col = ramp(fab, t);
+          if (bra.laceHole){ // 蕾絲透膚
+            const s = ramp(skin, inten);
+            col = [(col[0]+s[0])>>1, (col[1]+s[1])>>1, (col[2]+s[2])>>1];
+          }
+        } else {
+          col = ramp(skin, inten);
+          if (spec > 0.22){ const w=hex('#fff3e6'); col=[(col[0]+w[0])>>1,(col[1]+w[1])>>1,(col[2]+w[2])>>1]; }
+        }
+        buf[idx]=col[0]; buf[idx+1]=col[1]; buf[idx+2]=col[2]; buf[idx+3]=255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  // ---- 動畫迴圈 ----
+  let raf = null, last = 0;
+  function loop(t){
+    if (P.breathe){
+      if (t - last > 55){ phase += 0.14; last = t; render(); }
+      raf = requestAnimationFrame(loop);
+    }
+  }
+  function kick(){
+    if (raf) cancelAnimationFrame(raf), raf = null;
+    render();
+    if (P.breathe) raf = requestAnimationFrame(loop);
+  }
+
+  // ---- UI 綁定 ----
+  const $ = s => document.querySelector(s);
+  function bindRange(id, key, fmt){
+    const el = $('#'+id), v = $('#'+id+'-v');
+    const upd = () => {
+      const raw = +el.value;
+      P[key] = key==='cup'||key==='gap' ? raw/100 :
+               key==='wide' ? raw/100 :
+               key==='light' ? raw/100 : raw/100;
+      v.textContent = fmt ? fmt(raw) : raw;
+      kick();
+    };
+    el.addEventListener('input', upd); upd();
+  }
+  bindRange('cup','cup', r=>('A'.charCodeAt(0), ['AA','A','B','C','D','E','F','G'][Math.min(7,Math.floor((r-10)/7))]));
+  bindRange('gap','gap');
+  bindRange('droop','droop');
+  bindRange('perk','perk');
+  bindRange('wide','wide', r=>r+'%');
+  bindRange('light','light');
+
+  // 覆蓋/肩帶
+  $('#cover').addEventListener('input', e=>{ P.cover=+e.target.value/100; $('#cover-v').textContent=e.target.value; kick(); });
+  $('#cover-v').textContent = $('#cover').value;
+  $('#strap').addEventListener('input', e=>{ P.strap=+e.target.value/100; $('#strap-v').textContent=e.target.value; kick(); });
+  $('#strap-v').textContent = $('#strap').value;
+
+  // 布料 chips
+  const fabWrap = $('#fabric');
+  Object.entries(FABRICS).forEach(([k,f], i)=>{
+    const b = document.createElement('button');
+    b.dataset.fab = k; b.innerHTML = `<span class="sw" style="background:${f.ramp[3]}"></span>${f.name}`;
+    if (k===P.fabric) b.classList.add('on');
+    b.onclick = ()=>{ P.fabric=k; [...fabWrap.children].forEach(c=>c.classList.toggle('on', c===b)); kick(); };
+    fabWrap.appendChild(b);
+  });
+  // 膚色 chips
+  const skinWrap = $('#skin');
+  const skinNames = {fair:'白皙', tan:'小麥', olive:'橄欖', pink:'櫻粉', deep:'深棕'};
+  Object.keys(SKINS).forEach(k=>{
+    const b = document.createElement('button');
+    b.innerHTML = `<span class="sw" style="background:${SKINS[k][4]}"></span>${skinNames[k]}`;
+    if (k===P.skin) b.classList.add('on');
+    b.onclick = ()=>{ P.skin=k; [...skinWrap.children].forEach(c=>c.classList.toggle('on', c===b)); kick(); };
+    skinWrap.appendChild(b);
+  });
+  // 模式
+  $('#dress').addEventListener('click', e=>{
+    const b = e.target.closest('button'); if (!b) return;
+    P.mode = b.dataset.mode;
+    [...e.currentTarget.children].forEach(c=>c.classList.toggle('on', c===b));
+    $('#bra-opts').style.display = P.mode==='bra' ? '' : 'none';
+    kick();
+  });
+  // 蕾絲
+  $('#lace').addEventListener('click', e=>{
+    const b = e.target.closest('button'); if (!b) return;
+    P.lace = b.dataset.lace==='1';
+    [...e.currentTarget.children].forEach(c=>c.classList.toggle('on', c===b));
+    kick();
+  });
+  // 選項
+  $('#opts').addEventListener('click', e=>{
+    const b = e.target.closest('button'); if (!b) return;
+    const k = b.dataset.opt; P[k] = !P[k]; b.classList.toggle('on', P[k]); kick();
+  });
+  // 匯出 / 重設
+  $('#export').onclick = ()=>{
+    const scale = 4, off = document.createElement('canvas');
+    off.width = CW*scale; off.height = CH*scale;
+    const o = off.getContext('2d'); o.imageSmoothingEnabled = false;
+    o.drawImage(cv, 0, 0, off.width, off.height);
+    const a = document.createElement('a');
+    a.download = 'body-design.png'; a.href = off.toDataURL('image/png'); a.click();
+  };
+  $('#reset').onclick = ()=> location.reload();
+
+  kick();
+})();
+</script>
+</body>
+</html>
