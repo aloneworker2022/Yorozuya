@@ -6,7 +6,6 @@
 <title>虛擬設計・胸部 | 魅魔萬事屋</title>
 <meta name="theme-color" content="#16101f">
 <style>
-/* ===== PC-98 復古像素風・虛擬設計台 ===== */
 :root {
   --bg: #141021; --glow: #251440;
   --panel: rgba(18, 12, 34, .72); --panel2: rgba(18, 12, 34, .5);
@@ -23,11 +22,9 @@ body {
   font-family: "Cubic 11", "Fusion Pixel", ui-monospace, monospace;
   font-size: 14px;
   image-rendering: pixelated;
-  -webkit-font-smoothing: none;
   min-height: 100%;
   padding: 14px 12px 40px;
 }
-/* CRT 掃描線 + 暗角 */
 body::after {
   content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
   background:
@@ -41,451 +38,274 @@ header.top h1 { font-size: 17px; letter-spacing: 1px; color: var(--accent); }
 header.top .sub { color: var(--dim); font-size: 12px; }
 header.top a.home { margin-left: auto; color: var(--cyan); text-decoration: none;
   border: 1px solid var(--line); padding: 3px 8px; border-radius: 3px; }
-
-.stage-box {
-  position: relative; margin: 0 auto 14px; width: fit-content;
+.stage-box { position: relative; margin: 0 auto 14px; width: fit-content;
   padding: 12px; border: 1px solid var(--line); border-radius: 6px;
-  background: var(--panel2);
-  box-shadow: inset 0 0 40px rgba(0,0,0,.4);
-}
-.stage-box .grid-bg {
-  position: absolute; inset: 12px; pointer-events: none; opacity: .16;
-  background-image:
-    linear-gradient(var(--line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: 16px 16px;
-}
-.stage-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap;
-  justify-content: center; position: relative; z-index: 1; }
-canvas#stage, canvas#side {
-  display: block; position: relative; z-index: 1;
-  image-rendering: pixelated;
-  background: transparent;
-}
+  background: var(--panel2); box-shadow: inset 0 0 40px rgba(0,0,0,.4); }
+.stage-row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+canvas { display: block; image-rendering: pixelated; }
 .stage-cap { text-align: center; color: var(--dim); font-size: 11px; margin-top: 4px; }
-#stats { text-align: center; color: var(--cyan); font-size: 11px; margin-top: 6px;
-  letter-spacing: .5px; min-height: 15px; }
-
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
   padding: 12px 14px; margin-bottom: 12px; }
 .panel h2 { font-size: 13px; color: var(--cyan); margin-bottom: 10px; letter-spacing: 1px; }
-
 .row { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
-.row label { flex: 0 0 76px; color: var(--dim); font-size: 12px; }
+.row label { flex: 0 0 60px; color: var(--dim); font-size: 12px; }
 .row input[type=range] { flex: 1; accent-color: var(--accent); height: 4px; }
-.row .val { flex: 0 0 58px; text-align: right; color: var(--text); font-size: 12px; }
-
+.row .val { flex: 0 0 44px; text-align: right; font-size: 12px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chips button {
-  font-family: inherit; font-size: 12px; cursor: pointer; color: var(--text);
+.chips button { font-family: inherit; font-size: 12px; cursor: pointer; color: var(--text);
   background: var(--panel2); border: 1px solid var(--line); border-radius: 4px;
-  padding: 5px 10px; text-shadow: inherit;
-}
+  padding: 5px 10px; text-shadow: inherit; }
 .chips button.on { border-color: var(--accent); color: var(--accent);
   box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent); }
 .chips button .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
   margin-right: 5px; vertical-align: -1px; border: 1px solid rgba(255,255,255,.3); }
-
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .actions button { font-family: inherit; font-size: 13px; cursor: pointer;
   color: var(--bg); background: var(--accent); border: none; border-radius: 4px;
   padding: 8px 14px; text-shadow: none; font-weight: bold; }
 .actions button.ghost { background: var(--panel2); color: var(--cyan);
   border: 1px solid var(--line); text-shadow: inherit; }
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
-@media (max-width: 560px) { .two-col { grid-template-columns: 1fr; } }
 .note { color: var(--dim); font-size: 11px; line-height: 1.6; margin-top: 8px; }
-.note b { color: var(--cyan); font-weight: normal; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
     <h1>虛擬設計台・胸部</h1>
-    <span class="sub">水袋力學 · 頸肩〜肚臍 軀幹</span>
+    <span class="sub">純點陣 2D 貼圖 · 七型胸型型錄</span>
     <a class="home" href="/">← 回萬事屋</a>
   </header>
 
   <div class="stage-box">
-    <div class="grid-bg"></div>
     <div class="stage-row">
-      <div><canvas id="stage" width="160" height="200"></canvas><div class="stage-cap">正面</div></div>
-      <div><canvas id="side" width="110" height="200"></canvas><div class="stage-cap">側面輪廓(對照型錄)</div></div>
+      <div><canvas id="front" width="160" height="200"></canvas><div class="stage-cap">正面</div></div>
+      <div><canvas id="side" width="110" height="200"></canvas><div class="stage-cap">側面</div></div>
     </div>
-    <div id="stats"></div>
   </div>
 
   <div class="panel">
-    <h2>◆ 組織 / 體型</h2>
-    <div class="row" style="margin-top:0">
-      <label>組成</label>
-      <input id="gland" type="range" min="0" max="100" value="30">
-      <span class="val" id="gland-v"></span>
-    </div>
-    <div class="note" style="margin-top:-2px;margin-bottom:6px">
-      ← 脂肪型(軟・如水袋下沉) ｜ 乳腺型(緊實・自帶支撐)→
-    </div>
+    <h2>◆ 胸型(型錄)</h2>
+    <div class="chips" id="types"></div>
     <div class="two-col">
-      <div class="row"><label>罩杯</label><input id="cup" type="range" min="10" max="60" value="34"><span class="val" id="cup-v"></span></div>
-      <div class="row"><label>間距</label><input id="gap" type="range" min="10" max="36" value="22"><span class="val" id="gap-v"></span></div>
-      <div class="row"><label>重力</label><input id="gravity" type="range" min="0" max="100" value="100"><span class="val" id="gravity-v"></span></div>
-      <div class="row"><label>光源</label><input id="light" type="range" min="0" max="100" value="30"><span class="val" id="light-v"></span></div>
+      <div class="row" style="margin-top:10px"><label>大小</label><input id="size" type="range" min="60" max="140" value="100"><span class="val" id="size-v"></span></div>
+      <div class="row"><label>間距</label><input id="gap" type="range" min="70" max="130" value="100"><span class="val" id="gap-v"></span></div>
     </div>
   </div>
 
   <div class="panel">
-    <h2>◆ 膚色</h2>
+    <h2>◆ 膚色 / 輸出</h2>
     <div class="row" style="margin-top:0"><label>膚色</label><div class="chips" id="skin"></div></div>
-  </div>
-
-  <div class="panel">
-    <h2>◆ 輸出</h2>
-    <div class="actions">
+    <div class="actions" style="margin-top:10px">
       <button id="export">匯出 PNG</button>
-      <button id="reset" class="ghost">重設參數</button>
+      <button id="reset" class="ghost">重設</button>
     </div>
     <div class="note">
-      <b>水袋模型:</b>乳房視為掛在胸壁上的軟水袋。<b>根部(與胸壁的連接緣)固定不變</b>,
-      罩杯 = 袋裡的水量:水越多 → 袋身拉長、袋腹鼓起、越垂越外擴(不是根部變寬)。
-      外擴可凸出軀幹輪廓之外,不被裁切。兩袋內側以<b>胸骨中線為牆</b>做碰撞:
-      間距縮小時內側被截住擠壓、體積轉成前凸(擠出乳溝),不會互相穿透。
-      <b>脂肪型</b>軟、形變全開;<b>乳腺型</b>緊實、維持上位。
-      軀幹範圍:頸肩(鎖骨/三角肌)→ 胸廓 → 收腰 → 至肚臍。
-      匯出 PNG 可作為 ComfyUI / 立繪流程的構圖底稿。
+      純 2D 點陣貼圖(輪廓線+平塗+賽璐璐影),無 3D 運算。
+      七種胸型對照型錄:側面輪廓為各型手調線稿,正面同步顯示下乳弧線/乳位/外擴。
+      匯出 PNG 可作 ComfyUI / 立繪構圖底稿。
     </div>
   </div>
 </div>
 
 <script>
 (() => {
-  "use strict";
-  const cv = document.getElementById('stage');
-  const CW = cv.width, CH = cv.height;
-  const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(CW, CH);
-  const buf = img.data;
-  cv.style.width = (CW * 2) + 'px';
-  cv.style.height = (CH * 2) + 'px';
+"use strict";
+// ---- 畫布 ----
+const F = document.getElementById('front'), S = document.getElementById('side');
+const fctx = F.getContext('2d'), sctx = S.getContext('2d');
+for (const c of [F, S]){ c.style.width = c.width*2+'px'; c.style.height = c.height*2+'px'; }
 
-  const scv = document.getElementById('side');
-  const SW = scv.width, SH = scv.height;
-  const sctx = scv.getContext('2d');
-  const simg = sctx.createImageData(SW, SH);
-  scv.style.width = (SW * 2) + 'px';
-  scv.style.height = (SH * 2) + 'px';
+// ---- 調色盤(5 階賽璐璐:深線/影/主色/亮/高光)----
+const SKINS = {
+  fair: ['#7a4a3a','#d99b72','#efb98d','#f9d3ac','#ffe9c9'],
+  tan:  ['#6b452c','#bd8a58','#d3a672','#e6c18c','#f4d9a8'],
+  pink: ['#8a5058','#e2a294','#f4bfa9','#ffd8bf','#ffe9d5'],
+  deep: ['#4a2c1c','#8a6242','#a37c54','#bd9668','#d3ae80'],
+};
+const P = { type: 'hemi', size: 1, gap: 1, skin: 'fair' };
 
-  // ---- 調色盤 ----
-  const SKINS = {
-    fair:   ['#5f3128','#83483a','#a9634c','#cd8666','#eaad84','#ffd0a6'],
-    tan:    ['#4c2d20','#6b4530','#8e6142','#b1855b','#d3aa80','#f0cfa2'],
-    olive:  ['#4a3320','#664a2e','#886b45','#a98d63','#cbb088','#ead2ab'],
-    pink:   ['#6f3a42','#96555c','#bd7a7c','#dc9d99','#f4bfb4','#ffdccb'],
-    deep:   ['#2f1c15','#472a1e','#61402c','#7d5a3e','#9a7754','#bd976f'],
-  };
+// ---- 七型定義 ----
+// side:[t,depth] 胸區側面輪廓折線(t=0 上緣→1 下緣,depth 0..1)
+// front:{ry 下弧扁率, drop 下弧中心下移, nip:[dx,dy] 乳位偏移, bulge 外擴, top 上弧提示}
+const TYPES = {
+  plate: {name:'皿型',  front:{ry:.45, drop:-.15, nip:[0,-.2], bulge:.15, top:.3},
+    side:[[0,.05],[.25,.12],[.5,.30],[.68,.34],[.85,.22],[1,.06]]},
+  tri:   {name:'三角型', front:{ry:.55, drop:.05, nip:[.05,.15], bulge:.3, top:.4},
+    side:[[0,.04],[.3,.14],[.55,.34],[.75,.56],[.82,.50],[.92,.20],[1,.05]]},
+  hemi:  {name:'半球型', front:{ry:.62, drop:0, nip:[.05,-.1], bulge:.5, top:.6},
+    side:[[0,.05],[.15,.22],[.35,.52],[.5,.62],[.65,.52],[.85,.24],[1,.05]]},
+  bowl:  {name:'碗型',  front:{ry:.58, drop:.05, nip:[.05,0], bulge:.45, top:.5},
+    side:[[0,.05],[.2,.18],[.45,.44],[.62,.56],[.78,.46],[.9,.2],[1,.05]]},
+  cone:  {name:'圓錐型', front:{ry:.55, drop:.05, nip:[.08,.05], bulge:.35, top:.5},
+    side:[[0,.04],[.28,.2],[.5,.44],[.62,.60],[.72,.44],[.88,.16],[1,.04]]},
+  bell:  {name:'釣鐘型', front:{ry:.62, drop:.18, nip:[.06,.2], bulge:.55, top:.45},
+    side:[[0,.04],[.3,.12],[.55,.3],[.72,.55],[.85,.58],[.95,.3],[1,.06]]},
+  ptotic:{name:'下垂型', front:{ry:.6, drop:.32, nip:[.1,.38], bulge:.5, top:.35},
+    side:[[0,.04],[.35,.10],[.6,.24],[.78,.48],[.9,.55],[.97,.35],[1,.08]]},
+};
 
-  const P = { cup: .34, gland: .30, gap: .22, gravity: 1.0, light: .30, skin: 'fair' };
+// ---- 像素工具 ----
+function px(img, W, x, y, col){
+  x|=0; y|=0;
+  if (x<0||y<0||x>=W||y>=img.height) return;
+  const p=(y*W+x)*4, c=col;
+  img.data[p]=c[0]; img.data[p+1]=c[1]; img.data[p+2]=c[2]; img.data[p+3]=255;
+}
+function hx(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+function line(img,W,x0,y0,x1,y1,col){          // Bresenham
+  x0|=0;y0|=0;x1|=0;y1|=0;
+  const dx=Math.abs(x1-x0), dy=-Math.abs(y1-y0), sx=x0<x1?1:-1, sy=y0<y1?1:-1;
+  let e=dx+dy;
+  for(;;){ px(img,W,x0,y0,col);
+    if(x0===x1&&y0===y1)break;
+    const e2=2*e;
+    if(e2>=dy){e+=dy;x0+=sx;} if(e2<=dx){e+=dx;y0+=sy;} }
+}
+function arc(img,W,cx,cy,rx,ry,a0,a1,col){     // 橢圓弧(取樣描點)
+  const n=Math.max(12,(rx+ry)|0);
+  let lx,ly;
+  for(let i=0;i<=n;i++){
+    const a=a0+(a1-a0)*i/n;
+    const x=cx+rx*Math.cos(a), y=cy+ry*Math.sin(a);
+    if(i)line(img,W,lx,ly,x,y,col);
+    lx=x;ly=y;
+  }
+}
 
-  const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
-
-  // ---- 軀幹輪廓:頸 → 斜肩(三角肌)→ 腋下 → 胸廓 → 腰 → 肚臍 ----
-  // 控制點 [ny, 半寬],段間 smoothstep 內插
-  const PROFILE = [
-    [-1.00, 0.155],  // 頸(畫面上緣切齊頸部)
-    [-0.96, 0.19],   // 頸根
-    [-0.84, 0.46],   // 斜方肌下斜(~25°肩線)
-    [-0.72, 0.66],   // 肩峰
-    [-0.66, 0.68],   // 三角肌圓頂
-    [-0.56, 0.60],   // 腋下內收
-    [-0.34, 0.58],   // 胸廓上部
-    [ 0.02, 0.57],   // 胸廓下部
-    [ 0.36, 0.485],  // 腰最細
-    [ 0.70, 0.49],
-    [ 0.92, 0.50],   // 肚臍
-  ];
-  function halfW(ny){
-    if (ny <= PROFILE[0][0]) return PROFILE[0][1];
-    for (let i = 1; i < PROFILE.length; i++){
-      if (ny <= PROFILE[i][0]){
-        const [y0, w0] = PROFILE[i-1], [y1, w1] = PROFILE[i];
-        let t = (ny - y0) / (y1 - y0);
-        t = t * t * (3 - 2 * t);          // smoothstep
-        return w0 + (w1 - w0) * t;
-      }
+// ---- 軀幹輪廓(半寬控制點,沿用已定稿的骨架)----
+const PROFILE = [[-1,.155],[-.96,.19],[-.84,.46],[-.72,.66],[-.66,.68],[-.56,.60],
+  [-.34,.58],[.02,.57],[.36,.485],[.7,.49],[.92,.50]];
+function halfW(ny){
+  if (ny<=PROFILE[0][0]) return PROFILE[0][1];
+  for (let i=1;i<PROFILE.length;i++){
+    if (ny<=PROFILE[i][0]){
+      const [y0,w0]=PROFILE[i-1],[y1,w1]=PROFILE[i];
+      let t=(ny-y0)/(y1-y0); t=t*t*(3-2*t);
+      return w0+(w1-w0)*t;
     }
-    return PROFILE[PROFILE.length-1][1];
   }
+  return PROFILE[PROFILE.length-1][1];
+}
 
-  const BOTTOM = 0.92;   // 肚臍高度,以下截止
-
-  function torsoZ(nx, ny){
-    if (ny > BOTTOM) return -1;
-    const hw = halfW(ny);
-    const u = nx / hw;
-    if (Math.abs(u) >= 1) return -1;
-    let z = 0.34 * Math.sqrt(1 - u * u);
-    // 鎖骨微稜線(向肩側微微上揚)
-    const clY = -0.66 + 0.10 * Math.pow(Math.abs(nx) / 0.6, 2);
-    if (Math.abs(nx) < 0.50)
-      z += 0.013 * Math.exp(-Math.pow((ny - clY) / 0.035, 2));
-    // 小腹微鼓
-    z += 0.022 * Math.exp(-Math.pow((ny - 0.72) / 0.34, 2)) * (1 - u * u);
-    // 肚臍(凹陷 → 陰影由法線自然生成)
-    const dn = Math.pow(nx / 0.032, 2) + Math.pow((ny - 0.80) / 0.030, 2);
-    if (dn < 1) z -= 0.030 * Math.pow(1 - dn, 1.5);
-    return z;
-  }
-
-  // ---- 乳房:垂掛水袋模型 ----
-  // 縱向包絡 U(t) = t^a·(1-t)^b(正規化):a>b → 體積沉在下半;
-  // 垂墜 S 越大 → a 越大(上坡越長越緩)、袋身越長、峰點越低。
-  // 寬度 w(t) 跟隨包絡 → 上窄下寬的水滴;無邊界地從胸口長出來。
-  function sagParams(){
-    const f = 1 - P.gland;                       // 脂肪比例
-    const V = P.cup;                             // 罩杯 = 水量(袋裡裝多少水)
-    const soft = 0.2 + 0.8 * f;                  // 組織柔軟度
-    const S = clamp01(P.gravity * soft * (0.35 + 1.5 * V));   // 垂墜
-    const ta = -0.44;                            // 上緣附著(腋下高度)——固定
-    // 團塊比例:高度≈寬度(正面看是圓潤團塊,不是直筒)
-    const len = Math.min(0.62, 0.36 + 0.50 * V * (0.4 + 0.6 * S)); // 水多+軟 → 拉長
-    const wbelly = (0.16 + 0.28 * V) * (1 + 0.15 * S * f);         // 袋腹隨水量鼓、外擴
-    // 沉底水球:內容物受重力聚成圓球貼在袋底,上段只是被拉長的皮(緩坡)
-    // 側面最凸處 = 球心 → 圓弧,不會出現尖點
-    const rt = 0.55 - 0.20 * S;                  // 球半徑(袋長比例):越垂球佔比越小、位置越低
-    const tc = 1 - rt;                           // 球心(球底貼袋底 t=1)
-    const tJoin = Math.max(0, tc - rt * 0.55);   // 緩坡與球面的銜接點
-    const qJ = tJoin > 0 ? (tJoin - tc) / rt : -1;
-    const uJoin = Math.sqrt(Math.max(0, 1 - qJ * qJ));
-    const pRamp = 1.6 + 1.2 * S;                 // 越垂上坡越凹長
-    const proj = (0.10 + 0.85 * V) * (1 - 0.22 * S * f); // 下沉 → 前挺略減
-    const splay = (0.04 + 0.10 * V) * S * f;     // 大且軟 → 軸心外偏(外擴)
-    const tN = Math.min(0.93, tc + 0.05);        // 乳頭位置(球心略下)
-    return { S, f, V, ta, len, wbelly, proj, splay, tN, rt, tc, tJoin, uJoin, pRamp };
-  }
-
-  // 單側水袋:回傳 {z, t, dN}(t=縱向參數、dN=乳暈距離)
-  function breastZ(nx, ny, sp, side){
-    const cx = side * (P.gap + sp.splay);
-    const t = (ny - sp.ta) / sp.len;
-    if (t <= 0 || t >= 1) return null;
-    // 縱向包絡:t≥銜接點 → 圓球弧(沉底水球);t<銜接點 → 緩坡(拉長的皮)
-    let U;
-    if (t >= sp.tJoin){
-      const q = (t - sp.tc) / sp.rt;
-      U = Math.sqrt(Math.max(0, 1 - q * q));
-    } else {
-      U = sp.uJoin * Math.pow(t / sp.tJoin, sp.pRamp);
+// ---- 正面 ----
+function renderFront(){
+  const W=F.width,H=F.height;
+  const img=fctx.createImageData(W,H);
+  const C=SKINS[P.skin].map(hx);
+  const T=TYPES[P.type], fr=T.front, k=P.size;
+  const midX=W/2, sc=W/2*0.98;
+  const ax=26*P.gap*(1+fr.bulge*0.25)*Math.min(1.15,k);   // 乳軸距
+  const rx=20*k, ry=rx*fr.ry;
+  const fy=92+fr.drop*34*k+ (k-1)*10;                     // 下弧中心列
+  const bTop=fy-ry*2.1, bBot=fy+ry;                       // 胸區行範圍
+  // 軀幹填色(含胸區外擴)
+  for(let y=0;y<H;y++){
+    const ny=(y-H/2)/(H/2);
+    if(ny>0.92) continue;
+    let hw=halfW(ny)*sc;
+    if(y>bTop&&y<bBot){                                    // 外擴:剪影加寬
+      const u=(y-bTop)/(bBot-bTop);
+      hw+=fr.bulge*10*k*Math.sin(Math.PI*u);
     }
-    // 平面寬度跟隨包絡 → 正面同樣是圓球輪廓、下乳摺線 U 形弧
-    const w = sp.wbelly * Math.pow(U, 0.55);
-    if (w < 0.005) return null;
-    // 內側碰撞:胸骨中線是牆,寬度被截住(不穿模),擠壓量轉成前凸
-    const inW = Math.min(w, Math.max(0.04, Math.abs(cx)));
-    const dx = (nx - cx) * side;                 // dx<0 = 內側(朝中線)
-    const u = dx < 0 ? dx / inW : dx / w;
-    const uu = u * u;
-    if (uu >= 1) return null;
-    let z = sp.proj * U * Math.pow(1 - uu, 0.62);
-    if (dx < 0 && inW < w){                      // 被中線擠到 → 前凸(體積守恆)
-      const squeeze = Math.min(1.6, w / inW);
-      z *= 1 + 0.40 * (squeeze - 1) * (1 - uu);
+    const x0=Math.round(midX-hw), x1=Math.round(midX+hw);
+    for(let x=x0;x<=x1;x++){
+      let c=C[2];
+      if(x<=x0+1||x>=x1-1) c=C[0];                         // 輪廓線
+      else if(x>=x1-4) c=C[1];                             // 右側賽璐璐影
+      else if(x<=x0+4) c=C[3];                             // 左側亮
+      px(img,W,x,y,c);
     }
-    // 乳頭微凸 + 乳暈範圍(最凸點附近,垂墜時微朝外下)
-    const nyN = sp.ta + sp.tN * sp.len;
-    const nxN = cx + side * (0.015 + 0.035 * sp.S);
-    const dN = Math.pow((nx - nxN) / 0.052, 2) + Math.pow((ny - nyN) / 0.042, 2);
-    const front = z > sp.proj * 0.3;                    // 只出現在袋正面
-    if (dN < 1 && front) z += 0.020 * Math.pow(1 - dN, 1.5);
-    return { z, t, dN: front ? dN : 9 };
   }
-
-  function bodyZ(nx, ny, sp){
-    const tz = torsoZ(nx, ny);
-    const bl = breastZ(nx, ny, sp, -1);
-    const br = breastZ(nx, ny, sp, 1);
-    const bz = Math.max(bl ? bl.z : 0, br ? br.z : 0);
-    // 剪影 = 軀幹 ∪ 胸部:外擴可以凸出軀幹輪廓,不被裁切
-    if (tz < 0) return bz > 0.02 ? bz : -1;
-    return tz + bz;
+  // 鎖骨
+  line(img,W,midX-6,34,midX-24,30,C[1]); line(img,W,midX+6,34,midX+24,30,C[1]);
+  // 肚臍
+  px(img,W,midX,180,C[0]); px(img,W,midX,181,C[0]);
+  for(const s of [-1,1]){
+    const cx=midX+s*ax;
+    // 下乳弧(U 形)
+    arc(img,W,cx,fy,rx,ry,Math.PI*0.08,Math.PI*0.92,C[0]);
+    arc(img,W,cx,fy-1,rx-1,ry-1,Math.PI*0.15,Math.PI*0.85,C[1]);  // 弧上影
+    // 上緣提示弧(內上斜)
+    arc(img,W,cx+s*rx*0.1,fy-ry*0.6,rx*0.95,ry*2.0*fr.top+ry, Math.PI*(s<0?1.05:1.6), Math.PI*(s<0?1.4:1.95), C[1]);
+    // 乳頭
+    const nx=cx+s*fr.nip[0]*rx, nyy=fy-ry*0.9+fr.nip[1]*ry*2.2;
+    px(img,W,nx,nyy,C[0]); px(img,W,nx+1,nyy,C[0]); px(img,W,nx,nyy+1,C[1]); px(img,W,nx+1,nyy+1,C[1]);
+    // 高光點
+    px(img,W,cx-s*rx*0.35,fy-ry*1.5,C[4]); px(img,W,cx-s*rx*0.35+1,fy-ry*1.5,C[4]);
   }
+  fctx.putImageData(img,0,0);
+}
 
-  // ---- 光照 ----
-  function lightDir(){
-    const az = (0.55 + P.light * 0.9) * Math.PI;
-    const el = 0.72;
-    let L = [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az) - 0.35, Math.sin(el)];
-    const n = Math.hypot(L[0], L[1], L[2]);
-    return [L[0]/n, L[1]/n, L[2]/n];
+// ---- 側面(型錄線稿)----
+function renderSide(){
+  const W=S.width,H=S.height;
+  const img=sctx.createImageData(W,H);
+  const C=SKINS[P.skin].map(hx);
+  const T=TYPES[P.type], k=P.size;
+  const x0=16;                     // 胸壁基準
+  const zTop=52, zBot=Math.min(178, 130+(P.type==='ptotic'?14:0)+ (k-1)*30); // 胸區行
+  const depth=58*k;
+  // 背/頸/腹基準線
+  line(img,S.width,x0-2,6,x0-2,H-8,C[1]);
+  // 上胸斜線(頸→胸區)
+  line(img,W,x0+14,6,x0+10,26,C[0]);
+  line(img,W,x0+10,26,x0+4,zTop,C[0]);
+  // 胸區折線
+  let lx=x0+4, ly=zTop;
+  for(const [t,d] of T.side){
+    const y=zTop+(zBot-zTop)*t, x=x0+4+d*depth;
+    line(img,W,lx,ly,x,y,C[0]);
+    lx=x; ly=y;
   }
+  // 乳頭(最深點)
+  let mi=0; T.side.forEach((p,i)=>{ if(p[1]>T.side[mi][1]) mi=i; });
+  const [mt,md]=T.side[mi];
+  const nxp=x0+4+md*depth+1, nyp=zTop+(zBot-zTop)*mt;
+  px(img,W,nxp,nyp,C[0]); px(img,W,nxp+1,nyp,C[0]);
+  // 下腹線(胸區→肚臍)
+  line(img,W,lx,ly,x0+8,H-30,C[0]);
+  line(img,W,x0+8,H-30,x0+6,H-8,C[0]);
+  sctx.putImageData(img,0,0);
+}
 
-  const hexCache = {};
-  function hex(h){
-    if (hexCache[h]) return hexCache[h];
-    const v = [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
-    return (hexCache[h] = v);
-  }
-  // Bayer 2×2 抖色:柔化色階邊界,像素風的「類漸層」
-  const BAYER = [[0.00, 0.50], [0.75, 0.25]];
-  function ramp(arr, t, x, y){
-    const n = arr.length;
-    let i = Math.floor(t * n + (x !== undefined ? BAYER[y & 1][x & 1] - 0.375 : 0));
-    if (!(i >= 0)) i = 0; else if (i >= n) i = n - 1;
-    return hex(arr[i]);
-  }
+function render(){ renderFront(); renderSide(); }
 
-  // ---- 主繪製 ----
-  function render(){
-    const sp = sagParams();
-    const L = lightDir();
-    const skin = SKINS[P.skin];
-    const e = 2 / (CW / 2);
-    const cxAbs = P.gap + sp.splay; // 乳軸距中線距離(擠壓判定用)
-
-    for (let y = 0; y < CH; y++){
-      const ny = (y - CH/2) / (CH/2);
-      for (let x = 0; x < CW; x++){
-        const nx = (x - CW/2) / (CW/2);
-        const idx = (y * CW + x) * 4;
-        const z = bodyZ(nx, ny, sp);
-        if (z < 0){ buf[idx+3] = 0; continue; }
-
-        // 法線(有限差分)
-        const zx = (bodyZ(nx+e,ny,sp) - bodyZ(nx-e,ny,sp)) / (2*e);
-        const zy = (bodyZ(nx,ny+e,sp) - bodyZ(nx,ny-e,sp)) / (2*e);
-        const nlen = Math.hypot(zx, zy, 1);
-        const Nx = -zx/nlen, Ny = -zy/nlen, Nz = 1/nlen;
-
-        let diff = Nx*L[0] + Ny*L[1] + Nz*L[2];
-        if (diff < 0) diff = 0;
-        let inten = 0.35 + 0.65 * diff;
-
-        const bl = breastZ(nx, ny, sp, -1);
-        const br = breastZ(nx, ny, sp, 1);
-        const bi = (bl && br) ? (bl.z > br.z ? bl : br) : (bl || br);
-
-        // 乳溝:中線碰撞後兩袋各自歸零於中線,法線自然形成 V 谷,
-        // 僅在受擠時補一點接觸縫陰影
-        if (bi && Math.abs(nx) < 0.02 && cxAbs < sp.wbelly)
-          inten *= 0.80;
-        // 下緣摺痕(inframammary fold):袋底 + 袋下方軀幹一小段
-        if (bi && bi.t > 0.80)
-          inten *= 1 - 0.26 * Math.exp(-Math.pow((bi.t - 1) / 0.10, 2));
-        // 摺痕下方陰影:貼著 U 形弧走(正上方一點是袋內 → 這裡是摺線下)
-        if (!bi){
-          const ab = breastZ(nx, ny - 0.035, sp, -1) || breastZ(nx, ny - 0.035, sp, 1);
-          if (ab && ab.z > 0.03) inten *= 0.84;
-        }
-
-        // 高光(皮膚微光澤,收斂避免塑膠感)
-        const Hx=L[0], Hy=L[1], Hz=L[2]+1, hl=Math.hypot(Hx,Hy,Hz);
-        const spec = Math.pow(Math.max(0,(Nx*Hx+Ny*Hy+Nz*Hz)/hl), 26);
-
-        inten = Math.max(0, Math.min(1, inten));
-        let col;
-        if (bi && bi.dN < 0.85){
-          col = ramp(skin, inten * 0.80, x, y);   // 乳暈:同色系加深
-        } else {
-          col = ramp(skin, inten, x, y);
-          if (spec > 0.30){
-            const w = hex('#fff3e6');
-            col = [(col[0]*2+w[0])/3|0, (col[1]*2+w[1])/3|0, (col[2]*2+w[2])/3|0];
-          }
-        }
-        buf[idx]=col[0]; buf[idx+1]=col[1]; buf[idx+2]=col[2]; buf[idx+3]=255;
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-    renderSide(sp);
-
-    const fat = Math.round(sp.f * 100);
-    const press = cxAbs < sp.wbelly ? '・擠壓中' : '';
-    document.getElementById('stats').textContent =
-      `型判定:${classify(sp)} ｜ 脂肪 ${fat}%・乳腺 ${100 - fat}% ｜ 下垂 ${Math.round(sp.S * 100)}%${press}`;
-  }
-
-  // ---- 型判定(對照型錄)----
-  function classify(sp){
-    const axis = P.gap + sp.splay;
-    if (sp.V < 0.16) return '小巧型(お皿)';
-    if (sp.S > 0.78) return '下垂型';
-    if (axis > 0.30) return '外擴型';
-    if (sp.S > 0.55) return '鐘型(釣鐘)';
-    if (sp.V > 0.46) return '豐滿型';
-    return P.gland > 0.55 ? '渾圓型(半球)' : '碗型(おわん)';
-  }
-
-  // ---- 側面輪廓:每列取最大深度 → 剪影線(對照型錄的側視圖)----
-  function renderSide(sp){
-    simg.data.fill(0);
-    const acc = hex('#ff4fd8');
-    const dimc = hex('#55ffe0');
-    let prev = null;
-    for (let y = 0; y < SH; y++){
-      const ny = (y - SH/2) / (SH/2);
-      if (ny > BOTTOM){ prev = null; continue; }
-      let zm = -1;
-      for (let i = 0; i <= 140; i++){
-        const z = bodyZ(-1 + i * (2/140), ny, sp);
-        if (z > zm) zm = z;
-      }
-      if (zm < 0){ prev = null; continue; }
-      // 頸部厚度收窄(避免頸與胸同深)
-      const dt = 0.45 + 0.55 * clamp01((halfW(ny) - 0.14) / 0.45);
-      const fx = Math.min(SW - 2, Math.round(6 + zm * dt * 105));
-      const lo = prev === null ? fx : Math.min(prev, fx);
-      const hi = prev === null ? fx : Math.max(prev, fx);
-      for (let x = lo; x <= hi; x++){
-        const p = (y * SW + x) * 4;
-        simg.data[p] = acc[0]; simg.data[p+1] = acc[1]; simg.data[p+2] = acc[2]; simg.data[p+3] = 255;
-      }
-      // 背側參考線(淡)
-      const p2 = (y * SW + 2) * 4;
-      simg.data[p2] = dimc[0]; simg.data[p2+1] = dimc[1]; simg.data[p2+2] = dimc[2]; simg.data[p2+3] = 90;
-      prev = fx;
-    }
-    sctx.putImageData(simg, 0, 0);
-  }
-
-  // ---- UI 綁定 ----
-  const $ = s => document.querySelector(s);
-  function bindRange(id, key, fmt){
-    const el = $('#'+id), v = $('#'+id+'-v');
-    const upd = () => {
-      const raw = +el.value;
-      P[key] = raw / 100;
-      v.textContent = fmt ? fmt(raw) : raw;
-      render();
-    };
-    el.addEventListener('input', upd); upd();
-  }
-  bindRange('cup','cup', r=>['AA','A','B','C','D','E','F','G'][Math.min(7,Math.floor((r-10)/7))]);
-  bindRange('gland','gland', r=>`乳腺${r}%`);
-  bindRange('gap','gap');
-  bindRange('gravity','gravity', r=>r+'%');
-  bindRange('light','light');
-
-  // 膚色 chips
-  const skinWrap = $('#skin');
-  const skinNames = {fair:'白皙', tan:'小麥', olive:'橄欖', pink:'櫻粉', deep:'深棕'};
-  Object.keys(SKINS).forEach(k=>{
-    const b = document.createElement('button');
-    b.innerHTML = `<span class="sw" style="background:${SKINS[k][4]}"></span>${skinNames[k]}`;
-    if (k===P.skin) b.classList.add('on');
-    b.onclick = ()=>{ P.skin=k; [...skinWrap.children].forEach(c=>c.classList.toggle('on', c===b)); render(); };
-    skinWrap.appendChild(b);
-  });
-
-  // 匯出 / 重設
-  $('#export').onclick = ()=>{
-    const scale = 4, off = document.createElement('canvas');
-    off.width = CW*scale; off.height = CH*scale;
-    const o = off.getContext('2d'); o.imageSmoothingEnabled = false;
-    o.drawImage(cv, 0, 0, off.width, off.height);
-    const a = document.createElement('a');
-    a.download = 'body-design.png'; a.href = off.toDataURL('image/png'); a.click();
-  };
-  $('#reset').onclick = ()=> location.reload();
-
-  render();
+// ---- UI ----
+const $=s=>document.querySelector(s);
+const tw=$('#types');
+Object.entries(TYPES).forEach(([key,t])=>{
+  const b=document.createElement('button');
+  b.textContent=t.name;
+  if(key===P.type)b.classList.add('on');
+  b.onclick=()=>{P.type=key;[...tw.children].forEach(c=>c.classList.toggle('on',c===b));render();};
+  tw.appendChild(b);
+});
+const skinNames={fair:'白皙',tan:'小麥',pink:'櫻粉',deep:'深棕'};
+const sw=$('#skin');
+Object.keys(SKINS).forEach(key=>{
+  const b=document.createElement('button');
+  b.innerHTML=`<span class="sw" style="background:${SKINS[key][3]}"></span>${skinNames[key]}`;
+  if(key===P.skin)b.classList.add('on');
+  b.onclick=()=>{P.skin=key;[...sw.children].forEach(c=>c.classList.toggle('on',c===b));render();};
+  sw.appendChild(b);
+});
+function bind(id,key){
+  const el=$('#'+id),v=$('#'+id+'-v');
+  const u=()=>{P[key]=+el.value/100;v.textContent=el.value+'%';render();};
+  el.addEventListener('input',u);u();
+}
+bind('size','size'); bind('gap','gap');
+$('#export').onclick=()=>{
+  const off=document.createElement('canvas');
+  off.width=(F.width+S.width+10)*4; off.height=F.height*4;
+  const o=off.getContext('2d'); o.imageSmoothingEnabled=false;
+  o.drawImage(F,0,0,F.width*4,F.height*4);
+  o.drawImage(S,(F.width+10)*4,0,S.width*4,S.height*4);
+  const a=document.createElement('a');
+  a.download='body-design.png'; a.href=off.toDataURL('image/png'); a.click();
+};
+$('#reset').onclick=()=>location.reload();
+render();
 })();
 </script>
 </body>
