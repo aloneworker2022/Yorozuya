@@ -87,6 +87,7 @@ canvas { display: block; image-rendering: pixelated; }
     <div class="row" style="margin-top:0"><label>視角</label>
       <div class="chips" id="view">
         <button data-v="front" class="on">正面</button>
+        <button data-v="quarter">半側(45°)</button>
         <button data-v="side">側面(左)</button>
       </div>
     </div>
@@ -381,7 +382,118 @@ function renderSideView(){
   document.getElementById('cap').textContent=
     `下垂 ${Math.round(S*100)}%(脂肪 ${Math.round(fat*100)}%・乳腺 ${Math.round(P.gland*100)}%)`;
 }
-function render(){ P.view==='front'?renderFront():renderSideView(); }
+// ---- 半側 45°(面向左前):正面與側面的中間態 ----
+function renderQuarterView(){
+  const W=F.width,H=F.height;
+  const img=fctx.createImageData(W,H);
+  const C=SKINS[P.skin].map(hx);
+  const NIPC=(NIP[P.skin]||NIP.fair).map(hx);
+  const {fat,S,rx,topY,fy,yBot,Ltot,tiltK,dw}=phys();
+  const midX=W/2, sc=W/2*0.98;
+  const axis=midX-10;                        // 轉身 45° → 中軸偏左
+  const tN=0.60+0.16*S;
+  // 軀幹:左(前)窄、右(後)寬;近側乳凸出前緣
+  const xLs=new Array(H).fill(null), xRs=new Array(H).fill(null);
+  for(let y=0;y<H;y++){
+    const ny=(y-H/2)/(H/2);
+    if(ny>0.92)continue;
+    const hwF=halfW(ny)*sc;
+    const dN=dw(y)*0.9;                      // 近側乳深(側視成分)
+    xLs[y]=axis-hwF*0.52-dN;
+    // 遠側乳外擴(正面成分,縮短 0.75)
+    const wFar=dw(y)*0.75;
+    const t=(y-topY)/Ltot;
+    const ext=wFar>0 ? 20*P.gap+3+tiltK*t*t+wFar : 0;
+    xRs[y]=axis+Math.max(hwF*0.84, ext);
+  }
+  // 右緣平滑(消除乳下與軀幹寬度切換的階梯)
+  for(let pass=0;pass<2;pass++)
+    for(let y=1;y<H-1;y++)
+      if(xRs[y]!==null&&xRs[y-1]!==null&&xRs[y+1]!==null)
+        xRs[y]=(xRs[y-1]+xRs[y]+xRs[y+1])/3;
+  for(let y=0;y<H;y++){
+    if(xLs[y]===null)continue;
+    const xL=Math.round(xLs[y]), xR=Math.round(xRs[y]);
+    for(let x=xL;x<=xR;x++){
+      let c=C[2];
+      if(x<=xL+1||x>=xR-1)c=C[0];            // 輪廓(左緣含近側乳滴曲線)
+      else if(x<=xL+4)c=C[3];                // 前側亮
+      else if(x>=xR-4)c=C[1];                // 背側影
+      px(img,W,x,y,c);
+    }
+  }
+  // 遠側乳(右):縮短版正面水滴 — 明暗 + 外緣線 + 底部收弧
+  {
+    const cxF=axis+20*P.gap+3;
+    let pO=null,pI=null,lastY=0,lastOff=0;
+    const y0=Math.round(topY), y1=Math.round(yBot);
+    for(let y=y0;y<=y1;y++){
+      const t=(y-topY)/Ltot;
+      const wRow=dw(y)*0.75;
+      if(wRow<0.8)continue;
+      const cxR=cxF+tiltK*t*t;
+      for(let x=Math.round(cxR-wRow);x<=Math.round(cxR+wRow);x++){
+        const u=(x-cxR)/wRow;
+        let c=null;
+        if(t>1-0.16*(1-u*u))c=C[1];
+        else if(t>1-0.30*(1-u*u)){ if(((x+y)&1)===0)c=C[1]; }
+        else { const dh=Math.pow(u/0.55,2)+Math.pow((t-0.52)/0.22,2);
+               if(dh<1){ c=C[3]; if(dh>0.55&&((x+y)&1))c=null; } }
+        if(c) px(img,W,x,y,c);
+      }
+      if(t>0.30){ const xo=Math.round(cxR+wRow), col=t>0.5?C[0]:C[1];
+        if(pO) line(img,W,pO[0],pO[1],xo,y,col); pO=[xo,y]; }
+      if(t>0.85){ const xi=Math.round(cxR-wRow);
+        if(pI) line(img,W,pI[0],pI[1],xi,y,C[0]); pI=[xi,y]; }
+      lastY=y; lastOff=tiltK*t*t;
+    }
+    const xb=Math.round(cxF+lastOff);
+    if(pO) line(img,W,pO[0],pO[1],xb,lastY+1,C[0]);
+    if(pI) line(img,W,pI[0],pI[1],xb,lastY+1,C[0]);
+    // 遠側乳暈(縮短 → 橢圓更扁)
+    const nyy=Math.round(topY+tN*Ltot);
+    const nxx=Math.round(cxF+tiltK*tN*tN+1+2*S);
+    for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-2;dx2<=2;dx2++){
+      const dd=Math.pow(dx2/2.6,2)+Math.pow(dy2/2.2,2);
+      if(dd<=1) px(img,W,nxx+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
+    }
+    px(img,W,nxx-1,nyy-1,C[4]);
+  }
+  // 近側乳(左):乳暈在凸點稜線上 + 底部收弧 + 摺下投影
+  {
+    const nyy=Math.round(topY+tN*Ltot);
+    const hwN=halfW((nyy-H/2)/(H/2))*sc;
+    const nxx=Math.round(axis-hwN*0.52-dw(nyy)*0.9);
+    for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-2;dx2<=2;dx2++){
+      const dd=Math.pow(dx2/2.2,2)+Math.pow(dy2/2.6,2);
+      if(dd<=1) px(img,W,nxx+1+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
+    }
+    px(img,W,nxx-1,nyy,NIPC[0]);
+    // 底部收弧:自剪影底端往胸口勾一小段
+    const yb=Math.round(yBot);
+    const hwB=halfW((yb-H/2)/(H/2))*sc;
+    line(img,W,Math.round(axis-hwB*0.52-2),yb-2,Math.round(axis-hwB*0.30),yb+1,C[0]);
+    // 摺下投影(抖色)
+    for(let y=Math.round(fy);y<=yb+3;y++){
+      const dA=dw(y-3)*0.9; if(dA<=5)continue;
+      const hwY=halfW((y-H/2)/(H/2))*sc;
+      for(let x=Math.round(axis-hwY*0.52-dA*0.6);x<=Math.round(axis-hwY*0.52+3);x++){
+        const p=(y*W+x)*4;
+        if(img.data[p+3]===0)continue;
+        if(((x+y)&1)===0) px(img,W,x,y,C[1]);
+      }
+    }
+  }
+  // 鎖骨(偏左)+ 肚臍(前緣偏左)
+  line(img,W,axis-4,34,axis-20,31,C[1]); line(img,W,axis+4,34,axis+16,30,C[1]);
+  px(img,W,axis-4,180,C[0]); px(img,W,axis-4,181,C[0]);
+  fctx.putImageData(img,0,0);
+  document.getElementById('cap').textContent=
+    `下垂 ${Math.round(S*100)}%(脂肪 ${Math.round(fat*100)}%・乳腺 ${Math.round(P.gland*100)}%)`;
+}
+function render(){
+  P.view==='front'?renderFront():P.view==='side'?renderSideView():renderQuarterView();
+}
 
 // ---- UI ----
 const $=s=>document.querySelector(s);
