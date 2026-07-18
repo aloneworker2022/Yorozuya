@@ -48,7 +48,7 @@ const DISCOVER_BONUS_CAP = 10;   // 每日前 N 次發現有 0~2 金獎勵
 
 const CREST_CAP = 5;             // 淫紋最多囤 5 層
 // 每次進對話隨機決定能聊幾個來回(玩家不知道她何時喊停,製造驚喜)
-const CHAT_TURNS = [1, 4];      // 聊天 1~4 來回
+// 聊天改半預製(一紋一來一往),不再有隨機回合數;約會維持 DATE_TURNS
 const DATE_TURNS = [2, 5];      // 約會 2~5 來回(付了 5 金,多聊幾句)
 
 // 淫紋觸發:看板娘在、醒著、沒滿層時,委託操作有機率喚起她想聊天的慾望
@@ -905,18 +905,16 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
   }
   chatWith = id;
   const spot = DATE_SPOTS.find(x => x[0] === location);
-  const turnCap = randInt(...(type === "date" ? DATE_TURNS : CHAT_TURNS));
+  const turnCap = type === "date" ? randInt(...DATE_TURNS) : 1;   // 聊天=一紋一來一往
   chatSession = { type, location, locationDesc: spot ? spot[1] : null, playerMsgs: 0, turnCap, gotReply: false, busy: false };
   dateChooser = false;
   document.body.classList.add("chat-mode");
-  // 場景邊界標記:LLM 上下文只取此標記之後(本場景),話題不跨場景
   s.history ??= [];
-  s.history.push({
-    role: "sys",
-    content: type === "date" ? `兩人抵達「${location}」,約會開始` : "日常閒聊",
-    t: Date.now(),
-  });
-  // 重置輸入狀態(修復:上一場達回合上限鎖住的輸入框會殘留到下一場)
+  // 場景邊界標記:只有約會另起場景;聊天是跨日連續的簡訊串,不切斷上下文
+  if (type === "date") {
+    s.history.push({ role: "sys", content: `兩人抵達「${location}」,約會開始`, t: Date.now() });
+  }
+  // 重置輸入狀態(修復:上一場鎖住的輸入框會殘留到下一場)
   const inputEl = document.getElementById("chat-input");
   if (inputEl) { inputEl.disabled = false; inputEl.placeholder = "說點什麼…(Enter 送出)"; inputEl.value = ""; }
   const sendBtn = document.getElementById("chat-send");
@@ -927,9 +925,43 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
   inputEl?.focus();
   if (type === "date") {
     vnShow("", `—— ${location}・約會開始 ——`, "sys");
-    sceneOpener(s);   // 約會:她先開口,描述場景與心情
+    sceneOpener(s);   // 約會:她先開口,描述場景與心情(即時 session)
+  } else if (s.chatLine) {
+    // 半預製:她的話早已生成好——秒顯示,你回一句,這一紋就結束
+    const line = s.chatLine.text;
+    s.chatLine = null;
+    s.history.push({ role: "assistant", content: line, t: Date.now() });
+    s.history = s.history.slice(-200);
+    vnShow(s.name, line, "ai");
+    vnDone();
+    dirty = true;
+    saveNow();
   } else {
-    vnShow("", "(她看著你,等你開口)", "sys");  // 聊天:玩家先說話
+    chatOpenerLive(s);   // 沒有預製話(無模型/剛被釋放):現場生她的開場白
+  }
+}
+
+// 聊天即時開場白(半預製沒貨時的後備):她先開口,串流生成
+async function chatOpenerLive(s) {
+  if (!chatSession) return;
+  chatSession.busy = true;
+  setChatWaiting(true);
+  vnTyping(true);
+  const inst = "(旁白:淫紋亮起——是你想找他說話。依你的個性與你們的關係,對他說第一句話:可以聊他的委託、你原本生活的事,或撒嬌抱怨。一句像簡訊的話。)";
+  try {
+    const reply = await llmReply(s, acc => vnShow(s.name, acc, "ai"), inst);
+    s.history.push({ role: "assistant", content: reply, t: Date.now() });
+    s.history = s.history.slice(-200);
+    vnDone();
+    dirty = true;
+    saveNow();
+  } catch (e) {
+    if (e.name !== "AbortError") vnShow("", "(她欲言又止……)", "sys");
+  }
+  if (chatSession && !chatSession.ended) {
+    chatSession.busy = false;
+    setChatWaiting(false);
+    document.getElementById("chat-input")?.focus();
   }
 }
 
@@ -971,14 +1003,11 @@ function exitChat() {
     if (chatSession.type === "date") {
       const d = applyAffection(s, randInt(1, 5));
       s.history.push({ role: "sys", content: `「${chatSession.location}」的約會結束了,兩人回到日常`, t: Date.now() });
+      s.chatLine = null;   // 約會另起了話頭,作廢她待命中的預製話重生
       log(`與 ${s.name} 的${chatSession.location}約會結束,情感 +${d}`);
       toast(`約會結束,情感 +${d}`, "good");
-    } else if (chatSession.gotReply) {
-      const d = applyAffection(s, randInt(-1, 2));
-      s.history.push({ role: "sys", content: "這次閒聊告一段落", t: Date.now() });
-      log(`與 ${s.name} 聊了一會,情感 ${d >= 0 ? "+" : ""}${d}`);
-      toast(`聊天結束,情感 ${d >= 0 ? "+" : ""}${d}`, d >= 0 ? "good" : "bad");
     }
+    // 聊天(半預製):情感已在送出時結算,這裡不再結;對話串連續,不加場景標記
   }
   chatAbort?.abort();
   chatWith = null; chatSession = null;
@@ -1214,6 +1243,41 @@ async function pumpQuips() {
   genBusy = false;
 }
 
+// ── 半預製聊天:背景生成她的下一句(s.chatLine);淫紋要「有紋+話備好」才亮 ──
+async function pumpChatLines() {
+  if (genBusy || chatWith || watchWith || sacrificeWith || sacSummon || isAsleep()) return;
+  if (!state.settings.model) return;   // 無模型:開聊時走即時罐頭,不預製
+  const s = kanbanSuccubus();
+  if (!s || s.chatLine || s.summoner?.taken) return;
+  genBusy = true;
+  try {
+    const hist = s.history || [];
+    let cut = 0;
+    for (let i = hist.length - 1; i >= 0; i--) if (hist[i].role === "sys") { cut = i + 1; break; }
+    const recent = hist.slice(cut).slice(-40)
+      .filter(m => m.role === "user" || m.role === "assistant")
+      .map(m => ({ role: m.role, content: m.content }));
+    const last = recent[recent.length - 1];
+    const inst = !recent.length
+      ? "(旁白:淫紋亮起——你想找他說話。依你的個性主動開啟一個新話題,一句像簡訊的話。)"
+      : last.role === "user"
+        ? "(旁白:回覆他最後那句話。一句像簡訊的話,依你的個性。)"
+        : "(旁白:他還沒回你,隔了一段時間,你忍不住又主動傳了一句。換個說法或話題,不要重複之前的話。)";
+    const msgs = [
+      { role: "system", content: buildSystemPrompt(buildCtx(s)) },
+      ...recent,
+      { role: "user", content: inst },
+    ];
+    const text = await llmJobQuiet(msgs);
+    // 生成期間她可能換人/被召喚走:狀態沒變才收下
+    if (text && kanbanSuccubus()?.id === s.id && !s.summoner?.taken && !s.chatLine) {
+      s.chatLine = { text: text.split("\n")[0].slice(0, 300) || text.slice(0, 300), t: Date.now() };
+      dirty = true; scheduleSave(); renderAll();   // 淫紋亮起
+    }
+  } catch (e) { /* 之後再試 */ }
+  genBusy = false;
+}
+
 // 點看板娘時取一句預生台詞(即取即消耗);沒有就回 null 讓罐頭上場
 function popQuip() {
   const s = kanbanSuccubus();
@@ -1289,8 +1353,8 @@ function buildCtx(s) {
       days_since_summon: Math.floor((Date.now() - s.summonedAt) / 86400000),
     },
     scene: {
-      type: chatSession.type, location: chatSession.location,
-      scene_prompt: chatSession.locationDesc || null,
+      type: chatSession?.type || "chat", location: chatSession?.location || null,
+      scene_prompt: chatSession?.locationDesc || null,
       transition: [...(s.history || [])].reverse().find(m => m.role === "sys")?.content || null,
       time_of_day: slot,
       time_label: SLOT_LABEL[slot],
@@ -1395,8 +1459,32 @@ async function sendChatMsg() {
   input.value = "";
   s.history ??= [];
   s.history.push({ role: "user", content: text, t: Date.now() });
-  // 先亮出玩家台詞,名牌切「她・輸入中」;輸入列先收起,她回完才出現
   vnShow(state.settings.player || "你", text, "user");
+
+  // 聊天(半預製):送出即結束這一紋——情感當場結算,她的回應在背景生成、下次淫紋亮起才看得到
+  if (chatSession.type === "chat") {
+    chatSession.ended = true;
+    chatSession.gotReply = true;
+    s.lastChatDay = dayNum();
+    const d = applyAffection(s, randInt(-1, 2));
+    log(`回了 ${s.name} 一句,情感 ${d >= 0 ? "+" : ""}${d}`);
+    toast(`傳出去了,情感 ${d >= 0 ? "+" : ""}${d}`, d >= 0 ? "good" : "bad");
+    setChatWaiting(true);
+    const inputEl = document.getElementById("chat-input");
+    if (inputEl) inputEl.disabled = true;
+    document.getElementById("chat-send").disabled = true;
+    dirty = true;
+    saveNow();
+    setTimeout(() => {
+      if (chatSession?.ended) {
+        vnShow("", "(訊息傳出去了……她的回覆,下次淫紋亮起時就會知道)", "sys");
+        setTimeout(() => { if (chatSession?.ended) exitChat(); }, 1600);
+      }
+    }, 900);
+    return;
+  }
+
+  // 約會:即時往返
   vnTyping(true);
   $("#vn-name").textContent = (state.settings.player || "你") + " → " + s.name;
   chatSession.busy = true;
@@ -1701,8 +1789,9 @@ setInterval(() => {
   if (expireKanban()) changed = true;
   if (checkSummonerDraws()) changed = true;
   if (processTakenActs()) changed = true;
-  pumpActTexts();   // 背景補生成紀錄文字(不阻塞、自帶互斥)
-  pumpQuips();      // 背景預生看板娘委託台詞(點她秒冒,不等 AI)
+  pumpActTexts();    // 背景補生成紀錄文字(不阻塞、自帶互斥)
+  pumpChatLines();   // 背景預生她的下一句聊天(有紋+話備好,淫紋才亮)
+  pumpQuips();       // 背景預生看板娘委託台詞(點她秒冒,不等 AI)
 
   const asleep = isAsleep();
   if (asleep !== lastSleepState) {
@@ -1862,11 +1951,14 @@ function renderAll() {
   }
 }
 
-// 淫紋按鈕:有層數、看板娘在、醒著、不在對話中才顯示
+// 淫紋按鈕:有層數、看板娘在、醒著、不在對話中,且「她的話備好了」才亮——
+// 半預製:存了再多紋,話沒生成好也不亮。例外:被召喚走(紋=窺視紀錄)、無模型(即時罐頭)。
 function renderCrest() {
   const el = $("#crest");
   if (!el) return;
-  const show = (state.chatCharges || 0) > 0 && kanbanSuccubus() && !isAsleep() && !chatWith;
+  const s = kanbanSuccubus();
+  const lineReady = s && (s.chatLine || s.summoner?.taken || !state.settings.model);
+  const show = (state.chatCharges || 0) > 0 && s && lineReady && !isAsleep() && !chatWith && !watchWith;
   el.classList.toggle("hidden", !show);
   const n = $("#crest-n");
   if (show && n) n.textContent = state.chatCharges;
@@ -2676,6 +2768,7 @@ window.DBG = {
   summonKanban: (id) => summonKanban(id),
   tickActs: () => processTakenActs(),
   pumpActs: () => pumpActTexts(),
+  pumpChat: () => pumpChatLines(),
   dateBurst: (id) => { const s = state.succubi.find(x => x.id === id); if (s?.summoner) { rivalDateBurst(s, Date.now()); scheduleSave(); renderAll(); } },
 };
 
