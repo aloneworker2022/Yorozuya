@@ -255,7 +255,8 @@ canvas#stage, canvas#side {
     const proj = (0.10 + 0.85 * V) * (1 - 0.22 * S * f); // 下沉 → 前挺略減
     const splay = (0.04 + 0.10 * V) * S * f;     // 大且軟 → 軸心外偏(外擴)
     const tN = Math.min(0.93, tPk + 0.06);       // 乳頭位置(峰點略下)
-    return { S, f, V, ta, len, a, b, tPk, norm, wbelly, proj, splay, tN };
+    const pw = 1 + 1.2 * S;                      // 垂墜 → 最寬處下移(水滴感)
+    return { S, f, V, ta, len, a, b, tPk, norm, wbelly, proj, splay, tN, pw };
   }
 
   // 單側水袋:回傳 {z, t, dN}(t=縱向參數、dN=乳暈距離)
@@ -264,8 +265,11 @@ canvas#stage, canvas#side {
     const t = (ny - sp.ta) / sp.len;
     if (t <= 0 || t >= 1) return null;
     const U = Math.pow(t, sp.a) * Math.pow(1 - t, sp.b) / sp.norm;
-    // 寬度包絡:快速展開的圓弧(上段不再細長 → 正面呈團塊不呈筒)
-    const w = sp.wbelly * Math.sqrt(1 - Math.pow(1 - t, 1.6));
+    // 水滴平面輪廓:寬度橢圓弧——袋腹最寬、底部收圓歸零(下乳摺線呈 U 形弧,不是平的)
+    // 垂墜大 → 最寬處下移(上窄長、下圓鼓)
+    const tt = Math.pow(t, sp.pw);
+    const w = sp.wbelly * Math.sqrt(Math.max(0, 4 * tt * (1 - tt)));
+    if (w < 0.005) return null;
     // 內側碰撞:胸骨中線是牆,寬度被截住(不穿模),擠壓量轉成前凸
     const inW = Math.min(w, Math.max(0.04, Math.abs(cx)));
     const dx = (nx - cx) * side;                 // dx<0 = 內側(朝中線)
@@ -326,7 +330,6 @@ canvas#stage, canvas#side {
     const L = lightDir();
     const skin = SKINS[P.skin];
     const e = 2 / (CW / 2);
-    const foldY = sp.ta + sp.len;   // 下緣摺痕高度
     const cxAbs = P.gap + sp.splay; // 乳軸距中線距離(擠壓判定用)
 
     for (let y = 0; y < CH; y++){
@@ -358,9 +361,10 @@ canvas#stage, canvas#side {
         // 下緣摺痕(inframammary fold):袋底 + 袋下方軀幹一小段
         if (bi && bi.t > 0.80)
           inten *= 1 - 0.26 * Math.exp(-Math.pow((bi.t - 1) / 0.10, 2));
-        if (!bi && ny > foldY - 0.02 && ny < foldY + 0.05){
-          const inX = Math.abs(Math.abs(nx) - (P.gap + sp.splay)) < sp.wmax * 0.85;
-          if (inX) inten *= 0.86;
+        // 摺痕下方陰影:貼著 U 形弧走(正上方一點是袋內 → 這裡是摺線下)
+        if (!bi){
+          const ab = breastZ(nx, ny - 0.035, sp, -1) || breastZ(nx, ny - 0.035, sp, 1);
+          if (ab && ab.z > 0.03) inten *= 0.84;
         }
 
         // 高光(皮膚微光澤,收斂避免塑膠感)
