@@ -42,7 +42,7 @@ header.top a.home { margin-left: auto; color: var(--cyan); text-decoration: none
   padding: 12px; border: 1px solid var(--line); border-radius: 6px;
   background: var(--panel2); box-shadow: inset 0 0 40px rgba(0,0,0,.4); }
 .stage-row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
-canvas { display: block; image-rendering: pixelated; }
+canvas { display: block; image-rendering: pixelated; touch-action: none; cursor: pointer; }
 .stage-cap { text-align: center; color: var(--dim); font-size: 11px; margin-top: 4px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
   padding: 12px 14px; margin-bottom: 12px; }
@@ -97,6 +97,10 @@ canvas { display: block; image-rendering: pixelated; }
       <div class="row"><label>間距</label><input id="gap" type="range" min="70" max="130" value="100"><span class="val" id="gap-v"></span></div>
     </div>
     <div class="note" style="margin:2px 0 0">← 脂肪型(軟・液體下沉垂墜) ｜ 乳腺型(緊實・抗垂)→</div>
+    <div class="row"><label>互動</label>
+      <div class="chips"><button id="tilt-btn">開啟傾斜感應</button></div>
+      <span class="note" style="margin:0">手指戳/拖 畫面上的胸部有物理回饋</span>
+    </div>
   </div>
 
   <div class="panel">
@@ -140,6 +144,10 @@ const NIP = {
 };
 const P = { view: 'front', size: 1, gap: 1, gland: 0.3, skin: 'fair' };
 
+// ---- 互動動態(戳/傾斜):每側 {x,y,vx,vy};根部釘死,位移按 t^1.5 加權=只有袋腹晃 ----
+const DYN=[{x:0,y:0,vx:0,vy:0},{x:0,y:0,vx:0,vy:0}];
+let tiltG=0;   // 裝置左右傾斜角(deg)
+
 // ---- 液體物理(正面/側面共用):水量把袋子往下拉長,不是鼓成球 ----
 function phys(){
   // 乳腺也是軟組織:柔軟度下限 0.45(乳腺只是「較抗垂」,不是剛體)
@@ -154,8 +162,10 @@ function phys(){
   const fy=Math.min(158, topY+L);               // 摺線(袋底)
   const yBot=fy+ry, Ltot=yBot-topY, pw=1+1.2*S;
   const tiltK=1.5+3.5*S;                        // 乳軸外傾
-  const dw=y=>{                                 // 水滴寬度包絡
-    const t=(y-topY)/Ltot;
+  // dL = 動態拉伸(戳/傾斜時的袋長變化);根部鉗制不變
+  const dwd=(y,dL)=>{
+    const Lb=Ltot+(dL||0);
+    const t=(y-topY)/Lb;
     if(t<=0||t>=1) return 0;
     const tt=Math.pow(t,pw);
     const raw=rx*1.1*Math.sqrt(Math.max(0,4*tt*(1-tt)));
@@ -163,7 +173,8 @@ function phys(){
     // 水量只撐大「根部以下」的袋腹 → 長出的地方永遠一樣大
     return Math.min(raw, 1.15*(y-topY));
   };
-  return {fat,soft,vol,S,rx,ry,ax,topY,fy,yBot,Ltot,tiltK,dw};
+  const dw=y=>dwd(y,0);
+  return {fat,soft,vol,S,rx,ry,ax,topY,fy,yBot,Ltot,tiltK,dw,dwd};
 }
 
 // ---- 像素工具 ----
@@ -215,14 +226,15 @@ function renderFront(){
   const img=fctx.createImageData(W,H);
   const C=SKINS[P.skin].map(hx);
   const midX=W/2, sc=W/2*0.98;
-  const {fat,S,rx,ry,ax,topY,fy,yBot,Ltot,dw}=phys();
+  const {fat,S,rx,ry,ax,topY,fy,yBot,Ltot,dw,dwd}=phys();
+  const swayMax=Math.max(Math.abs(DYN[0].x),Math.abs(DYN[1].x));
   // 軀幹填色(剪影 = 軀幹 ∪ 水滴:胸大到超出軀幹才撐寬,小胸不鼓)
   for(let y=0;y<H;y++){
     const ny=(y-H/2)/(H/2);
     if(ny>0.92) continue;
     let hw=halfW(ny)*sc;
-    const wR=dw(y);
-    if(wR>0){ const t=(y-topY)/Ltot; hw=Math.max(hw, ax+(1.5+3.5*S)*t*t+wR); }
+    const wR=dwd(y,Math.max(DYN[0].y,DYN[1].y));
+    if(wR>0){ const t=(y-topY)/Ltot; hw=Math.max(hw, ax+(1.5+3.5*S)*t*t+wR+swayMax); }
     const x0=Math.round(midX-hw), x1=Math.round(midX+hw);
     for(let x=x0;x<=x1;x++){
       let c=C[2];
@@ -242,12 +254,14 @@ function renderFront(){
     const cx=midX+s*ax;
     const y0=Math.round(topY), y1=Math.round(yBot);
     // 不再整塊填色:胸底色=軀幹色,體積靠明暗;線條只有 外緣線+底部收弧
+    const dyn=DYN[s<0?0:1];                      // 動態(戳/傾斜):根部釘死、袋腹搖擺
+    const Lb=Ltot+dyn.y;
     let pO=null,pI=null,lastY=0,lastOff=0;
-    for(let y=y0;y<=y1;y++){
-      const t=(y-topY)/Ltot;
-      const wRow=dw(y);
+    for(let y=y0;y<=Math.round(topY+Lb);y++){
+      const t=(y-topY)/Lb;
+      const wRow=dwd(y,dyn.y);
       if(wRow<0.8)continue;
-      const cxR=cx+s*tiltK*t*t;                  // 軸心隨深度外偏
+      const cxR=cx+s*tiltK*t*t+dyn.x*Math.pow(t,1.5); // 軸心外偏+動態搖擺
       for(let x=Math.round(cxR-wRow);x<=Math.round(cxR+wRow);x++){
         const u=(x-cxR)/wRow;
         let c=null;
@@ -273,18 +287,18 @@ function renderFront(){
         if(pI) line(img,W,pI[0],pI[1],xi,y,C[0]);
         pI=[xi,y];
       }
-      lastY=y; lastOff=s*tiltK*t*t;
+      lastY=y; lastOff=s*tiltK*t*t+dyn.x*Math.pow(t,1.5);
     }
     const xb=Math.round(cx+lastOff);
     if(pO) line(img,W,pO[0],pO[1],xb,lastY+1,C[0]);   // 底部收弧(摺線)
     if(pI) line(img,W,pI[0],pI[1],xb,lastY+1,C[0]);
     // 摺線下投影(公仔最深的暗部:摺線下方投在肋廓上,抖色柔化)
-    for(let y=y0+3;y<=y1+4;y++){
-      const tA=(y-3-topY)/Ltot;
+    for(let y=y0+3;y<=Math.round(topY+Lb)+4;y++){
+      const tA=(y-3-topY)/Lb;
       if(tA<0.5||tA>=1)continue;
-      const wA=dw(y-3); if(wA<=0)continue;
-      const cxA=cx+s*tiltK*tA*tA;
-      const wH=dw(y), tH=(y-topY)/Ltot, cxH=cx+s*tiltK*tH*tH;
+      const wA=dwd(y-3,dyn.y); if(wA<=0)continue;
+      const cxA=cx+s*tiltK*tA*tA+dyn.x*Math.pow(tA,1.5);
+      const wH=dwd(y,dyn.y), tH=(y-topY)/Lb, cxH=cx+s*tiltK*tH*tH+dyn.x*Math.pow(Math.max(0,tH),1.5);
       for(let x=Math.round(cxA-wA*0.92);x<=Math.round(cxA+wA*0.92);x++){
         if(wH>0&&Math.abs(x-cxH)<wH)continue;    // 還在滴內 → 略過
         const p=((y|0)*W+(x|0))*4;
@@ -294,8 +308,8 @@ function renderFront(){
     }
     // 乳暈(橢圓、粉調漸層)+ 乳頭 + 高光點:最凸點,垂墜時朝下外
     const tN=0.60+0.16*S;
-    const nyy=Math.round(topY+tN*Ltot);
-    const nxx=Math.round(cx+s*(tiltK*tN*tN+1+2.5*S));
+    const nyy=Math.round(topY+tN*Lb);
+    const nxx=Math.round(cx+s*(tiltK*tN*tN+1+2.5*S)+dyn.x*Math.pow(tN,1.5));
     for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-3;dx2<=3;dx2++){
       const dd=Math.pow(dx2/3.2,2)+Math.pow(dy2/2.2,2);
       if(dd<=1) px(img,W,nxx+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
@@ -339,11 +353,15 @@ function renderSideView(){
   const img=fctx.createImageData(W,H);
   const C=SKINS[P.skin].map(hx);
   const NIPC=(NIP[P.skin]||NIP.fair).map(hx);
-  const {fat,S,rx,topY,fy,yBot,Ltot,dw}=phys();
+  const {fat,S,rx,topY,fy,yBot,Ltot,dwd}=phys();
+  const dyn=DYN[0];
+  const Lb=Ltot+dyn.y;
+  const dwS=y=>dwd(y,dyn.y);
   const midX=W/2;
   const DPS=1.45;                                  // 側面深度 = 寬度包絡 × 比例
   for(let y=6;y<=188;y++){
-    const d=dw(y)*DPS;
+    let d=dwS(y)*DPS;
+    if(d>0){ const t=(y-topY)/Lb; d=Math.max(0,d+dyn.x*Math.pow(t,1.5)); }
     const xF=Math.round(midX+ip(CWPTS,y)-d);       // 前緣(胸壁-乳深)
     const xB=Math.round(midX+ip(BKPTS,y));         // 背線
     for(let x=xF;x<=xB;x++){
@@ -355,8 +373,8 @@ function renderSideView(){
     }
   }
   // 摺線下投影(抖色):乳滴下緣後方貼肋
-  for(let y=Math.round(fy);y<=Math.round(yBot)+4;y++){
-    const dA=dw(y-3)*DPS; if(dA<=6)continue;
+  for(let y=Math.round(fy);y<=Math.round(topY+Lb)+4;y++){
+    const dA=dwS(y-3)*DPS; if(dA<=6)continue;
     const xF0=midX+ip(CWPTS,y);
     for(let x=Math.round(xF0-dA*0.7);x<=Math.round(xF0-2);x++){
       const p=(y*W+x)*4;
@@ -366,8 +384,8 @@ function renderSideView(){
   }
   // 乳暈+乳頭(最凸點,朝左;垂墜時朝左下)
   const tN=0.60+0.16*S;
-  const nyy=Math.round(topY+tN*Ltot);
-  const nxx=Math.round(midX+ip(CWPTS,nyy)-dw(nyy)*DPS);
+  const nyy=Math.round(topY+tN*Lb);
+  const nxx=Math.round(midX+ip(CWPTS,nyy)-dwS(nyy)*DPS-dyn.x*Math.pow(tN,1.5));
   for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-2;dx2<=2;dx2++){
     const dd=Math.pow(dx2/2.4,2)+Math.pow(dy2/2.6,2);
     if(dd<=1) px(img,W,nxx+1+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
@@ -376,7 +394,7 @@ function renderSideView(){
   // 上胸高光(抖色斑)
   const hy=Math.round(topY+Ltot*0.35);
   for(let y=hy;y<hy+8;y++)for(let x=0;x<5;x++){
-    const xx=Math.round(midX+ip(CWPTS,y)-dw(y)*DPS)+3+x;
+    const xx=Math.round(midX+ip(CWPTS,y)-dwS(y)*DPS)+3+x;
     if(((xx+y)&1)===0) px(img,W,xx,y,C[4]);
   }
   // 肚臍
@@ -392,7 +410,8 @@ function renderQuarterView(){
   const img=fctx.createImageData(W,H);
   const C=SKINS[P.skin].map(hx);
   const NIPC=(NIP[P.skin]||NIP.fair).map(hx);
-  const {fat,S,rx,topY,fy,yBot,Ltot,tiltK,dw}=phys();
+  const {fat,S,rx,topY,fy,yBot,Ltot,tiltK,dwd}=phys();
+  const dwN=y=>dwd(y,DYN[0].y), dwF=y=>dwd(y,DYN[1].y);
   const midX=W/2, sc=W/2*0.98;
   const axis=midX-10;                        // 轉身 45° → 中軸偏左
   const tN=0.60+0.16*S;
@@ -402,10 +421,11 @@ function renderQuarterView(){
     const ny=(y-H/2)/(H/2);
     if(ny>0.92)continue;
     const hwF=halfW(ny)*sc;
-    const dN=dw(y)*0.9;                      // 近側乳深(側視成分)
+    let dN=dwN(y)*0.9;                       // 近側乳深(側視成分)
+    if(dN>0) dN=Math.max(0,dN+DYN[0].x*Math.pow((y-topY)/(Ltot+DYN[0].y),1.5));
     xLs[y]=axis-hwF*0.52-dN;
     // 遠側乳外擴(正面成分,縮短 0.75)
-    const wFar=dw(y)*0.75;
+    const wFar=dwF(y)*0.75;
     const t=(y-topY)/Ltot;
     const ext=wFar>0 ? 20*P.gap+3+tiltK*t*t+wFar : 0;
     xRs[y]=axis+Math.max(hwF*0.84, ext);
@@ -433,9 +453,9 @@ function renderQuarterView(){
     const y0=Math.round(topY), y1=Math.round(yBot);
     for(let y=y0;y<=y1;y++){
       const t=(y-topY)/Ltot;
-      const wRow=dw(y)*0.75;
+      const wRow=dwF(y)*0.75;
       if(wRow<0.8)continue;
-      const cxR=cxF+tiltK*t*t;
+      const cxR=cxF+tiltK*t*t+DYN[1].x*Math.pow(t,1.5);
       for(let x=Math.round(cxR-wRow);x<=Math.round(cxR+wRow);x++){
         const u=(x-cxR)/wRow;
         let c=null;
@@ -467,7 +487,7 @@ function renderQuarterView(){
   {
     const nyy=Math.round(topY+tN*Ltot);
     const hwN=halfW((nyy-H/2)/(H/2))*sc;
-    const nxx=Math.round(axis-hwN*0.52-dw(nyy)*0.9);
+    const nxx=Math.round(axis-hwN*0.52-dwN(nyy)*0.9);
     for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-2;dx2<=2;dx2++){
       const dd=Math.pow(dx2/2.2,2)+Math.pow(dy2/2.6,2);
       if(dd<=1) px(img,W,nxx+1+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
@@ -479,7 +499,7 @@ function renderQuarterView(){
     line(img,W,Math.round(axis-hwB*0.52-2),yb-2,Math.round(axis-hwB*0.30),yb+1,C[0]);
     // 摺下投影(抖色)
     for(let y=Math.round(fy);y<=yb+3;y++){
-      const dA=dw(y-3)*0.9; if(dA<=5)continue;
+      const dA=dwN(y-3)*0.9; if(dA<=5)continue;
       const hwY=halfW((y-H/2)/(H/2))*sc;
       for(let x=Math.round(axis-hwY*0.52-dA*0.6);x<=Math.round(axis-hwY*0.52+3);x++){
         const p=(y*W+x)*4;
@@ -498,6 +518,77 @@ function renderQuarterView(){
 function render(){
   P.view==='front'?renderFront():P.view==='side'?renderSideView():renderQuarterView();
 }
+
+// ---- 物理積分:阻尼彈簧(軟=彈性大回彈慢;緊實=硬彈快停)----
+let rafD=null;
+function ensureLoop(){ if(rafD===null) rafD=requestAnimationFrame(tick); }
+function tick(){
+  rafD=null;
+  const pp=phys();
+  const k=0.30-0.18*pp.soft;           // 剛性:乳腺硬、脂肪軟
+  const damp=0.93-0.10*pp.soft;        // 阻尼:脂肪晃更久
+  const gx=Math.sin(tiltG*Math.PI/180)*(0.5+1.3*pp.soft)*0.9;
+  let active=Math.abs(tiltG)>2;
+  for(const d of DYN){
+    d.vx+=-k*d.x+gx;  d.vy+=-k*1.4*d.y;
+    d.vx*=damp;       d.vy*=damp;
+    d.x+=d.vx;        d.y+=d.vy;
+    const mx=5+11*pp.soft, my=4+8*pp.soft;   // 位移上限隨柔軟度
+    if(d.x>mx){d.x=mx;d.vx*=-0.3;} if(d.x<-mx){d.x=-mx;d.vx*=-0.3;}
+    if(d.y>my){d.y=my;d.vy*=-0.3;} if(d.y<-my){d.y=-my;d.vy*=-0.3;}
+    if(Math.abs(d.vx)>0.05||Math.abs(d.vy)>0.05||Math.abs(d.x)>0.3||Math.abs(d.y)>0.3) active=true;
+  }
+  render();
+  if(active) rafD=requestAnimationFrame(tick);
+  else { for(const d of DYN){d.x=d.y=d.vx=d.vy=0;} render(); }
+}
+
+// ---- 手指戳/拖 ----
+function cvPos(e){
+  const r=F.getBoundingClientRect();
+  return [(e.clientX-r.left)*F.width/r.width,(e.clientY-r.top)*F.height/r.height];
+}
+function sideIdx(x){ return P.view==='front' ? (x<F.width/2?0:1) : (P.view==='quarter' ? (x<F.width/2?0:1) : 0); }
+let dragging=false,lastP=null;
+F.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  dragging=true; lastP=cvPos(e);
+  try{ F.setPointerCapture(e.pointerId); }catch(_){}
+  const pp=phys();
+  const d=DYN[sideIdx(lastP[0])];
+  // 戳:朝軸心推開 + 微下沉,力道隨柔軟度
+  const cxTgt=P.view==='front'?(F.width/2+(sideIdx(lastP[0])?1:-1)*pp.ax):F.width/2;
+  d.vx+=(lastP[0]<cxTgt?2.5:-2.5)*(0.35+0.85*pp.soft);
+  d.vy+=1.6*(0.35+0.85*pp.soft);
+  ensureLoop();
+});
+F.addEventListener('pointermove',e=>{
+  if(!dragging)return;
+  const p=cvPos(e);
+  const d=DYN[sideIdx(p[0])];
+  d.vx+=(p[0]-lastP[0])*0.30;
+  d.vy+=(p[1]-lastP[1])*0.30;
+  lastP=p; ensureLoop();
+});
+for(const ev of ['pointerup','pointercancel']) F.addEventListener(ev,()=>{ dragging=false; });
+
+// ---- 傾斜感應(手機):左右傾 → 重力方向改變,袋腹往低側甩 ----
+const tiltBtn=document.getElementById('tilt-btn');
+if(!window.DeviceOrientationEvent) tiltBtn.style.display='none';
+tiltBtn.onclick=async()=>{
+  try{
+    if(typeof DeviceOrientationEvent.requestPermission==='function'){
+      const r=await DeviceOrientationEvent.requestPermission();
+      if(r!=='granted'){ tiltBtn.textContent='未授權'; return; }
+    }
+    window.addEventListener('deviceorientation',e=>{
+      tiltG=e.gamma||0;
+      if(Math.abs(tiltG)>2) ensureLoop();
+    });
+    tiltBtn.textContent='傾斜感應中';
+    tiltBtn.classList.add('on'); tiltBtn.disabled=true;
+  }catch(_){ tiltBtn.textContent='此裝置不支援'; }
+};
 
 // ---- UI ----
 const $=s=>document.querySelector(s);
