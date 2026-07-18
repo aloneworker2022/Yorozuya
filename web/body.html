@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>虛擬設計・胸部 | 魅魔萬事屋</title>
+<title>水球物理模擬 | 魅魔萬事屋</title>
 <meta name="theme-color" content="#16101f">
 <style>
 :root {
@@ -41,9 +41,8 @@ header.top a.home { margin-left: auto; color: var(--cyan); text-decoration: none
 .stage-box { position: relative; margin: 0 auto 14px; width: fit-content;
   padding: 12px; border: 1px solid var(--line); border-radius: 6px;
   background: var(--panel2); box-shadow: inset 0 0 40px rgba(0,0,0,.4); }
-.stage-row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
 canvas { display: block; image-rendering: pixelated; touch-action: none; cursor: pointer; }
-.stage-cap { text-align: center; color: var(--dim); font-size: 11px; margin-top: 4px; }
+.stage-cap { text-align: center; color: var(--dim); font-size: 11px; margin-top: 6px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
   padding: 12px 14px; margin-bottom: 12px; }
 .panel h2 { font-size: 13px; color: var(--cyan); margin-bottom: 10px; letter-spacing: 1px; }
@@ -55,10 +54,7 @@ canvas { display: block; image-rendering: pixelated; touch-action: none; cursor:
 .chips button { font-family: inherit; font-size: 12px; cursor: pointer; color: var(--text);
   background: var(--panel2); border: 1px solid var(--line); border-radius: 4px;
   padding: 5px 10px; text-shadow: inherit; }
-.chips button.on { border-color: var(--accent); color: var(--accent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent); }
-.chips button .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
-  margin-right: 5px; vertical-align: -1px; border: 1px solid rgba(255,255,255,.3); }
+.chips button.on { border-color: var(--accent); color: var(--accent); }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .actions button { font-family: inherit; font-size: 13px; cursor: pointer;
   color: var(--bg); background: var(--accent); border: none; border-radius: 4px;
@@ -71,49 +67,37 @@ canvas { display: block; image-rendering: pixelated; touch-action: none; cursor:
 <body>
 <div class="wrap">
   <header class="top">
-    <h1>虛擬設計台・胸部</h1>
-    <span class="sub">純點陣 2D 貼圖 · 七型胸型型錄</span>
+    <h1>水球物理模擬</h1>
+    <span class="sub">壓力軟體 · 裝了水的氣球</span>
     <a class="home" href="/">← 回萬事屋</a>
   </header>
 
   <div class="stage-box">
-    <div class="stage-row">
-      <div><canvas id="front" width="160" height="200"></canvas><div class="stage-cap" id="cap"></div></div>
-    </div>
+    <canvas id="cv" width="160" height="200"></canvas>
+    <div class="stage-cap" id="cap"></div>
   </div>
 
   <div class="panel">
-    <h2>◆ 視角 / 參數</h2>
-    <div class="row" style="margin-top:0"><label>視角</label>
-      <div class="chips" id="view">
-        <button data-v="front" class="on">正面</button>
-        <button data-v="quarter">半側(45°)</button>
-        <button data-v="side">側面(左)</button>
-      </div>
-    </div>
-    <div class="two-col">
-      <div class="row"><label>組成</label><input id="gland" type="range" min="0" max="100" value="30"><span class="val" id="gland-v"></span></div>
-      <div class="row"><label>大小</label><input id="size" type="range" min="70" max="250" value="100"><span class="val" id="size-v"></span></div>
-      <div class="row"><label>間距</label><input id="gap" type="range" min="70" max="130" value="100"><span class="val" id="gap-v"></span></div>
-    </div>
-    <div class="note" style="margin:2px 0 0">← 脂肪型(軟・液體下沉垂墜) ｜ 乳腺型(緊實・抗垂)→</div>
+    <h2>◆ 參數</h2>
+    <div class="row" style="margin-top:0"><label>水量</label><input id="water" type="range" min="40" max="170" value="100"><span class="val" id="water-v"></span></div>
+    <div class="row"><label>膜彈性</label><input id="elast" type="range" min="5" max="95" value="45"><span class="val" id="elast-v"></span></div>
     <div class="row"><label>互動</label>
       <div class="chips"><button id="tilt-btn">開啟傾斜感應</button></div>
-      <span class="note" style="margin:0">手指戳/拖 畫面上的胸部有物理回饋</span>
+      <span class="note" style="margin:0">手指戳/拖水球;手機左右傾倒</span>
     </div>
   </div>
 
   <div class="panel">
-    <h2>◆ 膚色 / 輸出</h2>
-    <div class="row" style="margin-top:0"><label>膚色</label><div class="chips" id="skin"></div></div>
-    <div class="actions" style="margin-top:10px">
+    <h2>◆ 輸出</h2>
+    <div class="actions">
       <button id="export">匯出 PNG</button>
       <button id="reset" class="ghost">重設</button>
     </div>
     <div class="note">
-      純 2D 點陣貼圖(輪廓線+平塗+賽璐璐影),無 3D 運算。
-      七種胸型對照型錄,實心團塊呈現:下乳 U 弧+摺線陰影+乳位+外擴剪影。
-      匯出 PNG 可作 ComfyUI / 立繪構圖底稿。
+      壓力軟體模型:一圈質點連成有彈性的膜,內部的水以「壓力」把膜往外撐,
+      膜以彈簧抵抗拉伸。頸部釘在上方(綁住的口)。
+      水少 → 膜鬆、受重力垂墜晃動;水多 → 撐圓緊繃、Q 彈。
+      戳、拖、傾倒都是真的把質點推開後靠壓力與彈力回復。
     </div>
   </div>
 </div>
@@ -121,458 +105,172 @@ canvas { display: block; image-rendering: pixelated; touch-action: none; cursor:
 <script>
 (() => {
 "use strict";
-// ---- 畫布 ----
-const F = document.getElementById('front');
-const fctx = F.getContext('2d');
-F.style.width = F.width*2+'px'; F.style.height = F.height*2+'px';
+const cv=document.getElementById('cv');
+const W=cv.width,H=cv.height;
+const ctx=cv.getContext('2d');
+cv.style.width=W*2+'px'; cv.style.height=H*2+'px';
 
-// ---- 調色盤(5 階賽璐璐:深線/影/主色/亮/高光)----
-const SKINS = {
-  porcelain: ['#7c4f52','#e2aca4','#f4d4c8','#fbe6dc','#fff5ee'],
-  fair: ['#7a4a3a','#d99b72','#efb98d','#f9d3ac','#ffe9c9'],
-  tan:  ['#6b452c','#bd8a58','#d3a672','#e6c18c','#f4d9a8'],
-  pink: ['#8a5058','#e2a294','#f4bfa9','#ffd8bf','#ffe9d5'],
-  deep: ['#4a2c1c','#8a6242','#a37c54','#bd9668','#d3ae80'],
-};
-// 乳暈配色 [深(乳頭), 中(暈)] — 隨膚色
-const NIP = {
-  porcelain: ['#c4747d','#eba4a6'],
-  fair: ['#b96a63','#e39a90'],
-  tan:  ['#8a5a44','#b47a5e'],
-  pink: ['#c06a70','#eb9a9c'],
-  deep: ['#5a3428','#7e4e3c'],
-};
-const P = { view: 'front', size: 1, gap: 1, gland: 0.3, skin: 'fair' };
+const hx=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const COL={ line:'#173f6b', shade:'#2f6cb4', main:'#5fa7e8', light:'#9fd0ff', hi:'#eaf8ff', neck:'#9a8a6a' };
+for(const k in COL) COL[k]=hx(COL[k]);
 
-// ---- 互動動態(戳/傾斜):每側 {x,y,vx,vy};根部釘死,位移按 t^1.5 加權=只有袋腹晃 ----
-const DYN=[{x:0,y:0,vx:0,vy:0},{x:0,y:0,vx:0,vy:0}];
-let tiltG=0;   // 裝置左右傾斜角(deg)
+// ===== 壓力軟體水球 =====
+const N=44;                        // 膜質點數
+const CX=W/2, NECKY=26;            // 頸部(綁口)位置
+const R0=25;                       // 自然半徑
+const REST=2*Math.PI*R0/N;         // 每段膜自然長度
+const A0=Math.PI*R0*R0;            // 自然面積
+const NECK=4;                      // 頸部釘住的質點數(兩側各 NECK/2)
+// 質點:x,y 現在位置;vx,vy 速度
+const nd=[];
+function initBalloon(){
+  nd.length=0;
+  for(let i=0;i<N;i++){
+    const a=-Math.PI/2 + i*2*Math.PI/N;
+    nd.push({x:CX+R0*Math.cos(a), y:NECKY+R0+R0*Math.sin(a), vx:0, vy:0, pin:false});
+  }
+  // 頸部:最上面幾個質點釘死(綁住的口)
+  const order=[...nd.keys()].sort((i,j)=>nd[i].y-nd[j].y);
+  for(let k=0;k<NECK;k++){
+    const n=nd[order[k]];
+    n.pin=true; n.y=NECKY; n.x=CX+(n.x>CX?1:-1)*Math.min(6,Math.abs(n.x-CX));
+    n.px0=n.x;
+  }
+}
+initBalloon();
 
-// ---- 液體物理(正面/側面共用):水量把袋子往下拉長,不是鼓成球 ----
-function phys(){
-  // 乳腺也是軟組織:柔軟度下限 0.45(乳腺只是「較抗垂」,不是剛體)
-  const fat=1-P.gland, soft=0.45+0.55*fat;
-  const vol=Math.max(0,Math.min(1,(P.size-0.7)/1.8)); // 水量 0..1(70%~250%)
-  const S=Math.min(1, soft*(0.2+0.8*vol));      // 下垂度 = 柔軟 × 水量
-  const rx=13+vol*(5+6*(1-soft));               // 袋寬:成長有限(不會變大球)
-  const ry=rx*0.55*(1+0.25*S);
-  const ax=28*P.gap+S*4;                        // 乳軸距(垂 → 微外擴)
-  const topY=64;                                // 上緣附著點:固定(位置不隨大小變)
-  const L=24+vol*(30+34*soft);                  // 尺寸主要變成「往下長」:袋長隨水量大增
-  const fy=Math.min(158, topY+L);               // 摺線(袋底)
-  const yBot=fy+ry, Ltot=yBot-topY, pw=1+1.2*S;
-  const tiltK=1.5+3.5*S;                        // 乳軸外傾
-  // dL = 動態拉伸(戳/傾斜時的袋長變化);根部鉗制不變
-  const dwd=(y,dL)=>{
-    const Lb=Ltot+(dL||0);
-    const t=(y-topY)/Lb;
-    if(t<=0||t>=1) return 0;
-    const tt=Math.pow(t,pw);
-    const raw=rx*1.1*Math.sqrt(Math.max(0,4*tt*(1-tt)));
-    // 根部固定:自附著點張開的斜率是常數(不隨水量/組成變),
-    // 水量只撐大「根部以下」的袋腹 → 長出的地方永遠一樣大
-    return Math.min(raw, 1.15*(y-topY));
-  };
-  const dw=y=>dwd(y,0);
-  return {fat,soft,vol,S,rx,ry,ax,topY,fy,yBot,Ltot,tiltK,dw,dwd};
+const P={ water:1.0, elast:0.45 };
+let tiltG=0;
+
+function area(){
+  let A=0;
+  for(let i=0;i<N;i++){ const a=nd[i],b=nd[(i+1)%N]; A+=a.x*b.y-b.x*a.y; }
+  return A/2;                       // 帶正負(逆時針為正)
 }
 
-// ---- 像素工具 ----
-function px(img, W, x, y, col){
-  x|=0; y|=0;
-  if (x<0||y<0||x>=W||y>=img.height) return;
-  const p=(y*W+x)*4, c=col;
-  img.data[p]=c[0]; img.data[p+1]=c[1]; img.data[p+2]=c[2]; img.data[p+3]=255;
+function simulate(){
+  const dt=0.6;
+  const targetA=A0*P.water;                    // 水量 → 目標面積(不可壓縮的水)
+  const g=0.02;
+  const gx=Math.sin(tiltG*Math.PI/180)*g, gy=Math.cos(tiltG*Math.PI/180)*g;
+  // ---- 1) 積分:重力 + 壓力力(把膜往外撐到目標面積)----
+  const A=area();
+  const sign=A>=0?1:-1;
+  const press=(1.5+1.0*(1-P.elast))*(targetA-Math.abs(A))/A0;
+  for(let i=0;i<N;i++){
+    const n=nd[i];
+    if(n.pin){ n.vx=n.vy=0; continue; }
+    const a=nd[(i-1+N)%N], b=nd[(i+1)%N];
+    let nx=sign*(b.y-a.y), ny=-sign*(b.x-a.x);
+    const l=Math.hypot(nx,ny)||1e-6; nx/=l; ny/=l;
+    n.vx=(n.vx + gx + nx*press)*0.88;
+    n.vy=(n.vy + gy + ny*press)*0.88;
+    const vm=Math.hypot(n.vx,n.vy); if(vm>7){ n.vx*=7/vm; n.vy*=7/vm; }
+    n.x+=n.vx*dt; n.y+=n.vy*dt;
+    if(!isFinite(n.x)||!isFinite(n.y)){ initBalloon(); return; }
+  }
+  // ---- 2) 膜:局部邊長夾限 + 全域周長硬上限 → 周長鎖死 → 撐圓 ----
+  const maxE=REST*(1.09+0.16*(1-P.elast));      // 軟膜可伸長些(較 Q 彈)
+  const maxPer=maxE*N;                          // 周長硬上限
+  for(let it=0;it<10;it++){
+    // 局部:邊長 ≤ 上限
+    for(let i=0;i<N;i++){
+      const a=nd[i], b=nd[(i+1)%N];
+      let dx=b.x-a.x, dy=b.y-a.y;
+      const d=Math.hypot(dx,dy)||1e-6;
+      if(d<=maxE)continue;
+      const diff=(d-maxE)/d;
+      const mx=dx*diff*0.5, my=dy*diff*0.5;
+      if(!a.pin&&!b.pin){ a.x+=mx;a.y+=my;b.x-=mx;b.y-=my; }
+      else if(!a.pin){ a.x+=mx*2;a.y+=my*2; }
+      else if(!b.pin){ b.x-=mx*2;b.y-=my*2; }
+    }
+    for(const n of nd) if(n.pin){ n.x=n.px0; n.y=NECKY; }
+  }
+  // 全域:若總周長超上限,整體對質心縮小(等比去除多餘周長)→ 逼近圓
+  let per=0; for(let i=0;i<N;i++){ const a=nd[i],b=nd[(i+1)%N]; per+=Math.hypot(b.x-a.x,b.y-a.y); }
+  if(per>maxPer){
+    const f=maxPer/per;
+    let cx=0,cy=0; for(const n of nd){ cx+=n.x; cy+=n.y; } cx/=N; cy/=N;
+    for(const n of nd){ if(n.pin)continue; n.x=cx+(n.x-cx)*f; n.y=cy+(n.y-cy)*f; }
+    for(const n of nd) if(n.pin){ n.x=n.px0; n.y=NECKY; }
+  }
+  for(const n of nd){
+    if(n.x<3){n.x=3;n.vx=0;} if(n.x>W-4){n.x=W-4;n.vx=0;}
+    if(n.y<3){n.y=3;n.vy=0;} if(n.y>H-4){n.y=H-4;n.vy=0;}
+  }
 }
-function hx(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
-function line(img,W,x0,y0,x1,y1,col){          // Bresenham
+
+// ===== 渲染:多邊形掃描填色 + 賽璐璐 =====
+const img=ctx.createImageData(W,H);
+function px(x,y,c){ x|=0;y|=0; if(x<0||y<0||x>=W||y>=H)return;
+  const p=(y*W+x)*4; img.data[p]=c[0];img.data[p+1]=c[1];img.data[p+2]=c[2];img.data[p+3]=255; }
+function seg(x0,y0,x1,y1,c){
   x0|=0;y0|=0;x1|=0;y1|=0;
-  const dx=Math.abs(x1-x0), dy=-Math.abs(y1-y0), sx=x0<x1?1:-1, sy=y0<y1?1:-1;
+  const dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;
   let e=dx+dy;
-  for(;;){ px(img,W,x0,y0,col);
-    if(x0===x1&&y0===y1)break;
-    const e2=2*e;
+  for(;;){ px(x0,y0,c); if(x0===x1&&y0===y1)break; const e2=2*e;
     if(e2>=dy){e+=dy;x0+=sx;} if(e2<=dx){e+=dx;y0+=sy;} }
 }
-function arc(img,W,cx,cy,rx,ry,a0,a1,col){     // 橢圓弧(取樣描點)
-  const n=Math.max(12,(rx+ry)|0);
-  let lx,ly;
-  for(let i=0;i<=n;i++){
-    const a=a0+(a1-a0)*i/n;
-    const x=cx+rx*Math.cos(a), y=cy+ry*Math.sin(a);
-    if(i)line(img,W,lx,ly,x,y,col);
-    lx=x;ly=y;
-  }
-}
-
-// ---- 軀幹輪廓(半寬控制點,沿用已定稿的骨架)----
-const PROFILE = [[-1,.155],[-.96,.19],[-.84,.46],[-.72,.66],[-.66,.68],[-.56,.60],
-  [-.34,.58],[.02,.57],[.36,.485],[.7,.49],[.92,.50]];
-function halfW(ny){
-  if (ny<=PROFILE[0][0]) return PROFILE[0][1];
-  for (let i=1;i<PROFILE.length;i++){
-    if (ny<=PROFILE[i][0]){
-      const [y0,w0]=PROFILE[i-1],[y1,w1]=PROFILE[i];
-      let t=(ny-y0)/(y1-y0); t=t*t*(3-2*t);
-      return w0+(w1-w0)*t;
-    }
-  }
-  return PROFILE[PROFILE.length-1][1];
-}
-
-// ---- 正面 ----
-function renderFront(){
-  const W=F.width,H=F.height;
-  const img=fctx.createImageData(W,H);
-  const C=SKINS[P.skin].map(hx);
-  const midX=W/2, sc=W/2*0.98;
-  const {fat,S,rx,ry,ax,topY,fy,yBot,Ltot,dw,dwd}=phys();
-  const swayMax=Math.max(Math.abs(DYN[0].x),Math.abs(DYN[1].x));
-  // 軀幹填色(剪影 = 軀幹 ∪ 水滴:胸大到超出軀幹才撐寬,小胸不鼓)
-  for(let y=0;y<H;y++){
-    const ny=(y-H/2)/(H/2);
-    if(ny>0.92) continue;
-    let hw=halfW(ny)*sc;
-    const wR=dwd(y,Math.max(DYN[0].y,DYN[1].y));
-    if(wR>0){ const t=(y-topY)/Ltot; hw=Math.max(hw, ax+(1.5+3.5*S)*t*t+wR+swayMax); }
-    const x0=Math.round(midX-hw), x1=Math.round(midX+hw);
-    for(let x=x0;x<=x1;x++){
-      let c=C[2];
-      if(x<=x0+1||x>=x1-1) c=C[0];                         // 輪廓線
-      else if(x>=x1-4) c=C[1];                             // 右側賽璐璐影
-      else if(x<=x0+4) c=C[3];                             // 左側亮
-      px(img,W,x,y,c);
-    }
-  }
-  // 鎖骨
-  line(img,W,midX-6,34,midX-24,30,C[1]); line(img,W,midX+6,34,midX+24,30,C[1]);
-  // 肚臍
-  px(img,W,midX,180,C[0]); px(img,W,midX,181,C[0]);
-  const tiltK=1.5+3.5*S;                         // 乳軸外傾(八字):垂墜越大越明顯
-  const NIPC=(NIP[P.skin]||NIP.fair).map(hx);
-  for(const s of [-1,1]){
-    const cx=midX+s*ax;
-    const y0=Math.round(topY), y1=Math.round(yBot);
-    // 不再整塊填色:胸底色=軀幹色,體積靠明暗;線條只有 外緣線+底部收弧
-    const dyn=DYN[s<0?0:1];                      // 動態(戳/傾斜):根部釘死、袋腹搖擺
-    const Lb=Ltot+dyn.y;
-    let pO=null,pI=null,lastY=0,lastOff=0;
-    for(let y=y0;y<=Math.round(topY+Lb);y++){
-      const t=(y-topY)/Lb;
-      const wRow=dwd(y,dyn.y);
-      if(wRow<0.8)continue;
-      const cxR=cx+s*tiltK*t*t+dyn.x*Math.pow(t,1.5); // 軸心外偏+動態搖擺
-      for(let x=Math.round(cxR-wRow);x<=Math.round(cxR+wRow);x++){
-        const u=(x-cxR)/wRow;
-        let c=null;
-        if(t>1-0.16*(1-u*u)) c=C[1];             // 貼下緣的影
-        else if(t>1-0.30*(1-u*u)){ if(((x+y)&1)===0) c=C[1]; } // 抖色過渡影
-        else {
-          // 前凸面高光斑(照片:亮部在前凸中上,邊緣柔)
-          const dh=Math.pow(u/0.55,2)+Math.pow((t-0.52)/0.22,2);
-          if(dh<1){ c=C[3]; if(dh>0.55&&((x+y)&1)) c=null; }
-        }
-        if(c) px(img,W,x,y,c);
-      }
-      // 外緣線:與身體側線同一條流線,自上段淡入(C1→C0)
-      if(t>0.30){
-        const xo=Math.round(cxR+s*wRow);
-        const colO=t>0.5?C[0]:C[1];
-        if(pO) line(img,W,pO[0],pO[1],xo,y,colO);
-        pO=[xo,y];
-      }
-      // 內側只在底部收口露一小段(不畫整條內緣)
-      if(t>0.85){
-        const xi=Math.round(cxR-s*wRow);
-        if(pI) line(img,W,pI[0],pI[1],xi,y,C[0]);
-        pI=[xi,y];
-      }
-      lastY=y; lastOff=s*tiltK*t*t+dyn.x*Math.pow(t,1.5);
-    }
-    const xb=Math.round(cx+lastOff);
-    if(pO) line(img,W,pO[0],pO[1],xb,lastY+1,C[0]);   // 底部收弧(摺線)
-    if(pI) line(img,W,pI[0],pI[1],xb,lastY+1,C[0]);
-    // 摺線下投影(公仔最深的暗部:摺線下方投在肋廓上,抖色柔化)
-    for(let y=y0+3;y<=Math.round(topY+Lb)+4;y++){
-      const tA=(y-3-topY)/Lb;
-      if(tA<0.5||tA>=1)continue;
-      const wA=dwd(y-3,dyn.y); if(wA<=0)continue;
-      const cxA=cx+s*tiltK*tA*tA+dyn.x*Math.pow(tA,1.5);
-      const wH=dwd(y,dyn.y), tH=(y-topY)/Lb, cxH=cx+s*tiltK*tH*tH+dyn.x*Math.pow(Math.max(0,tH),1.5);
-      for(let x=Math.round(cxA-wA*0.92);x<=Math.round(cxA+wA*0.92);x++){
-        if(wH>0&&Math.abs(x-cxH)<wH)continue;    // 還在滴內 → 略過
-        const p=((y|0)*W+(x|0))*4;
-        if(img.data[p+3]===0)continue;           // 身體外不畫
-        if(((x+y)&1)===0) px(img,W,x,y,C[1]);
-      }
-    }
-    // 乳暈(橢圓、粉調漸層)+ 乳頭 + 高光點:最凸點,垂墜時朝下外
-    const tN=0.60+0.16*S;
-    const nyy=Math.round(topY+tN*Lb);
-    const nxx=Math.round(cx+s*(tiltK*tN*tN+1+2.5*S)+dyn.x*Math.pow(tN,1.5));
-    for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-3;dx2<=3;dx2++){
-      const dd=Math.pow(dx2/3.2,2)+Math.pow(dy2/2.2,2);
-      if(dd<=1) px(img,W,nxx+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
-    }
-    px(img,W,nxx-1,nyy-1,C[4]);
-    // 高光(上外側大面斜彎月)
-    arc(img,W,cx-s*rx*0.2,topY+Ltot*0.38,rx*0.32,Ltot*0.10,Math.PI*1.1,Math.PI*1.7,C[4]);
-  }
-  // 乳溝谷影(間距小、兩滴靠近時,中央柔影)
-  if(ax<rx*1.1+4){
-    for(let y=Math.round(topY+0.3*Ltot);y<=Math.round(yBot-2);y++){
-      for(let x=Math.round(midX-2);x<=Math.round(midX+2);x++){
-        const p=(y*W+x)*4;
-        if(img.data[p+3]===0)continue;
-        if(((x+y)&1)===0) px(img,W,x,y,C[2]);
-      }
-    }
-  }
-  fctx.putImageData(img,0,0);
-  document.getElementById('cap').textContent=
-    `下垂 ${Math.round(S*100)}%(脂肪 ${Math.round(fat*100)}%・乳腺 ${Math.round(P.gland*100)}%)`;
-}
-
-// ---- 側面(面向左):同一套物理,畫側視剪影 ----
-// 控制點 [y, 相對中線 x 偏移]:CW=胸壁前緣(左)、BK=背線(右)
-const CWPTS=[[6,-8],[24,-10],[34,-16],[44,-21],[64,-23],[100,-22],[130,-20],[152,-22],[172,-26],[188,-25]];
-const BKPTS=[[6,10],[22,12],[34,26],[48,31],[80,30],[110,26],[140,27],[170,31],[188,30]];
-function ip(pts,y){
-  if(y<=pts[0][0])return pts[0][1];
-  for(let i=1;i<pts.length;i++){
-    if(y<=pts[i][0]){
-      const a=pts[i-1],b=pts[i];
-      let t=(y-a[0])/(b[0]-a[0]); t=t*t*(3-2*t);
-      return a[1]+(b[1]-a[1])*t;
-    }
-  }
-  return pts[pts.length-1][1];
-}
-function renderSideView(){
-  const W=F.width,H=F.height;
-  const img=fctx.createImageData(W,H);
-  const C=SKINS[P.skin].map(hx);
-  const NIPC=(NIP[P.skin]||NIP.fair).map(hx);
-  const {fat,S,rx,topY,fy,yBot,Ltot,dwd}=phys();
-  const dyn=DYN[0];
-  const Lb=Ltot+dyn.y;
-  const dwS=y=>dwd(y,dyn.y);
-  const midX=W/2;
-  const DPS=1.45;                                  // 側面深度 = 寬度包絡 × 比例
-  for(let y=6;y<=188;y++){
-    let d=dwS(y)*DPS;
-    if(d>0){ const t=(y-topY)/Lb; d=Math.max(0,d+dyn.x*Math.pow(t,1.5)); }
-    const xF=Math.round(midX+ip(CWPTS,y)-d);       // 前緣(胸壁-乳深)
-    const xB=Math.round(midX+ip(BKPTS,y));         // 背線
-    for(let x=xF;x<=xB;x++){
-      let c=C[2];
-      if(x<=xF+1||x>=xB-1)c=C[0];                  // 輪廓線(前緣含乳滴曲線與摺下凹口)
-      else if(x<=xF+4)c=C[3];                      // 前側亮(光從左前)
-      else if(x>=xB-4)c=C[1];                      // 背側影
-      px(img,W,x,y,c);
-    }
-  }
-  // 摺線下投影(抖色):乳滴下緣後方貼肋
-  for(let y=Math.round(fy);y<=Math.round(topY+Lb)+4;y++){
-    const dA=dwS(y-3)*DPS; if(dA<=6)continue;
-    const xF0=midX+ip(CWPTS,y);
-    for(let x=Math.round(xF0-dA*0.7);x<=Math.round(xF0-2);x++){
-      const p=(y*W+x)*4;
-      if(img.data[p+3]===0)continue;
-      if(((x+y)&1)===0) px(img,W,x,y,C[1]);
-    }
-  }
-  // 乳暈+乳頭(最凸點,朝左;垂墜時朝左下)
-  const tN=0.60+0.16*S;
-  const nyy=Math.round(topY+tN*Lb);
-  const nxx=Math.round(midX+ip(CWPTS,nyy)-dwS(nyy)*DPS-dyn.x*Math.pow(tN,1.5));
-  for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-2;dx2<=2;dx2++){
-    const dd=Math.pow(dx2/2.4,2)+Math.pow(dy2/2.6,2);
-    if(dd<=1) px(img,W,nxx+1+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
-  }
-  px(img,W,nxx-1,nyy,NIPC[0]); px(img,W,nxx-1,nyy+1,NIPC[0]); // 乳頭微凸
-  // 上胸高光(抖色斑)
-  const hy=Math.round(topY+Ltot*0.35);
-  for(let y=hy;y<hy+8;y++)for(let x=0;x<5;x++){
-    const xx=Math.round(midX+ip(CWPTS,y)-dwS(y)*DPS)+3+x;
-    if(((xx+y)&1)===0) px(img,W,xx,y,C[4]);
-  }
-  // 肚臍
-  const nvx=Math.round(midX+ip(CWPTS,172))+2;
-  px(img,W,nvx,172,C[0]); px(img,W,nvx,173,C[0]);
-  fctx.putImageData(img,0,0);
-  document.getElementById('cap').textContent=
-    `下垂 ${Math.round(S*100)}%(脂肪 ${Math.round(fat*100)}%・乳腺 ${Math.round(P.gland*100)}%)`;
-}
-// ---- 半側 45°(面向左前):正面與側面的中間態 ----
-function renderQuarterView(){
-  const W=F.width,H=F.height;
-  const img=fctx.createImageData(W,H);
-  const C=SKINS[P.skin].map(hx);
-  const NIPC=(NIP[P.skin]||NIP.fair).map(hx);
-  const {fat,S,rx,topY,fy,yBot,Ltot,tiltK,dwd}=phys();
-  const dwN=y=>dwd(y,DYN[0].y), dwF=y=>dwd(y,DYN[1].y);
-  const midX=W/2, sc=W/2*0.98;
-  const axis=midX-10;                        // 轉身 45° → 中軸偏左
-  const tN=0.60+0.16*S;
-  // 軀幹:左(前)窄、右(後)寬;近側乳凸出前緣
-  const xLs=new Array(H).fill(null), xRs=new Array(H).fill(null);
-  for(let y=0;y<H;y++){
-    const ny=(y-H/2)/(H/2);
-    if(ny>0.92)continue;
-    const hwF=halfW(ny)*sc;
-    let dN=dwN(y)*0.9;                       // 近側乳深(側視成分)
-    if(dN>0) dN=Math.max(0,dN+DYN[0].x*Math.pow((y-topY)/(Ltot+DYN[0].y),1.5));
-    xLs[y]=axis-hwF*0.52-dN;
-    // 遠側乳外擴(正面成分,縮短 0.75)
-    const wFar=dwF(y)*0.75;
-    const t=(y-topY)/Ltot;
-    const ext=wFar>0 ? 20*P.gap+3+tiltK*t*t+wFar : 0;
-    xRs[y]=axis+Math.max(hwF*0.84, ext);
-  }
-  // 右緣平滑(消除乳下與軀幹寬度切換的階梯)
-  for(let pass=0;pass<2;pass++)
-    for(let y=1;y<H-1;y++)
-      if(xRs[y]!==null&&xRs[y-1]!==null&&xRs[y+1]!==null)
-        xRs[y]=(xRs[y-1]+xRs[y]+xRs[y+1])/3;
-  for(let y=0;y<H;y++){
-    if(xLs[y]===null)continue;
-    const xL=Math.round(xLs[y]), xR=Math.round(xRs[y]);
-    for(let x=xL;x<=xR;x++){
-      let c=C[2];
-      if(x<=xL+1||x>=xR-1)c=C[0];            // 輪廓(左緣含近側乳滴曲線)
-      else if(x<=xL+4)c=C[3];                // 前側亮
-      else if(x>=xR-4)c=C[1];                // 背側影
-      px(img,W,x,y,c);
-    }
-  }
-  // 遠側乳(右):縮短版正面水滴 — 明暗 + 外緣線 + 底部收弧
-  {
-    const cxF=axis+20*P.gap+3;
-    let pO=null,pI=null,lastY=0,lastOff=0;
-    const y0=Math.round(topY), y1=Math.round(yBot);
-    for(let y=y0;y<=y1;y++){
-      const t=(y-topY)/Ltot;
-      const wRow=dwF(y)*0.75;
-      if(wRow<0.8)continue;
-      const cxR=cxF+tiltK*t*t+DYN[1].x*Math.pow(t,1.5);
-      for(let x=Math.round(cxR-wRow);x<=Math.round(cxR+wRow);x++){
-        const u=(x-cxR)/wRow;
-        let c=null;
-        if(t>1-0.16*(1-u*u))c=C[1];
-        else if(t>1-0.30*(1-u*u)){ if(((x+y)&1)===0)c=C[1]; }
-        else { const dh=Math.pow(u/0.55,2)+Math.pow((t-0.52)/0.22,2);
-               if(dh<1){ c=C[3]; if(dh>0.55&&((x+y)&1))c=null; } }
-        if(c) px(img,W,x,y,c);
-      }
-      if(t>0.30){ const xo=Math.round(cxR+wRow), col=t>0.5?C[0]:C[1];
-        if(pO) line(img,W,pO[0],pO[1],xo,y,col); pO=[xo,y]; }
-      if(t>0.85){ const xi=Math.round(cxR-wRow);
-        if(pI) line(img,W,pI[0],pI[1],xi,y,C[0]); pI=[xi,y]; }
-      lastY=y; lastOff=tiltK*t*t;
-    }
-    const xb=Math.round(cxF+lastOff);
-    if(pO) line(img,W,pO[0],pO[1],xb,lastY+1,C[0]);
-    if(pI) line(img,W,pI[0],pI[1],xb,lastY+1,C[0]);
-    // 遠側乳暈(縮短 → 橢圓更扁)
-    const nyy=Math.round(topY+tN*Ltot);
-    const nxx=Math.round(cxF+tiltK*tN*tN+1+2*S);
-    for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-2;dx2<=2;dx2++){
-      const dd=Math.pow(dx2/2.6,2)+Math.pow(dy2/2.2,2);
-      if(dd<=1) px(img,W,nxx+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
-    }
-    px(img,W,nxx-1,nyy-1,C[4]);
-  }
-  // 近側乳(左):乳暈在凸點稜線上 + 底部收弧 + 摺下投影
-  {
-    const nyy=Math.round(topY+tN*Ltot);
-    const hwN=halfW((nyy-H/2)/(H/2))*sc;
-    const nxx=Math.round(axis-hwN*0.52-dwN(nyy)*0.9);
-    for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-2;dx2<=2;dx2++){
-      const dd=Math.pow(dx2/2.2,2)+Math.pow(dy2/2.6,2);
-      if(dd<=1) px(img,W,nxx+1+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
-    }
-    px(img,W,nxx-1,nyy,NIPC[0]);
-    // 底部收弧:自剪影底端往胸口勾一小段
-    const yb=Math.round(yBot);
-    const hwB=halfW((yb-H/2)/(H/2))*sc;
-    line(img,W,Math.round(axis-hwB*0.52-2),yb-2,Math.round(axis-hwB*0.30),yb+1,C[0]);
-    // 摺下投影(抖色)
-    for(let y=Math.round(fy);y<=yb+3;y++){
-      const dA=dwN(y-3)*0.9; if(dA<=5)continue;
-      const hwY=halfW((y-H/2)/(H/2))*sc;
-      for(let x=Math.round(axis-hwY*0.52-dA*0.6);x<=Math.round(axis-hwY*0.52+3);x++){
-        const p=(y*W+x)*4;
-        if(img.data[p+3]===0)continue;
-        if(((x+y)&1)===0) px(img,W,x,y,C[1]);
-      }
-    }
-  }
-  // 鎖骨(偏左)+ 肚臍(前緣偏左)
-  line(img,W,axis-4,34,axis-20,31,C[1]); line(img,W,axis+4,34,axis+16,30,C[1]);
-  px(img,W,axis-4,180,C[0]); px(img,W,axis-4,181,C[0]);
-  fctx.putImageData(img,0,0);
-  document.getElementById('cap').textContent=
-    `下垂 ${Math.round(S*100)}%(脂肪 ${Math.round(fat*100)}%・乳腺 ${Math.round(P.gland*100)}%)`;
-}
 function render(){
-  P.view==='front'?renderFront():P.view==='side'?renderSideView():renderQuarterView();
-}
-
-// ---- 物理積分:阻尼彈簧(軟=彈性大回彈慢;緊實=硬彈快停)----
-let rafD=null;
-function ensureLoop(){ if(rafD===null) rafD=requestAnimationFrame(tick); }
-function tick(){
-  rafD=null;
-  const pp=phys();
-  const k=0.30-0.18*pp.soft;           // 剛性:乳腺硬、脂肪軟
-  const damp=0.93-0.10*pp.soft;        // 阻尼:脂肪晃更久
-  const gx=Math.sin(tiltG*Math.PI/180)*(0.5+1.3*pp.soft)*0.9;
-  let active=Math.abs(tiltG)>2;
-  for(const d of DYN){
-    d.vx+=-k*d.x+gx;  d.vy+=-k*1.4*d.y;
-    d.vx*=damp;       d.vy*=damp;
-    d.x+=d.vx;        d.y+=d.vy;
-    const mx=5+11*pp.soft, my=4+8*pp.soft;   // 位移上限隨柔軟度
-    if(d.x>mx){d.x=mx;d.vx*=-0.3;} if(d.x<-mx){d.x=-mx;d.vx*=-0.3;}
-    if(d.y>my){d.y=my;d.vy*=-0.3;} if(d.y<-my){d.y=-my;d.vy*=-0.3;}
-    if(Math.abs(d.vx)>0.05||Math.abs(d.vy)>0.05||Math.abs(d.x)>0.3||Math.abs(d.y)>0.3) active=true;
+  img.data.fill(0);
+  // 綁口(頸)
+  for(let x=CX-5;x<=CX+5;x++){ px(x,NECKY-3,COL.neck); px(x,NECKY-2,COL.neck); }
+  px(CX-1,NECKY-6,COL.neck); px(CX+1,NECKY-6,COL.neck); px(CX,NECKY-5,COL.neck);
+  // 掃描線填水
+  let minY=1e9,maxY=-1e9;
+  for(const n of nd){ if(n.y<minY)minY=n.y; if(n.y>maxY)maxY=n.y; }
+  minY=Math.max(0,minY|0); maxY=Math.min(H-1,Math.ceil(maxY));
+  for(let y=minY;y<=maxY;y++){
+    const xs=[];
+    for(let i=0;i<N;i++){ const a=nd[i],b=nd[(i+1)%N];
+      if((a.y<=y&&b.y>y)||(b.y<=y&&a.y>y)) xs.push(a.x+(y-a.y)/(b.y-a.y)*(b.x-a.x)); }
+    xs.sort((p,q)=>p-q);
+    const t=(y-minY)/Math.max(1,maxY-minY);
+    for(let k=0;k+1<xs.length;k+=2){
+      const xl=Math.round(xs[k]), xr=Math.round(xs[k+1]), wln=xr-xl;
+      for(let x=xl;x<=xr;x++){
+        const u=wln>0?(x-xl)/wln:0.5;
+        let c=COL.main;
+        if(t>0.82)c=COL.shade;                          // 底部沉水(重、深色)
+        else if(t>0.66){ if(((x+y)&1)===0)c=COL.shade; }
+        else if(t<0.30&&u<0.42){ c=COL.light;           // 左上受光
+          if(t<0.16&&u<0.28)c=COL.hi; }
+        else if(u>0.80){ if(((x+y)&1)===0)c=COL.shade; } // 右緣暗
+        px(x,y,c);
+      }
+    }
   }
-  render();
-  if(active) rafD=requestAnimationFrame(tick);
-  else { for(const d of DYN){d.x=d.y=d.vx=d.vy=0;} render(); }
+  // 膜輪廓
+  for(let i=0;i<N;i++){ const a=nd[i],b=nd[(i+1)%N]; seg(a.x,a.y,b.x,b.y,COL.line); }
+  ctx.putImageData(img,0,0);
+  const A=Math.abs(area());
+  document.getElementById('cap').textContent=
+    `飽滿度 ${Math.round(A/A0*100)}% ｜ 水量 ${Math.round(P.water*100)}%・彈性 ${Math.round(P.elast*100)}%`+
+    (Math.abs(tiltG)>2?` ｜ 傾斜 ${Math.round(tiltG)}°`:'');
 }
 
-// ---- 手指戳/拖 ----
-function cvPos(e){
-  const r=F.getBoundingClientRect();
-  return [(e.clientX-r.left)*F.width/r.width,(e.clientY-r.top)*F.height/r.height];
-}
-function sideIdx(x){ return P.view==='front' ? (x<F.width/2?0:1) : (P.view==='quarter' ? (x<F.width/2?0:1) : 0); }
+function loop(){ simulate(); render(); requestAnimationFrame(loop); }
+
+// ===== 互動 =====
+function cvPos(e){ const r=cv.getBoundingClientRect();
+  return [(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height]; }
 let dragging=false,lastP=null;
-F.addEventListener('pointerdown',e=>{
-  e.preventDefault();
-  dragging=true; lastP=cvPos(e);
-  try{ F.setPointerCapture(e.pointerId); }catch(_){}
-  const pp=phys();
-  const d=DYN[sideIdx(lastP[0])];
-  // 戳:朝軸心推開 + 微下沉,力道隨柔軟度
-  const cxTgt=P.view==='front'?(F.width/2+(sideIdx(lastP[0])?1:-1)*pp.ax):F.width/2;
-  d.vx+=(lastP[0]<cxTgt?2.5:-2.5)*(0.35+0.85*pp.soft);
-  d.vy+=1.6*(0.35+0.85*pp.soft);
-  ensureLoop();
-});
-F.addEventListener('pointermove',e=>{
-  if(!dragging)return;
-  const p=cvPos(e);
-  const d=DYN[sideIdx(p[0])];
-  d.vx+=(p[0]-lastP[0])*0.30;
-  d.vy+=(p[1]-lastP[1])*0.30;
-  lastP=p; ensureLoop();
-});
-for(const ev of ['pointerup','pointercancel']) F.addEventListener(ev,()=>{ dragging=false; });
-
-// ---- 傾斜感應(手機):左右傾 → 重力方向改變,袋腹往低側甩 ----
+cv.addEventListener('pointerdown',e=>{ e.preventDefault(); dragging=true; lastP=cvPos(e);
+  try{cv.setPointerCapture(e.pointerId);}catch(_){} poke(lastP[0],lastP[1],0,0,true); });
+cv.addEventListener('pointermove',e=>{ if(!dragging)return; const p=cvPos(e);
+  poke(p[0],p[1],p[0]-lastP[0],p[1]-lastP[1],false); lastP=p; });
+for(const ev of ['pointerup','pointercancel']) cv.addEventListener(ev,()=>{dragging=false;});
+function poke(x,y,dx,dy,punch){
+  const R=22;
+  for(const n of nd){
+    if(n.pin)continue;
+    const ex=n.x-x, ey=n.y-y, d=Math.hypot(ex,ey);
+    if(d<R){ const w=1-d/R;
+      if(punch){ const l=d||1e-6; n.vx+=ex/l*3.2*w; n.vy+=ey/l*3.2*w; }
+      else { n.vx+=dx*w*0.7; n.vy+=dy*w*0.7; } }
+  }
+}
 const tiltBtn=document.getElementById('tilt-btn');
 if(!window.DeviceOrientationEvent) tiltBtn.style.display='none';
 tiltBtn.onclick=async()=>{
@@ -581,51 +279,22 @@ tiltBtn.onclick=async()=>{
       const r=await DeviceOrientationEvent.requestPermission();
       if(r!=='granted'){ tiltBtn.textContent='未授權'; return; }
     }
-    window.addEventListener('deviceorientation',e=>{
-      tiltG=e.gamma||0;
-      if(Math.abs(tiltG)>2) ensureLoop();
-    });
-    tiltBtn.textContent='傾斜感應中';
-    tiltBtn.classList.add('on'); tiltBtn.disabled=true;
+    window.addEventListener('deviceorientation',e=>{ tiltG=e.gamma||0; });
+    tiltBtn.textContent='傾斜感應中'; tiltBtn.classList.add('on'); tiltBtn.disabled=true;
   }catch(_){ tiltBtn.textContent='此裝置不支援'; }
 };
 
-// ---- UI ----
 const $=s=>document.querySelector(s);
-$('#view').addEventListener('click',e=>{
-  const b=e.target.closest('button'); if(!b)return;
-  P.view=b.dataset.v;
-  [...e.currentTarget.children].forEach(c=>c.classList.toggle('on',c===b));
-  render();
-});
-const skinNames={porcelain:'瓷白',fair:'白皙',tan:'小麥',pink:'櫻粉',deep:'深棕'};
-const sw=$('#skin');
-Object.keys(SKINS).forEach(key=>{
-  const b=document.createElement('button');
-  b.innerHTML=`<span class="sw" style="background:${SKINS[key][3]}"></span>${skinNames[key]}`;
-  if(key===P.skin)b.classList.add('on');
-  b.onclick=()=>{P.skin=key;[...sw.children].forEach(c=>c.classList.toggle('on',c===b));render();};
-  sw.appendChild(b);
-});
-function bind(id,key){
-  const el=$('#'+id),v=$('#'+id+'-v');
-  const u=()=>{P[key]=+el.value/100;v.textContent=el.value+'%';render();};
-  el.addEventListener('input',u);u();
-}
-bind('size','size'); bind('gap','gap');
-{ const el=$('#gland'),v=$('#gland-v');
-  const u=()=>{P.gland=+el.value/100;v.textContent=`乳腺${el.value}%`;render();};
-  el.addEventListener('input',u);u(); }
-$('#export').onclick=()=>{
-  const off=document.createElement('canvas');
-  off.width=F.width*4; off.height=F.height*4;
-  const o=off.getContext('2d'); o.imageSmoothingEnabled=false;
-  o.drawImage(F,0,0,off.width,off.height);
-  const a=document.createElement('a');
-  a.download='body-design.png'; a.href=off.toDataURL('image/png'); a.click();
-};
-$('#reset').onclick=()=>location.reload();
-render();
+function bind(id,key){ const el=$('#'+id),v=$('#'+id+'-v');
+  const u=()=>{P[key]=+el.value/100;v.textContent=el.value+'%';}; el.addEventListener('input',u);u(); }
+bind('water','water'); bind('elast','elast');
+$('#export').onclick=()=>{ const off=document.createElement('canvas');
+  off.width=W*4; off.height=H*4; const o=off.getContext('2d'); o.imageSmoothingEnabled=false;
+  o.drawImage(cv,0,0,off.width,off.height); const a=document.createElement('a');
+  a.download='waterballoon.png'; a.href=off.toDataURL('image/png'); a.click(); };
+$('#reset').onclick=()=>initBalloon();
+
+loop();
 })();
 </script>
 </body>
