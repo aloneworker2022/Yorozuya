@@ -83,14 +83,19 @@ canvas { display: block; image-rendering: pixelated; }
   </div>
 
   <div class="panel">
-    <h2>◆ 胸型(型錄)</h2>
-    <div class="chips" id="types"></div>
+    <h2>◆ 視角 / 參數</h2>
+    <div class="row" style="margin-top:0"><label>視角</label>
+      <div class="chips" id="view">
+        <button data-v="front" class="on">正面</button>
+        <button data-v="side">側面(左)</button>
+      </div>
+    </div>
     <div class="two-col">
-      <div class="row" style="margin-top:10px"><label>組成</label><input id="gland" type="range" min="0" max="100" value="30"><span class="val" id="gland-v"></span></div>
-      <div class="note" style="margin:-2px 0 4px">← 脂肪型(軟・液體下沉垂墜) ｜ 乳腺型(緊實・抗垂)→</div>
-      <div class="row"><label>大小</label><input id="size" type="range" min="60" max="140" value="100"><span class="val" id="size-v"></span></div>
+      <div class="row"><label>組成</label><input id="gland" type="range" min="0" max="100" value="30"><span class="val" id="gland-v"></span></div>
+      <div class="row"><label>大小</label><input id="size" type="range" min="70" max="250" value="100"><span class="val" id="size-v"></span></div>
       <div class="row"><label>間距</label><input id="gap" type="range" min="70" max="130" value="100"><span class="val" id="gap-v"></span></div>
     </div>
+    <div class="note" style="margin:2px 0 0">← 脂肪型(軟・液體下沉垂墜) ｜ 乳腺型(緊實・抗垂)→</div>
   </div>
 
   <div class="panel">
@@ -132,27 +137,29 @@ const NIP = {
   pink: ['#c06a70','#eb9a9c'],
   deep: ['#5a3428','#7e4e3c'],
 };
-const P = { type: 'hemi', size: 1, gap: 1, gland: 0.3, skin: 'fair' };
+const P = { view: 'front', size: 1, gap: 1, gland: 0.3, skin: 'fair' };
 
-// ---- 七型定義 ----
-// side:[t,depth] 胸區側面輪廓折線(t=0 上緣→1 下緣,depth 0..1)
-// front:{ry 下弧扁率, drop 下弧中心下移, nip:[dx,dy] 乳位偏移, bulge 外擴, top 上弧提示}
-const TYPES = {
-  plate: {name:'皿型',  front:{ry:.45, drop:-.15, nip:[0,-.2], bulge:.15, top:.3},
-    side:[[0,.05],[.25,.12],[.5,.30],[.68,.34],[.85,.22],[1,.06]]},
-  tri:   {name:'三角型', front:{ry:.55, drop:.05, nip:[.05,.15], bulge:.3, top:.4},
-    side:[[0,.04],[.3,.14],[.55,.34],[.75,.56],[.82,.50],[.92,.20],[1,.05]]},
-  hemi:  {name:'半球型', front:{ry:.62, drop:0, nip:[.05,-.1], bulge:.5, top:.6},
-    side:[[0,.05],[.15,.22],[.35,.52],[.5,.62],[.65,.52],[.85,.24],[1,.05]]},
-  bowl:  {name:'碗型',  front:{ry:.58, drop:.05, nip:[.05,0], bulge:.45, top:.5},
-    side:[[0,.05],[.2,.18],[.45,.44],[.62,.56],[.78,.46],[.9,.2],[1,.05]]},
-  cone:  {name:'圓錐型', front:{ry:.55, drop:.05, nip:[.08,.05], bulge:.35, top:.5},
-    side:[[0,.04],[.28,.2],[.5,.44],[.62,.60],[.72,.44],[.88,.16],[1,.04]]},
-  bell:  {name:'釣鐘型', front:{ry:.62, drop:.18, nip:[.06,.2], bulge:.55, top:.45},
-    side:[[0,.04],[.3,.12],[.55,.3],[.72,.55],[.85,.58],[.95,.3],[1,.06]]},
-  ptotic:{name:'下垂型', front:{ry:.6, drop:.32, nip:[.1,.38], bulge:.5, top:.35},
-    side:[[0,.04],[.35,.10],[.6,.24],[.78,.48],[.9,.55],[.97,.35],[1,.08]]},
-};
+// ---- 液體物理(正面/側面共用):水量把袋子往下拉長,不是鼓成球 ----
+function phys(){
+  const fat=1-P.gland, soft=0.15+0.85*fat;      // 柔軟度(脂肪=軟)
+  const vol=Math.max(0,Math.min(1,(P.size-0.7)/1.8)); // 水量 0..1(70%~250%)
+  const S=Math.min(1, soft*(0.15+0.85*vol));    // 下垂度 = 柔軟 × 水量
+  const rx=13+vol*(7+8*(1-soft));               // 袋寬:水多僅略寬,緊實才撐得寬
+  const ry=rx*0.55*(1+0.25*S);
+  const ax=28*P.gap+S*4;                        // 乳軸距(垂 → 微外擴)
+  const topY=64;                                // 上緣附著點:固定
+  const L=24+vol*(18+46*soft);                  // 袋長:水量×柔軟 → 往下拉長
+  const fy=Math.min(158, topY+L);               // 摺線(袋底)
+  const yBot=fy+ry, Ltot=yBot-topY, pw=1+1.2*S;
+  const tiltK=1.5+3.5*S;                        // 乳軸外傾
+  const dw=y=>{                                 // 水滴寬度包絡
+    const t=(y-topY)/Ltot;
+    if(t<=0||t>=1) return 0;
+    const tt=Math.pow(t,pw);
+    return rx*1.1*Math.sqrt(Math.max(0,4*tt*(1-tt)));
+  };
+  return {fat,soft,vol,S,rx,ry,ax,topY,fy,yBot,Ltot,tiltK,dw};
+}
 
 // ---- 像素工具 ----
 function px(img, W, x, y, col){
@@ -202,27 +209,8 @@ function renderFront(){
   const W=F.width,H=F.height;
   const img=fctx.createImageData(W,H);
   const C=SKINS[P.skin].map(hx);
-  const T=TYPES[P.type], fr=T.front, k=P.size;
   const midX=W/2, sc=W/2*0.98;
-  // ---- 液體物理:水量變多「不是鼓成球」,是把袋子往下拉長 ----
-  const fat=1-P.gland;
-  const soft=0.15+0.85*fat;                 // 柔軟度(脂肪=軟)
-  const vol=(k-0.6)/0.8;                    // 水量 0..1(大小滑桿)
-  const S=Math.min(1, soft*(0.2+0.8*vol)); // 下垂度 = 柔軟 × 水量
-  const rx=15+vol*(6+6*(1-soft));           // 袋寬:水多僅略寬,緊實才撐得起寬
-  const ry=rx*fr.ry*(1+0.25*S);             // 垂 → 下弧更飽滿
-  const ax=26*P.gap*(1+fr.bulge*0.25)+S*4;  // 垂 → 微外擴
-  const topY=64+fr.drop*10;                 // 上緣附著點:固定,不隨水量動
-  const L=26+vol*(14+30*soft)+fr.drop*20;   // 袋長:水量 × 柔軟 → 往下拉長
-  const fy=Math.min(158, topY+L);           // 摺線位置(袋底)
-  // 水滴寬度包絡(軀幹剪影與團塊共用 → 只有一條線,不會前後兩套輪廓)
-  const yBot=fy+ry, Ltot=yBot-topY, pw=1+1.2*S;
-  function dw(y){
-    const t=(y-topY)/Ltot;
-    if(t<=0||t>=1) return 0;
-    const tt=Math.pow(t,pw);
-    return rx*1.1*Math.sqrt(Math.max(0,4*tt*(1-tt)));
-  }
+  const {fat,S,rx,ry,ax,topY,fy,yBot,Ltot,dw}=phys();
   // 軀幹填色(剪影 = 軀幹 ∪ 水滴:胸大到超出軀幹才撐寬,小胸不鼓)
   for(let y=0;y<H;y++){
     const ny=(y-H/2)/(H/2);
@@ -326,17 +314,82 @@ function renderFront(){
     `下垂 ${Math.round(S*100)}%(脂肪 ${Math.round(fat*100)}%・乳腺 ${Math.round(P.gland*100)}%)`;
 }
 
-function render(){ renderFront(); }
+// ---- 側面(面向左):同一套物理,畫側視剪影 ----
+// 控制點 [y, 相對中線 x 偏移]:CW=胸壁前緣(左)、BK=背線(右)
+const CWPTS=[[6,-8],[24,-10],[34,-16],[44,-21],[64,-23],[100,-22],[130,-20],[152,-22],[172,-26],[188,-25]];
+const BKPTS=[[6,10],[22,12],[34,26],[48,31],[80,30],[110,26],[140,27],[170,31],[188,30]];
+function ip(pts,y){
+  if(y<=pts[0][0])return pts[0][1];
+  for(let i=1;i<pts.length;i++){
+    if(y<=pts[i][0]){
+      const a=pts[i-1],b=pts[i];
+      let t=(y-a[0])/(b[0]-a[0]); t=t*t*(3-2*t);
+      return a[1]+(b[1]-a[1])*t;
+    }
+  }
+  return pts[pts.length-1][1];
+}
+function renderSideView(){
+  const W=F.width,H=F.height;
+  const img=fctx.createImageData(W,H);
+  const C=SKINS[P.skin].map(hx);
+  const NIPC=(NIP[P.skin]||NIP.fair).map(hx);
+  const {fat,S,rx,topY,fy,yBot,Ltot,dw}=phys();
+  const midX=W/2;
+  const DPS=1.45;                                  // 側面深度 = 寬度包絡 × 比例
+  for(let y=6;y<=188;y++){
+    const d=dw(y)*DPS;
+    const xF=Math.round(midX+ip(CWPTS,y)-d);       // 前緣(胸壁-乳深)
+    const xB=Math.round(midX+ip(BKPTS,y));         // 背線
+    for(let x=xF;x<=xB;x++){
+      let c=C[2];
+      if(x<=xF+1||x>=xB-1)c=C[0];                  // 輪廓線(前緣含乳滴曲線與摺下凹口)
+      else if(x<=xF+4)c=C[3];                      // 前側亮(光從左前)
+      else if(x>=xB-4)c=C[1];                      // 背側影
+      px(img,W,x,y,c);
+    }
+  }
+  // 摺線下投影(抖色):乳滴下緣後方貼肋
+  for(let y=Math.round(fy);y<=Math.round(yBot)+4;y++){
+    const dA=dw(y-3)*DPS; if(dA<=6)continue;
+    const xF0=midX+ip(CWPTS,y);
+    for(let x=Math.round(xF0-dA*0.7);x<=Math.round(xF0-2);x++){
+      const p=(y*W+x)*4;
+      if(img.data[p+3]===0)continue;
+      if(((x+y)&1)===0) px(img,W,x,y,C[1]);
+    }
+  }
+  // 乳暈+乳頭(最凸點,朝左;垂墜時朝左下)
+  const tN=0.60+0.16*S;
+  const nyy=Math.round(topY+tN*Ltot);
+  const nxx=Math.round(midX+ip(CWPTS,nyy)-dw(nyy)*DPS);
+  for(let dy2=-2;dy2<=2;dy2++)for(let dx2=-2;dx2<=2;dx2++){
+    const dd=Math.pow(dx2/2.4,2)+Math.pow(dy2/2.6,2);
+    if(dd<=1) px(img,W,nxx+1+dx2,nyy+dy2, dd>0.45?NIPC[1]:NIPC[0]);
+  }
+  px(img,W,nxx-1,nyy,NIPC[0]); px(img,W,nxx-1,nyy+1,NIPC[0]); // 乳頭微凸
+  // 上胸高光(抖色斑)
+  const hy=Math.round(topY+Ltot*0.35);
+  for(let y=hy;y<hy+8;y++)for(let x=0;x<5;x++){
+    const xx=Math.round(midX+ip(CWPTS,y)-dw(y)*DPS)+3+x;
+    if(((xx+y)&1)===0) px(img,W,xx,y,C[4]);
+  }
+  // 肚臍
+  const nvx=Math.round(midX+ip(CWPTS,172))+2;
+  px(img,W,nvx,172,C[0]); px(img,W,nvx,173,C[0]);
+  fctx.putImageData(img,0,0);
+  document.getElementById('cap').textContent=
+    `下垂 ${Math.round(S*100)}%(脂肪 ${Math.round(fat*100)}%・乳腺 ${Math.round(P.gland*100)}%)`;
+}
+function render(){ P.view==='front'?renderFront():renderSideView(); }
 
 // ---- UI ----
 const $=s=>document.querySelector(s);
-const tw=$('#types');
-Object.entries(TYPES).forEach(([key,t])=>{
-  const b=document.createElement('button');
-  b.textContent=t.name;
-  if(key===P.type)b.classList.add('on');
-  b.onclick=()=>{P.type=key;[...tw.children].forEach(c=>c.classList.toggle('on',c===b));render();};
-  tw.appendChild(b);
+$('#view').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  P.view=b.dataset.v;
+  [...e.currentTarget.children].forEach(c=>c.classList.toggle('on',c===b));
+  render();
 });
 const skinNames={porcelain:'瓷白',fair:'白皙',tan:'小麥',pink:'櫻粉',deep:'深棕'};
 const sw=$('#skin');
