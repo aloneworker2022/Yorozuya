@@ -78,8 +78,7 @@ canvas { display: block; image-rendering: pixelated; }
 
   <div class="stage-box">
     <div class="stage-row">
-      <div><canvas id="front" width="160" height="200"></canvas><div class="stage-cap">正面</div></div>
-      <div><canvas id="side" width="110" height="200"></canvas><div class="stage-cap">側面</div></div>
+      <div><canvas id="front" width="160" height="200"></canvas></div>
     </div>
   </div>
 
@@ -101,7 +100,7 @@ canvas { display: block; image-rendering: pixelated; }
     </div>
     <div class="note">
       純 2D 點陣貼圖(輪廓線+平塗+賽璐璐影),無 3D 運算。
-      七種胸型對照型錄:側面輪廓為各型手調線稿,正面同步顯示下乳弧線/乳位/外擴。
+      七種胸型對照型錄,實心團塊呈現:下乳 U 弧+摺線陰影+乳位+外擴剪影。
       匯出 PNG 可作 ComfyUI / 立繪構圖底稿。
     </div>
   </div>
@@ -111,9 +110,9 @@ canvas { display: block; image-rendering: pixelated; }
 (() => {
 "use strict";
 // ---- 畫布 ----
-const F = document.getElementById('front'), S = document.getElementById('side');
-const fctx = F.getContext('2d'), sctx = S.getContext('2d');
-for (const c of [F, S]){ c.style.width = c.width*2+'px'; c.style.height = c.height*2+'px'; }
+const F = document.getElementById('front');
+const fctx = F.getContext('2d');
+F.style.width = F.width*2+'px'; F.style.height = F.height*2+'px';
 
 // ---- 調色盤(5 階賽璐璐:深線/影/主色/亮/高光)----
 const SKINS = {
@@ -222,53 +221,36 @@ function renderFront(){
   px(img,W,midX,180,C[0]); px(img,W,midX,181,C[0]);
   for(const s of [-1,1]){
     const cx=midX+s*ax;
-    // 下乳弧(U 形)
-    arc(img,W,cx,fy,rx,ry,Math.PI*0.08,Math.PI*0.92,C[0]);
-    arc(img,W,cx,fy-1,rx-1,ry-1,Math.PI*0.15,Math.PI*0.85,C[1]);  // 弧上影
-    // 上緣提示弧(內上斜)
-    arc(img,W,cx+s*rx*0.1,fy-ry*0.6,rx*0.95,ry*2.0*fr.top+ry, Math.PI*(s<0?1.05:1.6), Math.PI*(s<0?1.4:1.95), C[1]);
+    const ryUp=ry*(1.3+fr.top*1.4);            // 摺線中心以上的團塊高度(依型)
+    // 實心團塊:蛋形(下半=摺弧橢圓、上半較高),賽璐璐上色
+    const y0=Math.round(fy-ryUp), y1=Math.round(fy+ry);
+    for(let y=y0;y<=y1;y++){
+      const rv=y<fy?ryUp:ry;
+      const dy=(y-fy)/rv, span=1-dy*dy;
+      if(span<=0)continue;
+      const hw2=rx*Math.sqrt(span);
+      for(let x=Math.round(cx-hw2);x<=Math.round(cx+hw2);x++){
+        const dxn=(x-cx)/rx;
+        const d=Math.sqrt(dxn*dxn+dy*dy);      // 蛋形內正規化距離
+        let c=C[3];                            // 團塊主色(比軀幹亮一階 → 凸起)
+        if(y>=fy&&d>0.70)c=C[1];               // 下半沿摺線的暗影弧
+        else if(d>0.82)c=C[2];                 // 邊緣過渡回軀幹色(上緣無線,自然融入)
+        px(img,W,x,y,c);
+      }
+    }
+    // 下乳摺線(U 形)+ 摺線下投影
+    arc(img,W,cx,fy,rx,ry,Math.PI*0.06,Math.PI*0.94,C[0]);
+    arc(img,W,cx,fy+2,rx-1,ry,Math.PI*0.2,Math.PI*0.8,C[1]);
+    // 高光(上部斜彎月)
+    arc(img,W,cx-s*rx*0.25,fy-ryUp*0.45,rx*0.4,ryUp*0.3,Math.PI*1.1,Math.PI*1.7,C[4]);
     // 乳頭
     const nx=cx+s*fr.nip[0]*rx, nyy=fy-ry*0.9+fr.nip[1]*ry*2.2;
     px(img,W,nx,nyy,C[0]); px(img,W,nx+1,nyy,C[0]); px(img,W,nx,nyy+1,C[1]); px(img,W,nx+1,nyy+1,C[1]);
-    // 高光點
-    px(img,W,cx-s*rx*0.35,fy-ry*1.5,C[4]); px(img,W,cx-s*rx*0.35+1,fy-ry*1.5,C[4]);
   }
   fctx.putImageData(img,0,0);
 }
 
-// ---- 側面(型錄線稿)----
-function renderSide(){
-  const W=S.width,H=S.height;
-  const img=sctx.createImageData(W,H);
-  const C=SKINS[P.skin].map(hx);
-  const T=TYPES[P.type], k=P.size;
-  const x0=16;                     // 胸壁基準
-  const zTop=52, zBot=Math.min(178, 130+(P.type==='ptotic'?14:0)+ (k-1)*30); // 胸區行
-  const depth=58*k;
-  // 背/頸/腹基準線
-  line(img,S.width,x0-2,6,x0-2,H-8,C[1]);
-  // 上胸斜線(頸→胸區)
-  line(img,W,x0+14,6,x0+10,26,C[0]);
-  line(img,W,x0+10,26,x0+4,zTop,C[0]);
-  // 胸區折線
-  let lx=x0+4, ly=zTop;
-  for(const [t,d] of T.side){
-    const y=zTop+(zBot-zTop)*t, x=x0+4+d*depth;
-    line(img,W,lx,ly,x,y,C[0]);
-    lx=x; ly=y;
-  }
-  // 乳頭(最深點)
-  let mi=0; T.side.forEach((p,i)=>{ if(p[1]>T.side[mi][1]) mi=i; });
-  const [mt,md]=T.side[mi];
-  const nxp=x0+4+md*depth+1, nyp=zTop+(zBot-zTop)*mt;
-  px(img,W,nxp,nyp,C[0]); px(img,W,nxp+1,nyp,C[0]);
-  // 下腹線(胸區→肚臍)
-  line(img,W,lx,ly,x0+8,H-30,C[0]);
-  line(img,W,x0+8,H-30,x0+6,H-8,C[0]);
-  sctx.putImageData(img,0,0);
-}
-
-function render(){ renderFront(); renderSide(); }
+function render(){ renderFront(); }
 
 // ---- UI ----
 const $=s=>document.querySelector(s);
@@ -297,10 +279,9 @@ function bind(id,key){
 bind('size','size'); bind('gap','gap');
 $('#export').onclick=()=>{
   const off=document.createElement('canvas');
-  off.width=(F.width+S.width+10)*4; off.height=F.height*4;
+  off.width=F.width*4; off.height=F.height*4;
   const o=off.getContext('2d'); o.imageSmoothingEnabled=false;
-  o.drawImage(F,0,0,F.width*4,F.height*4);
-  o.drawImage(S,(F.width+10)*4,0,S.width*4,S.height*4);
+  o.drawImage(F,0,0,off.width,off.height);
   const a=document.createElement('a');
   a.download='body-design.png'; a.href=off.toDataURL('image/png'); a.click();
 };
