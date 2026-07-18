@@ -55,11 +55,14 @@ header.top a.home { margin-left: auto; color: var(--cyan); text-decoration: none
     linear-gradient(90deg, var(--line) 1px, transparent 1px);
   background-size: 16px 16px;
 }
-canvas#stage {
+.stage-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap;
+  justify-content: center; position: relative; z-index: 1; }
+canvas#stage, canvas#side {
   display: block; position: relative; z-index: 1;
   image-rendering: pixelated;
   background: transparent;
 }
+.stage-cap { text-align: center; color: var(--dim); font-size: 11px; margin-top: 4px; }
 #stats { text-align: center; color: var(--cyan); font-size: 11px; margin-top: 6px;
   letter-spacing: .5px; min-height: 15px; }
 
@@ -105,7 +108,10 @@ canvas#stage {
 
   <div class="stage-box">
     <div class="grid-bg"></div>
-    <canvas id="stage" width="160" height="200"></canvas>
+    <div class="stage-row">
+      <div><canvas id="stage" width="160" height="200"></canvas><div class="stage-cap">正面</div></div>
+      <div><canvas id="side" width="110" height="200"></canvas><div class="stage-cap">側面輪廓(對照型錄)</div></div>
+    </div>
     <div id="stats"></div>
   </div>
 
@@ -160,6 +166,13 @@ canvas#stage {
   const buf = img.data;
   cv.style.width = (CW * 2) + 'px';
   cv.style.height = (CH * 2) + 'px';
+
+  const scv = document.getElementById('side');
+  const SW = scv.width, SH = scv.height;
+  const sctx = scv.getContext('2d');
+  const simg = sctx.createImageData(SW, SH);
+  scv.style.width = (SW * 2) + 'px';
+  scv.style.height = (SH * 2) + 'px';
 
   // ---- 調色盤 ----
   const SKINS = {
@@ -231,18 +244,18 @@ canvas#stage {
     const V = P.cup;                             // 罩杯 = 水量(袋裡裝多少水)
     const soft = 0.2 + 0.8 * f;                  // 組織柔軟度
     const S = clamp01(P.gravity * soft * (0.35 + 1.5 * V));   // 垂墜
-    const ta = -0.50;                            // 上緣附著(胸口)——固定
-    const wroot = 0.21;                          // 根部寬(與胸壁連接處)——不隨水量變!
-    const len = 0.42 + 0.55 * V * (0.5 + 0.5 * S);  // 水多+軟 → 袋身拉長
-    const wbelly = wroot * (0.85 + 1.1 * V) * (1 + 0.18 * S * f); // 袋腹隨水量鼓、外擴
+    const ta = -0.44;                            // 上緣附著(腋下高度)——固定
+    // 團塊比例:高度≈寬度(正面看是圓潤團塊,不是直筒)
+    const len = Math.min(0.62, 0.36 + 0.50 * V * (0.4 + 0.6 * S)); // 水多+軟 → 拉長
+    const wbelly = (0.16 + 0.28 * V) * (1 + 0.15 * S * f);         // 袋腹隨水量鼓、外擴
     const a = 1.1 + 1.7 * S;
     const b = Math.max(0.60, 0.95 - 0.3 * S);    // 底部圓鈍
     const tPk = a / (a + b);                     // 峰點(最凸處)位置
     const norm = Math.pow(tPk, a) * Math.pow(1 - tPk, b);
-    const proj = V * (1 - 0.22 * S * f);         // 下沉 → 前挺略減
+    const proj = (0.10 + 0.85 * V) * (1 - 0.22 * S * f); // 下沉 → 前挺略減
     const splay = (0.04 + 0.10 * V) * S * f;     // 大且軟 → 軸心外偏(外擴)
     const tN = Math.min(0.93, tPk + 0.06);       // 乳頭位置(峰點略下)
-    return { S, f, ta, len, a, b, tPk, norm, wroot, wbelly, proj, splay, tN };
+    return { S, f, V, ta, len, a, b, tPk, norm, wbelly, proj, splay, tN };
   }
 
   // 單側水袋:回傳 {z, t, dN}(t=縱向參數、dN=乳暈距離)
@@ -251,8 +264,8 @@ canvas#stage {
     const t = (ny - sp.ta) / sp.len;
     if (t <= 0 || t >= 1) return null;
     const U = Math.pow(t, sp.a) * Math.pow(1 - t, sp.b) / sp.norm;
-    // 根部固定、袋腹隨水量鼓 → 上窄下寬水滴
-    const w = sp.wroot * 0.35 + (sp.wbelly - sp.wroot * 0.35) * Math.sqrt(U);
+    // 寬度包絡:快速展開的圓弧(上段不再細長 → 正面呈團塊不呈筒)
+    const w = sp.wbelly * Math.sqrt(1 - Math.pow(1 - t, 1.6));
     // 內側碰撞:胸骨中線是牆,寬度被截住(不穿模),擠壓量轉成前凸
     const inW = Math.min(w, Math.max(0.04, Math.abs(cx)));
     const dx = (nx - cx) * side;                 // dx<0 = 內側(朝中線)
@@ -369,11 +382,55 @@ canvas#stage {
       }
     }
     ctx.putImageData(img, 0, 0);
+    renderSide(sp);
 
     const fat = Math.round(sp.f * 100);
     const press = cxAbs < sp.wbelly ? '・擠壓中' : '';
     document.getElementById('stats').textContent =
-      `脂肪 ${fat}%・乳腺 ${100 - fat}% ｜ 下垂 ${Math.round(sp.S * 100)}%・外擴 ${Math.round(sp.splay * 100)}${press}`;
+      `型判定:${classify(sp)} ｜ 脂肪 ${fat}%・乳腺 ${100 - fat}% ｜ 下垂 ${Math.round(sp.S * 100)}%${press}`;
+  }
+
+  // ---- 型判定(對照型錄)----
+  function classify(sp){
+    const axis = P.gap + sp.splay;
+    if (sp.V < 0.16) return '小巧型(お皿)';
+    if (sp.S > 0.78) return '下垂型';
+    if (axis > 0.30) return '外擴型';
+    if (sp.S > 0.55) return '鐘型(釣鐘)';
+    if (sp.V > 0.46) return '豐滿型';
+    return P.gland > 0.55 ? '渾圓型(半球)' : '碗型(おわん)';
+  }
+
+  // ---- 側面輪廓:每列取最大深度 → 剪影線(對照型錄的側視圖)----
+  function renderSide(sp){
+    simg.data.fill(0);
+    const acc = hex('#ff4fd8');
+    const dimc = hex('#55ffe0');
+    let prev = null;
+    for (let y = 0; y < SH; y++){
+      const ny = (y - SH/2) / (SH/2);
+      if (ny > BOTTOM){ prev = null; continue; }
+      let zm = -1;
+      for (let i = 0; i <= 140; i++){
+        const z = bodyZ(-1 + i * (2/140), ny, sp);
+        if (z > zm) zm = z;
+      }
+      if (zm < 0){ prev = null; continue; }
+      // 頸部厚度收窄(避免頸與胸同深)
+      const dt = 0.45 + 0.55 * clamp01((halfW(ny) - 0.14) / 0.45);
+      const fx = Math.min(SW - 2, Math.round(6 + zm * dt * 105));
+      const lo = prev === null ? fx : Math.min(prev, fx);
+      const hi = prev === null ? fx : Math.max(prev, fx);
+      for (let x = lo; x <= hi; x++){
+        const p = (y * SW + x) * 4;
+        simg.data[p] = acc[0]; simg.data[p+1] = acc[1]; simg.data[p+2] = acc[2]; simg.data[p+3] = 255;
+      }
+      // 背側參考線(淡)
+      const p2 = (y * SW + 2) * 4;
+      simg.data[p2] = dimc[0]; simg.data[p2+1] = dimc[1]; simg.data[p2+2] = dimc[2]; simg.data[p2+3] = 90;
+      prev = fx;
+    }
+    sctx.putImageData(simg, 0, 0);
   }
 
   // ---- UI 綁定 ----
