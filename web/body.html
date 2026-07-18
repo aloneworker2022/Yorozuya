@@ -248,15 +248,18 @@ canvas#stage, canvas#side {
     // 團塊比例:高度≈寬度(正面看是圓潤團塊,不是直筒)
     const len = Math.min(0.62, 0.36 + 0.50 * V * (0.4 + 0.6 * S)); // 水多+軟 → 拉長
     const wbelly = (0.16 + 0.28 * V) * (1 + 0.15 * S * f);         // 袋腹隨水量鼓、外擴
-    const a = 1.1 + 1.7 * S;
-    const b = Math.max(0.60, 0.95 - 0.3 * S);    // 底部圓鈍
-    const tPk = a / (a + b);                     // 峰點(最凸處)位置
-    const norm = Math.pow(tPk, a) * Math.pow(1 - tPk, b);
+    // 沉底水球:內容物受重力聚成圓球貼在袋底,上段只是被拉長的皮(緩坡)
+    // 側面最凸處 = 球心 → 圓弧,不會出現尖點
+    const rt = 0.55 - 0.20 * S;                  // 球半徑(袋長比例):越垂球佔比越小、位置越低
+    const tc = 1 - rt;                           // 球心(球底貼袋底 t=1)
+    const tJoin = Math.max(0, tc - rt * 0.55);   // 緩坡與球面的銜接點
+    const qJ = tJoin > 0 ? (tJoin - tc) / rt : -1;
+    const uJoin = Math.sqrt(Math.max(0, 1 - qJ * qJ));
+    const pRamp = 1.6 + 1.2 * S;                 // 越垂上坡越凹長
     const proj = (0.10 + 0.85 * V) * (1 - 0.22 * S * f); // 下沉 → 前挺略減
     const splay = (0.04 + 0.10 * V) * S * f;     // 大且軟 → 軸心外偏(外擴)
-    const tN = Math.min(0.93, tPk + 0.06);       // 乳頭位置(峰點略下)
-    const pw = 1 + 1.2 * S;                      // 垂墜 → 最寬處下移(水滴感)
-    return { S, f, V, ta, len, a, b, tPk, norm, wbelly, proj, splay, tN, pw };
+    const tN = Math.min(0.93, tc + 0.05);        // 乳頭位置(球心略下)
+    return { S, f, V, ta, len, wbelly, proj, splay, tN, rt, tc, tJoin, uJoin, pRamp };
   }
 
   // 單側水袋:回傳 {z, t, dN}(t=縱向參數、dN=乳暈距離)
@@ -264,11 +267,16 @@ canvas#stage, canvas#side {
     const cx = side * (P.gap + sp.splay);
     const t = (ny - sp.ta) / sp.len;
     if (t <= 0 || t >= 1) return null;
-    const U = Math.pow(t, sp.a) * Math.pow(1 - t, sp.b) / sp.norm;
-    // 水滴平面輪廓:寬度橢圓弧——袋腹最寬、底部收圓歸零(下乳摺線呈 U 形弧,不是平的)
-    // 垂墜大 → 最寬處下移(上窄長、下圓鼓)
-    const tt = Math.pow(t, sp.pw);
-    const w = sp.wbelly * Math.sqrt(Math.max(0, 4 * tt * (1 - tt)));
+    // 縱向包絡:t≥銜接點 → 圓球弧(沉底水球);t<銜接點 → 緩坡(拉長的皮)
+    let U;
+    if (t >= sp.tJoin){
+      const q = (t - sp.tc) / sp.rt;
+      U = Math.sqrt(Math.max(0, 1 - q * q));
+    } else {
+      U = sp.uJoin * Math.pow(t / sp.tJoin, sp.pRamp);
+    }
+    // 平面寬度跟隨包絡 → 正面同樣是圓球輪廓、下乳摺線 U 形弧
+    const w = sp.wbelly * Math.pow(U, 0.55);
     if (w < 0.005) return null;
     // 內側碰撞:胸骨中線是牆,寬度被截住(不穿模),擠壓量轉成前凸
     const inW = Math.min(w, Math.max(0.04, Math.abs(cx)));
