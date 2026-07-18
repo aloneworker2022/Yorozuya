@@ -231,28 +231,29 @@ function renderFront(){
   px(img,W,midX,180,C[0]); px(img,W,midX,181,C[0]);
   for(const s of [-1,1]){
     const cx=midX+s*ax;
-    const ryUp=fy-topY;                        // 上緣固定 → 摺線下移量全變成拉長的上坡
-    // 實心團塊:蛋形(下半=摺弧橢圓、上半較高),賽璐璐上色
-    const y0=Math.round(fy-ryUp), y1=Math.round(fy+ry);
+    // 實心團塊:水滴形(上窄 → 下段最寬 → 底部收圓),不是蛋形/皮球
+    const yBot=fy+ry, Ltot=yBot-topY;
+    const pw=1+1.2*S;                          // 越垂 → 最寬處越靠下、上段越細長
+    const y0=Math.round(topY), y1=Math.round(yBot);
     for(let y=y0;y<=y1;y++){
-      const rv=y<fy?ryUp:ry;
-      const dy=(y-fy)/rv, span=1-dy*dy;
-      if(span<=0)continue;
-      const hw2=rx*Math.sqrt(span);
-      for(let x=Math.round(cx-hw2);x<=Math.round(cx+hw2);x++){
-        const dxn=(x-cx)/rx;
-        const d=Math.sqrt(dxn*dxn+dy*dy);      // 蛋形內正規化距離
-        let c=C[3];                            // 團塊主色(比軀幹亮一階 → 凸起)
-        if(y>=fy&&d>0.70)c=C[1];               // 下半沿摺線的暗影弧
-        else if(d>0.82)c=C[2];                 // 邊緣過渡回軀幹色(上緣無線,自然融入)
+      const t=(y-topY)/Ltot;
+      if(t<=0||t>=1)continue;
+      const tt=Math.pow(t,pw);
+      const wRow=rx*1.1*Math.sqrt(Math.max(0,4*tt*(1-tt)));  // 水滴寬度包絡
+      if(wRow<0.8)continue;
+      for(let x=Math.round(cx-wRow);x<=Math.round(cx+wRow);x++){
+        const u=(x-cx)/wRow;
+        let c=C[3];                            // 主色(比軀幹亮一階 → 凸起)
+        if(t>0.55&&Math.abs(u)>0.60)c=C[1];    // 下段沿滴緣的暗影
+        else if(t<0.30&&Math.abs(u)>0.75)c=C[2]; // 上段邊緣過渡融入軀幹
         px(img,W,x,y,c);
       }
+      // 下段輪廓線 = 水滴下緣(即下乳摺線,自然呈 U 弧收底)
+      if(t>0.48){ px(img,W,cx-wRow,y,C[0]); px(img,W,cx+wRow,y,C[0]);
+                  px(img,W,cx-wRow,y+1,C[1]); px(img,W,cx+wRow,y+1,C[1]); }
     }
-    // 下乳摺線(U 形)+ 摺線下投影
-    arc(img,W,cx,fy,rx,ry,Math.PI*0.06,Math.PI*0.94,C[0]);
-    arc(img,W,cx,fy+2,rx-1,ry,Math.PI*0.2,Math.PI*0.8,C[1]);
-    // 高光(上部斜彎月)
-    arc(img,W,cx-s*rx*0.25,fy-ryUp*0.45,rx*0.4,ryUp*0.3,Math.PI*1.1,Math.PI*1.7,C[4]);
+    // 高光(上段斜彎月)
+    arc(img,W,cx-s*rx*0.2,topY+Ltot*0.38,rx*0.32,Ltot*0.10,Math.PI*1.1,Math.PI*1.7,C[4]);
     // 乳頭(垂 → 下移、微外偏)
     const nx=cx+s*(fr.nip[0]+0.15*S)*rx, nyy=fy-ry*0.9+fr.nip[1]*ry*2.2+S*ry*1.0;
     px(img,W,nx,nyy,C[0]); px(img,W,nx+1,nyy,C[0]); px(img,W,nx,nyy+1,C[1]); px(img,W,nx+1,nyy+1,C[1]);
