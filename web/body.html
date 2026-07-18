@@ -195,15 +195,18 @@ function renderFront(){
   const C=SKINS[P.skin].map(hx);
   const T=TYPES[P.type], fr=T.front, k=P.size;
   const midX=W/2, sc=W/2*0.98;
-  // ---- 液體物理:下垂度 = 柔軟度(脂肪)× 水量(大小)----
+  // ---- 液體物理:水量變多「不是鼓成球」,是把袋子往下拉長 ----
   const fat=1-P.gland;
-  const S=Math.min(1,(0.15+0.85*fat)*(0.25+0.75*(k-0.6)/0.8));
-  const ax=26*P.gap*(1+fr.bulge*0.25)*Math.min(1.15,k)+S*3;  // 垂 → 微外擴
-  const rx=20*k, ry=rx*fr.ry*(1+0.20*S);                  // 垂 → 下弧更飽滿
-  const fy0=92+fr.drop*34*k+(k-1)*10;                     // 基準摺線列
-  const topY=fy0-rx*fr.ry*(1.3+fr.top*1.4);               // 上緣附著點(固定不動)
-  const fy=Math.min(158, fy0+S*16*k);                     // 垂 → 摺線下移(袋拉長)
-  const bTop=topY, bBot=fy+ry;                            // 胸區行範圍
+  const soft=0.15+0.85*fat;                 // 柔軟度(脂肪=軟)
+  const vol=(k-0.6)/0.8;                    // 水量 0..1(大小滑桿)
+  const S=Math.min(1, soft*(0.2+0.8*vol)); // 下垂度 = 柔軟 × 水量
+  const rx=15+vol*(6+6*(1-soft));           // 袋寬:水多僅略寬,緊實才撐得起寬
+  const ry=rx*fr.ry*(1+0.25*S);             // 垂 → 下弧更飽滿
+  const ax=26*P.gap*(1+fr.bulge*0.25)+S*4;  // 垂 → 微外擴
+  const topY=64+fr.drop*10;                 // 上緣附著點:固定,不隨水量動
+  const L=26+vol*(14+30*soft)+fr.drop*20;   // 袋長:水量 × 柔軟 → 往下拉長
+  const fy=Math.min(158, topY+L);           // 摺線位置(袋底)
+  const bTop=topY, bBot=fy+ry;              // 胸區行範圍
   // 軀幹填色(含胸區外擴)
   for(let y=0;y<H;y++){
     const ny=(y-H/2)/(H/2);
