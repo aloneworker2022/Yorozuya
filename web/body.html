@@ -131,22 +131,27 @@ function seg(x0,y0,x1,y1,c){ x0|=0;y0|=0;x1|=0;y1|=0;
 function stroke(Pn,c){ const p=catmull(Pn); for(let i=0;i<p.length-1;i++) seg(p[i][0],p[i][1],p[i+1][0],p[i+1][1],c); }
 function ring(cx,cy,r,c){ for(let a=0;a<6.30;a+=0.22) set(cx+Math.cos(a)*r,cy+Math.sin(a)*r,c); }
 
-// ---- 正面輪廓(手擺錨點:腋下上緣→外側→下乳弧→乳溝內)----
+// ---- 正面輪廓(依 Boob Basics:水滴形、質量往腋下漸縮、兩乳分開有空隙)----
+// 每邊描:腋下尾部(上外)→外緣下→下乳弧(最飽滿)→內下→內緣(往胸骨漸縮,上端斷開)
 function renderFront(){
   const line=hx(SKINS[P.skin][0]);
-  const L=[[33,14],[20,44],[24,74],[42,88],[60,70],[62,50]];
-  const R=[[95,14],[108,44],[104,74],[86,88],[68,70],[66,50]];
+  const L=[[27,30],[20,52],[24,78],[36,86],[47,76],[50,54],[55,34]];
+  const R=[[101,30],[108,52],[104,78],[92,86],[81,76],[78,54],[73,34]];
   stroke(L,line); stroke(R,line);
-  stroke([[62,50],[64,41],[66,50]],line);        // 乳溝(上端斷開=柔化)
-  ring(41,65,5,line); set(41,65,line);           // 左乳暈+乳頭
-  ring(87,59,4,line); set(87,59,line);           // 右乳暈(略高、略小)
+  // 乳暈+乳頭:下外三分之一,朝外下(橢圓、外偏)
+  areola(31,66,-1,line); areola(97,66,1,line);
 }
-// ---- 側面輪廓(胸壁→乳房前凸→乳頭→下乳內收→腹)----
+function areola(cx,cy,s,line){
+  for(let a=0;a<6.30;a+=0.20){ set(cx+Math.cos(a)*5.5+s*0.6, cy+Math.sin(a)*4.6, line); } // 略橢圓、外偏
+  set(cx,cy,line); set(cx+s,cy,line);            // 乳頭
+}
+// ---- 側面輪廓(水滴:上緣接點高、前凸至乳頭、下乳內收→腹)----
 function renderSide(){
   const line=hx(SKINS[P.skin][0]);
-  const Pf=[[66,14],[64,36],[58,45],[45,56],[36,64],[41,73],[55,81],[64,85],[64,116]];
+  const Pf=[[64,16],[62,34],[54,42],[42,54],[33,62],[39,72],[54,80],[62,86],[64,118]];
   stroke(Pf,line);
-  ring(37,64,4,line); set(37,64,line);           // 乳頭(前緣最凸)
+  for(let a=0;a<6.30;a+=0.22) set(34+Math.cos(a)*4, 61+Math.sin(a)*4, line);  // 乳暈(前緣)
+  set(34,61,line);                               // 乳頭
 }
 function render(){
   for(let i=0;i<W*H;i++){ buf[i*4]=PAPER[0];buf[i*4+1]=PAPER[1];buf[i*4+2]=PAPER[2];buf[i*4+3]=255; }
