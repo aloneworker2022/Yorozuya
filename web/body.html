@@ -3,101 +3,93 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>水球物理模擬 | 魅魔萬事屋</title>
+<title>胸部 128×128 | 魅魔萬事屋</title>
 <meta name="theme-color" content="#16101f">
 <style>
-:root {
-  --bg: #141021; --glow: #251440;
-  --panel: rgba(18, 12, 34, .72); --panel2: rgba(18, 12, 34, .5);
-  --text: #9df3ff; --dim: rgba(157, 243, 255, .5);
-  --line: rgba(157, 243, 255, .14); --accent: #ff4fd8; --cyan: #55ffe0;
-}
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; }
-body {
-  background: var(--bg);
-  background-image: radial-gradient(ellipse at 50% 120%, var(--glow) 0%, var(--bg) 72%);
-  color: var(--text);
-  text-shadow: 0 0 6px color-mix(in srgb, currentColor 32%, transparent);
-  font-family: "Cubic 11", "Fusion Pixel", ui-monospace, monospace;
-  font-size: 14px;
-  image-rendering: pixelated;
-  min-height: 100%;
-  padding: 14px 12px 40px;
-}
-body::after {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
-  background:
-    repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.14) 2px 4px),
-    radial-gradient(ellipse at center, transparent 62%, rgba(0,0,0,.34) 100%);
-}
-.wrap { max-width: 780px; margin: 0 auto; }
-header.top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-  border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 14px; }
-header.top h1 { font-size: 17px; letter-spacing: 1px; color: var(--accent); }
-header.top .sub { color: var(--dim); font-size: 12px; }
-header.top a.home { margin-left: auto; color: var(--cyan); text-decoration: none;
-  border: 1px solid var(--line); padding: 3px 8px; border-radius: 3px; }
-.stage-box { position: relative; margin: 0 auto 14px; width: fit-content;
-  padding: 12px; border: 1px solid var(--line); border-radius: 6px;
-  background: var(--panel2); box-shadow: inset 0 0 40px rgba(0,0,0,.4); }
-canvas { display: block; image-rendering: pixelated; touch-action: none; cursor: pointer; }
-.stage-cap { text-align: center; color: var(--dim); font-size: 11px; margin-top: 6px; }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-  padding: 12px 14px; margin-bottom: 12px; }
-.panel h2 { font-size: 13px; color: var(--cyan); margin-bottom: 10px; letter-spacing: 1px; }
-.row { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
-.row label { flex: 0 0 60px; color: var(--dim); font-size: 12px; }
-.row input[type=range] { flex: 1; accent-color: var(--accent); height: 4px; }
-.row .val { flex: 0 0 44px; text-align: right; font-size: 12px; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chips button { font-family: inherit; font-size: 12px; cursor: pointer; color: var(--text);
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 4px;
-  padding: 5px 10px; text-shadow: inherit; }
-.chips button.on { border-color: var(--accent); color: var(--accent); }
-.actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.actions button { font-family: inherit; font-size: 13px; cursor: pointer;
-  color: var(--bg); background: var(--accent); border: none; border-radius: 4px;
-  padding: 8px 14px; text-shadow: none; font-weight: bold; }
-.actions button.ghost { background: var(--panel2); color: var(--cyan);
-  border: 1px solid var(--line); text-shadow: inherit; }
-.note { color: var(--dim); font-size: 11px; line-height: 1.6; margin-top: 8px; }
+:root{ --bg:#141021; --glow:#251440; --panel:rgba(18,12,34,.72); --panel2:rgba(18,12,34,.5);
+  --text:#9df3ff; --dim:rgba(157,243,255,.5); --line:rgba(157,243,255,.14); --accent:#ff4fd8; --cyan:#55ffe0; }
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;}
+body{ background:var(--bg); background-image:radial-gradient(ellipse at 50% 120%,var(--glow) 0%,var(--bg) 72%);
+  color:var(--text); text-shadow:0 0 6px color-mix(in srgb,currentColor 32%,transparent);
+  font-family:"Cubic 11","Fusion Pixel",ui-monospace,monospace; font-size:14px;
+  image-rendering:pixelated; min-height:100%; padding:14px 12px 40px; }
+body::after{ content:"";position:fixed;inset:0;pointer-events:none;z-index:99;
+  background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.14) 2px 4px),
+  radial-gradient(ellipse at center,transparent 62%,rgba(0,0,0,.34) 100%); }
+.wrap{max-width:780px;margin:0 auto;}
+header.top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:14px;}
+header.top h1{font-size:17px;letter-spacing:1px;color:var(--accent);}
+header.top .sub{color:var(--dim);font-size:12px;}
+header.top a.home{margin-left:auto;color:var(--cyan);text-decoration:none;border:1px solid var(--line);padding:3px 8px;border-radius:3px;}
+.stage-box{position:relative;margin:0 auto 14px;width:fit-content;padding:12px;border:1px solid var(--line);
+  border-radius:6px;background:var(--panel2);box-shadow:inset 0 0 40px rgba(0,0,0,.4);}
+.stage-box .grid{position:absolute;inset:12px;pointer-events:none;opacity:.14;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:24px 24px;}
+canvas{display:block;image-rendering:pixelated;position:relative;z-index:1;}
+.stage-cap{text-align:center;color:var(--dim);font-size:11px;margin-top:6px;}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-bottom:12px;}
+.panel h2{font-size:13px;color:var(--cyan);margin-bottom:10px;letter-spacing:1px;}
+.row{display:flex;align-items:center;gap:10px;margin:9px 0;}
+.row label{flex:0 0 60px;color:var(--dim);font-size:12px;}
+.row input[type=range]{flex:1;accent-color:var(--accent);height:4px;}
+.row .val{flex:0 0 44px;text-align:right;font-size:12px;}
+.chips{display:flex;flex-wrap:wrap;gap:6px;}
+.chips button{font-family:inherit;font-size:12px;cursor:pointer;color:var(--text);background:var(--panel2);
+  border:1px solid var(--line);border-radius:4px;padding:5px 10px;text-shadow:inherit;}
+.chips button.on{border-color:var(--accent);color:var(--accent);}
+.chips button .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1px solid rgba(255,255,255,.3);}
+.actions{display:flex;gap:8px;flex-wrap:wrap;}
+.actions button{font-family:inherit;font-size:13px;cursor:pointer;color:var(--bg);background:var(--accent);
+  border:none;border-radius:4px;padding:8px 14px;text-shadow:none;font-weight:bold;}
+.actions button.ghost{background:var(--panel2);color:var(--cyan);border:1px solid var(--line);text-shadow:inherit;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:0 18px;}
+@media(max-width:560px){.two-col{grid-template-columns:1fr;}}
+.note{color:var(--dim);font-size:11px;line-height:1.6;margin-top:8px;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <h1>水球物理模擬</h1>
-    <span class="sub">壓力軟體 · 自由漂浮的水球</span>
+    <h1>胸部 128×128</h1>
+    <span class="sub">點陣立繪素材 · 正面 / 側面</span>
     <a class="home" href="/">← 回萬事屋</a>
   </header>
 
   <div class="stage-box">
-    <canvas id="cv" width="160" height="200"></canvas>
-    <div class="stage-cap" id="cap"></div>
+    <div class="grid"></div>
+    <canvas id="cv" width="128" height="128"></canvas>
+    <div class="stage-cap">128 × 128 · 像素放大顯示</div>
   </div>
 
   <div class="panel">
-    <h2>◆ 參數</h2>
-    <div class="row" style="margin-top:0"><label>水量</label><input id="water" type="range" min="40" max="170" value="100"><span class="val" id="water-v"></span></div>
-    <div class="row"><label>膜彈性</label><input id="elast" type="range" min="5" max="95" value="45"><span class="val" id="elast-v"></span></div>
-    <div class="row"><label>互動</label>
-      <div class="chips"><button id="tilt-btn">開啟傾斜感應</button></div>
-      <span class="note" style="margin:0">手指戳/拖水球;手機左右傾倒</span>
+    <h2>◆ 視角 / 體型</h2>
+    <div class="row" style="margin-top:0"><label>視角</label>
+      <div class="chips" id="view">
+        <button data-v="front" class="on">正面</button>
+        <button data-v="side">側面</button>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="row"><label>大小</label><input id="size" type="range" min="60" max="150" value="100"><span class="val" id="size-v"></span></div>
+      <div class="row"><label>下垂</label><input id="droop" type="range" min="0" max="100" value="35"><span class="val" id="droop-v"></span></div>
+      <div class="row"><label>間距</label><input id="gap" type="range" min="70" max="130" value="100"><span class="val" id="gap-v"></span></div>
+      <div class="row"><label>乳頭</label><input id="nsz" type="range" min="60" max="150" value="100"><span class="val" id="nsz-v"></span></div>
     </div>
   </div>
 
   <div class="panel">
-    <h2>◆ 輸出</h2>
-    <div class="actions">
-      <button id="export">匯出 PNG</button>
+    <h2>◆ 膚色 / 輸出</h2>
+    <div class="row" style="margin-top:0"><label>膚色</label><div class="chips" id="skin"></div></div>
+    <div class="actions" style="margin-top:10px">
+      <button id="export">匯出 128×128 PNG</button>
       <button id="reset" class="ghost">重設</button>
     </div>
     <div class="note">
-      壓力軟體模型:一圈質點連成不可伸長的膜,內部的水以「壓力」把膜撐成球體。
-      水球自由漂浮、不黏任何地方,靠柔性定位緩緩待在畫面中央。
-      水少 → 鬆軟、晃動大;水多 → 撐圓緊繃、Q 彈。
-      戳、拖、傾倒都是真的把質點推開,再靠壓力與膜張力回復晃動。
+      依手繪參考的正面與側面比例做的 128×128 胸部素材:柔軟水滴形、上緣緩坡融入胸口、
+      飽滿下乳弧、乳溝、乳暈乳頭朝下外。純點陣賽璐璐著色,可直接作 ComfyUI/立繪底稿。
     </div>
   </div>
 </div>
@@ -105,240 +97,149 @@ canvas { display: block; image-rendering: pixelated; touch-action: none; cursor:
 <script>
 (() => {
 "use strict";
-const cv=document.getElementById('cv');
-const W=cv.width,H=cv.height;
+const cv=document.getElementById('cv'), W=cv.width, H=cv.height;
 const ctx=cv.getContext('2d');
-cv.style.width=W*2+'px'; cv.style.height=H*2+'px';
+cv.style.width=(W*3)+'px'; cv.style.height=(H*3)+'px';
+const img=ctx.createImageData(W,H), buf=img.data;
 
-const hx=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
-const COL={ line:'#173f6b', shade:'#2f6cb4', main:'#5fa7e8', light:'#9fd0ff', hi:'#eaf8ff',
-  bag:'#6a5a86', bagSh:'#4a3d63', bagLine:'#2c2340', wall:'#2a2440', hook:'#b8a878' };
-for(const k in COL) COL[k]=hx(COL[k]);
-
-// ===== 水球(內) + 袋子(外),袋口掛在牆上的鉤子,受重力 =====
-const CX=W/2;
-const ANCHOR={x:CX, y:16};         // 牆上的掛鉤
-const N=44, R0=24;                 // 水球:質點數、自然半徑
-const REST=2*Math.PI*R0/N, A0=Math.PI*R0*R0;
-const NG=44, BAGR=30;              // 袋子:質點數、自然半徑(略大 → 有鬆弛的布)
-const BREST=2*Math.PI*BAGR/NG*1.18;// 袋膜段長(較鬆,可垂墜成袋)
-const GNECK=6;                     // 袋口收束(釘在鉤子)的質點數
-const nd=[];                       // 水球質點
-const bg=[];                       // 袋子質點
-function initBalloon(){
-  nd.length=0; bg.length=0;
-  const cyB=ANCHOR.y+30+R0;
-  for(let i=0;i<N;i++){ const a=-Math.PI/2+i*2*Math.PI/N;
-    nd.push({x:CX+R0*Math.cos(a), y:cyB+R0*Math.sin(a), vx:0, vy:0}); }
-  const cyG=ANCHOR.y+30+BAGR;
-  for(let i=0;i<NG;i++){ const a=-Math.PI/2+i*2*Math.PI/NG;
-    bg.push({x:CX+BAGR*Math.cos(a), y:cyG+BAGR*Math.sin(a), vx:0, vy:0, pin:false}); }
-  // 袋口:最上面幾個質點釘在鉤子附近(收束成頸)
-  const ord=[...bg.keys()].sort((i,j)=>bg[i].y-bg[j].y);
-  for(let k=0;k<GNECK;k++){ const n=bg[ord[k]];
-    n.pin=true; n.px0=ANCHOR.x+(n.x>CX?1:-1)*(2+k*0.8); n.py0=ANCHOR.y+2+k*0.6;
-    n.x=n.px0; n.y=n.py0; }
-}
-initBalloon();
-
-const P={ water:1.0, elast:0.45 };
-let tiltG=0;
-
-function area(){
-  let A=0;
-  for(let i=0;i<N;i++){ const a=nd[i],b=nd[(i+1)%N]; A+=a.x*b.y-b.x*a.y; }
-  return A/2;                       // 帶正負(逆時針為正)
-}
-
-// ---- 幾何小工具 ----
-function pointInPoly(px,py,poly){
-  let inside=false, M=poly.length;
-  for(let i=0,j=M-1;i<M;j=i++){
-    const a=poly[i],b=poly[j];
-    if(((a.y>py)!==(b.y>py)) && px<(b.x-a.x)*(py-a.y)/(b.y-a.y)+a.x) inside=!inside;
-  }
-  return inside;
-}
-function closestOnSeg(px,py,ax,ay,bx,by){
-  const dx=bx-ax,dy=by-ay, l2=dx*dx+dy*dy||1e-6;
-  let t=((px-ax)*dx+(py-ay)*dy)/l2; t=t<0?0:t>1?1:t;
-  return [ax+t*dx, ay+t*dy, t];
-}
-
-function simulate(){
-  const dt=0.6;
-  const targetA=A0*P.water;
-  const tr=tiltG*Math.PI/180;
-  const gx=Math.sin(tr)*0.12;                  // 傾斜 → 水平重力(整袋盪)
-  const gyB=0.12*Math.cos(tr);                 // 水球重力(水重、往下沉)
-  const gyG=0.05*Math.cos(tr);                 // 袋子布料重力(輕)
-  // ---- 1) 水球:壓力撐圓 + 重力下沉 ----
-  const A=area(); const sign=A>=0?1:-1;
-  const press=(6.0+3.0*(1-P.elast))*(targetA-Math.abs(A))/A0;
-  for(let i=0;i<N;i++){
-    const n=nd[i], a=nd[(i-1+N)%N], b=nd[(i+1)%N];
-    let nx=sign*(b.y-a.y), ny=-sign*(b.x-a.x);
-    const l=Math.hypot(nx,ny)||1e-6; nx/=l; ny/=l;
-    n.vx=(n.vx + gx + nx*press)*0.90;
-    n.vy=(n.vy + gyB + ny*press)*0.90;
-    const vm=Math.hypot(n.vx,n.vy); if(vm>8){ n.vx*=8/vm; n.vy*=8/vm; }
-    n.x+=n.vx*dt; n.y+=n.vy*dt;
-    if(!isFinite(n.x)||!isFinite(n.y)){ initBalloon(); return; }
-  }
-  // ---- 2) 袋子:重力(布垂)+ 袋口釘在鉤子 ----
-  for(let i=0;i<NG;i++){
-    const n=bg[i]; if(n.pin){ n.vx=n.vy=0; continue; }
-    n.vx=(n.vx+gx)*0.90; n.vy=(n.vy+gyG)*0.90;
-    const vm=Math.hypot(n.vx,n.vy); if(vm>8){ n.vx*=8/vm; n.vy*=8/vm; }
-    n.x+=n.vx*dt; n.y+=n.vy*dt;
-    if(!isFinite(n.x)||!isFinite(n.y)){ initBalloon(); return; }
-  }
-  // ---- 3) 約束迭代:膜長度 + 耦合(水球必須被袋子裝住)----
-  const maxE=REST*(1.0+0.05*(1-P.elast));
-  for(let it=0;it<8;it++){
-    ballMembrane(maxE);
-    bagMembrane();
-    containBallInBag();
-  }
-}
-function ballMembrane(maxE){
-  for(let i=0;i<N;i++){
-    const a=nd[i], b=nd[(i+1)%N];
-    let dx=b.x-a.x, dy=b.y-a.y; const d=Math.hypot(dx,dy)||1e-6;
-    if(d<=maxE)continue;
-    const diff=(d-maxE)/d, mx=dx*diff*0.5, my=dy*diff*0.5;
-    a.x+=mx;a.y+=my;b.x-=mx;b.y-=my;
-  }
-}
-function bagMembrane(){
-  for(let i=0;i<NG;i++){
-    const a=bg[i], b=bg[(i+1)%NG];
-    let dx=b.x-a.x, dy=b.y-a.y; const d=Math.hypot(dx,dy)||1e-6;
-    if(d<=BREST)continue;
-    const diff=(d-BREST)/d, mx=dx*diff*0.5, my=dy*diff*0.5;
-    if(!a.pin&&!b.pin){ a.x+=mx;a.y+=my;b.x-=mx;b.y-=my; }
-    else if(!a.pin){ a.x+=mx*2;a.y+=my*2; }
-    else if(!b.pin){ b.x-=mx*2;b.y-=my*2; }
-  }
-  for(const n of bg) if(n.pin){ n.x=n.px0; n.y=n.py0; }
-}
-// 耦合:水球任何質點跑到袋外 → 拉回邊界內,同時把袋子那段往外撐(水重把袋撐出)
-function containBallInBag(){
-  for(const p of nd){
-    if(pointInPoly(p.x,p.y,bg)) continue;
-    let best=1e9,bx=0,by=0,bi=-1,bt=0;
-    for(let i=0;i<NG;i++){ const a=bg[i], b=bg[(i+1)%NG];
-      const [qx,qy,tt]=closestOnSeg(p.x,p.y,a.x,a.y,b.x,b.y);
-      const dd=(p.x-qx)**2+(p.y-qy)**2;
-      if(dd<best){ best=dd; bx=qx; by=qy; bi=i; bt=tt; } }
-    const outx=p.x-bx, outy=p.y-by;             // 邊界→球(袋要往這方向鼓)
-    p.x-=outx*0.6; p.y-=outy*0.6;               // 球拉回邊界內
-    const a=bg[bi], b=bg[(bi+1)%NG];
-    if(!a.pin){ a.x+=outx*0.4*(1-bt); a.y+=outy*0.4*(1-bt); }
-    if(!b.pin){ b.x+=outx*0.4*bt;     b.y+=outy*0.4*bt; }
-  }
-}
-
-// ===== 渲染:多邊形掃描填色 + 賽璐璐 =====
-const img=ctx.createImageData(W,H);
-function px(x,y,c){ x|=0;y|=0; if(x<0||y<0||x>=W||y>=H)return;
-  const p=(y*W+x)*4; img.data[p]=c[0];img.data[p+1]=c[1];img.data[p+2]=c[2];img.data[p+3]=255; }
-function seg(x0,y0,x1,y1,c){
-  x0|=0;y0|=0;x1|=0;y1|=0;
-  const dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;
-  let e=dx+dy;
-  for(;;){ px(x0,y0,c); if(x0===x1&&y0===y1)break; const e2=2*e;
-    if(e2>=dy){e+=dy;x0+=sx;} if(e2<=dx){e+=dx;y0+=sy;} }
-}
-// 多邊形掃描填色:cb(x,y,u,t,xl,xr) 回傳顏色
-function scanFill(poly,M,cb){
-  let minY=1e9,maxY=-1e9;
-  for(const n of poly){ if(n.y<minY)minY=n.y; if(n.y>maxY)maxY=n.y; }
-  minY=Math.max(0,minY|0); maxY=Math.min(H-1,Math.ceil(maxY));
-  for(let y=minY;y<=maxY;y++){
-    const xs=[];
-    for(let i=0;i<M;i++){ const a=poly[i],b=poly[(i+1)%M];
-      if((a.y<=y&&b.y>y)||(b.y<=y&&a.y>y)) xs.push(a.x+(y-a.y)/(b.y-a.y)*(b.x-a.x)); }
-    xs.sort((p,q)=>p-q);
-    const t=(y-minY)/Math.max(1,maxY-minY);
-    for(let k=0;k+1<xs.length;k+=2){
-      const xl=Math.round(xs[k]), xr=Math.round(xs[k+1]), wln=xr-xl;
-      for(let x=xl;x<=xr;x++){ const u=wln>0?(x-xl)/wln:0.5; const c=cb(x,y,u,t,xl,xr); if(c)px(x,y,c); }
-    }
-  }
-}
-function render(){
-  img.data.fill(0);
-  // 牆 + 掛鉤
-  for(let x=0;x<W;x++){ px(x,ANCHOR.y-6,COL.wall); px(x,ANCHOR.y-5,COL.wall); }
-  px(ANCHOR.x,ANCHOR.y-4,COL.hook); px(ANCHOR.x,ANCHOR.y-3,COL.hook);
-  px(ANCHOR.x,ANCHOR.y-2,COL.hook); px(ANCHOR.x-1,ANCHOR.y-1,COL.hook); px(ANCHOR.x,ANCHOR.y-1,COL.hook);
-  // 袋子(布料)填色 — 在水球後面,較深
-  scanFill(bg,NG,(x,y,u,t)=> (u<0.16||u>0.84)?COL.bagSh : (((x+y)&1)===0&&t>0.7?COL.bagSh:COL.bag));
-  // 水球(水)填色 — 疊在袋內
-  scanFill(nd,N,(x,y,u,t)=>{
-    let c=COL.main;
-    if(t>0.82)c=COL.shade;
-    else if(t>0.66){ if(((x+y)&1)===0)c=COL.shade; }
-    else if(t<0.30&&u<0.42){ c=COL.light; if(t<0.16&&u<0.28)c=COL.hi; }
-    else if(u>0.80){ if(((x+y)&1)===0)c=COL.shade; }
-    return c;
-  });
-  // 袋子輪廓(蓋在最上,呈現包住水球的布邊)
-  for(let i=0;i<NG;i++){ const a=bg[i],b=bg[(i+1)%NG]; seg(a.x,a.y,b.x,b.y,COL.bagLine); }
-  // 袋口收束線(頸 → 鉤子)
-  for(const n of bg) if(n.pin) seg(n.x,n.y,ANCHOR.x,ANCHOR.y,COL.bagLine);
-  ctx.putImageData(img,0,0);
-  const A=Math.abs(area());
-  document.getElementById('cap').textContent=
-    `飽滿度 ${Math.round(A/A0*100)}% ｜ 水量 ${Math.round(P.water*100)}%・彈性 ${Math.round(P.elast*100)}%`+
-    (Math.abs(tiltG)>2?` ｜ 傾斜 ${Math.round(tiltG)}°`:'');
-}
-
-function loop(){ simulate(); render(); requestAnimationFrame(loop); }
-
-// ===== 互動 =====
-function cvPos(e){ const r=cv.getBoundingClientRect();
-  return [(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height]; }
-let dragging=false,lastP=null;
-cv.addEventListener('pointerdown',e=>{ e.preventDefault(); dragging=true; lastP=cvPos(e);
-  try{cv.setPointerCapture(e.pointerId);}catch(_){} poke(lastP[0],lastP[1],0,0,true); });
-cv.addEventListener('pointermove',e=>{ if(!dragging)return; const p=cvPos(e);
-  poke(p[0],p[1],p[0]-lastP[0],p[1]-lastP[1],false); lastP=p; });
-for(const ev of ['pointerup','pointercancel']) cv.addEventListener(ev,()=>{dragging=false;});
-function poke(x,y,dx,dy,punch){
-  const R=22;
-  for(const n of nd){
-    const ex=n.x-x, ey=n.y-y, d=Math.hypot(ex,ey);
-    if(d<R){ const w=1-d/R;
-      if(punch){ const l=d||1e-6; n.vx+=ex/l*3.2*w; n.vy+=ey/l*3.2*w; }
-      else { n.vx+=dx*w*0.7; n.vy+=dy*w*0.7; } }
-  }
-}
-const tiltBtn=document.getElementById('tilt-btn');
-if(!window.DeviceOrientationEvent) tiltBtn.style.display='none';
-tiltBtn.onclick=async()=>{
-  try{
-    if(typeof DeviceOrientationEvent.requestPermission==='function'){
-      const r=await DeviceOrientationEvent.requestPermission();
-      if(r!=='granted'){ tiltBtn.textContent='未授權'; return; }
-    }
-    window.addEventListener('deviceorientation',e=>{ tiltG=e.gamma||0; });
-    tiltBtn.textContent='傾斜感應中'; tiltBtn.classList.add('on'); tiltBtn.disabled=true;
-  }catch(_){ tiltBtn.textContent='此裝置不支援'; }
+const SKINS={
+  porcelain:['#7c4f52','#c98d84','#e6b6a8','#f6d6c6','#fff0e6'],
+  fair:['#7a4a3a','#b9795f','#d99b78','#efba90','#ffe0c2'],
+  tan:['#6b452c','#9c6f49','#c08d5e','#d8ab7a','#efcc9c'],
+  pink:['#8a5058','#c0838a','#e0a6a0','#f4c6b8','#ffe0d2'],
+  deep:['#3f2418','#6a4530','#8a6242','#a87c54','#c89a70'],
 };
+const NIPC={ porcelain:['#b06a70','#d99490'], fair:['#a85f57','#cf8b7f'], tan:['#8a5a44','#b07a5e'],
+  pink:['#b06068','#dc9090'], deep:['#4a2c20','#6e4636'] };
 
+const P={ view:'front', size:1, droop:.35, gap:1, nsz:1, skin:'fair' };
+
+// ---- 像素工具 ----
+function hx(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
+function set(x,y,c){ x|=0;y|=0; if(x<0||y<0||x>=W||y>=H)return; const p=(y*W+x)*4;
+  buf[p]=c[0];buf[p+1]=c[1];buf[p+2]=c[2];buf[p+3]=255; }
+function smooth(e0,e1,x){ const t=Math.max(0,Math.min(1,(x-e0)/(e1-e0))); return t*t*(3-2*t); }
+
+// ===== 正面 =====
+// 每邊乳房 = 水滴團塊,上緣緩坡融入胸口、下緣飽滿弧、乳溝、乳暈
+function renderFront(){
+  const C=SKINS[P.skin].map(hx), NP=NIPC[P.skin].map(hx);
+  const k=P.size, S=P.droop;
+  const cy=54+S*10;                       // 乳房中心高度(垂→下移)
+  const rx=22*k*(0.9+0.1*P.gap), ry=(24+S*10)*k;    // 半寬/半高(垂→拉長)
+  const gap=30*P.gap;                     // 乳心距中線
+  const nipy=cy+ry*(0.28+0.3*S);          // 乳頭高度(垂→更下)
+  const nipdx=0.30+0.18*S;                // 乳頭外偏比例
+
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const nx=x-64;
+      // 軀幹輪廓(上胸→乳→收腰)
+      let bw=52+6*smooth(0,40,y)-3*smooth(40,70,y)-14*smooth(70,120,y);
+      // 兩乳的高度場(取較近者)
+      let best=-1, bside=0, bd=9;
+      for(const s of [-1,1]){
+        const ccx=s*gap, lx=(nx-ccx)/rx;
+        let ly=(y-cy)/ry;
+        if(ly>0) ly/=(1+0.5*S);           // 下半拉長=下垂
+        const d=Math.sqrt(lx*lx+ly*ly);
+        if(d<bd){ bd=d; bside=s; best=1-d*d; }
+      }
+      const inTorso = Math.abs(nx)<bw || bd<1;
+      if(!inTorso){ buf[(y*W+x)*4+3]=0; continue; }
+
+      // 基礎明暗:先算連續亮度 v(0暗..1亮)再一次量化 → 乾淨賽璐璐
+      const s=bside, ccx=s*gap;
+      const lx=(nx-ccx)/rx; let ly=(y-cy)/ry; if(ly>0) ly/=(1+0.5*S);
+      const d=bd;
+      let v;
+      if(d<1){
+        v = 0.56 - (lx*s)*0.26 - ly*0.40;              // 光自上內側 → 上內亮、下外暗
+        if(ly>0) v -= 0.22*smooth(0.5,1.0,ly);         // 下乳摺一彎陰影
+        if(Math.abs(nx)<gap-rx*0.28 && y>cy-ry*0.25 && y<cy+ry*0.9) v-=0.16; // 乳溝
+        v -= 0.12*smooth(0.86,1.0,d);                  // 團塊外緣收邊
+      } else {
+        v = 0.52 - Math.abs(nx)/bw*0.42;               // 軀幹柱狀
+        if(nx>bw*0.35) v -= 0.10;
+      }
+      let shade=Math.max(0,Math.min(4,Math.round(v*4)));
+      let col=C[shade];
+
+      // 乳暈 + 乳頭(在最凸點附近,朝下外)
+      const nxp=ccx+s*rx*nipdx, nAr=6*P.nsz, nNip=2.4*P.nsz;
+      const dn=Math.hypot(nx-nxp,(y-nipy)*1.15);
+      if(d<1.05){
+        if(dn<nNip) col=NP[0];
+        else if(dn<nAr) col=NP[1];
+      }
+      set(x,y,col);
+    }
+  }
+}
+
+// ===== 側面(依手繪 S 曲線:胸壁→乳前凸→下乳內收→腰)=====
+function renderSide(){
+  const C=SKINS[P.skin].map(hx), NP=NIPC[P.skin].map(hx);
+  const k=P.size, S=P.droop;
+  const backX=88;                         // 背/軀幹後緣
+  const chestX=44;                        // 胸壁前緣基準
+  const cy=52+S*12;                        // 乳凸中心
+  const proj=30*k;                        // 乳前凸量
+  const ry=(26+S*12)*k;
+  const nipy=cy+ry*(0.2+0.35*S);
+  for(let y=0;y<H;y++){
+    // 前緣 x(越小越前):乳房凸出
+    let ly=(y-cy)/ry; if(ly>0) ly/=(1+0.6*S);
+    let front=chestX;
+    if(Math.abs(ly)<1){ front=chestX - proj*Math.sqrt(1-ly*ly); }
+    // 軀幹前緣基線(上胸略後、腰內收)
+    front -= 2*smooth(0,cy,y);
+    const waist = 6*smooth(cy+ry,120,y);
+    const fx=front+waist;
+    for(let x=0;x<W;x++){
+      if(x<fx-0.5 || x>backX){ buf[(y*W+x)*4+3]=0; continue; }
+      let shade=2;
+      const u=(x-fx)/(backX-fx);           // 0 前緣 → 1 背
+      if(Math.abs(ly)<1){
+        const lit=(1-u)*1.2 - ly*0.7;      // 前凸受光
+        shade=2+Math.round((lit-0.5)*2.2);
+      } else shade=1+Math.round((1-u)*1.2);
+      if(u>0.82) shade-=1;                  // 背側暗
+      shade=Math.max(0,Math.min(4,shade));
+      let col=C[shade];
+      // 乳頭(前緣最凸點)
+      const dn=Math.hypot((x-(fx))-0,(y-nipy)*1.1);
+      if(x<fx+5 && Math.abs(y-nipy)<3.2*P.nsz){ col = (x<fx+2.4*P.nsz)?NP[0]:NP[1]; }
+      set(x,y,col);
+    }
+  }
+  // 前緣輪廓線
+  const line=hx(SKINS[P.skin][0]);
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){ if(buf[(y*W+x)*4+3]){ set(x,y,x<64?line:C_edge()); break; } }
+  }
+  function C_edge(){ return hx(SKINS[P.skin][0]); }
+}
+
+function render(){ buf.fill(0); (P.view==='front'?renderFront:renderSide)(); ctx.putImageData(img,0,0); }
+
+// ---- UI ----
 const $=s=>document.querySelector(s);
-function bind(id,key){ const el=$('#'+id),v=$('#'+id+'-v');
-  const u=()=>{P[key]=+el.value/100;v.textContent=el.value+'%';}; el.addEventListener('input',u);u(); }
-bind('water','water'); bind('elast','elast');
-$('#export').onclick=()=>{ const off=document.createElement('canvas');
-  off.width=W*4; off.height=H*4; const o=off.getContext('2d'); o.imageSmoothingEnabled=false;
-  o.drawImage(cv,0,0,off.width,off.height); const a=document.createElement('a');
-  a.download='waterballoon.png'; a.href=off.toDataURL('image/png'); a.click(); };
-$('#reset').onclick=()=>initBalloon();
-
-loop();
+$('#view').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
+  P.view=b.dataset.v; [...e.currentTarget.children].forEach(c=>c.classList.toggle('on',c===b)); render(); });
+function bind(id,key,fmt){ const el=$('#'+id),v=$('#'+id+'-v');
+  const u=()=>{P[key]=+el.value/100; v.textContent=fmt?fmt(+el.value):el.value+'%'; render();};
+  el.addEventListener('input',u); u(); }
+bind('size','size'); bind('droop','droop'); bind('gap','gap'); bind('nsz','nsz');
+const skinWrap=$('#skin'), skinNames={porcelain:'瓷白',fair:'白皙',tan:'小麥',pink:'櫻粉',deep:'深棕'};
+Object.keys(SKINS).forEach(key=>{ const b=document.createElement('button');
+  b.innerHTML=`<span class="sw" style="background:${SKINS[key][3]}"></span>${skinNames[key]}`;
+  if(key===P.skin)b.classList.add('on');
+  b.onclick=()=>{P.skin=key;[...skinWrap.children].forEach(c=>c.classList.toggle('on',c===b));render();};
+  skinWrap.appendChild(b); });
+$('#export').onclick=()=>{ const a=document.createElement('a'); a.download='chest-128.png'; a.href=cv.toDataURL('image/png'); a.click(); };
+$('#reset').onclick=()=>location.reload();
+render();
 })();
 </script>
 </body>
