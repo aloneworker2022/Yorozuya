@@ -72,12 +72,7 @@ canvas{display:block;image-rendering:pixelated;position:relative;z-index:1;}
         <button data-v="side">側面</button>
       </div>
     </div>
-    <div class="two-col">
-      <div class="row"><label>大小</label><input id="size" type="range" min="60" max="150" value="100"><span class="val" id="size-v"></span></div>
-      <div class="row"><label>下垂</label><input id="droop" type="range" min="0" max="100" value="35"><span class="val" id="droop-v"></span></div>
-      <div class="row"><label>間距</label><input id="gap" type="range" min="70" max="130" value="100"><span class="val" id="gap-v"></span></div>
-      <div class="row"><label>乳頭</label><input id="nsz" type="range" min="60" max="150" value="100"><span class="val" id="nsz-v"></span></div>
-    </div>
+    <div class="note" style="margin-top:2px">手工描點線稿:輪廓由手擺的錨點連成平滑曲線。先把正面/側面的輪廓畫對,之後再上色。</div>
   </div>
 
   <div class="panel">
@@ -120,113 +115,44 @@ function set(x,y,c){ x|=0;y|=0; if(x<0||y<0||x>=W||y>=H)return; const p=(y*W+x)*
   buf[p]=c[0];buf[p+1]=c[1];buf[p+2]=c[2];buf[p+3]=255; }
 function smooth(e0,e1,x){ const t=Math.max(0,Math.min(1,(x-e0)/(e1-e0))); return t*t*(3-2*t); }
 
-// ===== 正面 =====
-// 每邊乳房 = 水滴團塊,上緣緩坡融入胸口、下緣飽滿弧、乳溝、乳暈
+// ===== 手描線稿:Catmull-Rom 穿過手擺的錨點,連成平滑輪廓 =====
+const PAPER=[245,242,236];
+function catmull(Pn,samp){ samp=samp||20; const out=[];
+  for(let i=0;i<Pn.length-1;i++){ const p0=Pn[Math.max(0,i-1)],p1=Pn[i],p2=Pn[i+1],p3=Pn[Math.min(Pn.length-1,i+2)];
+    for(let s=0;s<=samp;s++){ const t=s/samp,t2=t*t,t3=t2*t;
+      const x=0.5*((2*p1[0])+(-p0[0]+p2[0])*t+(2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2+(-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3);
+      const y=0.5*((2*p1[1])+(-p0[1]+p2[1])*t+(2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2+(-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3);
+      out.push([x,y]); } }
+  return out; }
+function seg(x0,y0,x1,y1,c){ x0|=0;y0|=0;x1|=0;y1|=0;
+  const dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1; let e=dx+dy;
+  for(;;){ set(x0,y0,c); if(x0===x1&&y0===y1)break; const e2=2*e;
+    if(e2>=dy){e+=dy;x0+=sx;} if(e2<=dx){e+=dx;y0+=sy;} } }
+function stroke(Pn,c){ const p=catmull(Pn); for(let i=0;i<p.length-1;i++) seg(p[i][0],p[i][1],p[i+1][0],p[i+1][1],c); }
+function ring(cx,cy,r,c){ for(let a=0;a<6.30;a+=0.22) set(cx+Math.cos(a)*r,cy+Math.sin(a)*r,c); }
+
+// ---- 正面輪廓(手擺錨點:腋下上緣→外側→下乳弧→乳溝內)----
 function renderFront(){
-  const C=SKINS[P.skin].map(hx), NP=NIPC[P.skin].map(hx);
-  const k=P.size, S=P.droop;
-  const cy=54+S*10;                       // 乳房中心高度(垂→下移)
-  const rx=22*k*(0.9+0.1*P.gap), ry=(24+S*10)*k;    // 半寬/半高(垂→拉長)
-  const gap=28*P.gap;                     // 乳心距中線
-  const tilt=(20+8*(1-S))*Math.PI/180;    // 外傾角(參考:胸沿肋廓約 45°外;正面投影 ~20-28°)
-  // 依側計算旋轉後的局部座標(團塊外傾,尾部朝腋下)
-  function local(x,y,s){
-    const cxa=64+s*gap, px=x-cxa, py=y-cy, th=s*tilt;
-    const ca=Math.cos(th), sa=Math.sin(th);
-    let lx=(px*ca+py*sa)/rx, ly=(-px*sa+py*ca)/ry;
-    let lyr=ly; if(ly<0) lyr=ly*1.2;      // 上緣壓扁 → 往腋下拉出尾部(水滴)
-    return {cxa,px,py,lx,ly, d:Math.hypot(lx,lyr)};
-  }
-  for(let y=0;y<H;y++){
-    for(let x=0;x<W;x++){
-      const nx=x-64;
-      let bw=52+6*smooth(0,40,y)-3*smooth(40,70,y)-14*smooth(70,120,y); // 軀幹半寬
-      // 取較近的乳房
-      let bs=0, B=null;
-      for(const s of [-1,1]){ const L=local(x,y,s); if(!B||L.d<B.d){ B=L; bs=s; } }
-      const inTorso = Math.abs(nx)<bw || B.d<1;
-      if(!inTorso){ buf[(y*W+x)*4+3]=0; continue; }
-
-      const s=bs, cxa=B.cxa;
-      // 光為全域(左上前),用螢幕座標算受光,不用旋轉座標
-      const ux=(x-cxa)/rx, uy=(y-cy)/ry;
-      let v;
-      if(B.d<1){
-        v = 0.62 - uy*0.44 - (ux*s)*0.12;              // 上亮下暗、內側略亮
-        v -= 0.24*smooth(0.32,0.92, uy);               // 下半核心陰影(乳房下側)
-        if(B.d>0.80 && uy>0.45) v += 0.12;             // 反光:核心陰影下緣一道亮邊
-        // 乳溝:靠中線處柔和加深(抖色、不畫硬線)
-        const cl=(gap-Math.abs(nx))/ (gap*0.9);
-        if(nx*s>0 && cl>0 && Math.abs(uy)<0.9){ if(((x+y)&1)===0) v-=0.16*cl; }
-      } else {
-        v = 0.52 - Math.abs(nx)/bw*0.40;               // 軀幹柱狀
-        if(nx>bw*0.35) v-=0.10;
-        // 乳房下方的投影(cast shadow):落在肋廓上,貼著下緣一彎
-        if(B.d<1.30 && uy>0.45){ v -= 0.20*(1.30-B.d)/0.30; if(((x+y)&1)) v+=0.05; }
-      }
-      let shade=Math.max(0,Math.min(4,Math.round(v*4)));
-      let col=C[shade];
-
-      // 乳暈 + 乳頭:位於乳房前下、朝外下(參考:乳頭外傾約 45°)
-      const npx=cxa+s*rx*(0.26+0.10*S), npy=cy+ry*(0.30+0.34*S);
-      const nAr=6.2*P.nsz, nNip=2.3*P.nsz;
-      const dn=Math.hypot((x-npx)/1.0,(y-npy)/0.9);
-      if(B.d<1.02){
-        if(dn<nNip) col=NP[0];                          // 乳頭
-        else if(dn<nAr){ // 乳暈:向皮膚柔和過渡(邊緣抖色,不畫硬圈)
-          if(dn<nAr-1.4 || ((x+y)&1)===0) col=NP[1];
-        }
-      }
-      set(x,y,col);
-    }
-  }
-}
-
-// ===== 側面(依手繪 S 曲線:胸壁→乳前凸→下乳內收→腰)=====
-function renderSide(){
-  const C=SKINS[P.skin].map(hx), NP=NIPC[P.skin].map(hx);
-  const k=P.size, S=P.droop;
-  const backX=88;                         // 背/軀幹後緣
-  const chestX=44;                        // 胸壁前緣基準
-  const cy=52+S*12;                        // 乳凸中心
-  const proj=30*k;                        // 乳前凸量
-  const ry=(26+S*12)*k;
-  const nipy=cy+ry*(0.2+0.35*S);
-  for(let y=0;y<H;y++){
-    // 前緣 x(越小越前):乳房凸出
-    let ly=(y-cy)/ry; if(ly>0) ly/=(1+0.6*S);
-    let front=chestX;
-    if(Math.abs(ly)<1){ front=chestX - proj*Math.sqrt(1-ly*ly); }
-    // 軀幹前緣基線(上胸略後、腰內收)
-    front -= 2*smooth(0,cy,y);
-    const waist = 6*smooth(cy+ry,120,y);
-    const fx=front+waist;
-    for(let x=0;x<W;x++){
-      if(x<fx-0.5 || x>backX){ buf[(y*W+x)*4+3]=0; continue; }
-      let shade=2;
-      const u=(x-fx)/(backX-fx);           // 0 前緣 → 1 背
-      if(Math.abs(ly)<1){
-        const lit=(1-u)*1.2 - ly*0.7;      // 前凸受光
-        shade=2+Math.round((lit-0.5)*2.2);
-      } else shade=1+Math.round((1-u)*1.2);
-      if(u>0.82) shade-=1;                  // 背側暗
-      shade=Math.max(0,Math.min(4,shade));
-      let col=C[shade];
-      // 乳頭(前緣最凸點)
-      const dn=Math.hypot((x-(fx))-0,(y-nipy)*1.1);
-      if(x<fx+5 && Math.abs(y-nipy)<3.2*P.nsz){ col = (x<fx+2.4*P.nsz)?NP[0]:NP[1]; }
-      set(x,y,col);
-    }
-  }
-  // 前緣輪廓線
   const line=hx(SKINS[P.skin][0]);
-  for(let y=0;y<H;y++){
-    for(let x=0;x<W;x++){ if(buf[(y*W+x)*4+3]){ set(x,y,x<64?line:C_edge()); break; } }
-  }
-  function C_edge(){ return hx(SKINS[P.skin][0]); }
+  const L=[[33,14],[20,44],[24,74],[42,88],[60,70],[62,50]];
+  const R=[[95,14],[108,44],[104,74],[86,88],[68,70],[66,50]];
+  stroke(L,line); stroke(R,line);
+  stroke([[62,50],[64,41],[66,50]],line);        // 乳溝(上端斷開=柔化)
+  ring(41,65,5,line); set(41,65,line);           // 左乳暈+乳頭
+  ring(87,59,4,line); set(87,59,line);           // 右乳暈(略高、略小)
 }
-
-function render(){ buf.fill(0); (P.view==='front'?renderFront:renderSide)(); ctx.putImageData(img,0,0); }
+// ---- 側面輪廓(胸壁→乳房前凸→乳頭→下乳內收→腹)----
+function renderSide(){
+  const line=hx(SKINS[P.skin][0]);
+  const Pf=[[66,14],[64,36],[58,45],[45,56],[36,64],[41,73],[55,81],[64,85],[64,116]];
+  stroke(Pf,line);
+  ring(37,64,4,line); set(37,64,line);           // 乳頭(前緣最凸)
+}
+function render(){
+  for(let i=0;i<W*H;i++){ buf[i*4]=PAPER[0];buf[i*4+1]=PAPER[1];buf[i*4+2]=PAPER[2];buf[i*4+3]=255; }
+  (P.view==='front'?renderFront:renderSide)();
+  ctx.putImageData(img,0,0);
+}
 
 // ---- UI ----
 const $=s=>document.querySelector(s);
@@ -235,7 +161,6 @@ $('#view').addEventListener('click',e=>{ const b=e.target.closest('button'); if(
 function bind(id,key,fmt){ const el=$('#'+id),v=$('#'+id+'-v');
   const u=()=>{P[key]=+el.value/100; v.textContent=fmt?fmt(+el.value):el.value+'%'; render();};
   el.addEventListener('input',u); u(); }
-bind('size','size'); bind('droop','droop'); bind('gap','gap'); bind('nsz','nsz');
 const skinWrap=$('#skin'), skinNames={porcelain:'瓷白',fair:'白皙',tan:'小麥',pink:'櫻粉',deep:'深棕'};
 Object.keys(SKINS).forEach(key=>{ const b=document.createElement('button');
   b.innerHTML=`<span class="sw" style="background:${SKINS[key][3]}"></span>${skinNames[key]}`;
