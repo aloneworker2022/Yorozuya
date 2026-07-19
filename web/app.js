@@ -507,12 +507,14 @@ function complete(id) {
   scheduleSave(); renderAll();
 }
 
+// 超時:扣違約金、退回已承接池(現實待辦不會消失,只是這次沒趕上)
 function failQuest(q, silent = false) {
   const pen = randInt(1, 6);
   state.gold -= pen;
-  state.quests = state.quests.filter(x => x.id !== q.id);
-  log(`「${q.text}」超時,違約金 -${pen} 金`);
-  if (!silent) { toast(`委託超時!違約金 -${pen} 金`, "bad"); kanbanReact("fail"); }
+  q.lv = 1;
+  delete q.startedAt; delete q.deadline; delete q._warned;
+  log(`「${q.text}」超時,違約金 -${pen} 金,退回委託板`);
+  if (!silent) { toast(`「${q.text}」超時!違約金 -${pen} 金,已退回委託板`, "bad"); kanbanReact("fail"); }
 }
 
 function drop(id) {
@@ -548,7 +550,7 @@ function settleOffline() {
   if (!expired.length) return;
   const before = state.gold;
   for (const q of expired) failQuest(q, true);
-  toast(`離線結算:${expired.length} 件委託超時,違約金 -${before - state.gold} 金`, "bad");
+  toast(`離線結算:${expired.length} 件委託超時,違約金 -${before - state.gold} 金,已退回委託板`, "bad");
   scheduleSave();
 }
 
@@ -1791,7 +1793,7 @@ setInterval(() => {
   for (const q of [...execQuests()]) {
     if (now >= q.deadline) { failQuest(q); changed = true; }
     else {
-      updateBar(q, now);
+      // 不顯示倒數——只有她會在快超時的時候催你一句
       const frac = (q.deadline - now) / (q.deadline - q.startedAt);
       if (frac <= 0.2 && !q._warned) { q._warned = true; kanbanReact("hurry"); }
     }
@@ -1995,23 +1997,7 @@ function renderHud() {
   document.body.classList.toggle("asleep", asleep);
 }
 
-function fmtRemain(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
-  return `${h}:${String(m).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
-}
-
-function updateBar(q, now) {
-  const bar = document.querySelector(`[data-bar="${q.id}"]`);
-  const rem = document.querySelector(`[data-remain="${q.id}"]`);
-  if (!bar) return;
-  const frac = (q.deadline - now) / (q.deadline - q.startedAt);
-  bar.style.width = Math.max(0, frac * 100) + "%";
-  bar.classList.toggle("danger", frac <= 0.2);
-  if (rem) rem.innerHTML = frac <= 0.2
-    ? `剩 <span class="warn">${fmtRemain(q.deadline - now)}</span> — <span class="warn">超時要賠違約金!</span>`
-    : `剩 ${fmtRemain(q.deadline - now)}`;
-}
+// (倒數條已移除——期限完全不顯示,超時直接跳提示扣錢退回)
 
 // ===== 委託卡片場景(cthulhu-note 式:一次一張,手勢操作)=====
 
@@ -2047,10 +2033,6 @@ function renderExec() {
     if (q) {
       html += `<div class="pin-slide"><div class="q-card c-exec">
         <div class="q-body">${esc(q.text)}</div>
-        <div>
-          <div class="bar-wrap"><div class="bar" data-bar="${q.id}"></div></div>
-          <div class="remain" data-remain="${q.id}"></div>
-        </div>
         <div class="swind"></div>
       </div></div>`;
     } else {
@@ -2066,8 +2048,6 @@ function renderExec() {
   $("#pin-dots").innerHTML = Array.from({ length: execCap() }, (_, i) => `<div class="dot${i === pinIdx ? " on" : ""}"></div>`).join("");
   track.querySelectorAll("[data-slot]").forEach(el => el.onclick = () => goProc());
   attachPinSwipe($("#pin-carousel"), exec);
-  const now = Date.now();
-  for (const q of exec) updateBar(q, now);
 }
 
 function setPinIdx(i) {
