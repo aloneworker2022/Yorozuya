@@ -127,50 +127,55 @@ function renderFront(){
   const k=P.size, S=P.droop;
   const cy=54+S*10;                       // 乳房中心高度(垂→下移)
   const rx=22*k*(0.9+0.1*P.gap), ry=(24+S*10)*k;    // 半寬/半高(垂→拉長)
-  const gap=30*P.gap;                     // 乳心距中線
-  const nipy=cy+ry*(0.28+0.3*S);          // 乳頭高度(垂→更下)
-  const nipdx=0.30+0.18*S;                // 乳頭外偏比例
-
+  const gap=28*P.gap;                     // 乳心距中線
+  const tilt=(20+8*(1-S))*Math.PI/180;    // 外傾角(參考:胸沿肋廓約 45°外;正面投影 ~20-28°)
+  // 依側計算旋轉後的局部座標(團塊外傾,尾部朝腋下)
+  function local(x,y,s){
+    const cxa=64+s*gap, px=x-cxa, py=y-cy, th=s*tilt;
+    const ca=Math.cos(th), sa=Math.sin(th);
+    let lx=(px*ca+py*sa)/rx, ly=(-px*sa+py*ca)/ry;
+    let lyr=ly; if(ly<0) lyr=ly*1.2;      // 上緣壓扁 → 往腋下拉出尾部(水滴)
+    return {cxa,px,py,lx,ly, d:Math.hypot(lx,lyr)};
+  }
   for(let y=0;y<H;y++){
     for(let x=0;x<W;x++){
       const nx=x-64;
-      // 軀幹輪廓(上胸→乳→收腰)
-      let bw=52+6*smooth(0,40,y)-3*smooth(40,70,y)-14*smooth(70,120,y);
-      // 兩乳的高度場(取較近者)
-      let best=-1, bside=0, bd=9;
-      for(const s of [-1,1]){
-        const ccx=s*gap, lx=(nx-ccx)/rx;
-        let ly=(y-cy)/ry;
-        if(ly>0) ly/=(1+0.5*S);           // 下半拉長=下垂
-        const d=Math.sqrt(lx*lx+ly*ly);
-        if(d<bd){ bd=d; bside=s; best=1-d*d; }
-      }
-      const inTorso = Math.abs(nx)<bw || bd<1;
+      let bw=52+6*smooth(0,40,y)-3*smooth(40,70,y)-14*smooth(70,120,y); // 軀幹半寬
+      // 取較近的乳房
+      let bs=0, B=null;
+      for(const s of [-1,1]){ const L=local(x,y,s); if(!B||L.d<B.d){ B=L; bs=s; } }
+      const inTorso = Math.abs(nx)<bw || B.d<1;
       if(!inTorso){ buf[(y*W+x)*4+3]=0; continue; }
 
-      // 基礎明暗:先算連續亮度 v(0暗..1亮)再一次量化 → 乾淨賽璐璐
-      const s=bside, ccx=s*gap;
-      const lx=(nx-ccx)/rx; let ly=(y-cy)/ry; if(ly>0) ly/=(1+0.5*S);
-      const d=bd;
+      const s=bs, cxa=B.cxa;
+      // 光為全域(左上前),用螢幕座標算受光,不用旋轉座標
+      const ux=(x-cxa)/rx, uy=(y-cy)/ry;
       let v;
-      if(d<1){
-        v = 0.56 - (lx*s)*0.26 - ly*0.40;              // 光自上內側 → 上內亮、下外暗
-        if(ly>0) v -= 0.22*smooth(0.5,1.0,ly);         // 下乳摺一彎陰影
-        if(Math.abs(nx)<gap-rx*0.28 && y>cy-ry*0.25 && y<cy+ry*0.9) v-=0.16; // 乳溝
-        v -= 0.12*smooth(0.86,1.0,d);                  // 團塊外緣收邊
+      if(B.d<1){
+        v = 0.62 - uy*0.44 - (ux*s)*0.12;              // 上亮下暗、內側略亮
+        v -= 0.24*smooth(0.32,0.92, uy);               // 下半核心陰影(乳房下側)
+        if(B.d>0.80 && uy>0.45) v += 0.12;             // 反光:核心陰影下緣一道亮邊
+        // 乳溝:靠中線處柔和加深(抖色、不畫硬線)
+        const cl=(gap-Math.abs(nx))/ (gap*0.9);
+        if(nx*s>0 && cl>0 && Math.abs(uy)<0.9){ if(((x+y)&1)===0) v-=0.16*cl; }
       } else {
-        v = 0.52 - Math.abs(nx)/bw*0.42;               // 軀幹柱狀
-        if(nx>bw*0.35) v -= 0.10;
+        v = 0.52 - Math.abs(nx)/bw*0.40;               // 軀幹柱狀
+        if(nx>bw*0.35) v-=0.10;
+        // 乳房下方的投影(cast shadow):落在肋廓上,貼著下緣一彎
+        if(B.d<1.30 && uy>0.45){ v -= 0.20*(1.30-B.d)/0.30; if(((x+y)&1)) v+=0.05; }
       }
       let shade=Math.max(0,Math.min(4,Math.round(v*4)));
       let col=C[shade];
 
-      // 乳暈 + 乳頭(在最凸點附近,朝下外)
-      const nxp=ccx+s*rx*nipdx, nAr=6*P.nsz, nNip=2.4*P.nsz;
-      const dn=Math.hypot(nx-nxp,(y-nipy)*1.15);
-      if(d<1.05){
-        if(dn<nNip) col=NP[0];
-        else if(dn<nAr) col=NP[1];
+      // 乳暈 + 乳頭:位於乳房前下、朝外下(參考:乳頭外傾約 45°)
+      const npx=cxa+s*rx*(0.26+0.10*S), npy=cy+ry*(0.30+0.34*S);
+      const nAr=6.2*P.nsz, nNip=2.3*P.nsz;
+      const dn=Math.hypot((x-npx)/1.0,(y-npy)/0.9);
+      if(B.d<1.02){
+        if(dn<nNip) col=NP[0];                          // 乳頭
+        else if(dn<nAr){ // 乳暈:向皮膚柔和過渡(邊緣抖色,不畫硬圈)
+          if(dn<nAr-1.4 || ((x+y)&1)===0) col=NP[1];
+        }
       }
       set(x,y,col);
     }
