@@ -163,18 +163,28 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
   animation: pulse 1.5s infinite;
 }
 #hud-sleep { color: var(--cyan); font-size: .75em; margin-left: auto; }
+/* 分頁列:右上角直排書籤標籤(貼右緣,像側邊索引) */
 #tabs {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
-  display: flex;
-  background: linear-gradient(to top, rgba(10, 6, 18, .9), transparent);
-  padding: 1.2em 0 calc(.5em + env(safe-area-inset-bottom));
+  position: fixed; top: calc(3.6em + env(safe-area-inset-top)); right: 0; left: auto; bottom: auto;
+  z-index: 10; display: flex; flex-direction: column; gap: 4px;
+  background: none; padding: 0;
 }
 #tabs button {
-  flex: 1; background: none; border: none; color: var(--dim);
-  font: inherit; font-size: .95em; letter-spacing: .3em; text-indent: .3em;
-  padding: .5em 0; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line); border-right: none;
+  color: var(--dim); font: inherit; font-size: .66em; cursor: pointer;
+  padding: .8em .45em .8em .5em; display: block;
+  border-radius: 9px 0 0 9px;
 }
-#tabs button.active { color: var(--cyan); }
+/* 直排:寬一個字元強制換行(button 不吃 writing-mode) */
+#tabs button span {
+  display: block; width: 1em; margin: 0 auto;
+  word-break: break-all; line-height: 1.45; letter-spacing: 0;
+}
+#tabs button.active {
+  color: var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 14%, var(--panel));
+  border-color: color-mix(in srgb, var(--cyan) 40%, var(--line));
+}
 
 /* ===== z2 分頁滑動 ===== */
 #track-wrap { position: fixed; inset: 0; z-index: 5; overflow: hidden; }
@@ -184,7 +194,8 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 }
 .page {
   width: 25%; height: 100%; overflow-y: auto;
-  padding: calc(3.6em + env(safe-area-inset-top)) .8em calc(4.5em + env(safe-area-inset-bottom));
+  /* 右側留給書籤標籤;分頁列離開底部後,下方只留安全距 */
+  padding: calc(3.6em + env(safe-area-inset-top)) 2.1em calc(1.4em + env(safe-area-inset-bottom)) .8em;
   scrollbar-width: none;
 }
 .page::-webkit-scrollbar { display: none; }
@@ -291,8 +302,8 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 .e-icon { font-size: 2.6rem; display: block; margin-bottom: 8px; }
 .e-txt { font-size: .85em; color: var(--dim); }
 
-/* 右側強制切換小標籤 */
-.q-force-tabs { position: absolute; top: 44px; right: 0; z-index: 6; display: flex; flex-direction: column; gap: 3px; }
+/* 右側強制切換小標籤(避開右上主分頁書籤:改錨在下半) */
+.q-force-tabs { position: absolute; top: auto; bottom: 120px; right: 0; z-index: 6; display: flex; flex-direction: column; gap: 3px; }
 .q-force-tab {
   background: var(--panel); border: 1px solid var(--line); border-right: none;
   padding: 9px 6px; cursor: pointer; color: var(--dim);

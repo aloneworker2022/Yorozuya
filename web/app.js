@@ -2031,12 +2031,10 @@ function renderExec() {
     const q = exec[i];
     if (q) {
       html += `<div class="pin-slide"><div class="q-card c-exec">
-        <span class="q-tag gold-tag">完成 → ? 金(1~24)</span>
         <div class="q-body">${esc(q.text)}</div>
         <div>
           <div class="bar-wrap"><div class="bar" data-bar="${q.id}"></div></div>
           <div class="remain" data-remain="${q.id}"></div>
-          <div class="q-hints"><span class="hint">↑ 上滑完成</span><span class="hint">← → 切換</span></div>
         </div>
         <div class="swind"></div>
       </div></div>`;
@@ -2157,19 +2155,10 @@ function renderProc() {
   procIdx[lv] = Math.min(procIdx[lv], list.length - 1);
   const i = procIdx[lv];
   const q = list[i];
-  const full = execQuests().length >= execCap();
 
-  const tag = lv === 0
-    ? `<span class="q-tag">發現</span>`
-    : `<span class="q-tag gold-tag">期限 ${QUEST_HOURS} 小時 / 完成擲 1~24 金</span>`;
-  const hints = lv === 0
-    ? ["↑ 承接", "↓ 推掉", "← → 切換", "點兩下 編輯"]
-    : [full ? "執行中已滿" : "↑ 開始執行", "↓ 推掉(-1~3金)", "← → 切換", "點兩下 退回"];
-
+  // 卡片只放項目本身;狀態靠徽章/卡色分辨,操作靠手勢(規則玩家已熟)
   stage.innerHTML = `<div class="q-card ${lv === 0 ? "c-found" : "c-acc"}" id="proc-card">
-    ${tag}
     <div class="q-body">${esc(q.text)}</div>
-    <div class="q-hints">${hints.map(h => `<span class="hint">${h}</span>`).join("")}</div>
     <div class="swind"></div>
   </div>`;
   nav.textContent = list.length > 1 ? `${i + 1} / ${list.length}` : "";
