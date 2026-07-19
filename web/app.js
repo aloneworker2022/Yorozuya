@@ -1177,7 +1177,7 @@ async function llmJobQuiet(msgs) {
   if (!r.ok) throw new Error("server");
   const { job_id } = await r.json();
   const t0 = Date.now();
-  while (Date.now() - t0 < 120000) {
+  while (Date.now() - t0 < 300000) {   // 與前景聊天同 300s:冷啟動載模型可能很慢
     await new Promise(res => setTimeout(res, 1500));
     const jr = await fetch(`/api/llm/chat_job/${job_id}`, { cache: "no-store" });
     if (!jr.ok) throw new Error("poll");
@@ -1244,9 +1244,13 @@ async function pumpQuips() {
 }
 
 // ── 半預製聊天:背景生成她的下一句(s.chatLine);淫紋要「有紋+話備好」才亮 ──
+// 失敗退避:連續失敗後拉長重試間隔(不轟炸 Ollama);連敗 3 次 → 淫紋照亮,
+// 點開走即時生成保底(錯誤會顯示出來,不再無聲卡死)。
+let chatGenFail = { count: 0, at: 0 };
 async function pumpChatLines() {
   if (genBusy || chatWith || watchWith || sacrificeWith || sacSummon || isAsleep()) return;
   if (!state.settings.model) return;   // 無模型:開聊時走即時罐頭,不預製
+  if (chatGenFail.count && Date.now() - chatGenFail.at < Math.min(60000, 10000 * chatGenFail.count)) return;
   const s = kanbanSuccubus();
   if (!s || s.chatLine || s.summoner?.taken) return;
   genBusy = true;
@@ -1269,12 +1273,17 @@ async function pumpChatLines() {
       { role: "user", content: inst },
     ];
     const text = await llmJobQuiet(msgs);
+    if (!text) throw new Error("empty");
+    chatGenFail = { count: 0, at: 0 };
     // 生成期間她可能換人/被召喚走:狀態沒變才收下
-    if (text && kanbanSuccubus()?.id === s.id && !s.summoner?.taken && !s.chatLine) {
+    if (kanbanSuccubus()?.id === s.id && !s.summoner?.taken && !s.chatLine) {
       s.chatLine = { text: text.split("\n")[0].slice(0, 300) || text.slice(0, 300), t: Date.now() };
       dirty = true; scheduleSave(); renderAll();   // 淫紋亮起
     }
-  } catch (e) { /* 之後再試 */ }
+  } catch (e) {
+    chatGenFail = { count: chatGenFail.count + 1, at: Date.now() };
+    if (chatGenFail.count === 3) renderAll();   // 保底生效:亮紋改走即時模式
+  }
   genBusy = false;
 }
 
@@ -1789,9 +1798,9 @@ setInterval(() => {
   if (expireKanban()) changed = true;
   if (checkSummonerDraws()) changed = true;
   if (processTakenActs()) changed = true;
-  pumpActTexts();    // 背景補生成紀錄文字(不阻塞、自帶互斥)
-  pumpChatLines();   // 背景預生她的下一句聊天(有紋+話備好,淫紋才亮)
-  pumpQuips();       // 背景預生看板娘委託台詞(點她秒冒,不等 AI)
+  pumpChatLines();   // 最優先:她的下一句聊天(卡住=淫紋不亮,玩家最有感)
+  pumpActTexts();    // 其次:觀戰紀錄文字
+  pumpQuips();       // 最後:看板娘委託台詞
 
   const asleep = isAsleep();
   if (asleep !== lastSleepState) {
@@ -1957,11 +1966,13 @@ function renderCrest() {
   const el = $("#crest");
   if (!el) return;
   const s = kanbanSuccubus();
-  const lineReady = s && (s.chatLine || s.summoner?.taken || !state.settings.model);
-  const show = (state.chatCharges || 0) > 0 && s && lineReady && !isAsleep() && !chatWith && !watchWith;
-  el.classList.toggle("hidden", !show);
+  const base = (state.chatCharges || 0) > 0 && s && !isAsleep() && !chatWith && !watchWith;
+  // 話備好才可點;連續生成失敗 3 次 → 照亮走即時保底(錯誤看得見,不無聲卡死)
+  const lineReady = s && (s.chatLine || s.summoner?.taken || !state.settings.model || chatGenFail.count >= 3);
+  el.classList.toggle("hidden", !base);
+  el.classList.toggle("brewing", !!(base && !lineReady));   // 極暗呼吸=她在想要說什麼
   const n = $("#crest-n");
-  if (show && n) n.textContent = state.chatCharges;
+  if (base && n) n.textContent = state.chatCharges;
 }
 
 function renderHud() {

@@ -53,9 +53,7 @@ body[data-theme="day"], body[data-theme="sakura"] { text-shadow: none; }
 body[data-theme="day"] .panel h2, body[data-theme="sakura"] .panel h2,
 body[data-theme="day"] .pin-hdr-title, body[data-theme="sakura"] .pin-hdr-title { text-shadow: none; }
 body[data-theme="day"]::after, body[data-theme="sakura"]::after {
-  background:
-    repeating-linear-gradient(0deg, transparent 0 2px, rgba(0, 0, 0, .05) 2px 4px),
-    radial-gradient(ellipse at center, transparent 70%, rgba(0, 0, 0, .12) 100%);
+  background: radial-gradient(ellipse at center, transparent 72%, rgba(0, 0, 0, .1) 100%);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; overflow: hidden; }
@@ -67,14 +65,11 @@ body {
   text-shadow: 0 0 6px color-mix(in srgb, currentColor 35%, transparent);
   font-family: "Cubic 11", "Fusion Pixel", monospace;
   font-size: 15px;
-  image-rendering: pixelated;
 }
-/* CRT 掃描線 + 暗角 */
+/* 邊緣暗角(掃描線條紋已移除——看久了不舒服) */
 body::after {
   content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
-  background:
-    repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.16) 2px 4px),
-    radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.35) 100%);
+  background: radial-gradient(ellipse at center, transparent 62%, rgba(0, 0, 0, .3) 100%);
 }
 .hidden { display: none !important; }
 .dim { color: var(--dim); }
@@ -658,6 +653,16 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 @keyframes crest-pulse {
   0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pink) 50%, transparent)); }
   50% { transform: scale(1.08); filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 85%, transparent)); }
+}
+/* 醞釀中:她的話還在生成——極暗慢呼吸,不可點(有紋 vs 沒紋一眼可辨) */
+#crest.brewing {
+  opacity: .25; pointer-events: none;
+  animation: crest-brew 2.6s ease-in-out infinite;
+  filter: none;
+}
+@keyframes crest-brew {
+  0%, 100% { opacity: .18; }
+  50% { opacity: .34; }
 }
 #crest b {
   position: absolute; top: -4px; right: -4px;
