@@ -146,9 +146,10 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 #hud {
   position: fixed; top: 0; left: 0; right: 0; z-index: 10;
   padding: calc(.7em + env(safe-area-inset-top)) 1em 1.6em;
-  background: linear-gradient(to bottom, rgba(10, 6, 18, .85), transparent);
   display: flex; align-items: baseline; gap: .8em;
+  pointer-events: none;   /* 無底色後別擋住下層點擊;內部按鈕自行開啟 */
 }
+#hud > * { pointer-events: auto; }
 #hud-gold { color: var(--gold); font-size: 1.15em; letter-spacing: .08em; }
 #hud-gold.debt { color: var(--red); }
 #hud-debt { color: var(--red); font-size: .75em; animation: pulse 1.2s infinite; }

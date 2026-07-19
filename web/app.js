@@ -5,6 +5,9 @@
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt } from "./content/persona_builder.js";
 
+// 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
+const APP_VER = "v5.10(2026-07-19)";
+
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
 let WORLD_LORE = "";
@@ -2569,6 +2572,8 @@ function renderSettings() {
   $("#log-list").innerHTML = state.log.length
     ? state.log.map(l => `<div>${esc(l)}</div>`).join("")
     : "還沒有任何記錄。";
+
+  $("#set-appver").textContent = APP_VER;
 }
 
 // ===== 分頁滑動 =====
@@ -2702,6 +2707,17 @@ on("btn-reset", "click", () => {
 
 // 全部重來:硬重置——清伺服器存檔 + 本地快取 + service worker,回到全新遊戲。
 // 也是萬一再遇到卡死狀態的終極自救按鈕。
+// 強制更新:解除 SW、清光快取、重載——專治「更新了但頁面還是舊版」;存檔在伺服器,不受影響
+on("btn-force-update", "click", async () => {
+  toast("清快取中,馬上重載…", "");
+  try {
+    const regs = await (navigator.serviceWorker?.getRegistrations?.() || Promise.resolve([]));
+    for (const r of regs) await r.unregister();
+    if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+  } catch (e) { /* 盡力而為 */ }
+  location.replace(location.pathname + "?u=" + Date.now());   // 帶參數繞過殘餘快取
+});
+
 on("btn-hard-reset", "click", async () => {
   if (!confirm("全部重來?\n\n這會清空伺服器上的存檔、本地快取與所有進度,回到全新遊戲,無法復原。")) return;
   if (!confirm("真的確定?所有魅魔、委託、金幣都會永遠消失。")) return;
