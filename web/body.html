@@ -68,7 +68,7 @@ canvas { display: block; image-rendering: pixelated; touch-action: none; cursor:
 <div class="wrap">
   <header class="top">
     <h1>水球物理模擬</h1>
-    <span class="sub">壓力軟體 · 裝了水的氣球</span>
+    <span class="sub">壓力軟體 · 躺在地上的水球</span>
     <a class="home" href="/">← 回萬事屋</a>
   </header>
 
@@ -94,10 +94,10 @@ canvas { display: block; image-rendering: pixelated; touch-action: none; cursor:
       <button id="reset" class="ghost">重設</button>
     </div>
     <div class="note">
-      壓力軟體模型:一圈質點連成有彈性的膜,內部的水以「壓力」把膜往外撐,
-      膜以彈簧抵抗拉伸。頸部釘在上方(綁住的口)。
-      水少 → 膜鬆、受重力垂墜晃動;水多 → 撐圓緊繃、Q 彈。
-      戳、拖、傾倒都是真的把質點推開後靠壓力與彈力回復。
+      壓力軟體模型:一圈質點連成不可伸長的膜,內部的水以「壓力」把膜撐成球體,
+      放在地面上受重力、底部微微壓平。
+      水少 → 塌軟攤平積在地上;水多 → 撐圓緊繃、Q 彈。
+      戳、拖、傾倒都是真的把質點推開,再靠壓力與膜張力回復晃動。
     </div>
   </div>
 </div>
@@ -111,30 +111,24 @@ const ctx=cv.getContext('2d');
 cv.style.width=W*2+'px'; cv.style.height=H*2+'px';
 
 const hx=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
-const COL={ line:'#173f6b', shade:'#2f6cb4', main:'#5fa7e8', light:'#9fd0ff', hi:'#eaf8ff', neck:'#9a8a6a' };
+const COL={ line:'#173f6b', shade:'#2f6cb4', main:'#5fa7e8', light:'#9fd0ff', hi:'#eaf8ff', ground:'#3a3550', groundD:'#241f36' };
 for(const k in COL) COL[k]=hx(COL[k]);
 
-// ===== 壓力軟體水球 =====
-const N=44;                        // 膜質點數
-const CX=W/2, NECKY=26;            // 頸部(綁口)位置
-const R0=25;                       // 自然半徑
+// ===== 壓力軟體水球(躺在地面上的一顆球)=====
+const N=48;                        // 膜質點數
+const CX=W/2;                      // 水平中心
+const R0=30;                       // 自然半徑
 const REST=2*Math.PI*R0/N;         // 每段膜自然長度
 const A0=Math.PI*R0*R0;            // 自然面積
-const NECK=4;                      // 頸部釘住的質點數(兩側各 NECK/2)
-// 質點:x,y 現在位置;vx,vy 速度
+const GROUND=H-12;                 // 地面 y
+// 質點:x,y 現在位置;vx,vy 速度(無釘點,自由受力)
 const nd=[];
 function initBalloon(){
   nd.length=0;
+  const cy=GROUND-R0;              // 球心:剛好貼地
   for(let i=0;i<N;i++){
     const a=-Math.PI/2 + i*2*Math.PI/N;
-    nd.push({x:CX+R0*Math.cos(a), y:NECKY+R0+R0*Math.sin(a), vx:0, vy:0, pin:false});
-  }
-  // 頸部:最上面幾個質點釘死(綁住的口)
-  const order=[...nd.keys()].sort((i,j)=>nd[i].y-nd[j].y);
-  for(let k=0;k<NECK;k++){
-    const n=nd[order[k]];
-    n.pin=true; n.y=NECKY; n.x=CX+(n.x>CX?1:-1)*Math.min(6,Math.abs(n.x-CX));
-    n.px0=n.x;
+    nd.push({x:CX+R0*Math.cos(a), y:cy+R0*Math.sin(a), vx:0, vy:0});
   }
 }
 initBalloon();
@@ -151,15 +145,14 @@ function area(){
 function simulate(){
   const dt=0.6;
   const targetA=A0*P.water;                    // 水量 → 目標面積(不可壓縮的水)
-  const g=0.02;
+  const g=0.015;
   const gx=Math.sin(tiltG*Math.PI/180)*g, gy=Math.cos(tiltG*Math.PI/180)*g;
   // ---- 1) 積分:重力 + 壓力力(把膜往外撐到目標面積)----
   const A=area();
   const sign=A>=0?1:-1;
-  const press=(1.5+1.0*(1-P.elast))*(targetA-Math.abs(A))/A0;
+  const press=(6.0+3.0*(1-P.elast))*(targetA-Math.abs(A))/A0;
   for(let i=0;i<N;i++){
     const n=nd[i];
-    if(n.pin){ n.vx=n.vy=0; continue; }
     const a=nd[(i-1+N)%N], b=nd[(i+1)%N];
     let nx=sign*(b.y-a.y), ny=-sign*(b.x-a.x);
     const l=Math.hypot(nx,ny)||1e-6; nx/=l; ny/=l;
@@ -170,10 +163,9 @@ function simulate(){
     if(!isFinite(n.x)||!isFinite(n.y)){ initBalloon(); return; }
   }
   // ---- 2) 膜:局部邊長夾限 + 全域周長硬上限 → 周長鎖死 → 撐圓 ----
-  const maxE=REST*(1.09+0.16*(1-P.elast));      // 軟膜可伸長些(較 Q 彈)
+  const maxE=REST*(1.0+0.05*(1-P.elast));       // 近乎不可伸長 → 周長=圓周長 → 撐成正圓
   const maxPer=maxE*N;                          // 周長硬上限
   for(let it=0;it<10;it++){
-    // 局部:邊長 ≤ 上限
     for(let i=0;i<N;i++){
       const a=nd[i], b=nd[(i+1)%N];
       let dx=b.x-a.x, dy=b.y-a.y;
@@ -181,23 +173,26 @@ function simulate(){
       if(d<=maxE)continue;
       const diff=(d-maxE)/d;
       const mx=dx*diff*0.5, my=dy*diff*0.5;
-      if(!a.pin&&!b.pin){ a.x+=mx;a.y+=my;b.x-=mx;b.y-=my; }
-      else if(!a.pin){ a.x+=mx*2;a.y+=my*2; }
-      else if(!b.pin){ b.x-=mx*2;b.y-=my*2; }
+      a.x+=mx;a.y+=my;b.x-=mx;b.y-=my;
     }
-    for(const n of nd) if(n.pin){ n.x=n.px0; n.y=NECKY; }
+    groundCollide();                             // 每次迭代都維持地面約束
   }
   // 全域:若總周長超上限,整體對質心縮小(等比去除多餘周長)→ 逼近圓
   let per=0; for(let i=0;i<N;i++){ const a=nd[i],b=nd[(i+1)%N]; per+=Math.hypot(b.x-a.x,b.y-a.y); }
   if(per>maxPer){
     const f=maxPer/per;
     let cx=0,cy=0; for(const n of nd){ cx+=n.x; cy+=n.y; } cx/=N; cy/=N;
-    for(const n of nd){ if(n.pin)continue; n.x=cx+(n.x-cx)*f; n.y=cy+(n.y-cy)*f; }
-    for(const n of nd) if(n.pin){ n.x=n.px0; n.y=NECKY; }
+    for(const n of nd){ n.x=cx+(n.x-cx)*f; n.y=cy+(n.y-cy)*f; }
   }
+  groundCollide();
+}
+// 地面 + 左右牆:碰到就止住,水平摩擦(讓球會被壓扁堆在地上)
+function groundCollide(){
   for(const n of nd){
-    if(n.x<3){n.x=3;n.vx=0;} if(n.x>W-4){n.x=W-4;n.vx=0;}
-    if(n.y<3){n.y=3;n.vy=0;} if(n.y>H-4){n.y=H-4;n.vy=0;}
+    if(n.y>GROUND){ n.y=GROUND; if(n.vy>0)n.vy*=-0.2; n.vx*=0.82; }
+    if(n.x<4){n.x=4; if(n.vx<0)n.vx*=-0.3;}
+    if(n.x>W-5){n.x=W-5; if(n.vx>0)n.vx*=-0.3;}
+    if(n.y<3){n.y=3; if(n.vy<0)n.vy*=-0.3;}
   }
 }
 
@@ -214,9 +209,14 @@ function seg(x0,y0,x1,y1,c){
 }
 function render(){
   img.data.fill(0);
-  // 綁口(頸)
-  for(let x=CX-5;x<=CX+5;x++){ px(x,NECKY-3,COL.neck); px(x,NECKY-2,COL.neck); }
-  px(CX-1,NECKY-6,COL.neck); px(CX+1,NECKY-6,COL.neck); px(CX,NECKY-5,COL.neck);
+  // 地面
+  for(let x=0;x<W;x++){ px(x,GROUND+1,COL.ground); px(x,GROUND+2,COL.groundD); }
+  // 接地陰影(隨球寬)
+  let sMinX=1e9,sMaxX=-1e9;
+  for(const n of nd){ if(n.y>GROUND-3){ if(n.x<sMinX)sMinX=n.x; if(n.x>sMaxX)sMaxX=n.x; } }
+  if(sMaxX>sMinX) for(let x=Math.round(sMinX)-2;x<=Math.round(sMaxX)+2;x++){
+    if(((x)&1)===0){ px(x,GROUND+3,COL.groundD); }
+  }
   // 掃描線填水
   let minY=1e9,maxY=-1e9;
   for(const n of nd){ if(n.y<minY)minY=n.y; if(n.y>maxY)maxY=n.y; }
@@ -264,7 +264,6 @@ for(const ev of ['pointerup','pointercancel']) cv.addEventListener(ev,()=>{dragg
 function poke(x,y,dx,dy,punch){
   const R=22;
   for(const n of nd){
-    if(n.pin)continue;
     const ex=n.x-x, ey=n.y-y, d=Math.hypot(ex,ey);
     if(d<R){ const w=1-d/R;
       if(punch){ const l=d||1e-6; n.vx+=ex/l*3.2*w; n.vy+=ey/l*3.2*w; }
