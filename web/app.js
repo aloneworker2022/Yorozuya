@@ -533,19 +533,7 @@ function drop(id) {
   scheduleSave(); renderAll();
 }
 
-function demote(id) {
-  const q = state.quests.find(q => q.id === id);
-  if (!q) return;
-  q.lv = 0; delete q.reward;
-  scheduleSave(); renderAll();
-}
-
-function editText(id) {
-  const q = state.quests.find(q => q.id === id);
-  if (!q) return;
-  const t = prompt("編輯委託內容:", q.text);
-  if (t && t.trim()) { q.text = t.trim(); scheduleSave(); renderAll(); }
-}
+// (點兩下編輯/退回已移除——提示拿掉後成了看不懂的意外行為;卡片只吃滑動手勢)
 
 function settleOffline() {
   const now = Date.now();
@@ -2173,7 +2161,6 @@ function renderProc() {
     up: () => flyCard(card, "up", () => { accept(q.id); toast("已承接", "good"); }),
     down: () => flyCard(card, "down", () => drop(q.id)),
     left: () => nav2(1), right: () => nav2(-1),
-    dbl: () => editText(q.id),
   } : {
     up: () => {
       if (execQuests().length >= execCap()) { toast(`執行中已滿 ${execCap()} 件`, "bad"); return; }
@@ -2181,7 +2168,6 @@ function renderProc() {
     },
     down: () => flyCard(card, "down", () => drop(q.id)),
     left: () => nav2(1), right: () => nav2(-1),
-    dbl: () => demote(q.id),
   };
   swipeable(card, H);
 }
