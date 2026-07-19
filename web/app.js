@@ -1168,124 +1168,130 @@ function actMsgs(s, su, act) {
   ];
 }
 
-// 安靜版 LLM job:背景生成用,不串流不碰 UI、不動 chatAbort
-async function llmJobQuiet(msgs) {
-  const r = await fetch("/api/llm/chat_job", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ endpoint: state.settings.ollamaUrl, model: state.settings.model, messages: msgs, options: { temperature: 0.9 } }),
-  });
-  if (!r.ok) throw new Error("server");
-  const { job_id } = await r.json();
-  const t0 = Date.now();
-  while (Date.now() - t0 < 300000) {   // 與前景聊天同 300s:冷啟動載模型可能很慢
-    await new Promise(res => setTimeout(res, 1500));
-    const jr = await fetch(`/api/llm/chat_job/${job_id}`, { cache: "no-store" });
-    if (!jr.ok) throw new Error("poll");
-    const j = await jr.json();
-    if (j.error) throw new Error(j.error);
-    if (j.done) return (j.text || "").trim();
-  }
-  throw new Error("timeout");
-}
+// ── 代工生成:手機只「下單/收貨」,實際排隊跑 Ollama 在 RP5 伺服器背景——
+//    手機切走/鎖屏/待機都不影響生成;下次開 app 收貨即亮。
+//    key = 內容狀態指紋(伺服器以 key 去重;狀態變了 key 就變,舊單自然作廢過期)。
+function strHash(x) { let h = 5381; for (let i = 0; i < x.length; i++) h = ((h * 33) ^ x.charCodeAt(i)) >>> 0; return h.toString(36); }
 
-// 背景佇列:把還沒有文字的紀錄一則一則生出來(玩家點開就是秒開)。
-// 連不上 AI 就留空下次再試;不與聊天/觀看/獻祭搶線。genBusy 與氣泡生成共用互斥。
-let genBusy = false;
-async function pumpActTexts() {
-  if (genBusy || chatWith || watchWith || sacrificeWith || sacSummon) return;
-  if (!state.settings.model) return;   // 無模型:等觀看時走罐頭
-  let s = null, act = null;
-  for (const g of state.succubi) {
-    const a = (g.summoner?.acts || []).find(x => !x.text && !x.seen);
-    if (a) { s = g; act = a; break; }
-  }
-  if (!act) return;
-  const su = summonerById(s.summoner.id);
-  if (!su) return;
-  genBusy = true;
+async function genPost(key, messages) {
   try {
-    const text = await llmJobQuiet(actMsgs(s, su, act));
-    if (text) { act.text = text; dirty = true; scheduleSave(); }
-  } catch (e) { /* 連不上就留空,之後再試 */ }
-  genBusy = false;
+    const r = await fetch("/api/gen", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, retry: true, endpoint: state.settings.ollamaUrl, model: state.settings.model, messages, options: { temperature: 0.9 } }),
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
 }
 
-// ── 看板娘主動氣泡:依委託清單背景預生台詞,點她「秒冒」;快取沒貨就用罐頭,永遠零等待 ──
-const QUIP_STOCK = 3;   // 每個(看板娘×委託狀態)最多備幾句
-async function pumpQuips() {
-  if (genBusy || chatWith || watchWith || sacrificeWith || sacSummon || isAsleep()) return;
-  if (!state.settings.model || !state.quests.length) return;
+// 她的下一句聊天:最優先(失敗計次退避;連敗 3 次淫紋照亮走即時保底)
+function chatLineMsgs(s) {
+  const hist = s.history || [];
+  let cut = 0;
+  for (let i = hist.length - 1; i >= 0; i--) if (hist[i].role === "sys") { cut = i + 1; break; }
+  const recent = hist.slice(cut).slice(-40)
+    .filter(m => m.role === "user" || m.role === "assistant")
+    .map(m => ({ role: m.role, content: m.content }));
+  const last = recent[recent.length - 1];
+  const inst = !recent.length
+    ? "(旁白:淫紋亮起——你想找他說話。依你的個性主動開啟一個新話題,一句像簡訊的話。)"
+    : last.role === "user"
+      ? "(旁白:回覆他最後那句話。一句像簡訊的話,依你的個性。)"
+      : "(旁白:他還沒回你,隔了一段時間,你忍不住又主動傳了一句。換個說法或話題,不要重複之前的話。)";
+  return [{ role: "system", content: buildSystemPrompt(buildCtx(s)) }, ...recent, { role: "user", content: inst }];
+}
+
+async function genChatOrder() {
+  const s = kanbanSuccubus();
+  if (!s || s.chatLine || s.summoner?.taken || s.ntr) return;
+  if (chatGenFail.count && Date.now() - chatGenFail.at < Math.min(60000, 10000 * chatGenFail.count)) return;
+  const hist = s.history || [];
+  const key = `chat:${s.id}:${hist.length}:${hist[hist.length - 1]?.t || 0}`;
+  const r = await genPost(key, chatLineMsgs(s));
+  if (!r) return;
+  if (r.status === "done" && r.result) {
+    chatGenFail = { count: 0, at: 0 };
+    if (kanbanSuccubus()?.id === s.id && !s.summoner?.taken && !s.chatLine) {
+      s.chatLine = { text: r.result.split("\n")[0].slice(0, 300) || r.result.slice(0, 300), t: Date.now() };
+      dirty = true; scheduleSave(); renderAll();   // 淫紋亮起
+    }
+  } else if (r.status === "error") {
+    chatGenFail = { count: chatGenFail.count + 1, at: Date.now() };
+    if (chatGenFail.count === 3) renderAll();   // 保底生效:亮紋改走即時模式
+  }
+}
+
+// 觀戰紀錄文字:每輪最多下 3 單
+async function genActOrders() {
+  let n = 0;
+  for (const g of state.succubi) {
+    const su = g.summoner ? summonerById(g.summoner.id) : null;
+    if (!su) continue;
+    for (const a of (g.summoner.acts || [])) {
+      if (a.text || a.seen) continue;
+      a.id ??= uid();
+      const r = await genPost(`act:${g.id}:${a.id}`, actMsgs(g, su, a));
+      if (r?.status === "done" && r.result) { a.text = r.result; dirty = true; scheduleSave(); }
+      if (++n >= 3) return;
+    }
+  }
+}
+
+// 看板娘委託台詞:每狀態備 3 句;state.quips.got 記已收貨的 key(重啟不重複)
+const QUIP_STOCK = 3;
+function quipMsgs(s) {
+  return [
+    { role: "system", content: buildQuipPrompt({
+        character: { name: s.name, personality: s.personality, speech_style: s.speech, backstory: s.backstory || "" },
+        relationship: { stage: s.stage, affection: s.affection },
+        player: { name: state.settings.player || "主人" },
+        quests: questSnapshot(),
+        content_rating: state.settings.rating || "sfw",
+      }) },
+    { role: "user", content: "輸出她此刻想對他說的那一句話。" },
+  ];
+}
+
+async function genQuipOrders() {
+  if (!state.quests.length) return;
   const s = kanbanSuccubus();
   if (!s) return;
   const hash = questHash();
   if (state.quips?.girlId !== s.id || state.quips?.hash !== hash) {
-    state.quips = { girlId: s.id, hash, lines: [] };   // 狀態變了:舊台詞作廢
+    state.quips = { girlId: s.id, hash, lines: [], got: [] };   // 狀態變了:舊台詞作廢
   }
-  if (state.quips.lines.length >= QUIP_STOCK) return;
-  genBusy = true;
-  try {
-    const line = await llmJobQuiet([
-      { role: "system", content: buildQuipPrompt({
-          character: { name: s.name, personality: s.personality, speech_style: s.speech, backstory: s.backstory || "" },
-          relationship: { stage: s.stage, affection: s.affection },
-          player: { name: state.settings.player || "主人" },
-          quests: questSnapshot(),
-          content_rating: state.settings.rating || "sfw",
-        }) },
-      { role: "user", content: "輸出她此刻想對他說的那一句話。" },
-    ]);
-    // 狀態沒變才收下(生成期間任務可能已完成)
-    if (line && state.quips?.girlId === s.id && state.quips?.hash === questHash()) {
-      state.quips.lines.push(line.split("\n")[0].slice(0, 60));
+  state.quips.got ??= [];
+  for (let i = 0; i < QUIP_STOCK; i++) {
+    if (state.quips.lines.length >= QUIP_STOCK) return;
+    const key = `quip:${s.id}:${strHash(hash)}:${i}`;
+    if (state.quips.got.includes(key)) continue;
+    const r = await genPost(key, quipMsgs(s));
+    if (r?.status === "done" && r.result && state.quips.girlId === s.id && state.quips.hash === questHash()) {
+      state.quips.lines.push(r.result.split("\n")[0].slice(0, 60));
+      state.quips.got.push(key);
       dirty = true; scheduleSave();
     }
-  } catch (e) { /* 之後再試 */ }
-  genBusy = false;
+  }
 }
 
-// ── 半預製聊天:背景生成她的下一句(s.chatLine);淫紋要「有紋+話備好」才亮 ──
-// 失敗退避:連續失敗後拉長重試間隔(不轟炸 Ollama);連敗 3 次 → 淫紋照亮,
-// 點開走即時生成保底(錯誤會顯示出來,不再無聲卡死)。
-let chatGenFail = { count: 0, at: 0 };
-async function pumpChatLines() {
-  if (genBusy || chatWith || watchWith || sacrificeWith || sacSummon || isAsleep()) return;
-  if (!state.settings.model) return;   // 無模型:開聊時走即時罐頭,不預製
-  if (chatGenFail.count && Date.now() - chatGenFail.at < Math.min(60000, 10000 * chatGenFail.count)) return;
-  const s = kanbanSuccubus();
-  if (!s || s.chatLine || s.summoner?.taken) return;
-  genBusy = true;
+// 每 2 秒一輪:下單+收貨(伺服器排隊生成;對話/獻祭/睡眠中不下聊天與氣泡單)
+let genTickBusy = false, lastGenAt = 0;
+async function genTick(force = false) {
+  if (genTickBusy || !state.settings.model) return;
+  if (!force && Date.now() - lastGenAt < 2000) return;
+  lastGenAt = Date.now();
+  genTickBusy = true;
   try {
-    const hist = s.history || [];
-    let cut = 0;
-    for (let i = hist.length - 1; i >= 0; i--) if (hist[i].role === "sys") { cut = i + 1; break; }
-    const recent = hist.slice(cut).slice(-40)
-      .filter(m => m.role === "user" || m.role === "assistant")
-      .map(m => ({ role: m.role, content: m.content }));
-    const last = recent[recent.length - 1];
-    const inst = !recent.length
-      ? "(旁白:淫紋亮起——你想找他說話。依你的個性主動開啟一個新話題,一句像簡訊的話。)"
-      : last.role === "user"
-        ? "(旁白:回覆他最後那句話。一句像簡訊的話,依你的個性。)"
-        : "(旁白:他還沒回你,隔了一段時間,你忍不住又主動傳了一句。換個說法或話題,不要重複之前的話。)";
-    const msgs = [
-      { role: "system", content: buildSystemPrompt(buildCtx(s)) },
-      ...recent,
-      { role: "user", content: inst },
-    ];
-    const text = await llmJobQuiet(msgs);
-    if (!text) throw new Error("empty");
-    chatGenFail = { count: 0, at: 0 };
-    // 生成期間她可能換人/被召喚走:狀態沒變才收下
-    if (kanbanSuccubus()?.id === s.id && !s.summoner?.taken && !s.chatLine) {
-      s.chatLine = { text: text.split("\n")[0].slice(0, 300) || text.slice(0, 300), t: Date.now() };
-      dirty = true; scheduleSave(); renderAll();   // 淫紋亮起
-    }
-  } catch (e) {
-    chatGenFail = { count: chatGenFail.count + 1, at: Date.now() };
-    if (chatGenFail.count === 3) renderAll();   // 保底生效:亮紋改走即時模式
-  }
-  genBusy = false;
+    const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep();
+    if (idle) await genChatOrder();
+    await genActOrders();
+    if (idle) await genQuipOrders();
+  } catch (e) { /* 下輪再試 */ }
+  genTickBusy = false;
 }
+
+// 半預製聊天的失敗計數:連敗 3 次 → 淫紋照亮走即時生成保底(renderCrest 參照)
+let chatGenFail = { count: 0, at: 0 };
 
 // 點看板娘時取一句預生台詞(即取即消耗);沒有就回 null 讓罐頭上場
 function popQuip() {
@@ -1798,9 +1804,7 @@ setInterval(() => {
   if (expireKanban()) changed = true;
   if (checkSummonerDraws()) changed = true;
   if (processTakenActs()) changed = true;
-  pumpChatLines();   // 最優先:她的下一句聊天(卡住=淫紋不亮,玩家最有感)
-  pumpActTexts();    // 其次:觀戰紀錄文字
-  pumpQuips();       // 最後:看板娘委託台詞
+  genTick();   // 代工生成:下單+收貨(排隊在 RP5 伺服器跑,手機關螢幕也不停)
 
   const asleep = isAsleep();
   if (asleep !== lastSleepState) {
@@ -2767,8 +2771,8 @@ window.DBG = {
   },
   summonKanban: (id) => summonKanban(id),
   tickActs: () => processTakenActs(),
-  pumpActs: () => pumpActTexts(),
-  pumpChat: () => pumpChatLines(),
+  pumpActs: () => genTick(true),
+  pumpChat: () => genTick(true),
   dateBurst: (id) => { const s = state.succubi.find(x => x.id === id); if (s?.summoner) { rivalDateBurst(s, Date.now()); scheduleSave(); renderAll(); } },
 };
 

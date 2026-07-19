@@ -47,6 +47,22 @@ def db() -> sqlite3.Connection:
             created  REAL NOT NULL
         )"""
     )
+    # 代工生成佇列:手機下單(key+messages),伺服器背景跑 Ollama、存結果等收貨。
+    # 手機關螢幕/切 app 也照跑;伺服器不檢視內容、不碰存檔(數字仍由手機算)。
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS gen_tasks (
+            key      TEXT PRIMARY KEY,  -- 手機定義的去重鍵(內容狀態指紋)
+            endpoint TEXT NOT NULL,
+            model    TEXT NOT NULL,
+            messages TEXT NOT NULL,
+            options  TEXT,
+            status   TEXT NOT NULL DEFAULT 'pending',  -- pending|running|done|error
+            result   TEXT,
+            error    TEXT,
+            created  REAL NOT NULL,
+            updated  REAL NOT NULL
+        )"""
+    )
     return conn
 
 
@@ -249,6 +265,117 @@ def random_script(category: str):
         return {"method": None, "body": None}
     r = random.choice(rows)
     return {"id": r[0], "method": r[1], "body": r[2]}
+
+
+# ---- 代工生成佇列(手機下單/收貨;伺服器背景跑 Ollama)----
+
+
+class GenIn(BaseModel):
+    key: str
+    endpoint: str
+    model: str
+    messages: list
+    options: dict | None = None
+    retry: bool = False  # True:若該 key 先前失敗,重新排隊
+
+
+GEN_WAKE = asyncio.Event()
+
+
+@app.post("/api/gen")
+def gen_submit(t: GenIn):
+    """下單即查詢:同 key 重複下單無害,回傳當前狀態(done 時附結果)。
+    先前失敗且 retry=True → 重新排隊(仍回報 error 讓手機計失敗次數)。"""
+    now = time.time()
+    with db() as conn:
+        row = conn.execute(
+            "SELECT status, result, error FROM gen_tasks WHERE key = ?", (t.key,)
+        ).fetchone()
+        if row:
+            status, result, error = row
+            if status == "error" and t.retry:
+                conn.execute(
+                    "UPDATE gen_tasks SET status='pending', error=NULL, updated=? WHERE key=?",
+                    (now, t.key),
+                )
+                GEN_WAKE.set()
+            return {"key": t.key, "status": status, "result": result, "error": error}
+        conn.execute(
+            "INSERT INTO gen_tasks (key, endpoint, model, messages, options, status, created, updated) "
+            "VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
+            (t.key, t.endpoint.rstrip("/"), t.model,
+             json.dumps(t.messages, ensure_ascii=False),
+             json.dumps(t.options or {}, ensure_ascii=False), now, now),
+        )
+    GEN_WAKE.set()
+    return {"key": t.key, "status": "pending", "result": None, "error": None}
+
+
+@app.delete("/api/gen")
+def gen_clear():
+    """清空代工佇列(測試/改內容後重生用)。"""
+    with db() as conn:
+        conn.execute("DELETE FROM gen_tasks")
+    return {"ok": True}
+
+
+async def _gen_worker():
+    """一次跑一件;前景聊天 job 進行中就讓路(別讓背景生成搶慢即時對話)。"""
+    while True:
+        try:
+            if any(not j["done"] for j in CHAT_JOBS.values()):
+                await asyncio.sleep(1)
+                continue
+            with db() as conn:
+                conn.execute("DELETE FROM gen_tasks WHERE created < ?", (time.time() - 172800,))
+                row = conn.execute(
+                    "SELECT key, endpoint, model, messages, options FROM gen_tasks "
+                    "WHERE status='pending' ORDER BY created LIMIT 1"
+                ).fetchone()
+            if not row:
+                GEN_WAKE.clear()
+                try:
+                    await asyncio.wait_for(GEN_WAKE.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    pass
+                continue
+            key, endpoint, model, messages, options = row
+            with db() as conn:
+                conn.execute("UPDATE gen_tasks SET status='running', updated=? WHERE key=?", (time.time(), key))
+            text, err = "", None
+            try:
+                body = {"model": model, "messages": json.loads(messages),
+                        "stream": True, "options": json.loads(options or "{}")}
+                async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
+                    async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
+                        async for line in r.aiter_lines():
+                            if not line.strip():
+                                continue
+                            o = json.loads(line)
+                            if o.get("error"):
+                                err = str(o["error"])
+                                break
+                            text += (o.get("message") or {}).get("content", "")
+                            if o.get("done"):
+                                break
+            except Exception as e:
+                err = f"Ollama 連線失敗({type(e).__name__})"
+            if not text.strip() and not err:
+                err = "空回應"
+            with db() as conn:
+                conn.execute(
+                    "UPDATE gen_tasks SET status=?, result=?, error=?, updated=? WHERE key=?",
+                    ("done" if text.strip() else "error",
+                     text if text.strip() else None,
+                     None if text.strip() else err, time.time(), key),
+                )
+        except Exception:
+            await asyncio.sleep(2)  # worker 永不死
+
+
+@app.on_event("startup")
+async def _start_gen_worker():
+    asyncio.create_task(_gen_worker())
 
 
 # Testword 編輯召喚師池(dateChance 等行為參數);整包覆寫 content/summoners.json
