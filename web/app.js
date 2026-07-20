@@ -4,9 +4,11 @@
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt } from "./content/persona_builder.js";
+import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
+loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.12(2026-07-20)人設池擴充";
+const APP_VER = "v5.13(2026-07-20)人物生成重構";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -791,19 +793,24 @@ function setSummonSacBtns(enabled) {
   if (done) { done.disabled = !enabled; done.textContent = sacSummon ? `召喚(已獻 ${sacSummon.count} 人)` : "召喚"; }
 }
 
+// 獻祭人數 → luck(0~100):越多人越容易開出高評級 → 高稀有度(SSR 真的開得出來)
+const LUCK_BY_COUNT = { 1: 0, 2: 18, 3: 35, 4: 55, 5: 75, 6: 92 };
+
 function summonWithCount(n) {
   if (n < 1 || state.succubi.length >= rosterCap()) { renderAll(); return; }
   const today = dayNum();
-  // 名字防撞:優先抽名冊裡還沒人用的名字,全用光才允許同名
-  const usedNames = new Set(state.succubi.map(x => x.name));
-  const freeNames = NAME_POOL.filter(x => !usedNames.has(x));
-  const s = {
+  // 新制:原型骨幹+評級抽卡(persona_pools.json;nsfw 項目依分級門控);池子沒載到退回舊制
+  let gen = null;
+  try {
+    gen = generateGirl({
+      luck: LUCK_BY_COUNT[Math.min(6, n)] || 0,
+      rating: state.settings.rating || "sfw",
+      usedNames: state.succubi.map(x => x.name),
+    });
+  } catch (e) { gen = null; }
+
+  const base = {
     id: uid(),
-    name: pick(freeNames.length ? freeNames : NAME_POOL),
-    rarity: rollRarity(n),
-    personality: pick2(PERSONALITY_POOL),
-    speech: pick(SPEECH_POOL),
-    dna: { seed: Math.floor(Math.random() * 1e9), traits: [pick(TRAIT_POOL.hair), pick(TRAIT_POOL.eyes), pick(TRAIT_POOL.body), pick(TRAIT_POOL.extra)] },
     affection: 0,
     stage: "stranger",
     portraitReady: false,
@@ -816,8 +823,21 @@ function summonWithCount(n) {
     drawIvlH: randInt(2, 5),                           // 隱藏:抽召喚師的間隔(小時)
     nextDraw: Date.now() + randInt(2, 5) * HOUR,       // 下次抽取時間戳
     gift: pick(GIFT_KEYS),                             // 天賦擴充(看板娘時暫加、獻祭時有機率永久)
-    ...makeBackstory(),   // job + backstory:她被召喚前的現實人生
+    dna: { seed: Math.floor(Math.random() * 1e9), traits: [pick(TRAIT_POOL.hair), pick(TRAIT_POOL.eyes), pick(TRAIT_POOL.body), pick(TRAIT_POOL.extra)] },
   };
+  const s = gen ? { ...base, ...gen } : (() => {
+    // 舊制退路(池子載入失敗時)
+    const usedNames = new Set(state.succubi.map(x => x.name));
+    const freeNames = NAME_POOL.filter(x => !usedNames.has(x));
+    return {
+      ...base,
+      name: pick(freeNames.length ? freeNames : NAME_POOL),
+      rarity: rollRarity(n),
+      personality: pick2(PERSONALITY_POOL),
+      speech: pick(SPEECH_POOL),
+      ...makeBackstory(),
+    };
+  })();
   state.succubi.push(s);
   log(`獻祭 ${n} 人,召喚出【${s.rarity}】${s.name}`);
   scheduleSave();
@@ -1212,7 +1232,8 @@ function actMsgs(s, su, act) {
   const ctx = {
     world: WORLD_LORE,
     content_rating: state.settings.rating || "sfw",
-    character: { name: s.name, personality: s.personality, backstory: s.backstory, appearance_dna: s.dna },
+    character: { name: s.name, personality: s.personality, backstory: s.backstory, appearance_dna: s.dna,
+                 look: s.look || null, special_traits: s.specialTraits || null, libido: s.libido || null },
     summoner: su,
     scene: { type: act.type, location: act.location, location_style: spot?.desc || null },
     rival: { stage_idx: st.idx, stage_name: st.name, affection: s.summoner?.affection || 0,
@@ -1421,6 +1442,13 @@ function buildCtx(s) {
       speech_style: s.speech, appearance_dna: s.dna, backstory: s.backstory || "",
       schedule: sch,
       current_activity: sch[slot] || null,   // 這個時段她原本的生活在做什麼
+      // 新制人設(原型骨幹;舊魅魔沒有這些欄位,persona_builder 會自動略過)
+      tone: s.tone || null, catchphrases: s.catchphrases || null, reactions: s.reactions || null,
+      quirk: s.quirk || null, contrast: s.contrast || null,
+      likes: s.likes || null, dislikes: s.dislikes || null, hobbies: s.hobbies || null,
+      chrono: s.chrono || null, arc: s.arc || null,
+      libido: s.libido || null, look: s.look || null, special_traits: s.specialTraits || null,
+      job_desc: s.jobDesc || null,
     },
     relationship: {
       stage: s.stage, affection: s.affection,
@@ -2507,6 +2535,8 @@ function renderDetail(s, root) {
       </div>
       <div class="traits">${s.job ? `<span style="color:var(--cyan)">前${esc(s.job)}</span>` : ""}${s.personality.map(p => `<span>${p}</span>`).join("")}<span>${s.speech}</span>${s.dna.traits.map(t => `<span>${t}</span>`).join("")}</div>
       ${s.backstory ? `<div class="aff-line dim small" style="max-width:32em;margin:0 auto">${esc(s.backstory)}</div>` : ""}
+      ${s.specialTraits?.length ? `<div class="aff-line small" style="color:var(--gold)">${s.specialTraits.map(t => `${RARITY_MARK[t.rarity] || ""}${esc(t.name)}`).join("  ")}</div>` : ""}
+      ${s.look ? `<div class="aff-line dim small">${esc([s.look.build, s.look.bust, s.look.hair, s.look.eyes].filter(Boolean).join("、"))}</div>` : ""}
       ${s.schedule ? `<div class="schedule">${SCHEDULE_SLOTS.map(k => {
         const now = timeSlot() === k;
         return `<div class="sch-row${now ? " now" : ""}"><span class="sch-t">${SLOT_LABEL[k]}</span><span>${esc(s.schedule[k])}</span></div>`;
@@ -2842,6 +2872,8 @@ window.DBG = {
     enterWatch(s, playerType);
   },
   summonKanban: (id) => summonKanban(id),
+  summon: (n) => summonWithCount(n),
+  genGirl: (luck = 0, rating = "sfw") => generateGirl({ luck, rating }),
   tickActs: () => processTakenActs(),
   pumpActs: () => genTick(true),
   pumpChat: () => genTick(true),

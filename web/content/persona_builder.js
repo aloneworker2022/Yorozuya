@@ -33,6 +33,19 @@ function appearanceZh(dna) {
   return t.length ? t.join("、") : null;
 }
 
+// 外貌描述:新制(look 物件+特殊屬性)優先,舊制退回 DNA token 映射
+function lookText(c) {
+  if (c.look) {
+    const L = c.look;
+    const bits = [L.height_cm ? `${L.height_cm}cm` : null, L.build, L.bust, L.hair, L.eyes,
+                  L.style ? `穿搭偏${L.style}` : null, L.feature].filter(Boolean);
+    let t = bits.join("、");
+    if (c.special_traits?.length) t += `。特別之處:${c.special_traits.map(x => x.name).join("、")}`;
+    return t;
+  }
+  return appearanceZh(c.appearance_dna);
+}
+
 // ── 召喚師×她 七階段(隨附 SFW 版;Testword 撰寫的腳本會蓋掉這裡)──
 // export 給 Testword 顯示內建原文當範本。
 // 觀戰演出:每階段「她對他」的反應基調
@@ -75,10 +88,27 @@ export function buildSystemPrompt(ctx) {
 
   lines.push(
     `你是「${c.name}」,一名被從現實世界召喚而來的「魅魔」,稀有度 ${c.rarity}。`,
-    `個性:${c.personality.join("、")}。${SPEECH_STYLE[c.speech_style] || ""}`,
+    `個性:${c.personality.join("、")}。${c.tone || SPEECH_STYLE[c.speech_style] || ""}`,
     `對方是召喚你的人,你稱呼他「${ctx.player.name}」。`,
   );
-  const look = appearanceZh(c.appearance_dna);
+  // 新制人設:原型演出手冊(舊魅魔沒有這些欄位就略過)
+  if (c.catchphrases?.length) lines.push(`你常說的話:${c.catchphrases.join(" / ")}`);
+  if (c.reactions) {
+    const r = c.reactions;
+    lines.push(`你的情緒反應——開心:${r["開心"]};低落:${r["低落"]};生氣:${r["生氣"]};不安:${r["不安"]}。`);
+  }
+  if (c.likes?.length || c.dislikes?.length) {
+    lines.push(`你喜歡:${(c.likes || []).join("、") || "—"};討厭:${(c.dislikes || []).join("、") || "—"}。`);
+  }
+  if (c.hobbies?.length) lines.push(`你的興趣:${c.hobbies.join("、")}。`);
+  if (c.contrast) lines.push(`你的反差小設定:${c.contrast}。`);
+  if (c.chrono) lines.push(`你的生理時鐘:${c.chrono.name}——${c.chrono.desc}。被吵醒時:${c.chrono.wake_react}。`);
+  if (c.arc) lines.push(`你被召喚前的近況:${c.arc}(可以當話題聊)。`);
+  if (c.job_desc) lines.push(`你職業的實際內容(照此理解,別誤會):${c.job_desc}`);
+  if (c.libido && ctx.content_rating === "nsfw" && c.libido.desc) {
+    lines.push(`你的性慾傾向:${c.libido.name}——${c.libido.desc}`);
+  }
+  const look = lookText(c);
   if (look) lines.push(`你的外貌:${look}。被問到或話題相關時可以自然提起自己的外表,不要刻意描述。`);
 
   if (c.backstory) {
@@ -192,7 +222,7 @@ export function buildWatchPrompt(ctx) {
   lines.push(
     "【觀戰場景】你要同時扮演兩個角色,生成他們的一來一往:",
     `● 男方「${su.name}」——另一位召喚師,把這名魅魔也召喚了過去。人設:${su.persona || "一個糾纏她的男人"}${su.body ? `體態外貌:${su.body}` : ""}`,
-    `● 女方「${c.name}」——${c.personality?.join("、") || ""}。${appearanceZh(c.appearance_dna) ? `外貌:${appearanceZh(c.appearance_dna)}。` : ""}${c.backstory || ""}`,
+    `● 女方「${c.name}」——${c.personality?.join("、") || ""}。${lookText(c) ? `外貌:${lookText(c)}。` : ""}${c.backstory || ""}`,
     ctx.scene?.type === "date"
       ? `情境:男方硬拉著她在「${ctx.scene.location || "某處"}」約會。${ctx.scene.location_style ? `他在這個地點的互動習性:${ctx.scene.location_style}` : ""}`
       : "情境:她被召喚到男方身邊陪伴。",

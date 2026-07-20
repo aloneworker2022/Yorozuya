@@ -395,10 +395,26 @@ def put_summoners(body: dict):
     return {"ok": True, "count": len(body["summoners"])}
 
 
+# /edit_person 編輯人物生成池;整包覆寫 content/persona_pools.json
+@app.put("/api/pools")
+def put_pools(body: dict):
+    if not isinstance(body.get("female"), dict) or not isinstance(body.get("male"), dict):
+        raise HTTPException(400, "需要 {female:{...}, male:{...}}")
+    path = WEB_DIR / "content" / "persona_pools.json"
+    path.write_text(json.dumps(body, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return {"ok": True}
+
+
 @app.get("/testword")
 def testword():
     from fastapi.responses import FileResponse
     return FileResponse(WEB_DIR / "testword.html")
+
+
+@app.get("/edit_person")
+def edit_person():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "edit_person.html")
 
 
 @app.get("/body")
