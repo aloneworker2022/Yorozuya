@@ -2539,8 +2539,9 @@ function renderSuccubi() {
       <div class="sinfo">
         <div class="sname"><b>${esc(s.name)}</b><span class="rbadge">${s.rarity}</span>
           <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(s.stage)}</span>
-          ${isKanban(s.id) ? `<span class="stage-chip" style="color:var(--gold)">★ 看板娘</span>` : ""}
-          ${s.summoner && !s.ntr ? `<span class="stage-chip" style="color:var(--red)">⚠ 被纏上</span>` : ""}</div>
+          ${!s.ntr && s.summoner?.taken ? `<span class="stage-chip" style="color:var(--red)">→ 被召喚走</span>`
+            : isKanban(s.id) ? `<span class="stage-chip" style="color:var(--gold)">★ 在店頭</span>` : ""}
+          ${s.summoner && !s.ntr ? `<span class="stage-chip" style="color:var(--red)">⚠ ${esc(summonerById(s.summoner.id)?.name || "被纏上")}${s.summoner.ringUnlocked ? "・已解環" : ""}</span>` : ""}</div>
         <div class="aff-bar"><div class="${s.affection < 0 ? "neg" : ""}" style="width:${barW}%"></div></div>
       </div>
       <div class="status-dot ${st}"></div>`;
@@ -2660,52 +2661,34 @@ function renderKanban() {
   const asleep = isAsleep();
   zzz.classList.toggle("hidden", !asleep);
 
-  // 三態:對話中的魅魔(單人) / 在任看板娘們(亮,並排) → 休息中的魅魔(暗) → 召喚書(名冊全空)
+  // 主畫面只站「此刻真的在店頭」的看板娘:對話中的那位,或在任且沒被召喚走的。
+  // 沒召喚看板娘(或她被召喚走)→ 店頭空無一人;名冊全空 → 召喚書。狀態一律看魅魔欄。
   const chatGirl = chatWith && state.succubi.find(x => x.id === chatWith);
-  const girls = chatGirl ? [chatGirl] : kanbanSuccubi();
+  const girls = chatGirl ? [chatGirl] : kanbanSuccubi().filter(g => !g.summoner?.taken);
 
   if (girls.length) {
     book.classList.add("hidden");
     girl.classList.remove("hidden");
     girl.className = `r-${girls[0].rarity}` + (girls.length > 1 ? " multi" : "");
     const size = girls.length >= 3 ? 5 : girls.length === 2 ? 7 : 9;   // 人多站小一點
-    girl.innerHTML = girls.map(g => {
-      const taken = !chatGirl && g.summoner?.taken;   // 被別的召喚師召喚走了(不在你身邊)
-      const su = taken ? summonerById(g.summoner.id) : null;
-      const note = taken
-        ? `<span class="krem" style="color:var(--red)">(被 ${esc(su?.name || "他")} 召喚走了)</span>`
-        : "";
-      return `<div class="kgirl r-${g.rarity}${taken ? " taken" : ""}" data-kid="${g.id}">${girlSVG("#241333", size)}<div class="kname">${esc(g.name)}${note}</div></div>`;
-    }).join("");
+    girl.innerHTML = girls.map(g =>
+      `<div class="kgirl r-${g.rarity}" data-kid="${g.id}">${girlSVG("#241333", size)}<div class="kname">${esc(g.name)}</div></div>`
+    ).join("");
     girl.onclick = null;
     girl.querySelectorAll(".kgirl").forEach(el => el.onclick = () => {
       const g = state.succubi.find(x => x.id === el.dataset.kid);
       if (!g) return;
-      if (!chatGirl && g.summoner?.taken) {   // 她被召喚走:提示玩家去窺視/搶回
-        kanbanSay(pick(["她現在不在你身邊……", "她被那個男人召喚走了。", "……用淫紋看看她在做什麼吧。"]));
-        return;
-      }
       // 優先冒她自己的預生委託台詞(秒出,零等待);沒貨才用罐頭
       kanbanSay(asleep ? pick(REACT.sleepClick) : (popQuip(g) || pick(REACT.idle)));
     });
+  } else if (!state.succubi.length) {
+    girl.classList.add("hidden");
+    book.classList.remove("hidden");
+    book.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(TAUNTS));
   } else {
-    const rest = restingSuccubus();
-    if (rest) {
-      book.classList.add("hidden");
-      girl.classList.remove("hidden");
-      girl.className = `r-${rest.rarity} resting`;
-      girl.innerHTML = girlSVG("#241333", 9) +
-        `<div class="kname">${esc(rest.name)}<span class="krem" style="color:var(--dim)">(回到自己的生活中)</span></div>`;
-      girl.onclick = () => {
-        if (asleep) { kanbanSay(pick(REACT.sleepClick)); return; }
-        if (state.gold < kanbanCost()) { kanbanSay(`哼,連 ${kanbanCost()} 金都沒有,還想叫我來?`); return; }
-        summonKanban(rest.id);
-      };
-    } else {
-      girl.classList.add("hidden");
-      book.classList.remove("hidden");
-      book.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(TAUNTS));
-    }
+    // 有魅魔但沒人在店頭:空無一人(去魅魔欄召喚看板娘)
+    girl.classList.add("hidden");
+    book.classList.add("hidden");
   }
 }
 
