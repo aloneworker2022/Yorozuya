@@ -395,11 +395,11 @@ def put_summoners(body: dict):
     return {"ok": True, "count": len(body["summoners"])}
 
 
-# /edit_person 編輯人物生成池;整包覆寫 content/persona_pools.json
+# /edit_person 編輯魅魔生成池;整包覆寫 content/persona_pools.json(男性=召喚師,走 /api/summoners)
 @app.put("/api/pools")
 def put_pools(body: dict):
-    if not isinstance(body.get("female"), dict) or not isinstance(body.get("male"), dict):
-        raise HTTPException(400, "需要 {female:{...}, male:{...}}")
+    if not isinstance(body.get("female"), dict):
+        raise HTTPException(400, "需要 {female:{...}}")
     path = WEB_DIR / "content" / "persona_pools.json"
     path.write_text(json.dumps(body, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return {"ok": True}
