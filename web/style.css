@@ -139,6 +139,9 @@ body.chat-mode #kanban-girl svg {
 #kanban-girl.multi { display: flex; align-items: flex-end; justify-content: center; gap: 3vw; }
 #kanban-girl .kgirl { cursor: pointer; text-align: center; }
 #kanban-girl .kgirl svg { filter: drop-shadow(0 0 14px var(--rc, #9aa0b5)); }
+/* 被召喚走:暗淡剪影 + 去光暈,和「休息中」一致的視覺語彙,一眼看出她不在 */
+#kanban-girl .kgirl.taken { opacity: .42; }
+#kanban-girl .kgirl.taken svg { filter: grayscale(.7) brightness(.75) drop-shadow(0 0 6px rgba(0,0,0,.5)); }
 #kanban-girl .kname { margin-top: .4em; font-size: .8em; color: var(--dim); letter-spacing: .3em; }
 #kanban-girl .krem { display: block; letter-spacing: normal; font-size: .85em; color: var(--gold); margin-top: .2em; }
 /* 休息中(未召喚為看板娘):暗淡、去光暈,提示可再召喚 */

@@ -2669,13 +2669,22 @@ function renderKanban() {
     girl.classList.remove("hidden");
     girl.className = `r-${girls[0].rarity}` + (girls.length > 1 ? " multi" : "");
     const size = girls.length >= 3 ? 5 : girls.length === 2 ? 7 : 9;   // 人多站小一點
-    girl.innerHTML = girls.map(g =>
-      `<div class="kgirl r-${g.rarity}" data-kid="${g.id}">${girlSVG("#241333", size)}<div class="kname">${esc(g.name)}</div></div>`
-    ).join("");
+    girl.innerHTML = girls.map(g => {
+      const taken = !chatGirl && g.summoner?.taken;   // 被別的召喚師召喚走了(不在你身邊)
+      const su = taken ? summonerById(g.summoner.id) : null;
+      const note = taken
+        ? `<span class="krem" style="color:var(--red)">(被 ${esc(su?.name || "他")} 召喚走了)</span>`
+        : "";
+      return `<div class="kgirl r-${g.rarity}${taken ? " taken" : ""}" data-kid="${g.id}">${girlSVG("#241333", size)}<div class="kname">${esc(g.name)}${note}</div></div>`;
+    }).join("");
     girl.onclick = null;
     girl.querySelectorAll(".kgirl").forEach(el => el.onclick = () => {
       const g = state.succubi.find(x => x.id === el.dataset.kid);
       if (!g) return;
+      if (!chatGirl && g.summoner?.taken) {   // 她被召喚走:提示玩家去窺視/搶回
+        kanbanSay(pick(["她現在不在你身邊……", "她被那個男人召喚走了。", "……用淫紋看看她在做什麼吧。"]));
+        return;
+      }
       // 優先冒她自己的預生委託台詞(秒出,零等待);沒貨才用罐頭
       kanbanSay(asleep ? pick(REACT.sleepClick) : (popQuip(g) || pick(REACT.idle)));
     });
