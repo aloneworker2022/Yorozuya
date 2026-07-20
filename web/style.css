@@ -571,6 +571,14 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   font: inherit; font-size: .85em; padding: .35em .9em; cursor: pointer;
 }
 #chat-send:disabled { opacity: .35; }
+/* 詢問鈕:與輸入框、送出鈕同高對齊,寬度較短 */
+#chat-ask {
+  background: rgba(90, 200, 255, .16); border: 1px solid rgba(90, 200, 255, .35);
+  border-radius: 10px; color: var(--cyan);
+  font: inherit; font-size: .85em; padding: .35em .7em; cursor: pointer;
+  flex-shrink: 0;
+}
+#chat-ask:disabled { opacity: .35; cursor: default; }
 
 /* 觀戰控制列 */
 #watch-controls { display: flex; gap: .5em; background: var(--panel); padding: .8em; margin-top: .5em; border-radius: 8px; flex-shrink: 0; }

@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.14(2026-07-20)交配環系統";
+const APP_VER = "v5.15(2026-07-20)召喚時序·詢問機制";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1005,6 +1005,8 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
   if (inputEl) { inputEl.disabled = false; inputEl.placeholder = "說點什麼…(Enter 送出)"; inputEl.value = ""; }
   const sendBtn = document.getElementById("chat-send");
   if (sendBtn) sendBtn.disabled = false;
+  const askBtn = document.getElementById("chat-ask");
+  if (askBtn) askBtn.disabled = false;
   setChatWaiting(false);
   scheduleSave(); renderAll();
   renderChatLog(s);
@@ -1678,6 +1680,83 @@ async function sendChatMsg() {
   }
 }
 
+// 玩家詢問她「你不在的時候發生了什麼」的台詞/她的反應(SFW 佔位,可日後移到內容模組)
+const ASK_PLAYER_LINE = "「老實說……我不在的時候,有沒有發生什麼事?」";
+const ASK_NONE_LINES = [   // 沒有可說的紀錄 → 她生氣離開
+  "「你什麼意思?懷疑我?……我不想跟你說話了。」",
+  "「莫名其妙。沒有的事你也要問——我走了。」",
+  "「你就是這樣不信任我對吧。……夠了。」",
+];
+const ASK_AFTER_LINES = [   // 說完了 → 不悅、心累,不會加分
+  "「……問完了?開心了嗎。」",
+  "「你要我全說出來,說完了你又是這種表情。」",
+  "「別再問了。這種事,你以為我想講?」",
+];
+
+// 詢問:不送出玩家輸入,而是問她不在時發生的事,她坦白 1~2 則未看過的紀錄。
+// 這種對談不加情感(0~−1),沒有可說的就生氣離開。她此刻若正被召喚中會走觀戰,不會進到這裡。
+async function askAboutActs() {
+  const s = state.succubi.find(x => x.id === chatWith);
+  if (!s || !chatSession || chatSession.busy) return;
+  if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
+  processTakenActs();   // 先把離線期間累積的紀錄補算出來
+  const su = s.summoner ? summonerById(s.summoner.id) : null;
+  const unseen = su ? unseenActs(s) : [];
+
+  chatSession.busy = true;
+  setChatWaiting(true);
+  const sendBtn = document.getElementById("chat-send");
+  const askBtn = document.getElementById("chat-ask");
+  if (sendBtn) sendBtn.disabled = true;
+  if (askBtn) askBtn.disabled = true;
+  vnShow(state.settings.player || "你", ASK_PLAYER_LINE, "user");
+  await new Promise(r => setTimeout(r, 900));
+
+  // 沒有未看過的紀錄(含她根本沒被纏上)→ 她生氣,情感 −1,離開對話
+  if (!su || !unseen.length) {
+    vnShow(s.name, pick(ASK_NONE_LINES), "ai");
+    vnDone();
+    applyAffection(s, -1);
+    chatSession.ended = true;
+    scheduleSave();
+    setTimeout(() => { if (chatSession?.ended) exitChat(); }, 2400);
+    return;
+  }
+
+  // 坦白 1~2 則(從最舊開始);沒生成好的文字當場現生
+  const take = Math.min(randInt(1, 2), unseen.length);
+  for (let i = 0; i < take; i++) {
+    const act = unseenActs(s)[0];
+    if (!act) break;
+    try {
+      if (!act.text) {
+        vnTyping(true);
+        act.text = await llmJobRun(actMsgs(s, su, act), acc => vnShowWatch(su, s, acc, false, act), "他:過來。\n她:……別這樣。");
+      }
+      vnShowWatch(su, s, act.text, true, act);
+      vnDone();
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      break;
+    }
+    act.seen = true;
+    await new Promise(r => setTimeout(r, 2400));
+  }
+
+  // 詢問不加情感,反而 0~−1(她被逼著全招,心更遠了)
+  applyAffection(s, randInt(-1, 0));
+  vnShow(s.name, pick(ASK_AFTER_LINES), "ai");
+  vnDone();
+  scheduleSave();
+  if (chatSession && !chatSession.ended) {
+    chatSession.busy = false;
+    setChatWaiting(false);
+    if (sendBtn) sendBtn.disabled = false;
+    if (askBtn) askBtn.disabled = false;
+    document.getElementById("chat-input")?.focus();
+  }
+}
+
 function appendMsg(role, text) {
   const msgs = document.getElementById("chat-msgs");
   const d = document.createElement("div");
@@ -1809,9 +1888,10 @@ function processActSlot(s, at) {
   return removed;
 }
 
-// 召喚師擲骰:每隻魅魔每 drawIvlH 小時擲一次(離線會補算,at 用歷史時點)。
-// 未纏上 → 1/20 被召喚師纏上(同時隨機抽 4~10 個性趣給這對)。
-// 已纏上且未被召喚中 → 1/2 他召喚她(taken 持續狀態,兩型都每小時生 act,不通知玩家)。
+// 召喚師擲骰(離線會補算,at 用歷史時點):
+// 未纏上 → 每 drawIvlH(2~5)小時擲一次,1/20 被召喚師纏上(同時抽 4~10 個性趣給這對)。
+// 已纏上且未被召喚中 → 每「一小時」判定一次,TAKEN_CHANCE 機率他召喚她。
+//   召喚(看板型)持續 2~5 小時,約會(date 型)固定持續 1 小時;解召喚後隔一小時才會再判定。
 function checkSummonerDraws() {
   if (!SUMMONERS.length) return false;
   const now = Date.now();
@@ -1820,10 +1900,12 @@ function checkSummonerDraws() {
   for (const s of state.succubi) {
     if (s.nextDraw == null) { s.drawIvlH ??= randInt(2, 5); s.nextDraw = now + s.drawIvlH * HOUR; }
     let rolls = 0;
-    while (now >= s.nextDraw && rolls < 30) {
+    while (now >= s.nextDraw && rolls < 60) {
       rolls++;
       const at = s.nextDraw;
       const busyWithPlayer = (chatWith === s.id && chatSession) || watchWith === s.id;
+      // 已纏上 → 每小時判定;未纏上 → 每 drawIvlH 小時判定
+      let step = s.summoner ? HOUR : s.drawIvlH * HOUR;
       if (!s.summoner) {
         const blocked = s.ntr || kanIds.has(s.id) || busyWithPlayer;
         if (!blocked && Math.random() < DRAW_CHANCE) {
@@ -1832,16 +1914,19 @@ function checkSummonerDraws() {
           log(`${su.name} 纏上了 ${s.name}!`);
           toast(`⚠ ${su.name} 纏上了 ${s.name}`, "bad");
         }
-      } else if (!s.summoner.taken && !s.ntr && !busyWithPlayer && Math.random() < TAKEN_CHANCE) {
+      } else if (s.summoner.taken) {
+        // 被召喚中:不重判,等時效到(processTakenActs 會解召喚),此小時空過
+      } else if (!s.ntr && !busyWithPlayer && Math.random() < TAKEN_CHANCE) {
         const su = summonerById(s.summoner.id);
         const isDate = Math.random() < (su?.dateChance ?? 0.5);
         const loc = isDate ? (su?.spots?.length ? pick(su.spots).name : pick(DATE_SPOTS)[0]) : null;
-        s.summoner.taken = { type: isDate ? "date" : "kanban", location: loc, until: at + randInt(2, 5) * HOUR, actAt: at };
+        const dur = isDate ? 1 : randInt(2, 5);   // 約會 1 小時;召喚 2~5 小時
+        s.summoner.taken = { type: isDate ? "date" : "kanban", location: loc, until: at + dur * HOUR, actAt: at };
       }
-      s.nextDraw += s.drawIvlH * HOUR;
+      s.nextDraw += step;
       changed = true;
     }
-    if (s.nextDraw <= now) { s.nextDraw = now + s.drawIvlH * HOUR; changed = true; }
+    if (s.nextDraw <= now) { s.nextDraw = now + (s.summoner ? HOUR : s.drawIvlH * HOUR); changed = true; }
   }
   return changed;
 }
@@ -2587,16 +2672,15 @@ function renderDetail(s, root) {
   if (s.summoner && !s.ntr) {
     const su = summonerById(s.summoner.id);
     if (su) {
-      const ready = readyUnseen(s).length;   // 只顯示文字備好的;生成中的不露出
+      // 玩家看不到過去的紀錄——只有「此刻正被召喚中」才顯示,且要靠聊天/約會當場撞見或事後詢問她
       const takenTxt = s.summoner.taken
-        ? "她現在正被召喚到對方身邊——用淫紋窺視,有機會把她拉回來"
+        ? "她此刻正被召喚到對方身邊——現在去約會或用淫紋聊天,能撞見實況、有機會把她拉回來"
         : "他隨時可能把她召喚過去";
       const ringTxt = s.summoner.ringUnlocked
         ? `<br><span style="color:var(--red)">⚠ 她已為他解開魔法環——隨時可能懷孕被娶走</span>`
         : "";
       summonerLine = `<div class="summoner-note">⚠ ${su.emoji} <b>${esc(su.name)}</b> 纏上了她(${esc(su.desc)})<br>
-      她對他的態度:<b>${rivalStageName(s.summoner.stage ?? 0)}</b> — ${takenTxt}${ringTxt}
-      ${ready ? `<br><button class="danger-btn" id="act-peek" style="margin-top:.4em">窺視他們的互動紀錄(1 淫紋・${ready} 則未讀)</button>` : ""}</div>`;
+      她對他的態度:<b>${rivalStageName(s.summoner.stage ?? 0)}</b> — ${takenTxt}${ringTxt}</div>`;
     }
   }
 
@@ -2645,11 +2729,6 @@ function renderDetail(s, root) {
     renderAll();
   });
   root.querySelector("#act-ransom")?.addEventListener("click", () => ransom(s.id));
-  root.querySelector("#act-peek")?.addEventListener("click", () => {
-    if ((state.chatCharges || 0) < 1) { toast("需要淫紋——去做委託觸發", "bad"); return; }
-    state.chatCharges--;
-    enterWatch(s, "chat");
-  });
   root.querySelector("[data-reroll]")?.addEventListener("click", () => { dateChoices = pickN(DATE_SPOTS, 5); renderAll(); });
   root.querySelectorAll("[data-loc]").forEach(b => b.onclick = () => enterChat(s.id, "date", b.dataset.loc));
 }
@@ -2811,6 +2890,7 @@ on("chat-back", "click", () => {
   if (watchWith) exitWatch(); else exitChat();
 });
 on("chat-send", "click", () => sendChatMsg());
+on("chat-ask", "click", () => askAboutActs());
 on("watch-next", "click", () => watchNext());
 on("watch-end", "click", () => exitWatch());
 on("sac-done", "click", () => exitSacrifice());
@@ -2948,6 +3028,11 @@ window.DBG = {
   rel: (id, suId) => { const s = state.succubi.find(x => x.id === id); if (s) { s.summoner = makeSummonerRel(suId || SUMMONERS[0]?.id); scheduleSave(); renderAll(); } return s?.summoner; },
   mate: (id) => { const s = state.succubi.find(x => x.id === id); if (!s?.summoner) return null; const rm = doMating(s, Date.now()); scheduleSave(); renderAll(); return { removed: rm, sm: s.summoner }; },
   actSlot: (id) => { const s = state.succubi.find(x => x.id === id); if (!s?.summoner) return null; const rm = processActSlot(s, Date.now()); scheduleSave(); renderAll(); return { removed: rm, sm: s.summoner }; },
+  // 測試:直接進聊天/約會(prepaid 跳過金幣/淫紋消耗),與詢問機制
+  chat: (id, type = "chat") => enterChat(id, type, null, true),
+  ask: () => askAboutActs(),
+  chatState: () => ({ chatWith, watchWith, ended: chatSession?.ended ?? null }),
+  drawTick: () => checkSummonerDraws(),
 };
 
 // ===== 啟動 =====
