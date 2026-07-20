@@ -6,7 +6,7 @@
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt } from "./content/persona_builder.js";
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.10(2026-07-19)";
+const APP_VER = "v5.11(2026-07-20)多看板娘";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -32,14 +32,17 @@ const EXPANSIONS = {
   kanban:   "看板娘時長",   // 小時 = 1 + lv
   crest:    "淫紋機率",     // 分母 = max(3, 10 - lv):基礎 1/10,極限 1/3
   drop:     "獻祭掉落率",   // 影響獻祭掉落(Phase 7)
+  cheap:    "召喚減費",     // 第二位起的看板娘費用每級 -1 金,地板 2 金
 };
-// 天賦可能值:7 個擴充軸 + 特殊「取消召喚師」(獻祭刷到就清掉所有召喚師)
+// 天賦可能值:8 個擴充軸 + 特殊「取消召喚師」(獻祭刷到就清掉所有召喚師)
 const GIFT_KEYS = [...Object.keys(EXPANSIONS), "cleanse"];
 function giftLabel(g) { return g === "cleanse" ? "取消所有召喚師(特殊)" : (EXPANSIONS[g] || "?"); }
 function expLv(k) {
   let lv = (state.expansions && state.expansions[k]) || 0;
-  const kg = kanbanSuccubus && kanbanSuccubus();   // 看板娘自帶擴充暫時加到玩家身上
-  if (kg && kg.gift === k) lv += 1;
+  // 在任看板娘自帶擴充暫時加到玩家身上(多看板娘可疊,每位 +1)
+  if (typeof kanbanSuccubi === "function" && state) {
+    for (const kg of kanbanSuccubi()) if (kg.gift === k) lv += 1;
+  }
   return lv;
 }
 function execCap() { return 1 + expLv("exec"); }
@@ -57,7 +60,7 @@ const DATE_TURNS = [2, 5];      // 約會 2~5 來回(付了 5 金,多聊幾句)
 // 淫紋觸發:看板娘在、醒著、沒滿層時,委託操作有機率喚起她想聊天的慾望
 // 基礎機率 1/crestDenom(擴充可從 1/20 提升到 1/3);完成委託 ×2
 function grantCrest(mult = 1) {
-  if (!kanbanSuccubus() || isAsleep()) return;
+  if (!kanbanSuccubi().length || isAsleep()) return;
   if ((state.chatCharges || 0) >= CREST_CAP) return;
   if (Math.random() >= mult / crestDenom()) return;
   state.chatCharges = (state.chatCharges || 0) + 1;
@@ -241,9 +244,8 @@ function defaultState() {
     succubi: [],  // 見 summon()
     dungeon: [],  // [{name}]
     shop: null,   // {day, stock:[{id,name,price,sold}], line}
-    kanbanId: null,
-    kanbanUntil: null,  // 看板娘召喚到期時間戳(限時)
-    lastKanbanId: null, // 最後一位看板娘(過期後背景顯示她的休息剪影)
+    kanbans: [],        // 在任看板娘 [{id, until}](多看板娘制;until=到期時間戳)
+    lastKanbanId: null, // 最後一位看板娘(全過期後背景顯示她的休息剪影)
     lastSettledDay: null,
     log: [],
     settings: {
@@ -318,6 +320,17 @@ function initState(j, offline) {
   }
   // 看板娘限時化移轉:舊的永久看板娘寬限一個時段,到期後改付費召喚
   if (state.kanbanId && !state.kanbanUntil) state.kanbanUntil = Date.now() + kanbanHours() * HOUR;
+  // 多看板娘制移轉:單一 kanbanId/kanbanUntil → kanbans 陣列
+  state.kanbans ??= [];
+  if (state.kanbanId && state.kanbanUntil && !state.kanbans.some(k => k.id === state.kanbanId)) {
+    state.kanbans.push({ id: state.kanbanId, until: state.kanbanUntil });
+  }
+  delete state.kanbanId; delete state.kanbanUntil;
+  // 氣泡快取移轉:單看板娘物件 → 依 girlId 的 map
+  if (state.quips && state.quips.girlId) {
+    state.quips = { [state.quips.girlId]: { hash: state.quips.hash, lines: state.quips.lines || [], got: state.quips.got || [] } };
+  }
+  state.quips ??= {};
   // 召喚師系統移轉:舊魅魔補發抽取間隔
   for (const s of state.succubi) {
     if (s.summoner === undefined) s.summoner = null;
@@ -631,7 +644,7 @@ async function sacrificeSuccubus(id) {
     }
   }
   state.succubi = state.succubi.filter(x => x.id !== id);
-  if (state.kanbanId === id) { state.kanbanId = null; state.kanbanUntil = null; }
+  state.kanbans = (state.kanbans || []).filter(k => k.id !== id);
   if (state.lastKanbanId === id) state.lastKanbanId = null;
   log(`獻祭了 ${s.name}(-${price} 金)${dropped ? `,獲得 ${EXPANSIONS[s.gift]} 擴充` : ""}`);
   sacResult = `${s.name} 化作了獻祭的光。${dropMsg}`;
@@ -1195,20 +1208,24 @@ function chatLineMsgs(s) {
 }
 
 async function genChatOrder() {
-  const s = kanbanSuccubus();
-  if (!s || s.chatLine || s.summoner?.taken || s.ntr) return;
   if (chatGenFail.count && Date.now() - chatGenFail.at < Math.min(60000, 10000 * chatGenFail.count)) return;
-  const hist = s.history || [];
-  const key = `chat:${s.id}:${hist.length}:${hist[hist.length - 1]?.t || 0}`;
-  const r = await genPost(key, chatLineMsgs(s));
-  if (!r) return;
-  if (r.status === "done" && r.result) {
-    chatGenFail = { count: 0, at: 0 };
-    if (kanbanSuccubus()?.id === s.id && !s.summoner?.taken && !s.chatLine) {
-      s.chatLine = { text: r.result.split("\n")[0].slice(0, 300) || r.result.slice(0, 300), t: Date.now() };
-      dirty = true; scheduleSave(); renderAll();   // 淫紋亮起
-    }
-  } else if (r.status === "error") {
+  let anyErr = false, anyDone = false;
+  for (const s of kanbanSuccubi()) {   // 多看板娘:每位各自的下一句
+    if (s.chatLine || s.summoner?.taken || s.ntr) continue;
+    const hist = s.history || [];
+    const key = `chat:${s.id}:${hist.length}:${hist[hist.length - 1]?.t || 0}`;
+    const r = await genPost(key, chatLineMsgs(s));
+    if (!r) continue;
+    if (r.status === "done" && r.result) {
+      anyDone = true;
+      if (isKanban(s.id) && !s.summoner?.taken && !s.chatLine) {
+        s.chatLine = { text: r.result.split("\n")[0].slice(0, 300) || r.result.slice(0, 300), t: Date.now() };
+        dirty = true; scheduleSave(); renderAll();   // 淫紋亮起
+      }
+    } else if (r.status === "error") anyErr = true;
+  }
+  if (anyDone) chatGenFail = { count: 0, at: 0 };
+  else if (anyErr) {
     chatGenFail = { count: chatGenFail.count + 1, at: Date.now() };
     if (chatGenFail.count === 3) renderAll();   // 保底生效:亮紋改走即時模式
   }
@@ -1247,22 +1264,21 @@ function quipMsgs(s) {
 
 async function genQuipOrders() {
   if (!state.quests.length) return;
-  const s = kanbanSuccubus();
-  if (!s) return;
   const hash = questHash();
-  if (state.quips?.girlId !== s.id || state.quips?.hash !== hash) {
-    state.quips = { girlId: s.id, hash, lines: [], got: [] };   // 狀態變了:舊台詞作廢
-  }
-  state.quips.got ??= [];
-  for (let i = 0; i < QUIP_STOCK; i++) {
-    if (state.quips.lines.length >= QUIP_STOCK) return;
-    const key = `quip:${s.id}:${strHash(hash)}:${i}`;
-    if (state.quips.got.includes(key)) continue;
-    const r = await genPost(key, quipMsgs(s));
-    if (r?.status === "done" && r.result && state.quips.girlId === s.id && state.quips.hash === questHash()) {
-      state.quips.lines.push(r.result.split("\n")[0].slice(0, 60));
-      state.quips.got.push(key);
-      dirty = true; scheduleSave();
+  state.quips ??= {};
+  for (const s of kanbanSuccubi()) {   // 多看板娘:每位各自的台詞庫
+    let q = state.quips[s.id];
+    if (!q || q.hash !== hash) q = state.quips[s.id] = { hash, lines: [], got: [] };   // 狀態變了:舊台詞作廢
+    for (let i = 0; i < QUIP_STOCK; i++) {
+      if (q.lines.length >= QUIP_STOCK) break;
+      const key = `quip:${s.id}:${strHash(hash)}:${i}`;
+      if (q.got.includes(key)) continue;
+      const r = await genPost(key, quipMsgs(s));
+      if (r?.status === "done" && r.result && state.quips[s.id] === q && q.hash === questHash()) {
+        q.lines.push(r.result.split("\n")[0].slice(0, 60));
+        q.got.push(key);
+        dirty = true; scheduleSave();
+      }
     }
   }
 }
@@ -1286,11 +1302,11 @@ async function genTick(force = false) {
 // 半預製聊天的失敗計數:連敗 3 次 → 淫紋照亮走即時生成保底(renderCrest 參照)
 let chatGenFail = { count: 0, at: 0 };
 
-// 點看板娘時取一句預生台詞(即取即消耗);沒有就回 null 讓罐頭上場
-function popQuip() {
-  const s = kanbanSuccubus();
-  if (!s || state.quips?.girlId !== s.id || state.quips?.hash !== questHash()) return null;
-  const line = state.quips.lines.shift();
+// 點某位看板娘時取她的一句預生台詞(即取即消耗);沒有就回 null 讓罐頭上場
+function popQuip(s) {
+  const q = s && state.quips?.[s.id];
+  if (!q || q.hash !== questHash()) return null;
+  const line = q.lines.shift();
   if (line) scheduleSave();
   return line || null;
 }
@@ -1591,16 +1607,25 @@ function ransom(id) {
 
 // ===== 看板娘 =====
 
-// 限時看板娘:必須付費召喚、到期自動解除、無自動遞補(過期即回召喚書)
-function kanbanSuccubus() {
-  if (!state.kanbanId || !state.kanbanUntil || Date.now() >= state.kanbanUntil) return null;
-  const s = state.succubi.find(x => x.id === state.kanbanId);
-  return (s && !s.ntr) ? s : null;
+// 限時多看板娘:必須付費召喚、到期自動解除、無自動遞補。
+// 費用:第 1 位 1 金;第 n 位(n≥2)= 50×(n-1) − 召喚減費等級,地板 2 金。
+function kanbanSuccubi() {
+  const now = Date.now();
+  const out = [];
+  for (const k of (state.kanbans || [])) {
+    if (!k.until || now >= k.until) continue;
+    const s = state.succubi.find(x => x.id === k.id);
+    if (s && !s.ntr) out.push(s);
+  }
+  return out;
 }
-function kanbanRemainMs() {
-  return state.kanbanUntil ? Math.max(0, state.kanbanUntil - Date.now()) : 0;
+function kanbanSuccubus() { return kanbanSuccubi()[0] || null; }   // 主看板娘(最早召喚仍在任)
+function isKanban(id) { return kanbanSuccubi().some(s => s.id === id); }
+function kanbanCost() {
+  const n = kanbanSuccubi().length;
+  if (n === 0) return 1;
+  return Math.max(2, 50 * n - expLv("cheap"));
 }
-const KANBAN_COST = 1;
 const DRAW_CHANCE = 1 / 20;   // 每個間隔抽到召喚師的機率(未纏上時)
 const TAKEN_CHANCE = 1 / 3;   // 已被纏上時,每個間隔被召喚師「召喚」的機率(玩家有反制手段,他沒有,所以比較高)
 const ACT_CAP = 60;           // 每隻魅魔保留的互動紀錄上限(好感早已入帳,丟的只是舊文字)
@@ -1623,7 +1648,7 @@ function checkMarriage(s) {
   log(`${s.name} 被 ${su?.name || "另一位召喚師"} 娶走了,永遠離開了萬事屋。`);
   toast(`${s.name} 成了 ${su?.name || "他"} 的妻子,永遠消失了……`, "bad");
   state.succubi = state.succubi.filter(x => x.id !== s.id);
-  if (state.kanbanId === s.id) { state.kanbanId = null; state.kanbanUntil = null; }
+  state.kanbans = (state.kanbans || []).filter(k => k.id !== s.id);
   return true;
 }
 
@@ -1645,7 +1670,7 @@ function checkSummonerDraws() {
   if (!SUMMONERS.length) return false;
   const now = Date.now();
   let changed = false;
-  const kanId = kanbanSuccubus()?.id;
+  const kanIds = new Set(kanbanSuccubi().map(x => x.id));
   for (const s of state.succubi) {
     if (s.nextDraw == null) { s.drawIvlH ??= randInt(2, 5); s.nextDraw = now + s.drawIvlH * HOUR; }
     let rolls = 0;
@@ -1654,7 +1679,7 @@ function checkSummonerDraws() {
       const at = s.nextDraw;
       const busyWithPlayer = (chatWith === s.id && chatSession) || watchWith === s.id;
       if (!s.summoner) {
-        const blocked = s.ntr || s.id === kanId || busyWithPlayer;
+        const blocked = s.ntr || kanIds.has(s.id) || busyWithPlayer;
         if (!blocked && Math.random() < DRAW_CHANCE) {
           const su = pick(SUMMONERS);
           s.summoner = { id: su.id, affection: 0, sinceDay: dayNum(), taken: null, acts: [] };
@@ -1715,25 +1740,23 @@ function restingSuccubus() {
 function summonKanban(id) {
   const s = state.succubi.find(x => x.id === id);
   if (!s || s.ntr) return;
-  if (state.gold < KANBAN_COST) { toast(`召喚看板娘需 ${KANBAN_COST} 金`, "bad"); return; }
-  state.gold -= KANBAN_COST;
-  state.kanbanId = id;
+  if (isKanban(id)) { toast("她已經在店頭了", ""); return; }
+  const cost = kanbanCost();
+  if (state.gold < cost) { toast(`召喚第 ${kanbanSuccubi().length + 1} 位看板娘需 ${cost} 金`, "bad"); return; }
+  state.gold -= cost;
+  (state.kanbans ??= []).push({ id, until: Date.now() + kanbanHours() * HOUR });
   state.lastKanbanId = id;
-  state.kanbanUntil = Date.now() + kanbanHours() * HOUR;
-  log(`召喚 ${s.name} 為看板娘`);
+  log(`召喚 ${s.name} 為看板娘 -${cost} 金(第 ${state.kanbans.length} 位)`);
   toast(`${s.name} 來到你身邊♥`, "good");   // 不透露持續時間
   scheduleSave(); renderAll();
 }
 
-// 到期解除(每秒 tick 呼叫);回傳是否有變化
+// 到期解除(每秒 tick 呼叫);逐位到期、不提醒玩家。回傳是否有變化
 function expireKanban() {
-  if (state.kanbanId && (!state.kanbanUntil || Date.now() >= state.kanbanUntil)) {
-    state.kanbanId = null;
-    state.kanbanUntil = null;
-    // 不提醒玩家——要自己去魅魔頁察看她還在不在
-    return true;
-  }
-  return false;
+  const now = Date.now();
+  const before = (state.kanbans || []).length;
+  state.kanbans = (state.kanbans || []).filter(k => k.until && now < k.until);
+  return state.kanbans.length !== before;
 }
 
 let bubbleTimer = null;
@@ -1959,15 +1982,21 @@ function renderAll() {
 
 // 淫紋按鈕:有層數、看板娘在、醒著、不在對話中,且「她的話備好了」才亮——
 // 半預製:存了再多紋,話沒生成好也不亮。例外:被召喚走(紋=窺視紀錄)、無模型(即時罐頭)。
+// 淫紋要開的對象:優先「話備好」的看板娘,其次被召喚走的(看紀錄),再來第一位(即時保底)
+function crestTarget() {
+  const girls = kanbanSuccubi();
+  return girls.find(s => s.chatLine) || girls.find(s => s.summoner?.taken) || girls[0] || null;
+}
+
 function renderCrest() {
   const el = $("#crest");
   if (!el) return;
-  const s = kanbanSuccubus();
-  const base = (state.chatCharges || 0) > 0 && s && !isAsleep() && !chatWith && !watchWith;
-  // 話備好才可點;連續生成失敗 3 次 → 照亮走即時保底(錯誤看得見,不無聲卡死)
-  const lineReady = s && (s.chatLine || s.summoner?.taken || !state.settings.model || chatGenFail.count >= 3);
+  const girls = kanbanSuccubi();
+  const base = (state.chatCharges || 0) > 0 && girls.length > 0 && !isAsleep() && !chatWith && !watchWith;
+  // 任一位話備好才可點;連續生成失敗 3 次 → 照亮走即時保底(錯誤看得見,不無聲卡死)
+  const lineReady = girls.some(s => s.chatLine || s.summoner?.taken) || !state.settings.model || chatGenFail.count >= 3;
   el.classList.toggle("hidden", !base);
-  el.classList.toggle("brewing", !!(base && !lineReady));   // 極暗呼吸=她在想要說什麼
+  el.classList.toggle("brewing", !!(base && !lineReady));   // 極暗呼吸=她們在想要說什麼
   const n = $("#crest-n");
   if (base && n) n.textContent = state.chatCharges;
 }
@@ -2360,7 +2389,7 @@ function renderSuccubi() {
       <div class="sinfo">
         <div class="sname"><b>${esc(s.name)}</b><span class="rbadge">${s.rarity}</span>
           <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(s.stage)}</span>
-          ${kanbanSuccubus()?.id === s.id ? `<span class="stage-chip" style="color:var(--gold)">★ 看板娘</span>` : ""}
+          ${isKanban(s.id) ? `<span class="stage-chip" style="color:var(--gold)">★ 看板娘</span>` : ""}
           ${s.summoner && !s.ntr ? `<span class="stage-chip" style="color:var(--red)">⚠ 被纏上</span>` : ""}</div>
         <div class="aff-bar"><div class="${s.affection < 0 ? "neg" : ""}" style="width:${barW}%"></div></div>
       </div>
@@ -2440,9 +2469,9 @@ function renderDetail(s, root) {
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
           : `<button class="cyan" id="act-date" ${asleep || datesLeft <= 0 ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})</button>
-             ${kanbanSuccubus()?.id === s.id
+             ${isKanban(s.id)
                ? `<button disabled>★ 看板娘(陪伴中)</button>`
-               : `<button id="act-kanban">召喚為看板娘(${KANBAN_COST} 金)</button>`}`}
+               : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`}
       </div>
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">聊天請透過淫紋(做委託觸發)——看板娘才聽得見你的呼喚</div>` : ""}
@@ -2476,32 +2505,43 @@ function renderKanban() {
   const asleep = isAsleep();
   zzz.classList.toggle("hidden", !asleep);
 
-  // 三態:對話中的魅魔 / 現任看板娘(亮) → 休息中的魅魔(暗) → 召喚書(名冊全空)
-  const active = (chatWith && state.succubi.find(x => x.id === chatWith)) || kanbanSuccubus();
-  const s = active || restingSuccubus();
+  // 三態:對話中的魅魔(單人) / 在任看板娘們(亮,並排) → 休息中的魅魔(暗) → 召喚書(名冊全空)
+  const chatGirl = chatWith && state.succubi.find(x => x.id === chatWith);
+  const girls = chatGirl ? [chatGirl] : kanbanSuccubi();
 
-  if (s) {
+  if (girls.length) {
     book.classList.add("hidden");
     girl.classList.remove("hidden");
-    girl.className = `r-${s.rarity}` + (active ? "" : " resting");
-    if (active) {
-      girl.innerHTML = girlSVG("#241333", 9) + `<div class="kname">${esc(s.name)}</div>`;
-      // 優先冒背景預生的委託台詞(秒出,零等待);沒貨才用罐頭
-      girl.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : (popQuip() || pick(REACT.idle)));
-    } else {
-      // 休息中:暗淡剪影,點擊花錢再召喚
+    girl.className = `r-${girls[0].rarity}` + (girls.length > 1 ? " multi" : "");
+    const size = girls.length >= 3 ? 5 : girls.length === 2 ? 7 : 9;   // 人多站小一點
+    girl.innerHTML = girls.map(g =>
+      `<div class="kgirl r-${g.rarity}" data-kid="${g.id}">${girlSVG("#241333", size)}<div class="kname">${esc(g.name)}</div></div>`
+    ).join("");
+    girl.onclick = null;
+    girl.querySelectorAll(".kgirl").forEach(el => el.onclick = () => {
+      const g = state.succubi.find(x => x.id === el.dataset.kid);
+      if (!g) return;
+      // 優先冒她自己的預生委託台詞(秒出,零等待);沒貨才用罐頭
+      kanbanSay(asleep ? pick(REACT.sleepClick) : (popQuip(g) || pick(REACT.idle)));
+    });
+  } else {
+    const rest = restingSuccubus();
+    if (rest) {
+      book.classList.add("hidden");
+      girl.classList.remove("hidden");
+      girl.className = `r-${rest.rarity} resting`;
       girl.innerHTML = girlSVG("#241333", 9) +
-        `<div class="kname">${esc(s.name)}<span class="krem" style="color:var(--dim)">(回到自己的生活中)</span></div>`;
+        `<div class="kname">${esc(rest.name)}<span class="krem" style="color:var(--dim)">(回到自己的生活中)</span></div>`;
       girl.onclick = () => {
         if (asleep) { kanbanSay(pick(REACT.sleepClick)); return; }
-        if (state.gold < KANBAN_COST) { kanbanSay("哼,連 1 金都沒有,還想叫我來?"); return; }
-        summonKanban(s.id);
+        if (state.gold < kanbanCost()) { kanbanSay(`哼,連 ${kanbanCost()} 金都沒有,還想叫我來?`); return; }
+        summonKanban(rest.id);
       };
+    } else {
+      girl.classList.add("hidden");
+      book.classList.remove("hidden");
+      book.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(TAUNTS));
     }
-  } else {
-    girl.classList.add("hidden");
-    book.classList.remove("hidden");
-    book.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(TAUNTS));
   }
 }
 
@@ -2587,7 +2627,7 @@ on("quest-add", "click", () => { const i = $("#quest-input"); if (i) { addQuest(
 on("quest-input", "keydown", e => { if (e.key === "Enter") { addQuest(e.target.value); e.target.value = ""; } });
 on("hud-need", "click", () => switchTab(2));
 on("q-back", "click", () => goExec());
-on("crest", "click", () => { const s = kanbanSuccubus(); if (s) enterChat(s.id); });
+on("crest", "click", () => { const s = crestTarget(); if (s) enterChat(s.id); });
 
 on("set-player", "change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
 on("set-sleep-start", "change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });

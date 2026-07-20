@@ -65,6 +65,7 @@
     <button onclick="jumpDay()">跳過一天</button>
     <button onclick="addCrest()">+1 淫紋</button>
     <button onclick="kanbanLong()">看板娘 +99h(測試)</button>
+    <button onclick="allKanban()">全員看板娘 99h</button>
     <button onclick="drawSummoner()">第一隻抽召喚師</button>
     <button onclick="clearSummoners()">清除所有召喚師</button>
     <button onclick="watchScenario()">觀戰測試場景</button>
@@ -204,8 +205,16 @@ async function kanbanLong() {
   if (!ensure()) return;
   const s = (save.succubi || [])[0];
   if (!s) { status("bd-status", "沒有魅魔", true); return; }
-  save.kanbanId = s.id; save.kanbanUntil = Date.now() + 99 * 3600 * 1000;
+  save.kanbans ??= [];
+  if (!save.kanbans.some(k => k.id === s.id)) save.kanbans.push({ id: s.id, until: Date.now() + 99 * 3600 * 1000 });
+  else save.kanbans.find(k => k.id === s.id).until = Date.now() + 99 * 3600 * 1000;
   await commit(`${s.name} 設為看板娘 99h`);
+}
+async function allKanban() {
+  if (!ensure()) return;
+  if (!(save.succubi || []).length) { status("bd-status", "沒有魅魔", true); return; }
+  save.kanbans = save.succubi.filter(s => !s.ntr).map(s => ({ id: s.id, until: Date.now() + 99 * 3600 * 1000 }));
+  await commit(`全員上工:${save.kanbans.length} 位看板娘 99h`);
 }
 async function drawSummoner() {
   if (!ensure()) return;
@@ -238,8 +247,8 @@ async function watchScenario() {
   const now = Date.now();
   // actAt 設 3 小時前:回遊戲 tick 會補算出 3 批紀錄(9~15 則),背景開始生成文字
   s.summoner.taken = { type: "kanban", location: null, until: now + 2 * 3600 * 1000, actAt: now - 3 * 3600 * 1000 };
-  save.kanbanId = s.id;
-  save.kanbanUntil = now + 99 * 3600 * 1000;
+  save.kanbans ??= [];
+  if (!save.kanbans.some(k => k.id === s.id)) save.kanbans.push({ id: s.id, until: now + 99 * 3600 * 1000 });
   save.lastKanbanId = s.id;
   save.chatCharges = (save.chatCharges || 0) + 3;
   delete save.forceEncounter;
@@ -249,7 +258,7 @@ async function watchScenario() {
 // ── 擴充等級 ──
 const EXP_AXES = {
   exec: "執行中格數", reward: "完成金額", offering: "商店祭品", roster: "名冊名額",
-  kanban: "看板娘時長", crest: "淫紋機率", drop: "獻祭掉落率",
+  kanban: "看板娘時長", crest: "淫紋機率", drop: "獻祭掉落率", cheap: "召喚減費",
 };
 function renderExpRows() {
   const el = document.getElementById("exp-rows");
