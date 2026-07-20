@@ -3,12 +3,12 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
-import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt } from "./content/persona_builder.js";
+import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildMatingPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.13(2026-07-20)人物生成重構";
+const APP_VER = "v5.14(2026-07-20)交配環系統";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -385,6 +385,16 @@ function initState(j, offline) {
     if (s.summoner === undefined) s.summoner = null;
     if (s.nextDraw == null) { s.drawIvlH = randInt(2, 5); s.nextDraw = Date.now() + s.drawIvlH * HOUR; }
     if (!s.gift) s.gift = pick(GIFT_KEYS);
+    // 交配環系統移轉:舊 summoner.affection(0~240)→ stage/resist/matingCount/kinks
+    const sm = s.summoner;
+    if (sm && sm.stage == null) {
+      sm.stage = affToStageIdx(sm.affection || 0);
+      sm.resist = STAGE_RESIST[sm.stage];
+      sm.matingCount = 0;
+      sm.ringUnlocked = false;
+      if (!sm.kinks) sm.kinks = KINKS.length ? sampleN(KINKS.map(k => k.name), randInt(4, 10)) : [];
+      delete sm.affection;
+    }
   }
   showConnOverlay(false);
   document.getElementById("set-srv").textContent = offline ? "離線(使用本地快取)" : "OK";
@@ -1111,21 +1121,31 @@ function exitSacrifice() {
   renderAll();
 }
 
-// 召喚師×她的關係七階段(上限, 名稱);達 240 被娶走。演出基調由內容模組/Testword 腳本決定。
-const RIVAL_STAGES = [
-  [30, "強烈嫌惡排斥"], [60, "嫌惡抗拒"], [90, "抗拒冷淡"], [120, "抗拒"],
-  [150, "偶爾互動"], [180, "女友"], [240, "妻子"],
-];
-const MARRY_AT = 240;
-function rivalStage(aff) {
-  for (let i = 0; i < RIVAL_STAGES.length; i++)
-    if (aff < RIVAL_STAGES[i][0]) return { idx: i, name: RIVAL_STAGES[i][1] };
-  return { idx: RIVAL_STAGES.length - 1, name: RIVAL_STAGES[RIVAL_STAGES.length - 1][1] };
+// 召喚師×她 的關係階段(交配環系統)。進度由「交配次數」推進,不再是好感數字。
+// ⓪強烈嫌惡排斥 ①嫌惡抗拒 ②抗拒冷淡 ③抗拒 ④偶爾互動 ⑤女友 (⑥妻子=懷孕娶走,終局不可玩)
+const RIVAL_STAGE_NAMES = ["強烈嫌惡排斥", "嫌惡抗拒", "抗拒冷淡", "抗拒", "偶爾互動", "女友", "妻子"];
+// 各階段基礎抵抗值(=交配機率分母 1/resist);每個 act 讓 resist −1,直到 1(=100%)。
+const STAGE_RESIST = [40, 20, 10, 10, 5, 1];
+// ⓪~③:交配 N 次推進下一階段
+const STAGE_ADVANCE = [2, 3, 5, 5];
+const CONFESS_CHANCE = 1 / 5;      // ④偶爾互動:每次交配 1/5 她主動告白 → 升女友
+const FIANCEE_MATINGS = 20;        // ⑤女友:累積 20 次交配 → 她主動解開魔法環
+const PREGNANCY_CHANCE = 1 / 2;    // 解環後每次交配內射 1/2 懷孕 → 娶走
+function rivalStageName(idx) { return RIVAL_STAGE_NAMES[Math.min(idx, 6)] || RIVAL_STAGE_NAMES[0]; }
+// 舊存檔 affection(0~240)→ 新階段索引(移轉用)
+function affToStageIdx(aff) {
+  const th = [30, 60, 90, 120, 150, 180];
+  for (let i = 0; i < th.length; i++) if (aff < th[i]) return i;
+  return 5;
 }
+
+// 性趣池(交配環節);召喚師纏上魅魔時隨機抽 4~10 個給該對
+let KINKS = [];
+fetch("content/kinks.json").then(r => r.ok ? r.json() : null).then(j => { KINKS = (j && j.kinks) || []; }).catch(() => {});
 
 // Testword 撰寫的階段語氣腳本(watch_stage=觀戰演出 / chat_rival=她對你的變化)。
 // method=階段名;存在就蓋掉內容模組內建版。核心不檢視內容,原樣傳給 AI。
-const STAGE_SCRIPTS = { watch_stage: {}, chat_rival: {} };
+const STAGE_SCRIPTS = { watch_stage: {}, chat_rival: {}, mating: {} };
 for (const cat of Object.keys(STAGE_SCRIPTS)) {
   fetch(`/api/scripts?category=${cat}`).then(r => r.ok ? r.json() : []).then(list => {
     for (const it of list || []) STAGE_SCRIPTS[cat][it.method] = it.body;
@@ -1171,12 +1191,12 @@ async function watchNext() {
   if (!s || !watchSession || watchSession.busy || watchSession.ended) return;
   const su = summonerById(s.summoner?.id);
   if (!su) { exitWatch(); return; }
-  // 只放送文字備好的紀錄;她被召喚中而沒有備好的 → 現生一則「此刻」的互動(直播)
+  // 只放送文字備好的紀錄;她被召喚中而沒有備好的 → 現生一個 act slot「此刻」的互動(直播)
   let act = readyUnseen(s)[0];
   if (!act && s.summoner?.taken) {
-    pushAct(s, { t: Date.now(), type: s.summoner.taken.type || "kanban", location: s.summoner.taken.location || null, delta: randInt(0, 1) });
-    if (checkMarriage(s)) { exitWatch(true); return; }
-    act = unseenActs(s).at(-1);
+    const removed = processActSlot(s, Date.now());
+    if (removed || !state.succubi.includes(s)) { exitWatch(true); return; }
+    act = unseenActs(s)[0];   // 交配=3則,取最舊那則(起)開始播
   }
   if (!act) { exitWatch(); return; }
   watchSession.busy = true;
@@ -1225,19 +1245,38 @@ async function watchNext() {
   scheduleSave();
 }
 
-// 生成單則紀錄文字的 LLM 訊息(觀看時現生/背景佇列共用)
+// 生成單則紀錄文字的 LLM 訊息(觀看時現生/背景佇列共用);act.kind 分流猥褻/交配
 function actMsgs(s, su, act) {
-  const st = rivalStage(s.summoner?.affection || 0);
+  const stageIdx = s.summoner?.stage ?? 0;
+  const stageName = rivalStageName(stageIdx);
+  const char = { name: s.name, personality: s.personality, backstory: s.backstory, appearance_dna: s.dna,
+                 look: s.look || null, special_traits: s.specialTraits || null, libido: s.libido || null };
+  // 交配紀錄:起承合三步,用該對的性趣 + 環狀態
+  if (act.kind === "mating") {
+    const kink = KINKS.find(k => k.name === act.kinkName) || {};
+    const beatText = { "起": kink.qi, "承": kink.cheng, "合": kink.he }[act.beat] || "";
+    const override = STAGE_SCRIPTS.mating?.[`${act.kinkName}·${act.beat}`] || STAGE_SCRIPTS.mating?.[act.kinkName] || null;
+    const ctx = {
+      world: WORLD_LORE, content_rating: state.settings.rating || "sfw",
+      character: char, summoner: su,
+      mating: { kink: act.kinkName, beat: act.beat, beat_text: beatText, ring_locked: !!act.ring,
+                stage_name: stageName, tone_override: override },
+    };
+    return [
+      { role: "system", content: buildMatingPrompt(ctx) },
+      { role: "user", content: `描寫這一段(${act.beat})的交配,3~4 句旁白。` },
+    ];
+  }
+  // 猥褻/拒絕紀錄:沿用觀戰演出 prompt
   const spot = (su.spots || []).find(x => x.name === act.location);
   const ctx = {
     world: WORLD_LORE,
     content_rating: state.settings.rating || "sfw",
-    character: { name: s.name, personality: s.personality, backstory: s.backstory, appearance_dna: s.dna,
-                 look: s.look || null, special_traits: s.specialTraits || null, libido: s.libido || null },
+    character: char,
     summoner: su,
     scene: { type: act.type, location: act.location, location_style: spot?.desc || null },
-    rival: { stage_idx: st.idx, stage_name: st.name, affection: s.summoner?.affection || 0,
-             tone_override: STAGE_SCRIPTS.watch_stage[st.name] || null },
+    rival: { stage_idx: stageIdx, stage_name: stageName,
+             tone_override: STAGE_SCRIPTS.watch_stage[stageName] || null },
   };
   return [
     { role: "system", content: buildWatchPrompt(ctx) },
@@ -1467,11 +1506,12 @@ function buildCtx(s) {
     quests: questSnapshot(),   // 她看得見你的待辦清單(聊天話題素材)
     // 她被另一個召喚師纏上時,那段關係對「她跟你互動」的滲透(變心)
     rival: s.summoner ? (() => {
-      const st = rivalStage(s.summoner.affection);
+      const idx = s.summoner.stage ?? 0;
+      const name = rivalStageName(idx);
       return {
         summoner_name: summonerById(s.summoner.id)?.name || "另一個男人",
-        stage_idx: st.idx, stage_name: st.name, affection: s.summoner.affection,
-        tone_override: STAGE_SCRIPTS.chat_rival[st.name] || null,
+        stage_idx: idx, stage_name: name,
+        tone_override: STAGE_SCRIPTS.chat_rival[name] || null,
       };
     })() : null,
   };
@@ -1708,42 +1748,71 @@ const DRAW_CHANCE = 1 / 20;   // 每個間隔抽到召喚師的機率(未纏上�
 const TAKEN_CHANCE = 1 / 3;   // 已被纏上時,每個間隔被召喚師「召喚」的機率(玩家有反制手段,他沒有,所以比較高)
 const ACT_CAP = 60;           // 每隻魅魔保留的互動紀錄上限(好感早已入帳,丟的只是舊文字)
 
-// ── 召喚師互動紀錄(act):數字即時入帳,文字由背景佇列補生成 ──
-// 陪伴型:持續 2~5h,每小時 3~5 則、每則 +0~1;約會型:一次結案 5~10 則、每則 +0~2。
-function pushAct(s, act) {
-  s.summoner.affection += act.delta;
-  (s.summoner.acts ??= []).push({ ...act, text: null, seen: false });
+// ── 召喚師互動紀錄(act):猥褻(1則)或交配(起承合3則,算1次交配)。文字由背景佇列補生成 ──
+function pushRec(s, rec) {
+  (s.summoner.acts ??= []).push({ id: uid(), text: null, seen: false, ...rec });
   if (s.summoner.acts.length > ACT_CAP) s.summoner.acts.splice(0, s.summoner.acts.length - ACT_CAP);
 }
 function unseenActs(s) { return (s.summoner?.acts || []).filter(a => !a.seen); }
 // 「可看」的未讀:文字已在背景生成好的才算(沒生好的不顯示、不給看,生好才浮出)
 function readyUnseen(s) { return (s.summoner?.acts || []).filter(a => !a.seen && a.text); }
 
-// 好感達 MARRY_AT(240):被娶走,無聲無息地永久消失(只留日誌)
-function checkMarriage(s) {
-  if (!s.summoner || s.summoner.affection < MARRY_AT) return false;
+// 懷孕/娶走:她脫離魅魔身分、跟召喚師走,永久消失(只留日誌)
+function marryAway(s) {
   const su = summonerById(s.summoner.id);
-  log(`${s.name} 被 ${su?.name || "另一位召喚師"} 娶走了,永遠離開了萬事屋。`);
-  toast(`${s.name} 成了 ${su?.name || "他"} 的妻子,永遠消失了……`, "bad");
+  log(`${s.name} 懷了 ${su?.name || "召喚師"} 的孩子,脫離魅魔身分、跟他走了,永遠離開萬事屋。`);
+  toast(`${s.name} 懷孕了……她成了 ${su?.name || "他"} 的妻子,永遠消失了。`, "bad");
   state.succubi = state.succubi.filter(x => x.id !== s.id);
   state.kanbans = (state.kanbans || []).filter(k => k.id !== s.id);
-  return true;
 }
-
-// 約會型:瞬間結案——生 5~10 則紀錄、好感一次入帳,約會就結束了(你只能事後看紀錄)。
-// 地點優先選這個召喚師「愛去的地點」(summoners.json spots),沒定義才隨機。
-function rivalDateBurst(s, at) {
-  const su = summonerById(s.summoner?.id);
-  const loc = su?.spots?.length ? pick(su.spots).name : pick(DATE_SPOTS)[0];
-  const n = randInt(5, 10);
-  for (let i = 0; i < n; i++) pushAct(s, { t: at, type: "date", location: loc, delta: randInt(0, 2) });
-  checkMarriage(s);
+function advanceRivalStage(s) {
+  const sm = s.summoner;
+  sm.stage = Math.min(5, (sm.stage ?? 0) + 1);
+  sm.resist = STAGE_RESIST[sm.stage];
+  sm.matingCount = 0;
+}
+// 一次交配:生起承合三則(算一次),依階段推進/告白/解環/懷孕。回傳她是否被娶走。
+function doMating(s, at) {
+  const sm = s.summoner;
+  const su = summonerById(sm.id);
+  const pool = (sm.kinks && sm.kinks.length) ? sm.kinks : KINKS.map(k => k.name);
+  const kink = pool.length ? pick(pool) : "交合";
+  const matingId = uid();
+  const ringLocked = !sm.ringUnlocked;
+  for (const beat of ["起", "承", "合"])
+    pushRec(s, { t: at, kind: "mating", matingId, beat, kinkName: kink, ring: ringLocked });
+  sm.matingCount = (sm.matingCount || 0) + 1;
+  const stg = sm.stage ?? 0;
+  if (stg <= 3) {
+    if (sm.matingCount >= STAGE_ADVANCE[stg]) advanceRivalStage(s);
+  } else if (stg === 4) {
+    if (Math.random() < CONFESS_CHANCE) { log(`${s.name} 對 ${su?.name || "他"} 主動告白了……`); advanceRivalStage(s); }
+  } else if (stg === 5) {
+    if (!sm.ringUnlocked && sm.matingCount >= FIANCEE_MATINGS) {
+      sm.ringUnlocked = true;
+      log(`${s.name} 主動解開了 ${su?.name || "他"} 的魔法環……`);
+    }
+    if (sm.ringUnlocked && Math.random() < PREGNANCY_CHANCE) { marryAway(s); return true; }
+  }
+  return false;
+}
+// 一個 act slot:NSFW 才擲交配(1/resist),中=交配(3則)、沒中=猥褻(1則);每 slot 抵抗 −1。
+// 回傳她是否被娶走。SFW 一律只有猥褻,不交配、不推進、不會失去她。
+function processActSlot(s, at) {
+  const sm = s.summoner;
+  sm.stage ??= 0;
+  sm.resist ??= STAGE_RESIST[sm.stage];
+  const nsfw = (state.settings.rating || "sfw") === "nsfw";
+  let removed = false;
+  if (nsfw && Math.random() < 1 / Math.max(1, sm.resist)) removed = doMating(s, at);
+  else pushRec(s, { t: at, kind: "flirt", type: sm.taken?.type || "kanban", location: sm.taken?.location || null });
+  sm.resist = Math.max(1, sm.resist - 1);
+  return removed;
 }
 
 // 召喚師擲骰:每隻魅魔每 drawIvlH 小時擲一次(離線會補算,at 用歷史時點)。
-// 未纏上 → 1/20 被召喚師纏上(擋:NTR、正是看板娘、正與玩家對話)。
-// 已纏上且未被召喚中 → 1/3 他召喚她;型別依該召喚師 dateChance(內容模組定義,預設 0.5):
-//   約會型=一次結案的紀錄爆發;陪伴型=進入持續狀態(不通知玩家)。回傳是否有變化。
+// 未纏上 → 1/20 被召喚師纏上(同時隨機抽 4~10 個性趣給這對)。
+// 已纏上且未被召喚中 → 1/2 他召喚她(taken 持續狀態,兩型都每小時生 act,不通知玩家)。
 function checkSummonerDraws() {
   if (!SUMMONERS.length) return false;
   const now = Date.now();
@@ -1760,29 +1829,33 @@ function checkSummonerDraws() {
         const blocked = s.ntr || kanIds.has(s.id) || busyWithPlayer;
         if (!blocked && Math.random() < DRAW_CHANCE) {
           const su = pick(SUMMONERS);
-          s.summoner = { id: su.id, affection: 0, sinceDay: dayNum(), taken: null, acts: [] };
+          s.summoner = makeSummonerRel(su.id);
           log(`${su.name} 纏上了 ${s.name}!`);
           toast(`⚠ ${su.name} 纏上了 ${s.name}`, "bad");
         }
       } else if (!s.summoner.taken && !s.ntr && !busyWithPlayer && Math.random() < TAKEN_CHANCE) {
         const su = summonerById(s.summoner.id);
-        if (Math.random() < (su?.dateChance ?? 0.5)) {
-          rivalDateBurst(s, at);
-          if (!state.succubi.includes(s)) break;   // 被娶走了
-        } else {
-          s.summoner.taken = { type: "kanban", location: null, until: at + randInt(2, 5) * HOUR, actAt: at };
-        }
+        const isDate = Math.random() < (su?.dateChance ?? 0.5);
+        const loc = isDate ? (su?.spots?.length ? pick(su.spots).name : pick(DATE_SPOTS)[0]) : null;
+        s.summoner.taken = { type: isDate ? "date" : "kanban", location: loc, until: at + randInt(2, 5) * HOUR, actAt: at };
       }
       s.nextDraw += s.drawIvlH * HOUR;
       changed = true;
     }
-    // 保險:離線過久時 30 次追不回,直接跳到下個未來時點
     if (s.nextDraw <= now) { s.nextDraw = now + s.drawIvlH * HOUR; changed = true; }
   }
   return changed;
 }
 
-// 陪伴型持續狀態:每小時生 3~5 則紀錄(離線補算);時效到她自己回來(不通知)。回傳是否有變化。
+// 建一段新的召喚師關係(纏上時):抽 4~10 個性趣
+function makeSummonerRel(suId) {
+  const n = randInt(4, 10);
+  const kinks = KINKS.length ? sampleN(KINKS.map(k => k.name), n) : [];
+  return { id: suId, sinceDay: dayNum(), stage: 0, resist: STAGE_RESIST[0], matingCount: 0, ringUnlocked: false, kinks, taken: null, acts: [] };
+}
+function sampleN(arr, n) { const a = [...arr].sort(() => Math.random() - 0.5); return a.slice(0, Math.min(n, a.length)); }
+
+// taken 持續狀態:每小時生 3~5 個 act slot(離線補算);時效到她自己回來(不通知)。
 function processTakenActs() {
   const now = Date.now();
   let changed = false;
@@ -1795,12 +1868,12 @@ function processTakenActs() {
     while (tk.actAt <= now && tk.actAt < tk.until && guard < 200) {
       guard++;
       const n = randInt(3, 5);
-      for (let i = 0; i < n; i++) pushAct(s, { t: tk.actAt, type: tk.type || "kanban", location: tk.location || null, delta: randInt(0, 1) });
+      for (let i = 0; i < n; i++) { if (processActSlot(s, tk.actAt)) { married = true; break; } }
       tk.actAt += HOUR;
       changed = true;
-      if (checkMarriage(s)) { married = true; break; }
+      if (married) break;
     }
-    if (!married && now >= tk.until) { s.summoner.taken = null; changed = true; }
+    if (!married && now >= tk.until && s.summoner) { s.summoner.taken = null; changed = true; }
   }
   return changed;
 }
@@ -2516,10 +2589,13 @@ function renderDetail(s, root) {
     if (su) {
       const ready = readyUnseen(s).length;   // 只顯示文字備好的;生成中的不露出
       const takenTxt = s.summoner.taken
-        ? "她現在正被召喚到對方身邊——聊天/約會會看見他們的互動,有機會把她拉回來"
+        ? "她現在正被召喚到對方身邊——用淫紋窺視,有機會把她拉回來"
         : "他隨時可能把她召喚過去";
+      const ringTxt = s.summoner.ringUnlocked
+        ? `<br><span style="color:var(--red)">⚠ 她已為他解開魔法環——隨時可能懷孕被娶走</span>`
+        : "";
       summonerLine = `<div class="summoner-note">⚠ ${su.emoji} <b>${esc(su.name)}</b> 纏上了她(${esc(su.desc)})<br>
-      她對他的態度:<b>${rivalStage(s.summoner.affection).name}</b> — ${takenTxt}
+      她對他的態度:<b>${rivalStageName(s.summoner.stage ?? 0)}</b> — ${takenTxt}${ringTxt}
       ${ready ? `<br><button class="danger-btn" id="act-peek" style="margin-top:.4em">窺視他們的互動紀錄(1 淫紋・${ready} 則未讀)</button>` : ""}</div>`;
     }
   }
@@ -2867,7 +2943,7 @@ window.DBG = {
   watch: (id, playerType = "chat", hours = 2) => {
     const s = state.succubi.find(x => x.id === id);
     if (!s) return;
-    s.summoner ??= { id: SUMMONERS[0]?.id, affection: 0, sinceDay: dayNum() };
+    s.summoner ??= makeSummonerRel(SUMMONERS[0]?.id);
     s.summoner.taken = { type: "kanban", location: null, until: Date.now() + hours * HOUR, actAt: Date.now() };
     enterWatch(s, playerType);
   },
@@ -2877,7 +2953,10 @@ window.DBG = {
   tickActs: () => processTakenActs(),
   pumpActs: () => genTick(true),
   pumpChat: () => genTick(true),
-  dateBurst: (id) => { const s = state.succubi.find(x => x.id === id); if (s?.summoner) { rivalDateBurst(s, Date.now()); scheduleSave(); renderAll(); } },
+  // 測試:設好召喚師關係(可指定 stage/resist)並強制一次交配
+  rel: (id, suId) => { const s = state.succubi.find(x => x.id === id); if (s) { s.summoner = makeSummonerRel(suId || SUMMONERS[0]?.id); scheduleSave(); renderAll(); } return s?.summoner; },
+  mate: (id) => { const s = state.succubi.find(x => x.id === id); if (!s?.summoner) return null; const rm = doMating(s, Date.now()); scheduleSave(); renderAll(); return { removed: rm, sm: s.summoner }; },
+  actSlot: (id) => { const s = state.succubi.find(x => x.id === id); if (!s?.summoner) return null; const rm = processActSlot(s, Date.now()); scheduleSave(); renderAll(); return { removed: rm, sm: s.summoner }; },
 };
 
 // ===== 啟動 =====

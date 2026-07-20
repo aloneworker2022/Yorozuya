@@ -206,6 +206,40 @@ export function buildQuipPrompt(ctx) {
   return lines.join("\n");
 }
 
+/** 交配環節:生成「起/承/合」其中一步的交配旁白(玩家窺視)。
+ *  魔法環:未解環一律無法內射(外射/拔出);解環後才內射。
+ *  隨附 SFW stub;Testword「交配演出」腳本(mating)會蓋掉每步。核心不檢視回傳值。 */
+export function buildMatingPrompt(ctx) {
+  const c = ctx.character;
+  const su = ctx.summoner || {};
+  const m = ctx.mating || {};
+  const lines = [];
+  if (ctx.world) {
+    const lore = ctx.world.split("\n")
+      .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---").join("\n").trim();
+    if (lore) lines.push("【世界設定】", lore, "");
+  }
+  lines.push(
+    "【交配場景】你是敘述者,描寫另一位召喚師與這名被他召喚走的魅魔交合的其中一段。",
+    `● 男方「${su.name}」:${su.persona || "一個佔有她的男人"}${su.body ? `體態:${su.body}。` : ""}`,
+    `● 女方「${c.name}」:${c.personality?.join("、") || ""}。${lookText(c) ? `外貌:${lookText(c)}。` : ""}${c.backstory || ""}`,
+    `目前她對他的階段:「${m.stage_name || "抗拒"}」——依此決定她是抗拒、隱忍、還是漸漸迎合。`,
+    `這一步是「${m.beat}」(起=開始/承=中間互動/合=高潮結束),本次體位/行為:「${m.kink}」。`,
+  );
+  if (m.tone_override) lines.push(`【本步演出(依此寫)】${m.tone_override}`);
+  else if (m.beat_text) lines.push(`【本步概要】${m.beat_text}`);
+  lines.push(
+    m.ring_locked
+      ? "【魔法環】他戴著無法取下的魔法環:這一步若是射精,只能射在體外/被迫拔出,絕不可能內射。"
+      : "【魔法環已解】她主動為他解開了環:這一步的高潮可以內射。",
+    ctx.content_rating === "nsfw"
+      ? "內容分級 NSFW:可露骨描寫,依上方概要/演出與男方人設。"
+      : "內容分級全年齡:以象徵與氛圍帶過,不寫露骨細節。",
+    "以第三人稱旁白,3~4 句,只寫這一步。只輸出旁白。",
+  );
+  return lines.join("\n");
+}
+
 /** 觀戰模式:生成「其他召喚師 × 這名魅魔」的一段互動(玩家在旁觀看)。
  *  廠商替換點:可整包改寫。核心不檢視回傳值。 */
 export function buildWatchPrompt(ctx) {
