@@ -411,6 +411,23 @@ def testword():
     return FileResponse(WEB_DIR / "testword.html")
 
 
+# /edit_person 編輯性趣池;整包覆寫 content/kinks.json
+@app.put("/api/kinks")
+def put_kinks(body: dict):
+    if not isinstance(body.get("kinks"), list):
+        raise HTTPException(400, "需要 {kinks: [...]}")
+    path = WEB_DIR / "content" / "kinks.json"
+    current = {}
+    if path.exists():
+        try:
+            current = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            current = {}
+    current["kinks"] = body["kinks"]
+    path.write_text(json.dumps(current, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return {"ok": True, "count": len(body["kinks"])}
+
+
 @app.get("/edit_person")
 def edit_person():
     from fastapi.responses import FileResponse

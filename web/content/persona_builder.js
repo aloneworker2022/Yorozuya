@@ -226,8 +226,7 @@ export function buildMatingPrompt(ctx) {
     `目前她對他的階段:「${m.stage_name || "抗拒"}」——依此決定她是抗拒、隱忍、還是漸漸迎合。`,
     `這一步是「${m.beat}」(起=開始/承=中間互動/合=高潮結束),本次體位/行為:「${m.kink}」。`,
   );
-  if (m.tone_override) lines.push(`【本步演出(依此寫)】${m.tone_override}`);
-  else if (m.beat_text) lines.push(`【本步概要】${m.beat_text}`);
+  if (m.beat_text) lines.push(`【本步演出(依此寫)】${m.beat_text}`);
   lines.push(
     m.ring_locked
       ? "【魔法環】他戴著無法取下的魔法環:這一步若是射精,只能射在體外/被迫拔出,絕不可能內射。"

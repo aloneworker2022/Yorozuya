@@ -1145,7 +1145,7 @@ fetch("content/kinks.json").then(r => r.ok ? r.json() : null).then(j => { KINKS 
 
 // Testword 撰寫的階段語氣腳本(watch_stage=觀戰演出 / chat_rival=她對你的變化)。
 // method=階段名;存在就蓋掉內容模組內建版。核心不檢視內容,原樣傳給 AI。
-const STAGE_SCRIPTS = { watch_stage: {}, chat_rival: {}, mating: {} };
+const STAGE_SCRIPTS = { watch_stage: {}, chat_rival: {} };
 for (const cat of Object.keys(STAGE_SCRIPTS)) {
   fetch(`/api/scripts?category=${cat}`).then(r => r.ok ? r.json() : []).then(list => {
     for (const it of list || []) STAGE_SCRIPTS[cat][it.method] = it.body;
@@ -1255,12 +1255,11 @@ function actMsgs(s, su, act) {
   if (act.kind === "mating") {
     const kink = KINKS.find(k => k.name === act.kinkName) || {};
     const beatText = { "起": kink.qi, "承": kink.cheng, "合": kink.he }[act.beat] || "";
-    const override = STAGE_SCRIPTS.mating?.[`${act.kinkName}·${act.beat}`] || STAGE_SCRIPTS.mating?.[act.kinkName] || null;
     const ctx = {
       world: WORLD_LORE, content_rating: state.settings.rating || "sfw",
       character: char, summoner: su,
       mating: { kink: act.kinkName, beat: act.beat, beat_text: beatText, ring_locked: !!act.ring,
-                stage_name: stageName, tone_override: override },
+                stage_name: stageName },
     };
     return [
       { role: "system", content: buildMatingPrompt(ctx) },
