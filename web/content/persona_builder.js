@@ -21,6 +21,18 @@ const SPEECH_STYLE = {
 
 const TIME_LABEL = { morning: "早上", afternoon: "下午", evening: "傍晚", night: "深夜" };
 
+// 外觀 DNA(核心給的英文 token)→ 中文描述;與 M3 生圖用同一組 token,演的與畫的是同一個人
+const TRAIT_ZH = {
+  silver_hair: "銀髮", black_hair: "黑髮", pink_hair: "粉髮", blonde_hair: "金髮", blue_hair: "藍髮", red_hair: "紅髮",
+  red_eyes: "紅瞳", gold_eyes: "金瞳", blue_eyes: "藍瞳", purple_eyes: "紫瞳", green_eyes: "綠瞳",
+  petite: "身形嬌小", tall: "身材高挑", slender: "體態纖細", curvy: "身材豐滿",
+  long_hair: "一頭長髮", short_hair: "俐落短髮", twin_tails: "綁雙馬尾", ponytail: "綁馬尾",
+};
+function appearanceZh(dna) {
+  const t = (dna?.traits || []).map(x => TRAIT_ZH[x]).filter(Boolean);
+  return t.length ? t.join("、") : null;
+}
+
 // ── 召喚師×她 七階段(隨附 SFW 版;Testword 撰寫的腳本會蓋掉這裡)──
 // export 給 Testword 顯示內建原文當範本。
 // 觀戰演出:每階段「她對他」的反應基調
@@ -66,6 +78,8 @@ export function buildSystemPrompt(ctx) {
     `個性:${c.personality.join("、")}。${SPEECH_STYLE[c.speech_style] || ""}`,
     `對方是召喚你的人,你稱呼他「${ctx.player.name}」。`,
   );
+  const look = appearanceZh(c.appearance_dna);
+  if (look) lines.push(`你的外貌:${look}。被問到或話題相關時可以自然提起自己的外表,不要刻意描述。`);
 
   if (c.backstory) {
     lines.push(
@@ -178,7 +192,7 @@ export function buildWatchPrompt(ctx) {
   lines.push(
     "【觀戰場景】你要同時扮演兩個角色,生成他們的一來一往:",
     `● 男方「${su.name}」——另一位召喚師,把這名魅魔也召喚了過去。人設:${su.persona || "一個糾纏她的男人"}${su.body ? `體態外貌:${su.body}` : ""}`,
-    `● 女方「${c.name}」——${c.personality?.join("、") || ""}。${c.backstory || ""}`,
+    `● 女方「${c.name}」——${c.personality?.join("、") || ""}。${appearanceZh(c.appearance_dna) ? `外貌:${appearanceZh(c.appearance_dna)}。` : ""}${c.backstory || ""}`,
     ctx.scene?.type === "date"
       ? `情境:男方硬拉著她在「${ctx.scene.location || "某處"}」約會。${ctx.scene.location_style ? `他在這個地點的互動習性:${ctx.scene.location_style}` : ""}`
       : "情境:她被召喚到男方身邊陪伴。",
