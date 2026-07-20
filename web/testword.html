@@ -92,6 +92,36 @@
   </div>
 </section>
 
+<!-- ── AI 互動測試台 ── -->
+<section>
+  <h2>AI 互動測試台(召喚師 × 妹子,真打 Ollama)</h2>
+  <div class="mini" style="margin-bottom:.6em">用跟遊戲完全相同的 prompt 管線(含你的自訂階段腳本)直接測互動。端點/模型讀遊戲設定。</div>
+  <div class="row" style="gap:.5em">
+    <span style="flex:1 1 9em"><label>召喚師</label><select id="tb-su"></select></span>
+    <span style="flex:1 1 9em"><label>階段(她對他)</label><select id="tb-stage"></select></span>
+    <span style="flex:0 1 7em"><label>分級</label><select id="tb-rating"><option value="sfw">SFW</option><option value="nsfw">NSFW</option></select></span>
+  </div>
+  <div class="row" style="gap:.5em">
+    <span style="flex:0 1 8em"><label>場景</label><select id="tb-type"><option value="kanban">陪伴</option><option value="date">約會</option></select></span>
+    <span style="flex:1 1 9em"><label>地點(約會)</label><input id="tb-loc" list="tb-loc-list" placeholder="約會才用到"><datalist id="tb-loc-list"></datalist></span>
+  </div>
+  <div class="row" style="gap:.5em;align-items:flex-end">
+    <span style="flex:1 1 7em"><label>妹子名</label><input id="tb-name"></span>
+    <span style="flex:1 1 9em"><label>個性(、分隔)</label><input id="tb-per"></span>
+    <button class="cy" onclick="rollGirl()" title="隨機骰一個妹子">🎲 隨機妹子</button>
+  </div>
+  <label>她的來歷(backstory)</label>
+  <input id="tb-back">
+  <div class="row" style="margin-top:.7em">
+    <button onclick="runTestGen()" id="tb-run">▶ 生成互動</button>
+    <span class="status" id="tb-status"></span>
+  </div>
+  <div id="tb-out" style="margin-top:.8em;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.7em .8em;white-space:pre-wrap;min-height:3em;color:#ffd75f"></div>
+  <details style="margin-top:.6em"><summary class="mini" style="cursor:pointer">▸ 檢視送出的完整 prompt</summary>
+    <div id="tb-prompt" class="mini" style="white-space:pre-wrap;margin-top:.5em;color:#8a82a5"></div>
+  </details>
+</section>
+
 <!-- ── 階段語氣腳本 ── -->
 <section>
   <h2>召喚師×她 階段語氣(NSFW 版寫在這,蓋掉內建全年齡版)</h2>
@@ -331,6 +361,94 @@ async function saveSummoners() {
   } catch (e) { status("su-status", "失敗:" + e.message, true); }
 }
 
+// ── AI 互動測試台 ──
+const GIRL_NAMES = ["莉莉絲","夜刀","小夢","繭","艾露","真白","琉璃","撫子","米亞","蘇芳","鈴蘭","牡丹"];
+const GIRL_PERS = ["傲嬌","毒舌","天然呆","三無","元氣","病嬌","文靜","懶散","嘴硬心軟","愛撒嬌","古板認真","神經質"];
+const GIRL_BACKS = [
+  "被召喚前是人間的女高中生,家裡開豆腐店,放學要顧店。",
+  "原本是深夜便利商店的大夜班店員,習慣半夜清點貨架。",
+  "當護理師第三年,值大夜班值到一半被召喚過來,很在意病人。",
+  "接案插畫家,截稿前夜被召喚,一直惦記著沒交的稿子。",
+  "小有名氣的直播主,粉絲還在等她開台。",
+  "拉麵店的獨生女,原本要繼承家業,湯頭配方只有她會。",
+  "圖書館管理員,安靜慣了,受不了吵鬧的人。",
+  "高中田徑隊王牌,大賽前一週被召喚,超不甘心。",
+];
+const DATE_LOCS = ["遊樂園","海邊","電影院","咖啡廳","美術館","健身房","居酒屋","公園","水族館","夜市"];
+function pickN2(arr, n) { const a=[...arr].sort(()=>Math.random()-.5); return a.slice(0,n); }
+function rollGirl() {
+  document.getElementById("tb-name").value = GIRL_NAMES[Math.floor(Math.random()*GIRL_NAMES.length)];
+  document.getElementById("tb-per").value = pickN2(GIRL_PERS, 2).join("、");
+  document.getElementById("tb-back").value = GIRL_BACKS[Math.floor(Math.random()*GIRL_BACKS.length)];
+}
+function initTestBench() {
+  const suSel = document.getElementById("tb-su");
+  suSel.innerHTML = (summonerPool||[]).map((su,i)=>`<option value="${i}">${su.emoji||"👤"} ${su.name}</option>`).join("");
+  document.getElementById("tb-stage").innerHTML = STAGE_NAMES.map((n,i)=>`<option value="${i}">${n}</option>`).join("");
+  document.getElementById("tb-loc-list").innerHTML = DATE_LOCS.map(l=>`<option value="${l}">`).join("");
+  if (save?.settings?.rating) document.getElementById("tb-rating").value = save.settings.rating;
+  suSel.onchange = () => {   // 選了召喚師,地點預設帶他愛去的第一個
+    const su = summonerPool[+suSel.value];
+    if (su?.spots?.length) document.getElementById("tb-loc").value = su.spots[0].name;
+  };
+  if (!document.getElementById("tb-name").value) rollGirl();
+}
+let tbRunning = false;
+async function runTestGen() {
+  if (tbRunning) return;
+  if (!window.PB_buildWatchPrompt) { status("tb-status","persona_builder 載入失敗",true); return; }
+  const ep = save?.settings?.ollamaUrl, model = save?.settings?.model;
+  if (!ep || !model) { status("tb-status","先在遊戲設定裡填好 Ollama 端點與模型",true); return; }
+  const su = summonerPool[+document.getElementById("tb-su").value];
+  if (!su) { status("tb-status","沒有召喚師",true); return; }
+  const stageIdx = +document.getElementById("tb-stage").value;
+  const stageName = STAGE_NAMES[stageIdx];
+  const type = document.getElementById("tb-type").value;
+  const loc = document.getElementById("tb-loc").value.trim() || null;
+  // 自訂階段腳本優先,跟遊戲同邏輯
+  let override = null;
+  try {
+    const list = await api("/api/scripts?category=watch_stage");
+    override = (list.find(x=>x.method===stageName)||{}).body || null;
+  } catch {}
+  let world = "";
+  try { world = await (await fetch("/content/world.md?ts="+Date.now())).text(); } catch {}
+  const ctx = {
+    world,
+    content_rating: document.getElementById("tb-rating").value,
+    character: {
+      name: document.getElementById("tb-name").value.trim() || "莉莉絲",
+      personality: (document.getElementById("tb-per").value||"").split(/[、,,]/).map(x=>x.trim()).filter(Boolean),
+      backstory: document.getElementById("tb-back").value.trim(),
+    },
+    summoner: su,
+    scene: { type, location: type==="date" ? loc : null,
+             location_style: type==="date" ? ((su.spots||[]).find(s=>s.name===loc)||{}).desc||null : null },
+    rival: { stage_idx: stageIdx, stage_name: stageName, tone_override: override },
+  };
+  const messages = [
+    { role: "system", content: window.PB_buildWatchPrompt(ctx) },
+    { role: "user", content: "生成他們這一刻的一來一往,嚴格照「他:…／她:…」兩行輸出。" },
+  ];
+  document.getElementById("tb-prompt").textContent = messages[0].content + "\n\n[user] " + messages[1].content;
+  document.getElementById("tb-out").textContent = "";
+  tbRunning = true;
+  document.getElementById("tb-run").disabled = true;
+  const key = "test:" + Date.now().toString(36);
+  const t0 = Date.now();
+  try {
+    while (Date.now() - t0 < 300000) {
+      const r = await api("/api/gen","POST",{ key, retry:true, endpoint: ep, model, messages, options:{temperature:0.9} });
+      if (r.status === "done") { document.getElementById("tb-out").textContent = r.result; status("tb-status",`✓ 完成(${Math.round((Date.now()-t0)/1000)}s)`); break; }
+      if (r.status === "error") { status("tb-status","生成失敗:"+(r.error||"?"),true); break; }
+      status("tb-status",`生成中… ${Math.round((Date.now()-t0)/1000)}s(排在伺服器佇列)`);
+      await new Promise(res=>setTimeout(res,1500));
+    }
+  } catch (e) { status("tb-status","失敗:"+e.message,true); }
+  tbRunning = false;
+  document.getElementById("tb-run").disabled = false;
+}
+
 // ── 階段語氣腳本 ──
 const STAGE_NAMES = ["強烈嫌惡排斥","嫌惡抗拒","抗拒冷淡","抗拒","偶爾互動","女友","妻子"];
 let stCat = "watch_stage", stScripts = [];
@@ -409,12 +527,13 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
 
 reloadSave();
 loadScripts();
-loadSummoners();
+loadSummoners().then(() => initTestBench());
 </script>
 <script type="module">
-// 內建階段語氣原文:直接從內容模組匯入,永遠與遊戲實際使用的版本一致
-import { RIVAL_WATCH_TONE, RIVAL_CHAT_EFFECT } from "/content/persona_builder.js";
+// 內建階段語氣原文與 prompt 產生器:直接從內容模組匯入,永遠與遊戲實際使用的版本一致
+import { RIVAL_WATCH_TONE, RIVAL_CHAT_EFFECT, buildWatchPrompt } from "/content/persona_builder.js";
 window.STAGE_DEFAULTS = { watch_stage: RIVAL_WATCH_TONE, chat_rival: RIVAL_CHAT_EFFECT };
+window.PB_buildWatchPrompt = buildWatchPrompt;
 window.fillStageBody?.();
 </script>
 </body>
