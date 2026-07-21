@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.16(2026-07-21)召喚師模擬上伺服器";
+const APP_VER = "v5.17(2026-07-21)委託卡無縫輪動";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -2353,6 +2353,8 @@ let pinIdx = 0;
 let procPool = null;        // 強制池:0 發現 | 1 已承接 | null 自動
 let procIdx = { 0: 0, 1: 0 };
 let _pinAbort = null;
+let _pinSnapTok = 0;        // 無縫輪動:克隆張跳回真身的排程令牌(新動作作廢舊排程)
+const PIN_EASE = "transform .3s cubic-bezier(.4,0,.2,1)";
 
 function poolItems(lv) { return state.quests.filter(q => q.lv === lv); }
 function curPool() {
@@ -2370,36 +2372,65 @@ function renderQuests() {
 
 // --- 場景一:執行中三格輪播 ---
 
+// 無縫輪動:頭尾各補一張克隆(頭=最後一張、尾=第一張),往同一方向一直滑會回到第一/最後一張。
+// 邏輯索引 pinIdx=0..N-1;有克隆時真身在軌道位置 pinIdx+1(loopOff=1)。
+function loopOff() { return execCap() > 1 ? 1 : 0; }
+
 function renderExec() {
   const exec = execQuests();
-  $("#exec-count").textContent = `執行中 ${exec.length}/${execCap()}`;
+  const N = execCap();
+  $("#exec-count").textContent = `執行中 ${exec.length}/${N}`;
   const track = $("#pin-track");
-  let html = "";
-  for (let i = 0; i < execCap(); i++) {
+  const slideHTML = (i) => {
     const q = exec[i];
-    if (q) {
-      html += `<div class="pin-slide"><div class="q-card c-exec">
+    if (q) return `<div class="pin-slide"><div class="q-card c-exec">
         <div class="q-body">${esc(q.text)}</div>
         <div class="swind"></div>
       </div></div>`;
-    } else {
-      html += `<div class="pin-slide"><div class="pin-slot" data-slot>
+    return `<div class="pin-slide"><div class="pin-slot" data-slot>
         <div class="pin-slot-icon">+</div>
         <div class="pin-slot-txt">${poolItems(0).length + poolItems(1).length ? "去承接/開始委託" : "先在下方輸入待辦"}</div>
       </div></div>`;
-    }
-  }
-  track.innerHTML = html;
-  pinIdx = Math.min(pinIdx, execCap() - 1);
-  track.style.transform = `translateX(-${pinIdx * 100}%)`;
-  $("#pin-dots").innerHTML = Array.from({ length: execCap() }, (_, i) => `<div class="dot${i === pinIdx ? " on" : ""}"></div>`).join("");
+  };
+  const slides = Array.from({ length: N }, (_, i) => slideHTML(i));
+  const loop = N > 1;
+  // 頭放最後一張克隆、尾放第一張克隆
+  track.innerHTML = loop ? slideHTML(N - 1) + slides.join("") + slideHTML(0) : slides.join("");
+  pinIdx = Math.min(pinIdx, N - 1);
+  _pinSnapTok++;   // 作廢任何待跳的克隆排程
+  track.style.transition = "none";
+  track.style.transform = `translateX(-${(pinIdx + loopOff()) * 100}%)`;
+  $("#pin-dots").innerHTML = Array.from({ length: N }, (_, i) => `<div class="dot${i === pinIdx ? " on" : ""}"></div>`).join("");
   track.querySelectorAll("[data-slot]").forEach(el => el.onclick = () => goProc());
   attachPinSwipe($("#pin-carousel"), exec);
 }
 
+// 越過頭尾時:先動畫滑到克隆張,再瞬間(無動畫)跳回真身,達成無縫輪動
+function pinSnapAfter(fn) {
+  const tok = ++_pinSnapTok;
+  setTimeout(() => { if (tok === _pinSnapTok) fn(); }, 320);
+}
+
 function setPinIdx(i) {
-  pinIdx = Math.max(0, Math.min(execCap() - 1, i));
-  $("#pin-track").style.transform = `translateX(-${pinIdx * 100}%)`;
+  const N = execCap();
+  const loop = N > 1;
+  const track = $("#pin-track");
+  _pinSnapTok++;   // 新的定位動作:作廢先前待跳
+  track.style.transition = PIN_EASE;
+  if (loop && i < 0) {
+    // 往回越過第一張 → 滑到頭部克隆(=最後一張),再跳到真正的最後一張
+    track.style.transform = `translateX(-0%)`;
+    pinIdx = N - 1;
+    pinSnapAfter(() => { track.style.transition = "none"; track.style.transform = `translateX(-${N * 100}%)`; });
+  } else if (loop && i >= N) {
+    // 往前越過最後一張 → 滑到尾部克隆(=第一張),再跳到真正的第一張
+    track.style.transform = `translateX(-${(N + 1) * 100}%)`;
+    pinIdx = 0;
+    pinSnapAfter(() => { track.style.transition = "none"; track.style.transform = `translateX(-100%)`; });
+  } else {
+    pinIdx = Math.max(0, Math.min(N - 1, i));
+    track.style.transform = `translateX(-${(pinIdx + loopOff()) * 100}%)`;
+  }
   document.querySelectorAll("#pin-dots .dot").forEach((d, idx) => d.classList.toggle("on", idx === pinIdx));
 }
 
@@ -2409,57 +2440,48 @@ function attachPinSwipe(el, exec) {
   const sig = _pinAbort.signal;
   const track = $("#pin-track");
   const THRESH = 50;
-  let sx, sy, startIdx, dragging = false;
+  let sx, sy, dragBase = 0, dragging = false;
+
+  // 跟手拖曳:以拖曳起點的軌道位置(dragBase+loopOff)為基準平移
+  const follow = (dx) => { track.style.transform = `translateX(${-((dragBase + loopOff()) * 100 - (dx / el.offsetWidth) * 100)}%)`; };
+  const startDrag = () => { _pinSnapTok++; dragBase = pinIdx; track.style.transition = "none"; };
+  // 放手:水平過門檻就往該方向一格(setPinIdx 會處理越界輪動),否則回正
+  const release = (dx, dy) => {
+    track.style.transition = PIN_EASE;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (dx < -THRESH) setPinIdx(dragBase + 1);
+      else if (dx > THRESH) setPinIdx(dragBase - 1);
+      else setPinIdx(dragBase);
+    } else {
+      setPinIdx(dragBase);
+      if (dy < -THRESH) { const q = exec[pinIdx]; if (q) flyPinCard(() => complete(q.id)); }
+    }
+  };
 
   el.addEventListener("touchstart", e => {
-    sx = e.touches[0].clientX; sy = e.touches[0].clientY;
-    startIdx = pinIdx; dragging = true;
-    track.style.transition = "none";
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; dragging = true; startDrag();
   }, { passive: true, signal: sig });
   el.addEventListener("touchmove", e => {
     if (!dragging) return;
     const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      track.style.transform = `translateX(${-(startIdx * 100 - (dx / el.offsetWidth) * 100)}%)`;
-      if (e.cancelable) e.preventDefault();
-    }
+    if (Math.abs(dx) > Math.abs(dy)) { follow(dx); if (e.cancelable) e.preventDefault(); }
   }, { passive: false, signal: sig });
   el.addEventListener("touchend", e => {
     if (!dragging) return; dragging = false;
-    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
-    track.style.transition = "transform .3s cubic-bezier(.4,0,.2,1)";
-    if (Math.abs(dx) > Math.abs(dy)) {
-      if (dx < -THRESH) setPinIdx(startIdx + 1);
-      else if (dx > THRESH) setPinIdx(startIdx - 1);
-      else setPinIdx(startIdx);
-    } else {
-      track.style.transform = `translateX(-${pinIdx * 100}%)`;
-      if (dy < -THRESH) { const q = exec[pinIdx]; if (q) flyPinCard(() => complete(q.id)); }
-    }
+    release(e.changedTouches[0].clientX - sx, e.changedTouches[0].clientY - sy);
   }, { passive: true, signal: sig });
 
-  let mdown = false, msx, msy, msi;
-  el.addEventListener("mousedown", e => { mdown = true; msx = e.clientX; msy = e.clientY; msi = pinIdx; track.style.transition = "none"; }, { signal: sig });
-  window.addEventListener("mousemove", e => {
-    if (!mdown) return;
-    const dx = e.clientX - msx;
-    track.style.transform = `translateX(${-(msi * 100 - (dx / el.offsetWidth) * 100)}%)`;
-  }, { signal: sig });
+  let mdown = false, msx, msy;
+  el.addEventListener("mousedown", e => { mdown = true; msx = e.clientX; msy = e.clientY; startDrag(); }, { signal: sig });
+  window.addEventListener("mousemove", e => { if (mdown) follow(e.clientX - msx); }, { signal: sig });
   window.addEventListener("mouseup", e => {
     if (!mdown) return; mdown = false;
-    const dx = e.clientX - msx, dy = e.clientY - msy;
-    track.style.transition = "transform .3s cubic-bezier(.4,0,.2,1)";
-    if (Math.abs(dx) > Math.abs(dy)) {
-      if (dx < -THRESH) setPinIdx(msi + 1); else if (dx > THRESH) setPinIdx(msi - 1); else setPinIdx(msi);
-    } else {
-      track.style.transform = `translateX(-${pinIdx * 100}%)`;
-      if (dy < -THRESH) { const q = exec[pinIdx]; if (q) flyPinCard(() => complete(q.id)); }
-    }
+    release(e.clientX - msx, e.clientY - msy);
   }, { signal: sig });
 }
 
 function flyPinCard(action) {
-  const slide = document.querySelectorAll("#pin-track .pin-slide")[pinIdx];
+  const slide = document.querySelectorAll("#pin-track .pin-slide")[pinIdx + loopOff()];
   const card = slide?.querySelector(".q-card");
   if (!card) { action(); return; }
   card.style.transition = "transform .26s ease,opacity .26s ease";
@@ -3127,6 +3149,8 @@ window.DBG = {
   drawTick: () => checkSummonerDraws(),
   simSync: () => simSync(),
   simLiveAct: (id) => simLiveAct(state.succubi.find(x => x.id === id)),
+  pin: () => ({ pinIdx, execCap: execCap(), tx: $("#pin-track")?.style.transform, slides: document.querySelectorAll("#pin-track .pin-slide").length }),
+  pinGo: (i) => setPinIdx(i),
 };
 
 // ===== 啟動 =====
