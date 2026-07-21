@@ -259,7 +259,7 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 }
 .q-tag.gold-tag { background: color-mix(in srgb, var(--gold) 22%, transparent); color: var(--gold); }
 .q-body {
-  font-size: 1.15rem; line-height: 1.6; flex: 1;
+  font-size: calc(1.15rem * var(--card-font-scale, 1)); line-height: 1.6; flex: 1;
   display: flex; align-items: center; word-break: break-all;
 }
 /* 設定:卡牌文字置中(水平) */
