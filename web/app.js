@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.17(2026-07-21)委託卡無縫輪動";
+const APP_VER = "v5.18(2026-07-21)卡牌文字置中選項";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -301,6 +301,7 @@ function defaultState() {
       player: "", sleepStart: "01:00", sleepEnd: "06:00", theme: "aqua",
       ollamaUrl: "http://localhost:11434", model: "", rating: "sfw",
       cardColors: null,   // null = 主題預設;{exec|found|acc|vn: {color,opacity}}
+      cardCenter: false,  // 卡牌文字水平置中
       tabOpacity: 1,
       bgImages: [], bgIndex: 0, bgInterval: 5,
     },
@@ -2219,6 +2220,7 @@ function applyLayoutVars() {
   }
   const tabs = document.getElementById("tabs");
   if (tabs) tabs.style.opacity = state.settings.tabOpacity ?? 1;
+  document.body.classList.toggle("card-center", !!state.settings.cardCenter);
 }
 
 // ===== 全域背景圖 =====
@@ -2925,6 +2927,7 @@ function renderSettings() {
     ca.oninput = onchg;
   });
 
+  const cctr = $("#set-card-center"); if (cctr) cctr.checked = !!state.settings.cardCenter;
   $("#set-tab-op").value = state.settings.tabOpacity ?? 1;
   $("#tab-op-val").textContent = Math.round((state.settings.tabOpacity ?? 1) * 100) + "%";
   $("#set-bg-interval").value = state.settings.bgInterval || 5;
@@ -2975,6 +2978,7 @@ on("set-sleep-end", "change", e => { state.settings.sleepEnd = e.target.value; s
 on("set-theme", "change", e => { state.settings.theme = e.target.value; scheduleSave(); renderAll(); });
 
 on("btn-card-reset", "click", () => { state.settings.cardColors = null; applyLayoutVars(); scheduleSave(); renderSettings(); });
+on("set-card-center", "change", e => { state.settings.cardCenter = e.target.checked; applyLayoutVars(); scheduleSave(); });
 on("set-tab-op", "input", e => {
   state.settings.tabOpacity = parseFloat(e.target.value);
   const v = $("#tab-op-val"); if (v) v.textContent = Math.round(e.target.value * 100) + "%";

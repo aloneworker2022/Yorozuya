@@ -262,6 +262,8 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
   font-size: 1.15rem; line-height: 1.6; flex: 1;
   display: flex; align-items: center; word-break: break-all;
 }
+/* 設定:卡牌文字置中(水平) */
+body.card-center .q-body { justify-content: center; text-align: center; }
 .q-hints { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
 .q-hints .hint {
   font-size: .62em; color: color-mix(in srgb, currentColor 60%, transparent);
