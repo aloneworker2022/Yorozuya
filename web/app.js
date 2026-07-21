@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.15(2026-07-20)召喚時序·詢問機制";
+const APP_VER = "v5.16(2026-07-21)召喚師模擬上伺服器";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -410,6 +410,7 @@ function initState(j, offline) {
     saveTimer = setTimeout(saveNow, 5000);
   } else {
     cacheLocal();
+    simSync();   // 進場即向伺服器要召喚師模擬的最新狀態(關機期間的判定/act 都補回來)
   }
 }
 
@@ -1158,14 +1159,14 @@ for (const cat of Object.keys(STAGE_SCRIPTS)) {
 // playerType 決定釋放機率(chat 1/20 / date 1/10);釋放只對「她此刻被召喚中」有意義,
 // 事後翻舊紀錄(未被召喚中)沒有釋放判定。
 function enterWatch(s, playerType, playerLocation = null) {
-  processTakenActs();   // 先補算到當下(含離線)
+  // 紀錄由伺服器權威運算;直播時 watchNext 會向伺服器現生 act
   watchWith = s.id;
   const taken = !!s.summoner?.taken;
   watchSession = {
     playerType, playerLocation,
     releaseChance: taken ? (playerType === "date" ? 1 / 10 : 1 / 20) : 0,
-    // 只算「文字備好」的未讀;她被召喚中而一則都沒備好 → 現場直播式生 1 則
-    turnCap: Math.min(randInt(1, 2), readyUnseen(s).length || 1),
+    // 一淫紋看 1~2 則;被召喚中時 watchNext 會向伺服器現生,故至少 1
+    turnCap: Math.min(randInt(1, 2), taken ? 2 : (unseenActs(s).length || 1)),
     presses: 0, busy: false, ended: false,
   };
   document.body.classList.add("chat-mode");
@@ -1193,12 +1194,13 @@ async function watchNext() {
   if (!s || !watchSession || watchSession.busy || watchSession.ended) return;
   const su = summonerById(s.summoner?.id);
   if (!su) { exitWatch(); return; }
-  // 只放送文字備好的紀錄;她被召喚中而沒有備好的 → 現生一個 act slot「此刻」的互動(直播)
-  let act = readyUnseen(s)[0];
+  // 取最舊的未讀紀錄(文字備好就秒開,沒備好就當場生);她被召喚中而沒有未讀 → 請伺服器現生一則(直播)
+  let act = unseenActs(s)[0];
   if (!act && s.summoner?.taken) {
-    const removed = processActSlot(s, Date.now());
-    if (removed || !state.succubi.includes(s)) { exitWatch(true); return; }
-    act = unseenActs(s)[0];   // 交配=3則,取最舊那則(起)開始播
+    const r = await simLiveAct(s);
+    if (r?.married || !state.succubi.includes(s)) { exitWatch(true); return; }
+    if (r?.rel) s.summoner = r.rel;   // 更新鏡像(她仍是觀戰對象)
+    act = unseenActs(s)[0];
   }
   if (!act) { exitWatch(); return; }
   watchSession.busy = true;
@@ -1223,6 +1225,7 @@ async function watchNext() {
     return;
   }
   act.seen = true;
+  simSeenOf(s, act);   // 回報伺服器:這則看過了(順帶回填已生成文字)
   watchSession.busy = false;
   watchSession.presses++;
 
@@ -1231,13 +1234,13 @@ async function watchNext() {
     rescueFromWatch(s);
     return;
   }
-  // 這一淫紋能看的看完了:留 2 秒讓玩家讀完最後一則,再收尾退出
-  if (watchSession.presses >= watchSession.turnCap || !readyUnseen(s).length) {
+  // 這一淫紋能看的看完了:留 2 秒讓玩家讀完最後一則,再收尾退出。她被召喚中時還能請伺服器現生,故不因無備好紀錄而收尾
+  if (watchSession.presses >= watchSession.turnCap || (!unseenActs(s).length && !s.summoner?.taken)) {
     watchSession.ended = true;
     setWatchBtns(false);
     const endMsg = s.summoner?.taken
       ? "(你只能看著……她還被召喚在對方那邊)"
-      : `(紀錄到此為止${readyUnseen(s).length ? `,還有 ${readyUnseen(s).length} 則未讀` : ""})`;
+      : `(紀錄到此為止${unseenActs(s).length ? `,還有 ${unseenActs(s).length} 則未讀` : ""})`;
     setTimeout(() => { if (watchSession?.ended) vnShow("", endMsg, "sys"); }, 2200);
     setTimeout(() => { if (watchSession?.ended) exitWatch(); }, 4200);
     scheduleSave();
@@ -1352,7 +1355,7 @@ async function genActOrders() {
       if (a.text || a.seen) continue;
       a.id ??= uid();
       const r = await genPost(`act:${g.id}:${a.id}`, actMsgs(g, su, a));
-      if (r?.status === "done" && r.result) { a.text = r.result; dirty = true; scheduleSave(); }
+      if (r?.status === "done" && r.result) { a.text = r.result; simTextOf(g, a); dirty = true; scheduleSave(); }
       if (++n >= 3) return;
     }
   }
@@ -1428,6 +1431,7 @@ function rescueFromWatch(s) {
   watchSession.ended = true;
   chatAbort?.abort();
   if (s.summoner) s.summoner.taken = null;
+  simRescueOf(s);   // 回報伺服器:她掙脫召喚
   vnShow("", `${s.name} 掙脫了召喚,回到你身邊!`, "sys");
   toast(`${s.name} 回來了!`, "good");
   setTimeout(() => {
@@ -1699,7 +1703,7 @@ async function askAboutActs() {
   const s = state.succubi.find(x => x.id === chatWith);
   if (!s || !chatSession || chatSession.busy) return;
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
-  processTakenActs();   // 先把離線期間累積的紀錄補算出來
+  // 她的召喚師紀錄由伺服器權威運算;進聊天前的同步已把鏡像更新到 s.summoner.acts
   const su = s.summoner ? summonerById(s.summoner.id) : null;
   const unseen = su ? unseenActs(s) : [];
 
@@ -1740,6 +1744,7 @@ async function askAboutActs() {
       break;
     }
     act.seen = true;
+    simSeenOf(s, act);   // 回報伺服器:這則已被詢問揭露
     await new Promise(r => setTimeout(r, 2400));
   }
 
@@ -1962,6 +1967,93 @@ function processTakenActs() {
   return changed;
 }
 
+// ── 伺服器端召喚師模擬:同步層 ──────────────────────────────────────────
+// 判定(召喚/約會)與召喚師 act 一律在伺服器運算,手機關螢幕也照跑;此處只負責
+// 上傳名冊快照/回報玩家動作,並把權威狀態鏡像到 s.summoner 顯示。存檔仍只有手機寫。
+let simPatch = {};              // 待送的玩家動作:{succId: {seen:[actId], texts:{actId:text}, rescue}}
+let simSyncBusy = false, lastSimSyncAt = 0;
+function simBuf(s) { return (simPatch[s.id] ??= { seen: [], texts: {} }); }
+function simTextOf(s, act) { if (act?.text && s?.summoner) simBuf(s).texts[act.id] = act.text; }   // 回填已生成文字
+function simSeenOf(s, act) { if (!act || !s?.summoner) return; const p = simBuf(s); if (!p.seen.includes(act.id)) p.seen.push(act.id); if (act.text) p.texts[act.id] = act.text; }
+function simRescueOf(s) { if (s?.summoner) simBuf(s).rescue = true; }
+
+async function simSync() {
+  if (!state || simSyncBusy) return false;
+  simSyncBusy = true;
+  const patches = simPatch; simPatch = {};   // 交出並清空(失敗補回)
+  try {
+    const roster = state.succubi.map(s => ({
+      id: s.id, ntr: !!s.ntr, kanban: isKanban(s.id),
+      busy: (chatWith === s.id && !!chatSession) || watchWith === s.id,
+    }));
+    const seeds = {};
+    for (const s of state.succubi) if (s.summoner) seeds[s.id] = s.summoner;
+    let resp;
+    try {
+      const r = await fetch("/api/sim/sync", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ now: Date.now(), rating: state.settings.rating || "sfw", roster, seeds, patches }),
+      });
+      if (!r.ok) throw new Error("sim http " + r.status);
+      resp = await r.json();
+    } catch (e) {
+      // 失敗:把 patch 併回下次再送
+      for (const [id, p] of Object.entries(patches)) {
+        const q = (simPatch[id] ??= { seen: [], texts: {} });
+        q.seen = [...new Set([...(q.seen || []), ...(p.seen || [])])];
+        Object.assign((q.texts ??= {}), p.texts || {});
+        if (p.rescue) q.rescue = true;
+      }
+      return false;
+    }
+    const rels = resp.rels || {};
+    let changed = false;
+    for (const s of state.succubi) {
+      if (watchWith === s.id || (chatWith === s.id && chatSession)) continue;   // 互動中不覆蓋鏡像
+      const rel = rels[s.id] ?? null;
+      if (JSON.stringify(s.summoner ?? null) !== JSON.stringify(rel)) { s.summoner = rel; changed = true; }
+    }
+    for (const o of resp.outcomes || []) { applySimOutcome(o); changed = true; }
+    lastSimSyncAt = Date.now();
+    if (changed) { scheduleSave(); renderAll(); }
+    return changed;
+  } finally {
+    simSyncBusy = false;
+  }
+}
+
+// 觀戰直播:請伺服器現生一個 act slot(她此刻被召喚中),回傳 {rel, married}
+async function simLiveAct(s) {
+  try {
+    const r = await fetch("/api/sim/live_act", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: s.id, now: Date.now() }),
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (j.married) applySimOutcome({ type: "married", id: s.id, suName: summonerById(s.summoner?.id)?.name });
+    return j;
+  } catch (e) { return null; }
+}
+
+// 伺服器回報的結局/事件:纏上(通知)、懷孕娶走(移除魅魔,等同 marryAway)
+function applySimOutcome(o) {
+  const s = state.succubi.find(x => x.id === o.id);
+  if (o.type === "entangled") {
+    log(`${o.suName || "一位召喚師"} 纏上了 ${s?.name || "一位魅魔"}!`);
+    toast(`⚠ ${o.suName || "召喚師"} 纏上了 ${s?.name || "魅魔"}`, "bad");
+  } else if (o.type === "married") {
+    const nm = s?.name || "一位魅魔";
+    log(`${nm} 懷了 ${o.suName || "召喚師"} 的孩子,脫離魅魔身分、跟他走了,永遠離開萬事屋。`);
+    toast(`${nm} 懷孕了……她成了 ${o.suName || "他"} 的妻子,永遠消失了。`, "bad");
+    state.succubi = state.succubi.filter(x => x.id !== o.id);
+    state.kanbans = (state.kanbans || []).filter(k => k.id !== o.id);
+    if (detailId === o.id) detailId = null;
+    if (chatWith === o.id) exitChat();
+    if (watchWith === o.id) exitWatch(true);
+  }
+}
+
 // 無看板娘時背景顯示的「休息中」魅魔:優先最後一位看板娘,否則最新召喚(排除 NTR)
 function restingSuccubus() {
   if (state.lastKanbanId) {
@@ -2053,8 +2145,8 @@ setInterval(() => {
   lastTickDay = today;
 
   if (expireKanban()) changed = true;
-  if (checkSummonerDraws()) changed = true;
-  if (processTakenActs()) changed = true;
+  // 召喚師判定/act 改由伺服器權威運算;手機每 15 秒同步一次鏡像(關螢幕時伺服器仍在跑)
+  if (Date.now() - lastSimSyncAt > 15000) simSync();
   genTick();   // 代工生成:下單+收貨(排隊在 RP5 伺服器跑,手機關螢幕也不停)
 
   const asleep = isAsleep();
@@ -3033,6 +3125,8 @@ window.DBG = {
   ask: () => askAboutActs(),
   chatState: () => ({ chatWith, watchWith, ended: chatSession?.ended ?? null }),
   drawTick: () => checkSummonerDraws(),
+  simSync: () => simSync(),
+  simLiveAct: (id) => simLiveAct(state.succubi.find(x => x.id === id)),
 };
 
 // ===== 啟動 =====

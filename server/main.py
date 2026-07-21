@@ -18,6 +18,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import sim
+
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "game.db"
 WEB_DIR = ROOT / "web"
@@ -61,6 +63,14 @@ def db() -> sqlite3.Connection:
             error    TEXT,
             created  REAL NOT NULL,
             updated  REAL NOT NULL
+        )"""
+    )
+    # 召喚師交配環模擬(伺服器權威運算,獨立於手機存檔 blob)。單列 JSON。
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS sim (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            data       TEXT NOT NULL,
+            updated_at REAL NOT NULL
         )"""
     )
     return conn
@@ -373,9 +383,111 @@ async def _gen_worker():
             await asyncio.sleep(2)  # worker 永不死
 
 
+# ---- 召喚師交配環:伺服器端權威模擬(判定 + act 都在此運算,手機關螢幕也照跑)----
+# 伺服器只寫自己的 sim 表,絕不碰 save 表(手機仍是存檔唯一寫入者)。
+
+SIM_LOCK = asyncio.Lock()
+
+
+def _sim_load() -> dict:
+    with db() as conn:
+        row = conn.execute("SELECT data FROM sim WHERE id = 1").fetchone()
+    if not row:
+        return sim.new_store()
+    try:
+        store = json.loads(row[0])
+    except Exception:
+        return sim.new_store()
+    for k, v in sim.new_store().items():
+        store.setdefault(k, v)
+    return store
+
+
+def _sim_save(store: dict) -> None:
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO sim (id, data, updated_at) VALUES (1, ?, ?) "
+            "ON CONFLICT (id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+            (json.dumps(store, ensure_ascii=False), time.time()),
+        )
+
+
+class SimSync(BaseModel):
+    now: int | None = None                 # 手機的當前時點(ms);缺省用伺服器時間
+    rating: str | None = None              # 'sfw' | 'nsfw'
+    roster: list = []                      # [{id, ntr, kanban, busy}] 名冊快照
+    seeds: dict | None = None              # {id: rel} 伺服器沒追蹤到時採用的既有關係
+    patches: dict | None = None            # {id: {seen:[actId], texts:{actId:text}, rescue:bool}}
+    ack_outcomes: bool = True              # True:回傳後清空 outcomes(手機已套用)
+
+
+@app.post("/api/sim/sync")
+async def sim_sync(body: SimSync):
+    """手機每隔數十秒呼叫一次:上傳名冊快照/玩家動作,伺服器補算到 now 並回傳權威狀態。"""
+    now_ms = int(body.now if body.now is not None else time.time() * 1000)
+    async with SIM_LOCK:
+        store = _sim_load()
+        if body.rating in ("sfw", "nsfw"):
+            store["rating"] = body.rating
+        store["roster"] = {
+            r["id"]: {"ntr": bool(r.get("ntr")), "kanban": bool(r.get("kanban")), "busy": bool(r.get("busy"))}
+            for r in (body.roster or []) if r.get("id")
+        }
+        sim.adopt_seeds(store, body.seeds)
+        sim.apply_patches(store, body.patches)
+        sim.run_tick(store, now_ms)
+        rels = {gid: store["rels"].get(gid) for gid in store["roster"].keys()}
+        outcomes = store.get("outcomes", [])
+        resp = {"rels": rels, "outcomes": outcomes, "tickedAt": now_ms}
+        if body.ack_outcomes:
+            store["outcomes"] = []
+        _sim_save(store)
+    return resp
+
+
+class SimLive(BaseModel):
+    id: str
+    now: int | None = None
+
+
+@app.post("/api/sim/live_act")
+async def sim_live_act(body: SimLive):
+    """觀戰直播:她此刻正被召喚中,伺服器現生一個 act slot(可能觸發交配/娶走)並回傳最新關係。"""
+    now_ms = int(body.now if body.now is not None else time.time() * 1000)
+    async with SIM_LOCK:
+        store = _sim_load()
+        rel = store.get("rels", {}).get(body.id)
+        if not rel or not rel.get("taken"):
+            return {"rel": rel, "married": False}
+        married = sim.process_act_slot(rel, now_ms, store.get("rating", "sfw"))
+        if married:
+            su = sim.summoner_by_id(rel["id"])
+            store.setdefault("outcomes", []).append(
+                {"type": "married", "id": body.id, "suName": su.get("name") if su else None, "t": now_ms})
+            store["rels"].pop(body.id, None)
+            store.get("sched", {}).pop(body.id, None)
+        _sim_save(store)
+        return {"rel": store.get("rels", {}).get(body.id), "married": married}
+
+
+async def _sim_worker():
+    """背景持續補算:即使手機關著,已上傳的名冊快照仍會依真實時間推進。"""
+    while True:
+        try:
+            await asyncio.sleep(60)
+            async with SIM_LOCK:
+                store = _sim_load()
+                if store.get("roster"):
+                    if sim.run_tick(store, int(time.time() * 1000)):
+                        _sim_save(store)
+        except Exception:
+            await asyncio.sleep(5)  # worker 永不死
+
+
 @app.on_event("startup")
 async def _start_gen_worker():
     asyncio.create_task(_gen_worker())
+    asyncio.create_task(_sim_worker())
 
 
 # Testword 編輯召喚師池(dateChance 等行為參數);整包覆寫 content/summoners.json
