@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.20(2026-07-21)修正纏上判定規則";
+const APP_VER = "v5.21(2026-07-21)纏上機率依稀有度";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1987,7 +1987,7 @@ async function simSync() {
   const patches = simPatch; simPatch = {};   // 交出並清空(失敗補回)
   try {
     const roster = state.succubi.map(s => ({
-      id: s.id, ntr: !!s.ntr, kanban: isKanban(s.id),
+      id: s.id, ntr: !!s.ntr, kanban: isKanban(s.id), rarity: s.rarity,
       busy: (chatWith === s.id && !!chatSession) || watchWith === s.id,
     }));
     const seeds = {};

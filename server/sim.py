@@ -28,7 +28,9 @@ STAGE_ADVANCE = [2, 3, 5, 5]            # ⓪~③ 交配 N 次推進
 CONFESS_CHANCE = 1 / 5                  # ④ 每次交配 1/5 告白升女友
 FIANCEE_MATINGS = 20                    # ⑤ 累積 20 次交配解環
 PREGNANCY_CHANCE = 1 / 2               # 解環後每次內射 1/2 懷孕娶走
-ENTANGLE_CHANCE = 1 / 5                 # 未纏上:每 30 分鐘一輪,1/5 被纏上
+# 未纏上:每 30 分鐘一輪,依稀有度決定被纏上機率(越稀有越容易被召喚師盯上;SSR 必定)
+ENTANGLE_CHANCE = {"N": 1 / 5, "R": 1 / 4, "S": 1 / 3, "SS": 1 / 2, "SSR": 1.0}
+DEFAULT_ENTANGLE = 1 / 5               # 未知稀有度時的保底(比照 N)
 TAKEN_CHANCE = 1 / 3                    # 已纏上:每小時判定一次是否被召喚/約會
 ACT_CAP = 60                            # 每隻魅魔保留的互動紀錄上限
 WIN30_MS = 30 * 60 * 1000              # 纏上判定的 30 分鐘窗(對齊整點與 30 分,等同旗標清除)
@@ -195,6 +197,7 @@ def _tick_girl(store, gid, now_ms):
     ntr = bool(meta.get("ntr"))
     kanban = bool(meta.get("kanban"))
     busy = bool(meta.get("busy"))
+    rarity = meta.get("rarity")
     rel = store["rels"].get(gid)
 
     # ── 未纏上 → 纏上判定 ──
@@ -204,7 +207,7 @@ def _tick_girl(store, gid, now_ms):
         if (kanban or ntr) or jw.get(gid) == win:
             return False                          # 看板娘/NTR中,或這一輪已判過 → 略過
         jw[gid] = win                             # 標記本輪已判(不論成敗)
-        if random.random() < ENTANGLE_CHANCE:
+        if random.random() < ENTANGLE_CHANCE.get(rarity, DEFAULT_ENTANGLE):
             sums, _ = load_content()
             if sums:
                 su = pick(sums)

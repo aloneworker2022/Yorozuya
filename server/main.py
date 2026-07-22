@@ -430,7 +430,8 @@ async def sim_sync(body: SimSync):
         if body.rating in ("sfw", "nsfw"):
             store["rating"] = body.rating
         store["roster"] = {
-            r["id"]: {"ntr": bool(r.get("ntr")), "kanban": bool(r.get("kanban")), "busy": bool(r.get("busy"))}
+            r["id"]: {"ntr": bool(r.get("ntr")), "kanban": bool(r.get("kanban")),
+                      "busy": bool(r.get("busy")), "rarity": r.get("rarity")}
             for r in (body.roster or []) if r.get("id")
         }
         sim.adopt_seeds(store, body.seeds)
