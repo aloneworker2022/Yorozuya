@@ -547,6 +547,25 @@ def edit_person():
     return FileResponse(WEB_DIR / "edit_person.html")
 
 
+# /testword 編輯魅魔獻祭三場景腳本;整包覆寫 content/sacrifice.json
+@app.put("/api/sacrifice")
+def put_sacrifice(body: dict):
+    if not isinstance(body.get("methods"), list):
+        raise HTTPException(400, "需要 {opening, methods:[...]}")
+    path = WEB_DIR / "content" / "sacrifice.json"
+    current = {}
+    if path.exists():
+        try:
+            current = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            current = {}
+    if "opening" in body:
+        current["opening"] = body["opening"]
+    current["methods"] = body["methods"]
+    path.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"ok": True, "count": len(body["methods"])}
+
+
 @app.get("/body")
 def body():
     # 虛擬設計台:偽 3D 點陣胸部人台,供胸罩/衣著版型預覽

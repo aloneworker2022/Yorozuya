@@ -145,13 +145,24 @@
   </div>
 </section>
 
-<!-- ── 獻祭腳本編寫 ── -->
+<!-- ── 魅魔獻祭・三場景腳本 ── -->
 <section>
-  <h2>獻祭腳本(給 AI 隨機選用)</h2>
-  <div class="tabs" id="cat-tabs">
-    <button data-cat="sacrifice_offering" class="on">祭品(男)</button>
-    <button data-cat="sacrifice_succubus">魅魔</button>
+  <h2>魅魔獻祭・三場景腳本({name}=魅魔名字)</h2>
+  <div class="mini" style="margin-bottom:.6em">獻祭魅魔時隨機挑一個手法。流程:開場(她被帶來・疑惑)→ 準備/獻祭/收尾三場景,每景 AI 先讀你的腳本生「描述(旁白)」、再讀自己的描述生「她的反應」,共六句逐頁播放。內容原樣傳給 AI,遊戲核心不檢視——尺度由你決定。</div>
+  <label>開場白(她被帶到祭壇前的預設腳本;{name} 會代入)</label>
+  <textarea id="sac-opening" style="min-height:3.5em" placeholder="{name} 被帶到了祭壇前,眼神帶著疑惑……"></textarea>
+  <div id="sac-methods" style="margin-top:.6em"></div>
+  <div class="row" style="margin-top:.7em">
+    <button class="cy" onclick="addSacMethod()">＋新增手法</button>
+    <button onclick="saveSacrifice()">儲存全部手法</button>
+    <span class="status" id="sac2-status"></span>
   </div>
+</section>
+
+<!-- ── 祭品(男)獻祭腳本 ── -->
+<section>
+  <h2>祭品(男)獻祭腳本(召喚時獻祭男性祭品,給 AI 隨機選用)</h2>
+  <div class="mini" style="margin-bottom:.6em">這是「召喚獻祭」時獻祭地牢男性祭品用的腳本(單段旁白)。魅魔獻祭請用上面的三場景。</div>
   <label>手法名稱(例:砍頭、油炸、放血)</label>
   <input id="sc-method" placeholder="給自己看的標籤,也會傳給 AI">
   <label>給 AI 的描述(獻祭過程,越詳細 AI 演得越飽滿)</label>
@@ -534,8 +545,58 @@ async function loadScripts() {
 }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
+// ── 魅魔獻祭・三場景腳本 ──
+let sacData = { opening: "", methods: [] };
+async function loadSacrifice() {
+  try { sacData = await api("/content/sacrifice.json?ts=" + Date.now()); } catch { sacData = { opening: "", methods: [] }; }
+  sacData.methods ??= [];
+  document.getElementById("sac-opening").value = sacData.opening || "";
+  renderSacMethods();
+}
+function sacMethodCard(m, i) {
+  return `<details style="border-top:1px solid rgba(255,255,255,.07);padding:.5em 0" data-sacm="${i}">
+    <summary style="cursor:pointer"><b style="color:#ffd75f">${esc(m.name || "(未命名手法)")}</b></summary>
+    <label>手法名稱(例:放血、火刑)</label><input value="${esc(m.name || "")}" data-sacf="${i}:name">
+    <label>① 準備場景(給 AI;{name} 可用)</label><textarea style="min-height:4em" data-sacf="${i}:prep">${esc(m.prep || "")}</textarea>
+    <label>② 獻祭場景</label><textarea style="min-height:4em" data-sacf="${i}:ritual">${esc(m.ritual || "")}</textarea>
+    <label>③ 收尾場景</label><textarea style="min-height:4em" data-sacf="${i}:finale">${esc(m.finale || "")}</textarea>
+    <div class="row" style="margin-top:.4em"><button class="del" onclick="delSacMethod(${i})">刪除這個手法</button></div>
+  </details>`;
+}
+function renderSacMethods(keepOpen = null) {
+  const el = document.getElementById("sac-methods");
+  el.innerHTML = sacData.methods.length
+    ? sacData.methods.map((m, i) => sacMethodCard(m, i)).join("")
+    : `<div class="mini">還沒有手法。按「＋新增手法」。</div>`;
+  if (keepOpen != null) el.querySelector(`[data-sacm="${keepOpen}"]`)?.setAttribute("open", "");
+}
+function collectSac() {
+  sacData.opening = document.getElementById("sac-opening").value;
+  document.querySelectorAll("[data-sacf]").forEach(inp => {
+    const [i, k] = inp.dataset.sacf.split(":");
+    const m = sacData.methods[+i];
+    if (m) m[k] = inp.value;
+  });
+}
+function addSacMethod() { collectSac(); sacData.methods.push({ name: "", prep: "", ritual: "", finale: "" }); renderSacMethods(sacData.methods.length - 1); }
+function delSacMethod(i) {
+  if (!confirm(`刪除手法「${sacData.methods[i]?.name || "(未命名)"}」?`)) return;
+  collectSac(); sacData.methods.splice(i, 1); renderSacMethods();
+}
+async function saveSacrifice() {
+  collectSac();
+  const bad = sacData.methods.find(m => !m.name.trim() || !m.prep.trim() || !m.ritual.trim() || !m.finale.trim());
+  if (bad) { status("sac2-status", "有手法缺名稱或三場景之一,請補齊或刪除", true); return; }
+  try {
+    await api("/api/sacrifice", "PUT", { opening: sacData.opening, methods: sacData.methods });
+    status("sac2-status", `✓ 已寫回 sacrifice.json,共 ${sacData.methods.length} 個手法(遊戲重整後生效)`);
+    renderSacMethods();
+  } catch (e) { status("sac2-status", "失敗:" + e.message, true); }
+}
+
 reloadSave();
 loadScripts();
+loadSacrifice();
 loadSummoners().then(() => initTestBench());
 </script>
 <script type="module">
