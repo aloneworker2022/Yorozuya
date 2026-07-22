@@ -28,9 +28,10 @@ STAGE_ADVANCE = [2, 3, 5, 5]            # ⓪~③ 交配 N 次推進
 CONFESS_CHANCE = 1 / 5                  # ④ 每次交配 1/5 告白升女友
 FIANCEE_MATINGS = 20                    # ⑤ 累積 20 次交配解環
 PREGNANCY_CHANCE = 1 / 2               # 解環後每次內射 1/2 懷孕娶走
-DRAW_CHANCE = 1 / 20                    # 未纏上:每 drawIvlH 小時 1/20 被纏上
-TAKEN_CHANCE = 1 / 3                    # 已纏上:每小時 1/3 被召喚
+ENTANGLE_CHANCE = 1 / 5                 # 未纏上:每 30 分鐘一輪,1/5 被纏上
+TAKEN_CHANCE = 1 / 3                    # 已纏上:每小時判定一次是否被召喚/約會
 ACT_CAP = 60                            # 每隻魅魔保留的互動紀錄上限
+WIN30_MS = 30 * 60 * 1000              # 纏上判定的 30 分鐘窗(對齊整點與 30 分,等同旗標清除)
 
 DEFAULT_SPOTS = ["咖啡廳", "夜景展望台", "海邊", "電影院", "遊樂園"]
 
@@ -176,62 +177,66 @@ def _process_taken(store, gid, rel, now_ms):
         store.setdefault("outcomes", []).append(
             {"type": "married", "id": gid, "suName": su.get("name") if su else None, "t": now_ms})
         store["rels"].pop(gid, None)
-        store.get("sched", {}).pop(gid, None)
+        store.get("takenWin", {}).pop(gid, None)
         changed = True
     elif now_ms >= tk["until"]:
-        rel["taken"] = None
+        rel["taken"] = None                                  # 解召喚
+        store.setdefault("takenWin", {})[gid] = now_ms // HOUR   # 解召喚後,下一小時才再判定
         changed = True
     return changed
 
 
 def _tick_girl(store, gid, now_ms):
-    rating = store.get("rating", "sfw")
+    """每次 tick(sync 每 15 秒 / worker 每 60 秒)對一隻魅魔跑一次。判定用「時窗旗標」擋重複:
+    - 纏上:每 30 分鐘一輪(對齊整點/30分),同輪只判一次;不是看板娘(且非 NTR)才判,1/5 命中。
+    - 已纏上未被召喚:每「小時」一輪判定是否被召喚/約會(TAKEN_CHANCE)。
+    - 被召喚中:只生 act、等時效解召喚,不重判。"""
     meta = store.get("roster", {}).get(gid, {})
     ntr = bool(meta.get("ntr"))
     kanban = bool(meta.get("kanban"))
     busy = bool(meta.get("busy"))
-    sched_map = store.setdefault("sched", {})
-    if sched_map.get(gid) is None:
-        div = rand_int(2, 5)
-        sched_map[gid] = {"drawIvlH": div, "nextDraw": now_ms + div * HOUR}
-    sched = sched_map[gid]
-    changed = False
-    rolls = 0
-    while now_ms >= sched["nextDraw"] and rolls < 60:
-        rolls += 1
-        at = sched["nextDraw"]
-        rel = store["rels"].get(gid)
-        step = HOUR if rel else sched["drawIvlH"] * HOUR
-        if not rel:
-            if not (ntr or kanban or busy) and random.random() < DRAW_CHANCE:
-                sums, _ = load_content()
-                if sums:
-                    su = pick(sums)
-                    store["rels"][gid] = make_rel(su["id"], at)
-                    store.setdefault("outcomes", []).append(
-                        {"type": "entangled", "id": gid, "suName": su.get("name"), "t": at})
-        elif rel.get("taken"):
-            pass  # 被召喚中不重判,等時效
-        elif not ntr and not busy and random.random() < TAKEN_CHANCE:
-            su = summoner_by_id(rel["id"])
-            is_date = random.random() < ((su or {}).get("dateChance", 0.5))
-            loc = None
-            if is_date:
-                spots = (su or {}).get("spots") or []
-                loc = pick(spots)["name"] if spots else pick(DEFAULT_SPOTS)
-            dur = 1 if is_date else rand_int(2, 5)
-            rel["taken"] = {"type": "date" if is_date else "kanban", "location": loc,
-                            "until": at + dur * HOUR, "actAt": at}
-        sched["nextDraw"] += step
-        changed = True
     rel = store["rels"].get(gid)
-    if sched["nextDraw"] <= now_ms:
-        sched["nextDraw"] = now_ms + (HOUR if rel else sched["drawIvlH"] * HOUR)
-        changed = True
-    if rel and rel.get("taken"):
-        if _process_taken(store, gid, rel, now_ms):
-            changed = True
-    return changed
+
+    # ── 未纏上 → 纏上判定 ──
+    if not rel:
+        win = now_ms // WIN30_MS                 # 30 分鐘窗編號(對齊整點/30分)= 判定旗標
+        jw = store.setdefault("judgeWin", {})
+        if (kanban or ntr) or jw.get(gid) == win:
+            return False                          # 看板娘/NTR中,或這一輪已判過 → 略過
+        jw[gid] = win                             # 標記本輪已判(不論成敗)
+        if random.random() < ENTANGLE_CHANCE:
+            sums, _ = load_content()
+            if sums:
+                su = pick(sums)
+                store["rels"][gid] = make_rel(su["id"], now_ms)
+                store.setdefault("takenWin", {})[gid] = now_ms // HOUR   # 纏上當下這小時先不召喚
+                store.setdefault("outcomes", []).append(
+                    {"type": "entangled", "id": gid, "suName": su.get("name"), "t": now_ms})
+                return True
+        return False
+
+    # ── 已纏上、被召喚中 → 生 act / 到期解召喚 ──
+    if rel.get("taken"):
+        return _process_taken(store, gid, rel, now_ms)
+
+    # ── 已纏上、未被召喚 → 每小時判定一次是否召喚/約會 ──
+    winH = now_ms // HOUR
+    tw = store.setdefault("takenWin", {})
+    if (ntr or busy) or tw.get(gid) == winH:
+        return False
+    tw[gid] = winH
+    if random.random() < TAKEN_CHANCE:
+        su = summoner_by_id(rel["id"])
+        is_date = random.random() < ((su or {}).get("dateChance", 0.5))
+        loc = None
+        if is_date:
+            spots = (su or {}).get("spots") or []
+            loc = pick(spots)["name"] if spots else pick(DEFAULT_SPOTS)
+        dur = 1 if is_date else rand_int(2, 5)     # 約會 1 小時;召喚 2~5 小時
+        rel["taken"] = {"type": "date" if is_date else "kanban", "location": loc,
+                        "until": now_ms + dur * HOUR, "actAt": now_ms}
+        return True
+    return False
 
 
 def adopt_seeds(store, seeds):
@@ -262,21 +267,23 @@ def run_tick(store, now_ms):
     """依 roster 快照把所有魅魔補算到 now;回傳是否有變化。"""
     changed = False
     store.setdefault("rels", {})
-    store.setdefault("sched", {})
+    store.setdefault("judgeWin", {})
+    store.setdefault("takenWin", {})
     for gid in list(store.get("roster", {}).keys()):
         if _tick_girl(store, gid, now_ms):
             changed = True
-    # 名冊已無的魅魔(消失/被娶走/被獻祭):清掉關係與排程
+    # 名冊已無的魅魔(消失/被娶走/被獻祭):清掉關係與判定旗標
     roster = store.get("roster", {})
     for gid in list(store["rels"].keys()):
         if gid not in roster:
             store["rels"].pop(gid, None)
             changed = True
-    for gid in list(store["sched"].keys()):
-        if gid not in roster:
-            store["sched"].pop(gid, None)
+    for m in ("judgeWin", "takenWin"):
+        for gid in list(store[m].keys()):
+            if gid not in roster:
+                store[m].pop(gid, None)
     return changed
 
 
 def new_store():
-    return {"rels": {}, "sched": {}, "roster": {}, "rating": "sfw", "outcomes": []}
+    return {"rels": {}, "roster": {}, "rating": "sfw", "outcomes": [], "judgeWin": {}, "takenWin": {}}
