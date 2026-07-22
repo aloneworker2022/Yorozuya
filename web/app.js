@@ -3,12 +3,12 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
-import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildMatingPrompt } from "./content/persona_builder.js";
+import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.22(2026-07-21)召喚改30分窗+依稀有度";
+const APP_VER = "v5.23(2026-07-21)獻祭三場景六句演出";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -652,7 +652,8 @@ function sacrificeDropChance(stage) {
   return 1 / denom;
 }
 
-// 魅魔獻祭:VN 描述(讀 testword 腳本 + AI)→ 移除她 + 機率掉永久天賦擴充
+// 魅魔獻祭:三場景 VN(開場 → 準備/獻祭/收尾,每景 AI 生「描述+反應」共六句逐頁播放)。
+// 開場時背景就把後面六句全部生成好(半預製);逐頁按「下一頁」,最後「完成獻祭」才結算移除+掉落。
 async function sacrificeSuccubus(id) {
   const s = state.succubi.find(x => x.id === id);
   if (!s || s.ntr) return;
@@ -661,57 +662,139 @@ async function sacrificeSuccubus(id) {
   if (!confirm(`獻祭 ${s.name}?\n費用 ${price} 金。她將被獻給地獄惡魔,永遠消失。`)) return;
   state.gold -= price;
 
-  // 進入獻祭 VN
+  const method = (SACRIFICE.methods && SACRIFICE.methods.length)
+    ? pick(SACRIFICE.methods) : { name: null, prep: null, ritual: null, finale: null };
+  const opening = (SACRIFICE.opening || "{name} 被帶到了祭壇前,眼神帶著疑惑。").replaceAll("{name}", s.name);
   sacrificeWith = id;
+  sacSession = {
+    id, name: s.name, persona: s.personality, backstory: s.backstory, stage: s.stage, gift: s.gift,
+    method, opening,
+    pages: Array.from({ length: 6 }, () => ({ text: null })),   // [描述,反應] × 準備/獻祭/收尾
+    idx: 0, settled: false, price,
+  };
   document.body.classList.add("chat-mode");
   detailId = null;
   renderAll();
-  vnShow("", `—— 獻祭儀式:${s.name} ——`, "sys");
-  setSacBtns(false);
-  vnTyping(true);
+  sacShowCurrent();               // 開場:她被帶來、疑惑
+  generateSacPages(sacSession);   // 開場期間,背景把後面六句全部生成好
+}
 
-  let script = { method: null, body: null };
-  try { script = await fetch("/api/scripts/random?category=sacrifice_succubus").then(r => r.json()); } catch { }
-  const ctx = {
-    world: WORLD_LORE, content_rating: state.settings.rating || "sfw",
-    character: { name: s.name, personality: s.personality, backstory: s.backstory },
-    method: script.method, method_desc: script.body,
-  };
-  const msgs = [
-    { role: "system", content: buildSacrificePrompt(ctx) },
-    { role: "user", content: "描述這場獻祭儀式的過程,3~5 句,以旁白第三人稱。" },
-  ];
-  try {
-    await llmJobRun(msgs, acc => vnShow(s.name, acc, "ai"),
-      `祭壇的火光映著 ${s.name} 蒼白的臉,她掙扎著,喉間發出無聲的哀鳴……儀式的紋路一寸寸亮起,將她的存在抽離這個世界。`);
-    vnDone();
-  } catch (e) {
-    if (e.name === "AbortError") { sacrificeWith = null; document.body.classList.remove("chat-mode"); renderAll(); return; }
-    vnShow("", "(儀式的細節模糊了……)", "sys");
+// 背景生成六句:三場景 ×(讀腳本生描述 → 讀描述生反應),依序填入 pages
+async function generateSacPages(ss) {
+  const rating = state.settings.rating || "sfw";
+  const char = { name: ss.name, personality: ss.persona, backstory: ss.backstory };
+  const scenes = [["準備", ss.method.prep], ["獻祭", ss.method.ritual], ["收尾", ss.method.finale]];
+  for (let sc = 0; sc < 3; sc++) {
+    const [label, script] = scenes[sc];
+    const body = (script || "").replaceAll("{name}", ss.name);
+    // ① 場景描述(讀入腳本)
+    const di = sc * 2;
+    const dctx = { world: WORLD_LORE, content_rating: rating, character: char,
+                   method_name: ss.method.name, scene_label: label, scene_stage: sc + 1, scene_script: body };
+    if (!await sacGen(ss, di, [
+      { role: "system", content: buildSacScenePrompt(dctx) },
+      { role: "user", content: `讀入本場景「${label}」的腳本,寫 1~2 句第三人稱旁白描述這一段。只輸出旁白。` },
+    ], sacCannedDesc(label, ss.name, body))) return;
+    // ② 人物反應(讀入剛生成的描述)
+    const ri = sc * 2 + 1;
+    const rctx = { world: WORLD_LORE, content_rating: rating, character: char,
+                   scene_label: label, scene_stage: sc + 1, narration: ss.pages[di].text };
+    if (!await sacGen(ss, ri, [
+      { role: "system", content: buildSacReactPrompt(rctx) },
+      { role: "user", content: `讀入上面的旁白,寫出「${ss.name}」此刻的反應(台詞或肢體),1~2 句。` },
+    ], sacCannedResp(label, ss.name))) return;
   }
+}
 
-  // 結算:移除 + 掉落
-  const dropped = Math.random() < sacrificeDropChance(s.stage);
+// 生成單一頁;若玩家正好在等這頁就即時串流/補上。回傳 false 表示 session 已中止
+async function sacGen(ss, idx, msgs, canned) {
+  if (sacSession !== ss) return false;
+  try {
+    const text = await llmJobRun(msgs,
+      acc => { if (sacSession === ss && ss.idx === idx + 1) sacRender(idx + 1, acc); }, canned);
+    if (sacSession !== ss) return false;
+    ss.pages[idx].text = text;
+  } catch (e) {
+    if (e.name === "AbortError" || sacSession !== ss) return false;
+    ss.pages[idx].text = canned;
+  }
+  if (sacSession === ss && ss.idx === idx + 1) { sacRender(idx + 1); vnDone(); sacBtn(); }
+  return true;
+}
+
+// 顯示目前這一頁(0=開場,1~6=六句)
+function sacShowCurrent() {
+  const ss = sacSession; if (!ss) return;
+  const title = document.getElementById("chat-title");
+  if (title) title.textContent = `獻祭儀式:${ss.name}${ss.idx ? `(${ss.idx}/6)` : ""}`;
+  if (ss.idx === 0) { vnShow(ss.name, ss.opening, "ai"); vnDone(); sacBtn(); return; }
+  const p = ss.pages[ss.idx - 1];
+  if (p && p.text) { sacRender(ss.idx); vnDone(); }
+  else { vnTyping(true); sacRender(ss.idx, ""); }   // 還沒生成好 → 打字中,等背景補上
+  sacBtn();
+}
+
+// 偶數頁=場景描述(旁白);奇數頁=她的反應(她的名字/台詞)
+function sacRender(i, partial) {
+  const ss = sacSession; if (!ss || i < 1) return;
+  const j = i - 1;
+  const text = partial != null ? partial : (ss.pages[j] && ss.pages[j].text) || "";
+  if (j % 2 === 1) vnShow(ss.name, text, "ai");
+  else vnShow("", text, "sys");
+}
+
+// 下一頁鈕:未到最後一頁=「下一頁 ▶」;最後一頁=「完成獻祭」;目前頁沒生成好就停用
+function sacBtn() {
+  const ss = sacSession; const b = document.getElementById("sac-done");
+  if (!b || !ss) return;
+  b.textContent = ss.idx >= 6 ? "完成獻祭" : "下一頁 ▶";
+  const ready = ss.idx === 0 || (ss.pages[ss.idx - 1] && ss.pages[ss.idx - 1].text);
+  b.disabled = !ready;
+}
+
+function sacAdvance() {
+  const ss = sacSession; if (!ss) return;
+  if (ss.idx >= 6) { if (!ss.settled) sacSettle(ss); exitSacrifice(); return; }
+  ss.idx++;
+  sacShowCurrent();
+}
+
+// 結算:移除她 + 依階段機率掉永久天賦擴充(在「完成獻祭」時才發生)
+function sacSettle(ss) {
+  ss.settled = true;
+  const dropped = Math.random() < sacrificeDropChance(ss.stage);
   let dropMsg = "";
   if (dropped) {
-    if (s.gift === "cleanse") {
-      const n = state.succubi.filter(x => x.id !== id && x.summoner).length;
-      for (const x of state.succubi) if (x.id !== id) x.summoner = null;
+    if (ss.gift === "cleanse") {
+      const n = state.succubi.filter(x => x.id !== ss.id && x.summoner).length;
+      for (const x of state.succubi) if (x.id !== ss.id) x.summoner = null;
       dropMsg = `\n\n✦ 特殊天賦發動:所有魅魔身上的召喚師都被抹除了!(${n} 名解除)`;
     } else {
       state.expansions ??= {};
-      const inc = s.stage === "wife" ? 2 : 1;   // 妻子最豐厚
-      state.expansions[s.gift] = (state.expansions[s.gift] || 0) + inc;
-      dropMsg = `\n\n✦ 你永久獲得了她的天賦:${EXPANSIONS[s.gift]} +${inc}!`;
+      const inc = ss.stage === "wife" ? 2 : 1;   // 妻子最豐厚
+      state.expansions[ss.gift] = (state.expansions[ss.gift] || 0) + inc;
+      dropMsg = `\n\n✦ 你永久獲得了她的天賦:${EXPANSIONS[ss.gift]} +${inc}!`;
     }
   }
-  state.succubi = state.succubi.filter(x => x.id !== id);
-  state.kanbans = (state.kanbans || []).filter(k => k.id !== id);
-  if (state.lastKanbanId === id) state.lastKanbanId = null;
-  log(`獻祭了 ${s.name}(-${price} 金)${dropped ? `,獲得 ${EXPANSIONS[s.gift]} 擴充` : ""}`);
-  sacResult = `${s.name} 化作了獻祭的光。${dropMsg}`;
-  setSacBtns(true);
+  state.succubi = state.succubi.filter(x => x.id !== ss.id);
+  state.kanbans = (state.kanbans || []).filter(k => k.id !== ss.id);
+  if (state.lastKanbanId === ss.id) state.lastKanbanId = null;
+  log(`獻祭了 ${ss.name}(-${ss.price} 金)${dropped ? `,獲得 ${EXPANSIONS[ss.gift]} 擴充` : ""}`);
+  toast(dropMsg.includes("✦") ? "✦ 獲得永久擴充!" : `${ss.name} 化作了獻祭的光`, dropMsg.includes("✦") ? "good" : "");
   scheduleSave();
+}
+
+// 無模型/失敗時的 SFW 罐頭
+function sacCannedDesc(label, name, body) {
+  if (body) return body;   // 有腳本 → 無模型時直接用腳本原文當描述
+  return ({ "準備": `祭壇的紋路亮起,${name} 被引到了魔法陣中央。`,
+            "獻祭": `力量順著紋路攀升,一寸寸自 ${name} 的身上抽離。`,
+            "收尾": `光芒散去,${name} 的身影靜靜癱軟、消融。` })[label] || "儀式繼續進行。";
+}
+function sacCannedResp(label, name) {
+  return ({ "準備": "「……這是要做什麼?放開我。」",
+            "獻祭": "「唔……不、不要……!」",
+            "收尾": "她再也發不出聲音,身子軟軟地垂了下去。" })[label] || "「……」";
 }
 
 function dismiss(id) { return sacrificeSuccubus(id); }   // 相容舊呼叫
@@ -1111,17 +1194,12 @@ function exitChat() {
 let watchWith = null;     // 觀戰中的魅魔 id
 let watchSession = null;  // {playerType:'chat'|'date', playerLocation, releaseChance, turnCap, presses, busy, ended}
 let sacrificeWith = null; // 獻祭儀式中的魅魔 id
-let sacResult = "";       // 獻祭結果文字
+let sacSession = null;    // 獻祭三場景 session {id,name,method,opening,pages[6],idx,settled,price}
 let sacSummon = null;     // 召喚獻祭 session {count}
 
-function setSacBtns(enabled) {
-  const d = document.getElementById("sac-done");
-  if (d) d.disabled = !enabled;
-  if (enabled && sacResult) toast(sacResult.includes("✦") ? "✦ 獲得永久擴充!" : "獻祭完成", sacResult.includes("✦") ? "good" : "");
-}
 function exitSacrifice() {
   chatAbort?.abort();
-  sacrificeWith = null; sacResult = "";
+  sacrificeWith = null; sacSession = null;
   document.body.classList.remove("chat-mode");
   renderAll();
 }
@@ -1147,6 +1225,10 @@ function affToStageIdx(aff) {
 // 性趣池(交配環節);召喚師纏上魅魔時隨機抽 4~10 個給該對
 let KINKS = [];
 fetch("content/kinks.json").then(r => r.ok ? r.json() : null).then(j => { KINKS = (j && j.kinks) || []; }).catch(() => {});
+
+// 獻祭儀式腳本(開場 + 三場景 method);廠商件,SFW 佔位在 content/sacrifice.json
+let SACRIFICE = { opening: "{name} 被帶到了祭壇前,眼神帶著疑惑。", methods: [] };
+fetch("content/sacrifice.json").then(r => r.ok ? r.json() : null).then(j => { if (j) SACRIFICE = j; }).catch(() => {});
 
 // Testword 撰寫的階段語氣腳本(watch_stage=觀戰演出 / chat_rival=她對你的變化)。
 // method=階段名;存在就蓋掉內容模組內建版。核心不檢視內容,原樣傳給 AI。
@@ -2677,7 +2759,9 @@ function renderChatView() {
     inputRow?.classList.add("hidden");
     watchCtl?.classList.add("hidden");
     sacCtl?.classList.remove("hidden");
-    $("#chat-title").textContent = "獻祭儀式";
+    $("#chat-title").textContent = sacSession
+      ? `獻祭儀式:${sacSession.name}${sacSession.idx ? `(${sacSession.idx}/6)` : ""}`
+      : "獻祭儀式";
     return;
   }
   sacCtl?.classList.add("hidden");
@@ -3016,14 +3100,14 @@ on("btn-bg-clear", "click", async () => {
 
 // 聊天室
 on("chat-back", "click", () => {
-  if (sacrificeWith) { if (!document.getElementById("sac-done")?.disabled) exitSacrifice(); return; }
+  if (sacrificeWith) { exitSacrifice(); return; }   // 儀式中途離開=中止(她未結算、存活)
   if (watchWith) exitWatch(); else exitChat();
 });
 on("chat-send", "click", () => sendChatMsg());
 on("chat-ask", "click", () => askAboutActs());
 on("watch-next", "click", () => watchNext());
 on("watch-end", "click", () => exitWatch());
-on("sac-done", "click", () => exitSacrifice());
+on("sac-done", "click", () => sacAdvance());
 on("ssac-more", "click", () => sacrificeNextOffering());
 on("ssac-summon", "click", () => doSummonNow());
 on("chat-input", "keydown", e => { if (e.key === "Enter") sendChatMsg(); });
@@ -3165,6 +3249,9 @@ window.DBG = {
   drawTick: () => checkSummonerDraws(),
   simSync: () => simSync(),
   simLiveAct: (id) => simLiveAct(state.succubi.find(x => x.id === id)),
+  sac: (id) => sacrificeSuccubus(id),
+  sacNext: () => sacAdvance(),
+  sacState: () => sacSession && { idx: sacSession.idx, pages: sacSession.pages.map(p => !!p.text), settled: sacSession.settled, opening: sacSession.opening },
   pin: () => ({ pinIdx, execCap: execCap(), tx: $("#pin-track")?.style.transform, slides: document.querySelectorAll("#pin-track .pin-slide").length }),
   pinGo: (i) => setPinIdx(i),
 };

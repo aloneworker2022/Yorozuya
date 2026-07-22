@@ -323,3 +323,44 @@ export function buildSacrificePrompt(ctx) {
   );
   return lines.join("\n");
 }
+
+function _lore(ctx) {
+  if (!ctx.world) return [];
+  const lore = ctx.world.split("\n")
+    .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---").join("\n").trim();
+  return lore ? ["【世界設定】", lore, ""] : [];
+}
+
+/** 獻祭・場景描述:AI 讀入該場景的預寫腳本,產生第三人稱旁白。廠商替換點:scene_script 由玩家撰寫。 */
+export function buildSacScenePrompt(ctx) {
+  const c = ctx.character || {};
+  const lines = _lore(ctx);
+  lines.push(
+    `你是敘述者,正在描寫將魅魔「${c.name}」獻祭給地獄惡魔的儀式;這是第 ${ctx.scene_stage || 1}/3 個場景「${ctx.scene_label || ""}」。`,
+    `她的來歷:${c.backstory || "一名被召喚而來的女子"}。個性:${(c.personality || []).join("、")}。`,
+    `本場景腳本(依此描寫,不要照抄):${ctx.scene_script || "(無腳本,自行以陰森氛圍描寫這一段的動作與場景)"}`,
+    ctx.content_rating === "nsfw"
+      ? "內容分級 NSFW:可依腳本露骨描寫身體、過程與痛苦。"
+      : "內容分級全年齡:以陰森氛圍與象徵手法帶過,不寫血腥細節。",
+    "只輸出這一段的第三人稱旁白,1~2 句,聚焦在『發生了什麼動作/場景』,先不要寫她的反應。",
+  );
+  return lines.join("\n");
+}
+
+/** 獻祭・人物反應:AI 讀入上一步自己產生的旁白,產生她此刻的反應(台詞或肢體)。 */
+export function buildSacReactPrompt(ctx) {
+  const c = ctx.character || {};
+  const lines = _lore(ctx);
+  lines.push(
+    `你要演出正被獻祭的魅魔「${c.name}」。個性:${(c.personality || []).join("、")}。來歷:${c.backstory || ""}。`,
+    `剛發生的旁白(依此反應):${ctx.narration || ""}`,
+    (ctx.scene_stage || 1) >= 3
+      ? "這是最後一個場景,她已到極限——反應可能只剩微弱氣音、抽搐,或再無動作(即使已無意識,也用一句旁白帶出她的體態)。"
+      : "依她的個性給出此刻的反應:求饒、哭喊、掙扎或咒罵皆可。",
+    ctx.content_rating === "nsfw"
+      ? "內容分級 NSFW:可露骨。"
+      : "內容分級全年齡:以情緒與象徵帶過,不寫血腥細節。",
+    "只輸出她的反應,1~2 句(台詞用「」,肢體以旁白帶出)。",
+  );
+  return lines.join("\n");
+}
