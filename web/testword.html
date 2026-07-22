@@ -69,7 +69,9 @@
     <button onclick="drawSummoner()">第一隻抽召喚師</button>
     <button onclick="clearSummoners()">清除所有召喚師</button>
     <button onclick="watchScenario()">觀戰測試場景</button>
+    <button class="del" onclick="wipeSave()">⚠ 重設存檔(急救)</button>
   </div>
+  <div class="mini" style="margin-top:.5em">「重設存檔」用於存檔損壞、遊戲開不起來(空白畫面)時急救——把伺服器存檔覆蓋成全新遊戲。此頁不吃遊戲的 app.js,遊戲當掉時仍可用。</div>
   <div class="status" id="bd-status"></div>
 </section>
 
@@ -242,6 +244,16 @@ async function clearSummoners() {
   for (const s of save.succubi || []) s.summoner = null;
   delete save.forceEncounter;
   await commit("清除所有召喚師");
+}
+// 急救:把伺服器存檔覆蓋成空物件,遊戲載入時會自動填成全新預設(不需要本地有存檔)
+async function wipeSave() {
+  if (!confirm("重設存檔?\n\n會把伺服器上的存檔覆蓋成全新遊戲,無法復原。\n用於存檔損壞、遊戲開成空白畫面時的急救。")) return;
+  try {
+    const cur = await api("/api/save");   // 取最新版本號,避免衝突
+    await api("/api/save", "PUT", { base_version: cur.version, data: {} });
+    await reloadSave();
+    status("bd-status", "✓ 已重設為全新存檔——回遊戲重新整理一次即可");
+  } catch (e) { status("bd-status", "失敗:" + e.message + "(再按一次)", true); }
 }
 // 觀戰測試場景:第一隻魅魔被召喚師「召喚中」(陪伴型,含 3 小時的既往紀錄),
 // 並直接設她為看板娘 + 給 3 淫紋——回遊戲點淫紋聊天/約她/名冊窺視,即看紀錄

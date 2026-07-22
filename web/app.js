@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.23(2026-07-21)獻祭三場景六句演出";
+const APP_VER = "v5.24(2026-07-21)壞存檔不再卡死+急救重設";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -416,16 +416,27 @@ function initState(j, offline) {
   }
 }
 
+let bootFailed = false;   // 存檔載入/渲染爆掉 → 臨時全新狀態、且不自動存(保住伺服器上的舊檔待修)
 async function load() {
+  let j;
   try {
-    initState(await fetchSave(), false);
+    j = await fetchSave();                 // 網路層:真的連不上才進這個 catch
   } catch (e) {
     const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try { initState(JSON.parse(cached), true); return; } catch { }
-    }
+    if (cached) { try { initState(JSON.parse(cached), true); return; } catch { } }
     showConnOverlay(true);
     setTimeout(load, 3000);
+    return;
+  }
+  try {
+    initState(j, false);                   // 拿到伺服器資料:初始化 + 渲染
+  } catch (e) {
+    // 存檔損壞/不相容導致渲染爆掉——別無限轉圈,也別覆蓋伺服器上的舊檔(留著待修)
+    console.error("存檔載入失敗(可能損壞或不相容):", e);
+    bootFailed = true;
+    showConnOverlay(false);
+    try { version = j.version; state = defaultState(); renderAll(); applyBg(); } catch { }
+    toast("⚠ 存檔載入失敗,已用臨時全新狀態開啟(未覆蓋舊檔)。可開 /testword 按「重設存檔」急救。", "bad");
   }
 }
 
@@ -468,13 +479,14 @@ document.addEventListener("visibilitychange", async () => {
 });
 
 function scheduleSave() {
+  if (bootFailed) return;   // 存檔載入失敗的臨時狀態:絕不寫回,保住伺服器上的舊檔
   dirty = true;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNow, 800);
 }
 
 async function saveNow(keepalive = false) {
-  if (!dirty || !state) return;
+  if (bootFailed || !dirty || !state) return;
   dirty = false;
   try {
     const r = await fetch("/api/save", {
