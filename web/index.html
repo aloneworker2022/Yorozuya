@@ -272,12 +272,16 @@
 <div id="toasts"></div>
 
 <script>
-// 崩潰自癒:新舊版檔案混搭(PWA 快取不同步)會在啟動時炸掉整個 app。
-// 啟動 8 秒內出現未捕捉錯誤 → 註銷 SW + 清光快取,硬重載拿回成套新版。
-window.addEventListener("error", function () {
-  if (performance.now() < 8000 && sessionStorage.getItem("crashReload") !== "1") {
-    sessionStorage.setItem("crashReload", "1");
-    var reload = function () { location.reload(); };
+// 崩潰自癒:新舊版檔案混搭(PWA 快取/HTTP 快取不同步)會在啟動時讓 app.js 或它 import
+// 的模組載入失敗,炸成無法互動的空殼。啟動 8 秒內偵測到 JS 例外或 script/模組載入失敗
+// → 註銷 SW + 清光快取,帶參數硬重載拿回成套新版(最多試 2 次,避免無限重載)。
+(function () {
+  var MAX = 2;
+  function heal() {
+    var n = +(sessionStorage.getItem("healCount") || 0);
+    if (performance.now() > 8000 || n >= MAX) return;
+    sessionStorage.setItem("healCount", n + 1);
+    var go = function () { location.replace(location.pathname + "?h=" + Date.now()); };
     var jobs = [];
     if (window.caches) jobs.push(caches.keys().then(function (ks) {
       return Promise.all(ks.map(function (k) { return caches.delete(k); }));
@@ -285,11 +289,17 @@ window.addEventListener("error", function () {
     if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
       return Promise.all(rs.map(function (r) { return r.unregister(); }));
     }));
-    Promise.all(jobs).then(reload, reload);
+    Promise.all(jobs).then(go, go);
   }
-});
-// 撐過 10 秒沒崩 = 這版正常,清旗標讓未來的自癒能再次生效
-setTimeout(function () { sessionStorage.removeItem("crashReload"); }, 10000);
+  // capture=true 才收得到 <script>/<link> 這類「不冒泡」的資源載入錯誤;圖片等錯誤忽略
+  window.addEventListener("error", function (e) {
+    var t = e && e.target;
+    if (!t || t === window || (t.tagName && /^(SCRIPT|LINK)$/.test(t.tagName))) heal();
+  }, true);
+  window.addEventListener("unhandledrejection", heal);
+  // 撐過 10 秒沒崩 = 這版正常,歸零讓未來還能自癒
+  setTimeout(function () { sessionStorage.removeItem("healCount"); }, 10000);
+})();
 </script>
 <script type="module" src="app.js"></script>
 </body>

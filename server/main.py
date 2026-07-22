@@ -28,6 +28,21 @@ ASSETS_DIR = ROOT / "assets"
 app = FastAPI(title="魅魔萬事屋")
 
 
+# 前端檔案一律要求瀏覽器「用前先驗證」(no-cache):避免 app.js 與它 import 的模組被
+# 各自長期快取、版本不同步 → import 失敗把整個 app 炸成無法互動的空殼。
+# (no-cache ≠ no-store:仍可快取,但每次都要跟伺服器對驗;沒變回 304、變了拿新版。)
+_REVALIDATE_EXT = (".html", ".js", ".css", ".json", ".md", ".webmanifest")
+
+
+@app.middleware("http")
+async def _revalidate_frontend(request, call_next):
+    resp = await call_next(request)
+    p = request.url.path
+    if p == "/" or p.endswith(_REVALIDATE_EXT):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 def db() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
