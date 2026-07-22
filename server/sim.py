@@ -31,7 +31,9 @@ PREGNANCY_CHANCE = 1 / 2               # 解環後每次內射 1/2 懷孕娶走
 # 未纏上:每 30 分鐘一輪,依稀有度決定被纏上機率(越稀有越容易被召喚師盯上;SSR 必定)
 ENTANGLE_CHANCE = {"N": 1 / 5, "R": 1 / 4, "S": 1 / 3, "SS": 1 / 2, "SSR": 1.0}
 DEFAULT_ENTANGLE = 1 / 5               # 未知稀有度時的保底(比照 N)
-TAKEN_CHANCE = 1 / 3                    # 已纏上:每小時判定一次是否被召喚/約會
+# 已纏上:每 30 分鐘一輪,依稀有度決定被召喚/約會機率(越稀有越常被召喚;SSR 必定)
+TAKEN_CHANCE = {"N": 1 / 3, "R": 1 / 3, "S": 1 / 2, "SS": 1 / 2, "SSR": 1.0}
+DEFAULT_TAKEN = 1 / 3                   # 未知稀有度時的保底(比照 N)
 ACT_CAP = 60                            # 每隻魅魔保留的互動紀錄上限
 WIN30_MS = 30 * 60 * 1000              # 纏上判定的 30 分鐘窗(對齊整點與 30 分,等同旗標清除)
 
@@ -183,7 +185,7 @@ def _process_taken(store, gid, rel, now_ms):
         changed = True
     elif now_ms >= tk["until"]:
         rel["taken"] = None                                  # 解召喚
-        store.setdefault("takenWin", {})[gid] = now_ms // HOUR   # 解召喚後,下一小時才再判定
+        store.setdefault("takenWin", {})[gid] = now_ms // WIN30_MS   # 解召喚後,下一輪(30分)才再判定
         changed = True
     return changed
 
@@ -212,7 +214,7 @@ def _tick_girl(store, gid, now_ms):
             if sums:
                 su = pick(sums)
                 store["rels"][gid] = make_rel(su["id"], now_ms)
-                store.setdefault("takenWin", {})[gid] = now_ms // HOUR   # 纏上當下這小時先不召喚
+                store.setdefault("takenWin", {})[gid] = now_ms // WIN30_MS   # 纏上當下這輪先不召喚
                 store.setdefault("outcomes", []).append(
                     {"type": "entangled", "id": gid, "suName": su.get("name"), "t": now_ms})
                 return True
@@ -222,13 +224,13 @@ def _tick_girl(store, gid, now_ms):
     if rel.get("taken"):
         return _process_taken(store, gid, rel, now_ms)
 
-    # ── 已纏上、未被召喚 → 每小時判定一次是否召喚/約會 ──
-    winH = now_ms // HOUR
+    # ── 已纏上、未被召喚 → 每 30 分鐘一輪判定是否召喚/約會(對齊整點/30分)──
+    winT = now_ms // WIN30_MS
     tw = store.setdefault("takenWin", {})
-    if (ntr or busy) or tw.get(gid) == winH:
+    if (ntr or busy) or tw.get(gid) == winT:
         return False
-    tw[gid] = winH
-    if random.random() < TAKEN_CHANCE:
+    tw[gid] = winT
+    if random.random() < TAKEN_CHANCE.get(rarity, DEFAULT_TAKEN):
         su = summoner_by_id(rel["id"])
         is_date = random.random() < ((su or {}).get("dateChance", 0.5))
         loc = None
