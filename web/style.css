@@ -48,242 +48,277 @@ body[data-theme="sakura"] {               /* 櫻花(亮色) */
   --dim: rgba(90, 36, 56, .55); --line: rgba(90, 36, 56, .14);
   --pink: #e0407f; --cyan: #2f8f80; --red: #d63352; --gold: #a3781c;
 }
-body[data-theme="crimson"] {         /* 緋紅煉獄 */
-  --bg: #1a0a0d; --glow: #3a0f16;
-  --panel: rgba(34, 10, 14, .68); --panel2: rgba(34, 10, 14, .45);
-  --text: #ffb3b8;
-  --dim: rgba(255, 179, 184, .48); --line: rgba(255, 179, 184, .1);
-  --pink: #ff4f6a; --cyan: #ff9d8a; --red: #ff5f5f; --gold: #ffcf7d;
+body[data-theme="crimson"] {    /* 緋紅煉獄 */
+  --bg: #0b0406; --glow: #4a0a14;
+  --panel: rgba(8, 3, 4, .70); --panel2: rgba(8, 3, 4, .46);
+  --text: #ffe8ea;
+  --dim: rgba(255, 232, 234, .52); --line: rgba(255, 232, 234, .12);
+  --pink: #ff1744; --cyan: #ff6e40; --red: #ff1744; --gold: #ffc400;
 }
-body[data-theme="violet"] {          /* 紫電幽夢 */
-  --bg: #140a20; --glow: #2a1044;
-  --panel: rgba(24, 12, 40, .68); --panel2: rgba(24, 12, 40, .45);
-  --text: #d4b3ff;
-  --dim: rgba(212, 179, 255, .48); --line: rgba(212, 179, 255, .1);
-  --pink: #c14fff; --cyan: #7de0ff; --red: #ff6aa8; --gold: #ffd75f;
+body[data-theme="violet"] {     /* 紫電幽夢 */
+  --bg: #0a0614; --glow: #3a0a5a;
+  --panel: rgba(7, 4, 14, .70); --panel2: rgba(7, 4, 14, .46);
+  --text: #f2e6ff;
+  --dim: rgba(242, 230, 255, .52); --line: rgba(242, 230, 255, .12);
+  --pink: #b026ff; --cyan: #00e5ff; --red: #ff3d71; --gold: #ffd600;
 }
-body[data-theme="goldtemple"] {      /* 鎏金聖殿 */
-  --bg: #161207; --glow: #332a0a;
-  --panel: rgba(30, 24, 8, .68); --panel2: rgba(30, 24, 8, .45);
-  --text: #ffe6a3;
-  --dim: rgba(255, 230, 163, .48); --line: rgba(255, 230, 163, .1);
-  --pink: #ffcf4f; --cyan: #fff0b8; --red: #ff9d5a; --gold: #ffd75f;
+body[data-theme="goldtemple"] { /* 鎏金聖殿 */
+  --bg: #fff3c4; --glow: #fffde0;
+  --panel: rgba(255, 250, 228, .80); --panel2: rgba(255, 250, 228, .58);
+  --text: #3a2a00;
+  --dim: rgba(58, 42, 0, .60); --line: rgba(58, 42, 0, .16);
+  --pink: #e6007a; --cyan: #0077b6; --red: #d50000; --gold: #a35a00;
 }
-body[data-theme="mint"] {            /* 薄荷幻境 */
-  --bg: #0a1614; --glow: #103028;
-  --panel: rgba(10, 30, 26, .68); --panel2: rgba(10, 30, 26, .45);
-  --text: #a3ffe6;
-  --dim: rgba(163, 255, 230, .48); --line: rgba(163, 255, 230, .1);
-  --pink: #6dffd0; --cyan: #8af8ff; --red: #ff8a9d; --gold: #ffe6a3;
+body[data-theme="mint"] {       /* 薄荷幻境 */
+  --bg: #c4ffe8; --glow: #e6fff5;
+  --panel: rgba(228, 255, 245, .80); --panel2: rgba(228, 255, 245, .58);
+  --text: #00332a;
+  --dim: rgba(0, 51, 42, .60); --line: rgba(0, 51, 42, .16);
+  --pink: #ff1493; --cyan: #00796b; --red: #ff1744; --gold: #a35a00;
 }
-body[data-theme="bloodmoon"] {       /* 血月 */
-  --bg: #150708; --glow: #360a0e;
-  --panel: rgba(28, 8, 9, .68); --panel2: rgba(28, 8, 9, .45);
-  --text: #ff9da3;
-  --dim: rgba(255, 157, 163, .48); --line: rgba(255, 157, 163, .1);
-  --pink: #ff2f4f; --cyan: #ff7a6a; --red: #ff4f5f; --gold: #ffb84f;
+body[data-theme="bloodmoon"] {  /* 血月 */
+  --bg: #0d0403; --glow: #3a0805;
+  --panel: rgba(9, 3, 2, .70); --panel2: rgba(9, 3, 2, .46);
+  --text: #ffd9c9;
+  --dim: rgba(255, 217, 201, .52); --line: rgba(255, 217, 201, .12);
+  --pink: #ff2419; --cyan: #ff7a45; --red: #ff0a0a; --gold: #ffd24a;
 }
-body[data-theme="abyssocean"] {      /* 深海遺跡 */
-  --bg: #08141a; --glow: #0e2e3a;
-  --panel: rgba(8, 28, 36, .68); --panel2: rgba(8, 28, 36, .45);
-  --text: #8ae0ff;
-  --dim: rgba(138, 224, 255, .48); --line: rgba(138, 224, 255, .1);
-  --pink: #4fd0ff; --cyan: #6affd0; --red: #ff6a8a; --gold: #ffd78a;
+body[data-theme="abyssocean"] { /* 深海遺跡 */
+  --bg: #04252e; --glow: #0a4a5a;
+  --panel: rgba(3, 27, 33, .70); --panel2: rgba(3, 27, 33, .46);
+  --text: #b8fff0;
+  --dim: rgba(184, 255, 240, .52); --line: rgba(184, 255, 240, .12);
+  --pink: #ff2d78; --cyan: #00ffd0; --red: #ff5252; --gold: #ffd54a;
 }
-body[data-theme="cyber"] {           /* 賽博霓虹 */
-  --bg: #0d0a1a; --glow: #2a0f44;
-  --panel: rgba(18, 12, 34, .68); --panel2: rgba(18, 12, 34, .45);
-  --text: #e0b3ff;
-  --dim: rgba(224, 179, 255, .48); --line: rgba(224, 179, 255, .1);
-  --pink: #ff2fd0; --cyan: #2ffff0; --red: #ff4f8a; --gold: #ffe64f;
+body[data-theme="cyber"] {      /* 賽博霓虹 */
+  --bg: #0a0118; --glow: #2a004a;
+  --panel: rgba(7, 1, 17, .70); --panel2: rgba(7, 1, 17, .46);
+  --text: #ffffff;
+  --dim: rgba(255, 255, 255, .52); --line: rgba(255, 255, 255, .12);
+  --pink: #ff00e5; --cyan: #00fff0; --red: #ff0055; --gold: #faff00;
 }
-body[data-theme="toxic"] {           /* 毒液螢光 */
-  --bg: #0d1408; --glow: #1e330a;
-  --panel: rgba(16, 28, 8, .68); --panel2: rgba(16, 28, 8, .45);
-  --text: #d4ff6d;
-  --dim: rgba(212, 255, 109, .48); --line: rgba(212, 255, 109, .1);
-  --pink: #c1ff2f; --cyan: #8affd0; --red: #ff9d4f; --gold: #eaff5f;
+body[data-theme="toxic"] {      /* 毒液螢光 */
+  --bg: #060a02; --glow: #183000;
+  --panel: rgba(4, 7, 1, .70); --panel2: rgba(4, 7, 1, .46);
+  --text: #eaffc0;
+  --dim: rgba(234, 255, 192, .52); --line: rgba(234, 255, 192, .12);
+  --pink: #d0ff00; --cyan: #00ffa3; --red: #ff2b6b; --gold: #eaff00;
 }
-body[data-theme="rosedusk"] {        /* 玫瑰暮光 */
-  --bg: #1a0e14; --glow: #380f28;
-  --panel: rgba(32, 12, 24, .68); --panel2: rgba(32, 12, 24, .45);
-  --text: #ffc3d8;
-  --dim: rgba(255, 195, 216, .48); --line: rgba(255, 195, 216, .1);
-  --pink: #ff6a9d; --cyan: #ffa3c1; --red: #ff5f7a; --gold: #ffcf8a;
+body[data-theme="rosedusk"] {   /* 玫瑰暮光 */
+  --bg: #ffe0ec; --glow: #fff0f5;
+  --panel: rgba(255, 241, 246, .80); --panel2: rgba(255, 241, 246, .58);
+  --text: #4a0022;
+  --dim: rgba(74, 0, 34, .60); --line: rgba(74, 0, 34, .16);
+  --pink: #ff0a78; --cyan: #00757a; --red: #e6003c; --gold: #b26a00;
 }
-body[data-theme="steel"] {           /* 鋼鐵黎明 */
-  --bg: #0e1218; --glow: #1e2a38;
-  --panel: rgba(16, 24, 34, .68); --panel2: rgba(16, 24, 34, .45);
-  --text: #b8ccdd;
-  --dim: rgba(184, 204, 221, .48); --line: rgba(184, 204, 221, .1);
-  --pink: #8aa8cc; --cyan: #a3d0ff; --red: #ff8a9d; --gold: #e6cf9d;
+body[data-theme="steel"] {      /* 鋼鐵黎明 */
+  --bg: #dbe7f5; --glow: #f0f6ff;
+  --panel: rgba(239, 244, 250, .80); --panel2: rgba(239, 244, 250, .58);
+  --text: #152a44;
+  --dim: rgba(21, 42, 68, .60); --line: rgba(21, 42, 68, .16);
+  --pink: #d81b60; --cyan: #0277bd; --red: #c62828; --gold: #ef6c00;
 }
-body[data-theme="plumwine"] {        /* 紫醉金迷 */
-  --bg: #160a14; --glow: #320f2a;
-  --panel: rgba(28, 12, 26, .68); --panel2: rgba(28, 12, 26, .45);
-  --text: #e6b3d8;
-  --dim: rgba(230, 179, 216, .48); --line: rgba(230, 179, 216, .1);
-  --pink: #d04fa8; --cyan: #a38aff; --red: #ff6a9d; --gold: #ffcf7d;
+body[data-theme="plumwine"] {   /* 紫醉金迷 */
+  --bg: #1a0522; --glow: #4a0a5a;
+  --panel: rgba(19, 4, 24, .70); --panel2: rgba(19, 4, 24, .46);
+  --text: #ffd6f5;
+  --dim: rgba(255, 214, 245, .52); --line: rgba(255, 214, 245, .12);
+  --pink: #ff00aa; --cyan: #c77dff; --red: #ff2d55; --gold: #ffd54a;
 }
-body[data-theme="jade"] {            /* 翡翠幽光 */
-  --bg: #08140f; --glow: #0e3020;
-  --panel: rgba(10, 28, 20, .68); --panel2: rgba(10, 28, 20, .45);
-  --text: #a3ffcf;
-  --dim: rgba(163, 255, 207, .48); --line: rgba(163, 255, 207, .1);
-  --pink: #4fffb0; --cyan: #8affe0; --red: #ff8a7a; --gold: #ffe6a3;
+body[data-theme="jade"] {       /* 翡翠幽光 */
+  --bg: #c8f5e0; --glow: #e6fff2;
+  --panel: rgba(230, 250, 241, .80); --panel2: rgba(230, 250, 241, .58);
+  --text: #003326;
+  --dim: rgba(0, 51, 38, .60); --line: rgba(0, 51, 38, .16);
+  --pink: #e91e8c; --cyan: #00796b; --red: #e53935; --gold: #8a6a00;
 }
-body[data-theme="lavasunset"] {      /* 熔岩夕燒 */
-  --bg: #1a0c08; --glow: #3a160a;
-  --panel: rgba(32, 14, 8, .68); --panel2: rgba(32, 14, 8, .45);
-  --text: #ffc39d;
-  --dim: rgba(255, 195, 157, .48); --line: rgba(255, 195, 157, .1);
-  --pink: #ff6a3a; --cyan: #ffb87d; --red: #ff4f4f; --gold: #ffd75f;
+body[data-theme="lavasunset"] { /* 熔岩夕燒 */
+  --bg: #ffd8c2; --glow: #fff0e6;
+  --panel: rgba(255, 237, 228, .80); --panel2: rgba(255, 237, 228, .58);
+  --text: #4a1500;
+  --dim: rgba(74, 21, 0, .60); --line: rgba(74, 21, 0, .16);
+  --pink: #ff0055; --cyan: #0277b6; --red: #e63900; --gold: #b25000;
 }
-body[data-theme="lavender"] {        /* 薰衣草夜 */
-  --bg: #12101e; --glow: #241f42;
-  --panel: rgba(22, 19, 40, .68); --panel2: rgba(22, 19, 40, .45);
-  --text: #cfc3ff;
-  --dim: rgba(207, 195, 255, .48); --line: rgba(207, 195, 255, .1);
-  --pink: #a38aff; --cyan: #8ad0ff; --red: #ff8ab0; --gold: #ffe0a3;
+body[data-theme="lavender"] {   /* 薰衣草夜 */
+  --bg: #ede0ff; --glow: #f7f0ff;
+  --panel: rgba(247, 241, 255, .80); --panel2: rgba(247, 241, 255, .58);
+  --text: #2a1052;
+  --dim: rgba(42, 16, 82, .60); --line: rgba(42, 16, 82, .16);
+  --pink: #c2185b; --cyan: #00838f; --red: #ff1744; --gold: #9a6a00;
 }
-body[data-theme="copper"] {          /* 赤銅機關 */
-  --bg: #160f0a; --glow: #301c10;
-  --panel: rgba(28, 20, 12, .68); --panel2: rgba(28, 20, 12, .45);
-  --text: #f0b88a;
-  --dim: rgba(240, 184, 138, .48); --line: rgba(240, 184, 138, .1);
-  --pink: #e08a4f; --cyan: #ffcf9d; --red: #ff7a5a; --gold: #ffb84f;
+body[data-theme="copper"] {     /* 赤銅機關 */
+  --bg: #1a0d05; --glow: #4a1e08;
+  --panel: rgba(19, 9, 4, .70); --panel2: rgba(19, 9, 4, .46);
+  --text: #ffcf9d;
+  --dim: rgba(255, 207, 157, .52); --line: rgba(255, 207, 157, .12);
+  --pink: #ff6d00; --cyan: #ffab40; --red: #ff3d00; --gold: #ffca28;
 }
-body[data-theme="voidabyss"] {       /* 虛空深淵 */
-  --bg: #080a14; --glow: #141a3a;
-  --panel: rgba(10, 14, 28, .68); --panel2: rgba(10, 14, 28, .45);
-  --text: #9daaff;
-  --dim: rgba(157, 170, 255, .48); --line: rgba(157, 170, 255, .1);
-  --pink: #6a7aff; --cyan: #8ad0ff; --red: #ff6a8a; --gold: #e6d08a;
+body[data-theme="voidabyss"] {  /* 虛空深淵 */
+  --bg: #060518; --glow: #1a1a5a;
+  --panel: rgba(4, 4, 17, .70); --panel2: rgba(4, 4, 17, .46);
+  --text: #c2c8ff;
+  --dim: rgba(194, 200, 255, .52); --line: rgba(194, 200, 255, .12);
+  --pink: #536dfe; --cyan: #18ffff; --red: #ff4081; --gold: #ffd740;
 }
-body[data-theme="cherry"] {          /* 桃夭 */
-  --bg: #1a0c10; --glow: #3a1020;
-  --panel: rgba(32, 12, 20, .68); --panel2: rgba(32, 12, 20, .45);
-  --text: #ffb8c8;
-  --dim: rgba(255, 184, 200, .48); --line: rgba(255, 184, 200, .1);
-  --pink: #ff5f8a; --cyan: #ffa3b8; --red: #ff4f6a; --gold: #ffcf8a;
+body[data-theme="cherry"] {     /* 桃夭 */
+  --bg: #ffd6e0; --glow: #fff0f4;
+  --panel: rgba(255, 237, 241, .80); --panel2: rgba(255, 237, 241, .58);
+  --text: #4a0018;
+  --dim: rgba(74, 0, 24, .60); --line: rgba(74, 0, 24, .16);
+  --pink: #ff005c; --cyan: #00757f; --red: #d50000; --gold: #b26a00;
 }
-body[data-theme="forest"] {          /* 幽林秘境 */
-  --bg: #0a120c; --glow: #122a18;
-  --panel: rgba(12, 26, 16, .68); --panel2: rgba(12, 26, 16, .45);
-  --text: #a3e6b0;
-  --dim: rgba(163, 230, 176, .48); --line: rgba(163, 230, 176, .1);
-  --pink: #8ae06a; --cyan: #6affc1; --red: #ff9d7a; --gold: #e6d08a;
+body[data-theme="forest"] {     /* 幽林秘境 */
+  --bg: #d4f5b0; --glow: #eefce0;
+  --panel: rgba(236, 250, 219, .80); --panel2: rgba(236, 250, 219, .58);
+  --text: #183300;
+  --dim: rgba(24, 51, 0, .60); --line: rgba(24, 51, 0, .16);
+  --pink: #e91e63; --cyan: #00796b; --red: #e53935; --gold: #7a5a00;
 }
-body[data-theme="ember"] {           /* 餘燼 */
-  --bg: #120a08; --glow: #2a1008;
-  --panel: rgba(24, 12, 8, .68); --panel2: rgba(24, 12, 8, .45);
-  --text: #ffb08a;
-  --dim: rgba(255, 176, 138, .48); --line: rgba(255, 176, 138, .1);
-  --pink: #ff7a3a; --cyan: #ffb06a; --red: #ff4f3a; --gold: #ffb84f;
+body[data-theme="ember"] {      /* 餘燼 */
+  --bg: #0a0402; --glow: #3a1400;
+  --panel: rgba(7, 3, 1, .70); --panel2: rgba(7, 3, 1, .46);
+  --text: #ffe0c2;
+  --dim: rgba(255, 224, 194, .52); --line: rgba(255, 224, 194, .12);
+  --pink: #ff6d00; --cyan: #ffab00; --red: #ff3d00; --gold: #ffea00;
 }
-body[data-theme="glacier"] {         /* 冰河極夜 */
-  --bg: #0a1020; --glow: #122a4a;
-  --panel: rgba(12, 22, 40, .68); --panel2: rgba(12, 22, 40, .45);
-  --text: #c3e6ff;
-  --dim: rgba(195, 230, 255, .48); --line: rgba(195, 230, 255, .1);
-  --pink: #8ac3ff; --cyan: #c3f0ff; --red: #ff9db8; --gold: #ffe6b0;
+body[data-theme="glacier"] {    /* 冰河極夜 */
+  --bg: #d6f0ff; --glow: #f0faff;
+  --panel: rgba(237, 248, 255, .80); --panel2: rgba(237, 248, 255, .58);
+  --text: #062a44;
+  --dim: rgba(6, 42, 68, .60); --line: rgba(6, 42, 68, .16);
+  --pink: #e91e63; --cyan: #0077b6; --red: #e53935; --gold: #8a6a00;
 }
-body[data-theme="peacock"] {         /* 孔雀藍 */
-  --bg: #08131a; --glow: #0e2e40;
-  --panel: rgba(10, 26, 36, .68); --panel2: rgba(10, 26, 36, .45);
-  --text: #8ae0e6;
-  --dim: rgba(138, 224, 230, .48); --line: rgba(138, 224, 230, .1);
-  --pink: #2fd0d0; --cyan: #6affff; --red: #ff7a9d; --gold: #ffd78a;
+body[data-theme="peacock"] {    /* 孔雀藍 */
+  --bg: #03110f; --glow: #0a3a34;
+  --panel: rgba(2, 12, 11, .70); --panel2: rgba(2, 12, 11, .46);
+  --text: #c2fff5;
+  --dim: rgba(194, 255, 245, .52); --line: rgba(194, 255, 245, .12);
+  --pink: #00e5cc; --cyan: #00b8ff; --red: #ff4081; --gold: #ffd54a;
 }
-body[data-theme="bordeaux"] {        /* 波爾多 */
-  --bg: #160809; --glow: #320a12;
-  --panel: rgba(28, 10, 12, .68); --panel2: rgba(28, 10, 12, .45);
-  --text: #e6a3aa;
-  --dim: rgba(230, 163, 170, .48); --line: rgba(230, 163, 170, .1);
-  --pink: #c14f5f; --cyan: #d08a8a; --red: #ff5f6a; --gold: #e6b06a;
+body[data-theme="bordeaux"] {   /* 波爾多 */
+  --bg: #2a0510; --glow: #5a0a24;
+  --panel: rgba(30, 4, 12, .70); --panel2: rgba(30, 4, 12, .46);
+  --text: #ffd0dc;
+  --dim: rgba(255, 208, 220, .52); --line: rgba(255, 208, 220, .12);
+  --pink: #ff1758; --cyan: #ff6090; --red: #e6003c; --gold: #ffb74d;
 }
-body[data-theme="sulfur"] {          /* 硫磺地獄 */
-  --bg: #12120a; --glow: #2a2a0a;
-  --panel: rgba(24, 24, 8, .68); --panel2: rgba(24, 24, 8, .45);
-  --text: #eaea8a;
-  --dim: rgba(234, 234, 138, .48); --line: rgba(234, 234, 138, .1);
-  --pink: #e6e64f; --cyan: #c1ff8a; --red: #ff9d5a; --gold: #ffe64f;
+body[data-theme="sulfur"] {     /* 硫磺地獄 */
+  --bg: #eaff8f; --glow: #f5ffd0;
+  --panel: rgba(246, 255, 205, .80); --panel2: rgba(246, 255, 205, .58);
+  --text: #2a3300;
+  --dim: rgba(42, 51, 0, .60); --line: rgba(42, 51, 0, .16);
+  --pink: #ff1493; --cyan: #00897b; --red: #ff1744; --gold: #ff6f00;
 }
-body[data-theme="indigo"] {          /* 靛藍星圖 */
-  --bg: #0a0c1c; --glow: #141a44;
-  --panel: rgba(12, 14, 36, .68); --panel2: rgba(12, 14, 36, .45);
-  --text: #b3bcff;
-  --dim: rgba(179, 188, 255, .48); --line: rgba(179, 188, 255, .1);
-  --pink: #7a6aff; --cyan: #8ad0ff; --red: #ff8ab0; --gold: #ffe0a3;
+body[data-theme="indigo"] {     /* 靛藍星圖 */
+  --bg: #0a0730; --glow: #1a1a7a;
+  --panel: rgba(7, 5, 35, .70); --panel2: rgba(7, 5, 35, .46);
+  --text: #cdd3ff;
+  --dim: rgba(205, 211, 255, .52); --line: rgba(205, 211, 255, .12);
+  --pink: #7c4dff; --cyan: #18ffff; --red: #ff4081; --gold: #ffd740;
 }
-body[data-theme="coral"] {           /* 珊瑚礁 */
-  --bg: #1a0f0e; --glow: #361612;
-  --panel: rgba(32, 14, 12, .68); --panel2: rgba(32, 14, 12, .45);
-  --text: #ffbcae;
-  --dim: rgba(255, 188, 174, .48); --line: rgba(255, 188, 174, .1);
-  --pink: #ff7a6a; --cyan: #ffb0a3; --red: #ff5f5a; --gold: #ffcf8a;
+body[data-theme="coral"] {      /* 珊瑚礁 */
+  --bg: #ffcdbf; --glow: #ffe6df;
+  --panel: rgba(255, 232, 226, .80); --panel2: rgba(255, 232, 226, .58);
+  --text: #4a1000;
+  --dim: rgba(74, 16, 0, .60); --line: rgba(74, 16, 0, .16);
+  --pink: #ff2d55; --cyan: #00707a; --red: #e63900; --gold: #b25000;
 }
-body[data-theme="obsidian"] {        /* 曜石 */
-  --bg: #0c0e12; --glow: #1a1e28;
-  --panel: rgba(16, 18, 24, .68); --panel2: rgba(16, 18, 24, .45);
-  --text: #c3ccd8;
-  --dim: rgba(195, 204, 216, .48); --line: rgba(195, 204, 216, .1);
-  --pink: #9db0cc; --cyan: #b0c3e0; --red: #ff8a9d; --gold: #d8cfb8;
+body[data-theme="obsidian"] {   /* 曜石 */
+  --bg: #0c0c0e; --glow: #26262e;
+  --panel: rgba(9, 9, 10, .70); --panel2: rgba(9, 9, 10, .46);
+  --text: #ffffff;
+  --dim: rgba(255, 255, 255, .52); --line: rgba(255, 255, 255, .12);
+  --pink: #ff375f; --cyan: #c7c7cc; --red: #ff375f; --gold: #e8c477;
 }
-body[data-theme="aurora"] {          /* 極光 */
-  --bg: #08120f; --glow: #10302a;
-  --panel: rgba(10, 26, 22, .68); --panel2: rgba(10, 26, 22, .45);
-  --text: #a3ffd0;
-  --dim: rgba(163, 255, 208, .48); --line: rgba(163, 255, 208, .1);
-  --pink: #6affb0; --cyan: #8ad0ff; --red: #ff8ac1; --gold: #c1ffa3;
+body[data-theme="aurora"] {     /* 極光 */
+  --bg: #04160f; --glow: #0a3a2a;
+  --panel: rgba(3, 16, 11, .70); --panel2: rgba(3, 16, 11, .46);
+  --text: #c2ffe0;
+  --dim: rgba(194, 255, 224, .52); --line: rgba(194, 255, 224, .12);
+  --pink: #b388ff; --cyan: #00e676; --red: #ff5c8a; --gold: #69f0ae;
 }
-body[data-theme="pumpkin"] {         /* 南瓜燈 */
-  --bg: #160d06; --glow: #331a06;
-  --panel: rgba(28, 16, 8, .68); --panel2: rgba(28, 16, 8, .45);
-  --text: #ffc38a;
-  --dim: rgba(255, 195, 138, .48); --line: rgba(255, 195, 138, .1);
-  --pink: #ff8a2f; --cyan: #ffcf7d; --red: #ff5f3a; --gold: #ffb02f;
+body[data-theme="pumpkin"] {    /* 南瓜燈 */
+  --bg: #ffdca8; --glow: #fff0dd;
+  --panel: rgba(255, 239, 216, .80); --panel2: rgba(255, 239, 216, .58);
+  --text: #4a2200;
+  --dim: rgba(74, 34, 0, .60); --line: rgba(74, 34, 0, .16);
+  --pink: #e6007a; --cyan: #00707a; --red: #ff3d00; --gold: #a34a00;
 }
-body[data-theme="sapphire"] {        /* 藍寶石 */
-  --bg: #080c1a; --glow: #0e1a44;
-  --panel: rgba(10, 14, 34, .68); --panel2: rgba(10, 14, 34, .45);
-  --text: #a3c3ff;
-  --dim: rgba(163, 195, 255, .48); --line: rgba(163, 195, 255, .1);
-  --pink: #4f8aff; --cyan: #8ae0ff; --red: #ff7aa8; --gold: #ffe0a3;
+body[data-theme="sapphire"] {   /* 藍寶石 */
+  --bg: #04081c; --glow: #0a1a6a;
+  --panel: rgba(3, 6, 20, .70); --panel2: rgba(3, 6, 20, .46);
+  --text: #dbe9ff;
+  --dim: rgba(219, 233, 255, .52); --line: rgba(219, 233, 255, .12);
+  --pink: #2979ff; --cyan: #18ffff; --red: #ff4081; --gold: #ffd740;
 }
-body[data-theme="venom"] {           /* 劇毒 */
-  --bg: #0d0a14; --glow: #1e0f30;
-  --panel: rgba(18, 12, 26, .68); --panel2: rgba(18, 12, 26, .45);
-  --text: #c3ff8a;
-  --dim: rgba(195, 255, 138, .48); --line: rgba(195, 255, 138, .1);
-  --pink: #a34fff; --cyan: #8aff6a; --red: #ff5fa8; --gold: #e6ff5f;
+body[data-theme="venom"] {      /* 劇毒 */
+  --bg: #080312; --glow: #26004a;
+  --panel: rgba(6, 2, 13, .70); --panel2: rgba(6, 2, 13, .46);
+  --text: #e6ffcc;
+  --dim: rgba(230, 255, 204, .52); --line: rgba(230, 255, 204, .12);
+  --pink: #9d00ff; --cyan: #76ff03; --red: #ff1744; --gold: #c6ff00;
 }
-body[data-theme="dawn"] {            /* 曙光(亮) */
-  --bg: #f2ede6; --glow: #ffffff;
-  --panel: rgba(255, 253, 250, .82); --panel2: rgba(255, 253, 250, .6);
-  --text: #3a2f28;
-  --dim: rgba(58, 47, 40, .55); --line: rgba(58, 47, 40, .14);
-  --pink: #c9526a; --cyan: #3a7f6a; --red: #c94052; --gold: #a37a1c;
+body[data-theme="dawn"] {       /* 曙光 */
+  --bg: #ffe8d6; --glow: #fff5ec;
+  --panel: rgba(255, 245, 237, .80); --panel2: rgba(255, 245, 237, .58);
+  --text: #3a1f10;
+  --dim: rgba(58, 31, 16, .60); --line: rgba(58, 31, 16, .16);
+  --pink: #e6007a; --cyan: #0077b6; --red: #d50000; --gold: #a35a00;
 }
-body[data-theme="parchment"] {       /* 羊皮紙(亮) */
-  --bg: #efe8d6; --glow: #fffdf0;
-  --panel: rgba(255, 254, 245, .82); --panel2: rgba(255, 254, 245, .6);
-  --text: #3f3320;
-  --dim: rgba(63, 51, 32, .55); --line: rgba(63, 51, 32, .14);
-  --pink: #a85a2f; --cyan: #4a7f5a; --red: #c9523a; --gold: #8a6a1c;
+body[data-theme="parchment"] {  /* 羊皮紙 */
+  --bg: #f2e8cf; --glow: #fdf6e3;
+  --panel: rgba(249, 245, 233, .80); --panel2: rgba(249, 245, 233, .58);
+  --text: #33280f;
+  --dim: rgba(51, 40, 15, .60); --line: rgba(51, 40, 15, .16);
+  --pink: #b7410e; --cyan: #00695c; --red: #c62828; --gold: #b8860b;
 }
-body[data-theme="mist"] {            /* 晨霧(亮) */
-  --bg: #e8ecef; --glow: #ffffff;
-  --panel: rgba(253, 254, 255, .82); --panel2: rgba(253, 254, 255, .6);
-  --text: #2a333a;
-  --dim: rgba(42, 51, 58, .55); --line: rgba(42, 51, 58, .14);
-  --pink: #b03a6a; --cyan: #2a7f8a; --red: #c94052; --gold: #7a6a1c;
+body[data-theme="mist"] {       /* 晨霧 */
+  --bg: #e6ebef; --glow: #f7fafc;
+  --panel: rgba(244, 246, 248, .80); --panel2: rgba(244, 246, 248, .58);
+  --text: #1a2a33;
+  --dim: rgba(26, 42, 51, .60); --line: rgba(26, 42, 51, .16);
+  --pink: #d6006e; --cyan: #0277bd; --red: #c62828; --gold: #b26a00;
 }
+
 /* 亮色主題:文字不發光(暗底才有霓虹感),掃描線減淡 */
-body[data-theme="day"], body[data-theme="sakura"], body[data-theme="dawn"], body[data-theme="parchment"], body[data-theme="mist"] { text-shadow: none; }
-body[data-theme="day"] .panel h2, body[data-theme="sakura"] .panel h2, body[data-theme="dawn"] .panel h2, body[data-theme="parchment"] .panel h2, body[data-theme="mist"] .panel h2,
-body[data-theme="day"] .pin-hdr-title, body[data-theme="sakura"] .pin-hdr-title, body[data-theme="dawn"] .pin-hdr-title, body[data-theme="parchment"] .pin-hdr-title, body[data-theme="mist"] .pin-hdr-title { text-shadow: none; }
-body[data-theme="day"]::after, body[data-theme="sakura"]::after, body[data-theme="dawn"]::after, body[data-theme="parchment"]::after, body[data-theme="mist"]::after {
+body[data-theme="day"], body[data-theme="sakura"], body[data-theme="goldtemple"], body[data-theme="mint"], body[data-theme="rosedusk"], body[data-theme="steel"], body[data-theme="jade"], body[data-theme="lavasunset"], body[data-theme="lavender"], body[data-theme="cherry"], body[data-theme="forest"], body[data-theme="glacier"], body[data-theme="sulfur"], body[data-theme="coral"], body[data-theme="pumpkin"], body[data-theme="dawn"], body[data-theme="parchment"], body[data-theme="mist"] { text-shadow: none; }
+body[data-theme="day"] .panel h2,
+body[data-theme="sakura"] .panel h2,
+body[data-theme="goldtemple"] .panel h2,
+body[data-theme="mint"] .panel h2,
+body[data-theme="rosedusk"] .panel h2,
+body[data-theme="steel"] .panel h2,
+body[data-theme="jade"] .panel h2,
+body[data-theme="lavasunset"] .panel h2,
+body[data-theme="lavender"] .panel h2,
+body[data-theme="cherry"] .panel h2,
+body[data-theme="forest"] .panel h2,
+body[data-theme="glacier"] .panel h2,
+body[data-theme="sulfur"] .panel h2,
+body[data-theme="coral"] .panel h2,
+body[data-theme="pumpkin"] .panel h2,
+body[data-theme="dawn"] .panel h2,
+body[data-theme="parchment"] .panel h2,
+body[data-theme="mist"] .panel h2,
+body[data-theme="day"] .pin-hdr-title,
+body[data-theme="sakura"] .pin-hdr-title,
+body[data-theme="goldtemple"] .pin-hdr-title,
+body[data-theme="mint"] .pin-hdr-title,
+body[data-theme="rosedusk"] .pin-hdr-title,
+body[data-theme="steel"] .pin-hdr-title,
+body[data-theme="jade"] .pin-hdr-title,
+body[data-theme="lavasunset"] .pin-hdr-title,
+body[data-theme="lavender"] .pin-hdr-title,
+body[data-theme="cherry"] .pin-hdr-title,
+body[data-theme="forest"] .pin-hdr-title,
+body[data-theme="glacier"] .pin-hdr-title,
+body[data-theme="sulfur"] .pin-hdr-title,
+body[data-theme="coral"] .pin-hdr-title,
+body[data-theme="pumpkin"] .pin-hdr-title,
+body[data-theme="dawn"] .pin-hdr-title,
+body[data-theme="parchment"] .pin-hdr-title,
+body[data-theme="mist"] .pin-hdr-title { text-shadow: none; }
+body[data-theme="day"]::after, body[data-theme="sakura"]::after, body[data-theme="goldtemple"]::after, body[data-theme="mint"]::after, body[data-theme="rosedusk"]::after, body[data-theme="steel"]::after, body[data-theme="jade"]::after, body[data-theme="lavasunset"]::after, body[data-theme="lavender"]::after, body[data-theme="cherry"]::after, body[data-theme="forest"]::after, body[data-theme="glacier"]::after, body[data-theme="sulfur"]::after, body[data-theme="coral"]::after, body[data-theme="pumpkin"]::after, body[data-theme="dawn"]::after, body[data-theme="parchment"]::after, body[data-theme="mist"]::after {
   background: radial-gradient(ellipse at center, transparent 72%, rgba(0, 0, 0, .1) 100%);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
