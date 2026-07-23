@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>水球 · 彈力物理 | 魅魔萬事屋</title>
+<title>水球 × 2 · 袋中彈力 | 魅魔萬事屋</title>
 <meta name="theme-color" content="#16101f">
 <style>
 :root{ --bg:#141021; --glow:#251440; --panel:rgba(18,12,34,.72); --panel2:rgba(18,12,34,.5);
@@ -26,7 +26,7 @@ header.top a.home{margin-left:auto;color:var(--cyan);text-decoration:none;border
 .stage-box{position:relative;margin:0 auto 14px;width:fit-content;padding:12px;border:1px solid var(--line);
   border-radius:6px;background:var(--panel2);box-shadow:inset 0 0 40px rgba(0,0,0,.4);}
 canvas{display:block;position:relative;z-index:1;border-radius:4px;background:
-  radial-gradient(ellipse at 50% 30%, #1a1330 0%, #0d0a18 100%);cursor:grab;touch-action:none;}
+  radial-gradient(ellipse at 50% 20%, #1a1330 0%, #0d0a18 100%);cursor:grab;touch-action:none;max-width:100%;}
 canvas.drag{cursor:grabbing;}
 .stage-cap{text-align:center;color:var(--dim);font-size:11px;margin-top:6px;}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-bottom:12px;}
@@ -52,39 +52,41 @@ canvas.drag{cursor:grabbing;}
 <body>
 <div class="wrap">
   <header class="top">
-    <h1>水球 · 彈力物理</h1>
-    <span class="sub">軟體模擬 · 拖它、甩它、戳它</span>
+    <h1>水球 × 2 · 袋中彈力</h1>
+    <span class="sub">兩顆水球 · 各裝一袋 · 袋口釘在牆上</span>
     <a class="home" href="/">← 回萬事屋</a>
   </header>
 
   <div class="stage-box">
-    <canvas id="cv" width="360" height="360"></canvas>
-    <div class="stage-cap">壓力軟體 · 拖曳丟擲 / 點擊戳一下</div>
+    <canvas id="cv" width="440" height="400"></canvas>
+    <div class="stage-cap">拖曳搖晃 · 點擊戳一下 · 水球在袋中晃動變形</div>
   </div>
 
   <div class="panel two-col">
     <div>
       <h2>◆ 物理</h2>
-      <div class="row" style="margin-top:0"><label>重力</label><input id="grav" type="range" min="0" max="200" value="60"><span class="val" id="grav-v"></span></div>
-      <div class="row"><label>彈性</label><input id="stiff" type="range" min="10" max="100" value="55"><span class="val" id="stiff-v"></span></div>
-      <div class="row"><label>阻尼</label><input id="damp" type="range" min="0" max="60" value="14"><span class="val" id="damp-v"></span></div>
-      <div class="row"><label>回彈</label><input id="bounce" type="range" min="0" max="95" value="62"><span class="val" id="bounce-v"></span></div>
+      <div class="row" style="margin-top:0"><label>重力</label><input id="grav" type="range" min="0" max="200" value="70"><span class="val" id="grav-v"></span></div>
+      <div class="row"><label>水球彈性</label><input id="stiff" type="range" min="10" max="100" value="50"><span class="val" id="stiff-v"></span></div>
+      <div class="row"><label>阻尼</label><input id="damp" type="range" min="0" max="60" value="16"><span class="val" id="damp-v"></span></div>
+      <div class="row"><label>回彈</label><input id="bounce" type="range" min="0" max="95" value="55"><span class="val" id="bounce-v"></span></div>
     </div>
     <div>
-      <h2>◆ 水球</h2>
-      <div class="row" style="margin-top:0"><label>大小</label><input id="size" type="range" min="45" max="130" value="82"><span class="val" id="size-v"></span></div>
-      <div class="row"><label>飽滿度</label><input id="press" type="range" min="60" max="160" value="105"><span class="val" id="press-v"></span></div>
+      <h2>◆ 水球 / 袋子</h2>
+      <div class="row" style="margin-top:0"><label>大小</label><input id="size" type="range" min="34" max="70" value="50"><span class="val" id="size-v"></span></div>
+      <div class="row"><label>飽滿度</label><input id="press" type="range" min="70" max="150" value="112"><span class="val" id="press-v"></span></div>
+      <div class="row"><label>袋口鬆緊</label><input id="bag" type="range" min="30" max="100" value="62"><span class="val" id="bag-v"></span></div>
       <div class="row"><label>顏色</label><div class="chips" id="tint"></div></div>
-      <div class="actions" style="margin-top:12px">
-        <button id="poke">戳一下</button>
+      <div class="actions" style="margin-top:10px">
+        <button id="poke">晃一下</button>
         <button id="reset" class="ghost">重設</button>
       </div>
     </div>
   </div>
   <div class="panel">
     <div class="note">
-      真正的軟體物理:外圈一圈質點用彈簧連成環,靠「內壓」把環撐圓,碰到牆會壓扁再回彈。
-      重力讓它往下沉、觸底會 Q 彈晃動,拖著甩出去會依慣性飛出並在牆間亂彈。純 canvas + Verlet 積分,無外部函式庫。
+      兩組軟體單元:每顆水球是一圈質點靠「內壓」撐圓的壓力軟體;外面那層「袋子」也是一圈布料質點,
+      但袋口左右兩角<b>釘死在牆上</b>不動。水球把袋子從裡面撐開,重力把水球往下墜、袋子跟著下垂拉長,
+      搖晃時兩者各自 Q 彈又互相推擠。純 canvas + Verlet 積分,無外部函式庫。
     </div>
   </div>
 </div>
@@ -93,192 +95,192 @@ canvas.drag{cursor:grabbing;}
 (() => {
 "use strict";
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-const W=cv.width, H=cv.height;
+const W=cv.width, H=cv.height, WALL_Y=44;
 
-// ---- 可調參數 ----
-const P={ grav:0.60, stiff:0.55, damp:0.14, bounce:0.62, size:82, press:1.05, tint:'aqua' };
+const P={ grav:0.70, stiff:0.50, damp:0.16, bounce:0.55, size:50, press:1.12, bag:0.62, tint:'aqua' };
 
 const TINTS={
-  aqua:  {a:'#7bf6ff', b:'#2aa6d8', c:'#0d4a6b', hi:'#eaffff'},
-  rose:  {a:'#ff9ad8', b:'#e04fa8', c:'#7a1e58', hi:'#ffe6f6'},
-  lime:  {a:'#c9ff8a', b:'#66cc44', c:'#2a5a1e', hi:'#f2ffe0'},
-  amber: {a:'#ffd98a', b:'#f0a53a', c:'#7a4a12', hi:'#fff2d6'},
-  violet:{a:'#c8a8ff', b:'#8a5cf0', c:'#3a1e7a', hi:'#efe6ff'},
+  aqua:  {a:'#7bf6ff', b:'#2aa6d8', c:'#0d4a6b', hi:'#eaffff', bag:'#3fe0ff'},
+  rose:  {a:'#ff9ad8', b:'#e04fa8', c:'#7a1e58', hi:'#ffe6f6', bag:'#ff7ec8'},
+  lime:  {a:'#c9ff8a', b:'#66cc44', c:'#2a5a1e', hi:'#f2ffe0', bag:'#9bee5a'},
+  amber: {a:'#ffd98a', b:'#f0a53a', c:'#7a4a12', hi:'#fff2d6', bag:'#ffc85a'},
+  violet:{a:'#c8a8ff', b:'#8a5cf0', c:'#3a1e7a', hi:'#efe6ff', bag:'#b98cff'},
 };
 
-// ---- 軟體:一圈質點(Verlet)+ 內壓 ----
-const N=26;                       // 外環質點數
-let cx=W/2, cy=H*0.32, R=P.size;  // 中心、半徑
-let pts=[];                        // {x,y,px,py}
-let drag=null;                     // 被拖曳的質點索引
-let mouse={x:0,y:0,down:false};
+// ================= 軟體工具 =================
+function polyArea(nds){ let s=0,n=nds.length; for(let i=0;i<n;i++){ const a=nds[i],b=nds[(i+1)%n]; s+=a.x*b.y-b.x*a.y; } return s/2; }
+function pointInPoly(nds,x,y){ let inside=false,n=nds.length;
+  for(let i=0,j=n-1;i<n;j=i++){ const xi=nds[i].x,yi=nds[i].y,xj=nds[j].x,yj=nds[j].y;
+    if(((yi>y)!==(yj>y)) && (x<(xj-xi)*(y-yi)/((yj-yi)||1e-6)+xi)) inside=!inside; } return inside; }
+function nearestOnPoly(nds,x,y){ let best=1e18,bx=0,by=0,bi=0,n=nds.length;
+  for(let i=0;i<n;i++){ const a=nds[i],b=nds[(i+1)%n]; const dx=b.x-a.x,dy=b.y-a.y,l2=dx*dx+dy*dy||1e-6;
+    let t=((x-a.x)*dx+(y-a.y)*dy)/l2; t=t<0?0:t>1?1:t; const qx=a.x+dx*t,qy=a.y+dy*t;
+    const d=(qx-x)*(qx-x)+(qy-y)*(qy-y); if(d<best){best=d;bx=qx;by=qy;bi=i;} }
+  return {x:bx,y:by,i:bi,j:(bi+1)%n}; }
 
-function build(){
-  R=P.size; cx=W/2; cy=H*0.32;
-  pts=[];
-  for(let i=0;i<N;i++){
-    const a=i/N*Math.PI*2 - Math.PI/2;
-    const x=cx+Math.cos(a)*R, y=cy+Math.sin(a)*R;
-    pts.push({x,y,px:x,py:y});
-  }
+function mkNode(x,y){ return {x,y,px:x,py:y,pin:null}; }
+function integrate(nds,g,damp){ for(const n of nds){ if(n.pin)continue;
+  let vx=(n.x-n.px)*damp, vy=(n.y-n.py)*damp; n.px=n.x; n.py=n.y; n.x+=vx; n.y+=vy+g; } }
+function ringSprings(nds,rest,k){ const n=nds.length;
+  for(let i=0;i<n;i++){ const a=nds[i],b=nds[(i+1)%n]; let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1e-4;
+    const diff=(d-rest)/d*k*0.5, ox=dx*diff,oy=dy*diff;
+    if(!a.pin){a.x+=ox;a.y+=oy;} if(!b.pin){b.x-=ox;b.y-=oy;} } }
+function edgeSprings(nds,edges){ for(const e of edges){ const a=nds[e.i],b=nds[e.j];
+    let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1e-4; const diff=(d-e.rest)/d*e.k*0.5,ox=dx*diff,oy=dy*diff;
+    if(!a.pin){a.x+=ox;a.y+=oy;} if(!b.pin){b.x-=ox;b.y-=oy;} } }
+function pressure(nds,target,R,k){ const ar=polyArea(nds), push=(target-ar)/(2*Math.PI*R)*0.06*k, n=nds.length;
+  for(let i=0;i<n;i++){ const pv=nds[(i-1+n)%n],nx=nds[(i+1)%n]; let ax=nx.y-pv.y,ay=-(nx.x-pv.x);
+    const l=Math.hypot(ax,ay)||1e-4; ax/=l;ay/=l; if(!nds[i].pin){ nds[i].x+=ax*push; nds[i].y+=ay*push; } } }
+function walls(nds,b){ for(const p of nds){ if(p.pin)continue;
+  if(p.x<0){const v=p.px-p.x;p.x=0;p.px=-v*b;} if(p.x>W){const v=p.px-p.x;p.x=W;p.px=W-v*b;}
+  if(p.y<0){const v=p.py-p.y;p.y=0;p.py=-v*b;} if(p.y>H){const v=p.py-p.y;p.y=H;p.py=H-v*b-1e-4;} } }
+function pins(nds){ for(const p of nds){ if(p.pin){ p.x=p.px=p.pin.x; p.y=p.py=p.pin.y; } } }
+
+// 水球被袋子包住:球超出袋子多邊形時推回,同時把袋子往外撐(互推)
+function contain(ball,bag){
+  for(const p of ball){ if(!pointInPoly(bag,p.x,p.y)){
+    const q=nearestOnPoly(bag,p.x,p.y); const ox=p.x-q.x, oy=p.y-q.y;
+    if(!p.pin){ p.x=q.x; p.y=q.y; }
+    const a=bag[q.i], bnode=bag[q.j], w=0.55;
+    if(!a.pin){ a.x+=ox*w*0.5; a.y+=oy*w*0.5; }
+    if(!bnode.pin){ bnode.x+=ox*w*0.5; bnode.y+=oy*w*0.5; } } }
 }
+
+// ================= 建立兩個單元(水球 + 袋子) =================
+const NB=22, NG=28;       // 水球 / 袋子質點數
+let units=[];
+
+function buildUnit(cx){
+  const R=P.size;
+  const mouthHalf=R*0.5;
+  const aL={x:cx-mouthHalf, y:WALL_Y}, aR={x:cx+mouthHalf, y:WALL_Y};
+  // ---- 袋子:頂部有袋口缺口,兩角釘在牆上,往下兜成布袋 ----
+  const O={x:cx, y:WALL_Y+R*0.72}, rx=R*1.06, ry=R*1.18;
+  const gap=Math.PI*0.42;                    // 袋口張角(缺口)
+  const start=-Math.PI/2+gap/2;              // 由右上袋口起,順時針繞過底部到左上
+  const sweep=(Math.PI*2-gap);
+  const bag=[];
+  for(let i=0;i<NG;i++){ const t=i/(NG-1), a=start+t*sweep;
+    bag.push(mkNode(O.x+Math.cos(a)*rx, O.y+Math.sin(a)*ry)); }
+  bag[0].x=bag[0].px=aR.x; bag[0].y=bag[0].py=aR.y; bag[0].pin={x:aR.x,y:aR.y};
+  bag[NG-1].x=bag[NG-1].px=aL.x; bag[NG-1].y=bag[NG-1].py=aL.y; bag[NG-1].pin={x:aL.x,y:aL.y};
+  const bagEdges=[];
+  for(let i=0;i<NG-1;i++){ const a=bag[i],b=bag[i+1]; bagEdges.push({i,j:i+1,rest:Math.hypot(b.x-a.x,b.y-a.y),k:0.9}); }
+  // 袋口封邊(兩釘點間的細繩,把水球兜住)
+  bagEdges.push({i:NG-1,j:0,rest:Math.hypot(aR.x-aL.x,aR.y-aL.y),k:0.9});
+  const bagArea0=Math.abs(polyArea(bag));
+  // ---- 水球:略大於袋子內徑,從裡面把袋子撐開 ----
+  const ball=[], bcy=WALL_Y+R*1.15;
+  for(let i=0;i<NB;i++){ const a=i/NB*Math.PI*2-Math.PI/2;
+    ball.push(mkNode(cx+Math.cos(a)*R*0.94, bcy+Math.sin(a)*R*0.94)); }
+  const ballRest=2*Math.sin(Math.PI/NB)*R;
+  const ballArea0=Math.abs(polyArea(ball));
+
+  return {cx,R,aL,aR, bag,bagEdges,bagArea0, ball,ballRest,ballArea0};
+}
+function build(){ units=[ buildUnit(W*0.30), buildUnit(W*0.70) ]; }
 build();
 
-const rest = ()=> 2*Math.sin(Math.PI/N)*R;   // 相鄰質點的自然間距
-const targetArea = ()=> Math.PI*R*R*P.press;  // 目標面積(內壓靠這撐)
-
-function area(){
-  let s=0;
-  for(let i=0;i<N;i++){ const a=pts[i], b=pts[(i+1)%N]; s+=a.x*b.y-b.x*a.y; }
-  return s/2;
-}
-
+// ================= 模擬步 =================
+let drag=null, mouse={x:0,y:0};
 function step(dt){
-  const g=P.grav*dt*dt;
-  const damp=1-P.damp*0.01;
-  // Verlet 積分 + 重力
-  for(let i=0;i<N;i++){
-    const p=pts[i];
-    if(drag===i) continue;
-    let vx=(p.x-p.px)*damp, vy=(p.y-p.py)*damp;
-    p.px=p.x; p.py=p.y;
-    p.x+=vx; p.y+=vy+g;
+  const g=P.grav*dt*dt, damp=1-P.damp*0.02;
+  for(const u of units){ integrate(u.ball,g,damp); integrate(u.bag,g*0.55,damp); }
+  for(let it=0; it<4; it++){
+    for(const u of units){
+      ringSprings(u.ball, u.ballRest, P.stiff);
+      pressure(u.ball, u.ballArea0*P.press, u.R, P.stiff+0.4);
+      edgeSprings(u.bag, u.bagEdges);
+      pressure(u.bag, u.bagArea0*(0.55+P.bag*0.5), u.R, 0.25); // 袋子微張力,避免塌陷/翻面
+      pins(u.bag); pins(u.ball);
+    }
+    for(const u of units){ walls(u.ball,P.bounce); walls(u.bag,P.bounce); }
+    for(const u of units){ contain(u.ball, u.bag); }
+    for(const u of units){ pins(u.bag); }
   }
-  // 幾次鬆弛迭代:讓它更穩定
-  for(let it=0; it<3; it++){
-    // 1) 環彈簧:相鄰質點維持自然間距
-    const L=rest(), k=P.stiff*0.5;
-    for(let i=0;i<N;i++){
-      const a=pts[i], b=pts[(i+1)%N];
-      let dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||1e-4;
-      const diff=(d-L)/d*k*0.5;
-      const ox=dx*diff, oy=dy*diff;
-      if(drag!==i){ a.x+=ox; a.y+=oy; }
-      if(drag!==(i+1)%N){ b.x-=ox; b.y-=oy; }
-    }
-    // 2) 內壓:面積小於目標就沿法線往外推(這就是「水球撐圓」的關鍵)
-    const ar=area(), diff=(targetArea()-ar);
-    const push=diff/ (2*Math.PI*R) * 0.06 * (P.stiff*0.5+0.5);
-    for(let i=0;i<N;i++){
-      const prev=pts[(i-1+N)%N], next=pts[(i+1)%N];
-      let nx=next.y-prev.y, ny=-(next.x-prev.x);      // 外法線
-      const len=Math.hypot(nx,ny)||1e-4; nx/=len; ny/=len;
-      if(drag!==i){ pts[i].x+=nx*push; pts[i].y+=ny*push; }
-    }
-    // 3) 牆壁碰撞 + 回彈
-    const b=P.bounce;
-    for(let i=0;i<N;i++){
-      const p=pts[i];
-      if(p.x<0){ const v=p.px-p.x; p.x=0; p.px=p.x - v*b; }
-      if(p.x>W){ const v=p.px-p.x; p.x=W; p.px=p.x - v*b; }
-      if(p.y<0){ const v=p.py-p.y; p.y=0; p.py=p.y - v*b; }
-      if(p.y>H){ const v=p.py-p.y; p.y=H; p.py=p.y - v*b - 0.0001; }
-    }
-  }
-  // 拖曳:把被抓的質點釘在滑鼠,速度靠位置差帶出去
-  if(drag!==null){ const p=pts[drag]; p.px=p.x; p.x=mouse.x; p.py=p.y; p.y=mouse.y; }
+  if(drag){ const p=drag.node; p.px=p.x; p.py=p.y; p.x=mouse.x; p.y=mouse.y; }
 }
 
-// ---- 繪製:平滑封閉曲線 + 徑向漸層 + 高光 ----
-function centroid(){ let x=0,y=0; for(const p of pts){x+=p.x;y+=p.y;} return {x:x/N,y:y/N}; }
+// ================= 繪製 =================
+function centroid(nds){ let x=0,y=0,n=nds.length; for(const p of nds){x+=p.x;y+=p.y;} return {x:x/n,y:y/n}; }
+function blobPath(nds){ const n=nds.length; ctx.beginPath();
+  const m0={x:(nds[n-1].x+nds[0].x)/2,y:(nds[n-1].y+nds[0].y)/2}; ctx.moveTo(m0.x,m0.y);
+  for(let i=0;i<n;i++){ const c=nds[i],nx=nds[(i+1)%n]; ctx.quadraticCurveTo(c.x,c.y,(c.x+nx.x)/2,(c.y+nx.y)/2); }
+  ctx.closePath(); }
 
-function blobPath(){
-  ctx.beginPath();
-  const m0={x:(pts[N-1].x+pts[0].x)/2, y:(pts[N-1].y+pts[0].y)/2};
-  ctx.moveTo(m0.x,m0.y);
-  for(let i=0;i<N;i++){
-    const cur=pts[i], nx=pts[(i+1)%N];
-    const mx=(cur.x+nx.x)/2, my=(cur.y+nx.y)/2;
-    ctx.quadraticCurveTo(cur.x,cur.y,mx,my);
-  }
-  ctx.closePath();
+function drawWall(){
+  ctx.fillStyle='rgba(120,150,190,0.10)'; ctx.fillRect(0,0,W,WALL_Y);
+  ctx.strokeStyle='rgba(157,243,255,0.25)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(0,WALL_Y); ctx.lineTo(W,WALL_Y); ctx.stroke();
+  for(let x=8;x<W;x+=22){ ctx.strokeStyle='rgba(157,243,255,0.10)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x-6,WALL_Y); ctx.stroke(); }
 }
+function drawMount(a){ ctx.fillStyle='#c9e8ff'; ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(a.x,a.y,4,0,Math.PI*2); ctx.fill(); ctx.stroke(); }
 
-function draw(){
-  ctx.clearRect(0,0,W,H);
+function drawUnit(u){
   const t=TINTS[P.tint]||TINTS.aqua;
-  const c=centroid();
-  // 地面陰影
-  const shW=R*1.4, shY=H-6;
-  const sink=Math.max(0,Math.min(1,(c.y+R-H+40)/60));
-  ctx.save();
-  ctx.globalAlpha=0.28*sink;
-  ctx.fillStyle='#000';
-  ctx.beginPath(); ctx.ellipse(c.x,shY,shW*(0.6+0.4*sink),8,0,0,Math.PI*2); ctx.fill();
-  ctx.restore();
-
-  // 球體
-  blobPath();
-  const g=ctx.createRadialGradient(c.x-R*0.3,c.y-R*0.4,R*0.1, c.x,c.y,R*1.15);
+  const bc=centroid(u.ball);
+  // 袋子(後層:半透明布 + 邊)
+  blobPath(u.bag);
+  ctx.save(); ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fill(); ctx.restore();
+  // 水球
+  blobPath(u.ball);
+  const g=ctx.createRadialGradient(bc.x-u.R*0.3,bc.y-u.R*0.4,u.R*0.1, bc.x,bc.y,u.R*1.15);
   g.addColorStop(0,t.a); g.addColorStop(0.55,t.b); g.addColorStop(1,t.c);
-  ctx.fillStyle=g;
-  ctx.save(); ctx.shadowColor=t.b; ctx.shadowBlur=24; ctx.fill(); ctx.restore();
-
-  // 內側暗邊(玻璃感)
-  ctx.save(); blobPath(); ctx.clip();
-  const rim=ctx.createRadialGradient(c.x,c.y,R*0.5, c.x,c.y,R*1.05);
-  rim.addColorStop(0,'rgba(0,0,0,0)'); rim.addColorStop(1,'rgba(0,0,0,0.35)');
-  ctx.fillStyle=rim; ctx.fillRect(0,0,W,H);
-  ctx.restore();
-
-  // 主高光
-  ctx.save();
-  ctx.globalCompositeOperation='lighter';
-  const hx=c.x-R*0.34, hy=c.y-R*0.42;
-  const hg=ctx.createRadialGradient(hx,hy,0, hx,hy,R*0.5);
-  hg.addColorStop(0,t.hi); hg.addColorStop(0.4,'rgba(255,255,255,0.25)'); hg.addColorStop(1,'rgba(255,255,255,0)');
-  ctx.fillStyle=hg; ctx.beginPath(); ctx.ellipse(hx,hy,R*0.42,R*0.30,-0.5,0,Math.PI*2); ctx.fill();
-  ctx.restore();
-
-  // 小反光點
-  ctx.fillStyle='rgba(255,255,255,0.85)';
-  ctx.beginPath(); ctx.ellipse(c.x+R*0.28,c.y+R*0.30,R*0.06,R*0.09,0.4,0,Math.PI*2); ctx.fill();
-
-  // 外描邊
-  blobPath();
-  ctx.lineWidth=1.5; ctx.strokeStyle='rgba(255,255,255,0.30)'; ctx.stroke();
+  ctx.save(); ctx.shadowColor=t.b; ctx.shadowBlur=18; ctx.fillStyle=g; ctx.fill(); ctx.restore();
+  // 玻璃暗邊
+  ctx.save(); blobPath(u.ball); ctx.clip();
+  const rim=ctx.createRadialGradient(bc.x,bc.y,u.R*0.5, bc.x,bc.y,u.R*1.05);
+  rim.addColorStop(0,'rgba(0,0,0,0)'); rim.addColorStop(1,'rgba(0,0,0,0.32)');
+  ctx.fillStyle=rim; ctx.fillRect(0,0,W,H); ctx.restore();
+  // 高光
+  ctx.save(); ctx.globalCompositeOperation='lighter';
+  const hx=bc.x-u.R*0.32, hy=bc.y-u.R*0.4;
+  const hg=ctx.createRadialGradient(hx,hy,0, hx,hy,u.R*0.5);
+  hg.addColorStop(0,t.hi); hg.addColorStop(0.4,'rgba(255,255,255,0.22)'); hg.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=hg; ctx.beginPath(); ctx.ellipse(hx,hy,u.R*0.4,u.R*0.28,-0.5,0,Math.PI*2); ctx.fill(); ctx.restore();
+  ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.ellipse(bc.x+u.R*0.28,bc.y+u.R*0.3,u.R*0.055,u.R*0.085,0.4,0,Math.PI*2); ctx.fill();
+  // 袋子(前層描邊:蓋在水球邊上 → 有被包住感)
+  blobPath(u.bag);
+  ctx.lineWidth=2.4; ctx.strokeStyle=t.bag+'aa'; ctx.stroke();
+  ctx.lineWidth=1; ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.stroke();
+  // 袋口封繩(兩釘點之間)
+  ctx.beginPath(); ctx.moveTo(u.aL.x,u.aL.y); ctx.lineTo(u.aR.x,u.aR.y);
+  ctx.strokeStyle=t.bag+'cc'; ctx.lineWidth=2; ctx.stroke();
+  drawMount(u.aL); drawMount(u.aR);
 }
+function draw(){ ctx.clearRect(0,0,W,H); drawWall();
+  for(const u of units) drawUnit(u); }
 
-// ---- 主迴圈(固定步長)----
-let acc=0, last=performance.now();
-function loop(now){
-  let f=(now-last)/1000; last=now; if(f>0.05)f=0.05; acc+=f;
-  const h=1/120;
-  while(acc>=h){ step(h*60); acc-=h; }  // step 內用「幀」為單位縮放
-  draw();
-  requestAnimationFrame(loop);
-}
+// ================= 主迴圈 =================
+let acc=0,last=performance.now();
+function loop(now){ let f=(now-last)/1000; last=now; if(f>0.05)f=0.05; acc+=f;
+  const h=1/120; while(acc>=h){ step(0.5); acc-=h; } draw(); requestAnimationFrame(loop); }
 requestAnimationFrame(loop);
 
-// ---- 互動 ----
+// ================= 互動 =================
 function pos(e){ const r=cv.getBoundingClientRect(); const p=e.touches?e.touches[0]:e;
   return {x:(p.clientX-r.left)*W/r.width, y:(p.clientY-r.top)*H/r.height}; }
-function nearest(x,y){ let bi=-1,bd=1e9; for(let i=0;i<N;i++){ const d=Math.hypot(pts[i].x-x,pts[i].y-y); if(d<bd){bd=d;bi=i;} } return bd<R*0.6?bi:-1; }
-
-function down(e){ const m=pos(e); mouse.x=m.x; mouse.y=m.y; mouse.down=true;
-  const i=nearest(m.x,m.y); if(i>=0){ drag=i; cv.classList.add('drag'); } e.preventDefault(); }
-function move(e){ const m=pos(e); mouse.x=m.x; mouse.y=m.y; if(drag!==null) e.preventDefault(); }
-function up(){ mouse.down=false; drag=null; cv.classList.remove('drag'); }
-
+function grab(x,y){ let best=null,bd=1e9;
+  for(const u of units) for(const n of u.ball){ const d=Math.hypot(n.x-x,n.y-y); if(d<bd){bd=d;best=n;} }
+  return bd<P.size*0.7?best:null; }
+function down(e){ const m=pos(e); mouse=m; const n=grab(m.x,m.y);
+  if(n){ drag={node:n}; cv.classList.add('drag'); } dnT=performance.now(); e.preventDefault(); }
+function move(e){ const m=pos(e); mouse=m; if(drag)e.preventDefault(); }
+function up(e){ if(!drag && performance.now()-dnT<180){ const m=pos(e?e:{}); if(m) pokeAt(mouse.x,mouse.y); }
+  drag=null; cv.classList.remove('drag'); }
+let dnT=0;
 cv.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
 cv.addEventListener('touchstart',down,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); window.addEventListener('touchend',up);
 
-// 點擊(未拖動)戳一下:給整體一個往上的衝量
-let dnT=0;
-cv.addEventListener('mousedown',()=>dnT=performance.now());
-cv.addEventListener('mouseup',e=>{ if(performance.now()-dnT<180 && drag===null){ const m=pos(e); pokeAt(m.x,m.y);} });
-function pokeAt(x,y){
-  // 從點擊處往外炸開的衝量:離得越近推得越用力(Verlet 的速度 = x-px)
-  for(let i=0;i<N;i++){ const p=pts[i]; const dx=p.x-x, dy=p.y-y, d=Math.hypot(dx,dy)||1;
-    const f=Math.max(0,1-d/(R*1.8))*14;
-    p.px -= dx/d*f; p.py -= dy/d*f;
-  }
-}
-document.getElementById('poke').onclick=()=>{ for(let i=0;i<N;i++){ pts[i].py+=8+Math.random()*4; } };
+function pokeAt(x,y){ for(const u of units) for(const p of u.ball){ const dx=p.x-x,dy=p.y-y,d=Math.hypot(dx,dy)||1;
+  const f=Math.max(0,1-d/(P.size*1.8))*13; p.px-=dx/d*f; p.py-=dy/d*f; } }
+document.getElementById('poke').onclick=()=>{ for(const u of units) for(const p of u.ball){ p.px-=(Math.random()-0.5)*10; p.py-=8+Math.random()*5; } };
 
-// ---- UI 綁定 ----
+// ================= UI =================
 const $=s=>document.querySelector(s);
-function bind(id,key,scale,fmt){ const el=$('#'+id), v=$('#'+id+'-v');
+function bind(id,key,scale,fmt){ const el=$('#'+id),v=$('#'+id+'-v');
   const u=()=>{ P[key]=(+el.value)*scale; v.textContent=fmt?fmt(+el.value):el.value; };
   el.addEventListener('input',u); u(); }
 bind('grav','grav',0.01,x=>(x/100).toFixed(2));
@@ -286,6 +288,7 @@ bind('stiff','stiff',0.01,x=>x+'%');
 bind('damp','damp',0.01,x=>x+'%');
 bind('bounce','bounce',0.01,x=>x+'%');
 bind('press','press',0.01,x=>(x/100).toFixed(2));
+bind('bag','bag',0.01,x=>x+'%');
 $('#size').addEventListener('input',e=>{ P.size=+e.target.value; $('#size-v').textContent=P.size; build(); });
 $('#size-v').textContent=P.size;
 
@@ -295,7 +298,6 @@ Object.keys(TINTS).forEach(key=>{ const b=document.createElement('button');
   if(key===P.tint)b.classList.add('on');
   b.onclick=()=>{ P.tint=key; [...tintWrap.children].forEach(c=>c.classList.toggle('on',c===b)); };
   tintWrap.appendChild(b); });
-
 $('#reset').onclick=()=>{ build(); };
 })();
 </script>
