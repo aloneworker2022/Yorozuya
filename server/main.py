@@ -433,6 +433,9 @@ class SimSync(BaseModel):
     roster: list = []                      # [{id, ntr, kanban, busy}] 名冊快照
     seeds: dict | None = None              # {id: rel} 伺服器沒追蹤到時採用的既有關係
     patches: dict | None = None            # {id: {seen:[actId], texts:{actId:text}, rescue:bool}}
+    kanbans: list = []                     # [{id, until}] 看板娘計時(權威時鐘用)
+    quests: list = []                      # [{id, deadline}] 執行中委託計時(權威時鐘用)
+    day: int | None = None                 # 手機當前日序(跨日結算的起點,首次 sync 用)
     ack_outcomes: bool = True              # True:回傳後清空 outcomes(手機已套用)
 
 
@@ -449,6 +452,12 @@ async def sim_sync(body: SimSync):
                       "busy": bool(r.get("busy")), "rarity": r.get("rarity")}
             for r in (body.roster or []) if r.get("id")
         }
+        # 權威時鐘的計時清單:手機每次覆蓋上傳當前狀態(下一輪 worker 會據此判到期)
+        clock = store.setdefault("clock", {"kanbans": {}, "quests": {}, "lastDay": None})
+        clock["kanbans"] = {k["id"]: k.get("until") for k in (body.kanbans or []) if k.get("id")}
+        clock["quests"] = {q["id"]: q.get("deadline") for q in (body.quests or []) if q.get("id")}
+        if body.day is not None and clock.get("lastDay") is None:
+            clock["lastDay"] = body.day
         sim.adopt_seeds(store, body.seeds)
         sim.apply_patches(store, body.patches)
         sim.run_tick(store, now_ms)
@@ -486,24 +495,47 @@ async def sim_live_act(body: SimLive):
         return {"rel": store.get("rels", {}).get(body.id), "married": married}
 
 
-async def _sim_worker():
-    """背景持續補算:即使手機關著,已上傳的名冊快照仍會依真實時間推進。"""
+_HEARTBEAT_SEC = 600            # 每 10 分鐘印一次「已執行檢查」心跳
+_last_beat = 0.0
+
+
+def _world_beat(store, now: float, forced: bool = False) -> None:
+    """每 10 分鐘輸出一行世界時鐘心跳,讓你隨時能確認伺服器 runtime 活著、確實在跑檢查。"""
+    global _last_beat
+    if not forced and now - _last_beat < _HEARTBEAT_SEC:
+        return
+    _last_beat = now
+    st = sim.world_stats(store)
+    print(
+        f"[世界時鐘] {time.strftime('%Y-%m-%d %H:%M:%S')} 已執行檢查 — "
+        f"名冊={st['roster']} 召喚師關係={st['rels']} 召喚中={st['taken']} "
+        f"看板娘計時={st['kanbanTimers']} 委託計時={st['questTimers']} 待套用={st['pendingOutcomes']}",
+        flush=True,
+    )
+
+
+async def _world_clock():
+    """世界時鐘:伺服器權威 runtime。每 30 秒把召喚師模擬 + 計時判定(看板娘到期/委託逾期/跨日)
+    補算到真實時間(關螢幕、離線也照跑),並每 10 分鐘輸出一次心跳日誌。"""
     while True:
         try:
-            await asyncio.sleep(60)
+            await asyncio.sleep(30)
+            now = time.time()
             async with SIM_LOCK:
                 store = _sim_load()
-                if store.get("roster"):
-                    if sim.run_tick(store, int(time.time() * 1000)):
-                        _sim_save(store)
-        except Exception:
-            await asyncio.sleep(5)  # worker 永不死
+                if sim.run_tick(store, int(now * 1000)):
+                    _sim_save(store)
+                _world_beat(store, now)
+        except Exception as e:
+            print(f"[世界時鐘] 檢查發生例外(將續跑):{e}", flush=True)
+            await asyncio.sleep(5)  # runtime 永不死
 
 
 @app.on_event("startup")
 async def _start_gen_worker():
+    print("[世界時鐘] 啟動 — 伺服器權威 runtime 上線,每 30 秒跑檢查、每 10 分鐘印心跳", flush=True)
     asyncio.create_task(_gen_worker())
-    asyncio.create_task(_sim_worker())
+    asyncio.create_task(_world_clock())
 
 
 # Testword 編輯召喚師池(dateChance 等行為參數);整包覆寫 content/summoners.json

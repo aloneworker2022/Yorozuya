@@ -268,12 +268,58 @@ def apply_patches(store, patches):
             rel["taken"] = None
 
 
+def _tick_clock(store, now_ms):
+    """伺服器權威時鐘:純計時器,不算遊戲後果。判定「看板娘到期 / 委託逾期 / 跨日」是否觸發,
+    觸發就寫進 outcomes 交手機套用(手機仍是存檔唯一寫入者,後果邏輯一律留在手機端,零 Python↔JS 分歧)。
+    kanbans / quests 的計時清單由手機每次 sync 覆蓋上傳;觸發後移除該計時,避免重複(手機套用具冪等性,重覆亦無害)。"""
+    clock = store.setdefault("clock", {"kanbans": {}, "quests": {}, "lastDay": None})
+    changed = False
+    # ── 看板娘到期解除 ──
+    for kid, until in list(clock.get("kanbans", {}).items()):
+        if until is not None and now_ms >= until:
+            store.setdefault("outcomes", []).append({"type": "kanban_expired", "id": kid, "t": now_ms})
+            clock["kanbans"].pop(kid, None)
+            changed = True
+    # ── 執行中委託逾期違約 ──
+    for qid, deadline in list(clock.get("quests", {}).items()):
+        if deadline is not None and now_ms >= deadline:
+            store.setdefault("outcomes", []).append({"type": "quest_due", "id": qid, "t": now_ms})
+            clock["quests"].pop(qid, None)
+            changed = True
+    # ── 跨日:一則 day_rollover 讓手機跑 settleDays + ensureShop(每日結算/需求/NTR/商店重擲全含)──
+    today = day_num(now_ms)
+    last = clock.get("lastDay")
+    if last is not None and today > last:
+        store.setdefault("outcomes", []).append({"type": "day_rollover", "to": today, "t": now_ms})
+        changed = True
+    if last is None or today > last:
+        clock["lastDay"] = today
+        changed = True
+    return changed
+
+
+def world_stats(store):
+    """世界時鐘心跳用的統計快照。"""
+    rels = store.get("rels", {})
+    clock = store.get("clock", {})
+    return {
+        "roster": len(store.get("roster", {})),
+        "rels": len(rels),
+        "taken": sum(1 for r in rels.values() if r and r.get("taken")),
+        "kanbanTimers": len(clock.get("kanbans", {})),
+        "questTimers": len(clock.get("quests", {})),
+        "pendingOutcomes": len(store.get("outcomes", [])),
+    }
+
+
 def run_tick(store, now_ms):
-    """依 roster 快照把所有魅魔補算到 now;回傳是否有變化。"""
+    """依 roster 快照把所有魅魔補算到 now,並跑權威時鐘的計時判定;回傳是否有變化。"""
     changed = False
     store.setdefault("rels", {})
     store.setdefault("judgeWin", {})
     store.setdefault("takenWin", {})
+    if _tick_clock(store, now_ms):
+        changed = True
     for gid in list(store.get("roster", {}).keys()):
         if _tick_girl(store, gid, now_ms):
             changed = True
@@ -291,4 +337,5 @@ def run_tick(store, now_ms):
 
 
 def new_store():
-    return {"rels": {}, "roster": {}, "rating": "sfw", "outcomes": [], "judgeWin": {}, "takenWin": {}}
+    return {"rels": {}, "roster": {}, "rating": "sfw", "outcomes": [], "judgeWin": {}, "takenWin": {},
+            "clock": {"kanbans": {}, "quests": {}, "lastDay": None}}

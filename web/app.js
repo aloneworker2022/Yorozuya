@@ -2109,11 +2109,15 @@ async function simSync() {
     }));
     const seeds = {};
     for (const s of state.succubi) if (s.summoner) seeds[s.id] = s.summoner;
+    // 權威時鐘計時清單:看板娘到期、執行中委託逾期、當前日序(跨日結算)——伺服器據此判定
+    const kanbans = (state.kanbans || []).map(k => ({ id: k.id, until: k.until }));
+    const quests = execQuests().map(q => ({ id: q.id, deadline: q.deadline }));
     let resp;
     try {
       const r = await fetch("/api/sim/sync", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ now: Date.now(), rating: state.settings.rating || "sfw", roster, seeds, patches }),
+        body: JSON.stringify({ now: Date.now(), rating: state.settings.rating || "sfw", roster, seeds, patches,
+                               kanbans, quests, day: dayNum() }),
       });
       if (!r.ok) throw new Error("sim http " + r.status);
       resp = await r.json();
@@ -2157,8 +2161,25 @@ async function simLiveAct(s) {
   } catch (e) { return null; }
 }
 
-// 伺服器回報的結局/事件:纏上(通知)、懷孕娶走(移除魅魔,等同 marryAway)
+// 伺服器回報的結局/事件:纏上/娶走(召喚師),以及權威時鐘的計時觸發(看板娘到期/委託逾期/跨日)。
+// 後果一律走手機既有邏輯(伺服器只負責「判定時間到了」),且全部具冪等性,重複套用無害。
 function applySimOutcome(o) {
+  // 權威時鐘計時觸發 ──────────────────────────────
+  if (o.type === "kanban_expired") {
+    state.kanbans = (state.kanbans || []).filter(k => k.id !== o.id);
+    return;
+  }
+  if (o.type === "quest_due") {
+    const q = state.quests.find(x => x.id === o.id && x.lv === 2);   // 仍在執行中才違約(冪等)
+    if (q) failQuest(q, true);
+    return;
+  }
+  if (o.type === "day_rollover") {
+    settleDays();   // 每日結算:需求逾期扣好感 / NTR 期限 / 離開(內部以 lastSettledDay 防重跑)
+    ensureShop();   // 商店與獻祭費每日重擲(內部以 shop.day 防重跑)
+    return;
+  }
+  // 召喚師事件 ────────────────────────────────────
   const s = state.succubi.find(x => x.id === o.id);
   if (o.type === "entangled") {
     log(`${o.suName || "一位召喚師"} 纏上了 ${s?.name || "一位魅魔"}!`);
@@ -2252,30 +2273,36 @@ setInterval(() => {
   const now = Date.now();
   let changed = false;
 
-  for (const q of [...execQuests()]) {
-    if (now >= q.deadline) { failQuest(q); changed = true; }
-    else {
-      // 不顯示倒數——只有她會在快超時的時候催你一句
-      const frac = (q.deadline - now) / (q.deadline - q.startedAt);
-      if (frac <= 0.2 && !q._warned) { q._warned = true; kanbanReact("hurry"); }
+  // 時間檢查的權威已搬到伺服器世界時鐘(看板娘到期/委託逾期/跨日),手機同步時套用其 outcome。
+  // 以下客戶端檢查保留為「離線/伺服器連不上」時的在地保底,與伺服器判定同結果且皆冪等。
+  // 每一步各自 try/catch:任何一步出錯都不會拖垮後面的 simSync / genTick,runtime 不會整個停擺。
+  try {
+    for (const q of [...execQuests()]) {
+      if (now >= q.deadline) { failQuest(q); changed = true; }
+      else {
+        // 不顯示倒數——只有她會在快超時的時候催你一句
+        const frac = (q.deadline - now) / (q.deadline - q.startedAt);
+        if (frac <= 0.2 && !q._warned) { q._warned = true; kanbanReact("hurry"); }
+      }
     }
-  }
 
-  const today = dayNum();
-  if (lastTickDay !== null && today !== lastTickDay) { settleDays(); ensureShop(); changed = true; }
-  lastTickDay = today;
+    const today = dayNum();
+    if (lastTickDay !== null && today !== lastTickDay) { settleDays(); ensureShop(); changed = true; }
+    lastTickDay = today;
 
-  if (expireKanban()) changed = true;
-  // 召喚師判定/act 改由伺服器權威運算;手機每 15 秒同步一次鏡像(關螢幕時伺服器仍在跑)
-  if (Date.now() - lastSimSyncAt > 15000) simSync();
-  genTick();   // 代工生成:下單+收貨(排隊在 RP5 伺服器跑,手機關螢幕也不停)
+    if (expireKanban()) changed = true;
 
-  const asleep = isAsleep();
-  if (asleep !== lastSleepState) {
-    if (asleep && chatWith) { toast("睡眠時段到了,她回夢境了", "bad"); exitChat(); }
-    lastSleepState = asleep;
-    changed = true;
-  }
+    const asleep = isAsleep();
+    if (asleep !== lastSleepState) {
+      if (asleep && chatWith) { toast("睡眠時段到了,她回夢境了", "bad"); exitChat(); }
+      lastSleepState = asleep;
+      changed = true;
+    }
+  } catch (e) { console.error("tick 在地檢查出錯(不影響同步):", e); }
+
+  // 伺服器世界時鐘:每 15 秒同步一次(拿權威 outcome + 召喚師鏡像);與上面的在地檢查各自獨立
+  try { if (Date.now() - lastSimSyncAt > 15000) simSync(); } catch (e) { console.error("simSync 失敗:", e); }
+  try { genTick(); } catch (e) { console.error("genTick 失敗:", e); }   // 代工生成:下單+收貨
 
   if (changed) { scheduleSave(); renderAll(); }
 }, 1000);
