@@ -52,8 +52,8 @@ canvas.drag{cursor:grabbing;}
 <body>
 <div class="wrap">
   <header class="top">
-    <h1>水球 × 2 · 袋中彈力</h1>
-    <span class="sub">兩顆水球 · 各裝一袋 · 袋口釘在牆上</span>
+    <h1>水球 × 2 · 牆上圓口袋</h1>
+    <span class="sub">兩顆水球 · 各裝一袋 · 圓形袋口貼牆</span>
     <a class="home" href="/">← 回萬事屋</a>
   </header>
 
@@ -85,8 +85,8 @@ canvas.drag{cursor:grabbing;}
   <div class="panel">
     <div class="note">
       兩組軟體單元:每顆水球是一圈質點靠「內壓」撐圓的壓力軟體;外面那層「袋子」也是一圈布料質點,
-      但袋口左右兩角<b>釘死在牆上</b>不動。水球把袋子從裡面撐開,重力把水球往下墜、袋子跟著下垂拉長,
-      搖晃時兩者各自 Q 彈又互相推擠。純 canvas + Verlet 積分,無外部函式庫。
+      <b>圓形袋口整圈釘死在背景牆上</b>不動(不是吊在天花板),布袋往下兜住水球。
+      重力把水球往下墜、袋子跟著下垂,搖晃時兩者各自 Q 彈又互相推擠。純 canvas + Verlet 積分,無外部函式庫。
     </div>
   </div>
 </div>
@@ -152,31 +152,29 @@ let units=[];
 
 function buildUnit(cx){
   const R=P.size;
-  const mouthHalf=R*0.5;
-  const aL={x:cx-mouthHalf, y:WALL_Y}, aR={x:cx+mouthHalf, y:WALL_Y};
-  // ---- 袋子:頂部有袋口缺口,兩角釘在牆上,往下兜成布袋 ----
-  const O={x:cx, y:WALL_Y+R*0.72}, rx=R*1.06, ry=R*1.18;
-  const gap=Math.PI*0.42;                    // 袋口張角(缺口)
-  const start=-Math.PI/2+gap/2;              // 由右上袋口起,順時針繞過底部到左上
-  const sweep=(Math.PI*2-gap);
+  // ---- 袋子:圓形袋口整圈貼死在牆上,布袋往下兜、受重力下垂 ----
+  const Rm=R*1.02;                     // 圓形袋口半徑
+  const Mc={x:cx, y:H*0.30};           // 袋口圓心(貼在背景牆上)
   const bag=[];
-  for(let i=0;i<NG;i++){ const t=i/(NG-1), a=start+t*sweep;
-    bag.push(mkNode(O.x+Math.cos(a)*rx, O.y+Math.sin(a)*ry)); }
-  bag[0].x=bag[0].px=aR.x; bag[0].y=bag[0].py=aR.y; bag[0].pin={x:aR.x,y:aR.y};
-  bag[NG-1].x=bag[NG-1].px=aL.x; bag[NG-1].y=bag[NG-1].py=aL.y; bag[NG-1].pin={x:aL.x,y:aL.y};
-  const bagEdges=[];
-  for(let i=0;i<NG-1;i++){ const a=bag[i],b=bag[i+1]; bagEdges.push({i,j:i+1,rest:Math.hypot(b.x-a.x,b.y-a.y),k:0.9}); }
-  // 袋口封邊(兩釘點間的細繩,把水球兜住)
-  bagEdges.push({i:NG-1,j:0,rest:Math.hypot(aR.x-aL.x,aR.y-aL.y),k:0.9});
+  for(let i=0;i<NG;i++){ const a=(i/NG)*Math.PI*2 - Math.PI/2;   // 從正上方起繞一圈
+    const x=Mc.x+Math.cos(a)*Rm, y=Mc.y+Math.sin(a)*Rm;
+    const nd=mkNode(x,y);
+    // 上半圈(含兩側到略低於水平)釘在牆上 → 這圈就是固定的圓形袋口
+    if(Math.sin(a) <= 0.18) nd.pin={x,y};
+    bag.push(nd);
+  }
+  const bagEdges=[];   // 封閉環(含收尾邊)
+  for(let i=0;i<NG;i++){ const j=(i+1)%NG, a=bag[i],b=bag[j];
+    bagEdges.push({i,j,rest:Math.hypot(b.x-a.x,b.y-a.y),k:0.9}); }
   const bagArea0=Math.abs(polyArea(bag));
-  // ---- 水球:略大於袋子內徑,從裡面把袋子撐開 ----
-  const ball=[], bcy=WALL_Y+R*1.15;
+  // ---- 水球:略小於袋口,落在袋中被兜住 ----
+  const rb=R*0.86, ball=[], bcy=Mc.y+R*0.22;
   for(let i=0;i<NB;i++){ const a=i/NB*Math.PI*2-Math.PI/2;
-    ball.push(mkNode(cx+Math.cos(a)*R*0.94, bcy+Math.sin(a)*R*0.94)); }
-  const ballRest=2*Math.sin(Math.PI/NB)*R;
+    ball.push(mkNode(cx+Math.cos(a)*rb, bcy+Math.sin(a)*rb)); }
+  const ballRest=2*Math.sin(Math.PI/NB)*rb;
   const ballArea0=Math.abs(polyArea(ball));
 
-  return {cx,R,aL,aR, bag,bagEdges,bagArea0, ball,ballRest,ballArea0};
+  return {cx,R,Rm,Mc, bag,bagEdges,bagArea0, ball,ballRest,ballArea0};
 }
 function build(){ units=[ buildUnit(W*0.30), buildUnit(W*0.70) ]; }
 build();
@@ -209,21 +207,20 @@ function blobPath(nds){ const n=nds.length; ctx.beginPath();
   ctx.closePath(); }
 
 function drawWall(){
-  ctx.fillStyle='rgba(120,150,190,0.10)'; ctx.fillRect(0,0,W,WALL_Y);
-  ctx.strokeStyle='rgba(157,243,255,0.25)'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(0,WALL_Y); ctx.lineTo(W,WALL_Y); ctx.stroke();
-  for(let x=8;x<W;x+=22){ ctx.strokeStyle='rgba(157,243,255,0.10)'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x-6,WALL_Y); ctx.stroke(); }
+  // 整個背景就是牆:淡淡磁磚縫
+  ctx.strokeStyle='rgba(157,243,255,0.05)'; ctx.lineWidth=1;
+  for(let x=28;x<W;x+=56){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y=28;y<H;y+=56){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
 }
-function drawMount(a){ ctx.fillStyle='#c9e8ff'; ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.arc(a.x,a.y,4,0,Math.PI*2); ctx.fill(); ctx.stroke(); }
-
 function drawUnit(u){
   const t=TINTS[P.tint]||TINTS.aqua;
   const bc=centroid(u.ball);
+  // 圓形袋口:貼在牆上的開孔(暗底 → 水球從裡面兜出來)
+  ctx.beginPath(); ctx.arc(u.Mc.x,u.Mc.y,u.Rm+2,0,Math.PI*2);
+  ctx.fillStyle='rgba(0,0,0,0.34)'; ctx.fill();
   // 袋子(後層:半透明布 + 邊)
   blobPath(u.bag);
-  ctx.save(); ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fill(); ctx.restore();
+  ctx.save(); ctx.fillStyle='rgba(255,255,255,0.05)'; ctx.fill(); ctx.restore();
   // 水球
   blobPath(u.ball);
   const g=ctx.createRadialGradient(bc.x-u.R*0.3,bc.y-u.R*0.4,u.R*0.1, bc.x,bc.y,u.R*1.15);
@@ -245,10 +242,16 @@ function drawUnit(u){
   blobPath(u.bag);
   ctx.lineWidth=2.4; ctx.strokeStyle=t.bag+'aa'; ctx.stroke();
   ctx.lineWidth=1; ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.stroke();
-  // 袋口封繩(兩釘點之間)
-  ctx.beginPath(); ctx.moveTo(u.aL.x,u.aL.y); ctx.lineTo(u.aR.x,u.aR.y);
-  ctx.strokeStyle=t.bag+'cc'; ctx.lineWidth=2; ctx.stroke();
-  drawMount(u.aL); drawMount(u.aR);
+  // 圓形袋口鋼圈:整圈釘死在牆上,永遠是正圓
+  ctx.beginPath(); ctx.arc(u.Mc.x,u.Mc.y,u.Rm,0,Math.PI*2);
+  ctx.lineWidth=3; ctx.strokeStyle=t.bag+'dd'; ctx.stroke();
+  ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,0.35)';
+  ctx.beginPath(); ctx.arc(u.Mc.x,u.Mc.y,u.Rm-2,Math.PI*1.05,Math.PI*1.75); ctx.stroke();
+  // 牆上固定鉚釘
+  for(let k=0;k<4;k++){ const a=(-Math.PI/2)+k*(Math.PI/3)-Math.PI/3;
+    if(Math.sin(a)>0.2) continue; const rx=u.Mc.x+Math.cos(a)*u.Rm, ry=u.Mc.y+Math.sin(a)*u.Rm;
+    ctx.beginPath(); ctx.arc(rx,ry,2.6,0,Math.PI*2); ctx.fillStyle='#d6ecff'; ctx.fill();
+    ctx.lineWidth=1; ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.stroke(); }
 }
 function draw(){ ctx.clearRect(0,0,W,H); drawWall();
   for(const u of units) drawUnit(u); }
