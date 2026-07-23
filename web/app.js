@@ -123,7 +123,7 @@ function pickN(arr, n) {
 }
 let dateChoices = [];
 const THEMES = [["aqua", "霓虹水藍"], ["pink", "品紅魔宴"], ["green", "駭客終端"], ["amber", "琥珀映像管"], ["ice", "冰藍幽域"], ["day", "日光白晝(亮)"], ["sakura", "櫻花(亮)"], ["crimson", "緋紅煉獄"], ["violet", "紫電幽夢"], ["goldtemple", "鎏金聖殿"], ["mint", "薄荷幻境"], ["bloodmoon", "血月"], ["abyssocean", "深海遺跡"], ["cyber", "賽博霓虹"], ["toxic", "毒液螢光"], ["rosedusk", "玫瑰暮光"], ["steel", "鋼鐵黎明"], ["plumwine", "紫醉金迷"], ["jade", "翡翠幽光"], ["lavasunset", "熔岩夕燒"], ["lavender", "薰衣草夜"], ["copper", "赤銅機關"], ["voidabyss", "虛空深淵"], ["cherry", "桃夭"], ["forest", "幽林秘境"], ["ember", "餘燼"], ["glacier", "冰河極夜"], ["peacock", "孔雀藍"], ["bordeaux", "波爾多"], ["sulfur", "硫磺地獄"], ["indigo", "靛藍星圖"], ["coral", "珊瑚礁"], ["obsidian", "曜石"], ["aurora", "極光"], ["pumpkin", "南瓜燈"], ["sapphire", "藍寶石"], ["venom", "劇毒"], ["dawn", "曙光(亮)"], ["parchment", "羊皮紙(亮)"], ["mist", "晨霧(亮)"]];
-const LIGHT_THEMES = new Set(["day", "sakura", "dawn", "parchment", "mist"]);
+const LIGHT_THEMES = new Set(["day", "sakura", "goldtemple", "mint", "rosedusk", "steel", "jade", "lavasunset", "lavender", "cherry", "forest", "glacier", "sulfur", "coral", "pumpkin", "dawn", "parchment", "mist"]);
 
 // ===== 內容池(內建預設;之後歸 content/config.json 廠商件擴充)=====
 
@@ -3050,7 +3050,7 @@ function renderSettings() {
     `<option value="${k}" ${(state.settings.theme || "aqua") === k ? "selected" : ""}>${label}</option>`).join("");
 
   // 版面:卡片顏色列
-  const THEME_CARD_DEFAULT = { aqua: "#120c22", pink: "#220c1c", green: "#0a1a10", amber: "#261808", ice: "#0c162c", day: "#ffffff", sakura: "#fff8fb", crimson: "#220a0e", violet: "#180c28", goldtemple: "#1e1808", mint: "#0a1e1a", bloodmoon: "#1c0809", abyssocean: "#081c24", cyber: "#120c22", toxic: "#101c08", rosedusk: "#200c18", steel: "#101822", plumwine: "#1c0c1a", jade: "#0a1c14", lavasunset: "#200e08", lavender: "#161328", copper: "#1c140c", voidabyss: "#0a0e1c", cherry: "#200c14", forest: "#0c1a10", ember: "#180c08", glacier: "#0c1628", peacock: "#0a1a24", bordeaux: "#1c0a0c", sulfur: "#181808", indigo: "#0c0e24", coral: "#200e0c", obsidian: "#101218", aurora: "#0a1a16", pumpkin: "#1c1008", sapphire: "#0a0e22", venom: "#120c1a", dawn: "#fffdfa", parchment: "#fffef5", mist: "#fdfeff" };
+  const THEME_CARD_DEFAULT = { aqua: "#120c22", pink: "#220c1c", green: "#0a1a10", amber: "#261808", ice: "#0c162c", day: "#ffffff", sakura: "#fff8fb", crimson: "#080304", violet: "#07040e", goldtemple: "#fffae4", mint: "#e4fff5", bloodmoon: "#090302", abyssocean: "#031b21", cyber: "#070111", toxic: "#040701", rosedusk: "#fff1f6", steel: "#eff4fa", plumwine: "#130418", jade: "#e6faf1", lavasunset: "#ffede4", lavender: "#f7f1ff", copper: "#130904", voidabyss: "#040411", cherry: "#ffedf1", forest: "#ecfadb", ember: "#070301", glacier: "#edf8ff", peacock: "#020c0b", bordeaux: "#1e040c", sulfur: "#f6ffcd", indigo: "#070523", coral: "#ffe8e2", obsidian: "#09090a", aurora: "#03100b", pumpkin: "#ffefd8", sapphire: "#030614", venom: "#06020d", dawn: "#fff5ed", parchment: "#f9f5e9", mist: "#f4f6f8" };
   const rows = $("#card-color-rows");
   const cc = state.settings.cardColors || {};
   const defHex = THEME_CARD_DEFAULT[state.settings.theme || "aqua"];
