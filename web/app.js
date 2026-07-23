@@ -664,8 +664,9 @@ function sacrificeDropChance(stage) {
   return 1 / denom;
 }
 
-// 魅魔獻祭:三場景 VN(開場 → 準備/獻祭/收尾,每景 AI 生「描述+反應」共六句逐頁播放)。
-// 開場時背景就把後面六句全部生成好(半預製);逐頁按「下一頁」,最後「完成獻祭」才結算移除+掉落。
+// 魅魔獻祭:三場景 VN(開場 → 準備/獻祭/收尾,每景 AI 生「描述+反應」共六句)。
+// 流程:先載入預先設計好的開場 → 停在「等待獻祭儀式」樣式,期間一次把三段六句全部生成好
+//       → 六句全備妥,儀式才開始;玩家一直按「下一句」看完六句,最後「完成獻祭」才結算移除+掉落。
 async function sacrificeSuccubus(id) {
   const s = state.succubi.find(x => x.id === id);
   if (!s || s.ntr) return;
@@ -682,16 +683,20 @@ async function sacrificeSuccubus(id) {
     id, name: s.name, persona: s.personality, backstory: s.backstory, stage: s.stage, gift: s.gift,
     method, opening,
     pages: Array.from({ length: 6 }, () => ({ text: null })),   // [描述,反應] × 準備/獻祭/收尾
-    idx: 0, settled: false, price,
+    idx: 0, ready: false, settled: false, price,   // ready:六句是否全生成完(生成完儀式才能開始)
   };
   document.body.classList.add("chat-mode");
   detailId = null;
   renderAll();
-  sacShowCurrent();               // 開場:她被帶來、疑惑
-  generateSacPages(sacSession);   // 開場期間,背景把後面六句全部生成好
+  sacShowCurrent();               // 開場:載入預設好的開場,進入「等待獻祭儀式」樣式
+  generateSacPages(sacSession);   // 等待期間,一次把後面六句全部生成好
 }
 
-// 背景生成六句:三場景 ×(讀腳本生描述 → 讀描述生反應),依序填入 pages
+// 已生成好的句數(0~6)
+function sacReadyCount(ss) { return ss.pages.filter(p => p && p.text).length; }
+
+// 背景生成六句:三場景 ×(讀腳本生描述 → 讀描述生反應),依序填入 pages。
+// 全部備妥後標記 ready,「等待獻祭儀式」的開場鈕才解鎖成「開始儀式」。
 async function generateSacPages(ss) {
   const rating = state.settings.rating || "sfw";
   const char = { name: ss.name, personality: ss.persona, backstory: ss.backstory };
@@ -716,6 +721,10 @@ async function generateSacPages(ss) {
       { role: "user", content: `讀入上面的旁白,寫出「${ss.name}」此刻的反應(台詞或肢體),1~2 句。` },
     ], sacCannedResp(label, ss.name))) return;
   }
+  if (sacSession !== ss) return;
+  ss.ready = true;                // 六句全備妥 → 儀式可以開始
+  if (ss.idx === 0) sacShowCurrent();   // 還停在開場:刷新等待樣式為「可開始」
+  else sacBtn();
 }
 
 // 生成單一頁;若玩家正好在等這頁就即時串流/補上。回傳 false 表示 session 已中止
@@ -731,6 +740,7 @@ async function sacGen(ss, idx, msgs, canned) {
     ss.pages[idx].text = canned;
   }
   if (sacSession === ss && ss.idx === idx + 1) { sacRender(idx + 1); vnDone(); sacBtn(); }
+  else if (sacSession === ss && ss.idx === 0) sacBtn();   // 還停在開場:更新等待進度
   return true;
 }
 
@@ -738,11 +748,18 @@ async function sacGen(ss, idx, msgs, canned) {
 function sacShowCurrent() {
   const ss = sacSession; if (!ss) return;
   const title = document.getElementById("chat-title");
-  if (title) title.textContent = `獻祭儀式:${ss.name}${ss.idx ? `(${ss.idx}/6)` : ""}`;
-  if (ss.idx === 0) { vnShow(ss.name, ss.opening, "ai"); vnDone(); sacBtn(); return; }
+  if (title) title.textContent = `獻祭儀式:${ss.name}${ss.idx ? `(${ss.idx}/6)` : "(準備中)"}`;
+  // 開場:載入預設好的開場,若六句還沒備妥就以打字指示器呈現「等待獻祭儀式」樣式
+  if (ss.idx === 0) {
+    vnShow(ss.name, ss.opening, "ai");
+    if (ss.ready) vnDone(); else vnTyping(true);
+    sacBtn();
+    return;
+  }
+  // 儀式進行中:六句已全備妥,直接顯示這一句
   const p = ss.pages[ss.idx - 1];
   if (p && p.text) { sacRender(ss.idx); vnDone(); }
-  else { vnTyping(true); sacRender(ss.idx, ""); }   // 還沒生成好 → 打字中,等背景補上
+  else { vnTyping(true); sacRender(ss.idx, ""); }   // 保險:萬一未備妥,打字中等背景補上
   sacBtn();
 }
 
@@ -755,17 +772,23 @@ function sacRender(i, partial) {
   else vnShow("", text, "sys");
 }
 
-// 下一頁鈕:未到最後一頁=「下一頁 ▶」;最後一頁=「完成獻祭」;目前頁沒生成好就停用
+// 獻祭鈕:開場等待六句生成→「獻祭儀式準備中… n/6」(停用),全備妥→「開始儀式 ▶」;
+// 儀式進行中→「下一句 ▶」;最後一句→「完成獻祭」。
 function sacBtn() {
   const ss = sacSession; const b = document.getElementById("sac-done");
   if (!b || !ss) return;
-  b.textContent = ss.idx >= 6 ? "完成獻祭" : "下一頁 ▶";
-  const ready = ss.idx === 0 || (ss.pages[ss.idx - 1] && ss.pages[ss.idx - 1].text);
-  b.disabled = !ready;
+  if (ss.idx === 0) {
+    if (ss.ready) { b.textContent = "開始儀式 ▶"; b.disabled = false; }
+    else { b.textContent = `獻祭儀式準備中…(${sacReadyCount(ss)}/6)`; b.disabled = true; }
+    return;
+  }
+  b.textContent = ss.idx >= 6 ? "完成獻祭" : "下一句 ▶";
+  b.disabled = !(ss.pages[ss.idx - 1] && ss.pages[ss.idx - 1].text);
 }
 
 function sacAdvance() {
   const ss = sacSession; if (!ss) return;
+  if (ss.idx === 0 && !ss.ready) return;   // 六句還沒備妥,儀式尚不能開始
   if (ss.idx >= 6) { if (!ss.settled) sacSettle(ss); exitSacrifice(); return; }
   ss.idx++;
   sacShowCurrent();
@@ -2772,7 +2795,7 @@ function renderChatView() {
     watchCtl?.classList.add("hidden");
     sacCtl?.classList.remove("hidden");
     $("#chat-title").textContent = sacSession
-      ? `獻祭儀式:${sacSession.name}${sacSession.idx ? `(${sacSession.idx}/6)` : ""}`
+      ? `獻祭儀式:${sacSession.name}${sacSession.idx ? `(${sacSession.idx}/6)` : "(準備中)"}`
       : "獻祭儀式";
     return;
   }
