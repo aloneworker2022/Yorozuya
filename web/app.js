@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.24(2026-07-21)壞存檔不再卡死+急救重設";
+const APP_VER = "v5.25(2026-07-24)獻祭需過一天+01時預織獻祭文";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -664,102 +664,202 @@ function sacrificeDropChance(stage) {
   return 1 / denom;
 }
 
-// 魅魔獻祭:三場景 VN(開場 → 準備/獻祭/收尾,每景 AI 生「描述+反應」共六句)。
-// 流程:先載入預先設計好的開場 → 停在「等待獻祭儀式」樣式,期間一次把三段六句全部生成好
-//       → 六句全備妥,儀式才開始;玩家一直按「下一句」看完六句,最後「完成獻祭」才結算移除+掉落。
+// ── 魅魔獻祭(預織文 + 過一天)──
+// 規則:
+//  1. 召喚當日不可獻祭;須至少跨過一個遊戲日界(睡眠結束 = 新的一天)才可發動。
+//  2. 每晚進入睡眠時段(預設 01:00 起)檢查每隻魅魔;若尚無完整獻祭文,於背景織好 6 句存入
+//     s.sacScript,供日後儀式直接播放(不再現場即時生成)。
+//  3. 發動條件 = 過一天 + 獻祭文 ready;缺一不可。
+
+const SAC_SCENE_LABELS = ["準備", "獻祭", "收尾"];
+
+function sacScriptReady(s) {
+  const sc = s?.sacScript;
+  return !!(sc?.ready && sc.pages?.length === 6 && sc.pages.every(p => p && p.text));
+}
+
+/** 召喚後是否已跨過至少一個遊戲日 */
+function sacDayElapsed(s) {
+  if (!s?.summonedAt) return true;   // 舊存檔缺時間戳 → 視為已過,不卡死
+  return dayNum() > dayNum(s.summonedAt);
+}
+
+function canSacrifice(s) {
+  return !!(s && !s.ntr && sacDayElapsed(s) && sacScriptReady(s));
+}
+
+/** 按鈕/ toast 用的阻擋原因(可發動時回 "") */
+function sacrificeBlockReason(s) {
+  if (!s || s.ntr) return "無法獻祭";
+  if (!sacDayElapsed(s)) return "需經過一天才能獻祭";
+  if (!sacScriptReady(s)) return "獻祭文尚未備妥(01:00 起織夢)";
+  return "";
+}
+
+/** 確保 s.sacScript 殼層存在(挑好手法 + 開場 + 六頁空位) */
+function ensureSacScriptShell(s) {
+  if (s.sacScript?.pages?.length === 6) return s.sacScript;
+  const method = (SACRIFICE.methods && SACRIFICE.methods.length)
+    ? pick(SACRIFICE.methods)
+    : { name: "魔法陣獻祭", prep: null, ritual: null, finale: null };
+  const opening = (SACRIFICE.opening || "{name} 被帶到了祭壇前,眼神帶著疑惑。")
+    .replaceAll("{name}", s.name);
+  s.sacScript = {
+    method,
+    opening,
+    pages: Array.from({ length: 6 }, () => ({ text: null })),
+    ready: false,
+    startedAt: Date.now(),
+  };
+  return s.sacScript;
+}
+
+function sacSceneOf(idx) {
+  const sc = Math.floor(idx / 2);           // 0 準備 / 1 獻祭 / 2 收尾
+  const label = SAC_SCENE_LABELS[sc] || "準備";
+  return { sc, label, isDesc: idx % 2 === 0 };
+}
+
+function sacCannedDesc(label, name, body) {
+  if (body) return body;
+  return ({ "準備": `祭壇的紋路亮起,${name} 被引到了魔法陣中央。`,
+            "獻祭": `力量順著紋路攀升,一寸寸自 ${name} 的身上抽離。`,
+            "收尾": `光芒散去,${name} 的身影靜靜癱軟、消融。` })[label] || "儀式繼續進行。";
+}
+function sacCannedResp(label, name) {
+  return ({ "準備": "「……這是要做什麼?放開我。」",
+            "獻祭": "「唔……不、不要……!」",
+            "收尾": "她再也發不出聲音,身子軟軟地垂了下去。" })[label] || "「……」";
+}
+
+function sacCannedForPage(s, idx) {
+  const { sc, label, isDesc } = sacSceneOf(idx);
+  const method = s.sacScript?.method || {};
+  const script = [method.prep, method.ritual, method.finale][sc] || "";
+  const body = script.replaceAll("{name}", s.name);
+  return isDesc ? sacCannedDesc(label, s.name, body) : sacCannedResp(label, s.name);
+}
+
+/** 組出第 idx 頁(0~5)的 LLM messages;描述頁讀腳本,反應頁讀前一頁旁白 */
+function sacPageMsgs(s, idx) {
+  const rating = state.settings.rating || "sfw";
+  const char = { name: s.name, personality: s.personality, backstory: s.backstory };
+  const { sc, label, isDesc } = sacSceneOf(idx);
+  const method = s.sacScript.method || {};
+  const script = ([method.prep, method.ritual, method.finale][sc] || "").replaceAll("{name}", s.name);
+  if (isDesc) {
+    const dctx = { world: WORLD_LORE, content_rating: rating, character: char,
+                   method_name: method.name, scene_label: label, scene_stage: sc + 1, scene_script: script };
+    return [
+      { role: "system", content: buildSacScenePrompt(dctx) },
+      { role: "user", content: `讀入本場景「${label}」的腳本,寫 1~2 句第三人稱旁白描述這一段。只輸出旁白。` },
+    ];
+  }
+  const narration = s.sacScript.pages[idx - 1]?.text || "";
+  const rctx = { world: WORLD_LORE, content_rating: rating, character: char,
+                 scene_label: label, scene_stage: sc + 1, narration };
+  return [
+    { role: "system", content: buildSacReactPrompt(rctx) },
+    { role: "user", content: `讀入上面的旁白,寫出「${s.name}」此刻的反應(台詞或肢體),1~2 句。` },
+  ];
+}
+
+/** 無模型:睡眠時段一次用罐頭填滿,讓沒 Ollama 也能過一天後獻祭 */
+function fillSacCanned(s) {
+  const sc = ensureSacScriptShell(s);
+  if (sc.ready) return;
+  for (let i = 0; i < 6; i++) {
+    if (!sc.pages[i].text) sc.pages[i].text = sacCannedForPage(s, i);
+  }
+  sc.ready = true;
+}
+
+/**
+ * 睡眠時段(預設 01:00 起)背景預織獻祭文。
+ * - 有模型:走 /api/gen 代工佇列,鎖屏也照跑;每 tick 最多推進幾頁。
+ * - 無模型:罐頭一次填滿。
+ * 生成完成寫入 s.sacScript,存檔備用;儀式發動時直接讀取。
+ */
+async function genSacOrders() {
+  if (!state || !isAsleep()) return;
+  let budget = 3;   // 每輪最多收/下幾頁,避免把聊天/觀戰代工塞爆
+  for (const s of state.succubi) {
+    if (budget <= 0) break;
+    if (s.ntr) continue;
+    if (sacScriptReady(s)) continue;
+    ensureSacScriptShell(s);
+
+    // 無模型 → 罐頭直接備妥
+    if (!state.settings.model) {
+      fillSacCanned(s);
+      dirty = true; scheduleSave();
+      continue;
+    }
+
+    const pages = s.sacScript.pages;
+    for (let i = 0; i < 6; i++) {
+      if (pages[i]?.text) continue;
+      // 反應頁必須等描述頁先到
+      if (i % 2 === 1 && !pages[i - 1]?.text) break;
+      const key = `sac:${s.id}:${s.sacScript.method?.name || "m"}:${i}:${strHash(pages[i - 1]?.text || s.name)}`;
+      const r = await genPost(key, sacPageMsgs(s, i));
+      if (!r) break;
+      if (r.status === "done" && r.result) {
+        pages[i].text = (r.result.split("\n").slice(0, 4).join("\n") || r.result).slice(0, 500).trim();
+        if (!pages[i].text) pages[i].text = sacCannedForPage(s, i);
+      } else if (r.status === "error") {
+        // 生成失敗不卡死:這頁用罐頭,其餘頁下輪繼續
+        pages[i].text = sacCannedForPage(s, i);
+      } else {
+        break;   // pending/running:等下輪
+      }
+      if (pages.every(p => p?.text)) s.sacScript.ready = true;
+      dirty = true; scheduleSave();
+      budget--;
+      break;   // 每隻每輪最多推進一頁
+    }
+  }
+}
+
+// 魅魔獻祭:讀取預織的 sacScript 播放 VN(開場 → 六句)→「完成獻祭」結算移除+掉落。
+// 不再現場生成;未過一天或文未備妥時直接擋下。
 async function sacrificeSuccubus(id) {
   const s = state.succubi.find(x => x.id === id);
   if (!s || s.ntr) return;
+  const block = sacrificeBlockReason(s);
+  if (block) { toast(block, "bad"); return; }
   const price = dismissPriceToday();
   if (state.gold < price) { toast(`今日獻祭費 ${price} 金,你付不起`, "bad"); return; }
   if (!confirm(`獻祭 ${s.name}?\n費用 ${price} 金。她將被獻給地獄惡魔,永遠消失。`)) return;
   state.gold -= price;
 
-  const method = (SACRIFICE.methods && SACRIFICE.methods.length)
-    ? pick(SACRIFICE.methods) : { name: null, prep: null, ritual: null, finale: null };
-  const opening = (SACRIFICE.opening || "{name} 被帶到了祭壇前,眼神帶著疑惑。").replaceAll("{name}", s.name);
+  const sc = s.sacScript;
   sacrificeWith = id;
   sacSession = {
     id, name: s.name, persona: s.personality, backstory: s.backstory, stage: s.stage, gift: s.gift,
-    method, opening,
-    pages: Array.from({ length: 6 }, () => ({ text: null })),   // [描述,反應] × 準備/獻祭/收尾
-    idx: 0, ready: false, settled: false, price,   // ready:六句是否全生成完(生成完儀式才能開始)
+    method: sc.method, opening: sc.opening,
+    pages: sc.pages.map(p => ({ text: p.text })),   // 拷貝預織文,儀式中不改存檔原文
+    idx: 0, ready: true, settled: false, price,
   };
   document.body.classList.add("chat-mode");
   detailId = null;
   renderAll();
-  sacShowCurrent();               // 開場:載入預設好的開場,進入「等待獻祭儀式」樣式
-  generateSacPages(sacSession);   // 等待期間,一次把後面六句全部生成好
+  sacShowCurrent();   // 文已備妥 → 開場即可按「開始儀式」
 }
 
-// 已生成好的句數(0~6)
-function sacReadyCount(ss) { return ss.pages.filter(p => p && p.text).length; }
-
-// 背景生成六句:三場景 ×(讀腳本生描述 → 讀描述生反應),依序填入 pages。
-// 全部備妥後標記 ready,「等待獻祭儀式」的開場鈕才解鎖成「開始儀式」。
-async function generateSacPages(ss) {
-  const rating = state.settings.rating || "sfw";
-  const char = { name: ss.name, personality: ss.persona, backstory: ss.backstory };
-  const scenes = [["準備", ss.method.prep], ["獻祭", ss.method.ritual], ["收尾", ss.method.finale]];
-  for (let sc = 0; sc < 3; sc++) {
-    const [label, script] = scenes[sc];
-    const body = (script || "").replaceAll("{name}", ss.name);
-    // ① 場景描述(讀入腳本)
-    const di = sc * 2;
-    const dctx = { world: WORLD_LORE, content_rating: rating, character: char,
-                   method_name: ss.method.name, scene_label: label, scene_stage: sc + 1, scene_script: body };
-    if (!await sacGen(ss, di, [
-      { role: "system", content: buildSacScenePrompt(dctx) },
-      { role: "user", content: `讀入本場景「${label}」的腳本,寫 1~2 句第三人稱旁白描述這一段。只輸出旁白。` },
-    ], sacCannedDesc(label, ss.name, body))) return;
-    // ② 人物反應(讀入剛生成的描述)
-    const ri = sc * 2 + 1;
-    const rctx = { world: WORLD_LORE, content_rating: rating, character: char,
-                   scene_label: label, scene_stage: sc + 1, narration: ss.pages[di].text };
-    if (!await sacGen(ss, ri, [
-      { role: "system", content: buildSacReactPrompt(rctx) },
-      { role: "user", content: `讀入上面的旁白,寫出「${ss.name}」此刻的反應(台詞或肢體),1~2 句。` },
-    ], sacCannedResp(label, ss.name))) return;
-  }
-  if (sacSession !== ss) return;
-  ss.ready = true;                // 六句全備妥 → 儀式可以開始
-  if (ss.idx === 0) sacShowCurrent();   // 還停在開場:刷新等待樣式為「可開始」
-  else sacBtn();
-}
-
-// 生成單一頁;若玩家正好在等這頁就即時串流/補上。回傳 false 表示 session 已中止
-async function sacGen(ss, idx, msgs, canned) {
-  if (sacSession !== ss) return false;
-  try {
-    const text = await llmJobRun(msgs,
-      acc => { if (sacSession === ss && ss.idx === idx + 1) sacRender(idx + 1, acc); }, canned);
-    if (sacSession !== ss) return false;
-    ss.pages[idx].text = text;
-  } catch (e) {
-    if (e.name === "AbortError" || sacSession !== ss) return false;
-    ss.pages[idx].text = canned;
-  }
-  if (sacSession === ss && ss.idx === idx + 1) { sacRender(idx + 1); vnDone(); sacBtn(); }
-  else if (sacSession === ss && ss.idx === 0) sacBtn();   // 還停在開場:更新等待進度
-  return true;
-}
-
-// 顯示目前這一頁(0=開場,1~6=六句)
+// 顯示目前這一頁(0=開場,1~6=六句);文皆預織,直接播
 function sacShowCurrent() {
   const ss = sacSession; if (!ss) return;
   const title = document.getElementById("chat-title");
-  if (title) title.textContent = `獻祭儀式:${ss.name}${ss.idx ? `(${ss.idx}/6)` : "(準備中)"}`;
-  // 開場:載入預設好的開場,若六句還沒備妥就以打字指示器呈現「等待獻祭儀式」樣式
+  if (title) title.textContent = `獻祭儀式:${ss.name}${ss.idx ? `(${ss.idx}/6)` : ""}`;
   if (ss.idx === 0) {
     vnShow(ss.name, ss.opening, "ai");
-    if (ss.ready) vnDone(); else vnTyping(true);
+    vnDone();
     sacBtn();
     return;
   }
-  // 儀式進行中:六句已全備妥,直接顯示這一句
-  const p = ss.pages[ss.idx - 1];
-  if (p && p.text) { sacRender(ss.idx); vnDone(); }
-  else { vnTyping(true); sacRender(ss.idx, ""); }   // 保險:萬一未備妥,打字中等背景補上
+  sacRender(ss.idx);
+  vnDone();
   sacBtn();
 }
 
@@ -772,14 +872,13 @@ function sacRender(i, partial) {
   else vnShow("", text, "sys");
 }
 
-// 獻祭鈕:開場等待六句生成→「獻祭儀式準備中… n/6」(停用),全備妥→「開始儀式 ▶」;
-// 儀式進行中→「下一句 ▶」;最後一句→「完成獻祭」。
+// 開場 →「開始儀式 ▶」;進行中 →「下一句 ▶」;最後 →「完成獻祭」
 function sacBtn() {
   const ss = sacSession; const b = document.getElementById("sac-done");
   if (!b || !ss) return;
   if (ss.idx === 0) {
-    if (ss.ready) { b.textContent = "開始儀式 ▶"; b.disabled = false; }
-    else { b.textContent = `獻祭儀式準備中…(${sacReadyCount(ss)}/6)`; b.disabled = true; }
+    b.textContent = "開始儀式 ▶";
+    b.disabled = false;
     return;
   }
   b.textContent = ss.idx >= 6 ? "完成獻祭" : "下一句 ▶";
@@ -788,7 +887,6 @@ function sacBtn() {
 
 function sacAdvance() {
   const ss = sacSession; if (!ss) return;
-  if (ss.idx === 0 && !ss.ready) return;   // 六句還沒備妥,儀式尚不能開始
   if (ss.idx >= 6) { if (!ss.settled) sacSettle(ss); exitSacrifice(); return; }
   ss.idx++;
   sacShowCurrent();
@@ -817,19 +915,6 @@ function sacSettle(ss) {
   log(`獻祭了 ${ss.name}(-${ss.price} 金)${dropped ? `,獲得 ${EXPANSIONS[ss.gift]} 擴充` : ""}`);
   toast(dropMsg.includes("✦") ? "✦ 獲得永久擴充!" : `${ss.name} 化作了獻祭的光`, dropMsg.includes("✦") ? "good" : "");
   scheduleSave();
-}
-
-// 無模型/失敗時的 SFW 罐頭
-function sacCannedDesc(label, name, body) {
-  if (body) return body;   // 有腳本 → 無模型時直接用腳本原文當描述
-  return ({ "準備": `祭壇的紋路亮起,${name} 被引到了魔法陣中央。`,
-            "獻祭": `力量順著紋路攀升,一寸寸自 ${name} 的身上抽離。`,
-            "收尾": `光芒散去,${name} 的身影靜靜癱軟、消融。` })[label] || "儀式繼續進行。";
-}
-function sacCannedResp(label, name) {
-  return ({ "準備": "「……這是要做什麼?放開我。」",
-            "獻祭": "「唔……不、不要……!」",
-            "收尾": "她再也發不出聲音,身子軟軟地垂了下去。" })[label] || "「……」";
 }
 
 function dismiss(id) { return sacrificeSuccubus(id); }   // 相容舊呼叫
@@ -1517,17 +1602,22 @@ async function genQuipOrders() {
 }
 
 // 每 2 秒一輪:下單+收貨(伺服器排隊生成;對話/獻祭/睡眠中不下聊天與氣泡單)
+// 例外:睡眠時段(01:00 起)專門跑 genSacOrders 預織獻祭文;無模型時也要進 tick 填罐頭。
 let genTickBusy = false, lastGenAt = 0;
 async function genTick(force = false) {
-  if (genTickBusy || !state.settings.model) return;
+  if (genTickBusy) return;
   if (!force && Date.now() - lastGenAt < 2000) return;
   lastGenAt = Date.now();
   genTickBusy = true;
   try {
-    const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep();
-    if (idle) await genChatOrder();
-    await genActOrders();
-    if (idle) await genQuipOrders();
+    // 獻祭文:睡眠時段織夢(有無模型都跑;無模型走罐頭)
+    if (isAsleep()) await genSacOrders();
+    if (state.settings.model) {
+      const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep();
+      if (idle) await genChatOrder();
+      await genActOrders();
+      if (idle) await genQuipOrders();
+    }
   } catch (e) { /* 下輪再試 */ }
   genTickBusy = false;
 }
@@ -2295,6 +2385,8 @@ setInterval(() => {
     const asleep = isAsleep();
     if (asleep !== lastSleepState) {
       if (asleep && chatWith) { toast("睡眠時段到了,她回夢境了", "bad"); exitChat(); }
+      // 01:00(睡眠開始)切入:立刻排一輪預織獻祭文(有缺才生、已備妥略過)
+      if (asleep) { try { genSacOrders(); } catch { /* 下輪 genTick 會再試 */ } }
       lastSleepState = asleep;
       changed = true;
     }
@@ -2983,7 +3075,14 @@ function renderDetail(s, root) {
       ${!s.ntr ? `<div class="aff-line dim small">聊天請透過淫紋(做委託觸發)——看板娘才聽得見你的呼喚</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
-        <div class="detail-actions"><button class="danger-btn" id="act-dismiss">獻祭(${dismissPriceToday()} 金)</button></div>` : ""}
+        <div class="aff-line dim small">${sacScriptReady(s)
+          ? "獻祭文已備妥"
+          : (isAsleep() ? "獻祭文織夢中…" : "獻祭文於 01:00 起在夢中織就")}</div>
+        <div class="detail-actions"><button class="danger-btn" id="act-dismiss" ${canSacrifice(s) ? "" : "disabled"}>${
+          canSacrifice(s)
+            ? `獻祭(${dismissPriceToday()} 金)`
+            : sacrificeBlockReason(s)
+        }</button></div>` : ""}
     </div>`;
 
   root.querySelector("#detail-back").onclick = () => { detailId = null; dateChooser = false; renderAll(); };
@@ -3314,6 +3413,21 @@ window.DBG = {
   sac: (id) => sacrificeSuccubus(id),
   sacNext: () => sacAdvance(),
   sacState: () => sacSession && { idx: sacSession.idx, pages: sacSession.pages.map(p => !!p.text), settled: sacSession.settled, opening: sacSession.opening },
+  // 測試:查看/強制備妥某隻的預織獻祭文;forceDay 把召喚日推到昨天以解鎖「過一天」
+  sacScript: (id) => state.succubi.find(x => x.id === id)?.sacScript,
+  sacReady: (id) => {
+    const s = state.succubi.find(x => x.id === id); if (!s) return null;
+    fillSacCanned(s); scheduleSave(); renderAll();
+    return s.sacScript;
+  },
+  sacUnlock: (id) => {
+    const s = state.succubi.find(x => x.id === id); if (!s) return null;
+    s.summonedAt = Date.now() - 2 * 86400000;
+    if (!sacScriptReady(s)) fillSacCanned(s);
+    scheduleSave(); renderAll();
+    return { dayElapsed: sacDayElapsed(s), ready: sacScriptReady(s), can: canSacrifice(s) };
+  },
+  pumpSac: () => genSacOrders(),
   pin: () => ({ pinIdx, execCap: execCap(), tx: $("#pin-track")?.style.transform, slides: document.querySelectorAll("#pin-track .pin-slide").length }),
   pinGo: (i) => setPinIdx(i),
 };
