@@ -477,12 +477,33 @@ class SimLive(BaseModel):
 
 @app.post("/api/sim/live_act")
 async def sim_live_act(body: SimLive):
-    """觀戰直播:她此刻正被召喚中,伺服器現生一個 act slot(可能觸發交配/娶走)並回傳最新關係。"""
+    """觀戰取 act:先把 taken 進度補算到 now(吐出依 actAt 節奏預生的 slot),
+    若補算後仍無未讀且她還在召喚中,才現生 1 個 slot 當直播(避免跳過預生節奏、
+    一進觀戰就無中生有)。"""
     now_ms = int(body.now if body.now is not None else time.time() * 1000)
     async with SIM_LOCK:
         store = _sim_load()
         rel = store.get("rels", {}).get(body.id)
         if not rel or not rel.get("taken"):
+            return {"rel": rel, "married": False}
+        # 1) 先走既有預生節奏(可能一次吐出多 slot / 到期解召喚 / 懷孕娶走)
+        married = False
+        if sim._process_taken(store, body.id, rel, now_ms):
+            # _process_taken 在娶走時會 pop rel 並寫 outcome
+            if body.id not in store.get("rels", {}):
+                married = True
+        rel = store.get("rels", {}).get(body.id)
+        if married or not rel:
+            _sim_save(store)
+            return {"rel": None, "married": married}
+        # 2) 已有未讀 → 直接回傳,不要再現生
+        unseen = [a for a in (rel.get("acts") or []) if not a.get("seen")]
+        if unseen:
+            _sim_save(store)
+            return {"rel": rel, "married": False}
+        # 3) 預生額度用完、仍在召喚中 → 直播補 1 slot
+        if not rel.get("taken"):
+            _sim_save(store)
             return {"rel": rel, "married": False}
         married = sim.process_act_slot(rel, now_ms, store.get("rating", "sfw"))
         if married:
@@ -490,7 +511,7 @@ async def sim_live_act(body: SimLive):
             store.setdefault("outcomes", []).append(
                 {"type": "married", "id": body.id, "suName": su.get("name") if su else None, "t": now_ms})
             store["rels"].pop(body.id, None)
-            store.get("sched", {}).pop(body.id, None)
+            store.get("takenWin", {}).pop(body.id, None)
         _sim_save(store)
         return {"rel": store.get("rels", {}).get(body.id), "married": married}
 

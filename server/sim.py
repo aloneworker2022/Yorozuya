@@ -240,7 +240,9 @@ def _tick_girl(store, gid, now_ms):
         dur = 1 if is_date else rand_int(2, 5)     # 約會 1 小時;召喚 2~5 小時
         rel["taken"] = {"type": "date" if is_date else "kanban", "location": loc,
                         "until": now_ms + dur * HOUR, "actAt": now_ms}
-        return True
+        # 召喚當下立刻結算第一小時的 act 額度(3~5 slot),不要等到下一輪 tick 才預生
+        # ——否則玩家秒進觀戰會撞上空佇列、全走 live_act 現生,體感像「沒有預先產生」。
+        return _process_taken(store, gid, rel, now_ms) or True
     return False
 
 

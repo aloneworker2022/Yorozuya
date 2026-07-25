@@ -1362,15 +1362,24 @@ for (const cat of Object.keys(STAGE_SCRIPTS)) {
 // 窺視紀錄:一淫紋(或一次約會費)看 1~2 則未讀,從最舊開始——照時間順序目睹他們的進展。
 // playerType 決定釋放機率(chat 1/20 / date 1/10);釋放只對「她此刻被召喚中」有意義,
 // 事後翻舊紀錄(未被召喚中)沒有釋放判定。
-function enterWatch(s, playerType, playerLocation = null) {
-  // 紀錄由伺服器權威運算;直播時 watchNext 會向伺服器現生 act
+// 進場前強制 simSync:拉伺服器已預生的 acts;若先設 watchWith 會被鏡像跳過覆蓋,整場只剩 live_act 現生。
+async function enterWatch(s, playerType, playerLocation = null) {
+  const gid = s.id;
+  // 尚未鎖 watchWith → simSync 可覆蓋這隻的 summoner 鏡像
+  await simSync(true);
+  s = state.succubi.find(x => x.id === gid) || s;
+  if (!s?.summoner) {
+    toast("召喚師紀錄同步失敗,稍後再試", "bad");
+    return;
+  }
   watchWith = s.id;
   const taken = !!s.summoner?.taken;
+  const nUnseen = unseenActs(s).length;
   watchSession = {
     playerType, playerLocation,
     releaseChance: taken ? (playerType === "date" ? 1 / 10 : 1 / 20) : 0,
-    // 一淫紋看 1~2 則;被召喚中時 watchNext 會向伺服器現生,故至少 1
-    turnCap: Math.min(randInt(1, 2), taken ? 2 : (unseenActs(s).length || 1)),
+    // 一淫紋看 1~2 則;優先消耗預生未讀。taken 中且佇列空才靠 live 補,turnCap 至少 1
+    turnCap: Math.min(randInt(1, 2), taken ? Math.max(1, Math.min(2, nUnseen || 1)) : (nUnseen || 1)),
     presses: 0, busy: false, ended: false,
   };
   document.body.classList.add("chat-mode");
@@ -1380,6 +1389,8 @@ function enterWatch(s, playerType, playerLocation = null) {
     ? `${s.name} 不在你身邊——她正被 ${su?.name || "另一個男人"} 召喚著。淫紋映出他們的互動……`
     : `淫紋映出 ${s.name} 與 ${su?.name || "另一個男人"} 之間,那些你不在場時的紀錄……`;
   vnShow("", `—— ${opener} ——`, "sys");
+  // 背景先幫未讀 act 下文字單(有文字則秒開;沒有才邊看邊生)
+  try { genActOrders(); } catch { /* 下輪 genTick 會補 */ }
   watchNext();   // 自動放第一則
 }
 
@@ -1398,12 +1409,13 @@ async function watchNext() {
   if (!s || !watchSession || watchSession.busy || watchSession.ended) return;
   const su = summonerById(s.summoner?.id);
   if (!su) { exitWatch(); return; }
-  // 取最舊的未讀紀錄(文字備好就秒開,沒備好就當場生);她被召喚中而沒有未讀 → 請伺服器現生一則(直播)
+  // 取最舊的未讀(伺服器預生的結構);文字備好就秒開,沒備好才當場生。
+  // 佇列空且仍 taken → live_act 會先補算 actAt 節奏再必要時現生 1 則(直播)。
   let act = unseenActs(s)[0];
   if (!act && s.summoner?.taken) {
     const r = await simLiveAct(s);
     if (r?.married || !state.succubi.includes(s)) { exitWatch(true); return; }
-    if (r?.rel) s.summoner = r.rel;   // 更新鏡像(她仍是觀戰對象)
+    if (r?.rel) s.summoner = r.rel;   // 更新鏡像(含補算出來的預生 acts)
     act = unseenActs(s)[0];
   }
   if (!act) { exitWatch(); return; }
@@ -2183,13 +2195,22 @@ function processTakenActs() {
 // 上傳名冊快照/回報玩家動作,並把權威狀態鏡像到 s.summoner 顯示。存檔仍只有手機寫。
 let simPatch = {};              // 待送的玩家動作:{succId: {seen:[actId], texts:{actId:text}, rescue}}
 let simSyncBusy = false, lastSimSyncAt = 0;
+let simSyncWaiters = [];        // force 同步排隊:busy 時後續 await 同一輪結果
 function simBuf(s) { return (simPatch[s.id] ??= { seen: [], texts: {} }); }
 function simTextOf(s, act) { if (act?.text && s?.summoner) simBuf(s).texts[act.id] = act.text; }   // 回填已生成文字
 function simSeenOf(s, act) { if (!act || !s?.summoner) return; const p = simBuf(s); if (!p.seen.includes(act.id)) p.seen.push(act.id); if (act.text) p.texts[act.id] = act.text; }
 function simRescueOf(s) { if (s?.summoner) simBuf(s).rescue = true; }
 
-async function simSync() {
-  if (!state || simSyncBusy) return false;
+/** @param {boolean} [force] 為 true 時略過 15 秒節流(進觀戰前必須拉到最新預生 acts) */
+async function simSync(force = false) {
+  if (!state) return false;
+  if (simSyncBusy) {
+    // 已在飛:等這一輪結束;force 再補一槍確保拿到最新
+    await new Promise(r => simSyncWaiters.push(r));
+    if (force) return simSync(true);
+    return false;
+  }
+  if (!force && Date.now() - lastSimSyncAt <= 15000) return false;
   simSyncBusy = true;
   const patches = simPatch; simPatch = {};   // 交出並清空(失敗補回)
   try {
@@ -2224,8 +2245,18 @@ async function simSync() {
     const rels = resp.rels || {};
     let changed = false;
     for (const s of state.succubi) {
-      if (watchWith === s.id || (chatWith === s.id && chatSession)) continue;   // 互動中不覆蓋鏡像
-      const rel = rels[s.id] ?? null;
+      // 觀戰/聊天中不覆蓋:避免直播途中被整包蓋掉(進場前 enterWatch 會 force sync 且尚未設 watchWith)
+      if (watchWith === s.id || (chatWith === s.id && chatSession)) continue;
+      let rel = rels[s.id] ?? null;
+      // 伺服器 act 文字常為 null(由手機背景 gen 填);覆蓋鏡像時保留本地已生成的 text,避免預生白做
+      if (rel && s.summoner?.acts?.length) {
+        const localText = Object.fromEntries(
+          (s.summoner.acts || []).filter(a => a.id && a.text).map(a => [a.id, a.text]));
+        if (Object.keys(localText).length) {
+          rel = { ...rel, acts: (rel.acts || []).map(a =>
+            (!a.text && localText[a.id]) ? { ...a, text: localText[a.id] } : a) };
+        }
+      }
       if (JSON.stringify(s.summoner ?? null) !== JSON.stringify(rel)) { s.summoner = rel; changed = true; }
     }
     for (const o of resp.outcomes || []) { applySimOutcome(o); changed = true; }
@@ -2234,6 +2265,8 @@ async function simSync() {
     return changed;
   } finally {
     simSyncBusy = false;
+    const ws = simSyncWaiters.splice(0);
+    for (const w of ws) w();
   }
 }
 
