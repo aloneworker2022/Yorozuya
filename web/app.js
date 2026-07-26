@@ -1609,6 +1609,24 @@ async function genChatOrder() {
   }
 }
 
+// 這一紋一結束就替她排下一句——不等你按「結束對話」、也不等 idle 的 genChatOrder。
+// 你讀她最後一句、讀收尾訊息的這幾秒,伺服器已在背景生成,通常按下結束前就備妥,
+// 淫紋不會空亮成半透明。與 genChatOrder 用同一把 key,伺服器自動去重,不會重複生成;
+// 若此輪回 pending,退場後的 genChatOrder 會用同 key 續收。
+async function primeChatLine(s) {
+  if (!state.settings.model) return;
+  if (!s || s.chatLine || s.summoner?.taken || s.ntr || !isKanban(s.id)) return;
+  const hist = s.history || [];
+  const key = `chat:${s.id}:${hist.length}:${hist[hist.length - 1]?.t || 0}`;
+  try {
+    const r = await genPost(key, chatLineMsgs(s));
+    if (r?.status === "done" && r.result && isKanban(s.id) && !s.summoner?.taken && !s.chatLine) {
+      s.chatLine = { text: r.result.split("\n")[0].slice(0, 300) || r.result.slice(0, 300), t: Date.now() };
+      dirty = true; scheduleSave(); renderAll();   // 淫紋亮起
+    }
+  } catch { /* 退場後 genChatOrder 會補 */ }
+}
+
 // 觀戰紀錄文字:每輪最多下 3 單
 async function genActOrders() {
   let n = 0;
@@ -1937,6 +1955,7 @@ async function sendChatMsg() {
     document.getElementById("chat-send").disabled = true;
     dirty = true;
     saveNow();
+    primeChatLine(s);   // 這一紋剛結束:立刻在背景排她的下一句,別等退場才生成(免得淫紋空亮成半透明)
     setTimeout(() => {
       if (chatSession?.ended) {
         vnShow("", "(訊息傳出去了……她的回覆,下次淫紋亮起時就會知道)", "sys");
