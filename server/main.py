@@ -443,18 +443,99 @@ async def _run_grok_build(
     )
 
 
+def _character_visual_brief(ch: dict) -> str:
+    """把 generateGirl / 存檔魅魔的完整人設壓成生圖用外貌+氣質說明(不解析語意,只拼接欄位)。"""
+    if not isinstance(ch, dict):
+        return "attractive young woman"
+    lines: list[str] = []
+    name = ch.get("name") or ""
+    if name:
+        lines.append(f"Name: {name}")
+    rarity = ch.get("rarity") or ""
+    if rarity:
+        lines.append(f"Rarity tier: {rarity}")
+    # 外貌 look(新制)
+    look = ch.get("look") or {}
+    if isinstance(look, dict) and look:
+        bits = []
+        if look.get("height_cm"):
+            bits.append(f"{look['height_cm']}cm tall")
+        for k, label in (
+            ("build", "body"), ("bust", "bust"), ("hair", "hair"),
+            ("eyes", "eyes"), ("style", "fashion/style"), ("feature", "distinctive feature"),
+        ):
+            if look.get(k):
+                bits.append(f"{label}: {look[k]}")
+        if bits:
+            lines.append("Appearance: " + "; ".join(bits))
+    # 舊 DNA token
+    dna = ch.get("dna") or ch.get("appearance_dna") or {}
+    traits = dna.get("traits") if isinstance(dna, dict) else None
+    if traits and not look:
+        lines.append("DNA traits: " + ", ".join(str(t) for t in traits))
+    # 特殊屬性
+    st = ch.get("specialTraits") or ch.get("special_traits") or []
+    if st:
+        names = []
+        for t in st:
+            if isinstance(t, dict):
+                names.append(t.get("name") or str(t))
+            else:
+                names.append(str(t))
+        if names:
+            lines.append("Special traits: " + ", ".join(names))
+    # 個性原型
+    pers = ch.get("personality") or []
+    if isinstance(pers, list) and pers:
+        lines.append("Personality archetype: " + "、".join(str(p) for p in pers))
+    elif isinstance(pers, str) and pers:
+        lines.append(f"Personality: {pers}")
+    if ch.get("archetype"):
+        lines.append(f"Archetype: {ch['archetype']}")
+    if ch.get("tone"):
+        lines.append(f"Speech/tone vibe (for expression): {ch['tone']}")
+    if ch.get("contrast"):
+        lines.append(f"Contrast quirk: {ch['contrast']}")
+    if ch.get("quirk"):
+        lines.append(f"Quirk: {ch['quirk']}")
+    # 職業與來歷
+    if ch.get("job"):
+        lines.append(f"Former job (pre-summon life): {ch['job']}")
+    if ch.get("jobDesc"):
+        lines.append(f"Job note: {ch['jobDesc']}")
+    if ch.get("backstory"):
+        lines.append(f"Backstory: {ch['backstory']}")
+    # 喜惡興趣(氣質參考)
+    for key, label in (("likes", "Likes"), ("dislikes", "Dislikes"), ("hobbies", "Hobbies")):
+        v = ch.get(key)
+        if isinstance(v, list) and v:
+            lines.append(f"{label}: " + "、".join(str(x) for x in v))
+    # 性慾傾向(NSFW 時影響氣氛)
+    lib = ch.get("libido")
+    if isinstance(lib, dict) and lib.get("name"):
+        lines.append(f"Libido tendency: {lib.get('name')}" + (f" — {lib.get('desc')}" if lib.get("desc") else ""))
+    # 作息/弧線(次要)
+    if ch.get("arc"):
+        lines.append(f"Recent life event: {ch['arc']}")
+    chrono = ch.get("chrono")
+    if isinstance(chrono, dict) and chrono.get("name"):
+        lines.append(f"Chronotype: {chrono['name']}")
+    return "\n".join(lines) if lines else "attractive young woman, distinctive look"
+
+
 def _build_girl_image_prompt(
     *,
     framing: str,
     rating: str,
     style: str,
+    character: dict | None = None,
     name: str = "",
     personality: str = "",
     backstory: str = "",
     extra: str = "",
     out_path: Path,
 ) -> str:
-    """組給 Grok Build 的生圖指令(含落盤路徑)。"""
+    """組給 Grok Build 的生圖指令。人物欄位以 character(完整 generateGirl 結果)為準。"""
     framing = (framing or "half").lower()
     rating = (rating or "sfw").lower()
     style = (style or "anime").lower()
@@ -470,20 +551,21 @@ def _build_girl_image_prompt(
     rating_map = {
         "sfw": "SFW, fully clothed, wholesome, no nudity, safe for work",
         "nsfw": (
-            "NSFW adult content allowed: sensual or explicit as fits the character, "
+            "NSFW adult content allowed: sensual or explicit as fits the character and libido notes, "
             "tasteful erotic art, mature 18+ only"
         ),
     }
-    subj = []
-    if name.strip():
-        subj.append(f"name vibe: {name.strip()}")
-    if personality.strip():
-        subj.append(f"personality vibe: {personality.strip()}")
-    if backstory.strip():
-        subj.append(f"backstory cues: {backstory.strip()}")
+    ch = dict(character) if isinstance(character, dict) else {}
+    # 手動欄位可補洞(未跑抽卡時)
+    if name and not ch.get("name"):
+        ch["name"] = name
+    if personality and not ch.get("personality"):
+        ch["personality"] = [x.strip() for x in personality.replace("、", ",").split(",") if x.strip()]
+    if backstory and not ch.get("backstory"):
+        ch["backstory"] = backstory
+    brief = _character_visual_brief(ch)
     if extra.strip():
-        subj.append(f"extra: {extra.strip()}")
-    subj_txt = "; ".join(subj) if subj else "attractive young woman, distinctive look"
+        brief += f"\nExtra director notes: {extra.strip()}"
 
     size_note = (
         "Output size MUST be exactly 128x128 pixels."
@@ -497,6 +579,8 @@ def _build_girl_image_prompt(
     )
 
     return f"""You are generating ONE character image for a game art test.
+The character sheet below is AUTHORITATIVE — match hair, eyes, body, fashion, features, and vibe exactly.
+Do not invent conflicting traits. Personality/backstory should only influence expression, pose, and mood.
 
 {tool_note}
 After the image is created, copy/move the final file to this EXACT path:
@@ -504,13 +588,16 @@ After the image is created, copy/move the final file to this EXACT path:
 
 Only create that one image file at the destination. Then reply with a short note: the absolute path and one-line description.
 
-Image brief:
-- Subject: female character — {subj_txt}
+=== CHARACTER SHEET (from edit_person / girl_gen pools) ===
+{brief}
+=== END SHEET ===
+
+Render settings:
 - Framing: {frame_map.get(framing, frame_map["half"])}
-- Style: {style_map.get(style, style_map["anime"])}
+- Art style: {style_map.get(style, style_map["anime"])}
 - Content rating: {rating_map.get(rating, rating_map["sfw"])}
 - {size_note}
-- Single character, plain or simple background, no text overlays, no watermark
+- Single character, plain or simple background, no text overlays, no watermark, no other people
 """
 
 
@@ -520,6 +607,7 @@ async def _run_grok_image(
     framing: str,
     rating: str,
     style: str,
+    character: dict | None = None,
     name: str = "",
     personality: str = "",
     backstory: str = "",
@@ -537,6 +625,7 @@ async def _run_grok_image(
     target = abs_out  # absolute path in prompt
     prompt = _build_girl_image_prompt(
         framing=framing, rating=rating, style=style,
+        character=character,
         name=name, personality=personality, backstory=backstory, extra=extra,
         out_path=target,
     )
@@ -791,13 +880,15 @@ class GenIn(BaseModel):
 
 
 class ImgGenIn(BaseModel):
-    """testword 妹子生圖下單。仍進 gen_tasks,endpoint=grok-img。"""
+    """testword 妹子生圖下單。仍進 gen_tasks,endpoint=grok-img。
+    character = girl_gen.generateGirl() 完整結果(或存檔魅魔欄位),生圖以此為準。"""
     key: str | None = None
     model: str = "grok-4.5"
     framing: str = "half"       # half | full
     rating: str = "sfw"         # sfw | nsfw
     style: str = "anime"        # anime | realistic | pixel
-    name: str = ""
+    character: dict | None = None  # 完整人設(優先)
+    name: str = ""              # 無 character 時的簡填
     personality: str = ""
     backstory: str = ""
     extra: str = ""
@@ -857,6 +948,7 @@ def imggen_submit(t: ImgGenIn):
         "framing": (t.framing or "half").lower(),
         "rating": (t.rating or "sfw").lower(),
         "style": (t.style or "anime").lower(),
+        "character": t.character if isinstance(t.character, dict) else None,
         "name": t.name or "",
         "personality": t.personality or "",
         "backstory": t.backstory or "",
@@ -939,6 +1031,7 @@ async def _gen_worker():
                     framing=str(opts.get("framing") or "half"),
                     rating=str(opts.get("rating") or "sfw"),
                     style=str(opts.get("style") or "anime"),
+                    character=opts.get("character") if isinstance(opts.get("character"), dict) else None,
                     name=str(opts.get("name") or ""),
                     personality=str(opts.get("personality") or ""),
                     backstory=str(opts.get("backstory") or ""),

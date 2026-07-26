@@ -152,10 +152,11 @@
 
 <!-- ── Grok Build 生圖測試 ── -->
 <section>
-  <h2>Grok Build 生圖測試(妹子)</h2>
+  <h2>Grok Build 生圖測試(妹子 · edit_person 全設定)</h2>
   <div class="mini" style="margin-bottom:.6em">
-    用 <code>grok -p</code> + <code>image_gen</code> 產一張圖,落盤到 <code>/assets/testword/</code>。
-    可測構圖(半身/全身)、分級(SFW/NSFW)、風格(動漫/真實/像素 128×128)。
+    人物用 <code>girl_gen.js</code> 從 <a href="/edit_person">edit_person</a> 的 <code>persona_pools.json</code> 完整抽卡
+   （外貌/原型/職業/喜惡/興趣/性慾/特殊屬性…）,再把<strong>全部人設</strong>餵給
+    <code>grok -p</code> + <code>image_gen</code>。圖落盤 <code>/assets/testword/</code>。
   </div>
   <div class="row" style="gap:.5em">
     <span style="flex:1 1 7em"><label>構圖</label>
@@ -164,7 +165,7 @@
         <option value="full">全身</option>
       </select>
     </span>
-    <span style="flex:1 1 7em"><label>分級</label>
+    <span style="flex:1 1 7em"><label>分級(抽卡門控)</label>
       <select id="ig-rating">
         <option value="sfw">SFW</option>
         <option value="nsfw">NSFW</option>
@@ -177,21 +178,23 @@
         <option value="pixel">像素 128×128</option>
       </select>
     </span>
-    <span style="flex:1 1 9em"><label>模型</label>
+    <span style="flex:0 1 6em"><label>luck</label>
+      <input id="ig-luck" type="number" min="0" max="100" value="35" title="獻祭 luck 0~100,越高越容易高評級">
+    </span>
+    <span style="flex:1 1 8em"><label>模型</label>
       <input id="ig-model" list="tb-model-list" value="grok-4.5" placeholder="grok-4.5">
     </span>
   </div>
-  <div class="row" style="gap:.5em;margin-top:.3em">
-    <span style="flex:1 1 7em"><label>名字</label><input id="ig-name" placeholder="可空"></span>
-    <span style="flex:1 1 10em"><label>個性(、分隔)</label><input id="ig-per" placeholder="傲嬌、慵懶"></span>
+  <div class="row" style="margin-top:.6em;gap:.5em">
+    <button class="cy" type="button" onclick="igRollGirl()">🎲 依 edit_person 池抽卡</button>
+    <button class="cy" type="button" onclick="igFromSave()">從存檔選魅魔…</button>
+    <button type="button" onclick="igClearChar()">清空人設</button>
   </div>
-  <label>來歷 / 外貌補充</label>
-  <input id="ig-back" placeholder="銀髮紅瞳、原是護理師…">
-  <label>額外 prompt(可空)</label>
-  <textarea id="ig-extra" style="min-height:3.5em" placeholder="服裝、表情、光線、姿勢…"></textarea>
+  <div id="ig-sheet" class="mini" style="margin-top:.7em;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.7em .8em;white-space:pre-wrap;color:#ffd75f;min-height:4em">(尚未抽卡——先按「依 edit_person 池抽卡」)</div>
+  <label>導演補充(可空,不覆蓋抽卡外貌)</label>
+  <textarea id="ig-extra" style="min-height:3em" placeholder="姿勢、光線、表情加強…(人物外貌以抽卡為準)"></textarea>
   <div class="row" style="margin-top:.7em;gap:.5em">
-    <button class="cy" type="button" onclick="igFillFromBench()">從上方測試台帶入妹子</button>
-    <button onclick="runImgGen()" id="ig-run">▶ 生成圖片(下單)</button>
+    <button onclick="runImgGen()" id="ig-run">▶ 依此人設生成圖片</button>
     <button class="cy" type="button" onclick="igRefreshGallery()">重新整理相簿</button>
     <span class="status" id="ig-status"></span>
   </div>
@@ -567,14 +570,100 @@ function initTestBench() {
   tbPing().catch(() => {});
   igRefreshGallery().catch(() => {});
 }
-// ── 生圖測試台 ──
-function igFillFromBench() {
-  document.getElementById("ig-name").value = document.getElementById("tb-name")?.value || "";
-  document.getElementById("ig-per").value = document.getElementById("tb-per")?.value || "";
-  document.getElementById("ig-back").value = document.getElementById("tb-back")?.value || "";
-  const r = document.getElementById("tb-rating")?.value;
-  if (r) document.getElementById("ig-rating").value = r;
-  status("ig-status", "已帶入上方妹子資料");
+// ── 生圖測試台(人物 = edit_person 池完整抽卡) ──
+let igChar = null;   // generateGirl() 完整結果或存檔魅魔精簡版
+
+function igFormatSheet(c) {
+  if (!c) return "(尚未抽卡)";
+  const L = c.look || {};
+  const st = (c.specialTraits || c.special_traits || []).map(t =>
+    typeof t === "string" ? t : `${t.name || "?"}${t.rarity ? `(${t.rarity})` : ""}`).join("、");
+  const lib = c.libido;
+  const libTxt = lib ? (typeof lib === "string" ? lib : `${lib.name || ""}${lib.desc ? " — " + lib.desc : ""}`) : "";
+  const lines = [
+    `【${c.rarity || "?"}】${c.name || "?"} · 原型 ${c.archetype || (c.personality || []).join("、") || "?"}`,
+    L.height_cm || L.build || L.hair ? `外貌: ${[L.height_cm && L.height_cm + "cm", L.build, L.bust, L.hair, L.eyes, L.style && ("穿搭" + L.style), L.feature].filter(Boolean).join("、")}` : null,
+    st ? `特殊: ${st}` : null,
+    c.job ? `職業: ${c.job}${c.jobDesc ? "（" + c.jobDesc + "）" : ""}` : null,
+    c.backstory ? `來歷: ${c.backstory}` : null,
+    c.tone ? `語氣: ${c.tone}` : null,
+    c.contrast || c.quirk ? `反差/習慣: ${c.contrast || c.quirk}` : null,
+    (c.likes || []).length ? `喜歡: ${(c.likes || []).join("、")}` : null,
+    (c.dislikes || []).length ? `討厭: ${(c.dislikes || []).join("、")}` : null,
+    (c.hobbies || []).length ? `興趣: ${(c.hobbies || []).join("、")}` : null,
+    libTxt ? `性慾: ${libTxt}` : null,
+    c.chrono?.name ? `作息型: ${c.chrono.name}${c.chrono.desc ? " — " + c.chrono.desc : ""}` : null,
+    c.arc ? `近況: ${c.arc}` : null,
+    c.stats ? `數值 主動${c.stats.proactivity}/害羞${c.stats.shyness}/吃醋${c.stats.jealousy}/忠誠${c.stats.loyalty}` : null,
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+function igShowSheet() {
+  const el = document.getElementById("ig-sheet");
+  if (el) el.textContent = igFormatSheet(igChar);
+}
+async function igEnsurePools() {
+  if (!window.GG_loadPools) throw new Error("girl_gen 未載入");
+  await window.GG_loadPools();
+  if (!window.GG_POOLS?.female) throw new Error("persona_pools.json 載入失敗——到 /edit_person 確認有女子池");
+}
+async function igRollGirl() {
+  try {
+    await igEnsurePools();
+    const rating = document.getElementById("ig-rating").value || "sfw";
+    const luck = Math.max(0, Math.min(100, parseInt(document.getElementById("ig-luck").value) || 0));
+    const used = (save?.succubi || []).map(s => s.name);
+    igChar = window.GG_generateGirl({ luck, rating, usedNames: used });
+    if (!igChar) throw new Error("generateGirl 回傳空");
+    igShowSheet();
+    status("ig-status", `✓ 已抽卡【${igChar.rarity}】${igChar.name}(luck=${luck}, ${rating})`);
+  } catch (e) {
+    status("ig-status", "抽卡失敗:" + e.message, true);
+  }
+}
+function igFromSave() {
+  const list = save?.succubi || [];
+  if (!list.length) { status("ig-status", "存檔沒有魅魔", true); return; }
+  const names = list.map((s, i) => `${i + 1}.【${s.rarity}】${s.name}`).join("\n");
+  const ans = prompt("輸入編號選一隻存檔魅魔:\n" + names, "1");
+  if (ans == null) return;
+  const i = parseInt(ans, 10) - 1;
+  if (!(i >= 0 && i < list.length)) { status("ig-status", "編號無效", true); return; }
+  const s = list[i];
+  // 正規化成與 generateGirl 接近的結構
+  igChar = {
+    name: s.name,
+    rarity: s.rarity,
+    personality: s.personality,
+    archetype: s.archetype || (s.personality || [])[0],
+    tone: s.tone,
+    catchphrases: s.catchphrases,
+    reactions: s.reactions,
+    stats: s.stats,
+    libido: s.libido,
+    quirk: s.quirk,
+    contrast: s.contrast,
+    likes: s.likes,
+    dislikes: s.dislikes,
+    hobbies: s.hobbies,
+    chrono: s.chrono,
+    arc: s.arc,
+    job: s.job,
+    jobDesc: s.jobDesc,
+    backstory: s.backstory,
+    schedule: s.schedule,
+    look: s.look,
+    specialTraits: s.specialTraits || s.special_traits,
+    dna: s.dna || s.appearance_dna,
+    grades: s.grades,
+  };
+  igShowSheet();
+  status("ig-status", `✓ 已載入存檔魅魔【${s.rarity}】${s.name}`);
+}
+function igClearChar() {
+  igChar = null;
+  igShowSheet();
+  status("ig-status", "已清空人設");
 }
 async function igRefreshGallery() {
   const box = document.getElementById("ig-gallery");
@@ -583,16 +672,13 @@ async function igRefreshGallery() {
     const j = await api("/api/imggen/list?limit=24");
     const items = j.items || [];
     if (!items.length) {
-      box.innerHTML = `<span class="mini">還沒有圖。按生成試試看。</span>`;
+      box.innerHTML = `<span class="mini">還沒有圖。抽卡後按生成。</span>`;
       return;
     }
-    box.innerHTML = items.map(it => {
-      const pixel = /pixel|128/.test(it.name) ? "" : ""; // style from name not known; keep default
-      return `<a href="${it.url}" target="_blank" rel="noopener">
+    box.innerHTML = items.map(it => `<a href="${it.url}" target="_blank" rel="noopener">
         <img src="${it.url}?t=${Math.floor(it.mtime)}" loading="lazy" alt="${it.name}">
-        <div class="cap">${it.name}<br>${Math.round(it.size/1024)}KB</div>
-      </a>`;
-    }).join("");
+        <div class="cap">${it.name}<br>${Math.round(it.size / 1024)}KB</div>
+      </a>`).join("");
   } catch (e) {
     box.innerHTML = `<span class="mini" style="color:#ff5f7a">讀取失敗:${e.message}</span>`;
   }
@@ -600,6 +686,10 @@ async function igRefreshGallery() {
 let igRunning = false;
 async function runImgGen() {
   if (igRunning) return;
+  if (!igChar) {
+    status("ig-status", "請先「依 edit_person 池抽卡」或從存檔載入魅魔", true);
+    return;
+  }
   const model = (document.getElementById("ig-model").value || "grok-4.5").trim();
   const framing = document.getElementById("ig-framing").value;
   const rating = document.getElementById("ig-rating").value;
@@ -609,9 +699,7 @@ async function runImgGen() {
     framing,
     rating,
     style,
-    name: document.getElementById("ig-name").value.trim(),
-    personality: document.getElementById("ig-per").value.trim(),
-    backstory: document.getElementById("ig-back").value.trim(),
+    character: igChar,   // 完整人設
     extra: document.getElementById("ig-extra").value.trim(),
     retry: true,
   };
@@ -622,10 +710,9 @@ async function runImgGen() {
   const t0 = Date.now();
   let key = null;
   try {
-    // 第一次下單拿 key
     let r = await api("/api/imggen", "POST", body);
     key = r.key;
-    status("ig-status", `佇列中… key=${key}`);
+    status("ig-status", `佇列中…【${igChar.rarity}】${igChar.name} · ${key}`);
     while (true) {
       r = await api("/api/imggen", "POST", { ...body, key, retry: true });
       const sec = Math.round((Date.now() - t0) / 1000);
@@ -635,7 +722,7 @@ async function runImgGen() {
         prev.innerHTML = url
           ? `<img src="${url}?t=${Date.now()}" class="${isPixel ? "pixel" : ""}" alt="gen">`
           : `<span class="mini">完成但沒有路徑</span>`;
-        status("ig-status", `✓ 完成(${sec}s) · ${url || "?"}`);
+        status("ig-status", `✓ 完成(${sec}s) · ${igChar.name} · ${url || "?"}`);
         igRefreshGallery();
         break;
       }
@@ -644,8 +731,8 @@ async function runImgGen() {
         status("ig-status", "失敗:" + (r.error || "?"), true);
         break;
       }
-      status("ig-status", `生成中… ${sec}s · ${r.status} · Grok Build image_gen`);
-      prev.innerHTML = `<span class="mini">生成中… ${sec}s<br>伺服器正在跑 grok -p + image_gen</span>`;
+      status("ig-status", `生成中… ${sec}s · ${r.status} · 依完整人設 image_gen`);
+      prev.innerHTML = `<span class="mini">生成中… ${sec}s<br>依【${igChar.rarity}】${igChar.name} 的 edit_person 全設定產圖</span>`;
       await new Promise(res => setTimeout(res, 1500));
     }
   } catch (e) {
@@ -857,8 +944,16 @@ loadSummoners().then(() => initTestBench());
 <script type="module">
 // 內建階段語氣原文與 prompt 產生器:直接從內容模組匯入,永遠與遊戲實際使用的版本一致
 import { RIVAL_WATCH_TONE, RIVAL_CHAT_EFFECT, buildWatchPrompt } from "/content/persona_builder.js";
+import { loadPools, generateGirl } from "/content/girl_gen.js";
 window.STAGE_DEFAULTS = { watch_stage: RIVAL_WATCH_TONE, chat_rival: RIVAL_CHAT_EFFECT };
 window.PB_buildWatchPrompt = buildWatchPrompt;
+window.GG_loadPools = async () => {
+  const p = await loadPools();
+  window.__GG_POOLS = p;
+  return p;
+};
+window.GG_generateGirl = generateGirl;
+Object.defineProperty(window, "GG_POOLS", { get: () => window.__GG_POOLS || null });
 window.fillStageBody?.();
 </script>
 </body>
