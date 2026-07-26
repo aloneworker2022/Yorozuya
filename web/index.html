@@ -147,13 +147,11 @@
         <div class="setting-row"><label>供應商</label>
           <select id="set-llm-provider">
             <option value="ollama">Ollama(本機串流)</option>
-            <option value="xai">Grok(xAI API·快·訂單)</option>
-            <option value="grok-build">Grok Build(無頭·慢)</option>
+            <option value="grok-build">Grok Build(無頭·訂單)</option>
           </select>
         </div>
         <div class="setting-row" id="row-ollama-url"><label>端點</label><input id="set-ollama" type="text" class="wide" placeholder="http://&lt;主機&gt;:11434"></div>
-        <div class="setting-row hidden" id="row-xai-hint"><label>金鑰</label><span class="dim small">伺服器 <code>XAI_API_KEY</code>(console.x.ai)·訂單佇列·通常數秒</span></div>
-        <div class="setting-row hidden" id="row-grok-hint"><label>引擎</label><span class="dim small"><code>grok -p</code> coding agent,角色對話常 &gt;1 分,不建議日常用</span></div>
+        <div class="setting-row hidden" id="row-grok-hint"><label>引擎</label><span class="dim small">伺服器跑 <code>grok -p</code> 無頭(需 <code>grok login</code>),streaming-json end 即完成</span></div>
         <div class="setting-row"><label>模型</label><input id="set-model" type="text" class="wide" list="model-list" placeholder="(留空 = 罐頭模式)"><datalist id="model-list"></datalist></div>
         <div class="setting-row"><label>內容分級</label><select id="set-rating"><option value="sfw">SFW</option><option value="nsfw">NSFW(依內容模組)</option></select></div>
         <div class="btn-row"><button id="btn-llm-test">測試連線</button><span id="llm-test-result" class="dim small"></span></div>

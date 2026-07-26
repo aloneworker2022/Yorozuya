@@ -98,13 +98,12 @@
 <!-- ── AI 互動測試台 ── -->
 <section>
   <h2>AI 互動測試台(召喚師 × 妹子 · 訂單佇列)</h2>
-  <div class="mini" style="margin-bottom:.6em">跟遊戲同一套 prompt 管線,經 <code>/api/gen</code> 下單收貨。推薦 <b>xAI API</b>(數秒);Grok Build 是 coding agent,角色對話常超過一分鐘。</div>
+  <div class="mini" style="margin-bottom:.6em">跟遊戲同一套 prompt 管線,經 <code>/api/gen</code> 下單收貨。Grok = 本機 <code>grok -p</code> 無頭(streaming-json end 即完成),無 xAI HTTP API。</div>
   <div class="row" style="gap:.5em">
     <span style="flex:1 1 11em"><label>供應商</label>
       <select id="tb-provider">
-        <option value="xai">Grok(xAI API·快)</option>
+        <option value="grok-build">Grok Build(無頭·訂單)</option>
         <option value="ollama">Ollama</option>
-        <option value="grok-build">Grok Build(慢)</option>
       </select>
     </span>
     <span style="flex:1 1 10em"><label>模型</label><input id="tb-model" list="tb-model-list" placeholder="grok-4.5"><datalist id="tb-model-list"></datalist></span>
@@ -431,19 +430,15 @@ function rollGirl() {
   document.getElementById("tb-back").value = GIRL_BACKS[Math.floor(Math.random()*GIRL_BACKS.length)];
 }
 function tbProvider() {
-  const v = (document.getElementById("tb-provider")?.value || "xai").toLowerCase();
-  if (v === "ollama") return "ollama";
-  if (v === "grok-build" || v === "build") return "grok-build";
-  return "xai";
+  const v = (document.getElementById("tb-provider")?.value || "grok-build").toLowerCase();
+  return v === "ollama" ? "ollama" : "grok-build";
 }
 function tbRoute() {
   const provider = tbProvider();
-  const ep = provider === "xai" ? "xai"
-    : provider === "grok-build" ? "grok-build"
-    : (document.getElementById("tb-endpoint").value.trim() || "http://localhost:11434");
   return {
     provider,
-    endpoint: ep,
+    endpoint: provider === "grok-build" ? "grok-build"
+      : (document.getElementById("tb-endpoint").value.trim() || "http://localhost:11434"),
     model: (document.getElementById("tb-model").value.trim() || ((provider === "ollama") ? "" : "grok-4.5")),
   };
 }
@@ -460,13 +455,9 @@ async function tbPing() {
     const q = new URLSearchParams({ provider, endpoint });
     const j = await api("/api/llm/tags?" + q);
     const n = (j.models || []).length;
-    if (provider === "xai") {
-      status("tb-engine", h.xai
-        ? `xAI API OK · ${n} 模型(快·訂單)`
-        : "未設定 XAI_API_KEY", !h.xai);
-    } else if (provider === "grok-build") {
+    if (provider === "grok-build") {
       status("tb-engine", h.grok_build
-        ? `Grok Build OK · ${n} 模型 · 慢`
+        ? `Grok Build OK · ${n} 模型 · bin=${h.grok_bin || "grok"}`
         : `找不到 grok(bin=${h.grok_bin || "?"})`, !h.grok_build);
     } else {
       status("tb-engine", `Ollama OK · ${n} 模型`);
@@ -502,12 +493,9 @@ function initTestBench() {
   document.getElementById("tb-stage").innerHTML = STAGE_NAMES.map((n,i)=>`<option value="${i}">${n}</option>`).join("");
   document.getElementById("tb-loc-list").innerHTML = DATE_LOCS.map(l=>`<option value="${l}">`).join("");
   if (save?.settings?.rating) document.getElementById("tb-rating").value = save.settings.rating;
-  // 從遊戲設定帶入;預設 xAI API(快)
-  const rawP = (save?.settings?.llmProvider || "xai").toLowerCase();
-  let sel = "xai";
-  if (rawP === "ollama") sel = "ollama";
-  else if (rawP === "grok-build" || rawP === "build") sel = "grok-build";
-  document.getElementById("tb-provider").value = sel;
+  // 從遊戲設定帶入;預設 Grok Build
+  const rawP = (save?.settings?.llmProvider || "grok-build").toLowerCase();
+  document.getElementById("tb-provider").value = rawP === "ollama" ? "ollama" : "grok-build";
   document.getElementById("tb-model").value = save?.settings?.model || "grok-4.5";
   document.getElementById("tb-endpoint").value = save?.settings?.ollamaUrl || "http://localhost:11434";
   document.getElementById("tb-provider").onchange = tbSyncProviderUi;
