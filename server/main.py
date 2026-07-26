@@ -296,8 +296,48 @@ def _messages_to_prompt(messages: list) -> str:
     return "\n\n".join(chunks)
 
 
-async def _run_grok_build(model: str, messages: list, options: dict | None = None) -> tuple[str, str | None]:
-    """本機 `grok -p` 無頭 agent。coding 用;角色對話會很慢(常 >1 分)。"""
+async def _kill_proc_tree(proc: asyncio.subprocess.Process) -> None:
+    """結束 grok 行程組。Build 在吐完 end 後常還會做 session 收尾,不殺會一直卡住訂單。"""
+    if proc.returncode is not None:
+        return
+    try:
+        # start_new_session=True 時 pid == 進程組 id
+        os.killpg(proc.pid, 15)  # SIGTERM
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.terminate()
+        except ProcessLookupError:
+            return
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=2)
+        return
+    except (asyncio.TimeoutError, ProcessLookupError):
+        pass
+    try:
+        os.killpg(proc.pid, 9)  # SIGKILL
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=2)
+    except (asyncio.TimeoutError, ProcessLookupError):
+        pass
+
+
+async def _run_grok_build(
+    model: str,
+    messages: list,
+    options: dict | None = None,
+    on_partial=None,
+) -> tuple[str, str | None]:
+    """本機 `grok -p` 無頭。
+
+    關鍵:用 streaming-json,在 type=end 就視為完成並殺掉行程。
+    舊作法等 process 自然退出;Build 吐完文章後常還卡在 session/usage 收尾,
+    訂單會一直 running,前端以為「偵測不到完成」。
+    """
     if not _grok_build_available():
         return "", f"找不到 Grok Build 指令 `{GROK_BIN}`(請安裝或設 GROK_BIN)"
     prompt = _messages_to_prompt(messages)
@@ -306,89 +346,147 @@ async def _run_grok_build(model: str, messages: list, options: dict | None = Non
     model = (model or "grok-4.5").strip() or "grok-4.5"
     GROK_CWD.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="yoro-grok-") as td:
-        prompt_path = Path(td) / "prompt.txt"
-        prompt_path.write_text(prompt, encoding="utf-8")
-        cmd = [
-            GROK_BIN,
-            "--prompt-file", str(prompt_path),
-            "-m", model,
-            "--output-format", "json",
-            "--no-subagents",
-            "--disable-web-search",
-            "--no-plan",
-            "--no-memory",
-            "--no-auto-update",
-            "--verbatim",
-            "--cwd", str(GROK_CWD),
-            "--disallowed-tools", _GROK_DISALLOWED_TOOLS,
-            "--rules",
-            "角色扮演純文字輸出。禁止使用任何工具。禁止讀寫檔案。禁止執行指令。",
-        ]
-        if GROK_MAX_TURNS > 0:
-            cmd.extend(["--max-turns", str(GROK_MAX_TURNS)])
-        env = {**os.environ, "GROK_DISABLE_AUTOUPDATER": "1"}
+    # prompt 檔放在 cwd 旁,不綁 TemporaryDirectory(殺行程後可能還鎖檔)
+    GROK_CWD.mkdir(parents=True, exist_ok=True)
+    prompt_path = GROK_CWD / f"prompt-{uuid.uuid4().hex}.txt"
+    prompt_path.write_text(prompt, encoding="utf-8")
+    cmd = [
+        GROK_BIN,
+        "--prompt-file", str(prompt_path),
+        "-m", model,
+        # 逐行事件:text / end / error —— end 一到就收工
+        "--output-format", "streaming-json",
+        "--no-subagents",
+        "--disable-web-search",
+        "--no-plan",
+        "--no-memory",
+        "--no-auto-update",
+        "--verbatim",
+        "--cwd", str(GROK_CWD),
+        "--disallowed-tools", _GROK_DISALLOWED_TOOLS,
+        "--rules",
+        "角色扮演純文字輸出。禁止使用任何工具。禁止讀寫檔案。禁止執行指令。",
+    ]
+    if GROK_MAX_TURNS > 0:
+        cmd.extend(["--max-turns", str(GROK_MAX_TURNS)])
+    env = {**os.environ, "GROK_DISABLE_AUTOUPDATER": "1"}
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+            start_new_session=True,  # 方便 killpg 整組收掉
+        )
+    except FileNotFoundError:
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-            )
-        except FileNotFoundError:
-            return "", f"無法啟動 `{GROK_BIN}`"
-        try:
-            if GROK_TIMEOUT and GROK_TIMEOUT > 0:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=GROK_TIMEOUT)
-            else:
-                stdout, stderr = await proc.communicate()
-        except asyncio.TimeoutError:
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
-            try:
-                await proc.communicate()
-            except Exception:
-                pass
-            return "", f"Grok Build 逾時({int(GROK_TIMEOUT)}s)"
+            prompt_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return "", f"無法啟動 `{GROK_BIN}`"
 
-        out = (stdout or b"").decode("utf-8", errors="replace").strip()
-        err_txt = (stderr or b"").decode("utf-8", errors="replace").strip()
-        if proc.returncode != 0:
-            if out:
-                try:
-                    ej = json.loads(out)
-                    if isinstance(ej, dict) and (ej.get("message") or ej.get("type") == "error"):
-                        return "", str(ej.get("message") or ej)[:500]
-                except json.JSONDecodeError:
-                    pass
-            return "", f"Grok Build 失敗(exit {proc.returncode}): {(err_txt or out)[:500]}"
-        if not out:
-            return "", f"Grok Build 無輸出{((': ' + err_txt[:300]) if err_txt else '')}"
+    text_parts: list[str] = []
+    err_lines: list[str] = []
+    final_err: str | None = None
+    saw_end = False
+
+    async def _drain_stderr():
+        # 必須持續抽 stderr,否則 pipe 塞滿會讓 grok 卡死(看起來像偵測不到完成)
+        assert proc.stderr is not None
         try:
-            data = json.loads(out)
-        except json.JSONDecodeError:
-            return out, None
-        if isinstance(data, dict) and data.get("type") == "error":
-            return "", str(data.get("message") or data)[:500]
-        text = ""
-        if isinstance(data, dict):
-            text = data.get("text") or ""
-            if not text and isinstance(data.get("message"), str):
-                text = data["message"]
-        if not isinstance(text, str):
-            text = str(text)
-        if not text.strip():
-            return "", "Grok Build 回了空訊息"
+            while True:
+                line = await proc.stderr.readline()
+                if not line:
+                    break
+                s = line.decode("utf-8", errors="replace").rstrip()
+                if s:
+                    err_lines.append(s)
+                    if len(err_lines) > 80:
+                        del err_lines[:-40]
+        except Exception:
+            pass
+
+    stderr_task = asyncio.create_task(_drain_stderr())
+
+    async def _read_events():
+        nonlocal final_err, saw_end
+        assert proc.stdout is not None
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            s = line.decode("utf-8", errors="replace").strip()
+            if not s:
+                continue
+            try:
+                ev = json.loads(s)
+            except json.JSONDecodeError:
+                # 非 JSON 行忽略(或偶發混進 log)
+                continue
+            if not isinstance(ev, dict):
+                continue
+            et = ev.get("type")
+            if et == "text":
+                piece = ev.get("data") or ""
+                if piece:
+                    text_parts.append(str(piece))
+                    if on_partial:
+                        try:
+                            on_partial("".join(text_parts))
+                        except Exception:
+                            pass
+            elif et == "error":
+                final_err = str(ev.get("message") or ev)[:500]
+                saw_end = True
+                break
+            elif et in ("end", "max_turns_reached"):
+                # end = 正文已完整推送;立刻視為成功,不必等行程退出
+                saw_end = True
+                break
+            # thought / auto_compact_* 等忽略
+
+    try:
+        if GROK_TIMEOUT and GROK_TIMEOUT > 0:
+            await asyncio.wait_for(_read_events(), timeout=GROK_TIMEOUT)
+        else:
+            await _read_events()
+    except asyncio.TimeoutError:
+        final_err = f"Grok Build 逾時({int(GROK_TIMEOUT)}s)"
+    finally:
+        await _kill_proc_tree(proc)
+        try:
+            await asyncio.wait_for(stderr_task, timeout=1)
+        except (asyncio.TimeoutError, Exception):
+            stderr_task.cancel()
+        try:
+            prompt_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    text = "".join(text_parts)
+    if text.strip():
         return text, None
+    if final_err:
+        return "", final_err
+    err_tail = "\n".join(err_lines[-8:]).strip()
+    if saw_end:
+        return "", "Grok Build 結束但沒有正文"
+    if proc.returncode not in (0, None, -9, -15, 130, 143):
+        return "", f"Grok Build 失敗(exit {proc.returncode})" + (f": {err_tail[:300]}" if err_tail else "")
+    return "", "Grok Build 無輸出" + (f": {err_tail[:300]}" if err_tail else "")
 
 
-async def _run_order_llm(provider: str, model: str, messages: list, options: dict | None = None) -> tuple[str, str | None]:
+async def _run_order_llm(
+    provider: str,
+    model: str,
+    messages: list,
+    options: dict | None = None,
+    on_partial=None,
+) -> tuple[str, str | None]:
     if provider == "xai":
         return await _run_xai_api(model, messages, options)
     if provider == "grok-build":
-        return await _run_grok_build(model, messages, options)
+        return await _run_grok_build(model, messages, options, on_partial=on_partial)
     return "", f"未知訂單 provider:{provider}"
 
 
@@ -484,6 +582,8 @@ async def _run_chat_job(job_id: str, provider: str, endpoint: str, body: dict):
             body.get("model") or "grok-4.5",
             body.get("messages") or [],
             body.get("options"),
+            # Build streaming-json 可邊產邊推到 job,前端輪詢看得到進度
+            on_partial=on_token if provider == "grok-build" else None,
         )
         if text:
             job["text"] = text

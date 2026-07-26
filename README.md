@@ -37,9 +37,12 @@ cd server && uvicorn main:app --host 0.0.0.0 --port 8000
 
 測試頁:`/testword` → AI 互動測試台。
 
-#### Grok Build(可選,慢)
+#### Grok Build(無頭)
 
-需本機 `grok` CLI + `grok login`。僅在你刻意要 agent 管線時用。
+需本機 `grok` CLI + `grok login`。
+
+完成偵測:伺服器用 `--output-format streaming-json`,收到 `{"type":"end"}` 就視為文章推送完成、立刻寫入訂單並殺掉行程。  
+(舊版等 process 自然退出,Build 吐完正文後常還卡在 session 收尾,訂單會一直 `running`。)
 
 | 變數 | 預設 | 說明 |
 |---|---|---|
