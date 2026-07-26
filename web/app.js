@@ -1212,7 +1212,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
   const inputEl = document.getElementById("chat-input");
   if (inputEl) { inputEl.disabled = false; inputEl.placeholder = "說點什麼…(Enter 送出)"; inputEl.value = ""; }
   const sendBtn = document.getElementById("chat-send");
-  if (sendBtn) sendBtn.disabled = false;
+  if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = "送出"; }
   const askBtn = document.getElementById("chat-ask");
   if (askBtn) askBtn.disabled = false;
   setChatWaiting(false);
@@ -1265,6 +1265,18 @@ async function chatOpenerLive(s) {
 function setChatWaiting(b) {
   const row = document.getElementById("chat-input-row");
   if (row) row.style.visibility = b ? "hidden" : "";
+}
+
+// 對話收尾:不自動跳出,把「送出」鈕換成收尾鈕,讓玩家讀完最後一句自己按著結束
+// (按鈕點擊在 chatSession.ended 時改導向 exitChat,見底部事件接線)
+function chatEndButton(label = "結束對話 ▶") {
+  setChatWaiting(false);   // 送出時被隱藏的輸入列要重新露出,收尾鈕才看得到
+  const inputEl = document.getElementById("chat-input");
+  if (inputEl) { inputEl.disabled = true; inputEl.placeholder = "這次對話結束了…"; }
+  const askBtn = document.getElementById("chat-ask");
+  if (askBtn) askBtn.disabled = true;
+  const btn = document.getElementById("chat-send");
+  if (btn) { btn.disabled = false; btn.textContent = label; }
 }
 
 // 約會進場開場白:她先開口,不佔玩家回合、不寫入玩家訊息(聊天則由玩家先說話,不走這裡)
@@ -1391,6 +1403,8 @@ async function enterWatch(s, playerType, playerLocation = null) {
     ? `${s.name} 不在你身邊——她正被 ${su?.name || "另一個男人"} 召喚著。淫紋映出他們的互動……`
     : `淫紋映出 ${s.name} 與 ${su?.name || "另一個男人"} 之間,那些你不在場時的紀錄……`;
   vnShow("", `—— ${opener} ——`, "sys");
+  const wnBtn = document.getElementById("watch-next");
+  if (wnBtn) { wnBtn.textContent = "下一句 ▶"; wnBtn.disabled = false; }   // 重置上一場殘留的收尾文字
   // 背景先幫未讀 act 下文字單(有文字則秒開;沒有才邊看邊生)
   try { genActOrders(); } catch { /* 下輪 genTick 會補 */ }
   watchNext();   // 自動放第一則
@@ -1452,15 +1466,21 @@ async function watchNext() {
     rescueFromWatch(s);
     return;
   }
-  // 這一淫紋能看的看完了:留 2 秒讓玩家讀完最後一則,再收尾退出。她被召喚中時還能請伺服器現生,故不因無備好紀錄而收尾
+  // 這一淫紋能看的看完了:留 2 秒讓玩家讀完最後一則,再顯示收尾。她被召喚中時還能請伺服器現生,故不因無備好紀錄而收尾
   if (watchSession.presses >= watchSession.turnCap || (!unseenActs(s).length && !s.summoner?.taken)) {
     watchSession.ended = true;
     setWatchBtns(false);
     const endMsg = s.summoner?.taken
       ? "(你只能看著……她還被召喚在對方那邊)"
       : `(紀錄到此為止${unseenActs(s).length ? `,還有 ${unseenActs(s).length} 則未讀` : ""})`;
-    setTimeout(() => { if (watchSession?.ended) vnShow("", endMsg, "sys"); }, 2200);
-    setTimeout(() => { if (watchSession?.ended) exitWatch(); }, 4200);
+    // 不自動跳出:讀完最後一則後顯示收尾,把「下一句 ▶」換成「結束觀戰 ▶」由玩家自己按著離開
+    setTimeout(() => {
+      if (!watchSession?.ended) return;
+      vnShow("", endMsg, "sys");
+      watchSession.atEnd = true;
+      const wn = document.getElementById("watch-next");
+      if (wn) { wn.textContent = "結束觀戰 ▶"; wn.disabled = false; }
+    }, 2200);
     scheduleSave();
     return;
   }
@@ -1920,7 +1940,7 @@ async function sendChatMsg() {
     setTimeout(() => {
       if (chatSession?.ended) {
         vnShow("", "(訊息傳出去了……她的回覆,下次淫紋亮起時就會知道)", "sys");
-        setTimeout(() => { if (chatSession?.ended) exitChat(); }, 1600);
+        chatEndButton("結束對話 ▶");
       }
     }, 900);
     return;
@@ -1951,14 +1971,10 @@ async function sendChatMsg() {
     dirty = true;
     saveNow();   // 對話內容立即寫入伺服器,不等防抖——關頁面也不掉字
 
-    // 回合上限(每次隨機):達標後鎖輸入、顯示收尾,稍後自動結束(結算情感)
+    // 回合上限(每次隨機):達標後鎖輸入、顯示收尾鈕,由玩家讀完最後一句自己按著結束(結算情感)
     if (chatSession.playerMsgs >= chatSession.turnCap) {
       chatSession.ended = true;
-      const inputEl = document.getElementById("chat-input");
-      if (inputEl) { inputEl.disabled = true; inputEl.placeholder = "這次對話結束了…"; }
-      const btn = document.getElementById("chat-send");
-      if (btn) btn.disabled = true;
-      setTimeout(() => { if (chatSession?.ended) exitChat(); }, 1600);
+      chatEndButton("結束約會 ▶");
       return;
     }
   } catch (e) {
@@ -3387,9 +3403,9 @@ on("chat-back", "click", () => {
   if (sacrificeWith) { exitSacrifice(); return; }   // 儀式中途離開=中止(她未結算、存活)
   if (watchWith) exitWatch(); else exitChat();
 });
-on("chat-send", "click", () => sendChatMsg());
+on("chat-send", "click", () => { if (chatSession?.ended) exitChat(); else sendChatMsg(); });
 on("chat-ask", "click", () => askAboutActs());
-on("watch-next", "click", () => watchNext());
+on("watch-next", "click", () => { if (watchSession?.atEnd) exitWatch(); else watchNext(); });
 on("watch-end", "click", () => exitWatch());
 on("sac-done", "click", () => sacAdvance());
 on("ssac-more", "click", () => sacrificeNextOffering());
