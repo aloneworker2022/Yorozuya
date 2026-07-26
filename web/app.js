@@ -299,7 +299,7 @@ function defaultState() {
     log: [],
     settings: {
       player: "", sleepStart: "01:00", sleepEnd: "06:00", theme: "aqua",
-      // llmProvider: "ollama"(本機串流) | "grok"(Grok Build 無頭,訂單佇列)
+      // llmProvider: "ollama" | "xai"(快,訂單) | "grok-build"(慢,可選)
       llmProvider: "ollama",
       ollamaUrl: "http://localhost:11434", model: "", rating: "sfw",
       cardColors: null,   // null = 主題預設;{exec|found|acc|vn: {color,opacity}}
@@ -1513,17 +1513,25 @@ function strHash(x) { let h = 5381; for (let i = 0; i < x.length; i++) h = ((h *
 
 function llmProvider() {
   const p = (state.settings.llmProvider || "ollama").toLowerCase();
-  // 舊存檔可能寫 xai → 視為 grok build
-  if (p === "grok" || p === "grok-build" || p === "xai" || p === "spacexai") return "grok";
+  if (p === "grok-build" || p === "build") return "grok-build";
+  // 舊存檔 "grok" 曾指 Build → 現改走 xAI API(快)
+  if (p === "xai" || p === "grok" || p === "spacexai" || p === "api") return "xai";
   return "ollama";
+}
+
+function llmIsOrder() {
+  const p = llmProvider();
+  return p === "xai" || p === "grok-build";
 }
 
 /** 組出 /api/gen 與 /api/llm/* 共用的 provider/endpoint 欄位 */
 function llmRouteFields() {
   const provider = llmProvider();
+  if (provider === "xai") return { provider: "xai", endpoint: "xai" };
+  if (provider === "grok-build") return { provider: "grok-build", endpoint: "grok-build" };
   return {
-    provider,
-    endpoint: provider === "grok" ? "grok" : (state.settings.ollamaUrl || "http://localhost:11434"),
+    provider: "ollama",
+    endpoint: state.settings.ollamaUrl || "http://localhost:11434",
   };
 }
 
@@ -1779,8 +1787,8 @@ function vnTyping(show) { $("#vn-typing").classList.toggle("hidden", !show); }
 function vnDone() { $("#vn-cursor").classList.remove("hidden"); vnTyping(false); }
 
 // 通用 LLM 執行:
-// - Grok Build:一律走 /api/gen 訂單佇列(非即時;伺服器背景跑 grok -p)
-// - Ollama:chat_job 串流輪詢(切 app/瞬斷不中斷)
+// - xAI / Grok Build: /api/gen 訂單佇列(整包收貨)
+// - Ollama: chat_job 串流輪詢
 async function llmJobRun(messages, onToken, cannedLine) {
   if (!state.settings.model) {                     // 無模型 → 罐頭逐字
     await new Promise(r => setTimeout(r, 600));
@@ -1794,8 +1802,8 @@ async function llmJobRun(messages, onToken, cannedLine) {
   }
   chatAbort = new AbortController();
 
-  // ── Grok Build:訂單制 ──
-  if (llmProvider() === "grok") {
+  // ── 訂單制(xAI API 或 Grok Build)──
+  if (llmIsOrder()) {
     const key = `live:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
     const t0 = Date.now();
     let fails = 0;
@@ -1822,15 +1830,15 @@ async function llmJobRun(messages, onToken, cannedLine) {
         await new Promise(r => setTimeout(r, 800));
         continue;
       }
-      if (j.status === "error") throw new Error(j.error || "Grok Build 失敗");
+      if (j.status === "error") throw new Error(j.error || "LLM 訂單失敗");
       if (j.status === "done") {
         const text = (j.result || "").trim();
         if (!text) throw new Error("模型回了空訊息");
         onToken(text);
         return text;
       }
-      // pending | running
-      await new Promise(r => setTimeout(r, 800));
+      // pending | running — xAI 通常幾秒;Build 可能很久
+      await new Promise(r => setTimeout(r, llmProvider() === "xai" ? 400 : 800));
     }
   }
 
@@ -3240,12 +3248,14 @@ function renderKanban() {
 function applyLlmProviderUi() {
   const p = llmProvider();
   const ollamaRow = $("#row-ollama-url");
+  const xaiRow = $("#row-xai-hint");
   const grokRow = $("#row-grok-hint");
-  if (ollamaRow) ollamaRow.classList.toggle("hidden", p === "grok");
-  if (grokRow) grokRow.classList.toggle("hidden", p !== "grok");
+  if (ollamaRow) ollamaRow.classList.toggle("hidden", p !== "ollama");
+  if (xaiRow) xaiRow.classList.toggle("hidden", p !== "xai");
+  if (grokRow) grokRow.classList.toggle("hidden", p !== "grok-build");
   const model = $("#set-model");
   if (model) {
-    model.placeholder = p === "grok"
+    model.placeholder = (p === "xai" || p === "grok-build")
       ? "grok-4.5(留空 = 罐頭模式)"
       : "(留空 = 罐頭模式)";
   }
@@ -3403,10 +3413,11 @@ on("conn-retry", "click", () => load());
 // AI 設定
 on("set-llm-provider", "change", e => {
   const raw = (e.target.value || "ollama").toLowerCase();
-  const p = (raw === "grok" || raw === "xai") ? "grok" : "ollama";
+  let p = "ollama";
+  if (raw === "grok-build" || raw === "build") p = "grok-build";
+  else if (raw === "xai" || raw === "grok") p = "xai";
   state.settings.llmProvider = p;
-  // 切到 Grok Build 且模型空白/像 Ollama 名 → 預填 grok-4.5
-  if (p === "grok") {
+  if (p === "xai" || p === "grok-build") {
     const m = (state.settings.model || "").trim();
     if (!m || m.includes(":") || m.startsWith("llama") || m.startsWith("qwen") || m.startsWith("mistral")) {
       state.settings.model = "grok-4.5";
@@ -3435,17 +3446,19 @@ on("btn-llm-test", "click", async () => {
     const j = await res.json();
     const names = (j.models || []).map(m => m.name);
     const dl = $("#model-list"); if (dl) dl.innerHTML = names.map(n => `<option value="${esc(n)}">`).join("");
-    if (provider === "grok") {
+    if (provider === "xai") {
+      r.textContent = names.length ? `xAI API OK,${names.length} 個模型(快·訂單)` : "xAI 金鑰 OK";
+    } else if (provider === "grok-build") {
       r.textContent = names.length
-        ? `Grok Build OK,${names.length} 個模型(訂單佇列)`
-        : "Grok Build 可執行,但沒拉到模型清單";
+        ? `Grok Build OK,${names.length} 個模型(慢·不建議日常)`
+        : "Grok Build 可執行";
     } else {
       r.textContent = names.length ? `OK,${names.length} 個模型(模型欄可下拉選)` : "OK,但沒有已安裝的模型";
     }
   } catch (e) {
-    r.textContent = provider === "grok"
-      ? (`連線失敗——${e.message || "檢查伺服器是否裝了 grok CLI 並已 login"}`)
-      : "連線失敗——檢查端點與 Ollama 是否啟動";
+    if (provider === "xai") r.textContent = `連線失敗——${e.message || "檢查 XAI_API_KEY"}`;
+    else if (provider === "grok-build") r.textContent = `連線失敗——${e.message || "檢查 grok CLI"}`;
+    else r.textContent = "連線失敗——檢查端點與 Ollama 是否啟動";
   }
 });
 

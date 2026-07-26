@@ -2,7 +2,7 @@
 
 - 靜態伺服:web/(遊戲本體)+ assets/(生成圖像)
 - 存檔 API:GET/PUT /api/save(SQLite,版本號防呆的 last-write-wins)
-- LLM:Ollama 串流,或 Grok Build 無頭模式(grok -p)訂單佇列
+- LLM:Ollama 串流 / xAI API 訂單(快) / Grok Build 無頭訂單(慢,可選)
 
 啟動:uvicorn main:app --host 0.0.0.0 --port 8000
 """
@@ -29,21 +29,21 @@ DB_PATH = ROOT / "data" / "game.db"
 WEB_DIR = ROOT / "web"
 ASSETS_DIR = ROOT / "assets"
 
-# Grok Build 無頭 CLI(不是 xAI HTTP API)
-GROK_BIN = os.environ.get("GROK_BIN", "grok")
-GROK_CWD = Path(os.environ.get("GROK_CWD", str(ROOT / "data" / "grok_cwd")))
-# 0 = 不限時(測試期先不設上限;正式環境可 export GROK_TIMEOUT=300)
-GROK_TIMEOUT = float(os.environ.get("GROK_TIMEOUT", "0"))
-# 0 = 不限制 agent 回合數(測試期先不設上限)
-GROK_MAX_TURNS = int(os.environ.get("GROK_MAX_TURNS", "0") or "0")
-GROK_DEFAULT_MODELS = [
+# ── xAI HTTP API(角色對話預設;數秒級,走 /api/gen 訂單)──
+XAI_BASE = os.environ.get("XAI_BASE_URL", "https://api.x.ai/v1").rstrip("/")
+XAI_DEFAULT_MODELS = [
     "grok-4.5",
     "grok-4.3",
-    "grok-build",
     "grok-4.20-0309-non-reasoning",
     "grok-4.20-0309-reasoning",
 ]
-# 角色扮演只要純文字,關掉 agent 工具,避免它去讀檔/跑 shell
+
+# ── Grok Build 無頭 CLI(coding agent;慢,可選)──
+GROK_BIN = os.environ.get("GROK_BIN", "grok")
+GROK_CWD = Path(os.environ.get("GROK_CWD", str(ROOT / "data" / "grok_cwd")))
+GROK_TIMEOUT = float(os.environ.get("GROK_TIMEOUT", "180"))
+# Build 預設 1 回合(再鬆可用 env 調高;0=不帶旗標)
+GROK_MAX_TURNS = int(os.environ.get("GROK_MAX_TURNS", "1") or "0")
 _GROK_DISALLOWED_TOOLS = (
     "run_terminal_cmd,search_replace,write,read_file,list_dir,grep,"
     "web_search,web_fetch,spawn_subagent,image_gen,image_edit,"
@@ -51,7 +51,11 @@ _GROK_DISALLOWED_TOOLS = (
 )
 
 
-def _grok_available() -> bool:
+def _xai_key() -> str:
+    return (os.environ.get("XAI_API_KEY") or "").strip()
+
+
+def _grok_build_available() -> bool:
     return bool(shutil.which(GROK_BIN) or Path(GROK_BIN).is_file())
 
 
@@ -131,7 +135,8 @@ def health():
     return {
         "ok": True,
         "time": time.time(),
-        "grok_build": _grok_available(),
+        "xai": bool(_xai_key()),
+        "grok_build": _grok_build_available(),
         "grok_bin": GROK_BIN,
     }
 
@@ -188,40 +193,97 @@ def delete_bg(name: str):
     return {"ok": True}
 
 
-# ---- LLM 代理(瀏覽器 → RP5 → Ollama 串流,或 Grok Build 無頭訂單)----
+# ---- LLM 代理(瀏覽器 → RP5 → Ollama / xAI API / Grok Build)----
 # 伺服器不檢視、不修改訊息內容,僅轉發/累積原文(8.1 零解析原則)
-# provider: "ollama"(預設,可串流) | "grok"(Grok Build headless;一律走 /api/gen 訂單佇列)
+# provider:
+#   ollama      — 本機串流
+#   xai         — xAI HTTP chat/completions(快,預設 Grok 路徑;訂單佇列)
+#   grok-build  — grok -p 無頭 agent(慢,可選)
 
 
 def _normalize_provider(p) -> str:
     p = (p or "ollama").strip().lower()
-    # xai/spacexai 舊別名 → 一律當 grok build
-    if p in ("grok", "grok-build", "grokbuild", "xai", "spacexai"):
-        return "grok"
+    if p in ("grok-build", "grokbuild", "build"):
+        return "grok-build"
+    # 舊存檔 "grok" 曾指向 Build;現在預設改走 API(快)
+    if p in ("xai", "grok", "spacexai", "api"):
+        return "xai"
     return "ollama"
 
 
-def _messages_to_prompt(messages: list) -> str:
-    """把 chat messages 壓成給 grok -p 的單一 prompt(不解析語意,只做格式拼接)。"""
-    system_parts: list[str] = []
-    turns: list[str] = []
+def _is_order_provider(p: str) -> bool:
+    return p in ("xai", "grok-build")
+
+
+def _normalize_messages(messages: list) -> list[dict]:
+    out: list[dict] = []
     for m in messages or []:
         if not isinstance(m, dict):
             continue
         role = (m.get("role") or "user").strip().lower()
+        if role not in ("system", "user", "assistant"):
+            role = "user"
         content = m.get("content")
         if content is None:
             continue
         text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
-        text = text.strip()
-        if not text:
+        if not text.strip():
             continue
-        if role == "system":
-            system_parts.append(text)
-        elif role == "assistant":
-            turns.append(f"assistant: {text}")
+        out.append({"role": role, "content": text})
+    return out
+
+
+async def _run_xai_api(model: str, messages: list, options: dict | None = None) -> tuple[str, str | None]:
+    """xAI OpenAI 相容 chat/completions(非串流整包)。角色對話應走這條,通常數秒。"""
+    key = _xai_key()
+    if not key:
+        return "", "伺服器未設定 XAI_API_KEY(export 後重啟 uvicorn)。見 https://console.x.ai"
+    msgs = _normalize_messages(messages)
+    if not msgs:
+        return "", "空 messages"
+    temp = 0.9
+    if isinstance(options, dict) and options.get("temperature") is not None:
+        temp = options["temperature"]
+    payload = {
+        "model": (model or "grok-4.5").strip() or "grok-4.5",
+        "messages": msgs,
+        "stream": False,
+        "temperature": temp,
+    }
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=10)) as c:
+            r = await c.post(f"{XAI_BASE}/chat/completions", json=payload, headers=headers)
+            if r.status_code >= 400:
+                return "", f"xAI HTTP {r.status_code}: {r.text[:400]}"
+            data = r.json()
+            if isinstance(data, dict) and data.get("error"):
+                err = data["error"]
+                return "", str(err.get("message", err) if isinstance(err, dict) else err)[:500]
+            choices = data.get("choices") or []
+            if not choices:
+                return "", "xAI 無 choices"
+            text = ((choices[0].get("message") or {}).get("content")) or ""
+            if not isinstance(text, str):
+                text = str(text)
+            if not text.strip():
+                return "", "xAI 回了空訊息"
+            return text, None
+    except Exception as e:
+        return "", f"xAI 連線失敗({type(e).__name__}: {e})"
+
+
+def _messages_to_prompt(messages: list) -> str:
+    """把 chat messages 壓成給 grok -p 的單一 prompt。"""
+    system_parts: list[str] = []
+    turns: list[str] = []
+    for m in _normalize_messages(messages):
+        if m["role"] == "system":
+            system_parts.append(m["content"])
+        elif m["role"] == "assistant":
+            turns.append(f"assistant: {m['content']}")
         else:
-            turns.append(f"user: {text}")
+            turns.append(f"user: {m['content']}")
     chunks: list[str] = []
     if system_parts:
         chunks.append("[系統指示]\n" + "\n\n".join(system_parts))
@@ -235,9 +297,8 @@ def _messages_to_prompt(messages: list) -> str:
 
 
 async def _run_grok_build(model: str, messages: list, options: dict | None = None) -> tuple[str, str | None]:
-    """呼叫本機 `grok -p`(無頭),回傳 (text, error)。
-    非串流、整包完成才有結果——對應遊戲的訂單/代工佇列模型。"""
-    if not _grok_available():
+    """本機 `grok -p` 無頭 agent。coding 用;角色對話會很慢(常 >1 分)。"""
+    if not _grok_build_available():
         return "", f"找不到 Grok Build 指令 `{GROK_BIN}`(請安裝或設 GROK_BIN)"
     prompt = _messages_to_prompt(messages)
     if not prompt.strip():
@@ -245,7 +306,6 @@ async def _run_grok_build(model: str, messages: list, options: dict | None = Non
     model = (model or "grok-4.5").strip() or "grok-4.5"
     GROK_CWD.mkdir(parents=True, exist_ok=True)
 
-    # 長 prompt 走檔案,避免 ARG_MAX;cwd 用空沙箱,別讓它掃到遊戲專案
     with tempfile.TemporaryDirectory(prefix="yoro-grok-") as td:
         prompt_path = Path(td) / "prompt.txt"
         prompt_path.write_text(prompt, encoding="utf-8")
@@ -296,7 +356,6 @@ async def _run_grok_build(model: str, messages: list, options: dict | None = Non
         out = (stdout or b"").decode("utf-8", errors="replace").strip()
         err_txt = (stderr or b"").decode("utf-8", errors="replace").strip()
         if proc.returncode != 0:
-            # 失敗時 stdout 也可能是 JSON error
             if out:
                 try:
                     ej = json.loads(out)
@@ -310,7 +369,6 @@ async def _run_grok_build(model: str, messages: list, options: dict | None = Non
         try:
             data = json.loads(out)
         except json.JSONDecodeError:
-            # 極少數情況 stdout 混了非 JSON;整段當文字
             return out, None
         if isinstance(data, dict) and data.get("type") == "error":
             return "", str(data.get("message") or data)[:500]
@@ -324,6 +382,14 @@ async def _run_grok_build(model: str, messages: list, options: dict | None = Non
         if not text.strip():
             return "", "Grok Build 回了空訊息"
         return text, None
+
+
+async def _run_order_llm(provider: str, model: str, messages: list, options: dict | None = None) -> tuple[str, str | None]:
+    if provider == "xai":
+        return await _run_xai_api(model, messages, options)
+    if provider == "grok-build":
+        return await _run_grok_build(model, messages, options)
+    return "", f"未知訂單 provider:{provider}"
 
 
 async def _stream_ollama_chat(endpoint: str, body: dict, on_token) -> str | None:
@@ -350,14 +416,37 @@ async def _stream_ollama_chat(endpoint: str, body: dict, on_token) -> str | None
 @app.get("/api/llm/tags")
 async def llm_tags(endpoint: str = "http://localhost:11434", provider: str = "ollama"):
     provider = _normalize_provider(provider)
-    if provider == "grok":
-        if not _grok_available():
+    if provider == "xai":
+        if not _xai_key():
+            raise HTTPException(
+                status_code=502,
+                detail="伺服器未設定 XAI_API_KEY。export XAI_API_KEY=... 後重啟 uvicorn。https://console.x.ai",
+            )
+        names = list(XAI_DEFAULT_MODELS)
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get(
+                    f"{XAI_BASE}/models",
+                    headers={"Authorization": f"Bearer {_xai_key()}"},
+                )
+                if r.status_code < 400:
+                    ids = []
+                    for m in (r.json().get("data") or []):
+                        mid = m.get("id") or m.get("name")
+                        if mid:
+                            ids.append(mid)
+                    if ids:
+                        names = ids
+        except httpx.HTTPError:
+            pass
+        return {"models": [{"name": n} for n in names], "configured": True, "engine": "xai-api"}
+    if provider == "grok-build":
+        if not _grok_build_available():
             raise HTTPException(
                 status_code=502,
                 detail=f"找不到 Grok Build 指令 `{GROK_BIN}`。安裝 grok CLI 或設 GROK_BIN。",
             )
-        names = list(GROK_DEFAULT_MODELS)
-        # 嘗試讀本機 models cache(grok login 後會有)
+        names = list(XAI_DEFAULT_MODELS) + ["grok-build"]
         cache = Path.home() / ".grok" / "models_cache.json"
         try:
             if cache.is_file():
@@ -376,8 +465,7 @@ async def llm_tags(endpoint: str = "http://localhost:11434", provider: str = "ol
         raise HTTPException(status_code=502, detail="Ollama 連不上")
 
 
-# Ollama 仍可用 chat_job 串流;Grok Build 請走 /api/gen 訂單佇列(非即時)。
-# 保留 chat_job 相容:若誤打 Grok 也會整包跑完再回(不串流 token)。
+# Ollama → chat_job 串流;xAI / Grok Build → 訂單整包(chat_job 也相容)
 
 CHAT_JOBS: dict[str, dict] = {}
 
@@ -390,8 +478,9 @@ async def _run_chat_job(job_id: str, provider: str, endpoint: str, body: dict):
         acc_parts.append(piece)
         job["text"] = "".join(acc_parts)
 
-    if provider == "grok":
-        text, err = await _run_grok_build(
+    if _is_order_provider(provider):
+        text, err = await _run_order_llm(
+            provider,
             body.get("model") or "grok-4.5",
             body.get("messages") or [],
             body.get("options"),
@@ -426,7 +515,6 @@ async def create_chat_job(body: dict):
     return {"job_id": job_id}
 
 
-# 相容端點:舊版前端(未更新的 PWA)仍打這裡;Grok 整包回,Ollama 串流
 @app.post("/api/llm/chat")
 async def llm_chat_compat(body: dict):
     from fastapi.responses import StreamingResponse
@@ -437,8 +525,9 @@ async def llm_chat_compat(body: dict):
 
     async def gen():
         try:
-            if provider == "grok":
-                text, err = await _run_grok_build(
+            if _is_order_provider(provider):
+                text, err = await _run_order_llm(
+                    provider,
                     body.get("model") or "grok-4.5",
                     body.get("messages") or [],
                     body.get("options"),
@@ -525,8 +614,8 @@ def random_script(category: str):
     return {"id": r[0], "method": r[1], "body": r[2]}
 
 
-# ---- 代工生成佇列(手機下單/收貨;伺服器背景跑 Ollama 或 Grok Build 無頭)----
-# endpoint 哨兵 "grok"(及舊別名 "xai") = 走 Grok Build;其餘字串當 Ollama base URL
+# ---- 代工生成佇列(手機下單/收貨)----
+# endpoint 哨兵: "xai" | "grok-build"(舊 "grok" 哨兵 → xai);其餘 = Ollama URL
 
 
 class GenIn(BaseModel):
@@ -535,7 +624,7 @@ class GenIn(BaseModel):
     model: str
     messages: list
     options: dict | None = None
-    provider: str | None = None  # "ollama" | "grok";缺省時若 endpoint 為 grok/xai 哨兵則視為 grok
+    provider: str | None = None  # "ollama" | "xai" | "grok-build"
     retry: bool = False  # True:若該 key 先前失敗,重新排隊
 
 
@@ -544,8 +633,12 @@ GEN_WAKE = asyncio.Event()
 
 def _gen_endpoint_for(provider: str | None, endpoint: str) -> str:
     ep = (endpoint or "").strip().lower()
-    if _normalize_provider(provider) == "grok" or ep in ("grok", "xai", "grok-build"):
-        return "grok"
+    p = _normalize_provider(provider) if provider else None
+    if p == "grok-build" or ep in ("grok-build", "build"):
+        return "grok-build"
+    # 舊哨兵 "grok" 改走 API
+    if p == "xai" or ep in ("xai", "grok"):
+        return "xai"
     return (endpoint or "http://localhost:11434").rstrip("/")
 
 
@@ -618,9 +711,10 @@ async def _gen_worker():
             def on_token(piece: str):
                 parts.append(piece)
 
-            if endpoint == "grok":
-                # Grok Build 無頭:整包完成才回(訂單制,不串流)
-                text, err = await _run_grok_build(model, msgs, opts)
+            if endpoint in ("xai", "grok-build", "grok"):
+                # 舊哨兵 "grok" 當 xai API;訂單整包、不串流
+                prov = "grok-build" if endpoint == "grok-build" else "xai"
+                text, err = await _run_order_llm(prov, model, msgs, opts)
             else:
                 body = {"model": model, "messages": msgs, "stream": True, "options": opts}
                 err = await _stream_ollama_chat(endpoint, body, on_token)

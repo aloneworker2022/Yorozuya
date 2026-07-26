@@ -98,12 +98,13 @@
 <!-- ── AI 互動測試台 ── -->
 <section>
   <h2>AI 互動測試台(召喚師 × 妹子 · 訂單佇列)</h2>
-  <div class="mini" style="margin-bottom:.6em">跟遊戲同一套 prompt 管線,經 <code>/api/gen</code> 下單收貨。Grok Build = 伺服器背景跑 <code>grok -p</code> 無頭(非 xAI HTTP、非即時串流)。測試期輪詢/逾時先不設上限。</div>
+  <div class="mini" style="margin-bottom:.6em">跟遊戲同一套 prompt 管線,經 <code>/api/gen</code> 下單收貨。推薦 <b>xAI API</b>(數秒);Grok Build 是 coding agent,角色對話常超過一分鐘。</div>
   <div class="row" style="gap:.5em">
-    <span style="flex:1 1 9em"><label>供應商</label>
+    <span style="flex:1 1 11em"><label>供應商</label>
       <select id="tb-provider">
-        <option value="grok">Grok Build(無頭·訂單)</option>
+        <option value="xai">Grok(xAI API·快)</option>
         <option value="ollama">Ollama</option>
+        <option value="grok-build">Grok Build(慢)</option>
       </select>
     </span>
     <span style="flex:1 1 10em"><label>模型</label><input id="tb-model" list="tb-model-list" placeholder="grok-4.5"><datalist id="tb-model-list"></datalist></span>
@@ -430,14 +431,20 @@ function rollGirl() {
   document.getElementById("tb-back").value = GIRL_BACKS[Math.floor(Math.random()*GIRL_BACKS.length)];
 }
 function tbProvider() {
-  return document.getElementById("tb-provider")?.value === "ollama" ? "ollama" : "grok";
+  const v = (document.getElementById("tb-provider")?.value || "xai").toLowerCase();
+  if (v === "ollama") return "ollama";
+  if (v === "grok-build" || v === "build") return "grok-build";
+  return "xai";
 }
 function tbRoute() {
   const provider = tbProvider();
+  const ep = provider === "xai" ? "xai"
+    : provider === "grok-build" ? "grok-build"
+    : (document.getElementById("tb-endpoint").value.trim() || "http://localhost:11434");
   return {
     provider,
-    endpoint: provider === "grok" ? "grok" : (document.getElementById("tb-endpoint").value.trim() || "http://localhost:11434"),
-    model: (document.getElementById("tb-model").value.trim() || (provider === "grok" ? "grok-4.5" : "")),
+    endpoint: ep,
+    model: (document.getElementById("tb-model").value.trim() || ((provider === "ollama") ? "" : "grok-4.5")),
   };
 }
 function tbSyncProviderUi() {
@@ -453,10 +460,14 @@ async function tbPing() {
     const q = new URLSearchParams({ provider, endpoint });
     const j = await api("/api/llm/tags?" + q);
     const n = (j.models || []).length;
-    if (provider === "grok") {
+    if (provider === "xai") {
+      status("tb-engine", h.xai
+        ? `xAI API OK · ${n} 模型(快·訂單)`
+        : "未設定 XAI_API_KEY", !h.xai);
+    } else if (provider === "grok-build") {
       status("tb-engine", h.grok_build
-        ? `Grok Build OK · ${n} 模型 · bin=${h.grok_bin || "grok"}`
-        : `找不到 grok 指令(bin=${h.grok_bin || "?"})`, !h.grok_build);
+        ? `Grok Build OK · ${n} 模型 · 慢`
+        : `找不到 grok(bin=${h.grok_bin || "?"})`, !h.grok_build);
     } else {
       status("tb-engine", `Ollama OK · ${n} 模型`);
     }
@@ -491,10 +502,12 @@ function initTestBench() {
   document.getElementById("tb-stage").innerHTML = STAGE_NAMES.map((n,i)=>`<option value="${i}">${n}</option>`).join("");
   document.getElementById("tb-loc-list").innerHTML = DATE_LOCS.map(l=>`<option value="${l}">`).join("");
   if (save?.settings?.rating) document.getElementById("tb-rating").value = save.settings.rating;
-  // 從遊戲設定帶入,預設偏 Grok Build 方便測
-  const rawP = (save?.settings?.llmProvider || "grok").toLowerCase();
-  const isGrok = rawP === "grok" || rawP === "xai" || rawP === "grok-build" || !save?.settings?.llmProvider;
-  document.getElementById("tb-provider").value = isGrok ? "grok" : "ollama";
+  // 從遊戲設定帶入;預設 xAI API(快)
+  const rawP = (save?.settings?.llmProvider || "xai").toLowerCase();
+  let sel = "xai";
+  if (rawP === "ollama") sel = "ollama";
+  else if (rawP === "grok-build" || rawP === "build") sel = "grok-build";
+  document.getElementById("tb-provider").value = sel;
   document.getElementById("tb-model").value = save?.settings?.model || "grok-4.5";
   document.getElementById("tb-endpoint").value = save?.settings?.ollamaUrl || "http://localhost:11434";
   document.getElementById("tb-provider").onchange = tbSyncProviderUi;
