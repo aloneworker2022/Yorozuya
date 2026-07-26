@@ -2879,9 +2879,8 @@ function renderProc() {
   const card = $("#proc-card");
   const nav2 = dir => {
     const n = poolItems(lv).length;
-    const nx = procIdx[lv] + dir;
-    if (nx < 0 || nx >= n) return;
-    procIdx[lv] = nx;
+    if (n <= 1) return;
+    procIdx[lv] = (procIdx[lv] + dir + n) % n;   // 循環:第一張往右→最後一張,最後一張往左→第一張
     renderProc();
   };
   const H = lv === 0 ? {
