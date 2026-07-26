@@ -2,13 +2,17 @@
 
 - 靜態伺服:web/(遊戲本體)+ assets/(生成圖像)
 - 存檔 API:GET/PUT /api/save(SQLite,版本號防呆的 last-write-wins)
+- LLM:Ollama 串流,或 Grok Build 無頭模式(grok -p)訂單佇列
 
 啟動:uvicorn main:app --host 0.0.0.0 --port 8000
 """
 
 import asyncio
 import json
+import os
+import shutil
 import sqlite3
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -24,6 +28,32 @@ ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "game.db"
 WEB_DIR = ROOT / "web"
 ASSETS_DIR = ROOT / "assets"
+
+# Grok Build 無頭 CLI(不是 xAI HTTP API)
+GROK_BIN = os.environ.get("GROK_BIN", "grok")
+GROK_CWD = Path(os.environ.get("GROK_CWD", str(ROOT / "data" / "grok_cwd")))
+# 0 = 不限時(測試期先不設上限;正式環境可 export GROK_TIMEOUT=300)
+GROK_TIMEOUT = float(os.environ.get("GROK_TIMEOUT", "0"))
+# 0 = 不限制 agent 回合數(測試期先不設上限)
+GROK_MAX_TURNS = int(os.environ.get("GROK_MAX_TURNS", "0") or "0")
+GROK_DEFAULT_MODELS = [
+    "grok-4.5",
+    "grok-4.3",
+    "grok-build",
+    "grok-4.20-0309-non-reasoning",
+    "grok-4.20-0309-reasoning",
+]
+# 角色扮演只要純文字,關掉 agent 工具,避免它去讀檔/跑 shell
+_GROK_DISALLOWED_TOOLS = (
+    "run_terminal_cmd,search_replace,write,read_file,list_dir,grep,"
+    "web_search,web_fetch,spawn_subagent,image_gen,image_edit,"
+    "open_page,use_tool,todo_write"
+)
+
+
+def _grok_available() -> bool:
+    return bool(shutil.which(GROK_BIN) or Path(GROK_BIN).is_file())
+
 
 app = FastAPI(title="魅魔萬事屋")
 
@@ -98,7 +128,12 @@ class SavePut(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "time": time.time()}
+    return {
+        "ok": True,
+        "time": time.time(),
+        "grok_build": _grok_available(),
+        "grok_bin": GROK_BIN,
+    }
 
 
 @app.get("/api/save")
@@ -153,12 +188,186 @@ def delete_bg(name: str):
     return {"ok": True}
 
 
-# ---- LLM 代理(瀏覽器 → RP5 → Ollama;免 CORS、免混合內容問題)----
-# 伺服器不檢視、不修改訊息內容,僅轉發位元組(8.1 零解析原則)
+# ---- LLM 代理(瀏覽器 → RP5 → Ollama 串流,或 Grok Build 無頭訂單)----
+# 伺服器不檢視、不修改訊息內容,僅轉發/累積原文(8.1 零解析原則)
+# provider: "ollama"(預設,可串流) | "grok"(Grok Build headless;一律走 /api/gen 訂單佇列)
+
+
+def _normalize_provider(p) -> str:
+    p = (p or "ollama").strip().lower()
+    # xai/spacexai 舊別名 → 一律當 grok build
+    if p in ("grok", "grok-build", "grokbuild", "xai", "spacexai"):
+        return "grok"
+    return "ollama"
+
+
+def _messages_to_prompt(messages: list) -> str:
+    """把 chat messages 壓成給 grok -p 的單一 prompt(不解析語意,只做格式拼接)。"""
+    system_parts: list[str] = []
+    turns: list[str] = []
+    for m in messages or []:
+        if not isinstance(m, dict):
+            continue
+        role = (m.get("role") or "user").strip().lower()
+        content = m.get("content")
+        if content is None:
+            continue
+        text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+        text = text.strip()
+        if not text:
+            continue
+        if role == "system":
+            system_parts.append(text)
+        elif role == "assistant":
+            turns.append(f"assistant: {text}")
+        else:
+            turns.append(f"user: {text}")
+    chunks: list[str] = []
+    if system_parts:
+        chunks.append("[系統指示]\n" + "\n\n".join(system_parts))
+    if turns:
+        chunks.append("[對話]\n" + "\n\n".join(turns))
+    chunks.append(
+        "[輸出要求]\n只輸出角色的下一句回覆本文。"
+        "不要加 role 前綴、不要解釋、不要條列工具、不要提及你是 AI 或 Grok。"
+    )
+    return "\n\n".join(chunks)
+
+
+async def _run_grok_build(model: str, messages: list, options: dict | None = None) -> tuple[str, str | None]:
+    """呼叫本機 `grok -p`(無頭),回傳 (text, error)。
+    非串流、整包完成才有結果——對應遊戲的訂單/代工佇列模型。"""
+    if not _grok_available():
+        return "", f"找不到 Grok Build 指令 `{GROK_BIN}`(請安裝或設 GROK_BIN)"
+    prompt = _messages_to_prompt(messages)
+    if not prompt.strip():
+        return "", "空 prompt"
+    model = (model or "grok-4.5").strip() or "grok-4.5"
+    GROK_CWD.mkdir(parents=True, exist_ok=True)
+
+    # 長 prompt 走檔案,避免 ARG_MAX;cwd 用空沙箱,別讓它掃到遊戲專案
+    with tempfile.TemporaryDirectory(prefix="yoro-grok-") as td:
+        prompt_path = Path(td) / "prompt.txt"
+        prompt_path.write_text(prompt, encoding="utf-8")
+        cmd = [
+            GROK_BIN,
+            "--prompt-file", str(prompt_path),
+            "-m", model,
+            "--output-format", "json",
+            "--no-subagents",
+            "--disable-web-search",
+            "--no-plan",
+            "--no-memory",
+            "--no-auto-update",
+            "--verbatim",
+            "--cwd", str(GROK_CWD),
+            "--disallowed-tools", _GROK_DISALLOWED_TOOLS,
+            "--rules",
+            "角色扮演純文字輸出。禁止使用任何工具。禁止讀寫檔案。禁止執行指令。",
+        ]
+        if GROK_MAX_TURNS > 0:
+            cmd.extend(["--max-turns", str(GROK_MAX_TURNS)])
+        env = {**os.environ, "GROK_DISABLE_AUTOUPDATER": "1"}
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+        except FileNotFoundError:
+            return "", f"無法啟動 `{GROK_BIN}`"
+        try:
+            if GROK_TIMEOUT and GROK_TIMEOUT > 0:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=GROK_TIMEOUT)
+            else:
+                stdout, stderr = await proc.communicate()
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            try:
+                await proc.communicate()
+            except Exception:
+                pass
+            return "", f"Grok Build 逾時({int(GROK_TIMEOUT)}s)"
+
+        out = (stdout or b"").decode("utf-8", errors="replace").strip()
+        err_txt = (stderr or b"").decode("utf-8", errors="replace").strip()
+        if proc.returncode != 0:
+            # 失敗時 stdout 也可能是 JSON error
+            if out:
+                try:
+                    ej = json.loads(out)
+                    if isinstance(ej, dict) and (ej.get("message") or ej.get("type") == "error"):
+                        return "", str(ej.get("message") or ej)[:500]
+                except json.JSONDecodeError:
+                    pass
+            return "", f"Grok Build 失敗(exit {proc.returncode}): {(err_txt or out)[:500]}"
+        if not out:
+            return "", f"Grok Build 無輸出{((': ' + err_txt[:300]) if err_txt else '')}"
+        try:
+            data = json.loads(out)
+        except json.JSONDecodeError:
+            # 極少數情況 stdout 混了非 JSON;整段當文字
+            return out, None
+        if isinstance(data, dict) and data.get("type") == "error":
+            return "", str(data.get("message") or data)[:500]
+        text = ""
+        if isinstance(data, dict):
+            text = data.get("text") or ""
+            if not text and isinstance(data.get("message"), str):
+                text = data["message"]
+        if not isinstance(text, str):
+            text = str(text)
+        if not text.strip():
+            return "", "Grok Build 回了空訊息"
+        return text, None
+
+
+async def _stream_ollama_chat(endpoint: str, body: dict, on_token) -> str | None:
+    """Ollama NDJSON 串流;on_token(chunk) 累積。回傳 error 字串或 None。"""
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
+            async with c.stream("POST", endpoint.rstrip("/") + "/api/chat", json=body) as r:
+                async for line in r.aiter_lines():
+                    if not line.strip():
+                        continue
+                    o = json.loads(line)
+                    if o.get("error"):
+                        return str(o["error"])
+                    piece = (o.get("message") or {}).get("content", "")
+                    if piece:
+                        on_token(piece)
+                    if o.get("done"):
+                        break
+    except Exception as e:
+        return f"Ollama 連線失敗({type(e).__name__})"
+    return None
 
 
 @app.get("/api/llm/tags")
-async def llm_tags(endpoint: str = "http://localhost:11434"):
+async def llm_tags(endpoint: str = "http://localhost:11434", provider: str = "ollama"):
+    provider = _normalize_provider(provider)
+    if provider == "grok":
+        if not _grok_available():
+            raise HTTPException(
+                status_code=502,
+                detail=f"找不到 Grok Build 指令 `{GROK_BIN}`。安裝 grok CLI 或設 GROK_BIN。",
+            )
+        names = list(GROK_DEFAULT_MODELS)
+        # 嘗試讀本機 models cache(grok login 後會有)
+        cache = Path.home() / ".grok" / "models_cache.json"
+        try:
+            if cache.is_file():
+                data = json.loads(cache.read_text(encoding="utf-8"))
+                models = data.get("models") or {}
+                if isinstance(models, dict) and models:
+                    names = list(models.keys())
+        except Exception:
+            pass
+        return {"models": [{"name": n} for n in names], "configured": True, "engine": "grok-build"}
     try:
         async with httpx.AsyncClient(timeout=5) as c:
             r = await c.get(endpoint.rstrip("/") + "/api/tags")
@@ -167,63 +376,87 @@ async def llm_tags(endpoint: str = "http://localhost:11434"):
         raise HTTPException(status_code=502, detail="Ollama 連不上")
 
 
-# 聊天改為「job 制」:手機發起後由 RP5 對 Ollama 收完整回覆,
-# 手機只輪詢結果——切去別的 app、網路斷線都不會中斷生成。
-# 伺服器僅逐字累積原文,不檢視、不修改(8.1)。
+# Ollama 仍可用 chat_job 串流;Grok Build 請走 /api/gen 訂單佇列(非即時)。
+# 保留 chat_job 相容:若誤打 Grok 也會整包跑完再回(不串流 token)。
 
 CHAT_JOBS: dict[str, dict] = {}
 
 
-async def _run_chat_job(job_id: str, endpoint: str, body: dict):
+async def _run_chat_job(job_id: str, provider: str, endpoint: str, body: dict):
     job = CHAT_JOBS[job_id]
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
-            async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
-                async for line in r.aiter_lines():
-                    if not line.strip():
-                        continue
-                    o = json.loads(line)
-                    if o.get("error"):
-                        job["error"] = str(o["error"])
-                        break
-                    job["text"] += (o.get("message") or {}).get("content", "")
-                    if o.get("done"):
-                        break
-    except Exception as e:
-        if not job["text"]:
-            job["error"] = f"Ollama 連線失敗({type(e).__name__})"
+    acc_parts: list[str] = []
+
+    def on_token(piece: str):
+        acc_parts.append(piece)
+        job["text"] = "".join(acc_parts)
+
+    if provider == "grok":
+        text, err = await _run_grok_build(
+            body.get("model") or "grok-4.5",
+            body.get("messages") or [],
+            body.get("options"),
+        )
+        if text:
+            job["text"] = text
+        if err and not text:
+            job["error"] = err
+    else:
+        ollama_body = {
+            "model": body.get("model"),
+            "messages": body.get("messages") or [],
+            "stream": True,
+            "options": body.get("options") or {},
+        }
+        err = await _stream_ollama_chat(endpoint, ollama_body, on_token)
+        if err and not job["text"]:
+            job["error"] = err
     job["done"] = True
 
 
 @app.post("/api/llm/chat_job")
 async def create_chat_job(body: dict):
+    provider = _normalize_provider(body.pop("provider", None))
     endpoint = str(body.pop("endpoint", "http://localhost:11434")).rstrip("/")
-    body["stream"] = True
     now = time.time()
     for k in [k for k, v in CHAT_JOBS.items() if now - v["t"] > 600]:
         CHAT_JOBS.pop(k, None)
     job_id = uuid.uuid4().hex
     CHAT_JOBS[job_id] = {"text": "", "done": False, "error": None, "t": now}
-    asyncio.create_task(_run_chat_job(job_id, endpoint, body))
+    asyncio.create_task(_run_chat_job(job_id, provider, endpoint, body))
     return {"job_id": job_id}
 
 
-# 相容端點:舊版前端(未更新的 PWA)仍打這裡;內部走同一套 job
+# 相容端點:舊版前端(未更新的 PWA)仍打這裡;Grok 整包回,Ollama 串流
 @app.post("/api/llm/chat")
 async def llm_chat_compat(body: dict):
     from fastapi.responses import StreamingResponse
 
+    provider = _normalize_provider(body.pop("provider", None))
     endpoint = str(body.pop("endpoint", "http://localhost:11434")).rstrip("/")
     body["stream"] = True
 
     async def gen():
         try:
+            if provider == "grok":
+                text, err = await _run_grok_build(
+                    body.get("model") or "grok-4.5",
+                    body.get("messages") or [],
+                    body.get("options"),
+                )
+                if err and not text:
+                    yield json.dumps({"error": err}, ensure_ascii=False).encode() + b"\n"
+                else:
+                    yield json.dumps(
+                        {"message": {"role": "assistant", "content": text}, "done": True},
+                        ensure_ascii=False,
+                    ).encode() + b"\n"
+                return
             async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
                 async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
                     async for chunk in r.aiter_bytes():
                         yield chunk
         except httpx.HTTPError as e:
-            yield json.dumps({"error": f"Ollama 連線失敗({type(e).__name__})"}).encode() + b"\n"
+            yield json.dumps({"error": f"LLM 連線失敗({type(e).__name__})"}).encode() + b"\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
 
@@ -292,19 +525,28 @@ def random_script(category: str):
     return {"id": r[0], "method": r[1], "body": r[2]}
 
 
-# ---- 代工生成佇列(手機下單/收貨;伺服器背景跑 Ollama)----
+# ---- 代工生成佇列(手機下單/收貨;伺服器背景跑 Ollama 或 Grok Build 無頭)----
+# endpoint 哨兵 "grok"(及舊別名 "xai") = 走 Grok Build;其餘字串當 Ollama base URL
 
 
 class GenIn(BaseModel):
     key: str
-    endpoint: str
+    endpoint: str = "http://localhost:11434"
     model: str
     messages: list
     options: dict | None = None
+    provider: str | None = None  # "ollama" | "grok";缺省時若 endpoint 為 grok/xai 哨兵則視為 grok
     retry: bool = False  # True:若該 key 先前失敗,重新排隊
 
 
 GEN_WAKE = asyncio.Event()
+
+
+def _gen_endpoint_for(provider: str | None, endpoint: str) -> str:
+    ep = (endpoint or "").strip().lower()
+    if _normalize_provider(provider) == "grok" or ep in ("grok", "xai", "grok-build"):
+        return "grok"
+    return (endpoint or "http://localhost:11434").rstrip("/")
 
 
 @app.post("/api/gen")
@@ -312,6 +554,7 @@ def gen_submit(t: GenIn):
     """下單即查詢:同 key 重複下單無害,回傳當前狀態(done 時附結果)。
     先前失敗且 retry=True → 重新排隊(仍回報 error 讓手機計失敗次數)。"""
     now = time.time()
+    ep = _gen_endpoint_for(t.provider, t.endpoint)
     with db() as conn:
         row = conn.execute(
             "SELECT status, result, error FROM gen_tasks WHERE key = ?", (t.key,)
@@ -328,7 +571,7 @@ def gen_submit(t: GenIn):
         conn.execute(
             "INSERT INTO gen_tasks (key, endpoint, model, messages, options, status, created, updated) "
             "VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
-            (t.key, t.endpoint.rstrip("/"), t.model,
+            (t.key, ep, t.model,
              json.dumps(t.messages, ensure_ascii=False),
              json.dumps(t.options or {}, ensure_ascii=False), now, now),
         )
@@ -368,23 +611,20 @@ async def _gen_worker():
             with db() as conn:
                 conn.execute("UPDATE gen_tasks SET status='running', updated=? WHERE key=?", (time.time(), key))
             text, err = "", None
-            try:
-                body = {"model": model, "messages": json.loads(messages),
-                        "stream": True, "options": json.loads(options or "{}")}
-                async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
-                    async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
-                        async for line in r.aiter_lines():
-                            if not line.strip():
-                                continue
-                            o = json.loads(line)
-                            if o.get("error"):
-                                err = str(o["error"])
-                                break
-                            text += (o.get("message") or {}).get("content", "")
-                            if o.get("done"):
-                                break
-            except Exception as e:
-                err = f"Ollama 連線失敗({type(e).__name__})"
+            msgs = json.loads(messages)
+            opts = json.loads(options or "{}")
+            parts: list[str] = []
+
+            def on_token(piece: str):
+                parts.append(piece)
+
+            if endpoint == "grok":
+                # Grok Build 無頭:整包完成才回(訂單制,不串流)
+                text, err = await _run_grok_build(model, msgs, opts)
+            else:
+                body = {"model": model, "messages": msgs, "stream": True, "options": opts}
+                err = await _stream_ollama_chat(endpoint, body, on_token)
+                text = "".join(parts)
             if not text.strip() and not err:
                 err = "空回應"
             with db() as conn:

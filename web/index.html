@@ -143,8 +143,15 @@
         <div id="bg-thumbs"></div>
       </div>
       <div class="panel sub">
-        <h2>AI(Ollama)</h2>
-        <div class="setting-row"><label>端點</label><input id="set-ollama" type="text" class="wide" placeholder="http://<主機>:11434"></div>
+        <h2>AI</h2>
+        <div class="setting-row"><label>供應商</label>
+          <select id="set-llm-provider">
+            <option value="ollama">Ollama(本機串流)</option>
+            <option value="grok">Grok Build(無頭·訂單)</option>
+          </select>
+        </div>
+        <div class="setting-row" id="row-ollama-url"><label>端點</label><input id="set-ollama" type="text" class="wide" placeholder="http://&lt;主機&gt;:11434"></div>
+        <div class="setting-row hidden" id="row-grok-hint"><label>引擎</label><span class="dim small">伺服器執行 <code>grok -p</code> 無頭模式(需已 <code>grok login</code>),走代工訂單佇列</span></div>
         <div class="setting-row"><label>模型</label><input id="set-model" type="text" class="wide" list="model-list" placeholder="(留空 = 罐頭模式)"><datalist id="model-list"></datalist></div>
         <div class="setting-row"><label>內容分級</label><select id="set-rating"><option value="sfw">SFW</option><option value="nsfw">NSFW(依內容模組)</option></select></div>
         <div class="btn-row"><button id="btn-llm-test">測試連線</button><span id="llm-test-result" class="dim small"></span></div>

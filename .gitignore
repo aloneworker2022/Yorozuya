@@ -3,3 +3,6 @@ data/
 assets/portraits/
 assets/album/
 .venv/
+.env
+.env.*
+*.pem

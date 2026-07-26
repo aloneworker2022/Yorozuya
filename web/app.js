@@ -299,6 +299,8 @@ function defaultState() {
     log: [],
     settings: {
       player: "", sleepStart: "01:00", sleepEnd: "06:00", theme: "aqua",
+      // llmProvider: "ollama"(本機串流) | "grok"(Grok Build 無頭,訂單佇列)
+      llmProvider: "ollama",
       ollamaUrl: "http://localhost:11434", model: "", rating: "sfw",
       cardColors: null,   // null = 主題預設;{exec|found|acc|vn: {color,opacity}}
       cardCenter: false,  // 卡牌文字水平置中
@@ -1504,16 +1506,35 @@ function actMsgs(s, su, act) {
   ];
 }
 
-// ── 代工生成:手機只「下單/收貨」,實際排隊跑 Ollama 在 RP5 伺服器背景——
+// ── 代工生成:手機只「下單/收貨」,實際排隊跑 LLM 在 RP5 伺服器背景——
 //    手機切走/鎖屏/待機都不影響生成;下次開 app 收貨即亮。
 //    key = 內容狀態指紋(伺服器以 key 去重;狀態變了 key 就變,舊單自然作廢過期)。
 function strHash(x) { let h = 5381; for (let i = 0; i < x.length; i++) h = ((h * 33) ^ x.charCodeAt(i)) >>> 0; return h.toString(36); }
+
+function llmProvider() {
+  const p = (state.settings.llmProvider || "ollama").toLowerCase();
+  // 舊存檔可能寫 xai → 視為 grok build
+  if (p === "grok" || p === "grok-build" || p === "xai" || p === "spacexai") return "grok";
+  return "ollama";
+}
+
+/** 組出 /api/gen 與 /api/llm/* 共用的 provider/endpoint 欄位 */
+function llmRouteFields() {
+  const provider = llmProvider();
+  return {
+    provider,
+    endpoint: provider === "grok" ? "grok" : (state.settings.ollamaUrl || "http://localhost:11434"),
+  };
+}
 
 async function genPost(key, messages) {
   try {
     const r = await fetch("/api/gen", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, retry: true, endpoint: state.settings.ollamaUrl, model: state.settings.model, messages, options: { temperature: 0.9 } }),
+      body: JSON.stringify({
+        key, retry: true, ...llmRouteFields(),
+        model: state.settings.model, messages, options: { temperature: 0.9 },
+      }),
     });
     if (!r.ok) return null;
     return await r.json();
@@ -1757,7 +1778,9 @@ function vnShow(name, text, who = "ai") {
 function vnTyping(show) { $("#vn-typing").classList.toggle("hidden", !show); }
 function vnDone() { $("#vn-cursor").classList.remove("hidden"); vnTyping(false); }
 
-// 通用 LLM job 執行:RP5 代跑 Ollama、手機輪詢(切 app/瞬斷不中斷)
+// 通用 LLM 執行:
+// - Grok Build:一律走 /api/gen 訂單佇列(非即時;伺服器背景跑 grok -p)
+// - Ollama:chat_job 串流輪詢(切 app/瞬斷不中斷)
 async function llmJobRun(messages, onToken, cannedLine) {
   if (!state.settings.model) {                     // 無模型 → 罐頭逐字
     await new Promise(r => setTimeout(r, 600));
@@ -1770,9 +1793,54 @@ async function llmJobRun(messages, onToken, cannedLine) {
     return line;
   }
   chatAbort = new AbortController();
+
+  // ── Grok Build:訂單制 ──
+  if (llmProvider() === "grok") {
+    const key = `live:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+    const t0 = Date.now();
+    let fails = 0;
+    while (true) {
+      if (chatAbort.signal.aborted) { const e = new Error("aborted"); e.name = "AbortError"; throw e; }
+      if (Date.now() - t0 > 300000) throw new Error("等太久了(逾時)");
+      if (document.hidden) { await new Promise(r => setTimeout(r, 800)); continue; }
+      let j;
+      try {
+        const r = await fetch("/api/gen", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            key, retry: true, ...llmRouteFields(),
+            model: state.settings.model, messages, options: { temperature: 0.9 },
+          }),
+          signal: chatAbort.signal,
+        });
+        if (!r.ok) throw new Error("http " + r.status);
+        j = await r.json();
+        fails = 0;
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+        if (++fails > 40) throw new Error("網路中斷太久");
+        await new Promise(r => setTimeout(r, 800));
+        continue;
+      }
+      if (j.status === "error") throw new Error(j.error || "Grok Build 失敗");
+      if (j.status === "done") {
+        const text = (j.result || "").trim();
+        if (!text) throw new Error("模型回了空訊息");
+        onToken(text);
+        return text;
+      }
+      // pending | running
+      await new Promise(r => setTimeout(r, 800));
+    }
+  }
+
+  // ── Ollama:chat_job 串流 ──
   const startRes = await fetch("/api/llm/chat_job", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ endpoint: state.settings.ollamaUrl, model: state.settings.model, messages, options: { temperature: 0.9 } }),
+    body: JSON.stringify({
+      ...llmRouteFields(),
+      model: state.settings.model, messages, options: { temperature: 0.9 },
+    }),
     signal: chatAbort.signal,
   });
   if (!startRes.ok) throw new Error("連不上遊戲伺服器");
@@ -1891,7 +1959,7 @@ async function sendChatMsg() {
     s.history.pop();
     if (e.name !== "AbortError") {
       console.error("LLM error:", e);
-      const why = e.message && e.message !== "proxy error" ? `原因:${e.message}` : "連不上 Ollama";
+      const why = e.message && e.message !== "proxy error" ? `原因:${e.message}` : "連不上 LLM";
       vnShow("", `(她恍神了……訊息不扣費,再說一次吧。${why})`, "sys");
       input.value = text;
     }
@@ -3169,13 +3237,30 @@ function renderKanban() {
   }
 }
 
+function applyLlmProviderUi() {
+  const p = llmProvider();
+  const ollamaRow = $("#row-ollama-url");
+  const grokRow = $("#row-grok-hint");
+  if (ollamaRow) ollamaRow.classList.toggle("hidden", p === "grok");
+  if (grokRow) grokRow.classList.toggle("hidden", p !== "grok");
+  const model = $("#set-model");
+  if (model) {
+    model.placeholder = p === "grok"
+      ? "grok-4.5(留空 = 罐頭模式)"
+      : "(留空 = 罐頭模式)";
+  }
+}
+
 function renderSettings() {
   $("#set-player").value = state.settings.player || "";
   $("#set-sleep-start").value = state.settings.sleepStart;
   $("#set-sleep-end").value = state.settings.sleepEnd;
+  const prov = $("#set-llm-provider");
+  if (prov) prov.value = llmProvider();
   $("#set-ollama").value = state.settings.ollamaUrl || "";
   $("#set-model").value = state.settings.model || "";
   $("#set-rating").value = state.settings.rating || "sfw";
+  applyLlmProviderUi();
   $("#set-ver").textContent = version ? "v" + version : "(尚未寫入)";
 
   $("#set-theme").innerHTML = THEMES.map(([k, label]) =>
@@ -3316,6 +3401,21 @@ on("chat-backlog", "click", () => $("#chat-backlog")?.classList.add("hidden"));
 on("conn-retry", "click", () => load());
 
 // AI 設定
+on("set-llm-provider", "change", e => {
+  const raw = (e.target.value || "ollama").toLowerCase();
+  const p = (raw === "grok" || raw === "xai") ? "grok" : "ollama";
+  state.settings.llmProvider = p;
+  // 切到 Grok Build 且模型空白/像 Ollama 名 → 預填 grok-4.5
+  if (p === "grok") {
+    const m = (state.settings.model || "").trim();
+    if (!m || m.includes(":") || m.startsWith("llama") || m.startsWith("qwen") || m.startsWith("mistral")) {
+      state.settings.model = "grok-4.5";
+      const mi = $("#set-model"); if (mi) mi.value = "grok-4.5";
+    }
+  }
+  applyLlmProviderUi();
+  scheduleSave();
+});
 on("set-ollama", "change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });
 on("set-model", "change", e => { state.settings.model = e.target.value.trim(); scheduleSave(); });
 on("set-rating", "change", e => { state.settings.rating = e.target.value; scheduleSave(); });
@@ -3323,13 +3423,30 @@ on("btn-llm-test", "click", async () => {
   const r = $("#llm-test-result");
   if (!r) return;
   r.textContent = "測試中…";
+  const provider = llmProvider();
   try {
-    const j = await fetch(`/api/llm/tags?endpoint=${encodeURIComponent(state.settings.ollamaUrl)}`)
-      .then(x => { if (!x.ok) throw 0; return x.json(); });
+    const q = new URLSearchParams({ provider, endpoint: state.settings.ollamaUrl || "http://localhost:11434" });
+    const res = await fetch(`/api/llm/tags?${q}`);
+    if (!res.ok) {
+      let detail = "";
+      try { const j = await res.json(); detail = j.detail || ""; } catch { }
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    const j = await res.json();
     const names = (j.models || []).map(m => m.name);
     const dl = $("#model-list"); if (dl) dl.innerHTML = names.map(n => `<option value="${esc(n)}">`).join("");
-    r.textContent = names.length ? `OK,${names.length} 個模型(模型欄可下拉選)` : "OK,但沒有已安裝的模型";
-  } catch { r.textContent = "連線失敗——檢查端點與 Ollama 是否啟動"; }
+    if (provider === "grok") {
+      r.textContent = names.length
+        ? `Grok Build OK,${names.length} 個模型(訂單佇列)`
+        : "Grok Build 可執行,但沒拉到模型清單";
+    } else {
+      r.textContent = names.length ? `OK,${names.length} 個模型(模型欄可下拉選)` : "OK,但沒有已安裝的模型";
+    }
+  } catch (e) {
+    r.textContent = provider === "grok"
+      ? (`連線失敗——${e.message || "檢查伺服器是否裝了 grok CLI 並已 login"}`)
+      : "連線失敗——檢查端點與 Ollama 是否啟動";
+  }
 });
 
 on("btn-export", "click", () => {

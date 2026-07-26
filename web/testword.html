@@ -97,8 +97,24 @@
 
 <!-- ── AI 互動測試台 ── -->
 <section>
-  <h2>AI 互動測試台(召喚師 × 妹子,真打 Ollama)</h2>
-  <div class="mini" style="margin-bottom:.6em">用跟遊戲完全相同的 prompt 管線(含你的自訂階段腳本)直接測互動。端點/模型讀遊戲設定。</div>
+  <h2>AI 互動測試台(召喚師 × 妹子 · 訂單佇列)</h2>
+  <div class="mini" style="margin-bottom:.6em">跟遊戲同一套 prompt 管線,經 <code>/api/gen</code> 下單收貨。Grok Build = 伺服器背景跑 <code>grok -p</code> 無頭(非 xAI HTTP、非即時串流)。測試期輪詢/逾時先不設上限。</div>
+  <div class="row" style="gap:.5em">
+    <span style="flex:1 1 9em"><label>供應商</label>
+      <select id="tb-provider">
+        <option value="grok">Grok Build(無頭·訂單)</option>
+        <option value="ollama">Ollama</option>
+      </select>
+    </span>
+    <span style="flex:1 1 10em"><label>模型</label><input id="tb-model" list="tb-model-list" placeholder="grok-4.5"><datalist id="tb-model-list"></datalist></span>
+    <span style="flex:1 1 12em" id="tb-ep-wrap"><label>Ollama 端點</label><input id="tb-endpoint" placeholder="http://localhost:11434"></span>
+  </div>
+  <div class="row" style="margin:.5em 0 .7em;gap:.5em">
+    <button class="cy" type="button" onclick="tbPing()">測試引擎</button>
+    <button class="cy" type="button" onclick="tbApplyToSave()">寫入遊戲設定</button>
+    <button class="del" type="button" onclick="tbClearGen()">清空佇列</button>
+    <span class="status" id="tb-engine"></span>
+  </div>
   <div class="row" style="gap:.5em">
     <span style="flex:1 1 9em"><label>召喚師</label><select id="tb-su"></select></span>
     <span style="flex:1 1 9em"><label>階段(她對他)</label><select id="tb-stage"></select></span>
@@ -116,7 +132,7 @@
   <label>她的來歷(backstory)</label>
   <input id="tb-back">
   <div class="row" style="margin-top:.7em">
-    <button onclick="runTestGen()" id="tb-run">▶ 生成互動</button>
+    <button onclick="runTestGen()" id="tb-run">▶ 生成互動(下單)</button>
     <span class="status" id="tb-status"></span>
   </div>
   <div id="tb-out" style="margin-top:.8em;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.7em .8em;white-space:pre-wrap;min-height:3em;color:#ffd75f"></div>
@@ -413,24 +429,96 @@ function rollGirl() {
   document.getElementById("tb-per").value = pickN2(GIRL_PERS, 2).join("、");
   document.getElementById("tb-back").value = GIRL_BACKS[Math.floor(Math.random()*GIRL_BACKS.length)];
 }
+function tbProvider() {
+  return document.getElementById("tb-provider")?.value === "ollama" ? "ollama" : "grok";
+}
+function tbRoute() {
+  const provider = tbProvider();
+  return {
+    provider,
+    endpoint: provider === "grok" ? "grok" : (document.getElementById("tb-endpoint").value.trim() || "http://localhost:11434"),
+    model: (document.getElementById("tb-model").value.trim() || (provider === "grok" ? "grok-4.5" : "")),
+  };
+}
+function tbSyncProviderUi() {
+  const p = tbProvider();
+  const wrap = document.getElementById("tb-ep-wrap");
+  if (wrap) wrap.style.display = p === "ollama" ? "" : "none";
+}
+async function tbPing() {
+  const { provider, endpoint } = tbRoute();
+  status("tb-engine", "測試中…");
+  try {
+    const h = await api("/api/health");
+    const q = new URLSearchParams({ provider, endpoint });
+    const j = await api("/api/llm/tags?" + q);
+    const n = (j.models || []).length;
+    if (provider === "grok") {
+      status("tb-engine", h.grok_build
+        ? `Grok Build OK · ${n} 模型 · bin=${h.grok_bin || "grok"}`
+        : `找不到 grok 指令(bin=${h.grok_bin || "?"})`, !h.grok_build);
+    } else {
+      status("tb-engine", `Ollama OK · ${n} 模型`);
+    }
+    const dl = document.getElementById("tb-model-list");
+    if (dl) dl.innerHTML = (j.models || []).map(m => `<option value="${m.name}">`).join("");
+  } catch (e) {
+    status("tb-engine", "引擎失敗:" + e.message, true);
+  }
+}
+async function tbApplyToSave() {
+  if (!save) { status("tb-engine", "沒有存檔可寫", true); return; }
+  const { provider, endpoint, model } = tbRoute();
+  save.settings = save.settings || {};
+  save.settings.llmProvider = provider;
+  save.settings.model = model;
+  if (provider === "ollama") save.settings.ollamaUrl = endpoint;
+  try {
+    const r = await api("/api/save", "PUT", { base_version: ver, data: save });
+    ver = r.version;
+    status("tb-engine", `已寫入遊戲設定 · ${provider} / ${model} · v${ver}`);
+  } catch (e) { status("tb-engine", "寫入失敗:" + e.message, true); }
+}
+async function tbClearGen() {
+  try {
+    await api("/api/gen", "DELETE");
+    status("tb-engine", "佇列已清空");
+  } catch (e) { status("tb-engine", "清空失敗:" + e.message, true); }
+}
 function initTestBench() {
   const suSel = document.getElementById("tb-su");
   suSel.innerHTML = (summonerPool||[]).map((su,i)=>`<option value="${i}">${su.emoji||"👤"} ${su.name}</option>`).join("");
   document.getElementById("tb-stage").innerHTML = STAGE_NAMES.map((n,i)=>`<option value="${i}">${n}</option>`).join("");
   document.getElementById("tb-loc-list").innerHTML = DATE_LOCS.map(l=>`<option value="${l}">`).join("");
   if (save?.settings?.rating) document.getElementById("tb-rating").value = save.settings.rating;
+  // 從遊戲設定帶入,預設偏 Grok Build 方便測
+  const rawP = (save?.settings?.llmProvider || "grok").toLowerCase();
+  const isGrok = rawP === "grok" || rawP === "xai" || rawP === "grok-build" || !save?.settings?.llmProvider;
+  document.getElementById("tb-provider").value = isGrok ? "grok" : "ollama";
+  document.getElementById("tb-model").value = save?.settings?.model || "grok-4.5";
+  document.getElementById("tb-endpoint").value = save?.settings?.ollamaUrl || "http://localhost:11434";
+  document.getElementById("tb-provider").onchange = tbSyncProviderUi;
+  tbSyncProviderUi();
   suSel.onchange = () => {   // 選了召喚師,地點預設帶他愛去的第一個
     const su = summonerPool[+suSel.value];
     if (su?.spots?.length) document.getElementById("tb-loc").value = su.spots[0].name;
   };
   if (!document.getElementById("tb-name").value) rollGirl();
+  tbPing().catch(() => {});
 }
 let tbRunning = false;
 async function runTestGen() {
   if (tbRunning) return;
   if (!window.PB_buildWatchPrompt) { status("tb-status","persona_builder 載入失敗",true); return; }
-  const ep = save?.settings?.ollamaUrl, model = save?.settings?.model;
-  if (!ep || !model) { status("tb-status","先在遊戲設定裡填好 Ollama 端點與模型",true); return; }
+  const { provider, endpoint: ep, model } = tbRoute();
+  if (!model) {
+    status("tb-status", "請填模型名(例 grok-4.5)", true);
+    return;
+  }
+  if (provider === "ollama" && !ep) {
+    status("tb-status", "Ollama 請填端點", true);
+    return;
+  }
   const su = summonerPool[+document.getElementById("tb-su").value];
   if (!su) { status("tb-status","沒有召喚師",true); return; }
   const stageIdx = +document.getElementById("tb-stage").value;
@@ -469,11 +557,16 @@ async function runTestGen() {
   const key = "test:" + Date.now().toString(36);
   const t0 = Date.now();
   try {
-    while (Date.now() - t0 < 300000) {
-      const r = await api("/api/gen","POST",{ key, retry:true, endpoint: ep, model, messages, options:{temperature:0.9} });
-      if (r.status === "done") { document.getElementById("tb-out").textContent = r.result; status("tb-status",`✓ 完成(${Math.round((Date.now()-t0)/1000)}s)`); break; }
+    // 測試期:輪詢不設時間上限,只在出錯/完成時停
+    while (true) {
+      const r = await api("/api/gen","POST",{ key, retry:true, provider, endpoint: ep, model, messages, options:{temperature:0.9} });
+      if (r.status === "done") {
+        document.getElementById("tb-out").textContent = r.result;
+        status("tb-status",`✓ 完成(${Math.round((Date.now()-t0)/1000)}s) · ${provider}/${model}`);
+        break;
+      }
       if (r.status === "error") { status("tb-status","生成失敗:"+(r.error||"?"),true); break; }
-      status("tb-status",`生成中… ${Math.round((Date.now()-t0)/1000)}s(排在伺服器佇列)`);
+      status("tb-status",`生成中… ${Math.round((Date.now()-t0)/1000)}s · ${r.status} · ${provider}`);
       await new Promise(res=>setTimeout(res,1500));
     }
   } catch (e) { status("tb-status","失敗:"+e.message,true); }
