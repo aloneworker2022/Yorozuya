@@ -46,6 +46,11 @@ _GROK_DISALLOWED_TOOLS = (
     "web_search,web_fetch,spawn_subagent,image_gen,image_edit,"
     "open_page,use_tool,todo_write"
 )
+# 生圖任務允許的工具(image_gen + 搬檔用 shell/list)
+_GROK_IMG_TOOLS = "image_gen,run_terminal_cmd,list_dir,read_file"
+IMG_TEST_DIR = ASSETS_DIR / "testword"
+GROK_IMG_TIMEOUT = float(os.environ.get("GROK_IMG_TIMEOUT", "300"))
+GROK_IMG_MAX_TURNS = int(os.environ.get("GROK_IMG_MAX_TURNS", "8") or "8")
 
 
 def _grok_build_available() -> bool:
@@ -269,35 +274,33 @@ async def _kill_proc_tree(proc: asyncio.subprocess.Process) -> None:
         pass
 
 
-async def _run_grok_build(
-    model: str,
-    messages: list,
-    options: dict | None = None,
+async def _run_grok_cli(
+    prompt: str,
+    *,
+    model: str = "grok-4.5",
+    cwd: Path | None = None,
+    timeout: float | None = None,
+    max_turns: int | None = None,
+    tools: str | None = None,
+    disallowed_tools: str | None = None,
+    rules: str | None = None,
+    always_approve: bool = False,
     on_partial=None,
 ) -> tuple[str, str | None]:
-    """本機 `grok -p` 無頭。
-
-    關鍵:用 streaming-json,在 type=end 就視為完成並殺掉行程。
-    舊作法等 process 自然退出;Build 吐完文章後常還卡在 session/usage 收尾,
-    訂單會一直 running,前端以為「偵測不到完成」。
-    """
+    """跑 grok -p(streaming-json);type=end 即完成並殺行程。回 (text, error)。"""
     if not _grok_build_available():
         return "", f"找不到 Grok Build 指令 `{GROK_BIN}`(請安裝或設 GROK_BIN)"
-    prompt = _messages_to_prompt(messages)
-    if not prompt.strip():
+    if not (prompt or "").strip():
         return "", "空 prompt"
     model = (model or "grok-4.5").strip() or "grok-4.5"
-    GROK_CWD.mkdir(parents=True, exist_ok=True)
-
-    # prompt 檔放在 cwd 旁,不綁 TemporaryDirectory(殺行程後可能還鎖檔)
-    GROK_CWD.mkdir(parents=True, exist_ok=True)
-    prompt_path = GROK_CWD / f"prompt-{uuid.uuid4().hex}.txt"
+    work = Path(cwd) if cwd else GROK_CWD
+    work.mkdir(parents=True, exist_ok=True)
+    prompt_path = work / f"prompt-{uuid.uuid4().hex}.txt"
     prompt_path.write_text(prompt, encoding="utf-8")
     cmd = [
         GROK_BIN,
         "--prompt-file", str(prompt_path),
         "-m", model,
-        # 逐行事件:text / end / error —— end 一到就收工
         "--output-format", "streaming-json",
         "--no-subagents",
         "--disable-web-search",
@@ -305,13 +308,20 @@ async def _run_grok_build(
         "--no-memory",
         "--no-auto-update",
         "--verbatim",
-        "--cwd", str(GROK_CWD),
-        "--disallowed-tools", _GROK_DISALLOWED_TOOLS,
-        "--rules",
-        "角色扮演純文字輸出。禁止使用任何工具。禁止讀寫檔案。禁止執行指令。",
+        "--cwd", str(work),
     ]
-    if GROK_MAX_TURNS > 0:
-        cmd.extend(["--max-turns", str(GROK_MAX_TURNS)])
+    if always_approve:
+        cmd.append("--always-approve")
+    if tools:
+        cmd.extend(["--tools", tools])
+    elif disallowed_tools:
+        cmd.extend(["--disallowed-tools", disallowed_tools])
+    if rules:
+        cmd.extend(["--rules", rules])
+    mt = GROK_MAX_TURNS if max_turns is None else max_turns
+    if mt and mt > 0:
+        cmd.extend(["--max-turns", str(mt)])
+    to = GROK_TIMEOUT if timeout is None else timeout
     env = {**os.environ, "GROK_DISABLE_AUTOUPDATER": "1"}
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -319,7 +329,7 @@ async def _run_grok_build(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
-            start_new_session=True,  # 方便 killpg 整組收掉
+            start_new_session=True,
         )
     except FileNotFoundError:
         try:
@@ -334,7 +344,6 @@ async def _run_grok_build(
     saw_end = False
 
     async def _drain_stderr():
-        # 必須持續抽 stderr,否則 pipe 塞滿會讓 grok 卡死(看起來像偵測不到完成)
         assert proc.stderr is not None
         try:
             while True:
@@ -364,7 +373,6 @@ async def _run_grok_build(
             try:
                 ev = json.loads(s)
             except json.JSONDecodeError:
-                # 非 JSON 行忽略(或偶發混進 log)
                 continue
             if not isinstance(ev, dict):
                 continue
@@ -383,18 +391,16 @@ async def _run_grok_build(
                 saw_end = True
                 break
             elif et in ("end", "max_turns_reached"):
-                # end = 正文已完整推送;立刻視為成功,不必等行程退出
                 saw_end = True
                 break
-            # thought / auto_compact_* 等忽略
 
     try:
-        if GROK_TIMEOUT and GROK_TIMEOUT > 0:
-            await asyncio.wait_for(_read_events(), timeout=GROK_TIMEOUT)
+        if to and to > 0:
+            await asyncio.wait_for(_read_events(), timeout=to)
         else:
             await _read_events()
     except asyncio.TimeoutError:
-        final_err = f"Grok Build 逾時({int(GROK_TIMEOUT)}s)"
+        final_err = f"Grok Build 逾時({int(to)}s)"
     finally:
         await _kill_proc_tree(proc)
         try:
@@ -417,6 +423,157 @@ async def _run_grok_build(
     if proc.returncode not in (0, None, -9, -15, 130, 143):
         return "", f"Grok Build 失敗(exit {proc.returncode})" + (f": {err_tail[:300]}" if err_tail else "")
     return "", "Grok Build 無輸出" + (f": {err_tail[:300]}" if err_tail else "")
+
+
+async def _run_grok_build(
+    model: str,
+    messages: list,
+    options: dict | None = None,
+    on_partial=None,
+) -> tuple[str, str | None]:
+    """文字角色扮演:禁工具,streaming-json end 即完成。"""
+    prompt = _messages_to_prompt(messages)
+    return await _run_grok_cli(
+        prompt,
+        model=model or "grok-4.5",
+        cwd=GROK_CWD,
+        disallowed_tools=_GROK_DISALLOWED_TOOLS,
+        rules="角色扮演純文字輸出。禁止使用任何工具。禁止讀寫檔案。禁止執行指令。",
+        on_partial=on_partial,
+    )
+
+
+def _build_girl_image_prompt(
+    *,
+    framing: str,
+    rating: str,
+    style: str,
+    name: str = "",
+    personality: str = "",
+    backstory: str = "",
+    extra: str = "",
+    out_path: Path,
+) -> str:
+    """組給 Grok Build 的生圖指令(含落盤路徑)。"""
+    framing = (framing or "half").lower()
+    rating = (rating or "sfw").lower()
+    style = (style or "anime").lower()
+    frame_map = {
+        "half": "half-body portrait (waist-up), face and upper body clearly visible",
+        "full": "full-body standing figure, head to toe visible, complete outfit",
+    }
+    style_map = {
+        "anime": "Japanese anime style, clean lineart, cel shading, vibrant colors, high quality illustration",
+        "realistic": "photorealistic, natural skin texture, cinematic lighting, DSLR photo look",
+        "pixel": "pixel art, 128x128 pixels exact, limited palette, crisp pixels, no anti-aliasing, game sprite style",
+    }
+    rating_map = {
+        "sfw": "SFW, fully clothed, wholesome, no nudity, safe for work",
+        "nsfw": (
+            "NSFW adult content allowed: sensual or explicit as fits the character, "
+            "tasteful erotic art, mature 18+ only"
+        ),
+    }
+    subj = []
+    if name.strip():
+        subj.append(f"name vibe: {name.strip()}")
+    if personality.strip():
+        subj.append(f"personality vibe: {personality.strip()}")
+    if backstory.strip():
+        subj.append(f"backstory cues: {backstory.strip()}")
+    if extra.strip():
+        subj.append(f"extra: {extra.strip()}")
+    subj_txt = "; ".join(subj) if subj else "attractive young woman, distinctive look"
+
+    size_note = (
+        "Output size MUST be exactly 128x128 pixels."
+        if style == "pixel"
+        else "High resolution portrait suitable for a character standee."
+    )
+    tool_note = (
+        "Prefer image_gen. For exact 128x128 pixel art you may use code if image_gen cannot force size."
+        if style == "pixel"
+        else "You MUST use the image_gen tool (do NOT draw with Python/code)."
+    )
+
+    return f"""You are generating ONE character image for a game art test.
+
+{tool_note}
+After the image is created, copy/move the final file to this EXACT path:
+{out_path}
+
+Only create that one image file at the destination. Then reply with a short note: the absolute path and one-line description.
+
+Image brief:
+- Subject: female character — {subj_txt}
+- Framing: {frame_map.get(framing, frame_map["half"])}
+- Style: {style_map.get(style, style_map["anime"])}
+- Content rating: {rating_map.get(rating, rating_map["sfw"])}
+- {size_note}
+- Single character, plain or simple background, no text overlays, no watermark
+"""
+
+
+async def _run_grok_image(
+    model: str,
+    *,
+    framing: str,
+    rating: str,
+    style: str,
+    name: str = "",
+    personality: str = "",
+    backstory: str = "",
+    extra: str = "",
+) -> tuple[str, str | None]:
+    """Grok Build + image_gen。成功回 (url_path, None),url 如 /assets/testword/xxx.png。"""
+    IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+    fname = f"{stamp}.png"
+    abs_out = IMG_TEST_DIR / fname
+    # 工作目錄放空沙箱,產圖後搬到 assets
+    work = GROK_CWD / f"img-{stamp}"
+    work.mkdir(parents=True, exist_ok=True)
+    # 讓 agent 先寫進 work,再 copy 到 abs_out(路徑寫死在 prompt)
+    target = abs_out  # absolute path in prompt
+    prompt = _build_girl_image_prompt(
+        framing=framing, rating=rating, style=style,
+        name=name, personality=personality, backstory=backstory, extra=extra,
+        out_path=target,
+    )
+    text, err = await _run_grok_cli(
+        prompt,
+        model=model or "grok-4.5",
+        cwd=work,
+        timeout=GROK_IMG_TIMEOUT,
+        max_turns=GROK_IMG_MAX_TURNS,
+        tools=_GROK_IMG_TOOLS,
+        always_approve=True,
+        rules="Generate exactly one image with image_gen (or code for 128px pixel). Save to the path given. No extra files.",
+    )
+    # 找產物:目標路徑 / work 下最新圖
+    found: Path | None = None
+    if target.is_file() and target.stat().st_size > 0:
+        found = target
+    else:
+        cands = [
+            p for p in work.rglob("*")
+            if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
+        ]
+        cands.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        if cands:
+            try:
+                abs_out.write_bytes(cands[0].read_bytes())
+                found = abs_out
+            except Exception as e:
+                return "", f"搬移圖片失敗:{e}"
+    try:
+        shutil.rmtree(work, ignore_errors=True)
+    except Exception:
+        pass
+    if found and found.is_file() and found.stat().st_size > 0:
+        return f"/assets/testword/{fname}", None
+    msg = err or (text[:300] if text else "未產生圖片檔")
+    return "", f"生圖失敗:{msg}"
 
 
 async def _stream_ollama_chat(endpoint: str, body: dict, on_token) -> str | None:
@@ -617,17 +774,34 @@ def random_script(category: str):
 
 
 # ---- 代工生成佇列(手機下單/收貨)----
-# endpoint 哨兵 "grok-build"(及舊別名 grok/xai) = Grok Build;其餘 = Ollama URL
+# endpoint 哨兵:
+#   grok-build / grok / xai → 文字 Grok Build
+#   grok-img → 生圖(Grok Build + image_gen)
+#   其餘 → Ollama URL
 
 
 class GenIn(BaseModel):
     key: str
     endpoint: str = "http://localhost:11434"
     model: str
-    messages: list
+    messages: list = []
     options: dict | None = None
-    provider: str | None = None  # "ollama" | "grok-build"
+    provider: str | None = None  # "ollama" | "grok-build" | "grok-img"
     retry: bool = False  # True:若該 key 先前失敗,重新排隊
+
+
+class ImgGenIn(BaseModel):
+    """testword 妹子生圖下單。仍進 gen_tasks,endpoint=grok-img。"""
+    key: str | None = None
+    model: str = "grok-4.5"
+    framing: str = "half"       # half | full
+    rating: str = "sfw"         # sfw | nsfw
+    style: str = "anime"        # anime | realistic | pixel
+    name: str = ""
+    personality: str = ""
+    backstory: str = ""
+    extra: str = ""
+    retry: bool = False
 
 
 GEN_WAKE = asyncio.Event()
@@ -635,9 +809,11 @@ GEN_WAKE = asyncio.Event()
 
 def _gen_endpoint_for(provider: str | None, endpoint: str) -> str:
     ep = (endpoint or "").strip().lower()
-    p = _normalize_provider(provider) if provider else None
-    # 舊佇列可能留下 xai/grok 哨兵 → 一律當 Build
-    if p == "grok-build" or ep in ("grok-build", "build", "grok", "xai"):
+    p = (provider or "").strip().lower()
+    if p in ("grok-img", "img", "image") or ep in ("grok-img", "img"):
+        return "grok-img"
+    p2 = _normalize_provider(provider) if provider else None
+    if p2 == "grok-build" or ep in ("grok-build", "build", "grok", "xai"):
         return "grok-build"
     return (endpoint or "http://localhost:11434").rstrip("/")
 
@@ -670,6 +846,52 @@ def gen_submit(t: GenIn):
         )
     GEN_WAKE.set()
     return {"key": t.key, "status": "pending", "result": None, "error": None}
+
+
+@app.post("/api/imggen")
+def imggen_submit(t: ImgGenIn):
+    """testword 生圖下單 → gen_tasks(endpoint=grok-img)。result 為 /assets/testword/….png"""
+    key = (t.key or "").strip() or f"img:{int(time.time() * 1000)}:{uuid.uuid4().hex[:8]}"
+    opts = {
+        "kind": "girl_image",
+        "framing": (t.framing or "half").lower(),
+        "rating": (t.rating or "sfw").lower(),
+        "style": (t.style or "anime").lower(),
+        "name": t.name or "",
+        "personality": t.personality or "",
+        "backstory": t.backstory or "",
+        "extra": t.extra or "",
+    }
+    body = GenIn(
+        key=key,
+        endpoint="grok-img",
+        provider="grok-img",
+        model=t.model or "grok-4.5",
+        messages=[],  # 參數在 options
+        options=opts,
+        retry=t.retry,
+    )
+    return gen_submit(body)
+
+
+@app.get("/api/imggen/list")
+def imggen_list(limit: int = 24):
+    """列出 testword 最近生圖。"""
+    IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+    files = [
+        p for p in IMG_TEST_DIR.iterdir()
+        if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
+    ]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    out = []
+    for p in files[: max(1, min(limit, 100))]:
+        out.append({
+            "name": p.name,
+            "url": f"/assets/testword/{p.name}",
+            "size": p.stat().st_size,
+            "mtime": p.stat().st_mtime,
+        })
+    return {"items": out}
 
 
 @app.delete("/api/gen")
@@ -711,7 +933,19 @@ async def _gen_worker():
             def on_token(piece: str):
                 parts.append(piece)
 
-            if endpoint in ("grok-build", "grok", "xai"):
+            if endpoint == "grok-img":
+                url, err = await _run_grok_image(
+                    model,
+                    framing=str(opts.get("framing") or "half"),
+                    rating=str(opts.get("rating") or "sfw"),
+                    style=str(opts.get("style") or "anime"),
+                    name=str(opts.get("name") or ""),
+                    personality=str(opts.get("personality") or ""),
+                    backstory=str(opts.get("backstory") or ""),
+                    extra=str(opts.get("extra") or ""),
+                )
+                text = url or ""
+            elif endpoint in ("grok-build", "grok", "xai"):
                 text, err = await _run_grok_build(model, msgs, opts)
             else:
                 body = {"model": model, "messages": msgs, "stream": True, "options": opts}

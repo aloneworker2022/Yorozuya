@@ -34,14 +34,16 @@ cd server && uvicorn main:app --host 0.0.0.0 --port 8000
 
 完成偵測:用 `--output-format streaming-json`,收到 `{"type":"end"}` 立刻寫入訂單並結束行程(不等 process 自然退出)。
 
-測試頁:`/testword` → AI 互動測試台。
+測試頁:`/testword` → AI 互動測試台 + **Grok Build 生圖測試**。
 
 | 變數 | 預設 | 說明 |
 |---|---|---|
 | `GROK_BIN` | `grok` | CLI 路徑 |
 | `GROK_CWD` | `data/grok_cwd` | 無頭空工作目錄 |
-| `GROK_TIMEOUT` | `180` | 單筆逾時秒數 |
-| `GROK_MAX_TURNS` | `1` | `--max-turns`;`0` = 不帶旗標 |
+| `GROK_TIMEOUT` | `180` | 文字訂單逾時秒數 |
+| `GROK_MAX_TURNS` | `1` | 文字 `--max-turns` |
+| `GROK_IMG_TIMEOUT` | `300` | 生圖逾時秒數 |
+| `GROK_IMG_MAX_TURNS` | `8` | 生圖允許多回合(要呼叫 image_gen) |
 
 ### API
 
@@ -52,3 +54,5 @@ cd server && uvicorn main:app --host 0.0.0.0 --port 8000
 | PUT | `/api/save` | 寫入存檔(版本衝突 409) |
 | GET | `/api/llm/tags?provider=ollama\|grok-build` | 模型列表 |
 | POST | `/api/gen` | 訂單佇列 `{key, provider, model, messages}` |
+| POST | `/api/imggen` | 生圖訂單(構圖/分級/風格)→ result 為 `/assets/testword/….png` |
+| GET | `/api/imggen/list` | 最近生圖列表 |

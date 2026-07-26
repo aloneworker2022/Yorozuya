@@ -2,6 +2,7 @@ __pycache__/
 data/
 assets/portraits/
 assets/album/
+assets/testword/
 .venv/
 .env
 .env.*
