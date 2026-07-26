@@ -738,6 +738,21 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 /* ===== 魅魔詳情 ===== */
 #succubus-detail .portrait { text-align: center; margin: .8em 0; }
 #succubus-detail .portrait svg { filter: drop-shadow(0 0 18px var(--rc)); }
+/* 生成好的立繪 */
+.portrait-img {
+  max-width: 100%; max-height: 300px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--rc, var(--pink)) 45%, transparent);
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--rc, var(--pink)) 45%, transparent));
+}
+.summon-result .portrait-img { max-height: 360px; }
+/* 名冊縮圖:固定小方格,填滿裁切 */
+.scard .thumb .portrait-img { width: 46px; height: 63px; object-fit: cover; border-radius: 6px; filter: none; }
+/* 看板娘站位:填滿裁切,人多時自動縮小 */
+#kanban-girl .kgirl .portrait-img { width: 104px; height: 143px; object-fit: cover; border-radius: 9px; }
+#kanban-girl.multi .kgirl .portrait-img { width: 76px; height: 104px; }
+#kanban-girl .kgirl.taken .portrait-img { filter: grayscale(.7) brightness(.75); }
+/* 召喚生圖中:剪影微微呼吸 */
+.summon-brewing { animation: crest-brew 2.2s ease-in-out infinite; }
 #succubus-detail .traits { display: flex; gap: .4em; flex-wrap: wrap; justify-content: center; margin: .5em 0; }
 #succubus-detail .traits span {
   font-size: .7em; color: var(--dim); background: rgba(216, 207, 232, .08); padding: .2em .6em;

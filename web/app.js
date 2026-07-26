@@ -1068,18 +1068,85 @@ function showSummonOverlay(s, n) {
   ov.classList.remove("hidden");
   ov.innerHTML = `<div class="summon-circle"></div>`;
   setTimeout(() => {
+    // Grok Build:當場就替她織出形體(生圖),等生成結束召喚才算完成;
+    // 其它 provider(Ollama/無模型)維持舊制——先立契約,今晚再作夢。
+    if (llmIsOrder()) genSummonPortrait(ov, s);
+    else renderSummonCard(ov, s);
+  }, 1400);
+}
+
+// 召喚結果卡:有立繪就顯示立繪,沒有就 SVG 剪影 +「今晚作夢」
+function renderSummonCard(ov, s) {
+  const ready = !!s.portrait;
+  ov.innerHTML = `
+    <div class="summon-result r-${s.rarity}">
+      <div class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</div>
+      <h3>${esc(s.name)}</h3>
+      <div class="portrait">${girlPortrait(s, 7)}</div>
+      <p>${ready ? "她成形了——這就是她的模樣。" : "她還沒有形體……讓她今晚做個夢吧。"}</p>
+      <p class="small">${s.personality.join("・")} / ${s.speech}</p>
+      <p class="small dim">她原本是……${esc(s.job || "?")}</p>
+      <button id="summon-close">接受契約</button>
+    </div>`;
+  document.getElementById("summon-close").onclick = () => { ov.classList.add("hidden"); ov.innerHTML = ""; renderAll(); };
+}
+
+// 生圖進行中的魅魔 id(召喚立繪 / 事後補織共用),避免同一隻重複下單、按鈕重複點
+const portraitGenning = new Set();
+
+// 替某隻魅魔生立繪:下單 /api/imggen → 輪詢到 done → 寫入 s.portrait / portraitReady。
+// 逾時(3 分鐘)或失敗回 false,不寫入。onTick(sec) 供召喚彈窗即時更新計時。
+async function weavePortrait(s, onTick) {
+  if (!s || portraitGenning.has(s.id)) return false;
+  portraitGenning.add(s.id);
+  const body = {
+    model: state.settings.model || "grok-4.5",
+    framing: "half",
+    rating: state.settings.rating || "sfw",
+    style: state.settings.imgStyle || "anime",
+    character: s,   // 完整人設(generateGirl 結果),生圖以此為準
+    retry: true,
+  };
+  const t0 = Date.now();
+  const timer = onTick ? setInterval(() => onTick(Math.round((Date.now() - t0) / 1000)), 1000) : null;
+  let ok = false;
+  try {
+    let r = await imgGenPost(body);
+    let key = r?.key;
+    const deadline = Date.now() + 180000;   // 最多等 3 分鐘
+    while (Date.now() < deadline) {
+      if (r?.status === "done") {
+        if (r.result) { s.portrait = r.result; s.portraitReady = true; dirty = true; saveNow(); ok = true; }
+        break;
+      }
+      if (r?.status === "error") break;
+      await new Promise(res => setTimeout(res, 1500));
+      r = await imgGenPost({ ...body, key, retry: true });
+      key = r?.key || key;
+    }
+  } catch { /* ok 維持 false */ }
+  if (timer) clearInterval(timer);
+  portraitGenning.delete(s.id);
+  return ok;
+}
+
+// Grok Build 召喚生圖:當場織出形體,輪詢到 done 才顯示「接受契約」。
+// 期間無收尾鈕——「等待到生成結束才完成」。逾時/失敗則退回今晚作夢,不卡死玩家。
+async function genSummonPortrait(ov, s) {
+  const paint = sec => {
     ov.innerHTML = `
       <div class="summon-result r-${s.rarity}">
         <div class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</div>
         <h3>${esc(s.name)}</h3>
-        <div class="portrait">${girlSVG("#241333", 7)}</div>
-        <p>她還沒有形體……讓她今晚做個夢吧。</p>
-        <p class="small">${s.personality.join("・")} / ${s.speech}</p>
-        <p class="small dim">她原本是……${esc(s.job || "?")}</p>
-        <button id="summon-close">接受契約</button>
+        <div class="portrait summon-brewing">${girlSVG("#241333", 7)}</div>
+        <p>正在為她織出形體……(${sec}s)</p>
+        <p class="small dim">${s.personality.join("・")} / ${s.speech}</p>
       </div>`;
-    document.getElementById("summon-close").onclick = () => { ov.classList.add("hidden"); ov.innerHTML = ""; renderAll(); };
-  }, 1400);
+  };
+  paint(0);
+  await weavePortrait(s, paint);
+  renderSummonCard(ov, s);   // 有圖顯示圖、沒圖退回今晚作夢,並露出「接受契約」
+  renderAll();
 }
 
 // ===== 情感、需求、NTR =====
@@ -1562,6 +1629,18 @@ async function genPost(key, messages) {
         key, retry: true, ...llmRouteFields(),
         model: state.settings.model, messages, options: { temperature: 0.9 },
       }),
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+// 生圖下單/收貨(召喚立繪、testword 共用同一佇列):回 {key,status,result,error}
+async function imgGenPost(body) {
+  try {
+    const r = await fetch("/api/imggen", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
     if (!r.ok) return null;
     return await r.json();
@@ -2496,6 +2575,13 @@ function girlSVG(fill, scale = 6) {
   return `<svg viewBox="0 0 16 22" width="${16 * scale}" height="${22 * scale}" shape-rendering="crispEdges">${px.map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`).join("")}</svg>`;
 }
 
+// 立繪:生圖好了顯示圖(portrait),還沒好退回 SVG 剪影
+function girlPortrait(s, scale = 6) {
+  return s?.portrait
+    ? `<img class="portrait-img" src="${esc(s.portrait)}" alt="${esc(s.name || "")}" loading="lazy">`
+    : girlSVG("#241333", scale);
+}
+
 // ===== Tick =====
 
 let lastTickDay = null;
@@ -3119,7 +3205,7 @@ function renderSuccubi() {
     const el = document.createElement("div");
     el.className = `scard r-${s.rarity}` + (s.ntr ? " ntr" : "");
     el.innerHTML = `
-      <div class="thumb">${girlSVG("#241333", 2.5)}</div>
+      <div class="thumb">${girlPortrait(s, 2.5)}</div>
       <div class="sinfo">
         <div class="sname"><b>${esc(s.name)}</b><span class="rbadge">${s.rarity}</span>
           <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(s.stage)}</span>
@@ -3187,7 +3273,7 @@ function renderDetail(s, root) {
   root.innerHTML = `
     <div class="panel">
       <button class="back-btn" id="detail-back">‹ 名冊</button>
-      <div class="portrait">${girlSVG("#241333", 6)}</div>
+      <div class="portrait">${girlPortrait(s, 6)}</div>
       <div class="aff-line">
         <b>${esc(s.name)}</b> <span class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</span>
         ・${s.ntr ? "被奪走" : stageLabel(s.stage)}
@@ -3203,7 +3289,10 @@ function renderDetail(s, root) {
       <div class="aff-line">情感 <b>${s.affection}</b>${ns && !s.ntr ? ` <span class="dim small">/ ${ns[2]} 升【${ns[1]}】</span>` : ""}</div>
       ${needLine}
       ${summonerLine}
-      ${!s.portraitReady ? `<div class="aff-line dim small">尚未成形——今晚讓她織夢,明早見到她的臉(M3)</div>` : ""}
+      ${!s.portraitReady ? (llmIsOrder()
+        ? `<div class="aff-line dim small">尚未成形——按下方「織出她的形體」讓 Grok 當場為她生圖</div>
+           <div class="detail-actions"><button class="cyan" id="act-weave" ${portraitGenning.has(s.id) ? "disabled" : ""}>${portraitGenning.has(s.id) ? "織出形體中…" : "✦ 織出她的形體"}</button></div>`
+        : `<div class="aff-line dim small">尚未成形——今晚讓她織夢,明早見到她的臉(M3)</div>`) : ""}
       <div class="detail-actions">
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
@@ -3228,6 +3317,13 @@ function renderDetail(s, root) {
 
   root.querySelector("#detail-back").onclick = () => { detailId = null; dateChooser = false; renderAll(); };
   root.querySelector("#act-kanban")?.addEventListener("click", () => summonKanban(s.id));
+  root.querySelector("#act-weave")?.addEventListener("click", async () => {
+    toast(`為 ${s.name} 織出形體中……`, "good");
+    renderAll();   // 立即把按鈕切成「織出形體中…」
+    const ok = await weavePortrait(s);
+    toast(ok ? `${s.name} 成形了` : "生圖失敗,稍後再試", ok ? "good" : "bad");
+    renderAll();
+  });
   root.querySelector("#act-dismiss")?.addEventListener("click", () => sacrificeSuccubus(s.id));
   root.querySelector("#act-date")?.addEventListener("click", () => {
     dateChooser = !dateChooser;
@@ -3257,7 +3353,7 @@ function renderKanban() {
     girl.className = `r-${girls[0].rarity}` + (girls.length > 1 ? " multi" : "");
     const size = girls.length >= 3 ? 5 : girls.length === 2 ? 7 : 9;   // 人多站小一點
     girl.innerHTML = girls.map(g =>
-      `<div class="kgirl r-${g.rarity}" data-kid="${g.id}">${girlSVG("#241333", size)}<div class="kname">${esc(g.name)}</div></div>`
+      `<div class="kgirl r-${g.rarity}" data-kid="${g.id}">${girlPortrait(g, size)}<div class="kname">${esc(g.name)}</div></div>`
     ).join("");
     girl.onclick = null;
     girl.querySelectorAll(".kgirl").forEach(el => el.onclick = () => {
