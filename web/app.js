@@ -1101,9 +1101,9 @@ async function weavePortrait(s, onTick) {
   portraitGenning.add(s.id);
   const body = {
     model: state.settings.model || "grok-4.5",
-    framing: "half",
+    framing: "full",   // 像素立繪:站姿全身當人物 sprite
     rating: state.settings.rating || "sfw",
-    style: state.settings.imgStyle || "anime",
+    style: state.settings.imgStyle || "pixel",   // 人物一律像素圖(256x256,伺服器強制尺寸)
     character: s,   // 完整人設(generateGirl 結果),生圖以此為準
     retry: true,
   };

@@ -546,7 +546,7 @@ def _build_girl_image_prompt(
     style_map = {
         "anime": "Japanese anime style, clean lineart, cel shading, vibrant colors, high quality illustration",
         "realistic": "photorealistic, natural skin texture, cinematic lighting, DSLR photo look",
-        "pixel": "pixel art, 128x128 pixels exact, limited palette, crisp pixels, no anti-aliasing, game sprite style",
+        "pixel": "pixel art, 256x256 pixels exact, limited palette, crisp pixels, no anti-aliasing, game sprite style",
     }
     rating_map = {
         "sfw": "SFW, fully clothed, wholesome, no nudity, safe for work",
@@ -568,12 +568,12 @@ def _build_girl_image_prompt(
         brief += f"\nExtra director notes: {extra.strip()}"
 
     size_note = (
-        "Output size MUST be exactly 128x128 pixels."
+        "Output size MUST be exactly 256x256 pixels."
         if style == "pixel"
         else "High resolution portrait suitable for a character standee."
     )
     tool_note = (
-        "Prefer image_gen. For exact 128x128 pixel art you may use code if image_gen cannot force size."
+        "Prefer image_gen. For exact 256x256 pixel art you may use code if image_gen cannot force size."
         if style == "pixel"
         else "You MUST use the image_gen tool (do NOT draw with Python/code)."
     )
