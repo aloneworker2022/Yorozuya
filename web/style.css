@@ -924,10 +924,14 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   font-size: .65em; line-height: 1; display: flex; align-items: center; justify-content: center;
 }
 
-/* ===== 淫紋(聊天入場券) ===== */
-#crest {
+/* ===== 淫紋:她有話還沒給你看(每位看板娘各自一盞,由下往上排) ===== */
+#crests {
   position: fixed; right: .9em; bottom: calc(4.8em + env(safe-area-inset-bottom));
-  z-index: 12; width: 58px; height: 58px;
+  z-index: 12; display: flex; flex-direction: column-reverse;
+  gap: .8em; align-items: center;
+}
+.crest-btn {
+  position: relative; width: 58px; height: 58px; padding: 0;
   background: var(--panel); border: 1px solid var(--line); border-radius: 50%;
   color: var(--pink); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -938,8 +942,8 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pink) 50%, transparent)); }
   50% { transform: scale(1.08); filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 85%, transparent)); }
 }
-/* 醞釀中:她的話還在生成——極暗慢呼吸,不可點(有紋 vs 沒紋一眼可辨) */
-#crest.brewing {
+/* 醞釀中:她起了念頭、話還沒寫好——極暗慢呼吸,不可點(有話 vs 在想一眼可辨) */
+.crest-btn.brewing {
   opacity: .25; pointer-events: none;
   animation: crest-brew 2.6s ease-in-out infinite;
   filter: none;
@@ -948,12 +952,13 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   0%, 100% { opacity: .18; }
   50% { opacity: .34; }
 }
-#crest b {
-  position: absolute; top: -4px; right: -4px;
-  min-width: 20px; height: 20px; border-radius: 50%;
-  background: var(--pink); color: var(--bg);
-  font-size: .72em; line-height: 20px; text-align: center;
-  text-shadow: none;
+/* 是誰在找你:多位看板娘同時有話時一眼分辨(邊框帶她的稀有度色) */
+.crest-btn .cname {
+  position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+  max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--panel); border: 1px solid var(--rc, var(--line)); border-radius: 1em;
+  padding: 0 .45em; font-size: .56em; line-height: 1.6;
+  color: var(--text); text-shadow: none;
 }
 
 /* ===== 斷線重連 ===== */

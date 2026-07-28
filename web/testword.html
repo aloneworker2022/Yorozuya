@@ -63,7 +63,7 @@
     <button onclick="setGoldPrompt()">設定金幣…</button>
     <button onclick="refreshShop()">刷新商店</button>
     <button onclick="jumpDay()">跳過一天</button>
-    <button onclick="addCrest()">+1 淫紋</button>
+    <button onclick="addCrest()">讓看板娘想說話</button>
     <button onclick="kanbanLong()">看板娘 +99h(測試)</button>
     <button onclick="allKanban()">全員看板娘 99h</button>
     <button onclick="drawSummoner()">第一隻抽召喚師</button>
@@ -213,7 +213,15 @@ async function addGold(n) { if (!ensure()) return; save.gold += n; await commit(
 async function setGoldPrompt() { if (!ensure()) return; const v = prompt("設定金幣為:", save.gold); if (v == null) return; save.gold = parseInt(v) || 0; await commit("設定金幣 " + save.gold); }
 async function refreshShop() { if (!ensure()) return; save.shop = null; await commit("商店已清空(回遊戲會重新進貨)"); }
 async function jumpDay() { if (!ensure()) return; save.lastSettledDay = (save.lastSettledDay || 0) - 1; await commit("日界 -1(回遊戲會結算一天)"); }
-async function addCrest() { if (!ensure()) return; save.chatCharges = (save.chatCharges || 0) + 1; await commit("淫紋 +1"); }
+// 淫紋不是點數:直接把在任看板娘標成「想說話」,回遊戲後背景寫好話、紋就亮
+async function addCrest() {
+  if (!ensure()) return;
+  const ids = (save.kanbans || []).map(k => k.id);
+  const girls = (save.succubi || []).filter(s => ids.includes(s.id) && !s.ntr && !s.summoner?.taken);
+  if (!girls.length) { status("bd-status", "沒有在場的看板娘(被召喚走的不會想說話)", true); return; }
+  for (const s of girls) s.wantsTalk = Date.now();
+  await commit(`${girls.map(s => s.name).join("、")} 起了念頭——回遊戲等她把話寫好,紋就亮`);
+}
 async function kanbanLong() {
   if (!ensure()) return;
   const s = (save.succubi || [])[0];
@@ -256,7 +264,7 @@ async function wipeSave() {
   } catch (e) { status("bd-status", "失敗:" + e.message + "(再按一次)", true); }
 }
 // 觀戰測試場景:第一隻魅魔被召喚師「召喚中」(陪伴型,含 3 小時的既往紀錄),
-// 並直接設她為看板娘 + 給 3 淫紋——回遊戲點淫紋聊天/約她/名冊窺視,即看紀錄
+// 並直接設她為看板娘——被召喚走時淫紋不會亮(她不在你身邊),要約她出門才撞得見實況
 async function watchScenario() {
   if (!ensure()) return;
   const s = (save.succubi || [])[0];
@@ -273,9 +281,8 @@ async function watchScenario() {
   save.kanbans ??= [];
   if (!save.kanbans.some(k => k.id === s.id)) save.kanbans.push({ id: s.id, until: now + 99 * 3600 * 1000 });
   save.lastKanbanId = s.id;
-  save.chatCharges = (save.chatCharges || 0) + 3;
   delete save.forceEncounter;
-  await commit(`觀戰場景備妥:${s.name} 被召喚中+3 小時既往紀錄——回遊戲點淫紋或名冊窺視`);
+  await commit(`觀戰場景備妥:${s.name} 被召喚中+3 小時既往紀錄——回遊戲約她出門即看實況`);
 }
 
 // ── 擴充等級 ──

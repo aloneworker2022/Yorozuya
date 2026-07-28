@@ -32,7 +32,7 @@ const EXPANSIONS = {
   offering: "商店祭品",     // 每日進貨 = 2 + lv
   roster:   "名冊名額",     // 名額 = 1 + lv
   kanban:   "看板娘時長",   // 小時 = 1 + lv
-  crest:    "淫紋機率",     // 分母 = max(3, 10 - lv):基礎 1/10,極限 1/3
+  crest:    "淫紋機率",     // 每級 +5% 她想找你說話的機率(基礎值由稀有度決定)
   drop:     "獻祭掉落率",   // 影響獻祭掉落(Phase 7)
   cheap:    "召喚減費",     // 第二位起的看板娘費用每級 -1 金,地板 2 金
 };
@@ -49,24 +49,58 @@ function expLv(k) {
 }
 function execCap() { return 1 + expLv("exec"); }
 function rosterCap() { return 1 + expLv("roster"); }
-function crestDenom() { return Math.max(3, 10 - expLv("crest")); }
 function kanbanHours() { return 1 + expLv("kanban"); }
 const QUEST_HOURS = 24;          // 期限統一 24 小時
 const DISCOVER_BONUS_CAP = 10;   // 每日前 N 次發現有 0~2 金獎勵
 
-const CREST_CAP = 5;             // 淫紋最多囤 5 層
 // 每次進對話隨機決定能聊幾個來回(玩家不知道她何時喊停,製造驚喜)
 // 聊天改半預製(一紋一來一往),不再有隨機回合數;約會維持 DATE_TURNS
 const DATE_TURNS = [2, 5];      // 約會 2~5 來回(付了 5 金,多聊幾句)
 
-// 淫紋觸發:看板娘在、醒著、沒滿層時,委託操作有機率喚起她想聊天的慾望
-// 基礎機率 1/crestDenom(擴充可從 1/20 提升到 1/3);完成委託 ×2
-function grantCrest(mult = 1) {
-  if (!kanbanSuccubi().length || isAsleep()) return;
-  if ((state.chatCharges || 0) >= CREST_CAP) return;
-  if (Math.random() >= mult / crestDenom()) return;
-  state.chatCharges = (state.chatCharges || 0) + 1;
-  toast("……淫紋在發燙。她想跟你說話。", "good");
+// ===== 淫紋:她有話要跟你說 =====
+// 淫紋不是點數、不是入場券,是一盞「她有一句話還沒給你看」的燈。
+// 每位看板娘各自一條訊息串,同時只留最新的一句——她起了新的念頭就把舊的刷掉。
+// 每 10 分鐘巡一次,依稀有度問她「現在想不想找他說話」:愈稀有的愈黏人。
+// 她說什麼則取決於你這段時間在委託上做了什麼(chatLineMsgs → buildCtx.quests)。
+const CREST_PATROL_MS = 10 * 60 * 1000;
+const CREST_CATCHUP = 3;         // 離線最多補算 3 輪:久沒開 App 不等於一定有話等著你
+const CREST_P = { N: 1 / 6, R: 1 / 5, S: 1 / 4, SS: 1 / 3, SSR: 1 / 2 };
+// 「淫紋機率」擴充:每級 +5%(上限 90%),讓低稀有度的孩子也能養到話多一點
+function crestChance(s) {
+  return Math.min(0.9, (CREST_P[s.rarity] ?? CREST_P.N) + expLv("crest") * 0.05);
+}
+
+// 巡邏:每 10 分鐘一輪,問每位在你身邊的看板娘有沒有起念頭。
+// 中了只代表「她想說話」,話還要在背景寫出來(genChatOrder)淫紋才會亮。
+// 被召喚走的不巡(她不在你身邊);睡眠與對話/觀戰中不巡(不打擾),但時鐘照走。
+function crestPatrol() {
+  const now = Date.now();
+  if (!state.crestPatrolAt) { state.crestPatrolAt = now; return false; }
+  const rounds = Math.floor((now - state.crestPatrolAt) / CREST_PATROL_MS);
+  if (rounds < 1) return false;
+  state.crestPatrolAt = now;
+  if (isAsleep() || chatWith || watchWith) return true;
+  let changed = false;
+  for (const s of kanbanSuccubi()) {
+    if (s.summoner?.taken || s.wantsTalk) continue;   // 她不在身邊 / 已經在醞釀了
+    for (let i = 0; i < Math.min(rounds, CREST_CATCHUP); i++) {
+      if (Math.random() < crestChance(s)) { s.wantsTalk = now; changed = true; break; }
+    }
+  }
+  return changed;
+}
+
+// 沒設 AI 模型(或連敗到保底)時:念頭直接落地成罐頭台詞,循環照樣跑得動
+function crestFallback() {
+  if (state.settings.model && chatGenFail.count < 3) return false;
+  let changed = false;
+  for (const s of kanbanSuccubi()) {
+    if (!s.wantsTalk || s.summoner?.taken) continue;
+    s.chatLine = { text: pick(CHAT_LINES[s.stage] || CHAT_LINES.stranger), t: Date.now() };
+    s.wantsTalk = 0;
+    changed = true;
+  }
+  return changed;
 }
 
 // 完成報酬:randInt(1+lv, 3+lv),由「完成金額」擴充提升上下限
@@ -287,7 +321,7 @@ function defaultState() {
     gold: 0,
     quests: [],   // {id, text, lv:0|1|2, startedAt?, deadline?}
     discover: null, // {day, count} 每日發現獎勵計數
-    chatCharges: 0, // 淫紋層數(聊天入場券,委託操作隨機觸發,上限 5)
+    crestPatrolAt: 0, // 上次淫紋巡邏的時間戳(每 10 分一輪,問看板娘想不想找你說話)
     expansions: {}, // 擴充等級(8 軸,見 EXPANSIONS);名額/格數等由此推導
     dismiss: null,  // {day, price} 今日遣散費
     succubi: [],  // 見 summon()
@@ -561,7 +595,6 @@ function addQuest(text) {
       toast(`發現委託!+${g} 金`, "good");
     } else toast("已加入發現池", "");
   } else toast("已加入發現池", "");
-  grantCrest(1);
   scheduleSave(); renderAll();
 }
 
@@ -569,7 +602,6 @@ function accept(id) {
   const q = state.quests.find(q => q.id === id);
   if (!q) return;
   q.lv = 1;
-  grantCrest(1);
   scheduleSave(); renderAll();
 }
 
@@ -580,7 +612,6 @@ function start(id) {
   q.startedAt = Date.now();
   q.deadline = q.startedAt + QUEST_HOURS * HOUR;
   log(`開始執行「${q.text}」(期限 ${QUEST_HOURS}h)`);
-  grantCrest(1);
   scheduleSave(); renderAll();
 }
 
@@ -593,7 +624,6 @@ function complete(id) {
   log(`完成「${q.text}」 +${g} 金`);
   toast(g >= 19 ? `大豐收!委託完成 +${g} 金!!` : `委託完成!+${g} 金`, "good");
   kanbanReact("complete");
-  grantCrest(2);
   scheduleSave(); renderAll();
 }
 
@@ -1101,12 +1131,11 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
     s.lastDateDay = today;
     s.lastChatDay = today;
   } else {
-    // 聊天不花金幣,吃 1 層淫紋(委託操作隨機觸發)
+    // 聊天不花任何資源:淫紋只是「她有一句話還沒給你看」的燈,點開就是讀那一句。
+    // 她被召喚走時不會產生話,也不從這裡進觀戰——想撞見實況要付約會費。
     if (!prepaid) {
-      if ((state.chatCharges || 0) < 1) { toast("需要淫紋——去做委託,她就會想找你", "bad"); return; }
-      state.chatCharges--;
-      // 淫紋打開,她卻在別人那邊:這一層淫紋看到的是實況(觀戰)
-      if (s.summoner?.taken) { enterWatch(s, "chat"); return; }
+      if (s.summoner?.taken) { toast(`${s.name} 正被召喚走——約她出門才撞得見`, "bad"); return; }
+      if (!s.chatLine) { toast("她現在沒有話要跟你說", "bad"); return; }
     }
     s.lastChatDay = today;
   }
@@ -1423,7 +1452,7 @@ async function genPost(key, messages) {
   } catch { return null; }
 }
 
-// 她的下一句聊天:最優先(失敗計次退避;連敗 3 次淫紋照亮走即時保底)
+// 她的下一句聊天:最優先(失敗計次退避;連敗 3 次改用罐頭台詞保底,見 crestFallback)
 function chatLineMsgs(s) {
   const hist = s.history || [];
   let cut = 0;
@@ -1443,16 +1472,18 @@ function chatLineMsgs(s) {
 async function genChatOrder() {
   if (chatGenFail.count && Date.now() - chatGenFail.at < Math.min(60000, 10000 * chatGenFail.count)) return;
   let anyErr = false, anyDone = false;
+  // 只寫「巡邏勾起了念頭」的那幾位;沒起念頭就不生話——她開口與否跟著你做事的節奏走。
   for (const s of kanbanSuccubi()) {   // 多看板娘:每位各自的下一句
-    if (s.chatLine || s.summoner?.taken || s.ntr) continue;
-    const hist = s.history || [];
-    const key = `chat:${s.id}:${hist.length}:${hist[hist.length - 1]?.t || 0}`;
+    if (!s.wantsTalk || s.summoner?.taken || s.ntr) continue;
+    const key = `chat:${s.id}:${s.wantsTalk}`;   // 綁這一輪念頭:刷新時重寫,不吃到舊快取
     const r = await genPost(key, chatLineMsgs(s));
     if (!r) continue;
     if (r.status === "done" && r.result) {
       anyDone = true;
-      if (isKanban(s.id) && !s.summoner?.taken && !s.chatLine) {
+      if (isKanban(s.id) && !s.summoner?.taken) {
+        // 覆寫:她有新想法時,舊的那句未讀就直接被刷掉(同時只留最新一句)
         s.chatLine = { text: r.result.split("\n")[0].slice(0, 300) || r.result.slice(0, 300), t: Date.now() };
+        s.wantsTalk = 0;                             // 念頭落地成未讀訊息
         dirty = true; scheduleSave(); renderAll();   // 淫紋亮起
       }
     } else if (r.status === "error") anyErr = true;
@@ -1460,7 +1491,7 @@ async function genChatOrder() {
   if (anyDone) chatGenFail = { count: 0, at: 0 };
   else if (anyErr) {
     chatGenFail = { count: chatGenFail.count + 1, at: Date.now() };
-    if (chatGenFail.count === 3) renderAll();   // 保底生效:亮紋改走即時模式
+    if (chatGenFail.count === 3) renderAll();   // 保底生效:改用罐頭台詞讓紋亮起來
   }
 }
 
@@ -1532,7 +1563,7 @@ async function genTick(force = false) {
   genTickBusy = false;
 }
 
-// 半預製聊天的失敗計數:連敗 3 次 → 淫紋照亮走即時生成保底(renderCrest 參照)
+// 半預製聊天的失敗計數:連敗 3 次 → 改用罐頭台詞讓紋亮起來(crestFallback 參照),不無聲卡死
 let chatGenFail = { count: 0, at: 0 };
 
 // 點某位看板娘時取她的一句預生台詞(即取即消耗);沒有就回 null 讓罐頭上場
@@ -1617,6 +1648,8 @@ function buildCtx(s) {
       stage: s.stage, affection: s.affection,
       days_since_summon: Math.floor((Date.now() - s.summonedAt) / 86400000),
     },
+    // 她就在店頭看著你做事:委託清單是她開口的材料(persona_builder 會挑最值得說的一件)
+    quests: questSnapshot(),
     scene: {
       type: chatSession?.type || "chat", location: chatSession?.location || null,
       scene_prompt: chatSession?.locationDesc || null,
@@ -2300,6 +2333,10 @@ setInterval(() => {
     }
   } catch (e) { console.error("tick 在地檢查出錯(不影響同步):", e); }
 
+  // 淫紋巡邏:每 10 分鐘問一次在場的看板娘想不想找你說話(中了才會去生成她那句話)
+  try { if (crestPatrol()) changed = true; } catch (e) { console.error("淫紋巡邏失敗:", e); }
+  try { if (crestFallback()) changed = true; } catch (e) { console.error("淫紋保底失敗:", e); }
+
   // 伺服器世界時鐘:每 15 秒同步一次(拿權威 outcome + 召喚師鏡像);與上面的在地檢查各自獨立
   try { if (Date.now() - lastSimSyncAt > 15000) simSync(); } catch (e) { console.error("simSync 失敗:", e); }
   try { genTick(); } catch (e) { console.error("genTick 失敗:", e); }   // 代工生成:下單+收貨
@@ -2452,30 +2489,26 @@ async function removeBgAt(i) {
 function renderAll() {
   // 每個子渲染獨立 try:單一區塊出錯(如半更新缺元素)不連累其他,
   // 委託輸入等核心功能永遠保持可用。
-  for (const fn of [applyTheme, renderHud, renderQuests, renderShop, renderSuccubi, renderChatView, renderKanban, renderCrest, renderSettings]) {
+  for (const fn of [applyTheme, renderHud, renderQuests, renderShop, renderSuccubi, renderChatView, renderKanban, renderCrests, renderSettings]) {
     try { fn(); } catch (e) { console.error(fn.name, e); }
   }
 }
 
-// 淫紋按鈕:有層數、看板娘在、醒著、不在對話中,且「她的話備好了」才亮——
-// 半預製:存了再多紋,話沒生成好也不亮。例外:被召喚走(紋=窺視紀錄)、無模型(即時罐頭)。
-// 淫紋要開的對象:優先「話備好」的看板娘,其次被召喚走的(看紀錄),再來第一位(即時保底)
-function crestTarget() {
-  const girls = kanbanSuccubi();
-  return girls.find(s => s.chatLine) || girls.find(s => s.summoner?.taken) || girls[0] || null;
-}
-
-function renderCrest() {
-  const el = $("#crest");
+// 淫紋:每位看板娘各自一盞燈——她的話寫好了就亮,點開讀那一句、回一句就關。
+// 起了念頭但話還沒寫好時顯示極暗呼吸(brewing),讓「她在想」跟「沒動靜」看得出差別。
+// 睡眠、對話中、觀戰中不顯示;被召喚走的不會有話,自然不亮。
+function renderCrests() {
+  const el = $("#crests");
   if (!el) return;
-  const girls = kanbanSuccubi();
-  const base = (state.chatCharges || 0) > 0 && girls.length > 0 && !isAsleep() && !chatWith && !watchWith;
-  // 任一位話備好才可點;連續生成失敗 3 次 → 照亮走即時保底(錯誤看得見,不無聲卡死)
-  const lineReady = girls.some(s => s.chatLine || s.summoner?.taken) || !state.settings.model || chatGenFail.count >= 3;
-  el.classList.toggle("hidden", !base);
-  el.classList.toggle("brewing", !!(base && !lineReady));   // 極暗呼吸=她們在想要說什麼
-  const n = $("#crest-n");
-  if (base && n) n.textContent = state.chatCharges;
+  const busy = isAsleep() || chatWith || watchWith;
+  const girls = busy ? [] : kanbanSuccubi().filter(s => !s.summoner?.taken && (s.chatLine || s.wantsTalk));
+  el.classList.toggle("hidden", !girls.length);
+  el.innerHTML = girls.map(s => `
+    <button class="crest-btn r-${s.rarity}${s.chatLine ? "" : " brewing"}" data-cid="${s.id}" title="${esc(s.name)}">
+      <svg viewBox="0 0 200 210" width="46" height="48"><use href="#crest-sym"/></svg>
+      <span class="cname">${esc(s.name)}</span>
+    </button>`).join("");
+  el.querySelectorAll(".crest-btn").forEach(b => b.onclick = () => enterChat(b.dataset.cid));
 }
 
 function renderHud() {
@@ -2783,10 +2816,9 @@ function renderPlayerAttrs() {
     ["金幣", `${state.gold} 金`],
     ["名冊名額", `${state.succubi.length} / ${rosterCap()}`],
     ["執行中格數", `${execCap()} 格`],
-    ["淫紋", `${state.chatCharges || 0} 層`],
     ["完成金額", `${1 + expLv("reward")}~${3 + expLv("reward")} 金`],
     ["商店祭品", `每日 ${2 + expLv("offering")} 人`],
-    ["淫紋機率", `1/${crestDenom()}`],
+    ["淫紋機率", kanbanSuccubi().map(s => `${s.name} ${Math.round(crestChance(s) * 100)}%`).join("、") || "(沒有看板娘)"],
   ];
   // 看板娘時長刻意不顯示——玩家無法得知她何時解除,需自行察看
   const lvs = Object.keys(EXPANSIONS).filter(k => k !== "kanban").map(k => `${EXPANSIONS[k]} Lv${expLv(k)}`).join("、");
@@ -2940,7 +2972,7 @@ function renderDetail(s, root) {
     if (su) {
       // 玩家看不到過去的紀錄——只有「此刻正被召喚中」才顯示,且要靠聊天/約會當場撞見或事後詢問她
       const takenTxt = s.summoner.taken
-        ? "她此刻正被召喚到對方身邊——現在去約會或用淫紋聊天,能撞見實況、有機會把她拉回來"
+        ? "她此刻正被召喚到對方身邊——現在約她出門,能撞見實況、有機會把她拉回來"
         : "他隨時可能把她召喚過去";
       const ringTxt = s.summoner.ringUnlocked
         ? `<br><span style="color:var(--red)">⚠ 她已為他解開魔法環——隨時可能懷孕被娶走</span>`
@@ -2980,7 +3012,7 @@ function renderDetail(s, root) {
                : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`}
       </div>
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
-      ${!s.ntr ? `<div class="aff-line dim small">聊天請透過淫紋(做委託觸發)——看板娘才聽得見你的呼喚</div>` : ""}
+      ${!s.ntr ? `<div class="aff-line dim small">聊天等她開口:她在店頭陪你時會自己想找你說話,淫紋亮了就是有話沒讀</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
         <div class="detail-actions"><button class="danger-btn" id="act-dismiss">獻祭(${dismissPriceToday()} 金)</button></div>` : ""}
@@ -3123,7 +3155,6 @@ on("quest-add", "click", () => { const i = $("#quest-input"); if (i) { addQuest(
 on("quest-input", "keydown", e => { if (e.key === "Enter") { addQuest(e.target.value); e.target.value = ""; } });
 on("hud-need", "click", () => switchTab(2));
 on("q-back", "click", () => goExec());
-on("crest", "click", () => { const s = crestTarget(); if (s) enterChat(s.id); });
 
 on("set-player", "change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
 on("set-sleep-start", "change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
@@ -3304,7 +3335,19 @@ window.DBG = {
   rel: (id, suId) => { const s = state.succubi.find(x => x.id === id); if (s) { s.summoner = makeSummonerRel(suId || SUMMONERS[0]?.id); scheduleSave(); renderAll(); } return s?.summoner; },
   mate: (id) => { const s = state.succubi.find(x => x.id === id); if (!s?.summoner) return null; const rm = doMating(s, Date.now()); scheduleSave(); renderAll(); return { removed: rm, sm: s.summoner }; },
   actSlot: (id) => { const s = state.succubi.find(x => x.id === id); if (!s?.summoner) return null; const rm = processActSlot(s, Date.now()); scheduleSave(); renderAll(); return { removed: rm, sm: s.summoner }; },
-  // 測試:直接進聊天/約會(prepaid 跳過金幣/淫紋消耗),與詢問機制
+  // 測試:把巡邏時鐘往前撥一輪並立刻跑一次(看誰起了念頭、話寫好沒)
+  crestPatrol: () => {
+    state.crestPatrolAt = Date.now() - CREST_PATROL_MS;
+    const changed = crestPatrol() | crestFallback();
+    renderAll();
+    return {
+      changed: !!changed,
+      girls: kanbanSuccubi().map(s => ({
+        name: s.name, chance: crestChance(s), wantsTalk: !!s.wantsTalk, line: s.chatLine?.text || null,
+      })),
+    };
+  },
+  // 測試:直接進聊天/約會(prepaid 跳過金幣消耗),與詢問機制
   chat: (id, type = "chat") => enterChat(id, type, null, true),
   ask: () => askAboutActs(),
   chatState: () => ({ chatWith, watchWith, ended: chatSession?.ended ?? null }),

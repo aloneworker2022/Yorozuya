@@ -190,18 +190,17 @@
 <!-- 召喚演出 -->
 <div id="summon-overlay" class="hidden"></div>
 
-<!-- 淫紋:聊天入場券(委託操作隨機觸發,點擊與看板娘聊天) -->
-<button id="crest" class="hidden" title="她在呼喚你">
-  <svg viewBox="0 0 200 210" width="46" height="48" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="crest-g" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#9a3fb0"/>
-        <stop offset=".22" stop-color="#cc2380"/>
-        <stop offset=".5" stop-color="#e0104f"/>
-        <stop offset=".78" stop-color="#cc2380"/>
-        <stop offset="1" stop-color="#9a3fb0"/>
-      </linearGradient>
-    </defs>
+<!-- 淫紋圖騰:定義一次,每位看板娘的通知燈以 <use> 引用 -->
+<svg width="0" height="0" aria-hidden="true" style="position:absolute" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="crest-g" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9a3fb0"/>
+      <stop offset=".22" stop-color="#cc2380"/>
+      <stop offset=".5" stop-color="#e0104f"/>
+      <stop offset=".78" stop-color="#cc2380"/>
+      <stop offset="1" stop-color="#9a3fb0"/>
+    </linearGradient>
+    <symbol id="crest-sym" viewBox="0 0 200 210">
     <g fill="url(#crest-g)" fill-rule="evenodd">
       <path d="M100 26 C95 15 80 16 81 26 C82 34 92 38 100 47 C108 38 118 34 119 26 C120 16 105 15 100 26 Z"/>
       <g id="crest-half">
@@ -222,9 +221,12 @@
       <path d="M100 118 L109 141 L100 164 L91 141 Z  M100 127 L104.5 141 L100 155 L95.5 141 Z"/>
       <path d="M100 169 L104.5 177 L100 185 L95.5 177 Z"/>
     </g>
-  </svg>
-  <b id="crest-n"></b>
-</button>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- 淫紋:她有話還沒給你看的通知燈(每位看板娘各自一條訊息串,各自一盞) -->
+<div id="crests" class="hidden"></div>
 
 <!-- 聊天/約會:全螢幕插播層(不可被分頁切換打斷,結束對話才退出) -->
 <div id="chat-view" class="hidden">
