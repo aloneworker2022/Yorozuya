@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.26(2026-07-28)淫紋改通知燈+獻祭不演出";
+const APP_VER = "v5.27(2026-07-28)淫紋改通知燈+獻祭不演出、隨時可獻";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -699,13 +699,12 @@ function sacrificeDropChance(stage) {
 // 儀式演出開關:false = 確認後直接結算,不跑六句 VN(暫時關閉,之後要改演出再打開)
 const SAC_RITUAL = false;
 
-// ── 魅魔獻祭(預織文 + 過一天)──
+// ── 魅魔獻祭 ──
 // 規則:
-//  1. 召喚當日不可獻祭;須至少跨過一個遊戲日界(睡眠結束 = 新的一天)才可發動。
-//  2. 每晚進入睡眠時段(預設 01:00 起)檢查每隻魅魔;若尚無完整獻祭文,於背景織好 6 句存入
-//     s.sacScript,供日後儀式直接播放(不再現場即時生成)。
-//  3. 發動條件 = 過一天(+ 有演出時才要求獻祭文 ready)。
-//     SAC_RITUAL=false 時不顯示任何文字,自然也不該拿「文沒織好」擋住獻祭。
+//  1. 隨時可獻祭,沒有等待期(原本的「召喚後須過一天」已取消)。
+//  2. SAC_RITUAL=true 時才需要預織文:每晚睡眠時段(預設 01:00 起)為缺文的魅魔
+//     在背景織好 6 句存入 s.sacScript,儀式直接讀取播放。
+//  3. SAC_RITUAL=false(現行)不顯示任何文字,故不織文、也不拿文擋住獻祭。
 
 const SAC_SCENE_LABELS = ["準備", "獻祭", "收尾"];
 
@@ -714,21 +713,15 @@ function sacScriptReady(s) {
   return !!(sc?.ready && sc.pages?.length === 6 && sc.pages.every(p => p && p.text));
 }
 
-/** 召喚後是否已跨過至少一個遊戲日 */
-function sacDayElapsed(s) {
-  if (!s?.summonedAt) return true;   // 舊存檔缺時間戳 → 視為已過,不卡死
-  return dayNum() > dayNum(s.summonedAt);
-}
-
-// 不演出時不要求獻祭文:沒有文字要播,「文沒織好」就不該擋住獻祭
+// 隨時可獻祭:不再要求「召喚後過一天」,不演出時也不要求獻祭文
+// (沒有文字要播,拿「文沒織好」擋住獻祭沒有道理)
 function canSacrifice(s) {
-  return !!(s && !s.ntr && sacDayElapsed(s) && (!SAC_RITUAL || sacScriptReady(s)));
+  return !!(s && !s.ntr && (!SAC_RITUAL || sacScriptReady(s)));
 }
 
 /** 按鈕/ toast 用的阻擋原因(可發動時回 "") */
 function sacrificeBlockReason(s) {
   if (!s || s.ntr) return "無法獻祭";
-  if (!sacDayElapsed(s)) return "需經過一天才能獻祭";
   if (SAC_RITUAL && !sacScriptReady(s)) return "獻祭文尚未備妥(01:00 起織夢)";
   return "";
 }
@@ -801,7 +794,7 @@ function sacPageMsgs(s, idx) {
   ];
 }
 
-/** 無模型:睡眠時段一次用罐頭填滿,讓沒 Ollama 也能過一天後獻祭 */
+/** 無模型:睡眠時段一次用罐頭填滿,讓沒 Ollama 也有獻祭文可播(僅 SAC_RITUAL=true 時用得到) */
 function fillSacCanned(s) {
   const sc = ensureSacScriptShell(s);
   if (sc.ready) return;
@@ -3742,7 +3735,7 @@ window.DBG = {
   sac: (id) => sacrificeSuccubus(id),
   sacNext: () => sacAdvance(),
   sacState: () => sacSession && { idx: sacSession.idx, pages: sacSession.pages.map(p => !!p.text), settled: sacSession.settled, opening: sacSession.opening },
-  // 測試:查看/強制備妥某隻的預織獻祭文;forceDay 把召喚日推到昨天以解鎖「過一天」
+  // 測試:查看/強制備妥某隻的預織獻祭文(僅 SAC_RITUAL=true 時的儀式會用到)
   sacScript: (id) => state.succubi.find(x => x.id === id)?.sacScript,
   sacReady: (id) => {
     const s = state.succubi.find(x => x.id === id); if (!s) return null;
@@ -3751,10 +3744,9 @@ window.DBG = {
   },
   sacUnlock: (id) => {
     const s = state.succubi.find(x => x.id === id); if (!s) return null;
-    s.summonedAt = Date.now() - 2 * 86400000;
     if (!sacScriptReady(s)) fillSacCanned(s);
     scheduleSave(); renderAll();
-    return { dayElapsed: sacDayElapsed(s), ready: sacScriptReady(s), can: canSacrifice(s) };
+    return { ready: sacScriptReady(s), can: canSacrifice(s) };
   },
   pumpSac: () => genSacOrders(),
   pin: () => ({ pinIdx, execCap: execCap(), tx: $("#pin-track")?.style.transform, slides: document.querySelectorAll("#pin-track .pin-slide").length }),
