@@ -694,9 +694,13 @@ function sacrificeDropChance(stage) {
   return 1 / denom;
 }
 
+// 儀式演出開關:false = 確認後直接結算,不跑六句 VN(暫時關閉,之後要改演出再打開)
+const SAC_RITUAL = false;
+
 // 魅魔獻祭:三場景 VN(開場 → 準備/獻祭/收尾,每景 AI 生「描述+反應」共六句)。
 // 流程:先載入預先設計好的開場 → 停在「等待獻祭儀式」樣式,期間一次把三段六句全部生成好
 //       → 六句全備妥,儀式才開始;玩家一直按「下一句」看完六句,最後「完成獻祭」才結算移除+掉落。
+// SAC_RITUAL=false 時整段演出跳過:不生成、不顯示文字,結果只走 log/toast。
 async function sacrificeSuccubus(id) {
   const s = state.succubi.find(x => x.id === id);
   if (!s || s.ntr) return;
@@ -704,6 +708,14 @@ async function sacrificeSuccubus(id) {
   if (state.gold < price) { toast(`今日獻祭費 ${price} 金,你付不起`, "bad"); return; }
   if (!confirm(`獻祭 ${s.name}?\n費用 ${price} 金。她將被獻給地獄惡魔,永遠消失。`)) return;
   state.gold -= price;
+
+  // 不演出:直接結算(移除她 + 天賦掉落判定),不進 chat-mode、不生成任何文字
+  if (!SAC_RITUAL) {
+    sacSettle({ id, name: s.name, stage: s.stage, gift: s.gift, price });
+    detailId = null;
+    renderAll();
+    return;
+  }
 
   const method = (SACRIFICE.methods && SACRIFICE.methods.length)
     ? pick(SACRIFICE.methods) : { name: null, prep: null, ritual: null, finale: null };
