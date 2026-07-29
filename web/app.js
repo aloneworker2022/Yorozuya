@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.29(2026-07-29)淫紋改由委託操作判定(依各自出現率)+即時多回合聊天";
+const APP_VER = "v5.30(2026-07-29)送出即跳出對話,淫紋改「對話框…」表示她正在輸入";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -88,14 +88,19 @@ function crestRoll() {
   return changed;
 }
 
-// 沒設 AI 模型(或連敗到保底)時:念頭直接落地成罐頭台詞,循環照樣跑得動
+// 沒設 AI 模型(或連敗到保底)時:念頭/回覆直接落地成罐頭台詞,循環照樣跑得動。
+// 另加卡住保險:她「正在輸入」超過 5 分鐘還沒生出來,一律補罐頭——不讓 … 永遠轉下去。
+const TYPING_STUCK_MS = 5 * 60 * 1000;
 function crestFallback() {
-  if (state.settings.model && chatGenFail.count < 3) return false;
+  const dead = !state.settings.model || chatGenFail.count >= 3;
   let changed = false;
-  for (const s of kanbanSuccubi()) {
-    if (!s.wantsTalk || s.summoner?.taken) continue;
+  for (const s of state.succubi) {
+    if (s.ntr || s.summoner?.taken) continue;
+    const stuck = s.typing && Date.now() - s.typing.at > TYPING_STUCK_MS;
+    if (!((s.typing && (dead || stuck)) || (s.wantsTalk && dead && isKanban(s.id)))) continue;
     s.chatLine = { text: pick(CHAT_LINES[s.stage] || CHAT_LINES.stranger), t: Date.now() };
     s.wantsTalk = 0;
+    s.typing = null;
     changed = true;
   }
   return changed;
@@ -1298,15 +1303,22 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
     // 她被召喚走時不會產生話,也不從這裡進觀戰——想撞見實況要付約會費。
     if (!prepaid) {
       if (s.summoner?.taken) { toast(`${s.name} 正被召喚走——約她出門才撞得見`, "bad"); return; }
-      if (!s.chatLine && !s.wantsTalk) { toast("她現在沒有話要跟你說", "bad"); return; }
+      if (s.typing) { toast(`${s.name} 正在回你……`, ""); return; }
+      if (!s.chatLine && !s.wantsTalk && !s.chatSess) { toast("她現在沒有話要跟你說", "bad"); return; }
     }
     s.wantsTalk = 0;   // 念頭在這一場兌現了(話沒寫好就現場生)
     s.lastChatDay = today;
   }
   chatWith = id;
   const spot = DATE_SPOTS.find(x => x[0] === location);
-  const turnCap = randInt(...(type === "date" ? DATE_TURNS : CHAT_TURNS));   // 這一場能聊幾個來回
-  chatSession = { type, location, locationDesc: spot ? spot[1] : null, playerMsgs: 0, turnCap, gotReply: false, busy: false };
+  // 聊天:一場對話跨多次進出(送出即跳出、她慢慢打字),回合數記在她身上
+  if (type === "chat") s.chatSess ??= { turnCap: randInt(...CHAT_TURNS), playerMsgs: 0 };
+  const sess = type === "chat" ? s.chatSess : null;
+  const turnCap = sess ? sess.turnCap : randInt(...DATE_TURNS);
+  chatSession = {
+    type, location, locationDesc: spot ? spot[1] : null,
+    playerMsgs: sess ? sess.playerMsgs : 0, turnCap, gotReply: false, busy: false,
+  };
   dateChooser = false;
   document.body.classList.add("chat-mode");
   s.history ??= [];
@@ -1329,13 +1341,19 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
     vnShow("", `—— ${location}・約會開始 ——`, "sys");
     sceneOpener(s);   // 約會:她先開口,描述場景與心情(即時 session)
   } else if (s.chatLine) {
-    // 她的開場白早已在背景寫好——秒顯示,接著就是即時往返
+    // 她那句話早已在背景寫好(開場白或上一句的回覆)——秒顯示,你回一句就換她慢慢打字
     const line = s.chatLine.text;
     s.chatLine = null;
     s.history.push({ role: "assistant", content: line, t: Date.now() });
     s.history = s.history.slice(-200);
     vnShow(s.name, line, "ai");
     vnDone();
+    // 這場的回合已用完:這句是收尾,讀完按鈕結束(結算情感)
+    if (sess && sess.playerMsgs >= sess.turnCap) {
+      chatSession.ended = true;
+      chatSession.gotReply = true;
+      chatEndButton("結束對話 ▶");
+    }
     dirty = true;
     saveNow();
   } else {
@@ -1420,11 +1438,13 @@ function exitChat() {
       s.chatLine = null;   // 約會另起了話頭,作廢她待命中的預製話重生
       log(`與 ${s.name} 的${chatSession.location}約會結束,情感 +${d}`);
       toast(`約會結束,情感 +${d}`, "good");
-    } else if (chatSession.gotReply) {
-      // 聊天:整場 session 結算一次 -1~+2(玩家一句都沒說到就不結算、不扣情感)
+    } else if (chatSession.type === "chat" && s.chatSess && s.chatSess.playerMsgs >= s.chatSess.turnCap && !s.typing) {
+      // 聊天:整場(跨多次進出)聊完才結算一次 -1~+2;中途跳出去等她打字不結算
       const d = applyAffection(s, randInt(-1, 2));
-      s.chatLine = null;   // 這一盞燈的話聊完了,下一句等巡邏再起念頭
-      log(`與 ${s.name} 聊了 ${chatSession.playerMsgs} 句,情感 ${d >= 0 ? "+" : ""}${d}`);
+      const n = s.chatSess.playerMsgs;
+      s.chatSess = null;
+      s.chatLine = null;   // 這一盞燈熄了,下一句等委託操作再判定
+      log(`與 ${s.name} 聊了 ${n} 句,情感 ${d >= 0 ? "+" : ""}${d}`);
       toast(`聊天結束,情感 ${d >= 0 ? "+" : ""}${d}`, d >= 0 ? "good" : "bad");
     }
     // 聊天對話串是跨日連續的簡訊串,不加場景標記
@@ -1709,13 +1729,30 @@ function chatLineMsgs(s) {
   return [{ role: "system", content: buildSystemPrompt(buildCtx(s)) }, ...recent, { role: "user", content: inst }];
 }
 
+// 她正在回你(玩家送出後跳出對話,回覆在背景寫)——最優先,寫好淫紋就從「…」變回亮紋
+async function genReplyOrder() {
+  for (const s of state.succubi) {
+    if (!s.typing || s.ntr) continue;
+    const key = `reply:${s.id}:${s.typing.at}`;   // 綁這一次送出:同一句不重複下單
+    const r = await genPost(key, chatLineMsgs(s));
+    if (!r) continue;
+    if (r.status === "done" && r.result) {
+      chatGenFail = { count: 0, at: 0 };
+      s.chatLine = { text: r.result.split("\n")[0].slice(0, 300) || r.result.slice(0, 300), t: Date.now() };
+      s.typing = null;
+      dirty = true; scheduleSave(); renderAll();
+      toast(`${s.name} 回你了`, "good");
+    } else if (r.status === "error") chatGenFail = { count: chatGenFail.count + 1, at: Date.now() };
+  }
+}
+
 async function genChatOrder() {
   if (chatGenFail.count && Date.now() - chatGenFail.at < Math.min(60000, 10000 * chatGenFail.count)) return;
   let anyErr = false, anyDone = false;
-  // 只寫「巡邏勾起了念頭」的那幾位;沒起念頭就不生話——她開口與否跟著你做事的節奏走。
+  // 只寫「委託操作判定中了」的那幾位;沒亮紋就不生話——她開口與否跟著你做事的節奏走。
   for (const s of kanbanSuccubi()) {   // 多看板娘:每位各自的下一句
     if (!s.wantsTalk || s.summoner?.taken || s.ntr) continue;
-    const key = `chat:${s.id}:${s.wantsTalk}`;   // 綁這一輪念頭:刷新時重寫,不吃到舊快取
+    const key = `chat:${s.id}:${s.wantsTalk}`;   // 綁這一次判定:刷新時重寫,不吃到舊快取
     const r = await genPost(key, chatLineMsgs(s));
     if (!r) continue;
     if (r.status === "done" && r.result) {
@@ -1735,8 +1772,8 @@ async function genChatOrder() {
   }
 }
 
-// (不需要「回一句就搶生下一句」的補丁:一盞淫紋現在是一整場即時對話,
-//  她在場內當場回你;下一次開口與否仍由巡邏決定,不會變成 24 小時有問必答。)
+// (她的回覆一律走 genReplyOrder 在背景寫:玩家送出即跳出對話,
+//  淫紋顯示「對話框 …」表示她正在輸入,寫好才變回亮紋等你點進來讀。)
 
 // 觀戰紀錄文字:每輪最多下 3 單
 async function genActOrders() {
@@ -1803,6 +1840,7 @@ async function genTick(force = false) {
     if (isAsleep()) await genSacOrders();
     if (state.settings.model) {
       const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep();
+      await genReplyOrder();   // 最優先:她正在回你的那句(玩家在等紋亮)
       if (idle) await genChatOrder();
       await genActOrders();
       if (idle) await genQuipOrders();
@@ -2054,7 +2092,25 @@ async function sendChatMsg() {
   s.history.push({ role: "user", content: text, t: Date.now() });
   vnShow(state.settings.player || "你", text, "user");
 
-  // 聊天/約會:一律即時往返——她當場回話,聊到回合上限她才喊停
+  // 聊天:送出就跳出對話——她要花時間打字,不讓玩家對著空畫面等。
+  // 淫紋改成「對話框 …」表示她正在輸入;她寫完就變回淫紋,點進來讀她的回覆、接著聊。
+  if (chatSession.type === "chat") {
+    chatSession.ended = true;
+    chatSession.gotReply = true;
+    s.lastChatDay = dayNum();
+    s.chatSess ??= { turnCap: chatSession.turnCap, playerMsgs: 0 };
+    s.chatSess.playerMsgs = ++chatSession.playerMsgs;
+    s.chatLine = null;
+    s.typing = { at: Date.now() };   // 她正在回你(背景生成,見 genReplyOrder)
+    dirty = true;
+    saveNow();
+    toast(`訊息傳出去了……${s.name} 正在回你`, "good");
+    exitChat();
+    try { genTick(true); } catch { /* 下輪 tick 會再下單 */ }
+    return;
+  }
+
+  // 約會:即時往返——她當場回話,聊到回合上限她才喊停
   vnTyping(true);
   $("#vn-name").textContent = (state.settings.player || "你") + " → " + s.name;
   chatSession.busy = true;
@@ -2141,6 +2197,8 @@ async function askAboutActs() {
     vnDone();
     applyAffection(s, -1);
     chatSession.ended = true;
+    // 她生氣走人:這場聊天就此中斷(不另外結算,淫紋熄滅)
+    s.chatSess = null; s.chatLine = null; s.typing = null;
     scheduleSave();
     setTimeout(() => { if (chatSession?.ended) exitChat(); }, 2400);
     return;
@@ -2796,20 +2854,33 @@ function renderAll() {
   }
 }
 
-// 淫紋:每位看板娘各自一盞燈——委託操作判定中了就亮,點開就是一場 2~4 來回的即時對話。
-// 話還沒寫好時顯示半透明呼吸(brewing),照樣點得下去(進場現生她的開場白)。
+// 淫紋:每位看板娘各自一盞燈,三種狀態——
+//   ① 亮紋:她有話等你讀(委託操作判定中了,或她回完你上一句)→ 點開就聊
+//   ② 對話框「…」:她正在輸入(你剛送出、或念頭剛起話還沒寫好)→ 不能點,等她打完
 // 睡眠、對話中、觀戰中、獻祭中不顯示;被召喚走的不判定,自然不亮。
+const TYPING_SVG = `<svg class="typing-svg" viewBox="0 0 52 44" width="44" height="38" aria-hidden="true">
+  <path class="tbub" d="M7 4h38a6 6 0 0 1 6 6v18a6 6 0 0 1-6 6H22l-10 8v-8H7a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6z"/>
+  <circle class="tdot d1" cx="17" cy="19" r="3.2"/>
+  <circle class="tdot d2" cx="26" cy="19" r="3.2"/>
+  <circle class="tdot d3" cx="35" cy="19" r="3.2"/>
+</svg>`;
+
 function renderCrests() {
   const el = $("#crests");
   if (!el) return;
   const busy = isAsleep() || chatWith || watchWith || sacrificeWith || sacSummon;
-  const girls = busy ? [] : kanbanSuccubi().filter(s => !s.summoner?.taken && (s.chatLine || s.wantsTalk));
+  const girls = busy ? [] : kanbanSuccubi().filter(s =>
+    !s.summoner?.taken && (s.chatLine || s.wantsTalk || s.typing || s.chatSess));
   el.classList.toggle("hidden", !girls.length);
-  el.innerHTML = girls.map(s => `
-    <button class="crest-btn r-${s.rarity}${s.chatLine ? "" : " brewing"}" data-cid="${s.id}" title="${esc(s.name)}">
-      <svg viewBox="0 0 200 210" width="46" height="48"><use href="#crest-sym"/></svg>
+  el.innerHTML = girls.map(s => {
+    const typing = !s.chatLine && (s.typing || s.wantsTalk);   // 她正在輸入
+    return `
+    <button class="crest-btn r-${s.rarity}${typing ? " typing" : ""}" data-cid="${s.id}"
+            title="${esc(s.name)}${typing ? " 正在輸入…" : ""}" ${typing ? "disabled" : ""}>
+      ${typing ? TYPING_SVG : `<svg viewBox="0 0 200 210" width="46" height="48"><use href="#crest-sym"/></svg>`}
       <span class="cname">${esc(s.name)}</span>
-    </button>`).join("");
+    </button>`;
+  }).join("");
   el.querySelectorAll(".crest-btn").forEach(b => b.onclick = () => enterChat(b.dataset.cid));
 }
 
@@ -3719,6 +3790,11 @@ window.DBG = {
   chat: (id, type = "chat") => enterChat(id, type, null, true),
   ask: () => askAboutActs(),
   chatState: () => ({ chatWith, watchWith, ended: chatSession?.ended ?? null }),
+  // 測試:看每位看板娘的淫紋狀態(亮紋 / 正在輸入 / 這場聊到第幾句)
+  crestState: () => kanbanSuccubi().map(s => ({
+    name: s.name, line: s.chatLine?.text || null, typing: !!s.typing,
+    wantsTalk: !!s.wantsTalk, sess: s.chatSess ? { ...s.chatSess } : null,
+  })),
   drawTick: () => checkSummonerDraws(),
   simSync: () => simSync(),
   simLiveAct: (id) => simLiveAct(state.succubi.find(x => x.id === id)),

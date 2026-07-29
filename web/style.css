@@ -958,16 +958,24 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pink) 50%, transparent)); }
   50% { transform: scale(1.08); filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 85%, transparent)); }
 }
-/* 醞釀中:她起了念頭、話還沒寫好——慢呼吸暗一點(有話 vs 在想一眼可辨),
-   但照樣點得下去:點進去她就當場開口,不用對著暗紋乾等 */
-.crest-btn.brewing {
-  opacity: .55;
-  animation: crest-brew 2.6s ease-in-out infinite;
-  filter: none;
+/* 正在輸入:淫紋換成小對話框 + 跳動的三點——她在打字,點不下去,打完自動變回亮紋 */
+.crest-btn.typing {
+  cursor: default; animation: none;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--pink) 35%, transparent));
 }
-@keyframes crest-brew {
-  0%, 100% { opacity: .42; }
-  50% { opacity: .68; }
+.crest-btn.typing .tbub {
+  fill: none; stroke: currentColor; stroke-width: 2.4;
+  stroke-linejoin: round; opacity: .8;
+}
+.crest-btn.typing .tdot {
+  fill: currentColor;
+  animation: typing-dot 1.25s ease-in-out infinite;
+}
+.crest-btn.typing .tdot.d2 { animation-delay: .18s; }
+.crest-btn.typing .tdot.d3 { animation-delay: .36s; }
+@keyframes typing-dot {
+  0%, 65%, 100% { opacity: .28; }
+  30% { opacity: 1; }
 }
 /* 是誰在找你:多位看板娘同時有話時一眼分辨(邊框帶她的稀有度色) */
 .crest-btn .cname {
