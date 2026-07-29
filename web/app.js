@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.28(2026-07-29)聊天改回即時多回合+她更常開口;被召喚走時召不動看板娘";
+const APP_VER = "v5.29(2026-07-29)淫紋改由委託操作判定(依各自出現率)+即時多回合聊天";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -32,7 +32,7 @@ const EXPANSIONS = {
   offering: "商店祭品",     // 每日進貨 = 2 + lv
   roster:   "名冊名額",     // 名額 = 1 + lv
   kanban:   "看板娘時長",   // 小時 = 1 + lv
-  crest:    "淫紋機率",     // 每級 +5% 她想找你說話的機率(基礎值由稀有度決定)
+  crest:    "淫紋機率",     // 每級 +5% 每次委託操作她想找你說話的機率(基礎值由稀有度決定)
   drop:     "獻祭掉落率",   // 影響獻祭掉落(Phase 7)
   cheap:    "召喚減費",     // 第二位起的看板娘費用每級 -1 金,地板 2 金
 };
@@ -59,35 +59,32 @@ const CHAT_TURNS = [2, 4];      // 聊天 2~4 來回(一盞淫紋一場,聊到�
 const DATE_TURNS = [2, 5];      // 約會 2~5 來回(付了 5 金,多聊幾句)
 
 // ===== 淫紋:她有話要跟你說 =====
-// 淫紋不是點數、不是入場券,是一盞「她有一句話還沒給你看」的燈。
-// 每位看板娘各自一條訊息串,同時只留最新的一句——她起了新的念頭就把舊的刷掉。
-// 每 5 分鐘巡一次,依稀有度問她「現在想不想找他說話」:愈稀有的愈黏人。
-// 她說什麼則取決於你這段時間在委託上做了什麼(chatLineMsgs → buildCtx.quests)。
-const CREST_PATROL_MS = 5 * 60 * 1000;
-const CREST_CATCHUP = 3;         // 離線最多補算 3 輪:久沒開 App 不等於一定有話等著你
+// 淫紋不是點數、不是入場券,是一盞「這位看板娘想跟你說話」的燈,亮了就能點開聊。
+// 判定時機 = 你在委託上的每一次操作(發現 / 承接 / 開始執行 / 完成):
+// 每操作一次,就對「此刻在店頭的每位看板娘」各擲一次她自己的出現率——中了她的紋就亮。
+// 出現率完全由她的稀有度(+ 淫紋機率擴充)決定,不做任何額外加權或節流:
+// 你做事她就找你說話,你不做事店裡就安安靜靜。
 const CREST_P = { N: 1 / 4, R: 1 / 3, S: 2 / 5, SS: 1 / 2, SSR: 2 / 3 };
 // 「淫紋機率」擴充:每級 +5%(上限 90%),讓低稀有度的孩子也能養到話多一點
 function crestChance(s) {
   return Math.min(0.9, (CREST_P[s.rarity] ?? CREST_P.N) + expLv("crest") * 0.05);
 }
 
-// 巡邏:每 5 分鐘一輪,問每位在你身邊的看板娘有沒有起念頭。
-// 中了只代表「她想說話」,話還要在背景寫出來(genChatOrder)淫紋才會亮。
-// 被召喚走的不巡(她不在你身邊);睡眠與對話/觀戰中不巡(不打擾),但時鐘照走。
-function crestPatrol() {
-  const now = Date.now();
-  if (!state.crestPatrolAt) { state.crestPatrolAt = now; return false; }
-  const rounds = Math.floor((now - state.crestPatrolAt) / CREST_PATROL_MS);
-  if (rounds < 1) return false;
-  state.crestPatrolAt = now;
-  if (isAsleep() || chatWith || watchWith) return true;
+// 委託操作觸發的淫紋判定:每位在場看板娘各擲一次。回傳是否有人亮了紋。
+// 被召喚走的不判(她不在你身邊);睡眠時段不判(她回夢境了);
+// 已經有紋在等你的那位不重複判(同時只留一盞燈、一句話)。
+function crestRoll() {
+  if (isAsleep()) return false;
   let changed = false;
   for (const s of kanbanSuccubi()) {
-    if (s.summoner?.taken || s.wantsTalk) continue;   // 她不在身邊 / 已經在醞釀了
-    for (let i = 0; i < Math.min(rounds, CREST_CATCHUP); i++) {
-      if (Math.random() < crestChance(s)) { s.wantsTalk = now; changed = true; break; }
-    }
+    if (s.summoner?.taken || s.wantsTalk || s.chatLine) continue;
+    if (Math.random() >= crestChance(s)) continue;
+    s.wantsTalk = Date.now();
+    changed = true;
+    toast(`……${s.name} 的淫紋亮了。她想跟你說話。`, "good");
   }
+  // 中了就馬上排她那句話(有模型時);沒模型 crestFallback 會在下一秒補罐頭台詞
+  if (changed) { dirty = true; try { genTick(true); } catch { /* 下輪 tick 再說 */ } }
   return changed;
 }
 
@@ -322,7 +319,6 @@ function defaultState() {
     gold: 0,
     quests: [],   // {id, text, lv:0|1|2, startedAt?, deadline?}
     discover: null, // {day, count} 每日發現獎勵計數
-    crestPatrolAt: 0, // 上次淫紋巡邏的時間戳(每 10 分一輪,問看板娘想不想找你說話)
     expansions: {}, // 擴充等級(8 軸,見 EXPANSIONS);名額/格數等由此推導
     dismiss: null,  // {day, price} 今日遣散費
     succubi: [],  // 見 summon()
@@ -598,6 +594,7 @@ function addQuest(text) {
       toast(`發現委託!+${g} 金`, "good");
     } else toast("已加入發現池", "");
   } else toast("已加入發現池", "");
+  crestRoll();   // 發現委託:每位看板娘各擲一次淫紋
   scheduleSave(); renderAll();
 }
 
@@ -605,6 +602,7 @@ function accept(id) {
   const q = state.quests.find(q => q.id === id);
   if (!q) return;
   q.lv = 1;
+  crestRoll();   // 承接委託:每位看板娘各擲一次淫紋
   scheduleSave(); renderAll();
 }
 
@@ -615,6 +613,7 @@ function start(id) {
   q.startedAt = Date.now();
   q.deadline = q.startedAt + QUEST_HOURS * HOUR;
   log(`開始執行「${q.text}」(期限 ${QUEST_HOURS}h)`);
+  crestRoll();   // 開始執行:每位看板娘各擲一次淫紋
   scheduleSave(); renderAll();
 }
 
@@ -627,6 +626,7 @@ function complete(id) {
   log(`完成「${q.text}」 +${g} 金`);
   toast(g >= 19 ? `大豐收!委託完成 +${g} 金!!` : `委託完成!+${g} 金`, "good");
   kanbanReact("complete");
+  crestRoll();   // 完成委託:每位看板娘各擲一次淫紋
   scheduleSave(); renderAll();
 }
 
@@ -2636,8 +2636,7 @@ setInterval(() => {
     }
   } catch (e) { console.error("tick 在地檢查出錯(不影響同步):", e); }
 
-  // 淫紋巡邏:每 10 分鐘問一次在場的看板娘想不想找你說話(中了才會去生成她那句話)
-  try { if (crestPatrol()) changed = true; } catch (e) { console.error("淫紋巡邏失敗:", e); }
+  // 淫紋保底:沒設模型(或連敗到保底)時,把已亮的念頭補成罐頭台詞,不讓紋卡在醞釀中
   try { if (crestFallback()) changed = true; } catch (e) { console.error("淫紋保底失敗:", e); }
 
   // 伺服器世界時鐘:每 15 秒同步一次(拿權威 outcome + 召喚師鏡像);與上面的在地檢查各自獨立
@@ -2797,13 +2796,13 @@ function renderAll() {
   }
 }
 
-// 淫紋:每位看板娘各自一盞燈——她想找你說話就亮,點開就是一場 2~4 來回的即時對話。
-// 起了念頭但話還沒寫好時顯示極暗呼吸(brewing),讓「她在想」跟「沒動靜」看得出差別。
-// 睡眠、對話中、觀戰中不顯示;被召喚走的不會有話,自然不亮。
+// 淫紋:每位看板娘各自一盞燈——委託操作判定中了就亮,點開就是一場 2~4 來回的即時對話。
+// 話還沒寫好時顯示半透明呼吸(brewing),照樣點得下去(進場現生她的開場白)。
+// 睡眠、對話中、觀戰中、獻祭中不顯示;被召喚走的不判定,自然不亮。
 function renderCrests() {
   const el = $("#crests");
   if (!el) return;
-  const busy = isAsleep() || chatWith || watchWith;
+  const busy = isAsleep() || chatWith || watchWith || sacrificeWith || sacSummon;
   const girls = busy ? [] : kanbanSuccubi().filter(s => !s.summoner?.taken && (s.chatLine || s.wantsTalk));
   el.classList.toggle("hidden", !girls.length);
   el.innerHTML = girls.map(s => `
@@ -3120,7 +3119,7 @@ function renderPlayerAttrs() {
     ["執行中格數", `${execCap()} 格`],
     ["完成金額", `${1 + expLv("reward")}~${3 + expLv("reward")} 金`],
     ["商店祭品", `每日 ${2 + expLv("offering")} 人`],
-    ["淫紋機率", kanbanSuccubi().map(s => `${s.name} ${Math.round(crestChance(s) * 100)}%`).join("、") || "(沒有看板娘)"],
+    ["淫紋機率(每次委託操作)", kanbanSuccubi().map(s => `${s.name} ${Math.round(crestChance(s) * 100)}%`).join("、") || "(沒有看板娘)"],
   ];
   // 看板娘時長刻意不顯示——玩家無法得知她何時解除,需自行察看
   const lvs = Object.keys(EXPANSIONS).filter(k => k !== "kanban").map(k => `${EXPANSIONS[k]} Lv${expLv(k)}`).join("、");
@@ -3319,7 +3318,7 @@ function renderDetail(s, root) {
                  : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`}
       </div>
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
-      ${!s.ntr ? `<div class="aff-line dim small">聊天等她開口:她在店頭陪你時會自己想找你說話,淫紋亮了點下去就能聊上幾個來回</div>` : ""}
+      ${!s.ntr ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b>——她當看板娘時,你每做一次委託操作(發現/承接/開始執行/完成)就判定一次;亮了點下去就能跟她聊上幾個來回</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
         ${SAC_RITUAL ? `<div class="aff-line dim small">${sacScriptReady(s)
@@ -3705,10 +3704,9 @@ window.DBG = {
   rel: (id, suId) => { const s = state.succubi.find(x => x.id === id); if (s) { s.summoner = makeSummonerRel(suId || SUMMONERS[0]?.id); scheduleSave(); renderAll(); } return s?.summoner; },
   mate: (id) => { const s = state.succubi.find(x => x.id === id); if (!s?.summoner) return null; const rm = doMating(s, Date.now()); scheduleSave(); renderAll(); return { removed: rm, sm: s.summoner }; },
   actSlot: (id) => { const s = state.succubi.find(x => x.id === id); if (!s?.summoner) return null; const rm = processActSlot(s, Date.now()); scheduleSave(); renderAll(); return { removed: rm, sm: s.summoner }; },
-  // 測試:把巡邏時鐘往前撥一輪並立刻跑一次(看誰起了念頭、話寫好沒)
-  crestPatrol: () => {
-    state.crestPatrolAt = Date.now() - CREST_PATROL_MS;
-    const changed = crestPatrol() | crestFallback();
+  // 測試:模擬一次委託操作的淫紋判定(看誰亮了紋、話寫好沒)
+  crestRoll: () => {
+    const changed = crestRoll() | crestFallback();
     renderAll();
     return {
       changed: !!changed,
