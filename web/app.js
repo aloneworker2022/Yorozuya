@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.24(2026-07-21)壞存檔不再卡死+急救重設";
+const APP_VER = "v5.25(2026-07-29)聊天改回即時多回合+淫紋不再等預生;被召喚走時召不動看板娘";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -32,7 +32,7 @@ const EXPANSIONS = {
   offering: "商店祭品",     // 每日進貨 = 2 + lv
   roster:   "名冊名額",     // 名額 = 1 + lv
   kanban:   "看板娘時長",   // 小時 = 1 + lv
-  crest:    "淫紋機率",     // 分母 = max(3, 10 - lv):基礎 1/10,極限 1/3
+  crest:    "淫紋機率",     // 分母 = max(2, 4 - lv):基礎 1/4(完成 2/4),極限 1/2
   drop:     "獻祭掉落率",   // 影響獻祭掉落(Phase 7)
   cheap:    "召喚減費",     // 第二位起的看板娘費用每級 -1 金,地板 2 金
 };
@@ -49,18 +49,19 @@ function expLv(k) {
 }
 function execCap() { return 1 + expLv("exec"); }
 function rosterCap() { return 1 + expLv("roster"); }
-function crestDenom() { return Math.max(3, 10 - expLv("crest")); }
+function crestDenom() { return Math.max(2, 4 - expLv("crest")); }
 function kanbanHours() { return 1 + expLv("kanban"); }
 const QUEST_HOURS = 24;          // 期限統一 24 小時
 const DISCOVER_BONUS_CAP = 10;   // 每日前 N 次發現有 0~2 金獎勵
 
 const CREST_CAP = 5;             // 淫紋最多囤 5 層
 // 每次進對話隨機決定能聊幾個來回(玩家不知道她何時喊停,製造驚喜)
-// 聊天改半預製(一紋一來一往),不再有隨機回合數;約會維持 DATE_TURNS
+// 聊天改回即時多回合 session:一紋聊 2~4 來回、她即時回話,情感於 session 結束時結算
+const CHAT_TURNS = [2, 4];      // 聊天 2~4 來回(一紋一場,聊到她喊停)
 const DATE_TURNS = [2, 5];      // 約會 2~5 來回(付了 5 金,多聊幾句)
 
 // 淫紋觸發:看板娘在、醒著、沒滿層時,委託操作有機率喚起她想聊天的慾望
-// 基礎機率 1/crestDenom(擴充可從 1/20 提升到 1/3);完成委託 ×2
+// 基礎機率 1/crestDenom(企劃書 4.3 定的 25%,完成委託 ×2 = 50%;擴充最高 1/2)
 function grantCrest(mult = 1) {
   if (!kanbanSuccubi().length || isAsleep()) return;
   if ((state.chatCharges || 0) >= CREST_CAP) return;
@@ -1112,7 +1113,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
   }
   chatWith = id;
   const spot = DATE_SPOTS.find(x => x[0] === location);
-  const turnCap = type === "date" ? randInt(...DATE_TURNS) : 1;   // 聊天=一紋一來一往
+  const turnCap = randInt(...(type === "date" ? DATE_TURNS : CHAT_TURNS));   // 一紋/一次約會能聊幾個來回
   chatSession = { type, location, locationDesc: spot ? spot[1] : null, playerMsgs: 0, turnCap, gotReply: false, busy: false };
   dateChooser = false;
   document.body.classList.add("chat-mode");
@@ -1136,7 +1137,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
     vnShow("", `—— ${location}・約會開始 ——`, "sys");
     sceneOpener(s);   // 約會:她先開口,描述場景與心情(即時 session)
   } else if (s.chatLine) {
-    // 半預製:她的話早已生成好——秒顯示,你回一句,這一紋就結束
+    // 她的開場白早已在背景生成好——秒顯示,接著就是即時往返(不用等她想第一句)
     const line = s.chatLine.text;
     s.chatLine = null;
     s.history.push({ role: "assistant", content: line, t: Date.now() });
@@ -1150,7 +1151,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
   }
 }
 
-// 聊天即時開場白(半預製沒貨時的後備):她先開口,串流生成
+// 聊天即時開場白(背景還沒生好時的後備):她先開口,串流生成
 async function chatOpenerLive(s) {
   if (!chatSession) return;
   chatSession.busy = true;
@@ -1215,8 +1216,14 @@ function exitChat() {
       s.chatLine = null;   // 約會另起了話頭,作廢她待命中的預製話重生
       log(`與 ${s.name} 的${chatSession.location}約會結束,情感 +${d}`);
       toast(`約會結束,情感 +${d}`, "good");
+    } else if (chatSession.gotReply) {
+      // 聊天:整場 session 結算一次 -1~+2(玩家沒說到話就不結算、不扣情感)
+      const d = applyAffection(s, randInt(-1, 2));
+      s.chatLine = null;   // 這場聊過了,背景重生她的下一句
+      log(`與 ${s.name} 聊了 ${chatSession.playerMsgs} 句,情感 ${d >= 0 ? "+" : ""}${d}`);
+      toast(`聊天結束,情感 ${d >= 0 ? "+" : ""}${d}`, d >= 0 ? "good" : "bad");
     }
-    // 聊天(半預製):情感已在送出時結算,這裡不再結;對話串連續,不加場景標記
+    // 聊天對話串是跨日連續的簡訊串,不加場景標記
   }
   chatAbort?.abort();
   chatWith = null; chatSession = null;
@@ -1423,7 +1430,7 @@ async function genPost(key, messages) {
   } catch { return null; }
 }
 
-// 她的下一句聊天:最優先(失敗計次退避;連敗 3 次淫紋照亮走即時保底)
+// 她主動開口的那一句(背景預生,點淫紋就秒開場;沒生好也不擋,進場現生)
 function chatLineMsgs(s) {
   const hist = s.history || [];
   let cut = 0;
@@ -1453,15 +1460,14 @@ async function genChatOrder() {
       anyDone = true;
       if (isKanban(s.id) && !s.summoner?.taken && !s.chatLine) {
         s.chatLine = { text: r.result.split("\n")[0].slice(0, 300) || r.result.slice(0, 300), t: Date.now() };
-        dirty = true; scheduleSave(); renderAll();   // 淫紋亮起
+        dirty = true; scheduleSave(); renderAll();
+        // 她主動傳訊息來了——有紋可用時提醒一聲(讓「她在找你」看得見)
+        if ((state.chatCharges || 0) > 0) toast(`${s.name} 傳訊息來了……`, "good");
       }
     } else if (r.status === "error") anyErr = true;
   }
   if (anyDone) chatGenFail = { count: 0, at: 0 };
-  else if (anyErr) {
-    chatGenFail = { count: chatGenFail.count + 1, at: Date.now() };
-    if (chatGenFail.count === 3) renderAll();   // 保底生效:亮紋改走即時模式
-  }
+  else if (anyErr) chatGenFail = { count: chatGenFail.count + 1, at: Date.now() };
 }
 
 // 觀戰紀錄文字:每輪最多下 3 單
@@ -1532,7 +1538,7 @@ async function genTick(force = false) {
   genTickBusy = false;
 }
 
-// 半預製聊天的失敗計數:連敗 3 次 → 淫紋照亮走即時生成保底(renderCrest 參照)
+// 背景預生開場白的失敗計數:只用來退避重試,不影響淫紋能不能點(點了就走即時生成)
 let chatGenFail = { count: 0, at: 0 };
 
 // 點某位看板娘時取她的一句預生台詞(即取即消耗);沒有就回 null 讓罐頭上場
@@ -1727,30 +1733,7 @@ async function sendChatMsg() {
   s.history.push({ role: "user", content: text, t: Date.now() });
   vnShow(state.settings.player || "你", text, "user");
 
-  // 聊天(半預製):送出即結束這一紋——情感當場結算,她的回應在背景生成、下次淫紋亮起才看得到
-  if (chatSession.type === "chat") {
-    chatSession.ended = true;
-    chatSession.gotReply = true;
-    s.lastChatDay = dayNum();
-    const d = applyAffection(s, randInt(-1, 2));
-    log(`回了 ${s.name} 一句,情感 ${d >= 0 ? "+" : ""}${d}`);
-    toast(`傳出去了,情感 ${d >= 0 ? "+" : ""}${d}`, d >= 0 ? "good" : "bad");
-    setChatWaiting(true);
-    const inputEl = document.getElementById("chat-input");
-    if (inputEl) inputEl.disabled = true;
-    document.getElementById("chat-send").disabled = true;
-    dirty = true;
-    saveNow();
-    setTimeout(() => {
-      if (chatSession?.ended) {
-        vnShow("", "(訊息傳出去了……她的回覆,下次淫紋亮起時就會知道)", "sys");
-        setTimeout(() => { if (chatSession?.ended) exitChat(); }, 1600);
-      }
-    }, 900);
-    return;
-  }
-
-  // 約會:即時往返
+  // 聊天/約會:一律即時往返——她當場回話,聊到回合上限她才喊停
   vnTyping(true);
   $("#vn-name").textContent = (state.settings.player || "你") + " → " + s.name;
   chatSession.busy = true;
@@ -2210,6 +2193,12 @@ function summonKanban(id) {
   const s = state.succubi.find(x => x.id === id);
   if (!s || s.ntr) return;
   if (isKanban(id)) { toast("她已經在店頭了", ""); return; }
+  // 她正被另一位召喚師召喚走:你的召喚傳不到她那裡——這段時間不能把她叫來當看板娘
+  if (s.summoner?.taken) {
+    const su = summonerById(s.summoner.id);
+    toast(`${s.name} 正被 ${su?.name || "另一個召喚師"} 召喚走——你的召喚傳不到她那裡`, "bad");
+    return;
+  }
   const cost = kanbanCost();
   if (state.gold < cost) { toast(`召喚第 ${kanbanSuccubi().length + 1} 位看板娘需 ${cost} 金`, "bad"); return; }
   state.gold -= cost;
@@ -2457,9 +2446,9 @@ function renderAll() {
   }
 }
 
-// 淫紋按鈕:有層數、看板娘在、醒著、不在對話中,且「她的話備好了」才亮——
-// 半預製:存了再多紋,話沒生成好也不亮。例外:被召喚走(紋=窺視紀錄)、無模型(即時罐頭)。
-// 淫紋要開的對象:優先「話備好」的看板娘,其次被召喚走的(看紀錄),再來第一位(即時保底)
+// 淫紋按鈕:有層數、看板娘在、醒著、不在對話中就亮,點了立刻能聊——
+// 不再等背景把她的話生好(那會讓玩家看著暗紋乾等);沒預生好就現場串流生成開場白。
+// 淫紋要開的對象:優先「話備好」的看板娘,其次被召喚走的(看紀錄),再來第一位(即時生成)
 function crestTarget() {
   const girls = kanbanSuccubi();
   return girls.find(s => s.chatLine) || girls.find(s => s.summoner?.taken) || girls[0] || null;
@@ -2470,10 +2459,7 @@ function renderCrest() {
   if (!el) return;
   const girls = kanbanSuccubi();
   const base = (state.chatCharges || 0) > 0 && girls.length > 0 && !isAsleep() && !chatWith && !watchWith;
-  // 任一位話備好才可點;連續生成失敗 3 次 → 照亮走即時保底(錯誤看得見,不無聲卡死)
-  const lineReady = girls.some(s => s.chatLine || s.summoner?.taken) || !state.settings.model || chatGenFail.count >= 3;
   el.classList.toggle("hidden", !base);
-  el.classList.toggle("brewing", !!(base && !lineReady));   // 極暗呼吸=她們在想要說什麼
   const n = $("#crest-n");
   if (base && n) n.textContent = state.chatCharges;
 }
@@ -2940,7 +2926,7 @@ function renderDetail(s, root) {
     if (su) {
       // 玩家看不到過去的紀錄——只有「此刻正被召喚中」才顯示,且要靠聊天/約會當場撞見或事後詢問她
       const takenTxt = s.summoner.taken
-        ? "她此刻正被召喚到對方身邊——現在去約會或用淫紋聊天,能撞見實況、有機會把她拉回來"
+        ? "她此刻正被召喚到對方身邊——召喚不動她(當不了看板娘);去約會或用淫紋聊天能撞見實況、有機會把她拉回來"
         : "他隨時可能把她召喚過去";
       const ringTxt = s.summoner.ringUnlocked
         ? `<br><span style="color:var(--red)">⚠ 她已為他解開魔法環——隨時可能懷孕被娶走</span>`
@@ -2977,7 +2963,9 @@ function renderDetail(s, root) {
           : `<button class="cyan" id="act-date" ${asleep || datesLeft <= 0 ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})</button>
              ${isKanban(s.id)
                ? `<button disabled>★ 看板娘(陪伴中)</button>`
-               : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`}
+               : s.summoner?.taken
+                 ? `<button disabled>召喚不到她(被召喚走)</button>`
+                 : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`}
       </div>
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">聊天請透過淫紋(做委託觸發)——看板娘才聽得見你的呼喚</div>` : ""}

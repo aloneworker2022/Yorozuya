@@ -938,16 +938,6 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pink) 50%, transparent)); }
   50% { transform: scale(1.08); filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 85%, transparent)); }
 }
-/* 醞釀中:她的話還在生成——極暗慢呼吸,不可點(有紋 vs 沒紋一眼可辨) */
-#crest.brewing {
-  opacity: .25; pointer-events: none;
-  animation: crest-brew 2.6s ease-in-out infinite;
-  filter: none;
-}
-@keyframes crest-brew {
-  0%, 100% { opacity: .18; }
-  50% { opacity: .34; }
-}
 #crest b {
   position: absolute; top: -4px; right: -4px;
   min-width: 20px; height: 20px; border-radius: 50%;
