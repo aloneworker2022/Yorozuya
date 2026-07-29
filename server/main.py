@@ -112,6 +112,11 @@ def db() -> sqlite3.Connection:
             updated  REAL NOT NULL
         )"""
     )
+    # 優先序欄位(舊檔補上):玩家正在等的那句排前面,背景素材往後站
+    try:
+        conn.execute("ALTER TABLE gen_tasks ADD COLUMN prio INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     # 召喚師交配環模擬(伺服器權威運算,獨立於手機存檔 blob)。單列 JSON。
     conn.execute(
         """CREATE TABLE IF NOT EXISTS sim (
@@ -727,28 +732,34 @@ async def _run_chat_job(job_id: str, provider: str, endpoint: str, body: dict):
         acc_parts.append(piece)
         job["text"] = "".join(acc_parts)
 
-    if provider == "grok-build":
-        text, err = await _run_grok_build(
-            body.get("model") or "grok-4.5",
-            body.get("messages") or [],
-            body.get("options"),
-            on_partial=on_token,  # streaming-json 邊產邊推,前端輪詢看得到進度
-        )
-        if text:
-            job["text"] = text
-        if err and not text:
-            job["error"] = err
-    else:
-        ollama_body = {
-            "model": body.get("model"),
-            "messages": body.get("messages") or [],
-            "stream": True,
-            "options": body.get("options") or {},
-        }
-        err = await _stream_ollama_chat(endpoint, ollama_body, on_token)
-        if err and not job["text"]:
-            job["error"] = err
-    job["done"] = True
+    # 一定要收尾標 done:沒標的話代工佇列會一直讓路給這個「還在跑」的前景 job
+    try:
+        if provider == "grok-build":
+            text, err = await _run_grok_build(
+                body.get("model") or "grok-4.5",
+                body.get("messages") or [],
+                body.get("options"),
+                on_partial=on_token,  # streaming-json 邊產邊推,前端輪詢看得到進度
+            )
+            if text:
+                job["text"] = text
+            if err and not text:
+                job["error"] = err
+        else:
+            ollama_body = {
+                "model": body.get("model"),
+                "messages": body.get("messages") or [],
+                "stream": True,
+                "options": body.get("options") or {},
+            }
+            err = await _stream_ollama_chat(endpoint, ollama_body, on_token)
+            if err and not job["text"]:
+                job["error"] = err
+    except Exception as e:  # noqa: BLE001 — 例外也要讓佇列繼續跑
+        if not job["text"]:
+            job["error"] = str(e)[:500]
+    finally:
+        job["done"] = True
 
 
 @app.post("/api/llm/chat_job")
@@ -877,6 +888,7 @@ class GenIn(BaseModel):
     options: dict | None = None
     provider: str | None = None  # "ollama" | "grok-build" | "grok-img"
     retry: bool = False  # True:若該 key 先前失敗,重新排隊
+    prio: int = 0  # 佇列優先序(大的先跑):玩家在等的回覆 > 開場白 > 背景素材
 
 
 class ImgGenIn(BaseModel):
@@ -923,17 +935,22 @@ def gen_submit(t: GenIn):
             status, result, error = row
             if status == "error" and t.retry:
                 conn.execute(
-                    "UPDATE gen_tasks SET status='pending', error=NULL, updated=? WHERE key=?",
-                    (now, t.key),
+                    "UPDATE gen_tasks SET status='pending', error=NULL, prio=?, updated=? WHERE key=?",
+                    (int(t.prio or 0), now, t.key),
                 )
                 GEN_WAKE.set()
+            elif status == "pending" and int(t.prio or 0) > 0:
+                # 同一單重下且標了優先(玩家在等)→ 就地插隊,不必等前面的背景素材
+                conn.execute(
+                    "UPDATE gen_tasks SET prio=MAX(prio, ?) WHERE key=?", (int(t.prio or 0), t.key)
+                )
             return {"key": t.key, "status": status, "result": result, "error": error}
         conn.execute(
-            "INSERT INTO gen_tasks (key, endpoint, model, messages, options, status, created, updated) "
-            "VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
+            "INSERT INTO gen_tasks (key, endpoint, model, messages, options, status, prio, created, updated) "
+            "VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
             (t.key, ep, t.model,
              json.dumps(t.messages, ensure_ascii=False),
-             json.dumps(t.options or {}, ensure_ascii=False), now, now),
+             json.dumps(t.options or {}, ensure_ascii=False), int(t.prio or 0), now, now),
         )
     GEN_WAKE.set()
     return {"key": t.key, "status": "pending", "result": None, "error": None}
@@ -998,17 +1015,20 @@ async def _gen_worker():
     """一次跑一件;前景聊天 job 進行中就讓路(別讓背景生成搶慢即時對話)。"""
     while True:
         try:
-            if any(not j["done"] for j in CHAT_JOBS.values()):
-                await asyncio.sleep(1)
+            # 只讓路給「真的還在跑」的前景 job;卡住超過 2 分鐘的當作死掉,不再拖累佇列
+            now_ts = time.time()
+            if any(not j["done"] and now_ts - j["t"] < 120 for j in CHAT_JOBS.values()):
+                await asyncio.sleep(0.3)
                 continue
+            # 先清旗標再查表:查完之後進來的新單一定會再 set 一次,不會被清掉而空等 5 秒
+            GEN_WAKE.clear()
             with db() as conn:
                 conn.execute("DELETE FROM gen_tasks WHERE created < ?", (time.time() - 172800,))
                 row = conn.execute(
                     "SELECT key, endpoint, model, messages, options FROM gen_tasks "
-                    "WHERE status='pending' ORDER BY created LIMIT 1"
+                    "WHERE status='pending' ORDER BY prio DESC, created LIMIT 1"
                 ).fetchone()
             if not row:
-                GEN_WAKE.clear()
                 try:
                     await asyncio.wait_for(GEN_WAKE.wait(), timeout=5)
                 except asyncio.TimeoutError:

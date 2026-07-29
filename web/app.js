@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.30(2026-07-29)送出即跳出對話,淫紋改「對話框…」表示她正在輸入";
+const APP_VER = "v5.31(2026-07-29)新紋=新對話・框框只在她回你時・生成插隊加速";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -72,19 +72,37 @@ function crestChance(s) {
 
 // 委託操作觸發的淫紋判定:每位在場看板娘各擲一次。回傳是否有人亮了紋。
 // 被召喚走的不判(她不在你身邊);睡眠時段不判(她回夢境了);
-// 已經有紋在等你的那位不重複判(同時只留一盞燈、一句話)。
+// 已經有紋在等你、或這場還沒聊完的那位不重複判(同時只留一盞燈、一場對話)。
+// 中了 = 一場全新的對話:在訊息串上劃一道場景線,她從新話題開口,不接上一場的尾巴。
 function crestRoll() {
   if (isAsleep()) return false;
   let changed = false;
   for (const s of kanbanSuccubi()) {
-    if (s.summoner?.taken || s.wantsTalk || s.chatLine) continue;
+    if (s.summoner?.taken || s.wantsTalk || s.chatLine || s.typing || s.chatSess) continue;
     if (Math.random() >= crestChance(s)) continue;
     s.wantsTalk = Date.now();
+    s.chatSess = null;                    // 上一場已結束,這是新的一場(回合數重抽)
+    (s.history ??= []).push({ role: "sys", content: "—— 新的一次對話 ——", t: Date.now() });
+    s.history = s.history.slice(-200);
     changed = true;
     toast(`……${s.name} 的淫紋亮了。她想跟你說話。`, "good");
   }
   // 中了就馬上排她那句話(有模型時);沒模型 crestFallback 會在下一秒補罐頭台詞
   if (changed) { dirty = true; try { genTick(true); } catch { /* 下輪 tick 再說 */ } }
+  return changed;
+}
+
+// 擱置太久的那場對話就當它結束了(紋熄滅、下次委託操作再開新的一場),
+// 免得一場沒聊完的舊對話把她的淫紋永遠佔住。
+const CHAT_SESS_TTL = 6 * HOUR;
+function expireChatSess() {
+  let changed = false;
+  for (const s of state.succubi) {
+    if (!s.chatSess || s.typing) continue;
+    if (Date.now() - (s.chatSess.at || 0) < CHAT_SESS_TTL) continue;
+    s.chatSess = null; s.chatLine = null; s.wantsTalk = 0;
+    changed = true;
+  }
   return changed;
 }
 
@@ -1312,7 +1330,10 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
   chatWith = id;
   const spot = DATE_SPOTS.find(x => x[0] === location);
   // 聊天:一場對話跨多次進出(送出即跳出、她慢慢打字),回合數記在她身上
-  if (type === "chat") s.chatSess ??= { turnCap: randInt(...CHAT_TURNS), playerMsgs: 0 };
+  if (type === "chat") {
+    s.chatSess ??= { turnCap: randInt(...CHAT_TURNS), playerMsgs: 0, at: Date.now() };
+    s.chatSess.at = Date.now();
+  }
   const sess = type === "chat" ? s.chatSess : null;
   const turnCap = sess ? sess.turnCap : randInt(...DATE_TURNS);
   chatSession = {
@@ -1686,12 +1707,13 @@ function llmRouteFields() {
   };
 }
 
-async function genPost(key, messages) {
+// prio:佇列優先序(大的先跑)。玩家正在等的回覆 10 > 她主動的開場白 5 > 背景素材 0。
+async function genPost(key, messages, prio = 0) {
   try {
     const r = await fetch("/api/gen", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        key, retry: true, ...llmRouteFields(),
+        key, retry: true, prio, ...llmRouteFields(),
         model: state.settings.model, messages, options: { temperature: 0.9 },
       }),
     });
@@ -1734,7 +1756,7 @@ async function genReplyOrder() {
   for (const s of state.succubi) {
     if (!s.typing || s.ntr) continue;
     const key = `reply:${s.id}:${s.typing.at}`;   // 綁這一次送出:同一句不重複下單
-    const r = await genPost(key, chatLineMsgs(s));
+    const r = await genPost(key, chatLineMsgs(s), 10);   // 玩家正在等 → 插隊到最前面
     if (!r) continue;
     if (r.status === "done" && r.result) {
       chatGenFail = { count: 0, at: 0 };
@@ -1753,7 +1775,7 @@ async function genChatOrder() {
   for (const s of kanbanSuccubi()) {   // 多看板娘:每位各自的下一句
     if (!s.wantsTalk || s.summoner?.taken || s.ntr) continue;
     const key = `chat:${s.id}:${s.wantsTalk}`;   // 綁這一次判定:刷新時重寫,不吃到舊快取
-    const r = await genPost(key, chatLineMsgs(s));
+    const r = await genPost(key, chatLineMsgs(s), 5);   // 紋已經亮了,玩家隨時會點進來
     if (!r) continue;
     if (r.status === "done" && r.result) {
       anyDone = true;
@@ -1830,9 +1852,15 @@ async function genQuipOrders() {
 // 每 2 秒一輪:下單+收貨(伺服器排隊生成;對話/獻祭/睡眠中不下聊天與氣泡單)
 // 例外:睡眠時段(01:00 起)專門跑 genSacOrders 預織獻祭文;無模型時也要進 tick 填罐頭。
 let genTickBusy = false, lastGenAt = 0;
+// 玩家正在等她的那句話(她在回你、或紋亮了話還沒寫好)——用來提高輪詢頻率、壓住背景單
+function waitingOnHer() {
+  return state.succubi.some(s => s.typing || (s.wantsTalk && !s.chatLine));
+}
+
 async function genTick(force = false) {
   if (genTickBusy) return;
-  if (!force && Date.now() - lastGenAt < 2000) return;
+  // 等她那句話的時候收貨頻率拉高(每 700ms 問一次),平常維持 2 秒一輪
+  if (!force && Date.now() - lastGenAt < (waitingOnHer() ? 700 : 2000)) return;
   lastGenAt = Date.now();
   genTickBusy = true;
   try {
@@ -1842,8 +1870,11 @@ async function genTick(force = false) {
       const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep();
       await genReplyOrder();   // 最優先:她正在回你的那句(玩家在等紋亮)
       if (idle) await genChatOrder();
-      await genActOrders();
-      if (idle) await genQuipOrders();
+      // 玩家正在等她開口/回話時,不下背景素材的單——別讓紀錄與氣泡卡住她那句話
+      if (!waitingOnHer()) {
+        await genActOrders();
+        if (idle) await genQuipOrders();
+      }
     }
   } catch (e) { /* 下輪再試 */ }
   genTickBusy = false;
@@ -2098,8 +2129,9 @@ async function sendChatMsg() {
     chatSession.ended = true;
     chatSession.gotReply = true;
     s.lastChatDay = dayNum();
-    s.chatSess ??= { turnCap: chatSession.turnCap, playerMsgs: 0 };
+    s.chatSess ??= { turnCap: chatSession.turnCap, playerMsgs: 0, at: Date.now() };
     s.chatSess.playerMsgs = ++chatSession.playerMsgs;
+    s.chatSess.at = Date.now();
     s.chatLine = null;
     s.typing = { at: Date.now() };   // 她正在回你(背景生成,見 genReplyOrder)
     dirty = true;
@@ -2696,6 +2728,7 @@ setInterval(() => {
 
   // 淫紋保底:沒設模型(或連敗到保底)時,把已亮的念頭補成罐頭台詞,不讓紋卡在醞釀中
   try { if (crestFallback()) changed = true; } catch (e) { console.error("淫紋保底失敗:", e); }
+  try { if (expireChatSess()) changed = true; } catch (e) { console.error("對話逾期清理失敗:", e); }
 
   // 伺服器世界時鐘:每 15 秒同步一次(拿權威 outcome + 召喚師鏡像);與上面的在地檢查各自獨立
   try { if (Date.now() - lastSimSyncAt > 15000) simSync(); } catch (e) { console.error("simSync 失敗:", e); }
@@ -2703,6 +2736,11 @@ setInterval(() => {
 
   if (changed) { scheduleSave(); renderAll(); }
 }, 1000);
+
+// 玩家在等她那句話時的快輪詢:每 500ms 問一次伺服器收貨了沒(平常的 1 秒 tick 太鈍)
+setInterval(() => {
+  try { if (waitingOnHer()) genTick(true); } catch { /* 下輪再說 */ }
+}, 500);
 
 // ===== 渲染 =====
 
@@ -2854,9 +2892,9 @@ function renderAll() {
   }
 }
 
-// 淫紋:每位看板娘各自一盞燈,三種狀態——
-//   ① 亮紋:她有話等你讀(委託操作判定中了,或她回完你上一句)→ 點開就聊
-//   ② 對話框「…」:她正在輸入(你剛送出、或念頭剛起話還沒寫好)→ 不能點,等她打完
+// 淫紋:每位看板娘各自一盞燈,兩種狀態——
+//   ① 亮紋:她想找你說話 / 有話等你讀(新判定中了,或她回完你上一句)→ 點開就聊
+//   ② 對話框「…」:你剛送出、她正在回你 → 不能點,等她打完自動變回亮紋
 // 睡眠、對話中、觀戰中、獻祭中不顯示;被召喚走的不判定,自然不亮。
 const TYPING_SVG = `<svg class="typing-svg" viewBox="0 0 52 44" width="44" height="38" aria-hidden="true">
   <path class="tbub" d="M7 4h38a6 6 0 0 1 6 6v18a6 6 0 0 1-6 6H22l-10 8v-8H7a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6z"/>
@@ -2873,7 +2911,9 @@ function renderCrests() {
     !s.summoner?.taken && (s.chatLine || s.wantsTalk || s.typing || s.chatSess));
   el.classList.toggle("hidden", !girls.length);
   el.innerHTML = girls.map(s => {
-    const typing = !s.chatLine && (s.typing || s.wantsTalk);   // 她正在輸入
+    // 「對話框 …」只用在「你送出後她正在回你」;新亮起的紋一律是淫紋圖示
+    // (話還在背景寫也照樣點得下去——進場她就當場開口)
+    const typing = !s.chatLine && !!s.typing;
     return `
     <button class="crest-btn r-${s.rarity}${typing ? " typing" : ""}" data-cid="${s.id}"
             title="${esc(s.name)}${typing ? " 正在輸入…" : ""}" ${typing ? "disabled" : ""}>
