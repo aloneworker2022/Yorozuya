@@ -958,15 +958,16 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pink) 50%, transparent)); }
   50% { transform: scale(1.08); filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 85%, transparent)); }
 }
-/* 醞釀中:她起了念頭、話還沒寫好——極暗慢呼吸,不可點(有話 vs 在想一眼可辨) */
+/* 醞釀中:她起了念頭、話還沒寫好——慢呼吸暗一點(有話 vs 在想一眼可辨),
+   但照樣點得下去:點進去她就當場開口,不用對著暗紋乾等 */
 .crest-btn.brewing {
-  opacity: .25; pointer-events: none;
+  opacity: .55;
   animation: crest-brew 2.6s ease-in-out infinite;
   filter: none;
 }
 @keyframes crest-brew {
-  0%, 100% { opacity: .18; }
-  50% { opacity: .34; }
+  0%, 100% { opacity: .42; }
+  50% { opacity: .68; }
 }
 /* 是誰在找你:多位看板娘同時有話時一眼分辨(邊框帶她的稀有度色) */
 .crest-btn .cname {
