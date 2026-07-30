@@ -52,6 +52,17 @@
     border-radius: 8px; min-height: 8em; display: flex; align-items: center; justify-content: center; padding: .6em; }
   #ig-preview img { max-width: 100%; max-height: 420px; border-radius: 6px; }
   #ig-preview img.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
+  /* 淫紋聊天測試器 */
+  details.grp { border-top: 1px solid rgba(255,255,255,.07); padding: .45em 0; }
+  details.grp > summary { cursor: pointer; font-size: .82em; color: #6fe3e1; letter-spacing: .05em; }
+  #ct-log { background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.1); border-radius: 7px;
+            padding: .6em .7em; max-height: 22em; overflow-y: auto; margin-top: .8em; }
+  .bub { margin: .45em 0; white-space: pre-wrap; line-height: 1.55; }
+  .bub b { display: block; font-size: .74em; letter-spacing: .05em; margin-bottom: .1em; }
+  .bub.assistant { color: #ffd75f; } .bub.assistant b { color: #ff8fe6; }
+  .bub.user { color: #b6ecea; text-align: right; } .bub.user b { color: #6fe3e1; }
+  .bub.sys { color: #8a82a5; font-size: .82em; text-align: center; }
+  .bub .x { float: right; cursor: pointer; color: #6b6383; font-size: .78em; margin-left: .5em; }
 </style>
 </head>
 <body>
@@ -201,6 +212,151 @@
   <div id="ig-preview"><span class="mini">預覽會出現在這裡</span></div>
   <div class="mini" style="margin-top:.8em">最近生圖</div>
   <div id="ig-gallery" class="img-gallery"></div>
+</section>
+
+<!-- ── 淫紋聊天測試器 ── -->
+<section>
+  <h2>淫紋聊天測試器(調妹子參數 × 多輪聊天)</h2>
+  <div class="mini" style="margin-bottom:.6em">
+    用跟遊戲淫紋聊天完全相同的 prompt 管線(persona_builder 的 buildSystemPrompt)與同一套旁白指令,
+    即時多回合(遊戲裡一盞紋聊 2~4 來回,這裡不限)。下面每一項都會實際進 prompt——改參數、按送出,
+    馬上看她語氣怎麼變。引擎沿用上面測試台選的 Grok Build / Ollama。不動存檔,參數與對話存在這台裝置的瀏覽器。
+  </div>
+  <div class="row" style="margin-bottom:.4em">
+    <button class="cy" onclick="ctRoll()">🎲 隨機妹子(用遊戲的生成器)</button>
+    <select id="ct-import" style="flex:1 1 8em"></select>
+    <button onclick="ctImport()">從存檔匯入</button>
+  </div>
+
+  <details class="grp" open><summary>① 基本</summary>
+    <div class="row" style="gap:.5em">
+      <span style="flex:1 1 8em"><label>名字</label><input data-ct="girl.name"></span>
+      <span style="flex:0 1 6em"><label>稀有度</label><select data-ct="girl.rarity">
+        <option>N</option><option>R</option><option>S</option><option>SS</option><option>SSR</option></select></span>
+      <span style="flex:0 1 7em"><label>語氣風格</label><select data-ct="girl.speech">
+        <option value="">(不指定)</option><option>敬語</option><option>平語</option><option>粗魯</option><option>撒嬌</option></select></span>
+    </div>
+    <label>個性(、分隔)</label><input data-ct="girl.personality" data-list="1" placeholder="傲嬌、毒舌">
+    <label>語氣細則 tone(有填會蓋掉上面的語氣風格)</label>
+    <textarea data-ct="girl.tone" style="min-height:3.5em" placeholder="句尾多用「!」「~」,訊息偏長……"></textarea>
+    <label>來歷 backstory(她被召喚前的人生)</label>
+    <textarea data-ct="girl.backstory" style="min-height:4em"></textarea>
+    <label>職業的實際內容(避免 AI 誤會職業)</label><input data-ct="girl.jobDesc">
+  </details>
+
+  <details class="grp"><summary>② 人設細節(原型骨幹)</summary>
+    <label>口頭禪(、分隔)</label><input data-ct="girl.catchphrases" data-list="1">
+    <div class="row" style="gap:.5em">
+      <span style="flex:1 1 9em"><label>開心時</label><input data-ct="girl.reactions.開心"></span>
+      <span style="flex:1 1 9em"><label>低落時</label><input data-ct="girl.reactions.低落"></span>
+    </div>
+    <div class="row" style="gap:.5em">
+      <span style="flex:1 1 9em"><label>生氣時</label><input data-ct="girl.reactions.生氣"></span>
+      <span style="flex:1 1 9em"><label>不安時</label><input data-ct="girl.reactions.不安"></span>
+    </div>
+    <label>喜歡(、分隔)</label><input data-ct="girl.likes" data-list="1">
+    <label>討厭(、分隔)</label><input data-ct="girl.dislikes" data-list="1">
+    <label>興趣(、分隔)</label><input data-ct="girl.hobbies" data-list="1">
+    <label>小怪癖 quirk</label><input data-ct="girl.quirk">
+    <label>反差設定 contrast</label><input data-ct="girl.contrast">
+    <label>被召喚前的近況 arc(聊天話題素材)</label><input data-ct="girl.arc">
+    <div class="row" style="gap:.5em">
+      <span style="flex:0 1 7em"><label>生理時鐘</label><input data-ct="girl.chrono.name" placeholder="夜貓型"></span>
+      <span style="flex:1 1 10em"><label>作息描述</label><input data-ct="girl.chrono.desc"></span>
+    </div>
+    <label>被吵醒時的反應</label><input data-ct="girl.chrono.wake_react">
+    <div class="row" style="gap:.5em">
+      <span style="flex:0 1 7em"><label>性慾傾向</label><input data-ct="girl.libido.name" placeholder="普通"></span>
+      <span style="flex:1 1 10em"><label>性慾描述(只在分級 NSFW 時進 prompt)</label><input data-ct="girl.libido.desc"></span>
+    </div>
+  </details>
+
+  <details class="grp"><summary>③ 外貌</summary>
+    <div class="row" style="gap:.5em">
+      <span style="flex:0 1 6em"><label>身高 cm</label><input type="number" data-ct="girl.look.height_cm"></span>
+      <span style="flex:1 1 7em"><label>體型</label><input data-ct="girl.look.build"></span>
+      <span style="flex:1 1 7em"><label>罩杯/胸</label><input data-ct="girl.look.bust"></span>
+    </div>
+    <div class="row" style="gap:.5em">
+      <span style="flex:1 1 7em"><label>髮型</label><input data-ct="girl.look.hair"></span>
+      <span style="flex:1 1 7em"><label>眼睛</label><input data-ct="girl.look.eyes"></span>
+      <span style="flex:1 1 7em"><label>穿搭</label><input data-ct="girl.look.style"></span>
+    </div>
+    <label>特徵</label><input data-ct="girl.look.feature">
+    <label>特殊屬性(、分隔)</label><input data-ct="girl.specialTraits" data-list="1">
+  </details>
+
+  <details class="grp"><summary>④ 作息(她原本生活在各時段做的事)</summary>
+    <div class="row" style="gap:.5em">
+      <span style="flex:1 1 8em"><label>早上</label><input data-ct="girl.schedule.morning"></span>
+      <span style="flex:1 1 8em"><label>中午</label><input data-ct="girl.schedule.noon"></span>
+    </div>
+    <div class="row" style="gap:.5em">
+      <span style="flex:1 1 8em"><label>下午</label><input data-ct="girl.schedule.afternoon"></span>
+      <span style="flex:1 1 8em"><label>晚上</label><input data-ct="girl.schedule.evening"></span>
+    </div>
+    <label>深夜</label><input data-ct="girl.schedule.night">
+  </details>
+
+  <details class="grp" open><summary>⑤ 關係・場景・分級</summary>
+    <div class="row" style="gap:.5em">
+      <span style="flex:1 1 7em"><label>關係階段</label><select data-ct="rel.stage">
+        <option value="stranger">陌生(剛被召喚)</option><option value="friend">朋友</option>
+        <option value="girlfriend">女友</option><option value="wife">妻子</option></select></span>
+      <span style="flex:0 1 6em"><label>好感</label><input type="number" data-ct="rel.affection"></span>
+      <span style="flex:0 1 6em"><label>認識天數</label><input type="number" data-ct="rel.days"></span>
+    </div>
+    <div class="row" style="gap:.5em">
+      <span style="flex:0 1 8em"><label>場景</label><select data-ct="scene.type" id="ct-type">
+        <option value="chat">淫紋聊天</option><option value="date">約會</option></select></span>
+      <span style="flex:0 1 7em"><label>時段</label><select data-ct="scene.slot">
+        <option value="morning">早上</option><option value="noon">中午</option><option value="afternoon">下午</option>
+        <option value="evening">晚上</option><option value="night">深夜</option></select></span>
+      <span style="flex:0 1 7em"><label>分級</label><select data-ct="rating">
+        <option value="sfw">SFW</option><option value="nsfw">NSFW</option></select></span>
+      <span style="flex:1 1 7em"><label>你的稱呼</label><input data-ct="player" placeholder="主人"></span>
+    </div>
+    <div class="row" style="gap:.5em">
+      <span style="flex:1 1 8em"><label>約會地點</label><input data-ct="scene.location" id="ct-loc" list="tb-loc-list" placeholder="約會才用到"></span>
+      <span style="flex:1 1 10em"><label>地點場景描述</label><input data-ct="scene.locationDesc"></span>
+    </div>
+    <label>最近的場景變化(給 AI 的 sys 標記:剛結束的場景)</label>
+    <input data-ct="scene.transition" placeholder="例:剛結束一場水族館約會">
+  </details>
+
+  <details class="grp"><summary>⑥ 委託清單(她看得見你的待辦)</summary>
+    <label>執行中(一行一件,格式「標題|剩餘分鐘」)</label>
+    <textarea data-ct="quests.executing" data-lines="1" style="min-height:3.5em" placeholder="洗碗|20"></textarea>
+    <label>已承接還沒動工(一行一件)</label>
+    <textarea data-ct="quests.accepted" data-lines="1" style="min-height:3em"></textarea>
+    <label>剛發現還沒決定(一行一件)</label>
+    <textarea data-ct="quests.discovered" data-lines="1" style="min-height:3em"></textarea>
+  </details>
+
+  <details class="grp"><summary>⑦ 情敵滲透(另一個召喚師纏著她)</summary>
+    <div class="row" style="gap:.5em;align-items:flex-end">
+      <label style="margin:0"><input type="checkbox" data-ct="rival.on" style="width:auto;margin-right:.4em">啟用</label>
+      <span style="flex:1 1 8em"><label>召喚師</label><select data-ct="rival.su" id="ct-su"></select></span>
+      <span style="flex:1 1 8em"><label>她對他的階段</label><select data-ct="rival.stageIdx" id="ct-rstage"></select></span>
+    </div>
+    <div class="mini" style="margin-top:.4em">階段的滲透語氣吃「變心滲透」自訂腳本(下一節),沒寫就用內建版。</div>
+  </details>
+
+  <div id="ct-log"></div>
+  <div class="row" style="margin-top:.6em;gap:.5em">
+    <input id="ct-input" style="flex:1 1 10em" placeholder="打一句話給她……(Enter 送出)">
+    <button onclick="ctSend()" id="ct-send">送出</button>
+  </div>
+  <div class="row" style="margin-top:.5em">
+    <button class="cy" onclick="ctAct('opener')">✦ 淫紋亮起(她先開口)</button>
+    <button class="cy" onclick="ctAct('again')">她又傳一句</button>
+    <button class="cy" onclick="ctAct('date_open')">約會開場</button>
+    <button class="del" onclick="ctClear()">清空對話</button>
+  </div>
+  <div class="status" id="ct-status"></div>
+  <details style="margin-top:.6em"><summary class="mini" style="cursor:pointer">▸ 檢視上次送出的完整 prompt</summary>
+    <div id="ct-prompt" class="mini" style="white-space:pre-wrap;margin-top:.5em;color:#8a82a5"></div>
+  </details>
 </section>
 
 <!-- ── 階段語氣腳本 ── -->
@@ -798,24 +954,299 @@ async function runTestGen() {
   document.getElementById("tb-out").textContent = "";
   tbRunning = true;
   document.getElementById("tb-run").disabled = true;
-  const key = "test:" + Date.now().toString(36);
   const t0 = Date.now();
   try {
-    // 測試期:輪詢不設時間上限,只在出錯/完成時停
-    while (true) {
-      const r = await api("/api/gen","POST",{ key, retry:true, provider, endpoint: ep, model, messages, options:{temperature:0.9} });
-      if (r.status === "done") {
-        document.getElementById("tb-out").textContent = r.result;
-        status("tb-status",`✓ 完成(${Math.round((Date.now()-t0)/1000)}s) · ${provider}/${model}`);
-        break;
-      }
-      if (r.status === "error") { status("tb-status","生成失敗:"+(r.error||"?"),true); break; }
-      status("tb-status",`生成中… ${Math.round((Date.now()-t0)/1000)}s · ${r.status} · ${provider}`);
-      await new Promise(res=>setTimeout(res,1500));
-    }
+    const out = await genRun(messages, null,
+      (sec, st, p) => status("tb-status", `生成中… ${sec}s · ${st} · ${p}`));
+    document.getElementById("tb-out").textContent = out;
+    status("tb-status", `✓ 完成(${Math.round((Date.now()-t0)/1000)}s) · ${provider}/${model}`);
   } catch (e) { status("tb-status","失敗:"+e.message,true); }
   tbRunning = false;
   document.getElementById("tb-run").disabled = false;
+}
+
+// 送一批 messages 給伺服器代跑佇列,輪詢到出結果(手機切 app/瞬斷不中斷)。
+// 引擎沿用上面測試台的選擇(Grok Build / Ollama)。測試期不設輪詢上限,只在出錯/完成時停。
+async function genRun(messages, options, onTick) {
+  const { provider, endpoint, model } = tbRoute();
+  if (!model) throw new Error("請在上面的測試台填模型名(例 grok-4.5)");
+  if (provider === "ollama" && !endpoint) throw new Error("Ollama 請在上面的測試台填端點");
+  const key = "test:" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const t0 = Date.now();
+  while (true) {
+    const r = await api("/api/gen", "POST",
+      { key, retry: true, provider, endpoint, model, messages, options: options || { temperature: 0.9 } });
+    if (r.status === "done") return r.result;
+    if (r.status === "error") throw new Error(r.error || "生成失敗");
+    onTick?.(Math.round((Date.now() - t0) / 1000), r.status, provider);
+    await new Promise(res => setTimeout(res, 1500));
+  }
+}
+
+// ── 淫紋聊天測試器 ──
+// 妹子的每個參數都直接餵給 persona_builder.buildSystemPrompt(與遊戲同一支),
+// 對話與參數只存在瀏覽器 localStorage,不動存檔。
+const CT_KEY = "yz_crest_tester_v1";
+const CT_INST = {
+  opener: "(旁白:淫紋亮起——你想找他說話。依你的個性主動開啟一個新話題,一句像簡訊的話。)",
+  reply: "(旁白:回覆他最後那句話。一句像簡訊的話,依你的個性。)",
+  again: "(旁白:他還沒回你,隔了一段時間,你忍不住又主動傳了一句。換個說法或話題,不要重複之前的話。)",
+};
+let ct = ctDefault(), ctWorld = "", ctRivalScripts = [], ctRunning = false;
+
+function ctDefault() {
+  return {
+    girl: {
+      name: "莉莉絲", rarity: "R", personality: ["傲嬌"], speech: "平語", tone: "", backstory: "", jobDesc: "",
+      catchphrases: [], reactions: {}, likes: [], dislikes: [], hobbies: [],
+      quirk: "", contrast: "", arc: "", chrono: {}, libido: {}, look: {}, specialTraits: [], schedule: {},
+    },
+    rel: { stage: "stranger", affection: 0, days: 0 },
+    scene: { type: "chat", slot: "evening", location: "", locationDesc: "", transition: "" },
+    rating: "sfw", player: "主人",
+    quests: { executing: [], accepted: [], discovered: [] },
+    rival: { on: false, su: 0, stageIdx: 0 },
+    history: [],
+  };
+}
+const ctGet = p => p.split(".").reduce((o, k) => (o == null ? o : o[k]), ct);
+function ctSetPath(p, v) {
+  const ks = p.split("."), last = ks.pop();
+  let o = ct;
+  for (const k of ks) o = (o[k] ??= {});
+  o[last] = v;
+}
+function ctFill() {
+  document.querySelectorAll("[data-ct]").forEach(el => {
+    const v = ctGet(el.dataset.ct);
+    if (el.type === "checkbox") { el.checked = !!v; return; }
+    el.value = Array.isArray(v) ? v.join(el.dataset.lines ? "\n" : "、") : (v ?? "");
+  });
+}
+function ctCollect() {
+  document.querySelectorAll("[data-ct]").forEach(el => {
+    let v;
+    if (el.type === "checkbox") v = el.checked;
+    else if (el.dataset.lines) v = el.value.split("\n").map(x => x.trim()).filter(Boolean);
+    else if (el.dataset.list) v = el.value.split(/[、,,]/).map(x => x.trim()).filter(Boolean);
+    else if (el.type === "number") v = el.value === "" ? null : +el.value;
+    else if (el.tagName === "SELECT" && /^\d+$/.test(el.value) && el.dataset.ct.startsWith("rival.")) v = +el.value;
+    else v = el.value.trim();
+    ctSetPath(el.dataset.ct, v);
+  });
+  ctSave();
+}
+function ctSave() { try { localStorage.setItem(CT_KEY, JSON.stringify(ct)); } catch {} }
+function ctLoad() {
+  try {
+    const j = JSON.parse(localStorage.getItem(CT_KEY) || "null");
+    if (j) ct = { ...ctDefault(), ...j, girl: { ...ctDefault().girl, ...(j.girl || {}) } };
+  } catch {}
+}
+// 空字串/空陣列/空物件一律送 null,讓 persona_builder 自動略過該行
+const ctVal = v => {
+  if (v == null || v === "") return null;
+  if (Array.isArray(v)) return v.length ? v : null;
+  if (typeof v === "object") return Object.values(v).some(x => x !== "" && x != null) ? v : null;
+  return v;
+};
+// 四種情緒反應:一個都沒填就整行不進 prompt;填了一部分,其餘補「—」避免 undefined
+function ctReactions(r) {
+  const keys = ["開心", "低落", "生氣", "不安"];
+  if (!r || !keys.some(k => (r[k] || "").trim())) return null;
+  return Object.fromEntries(keys.map(k => [k, (r[k] || "").trim() || "—"]));
+}
+function ctQuests() {
+  const q = ct.quests || {};
+  return {
+    executing: (q.executing || []).map(line => {
+      const [title, mins] = String(line).split("|");
+      return { title: (title || "").trim(), mins_left: parseInt(mins) || 0 };
+    }).filter(x => x.title),
+    accepted: q.accepted || [],
+    discovered: q.discovered || [],
+  };
+}
+function ctCtx() {
+  const g = ct.girl, isDate = ct.scene.type === "date";
+  const su = (summonerPool || [])[ct.rival.su];
+  const stageName = STAGE_NAMES[ct.rival.stageIdx] || STAGE_NAMES[0];
+  return {
+    character: {
+      name: g.name || "莉莉絲", rarity: g.rarity || "R", personality: g.personality || [],
+      speech_style: ctVal(g.speech), tone: ctVal(g.tone), backstory: g.backstory || "",
+      schedule: g.schedule || {}, current_activity: ctVal((g.schedule || {})[ct.scene.slot]),
+      catchphrases: ctVal(g.catchphrases), reactions: ctReactions(g.reactions),
+      quirk: ctVal(g.quirk), contrast: ctVal(g.contrast), arc: ctVal(g.arc),
+      likes: ctVal(g.likes), dislikes: ctVal(g.dislikes), hobbies: ctVal(g.hobbies),
+      chrono: g.chrono?.name ? { name: g.chrono.name, desc: g.chrono.desc || "", wake_react: g.chrono.wake_react || "" } : null,
+      libido: ctVal(g.libido), look: ctVal(g.look),
+      special_traits: (g.specialTraits || []).map(t => (typeof t === "string" ? { name: t } : t)),
+      job_desc: ctVal(g.jobDesc),
+    },
+    relationship: {
+      stage: ct.rel.stage, affection: +ct.rel.affection || 0,
+      days_since_summon: +ct.rel.days || 0,
+    },
+    scene: {
+      type: ct.scene.type,
+      location: isDate ? ctVal(ct.scene.location) : null,
+      scene_prompt: isDate ? ctVal(ct.scene.locationDesc) : null,
+      transition: ctVal(ct.scene.transition),
+      time_of_day: ct.scene.slot, time_label: CT_SLOT_LABEL[ct.scene.slot],
+    },
+    content_rating: ct.rating || "sfw",
+    player: { name: ct.player || "主人" },
+    world: ctWorld,
+    quests: ctQuests(),
+    rival: ct.rival.on && su ? {
+      summoner_name: su.name || "另一個男人",
+      stage_idx: ct.rival.stageIdx, stage_name: stageName,
+      tone_override: (ctRivalScripts.find(x => x.method === stageName) || {}).body || null,
+    } : null,
+  };
+}
+const CT_SLOT_LABEL = { morning: "早上", noon: "中午", afternoon: "下午", evening: "晚上", night: "深夜" };
+
+function ctRender() {
+  const el = document.getElementById("ct-log");
+  el.innerHTML = ct.history.length
+    ? ct.history.map((m, i) => {
+        const who = m.role === "user" ? (ct.player || "你") : m.role === "assistant" ? (ct.girl.name || "她") : "";
+        return `<div class="bub ${m.role}"><b>${esc(who)}<span class="x" onclick="ctDel(${i})">✕</span></b>${esc(m.content)}</div>`;
+      }).join("")
+    : `<div class="mini">(還沒有對話——按「淫紋亮起」讓她先開口,或直接打字送出)</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+function ctDel(i) { ct.history.splice(i, 1); ctSave(); ctRender(); }
+function ctClear() {
+  if (ct.history.length && !confirm("清空這段對話?(參數會保留)")) return;
+  ct.history = []; ctSave(); ctRender(); status("ct-status", "✓ 對話已清空");
+}
+function ctPush(role, content) { ct.history.push({ role, content }); ct.history = ct.history.slice(-200); ctSave(); ctRender(); }
+
+// 她的下一句:messages = system + 本場景歷史(最多 40 則)+ 這次的旁白指令
+async function ctGen(inst) {
+  if (ctRunning) return;
+  if (!window.PB_buildSystemPrompt) { status("ct-status", "persona_builder 載入失敗", true); return; }
+  ctCollect();
+  try { ctRivalScripts = await api("/api/scripts?category=chat_rival"); } catch {}
+  const messages = [
+    { role: "system", content: window.PB_buildSystemPrompt(ctCtx()) },
+    ...ct.history.filter(m => m.role === "user" || m.role === "assistant")
+                 .slice(-40).map(m => ({ role: m.role, content: m.content })),
+  ];
+  if (inst) messages.push({ role: "user", content: inst });
+  document.getElementById("ct-prompt").textContent =
+    messages.map(m => `[${m.role}] ${m.content}`).join("\n\n");
+  ctRunning = true;
+  document.getElementById("ct-send").disabled = true;
+  const t0 = Date.now();
+  try {
+    const out = await genRun(messages, null, s => status("ct-status", `她在想…… ${s}s(排在伺服器佇列)`));
+    ctPush("assistant", out.trim());
+    status("ct-status", `✓ 完成(${Math.round((Date.now() - t0) / 1000)}s)`);
+  } catch (e) { status("ct-status", "失敗:" + e.message, true); }
+  ctRunning = false;
+  document.getElementById("ct-send").disabled = false;
+}
+function ctAct(kind) {
+  if (kind === "date_open") {
+    ctCollect();
+    if (!ct.scene.location) { status("ct-status", "先在「⑤ 關係・場景」填約會地點", true); return; }
+    if (ct.scene.type !== "date") { ct.scene.type = "date"; ctFill(); ctSave(); }   // 按了約會開場就切到約會模式
+    const loc = ct.scene.location;
+    ctPush("sys", `—— ${loc}・約會開始 ——`);
+    return ctGen(`(旁白:你們剛抵達「${loc}」——${ct.scene.locationDesc || ""}。請用一兩句話開場:描述你眼前看到的場景和此刻的真實感受,依你的個性可以期待興奮、也可以嫌棄抱怨。不要延續之前任何話題。)`);
+  }
+  return ctGen(CT_INST[kind]);
+}
+function ctSend() {
+  const inp = document.getElementById("ct-input");
+  const text = inp.value.trim();
+  if (!text || ctRunning) return;
+  inp.value = "";
+  ctCollect();
+  ctPush("user", text);
+  // 約會=即時往返(不加旁白指令,跟遊戲一樣);淫紋聊天=她回你最後那句
+  ctGen(ct.scene.type === "date" ? null : CT_INST.reply);
+}
+
+// 🎲 用遊戲的生成器骰一隻,填滿所有欄位
+async function ctRoll() {
+  ctCollect();
+  const ok = await window.GG_ready;
+  if (!ok || !window.GG_generateGirl) { status("ct-status", "人物池載入失敗(persona_pools.json)", true); return; }
+  const g = window.GG_generateGirl({ luck: 50, rating: ct.rating || "sfw" });
+  if (!g) { status("ct-status", "生成失敗:人物池是空的", true); return; }
+  ct.girl = {
+    name: g.name, rarity: g.rarity, personality: g.personality || [], speech: "", tone: g.tone || "",
+    backstory: g.backstory || "", jobDesc: g.jobDesc || "", catchphrases: g.catchphrases || [],
+    reactions: g.reactions || {}, likes: g.likes || [], dislikes: g.dislikes || [], hobbies: g.hobbies || [],
+    quirk: g.quirk || "", contrast: g.contrast || "", arc: g.arc || "", chrono: g.chrono || {},
+    libido: g.libido || {}, look: g.look || {}, specialTraits: (g.specialTraits || []).map(t => t.name),
+    schedule: g.schedule || {},
+  };
+  ctFill(); ctSave();
+  status("ct-status", `✓ 骰到「${g.name}」(${g.rarity}・${(g.personality || []).join("、")})——對話沒清,想從頭聊按清空`);
+}
+// 從存檔匯入一隻現役魅魔(連帶關係、階段、纏著她的召喚師)
+function ctImport() {
+  const idx = +document.getElementById("ct-import").value;
+  const s = (save?.succubi || [])[idx];
+  if (!s) { status("ct-status", "存檔裡沒有這隻魅魔", true); return; }
+  ctCollect();
+  ct.girl = {
+    name: s.name, rarity: s.rarity || "R", personality: s.personality || [], speech: s.speech || "",
+    tone: s.tone || "", backstory: s.backstory || "", jobDesc: s.jobDesc || "",
+    catchphrases: s.catchphrases || [], reactions: s.reactions || {}, likes: s.likes || [],
+    dislikes: s.dislikes || [], hobbies: s.hobbies || [], quirk: s.quirk || "", contrast: s.contrast || "",
+    arc: s.arc || "", chrono: s.chrono || {}, libido: s.libido || {}, look: s.look || {},
+    specialTraits: (s.specialTraits || []).map(t => (typeof t === "string" ? t : t.name)),
+    schedule: s.schedule || {},
+  };
+  ct.rel = {
+    stage: s.stage || "stranger", affection: s.affection || 0,
+    days: s.summonedAt ? Math.floor((Date.now() - s.summonedAt) / 86400000) : 0,
+  };
+  if (s.summoner) {
+    const i = (summonerPool || []).findIndex(x => x.id === s.summoner.id);
+    ct.rival = { on: i >= 0, su: Math.max(0, i), stageIdx: s.summoner.stage ?? 0 };
+  } else ct.rival = { on: false, su: 0, stageIdx: 0 };
+  if (save?.settings?.rating) ct.rating = save.settings.rating;
+  if (save?.settings?.player) ct.player = save.settings.player;
+  ctFill(); ctSave();
+  status("ct-status", `✓ 已匯入「${s.name}」(關係:${s.stage}・好感 ${s.affection || 0})`);
+}
+
+function ctInit() {
+  ctLoad();
+  document.getElementById("ct-su").innerHTML =
+    (summonerPool || []).map((su, i) => `<option value="${i}">${su.emoji || "👤"} ${esc(su.name || "(未命名)")}</option>`).join("")
+    || `<option value="0">(召喚師池為空)</option>`;
+  document.getElementById("ct-rstage").innerHTML =
+    STAGE_NAMES.map((n, i) => `<option value="${i}">${n}</option>`).join("");
+  document.getElementById("ct-import").innerHTML =
+    (save?.succubi || []).map((s, i) => `<option value="${i}">${esc(s.name)}(${s.stage})</option>`).join("")
+    || `<option value="-1">(存檔裡沒有魅魔)</option>`;
+  // 現在的時段當預設,跟遊戲一致
+  const h = new Date().getHours();
+  ct.scene.slot = ct.scene.slot || (h < 6 ? "night" : h < 11 ? "morning" : h < 14 ? "noon" : h < 18 ? "afternoon" : h < 23 ? "evening" : "night");
+  ctFill();
+  ctRender();
+  document.querySelectorAll("[data-ct]").forEach(el => el.addEventListener("change", ctCollect));
+  // 選到內建約會地點自動帶場景描述(空白時才覆蓋,不蓋掉手寫的)
+  document.getElementById("ct-loc").addEventListener("change", () => {
+    const su = (summonerPool || [])[ct.rival.su];
+    const hit = (su?.spots || []).find(sp => sp.name === document.getElementById("ct-loc").value.trim());
+    const desc = document.querySelector('[data-ct="scene.locationDesc"]');
+    if (hit?.desc && !desc.value.trim()) { desc.value = hit.desc; ctCollect(); }
+  });
+  document.getElementById("ct-input").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ctSend(); }
+  });
+  fetch("/content/world.md?ts=" + Date.now()).then(r => r.text()).then(t => { ctWorld = t; }).catch(() => {});
+  api("/api/scripts?category=chat_rival").then(l => { ctRivalScripts = l; }).catch(() => {});
 }
 
 // ── 階段語氣腳本 ──
@@ -943,17 +1374,18 @@ async function saveSacrifice() {
   } catch (e) { status("sac2-status", "失敗:" + e.message, true); }
 }
 
-reloadSave();
 loadScripts();
 loadSacrifice();
-loadSummoners().then(() => initTestBench());
+// 測試台/淫紋聊天測試器要先有存檔(設定、魅魔清單)與召喚師池才初始化
+Promise.all([reloadSave().catch(() => {}), loadSummoners()]).then(() => { initTestBench(); ctInit(); });
 </script>
 <script type="module">
 // 內建階段語氣原文與 prompt 產生器:直接從內容模組匯入,永遠與遊戲實際使用的版本一致
-import { RIVAL_WATCH_TONE, RIVAL_CHAT_EFFECT, buildWatchPrompt } from "/content/persona_builder.js";
+import { RIVAL_WATCH_TONE, RIVAL_CHAT_EFFECT, buildWatchPrompt, buildSystemPrompt } from "/content/persona_builder.js";
 import { loadPools, generateGirl } from "/content/girl_gen.js";
 window.STAGE_DEFAULTS = { watch_stage: RIVAL_WATCH_TONE, chat_rival: RIVAL_CHAT_EFFECT };
 window.PB_buildWatchPrompt = buildWatchPrompt;
+window.PB_buildSystemPrompt = buildSystemPrompt;   // 淫紋聊天測試器:與遊戲同一支 prompt 產生器
 window.GG_loadPools = async () => {
   const p = await loadPools();
   window.__GG_POOLS = p;
@@ -961,6 +1393,7 @@ window.GG_loadPools = async () => {
 };
 window.GG_generateGirl = generateGirl;
 Object.defineProperty(window, "GG_POOLS", { get: () => window.__GG_POOLS || null });
+window.GG_ready = window.GG_loadPools().then(p => !!p?.female).catch(() => false);   // 🎲 隨機妹子用的人物池
 window.fillStageBody?.();
 </script>
 </body>
