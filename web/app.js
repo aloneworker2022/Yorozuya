@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.33(2026-07-30)紋亮即可聊:她還沒開口就換你先說,零等待";
+const APP_VER = "v5.34(2026-07-30)修紋不出現:沒聊完的舊對話不再鎖死判定 + DBG.whyNoCrest";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -78,7 +78,12 @@ function crestRoll() {
   if (isAsleep()) return false;
   let changed = false;
   for (const s of kanbanSuccubi()) {
-    if (s.summoner?.taken || s.wantsTalk || s.chatLine || s.typing || s.chatSess) continue;
+    if (s.summoner?.taken || s.wantsTalk || s.chatLine || s.typing) continue;
+    // 這場還在進行中才跳過;擱置過久的舊 session 直接作廢,不讓它把紋鎖死
+    if (s.chatSess) {
+      if (Date.now() - (s.chatSess.at || 0) < CHAT_SESS_TTL) continue;
+      s.chatSess = null;
+    }
     if (Math.random() >= crestChance(s)) continue;
     // 中了就馬上亮紋:點進去可以「你先說」(零等待);
     // 同時在背景寫她的開場白,若你還沒點進來就寫好了,開場就換成她先開口。
@@ -96,7 +101,7 @@ function crestRoll() {
 
 // 擱置太久的那場對話就當它結束了(紋熄滅、下次委託操作再開新的一場),
 // 免得一場沒聊完的舊對話把她的淫紋永遠佔住。
-const CHAT_SESS_TTL = 6 * HOUR;
+const CHAT_SESS_TTL = 30 * 60 * 1000;
 function expireChatSess() {
   let changed = false;
   for (const s of state.succubi) {
@@ -1338,8 +1343,8 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
     if (!prepaid) {
       if (s.summoner?.taken) { toast(`${s.name} 正被召喚走——約她出門才撞得見`, "bad"); return; }
       if (s.typing) { toast(`${s.name} 正在回你……`, ""); return; }
-      // 紋亮著就能聊:她的話備好了就她先說,還沒備好就你先說
-      if (!s.chatLine && !s.wantsTalk) { toast("她現在沒有話要跟你說", "bad"); return; }
+      // 紋亮著就能聊:她的話備好了就她先說,還沒備好(或是接續沒聊完的那場)就你先說
+      if (!s.chatLine && !s.wantsTalk && !s.chatSess) { toast("她現在沒有話要跟你說", "bad"); return; }
     }
     s.wantsTalk = 0;   // 這一盞紋在這一場兌現了
     s.lastChatDay = today;
@@ -2914,8 +2919,9 @@ function renderCrests() {
   const el = $("#crests");
   if (!el) return;
   const busy = isAsleep() || chatWith || watchWith || sacrificeWith || sacSummon;
+  // chatSess 也要亮:一場還沒聊完的對話點進去就能接著回(她的話讀過了也不會消失不見)
   const girls = busy ? [] : kanbanSuccubi().filter(s =>
-    !s.summoner?.taken && (s.chatLine || s.wantsTalk || s.typing));
+    !s.summoner?.taken && (s.chatLine || s.wantsTalk || s.typing || s.chatSess));
   el.classList.toggle("hidden", !girls.length);
   el.innerHTML = girls.map(s => {
     // 「對話框 …」只用在「你送出後她正在回你」;新亮起的紋一律是淫紋圖示
@@ -3842,6 +3848,33 @@ window.DBG = {
   chatPrompt: (id) => {
     const s = state.succubi.find(x => x.id === id) || kanbanSuccubi()[0];
     return s ? chatLineMsgs(s) : null;
+  },
+  // 手機上自我診斷:為什麼淫紋沒出現?把每個關卡的判定結果一次列出來
+  whyNoCrest: () => {
+    const now = Date.now();
+    const globals = {
+      睡眠時段: isAsleep(), 對話中: !!chatWith, 觀戰中: !!watchWith,
+      在任看板娘: kanbanSuccubi().map(s => s.name),
+      模型: state.settings.model || "(空=罐頭模式)",
+    };
+    const girls = state.succubi.map(s => {
+      const k = (state.kanbans || []).find(x => x.id === s.id);
+      const why = [];
+      if (!isKanban(s.id)) why.push(k ? "看板娘時段已到期(要重新付費召喚)" : "不是看板娘(要先召喚為看板娘)");
+      if (s.summoner?.taken) why.push("被別的召喚師召喚走了");
+      if (isAsleep()) why.push("睡眠時段不判定");
+      if (s.typing) why.push(`正在回你(等 ${Math.round((now - s.typing.at) / 1000)} 秒,超過 ${TYPING_STUCK_MS / 60000} 分改罐頭)`);
+      if (s.chatSess && now - (s.chatSess.at || 0) < CHAT_SESS_TTL)
+        why.push(`上一場還沒聊完(${s.chatSess.playerMsgs}/${s.chatSess.turnCap} 句,擱置 ${CHAT_SESS_TTL / 60000} 分自動作廢)`);
+      return {
+        name: s.name, 出現率: Math.round(crestChance(s) * 100) + "%",
+        看板娘剩餘分鐘: k ? Math.round((k.until - now) / 60000) : null,
+        紋現在亮著: !!(s.chatLine || s.wantsTalk || s.typing || s.chatSess),
+        她的話: s.chatLine?.text || null,
+        不判定的原因: why.length ? why : "(沒有阻礙,下次委託操作就會判定)",
+      };
+    });
+    return { globals, girls };
   },
   // 測試:看每位看板娘的淫紋狀態(亮紋 / 正在輸入 / 這場聊到第幾句)
   crestState: () => kanbanSuccubi().map(s => ({
