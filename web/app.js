@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.32(2026-07-29)淫紋改成話寫好才亮:點開秒開場,不再進場等生成";
+const APP_VER = "v5.33(2026-07-30)紋亮即可聊:她還沒開口就換你先說,零等待";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -80,13 +80,14 @@ function crestRoll() {
   for (const s of kanbanSuccubi()) {
     if (s.summoner?.taken || s.wantsTalk || s.chatLine || s.typing || s.chatSess) continue;
     if (Math.random() >= crestChance(s)) continue;
-    // 只是「起了念頭」:先在背景把她要說的話寫出來,寫好了淫紋才亮(見 genChatOrder)。
-    // 這段期間畫面上什麼都不顯示——不讓玩家點進去對著空畫面等她想。
+    // 中了就馬上亮紋:點進去可以「你先說」(零等待);
+    // 同時在背景寫她的開場白,若你還沒點進來就寫好了,開場就換成她先開口。
     s.wantsTalk = Date.now();
     s.chatSess = null;                    // 上一場已結束,這是新的一場(回合數重抽)
     (s.history ??= []).push({ role: "sys", content: "—— 新的一次對話 ——", t: Date.now() });
     s.history = s.history.slice(-200);
     changed = true;
+    toast(`……${s.name} 的淫紋亮了。她想跟你說話。`, "good");
   }
   // 中了就馬上排她那句話(有模型時);沒模型 crestFallback 會在下一秒補罐頭台詞
   if (changed) { dirty = true; try { genTick(true); } catch { /* 下輪 tick 再說 */ } }
@@ -108,8 +109,8 @@ function expireChatSess() {
 }
 
 // 沒設 AI 模型(或連敗到保底)時:念頭/回覆直接落地成罐頭台詞,循環照樣跑得動。
-// 另加卡住保險:她「正在輸入」超過 5 分鐘還沒生出來,一律補罐頭——不讓 … 永遠轉下去。
-const TYPING_STUCK_MS = 5 * 60 * 1000;
+// 另加卡住保險:她「正在輸入」超過 3 分鐘還沒生出來,一律補罐頭——不讓 … 永遠轉下去。
+const TYPING_STUCK_MS = 3 * 60 * 1000;
 function crestFallback() {
   const dead = !state.settings.model || chatGenFail.count >= 3;
   let changed = false;
@@ -117,12 +118,12 @@ function crestFallback() {
     if (s.ntr || s.summoner?.taken) continue;
     const stuck = s.typing && Date.now() - s.typing.at > TYPING_STUCK_MS;
     if (!((s.typing && (dead || stuck)) || (s.wantsTalk && dead && isKanban(s.id)))) continue;
-    const opener = !!s.wantsTalk;
+    const replying = !!s.typing;
     s.chatLine = { text: pick(CHAT_LINES[s.stage] || CHAT_LINES.stranger), t: Date.now() };
     s.wantsTalk = 0;
     s.typing = null;
     changed = true;
-    toast(opener ? `……${s.name} 的淫紋亮了。她想跟你說話。` : `${s.name} 回你了`, "good");
+    if (replying) toast(`${s.name} 回你了`, "good");
   }
   return changed;
 }
@@ -544,9 +545,16 @@ function scheduleSave() {
   saveTimer = setTimeout(saveNow, 800);
 }
 
+// 同時只允許一筆存檔在飛:兩筆重疊時後者會帶著已經過期的 base_version 送出 → 409,
+// 而 409 的處理是「載入伺服器版本」,等於把這 1 秒內的新進度沖掉(送出訊息→跳出對話
+// 這種連續動作最容易踩到)。有請求在飛就排下一輪,等新 version 回來再送。
+let saveInFlight = false;
 async function saveNow(keepalive = false) {
   if (bootFailed || !dirty || !state) return;
+  if (saveInFlight && !keepalive) { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); return; }
+  saveInFlight = true;
   dirty = false;
+  let failed = false;
   try {
     const r = await fetch("/api/save", {
       method: "PUT",
@@ -570,8 +578,13 @@ async function saveNow(keepalive = false) {
   } catch (e) {
     // 存不上(離線/伺服器重啟):5 秒後自動重試,直到成功
     dirty = true;
+    failed = true;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 5000);
+  } finally {
+    saveInFlight = false;
+    // 這筆在飛的期間又有新進度 → 立刻補一輪(帶著剛拿到的新 version,不會 409)
+    if (dirty && !failed) { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }
   }
 }
 
@@ -1325,9 +1338,10 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
     if (!prepaid) {
       if (s.summoner?.taken) { toast(`${s.name} 正被召喚走——約她出門才撞得見`, "bad"); return; }
       if (s.typing) { toast(`${s.name} 正在回你……`, ""); return; }
-      // 淫紋只在「她的話已經寫好」時才亮,所以點進來一定有話可讀
-      if (!s.chatLine) { toast("她現在沒有話要跟你說", "bad"); return; }
+      // 紋亮著就能聊:她的話備好了就她先說,還沒備好就你先說
+      if (!s.chatLine && !s.wantsTalk) { toast("她現在沒有話要跟你說", "bad"); return; }
     }
+    s.wantsTalk = 0;   // 這一盞紋在這一場兌現了
     s.lastChatDay = today;
   }
   chatWith = id;
@@ -1381,33 +1395,15 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
     dirty = true;
     saveNow();
   } else {
-    chatOpenerLive(s);   // 沒有預製話(無模型/剛被釋放):現場生她的開場白
+    // 紋亮著但她還沒開口(話還在背景寫、或剛被釋放):換你先說——
+    // 完全不等生成,輸入框直接可用;你送出後她才開始回你。
+    vnShow("", `(淫紋亮著——${s.name} 在等你開口)`, "sys");
+    vnDone();
   }
 }
 
-// 聊天即時開場白(念頭剛起、話還沒寫好時):她先開口,串流生成
-async function chatOpenerLive(s) {
-  if (!chatSession) return;
-  chatSession.busy = true;
-  setChatWaiting(true);
-  vnTyping(true);
-  const inst = "(旁白:淫紋亮起——是你想找他說話。依你的個性與你們的關係,對他說第一句話:可以聊他的委託、你原本生活的事,或撒嬌抱怨。一句像簡訊的話。)";
-  try {
-    const reply = await llmReply(s, acc => vnShow(s.name, acc, "ai"), inst);
-    s.history.push({ role: "assistant", content: reply, t: Date.now() });
-    s.history = s.history.slice(-200);
-    vnDone();
-    dirty = true;
-    saveNow();
-  } catch (e) {
-    if (e.name !== "AbortError") vnShow("", "(她欲言又止……)", "sys");
-  }
-  if (chatSession && !chatSession.ended) {
-    chatSession.busy = false;
-    setChatWaiting(false);
-    document.getElementById("chat-input")?.focus();
-  }
-}
+// (chatOpenerLive 已移除:紋亮著她還沒開口時,直接換玩家先說——
+//  進場一律零等待,不再有「點進去看她慢慢生成開場白」的畫面。)
 
 // 送出後隱藏輸入列,等她回完才出現(避免連發沒人回)
 function setChatWaiting(b) {
@@ -1789,10 +1785,8 @@ async function genChatOrder() {
       if (isKanban(s.id) && !s.summoner?.taken) {
         // 覆寫:她有新想法時,舊的那句未讀就直接被刷掉(同時只留最新一句)
         s.chatLine = { text: r.result.split("\n")[0].slice(0, 300) || r.result.slice(0, 300), t: Date.now() };
-        s.wantsTalk = 0;                             // 念頭落地成未讀訊息
+        s.wantsTalk = 0;                             // 念頭落地成未讀訊息(紋早就亮著了)
         dirty = true; scheduleSave(); renderAll();
-        // 話寫好了淫紋才亮:點進去她那句話立刻在那裡,不用進場等她想
-        toast(`……${s.name} 的淫紋亮了。她想跟你說話。`, "good");
       }
     } else if (r.status === "error") anyErr = true;
   }
@@ -2905,9 +2899,9 @@ function renderAll() {
 }
 
 // 淫紋:每位看板娘各自一盞燈,兩種狀態——
-//   ① 亮紋:她那句話「已經寫好了」在等你讀 → 點開秒開場,永遠不用進場等生成
+//   ① 亮紋:判定中了就亮,點開即可對話(她的開場白寫好了就是她先說,
+//      還沒寫好就換你先說——兩種都零等待)
 //   ② 對話框「…」:你剛送出、她正在回你 → 不能點,等她打完自動變回亮紋
-// 判定中了但話還在背景寫的期間什麼都不顯示(不讓玩家點進去對著空畫面等)。
 // 睡眠、對話中、觀戰中、獻祭中不顯示;被召喚走的不判定,自然不亮。
 const TYPING_SVG = `<svg class="typing-svg" viewBox="0 0 52 44" width="44" height="38" aria-hidden="true">
   <path class="tbub" d="M7 4h38a6 6 0 0 1 6 6v18a6 6 0 0 1-6 6H22l-10 8v-8H7a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6z"/>
@@ -2921,7 +2915,7 @@ function renderCrests() {
   if (!el) return;
   const busy = isAsleep() || chatWith || watchWith || sacrificeWith || sacSummon;
   const girls = busy ? [] : kanbanSuccubi().filter(s =>
-    !s.summoner?.taken && (s.chatLine || s.typing));
+    !s.summoner?.taken && (s.chatLine || s.wantsTalk || s.typing));
   el.classList.toggle("hidden", !girls.length);
   el.innerHTML = girls.map(s => {
     // 「對話框 …」只用在「你送出後她正在回你」;新亮起的紋一律是淫紋圖示
@@ -3442,7 +3436,7 @@ function renderDetail(s, root) {
                  : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`}
       </div>
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
-      ${!s.ntr ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b>——她當看板娘時,你每做一次委託操作(發現/承接/開始執行/完成)就判定一次;亮了點下去就能跟她聊上幾個來回</div>` : ""}
+      ${!s.ntr ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b>——她當看板娘時,你每做一次委託操作(發現/承接/開始執行/完成)就判定一次;紋亮了點下去就能聊(她先開口、或換你先說),一場 2~4 個來回</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
         ${SAC_RITUAL ? `<div class="aff-line dim small">${sacScriptReady(s)
