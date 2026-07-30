@@ -1,0 +1,77 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": { "title": "CHECKPOINT" },
+    "inputs": {
+      "ckpt_name": "REPLACE_ME.safetensors"
+    }
+  },
+  "8": {
+    "class_type": "LoraLoader",
+    "_meta": { "title": "LORA" },
+    "inputs": {
+      "lora_name": "REPLACE_ME_LORA.safetensors",
+      "strength_model": 0.8,
+      "strength_clip": 0.8,
+      "model": ["1", 0],
+      "clip": ["1", 1]
+    }
+  },
+  "2": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "POSITIVE" },
+    "inputs": {
+      "text": "masterpiece, best quality, amazing quality, 1girl, solo, silver hair, long hair, red eyes, slender, black dress, upper body, looking at viewer, simple background",
+      "clip": ["8", 1]
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "NEGATIVE" },
+    "inputs": {
+      "text": "bad quality, worst quality, worst detail, sketch, censor, jpeg artifacts, signature, watermark, username, text, lowres, bad anatomy, bad hands, missing fingers, extra digits, fewer digits, cropped",
+      "clip": ["8", 1]
+    }
+  },
+  "4": {
+    "class_type": "EmptyLatentImage",
+    "_meta": { "title": "LATENT" },
+    "inputs": {
+      "width": 832,
+      "height": 1216,
+      "batch_size": 1
+    }
+  },
+  "5": {
+    "class_type": "KSampler",
+    "_meta": { "title": "SAMPLER" },
+    "inputs": {
+      "seed": 123456789,
+      "steps": 28,
+      "cfg": 5.0,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 1.0,
+      "model": ["8", 0],
+      "positive": ["2", 0],
+      "negative": ["3", 0],
+      "latent_image": ["4", 0]
+    }
+  },
+  "6": {
+    "class_type": "VAEDecode",
+    "_meta": { "title": "DECODE" },
+    "inputs": {
+      "samples": ["5", 0],
+      "vae": ["1", 2]
+    }
+  },
+  "7": {
+    "class_type": "SaveImage",
+    "_meta": { "title": "SAVE" },
+    "inputs": {
+      "images": ["6", 0],
+      "filename_prefix": "yorozuya/portrait_lora"
+    }
+  }
+}
