@@ -47,8 +47,8 @@ _GROK_DISALLOWED_TOOLS = (
     "web_search,web_fetch,spawn_subagent,image_gen,image_edit,"
     "open_page,use_tool,todo_write"
 )
-# 生圖任務允許的工具(image_gen + 搬檔用 shell/list)
-_GROK_IMG_TOOLS = "image_gen,run_terminal_cmd,list_dir,read_file"
+# 生圖任務允許的工具(image_gen/image_edit + 搬檔用 shell/list;image_edit 讓三段能照素體那張畫)
+_GROK_IMG_TOOLS = "image_gen,image_edit,run_terminal_cmd,list_dir,read_file"
 IMG_TEST_DIR = ASSETS_DIR / "testword"
 GROK_IMG_TIMEOUT = float(os.environ.get("GROK_IMG_TIMEOUT", "300"))
 GROK_IMG_MAX_TURNS = int(os.environ.get("GROK_IMG_MAX_TURNS", "8") or "8")
@@ -545,6 +545,11 @@ _RATING_MAP = {
         "tasteful erotic art, mature 18+ only"
     ),
 }
+# 素體那張不談穿沒穿——它的工作只是把身體與比例定下來,分級照樣分級。
+_RATING_BASE_MAP = {
+    "sfw": "SFW, non-explicit character-design reference sheet",
+    "nsfw": "Adult content allowed, mature 18+ only, tasteful figure study",
+}
 
 
 def _fill_manual_fields(
@@ -620,8 +625,24 @@ Render settings:
 # ---- 三段生圖:同一位妹子拆成「頭 / 胸 / 下半身」三張,各段只畫自己那一段 ----
 # 抽卡欄位本來就是分開的(眼睛、罩杯、體型…),整張畫時模型會把它們糊在一起;
 # 拆成三張各自吃自己那組欄位,才看得出「大眼睛」「C 罩杯圓潤」到底畫成什麼樣。
-IMG_PARTS = ("head", "bust", "lower")
-PART_LABEL_ZH = {"head": "頭部", "bust": "胸部・上半身", "lower": "下半身・腿"}
+# 先出一張「素體」當基礎:只描述身體本身(膚色、罩杯、體型、腿長),不寫任何衣服設定;
+# 之後三段都拿素體那張當參考圖,長相與比例才不會每段各長各的。
+IMG_BASE_PART = "base"
+IMG_SEG_PARTS = ("head", "bust", "lower")
+IMG_PARTS = (IMG_BASE_PART,) + IMG_SEG_PARTS
+PART_LABEL_ZH = {
+    "base": "素體基礎", "head": "頭部", "bust": "胸部・上半身", "lower": "下半身・腿",
+}
+
+
+def _resolve_ref_image(ref: str) -> Path | None:
+    """把前端傳來的 /assets/testword/xxx.png 換成本機絕對路徑。
+    只認 testword 目錄下確實存在的檔案(取 basename,擋路徑穿越)。"""
+    ref = (ref or "").strip()
+    if not ref:
+        return None
+    p = IMG_TEST_DIR / Path(ref).name
+    return p if p.is_file() and p.stat().st_size > 0 else None
 
 # 三張要像同一個人:膚色與服裝配色由人設欄位做確定性雜湊,同一個人設永遠推出同一組。
 _SKIN_TONES = [
@@ -663,27 +684,53 @@ def _identity_anchor(ch: dict) -> dict:
     }
 
 
-def _anchor_block(a: dict) -> str:
-    """三張圖裡逐字相同的一段——同一個人、同一套衣服、同一個光。"""
+def _anchor_block(a: dict, *, with_outfit: bool = True) -> str:
+    """每張圖裡逐字相同的一段——同一個人、同一套衣服、同一個光。
+    素體那張 with_outfit=False:不寫任何衣服設定,只留身體與鏡頭。"""
     rows = [f"- Skin: {a['skin']}"]
     if a["hair"]:
         rows.append(f"- Hair (same in every part): {a['hair']}")
     if a["build"]:
         rows.append(f"- Overall build: {a['build']}"
                     + (f", {a['height_cm']}cm tall" if a["height_cm"] else ""))
-    if a["style"]:
-        rows.append(f"- Outfit: one single {a['style']} outfit, colour palette {a['palette']} — "
-                    "the SAME garment across all three parts")
-    else:
-        rows.append(f"- Outfit: one single coherent outfit, colour palette {a['palette']} — "
-                    "the SAME garment across all three parts")
-    rows.append("- Camera: straight-on, neutral eye-level angle, same distance and same lens in all three parts")
+    if with_outfit:
+        if a["style"]:
+            rows.append(f"- Outfit: one single {a['style']} outfit, colour palette {a['palette']} — "
+                        "the SAME garment across all three parts")
+        else:
+            rows.append(f"- Outfit: one single coherent outfit, colour palette {a['palette']} — "
+                        "the SAME garment across all three parts")
+    rows.append("- Camera: straight-on, neutral eye-level angle, same distance and same lens in every part")
     rows.append("- Light: soft even front light from the same direction; identical plain background")
     return "\n".join(rows)
 
 
 def _part_focus(part: str, a: dict, ch: dict) -> tuple[str, list[str], str]:
     """回 (取景, 這一段要畫的重點, 這一段不要畫的東西)。"""
+    if part == IMG_BASE_PART:
+        # 素體基礎:只講身體本身。不寫衣服設定,也不寫任何裸露相關字眼——
+        # 分級門控(SFW/NSFW)還是照走,由 _RATING_BASE_MAP 決定尺度。
+        focus = []
+        if a["build"]:
+            focus.append(f"Body build — draw exactly this: {a['build']}"
+                         + (f", {a['height_cm']}cm tall" if a["height_cm"] else ""))
+        if a["bust"]:
+            focus.append(f"Bust — draw exactly this: {a['bust']} (size and shape must read clearly)")
+        focus.append(f"Skin: {a['skin']}, even tone from face to feet")
+        focus.append("Waist, hip line, thigh and calf shape, leg length and overall proportion "
+                     "all consistent with the build above")
+        if a["hair"]:
+            focus.append(f"Hair: {a['hair']}")
+        if a["eyes"]:
+            focus.append(f"Eyes: {a['eyes']}, calm neutral expression")
+        focus.append("Relaxed standing pose, arms loose at the sides, feet together, facing the camera")
+        return (
+            "FULL FIGURE, head to feet, centred in frame. This is the body/proportion reference pass "
+            "that the three cropped parts are built on.",
+            focus,
+            "No outfit design, no accessories, no props, no scenery, no crop — "
+            "this pass records the body and its proportions only.",
+        )
     if part == "head":
         focus = []
         if a["eyes"]:
@@ -746,17 +793,19 @@ def _build_girl_part_prompt(
     backstory: str = "",
     extra: str = "",
     out_path: Path,
+    ref_path: Path | None = None,
 ) -> str:
-    """單一段(頭/胸/下半身)的生圖指令。三段共用同一份錨點,才拼得起來。"""
-    part = (part or "head").lower()
+    """單張的生圖指令:素體基礎,或其中一段(頭/胸/下半身)。
+    素體 = 只寫身體,不寫衣服;三段共用同一份錨點,並可帶素體那張當參考圖。"""
+    part = (part or IMG_BASE_PART).lower()
     if part not in IMG_PARTS:
-        part = "head"
+        part = IMG_BASE_PART
+    is_base = part == IMG_BASE_PART
     rating = (rating or "sfw").lower()
     style = (style or "anime").lower()
     ch = _fill_manual_fields(character, name, personality, backstory)
     a = _identity_anchor(ch)
     frame_line, focus, avoid = _part_focus(part, a, ch)
-    idx = IMG_PARTS.index(part) + 1
 
     size_note = (
         "Output size MUST be exactly 256x256 pixels."
@@ -770,31 +819,57 @@ def _build_girl_part_prompt(
     )
     focus_txt = "\n".join(f"- {f}" for f in focus)
 
-    return f"""You are generating ONE image: part {idx} of 3 of a character reference sheet.
-The three parts (1 head, 2 chest/torso, 3 lower body) are the SAME girl in the SAME outfit,
-cropped so that stacking them top to bottom would rebuild one continuous full-body figure.
-Right now you draw ONLY part {idx}.
+    if is_base:
+        header = (
+            "You are generating ONE image: the BODY BASE of a character reference sheet.\n"
+            "This is the foundation pass — it fixes the girl's body, proportions and face.\n"
+            "Three cropped parts (head / chest / lower body) will be drawn from it afterwards."
+        )
+        section = f"=== BODY BASE · {PART_LABEL_ZH[part]} ==="
+    else:
+        idx = IMG_SEG_PARTS.index(part) + 1
+        header = (
+            f"You are generating ONE image: part {idx} of 3 of a character reference sheet.\n"
+            "The three parts (1 head, 2 chest/torso, 3 lower body) are the SAME girl in the SAME outfit,\n"
+            "cropped so that stacking them top to bottom would rebuild one continuous full-body figure.\n"
+            f"Right now you draw ONLY part {idx}."
+        )
+        section = f"=== THIS PART ({idx}/3 · {PART_LABEL_ZH.get(part, part)}) ==="
+
+    ref_block = ""
+    if ref_path is not None:
+        ref_block = f"""
+=== REFERENCE IMAGE (the body base of this same girl) ===
+{ref_path}
+Open it first. It is the SAME girl — copy her face, skin tone, body proportions and hair from it
+exactly, then draw this part with the outfit on top of that body. Using image_edit on this
+reference is the preferred way to keep the body identical. If the reference and the text below
+disagree on the body, the reference wins.
+=== END REFERENCE IMAGE ===
+"""
+
+    return f"""{header}
 
 {tool_note}
 After the image is created, copy/move the final file to this EXACT path:
 {out_path}
 
 Only create that one image file at the destination. Then reply with a short note: the absolute path and one-line description.
-
-=== SHARED IDENTITY (identical in all three parts — do not vary) ===
-{_anchor_block(a)}
+{ref_block}
+=== SHARED IDENTITY (identical in every part — do not vary) ===
+{_anchor_block(a, with_outfit=not is_base)}
 === END SHARED IDENTITY ===
 
-=== THIS PART ({idx}/3 · {PART_LABEL_ZH.get(part, part)}) ===
+{section}
 Framing: {frame_line}
 Draw these, from the character sheet — they are AUTHORITATIVE, do not substitute:
 {focus_txt}
 Exclusions: {avoid}
-=== END THIS PART ===
+=== END ===
 
 Render settings:
 - Art style: {_STYLE_MAP.get(style, _STYLE_MAP["anime"])}
-- Content rating: {_RATING_MAP.get(rating, _RATING_MAP["sfw"])}
+- Content rating: {(_RATING_BASE_MAP if is_base else _RATING_MAP).get(rating, _RATING_MAP["sfw"])}
 - {size_note}
 - One person only, plain simple background, no text overlays, no watermark, no collage, no panels
 {("- Extra director notes: " + extra.strip()) if extra.strip() else ""}
@@ -813,9 +888,11 @@ async def _run_grok_image(
     backstory: str = "",
     extra: str = "",
     part: str = "",
+    ref: str = "",
 ) -> tuple[str, str | None]:
     """Grok Build + image_gen。成功回 (url_path, None),url 如 /assets/testword/xxx.png。
-    part 給值(head/bust/lower)= 只畫那一段;留空 = 舊行為的整張圖。"""
+    part 給值(base/head/bust/lower)= 只畫那一段;留空 = 舊行為的整張圖。
+    ref = 素體那張的 /assets/testword/… URL,三段拿它當參考圖。"""
     IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
     part = (part or "").lower()
     stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
@@ -832,6 +909,7 @@ async def _run_grok_image(
             character=character,
             name=name, personality=personality, backstory=backstory, extra=extra,
             out_path=target,
+            ref_path=_resolve_ref_image(ref),
         )
     else:
         prompt = _build_girl_image_prompt(
@@ -1110,7 +1188,8 @@ class ImgGenIn(BaseModel):
     personality: str = ""
     backstory: str = ""
     extra: str = ""
-    part: str = ""              # ""=整張;head | bust | lower = 只畫那一段
+    part: str = ""              # ""=整張;base=素體;head | bust | lower = 只畫那一段
+    ref: str = ""               # 素體那張的 /assets/testword/… URL,三段當參考圖
     retry: bool = False
 
 
@@ -1171,6 +1250,7 @@ def imggen_submit(t: ImgGenIn):
     opts = {
         "kind": "girl_image",
         "part": part if part in IMG_PARTS else "",
+        "ref": (t.ref or "") if part in IMG_SEG_PARTS else "",
         "framing": (t.framing or "half").lower(),
         "rating": (t.rating or "sfw").lower(),
         "style": (t.style or "anime").lower(),
@@ -1216,8 +1296,10 @@ def imggen_list(limit: int = 24):
 
 @app.post("/api/imggen/preview")
 def imggen_preview(t: ImgGenIn):
-    """不生圖,只回這份人設會送出去的 prompt(三段各一份)——testword 對稿用。"""
+    """不生圖,只回這份人設會送出去的 prompt(素體+三段各一份)——testword 對稿用。"""
     parts = [(t.part or "").lower()] if (t.part or "").lower() in IMG_PARTS else list(IMG_PARTS)
+    # 預覽時素體圖還不存在,用假路徑讓「三段會帶參考圖」這件事看得見
+    ref_demo = _resolve_ref_image(t.ref) or (IMG_TEST_DIR / "<素體那張>.png")
     out = []
     for p in parts:
         out.append({
@@ -1231,6 +1313,7 @@ def imggen_preview(t: ImgGenIn):
                 name=t.name or "", personality=t.personality or "",
                 backstory=t.backstory or "", extra=t.extra or "",
                 out_path=IMG_TEST_DIR / f"<preview>_{p}.png",
+                ref_path=None if p == IMG_BASE_PART else ref_demo,
             ),
         })
     return {"parts": out}
@@ -1290,6 +1373,7 @@ async def _gen_worker():
                     backstory=str(opts.get("backstory") or ""),
                     extra=str(opts.get("extra") or ""),
                     part=str(opts.get("part") or ""),
+                    ref=str(opts.get("ref") or ""),
                 )
                 text = url or ""
             elif endpoint in ("grok-build", "grok", "xai"):

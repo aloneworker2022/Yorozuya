@@ -300,21 +300,22 @@
 
   <!-- 三段生圖:頭 / 胸 / 下半身分開出圖 -->
   <div style="border-top:1px solid rgba(255,255,255,.08);margin-top:1.1em;padding-top:.8em">
-    <h3 style="font-size:.85em;color:#ff8fe6;letter-spacing:.08em;margin-bottom:.4em">三段生圖(頭 / 胸 / 下半身)</h3>
+    <h3 style="font-size:.85em;color:#ff8fe6;letter-spacing:.08em;margin-bottom:.4em">分段生圖(素體 → 頭 / 胸 / 下半身)</h3>
     <div class="mini" style="margin-bottom:.6em">
-      抽卡欄位本來就分開(眼睛、罩杯、體型…),整張畫會糊在一起。這裡拆成三張:
-      <b>頭</b>吃眼睛/髮型/特徵/表情、<b>胸</b>吃罩杯/上身體型/上衣、<b>下半身</b>吃體型/身高/下身穿搭。
-      三張共用同一份「同一個人錨點」(膚色、髮色、服裝配色、鏡頭、光)——膚色與配色由人設欄位雜湊產生,同一個人設每次都一樣。
-      伺服器一次只跑一件,三張會依序完成。
+      先出一張<b>素體基礎</b>:只描述身體本身(膚色、罩杯、體型、腿長比例),不寫任何衣服設定。
+      再拿那張當<b>參考圖</b>畫三段——<b>頭</b>吃眼睛/髮型/特徵/表情、<b>胸</b>吃罩杯/上身體型/上衣、<b>下半身</b>吃體型/身高/下身穿搭。
+      四張共用同一份「同一個人錨點」(膚色、髮色、服裝配色、鏡頭、光);膚色與配色由人設欄位雜湊產生,同一個人設每次都一樣。
+      伺服器一次只跑一件:素體先跑完,三段才依序開始。
     </div>
     <div class="row" style="gap:.5em">
-      <button onclick="runImgGenParts()" id="ig-run3">▶ 三段生成(頭→胸→下半身)</button>
-      <button class="cy" type="button" onclick="igPreviewParts()">檢視三段 prompt</button>
+      <button onclick="runImgGenParts()" id="ig-run3">▶ 分段生成(素體→頭→胸→下半身)</button>
+      <button class="cy" type="button" onclick="runImgGenBase()" id="ig-run-base">▶ 只出素體</button>
+      <button class="cy" type="button" onclick="igPreviewParts()">檢視 prompt</button>
       <span class="status" id="ig3-status"></span>
     </div>
     <div id="ig-parts" class="ig-parts"></div>
     <div id="ig-stack"></div>
-    <details style="margin-top:.6em"><summary class="mini" style="cursor:pointer">▸ 三段送出的 prompt</summary>
+    <details style="margin-top:.6em"><summary class="mini" style="cursor:pointer">▸ 素體與三段送出的 prompt</summary>
       <div id="ig-prompt" class="mini" style="white-space:pre-wrap;margin-top:.5em;color:#8a82a5;max-height:26em;overflow:auto">(按「檢視三段 prompt」)</div>
     </details>
   </div>
@@ -874,20 +875,23 @@ async function runImgGen() {
   document.getElementById("ig-run").disabled = false;
 }
 
-// ── 三段生圖:頭 / 胸 / 下半身各出一張,共用同一份人設錨點 ──
+// ── 分段生圖:素體基礎 → 頭 / 胸 / 下半身,共用同一份人設錨點 ──
+const IG_BASE = { key: "base", label: "⓪ 素體基礎", hint: "膚色・罩杯・體型・腿長比例(不寫衣服)" };
 const IG_PARTS = [
   { key: "head",  label: "① 頭部",        hint: "眼睛・髮型・特徵・表情" },
   { key: "bust",  label: "② 胸部・上半身", hint: "罩杯・上身體型・上衣" },
   { key: "lower", label: "③ 下半身・腿",   hint: "體型・身高・下身穿搭" },
 ];
-function igPartsShell() {
-  document.getElementById("ig-parts").innerHTML = IG_PARTS.map(p => `
-    <div class="ig-part" id="igp-${p.key}">
+function igPartCard(p) {
+  return `<div class="ig-part" id="igp-${p.key}">
       <h3>${p.label}</h3>
       <div class="mini" style="font-size:.7em">${p.hint}</div>
       <div class="slot"><span class="mini">等待中…</span></div>
       <div class="st">排隊中</div>
-    </div>`).join("");
+    </div>`;
+}
+function igPartsShell(list) {
+  document.getElementById("ig-parts").innerHTML = list.map(igPartCard).join("");
   document.getElementById("ig-stack").innerHTML = "";
 }
 function igPartSet(key, slotHtml, stText, cls) {
@@ -898,33 +902,63 @@ function igPartSet(key, slotHtml, stText, cls) {
   st.textContent = stText;
   st.className = "st" + (cls ? " " + cls : "");
 }
+// 跑一段:更新自己那一欄,回 url(失敗回 "")
+async function igRunOnePart(p, body, isPixel) {
+  try {
+    const r = await igOrder(body, sec => igPartSet(p.key, null, `生成中… ${sec}s`));
+    if (r.error) { igPartSet(p.key, `<span class="mini" style="color:#ff5f7a">失敗</span>`, r.error, "err"); return ""; }
+    igPartSet(p.key,
+      r.url ? `<img src="${r.url}?t=${Date.now()}" class="${isPixel ? "pixel" : ""}" alt="${p.key}">`
+            : `<span class="mini">完成但沒有路徑</span>`,
+      `✓ ${r.sec}s`, "ok");
+    return r.url || "";
+  } catch (e) {
+    igPartSet(p.key, `<span class="mini" style="color:#ff5f7a">失敗</span>`, e.message, "err");
+    return "";
+  }
+}
 let igPartsRunning = false;
+let igLastBase = "";   // 最近一張素體,三段拿它當參考圖
+// 素體單跑:先看身體對不對,再決定要不要往下畫三段
+async function runImgGenBase() {
+  if (igPartsRunning || igRunning) return;
+  if (!igChar) { status("ig3-status", "請先「依 edit_person 池抽卡」或從存檔載入魅魔", true); return; }
+  const base = igBaseBody();
+  igPartsShell([IG_BASE]);
+  igPartsRunning = true;
+  document.getElementById("ig-run3").disabled = true;
+  document.getElementById("ig-run-base").disabled = true;
+  status("ig3-status", `素體下單中…【${igChar.rarity}】${igChar.name}`);
+  const url = await igRunOnePart(IG_BASE,
+    { ...base, part: "base", key: `img:${Date.now().toString(36)}:base` }, base.style === "pixel");
+  igLastBase = url || igLastBase;
+  status("ig3-status", url ? `✓ 素體完成 · ${url}` : "素體失敗", !url);
+  igRefreshGallery();
+  igPartsRunning = false;
+  document.getElementById("ig-run3").disabled = false;
+  document.getElementById("ig-run-base").disabled = false;
+}
 async function runImgGenParts() {
   if (igPartsRunning || igRunning) return;
   if (!igChar) { status("ig3-status", "請先「依 edit_person 池抽卡」或從存檔載入魅魔", true); return; }
   const base = igBaseBody();
   const isPixel = base.style === "pixel";
-  igPartsShell();
+  igPartsShell([IG_BASE, ...IG_PARTS]);
   igPartsRunning = true;
   document.getElementById("ig-run3").disabled = true;
-  status("ig3-status", `三段下單中…【${igChar.rarity}】${igChar.name}`);
+  document.getElementById("ig-run-base").disabled = true;
   const stamp = Date.now().toString(36);
   const t0 = Date.now();
   const urls = {};
-  // 三段一起下單;伺服器 worker 一次跑一件,先跑完的先顯示
+  // ① 素體先跑完 —— 三段要拿它當參考圖,不能跟它並跑
+  status("ig3-status", `素體生成中…【${igChar.rarity}】${igChar.name}`);
+  const refUrl = await igRunOnePart(IG_BASE, { ...base, part: "base", key: `img:${stamp}:base` }, isPixel);
+  if (refUrl) igLastBase = refUrl;
+  // ② 三段一起下單,都帶素體那張;伺服器 worker 一次跑一件,先跑完的先顯示
+  status("ig3-status", refUrl ? "素體完成,三段下單中…" : "素體失敗——三段改用純文字錨點續跑");
   await Promise.all(IG_PARTS.map(async p => {
-    const body = { ...base, part: p.key, key: `img:${stamp}:${p.key}` };
-    try {
-      const r = await igOrder(body, sec => igPartSet(p.key, null, `生成中… ${sec}s`));
-      if (r.error) { igPartSet(p.key, `<span class="mini" style="color:#ff5f7a">失敗</span>`, r.error, "err"); return; }
-      urls[p.key] = r.url;
-      igPartSet(p.key,
-        r.url ? `<img src="${r.url}?t=${Date.now()}" class="${isPixel ? "pixel" : ""}" alt="${p.key}">`
-              : `<span class="mini">完成但沒有路徑</span>`,
-        `✓ ${r.sec}s`, "ok");
-    } catch (e) {
-      igPartSet(p.key, `<span class="mini" style="color:#ff5f7a">失敗</span>`, e.message, "err");
-    }
+    const body = { ...base, part: p.key, ref: refUrl, key: `img:${stamp}:${p.key}` };
+    urls[p.key] = await igRunOnePart(p, body, isPixel);
   }));
   const got = IG_PARTS.filter(p => urls[p.key]);
   // 疊起來看三段對不對得上(同一個人?同一套衣服?接縫順不順)
@@ -933,21 +967,22 @@ async function runImgGenParts() {
       got.map(p => `<img src="${urls[p.key]}?t=${Date.now()}" class="${isPixel ? "pixel" : ""}" alt="${p.key}">`).join("")
     : "";
   status("ig3-status",
-    `${got.length}/3 完成(共 ${Math.round((Date.now() - t0) / 1000)}s) · ${igChar.name}`,
-    got.length < 3);
+    `素體 ${refUrl ? "✓" : "✗"} · 三段 ${got.length}/3 完成(共 ${Math.round((Date.now() - t0) / 1000)}s) · ${igChar.name}`,
+    !refUrl || got.length < 3);
   igRefreshGallery();
   igPartsRunning = false;
   document.getElementById("ig-run3").disabled = false;
+  document.getElementById("ig-run-base").disabled = false;
 }
 async function igPreviewParts() {
   if (!igChar) { status("ig3-status", "請先抽卡或從存檔載入魅魔", true); return; }
   const el = document.getElementById("ig-prompt");
   el.textContent = "讀取中…";
   try {
-    const j = await api("/api/imggen/preview", "POST", igBaseBody());
+    const j = await api("/api/imggen/preview", "POST", { ...igBaseBody(), ref: igLastBase });
     el.textContent = (j.parts || [])
       .map(p => `━━━ ${p.label}(${p.part})━━━\n${p.prompt}`).join("\n\n");
-    status("ig3-status", "已取得三段 prompt(展開下面的區塊看)");
+    status("ig3-status", "已取得素體+三段 prompt(展開下面的區塊看)");
   } catch (e) {
     el.textContent = "失敗:" + e.message;
     status("ig3-status", "失敗:" + e.message, true);
