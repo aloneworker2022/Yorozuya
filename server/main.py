@@ -538,12 +538,10 @@ _STYLE_MAP = {
     "realistic": "photorealistic, natural skin texture, cinematic lighting, DSLR photo look",
     "pixel": "pixel art, 256x256 pixels exact, limited palette, crisp pixels, no anti-aliasing, game sprite style",
 }
+# NSFW 一樣不寫分級字眼(理由同 _RATING_ZH):寫了只會被 grok 的生圖擋掉。
 _RATING_MAP = {
-    "sfw": "SFW, fully clothed, wholesome, no nudity, safe for work",
-    "nsfw": (
-        "NSFW adult content allowed: sensual or explicit as fits the character and libido notes, "
-        "tasteful erotic art, mature 18+ only"
-    ),
+    "sfw": "SFW, fully clothed, wholesome, safe for work",
+    "nsfw": "",
 }
 
 
@@ -593,6 +591,8 @@ def _build_girl_image_prompt(
         if style == "pixel"
         else "You MUST use the image_gen tool (do NOT draw with Python/code)."
     )
+    rating_txt = rating_map.get(rating, rating_map["sfw"])
+    rating_line = f"- Content rating: {rating_txt}\n" if rating_txt else ""
 
     return f"""You are generating ONE character image for a game art test.
 The character sheet below is AUTHORITATIVE — match hair, eyes, body, fashion, features, and vibe exactly.
@@ -611,8 +611,7 @@ Only create that one image file at the destination. Then reply with a short note
 Render settings:
 - Framing: {frame_map.get(framing, frame_map["half"])}
 - Art style: {style_map.get(style, style_map["anime"])}
-- Content rating: {rating_map.get(rating, rating_map["sfw"])}
-- {size_note}
+{rating_line}- {size_note}
 - Single character, plain or simple background, no text overlays, no watermark, no other people
 """
 
@@ -643,7 +642,9 @@ _PALETTES = [
     "橄欖綠與卡其", "酒紅與炭灰", "天藍與白", "薰衣草紫與銀灰",
 ]
 _STYLE_ZH = {"anime": "動漫風格", "realistic": "寫實照片風", "pixel": "像素風,256×256"}
-_RATING_ZH = {"sfw": "全年齡", "nsfw": "成人向 18+"}
+# NSFW 不寫任何分級字眼:grok 的生圖本來就不吃色情,寫「成人向 18+」只會換來拒稿。
+# 分級真正在管的是抽卡(girl_gen 的 nsfw 項目開關),不是這裡。
+_RATING_ZH = {"sfw": "全年齡", "nsfw": ""}
 
 
 def _resolve_ref_image(ref: str) -> Path | None:
@@ -717,12 +718,14 @@ def _build_girl_part_prompt(
     ch = _fill_manual_fields(character, name, personality, backstory)
     traits, frame = _seg_lines(seg, _identity_anchor(ch), ch, dressed=dressed)
 
+    tail = [_STYLE_ZH.get(style, _STYLE_ZH["anime"]),
+            _RATING_ZH.get(rating, _RATING_ZH["sfw"]), "單人", "背景留白"]
     lines = [
         "用 image_gen 產一張圖,存成:" + str(out_path),
         "",
         traits,
         frame,
-        f"{_STYLE_ZH.get(style, _STYLE_ZH['anime'])}、{_RATING_ZH.get(rating, _RATING_ZH['sfw'])}、單人、背景留白",
+        "、".join(x for x in tail if x),
     ]
     if ref_path is not None:
         lines.append(f"參考 {ref_path}:同一個人,臉、膚色、身形照這張,把衣服畫上去")
