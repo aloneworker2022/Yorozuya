@@ -622,6 +622,73 @@ function questSnapshot() {
 // 委託狀態指紋:變了就作廢已生成的氣泡(避免她講已完成/已丟棄的任務)
 function questHash() { return state.quests.map(q => q.id + ":" + q.lv).join(","); }
 
+// ===== 點名機制:她「盯」一件他的委託(規格見 docs/relationship-axes.md)=====
+// 底線:她只能盯清單裡已經有的一件,不能發明新任務——state.quests 是玩家真實人生的待辦,
+// 用 AI 幻覺污染它是不能開的口子。嘴上順口講的小事(「順便買醬油」)留在台詞裡,不進系統。
+const ERRAND_STAGE = { stranger: 0, friend: 0.5, girlfriend: 1, wife: 1 };   // 點名機率
+const ERRAND_BONUS = { friend: 1, girlfriend: 2, wife: 2 };                  // 做完給的好感
+
+// 遊戲挑件(不讓 AI 挑,更不讓它輸出結構化資料):
+// 剩時間最短的執行中 > 承接最久沒動的 > 隨機一件發現池的
+function chooseErrandQuest() {
+  const exec = execQuests().slice().sort((a, b) => a.deadline - b.deadline);
+  if (exec.length) return exec[0];
+  const acc = state.quests.filter(q => q.lv === 1);
+  if (acc.length) return acc[0];         // state.quests 依加入順序,[0] = 最久沒動的
+  const found = state.quests.filter(q => q.lv === 0);
+  return found.length ? pick(found) : null;
+}
+
+function errandStatusText(q) {
+  if (q.lv === 2) return `執行中,剩 ${Math.max(0, Math.round((q.deadline - Date.now()) / 60000))} 分`;
+  if (q.lv === 1) return "已承接,還沒動工";
+  return "剛發現,還沒決定要不要接";
+}
+
+/** 生成她的台詞前呼叫:確保 s.errand 有效。回傳給 prompt 用的物件,階段不允許時回 null。 */
+function ensureErrand(s) {
+  if (!s || s.ntr) return null;
+  const chance = ERRAND_STAGE[s.stage] ?? 0;
+  if (!chance) { s.errand = null; return null; }
+
+  // 舊 pin 還指向一件存在且未完成的委託 → 沿用(這樣「追問」才有意義)
+  let q = s.errand && state.quests.find(x => x.id === s.errand.qid);
+  if (q) {
+    s.errand.text = q.text;                       // 委託被改名時跟著更新
+  } else {
+    if (Math.random() >= chance) { s.errand = null; return null; }
+    q = chooseErrandQuest();
+    if (!q) { s.errand = null; return null; }
+    s.errand = { qid: q.id, text: q.text, day: dayNum(), asked: false, late: false };
+    dirty = true;
+  }
+  return {
+    text: s.errand.text,
+    status: errandStatusText(q),
+    // 女友才追問「上次交代的做了沒」;妻子不追問(當他會做),朋友也不追問
+    asked: s.stage === "girlfriend" && s.errand.asked,
+    late: s.stage === "wife" && !!s.errand.late,
+  };
+}
+
+/** 她真的把這件講出去了 → 記下來,下次才知道要不要追問 */
+function markErrandAsked(s) {
+  if (s?.errand && !s.errand.asked) { s.errand.asked = true; dirty = true; }
+}
+
+/** 委託完成時:誰盯著這件,誰加好感(嘴上答應不算數,做完才算) */
+function errandReward(qid) {
+  for (const s of state.succubi) {
+    if (s.errand?.qid !== qid) continue;
+    const base = ERRAND_BONUS[s.stage] || 1;
+    const d = applyAffection(s, base);
+    log(`${s.name} 盯的「${s.errand.text}」完成了 情感 +${d}`);
+    toast(`${s.name} 交代的事做完了!情感 +${d}`, "good");
+    s.errand = null;
+    dirty = true;
+  }
+}
+
 function addQuest(text) {
   text = text.trim();
   if (!text) return;
@@ -669,6 +736,7 @@ function complete(id) {
   state.quests = state.quests.filter(x => x.id !== id);
   log(`完成「${q.text}」 +${g} 金`);
   toast(g >= 19 ? `大豐收!委託完成 +${g} 金!!` : `委託完成!+${g} 金`, "good");
+  errandReward(id);   // 有人盯著這件的話,她要的東西做到了
   kanbanReact("complete");
   crestRoll();   // 完成委託:每位看板娘各擲一次淫紋
   scheduleSave(); renderAll();
@@ -694,6 +762,8 @@ function drop(id) {
     toast(`推掉承接的委託,信用受損 -${pen} 金`, "bad");
   }
   state.quests = state.quests.filter(x => x.id !== id);
+  // 委託沒了,盯著它的 pin 一併失效(下次生成台詞時重挑)
+  for (const s of state.succubi) if (s.errand?.qid === id) s.errand = null;
   scheduleSave(); renderAll();
 }
 
@@ -1119,6 +1189,8 @@ function summonWithCount(n) {
     lastDateDay: today,
     datesToday: { day: today, count: 0 },
     ntr: null,
+    errand: null,                                     // 她盯著的那件委託 {qid,text,day,asked,late}
+    guard: null,                                      // 防備狀態 {hits,cool}(只有陌生階段有)
     summoner: null,                                   // 被別的召喚師纏上時 = {id, affection, sinceDay}
     drawIvlH: randInt(2, 5),                           // 隱藏:抽召喚師的間隔(小時)
     nextDraw: Date.now() + randInt(2, 5) * HOUR,       // 下次抽取時間戳
@@ -1233,6 +1305,48 @@ async function genSummonPortrait(ov, s) {
 
 // ===== 情感、需求、NTR =====
 
+// ===== 防備狀態:他越界了,她冷幾句(規格見 docs/relationship-axes.md)=====
+// 遊戲測不到越界(玩家自由輸入,中文關鍵字比對很脆),所以讓她自己回報:
+// 陌生階段的 prompt 會要求第 2 行輸出 #越界 / #正常,而 app 取她的回覆本來就只取第一行,
+// 第 2 行是免費的回報通道——零額外呼叫、零延遲、零顯示風險。
+const GUARD_COOL = 4;   // 冷幾則玩家訊息後回溫
+
+function guardActive(s) { return s.stage === "stranger" && (s.guard?.cool > 0); }
+
+/** 從她的回覆抽出 #越界 旗標,並回傳乾淨的台詞(多行保留,只拿掉旗標)。
+ *  所有消費她回覆的地方都要走這裡——包含約會即時模式,否則旗標會漏進畫面與歷史。 */
+function stripGuardFlag(raw) {
+  if (!raw) return { text: "", crossed: false };
+  const crossed = /#\s*越界/.test(raw);
+  const text = raw
+    .split("\n")
+    // 尾端也可能是串流到一半的殘缺旗標(「#」「#越」),一併吃掉免得閃一下
+    .map(l => l.replace(/#\s*(越界|正常|越|正)?\s*$/g, "").trim())
+    .filter(Boolean)
+    .join("\n");
+  return { text, crossed };
+}
+// 淫紋訊息只留一句:取第一個非空行(修掉舊的 `[0] || 整段` fallback——
+// 第 0 行為空時它會把整段連旗標一起顯示出來)
+function firstLine(text) { return (text || "").split("\n").find(l => l.trim()) || ""; }
+
+/** 收到她的回覆後更新防備狀態(只有陌生階段有效) */
+function applyGuard(s, crossed) {
+  if (s.stage !== "stranger") { if (s.guard) { s.guard = null; dirty = true; } return; }
+  if (!crossed) return;
+  s.guard = { hits: (s.guard?.hits || 0) + 1, cool: GUARD_COOL };
+  dirty = true;
+}
+
+/** 玩家每送出一則就降溫;歸零時連 hits 一起清掉(回溫) */
+function guardTick(s) {
+  if (!s.guard) return;
+  if (s.stage !== "stranger") { s.guard = null; dirty = true; return; }
+  s.guard.cool--;
+  if (s.guard.cool <= 0) s.guard = null;
+  dirty = true;
+}
+
 function stageInfo(key) { return STAGES.find(s => s[0] === key); }
 function nextStage(s) { const i = STAGES.findIndex(x => x[0] === s.stage); return STAGES[i + 1] || null; }
 function stageLabel(key) { return stageInfo(key)[1]; }
@@ -1289,6 +1403,12 @@ function settleDays() {
       if (miss) {
         s.affection = Math.round((s.affection - 3) * 10) / 10;
         checkBreak(s);
+      }
+      // 妻子交代的事拖過一天還沒做:她不鬧,但真的失望(四階段唯一的懲罰,只扣一次)
+      if (s.stage === "wife" && s.errand && s.errand.asked && !s.errand.late && d > s.errand.day) {
+        s.errand.late = true;
+        applyAffection(s, -1);
+        log(`${s.name} 交代的「${s.errand.text}」一直沒做,她沒說什麼,但情感 -1`);
       }
     }
   }
@@ -1768,7 +1888,10 @@ async function genReplyOrder() {
     if (!r) continue;
     if (r.status === "done" && r.result) {
       chatGenFail = { count: 0, at: 0 };
-      s.chatLine = { text: r.result.split("\n")[0].slice(0, 300) || r.result.slice(0, 300), t: Date.now() };
+      const { text, crossed } = stripGuardFlag(r.result);
+      applyGuard(s, crossed);            // 他剛才越界了 → 她進入防備,接下來幾句更冷
+      markErrandAsked(s);                   // 她已經把盯的那件講出去了(女友下次會追問)
+      s.chatLine = { text: firstLine(text).slice(0, 300), t: Date.now() };
       s.typing = null;
       dirty = true; scheduleSave(); renderAll();
       toast(`${s.name} 回你了`, "good");
@@ -1789,7 +1912,9 @@ async function genChatOrder() {
       anyDone = true;
       if (isKanban(s.id) && !s.summoner?.taken) {
         // 覆寫:她有新想法時,舊的那句未讀就直接被刷掉(同時只留最新一句)
-        s.chatLine = { text: r.result.split("\n")[0].slice(0, 300) || r.result.slice(0, 300), t: Date.now() };
+        // 這是她主動開口(不是回他的話),所以不判越界,只記下盯的那件講過了
+        markErrandAsked(s);
+        s.chatLine = { text: firstLine(stripGuardFlag(r.result).text).slice(0, 300), t: Date.now() };
         s.wantsTalk = 0;                             // 念頭落地成未讀訊息(紋早就亮著了)
         dirty = true; scheduleSave(); renderAll();
       }
@@ -1826,10 +1951,12 @@ const QUIP_STOCK = 3;
 function quipMsgs(s) {
   return [
     { role: "system", content: buildQuipPrompt({
-        character: { name: s.name, personality: s.personality, speech_style: s.speech, backstory: s.backstory || "" },
-        relationship: { stage: s.stage, affection: s.affection },
+        character: { name: s.name, personality: s.personality, speech_style: s.speech,
+                     tone: s.tone || null, backstory: s.backstory || "" },
+        relationship: { stage: s.stage },
         player: { name: state.settings.player || "主人" },
         quests: questSnapshot(),
+        pinned_quest: ensureErrand(s),   // 氣泡講的就是她盯的那件(遊戲挑好,她只負責講)
         content_rating: state.settings.rating || "sfw",
       }) },
     { role: "user", content: "輸出她此刻想對他說的那一句話。" },
@@ -1952,6 +2079,18 @@ function setWatchBtns(enabled) {
   if (nx) nx.disabled = !enabled;
 }
 
+// 階段內的前後期:取代舊版直接餵給她的好感數值(world.md 明寫她絕不知道任何數值)
+function stageProgress(s) {
+  const cur = stageInfo(s.stage)?.[2] ?? 0;
+  const ns = nextStage(s);
+  if (s.affection < 0) return "你們最近有點僵,你自己也說不上來為什麼。";
+  if (!ns) return "你們早就穩定下來了,這樣的日子過得理所當然。";
+  const p = (s.affection - cur) / Math.max(1, ns[2] - cur);
+  if (p < 0.25) return "你們才剛走到這一步沒多久,你自己都還有點不習慣。";
+  if (p > 0.75) return "你隱隱覺得你們之間又要變了,但還沒說破。";
+  return null;
+}
+
 function buildCtx(s) {
   const slot = timeSlot();
   const sch = s.schedule || {};
@@ -1970,11 +2109,17 @@ function buildCtx(s) {
       job_desc: s.jobDesc || null,
     },
     relationship: {
-      stage: s.stage, affection: s.affection,
+      stage: s.stage,
+      // 好感數值不再餵給她——改成階段內的模糊進度感
+      progress: stageProgress(s),
       days_since_summon: Math.floor((Date.now() - s.summonedAt) / 86400000),
     },
-    // 她就在店頭看著你做事:委託清單是她開口的材料(persona_builder 會挑最值得說的一件)
-    quests: questSnapshot(),
+    // 她盯著的那一件委託:由遊戲挑好(ensureErrand),AI 只負責用她的個性講出來
+    pinned_quest: ensureErrand(s),
+    // 防備狀態:他剛才越界的話,接下來幾句更冷(只有陌生階段有)
+    guard: guardActive(s) ? { hits: s.guard.hits } : null,
+    // 陌生階段才要她回報 #越界 旗標(其他階段用不到,也省 token)
+    want_guard_flag: s.stage === "stranger",
     scene: {
       type: chatSession?.type || "chat", location: chatSession?.location || null,
       scene_prompt: chatSession?.locationDesc || null,
@@ -2118,7 +2263,12 @@ async function llmReply(s, onToken, extraUser = null) {
   ];
   if (extraUser) msgs.push({ role: "user", content: extraUser });
   const canned = pick((chatSession?.type === "date" ? DATE_LINES : CHAT_LINES)[s.stage] || CHAT_LINES.stranger);
-  return llmJobRun(msgs, onToken, canned);
+  // 串流顯示與最終結果都過濾旗標,免得 #越界 漏到畫面或對話歷史裡
+  const raw = await llmJobRun(msgs, acc => onToken(stripGuardFlag(acc).text || acc), canned);
+  const { text, crossed } = stripGuardFlag(raw);
+  applyGuard(s, crossed);
+  markErrandAsked(s);
+  return text || raw;
 }
 
 async function sendChatMsg() {
@@ -2132,6 +2282,7 @@ async function sendChatMsg() {
   input.value = "";
   s.history ??= [];
   s.history.push({ role: "user", content: text, t: Date.now() });
+  guardTick(s);   // 防備降溫:玩家每送一則就退一格,冷完自然回溫
   vnShow(state.settings.player || "你", text, "user");
 
   // 聊天:送出就跳出對話——她要花時間打字,不讓玩家對著空畫面等。
@@ -2979,6 +3130,18 @@ function renderQuests() {
   renderProc();
 }
 
+// 她盯著的那件委託 → 卡片上的便利貼。她的要求會留在畫面上,不是聊天講完就消失。
+function errandNoteHTML(qid) {
+  const who = state.succubi.filter(s => !s.ntr && s.errand?.qid === qid);
+  if (!who.length) return "";
+  const s = who[0];
+  const more = who.length > 1 ? ` +${who.length - 1}` : "";
+  const late = s.stage === "wife" && s.errand.late;
+  return `<div class="q-errand${late ? " late" : ""}">
+    <span class="qe-who">${esc(s.name)}${more}</span> 盯著這件${late ? "・她失望了" : ""}
+  </div>`;
+}
+
 // --- 場景一:執行中三格輪播 ---
 
 // 無縫輪動:頭尾各補一張克隆(頭=最後一張、尾=第一張),往同一方向一直滑會回到第一/最後一張。
@@ -2994,6 +3157,7 @@ function renderExec() {
     const q = exec[i];
     if (q) return `<div class="pin-slide"><div class="q-card c-exec">
         <div class="q-body">${esc(q.text)}</div>
+        ${errandNoteHTML(q.id)}
         <div class="swind"></div>
       </div></div>`;
     return `<div class="pin-slide"><div class="pin-slot" data-slot>
@@ -3132,6 +3296,7 @@ function renderProc() {
   // 卡片只放項目本身;狀態靠徽章/卡色分辨,操作靠手勢(規則玩家已熟)
   stage.innerHTML = `<div class="q-card ${lv === 0 ? "c-found" : "c-acc"}" id="proc-card">
     <div class="q-body">${esc(q.text)}</div>
+    ${errandNoteHTML(q.id)}
     <div class="swind"></div>
   </div>`;
   nav.textContent = list.length > 1 ? `${i + 1} / ${list.length}` : "";

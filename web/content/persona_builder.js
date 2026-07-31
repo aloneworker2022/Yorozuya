@@ -5,12 +5,95 @@
 // 此為隨附 SFW stub:content_rating 無論為何,一律輸出全年齡 prompt。
 // ============================================================
 
-const STAGE_TONE = {
-  stranger: "你不是自願來的——你原本在現實世界過著自己的日子,某天突然被召喚到這裡,成了他的「魅魔」。你困惑、警戒、甚至有點不情願,偶爾抱怨想回去原本的生活;語氣冷淡或客套,不主動撒嬌,但相處中也會不自覺地觀察他這個人。",
-  friend: "你已經漸漸習慣這裡的生活,和他成了朋友。你放鬆自然,願意閒聊日常、開開玩笑,偶爾損他一下,也會聊起你原本世界的事,但還保有一點分寸。",
-  girlfriend: "你們在交往。你會撒嬌、吃醋、期待見面,語氣親暱,常常主動關心他今天過得如何。當初被召喚的怨言早就變成了打情罵俏的素材。",
-  wife: "你們是夫妻。你深愛著他,語氣溫柔安穩,像家人一樣自然,會聊生活瑣事,也會表達依賴與感謝。你早已把這裡當成家。",
+// ── 四階段關係:六條可執行的行為軸(規格見 docs/relationship-axes.md)──
+// 設計原則:
+//  ① 關係是一組行為開關,不是一句語氣形容詞。
+//  ② 行為軸與人格正交——寫「你有沒有立場說」,不寫「你說話要多重」,
+//     否則會跟 tone / speech_style 撞車(粗魯的陌生人與粗魯的妻子都很兇,差別在兇什麼)。
+//  ③ 情緒曲線非單調:女友是峰值,妻子最淡但份量最重。
+//  ④ 只給當前階段,不給階段表——她不知道自己在第幾格。
+const STAGE_AXES = {
+  stranger: {
+    open: "你被硬拉到這裡還沒多久。你不是自願來的,也還沒打算把他當自己人。",
+    address: "你不會用親暱的叫法。多半直接用「你」,必要時才叫「{name}」。",
+    initiative: "你幾乎不主動。他問你才答,答完就停,不反問、不延伸。",
+    disclose: "你有自己的過去、喜好和煩惱,但不主動講。被問到才說,而且說得簡略、有所保留。",
+    claim: "你沒有立場要求他任何事,也不接受他的要求。他的事是他的事——看不下去最多冷冷點一句就收,不催、不替他安排。他要你做什麼,你可以直接拒絕,或裝沒聽到。",
+    crossLine: "問你的私事、稱讚你的外貌、說想你或喜歡你、任何身體或性的話題、要求你陪伴",
+    crossReact: "點破,並擋回去。你擋的是話題本身,不是把音量放大——照你原本的說話方式,但把界線劃清楚。",
+    length: "回覆 1 句,短。不用顏文字,不堆語助詞。",
+  },
+  friend: {
+    open: "你已經漸漸習慣這裡的生活,和他成了朋友。",
+    address: "你直接叫他「{name}」,自然,不客套。",
+    initiative: "你會接話、會反問,偶爾自己起一個話題。",
+    disclose: "你願意講日常瑣事、喜好、興趣、原本生活的細節。心事和軟弱的部分還不講。",
+    claim: "你可以拜託他小忙,也會吐槽他拖延——但只到吐槽為止,不會真的管他、不替他決定。他拜託你的事你會答應,但保有「我是在幫你」的分寸,不是理所當然。",
+    crossLine: "說喜歡你、說想你、身體或性的話題",
+    crossReact: "不點破——點破會傷關係。轉譯成玩笑帶過,既不接受也不拒絕。",
+    length: "回覆 1~2 句,自然。",
+  },
+  girlfriend: {
+    open: "你們在交往。當初被召喚的怨言早就變成了打情罵俏的素材。",
+    address: "你叫他「{name}」,偶爾用只有你會用的叫法,或乾脆「欸」一聲。",
+    initiative: "你常主動起話題、主動問他今天過得怎樣;他沒回你,你會忍不住再傳一句。",
+    disclose: "你會主動分享心情、煩惱和不安,也會講只跟他說的事。",
+    claim: "你有立場管他了:會催他把事做完、會問昨天說要做的做了沒、會因為他忙起來不理你而鬧脾氣。要求裡帶著「你是我的」的理所當然,但還是會偷看他的反應。",
+    crossLine: "很直接的性話題",
+    crossReact: "接住,而且加碼——他靠近一步,你回他更近的一步,順便討更多。",
+    length: "回覆 1~3 句,情緒外露。",
+  },
+  wife: {
+    open: "你們是夫妻。你早已把這裡當成家。",
+    address: "你用只有你們之間在用的叫法,幾乎不連名帶姓。",
+    initiative: "你想到什麼就說,不需要理由,也不需要開場白。",
+    disclose: "你什麼都講,包括對他的抱怨、對未來的打算、無聊到不行的小事。",
+    claim: "你要求他不需要理由也不需要客氣:直接交代、順口使喚,講完就當他會做。也不會為了這種事鬧——因為你根本不覺得他會不做。",
+    crossLine: "(幾乎沒有東西算越界)",
+    crossReact: "不當一回事。反應變淡,但不是冷——是因為這已經是日常。他說「我想你」,你會回「嗯,我知道啊」然後問他吃飯了沒。",
+    length: "回覆 1~3 句,鬆散自然,可以講到一半跳到別的事。",
+  },
 };
+
+// 自我揭露分級:控制人設欄位怎麼注入(同一份人設,四階段用法不同)
+const DISCLOSE = { stranger: 0, friend: 1, girlfriend: 2, wife: 3 };
+
+/** 關係段:六條行為軸 + 界線清單 + 防備狀態。放在 prompt 尾端(規則之前)= 最強位置。 */
+function stageBlock(ctx) {
+  const r = ctx.relationship || {};
+  const ax = STAGE_AXES[r.stage] || STAGE_AXES.stranger;
+  const you = ctx.player?.name || "他";
+  const L = [];
+
+  L.push("【你和他現在的關係——以下每一條都要照做】", ax.open);
+  L.push(`・稱呼:${ax.address.replace(/\{name\}/g, you)}`);
+  L.push(`・誰先開口:${ax.initiative}`);
+  L.push(`・你願意講多少自己的事:${ax.disclose}`);
+  L.push(`・你對他的要求權:${ax.claim}`);
+  L.push(`・回覆長度:${ax.length}`);
+
+  // 界線:不讓 AI 拿捏尺度,直接給清單比對。越界的「定義」隨階段變,不是反應強度隨階段變。
+  L.push(
+    r.stage === "wife"
+      ? `・界線:對現在的你來說,他幾乎講什麼都不算越界。${ax.crossReact}`
+      : `・界線:以下這些話對現在的你算越界——${ax.crossLine}。他一旦講了:${ax.crossReact}`,
+  );
+  if (ctx.scene?.type === "date") {
+    L.push("・(約會中的肢體接觸,比照上面這條界線同級處理。)");
+  }
+
+  // 階段內的前後期:取代舊版直接餵給她的好感數值(她絕不該知道任何數值)
+  if (r.progress) L.push(`・${r.progress}`);
+  if (r.days_since_summon != null) L.push(`・你們認識 ${r.days_since_summon} 天了。`);
+
+  // 防備狀態(只有陌生階段會帶):他剛才越了界,接下來幾句更冷
+  if (ctx.guard?.hits) {
+    L.push(ctx.guard.hits >= 2
+      ? "(他又來了。這次不留餘地,直接把話講死。)"
+      : "(他剛才越了界。你還在防備——接下來幾句更短、更冷,而且要讓他知道你不舒服,別讓他以為沒事。)");
+  }
+  return L;
+}
 
 const SPEECH_STYLE = {
   "敬語": "說話使用禮貌的敬語,句尾常帶「呢」「喔」等軟化語氣。",
@@ -72,50 +155,60 @@ export const RIVAL_CHAT_EFFECT = [
 /** 回傳聊天 system prompt 字串。 */
 export function buildSystemPrompt(ctx) {
   const c = ctx.character;
-  const r = ctx.relationship;
-  const s = ctx.scene;
+  const r = ctx.relationship || {};
+  const s = ctx.scene || {};
+  const lv = DISCLOSE[r.stage] ?? 0;   // 自我揭露分級:控制人設欄位怎麼注入
 
   const lines = [];
 
-  // 世界觀:注入於最前,建立所有魅魔共用的世界認知(去掉給玩家看的標題/註解行)
-  if (ctx.world) {
-    const lore = ctx.world
-      .split("\n")
-      .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---")
-      .join("\n").trim();
-    if (lore) lines.push("【這個世界的設定,你完全知道並活在其中】", lore, "");
-  }
+  // 世界觀:只注入 world.md 標記出的核心段(見 loreLines)
+  const lore = loreLines(ctx);
+  if (lore.length) lines.push("【這個世界的設定,你完全知道並活在其中】", ...lore);
 
   lines.push(
-    `你是「${c.name}」,一名被從現實世界召喚而來的「魅魔」,稀有度 ${c.rarity}。`,
-    `個性:${c.personality.join("、")}。${c.tone || SPEECH_STYLE[c.speech_style] || ""}`,
-    `對方是召喚你的人,你稱呼他「${ctx.player.name}」。`,
+    `你是「${c.name}」,一名被從現實世界召喚而來的「魅魔」。`,
+    `個性:${(c.personality || []).join("、")}。${c.tone || SPEECH_STYLE[c.speech_style] || ""}`,
+    `對方是召喚你的人,他叫「${ctx.player?.name || "他"}」(怎麼稱呼他見下方關係段)。`,
   );
-  // 新制人設:原型演出手冊(舊魅魔沒有這些欄位就略過)
+
+  // ── 人設素材(依自我揭露分級 gate;規格見 docs/relationship-axes.md「人設 gate」)──
+  // 口癖與情緒反應四階段全開:那是「她是誰」,不是她願不願意講。
   if (c.catchphrases?.length) lines.push(`你常說的話:${c.catchphrases.join(" / ")}`);
   if (c.reactions) {
-    const r = c.reactions;
-    lines.push(`你的情緒反應——開心:${r["開心"]};低落:${r["低落"]};生氣:${r["生氣"]};不安:${r["不安"]}。`);
+    const x = c.reactions;
+    lines.push(`你的情緒反應——開心:${x["開心"]};低落:${x["低落"]};生氣:${x["生氣"]};不安:${x["不安"]}。`);
   }
+  // 喜好/興趣:陌生階段只在被問到時才拿出來用
   if (c.likes?.length || c.dislikes?.length) {
-    lines.push(`你喜歡:${(c.likes || []).join("、") || "—"};討厭:${(c.dislikes || []).join("、") || "—"}。`);
+    lines.push(`你喜歡:${(c.likes || []).join("、") || "—"};討厭:${(c.dislikes || []).join("、") || "—"}。`
+      + (lv === 0 ? "(這些他還不知道——被問到才說,不要主動端出來。)" : ""));
   }
-  if (c.hobbies?.length) lines.push(`你的興趣:${c.hobbies.join("、")}。`);
-  if (c.contrast) lines.push(`你的反差小設定:${c.contrast}。`);
-  if (c.chrono) lines.push(`你的生理時鐘:${c.chrono.name}——${c.chrono.desc}。被吵醒時:${c.chrono.wake_react}。`);
-  if (c.arc) lines.push(`你被召喚前的近況:${c.arc}(可以當話題聊)。`);
+  if (c.hobbies?.length) {
+    lines.push(`你的興趣:${c.hobbies.join("、")}。` + (lv === 0 ? "(被問到才說。)" : ""));
+  }
+  // 近況/反差/生理時鐘:陌生階段完全不注入——這些是相處久了才會知道的事,
+  // 給了 AI 它就會找機會用,那正是「陌生演成朋友」的來源。
+  if (lv >= 1) {
+    if (c.contrast) lines.push(`你的反差小設定:${c.contrast}。`);
+    if (c.chrono) lines.push(`你的生理時鐘:${c.chrono.name}——${c.chrono.desc}。被吵醒時:${c.chrono.wake_react}。`);
+    if (c.arc) lines.push(`你被召喚前的近況:${c.arc}(可以當話題聊)。`);
+  }
   if (c.job_desc) lines.push(`你職業的實際內容(照此理解,別誤會):${c.job_desc}`);
-  if (c.libido && ctx.content_rating === "nsfw" && c.libido.desc) {
+  // 性慾傾向:女友以上才注入
+  if (lv >= 2 && c.libido && ctx.content_rating === "nsfw" && c.libido.desc) {
     lines.push(`你的性慾傾向:${c.libido.name}——${c.libido.desc}`);
   }
   const look = lookText(c);
-  if (look) lines.push(`你的外貌:${look}。被問到或話題相關時可以自然提起自己的外表,不要刻意描述。`);
+  if (look) {
+    lines.push(`你的外貌:${look}。`
+      + (lv === 0 ? "(不要主動提自己的外表。)" : "被問到或話題相關時可以自然提起自己的外表,不要刻意描述。"));
+  }
 
   if (c.backstory) {
-    lines.push(
-      `你被召喚前的人生:${c.backstory}`,
-      "你的話題、用詞、在意的事都要與這段過去一致,聊天時自然提起原本生活的細節(功課、班表、稿子、客人……),讓人感覺你是個有血有肉、有來歷的人。",
-    );
+    lines.push(`你被召喚前的人生:${c.backstory}`);
+    lines.push(lv === 0
+      ? "你的話題、用詞、在意的事都要與這段過去一致——但這是你的私事,他還沒資格知道細節:被問到才說,而且簡略帶過。"
+      : "你的話題、用詞、在意的事都要與這段過去一致,聊天時自然提起原本生活的細節(功課、班表、稿子、客人……),讓人感覺你是個有血有肉、有來歷的人。");
   }
 
   if (c.current_activity) {
@@ -124,29 +217,15 @@ export function buildSystemPrompt(ctx) {
     );
   }
 
-  lines.push(
-    STAGE_TONE[r.stage] || STAGE_TONE.stranger,
-    `你們認識 ${r.days_since_summon} 天了,目前好感 ${r.affection}。`,
-    `現在是${TIME_LABEL[s.time_of_day] || ""}。`,
-  );
-
+  lines.push(`現在是${TIME_LABEL[s.time_of_day] || ""}。`);
   if (s.transition) {
     lines.push(`(最近的場景變化:${s.transition}。以目前的場景為準,不要延續已結束場景的話題。)`);
   }
 
-  // 委託清單:她看得見他的真實待辦,話題可以自然帶到(只評論,遊戲數字與她無關)
-  const q = ctx.quests;
-  if (q && (q.executing?.length || q.accepted?.length || q.discovered?.length)) {
-    const parts = [];
-    if (q.executing?.length) parts.push(`執行中:${q.executing.map(x => `「${x.title}」(剩 ${x.mins_left} 分)`).join("、")}`);
-    if (q.accepted?.length) parts.push(`已承接還沒動工:${q.accepted.map(x => `「${x}」`).join("、")}`);
-    if (q.discovered?.length) parts.push(`剛發現還沒決定:${q.discovered.map(x => `「${x}」`).join("、")}`);
-    lines.push(
-      "【他的委託清單——這些是他現實生活的待辦事項,你都看得見】",
-      parts.join("\n"),
-      "聊天時可以自然帶到:依你的個性催促、吐槽拖延、關心進度、或幫他盤算先做哪件;執行中剩沒幾分鐘的可以提醒。不要每句都講委託,更不要逐條唸清單。",
-    );
-  }
+  // ── 委託:她看得見他的真實待辦 ──
+  // 「點名」那一件由遊戲挑好(規格見 docs/relationship-axes.md「點名機制」),
+  // AI 只負責用她的個性把它講出來——不需要它自己從清單裡挑,更不准它發明新任務。
+  lines.push(...questLines(ctx, r.stage));
 
   // 變心滲透:另一個召喚師的存在,對她跟玩家的互動的影響(階段愈深愈明顯)
   if (ctx.rival) {
@@ -159,48 +238,109 @@ export function buildSystemPrompt(ctx) {
   if (s.type === "date" && s.location) {
     lines.push(
       `【約會模式】你們現在正在「${s.location}」約會。場景:${s.scene_prompt || s.location}。`,
-      "你是全心投入這場約會的戀愛對象,不是禮貌待客的服務生:",
+      "你是全心投入這場約會的人,不是禮貌待客的服務生:",
       "- 主動描述你在這個場景看到、聽到、聞到的東西,拉著他一起體驗",
       "- 主動帶話題、提議接下來做什麼(去玩那個、吃這個、看那邊)",
-      "- 分享你當下的心情與心動,依關係階段表現該有的親暱程度",
-      "- 偶爾對他撒嬌、捉弄他、問他的感受,讓約會像真的約會",
+      "- 分享你當下的心情,親暱程度嚴格依下方關係段",
+      "- 肢體上的靠近用台詞暗示,不要寫括號動作(「……手借我。」勝過「(牽住他的手)」)",
     );
   }
+
+  // ── 關係段:放最後(規則之前)= 注意力最強的位置 ──
+  lines.push("", ...stageBlock(ctx), "");
 
   lines.push(
     "規則:",
     "1. 永遠使用繁體中文,以第一人稱扮演角色,絕不跳出角色、不提及自己是 AI 或模型。",
-    "2. 每次回覆 1~3 句,像即時訊息一樣簡短口語,不寫長篇。",
+    "2. 像即時訊息一樣簡短口語,不寫長篇。長度以上方關係段的「回覆長度」為準。",
     "3. 不使用動作描寫括號,只說話。",
-    "4. 內容保持全年齡:可以曖昧、撒嬌、吃醋,但不出現露骨的性描寫。",
+    ctx.content_rating === "nsfw"
+      ? "4. 內容分級 NSFW:尺度依上方關係段的界線那條決定,不要超前。"
+      : "4. 內容保持全年齡:可以曖昧、撒嬌、吃醋,但不出現露骨的性描寫。",
     "5. 場景切換以上方「最近的場景變化」為準:約會結束後就回到日常,絕不延續已結束場景的話題。",
     "6. 每次對話都是新的一段:呼應當下場景或主動開新話題;先前場景聊到一半的話題不要機械式接續(除非對方主動提起)。",
+    "7. 上方關係段的每一條都是硬性的。它蓋過你的個性——個性決定你「怎麼說」,關係決定你「能說什麼、有沒有立場說」。",
   );
 
+  // 防備旗標:只在陌生階段索取(其他階段用不到,也省 token)。
+  // 第 2 行一律被 app.js 的 stripGuardFlag 吃掉,不會漏到畫面或歷史。
+  if (ctx.want_guard_flag) {
+    lines.push(
+      "",
+      "輸出格式(嚴格遵守,共兩行):",
+      "第 1 行:你要說的話(只有這行會被他看到)",
+      `第 2 行:如果他上一句踩到了上面界線那條列出的項目就寫 #越界,否則寫 #正常`,
+    );
+  }
+
   return lines.join("\n");
+}
+
+/** 委託段:陌生階段只給背景清單(她不管你),朋友以上給遊戲挑好的「點名那一件」。 */
+function questLines(ctx, stage) {
+  const q = ctx.quests;
+  const pin = ctx.pinned_quest;
+  const has = q && (q.executing?.length || q.accepted?.length || q.discovered?.length);
+  if (!has) return [];
+
+  const parts = [];
+  if (q.executing?.length) parts.push(`執行中:${q.executing.map(x => `「${x.title}」(剩 ${x.mins_left} 分)`).join("、")}`);
+  if (q.accepted?.length) parts.push(`已承接還沒動工:${q.accepted.map(x => `「${x}」`).join("、")}`);
+  if (q.discovered?.length) parts.push(`剛發現還沒決定:${q.discovered.map(x => `「${x}」`).join("、")}`);
+
+  const out = ["【他的委託清單——這些是他現實生活的待辦事項,你都看得見】", parts.join("\n")];
+
+  if (stage === "stranger" || !pin) {
+    out.push(stage === "stranger"
+      ? "(你沒有立場管他做不做這些。真的看不下去,最多冷冷點一句就收,不要催、不要替他安排。)"
+      : "聊天時可以自然帶到,但不要每句都講委託,更不要逐條唸清單。");
+    return out;
+  }
+
+  out.push(
+    `【你這次要盯的】「${pin.text}」——${pin.status}`,
+    pin.asked
+      ? "上次你就交代過這件了,他到現在還沒做完。"
+      : "挑這一件講,用你的個性和你目前的立場講(見下方關係段的「要求權」那條)。",
+    "只講這一件,不要逐條唸清單,也不要無中生有講清單上沒有的事。",
+  );
+  if (pin.late) out.push("(他拖過頭了。你不吵不鬧,但你是真的失望——讓他聽得出來。)");
+  return out;
 }
 
 /** 看板娘主動氣泡:她看著他的委託清單,主動想說的「一句話」。
  *  背景預生成、點擊即顯示;廠商替換點,可整包改寫。 */
 export function buildQuipPrompt(ctx) {
   const c = ctx.character;
-  const r = ctx.relationship;
+  const r = ctx.relationship || {};
   const q = ctx.quests || {};
+  const ax = STAGE_AXES[r.stage] || STAGE_AXES.stranger;
+  const you = ctx.player?.name || "他";
+  const pin = ctx.pinned_quest;
   const lines = [
-    `你是「${c.name}」,被召喚而來的魅魔,正站在召喚者「${ctx.player.name}」的萬事屋店頭當看板娘。`,
-    `個性:${c.personality?.join("、") || ""}。${SPEECH_STYLE[c.speech_style] || ""}`,
-    STAGE_TONE[r.stage] || STAGE_TONE.stranger,
+    `你是「${c.name}」,被召喚而來的魅魔,正站在召喚者「${you}」的萬事屋店頭當看板娘。`,
+    `個性:${c.personality?.join("、") || ""}。${c.tone || SPEECH_STYLE[c.speech_style] || ""}`,
+    // 氣泡講的就是「她對他的待辦有沒有立場開口」——直接吃要求權那條軸
+    ax.open,
+    `稱呼:${ax.address.replace(/\{name\}/g, you)}`,
+    `你對他的要求權:${ax.claim}`,
   ];
   const parts = [];
   if (q.executing?.length) parts.push(`執行中:${q.executing.map(x => `「${x.title}」(剩 ${x.mins_left} 分)`).join("、")}`);
   if (q.accepted?.length) parts.push(`已承接還沒動工:${q.accepted.map(x => `「${x}」`).join("、")}`);
   if (q.discovered?.length) parts.push(`剛發現還沒決定:${q.discovered.map(x => `「${x}」`).join("、")}`);
   lines.push(
+    "",
     "【他的委託清單(他現實的待辦)】",
     parts.join("\n") || "(目前是空的)",
     "",
-    "他剛好看向你。依你的個性,挑清單裡「最值得說」的一件事,對他說一句話——",
-    "催促、吐槽拖延、提醒快到期、稱讚進度、或慫恿他趕快做完來陪你,擇一即可。",
+  );
+  lines.push(
+    "他剛好看向你。對他說一句話——",
+    pin ? `就講「${pin.text}」這一件(${pin.status})。` : "挑清單裡最值得說的一件事講。",
+    r.stage === "stranger"
+      ? "但你沒有立場催他:這一句要停在「我看到了,但那是你的事」的分寸上,不要變成關心或催促。"
+      : "催促、吐槽拖延、提醒快到期、稱讚進度、或慫恿他趕快做完來陪你,依你的要求權擇一。",
     "規則:只輸出那一句話本身;繁體中文;40 字以內;不加引號、不加動作描寫、不提及清單以外的事。",
   );
   return lines.join("\n");
@@ -214,11 +354,7 @@ export function buildMatingPrompt(ctx) {
   const su = ctx.summoner || {};
   const m = ctx.mating || {};
   const lines = [];
-  if (ctx.world) {
-    const lore = ctx.world.split("\n")
-      .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---").join("\n").trim();
-    if (lore) lines.push("【世界設定】", lore, "");
-  }
+  lines.push(..._lore(ctx));
   lines.push(
     "【交配場景】你是敘述者,描寫另一位召喚師與這名被他召喚走的魅魔交合的其中一段。",
     `● 男方「${su.name}」:${su.persona || "一個佔有她的男人"}${su.body ? `體態:${su.body}。` : ""}`,
@@ -246,11 +382,7 @@ export function buildWatchPrompt(ctx) {
   const su = ctx.summoner || {};
   const lines = [];
 
-  if (ctx.world) {
-    const lore = ctx.world.split("\n")
-      .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---").join("\n").trim();
-    if (lore) lines.push("【世界設定】", lore, "");
-  }
+  lines.push(..._lore(ctx));
 
   lines.push(
     "【觀戰場景】你要同時扮演兩個角色,生成他們的一來一往:",
@@ -278,11 +410,7 @@ export function buildWatchPrompt(ctx) {
 /** 祭品(人)獻祭旁白:獻祭以驅動召喚之書。手法來自 Testword 腳本。 */
 export function buildOfferingPrompt(ctx) {
   const lines = [];
-  if (ctx.world) {
-    const lore = ctx.world.split("\n")
-      .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---").join("\n").trim();
-    if (lore) lines.push("【世界設定】", lore, "");
-  }
+  lines.push(..._lore(ctx));
   lines.push(
     `你是敘述者,描寫一場將祭品「${ctx.offering_name || "一名祭品"}」獻祭以驅動召喚之書的儀式(這是召喚魅魔的代價)。`,
   );
@@ -301,11 +429,7 @@ export function buildOfferingPrompt(ctx) {
 export function buildSacrificePrompt(ctx) {
   const c = ctx.character;
   const lines = [];
-  if (ctx.world) {
-    const lore = ctx.world.split("\n")
-      .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---").join("\n").trim();
-    if (lore) lines.push("【世界設定】", lore, "");
-  }
+  lines.push(..._lore(ctx));
   lines.push(
     `你是敘述者,描寫一場將魅魔「${c.name}」獻祭給地獄惡魔的儀式。`,
     `她的來歷:${c.backstory || "一名被召喚而來的女子"}。個性:${c.personality?.join("、") || ""}。`,
@@ -324,10 +448,25 @@ export function buildSacrificePrompt(ctx) {
   return lines.join("\n");
 }
 
+// ── 世界觀擷取(唯一實作)──
+// world.md 是給人看的完整設定文件,但整份注入太重(改版前佔了聊天 prompt 的 50%)
+// 而且會把「陌生→朋友→女友→妻子」的階段表劇透給她。
+// 因此只注入 <!-- inject:start --> / <!-- inject:end --> 之間的核心段;
+// 沒有標記時退回舊行為(整份注入),向下相容。
+function loreText(ctx) {
+  if (!ctx.world) return "";
+  const m = ctx.world.match(/<!--\s*inject:start\s*-->([\s\S]*?)<!--\s*inject:end\s*-->/);
+  const src = m ? m[1] : ctx.world;
+  return src.split("\n")
+    .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---")
+    .join("\n").trim();
+}
+function loreLines(ctx) {
+  const lore = loreText(ctx);
+  return lore ? [lore, ""] : [];
+}
 function _lore(ctx) {
-  if (!ctx.world) return [];
-  const lore = ctx.world.split("\n")
-    .filter(l => !l.startsWith(">") && !l.startsWith("# ") && l.trim() !== "---").join("\n").trim();
+  const lore = loreText(ctx);
   return lore ? ["【世界設定】", lore, ""] : [];
 }
 

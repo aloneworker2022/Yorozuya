@@ -535,6 +535,16 @@ body.card-center .q-body { justify-content: center; text-align: center; }
   font-size: .62em; color: color-mix(in srgb, currentColor 60%, transparent);
   padding: 3px 8px; background: color-mix(in srgb, currentColor 9%, transparent);
 }
+/* 她盯著這件委託:卡片上的便利貼。她的要求留在畫面上,不是聊天講完就消失 */
+.q-errand {
+  font-size: .66em; letter-spacing: .04em; margin-top: 10px; padding: 5px 9px;
+  align-self: flex-start; border-left: 2px solid var(--pink);
+  background: color-mix(in srgb, var(--pink) 12%, transparent);
+  color: color-mix(in srgb, currentColor 75%, transparent);
+}
+.q-errand .qe-who { color: var(--pink); font-weight: 600; }
+.q-errand.late { border-left-color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+.q-errand.late .qe-who { color: var(--red); }
 .q-card .swind {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 3.5rem; opacity: 0; pointer-events: none; z-index: 4;
