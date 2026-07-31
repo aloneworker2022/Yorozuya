@@ -679,7 +679,10 @@ def _seg_lines(seg: str, a: dict, ch: dict, *, dressed: bool) -> tuple[str, str]
     """回 (特徵, 取景)。特徵只列這一段真的要畫的東西,照抄抽卡原文,不改寫不擴寫。"""
     if seg == "head":
         bits = [a["eyes"], a["hair"], a["feature"]]
-        mood = ch.get("tone") or ch.get("archetype")
+        # 表情用原型(「傲嬌」「活潑開朗」這種短詞)。tone 是講說話方式的整句話,
+        # 塞進生圖 prompt 只是雜訊——畫圖看不見她愛加「呢」「呀」。
+        pers = ch.get("personality") or []
+        mood = ch.get("archetype") or (pers[0] if isinstance(pers, list) and pers else "")
         if mood:
             bits.append(f"表情{mood}")
         return "、".join(x for x in bits if x), "臉部特寫,髮頂到鎖骨"
@@ -694,7 +697,7 @@ def _seg_lines(seg: str, a: dict, ch: dict, *, dressed: bool) -> tuple[str, str]
     return "、".join(x for x in bits if x), "腰到腳"
 
 
-def _build_girl_part_prompt(
+def _seg_prompt_body(
     *,
     part: str,
     rating: str,
@@ -704,33 +707,31 @@ def _build_girl_part_prompt(
     personality: str = "",
     backstory: str = "",
     extra: str = "",
-    out_path: Path,
-    ref_path: Path | None = None,
 ) -> str:
-    """單段的生圖指令。刻意短:特徵、取景、風格分級,講完就結束。"""
+    """一段 prompt 裡「可以改」的那部分:特徵、取景、風格。刻意短。
+    存檔路徑與參考圖那兩行不在這裡——那是送出前才由 _wrap_part_prompt 補的機械欄位,
+    改壞了圖就落不了地,所以不讓它出現在編輯框裡。"""
     part = (part or "bust0").lower()
     if part not in IMG_PARTS:
         part = "bust0"
     dressed = part in IMG_SEG_PARTS
     seg = part if dressed else part[:-1]
-    rating = (rating or "sfw").lower()
-    style = (style or "anime").lower()
     ch = _fill_manual_fields(character, name, personality, backstory)
     traits, frame = _seg_lines(seg, _identity_anchor(ch), ch, dressed=dressed)
 
-    tail = [_STYLE_ZH.get(style, _STYLE_ZH["anime"]),
-            _RATING_ZH.get(rating, _RATING_ZH["sfw"]), "單人", "背景留白"]
-    lines = [
-        "用 image_gen 產一張圖,存成:" + str(out_path),
-        "",
-        traits,
-        frame,
-        "、".join(x for x in tail if x),
-    ]
-    if ref_path is not None:
-        lines.append(f"參考 {ref_path}:同一個人,臉、膚色、身形照這張,把衣服畫上去")
+    tail = [_STYLE_ZH.get((style or "anime").lower(), _STYLE_ZH["anime"]),
+            _RATING_ZH.get((rating or "sfw").lower(), _RATING_ZH["sfw"]), "單人", "背景留白"]
+    lines = [traits, frame, "、".join(x for x in tail if x)]
     if extra.strip():
         lines.append(extra.strip())
+    return "\n".join(x for x in lines if x)
+
+
+def _wrap_part_prompt(body: str, *, out_path: Path, ref_path: Path | None = None) -> str:
+    """把可編輯的 body 包成真正送出去的 prompt:前面補存檔路徑,後面補參考圖。"""
+    lines = ["用 image_gen 產一張圖,存成:" + str(out_path), "", body.strip()]
+    if ref_path is not None:
+        lines.append(f"參考 {ref_path}:同一個人,臉、膚色、身形照這張,把衣服畫上去")
     return "\n".join(lines) + "\n"
 
 
@@ -747,6 +748,7 @@ async def _run_grok_image(
     extra: str = "",
     part: str = "",
     ref: str = "",
+    prompt_body: str = "",
 ) -> tuple[str, str | None]:
     """Grok Build + image_gen。成功回 (url_path, None),url 如 /assets/testword/xxx.png。
     part 給值(head0/bust0/lower0 或 head/bust/lower)= 只畫那一段;留空 = 舊行為的整張圖。
@@ -762,13 +764,13 @@ async def _run_grok_image(
     # 讓 agent 先寫進 work,再 copy 到 abs_out(路徑寫死在 prompt)
     target = abs_out  # absolute path in prompt
     if part in IMG_PARTS:
-        prompt = _build_girl_part_prompt(
+        # prompt_body 有值 = 使用者在 testword 改過的版本,原樣送出(只補存檔路徑/參考圖)
+        body = prompt_body.strip() or _seg_prompt_body(
             part=part, rating=rating, style=style,
             character=character,
             name=name, personality=personality, backstory=backstory, extra=extra,
-            out_path=target,
-            ref_path=_resolve_ref_image(ref),
         )
+        prompt = _wrap_part_prompt(body, out_path=target, ref_path=_resolve_ref_image(ref))
     else:
         prompt = _build_girl_image_prompt(
             framing=framing, rating=rating, style=style,
@@ -1048,6 +1050,7 @@ class ImgGenIn(BaseModel):
     extra: str = ""
     part: str = ""              # ""=整張;head0|bust0|lower0=第一輪;head|bust|lower=第二輪穿搭
     ref: str = ""               # 第一輪同段那張的 /assets/testword/… URL,第二輪當參考圖
+    prompt: str = ""            # 使用者在 testword 改過的 prompt(留空=伺服器依人設自己組)
     retry: bool = False
 
 
@@ -1117,6 +1120,7 @@ def imggen_submit(t: ImgGenIn):
         "personality": t.personality or "",
         "backstory": t.backstory or "",
         "extra": t.extra or "",
+        "prompt": (t.prompt or "") if part in IMG_PARTS else "",
     }
     body = GenIn(
         key=key,
@@ -1154,26 +1158,23 @@ def imggen_list(limit: int = 24):
 
 @app.post("/api/imggen/preview")
 def imggen_preview(t: ImgGenIn):
-    """不生圖,只回這份人設會送出去的 prompt(六段各一份)——testword 對稿用。"""
+    """不生圖,只回這份人設組出來的 prompt(六段各一份)。
+    testword 拿它填編輯框:使用者改完再按各自的生成鍵,改過的版本原樣送回 /api/imggen。"""
     parts = [(t.part or "").lower()] if (t.part or "").lower() in IMG_PARTS else list(IMG_PARTS)
     out = []
     for p in parts:
-        # 預覽時第一輪的圖還不存在,用假路徑讓「第二輪會帶參考圖」這件事看得見
-        ref = None
-        if p in IMG_SEG_PARTS:
-            ref = _resolve_ref_image(t.ref) or (IMG_TEST_DIR / f"<第一輪的 {PART_REF_OF[p]}>.png")
         out.append({
             "part": p,
             "label": PART_LABEL_ZH.get(p, p),
-            "prompt": _build_girl_part_prompt(
+            "ref_of": PART_REF_OF.get(p, ""),   # 第二輪要參考的是第一輪哪一段
+            # 可編輯的部分。存檔路徑與參考圖那兩行送出前才補,不放進編輯框
+            "prompt": _seg_prompt_body(
                 part=p,
                 rating=(t.rating or "sfw").lower(),
                 style=(t.style or "anime").lower(),
                 character=t.character if isinstance(t.character, dict) else None,
                 name=t.name or "", personality=t.personality or "",
                 backstory=t.backstory or "", extra=t.extra or "",
-                out_path=IMG_TEST_DIR / f"<preview>_{p}.png",
-                ref_path=ref,
             ),
         })
     return {"parts": out}
@@ -1234,6 +1235,7 @@ async def _gen_worker():
                     extra=str(opts.get("extra") or ""),
                     part=str(opts.get("part") or ""),
                     ref=str(opts.get("ref") or ""),
+                    prompt_body=str(opts.get("prompt") or ""),
                 )
                 text = url or ""
             elif endpoint in ("grok-build", "grok", "xai"):

@@ -52,11 +52,15 @@
     border-radius: 8px; min-height: 8em; display: flex; align-items: center; justify-content: center; padding: .6em; }
   #ig-preview img { max-width: 100%; max-height: 420px; border-radius: 6px; }
   #ig-preview img.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
-  /* 三段生圖(頭/胸/下半身) */
-  .ig-parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .6em; margin-top: .8em; }
+  /* 分段生圖(頭/胸/下半身,各兩輪) */
+  .ig-parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: .6em; margin-top: .5em; }
   .ig-part { background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.1); border-radius: 8px;
              padding: .55em .6em; display: flex; flex-direction: column; gap: .4em; }
   .ig-part h3 { font-size: .8em; color: #6fe3e1; letter-spacing: .06em; }
+  .ig-part textarea { min-height: 6.5em; font-size: .78em; line-height: 1.6; padding: .45em .55em; }
+  .ig-part .refnote { font-size: .68em; color: #6bcb77; }
+  .ig-part .refnote.none { color: #8a82a5; }
+  .ig-part .go { font-size: .8em; padding: .35em .8em; align-self: flex-start; }
   .ig-part .slot { min-height: 9em; display: flex; align-items: center; justify-content: center;
                    background: rgba(0,0,0,.35); border-radius: 6px; overflow: hidden; }
   .ig-part .slot img { width: 100%; display: block; }
@@ -298,34 +302,26 @@
   </div>
   <div id="ig-preview"><span class="mini">預覽會出現在這裡</span></div>
 
-  <!-- 三段生圖:頭 / 胸 / 下半身分開出圖 -->
+  <!-- 分段生圖:先出 prompt,改完再一張一張按 -->
   <div style="border-top:1px solid rgba(255,255,255,.08);margin-top:1.1em;padding-top:.8em">
     <h3 style="font-size:.85em;color:#ff8fe6;letter-spacing:.08em;margin-bottom:.4em">分段生圖(頭 / 胸 / 下半身,各兩輪)</h3>
     <div class="mini" style="margin-bottom:.6em">
-      每段兩輪:<b>第一輪</b>不寫任何服裝欄位,<b>第二輪</b>拿第一輪同一段那張當參考圖,再把衣服畫上去。
-      prompt 刻意短——只有這一段的特徵原文加取景,例如胸那張就是
-      <code>G 罩杯、傲人豐滿、纖細苗條、皮膚白皙 / 下巴到腰,不畫臉</code>,沒有別的字。
-      三段是三條各自獨立的鏈(頭0→頭、胸0→胸、下半身0→下半身),伺服器一次跑一件。
-      分級只管抽卡:選 NSFW 時生圖 prompt 不會多寫任何分級字眼(寫了只會被 grok 擋掉)。
+      流程:先按下面的<b>產生 prompt</b> 把六段填出來 → 在框裡改 → <b>只有你按下那一段的「產這張」才會真的生圖</b>。
+      沒有整批生成,不會一次燒掉六次用量。
+      每段兩輪:<b>第一輪</b>不寫任何服裝欄位,<b>第二輪</b>拿第一輪同段那張當參考圖再把衣服畫上去。
+      六段是六次完全獨立的 <code>grok -p</code>,互不共用記憶。
+      分級只管抽卡:選 NSFW 時 prompt 不會多寫任何分級字眼(寫了只會被 grok 擋掉)。
     </div>
     <div class="row" style="gap:.5em">
-      <span style="flex:0 1 11em"><label>產出</label>
-        <select id="ig-rounds">
-          <option value="bare">第一輪三段(3 張)</option>
-          <option value="both">兩輪共六張</option>
-          <option value="dressed">只跑第二輪(用上次第一輪)</option>
-        </select></span>
-      <span style="align-self:flex-end;display:flex;gap:.5em">
-        <button onclick="runImgGenParts()" id="ig-run3">▶ 分段生成</button>
-        <button class="cy" type="button" onclick="igPreviewParts()">檢視 prompt</button>
-      </span>
-      <span class="status" id="ig3-status" style="align-self:flex-end"></span>
+      <button class="cy" type="button" onclick="igPreviewParts()" id="ig-mkprompt">① 產生 prompt(不生圖)</button>
+      <button class="cy" type="button" onclick="igStackShow()">疊起來看</button>
+      <span class="status" id="ig3-status"></span>
+    </div>
+    <div class="mini" style="margin-top:.5em">
+      送出前伺服器會自動在最前面補一行存檔路徑,第二輪再補一行參考圖——那兩行是機械欄位,改壞圖會落不了地,所以不放進框裡。
     </div>
     <div id="ig-parts"></div>
     <div id="ig-stack"></div>
-    <details style="margin-top:.6em"><summary class="mini" style="cursor:pointer">▸ 六段送出的 prompt</summary>
-      <div id="ig-prompt" class="mini" style="white-space:pre-wrap;margin-top:.5em;color:#8a82a5;max-height:26em;overflow:auto">(按「檢視三段 prompt」)</div>
-    </details>
   </div>
 
   <div class="mini" style="margin-top:.8em">最近生圖</div>
@@ -703,6 +699,7 @@ function initTestBench() {
     if (su?.spots?.length) document.getElementById("tb-loc").value = su.spots[0].name;
   };
   if (!document.getElementById("tb-name").value) rollGirl();
+  igPartsShell();       // 六個空框先擺著:可以按①填,也可以自己寫
   tbPing().catch(() => {});
   igRefreshGallery().catch(() => {});
 }
@@ -883,117 +880,132 @@ async function runImgGen() {
   document.getElementById("ig-run").disabled = false;
 }
 
-// ── 分段生圖:頭 / 胸 / 下半身,每段兩輪(第一輪不寫服裝,第二輪照第一輪加穿搭)──
+// ── 分段生圖:先出 prompt,改完再一段一段按 ──
+// 六段各自獨立:一個編輯框、一顆按鈕、一次 grok 呼叫。沒有整批生成——
+// 按哪一段才跑哪一段,不會一次燒掉六次用量。
 const IG_SEGS = [
   { bare: "head0",  dressed: "head",  label: "頭",     hint: "眼睛・髮型・特徵・表情" },
   { bare: "bust0",  dressed: "bust",  label: "胸",     hint: "罩杯・體型・膚色" },
   { bare: "lower0", dressed: "lower", label: "下半身", hint: "體型・身高・膚色" },
 ];
-function igPartCard(key, title, hint) {
+const IG_LABEL = {};
+IG_SEGS.forEach(s => { IG_LABEL[s.bare] = s.label; IG_LABEL[s.dressed] = s.label + "・穿搭"; });
+let igPrompts = {};    // {part: 伺服器組的原始 prompt}(重設用)
+let igLastBare = {};   // {head0: url, …} 第一輪的成品,第二輪拿來當參考圖
+let igLastUrl = {};    // {part: url} 每段最近一張
+
+function igPartCard(key, title, hint, refOf) {
+  const refLine = refOf
+    ? `<div class="refnote none" id="igr-${key}">參考圖:還沒有 ${IG_LABEL[refOf]} 的圖</div>` : "";
   return `<div class="ig-part" id="igp-${key}">
       <h3>${title}</h3>
       <div class="mini" style="font-size:.7em">${hint}</div>
-      <div class="slot"><span class="mini">等待中…</span></div>
-      <div class="st">排隊中</div>
+      <textarea id="igt-${key}" spellcheck="false" placeholder="按「① 產生 prompt」填入,或自己寫"></textarea>
+      ${refLine}
+      <div class="row" style="gap:.4em">
+        <button class="go" id="igb-${key}" onclick="igRunPart('${key}')">▶ 產這張</button>
+        <button class="go cy" type="button" onclick="igResetPrompt('${key}')">還原</button>
+      </div>
+      <div class="slot"><span class="mini">還沒生成</span></div>
+      <div class="st"></div>
     </div>`;
 }
-// rounds: "bare" | "dressed" | "both"
-function igPartsShell(rounds) {
+function igPartsShell() {
   const grid = (round, cap) =>
-    `<div class="mini" style="margin:.6em 0 .3em">${cap}</div><div class="ig-parts">` +
-    IG_SEGS.map(s => igPartCard(s[round], s.label, s.hint)).join("") + `</div>`;
+    `<div class="mini" style="margin:.7em 0 .2em">${cap}</div><div class="ig-parts">` +
+    IG_SEGS.map(s => igPartCard(s[round], IG_LABEL[s[round]], s.hint,
+      round === "dressed" ? s.bare : "")).join("") + `</div>`;
   document.getElementById("ig-parts").innerHTML =
-    (rounds !== "dressed" ? grid("bare", "第一輪(不寫服裝)") : "") +
-    (rounds !== "bare" ? grid("dressed", "第二輪(穿搭,照第一輪那張)") : "");
+    grid("bare", "第一輪(不寫服裝)") + grid("dressed", "第二輪(穿搭,參考第一輪那張)");
   document.getElementById("ig-stack").innerHTML = "";
+  igSyncRefNotes();
+}
+function igSyncRefNotes() {
+  for (const s of IG_SEGS) {
+    const el = document.getElementById("igr-" + s.dressed);
+    if (!el) continue;
+    const u = igLastBare[s.bare];
+    el.textContent = u ? `參考圖:${u.split("/").pop()}` : `參考圖:還沒有 ${IG_LABEL[s.bare]} 的圖`;
+    el.className = "refnote" + (u ? "" : " none");
+  }
 }
 function igPartSet(key, slotHtml, stText, cls) {
   const box = document.getElementById("igp-" + key);
   if (!box) return;
   if (slotHtml != null) box.querySelector(".slot").innerHTML = slotHtml;
   const st = box.querySelector(".st");
-  st.textContent = stText;
+  st.textContent = stText || "";
   st.className = "st" + (cls ? " " + cls : "");
 }
-// 跑一段:更新自己那一欄,回 url(失敗回 "")
-async function igRunOnePart(key, body, isPixel) {
-  try {
-    const r = await igOrder(body, sec => igPartSet(key, null, `生成中… ${sec}s`));
-    if (r.error) { igPartSet(key, `<span class="mini" style="color:#ff5f7a">失敗</span>`, r.error, "err"); return ""; }
-    igPartSet(key,
-      r.url ? `<img src="${r.url}?t=${Date.now()}" class="${isPixel ? "pixel" : ""}" alt="${key}">`
-            : `<span class="mini">完成但沒有路徑</span>`,
-      `✓ ${r.sec}s`, "ok");
-    return r.url || "";
-  } catch (e) {
-    igPartSet(key, `<span class="mini" style="color:#ff5f7a">失敗</span>`, e.message, "err");
-    return "";
-  }
+function igResetPrompt(key) {
+  const t = document.getElementById("igt-" + key);
+  if (t && igPrompts[key] != null) { t.value = igPrompts[key]; status("ig3-status", `${IG_LABEL[key]} 已還原`); }
+  else status("ig3-status", "還沒產生過 prompt,沒有東西可還原", true);
 }
-let igPartsRunning = false;
-let igLastBare = {};   // {head0: url, …} 最近一輪第一輪的圖,第二輪拿來當參考
-async function runImgGenParts() {
-  if (igPartsRunning || igRunning) return;
-  if (!igChar) { status("ig3-status", "請先「依 edit_person 池抽卡」或從存檔載入魅魔", true); return; }
-  const rounds = document.getElementById("ig-rounds").value;
-  const base = igBaseBody();
-  const isPixel = base.style === "pixel";
-  if (rounds === "dressed" && !IG_SEGS.some(s => igLastBare[s.bare])) {
-    status("ig3-status", "還沒有第一輪的圖可以參考——先跑「第一輪三段」", true);
-    return;
-  }
-  igPartsShell(rounds);
-  igPartsRunning = true;
-  document.getElementById("ig-run3").disabled = true;
-  status("ig3-status", `下單中…【${igChar.rarity}】${igChar.name}`);
-  const stamp = Date.now().toString(36);
-  const t0 = Date.now();
-  const done = { bare: 0, dressed: 0 };
-  const urls = {};
-  // 三段是三條獨立的鏈:同一段的第二輪要等自己的第一輪,不同段之間互不相干
-  await Promise.all(IG_SEGS.map(async s => {
-    let ref = igLastBare[s.bare] || "";
-    if (rounds !== "dressed") {
-      ref = await igRunOnePart(s.bare, { ...base, part: s.bare, key: `img:${stamp}:${s.bare}` }, isPixel);
-      if (ref) { igLastBare[s.bare] = ref; urls[s.bare] = ref; done.bare++; }
-    } else {
-      urls[s.bare] = ref;
-    }
-    if (rounds === "bare") return;
-    const u = await igRunOnePart(s.dressed,
-      { ...base, part: s.dressed, ref, key: `img:${stamp}:${s.dressed}` }, isPixel);
-    if (u) { urls[s.dressed] = u; done.dressed++; }
-  }));
-  // 疊起來看接縫:有穿搭就疊穿搭那組,否則疊第一輪
-  const key = rounds === "bare" ? "bare" : "dressed";
-  const got = IG_SEGS.filter(s => urls[s[key]]);
-  document.getElementById("ig-stack").innerHTML = got.length
-    ? `<div class="mini" style="margin-bottom:.3em">疊起來(頭→胸→下半身)</div>` +
-      got.map(s => `<img src="${urls[s[key]]}?t=${Date.now()}" class="${isPixel ? "pixel" : ""}" alt="${s[key]}">`).join("")
-    : "";
-  const secs = Math.round((Date.now() - t0) / 1000);
-  const msg = rounds === "bare" ? `第一輪 ${done.bare}/3`
-    : rounds === "dressed" ? `第二輪 ${done.dressed}/3`
-    : `第一輪 ${done.bare}/3 · 第二輪 ${done.dressed}/3`;
-  const want = rounds === "both" ? 6 : 3;
-  status("ig3-status", `${msg} 完成(共 ${secs}s) · ${igChar.name}`, done.bare + done.dressed < want);
-  igRefreshGallery();
-  igPartsRunning = false;
-  document.getElementById("ig-run3").disabled = false;
-}
+// 產生六段 prompt 填進框裡。不生圖,不花用量。
 async function igPreviewParts() {
-  if (!igChar) { status("ig3-status", "請先抽卡或從存檔載入魅魔", true); return; }
-  const el = document.getElementById("ig-prompt");
-  el.textContent = "讀取中…";
+  if (!igChar) { status("ig3-status", "請先「依 edit_person 池抽卡」或從存檔載入魅魔", true); return; }
+  const btn = document.getElementById("ig-mkprompt");
+  btn.disabled = true;
+  status("ig3-status", "組 prompt 中…");
   try {
     const j = await api("/api/imggen/preview", "POST", igBaseBody());
-    el.textContent = (j.parts || [])
-      .map(p => `━━━ ${p.label}(${p.part})━━━\n${p.prompt}`).join("\n");
-    status("ig3-status", "已取得六段 prompt(展開下面的區塊看)");
+    if (!document.getElementById("igt-head0")) igPartsShell();
+    for (const p of j.parts || []) {
+      igPrompts[p.part] = p.prompt;
+      const t = document.getElementById("igt-" + p.part);
+      if (t) t.value = p.prompt;
+    }
+    status("ig3-status", `✓ 六段 prompt 已填入——改完再按各段的「產這張」(此步驟沒有生圖)`);
   } catch (e) {
-    el.textContent = "失敗:" + e.message;
     status("ig3-status", "失敗:" + e.message, true);
   }
+  btn.disabled = false;
+}
+// 產這一張。只跑這一段,用框裡當下的文字。
+async function igRunPart(key) {
+  if (igRunning) return;
+  const t = document.getElementById("igt-" + key);
+  const prompt = (t?.value || "").trim();
+  if (!prompt) { status("ig3-status", `${IG_LABEL[key]} 的 prompt 是空的——先按「① 產生 prompt」`, true); return; }
+  const seg = IG_SEGS.find(s => s.dressed === key);
+  const ref = seg ? (igLastBare[seg.bare] || "") : "";
+  const body = { ...igBaseBody(), part: key, ref, prompt, key: `img:${Date.now().toString(36)}:${key}` };
+  const isPixel = body.style === "pixel";
+  const btn = document.getElementById("igb-" + key);
+  btn.disabled = true;
+  igPartSet(key, `<span class="mini">下單中…</span>`, "排隊中");
+  try {
+    const r = await igOrder(body, sec => igPartSet(key, null, `生成中… ${sec}s`));
+    if (r.error) {
+      igPartSet(key, `<span class="mini" style="color:#ff5f7a">失敗</span>`, r.error, "err");
+      status("ig3-status", `${IG_LABEL[key]} 失敗:${r.error}`, true);
+    } else {
+      igLastUrl[key] = r.url;
+      if (seg === undefined && IG_SEGS.some(s => s.bare === key)) igLastBare[key] = r.url;
+      igSyncRefNotes();
+      igPartSet(key,
+        r.url ? `<img src="${r.url}?t=${Date.now()}" class="${isPixel ? "pixel" : ""}" alt="${key}">`
+              : `<span class="mini">完成但沒有路徑</span>`,
+        `✓ ${r.sec}s`, "ok");
+      status("ig3-status", `✓ ${IG_LABEL[key]} 完成(${r.sec}s) · ${r.url || "?"}`);
+      igRefreshGallery();
+    }
+  } catch (e) {
+    igPartSet(key, `<span class="mini" style="color:#ff5f7a">失敗</span>`, e.message, "err");
+    status("ig3-status", "失敗:" + e.message, true);
+  }
+  btn.disabled = false;
+}
+// 疊起來看接縫:有穿搭就疊穿搭那組,缺的用第一輪補
+function igStackShow() {
+  const pick = s => igLastUrl[s.dressed] || igLastUrl[s.bare] || "";
+  const got = IG_SEGS.map(pick).filter(Boolean);
+  const isPixel = (document.getElementById("ig-style")?.value === "pixel");
+  document.getElementById("ig-stack").innerHTML = got.length
+    ? `<div class="mini" style="margin-bottom:.3em">疊起來(頭→胸→下半身)</div>` +
+      got.map(u => `<img src="${u}?t=${Date.now()}" class="${isPixel ? "pixel" : ""}" alt="stack">`).join("")
+    : `<span class="mini">還沒有圖可以疊</span>`;
 }
 
 let tbRunning = false;

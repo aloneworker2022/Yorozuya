@@ -37,6 +37,8 @@ cd server && uvicorn main:app --host 0.0.0.0 --port 8000
 測試頁:`/testword` → AI 互動測試台 + **Grok Build 生圖測試**。生圖有兩種:整張,或**分段生圖**——
 **頭 / 胸 / 下半身**各一張,每段兩輪:第一輪不寫任何服裝欄位,第二輪拿第一輪同段那張當參考圖再把衣服畫上去。
 prompt 刻意短,只有該段的抽卡原文加取景(例:`G 罩杯、傲人豐滿、纖細苗條、皮膚白皙 / 下巴到腰,不畫臉`)。
+流程是**先出 prompt、人改完、再一段一段按**:`① 產生 prompt` 只組字不生圖,每段各有自己的編輯框與生成鍵,
+按哪段才跑哪段(六段 = 六次獨立的 `grok -p`,互不共用記憶),不會一次燒掉六次用量。
 膚色與服裝配色人設池裡沒有,由欄位確定性雜湊補一組,同一人設每次都一樣。
 分級只管抽卡(`girl_gen` 的 nsfw 項目開關):NSFW 時生圖 prompt 不寫任何分級字眼——寫了只會被 grok 的生圖擋掉。
 
@@ -58,6 +60,6 @@ prompt 刻意短,只有該段的抽卡原文加取景(例:`G 罩杯、傲人豐�
 | PUT | `/api/save` | 寫入存檔(版本衝突 409) |
 | GET | `/api/llm/tags?provider=ollama\|grok-build` | 模型列表 |
 | POST | `/api/gen` | 訂單佇列 `{key, provider, model, messages}` |
-| POST | `/api/imggen` | 生圖訂單(構圖/分級/風格;`part=head0\|bust0\|lower0` 第一輪、`head\|bust\|lower` 第二輪穿搭,`ref` 帶第一輪同段那張)→ result 為 `/assets/testword/….png` |
-| POST | `/api/imggen/preview` | 不生圖,只回這份人設會送出的六段 prompt |
+| POST | `/api/imggen` | 生圖訂單(構圖/分級/風格;`part=head0\|bust0\|lower0` 第一輪、`head\|bust\|lower` 第二輪穿搭,`ref` 帶第一輪同段那張,`prompt` 帶改過的版本)→ result 為 `/assets/testword/….png` |
+| POST | `/api/imggen/preview` | 不生圖,只組這份人設的六段 prompt(存檔路徑與參考圖那兩行送出前才補) |
 | GET | `/api/imggen/list` | 最近生圖列表(含 `part`) |
