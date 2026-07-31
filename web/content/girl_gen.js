@@ -29,6 +29,8 @@ const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const pk = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(v)));
 const allow = (item, rating) => rating === "nsfw" || !item.nsfw;
+// 未成年設定的職業:NSFW 抽卡一律排除(見 generateGirl 的 occPool)
+const MINOR_OCC = new Set(["女高中生"]);
 
 function pickN(arr, n) {
   const a = [...arr].sort(() => Math.random() - 0.5);
@@ -102,7 +104,10 @@ export function generateGirl({ luck = 0, rating = "sfw", usedNames = [] } = {}) 
   const proactivity = clamp(arch.proactivity + ri(-12, 12), 5, 98);
   const shynessBase = arch.shyness;
 
-  const occ = rollGraded(F.occupations, luck, rating);
+  // 職業:NSFW 模式排除未成年設定的職業。這一整套人設會直接餵給性向描寫的
+  // prompt(身體感軸、飢渴、交配演出),未成年職業不能走那條路徑。
+  const occPool = rating === "nsfw" ? F.occupations.filter(o => !MINOR_OCC.has(o.name)) : F.occupations;
+  const occ = rollGraded(occPool, luck, rating);
   const lib = rollGraded(F.libido, luck, rating) || { name: "普通", grade: "R", shyness_delta: 0, desc: "" };
   const shyness = clamp(shynessBase + (lib.shyness_delta || 0));
   const quirk = pk(F.quirks.filter(q => allow(q, rating))).text;

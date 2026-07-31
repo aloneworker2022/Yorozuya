@@ -535,6 +535,9 @@ body.card-center .q-body { justify-content: center; text-align: center; }
   font-size: .62em; color: color-mix(in srgb, currentColor 60%, transparent);
   padding: 3px 8px; background: color-mix(in srgb, currentColor 9%, transparent);
 }
+/* 飢渴:只在上來時顯示,平靜時整行不存在 */
+.crave-mid { color: color-mix(in srgb, var(--pink) 70%, var(--dim)); }
+.crave-high { color: var(--pink); text-shadow: 0 0 8px color-mix(in srgb, var(--pink) 40%, transparent); }
 /* 她盯著這件委託:卡片上的便利貼。她的要求留在畫面上,不是聊天講完就消失 */
 .q-errand {
   font-size: .66em; letter-spacing: .04em; margin-top: 10px; padding: 5px 9px;

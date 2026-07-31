@@ -210,6 +210,8 @@
       </select></span>
     <span style="flex:0 1 8em"><label>防備狀態</label>
       <select id="ct-guard"><option value="0">正常</option><option value="1">剛被越界一次</option><option value="2">連續越界</option></select></span>
+    <span style="flex:0 1 7em"><label>飢渴</label>
+      <select id="ct-crave"><option value="">平靜(不注入)</option><option value="mid">上來了</option><option value="high">很難受</option></select></span>
   </div>
 
   <label>玩家這句話(留白 = 測她主動開口)</label>
@@ -220,6 +222,7 @@
     <button class="del" type="button" onclick="ctFill('你有交過男朋友嗎?')">問私事</button>
     <button class="del" type="button" onclick="ctFill('我想你了')">說想你</button>
     <button class="del" type="button" onclick="ctFill('過來陪我啦')">要求陪伴</button>
+    <button class="del" type="button" onclick="ctFill('你臉很紅欸,是不是在忍什麼?')">戳身體反應</button>
     <button class="del" type="button" onclick="ctFill('')">(她主動開口)</button>
   </div>
 
@@ -992,6 +995,8 @@ function ctBuildCtx(stage) {
     // 防備狀態與 #越界 旗標都只在陌生階段生效(與遊戲一致)
     guard: stage === "stranger" && g ? { hits: g } : null,
     want_guard_flag: stage === "stranger",
+    // 飢渴檔位:平靜時是空字串 → persona_builder 完全不提這件事
+    craving: document.getElementById("ct-crave").value || null,
   };
 }
 

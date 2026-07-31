@@ -452,6 +452,8 @@ function initState(j, offline) {
     if (s.summoner === undefined) s.summoner = null;
     if (s.nextDraw == null) { s.drawIvlH = randInt(2, 5); s.nextDraw = Date.now() + s.drawIvlH * HOUR; }
     if (!s.gift) s.gift = pick(GIFT_KEYS);
+    // 飢渴移轉:舊魅魔沒有這欄,不補的話 craveValue 會永遠停在 0
+    if (!s.crave) s.crave = { v: randInt(0, 25), at: Date.now() };
     // 交配環系統移轉:舊 summoner.affection(0~240)→ stage/resist/matingCount/kinks
     const sm = s.summoner;
     if (sm && sm.stage == null) {
@@ -1191,6 +1193,7 @@ function summonWithCount(n) {
     ntr: null,
     errand: null,                                     // 她盯著的那件委託 {qid,text,day,asked,late}
     guard: null,                                      // 防備狀態 {hits,cool}(只有陌生階段有)
+    crave: { v: randInt(0, 25), at: Date.now() },     // 飢渴 {v,at};懶算,見 craveValue
     summoner: null,                                   // 被別的召喚師纏上時 = {id, affection, sinceDay}
     drawIvlH: randInt(2, 5),                           // 隱藏:抽召喚師的間隔(小時)
     nextDraw: Date.now() + randInt(2, 5) * HOUR,       // 下次抽取時間戳
@@ -1311,6 +1314,31 @@ async function genSummonPortrait(ov, s) {
 // 第 2 行是免費的回報通道——零額外呼叫、零延遲、零顯示風險。
 const GUARD_COOL = 4;   // 冷幾則玩家訊息後回溫
 
+// ===== 飢渴:被改造過的身體會自己上來(規格見 docs/relationship-axes.md)=====
+// 她不會因此衰弱或生病——沒有存活機制要維護,這純粹是一層會起伏的身體狀態。
+// 做成起伏而非常駐設定:常駐的話 AI 每句都演,三句就膩了;平靜時完全不注入 prompt。
+// 懶算:只存 {v, at},要用的時候才依經過時間推算,不需要任何 ticker。
+const CRAVE_RATE = 4;        // 每小時累積
+const CRAVE_MID = 35, CRAVE_HIGH = 72;
+const CRAVE_ON_CROSS = 15;   // 他越界調戲 → 跳升(陌生階段:她更兇,而且更難受)
+const CRAVE_AFTER_DATE = 40; // 約會後消掉的量
+
+function craveValue(s) {
+  if (!s.crave) return 0;
+  const hrs = Math.max(0, (Date.now() - (s.crave.at || 0)) / HOUR);
+  return Math.max(0, Math.min(100, (s.crave.v || 0) + hrs * CRAVE_RATE));
+}
+function craveSet(s, v) {
+  s.crave = { v: Math.max(0, Math.min(100, v)), at: Date.now() };
+  dirty = true;
+}
+function craveAdd(s, d) { craveSet(s, craveValue(s) + d); }
+/** 注入 prompt 的檔位:平靜時回 null(完全不提),她就只是個被擄來的普通人 */
+function craveTier(s) {
+  const v = craveValue(s);
+  return v >= CRAVE_HIGH ? "high" : v >= CRAVE_MID ? "mid" : null;
+}
+
 function guardActive(s) { return s.stage === "stranger" && (s.guard?.cool > 0); }
 
 /** 從她的回覆抽出 #越界 旗標,並回傳乾淨的台詞(多行保留,只拿掉旗標)。
@@ -1332,6 +1360,9 @@ function firstLine(text) { return (text || "").split("\n").find(l => l.trim()) |
 
 /** 收到她的回覆後更新防備狀態(只有陌生階段有效) */
 function applyGuard(s, crossed) {
+  // 越界會拉高飢渴(不分階段):他調戲她,身體先替她回答了。
+  // 陌生階段因此出現整套設計的重點——她最兇的時候,正好也是她最難受的時候。
+  if (crossed) craveAdd(s, CRAVE_ON_CROSS);
   if (s.stage !== "stranger") { if (s.guard) { s.guard = null; dirty = true; } return; }
   if (!crossed) return;
   s.guard = { hits: (s.guard?.hits || 0) + 1, cool: GUARD_COOL };
@@ -1579,6 +1610,7 @@ function exitChat() {
   if (s && chatSession) {
     if (chatSession.type === "date") {
       const d = applyAffection(s, randInt(1, 5));
+      craveAdd(s, -CRAVE_AFTER_DATE);   // 一整場貼身相處後,身體暫時安靜下來
       s.history.push({ role: "sys", content: `「${chatSession.location}」的約會結束了,兩人回到日常`, t: Date.now() });
       s.chatLine = null;   // 約會另起了話頭,作廢她待命中的預製話重生
       log(`與 ${s.name} 的${chatSession.location}約會結束,情感 +${d}`);
@@ -2118,6 +2150,8 @@ function buildCtx(s) {
     pinned_quest: ensureErrand(s),
     // 防備狀態:他剛才越界的話,接下來幾句更冷(只有陌生階段有)
     guard: guardActive(s) ? { hits: s.guard.hits } : null,
+    // 飢渴檔位:平靜時回 null,persona_builder 就完全不提這件事
+    craving: craveTier(s),
     // 陌生階段才要她回報 #越界 旗標(其他階段用不到,也省 token)
     want_guard_flag: s.stage === "stranger",
     scene: {
@@ -3130,6 +3164,19 @@ function renderQuests() {
   renderProc();
 }
 
+// 飢渴:玩家看得到她現在的狀態,但看不到數字(她自己也不會承認)。
+// 平靜時不顯示——沒事就別提醒,免得變成一條永遠在那裡的儀表板。
+function craveLine(s) {
+  const t = craveTier(s);
+  if (!t) return "";
+  const txt = t === "high"
+    ? { stranger: "她很不對勁,話裡帶刺,眼神不看你", friend: "她坐立難安,快裝不下去了",
+        girlfriend: "她忍不住了,一直在暗示你", wife: "她直說了,等你的下一步" }
+    : { stranger: "她煩躁、坐不住,問她只會被兇", friend: "她突然安靜下來,岔開了話題",
+        girlfriend: "她拐著彎在跟你討什麼", wife: "她順口提了一句" };
+  return `<div class="aff-line small crave-${t}">身體:${txt[s.stage] || txt.stranger}</div>`;
+}
+
 // 她盯著的那件委託 → 卡片上的便利貼。她的要求會留在畫面上,不是聊天講完就消失。
 function errandNoteHTML(qid) {
   const who = state.succubi.filter(s => !s.ntr && s.errand?.qid === qid);
@@ -3590,6 +3637,7 @@ function renderDetail(s, root) {
         return `<div class="sch-row${now ? " now" : ""}"><span class="sch-t">${SLOT_LABEL[k]}</span><span>${esc(s.schedule[k])}</span></div>`;
       }).join("")}</div>` : ""}
       <div class="aff-line">情感 <b>${s.affection}</b>${ns && !s.ntr ? ` <span class="dim small">/ ${ns[2]} 升【${ns[1]}】</span>` : ""}</div>
+      ${!s.ntr ? craveLine(s) : ""}
       ${needLine}
       ${summonerLine}
       ${!s.portraitReady ? (llmIsOrder()
