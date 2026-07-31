@@ -35,9 +35,9 @@ cd server && uvicorn main:app --host 0.0.0.0 --port 8000
 完成偵測:用 `--output-format streaming-json`,收到 `{"type":"end"}` 立刻寫入訂單並結束行程(不等 process 自然退出)。
 
 測試頁:`/testword` → AI 互動測試台 + **Grok Build 生圖測試**。生圖有兩種:整張,或**分段生圖**——
-先出一張**素體基礎**(只描述身體:膚色、罩杯、體型、腿長比例,不寫任何衣服設定),
-再拿它當參考圖畫**頭 / 胸 / 下半身**三段。四張共用同一份「同一個人錨點」,
-膚色與服裝配色由人設欄位確定性雜湊產生,同一人設每次都一樣。
+**頭 / 胸 / 下半身**各一張,每段兩輪:第一輪不寫任何服裝欄位,第二輪拿第一輪同段那張當參考圖再把衣服畫上去。
+prompt 刻意短,只有該段的抽卡原文加取景(例:`G 罩杯、傲人豐滿、纖細苗條、皮膚白皙 / 下巴到腰,不畫臉`)。
+膚色與服裝配色人設池裡沒有,由欄位確定性雜湊補一組,同一人設每次都一樣。
 
 | 變數 | 預設 | 說明 |
 |---|---|---|
@@ -57,6 +57,6 @@ cd server && uvicorn main:app --host 0.0.0.0 --port 8000
 | PUT | `/api/save` | 寫入存檔(版本衝突 409) |
 | GET | `/api/llm/tags?provider=ollama\|grok-build` | 模型列表 |
 | POST | `/api/gen` | 訂單佇列 `{key, provider, model, messages}` |
-| POST | `/api/imggen` | 生圖訂單(構圖/分級/風格;`part=base\|head\|bust\|lower` 只畫那一段,`ref` 帶素體那張當參考圖)→ result 為 `/assets/testword/….png` |
-| POST | `/api/imggen/preview` | 不生圖,只回這份人設會送出的素體+三段 prompt |
+| POST | `/api/imggen` | 生圖訂單(構圖/分級/風格;`part=head0\|bust0\|lower0` 第一輪、`head\|bust\|lower` 第二輪穿搭,`ref` 帶第一輪同段那張)→ result 為 `/assets/testword/….png` |
+| POST | `/api/imggen/preview` | 不生圖,只回這份人設會送出的六段 prompt |
 | GET | `/api/imggen/list` | 最近生圖列表(含 `part`) |
