@@ -34,7 +34,8 @@ cd server && uvicorn main:app --host 0.0.0.0 --port 8000
 
 完成偵測:用 `--output-format streaming-json`,收到 `{"type":"end"}` 立刻寫入訂單並結束行程(不等 process 自然退出)。
 
-測試頁:`/testword` → AI 互動測試台 + **Grok Build 生圖測試**。
+測試頁:`/testword` → AI 互動測試台 + **Grok Build 生圖測試**(整張,或**三段生圖**:頭 / 胸 / 下半身分開出圖,
+三張共用同一份「同一個人錨點」——膚色與服裝配色由人設欄位確定性雜湊產生,同一人設每次都一樣)。
 
 | 變數 | 預設 | 說明 |
 |---|---|---|
@@ -54,5 +55,6 @@ cd server && uvicorn main:app --host 0.0.0.0 --port 8000
 | PUT | `/api/save` | 寫入存檔(版本衝突 409) |
 | GET | `/api/llm/tags?provider=ollama\|grok-build` | 模型列表 |
 | POST | `/api/gen` | 訂單佇列 `{key, provider, model, messages}` |
-| POST | `/api/imggen` | 生圖訂單(構圖/分級/風格)→ result 為 `/assets/testword/….png` |
-| GET | `/api/imggen/list` | 最近生圖列表 |
+| POST | `/api/imggen` | 生圖訂單(構圖/分級/風格;`part=head\|bust\|lower` 只畫那一段)→ result 為 `/assets/testword/….png` |
+| POST | `/api/imggen/preview` | 不生圖,只回這份人設會送出的三段 prompt |
+| GET | `/api/imggen/list` | 最近生圖列表(含 `part`) |

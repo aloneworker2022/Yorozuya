@@ -8,6 +8,7 @@
 """
 
 import asyncio
+import hashlib
 import json
 import os
 import shutil
@@ -528,6 +529,38 @@ def _character_visual_brief(ch: dict) -> str:
     return "\n".join(lines) if lines else "attractive young woman, distinctive look"
 
 
+_FRAME_MAP = {
+    "half": "half-body portrait (waist-up), face and upper body clearly visible",
+    "full": "full-body standing figure, head to toe visible, complete outfit",
+}
+_STYLE_MAP = {
+    "anime": "Japanese anime style, clean lineart, cel shading, vibrant colors, high quality illustration",
+    "realistic": "photorealistic, natural skin texture, cinematic lighting, DSLR photo look",
+    "pixel": "pixel art, 256x256 pixels exact, limited palette, crisp pixels, no anti-aliasing, game sprite style",
+}
+_RATING_MAP = {
+    "sfw": "SFW, fully clothed, wholesome, no nudity, safe for work",
+    "nsfw": (
+        "NSFW adult content allowed: sensual or explicit as fits the character and libido notes, "
+        "tasteful erotic art, mature 18+ only"
+    ),
+}
+
+
+def _fill_manual_fields(
+    character: dict | None, name: str, personality: str, backstory: str
+) -> dict:
+    """character 為主;沒抽卡時用手填欄位補洞。"""
+    ch = dict(character) if isinstance(character, dict) else {}
+    if name and not ch.get("name"):
+        ch["name"] = name
+    if personality and not ch.get("personality"):
+        ch["personality"] = [x.strip() for x in personality.replace("、", ",").split(",") if x.strip()]
+    if backstory and not ch.get("backstory"):
+        ch["backstory"] = backstory
+    return ch
+
+
 def _build_girl_image_prompt(
     *,
     framing: str,
@@ -544,30 +577,8 @@ def _build_girl_image_prompt(
     framing = (framing or "half").lower()
     rating = (rating or "sfw").lower()
     style = (style or "anime").lower()
-    frame_map = {
-        "half": "half-body portrait (waist-up), face and upper body clearly visible",
-        "full": "full-body standing figure, head to toe visible, complete outfit",
-    }
-    style_map = {
-        "anime": "Japanese anime style, clean lineart, cel shading, vibrant colors, high quality illustration",
-        "realistic": "photorealistic, natural skin texture, cinematic lighting, DSLR photo look",
-        "pixel": "pixel art, 256x256 pixels exact, limited palette, crisp pixels, no anti-aliasing, game sprite style",
-    }
-    rating_map = {
-        "sfw": "SFW, fully clothed, wholesome, no nudity, safe for work",
-        "nsfw": (
-            "NSFW adult content allowed: sensual or explicit as fits the character and libido notes, "
-            "tasteful erotic art, mature 18+ only"
-        ),
-    }
-    ch = dict(character) if isinstance(character, dict) else {}
-    # 手動欄位可補洞(未跑抽卡時)
-    if name and not ch.get("name"):
-        ch["name"] = name
-    if personality and not ch.get("personality"):
-        ch["personality"] = [x.strip() for x in personality.replace("、", ",").split(",") if x.strip()]
-    if backstory and not ch.get("backstory"):
-        ch["backstory"] = backstory
+    frame_map, style_map, rating_map = _FRAME_MAP, _STYLE_MAP, _RATING_MAP
+    ch = _fill_manual_fields(character, name, personality, backstory)
     brief = _character_visual_brief(ch)
     if extra.strip():
         brief += f"\nExtra director notes: {extra.strip()}"
@@ -606,6 +617,190 @@ Render settings:
 """
 
 
+# ---- 三段生圖:同一位妹子拆成「頭 / 胸 / 下半身」三張,各段只畫自己那一段 ----
+# 抽卡欄位本來就是分開的(眼睛、罩杯、體型…),整張畫時模型會把它們糊在一起;
+# 拆成三張各自吃自己那組欄位,才看得出「大眼睛」「C 罩杯圓潤」到底畫成什麼樣。
+IMG_PARTS = ("head", "bust", "lower")
+PART_LABEL_ZH = {"head": "頭部", "bust": "胸部・上半身", "lower": "下半身・腿"}
+
+# 三張要像同一個人:膚色與服裝配色由人設欄位做確定性雜湊,同一個人設永遠推出同一組。
+_SKIN_TONES = [
+    "fair porcelain skin",
+    "pale milky skin with a cool undertone",
+    "light skin with a warm peach undertone",
+    "smooth ivory skin",
+    "healthy light-tan skin",
+    "sun-kissed honey skin",
+]
+_PALETTES = [
+    "black and off-white",
+    "cream and soft beige",
+    "navy blue and white",
+    "dusty pink and light grey",
+    "olive green and khaki",
+    "burgundy and charcoal",
+    "sky blue and white",
+    "lavender and silver grey",
+]
+
+
+def _identity_anchor(ch: dict) -> dict:
+    """三段共用的「同一個人」錨點。膚色/配色人設裡沒有,用欄位雜湊補一組固定值。"""
+    look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
+    seed = "|".join(str(look.get(k) or "") for k in ("hair", "eyes", "build", "bust", "style"))
+    seed += "|" + str(ch.get("name") or "")
+    h = hashlib.sha1(seed.encode("utf-8")).digest()
+    return {
+        "skin": _SKIN_TONES[h[0] % len(_SKIN_TONES)],
+        "palette": _PALETTES[h[1] % len(_PALETTES)],
+        "height_cm": look.get("height_cm") or "",
+        "hair": look.get("hair") or "",
+        "eyes": look.get("eyes") or "",
+        "build": look.get("build") or "",
+        "bust": look.get("bust") or "",
+        "style": look.get("style") or "",
+        "feature": look.get("feature") or "",
+    }
+
+
+def _anchor_block(a: dict) -> str:
+    """三張圖裡逐字相同的一段——同一個人、同一套衣服、同一個光。"""
+    rows = [f"- Skin: {a['skin']}"]
+    if a["hair"]:
+        rows.append(f"- Hair (same in every part): {a['hair']}")
+    if a["build"]:
+        rows.append(f"- Overall build: {a['build']}"
+                    + (f", {a['height_cm']}cm tall" if a["height_cm"] else ""))
+    if a["style"]:
+        rows.append(f"- Outfit: one single {a['style']} outfit, colour palette {a['palette']} — "
+                    "the SAME garment across all three parts")
+    else:
+        rows.append(f"- Outfit: one single coherent outfit, colour palette {a['palette']} — "
+                    "the SAME garment across all three parts")
+    rows.append("- Camera: straight-on, neutral eye-level angle, same distance and same lens in all three parts")
+    rows.append("- Light: soft even front light from the same direction; identical plain background")
+    return "\n".join(rows)
+
+
+def _part_focus(part: str, a: dict, ch: dict) -> tuple[str, list[str], str]:
+    """回 (取景, 這一段要畫的重點, 這一段不要畫的東西)。"""
+    if part == "head":
+        focus = []
+        if a["eyes"]:
+            focus.append(f"Eyes — draw exactly this: {a['eyes']}")
+        if a["hair"]:
+            focus.append(f"Hairstyle — draw exactly this: {a['hair']}")
+        if a["feature"]:
+            focus.append(f"Signature detail: {a['feature']} (include it only if it belongs on the face or neck)")
+        pers = ch.get("personality") or []
+        pers_txt = "、".join(str(p) for p in pers) if isinstance(pers, list) else str(pers)
+        mood = ch.get("tone") or ch.get("archetype") or pers_txt
+        if mood:
+            focus.append(f"Expression should read as: {mood}")
+        focus.append("Face shape, jawline, brows, lips and skin rendered in detail — this part is the face")
+        return (
+            "TIGHT HEAD SHOT: from the top of the hair down to the collarbone, nothing lower. "
+            "The head fills most of the frame.",
+            focus,
+            "Do NOT show the chest, waist, hips or legs. No cleavage in frame.",
+        )
+    if part == "bust":
+        focus = []
+        if a["bust"]:
+            focus.append(f"Bust — draw exactly this: {a['bust']} (size and shape are the point of this part)")
+        if a["build"]:
+            focus.append(f"Torso build: {a['build']} — shoulders, ribcage and waistline consistent with it")
+        focus.append(f"Skin: {a['skin']}, collarbone and shoulder line clearly readable")
+        if a["style"]:
+            focus.append(f"Top garment of the {a['style']} outfit: neckline, fabric, how it sits on the chest")
+        return (
+            "TORSO CROP: from just under the chin down to the waistline. "
+            "The head is cropped out above the chin — this part is the chest and torso.",
+            focus,
+            "Do NOT draw the full face or the eyes. Do NOT show hips or legs.",
+        )
+    focus = []
+    if a["build"]:
+        focus.append(f"Hips, thighs and legs shaped by this build: {a['build']}")
+    if a["height_cm"]:
+        focus.append(f"Leg length and proportion for a {a['height_cm']}cm figure")
+    focus.append(f"Skin: {a['skin']}, thigh and calf line clearly readable")
+    if a["style"]:
+        focus.append(f"Bottom garment of the {a['style']} outfit, plus legwear and shoes that match it")
+    return (
+        "LOWER-BODY CROP: from the waistline down to the feet. "
+        "This part is the hips, thighs and legs.",
+        focus,
+        "Do NOT draw the head, face or chest.",
+    )
+
+
+def _build_girl_part_prompt(
+    *,
+    part: str,
+    rating: str,
+    style: str,
+    character: dict | None = None,
+    name: str = "",
+    personality: str = "",
+    backstory: str = "",
+    extra: str = "",
+    out_path: Path,
+) -> str:
+    """單一段(頭/胸/下半身)的生圖指令。三段共用同一份錨點,才拼得起來。"""
+    part = (part or "head").lower()
+    if part not in IMG_PARTS:
+        part = "head"
+    rating = (rating or "sfw").lower()
+    style = (style or "anime").lower()
+    ch = _fill_manual_fields(character, name, personality, backstory)
+    a = _identity_anchor(ch)
+    frame_line, focus, avoid = _part_focus(part, a, ch)
+    idx = IMG_PARTS.index(part) + 1
+
+    size_note = (
+        "Output size MUST be exactly 256x256 pixels."
+        if style == "pixel"
+        else "High resolution, portrait aspect ratio."
+    )
+    tool_note = (
+        "Prefer image_gen. For exact 256x256 pixel art you may use code if image_gen cannot force size."
+        if style == "pixel"
+        else "You MUST use the image_gen tool (do NOT draw with Python/code)."
+    )
+    focus_txt = "\n".join(f"- {f}" for f in focus)
+
+    return f"""You are generating ONE image: part {idx} of 3 of a character reference sheet.
+The three parts (1 head, 2 chest/torso, 3 lower body) are the SAME girl in the SAME outfit,
+cropped so that stacking them top to bottom would rebuild one continuous full-body figure.
+Right now you draw ONLY part {idx}.
+
+{tool_note}
+After the image is created, copy/move the final file to this EXACT path:
+{out_path}
+
+Only create that one image file at the destination. Then reply with a short note: the absolute path and one-line description.
+
+=== SHARED IDENTITY (identical in all three parts — do not vary) ===
+{_anchor_block(a)}
+=== END SHARED IDENTITY ===
+
+=== THIS PART ({idx}/3 · {PART_LABEL_ZH.get(part, part)}) ===
+Framing: {frame_line}
+Draw these, from the character sheet — they are AUTHORITATIVE, do not substitute:
+{focus_txt}
+Exclusions: {avoid}
+=== END THIS PART ===
+
+Render settings:
+- Art style: {_STYLE_MAP.get(style, _STYLE_MAP["anime"])}
+- Content rating: {_RATING_MAP.get(rating, _RATING_MAP["sfw"])}
+- {size_note}
+- One person only, plain simple background, no text overlays, no watermark, no collage, no panels
+{("- Extra director notes: " + extra.strip()) if extra.strip() else ""}
+"""
+
+
 async def _run_grok_image(
     model: str,
     *,
@@ -617,23 +812,34 @@ async def _run_grok_image(
     personality: str = "",
     backstory: str = "",
     extra: str = "",
+    part: str = "",
 ) -> tuple[str, str | None]:
-    """Grok Build + image_gen。成功回 (url_path, None),url 如 /assets/testword/xxx.png。"""
+    """Grok Build + image_gen。成功回 (url_path, None),url 如 /assets/testword/xxx.png。
+    part 給值(head/bust/lower)= 只畫那一段;留空 = 舊行為的整張圖。"""
     IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+    part = (part or "").lower()
     stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
-    fname = f"{stamp}.png"
+    fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
     abs_out = IMG_TEST_DIR / fname
     # 工作目錄放空沙箱,產圖後搬到 assets
     work = GROK_CWD / f"img-{stamp}"
     work.mkdir(parents=True, exist_ok=True)
     # 讓 agent 先寫進 work,再 copy 到 abs_out(路徑寫死在 prompt)
     target = abs_out  # absolute path in prompt
-    prompt = _build_girl_image_prompt(
-        framing=framing, rating=rating, style=style,
-        character=character,
-        name=name, personality=personality, backstory=backstory, extra=extra,
-        out_path=target,
-    )
+    if part in IMG_PARTS:
+        prompt = _build_girl_part_prompt(
+            part=part, rating=rating, style=style,
+            character=character,
+            name=name, personality=personality, backstory=backstory, extra=extra,
+            out_path=target,
+        )
+    else:
+        prompt = _build_girl_image_prompt(
+            framing=framing, rating=rating, style=style,
+            character=character,
+            name=name, personality=personality, backstory=backstory, extra=extra,
+            out_path=target,
+        )
     text, err = await _run_grok_cli(
         prompt,
         model=model or "grok-4.5",
@@ -896,7 +1102,7 @@ class ImgGenIn(BaseModel):
     character = girl_gen.generateGirl() 完整結果(或存檔魅魔欄位),生圖以此為準。"""
     key: str | None = None
     model: str = "grok-4.5"
-    framing: str = "half"       # half | full
+    framing: str = "half"       # half | full(part 有值時忽略)
     rating: str = "sfw"         # sfw | nsfw
     style: str = "anime"        # anime | realistic | pixel
     character: dict | None = None  # 完整人設(優先)
@@ -904,6 +1110,7 @@ class ImgGenIn(BaseModel):
     personality: str = ""
     backstory: str = ""
     extra: str = ""
+    part: str = ""              # ""=整張;head | bust | lower = 只畫那一段
     retry: bool = False
 
 
@@ -960,8 +1167,10 @@ def gen_submit(t: GenIn):
 def imggen_submit(t: ImgGenIn):
     """testword 生圖下單 → gen_tasks(endpoint=grok-img)。result 為 /assets/testword/….png"""
     key = (t.key or "").strip() or f"img:{int(time.time() * 1000)}:{uuid.uuid4().hex[:8]}"
+    part = (t.part or "").lower()
     opts = {
         "kind": "girl_image",
+        "part": part if part in IMG_PARTS else "",
         "framing": (t.framing or "half").lower(),
         "rating": (t.rating or "sfw").lower(),
         "style": (t.style or "anime").lower(),
@@ -994,13 +1203,37 @@ def imggen_list(limit: int = 24):
     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     out = []
     for p in files[: max(1, min(limit, 100))]:
+        tail = p.stem.rsplit("_", 1)[-1].lower()
         out.append({
             "name": p.name,
             "url": f"/assets/testword/{p.name}",
             "size": p.stat().st_size,
             "mtime": p.stat().st_mtime,
+            "part": tail if tail in IMG_PARTS else "",
         })
     return {"items": out}
+
+
+@app.post("/api/imggen/preview")
+def imggen_preview(t: ImgGenIn):
+    """不生圖,只回這份人設會送出去的 prompt(三段各一份)——testword 對稿用。"""
+    parts = [(t.part or "").lower()] if (t.part or "").lower() in IMG_PARTS else list(IMG_PARTS)
+    out = []
+    for p in parts:
+        out.append({
+            "part": p,
+            "label": PART_LABEL_ZH.get(p, p),
+            "prompt": _build_girl_part_prompt(
+                part=p,
+                rating=(t.rating or "sfw").lower(),
+                style=(t.style or "anime").lower(),
+                character=t.character if isinstance(t.character, dict) else None,
+                name=t.name or "", personality=t.personality or "",
+                backstory=t.backstory or "", extra=t.extra or "",
+                out_path=IMG_TEST_DIR / f"<preview>_{p}.png",
+            ),
+        })
+    return {"parts": out}
 
 
 @app.delete("/api/gen")
@@ -1056,6 +1289,7 @@ async def _gen_worker():
                     personality=str(opts.get("personality") or ""),
                     backstory=str(opts.get("backstory") or ""),
                     extra=str(opts.get("extra") or ""),
+                    part=str(opts.get("part") or ""),
                 )
                 text = url or ""
             elif endpoint in ("grok-build", "grok", "xai"):
