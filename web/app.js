@@ -4,11 +4,11 @@
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
-import { loadPools, generateGirl, RARITY_MARK, WARDROBE_UNLOCK } from "./content/girl_gen.js";
+import { loadPools, generateGirl, WARDROBE_UNLOCK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.37(2026-08-02)詳細頁精簡:拿掉個性/語氣/DNA/外貌參數與淫紋長提示,只留她的人生";
+const APP_VER = "v5.38(2026-08-02)詳細頁再精簡:衣櫃與特殊屬性也收起來,只留立繪與她的人生";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1408,9 +1408,13 @@ async function weaveMissing(s, force = false) {
 
 // ===== 服裝:生涯服裝 + 個人喜好衣櫃 =====
 // 兩個維度(規格見 README「服裝」):
-//   生涯服裝 —— 職業給的那一身。女高中生就是制服,不會穿西裝套裝。立繪預設畫這套。
+//   生涯服裝 —— 職業給的那一身。女高中生就是制服,不會穿西裝套裝。立繪畫這套。
 //   個人衣櫃 —— 她自己喜歡的穿搭,依關係解鎖:朋友 1 套、女友 3 套、妻子 6 套。
 // 陌生階段一套都沒有:你只見過她工作時的樣子。
+//
+// **詳細頁不再顯示衣櫃**(那頁精簡過,只留她的人生)。所以現在沒有玩家入口,
+// 她固定穿生涯服裝;衣櫃仍然抽好存在 look.wardrobe 裡,換衣服的機制也還在,
+// 只是要從 DBG.wearOutfit(id, i) 進去。之後要接自動輪替或別的入口,改這裡即可。
 function careerOutfit(s) { return s?.look?.career_outfit || ""; }
 function wardrobeAll(s) {
   const w = s?.look?.wardrobe;
@@ -3843,28 +3847,6 @@ function renderSuccubi() {
   counts.appendChild(b);
 }
 
-// 詳細頁的衣櫃區:生涯服裝一定在,個人喜好那幾套依關係解鎖。
-// 沒解到的畫成鎖頭並寫清楚要到哪一階——玩家看得到才會想推關係。
-function wardrobeBlock(s) {
-  const career = careerOutfit(s);
-  const all = wardrobeAll(s);
-  if (!career && !all.length) return "";
-  const open = wardrobeOpen(s);
-  const worn = outfitWorn(s);
-  const busy = portraitGenning.has(s.id);
-  const chip = (label, pick, locked) =>
-    `<button class="outfit-chip${label === worn && !locked ? " on" : ""}" ${
-      locked || busy ? "disabled" : ""} data-outfit="${pick}">${
-      locked ? "🔒 ???" : esc(label)}</button>`;
-  const chips = [career ? chip(career, -1, false) : ""];
-  all.forEach((o, i) => chips.push(chip(o, i, i >= open)));
-  const nextAt = STAGES.find(([k]) => (WARDROBE_UNLOCK[k] ?? 0) > open);
-  return `<div class="aff-line dim small">服裝 — 生涯「${esc(career || "(舊存檔沒有)")}」・個人喜好已解 ${
-    Math.min(open, all.length)}/${all.length} 套${
-    nextAt ? `,升【${nextAt[1]}】再多解幾套` : ""}</div>
-    <div class="wardrobe">${chips.join("")}</div>`;
-}
-
 function renderDetail(s, root) {
   const asleep = isAsleep();
   const st = needStatus(s);
@@ -3908,8 +3890,6 @@ function renderDetail(s, root) {
         ・${s.ntr ? "被奪走" : stageLabel(s.stage)}
       </div>
       ${s.backstory ? `<div class="aff-line dim small" style="max-width:32em;margin:0 auto">${esc(s.backstory)}</div>` : ""}
-      ${s.specialTraits?.length ? `<div class="aff-line small" style="color:var(--gold)">${s.specialTraits.map(t => `${RARITY_MARK[t.rarity] || ""}${esc(t.name)}`).join("  ")}</div>` : ""}
-      ${wardrobeBlock(s)}
       ${s.schedule ? `<div class="schedule">${SCHEDULE_SLOTS.map(k => {
         const now = timeSlot() === k;
         return `<div class="sch-row${now ? " now" : ""}"><span class="sch-t">${SLOT_LABEL[k]}</span><span>${esc(s.schedule[k])}</span></div>`;
@@ -3954,8 +3934,6 @@ function renderDetail(s, root) {
           left.length ? "bad" : "good");
     renderAll();
   });
-  root.querySelectorAll("[data-outfit]").forEach(b =>
-    b.onclick = () => changeOutfit(s, +b.dataset.outfit));
   root.querySelector("#act-recut")?.addEventListener("click", () => recutShots(s));
   root.querySelector("#act-dismiss")?.addEventListener("click", () => sacrificeSuccubus(s.id));
   root.querySelector("#act-date")?.addEventListener("click", () => {
@@ -4348,6 +4326,14 @@ window.DBG = {
     enterWatch(s, playerType);
   },
   summonKanban: (id) => summonKanban(id),
+  // 服裝:i = -1 生涯服裝,0..5 個人衣櫃(要關係解得夠)。換了會重織三張立繪。
+  // 詳細頁上的衣櫃選擇器收掉了,這是目前唯一的入口。
+  wearOutfit: (id, i) => changeOutfit(state.succubi.find(x => x.id === id), i),
+  wardrobe: (id) => {
+    const s = state.succubi.find(x => x.id === id);
+    return s && { 生涯: careerOutfit(s), 全部: wardrobeAll(s),
+                  已解鎖: wardrobeUnlocked(s), 身上: outfitWorn(s) };
+  },
   summon: (n) => summonWithCount(n),
   genGirl: (luck = 0, rating = "sfw") => generateGirl({ luck, rating }),
   tickActs: () => processTakenActs(),
