@@ -33,16 +33,41 @@ except ImportError:  # pragma: no cover — 沒裝 Pillow 的環境
 
 # 縮圖倍率:遮罩在 1/MASK_DIV 邊長的圖上算
 MASK_DIV = 4
+# 但不能無限縮。256×256 的大頭照除以 4 只剩 64 px,一根頭髮還不到一個像素,
+# 摳出來的邊會像鋸子。長邊低於這個數就不再縮,寧可多算幾十毫秒。
+MASK_MIN = 192
 # 與背景色的容差(每通道差值上限)。太小會留一圈殘影,太大會啃到角色
 TOLERANCE = 38
 # 邊緣羽化:遮罩放大後再模糊這麼多像素,消掉樓梯狀邊緣
 FEATHER = 1.2
+# 背景遮罩往角色方向多吃幾個像素(在縮圖尺度上算,1 = MaxFilter(3))。
+#
+# 這是「摳完還留一圈白邊」的解法。SD 出的圖邊緣是反鋸齒過的:角色與背景之間
+# 有一兩個像素是兩者的混色,它們既不夠接近背景色(漫延走不過去)、又明顯比
+# 角色亮。遮罩剛好停在那圈混色的外側,放大回原尺寸後那一圈就留下來,疊在深色
+# 遊戲背景上變成一道白框。往內多吃一點正好把它吃掉,羽化再把接縫抹平。
+DILATE = 1
 
 
 def _bg_color(px, w: int, h: int) -> tuple[int, int, int]:
-    """四個角落取中位數當背景基準色——模型不一定真的畫白色。"""
-    corners = [px[0, 0], px[w - 1, 0], px[0, h - 1], px[w - 1, h - 1]]
-    return tuple(sorted(c[i] for c in corners)[1] for i in range(3))
+    """背景基準色:取**外框一整圈的眾數**——模型不一定真的畫白色。
+
+    原本是「四個角落取中位數」,那對大頭照是錯的:head-and-shoulders 構圖的
+    左下、右下兩角就是她的肩膀,四取二有一半是人,中位數會挑到角色的顏色,
+    接下來漫延去摳的就是角色而不是背景(外框命中率暴跌,整張放棄去背)。
+
+    改看外框一整圈:平背景的立繪不管什麼構圖,那一圈都是背景佔多數。
+    量化成 16 階投票挑出眾數桶,再回頭平均桶內的真實像素取回精度。
+    """
+    from collections import Counter
+
+    step = max(1, (w + h) // 256)   # 大圖抽樣,小圖逐點
+    ring = [px[x, y] for x in range(0, w, step) for y in (0, h - 1)]
+    ring += [px[x, y] for y in range(0, h, step) for x in (0, w - 1)]
+    votes = Counter((p[0] // 16, p[1] // 16, p[2] // 16) for p in ring)
+    top = votes.most_common(1)[0][0]
+    hits = [p for p in ring if (p[0] // 16, p[1] // 16, p[2] // 16) == top]
+    return tuple(sum(p[i] for p in hits) // len(hits) for i in range(3))
 
 
 def _near(a, b, tol: int) -> bool:
@@ -90,6 +115,10 @@ def _edge_mask(small: Image.Image, tol: int) -> Image.Image:
 # 漫延只走「接近背景色」的像素,所以摳出來的那塊必然顏色均勻——拿均勻度當
 # 判準等於沒判。反過來看外框就很乾脆:平背景的立繪,外圈幾乎整圈都是背景
 # (全身站姿踩到下緣頂多吃掉兩成);模型畫了真實場景時,外圈只會零星命中。
+#
+# 這是**半身/全身**的門檻。大頭照要另外放寬:head 是 head and shoulders 的
+# 正方形構圖,肩膀本來就會佔滿整條下緣(一條邊 = 整圈的四分之一),拿 0.72
+# 去卡它等於「大頭照永遠去不了背」。呼叫端用 border_min 指定,見 PORTRAIT_SHOTS。
 BORDER_MIN = 0.72
 
 
@@ -113,13 +142,21 @@ def _coverage(mask: Image.Image) -> float:
     return sum(1 for v in data if v > 127) / max(1, len(data))
 
 
-def cut_background(path: Path, tol: int = TOLERANCE) -> tuple[bool, str]:
+def cut_background(
+    path: Path,
+    tol: int = TOLERANCE,
+    border_min: float = BORDER_MIN,
+    dilate: int = DILATE,
+) -> tuple[bool, str]:
     """就地把 path 這張圖去背(轉成 RGBA PNG)。回 (有沒有動它, 說明)。
 
     三道閘門,任一不過就原圖不動——寧可留著背景,也不要交出一張破圖:
       外框命中率低    模型畫了真實場景,不是我們要的平背景
       摳太少(<8%)   背景本來就不平,摳了只是留一圈殘影
       摳太多(>85%)  角色大概跟背景同色,再摳人就沒了
+
+    border_min 由呼叫端依構圖給:大頭照的肩膀會佔滿下緣,門檻得放寬,
+    不然「head 永遠去不了背」(見 comfy.PORTRAIT_SHOTS)。
     """
     if not AVAILABLE:
         return False, "沒裝 Pillow,跳過去背(pip install -r server/requirements.txt)"
@@ -129,23 +166,29 @@ def cut_background(path: Path, tol: int = TOLERANCE) -> tuple[bool, str]:
         return False, f"讀不到圖({type(e).__name__})"
 
     w, h = img.size
-    sw, sh = max(8, w // MASK_DIV), max(8, h // MASK_DIV)
+    # 縮到 1/MASK_DIV,但長邊不低於 MASK_MIN:256 的大頭照再除以 4 只剩 64,
+    # 一撮頭髮不到一個像素,摳出來的邊會像鋸子。
+    div = max(1, min(MASK_DIV, max(1, max(w, h) // MASK_MIN)))
+    sw, sh = max(8, w // div), max(8, h // div)
     small = img.resize((sw, sh), Image.BILINEAR)
     mask = _edge_mask(small, tol)
 
     border = _border_ratio(mask)
-    if border < BORDER_MIN:
-        return False, f"外框只有 {border:.0%} 是背景,不是平背景,保留原圖"
+    if border < border_min:
+        return False, f"外框只有 {border:.0%} 是背景(門檻 {border_min:.0%}),不是平背景,保留原圖"
     cov = _coverage(mask)
     if cov < 0.08:
         return False, f"背景不夠平,只能摳掉 {cov:.0%},保留原圖"
     if cov > 0.85:
         return False, f"會摳掉 {cov:.0%},角色大概跟背景同色,保留原圖"
 
+    # 背景區往角色多吃 dilate 圈,把反鋸齒留下的那道白邊一起帶走(見 DILATE)
+    if dilate > 0:
+        mask = mask.filter(ImageFilter.MaxFilter(2 * int(dilate) + 1))
     big = mask.resize((w, h), Image.BILINEAR).filter(ImageFilter.GaussianBlur(FEATHER))
     out = img.convert("RGBA")
     out.putalpha(Image.eval(big, lambda v: 255 - v))
     # optimize:立繪要透過 Tailscale 傳到手機,而且看板娘每次進分頁都要載。
     # 去背後大片透明區壓縮率很好,多花的編碼時間換得到明顯的檔案縮減。
     out.save(path, "PNG", optimize=True)
-    return True, f"去背完成(摳掉 {cov:.0%})"
+    return True, f"去背完成(摳掉 {cov:.0%},外框 {border:.0%})"

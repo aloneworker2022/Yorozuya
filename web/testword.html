@@ -362,6 +362,15 @@
     <span style="flex:0 1 7em"><label>縮到寬</label><input id="cf-ow" type="number" value="0" title="0 = 不縮。立繪填 192"></span>
     <span style="flex:0 1 7em"><label>縮到高</label><input id="cf-oh" type="number" value="0" title="0 = 不縮。立繪填 288"></span>
     <button type="button" class="cy" onclick="cfPortraitPreset()">立繪預設 192×288</button>
+    <label style="display:flex;gap:.3em;align-items:center;margin:0">
+      <input type="checkbox" id="cf-cut"> 生完去背(自動加平背景 tag)
+    </label>
+    <button type="button" class="cy" onclick="cfCutStatus()">🩹 去背狀態</button>
+  </div>
+  <div class="mini" id="cf-cut-note" style="margin-top:.35em">
+    去背 = 生完之後從四邊往內漫延,把連通到畫面外緣的平背景轉成透明(<code>server/cutout.py</code>)。
+    <b>要 Pillow</b>;三連拍三張都會自動去背,上面那個「整張」要勾了才做。
+    摳不乾淨時原圖不動——寧可留背景,也不要交出一張被啃過的破圖。
   </div>
 
   <div class="row" style="margin-top:.8em;gap:.5em">
@@ -1613,7 +1622,41 @@ function cfBaseBody() {
     steps: +document.getElementById("cf-steps").value || 30,
     cfg: +document.getElementById("cf-cfg").value || 5,
     seed: +document.getElementById("cf-seed").value || 0,
+    // 勾了才去背。伺服器會順手把平背景 tag 加進 prompt——沒有平背景可摳,
+    // 三道閘門一定擋下來(見 cutout.py)。三連拍不看這欄,照規格三張都去背。
+    cutout: document.getElementById("cf-cut").checked,
   };
+}
+
+// 去背能不能用 + 最近幾張的結果。「怎麼還是白底」最常見的答案是「沒裝 Pillow」,
+// 而那件事原本只印在伺服器 log 裡,手機上完全看不到。
+async function cfCutStatus() {
+  const el = document.getElementById("cf-cut-note");
+  el.innerHTML = "查詢中…";
+  try {
+    const j = await api("/api/cutout");
+    const head = j.available
+      ? `<b style="color:#8fffcf">去背可用</b>(容差 ${j.tolerance}、外框門檻 ${Math.round(j.border_min * 100)}%、邊緣多吃 ${j.dilate}px)`
+      : `<b style="color:#ff5f7a">${esc(j.hint)}</b>`;
+    const rows = (j.recent || []).slice(0, 8).map(r =>
+      `<div>${r.changed ? "✓" : "✕"} ${esc(r.name)} — ${esc(r.why)}${
+        r.changed ? "" : ` <button class="cy" style="font-size:.75em;padding:.1em .5em" type="button"
+          onclick="cfRecut('${esc(r.name)}',this)">再摳一次</button>`}</div>`).join("");
+    el.innerHTML = head + (rows ? `<div style="margin-top:.4em">${rows}</div>`
+                                : `<div style="margin-top:.4em">還沒有去背紀錄。</div>`);
+  } catch (e) { el.innerHTML = `<span style="color:#ff5f7a">查不到:${esc(e.message)}</span>`; }
+}
+
+// 對已經生好的圖重摳一次。調容差、或補裝 Pillow 之後不必重生(那要再燒一次 GPU)。
+async function cfRecut(name, btn) {
+  const dir = name.match(/_(head|half|full)\.png$/) ? "portraits" : "testword";
+  if (btn) { btn.disabled = true; btn.textContent = "摳…"; }
+  try {
+    const j = await api("/api/cutout", "POST", { url: `/assets/${dir}/${name}` });
+    status("cf-status", `${j.changed ? "✓" : "✕"} ${name}:${j.why}`, !j.changed);
+  } catch (e) { status("cf-status", "失敗:" + e.message, true); }
+  cfCutStatus();
+  igRefreshGallery();
 }
 
 async function cfPreview() {
@@ -1773,6 +1816,8 @@ window.cfCheck = cfCheck;
 window.cfPreview = cfPreview;
 window.cfRun = cfRun;
 window.cfPortraitPreset = cfPortraitPreset;
+window.cfCutStatus = cfCutStatus;
+window.cfRecut = cfRecut;
 cfLoadUrl();
 
 window.PB_buildSystemPrompt = buildSystemPrompt;   // 淫紋聊天測試器:與遊戲同一支

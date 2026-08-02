@@ -877,6 +877,73 @@ async def _run_grok_image(
     return "", f"生圖失敗:{msg}"
 
 
+# ---- 去背紀錄:摳不掉的原因要看得見 ----
+# 去背是生圖之後的背景步驟,失敗時只會靜靜留著白底——玩家看到的是「還是白的」,
+# 卻沒有任何地方講為什麼(沒裝 Pillow?模型畫了場景?角色跟背景同色?)。
+# 留最近幾筆給設定頁與 testword 讀,問題當場看得到,不必去翻伺服器 log。
+_CUT_LOG: list[dict] = []
+_CUT_LOG_MAX = 30
+
+
+def _note_cut(name: str, changed: bool, why: str) -> None:
+    _CUT_LOG.append({"name": name, "changed": bool(changed), "why": why, "t": time.time()})
+    del _CUT_LOG[:-_CUT_LOG_MAX]
+    print(f"[去背] {name}:{why}", flush=True)
+
+
+class CutIn(BaseModel):
+    """對已經生好的圖重摳一次。調容差、或先前沒裝 Pillow 補裝之後,
+    不必重生一張(那要再燒一次 GPU),直接對現有檔案再跑一遍。"""
+    url: str                                  # /assets/portraits/… 或 /assets/testword/…
+    tol: int = 0                              # 0 = cutout.TOLERANCE
+    border_min: float = 0                     # 0 = 依檔名猜構圖(head 放寬),猜不到用預設
+    dilate: int = -1                          # -1 = cutout.DILATE
+
+
+def _asset_path(url: str) -> Path | None:
+    """把 /assets/xxx/yyy.png 換成本機路徑。只認 portraits 與 testword 兩個目錄,
+    取 basename 擋路徑穿越。"""
+    u = (url or "").strip().split("?")[0].split("#")[0]
+    for prefix, base in (("/assets/portraits/", PORTRAIT_DIR), ("/assets/testword/", IMG_TEST_DIR)):
+        if u.startswith(prefix):
+            p = base / Path(u).name
+            return p if p.is_file() else None
+    return None
+
+
+@app.get("/api/cutout")
+def cutout_status():
+    """去背能不能用、最近幾張的結果。設定頁與 testword 都讀這支。"""
+    return {
+        "available": cutout.AVAILABLE,
+        "hint": "" if cutout.AVAILABLE else
+                "沒裝 Pillow,立繪不會去背(白底疊在遊戲畫面上)。"
+                "修法:pip install -r server/requirements.txt,然後重開伺服器。",
+        "tolerance": cutout.TOLERANCE,
+        "border_min": cutout.BORDER_MIN,
+        "dilate": cutout.DILATE,
+        "recent": list(reversed(_CUT_LOG)),
+    }
+
+
+@app.post("/api/cutout")
+async def cutout_run(body: CutIn):
+    """對已存在的圖重跑去背。回 {changed, why}。"""
+    p = _asset_path(body.url)
+    if p is None:
+        raise HTTPException(404, "找不到這張圖(只認 /assets/portraits/ 與 /assets/testword/)")
+    bmin = body.border_min or (
+        comfy.PORTRAIT_SHOTS.get(p.stem.rsplit("_", 1)[-1], {}).get("border_min")
+        or cutout.BORDER_MIN)
+    changed, why = await asyncio.to_thread(
+        cutout.cut_background, p,
+        int(body.tol) or cutout.TOLERANCE, float(bmin),
+        cutout.DILATE if body.dilate < 0 else int(body.dilate))
+    _note_cut(p.name, changed, why)
+    # 覆蓋了同一個檔名,URL 帶版本號瀏覽器才會重抓
+    return {"changed": changed, "why": why, "url": f"{body.url.split('?')[0]}?v={int(time.time())}"}
+
+
 # ---- ComfyUI 本機生圖(Windows 那台,與 Ollama 共用一張卡,換班見 comfy.lease)----
 
 
@@ -890,8 +957,9 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
     shot = str(opts.get("shot") or "").lower()
     return sdtags.build_prompt(
         ch,
-        # 要去背的那幾張,prompt 先要一塊平背景(見 cutout.py)
-        flat_bg=bool(comfy.PORTRAIT_SHOTS.get(shot, {}).get("cutout")),
+        # 要去背的那幾張,prompt 先要一塊平背景(見 cutout.py)。
+        # 三連拍照規格走;testword 那條由勾選決定。
+        flat_bg=bool(comfy.PORTRAIT_SHOTS.get(shot, {}).get("cutout")) or bool(opts.get("flat_bg")),
         part=part,
         framing=shot if shot in sdtags.FRAMING else str(opts.get("framing") or "half"),
         rating=str(opts.get("rating") or "sfw"),
@@ -945,7 +1013,9 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     if shot and not seed:
         seed = _identity_anchor(opts.get("character") or {})["seed"]
 
-    want_cut = bool(spec.get("cutout"))
+    # 三連拍照規格去背;testword 那條(沒有 shot)由前端的勾選決定,
+    # 想在測試台上看去背效果不必先跑一次召喚。
+    want_cut = bool(spec.get("cutout")) if shot else bool(opts.get("cutout"))
     # negative 依分級與是否去背現組:SFW 要擋裸體(動漫模型沒把衣服釘死就會自己脫),
     # 去背要擋場景(有場景就過不了外框判定,整張放棄去背)。
     negative = str(opts.get("negative") or "") or sdtags.negative_for(
@@ -971,9 +1041,10 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     # 立繪要疊在遊戲畫面上,背景得摳掉。摳不乾淨時 cut_background 會原圖不動
     # ——寧可留著背景,也不要交出一張被啃過的破圖。
     if want_cut:
-        changed, why = await asyncio.to_thread(cutout.cut_background, out_dir / fname)
-        if not changed:
-            print(f"[去背] {fname}:{why}", flush=True)
+        changed, why = await asyncio.to_thread(
+            cutout.cut_background, out_dir / fname,
+            cutout.TOLERANCE, float(spec.get("border_min") or cutout.BORDER_MIN))
+        _note_cut(fname, changed, why)
     # 三連拍會覆蓋同一個檔名,URL 帶版本號才不會被瀏覽器拿舊的
     ver = f"?v={int(time.time())}" if shot else ""
     return f"{url_dir}/{name}{ver}", None
@@ -1258,6 +1329,10 @@ class ImgGenIn(BaseModel):
     prompt: str = ""            # 使用者在 testword 改過的 prompt(留空=伺服器依人設自己組)
     # 指定這張圖穿哪一套。留空 = 由 character 決定(生涯服裝優先,見 _outfit_of)
     outfit: str = ""
+    # testword 用:生完就去背(三連拍不看這欄,照 PORTRAIT_SHOTS 的規格走)。
+    # 想去背通常也要 flat_bg——沒有平背景可摳,三道閘門一定擋下來。
+    cutout: bool = False
+    flat_bg: bool = False
     retry: bool = False
     # provider: "grok-img"(雲端 Grok Build)| "comfy"(Windows 本機 ComfyUI)
     provider: str = "grok-img"
@@ -1373,6 +1448,8 @@ def imggen_submit(t: ImgGenIn):
             "comfy_url": (t.comfy_url or "").strip(),
             "shot": (t.shot or "").strip().lower(),
             "char_id": (t.char_id or "").strip(),
+            "cutout": bool(t.cutout),
+            "flat_bg": bool(t.flat_bg or t.cutout),   # 要去背就一定要平背景
             "workflow": t.workflow if isinstance(t.workflow, dict) else None,
         })
     body = GenIn(
@@ -1723,7 +1800,9 @@ async def _world_clock():
 async def _start_gen_worker():
     if not cutout.AVAILABLE:
         print("[警告] 沒裝 Pillow —— 立繪不會去背(白底疊在遊戲畫面上)。"
-              "修法:pip install -r server/requirements.txt", flush=True)
+              "修法:pip install -r server/requirements.txt,然後重開伺服器。"
+              "(狀態也看得到:GET /api/cutout、設定頁按「測試 ComfyUI」、"
+              "/testword 的「🩹 去背狀態」)", flush=True)
     print("[世界時鐘] 啟動 — 伺服器權威 runtime 上線,每 30 秒跑檢查、每 10 分鐘印心跳", flush=True)
     asyncio.create_task(_gen_worker())
     asyncio.create_task(_world_clock())

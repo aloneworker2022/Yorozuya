@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK, WARDROBE_UNLOCK } from "./content
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.35(2026-08-02)臉分五軸各 18 項・特殊屬性壓過抽卡欄位・服裝改生涯+衣櫃兩維度";
+const APP_VER = "v5.36(2026-08-02)三張立繪都去背(含大頭照)・白框修掉・摳不掉時講得出原因";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1278,6 +1278,19 @@ function canWeaveNow() {
 // 最後一次生圖失敗的原因。生圖是背景工作,失敗沒有地方講就等於靜靜消失——
 // 留著給召喚卡與詳細頁顯示,不要讓人自己去猜。
 let lastWeaveError = "";
+// 最後一次去背的結果。同理:去背在伺服器上默默跳過時,手機看到的只是「還是白底」,
+// 沒有任何地方講原因(沒裝 Pillow?模型畫了場景?角色跟背景同色?)。
+let lastCutNote = "";
+
+// 織完一張就問一次去背結果。一次請求,只在真的沒摳成時才留字。
+async function pollCutNote() {
+  try {
+    const j = await fetch("/api/cutout").then(r => r.json());
+    if (!j.available) { lastCutNote = j.hint || "沒裝 Pillow,立繪不會去背"; return; }
+    const last = (j.recent || [])[0];
+    lastCutNote = last && !last.changed ? last.why : "";
+  } catch { /* 問不到就算了,不要因為診斷訊息拖累生圖流程 */ }
+}
 
 // ComfyUI 的 checkpoint 清單(按「測試 ComfyUI」時抓)。bad = 試過確定沒有
 // 文字編碼器的單件檔,在下拉裡標出來,免得又選到同一顆地雷。
@@ -1337,6 +1350,7 @@ async function weaveShot(s, shot, onTick) {
     lastWeaveError = String(e?.message || e);
   }
   if (timer) clearInterval(timer);
+  if (url && comfy) await pollCutNote();
   return url;
 }
 
@@ -3046,7 +3060,12 @@ function shotsLine(s) {
   const have = ["full", "half", "head"].filter(k => s.portraits?.[k]);
   const missing = ["full", "half", "head"].filter(k => !s.portraits?.[k]);
   const busy = portraitGenning.has(s.id);
-  if (!missing.length) return "";
+  // 去背跳過時的原因。立繪已經齊了但還是白底,唯一能講清楚的就是這一行。
+  const cutNote = lastCutNote
+    ? `<div class="aff-line small" style="color:var(--gold)">去背沒成功:${esc(lastCutNote)}
+       ${have.length ? `<button class="link-btn" id="act-recut">🩹 再摳一次</button>` : ""}</div>`
+    : "";
+  if (!missing.length) return cutNote;
   if (!canWeaveNow()) {
     return `<div class="aff-line dim small">${have.length ? "" : "尚未成形——"}今晚讓她織夢,明早見到她的臉(M3)</div>`;
   }
@@ -3055,9 +3074,37 @@ function shotsLine(s) {
     : "尚未成形——大頭照 / 半身 / 全身三張都還沒織";
   const why = !busy && lastWeaveError
     ? `<div class="aff-line small" style="color:var(--red)">上次失敗:${esc(lastWeaveError)}</div>` : "";
-  return `<div class="aff-line dim small">${what}</div>${why}
+  return `<div class="aff-line dim small">${what}</div>${why}${cutNote}
     <div class="detail-actions"><button class="cyan" id="act-weave" ${busy ? "disabled" : ""}>${
       busy ? "織出形體中…" : "✦ 織出她的形體"}</button></div>`;
+}
+
+// 對已經生好的立繪重摳一次。補裝 Pillow 之後、或摳失敗想再試一次時用——
+// 不必重生(那要再燒一次 GPU),伺服器直接對現有檔案再跑一遍去背。
+async function recutShots(s) {
+  const urls = ["full", "half", "head"].map(k => s.portraits?.[k]).filter(Boolean);
+  if (!urls.length) return;
+  toast("重新去背中……");
+  let ok = 0, last = "";
+  for (const u of urls) {
+    try {
+      const j = await fetch("/api/cutout", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: u }),
+      }).then(r => r.json());
+      last = j.why || "";
+      if (j.changed) {
+        // 檔名沒變、內容變了,URL 要帶新版本號才不會拿到瀏覽器快取那張舊的
+        const k = Object.keys(s.portraits).find(x => s.portraits[x] === u);
+        if (k && j.url) s.portraits[k] = j.url;
+        ok++;
+      }
+    } catch (e) { last = String(e?.message || e); }
+  }
+  if (ok) { dirty = true; saveNow(); }
+  lastCutNote = ok === urls.length ? "" : last;
+  toast(ok ? `摳掉 ${ok}/${urls.length} 張的背景` : `還是摳不掉:${last}`, ok ? "good" : "bad");
+  renderAll();
 }
 
 // 立繪:生圖好了顯示圖,還沒好退回 SVG 剪影
@@ -3914,6 +3961,7 @@ function renderDetail(s, root) {
   });
   root.querySelectorAll("[data-outfit]").forEach(b =>
     b.onclick = () => changeOutfit(s, +b.dataset.outfit));
+  root.querySelector("#act-recut")?.addEventListener("click", () => recutShots(s));
   root.querySelector("#act-dismiss")?.addEventListener("click", () => sacrificeSuccubus(s.id));
   root.querySelector("#act-date")?.addEventListener("click", () => {
     dateChooser = !dateChooser;
@@ -4170,8 +4218,12 @@ on("btn-comfy-test", "click", async () => {
     comfyBadCkpts = j.bad_checkpoints || [];
     comfyCkptOptions(state.settings.comfyCkpt || "");
     const v = j.vram && j.vram[0];
+    // 去背要 Pillow。沒裝的話圖照生,只是留著白底疊在遊戲畫面上——那是「怎麼還是
+    // 白底」最常見的原因,而且原本只印在伺服器 log 裡,手機上完全看不到。
+    const cut = await fetch("/api/cutout").then(x => x.json()).catch(() => null);
     r.textContent = `OK · ${comfyCkpts.length} 個模型`
-      + (v ? ` · ${v.name} ${Math.round(v.free_mb / 1024 * 10) / 10}/${Math.round(v.total_mb / 1024 * 10) / 10}GB 可用` : "");
+      + (v ? ` · ${v.name} ${Math.round(v.free_mb / 1024 * 10) / 10}/${Math.round(v.total_mb / 1024 * 10) / 10}GB 可用` : "")
+      + (cut ? (cut.available ? " · 去背可用" : " · ⚠ 沒裝 Pillow,立繪不會去背") : "");
   } catch (e) { r.textContent = "失敗:" + e.message; }
 });
 on("set-model", "change", e => { state.settings.model = e.target.value.trim(); scheduleSave(); });

@@ -807,6 +807,12 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 .detail-actions button.cyan { background: rgba(111, 227, 225, .15); color: var(--cyan); }
 .detail-actions button.gold { background: rgba(255, 215, 95, .15); color: var(--gold); }
 .detail-actions button:disabled { opacity: .35; cursor: default; }
+/* 行內小動作鈕(去背重試這類補救操作,不該長得像主要按鈕) */
+.link-btn {
+  background: none; border: none; color: var(--cyan); font: inherit; font-size: .95em;
+  text-decoration: underline; cursor: pointer; padding: 0 .3em;
+}
+
 /* 衣櫃:生涯服裝 + 個人喜好(依關係解鎖) */
 .wardrobe { display: flex; gap: .35em; flex-wrap: wrap; justify-content: center; margin: .3em auto .2em; max-width: 30em; }
 .outfit-chip {

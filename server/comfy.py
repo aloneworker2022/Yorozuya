@@ -54,7 +54,7 @@ DEFAULT_SCHEDULER = os.environ.get("COMFY_SCHEDULER", "normal")
 DEFAULT_CLIP_SKIP = int(os.environ.get("COMFY_CLIP_SKIP", "2"))
 
 # 召喚三連拍。每位妹子固定出這三張,遊戲各處各取所需:
-#   head → 名冊縮圖、聊天頭像(小方格,留背景比較好看,不去背)
+#   head → 名冊縮圖、聊天頭像
 #   half → 聊天立繪(文字冒險式,站在對話框上方)
 #   full → 看板娘背景板(接近整個螢幕)
 #
@@ -62,10 +62,17 @@ DEFAULT_CLIP_SKIP = int(os.environ.get("COMFY_CLIP_SKIP", "2"))
 # half / full **不縮圖**(out 留空):它們要撐滿手機畫面,縮到 192 寬再放大只會糊。
 # plan-v4 訂的 192×288 是像素 sprite 時代的規格,改用 SDXL 出圖後那個尺寸太小。
 # head 縮到 256 是因為它只顯示在 2em 見方的頭像框裡,留大圖純浪費。
+#
+# **三張都去背。** 早期版本讓 head 留著白底(想說小方格留背景比較好看),但遊戲
+# 底色是可換主題的深色/亮色,白方塊疊上去永遠不搭——頭像也得是透明的。
+#
+# border_min 是去背的外框閘門(見 cutout.BORDER_MIN),依構圖分開給:
+# head 是 head-and-shoulders 的正方形構圖,肩膀本來就佔滿整條下緣,而一條邊
+# 就是外圈的四分之一——沿用 0.72 等於「大頭照永遠去不了背」。
 PORTRAIT_SHOTS = {
-    "head": {"gen": (1024, 1024), "out": (256, 256), "cutout": False},
-    "half": {"gen": (832, 1216), "out": (0, 0), "cutout": True},
-    "full": {"gen": (832, 1216), "out": (0, 0), "cutout": True},
+    "head": {"gen": (1024, 1024), "out": (256, 256), "cutout": True, "border_min": 0.55},
+    "half": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
+    "full": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
 }
 
 # 不寫在 prompt 裡的通用排除項。分級由抽卡管,這裡只管畫面品質。
