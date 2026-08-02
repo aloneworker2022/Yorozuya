@@ -107,6 +107,14 @@ RP5 上的 `localhost` 指的是 **RP5 自己**,永遠不會是那張顯卡。�
 (`checkpoints` / `unets` / `text_encoders` / `vaes`),testword 也顯示——
 `text_encoders` 是空的就代表機器上根本沒有走三件式的料。
 
+**沒指定 checkpoint 時會自動避雷**:`models/checkpoints` 裡混著單件檔時,
+「取清單第一個」是一顆會重複踩的地雷。踩到一次就把那個檔記進黑名單
+(`/api/comfy/status` 的 `bad_checkpoints`),當場換下一個重試,之後不再挑它。
+**明確指定的照指定的跑**——使用者說了算,只是會失敗而已。
+
+遊戲 **設定 → 模型** 可以直接選(按「測試 ComfyUI」抓清單),載不動的會標
+「沒有文字編碼器,載不動」並停用。留空 = 自動挑第一個能用的。
+
 `POST /api/imggen` 帶 `provider: "comfy"` 就走這條(預設仍是 `grok-img`)。
 產物與 Grok 那條路存在同一個 `assets/testword/`、同一套命名,相簿不必分開處理。
 

@@ -929,6 +929,8 @@ async def comfy_status(url: str = ""):
         "url": base or comfy.comfy_url(),
         "checkpoints": models.get("checkpoints", []),
         "models": models,
+        # 試過確定載不動的(只含主模型、沒有 CLIP)——設定頁把它們標出來
+        "bad_checkpoints": comfy.bad_ckpts(),
         "vram": [
             {
                 "name": d.get("name"),

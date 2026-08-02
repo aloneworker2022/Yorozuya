@@ -370,6 +370,10 @@ function defaultState() {
       comfyUrl: "",
       // 生圖走哪條:"comfy"(本機顯卡,召喚出三連拍)或 "grok-img"(雲端,單張)
       imgProvider: "grok-img",
+      // ComfyUI 用哪個 checkpoint。留空 = 伺服器自動挑清單第一個能用的
+      // ——models/checkpoints 混著「只含主模型」的單件檔時,自動挑會踩雷,
+      // 所以這裡最好指定。測試 ComfyUI 會把清單抓回來填進下拉。
+      comfyCkpt: "",
       cardColors: null,   // null = 主題預設;{exec|found|acc|vn: {color,opacity}}
       cardCenter: false,  // 卡牌文字水平置中
       cardFontScale: 1,   // 卡牌文字大小倍率(0.7~1.6)
@@ -1275,6 +1279,27 @@ function canWeaveNow() {
 // 留著給召喚卡與詳細頁顯示,不要讓人自己去猜。
 let lastWeaveError = "";
 
+// ComfyUI 的 checkpoint 清單(按「測試 ComfyUI」時抓)。bad = 試過確定沒有
+// 文字編碼器的單件檔,在下拉裡標出來,免得又選到同一顆地雷。
+let comfyCkpts = [];
+let comfyBadCkpts = [];
+
+function comfyCkptOptions(selected) {
+  const sel = $("#set-comfy-ckpt");
+  if (!sel) return;
+  const opts = [`<option value="">(自動:清單第一個能用的)</option>`];
+  for (const c of comfyCkpts) {
+    const bad = comfyBadCkpts.includes(c);
+    opts.push(`<option value="${esc(c)}"${c === selected ? " selected" : ""}${bad ? " disabled" : ""}>${
+      esc(c)}${bad ? "(沒有文字編碼器,載不動)" : ""}</option>`);
+  }
+  // 存檔裡指定的那個還沒在清單裡(還沒按過測試)也要留著,不然一進設定就被清掉
+  if (selected && !comfyCkpts.includes(selected)) {
+    opts.push(`<option value="${esc(selected)}" selected>${esc(selected)}</option>`);
+  }
+  sel.innerHTML = opts.join("");
+}
+
 // 一張的下單→輪詢。shot 給值(head|half|full)= 三連拍其中一張,尺寸與 seed
 // 由伺服器依規格決定(三張同 seed 才是同一張臉)。回 URL 或 ""。
 async function weaveShot(s, shot, onTick) {
@@ -1288,7 +1313,8 @@ async function weaveShot(s, shot, onTick) {
     style: state.settings.imgStyle || "pixel",
     character: s,   // 完整人設(generateGirl 結果),生圖以此為準
     retry: true,
-    ...(comfy ? { shot, char_id: s.id, comfy_url: state.settings.comfyUrl || "" } : {}),
+    ...(comfy ? { shot, char_id: s.id, comfy_url: state.settings.comfyUrl || "",
+                ckpt: state.settings.comfyCkpt || "" } : {}),
   };
   const t0 = Date.now();
   const timer = onTick ? setInterval(() => onTick(Math.round((Date.now() - t0) / 1000)), 1000) : null;
@@ -3885,6 +3911,8 @@ function renderSettings() {
   $("#row-comfy-url").classList.toggle("hidden", imgProvider() !== "comfy");
   $("#row-comfy-note").classList.toggle("hidden", imgProvider() !== "comfy");
   $("#row-comfy-test").classList.toggle("hidden", imgProvider() !== "comfy");
+  $("#row-comfy-ckpt").classList.toggle("hidden", imgProvider() !== "comfy");
+  comfyCkptOptions(state.settings.comfyCkpt || "");
   $("#set-model").value = state.settings.model || "";
   $("#set-rating").value = state.settings.rating || "sfw";
   applyLlmProviderUi();
@@ -4045,6 +4073,7 @@ on("set-llm-provider", "change", e => {
 on("set-ollama", "change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });
 on("set-comfy", "change", e => { state.settings.comfyUrl = e.target.value.trim(); scheduleSave(); });
 on("set-imgprov", "change", e => { state.settings.imgProvider = e.target.value; scheduleSave(); renderSettings(); });
+on("set-comfy-ckpt", "change", e => { state.settings.comfyCkpt = e.target.value; scheduleSave(); });
 on("btn-comfy-test", "click", async () => {
   const r = $("#comfy-test-result");
   if (!r) return;
@@ -4059,8 +4088,11 @@ on("btn-comfy-test", "click", async () => {
         ? "——這是伺服器自己。請填顯卡主機的 IP。" : "(ComfyUI 沒開?防火牆?)");
       return;
     }
+    comfyCkpts = j.checkpoints || [];
+    comfyBadCkpts = j.bad_checkpoints || [];
+    comfyCkptOptions(state.settings.comfyCkpt || "");
     const v = j.vram && j.vram[0];
-    r.textContent = `OK · ${(j.checkpoints || []).length} 個模型`
+    r.textContent = `OK · ${comfyCkpts.length} 個模型`
       + (v ? ` · ${v.name} ${Math.round(v.free_mb / 1024 * 10) / 10}/${Math.round(v.total_mb / 1024 * 10) / 10}GB 可用` : "");
   } catch (e) { r.textContent = "失敗:" + e.message; }
 });

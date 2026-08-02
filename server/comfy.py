@@ -225,22 +225,41 @@ async def model_lists(base: str = "") -> dict[str, list[str]]:
     return dict(zip(names, got))
 
 
-async def resolve_ckpt(want: str = "", base: str = "") -> tuple[str, str | None]:
+# 試過、確定這份 workflow 載不動的 checkpoint(只含主模型的單件檔)。
+# models/checkpoints 裡混著這種檔時,「取清單第一個」就是一顆地雷——踩到一次
+# 就記起來,之後自動跳過,不要每次召喚都拿同一個壞檔去撞。
+_BAD_CKPTS: set[str] = set()
+
+
+def bad_ckpts() -> list[str]:
+    return sorted(_BAD_CKPTS)
+
+
+async def resolve_ckpt(want: str = "", base: str = "") -> tuple[str, str | None, bool]:
     """把使用者給的 checkpoint 名對到實際存在的檔名。
-    給空的 → 用 COMFY_CKPT,再空 → 取 ComfyUI 清單第一個。"""
+    回 (檔名, 錯誤, 是否為自動挑的)。自動挑的才允許失敗後換下一個試。
+
+    指定了就照指定的(即使在黑名單裡)——使用者說了算,只是會失敗而已。
+    沒指定 → COMFY_CKPT → 清單裡第一個「沒被標壞」的。"""
     avail = await checkpoints(base)
     if not avail:
-        return "", "ComfyUI 連不上,或 models/checkpoints 是空的"
+        return "", "ComfyUI 連不上,或 models/checkpoints 是空的", False
     for cand in (want.strip(), COMFY_CKPT):
         if not cand:
             continue
         if cand in avail:
-            return cand, None
+            return cand, None, False
         # 只給了不含副檔名/資料夾的片段也接受
         hit = [a for a in avail if cand.lower() in a.lower()]
         if hit:
-            return hit[0], None
-    return avail[0], None
+            return hit[0], None, False
+    usable = [a for a in avail if a not in _BAD_CKPTS]
+    if not usable:
+        return "", (
+            "models/checkpoints 裡每一個都試過了,沒有一個含文字編碼器(CLIP)。"
+            "請放一個 SDXL/Illustrious 的完整 checkpoint,或在設定頁指定要用哪個。"
+        ), False
+    return usable[0], None, True
 
 
 # ------------------------------------------------------- workflow builder
@@ -384,6 +403,9 @@ _MISSING_ENCODER_SIGNS = (
     "'nonetype' object has no attribute 'clone'",
     "no clip/text encoder weights",
 )
+# 錯誤訊息開頭的暗號:呼叫端靠它判斷「這個 checkpoint 該進黑名單、換下一個試」,
+# 而不是拿整串中文去做字串比對
+MISSING_ENCODER_TAG = "[no-clip]"
 
 
 def _explain_error(status: dict) -> str:
@@ -395,7 +417,7 @@ def _explain_error(status: dict) -> str:
             if any(s in low for s in _MISSING_ENCODER_SIGNS) or node in (
                 "CLIPTextEncode", "CLIPSetLastLayer"
             ):
-                return (
+                return MISSING_ENCODER_TAG + (
                     "這個 checkpoint 裡沒有文字編碼器(CLIP),CheckpointLoaderSimple 載不起來。"
                     "常見於 Anima / Cosmos、Flux、Qwen-Image 這類「只含主模型」的單件檔——"
                     "它們要 UNETLoader + CLIPLoader + VAELoader 三件式,text_encoder 與 VAE "
@@ -442,46 +464,64 @@ async def generate(
     note_comfy_url(base)
     base = base or comfy_url()
     async with lease("comfy"):
-        if workflow is None:
-            ckpt, err = await resolve_ckpt(ckpt, base)
-            if err:
-                return "", err
-            # seed 沒給就隨機:同一份 prompt 重按會出不同的臉,不會每次都同一張
-            if int(seed) <= 0:
-                seed = random.randrange(1, 2**31 - 1)
-            workflow = build_workflow(
-                ckpt=ckpt, positive=positive, negative=negative or DEFAULT_NEGATIVE,
-                width=width, height=height,
-                out_width=out_width, out_height=out_height,
-                steps=steps, cfg=cfg, seed=seed,
-                sampler=sampler, scheduler=scheduler, clip_skip=clip_skip,
-                filename_prefix="yorozuya/" + save_to.stem,
-            )
-        deadline = time.time() + COMFY_TIMEOUT
-        client_id = f"yorozuya-{int(time.time() * 1000)}"
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(60, connect=5)) as c:
-                pid, err = await _submit(c, base, workflow, client_id)
+        # 自動挑的 checkpoint 撞到「沒有 CLIP」就把它記進黑名單,換下一個再試。
+        # models/checkpoints 裡混著單件檔時,「取清單第一個」是一顆會重複踩的地雷。
+        for _ in range(len(await checkpoints(base)) or 1):
+            wf, err = workflow, None
+            picked, auto = "", False
+            if wf is None:
+                picked, err, auto = await resolve_ckpt(ckpt, base)
                 if err:
                     return "", err
-                hist, err = await _wait_history(c, base, pid, deadline)
-                if err:
-                    return "", err
-                imgs = _images_of(hist)
-                if not imgs:
-                    return "", "ComfyUI 跑完了但沒有輸出圖片(工作流缺 SaveImage?)"
-                img = imgs[-1]
-                r = await c.get(
-                    f"{base}/view",
-                    params={
-                        "filename": img["filename"],
-                        "subfolder": img.get("subfolder", ""),
-                        "type": "output",
-                    },
+                # seed 沒給就隨機:同一份 prompt 重按會出不同的臉,不會每次都同一張
+                if int(seed) <= 0:
+                    seed = random.randrange(1, 2**31 - 1)
+                wf = build_workflow(
+                    ckpt=picked, positive=positive, negative=negative or DEFAULT_NEGATIVE,
+                    width=width, height=height,
+                    out_width=out_width, out_height=out_height,
+                    steps=steps, cfg=cfg, seed=seed,
+                    sampler=sampler, scheduler=scheduler, clip_skip=clip_skip,
+                    filename_prefix="yorozuya/" + save_to.stem,
                 )
-                r.raise_for_status()
-                save_to.parent.mkdir(parents=True, exist_ok=True)
-                save_to.write_bytes(r.content)
-        except httpx.HTTPError as e:
-            return "", f"ComfyUI 連線失敗({type(e).__name__}):{base}"
-    return save_to.name, None
+            err = await _one_run(base, wf, save_to)
+            if err and auto and err.startswith(MISSING_ENCODER_TAG):
+                _BAD_CKPTS.add(picked)
+                print(f"[ComfyUI] {picked} 沒有文字編碼器,列入黑名單,換下一個", flush=True)
+                continue
+            if err:
+                return "", err.replace(MISSING_ENCODER_TAG, "")
+            return save_to.name, None
+    return "", "沒有可用的 checkpoint"
+
+
+async def _one_run(base: str, wf: dict, save_to: Path) -> str | None:
+    """送一份 workflow、等它跑完、把圖收下來。回錯誤字串或 None。"""
+    deadline = time.time() + COMFY_TIMEOUT
+    client_id = f"yorozuya-{int(time.time() * 1000)}"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60, connect=5)) as c:
+            pid, err = await _submit(c, base, wf, client_id)
+            if err:
+                return err
+            hist, err = await _wait_history(c, base, pid, deadline)
+            if err:
+                return err
+            imgs = _images_of(hist)
+            if not imgs:
+                return "ComfyUI 跑完了但沒有輸出圖片(工作流缺 SaveImage?)"
+            img = imgs[-1]
+            r = await c.get(
+                f"{base}/view",
+                params={
+                    "filename": img["filename"],
+                    "subfolder": img.get("subfolder", ""),
+                    "type": "output",
+                },
+            )
+            r.raise_for_status()
+            save_to.parent.mkdir(parents=True, exist_ok=True)
+            save_to.write_bytes(r.content)
+    except httpx.HTTPError as e:
+        return f"ComfyUI 連線失敗({type(e).__name__}):{base}"
+    return None
