@@ -178,15 +178,41 @@ async def system_stats(base: str = "") -> dict | None:
         return None
 
 
-async def checkpoints(base: str = "") -> list[str]:
-    """問 ComfyUI 現在有哪些 checkpoint —— 不在 RP5 這邊寫死清單。"""
+# 各 loader 節點與它列檔案的欄位。問 ComfyUI「你有哪些檔」,RP5 不寫死清單。
+_LOADER_FIELDS = {
+    "checkpoints": ("CheckpointLoaderSimple", "ckpt_name"),
+    "unets": ("UNETLoader", "unet_name"),
+    "text_encoders": ("CLIPLoader", "clip_name"),
+    "vaes": ("VAELoader", "vae_name"),
+}
+
+
+async def _loader_options(node: str, field: str, base: str = "") -> list[str]:
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            info = (await c.get(f"{base or comfy_url()}/object_info/CheckpointLoaderSimple")).json()
-        opts = info["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
-        return [str(x) for x in opts]
+            info = (await c.get(f"{base or comfy_url()}/object_info/{node}")).json()
+        return [str(x) for x in info[node]["input"]["required"][field][0]]
     except Exception:  # noqa: BLE001
         return []
+
+
+async def checkpoints(base: str = "") -> list[str]:
+    """問 ComfyUI 現在有哪些 checkpoint —— 不在 RP5 這邊寫死清單。"""
+    return await _loader_options("CheckpointLoaderSimple", "ckpt_name", base)
+
+
+async def model_lists(base: str = "") -> dict[str, list[str]]:
+    """一次問完四種 loader 的檔案清單。
+
+    判斷手上的模型是「單件式」還是「三件式」要看這個:checkpoints 有但生圖時
+    噴 CLIP is None,就代表那個檔其實是只含主模型的單件檔(Anima/Cosmos、Flux…),
+    要配 text_encoders 與 vaes 裡的檔案走三件式才載得動。
+    """
+    names = list(_LOADER_FIELDS)
+    got = await asyncio.gather(*(
+        _loader_options(node, field, base) for node, field in _LOADER_FIELDS.values()
+    ))
+    return dict(zip(names, got))
 
 
 async def resolve_ckpt(want: str = "", base: str = "") -> tuple[str, str | None]:
@@ -339,11 +365,33 @@ async def _wait_history(client: httpx.AsyncClient, base: str, pid: str, deadline
     return {}, f"ComfyUI 逾時({COMFY_TIMEOUT:.0f}s 沒收到圖)"
 
 
+# 「checkpoint 裡沒有文字編碼器/VAE」在 ComfyUI 只會噴 'NoneType' has no attribute
+# 'clone' 這種看不出所以然的東西。這類檔案(Anima/Cosmos、Flux、Qwen-Image…)是
+# 只含主模型的單件檔,要 UNETLoader + CLIPLoader + VAELoader 三件式才載得起來,
+# CheckpointLoaderSimple 拿到的 CLIP 就是 None。翻成人話,不要讓人去讀 traceback。
+_MISSING_ENCODER_SIGNS = (
+    "clip input is invalid",
+    "'nonetype' object has no attribute 'clone'",
+    "no clip/text encoder weights",
+)
+
+
 def _explain_error(status: dict) -> str:
     for kind, payload in status.get("messages") or []:
         if kind == "execution_error" and isinstance(payload, dict):
             node = payload.get("node_type") or payload.get("node_id")
-            return f"{node}: {payload.get('exception_message') or payload.get('exception_type')}"[:600]
+            msg = str(payload.get("exception_message") or payload.get("exception_type") or "")
+            low = msg.lower()
+            if any(s in low for s in _MISSING_ENCODER_SIGNS) or node in (
+                "CLIPTextEncode", "CLIPSetLastLayer"
+            ):
+                return (
+                    "這個 checkpoint 裡沒有文字編碼器(CLIP),CheckpointLoaderSimple 載不起來。"
+                    "常見於 Anima / Cosmos、Flux、Qwen-Image 這類「只含主模型」的單件檔——"
+                    "它們要 UNETLoader + CLIPLoader + VAELoader 三件式,text_encoder 與 VAE "
+                    f"要另外下載放進 models/。請改用內含 CLIP 的 SDXL/Illustrious checkpoint。(原文:{msg[:200]})"
+                )
+            return f"{node}: {msg}"[:600]
     return "ComfyUI 執行失敗"
 
 

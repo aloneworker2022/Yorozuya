@@ -347,6 +347,7 @@
     填 Windows 的 Tailscale IP 或區網 IP。填好按檢查,連得上就會存進存檔設定。
   </div>
   <div class="row" style="margin-top:.4em"><span class="status" id="cf-conn">尚未檢查</span></div>
+  <div id="cf-models" class="mini" style="margin-top:.25em"></div>
   <div class="row" style="gap:.5em;margin-top:.6em">
     <span style="flex:2 1 14em"><label>checkpoint</label>
       <select id="cf-ckpt"><option value="">(按檢查後載入)</option></select>
@@ -1513,6 +1514,13 @@ async function cfCheck() {
     const sel = document.getElementById("cf-ckpt");
     sel.innerHTML = (j.checkpoints || []).map(c => `<option value="${c}">${c}</option>`).join("")
       || `<option value="">(models/checkpoints 是空的)</option>`;
+    const m = j.models || {};
+    document.getElementById("cf-models").innerHTML =
+      `checkpoints ${(m.checkpoints || []).length} · unet ${(m.unets || []).length}`
+      + ` · text_encoder ${(m.text_encoders || []).length} · vae ${(m.vaes || []).length}`
+      + ((m.text_encoders || []).length === 0
+          ? `　<span style="color:#ffb347">models/text_encoders 是空的——只含主模型的單件檔(Anima/Cosmos、Flux)在這裡會載不動</span>`
+          : "");
     const v = j.vram?.[0];
     const who = j.gpu?.holder ? ({ llm: "Ollama", comfy: "ComfyUI" })[j.gpu.holder] : "沒人";
     el.textContent = `✓ ${j.url}`

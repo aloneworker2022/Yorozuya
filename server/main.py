@@ -895,10 +895,14 @@ async def comfy_status(url: str = ""):
     if base and stats is not None:
         comfy.note_comfy_url(base)   # 連得上才記,免得打錯字把好位址蓋掉
     devices = (stats or {}).get("devices") or []
+    # 四種 loader 的清單都回:checkpoints 有東西卻生不出圖時,要靠 text_encoders /
+    # vaes 有沒有料才判斷得出那個檔是不是「只含主模型」的單件檔
+    models = await comfy.model_lists(base) if stats else {}
     return {
         "ok": stats is not None,
         "url": base or comfy.comfy_url(),
-        "checkpoints": await comfy.checkpoints(base) if stats else [],
+        "checkpoints": models.get("checkpoints", []),
+        "models": models,
         "vram": [
             {
                 "name": d.get("name"),

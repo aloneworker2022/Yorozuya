@@ -94,10 +94,18 @@ RP5 上的 `localhost` 指的是 **RP5 自己**,永遠不會是那張顯卡。�
 | `COMFY_SAMPLER` / `COMFY_SCHEDULER` | `euler_ancestral` / `normal` | |
 | `COMFY_CLIP_SKIP` | `2` | Illustrious 系建議值;1 = 不跳 |
 
-預設值對著 **Illustrious / SDXL 系**(animij v3 那條線)。注意 animij 有兩條血統:
-v3 及更早是 Illustrious,吃 `CheckpointLoaderSimple`;**v10 換成 Anima(NVIDIA Cosmos)
-底,要另外掛 `qwen_image_vae` + `anima_baseV10_txt`,現在這份 workflow 載不動它**。
-`/api/comfy/status` 回的 checkpoint 檔名可以判斷你手上是哪一條。
+預設值對著 **Illustrious / SDXL 系**。這份 workflow 用 `CheckpointLoaderSimple`,
+所以只吃**內含 CLIP 與 VAE 的單一 checkpoint**。
+
+**只含主模型的單件檔載不動**(Anima / Cosmos、Flux、Qwen-Image 這類):
+`CheckpointLoaderSimple` 回傳的 CLIP 是 `None`,ComfyUI 只會噴
+`'NoneType' object has no attribute 'clone'`——完全看不出病灶。所以錯誤有翻譯過,
+會直接講「這個 checkpoint 裡沒有文字編碼器」並說明要三件式
+(`UNETLoader` + `CLIPLoader` + `VAELoader`)。
+
+`/api/comfy/status` 的 `models` 一次回四種 loader 的清單
+(`checkpoints` / `unets` / `text_encoders` / `vaes`),testword 也顯示——
+`text_encoders` 是空的就代表機器上根本沒有走三件式的料。
 
 `POST /api/imggen` 帶 `provider: "comfy"` 就走這條(預設仍是 `grok-img`)。
 產物與 Grok 那條路存在同一個 `assets/testword/`、同一套命名,相簿不必分開處理。
