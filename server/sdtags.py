@@ -405,12 +405,25 @@ ART_STYLE = {
     "pixel": "pixel art",
 }
 
-# Illustrious / SDXL 系的品質前綴。放最前面權重最高。
-QUALITY_PREFIX = "masterpiece, best quality, amazing quality, very aesthetic"
+# 品質前綴。放最前面權重最高。
+#
+# 兩種底的建議前綴不一樣,這裡取聯集——跟 negative 的 score_1/2/3 同一個做法,
+# 讓兩種底各自吃到自己認得的那幾個,認不得的就是個無害的未知 token:
+#
+#   Illustrious   masterpiece, best quality, amazing quality, very aesthetic
+#   Anima         masterpiece, best quality, score_7, safe
+#
+# (兩家的作者其實都說 fine-tune 過的版本不太需要品質 tag——animij 頁面寫
+#  「special care was taken so you don't need any quality tags」。留著是為了
+#  萬一換成沒調過的底模,不是因為非有不可。)
+QUALITY_PREFIX = "masterpiece, best quality, score_7, amazing quality, very aesthetic"
 
-# 分級 tag。Illustrious 認 general/sensitive/nsfw 這組。
-# (跟 Grok 那條路不同:那邊寫分級字眼會被擋,SD 沒有這個問題,寫了反而更準)
-RATING = {"sfw": "general", "nsfw": "nsfw"}
+# 分級 tag。**兩家用的字不一樣**,這是之前的一個實質錯誤:
+#   Illustrious   general / sensitive / questionable / explicit
+#   Anima         safe    / sensitive / nsfw          / explicit
+# 只寫 `general` 的話,Anima 底的 checkpoint 根本不認得,SFW 這個訊號整個丟失。
+# 兩個都寫,誰認得誰吃。nsfw 兩邊都認,不用動。
+RATING = {"sfw": "general, safe", "nsfw": "nsfw"}
 
 # ---- negative ----
 #

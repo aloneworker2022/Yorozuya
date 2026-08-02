@@ -90,8 +90,8 @@ RP5 上的 `localhost` 指的是 **RP5 自己**,永遠不會是那張顯卡。�
 | `COMFY_TIMEOUT` | `300` | 一張圖從送出到收檔的上限(含換班重載) |
 | `COMFY_CKPT` | (空) | 預設 checkpoint;留空 = 取 ComfyUI 清單第一個 |
 | `COMFY_WIDTH` / `COMFY_HEIGHT` | `832` / `1216` | 算圖尺寸(Illustrious / SDXL 直式) |
-| `COMFY_STEPS` / `COMFY_CFG` | `30` / `5.0` | |
-| `COMFY_SAMPLER` / `COMFY_SCHEDULER` | `euler_ancestral` / `normal` | |
+| `COMFY_STEPS` / `COMFY_CFG` | `30` / `5.0` | animij 建議 24~28 步 / CFG 5.0~6.5,Anima 建議 30~50 步 / CFG 4~5 |
+| `COMFY_SAMPLER` / `COMFY_SCHEDULER` | `euler_ancestral` / `normal` | = Euler a,animij 建議的其中一個(另有 UniPC / DPM++ 2M Karras) |
 | `COMFY_CLIP_SKIP` | `2` | Illustrious 系建議值;1 = 不跳 |
 
 預設值對著 **Illustrious / SDXL 系**。這份 workflow 用 `CheckpointLoaderSimple`,
@@ -207,6 +207,30 @@ Grok 那條路餵中文敘述,因為對面是會讀句子的 agent。**SD 不是
 `/edit_person` 可改),prompt 寫成 `29 years old, mature female, adult face`。
 舊存檔沒這欄的,由人設雜湊補一個固定值(同一個人不會每次變)。
 `child / loli / underage / baby face` 一律進 negative。
+
+### 品質前綴與分級 tag:兩種底取聯集
+
+animij 有兩條血統,兩邊建議的字**不一樣**:
+
+| | 品質前綴 | 分級 tag |
+|---|---|---|
+| Illustrious(v3 及更早) | `masterpiece, best quality, amazing quality, very aesthetic` | `general / sensitive / questionable / explicit` |
+| [Anima](https://huggingface.co/circlestone-labs/Anima)(v10 的底) | `masterpiece, best quality, score_7, safe` | `safe / sensitive / nsfw / explicit` |
+
+取聯集,讓兩種底各自吃到自己認得的那幾個,認不得的就是個無害的未知 token
+(跟 negative 的 `score_1/2/3` 同一個做法):
+
+```
+QUALITY_PREFIX = "masterpiece, best quality, score_7, amazing quality, very aesthetic"
+RATING = {"sfw": "general, safe", "nsfw": "nsfw"}
+```
+
+分級那組原本只寫 `general`,那是一個**實質錯誤**:Anima 底的 checkpoint 根本不認得
+這個字,SFW 這個訊號整個丟失。兩個都寫就沒這問題。`nsfw` 兩邊都認,不用動。
+
+(兩家作者其實都說 fine-tune 過的版本不太需要品質 tag——animij 頁面寫
+「special care was taken so you don't need any quality tags」。留著是為了萬一換成
+沒調過的底模,不是因為非有不可。)
 
 ### negative:只擋畫崩,不擋內容
 

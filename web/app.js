@@ -8,7 +8,7 @@ import { loadPools, generateGirl, WARDROBE_UNLOCK } from "./content/girl_gen.js"
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.39(2026-08-02)negative 只擋畫崩不擋內容:50 個 tag 砍到 31 個";
+const APP_VER = "v5.40(2026-08-02)品質前綴與分級 tag 改取兩種底的聯集(SFW 補上 safe)";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
