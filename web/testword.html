@@ -339,7 +339,7 @@
   </div>
   <div class="row" style="gap:.5em;align-items:flex-end">
     <span style="flex:2 1 16em"><label>ComfyUI 端點(Windows 那台,不是 RP5)</label>
-      <input id="cf-url" placeholder="http://&lt;Windows 的 IP&gt;:8188"></span>
+      <input id="cf-url" placeholder="http://192.168.68.55:8188"></span>
     <button class="cy" type="button" onclick="cfCheck()">🔌 檢查 ComfyUI</button>
   </div>
   <div class="mini" style="margin-top:.35em">
@@ -799,8 +799,10 @@ function igFormatSheet(c) {
   const libTxt = lib ? (typeof lib === "string" ? lib : `${lib.name || ""}${lib.desc ? " — " + lib.desc : ""}`) : "";
   const lines = [
     `【${c.rarity || "?"}】${c.name || "?"} · 原型 ${c.archetype || (c.personality || []).join("、") || "?"}`,
-    L.age || L.height_cm || L.build || L.hair ? `外貌: ${[L.age && L.age + " 歲", L.height_cm && L.height_cm + "cm", L.build, L.bust, L.hair, L.eyes, L.style && ("穿搭" + L.style), L.feature].filter(Boolean).join("、")}` : null,
-    st ? `特殊: ${st}` : null,
+    L.age || L.height_cm || L.build || L.hair ? `外貌: ${[L.age && L.age + " 歲", L.height_cm && L.height_cm + "cm", L.build, L.bust, L.feature].filter(Boolean).join("、")}` : null,
+    L.face || L.eyes || L.mouth || L.hair ? `臉: ${[L.face, L.eyes, L.mouth, [L.hair_color, L.hair].filter(Boolean).join("")].filter(Boolean).join(" / ")}` : null,
+    L.career_outfit || L.style ? `服裝: 生涯「${L.career_outfit || "(舊存檔無)"}」→ 預設穿這身;衣櫃 ${(L.wardrobe || [L.style]).filter(Boolean).join("、")}` : null,
+    st ? `特殊: ${st}(與上面衝突時以特殊為準)` : null,
     c.job ? `職業: ${c.job}${c.jobDesc ? "（" + c.jobDesc + "）" : ""}` : null,
     c.backstory ? `來歷: ${c.backstory}` : null,
     c.tone ? `語氣: ${c.tone}` : null,

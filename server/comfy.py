@@ -30,7 +30,9 @@ import httpx
 
 # 預設值,只是「還沒有人告訴我位址」時的退路。RP5 與 GPU 主機通常不是同一台,
 # 所以真正的位址由前端設定帶進來(跟 ollamaUrl 同一套做法),見 note_comfy_url。
-COMFY_URL = os.environ.get("COMFY_URL", "http://localhost:8188").rstrip("/")
+# 退路寫顯卡那台的區網 IP 而不是 localhost:localhost 在 RP5 上指的是 RP5 自己,
+# 那台沒有顯卡,拿它當退路等於「沒填就一定失敗」。
+COMFY_URL = os.environ.get("COMFY_URL", "http://192.168.68.55:8188").rstrip("/")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 # 一張圖從送出到收檔的上限。含換班重載 checkpoint 的時間。
 COMFY_TIMEOUT = float(os.environ.get("COMFY_TIMEOUT", "300"))

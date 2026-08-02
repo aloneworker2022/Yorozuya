@@ -807,6 +807,15 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 .detail-actions button.cyan { background: rgba(111, 227, 225, .15); color: var(--cyan); }
 .detail-actions button.gold { background: rgba(255, 215, 95, .15); color: var(--gold); }
 .detail-actions button:disabled { opacity: .35; cursor: default; }
+/* 衣櫃:生涯服裝 + 個人喜好(依關係解鎖) */
+.wardrobe { display: flex; gap: .35em; flex-wrap: wrap; justify-content: center; margin: .3em auto .2em; max-width: 30em; }
+.outfit-chip {
+  background: rgba(111, 227, 225, .12); border: 1px solid transparent; color: var(--cyan);
+  font: inherit; font-size: .75em; padding: .3em .7em; cursor: pointer;
+}
+.outfit-chip.on { border-color: var(--gold); color: var(--gold); background: rgba(255, 215, 95, .15); }
+.outfit-chip:disabled { opacity: .35; cursor: default; }
+
 .say-bubble {
   max-width: 90%; margin: .8em auto 0; padding: .6em .9em;
   background: rgba(0, 0, 0, .35); font-size: .85em; text-align: center;

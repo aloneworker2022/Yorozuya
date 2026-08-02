@@ -89,9 +89,12 @@ const SCHEMA = {
     ["libido", "libido", "性慾傾向"],
     ["appearance.build", "graded", "體型(含評級)"],
     ["appearance.bust", "graded", "罩杯(含評級)"],
+    ["appearance.face", "lines", "臉型"],
     ["appearance.eyes", "graded", "眼睛(含評級)"],
-    ["appearance.hair", "lines", "髮型"],
-    ["appearance.style", "lines", "穿搭風格"],
+    ["appearance.mouth", "lines", "嘴巴"],
+    ["appearance.hair", "lines", "髮型(只講形狀,顏色在下一欄)"],
+    ["appearance.hair_color", "lines", "髮色"],
+    ["appearance.style", "lines", "穿搭風格(個人喜好衣櫃:朋友解 1 套、女友 3 套、妻子 6 套)"],
     ["appearance.feature", "lines", "小特徵"],
     ["special_traits", "traits", "特殊屬性(抽卡 1~3 個;⚪普通 🔵稀有 🟣史詩 🌟傳說)"],
   ],
@@ -147,6 +150,8 @@ function renderSec(type, data, path) {
           <label class="nsfw-tag" style="display:flex;gap:.2em;align-items:center;margin:0">18+<input type="checkbox" data-f="nsfw" ${x.nsfw?"checked":""}></label>
           <button class="del" onclick="delItem(this)">✕</button></div>
         <label>人生描述(組進 backstory)</label><input value="${esc(x.life)}" data-f="life">
+        <label>生涯服裝(她平常穿這身;立繪預設就畫這套,對照表在 server/sdtags.py 的 CAREER_OUTFIT)</label>
+        <input value="${esc(x.outfit||"")}" data-f="outfit" placeholder="例:水手服制服">
         <label>職業澄清(給 AI,可空)</label><input value="${esc(x.desc||"")}" data-f="desc">
         <label>四時段作息(早/午/下午/晚;留空用通用)</label>
         <div class="row">${[0,1,2,3].map(j=>`<input value="${esc((x.sch||[])[j]||"")}" data-f="sch${j}" style="flex:1;min-width:9em">`).join("")}</div>
@@ -215,6 +220,7 @@ function collect() {
         else if (type === "occupations") {
           if (val("name")) {
             o = { name: val("name"), grade: val("grade"), life: val("life") || "" };
+            if (val("outfit")) o.outfit = val("outfit");
             if (val("desc")) o.desc = val("desc");
             const sch = [0,1,2,3].map(j=>val("sch"+j)).filter(Boolean);
             if (sch.length === 4) o.sch = sch;
@@ -253,7 +259,7 @@ function addItem(btn, type) {
   const arr = getPath(G, path) || [];
   const blank = { graded: {text:"",grade:"N"}, flagged: {text:""},
     traits: {name:"",rarity:"普通",cat:""},
-    occupations: {name:"",grade:"R",life:""},
+    occupations: {name:"",grade:"R",life:"",outfit:""},
     archetypes: {name:"",tone:"",catchphrases:[],reactions:{},proactivity:50,shyness:50,jealousy:50,loyalty:60,hobby_vibes:[]},
     libido: {name:"",grade:"R",shyness_delta:0,desc:""},
     chronotypes: {name:"",desc:"",wake_react:""} }[type];

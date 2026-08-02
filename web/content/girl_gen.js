@@ -37,6 +37,12 @@ function pickN(arr, n) {
   return a.slice(0, Math.min(n, a.length));
 }
 
+// 個人喜好衣櫃的總套數。一次抽滿(她的品味是天生的,不是升級長出來的),
+// 但玩家看得到幾套要看關係:WARDROBE_UNLOCK。
+export const WARDROBE_SIZE = 6;
+// 關係階段 → 解鎖幾套。陌生時你只見過她工作時的樣子。
+export const WARDROBE_UNLOCK = { stranger: 0, friend: 1, girlfriend: 3, wife: 6 };
+
 function weightedPick(items, weights) {
   let sum = weights.reduce((a, b) => a + b, 0);
   let r = Math.random() * sum;
@@ -123,11 +129,22 @@ export function generateGirl({ luck = 0, rating = "sfw", usedNames = [] } = {}) 
   // 年紀會隨機漂,同一個人設每次看起來都不同歲數。範圍見 persona_pools 的
   // age(沒設就用 18~33:她們都是被從現實生活裡擄來的成年人)。
   const ageRange = F.age || {};
+  // 服裝分兩個維度(見 README「服裝:生涯服裝 + 個人衣櫃」):
+  //   career_outfit —— 職業給的,她平常就穿這身。學生就是制服,不會是西裝。
+  //   wardrobe      —— 個人喜好,依關係解鎖(朋友 1 / 女友 3 / 妻子 6 套)。
+  // 陌生階段她只讓你看見工作時的樣子,所以預設作畫用的是 career_outfit。
+  const wardrobe = pickN(A.style, WARDROBE_SIZE);
   const look = {
     age: ri(Math.max(18, ageRange.min || 18), Math.max(18, ageRange.max || 33)),
     height_cm: ri(150, 172),
     build: build.text, bust: bust.text, eyes: eyes.text,
-    hair: pk(A.hair), style: pk(A.style), feature: pk(A.feature),
+    // 池子沒這一軸(舊 persona_pools)就留空,不要塞 undefined 進存檔
+    face: pk(A.face || []) || "", mouth: pk(A.mouth || []) || "",
+    hair: pk(A.hair), hair_color: pk(A.hair_color || []) || "",
+    style: wardrobe[0],   // 舊欄位:仍指得到一套衣服,舊程式路徑不會拿到 undefined
+    career_outfit: occ.outfit || "",
+    wardrobe,
+    feature: pk(A.feature),
   };
   const traits = rollTraits(F.special_traits, luck, rating);
 

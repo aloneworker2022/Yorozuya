@@ -470,20 +470,30 @@ def _character_visual_brief(ch: dict) -> str:
     rarity = ch.get("rarity") or ""
     if rarity:
         lines.append(f"Rarity tier: {rarity}")
-    # 外貌 look(新制)
+    # 外貌 look(新制)。特殊屬性蓋掉的欄位不列——抽到「巨乳」還寫著 B 罩杯,
+    # 對面讀到的是兩句互相打架的話,畫出來就兩邊都不像。
     look = ch.get("look") or {}
     if isinstance(look, dict) and look:
+        over = sdtags.overridden_fields(ch)
         bits = []
         if look.get("height_cm"):
             bits.append(f"{look['height_cm']}cm tall")
         for k, label in (
-            ("build", "body"), ("bust", "bust"), ("hair", "hair"),
-            ("eyes", "eyes"), ("style", "fashion/style"), ("feature", "distinctive feature"),
+            ("build", "body"), ("bust", "bust"), ("face", "face shape"),
+            ("eyes", "eyes"), ("mouth", "mouth/lips"),
+            ("hair_color", "hair color"), ("hair", "hairstyle"),
+            ("feature", "distinctive feature"),
         ):
-            if look.get(k):
+            if look.get(k) and k not in over:
                 bits.append(f"{label}: {look[k]}")
         if bits:
             lines.append("Appearance: " + "; ".join(bits))
+        # 服裝:生涯服裝是預設的那一身(職業決定),個人衣櫃是玩家挑過才換的
+        worn = _outfit_of(ch)
+        if worn:
+            lines.append(f"Outfit she is wearing (AUTHORITATIVE): {worn}")
+        if look.get("career_outfit"):
+            lines.append(f"(Her everyday work outfit: {look['career_outfit']})")
     # 舊 DNA token
     dna = ch.get("dna") or ch.get("appearance_dna") or {}
     traits = dna.get("traits") if isinstance(dna, dict) else None
@@ -499,7 +509,9 @@ def _character_visual_brief(ch: dict) -> str:
             else:
                 names.append(str(t))
         if names:
-            lines.append("Special traits: " + ", ".join(names))
+            lines.append(
+                "Special traits (these OVERRIDE the Appearance line above where they conflict "
+                "— e.g. a 巨乳 trait wins over the listed cup size): " + ", ".join(names))
     # 個性原型
     pers = ch.get("personality") or []
     if isinstance(pers, list) and pers:
@@ -667,12 +679,30 @@ def _resolve_ref_image(ref: str) -> Path | None:
     return p if p.is_file() and p.stat().st_size > 0 else None
 
 
+def _outfit_of(ch: dict) -> str:
+    """這張圖她穿什麼。
+
+    預設是**生涯服裝**——職業給的那一身(學生就是制服)。抽卡人設裡職業寫得
+    清清楚楚,衣服卻跟它無關,是這遊戲最出戲的一種錯。個人衣櫃要玩家在詳細頁
+    挑過才換;哪幾套解得開由前端依關係階段管,伺服器只認索引。
+    """
+    look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
+    wardrobe = look.get("wardrobe") if isinstance(look.get("wardrobe"), list) else []
+    pick = ch.get("outfitPick")
+    if isinstance(pick, bool):
+        pick = None   # True/False 不是索引
+    if isinstance(pick, int) and 0 <= pick < len(wardrobe):
+        return str(wardrobe[pick] or "")
+    return str(look.get("career_outfit") or look.get("style") or "")
+
+
 def _identity_anchor(ch: dict) -> dict:
     look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
     seed = "|".join(str(look.get(k) or "") for k in ("hair", "eyes", "build", "bust", "style"))
     seed += "|" + str(ch.get("name") or "")
     h = hashlib.sha1(seed.encode("utf-8")).digest()
-    return {
+    worn = _outfit_of(ch)
+    a = {
         "skin": _SKIN_TONES[h[0] % len(_SKIN_TONES)],
         "palette": _PALETTES[h[1] % len(_PALETTES)],
         # 同一位妹子固定同一個 seed:三連拍才會是同一張臉,重生也還是同一個人
@@ -683,18 +713,34 @@ def _identity_anchor(ch: dict) -> dict:
         "age": look.get("age") or (sdtags.AGE_MIN + h[6] % (sdtags.AGE_MAX - sdtags.AGE_MIN + 1)),
         "height_cm": look.get("height_cm") or "",
         "hair": look.get("hair") or "",
+        "hair_color": look.get("hair_color") or "",
         "eyes": look.get("eyes") or "",
+        "face": look.get("face") or "",
+        "mouth": look.get("mouth") or "",
         "build": look.get("build") or "",
         "bust": look.get("bust") or "",
         "style": look.get("style") or "",
+        "outfit": worn,
+        # 生涯服裝自己就是一整套配色(護士服白的、巫女服紅白),再疊一組隨機
+        # 配色只會打架;個人衣櫃那邊才用得上調色盤。
+        "outfit_career": bool(worn) and worn == str(look.get("career_outfit") or ""),
         "feature": look.get("feature") or "",
     }
+    # 特殊屬性說了算:抽到「巨乳」就不能同時寫 B 罩杯,兩句都寫只會得到一張
+    # 兩邊都不像的圖。中文這條路的做法是把一般欄位的中文整個換掉(tag 那條
+    # 走 sdtags.build_prompt 的同一份判定)。
+    for key, name in sdtags.overridden_fields(ch).items():
+        if key in a:
+            a[key] = name
+    return a
 
 
 def _seg_lines(seg: str, a: dict, ch: dict, *, dressed: bool) -> tuple[str, str]:
     """回 (特徵, 取景)。特徵只列這一段真的要畫的東西,照抄抽卡原文,不改寫不擴寫。"""
     if seg == "head":
-        bits = [a["eyes"], a["hair"], a["feature"]]
+        # 臉分五軸(臉型/眼/嘴/髮型/髮色):只寫「大眼睛、長直髮」時每張臉都不一樣
+        bits = [a["face"], a["eyes"], a["mouth"],
+                "、".join(x for x in (a["hair_color"], a["hair"]) if x), a["feature"]]
         # 表情用原型(「傲嬌」「活潑開朗」這種短詞)。tone 是講說話方式的整句話,
         # 塞進生圖 prompt 只是雜訊——畫圖看不見她愛加「呢」「呀」。
         pers = ch.get("personality") or []
@@ -704,12 +750,13 @@ def _seg_lines(seg: str, a: dict, ch: dict, *, dressed: bool) -> tuple[str, str]
         return "、".join(x for x in bits if x), "臉部特寫,髮頂到鎖骨"
     if seg == "bust":
         bits = [a["bust"], a["build"], a["skin"]]
-        if dressed and a["style"]:
-            bits.append(f"{a['style']}上衣,{a['palette']}")
+        if dressed and a["outfit"]:
+            bits.append(f"{a['outfit']}的上半身"
+                        + ("" if a["outfit_career"] else f",{a['palette']}"))
         return "、".join(x for x in bits if x), "下巴到腰,不畫臉"
     bits = [a["build"], f"{a['height_cm']}cm" if a["height_cm"] else "", a["skin"]]
-    if dressed and a["style"]:
-        bits.append(f"{a['style']}下身,含鞋襪")
+    if dressed and a["outfit"]:
+        bits.append(f"{a['outfit']}的下半身,含鞋襪")
     return "、".join(x for x in bits if x), "腰到腳"
 
 
@@ -852,6 +899,8 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         skin=anchor["skin"],
         palette=anchor["palette"],
         age=anchor["age"],
+        # 生涯服裝優先(職業給的那身);玩家挑過個人衣櫃才換
+        outfit=str(opts.get("outfit") or "") or anchor["outfit"],
         # 第一輪(head0/bust0/lower0)不寫服裝,跟中文那版同一個取捨
         dressed=part not in IMG_BARE_PARTS,
         extra=str(opts.get("extra") or ""),
@@ -1207,6 +1256,8 @@ class ImgGenIn(BaseModel):
     part: str = ""              # ""=整張;head0|bust0|lower0=第一輪;head|bust|lower=第二輪穿搭
     ref: str = ""               # 第一輪同段那張的 /assets/testword/… URL,第二輪當參考圖
     prompt: str = ""            # 使用者在 testword 改過的 prompt(留空=伺服器依人設自己組)
+    # 指定這張圖穿哪一套。留空 = 由 character 決定(生涯服裝優先,見 _outfit_of)
+    outfit: str = ""
     retry: bool = False
     # provider: "grok-img"(雲端 Grok Build)| "comfy"(Windows 本機 ComfyUI)
     provider: str = "grok-img"
@@ -1303,6 +1354,7 @@ def imggen_submit(t: ImgGenIn):
         "personality": t.personality or "",
         "backstory": t.backstory or "",
         "extra": t.extra or "",
+        "outfit": t.outfit or "",
         # ComfyUI 沒有「伺服器依人設自己組」那條路(SD 吃 tag 不吃中文敘述),
         # 所以 prompt 一律照收;Grok 那條維持原本只在分段時才收的行為。
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS) else "",
@@ -1371,6 +1423,7 @@ def comfy_preview(t: ImgGenIn):
         "rating": (t.rating or "sfw").lower(),
         "style": (t.style or "anime").lower(),
         "extra": t.extra or "",
+        "outfit": t.outfit or "",
     }
     whole, unknown = _comfy_prompt_for({**base, "part": ""})
     parts = []

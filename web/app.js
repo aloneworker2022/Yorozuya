@@ -4,11 +4,11 @@
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
-import { loadPools, generateGirl, RARITY_MARK } from "./content/girl_gen.js";
+import { loadPools, generateGirl, RARITY_MARK, WARDROBE_UNLOCK } from "./content/girl_gen.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.34(2026-07-30)修紋不出現:沒聊完的舊對話不再鎖死判定 + DBG.whyNoCrest";
+const APP_VER = "v5.35(2026-08-02)臉分五軸各 18 項・特殊屬性壓過抽卡欄位・服裝改生涯+衣櫃兩維度";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1375,13 +1375,14 @@ async function weaveRest(s) {
   }
 }
 
-// 詳細頁「補織缺的那幾張」用:三張補齊,已經有的跳過
-async function weaveMissing(s) {
+// 詳細頁「補織缺的那幾張」用:三張補齊,已經有的跳過。
+// force=true(換衣服後)則三張全部重織——舊圖穿的是舊衣服,留著只會不一致。
+async function weaveMissing(s, force = false) {
   if (!s || portraitGenning.has(s.id)) return;
   portraitGenning.add(s.id);
   try {
     for (const shot of ["full", "half", "head"]) {
-      if (s.portraits?.[shot]) continue;
+      if (!force && s.portraits?.[shot]) continue;
       setShot(s, shot, await weaveShot(s, shot));
       renderAll();
     }
@@ -1389,6 +1390,41 @@ async function weaveMissing(s) {
     portraitGenning.delete(s.id);
     renderAll();
   }
+}
+
+// ===== 服裝:生涯服裝 + 個人喜好衣櫃 =====
+// 兩個維度(規格見 README「服裝」):
+//   生涯服裝 —— 職業給的那一身。女高中生就是制服,不會穿西裝套裝。立繪預設畫這套。
+//   個人衣櫃 —— 她自己喜歡的穿搭,依關係解鎖:朋友 1 套、女友 3 套、妻子 6 套。
+// 陌生階段一套都沒有:你只見過她工作時的樣子。
+function careerOutfit(s) { return s?.look?.career_outfit || ""; }
+function wardrobeAll(s) {
+  const w = s?.look?.wardrobe;
+  if (Array.isArray(w) && w.length) return w;
+  return s?.look?.style ? [s.look.style] : [];   // 舊存檔只有單一 style
+}
+function wardrobeOpen(s) { return WARDROBE_UNLOCK[s?.stage] ?? 0; }
+// 解鎖到的那幾套(依關係階段截斷)
+function wardrobeUnlocked(s) { return wardrobeAll(s).slice(0, wardrobeOpen(s)); }
+// 她現在身上穿的。-1 / 沒挑 = 生涯服裝
+function outfitWorn(s) {
+  const i = s?.outfitPick;
+  const w = wardrobeAll(s);
+  if (Number.isInteger(i) && i >= 0 && i < w.length && i < wardrobeOpen(s)) return w[i];
+  return careerOutfit(s) || w[0] || "";
+}
+// 換衣服 → 立繪要重織(舊圖穿的是舊衣服)
+async function changeOutfit(s, pick) {
+  if (s.outfitPick === pick) return;
+  s.outfitPick = pick;
+  dirty = true;
+  saveNow();
+  renderAll();
+  if (!canWeaveNow()) { toast(`她換上了${outfitWorn(s)}(立繪等能生圖時再重織)`); return; }
+  toast(`她換上了${outfitWorn(s)}——重織立繪中……`, "good");
+  await weaveMissing(s, true);
+  toast(lastWeaveError ? `重織失敗:${lastWeaveError}` : `${s.name} 換好了`,
+        lastWeaveError ? "bad" : "good");
 }
 
 // Grok Build 召喚生圖:當場織出形體,輪詢到 done 才顯示「接受契約」。
@@ -2244,6 +2280,8 @@ function buildCtx(s) {
       likes: s.likes || null, dislikes: s.dislikes || null, hobbies: s.hobbies || null,
       chrono: s.chrono || null, arc: s.arc || null,
       libido: s.libido || null, look: s.look || null, special_traits: s.specialTraits || null,
+      // 她身上穿的是哪一套(生涯服裝 or 衣櫃第幾套)——聊天講的要跟立繪畫的一致
+      outfitPick: s.outfitPick ?? null,
       job_desc: s.jobDesc || null,
     },
     relationship: {
@@ -3758,6 +3796,28 @@ function renderSuccubi() {
   counts.appendChild(b);
 }
 
+// 詳細頁的衣櫃區:生涯服裝一定在,個人喜好那幾套依關係解鎖。
+// 沒解到的畫成鎖頭並寫清楚要到哪一階——玩家看得到才會想推關係。
+function wardrobeBlock(s) {
+  const career = careerOutfit(s);
+  const all = wardrobeAll(s);
+  if (!career && !all.length) return "";
+  const open = wardrobeOpen(s);
+  const worn = outfitWorn(s);
+  const busy = portraitGenning.has(s.id);
+  const chip = (label, pick, locked) =>
+    `<button class="outfit-chip${label === worn && !locked ? " on" : ""}" ${
+      locked || busy ? "disabled" : ""} data-outfit="${pick}">${
+      locked ? "🔒 ???" : esc(label)}</button>`;
+  const chips = [career ? chip(career, -1, false) : ""];
+  all.forEach((o, i) => chips.push(chip(o, i, i >= open)));
+  const nextAt = STAGES.find(([k]) => (WARDROBE_UNLOCK[k] ?? 0) > open);
+  return `<div class="aff-line dim small">服裝 — 生涯「${esc(career || "(舊存檔沒有)")}」・個人喜好已解 ${
+    Math.min(open, all.length)}/${all.length} 套${
+    nextAt ? `,升【${nextAt[1]}】再多解幾套` : ""}</div>
+    <div class="wardrobe">${chips.join("")}</div>`;
+}
+
 function renderDetail(s, root) {
   const asleep = isAsleep();
   const st = needStatus(s);
@@ -3803,7 +3863,11 @@ function renderDetail(s, root) {
       <div class="traits">${s.job ? `<span style="color:var(--cyan)">前${esc(s.job)}</span>` : ""}${s.personality.map(p => `<span>${p}</span>`).join("")}<span>${s.speech}</span>${s.dna.traits.map(t => `<span>${t}</span>`).join("")}</div>
       ${s.backstory ? `<div class="aff-line dim small" style="max-width:32em;margin:0 auto">${esc(s.backstory)}</div>` : ""}
       ${s.specialTraits?.length ? `<div class="aff-line small" style="color:var(--gold)">${s.specialTraits.map(t => `${RARITY_MARK[t.rarity] || ""}${esc(t.name)}`).join("  ")}</div>` : ""}
-      ${s.look ? `<div class="aff-line dim small">${esc([s.look.build, s.look.bust, s.look.hair, s.look.eyes].filter(Boolean).join("、"))}</div>` : ""}
+      ${s.look ? `<div class="aff-line dim small">${esc([
+        s.look.build, s.look.bust, s.look.face, s.look.eyes, s.look.mouth,
+        [s.look.hair_color, s.look.hair].filter(Boolean).join(""),
+      ].filter(Boolean).join("、"))}</div>` : ""}
+      ${wardrobeBlock(s)}
       ${s.schedule ? `<div class="schedule">${SCHEDULE_SLOTS.map(k => {
         const now = timeSlot() === k;
         return `<div class="sch-row${now ? " now" : ""}"><span class="sch-t">${SLOT_LABEL[k]}</span><span>${esc(s.schedule[k])}</span></div>`;
@@ -3848,6 +3912,8 @@ function renderDetail(s, root) {
           left.length ? "bad" : "good");
     renderAll();
   });
+  root.querySelectorAll("[data-outfit]").forEach(b =>
+    b.onclick = () => changeOutfit(s, +b.dataset.outfit));
   root.querySelector("#act-dismiss")?.addEventListener("click", () => sacrificeSuccubus(s.id));
   root.querySelector("#act-date")?.addEventListener("click", () => {
     dateChooser = !dateChooser;

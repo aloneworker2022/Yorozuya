@@ -153,8 +153,16 @@ function appearanceZh(dna) {
 function lookText(c) {
   if (c.look) {
     const L = c.look;
-    const bits = [L.height_cm ? `${L.height_cm}cm` : null, L.build, L.bust, L.hair, L.eyes,
-                  L.style ? `穿搭偏${L.style}` : null, L.feature].filter(Boolean);
+    // 身上穿的那一套:生涯服裝(職業給的)優先,玩家挑過個人衣櫃才換。
+    // 規則跟立繪同一套(server 的 _outfit_of),她講的跟畫的才會是同一身衣服。
+    const wardrobe = Array.isArray(L.wardrobe) && L.wardrobe.length ? L.wardrobe : (L.style ? [L.style] : []);
+    const i = c.outfitPick;
+    const worn = (Number.isInteger(i) && i >= 0 && i < wardrobe.length)
+      ? wardrobe[i] : (L.career_outfit || wardrobe[0] || "");
+    const bits = [L.height_cm ? `${L.height_cm}cm` : null, L.build, L.bust,
+                  L.face, L.eyes, L.mouth,
+                  [L.hair_color, L.hair].filter(Boolean).join("") || null,
+                  worn ? `身上穿著${worn}` : null, L.feature].filter(Boolean);
     let t = bits.join("、");
     if (c.special_traits?.length) t += `。特別之處:${c.special_traits.map(x => x.name).join("、")}`;
     return t;
