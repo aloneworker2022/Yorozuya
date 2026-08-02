@@ -412,20 +412,31 @@ QUALITY_PREFIX = "masterpiece, best quality, amazing quality, very aesthetic"
 # (跟 Grok 那條路不同:那邊寫分級字眼會被擋,SD 沒有這個問題,寫了反而更準)
 RATING = {"sfw": "general", "nsfw": "nsfw"}
 
+# ---- negative ----
+#
+# **原則:只擋畫崩,不擋內容。**
+#
+# 早期版本在 SFW 時塞了一整串「nude, nipples, topless, naked…」。那是錯的:
+#   1. 分級是**抽卡**在管的(girl_gen 的 nsfw 項目開關),不是靠 negative 擋。
+#   2. 服裝現在由生涯服裝/衣櫃釘死,正面就寫著 `fully clothed, nurse uniform`
+#      ——衣服已經指定了,再在 negative 喊一次不會更牢。
+#   3. negative 不是免費的。Illustrious/Anima 系對 negative 很敏感,塞越多越稀釋,
+#      真正要擋的畫崩反而被擠掉。
+#
+# 下面這組取三邊的交集:animij 作者頁的建議、Anima base 的 README、
+# Illustrious 社群通用版。三邊講的都是同一件事——畫質、壓縮瑕疵、手指、
+# 簽名浮水印、單色與分鏡。**沒有任何一邊把內容詞寫進 negative。**
 NEGATIVE = (
-    "worst quality, bad quality, low quality, lowres, jpeg artifacts, "
-    "signature, watermark, username, text, error, "
-    "bad anatomy, bad hands, extra digits, fewer digits, missing fingers, "
-    "extra limbs, mutated hands, deformed"
+    "worst quality, low quality, lowres, blurry, jpeg artifacts, "
+    "chromatic aberration, bad anatomy, bad hands, extra digits, fewer digits, "
+    "signature, watermark, artist name, username, "
+    "monochrome, greyscale, comic, multiple views"
 )
 
-# SFW 一定要**明講不要裸體**。動漫模型只要 prompt 沒把衣服釘死就很容易自己脫,
-# 何況這個遊戲的語境。正面寫 general 是不夠的——那只是個弱訊號,
-# 負面列出來才真的擋得住。
-SFW_NEGATIVE = (
-    "nude, nipples, topless, bottomless, completely nude, undressed, "
-    "naked, exposed breasts, no clothes, lingerie only, censored"
-)
+# 美感排序標籤。animij 作者頁與 Anima base 的 README 都把這三個列進建議 negative
+# (Pony / Anima 血統的評分 tag)。純 Illustrious 的 checkpoint 吃不到它們,
+# 但也就三個 token,留著讓兩種底都吃得到自己那份。
+AESTHETIC_NEGATIVE = "score_1, score_2, score_3"
 
 # 去背用的 negative:任何場景元素都會讓外框判定失敗、整張放棄去背
 FLAT_BG_NEGATIVE = "scenery, detailed background, indoors, outdoors, gradient background"
@@ -438,11 +449,10 @@ FLAT_BG_NEGATIVE = "scenery, detailed background, indoors, outdoors, gradient ba
 HUMAN_TAGS = "adult woman, modern real world woman"
 
 # 只寫在正面「她是人」還不夠——動漫模型看到這種遊戲語境會自己長角。
-# 這幾個詞一律進 negative,不留開關:設定上她們就不是魔物。
-NOT_DEMON_NEGATIVE = (
-    "demon girl, succubus, demon horns, horns, pointy ears, elf ears, "
-    "demon wings, wings, demon tail, tail, witch, monster girl, halo, fantasy costume"
-)
+# 這組留著,因為它擋的正是「畫面跑偏」:長角、長翅膀就是跑偏。
+# 但去掉重複下注——`horns` 已經蓋掉 `demon horns`,`wings`/`tail`/`pointy ears`
+# 同理,原本十四個詞有一半是同一件事講兩遍,只是在稀釋權重。
+NOT_DEMON_NEGATIVE = "horns, pointy ears, wings, tail, demon girl, monster girl"
 
 # 服裝欄位查不到對照時的墊底。沒有任何服裝 tag = 模型自由發揮 = 多半不穿。
 CLOTHES_FALLBACK = "casual clothes"
@@ -468,23 +478,22 @@ def age_tags(age) -> str:
     return f"{a} years old, {band}"
 
 
-# 未成年一律排除。她們設定上都是從現實生活裡被擄來的成年人,沒有例外。
-AGE_NEGATIVE = "child, loli, toddler, underage, elementary school student, baby face, chibi"
+# 年紀不要往下漂。正面已經寫了「29 years old, mature female」,這幾個是把
+# 臉型與身材比例釘在成人那邊——留擋得住的那幾個就好,`underage` /
+# `elementary school student` 這種是內容詞不是畫風詞,模型不太吃,刪掉。
+AGE_NEGATIVE = "child, loli, chibi, baby face"
 
 
 # 要去背的立繪:先要一塊平背景,後製才摳得乾淨
 FLAT_BG_TAGS = "simple background, white background, plain background"
 
 
-def negative_for(rating: str = "sfw", flat_bg: bool = False) -> str:
-    """依分級與是否要去背組 negative。
+def negative_for(flat_bg: bool = False) -> str:
+    """組 negative。**不看分級**——分級是抽卡在管的,不是靠 negative 擋內容。
 
-    排除魔物與未成年這兩組**不看分級,一律加**:她們設定上就是被擄來的
-    現代成年人,這不是分級問題,是世界觀問題。
+    只有一個變數:要不要去背。要的話多擋場景,不然外框判定會失敗、整張放棄去背。
     """
-    bits = [NEGATIVE, NOT_DEMON_NEGATIVE, AGE_NEGATIVE]
-    if (rating or "sfw").lower() != "nsfw":
-        bits.append(SFW_NEGATIVE)
+    bits = [NEGATIVE, AESTHETIC_NEGATIVE, NOT_DEMON_NEGATIVE, AGE_NEGATIVE]
     if flat_bg:
         bits.append(FLAT_BG_NEGATIVE)
     return ", ".join(bits)

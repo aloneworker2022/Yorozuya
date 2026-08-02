@@ -1016,10 +1016,9 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     # 三連拍照規格去背;testword 那條(沒有 shot)由前端的勾選決定,
     # 想在測試台上看去背效果不必先跑一次召喚。
     want_cut = bool(spec.get("cutout")) if shot else bool(opts.get("cutout"))
-    # negative 依分級與是否去背現組:SFW 要擋裸體(動漫模型沒把衣服釘死就會自己脫),
-    # 去背要擋場景(有場景就過不了外框判定,整張放棄去背)。
-    negative = str(opts.get("negative") or "") or sdtags.negative_for(
-        str(opts.get("rating") or "sfw"), want_cut)
+    # negative 只有一個變數:要不要去背(要的話多擋場景,不然外框判定會失敗)。
+    # 分級不影響 negative——那是抽卡在管的,不是靠 negative 擋內容(見 sdtags)。
+    negative = str(opts.get("negative") or "") or sdtags.negative_for(want_cut)
 
     name, err = await comfy.generate(
         positive=prompt,
@@ -1517,7 +1516,7 @@ def comfy_preview(t: ImgGenIn):
             "shot": k,
             "label": SHOT_LABEL_ZH.get(k, k),
             "prompt": text,
-            "negative": sdtags.negative_for(base["rating"], bool(spec.get("cutout"))),
+            "negative": sdtags.negative_for(bool(spec.get("cutout"))),
             "gen": list(spec["gen"]),
             "out": list(spec["out"]),
             "cutout": bool(spec.get("cutout")),
@@ -1527,7 +1526,7 @@ def comfy_preview(t: ImgGenIn):
         "whole": whole,
         "parts": parts,
         "shots": shots,
-        "negative": sdtags.negative_for(base["rating"]),
+        "negative": sdtags.negative_for(),
         "unknown": sorted(set(unknown)),
         "defaults": {
             "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT,

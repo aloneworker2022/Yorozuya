@@ -208,10 +208,35 @@ Grok 那條路餵中文敘述,因為對面是會讀句子的 agent。**SD 不是
 舊存檔沒這欄的,由人設雜湊補一個固定值(同一個人不會每次變)。
 `child / loli / underage / baby face` 一律進 negative。
 
-**SFW 一定要在 negative 明講不要裸體。** 動漫模型只要 prompt 沒把衣服釘死就很容易
-自己脫;正面寫 `general` 只是弱訊號,擋不住。`sdtags.negative_for(rating, flat_bg)`
-會依分級補上 `nude, nipples, topless…`,去背的那兩張再補上排除場景。
-服裝欄位查不到對照時墊一件 `casual clothes`——沒有任何服裝 tag = 模型自由發揮 = 多半不穿。
+### negative:只擋畫崩,不擋內容
+
+`sdtags.negative_for(flat_bg)` **不看分級**。早期版本在 SFW 時塞了一整串
+`nude, nipples, topless, naked…`,那是錯的:
+
+1. 分級是**抽卡**在管的(`girl_gen` 的 nsfw 項目開關),不是靠 negative 擋。
+2. 服裝現在由生涯服裝/衣櫃釘死,正面就寫著 `fully clothed, nurse uniform`——
+   衣服已經指定了,在 negative 再喊一次不會更牢。
+3. negative 不是免費的。Illustrious / Anima 系對 negative 很敏感,塞越多越稀釋,
+   真正要擋的畫崩反而被擠掉。
+
+現在這組取三邊的交集——[animij 作者頁](https://civitai.com/models/1353314/animij)
+的建議、[Anima base 的 README](https://huggingface.co/circlestone-labs/Anima)、
+[Illustrious 社群通用版](https://www.seaart.ai/articleDetail/cv1q3h5e878c7381iehg)。
+三邊講的都是同一件事:畫質、壓縮瑕疵、手指、簽名浮水印、單色與分鏡。
+**沒有任何一邊把內容詞寫進 negative。**
+
+| 組 | 內容 | 為什麼留 |
+|---|---|---|
+| `NEGATIVE` | 畫質 / 瑕疵 / 手 / 簽名 / 單色 / 分鏡 | 三邊的交集 |
+| `AESTHETIC_NEGATIVE` | `score_1, score_2, score_3` | animij 作者頁與 Anima README 都列了(Pony/Anima 血統的評分 tag) |
+| `NOT_DEMON_NEGATIVE` | `horns, pointy ears, wings, tail, demon girl, monster girl` | 長角就是「畫面跑偏」。去掉重複下注——`horns` 已蓋掉 `demon horns` |
+| `AGE_NEGATIVE` | `child, loli, chibi, baby face` | 把臉型與比例釘在成人那邊;`underage` 這種內容詞模型不太吃,刪了 |
+| `FLAT_BG_NEGATIVE` | `scenery, indoors, outdoors…` | 只在要去背時加,不然外框判定會失敗 |
+
+SFW 從 **50 個 tag 降到 31 個**(去背 36 個)。
+
+服裝欄位查不到對照時墊一件 `casual clothes`——沒有任何服裝 tag = 模型自由發揮。
+`comfy.DEFAULT_NEGATIVE` 直接引用 `sdtags.NEGATIVE`,不在兩處各抄一份。
 
 測試台:`/testword` → **ComfyUI 生圖測試(本機 GPU · SD tag)**,與上面的 Grok 區共用
 同一個抽卡人設。`① 產生 SD tag` 只翻譯不生圖,六段各有自己的編輯框與生成鍵。

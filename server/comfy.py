@@ -28,6 +28,8 @@ from pathlib import Path
 
 import httpx
 
+import sdtags
+
 # 預設值,只是「還沒有人告訴我位址」時的退路。RP5 與 GPU 主機通常不是同一台,
 # 所以真正的位址由前端設定帶進來(跟 ollamaUrl 同一套做法),見 note_comfy_url。
 # 退路寫顯卡那台的區網 IP 而不是 localhost:localhost 在 RP5 上指的是 RP5 自己,
@@ -75,11 +77,9 @@ PORTRAIT_SHOTS = {
     "full": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
 }
 
-# 不寫在 prompt 裡的通用排除項。分級由抽卡管,這裡只管畫面品質。
-DEFAULT_NEGATIVE = (
-    "worst quality, low quality, blurry, jpeg artifacts, watermark, text, "
-    "signature, username, bad anatomy, bad hands, extra digits, extra limbs"
-)
+# 沒人給 negative 時的退路。**直接用 sdtags 那一份**,不要在這裡再抄一串——
+# 兩處各寫一份的下場就是改了一邊忘了另一邊,然後同一個遊戲兩條路吐出不同的圖。
+DEFAULT_NEGATIVE = sdtags.NEGATIVE + ", " + sdtags.AESTHETIC_NEGATIVE
 
 
 # ---------------------------------------------------------------- GPU 仲裁
