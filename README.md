@@ -139,9 +139,18 @@ Grok 那條路餵中文敘述,因為對面是會讀句子的 agent。**SD 不是
 
 **她們不是魔物。** `world.md`:「魅魔不是地獄來的惡魔…那只是他們對你的叫法」、
 「你原本是現實世界裡一個普通女子——護理師、上班族、插畫家、店員」、「你還是你,
-只是身體不是了」。職業池也全是現代人。所以立繪就是**一個現代年輕女性**,沒有角、
+只是身體不是了」。職業池也全是現代人。所以立繪就是**一個現代成年女性**,沒有角、
 沒有翅膀、沒有尖耳;被改的是感覺與慾望,那些畫不出來,也不該用長角來代替。
-想試魔物外觀的人可以在 testword 勾「加魔族 tag」(`demon_look`,預設關)。
+
+`demon girl / succubus / horns / pointy ears / wings / tail / witch / monster girl`
+一律進 **negative,沒有開關**——只在正面寫「她是人」不夠,動漫模型看到這種遊戲
+語境會自己長角。
+
+**年齡是必填的。** 不給年齡,模型畫出來的年紀會隨機漂,同一個人設每次看起來都
+不同歲數。`girl_gen` 抽 18~33(範圍在 `persona_pools.json` 的 `female.age`,
+`/edit_person` 可改),prompt 寫成 `29 years old, mature female, adult face`。
+舊存檔沒這欄的,由人設雜湊補一個固定值(同一個人不會每次變)。
+`child / loli / underage / baby face` 一律進 negative。
 
 **SFW 一定要在 negative 明講不要裸體。** 動漫模型只要 prompt 沒把衣服釘死就很容易
 自己脫;正面寫 `general` 只是弱訊號,擋不住。`sdtags.negative_for(rating, flat_bg)`

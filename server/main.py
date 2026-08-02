@@ -678,6 +678,9 @@ def _identity_anchor(ch: dict) -> dict:
         # 同一位妹子固定同一個 seed:三連拍才會是同一張臉,重生也還是同一個人
         # (plan-v4「同 DNA(traits + seed)維持長相一致」)
         "seed": int.from_bytes(h[2:6], "big") % (2**31 - 1) or 1,
+        # 年齡:新人設由 girl_gen 抽。舊存檔沒這欄,用雜湊補一個固定值——
+        # 不給年齡模型畫出來的年紀會漂,同一個人每次都不同歲數。
+        "age": look.get("age") or (sdtags.AGE_MIN + h[6] % (sdtags.AGE_MAX - sdtags.AGE_MIN + 1)),
         "height_cm": look.get("height_cm") or "",
         "hair": look.get("hair") or "",
         "eyes": look.get("eyes") or "",
@@ -848,7 +851,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         art_style=str(opts.get("style") or "anime"),
         skin=anchor["skin"],
         palette=anchor["palette"],
-        demon_look=bool(opts.get("demon_look", False)),
+        age=anchor["age"],
         # 第一輪(head0/bust0/lower0)不寫服裝,跟中文那版同一個取捨
         dressed=part not in IMG_BARE_PARTS,
         extra=str(opts.get("extra") or ""),
@@ -1219,9 +1222,6 @@ class ImgGenIn(BaseModel):
     steps: int = 0
     cfg: float = 0
     seed: int = 0               # 0 = 每次隨機(三連拍例外:取人設雜湊)
-    # 加魔族外觀 tag(角、尖耳)。**預設關閉**:world.md 說她們是被擄來改造的
-    # 現代普通人,「魅魔」只是召喚師對她們的叫法,不是魔物。想試魔物風才打開。
-    demon_look: bool = False
     comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
     # 召喚三連拍:shot=head|half|full 且有 char_id → 存 assets/portraits/{char_id}_{shot}.png,
     # 尺寸與 seed 由伺服器依規格決定(三張同 seed = 同一張臉)
@@ -1318,7 +1318,6 @@ def imggen_submit(t: ImgGenIn):
             "steps": int(t.steps or 0),
             "cfg": float(t.cfg or 0),
             "seed": int(t.seed or 0),
-            "demon_look": bool(t.demon_look),   # 預設 False,見 ImgGenIn
             "comfy_url": (t.comfy_url or "").strip(),
             "shot": (t.shot or "").strip().lower(),
             "char_id": (t.char_id or "").strip(),
@@ -1372,7 +1371,6 @@ def comfy_preview(t: ImgGenIn):
         "rating": (t.rating or "sfw").lower(),
         "style": (t.style or "anime").lower(),
         "extra": t.extra or "",
-        "demon_look": bool(t.demon_look),
     }
     whole, unknown = _comfy_prompt_for({**base, "part": ""})
     parts = []

@@ -169,15 +169,43 @@ FLAT_BG_NEGATIVE = "scenery, detailed background, indoors, outdoors, gradient ba
 # 她們**不是魔物**。world.md:「魅魔不是地獄來的惡魔…那只是他們對你的叫法」,
 # 「你原本是現實世界裡一個普通女子——護理師、上班族、插畫家、店員」,
 # 「你還是你,只是身體不是了」。職業池也全是現代人:女高中生、護理師、OL、
-# 圖書館員。所以立繪就是一個現代年輕女性,沒有角、沒有翅膀、沒有尖耳。
+# 圖書館員。所以立繪就是一個現代成年女性,沒有角、沒有翅膀、沒有尖耳。
 # 被改的是感覺與慾望,那些畫不出來,也不該用長角來代替。
-HUMAN_TAGS = "young woman, modern casual look"
+HUMAN_TAGS = "adult woman, modern real world woman"
 
-# 想要魔物外觀的人自己開(testword 有勾選框)。預設關閉。
-DEMON_TAGS = "demon girl, succubus, demon horns, pointy ears"
+# 只寫在正面「她是人」還不夠——動漫模型看到這種遊戲語境會自己長角。
+# 這幾個詞一律進 negative,不留開關:設定上她們就不是魔物。
+NOT_DEMON_NEGATIVE = (
+    "demon girl, succubus, demon horns, horns, pointy ears, elf ears, "
+    "demon wings, wings, demon tail, tail, witch, monster girl, halo, fantasy costume"
+)
 
 # 服裝欄位查不到對照時的墊底。沒有任何服裝 tag = 模型自由發揮 = 多半不穿。
 CLOTHES_FALLBACK = "casual clothes"
+
+# 年齡:池子抽 18~33(persona_pools 的 age 可調)。**非有不可**——不給年齡,
+# 模型畫出來的年紀會隨機漂,同一個人設每次看起來都不同歲數。
+# 動漫模型對純數字不太敏感,所以數字之外再補一個檔位形容詞。
+AGE_MIN, AGE_MAX = 18, 33
+
+
+def age_tags(age) -> str:
+    try:
+        a = int(age)
+    except (TypeError, ValueError):
+        return ""
+    a = max(AGE_MIN, min(AGE_MAX, a))
+    if a <= 21:
+        band = "young adult"
+    elif a <= 26:
+        band = "young adult, mature female"
+    else:
+        band = "mature female, adult face"
+    return f"{a} years old, {band}"
+
+
+# 未成年一律排除。她們設定上都是從現實生活裡被擄來的成年人,沒有例外。
+AGE_NEGATIVE = "child, loli, toddler, underage, elementary school student, baby face, chibi"
 
 
 # 要去背的立繪:先要一塊平背景,後製才摳得乾淨
@@ -185,8 +213,12 @@ FLAT_BG_TAGS = "simple background, white background, plain background"
 
 
 def negative_for(rating: str = "sfw", flat_bg: bool = False) -> str:
-    """依分級與是否要去背組 negative。"""
-    bits = [NEGATIVE]
+    """依分級與是否要去背組 negative。
+
+    排除魔物與未成年這兩組**不看分級,一律加**:她們設定上就是被擄來的
+    現代成年人,這不是分級問題,是世界觀問題。
+    """
+    bits = [NEGATIVE, NOT_DEMON_NEGATIVE, AGE_NEGATIVE]
     if (rating or "sfw").lower() != "nsfw":
         bits.append(SFW_NEGATIVE)
     if flat_bg:
@@ -208,7 +240,7 @@ def build_prompt(
     art_style: str = "anime",
     skin: str = "",
     palette: str = "",
-    demon_look: bool = False,   # 預設關閉,見 HUMAN_TAGS
+    age: int | str = "",
     dressed: bool = True,
     flat_bg: bool = False,
     extra: str = "",
@@ -237,8 +269,8 @@ def build_prompt(
         return ""
 
     bits: list[str] = [QUALITY_PREFIX, "1girl, solo", HUMAN_TAGS]
-    if demon_look:
-        bits.append(DEMON_TAGS)
+    # 年齡緊接在「她是誰」後面:動漫模型對前段權重高,年紀才壓得住
+    bits.append(age_tags(age or look.get("age")))
     # 要去背的那幾張:先讓模型畫出一塊平背景,後製才摳得乾淨(見 cutout.py)。
     # simple background / white background 是 danbooru 訓練得很紮實的一組。
     if flat_bg:
