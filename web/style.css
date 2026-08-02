@@ -793,10 +793,6 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 #kanban-girl .kgirl.taken .portrait-img { filter: grayscale(.7) brightness(.75); }
 /* 召喚生圖中:剪影微微呼吸 */
 .summon-brewing { animation: crest-brew 2.2s ease-in-out infinite; }
-#succubus-detail .traits { display: flex; gap: .4em; flex-wrap: wrap; justify-content: center; margin: .5em 0; }
-#succubus-detail .traits span {
-  font-size: .7em; color: var(--dim); background: rgba(216, 207, 232, .08); padding: .2em .6em;
-}
 #succubus-detail .aff-line { text-align: center; font-size: .85em; margin: .5em 0; }
 #succubus-detail .aff-line b { color: var(--rc); }
 .detail-actions { display: flex; gap: .5em; justify-content: center; flex-wrap: wrap; margin-top: .8em; }

@@ -8,7 +8,7 @@ import { loadPools, generateGirl, RARITY_MARK, WARDROBE_UNLOCK } from "./content
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.36(2026-08-02)三張立繪都去背(含大頭照)・白框修掉・摳不掉時講得出原因";
+const APP_VER = "v5.37(2026-08-02)詳細頁精簡:拿掉個性/語氣/DNA/外貌參數與淫紋長提示,只留她的人生";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -3907,13 +3907,8 @@ function renderDetail(s, root) {
         <b>${esc(s.name)}</b> <span class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</span>
         ・${s.ntr ? "被奪走" : stageLabel(s.stage)}
       </div>
-      <div class="traits">${s.job ? `<span style="color:var(--cyan)">前${esc(s.job)}</span>` : ""}${s.personality.map(p => `<span>${p}</span>`).join("")}<span>${s.speech}</span>${s.dna.traits.map(t => `<span>${t}</span>`).join("")}</div>
       ${s.backstory ? `<div class="aff-line dim small" style="max-width:32em;margin:0 auto">${esc(s.backstory)}</div>` : ""}
       ${s.specialTraits?.length ? `<div class="aff-line small" style="color:var(--gold)">${s.specialTraits.map(t => `${RARITY_MARK[t.rarity] || ""}${esc(t.name)}`).join("  ")}</div>` : ""}
-      ${s.look ? `<div class="aff-line dim small">${esc([
-        s.look.build, s.look.bust, s.look.face, s.look.eyes, s.look.mouth,
-        [s.look.hair_color, s.look.hair].filter(Boolean).join(""),
-      ].filter(Boolean).join("、"))}</div>` : ""}
       ${wardrobeBlock(s)}
       ${s.schedule ? `<div class="schedule">${SCHEDULE_SLOTS.map(k => {
         const now = timeSlot() === k;
@@ -3935,7 +3930,7 @@ function renderDetail(s, root) {
                  : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`}
       </div>
       ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
-      ${!s.ntr ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b>——她當看板娘時,你每做一次委託操作(發現/承接/開始執行/完成)就判定一次;紋亮了點下去就能聊(她先開口、或換你先說),一場 2~4 個來回</div>` : ""}
+      ${!s.ntr ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b></div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
         ${SAC_RITUAL ? `<div class="aff-line dim small">${sacScriptReady(s)
