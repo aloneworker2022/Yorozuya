@@ -1230,22 +1230,26 @@ function showSummonOverlay(s, n) {
   ov.classList.remove("hidden");
   ov.innerHTML = `<div class="summon-circle"></div>`;
   setTimeout(() => {
-    // Grok Build:當場就替她織出形體(生圖),等生成結束召喚才算完成;
-    // 其它 provider(Ollama/無模型)維持舊制——先立契約,今晚再作夢。
-    if (llmIsOrder()) genSummonPortrait(ov, s);
+    // 生得出圖就當場織形體,等生成結束召喚才算完成;生不出來(無模型)才退回
+    // 舊制的「今晚作夢」。判斷的是**生圖**能不能用,不是聊天用哪個 provider——
+    // 以前這裡問的是 llmIsOrder(),聊天走 Ollama + 生圖走 ComfyUI 時就永遠不生圖。
+    if (canWeaveNow()) genSummonPortrait(ov, s);
     else renderSummonCard(ov, s);
   }, 1400);
 }
 
 // 召喚結果卡:有立繪就顯示立繪,沒有就 SVG 剪影 +「今晚作夢」
 function renderSummonCard(ov, s) {
-  const ready = !!s.portrait;
+  const ready = !!girlShot(s, "full");
   ov.innerHTML = `
     <div class="summon-result r-${s.rarity}">
       <div class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</div>
       <h3>${esc(s.name)}</h3>
       <div class="portrait">${girlPortrait(s, 7, "full")}</div>
       <p>${ready ? "她成形了——這就是她的模樣。" : "她還沒有形體……讓她今晚做個夢吧。"}</p>
+      ${!ready && lastWeaveError
+        ? `<p class="small" style="color:var(--red)">織不出形體:${esc(lastWeaveError)}</p>`
+        : ""}
       <p class="small">${s.personality.join("・")} / ${s.speech}</p>
       <p class="small dim">她原本是……${esc(s.job || "?")}</p>
       <button id="summon-close">接受契約</button>
@@ -1260,6 +1264,16 @@ const portraitGenning = new Set();
 function imgProvider() {
   return state.settings.imgProvider === "comfy" ? "comfy" : "grok-img";
 }
+
+// 現在生得出圖嗎。ComfyUI 是本機顯卡隨時可織;Grok 要伺服器上有 grok CLI,
+// 那件事沿用 llmIsOrder()(選了 Grok Build 就代表 CLI 在)。
+function canWeaveNow() {
+  return imgProvider() === "comfy" || llmIsOrder();
+}
+
+// 最後一次生圖失敗的原因。生圖是背景工作,失敗沒有地方講就等於靜靜消失——
+// 留著給召喚卡與詳細頁顯示,不要讓人自己去猜。
+let lastWeaveError = "";
 
 // 一張的下單→輪詢。shot 給值(head|half|full)= 三連拍其中一張,尺寸與 seed
 // 由伺服器依規格決定(三張同 seed 才是同一張臉)。回 URL 或 ""。
@@ -1279,18 +1293,23 @@ async function weaveShot(s, shot, onTick) {
   const t0 = Date.now();
   const timer = onTick ? setInterval(() => onTick(Math.round((Date.now() - t0) / 1000)), 1000) : null;
   let url = "";
+  lastWeaveError = "";
   try {
     let r = await imgGenPost(body);
+    if (!r) lastWeaveError = "伺服器沒回應(/api/imggen)";
     let key = r?.key;
     const deadline = Date.now() + 180000;   // 最多等 3 分鐘
-    while (Date.now() < deadline) {
-      if (r?.status === "done") { url = r.result || ""; break; }
-      if (r?.status === "error") break;
+    while (r && Date.now() < deadline) {
+      if (r.status === "done") { url = r.result || ""; break; }
+      if (r.status === "error") { lastWeaveError = r.error || "生圖失敗"; break; }
       await new Promise(res => setTimeout(res, 1500));
       r = await imgGenPost({ ...body, key, retry: false });
       key = r?.key || key;
     }
-  } catch { /* url 維持 "" */ }
+    if (!url && !lastWeaveError) lastWeaveError = "等了 3 分鐘還沒好";
+  } catch (e) {
+    lastWeaveError = String(e?.message || e);
+  }
   if (timer) clearInterval(timer);
   return url;
 }
@@ -1356,6 +1375,8 @@ async function genSummonPortrait(ov, s) {
         <h3>${esc(s.name)}</h3>
         <div class="portrait summon-brewing">${girlSVG("#241333", 7)}</div>
         <p>正在為她織出形體……(${sec}s)</p>
+        ${imgProvider() === "comfy"
+          ? `<p class="small dim">先織全身像;大頭照與半身在你讀這張卡的時候補上</p>` : ""}
         <p class="small dim">${s.personality.join("・")} / ${s.speech}</p>
       </div>`;
   };
@@ -2962,14 +2983,15 @@ function shotsLine(s) {
   const missing = ["full", "half", "head"].filter(k => !s.portraits?.[k]);
   const busy = portraitGenning.has(s.id);
   if (!missing.length) return "";
-  const canWeave = imgProvider() === "comfy" || llmIsOrder();
-  if (!canWeave) {
+  if (!canWeaveNow()) {
     return `<div class="aff-line dim small">${have.length ? "" : "尚未成形——"}今晚讓她織夢,明早見到她的臉(M3)</div>`;
   }
   const what = have.length
     ? `還差 ${missing.map(k => SHOT_LABEL[k]).join("、")}`
     : "尚未成形——大頭照 / 半身 / 全身三張都還沒織";
-  return `<div class="aff-line dim small">${what}</div>
+  const why = !busy && lastWeaveError
+    ? `<div class="aff-line small" style="color:var(--red)">上次失敗:${esc(lastWeaveError)}</div>` : "";
+  return `<div class="aff-line dim small">${what}</div>${why}
     <div class="detail-actions"><button class="cyan" id="act-weave" ${busy ? "disabled" : ""}>${
       busy ? "織出形體中…" : "✦ 織出她的形體"}</button></div>`;
 }
