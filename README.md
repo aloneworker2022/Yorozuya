@@ -51,6 +51,40 @@ prompt 刻意短,只有該段的抽卡原文加取景(例:`G 罩杯、傲人豐�
 | `GROK_IMG_TIMEOUT` | `300` | 生圖逾時秒數 |
 | `GROK_IMG_MAX_TURNS` | `8` | 生圖允許多回合(要呼叫 image_gen) |
 
+## ComfyUI 生圖 + GPU 換班
+
+Windows 那台把 **ComfyUI 與 Ollama 兩個都常駐**,不再由排程器 AM1 開 AM6 關。
+同一張卡不能同時餵兩邊,所以「誰現在能用 VRAM」由 RP5 仲裁(`server/comfy.py`):
+
+| 要跑什麼 | RP5 進去前先做的事 |
+|---|---|
+| 聊天 | `POST <comfy>/free` `{"unload_models":true,"free_memory":true}` |
+| 生圖 | `GET <ollama>/api/ps` 取當下載入的模型 → 逐一 `POST /api/generate` `{"keep_alive":0}` |
+
+- **不寫死模型名**:`/api/ps` 回報實際載入了什麼,掃到什麼卸什麼。
+- **黏著**:只有「換邊」那次付卸載+重載成本,連續聊十句或連生十張都不卸。
+- **卸不掉不擋路**:對方連不上就當它沒佔 VRAM,寧可讓後手自己 OOM 報錯,
+  也不要因為卸載失敗把玩家的聊天卡死。
+
+Windows 端只要讓 ComfyUI 常駐(`--listen 0.0.0.0 --port 8188 --disable-auto-launch`)。
+**不要**加 `--highvram` / `--gpu-only`——那會把模型釘在 VRAM,`/free` 卸不乾淨。
+
+| 變數 | 預設 | 說明 |
+|---|---|---|
+| `COMFY_URL` | `http://localhost:8188` | ComfyUI 位址 |
+| `OLLAMA_URL` | `http://localhost:11434` | 卸載用;聊天實際用的端點會覆蓋它 |
+| `COMFY_TIMEOUT` | `300` | 一張圖從送出到收檔的上限(含換班重載) |
+| `COMFY_CKPT` | (空) | 預設 checkpoint;留空 = 取 ComfyUI 清單第一個 |
+
+`POST /api/imggen` 帶 `provider: "comfy"` 就走這條(預設仍是 `grok-img`)。
+產物與 Grok 那條路存在同一個 `assets/testword/`、同一套命名,相簿不必分開處理。
+
+生圖 workflow 由 `comfy.build_workflow()` 組(8 節點 txt2img)——這是 plan-v4 §8.3
+的「廠商替換點」,要換模型、加 LoRA、加色彩量化改這一個函式即可。也可以直接在
+`workflow` 欄位塞整份 API 格式 workflow,伺服器原樣轉發不檢視。
+
+**尚未做**:人設欄位翻成 SD tag(`image_job_builder`)。目前 `prompt` 原樣送出。
+
 ### API
 
 | 方法 | 路徑 | 說明 |
@@ -63,3 +97,4 @@ prompt 刻意短,只有該段的抽卡原文加取景(例:`G 罩杯、傲人豐�
 | POST | `/api/imggen` | 生圖訂單(構圖/分級/風格;`part=head0\|bust0\|lower0` 第一輪、`head\|bust\|lower` 第二輪穿搭,`ref` 帶第一輪同段那張,`prompt` 帶改過的版本)→ result 為 `/assets/testword/….png` |
 | POST | `/api/imggen/preview` | 不生圖,只組這份人設的六段 prompt(存檔路徑與參考圖那兩行送出前才補) |
 | GET | `/api/imggen/list` | 最近生圖列表(含 `part`) |
+| GET | `/api/comfy/status` | ComfyUI 通不通、checkpoint 清單、VRAM、GPU 現在歸誰用 |

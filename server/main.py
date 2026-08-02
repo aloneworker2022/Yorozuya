@@ -22,6 +22,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import comfy
 import sim
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -141,6 +142,8 @@ def health():
         "time": time.time(),
         "grok_build": _grok_build_available(),
         "grok_bin": GROK_BIN,
+        "comfy_url": comfy.COMFY_URL,
+        "gpu": comfy.gpu_state(),
     }
 
 
@@ -814,24 +817,93 @@ async def _run_grok_image(
     return "", f"生圖失敗:{msg}"
 
 
+# ---- ComfyUI 本機生圖(Windows 那台,與 Ollama 共用一張卡,換班見 comfy.lease)----
+
+
+async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
+    """ComfyUI 生一張,存進 assets/testword/,回 (/assets/testword/….png, None)。
+
+    存檔命名沿用 Grok 那條路的規則(`{stamp}_{part}.png`),/api/imggen/list
+    才認得出 part,兩條生圖路徑在相簿裡混排也不用分別處理。
+
+    prompt 目前原樣送給 ComfyUI —— 人設欄位翻成 SD tag 是下一步的事
+    (plan-v4 §8.3 的 image_job_builder),這裡先不猜。
+    """
+    IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+    part = str(opts.get("part") or "").lower()
+    stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+    fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
+
+    prompt = str(opts.get("prompt") or "").strip()
+    wf = opts.get("workflow") if isinstance(opts.get("workflow"), dict) else None
+    if not prompt and wf is None:
+        return "", "ComfyUI 生圖要有 prompt(或整份 workflow)"
+
+    name, err = await comfy.generate(
+        positive=prompt,
+        negative=str(opts.get("negative") or ""),
+        ckpt=str(opts.get("ckpt") or ""),
+        save_to=IMG_TEST_DIR / fname,
+        width=int(opts.get("width") or 512),
+        height=int(opts.get("height") or 768),
+        out_width=int(opts.get("out_width") or 0),
+        out_height=int(opts.get("out_height") or 0),
+        steps=int(opts.get("steps") or 25),
+        cfg=float(opts.get("cfg") or 7.0),
+        seed=int(opts.get("seed") or 0),
+        workflow=wf,
+    )
+    if err:
+        return "", err
+    return f"/assets/testword/{name}", None
+
+
+@app.get("/api/comfy/status")
+async def comfy_status():
+    """ComfyUI 通不通、有哪些 checkpoint、GPU 現在歸誰用。"""
+    stats = await comfy.system_stats()
+    devices = (stats or {}).get("devices") or []
+    return {
+        "ok": stats is not None,
+        "url": comfy.COMFY_URL,
+        "checkpoints": await comfy.checkpoints() if stats else [],
+        "vram": [
+            {
+                "name": d.get("name"),
+                "total_mb": round((d.get("vram_total") or 0) / 1048576),
+                "free_mb": round((d.get("vram_free") or 0) / 1048576),
+            }
+            for d in devices
+        ],
+        "gpu": comfy.gpu_state(),
+    }
+
+
 async def _stream_ollama_chat(endpoint: str, body: dict, on_token) -> str | None:
-    """Ollama NDJSON 串流;on_token(chunk) 累積。回傳 error 字串或 None。"""
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
-            async with c.stream("POST", endpoint.rstrip("/") + "/api/chat", json=body) as r:
-                async for line in r.aiter_lines():
-                    if not line.strip():
-                        continue
-                    o = json.loads(line)
-                    if o.get("error"):
-                        return str(o["error"])
-                    piece = (o.get("message") or {}).get("content", "")
-                    if piece:
-                        on_token(piece)
-                    if o.get("done"):
-                        break
-    except Exception as e:
-        return f"Ollama 連線失敗({type(e).__name__})"
+    """Ollama NDJSON 串流;on_token(chunk) 累積。回傳 error 字串或 None。
+
+    所有 Ollama 流量都經過這裡,所以 GPU 換班鎖也開在這 —— 進來前先把
+    ComfyUI 的 checkpoint 卸出 VRAM,免得 Ollama 載模型時撞到 OOM。
+    連續聊天只有第一句會付換班成本(lease 是黏著的)。
+    """
+    comfy.note_ollama_endpoint(endpoint)
+    async with comfy.lease("llm"):
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
+                async with c.stream("POST", endpoint.rstrip("/") + "/api/chat", json=body) as r:
+                    async for line in r.aiter_lines():
+                        if not line.strip():
+                            continue
+                        o = json.loads(line)
+                        if o.get("error"):
+                            return str(o["error"])
+                        piece = (o.get("message") or {}).get("content", "")
+                        if piece:
+                            on_token(piece)
+                        if o.get("done"):
+                            break
+        except Exception as e:
+            return f"Ollama 連線失敗({type(e).__name__})"
     return None
 
 
@@ -1052,6 +1124,19 @@ class ImgGenIn(BaseModel):
     ref: str = ""               # 第一輪同段那張的 /assets/testword/… URL,第二輪當參考圖
     prompt: str = ""            # 使用者在 testword 改過的 prompt(留空=伺服器依人設自己組)
     retry: bool = False
+    # provider: "grok-img"(雲端 Grok Build)| "comfy"(Windows 本機 ComfyUI)
+    provider: str = "grok-img"
+    # 以下只有 provider=comfy 會用到。ComfyUI 吃的是 SD tag,不是中文敘述。
+    negative: str = ""          # 留空 = comfy.DEFAULT_NEGATIVE
+    ckpt: str = ""              # 留空 = COMFY_CKPT,再空 = ComfyUI 清單第一個
+    width: int = 512            # 實際算圖尺寸(SD1.5 給 512、SDXL 給 1024 附近才不糊)
+    height: int = 768
+    out_width: int = 0          # 算完再縮到這個尺寸(立繪 192×288);0 = 不縮
+    out_height: int = 0
+    steps: int = 25
+    cfg: float = 7.0
+    seed: int = 0               # 0 = 每次隨機
+    workflow: dict | None = None  # 整份 API 格式 workflow;給了就原樣送出,上面全部忽略
 
 
 GEN_WAKE = asyncio.Event()
@@ -1060,6 +1145,8 @@ GEN_WAKE = asyncio.Event()
 def _gen_endpoint_for(provider: str | None, endpoint: str) -> str:
     ep = (endpoint or "").strip().lower()
     p = (provider or "").strip().lower()
+    if p in ("comfy", "comfyui", "comfy-img") or ep in ("comfy", "comfy-img"):
+        return "comfy-img"
     if p in ("grok-img", "img", "image") or ep in ("grok-img", "img"):
         return "grok-img"
     p2 = _normalize_provider(provider) if provider else None
@@ -1105,9 +1192,14 @@ def gen_submit(t: GenIn):
 
 @app.post("/api/imggen")
 def imggen_submit(t: ImgGenIn):
-    """testword 生圖下單 → gen_tasks(endpoint=grok-img)。result 為 /assets/testword/….png"""
+    """testword 生圖下單 → gen_tasks。result 為 /assets/testword/….png
+
+    provider=grok-img → 雲端 Grok Build;provider=comfy → Windows 本機 ComfyUI。
+    兩條路的產物存在同一個資料夾、同一套命名,相簿不必分開處理。
+    """
     key = (t.key or "").strip() or f"img:{int(time.time() * 1000)}:{uuid.uuid4().hex[:8]}"
     part = (t.part or "").lower()
+    ep = _gen_endpoint_for(t.provider, "")
     opts = {
         "kind": "girl_image",
         "part": part if part in IMG_PARTS else "",
@@ -1120,12 +1212,27 @@ def imggen_submit(t: ImgGenIn):
         "personality": t.personality or "",
         "backstory": t.backstory or "",
         "extra": t.extra or "",
-        "prompt": (t.prompt or "") if part in IMG_PARTS else "",
+        # ComfyUI 沒有「伺服器依人設自己組」那條路(SD 吃 tag 不吃中文敘述),
+        # 所以 prompt 一律照收;Grok 那條維持原本只在分段時才收的行為。
+        "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS) else "",
     }
+    if ep == "comfy-img":
+        opts.update({
+            "negative": t.negative or "",
+            "ckpt": t.ckpt or "",
+            "width": int(t.width or 512),
+            "height": int(t.height or 768),
+            "out_width": int(t.out_width or 0),
+            "out_height": int(t.out_height or 0),
+            "steps": int(t.steps or 25),
+            "cfg": float(t.cfg or 7.0),
+            "seed": int(t.seed or 0),
+            "workflow": t.workflow if isinstance(t.workflow, dict) else None,
+        })
     body = GenIn(
         key=key,
-        endpoint="grok-img",
-        provider="grok-img",
+        endpoint=ep,
+        provider=ep,
         model=t.model or "grok-4.5",
         messages=[],  # 參數在 options
         options=opts,
@@ -1222,7 +1329,10 @@ async def _gen_worker():
             def on_token(piece: str):
                 parts.append(piece)
 
-            if endpoint == "grok-img":
+            if endpoint == "comfy-img":
+                url, err = await _run_comfy_image(opts)
+                text = url or ""
+            elif endpoint == "grok-img":
                 url, err = await _run_grok_image(
                     model,
                     framing=str(opts.get("framing") or "half"),
