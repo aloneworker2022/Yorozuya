@@ -824,6 +824,13 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 }
 #vn-text { text-shadow: var(--card-vn-halo, none); }
 #vn-nameline { display: flex; align-items: center; gap: .6em; margin-bottom: .45em; }
+/* 聊天頭像:召喚三連拍的大頭照。像素風要 crisp,不要瀏覽器幫忙糊平 */
+#vn-face {
+  width: 2.2em; height: 2.2em; flex: 0 0 auto;
+  border-radius: 5px; object-fit: cover;
+  border: 1px solid var(--line);
+  image-rendering: pixelated;
+}
 #vn-name {
   font-size: .85em; letter-spacing: .15em; color: var(--pink);
   text-shadow: 0 0 8px color-mix(in srgb, currentColor 55%, transparent);

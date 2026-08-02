@@ -368,6 +368,8 @@ function defaultState() {
       // 織夢生圖那台(顯卡主機)。跟 ollamaUrl 一樣是「別台機器的位址」——
       // 伺服器不會知道,只能由這裡填進去。留空 = 用伺服器的 COMFY_URL 預設。
       comfyUrl: "",
+      // 生圖走哪條:"comfy"(本機顯卡,召喚出三連拍)或 "grok-img"(雲端,單張)
+      imgProvider: "grok-img",
       cardColors: null,   // null = 主題預設;{exec|found|acc|vn: {color,opacity}}
       cardCenter: false,  // 卡牌文字水平置中
       cardFontScale: 1,   // 卡牌文字大小倍率(0.7~1.6)
@@ -1242,7 +1244,7 @@ function renderSummonCard(ov, s) {
     <div class="summon-result r-${s.rarity}">
       <div class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</div>
       <h3>${esc(s.name)}</h3>
-      <div class="portrait">${girlPortrait(s, 7)}</div>
+      <div class="portrait">${girlPortrait(s, 7, "full")}</div>
       <p>${ready ? "她成形了——這就是她的模樣。" : "她還沒有形體……讓她今晚做個夢吧。"}</p>
       <p class="small">${s.personality.join("・")} / ${s.speech}</p>
       <p class="small dim">她原本是……${esc(s.job || "?")}</p>
@@ -1254,40 +1256,94 @@ function renderSummonCard(ov, s) {
 // 生圖進行中的魅魔 id(召喚立繪 / 事後補織共用),避免同一隻重複下單、按鈕重複點
 const portraitGenning = new Set();
 
-// 替某隻魅魔生立繪:下單 /api/imggen → 輪詢到 done → 寫入 s.portrait / portraitReady。
-// 逾時(3 分鐘)或失敗回 false,不寫入。onTick(sec) 供召喚彈窗即時更新計時。
-async function weavePortrait(s, onTick) {
-  if (!s || portraitGenning.has(s.id)) return false;
-  portraitGenning.add(s.id);
+// 生圖走哪條路:ComfyUI(本機顯卡)或 Grok Build(雲端)
+function imgProvider() {
+  return state.settings.imgProvider === "comfy" ? "comfy" : "grok-img";
+}
+
+// 一張的下單→輪詢。shot 給值(head|half|full)= 三連拍其中一張,尺寸與 seed
+// 由伺服器依規格決定(三張同 seed 才是同一張臉)。回 URL 或 ""。
+async function weaveShot(s, shot, onTick) {
+  const comfy = imgProvider() === "comfy";
   const body = {
+    provider: imgProvider(),
     model: state.settings.model || "grok-4.5",
-    framing: "full",   // 像素立繪:站姿全身當人物 sprite
+    // Grok 那條沒有三連拍,只認 framing;head 對它而言最接近半身
+    framing: comfy ? "full" : (shot === "full" ? "full" : "half"),
     rating: state.settings.rating || "sfw",
-    style: state.settings.imgStyle || "pixel",   // 人物一律像素圖(256x256,伺服器強制尺寸)
+    style: state.settings.imgStyle || "pixel",
     character: s,   // 完整人設(generateGirl 結果),生圖以此為準
     retry: true,
+    ...(comfy ? { shot, char_id: s.id, comfy_url: state.settings.comfyUrl || "" } : {}),
   };
   const t0 = Date.now();
   const timer = onTick ? setInterval(() => onTick(Math.round((Date.now() - t0) / 1000)), 1000) : null;
-  let ok = false;
+  let url = "";
   try {
     let r = await imgGenPost(body);
     let key = r?.key;
     const deadline = Date.now() + 180000;   // 最多等 3 分鐘
     while (Date.now() < deadline) {
-      if (r?.status === "done") {
-        if (r.result) { s.portrait = r.result; s.portraitReady = true; dirty = true; saveNow(); ok = true; }
-        break;
-      }
+      if (r?.status === "done") { url = r.result || ""; break; }
       if (r?.status === "error") break;
       await new Promise(res => setTimeout(res, 1500));
-      r = await imgGenPost({ ...body, key, retry: true });
+      r = await imgGenPost({ ...body, key, retry: false });
       key = r?.key || key;
     }
-  } catch { /* ok 維持 false */ }
+  } catch { /* url 維持 "" */ }
   if (timer) clearInterval(timer);
-  portraitGenning.delete(s.id);
+  return url;
+}
+
+function setShot(s, shot, url) {
+  if (!url) return;
+  if (!s.portraits) s.portraits = {};
+  s.portraits[shot] = url;
+  s.portrait = s.portraits.full || s.portraits.half || url;   // 舊欄位仍指得到東西
+  s.portraitReady = true;
+  dirty = true;
+  saveNow();
+}
+
+// 召喚三連拍:先等 full(召喚結果卡要顯示它),head/half 背景補。
+// 三張都等 = 召喚要卡三倍時間;玩家在讀結果卡的時候另外兩張正好織完。
+async function weavePortrait(s, onTick) {
+  if (!s || portraitGenning.has(s.id)) return false;
+  portraitGenning.add(s.id);
+  let ok = false;
+  try {
+    setShot(s, "full", await weaveShot(s, "full", onTick));
+    ok = !!girlShot(s, "full");
+    if (ok && imgProvider() === "comfy") weaveRest(s);   // 不 await:讓召喚立刻往下走
+  } finally {
+    portraitGenning.delete(s.id);
+  }
   return ok;
+}
+
+// 背景補剩下兩張。失敗不重試也不吵——girlShot 會自動退回已經有的那張。
+async function weaveRest(s) {
+  for (const shot of ["head", "half"]) {
+    if (girlShot(s, shot) && s.portraits?.[shot]) continue;
+    setShot(s, shot, await weaveShot(s, shot));
+    renderAll();
+  }
+}
+
+// 詳細頁「補織缺的那幾張」用:三張補齊,已經有的跳過
+async function weaveMissing(s) {
+  if (!s || portraitGenning.has(s.id)) return;
+  portraitGenning.add(s.id);
+  try {
+    for (const shot of ["full", "half", "head"]) {
+      if (s.portraits?.[shot]) continue;
+      setShot(s, shot, await weaveShot(s, shot));
+      renderAll();
+    }
+  } finally {
+    portraitGenning.delete(s.id);
+    renderAll();
+  }
 }
 
 // Grok Build 召喚生圖:當場織出形體,輪詢到 done 才顯示「接受契約」。
@@ -2880,10 +2936,49 @@ function girlSVG(fill, scale = 6) {
   return `<svg viewBox="0 0 16 22" width="${16 * scale}" height="${22 * scale}" shape-rendering="crispEdges">${px.map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`).join("")}</svg>`;
 }
 
-// 立繪:生圖好了顯示圖(portrait),還沒好退回 SVG 剪影
-function girlPortrait(s, scale = 6) {
-  return s?.portrait
-    ? `<img class="portrait-img" src="${esc(s.portrait)}" alt="${esc(s.name || "")}" loading="lazy">`
+// 召喚三連拍:一位妹子固定出三張,各處各取所需。
+//   head 大頭照 → 名冊縮圖、聊天頭像
+//   half 半身   → 詳細頁(身份)、看板娘
+//   full 全身   → 召喚結果卡(第一次見到她,要看完整形體)
+const SHOT_FALLBACK = {
+  head: ["head", "half", "full"],
+  half: ["half", "full", "head"],
+  full: ["full", "half", "head"],
+};
+
+// 想要的那張還沒生好就退而求其次,而不是掉回剪影——有圖總比沒圖好
+function girlShot(s, kind = "half") {
+  const p = s?.portraits;
+  if (p) for (const k of SHOT_FALLBACK[kind] || SHOT_FALLBACK.half) if (p[k]) return p[k];
+  return s?.portrait || "";   // 舊存檔只有單張
+}
+
+const SHOT_LABEL = { head: "大頭照", half: "半身", full: "全身" };
+
+// 詳細頁那行:缺哪幾張、能不能現在補。ComfyUI 是本機顯卡,隨時可織;
+// Grok 是雲端訂單,維持原本只有訂單模式才給按的規則。
+function shotsLine(s) {
+  const have = ["full", "half", "head"].filter(k => s.portraits?.[k]);
+  const missing = ["full", "half", "head"].filter(k => !s.portraits?.[k]);
+  const busy = portraitGenning.has(s.id);
+  if (!missing.length) return "";
+  const canWeave = imgProvider() === "comfy" || llmIsOrder();
+  if (!canWeave) {
+    return `<div class="aff-line dim small">${have.length ? "" : "尚未成形——"}今晚讓她織夢,明早見到她的臉(M3)</div>`;
+  }
+  const what = have.length
+    ? `還差 ${missing.map(k => SHOT_LABEL[k]).join("、")}`
+    : "尚未成形——大頭照 / 半身 / 全身三張都還沒織";
+  return `<div class="aff-line dim small">${what}</div>
+    <div class="detail-actions"><button class="cyan" id="act-weave" ${busy ? "disabled" : ""}>${
+      busy ? "織出形體中…" : "✦ 織出她的形體"}</button></div>`;
+}
+
+// 立繪:生圖好了顯示圖,還沒好退回 SVG 剪影
+function girlPortrait(s, scale = 6, kind = "half") {
+  const url = girlShot(s, kind);
+  return url
+    ? `<img class="portrait-img shot-${kind}" src="${esc(url)}" alt="${esc(s.name || "")}" loading="lazy">`
     : girlSVG("#241333", scale);
 }
 
@@ -3468,6 +3563,16 @@ function renderPlayerAttrs() {
 }
 
 // 聊天插播層:蓋在所有分頁之上,只有「結束對話」能退出
+// 聊天頭像:三連拍的 head。沒有(舊存檔、還沒織完)就整個藏起來,不留破圖框。
+function vnFace(s) {
+  const el = $("#vn-face");
+  if (!el) return;
+  const url = s ? girlShot(s, "head") : "";
+  el.classList.toggle("hidden", !url);
+  if (url && el.getAttribute("src") !== url) el.src = url;
+  el.alt = s?.name || "";
+}
+
 function renderChatView() {
   const chatV = $("#chat-view");
   const inputRow = $("#chat-input-row");
@@ -3483,6 +3588,7 @@ function renderChatView() {
     sacCtl?.classList.add("hidden");
     ssacCtl?.classList.remove("hidden");
     $("#chat-title").textContent = `召喚獻祭(已獻 ${sacSummon.count} 人)`;
+      vnFace(null);
     return;
   }
   ssacCtl?.classList.add("hidden");
@@ -3496,6 +3602,7 @@ function renderChatView() {
     $("#chat-title").textContent = sacSession
       ? `獻祭儀式:${sacSession.name}${sacSession.idx ? `(${sacSession.idx}/6)` : "(準備中)"}`
       : "獻祭儀式";
+    vnFace(null);
     return;
   }
   sacCtl?.classList.add("hidden");
@@ -3510,6 +3617,7 @@ function renderChatView() {
       watchCtl?.classList.remove("hidden");
       const su = summonerById(s.summoner?.id);
       $("#chat-title").textContent = `觀戰:${s.name} 與 ${su?.name || "他"}`;
+      vnFace(null);
       return;
     }
   }
@@ -3526,6 +3634,7 @@ function renderChatView() {
       $("#chat-title").textContent = chatSession.type === "date"
         ? `${cs.name}・${chatSession.location}約會中`
         : `${cs.name}・聊天中`;
+      vnFace(cs);
       return;
     }
   }
@@ -3558,7 +3667,7 @@ function renderSuccubi() {
     const el = document.createElement("div");
     el.className = `scard r-${s.rarity}` + (s.ntr ? " ntr" : "");
     el.innerHTML = `
-      <div class="thumb">${girlPortrait(s, 2.5)}</div>
+      <div class="thumb">${girlPortrait(s, 2.5, "head")}</div>
       <div class="sinfo">
         <div class="sname"><b>${esc(s.name)}</b><span class="rbadge">${s.rarity}</span>
           <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(s.stage)}</span>
@@ -3626,7 +3735,7 @@ function renderDetail(s, root) {
   root.innerHTML = `
     <div class="panel">
       <button class="back-btn" id="detail-back">‹ 名冊</button>
-      <div class="portrait">${girlPortrait(s, 6)}</div>
+      <div class="portrait">${girlPortrait(s, 6, "half")}</div>
       <div class="aff-line">
         <b>${esc(s.name)}</b> <span class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</span>
         ・${s.ntr ? "被奪走" : stageLabel(s.stage)}
@@ -3643,10 +3752,7 @@ function renderDetail(s, root) {
       ${!s.ntr ? craveLine(s) : ""}
       ${needLine}
       ${summonerLine}
-      ${!s.portraitReady ? (llmIsOrder()
-        ? `<div class="aff-line dim small">尚未成形——按下方「織出她的形體」讓 Grok 當場為她生圖</div>
-           <div class="detail-actions"><button class="cyan" id="act-weave" ${portraitGenning.has(s.id) ? "disabled" : ""}>${portraitGenning.has(s.id) ? "織出形體中…" : "✦ 織出她的形體"}</button></div>`
-        : `<div class="aff-line dim small">尚未成形——今晚讓她織夢,明早見到她的臉(M3)</div>`) : ""}
+      ${shotsLine(s)}
       <div class="detail-actions">
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
@@ -3676,8 +3782,10 @@ function renderDetail(s, root) {
   root.querySelector("#act-weave")?.addEventListener("click", async () => {
     toast(`為 ${s.name} 織出形體中……`, "good");
     renderAll();   // 立即把按鈕切成「織出形體中…」
-    const ok = await weavePortrait(s);
-    toast(ok ? `${s.name} 成形了` : "生圖失敗,稍後再試", ok ? "good" : "bad");
+    await weaveMissing(s);   // 只補缺的那幾張,已經有的不重生
+    const left = ["full", "half", "head"].filter(k => !s.portraits?.[k]);
+    toast(left.length ? `還差 ${left.map(k => SHOT_LABEL[k]).join("、")},稍後再試` : `${s.name} 成形了`,
+          left.length ? "bad" : "good");
     renderAll();
   });
   root.querySelector("#act-dismiss")?.addEventListener("click", () => sacrificeSuccubus(s.id));
@@ -3709,7 +3817,7 @@ function renderKanban() {
     girl.className = `r-${girls[0].rarity}` + (girls.length > 1 ? " multi" : "");
     const size = girls.length >= 3 ? 5 : girls.length === 2 ? 7 : 9;   // 人多站小一點
     girl.innerHTML = girls.map(g =>
-      `<div class="kgirl r-${g.rarity}" data-kid="${g.id}">${girlPortrait(g, size)}<div class="kname">${esc(g.name)}</div></div>`
+      `<div class="kgirl r-${g.rarity}" data-kid="${g.id}">${girlPortrait(g, size, "half")}<div class="kname">${esc(g.name)}</div></div>`
     ).join("");
     girl.onclick = null;
     girl.querySelectorAll(".kgirl").forEach(el => el.onclick = () => {
@@ -3751,6 +3859,10 @@ function renderSettings() {
   if (prov) prov.value = llmProvider();
   $("#set-ollama").value = state.settings.ollamaUrl || "";
   $("#set-comfy").value = state.settings.comfyUrl || "";
+  $("#set-imgprov").value = imgProvider();
+  $("#row-comfy-url").classList.toggle("hidden", imgProvider() !== "comfy");
+  $("#row-comfy-note").classList.toggle("hidden", imgProvider() !== "comfy");
+  $("#row-comfy-test").classList.toggle("hidden", imgProvider() !== "comfy");
   $("#set-model").value = state.settings.model || "";
   $("#set-rating").value = state.settings.rating || "sfw";
   applyLlmProviderUi();
@@ -3910,6 +4022,7 @@ on("set-llm-provider", "change", e => {
 });
 on("set-ollama", "change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });
 on("set-comfy", "change", e => { state.settings.comfyUrl = e.target.value.trim(); scheduleSave(); });
+on("set-imgprov", "change", e => { state.settings.imgProvider = e.target.value; scheduleSave(); renderSettings(); });
 on("btn-comfy-test", "click", async () => {
   const r = $("#comfy-test-result");
   if (!r) return;

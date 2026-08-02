@@ -379,9 +379,15 @@
   <textarea id="cf-neg" style="min-height:2.5em" placeholder="留空 = 用伺服器預設"></textarea>
   <div class="row" style="margin-top:.6em;gap:.5em">
     <button onclick="cfRun('')" id="cf-run">▶ 生成這張</button>
+    <button class="cy" type="button" onclick="cfTrio()" id="cf-trio">📸 召喚三連拍(大頭 / 半身 / 全身)</button>
     <button class="cy" type="button" onclick="igRefreshGallery()">重新整理相簿</button>
   </div>
+  <div class="mini" style="margin-top:.35em">
+    三連拍 = 遊戲召喚時真的會跑的那條:三張<b>同一個 seed</b>(取自人設雜湊)所以是同一張臉,
+    尺寸由伺服器定(大頭 256×256、半身/全身 192×288),存進 <code>assets/portraits/</code> 而不是測試資料夾。
+  </div>
   <div id="cf-preview" style="margin-top:.6em"><span class="mini">預覽會出現在這裡</span></div>
+  <div id="cf-trio-box" class="row" style="gap:.6em;margin-top:.6em;align-items:flex-start"></div>
 
   <div style="border-top:1px solid rgba(255,255,255,.08);margin-top:1.1em;padding-top:.8em">
     <h3 style="font-size:.85em;color:#ff8fe6;letter-spacing:.08em;margin-bottom:.4em">分段(頭 / 胸 / 下半身,各兩輪)</h3>
@@ -1665,6 +1671,41 @@ async function cfRun(part) {
   btn.disabled = false;
 }
 
+// 召喚三連拍:跟遊戲召喚時跑的是同一條路(shot + char_id → assets/portraits/)。
+// prompt 不從框裡拿——三張各有各的取景,由伺服器依 shot 現組。
+async function cfTrio() {
+  if (cfRunning) return;
+  if (!igChar) { status("cf-status", "請先在上面那塊「依 edit_person 池抽卡」", true); return; }
+  const btn = document.getElementById("cf-trio");
+  const box = document.getElementById("cf-trio-box");
+  const shots = [["head", "大頭照 256×256"], ["half", "半身 192×288"], ["full", "全身 192×288"]];
+  const charId = "test" + (igChar.name || "x").replace(/[^\w]/g, "") + Date.now().toString(36);
+  cfRunning = true;
+  btn.disabled = true;
+  box.innerHTML = shots.map(([k, label]) =>
+    `<div style="flex:1 1 8em"><div class="mini">${label}</div>
+       <div id="cft3-${k}" style="min-height:3em"><span class="mini">排隊中…</span></div></div>`).join("");
+  try {
+    for (const [k, label] of shots) {
+      const cell = document.getElementById("cft3-" + k);
+      const r = await igOrder(
+        { ...cfBaseBody(), shot: k, char_id: charId, key: `trio:${charId}:${k}` },
+        sec => { cell.innerHTML = `<span class="mini">生成中… ${sec}s</span>`; });
+      cell.innerHTML = r.error
+        ? `<span class="mini" style="color:#ff5f7a">${r.error}</span>`
+        : `<img src="${r.url}" style="max-width:100%;border-radius:6px;image-rendering:pixelated" alt="${k}">
+           <div class="mini">✓ ${r.sec}s</div>`;
+      status("cf-status", r.error ? `${label} 失敗` : `${label} 完成(${r.sec}s)`, !!r.error);
+    }
+    status("cf-status", "✓ 三連拍完成——三張應該是同一張臉(同 seed)");
+  } catch (e) {
+    status("cf-status", "失敗:" + e.message, true);
+  }
+  cfRunning = false;
+  btn.disabled = false;
+}
+
+window.cfTrio = cfTrio;
 window.cfCheck = cfCheck;
 window.cfPreview = cfPreview;
 window.cfRun = cfRun;

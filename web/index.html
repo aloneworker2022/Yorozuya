@@ -155,9 +155,14 @@
         <div class="setting-row"><label>模型</label><input id="set-model" type="text" class="wide" list="model-list" placeholder="(留空 = 罐頭模式)"><datalist id="model-list"></datalist></div>
         <div class="setting-row"><label>內容分級</label><select id="set-rating"><option value="sfw">SFW</option><option value="nsfw">NSFW(依內容模組)</option></select></div>
         <div class="btn-row"><button id="btn-llm-test">測試連線</button><span id="llm-test-result" class="dim small"></span></div>
-        <div class="setting-row"><label>ComfyUI</label><input id="set-comfy" type="text" class="wide" placeholder="http://&lt;Windows 的 IP&gt;:8188"></div>
-        <div class="setting-row"><label></label><span class="dim small">織夢生圖那台(顯卡主機)。<b>不能填 localhost</b>——那是伺服器自己,不是顯卡。</span></div>
-        <div class="btn-row"><button id="btn-comfy-test">測試 ComfyUI</button><span id="comfy-test-result" class="dim small"></span></div>
+        <div class="setting-row"><label>生圖</label>
+          <select id="set-imgprov">
+            <option value="grok-img">Grok Build(雲端·單張)</option>
+            <option value="comfy">ComfyUI(本機顯卡·三連拍)</option>
+          </select></div>
+        <div class="setting-row hidden" id="row-comfy-url"><label>ComfyUI</label><input id="set-comfy" type="text" class="wide" placeholder="http://&lt;Windows 的 IP&gt;:8188"></div>
+        <div class="setting-row hidden" id="row-comfy-note"><label></label><span class="dim small">織夢生圖那台(顯卡主機)。<b>不能填 localhost</b>——那是伺服器自己,不是顯卡。召喚時出大頭照 / 半身 / 全身三張。</span></div>
+        <div class="btn-row hidden" id="row-comfy-test"><button id="btn-comfy-test">測試 ComfyUI</button><span id="comfy-test-result" class="dim small"></span></div>
       </div>
       <div class="panel sub">
         <h2>存檔</h2>
@@ -248,6 +253,7 @@
   <div id="chat-spacer"></div>
   <div id="vn-box">
     <div id="vn-nameline">
+      <img id="vn-face" class="hidden" alt="">
       <span id="vn-name"></span>
       <span id="vn-typing" class="hidden"><i></i><i></i><i></i></span>
     </div>

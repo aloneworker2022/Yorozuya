@@ -120,8 +120,10 @@ PALETTE = {
 # ---- 取景。part 對應分段生圖的六段,framing 對應整張 ----
 
 FRAMING = {
+    # head 是召喚三連拍的大頭照:名冊縮圖與聊天頭像用,所以要正面看鏡頭
+    "head": "portrait, face focus, head and shoulders, looking at viewer",
     "half": "upper body",
-    "full": "full body",
+    "full": "full body, standing, full body visible, head to feet",
 }
 
 PART_FRAMING = {

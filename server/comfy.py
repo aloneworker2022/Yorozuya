@@ -51,6 +51,16 @@ DEFAULT_SCHEDULER = os.environ.get("COMFY_SCHEDULER", "normal")
 # Illustrious 系建議 CLIP skip 2(= 停在倒數第二層)。0 或 -1 = 不跳。
 DEFAULT_CLIP_SKIP = int(os.environ.get("COMFY_CLIP_SKIP", "2"))
 
+# 召喚三連拍。每位妹子固定出這三張,遊戲各處各取所需:
+#   head → 名冊縮圖、聊天頭像      half → 詳細頁(身份)、看板娘      full → 召喚結果卡
+# 算圖尺寸挑 SDXL 的標準桶(1024×1024 / 832×1216),直接算 192 寬會出一坨爛泥;
+# 出圖尺寸照 plan-v4 的立繪規格 192×288。
+PORTRAIT_SHOTS = {
+    "head": {"gen": (1024, 1024), "out": (256, 256)},
+    "half": {"gen": (832, 1216), "out": (192, 288)},
+    "full": {"gen": (832, 1216), "out": (192, 288)},
+}
+
 # 不寫在 prompt 裡的通用排除項。分級由抽卡管,這裡只管畫面品質。
 DEFAULT_NEGATIVE = (
     "worst quality, low quality, blurry, jpeg artifacts, watermark, text, "

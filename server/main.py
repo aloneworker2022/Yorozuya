@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import time
@@ -52,6 +53,8 @@ _GROK_DISALLOWED_TOOLS = (
 # 生圖任務允許的工具(image_gen/image_edit + 搬檔用 shell/list;image_edit 讓三段能照素體那張畫)
 _GROK_IMG_TOOLS = "image_gen,image_edit,run_terminal_cmd,list_dir,read_file"
 IMG_TEST_DIR = ASSETS_DIR / "testword"
+# 遊戲本體的召喚三連拍(head/half/full),與 testword 的實驗圖分開放
+PORTRAIT_DIR = ASSETS_DIR / "portraits"
 GROK_IMG_TIMEOUT = float(os.environ.get("GROK_IMG_TIMEOUT", "300"))
 GROK_IMG_MAX_TURNS = int(os.environ.get("GROK_IMG_MAX_TURNS", "8") or "8")
 
@@ -669,6 +672,9 @@ def _identity_anchor(ch: dict) -> dict:
     return {
         "skin": _SKIN_TONES[h[0] % len(_SKIN_TONES)],
         "palette": _PALETTES[h[1] % len(_PALETTES)],
+        # 同一位妹子固定同一個 seed:三連拍才會是同一張臉,重生也還是同一個人
+        # (plan-v4「同 DNA(traits + seed)維持長相一致」)
+        "seed": int.from_bytes(h[2:6], "big") % (2**31 - 1) or 1,
         "height_cm": look.get("height_cm") or "",
         "hair": look.get("hair") or "",
         "eyes": look.get("eyes") or "",
@@ -827,10 +833,12 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
     ch = opts.get("character") if isinstance(opts.get("character"), dict) else None
     anchor = _identity_anchor(ch or {})
     part = str(opts.get("part") or "").lower()
+    # 三連拍的 shot 直接就是取景(head/half/full),蓋掉 framing
+    shot = str(opts.get("shot") or "").lower()
     return sdtags.build_prompt(
         ch,
         part=part,
-        framing=str(opts.get("framing") or "half"),
+        framing=shot if shot in sdtags.FRAMING else str(opts.get("framing") or "half"),
         rating=str(opts.get("rating") or "sfw"),
         art_style=str(opts.get("style") or "anime"),
         skin=anchor["skin"],
@@ -843,18 +851,25 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
 
 
 async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
-    """ComfyUI 生一張,存進 assets/testword/,回 (/assets/testword/….png, None)。
+    """ComfyUI 生一張。
 
-    存檔命名沿用 Grok 那條路的規則(`{stamp}_{part}.png`),/api/imggen/list
-    才認得出 part,兩條生圖路徑在相簿裡混排也不用分別處理。
-
-    prompt 目前原樣送給 ComfyUI —— 人設欄位翻成 SD tag 是下一步的事
-    (plan-v4 §8.3 的 image_job_builder),這裡先不猜。
+    shot 有值(head|half|full)= 召喚三連拍,存進 assets/portraits/ 並以角色 id
+    命名(同一張永遠同一個檔名,重生就覆蓋);否則存 assets/testword/,沿用
+    Grok 那條路的 `{stamp}_{part}.png` 規則,兩條路的圖在相簿裡混排也不用分開處理。
     """
-    IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
-    part = str(opts.get("part") or "").lower()
-    stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
-    fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
+    shot = str(opts.get("shot") or "").lower()
+    char_id = re.sub(r"[^A-Za-z0-9_-]", "", str(opts.get("char_id") or ""))[:40]
+    if shot in comfy.PORTRAIT_SHOTS and char_id:
+        PORTRAIT_DIR.mkdir(parents=True, exist_ok=True)
+        out_dir, url_dir = PORTRAIT_DIR, "/assets/portraits"
+        fname = f"{char_id}_{shot}.png"
+    else:
+        shot = ""
+        IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+        out_dir, url_dir = IMG_TEST_DIR, "/assets/testword"
+        part = str(opts.get("part") or "").lower()
+        stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+        fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
 
     wf = opts.get("workflow") if isinstance(opts.get("workflow"), dict) else None
     # prompt 有值 = 使用者在 testword 改過的版本,原樣送出;留空才由人設現組
@@ -864,24 +879,35 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     if not prompt and wf is None:
         return "", "ComfyUI 生圖要有 prompt 或人設(或整份 workflow)"
 
+    # 三連拍的尺寸與 seed 由伺服器決定:尺寸照 plan-v4 立繪規格,seed 取人設雜湊
+    # ——三張同 seed 才會是同一張臉,而且重生還是同一個人。
+    spec = comfy.PORTRAIT_SHOTS.get(shot) or {}
+    gen_w, gen_h = spec.get("gen", (0, 0))
+    out_w, out_h = spec.get("out", (0, 0))
+    seed = int(opts.get("seed") or 0)
+    if shot and not seed:
+        seed = _identity_anchor(opts.get("character") or {})["seed"]
+
     name, err = await comfy.generate(
         positive=prompt,
         negative=str(opts.get("negative") or ""),
         ckpt=str(opts.get("ckpt") or ""),
-        save_to=IMG_TEST_DIR / fname,
-        width=int(opts.get("width") or comfy.DEFAULT_WIDTH),
-        height=int(opts.get("height") or comfy.DEFAULT_HEIGHT),
-        out_width=int(opts.get("out_width") or 0),
-        out_height=int(opts.get("out_height") or 0),
+        save_to=out_dir / fname,
+        width=gen_w or int(opts.get("width") or comfy.DEFAULT_WIDTH),
+        height=gen_h or int(opts.get("height") or comfy.DEFAULT_HEIGHT),
+        out_width=out_w or int(opts.get("out_width") or 0),
+        out_height=out_h or int(opts.get("out_height") or 0),
         steps=int(opts.get("steps") or comfy.DEFAULT_STEPS),
         cfg=float(opts.get("cfg") or comfy.DEFAULT_CFG),
-        seed=int(opts.get("seed") or 0),
+        seed=seed,
         workflow=wf,
         base=str(opts.get("comfy_url") or ""),
     )
     if err:
         return "", err
-    return f"/assets/testword/{name}", None
+    # 三連拍會覆蓋同一個檔名,URL 帶版本號才不會被瀏覽器拿舊的
+    ver = f"?v={int(time.time())}" if shot else ""
+    return f"{url_dir}/{name}{ver}", None
 
 
 @app.get("/api/comfy/status")
@@ -1165,15 +1191,21 @@ class ImgGenIn(BaseModel):
     # 以下只有 provider=comfy 會用到。ComfyUI 吃的是 SD tag,不是中文敘述。
     negative: str = ""          # 留空 = comfy.DEFAULT_NEGATIVE
     ckpt: str = ""              # 留空 = COMFY_CKPT,再空 = ComfyUI 清單第一個
-    width: int = 512            # 實際算圖尺寸(SD1.5 給 512、SDXL 給 1024 附近才不糊)
-    height: int = 768
+    # 以下 0 一律代表「沒指定」,交給 comfy.DEFAULT_* 決定——不要在這裡再寫一組
+    # 預設值,那會無聲蓋掉模型該用的參數(換模型時只改 comfy.py 一處)
+    width: int = 0              # 實際算圖尺寸(SDXL 給 832×1216 這種標準桶才不糊)
+    height: int = 0
     out_width: int = 0          # 算完再縮到這個尺寸(立繪 192×288);0 = 不縮
     out_height: int = 0
-    steps: int = 25
-    cfg: float = 7.0
-    seed: int = 0               # 0 = 每次隨機
+    steps: int = 0
+    cfg: float = 0
+    seed: int = 0               # 0 = 每次隨機(三連拍例外:取人設雜湊)
     succubus: bool = True       # 加魔族外觀 tag(角、尖耳);測純人類時關掉
     comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
+    # 召喚三連拍:shot=head|half|full 且有 char_id → 存 assets/portraits/{char_id}_{shot}.png,
+    # 尺寸與 seed 由伺服器依規格決定(三張同 seed = 同一張臉)
+    shot: str = ""
+    char_id: str = ""
     workflow: dict | None = None  # 整份 API 格式 workflow;給了就原樣送出,上面全部忽略
 
 
@@ -1258,15 +1290,17 @@ def imggen_submit(t: ImgGenIn):
         opts.update({
             "negative": t.negative or "",
             "ckpt": t.ckpt or "",
-            "width": int(t.width or 512),
-            "height": int(t.height or 768),
+            "width": int(t.width or 0),
+            "height": int(t.height or 0),
             "out_width": int(t.out_width or 0),
             "out_height": int(t.out_height or 0),
-            "steps": int(t.steps or 25),
-            "cfg": float(t.cfg or 7.0),
+            "steps": int(t.steps or 0),
+            "cfg": float(t.cfg or 0),
             "seed": int(t.seed or 0),
             "succubus": bool(t.succubus),
             "comfy_url": (t.comfy_url or "").strip(),
+            "shot": (t.shot or "").strip().lower(),
+            "char_id": (t.char_id or "").strip(),
             "workflow": t.workflow if isinstance(t.workflow, dict) else None,
         })
     body = GenIn(
