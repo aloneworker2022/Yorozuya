@@ -328,6 +328,68 @@
   <div id="ig-gallery" class="img-gallery"></div>
 </section>
 
+<!-- ── ComfyUI 生圖測試(本機 GPU) ── -->
+<section>
+  <h2>ComfyUI 生圖測試(本機 GPU · SD tag)</h2>
+  <div class="mini" style="margin-bottom:.6em">
+    跟上面那塊<b>共用同一個抽卡人設</b>(先在上面按「依 edit_person 池抽卡」)。
+    差別在 prompt:Grok 那條餵中文敘述,ComfyUI 這條餵<b>純英文 Danbooru tag</b>——
+    CLIP 對中文幾乎沒有有效編碼,中文丟進去約等於沒寫。對照表在 <code>server/sdtags.py</code>。
+    生圖時 RP5 會先把 Ollama 的模型踢出 VRAM(換班),聊天再回來時自動換回去。
+  </div>
+  <div class="row" style="gap:.5em;align-items:flex-end">
+    <button class="cy" type="button" onclick="cfCheck()">🔌 檢查 ComfyUI</button>
+    <span class="status" id="cf-conn">尚未檢查</span>
+  </div>
+  <div class="row" style="gap:.5em;margin-top:.6em">
+    <span style="flex:2 1 14em"><label>checkpoint</label>
+      <select id="cf-ckpt"><option value="">(按檢查後載入)</option></select>
+    </span>
+    <span style="flex:0 1 6em"><label>寬</label><input id="cf-w" type="number" value="832"></span>
+    <span style="flex:0 1 6em"><label>高</label><input id="cf-h" type="number" value="1216"></span>
+    <span style="flex:0 1 6em"><label>steps</label><input id="cf-steps" type="number" value="30"></span>
+    <span style="flex:0 1 6em"><label>cfg</label><input id="cf-cfg" type="number" step="0.5" value="5"></span>
+    <span style="flex:0 1 8em"><label>seed(0=隨機)</label><input id="cf-seed" type="number" value="0"></span>
+  </div>
+  <div class="row" style="gap:.5em;margin-top:.5em;align-items:center">
+    <span style="flex:0 1 7em"><label>縮到寬</label><input id="cf-ow" type="number" value="0" title="0 = 不縮。立繪填 192"></span>
+    <span style="flex:0 1 7em"><label>縮到高</label><input id="cf-oh" type="number" value="0" title="0 = 不縮。立繪填 288"></span>
+    <label class="mini" style="flex:0 0 auto;display:flex;align-items:center;gap:.35em;margin:0">
+      <input id="cf-succubus" type="checkbox" checked style="width:auto"> 加魔族 tag(角・尖耳)
+    </label>
+    <button type="button" class="cy" onclick="cfPortraitPreset()">立繪預設 192×288</button>
+  </div>
+
+  <div class="row" style="margin-top:.8em;gap:.5em">
+    <button class="cy" type="button" onclick="cfPreview()" id="cf-mk">① 產生 SD tag(不生圖)</button>
+    <span class="status" id="cf-status"></span>
+  </div>
+  <div id="cf-unknown" class="mini" style="margin-top:.5em;color:#ffb347"></div>
+
+  <label style="margin-top:.7em">整張(可改)</label>
+  <textarea id="cf-prompt" style="min-height:4.5em" placeholder="按「① 產生 SD tag」自動填,或自己打英文 tag"></textarea>
+  <label>negative(可改)</label>
+  <textarea id="cf-neg" style="min-height:2.5em" placeholder="留空 = 用伺服器預設"></textarea>
+  <div class="row" style="margin-top:.6em;gap:.5em">
+    <button onclick="cfRun('')" id="cf-run">▶ 生成這張</button>
+    <button class="cy" type="button" onclick="igRefreshGallery()">重新整理相簿</button>
+  </div>
+  <div id="cf-preview" style="margin-top:.6em"><span class="mini">預覽會出現在這裡</span></div>
+
+  <div style="border-top:1px solid rgba(255,255,255,.08);margin-top:1.1em;padding-top:.8em">
+    <h3 style="font-size:.85em;color:#ff8fe6;letter-spacing:.08em;margin-bottom:.4em">分段(頭 / 胸 / 下半身,各兩輪)</h3>
+    <div class="mini" style="margin-bottom:.6em">
+      跟 Grok 那條同樣的取捨:每段只放該段真的要畫的欄位,整張畫時模型會把所有特徵糊在一起。
+      第一輪(head0/bust0/lower0)不寫服裝——靠「不提衣服」而不是「說不要衣服」。
+      <b>ComfyUI 沒有跨段記憶,也不吃參考圖</b>,六段是六次獨立的 txt2img。
+    </div>
+    <div id="cf-parts"></div>
+  </div>
+
+  <div class="mini" style="margin-top:.8em">最近生圖(與上面共用同一個資料夾)</div>
+  <div id="cf-gallery-note" class="mini">↑ 用上面那個相簿看,兩條路的圖存在一起。</div>
+</section>
+
 <!-- ── 階段語氣腳本 ── -->
 <section>
   <h2>召喚師×她 階段語氣(NSFW 版寫在這,蓋掉內建全年齡版)</h2>
@@ -1413,6 +1475,156 @@ import { RIVAL_WATCH_TONE, RIVAL_CHAT_EFFECT, buildWatchPrompt, buildSystemPromp
 import { loadPools, generateGirl } from "/content/girl_gen.js";
 window.STAGE_DEFAULTS = { watch_stage: RIVAL_WATCH_TONE, chat_rival: RIVAL_CHAT_EFFECT };
 window.PB_buildWatchPrompt = buildWatchPrompt;
+// ── ComfyUI 生圖測試 ──────────────────────────────────────────────
+// 人設沿用上面那塊的 igChar;prompt 走 /api/comfy/preview 翻成英文 tag,
+// 下單走 /api/imggen 的 provider:"comfy",跟 Grok 那條同一個佇列同一個相簿。
+const CF_PARTS = ["head0", "bust0", "lower0", "head", "bust", "lower"];
+const CF_LABEL = {
+  head0: "頭", bust0: "胸", lower0: "下半身",
+  head: "頭・穿搭", bust: "胸・穿搭", lower: "下半身・穿搭",
+};
+let cfRunning = false;
+
+async function cfCheck() {
+  const el = document.getElementById("cf-conn");
+  el.textContent = "檢查中…";
+  try {
+    const j = await api("/api/comfy/status");
+    if (!j.ok) {
+      el.textContent = `✗ 連不上 ${j.url}(ComfyUI 沒開,或 COMFY_URL 設錯)`;
+      el.style.color = "#ff5f7a";
+      return;
+    }
+    const sel = document.getElementById("cf-ckpt");
+    sel.innerHTML = (j.checkpoints || []).map(c => `<option value="${c}">${c}</option>`).join("")
+      || `<option value="">(models/checkpoints 是空的)</option>`;
+    const v = j.vram?.[0];
+    const who = j.gpu?.holder ? ({ llm: "Ollama", comfy: "ComfyUI" })[j.gpu.holder] : "沒人";
+    el.textContent = `✓ ${j.url}`
+      + (v ? ` · ${v.name} ${Math.round(v.free_mb / 1024 * 10) / 10}/${Math.round(v.total_mb / 1024 * 10) / 10}GB 可用` : "")
+      + ` · GPU 現在歸:${who}(換班 ${j.gpu?.switches || 0} 次)`;
+    el.style.color = "";
+  } catch (e) {
+    el.textContent = "✗ " + e.message;
+    el.style.color = "#ff5f7a";
+  }
+}
+
+function cfPortraitPreset() {
+  document.getElementById("cf-ow").value = 192;
+  document.getElementById("cf-oh").value = 288;
+  status("cf-status", "已設成立繪尺寸:算圖仍用上面的寬高,出圖前縮到 192×288");
+}
+
+function cfPartsShell() {
+  document.getElementById("cf-parts").innerHTML = CF_PARTS.map(k => `
+    <div style="border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.6em .7em;margin-top:.6em">
+      <div class="row" style="gap:.5em;align-items:center">
+        <b style="flex:1 1 auto;font-size:.9em;color:#ffd75f">${CF_LABEL[k]}</b>
+        <button type="button" id="cfb-${k}" onclick="cfRun('${k}')">產這張</button>
+        <span class="status" id="cfs-${k}"></span>
+      </div>
+      <textarea id="cft-${k}" style="min-height:3.2em;margin-top:.4em"></textarea>
+      <div id="cfp-${k}" style="margin-top:.4em"></div>
+    </div>`).join("");
+}
+
+function cfBaseBody() {
+  return {
+    provider: "comfy",
+    framing: document.getElementById("ig-framing").value,
+    rating: document.getElementById("ig-rating").value,
+    style: document.getElementById("ig-style").value,
+    character: igChar,
+    extra: document.getElementById("ig-extra").value.trim(),
+    succubus: document.getElementById("cf-succubus").checked,
+    ckpt: document.getElementById("cf-ckpt").value,
+    negative: document.getElementById("cf-neg").value.trim(),
+    width: +document.getElementById("cf-w").value || 832,
+    height: +document.getElementById("cf-h").value || 1216,
+    out_width: +document.getElementById("cf-ow").value || 0,
+    out_height: +document.getElementById("cf-oh").value || 0,
+    steps: +document.getElementById("cf-steps").value || 30,
+    cfg: +document.getElementById("cf-cfg").value || 5,
+    seed: +document.getElementById("cf-seed").value || 0,
+  };
+}
+
+async function cfPreview() {
+  if (!igChar) { status("cf-status", "請先在上面那塊「依 edit_person 池抽卡」", true); return; }
+  const btn = document.getElementById("cf-mk");
+  btn.disabled = true;
+  status("cf-status", "翻成 SD tag 中…");
+  try {
+    const j = await api("/api/comfy/preview", "POST", cfBaseBody());
+    document.getElementById("cf-prompt").value = j.whole || "";
+    if (!document.getElementById("cf-neg").value.trim())
+      document.getElementById("cf-neg").value = j.negative || "";
+    if (!document.getElementById("cft-head0")) cfPartsShell();
+    for (const p of j.parts || []) {
+      const t = document.getElementById("cft-" + p.part);
+      if (t) t.value = p.prompt;
+    }
+    // 池子被改過、對照表沒跟上 → 這裡當場講,不要等圖畫錯了才回頭猜
+    const u = document.getElementById("cf-unknown");
+    u.innerHTML = (j.unknown || []).length
+      ? `⚠ 這些欄位在 sdtags.py 查不到對照,<b>已從 prompt 裡丟掉</b>(池子改過就要補對照):<br>`
+        + j.unknown.map(x => `<code>${x}</code>`).join("、")
+      : "";
+    const d = j.defaults || {};
+    status("cf-status", `✓ 已填入(伺服器預設 ${d.width}×${d.height} · ${d.steps} steps · cfg ${d.cfg} · ${d.sampler}/${d.scheduler} · CLIP skip ${d.clip_skip})`);
+  } catch (e) {
+    status("cf-status", "失敗:" + e.message, true);
+  }
+  btn.disabled = false;
+}
+
+// part 空字串 = 整張。用框裡當下的文字,所以你改過的版本才是真的送出去的版本。
+async function cfRun(part) {
+  if (cfRunning) return;
+  const isWhole = !part;
+  const ta = document.getElementById(isWhole ? "cf-prompt" : "cft-" + part);
+  const prompt = (ta?.value || "").trim();
+  if (!prompt) {
+    status(isWhole ? "cf-status" : "cfs-" + part, "prompt 是空的——先按「① 產生 SD tag」", true);
+    return;
+  }
+  const btn = document.getElementById(isWhole ? "cf-run" : "cfb-" + part);
+  const box = document.getElementById(isWhole ? "cf-preview" : "cfp-" + part);
+  const stat = isWhole ? "cf-status" : "cfs-" + part;
+  const isPixel = document.getElementById("ig-style").value === "pixel";
+  cfRunning = true;
+  btn.disabled = true;
+  box.innerHTML = `<span class="mini">下單中…(第一張要等 ComfyUI 載 checkpoint)</span>`;
+  try {
+    const body = {
+      ...cfBaseBody(), part, prompt,
+      key: `cf:${Date.now().toString(36)}:${part || "whole"}`,
+    };
+    const r = await igOrder(body, sec => status(stat, `生成中… ${sec}s`));
+    if (r.error) {
+      box.innerHTML = `<span class="mini" style="color:#ff5f7a">失敗</span>`;
+      status(stat, r.error, true);
+    } else {
+      box.innerHTML = r.url
+        ? `<img src="${r.url}?t=${Date.now()}" class="${isPixel ? "pixel" : ""}" style="max-width:100%;border-radius:6px" alt="${part || "whole"}">`
+        : `<span class="mini">完成但沒有路徑</span>`;
+      status(stat, `✓ ${r.sec}s · ${r.url || "?"}`);
+      igRefreshGallery();
+    }
+  } catch (e) {
+    box.innerHTML = `<span class="mini" style="color:#ff5f7a">失敗</span>`;
+    status(stat, "失敗:" + e.message, true);
+  }
+  cfRunning = false;
+  btn.disabled = false;
+}
+
+window.cfCheck = cfCheck;
+window.cfPreview = cfPreview;
+window.cfRun = cfRun;
+window.cfPortraitPreset = cfPortraitPreset;
+
 window.PB_buildSystemPrompt = buildSystemPrompt;   // 淫紋聊天測試器:與遊戲同一支
 window.GG_loadPools = async () => {
   const p = await loadPools();

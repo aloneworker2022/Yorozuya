@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import comfy
+import sdtags
 import sim
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -820,6 +821,27 @@ async def _run_grok_image(
 # ---- ComfyUI 本機生圖(Windows 那台,與 Ollama 共用一張卡,換班見 comfy.lease)----
 
 
+def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
+    """人設 → 英文 SD tag。膚色/配色沿用 Grok 那條路的確定性雜湊,
+    同一個人設不管走哪條路都推出同一組,兩邊的圖才是同一個人。"""
+    ch = opts.get("character") if isinstance(opts.get("character"), dict) else None
+    anchor = _identity_anchor(ch or {})
+    part = str(opts.get("part") or "").lower()
+    return sdtags.build_prompt(
+        ch,
+        part=part,
+        framing=str(opts.get("framing") or "half"),
+        rating=str(opts.get("rating") or "sfw"),
+        art_style=str(opts.get("style") or "anime"),
+        skin=anchor["skin"],
+        palette=anchor["palette"],
+        succubus=bool(opts.get("succubus", True)),
+        # 第一輪(head0/bust0/lower0)不寫服裝,跟中文那版同一個取捨
+        dressed=part not in IMG_BARE_PARTS,
+        extra=str(opts.get("extra") or ""),
+    )
+
+
 async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     """ComfyUI 生一張,存進 assets/testword/,回 (/assets/testword/….png, None)。
 
@@ -834,22 +856,25 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
     fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
 
-    prompt = str(opts.get("prompt") or "").strip()
     wf = opts.get("workflow") if isinstance(opts.get("workflow"), dict) else None
+    # prompt 有值 = 使用者在 testword 改過的版本,原樣送出;留空才由人設現組
+    prompt = str(opts.get("prompt") or "").strip()
     if not prompt and wf is None:
-        return "", "ComfyUI 生圖要有 prompt(或整份 workflow)"
+        prompt, _ = _comfy_prompt_for(opts)
+    if not prompt and wf is None:
+        return "", "ComfyUI 生圖要有 prompt 或人設(或整份 workflow)"
 
     name, err = await comfy.generate(
         positive=prompt,
         negative=str(opts.get("negative") or ""),
         ckpt=str(opts.get("ckpt") or ""),
         save_to=IMG_TEST_DIR / fname,
-        width=int(opts.get("width") or 512),
-        height=int(opts.get("height") or 768),
+        width=int(opts.get("width") or comfy.DEFAULT_WIDTH),
+        height=int(opts.get("height") or comfy.DEFAULT_HEIGHT),
         out_width=int(opts.get("out_width") or 0),
         out_height=int(opts.get("out_height") or 0),
-        steps=int(opts.get("steps") or 25),
-        cfg=float(opts.get("cfg") or 7.0),
+        steps=int(opts.get("steps") or comfy.DEFAULT_STEPS),
+        cfg=float(opts.get("cfg") or comfy.DEFAULT_CFG),
         seed=int(opts.get("seed") or 0),
         workflow=wf,
     )
@@ -1136,6 +1161,7 @@ class ImgGenIn(BaseModel):
     steps: int = 25
     cfg: float = 7.0
     seed: int = 0               # 0 = 每次隨機
+    succubus: bool = True       # 加魔族外觀 tag(角、尖耳);測純人類時關掉
     workflow: dict | None = None  # 整份 API 格式 workflow;給了就原樣送出,上面全部忽略
 
 
@@ -1227,6 +1253,7 @@ def imggen_submit(t: ImgGenIn):
             "steps": int(t.steps or 25),
             "cfg": float(t.cfg or 7.0),
             "seed": int(t.seed or 0),
+            "succubus": bool(t.succubus),
             "workflow": t.workflow if isinstance(t.workflow, dict) else None,
         })
     body = GenIn(
@@ -1261,6 +1288,42 @@ def imggen_list(limit: int = 24):
             "part": tail if tail in IMG_PARTS else "",
         })
     return {"items": out}
+
+
+@app.post("/api/comfy/preview")
+def comfy_preview(t: ImgGenIn):
+    """不生圖,只把人設翻成 SD tag 給 testword 顯示/編輯。
+
+    整張一份 + 分段六份一起回,跟 /api/imggen/preview 同一個用法。
+    unknown 是查不到對照的欄位原文——池子被改過時會出現在這裡,
+    比圖畫錯了才回頭猜快得多。
+    """
+    base = {
+        "character": t.character if isinstance(t.character, dict) else None,
+        "framing": (t.framing or "half").lower(),
+        "rating": (t.rating or "sfw").lower(),
+        "style": (t.style or "anime").lower(),
+        "extra": t.extra or "",
+        "succubus": bool(t.succubus),
+    }
+    whole, unknown = _comfy_prompt_for({**base, "part": ""})
+    parts = []
+    for p in IMG_PARTS:
+        text, unk = _comfy_prompt_for({**base, "part": p})
+        parts.append({"part": p, "label": PART_LABEL_ZH.get(p, p), "prompt": text})
+        unknown += unk
+    return {
+        "whole": whole,
+        "parts": parts,
+        "negative": sdtags.NEGATIVE,
+        "unknown": sorted(set(unknown)),
+        "defaults": {
+            "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT,
+            "steps": comfy.DEFAULT_STEPS, "cfg": comfy.DEFAULT_CFG,
+            "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER,
+            "clip_skip": comfy.DEFAULT_CLIP_SKIP,
+        },
+    }
 
 
 @app.post("/api/imggen/preview")

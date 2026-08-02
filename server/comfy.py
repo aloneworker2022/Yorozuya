@@ -35,6 +35,20 @@ COMFY_TIMEOUT = float(os.environ.get("COMFY_TIMEOUT", "300"))
 # 預設 checkpoint;留空 = 開機時問 ComfyUI 有哪些,取第一個
 COMFY_CKPT = os.environ.get("COMFY_CKPT", "").strip()
 
+# 預設對著 Illustrious / SDXL 系(animij v3 那條線)。改模型改這一組即可。
+#
+# 注意 animij 有兩條血統:v3 及更早是 Illustrious(SDXL),吃 CheckpointLoaderSimple;
+# v10 換成 Anima(NVIDIA Cosmos)底,要另外掛 qwen_image_vae + anima_baseV10_txt,
+# 下面這份 8 節點 workflow 載不動它。/api/comfy/status 的 checkpoint 檔名可以判斷。
+DEFAULT_WIDTH = int(os.environ.get("COMFY_WIDTH", "832"))
+DEFAULT_HEIGHT = int(os.environ.get("COMFY_HEIGHT", "1216"))
+DEFAULT_STEPS = int(os.environ.get("COMFY_STEPS", "30"))
+DEFAULT_CFG = float(os.environ.get("COMFY_CFG", "5.0"))
+DEFAULT_SAMPLER = os.environ.get("COMFY_SAMPLER", "euler_ancestral")
+DEFAULT_SCHEDULER = os.environ.get("COMFY_SCHEDULER", "normal")
+# Illustrious 系建議 CLIP skip 2(= 停在倒數第二層)。0 或 -1 = 不跳。
+DEFAULT_CLIP_SKIP = int(os.environ.get("COMFY_CLIP_SKIP", "2"))
+
 # 不寫在 prompt 裡的通用排除項。分級由抽卡管,這裡只管畫面品質。
 DEFAULT_NEGATIVE = (
     "worst quality, low quality, blurry, jpeg artifacts, watermark, text, "
@@ -187,18 +201,19 @@ def build_workflow(
     ckpt: str,
     positive: str,
     negative: str = "",
-    width: int = 512,
-    height: int = 768,
+    width: int = DEFAULT_WIDTH,
+    height: int = DEFAULT_HEIGHT,
     out_width: int = 0,
     out_height: int = 0,
-    steps: int = 25,
-    cfg: float = 7.0,
-    sampler: str = "dpmpp_2m",
-    scheduler: str = "karras",
+    steps: int = DEFAULT_STEPS,
+    cfg: float = DEFAULT_CFG,
+    sampler: str = DEFAULT_SAMPLER,
+    scheduler: str = DEFAULT_SCHEDULER,
+    clip_skip: int = DEFAULT_CLIP_SKIP,
     seed: int = 0,
     filename_prefix: str = "yorozuya/img",
 ) -> dict:
-    """8 節點 txt2img。out_width/out_height 給值 = 生完再縮到那個尺寸。
+    """txt2img。out_width/out_height 給值 = 生完再縮到那個尺寸。
 
     高解析生 → 縮小,是刻意的:SD 在 512(1.5)/1024(XL)解析度訓練,
     直接叫它畫 192 寬會出一坨爛泥。縮圖用 nearest-exact 不做平滑內插,
@@ -209,13 +224,22 @@ def build_workflow(
             "class_type": "CheckpointLoaderSimple",
             "inputs": {"ckpt_name": ckpt},
         },
+    }
+    clip_src = ["1", 1]
+    if clip_skip and clip_skip > 1:
+        wf["9"] = {
+            "class_type": "CLIPSetLastLayer",
+            "inputs": {"clip": ["1", 1], "stop_at_clip_layer": -int(clip_skip)},
+        }
+        clip_src = ["9", 0]
+    wf |= {
         "2": {
             "class_type": "CLIPTextEncode",
-            "inputs": {"text": positive, "clip": ["1", 1]},
+            "inputs": {"text": positive, "clip": clip_src},
         },
         "3": {
             "class_type": "CLIPTextEncode",
-            "inputs": {"text": negative, "clip": ["1", 1]},
+            "inputs": {"text": negative, "clip": clip_src},
         },
         "4": {
             "class_type": "EmptyLatentImage",
@@ -322,15 +346,16 @@ async def generate(
     negative: str = "",
     ckpt: str = "",
     save_to: Path,
-    width: int = 512,
-    height: int = 768,
+    width: int = DEFAULT_WIDTH,
+    height: int = DEFAULT_HEIGHT,
     out_width: int = 0,
     out_height: int = 0,
-    steps: int = 25,
-    cfg: float = 7.0,
+    steps: int = DEFAULT_STEPS,
+    cfg: float = DEFAULT_CFG,
     seed: int = 0,
-    sampler: str = "dpmpp_2m",
-    scheduler: str = "karras",
+    sampler: str = DEFAULT_SAMPLER,
+    scheduler: str = DEFAULT_SCHEDULER,
+    clip_skip: int = DEFAULT_CLIP_SKIP,
     workflow: dict | None = None,
 ) -> tuple[str, str | None]:
     """生一張圖並存到 save_to。回 (檔名, None) 或 ("", 錯誤訊息)。
@@ -352,7 +377,7 @@ async def generate(
                 width=width, height=height,
                 out_width=out_width, out_height=out_height,
                 steps=steps, cfg=cfg, seed=seed,
-                sampler=sampler, scheduler=scheduler,
+                sampler=sampler, scheduler=scheduler, clip_skip=clip_skip,
                 filename_prefix="yorozuya/" + save_to.stem,
             )
         deadline = time.time() + COMFY_TIMEOUT

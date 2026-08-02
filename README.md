@@ -75,15 +75,40 @@ Windows 端只要讓 ComfyUI 常駐(`--listen 0.0.0.0 --port 8188 --disable-auto
 | `OLLAMA_URL` | `http://localhost:11434` | 卸載用;聊天實際用的端點會覆蓋它 |
 | `COMFY_TIMEOUT` | `300` | 一張圖從送出到收檔的上限(含換班重載) |
 | `COMFY_CKPT` | (空) | 預設 checkpoint;留空 = 取 ComfyUI 清單第一個 |
+| `COMFY_WIDTH` / `COMFY_HEIGHT` | `832` / `1216` | 算圖尺寸(Illustrious / SDXL 直式) |
+| `COMFY_STEPS` / `COMFY_CFG` | `30` / `5.0` | |
+| `COMFY_SAMPLER` / `COMFY_SCHEDULER` | `euler_ancestral` / `normal` | |
+| `COMFY_CLIP_SKIP` | `2` | Illustrious 系建議值;1 = 不跳 |
+
+預設值對著 **Illustrious / SDXL 系**(animij v3 那條線)。注意 animij 有兩條血統:
+v3 及更早是 Illustrious,吃 `CheckpointLoaderSimple`;**v10 換成 Anima(NVIDIA Cosmos)
+底,要另外掛 `qwen_image_vae` + `anima_baseV10_txt`,現在這份 workflow 載不動它**。
+`/api/comfy/status` 回的 checkpoint 檔名可以判斷你手上是哪一條。
 
 `POST /api/imggen` 帶 `provider: "comfy"` 就走這條(預設仍是 `grok-img`)。
 產物與 Grok 那條路存在同一個 `assets/testword/`、同一套命名,相簿不必分開處理。
 
-生圖 workflow 由 `comfy.build_workflow()` 組(8 節點 txt2img)——這是 plan-v4 §8.3
-的「廠商替換點」,要換模型、加 LoRA、加色彩量化改這一個函式即可。也可以直接在
-`workflow` 欄位塞整份 API 格式 workflow,伺服器原樣轉發不檢視。
+生圖 workflow 由 `comfy.build_workflow()` 組——這是 plan-v4 §8.3 的「廠商替換點」,
+要換模型、加 LoRA、加色彩量化改這一個函式即可。也可以直接在 `workflow` 欄位塞整份
+API 格式 workflow,伺服器原樣轉發不檢視。
 
-**尚未做**:人設欄位翻成 SD tag(`image_job_builder`)。目前 `prompt` 原樣送出。
+### 人設 → SD tag(`server/sdtags.py`)
+
+Grok 那條路餵中文敘述,因為對面是會讀句子的 agent。**SD 不是**:CLIP 對中文幾乎沒有
+有效編碼,「G 罩杯、傲人豐滿」丟進去約等於沒寫。所以 ComfyUI 這條把抽卡欄位翻成
+**純英文 Danbooru tag**。
+
+翻譯用**精確查表**,不做模糊比對:`persona_pools.json` 的字串是固定的廠商件,對不上
+就是池子被改過——那種情況**丟掉該欄位並回報**,不把中文原文混進 prompt 假裝有效。
+查不到的欄位會出現在 `/api/comfy/preview` 的 `unknown`,testword 直接顯示,池子改了
+當場就看得到。膚色/配色沿用 Grok 那條的確定性雜湊,同一人設走哪條路都是同一個人。
+
+分段(頭/胸/下半身)維持跟中文版一樣的取捨:每段只放該段要畫的欄位;第一輪不寫服裝,
+靠「不提衣服」而不是「說不要衣服」。**ComfyUI 沒有跨段記憶也不吃參考圖**,六段是六次
+獨立 txt2img——這點跟 Grok 那條不同。
+
+測試台:`/testword` → **ComfyUI 生圖測試(本機 GPU · SD tag)**,與上面的 Grok 區共用
+同一個抽卡人設。`① 產生 SD tag` 只翻譯不生圖,六段各有自己的編輯框與生成鍵。
 
 ### API
 
@@ -98,3 +123,4 @@ Windows 端只要讓 ComfyUI 常駐(`--listen 0.0.0.0 --port 8188 --disable-auto
 | POST | `/api/imggen/preview` | 不生圖,只組這份人設的六段 prompt(存檔路徑與參考圖那兩行送出前才補) |
 | GET | `/api/imggen/list` | 最近生圖列表(含 `part`) |
 | GET | `/api/comfy/status` | ComfyUI 通不通、checkpoint 清單、VRAM、GPU 現在歸誰用 |
+| POST | `/api/comfy/preview` | 不生圖,只把人設翻成 SD tag(整張 + 六段 + `unknown` 未對照欄位) |
