@@ -758,12 +758,38 @@ body.card-center .q-body { justify-content: center; text-align: center; }
   border: 1px solid color-mix(in srgb, var(--rc, var(--pink)) 45%, transparent);
   filter: drop-shadow(0 0 18px color-mix(in srgb, var(--rc, var(--pink)) 45%, transparent));
 }
+/* 去背立繪(half / full)不吃上面那套框:
+   - 邊框會在透明區域「外面」畫一個方框,人明明去背了卻還關在盒子裡
+   - 圓角同理
+   - pixelated 是給 256px sprite 放大用的;這些是 832×1216 縮下來顯示,
+     用 pixelated 只會在斜邊produce鋸齒
+   drop-shadow 保留:它吃 alpha,會沿著人的輪廓打光而不是方框。 */
+.portrait-img.shot-half, .portrait-img.shot-full {
+  border: none; border-radius: 0; image-rendering: auto;
+}
 .summon-result .portrait-img { max-height: 360px; }
 /* 名冊縮圖:固定小方格,完整顯示不裁切 */
 .scard .thumb .portrait-img { width: 54px; height: 54px; object-fit: contain; border-radius: 6px; filter: none; }
-/* 看板娘站位:完整顯示,人多時自動縮小 */
-#kanban-girl .kgirl .portrait-img { width: 132px; height: 132px; object-fit: contain; border-radius: 9px; }
-#kanban-girl.multi .kgirl .portrait-img { width: 96px; height: 96px; }
+/* 看板娘站位:去背全身當背景板,幾乎撐滿畫面高度(人多時自動縮小)。
+   用 vh 而不是固定 px:手機直式、平板、桌機都要能站好。
+   width:auto 保持原比例,不要 132px 見方那種硬塞——那是像素 sprite 時代的規格。 */
+#kanban-girl .kgirl .portrait-img {
+  height: min(78vh, 1000px); width: auto;
+  max-height: none;        /* 蓋掉 .portrait-img 的 300px —— 那是像素 sprite 時代的規格 */
+  max-width: 96vw;
+  object-fit: contain; object-position: bottom center;
+  border-radius: 0;
+}
+/* 名字改成疊在立繪下緣:接在圖下面的話,整塊會高過畫面被裁掉頭 */
+#kanban-girl .kgirl:has(.portrait-img) { position: relative; }
+#kanban-girl .kgirl:has(.portrait-img) .kname {
+  position: absolute; left: 0; right: 0; bottom: .2em; margin: 0;
+  text-shadow: 0 0 8px #000, 0 0 3px #000;
+}
+#kanban-girl.multi .kgirl .portrait-img { height: min(58vh, 700px); max-width: 44vw; }
+/* 三人以上再讓一步,免得互相擠出畫面 */
+#kanban-girl.multi .kgirl:nth-child(n+3) .portrait-img,
+#kanban-girl.multi:has(.kgirl:nth-child(3)) .kgirl .portrait-img { height: min(46vh, 560px); max-width: 30vw; }
 #kanban-girl .kgirl.taken .portrait-img { filter: grayscale(.7) brightness(.75); }
 /* 召喚生圖中:剪影微微呼吸 */
 .summon-brewing { animation: crest-brew 2.2s ease-in-out infinite; }
@@ -814,6 +840,28 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 .chat-top { display: flex; align-items: center; gap: .6em; flex-shrink: 0; }
 .chat-top #chat-log-btn { margin-left: auto; }
 #chat-spacer { flex: 1; }
+
+/* 對話對象的立繪:去背半身,壓在對話框上方(文字冒險的站位)。
+   底部負邊距讓她的下襬被對話框蓋住,看起來是「站在框後面」而不是浮著。
+   min-height 0 + flex-shrink 讓小螢幕先壓縮立繪,對話框永遠不會被擠掉。 */
+#vn-figure {
+  display: block; margin: 0 auto -1.2em;
+  height: min(52vh, 460px); width: auto; max-width: 100%;
+  object-fit: contain; object-position: bottom center;
+  flex-shrink: 1; min-height: 0;
+  filter: drop-shadow(0 6px 22px rgba(0, 0, 0, .55));
+  pointer-events: none;
+  animation: float 6s ease-in-out infinite;
+}
+#vn-figure.hidden { display: none; }
+/* 聊天有立繪時,背景那尊看板娘整個退場。
+   原本的設計是把看板娘放大模糊當「夢霧狀的身影」,那是在沒有立繪的年代;
+   現在她本人清清楚楚站在對話框上,背後再站一尊同一個人只是重影。
+   一定要連 animation 一起關:haze 在動 opacity,CSS 動畫壓過一般宣告,
+   只寫 opacity:0 會被動畫每幀蓋回去。 */
+body.chat-mode.has-figure #kanban-girl {
+  animation: none; opacity: 0; transform: none; pointer-events: none;
+}
 
 /* ===== VN 對話框(日式文字冒險) ===== */
 #vn-box {

@@ -158,6 +158,11 @@ NEGATIVE = (
 # 她們是被擄來改造的,不是人類 —— 立繪要有魔的痕跡
 SUCCUBUS_TAGS = "demon girl, succubus, demon horns, pointy ears"
 
+# 要去背的立繪:先要一塊平背景,後製才摳得乾淨
+FLAT_BG_TAGS = "simple background, white background, plain background"
+# 去背用的 negative:任何場景元素都會讓外框判定失敗、整張放棄去背
+FLAT_BG_NEGATIVE = "scenery, detailed background, indoors, outdoors, gradient background"
+
 
 def _look(ch: dict) -> dict:
     look = ch.get("look")
@@ -175,6 +180,7 @@ def build_prompt(
     palette: str = "",
     succubus: bool = True,
     dressed: bool = True,
+    flat_bg: bool = False,
     extra: str = "",
 ) -> tuple[str, list[str]]:
     """回 (positive prompt, 查不到對照的原文清單)。
@@ -203,6 +209,10 @@ def build_prompt(
     bits: list[str] = [QUALITY_PREFIX, "1girl, solo"]
     if succubus:
         bits.append(SUCCUBUS_TAGS)
+    # 要去背的那幾張:先讓模型畫出一塊平背景,後製才摳得乾淨(見 cutout.py)。
+    # simple background / white background 是 danbooru 訓練得很紮實的一組。
+    if flat_bg:
+        bits.append(FLAT_BG_TAGS)
 
     p = (part or "").lower()
     seg = p.rstrip("0") if p else ""

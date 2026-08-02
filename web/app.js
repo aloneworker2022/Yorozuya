@@ -3611,14 +3611,26 @@ function renderPlayerAttrs() {
 }
 
 // 聊天插播層:蓋在所有分頁之上,只有「結束對話」能退出
-// 聊天頭像:三連拍的 head。沒有(舊存檔、還沒織完)就整個藏起來,不留破圖框。
+// 聊天畫面的她:名字旁的小頭像(head)+ 對話框上方的立繪(half,已去背)。
+// 沒有(舊存檔、還沒織完)就整個藏起來,不留破圖框。
 function vnFace(s) {
-  const el = $("#vn-face");
-  if (!el) return;
-  const url = s ? girlShot(s, "head") : "";
-  el.classList.toggle("hidden", !url);
-  if (url && el.getAttribute("src") !== url) el.src = url;
-  el.alt = s?.name || "";
+  const face = $("#vn-face");
+  if (face) {
+    const url = s ? girlShot(s, "head") : "";
+    face.classList.toggle("hidden", !url);
+    if (url && face.getAttribute("src") !== url) face.src = url;
+    face.alt = s?.name || "";
+  }
+  const fig = $("#vn-figure");
+  if (fig) {
+    // 立繪只認 half:head 是方形大頭照,拉大當立繪只會變成一顆浮在半空的頭
+    const url = s?.portraits?.half || "";
+    fig.classList.toggle("hidden", !url);
+    if (url && fig.getAttribute("src") !== url) fig.src = url;
+    fig.alt = s?.name || "";
+    // 有立繪時背景那尊看板娘要讓位,不然同一個人站兩次
+    document.body.classList.toggle("has-figure", !!url);
+  }
 }
 
 function renderChatView() {
@@ -3865,7 +3877,7 @@ function renderKanban() {
     girl.className = `r-${girls[0].rarity}` + (girls.length > 1 ? " multi" : "");
     const size = girls.length >= 3 ? 5 : girls.length === 2 ? 7 : 9;   // 人多站小一點
     girl.innerHTML = girls.map(g =>
-      `<div class="kgirl r-${g.rarity}" data-kid="${g.id}">${girlPortrait(g, size, "half")}<div class="kname">${esc(g.name)}</div></div>`
+      `<div class="kgirl r-${g.rarity}" data-kid="${g.id}">${girlPortrait(g, size, "full")}<div class="kname">${esc(g.name)}</div></div>`
     ).join("");
     girl.onclick = null;
     girl.querySelectorAll(".kgirl").forEach(el => el.onclick = () => {

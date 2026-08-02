@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import comfy
+import cutout
 import sdtags
 import sim
 
@@ -837,6 +838,8 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
     shot = str(opts.get("shot") or "").lower()
     return sdtags.build_prompt(
         ch,
+        # 要去背的那幾張,prompt 先要一塊平背景(見 cutout.py)
+        flat_bg=bool(comfy.PORTRAIT_SHOTS.get(shot, {}).get("cutout")),
         part=part,
         framing=shot if shot in sdtags.FRAMING else str(opts.get("framing") or "half"),
         rating=str(opts.get("rating") or "sfw"),
@@ -888,9 +891,15 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     if shot and not seed:
         seed = _identity_anchor(opts.get("character") or {})["seed"]
 
+    want_cut = bool(spec.get("cutout"))
+    negative = str(opts.get("negative") or "")
+    if want_cut and not negative:
+        # 場景元素會讓外框判定失敗、整張放棄去背,所以在 negative 明講不要
+        negative = comfy.DEFAULT_NEGATIVE + ", " + sdtags.FLAT_BG_NEGATIVE
+
     name, err = await comfy.generate(
         positive=prompt,
-        negative=str(opts.get("negative") or ""),
+        negative=negative,
         ckpt=str(opts.get("ckpt") or ""),
         save_to=out_dir / fname,
         width=gen_w or int(opts.get("width") or comfy.DEFAULT_WIDTH),
@@ -905,6 +914,12 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     )
     if err:
         return "", err
+    # 立繪要疊在遊戲畫面上,背景得摳掉。摳不乾淨時 cut_background 會原圖不動
+    # ——寧可留著背景,也不要交出一張被啃過的破圖。
+    if want_cut:
+        changed, why = await asyncio.to_thread(cutout.cut_background, out_dir / fname)
+        if not changed:
+            print(f"[去背] {fname}:{why}", flush=True)
     # 三連拍會覆蓋同一個檔名,URL 帶版本號才不會被瀏覽器拿舊的
     ver = f"?v={int(time.time())}" if shot else ""
     return f"{url_dir}/{name}{ver}", None
