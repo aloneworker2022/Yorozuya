@@ -155,13 +155,43 @@ NEGATIVE = (
     "extra limbs, mutated hands, deformed"
 )
 
-# 她們是被擄來改造的,不是人類 —— 立繪要有魔的痕跡
-SUCCUBUS_TAGS = "demon girl, succubus, demon horns, pointy ears"
+# SFW 一定要**明講不要裸體**。動漫模型只要 prompt 沒把衣服釘死就很容易自己脫,
+# 何況這個遊戲的語境。正面寫 general 是不夠的——那只是個弱訊號,
+# 負面列出來才真的擋得住。
+SFW_NEGATIVE = (
+    "nude, nipples, topless, bottomless, completely nude, undressed, "
+    "naked, exposed breasts, no clothes, lingerie only, censored"
+)
+
+# 去背用的 negative:任何場景元素都會讓外框判定失敗、整張放棄去背
+FLAT_BG_NEGATIVE = "scenery, detailed background, indoors, outdoors, gradient background"
+
+# 她們**不是魔物**。world.md:「魅魔不是地獄來的惡魔…那只是他們對你的叫法」,
+# 「你原本是現實世界裡一個普通女子——護理師、上班族、插畫家、店員」,
+# 「你還是你,只是身體不是了」。職業池也全是現代人:女高中生、護理師、OL、
+# 圖書館員。所以立繪就是一個現代年輕女性,沒有角、沒有翅膀、沒有尖耳。
+# 被改的是感覺與慾望,那些畫不出來,也不該用長角來代替。
+HUMAN_TAGS = "young woman, modern casual look"
+
+# 想要魔物外觀的人自己開(testword 有勾選框)。預設關閉。
+DEMON_TAGS = "demon girl, succubus, demon horns, pointy ears"
+
+# 服裝欄位查不到對照時的墊底。沒有任何服裝 tag = 模型自由發揮 = 多半不穿。
+CLOTHES_FALLBACK = "casual clothes"
+
 
 # 要去背的立繪:先要一塊平背景,後製才摳得乾淨
 FLAT_BG_TAGS = "simple background, white background, plain background"
-# 去背用的 negative:任何場景元素都會讓外框判定失敗、整張放棄去背
-FLAT_BG_NEGATIVE = "scenery, detailed background, indoors, outdoors, gradient background"
+
+
+def negative_for(rating: str = "sfw", flat_bg: bool = False) -> str:
+    """依分級與是否要去背組 negative。"""
+    bits = [NEGATIVE]
+    if (rating or "sfw").lower() != "nsfw":
+        bits.append(SFW_NEGATIVE)
+    if flat_bg:
+        bits.append(FLAT_BG_NEGATIVE)
+    return ", ".join(bits)
 
 
 def _look(ch: dict) -> dict:
@@ -178,7 +208,7 @@ def build_prompt(
     art_style: str = "anime",
     skin: str = "",
     palette: str = "",
-    succubus: bool = True,
+    demon_look: bool = False,   # 預設關閉,見 HUMAN_TAGS
     dressed: bool = True,
     flat_bg: bool = False,
     extra: str = "",
@@ -206,9 +236,9 @@ def build_prompt(
         unknown.append(f"{key}: {raw}")
         return ""
 
-    bits: list[str] = [QUALITY_PREFIX, "1girl, solo"]
-    if succubus:
-        bits.append(SUCCUBUS_TAGS)
+    bits: list[str] = [QUALITY_PREFIX, "1girl, solo", HUMAN_TAGS]
+    if demon_look:
+        bits.append(DEMON_TAGS)
     # 要去背的那幾張:先讓模型畫出一塊平背景,後製才摳得乾淨(見 cutout.py)。
     # simple background / white background 是 danbooru 訓練得很紮實的一組。
     if flat_bg:
@@ -242,7 +272,10 @@ def build_prompt(
             unknown.append(f"skin: {skin}")
 
     if dressed:
-        bits.append(tr(STYLE, "style"))
+        # 沒有任何服裝 tag = 模型自由發揮 = 多半不穿。查不到對照就墊一件,
+        # 寧可衣服普通,也不要因為池子改過一個字就整張變裸的。
+        outfit = tr(STYLE, "style") or CLOTHES_FALLBACK
+        bits.append("fully clothed, " + outfit)
         if palette:
             if palette in PALETTE:
                 bits.append(PALETTE[palette])

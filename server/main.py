@@ -56,6 +56,7 @@ _GROK_IMG_TOOLS = "image_gen,image_edit,run_terminal_cmd,list_dir,read_file"
 IMG_TEST_DIR = ASSETS_DIR / "testword"
 # 遊戲本體的召喚三連拍(head/half/full),與 testword 的實驗圖分開放
 PORTRAIT_DIR = ASSETS_DIR / "portraits"
+SHOT_LABEL_ZH = {"head": "大頭照", "half": "半身(聊天立繪)", "full": "全身(看板娘)"}
 GROK_IMG_TIMEOUT = float(os.environ.get("GROK_IMG_TIMEOUT", "300"))
 GROK_IMG_MAX_TURNS = int(os.environ.get("GROK_IMG_MAX_TURNS", "8") or "8")
 
@@ -847,7 +848,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         art_style=str(opts.get("style") or "anime"),
         skin=anchor["skin"],
         palette=anchor["palette"],
-        succubus=bool(opts.get("succubus", True)),
+        demon_look=bool(opts.get("demon_look", False)),
         # 第一輪(head0/bust0/lower0)不寫服裝,跟中文那版同一個取捨
         dressed=part not in IMG_BARE_PARTS,
         extra=str(opts.get("extra") or ""),
@@ -893,10 +894,10 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
         seed = _identity_anchor(opts.get("character") or {})["seed"]
 
     want_cut = bool(spec.get("cutout"))
-    negative = str(opts.get("negative") or "")
-    if want_cut and not negative:
-        # 場景元素會讓外框判定失敗、整張放棄去背,所以在 negative 明講不要
-        negative = comfy.DEFAULT_NEGATIVE + ", " + sdtags.FLAT_BG_NEGATIVE
+    # negative 依分級與是否去背現組:SFW 要擋裸體(動漫模型沒把衣服釘死就會自己脫),
+    # 去背要擋場景(有場景就過不了外框判定,整張放棄去背)。
+    negative = str(opts.get("negative") or "") or sdtags.negative_for(
+        str(opts.get("rating") or "sfw"), want_cut)
 
     name, err = await comfy.generate(
         positive=prompt,
@@ -1218,7 +1219,9 @@ class ImgGenIn(BaseModel):
     steps: int = 0
     cfg: float = 0
     seed: int = 0               # 0 = 每次隨機(三連拍例外:取人設雜湊)
-    succubus: bool = True       # 加魔族外觀 tag(角、尖耳);測純人類時關掉
+    # 加魔族外觀 tag(角、尖耳)。**預設關閉**:world.md 說她們是被擄來改造的
+    # 現代普通人,「魅魔」只是召喚師對她們的叫法,不是魔物。想試魔物風才打開。
+    demon_look: bool = False
     comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
     # 召喚三連拍:shot=head|half|full 且有 char_id → 存 assets/portraits/{char_id}_{shot}.png,
     # 尺寸與 seed 由伺服器依規格決定(三張同 seed = 同一張臉)
@@ -1315,7 +1318,7 @@ def imggen_submit(t: ImgGenIn):
             "steps": int(t.steps or 0),
             "cfg": float(t.cfg or 0),
             "seed": int(t.seed or 0),
-            "succubus": bool(t.succubus),
+            "demon_look": bool(t.demon_look),   # 預設 False,見 ImgGenIn
             "comfy_url": (t.comfy_url or "").strip(),
             "shot": (t.shot or "").strip().lower(),
             "char_id": (t.char_id or "").strip(),
@@ -1369,7 +1372,7 @@ def comfy_preview(t: ImgGenIn):
         "rating": (t.rating or "sfw").lower(),
         "style": (t.style or "anime").lower(),
         "extra": t.extra or "",
-        "succubus": bool(t.succubus),
+        "demon_look": bool(t.demon_look),
     }
     whole, unknown = _comfy_prompt_for({**base, "part": ""})
     parts = []
@@ -1377,10 +1380,26 @@ def comfy_preview(t: ImgGenIn):
         text, unk = _comfy_prompt_for({**base, "part": p})
         parts.append({"part": p, "label": PART_LABEL_ZH.get(p, p), "prompt": text})
         unknown += unk
+    # 召喚三連拍:遊戲真正會送出去的那三份。跟上面的六段是不同的東西,
+    # 要看「遊戲到底送了什麼」就是看這裡。
+    shots = []
+    for k, spec in comfy.PORTRAIT_SHOTS.items():
+        text, unk = _comfy_prompt_for({**base, "part": "", "shot": k})
+        shots.append({
+            "shot": k,
+            "label": SHOT_LABEL_ZH.get(k, k),
+            "prompt": text,
+            "negative": sdtags.negative_for(base["rating"], bool(spec.get("cutout"))),
+            "gen": list(spec["gen"]),
+            "out": list(spec["out"]),
+            "cutout": bool(spec.get("cutout")),
+        })
+        unknown += unk
     return {
         "whole": whole,
         "parts": parts,
-        "negative": sdtags.NEGATIVE,
+        "shots": shots,
+        "negative": sdtags.negative_for(base["rating"]),
         "unknown": sorted(set(unknown)),
         "defaults": {
             "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT,
