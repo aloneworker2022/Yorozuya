@@ -21,7 +21,15 @@ from __future__ import annotations
 from collections import deque
 from pathlib import Path
 
-from PIL import Image
+# Pillow 是**選配**:少了它只是不去背(圖照樣生得出來,只是留著背景),
+# 不該讓整個遊戲伺服器起不來。忘了 pip install 的人會在第一次生圖時看到
+# 一行提示,而不是開機就 ModuleNotFoundError。
+try:
+    from PIL import Image, ImageFilter
+    AVAILABLE = True
+except ImportError:  # pragma: no cover — 沒裝 Pillow 的環境
+    Image = ImageFilter = None  # type: ignore[assignment]
+    AVAILABLE = False
 
 # 縮圖倍率:遮罩在 1/MASK_DIV 邊長的圖上算
 MASK_DIV = 4
@@ -113,6 +121,8 @@ def cut_background(path: Path, tol: int = TOLERANCE) -> tuple[bool, str]:
       摳太少(<8%)   背景本來就不平,摳了只是留一圈殘影
       摳太多(>85%)  角色大概跟背景同色,再摳人就沒了
     """
+    if not AVAILABLE:
+        return False, "沒裝 Pillow,跳過去背(pip install -r server/requirements.txt)"
     try:
         img = Image.open(path).convert("RGB")
     except Exception as e:  # noqa: BLE001
@@ -132,7 +142,6 @@ def cut_background(path: Path, tol: int = TOLERANCE) -> tuple[bool, str]:
     if cov > 0.85:
         return False, f"會摳掉 {cov:.0%},角色大概跟背景同色,保留原圖"
 
-    from PIL import ImageFilter
     big = mask.resize((w, h), Image.BILINEAR).filter(ImageFilter.GaussianBlur(FEATHER))
     out = img.convert("RGBA")
     out.putalpha(Image.eval(big, lambda v: 255 - v))

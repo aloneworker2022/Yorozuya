@@ -149,6 +149,7 @@ def health():
         "grok_bin": GROK_BIN,
         "comfy_url": comfy.COMFY_URL,
         "gpu": comfy.gpu_state(),
+        "cutout": cutout.AVAILABLE,   # 立繪去背要 Pillow;沒裝就是留著背景
     }
 
 
@@ -1650,6 +1651,9 @@ async def _world_clock():
 
 @app.on_event("startup")
 async def _start_gen_worker():
+    if not cutout.AVAILABLE:
+        print("[警告] 沒裝 Pillow —— 立繪不會去背(白底疊在遊戲畫面上)。"
+              "修法:pip install -r server/requirements.txt", flush=True)
     print("[世界時鐘] 啟動 — 伺服器權威 runtime 上線,每 30 秒跑檢查、每 10 分鐘印心跳", flush=True)
     asyncio.create_task(_gen_worker())
     asyncio.create_task(_world_clock())
