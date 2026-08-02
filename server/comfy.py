@@ -28,6 +28,8 @@ from pathlib import Path
 
 import httpx
 
+# 預設值,只是「還沒有人告訴我位址」時的退路。RP5 與 GPU 主機通常不是同一台,
+# 所以真正的位址由前端設定帶進來(跟 ollamaUrl 同一套做法),見 note_comfy_url。
 COMFY_URL = os.environ.get("COMFY_URL", "http://localhost:8188").rstrip("/")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 # 一張圖從送出到收檔的上限。含換班重載 checkpoint 的時間。
@@ -62,9 +64,11 @@ _GPU_LOCK = asyncio.Lock()
 _holder: str | None = None          # "llm" | "comfy" | None
 _last_switch: float = 0.0
 _switches: int = 0
-# 手機在設定頁填的 Ollama 位址會蓋掉環境變數預設值:聊天走哪個端點,
-# 就對哪個端點下卸載指令,免得仲裁對著一台沒人用的 Ollama 空揮。
+# 設定頁填的位址會蓋掉環境變數預設值:聊天/生圖實際走哪台,就對哪台下卸載
+# 指令,免得仲裁對著一台沒人用的服務空揮。RP5 與 GPU 主機不同機時尤其重要
+# ——localhost 在 RP5 上指的是 RP5 自己,永遠不會是那張顯卡。
 _ollama_seen: str = ""
+_comfy_seen: str = ""
 
 
 def note_ollama_endpoint(endpoint: str) -> None:
@@ -75,8 +79,20 @@ def note_ollama_endpoint(endpoint: str) -> None:
         _ollama_seen = ep
 
 
+def note_comfy_url(url: str) -> None:
+    """記下實際在用的 ComfyUI 位址(由生圖/檢查路徑回報)。"""
+    global _comfy_seen
+    u = (url or "").strip().rstrip("/")
+    if u:
+        _comfy_seen = u
+
+
 def ollama_url() -> str:
     return _ollama_seen or OLLAMA_URL
+
+
+def comfy_url() -> str:
+    return _comfy_seen or COMFY_URL
 
 
 async def _unload_ollama() -> None:
@@ -103,7 +119,7 @@ async def _unload_comfy() -> None:
     try:
         async with httpx.AsyncClient(timeout=30) as c:
             await c.post(
-                f"{COMFY_URL}/free",
+                f"{comfy_url()}/free",
                 json={"unload_models": True, "free_memory": True},
             )
     except Exception as e:  # noqa: BLE001 — 卸不掉不該擋住聊天
@@ -147,36 +163,36 @@ def gpu_state() -> dict:
         "switches": _switches,
         "last_switch": _last_switch,
         "ollama_url": ollama_url(),
-        "comfy_url": COMFY_URL,
+        "comfy_url": comfy_url(),
     }
 
 
 # ------------------------------------------------------------ ComfyUI 查詢
 
 
-async def system_stats() -> dict | None:
+async def system_stats(base: str = "") -> dict | None:
     try:
         async with httpx.AsyncClient(timeout=5) as c:
-            return (await c.get(f"{COMFY_URL}/system_stats")).json()
+            return (await c.get(f"{base or comfy_url()}/system_stats")).json()
     except Exception:  # noqa: BLE001
         return None
 
 
-async def checkpoints() -> list[str]:
+async def checkpoints(base: str = "") -> list[str]:
     """問 ComfyUI 現在有哪些 checkpoint —— 不在 RP5 這邊寫死清單。"""
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            info = (await c.get(f"{COMFY_URL}/object_info/CheckpointLoaderSimple")).json()
+            info = (await c.get(f"{base or comfy_url()}/object_info/CheckpointLoaderSimple")).json()
         opts = info["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
         return [str(x) for x in opts]
     except Exception:  # noqa: BLE001
         return []
 
 
-async def resolve_ckpt(want: str = "") -> tuple[str, str | None]:
+async def resolve_ckpt(want: str = "", base: str = "") -> tuple[str, str | None]:
     """把使用者給的 checkpoint 名對到實際存在的檔名。
     給空的 → 用 COMFY_CKPT,再空 → 取 ComfyUI 清單第一個。"""
-    avail = await checkpoints()
+    avail = await checkpoints(base)
     if not avail:
         return "", "ComfyUI 連不上,或 models/checkpoints 是空的"
     for cand in (want.strip(), COMFY_CKPT):
@@ -288,8 +304,8 @@ def build_workflow(
 # ------------------------------------------------------------- 送單與收圖
 
 
-async def _submit(client: httpx.AsyncClient, wf: dict, client_id: str) -> tuple[str, str | None]:
-    r = await client.post(f"{COMFY_URL}/prompt", json={"prompt": wf, "client_id": client_id})
+async def _submit(client: httpx.AsyncClient, base: str, wf: dict, client_id: str) -> tuple[str, str | None]:
+    r = await client.post(f"{base}/prompt", json={"prompt": wf, "client_id": client_id})
     if r.status_code >= 400:
         # ComfyUI 的節點錯誤都在 body 裡,原文帶回去比 HTTP 狀態碼有用得多
         try:
@@ -304,11 +320,11 @@ async def _submit(client: httpx.AsyncClient, wf: dict, client_id: str) -> tuple[
     return (pid, None) if pid else ("", "ComfyUI 沒回 prompt_id")
 
 
-async def _wait_history(client: httpx.AsyncClient, pid: str, deadline: float) -> tuple[dict, str | None]:
+async def _wait_history(client: httpx.AsyncClient, base: str, pid: str, deadline: float) -> tuple[dict, str | None]:
     """輪詢 /history 直到這張圖跑完。ComfyUI 沒有「完成」推播給 HTTP 客戶端,
     要嘛開 websocket 要嘛輪詢;輪詢少一個連線狀態要顧,這裡夠用。"""
     while time.time() < deadline:
-        r = await client.get(f"{COMFY_URL}/history/{pid}")
+        r = await client.get(f"{base}/history/{pid}")
         if r.status_code < 400:
             h = r.json().get(pid)
             if h:
@@ -357,6 +373,7 @@ async def generate(
     scheduler: str = DEFAULT_SCHEDULER,
     clip_skip: int = DEFAULT_CLIP_SKIP,
     workflow: dict | None = None,
+    base: str = "",
 ) -> tuple[str, str | None]:
     """生一張圖並存到 save_to。回 (檔名, None) 或 ("", 錯誤訊息)。
 
@@ -364,9 +381,11 @@ async def generate(
     positive/ckpt 等參數全部忽略——這是 plan-v4 §8.3「worker 不檢視、
     不修改回傳值」那條的實作。
     """
+    note_comfy_url(base)
+    base = base or comfy_url()
     async with lease("comfy"):
         if workflow is None:
-            ckpt, err = await resolve_ckpt(ckpt)
+            ckpt, err = await resolve_ckpt(ckpt, base)
             if err:
                 return "", err
             # seed 沒給就隨機:同一份 prompt 重按會出不同的臉,不會每次都同一張
@@ -384,10 +403,10 @@ async def generate(
         client_id = f"yorozuya-{int(time.time() * 1000)}"
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(60, connect=5)) as c:
-                pid, err = await _submit(c, workflow, client_id)
+                pid, err = await _submit(c, base, workflow, client_id)
                 if err:
                     return "", err
-                hist, err = await _wait_history(c, pid, deadline)
+                hist, err = await _wait_history(c, base, pid, deadline)
                 if err:
                     return "", err
                 imgs = _images_of(hist)
@@ -395,7 +414,7 @@ async def generate(
                     return "", "ComfyUI 跑完了但沒有輸出圖片(工作流缺 SaveImage?)"
                 img = imgs[-1]
                 r = await c.get(
-                    f"{COMFY_URL}/view",
+                    f"{base}/view",
                     params={
                         "filename": img["filename"],
                         "subfolder": img.get("subfolder", ""),
@@ -406,5 +425,5 @@ async def generate(
                 save_to.parent.mkdir(parents=True, exist_ok=True)
                 save_to.write_bytes(r.content)
         except httpx.HTTPError as e:
-            return "", f"ComfyUI 連線失敗({type(e).__name__}):{COMFY_URL}"
+            return "", f"ComfyUI 連線失敗({type(e).__name__}):{base}"
     return save_to.name, None

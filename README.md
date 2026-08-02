@@ -69,9 +69,23 @@ Windows 那台把 **ComfyUI 與 Ollama 兩個都常駐**,不再由排程器 AM1 
 Windows 端只要讓 ComfyUI 常駐(`--listen 0.0.0.0 --port 8188 --disable-auto-launch`)。
 **不要**加 `--highvram` / `--gpu-only`——那會把模型釘在 VRAM,`/free` 卸不乾淨。
 
+### 端點設定(RP5 與顯卡主機不同機)
+
+RP5 上的 `localhost` 指的是 **RP5 自己**,永遠不會是那張顯卡。所以 ComfyUI 位址跟
+`ollamaUrl` 一樣是**設定值,不是環境常數**——由前端帶進來,存在存檔的
+`settings.comfyUrl`,遊戲設定頁與 `/testword` 共用同一個值:
+
+- 遊戲 **設定 → ComfyUI** 欄位 + 「測試 ComfyUI」
+- `/testword` → ComfyUI 區最上面的端點欄 + 「🔌 檢查 ComfyUI」
+
+連得上才會寫回存檔,打錯字不會蓋掉原本能用的位址。填了 `localhost` 又連不上時,
+錯誤訊息會直接點名「這是伺服器自己,不是顯卡那台」。
+
+環境變數只是**沒人填時的退路**:
+
 | 變數 | 預設 | 說明 |
 |---|---|---|
-| `COMFY_URL` | `http://localhost:8188` | ComfyUI 位址 |
+| `COMFY_URL` | `http://localhost:8188` | ComfyUI 位址退路(正常應由設定頁填) |
 | `OLLAMA_URL` | `http://localhost:11434` | 卸載用;聊天實際用的端點會覆蓋它 |
 | `COMFY_TIMEOUT` | `300` | 一張圖從送出到收檔的上限(含換班重載) |
 | `COMFY_CKPT` | (空) | 預設 checkpoint;留空 = 取 ComfyUI 清單第一個 |
@@ -122,5 +136,5 @@ Grok 那條路餵中文敘述,因為對面是會讀句子的 agent。**SD 不是
 | POST | `/api/imggen` | 生圖訂單(構圖/分級/風格;`part=head0\|bust0\|lower0` 第一輪、`head\|bust\|lower` 第二輪穿搭,`ref` 帶第一輪同段那張,`prompt` 帶改過的版本)→ result 為 `/assets/testword/….png` |
 | POST | `/api/imggen/preview` | 不生圖,只組這份人設的六段 prompt(存檔路徑與參考圖那兩行送出前才補) |
 | GET | `/api/imggen/list` | 最近生圖列表(含 `part`) |
-| GET | `/api/comfy/status` | ComfyUI 通不通、checkpoint 清單、VRAM、GPU 現在歸誰用 |
+| GET | `/api/comfy/status?url=` | ComfyUI 通不通、checkpoint 清單、VRAM、GPU 現在歸誰用(`url` 給值 = 測那台並記住) |
 | POST | `/api/comfy/preview` | 不生圖,只把人設翻成 SD tag(整張 + 六段 + `unknown` 未對照欄位) |

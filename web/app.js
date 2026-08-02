@@ -365,6 +365,9 @@ function defaultState() {
       // llmProvider: "ollama" | "grok-build"(無頭訂單;舊 xai/grok 會自動映射)
       llmProvider: "ollama",
       ollamaUrl: "http://localhost:11434", model: "", rating: "sfw",
+      // 織夢生圖那台(顯卡主機)。跟 ollamaUrl 一樣是「別台機器的位址」——
+      // 伺服器不會知道,只能由這裡填進去。留空 = 用伺服器的 COMFY_URL 預設。
+      comfyUrl: "",
       cardColors: null,   // null = 主題預設;{exec|found|acc|vn: {color,opacity}}
       cardCenter: false,  // 卡牌文字水平置中
       cardFontScale: 1,   // 卡牌文字大小倍率(0.7~1.6)
@@ -3747,6 +3750,7 @@ function renderSettings() {
   const prov = $("#set-llm-provider");
   if (prov) prov.value = llmProvider();
   $("#set-ollama").value = state.settings.ollamaUrl || "";
+  $("#set-comfy").value = state.settings.comfyUrl || "";
   $("#set-model").value = state.settings.model || "";
   $("#set-rating").value = state.settings.rating || "sfw";
   applyLlmProviderUi();
@@ -3905,6 +3909,26 @@ on("set-llm-provider", "change", e => {
   scheduleSave();
 });
 on("set-ollama", "change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });
+on("set-comfy", "change", e => { state.settings.comfyUrl = e.target.value.trim(); scheduleSave(); });
+on("btn-comfy-test", "click", async () => {
+  const r = $("#comfy-test-result");
+  if (!r) return;
+  r.textContent = "測試中…";
+  const u = (state.settings.comfyUrl || "").trim();
+  try {
+    const res = await fetch("/api/comfy/status" + (u ? "?url=" + encodeURIComponent(u) : ""));
+    const j = await res.json();
+    if (!j.ok) {
+      // localhost 是最常見的錯:那是遊戲伺服器自己,不是顯卡那台
+      r.textContent = `連不上 ${j.url}` + (/\/\/(localhost|127\.0\.0\.1)/.test(j.url)
+        ? "——這是伺服器自己。請填顯卡主機的 IP。" : "(ComfyUI 沒開?防火牆?)");
+      return;
+    }
+    const v = j.vram && j.vram[0];
+    r.textContent = `OK · ${(j.checkpoints || []).length} 個模型`
+      + (v ? ` · ${v.name} ${Math.round(v.free_mb / 1024 * 10) / 10}/${Math.round(v.total_mb / 1024 * 10) / 10}GB 可用` : "");
+  } catch (e) { r.textContent = "失敗:" + e.message; }
+});
 on("set-model", "change", e => { state.settings.model = e.target.value.trim(); scheduleSave(); });
 on("set-rating", "change", e => { state.settings.rating = e.target.value; scheduleSave(); });
 on("btn-llm-test", "click", async () => {

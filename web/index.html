@@ -155,6 +155,9 @@
         <div class="setting-row"><label>模型</label><input id="set-model" type="text" class="wide" list="model-list" placeholder="(留空 = 罐頭模式)"><datalist id="model-list"></datalist></div>
         <div class="setting-row"><label>內容分級</label><select id="set-rating"><option value="sfw">SFW</option><option value="nsfw">NSFW(依內容模組)</option></select></div>
         <div class="btn-row"><button id="btn-llm-test">測試連線</button><span id="llm-test-result" class="dim small"></span></div>
+        <div class="setting-row"><label>ComfyUI</label><input id="set-comfy" type="text" class="wide" placeholder="http://&lt;Windows 的 IP&gt;:8188"></div>
+        <div class="setting-row"><label></label><span class="dim small">織夢生圖那台(顯卡主機)。<b>不能填 localhost</b>——那是伺服器自己,不是顯卡。</span></div>
+        <div class="btn-row"><button id="btn-comfy-test">測試 ComfyUI</button><span id="comfy-test-result" class="dim small"></span></div>
       </div>
       <div class="panel sub">
         <h2>存檔</h2>

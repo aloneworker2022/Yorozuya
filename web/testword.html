@@ -338,9 +338,15 @@
     生圖時 RP5 會先把 Ollama 的模型踢出 VRAM(換班),聊天再回來時自動換回去。
   </div>
   <div class="row" style="gap:.5em;align-items:flex-end">
+    <span style="flex:2 1 16em"><label>ComfyUI 端點(Windows 那台,不是 RP5)</label>
+      <input id="cf-url" placeholder="http://&lt;Windows 的 IP&gt;:8188"></span>
     <button class="cy" type="button" onclick="cfCheck()">🔌 檢查 ComfyUI</button>
-    <span class="status" id="cf-conn">尚未檢查</span>
   </div>
+  <div class="mini" style="margin-top:.35em">
+    RP5 跟顯卡不是同一台,所以這裡<b>不能填 localhost</b>——那指的是 RP5 自己。
+    填 Windows 的 Tailscale IP 或區網 IP。填好按檢查,連得上就會存進存檔設定。
+  </div>
+  <div class="row" style="margin-top:.4em"><span class="status" id="cf-conn">尚未檢查</span></div>
   <div class="row" style="gap:.5em;margin-top:.6em">
     <span style="flex:2 1 14em"><label>checkpoint</label>
       <select id="cf-ckpt"><option value="">(按檢查後載入)</option></select>
@@ -1485,16 +1491,25 @@ const CF_LABEL = {
 };
 let cfRunning = false;
 
+function cfUrl() {
+  return (document.getElementById("cf-url")?.value || "").trim();
+}
+
 async function cfCheck() {
   const el = document.getElementById("cf-conn");
   el.textContent = "檢查中…";
   try {
-    const j = await api("/api/comfy/status");
+    const u = cfUrl();
+    const j = await api("/api/comfy/status" + (u ? "?url=" + encodeURIComponent(u) : ""));
     if (!j.ok) {
-      el.textContent = `✗ 連不上 ${j.url}(ComfyUI 沒開,或 COMFY_URL 設錯)`;
+      el.textContent = `✗ 連不上 ${j.url}`
+        + (/\/\/(localhost|127\.0\.0\.1)/.test(j.url)
+            ? "——這是 RP5 自己,不是顯卡那台。上面填 Windows 的 IP。"
+            : "(ComfyUI 沒開?防火牆?)");
       el.style.color = "#ff5f7a";
       return;
     }
+    if (u) cfSaveUrl(u);   // 連得上才寫回存檔,打錯字不會蓋掉好位址
     const sel = document.getElementById("cf-ckpt");
     sel.innerHTML = (j.checkpoints || []).map(c => `<option value="${c}">${c}</option>`).join("")
       || `<option value="">(models/checkpoints 是空的)</option>`;
@@ -1529,9 +1544,31 @@ function cfPartsShell() {
     </div>`).join("");
 }
 
+// 端點跟 ollamaUrl 一樣存在存檔設定裡,遊戲本體與測試台共用同一個值
+async function cfSaveUrl(u) {
+  try {
+    const s = await api("/api/save");
+    const data = s?.data || {};
+    if (!data.settings) data.settings = {};
+    if (data.settings.comfyUrl === u) return;
+    data.settings.comfyUrl = u;
+    await api("/api/save", "PUT", { base_version: s.version, data });
+  } catch (e) { /* 存不進去不影響這次測試,下次再填一樣能用 */ }
+}
+
+async function cfLoadUrl() {
+  const el = document.getElementById("cf-url");
+  if (!el) return;
+  try {
+    const s = await api("/api/save");
+    el.value = s?.data?.settings?.comfyUrl || "";
+  } catch (e) { /* 沒存檔就留空 */ }
+}
+
 function cfBaseBody() {
   return {
     provider: "comfy",
+    comfy_url: cfUrl(),
     framing: document.getElementById("ig-framing").value,
     rating: document.getElementById("ig-rating").value,
     style: document.getElementById("ig-style").value,
@@ -1624,6 +1661,7 @@ window.cfCheck = cfCheck;
 window.cfPreview = cfPreview;
 window.cfRun = cfRun;
 window.cfPortraitPreset = cfPortraitPreset;
+cfLoadUrl();
 
 window.PB_buildSystemPrompt = buildSystemPrompt;   // 淫紋聊天測試器:與遊戲同一支
 window.GG_loadPools = async () => {

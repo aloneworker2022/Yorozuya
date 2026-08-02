@@ -877,6 +877,7 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
         cfg=float(opts.get("cfg") or comfy.DEFAULT_CFG),
         seed=int(opts.get("seed") or 0),
         workflow=wf,
+        base=str(opts.get("comfy_url") or ""),
     )
     if err:
         return "", err
@@ -884,14 +885,20 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
 
 
 @app.get("/api/comfy/status")
-async def comfy_status():
-    """ComfyUI 通不通、有哪些 checkpoint、GPU 現在歸誰用。"""
-    stats = await comfy.system_stats()
+async def comfy_status(url: str = ""):
+    """ComfyUI 通不通、有哪些 checkpoint、GPU 現在歸誰用。
+
+    url 給值 = 測那台並記住(RP5 與 GPU 主機不同機,localhost 在 RP5 上
+    指的是 RP5 自己,所以位址一定要能從設定頁帶進來)。"""
+    base = (url or "").strip().rstrip("/")
+    stats = await comfy.system_stats(base)
+    if base and stats is not None:
+        comfy.note_comfy_url(base)   # 連得上才記,免得打錯字把好位址蓋掉
     devices = (stats or {}).get("devices") or []
     return {
         "ok": stats is not None,
-        "url": comfy.COMFY_URL,
-        "checkpoints": await comfy.checkpoints() if stats else [],
+        "url": base or comfy.comfy_url(),
+        "checkpoints": await comfy.checkpoints(base) if stats else [],
         "vram": [
             {
                 "name": d.get("name"),
@@ -1162,6 +1169,7 @@ class ImgGenIn(BaseModel):
     cfg: float = 7.0
     seed: int = 0               # 0 = 每次隨機
     succubus: bool = True       # 加魔族外觀 tag(角、尖耳);測純人類時關掉
+    comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
     workflow: dict | None = None  # 整份 API 格式 workflow;給了就原樣送出,上面全部忽略
 
 
@@ -1254,6 +1262,7 @@ def imggen_submit(t: ImgGenIn):
             "cfg": float(t.cfg or 7.0),
             "seed": int(t.seed or 0),
             "succubus": bool(t.succubus),
+            "comfy_url": (t.comfy_url or "").strip(),
             "workflow": t.workflow if isinstance(t.workflow, dict) else None,
         })
     body = GenIn(
