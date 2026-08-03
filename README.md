@@ -73,7 +73,11 @@ Windows 端只要讓 ComfyUI 常駐(`--listen 0.0.0.0 --port 8188 --disable-auto
 
 常駐不該佔著桌面。`desktop\` 是一支**系統匣程式**:ComfyUI 一樣 24 小時活著,
 但畫面上不留視窗,只在右下角放一顆圖示——灰停 / 黃載入 / 綠通了 / 藍是外部那份 /
-紅出事,點下去才有設定視窗。掛掉 5 秒自動重開,記錄寫 `<攜帶版>\yorozuya-logs\`。
+紅出事,點下去才開設定頁。掛掉 5 秒自動重開,記錄寫 `<攜帶版>\yorozuya-logs\`。
+
+設定頁是**本機網頁**(`127.0.0.1:53517`,每次啟動換 token)而不是原生視窗:
+攜帶版的 `python_embeded` 是 embeddable 精簡包,裡面沒有 tkinter,介面建在
+tkinter 上會在那台直接 import 失敗、又因為 pythonw 沒有主控台而靜靜死掉。
 
 裝法:把 `desktop\` 複製進 `ComfyUI_windows_portable` → `install_deps.bat` →
 `start_comfy_tray.vbs`。細節見 [desktop/README.md](desktop/README.md)。

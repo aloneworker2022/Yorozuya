@@ -6,8 +6,8 @@
 跟 Ollama 的做法一樣:程式在背景跑,人在前景用電腦,兩邊互不打擾。
 
 ```
-右下角 ●  ← 顏色就是狀態      左鍵 → 設定視窗
-                              右鍵 → 開網頁 / 看記錄 / 停止 / 重開 / 結束
+右下角 ●  ← 顏色就是狀態      左鍵 → 設定頁(瀏覽器)
+                              右鍵 → 開網頁 / 停止 / 重開 / 開機自動啟動 / 結束
 ```
 
 | 顏色 | 狀態 | 意思 |
@@ -24,16 +24,16 @@
    (就是原本放 `start_comfy.bat` 的那層,裡面有 `python_embeded\` 與 `ComfyUI\`)。
    放這裡就跟 bat 一樣免設定路徑。
 2. 雙擊 `install_deps.bat`——它會用**攜帶版那個 python** 裝 `pystray` 與 `Pillow`。
-   這裡會開一個窗,是故意的:裝東西失敗你要看得到。
+   這裡會開一個窗,是故意的:裝東西失敗你要看得到。只要這兩個,沒有別的相依。
 3. 雙擊 `start_comfy_tray.vbs`。畫面上不會有任何東西跳出來,右下角多一顆圖示就是好了。
 
-之後在設定視窗勾「開機時自動啟動」,以後開機就自己上工,`start_comfy.bat` 可以退休了。
+之後在設定頁勾「開機時自動啟動」,以後開機就自己上工,`start_comfy.bat` 可以退休了。
 
 > 為什麼是 `.vbs` 而不是 `.bat`:bat 一定會閃一下黑窗。`.vbs` 用
 > `WScript.Shell.Run(..., 0, False)`,從頭到尾不建立主控台。
 > `comfy_tray.pyw` 的 `.pyw` 也是同一個理由(pythonw = 無主控台)。
 
-## 設定視窗
+## 設定頁
 
 | 欄位 | 說明 |
 |---|---|
@@ -46,18 +46,34 @@
 | ComfyUI 當掉時自動重開 | 就是 bat 的 `restarting in 5s` |
 | 開機時自動啟動 | 寫 `HKCU\...\Run`,不需要系統管理員 |
 
-視窗下方那行「實際會執行」會即時顯示組出來的完整指令——**路徑猜錯看得出來**,
-按儲存前就知道它到底要跑哪個 python、哪個 `main.py`。
+頁面下方那行「實際會執行」會即時顯示組出來的完整指令——**路徑猜錯看得出來**,
+按儲存前就知道它到底要跑哪個 python、哪個 `main.py`。狀態卡每 2 秒自己更新,
+不必重新整理;「記錄」分頁看的就是 `comfyui.log` 的尾巴。
+
+### 為什麼介面是網頁,不是原生視窗
+
+ComfyUI 攜帶版的 `python_embeded` 是 Windows 的 **embeddable 精簡包,裡面沒有
+tkinter**(沒有 `_tkinter.pyd`,也沒有 tcl/tk)。介面若建在 tkinter 上,在攜帶版
+直譯器裡 `import tkinter` 必定失敗;用 pythonw 跑又沒有主控台可以印錯誤,
+結果就是**雙擊之後什麼都沒發生**。所以介面走標準庫的 `http.server` + 瀏覽器,
+攜帶版一定跑得動。
+
+設定頁只綁 `127.0.0.1:53517`,而且每次啟動換一組 token(網址裡的 `?t=`):
+瀏覽器打得到本機,但別的網站不該能在你不知情時改你的 ComfyUI 設定。
+同一個 socket 也兼單一實例鎖——綁得住就代表沒有第二份在跑。
+
+真的出事時說話的是 **Windows 原生 MessageBox**(ctypes 直接呼叫,不依賴任何要另外
+裝的東西),traceback 同時寫進 `%APPDATA%\Yorozuya\tray.log`。**不會再有靜靜死掉。**
 
 ## 記錄
 
 沿用 bat 的位置:`<攜帶版>\yorozuya-logs\comfyui.log`,超過 20MB 轉存 `.1`。
-托盤選單的「檢視記錄」直接開視窗看最後幾百行(會自動跟著捲),旁邊按鈕可以開資料夾。
+設定頁的「記錄」分頁就是這個檔的尾巴(每 2 秒跟著更新),檔案路徑也印在那頁下面。
 
 ## 別加的參數
 
 `--highvram` / `--gpu-only` 會把模型釘在 VRAM,RP5 的 `POST /free` 就卸不乾淨,
-GPU 換班失效 → 換聊天時 Ollama 那邊 OOM。設定視窗填了會當面標紅警告,
+GPU 換班失效 → 換聊天時 Ollama 那邊 OOM。設定頁填了會當面標紅警告,
 但**不擋**:你說了算,只是要知道代價。`--auto-launch` 同理(它會彈瀏覽器出來,
 正是這支程式要消滅的東西)。
 
@@ -71,10 +87,10 @@ Ollama 自己在 Windows 上本來就是托盤常駐,不用管。
 
 | 症狀 | 處理 |
 |---|---|
-| 雙擊 vbs 完全沒反應、右下角沒圖示 | 改跑 `debug_tray.bat`,它會留著主控台顯示 traceback |
-| 「少了套件」 | 先跑 `install_deps.bat`;pip 本身壞掉的話 `python_embeded\python.exe -m ensurepip` |
+| 雙擊 vbs 完全沒反應、右下角沒圖示 | 先看 `%APPDATA%\Yorozuya\tray.log`;再不然改跑 `debug_tray.bat`,它留著主控台顯示 traceback |
+| 跳出「少了套件」 | 還沒跑 `install_deps.bat`,或裝到了別的 python 上;pip 本身壞掉的話 `python_embeded\python.exe -m ensurepip` |
 | 圖示藍色(外部啟動) | 這個埠上已經有一份 ComfyUI,可能是舊的 `start_comfy.bat` 還開著——先把那個 cmd 視窗關掉 |
-| 圖示紅色 | 選單「檢視記錄」,最後幾行就是 ComfyUI 自己的錯誤 |
+| 圖示紅色 | 點圖示開設定頁 → 「記錄」分頁,最後幾行就是 ComfyUI 自己的錯誤 |
 | RP5 連不到 | 監聽位址要 `0.0.0.0`,並確認 Windows 防火牆放行 8188 |
 | 又開了第二份 | 開不起來的:同一台只准一份(綁 `127.0.0.1:53517` 當鎖),第二次會跳「已經在跑了」 |
 
@@ -82,13 +98,14 @@ Ollama 自己在 Windows 上本來就是托盤常駐,不用管。
 
 | 檔案 | 做什麼 |
 |---|---|
-| `comfy_tray.pyw` | 主程式:托盤圖示、選單、tkinter 主迴圈 |
+| `comfy_tray.pyw` | 主程式:托盤圖示、選單、錯誤回報 |
 | `tray_proc.py` | 養 ComfyUI:開關、健康檢查、自動重開、記錄輪替 |
 | `tray_config.py` | 設定檔、路徑推測、開機自動啟動 |
-| `tray_ui.py` | 設定視窗與記錄視窗 |
+| `tray_web.py` | 設定頁與狀態 API(本機網頁介面 + 單一實例鎖) |
 | `start_comfy_tray.vbs` | 無聲啟動器(平常雙擊這個) |
 | `install_deps.bat` | 裝 pystray / Pillow 到攜帶版 python |
 | `debug_tray.bat` | 留著主控台跑,出事時才用 |
 
-設定檔在 `%APPDATA%\Yorozuya\comfy-tray.json`(不放專案目錄:這包會被複製到顯卡那台,
+設定檔在 `%APPDATA%\Yorozuya\comfy-tray.json`,常駐程式自己的錯誤記錄在同一層的
+`tray.log`(不放專案目錄:這包會被複製到顯卡那台,
 專案隨時可能整包重下載)。
