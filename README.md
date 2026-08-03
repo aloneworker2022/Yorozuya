@@ -69,6 +69,15 @@ Windows 那台把 **ComfyUI 與 Ollama 兩個都常駐**,不再由排程器 AM1 
 Windows 端只要讓 ComfyUI 常駐(`--listen 0.0.0.0 --port 8188 --disable-auto-launch`)。
 **不要**加 `--highvram` / `--gpu-only`——那會把模型釘在 VRAM,`/free` 卸不乾淨。
 
+### 顯卡那台的常駐程式([desktop/](desktop/))
+
+常駐不該佔著桌面。`desktop\` 是一支**系統匣程式**:ComfyUI 一樣 24 小時活著,
+但畫面上不留視窗,只在右下角放一顆圖示——灰停 / 黃載入 / 綠通了 / 藍是外部那份 /
+紅出事,點下去才有設定視窗。掛掉 5 秒自動重開,記錄寫 `<攜帶版>\yorozuya-logs\`。
+
+裝法:把 `desktop\` 複製進 `ComfyUI_windows_portable` → `install_deps.bat` →
+`start_comfy_tray.vbs`。細節見 [desktop/README.md](desktop/README.md)。
+
 ### 端點設定(RP5 與顯卡主機不同機)
 
 RP5 上的 `localhost` 指的是 **RP5 自己**,永遠不會是那張顯卡。所以 ComfyUI 位址跟
