@@ -5,7 +5,7 @@ Todo 積分驅動的魅魔召喚養成網頁遊戲。
 - 白天:做現實委託賺金幣,聊天/約會養魅魔(**Ollama** 或 **Grok Build 無頭**)
 - 夜間:魅魔回夢境織夢,ComfyUI 生成立繪與相簿(GPU 換班制)
 
-企劃書:[docs/plan-v4.md](docs/plan-v4.md)
+企劃書:[docs/plan-v5.md](docs/plan-v5.md)(關係演出規格另見 [docs/relationship-axes.md](docs/relationship-axes.md))
 
 ## 啟動伺服器(RP5)
 
@@ -131,7 +131,7 @@ RP5 上的 `localhost` 指的是 **RP5 自己**,永遠不會是那張顯卡。�
 `POST /api/imggen` 帶 `provider: "comfy"` 就走這條(預設仍是 `grok-img`)。
 產物與 Grok 那條路存在同一個 `assets/testword/`、同一套命名,相簿不必分開處理。
 
-生圖 workflow 由 `comfy.build_workflow()` 組——這是 plan-v4 §8.3 的「廠商替換點」,
+生圖 workflow 由 `comfy.build_workflow()` 組——這是 plan-v5 §11.2 的「廠商替換點」,
 要換模型、加 LoRA、加色彩量化改這一個函式即可。也可以直接在 `workflow` 欄位塞整份
 API 格式 workflow,伺服器原樣轉發不檢視。
 
