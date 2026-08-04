@@ -385,7 +385,8 @@ let version = 0;
 let dirty = false;
 let saveTimer = null;
 let detailId = null;     // 魅魔詳情頁
-let dateChooser = false; // 詳情頁展開約會地點
+let dateChooser = false; // 詳情頁展開約會地點（舊）／場地清單（牌制）
+let dateFlow = null;     // M3：{ girlId, phoneCost } 電話已接通、待選場地
 let lastSleepState = null;
 
 function defaultState() {
@@ -1728,7 +1729,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
   if (!s) return;
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
   if (s.ntr) { toast("她不在你身邊……", "bad"); return; }
-  // M2：牌制開啟時，日常養成聊天廢除 → 導向牌桌；約會仍走舊路徑（M3 再改）
+  // M2/M3：牌制開啟時，日常聊→牌桌；約會→電話＋場地牌局
   if (cardSystemOn() && type === "chat") {
     if (isKanban(id)) {
       toast("想說話就靠近她（牌桌）", "");
@@ -1736,6 +1737,10 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
     } else {
       toast("先召喚她為看板娘，再靠近互動", "bad");
     }
+    return;
+  }
+  if (cardSystemOn() && type === "date") {
+    beginDateFlow(id);
     return;
   }
   const today = dayNum();
@@ -4521,6 +4526,172 @@ function girlForSession() {
   return id ? state.succubi.find(x => x.id === id) : null;
 }
 
+// ── M3 約會牌局 ──────────────────────────────────────────
+
+function dateLimitPerDay() {
+  return Cards.d?.("dates_per_girl_per_day", DATE_LIMIT) ?? DATE_LIMIT;
+}
+
+function phoneCostRoll() {
+  const range = Cards.d("phone_cost_range", [10, 30]);
+  const lo = Array.isArray(range) ? (range[0] ?? 10) : 10;
+  const hi = Array.isArray(range) ? (range[1] ?? 30) : 30;
+  return randInt(lo, hi);
+}
+
+function dateAnswerRate(stage) {
+  const t = Cards.d("answer_rate_by_stage", {
+    stranger: 0.1, friend: 0.35, girlfriend: 0.6, wife: 0.8,
+  });
+  return t[stage] ?? t.stranger ?? 0.1;
+}
+
+function availableVenues() {
+  const rating = state.settings?.rating || "sfw";
+  return (Cards.venuesList?.() || []).filter(v => !v.nsfwOnly || rating === "nsfw");
+}
+
+function datesLeftToday(s) {
+  const today = dayNum();
+  const lim = dateLimitPerDay();
+  if (s.datesToday?.day !== today) return lim;
+  return Math.max(0, lim - (s.datesToday.count || 0));
+}
+
+/**
+ * 打電話：扣電話費 → 接聽骰。
+ * 失敗：金不退、不計 datesToday。
+ * 成功：datesToday+1，展開場地選擇。
+ */
+function beginDateFlow(girlId) {
+  if (!cardSystemOn()) return;
+  if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
+  const s = state.succubi.find(x => x.id === girlId);
+  if (!s || s.ntr) { toast("她不在你身邊……", "bad"); return; }
+  if (isKanban(girlId)) { toast("看板中不可約會——先結束店頭互動", "bad"); return; }
+  if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
+  if (Cards.sessionActive(state)) {
+    toast("先結束進行中的牌局", "bad");
+    return;
+  }
+  if (datesLeftToday(s) <= 0) {
+    toast("今天約會夠多了,她需要休息", "bad");
+    return;
+  }
+
+  const cost = phoneCostRoll();
+  if (state.gold < cost) {
+    toast(`電話費要 ${cost} 金（目前 ${state.gold}）`, "bad");
+    return;
+  }
+  state.gold -= cost;
+  log(`打電話給 ${s.name} -${cost} 金`);
+
+  const rate = dateAnswerRate(s.stage || "stranger");
+  if (Math.random() >= rate) {
+    toast(`${s.name} 沒接……（電話費不退）`, "bad");
+    dateFlow = null;
+    dateChooser = false;
+    scheduleSave();
+    renderAll();
+    return;
+  }
+
+  // 成功接聽才算一次約會額度
+  const today = dayNum();
+  if (s.datesToday?.day !== today) s.datesToday = { day: today, count: 0 };
+  s.datesToday.count++;
+  s.lastDateDay = today;
+  s.lastChatDay = today;
+
+  dateFlow = { girlId, phoneCost: cost };
+  dateChooser = true;
+  toast(`${s.name} 接了。要去哪？`, "good");
+  scheduleSave();
+  renderAll();
+}
+
+/** 付場地費 → 開約會牌桌（被召喚中則改觀戰） */
+function confirmDateVenue(girlId, venueId) {
+  if (!cardSystemOn()) return;
+  const s = state.succubi.find(x => x.id === girlId);
+  if (!s || s.ntr) return;
+  if (dateFlow?.girlId !== girlId) {
+    toast("請先打電話", "bad");
+    return;
+  }
+  const v = availableVenues().find(x => x.id === venueId)
+    || (Cards.venuesList?.() || []).find(x => x.id === venueId);
+  if (!v) { toast("找不到這個場地", "bad"); return; }
+  if (state.gold < (v.fee || 0)) {
+    toast(`場地費 ${v.fee} 金不夠`, "bad");
+    return;
+  }
+  state.gold -= (v.fee || 0);
+  log(`與 ${s.name} 去「${v.name}」約會 -${v.fee || 0} 金`);
+
+  dateFlow = null;
+  dateChooser = false;
+
+  // 被召喚走：錢已付，改觀戰（舊機制）
+  if (s.summoner?.taken) {
+    log(`約 ${s.name} 出門——她卻被召喚到別人身邊`);
+    enterWatch(s, "date", v.name);
+    scheduleSave();
+    return;
+  }
+
+  openDateTable(girlId, venueId);
+}
+
+function openDateTable(girlId, venueId) {
+  if (!cardSystemOn()) { toast("卡牌系統未就緒", "bad"); return; }
+  if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
+  const s = state.succubi.find(x => x.id === girlId);
+  if (!s || s.ntr) return;
+  if (isKanban(girlId)) { toast("看板中不可約會", "bad"); return; }
+  if (Cards.sessionActive(state)) {
+    toast("先結束進行中的牌局", "bad");
+    return;
+  }
+
+  const venue = (Cards.venuesList?.() || []).find(x => x.id === venueId);
+  const girlCards = Cards.buildGirlCards(s, {
+    cravingMidOrHigh: !!craveTier(s),
+  });
+  const venueCards = Cards.buildVenueCards(venueId);
+  if (!girlCards.length && !venueCards.length) {
+    toast("這場約會沒有可用的卡", "bad");
+    return;
+  }
+
+  const r = Cards.openSession(state, {
+    mode: "date",
+    girlId,
+    girlCards,
+    venueId,
+    venueCards,
+  });
+  if (!r.ok) { toast(r.err, "bad"); return; }
+
+  // 約會直接進組牌（已出門，不必再「陪伴」）
+  const setup = Cards.enterRoundSetup(state);
+  if (!setup.ok) { toast(setup.err, "bad"); return; }
+
+  cardUi.injectPick = [];
+  cardUi.lastPlay = null;
+  cardUi.handIdx = 0;
+  cardUi.injectIdx = 0;
+  cardUi.awaitReaction = false;
+  cardUi.endPanel = null;
+  detailId = null;
+  document.body.classList.add("card-mode");
+  log(`約會牌桌・${s.name} @ ${venue?.name || venueId}（場地卡 ${venueCards.length}）`);
+  toast(`抵達「${venue?.name || "約會地"}」——組牌開始`, "good");
+  scheduleSave();
+  renderAll();
+}
+
 function openKanbanTable(girlId) {
   if (!cardSystemOn()) { toast("卡牌系統未就緒", "bad"); return; }
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
@@ -4853,7 +5024,12 @@ function renderCardTable() {
   const stage = girl?.stage || "stranger";
   const title = $("#card-table-title");
   if (title) {
-    title.textContent = `${gname} · ${sess.mode === "date" ? "約會" : "店頭"} · ${phaseLabel(sess.phase)}`;
+    let place = "店頭";
+    if (sess.mode === "date") {
+      const vn = (Cards.venuesList?.() || []).find(x => x.id === sess.venueId);
+      place = vn ? `約會・${vn.name}` : "約會";
+    }
+    title.textContent = `${gname} · ${place} · ${phaseLabel(sess.phase)}`;
   }
 
   setCtPortrait(girl);
@@ -5039,6 +5215,15 @@ function renderCardTable() {
       scheduleSave(); renderCardTable();
     };
     $("#ct-cancel-setup").onclick = () => {
+      if (sess.mode === "date") {
+        // 已出門付費：取消組牌 = 散場
+        const r = endCardTableAndReleaseKanban("date_cancel");
+        toast(r.released ? `${r.gname} 離開店頭了` : "約會到此散了", "");
+        scheduleSave();
+        renderAll();
+        pumpKanbanBubbles();
+        return;
+      }
       sess.phase = "idle_present";
       cardUi.injectPick = [];
       cardUi.injectIdx = 0;
@@ -5326,7 +5511,7 @@ function renderSuccubi() {
         <div class="aff-bar"><div class="${s.affection < 0 ? "neg" : ""}" style="width:${barW}%"></div></div>
       </div>
       <div class="status-dot ${st}"></div>`;
-    el.onclick = () => { detailId = s.id; dateChooser = false; renderAll(); };
+    el.onclick = () => { detailId = s.id; dateChooser = false; dateFlow = null; renderAll(); };
     roster.appendChild(el);
   }
   if (!state.succubi.length) roster.innerHTML = `<div class="empty">一個魅魔都沒有。桌上只有那本召喚之書。</div>`;
@@ -5352,7 +5537,11 @@ function renderDetail(s, root) {
   const st = needStatus(s);
   const ns = nextStage(s);
   const today = dayNum();
-  const datesLeft = s.datesToday?.day === today ? DATE_LIMIT - s.datesToday.count : DATE_LIMIT;
+  const datesLeft = datesLeftToday(s);
+  const phoneRange = Cards.d?.("phone_cost_range", [10, 30]) || [10, 30];
+  const dateBtnLabel = cardSystemOn()
+    ? `約會 電話${phoneRange[0]}~${phoneRange[1]}+場地(今日剩 ${datesLeft})${isKanban(s.id) ? "·看板中不可約" : ""}`
+    : `約會 ${DATE_COST} 金(今日剩 ${datesLeft})${isKanban(s.id) ? "·看板中不可約" : ""}`;
 
   let needLine;
   if (s.ntr) {
@@ -5402,7 +5591,7 @@ function renderDetail(s, root) {
       <div class="detail-actions">
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
-          : `<button class="cyan" id="act-date" ${asleep || datesLeft <= 0 || (cardSystemOn() && isKanban(s.id)) ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})${cardSystemOn() && isKanban(s.id) ? "·看板中不可約" : ""}</button>
+          : `<button class="cyan" id="act-date" ${asleep || datesLeft <= 0 || isKanban(s.id) ? "disabled" : ""}>${esc(dateBtnLabel)}</button>
              ${isKanban(s.id)
                ? `<button disabled>★ 看板娘(陪伴中)</button>
                   ${cardSystemOn() ? `<button class="cyan" id="act-cardtable" ${asleep ? "disabled" : ""}>✦ 靠近她</button>` : ""}`
@@ -5410,9 +5599,19 @@ function renderDetail(s, root) {
                  ? `<button disabled>召喚不到她(被召喚走)</button>`
                  : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`}
       </div>
-      ${dateChooser && !s.ntr && !(cardSystemOn() && isKanban(s.id)) ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
+      ${dateChooser && !s.ntr && !isKanban(s.id) && cardSystemOn() && dateFlow?.girlId === s.id ? `
+        <div class="chooser date-venues" style="justify-content:center;flex-wrap:wrap;gap:.4em">
+          <div class="dim small" style="width:100%;text-align:center;margin:.3em 0 .2em">
+            她接了（電話 −${dateFlow.phoneCost} 金）。選場地（另付場地費）
+          </div>
+          ${availableVenues().map(v =>
+            `<button type="button" data-venue="${esc(v.id)}" title="${esc(v.desc || "")}">${esc(v.name)} ${v.fee}金</button>`
+          ).join("")}
+          <button type="button" data-date-cancel>先不約了</button>
+        </div>` : ""}
+      ${dateChooser && !s.ntr && !isKanban(s.id) && !cardSystemOn() ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
       ${!s.ntr && !cardSystemOn() ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b></div>` : ""}
-      ${!s.ntr && cardSystemOn() ? `<div class="aff-line dim small">想更進一步就靠近她；發現／承接／完成委託時她有 15% 機率碎嘴</div>` : ""}
+      ${!s.ntr && cardSystemOn() ? `<div class="aff-line dim small">看板：靠近她打牌；非看板可約會（電話→場地牌局）。委託時 15% 碎嘴。</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
         ${SAC_RITUAL ? `<div class="aff-line dim small">${sacScriptReady(s)
@@ -5425,7 +5624,12 @@ function renderDetail(s, root) {
         }</button></div>` : ""}
     </div>`;
 
-  root.querySelector("#detail-back").onclick = () => { detailId = null; dateChooser = false; renderAll(); };
+  root.querySelector("#detail-back").onclick = () => {
+    detailId = null;
+    dateChooser = false;
+    dateFlow = null;
+    renderAll();
+  };
   root.querySelector("#act-kanban")?.addEventListener("click", () => summonKanban(s.id));
   root.querySelector("#act-cardtable")?.addEventListener("click", () => openKanbanTable(s.id));
   root.querySelector("#act-weave")?.addEventListener("click", async () => {
@@ -5440,6 +5644,17 @@ function renderDetail(s, root) {
   root.querySelector("#act-recut")?.addEventListener("click", () => recutShots(s));
   root.querySelector("#act-dismiss")?.addEventListener("click", () => sacrificeSuccubus(s.id));
   root.querySelector("#act-date")?.addEventListener("click", () => {
+    if (cardSystemOn()) {
+      // 已接通：再按一次約會可收起場地列（電話費已付、額度已算）
+      if (dateChooser && dateFlow?.girlId === s.id) {
+        dateChooser = false;
+        // 不退電話、不退額度
+        renderAll();
+        return;
+      }
+      beginDateFlow(s.id);
+      return;
+    }
     dateChooser = !dateChooser;
     if (dateChooser) dateChoices = pickN(DATE_SPOTS, 5);
     renderAll();
@@ -5447,6 +5662,17 @@ function renderDetail(s, root) {
   root.querySelector("#act-ransom")?.addEventListener("click", () => ransom(s.id));
   root.querySelector("[data-reroll]")?.addEventListener("click", () => { dateChoices = pickN(DATE_SPOTS, 5); renderAll(); });
   root.querySelectorAll("[data-loc]").forEach(b => b.onclick = () => enterChat(s.id, "date", b.dataset.loc));
+  root.querySelectorAll("[data-venue]").forEach(b => {
+    b.onclick = () => confirmDateVenue(s.id, b.dataset.venue);
+  });
+  root.querySelector("[data-date-cancel]")?.addEventListener("click", () => {
+    dateChooser = false;
+    // 電話已付、額度已算；取消只是不選場地
+    toast("下次再約吧（電話費不退）", "");
+    // 保留 dateFlow 清掉，避免殘狀態
+    dateFlow = null;
+    renderAll();
+  });
 }
 
 function renderKanban() {
@@ -5878,6 +6104,15 @@ window.DBG = {
       queue: bubbleQueue.length,
     };
   },
+  // 測試 M3 約會：跳過電話骰，直接開指定場地牌桌（預設公園）
+  dateTable: (id, venueId = "park") => {
+    const s = id ? state.succubi.find(x => x.id === id) : state.succubi.find(x => !isKanban(x.id) && !x.ntr);
+    if (!s) return { ok: false, err: "沒有可約的魅魔" };
+    if (isKanban(s.id)) return { ok: false, err: "看板中不可約" };
+    openDateTable(s.id, venueId);
+    return { ok: true, girl: s.name, venueId };
+  },
+  venues: () => availableVenues(),
   // 測試:直接進聊天/約會(prepaid 跳過金幣消耗),與詢問機制
   chat: (id, type = "chat") => enterChat(id, type, null, true),
   ask: () => askAboutActs(),

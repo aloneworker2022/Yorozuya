@@ -2162,7 +2162,7 @@
   "venues": [
     {
       "id": "park",
-      "name": "公园",
+      "name": "公園",
       "fee": 8,
       "desc": "白天人不多的長椅與步道。",
       "cardIds": [

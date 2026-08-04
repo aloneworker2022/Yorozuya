@@ -862,6 +862,9 @@ export function resolveRoundEnd(state, { stage = "stranger" } = {}) {
   if (sess.forceAnotherRound) {
     stay = true;
     sess.forceAnotherRound = false;
+  } else if (sess.mode === "date") {
+    // M3：約會輪末預設散場（只有《不可走》等 forceAnotherRound 可再來一輪）
+    stay = false;
   } else {
     stay = Math.random() < stayChance(stage);
   }
