@@ -5,10 +5,11 @@
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, WARDROBE_UNLOCK } from "./content/girl_gen.js";
+import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v5.40(2026-08-02)品質前綴與分級 tag 改取兩種底的聯集(SFW 補上 safe)";
+const APP_VER = "v6.0(2026-08-04)互動牌制 M0+M1：卡商店／牌庫／看板牌桌";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -19,6 +20,12 @@ fetch("content/world.md").then(r => r.ok ? r.text() : "").then(t => { WORLD_LORE
 let SUMMONERS = [];
 fetch("content/summoners.json").then(r => r.ok ? r.json() : null).then(j => { SUMMONERS = (j && j.summoners) || []; }).catch(() => {});
 function summonerById(id) { return SUMMONERS.find(x => x.id === id) || null; }
+
+// 互動牌制內容(cards.json → card_engine)
+let CARDS_LOAD = fetch("content/cards.json")
+  .then(r => r.ok ? r.json() : null)
+  .then(j => { if (j) Cards.setCardsData(j); return j; })
+  .catch(() => null);
 
 // ===== 常數 =====
 
@@ -355,7 +362,16 @@ function defaultState() {
     dismiss: null,  // {day, price} 今日遣散費
     succubi: [],  // 見 summon()
     dungeon: [],  // [{name}]
-    shop: null,   // {day, stock:[{id,name,price,sold}], line}
+    shop: null,   // {day, stock:[{id,name,price,sold}], line} 祭品商店
+    // v6 互動牌制（勿與祭品 shop 混淆）
+    cardInventory: {},   // cardId → { count, unlocked? }
+    deckPresets: [],     // [{ id, name, cardIds }]
+    cardShop: null,      // { nextRefreshAt, slots:[{cardId,price,sold,isSale,salePrice?}] }
+    cardSession: null,   // 當前牌桌 session（見 card_engine）
+    playerProfile: {
+      name: "", body: "", look: "", habit: "",
+      starterSpeechCardId: null, cardPlayerLv: 0,
+    },
     kanbans: [],        // 在任看板娘 [{id, until}](多看板娘制;until=到期時間戳)
     lastKanbanId: null, // 最後一位看板娘(全過期後背景顯示她的休息剪影)
     lastSettledDay: null,
@@ -379,8 +395,13 @@ function defaultState() {
       cardFontScale: 1,   // 卡牌文字大小倍率(0.7~1.6)
       tabOpacity: 1,
       bgImages: [], bgIndex: 0, bgInterval: 5,
+      features: { cardSystem: true },
     },
   };
+}
+
+function cardSystemOn() {
+  return !!(state?.settings?.features?.cardSystem !== false && Cards.cardsReady());
 }
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -456,6 +477,21 @@ function initState(j, offline) {
     state.quips = { [state.quips.girlId]: { hash: state.quips.hash, lines: state.quips.lines || [], got: state.quips.got || [] } };
   }
   state.quips ??= {};
+  // v6 牌制移轉
+  state.cardInventory ??= {};
+  state.deckPresets ??= [];
+  state.cardShop ??= null;
+  state.cardSession ??= null;
+  state.playerProfile = {
+    name: "", body: "", look: "", habit: "",
+    starterSpeechCardId: null, cardPlayerLv: 0,
+    ...(state.playerProfile || {}),
+  };
+  if (!state.playerProfile.name && state.settings?.player) {
+    state.playerProfile.name = state.settings.player;
+  }
+  state.settings.features = { cardSystem: true, ...(state.settings.features || {}) };
+  if (Cards.cardsReady()) Cards.ensureStarterFallback(state);
   // 召喚師系統移轉:舊魅魔補發抽取間隔
   for (const s of state.succubi) {
     if (s.summoner === undefined) s.summoner = null;
@@ -494,6 +530,7 @@ function initState(j, offline) {
 
 let bootFailed = false;   // 存檔載入/渲染爆掉 → 臨時全新狀態、且不自動存(保住伺服器上的舊檔待修)
 async function load() {
+  try { await CARDS_LOAD; } catch { /* 牌制內容載失敗仍可跑舊路徑 */ }
   let j;
   try {
     j = await fetchSave();                 // 網路層:真的連不上才進這個 catch
@@ -1074,9 +1111,11 @@ function sacSettle(ss) {
       dropMsg = `\n\n✦ 你永久獲得了她的天賦:${EXPANSIONS[ss.gift]} +${inc}!`;
     }
   }
+  Cards.closeSessionIfGirl(state, ss.id);
   state.succubi = state.succubi.filter(x => x.id !== ss.id);
   state.kanbans = (state.kanbans || []).filter(k => k.id !== ss.id);
   if (state.lastKanbanId === ss.id) state.lastKanbanId = null;
+  document.body.classList.remove("card-mode");
   log(`獻祭了 ${ss.name}(-${ss.price} 金)${dropped ? `,獲得 ${EXPANSIONS[ss.gift]} 擴充` : ""}`);
   toast(dropMsg.includes("✦") ? "✦ 獲得永久擴充!" : `${ss.name} 化作了獻祭的光`, dropMsg.includes("✦") ? "good" : "");
   scheduleSave();
@@ -2714,8 +2753,10 @@ function marryAway(s) {
   const su = summonerById(s.summoner.id);
   log(`${s.name} 懷了 ${su?.name || "召喚師"} 的孩子,脫離魅魔身分、跟他走了,永遠離開萬事屋。`);
   toast(`${s.name} 懷孕了……她成了 ${su?.name || "他"} 的妻子,永遠消失了。`, "bad");
+  Cards.closeSessionIfGirl(state, s.id);
   state.succubi = state.succubi.filter(x => x.id !== s.id);
   state.kanbans = (state.kanbans || []).filter(k => k.id !== s.id);
+  document.body.classList.remove("card-mode");
 }
 function advanceRivalStage(s) {
   const sm = s.summoner;
@@ -2992,6 +3033,7 @@ function summonKanban(id) {
   state.lastKanbanId = id;
   log(`召喚 ${s.name} 為看板娘 -${cost} 金(第 ${state.kanbans.length} 位)`);
   toast(`${s.name} 來到你身邊♥`, "good");   // 不透露持續時間
+  // 牌制：召後可開桌（不強制）
   scheduleSave(); renderAll();
 }
 
@@ -2999,8 +3041,17 @@ function summonKanban(id) {
 function expireKanban() {
   const now = Date.now();
   const before = (state.kanbans || []).length;
-  state.kanbans = (state.kanbans || []).filter(k => k.until && now < k.until);
-  return state.kanbans.length !== before;
+  const kept = [];
+  for (const k of (state.kanbans || [])) {
+    if (k.until && now < k.until) kept.push(k);
+    else Cards.closeSessionIfGirl(state, k.id);
+  }
+  state.kanbans = kept;
+  if (state.cardSession?.girlId && !kept.some(k => k.id === state.cardSession.girlId)) {
+    // 看板全沒了仍可能 session 指到已過期 id
+    if (state.cardSession.mode === "kanban") Cards.closeSession(state, "kanban_expired");
+  }
+  return kept.length !== before;
 }
 
 let bubbleTimer = null;
@@ -3318,7 +3369,7 @@ async function removeBgAt(i) {
 function renderAll() {
   // 每個子渲染獨立 try:單一區塊出錯(如半更新缺元素)不連累其他,
   // 委託輸入等核心功能永遠保持可用。
-  for (const fn of [applyTheme, renderHud, renderQuests, renderShop, renderSuccubi, renderChatView, renderKanban, renderCrests, renderSettings]) {
+  for (const fn of [applyTheme, renderHud, renderQuests, renderShop, renderSuccubi, renderChatView, renderKanban, renderCrests, renderSettings, renderCardSystem]) {
     try { fn(); } catch (e) { console.error(fn.name, e); }
   }
 }
@@ -3677,7 +3728,414 @@ function renderShop() {
     ? state.dungeon.map(p => `<span>${esc(p.name)}</span>`).join("")
     : `<span class="dim">空無一人。</span>`;
 
+  renderCardShopPanel();
   renderPlayerAttrs();
+}
+
+// ===== v6 互動牌制：商店貨架／牌庫／創角／牌桌 =====
+
+let cardUi = {
+  injectPick: [],      // round_setup 勾選的 cardId 列表
+  lastPlay: null,      // 上一張演出結果
+  invOpen: true,
+};
+
+function renderCardShopPanel() {
+  const shelf = $("#card-shop-stock");
+  const inv = $("#card-inv-list");
+  const refreshEl = $("#card-shop-refresh");
+  if (!shelf || !inv) return;
+  if (!cardSystemOn()) {
+    shelf.innerHTML = `<div class="dim small">卡牌資料未載入</div>`;
+    inv.innerHTML = "";
+    if (refreshEl) refreshEl.textContent = "";
+    return;
+  }
+  Cards.ensureCardShop(state);
+  const shop = state.cardShop;
+  const leftMs = Math.max(0, (shop.nextRefreshAt || 0) - Date.now());
+  const leftH = Math.floor(leftMs / 3600000);
+  const leftM = Math.floor((leftMs % 3600000) / 60000);
+  if (refreshEl) {
+    refreshEl.textContent = leftMs <= 0
+      ? "即將刷新"
+      : `下次刷新約 ${leftH}h ${leftM}m`;
+  }
+  shelf.innerHTML = (shop.slots || []).map((slot, i) => {
+    const def = Cards.cardById(slot.cardId);
+    const name = def?.name || slot.cardId;
+    const price = slot.isSale && slot.salePrice != null ? slot.salePrice : slot.price;
+    const ownedSpeech = def && !def.shatterOnUse && Cards.invOwns(state, slot.cardId);
+    const sold = slot.sold || ownedSpeech;
+    const tag = def?.shatterOnUse ? "碎" : "話術";
+    const sale = slot.isSale && !sold ? `<span class="card-sale">特價</span>` : "";
+    const canBuy = !sold && state.gold >= price;
+    return `<div class="shop-item card-shop-item${sold ? " sold" : ""}">
+      <span class="sname"><span class="card-tag ${def?.shatterOnUse ? "shatter" : "speech"}">${tag}</span>${esc(name)} ${sale}
+        <span class="dim small"> ${esc((def?.tags || []).join("·"))}</span></span>
+      <span class="sprice">${slot.isSale && !sold ? `<s class="dim">${slot.price}</s> ${price}` : price} 金</span>
+      <button data-cslot="${i}" ${canBuy ? "" : "disabled"}>${ownedSpeech ? "已擁有" : slot.sold ? "已售出" : "購買"}</button>
+    </div>`;
+  }).join("") || `<div class="dim small">貨架空空</div>`;
+  shelf.querySelectorAll("[data-cslot]").forEach(btn => {
+    btn.onclick = () => {
+      const r = Cards.buyFromCardShop(state, +btn.dataset.cslot);
+      if (!r.ok) { toast(r.err, "bad"); return; }
+      toast(`買下「${r.name}」 -${r.price} 金${r.shatter ? "（用則碎）" : ""}`, "good");
+      log(`購入卡牌「${r.name}」 -${r.price} 金`);
+      scheduleSave(); renderAll();
+    };
+  });
+
+  const rows = Cards.inventoryList(state);
+  inv.innerHTML = rows.length
+    ? rows.map(r => `<div class="card-inv-row">
+        <span class="card-tag ${r.shatterOnUse ? "shatter" : "speech"}">${r.shatterOnUse ? "碎×" + r.count : "話術"}</span>
+        <span class="sname">${esc(r.name)}</span>
+        <span class="dim small">${esc(r.rarity)} · ${(r.tags || []).join("·")}</span>
+      </div>`).join("")
+    : `<div class="dim small">牌庫空——去創角選話術，或在貨架購買。</div>`;
+}
+
+function needsStarterPick() {
+  if (!cardSystemOn()) return false;
+  return !state.playerProfile?.starterSpeechCardId;
+}
+
+function renderStarterModal() {
+  const ov = $("#starter-modal");
+  if (!ov) return;
+  if (!needsStarterPick()) {
+    ov.classList.add("hidden");
+    return;
+  }
+  ov.classList.remove("hidden");
+  const pool = Cards.starterPoolIds();
+  const list = $("#starter-list");
+  if (!list) return;
+  list.innerHTML = pool.map(id => {
+    const def = Cards.cardById(id);
+    if (!def) return "";
+    return `<button class="starter-card" data-sid="${id}">
+      <b>${esc(def.name)}</b>
+      <span class="dim small">${esc(def.sceneStart || "")}</span>
+    </button>`;
+  }).join("");
+  list.querySelectorAll("[data-sid]").forEach(b => {
+    b.onclick = () => {
+      const r = Cards.grantStarter(state, b.dataset.sid);
+      if (!r.ok) { toast(r.err, "bad"); return; }
+      const def = Cards.cardById(b.dataset.sid);
+      if (!state.settings.player && state.playerProfile.name) {
+        state.settings.player = state.playerProfile.name;
+      }
+      toast(`你選擇了話術「${def?.name || b.dataset.sid}」`, "good");
+      log(`創角話術：${def?.name || b.dataset.sid}`);
+      scheduleSave(); renderAll();
+    };
+  });
+  const nameIn = $("#starter-name");
+  if (nameIn) {
+    nameIn.value = state.playerProfile.name || state.settings.player || "";
+    nameIn.onchange = nameIn.oninput = () => {
+      state.playerProfile.name = nameIn.value.trim().slice(0, 12);
+      state.settings.player = state.playerProfile.name;
+    };
+  }
+}
+
+function girlForSession() {
+  const id = state.cardSession?.girlId;
+  return id ? state.succubi.find(x => x.id === id) : null;
+}
+
+function openKanbanTable(girlId) {
+  if (!cardSystemOn()) { toast("卡牌系統未就緒", "bad"); return; }
+  if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
+  const s = state.succubi.find(x => x.id === girlId);
+  if (!s || s.ntr) return;
+  if (!isKanban(girlId)) { toast("她不在店頭，先召喚為看板娘", "bad"); return; }
+  if (s.summoner?.taken) { toast("她正被召喚走", "bad"); return; }
+  if (Cards.sessionActive(state) && state.cardSession.girlId !== girlId) {
+    toast("先結束與另一人的牌局", "bad");
+    return;
+  }
+  if (Cards.sessionActive(state) && state.cardSession.girlId === girlId) {
+    document.body.classList.add("card-mode");
+    renderCardTable();
+    return;
+  }
+  const girlCards = Cards.buildGirlCards(s, {
+    cravingMidOrHigh: !!craveTier(s),
+  });
+  const r = Cards.openSession(state, { mode: "kanban", girlId, girlCards });
+  if (!r.ok) { toast(r.err, "bad"); return; }
+  cardUi.injectPick = [];
+  cardUi.lastPlay = null;
+  document.body.classList.add("card-mode");
+  log(`與 ${s.name} 開桌（本體卡 ${girlCards.length}）`);
+  scheduleSave(); renderAll();
+}
+
+function leaveCardTableUi() {
+  // 僅關 UI：若仍在 idle 可保留 session；打牌中不允許直接走
+  const sess = state.cardSession;
+  if (sess && (sess.phase === "round_play" || sess.phase === "round_setup" || sess.phase === "round_end")) {
+    toast("先結束本輪或解散牌桌", "bad");
+    return;
+  }
+  document.body.classList.remove("card-mode");
+  renderAll();
+}
+
+function dismissCardSession() {
+  if (!state.cardSession) {
+    document.body.classList.remove("card-mode");
+    renderAll();
+    return;
+  }
+  if (state.cardSession.phase === "round_play") {
+    toast("打牌中不能直接解散——可先結束本輪", "bad");
+    return;
+  }
+  Cards.closeSession(state, "player_dismiss");
+  cardUi.injectPick = [];
+  cardUi.lastPlay = null;
+  document.body.classList.remove("card-mode");
+  toast("牌桌收了", "");
+  scheduleSave(); renderAll();
+}
+
+function applyPlaySideEffects(girl, result) {
+  if (!girl || !result?.ok) return;
+  if (result.emotionDelta) {
+    const d = applyAffection(girl, result.emotionDelta);
+    // applyAffection 已寫入；顯示用 result 原值
+    void d;
+  }
+  for (const eff of result.effects || []) {
+    if (eff && typeof eff === "object") {
+      if (eff.guardDelta && girl.stage === "stranger") {
+        girl.guard ??= { hits: 0, cool: 0 };
+        girl.guard.hits = (girl.guard.hits || 0) + eff.guardDelta;
+        girl.guard.cool = Math.max(girl.guard.cool || 0, GUARD_COOL);
+      }
+      if (typeof eff.cravingDelta === "number") craveAdd(girl, eff.cravingDelta);
+    }
+  }
+}
+
+function renderCardTable() {
+  const view = $("#card-table-view");
+  if (!view) return;
+  const active = cardSystemOn() && Cards.sessionActive(state) && document.body.classList.contains("card-mode");
+  view.classList.toggle("hidden", !active);
+  if (!active) return;
+
+  const sess = state.cardSession;
+  const girl = girlForSession();
+  const gname = girl?.name || "？";
+  const stage = girl?.stage || "stranger";
+  const title = $("#card-table-title");
+  const body = $("#card-table-body");
+  if (title) title.textContent = `${gname} · ${sess.mode === "date" ? "約會牌局" : "看板牌桌"} · ${phaseLabel(sess.phase)}`;
+  if (!body) return;
+
+  if (sess.phase === "idle_present") {
+    body.innerHTML = `
+      <p class="card-scene">${esc(gname)} 在店頭陪著你。可以只待著，或開戰一輪。</p>
+      <div class="card-meta dim small">本體卡 ${sess.girlCards?.length || 0} 張 · 出手 N 由關係決定（${stageLabel(stage)}）</div>
+      <div class="detail-actions card-actions">
+        <button class="cyan" id="ct-start-setup">開戰組牌</button>
+        <button id="ct-dismiss">收起牌桌</button>
+      </div>`;
+    body.querySelector("#ct-start-setup").onclick = () => {
+      const r = Cards.enterRoundSetup(state);
+      if (!r.ok) { toast(r.err, "bad"); return; }
+      cardUi.injectPick = [];
+      scheduleSave(); renderCardTable();
+    };
+    body.querySelector("#ct-dismiss").onclick = () => dismissCardSession();
+    return;
+  }
+
+  if (sess.phase === "round_setup") {
+    const maxI = Cards.maxInject(state);
+    const inv = Cards.inventoryList(state);
+    // 依 pick 計算剩餘
+    const pickedCount = Object.create(null);
+    for (const id of cardUi.injectPick) pickedCount[id] = (pickedCount[id] || 0) + 1;
+    const rows = inv.map(r => {
+      const picked = pickedCount[r.cardId] || 0;
+      const maxThis = r.shatterOnUse ? r.count : 1;
+      const canAdd = cardUi.injectPick.length < maxI && picked < maxThis;
+      return `<div class="card-inv-row inject-row">
+        <span class="card-tag ${r.shatterOnUse ? "shatter" : "speech"}">${r.shatterOnUse ? "碎" : "話"}</span>
+        <span class="sname">${esc(r.name)}</span>
+        <span class="dim small">×${picked}/${maxThis}</span>
+        <button data-add="${r.cardId}" ${canAdd ? "" : "disabled"}>+</button>
+        <button data-sub="${r.cardId}" ${picked ? "" : "disabled"}>−</button>
+      </div>`;
+    }).join("") || `<div class="dim small">牌庫空，只能打本體卡</div>`;
+    body.innerHTML = `
+      <p class="card-scene">選擇本輪押入的卡（最多 ${maxI}）。碎卡未打出會退庫。</p>
+      <div class="card-meta">已押 ${cardUi.injectPick.length}/${maxI} · 本體 ${sess.girlCards.length} 張</div>
+      <div class="card-inject-list">${rows}</div>
+      <div class="detail-actions card-actions">
+        <button class="cyan" id="ct-deal">洗牌開戰</button>
+        <button id="ct-cancel-setup">取消</button>
+      </div>`;
+    body.querySelectorAll("[data-add]").forEach(b => {
+      b.onclick = () => {
+        if (cardUi.injectPick.length >= maxI) return;
+        cardUi.injectPick.push(b.dataset.add);
+        renderCardTable();
+      };
+    });
+    body.querySelectorAll("[data-sub]").forEach(b => {
+      b.onclick = () => {
+        const i = cardUi.injectPick.lastIndexOf(b.dataset.sub);
+        if (i >= 0) cardUi.injectPick.splice(i, 1);
+        renderCardTable();
+      };
+    });
+    body.querySelector("#ct-deal").onclick = () => {
+      const ir = Cards.setInject(state, cardUi.injectPick);
+      if (!ir.ok) { toast(ir.err, "bad"); return; }
+      const sr = Cards.startRound(state, { stage, guardHigh: guardActive(girl) });
+      if (!sr.ok) { toast(sr.err, "bad"); return; }
+      cardUi.lastPlay = null;
+      toast(`第 ${sess.roundIndex} 輪——她今夜還肯應對 ${sr.nLeft} 次`, "good");
+      scheduleSave(); renderCardTable();
+    };
+    body.querySelector("#ct-cancel-setup").onclick = () => {
+      sess.phase = "idle_present";
+      cardUi.injectPick = [];
+      scheduleSave(); renderCardTable();
+    };
+    return;
+  }
+
+  if (sess.phase === "round_play") {
+    const left = Cards.playsLeft(sess);
+    const chain = sess.chain;
+    const chainTxt = chain
+      ? `她正被你帶著走（${chain.attr}${chain.kLeft > 0 ? "…" : ""}）`
+      : "";
+    const handHtml = (sess.hand || []).map(inst => {
+      const def = Cards.cardById(inst.cardId);
+      const check = Cards.canSelectCard(sess, inst, stage);
+      const dis = !check.ok || !!sess.pending;
+      return `<button class="hand-card ${dis ? "disabled" : ""} ${def?.shatterOnUse ? "shatter" : ""}"
+        data-iid="${inst.instanceId}" ${dis ? "disabled" : ""}>
+        <span class="hc-name">${esc(def?.name || inst.cardId)}</span>
+        <span class="hc-meta dim small">${esc((def?.tags || []).join("·"))}${def?.shatterOnUse ? " ·用後碎" : ""}${def?.openChain ? " ·開門" : ""}</span>
+      </button>`;
+    }).join("") || `<div class="dim small">手牌空了</div>`;
+
+    let pendingHtml = "";
+    if (sess.pending) {
+      const pinst = sess.hand.find(h => h.instanceId === sess.pending.instanceId);
+      const pd = pinst ? Cards.cardById(pinst.cardId) : null;
+      pendingHtml = `<div class="card-confirm">
+        <p>確認打出「${esc(pd?.name || "?")}」？<b class="bad">用後消失</b></p>
+        <div class="detail-actions">
+          <button class="danger-btn" id="ct-confirm-play">確認使用</button>
+          <button id="ct-cancel-play">取消</button>
+        </div>
+      </div>`;
+    }
+
+    const last = cardUi.lastPlay;
+    const lastHtml = last ? `<div class="card-last">
+      <div class="card-last-title">${esc(last.name)}${last.shattered ? " ·已碎" : ""}${last.open && !last.open.success ? " ·開門失敗" : last.open?.success ? " ·開門成功" : ""}</div>
+      <div class="card-scene">${esc(last.sceneStart || "")}</div>
+      <div class="dim small">情感 ${last.emotionDelta >= 0 ? "+" : ""}${last.emotionDelta}${last.forceAnotherRound ? " ·她這輪走不了" : ""}</div>
+    </div>` : "";
+
+    body.innerHTML = `
+      <div class="card-meta">還肯應對 <b>${left}</b> 次 · 第 ${sess.roundIndex} 輪
+        ${chainTxt ? `<span class="chain-hint">${esc(chainTxt)}</span>` : ""}</div>
+      ${lastHtml}
+      ${pendingHtml}
+      <div class="hand-row">${handHtml}</div>
+      <div class="detail-actions card-actions">
+        <button id="ct-end-round">結束本輪</button>
+      </div>`;
+
+    body.querySelectorAll(".hand-card:not([disabled])").forEach(b => {
+      b.onclick = () => {
+        const r = Cards.requestPlay(state, b.dataset.iid, { stage, guardHigh: guardActive(girl) });
+        if (!r.ok) { toast(r.err, "bad"); return; }
+        if (r.needConfirm) { renderCardTable(); return; }
+        cardUi.lastPlay = r;
+        applyPlaySideEffects(girl, r);
+        scheduleSave(); renderCardTable();
+        if (state.cardSession?.phase === "round_end") {
+          // 自動進輪末結算提示
+        }
+      };
+    });
+    body.querySelector("#ct-confirm-play")?.addEventListener("click", () => {
+      const iid = sess.pending?.instanceId;
+      if (!iid) return;
+      const r = Cards.commitPlay(state, iid, { stage, guardHigh: guardActive(girl) });
+      if (!r.ok) { toast(r.err, "bad"); return; }
+      cardUi.lastPlay = r;
+      applyPlaySideEffects(girl, r);
+      toast(r.open && !r.open.success ? "開門失敗……" : `打出「${r.name}」`, r.open && !r.open.success ? "bad" : "good");
+      scheduleSave(); renderCardTable();
+    });
+    body.querySelector("#ct-cancel-play")?.addEventListener("click", () => {
+      Cards.cancelPending(state);
+      renderCardTable();
+    });
+    body.querySelector("#ct-end-round").onclick = () => {
+      Cards.playerEndRound(state);
+      scheduleSave(); renderCardTable();
+    };
+    return;
+  }
+
+  if (sess.phase === "round_end") {
+    body.innerHTML = `
+      <p class="card-scene">這一輪結束了。她會留下再來一輪，還是先散？</p>
+      ${cardUi.lastPlay ? `<div class="dim small">上一張：${esc(cardUi.lastPlay.name)}</div>` : ""}
+      <div class="detail-actions card-actions">
+        <button class="cyan" id="ct-resolve-end">看她怎麼決定</button>
+      </div>`;
+    body.querySelector("#ct-resolve-end").onclick = () => {
+      const r = Cards.resolveRoundEnd(state, { stage });
+      if (!r.ok) { toast(r.err, "bad"); return; }
+      if (r.stay) toast(`${gname} 還願意再陪你一輪`, "good");
+      else if (r.closed) toast("約會散了", "");
+      else toast(`${gname} 結束了這次深度互動（人還在店頭）`, "");
+      cardUi.injectPick = [];
+      cardUi.lastPlay = null;
+      scheduleSave(); renderCardTable();
+    };
+  }
+}
+
+function phaseLabel(p) {
+  return ({
+    idle_present: "陪伴中",
+    round_setup: "組牌",
+    round_play: "打牌",
+    round_end: "輪末",
+    summoning_prep: "產製中",
+    closed: "已結束",
+  })[p] || p || "";
+}
+
+function renderCardSystem() {
+  renderStarterModal();
+  // 若 session 還在但 UI 被關掉，不強制打開
+  if (document.body.classList.contains("card-mode")) renderCardTable();
+  else {
+    const view = $("#card-table-view");
+    if (view) view.classList.add("hidden");
+  }
 }
 
 // 玩家屬性面板(商店底部):金幣、名額、擴充(擴充系統將於後續階段填入)
@@ -3902,15 +4360,17 @@ function renderDetail(s, root) {
       <div class="detail-actions">
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
-          : `<button class="cyan" id="act-date" ${asleep || datesLeft <= 0 ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})</button>
+          : `<button class="cyan" id="act-date" ${asleep || datesLeft <= 0 || (cardSystemOn() && isKanban(s.id)) ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})${cardSystemOn() && isKanban(s.id) ? "·看板中不可約" : ""}</button>
              ${isKanban(s.id)
-               ? `<button disabled>★ 看板娘(陪伴中)</button>`
+               ? `<button disabled>★ 看板娘(陪伴中)</button>
+                  ${cardSystemOn() ? `<button class="cyan" id="act-cardtable" ${asleep ? "disabled" : ""}>✦ 打牌</button>` : ""}`
                : s.summoner?.taken
                  ? `<button disabled>召喚不到她(被召喚走)</button>`
                  : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`}
       </div>
-      ${dateChooser && !s.ntr ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
-      ${!s.ntr ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b></div>` : ""}
+      ${dateChooser && !s.ntr && !(cardSystemOn() && isKanban(s.id)) ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
+      ${!s.ntr && !cardSystemOn() ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b></div>` : ""}
+      ${!s.ntr && cardSystemOn() ? `<div class="aff-line dim small">深度互動走牌桌；委託時可能碎嘴（氣泡後續里程碑）</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
         ${SAC_RITUAL ? `<div class="aff-line dim small">${sacScriptReady(s)
@@ -3925,6 +4385,7 @@ function renderDetail(s, root) {
 
   root.querySelector("#detail-back").onclick = () => { detailId = null; dateChooser = false; renderAll(); };
   root.querySelector("#act-kanban")?.addEventListener("click", () => summonKanban(s.id));
+  root.querySelector("#act-cardtable")?.addEventListener("click", () => openKanbanTable(s.id));
   root.querySelector("#act-weave")?.addEventListener("click", async () => {
     toast(`為 ${s.name} 織出形體中……`, "good");
     renderAll();   // 立即把按鈕切成「織出形體中…」
@@ -4131,6 +4592,9 @@ on("btn-bg-clear", "click", async () => {
 });
 
 // 聊天室
+on("card-table-back", "click", () => leaveCardTableUi());
+on("card-table-close", "click", () => dismissCardSession());
+
 on("chat-back", "click", () => {
   if (sacrificeWith) { exitSacrifice(); return; }   // 儀式中途離開=中止(她未結算、存活)
   if (watchWith) exitWatch(); else exitChat();
@@ -4317,6 +4781,12 @@ window.DBG = {
   dayNum: () => dayNum(),
   state: () => state,
   isAsleep: () => isAsleep(),
+  cards: () => Cards.debugDump(),
+  cardShop: () => { Cards.ensureCardShop(state); return state.cardShop; },
+  cardInv: () => Cards.inventoryList(state),
+  openTable: (id) => openKanbanTable(id || kanbanSuccubi()[0]?.id),
+  refreshCardShop: () => { Cards.refreshCardShop(state); scheduleSave(); renderAll(); return state.cardShop; },
+  grantCard: (id, n = 1) => { Cards.invAdd(state, id, n); scheduleSave(); renderAll(); return Cards.invEntry(state, id); },
   // 測試:直接把她設成「被召喚中」並以玩家動作進窺視
   watch: (id, playerType = "chat", hours = 2) => {
     const s = state.succubi.find(x => x.id === id);

@@ -1103,3 +1103,98 @@ body.chat-mode.has-figure #kanban-girl {
 }
 .q-force-tab { border-radius: 6px 0 0 6px; }   /* 貼右緣,只圓外側 */
 .bar-wrap, .aff-bar { border-radius: 3px; overflow: hidden; }
+
+/* ===== v6 互動牌制 ===== */
+.card-tag {
+  display: inline-block; font-size: .65em; letter-spacing: .05em;
+  padding: .1em .4em; margin-right: .4em; vertical-align: middle;
+  border: 1px solid var(--line);
+}
+.card-tag.speech { color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 40%, transparent); }
+.card-tag.shatter { color: var(--pink); border-color: color-mix(in srgb, var(--pink) 40%, transparent); }
+.card-sale { color: var(--gold); font-size: .75em; margin-left: .3em; }
+.card-inv-row {
+  display: flex; align-items: center; gap: .5em; flex-wrap: wrap;
+  padding: .4em 0; border-bottom: 1px solid var(--line);
+}
+.card-inv-row:last-child { border-bottom: none; }
+.card-inv-row .sname { flex: 1; min-width: 6em; }
+.inject-row button {
+  font: inherit; font-size: .8em; min-width: 2em; cursor: pointer;
+  background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--text);
+}
+.inject-row button:disabled { opacity: .3; }
+
+#starter-modal {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(8, 6, 14, .88);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1em;
+}
+#starter-modal.hidden { display: none; }
+.starter-panel {
+  width: min(420px, 100%); max-height: 90vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 1em 1.1em;
+}
+.starter-panel h2 { color: var(--cyan); font-size: 1em; margin-bottom: .4em; }
+#starter-list { display: flex; flex-direction: column; gap: .5em; margin-top: .8em; }
+.starter-card {
+  text-align: left; font: inherit; cursor: pointer;
+  background: var(--panel2, rgba(0,0,0,.25)); border: 1px solid var(--line);
+  color: var(--text); padding: .7em .8em; border-radius: 6px;
+  display: flex; flex-direction: column; gap: .25em;
+}
+.starter-card:hover { border-color: var(--cyan); }
+.starter-card b { color: var(--pink); font-weight: 600; }
+
+body.card-mode #track-wrap,
+body.card-mode #tabs { visibility: hidden; }
+body.card-mode #kanban { filter: brightness(.55); pointer-events: none; }
+
+#card-table-view {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; flex-direction: column;
+  background: rgba(12, 8, 20, .92);
+  padding: env(safe-area-inset-top, 0) .75em env(safe-area-inset-bottom, 0);
+}
+#card-table-view.hidden { display: none; }
+.card-table-top {
+  display: flex; align-items: center; gap: .6em;
+  padding: .6em 0; flex-shrink: 0;
+}
+.card-table-top #card-table-title { flex: 1; text-align: center; }
+#card-table-body {
+  flex: 1; overflow: auto; padding-bottom: 1.5em;
+}
+.card-scene {
+  line-height: 1.65; margin: .6em 0 1em;
+  padding: .8em; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+}
+.card-meta { margin-bottom: .8em; font-size: .9em; }
+.chain-hint { display: block; color: var(--pink); margin-top: .3em; }
+.hand-row {
+  display: flex; flex-wrap: wrap; gap: .5em; margin: 1em 0;
+}
+.hand-card {
+  flex: 1 1 42%; min-width: 7.5em; max-width: 12em;
+  text-align: left; font: inherit; cursor: pointer;
+  background: rgba(40, 24, 60, .75); border: 1px solid var(--line);
+  color: var(--text); padding: .65em .7em; border-radius: 8px;
+  display: flex; flex-direction: column; gap: .25em;
+}
+.hand-card.shatter { border-color: color-mix(in srgb, var(--pink) 50%, transparent); }
+.hand-card.disabled, .hand-card:disabled { opacity: .35; cursor: default; }
+.hand-card .hc-name { font-weight: 600; color: var(--cyan); }
+.card-confirm {
+  margin: .8em 0; padding: .8em; border: 1px solid var(--red);
+  border-radius: 8px; background: rgba(80, 20, 30, .35);
+}
+.card-confirm .bad { color: var(--red); }
+.card-last {
+  margin: .5em 0 1em; padding: .7em; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel);
+}
+.card-last-title { color: var(--pink); margin-bottom: .4em; font-size: .9em; }
+.card-actions { margin-top: 1em; flex-wrap: wrap; }
+.card-actions button { margin: .2em; }

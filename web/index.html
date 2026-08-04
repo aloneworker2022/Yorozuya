@@ -82,6 +82,16 @@
 
     <section class="page" id="page-shop">
       <div class="panel">
+        <h2>卡牌貨架</h2>
+        <p class="dim small">3 槽 · 約 4 小時刷新 · 高級卡用則碎、話術不碎</p>
+        <p id="card-shop-refresh" class="dim small"></p>
+        <div id="card-shop-stock"></div>
+      </div>
+      <div class="panel sub">
+        <h2>我的牌庫</h2>
+        <div id="card-inv-list" class="small"></div>
+      </div>
+      <div class="panel">
         <h2>祭品商店</h2>
         <p id="merchant-line" class="dim small"></p>
         <div id="shop-stock"></div>
@@ -206,6 +216,26 @@
 
 <!-- 召喚演出 -->
 <div id="summon-overlay" class="hidden"></div>
+
+<!-- 創角：10 選 1 基礎話術 -->
+<div id="starter-modal" class="hidden">
+  <div class="starter-panel">
+    <h2>你是誰</h2>
+    <p class="dim small">選一張基礎話術——這是你跟她們說話的底色（永久、不碎）。</p>
+    <div class="setting-row"><label>稱呼</label><input id="starter-name" type="text" maxlength="12" placeholder="主人"></div>
+    <div id="starter-list"></div>
+  </div>
+</div>
+
+<!-- 牌桌全螢幕 -->
+<div id="card-table-view" class="hidden">
+  <div class="card-table-top">
+    <button class="back-btn" id="card-table-back">‹ 返回</button>
+    <span id="card-table-title" class="dim small"></span>
+    <button class="back-btn" id="card-table-close" title="解散牌桌">收桌</button>
+  </div>
+  <div id="card-table-body"></div>
+</div>
 
 <!-- 淫紋圖騰:定義一次,每位看板娘的通知燈以 <use> 引用 -->
 <svg width="0" height="0" aria-hidden="true" style="position:absolute" xmlns="http://www.w3.org/2000/svg">

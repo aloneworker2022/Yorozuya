@@ -1,0 +1,2265 @@
+{
+  "_meta": {
+    "title": "魅魔萬事屋·互動牌定義（內容模組）",
+    "spec": "docs/card-system.md",
+    "schema_version": 1,
+    "status": "draft_for_implementation",
+    "comment": [
+      "核心只讀：id/kind/shatterOnUse/tags/price/minStage/forceable/openChain/requires/emotion/effect/shopWeight。",
+      "演出字串（name/sceneStart/promptHint/steps/bubble 無關）當不透明內容；不要用 NLP 解析來改數值。",
+      "starter:true 且恰好 10 張供創角 10 選 1。",
+      "shatterOnUse: speech=false；shop_premium=true；girl_trait/venue_event 不進玩家庫。",
+      "openChain.k 各卡寫死。開門失敗也碎（由核心處理，不靠本檔）。",
+      "價格為 v6 草案，之後可只改數字不改 id。"
+    ]
+  },
+  "enums": {
+    "kind": [
+      "speech",
+      "shop_premium",
+      "girl_trait",
+      "venue_event"
+    ],
+    "chain_attr": [
+      "talk",
+      "touch",
+      "sex",
+      "play",
+      "any"
+    ],
+    "stage": [
+      "stranger",
+      "friend",
+      "girlfriend",
+      "wife"
+    ],
+    "mode": [
+      "kanban",
+      "date"
+    ]
+  },
+  "defaults": {
+    "hand_size": 5,
+    "max_girl_cards": 3,
+    "max_inject": 5,
+    "shop_slots": 3,
+    "shop_refresh_hours": 4,
+    "bubble_chance": 0.15,
+    "dates_per_girl_per_day": 2,
+    "base_plays_by_stage": {
+      "stranger": 1,
+      "friend": 2,
+      "girlfriend": 3,
+      "wife": 4
+    },
+    "stay_base_by_stage": {
+      "stranger": 0.05,
+      "friend": 0.15,
+      "girlfriend": 0.3,
+      "wife": 0.45
+    },
+    "answer_rate_by_stage": {
+      "stranger": 0.1,
+      "friend": 0.35,
+      "girlfriend": 0.6,
+      "wife": 0.8
+    },
+    "phone_cost_range": [
+      10,
+      30
+    ],
+    "emotion_fail_open": {
+      "min": -3,
+      "max": -1
+    }
+  },
+  "starter_pool": [
+    "speech_soft",
+    "speech_blunt",
+    "speech_tease",
+    "speech_command",
+    "speech_awkward",
+    "speech_joke",
+    "speech_listen",
+    "speech_praise",
+    "speech_errand",
+    "speech_silence"
+  ],
+  "shop_weights": {
+    "comment": "上架時用 shopWeight；未寫則 1。特價可從 premium 抽 1 張打 7 折。",
+    "speech_pool": [
+      "speech_soft",
+      "speech_blunt",
+      "speech_tease",
+      "speech_command",
+      "speech_awkward",
+      "speech_joke",
+      "speech_listen",
+      "speech_praise",
+      "speech_errand",
+      "speech_silence",
+      "speech_apology",
+      "speech_jealous",
+      "speech_night",
+      "speech_future"
+    ],
+    "premium_pool": [
+      "touch_glance",
+      "touch_lean",
+      "touch_hand",
+      "touch_waist",
+      "kiss_steal",
+      "kiss_deep",
+      "strip_button",
+      "strip_slow",
+      "sex_corner",
+      "sex_desk",
+      "sex_claim",
+      "hypno_gaze",
+      "open_talk_wheel",
+      "open_touch_hold",
+      "open_sex_chain",
+      "open_strip_chain",
+      "open_any_break",
+      "force_stay",
+      "care_aftercare"
+    ]
+  },
+  "cards": [
+    {
+      "id": "speech_soft",
+      "name": "輕聲安撫",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 45,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "openChain": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你把聲音壓低，像怕驚動什麼似的，慢慢安她。",
+      "promptHint": "他用溫柔、偏短的句子安撫你。依關係：戒備地聽／有點受用／想靠過去／當成日常。"
+    },
+    {
+      "id": "speech_blunt",
+      "name": "有話直說",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 45,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你不轉彎，把想講的話直接撂在她面前。",
+      "promptHint": "他說話很直、不修飾。你可能不爽、覺得痛快、或早已習慣他這副德性。"
+    },
+    {
+      "id": "speech_tease",
+      "name": "帶刺調侃",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 50,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你用半真半假的玩笑戳她一下，看她怎麼接。",
+      "promptHint": "他在調侃你，語氣帶刺但不一定惡意。依關係決定你是翻臉、回嘴還是翻白眼笑。"
+    },
+    {
+      "id": "speech_command",
+      "name": "直接下令",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 55,
+      "shopWeight": 1,
+      "rarity": "R",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 0
+        },
+        "friend": {
+          "min": -1,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你不商量，用命令句把要求丟給她。",
+      "promptHint": "他在使喚你。陌生會抗拒；親近後可能吐槽著照做，或覺得理所當然。"
+    },
+    {
+      "id": "speech_awkward",
+      "name": "笨拙關心",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 40,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你想關心她，詞卻選得很笨，句子還卡住一次。",
+      "promptHint": "他關心的方式很笨拙。你可能覺得好笑、暖、或懶得吐槽。"
+    },
+    {
+      "id": "speech_joke",
+      "name": "岔開玩笑",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 40,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "氣氛微妙時，你丟了個無關痛癢的玩笑想把空氣掀過去。",
+      "promptHint": "他在用玩笑帶過。你可被逗到、覺得他在逃、或跟著胡扯。"
+    },
+    {
+      "id": "speech_listen",
+      "name": "只是聽你說",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 48,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你少說話，把說話的位置讓給她，只偶爾應一聲。",
+      "promptHint": "他主要在聽你說。陌生時你不一定想講；親近時你可能講很多。"
+    },
+    {
+      "id": "speech_praise",
+      "name": "認真稱讚",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 50,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你挑了一件具體的事稱讚她，不是敷衍的客套。",
+      "promptHint": "他在稱讚你某件具體的事。依關係決定你是警戒、害羞、要更多，還是「嗯我知道」。"
+    },
+    {
+      "id": "speech_errand",
+      "name": "盯著待辦",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 52,
+      "shopWeight": 1,
+      "rarity": "R",
+      "minStage": null,
+      "effect": {
+        "mentionErrand": true
+      },
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你把話題拽到他那堆還沒做完的事上——用你的方式講。",
+      "promptHint": "他提到你看得到的那件待辦（由遊戲注入題目）。你依關係吐槽、催、或直接交代。禁止發明清單外的新任務。"
+    },
+    {
+      "id": "speech_silence",
+      "name": "沉默陪著",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 42,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你沒硬找話題，只是待在她視線邊緣，讓安靜待著。",
+      "promptHint": "他幾乎不說話，只是在場。你決定這份安靜是壓迫、安心，還是你們之間的習慣。"
+    },
+    {
+      "id": "speech_apology",
+      "name": "把話說軟",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 70,
+      "shopWeight": 0.8,
+      "rarity": "R",
+      "minStage": null,
+      "effect": {
+        "guardDelta": -1
+      },
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 2
+        },
+        "friend": {
+          "min": 1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你把姿態放低，把該認的講清楚，不找藉口。",
+      "promptHint": "他在道歉或示弱。你決定要不要給台階下。"
+    },
+    {
+      "id": "speech_jealous",
+      "name": "吃味一句",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 75,
+      "shopWeight": 0.7,
+      "rarity": "R",
+      "minStage": "friend",
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 0
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 3
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你沒忍住，讓那一點說不清的佔有慾漏出一句話來。",
+      "promptHint": "他流露出吃味或在意你被別人看。你覺得煩、好笑，或心底受用。"
+    },
+    {
+      "id": "speech_night",
+      "name": "深夜自白",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 90,
+      "shopWeight": 0.5,
+      "rarity": "S",
+      "minStage": "friend",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "sceneStart": "夜深了，你講了一句白天不會講出口的話。",
+      "promptHint": "他在偏深夜的氣氛裡對你坦白一點真心。回覆可以短，但要有重量。"
+    },
+    {
+      "id": "speech_future",
+      "name": "以後的事",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 110,
+      "shopWeight": 0.4,
+      "rarity": "S",
+      "minStage": "girlfriend",
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 0
+        },
+        "friend": {
+          "min": -1,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 1,
+          "max": 3
+        }
+      },
+      "sceneStart": "你把「以後」兩個字說得很自然，像已經預設她會在。",
+      "promptHint": "他提起和你有關的未來。你依關係覺得可怕、心動，或早就一起在盤算。"
+    },
+    {
+      "id": "touch_glance",
+      "name": "多看兩眼",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "touch"
+      ],
+      "price": 12,
+      "shopWeight": 1.4,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你的視線在她身上停得比禮貌允許的更久。",
+      "promptHint": "他在盯著你看。用台詞或一個短身體狀態句回應；不要括號舞台指示。"
+    },
+    {
+      "id": "touch_lean",
+      "name": "靠太近",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "touch"
+      ],
+      "price": 18,
+      "shopWeight": 1.3,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你往前半步，把兩人之間的空氣擠薄。",
+      "promptHint": "他靠得過近。你後退、僵住、或故意不退。"
+    },
+    {
+      "id": "touch_hand",
+      "name": "多餘的觸碰",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "touch"
+      ],
+      "price": 28,
+      "shopWeight": 1.2,
+      "rarity": "R",
+      "minStage": null,
+      "effect": {
+        "guardDelta": 1,
+        "cravingDelta": 10
+      },
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "sceneStart": "你的指尖在她沒有答應的情況下，碰到了她的手背。",
+      "promptHint": "他碰了你的手。身體可能先有反應；依關係決定你罵、裝沒事、或反扣回去。"
+    },
+    {
+      "id": "touch_waist",
+      "name": "手滑過腰",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "touch"
+      ],
+      "price": 36,
+      "shopWeight": 1.0,
+      "rarity": "R",
+      "minStage": "friend",
+      "forceable": true,
+      "effect": {
+        "guardDelta": 1,
+        "cravingDelta": 15
+      },
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "sceneStart": "你的手掠過她腰側，像不小心，又不夠像。",
+      "promptHint": "他的手碰到你的腰。尺度依關係；可羞可怒可迎。"
+    },
+    {
+      "id": "kiss_steal",
+      "name": "偷來的吻",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "touch"
+      ],
+      "price": 40,
+      "shopWeight": 1.0,
+      "rarity": "R",
+      "minStage": "friend",
+      "forceable": true,
+      "effect": {
+        "guardDelta": 1,
+        "cravingDelta": 12
+      },
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "sceneStart": "你扣住機會，在她反應過來前吻上去。",
+      "promptHint": "他親了你。陌生／朋友可能怒或慌；女友以上可回吻或討更多。"
+    },
+    {
+      "id": "kiss_deep",
+      "name": "加深的吻",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "touch",
+        "sex"
+      ],
+      "price": 48,
+      "shopWeight": 0.9,
+      "rarity": "S",
+      "minStage": "girlfriend",
+      "forceable": true,
+      "effect": {
+        "cravingDelta": 8
+      },
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": -1
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 4
+        },
+        "wife": {
+          "min": 1,
+          "max": 3
+        }
+      },
+      "sceneStart": "這個吻不打算點到為止。",
+      "promptHint": "深吻。呼吸、腿軟、咬他、拉近皆可；依關係。"
+    },
+    {
+      "id": "strip_button",
+      "name": "解開一顆扣",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "touch"
+      ],
+      "price": 55,
+      "shopWeight": 0.85,
+      "rarity": "S",
+      "minStage": "friend",
+      "forceable": true,
+      "requires": {},
+      "effect": {
+        "setFlags": [
+          "partial_undress"
+        ],
+        "guardDelta": 1,
+        "cravingDelta": 15
+      },
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 3
+        },
+        "wife": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "sceneStart": "你的手指停在她衣扣上，然後真的撥開了一顆。",
+      "promptHint": "他動了你的衣服。你可以按住他的手、罵、或假裝沒在抖。"
+    },
+    {
+      "id": "strip_slow",
+      "name": "一件件來",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "touch",
+        "sex"
+      ],
+      "price": 70,
+      "shopWeight": 0.7,
+      "rarity": "S",
+      "minStage": "girlfriend",
+      "forceable": true,
+      "effect": {
+        "setFlags": [
+          "undressed"
+        ],
+        "cravingDelta": 10
+      },
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": -1
+        },
+        "friend": {
+          "min": -2,
+          "max": 0
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 4
+        },
+        "wife": {
+          "min": 1,
+          "max": 3
+        }
+      },
+      "steps": [
+        {
+          "id": "s1",
+          "systemText": "第一層擋住視線的東西被你掀開。",
+          "choices": [
+            {
+              "id": "cont",
+              "label": "繼續",
+              "nextStepId": "s2"
+            },
+            {
+              "id": "stop",
+              "label": "停手",
+              "abort": true
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "systemText": "她能遮的越來越少。你沒有問要不要把最後一件也脫掉。",
+          "choices": [
+            {
+              "id": "cont",
+              "label": "脫掉",
+              "nextStepId": "s3"
+            },
+            {
+              "id": "stop",
+              "label": "停在這裡",
+              "abort": true
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "systemText": "結束時，她身上幾乎不剩完整的遮擋。",
+          "choices": []
+        }
+      ],
+      "sceneStart": "你決定不急，一件一件來。",
+      "promptHint": "脫衣過程。每步給 1～2 句反應；停手也要有餘韻。設 flag undressed 由核心在成功走完時處理。"
+    },
+    {
+      "id": "sex_corner",
+      "name": "逼到角落",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "sex"
+      ],
+      "price": 85,
+      "shopWeight": 0.75,
+      "rarity": "S",
+      "minStage": "girlfriend",
+      "forceable": true,
+      "requires": {},
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 4
+        },
+        "wife": {
+          "min": 1,
+          "max": 3
+        }
+      },
+      "sceneStart": "退路被你堵死。角落只剩你們的呼吸。",
+      "promptHint": "帶壓迫感的性接觸開端或過程。依關係與 NSFW 分級掌握尺度。"
+    },
+    {
+      "id": "sex_desk",
+      "name": "櫃檯後面",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "sex"
+      ],
+      "price": 95,
+      "shopWeight": 0.65,
+      "rarity": "S",
+      "minStage": "girlfriend",
+      "forceable": true,
+      "requires": {
+        "modes": [
+          "kanban"
+        ]
+      },
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": -1
+        },
+        "friend": {
+          "min": -2,
+          "max": 0
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 4
+        },
+        "wife": {
+          "min": 1,
+          "max": 3
+        }
+      },
+      "sceneStart": "店裡未必上鎖。你還是把她按向櫃檯內側。",
+      "promptHint": "店頭、半公開緊張感的性行為相關互動。她可能怕被發現，或故意不提醒你。"
+    },
+    {
+      "id": "sex_claim",
+      "name": "做到底",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "sex"
+      ],
+      "price": 120,
+      "shopWeight": 0.5,
+      "rarity": "SS",
+      "minStage": "girlfriend",
+      "forceable": true,
+      "effect": {
+        "setFlags": [
+          "just_sex"
+        ],
+        "cravingDelta": -30
+      },
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 5
+        },
+        "wife": {
+          "min": 1,
+          "max": 4
+        }
+      },
+      "steps": [
+        {
+          "id": "a",
+          "systemText": "拒絕的空間被你一點點擠掉。",
+          "choices": [
+            {
+              "id": "c",
+              "label": "繼續",
+              "nextStepId": "b"
+            },
+            {
+              "id": "s",
+              "label": "停手",
+              "abort": true
+            }
+          ]
+        },
+        {
+          "id": "b",
+          "systemText": "身體已經比嘴誠實。",
+          "choices": [
+            {
+              "id": "c",
+              "label": "進入",
+              "nextStepId": "c"
+            },
+            {
+              "id": "s",
+              "label": "停手",
+              "abort": true
+            }
+          ]
+        },
+        {
+          "id": "c",
+          "systemText": "結束時空氣都還燙著。",
+          "choices": []
+        }
+      ],
+      "sceneStart": "你不打算留在半途。",
+      "promptHint": "完整性交向短場景。分節反應；核心負責情感骰與 flag。"
+    },
+    {
+      "id": "hypno_gaze",
+      "name": "看著我的眼睛",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "talk",
+        "any"
+      ],
+      "price": 100,
+      "shopWeight": 0.45,
+      "rarity": "SS",
+      "minStage": "friend",
+      "forceable": true,
+      "effect": {
+        "setFlags": [
+          "hypnotized"
+        ],
+        "guardDelta": 2
+      },
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你的聲音平得不正常，要她看進你的眼睛裡。",
+      "promptHint": "類似催眠／支配暗示。她可以抵抗、半陷、事後恐懼或依存。不要寫成魔法說明書。"
+    },
+    {
+      "id": "open_talk_wheel",
+      "name": "話術車輪",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 65,
+      "shopWeight": 0.9,
+      "rarity": "R",
+      "minStage": null,
+      "forceable": true,
+      "openChain": {
+        "attr": "talk",
+        "k": 3
+      },
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "emotionOnFail": {
+        "min": -3,
+        "max": -1
+      },
+      "sceneStart": "你不讓話題停，一句接一句，逼她一直回應。",
+      "promptHint": "他打開了「連續用話壓你」的節奏。之後幾步會是話術牌。先給被纏著說話的反應。"
+    },
+    {
+      "id": "open_touch_hold",
+      "name": "不讓她退開",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "touch"
+      ],
+      "price": 75,
+      "shopWeight": 0.85,
+      "rarity": "S",
+      "minStage": "friend",
+      "forceable": true,
+      "openChain": {
+        "attr": "touch",
+        "k": 2
+      },
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 3
+        },
+        "wife": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "emotionOnFail": {
+        "min": -3,
+        "max": -1
+      },
+      "sceneStart": "你扣住她的去路與手腕之間的選擇，不讓她退開。",
+      "promptHint": "身體接觸鍊的開門。她掙扎、僵住或反而貼近。"
+    },
+    {
+      "id": "open_strip_chain",
+      "name": "不許穿回去",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "touch"
+      ],
+      "price": 88,
+      "shopWeight": 0.6,
+      "rarity": "S",
+      "minStage": "friend",
+      "forceable": true,
+      "openChain": {
+        "attr": "touch",
+        "k": 3
+      },
+      "effect": {
+        "setFlags": [
+          "partial_undress"
+        ]
+      },
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 3
+        },
+        "wife": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "emotionOnFail": {
+        "min": -3,
+        "max": -1
+      },
+      "sceneStart": "衣服一旦離開肩線，你就不打算讓它回到原位。",
+      "promptHint": "脫衣／保持暴露狀態的鍊開門。後續應為 touch 向牌。"
+    },
+    {
+      "id": "open_sex_chain",
+      "name": "不給她退路",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "sex"
+      ],
+      "price": 130,
+      "shopWeight": 0.55,
+      "rarity": "SS",
+      "minStage": "girlfriend",
+      "forceable": true,
+      "openChain": {
+        "attr": "sex",
+        "k": 3
+      },
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "emotionOnFail": {
+        "min": -3,
+        "max": -1
+      },
+      "sceneStart": "你把「到此為止」從選項裡刪掉。",
+      "promptHint": "性鍊開門。只演開門這一進的震撼／情動／憤怒；後續由玩家再出 sex 牌。"
+    },
+    {
+      "id": "open_any_break",
+      "name": "把規矩撕了",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "any"
+      ],
+      "price": 150,
+      "shopWeight": 0.25,
+      "rarity": "SSR",
+      "minStage": "friend",
+      "forceable": true,
+      "openChain": {
+        "attr": "any",
+        "k": 2
+      },
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "emotionOnFail": {
+        "min": -3,
+        "max": -1
+      },
+      "sceneStart": "你不管現在該不該、合不合適——規矩先撕了再說。",
+      "promptHint": "萬能鍊開門，次數少。她感到規則被破壞的危險與興奮。"
+    },
+    {
+      "id": "force_stay",
+      "name": "還不能走",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 140,
+      "shopWeight": 0.4,
+      "rarity": "SS",
+      "minStage": "friend",
+      "forceable": false,
+      "openChain": null,
+      "effect": {
+        "forceAnotherRound": true
+      },
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 0
+        },
+        "friend": {
+          "min": -1,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "她要抽身時，你把人留了下來——這一輪還沒結束。",
+      "promptHint": "他強制延長相處。你覺得被困、被需要，或兩者都有。不表示你已經原諒他。"
+    },
+    {
+      "id": "care_aftercare",
+      "name": "事後的水",
+      "kind": "shop_premium",
+      "shatterOnUse": true,
+      "tags": [
+        "talk",
+        "touch"
+      ],
+      "price": 35,
+      "shopWeight": 0.9,
+      "rarity": "R",
+      "minStage": null,
+      "requires": {
+        "flagsAny": [
+          "just_sex",
+          "undressed",
+          "partial_undress"
+        ]
+      },
+      "effect": {
+        "guardDelta": -1,
+        "cravingDelta": -10
+      },
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 2
+        },
+        "friend": {
+          "min": 1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "激烈過後，你遞水、披外套，或只是讓她靠著緩一會兒。",
+      "promptHint": "aftercare。她可以別扭地接受、罵你現在才裝好人、或安靜靠著。"
+    },
+    {
+      "id": "girl_guard_stare",
+      "name": "她还在瞪你",
+      "kind": "girl_trait",
+      "shatterOnUse": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 0,
+      "minStage": "stranger",
+      "stageBind": [
+        "stranger"
+      ],
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "她先开口——眼神却像要把你钉在原地。",
+      "promptHint": "由她主動：戒備、短句、不給好臉色。這是她的本體牌，不是你在進攻。"
+    },
+    {
+      "id": "girl_friend_banter",
+      "name": "顺口吐槽你",
+      "kind": "girl_trait",
+      "shatterOnUse": false,
+      "tags": [
+        "talk"
+      ],
+      "stageBind": [
+        "friend"
+      ],
+      "emotion": {
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        },
+        "stranger": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "她先撿起你今天的糗事或拖延，丟過來當開場。",
+      "promptHint": "朋友式吐槽開場。輕鬆，帶點在乎。"
+    },
+    {
+      "id": "girl_gf_cling",
+      "name": "她先贴过来",
+      "kind": "girl_trait",
+      "shatterOnUse": false,
+      "tags": [
+        "talk",
+        "touch"
+      ],
+      "stageBind": [
+        "girlfriend"
+      ],
+      "emotion": {
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "stranger": {
+          "min": -1,
+          "max": 0
+        }
+      },
+      "sceneStart": "還沒輪到你出招，她已經先把距離取消了一截。",
+      "promptHint": "女友主動親暱。撒嬌、要注意力、或半抱怨你不夠看她。"
+    },
+    {
+      "id": "girl_wife_errand",
+      "name": "顺口使唤",
+      "kind": "girl_trait",
+      "shatterOnUse": false,
+      "tags": [
+        "talk"
+      ],
+      "stageBind": [
+        "wife"
+      ],
+      "effect": {
+        "mentionErrand": true
+      },
+      "emotion": {
+        "wife": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "stranger": {
+          "min": 0,
+          "max": 0
+        }
+      },
+      "sceneStart": "她根本不鋪墊，直接把一件你的事安排進你今晚。",
+      "promptHint": "妻子式要求權。直接交代待辦；不鬧，預設你會做。"
+    },
+    {
+      "id": "girl_job_color",
+      "name": "职业惯性",
+      "kind": "girl_trait",
+      "shatterOnUse": false,
+      "tags": [
+        "talk"
+      ],
+      "stageBind": [
+        "stranger",
+        "friend",
+        "girlfriend",
+        "wife"
+      ],
+      "template": true,
+      "sceneStart": "她用以前那行的口吻，順口評價了眼前的情況。",
+      "promptHint": "帶入她的職業與過去人生習慣。具體職業由生成時填入 job_desc。"
+    },
+    {
+      "id": "girl_special_hook",
+      "name": "她身上的把柄",
+      "kind": "girl_trait",
+      "shatterOnUse": false,
+      "tags": [
+        "touch",
+        "talk"
+      ],
+      "stageBind": [
+        "friend",
+        "girlfriend",
+        "wife"
+      ],
+      "template": true,
+      "sceneStart": "某個只屬於她的特質，在這個距離裡變得很難假裝看不見。",
+      "promptHint": "與她的特殊屬性相關（生成時注入 special_traits 名稱與含義）。"
+    },
+    {
+      "id": "girl_craving_fidget",
+      "name": "她坐不住",
+      "kind": "girl_trait",
+      "shatterOnUse": false,
+      "tags": [
+        "talk",
+        "touch"
+      ],
+      "stageBind": [
+        "stranger",
+        "friend",
+        "girlfriend",
+        "wife"
+      ],
+      "requires": {
+        "cravingMin": 35
+      },
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "她明明想裝沒事，身體卻先出賣了坐立難安。",
+      "promptHint": "飢渴上來。陌生否認，朋友裝沒事，女友算賬，妻子直說。"
+    },
+    {
+      "id": "venue_park_scenery",
+      "name": "风景出神",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "play",
+        "talk"
+      ],
+      "venueIds": [
+        "park"
+      ],
+      "lane": "play",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "风和树把话抢走了一会儿。你们都看向同一片亮着的地方。",
+      "promptHint": "約會·遊玩向。輕鬆、並肩、少侵略。"
+    },
+    {
+      "id": "venue_park_stumble",
+      "name": "沒站穩被扶住",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "park"
+      ],
+      "lane": "color",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "石子路不平。她（或你）一個晃神，手已經抓住了不該那麼自然的地方。",
+      "promptHint": "「不小心」的肢體接觸。可羞可笑可故意多扶一秒。"
+    },
+    {
+      "id": "venue_park_gaze",
+      "name": "總覺得有視線",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "talk",
+        "play"
+      ],
+      "venueIds": [
+        "park"
+      ],
+      "lane": "other_eye",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "樹叢或長椅方向，好像有人看了太久。不一定是錯覺。",
+      "promptHint": "他者視線帶來的緊張。吃味、靠近、或故意大聲說話。不出現其他男人完整劇情（召喚師線後話）。"
+    },
+    {
+      "id": "venue_cafe_talk",
+      "name": "糖漿一樣的閒聊",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "talk",
+        "play"
+      ],
+      "venueIds": [
+        "cafe"
+      ],
+      "lane": "play",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "杯子撞出一聲輕響。話題比咖啡熱得慢，卻更甜。",
+      "promptHint": "咖啡館閒聊。生活細節、吐槽、眼神。"
+    },
+    {
+      "id": "venue_cafe_under",
+      "name": "桌下的腳",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "touch"
+      ],
+      "venueIds": [
+        "cafe"
+      ],
+      "lane": "color",
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "桌布很長。誰的腳先碰到誰，可以裝成椅子太近。",
+      "promptHint": "半公開桌下接觸。緊張、忍笑、警告眼神。"
+    },
+    {
+      "id": "venue_cafe_call",
+      "name": "別人的來電",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "talk"
+      ],
+      "venueIds": [
+        "cafe"
+      ],
+      "lane": "other_eye",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": -1,
+          "max": 1
+        }
+      },
+      "sceneStart": "她的手機震了。螢幕上的名字你未必想看見。",
+      "promptHint": "第三者影子（輕）。她接不接、你沉不沉默，都是戲。勿展開完整 NTR 場景。"
+    },
+    {
+      "id": "venue_cinema_dark",
+      "name": "暗場裡的肩膀",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "cinema"
+      ],
+      "lane": "color",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "燈光滅了。肩膀與肩膀之間只剩袖子的厚度。",
+      "promptHint": "影院黑暗中的靠近。可以牽手、可以假睡靠肩。"
+    },
+    {
+      "id": "venue_cinema_plot",
+      "name": "演到哭点",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "talk",
+        "play"
+      ],
+      "venueIds": [
+        "cinema"
+      ],
+      "lane": "play",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "电影不讲理地煽了大家一把。你余光看她有没有在擦眼睛。",
+      "promptHint": "共用作品情緒。笑她哭、自己也哭、或硬撐。"
+    },
+    {
+      "id": "venue_cinema_row",
+      "name": "后排有人笑太大声",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "talk"
+      ],
+      "venueIds": [
+        "cinema"
+      ],
+      "lane": "other_eye",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "后排的笑声刺耳。你们的小世界被掀了一角。",
+      "promptHint": "公共空間被打擾。靠緊、瞪回去、或離席。"
+    },
+    {
+      "id": "venue_night_walk",
+      "name": "路灯把影子拉长",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "play",
+        "talk"
+      ],
+      "venueIds": [
+        "night_street"
+      ],
+      "lane": "play",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "夜风不冷。影子先牵在一起，人还假装没有。",
+      "promptHint": "夜路散步。安靜、坦白、慢。"
+    },
+    {
+      "id": "venue_night_wall",
+      "name": "巷口的牆",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "touch",
+        "sex"
+      ],
+      "venueIds": [
+        "night_street"
+      ],
+      "lane": "color",
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 4
+        },
+        "wife": {
+          "min": 1,
+          "max": 3
+        }
+      },
+      "sceneStart": "轉進小巷時，你的手撐在她耳側的牆上。",
+      "promptHint": "半公開壁咚／強勢靠近。尺度依關係。"
+    },
+    {
+      "id": "venue_night_follow",
+      "name": "腳步聲不止兩人",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "talk"
+      ],
+      "venueIds": [
+        "night_street"
+      ],
+      "lane": "other_eye",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你們的步子合拍。第三串腳步卻時遠時近。",
+      "promptHint": "被跟隨的不安。牽緊、加速、或回頭罵。"
+    },
+    {
+      "id": "venue_lovehotel_key",
+      "name": "鑰匙盤很輕",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "sex",
+        "talk"
+      ],
+      "venueIds": [
+        "love_hotel"
+      ],
+      "lane": "color",
+      "nsfwOnly": true,
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 4
+        },
+        "wife": {
+          "min": 1,
+          "max": 3
+        }
+      },
+      "sceneStart": "房卡冰涼。門在身後扣上時，外面的規則暫時失效。",
+      "promptHint": "進入私密房間的緊張與期待。開門不等於立刻做完。"
+    },
+    {
+      "id": "venue_lovehotel_bath",
+      "name": "水聲很大",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "sex",
+        "touch"
+      ],
+      "venueIds": [
+        "love_hotel"
+      ],
+      "lane": "color",
+      "nsfwOnly": true,
+      "emotion": {
+        "stranger": {
+          "min": -3,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 4
+        },
+        "wife": {
+          "min": 1,
+          "max": 3
+        }
+      },
+      "sceneStart": "浴室燈偏白。水聲大到剛好蓋住一些羞恥的聲音。",
+      "promptHint": "浴室情境。清潔、注視、靠近。"
+    },
+    {
+      "id": "venue_lovehotel_msg",
+      "name": "枕頭邊的提示音",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "talk"
+      ],
+      "venueIds": [
+        "love_hotel"
+      ],
+      "lane": "other_eye",
+      "nsfwOnly": true,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 0
+        },
+        "friend": {
+          "min": -2,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": -1,
+          "max": 1
+        }
+      },
+      "sceneStart": "正不該被打斷的時候，通訊軟體亮了。不是廣告。",
+      "promptHint": "私密空間被外界戳穿一刻。吃味、心虛、關機、或故意給看。"
+    }
+  ],
+  "venues": [
+    {
+      "id": "park",
+      "name": "公园",
+      "fee": 8,
+      "desc": "白天人不多的長椅與步道。",
+      "cardIds": [
+        "venue_park_scenery",
+        "venue_park_stumble",
+        "venue_park_gaze"
+      ]
+    },
+    {
+      "id": "cafe",
+      "name": "咖啡店",
+      "fee": 12,
+      "desc": "靠窗雙人位，糖漿與杯沿的碰撞。",
+      "cardIds": [
+        "venue_cafe_talk",
+        "venue_cafe_under",
+        "venue_cafe_call"
+      ]
+    },
+    {
+      "id": "cinema",
+      "name": "電影院",
+      "fee": 18,
+      "desc": "黑暗把世界縮成兩張椅背的距離。",
+      "cardIds": [
+        "venue_cinema_dark",
+        "venue_cinema_plot",
+        "venue_cinema_row"
+      ]
+    },
+    {
+      "id": "night_street",
+      "name": "夜路",
+      "fee": 5,
+      "desc": "路燈、便利店冷櫃光、偶爾的車聲。",
+      "cardIds": [
+        "venue_night_walk",
+        "venue_night_wall",
+        "venue_night_follow"
+      ]
+    },
+    {
+      "id": "love_hotel",
+      "name": "休息處",
+      "fee": 45,
+      "desc": "門一關，店頭的規矩就暫時不管用。",
+      "nsfwOnly": true,
+      "cardIds": [
+        "venue_lovehotel_key",
+        "venue_lovehotel_bath",
+        "venue_lovehotel_msg"
+      ]
+    }
+  ],
+  "girl_card_build_rules": {
+    "comment": "召看板／開約會產製時組 ≤3 張本體卡。核心按此規則挑 id，再可用 template 填職業／特殊。",
+    "max": 3,
+    "slots": [
+      {
+        "slot": "stage",
+        "pick": {
+          "stranger": "girl_guard_stare",
+          "friend": "girl_friend_banter",
+          "girlfriend": "girl_gf_cling",
+          "wife": "girl_wife_errand"
+        }
+      },
+      {
+        "slot": "identity",
+        "always_try": [
+          "girl_job_color"
+        ],
+        "if_special_traits": "girl_special_hook"
+      },
+      {
+        "slot": "state",
+        "if_craving_mid_or_high": "girl_craving_fidget",
+        "else_skip": true
+      }
+    ]
+  },
+  "bubble_canned": {
+    "comment": "氣泡 15% 無 AI 時的罐頭。{quest} 由核心替換為當次相關委託文案。",
+    "on_discover": [
+      "……你又看到新的事了？",
+      "那是什么？看起来就很麻烦。",
+      "发现了也不代表你要全接啦。"
+    ],
+    "on_accept": [
+      "你真的要接「{quest}」？……随你。",
+      "接了就别拖。我看着的。",
+      "嗯，这件还算像人话。"
+    ],
+    "on_complete": [
+      "「{quest}」做完了？……比我想的早。",
+      "行吧。偶尔也挺像样的。",
+      "完成了就好。别马上又给自己加一堆。"
+    ]
+  }
+}
