@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.3(2026-08-04)VN牌桌：上圖中旁白下手牌＋主畫面打牌入口";
+const APP_VER = "v6.4(2026-08-04)手牌改代辦式大卡左右滑";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -3774,6 +3774,8 @@ let cardUi = {
   invOpen: true,
   invFilter: "all",    // all | speech | shatter
   invSelected: null,   // cardId 詳情
+  handIdx: 0,          // round_play 手牌輪播索引
+  injectIdx: 0,        // round_setup 牌庫輪播索引
 };
 
 function renderCardShopPanel() {
@@ -4370,6 +4372,8 @@ function openKanbanTable(girlId) {
   if (!r.ok) { toast(r.err, "bad"); return; }
   cardUi.injectPick = [];
   cardUi.lastPlay = null;
+  cardUi.handIdx = 0;
+  cardUi.injectIdx = 0;
   document.body.classList.add("card-mode");
   log(`與 ${s.name} 開桌（本體卡 ${girlCards.length}）`);
   scheduleSave(); renderAll();
@@ -4424,6 +4428,18 @@ function applyPlaySideEffects(girl, result) {
       if (typeof eff.cravingDelta === "number") craveAdd(girl, eff.cravingDelta);
     }
   }
+}
+
+/** 碎卡確認後真正打出 */
+function commitHandPlay(instanceId, girl, stage) {
+  const r = Cards.commitPlay(state, instanceId, { stage, guardHigh: guardActive(girl) });
+  if (!r.ok) { toast(r.err, "bad"); return; }
+  cardUi.lastPlay = r;
+  applyPlaySideEffects(girl, r);
+  toast(r.open && !r.open.success ? "開門失敗……" : `打出「${r.name}」`, r.open && !r.open.success ? "bad" : "good");
+  const n = state.cardSession?.hand?.length || 0;
+  if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
+  scheduleSave(); renderCardTable();
 }
 
 /** 牌桌立繪：半身優先，沒圖用字首 fallback */
@@ -4527,70 +4543,115 @@ function renderCardTable() {
     return;
   }
 
-  // ── 組牌：押入 ──────────────────────────────────────────
+  // ── 組牌：押入（大卡左右滑，同代辦）────────────────────
   if (sess.phase === "round_setup") {
     const maxI = Cards.maxInject(state);
     const inv = Cards.inventoryList(state);
     const pickedCount = Object.create(null);
     for (const id of cardUi.injectPick) pickedCount[id] = (pickedCount[id] || 0) + 1;
-    const rows = inv.map(r => {
-      const picked = pickedCount[r.cardId] || 0;
-      const maxThis = r.shatterOnUse ? r.count : 1;
-      const canAdd = cardUi.injectPick.length < maxI && picked < maxThis;
-      return `<div class="card-inv-row inject-row">
-        <span class="card-tag ${r.shatterOnUse ? "shatter" : "speech"}">${r.shatterOnUse ? "碎" : "話"}</span>
-        <span class="sname">${esc(r.name)}</span>
-        <span class="dim small">×${picked}/${maxThis}</span>
-        <button type="button" data-add="${r.cardId}" ${canAdd ? "" : "disabled"}>+</button>
-        <button type="button" data-sub="${r.cardId}" ${picked ? "" : "disabled"}>−</button>
-      </div>`;
-    }).join("") || `<div class="dim small ct-empty">牌庫空，只能打本體卡</div>`;
 
     setCtVn({
       name: gname,
-      text: `選擇本輪押入的卡（最多 ${maxI}）。碎卡未打出會退庫；打出才碎。`,
+      text: `左右滑瀏覽牌庫，上滑押入、下滑退回。最多 ${maxI} 張；碎卡未打出會退庫。`,
       meta: `已押 <b>${cardUi.injectPick.length}</b>/${maxI} · 本體 ${sess.girlCards.length} 張`,
     });
-    setCtHand(`
-      <div class="card-inject-list">${rows}</div>
-      <div class="detail-actions card-actions">
-        <button class="cyan" id="ct-deal">洗牌開戰</button>
-        <button id="ct-cancel-setup">取消</button>
-      </div>`);
 
-    const hand = $("#ct-hand");
-    hand.querySelectorAll("[data-add]").forEach(b => {
-      b.onclick = () => {
-        if (cardUi.injectPick.length >= maxI) return;
-        cardUi.injectPick.push(b.dataset.add);
+    if (!inv.length) {
+      setCtHand(`
+        <div class="dim small ct-empty">牌庫空，只能打本體卡</div>
+        <div class="detail-actions card-actions">
+          <button type="button" class="cyan" id="ct-deal">洗牌開戰</button>
+          <button type="button" id="ct-cancel-setup">取消</button>
+        </div>`);
+    } else {
+      cardUi.injectIdx = Math.min(Math.max(0, cardUi.injectIdx || 0), inv.length - 1);
+      const row = inv[cardUi.injectIdx];
+      const picked = pickedCount[row.cardId] || 0;
+      const maxThis = row.shatterOnUse ? row.count : 1;
+      const canAdd = cardUi.injectPick.length < maxI && picked < maxThis;
+      const def = Cards.cardById(row.cardId);
+      const tags = (def?.tags || []).join(" · ") || (row.shatterOnUse ? "碎卡" : "話術");
+      const scene = def?.sceneStart || def?.promptHint || "";
+      setCtHand(`
+        <div class="ct-card-wrap">
+          <div class="ct-play-card ${row.shatterOnUse ? "is-shatter" : "is-speech"}" id="ct-setup-card">
+            <div class="ct-pc-tags">
+              <span class="ct-pc-tag ${row.shatterOnUse ? "shatter" : "speech"}">${row.shatterOnUse ? "碎" : "話"}</span>
+              ${def?.openChain ? `<span class="ct-pc-tag open">開門·${esc(def.openChain.attr)}×${def.openChain.k}</span>` : ""}
+              ${def?.effect?.forceAnotherRound ? `<span class="ct-pc-tag open">不可走</span>` : ""}
+            </div>
+            <div class="ct-pc-body">${esc(row.name)}</div>
+            <div class="ct-pc-scene">${esc(scene)}</div>
+            <div class="ct-pc-foot">
+              <span>${esc(tags)}</span>
+              <span>押入 ${picked}/${maxThis}</span>
+            </div>
+            <div class="swind"></div>
+          </div>
+        </div>
+        <div class="ct-card-dots">${inv.map((_, i) =>
+          `<div class="dot${i === cardUi.injectIdx ? " on" : ""}"></div>`).join("")}</div>
+        <div class="ct-card-nav dim small">${cardUi.injectIdx + 1} / ${inv.length} · 左右換卡 · 上滑押入 · 下滑退回</div>
+        <div class="detail-actions card-actions">
+          <button type="button" class="cyan" id="ct-deal">洗牌開戰</button>
+          <button type="button" id="ct-cancel-setup">取消</button>
+        </div>`);
+
+      const setupCard = $("#ct-setup-card");
+      const navInj = dir => {
+        const n = inv.length;
+        if (n <= 1) return;
+        cardUi.injectIdx = (cardUi.injectIdx + dir + n) % n;
         renderCardTable();
       };
-    });
-    hand.querySelectorAll("[data-sub]").forEach(b => {
-      b.onclick = () => {
-        const i = cardUi.injectPick.lastIndexOf(b.dataset.sub);
-        if (i >= 0) cardUi.injectPick.splice(i, 1);
-        renderCardTable();
+      const addInj = () => {
+        if (!canAdd) {
+          toast(cardUi.injectPick.length >= maxI ? `最多押 ${maxI} 張` : "這張已押滿", "bad");
+          return;
+        }
+        flyCard(setupCard, "up", () => {
+          cardUi.injectPick.push(row.cardId);
+          renderCardTable();
+        });
       };
-    });
+      const subInj = () => {
+        const i = cardUi.injectPick.lastIndexOf(row.cardId);
+        if (i < 0) { toast("這張還沒押入", "bad"); return; }
+        flyCard(setupCard, "down", () => {
+          cardUi.injectPick.splice(i, 1);
+          renderCardTable();
+        });
+      };
+      if (setupCard) {
+        swipeable(setupCard, {
+          left: () => navInj(1),
+          right: () => navInj(-1),
+          up: addInj,
+          down: subInj,
+        });
+      }
+    }
+
     $("#ct-deal").onclick = () => {
       const ir = Cards.setInject(state, cardUi.injectPick);
       if (!ir.ok) { toast(ir.err, "bad"); return; }
       const sr = Cards.startRound(state, { stage, guardHigh: guardActive(girl) });
       if (!sr.ok) { toast(sr.err, "bad"); return; }
       cardUi.lastPlay = null;
+      cardUi.handIdx = 0;
       toast(`第 ${sess.roundIndex} 輪——她今夜還肯應對 ${sr.nLeft} 次`, "good");
       scheduleSave(); renderCardTable();
     };
     $("#ct-cancel-setup").onclick = () => {
       sess.phase = "idle_present";
       cardUi.injectPick = [];
+      cardUi.injectIdx = 0;
       scheduleSave(); renderCardTable();
     };
     return;
   }
 
-  // ── 打牌 ────────────────────────────────────────────────
+  // ── 打牌：大卡左右滑（同代辦）──────────────────────────
   if (sess.phase === "round_play") {
     const left = Cards.playsLeft(sess);
     const chain = sess.chain;
@@ -4598,6 +4659,7 @@ function renderCardTable() {
       ? `她正被你帶著走（${chain.attr}${chain.kLeft > 0 ? "…" : ""}）`
       : "";
     const last = cardUi.lastPlay;
+    const hand = sess.hand || [];
 
     let vnText;
     let vnName = gname;
@@ -4610,7 +4672,7 @@ function renderCardTable() {
       vnName = last.name + (last.shattered ? " ·已碎" : "") + openNote;
       vnText = last.sceneStart || `打出了「${last.name}」。`;
     } else {
-      vnText = "選一張手牌。高級卡用後會碎；虐系只開門給鍊，不會一鍵連打。";
+      vnText = "左右滑換手牌，上滑打出。高級卡用後碎；虐系只開門給鍊。";
     }
     const emo = last
       ? `情感 ${last.emotionDelta >= 0 ? "+" : ""}${last.emotionDelta}${last.forceAnotherRound ? " ·她這輪走不了" : ""} · `
@@ -4622,7 +4684,7 @@ function renderCardTable() {
     });
 
     if (sess.pending) {
-      const pinst = sess.hand.find(h => h.instanceId === sess.pending.instanceId);
+      const pinst = hand.find(h => h.instanceId === sess.pending.instanceId);
       const pd = pinst ? Cards.cardById(pinst.cardId) : null;
       setCtConfirm(`
         <div class="card-confirm">
@@ -4635,12 +4697,7 @@ function renderCardTable() {
       $("#ct-confirm-play")?.addEventListener("click", () => {
         const iid = sess.pending?.instanceId;
         if (!iid) return;
-        const r = Cards.commitPlay(state, iid, { stage, guardHigh: guardActive(girl) });
-        if (!r.ok) { toast(r.err, "bad"); return; }
-        cardUi.lastPlay = r;
-        applyPlaySideEffects(girl, r);
-        toast(r.open && !r.open.success ? "開門失敗……" : `打出「${r.name}」`, r.open && !r.open.success ? "bad" : "good");
-        scheduleSave(); renderCardTable();
+        commitHandPlay(iid, girl, stage);
       });
       $("#ct-cancel-play")?.addEventListener("click", () => {
         Cards.cancelPending(state);
@@ -4648,34 +4705,84 @@ function renderCardTable() {
       });
     }
 
-    const handHtml = (sess.hand || []).map(inst => {
+    if (!hand.length) {
+      setCtHand(`
+        <div class="dim small ct-empty">手牌空了</div>
+        <div class="detail-actions card-actions">
+          <button type="button" id="ct-end-round">結束本輪</button>
+        </div>`);
+    } else {
+      cardUi.handIdx = Math.min(Math.max(0, cardUi.handIdx || 0), hand.length - 1);
+      const inst = hand[cardUi.handIdx];
       const def = Cards.cardById(inst.cardId);
       const check = Cards.canSelectCard(sess, inst, stage);
-      const dis = !check.ok || !!sess.pending;
-      const why = !check.ok && check.err ? ` title="${esc(check.err)}"` : "";
-      return `<button type="button" class="hand-card ${dis ? "disabled" : ""} ${def?.shatterOnUse ? "shatter" : ""}"
-        data-iid="${inst.instanceId}" ${dis ? "disabled" : ""}${why}>
-        <span class="hc-name">${esc(def?.name || inst.cardId)}</span>
-        <span class="hc-meta dim small">${esc((def?.tags || []).join("·"))}${def?.shatterOnUse ? " ·用後碎" : ""}${def?.openChain ? " ·開門" : ""}</span>
-      </button>`;
-    }).join("") || `<div class="dim small ct-empty">手牌空了</div>`;
+      const blocked = !check.ok || !!sess.pending;
+      const tags = (def?.tags || []).join(" · ");
+      const scene = def?.sceneStart || def?.promptHint || "";
+      const marks = [
+        def?.shatterOnUse ? "用後碎" : "不碎",
+        def?.openChain ? `開門 ${def.openChain.attr}×${def.openChain.k}` : "",
+        def?.effect?.forceAnotherRound ? "不可走" : "",
+        !check.ok ? check.err : "",
+      ].filter(Boolean).join(" · ");
 
-    setCtHand(`
-      <div class="hand-row">${handHtml}</div>
-      <div class="detail-actions card-actions">
-        <button type="button" id="ct-end-round">結束本輪</button>
-      </div>`);
+      setCtHand(`
+        <div class="ct-card-wrap">
+          <div class="ct-play-card ${def?.shatterOnUse ? "is-shatter" : "is-speech"}${blocked ? " is-blocked" : ""}"
+               id="ct-play-card" data-iid="${inst.instanceId}">
+            <div class="ct-pc-tags">
+              <span class="ct-pc-tag ${def?.shatterOnUse ? "shatter" : "speech"}">${def?.shatterOnUse ? "碎" : "話"}</span>
+              ${def?.kind === "girl_trait" ? `<span class="ct-pc-tag girl">本體</span>` : ""}
+              ${def?.kind === "venue_event" ? `<span class="ct-pc-tag girl">場地</span>` : ""}
+              ${def?.openChain ? `<span class="ct-pc-tag open">開門</span>` : ""}
+            </div>
+            <div class="ct-pc-body">${esc(def?.name || inst.cardId)}</div>
+            <div class="ct-pc-scene">${esc(scene)}</div>
+            <div class="ct-pc-foot">
+              <span>${esc(tags || "—")}</span>
+              <span>${esc(marks)}</span>
+            </div>
+            <div class="swind"></div>
+          </div>
+        </div>
+        <div class="ct-card-dots">${hand.map((_, i) =>
+          `<div class="dot${i === cardUi.handIdx ? " on" : ""}"></div>`).join("")}</div>
+        <div class="ct-card-nav dim small">${cardUi.handIdx + 1} / ${hand.length} · 左右換牌 · 上滑打出</div>
+        <div class="detail-actions card-actions">
+          <button type="button" id="ct-end-round">結束本輪</button>
+        </div>`);
 
-    $("#ct-hand").querySelectorAll(".hand-card:not([disabled])").forEach(b => {
-      b.onclick = () => {
-        const r = Cards.requestPlay(state, b.dataset.iid, { stage, guardHigh: guardActive(girl) });
-        if (!r.ok) { toast(r.err, "bad"); return; }
-        if (r.needConfirm) { renderCardTable(); return; }
-        cardUi.lastPlay = r;
-        applyPlaySideEffects(girl, r);
-        scheduleSave(); renderCardTable();
+      const playCard = $("#ct-play-card");
+      const navHand = dir => {
+        const n = hand.length;
+        if (n <= 1) return;
+        cardUi.handIdx = (cardUi.handIdx + dir + n) % n;
+        renderCardTable();
       };
-    });
+      const doPlay = () => {
+        if (sess.pending) return;
+        if (!check.ok) { toast(check.err || "不能打這張", "bad"); return; }
+        const r = Cards.requestPlay(state, inst.instanceId, { stage, guardHigh: guardActive(girl) });
+        if (!r.ok) { toast(r.err, "bad"); return; }
+        // 碎卡先進確認層（不飛走，取消還在手上）
+        if (r.needConfirm) { renderCardTable(); return; }
+        flyCard(playCard, "up", () => {
+          cardUi.lastPlay = r;
+          applyPlaySideEffects(girl, r);
+          const n = state.cardSession?.hand?.length || 0;
+          if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
+          scheduleSave(); renderCardTable();
+        });
+      };
+      if (playCard && !sess.pending) {
+        swipeable(playCard, {
+          left: () => navHand(1),
+          right: () => navHand(-1),
+          up: doPlay,
+        });
+      }
+    }
+
     $("#ct-end-round").onclick = () => {
       Cards.playerEndRound(state);
       scheduleSave(); renderCardTable();
