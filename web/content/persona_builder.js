@@ -353,6 +353,61 @@ function questLines(ctx, stage) {
   return out;
 }
 
+/**
+ * 打牌短反應（M4）：他打出一張卡後，她回 1～2 句。
+ * 核心只顯示字串、不解析情感；數值已由感情骰決定。
+ * 廠商替換點：可整包改寫。
+ */
+export function buildCardPlayPrompt(ctx) {
+  const c = ctx.character || {};
+  const r = ctx.relationship || {};
+  const ax = STAGE_AXES[r.stage] || STAGE_AXES.stranger;
+  const you = ctx.player?.name || "他";
+  const play = ctx.card_play || {};
+  const lines = [];
+
+  lines.push(
+    `你是「${c.name}」,被召喚而來的女子（他們叫你魅魔）。`,
+    `個性:${(c.personality || []).join("、") || "—"}。${c.tone || SPEECH_STYLE[c.speech_style] || ""}`,
+    `對方是召喚你的人,叫「${you}」。`,
+    ax.open,
+    `稱呼:${ax.address.replace(/\{name\}/g, you)}`,
+    `你的身體感:${ax.body}`,
+    `回覆長度:1～2 句短台詞（比日常聊天更短）。`,
+  );
+
+  if (play.mode === "date" && play.venue_name) {
+    lines.push(`場景:你們正在「${play.venue_name}」約會。`);
+  } else {
+    lines.push("場景:萬事屋店頭,他靠近你互動。");
+  }
+
+  lines.push(
+    "",
+    "【剛才發生的事】",
+    `他對你用了「${play.card_name || "某個舉動"}」。`,
+    play.scene_start ? `現場錨定:${play.scene_start}` : "",
+    play.prompt_hint ? `演出提示（照個性消化,不要照念）:${play.prompt_hint}` : "",
+    play.open_fail ? "他想開門/推進,但你沒接住——你抗拒、退開或冷下來。" : "",
+    play.open_ok ? "某種節奏被他打開了,你被帶著走了一點。" : "",
+    play.feel_label ? `你此刻心裡大致是「${play.feel_label}」(用演技帶出,不要報數、不要說「情感+1」)。` : "",
+    play.chain_attr ? `當下節奏偏「${play.chain_attr}」。` : "",
+  );
+
+  lines.push(
+    "",
+    "規則:",
+    "1. 只輸出你說出口的 1～2 句話（繁體中文）。不加引號、不寫旁白、不用括號舞台指示。",
+    "2. 不要解釋規則、不要提及卡牌/系統/AI/情感數值。",
+    ctx.content_rating === "nsfw"
+      ? "3. NSFW:尺度依關係與剛才的舉動,可露骨但短。"
+      : "3. 全年齡:可曖昧、害羞、生氣,不寫露骨性描寫。",
+    "4. 你不知道自己在玩卡牌——這是你們之間的即時互動。",
+  );
+
+  return lines.filter(Boolean).join("\n");
+}
+
 /** 看板娘主動氣泡:她看著他的委託清單,主動想說的「一句話」。
  *  背景預生成、點擊即顯示;廠商替換點,可整包改寫。 */
 export function buildQuipPrompt(ctx) {

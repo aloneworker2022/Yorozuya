@@ -3,13 +3,13 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
-import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
+import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildCardPlayPrompt, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, WARDROBE_UNLOCK } from "./content/girl_gen.js";
 import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.6c(2026-08-04)立繪微放大、略上移";
+const APP_VER = "v6.7(2026-08-04)M4 打牌短 AI 反應";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -2303,24 +2303,119 @@ function waitingOnHer() {
 async function genTick(force = false) {
   if (genTickBusy) return;
   // 等她那句話的時候收貨頻率拉高(每 700ms 問一次),平常維持 2 秒一輪
-  if (!force && Date.now() - lastGenAt < (waitingOnHer() ? 700 : 2000)) return;
+  const waitingCard = !!(cardUi.awaitReaction && cardUi.playAiPending);
+  if (!force && Date.now() - lastGenAt < ((waitingOnHer() || waitingCard) ? 700 : 2000)) return;
   lastGenAt = Date.now();
   genTickBusy = true;
   try {
     // 獻祭文:睡眠時段織夢(有無模型都跑;無模型走罐頭)
     if (isAsleep()) await genSacOrders();
     if (state.settings.model) {
-      const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep();
+      // M4：打牌反應最優先（玩家正盯著牌桌）
+      await genCardPlayOrder();
+      const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep()
+        && !document.body.classList.contains("card-mode");
       await genReplyOrder();   // 最優先:她正在回你的那句(玩家在等紋亮)
       if (idle) await genChatOrder();
       // 玩家正在等她開口/回話時,不下背景素材的單——別讓紀錄與氣泡卡住她那句話
-      if (!waitingOnHer()) {
+      if (!waitingOnHer() && !waitingCard) {
         await genActOrders();
         if (idle) await genQuipOrders();
       }
     }
   } catch (e) { /* 下輪再試 */ }
   genTickBusy = false;
+}
+
+// ── M4 打牌短 AI 反應 ────────────────────────────────────
+// 原則：感情骰已定；AI 只產不透明台詞；失敗/無模型用罐頭 girlLine。
+
+function cardPlayMsgs(girl, play) {
+  const sess = state.cardSession;
+  const def = play?.cardId ? Cards.cardById(play.cardId) : null;
+  let venueName = null;
+  if (sess?.mode === "date" && sess.venueId) {
+    venueName = (Cards.venuesList?.() || []).find(v => v.id === sess.venueId)?.name || null;
+  }
+  const ctx = buildCtx(girl);
+  // 打牌不索取 #越界（情感已由骰子決定）
+  ctx.want_guard_flag = false;
+  ctx.card_play = {
+    mode: sess?.mode || "kanban",
+    venue_name: venueName,
+    card_name: play?.name || def?.name || "",
+    scene_start: play?.sceneStart || def?.sceneStart || "",
+    prompt_hint: def?.promptHint || "",
+    open_fail: !!(play?.open && play.open.success === false),
+    open_ok: !!(play?.open && play.open.success),
+    feel_label: play?.feelLabel || "",
+    chain_attr: play?.chain?.attr || sess?.chain?.attr || "",
+    emotion_delta: play?.emotionDelta ?? 0,
+  };
+  const sys = buildCardPlayPrompt(ctx);
+  const user = play?.open && play.open.success === false
+    ? "(旁白:他剛才那一下你沒接住。用 1～2 句話反應——只有台詞。)"
+    : "(旁白:對他剛才的舉動,用 1～2 句話反應——只有台詞。)";
+  return [
+    { role: "system", content: sys },
+    { role: "user", content: user },
+  ];
+}
+
+/** 出卡後：有模型就下單；先顯示罐頭,寫好再覆寫 */
+function beginCardPlayAi(girl, play) {
+  cardUi.playAiPending = false;
+  cardUi.playAiKey = null;
+  cardUi.playAiToken = null;
+  if (!girl || !play?.ok) return;
+  if (!state.settings?.model) return;
+  // 罐頭已在 play.girlLine；AI 寫好後覆寫
+  const token = `${Date.now().toString(36)}_${play.cardId || "x"}`;
+  cardUi.playAiToken = token;
+  cardUi.playAiKey = `cardplay:${girl.id}:${token}`;
+  cardUi.playAiPending = true;
+  // 立刻丟一單；之後 genTick 輪詢收貨
+  genPost(cardUi.playAiKey, cardPlayMsgs(girl, play), 12).catch(() => {});
+}
+
+async function genCardPlayOrder() {
+  if (!cardUi.awaitReaction || !cardUi.playAiPending || !cardUi.playAiKey) return;
+  if (!cardUi.lastPlay || !state.settings?.model) {
+    cardUi.playAiPending = false;
+    return;
+  }
+  const girl = girlForSession();
+  if (!girl) {
+    cardUi.playAiPending = false;
+    return;
+  }
+  const token = cardUi.playAiToken;
+  const key = cardUi.playAiKey;
+  const r = await genPost(key, cardPlayMsgs(girl, cardUi.lastPlay), 12);
+  if (!r) return;
+  if (cardUi.playAiToken !== token || !cardUi.awaitReaction) return;
+  if (r.status === "done" && r.result) {
+    const { text } = stripGuardFlag(r.result);
+    const line = firstLine(text).slice(0, 220).trim();
+    if (line && cardUi.lastPlay) {
+      cardUi.lastPlay.girlLine = line;
+      cardUi.lastPlay.fromAi = true;
+    }
+    cardUi.playAiPending = false;
+    cardUi.playAiKey = null;
+    // 仍在反應節拍才重畫
+    if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
+      renderCardTable();
+    }
+  } else if (r.status === "error") {
+    // 失敗：保留罐頭,結束 pending
+    cardUi.playAiPending = false;
+    cardUi.playAiKey = null;
+    if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
+      renderCardTable();
+    }
+  }
+  // queued / running：等下一輪 tick
 }
 
 // 半預製聊天的失敗計數:連敗 3 次 → 改用罐頭台詞讓紋亮起來(crestFallback 參照),不無聲卡死
@@ -3954,6 +4049,10 @@ let cardUi = {
   awaitReaction: false, // 出卡後必看她的反應，按「繼續」才往下
   // 輪末判定結果面板：null | "stay" | "leave"（不要跳回「靠近／離開」）
   endPanel: null,
+  // M4 打牌 AI
+  playAiPending: false,
+  playAiKey: null,
+  playAiToken: null,
 };
 
 function renderCardShopPanel() {
@@ -4824,6 +4923,7 @@ function commitHandPlay(instanceId, girl, stage) {
   cardUi.awaitReaction = true; // 必看她的反應，再按繼續
   cardUi.endPanel = null;
   applyPlaySideEffects(girl, r);
+  beginCardPlayAi(girl, r); // M4：背景寫短反應（先罐頭）
   const n = state.cardSession?.hand?.length || 0;
   if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
   scheduleSave(); renderCardTable();
@@ -4836,6 +4936,9 @@ function ackPlayReaction() {
   const stage = girl?.stage || "stranger";
   const last = cardUi.lastPlay;
   cardUi.awaitReaction = false;
+  cardUi.playAiPending = false;
+  cardUi.playAiKey = null;
+  cardUi.playAiToken = null;
   if (!sess) {
     renderCardTable();
     return;
@@ -4860,6 +4963,9 @@ function exitCardModeFully(msg = "") {
   cardUi.lastPlay = null;
   cardUi.injectPick = [];
   cardUi.handIdx = 0;
+  cardUi.playAiPending = false;
+  cardUi.playAiKey = null;
+  cardUi.playAiToken = null;
   if (state.cardSession) Cards.closeSession(state, "ui_exit");
   document.body.classList.remove("card-mode", "has-ct-figure");
   clearCardTableDom();
@@ -5107,16 +5213,23 @@ function renderCardTable() {
     const more = last.roundEnded
       ? "這是本輪最後一次——繼續後判定她願不願意再來一輪"
       : `之後還能應付 ${last.playsLeft ?? "?"} 次`;
+    const aiNote = cardUi.playAiPending
+      ? " · 她還在想…"
+      : (last.fromAi ? " · 即時" : "");
     setCtVn({
       name: gname,
-      text: last.girlLine || "……",
-      meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""} · ${esc(more)}`,
+      text: last.girlLine || (cardUi.playAiPending ? "……" : "……"),
+      meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${aiNote} · ${esc(more)}`,
     });
     setCtHand(`
       <div class="ct-react-beat">
         <div class="dim small ct-react-you">你：${esc(last.sceneStart || last.name || "……")}</div>
         <div class="detail-actions card-actions">
-          <button type="button" class="cyan" id="ct-ack-react">${last.roundEnded ? "繼續（輪末判定）" : "繼續"}</button>
+          <button type="button" class="cyan" id="ct-ack-react">${
+            cardUi.playAiPending
+              ? "先用這句繼續"
+              : (last.roundEnded ? "繼續（輪末判定）" : "繼續")
+          }</button>
         </div>
       </div>`);
     $("#ct-ack-react").onclick = () => ackPlayReaction();
@@ -5375,6 +5488,7 @@ function renderCardTable() {
           cardUi.awaitReaction = true;
           cardUi.endPanel = null;
           applyPlaySideEffects(girl, r);
+          beginCardPlayAi(girl, r);
           const n = state.cardSession?.hand?.length || 0;
           if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
           scheduleSave(); renderCardTable();
