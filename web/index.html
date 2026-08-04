@@ -229,14 +229,26 @@
   </div>
 </div>
 
-<!-- 牌桌全螢幕 -->
+<!-- 牌桌全螢幕：上圖／中旁白／下手牌（主畫面委託流入口） -->
 <div id="card-table-view" class="hidden">
   <div class="card-table-top">
     <button class="back-btn" id="card-table-back">‹ 返回</button>
     <span id="card-table-title" class="dim small"></span>
     <button class="back-btn" id="card-table-close" title="解散牌桌">收桌</button>
   </div>
-  <div id="card-table-body"></div>
+  <div id="ct-stage">
+    <div id="ct-portrait">
+      <img id="ct-portrait-img" class="hidden" alt="" draggable="false">
+      <div id="ct-portrait-fallback" class="hidden"></div>
+    </div>
+    <div id="ct-vn">
+      <div id="ct-vn-name"></div>
+      <div id="ct-vn-text"></div>
+      <div id="ct-vn-meta" class="dim small"></div>
+    </div>
+  </div>
+  <div id="ct-confirm" class="hidden"></div>
+  <div id="ct-hand"></div>
 </div>
 
 <!-- 淫紋圖騰:定義一次,每位看板娘的通知燈以 <use> 引用 -->
@@ -274,7 +286,7 @@
   </defs>
 </svg>
 
-<!-- 淫紋:她有話還沒給你看的通知燈(每位看板娘各自一條訊息串,各自一盞) -->
+<!-- 主畫面右下：牌制開 = 可打牌小卡；舊路徑 = 淫紋燈 -->
 <div id="crests" class="hidden"></div>
 
 <!-- 聊天/約會:全螢幕插播層(不可被分頁切換打斷,結束對話才退出) -->
