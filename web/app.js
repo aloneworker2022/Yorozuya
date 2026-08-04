@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.7(2026-08-04)M4 打牌短 AI 反應";
+const APP_VER = "v6.7b(2026-08-04)M4 framing／繁體／佇列回收";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -2330,6 +2330,12 @@ async function genTick(force = false) {
 // ── M4 打牌短 AI 反應 ────────────────────────────────────
 // 原則：感情骰已定；AI 只產不透明台詞；失敗/無模型用罐頭 girlLine。
 
+/** 打牌 AI 取 1～2 行台詞（規格允許兩句；勿只砍第一行） */
+function cardPlayLines(text) {
+  const lines = (text || "").split("\n").map(l => l.trim()).filter(Boolean);
+  return lines.slice(0, 2).join("\n").slice(0, 220).trim();
+}
+
 function cardPlayMsgs(girl, play) {
   const sess = state.cardSession;
   const def = play?.cardId ? Cards.cardById(play.cardId) : null;
@@ -2337,12 +2343,14 @@ function cardPlayMsgs(girl, play) {
   if (sess?.mode === "date" && sess.venueId) {
     venueName = (Cards.venuesList?.() || []).find(v => v.id === sess.venueId)?.name || null;
   }
+  const kind = def?.kind || "speech";
   const ctx = buildCtx(girl);
   // 打牌不索取 #越界（情感已由骰子決定）
   ctx.want_guard_flag = false;
   ctx.card_play = {
     mode: sess?.mode || "kanban",
     venue_name: venueName,
+    kind,
     card_name: play?.name || def?.name || "",
     scene_start: play?.sceneStart || def?.sceneStart || "",
     prompt_hint: def?.promptHint || "",
@@ -2353,9 +2361,16 @@ function cardPlayMsgs(girl, play) {
     emotion_delta: play?.emotionDelta ?? 0,
   };
   const sys = buildCardPlayPrompt(ctx);
-  const user = play?.open && play.open.success === false
-    ? "(旁白:他剛才那一下你沒接住。用 1～2 句話反應——只有台詞。)"
-    : "(旁白:對他剛才的舉動,用 1～2 句話反應——只有台詞。)";
+  let user;
+  if (play?.open && play.open.success === false) {
+    user = "(旁白:他剛才那一下你沒接住。用 1～2 句話反應——只有台詞。)";
+  } else if (kind === "girl_trait") {
+    user = "(旁白:這一拍是你主動帶的節奏。用 1～2 句話開口或接下去——只有台詞。)";
+  } else if (kind === "venue_event") {
+    user = "(旁白:現場剛發生那件事。用 1～2 句話反應——只有台詞。)";
+  } else {
+    user = "(旁白:對他剛才的舉動,用 1～2 句話反應——只有台詞。)";
+  }
   return [
     { role: "system", content: sys },
     { role: "user", content: user },
@@ -2396,7 +2411,7 @@ async function genCardPlayOrder() {
   if (cardUi.playAiToken !== token || !cardUi.awaitReaction) return;
   if (r.status === "done" && r.result) {
     const { text } = stripGuardFlag(r.result);
-    const line = firstLine(text).slice(0, 220).trim();
+    const line = cardPlayLines(text);
     if (line && cardUi.lastPlay) {
       cardUi.lastPlay.girlLine = line;
       cardUi.lastPlay.fromAi = true;
@@ -5216,9 +5231,13 @@ function renderCardTable() {
     const aiNote = cardUi.playAiPending
       ? " · 她還在想…"
       : (last.fromAi ? " · 即時" : "");
+    // AI pending：先顯示省略號,寫好再覆寫——避免罐頭旁白與 AI 台詞語氣跳變
+    const reactText = cardUi.playAiPending && !last.fromAi
+      ? "……"
+      : (last.girlLine || "……");
     setCtVn({
       name: gname,
-      text: last.girlLine || (cardUi.playAiPending ? "……" : "……"),
+      text: reactText,
       meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${aiNote} · ${esc(more)}`,
     });
     setCtHand(`

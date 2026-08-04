@@ -1569,6 +1569,10 @@ def gen_clear():
     return {"ok": True}
 
 
+# running 超過這個秒數 → 當 worker 重啟/卡死留下的孤兒,回收成 error,免得永遠佔位
+GEN_RUNNING_STALE_SEC = float(os.environ.get("GEN_RUNNING_STALE_SEC", "600"))
+
+
 async def _gen_worker():
     """一次跑一件;前景聊天 job 進行中就讓路(別讓背景生成搶慢即時對話)。"""
     while True:
@@ -1582,6 +1586,12 @@ async def _gen_worker():
             GEN_WAKE.clear()
             with db() as conn:
                 conn.execute("DELETE FROM gen_tasks WHERE created < ?", (time.time() - 172800,))
+                # 回收孤兒 running(重啟後留下、或 stream 掛掉沒寫回)
+                conn.execute(
+                    "UPDATE gen_tasks SET status='error', error=?, updated=? "
+                    "WHERE status='running' AND updated < ?",
+                    ("逾時未完成(stale running)", now_ts, now_ts - GEN_RUNNING_STALE_SEC),
+                )
                 row = conn.execute(
                     "SELECT key, endpoint, model, messages, options FROM gen_tasks "
                     "WHERE status='pending' ORDER BY prio DESC, created LIMIT 1"

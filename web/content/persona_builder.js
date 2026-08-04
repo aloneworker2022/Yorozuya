@@ -354,7 +354,8 @@ function questLines(ctx, stage) {
 }
 
 /**
- * 打牌短反應（M4）：他打出一張卡後，她回 1～2 句。
+ * 打牌短反應（M4）：出卡後她回 1～2 句。
+ * framing 依 kind：girl_trait=她主動、venue_event=場景、其餘=他的舉動。
  * 核心只顯示字串、不解析情感；數值已由感情骰決定。
  * 廠商替換點：可整包改寫。
  */
@@ -364,6 +365,7 @@ export function buildCardPlayPrompt(ctx) {
   const ax = STAGE_AXES[r.stage] || STAGE_AXES.stranger;
   const you = ctx.player?.name || "他";
   const play = ctx.card_play || {};
+  const kind = play.kind || "speech";
   const lines = [];
 
   lines.push(
@@ -382,10 +384,18 @@ export function buildCardPlayPrompt(ctx) {
     lines.push("場景:萬事屋店頭,他靠近你互動。");
   }
 
+  // 本體卡／場地卡不是「他對你用了某招」——別把主動權寫反
+  let whatHappened = `他對你做了「${play.card_name || "某個舉動"}」。`;
+  if (kind === "girl_trait") {
+    whatHappened = `這一拍是你主動的節奏「${play.card_name || "你的本體牌"}」——不是他在進攻。`;
+  } else if (kind === "venue_event") {
+    whatHappened = `現場發生了「${play.card_name || "某個場面"}」——場面推著你們,不全是他的算計。`;
+  }
+
   lines.push(
     "",
     "【剛才發生的事】",
-    `他對你用了「${play.card_name || "某個舉動"}」。`,
+    whatHappened,
     play.scene_start ? `現場錨定:${play.scene_start}` : "",
     play.prompt_hint ? `演出提示（照個性消化,不要照念）:${play.prompt_hint}` : "",
     play.open_fail ? "他想開門/推進,但你沒接住——你抗拒、退開或冷下來。" : "",
@@ -400,7 +410,7 @@ export function buildCardPlayPrompt(ctx) {
     "1. 只輸出你說出口的 1～2 句話（繁體中文）。不加引號、不寫旁白、不用括號舞台指示。",
     "2. 不要解釋規則、不要提及卡牌/系統/AI/情感數值。",
     ctx.content_rating === "nsfw"
-      ? "3. NSFW:尺度依關係與剛才的舉動,可露骨但短。"
+      ? "3. NSFW:尺度依關係與剛才發生的事,可露骨但短。"
       : "3. 全年齡:可曖昧、害羞、生氣,不寫露骨性描寫。",
     "4. 你不知道自己在玩卡牌——這是你們之間的即時互動。",
   );

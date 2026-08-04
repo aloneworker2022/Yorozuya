@@ -1443,7 +1443,7 @@
     },
     {
       "id": "girl_guard_stare",
-      "name": "她还在瞪你",
+      "name": "她還在瞪你",
       "kind": "girl_trait",
       "shatterOnUse": false,
       "tags": [
@@ -1472,12 +1472,12 @@
           "max": 1
         }
       },
-      "sceneStart": "她先开口——眼神却像要把你钉在原地。",
+      "sceneStart": "她先開口——眼神卻像要把你釘在原地。",
       "promptHint": "由她主動：戒備、短句、不給好臉色。這是她的本體牌，不是你在進攻。"
     },
     {
       "id": "girl_friend_banter",
-      "name": "顺口吐槽你",
+      "name": "順口吐槽你",
       "kind": "girl_trait",
       "shatterOnUse": false,
       "tags": [
@@ -1509,7 +1509,7 @@
     },
     {
       "id": "girl_gf_cling",
-      "name": "她先贴过来",
+      "name": "她先貼過來",
       "kind": "girl_trait",
       "shatterOnUse": false,
       "tags": [
@@ -1542,7 +1542,7 @@
     },
     {
       "id": "girl_wife_errand",
-      "name": "顺口使唤",
+      "name": "順口使喚",
       "kind": "girl_trait",
       "shatterOnUse": false,
       "tags": [
@@ -1577,7 +1577,7 @@
     },
     {
       "id": "girl_job_color",
-      "name": "职业惯性",
+      "name": "職業慣性",
       "kind": "girl_trait",
       "shatterOnUse": false,
       "tags": [
@@ -1652,7 +1652,7 @@
     },
     {
       "id": "venue_park_scenery",
-      "name": "风景出神",
+      "name": "風景出神",
       "kind": "venue_event",
       "shatterOnUse": false,
       "tags": [
@@ -1681,7 +1681,7 @@
           "max": 2
         }
       },
-      "sceneStart": "风和树把话抢走了一会儿。你们都看向同一片亮着的地方。",
+      "sceneStart": "風和樹把話搶走了一會兒。你們都看向同一片亮著的地方。",
       "promptHint": "約會·遊玩向。輕鬆、並肩、少侵略。"
     },
     {
@@ -1888,7 +1888,7 @@
     },
     {
       "id": "venue_cinema_plot",
-      "name": "演到哭点",
+      "name": "演到哭點",
       "kind": "venue_event",
       "shatterOnUse": false,
       "tags": [
@@ -1917,12 +1917,12 @@
           "max": 2
         }
       },
-      "sceneStart": "电影不讲理地煽了大家一把。你余光看她有没有在擦眼睛。",
+      "sceneStart": "電影不講理地煽了大家一把。你餘光看她有沒有在擦眼睛。",
       "promptHint": "共用作品情緒。笑她哭、自己也哭、或硬撐。"
     },
     {
       "id": "venue_cinema_row",
-      "name": "后排有人笑太大声",
+      "name": "後排有人笑太大聲",
       "kind": "venue_event",
       "shatterOnUse": false,
       "tags": [
@@ -1950,12 +1950,12 @@
           "max": 1
         }
       },
-      "sceneStart": "后排的笑声刺耳。你们的小世界被掀了一角。",
+      "sceneStart": "後排的笑聲刺耳。你們的小世界被掀了一角。",
       "promptHint": "公共空間被打擾。靠緊、瞪回去、或離席。"
     },
     {
       "id": "venue_night_walk",
-      "name": "路灯把影子拉长",
+      "name": "路燈把影子拉長",
       "kind": "venue_event",
       "shatterOnUse": false,
       "tags": [
@@ -1984,7 +1984,7 @@
           "max": 2
         }
       },
-      "sceneStart": "夜风不冷。影子先牵在一起，人还假装没有。",
+      "sceneStart": "夜風不冷。影子先牽在一起，人還假裝沒有。",
       "promptHint": "夜路散步。安靜、坦白、慢。"
     },
     {
