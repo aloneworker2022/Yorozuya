@@ -106,7 +106,8 @@
     <button onclick="addGold(1000)">+1000 金</button>
     <button onclick="addGold(-100)">-100 金</button>
     <button onclick="setGoldPrompt()">設定金幣…</button>
-    <button onclick="refreshShop()">刷新商店</button>
+    <button class="cy" onclick="refreshGirls()">刷新魅魔</button>
+    <button class="cy" onclick="refreshGoods()">刷新商品</button>
     <button onclick="jumpDay()">跳過一天</button>
     <button onclick="addCrest()">讓看板娘想說話</button>
     <button onclick="kanbanLong()">看板娘 +99h(測試)</button>
@@ -116,7 +117,11 @@
     <button onclick="watchScenario()">觀戰測試場景</button>
     <button class="del" onclick="wipeSave()">⚠ 重設存檔(急救)</button>
   </div>
-  <div class="mini" style="margin-top:.5em">「重設存檔」用於存檔損壞、遊戲開不起來(空白畫面)時急救——把伺服器存檔覆蓋成全新遊戲。此頁不吃遊戲的 app.js,遊戲當掉時仍可用。</div>
+  <div class="mini" style="margin-top:.5em">
+    <b>刷新魅魔</b>：用 girl_gen 重抽整包取代現有名冊（看板／牌桌一併清）。
+    <b>刷新商品</b>：祭品店立即重新進貨 + 卡牌貨架強制刷新（不等 4h）。
+    「重設存檔」用於存檔損壞急救。此頁不吃 app.js,遊戲當掉時仍可用。
+  </div>
   <div class="status" id="bd-status"></div>
 </section>
 
@@ -505,9 +510,126 @@ async function commit(desc) {
   } catch (e) { status("bd-status", "失敗:" + e.message + "(先按重新讀取)", true); }
 }
 function ensure() { if (!save) { status("bd-status", "沒有存檔,先在遊戲裡玩一下", true); return false; } return true; }
+function twUid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function twPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function twRi(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+// 與 app.js ensureShop 對齊的祭品池（此頁不載 app.js）
+const TW_SACRIFICE_POOL = ["迷路的冒險者", "落魄的商人", "自願的信徒", "酒館的醉漢", "負債的賭徒", "失戀的詩人", "貪婪的盜賊", "無名的流浪者", "可疑的煉金術士", "逃兵"];
+const TW_MERCHANT_LINES = ["今天的貨色不錯吧?", "都是自願的,大概。", "早買早享受,晚了就沒了。", "便宜貨也有便宜貨的用法。", "別問來歷。問了也不便宜。"];
+const TW_GIFT_KEYS = ["roster", "exec", "reward", "offering", "duration", "crest", "drop", "discount"];
+
 async function addGold(n) { if (!ensure()) return; save.gold += n; await commit(`金幣 ${n >= 0 ? "+" : ""}${n}`); }
 async function setGoldPrompt() { if (!ensure()) return; const v = prompt("設定金幣為:", save.gold); if (v == null) return; save.gold = parseInt(v) || 0; await commit("設定金幣 " + save.gold); }
-async function refreshShop() { if (!ensure()) return; save.shop = null; await commit("商店已清空(回遊戲會重新進貨)"); }
+
+/** 刷新商品：祭品店 + 卡牌貨架（立即進貨，不必回遊戲等日界／4h） */
+async function refreshGoods() {
+  if (!ensure()) return;
+  const offeringN = 2 + ((save.expansions || {}).offering || 0);
+  // day 用很大的數避免與遊戲 dayNum 撞到「今日已進貨」而跳過；回遊戲 ensureShop 若日不同會再刷一次也無妨
+  save.shop = {
+    day: 999999,
+    stock: Array.from({ length: offeringN }, () => ({
+      id: twUid(),
+      name: twPick(TW_SACRIFICE_POOL),
+      price: twRi(5, 30),
+      sold: false,
+    })),
+    line: twPick(TW_MERCHANT_LINES),
+  };
+  let cardNote = "";
+  try {
+    if (typeof window.Cards_refreshShop === "function") {
+      await window.Cards_refreshShop(save);
+      const slots = save.cardShop?.slots || [];
+      cardNote = `；卡牌貨架 ${slots.length} 格：` + slots.map(s => s.cardId).join(", ");
+    } else {
+      save.cardShop = { nextRefreshAt: 0, slots: [] };
+      cardNote = "；卡牌貨架已標記待刷新(回遊戲載入)";
+    }
+  } catch (e) {
+    save.cardShop = { nextRefreshAt: 0, slots: [] };
+    cardNote = "；卡牌刷新失敗已標記待刷(" + e.message + ")";
+  }
+  await commit(`商品已刷新：祭品 ${offeringN} 件${cardNote}`);
+}
+// 舊名相容
+async function refreshShop() { return refreshGoods(); }
+
+/**
+ * 刷新魅魔：用 girl_gen 重抽整包，取代名冊。
+ * 會清看板、牌桌 session、舊淫紋燈狀態。
+ */
+async function refreshGirls() {
+  if (!ensure()) return;
+  const cur = (save.succubi || []).length;
+  const rosterCap = 1 + ((save.expansions || {}).roster || 0);
+  const defN = Math.max(1, cur || 1);
+  const maxN = Math.max(rosterCap, defN, 6);
+  const v = prompt(`刷新魅魔：要抽幾隻？(1～${maxN}，目前 ${cur} 隻)`, String(Math.min(defN, maxN)));
+  if (v == null) return;
+  const n = Math.max(1, Math.min(maxN, parseInt(v, 10) || defN));
+  if (!confirm(`會清空目前 ${cur} 隻魅魔（含看板／牌桌／立繪路徑），換成全新 ${n} 隻。\n無法從這裡復原，確定？`)) return;
+
+  status("bd-status", "抽卡中…");
+  try {
+    if (!window.GG_loadPools || !window.GG_generateGirl) {
+      throw new Error("girl_gen 未載入（等頁面模組載完再按）");
+    }
+    await window.GG_loadPools();
+    if (!window.GG_POOLS?.female) throw new Error("persona_pools 載入失敗");
+
+    const rating = save.settings?.rating || "sfw";
+    const day = Math.floor(Date.now() / 86400000);
+    const used = [];
+    const girls = [];
+    for (let i = 0; i < n; i++) {
+      const gen = window.GG_generateGirl({
+        luck: twRi(10, 55),
+        rating,
+        usedNames: used,
+      });
+      if (!gen || !gen.name) throw new Error("generateGirl 回傳空（第 " + (i + 1) + " 隻）");
+      used.push(gen.name);
+      // gen 先鋪人設；後面欄位蓋掉執行期狀態（id／關係／看板相關）
+      girls.push({
+        ...gen,
+        id: twUid() + "_" + i,
+        affection: 0,
+        stage: "stranger",
+        portraitReady: false,
+        portraits: null,
+        portrait: null,
+        summonedAt: Date.now(),
+        lastChatDay: day,
+        lastDateDay: day,
+        datesToday: { day, count: 0 },
+        ntr: null,
+        errand: null,
+        guard: null,
+        crave: { v: twRi(0, 25), at: Date.now() },
+        summoner: null,
+        drawIvlH: twRi(2, 5),
+        nextDraw: Date.now() + twRi(2, 5) * 3600 * 1000,
+        gift: twPick(TW_GIFT_KEYS),
+        dna: gen.dna || { seed: Math.floor(Math.random() * 1e9), traits: [] },
+        history: [],
+        wantsTalk: 0,
+        chatLine: null,
+        typing: null,
+        chatSess: null,
+        outfitPick: -1,
+      });
+    }
+    save.succubi = girls;
+    save.kanbans = [];
+    save.lastKanbanId = null;
+    save.cardSession = null;
+    await commit(`已刷新魅魔 ${girls.length} 隻：` + girls.map(s => `【${s.rarity}】${s.name}`).join("、"));
+  } catch (e) {
+    status("bd-status", "刷新魅魔失敗:" + e.message, true);
+  }
+}
+
 async function jumpDay() { if (!ensure()) return; save.lastSettledDay = (save.lastSettledDay || 0) - 1; await commit("日界 -1(回遊戲會結算一天)"); }
 // 淫紋不是點數:直接把在任看板娘標成「想說話」,回遊戲後背景寫好話、紋就亮
 async function addCrest() {
@@ -1506,8 +1628,26 @@ Promise.all([reloadSave().catch(() => {}), loadSummoners()])
 // 內建階段語氣原文與 prompt 產生器:直接從內容模組匯入,永遠與遊戲實際使用的版本一致
 import { RIVAL_WATCH_TONE, RIVAL_CHAT_EFFECT, buildWatchPrompt, buildSystemPrompt } from "/content/persona_builder.js";
 import { loadPools, generateGirl } from "/content/girl_gen.js";
+import * as Cards from "/content/card_engine.js";
 window.STAGE_DEFAULTS = { watch_stage: RIVAL_WATCH_TONE, chat_rival: RIVAL_CHAT_EFFECT };
 window.PB_buildWatchPrompt = buildWatchPrompt;
+
+// 後門：強制刷新卡牌貨架（與遊戲 card_engine 同一套）
+let _cardsDataReady = false;
+async function ensureCardsData() {
+  if (_cardsDataReady && Cards.cardsReady()) return;
+  const data = await fetch("/content/cards.json?ts=" + Date.now()).then(r => {
+    if (!r.ok) throw new Error("cards.json " + r.status);
+    return r.json();
+  });
+  Cards.setCardsData(data);
+  _cardsDataReady = true;
+}
+window.Cards_refreshShop = async (saveObj) => {
+  await ensureCardsData();
+  Cards.refreshCardShop(saveObj, Date.now());
+  return saveObj.cardShop;
+};
 // ── ComfyUI 生圖測試 ──────────────────────────────────────────────
 // 人設沿用上面那塊的 igChar;prompt 走 /api/comfy/preview 翻成英文 tag,
 // 下單走 /api/imggen 的 provider:"comfy",跟 Grok 那條同一個佇列同一個相簿。
