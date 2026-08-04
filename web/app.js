@@ -127,7 +127,12 @@ function questBubbleRoll(eventKey, questText = "") {
     const s = state.succubi.find(x => x.id === h.girlId);
     if (!s) continue;
     if (h.emotionDelta) applyAffection(s, h.emotionDelta);
-    queue.push({ name: s.name, text: h.text, emotionDelta: h.emotionDelta || 0 });
+    queue.push({
+      girlId: s.id,
+      name: s.name,
+      text: h.text,
+      emotionDelta: h.emotionDelta || 0,
+    });
   }
   if (!queue.length) return false;
   enqueueKanbanBubbles(queue);
@@ -3124,54 +3129,118 @@ function expireKanban() {
 let bubbleTimer = null;
 let bubbleQueue = [];
 let bubbleShowing = false;
+let bubbleBound = false;
 
 function kanbanSay(text) {
-  // 單句：走佇列，避免蓋掉正在播的氣泡
-  enqueueKanbanBubbles([{ name: "", text }]);
+  // 無指定角色：用主看板娘半身
+  const g = kanbanSuccubus();
+  enqueueKanbanBubbles([{
+    girlId: g?.id || null,
+    name: g?.name || "",
+    text,
+    emotionDelta: 0,
+  }]);
 }
 
-/** 多句氣泡依序播（M2 委託碎嘴；不進全螢幕、不等回覆） */
+/** 多句氣泡依序播（M2 委託碎嘴：半身＋對話框；點一下繼續，不進全螢幕聊天） */
 function enqueueKanbanBubbles(items) {
   if (!items?.length) return;
   for (const it of items) {
     if (!it?.text) continue;
-    bubbleQueue.push({ name: it.name || "", text: it.text, emotionDelta: it.emotionDelta || 0 });
+    bubbleQueue.push({
+      girlId: it.girlId || null,
+      name: it.name || "",
+      text: it.text,
+      emotionDelta: it.emotionDelta || 0,
+    });
   }
   pumpKanbanBubbles();
+}
+
+function hideBubbleOverlay() {
+  const ov = document.getElementById("bubble-overlay");
+  if (ov) ov.classList.add("hidden");
+  bubbleShowing = false;
+  clearTimeout(bubbleTimer);
+  bubbleTimer = null;
+}
+
+function dismissBubble() {
+  if (!bubbleShowing) return;
+  hideBubbleOverlay();
+  if (bubbleQueue.length) setTimeout(pumpKanbanBubbles, 160);
+}
+
+function bindBubbleOverlayOnce() {
+  if (bubbleBound) return;
+  const ov = document.getElementById("bubble-overlay");
+  if (!ov) return;
+  bubbleBound = true;
+  ov.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dismissBubble();
+  });
+}
+
+function setBubblePortrait(girl) {
+  const img = document.getElementById("bubble-portrait");
+  const fb = document.getElementById("bubble-portrait-fb");
+  if (!img || !fb) return;
+  const url = girl ? girlShot(girl, "half") : "";
+  if (url) {
+    if (img.getAttribute("src") !== url) img.src = url;
+    img.alt = girl?.name || "";
+    img.classList.remove("hidden");
+    fb.classList.add("hidden");
+  } else {
+    img.removeAttribute("src");
+    img.alt = "";
+    img.classList.add("hidden");
+    fb.textContent = (girl?.name || "？").slice(0, 1);
+    fb.classList.remove("hidden");
+  }
 }
 
 function pumpKanbanBubbles() {
   if (bubbleShowing) return;
   // 打牌全螢幕中不插播（規格：round_play 不擲；此處再擋 UI）
-  if (document.body.classList.contains("card-mode")) {
-    // 桌關了再播；暫不丟棄佇列
-    return;
-  }
+  if (document.body.classList.contains("card-mode")) return;
   const next = bubbleQueue.shift();
   if (!next) return;
-  const b = document.getElementById("kanban-bubble");
-  if (!b) return;
+  const ov = document.getElementById("bubble-overlay");
+  const nameEl = document.getElementById("bubble-name");
+  const textEl = document.getElementById("bubble-text");
+  const affEl = document.getElementById("bubble-aff");
+  if (!ov || !nameEl || !textEl) return;
+
+  bindBubbleOverlayOnce();
   bubbleShowing = true;
-  const nameHtml = next.name
-    ? `<span class="kb-name">${esc(next.name)}</span>`
-    : "";
-  const affHtml = next.emotionDelta
-    ? `<span class="kb-aff">♥+${next.emotionDelta}</span>`
-    : "";
-  b.innerHTML = `${nameHtml}<span class="kb-text">${esc(next.text)}</span>${affHtml}`;
-  b.classList.remove("hidden");
+
+  const girl = next.girlId
+    ? state.succubi.find(x => x.id === next.girlId)
+    : kanbanSuccubus();
+  const gname = next.name || girl?.name || "";
+  setBubblePortrait(girl || null);
+  nameEl.textContent = gname || "……";
+  textEl.textContent = next.text || "……";
+  if (affEl) {
+    if (next.emotionDelta) {
+      affEl.textContent = `♥+${next.emotionDelta}`;
+      affEl.classList.remove("hidden");
+    } else {
+      affEl.textContent = "";
+      affEl.classList.add("hidden");
+    }
+  }
+  ov.classList.remove("hidden");
+
+  // 自動前進當後備；玩家點一下也可提早關
   clearTimeout(bubbleTimer);
   bubbleTimer = setTimeout(() => {
-    b.classList.add("hidden");
-    bubbleShowing = false;
-    if (bubbleQueue.length) setTimeout(pumpKanbanBubbles, 180);
-  }, 3200);
-}
-
-function kanbanReact(type) {
-  if (isAsleep()) return;           // 睡眠中罐頭反應停用
-  if (!kanbanSuccubus()) return;    // 沒有看板娘
-  kanbanSay(pick(REACT[type]));
+    if (!bubbleShowing) return;
+    dismissBubble();
+  }, 5200);
 }
 
 // ===== 像素剪影 =====

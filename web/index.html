@@ -21,13 +21,30 @@
 
 <!-- z1:看板娘層(有魅魔 = 剪影立繪;無魅魔 = 召喚書) -->
 <div id="kanban">
-  <div id="kanban-bubble" class="hidden"></div>
   <div id="kanban-zzz" class="hidden">Z z z…</div>
   <div id="book">
     <img src="img/summon-book.png" alt="魅魔召喚之書" draggable="false">
     <div id="magic-circle"></div>
   </div>
   <div id="kanban-girl" class="hidden"></div>
+</div>
+
+<!-- 委託氣泡／碎嘴：獨立覆蓋層（半身＋對話框），不塞在被壓暗的看板層裡 -->
+<div id="bubble-overlay" class="hidden" aria-live="polite">
+  <div id="bubble-dialog">
+    <div id="bubble-figure">
+      <img id="bubble-portrait" class="hidden" alt="" draggable="false">
+      <div id="bubble-portrait-fb" class="hidden" aria-hidden="true"></div>
+    </div>
+    <div id="bubble-box">
+      <div id="bubble-name-row">
+        <span id="bubble-name"></span>
+        <span id="bubble-aff" class="hidden"></span>
+      </div>
+      <div id="bubble-text"></div>
+      <div id="bubble-hint">點一下繼續</div>
+    </div>
+  </div>
 </div>
 
 <!-- z3:頂部 HUD -->
