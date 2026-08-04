@@ -1366,7 +1366,7 @@ body.card-mode.has-ct-figure #kanban-girl {
   left: 0; right: 0;
   top: env(safe-area-inset-top, 0);
   /* 與旁白+手牌堆疊高度對齊，立繪下緣貼卡牌／旁白上沿 */
-  bottom: calc(11.5em + env(safe-area-inset-bottom, 0));
+  bottom: calc(12.2em + env(safe-area-inset-bottom, 0));
   z-index: 0;
   display: flex; align-items: flex-end; justify-content: center;
   pointer-events: none;
@@ -1375,12 +1375,12 @@ body.card-mode.has-ct-figure #kanban-girl {
 }
 #ct-portrait-img {
   display: block;
-  height: min(58vh, 460px);
-  width: auto; max-width: 96%;
+  height: min(64vh, 510px);
+  width: auto; max-width: 98%;
   object-fit: contain; object-position: bottom center;
   filter: drop-shadow(0 8px 28px rgba(0, 0, 0, .6));
-  /* 略往下，腳切在旁白上緣 */
-  transform: translateY(6%);
+  /* 略往上提一點 */
+  transform: translateY(2%);
 }
 #ct-portrait-img.hidden { display: none; }
 #ct-portrait-fallback {
