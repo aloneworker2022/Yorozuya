@@ -1605,8 +1605,8 @@ body.card-mode.has-ct-figure #kanban-girl {
 
 /* 小螢幕 */
 @media (max-height: 620px) {
-  #ct-portrait { padding-bottom: min(36vh, 200px); }
-  #ct-portrait-img { height: min(70vh, 480px); }
+  #ct-portrait { bottom: calc(10.2em + env(safe-area-inset-bottom, 0)); }
+  #ct-portrait-img { height: min(50vh, 360px); transform: translateY(8%); }
   #ct-vn { min-height: 4em; padding: .5em .75em .55em; }
   #ct-hand { max-height: 34vh; }
   .ct-play-card, .ct-play-card.compact { min-height: 3.6em; padding: .75em .9em; }
