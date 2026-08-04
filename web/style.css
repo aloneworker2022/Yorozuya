@@ -1133,28 +1133,104 @@ body.chat-mode.has-figure #kanban-girl {
 }
 .inject-row button:disabled { opacity: .3; }
 
+/* ===== 創角輪巡 ===== */
 #starter-modal {
   position: fixed; inset: 0; z-index: 90;
-  background: rgba(8, 6, 14, .88);
+  background: linear-gradient(160deg, rgba(12, 8, 22, .96), rgba(28, 12, 36, .96));
   display: flex; align-items: center; justify-content: center;
-  padding: 1em;
+  padding: 1em; padding-bottom: calc(1em + env(safe-area-inset-bottom));
 }
 #starter-modal.hidden { display: none; }
-.starter-panel {
-  width: min(420px, 100%); max-height: 90vh; overflow: auto;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-  padding: 1em 1.1em;
+.onboard-shell {
+  width: min(440px, 100%); max-height: min(92vh, 720px);
+  display: flex; flex-direction: column; gap: .75em;
 }
-.starter-panel h2 { color: var(--cyan); font-size: 1em; margin-bottom: .4em; }
-#starter-list { display: flex; flex-direction: column; gap: .5em; margin-top: .8em; }
-.starter-card {
+.onboard-progress {
+  display: flex; gap: .35em; justify-content: center; flex-wrap: wrap;
+}
+.onboard-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(255,255,255,.15); transition: .2s;
+}
+.onboard-dot.on { background: var(--pink); box-shadow: 0 0 8px color-mix(in srgb, var(--pink) 60%, transparent); }
+.onboard-dot.done { background: var(--cyan); opacity: .7; }
+.onboard-panel {
+  flex: 1; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 1.1em 1.15em 1.2em;
+  animation: onboard-in .28s ease;
+}
+@keyframes onboard-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+}
+.onboard-panel h2 {
+  color: var(--cyan); font-size: 1.05em; margin: 0 0 .35em;
+  letter-spacing: .06em;
+}
+.onboard-panel .lead {
+  color: var(--dim); font-size: .88em; line-height: 1.55; margin: 0 0 1em;
+}
+.onboard-panel .ob-q {
+  font-size: .98em; line-height: 1.55; margin: 0 0 .9em; color: var(--text);
+}
+.onboard-name-input {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 1.1em;
+  padding: .7em .85em; border-radius: 8px;
+  border: 1px solid var(--line); background: rgba(0,0,0,.35); color: var(--text);
+  outline: none;
+}
+.onboard-name-input:focus { border-color: var(--cyan); }
+.onboard-choices { display: flex; flex-direction: column; gap: .5em; }
+.onboard-choice {
   text-align: left; font: inherit; cursor: pointer;
-  background: var(--panel2, rgba(0,0,0,.25)); border: 1px solid var(--line);
-  color: var(--text); padding: .7em .8em; border-radius: 6px;
-  display: flex; flex-direction: column; gap: .25em;
+  background: rgba(0,0,0,.28); border: 1px solid var(--line);
+  color: var(--text); padding: .75em .85em; border-radius: 8px;
+  line-height: 1.45; transition: border-color .15s, background .15s;
 }
-.starter-card:hover { border-color: var(--cyan); }
-.starter-card b { color: var(--pink); font-weight: 600; }
+.onboard-choice:hover { border-color: color-mix(in srgb, var(--cyan) 50%, var(--line)); }
+.onboard-choice.selected {
+  border-color: var(--pink);
+  background: color-mix(in srgb, var(--pink) 12%, rgba(0,0,0,.28));
+}
+.onboard-choice b { display: block; color: var(--pink); font-size: .78em; margin-bottom: .2em; letter-spacing: .08em; }
+.onboard-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: .5em;
+}
+.onboard-grid .onboard-choice { min-height: 4.2em; }
+.onboard-grid .onboard-choice .dim { display: block; margin-top: .25em; font-size: .78em; }
+.onboard-nav {
+  display: flex; gap: .6em; justify-content: space-between; align-items: center;
+}
+.onboard-nav button {
+  font: inherit; cursor: pointer; border: none; border-radius: 8px;
+  padding: .65em 1.2em; min-width: 5.5em;
+}
+.onboard-nav .ob-back {
+  background: transparent; color: var(--dim); border: 1px solid var(--line);
+}
+.onboard-nav .ob-next {
+  background: color-mix(in srgb, var(--pink) 28%, transparent); color: var(--pink);
+  margin-left: auto;
+}
+.onboard-nav .ob-next:disabled { opacity: .35; cursor: default; }
+.onboard-nav .ob-finish {
+  background: color-mix(in srgb, var(--cyan) 25%, transparent); color: var(--cyan);
+  margin-left: auto;
+}
+.onboard-result-card {
+  margin-top: .6em; padding: .9em; border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--pink) 40%, var(--line));
+  background: rgba(0,0,0,.3);
+}
+.onboard-result-card .tag {
+  font-size: .72em; color: var(--cyan); letter-spacing: .12em; margin-bottom: .35em;
+}
+.onboard-result-card h3 { margin: 0 0 .45em; color: var(--pink); font-size: 1.15em; }
+.onboard-result-card p { margin: 0; line-height: 1.6; font-size: .92em; }
+.onboard-summary {
+  margin-top: .9em; font-size: .82em; color: var(--dim); line-height: 1.5;
+}
 
 body.card-mode #track-wrap,
 body.card-mode #tabs { visibility: hidden; }

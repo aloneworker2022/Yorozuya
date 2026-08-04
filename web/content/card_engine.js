@@ -118,7 +118,9 @@ export function grantStarter(state, cardId) {
   return { ok: true };
 }
 
-/** 舊存檔／沒創角：保證至少有一張話術 */
+/**
+ * 舊存檔相容：已有進度卻沒話術 → 補一張；全新檔不自動給，留給創角輪巡。
+ */
 export function ensureStarterFallback(state) {
   state.cardInventory ??= {};
   state.playerProfile ??= {
@@ -126,6 +128,7 @@ export function ensureStarterFallback(state) {
     body: "",
     look: "",
     habit: "",
+    prefs: [],
     starterSpeechCardId: null,
     cardPlayerLv: 0,
   };
@@ -140,9 +143,43 @@ export function ensureStarterFallback(state) {
     }
     return;
   }
-  const sid = state.playerProfile.starterSpeechCardId || starterPoolIds()[0] || "speech_soft";
+  // 已寫過 starter id 但庫存空了 → 補回
+  if (state.playerProfile.starterSpeechCardId) {
+    invAdd(state, state.playerProfile.starterSpeechCardId, 1);
+    return;
+  }
+  // 全新／重置：不自動發卡
+  const progressed =
+    (state.succubi?.length || 0) > 0 ||
+    (state.gold || 0) !== 0 ||
+    (state.quests?.length || 0) > 0 ||
+    (state.dungeon?.length || 0) > 0;
+  if (!progressed) return;
+  // 舊存檔有進度卻沒牌制欄位
+  const sid = starterPoolIds()[0] || "speech_soft";
   invAdd(state, sid, 1);
   state.playerProfile.starterSpeechCardId = sid;
+}
+
+/**
+ * 依 tag 分數從 starter_pool 配一張基礎話術。
+ * scores: { soft: n, blunt: n, ... } 對應 speech_* 後綴
+ */
+export function pickStarterByScores(scores = {}) {
+  const pool = starterPoolIds();
+  let bestId = pool[0] || "speech_soft";
+  let best = -Infinity;
+  for (const id of pool) {
+    const key = id.startsWith("speech_") ? id.slice("speech_".length) : id;
+    const sc = scores[key] || 0;
+    if (sc > best) {
+      best = sc;
+      bestId = id;
+    } else if (sc === best && Math.random() < 0.5) {
+      bestId = id; // 同分隨機
+    }
+  }
+  return bestId;
 }
 
 // ── Card shop（state.cardShop；勿與祭品 state.shop 混淆）──

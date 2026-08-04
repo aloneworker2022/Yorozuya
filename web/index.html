@@ -217,13 +217,12 @@
 <!-- 召喚演出 -->
 <div id="summon-overlay" class="hidden"></div>
 
-<!-- 創角：10 選 1 基礎話術 -->
+<!-- 創角輪巡：姓名 → 心理測驗 → 體型 → 喜好 → 配基礎話術 -->
 <div id="starter-modal" class="hidden">
-  <div class="starter-panel">
-    <h2>你是誰</h2>
-    <p class="dim small">選一張基礎話術——這是你跟她們說話的底色（永久、不碎）。</p>
-    <div class="setting-row"><label>稱呼</label><input id="starter-name" type="text" maxlength="12" placeholder="主人"></div>
-    <div id="starter-list"></div>
+  <div class="onboard-shell">
+    <div class="onboard-progress" id="onboard-progress"></div>
+    <div class="onboard-panel" id="onboard-panel"></div>
+    <div class="onboard-nav" id="onboard-nav"></div>
   </div>
 </div>
 

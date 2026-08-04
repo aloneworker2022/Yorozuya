@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.0(2026-08-04)互動牌制 M0+M1：卡商店／牌庫／看板牌桌";
+const APP_VER = "v6.1(2026-08-04)創角輪巡：姓名／心理測驗／體型／喜好→配話術";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -370,6 +370,7 @@ function defaultState() {
     cardSession: null,   // 當前牌桌 session（見 card_engine）
     playerProfile: {
       name: "", body: "", look: "", habit: "",
+      prefs: [], quiz: {},
       starterSpeechCardId: null, cardPlayerLv: 0,
     },
     kanbans: [],        // 在任看板娘 [{id, until}](多看板娘制;until=到期時間戳)
@@ -484,9 +485,12 @@ function initState(j, offline) {
   state.cardSession ??= null;
   state.playerProfile = {
     name: "", body: "", look: "", habit: "",
+    prefs: [], quiz: {},
     starterSpeechCardId: null, cardPlayerLv: 0,
     ...(state.playerProfile || {}),
   };
+  state.playerProfile.prefs ??= [];
+  state.playerProfile.quiz ??= {};
   if (!state.playerProfile.name && state.settings?.player) {
     state.playerProfile.name = state.settings.player;
   }
@@ -3797,9 +3801,197 @@ function renderCardShopPanel() {
     : `<div class="dim small">牌庫空——去創角選話術，或在貨架購買。</div>`;
 }
 
+// ===== 創角輪巡（全新／清空重來）=====
+// 姓名 → 心理測驗 ×5 → 體型 → 喜好 → 依分數配 1 張 starter 話術
+
+const ONBOARD_QUIZ = [
+  {
+    id: "q_first",
+    text: "店裡來了個明顯彆扭的人。你開口比較像？",
+    choices: [
+      { id: "a", label: "「……別緊張。慢慢來就好。」", tags: { soft: 2, listen: 1 } },
+      { id: "b", label: "「有話直說，我聽得懂。」", tags: { blunt: 2 } },
+      { id: "c", label: "「怎麼，怕我吃人？」", tags: { tease: 2, joke: 1 } },
+      { id: "d", label: "「先坐下。聽我說。」", tags: { command: 2 } },
+    ],
+  },
+  {
+    id: "q_ask",
+    text: "她問你：「你到底要我做什麼？」你會？",
+    choices: [
+      { id: "a", label: "把需求拆成一件一件，講清楚先做哪件。", tags: { errand: 2, blunt: 1 } },
+      { id: "b", label: "反問她現在最想／最怕什麼。", tags: { listen: 2, soft: 1 } },
+      { id: "c", label: "半開玩笑丟一句，看她怎麼接。", tags: { tease: 2, joke: 1 } },
+      { id: "d", label: "直接下指令，不留模糊地帶。", tags: { command: 2 } },
+    ],
+  },
+  {
+    id: "q_tense",
+    text: "氣氛突然緊起來——她眼神冷了半拍。你？",
+    choices: [
+      { id: "a", label: "先軟化語氣，把聲音放輕。", tags: { soft: 2, awkward: 1 } },
+      { id: "b", label: "照實說你在想什麼，不包裝。", tags: { blunt: 2 } },
+      { id: "c", label: "丟個無關痛癢的玩笑，把空氣掀過去。", tags: { joke: 2, tease: 1 } },
+      { id: "d", label: "不硬找話，就站在旁邊陪著。", tags: { silence: 2, listen: 1 } },
+    ],
+  },
+  {
+    id: "q_good",
+    text: "她把一件難事做成了。你第一反應是？",
+    choices: [
+      { id: "a", label: "挑一個具體細節認真稱讚。", tags: { praise: 2, soft: 1 } },
+      { id: "b", label: "「不錯。」——短、真、不囉嗦。", tags: { blunt: 1, silence: 1, praise: 1 } },
+      { id: "c", label: "帶點刺：「終於啊。」但眼神是笑的。", tags: { tease: 2, joke: 1 } },
+      { id: "d", label: "馬上問下一件待辦要不要一起排。", tags: { errand: 2 } },
+    ],
+  },
+  {
+    id: "q_quiet",
+    text: "兩人安靜坐著，誰也沒硬找話題。你覺得？",
+    choices: [
+      { id: "a", label: "這樣很好——沉默也可以是陪伴。", tags: { silence: 2, listen: 1 } },
+      { id: "b", label: "有點慌，會笨拙地丟一句關心。", tags: { awkward: 2, soft: 1 } },
+      { id: "c", label: "找個輕的玩笑或小事打破靜默。", tags: { joke: 2 } },
+      { id: "d", label: "把節奏拉回你身上，開下一個話題。", tags: { command: 1, blunt: 1, errand: 1 } },
+    ],
+  },
+];
+
+const ONBOARD_BODY = [
+  { id: "slim", label: "精瘦", desc: "線條乾淨，站著也輕" },
+  { id: "average", label: "普通", desc: "不張揚，剛剛好" },
+  { id: "solid", label: "厚實", desc: "有存在感、好靠" },
+  { id: "tall", label: "高挑", desc: "視線容易落到你這" },
+  { id: "soft", label: "圓潤", desc: "看起來好相處" },
+];
+
+const ONBOARD_PREFS = [
+  { id: "gentle", label: "溫柔安撫", tags: { soft: 2 } },
+  { id: "direct", label: "有話直說", tags: { blunt: 2 } },
+  { id: "tease", label: "帶刺調侃", tags: { tease: 2, joke: 1 } },
+  { id: "lead", label: "掌握節奏", tags: { command: 2 } },
+  { id: "shy_care", label: "笨拙關心", tags: { awkward: 2 } },
+  { id: "humor", label: "用笑化解", tags: { joke: 2 } },
+  { id: "listen", label: "多聽少說", tags: { listen: 2, silence: 1 } },
+  { id: "praise", label: "認真稱讚", tags: { praise: 2 } },
+  { id: "practical", label: "盯進度做事", tags: { errand: 2 } },
+  { id: "quiet", label: "安靜陪著", tags: { silence: 2 } },
+];
+
+const ONBOARD_PREF_MAX = 3;
+
+/** 輪巡步驟：intro, name, quiz0..quizN-1, body, prefs, result */
+function onboardStepMeta() {
+  const nQ = ONBOARD_QUIZ.length;
+  // indices: 0 intro, 1 name, 2..1+nQ quiz, then body, prefs, result
+  return {
+    intro: 0,
+    name: 1,
+    quiz0: 2,
+    body: 2 + nQ,
+    prefs: 3 + nQ,
+    result: 4 + nQ,
+    total: 5 + nQ,
+    nQ,
+  };
+}
+
+let onboardUi = {
+  step: 0,
+  name: "",
+  quiz: {},       // qid → choiceId
+  body: null,
+  prefs: [],      // pref ids
+  resultCardId: null,
+  started: false,
+};
+
 function needsStarterPick() {
   if (!cardSystemOn()) return false;
   return !state.playerProfile?.starterSpeechCardId;
+}
+
+function resetOnboardUi() {
+  onboardUi = {
+    step: 0,
+    name: state?.playerProfile?.name || state?.settings?.player || "",
+    quiz: {},
+    body: null,
+    prefs: [],
+    resultCardId: null,
+    started: true,
+  };
+}
+
+function addTags(scores, tags, mult = 1) {
+  if (!tags) return;
+  for (const [k, v] of Object.entries(tags)) {
+    scores[k] = (scores[k] || 0) + v * mult;
+  }
+}
+
+function computeOnboardScores() {
+  const scores = Object.create(null);
+  for (const q of ONBOARD_QUIZ) {
+    const cid = onboardUi.quiz[q.id];
+    const ch = q.choices.find(c => c.id === cid);
+    if (ch) addTags(scores, ch.tags, 1);
+  }
+  for (const pid of onboardUi.prefs) {
+    const p = ONBOARD_PREFS.find(x => x.id === pid);
+    if (p) addTags(scores, p.tags, 1.25); // 喜好略加重
+  }
+  // 體型微調（很輕，不當主軸）
+  const bodyBoost = {
+    slim: { silence: 0.3, blunt: 0.2 },
+    average: { listen: 0.2, soft: 0.2 },
+    solid: { command: 0.3, praise: 0.2 },
+    tall: { command: 0.2, tease: 0.2 },
+    soft: { soft: 0.4, awkward: 0.2 },
+  };
+  if (onboardUi.body && bodyBoost[onboardUi.body]) {
+    addTags(scores, bodyBoost[onboardUi.body], 1);
+  }
+  return scores;
+}
+
+function finishOnboardPickCard() {
+  const scores = computeOnboardScores();
+  onboardUi.resultCardId = Cards.pickStarterByScores(scores);
+  return onboardUi.resultCardId;
+}
+
+function canAdvanceOnboard(step) {
+  const m = onboardStepMeta();
+  if (step === m.intro) return true;
+  if (step === m.name) return !!(onboardUi.name || "").trim();
+  if (step >= m.quiz0 && step < m.body) {
+    const q = ONBOARD_QUIZ[step - m.quiz0];
+    return !!(q && onboardUi.quiz[q.id]);
+  }
+  if (step === m.body) return !!onboardUi.body;
+  if (step === m.prefs) return onboardUi.prefs.length >= 1 && onboardUi.prefs.length <= ONBOARD_PREF_MAX;
+  if (step === m.result) return !!onboardUi.resultCardId;
+  return false;
+}
+
+function commitOnboard() {
+  const name = (onboardUi.name || "").trim().slice(0, 12) || "主人";
+  const cardId = onboardUi.resultCardId || finishOnboardPickCard();
+  const r = Cards.grantStarter(state, cardId);
+  if (!r.ok) { toast(r.err || "創角失敗", "bad"); return false; }
+  state.playerProfile.name = name;
+  state.playerProfile.body = onboardUi.body || "";
+  state.playerProfile.prefs = [...onboardUi.prefs];
+  state.playerProfile.quiz = { ...onboardUi.quiz };
+  state.playerProfile.starterSpeechCardId = cardId;
+  state.settings.player = name;
+  const def = Cards.cardById(cardId);
+  const bodyL = ONBOARD_BODY.find(b => b.id === onboardUi.body)?.label || onboardUi.body;
+  log(`創角完成：${name}／${bodyL}／話術「${def?.name || cardId}」`);
+  toast(`你的底色話術：${def?.name || cardId}`, "good");
+  scheduleSave();
+  return true;
 }
 
 function renderStarterModal() {
@@ -3807,41 +3999,170 @@ function renderStarterModal() {
   if (!ov) return;
   if (!needsStarterPick()) {
     ov.classList.add("hidden");
+    onboardUi.started = false;
     return;
   }
   ov.classList.remove("hidden");
-  const pool = Cards.starterPoolIds();
-  const list = $("#starter-list");
-  if (!list) return;
-  list.innerHTML = pool.map(id => {
-    const def = Cards.cardById(id);
-    if (!def) return "";
-    return `<button class="starter-card" data-sid="${id}">
-      <b>${esc(def.name)}</b>
-      <span class="dim small">${esc(def.sceneStart || "")}</span>
-    </button>`;
-  }).join("");
-  list.querySelectorAll("[data-sid]").forEach(b => {
-    b.onclick = () => {
-      const r = Cards.grantStarter(state, b.dataset.sid);
-      if (!r.ok) { toast(r.err, "bad"); return; }
-      const def = Cards.cardById(b.dataset.sid);
-      if (!state.settings.player && state.playerProfile.name) {
-        state.settings.player = state.playerProfile.name;
-      }
-      toast(`你選擇了話術「${def?.name || b.dataset.sid}」`, "good");
-      log(`創角話術：${def?.name || b.dataset.sid}`);
-      scheduleSave(); renderAll();
-    };
-  });
-  const nameIn = $("#starter-name");
-  if (nameIn) {
-    nameIn.value = state.playerProfile.name || state.settings.player || "";
-    nameIn.onchange = nameIn.oninput = () => {
-      state.playerProfile.name = nameIn.value.trim().slice(0, 12);
-      state.settings.player = state.playerProfile.name;
-    };
+  if (!onboardUi.started) resetOnboardUi();
+
+  const m = onboardStepMeta();
+  const step = Math.max(0, Math.min(onboardUi.step, m.total - 1));
+  onboardUi.step = step;
+
+  // progress dots
+  const prog = $("#onboard-progress");
+  if (prog) {
+    // 合併顯示：歡迎·姓名·測驗(當1)·體型·喜好·結果
+    const labels = ["迎", "名", "測", "型", "好", "卡"];
+    const phase = step === m.intro ? 0
+      : step === m.name ? 1
+      : step >= m.quiz0 && step < m.body ? 2
+      : step === m.body ? 3
+      : step === m.prefs ? 4
+      : 5;
+    prog.innerHTML = labels.map((lb, i) =>
+      `<span class="onboard-dot${i === phase ? " on" : i < phase ? " done" : ""}" title="${lb}"></span>`
+    ).join("");
   }
+
+  const panel = $("#onboard-panel");
+  const nav = $("#onboard-nav");
+  if (!panel || !nav) return;
+
+  // force reflow animation
+  panel.style.animation = "none";
+  void panel.offsetWidth;
+  panel.style.animation = "";
+
+  if (step === m.intro) {
+    panel.innerHTML = `
+      <h2>歡迎來到魅魔萬事屋</h2>
+      <p class="lead">在召喚任何人之前，先弄清楚——你是用什麼樣子的聲音，跟她們說話的。</p>
+      <p class="lead">接下來會問你姓名、幾題直覺題、體型與喜好。<b>不會讓你手挑卡</b>：系統會依你的答案，配一張永久的基礎話術（不碎）。</p>`;
+    nav.innerHTML = `<span></span><button type="button" class="ob-next" id="ob-next">開始</button>`;
+  } else if (step === m.name) {
+    panel.innerHTML = `
+      <h2>怎麼稱呼你</h2>
+      <p class="lead">她們會用這個名字叫你。之後可在設定改顯示，但創角會記一筆。</p>
+      <input class="onboard-name-input" id="ob-name" maxlength="12" placeholder="例如：主人、阿澤、店長…" value="${esc(onboardUi.name)}">`;
+    const nameIn = panel.querySelector("#ob-name");
+    nameIn?.focus();
+    nameIn?.addEventListener("input", () => {
+      onboardUi.name = nameIn.value;
+      const btn = nav.querySelector("#ob-next");
+      if (btn) btn.disabled = !canAdvanceOnboard(step);
+    });
+    nav.innerHTML = `
+      <button type="button" class="ob-back" id="ob-back">上一步</button>
+      <button type="button" class="ob-next" id="ob-next" ${canAdvanceOnboard(step) ? "" : "disabled"}>下一步</button>`;
+  } else if (step >= m.quiz0 && step < m.body) {
+    const qi = step - m.quiz0;
+    const q = ONBOARD_QUIZ[qi];
+    const picked = onboardUi.quiz[q.id];
+    panel.innerHTML = `
+      <h2>直覺測驗 ${qi + 1}/${m.nQ}</h2>
+      <p class="ob-q">${esc(q.text)}</p>
+      <div class="onboard-choices">
+        ${q.choices.map(c => `
+          <button type="button" class="onboard-choice${picked === c.id ? " selected" : ""}" data-qid="${q.id}" data-cid="${c.id}">
+            ${esc(c.label)}
+          </button>`).join("")}
+      </div>`;
+    panel.querySelectorAll(".onboard-choice").forEach(b => {
+      b.onclick = () => {
+        onboardUi.quiz[b.dataset.qid] = b.dataset.cid;
+        renderStarterModal();
+      };
+    });
+    nav.innerHTML = `
+      <button type="button" class="ob-back" id="ob-back">上一步</button>
+      <button type="button" class="ob-next" id="ob-next" ${canAdvanceOnboard(step) ? "" : "disabled"}>下一步</button>`;
+  } else if (step === m.body) {
+    panel.innerHTML = `
+      <h2>體型印象</h2>
+      <p class="lead">不是數值，是她們第一眼對你的身體印象。</p>
+      <div class="onboard-grid">
+        ${ONBOARD_BODY.map(b => `
+          <button type="button" class="onboard-choice${onboardUi.body === b.id ? " selected" : ""}" data-body="${b.id}">
+            <b>${esc(b.label)}</b>
+            <span class="dim">${esc(b.desc)}</span>
+          </button>`).join("")}
+      </div>`;
+    panel.querySelectorAll("[data-body]").forEach(b => {
+      b.onclick = () => { onboardUi.body = b.dataset.body; renderStarterModal(); };
+    });
+    nav.innerHTML = `
+      <button type="button" class="ob-back" id="ob-back">上一步</button>
+      <button type="button" class="ob-next" id="ob-next" ${canAdvanceOnboard(step) ? "" : "disabled"}>下一步</button>`;
+  } else if (step === m.prefs) {
+    panel.innerHTML = `
+      <h2>你比較喜歡的相處方式</h2>
+      <p class="lead">選 1～${ONBOARD_PREF_MAX} 項（已選 ${onboardUi.prefs.length}）。這會明顯影響配到哪張話術。</p>
+      <div class="onboard-grid">
+        ${ONBOARD_PREFS.map(p => `
+          <button type="button" class="onboard-choice${onboardUi.prefs.includes(p.id) ? " selected" : ""}" data-pref="${p.id}">
+            ${esc(p.label)}
+          </button>`).join("")}
+      </div>`;
+    panel.querySelectorAll("[data-pref]").forEach(b => {
+      b.onclick = () => {
+        const id = b.dataset.pref;
+        const i = onboardUi.prefs.indexOf(id);
+        if (i >= 0) onboardUi.prefs.splice(i, 1);
+        else if (onboardUi.prefs.length < ONBOARD_PREF_MAX) onboardUi.prefs.push(id);
+        else toast(`最多選 ${ONBOARD_PREF_MAX} 項`, "");
+        renderStarterModal();
+      };
+    });
+    nav.innerHTML = `
+      <button type="button" class="ob-back" id="ob-back">上一步</button>
+      <button type="button" class="ob-next" id="ob-next" ${canAdvanceOnboard(step) ? "" : "disabled"}>看結果</button>`;
+  } else {
+    // result
+    if (!onboardUi.resultCardId) finishOnboardPickCard();
+    const def = Cards.cardById(onboardUi.resultCardId);
+    const bodyL = ONBOARD_BODY.find(b => b.id === onboardUi.body)?.label || "—";
+    const prefL = onboardUi.prefs.map(id => ONBOARD_PREFS.find(p => p.id === id)?.label || id).join("、");
+    panel.innerHTML = `
+      <h2>你的底色話術</h2>
+      <p class="lead">依測驗與喜好配給——永久、不碎。之後仍可在商店買更多話術。</p>
+      <div class="onboard-result-card">
+        <div class="tag">STARTER · SPEECH</div>
+        <h3>${esc(def?.name || onboardUi.resultCardId)}</h3>
+        <p>${esc(def?.sceneStart || "")}</p>
+      </div>
+      <div class="onboard-summary">
+        ${esc(onboardUi.name || "主人")} · ${esc(bodyL)} · ${esc(prefL || "—")}
+      </div>`;
+    nav.innerHTML = `
+      <button type="button" class="ob-back" id="ob-back">上一步</button>
+      <button type="button" class="ob-finish" id="ob-finish">進入萬事屋</button>`;
+  }
+
+  nav.querySelector("#ob-back")?.addEventListener("click", () => {
+    if (onboardUi.step > 0) {
+      // 從結果退回時清掉已算的卡，讓喜好還能改
+      if (onboardUi.step === m.result) onboardUi.resultCardId = null;
+      onboardUi.step--;
+      renderStarterModal();
+    }
+  });
+  nav.querySelector("#ob-next")?.addEventListener("click", () => {
+    if (!canAdvanceOnboard(onboardUi.step)) return;
+    if (onboardUi.step === m.name) {
+      onboardUi.name = (onboardUi.name || "").trim().slice(0, 12);
+    }
+    if (onboardUi.step === m.prefs) {
+      finishOnboardPickCard();
+    }
+    onboardUi.step++;
+    renderStarterModal();
+  });
+  nav.querySelector("#ob-finish")?.addEventListener("click", () => {
+    if (!commitOnboard()) return;
+    onboardUi.started = false;
+    renderAll();
+  });
 }
 
 function girlForSession() {
