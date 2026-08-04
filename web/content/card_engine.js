@@ -425,6 +425,73 @@ export function rollEmotion(def, stage, opts = {}) {
   return delta;
 }
 
+/**
+ * M1 無 AI 時的她反應（1～2 短句）。M4 可改走短 prompt，此函式當 fallback。
+ * 情感仍只由骰子決定；文案不反推數值。
+ */
+const REACT_FAIL = [
+  "她皺眉，身子往後撤了半步。",
+  "「……你在做什麼。」語氣一下子冷掉。",
+  "她沒接住，視線偏開，像在忍什麼。",
+];
+const REACT_BY_BAND = {
+  // delta 帶：hi(>=2) pos(1) zero(0) neg(-1) lo(<=-2)
+  hi: {
+    stranger: ["她愣了一下，耳尖有點紅，卻沒說什麼。", "「……哼。」嘴上嫌，人沒走開。"],
+    friend: ["她輕笑一聲，肩膀鬆了一點。", "「你啊……」語氣比剛才軟。"],
+    girlfriend: ["她靠過來一點，聲音悶悶的：「嗯。」", "她盯著你看了兩秒，眼裡有笑。"],
+    wife: ["她理所當然地應了一聲，像這種事早就習慣。", "「知道了。」指尖卻在你袖口多停了一下。"],
+  },
+  pos: {
+    stranger: ["她沒拒絕，只是安靜地聽著。", "「……哦。」算是有反應。"],
+    friend: ["她點點頭：「還行。」", "她回了半句，沒把話題掐死。"],
+    girlfriend: ["「嗯，我在聽。」她側過臉。", "她輕輕應了一聲。"],
+    wife: ["她應得很自然：「嗯。」", "她看你一眼，沒有推開。"],
+  },
+  zero: {
+    stranger: ["她沒什麼表情，像在衡量你。", "「……。」沉默了一拍。"],
+    friend: ["她聳聳肩，沒特別表態。", "氣氛平平地過了一拍。"],
+    girlfriend: ["她眨眨眼，沒接也沒拒。", "「怎樣？」等你下一句。"],
+    wife: ["她習以為常地等你下文。", "「還有事嗎？」語氣平常。"],
+  },
+  neg: {
+    stranger: ["她眼神一凜：「別太過分。」", "她往後退了半步，距離拉開。"],
+    friend: ["「你認真的？」她皺眉。", "她語氣沉了一點。"],
+    girlfriend: ["她咬了下唇，顯然不太開心。", "「……你這樣我會生氣。」"],
+    wife: ["她深深看你一眼，沒好氣。", "「過了。」兩個字。"],
+  },
+  lo: {
+    stranger: ["她直接轉開臉：「夠了。」", "空氣一下子僵住，她不再看你。"],
+    friend: ["「夠了。」她站得更遠。", "她明顯被惹惱了。"],
+    girlfriend: ["她眼眶有點熱，卻把話吞回去。", "「……你太過分了。」"],
+    wife: ["她沉默很久，只丟下一句：「我們等下再談。」", "她背過身，肩膀緊繃。"],
+  },
+};
+
+function pickLine(arr) {
+  if (!arr?.length) return "……";
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+export function girlReactionLine({ stage = "stranger", emotionDelta = 0, openFail = false } = {}) {
+  if (openFail) return pickLine(REACT_FAIL);
+  let band = "zero";
+  if (emotionDelta >= 2) band = "hi";
+  else if (emotionDelta >= 1) band = "pos";
+  else if (emotionDelta <= -2) band = "lo";
+  else if (emotionDelta <= -1) band = "neg";
+  const byStage = REACT_BY_BAND[band] || REACT_BY_BAND.zero;
+  return pickLine(byStage[stage] || byStage.stranger || REACT_BY_BAND.zero.stranger);
+}
+
+export function emotionFeelLabel(delta) {
+  if (delta >= 2) return "明顯軟了";
+  if (delta === 1) return "軟了一點";
+  if (delta === 0) return "沒什麼波瀾";
+  if (delta === -1) return "冷了一點";
+  return "明顯僵了";
+}
+
 // ── Open chain ─────────────────────────────────────────────
 
 export function rollForceOpen(/* stage, def */) {
@@ -652,6 +719,8 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
     cardId: def.id,
     name: def.name,
     sceneStart: def.sceneStart || def.name,
+    girlLine: "",
+    feelLabel: "",
     open: null,
     emotionDelta: 0,
     shattered: false,
@@ -659,6 +728,21 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
     forceAnotherRound: false,
     effects: [],
     playsLeft: 0,
+    roundEnded: false,
+  };
+
+  const finishPlay = (openFail = false) => {
+    result.girlLine = girlReactionLine({
+      stage,
+      emotionDelta: result.emotionDelta,
+      openFail,
+    });
+    result.feelLabel = emotionFeelLabel(result.emotionDelta);
+    result.playsLeft = playsLeft(sess);
+    result.chain = sess.chain ? { ...sess.chain } : null;
+    // 次數用完：標 roundEnded，但等玩家看完反應再進 round_end
+    if (result.playsLeft <= 0) result.roundEnded = true;
+    else maybeRoundEnd(sess);
   };
 
   // 開門
@@ -677,10 +761,8 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
       }
       sess.playedThisRound.push(def.id);
       drawToHand(sess);
-      result.playsLeft = playsLeft(sess);
-      result.chain = sess.chain;
       sess.log.push({ t: Date.now(), kind: "open_fail", cardId: def.id, delta: result.emotionDelta });
-      maybeRoundEnd(sess);
+      finishPlay(true);
       return result;
     }
 
@@ -697,10 +779,8 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
     }
     sess.playedThisRound.push(def.id);
     drawToHand(sess);
-    result.playsLeft = playsLeft(sess);
-    result.chain = sess.chain ? { ...sess.chain } : null;
     sess.log.push({ t: Date.now(), kind: "open_ok", cardId: def.id, chain: result.chain, delta: result.emotionDelta });
-    maybeRoundEnd(sess);
+    finishPlay(false);
     return result;
   }
 
@@ -714,10 +794,8 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
   }
   sess.playedThisRound.push(def.id);
   drawToHand(sess);
-  result.playsLeft = playsLeft(sess);
-  result.chain = sess.chain ? { ...sess.chain } : null;
   sess.log.push({ t: Date.now(), kind: "play", cardId: def.id, delta: result.emotionDelta });
-  maybeRoundEnd(sess);
+  finishPlay(false);
   return result;
 }
 

@@ -3776,7 +3776,9 @@ let cardUi = {
   invSelected: null,   // cardId 詳情
   handIdx: 0,          // round_play 手牌輪播索引
   injectIdx: 0,        // round_setup 牌庫輪播索引
-  stayOffer: false,    // 輪末留下後：選繼續或先離開
+  awaitReaction: false, // 出卡後必看她的反應，按「繼續」才往下
+  // 輪末判定結果面板：null | "stay" | "leave"（不要跳回「靠近／離開」）
+  endPanel: null,
 };
 
 function renderCardShopPanel() {
@@ -4375,6 +4377,8 @@ function openKanbanTable(girlId) {
   cardUi.lastPlay = null;
   cardUi.handIdx = 0;
   cardUi.injectIdx = 0;
+  cardUi.awaitReaction = false;
+  cardUi.endPanel = null;
   document.body.classList.add("card-mode");
   log(`與 ${s.name} 開桌（本體卡 ${girlCards.length}）`);
   scheduleSave(); renderAll();
@@ -4406,7 +4410,8 @@ function dismissCardSession() {
   Cards.closeSession(state, "player_dismiss");
   cardUi.injectPick = [];
   cardUi.lastPlay = null;
-  cardUi.stayOffer = false;
+  cardUi.awaitReaction = false;
+  cardUi.endPanel = null;
   document.body.classList.remove("card-mode", "has-ct-figure");
   clearCardTableDom();
   toast("先離開了", "");
@@ -4437,11 +4442,105 @@ function commitHandPlay(instanceId, girl, stage) {
   const r = Cards.commitPlay(state, instanceId, { stage, guardHigh: guardActive(girl) });
   if (!r.ok) { toast(r.err, "bad"); return; }
   cardUi.lastPlay = r;
+  cardUi.awaitReaction = true; // 必看她的反應，再按繼續
+  cardUi.endPanel = null;
   applyPlaySideEffects(girl, r);
-  toast(r.open && !r.open.success ? "她沒接住……" : r.name, r.open && !r.open.success ? "bad" : "good");
   const n = state.cardSession?.hand?.length || 0;
   if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
   scheduleSave(); renderCardTable();
+}
+
+/** 看完出卡反應 → 若本輪次數用完則進輪末判定；否則回手牌 */
+function ackPlayReaction() {
+  const sess = state.cardSession;
+  const girl = girlForSession();
+  const stage = girl?.stage || "stranger";
+  const last = cardUi.lastPlay;
+  cardUi.awaitReaction = false;
+  if (!sess) {
+    renderCardTable();
+    return;
+  }
+  // 次數用完（或引擎已標 roundEnded）→ 進輪末，只做「能否再來一輪」
+  if (last?.roundEnded || sess.phase === "round_end" || Cards.playsLeft(sess) <= 0) {
+    if (sess.phase === "round_play") {
+      const er = Cards.playerEndRound(state);
+      if (!er.ok) { toast(er.err, "bad"); renderCardTable(); return; }
+    }
+    resolveRoundEndToPanel(girl, stage);
+    return;
+  }
+  scheduleSave();
+  renderCardTable();
+}
+
+/**
+ * 輪末判定：留下 → 下一輪組牌；不留下 → 結束這次靠近（不是「靠近／離開」雙按鈕）
+ */
+function resolveRoundEndToPanel(girl, stage) {
+  const gname = girl?.name || "她";
+  const r = Cards.resolveRoundEnd(state, { stage });
+  if (!r.ok) {
+    toast(r.err || "結算失敗", "bad");
+    scheduleSave();
+    renderCardTable();
+    return;
+  }
+  cardUi.injectPick = [];
+  cardUi.handIdx = 0;
+  cardUi.lastPlay = null;
+  if (r.stay) {
+    cardUi.endPanel = "stay";
+    toast(`${gname} 還願意再來一輪`, "good");
+  } else {
+    cardUi.endPanel = "leave";
+    toast(r.closed ? "這次到這了" : `${gname} 不想再繼續了`, "");
+  }
+  scheduleSave();
+  renderCardTable();
+}
+
+/** 輪末面板：再來一輪 → 組牌；結束 → 關牌桌（看板仍可在任） */
+function finishEndPanel(choice) {
+  const sess = state.cardSession;
+  const girl = girlForSession();
+  const gname = girl?.name || "她";
+  if (choice === "continue" && cardUi.endPanel === "stay") {
+    cardUi.endPanel = null;
+    cardUi.injectPick = [];
+    cardUi.injectIdx = 0;
+    // resolveRoundEnd 留下時已 phase=round_setup
+    if (sess && sess.phase !== "round_setup") {
+      const r = Cards.enterRoundSetup(state);
+      if (!r.ok) toast(r.err, "bad");
+    }
+    scheduleSave();
+    renderCardTable();
+    return;
+  }
+  // 結束這次
+  cardUi.endPanel = null;
+  cardUi.awaitReaction = false;
+  cardUi.lastPlay = null;
+  cardUi.injectPick = [];
+  if (sess?.mode === "date" || !sess || sess.phase === "closed") {
+    if (sess && sess.phase !== "closed") Cards.closeSession(state, "player_leave");
+    document.body.classList.remove("card-mode", "has-ct-figure");
+    clearCardTableDom();
+    toast("先到這吧", "");
+    scheduleSave();
+    renderAll();
+    return;
+  }
+  // 看板：session 已在 idle_present，關 UI；之後從主畫面再「靠近」
+  if (sess.phase !== "idle_present" && sess.phase !== "closed") {
+    sess.phase = "idle_present";
+  }
+  document.body.classList.remove("card-mode", "has-ct-figure");
+  clearCardTableDom();
+  toast(`${gname} 還在店頭，之後還能再靠近`, "");
+  scheduleSave();
+  renderAll();
 }
 
 /** 長按看卡內容（標題卡本身不展開） */
@@ -4489,36 +4588,6 @@ function attachCardPeek(el, def, extraLines = []) {
   el.addEventListener("mouseup", clear);
   el.addEventListener("mouseleave", clear);
   el.addEventListener("contextmenu", e => e.preventDefault());
-}
-
-/** 輪末自動判定：不留下就直接散；留下才問要不要繼續 */
-function autoResolveRoundEnd(girl, stage) {
-  const gname = girl?.name || "她";
-  const r = Cards.resolveRoundEnd(state, { stage });
-  if (!r.ok) {
-    toast(r.err || "結算失敗", "bad");
-    return;
-  }
-  cardUi.injectPick = [];
-  cardUi.lastPlay = null;
-  cardUi.handIdx = 0;
-  if (r.stay) {
-    cardUi.stayOffer = true;
-    toast(`${gname} 還願意再待一會兒`, "good");
-  } else if (r.closed) {
-    cardUi.stayOffer = false;
-    toast("先到這吧", "");
-    document.body.classList.remove("card-mode", "has-ct-figure");
-    clearCardTableDom();
-  } else {
-    cardUi.stayOffer = false;
-    toast(`${gname} 先抽身了（人還在店頭）`, "");
-  }
-  scheduleSave();
-  renderCardTable();
-  if (!Cards.sessionActive(state) || !document.body.classList.contains("card-mode")) {
-    renderAll();
-  }
 }
 
 /** 牌桌立繪：半身優先，沒圖用字首 fallback */
@@ -4602,33 +4671,86 @@ function renderCardTable() {
   if (!sess.pending && !cardUi._keepPeek) setCtConfirm("");
   cardUi._keepPeek = false;
 
-  // ── 輪末：自動判定，不顯示「看她怎麼想」────────────────
-  if (sess.phase === "round_end") {
-    setCtVn({ name: gname, text: "……", meta: "" });
-    setCtHand(`<div class="dim small ct-empty">她想了想……</div>`);
-    // 下一幀結算，避免同一 render 遞迴過深
-    setTimeout(() => autoResolveRoundEnd(girl, stage), 0);
+  // ── 出卡反應（必看）：你的行動 → 她的回應 → 繼續 ────────
+  if (cardUi.awaitReaction && cardUi.lastPlay) {
+    const last = cardUi.lastPlay;
+    const openNote = last.open && !last.open.success
+      ? "沒接住"
+      : last.open?.success
+        ? "門開了"
+        : "";
+    const feel = last.feelLabel || Cards.emotionFeelLabel?.(last.emotionDelta) || "";
+    const deltaTxt = `情感 ${last.emotionDelta >= 0 ? "+" : ""}${last.emotionDelta}${feel ? ` · ${feel}` : ""}`;
+    const more = last.roundEnded
+      ? "這是本輪最後一次——繼續後判定她願不願意再來一輪"
+      : `之後還能應付 ${last.playsLeft ?? "?"} 次`;
+    setCtVn({
+      name: gname,
+      text: last.girlLine || "……",
+      meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""} · ${esc(more)}`,
+    });
+    setCtHand(`
+      <div class="ct-react-beat">
+        <div class="dim small ct-react-you">你：${esc(last.sceneStart || last.name || "……")}</div>
+        <div class="detail-actions card-actions">
+          <button type="button" class="cyan" id="ct-ack-react">${last.roundEnded ? "繼續（輪末判定）" : "繼續"}</button>
+        </div>
+      </div>`);
+    $("#ct-ack-react").onclick = () => ackPlayReaction();
     return;
   }
 
-  // ── 陪伴 ────────────────────────────────────────────────
-  if (sess.phase === "idle_present") {
-    cardUi.stayOffer = false;
+  // ── 輪末結果面板：只問「能否再來一輪」，不跳回靠近／離開 ──
+  if (cardUi.endPanel === "stay" || cardUi.endPanel === "leave") {
+    const stay = cardUi.endPanel === "stay";
     setCtVn({
       name: gname,
-      text: `${gname} 在店頭陪著你。可以只待著，或再靠近一點。`,
+      text: stay
+        ? `這輪結束了。${gname} 還願意再來一輪。`
+        : `這輪結束了。${gname} 不想再繼續了。`,
+      meta: stay
+        ? "再來一輪會重新組牌、重新計出手次數"
+        : (sess.mode === "date" ? "約會到此散了" : "人還在店頭；之後可從主畫面再靠近"),
+    });
+    setCtHand(`
+      <div class="detail-actions card-actions">
+        ${stay
+          ? `<button type="button" class="cyan" id="ct-end-continue">再來一輪</button>
+             <button type="button" id="ct-end-stop">先到這</button>`
+          : `<button type="button" class="cyan" id="ct-end-stop">結束</button>`}
+      </div>`);
+    $("#ct-end-continue")?.addEventListener("click", () => finishEndPanel("continue"));
+    $("#ct-end-stop")?.addEventListener("click", () => finishEndPanel("stop"));
+    return;
+  }
+
+  // ── 輪末：若沒反應佇列、直接進來 → 做判定進面板 ────────
+  if (sess.phase === "round_end") {
+    setCtVn({ name: gname, text: "……", meta: "這輪結束，看她還願不願意再來" });
+    setCtHand(`<div class="dim small ct-empty">判定中……</div>`);
+    setTimeout(() => resolveRoundEndToPanel(girl, stage), 0);
+    return;
+  }
+
+  // ── 陪伴（剛開桌／尚未開戰）────────────────────────────
+  if (sess.phase === "idle_present") {
+    cardUi.endPanel = null;
+    setCtVn({
+      name: gname,
+      text: `${gname} 在店頭陪著你。可以只待著，或再靠近一點開始互動。`,
       meta: `${esc(stageLabel(stage))} · 她願意應付的次數由關係決定`,
     });
     setCtHand(`
       <div class="detail-actions card-actions">
-        <button type="button" class="cyan" id="ct-start-setup">靠近她</button>
+        <button type="button" class="cyan" id="ct-start-setup">開始互動</button>
         <button type="button" id="ct-dismiss">先離開</button>
       </div>`);
     $("#ct-start-setup").onclick = () => {
       const r = Cards.enterRoundSetup(state);
       if (!r.ok) { toast(r.err, "bad"); return; }
       cardUi.injectPick = [];
-      cardUi.stayOffer = false;
+      cardUi.endPanel = null;
+      cardUi.awaitReaction = false;
       scheduleSave(); renderCardTable();
     };
     $("#ct-dismiss").onclick = () => dismissCardSession();
@@ -4637,40 +4759,6 @@ function renderCardTable() {
 
   // ── 準備：押入（精簡標題卡）────────────────────────────
   if (sess.phase === "round_setup") {
-    // 輪末留下後：先選繼續或先離開（不寫「下一盤」）
-    if (cardUi.stayOffer) {
-      setCtVn({
-        name: gname,
-        text: `${gname} 還願意再待一會兒。你要繼續靠近，還是先到這？`,
-        meta: "",
-      });
-      setCtHand(`
-        <div class="detail-actions card-actions">
-          <button type="button" class="cyan" id="ct-stay-yes">再陪一會兒</button>
-          <button type="button" id="ct-stay-no">先到這</button>
-        </div>`);
-      $("#ct-stay-yes").onclick = () => {
-        cardUi.stayOffer = false;
-        cardUi.injectPick = [];
-        renderCardTable();
-      };
-      $("#ct-stay-no").onclick = () => {
-        cardUi.stayOffer = false;
-        if (sess.mode === "date") {
-          Cards.closeSession(state, "player_leave");
-          document.body.classList.remove("card-mode", "has-ct-figure");
-          clearCardTableDom();
-          toast("先到這吧", "");
-          scheduleSave(); renderAll();
-        } else {
-          sess.phase = "idle_present";
-          toast(`${gname} 先歇一下（人還在店頭）`, "");
-          scheduleSave(); renderCardTable();
-        }
-      };
-      return;
-    }
-
     const maxI = Cards.maxInject(state);
     const inv = Cards.inventoryList(state);
     const pickedCount = Object.create(null);
@@ -4755,7 +4843,8 @@ function renderCardTable() {
       if (!sr.ok) { toast(sr.err, "bad"); return; }
       cardUi.lastPlay = null;
       cardUi.handIdx = 0;
-      cardUi.stayOffer = false;
+      cardUi.awaitReaction = false;
+      cardUi.endPanel = null;
       toast(`她今夜大概還肯應付 ${sr.nLeft} 次`, "good");
       scheduleSave(); renderCardTable();
     };
@@ -4763,7 +4852,8 @@ function renderCardTable() {
       sess.phase = "idle_present";
       cardUi.injectPick = [];
       cardUi.injectIdx = 0;
-      cardUi.stayOffer = false;
+      cardUi.endPanel = null;
+      cardUi.awaitReaction = false;
       scheduleSave(); renderCardTable();
     };
     return;
@@ -4776,29 +4866,12 @@ function renderCardTable() {
     const chainTxt = chain
       ? `節奏正熱（${chain.attr}）`
       : "";
-    const last = cardUi.lastPlay;
     const hand = sess.hand || [];
 
-    let vnText;
-    let vnName = gname;
-    if (last) {
-      const openNote = last.open && !last.open.success
-        ? "（沒接住）"
-        : last.open?.success
-          ? "（門開了）"
-          : "";
-      vnName = last.name + (last.shattered ? " ·消了" : "") + openNote;
-      vnText = last.sceneStart || `「${last.name}」`;
-    } else {
-      vnText = "左右滑挑選，上滑用出去。長按看內容。";
-    }
-    const emo = last
-      ? `情感 ${last.emotionDelta >= 0 ? "+" : ""}${last.emotionDelta}${last.forceAnotherRound ? " ·她這回走不了" : ""} · `
-      : "";
     setCtVn({
-      name: vnName,
-      text: vnText,
-      meta: `${emo}還肯應付 <b>${left}</b> 次${chainTxt ? ` · <span class="chain-hint">${esc(chainTxt)}</span>` : ""}`,
+      name: gname,
+      text: "左右滑挑選，上滑用出去。長按看內容。",
+      meta: `還肯應付 <b>${left}</b> 次${chainTxt ? ` · <span class="chain-hint">${esc(chainTxt)}</span>` : ""}`,
     });
 
     if (sess.pending) {
@@ -4827,7 +4900,7 @@ function renderCardTable() {
       setCtHand(`
         <div class="dim small ct-empty">手上沒東西了</div>
         <div class="detail-actions card-actions">
-          <button type="button" id="ct-end-round">先到這</button>
+          <button type="button" id="ct-end-round">結束本輪</button>
         </div>`);
     } else {
       cardUi.handIdx = Math.min(Math.max(0, cardUi.handIdx || 0), hand.length - 1);
@@ -4848,7 +4921,7 @@ function renderCardTable() {
           `<div class="dot${i === cardUi.handIdx ? " on" : ""}"></div>`).join("")}</div>
         <div class="ct-card-nav dim small">${cardUi.handIdx + 1}/${hand.length} · 上滑使用 · 長按內容</div>
         <div class="detail-actions card-actions">
-          <button type="button" id="ct-end-round">先到這</button>
+          <button type="button" id="ct-end-round">結束本輪</button>
         </div>`);
 
       const playCard = $("#ct-play-card");
@@ -4864,8 +4937,11 @@ function renderCardTable() {
         const r = Cards.requestPlay(state, inst.instanceId, { stage, guardHigh: guardActive(girl) });
         if (!r.ok) { toast(r.err, "bad"); return; }
         if (r.needConfirm) { renderCardTable(); return; }
+        // requestPlay 對非碎卡會直接 commitPlay；補上反應節拍
         flyCard(playCard, "up", () => {
           cardUi.lastPlay = r;
+          cardUi.awaitReaction = true;
+          cardUi.endPanel = null;
           applyPlaySideEffects(girl, r);
           const n = state.cardSession?.hand?.length || 0;
           if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
@@ -4883,8 +4959,10 @@ function renderCardTable() {
     }
 
     $("#ct-end-round").onclick = () => {
+      // 主動結束本輪 → 輪末判定（能否再來一輪）
       Cards.playerEndRound(state);
-      scheduleSave(); renderCardTable();
+      cardUi.awaitReaction = false;
+      resolveRoundEndToPanel(girl, stage);
     };
     return;
   }
