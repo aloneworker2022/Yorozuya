@@ -399,7 +399,13 @@ body.chat-mode #kanban-girl svg {
   color: var(--cyan); font-size: 1.1em; letter-spacing: .2em;
   animation: float 3s ease-in-out infinite;
 }
-#kanban-girl { position: relative; cursor: pointer; animation: float 5s ease-in-out infinite; text-align: center; }
+/* 看板娘立繪：貼底站、靜止（不要上下晃）；召喚書仍走 #kanban 置中 */
+#kanban-girl {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  cursor: pointer; animation: none; text-align: center;
+  width: 100%; max-height: 100vh;
+  display: flex; align-items: flex-end; justify-content: center;
+}
 #kanban-girl svg { filter: drop-shadow(0 0 14px var(--rc, #9aa0b5)); }
 /* 多看板娘:並排站台,各自可點 */
 #kanban-girl.multi { display: flex; align-items: flex-end; justify-content: center; gap: 3vw; }
@@ -413,7 +419,8 @@ body.chat-mode #kanban-girl svg {
 /* 休息中(未召喚為看板娘):暗淡、去光暈,提示可再召喚 */
 #kanban-girl.resting { opacity: .5; }
 #kanban-girl.resting svg { filter: grayscale(.6) brightness(.8) drop-shadow(0 0 8px rgba(0,0,0,.5)); }
-body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
+body.asleep #kanban-girl { animation: none; opacity: .7; }
+body.asleep #book { animation: none; opacity: .7; }
 
 /* ===== z3 HUD / 分頁列 ===== */
 #hud {
@@ -770,15 +777,16 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 .summon-result .portrait-img { max-height: 360px; }
 /* 名冊縮圖:固定小方格,完整顯示不裁切 */
 .scard .thumb .portrait-img { width: 54px; height: 54px; object-fit: contain; border-radius: 6px; filter: none; }
-/* 看板娘站位:去背全身當背景板,幾乎撐滿畫面高度(人多時自動縮小)。
+/* 看板娘站位:去背全身當背景板——單人更大更近(貼底 + 近滿高)。
    用 vh 而不是固定 px:手機直式、平板、桌機都要能站好。
    width:auto 保持原比例,不要 132px 見方那種硬塞——那是像素 sprite 時代的規格。 */
 #kanban-girl .kgirl .portrait-img {
-  height: min(78vh, 1000px); width: auto;
+  height: min(96vh, 1400px); width: auto;
   max-height: none;        /* 蓋掉 .portrait-img 的 300px —— 那是像素 sprite 時代的規格 */
-  max-width: 96vw;
+  max-width: 100vw;
   object-fit: contain; object-position: bottom center;
   border-radius: 0;
+  display: block; margin: 0 auto;
 }
 /* 名字改成疊在立繪下緣:接在圖下面的話,整塊會高過畫面被裁掉頭 */
 #kanban-girl .kgirl:has(.portrait-img) { position: relative; }
@@ -786,10 +794,10 @@ body.card-center .q-body { justify-content: center; text-align: center; }
   position: absolute; left: 0; right: 0; bottom: .2em; margin: 0;
   text-shadow: 0 0 8px #000, 0 0 3px #000;
 }
-#kanban-girl.multi .kgirl .portrait-img { height: min(58vh, 700px); max-width: 44vw; }
+#kanban-girl.multi .kgirl .portrait-img { height: min(72vh, 900px); max-width: 48vw; }
 /* 三人以上再讓一步,免得互相擠出畫面 */
 #kanban-girl.multi .kgirl:nth-child(n+3) .portrait-img,
-#kanban-girl.multi:has(.kgirl:nth-child(3)) .kgirl .portrait-img { height: min(46vh, 560px); max-width: 30vw; }
+#kanban-girl.multi:has(.kgirl:nth-child(3)) .kgirl .portrait-img { height: min(58vh, 700px); max-width: 32vw; }
 #kanban-girl .kgirl.taken .portrait-img { filter: grayscale(.7) brightness(.75); }
 /* 召喚生圖中:剪影微微呼吸 */
 .summon-brewing { animation: crest-brew 2.2s ease-in-out infinite; }
