@@ -906,9 +906,30 @@ export function closeSessionIfGirl(state, girlId) {
   if (state.cardSession?.girlId === girlId) closeSession(state, "girl_left");
 }
 
-// ── Bubble (M2 也可用；M0/M1 先 export) ───────────────────
+// ── Bubble（M2：委託三節點 15% 碎嘴）──────────────────────
+// 鎖死：機率固定 bubble_chance（預設 0.15），禁止改成成長公式。
+// 情感：每次中氣泡 +0/+1 各半；每隻每日來自氣泡的情感上限 +2（仍可顯示台詞）。
 
-export function rollBubble(state, eventKey, { questText = "", asleep = false, girlIds = [] } = {}) {
+export const BUBBLE_AFF_DAY_CAP = 2;
+
+function ensureBubbleAff(state, dayKey) {
+  state.bubbleAff ??= { day: null, byGirl: {} };
+  if (dayKey != null && state.bubbleAff.day !== dayKey) {
+    state.bubbleAff = { day: dayKey, byGirl: {} };
+  }
+  return state.bubbleAff;
+}
+
+/**
+ * @param {string} eventKey  discover | accept | complete（其他 key 不擲）
+ * @returns {{ girlId, text, emotionDelta }[]}
+ */
+export function rollBubble(state, eventKey, {
+  questText = "",
+  asleep = false,
+  girlIds = [],
+  dayKey = null,
+} = {}) {
   const chance = d("bubble_chance", 0.15);
   if (asleep) return [];
   if (state.cardSession?.phase === "round_play") return [];
@@ -920,12 +941,22 @@ export function rollBubble(state, eventKey, { questText = "", asleep = false, gi
   const poolKey = poolMap[eventKey];
   if (!poolKey) return [];
   const lines = bubbleCanned()[poolKey] || [];
+  const aff = ensureBubbleAff(state, dayKey);
   const out = [];
   for (const gid of girlIds) {
     if (Math.random() >= chance) continue;
     let text = lines.length ? lines[Math.floor(Math.random() * lines.length)] : "……";
     text = text.replace(/\{quest\}/g, questText || "那件事");
-    out.push({ girlId: gid, text });
+    let emotionDelta = 0;
+    // 台詞不因 cap 封鎖；只有情感受日 cap
+    if (dayKey != null) {
+      const used = aff.byGirl[gid] || 0;
+      if (used < BUBBLE_AFF_DAY_CAP && Math.random() < 0.5) {
+        emotionDelta = 1;
+        aff.byGirl[gid] = used + 1;
+      }
+    }
+    out.push({ girlId: gid, text, emotionDelta });
   }
   return out;
 }

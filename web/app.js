@@ -77,11 +77,10 @@ function crestChance(s) {
   return Math.min(0.9, (CREST_P[s.rarity] ?? CREST_P.N) + expLv("crest") * 0.05);
 }
 
-// 委託操作觸發的淫紋判定:每位在場看板娘各擲一次。回傳是否有人亮了紋。
-// 被召喚走的不判(她不在你身邊);睡眠時段不判(她回夢境了);
-// 已經有紋在等你、或這場還沒聊完的那位不重複判(同時只留一盞燈、一場對話)。
-// 中了 = 一場全新的對話:在訊息串上劃一道場景線,她從新話題開口,不接上一場的尾巴。
+// 委託操作觸發的淫紋判定（舊路徑；牌制開啟時改走 questBubbleRoll）。
+// 被召喚走的不判;睡眠時段不判;已有紋／進行中對話不重複判。
 function crestRoll() {
+  if (cardSystemOn()) return false; // M2：養成改氣泡，不再亮淫紋進聊天
   if (isAsleep()) return false;
   let changed = false;
   for (const s of kanbanSuccubi()) {
@@ -106,6 +105,36 @@ function crestRoll() {
   return changed;
 }
 
+/**
+ * M2 氣泡：僅 discover / accept / complete 三節點、固定 15%、每位在場看板娘各擲一次。
+ * 不進全螢幕聊天、不下手牌；情感 +0/+1（日 cap +2／人）。
+ */
+function questBubbleRoll(eventKey, questText = "") {
+  if (!cardSystemOn()) return false;
+  const girlIds = kanbanSuccubi()
+    .filter(s => !s.ntr && !s.summoner?.taken)
+    .map(s => s.id);
+  if (!girlIds.length) return false;
+  const hits = Cards.rollBubble(state, eventKey, {
+    questText: questText || "",
+    asleep: isAsleep(),
+    girlIds,
+    dayKey: dayNum(),
+  });
+  if (!hits.length) return false;
+  const queue = [];
+  for (const h of hits) {
+    const s = state.succubi.find(x => x.id === h.girlId);
+    if (!s) continue;
+    if (h.emotionDelta) applyAffection(s, h.emotionDelta);
+    queue.push({ name: s.name, text: h.text, emotionDelta: h.emotionDelta || 0 });
+  }
+  if (!queue.length) return false;
+  enqueueKanbanBubbles(queue);
+  dirty = true;
+  return true;
+}
+
 // 擱置太久的那場對話就當它結束了(紋熄滅、下次委託操作再開新的一場),
 // 免得一場沒聊完的舊對話把她的淫紋永遠佔住。
 const CHAT_SESS_TTL = 30 * 60 * 1000;
@@ -124,6 +153,7 @@ function expireChatSess() {
 // 另加卡住保險:她「正在輸入」超過 3 分鐘還沒生出來,一律補罐頭——不讓 … 永遠轉下去。
 const TYPING_STUCK_MS = 3 * 60 * 1000;
 function crestFallback() {
+  if (cardSystemOn()) return false; // M2：不再補淫紋開場白
   const dead = !state.settings.model || chatGenFail.count >= 3;
   let changed = false;
   for (const s of state.succubi) {
@@ -368,6 +398,7 @@ function defaultState() {
     deckPresets: [],     // [{ id, name, cardIds }]
     cardShop: null,      // { nextRefreshAt, slots:[{cardId,price,sold,isSale,salePrice?}] }
     cardSession: null,   // 當前牌桌 session（見 card_engine）
+    bubbleAff: { day: null, byGirl: {} }, // M2 氣泡情感日 cap { day, byGirl: { id: used } }
     playerProfile: {
       name: "", body: "", look: "", habit: "",
       prefs: [], quiz: {},
@@ -483,6 +514,7 @@ function initState(j, offline) {
   state.deckPresets ??= [];
   state.cardShop ??= null;
   state.cardSession ??= null;
+  state.bubbleAff ??= { day: null, byGirl: {} }; // M2 氣泡情感日 cap
   state.playerProfile = {
     name: "", body: "", look: "", habit: "",
     prefs: [], quiz: {},
@@ -496,6 +528,16 @@ function initState(j, offline) {
   }
   state.settings.features = { cardSystem: true, ...(state.settings.features || {}) };
   if (Cards.cardsReady()) Cards.ensureStarterFallback(state);
+  // 牌制開啟：清掉舊淫紋燈狀態，避免殘燈卻點不進聊天
+  if (cardSystemOn()) {
+    for (const s of state.succubi) {
+      if (s.wantsTalk || s.chatLine || s.typing) {
+        s.wantsTalk = 0;
+        s.chatLine = null;
+        s.typing = null;
+      }
+    }
+  }
   // 召喚師系統移轉:舊魅魔補發抽取間隔
   for (const s of state.succubi) {
     if (s.summoner === undefined) s.summoner = null;
@@ -757,7 +799,9 @@ function addQuest(text) {
       toast(`發現委託!+${g} 金`, "good");
     } else toast("已加入發現池", "");
   } else toast("已加入發現池", "");
-  crestRoll();   // 發現委託:每位看板娘各擲一次淫紋
+  // M2：發現 → 氣泡 15%；舊路徑仍 crest
+  if (cardSystemOn()) questBubbleRoll("discover", text);
+  else crestRoll();
   scheduleSave(); renderAll();
 }
 
@@ -765,7 +809,8 @@ function accept(id) {
   const q = state.quests.find(q => q.id === id);
   if (!q) return;
   q.lv = 1;
-  crestRoll();   // 承接委託:每位看板娘各擲一次淫紋
+  if (cardSystemOn()) questBubbleRoll("accept", q.text);
+  else crestRoll();
   scheduleSave(); renderAll();
 }
 
@@ -776,7 +821,9 @@ function start(id) {
   q.startedAt = Date.now();
   q.deadline = q.startedAt + QUEST_HOURS * HOUR;
   log(`開始執行「${q.text}」(期限 ${QUEST_HOURS}h)`);
-  crestRoll();   // 開始執行:每位看板娘各擲一次淫紋
+  // 規格鎖死：氣泡只有 discover/accept/complete 三點；「開始執行」不擲
+  // 舊淫紋路徑仍可在開始時亮燈（相容）
+  if (!cardSystemOn()) crestRoll();
   scheduleSave(); renderAll();
 }
 
@@ -785,12 +832,18 @@ function complete(id) {
   if (!q) return;
   const g = rollReward();
   state.gold += g;
+  const qText = q.text;
   state.quests = state.quests.filter(x => x.id !== id);
-  log(`完成「${q.text}」 +${g} 金`);
+  log(`完成「${qText}」 +${g} 金`);
   toast(g >= 19 ? `大豐收!委託完成 +${g} 金!!` : `委託完成!+${g} 金`, "good");
   errandReward(id);   // 有人盯著這件的話,她要的東西做到了
-  kanbanReact("complete");
-  crestRoll();   // 完成委託:每位看板娘各擲一次淫紋
+  if (cardSystemOn()) {
+    // 牌制：完成用 15% 氣泡，不再固定罐頭 + 淫紋進聊天
+    questBubbleRoll("complete", qText);
+  } else {
+    kanbanReact("complete");
+    crestRoll();
+  }
   scheduleSave(); renderAll();
 }
 
@@ -1670,6 +1723,16 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
   if (!s) return;
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
   if (s.ntr) { toast("她不在你身邊……", "bad"); return; }
+  // M2：牌制開啟時，日常養成聊天廢除 → 導向牌桌；約會仍走舊路徑（M3 再改）
+  if (cardSystemOn() && type === "chat") {
+    if (isKanban(id)) {
+      toast("想說話就靠近她（牌桌）", "");
+      openKanbanTable(id);
+    } else {
+      toast("先召喚她為看板娘，再靠近互動", "bad");
+    }
+    return;
+  }
   const today = dayNum();
   if (type === "date") {
     if (!prepaid) {
@@ -3059,12 +3122,50 @@ function expireKanban() {
 }
 
 let bubbleTimer = null;
+let bubbleQueue = [];
+let bubbleShowing = false;
+
 function kanbanSay(text) {
+  // 單句：走佇列，避免蓋掉正在播的氣泡
+  enqueueKanbanBubbles([{ name: "", text }]);
+}
+
+/** 多句氣泡依序播（M2 委託碎嘴；不進全螢幕、不等回覆） */
+function enqueueKanbanBubbles(items) {
+  if (!items?.length) return;
+  for (const it of items) {
+    if (!it?.text) continue;
+    bubbleQueue.push({ name: it.name || "", text: it.text, emotionDelta: it.emotionDelta || 0 });
+  }
+  pumpKanbanBubbles();
+}
+
+function pumpKanbanBubbles() {
+  if (bubbleShowing) return;
+  // 打牌全螢幕中不插播（規格：round_play 不擲；此處再擋 UI）
+  if (document.body.classList.contains("card-mode")) {
+    // 桌關了再播；暫不丟棄佇列
+    return;
+  }
+  const next = bubbleQueue.shift();
+  if (!next) return;
   const b = document.getElementById("kanban-bubble");
-  b.textContent = text;
+  if (!b) return;
+  bubbleShowing = true;
+  const nameHtml = next.name
+    ? `<span class="kb-name">${esc(next.name)}</span>`
+    : "";
+  const affHtml = next.emotionDelta
+    ? `<span class="kb-aff">♥+${next.emotionDelta}</span>`
+    : "";
+  b.innerHTML = `${nameHtml}<span class="kb-text">${esc(next.text)}</span>${affHtml}`;
   b.classList.remove("hidden");
   clearTimeout(bubbleTimer);
-  bubbleTimer = setTimeout(() => b.classList.add("hidden"), 2800);
+  bubbleTimer = setTimeout(() => {
+    b.classList.add("hidden");
+    bubbleShowing = false;
+    if (bubbleQueue.length) setTimeout(pumpKanbanBubbles, 180);
+  }, 3200);
 }
 
 function kanbanReact(type) {
@@ -4394,6 +4495,7 @@ function leaveCardTableUi() {
   document.body.classList.remove("card-mode", "has-ct-figure");
   clearCardTableDom();
   renderAll();
+  pumpKanbanBubbles(); // 牌桌擋過的氣泡佇列
 }
 
 function dismissCardSession() {
@@ -4401,10 +4503,11 @@ function dismissCardSession() {
     document.body.classList.remove("card-mode", "has-ct-figure");
     clearCardTableDom();
     renderAll();
+    pumpKanbanBubbles();
     return;
   }
   if (state.cardSession.phase === "round_play") {
-    toast("正互動中——先按「先到這」", "bad");
+    toast("正互動中——先按「結束本輪」", "bad");
     return;
   }
   Cards.closeSession(state, "player_dismiss");
@@ -4416,6 +4519,7 @@ function dismissCardSession() {
   clearCardTableDom();
   toast("先離開了", "");
   scheduleSave(); renderAll();
+  pumpKanbanBubbles();
 }
 
 function applyPlaySideEffects(girl, result) {
@@ -4530,6 +4634,7 @@ function finishEndPanel(choice) {
     toast("先到這吧", "");
     scheduleSave();
     renderAll();
+    pumpKanbanBubbles();
     return;
   }
   // 看板：session 已在 idle_present，關 UI；之後從主畫面再「靠近」
@@ -4541,6 +4646,7 @@ function finishEndPanel(choice) {
   toast(`${gname} 還在店頭，之後還能再靠近`, "");
   scheduleSave();
   renderAll();
+  pumpKanbanBubbles();
 }
 
 /** 長按看卡內容（標題卡本身不展開） */
@@ -5222,7 +5328,7 @@ function renderDetail(s, root) {
       </div>
       ${dateChooser && !s.ntr && !(cardSystemOn() && isKanban(s.id)) ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
       ${!s.ntr && !cardSystemOn() ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b></div>` : ""}
-      ${!s.ntr && cardSystemOn() ? `<div class="aff-line dim small">想更進一步就靠近她；委託時可能碎嘴（氣泡後續）</div>` : ""}
+      ${!s.ntr && cardSystemOn() ? `<div class="aff-line dim small">想更進一步就靠近她；發現／承接／完成委託時她有 15% 機率碎嘴</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
         ${SAC_RITUAL ? `<div class="aff-line dim small">${sacScriptReady(s)
@@ -5671,9 +5777,21 @@ window.DBG = {
     renderAll();
     return {
       changed: !!changed,
+      cardSystem: cardSystemOn(),
       girls: kanbanSuccubi().map(s => ({
         name: s.name, chance: crestChance(s), wantsTalk: !!s.wantsTalk, line: s.chatLine?.text || null,
       })),
+    };
+  },
+  // 測試 M2 氣泡: eventKey = discover|accept|complete
+  bubble: (eventKey = "complete", questText = "測試委託") => {
+    const hit = questBubbleRoll(eventKey, questText);
+    scheduleSave(); renderAll();
+    return {
+      hit: !!hit,
+      cardSystem: cardSystemOn(),
+      bubbleAff: state.bubbleAff,
+      queue: bubbleQueue.length,
     };
   },
   // 測試:直接進聊天/約會(prepaid 跳過金幣消耗),與詢問機制
