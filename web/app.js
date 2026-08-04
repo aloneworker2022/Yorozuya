@@ -4554,17 +4554,56 @@ function openKanbanTable(girlId) {
   scheduleSave(); renderAll();
 }
 
+/**
+ * 結束牌桌並解除看板（產品鎖：互動結束／離開牌桌 = 她回後台，不再掛在店頭）。
+ * 約會 mode 只關 session，不動看板。
+ */
+function endCardTableAndReleaseKanban(reason = "card_end") {
+  const sess = state.cardSession;
+  const girlId = sess?.girlId || null;
+  const mode = sess?.mode || "kanban";
+  const s = girlId ? state.succubi.find(x => x.id === girlId) : null;
+  const gname = s?.name || "她";
+
+  if (sess) Cards.closeSession(state, reason);
+  cardUi.injectPick = [];
+  cardUi.lastPlay = null;
+  cardUi.awaitReaction = false;
+  cardUi.endPanel = null;
+  document.body.classList.remove("card-mode", "has-ct-figure");
+  clearCardTableDom();
+
+  if (mode === "kanban" && girlId) {
+    state.kanbans = (state.kanbans || []).filter(k => k.id !== girlId);
+    state.lastKanbanId = girlId; // 休息剪影仍顯示最後這位
+    log(`${gname} 結束店頭互動，看板解除`);
+    return { gname, released: true };
+  }
+  return { gname, released: false };
+}
+
 function leaveCardTableUi() {
-  // 僅關 UI：若仍在 idle 可保留 session；打牌中不允許直接走
+  // 打牌中不允許直接走；idle／輪末結束面板等用這條離開 = 解除看板
   const sess = state.cardSession;
   if (sess && (sess.phase === "round_play" || sess.phase === "round_setup" || sess.phase === "round_end")) {
     toast("先告一段落，或直接結束這次靠近", "bad");
     return;
   }
-  document.body.classList.remove("card-mode", "has-ct-figure");
-  clearCardTableDom();
+  if (cardUi.endPanel) {
+    // 輪末面板開著時走同一套結束
+    finishEndPanel("stop");
+    return;
+  }
+  if (sess) {
+    const r = endCardTableAndReleaseKanban("player_leave");
+    toast(r.released ? `${r.gname} 離開店頭了` : "先到這吧", "");
+  } else {
+    document.body.classList.remove("card-mode", "has-ct-figure");
+    clearCardTableDom();
+  }
+  scheduleSave();
   renderAll();
-  pumpKanbanBubbles(); // 牌桌擋過的氣泡佇列
+  pumpKanbanBubbles();
 }
 
 function dismissCardSession() {
@@ -4579,15 +4618,11 @@ function dismissCardSession() {
     toast("正互動中——先按「結束本輪」", "bad");
     return;
   }
-  Cards.closeSession(state, "player_dismiss");
-  cardUi.injectPick = [];
-  cardUi.lastPlay = null;
-  cardUi.awaitReaction = false;
-  cardUi.endPanel = null;
-  document.body.classList.remove("card-mode", "has-ct-figure");
-  clearCardTableDom();
-  toast("先離開了", "");
-  scheduleSave(); renderAll();
+  // setup／idle／round_end：先離開 = 結束這次 + 解除看板
+  const r = endCardTableAndReleaseKanban("player_dismiss");
+  toast(r.released ? `${r.gname} 離開店頭了` : "先離開了", "");
+  scheduleSave();
+  renderAll();
   pumpKanbanBubbles();
 }
 
@@ -4673,11 +4708,10 @@ function resolveRoundEndToPanel(girl, stage) {
   renderCardTable();
 }
 
-/** 輪末面板：再來一輪 → 組牌；結束 → 關牌桌（看板仍可在任） */
+/** 輪末面板：再來一輪 → 組牌；結束／先到這 → 關牌桌並解除看板 */
 function finishEndPanel(choice) {
   const sess = state.cardSession;
   const girl = girlForSession();
-  const gname = girl?.name || "她";
   if (choice === "continue" && cardUi.endPanel === "stay") {
     cardUi.endPanel = null;
     cardUi.injectPick = [];
@@ -4691,28 +4725,9 @@ function finishEndPanel(choice) {
     renderCardTable();
     return;
   }
-  // 結束這次
-  cardUi.endPanel = null;
-  cardUi.awaitReaction = false;
-  cardUi.lastPlay = null;
-  cardUi.injectPick = [];
-  if (sess?.mode === "date" || !sess || sess.phase === "closed") {
-    if (sess && sess.phase !== "closed") Cards.closeSession(state, "player_leave");
-    document.body.classList.remove("card-mode", "has-ct-figure");
-    clearCardTableDom();
-    toast("先到這吧", "");
-    scheduleSave();
-    renderAll();
-    pumpKanbanBubbles();
-    return;
-  }
-  // 看板：session 已在 idle_present，關 UI；之後從主畫面再「靠近」
-  if (sess.phase !== "idle_present" && sess.phase !== "closed") {
-    sess.phase = "idle_present";
-  }
-  document.body.classList.remove("card-mode", "has-ct-figure");
-  clearCardTableDom();
-  toast(`${gname} 還在店頭，之後還能再靠近`, "");
+  // 結束這次：看板模式一併解除在任
+  const r = endCardTableAndReleaseKanban("round_end_leave");
+  toast(r.released ? `${r.gname} 離開店頭了` : "先到這吧", "");
   scheduleSave();
   renderAll();
   pumpKanbanBubbles();
@@ -4875,7 +4890,7 @@ function renderCardTable() {
     return;
   }
 
-  // ── 輪末結果面板：只問「能否再來一輪」，不跳回靠近／離開 ──
+  // ── 輪末結果面板：只問「能否再來一輪」；結束＝解除看板 ──
   if (cardUi.endPanel === "stay" || cardUi.endPanel === "leave") {
     const stay = cardUi.endPanel === "stay";
     setCtVn({
@@ -4885,14 +4900,14 @@ function renderCardTable() {
         : `這輪結束了。${gname} 不想再繼續了。`,
       meta: stay
         ? "再來一輪會重新組牌、重新計出手次數"
-        : (sess.mode === "date" ? "約會到此散了" : "人還在店頭；之後可從主畫面再靠近"),
+        : (sess.mode === "date" ? "約會到此散了" : "結束後她會離開店頭（看板解除）"),
     });
     setCtHand(`
       <div class="detail-actions card-actions">
         ${stay
           ? `<button type="button" class="cyan" id="ct-end-continue">再來一輪</button>
-             <button type="button" id="ct-end-stop">先到這</button>`
-          : `<button type="button" class="cyan" id="ct-end-stop">結束</button>`}
+             <button type="button" id="ct-end-stop">結束並離開</button>`
+          : `<button type="button" class="cyan" id="ct-end-stop">結束並離開</button>`}
       </div>`);
     $("#ct-end-continue")?.addEventListener("click", () => finishEndPanel("continue"));
     $("#ct-end-stop")?.addEventListener("click", () => finishEndPanel("stop"));
@@ -4912,13 +4927,13 @@ function renderCardTable() {
     cardUi.endPanel = null;
     setCtVn({
       name: gname,
-      text: `${gname} 在店頭陪著你。可以只待著，或再靠近一點開始互動。`,
+      text: `${gname} 在店頭陪著你。可以開始互動；離開的話她會回後台。`,
       meta: `${esc(stageLabel(stage))} · 她願意應付的次數由關係決定`,
     });
     setCtHand(`
       <div class="detail-actions card-actions">
         <button type="button" class="cyan" id="ct-start-setup">開始互動</button>
-        <button type="button" id="ct-dismiss">先離開</button>
+        <button type="button" id="ct-dismiss">結束並離開</button>
       </div>`);
     $("#ct-start-setup").onclick = () => {
       const r = Cards.enterRoundSetup(state);
