@@ -1441,93 +1441,97 @@ body.card-mode.has-ct-figure #kanban-girl {
 .card-confirm p { margin: 0 0 .55em; line-height: 1.5; }
 .card-confirm .bad { color: var(--red); }
 
-/* 下：代辦式大卡輪播（左右滑） */
+/* 下：精簡標題卡輪播（左右滑；長按看內容） */
 #ct-hand {
   flex-shrink: 0;
-  max-height: 46vh;
+  max-height: 34vh;
   overflow: hidden;
-  padding: .2em 0 .65em;
-  display: flex; flex-direction: column; gap: .25em;
+  padding: .15em 0 .55em;
+  display: flex; flex-direction: column; gap: .2em;
 }
-.ct-empty { padding: .6em .2em; text-align: center; }
+.ct-empty { padding: .5em .2em; text-align: center; }
 
 .ct-card-wrap {
-  flex: 1 1 auto; min-height: 0;
+  flex: 0 0 auto;
   display: flex; align-items: center; justify-content: center;
-  padding: 4px 10px 0;
+  padding: 2px 18px 0;
 }
-/* 比委託卡略矮，給立繪與旁白留空間 */
+/* 只要標題：矮卡 */
 .ct-play-card {
-  width: 100%; max-width: 340px;
-  min-height: min(28vh, 200px);
+  width: 100%; max-width: 300px;
+  min-height: 4.4em;
   background: var(--panel); color: var(--text);
   border: 1px solid var(--line);
-  padding: 18px 18px 14px;
+  padding: 1em 1.15em;
   position: relative; overflow: hidden;
-  display: flex; flex-direction: column; justify-content: space-between;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, .45);
+  display: flex; flex-direction: column; justify-content: center;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .4);
   user-select: none; touch-action: none; will-change: transform; cursor: grab;
-  animation: cIn .2s cubic-bezier(.25, .8, .25, 1);
+  animation: cIn .18s cubic-bezier(.25, .8, .25, 1);
+  border-radius: 4px;
 }
+.ct-play-card.compact { min-height: 4.2em; padding: .95em 1.1em; }
 .ct-play-card:active { cursor: grabbing; }
 .ct-play-card.is-shatter {
   border-color: color-mix(in srgb, var(--pink) 55%, var(--line));
-  box-shadow: 0 14px 40px rgba(0, 0, 0, .45),
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .4),
     0 0 0 1px color-mix(in srgb, var(--pink) 18%, transparent);
 }
 .ct-play-card.is-speech {
   border-color: color-mix(in srgb, var(--cyan) 35%, var(--line));
 }
 .ct-play-card.is-blocked {
-  opacity: .55;
-  filter: grayscale(.15);
+  opacity: .5;
+  filter: grayscale(.2);
 }
-.ct-pc-tags {
-  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;
-}
-.ct-pc-tag {
-  font-size: .62em; letter-spacing: .08em;
-  padding: 3px 8px;
-  background: color-mix(in srgb, currentColor 14%, transparent);
-  color: color-mix(in srgb, currentColor 75%, transparent);
-}
-.ct-pc-tag.speech { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 16%, transparent); }
-.ct-pc-tag.shatter { color: var(--pink); background: color-mix(in srgb, var(--pink) 16%, transparent); }
-.ct-pc-tag.open { color: var(--gold); background: color-mix(in srgb, var(--gold) 16%, transparent); }
-.ct-pc-tag.girl { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
 .ct-pc-body {
-  font-size: calc(1.2rem * var(--card-font-scale, 1));
-  line-height: 1.45; flex: 1;
-  display: flex; align-items: center;
+  font-size: calc(1.05rem * var(--card-font-scale, 1));
+  line-height: 1.4;
   word-break: break-word;
   color: var(--cyan);
   font-weight: 600;
-  letter-spacing: .04em;
+  letter-spacing: .06em;
+  text-align: center;
+  width: 100%;
 }
 .ct-play-card.is-shatter .ct-pc-body { color: var(--pink); }
-.ct-pc-scene {
-  font-size: .82em; line-height: 1.55;
-  color: color-mix(in srgb, currentColor 72%, transparent);
-  margin-top: 8px;
-  max-height: 4.6em; overflow: hidden;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-}
-.ct-pc-foot {
-  margin-top: 12px; display: flex; justify-content: space-between; gap: .6em;
+.ct-pc-badge {
+  position: absolute; top: .45em; right: .55em;
   font-size: .68em; letter-spacing: .04em;
-  color: color-mix(in srgb, currentColor 55%, transparent);
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 16%, transparent);
+  padding: 1px 7px; border-radius: 1em;
 }
-.ct-pc-foot span:last-child { text-align: right; max-width: 55%; }
 .ct-play-card .swind {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 3.2rem; opacity: 0; pointer-events: none; z-index: 4;
+  font-size: 2.4rem; opacity: 0; pointer-events: none; z-index: 4;
 }
 .ct-card-dots {
-  flex-shrink: 0; display: flex; justify-content: center; gap: 7px; padding: 6px 0 2px;
+  flex-shrink: 0; display: flex; justify-content: center; gap: 6px; padding: 4px 0 0;
 }
 .ct-card-nav {
-  flex-shrink: 0; text-align: center; font-size: .72em; padding: 0 4px 2px;
+  flex-shrink: 0; text-align: center; font-size: .68em; padding: 0 4px;
   letter-spacing: .04em;
+}
+
+/* 長按詳情 */
+.card-peek {
+  margin: 0; padding: .75em .9em;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: rgba(12, 8, 22, .92);
+}
+.card-peek-name {
+  font-size: .95em; letter-spacing: .1em; color: var(--pink);
+  margin-bottom: .4em;
+}
+.card-peek-scene {
+  font-size: .9em; line-height: 1.6;
+  margin-bottom: .45em; white-space: pre-wrap;
+}
+.card-peek-meta { margin-bottom: .5em; line-height: 1.45; }
+.card-peek .link-btn {
+  background: none; border: none; color: var(--cyan);
+  font: inherit; cursor: pointer; padding: 0; font-size: .85em;
 }
 
 .card-scene {
@@ -1535,14 +1539,13 @@ body.card-mode.has-ct-figure #kanban-girl {
   padding: .8em; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
 }
 .card-meta { margin-bottom: .8em; font-size: .9em; }
-.card-actions { margin-top: .15em; flex-wrap: wrap; flex-shrink: 0; }
+.card-actions { margin-top: .1em; flex-wrap: wrap; flex-shrink: 0; }
 .card-actions button { margin: .15em; }
 
-/* 小螢幕：壓縮立繪，保旁白與大卡 */
+/* 小螢幕：立繪多留一點，標題卡保持矮 */
 @media (max-height: 620px) {
-  #ct-portrait-img { height: min(28vh, 220px); margin-bottom: -.8em; }
-  #ct-vn { min-height: 4.2em; padding: .5em .75em .55em; }
-  #ct-hand { max-height: 52vh; }
-  .ct-play-card { min-height: min(24vh, 160px); padding: 14px 14px 12px; }
-  .ct-pc-scene { -webkit-line-clamp: 2; max-height: 3.2em; }
+  #ct-portrait-img { height: min(34vh, 260px); margin-bottom: -.8em; }
+  #ct-vn { min-height: 4em; padding: .5em .75em .55em; }
+  #ct-hand { max-height: 36vh; }
+  .ct-play-card, .ct-play-card.compact { min-height: 3.8em; padding: .8em 1em; }
 }

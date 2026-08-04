@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.4(2026-08-04)手牌改代辦式大卡左右滑";
+const APP_VER = "v6.5(2026-08-04)精簡互動卡＋輪末自動判定＋語氣去牌桌化";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -3411,11 +3411,11 @@ function renderCrests() {
       const face = girlShot(s, "head");
       return `
       <button type="button" class="play-chip r-${s.rarity}${inSess ? " active-sess" : ""}" data-cid="${s.id}"
-              title="與 ${esc(s.name)} 打牌">
+              title="與 ${esc(s.name)} 互動">
         ${face
           ? `<img class="play-chip-face" src="${esc(face)}" alt="">`
           : `<span class="play-chip-icon" aria-hidden="true">✦</span>`}
-        <span class="play-chip-label">${inSess ? "繼續" : "打牌"}</span>
+        <span class="play-chip-label">${inSess ? "繼續" : "靠近"}</span>
         <span class="cname">${esc(s.name)}</span>
       </button>`;
     }).join("");
@@ -3776,6 +3776,7 @@ let cardUi = {
   invSelected: null,   // cardId 詳情
   handIdx: 0,          // round_play 手牌輪播索引
   injectIdx: 0,        // round_setup 牌庫輪播索引
+  stayOffer: false,    // 輪末留下後：選繼續或先離開
 };
 
 function renderCardShopPanel() {
@@ -4383,7 +4384,7 @@ function leaveCardTableUi() {
   // 僅關 UI：若仍在 idle 可保留 session；打牌中不允許直接走
   const sess = state.cardSession;
   if (sess && (sess.phase === "round_play" || sess.phase === "round_setup" || sess.phase === "round_end")) {
-    toast("先結束本輪或解散牌桌", "bad");
+    toast("先告一段落，或直接結束這次靠近", "bad");
     return;
   }
   document.body.classList.remove("card-mode", "has-ct-figure");
@@ -4399,15 +4400,16 @@ function dismissCardSession() {
     return;
   }
   if (state.cardSession.phase === "round_play") {
-    toast("打牌中不能直接解散——可先結束本輪", "bad");
+    toast("正互動中——先按「先到這」", "bad");
     return;
   }
   Cards.closeSession(state, "player_dismiss");
   cardUi.injectPick = [];
   cardUi.lastPlay = null;
+  cardUi.stayOffer = false;
   document.body.classList.remove("card-mode", "has-ct-figure");
   clearCardTableDom();
-  toast("牌桌收了", "");
+  toast("先離開了", "");
   scheduleSave(); renderAll();
 }
 
@@ -4436,10 +4438,87 @@ function commitHandPlay(instanceId, girl, stage) {
   if (!r.ok) { toast(r.err, "bad"); return; }
   cardUi.lastPlay = r;
   applyPlaySideEffects(girl, r);
-  toast(r.open && !r.open.success ? "開門失敗……" : `打出「${r.name}」`, r.open && !r.open.success ? "bad" : "good");
+  toast(r.open && !r.open.success ? "她沒接住……" : r.name, r.open && !r.open.success ? "bad" : "good");
   const n = state.cardSession?.hand?.length || 0;
   if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
   scheduleSave(); renderCardTable();
+}
+
+/** 長按看卡內容（標題卡本身不展開） */
+function attachCardPeek(el, def, extraLines = []) {
+  if (!el || !def) return;
+  let timer = null, sx = 0, sy = 0;
+  const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  const open = () => {
+    clear();
+    const tags = (def.tags || []).join(" · ");
+    const bits = [
+      def.shatterOnUse ? "用後消失" : "可反覆使用",
+      def.openChain ? `開門 ${def.openChain.attr}×${def.openChain.k}` : "",
+      def.effect?.forceAnotherRound ? "她這回走不了" : "",
+      tags,
+      ...extraLines,
+    ].filter(Boolean);
+    setCtConfirm(`
+      <div class="card-peek">
+        <div class="card-peek-name">${esc(def.name)}</div>
+        <div class="card-peek-scene">${esc(def.sceneStart || def.promptHint || "（沒有更多描述）")}</div>
+        ${bits.length ? `<div class="card-peek-meta dim small">${bits.map(b => esc(b)).join(" · ")}</div>` : ""}
+        <button type="button" class="link-btn" id="ct-peek-close">關閉</button>
+      </div>`);
+    $("#ct-peek-close")?.addEventListener("click", () => setCtConfirm(""));
+  };
+  const onStart = (x, y) => {
+    sx = x; sy = y;
+    clear();
+    timer = setTimeout(open, 420);
+  };
+  const onMove = (x, y) => {
+    if (Math.abs(x - sx) > 10 || Math.abs(y - sy) > 10) clear();
+  };
+  el.addEventListener("touchstart", e => {
+    const t = e.touches[0]; onStart(t.clientX, t.clientY);
+  }, { passive: true });
+  el.addEventListener("touchmove", e => {
+    const t = e.touches[0]; onMove(t.clientX, t.clientY);
+  }, { passive: true });
+  el.addEventListener("touchend", clear, { passive: true });
+  el.addEventListener("touchcancel", clear, { passive: true });
+  el.addEventListener("mousedown", e => onStart(e.clientX, e.clientY));
+  el.addEventListener("mousemove", e => { if (timer) onMove(e.clientX, e.clientY); });
+  el.addEventListener("mouseup", clear);
+  el.addEventListener("mouseleave", clear);
+  el.addEventListener("contextmenu", e => e.preventDefault());
+}
+
+/** 輪末自動判定：不留下就直接散；留下才問要不要繼續 */
+function autoResolveRoundEnd(girl, stage) {
+  const gname = girl?.name || "她";
+  const r = Cards.resolveRoundEnd(state, { stage });
+  if (!r.ok) {
+    toast(r.err || "結算失敗", "bad");
+    return;
+  }
+  cardUi.injectPick = [];
+  cardUi.lastPlay = null;
+  cardUi.handIdx = 0;
+  if (r.stay) {
+    cardUi.stayOffer = true;
+    toast(`${gname} 還願意再待一會兒`, "good");
+  } else if (r.closed) {
+    cardUi.stayOffer = false;
+    toast("先到這吧", "");
+    document.body.classList.remove("card-mode", "has-ct-figure");
+    clearCardTableDom();
+  } else {
+    cardUi.stayOffer = false;
+    toast(`${gname} 先抽身了（人還在店頭）`, "");
+  }
+  scheduleSave();
+  renderCardTable();
+  if (!Cards.sessionActive(state) || !document.body.classList.contains("card-mode")) {
+    renderAll();
+  }
 }
 
 /** 牌桌立繪：半身優先，沒圖用字首 fallback */
@@ -4515,36 +4594,83 @@ function renderCardTable() {
   const stage = girl?.stage || "stranger";
   const title = $("#card-table-title");
   if (title) {
-    title.textContent = `${gname} · ${sess.mode === "date" ? "約會牌局" : "看板牌桌"} · ${phaseLabel(sess.phase)}`;
+    title.textContent = `${gname} · ${sess.mode === "date" ? "約會" : "店頭"} · ${phaseLabel(sess.phase)}`;
   }
 
   setCtPortrait(girl);
-  setCtConfirm("");
+  // 有碎卡確認或長按詳情時不要整頁清掉；本輪開始時清
+  if (!sess.pending && !cardUi._keepPeek) setCtConfirm("");
+  cardUi._keepPeek = false;
 
-  // ── 陪伴：可開戰或收桌 ──────────────────────────────────
+  // ── 輪末：自動判定，不顯示「看她怎麼想」────────────────
+  if (sess.phase === "round_end") {
+    setCtVn({ name: gname, text: "……", meta: "" });
+    setCtHand(`<div class="dim small ct-empty">她想了想……</div>`);
+    // 下一幀結算，避免同一 render 遞迴過深
+    setTimeout(() => autoResolveRoundEnd(girl, stage), 0);
+    return;
+  }
+
+  // ── 陪伴 ────────────────────────────────────────────────
   if (sess.phase === "idle_present") {
+    cardUi.stayOffer = false;
     setCtVn({
       name: gname,
-      text: `${gname} 在店頭陪著你。可以只待著，或開戰一輪深度互動。`,
-      meta: `本體卡 ${sess.girlCards?.length || 0} 張 · 出手由關係決定（${esc(stageLabel(stage))}）`,
+      text: `${gname} 在店頭陪著你。可以只待著，或再靠近一點。`,
+      meta: `${esc(stageLabel(stage))} · 她願意應付的次數由關係決定`,
     });
     setCtHand(`
       <div class="detail-actions card-actions">
-        <button class="cyan" id="ct-start-setup">開戰組牌</button>
-        <button id="ct-dismiss">收起牌桌</button>
+        <button type="button" class="cyan" id="ct-start-setup">靠近她</button>
+        <button type="button" id="ct-dismiss">先離開</button>
       </div>`);
     $("#ct-start-setup").onclick = () => {
       const r = Cards.enterRoundSetup(state);
       if (!r.ok) { toast(r.err, "bad"); return; }
       cardUi.injectPick = [];
+      cardUi.stayOffer = false;
       scheduleSave(); renderCardTable();
     };
     $("#ct-dismiss").onclick = () => dismissCardSession();
     return;
   }
 
-  // ── 組牌：押入（大卡左右滑，同代辦）────────────────────
+  // ── 準備：押入（精簡標題卡）────────────────────────────
   if (sess.phase === "round_setup") {
+    // 輪末留下後：先選繼續或先離開（不寫「下一盤」）
+    if (cardUi.stayOffer) {
+      setCtVn({
+        name: gname,
+        text: `${gname} 還願意再待一會兒。你要繼續靠近，還是先到這？`,
+        meta: "",
+      });
+      setCtHand(`
+        <div class="detail-actions card-actions">
+          <button type="button" class="cyan" id="ct-stay-yes">再陪一會兒</button>
+          <button type="button" id="ct-stay-no">先到這</button>
+        </div>`);
+      $("#ct-stay-yes").onclick = () => {
+        cardUi.stayOffer = false;
+        cardUi.injectPick = [];
+        renderCardTable();
+      };
+      $("#ct-stay-no").onclick = () => {
+        cardUi.stayOffer = false;
+        if (sess.mode === "date") {
+          Cards.closeSession(state, "player_leave");
+          document.body.classList.remove("card-mode", "has-ct-figure");
+          clearCardTableDom();
+          toast("先到這吧", "");
+          scheduleSave(); renderAll();
+        } else {
+          sess.phase = "idle_present";
+          toast(`${gname} 先歇一下（人還在店頭）`, "");
+          scheduleSave(); renderCardTable();
+        }
+      };
+      return;
+    }
+
     const maxI = Cards.maxInject(state);
     const inv = Cards.inventoryList(state);
     const pickedCount = Object.create(null);
@@ -4552,15 +4678,15 @@ function renderCardTable() {
 
     setCtVn({
       name: gname,
-      text: `左右滑瀏覽牌庫，上滑押入、下滑退回。最多 ${maxI} 張；碎卡未打出會退庫。`,
-      meta: `已押 <b>${cardUi.injectPick.length}</b>/${maxI} · 本體 ${sess.girlCards.length} 張`,
+      text: `選你想帶進來的東西。左右滑、上滑帶上、下滑拿下。長按看內容。`,
+      meta: `已帶 <b>${cardUi.injectPick.length}</b>/${maxI}`,
     });
 
     if (!inv.length) {
       setCtHand(`
-        <div class="dim small ct-empty">牌庫空，只能打本體卡</div>
+        <div class="dim small ct-empty">庫裡什麼都沒有——就這樣開始也行</div>
         <div class="detail-actions card-actions">
-          <button type="button" class="cyan" id="ct-deal">洗牌開戰</button>
+          <button type="button" class="cyan" id="ct-deal">開始</button>
           <button type="button" id="ct-cancel-setup">取消</button>
         </div>`);
     } else {
@@ -4570,30 +4696,19 @@ function renderCardTable() {
       const maxThis = row.shatterOnUse ? row.count : 1;
       const canAdd = cardUi.injectPick.length < maxI && picked < maxThis;
       const def = Cards.cardById(row.cardId);
-      const tags = (def?.tags || []).join(" · ") || (row.shatterOnUse ? "碎卡" : "話術");
-      const scene = def?.sceneStart || def?.promptHint || "";
       setCtHand(`
         <div class="ct-card-wrap">
-          <div class="ct-play-card ${row.shatterOnUse ? "is-shatter" : "is-speech"}" id="ct-setup-card">
-            <div class="ct-pc-tags">
-              <span class="ct-pc-tag ${row.shatterOnUse ? "shatter" : "speech"}">${row.shatterOnUse ? "碎" : "話"}</span>
-              ${def?.openChain ? `<span class="ct-pc-tag open">開門·${esc(def.openChain.attr)}×${def.openChain.k}</span>` : ""}
-              ${def?.effect?.forceAnotherRound ? `<span class="ct-pc-tag open">不可走</span>` : ""}
-            </div>
+          <div class="ct-play-card compact ${row.shatterOnUse ? "is-shatter" : "is-speech"}" id="ct-setup-card">
+            ${picked ? `<span class="ct-pc-badge">×${picked}</span>` : ""}
             <div class="ct-pc-body">${esc(row.name)}</div>
-            <div class="ct-pc-scene">${esc(scene)}</div>
-            <div class="ct-pc-foot">
-              <span>${esc(tags)}</span>
-              <span>押入 ${picked}/${maxThis}</span>
-            </div>
             <div class="swind"></div>
           </div>
         </div>
         <div class="ct-card-dots">${inv.map((_, i) =>
           `<div class="dot${i === cardUi.injectIdx ? " on" : ""}"></div>`).join("")}</div>
-        <div class="ct-card-nav dim small">${cardUi.injectIdx + 1} / ${inv.length} · 左右換卡 · 上滑押入 · 下滑退回</div>
+        <div class="ct-card-nav dim small">${cardUi.injectIdx + 1}/${inv.length} · 長按看內容</div>
         <div class="detail-actions card-actions">
-          <button type="button" class="cyan" id="ct-deal">洗牌開戰</button>
+          <button type="button" class="cyan" id="ct-deal">開始</button>
           <button type="button" id="ct-cancel-setup">取消</button>
         </div>`);
 
@@ -4606,7 +4721,7 @@ function renderCardTable() {
       };
       const addInj = () => {
         if (!canAdd) {
-          toast(cardUi.injectPick.length >= maxI ? `最多押 ${maxI} 張` : "這張已押滿", "bad");
+          toast(cardUi.injectPick.length >= maxI ? `最多帶 ${maxI} 樣` : "這張已經夠了", "bad");
           return;
         }
         flyCard(setupCard, "up", () => {
@@ -4616,7 +4731,7 @@ function renderCardTable() {
       };
       const subInj = () => {
         const i = cardUi.injectPick.lastIndexOf(row.cardId);
-        if (i < 0) { toast("這張還沒押入", "bad"); return; }
+        if (i < 0) { toast("還沒帶上這張", "bad"); return; }
         flyCard(setupCard, "down", () => {
           cardUi.injectPick.splice(i, 1);
           renderCardTable();
@@ -4629,6 +4744,7 @@ function renderCardTable() {
           up: addInj,
           down: subInj,
         });
+        attachCardPeek(setupCard, def, [`已帶 ${picked}/${maxThis}`]);
       }
     }
 
@@ -4639,24 +4755,26 @@ function renderCardTable() {
       if (!sr.ok) { toast(sr.err, "bad"); return; }
       cardUi.lastPlay = null;
       cardUi.handIdx = 0;
-      toast(`第 ${sess.roundIndex} 輪——她今夜還肯應對 ${sr.nLeft} 次`, "good");
+      cardUi.stayOffer = false;
+      toast(`她今夜大概還肯應付 ${sr.nLeft} 次`, "good");
       scheduleSave(); renderCardTable();
     };
     $("#ct-cancel-setup").onclick = () => {
       sess.phase = "idle_present";
       cardUi.injectPick = [];
       cardUi.injectIdx = 0;
+      cardUi.stayOffer = false;
       scheduleSave(); renderCardTable();
     };
     return;
   }
 
-  // ── 打牌：大卡左右滑（同代辦）──────────────────────────
+  // ── 互動中：精簡標題卡左右滑 ────────────────────────────
   if (sess.phase === "round_play") {
     const left = Cards.playsLeft(sess);
     const chain = sess.chain;
     const chainTxt = chain
-      ? `她正被你帶著走（${chain.attr}${chain.kLeft > 0 ? "…" : ""}）`
+      ? `節奏正熱（${chain.attr}）`
       : "";
     const last = cardUi.lastPlay;
     const hand = sess.hand || [];
@@ -4665,22 +4783,22 @@ function renderCardTable() {
     let vnName = gname;
     if (last) {
       const openNote = last.open && !last.open.success
-        ? "（開門失敗）"
+        ? "（沒接住）"
         : last.open?.success
-          ? "（開門成功）"
+          ? "（門開了）"
           : "";
-      vnName = last.name + (last.shattered ? " ·已碎" : "") + openNote;
-      vnText = last.sceneStart || `打出了「${last.name}」。`;
+      vnName = last.name + (last.shattered ? " ·消了" : "") + openNote;
+      vnText = last.sceneStart || `「${last.name}」`;
     } else {
-      vnText = "左右滑換手牌，上滑打出。高級卡用後碎；虐系只開門給鍊。";
+      vnText = "左右滑挑選，上滑用出去。長按看內容。";
     }
     const emo = last
-      ? `情感 ${last.emotionDelta >= 0 ? "+" : ""}${last.emotionDelta}${last.forceAnotherRound ? " ·她這輪走不了" : ""} · `
+      ? `情感 ${last.emotionDelta >= 0 ? "+" : ""}${last.emotionDelta}${last.forceAnotherRound ? " ·她這回走不了" : ""} · `
       : "";
     setCtVn({
       name: vnName,
       text: vnText,
-      meta: `${emo}還肯應對 <b>${left}</b> 次 · 第 ${sess.roundIndex} 輪${chainTxt ? ` · <span class="chain-hint">${esc(chainTxt)}</span>` : ""}`,
+      meta: `${emo}還肯應付 <b>${left}</b> 次${chainTxt ? ` · <span class="chain-hint">${esc(chainTxt)}</span>` : ""}`,
     });
 
     if (sess.pending) {
@@ -4688,9 +4806,9 @@ function renderCardTable() {
       const pd = pinst ? Cards.cardById(pinst.cardId) : null;
       setCtConfirm(`
         <div class="card-confirm">
-          <p>確認打出「${esc(pd?.name || "?")}」？<b class="bad">用後消失</b></p>
+          <p>真的要用「${esc(pd?.name || "?")}」？<b class="bad">用後消失</b></p>
           <div class="detail-actions">
-            <button type="button" class="danger-btn" id="ct-confirm-play">確認使用</button>
+            <button type="button" class="danger-btn" id="ct-confirm-play">確認</button>
             <button type="button" id="ct-cancel-play">取消</button>
           </div>
         </div>`);
@@ -4707,9 +4825,9 @@ function renderCardTable() {
 
     if (!hand.length) {
       setCtHand(`
-        <div class="dim small ct-empty">手牌空了</div>
+        <div class="dim small ct-empty">手上沒東西了</div>
         <div class="detail-actions card-actions">
-          <button type="button" id="ct-end-round">結束本輪</button>
+          <button type="button" id="ct-end-round">先到這</button>
         </div>`);
     } else {
       cardUi.handIdx = Math.min(Math.max(0, cardUi.handIdx || 0), hand.length - 1);
@@ -4717,39 +4835,20 @@ function renderCardTable() {
       const def = Cards.cardById(inst.cardId);
       const check = Cards.canSelectCard(sess, inst, stage);
       const blocked = !check.ok || !!sess.pending;
-      const tags = (def?.tags || []).join(" · ");
-      const scene = def?.sceneStart || def?.promptHint || "";
-      const marks = [
-        def?.shatterOnUse ? "用後碎" : "不碎",
-        def?.openChain ? `開門 ${def.openChain.attr}×${def.openChain.k}` : "",
-        def?.effect?.forceAnotherRound ? "不可走" : "",
-        !check.ok ? check.err : "",
-      ].filter(Boolean).join(" · ");
 
       setCtHand(`
         <div class="ct-card-wrap">
-          <div class="ct-play-card ${def?.shatterOnUse ? "is-shatter" : "is-speech"}${blocked ? " is-blocked" : ""}"
+          <div class="ct-play-card compact ${def?.shatterOnUse ? "is-shatter" : "is-speech"}${blocked ? " is-blocked" : ""}"
                id="ct-play-card" data-iid="${inst.instanceId}">
-            <div class="ct-pc-tags">
-              <span class="ct-pc-tag ${def?.shatterOnUse ? "shatter" : "speech"}">${def?.shatterOnUse ? "碎" : "話"}</span>
-              ${def?.kind === "girl_trait" ? `<span class="ct-pc-tag girl">本體</span>` : ""}
-              ${def?.kind === "venue_event" ? `<span class="ct-pc-tag girl">場地</span>` : ""}
-              ${def?.openChain ? `<span class="ct-pc-tag open">開門</span>` : ""}
-            </div>
             <div class="ct-pc-body">${esc(def?.name || inst.cardId)}</div>
-            <div class="ct-pc-scene">${esc(scene)}</div>
-            <div class="ct-pc-foot">
-              <span>${esc(tags || "—")}</span>
-              <span>${esc(marks)}</span>
-            </div>
             <div class="swind"></div>
           </div>
         </div>
         <div class="ct-card-dots">${hand.map((_, i) =>
           `<div class="dot${i === cardUi.handIdx ? " on" : ""}"></div>`).join("")}</div>
-        <div class="ct-card-nav dim small">${cardUi.handIdx + 1} / ${hand.length} · 左右換牌 · 上滑打出</div>
+        <div class="ct-card-nav dim small">${cardUi.handIdx + 1}/${hand.length} · 上滑使用 · 長按內容</div>
         <div class="detail-actions card-actions">
-          <button type="button" id="ct-end-round">結束本輪</button>
+          <button type="button" id="ct-end-round">先到這</button>
         </div>`);
 
       const playCard = $("#ct-play-card");
@@ -4761,10 +4860,9 @@ function renderCardTable() {
       };
       const doPlay = () => {
         if (sess.pending) return;
-        if (!check.ok) { toast(check.err || "不能打這張", "bad"); return; }
+        if (!check.ok) { toast(check.err || "現在用不了", "bad"); return; }
         const r = Cards.requestPlay(state, inst.instanceId, { stage, guardHigh: guardActive(girl) });
         if (!r.ok) { toast(r.err, "bad"); return; }
-        // 碎卡先進確認層（不飛走，取消還在手上）
         if (r.needConfirm) { renderCardTable(); return; }
         flyCard(playCard, "up", () => {
           cardUi.lastPlay = r;
@@ -4780,6 +4878,7 @@ function renderCardTable() {
           right: () => navHand(-1),
           up: doPlay,
         });
+        attachCardPeek(playCard, def, !check.ok ? [check.err] : []);
       }
     }
 
@@ -4789,40 +4888,16 @@ function renderCardTable() {
     };
     return;
   }
-
-  // ── 輪末 ────────────────────────────────────────────────
-  if (sess.phase === "round_end") {
-    const last = cardUi.lastPlay;
-    setCtVn({
-      name: gname,
-      text: "這一輪結束了。她會留下再來一輪，還是先散？",
-      meta: last ? `上一張：${esc(last.name)}` : "",
-    });
-    setCtHand(`
-      <div class="detail-actions card-actions">
-        <button type="button" class="cyan" id="ct-resolve-end">看她怎麼決定</button>
-      </div>`);
-    $("#ct-resolve-end").onclick = () => {
-      const r = Cards.resolveRoundEnd(state, { stage });
-      if (!r.ok) { toast(r.err, "bad"); return; }
-      if (r.stay) toast(`${gname} 還願意再陪你一輪`, "good");
-      else if (r.closed) toast("約會散了", "");
-      else toast(`${gname} 結束了這次深度互動（人還在店頭）`, "");
-      cardUi.injectPick = [];
-      cardUi.lastPlay = null;
-      scheduleSave(); renderCardTable();
-    };
-  }
 }
 
 function phaseLabel(p) {
   return ({
-    idle_present: "陪伴中",
-    round_setup: "組牌",
-    round_play: "打牌",
-    round_end: "輪末",
-    summoning_prep: "產製中",
-    closed: "已結束",
+    idle_present: "陪伴",
+    round_setup: "準備",
+    round_play: "互動中",
+    round_end: "……",
+    summoning_prep: "成形中",
+    closed: "結束",
   })[p] || p || "";
 }
 
@@ -5062,14 +5137,14 @@ function renderDetail(s, root) {
           : `<button class="cyan" id="act-date" ${asleep || datesLeft <= 0 || (cardSystemOn() && isKanban(s.id)) ? "disabled" : ""}>約會 ${DATE_COST} 金(今日剩 ${datesLeft})${cardSystemOn() && isKanban(s.id) ? "·看板中不可約" : ""}</button>
              ${isKanban(s.id)
                ? `<button disabled>★ 看板娘(陪伴中)</button>
-                  ${cardSystemOn() ? `<button class="cyan" id="act-cardtable" ${asleep ? "disabled" : ""}>✦ 打牌</button>` : ""}`
+                  ${cardSystemOn() ? `<button class="cyan" id="act-cardtable" ${asleep ? "disabled" : ""}>✦ 靠近她</button>` : ""}`
                : s.summoner?.taken
                  ? `<button disabled>召喚不到她(被召喚走)</button>`
                  : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`}
       </div>
       ${dateChooser && !s.ntr && !(cardSystemOn() && isKanban(s.id)) ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
       ${!s.ntr && !cardSystemOn() ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b></div>` : ""}
-      ${!s.ntr && cardSystemOn() ? `<div class="aff-line dim small">深度互動走牌桌；委託時可能碎嘴（氣泡後續里程碑）</div>` : ""}
+      ${!s.ntr && cardSystemOn() ? `<div class="aff-line dim small">想更進一步就靠近她；委託時可能碎嘴（氣泡後續）</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
       ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
         ${SAC_RITUAL ? `<div class="aff-line dim small">${sacScriptReady(s)
