@@ -1359,32 +1359,36 @@ body.card-mode.has-ct-figure #kanban-girl {
 }
 #card-table-view.hidden { display: none; }
 
-/* 底層：半身立繪（不擋點擊；永遠在旁白／卡後面） */
+/* 底層：半身立繪（不擋點擊；永遠在旁白／卡後面）
+   腳底切齊旁白框上緣：bottom 對準 #ct-fore 底部 UI 高度 */
 #ct-portrait {
   position: absolute;
   left: 0; right: 0;
   top: env(safe-area-inset-top, 0);
-  bottom: 0;
+  /* 與旁白+手牌堆疊高度對齊，立繪下緣貼卡牌／旁白上沿 */
+  bottom: calc(11.5em + env(safe-area-inset-bottom, 0));
   z-index: 0;
   display: flex; align-items: flex-end; justify-content: center;
   pointer-events: none;
-  /* 下緣留給旁白+手牌，立繪站在「框後面」 */
-  padding-bottom: min(34vh, 240px);
+  padding: 0;
+  overflow: hidden;
 }
 #ct-portrait-img {
   display: block;
-  height: min(78vh, 640px);
-  width: auto; max-width: 108%;
+  height: min(58vh, 460px);
+  width: auto; max-width: 96%;
   object-fit: contain; object-position: bottom center;
   filter: drop-shadow(0 8px 28px rgba(0, 0, 0, .6));
-  transform: translateY(2%);
+  /* 略往下，腳切在旁白上緣 */
+  transform: translateY(6%);
 }
 #ct-portrait-img.hidden { display: none; }
 #ct-portrait-fallback {
-  width: 6.5em; height: 6.5em; margin-bottom: 18vh;
+  width: 5.2em; height: 5.2em;
+  margin-bottom: .4em;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 2em; letter-spacing: .05em; color: var(--pink);
+  font-size: 1.7em; letter-spacing: .05em; color: var(--pink);
   background: color-mix(in srgb, var(--pink) 14%, transparent);
   border: 1px solid var(--line);
   filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 40%, transparent));
