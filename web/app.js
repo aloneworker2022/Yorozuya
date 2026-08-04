@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.1(2026-08-04)創角輪巡：姓名／心理測驗／體型／喜好→配話術";
+const APP_VER = "v6.2(2026-08-04)商店牌庫按鈕＋下方詳情";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -3742,16 +3742,23 @@ let cardUi = {
   injectPick: [],      // round_setup 勾選的 cardId 列表
   lastPlay: null,      // 上一張演出結果
   invOpen: true,
+  invFilter: "all",    // all | speech | shatter
+  invSelected: null,   // cardId 詳情
 };
 
 function renderCardShopPanel() {
   const shelf = $("#card-shop-stock");
-  const inv = $("#card-inv-list");
+  const invBtns = $("#card-inv-btns");
+  const invDetail = $("#card-inv-detail");
+  const invFilters = $("#card-inv-filters");
+  const invCount = $("#card-inv-count");
   const refreshEl = $("#card-shop-refresh");
-  if (!shelf || !inv) return;
+  if (!shelf || !invBtns) return;
   if (!cardSystemOn()) {
     shelf.innerHTML = `<div class="dim small">卡牌資料未載入</div>`;
-    inv.innerHTML = "";
+    invBtns.innerHTML = "";
+    if (invDetail) { invDetail.classList.add("hidden"); invDetail.innerHTML = ""; }
+    if (invFilters) invFilters.innerHTML = "";
     if (refreshEl) refreshEl.textContent = "";
     return;
   }
@@ -3787,18 +3794,157 @@ function renderCardShopPanel() {
       if (!r.ok) { toast(r.err, "bad"); return; }
       toast(`買下「${r.name}」 -${r.price} 金${r.shatter ? "（用則碎）" : ""}`, "good");
       log(`購入卡牌「${r.name}」 -${r.price} 金`);
+      // 買完自動選中詳情
+      cardUi.invSelected = r.cardId;
+      if (r.shatter) cardUi.invFilter = "shatter";
+      else cardUi.invFilter = "speech";
       scheduleSave(); renderAll();
     };
   });
 
+  renderCardInventoryPanel();
+}
+
+const STAGE_LABEL_SHORT = {
+  stranger: "陌生", friend: "朋友", girlfriend: "女友", wife: "妻子",
+};
+
+function renderCardInventoryPanel() {
+  const invBtns = $("#card-inv-btns");
+  const invDetail = $("#card-inv-detail");
+  const invFilters = $("#card-inv-filters");
+  const invCount = $("#card-inv-count");
+  if (!invBtns) return;
+
   const rows = Cards.inventoryList(state);
-  inv.innerHTML = rows.length
-    ? rows.map(r => `<div class="card-inv-row">
-        <span class="card-tag ${r.shatterOnUse ? "shatter" : "speech"}">${r.shatterOnUse ? "碎×" + r.count : "話術"}</span>
-        <span class="sname">${esc(r.name)}</span>
-        <span class="dim small">${esc(r.rarity)} · ${(r.tags || []).join("·")}</span>
-      </div>`).join("")
-    : `<div class="dim small">牌庫空——去創角選話術，或在貨架購買。</div>`;
+  const nSpeech = rows.filter(r => !r.shatterOnUse).length;
+  const nShatter = rows.filter(r => r.shatterOnUse).length;
+  if (invCount) invCount.textContent = rows.length ? `(${rows.length})` : "";
+
+  // 若選中的卡已不在庫，清掉
+  if (cardUi.invSelected && !rows.some(r => r.cardId === cardUi.invSelected)) {
+    cardUi.invSelected = null;
+  }
+
+  const filter = cardUi.invFilter || "all";
+  if (invFilters) {
+    const tabs = [
+      { id: "all", label: `全部 ${rows.length}` },
+      { id: "speech", label: `話術 ${nSpeech}` },
+      { id: "shatter", label: `碎卡 ${nShatter}` },
+    ];
+    invFilters.innerHTML = tabs.map(t =>
+      `<button type="button" class="card-inv-filter${filter === t.id ? " on" : ""}" data-if="${t.id}">${esc(t.label)}</button>`
+    ).join("");
+    invFilters.querySelectorAll("[data-if]").forEach(b => {
+      b.onclick = () => {
+        cardUi.invFilter = b.dataset.if;
+        renderCardInventoryPanel();
+      };
+    });
+  }
+
+  const shown = rows.filter(r => {
+    if (filter === "speech") return !r.shatterOnUse;
+    if (filter === "shatter") return r.shatterOnUse;
+    return true;
+  });
+
+  if (!shown.length) {
+    invBtns.innerHTML = `<div class="dim small" style="padding:.4em 0">${
+      rows.length ? "此分類沒有卡。" : "牌庫空——完成創角或到上方貨架購買。"
+    }</div>`;
+  } else {
+    invBtns.innerHTML = shown.map(r => {
+      const starter = state.playerProfile?.starterSpeechCardId === r.cardId;
+      const on = cardUi.invSelected === r.cardId;
+      const kindCls = r.shatterOnUse ? "shatter" : "speech";
+      const countTxt = r.shatterOnUse ? `×${r.count}` : (starter ? "底" : "");
+      return `<button type="button" class="card-inv-btn ${kindCls}${on ? " on" : ""}" data-cid="${r.cardId}" title="${esc(r.name)}">
+        <span class="cib-name">${esc(r.name)}</span>
+        <span class="cib-meta">${esc(r.rarity || "N")}${countTxt ? " · " + countTxt : ""}</span>
+      </button>`;
+    }).join("");
+    invBtns.querySelectorAll("[data-cid]").forEach(b => {
+      b.onclick = () => {
+        const id = b.dataset.cid;
+        cardUi.invSelected = cardUi.invSelected === id ? null : id;
+        renderCardInventoryPanel();
+      };
+    });
+  }
+
+  if (!invDetail) return;
+  if (!cardUi.invSelected) {
+    invDetail.classList.add("hidden");
+    invDetail.innerHTML = "";
+    return;
+  }
+  const row = rows.find(r => r.cardId === cardUi.invSelected);
+  const def = Cards.cardById(cardUi.invSelected);
+  if (!row || !def) {
+    invDetail.classList.add("hidden");
+    invDetail.innerHTML = "";
+    return;
+  }
+  invDetail.classList.remove("hidden");
+  invDetail.innerHTML = formatCardDetailHtml(def, row);
+  invDetail.querySelector("#cid-close")?.addEventListener("click", () => {
+    cardUi.invSelected = null;
+    renderCardInventoryPanel();
+  });
+}
+
+function formatCardDetailHtml(def, row) {
+  const starter = state.playerProfile?.starterSpeechCardId === def.id;
+  const kind = def.shatterOnUse ? "高級碎卡" : "話術";
+  const tags = (def.tags || []).join(" · ") || "—";
+  const minSt = def.minStage ? (STAGE_LABEL_SHORT[def.minStage] || def.minStage) : "無限制";
+  let openLine = "—";
+  if (def.openChain) {
+    openLine = `開門鍊 ${def.openChain.attr} ×${def.openChain.k}` +
+      (def.forceable ? "（可硬開）" : "");
+  }
+  const emo = def.emotion || {};
+  const emoLine = ["stranger", "friend", "girlfriend", "wife"].map(st => {
+    const t = emo[st];
+    if (!t) return null;
+    const a = t.min ?? 0, b = t.max ?? 0;
+    return `${STAGE_LABEL_SHORT[st] || st} ${a >= 0 ? "+" : ""}${a}~${b >= 0 ? "+" : ""}${b}`;
+  }).filter(Boolean).join("　");
+  const eff = def.effect;
+  let effLine = "";
+  if (eff) {
+    const bits = [];
+    if (eff.forceAnotherRound) bits.push("強制再一輪");
+    if (Array.isArray(eff.setFlags) && eff.setFlags.length) bits.push("旗標：" + eff.setFlags.join("、"));
+    if (eff.guardDelta) bits.push(`防備 ${eff.guardDelta > 0 ? "+" : ""}${eff.guardDelta}`);
+    if (eff.cravingDelta) bits.push(`飢渴 ${eff.cravingDelta > 0 ? "+" : ""}${eff.cravingDelta}`);
+    if (eff.mentionErrand) bits.push("可提待辦");
+    if (bits.length) effLine = bits.join(" · ");
+  }
+  const countLine = def.shatterOnUse
+    ? `持有 <b>${row.count}</b> 張 · 確認打出後 −1（失敗開門也碎）`
+    : `永久持有${starter ? " · <b>創角底色</b>" : ""} · 打出不碎`;
+
+  return `
+    <div class="cid-head">
+      <span class="card-tag ${def.shatterOnUse ? "shatter" : "speech"}">${kind}</span>
+      <span class="cid-rarity r-${esc(def.rarity || "N")}">${esc(def.rarity || "N")}</span>
+      <h3 class="cid-title">${esc(def.name)}</h3>
+    </div>
+    <p class="cid-scene">${esc(def.sceneStart || "（無場景句）")}</p>
+    <div class="cid-rows">
+      <div class="cid-row"><span class="k">持有</span><span class="v">${countLine}</span></div>
+      <div class="cid-row"><span class="k">標籤</span><span class="v">${esc(tags)}</span></div>
+      <div class="cid-row"><span class="k">關係門檻</span><span class="v">${esc(minSt)}</span></div>
+      <div class="cid-row"><span class="k">鍊</span><span class="v">${esc(openLine)}</span></div>
+      ${emoLine ? `<div class="cid-row"><span class="k">感情骰</span><span class="v">${esc(emoLine)}</span></div>` : ""}
+      ${effLine ? `<div class="cid-row"><span class="k">效果</span><span class="v">${esc(effLine)}</span></div>` : ""}
+      ${def.price ? `<div class="cid-row"><span class="k">參考價</span><span class="v">${def.price} 金</span></div>` : ""}
+    </div>
+    ${def.promptHint ? `<p class="cid-hint dim small">${esc(def.promptHint)}</p>` : ""}
+    <button type="button" class="cid-close" id="cid-close">收起說明</button>`;
 }
 
 // ===== 創角輪巡（全新／清空重來）=====
