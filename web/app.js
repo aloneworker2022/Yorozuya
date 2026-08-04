@@ -4853,16 +4853,37 @@ function ackPlayReaction() {
   renderCardTable();
 }
 
+/** 強制退出牌桌全螢幕（清 session／card-mode），避免主畫面被藏成空白 */
+function exitCardModeFully(msg = "") {
+  cardUi.endPanel = null;
+  cardUi.awaitReaction = false;
+  cardUi.lastPlay = null;
+  cardUi.injectPick = [];
+  cardUi.handIdx = 0;
+  if (state.cardSession) Cards.closeSession(state, "ui_exit");
+  document.body.classList.remove("card-mode", "has-ct-figure");
+  clearCardTableDom();
+  const view = document.getElementById("card-table-view");
+  if (view) view.classList.add("hidden");
+  if (msg) toast(msg, "");
+  scheduleSave();
+  renderAll();
+  pumpKanbanBubbles();
+}
+
 /**
- * 輪末判定：留下 → 下一輪組牌；不留下 → 結束這次靠近（不是「靠近／離開」雙按鈕）
+ * 輪末判定：留下 → 下一輪組牌；不留下 → 看板顯示結束面板／約會直接散場退主畫面
  */
 function resolveRoundEndToPanel(girl, stage) {
   const gname = girl?.name || "她";
+  const mode = state.cardSession?.mode;
   const r = Cards.resolveRoundEnd(state, { stage });
   if (!r.ok) {
     toast(r.err || "結算失敗", "bad");
     scheduleSave();
-    renderCardTable();
+    // session 可能已壞：寧可退主畫面也不要卡死
+    if (!Cards.sessionActive(state)) exitCardModeFully(r.err || "牌局結束");
+    else renderCardTable();
     return;
   }
   cardUi.injectPick = [];
@@ -4871,10 +4892,19 @@ function resolveRoundEndToPanel(girl, stage) {
   if (r.stay) {
     cardUi.endPanel = "stay";
     toast(`${gname} 還願意再來一輪`, "good");
-  } else {
-    cardUi.endPanel = "leave";
-    toast(r.closed ? "這次到這了" : `${gname} 不想再繼續了`, "");
+    scheduleSave();
+    renderCardTable();
+    return;
   }
+  // 約會 resolveRoundEnd 會直接 closeSession → sessionActive=false
+  // 若仍留 card-mode，主 UI 被 visibility:hidden，牌桌又畫不出 → 一片空白
+  if (r.closed || mode === "date" || !Cards.sessionActive(state)) {
+    exitCardModeFully(mode === "date" || r.closed ? "約會到此散了" : `${gname} 離開了`);
+    return;
+  }
+  // 看板：session 仍在 idle_present，顯示「結束並離開」
+  cardUi.endPanel = "leave";
+  toast(`${gname} 不想再繼續了`, "");
   scheduleSave();
   renderCardTable();
 }
@@ -4896,9 +4926,15 @@ function finishEndPanel(choice) {
     renderCardTable();
     return;
   }
-  // 結束這次：看板模式一併解除在任
+  // 結束這次：看板模式一併解除在任；約會／無 session 也一律退 card-mode
+  const mode = sess?.mode;
+  if (!sess || !Cards.sessionActive(state)) {
+    exitCardModeFully(mode === "date" ? "約會到此散了" : "先到這吧");
+    return;
+  }
   const r = endCardTableAndReleaseKanban("round_end_leave");
-  toast(r.released ? `${r.gname} 離開店頭了` : "先到這吧", "");
+  // endCardTable 已清 card-mode；再 renderAll 保險
+  toast(r.released ? `${r.gname} 離開店頭了` : (mode === "date" ? "約會到此散了" : "先到這吧"), "");
   scheduleSave();
   renderAll();
   pumpKanbanBubbles();
@@ -5011,6 +5047,20 @@ function clearCardTableDom() {
 function renderCardTable() {
   const view = $("#card-table-view");
   if (!view) return;
+
+  // 防呆：card-mode 開著但 session 已死（約會散場曾卡成全白）
+  if (
+    document.body.classList.contains("card-mode") &&
+    !Cards.sessionActive(state) &&
+    !cardUi.endPanel &&
+    !cardUi.awaitReaction
+  ) {
+    document.body.classList.remove("card-mode", "has-ct-figure");
+    clearCardTableDom();
+    view.classList.add("hidden");
+    return;
+  }
+
   const active = cardSystemOn() && Cards.sessionActive(state) && document.body.classList.contains("card-mode");
   view.classList.toggle("hidden", !active);
   if (!active) {
@@ -5019,6 +5069,13 @@ function renderCardTable() {
   }
 
   const sess = state.cardSession;
+  if (!sess) {
+    // session 應存在卻沒有 → 退 card-mode
+    document.body.classList.remove("card-mode", "has-ct-figure");
+    clearCardTableDom();
+    view.classList.add("hidden");
+    return;
+  }
   const girl = girlForSession();
   const gname = girl?.name || "？";
   const stage = girl?.stage || "stranger";
@@ -5357,8 +5414,17 @@ function phaseLabel(p) {
 function renderCardSystem() {
   renderStarterModal();
   // 若 session 還在但 UI 被關掉，不強制打開
-  if (document.body.classList.contains("card-mode")) renderCardTable();
-  else {
+  if (document.body.classList.contains("card-mode")) {
+    // session 已死卻仍 card-mode → 清掉，恢復主畫面
+    if (!Cards.sessionActive(state) && !cardUi.endPanel && !cardUi.awaitReaction) {
+      document.body.classList.remove("card-mode", "has-ct-figure");
+      clearCardTableDom();
+      const view = $("#card-table-view");
+      if (view) view.classList.add("hidden");
+      return;
+    }
+    renderCardTable();
+  } else {
     const view = $("#card-table-view");
     if (view) view.classList.add("hidden");
     clearCardTableDom();
