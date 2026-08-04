@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.5(2026-08-04)精簡互動卡＋輪末自動判定＋語氣去牌桌化";
+const APP_VER = "v6.6(2026-08-04)立繪底層放大＋選中卡變色";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -4698,7 +4698,7 @@ function renderCardTable() {
       const def = Cards.cardById(row.cardId);
       setCtHand(`
         <div class="ct-card-wrap">
-          <div class="ct-play-card compact ${row.shatterOnUse ? "is-shatter" : "is-speech"}" id="ct-setup-card">
+          <div class="ct-play-card compact ${row.shatterOnUse ? "is-shatter" : "is-speech"}${picked ? " is-selected" : ""}" id="ct-setup-card">
             ${picked ? `<span class="ct-pc-badge">×${picked}</span>` : ""}
             <div class="ct-pc-body">${esc(row.name)}</div>
             <div class="swind"></div>
@@ -4838,7 +4838,7 @@ function renderCardTable() {
 
       setCtHand(`
         <div class="ct-card-wrap">
-          <div class="ct-play-card compact ${def?.shatterOnUse ? "is-shatter" : "is-speech"}${blocked ? " is-blocked" : ""}"
+          <div class="ct-play-card compact is-selected ${def?.shatterOnUse ? "is-shatter" : "is-speech"}${blocked ? " is-blocked" : ""}"
                id="ct-play-card" data-iid="${inst.instanceId}">
             <div class="ct-pc-body">${esc(def?.name || inst.cardId)}</div>
             <div class="swind"></div>

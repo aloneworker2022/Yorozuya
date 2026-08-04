@@ -1339,10 +1339,10 @@ body.chat-mode.has-figure #kanban-girl {
   margin-top: .9em; font-size: .82em; color: var(--dim); line-height: 1.5;
 }
 
-/* ===== 牌桌全螢幕：上立繪／中旁白／下手牌 ===== */
+/* ===== 牌桌全螢幕：立繪在底層；旁白／卡牌在上層 ===== */
 body.card-mode #track-wrap,
 body.card-mode #tabs { visibility: hidden; }
-body.card-mode #kanban { filter: brightness(.45); pointer-events: none; }
+body.card-mode #kanban { filter: brightness(.35); pointer-events: none; }
 /* 有立繪時看板娘背景退場，避免重影 */
 body.card-mode.has-ct-figure #kanban-girl {
   animation: none; opacity: 0; transform: none; pointer-events: none;
@@ -1353,63 +1353,89 @@ body.card-mode.has-ct-figure #kanban-girl {
   transform: translateX(-50%);
   width: 100%; max-width: 560px;
   z-index: 80;
-  display: flex; flex-direction: column;
-  background: linear-gradient(180deg, rgba(8, 4, 16, .55) 0%, rgba(8, 4, 16, .88) 42%, rgba(8, 4, 16, .96) 100%);
-  padding: env(safe-area-inset-top, 0) .7em env(safe-area-inset-bottom, 0);
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(8, 4, 16, .35) 0%, rgba(8, 4, 16, .55) 38%, rgba(8, 4, 16, .92) 100%);
   box-sizing: border-box;
 }
 #card-table-view.hidden { display: none; }
 
-.card-table-top {
-  display: flex; align-items: center; gap: .5em;
-  padding: .55em 0 .35em; flex-shrink: 0;
-}
-.card-table-top .back-btn { margin-bottom: 0; }
-.card-table-top #card-table-title {
-  flex: 1; text-align: center; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-/* 上：立繪區 */
-#ct-stage {
-  flex: 1 1 auto; min-height: 0;
-  display: flex; flex-direction: column;
-  justify-content: flex-end;
-  position: relative;
-}
+/* 底層：半身立繪（不擋點擊；永遠在旁白／卡後面） */
 #ct-portrait {
-  flex: 1 1 auto; min-height: 0;
+  position: absolute;
+  left: 0; right: 0;
+  top: env(safe-area-inset-top, 0);
+  bottom: 0;
+  z-index: 0;
   display: flex; align-items: flex-end; justify-content: center;
   pointer-events: none;
+  /* 下緣留給旁白+手牌，立繪站在「框後面」 */
+  padding-bottom: min(34vh, 240px);
 }
 #ct-portrait-img {
-  display: block; margin: 0 auto -1.1em;
-  height: min(48vh, 420px); width: auto; max-width: 100%;
+  display: block;
+  height: min(78vh, 640px);
+  width: auto; max-width: 108%;
   object-fit: contain; object-position: bottom center;
-  filter: drop-shadow(0 6px 22px rgba(0, 0, 0, .55));
+  filter: drop-shadow(0 8px 28px rgba(0, 0, 0, .6));
+  transform: translateY(2%);
 }
 #ct-portrait-img.hidden { display: none; }
 #ct-portrait-fallback {
-  width: 5.5em; height: 5.5em; margin: 0 auto 1.2em;
+  width: 6.5em; height: 6.5em; margin-bottom: 18vh;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.8em; letter-spacing: .05em; color: var(--pink);
+  font-size: 2em; letter-spacing: .05em; color: var(--pink);
   background: color-mix(in srgb, var(--pink) 14%, transparent);
   border: 1px solid var(--line);
   filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 40%, transparent));
 }
 #ct-portrait-fallback.hidden { display: none; }
 
-/* 中：旁白 */
+/* 前景：頂欄 + 空白 + 旁白 + 確認 + 手牌 */
+#ct-fore {
+  position: relative; z-index: 2;
+  height: 100%;
+  display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top, 0) .7em env(safe-area-inset-bottom, 0);
+  box-sizing: border-box;
+  pointer-events: none; /* 空白區點穿到背後；子元素再開 */
+}
+#ct-fore > * { pointer-events: auto; }
+#ct-space {
+  flex: 1 1 auto; min-height: 2em;
+  pointer-events: none !important;
+}
+
+.card-table-top {
+  display: flex; align-items: center; gap: .5em;
+  padding: .55em 0 .35em; flex-shrink: 0;
+  position: relative; z-index: 3;
+}
+.card-table-top .back-btn {
+  margin-bottom: 0;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border-radius: 6px; padding: .25em .55em;
+}
+.card-table-top #card-table-title {
+  flex: 1; text-align: center; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0,0,0,.75);
+}
+
+/* 旁白：不透明，壓在立繪前面 */
 #ct-vn {
   flex-shrink: 0;
-  background: var(--card-vn, var(--panel));
+  position: relative; z-index: 3;
+  background: var(--card-vn, rgba(12, 8, 22, .94));
   color: var(--card-vn-text, var(--text));
-  border-top: 1px solid var(--line);
-  border-radius: 10px 10px 0 0;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
   padding: .75em .95em .85em;
-  min-height: 5.6em;
+  min-height: 5.2em;
   text-shadow: var(--card-vn-halo, none);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, .35);
+  backdrop-filter: blur(6px);
 }
 #ct-vn-name {
   font-size: .85em; letter-spacing: .14em; color: var(--pink);
@@ -1420,7 +1446,7 @@ body.card-mode.has-ct-figure #kanban-girl {
 #ct-vn-text {
   font-size: .95em; line-height: 1.65;
   white-space: pre-wrap; word-break: break-word;
-  min-height: 2.6em;
+  min-height: 2.4em;
 }
 #ct-vn-meta {
   margin-top: .45em; font-size: .82em; line-height: 1.45;
@@ -1428,58 +1454,84 @@ body.card-mode.has-ct-figure #kanban-girl {
 #ct-vn-meta b { color: var(--cyan); font-weight: 600; }
 .chain-hint { color: var(--pink); }
 
-/* 碎卡確認層 */
+/* 碎卡確認／長按詳情 */
 #ct-confirm {
   flex-shrink: 0;
-  padding: 0 0 .35em;
+  position: relative; z-index: 4;
+  padding: 0;
+  background: rgba(12, 8, 22, .94);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
 }
 #ct-confirm.hidden { display: none; }
 .card-confirm {
-  margin: 0; padding: .75em .9em; border: 1px solid var(--red);
-  border-radius: 8px; background: rgba(80, 20, 30, .55);
+  margin: 0; padding: .75em .9em; border: none;
+  border-top: 1px solid color-mix(in srgb, var(--red) 50%, var(--line));
+  border-radius: 0; background: rgba(80, 20, 30, .55);
 }
 .card-confirm p { margin: 0 0 .55em; line-height: 1.5; }
 .card-confirm .bad { color: var(--red); }
 
-/* 下：精簡標題卡輪播（左右滑；長按看內容） */
+/* 手牌層：永遠在立繪之上 */
 #ct-hand {
   flex-shrink: 0;
-  max-height: 34vh;
+  position: relative; z-index: 3;
+  max-height: 32vh;
   overflow: hidden;
-  padding: .15em 0 .55em;
+  padding: .35em .15em calc(.55em + env(safe-area-inset-bottom, 0));
   display: flex; flex-direction: column; gap: .2em;
+  background: rgba(12, 8, 22, .94);
+  border: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .4);
 }
 .ct-empty { padding: .5em .2em; text-align: center; }
 
 .ct-card-wrap {
   flex: 0 0 auto;
   display: flex; align-items: center; justify-content: center;
-  padding: 2px 18px 0;
+  padding: 2px 14px 0;
 }
 /* 只要標題：矮卡 */
 .ct-play-card {
   width: 100%; max-width: 300px;
-  min-height: 4.4em;
-  background: var(--panel); color: var(--text);
+  min-height: 4.2em;
+  background: color-mix(in srgb, var(--panel) 92%, #000);
+  color: var(--text);
   border: 1px solid var(--line);
-  padding: 1em 1.15em;
+  padding: .9em 1.05em;
   position: relative; overflow: hidden;
   display: flex; flex-direction: column; justify-content: center;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, .4);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .4);
   user-select: none; touch-action: none; will-change: transform; cursor: grab;
   animation: cIn .18s cubic-bezier(.25, .8, .25, 1);
-  border-radius: 4px;
+  border-radius: 6px;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
 }
-.ct-play-card.compact { min-height: 4.2em; padding: .95em 1.1em; }
+.ct-play-card.compact { min-height: 4em; padding: .85em 1em; }
 .ct-play-card:active { cursor: grabbing; }
 .ct-play-card.is-shatter {
-  border-color: color-mix(in srgb, var(--pink) 55%, var(--line));
-  box-shadow: 0 10px 28px rgba(0, 0, 0, .4),
-    0 0 0 1px color-mix(in srgb, var(--pink) 18%, transparent);
+  border-color: color-mix(in srgb, var(--pink) 45%, var(--line));
 }
 .ct-play-card.is-speech {
-  border-color: color-mix(in srgb, var(--cyan) 35%, var(--line));
+  border-color: color-mix(in srgb, var(--cyan) 30%, var(--line));
 }
+/* 目前聚焦／已帶上 → 變色 */
+.ct-play-card.is-selected {
+  background: color-mix(in srgb, var(--cyan) 28%, var(--panel));
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cyan) 50%, transparent),
+    0 8px 24px color-mix(in srgb, var(--cyan) 28%, transparent);
+}
+.ct-play-card.is-selected .ct-pc-body { color: var(--text); text-shadow: 0 0 10px color-mix(in srgb, var(--cyan) 45%, transparent); }
+.ct-play-card.is-shatter.is-selected {
+  background: color-mix(in srgb, var(--pink) 30%, var(--panel));
+  border-color: var(--pink);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pink) 50%, transparent),
+    0 8px 24px color-mix(in srgb, var(--pink) 30%, transparent);
+}
+.ct-play-card.is-shatter.is-selected .ct-pc-body { color: #fff; text-shadow: 0 0 10px color-mix(in srgb, var(--pink) 55%, transparent); }
 .ct-play-card.is-blocked {
   opacity: .5;
   filter: grayscale(.2);
@@ -1502,6 +1554,10 @@ body.card-mode.has-ct-figure #kanban-girl {
   background: color-mix(in srgb, var(--gold) 16%, transparent);
   padding: 1px 7px; border-radius: 1em;
 }
+.ct-play-card.is-selected .ct-pc-badge {
+  color: #1a1020;
+  background: var(--gold);
+}
 .ct-play-card .swind {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 2.4rem; opacity: 0; pointer-events: none; z-index: 4;
@@ -1517,8 +1573,9 @@ body.card-mode.has-ct-figure #kanban-girl {
 /* 長按詳情 */
 .card-peek {
   margin: 0; padding: .75em .9em;
-  border: 1px solid var(--line); border-radius: 8px;
-  background: rgba(12, 8, 22, .92);
+  border: none; border-radius: 0;
+  background: rgba(12, 8, 22, .96);
+  border-top: 1px solid var(--line);
 }
 .card-peek-name {
   font-size: .95em; letter-spacing: .1em; color: var(--pink);
@@ -1542,10 +1599,11 @@ body.card-mode.has-ct-figure #kanban-girl {
 .card-actions { margin-top: .1em; flex-wrap: wrap; flex-shrink: 0; }
 .card-actions button { margin: .15em; }
 
-/* 小螢幕：立繪多留一點，標題卡保持矮 */
+/* 小螢幕 */
 @media (max-height: 620px) {
-  #ct-portrait-img { height: min(34vh, 260px); margin-bottom: -.8em; }
+  #ct-portrait { padding-bottom: min(36vh, 200px); }
+  #ct-portrait-img { height: min(70vh, 480px); }
   #ct-vn { min-height: 4em; padding: .5em .75em .55em; }
-  #ct-hand { max-height: 36vh; }
-  .ct-play-card, .ct-play-card.compact { min-height: 3.8em; padding: .8em 1em; }
+  #ct-hand { max-height: 34vh; }
+  .ct-play-card, .ct-play-card.compact { min-height: 3.6em; padding: .75em .9em; }
 }
