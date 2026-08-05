@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.7f(2026-08-05)修預產弱台詞／出卡不顯示省略號";
+const APP_VER = "v6.7g(2026-08-05)出卡兩拍：動作旁白→她的回應";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -4295,7 +4295,9 @@ let cardUi = {
   invSelected: null,   // cardId 詳情
   handIdx: 0,          // round_play 手牌輪播索引
   injectIdx: 0,        // round_setup 牌庫輪播索引
-  awaitReaction: false, // 出卡後必看她的反應，按「繼續」才往下
+  awaitReaction: false, // 出卡後必看反應，按「繼續」才往下
+  // 出卡兩拍：action=你的動作旁白 → reply=她的預產回應
+  reactBeat: null,     // null | "action" | "reply"
   // 輪末判定結果面板：null | "stay" | "leave"（不要跳回「靠近／離開」）
   endPanel: null,
   // 現場 AI 已廢（保留欄位相容）
@@ -4306,6 +4308,46 @@ let cardUi = {
   pregenJobs: [],
   pregenStarted: false,
 };
+
+/** 出卡第一拍：動作旁白（誰、做了什麼） */
+function playActionBeat(last, girl) {
+  const def = last?.cardId ? Cards.cardById(last.cardId) : null;
+  const kind = def?.kind || "speech";
+  const action = (last.sceneStart || last.name || "……").trim();
+  const pname = state.settings?.player || "你";
+  if (kind === "girl_trait") {
+    return {
+      speaker: girl?.name || "她",
+      text: action,
+      meta: `「${esc(last.name || "")}」· 點一下看她接著說`,
+    };
+  }
+  if (kind === "venue_event") {
+    return {
+      speaker: "場面",
+      text: action,
+      meta: `「${esc(last.name || "")}」· 點一下看她的反應`,
+    };
+  }
+  // 玩家出手：名字 + 動作描述（sceneStart）
+  return {
+    speaker: pname,
+    text: action,
+    meta: `「${esc(last.name || "")}」· 點一下看她的反應`,
+  };
+}
+
+function advanceReactBeat() {
+  if (!cardUi.awaitReaction || !cardUi.lastPlay) return;
+  if (cardUi.reactBeat === "action") {
+    cardUi.reactBeat = "reply";
+    renderCardTable();
+    return;
+  }
+  if (cardUi.reactBeat === "reply") {
+    ackPlayReaction();
+  }
+}
 
 function renderCardShopPanel() {
   const shelf = $("#card-shop-stock");
@@ -5139,6 +5181,7 @@ function endCardTableAndReleaseKanban(reason = "card_end") {
   cardUi.injectPick = [];
   cardUi.lastPlay = null;
   cardUi.awaitReaction = false;
+  cardUi.reactBeat = null;
   cardUi.endPanel = null;
   cardUi.playAiPending = false;
   cardUi.playAiKey = null;
@@ -5251,7 +5294,8 @@ function commitHandPlay(instanceId, girl, stage) {
   const r = Cards.commitPlay(state, instanceId, { stage, guardHigh: guardActive(girl) });
   if (!r.ok) { toast(r.err, "bad"); return; }
   cardUi.lastPlay = r;
-  cardUi.awaitReaction = true; // 必看她的反應，再按繼續
+  cardUi.awaitReaction = true;
+  cardUi.reactBeat = "action"; // 先播動作，再點一下才出她的回應
   cardUi.endPanel = null;
   applyPlaySideEffects(girl, r);
   beginCardPlayAi(girl, r);
@@ -5267,6 +5311,7 @@ function ackPlayReaction() {
   const stage = girl?.stage || "stranger";
   const last = cardUi.lastPlay;
   cardUi.awaitReaction = false;
+  cardUi.reactBeat = null;
   cardUi.playAiPending = false;
   cardUi.playAiKey = null;
   cardUi.playAiToken = null;
@@ -5291,6 +5336,7 @@ function ackPlayReaction() {
 function exitCardModeFully(msg = "") {
   cardUi.endPanel = null;
   cardUi.awaitReaction = false;
+  cardUi.reactBeat = null;
   cardUi.lastPlay = null;
   cardUi.injectPick = [];
   cardUi.handIdx = 0;
@@ -5552,9 +5598,38 @@ function renderCardTable() {
   if (!sess.pending && !cardUi._keepPeek) setCtConfirm("");
   cardUi._keepPeek = false;
 
-  // ── 出卡反應（必看）：預產台詞直接播 → 繼續 ────────
+  // ── 出卡反應兩拍：①動作旁白 → 點一下 → ②她的預產回應 ──
   if (cardUi.awaitReaction && cardUi.lastPlay) {
     const last = cardUi.lastPlay;
+    if (!cardUi.reactBeat) cardUi.reactBeat = "action";
+    syncCardTableChrome({ ejectMode: false });
+
+    // ① 玩家／場面動作（sceneStart）
+    if (cardUi.reactBeat === "action") {
+      const beat = playActionBeat(last, girl);
+      setCtVn({
+        name: beat.speaker,
+        text: beat.text,
+        meta: beat.meta,
+      });
+      // 對話框可點
+      const vn = $("#ct-vn");
+      if (vn) {
+        vn.classList.add("ct-vn-tap");
+        vn.onclick = () => advanceReactBeat();
+      }
+      setCtHand(`
+        <div class="ct-react-beat">
+          <div class="dim small ct-react-wait">點對話框繼續——她會接下一句</div>
+          <div class="detail-actions card-actions">
+            <button type="button" class="cyan" id="ct-ack-react">繼續</button>
+          </div>
+        </div>`);
+      $("#ct-ack-react").onclick = () => advanceReactBeat();
+      return;
+    }
+
+    // ② 她的回應（預產 AI／罐頭）
     const openNote = last.open && !last.open.success
       ? "沒接住"
       : last.open?.success
@@ -5567,7 +5642,6 @@ function renderCardTable() {
       : `之後還能應付 ${last.playsLeft ?? "?"} 次`;
     const srcNote = last.fromPregen || last.fromAi ? "" : " · 保底";
 
-    syncCardTableChrome({ ejectMode: false });
     let showLine = last.girlLine || "";
     if (Cards.isWeakLine?.(showLine)) {
       showLine = Cards.girlReactionLine({
@@ -5582,17 +5656,31 @@ function renderCardTable() {
       text: showLine || "我聽到了。",
       meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${srcNote} · ${esc(more)}`,
     });
+    const vn2 = $("#ct-vn");
+    if (vn2) {
+      vn2.classList.add("ct-vn-tap");
+      vn2.onclick = () => advanceReactBeat();
+    }
     setCtHand(`
       <div class="ct-react-beat">
-        <div class="dim small ct-react-you">你：${esc(last.sceneStart || last.name || "……")}</div>
+        <div class="dim small ct-react-you">剛才：${esc(last.name || "")}</div>
         <div class="detail-actions card-actions">
           <button type="button" class="cyan" id="ct-ack-react">${
             last.roundEnded ? "繼續（輪末判定）" : "繼續"
           }</button>
         </div>
       </div>`);
-    $("#ct-ack-react").onclick = () => ackPlayReaction();
+    $("#ct-ack-react").onclick = () => advanceReactBeat();
     return;
+  }
+
+  // 非反應節拍：對話框不要留 click
+  {
+    const vn = $("#ct-vn");
+    if (vn) {
+      vn.classList.remove("ct-vn-tap");
+      vn.onclick = null;
+    }
   }
 
   // ── 預產中（多半是約會；看板已回主畫面）────────────────
@@ -5914,6 +6002,7 @@ function renderCardTable() {
         flyCard(playCard, "up", () => {
           cardUi.lastPlay = r;
           cardUi.awaitReaction = true;
+          cardUi.reactBeat = "action";
           cardUi.endPanel = null;
           applyPlaySideEffects(girl, r);
           beginCardPlayAi(girl, r);

@@ -1603,6 +1603,19 @@ body.card-mode.has-ct-figure #kanban-girl {
   white-space: pre-wrap; word-break: break-word;
   min-height: 2.4em;
 }
+/* 出卡兩拍：點對話框進下一拍 */
+#ct-vn.ct-vn-tap {
+  cursor: pointer;
+  user-select: none;
+}
+#ct-vn.ct-vn-tap:active {
+  filter: brightness(1.08);
+}
+#ct-vn.ct-vn-tap #ct-vn-meta::after {
+  content: " ▾";
+  color: var(--cyan);
+  animation: pulse 1s infinite;
+}
 #ct-vn-meta {
   margin-top: .45em; font-size: .82em; line-height: 1.45;
 }
