@@ -2998,6 +2998,7 @@ function beginCardPlayAi(girl, play) {
     if (!cardUi.awaitReaction || cardUi.lastPlay !== play) return;
     cardUi.sceneArtPending = false;
     beginCardPlayText(girl, play);
+    if (document.body.classList.contains("card-mode")) renderCardTable();
   };
 
   if (!cardSceneArtOn()) {
