@@ -418,6 +418,45 @@ export function buildCardPlayPrompt(ctx) {
   return lines.filter(Boolean).join("\n");
 }
 
+/**
+ * 委託三節點氣泡（發現／承接／完成）短反應。
+ * 1 句、繁中、對「這次委託事件」有感，不是通用罐頭。
+ */
+export function buildBubblePrompt(ctx) {
+  const c = ctx.character || {};
+  const r = ctx.relationship || {};
+  const ax = STAGE_AXES[r.stage] || STAGE_AXES.stranger;
+  const you = ctx.player?.name || "他";
+  const ev = ctx.bubble_event || {};
+  const eventMap = {
+    discover: "他剛在本子上發現一件新委託／待辦",
+    accept: "他剛承接了一件委託",
+    complete: "他剛把一件委託做完了",
+  };
+  const eventLine = eventMap[ev.key] || "他剛對委託清單動了什麼";
+  const quest = (ev.quest_text || "").trim() || "（某件待辦）";
+  const lines = [
+    `你是「${c.name}」,被召喚而來的女子,正站在召喚者「${you}」的萬事屋店頭當看板娘。`,
+    `個性:${(c.personality || []).join("、") || "—"}。${c.tone || SPEECH_STYLE[c.speech_style] || ""}`,
+    ax.open,
+    `稱呼:${ax.address.replace(/\{name\}/g, you)}`,
+    `你對他的要求權:${ax.claim}`,
+    "",
+    "【剛發生的事】",
+    eventLine + `：「${quest}」`,
+    "",
+    "對這件事用 1 句話碎嘴（看著他／待辦的反應）。",
+    r.stage === "stranger"
+      ? "分寸:你沒有立場真的管他——吐槽、冷眼、淡淡一句就好,不要甜蜜催促。"
+      : "可吐槽、提醒、鼓勵、吃味、或要他做完來陪你——依個性擇一。",
+    "規則:只輸出那一句台詞本身;繁體中文;40 字以內;不加引號、不加括號動作、不提系統/卡牌/AI。",
+    ctx.content_rating === "nsfw"
+      ? "尺度:可帶一點色氣口吻,但這句仍要短、要對準委託事件。"
+      : "尺度:全年齡,可曖昧不可露骨。",
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
 /** 看板娘主動氣泡:她看著他的委託清單,主動想說的「一句話」。
  *  背景預生成、點擊即顯示;廠商替換點,可整包改寫。 */
 export function buildQuipPrompt(ctx) {

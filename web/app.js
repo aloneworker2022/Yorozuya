@@ -3,13 +3,13 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
-import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildCardPlayPrompt, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
+import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildCardPlayPrompt, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, WARDROBE_UNLOCK } from "./content/girl_gen.js";
 import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.9a(2026-08-05)長按牌組·右下小鍵打牌";
+const APP_VER = "v6.9b(2026-08-05)看板氣泡改即時AI";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -107,6 +107,7 @@ function crestRoll() {
 
 /**
  * M2 氣泡：僅 discover / accept / complete 三節點、固定 15%、每位在場看板娘各擲一次。
+ * 有模型 → 即時短 AI（對準這次委託）；失敗／無模型 → 罐頭。
  * 不進全螢幕聊天、不下手牌；情感 +0/+1（日 cap +2／人）。
  */
 function questBubbleRoll(eventKey, questText = "") {
@@ -123,21 +124,152 @@ function questBubbleRoll(eventKey, questText = "") {
   });
   if (!hits.length) return false;
   const queue = [];
+  const hasModel = !!state.settings?.model;
   for (const h of hits) {
     const s = state.succubi.find(x => x.id === h.girlId);
     if (!s) continue;
     if (h.emotionDelta) applyAffection(s, h.emotionDelta);
-    queue.push({
+    const canned = h.text || "……";
+    if (!hasModel) {
+      queue.push({
+        girlId: s.id,
+        name: s.name,
+        text: canned,
+        emotionDelta: h.emotionDelta || 0,
+        pending: false,
+      });
+      continue;
+    }
+    // 有 AI：先排隊顯示讀取，背景下單
+    const token = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    const aiKey = `bubble:${s.id}:${eventKey}:${token}`;
+    const item = {
       girlId: s.id,
       name: s.name,
-      text: h.text,
+      text: "",
+      canned,
       emotionDelta: h.emotionDelta || 0,
-    });
+      pending: true,
+      aiKey,
+      eventKey,
+      questText: questText || "",
+    };
+    queue.push(item);
+    // 立刻丟單（prio 8：低於打牌 12／回覆 10，高於背景 quip）
+    genPost(aiKey, bubbleMsgs(s, eventKey, questText || ""), 8).catch(() => {});
   }
   if (!queue.length) return false;
   enqueueKanbanBubbles(queue);
   dirty = true;
+  try { genTick(true); } catch { /* */ }
   return true;
+}
+
+function bubbleMsgs(girl, eventKey, questText) {
+  const ctx = buildCtx(girl);
+  ctx.want_guard_flag = false;
+  ctx.bubble_event = { key: eventKey, quest_text: questText || "" };
+  return [
+    { role: "system", content: buildBubblePrompt(ctx) },
+    { role: "user", content: "只輸出那一句話。" },
+  ];
+}
+
+function bubbleLineFromAi(raw) {
+  const { text } = stripGuardFlag(raw || "");
+  let line = (text || "").split("\n").map(l => l.trim()).filter(Boolean)[0] || "";
+  line = line.slice(0, 60);
+  if (Cards.isWeakLine?.(line)) return "";
+  return line;
+}
+
+/** 收氣泡 AI：佇列裡 pending 的 + 正在顯示的 */
+async function genBubbleOrders() {
+  if (!state.settings?.model) return;
+  const items = [];
+  if (bubbleShowingItem?.pending && bubbleShowingItem.aiKey) items.push(bubbleShowingItem);
+  for (const it of bubbleQueue) {
+    if (it.pending && it.aiKey) items.push(it);
+  }
+  if (!items.length) return;
+
+  let changed = false;
+  for (const it of items) {
+    const girl = state.succubi.find(x => x.id === it.girlId);
+    if (!girl) {
+      it.pending = false;
+      it.text = it.canned || "……";
+      changed = true;
+      continue;
+    }
+    const r = await genPost(it.aiKey, bubbleMsgs(girl, it.eventKey || "discover", it.questText || ""), 8);
+    if (!r) continue;
+    if (r.status === "pending" || r.status === "running" || r.status === "queued") continue;
+    if (r.status === "done" && r.result) {
+      const line = bubbleLineFromAi(r.result);
+      it.text = line || it.canned || "……";
+      it.fromAi = !!line;
+    } else {
+      it.text = it.canned || "……";
+      it.fromAi = false;
+    }
+    it.pending = false;
+    changed = true;
+    // 若正在顯示這句，立刻換字
+    if (bubbleShowingItem === it) refreshBubbleText(it);
+  }
+  if (changed) {
+    // 若佇列頭已就緒但還沒顯示，催一下
+    if (!bubbleShowing) pumpKanbanBubbles();
+  }
+}
+
+function refreshBubbleText(it) {
+  const textEl = document.getElementById("bubble-text");
+  const hint = document.getElementById("bubble-hint");
+  if (!textEl || !bubbleShowing) return;
+  textEl.textContent = it.text || it.canned || "……";
+  if (hint) hint.textContent = "點一下繼續";
+}
+
+/** 看板罐頭反應（完成／違約／催促等）— 有模型時也走短 AI */
+function kanbanReact(kind) {
+  if (isAsleep() || document.body.classList.contains("card-mode")) return;
+  const g = kanbanSuccubus();
+  if (!g || g.ntr || g.summoner?.taken) return;
+  const canned = pick(REACT[kind] || REACT.idle);
+  if (!state.settings?.model) {
+    kanbanSay(canned);
+    return;
+  }
+  // 用 complete 氣泡框架帶一點情境
+  const eventKey = kind === "complete" ? "complete"
+    : kind === "fail" ? "accept"
+    : kind === "hurry" ? "accept"
+    : "discover";
+  const questText = kind === "hurry"
+    ? "快到期的那件委託"
+    : kind === "fail"
+      ? "違約／搞砸的那件"
+      : kind === "stage"
+        ? "你們關係變了"
+        : "剛完成的事";
+  const token = `${Date.now().toString(36)}_${kind}`;
+  const aiKey = `bubble:${g.id}:react:${token}`;
+  const item = {
+    girlId: g.id,
+    name: g.name,
+    text: "",
+    canned,
+    emotionDelta: 0,
+    pending: true,
+    aiKey,
+    eventKey,
+    questText,
+  };
+  enqueueKanbanBubbles([item]);
+  genPost(aiKey, bubbleMsgs(g, eventKey, questText), 8).catch(() => {});
+  try { genTick(true); } catch { /* */ }
 }
 
 // 擱置太久的那場對話就當它結束了(紋熄滅、下次委託操作再開新的一場),
@@ -2300,9 +2432,12 @@ async function genQuipOrders() {
       if (q.got.includes(key)) continue;
       const r = await genPost(key, quipMsgs(s));
       if (r?.status === "done" && r.result && state.quips[s.id] === q && q.hash === questHash()) {
-        q.lines.push(r.result.split("\n")[0].slice(0, 60));
-        q.got.push(key);
-        dirty = true; scheduleSave();
+        const line = bubbleLineFromAi(r.result) || r.result.split("\n")[0].slice(0, 60);
+        if (line) {
+          q.lines.push(line);
+          q.got.push(key);
+          dirty = true; scheduleSave();
+        }
       }
     }
   }
@@ -2318,9 +2453,11 @@ function waitingOnHer() {
 
 async function genTick(force = false) {
   if (genTickBusy) return;
-  // 等她那句話／打牌即時反應時收貨加快
+  // 等她那句話／打牌即時反應／氣泡 AI 時收貨加快
   const waitingCard = !!(cardUi.awaitReaction && cardUi.playAiPending);
-  if (!force && Date.now() - lastGenAt < ((waitingOnHer() || waitingCard) ? 700 : 2000)) return;
+  const waitingBubble = !!(bubbleShowingItem?.pending
+    || bubbleQueue.some(b => b.pending));
+  if (!force && Date.now() - lastGenAt < ((waitingOnHer() || waitingCard || waitingBubble) ? 700 : 2000)) return;
   lastGenAt = Date.now();
   genTickBusy = true;
   try {
@@ -2329,6 +2466,8 @@ async function genTick(force = false) {
       // 打牌即時反應最優先（玩家盯著牌桌）
       await genCardPlayOrder();
       await genReplyOrder();
+      // 看板委託氣泡（玩家剛操作完委託）
+      await genBubbleOrders();
       const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep()
         && !document.body.classList.contains("card-mode");
       if (idle) await genChatOrder();
@@ -3269,6 +3408,8 @@ let bubbleTimer = null;
 let bubbleQueue = [];
 let bubbleShowing = false;
 let bubbleBound = false;
+/** 正在顯示的氣泡（可能 pending AI） */
+let bubbleShowingItem = null;
 
 function kanbanSay(text) {
   // 無指定角色：用主看板娘半身
@@ -3278,6 +3419,7 @@ function kanbanSay(text) {
     name: g?.name || "",
     text,
     emotionDelta: 0,
+    pending: false,
   }]);
 }
 
@@ -3285,13 +3427,10 @@ function kanbanSay(text) {
 function enqueueKanbanBubbles(items) {
   if (!items?.length) return;
   for (const it of items) {
-    if (!it?.text) continue;
-    bubbleQueue.push({
-      girlId: it.girlId || null,
-      name: it.name || "",
-      text: it.text,
-      emotionDelta: it.emotionDelta || 0,
-    });
+    // pending 的可以沒有 text（等 AI）；定稿的必須有字
+    if (!it) continue;
+    if (!it.pending && !it.text) continue;
+    bubbleQueue.push(it);
   }
   pumpKanbanBubbles();
 }
@@ -3300,12 +3439,18 @@ function hideBubbleOverlay() {
   const ov = document.getElementById("bubble-overlay");
   if (ov) ov.classList.add("hidden");
   bubbleShowing = false;
+  bubbleShowingItem = null;
   clearTimeout(bubbleTimer);
   bubbleTimer = null;
 }
 
 function dismissBubble() {
   if (!bubbleShowing) return;
+  // 還在等 AI 時點一下：用罐頭落地再關，避免卡住
+  if (bubbleShowingItem?.pending) {
+    bubbleShowingItem.pending = false;
+    bubbleShowingItem.text = bubbleShowingItem.canned || bubbleShowingItem.text || "……";
+  }
   hideBubbleOverlay();
   if (bubbleQueue.length) setTimeout(pumpKanbanBubbles, 160);
 }
@@ -3351,10 +3496,12 @@ function pumpKanbanBubbles() {
   const nameEl = document.getElementById("bubble-name");
   const textEl = document.getElementById("bubble-text");
   const affEl = document.getElementById("bubble-aff");
+  const hint = document.getElementById("bubble-hint");
   if (!ov || !nameEl || !textEl) return;
 
   bindBubbleOverlayOnce();
   bubbleShowing = true;
+  bubbleShowingItem = next;
 
   const girl = next.girlId
     ? state.succubi.find(x => x.id === next.girlId)
@@ -3362,7 +3509,13 @@ function pumpKanbanBubbles() {
   const gname = next.name || girl?.name || "";
   setBubblePortrait(girl || null);
   nameEl.textContent = gname || "……";
-  textEl.textContent = next.text || "……";
+  if (next.pending) {
+    textEl.textContent = "……";
+    if (hint) hint.textContent = "她正在想……點一下可跳過";
+  } else {
+    textEl.textContent = next.text || next.canned || "……";
+    if (hint) hint.textContent = "點一下繼續";
+  }
   if (affEl) {
     if (next.emotionDelta) {
       affEl.textContent = `♥+${next.emotionDelta}`;
@@ -3374,12 +3527,12 @@ function pumpKanbanBubbles() {
   }
   ov.classList.remove("hidden");
 
-  // 自動前進當後備；玩家點一下也可提早關
+  // 等 AI 時拉長一點；寫好後仍可點掉
   clearTimeout(bubbleTimer);
   bubbleTimer = setTimeout(() => {
     if (!bubbleShowing) return;
     dismissBubble();
-  }, 5200);
+  }, next.pending ? 12000 : 5200);
 }
 
 // ===== 像素剪影 =====
