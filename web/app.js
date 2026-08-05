@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.9b(2026-08-05)看板氣泡改即時AI";
+const APP_VER = "v6.9c(2026-08-05)M4收尾·清預產·作廢出卡AI";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -654,6 +654,7 @@ function initState(j, offline) {
   state.deckPresets ??= [];
   state.cardShop ??= null;
   state.cardSession ??= null;
+  if (state.cardSession) Cards.normalizeSessionPhase?.(state.cardSession);
   state.bubbleAff ??= { day: null, byGirl: {} }; // M2 氣泡情感日 cap
   state.playerProfile = {
     name: "", body: "", look: "", habit: "",
@@ -2480,7 +2481,7 @@ async function genTick(force = false) {
   genTickBusy = false;
 }
 
-// ── M4 打牌短 AI：出卡後即時生成（不整輪預產）────────────────
+// ── M4 打牌短 AI：出卡後即時生成（打一張生一句；無整輪預產）──
 // 兩拍：① 動作旁白 ② 她的回應（有模型等 AI；點點點；失敗／無模型用罐頭）
 
 function cardPlayLines(text) {
@@ -2528,17 +2529,29 @@ function cardPlayMsgs(girl, play) {
   ];
 }
 
-/** 出卡後：有模型立刻下單；等 AI 時第二拍顯示點點點，不預先塞罐頭給玩家看 */
-function beginCardPlayAi(girl, play) {
+/**
+ * 作廢進行中的出卡 AI（推出／離開／看完反應後）。
+ * 遞增 playAiGen：已下單的收貨若 gen 不符就丟，不寫入 girlLine。
+ */
+function voidCardPlayAi() {
+  cardUi.playAiGen = (cardUi.playAiGen || 0) + 1;
   cardUi.playAiPending = false;
   cardUi.playAiKey = null;
   cardUi.playAiToken = null;
+  cardUi.playAiStartedGen = null;
+}
+
+/** 出卡後：有模型立刻下單；等 AI 時第二拍顯示點點點，不預先塞罐頭給玩家看 */
+function beginCardPlayAi(girl, play) {
+  voidCardPlayAi(); // 作廢上一張未完成的訂單
   if (!girl || !play?.ok) return;
   if (!state.settings?.model) return;
   const token = `${Date.now().toString(36)}_${play.cardId || "x"}`;
+  const gen = cardUi.playAiGen || 0;
   cardUi.playAiToken = token;
   cardUi.playAiKey = `cardplay:${girl.id}:${token}`;
   cardUi.playAiPending = true;
+  cardUi.playAiStartedGen = gen;
   // prio 12：玩家在等這句
   genPost(cardUi.playAiKey, cardPlayMsgs(girl, play), 12).catch(() => {});
 }
@@ -2546,18 +2559,21 @@ function beginCardPlayAi(girl, play) {
 async function genCardPlayOrder() {
   if (!cardUi.awaitReaction || !cardUi.playAiPending || !cardUi.playAiKey) return;
   if (!cardUi.lastPlay || !state.settings?.model) {
-    cardUi.playAiPending = false;
+    voidCardPlayAi();
     return;
   }
   const girl = girlForSession();
   if (!girl) {
-    cardUi.playAiPending = false;
+    voidCardPlayAi();
     return;
   }
   const token = cardUi.playAiToken;
   const key = cardUi.playAiKey;
+  const startedGen = cardUi.playAiStartedGen;
   const r = await genPost(key, cardPlayMsgs(girl, cardUi.lastPlay), 12);
   if (!r) return;
+  // 推出／離開／換卡後作廢：gen 不符或 token 不符都不寫入
+  if (cardUi.playAiStartedGen !== startedGen) return;
   if (cardUi.playAiToken !== token || !cardUi.awaitReaction) return;
   if (r.status === "pending" || r.status === "running" || r.status === "queued") return;
 
@@ -2578,12 +2594,16 @@ async function genCardPlayOrder() {
     if (!Cards.isWeakLine?.(line)) cardUi.lastPlay.girlLine = line;
     cardUi.playAiPending = false;
     cardUi.playAiKey = null;
+    cardUi.playAiToken = null;
+    cardUi.playAiStartedGen = null;
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
       renderCardTable();
     }
   } else if (r.status === "error") {
     cardUi.playAiPending = false;
     cardUi.playAiKey = null;
+    cardUi.playAiToken = null;
+    cardUi.playAiStartedGen = null;
     if (cardUi.lastPlay) cardUi.lastPlay.fromAi = false;
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
       renderCardTable();
@@ -4243,14 +4263,16 @@ let cardUi = {
   handIdx: 0,          // round_play 手牌輪播索引
   injectIdx: 0,        // round_setup 牌庫輪播索引
   awaitReaction: false, // 出卡後必看反應，按「繼續」才往下
-  // 出卡兩拍：action=你的動作旁白 → reply=她的預產回應
+  // 出卡兩拍：action=你的動作旁白 → reply=她的即時 AI 回應
   reactBeat: null,     // null | "action" | "reply"
   // 輪末判定結果面板：null | "stay" | "leave"（不要跳回「靠近／離開」）
   endPanel: null,
-  // 現場 AI 已廢（保留欄位相容）
+  // M4 出卡即時 AI（voidCardPlayAi 遞增 playAiGen 作廢在途訂單）
   playAiPending: false,
   playAiKey: null,
   playAiToken: null,
+  playAiGen: 0,
+  playAiStartedGen: null,
 };
 
 /** 出卡第一拍：動作旁白（誰、做了什麼） */
@@ -5185,7 +5207,7 @@ function openKanbanTable(girlId, opts = {}) {
     document.body.classList.add("card-mode");
     if (phase !== "round_play" || Cards.playsLeft(state.cardSession) <= 0) {
       if (phase === "round_play" || phase === "idle_present" || phase === "round_setup"
-        || phase === "round_end" || phase === "pregen" || phase === "ready") {
+        || phase === "round_end") {
         const deal = dealFromDeck(s);
         if (!deal.ok && !deal.already) toast(deal.err, "bad");
         else if (deal.ok && !deal.already) {
@@ -5242,9 +5264,7 @@ function endCardTableAndReleaseKanban(reason = "card_end") {
   cardUi.awaitReaction = false;
   cardUi.reactBeat = null;
   cardUi.endPanel = null;
-  cardUi.playAiPending = false;
-  cardUi.playAiKey = null;
-  cardUi.playAiToken = null;
+  voidCardPlayAi();
   document.body.classList.remove("card-mode", "has-ct-figure");
   clearCardTableDom();
 
@@ -5257,11 +5277,9 @@ function endCardTableAndReleaseKanban(reason = "card_end") {
   return { gname, released: false };
 }
 
-/** 中止牌桌（推出）：取消 AI pending、關 session、看板解除 */
+/** 中止牌桌（推出）：作廢出卡 AI、關 session、看板解除 */
 function ejectCardTable(reason = "player_eject") {
-  cardUi.playAiPending = false;
-  cardUi.playAiKey = null;
-  cardUi.playAiToken = null;
+  voidCardPlayAi();
   const r = endCardTableAndReleaseKanban(reason);
   toast(r.released ? `${r.gname} 被推出店頭了` : "先到這吧", "");
   scheduleSave();
@@ -5342,7 +5360,7 @@ function applyPlaySideEffects(girl, result) {
   }
 }
 
-/** 碎卡確認後真正打出（台詞已在 pregen 備好） */
+/** 碎卡確認後真正打出（背景下單即時 AI；第二拍等收貨） */
 function commitHandPlay(instanceId, girl, stage) {
   const r = Cards.commitPlay(state, instanceId, { stage, guardHigh: guardActive(girl) });
   if (!r.ok) { toast(r.err, "bad"); return; }
@@ -5365,9 +5383,7 @@ function ackPlayReaction() {
   const last = cardUi.lastPlay;
   cardUi.awaitReaction = false;
   cardUi.reactBeat = null;
-  cardUi.playAiPending = false;
-  cardUi.playAiKey = null;
-  cardUi.playAiToken = null;
+  voidCardPlayAi(); // 看完也作廢，避免遲到結果覆寫下一張
   if (!sess) {
     renderCardTable();
     return;
@@ -5393,9 +5409,7 @@ function exitCardModeFully(msg = "") {
   cardUi.lastPlay = null;
   cardUi.injectPick = [];
   cardUi.handIdx = 0;
-  cardUi.playAiPending = false;
-  cardUi.playAiKey = null;
-  cardUi.playAiToken = null;
+  voidCardPlayAi();
   if (state.cardSession) Cards.closeSession(state, "ui_exit");
   document.body.classList.remove("card-mode", "has-ct-figure");
   clearCardTableDom();
@@ -5764,10 +5778,8 @@ function renderCardTable() {
     }
   }
 
-  // 舊存檔卡在 pregen/ready → 直接當 round_play
-  if (sess.phase === "pregen" || sess.phase === "ready") {
-    sess.phase = "round_play";
-  }
+  // 舊存檔卡在 pregen/ready → 正規成 round_play
+  Cards.normalizeSessionPhase?.(sess);
 
   syncCardTableChrome({ ejectMode: false });
 
@@ -5949,8 +5961,6 @@ function phaseLabel(p) {
   return ({
     idle_present: "陪伴",
     round_setup: "組牌",
-    pregen: "互動中",
-    ready: "互動中",
     round_play: "互動中",
     round_end: "……",
     summoning_prep: "成形中",

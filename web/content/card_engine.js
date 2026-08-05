@@ -308,72 +308,12 @@ export function makeInstance(cardId, source) {
     cardId,
     source,
     used: false,
-    // 組牌後預產：line=正常／開門成功；lineFail=開門失敗
-    pregen: { status: "idle", line: null, lineFail: null },
   };
-}
-
-/** 本輪所有待打牌實例（手牌＋抽牌堆） */
-export function roundCardInstances(sess) {
-  if (!sess) return [];
-  return [...(sess.hand || []), ...(sess.drawPile || [])];
-}
-
-/** 預產是否全部就緒（無模型時可直接 mark） */
-export function pregenAllReady(sess) {
-  const list = roundCardInstances(sess);
-  if (!list.length) return false;
-  return list.every(c => c.pregen && (c.pregen.status === "done" || c.pregen.status === "error"));
-}
-
-export function pregenProgress(sess) {
-  const list = roundCardInstances(sess);
-  const total = list.length;
-  let done = 0;
-  for (const c of list) {
-    if (c.pregen && (c.pregen.status === "done" || c.pregen.status === "error")) done++;
-  }
-  return { done, total };
-}
-
-/**
- * 預產完成 → ready（待命，等玩家按燈開戰）。
- * 不自動進 round_play。
- */
-export function markPregenComplete(state) {
-  const sess = state.cardSession;
-  if (!sess || sess.phase !== "pregen") return { ok: false, err: "不在預產階段" };
-  if (!pregenAllReady(sess)) return { ok: false, err: "回應尚未備妥" };
-  sess.phase = "ready";
-  sess.log = sess.log || [];
-  sess.log.push({ t: Date.now(), kind: "pregen_done", round: sess.roundIndex });
-  return { ok: true };
-}
-
-/** ready → round_play（玩家按「可打牌」燈才進來） */
-export function beginPlayAfterPregen(state) {
-  const sess = state.cardSession;
-  if (!sess) return { ok: false, err: "沒有牌局" };
-  if (sess.phase === "ready") {
-    sess.phase = "round_play";
-    sess.log = sess.log || [];
-    sess.log.push({ t: Date.now(), kind: "play_start", round: sess.roundIndex });
-    return { ok: true };
-  }
-  // 相容：若仍停在 pregen 且已全好，順手 mark 再進
-  if (sess.phase === "pregen" && pregenAllReady(sess)) {
-    const m = markPregenComplete(state);
-    if (!m.ok) return m;
-    sess.phase = "round_play";
-    return { ok: true };
-  }
-  if (sess.phase === "pregen") return { ok: false, err: "回應尚未備妥" };
-  return { ok: false, err: "現在不能開戰" };
 }
 
 /**
  * 弱台詞：空、只有省略號／標點——不能當她的回應。
- * AI 常偷懶回「……」，必須當失敗回落。
+ * AI 常偷懶回「……」，必須當失敗回落（M4 即時路徑）。
  */
 export function isWeakLine(s) {
   if (s == null) return true;
@@ -386,24 +326,16 @@ export function isWeakLine(s) {
   return core.length < 2;
 }
 
-/** 取預產台詞；開門失敗用 lineFail；弱台詞當沒有 */
-export function pregenLineFor(inst, { openFail = false } = {}) {
-  if (!inst?.pregen) return null;
-  if (openFail) {
-    const f = inst.pregen.lineFail;
-    return isWeakLine(f) ? null : f;
+/**
+ * 舊存檔若卡在 pregen／ready（整輪預產時代）→ 正規成 round_play。
+ * 即時 AI 路徑不再使用這兩個 phase。
+ */
+export function normalizeSessionPhase(sess) {
+  if (!sess) return sess;
+  if (sess.phase === "pregen" || sess.phase === "ready") {
+    sess.phase = "round_play";
   }
-  const line = inst.pregen.line;
-  return isWeakLine(line) ? null : line;
-}
-
-/** 寫入預產；弱台詞不寫入（保留舊的／留給 caller 補罐頭） */
-export function setPregenLine(inst, { line, lineFail, status } = {}) {
-  if (!inst) return;
-  inst.pregen ??= { status: "idle", line: null, lineFail: null };
-  if (line !== undefined && !isWeakLine(line)) inst.pregen.line = String(line).trim();
-  if (lineFail !== undefined && !isWeakLine(lineFail)) inst.pregen.lineFail = String(lineFail).trim();
-  if (status) inst.pregen.status = status;
+  return sess;
 }
 
 export function compatible(cardDef, chainAttr) {
@@ -776,17 +708,19 @@ export function setInject(state, injectCardIds) {
 
 /**
  * 用商店設定的出戰牌組開戰（跳過局內組牌 UI）。
- * 可從 idle_present / round_setup / round_end / pregen / ready 進入。
+ * 可從 idle_present / round_setup / round_end / round_play 進入
+ * （舊 pregen／ready 會先 normalize 成 round_play）。
  */
 export function startPlayRound(state, { stage, guardHigh = false } = {}) {
   const sess = state.cardSession;
   if (!sess) return { ok: false, err: "沒有牌局" };
+  normalizeSessionPhase(sess);
   // 已在打牌且還有次數 → 視為繼續
   if (sess.phase === "round_play" && playsLeft(sess) > 0) {
     return { ok: true, already: true, hand: sess.hand, nLeft: sess.nLeft };
   }
   const okPhases = new Set([
-    "idle_present", "round_setup", "round_end", "pregen", "ready", "round_play",
+    "idle_present", "round_setup", "round_end", "round_play",
   ]);
   if (!okPhases.has(sess.phase)) {
     return { ok: false, err: "現在不能開戰" };
@@ -941,7 +875,6 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
       line = openFail ? "我沒接住。別這樣。" : "我聽到了。";
     }
     result.girlLine = line;
-    result.fromPregen = false;
     result.fromAi = false;
     result.feelLabel = emotionFeelLabel(result.emotionDelta);
     result.playsLeft = playsLeft(sess);
