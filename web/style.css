@@ -1152,6 +1152,29 @@ body.chat-mode.has-figure #kanban-girl {
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: .58em; color: var(--dim); line-height: 1.2;
 }
+/* 背景預產中：不可點 */
+.play-chip.pregen-busy {
+  opacity: .72;
+  cursor: wait;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--dim) 40%, transparent));
+}
+.play-chip.pregen-busy .play-chip-label { color: var(--dim); }
+.play-chip.pregen-busy:disabled { pointer-events: auto; } /* 仍可點出 toast */
+/* 回應備妥：可打牌燈 */
+.play-chip.play-ready {
+  border-color: var(--pink);
+  animation: play-ready-pulse 1.4s ease-in-out infinite;
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--pink) 65%, transparent));
+}
+.play-chip.play-ready .play-chip-label {
+  color: var(--pink);
+  font-weight: 600;
+  letter-spacing: .16em;
+}
+@keyframes play-ready-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--pink) 45%, transparent)); }
+  50% { transform: scale(1.05); filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 80%, transparent)); }
+}
 .crest-btn {
   position: relative; width: 58px; height: 58px; padding: 0;
   background: var(--panel); border: 1px solid var(--line); border-radius: 50%;

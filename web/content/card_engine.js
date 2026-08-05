@@ -336,15 +336,39 @@ export function pregenProgress(sess) {
   return { done, total };
 }
 
-/** pregen → round_play */
-export function beginPlayAfterPregen(state) {
+/**
+ * 預產完成 → ready（待命，等玩家按燈開戰）。
+ * 不自動進 round_play。
+ */
+export function markPregenComplete(state) {
   const sess = state.cardSession;
   if (!sess || sess.phase !== "pregen") return { ok: false, err: "不在預產階段" };
   if (!pregenAllReady(sess)) return { ok: false, err: "回應尚未備妥" };
-  sess.phase = "round_play";
+  sess.phase = "ready";
   sess.log = sess.log || [];
   sess.log.push({ t: Date.now(), kind: "pregen_done", round: sess.roundIndex });
   return { ok: true };
+}
+
+/** ready → round_play（玩家按「可打牌」燈才進來） */
+export function beginPlayAfterPregen(state) {
+  const sess = state.cardSession;
+  if (!sess) return { ok: false, err: "沒有牌局" };
+  if (sess.phase === "ready") {
+    sess.phase = "round_play";
+    sess.log = sess.log || [];
+    sess.log.push({ t: Date.now(), kind: "play_start", round: sess.roundIndex });
+    return { ok: true };
+  }
+  // 相容：若仍停在 pregen 且已全好，順手 mark 再進
+  if (sess.phase === "pregen" && pregenAllReady(sess)) {
+    const m = markPregenComplete(state);
+    if (!m.ok) return m;
+    sess.phase = "round_play";
+    return { ok: true };
+  }
+  if (sess.phase === "pregen") return { ok: false, err: "回應尚未備妥" };
+  return { ok: false, err: "現在不能開戰" };
 }
 
 /** 取預產台詞；開門失敗用 lineFail */

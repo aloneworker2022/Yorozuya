@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.7d(2026-08-05)組牌後預產回應再開打";
+const APP_VER = "v6.7e(2026-08-05)組牌後回看板預產／燈亮才打";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -2497,6 +2497,9 @@ async function genRoundPregenOrders() {
       finishRoundPregenIfReady();
     } else if (document.body.classList.contains("card-mode")) {
       renderCardTable();
+    } else {
+      // 看板主畫面：更新右下角「準備中 x/y」
+      renderCrests();
     }
   }
 }
@@ -2515,16 +2518,35 @@ function finishRoundPregenIfReady() {
     }
     inst.pregen.status = "done";
   }
-  const r = Cards.beginPlayAfterPregen(state);
+  // 進 ready 待命——不自動開打；看板燈亮後玩家再按
+  const r = Cards.markPregenComplete(state);
   cardUi.pregenJobs = [];
   cardUi.pregenStarted = false;
   if (!r.ok) {
-    toast(r.err || "無法開戰", "bad");
+    toast(r.err || "預產結算失敗", "bad");
     return;
   }
-  toast("她的反應備妥了——可以開始", "good");
+  const gname = girl?.name || "她";
+  toast(`${gname} 的回應備妥了——右下角燈亮了`, "good");
   scheduleSave();
-  if (document.body.classList.contains("card-mode")) renderCardTable();
+  // 看板模式已在主畫面：刷新燈；約會若還在牌桌 UI 則畫待命
+  if (document.body.classList.contains("card-mode") && sess.mode === "date") {
+    renderCardTable();
+  } else {
+    document.body.classList.remove("card-mode", "has-ct-figure");
+    clearCardTableDom();
+    const view = $("#card-table-view");
+    if (view) view.classList.add("hidden");
+    renderAll();
+  }
+}
+
+/** 關牌桌 UI，但保留 cardSession（背景預產／待命） */
+function dismissCardTableUiKeepSession() {
+  document.body.classList.remove("card-mode", "has-ct-figure");
+  clearCardTableDom();
+  const view = $("#card-table-view");
+  if (view) view.classList.add("hidden");
 }
 
 /** 出卡後：預產已備好，不再現場等 AI */
@@ -3802,27 +3824,54 @@ function renderCrests() {
     return;
   }
 
-  // v6 牌制：委託主畫面右下改「可打牌」小卡（取代淫紋進聊天）
+  // v6 牌制：右下角狀態燈——準備中／可打牌／繼續／靠近
   if (cardSystemOn()) {
     const girls = isAsleep()
       ? []
       : kanbanSuccubi().filter(s => !s.ntr && !s.summoner?.taken);
     el.classList.toggle("hidden", !girls.length);
     el.innerHTML = girls.map(s => {
-      const inSess = state.cardSession?.girlId === s.id && state.cardSession?.phase !== "closed";
+      const sess = state.cardSession?.girlId === s.id ? state.cardSession : null;
+      const phase = sess?.phase || null;
+      let label = "靠近";
+      let extra = "";
+      let title = `與 ${s.name} 互動`;
+      if (phase === "pregen") {
+        const prog = Cards.pregenProgress(sess);
+        label = "準備中";
+        extra = " pregen-busy";
+        title = `${s.name} 正在準備回應（${prog.done}/${prog.total}）`;
+      } else if (phase === "ready") {
+        label = "可打牌";
+        extra = " play-ready";
+        title = `${s.name} 回應備妥——點擊開始`;
+      } else if (phase === "round_play" || phase === "round_setup" || phase === "round_end") {
+        label = "繼續";
+        extra = " active-sess";
+        title = `繼續與 ${s.name} 的牌局`;
+      } else if (phase === "idle_present") {
+        label = "靠近";
+        extra = " active-sess";
+      }
       const face = girlShot(s, "head");
       return `
-      <button type="button" class="play-chip r-${s.rarity}${inSess ? " active-sess" : ""}" data-cid="${s.id}"
-              title="與 ${esc(s.name)} 互動">
+      <button type="button" class="play-chip r-${s.rarity}${extra}" data-cid="${s.id}"
+              title="${esc(title)}" ${phase === "pregen" ? "disabled" : ""}>
         ${face
           ? `<img class="play-chip-face" src="${esc(face)}" alt="">`
           : `<span class="play-chip-icon" aria-hidden="true">✦</span>`}
-        <span class="play-chip-label">${inSess ? "繼續" : "靠近"}</span>
+        <span class="play-chip-label">${label}</span>
         <span class="cname">${esc(s.name)}</span>
       </button>`;
     }).join("");
     el.querySelectorAll(".play-chip").forEach(b => {
-      b.onclick = () => openKanbanTable(b.dataset.cid);
+      b.onclick = () => {
+        if (b.disabled) {
+          toast("她還在準備回應…", "");
+          return;
+        }
+        openKanbanTable(b.dataset.cid);
+      };
     });
     return;
   }
@@ -4929,6 +4978,12 @@ function openDateTable(girlId, venueId) {
 /**
  * 開看板牌桌。
  * @param {{ forceSetup?: boolean }} opts forceSetup=召看板後強制進組牌
+ *
+ * 狀態：
+ * - pregen：背景準備中，不進桌
+ * - ready：備妥 → 开战進 round_play
+ * - round_play / setup：回牌桌繼續
+ * - 無 session / idle：組牌
  */
 function openKanbanTable(girlId, opts = {}) {
   if (!cardSystemOn()) { toast("卡牌系統未就緒", "bad"); return; }
@@ -4941,10 +4996,36 @@ function openKanbanTable(girlId, opts = {}) {
     toast("先結束與另一人的牌局", "bad");
     return;
   }
+
+  // 既有 session
   if (Cards.sessionActive(state) && state.cardSession.girlId === girlId) {
+    const phase = state.cardSession.phase;
+
+    // 背景預產中：留在看板，不開桌
+    if (phase === "pregen") {
+      const prog = Cards.pregenProgress(state.cardSession);
+      toast(`她還在準備回應…（${prog.done}/${prog.total}）`, "");
+      renderCrests();
+      return;
+    }
+
+    // 燈亮：按了才開戰
+    if (phase === "ready") {
+      const r = Cards.beginPlayAfterPregen(state);
+      if (!r.ok) { toast(r.err, "bad"); return; }
+      cardUi.lastPlay = null;
+      cardUi.handIdx = 0;
+      cardUi.awaitReaction = false;
+      cardUi.endPanel = null;
+      document.body.classList.add("card-mode");
+      toast("開始互動", "good");
+      scheduleSave();
+      renderAll();
+      return;
+    }
+
     document.body.classList.add("card-mode");
-    // 召後強制組牌：若還在 idle 則推進
-    if (opts.forceSetup && state.cardSession.phase === "idle_present") {
+    if (opts.forceSetup && phase === "idle_present") {
       const setup = Cards.enterRoundSetup(state);
       if (!setup.ok) toast(setup.err, "bad");
     }
@@ -4952,12 +5033,13 @@ function openKanbanTable(girlId, opts = {}) {
     renderCrests();
     return;
   }
+
+  // 新 session：組牌
   const girlCards = Cards.buildGirlCards(s, {
     cravingMidOrHigh: !!craveTier(s),
   });
   const r = Cards.openSession(state, { mode: "kanban", girlId, girlCards });
   if (!r.ok) { toast(r.err, "bad"); return; }
-  // 召喚／開戰：直接組牌（不再先「陪伴」空轉）
   const setup = Cards.enterRoundSetup(state);
   if (!setup.ok) { toast(setup.err, "bad"); return; }
   cardUi.injectPick = [];
@@ -5019,8 +5101,10 @@ function ejectCardTable(reason = "player_eject") {
 }
 
 function leaveCardTableUi() {
-  // 預產中／反應節拍：左上角「推出」= 中止這次靠近
-  if (cardUi.awaitReaction || state.cardSession?.phase === "pregen") {
+  // 預產中／待命／反應節拍：左上角「推出」= 中止這次靠近
+  if (cardUi.awaitReaction
+    || state.cardSession?.phase === "pregen"
+    || state.cardSession?.phase === "ready") {
     ejectCardTable("player_eject");
     return;
   }
@@ -5055,8 +5139,10 @@ function dismissCardSession() {
     pumpKanbanBubbles();
     return;
   }
-  // 預產／反應節拍 → 與「推出」相同，允許中止
-  if (cardUi.awaitReaction || state.cardSession.phase === "pregen") {
+  // 預產／待命／反應節拍 → 與「推出」相同，允許中止
+  if (cardUi.awaitReaction
+    || state.cardSession.phase === "pregen"
+    || state.cardSession.phase === "ready") {
     ejectCardTable("player_dismiss");
     return;
   }
@@ -5431,13 +5517,17 @@ function renderCardTable() {
     return;
   }
 
-  // ── 預產中：組牌後等全部回應備妥 ──────────────────────
+  // ── 預產中（多半是約會；看板已回主畫面）────────────────
   if (sess.phase === "pregen") {
-    syncCardTableChrome({ ejectMode: true });
-    if (!cardUi.pregenStarted) {
-      // 存檔恢復／漏觸發：補開預產
-      beginRoundPregen(girl);
+    // 看板誤進桌：踢回主畫面繼續背景產
+    if (sess.mode === "kanban") {
+      if (!cardUi.pregenStarted) beginRoundPregen(girl);
+      dismissCardTableUiKeepSession();
+      renderAll();
+      return;
     }
+    syncCardTableChrome({ ejectMode: true });
+    if (!cardUi.pregenStarted) beginRoundPregen(girl);
     const prog = Cards.pregenProgress(sess);
     setCtVn({
       name: gname,
@@ -5447,8 +5537,39 @@ function renderCardTable() {
     });
     setCtHand(`
       <div class="ct-react-beat">
-        <div class="dim small ct-react-wait">備妥後才能打牌——左上角可「推出」中止</div>
+        <div class="dim small ct-react-wait">備妥後會提示開戰——左上角可「推出」中止</div>
       </div>`);
+    return;
+  }
+
+  // ── 待命 ready（約會牌桌內：按開始才進 play）──────────
+  if (sess.phase === "ready") {
+    syncCardTableChrome({ ejectMode: true });
+    // 看板應在主畫面等燈；誤進桌則踢回
+    if (sess.mode === "kanban") {
+      dismissCardTableUiKeepSession();
+      renderAll();
+      return;
+    }
+    setCtVn({
+      name: gname,
+      text: "回應都備好了。準備好就開始。",
+      meta: `今晚約還肯應付 <b>${sess.nLeft}</b> 次`,
+    });
+    setCtHand(`
+      <div class="detail-actions card-actions">
+        <button type="button" class="cyan" id="ct-start-play">開始打牌</button>
+        <button type="button" id="ct-eject-ready">先離開</button>
+      </div>`);
+    $("#ct-start-play").onclick = () => {
+      const r = Cards.beginPlayAfterPregen(state);
+      if (!r.ok) { toast(r.err, "bad"); return; }
+      cardUi.lastPlay = null;
+      cardUi.handIdx = 0;
+      scheduleSave();
+      renderCardTable();
+    };
+    $("#ct-eject-ready").onclick = () => ejectCardTable("player_dismiss");
     return;
   }
 
@@ -5600,10 +5721,17 @@ function renderCardTable() {
       cardUi.handIdx = 0;
       cardUi.awaitReaction = false;
       cardUi.endPanel = null;
-      toast(`牌組好了——她在準備回應（今晚約 ${sr.nLeft} 次）`, "good");
       scheduleSave();
-      renderCardTable();
       beginRoundPregen(girl);
+      // 看板：回店頭背景預產，燈亮再打；約會：留在牌桌等備妥
+      if (sess.mode === "kanban") {
+        toast(`牌組好了——${gname} 在背景準備回應`, "good");
+        dismissCardTableUiKeepSession();
+        renderAll();
+      } else {
+        toast(`牌組好了——她在準備回應（約 ${sr.nLeft} 次）`, "good");
+        renderCardTable();
+      }
     };
     $("#ct-cancel-setup").onclick = () => {
       if (sess.mode === "date") {
@@ -5740,6 +5868,7 @@ function phaseLabel(p) {
     idle_present: "陪伴",
     round_setup: "組牌",
     pregen: "準備回應",
+    ready: "可打牌",
     round_play: "互動中",
     round_end: "……",
     summoning_prep: "成形中",
