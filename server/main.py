@@ -219,6 +219,44 @@ def _normalize_provider(p) -> str:
     return "ollama"
 
 
+def _strip_thinking(text: str) -> str:
+    """剝掉 Qwen3 / Qwen3.5 等的思考塊，只留真正台詞。
+
+    常見格式：
+      <think>...</think>
+      <think>...</think>
+    以及未關 thinking 時整段思考 + 空行 + 正式回覆。
+    """
+    if not text:
+        return text or ""
+    s = str(text)
+    # 成對標籤（含大小寫、多餘空白）
+    s = re.sub(r"<think\b[^>]*>[\s\S]*?</think\s*>", "", s, flags=re.I)
+    s = re.sub(r"<thinking\b[^>]*>[\s\S]*?</thinking\s*>", "", s, flags=re.I)
+    # 殘留的開閉標籤
+    s = re.sub(r"</?think(?:ing)?\b[^>]*>", "", s, flags=re.I)
+    # 少數模型用紅acted 風格
+    s = re.sub(r"<\|?redacted_thinking\|?>[\s\S]*?<\|?/redacted_thinking\|?>", "", s, flags=re.I)
+    return s.strip()
+
+
+def _ollama_chat_body(model: str, messages: list, options: dict | None = None) -> dict:
+    """組 Ollama /api/chat body：預設關閉 think（Qwen3.5 否則會先長考再答）。"""
+    opts = dict(options or {})
+    # 遊戲台詞要短：若呼叫端沒設 num_predict，給一個上限避免爆
+    if "num_predict" not in opts and "num_predict" not in {k.lower() for k in opts}:
+        opts.setdefault("num_predict", 256)
+    body = {
+        "model": model,
+        "messages": messages or [],
+        "stream": True,
+        "options": opts,
+        # Ollama 0.9+ / 支援 thinking 的模型：關閉思考模式
+        "think": False,
+    }
+    return body
+
+
 def _normalize_messages(messages: list) -> list[dict]:
     out: list[dict] = []
     for m in messages or []:
@@ -1165,15 +1203,17 @@ async def _run_chat_job(job_id: str, provider: str, endpoint: str, body: dict):
             if err and not text:
                 job["error"] = err
         else:
-            ollama_body = {
-                "model": body.get("model"),
-                "messages": body.get("messages") or [],
-                "stream": True,
-                "options": body.get("options") or {},
-            }
+            ollama_body = _ollama_chat_body(
+                body.get("model"),
+                body.get("messages") or [],
+                body.get("options") or {},
+            )
             err = await _stream_ollama_chat(endpoint, ollama_body, on_token)
             if err and not job["text"]:
                 job["error"] = err
+        # 收尾剝思考塊（串流中途可能已含 <think>）
+        if job.get("text"):
+            job["text"] = _strip_thinking(job["text"])
     except Exception as e:  # noqa: BLE001 — 例外也要讓佇列繼續跑
         if not job["text"]:
             job["error"] = str(e)[:500]
@@ -1635,9 +1675,11 @@ async def _gen_worker():
             elif endpoint in ("grok-build", "grok", "xai"):
                 text, err = await _run_grok_build(model, msgs, opts)
             else:
-                body = {"model": model, "messages": msgs, "stream": True, "options": opts}
+                body = _ollama_chat_body(model, msgs, opts)
                 err = await _stream_ollama_chat(endpoint, body, on_token)
                 text = "".join(parts)
+            # Qwen3.5 等：即使傳了 think:false，仍可能帶思考塊 → 一律剝掉
+            text = _strip_thinking(text or "")
             if not text.strip() and not err:
                 err = "空回應"
             with db() as conn:

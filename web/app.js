@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.8(2026-08-05)打牌改回即時AI＋兩拍演出";
+const APP_VER = "v6.8a(2026-08-05)關Qwen思考／剝think塊";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1603,12 +1603,23 @@ function craveTier(s) {
 
 function guardActive(s) { return s.stage === "stranger" && (s.guard?.cool > 0); }
 
+/** 剝 Qwen3.5 等 thinking 塊（伺服器也會剝，雙保險） */
+function stripThinking(raw) {
+  if (!raw) return "";
+  let s = String(raw);
+  s = s.replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/gi, "");
+  s = s.replace(/<thinking\b[^>]*>[\s\S]*?<\/thinking\s*>/gi, "");
+  s = s.replace(/<\/?think(?:ing)?\b[^>]*>/gi, "");
+  return s.trim();
+}
+
 /** 從她的回覆抽出 #越界 旗標,並回傳乾淨的台詞(多行保留,只拿掉旗標)。
  *  所有消費她回覆的地方都要走這裡——包含約會即時模式,否則旗標會漏進畫面與歷史。 */
 function stripGuardFlag(raw) {
   if (!raw) return { text: "", crossed: false };
-  const crossed = /#\s*越界/.test(raw);
-  const text = raw
+  const cleaned = stripThinking(raw);
+  const crossed = /#\s*越界/.test(cleaned);
+  const text = cleaned
     .split("\n")
     // 尾端也可能是串流到一半的殘缺旗標(「#」「#越」),一併吃掉免得閃一下
     .map(l => l.replace(/#\s*(越界|正常|越|正)?\s*$/g, "").trim())
