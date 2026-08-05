@@ -1,6 +1,6 @@
 # 互動牌制規格（玩家 ↔ 女子）
 
-> **狀態：M0～M4／M6 已上線；M5（CG cache）待做。**  
+> **狀態：M0～M6 已上線（含 M5 CG cache／占位）。**  
 > 核心玩法（商店／牌庫／牌桌／鍊／氣泡／約會／短 AI）以 `web/app.js` + `web/content/card_engine.js` 為準；本文仍是**規則聖經**（衝突時規則以本文為準，實作 bug 另開修）。  
 > 與 `plan-v5.md` 衝突處，**以本文覆寫「聊天／淫紋聊天／舊約會流程」相關段落**。  
 > 企劃書索引：`plan-v5.md` **§13A**。  
@@ -769,11 +769,31 @@ buildCardPlayPrompt(ctx)  // ctx.card_play = { kind, scene_start, prompt_hint, o
 → 1～2 句她的反應（NSFW 依 content_rating 與卡）
 ```
 
-### 12.3 生圖（M5 · 待做）
+### 12.3 生圖／CG cache（M5 · 已上線）
 
-- 允許在召後產製期燒長時間。  
-- 開戰時：有 cache 用 cache；無則立繪／卡面占位，**禁止**卡死 UI 等 GPU。  
-- 多節卡若日後重開：優先 **一張 CG 多用**（裁切／暗角／字幕換節）。
+**原則：開戰與出卡路徑零等待 GPU。**
+
+| 時機 | 行為 |
+|---|---|
+| 召看板娘 | `ensureArtCacheBg` 背景補 half／head／full；不擋 UI |
+| 開牌桌／約會桌 | 同步 `resolveCardTableArt`；背景補缺；**不 await 生圖** |
+| 出卡 | `bindCardArtAlias`：把當前最佳立繪別名進 `card:{cardId}`（一張多用） |
+| 無圖 | 字首圓形占位 +「成形中…／尚無立繪」badge |
+
+**資料（存在每位魅魔上）：**
+
+```js
+girl.cardCg = {
+  "portrait:half": { url, status: "ready", at, source: "portrait" },
+  "portrait:full": { … },
+  "portrait:head": { … },
+  "card:{cardId}": { url, status: "ready", at, source: "alias_portrait" },
+}
+```
+
+- 立繪三連拍仍走既有 `weaveShot`／`portraits`；`setShot` 會 `syncPortraitCgCache`。  
+- **v1 不做**每張卡另燒場景 GPU 圖（省額度）；日後真·場景 CG 覆寫同一 `card:{id}` 即可。  
+- 多節卡若重開：優先同一 `card:{id}` URL 多用（裁切／暗角可後加）。
 
 ### 12.4 與 `persona_builder.js`
 
@@ -866,6 +886,14 @@ buildCardPlayPrompt(ctx)  // ctx.card_play = { kind, scene_start, prompt_hint, o
 - [ ] 推出／離開後遲到 AI 結果不覆寫 UI（作廢 gen）  
 - [ ] 無整輪預產 phase（`pregen`／`ready` 不應再出現於新局）  
 
+### 14.8 M5 CG cache
+
+- [ ] 開牌桌不卡住等生圖（無圖也能打）  
+- [ ] 有半身／全身時牌桌顯示立繪  
+- [ ] 無圖時字首占位  
+- [ ] 召看板後背景會補織（能織時）  
+- [ ] 出卡後 `cardCg["card:…"]` 有別名  
+
 ### 14.7 M6 自由聊退役
 
 - [ ] 載入後無 `wantsTalk`／`chatLine` 殘燈  
@@ -888,7 +916,7 @@ buildCardPlayPrompt(ctx)  // ctx.card_play = { kind, scene_start, prompt_hint, o
 | 5 | 鍊完整 | **已上線（M1）** |
 | 6 | 約會電話＋場地 3 卡 | **已上線（M3）** |
 | 7 | 短 AI 反應（即時、兩拍、作廢） | **已上線（M4）** |
-| 8 | 生圖 CG cache／占位 | **待做（M5）** |
+| 8 | 生圖 CG cache／占位 | **已上線（M5）** |
 | 9 | 舊聊天入口退役／存檔遷移 | **已上線（M6）** |
 
 ---
@@ -925,6 +953,7 @@ buildCardPlayPrompt(ctx)  // ctx.card_play = { kind, scene_start, prompt_hint, o
 | 2026-08-04 | 初版鎖定：牌桌取代自由聊天；碎卡／話術；鍊；感情骰；氣泡 15% 三節點；商店 3／4h；約會每隻日 2；無封牌；未用不碎；開門失敗也碎；K 卡面寫死；無全局情感 clamp；掛機陪伴合法；召喚師線除外 |
 | 2026-08-04 | 落地 `web/content/cards.json` 完整草案；`plan-v5.md` §13A 索引 |
 | 2026-08-05 | **M0～M4 標為已上線**；打牌 AI＝即時兩拍（禁止整輪預產）；**§5.4 多節卡 v1 不做**（待討論後再鎖）；M4 作廢在途 AI（`playAiGen`）；§15 狀態表；§14.6 短 AI 驗收 |
+| 2026-08-05 | **M5 CG cache 已上線**：`girl.cardCg`、開戰零等待、別名一張多用、占位 badge |
 | 2026-08-05 | **M6 自由聊退役**：`freeChatRetired`、清殘燈、停 genChat／genReply、觀戰釋放接牌桌、§13／§14.7 |
 
 ---

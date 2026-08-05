@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.10(2026-08-05)M6·自由聊天退役";
+const APP_VER = "v6.11(2026-08-05)M5·CG cache不卡GPU";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -716,6 +716,9 @@ function initState(j, offline) {
   }
   // 召喚師系統移轉:舊魅魔補發抽取間隔
   for (const s of state.succubi) {
+    // M5：CG cache 欄位；立繪同步進 portrait:* key
+    s.cardCg ??= {};
+    syncPortraitCgCache(s);
     if (s.summoner === undefined) s.summoner = null;
     if (s.nextDraw == null) { s.drawIvlH = randInt(2, 5); s.nextDraw = Date.now() + s.drawIvlH * HOUR; }
     if (!s.gift) s.gift = pick(GIFT_KEYS);
@@ -1632,6 +1635,7 @@ function setShot(s, shot, url) {
   s.portraits[shot] = url;
   s.portrait = s.portraits.full || s.portraits.half || url;   // 舊欄位仍指得到東西
   s.portraitReady = true;
+  syncPortraitCgCache(s);
   dirty = true;
   saveNow();
 }
@@ -1645,7 +1649,11 @@ async function weavePortrait(s, onTick) {
   try {
     setShot(s, "full", await weaveShot(s, "full", onTick));
     ok = !!girlShot(s, "full");
-    if (ok && imgProvider() === "comfy") weaveRest(s);   // 不 await:讓召喚立刻往下走
+    // M5：full 好了立刻同步 cache；half/head 背景補（兩條生圖路都補，不卡 UI）
+    if (ok) {
+      syncPortraitCgCache(s);
+      weaveRest(s);   // 不 await
+    }
   } finally {
     portraitGenning.delete(s.id);
   }
@@ -1655,10 +1663,116 @@ async function weavePortrait(s, onTick) {
 // 背景補剩下兩張。失敗不重試也不吵——girlShot 會自動退回已經有的那張。
 async function weaveRest(s) {
   for (const shot of ["head", "half"]) {
-    if (girlShot(s, shot) && s.portraits?.[shot]) continue;
+    if (s.portraits?.[shot]) continue;
     setShot(s, shot, await weaveShot(s, shot));
-    renderAll();
+    syncPortraitCgCache(s);
+    // 牌桌開著就刷新立繪，不整頁 render 打斷手牌
+    if (document.body.classList.contains("card-mode")) {
+      const g = girlForSession();
+      if (g && g.id === s.id) setCtPortrait(s, { cardId: cardUi.lastPlay?.cardId || null });
+    } else {
+      renderAll();
+    }
   }
+}
+
+// ── M5：CG / 立繪 cache（開戰不卡 GPU）──────────────────────
+// girl.cardCg[key] = { url, status: 'ready'|'pending'|'error', at, source }
+// key: portrait:half|full|head 或 card:{cardId}
+// 規則：有 cache 用 cache；無則立繪／字首占位；**禁止** open 路徑 await 生圖。
+
+function ensureCardCgMap(s) {
+  if (!s) return {};
+  s.cardCg ??= {};
+  return s.cardCg;
+}
+
+/** 把三連拍立繪同步進 cardCg（同源 URL，一張多用） */
+function syncPortraitCgCache(s) {
+  if (!s) return;
+  const cg = ensureCardCgMap(s);
+  const now = Date.now();
+  for (const shot of ["half", "full", "head"]) {
+    const url = s.portraits?.[shot] || (shot === "full" ? s.portrait : "") || "";
+    if (!url) continue;
+    const k = `portrait:${shot}`;
+    const prev = cg[k];
+    if (prev?.url === url && prev.status === "ready") continue;
+    cg[k] = { url, status: "ready", at: now, source: "portrait" };
+  }
+}
+
+/**
+ * 解析牌桌要用的圖（同步、零等待）。
+ * prefer: 'half' | 'full' | 'head'；cardId 有專屬 cache 時優先。
+ */
+function resolveCardTableArt(girl, { cardId = null, prefer = "half" } = {}) {
+  if (!girl) return { url: "", kind: "empty", weaving: false, key: null };
+  syncPortraitCgCache(girl);
+  const cg = girl.cardCg || {};
+  const weaving = portraitGenning.has(girl.id);
+
+  if (cardId) {
+    const ck = `card:${cardId}`;
+    const hit = cg[ck];
+    if (hit?.status === "ready" && hit.url) {
+      return { url: hit.url, kind: "card", weaving, key: ck };
+    }
+  }
+
+  const order = SHOT_FALLBACK[prefer] || SHOT_FALLBACK.half;
+  for (const shot of order) {
+    const k = `portrait:${shot}`;
+    if (cg[k]?.url) return { url: cg[k].url, kind: "portrait", weaving, key: k };
+    const u = girlShot(girl, shot);
+    if (u) return { url: u, kind: "portrait", weaving, key: k };
+  }
+  return { url: "", kind: "placeholder", weaving, key: null };
+}
+
+/**
+ * 背景補齊半身／頭（牌桌要用）。**永不 await 給呼叫端**。
+ * 已在織或不能織 → 直接 return。
+ */
+function ensureArtCacheBg(girl) {
+  if (!girl || !canWeaveNow()) {
+    if (girl) syncPortraitCgCache(girl);
+    return;
+  }
+  syncPortraitCgCache(girl);
+  // 以真實檔位為準（girlShot 會 fallback，不能拿來判斷「缺 half」）
+  const needHalf = !girl.portraits?.half;
+  const needHead = !girl.portraits?.head;
+  const needFull = !girl.portraits?.full && !girl.portrait;
+  if (!needHalf && !needHead && !needFull) return;
+  if (portraitGenning.has(girl.id)) return;
+  // fire-and-forget：永不阻塞開桌／出卡
+  weaveMissing(girl, false).then(() => {
+    syncPortraitCgCache(girl);
+    if (document.body.classList.contains("card-mode")) {
+      const g = girlForSession();
+      if (g && g.id === girl.id) setCtPortrait(girl, { cardId: cardUi.lastPlay?.cardId || null });
+    }
+  }).catch(() => {});
+}
+
+/**
+ * 出卡後：若該卡尚無專屬 CG，把當前最佳立繪 **別名** 進 card:{id}
+ * （一張 CG 多用；不另燒 GPU。日後真·場景 CG 可覆寫同一 key。）
+ */
+function bindCardArtAlias(girl, cardId) {
+  if (!girl || !cardId) return;
+  const cg = ensureCardCgMap(girl);
+  const key = `card:${cardId}`;
+  if (cg[key]?.status === "ready" && cg[key].url) return;
+  const art = resolveCardTableArt(girl, { prefer: "half" });
+  if (!art.url) return;
+  cg[key] = {
+    url: art.url,
+    status: "ready",
+    at: Date.now(),
+    source: "alias_portrait",
+  };
 }
 
 // 詳細頁「補織缺的那幾張」用:三張補齊,已經有的跳過。
@@ -3469,6 +3583,9 @@ function summonKanban(id) {
   state.lastKanbanId = id;
   log(`召喚 ${s.name} 為看板娘 -${cost} 金(第 ${state.kanbans.length} 位)`);
   toast(`${s.name} 來到店頭——右下角可開始打牌`, "good");
+  // M5：召後背景產製／補織立繪 cache，不擋 UI、不強制開桌
+  syncPortraitCgCache(s);
+  ensureArtCacheBg(s);
   // 不立刻開牌桌；玩家按右下角小方塊再進
   scheduleSave();
   renderAll();
@@ -5239,6 +5356,9 @@ function openDateTable(girlId, venueId) {
   cardUi.endPanel = null;
   detailId = null;
   touchInteractDay(s);
+  // M5：開戰零等待 GPU——有圖用圖，沒圖占位；背景補 cache
+  syncPortraitCgCache(s);
+  ensureArtCacheBg(s);
   document.body.classList.add("card-mode");
   log(`約會牌桌・${s.name} @ ${venue?.name || venueId}（場地卡 ${venueCards.length} · 牌組 ${deal.deckSize || 0}）`);
   toast(`抵達「${venue?.name || "約會地"}」——開始互動`, "good");
@@ -5274,6 +5394,9 @@ function openKanbanTable(girlId, opts = {}) {
     const phase = state.cardSession.phase;
     document.body.classList.add("card-mode");
     touchInteractDay(s);
+    // M5：不 await 生圖
+    syncPortraitCgCache(s);
+    ensureArtCacheBg(s);
     if (phase !== "round_play" || Cards.playsLeft(state.cardSession) <= 0) {
       if (phase === "round_play" || phase === "idle_present" || phase === "round_setup"
         || phase === "round_end") {
@@ -5311,6 +5434,9 @@ function openKanbanTable(girlId, opts = {}) {
   cardUi.reactBeat = null;
   cardUi.endPanel = null;
   touchInteractDay(s);
+  // M5：開戰零等待 GPU
+  syncPortraitCgCache(s);
+  ensureArtCacheBg(s);
   document.body.classList.add("card-mode");
   log(`與 ${s.name} 開桌（本體 ${girlCards.length} · 牌組 ${deal.deckSize || 0}）`);
   toast(`開始互動——約 ${deal.nLeft} 次`, "good");
@@ -5439,6 +5565,8 @@ function commitHandPlay(instanceId, girl, stage) {
   cardUi.reactBeat = "action"; // 先播動作，再點一下才出她的回應
   cardUi.endPanel = null;
   touchInteractDay(girl);
+  // M5：出卡綁定 art 別名（一張立繪多用）；UI 立刻用 cache／占位
+  bindCardArtAlias(girl, r.cardId);
   applyPlaySideEffects(girl, r);
   beginCardPlayAi(girl, r);
   const n = state.cardSession?.hand?.length || 0;
@@ -5614,14 +5742,21 @@ function attachCardPeek(el, def, extraLines = []) {
   el.addEventListener("contextmenu", e => e.preventDefault());
 }
 
-/** 牌桌立繪：半身優先，沒圖用字首 fallback */
-function setCtPortrait(girl) {
+/**
+ * 牌桌立繪（M5）：同步取 cache／立繪／字首占位，**絕不 await GPU**。
+ * opts.cardId — 出卡時優先該卡別名 CG
+ */
+function setCtPortrait(girl, opts = {}) {
   const img = $("#ct-portrait-img");
   const fb = $("#ct-portrait-fallback");
+  const badge = $("#ct-portrait-badge");
   if (!img || !fb) return;
-  const url = girl ? girlShot(girl, "half") : "";
-  if (url) {
-    if (img.getAttribute("src") !== url) img.src = url;
+  const art = girl
+    ? resolveCardTableArt(girl, { cardId: opts.cardId || null, prefer: opts.prefer || "half" })
+    : { url: "", kind: "empty", weaving: false };
+
+  if (art.url) {
+    if (img.getAttribute("src") !== art.url) img.src = art.url;
     img.alt = girl?.name || "";
     img.classList.remove("hidden");
     fb.classList.add("hidden");
@@ -5633,6 +5768,20 @@ function setCtPortrait(girl) {
     fb.textContent = (girl?.name || "？").slice(0, 1);
     fb.classList.remove("hidden");
     document.body.classList.remove("has-ct-figure");
+  }
+
+  // 織夢中提示：有占位也能開戰，背景補圖
+  if (badge) {
+    if (art.weaving || (girl && portraitGenning.has(girl.id) && !art.url)) {
+      badge.textContent = "成形中…";
+      badge.classList.remove("hidden");
+    } else if (!art.url && girl && canWeaveNow()) {
+      badge.textContent = "尚無立繪";
+      badge.classList.remove("hidden");
+    } else {
+      badge.textContent = "";
+      badge.classList.add("hidden");
+    }
   }
 }
 
@@ -5737,7 +5886,13 @@ function renderCardTable() {
     title.textContent = `${gname} · ${place} · ${phaseLabel(sess.phase)}`;
   }
 
-  setCtPortrait(girl);
+  // M5：反應節拍用該卡 cache／別名；否則半身立繪；無圖占位——不 await
+  setCtPortrait(girl, {
+    cardId: cardUi.awaitReaction && cardUi.lastPlay?.cardId
+      ? cardUi.lastPlay.cardId
+      : null,
+    prefer: "half",
+  });
   // 有碎卡確認或長按詳情時不要整頁清掉；本輪開始時清
   if (!sess.pending && !cardUi._keepPeek) setCtConfirm("");
   cardUi._keepPeek = false;
@@ -5995,12 +6150,14 @@ function renderCardTable() {
         const r = Cards.requestPlay(state, inst.instanceId, { stage, guardHigh: guardActive(girl) });
         if (!r.ok) { toast(r.err, "bad"); return; }
         if (r.needConfirm) { renderCardTable(); return; }
-        // requestPlay 對非碎卡會直接 commitPlay；台詞來自預產
+        // requestPlay 對非碎卡會直接 commitPlay；M5 即時 art／即時 AI
         flyCard(playCard, "up", () => {
           cardUi.lastPlay = r;
           cardUi.awaitReaction = true;
           cardUi.reactBeat = "action";
           cardUi.endPanel = null;
+          touchInteractDay(girl);
+          bindCardArtAlias(girl, r.cardId);
           applyPlaySideEffects(girl, r);
           beginCardPlayAi(girl, r);
           const n = state.cardSession?.hand?.length || 0;

@@ -1514,6 +1514,23 @@ body.card-mode.has-ct-figure #kanban-girl {
   filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 40%, transparent));
 }
 #ct-portrait-fallback.hidden { display: none; }
+/* M5：成形中／無立繪提示（不擋操作） */
+#ct-portrait-badge {
+  position: absolute;
+  left: 50%;
+  bottom: .35em;
+  transform: translateX(-50%);
+  padding: .15em .55em;
+  border-radius: 999px;
+  font-size: .72em;
+  letter-spacing: .04em;
+  color: var(--text, #f5e8ff);
+  background: color-mix(in srgb, var(--bg, #1a1020) 72%, transparent);
+  border: 1px solid var(--line, rgba(255,255,255,.18));
+  pointer-events: none;
+  white-space: nowrap;
+}
+#ct-portrait-badge.hidden { display: none; }
 
 /* 前景：頂欄 + 空白 + 旁白 + 確認 + 手牌 */
 #ct-fore {

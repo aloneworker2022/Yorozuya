@@ -7,7 +7,7 @@ Todo 積分驅動的魅魔召喚養成網頁遊戲。
 
 企劃書:[docs/plan-v5.md](docs/plan-v5.md)(關係演出規格另見 [docs/relationship-axes.md](docs/relationship-axes.md))
 
-**互動牌制 v6**(M0～M4／M6 已上線:商店／牌桌／氣泡／約會／出卡短 AI／自由聊退役;M5 CG cache 待做):[docs/card-system.md](docs/card-system.md)
+**互動牌制 v6**(M0～M6 已上線:商店／牌桌／氣泡／約會／出卡短 AI／CG cache／自由聊退役):[docs/card-system.md](docs/card-system.md)
 
 **教 AI／實作者從哪讀起:**[docs/AI-READING-ORDER.md](docs/AI-READING-ORDER.md)
 
