@@ -4215,7 +4215,7 @@ function renderCardDeckPanel() {
   const maxI = Cards.maxInject(state);
   if (countEl) countEl.textContent = `(${deck.length}/${maxI})`;
   if (!deck.length) {
-    list.innerHTML = `<div class="dim small">牌組是空的——從下方牌庫加入。空組開戰只會有妹子本體卡。</div>`;
+    list.innerHTML = `<div class="dim small">牌組是空的——長按下方牌庫卡片加入。空組開戰只會有妹子本體卡。</div>`;
     return;
   }
   list.innerHTML = deck.map((id, i) => {
