@@ -371,11 +371,39 @@ export function beginPlayAfterPregen(state) {
   return { ok: false, err: "現在不能開戰" };
 }
 
-/** 取預產台詞；開門失敗用 lineFail */
+/**
+ * 弱台詞：空、只有省略號／標點——不能當她的回應。
+ * AI 常偷懶回「……」，必須當失敗回落。
+ */
+export function isWeakLine(s) {
+  if (s == null) return true;
+  const t = String(s).trim();
+  if (!t) return true;
+  // 去掉省略號、句點、全形空白後幾乎沒字
+  const core = t
+    .replace(/[\s.…・.．。，,、！!？?～~「」『』（）()【】\[\]\-—–]/g, "")
+    .replace(/^\.+|\.+$/g, "");
+  return core.length < 2;
+}
+
+/** 取預產台詞；開門失敗用 lineFail；弱台詞當沒有 */
 export function pregenLineFor(inst, { openFail = false } = {}) {
   if (!inst?.pregen) return null;
-  if (openFail && inst.pregen.lineFail) return inst.pregen.lineFail;
-  return inst.pregen.line || null;
+  if (openFail) {
+    const f = inst.pregen.lineFail;
+    return isWeakLine(f) ? null : f;
+  }
+  const line = inst.pregen.line;
+  return isWeakLine(line) ? null : line;
+}
+
+/** 寫入預產；弱台詞不寫入（保留舊的／留給 caller 補罐頭） */
+export function setPregenLine(inst, { line, lineFail, status } = {}) {
+  if (!inst) return;
+  inst.pregen ??= { status: "idle", line: null, lineFail: null };
+  if (line !== undefined && !isWeakLine(line)) inst.pregen.line = String(line).trim();
+  if (lineFail !== undefined && !isWeakLine(lineFail)) inst.pregen.lineFail = String(lineFail).trim();
+  if (status) inst.pregen.status = status;
 }
 
 export function compatible(cardDef, chainAttr) {
@@ -502,46 +530,47 @@ export function rollEmotion(def, stage, opts = {}) {
  * 一律第一人稱台詞（與 AI 路徑一致）；情感仍只由骰子決定。
  */
 const REACT_FAIL = [
-  "……你在做什麼。",
+  "你在做什麼。",
   "別過來。",
   "我沒說可以。",
 ];
 const REACT_BY_BAND = {
   // delta 帶：hi(>=2) pos(1) zero(0) neg(-1) lo(<=-2)
+  // 禁止「只有省略號」當唯一內容——那會被 UI 當成讀取失敗
   hi: {
-    stranger: ["……哼。", "算你……還行。"],
-    friend: ["你啊……", "還行啦。"],
-    girlfriend: ["嗯。", "……看你這樣，我也沒辦法。"],
-    wife: ["知道了。", "嗯，就這樣。"],
+    stranger: ["哼。算你還行。", "……勉強讓你過關。"],
+    friend: ["你啊，還行啦。", "行吧，這次算你的。"],
+    girlfriend: ["嗯，看你這樣我也沒辦法。", "好啦，我接住了。"],
+    wife: ["知道了，就這樣。", "嗯，我聽到了。"],
   },
   pos: {
-    stranger: ["……哦。", "嗯。"],
-    friend: ["還行。", "嗯，我聽著。"],
-    girlfriend: ["嗯，我在聽。", "……嗯。"],
-    wife: ["嗯。", "好。"],
+    stranger: ["哦。我聽著。", "嗯，然後呢。"],
+    friend: ["還行。我聽著。", "嗯，繼續說。"],
+    girlfriend: ["嗯，我在聽。", "這樣啊……我知道了。"],
+    wife: ["嗯，好。", "我在。"],
   },
   zero: {
-    stranger: ["……。", "怎樣。"],
-    friend: ["嗯？", "然後呢。"],
-    girlfriend: ["怎樣？", "……嗯。"],
-    wife: ["還有事嗎？", "嗯。"],
+    stranger: ["怎樣。", "你想幹嘛。"],
+    friend: ["嗯？然後呢。", "所以呢。"],
+    girlfriend: ["怎樣？", "你又想怎樣。"],
+    wife: ["還有事嗎？", "嗯，說吧。"],
   },
   neg: {
-    stranger: ["別太過分。", "……夠了。"],
-    friend: ["你認真的？", "……你這樣很煩。"],
-    girlfriend: ["……你這樣我會生氣。", "拜託，別這樣。"],
-    wife: ["過了。", "……我們等下再談。"],
+    stranger: ["別太過分。", "夠了。"],
+    friend: ["你認真的？這樣很煩。", "差不多一點。"],
+    girlfriend: ["你這樣我會生氣。", "拜託，別這樣。"],
+    wife: ["過了。", "我們等下再談。"],
   },
   lo: {
-    stranger: ["夠了。", "別再靠近。"],
-    friend: ["夠了。", "我現在不想理你。"],
-    girlfriend: ["……你太過分了。", "別說話。"],
-    wife: ["我們等下再談。", "……先這樣。"],
+    stranger: ["夠了。別再靠近。", "我不想理你。"],
+    friend: ["夠了。我現在不想理你。", "你太過分了。"],
+    girlfriend: ["你太過分了。別說話。", "我需要一點空間。"],
+    wife: ["我們等下再談。", "先這樣。"],
   },
 };
 
 function pickLine(arr) {
-  if (!arr?.length) return "……";
+  if (!arr?.length) return "我沒話說。";
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
@@ -819,13 +848,18 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
   };
 
   const finishPlay = (openFail = false) => {
-    // 優先用組牌後預產台詞；沒有才回落罐頭
+    // 優先用組牌後預產台詞；弱／缺 → 依本拍感情骰罐頭（禁止只顯示「……」）
     const cached = pregenLineFor(inst, { openFail });
-    result.girlLine = cached || girlReactionLine({
+    const fallback = girlReactionLine({
       stage,
       emotionDelta: result.emotionDelta,
       openFail,
     });
+    result.girlLine = cached || fallback;
+    if (isWeakLine(result.girlLine)) result.girlLine = fallback;
+    if (isWeakLine(result.girlLine)) {
+      result.girlLine = openFail ? "我沒接住。別這樣。" : "我聽到了。";
+    }
     result.fromPregen = !!cached;
     result.feelLabel = emotionFeelLabel(result.emotionDelta);
     result.playsLeft = playsLeft(sess);

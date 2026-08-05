@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.7e(2026-08-05)組牌後回看板預產／燈亮才打";
+const APP_VER = "v6.7f(2026-08-05)修預產弱台詞／出卡不顯示省略號";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -2303,7 +2303,13 @@ function waitingOnHer() {
 async function genTick(force = false) {
   if (genTickBusy) return;
   // 等她那句話的時候收貨頻率拉高(每 700ms 問一次),平常維持 2 秒一輪
-  const waitingPregen = !!(state.cardSession?.phase === "pregen" && cardUi.pregenStarted);
+  const sessPregen = state.cardSession?.phase === "pregen";
+  // 背景預產：即使 pregenStarted 被重載清掉也要續跑
+  if (sessPregen && !cardUi.pregenStarted) {
+    const g = girlForSession();
+    if (g) beginRoundPregen(g);
+  }
+  const waitingPregen = !!(sessPregen && cardUi.pregenStarted);
   if (!force && Date.now() - lastGenAt < ((waitingOnHer() || waitingPregen) ? 700 : 2000)) return;
   lastGenAt = Date.now();
   genTickBusy = true;
@@ -2381,20 +2387,38 @@ function cardPregenMsgs(girl, def, { openFail = false } = {}) {
 
 function cannedForDef(def, girl, openFail = false) {
   const stage = girl?.stage || "stranger";
-  return Cards.girlReactionLine({
+  const line = Cards.girlReactionLine({
     stage,
     emotionDelta: openFail ? -2 : 0,
     openFail,
   });
+  // 再保險：絕不回只有省略號
+  if (Cards.isWeakLine?.(line)) {
+    return openFail ? "我沒接住。別這樣。" : "我聽到了。";
+  }
+  return line;
+}
+
+/** 把 AI／罐頭寫進 instance；弱台詞丟棄改罐頭 */
+function applyPregenText(inst, def, girl, kind, rawText) {
+  const openFail = kind === "fail";
+  let line = cardPlayLines(rawText);
+  if (Cards.isWeakLine?.(line)) line = cannedForDef(def, girl, openFail);
+  inst.pregen ??= { status: "pending", line: null, lineFail: null };
+  if (openFail) inst.pregen.lineFail = line;
+  else inst.pregen.line = line;
 }
 
 /**
  * 組牌完成 → 對本輪手牌＋牌堆每張卡預產回應。
- * 開門卡額外產「失敗」句。無模型則立刻罐頭並進 round_play。
+ * 開門卡額外產「失敗」句。無模型則立刻罐頭並進 ready。
  */
 function beginRoundPregen(girl) {
   const sess = state.cardSession;
   if (!sess || sess.phase !== "pregen") return;
+  // 已有進行中的 job 就別重開（避免重載/tick 重複下單）
+  if (cardUi.pregenStarted && cardUi.pregenJobs?.length) return;
+
   const list = Cards.roundCardInstances(sess);
   cardUi.pregenJobs = [];
   cardUi.pregenStarted = true;
@@ -2404,7 +2428,7 @@ function beginRoundPregen(girl) {
     return;
   }
 
-  // 無 AI：全數罐頭，直接開戰
+  // 無 AI：全數罐頭 → ready
   if (!state.settings?.model) {
     for (const inst of list) {
       const def = Cards.cardById(inst.cardId);
@@ -2420,16 +2444,26 @@ function beginRoundPregen(girl) {
 
   for (const inst of list) {
     const def = Cards.cardById(inst.cardId);
-    inst.pregen = { status: "pending", line: null, lineFail: null };
-    const okKey = `cardpre:${sess.girlId}:${sess.roundIndex}:${inst.instanceId}:ok`;
-    cardUi.pregenJobs.push({
-      instanceId: inst.instanceId,
-      key: okKey,
-      kind: "ok",
-      def,
-    });
-    genPost(okKey, cardPregenMsgs(girl, def, { openFail: false }), 12).catch(() => {});
-    if (def?.openChain) {
+    // 保留已寫好的強台詞（存檔恢復）；其餘重產
+    const keepLine = inst.pregen?.line && !Cards.isWeakLine?.(inst.pregen.line);
+    const keepFail = inst.pregen?.lineFail && !Cards.isWeakLine?.(inst.pregen.lineFail);
+    inst.pregen = {
+      status: "pending",
+      line: keepLine ? inst.pregen.line : null,
+      lineFail: keepFail ? inst.pregen.lineFail : null,
+    };
+
+    if (!keepLine) {
+      const okKey = `cardpre:${sess.girlId}:${sess.roundIndex}:${inst.instanceId}:ok`;
+      cardUi.pregenJobs.push({
+        instanceId: inst.instanceId,
+        key: okKey,
+        kind: "ok",
+        def,
+      });
+      genPost(okKey, cardPregenMsgs(girl, def, { openFail: false }), 12).catch(() => {});
+    }
+    if (def?.openChain && !keepFail) {
       const failKey = `cardpre:${sess.girlId}:${sess.roundIndex}:${inst.instanceId}:fail`;
       cardUi.pregenJobs.push({
         instanceId: inst.instanceId,
@@ -2439,9 +2473,19 @@ function beginRoundPregen(girl) {
       });
       genPost(failKey, cardPregenMsgs(girl, def, { openFail: true }), 12).catch(() => {});
     }
+    // 這張已全有強台詞 → 直接 done
+    if (keepLine && (!def?.openChain || keepFail)) {
+      inst.pregen.status = "done";
+    }
+  }
+
+  if (!cardUi.pregenJobs.length) {
+    finishRoundPregenIfReady();
+    return;
   }
   scheduleSave();
-  renderCardTable();
+  if (document.body.classList.contains("card-mode")) renderCardTable();
+  else renderCrests();
 }
 
 function findInstInRound(instanceId) {
@@ -2473,20 +2517,24 @@ async function genRoundPregenOrders() {
     inst.pregen ??= { status: "pending", line: null, lineFail: null };
 
     if (r.status === "done" && r.result) {
-      const { text } = stripGuardFlag(r.result);
-      const line = cardPlayLines(text) || cannedForDef(job.def, girl, job.kind === "fail");
-      if (job.kind === "fail") inst.pregen.lineFail = line;
-      else inst.pregen.line = line;
+      const { text } = stripGuardFlag(typeof r.result === "string" ? r.result : String(r.result ?? ""));
+      applyPregenText(inst, job.def, girl, job.kind, text);
     } else if (r.status === "error") {
-      if (job.kind === "fail") inst.pregen.lineFail = cannedForDef(job.def, girl, true);
-      else inst.pregen.line = cannedForDef(job.def, girl, false);
+      applyPregenText(inst, job.def, girl, job.kind, "");
     }
     job.settled = true;
     changed = true;
 
-    // 這張卡相關 job 都 settled 才標 done
+    // 這張卡相關 job 都 settled 才標 done（並確保非弱台詞）
     const related = cardUi.pregenJobs.filter(j => j.instanceId === inst.instanceId);
     if (related.every(j => j.settled)) {
+      const def = job.def || Cards.cardById(inst.cardId);
+      if (Cards.isWeakLine?.(inst.pregen.line)) {
+        inst.pregen.line = cannedForDef(def, girl, false);
+      }
+      if (def?.openChain && Cards.isWeakLine?.(inst.pregen.lineFail)) {
+        inst.pregen.lineFail = cannedForDef(def, girl, true);
+      }
       inst.pregen.status = "done";
     }
   }
@@ -2507,13 +2555,15 @@ async function genRoundPregenOrders() {
 function finishRoundPregenIfReady() {
   const sess = state.cardSession;
   if (!sess || sess.phase !== "pregen") return;
-  // 補齊未寫入的
+  // 補齊／踢掉弱台詞
   const girl = girlForSession();
   for (const inst of Cards.roundCardInstances(sess)) {
     const def = Cards.cardById(inst.cardId);
     inst.pregen ??= { status: "idle", line: null, lineFail: null };
-    if (!inst.pregen.line) inst.pregen.line = cannedForDef(def, girl, false);
-    if (def?.openChain && !inst.pregen.lineFail) {
+    if (Cards.isWeakLine?.(inst.pregen.line)) {
+      inst.pregen.line = cannedForDef(def, girl, false);
+    }
+    if (def?.openChain && Cards.isWeakLine?.(inst.pregen.lineFail)) {
       inst.pregen.lineFail = cannedForDef(def, girl, true);
     }
     inst.pregen.status = "done";
@@ -2538,6 +2588,24 @@ function finishRoundPregenIfReady() {
     const view = $("#card-table-view");
     if (view) view.classList.add("hidden");
     renderAll();
+  }
+}
+
+/** ready／round_play 開打前再掃一次：弱台詞補罐頭（防存檔沖掉） */
+function hardenRoundPregenLines() {
+  const sess = state.cardSession;
+  if (!sess || (sess.phase !== "ready" && sess.phase !== "round_play" && sess.phase !== "pregen")) return;
+  const girl = girlForSession();
+  if (!girl) return;
+  for (const inst of Cards.roundCardInstances(sess)) {
+    const def = Cards.cardById(inst.cardId);
+    inst.pregen ??= { status: "done", line: null, lineFail: null };
+    if (Cards.isWeakLine?.(inst.pregen.line)) {
+      inst.pregen.line = cannedForDef(def, girl, false);
+    }
+    if (def?.openChain && Cards.isWeakLine?.(inst.pregen.lineFail)) {
+      inst.pregen.lineFail = cannedForDef(def, girl, true);
+    }
   }
 }
 
@@ -5011,6 +5079,7 @@ function openKanbanTable(girlId, opts = {}) {
 
     // 燈亮：按了才開戰
     if (phase === "ready") {
+      hardenRoundPregenLines();
       const r = Cards.beginPlayAfterPregen(state);
       if (!r.ok) { toast(r.err, "bad"); return; }
       cardUi.lastPlay = null;
@@ -5499,9 +5568,18 @@ function renderCardTable() {
     const srcNote = last.fromPregen || last.fromAi ? "" : " · 保底";
 
     syncCardTableChrome({ ejectMode: false });
+    let showLine = last.girlLine || "";
+    if (Cards.isWeakLine?.(showLine)) {
+      showLine = Cards.girlReactionLine({
+        stage: girl?.stage || "stranger",
+        emotionDelta: last.emotionDelta || 0,
+        openFail: !!(last.open && last.open.success === false),
+      });
+      last.girlLine = showLine;
+    }
     setCtVn({
       name: gname,
-      text: last.girlLine || "……",
+      text: showLine || "我聽到了。",
       meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${srcNote} · ${esc(more)}`,
     });
     setCtHand(`
@@ -5562,6 +5640,7 @@ function renderCardTable() {
         <button type="button" id="ct-eject-ready">先離開</button>
       </div>`);
     $("#ct-start-play").onclick = () => {
+      hardenRoundPregenLines();
       const r = Cards.beginPlayAfterPregen(state);
       if (!r.ok) { toast(r.err, "bad"); return; }
       cardUi.lastPlay = null;
