@@ -418,6 +418,89 @@ export function maxInject(state) {
   return d("max_inject", 5);
 }
 
+// ── 出戰牌組（商店頁編輯；開戰直接用，不再局內組牌）────────
+
+/** 校驗一組 cardId 可否當押入／牌組（庫存與上限） */
+export function validateInjectIds(state, injectCardIds) {
+  const max = maxInject(state);
+  const ids = (injectCardIds || []).slice(0, max);
+  const need = Object.create(null);
+  for (const id of ids) need[id] = (need[id] || 0) + 1;
+  for (const [id, n] of Object.entries(need)) {
+    const def = BY_ID[id];
+    if (!def) return { ok: false, err: `未知卡 ${id}`, ids: [] };
+    if (def.kind === "girl_trait" || def.kind === "venue_event") {
+      return { ok: false, err: "本體／場地卡不能進牌組", ids: [] };
+    }
+    if (!def.shatterOnUse) {
+      if (!invOwns(state, id)) return { ok: false, err: `未擁有「${def.name}」`, ids: [] };
+      if (n > 1) return { ok: false, err: `話術「${def.name}」牌組只能 1 張`, ids: [] };
+    } else if (invCount(state, id) < n) {
+      return { ok: false, err: `「${def.name}」庫存不足`, ids: [] };
+    }
+  }
+  return { ok: true, ids, err: null };
+}
+
+/** 依庫存修剪牌組（賣光／用光的碎卡踢掉） */
+export function pruneDeck(state) {
+  state.cardDeck ??= [];
+  const max = maxInject(state);
+  const next = [];
+  const need = Object.create(null);
+  for (const id of state.cardDeck) {
+    if (next.length >= max) break;
+    const def = BY_ID[id];
+    if (!def || def.kind === "girl_trait" || def.kind === "venue_event") continue;
+    const n = (need[id] || 0) + 1;
+    if (!def.shatterOnUse) {
+      if (!invOwns(state, id) || n > 1) continue;
+    } else if (invCount(state, id) < n) {
+      continue;
+    }
+    need[id] = n;
+    next.push(id);
+  }
+  // 空牌組且有創角話術 → 自動放一張
+  if (!next.length && state.playerProfile?.starterSpeechCardId) {
+    const sid = state.playerProfile.starterSpeechCardId;
+    if (invOwns(state, sid) || BY_ID[sid]) next.push(sid);
+  }
+  state.cardDeck = next;
+  return state.cardDeck;
+}
+
+export function getDeck(state) {
+  return pruneDeck(state);
+}
+
+export function setDeck(state, cardIds) {
+  const v = validateInjectIds(state, cardIds);
+  if (!v.ok) return v;
+  state.cardDeck = v.ids.slice();
+  return { ok: true, deck: state.cardDeck };
+}
+
+export function addToDeck(state, cardId) {
+  const deck = getDeck(state).slice();
+  const max = maxInject(state);
+  if (deck.length >= max) return { ok: false, err: `牌組最多 ${max} 張` };
+  deck.push(cardId);
+  return setDeck(state, deck);
+}
+
+export function removeFromDeckAt(state, index) {
+  const deck = getDeck(state).slice();
+  if (index < 0 || index >= deck.length) return { ok: false, err: "位置無效" };
+  deck.splice(index, 1);
+  state.cardDeck = deck;
+  return { ok: true, deck };
+}
+
+export function deckCountOf(state, cardId) {
+  return getDeck(state).filter(id => id === cardId).length;
+}
+
 export function basePlays(stage, guardHigh) {
   const table = d("base_plays_by_stage", {
     stranger: 1,
@@ -684,42 +767,44 @@ export function enterRoundSetup(state) {
  */
 export function setInject(state, injectCardIds) {
   const sess = state.cardSession;
-  if (!sess || sess.phase !== "round_setup") return { ok: false, err: "不在組牌階段" };
-  const max = maxInject(state);
-  const ids = (injectCardIds || []).slice(0, max);
-  // 檢查庫存：同 id 不能超過 count（話術可 1）
-  const need = Object.create(null);
-  for (const id of ids) need[id] = (need[id] || 0) + 1;
-  for (const [id, n] of Object.entries(need)) {
-    const def = BY_ID[id];
-    if (!def) return { ok: false, err: `未知卡 ${id}` };
-    if (def.kind === "girl_trait" || def.kind === "venue_event") {
-      return { ok: false, err: "本體／場地卡不能押入" };
-    }
-    if (!def.shatterOnUse) {
-      if (!invOwns(state, id)) return { ok: false, err: `未擁有「${def.name}」` };
-      if (n > 1) return { ok: false, err: `話術「${def.name}」只能押 1 張` };
-    } else if (invCount(state, id) < n) {
-      return { ok: false, err: `「${def.name}」庫存不足` };
-    }
-  }
-  sess.injected = ids.map(id => makeInstance(id, "inventory"));
+  if (!sess) return { ok: false, err: "沒有牌局" };
+  const v = validateInjectIds(state, injectCardIds);
+  if (!v.ok) return v;
+  sess.injected = v.ids.map(id => makeInstance(id, "inventory"));
   return { ok: true, injected: sess.injected };
 }
 
 /**
- * round_setup → round_play：洗牌抽牌、設定 N，直接開戰（即時 AI，不預產）。
+ * 用商店設定的出戰牌組開戰（跳過局內組牌 UI）。
+ * 可從 idle_present / round_setup / round_end / pregen / ready 進入。
  */
-export function startRound(state, { stage, guardHigh = false } = {}) {
+export function startPlayRound(state, { stage, guardHigh = false } = {}) {
   const sess = state.cardSession;
-  if (!sess || sess.phase !== "round_setup") return { ok: false, err: "請先組牌" };
+  if (!sess) return { ok: false, err: "沒有牌局" };
+  // 已在打牌且還有次數 → 視為繼續
+  if (sess.phase === "round_play" && playsLeft(sess) > 0) {
+    return { ok: true, already: true, hand: sess.hand, nLeft: sess.nLeft };
+  }
+  const okPhases = new Set([
+    "idle_present", "round_setup", "round_end", "pregen", "ready", "round_play",
+  ]);
+  if (!okPhases.has(sess.phase)) {
+    return { ok: false, err: "現在不能開戰" };
+  }
+
+  const deck = getDeck(state);
+  const ir = setInject(state, deck);
+  if (!ir.ok) {
+    // 牌組壞了：用空押入（只打本體／場地）
+    sess.injected = [];
+  }
 
   const pile = [
     ...sess.girlCards.map(c => ({ ...c, used: false })),
     ...sess.injected.map(c => ({ ...c, used: false })),
     ...(sess.venueCards || []).map(c => ({ ...c, used: false })),
   ];
-  if (!pile.length) return { ok: false, err: "牌堆是空的" };
+  if (!pile.length) return { ok: false, err: "牌堆是空的——商店編一組牌或等本體卡" };
 
   shuffleInPlace(pile);
   sess.drawPile = pile;
@@ -736,8 +821,19 @@ export function startRound(state, { stage, guardHigh = false } = {}) {
   sess.pending = null;
   sess.phase = "round_play";
   sess.log = sess.log || [];
-  sess.log.push({ t: Date.now(), kind: "round_start", n: sess.nLeft, round: sess.roundIndex });
-  return { ok: true, hand: sess.hand, nLeft: sess.nLeft, phase: "round_play" };
+  sess.log.push({
+    t: Date.now(),
+    kind: "round_start",
+    n: sess.nLeft,
+    round: sess.roundIndex,
+    deck: deck.slice(),
+  });
+  return { ok: true, hand: sess.hand, nLeft: sess.nLeft, phase: "round_play", deckSize: deck.length };
+}
+
+/** @deprecated 改走 startPlayRound；保留給舊呼叫 */
+export function startRound(state, opts = {}) {
+  return startPlayRound(state, opts);
 }
 
 export function playsLeft(sess) {
@@ -980,7 +1076,8 @@ export function resolveRoundEnd(state, { stage = "stranger" } = {}) {
   }
 
   if (stay) {
-    sess.phase = "round_setup";
+    // 再來一輪：不回局內組牌，由 UI 直接 startPlayRound 用牌組
+    sess.phase = "idle_present";
     sess.log.push({ t: Date.now(), kind: "stay" });
     return { ok: true, stay: true, phase: sess.phase };
   }

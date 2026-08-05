@@ -1543,6 +1543,35 @@ body.card-mode.has-ct-figure #kanban-girl {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   text-shadow: 0 1px 6px rgba(0,0,0,.75);
 }
+/* 出戰牌組 */
+.card-deck-list {
+  display: flex; flex-wrap: wrap; gap: .4em;
+  min-height: 2.2em;
+}
+.deck-chip {
+  display: inline-flex; align-items: center; gap: .3em;
+  padding: .35em .55em; border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  color: var(--text); font: inherit; font-size: .82em;
+  cursor: pointer;
+}
+.deck-chip.is-shatter {
+  border-color: color-mix(in srgb, var(--pink) 45%, var(--line));
+}
+.deck-chip.is-speech {
+  border-color: color-mix(in srgb, var(--cyan) 40%, var(--line));
+}
+.deck-chip-tag {
+  font-size: .7em; opacity: .75; letter-spacing: .06em;
+}
+.deck-chip-x { opacity: .55; font-size: .9em; }
+.deck-chip:active { transform: scale(.97); }
+.cid-actions {
+  display: flex; flex-wrap: wrap; gap: .45em; margin-top: .65em;
+}
+.cid-actions .cid-close { margin-top: 0; }
+
 /* 等 AI 反應：左上角「推出」 */
 .card-table-top .back-btn.ct-eject-btn {
   color: var(--pink);
