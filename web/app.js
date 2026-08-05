@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.7g(2026-08-05)出卡兩拍：動作旁白→她的回應";
+const APP_VER = "v6.7h(2026-08-05)預產佇列降載／逐張／逾時回落";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -2316,26 +2316,32 @@ async function genTick(force = false) {
   try {
     // 獻祭文:睡眠時段織夢(有無模型都跑;無模型走罐頭)
     if (isAsleep()) await genSacOrders();
-    // 組牌後預產：無模型也會在 begin 時秒完成；有模型要收貨
-    if (waitingPregen) await genRoundPregenOrders();
     if (state.settings.model) {
+      // 玩家在等的回覆永遠優先於牌桌預產（預產 prio 也較低，雙保險）
+      await genReplyOrder();
       const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep()
         && !document.body.classList.contains("card-mode");
-      await genReplyOrder();   // 最優先:她正在回你的那句(玩家在等紋亮)
       if (idle) await genChatOrder();
-      // 玩家正在等她開口/回話時,不下背景素材的單——別讓紀錄與氣泡卡住她那句話
-      if (!waitingOnHer() && !waitingPregen) {
+      if (!waitingOnHer()) {
         await genActOrders();
         if (idle) await genQuipOrders();
       }
     }
+    // 組牌後預產：逐張背景收／下單，不擋聊天
+    if (waitingPregen) await genRoundPregenOrders();
   } catch (e) { /* 下輪再試 */ }
   genTickBusy = false;
 }
 
 // ── M4 打牌短 AI：組牌後整輪預產，開打後直接播 ────────────
 // 原則：感情骰出卡時才擲；台詞在 pregen 階段依「組好的每張卡」預先寫好。
-// 無模型／失敗 → 罐頭。預產中不可開打，左上角可「推出」。
+// 佇列：prio 低（2）、一次只跑一張，避免塞爆 grok 把整站 AI 卡死。
+// 無模型／失敗／逾時 → 罐頭。
+
+/** 打牌預產優先序：必須低於玩家回覆(10)／開場白(5) */
+const CARD_PREGEN_PRIO = 2;
+/** 整輪預產最長等這秒數，超時其餘用罐頭，避免永遠「準備中」 */
+const CARD_PREGEN_TIMEOUT_MS = 90_000;
 
 /** 打牌 AI 取 1～2 行台詞（規格允許兩句；勿只砍第一行） */
 function cardPlayLines(text) {
@@ -2353,6 +2359,7 @@ function cardPregenMsgs(girl, def, { openFail = false } = {}) {
   const kind = def?.kind || "speech";
   const ctx = buildCtx(girl);
   ctx.want_guard_flag = false;
+  // 精簡：打牌預產不塞 world／委託全文（buildCardPlayPrompt 本身已短）
   ctx.card_play = {
     mode: sess?.mode || "kanban",
     venue_name: venueName,
@@ -2409,9 +2416,30 @@ function applyPregenText(inst, def, girl, kind, rawText) {
   else inst.pregen.line = line;
 }
 
+function settlePregenJob(job, inst, girl, rawText) {
+  if (!inst) {
+    job.settled = true;
+    return;
+  }
+  inst.pregen ??= { status: "pending", line: null, lineFail: null };
+  applyPregenText(inst, job.def, girl, job.kind, rawText ?? "");
+  job.settled = true;
+  const related = cardUi.pregenJobs.filter(j => j.instanceId === inst.instanceId);
+  if (related.every(j => j.settled)) {
+    const def = job.def || Cards.cardById(inst.cardId);
+    if (Cards.isWeakLine?.(inst.pregen.line)) {
+      inst.pregen.line = cannedForDef(def, girl, false);
+    }
+    if (def?.openChain && Cards.isWeakLine?.(inst.pregen.lineFail)) {
+      inst.pregen.lineFail = cannedForDef(def, girl, true);
+    }
+    inst.pregen.status = "done";
+  }
+}
+
 /**
- * 組牌完成 → 對本輪手牌＋牌堆每張卡預產回應。
- * 開門卡額外產「失敗」句。無模型則立刻罐頭並進 ready。
+ * 組牌完成 → 建立預產 job 清單（不一次全下單）。
+ * genRoundPregenOrders 逐張 POST，避免佇列塞死。
  */
 function beginRoundPregen(girl) {
   const sess = state.cardSession;
@@ -2422,6 +2450,7 @@ function beginRoundPregen(girl) {
   const list = Cards.roundCardInstances(sess);
   cardUi.pregenJobs = [];
   cardUi.pregenStarted = true;
+  cardUi.pregenStartedAt = Date.now();
 
   if (!list.length) {
     finishRoundPregenIfReady();
@@ -2444,7 +2473,6 @@ function beginRoundPregen(girl) {
 
   for (const inst of list) {
     const def = Cards.cardById(inst.cardId);
-    // 保留已寫好的強台詞（存檔恢復）；其餘重產
     const keepLine = inst.pregen?.line && !Cards.isWeakLine?.(inst.pregen.line);
     const keepFail = inst.pregen?.lineFail && !Cards.isWeakLine?.(inst.pregen.lineFail);
     inst.pregen = {
@@ -2454,27 +2482,20 @@ function beginRoundPregen(girl) {
     };
 
     if (!keepLine) {
-      const okKey = `cardpre:${sess.girlId}:${sess.roundIndex}:${inst.instanceId}:ok`;
       cardUi.pregenJobs.push({
         instanceId: inst.instanceId,
-        key: okKey,
+        key: `cardpre:${sess.girlId}:${sess.roundIndex}:${inst.instanceId}:ok`,
         kind: "ok",
         def,
+        posted: false,
+        settled: false,
       });
-      genPost(okKey, cardPregenMsgs(girl, def, { openFail: false }), 12).catch(() => {});
     }
+    // 開門失敗句：出卡當下才需要；預產只做成功版，失敗用罐頭（減半佇列壓力）
     if (def?.openChain && !keepFail) {
-      const failKey = `cardpre:${sess.girlId}:${sess.roundIndex}:${inst.instanceId}:fail`;
-      cardUi.pregenJobs.push({
-        instanceId: inst.instanceId,
-        key: failKey,
-        kind: "fail",
-        def,
-      });
-      genPost(failKey, cardPregenMsgs(girl, def, { openFail: true }), 12).catch(() => {});
+      inst.pregen.lineFail = cannedForDef(def, girl, true);
     }
-    // 這張已全有強台詞 → 直接 done
-    if (keepLine && (!def?.openChain || keepFail)) {
+    if (keepLine && (!def?.openChain || inst.pregen.lineFail)) {
       inst.pregen.status = "done";
     }
   }
@@ -2494,59 +2515,77 @@ function findInstInRound(instanceId) {
   return Cards.roundCardInstances(sess).find(c => c.instanceId === instanceId) || null;
 }
 
-/** 收預產訂單；全好 → beginPlayAfterPregen */
+/**
+ * 逐張預產：同時最多一張在佇列裡。
+ * 修：API 狀態是 pending（不是 queued）——舊碼把 pending 當完成，邏輯錯亂。
+ * 逾時：其餘罐頭收尾，避免永遠準備中、也避免高優佔線。
+ */
 async function genRoundPregenOrders() {
   const sess = state.cardSession;
   if (!sess || sess.phase !== "pregen" || !cardUi.pregenJobs?.length) return;
   const girl = girlForSession();
   if (!girl) return;
 
-  let changed = false;
-  for (const job of cardUi.pregenJobs) {
-    if (job.settled) continue;
-    const r = await genPost(job.key, cardPregenMsgs(girl, job.def, { openFail: job.kind === "fail" }), 12);
-    if (!r) continue;
-    if (r.status === "queued" || r.status === "running") continue;
-
-    const inst = findInstInRound(job.instanceId);
-    if (!inst) {
-      job.settled = true;
-      changed = true;
-      continue;
+  const startedAt = cardUi.pregenStartedAt || Date.now();
+  if (Date.now() - startedAt > CARD_PREGEN_TIMEOUT_MS) {
+    // 逾時：未完成的全罐頭，放行開戰
+    for (const job of cardUi.pregenJobs) {
+      if (job.settled) continue;
+      const inst = findInstInRound(job.instanceId);
+      settlePregenJob(job, inst, girl, "");
     }
-    inst.pregen ??= { status: "pending", line: null, lineFail: null };
+    finishRoundPregenIfReady();
+    toast("準備較久——其餘用即時感覺接上", "");
+    return;
+  }
 
+  let changed = false;
+
+  // 1) 先收「已下單」那一張
+  const inflight = cardUi.pregenJobs.find(j => j.posted && !j.settled);
+  if (inflight) {
+    const r = await genPost(
+      inflight.key,
+      cardPregenMsgs(girl, inflight.def, { openFail: inflight.kind === "fail" }),
+      CARD_PREGEN_PRIO,
+    );
+    if (!r) return; // 網路閃斷：下輪再問
+    // 伺服器實際狀態：pending | running | done | error（沒有 queued）
+    if (r.status === "pending" || r.status === "running" || r.status === "queued") {
+      return; // 還在跑，別塞下一張
+    }
+    const inst = findInstInRound(inflight.instanceId);
     if (r.status === "done" && r.result) {
       const { text } = stripGuardFlag(typeof r.result === "string" ? r.result : String(r.result ?? ""));
-      applyPregenText(inst, job.def, girl, job.kind, text);
-    } else if (r.status === "error") {
-      applyPregenText(inst, job.def, girl, job.kind, "");
+      settlePregenJob(inflight, inst, girl, text);
+    } else {
+      // error 或其他 → 罐頭
+      settlePregenJob(inflight, inst, girl, "");
     }
-    job.settled = true;
     changed = true;
+  }
 
-    // 這張卡相關 job 都 settled 才標 done（並確保非弱台詞）
-    const related = cardUi.pregenJobs.filter(j => j.instanceId === inst.instanceId);
-    if (related.every(j => j.settled)) {
-      const def = job.def || Cards.cardById(inst.cardId);
-      if (Cards.isWeakLine?.(inst.pregen.line)) {
-        inst.pregen.line = cannedForDef(def, girl, false);
-      }
-      if (def?.openChain && Cards.isWeakLine?.(inst.pregen.lineFail)) {
-        inst.pregen.lineFail = cannedForDef(def, girl, true);
-      }
-      inst.pregen.status = "done";
+  // 2) 沒有在飛的 → 下一張未下單的 POST 一筆
+  if (!cardUi.pregenJobs.some(j => j.posted && !j.settled)) {
+    const next = cardUi.pregenJobs.find(j => !j.posted && !j.settled);
+    if (next) {
+      next.posted = true;
+      await genPost(
+        next.key,
+        cardPregenMsgs(girl, next.def, { openFail: next.kind === "fail" }),
+        CARD_PREGEN_PRIO,
+      );
+      changed = true;
     }
   }
 
   if (changed) {
     scheduleSave();
-    if (Cards.pregenAllReady(sess)) {
+    if (Cards.pregenAllReady(sess) || cardUi.pregenJobs.every(j => j.settled)) {
       finishRoundPregenIfReady();
     } else if (document.body.classList.contains("card-mode")) {
       renderCardTable();
     } else {
-      // 看板主畫面：更新右下角「準備中 x/y」
       renderCrests();
     }
   }
