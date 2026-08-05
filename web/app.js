@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.11(2026-08-05)M5·CG cache不卡GPU";
+const APP_VER = "v6.12(2026-08-05)實驗·出卡場景生圖";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -698,9 +698,11 @@ function initState(j, offline) {
     state.playerProfile.name = state.settings.player;
   }
   // M6：牌制預設開；自由聊天主路徑退役（history 只讀保留，見 retireFreeChatState）
+  // cardSceneArt：出卡後依她回應生場景圖（實驗，可關）
   state.settings.features = {
     cardSystem: true,
     freeChatRetired: true,
+    cardSceneArt: true,
     ...(state.settings.features || {}),
   };
   // 舊存檔若曾手動關牌制，仍尊重 cardSystem:false；其餘強制退役自由聊
@@ -1715,8 +1717,14 @@ function resolveCardTableArt(girl, { cardId = null, prefer = "half" } = {}) {
   if (cardId) {
     const ck = `card:${cardId}`;
     const hit = cg[ck];
-    if (hit?.status === "ready" && hit.url) {
-      return { url: hit.url, kind: "card", weaving, key: ck };
+    // pending 也先顯示別名／舊圖（場景圖背景生成中）
+    if (hit?.url && (hit.status === "ready" || hit.status === "pending")) {
+      return {
+        url: hit.url,
+        kind: hit.status === "pending" ? "scene_pending" : "card",
+        weaving: weaving || hit.status === "pending",
+        key: ck,
+      };
     }
   }
 
@@ -1758,13 +1766,14 @@ function ensureArtCacheBg(girl) {
 
 /**
  * 出卡後：若該卡尚無專屬 CG，把當前最佳立繪 **別名** 進 card:{id}
- * （一張 CG 多用；不另燒 GPU。日後真·場景 CG 可覆寫同一 key。）
+ * （先有占位圖；場景生圖完成後會覆寫同一 key。）
  */
 function bindCardArtAlias(girl, cardId) {
   if (!girl || !cardId) return;
   const cg = ensureCardCgMap(girl);
   const key = `card:${cardId}`;
   if (cg[key]?.status === "ready" && cg[key].url) return;
+  if (cg[key]?.status === "pending") return;
   const art = resolveCardTableArt(girl, { prefer: "half" });
   if (!art.url) return;
   cg[key] = {
@@ -1773,6 +1782,197 @@ function bindCardArtAlias(girl, cardId) {
     at: Date.now(),
     source: "alias_portrait",
   };
+}
+
+/** 實驗開關：每出卡依她回應生場景圖 */
+function cardSceneArtOn() {
+  return !!(cardSystemOn()
+    && state?.settings?.features?.cardSceneArt !== false
+    && canWeaveNow());
+}
+
+// 出卡場景生圖狀態（作廢用 gen）
+const cardSceneJob = { gen: 0, key: null, cardId: null, girlId: null };
+
+function voidCardSceneArt() {
+  cardSceneJob.gen = (cardSceneJob.gen || 0) + 1;
+  cardSceneJob.key = null;
+  cardSceneJob.cardId = null;
+  cardSceneJob.girlId = null;
+}
+
+/** 中文動作＋她回應 → 英文視覺描述（給生圖 extra／prompt） */
+function sceneEnMsgs(girl, play) {
+  const rating = state.settings?.rating || "sfw";
+  return [
+    {
+      role: "system",
+      content: [
+        "You write English visual prompts for a single-character anime illustration.",
+        "Output ONLY the English description (1–2 sentences or comma-separated tags).",
+        "Include: pose, facial expression, gesture, setting/background, lighting, clothing state if relevant.",
+        "Match the character identity only at a high level (adult woman); do NOT invent a different hair color or age.",
+        "No dialogue, no Chinese, no quotes, no markdown, no 'prompt:' prefix.",
+        rating === "nsfw"
+          ? "NSFW allowed if the scene implies it; keep it visual not prose."
+          : "Keep it all-ages: suggestive is ok, no explicit nudity.",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `Name: ${girl.name || "her"}`,
+        `Stage: ${girl.stage || "stranger"}`,
+        `Card: ${play.name || play.cardId || ""}`,
+        `What happened (Chinese stage direction): ${play.sceneStart || play.name || ""}`,
+        `Her reaction line (Chinese): ${play.girlLine || ""}`,
+        play.open?.success === false ? "Note: she rejected / pulled away." : "",
+        play.open?.success ? "Note: she was drawn in / door opened." : "",
+        "Describe the visual scene NOW for the illustration.",
+      ].filter(Boolean).join("\n"),
+    },
+  ];
+}
+
+function sceneEnFallback(play) {
+  const bits = [
+    "anime style, single adult woman, half body",
+    play?.name ? `scene: ${play.name}` : "",
+    play?.sceneStart ? String(play.sceneStart).slice(0, 120) : "",
+    play?.girlLine ? `expression reacting: ${String(play.girlLine).slice(0, 80)}` : "",
+    "detailed face, expressive eyes",
+  ].filter(Boolean);
+  return bits.join(", ");
+}
+
+/**
+ * 出卡後：有她的回應就背景下單——中→英場景 → 生圖 → 覆寫 card:{id}。
+ * **不 await 給打牌 UI**；離開／換卡用 voidCardSceneArt 作廢。
+ */
+function queueCardSceneArt(girl, play) {
+  if (!cardSceneArtOn() || !girl || !play?.cardId) return;
+  if (play._sceneArtQueued) return;
+  play._sceneArtQueued = true;
+
+  const gen = (cardSceneJob.gen || 0) + 1;
+  cardSceneJob.gen = gen;
+  cardSceneJob.cardId = play.cardId;
+  cardSceneJob.girlId = girl.id;
+
+  const cg = ensureCardCgMap(girl);
+  const key = `card:${play.cardId}`;
+  const prevUrl = cg[key]?.url || resolveCardTableArt(girl, { prefer: "half" }).url || "";
+  cg[key] = {
+    url: prevUrl,
+    status: "pending",
+    at: Date.now(),
+    source: "scene_pending",
+  };
+
+  // 刷新 badge「繪場景中」
+  if (document.body.classList.contains("card-mode") && girlForSession()?.id === girl.id) {
+    setCtPortrait(girl, { cardId: play.cardId });
+  }
+
+  (async () => {
+    try {
+      // 1) 英文場景描述
+      let sceneEn = "";
+      if (state.settings?.model) {
+        const enKey = `cardscene-en:${girl.id}:${play.cardId}:${gen}`;
+        const deadline = Date.now() + 90000;
+        let r = await genPost(enKey, sceneEnMsgs(girl, play), 6);
+        while (r && Date.now() < deadline) {
+          if (cardSceneJob.gen !== gen) return;
+          if (r.status === "done" && r.result) {
+            const { text } = stripGuardFlag(typeof r.result === "string" ? r.result : String(r.result ?? ""));
+            sceneEn = (text || "").replace(/^["'\s]+|["'\s]+$/g, "").trim().slice(0, 500);
+            break;
+          }
+          if (r.status === "error") break;
+          await new Promise(res => setTimeout(res, 800));
+          r = await genPost(enKey, sceneEnMsgs(girl, play), 6);
+        }
+      }
+      if (cardSceneJob.gen !== gen) return;
+      if (!sceneEn || sceneEn.length < 8) sceneEn = sceneEnFallback(play);
+
+      // 2) 生圖（不寫 shot，避免蓋掉三連拍立繪；不去背，保留場景）
+      const imgKey = `cardscene-img:${girl.id}:${play.cardId}:${gen}`;
+      cardSceneJob.key = imgKey;
+      const url = await weaveCardSceneShot(girl, sceneEn, imgKey);
+      // 換卡／離開：仍寫入 cache 給下次，但 UI 只在 gen 吻合時刷新
+      const stillThisJob = cardSceneJob.gen === gen;
+
+      if (url) {
+        cg[key] = {
+          url,
+          status: "ready",
+          at: Date.now(),
+          source: "scene_play",
+          sceneEn,
+        };
+        dirty = true;
+        scheduleSave();
+        if (stillThisJob
+          && document.body.classList.contains("card-mode")
+          && girlForSession()?.id === girl.id
+          && cardUi.lastPlay?.cardId === play.cardId) {
+          setCtPortrait(girl, { cardId: play.cardId });
+        }
+      } else if (stillThisJob && cg[key]?.status === "pending") {
+        cg[key] = {
+          url: prevUrl,
+          status: prevUrl ? "ready" : "error",
+          at: Date.now(),
+          source: prevUrl ? "alias_portrait" : "scene_error",
+        };
+        if (document.body.classList.contains("card-mode") && girlForSession()?.id === girl.id) {
+          setCtPortrait(girl, { cardId: play.cardId });
+        }
+      }
+    } catch {
+      /* 場景圖失敗不影響打牌 */
+    }
+  })();
+}
+
+/** 場景圖：character + English extra；存 testword，不蓋 portraits */
+async function weaveCardSceneShot(s, sceneEn, key) {
+  if (!s || !canWeaveNow()) return "";
+  const comfy = imgProvider() === "comfy";
+  const body = {
+    key,
+    provider: imgProvider(),
+    model: state.settings.model || "grok-4.5",
+    framing: "half",
+    rating: state.settings.rating || "sfw",
+    style: state.settings.imgStyle || "anime",
+    character: s,
+    extra: sceneEn,
+    cutout: false,
+    flat_bg: false,
+    retry: true,
+    ...(comfy ? {
+      comfy_url: state.settings.comfyUrl || "",
+      ckpt: state.settings.comfyCkpt || "",
+      // 不要 shot／char_id：否則會覆寫召喚三連拍檔
+    } : {}),
+  };
+  let url = "";
+  try {
+    let r = await imgGenPost(body);
+    let k = r?.key || key;
+    const deadline = Date.now() + 180000;
+    while (r && Date.now() < deadline) {
+      if (r.status === "done") { url = r.result || ""; break; }
+      if (r.status === "error") break;
+      await new Promise(res => setTimeout(res, 1500));
+      r = await imgGenPost({ ...body, key: k, retry: false });
+      k = r?.key || k;
+    }
+  } catch { /* */ }
+  return url;
 }
 
 // 詳細頁「補織缺的那幾張」用:三張補齊,已經有的跳過。
@@ -2683,8 +2883,9 @@ function cardPlayMsgs(girl, play) {
 }
 
 /**
- * 作廢進行中的出卡 AI（推出／離開／看完反應後）。
+ * 作廢進行中的出卡文字 AI（看完反應／離開）。
  * 遞增 playAiGen：已下單的收貨若 gen 不符就丟，不寫入 girlLine。
+ * 注意：場景生圖不在這裡作廢——看完反應後背景仍可把圖寫進 cardCg。
  */
 function voidCardPlayAi() {
   cardUi.playAiGen = (cardUi.playAiGen || 0) + 1;
@@ -2694,11 +2895,21 @@ function voidCardPlayAi() {
   cardUi.playAiStartedGen = null;
 }
 
+/** 離開牌桌或換下一張卡時作廢在途場景圖（避免套到錯的節拍） */
+function voidCardPlayAiAndScene() {
+  voidCardPlayAi();
+  voidCardSceneArt();
+}
+
 /** 出卡後：有模型立刻下單；等 AI 時第二拍顯示點點點，不預先塞罐頭給玩家看 */
 function beginCardPlayAi(girl, play) {
-  voidCardPlayAi(); // 作廢上一張未完成的訂單
+  voidCardPlayAiAndScene(); // 作廢上一張文字＋場景
   if (!girl || !play?.ok) return;
-  if (!state.settings?.model) return;
+  if (!state.settings?.model) {
+    // 無模型：罐頭台詞已在 play.girlLine → 直接排隊場景圖
+    queueCardSceneArt(girl, play);
+    return;
+  }
   const token = `${Date.now().toString(36)}_${play.cardId || "x"}`;
   const gen = cardUi.playAiGen || 0;
   cardUi.playAiToken = token;
@@ -2749,6 +2960,8 @@ async function genCardPlayOrder() {
     cardUi.playAiKey = null;
     cardUi.playAiToken = null;
     cardUi.playAiStartedGen = null;
+    // 實驗：有她的回應 → 背景場景生圖
+    queueCardSceneArt(girl, cardUi.lastPlay);
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
       renderCardTable();
     }
@@ -2758,6 +2971,8 @@ async function genCardPlayOrder() {
     cardUi.playAiToken = null;
     cardUi.playAiStartedGen = null;
     if (cardUi.lastPlay) cardUi.lastPlay.fromAi = false;
+    // 罐頭 girlLine 仍可拿去生場景
+    queueCardSceneArt(girl, cardUi.lastPlay);
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
       renderCardTable();
     }
@@ -5460,7 +5675,7 @@ function endCardTableAndReleaseKanban(reason = "card_end") {
   cardUi.awaitReaction = false;
   cardUi.reactBeat = null;
   cardUi.endPanel = null;
-  voidCardPlayAi();
+  voidCardPlayAiAndScene();
   document.body.classList.remove("card-mode", "has-ct-figure");
   clearCardTableDom();
 
@@ -5475,7 +5690,7 @@ function endCardTableAndReleaseKanban(reason = "card_end") {
 
 /** 中止牌桌（推出）：作廢出卡 AI、關 session、看板解除 */
 function ejectCardTable(reason = "player_eject") {
-  voidCardPlayAi();
+  voidCardPlayAiAndScene();
   const r = endCardTableAndReleaseKanban(reason);
   toast(r.released ? `${r.gname} 被推出店頭了` : "先到這吧", "");
   scheduleSave();
@@ -5608,7 +5823,7 @@ function exitCardModeFully(msg = "") {
   cardUi.lastPlay = null;
   cardUi.injectPick = [];
   cardUi.handIdx = 0;
-  voidCardPlayAi();
+  voidCardPlayAiAndScene();
   if (state.cardSession) Cards.closeSession(state, "ui_exit");
   document.body.classList.remove("card-mode", "has-ct-figure");
   clearCardTableDom();
@@ -5770,9 +5985,14 @@ function setCtPortrait(girl, opts = {}) {
     document.body.classList.remove("has-ct-figure");
   }
 
-  // 織夢中提示：有占位也能開戰，背景補圖
+  // 織夢／場景圖提示：有占位也能開戰，背景補圖
   if (badge) {
-    if (art.weaving || (girl && portraitGenning.has(girl.id) && !art.url)) {
+    const cardKey = opts.cardId ? `card:${opts.cardId}` : null;
+    const scenePending = !!(girl && cardKey && girl.cardCg?.[cardKey]?.status === "pending");
+    if (scenePending) {
+      badge.textContent = "繪場景中…";
+      badge.classList.remove("hidden");
+    } else if (art.weaving || (girl && portraitGenning.has(girl.id) && !art.url)) {
       badge.textContent = "成形中…";
       badge.classList.remove("hidden");
     } else if (!art.url && girl && canWeaveNow()) {
@@ -6593,6 +6813,8 @@ function renderSettings() {
   $("#row-comfy-test").classList.toggle("hidden", imgProvider() !== "comfy");
   $("#row-comfy-ckpt").classList.toggle("hidden", imgProvider() !== "comfy");
   comfyCkptOptions(state.settings.comfyCkpt || "");
+  const csa = $("#set-card-scene-art");
+  if (csa) csa.checked = state.settings.features?.cardSceneArt !== false;
   $("#set-model").value = state.settings.model || "";
   $("#set-rating").value = state.settings.rating || "sfw";
   applyLlmProviderUi();
@@ -6756,6 +6978,11 @@ on("set-llm-provider", "change", e => {
 on("set-ollama", "change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });
 on("set-comfy", "change", e => { state.settings.comfyUrl = e.target.value.trim(); scheduleSave(); });
 on("set-imgprov", "change", e => { state.settings.imgProvider = e.target.value; scheduleSave(); renderSettings(); });
+on("set-card-scene-art", "change", e => {
+  state.settings.features ??= {};
+  state.settings.features.cardSceneArt = !!e.target.checked;
+  scheduleSave();
+});
 on("set-comfy-ckpt", "change", e => { state.settings.comfyCkpt = e.target.value; scheduleSave(); });
 on("btn-comfy-test", "click", async () => {
   const r = $("#comfy-test-result");
