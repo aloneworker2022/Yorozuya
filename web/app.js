@@ -3709,7 +3709,7 @@ function renderCrests() {
     return;
   }
 
-  // v6 牌制：右下角打牌入口
+  // v6 牌制：右下角小方塊打牌鍵（不擋委託輸入列）
   if (cardSystemOn()) {
     const girls = isAsleep()
       ? []
@@ -3718,20 +3718,21 @@ function renderCrests() {
     el.innerHTML = girls.map(s => {
       const sess = state.cardSession?.girlId === s.id ? state.cardSession : null;
       const phase = sess?.phase || null;
-      const inSess = !!(phase && phase !== "closed");
-      const label = inSess && phase !== "idle_present" ? "繼續" : "靠近";
+      const playing = phase === "round_play" && Cards.playsLeft(sess) > 0;
       const face = girlShot(s, "head");
+      const title = playing
+        ? `繼續與 ${s.name} 打牌`
+        : `與 ${s.name} 開始打牌`;
       return `
-      <button type="button" class="play-chip r-${s.rarity}${inSess ? " active-sess" : ""}" data-cid="${s.id}"
-              title="與 ${esc(s.name)} 互動">
+      <button type="button" class="play-fab r-${s.rarity}${playing ? " active-sess" : ""}" data-cid="${s.id}"
+              title="${esc(title)}" aria-label="${esc(title)}">
         ${face
-          ? `<img class="play-chip-face" src="${esc(face)}" alt="">`
-          : `<span class="play-chip-icon" aria-hidden="true">✦</span>`}
-        <span class="play-chip-label">${label}</span>
-        <span class="cname">${esc(s.name)}</span>
+          ? `<img class="play-fab-face" src="${esc(face)}" alt="">`
+          : `<span class="play-fab-icon" aria-hidden="true">✦</span>`}
+        <span class="play-fab-badge" aria-hidden="true">${playing ? "…" : "牌"}</span>
       </button>`;
     }).join("");
-    el.querySelectorAll(".play-chip").forEach(b => {
+    el.querySelectorAll(".play-fab").forEach(b => {
       b.onclick = () => openKanbanTable(b.dataset.cid);
     });
     return;
@@ -4221,20 +4222,78 @@ function renderCardDeckPanel() {
     const def = Cards.cardById(id);
     const name = def?.name || id;
     const tag = def?.shatterOnUse ? "碎" : "話";
-    return `<button type="button" class="deck-chip ${def?.shatterOnUse ? "is-shatter" : "is-speech"}" data-di="${i}" title="點一下移出牌組">
+    return `<button type="button" class="deck-chip ${def?.shatterOnUse ? "is-shatter" : "is-speech"}" data-di="${i}" title="長按移出牌組">
       <span class="deck-chip-tag">${tag}</span>${esc(name)}
-      <span class="deck-chip-x" aria-hidden="true">×</span>
     </button>`;
   }).join("");
   list.querySelectorAll("[data-di]").forEach(btn => {
-    btn.onclick = () => {
-      const r = Cards.removeFromDeckAt(state, +btn.dataset.di);
-      if (!r.ok) { toast(r.err, "bad"); return; }
-      toast("已移出牌組", "");
-      scheduleSave();
-      renderCardShopPanel();
-    };
+    const idx = +btn.dataset.di;
+    attachLongPress(btn, {
+      ms: 420,
+      onTap: () => {
+        // 短按：選中牌庫詳情（若庫裡有）
+        const id = deck[idx];
+        if (id) {
+          cardUi.invSelected = id;
+          renderCardInventoryPanel();
+        }
+      },
+      onLong: () => {
+        const r = Cards.removeFromDeckAt(state, idx);
+        if (!r.ok) { toast(r.err, "bad"); return; }
+        toast("已移出牌組", "");
+        scheduleSave();
+        renderCardShopPanel();
+      },
+    });
   });
+}
+
+/** 長按／短按（觸控＋滑鼠）；移動超過門檻取消長按 */
+function attachLongPress(el, { onTap, onLong, ms = 450 } = {}) {
+  if (!el) return;
+  let timer = null, sx = 0, sy = 0, longFired = false;
+  const clear = () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+  };
+  const start = (x, y) => {
+    sx = x; sy = y; longFired = false;
+    clear();
+    timer = setTimeout(() => {
+      timer = null;
+      longFired = true;
+      try { if (navigator.vibrate) navigator.vibrate(12); } catch (_) { /* */ }
+      onLong?.();
+    }, ms);
+  };
+  const move = (x, y) => {
+    if (Math.abs(x - sx) > 12 || Math.abs(y - sy) > 12) clear();
+  };
+  const end = () => {
+    const pending = !!timer;
+    clear();
+    if (!longFired && pending) onTap?.();
+  };
+  el.addEventListener("touchstart", e => {
+    const t = e.touches[0];
+    start(t.clientX, t.clientY);
+  }, { passive: true });
+  el.addEventListener("touchmove", e => {
+    const t = e.touches[0];
+    move(t.clientX, t.clientY);
+  }, { passive: true });
+  el.addEventListener("touchend", end, { passive: true });
+  el.addEventListener("touchcancel", clear, { passive: true });
+  el.addEventListener("mousedown", e => {
+    if (e.button !== 0) return;
+    start(e.clientX, e.clientY);
+  });
+  el.addEventListener("mousemove", e => {
+    if (timer) move(e.clientX, e.clientY);
+  });
+  el.addEventListener("mouseup", end);
+  el.addEventListener("mouseleave", clear);
+  el.addEventListener("contextmenu", e => e.preventDefault());
 }
 
 const STAGE_LABEL_SHORT = {
@@ -4290,19 +4349,41 @@ function renderCardInventoryPanel() {
     invBtns.innerHTML = shown.map(r => {
       const starter = state.playerProfile?.starterSpeechCardId === r.cardId;
       const on = cardUi.invSelected === r.cardId;
+      const inDeck = (Cards.deckCountOf?.(state, r.cardId) || 0) > 0;
       const kindCls = r.shatterOnUse ? "shatter" : "speech";
       const countTxt = r.shatterOnUse ? `×${r.count}` : (starter ? "底" : "");
-      return `<button type="button" class="card-inv-btn ${kindCls}${on ? " on" : ""}" data-cid="${r.cardId}" title="${esc(r.name)}">
+      return `<button type="button" class="card-inv-btn ${kindCls}${on ? " on" : ""}${inDeck ? " in-deck" : ""}" data-cid="${r.cardId}" title="點看說明 · 長按加入／移出牌組">
         <span class="cib-name">${esc(r.name)}</span>
-        <span class="cib-meta">${esc(r.rarity || "N")}${countTxt ? " · " + countTxt : ""}</span>
+        <span class="cib-meta">${esc(r.rarity || "N")}${countTxt ? " · " + countTxt : ""}${inDeck ? " · 組" : ""}</span>
       </button>`;
     }).join("");
     invBtns.querySelectorAll("[data-cid]").forEach(b => {
-      b.onclick = () => {
-        const id = b.dataset.cid;
-        cardUi.invSelected = cardUi.invSelected === id ? null : id;
-        renderCardInventoryPanel();
-      };
+      const id = b.dataset.cid;
+      attachLongPress(b, {
+        ms: 420,
+        onTap: () => {
+          cardUi.invSelected = cardUi.invSelected === id ? null : id;
+          renderCardInventoryPanel();
+        },
+        onLong: () => {
+          const def = Cards.cardById(id);
+          const inDeckN = Cards.deckCountOf?.(state, id) || 0;
+          if (inDeckN > 0) {
+            // 已在牌組：長按移出一張
+            const deck = Cards.getDeck(state);
+            const idx = deck.lastIndexOf(id);
+            const r = Cards.removeFromDeckAt(state, idx);
+            if (!r.ok) { toast(r.err, "bad"); return; }
+            toast(`「${def?.name || id}」移出牌組`, "");
+          } else {
+            const r = Cards.addToDeck(state, id);
+            if (!r.ok) { toast(r.err, "bad"); return; }
+            toast(`「${def?.name || id}」加入牌組`, "good");
+          }
+          scheduleSave();
+          renderCardShopPanel();
+        },
+      });
     });
   }
 
@@ -4324,22 +4405,6 @@ function renderCardInventoryPanel() {
   invDetail.querySelector("#cid-close")?.addEventListener("click", () => {
     cardUi.invSelected = null;
     renderCardInventoryPanel();
-  });
-  invDetail.querySelector("#cid-deck-add")?.addEventListener("click", () => {
-    const r = Cards.addToDeck(state, def.id);
-    if (!r.ok) { toast(r.err, "bad"); return; }
-    toast(`「${def.name}」已加入出戰牌組`, "good");
-    scheduleSave();
-    renderCardShopPanel();
-  });
-  invDetail.querySelector("#cid-deck-rm")?.addEventListener("click", () => {
-    const deck = Cards.getDeck(state);
-    const idx = deck.lastIndexOf(def.id);
-    if (idx < 0) { toast("牌組裡沒有這張", "bad"); return; }
-    Cards.removeFromDeckAt(state, idx);
-    toast(`已從牌組移出「${def.name}」`, "");
-    scheduleSave();
-    renderCardShopPanel();
   });
 }
 
@@ -4376,7 +4441,6 @@ function formatCardDetailHtml(def, row) {
     : `永久持有${starter ? " · <b>創角底色</b>" : ""} · 打出不碎`;
   const inDeck = Cards.deckCountOf?.(state, def.id) || 0;
   const maxI = Cards.maxInject(state);
-  const deckLen = (Cards.getDeck?.(state) || []).length;
 
   return `
     <div class="cid-head">
@@ -4387,7 +4451,7 @@ function formatCardDetailHtml(def, row) {
     <p class="cid-scene">${esc(def.sceneStart || "（無場景句）")}</p>
     <div class="cid-rows">
       <div class="cid-row"><span class="k">持有</span><span class="v">${countLine}</span></div>
-      <div class="cid-row"><span class="k">牌組</span><span class="v">${inDeck ? `已放 <b>${inDeck}</b> 張` : "未放入"} · 上限 ${maxI}</span></div>
+      <div class="cid-row"><span class="k">牌組</span><span class="v">${inDeck ? `已放 <b>${inDeck}</b> 張` : "未放入"} · 上限 ${maxI} · <b>長按</b>加入／移出</span></div>
       <div class="cid-row"><span class="k">標籤</span><span class="v">${esc(tags)}</span></div>
       <div class="cid-row"><span class="k">關係門檻</span><span class="v">${esc(minSt)}</span></div>
       <div class="cid-row"><span class="k">鍊</span><span class="v">${esc(openLine)}</span></div>
@@ -4397,8 +4461,6 @@ function formatCardDetailHtml(def, row) {
     </div>
     ${def.promptHint ? `<p class="cid-hint dim small">${esc(def.promptHint)}</p>` : ""}
     <div class="cid-actions">
-      <button type="button" class="cyan" id="cid-deck-add" ${deckLen >= maxI ? "disabled" : ""}>加入牌組</button>
-      ${inDeck ? `<button type="button" id="cid-deck-rm">從牌組移出一張</button>` : ""}
       <button type="button" class="cid-close" id="cid-close">收起說明</button>
     </div>`;
 }
