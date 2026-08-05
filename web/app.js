@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.7c(2026-08-05)打牌等AI點點點／推出";
+const APP_VER = "v6.7d(2026-08-05)組牌後預產回應再開打";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -2303,22 +2303,22 @@ function waitingOnHer() {
 async function genTick(force = false) {
   if (genTickBusy) return;
   // 等她那句話的時候收貨頻率拉高(每 700ms 問一次),平常維持 2 秒一輪
-  const waitingCard = !!(cardUi.awaitReaction && cardUi.playAiPending);
-  if (!force && Date.now() - lastGenAt < ((waitingOnHer() || waitingCard) ? 700 : 2000)) return;
+  const waitingPregen = !!(state.cardSession?.phase === "pregen" && cardUi.pregenStarted);
+  if (!force && Date.now() - lastGenAt < ((waitingOnHer() || waitingPregen) ? 700 : 2000)) return;
   lastGenAt = Date.now();
   genTickBusy = true;
   try {
     // 獻祭文:睡眠時段織夢(有無模型都跑;無模型走罐頭)
     if (isAsleep()) await genSacOrders();
+    // 組牌後預產：無模型也會在 begin 時秒完成；有模型要收貨
+    if (waitingPregen) await genRoundPregenOrders();
     if (state.settings.model) {
-      // M4：打牌反應最優先（玩家正盯著牌桌）
-      await genCardPlayOrder();
       const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep()
         && !document.body.classList.contains("card-mode");
       await genReplyOrder();   // 最優先:她正在回你的那句(玩家在等紋亮)
       if (idle) await genChatOrder();
       // 玩家正在等她開口/回話時,不下背景素材的單——別讓紀錄與氣泡卡住她那句話
-      if (!waitingOnHer() && !waitingCard) {
+      if (!waitingOnHer() && !waitingPregen) {
         await genActOrders();
         if (idle) await genQuipOrders();
       }
@@ -2327,9 +2327,9 @@ async function genTick(force = false) {
   genTickBusy = false;
 }
 
-// ── M4 打牌短 AI 反應 ────────────────────────────────────
-// 原則：感情骰已定；有模型時現場生、等 AI 時只顯示點點點（不預先塞罐頭）。
-// 無模型／生成失敗才用 girlLine 罐頭。等 AI 中不可「繼續」，只能左上角「推出」。
+// ── M4 打牌短 AI：組牌後整輪預產，開打後直接播 ────────────
+// 原則：感情骰出卡時才擲；台詞在 pregen 階段依「組好的每張卡」預先寫好。
+// 無模型／失敗 → 罐頭。預產中不可開打，左上角可「推出」。
 
 /** 打牌 AI 取 1～2 行台詞（規格允許兩句；勿只砍第一行） */
 function cardPlayLines(text) {
@@ -2337,38 +2337,39 @@ function cardPlayLines(text) {
   return lines.slice(0, 2).join("\n").slice(0, 220).trim();
 }
 
-function cardPlayMsgs(girl, play) {
+/** 依卡定義組預產 prompt（尚無本拍骰子；chain 只帶卡面 open 屬性作提示） */
+function cardPregenMsgs(girl, def, { openFail = false } = {}) {
   const sess = state.cardSession;
-  const def = play?.cardId ? Cards.cardById(play.cardId) : null;
   let venueName = null;
   if (sess?.mode === "date" && sess.venueId) {
     venueName = (Cards.venuesList?.() || []).find(v => v.id === sess.venueId)?.name || null;
   }
   const kind = def?.kind || "speech";
   const ctx = buildCtx(girl);
-  // 打牌不索取 #越界（情感已由骰子決定）
   ctx.want_guard_flag = false;
   ctx.card_play = {
     mode: sess?.mode || "kanban",
     venue_name: venueName,
     kind,
-    card_name: play?.name || def?.name || "",
-    scene_start: play?.sceneStart || def?.sceneStart || "",
+    card_name: def?.name || "",
+    scene_start: def?.sceneStart || def?.name || "",
     prompt_hint: def?.promptHint || "",
-    open_fail: !!(play?.open && play.open.success === false),
-    open_ok: !!(play?.open && play.open.success),
-    feel_label: play?.feelLabel || "",
-    chain_attr: play?.chain?.attr || sess?.chain?.attr || "",
-    emotion_delta: play?.emotionDelta ?? 0,
+    open_fail: !!openFail,
+    open_ok: !!(!openFail && def?.openChain),
+    feel_label: "",
+    chain_attr: def?.openChain?.attr || "",
+    emotion_delta: 0,
   };
   const sys = buildCardPlayPrompt(ctx);
   let user;
-  if (play?.open && play.open.success === false) {
+  if (openFail) {
     user = "(旁白:他剛才那一下你沒接住。用 1～2 句話反應——只有台詞。)";
   } else if (kind === "girl_trait") {
     user = "(旁白:這一拍是你主動帶的節奏。用 1～2 句話開口或接下去——只有台詞。)";
   } else if (kind === "venue_event") {
     user = "(旁白:現場剛發生那件事。用 1～2 句話反應——只有台詞。)";
+  } else if (def?.openChain) {
+    user = "(旁白:他剛才把門打開了、節奏被他帶住。用 1～2 句話反應——只有台詞。)";
   } else {
     user = "(旁白:對他剛才的舉動,用 1～2 句話反應——只有台詞。)";
   }
@@ -2378,62 +2379,166 @@ function cardPlayMsgs(girl, play) {
   ];
 }
 
-/** 出卡後：有模型就下單並進入「讀取中」；無模型直接用罐頭 */
-function beginCardPlayAi(girl, play) {
+function cannedForDef(def, girl, openFail = false) {
+  const stage = girl?.stage || "stranger";
+  return Cards.girlReactionLine({
+    stage,
+    emotionDelta: openFail ? -2 : 0,
+    openFail,
+  });
+}
+
+/**
+ * 組牌完成 → 對本輪手牌＋牌堆每張卡預產回應。
+ * 開門卡額外產「失敗」句。無模型則立刻罐頭並進 round_play。
+ */
+function beginRoundPregen(girl) {
+  const sess = state.cardSession;
+  if (!sess || sess.phase !== "pregen") return;
+  const list = Cards.roundCardInstances(sess);
+  cardUi.pregenJobs = [];
+  cardUi.pregenStarted = true;
+
+  if (!list.length) {
+    finishRoundPregenIfReady();
+    return;
+  }
+
+  // 無 AI：全數罐頭，直接開戰
+  if (!state.settings?.model) {
+    for (const inst of list) {
+      const def = Cards.cardById(inst.cardId);
+      inst.pregen = {
+        status: "done",
+        line: cannedForDef(def, girl, false),
+        lineFail: def?.openChain ? cannedForDef(def, girl, true) : null,
+      };
+    }
+    finishRoundPregenIfReady();
+    return;
+  }
+
+  for (const inst of list) {
+    const def = Cards.cardById(inst.cardId);
+    inst.pregen = { status: "pending", line: null, lineFail: null };
+    const okKey = `cardpre:${sess.girlId}:${sess.roundIndex}:${inst.instanceId}:ok`;
+    cardUi.pregenJobs.push({
+      instanceId: inst.instanceId,
+      key: okKey,
+      kind: "ok",
+      def,
+    });
+    genPost(okKey, cardPregenMsgs(girl, def, { openFail: false }), 12).catch(() => {});
+    if (def?.openChain) {
+      const failKey = `cardpre:${sess.girlId}:${sess.roundIndex}:${inst.instanceId}:fail`;
+      cardUi.pregenJobs.push({
+        instanceId: inst.instanceId,
+        key: failKey,
+        kind: "fail",
+        def,
+      });
+      genPost(failKey, cardPregenMsgs(girl, def, { openFail: true }), 12).catch(() => {});
+    }
+  }
+  scheduleSave();
+  renderCardTable();
+}
+
+function findInstInRound(instanceId) {
+  const sess = state.cardSession;
+  if (!sess) return null;
+  return Cards.roundCardInstances(sess).find(c => c.instanceId === instanceId) || null;
+}
+
+/** 收預產訂單；全好 → beginPlayAfterPregen */
+async function genRoundPregenOrders() {
+  const sess = state.cardSession;
+  if (!sess || sess.phase !== "pregen" || !cardUi.pregenJobs?.length) return;
+  const girl = girlForSession();
+  if (!girl) return;
+
+  let changed = false;
+  for (const job of cardUi.pregenJobs) {
+    if (job.settled) continue;
+    const r = await genPost(job.key, cardPregenMsgs(girl, job.def, { openFail: job.kind === "fail" }), 12);
+    if (!r) continue;
+    if (r.status === "queued" || r.status === "running") continue;
+
+    const inst = findInstInRound(job.instanceId);
+    if (!inst) {
+      job.settled = true;
+      changed = true;
+      continue;
+    }
+    inst.pregen ??= { status: "pending", line: null, lineFail: null };
+
+    if (r.status === "done" && r.result) {
+      const { text } = stripGuardFlag(r.result);
+      const line = cardPlayLines(text) || cannedForDef(job.def, girl, job.kind === "fail");
+      if (job.kind === "fail") inst.pregen.lineFail = line;
+      else inst.pregen.line = line;
+    } else if (r.status === "error") {
+      if (job.kind === "fail") inst.pregen.lineFail = cannedForDef(job.def, girl, true);
+      else inst.pregen.line = cannedForDef(job.def, girl, false);
+    }
+    job.settled = true;
+    changed = true;
+
+    // 這張卡相關 job 都 settled 才標 done
+    const related = cardUi.pregenJobs.filter(j => j.instanceId === inst.instanceId);
+    if (related.every(j => j.settled)) {
+      inst.pregen.status = "done";
+    }
+  }
+
+  if (changed) {
+    scheduleSave();
+    if (Cards.pregenAllReady(sess)) {
+      finishRoundPregenIfReady();
+    } else if (document.body.classList.contains("card-mode")) {
+      renderCardTable();
+    }
+  }
+}
+
+function finishRoundPregenIfReady() {
+  const sess = state.cardSession;
+  if (!sess || sess.phase !== "pregen") return;
+  // 補齊未寫入的
+  const girl = girlForSession();
+  for (const inst of Cards.roundCardInstances(sess)) {
+    const def = Cards.cardById(inst.cardId);
+    inst.pregen ??= { status: "idle", line: null, lineFail: null };
+    if (!inst.pregen.line) inst.pregen.line = cannedForDef(def, girl, false);
+    if (def?.openChain && !inst.pregen.lineFail) {
+      inst.pregen.lineFail = cannedForDef(def, girl, true);
+    }
+    inst.pregen.status = "done";
+  }
+  const r = Cards.beginPlayAfterPregen(state);
+  cardUi.pregenJobs = [];
+  cardUi.pregenStarted = false;
+  if (!r.ok) {
+    toast(r.err || "無法開戰", "bad");
+    return;
+  }
+  toast("她的反應備妥了——可以開始", "good");
+  scheduleSave();
+  if (document.body.classList.contains("card-mode")) renderCardTable();
+}
+
+/** 出卡後：預產已備好，不再現場等 AI */
+function beginCardPlayAi(_girl, play) {
   cardUi.playAiPending = false;
   cardUi.playAiKey = null;
   cardUi.playAiToken = null;
-  if (!girl || !play?.ok) return;
-  if (!state.settings?.model) return; // 無 AI：畫面直接顯示 girlLine 罐頭
-  const token = `${Date.now().toString(36)}_${play.cardId || "x"}`;
-  cardUi.playAiToken = token;
-  cardUi.playAiKey = `cardplay:${girl.id}:${token}`;
-  cardUi.playAiPending = true;
-  // 立刻丟一單；之後 genTick 輪詢收貨
-  genPost(cardUi.playAiKey, cardPlayMsgs(girl, play), 12).catch(() => {});
+  if (play?.ok) {
+    play.fromAi = !!play.fromPregen;
+  }
 }
 
 async function genCardPlayOrder() {
-  if (!cardUi.awaitReaction || !cardUi.playAiPending || !cardUi.playAiKey) return;
-  if (!cardUi.lastPlay || !state.settings?.model) {
-    cardUi.playAiPending = false;
-    return;
-  }
-  const girl = girlForSession();
-  if (!girl) {
-    cardUi.playAiPending = false;
-    return;
-  }
-  const token = cardUi.playAiToken;
-  const key = cardUi.playAiKey;
-  const r = await genPost(key, cardPlayMsgs(girl, cardUi.lastPlay), 12);
-  if (!r) return;
-  if (cardUi.playAiToken !== token || !cardUi.awaitReaction) return;
-  if (r.status === "done" && r.result) {
-    const { text } = stripGuardFlag(r.result);
-    const line = cardPlayLines(text);
-    if (line && cardUi.lastPlay) {
-      cardUi.lastPlay.girlLine = line;
-      cardUi.lastPlay.fromAi = true;
-    } else if (cardUi.lastPlay) {
-      // 空字 → 保底罐頭（引擎已填）
-      cardUi.lastPlay.fromAi = false;
-    }
-    cardUi.playAiPending = false;
-    cardUi.playAiKey = null;
-    if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
-      renderCardTable();
-    }
-  } else if (r.status === "error") {
-    // 失敗：回落罐頭，解鎖「繼續」（不能永遠卡死）
-    if (cardUi.lastPlay) cardUi.lastPlay.fromAi = false;
-    cardUi.playAiPending = false;
-    cardUi.playAiKey = null;
-    if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
-      renderCardTable();
-    }
-  }
-  // queued / running：等下一輪 tick
+  // 現場出卡 AI 已廢；預產走 genRoundPregenOrders
 }
 
 // 半預製聊天的失敗計數:連敗 3 次 → 改用罐頭台詞讓紋亮起來(crestFallback 參照),不無聲卡死
@@ -3216,15 +3321,24 @@ function summonKanban(id) {
     toast(`${s.name} 正被 ${su?.name || "另一個召喚師"} 召喚走——你的召喚傳不到她那裡`, "bad");
     return;
   }
+  if (cardSystemOn() && Cards.sessionActive(state)) {
+    toast("先結束進行中的牌局，再召喚看板娘", "bad");
+    return;
+  }
   const cost = kanbanCost();
   if (state.gold < cost) { toast(`召喚第 ${kanbanSuccubi().length + 1} 位看板娘需 ${cost} 金`, "bad"); return; }
   state.gold -= cost;
   (state.kanbans ??= []).push({ id, until: Date.now() + kanbanHours() * HOUR });
   state.lastKanbanId = id;
   log(`召喚 ${s.name} 為看板娘 -${cost} 金(第 ${state.kanbans.length} 位)`);
-  toast(`${s.name} 來到你身邊♥`, "good");   // 不透露持續時間
-  // 牌制：召後可開桌（不強制）
-  scheduleSave(); renderAll();
+  toast(`${s.name} 來到你身邊——先組牌`, "good");
+  // 牌制：召看板必須組牌（再開戰才預產）
+  scheduleSave();
+  if (cardSystemOn()) {
+    openKanbanTable(id, { forceSetup: true });
+  } else {
+    renderAll();
+  }
 }
 
 // 到期解除(每秒 tick 呼叫);逐位到期、不提醒玩家。回傳是否有變化
@@ -4067,10 +4181,13 @@ let cardUi = {
   awaitReaction: false, // 出卡後必看她的反應，按「繼續」才往下
   // 輪末判定結果面板：null | "stay" | "leave"（不要跳回「靠近／離開」）
   endPanel: null,
-  // M4 打牌 AI
+  // 現場 AI 已廢（保留欄位相容）
   playAiPending: false,
   playAiKey: null,
   playAiToken: null,
+  // 組牌後整輪預產
+  pregenJobs: [],
+  pregenStarted: false,
 };
 
 function renderCardShopPanel() {
@@ -4809,7 +4926,11 @@ function openDateTable(girlId, venueId) {
   renderAll();
 }
 
-function openKanbanTable(girlId) {
+/**
+ * 開看板牌桌。
+ * @param {{ forceSetup?: boolean }} opts forceSetup=召看板後強制進組牌
+ */
+function openKanbanTable(girlId, opts = {}) {
   if (!cardSystemOn()) { toast("卡牌系統未就緒", "bad"); return; }
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
   const s = state.succubi.find(x => x.id === girlId);
@@ -4822,8 +4943,13 @@ function openKanbanTable(girlId) {
   }
   if (Cards.sessionActive(state) && state.cardSession.girlId === girlId) {
     document.body.classList.add("card-mode");
+    // 召後強制組牌：若還在 idle 則推進
+    if (opts.forceSetup && state.cardSession.phase === "idle_present") {
+      const setup = Cards.enterRoundSetup(state);
+      if (!setup.ok) toast(setup.err, "bad");
+    }
     renderCardTable();
-    renderCrests(); // 藏主畫面打牌入口
+    renderCrests();
     return;
   }
   const girlCards = Cards.buildGirlCards(s, {
@@ -4831,14 +4957,19 @@ function openKanbanTable(girlId) {
   });
   const r = Cards.openSession(state, { mode: "kanban", girlId, girlCards });
   if (!r.ok) { toast(r.err, "bad"); return; }
+  // 召喚／開戰：直接組牌（不再先「陪伴」空轉）
+  const setup = Cards.enterRoundSetup(state);
+  if (!setup.ok) { toast(setup.err, "bad"); return; }
   cardUi.injectPick = [];
   cardUi.lastPlay = null;
   cardUi.handIdx = 0;
   cardUi.injectIdx = 0;
   cardUi.awaitReaction = false;
   cardUi.endPanel = null;
+  cardUi.pregenJobs = [];
+  cardUi.pregenStarted = false;
   document.body.classList.add("card-mode");
-  log(`與 ${s.name} 開桌（本體卡 ${girlCards.length}）`);
+  log(`與 ${s.name} 開桌組牌（本體卡 ${girlCards.length}）`);
   scheduleSave(); renderAll();
 }
 
@@ -4861,6 +4992,8 @@ function endCardTableAndReleaseKanban(reason = "card_end") {
   cardUi.playAiPending = false;
   cardUi.playAiKey = null;
   cardUi.playAiToken = null;
+  cardUi.pregenJobs = [];
+  cardUi.pregenStarted = false;
   document.body.classList.remove("card-mode", "has-ct-figure");
   clearCardTableDom();
 
@@ -4886,8 +5019,8 @@ function ejectCardTable(reason = "player_eject") {
 }
 
 function leaveCardTableUi() {
-  // 反應節拍（含等 AI）：左上角「推出」= 中止這次靠近
-  if (cardUi.awaitReaction) {
+  // 預產中／反應節拍：左上角「推出」= 中止這次靠近
+  if (cardUi.awaitReaction || state.cardSession?.phase === "pregen") {
     ejectCardTable("player_eject");
     return;
   }
@@ -4922,8 +5055,8 @@ function dismissCardSession() {
     pumpKanbanBubbles();
     return;
   }
-  // 反應節拍（含等 AI）→ 與「推出」相同，允許中止
-  if (cardUi.awaitReaction) {
+  // 預產／反應節拍 → 與「推出」相同，允許中止
+  if (cardUi.awaitReaction || state.cardSession.phase === "pregen") {
     ejectCardTable("player_dismiss");
     return;
   }
@@ -4958,7 +5091,7 @@ function applyPlaySideEffects(girl, result) {
   }
 }
 
-/** 碎卡確認後真正打出 */
+/** 碎卡確認後真正打出（台詞已在 pregen 備好） */
 function commitHandPlay(instanceId, girl, stage) {
   const r = Cards.commitPlay(state, instanceId, { stage, guardHigh: guardActive(girl) });
   if (!r.ok) { toast(r.err, "bad"); return; }
@@ -4966,7 +5099,7 @@ function commitHandPlay(instanceId, girl, stage) {
   cardUi.awaitReaction = true; // 必看她的反應，再按繼續
   cardUi.endPanel = null;
   applyPlaySideEffects(girl, r);
-  beginCardPlayAi(girl, r); // M4：背景寫短反應（先罐頭）
+  beginCardPlayAi(girl, r);
   const n = state.cardSession?.hand?.length || 0;
   if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
   scheduleSave(); renderCardTable();
@@ -5264,10 +5397,9 @@ function renderCardTable() {
   if (!sess.pending && !cardUi._keepPeek) setCtConfirm("");
   cardUi._keepPeek = false;
 
-  // ── 出卡反應（必看）：你的行動 → 等 AI／台詞 → 繼續 ────────
+  // ── 出卡反應（必看）：預產台詞直接播 → 繼續 ────────
   if (cardUi.awaitReaction && cardUi.lastPlay) {
     const last = cardUi.lastPlay;
-    const waitingAi = !!cardUi.playAiPending && !last.fromAi;
     const openNote = last.open && !last.open.success
       ? "沒接住"
       : last.open?.success
@@ -5278,27 +5410,9 @@ function renderCardTable() {
     const more = last.roundEnded
       ? "這是本輪最後一次——繼續後判定她願不願意再來一輪"
       : `之後還能應付 ${last.playsLeft ?? "?"} 次`;
+    const srcNote = last.fromPregen || last.fromAi ? "" : " · 保底";
 
-    // 等 AI：頂欄只留「推出」；不可「繼續」
-    syncCardTableChrome({ ejectMode: waitingAi });
-
-    if (waitingAi) {
-      setCtVn({
-        name: gname,
-        text: "",
-        textHtml: `<span class="ct-typing" aria-label="她正在讀取"><i></i><i></i><i></i></span>`,
-        meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""} · 她正在讀取…`,
-      });
-      setCtHand(`
-        <div class="ct-react-beat">
-          <div class="dim small ct-react-you">你：${esc(last.sceneStart || last.name || "……")}</div>
-          <div class="dim small ct-react-wait">等她反應——左上角可「推出」中止</div>
-        </div>`);
-      return;
-    }
-
-    // AI 好了／無模型／失敗回落罐頭
-    const srcNote = last.fromAi ? " · 即時" : (state.settings?.model ? " · 保底" : "");
+    syncCardTableChrome({ ejectMode: false });
     setCtVn({
       name: gname,
       text: last.girlLine || "……",
@@ -5317,7 +5431,28 @@ function renderCardTable() {
     return;
   }
 
-  // 非反應節拍：還原頂欄
+  // ── 預產中：組牌後等全部回應備妥 ──────────────────────
+  if (sess.phase === "pregen") {
+    syncCardTableChrome({ ejectMode: true });
+    if (!cardUi.pregenStarted) {
+      // 存檔恢復／漏觸發：補開預產
+      beginRoundPregen(girl);
+    }
+    const prog = Cards.pregenProgress(sess);
+    setCtVn({
+      name: gname,
+      text: "",
+      textHtml: `<span class="ct-typing" aria-label="她正在準備"><i></i><i></i><i></i></span>`,
+      meta: `正在依你組的牌準備回應… <b>${prog.done}</b>/${prog.total}`,
+    });
+    setCtHand(`
+      <div class="ct-react-beat">
+        <div class="dim small ct-react-wait">備妥後才能打牌——左上角可「推出」中止</div>
+      </div>`);
+    return;
+  }
+
+  // 非反應／預產：還原頂欄
   syncCardTableChrome({ ejectMode: false });
 
   // ── 輪末結果面板：只問「能否再來一輪」；結束＝解除看板 ──
@@ -5386,7 +5521,7 @@ function renderCardTable() {
 
     setCtVn({
       name: gname,
-      text: `選你想帶進來的東西。左右滑、上滑帶上、下滑拿下。長按看內容。`,
+      text: `組好這輪要帶的牌。按「開始」後她會依整副牌預先準備回應，備妥才能打。`,
       meta: `已帶 <b>${cardUi.injectPick.length}</b>/${maxI}`,
     });
 
@@ -5394,7 +5529,7 @@ function renderCardTable() {
       setCtHand(`
         <div class="dim small ct-empty">庫裡什麼都沒有——就這樣開始也行</div>
         <div class="detail-actions card-actions">
-          <button type="button" class="cyan" id="ct-deal">開始</button>
+          <button type="button" class="cyan" id="ct-deal">開始準備</button>
           <button type="button" id="ct-cancel-setup">取消</button>
         </div>`);
     } else {
@@ -5416,7 +5551,7 @@ function renderCardTable() {
           `<div class="dot${i === cardUi.injectIdx ? " on" : ""}"></div>`).join("")}</div>
         <div class="ct-card-nav dim small">${cardUi.injectIdx + 1}/${inv.length} · 長按看內容</div>
         <div class="detail-actions card-actions">
-          <button type="button" class="cyan" id="ct-deal">開始</button>
+          <button type="button" class="cyan" id="ct-deal">開始準備</button>
           <button type="button" id="ct-cancel-setup">取消</button>
         </div>`);
 
@@ -5465,8 +5600,10 @@ function renderCardTable() {
       cardUi.handIdx = 0;
       cardUi.awaitReaction = false;
       cardUi.endPanel = null;
-      toast(`她今夜大概還肯應付 ${sr.nLeft} 次`, "good");
-      scheduleSave(); renderCardTable();
+      toast(`牌組好了——她在準備回應（今晚約 ${sr.nLeft} 次）`, "good");
+      scheduleSave();
+      renderCardTable();
+      beginRoundPregen(girl);
     };
     $("#ct-cancel-setup").onclick = () => {
       if (sess.mode === "date") {
@@ -5566,7 +5703,7 @@ function renderCardTable() {
         const r = Cards.requestPlay(state, inst.instanceId, { stage, guardHigh: guardActive(girl) });
         if (!r.ok) { toast(r.err, "bad"); return; }
         if (r.needConfirm) { renderCardTable(); return; }
-        // requestPlay 對非碎卡會直接 commitPlay；補上反應節拍
+        // requestPlay 對非碎卡會直接 commitPlay；台詞來自預產
         flyCard(playCard, "up", () => {
           cardUi.lastPlay = r;
           cardUi.awaitReaction = true;
@@ -5601,7 +5738,8 @@ function renderCardTable() {
 function phaseLabel(p) {
   return ({
     idle_present: "陪伴",
-    round_setup: "準備",
+    round_setup: "組牌",
+    pregen: "準備回應",
     round_play: "互動中",
     round_end: "……",
     summoning_prep: "成形中",

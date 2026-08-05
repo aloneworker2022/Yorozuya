@@ -303,7 +303,55 @@ export function inventoryList(state) {
 // ── Instance helpers ───────────────────────────────────────
 
 export function makeInstance(cardId, source) {
-  return { instanceId: uid(), cardId, source, used: false };
+  return {
+    instanceId: uid(),
+    cardId,
+    source,
+    used: false,
+    // 組牌後預產：line=正常／開門成功；lineFail=開門失敗
+    pregen: { status: "idle", line: null, lineFail: null },
+  };
+}
+
+/** 本輪所有待打牌實例（手牌＋抽牌堆） */
+export function roundCardInstances(sess) {
+  if (!sess) return [];
+  return [...(sess.hand || []), ...(sess.drawPile || [])];
+}
+
+/** 預產是否全部就緒（無模型時可直接 mark） */
+export function pregenAllReady(sess) {
+  const list = roundCardInstances(sess);
+  if (!list.length) return false;
+  return list.every(c => c.pregen && (c.pregen.status === "done" || c.pregen.status === "error"));
+}
+
+export function pregenProgress(sess) {
+  const list = roundCardInstances(sess);
+  const total = list.length;
+  let done = 0;
+  for (const c of list) {
+    if (c.pregen && (c.pregen.status === "done" || c.pregen.status === "error")) done++;
+  }
+  return { done, total };
+}
+
+/** pregen → round_play */
+export function beginPlayAfterPregen(state) {
+  const sess = state.cardSession;
+  if (!sess || sess.phase !== "pregen") return { ok: false, err: "不在預產階段" };
+  if (!pregenAllReady(sess)) return { ok: false, err: "回應尚未備妥" };
+  sess.phase = "round_play";
+  sess.log = sess.log || [];
+  sess.log.push({ t: Date.now(), kind: "pregen_done", round: sess.roundIndex });
+  return { ok: true };
+}
+
+/** 取預產台詞；開門失敗用 lineFail */
+export function pregenLineFor(inst, { openFail = false } = {}) {
+  if (!inst?.pregen) return null;
+  if (openFail && inst.pregen.lineFail) return inst.pregen.lineFail;
+  return inst.pregen.line || null;
 }
 
 export function compatible(cardDef, chainAttr) {
@@ -606,15 +654,30 @@ export function setInject(state, injectCardIds) {
   return { ok: true, injected: sess.injected };
 }
 
-/** round_setup → round_play：洗牌抽牌、設定 N */
+/**
+ * round_setup → pregen：洗牌抽牌、設定 N，進入預產回應。
+ * 備妥後由 beginPlayAfterPregen → round_play。
+ */
 export function startRound(state, { stage, guardHigh = false } = {}) {
   const sess = state.cardSession;
   if (!sess || sess.phase !== "round_setup") return { ok: false, err: "請先組牌" };
 
   const pile = [
-    ...sess.girlCards.map(c => ({ ...c, used: false })),
-    ...sess.injected.map(c => ({ ...c, used: false })),
-    ...(sess.venueCards || []).map(c => ({ ...c, used: false })),
+    ...sess.girlCards.map(c => ({
+      ...c,
+      used: false,
+      pregen: { status: "idle", line: null, lineFail: null },
+    })),
+    ...sess.injected.map(c => ({
+      ...c,
+      used: false,
+      pregen: { status: "idle", line: null, lineFail: null },
+    })),
+    ...(sess.venueCards || []).map(c => ({
+      ...c,
+      used: false,
+      pregen: { status: "idle", line: null, lineFail: null },
+    })),
   ];
   if (!pile.length) return { ok: false, err: "牌堆是空的" };
 
@@ -631,10 +694,10 @@ export function startRound(state, { stage, guardHigh = false } = {}) {
   sess.playedThisRound = [];
   sess.forceAnotherRound = false;
   sess.pending = null;
-  sess.phase = "round_play";
+  sess.phase = "pregen";
   sess.log = sess.log || [];
   sess.log.push({ t: Date.now(), kind: "round_start", n: sess.nLeft, round: sess.roundIndex });
-  return { ok: true, hand: sess.hand, nLeft: sess.nLeft };
+  return { ok: true, hand: sess.hand, nLeft: sess.nLeft, phase: "pregen" };
 }
 
 export function playsLeft(sess) {
@@ -732,11 +795,14 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
   };
 
   const finishPlay = (openFail = false) => {
-    result.girlLine = girlReactionLine({
+    // 優先用組牌後預產台詞；沒有才回落罐頭
+    const cached = pregenLineFor(inst, { openFail });
+    result.girlLine = cached || girlReactionLine({
       stage,
       emotionDelta: result.emotionDelta,
       openFail,
     });
+    result.fromPregen = !!cached;
     result.feelLabel = emotionFeelLabel(result.emotionDelta);
     result.playsLeft = playsLeft(sess);
     result.chain = sess.chain ? { ...sess.chain } : null;
