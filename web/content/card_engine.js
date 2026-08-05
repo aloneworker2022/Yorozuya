@@ -708,29 +708,16 @@ export function setInject(state, injectCardIds) {
 }
 
 /**
- * round_setup → pregen：洗牌抽牌、設定 N，進入預產回應。
- * 備妥後由 beginPlayAfterPregen → round_play。
+ * round_setup → round_play：洗牌抽牌、設定 N，直接開戰（即時 AI，不預產）。
  */
 export function startRound(state, { stage, guardHigh = false } = {}) {
   const sess = state.cardSession;
   if (!sess || sess.phase !== "round_setup") return { ok: false, err: "請先組牌" };
 
   const pile = [
-    ...sess.girlCards.map(c => ({
-      ...c,
-      used: false,
-      pregen: { status: "idle", line: null, lineFail: null },
-    })),
-    ...sess.injected.map(c => ({
-      ...c,
-      used: false,
-      pregen: { status: "idle", line: null, lineFail: null },
-    })),
-    ...(sess.venueCards || []).map(c => ({
-      ...c,
-      used: false,
-      pregen: { status: "idle", line: null, lineFail: null },
-    })),
+    ...sess.girlCards.map(c => ({ ...c, used: false })),
+    ...sess.injected.map(c => ({ ...c, used: false })),
+    ...(sess.venueCards || []).map(c => ({ ...c, used: false })),
   ];
   if (!pile.length) return { ok: false, err: "牌堆是空的" };
 
@@ -747,10 +734,10 @@ export function startRound(state, { stage, guardHigh = false } = {}) {
   sess.playedThisRound = [];
   sess.forceAnotherRound = false;
   sess.pending = null;
-  sess.phase = "pregen";
+  sess.phase = "round_play";
   sess.log = sess.log || [];
   sess.log.push({ t: Date.now(), kind: "round_start", n: sess.nLeft, round: sess.roundIndex });
-  return { ok: true, hand: sess.hand, nLeft: sess.nLeft, phase: "pregen" };
+  return { ok: true, hand: sess.hand, nLeft: sess.nLeft, phase: "round_play" };
 }
 
 export function playsLeft(sess) {
@@ -848,19 +835,18 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
   };
 
   const finishPlay = (openFail = false) => {
-    // 優先用組牌後預產台詞；弱／缺 → 依本拍感情骰罐頭（禁止只顯示「……」）
-    const cached = pregenLineFor(inst, { openFail });
-    const fallback = girlReactionLine({
+    // 即時路徑：先填罐頭；有模型時 app 會背景下單覆寫 girlLine
+    let line = girlReactionLine({
       stage,
       emotionDelta: result.emotionDelta,
       openFail,
     });
-    result.girlLine = cached || fallback;
-    if (isWeakLine(result.girlLine)) result.girlLine = fallback;
-    if (isWeakLine(result.girlLine)) {
-      result.girlLine = openFail ? "我沒接住。別這樣。" : "我聽到了。";
+    if (isWeakLine(line)) {
+      line = openFail ? "我沒接住。別這樣。" : "我聽到了。";
     }
-    result.fromPregen = !!cached;
+    result.girlLine = line;
+    result.fromPregen = false;
+    result.fromAi = false;
     result.feelLabel = emotionFeelLabel(result.emotionDelta);
     result.playsLeft = playsLeft(sess);
     result.chain = sess.chain ? { ...sess.chain } : null;
