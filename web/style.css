@@ -1520,6 +1520,39 @@ body.card-mode.has-ct-figure #kanban-girl {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   text-shadow: 0 1px 6px rgba(0,0,0,.75);
 }
+/* 等 AI 反應：左上角「推出」 */
+.card-table-top .back-btn.ct-eject-btn {
+  color: var(--pink);
+  border: 1px solid color-mix(in srgb, var(--pink) 45%, var(--line));
+  letter-spacing: .08em;
+}
+.ct-react-wait {
+  margin-top: .55em;
+  text-align: center;
+  opacity: .75;
+}
+/* 她正在讀取…… */
+#ct-vn-text .ct-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 1.4em;
+  padding: .15em 0;
+}
+#ct-vn-text .ct-typing i {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--pink);
+  opacity: .35;
+  animation: ct-typing-dot 1.15s ease-in-out infinite;
+}
+#ct-vn-text .ct-typing i:nth-child(2) { animation-delay: .18s; }
+#ct-vn-text .ct-typing i:nth-child(3) { animation-delay: .36s; }
+@keyframes ct-typing-dot {
+  0%, 80%, 100% { opacity: .25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
 
 /* 旁白：不透明，壓在立繪前面 */
 #ct-vn {

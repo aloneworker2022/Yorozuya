@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.7b(2026-08-04)M4 framing／繁體／佇列回收";
+const APP_VER = "v6.7c(2026-08-05)打牌等AI點點點／推出";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -2328,7 +2328,8 @@ async function genTick(force = false) {
 }
 
 // ── M4 打牌短 AI 反應 ────────────────────────────────────
-// 原則：感情骰已定；AI 只產不透明台詞；失敗/無模型用罐頭 girlLine。
+// 原則：感情骰已定；有模型時現場生、等 AI 時只顯示點點點（不預先塞罐頭）。
+// 無模型／生成失敗才用 girlLine 罐頭。等 AI 中不可「繼續」，只能左上角「推出」。
 
 /** 打牌 AI 取 1～2 行台詞（規格允許兩句；勿只砍第一行） */
 function cardPlayLines(text) {
@@ -2377,14 +2378,13 @@ function cardPlayMsgs(girl, play) {
   ];
 }
 
-/** 出卡後：有模型就下單；先顯示罐頭,寫好再覆寫 */
+/** 出卡後：有模型就下單並進入「讀取中」；無模型直接用罐頭 */
 function beginCardPlayAi(girl, play) {
   cardUi.playAiPending = false;
   cardUi.playAiKey = null;
   cardUi.playAiToken = null;
   if (!girl || !play?.ok) return;
-  if (!state.settings?.model) return;
-  // 罐頭已在 play.girlLine；AI 寫好後覆寫
+  if (!state.settings?.model) return; // 無 AI：畫面直接顯示 girlLine 罐頭
   const token = `${Date.now().toString(36)}_${play.cardId || "x"}`;
   cardUi.playAiToken = token;
   cardUi.playAiKey = `cardplay:${girl.id}:${token}`;
@@ -2415,15 +2415,18 @@ async function genCardPlayOrder() {
     if (line && cardUi.lastPlay) {
       cardUi.lastPlay.girlLine = line;
       cardUi.lastPlay.fromAi = true;
+    } else if (cardUi.lastPlay) {
+      // 空字 → 保底罐頭（引擎已填）
+      cardUi.lastPlay.fromAi = false;
     }
     cardUi.playAiPending = false;
     cardUi.playAiKey = null;
-    // 仍在反應節拍才重畫
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
       renderCardTable();
     }
   } else if (r.status === "error") {
-    // 失敗：保留罐頭,結束 pending
+    // 失敗：回落罐頭，解鎖「繼續」（不能永遠卡死）
+    if (cardUi.lastPlay) cardUi.lastPlay.fromAi = false;
     cardUi.playAiPending = false;
     cardUi.playAiKey = null;
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
@@ -4855,6 +4858,9 @@ function endCardTableAndReleaseKanban(reason = "card_end") {
   cardUi.lastPlay = null;
   cardUi.awaitReaction = false;
   cardUi.endPanel = null;
+  cardUi.playAiPending = false;
+  cardUi.playAiKey = null;
+  cardUi.playAiToken = null;
   document.body.classList.remove("card-mode", "has-ct-figure");
   clearCardTableDom();
 
@@ -4867,7 +4873,24 @@ function endCardTableAndReleaseKanban(reason = "card_end") {
   return { gname, released: false };
 }
 
+/** 中止牌桌（推出）：取消 AI pending、關 session、看板解除 */
+function ejectCardTable(reason = "player_eject") {
+  cardUi.playAiPending = false;
+  cardUi.playAiKey = null;
+  cardUi.playAiToken = null;
+  const r = endCardTableAndReleaseKanban(reason);
+  toast(r.released ? `${r.gname} 被推出店頭了` : "先到這吧", "");
+  scheduleSave();
+  renderAll();
+  pumpKanbanBubbles();
+}
+
 function leaveCardTableUi() {
+  // 反應節拍（含等 AI）：左上角「推出」= 中止這次靠近
+  if (cardUi.awaitReaction) {
+    ejectCardTable("player_eject");
+    return;
+  }
   // 打牌中不允許直接走；idle／輪末結束面板等用這條離開 = 解除看板
   const sess = state.cardSession;
   if (sess && (sess.phase === "round_play" || sess.phase === "round_setup" || sess.phase === "round_end")) {
@@ -4897,6 +4920,11 @@ function dismissCardSession() {
     clearCardTableDom();
     renderAll();
     pumpKanbanBubbles();
+    return;
+  }
+  // 反應節拍（含等 AI）→ 與「推出」相同，允許中止
+  if (cardUi.awaitReaction) {
+    ejectCardTable("player_dismiss");
     return;
   }
   if (state.cardSession.phase === "round_play") {
@@ -5130,14 +5158,35 @@ function setCtPortrait(girl) {
   }
 }
 
-/** 中間旁白框 */
-function setCtVn({ name = "", text = "", meta = "" } = {}) {
+/** 中間旁白框。textHtml 有值時用 HTML（點點點讀取中） */
+function setCtVn({ name = "", text = "", meta = "", textHtml = null } = {}) {
   const n = $("#ct-vn-name");
   const t = $("#ct-vn-text");
   const m = $("#ct-vn-meta");
   if (n) n.textContent = name;
-  if (t) t.textContent = text;
+  if (t) {
+    if (textHtml != null) t.innerHTML = textHtml;
+    else t.textContent = text;
+  }
   if (m) m.innerHTML = meta;
+}
+
+/** 牌桌頂欄：等 AI 時左＝推出、右藏；其餘還原 */
+function syncCardTableChrome({ ejectMode = false } = {}) {
+  const back = $("#card-table-back");
+  const close = $("#card-table-close");
+  if (back) {
+    back.textContent = ejectMode ? "推出" : "‹ 返回";
+    back.title = ejectMode ? "中止這次靠近，她離開店頭" : "";
+    back.classList.toggle("ct-eject-btn", ejectMode);
+  }
+  if (close) {
+    close.classList.toggle("hidden", ejectMode);
+    if (!ejectMode) {
+      close.textContent = "先走";
+      close.title = "結束這次靠近";
+    }
+  }
 }
 
 function setCtConfirm(html) {
@@ -5215,9 +5264,10 @@ function renderCardTable() {
   if (!sess.pending && !cardUi._keepPeek) setCtConfirm("");
   cardUi._keepPeek = false;
 
-  // ── 出卡反應（必看）：你的行動 → 她的回應 → 繼續 ────────
+  // ── 出卡反應（必看）：你的行動 → 等 AI／台詞 → 繼續 ────────
   if (cardUi.awaitReaction && cardUi.lastPlay) {
     const last = cardUi.lastPlay;
+    const waitingAi = !!cardUi.playAiPending && !last.fromAi;
     const openNote = last.open && !last.open.success
       ? "沒接住"
       : last.open?.success
@@ -5228,32 +5278,47 @@ function renderCardTable() {
     const more = last.roundEnded
       ? "這是本輪最後一次——繼續後判定她願不願意再來一輪"
       : `之後還能應付 ${last.playsLeft ?? "?"} 次`;
-    const aiNote = cardUi.playAiPending
-      ? " · 她還在想…"
-      : (last.fromAi ? " · 即時" : "");
-    // AI pending：先顯示省略號,寫好再覆寫——避免罐頭旁白與 AI 台詞語氣跳變
-    const reactText = cardUi.playAiPending && !last.fromAi
-      ? "……"
-      : (last.girlLine || "……");
+
+    // 等 AI：頂欄只留「推出」；不可「繼續」
+    syncCardTableChrome({ ejectMode: waitingAi });
+
+    if (waitingAi) {
+      setCtVn({
+        name: gname,
+        text: "",
+        textHtml: `<span class="ct-typing" aria-label="她正在讀取"><i></i><i></i><i></i></span>`,
+        meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""} · 她正在讀取…`,
+      });
+      setCtHand(`
+        <div class="ct-react-beat">
+          <div class="dim small ct-react-you">你：${esc(last.sceneStart || last.name || "……")}</div>
+          <div class="dim small ct-react-wait">等她反應——左上角可「推出」中止</div>
+        </div>`);
+      return;
+    }
+
+    // AI 好了／無模型／失敗回落罐頭
+    const srcNote = last.fromAi ? " · 即時" : (state.settings?.model ? " · 保底" : "");
     setCtVn({
       name: gname,
-      text: reactText,
-      meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${aiNote} · ${esc(more)}`,
+      text: last.girlLine || "……",
+      meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${srcNote} · ${esc(more)}`,
     });
     setCtHand(`
       <div class="ct-react-beat">
         <div class="dim small ct-react-you">你：${esc(last.sceneStart || last.name || "……")}</div>
         <div class="detail-actions card-actions">
           <button type="button" class="cyan" id="ct-ack-react">${
-            cardUi.playAiPending
-              ? "先用這句繼續"
-              : (last.roundEnded ? "繼續（輪末判定）" : "繼續")
+            last.roundEnded ? "繼續（輪末判定）" : "繼續"
           }</button>
         </div>
       </div>`);
     $("#ct-ack-react").onclick = () => ackPlayReaction();
     return;
   }
+
+  // 非反應節拍：還原頂欄
+  syncCardTableChrome({ ejectMode: false });
 
   // ── 輪末結果面板：只問「能否再來一輪」；結束＝解除看板 ──
   if (cardUi.endPanel === "stay" || cardUi.endPanel === "leave") {
