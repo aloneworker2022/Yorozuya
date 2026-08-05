@@ -1,12 +1,13 @@
 # 互動牌制規格（玩家 ↔ 女子）
 
-> **狀態：M0～M4 已上線；M5（CG cache）／M6（舊聊天遷移）待做。**  
+> **狀態：M0～M4／M6 已上線；M5（CG cache）待做。**  
 > 核心玩法（商店／牌庫／牌桌／鍊／氣泡／約會／短 AI）以 `web/app.js` + `web/content/card_engine.js` 為準；本文仍是**規則聖經**（衝突時規則以本文為準，實作 bug 另開修）。  
 > 與 `plan-v5.md` 衝突處，**以本文覆寫「聊天／淫紋聊天／舊約會流程」相關段落**。  
 > 企劃書索引：`plan-v5.md` **§13A**。  
 > **卡牌／場地資料：[`web/content/cards.json`](../web/content/cards.json)**。  
 > 召喚師 × NTR × 交配環與牌制的對接：**本文不寫**，另開文件再鎖。  
 > **v1 不做多節卡演出**（`steps[]` 資料可留，引擎不跑）— 見 §5.4；重開需討論後改本文。
+> **自由輸入長聊已退役**（M6）— 見 §13。
 >
 > 讀者假設：實作者可能是 **AI coding agent**。故：常數寫死、狀態機寫死、資料形狀給例、禁止事項列清、與舊系統對照表齊全。  
 > **不要自行「優化」鎖定常數（尤其氣泡 15%）。改常數＝改體驗＝當 bug 開。**
@@ -782,7 +783,7 @@ buildCardPlayPrompt(ctx)  // ctx.card_play = { kind, scene_start, prompt_hint, o
 
 ---
 
-## 13. 與舊系統對照（遷移）
+## 13. 與舊系統對照（遷移）· M6 已落地
 
 | 舊（plan-v5 / app.js） | 新 |
 |---|---|
@@ -793,11 +794,31 @@ buildCardPlayPrompt(ctx)  // ctx.card_play = { kind, scene_start, prompt_hint, o
 | crest 出現率隨稀有度 | 氣泡 **固定 15%**（與稀有度脫鉤） |
 | Persona 長 session | 短反應生成 |
 
-遷移建議：
+### 13.1 載入時遷移（`app.js` migrate）
 
-1. 舊存檔無 `cardInventory` → 給 `starterSpeechCardId` fallback 一張通用話術。  
-2. 舊聊天 history 可保留只讀，不再寫入新 session。  
-3. 功能 flag：`features.cardSystem = true` 便於開關。
+1. `features.cardSystem = true`（舊檔可手動關）；`features.freeChatRetired = true`。  
+2. 舊存檔無話術 → `ensureStarterFallback` 補一張 starter。  
+3. **`retireFreeChatState`**：清 `wantsTalk`／`chatLine`／`chatSess`／`typing`；**不刪** `history`（只讀檔案）。  
+4. 舊 `cardSession.phase` 為 `pregen`／`ready` → `normalizeSessionPhase` → `round_play`。  
+
+### 13.2 執行期死路徑（牌制開時）
+
+| 行為 | 處理 |
+|---|---|
+| `crestRoll`／`crestFallback` | 直接 return |
+| `genChatOrder`／`genReplyOrder` | **不下單**（省 LLM） |
+| `enterChat(…, "chat")` | 改 `openKanbanTable` 或 toast |
+| `enterChat(…, "date")` | 改 `beginDateFlow` |
+| `sendChatMsg` type=chat | 踢回牌桌 |
+| 觀戰釋放成功 | 接回 `openDateTable(venueId)` 或看板牌桌（**不**進自由聊） |
+| 牌桌／約會開局 | `lastChatDay` 更新（舊 need 時鐘） |
+
+**仍保留（非自由聊）：** 觀戰 VN、獻祭 VN、`chat-view` DOM 殼、看板點立繪 `popQuip`、DBG。
+
+### 13.3 未做（刻意）
+
+- 物理刪除 `enterChat`／`CHAT_LINES` 大段死碼（觀戰／舊 flag 仍可能用到；可後續瘦身 PR）。  
+- 召喚師線改接牌桌（後話）。  
 
 ---
 
@@ -845,6 +866,15 @@ buildCardPlayPrompt(ctx)  // ctx.card_play = { kind, scene_start, prompt_hint, o
 - [ ] 推出／離開後遲到 AI 結果不覆寫 UI（作廢 gen）  
 - [ ] 無整輪預產 phase（`pregen`／`ready` 不應再出現於新局）  
 
+### 14.7 M6 自由聊退役
+
+- [ ] 載入後無 `wantsTalk`／`chatLine` 殘燈  
+- [ ] 委託操作不會亮淫紋進聊天（只有氣泡）  
+- [ ] genTick 不下 `chat:`／`reply:` 自由聊訂單  
+- [ ] 舊存檔有進度無牌 → 有 starter 話術  
+- [ ] `history` 仍在存檔（只讀，不強制清空）  
+- [ ] 觀戰釋放後不進自由聊（約會→牌桌）  
+
 ---
 
 ## 15. 建議實作順序（降風險）
@@ -859,7 +889,7 @@ buildCardPlayPrompt(ctx)  // ctx.card_play = { kind, scene_start, prompt_hint, o
 | 6 | 約會電話＋場地 3 卡 | **已上線（M3）** |
 | 7 | 短 AI 反應（即時、兩拍、作廢） | **已上線（M4）** |
 | 8 | 生圖 CG cache／占位 | **待做（M5）** |
-| 9 | 舊聊天入口隱藏／刪、存檔遷移 | **待做（M6）** |
+| 9 | 舊聊天入口退役／存檔遷移 | **已上線（M6）** |
 
 ---
 
@@ -895,6 +925,7 @@ buildCardPlayPrompt(ctx)  // ctx.card_play = { kind, scene_start, prompt_hint, o
 | 2026-08-04 | 初版鎖定：牌桌取代自由聊天；碎卡／話術；鍊；感情骰；氣泡 15% 三節點；商店 3／4h；約會每隻日 2；無封牌；未用不碎；開門失敗也碎；K 卡面寫死；無全局情感 clamp；掛機陪伴合法；召喚師線除外 |
 | 2026-08-04 | 落地 `web/content/cards.json` 完整草案；`plan-v5.md` §13A 索引 |
 | 2026-08-05 | **M0～M4 標為已上線**；打牌 AI＝即時兩拍（禁止整輪預產）；**§5.4 多節卡 v1 不做**（待討論後再鎖）；M4 作廢在途 AI（`playAiGen`）；§15 狀態表；§14.6 短 AI 驗收 |
+| 2026-08-05 | **M6 自由聊退役**：`freeChatRetired`、清殘燈、停 genChat／genReply、觀戰釋放接牌桌、§13／§14.7 |
 
 ---
 

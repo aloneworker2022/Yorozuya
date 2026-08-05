@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.9c(2026-08-05)M4收尾·清預產·作廢出卡AI";
+const APP_VER = "v6.10(2026-08-05)M6·自由聊天退役";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -80,7 +80,7 @@ function crestChance(s) {
 // 委託操作觸發的淫紋判定（舊路徑；牌制開啟時改走 questBubbleRoll）。
 // 被召喚走的不判;睡眠時段不判;已有紋／進行中對話不重複判。
 function crestRoll() {
-  if (cardSystemOn()) return false; // M2：養成改氣泡，不再亮淫紋進聊天
+  if (freeChatRetired()) return false; // M2/M6：養成改氣泡，不再亮淫紋進聊天
   if (isAsleep()) return false;
   let changed = false;
   for (const s of kanbanSuccubi()) {
@@ -290,7 +290,7 @@ function expireChatSess() {
 // 另加卡住保險:她「正在輸入」超過 3 分鐘還沒生出來,一律補罐頭——不讓 … 永遠轉下去。
 const TYPING_STUCK_MS = 3 * 60 * 1000;
 function crestFallback() {
-  if (cardSystemOn()) return false; // M2：不再補淫紋開場白
+  if (freeChatRetired()) return false; // M2/M6：不再補淫紋開場白
   const dead = !state.settings.model || chatGenFail.count >= 3;
   let changed = false;
   for (const s of state.succubi) {
@@ -575,6 +575,36 @@ function cardSystemOn() {
   return !!(state?.settings?.features?.cardSystem !== false && Cards.cardsReady());
 }
 
+/** M6：自由輸入長聊是否已退役（牌制開 = 是；history 仍可只讀） */
+function freeChatRetired() {
+  return cardSystemOn() || !!(state?.settings?.features?.freeChatRetired);
+}
+
+/**
+ * 清掉淫紋／自由聊殘狀態，避免亮燈卻點不進、或背景仍下 chat 單。
+ * 不刪 s.history（只讀檔案）。
+ */
+function retireFreeChatState() {
+  for (const s of state.succubi || []) {
+    s.wantsTalk = 0;
+    s.chatLine = null;
+    s.chatSess = null;
+    s.typing = null;
+  }
+  // 若卡在舊全螢幕自由聊，踢回主畫面（觀戰／獻祭另有 watchWith／sacrificeWith）
+  if (chatWith && chatSession?.type === "chat" && !watchWith && !sacrificeWith) {
+    chatWith = null;
+    chatSession = null;
+    document.body.classList.remove("chat-mode");
+  }
+}
+
+/** 牌桌／約會互動算「見過她」——餵舊 need 時鐘 */
+function touchInteractDay(girl) {
+  if (!girl) return;
+  girl.lastChatDay = dayNum();
+}
+
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function pick2(arr) { const a = [...arr]; const i = a.splice(Math.floor(Math.random() * a.length), 1)[0]; return [i, pick(a)]; }
@@ -667,20 +697,22 @@ function initState(j, offline) {
   if (!state.playerProfile.name && state.settings?.player) {
     state.playerProfile.name = state.settings.player;
   }
-  state.settings.features = { cardSystem: true, ...(state.settings.features || {}) };
+  // M6：牌制預設開；自由聊天主路徑退役（history 只讀保留，見 retireFreeChatState）
+  state.settings.features = {
+    cardSystem: true,
+    freeChatRetired: true,
+    ...(state.settings.features || {}),
+  };
+  // 舊存檔若曾手動關牌制，仍尊重 cardSystem:false；其餘強制退役自由聊
+  if (state.settings.features.cardSystem !== false) {
+    state.settings.features.freeChatRetired = true;
+  }
   if (Cards.cardsReady()) {
     Cards.ensureStarterFallback(state);
     Cards.pruneDeck?.(state);
   }
-  // 牌制開啟：清掉舊淫紋燈狀態，避免殘燈卻點不進聊天
   if (cardSystemOn()) {
-    for (const s of state.succubi) {
-      if (s.wantsTalk || s.chatLine || s.typing) {
-        s.wantsTalk = 0;
-        s.chatLine = null;
-        s.typing = null;
-      }
-    }
+    retireFreeChatState();
   }
   // 召喚師系統移轉:舊魅魔補發抽取間隔
   for (const s of state.succubi) {
@@ -1878,8 +1910,8 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
   if (!s) return;
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
   if (s.ntr) { toast("她不在你身邊……", "bad"); return; }
-  // M2/M3：牌制開啟時，日常聊→牌桌；約會→電話＋場地牌局
-  if (cardSystemOn() && type === "chat") {
+  // M2/M3/M6：自由聊退役 → 日常聊改牌桌；約會改電話＋場地牌局
+  if (freeChatRetired() && type === "chat") {
     if (isKanban(id)) {
       toast("想說話就靠近她（牌桌）", "");
       openKanbanTable(id);
@@ -2336,8 +2368,9 @@ function chatLineMsgs(s) {
   return [{ role: "system", content: buildSystemPrompt(buildCtx(s)) }, ...recent, { role: "user", content: inst }];
 }
 
-// 她正在回你(玩家送出後跳出對話,回覆在背景寫)——最優先,寫好淫紋就從「…」變回亮紋
+// 她正在回你(玩家送出後跳出對話,回覆在背景寫)——M6 起僅 !freeChatRetired 才會跑
 async function genReplyOrder() {
+  if (freeChatRetired()) return;
   for (const s of state.succubi) {
     if (!s.typing || s.ntr) continue;
     const key = `reply:${s.id}:${s.typing.at}`;   // 綁這一次送出:同一句不重複下單
@@ -2357,6 +2390,7 @@ async function genReplyOrder() {
 }
 
 async function genChatOrder() {
+  if (freeChatRetired()) return;
   if (chatGenFail.count && Date.now() - chatGenFail.at < Math.min(60000, 10000 * chatGenFail.count)) return;
   let anyErr = false, anyDone = false;
   // 只寫「委託操作判定中了」的那幾位;沒亮紋就不生話——她開口與否跟著你做事的節奏走。
@@ -2447,14 +2481,15 @@ async function genQuipOrders() {
 // 每 2 秒一輪:下單+收貨(伺服器排隊生成;對話/獻祭/睡眠中不下聊天與氣泡單)
 // 例外:睡眠時段(01:00 起)專門跑 genSacOrders 預織獻祭文;無模型時也要進 tick 填罐頭。
 let genTickBusy = false, lastGenAt = 0;
-// 玩家正在等她的那句話(她在回你、或紋亮了話還沒寫好)——用來提高輪詢頻率、壓住背景單
+// 玩家正在等她的那句話(舊自由聊：typing／wantsTalk)——牌制下不應再觸發
 function waitingOnHer() {
+  if (freeChatRetired()) return false;
   return state.succubi.some(s => s.typing || (s.wantsTalk && !s.chatLine));
 }
 
 async function genTick(force = false) {
   if (genTickBusy) return;
-  // 等她那句話／打牌即時反應／氣泡 AI 時收貨加快
+  // 打牌即時反應／氣泡 AI 時收貨加快
   const waitingCard = !!(cardUi.awaitReaction && cardUi.playAiPending);
   const waitingBubble = !!(bubbleShowingItem?.pending
     || bubbleQueue.some(b => b.pending));
@@ -2466,14 +2501,18 @@ async function genTick(force = false) {
     if (state.settings.model) {
       // 打牌即時反應最優先（玩家盯著牌桌）
       await genCardPlayOrder();
-      await genReplyOrder();
+      // M6：自由聊天退役 → 不再下 reply／開場白 chat 單
+      if (!freeChatRetired()) {
+        await genReplyOrder();
+      }
       // 看板委託氣泡（玩家剛操作完委託）
       await genBubbleOrders();
       const idle = !chatWith && !watchWith && !sacrificeWith && !sacSummon && !isAsleep()
         && !document.body.classList.contains("card-mode");
-      if (idle) await genChatOrder();
+      if (idle && !freeChatRetired()) await genChatOrder();
       if (!waitingOnHer() && !waitingCard) {
         await genActOrders();
+        // 看板點立繪碎嘴台詞庫（非自由聊）；牌制仍可備
         if (idle) await genQuipOrders();
       }
     }
@@ -2623,9 +2662,9 @@ function popQuip(s) {
   return line || null;
 }
 
-// 釋放成功:她脫離「被召喚」狀態回到你身邊,原本的動作(聊天/約會)接著開始(費用已在進觀戰時付過)
+// 釋放成功:她脫離「被召喚」狀態回到你身邊,原本的動作接著開始(費用已在進觀戰時付過)
 function rescueFromWatch(s) {
-  const { playerType, playerLocation } = watchSession;
+  const { playerType, playerLocation } = watchSession || {};
   watchSession.ended = true;
   chatAbort?.abort();
   if (s.summoner) s.summoner.taken = null;
@@ -2635,7 +2674,28 @@ function rescueFromWatch(s) {
   setTimeout(() => {
     watchWith = null; watchSession = null;
     document.body.classList.remove("chat-mode");
-    enterChat(s.id, playerType, playerLocation, true);
+    // M6：牌制下接回牌桌／約會桌，不進自由聊
+    if (cardSystemOn()) {
+      if (playerType === "date") {
+        const venues = Cards.venuesList?.() || [];
+        const vid = venues.find(x => x.id === playerLocation)?.id
+          || venues.find(x => x.name === playerLocation)?.id
+          || playerLocation;
+        if (vid && venues.some(x => x.id === vid)) {
+          openDateTable(s.id, vid);
+        } else {
+          toast("回來了——再開一次約會吧", "good");
+          renderAll();
+        }
+      } else if (isKanban(s.id)) {
+        openKanbanTable(s.id);
+      } else {
+        toast(`${s.name} 回來了`, "good");
+        renderAll();
+      }
+      return;
+    }
+    enterChat(s.id, playerType || "chat", playerLocation, true);
   }, 1200);
   scheduleSave();
 }
@@ -2875,6 +2935,13 @@ async function sendChatMsg() {
   const s = state.succubi.find(x => x.id === chatWith);
   const input = document.getElementById("chat-input");
   if (!s || !chatSession || chatSession.busy) return;
+  // M6：自由聊已退役——擋掉殘 session 再寫 history
+  if (freeChatRetired() && chatSession.type === "chat") {
+    toast("日常互動改走牌桌了", "");
+    exitChat();
+    if (isKanban(s.id)) openKanbanTable(s.id);
+    return;
+  }
   const text = input.value.trim();
   if (!text) return;
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
@@ -5118,10 +5185,10 @@ function confirmDateVenue(girlId, venueId) {
   dateFlow = null;
   dateChooser = false;
 
-  // 被召喚走：錢已付，改觀戰（舊機制）
+  // 被召喚走：錢已付，改觀戰；釋放後用 venueId 接回約會牌桌
   if (s.summoner?.taken) {
     log(`約 ${s.name} 出門——她卻被召喚到別人身邊`);
-    enterWatch(s, "date", v.name);
+    enterWatch(s, "date", v.id);
     scheduleSave();
     return;
   }
@@ -5171,6 +5238,7 @@ function openDateTable(girlId, venueId) {
   cardUi.reactBeat = null;
   cardUi.endPanel = null;
   detailId = null;
+  touchInteractDay(s);
   document.body.classList.add("card-mode");
   log(`約會牌桌・${s.name} @ ${venue?.name || venueId}（場地卡 ${venueCards.length} · 牌組 ${deal.deckSize || 0}）`);
   toast(`抵達「${venue?.name || "約會地"}」——開始互動`, "good");
@@ -5205,6 +5273,7 @@ function openKanbanTable(girlId, opts = {}) {
   if (Cards.sessionActive(state) && state.cardSession.girlId === girlId) {
     const phase = state.cardSession.phase;
     document.body.classList.add("card-mode");
+    touchInteractDay(s);
     if (phase !== "round_play" || Cards.playsLeft(state.cardSession) <= 0) {
       if (phase === "round_play" || phase === "idle_present" || phase === "round_setup"
         || phase === "round_end") {
@@ -5241,6 +5310,7 @@ function openKanbanTable(girlId, opts = {}) {
   cardUi.awaitReaction = false;
   cardUi.reactBeat = null;
   cardUi.endPanel = null;
+  touchInteractDay(s);
   document.body.classList.add("card-mode");
   log(`與 ${s.name} 開桌（本體 ${girlCards.length} · 牌組 ${deal.deckSize || 0}）`);
   toast(`開始互動——約 ${deal.nLeft} 次`, "good");
@@ -5368,6 +5438,7 @@ function commitHandPlay(instanceId, girl, stage) {
   cardUi.awaitReaction = true;
   cardUi.reactBeat = "action"; // 先播動作，再點一下才出她的回應
   cardUi.endPanel = null;
+  touchInteractDay(girl);
   applyPlaySideEffects(girl, r);
   beginCardPlayAi(girl, r);
   const n = state.cardSession?.hand?.length || 0;
@@ -6170,7 +6241,8 @@ function renderDetail(s, root) {
   if (s.ntr) {
     needLine = `<div class="ntr-note">她被另一位召喚師奪走了。剩 ${s.ntr.deadlineDay - today} 天可贖回(${RANSOM[s.stage]} 金)</div>`;
   } else {
-    const bits = [`每 ${CHAT_GAP[s.rarity]} 天至少聊 1 次`];
+    const interactWord = freeChatRetired() ? "靠近／互動" : "聊";
+    const bits = [`每 ${CHAT_GAP[s.rarity]} 天至少${interactWord} 1 次`];
     if (DATE_GAP[s.rarity]) bits.push(`每 ${DATE_GAP[s.rarity]} 天至少約會 1 次`);
     const stTxt = { ok: "心情不錯", due: "今天想見你", danger: "快要離開了!" }[st];
     needLine = `<div class="aff-line dim small">${bits.join(" / ")} — ${stTxt}</div>`;
@@ -6736,18 +6808,30 @@ window.DBG = {
     return { ok: true, girl: s.name, venueId };
   },
   venues: () => availableVenues(),
-  // 測試:直接進聊天/約會(prepaid 跳過金幣消耗),與詢問機制
+  // 測試:直接進互動（牌制下 chat→牌桌／date→電話流）
   chat: (id, type = "chat") => enterChat(id, type, null, true),
   ask: () => askAboutActs(),
-  chatState: () => ({ chatWith, watchWith, ended: chatSession?.ended ?? null }),
+  chatState: () => ({
+    chatWith, watchWith, ended: chatSession?.ended ?? null,
+    freeChatRetired: freeChatRetired(), cardSystem: cardSystemOn(),
+  }),
   render: () => renderAll(),   // 測試:手動改了 state 之後強制重畫
   // 測試/調 prompt:看她下一句實際會送出去的訊息陣列(system prompt + 這一場的上下文)
   chatPrompt: (id) => {
+    if (freeChatRetired()) return { retired: true, note: "自由聊已退役；打牌用 cardPlay / bubble" };
     const s = state.succubi.find(x => x.id === id) || kanbanSuccubi()[0];
     return s ? chatLineMsgs(s) : null;
   },
   // 手機上自我診斷:為什麼淫紋沒出現?把每個關卡的判定結果一次列出來
   whyNoCrest: () => {
+    if (freeChatRetired()) {
+      return {
+        note: "M6：淫紋自由聊已退役。委託碎嘴走氣泡 15%；深度互動走牌桌。",
+        cardSystem: cardSystemOn(),
+        freeChatRetired: true,
+        看板: kanbanSuccubi().map(s => s.name),
+      };
+    }
     const now = Date.now();
     const globals = {
       睡眠時段: isAsleep(), 對話中: !!chatWith, 觀戰中: !!watchWith,
