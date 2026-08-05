@@ -1113,68 +1113,70 @@ body.chat-mode.has-figure #kanban-girl {
   font-size: .65em; line-height: 1; display: flex; align-items: center; justify-content: center;
 }
 
-/* ===== 主畫面右下：牌制＝打牌小卡；舊路徑＝淫紋燈 ===== */
+/* ===== 主畫面右下：小方塊打牌鍵（避開委託輸入列） ===== */
 #crests {
-  position: fixed; right: .9em; bottom: calc(4.8em + env(safe-area-inset-bottom));
-  z-index: 12; display: flex; flex-direction: column-reverse;
-  gap: .8em; align-items: center;
+  position: fixed;
+  right: .65em;
+  bottom: calc(5.6em + env(safe-area-inset-bottom));
+  z-index: 12;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: .45em;
+  align-items: flex-end;
+  pointer-events: none;
 }
-/* 打牌入口小卡 */
-.play-chip {
-  position: relative; display: flex; flex-direction: column; align-items: center;
-  gap: .2em; width: 4.4em; padding: .45em .3em .55em;
-  background: var(--panel); border: 1px solid var(--rc, var(--line)); border-radius: 12px;
-  color: var(--text); font: inherit; cursor: pointer;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--rc, var(--pink)) 45%, transparent));
-  transition: transform .15s ease, filter .15s ease;
+#crests > * { pointer-events: auto; }
+/* 緊湊方塊：頭像 + 角標，不擋輸入框 */
+.play-fab {
+  position: relative;
+  width: 2.85em; height: 2.85em;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--rc, var(--pink)) 55%, var(--line));
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .35);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--rc, var(--pink)) 40%, transparent));
+  transition: transform .12s ease, filter .12s ease;
+  overflow: hidden;
 }
-.play-chip:active { transform: scale(.96); }
-.play-chip.active-sess {
+.play-fab:active { transform: scale(.94); }
+.play-fab.active-sess {
   border-color: var(--cyan);
-  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--cyan) 55%, transparent));
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--cyan) 55%, transparent));
 }
-.play-chip-face {
-  width: 2.6em; height: 2.6em; border-radius: 50%;
-  object-fit: cover; border: 1px solid var(--line);
-  background: rgba(0,0,0,.25);
+.play-fab-face {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
 }
-.play-chip-icon {
-  width: 2.6em; height: 2.6em; border-radius: 50%;
+.play-fab-icon {
+  width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--rc, var(--pink)) 18%, transparent);
-  color: var(--pink); font-size: 1.1em;
+  color: var(--pink); font-size: 1.15em;
+  background: color-mix(in srgb, var(--rc, var(--pink)) 14%, transparent);
 }
-.play-chip-label {
-  font-size: .62em; letter-spacing: .12em; color: var(--cyan);
-  text-transform: none;
+.play-fab-badge {
+  position: absolute;
+  right: 2px; bottom: 2px;
+  min-width: 1.15em; height: 1.15em;
+  padding: 0 .2em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--pink) 88%, #000);
+  color: #fff;
+  font-size: .58em;
+  font-weight: 700;
+  letter-spacing: .04em;
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4);
 }
-.play-chip .cname {
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: .58em; color: var(--dim); line-height: 1.2;
+.play-fab.active-sess .play-fab-badge {
+  background: color-mix(in srgb, var(--cyan) 85%, #000);
 }
-/* 背景預產中：不可點 */
-.play-chip.pregen-busy {
-  opacity: .72;
-  cursor: wait;
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--dim) 40%, transparent));
-}
-.play-chip.pregen-busy .play-chip-label { color: var(--dim); }
-.play-chip.pregen-busy:disabled { pointer-events: auto; } /* 仍可點出 toast */
-/* 回應備妥：可打牌燈 */
-.play-chip.play-ready {
-  border-color: var(--pink);
-  animation: play-ready-pulse 1.4s ease-in-out infinite;
-  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--pink) 65%, transparent));
-}
-.play-chip.play-ready .play-chip-label {
-  color: var(--pink);
-  font-weight: 600;
-  letter-spacing: .16em;
-}
-@keyframes play-ready-pulse {
-  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--pink) 45%, transparent)); }
-  50% { transform: scale(1.05); filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 80%, transparent)); }
-}
+/* 相容舊 class 名（若還有殘留） */
+.play-chip { display: none; }
 .crest-btn {
   position: relative; width: 58px; height: 58px; padding: 0;
   background: var(--panel); border: 1px solid var(--line); border-radius: 50%;
@@ -1565,8 +1567,10 @@ body.card-mode.has-ct-figure #kanban-girl {
 .deck-chip-tag {
   font-size: .7em; opacity: .75; letter-spacing: .06em;
 }
-.deck-chip-x { opacity: .55; font-size: .9em; }
 .deck-chip:active { transform: scale(.97); }
+.card-inv-btn.in-deck {
+  outline: 1px solid color-mix(in srgb, var(--pink) 50%, var(--line));
+}
 .cid-actions {
   display: flex; flex-wrap: wrap; gap: .45em; margin-top: .65em;
 }

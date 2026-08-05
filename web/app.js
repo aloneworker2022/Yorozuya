@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.9(2026-08-05)商店編牌組·開戰直用";
+const APP_VER = "v6.9a(2026-08-05)長按牌組·右下小鍵打牌";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -3242,13 +3242,10 @@ function summonKanban(id) {
   (state.kanbans ??= []).push({ id, until: Date.now() + kanbanHours() * HOUR });
   state.lastKanbanId = id;
   log(`召喚 ${s.name} 為看板娘 -${cost} 金(第 ${state.kanbans.length} 位)`);
-  toast(`${s.name} 來到你身邊——先組牌`, "good");
+  toast(`${s.name} 來到店頭——右下角可開始打牌`, "good");
+  // 不立刻開牌桌；玩家按右下角小方塊再進
   scheduleSave();
-  if (cardSystemOn()) {
-    openKanbanTable(id, { forceSetup: true });
-  } else {
-    renderAll();
-  }
+  renderAll();
 }
 
 // 到期解除(每秒 tick 呼叫);逐位到期、不提醒玩家。回傳是否有變化
