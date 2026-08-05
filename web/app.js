@@ -4346,6 +4346,7 @@ let cardUi = {
   // 組牌後整輪預產
   pregenJobs: [],
   pregenStarted: false,
+  pregenStartedAt: 0,
 };
 
 /** 出卡第一拍：動作旁白（誰、做了什麼） */
