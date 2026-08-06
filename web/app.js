@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.18(2026-08-06)打牌回應更真更長";
+const APP_VER = "v6.18b(2026-08-06)準備牌組UI精簡";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -4509,10 +4509,10 @@ function renderCrests() {
       const prog = prepping ? Cards.narrProgress?.(sess) : null;
       const face = girlShot(s, "head");
       const title = prepping
-        ? `牌意演繹中 ${prog?.done || 0}/${prog?.total || "?"}`
+        ? `準備牌組 ${prog?.done || 0}/${prog?.total || "?"}`
         : playing
           ? `繼續與 ${s.name} 打牌`
-          : `與 ${s.name} 開始打牌（先演繹牌意）`;
+          : `與 ${s.name} 開始打牌`;
       const badge = prepping
         ? `${prog?.done || 0}/${prog?.total || "?"}`
         : playing ? "…" : "牌";
@@ -5894,7 +5894,6 @@ function beginCardNarrPrep(girl) {
     return;
   }
 
-  toast(`牌意演繹中（0/${ids.length}）——好了才能靠近她`, "");
   runCardNarrPrep(girl, token);
 }
 
@@ -5997,7 +5996,7 @@ function finishCardNarrPrep(girl, why = "done") {
   document.body.classList.add("card-mode");
   const nAi = Object.values(sess.cardNarr || {}).filter(x => x.from === "ai").length;
   log(`與 ${girl.name} 開桌（牌意 ${prog.done}/${prog.total}，AI ${nAi}）`);
-  toast(`牌意就緒——開始互動（約 ${deal.nLeft} 次）`, "good");
+  toast(`開始——約 ${deal.nLeft} 次`, "good");
   scheduleSave();
   renderAll();
 }
@@ -6029,8 +6028,6 @@ function openKanbanTable(girlId, opts = {}) {
     cardUi.endPanel = null;
 
     if (phase === "narr_prep") {
-      // 繼續等／重跑佇列
-      toast("牌意還在演繹……", "");
       if (state.settings?.model && state.cardSession.narrToken) {
         runCardNarrPrep(s, state.cardSession.narrToken);
       }
@@ -6083,7 +6080,7 @@ function openKanbanTable(girlId, opts = {}) {
   syncPortraitCgCache(s);
   ensureArtCacheBg(s);
   document.body.classList.add("card-mode");
-  log(`與 ${s.name} 準備開桌（先演繹牌意）`);
+  log(`與 ${s.name} 準備牌組`);
   beginCardNarrPrep(s);
   scheduleSave();
   renderAll();
@@ -6906,7 +6903,7 @@ function phaseLabel(p) {
   return ({
     idle_present: "陪伴",
     round_setup: "組牌",
-    narr_prep: "牌意演繹",
+    narr_prep: "準備牌組",
     round_play: "互動中",
     round_end: "……",
     summoning_prep: "成形中",
