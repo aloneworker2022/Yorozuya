@@ -1658,9 +1658,36 @@ function setShot(s, shot, url) {
   saveNow();
 }
 
+/** 立繪 URL 寫入後立刻換畫面上的圖（看板／名冊／牌桌） */
+function applyPortraitNow(s, shot) {
+  if (!s || !shot) return;
+  syncPortraitCgCache(s);
+  dirty = true;
+  scheduleSave();
+  // 看板主畫面：直接改 img src，不必等整頁重繪才「像有換」
+  try {
+    const root = document.getElementById("kanban-girl");
+    if (root && shot === "full") {
+      const wrap = root.querySelector(`.kgirl[data-kid="${s.id}"]`);
+      const img = wrap?.querySelector("img.portrait-img, img");
+      const url = girlShot(s, "full");
+      if (img && url) {
+        img.src = url;
+        img.classList.remove("hidden");
+      }
+    }
+  } catch { /* DOM 結構變了就走 renderAll */ }
+  // 牌桌半身
+  if (document.body.classList.contains("card-mode") && girlForSession()?.id === s.id) {
+    setCtPortrait(s, { cardId: cardUi.lastPlay?.cardId || null, prefer: shot === "half" ? "half" : "half" });
+  }
+  renderAll();
+}
+
 /**
- * 召為看板娘：背景必織一張全身立繪；1/3 機率重織半身（新 seed，牌桌用）。
- * 不擋 UI。
+ * 召為看板娘：背景必織一張全身立繪；織好立刻替換畫面。
+ * 1/3 機率重織半身（新 seed）——織好也立刻替換。
+ * 不擋召喚 UI。
  */
 async function weaveKanbanArrival(s) {
   if (!s || !canWeaveNow()) return;
@@ -1668,27 +1695,35 @@ async function weaveKanbanArrival(s) {
   portraitGenning.add(s.id);
   const changeHalf = Math.random() < 1 / 3;
   try {
-    // 每次上店頭都畫一張 full
-    const fullUrl = await weaveShot(s, "full", null, { forceNew: true });
-    if (fullUrl) setShot(s, "full", fullUrl);
+    // 每次上店頭：新 full（隨機 seed 才看得到「換了」；人設 tag 仍是同一人）
+    const fullUrl = await weaveShot(s, "full", null, { forceNew: true, randomSeed: true });
+    if (fullUrl) {
+      setShot(s, "full", fullUrl);
+      applyPortraitNow(s, "full");
+      toast(`${s.name} 的店頭立繪已換上`, "good");
+    }
 
     if (changeHalf) {
       const halfUrl = await weaveShot(s, "half", null, { forceNew: true, randomSeed: true });
       if (halfUrl) {
         setShot(s, "half", halfUrl);
+        applyPortraitNow(s, "half");
         toast(`${s.name} 的半身像換了新樣貌`, "good");
       }
     } else if (!s.portraits?.half) {
-      // 沒半身就補一張（沿用人設 seed）
-      const halfUrl = await weaveShot(s, "half", null, { forceNew: true });
-      if (halfUrl) setShot(s, "half", halfUrl);
+      const halfUrl = await weaveShot(s, "half", null, { forceNew: true, randomSeed: true });
+      if (halfUrl) {
+        setShot(s, "half", halfUrl);
+        applyPortraitNow(s, "half");
+      }
     }
-    // 缺頭像也順便補（不強制換）
     if (!s.portraits?.head) {
       const headUrl = await weaveShot(s, "head", null, { forceNew: true });
-      if (headUrl) setShot(s, "head", headUrl);
+      if (headUrl) {
+        setShot(s, "head", headUrl);
+        applyPortraitNow(s, "head");
+      }
     }
-    renderAll();
   } catch (e) {
     console.warn("[kanbanArt]", e);
   } finally {
