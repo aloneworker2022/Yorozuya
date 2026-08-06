@@ -6549,16 +6549,15 @@ function renderCardTable() {
   if (!sess.pending && !cardUi._keepPeek) setCtConfirm("");
   cardUi._keepPeek = false;
 
-  // ── 開戰前：準備牌組（每張一排點點，完成打勾）────────────────
+  // ── 開戰前：準備牌組（左→右，一點＝一張；完成打勾）────────────────
   if (sess.phase === "narr_prep") {
     const prog = Cards.narrProgress?.(sess) || { done: 0, total: 0 };
-    const rows = Object.keys(sess.cardNarr || {}).map((id) => {
+    // 每個點代表一張卡，橫排 · → ✓
+    const dots = Object.keys(sess.cardNarr || {}).map((id) => {
       const done = sess.cardNarr[id]?.status === "done" || sess.cardNarr[id]?.status === "error";
-      // 完成 ✓；進行中 · · · · ·
-      const marks = done
-        ? `<span class="narr-dot ok">✓</span>`
-        : `<span class="narr-dot">· · · · ·</span>`;
-      return `<div class="narr-row">${marks}</div>`;
+      return done
+        ? `<span class="narr-dot ok" aria-label="完成">✓</span>`
+        : `<span class="narr-dot" aria-label="準備中">·</span>`;
     }).join("");
     if (title) title.textContent = "準備牌組";
     syncCardTableChrome({ ejectMode: true });
@@ -6569,7 +6568,7 @@ function renderCardTable() {
     });
     setCtHand(`
       <div class="ct-react-beat narr-prep-list">
-        <div class="narr-rows">${rows || `<div class="narr-row"><span class="narr-dot">· · · · ·</span></div>`}</div>
+        <div class="narr-dots" role="status">${dots || `<span class="narr-dot">·</span>`}</div>
         <div class="detail-actions card-actions">
           <button type="button" id="ct-narr-leave">先離開</button>
         </div>

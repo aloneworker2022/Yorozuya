@@ -1532,22 +1532,31 @@ body.card-mode.has-ct-figure #kanban-girl {
 }
 #ct-portrait-badge.hidden { display: none; }
 
-/* 準備牌組：每張一排點點 → 完成打勾 */
+/* 準備牌組：左→右一點＝一張卡；完成 · → ✓ */
 .narr-prep-list { width: 100%; }
-.narr-rows {
-  display: flex; flex-direction: column; align-items: center;
-  gap: .35em; max-height: 36vh; overflow: auto;
-  padding: .4em 0 .6em;
-}
-.narr-row {
-  font-size: 1.15em; letter-spacing: .12em;
+.narr-dots {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: .55em .7em;
+  max-width: 100%;
+  padding: .8em .5em 1em;
+  font-size: 1.45em;
+  line-height: 1;
   color: var(--dim, #9aa0b5);
-  line-height: 1.4;
+}
+.narr-dot {
+  display: inline-flex;
+  width: 1.1em;
+  justify-content: center;
+  flex: 0 0 auto;
 }
 .narr-dot.ok {
   color: var(--cyan, #6fe3e1);
-  letter-spacing: 0;
-  font-weight: 600;
+  font-weight: 700;
+  font-size: .9em;
 }
 
 /* 前景：頂欄 + 空白 + 旁白 + 確認 + 手牌 */
