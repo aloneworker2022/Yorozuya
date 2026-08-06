@@ -5844,19 +5844,18 @@ function applyPlaySideEffects(girl, result) {
   }
 }
 
-/** 碎卡確認後真正打出（背景下單即時 AI；第二拍等收貨） */
+/** 碎卡確認後真正打出：當場開場景圖，再等圖完才生台詞 */
 function commitHandPlay(instanceId, girl, stage) {
   const r = Cards.commitPlay(state, instanceId, { stage, guardHigh: guardActive(girl) });
   if (!r.ok) { toast(r.err, "bad"); return; }
   cardUi.lastPlay = r;
   cardUi.awaitReaction = true;
-  cardUi.reactBeat = "action"; // 先播動作，再點一下才出她的回應
+  cardUi.reactBeat = "action"; // 先讀加長動作文，場景圖同時跑
   cardUi.endPanel = null;
   touchInteractDay(girl);
-  // M5：出卡綁定 art 別名（一張立繪多用）；UI 立刻用 cache／占位
   bindCardArtAlias(girl, r.cardId);
   applyPlaySideEffects(girl, r);
-  beginCardPlayAi(girl, r);
+  beginCardPlayAi(girl, r); // 出卡當下立刻生圖
   const n = state.cardSession?.hand?.length || 0;
   if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
   scheduleSave(); renderCardTable();
@@ -6219,8 +6218,8 @@ function renderCardTable() {
         <div class="ct-react-beat">
           <div class="dim small ct-react-wait">${
             waitingScene
-              ? "場景圖繪製中——可先點繼續看進度"
-              : "點對話框——看她怎麼接"
+              ? "場景已在繪製——慢慢看完這段，再點繼續"
+              : "慢慢看完這段，再點繼續看她怎麼接"
           }</div>
           <div class="detail-actions card-actions">
             <button type="button" class="cyan" id="ct-ack-react">繼續</button>
