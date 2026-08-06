@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.19(2026-08-06)出卡圖文對齊同一拍";
+const APP_VER = "v6.20(2026-08-06)玩家動作軸·圖文回話對齊";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1977,79 +1977,80 @@ function sceneEnMsgs(girl, play) {
 }
 
 /**
- * 依牌種／tags 組「畫面定格」保底（無模型或 LLM 失敗時）。
- * 目標：圖的構圖對得上「這張牌在幹嘛」，不是隨便半身美圖。
+ * 畫面定格保底：鏡頭必須看見「玩家動作造成的瞬間」。
+ * 女子只畫外在反應（姿勢／被碰到的位置），不畫內心戲。
  */
 function visualBeatFallback(play, def) {
   const tags = def?.tags || [];
   const kind = def?.kind || "speech";
   const name = play?.name || def?.name || "";
   const scene = String(play?.sceneStart || def?.sceneStart || "").slice(0, 220);
-  let poseEn = "two people close, woman half body, expressive face, eye contact";
-  let poseZh = "兩人距離很近，她半身入鏡，表情清楚，視線有接觸。";
+  // 以「他的動作」為主軸
+  let poseEn = "man's action toward woman visible, woman half body, clear interaction";
+  let poseZh = "鏡頭清楚看見他對她做的動作，以及當下的距離。";
   if (tags.includes("kiss") || /吻/.test(name)) {
-    poseEn = "kissing or about to kiss, faces very close, intimate, eyes half-closed or startled";
-    poseZh = "幾乎吻上或正在吻，臉很近，親密或被嚇到的表情。";
+    poseEn = "he is kissing her or leaning in to kiss, faces close, his action primary, her body position reactive";
+    poseZh = "他正在吻她或湊近要吻；動作主體是他，她的臉與距離是被帶動的結果。";
   } else if (tags.includes("sex")) {
-    poseEn = "intimate embrace, bodies pressed close, intense expression, upper body focus";
-    poseZh = "身體貼得很近、擁抱或壓近，表情強烈，上半身為主。";
-  } else if (tags.includes("touch") || /觸|碰|腰|手|靠/.test(name)) {
-    poseEn = "hand contact or leaning in, close distance, tension in shoulders, reactive expression";
-    poseZh = "有碰觸或靠得很近，肩線緊繃，表情在反應他的手或距離。";
+    poseEn = "his body pressing close, intimate contact initiated by him, upper bodies, not generic portrait";
+    poseZh = "他壓近、造成親密接觸；畫面重點是他的動作與兩人貼合，不是她單獨擺拍。";
+  } else if (tags.includes("touch") || /觸|碰|腰|手|靠|握/.test(name)) {
+    poseEn = "his hand on her (waist/hand/shoulder), contact point visible, close distance, his reach is the focus";
+    poseZh = "他的手碰到她（腰／手／肩等）的接觸點要看得見；重點是他伸手的動作。";
   } else if (tags.includes("talk") || kind === "speech") {
-    poseEn = "facing him, talking mid-conversation, mouth slightly open, natural gesture with hands";
-    poseZh = "面對他說話，像對話中途，手勢自然，表情跟剛才的話有關。";
+    poseEn = "he is speaking to her, facing her, gesture of talking, mid-conversation, not her monologue pose";
+    poseZh = "他正面對她說話或剛說完，手勢／口型顯示「他在出話」，不是她自己沉思。";
   } else if (kind === "girl_trait") {
-    poseEn = "she initiates, leaning forward or pointing, confident or teasing expression";
-    poseZh = "她主動靠近或出聲，帶點主導或吐槽的表情。";
+    poseEn = "her external action toward him visible, he is the receiver, clear body language";
+    poseZh = "她做出可見的外在舉動（貼近／開口／比劃），他在接收端。";
   } else if (kind === "venue_event") {
-    poseEn = "environmental storytelling, reacting to surroundings, half body, clear emotion";
-    poseZh = "對現場突發狀況有反應，半身，情緒清楚。";
+    poseEn = "both reacting to a concrete situation, environment cue, interaction frozen mid-action";
+    poseZh = "現場事件與當下動作定格，兩人都在事件裡，不是單人肖像。";
   }
   if (play?.open?.success === false) {
-    poseEn += ", rejecting, turning away, guarded expression";
-    poseZh += "她在抗拒、想退開，表情防備。";
+    poseEn += ", she pulls back or blocks, physical rejection visible";
+    poseZh += "她身體上退開或擋開，拒絕是肢體可見的。";
   }
   const visual_zh = [
     poseZh,
-    scene ? `呼應場面：${scene.slice(0, 100)}` : "",
-    name ? `對應牌意「${name}」。` : "",
+    scene ? `對準這段玩家動作：${scene.slice(0, 120)}` : "",
+    name ? `牌意「${name}」的動作要看得見。` : "",
   ].filter(Boolean).join("");
   const visual_en = [
-    "anime illustration, single adult woman focus, consistent character face",
+    "anime illustration, interaction scene not solo portrait",
+    "show HIS action clearly, contact point or speech gesture visible",
     poseEn,
-    name ? `mood of card: ${name}` : "",
-    scene ? scene.slice(0, 120) : "",
-    "detailed face, emotional, cinematic lighting, not generic portrait",
+    "adult woman character match sheet, detailed face",
+    name ? `action of: ${name}` : "",
+    "cinematic lighting, concrete pose, not generic standing beauty shot",
   ].filter(Boolean).join(", ");
   return { visual_zh, visual_en };
 }
 
-/** LLM：把牌＋場面收成「畫面定格」中英各一，給圖與回話共用 */
+/** 定格：只根據「玩家動作旁白」拆鏡頭，禁止改寫成她的情緒獨白 */
 function visualBeatMsgs(girl, play, def) {
   const tags = (def?.tags || []).join(", ");
   return [
     {
       role: "system",
       content: [
-        "你是戀愛互動遊戲的分鏡師。",
-        "任務：把「卡牌＋場面旁白」收成【同一個瞬間】的畫面定格，供插圖與女角台詞共用。",
+        "你是分鏡師。任務：把「玩家剛做的事」收成同一個鏡頭，供插圖與女角回話共用。",
+        "核心：畫面主軸是【他的動作／話語造成的瞬間】，不是她的心理描寫。",
+        "她只以「被碰到的位置、退開、僵住」等外在姿勢出現，不要寫她心裡想什麼。",
         "輸出格式（嚴格兩段，不要其他字）：",
         "VISUAL_ZH:",
-        "（繁中 2～3 句：現在鏡頭裡她的姿勢、與他的距離、表情、正在發生的肢體／對話狀態。必須對得上這張牌的意思。）",
+        "（繁中 2～3 句：他做了什麼、手／身體在哪、距離多少；她外在姿勢一句帶過即可。）",
         "VISUAL_EN:",
-        "（英文逗號分隔的插圖描述：pose, expression, distance, action。具體、可畫。不要對話引號。不要寫 card/game。）",
+        "（英文視覺 tags：his action, contact point, distance, her outer pose. No dialogue. No card/game words.）",
       ].join("\n"),
     },
     {
       role: "user",
       content: [
-        `女子：${girl?.name || "她"}，階段：${girl?.stage || "stranger"}`,
-        `卡牌：${def?.name || play?.name || ""}（${def?.kind || ""}）`,
-        `標籤：${tags || "—"}`,
-        `場面旁白：${play?.sceneStart || def?.sceneStart || "—"}`,
-        play?.open?.success === false ? "結果：推進失敗，她沒接住。" : "",
-        play?.open?.success ? "結果：節奏被打開一點。" : "",
+        `卡牌：${def?.name || play?.name || ""} tags=${tags || "—"}`,
+        `玩家動作旁白（唯一真相，必須對齊）：\n${play?.sceneStart || def?.sceneStart || "—"}`,
+        play?.open?.success === false ? "肢體結果：她沒接住、退開。" : "",
+        play?.open?.success ? "肢體結果：推進有被接住一點。" : "",
         "請輸出 VISUAL_ZH 與 VISUAL_EN。",
       ].filter(Boolean).join("\n"),
     },
@@ -5953,37 +5954,47 @@ function deckKeyForNarr(state) {
   return deck;
 }
 
-/** 牌意演繹 prompt：依牌面意思寫 3～4 句，不要抄固定 sceneStart */
+/**
+ * 牌意演繹：寫「玩家這一拍的動作／話語／將做的事」。
+ * 禁止妹子內心戲、情緒獨白、大段她的心理——頂多肢體接觸的客觀描述。
+ */
 function cardNarrMsgs(girl, def) {
-  const you = state.settings?.player || "他";
+  const you = state.settings?.player || "你";
   const rating = state.settings?.rating || "sfw";
+  const kind = def?.kind || "speech";
+  let kindRule = "寫玩家（第二人稱「你」）的動作、說出口的話、或正要做的事。";
+  if (kind === "girl_trait") {
+    kindRule = "這一張是「她外顯的舉動」（可觀察的動作／開口），用「她……」客觀描述外在行為，不要寫她心裡怎麼想。玩家是旁觀／被作用的一方。";
+  } else if (kind === "venue_event") {
+    kindRule = "寫現場發生的客觀事件與玩家當下的動作／處境，不要寫她的內心戲。";
+  }
   return [
     {
       role: "system",
       content: [
-        "你是戀愛互動卡牌遊戲的場面作者。",
-        "根據「卡牌名、標籤、牌意提示」為這一局寫全新的場面旁白。",
-        "規則：",
-        "1. 只輸出繁體中文，3 到 4 句完整句子（句號結尾）。",
-        "2. 寫「玩家對她做了什麼／現場氣氛」，像舞台指示，不是對話稿。",
-        "3. 不要照抄或微調範例原文；用同一牌意重新演繹。",
-        "4. 不要 markdown、不要編號、不要引號包整段。",
-        "5. 要貼合這位女子的關係階段與個性口吻所暗示的距離感。",
-        rating === "nsfw" ? "6. 可依牌意寫露骨場面。" : "6. 全年齡：可曖昧，不寫露骨性行為。",
+        "你是卡牌遊戲的「玩家動作旁白」作者。",
+        "輸出會直接顯示成：玩家打出這張牌時的場面字——代表玩家的行動，不是妹子的獨白。",
+        "硬性規則：",
+        "1. 只輸出繁體中文，3 到 4 句，句號結尾。",
+        "2. " + kindRule,
+        "3. 禁止：她的感想、恐懼、喜歡、內心獨白、大段心理、替她決定情緒標籤。",
+        "4. 允許：玩家碰她時的客觀肢體（手放到哪、距離、說了哪類話的方向），用外部可觀察的寫法。",
+        "5. 禁止照抄範例原文；用同一牌意重寫。不要 markdown、編號、引號包整段。",
+        "6. 不要寫「她覺得／她心想／她暗自」。",
+        rating === "nsfw" ? "7. 可依牌意寫露骨動作，但仍是「你做了什麼」。" : "7. 全年齡：可曖昧肢體，不寫露骨性行為。",
       ].join("\n"),
     },
     {
       role: "user",
       content: [
-        `女子：${girl?.name || "她"}（階段：${girl?.stage || "stranger"}）`,
-        `個性：${(girl?.personality || []).join("、") || "—"}`,
-        `玩家稱呼：${you}`,
-        `卡牌 id：${def?.id || ""}`,
-        `卡牌名：${def?.name || ""}`,
-        `種類：${def?.kind || ""}`,
+        `對象女子（只當「被作用的人」，不要寫她的心）：${girl?.name || "她"}`,
+        `關係距離（只影響你敢做多近，不要寫她的感受）：${girl?.stage || "stranger"}`,
+        `玩家：${you}`,
+        `卡牌：${def?.name || ""}（${kind}）`,
         `標籤：${(def?.tags || []).join("、") || "—"}`,
-        `牌意提示（消化後重寫，勿照抄）：${def?.promptHint || def?.sceneStart || def?.name || ""}`,
-        "請輸出 3～4 句場面旁白。",
+        `牌意（動作方向，重寫成你的行動，勿抄）：${def?.promptHint || def?.name || ""}`,
+        `固定文參考（可參考動作，勿抄情緒）：${(def?.sceneStart || "").slice(0, 80)}`,
+        "請只輸出 3～4 句「玩家動作／話語」旁白。",
       ].join("\n"),
     },
   ];

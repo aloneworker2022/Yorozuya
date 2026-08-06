@@ -405,26 +405,25 @@ export function buildCardPlayPrompt(ctx) {
 
   lines.push(
     "",
-    "【剛才發生的事——你必須接住這一拍，不能裝沒發生】",
+    "【他剛才對你做了什麼——這是唯一真相，你的每一句都要接住】",
     whatHappened,
     play.scene_start
-      ? `場面旁白（已發生）:\n${play.scene_start}`
+      ? `【玩家動作旁白】（他做的事／說的話／肢體；不是你的心。你必須回應「這件事」）:\n${play.scene_start}`
       : "",
-    // 與出卡圖共用的「畫面定格」——回話必須對得上圖，不能各講各的
     play.visual_beat_zh
-      ? `【畫面定格——與插圖同一瞬間，你的台詞要接這個畫面】\n${play.visual_beat_zh}`
+      ? `【畫面定格】（插圖就是這一瞬；你的台詞要接這個動作結果，例如被碰到哪、距離多近）:\n${play.visual_beat_zh}`
       : "",
-    play.prompt_hint ? `演出提示（消化進個性，勿照念）:${play.prompt_hint}` : "",
+    play.prompt_hint ? `牌意方向（他想幹嘛，勿照念）:${play.prompt_hint}` : "",
     play.open_fail
-      ? "結果:他想推進／開門，你沒接住——抗拒、退開、冷下來，或先生氣再心虛。"
+      ? "肢體結果:你沒接住——退開、擋、冷。回話要對上「拒絕這一拍」。"
       : "",
     play.open_ok
-      ? "結果:某種節奏被打開了，你被帶著走了一點——可以慌、可以嘴硬、可以反而更貼。"
+      ? "肢體結果:這一拍有被推進一點——你可以慌、嘴硬、接住，但要承認發生了。"
       : "",
     play.feel_label
-      ? `心裡大致是「${play.feel_label}」——用語氣與措辭帶出，禁止說「情感+1」或報數。`
+      ? `情緒底色「${play.feel_label}」只影響語氣，禁止報數、禁止另開一場無關對話。`
       : "",
-    play.chain_attr ? `當下節奏偏「${play.chain_attr}」。` : "",
+    play.chain_attr ? `節奏偏「${play.chain_attr}」。` : "",
   );
 
   // 可選：飢渴／防備（有帶就寫）
