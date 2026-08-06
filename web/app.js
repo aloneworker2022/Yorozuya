@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.16(2026-08-06)看板全身立繪織完即換";
+const APP_VER = "v6.17(2026-08-06)開戰前牌意演繹";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -4491,17 +4491,24 @@ function renderCrests() {
       const sess = state.cardSession?.girlId === s.id ? state.cardSession : null;
       const phase = sess?.phase || null;
       const playing = phase === "round_play" && Cards.playsLeft(sess) > 0;
+      const prepping = phase === "narr_prep";
+      const prog = prepping ? Cards.narrProgress?.(sess) : null;
       const face = girlShot(s, "head");
-      const title = playing
-        ? `繼續與 ${s.name} 打牌`
-        : `與 ${s.name} 開始打牌`;
+      const title = prepping
+        ? `牌意演繹中 ${prog?.done || 0}/${prog?.total || "?"}`
+        : playing
+          ? `繼續與 ${s.name} 打牌`
+          : `與 ${s.name} 開始打牌（先演繹牌意）`;
+      const badge = prepping
+        ? `${prog?.done || 0}/${prog?.total || "?"}`
+        : playing ? "…" : "牌";
       return `
-      <button type="button" class="play-fab r-${s.rarity}${playing ? " active-sess" : ""}" data-cid="${s.id}"
+      <button type="button" class="play-fab r-${s.rarity}${playing || prepping ? " active-sess" : ""}" data-cid="${s.id}"
               title="${esc(title)}" aria-label="${esc(title)}">
         ${face
           ? `<img class="play-fab-face" src="${esc(face)}" alt="">`
           : `<span class="play-fab-icon" aria-hidden="true">✦</span>`}
-        <span class="play-fab-badge" aria-hidden="true">${playing ? "…" : "牌"}</span>
+        <span class="play-fab-badge" aria-hidden="true">${badge}</span>
       </button>`;
     }).join("");
     el.querySelectorAll(".play-fab").forEach(b => {
@@ -5789,10 +5796,202 @@ function dealFromDeck(girl) {
   return Cards.startPlayRound(state, { stage, guardHigh: guardActive(girl) });
 }
 
+function deckKeyForNarr(state) {
+  const deck = (Cards.getDeck?.(state) || state.cardDeck || []).slice().sort().join(",");
+  return deck;
+}
+
+/** 牌意演繹 prompt：依牌面意思寫 3～4 句，不要抄固定 sceneStart */
+function cardNarrMsgs(girl, def) {
+  const you = state.settings?.player || "他";
+  const rating = state.settings?.rating || "sfw";
+  return [
+    {
+      role: "system",
+      content: [
+        "你是戀愛互動卡牌遊戲的場面作者。",
+        "根據「卡牌名、標籤、牌意提示」為這一局寫全新的場面旁白。",
+        "規則：",
+        "1. 只輸出繁體中文，3 到 4 句完整句子（句號結尾）。",
+        "2. 寫「玩家對她做了什麼／現場氣氛」，像舞台指示，不是對話稿。",
+        "3. 不要照抄或微調範例原文；用同一牌意重新演繹。",
+        "4. 不要 markdown、不要編號、不要引號包整段。",
+        "5. 要貼合這位女子的關係階段與個性口吻所暗示的距離感。",
+        rating === "nsfw" ? "6. 可依牌意寫露骨場面。" : "6. 全年齡：可曖昧，不寫露骨性行為。",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `女子：${girl?.name || "她"}（階段：${girl?.stage || "stranger"}）`,
+        `個性：${(girl?.personality || []).join("、") || "—"}`,
+        `玩家稱呼：${you}`,
+        `卡牌 id：${def?.id || ""}`,
+        `卡牌名：${def?.name || ""}`,
+        `種類：${def?.kind || ""}`,
+        `標籤：${(def?.tags || []).join("、") || "—"}`,
+        `牌意提示（消化後重寫，勿照抄）：${def?.promptHint || def?.sceneStart || def?.name || ""}`,
+        "請輸出 3～4 句場面旁白。",
+      ].join("\n"),
+    },
+  ];
+}
+
+function narrFallbackText(def) {
+  // 無模型：仍用加長固定句，至少能開戰
+  return (def?.sceneStart || def?.name || "你靠近她，這一拍發生了什麼。").trim();
+}
+
+function narrAllReady(sess) {
+  return !!Cards.narrProgress?.(sess)?.ready;
+}
+
+/**
+ * 開戰前：依出戰牌組＋本體卡，為每張卡 AI 演繹 3～4 句。
+ * 全好之前 phase=narr_prep，不能 deal。
+ */
+function beginCardNarrPrep(girl) {
+  const sess = state.cardSession;
+  if (!sess || !girl) return;
+  const ids = Cards.sessionCardIds?.(state) || [];
+  const token = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  sess.phase = "narr_prep";
+  sess.narrToken = token;
+  sess.narrDeckKey = deckKeyForNarr(state);
+  sess.cardNarr = {};
+  for (const id of ids) {
+    sess.cardNarr[id] = { status: "pending", text: "" };
+  }
+  sess.log = sess.log || [];
+  sess.log.push({ t: Date.now(), kind: "narr_prep_start", n: ids.length });
+
+  if (!ids.length) {
+    finishCardNarrPrep(girl, "empty");
+    return;
+  }
+
+  // 無模型：立刻用固定句填完
+  if (!state.settings?.model) {
+    for (const id of ids) {
+      const def = Cards.cardById(id);
+      sess.cardNarr[id] = { status: "done", text: narrFallbackText(def) };
+    }
+    finishCardNarrPrep(girl, "fallback");
+    return;
+  }
+
+  toast(`牌意演繹中（0/${ids.length}）——好了才能靠近她`, "");
+  runCardNarrPrep(girl, token);
+}
+
+async function runCardNarrPrep(girl, token) {
+  const sess = state.cardSession;
+  if (!sess || sess.phase !== "narr_prep" || sess.narrToken !== token) return;
+
+  const ids = Object.keys(sess.cardNarr || {});
+  // 一次最多 2 張並行，避免塞爆佇列
+  const pending = ids.filter(id => sess.cardNarr[id]?.status === "pending");
+  if (!pending.length) {
+    if (narrAllReady(sess)) finishCardNarrPrep(girl, "done");
+    return;
+  }
+
+  const batch = pending.slice(0, 2);
+  await Promise.all(batch.map(id => genOneCardNarr(girl, id, token)));
+
+  if (!state.cardSession || state.cardSession.narrToken !== token) return;
+  const prog = Cards.narrProgress(state.cardSession);
+  if (document.body.classList.contains("card-mode")) renderCardTable();
+  else renderCrests();
+
+  if (prog.ready) {
+    finishCardNarrPrep(girl, "done");
+  } else {
+    // 下一輪
+    runCardNarrPrep(girl, token);
+  }
+}
+
+async function genOneCardNarr(girl, cardId, token) {
+  const sess = state.cardSession;
+  if (!sess || sess.narrToken !== token || !sess.cardNarr?.[cardId]) return;
+  if (sess.cardNarr[cardId].status !== "pending") return;
+
+  const def = Cards.cardById(cardId);
+  const key = `cardnarr:${girl.id}:${cardId}:${token}`;
+  const deadline = Date.now() + 120000;
+  let r = await genPost(key, cardNarrMsgs(girl, def), 9);
+  while (r && Date.now() < deadline) {
+    if (state.cardSession?.narrToken !== token) return;
+    if (r.status === "done" && r.result) {
+      const { text } = stripGuardFlag(typeof r.result === "string" ? r.result : String(r.result ?? ""));
+      let line = (text || "").trim();
+      // 取前 4 句
+      const parts = line.split(/(?<=[。！？])/).map(x => x.trim()).filter(Boolean);
+      if (parts.length > 4) line = parts.slice(0, 4).join("");
+      if (Cards.isWeakLine?.(line) || line.length < 12) {
+        line = narrFallbackText(def);
+        sess.cardNarr[cardId] = { status: "done", text: line, from: "fallback" };
+      } else {
+        sess.cardNarr[cardId] = { status: "done", text: line, from: "ai" };
+      }
+      dirty = true;
+      scheduleSave();
+      return;
+    }
+    if (r.status === "error") break;
+    await new Promise(res => setTimeout(res, 700));
+    r = await genPost(key, cardNarrMsgs(girl, def), 9);
+  }
+  // 失敗保底
+  if (state.cardSession?.cardNarr?.[cardId]?.status === "pending") {
+    state.cardSession.cardNarr[cardId] = {
+      status: "done",
+      text: narrFallbackText(def),
+      from: "error_fallback",
+    };
+    dirty = true;
+    scheduleSave();
+  }
+}
+
+function finishCardNarrPrep(girl, why = "done") {
+  const sess = state.cardSession;
+  if (!sess || !girl) return;
+  if (sess.phase !== "narr_prep" && why !== "empty") {
+    // 可能已手動關掉
+  }
+  const prog = Cards.narrProgress?.(sess) || { done: 0, total: 0, ready: true };
+  if (sess.phase === "narr_prep" && prog.total && !prog.ready) return;
+
+  // 開戰
+  const deal = dealFromDeck(girl);
+  if (!deal.ok) {
+    toast(deal.err || "開戰失敗", "bad");
+    if (deal.err && String(deal.err).includes("演繹")) return;
+    return;
+  }
+  cardUi.injectPick = [];
+  cardUi.lastPlay = null;
+  cardUi.handIdx = 0;
+  cardUi.awaitReaction = false;
+  cardUi.reactBeat = null;
+  cardUi.endPanel = null;
+  touchInteractDay(girl);
+  syncPortraitCgCache(girl);
+  ensureArtCacheBg(girl);
+  document.body.classList.add("card-mode");
+  const nAi = Object.values(sess.cardNarr || {}).filter(x => x.from === "ai").length;
+  log(`與 ${girl.name} 開桌（牌意 ${prog.done}/${prog.total}，AI ${nAi}）`);
+  toast(`牌意就緒——開始互動（約 ${deal.nLeft} 次）`, "good");
+  scheduleSave();
+  renderAll();
+}
+
 /**
  * 開看板牌桌。
- * 不再局內編牌：直接用商店「出戰牌組」開戰。
- * @param {{ forceSetup?: boolean }} opts 相容舊呼叫（忽略）
+ * 新局：先 narr_prep（每張卡 AI 演繹 3～4 句）→ 全好才 deal。
+ * 已在 round_play：直接繼續。
  */
 function openKanbanTable(girlId, opts = {}) {
   if (!cardSystemOn()) { toast("卡牌系統未就緒", "bad"); return; }
@@ -5806,43 +6005,59 @@ function openKanbanTable(girlId, opts = {}) {
     return;
   }
 
-  // 既有 session：繼續打牌；若停在 idle／setup 則用牌組開戰
+  // 既有 session
   if (Cards.sessionActive(state) && state.cardSession.girlId === girlId) {
     const phase = state.cardSession.phase;
     document.body.classList.add("card-mode");
     touchInteractDay(s);
-    // M5：不 await 生圖
     syncPortraitCgCache(s);
     ensureArtCacheBg(s);
-    if (phase !== "round_play" || Cards.playsLeft(state.cardSession) <= 0) {
-      if (phase === "round_play" || phase === "idle_present" || phase === "round_setup"
-        || phase === "round_end") {
+    cardUi.endPanel = null;
+
+    if (phase === "narr_prep") {
+      // 繼續等／重跑佇列
+      toast("牌意還在演繹……", "");
+      if (state.settings?.model && state.cardSession.narrToken) {
+        runCardNarrPrep(s, state.cardSession.narrToken);
+      }
+      scheduleSave();
+      renderCardTable();
+      renderCrests();
+      return;
+    }
+
+    if (phase === "round_play" && Cards.playsLeft(state.cardSession) > 0) {
+      scheduleSave();
+      renderCardTable();
+      renderCrests();
+      return;
+    }
+
+    // 新一輪：先重新演繹（牌組可能改過）
+    if (phase === "round_play" || phase === "idle_present" || phase === "round_setup"
+      || phase === "round_end") {
+      const dk = deckKeyForNarr(state);
+      if (state.cardSession.narrDeckKey === dk && narrAllReady(state.cardSession)
+        && state.cardSession.cardNarr) {
         const deal = dealFromDeck(s);
         if (!deal.ok && !deal.already) toast(deal.err, "bad");
-        else if (deal.ok && !deal.already) {
-          toast(`開始——約 ${deal.nLeft} 次`, "good");
-        }
+        else if (deal.ok && !deal.already) toast(`開始——約 ${deal.nLeft} 次`, "good");
+      } else {
+        beginCardNarrPrep(s);
       }
     }
-    cardUi.endPanel = null;
     scheduleSave();
     renderCardTable();
     renderCrests();
     return;
   }
 
-  // 新 session：本體卡 + 出戰牌組直接開打
+  // 新 session：本體卡 + 牌組 → 先演繹，不准直接打
   const girlCards = Cards.buildGirlCards(s, {
     cravingMidOrHigh: !!craveTier(s),
   });
   const r = Cards.openSession(state, { mode: "kanban", girlId, girlCards });
   if (!r.ok) { toast(r.err, "bad"); return; }
-  const deal = dealFromDeck(s);
-  if (!deal.ok) {
-    toast(deal.err || "無法開戰", "bad");
-    Cards.closeSession(state, "deal_fail");
-    return;
-  }
   cardUi.injectPick = [];
   cardUi.lastPlay = null;
   cardUi.handIdx = 0;
@@ -5851,13 +6066,13 @@ function openKanbanTable(girlId, opts = {}) {
   cardUi.reactBeat = null;
   cardUi.endPanel = null;
   touchInteractDay(s);
-  // M5：開戰零等待 GPU
   syncPortraitCgCache(s);
   ensureArtCacheBg(s);
   document.body.classList.add("card-mode");
-  log(`與 ${s.name} 開桌（本體 ${girlCards.length} · 牌組 ${deal.deckSize || 0}）`);
-  toast(`開始互動——約 ${deal.nLeft} 次`, "good");
-  scheduleSave(); renderAll();
+  log(`與 ${s.name} 準備開桌（先演繹牌意）`);
+  beginCardNarrPrep(s);
+  scheduleSave();
+  renderAll();
 }
 
 /**
@@ -6129,7 +6344,12 @@ function attachCardPeek(el, def, extraLines = []) {
     setCtConfirm(`
       <div class="card-peek">
         <div class="card-peek-name">${esc(def.name)}</div>
-        <div class="card-peek-scene">${esc(def.sceneStart || def.promptHint || "（沒有更多描述）")}</div>
+        <div class="card-peek-scene">${esc(
+          (Cards.sceneTextFor?.(state, def.id) && state.cardSession?.cardNarr?.[def.id]?.status === "done"
+            ? Cards.sceneTextFor(state, def.id)
+            : null)
+          || def.sceneStart || def.promptHint || "（沒有更多描述）"
+        )}</div>
         ${bits.length ? `<div class="card-peek-meta dim small">${bits.map(b => esc(b)).join(" · ")}</div>` : ""}
         <button type="button" class="link-btn" id="ct-peek-close">關閉</button>
       </div>`);
@@ -6317,6 +6537,41 @@ function renderCardTable() {
   // 有碎卡確認或長按詳情時不要整頁清掉；本輪開始時清
   if (!sess.pending && !cardUi._keepPeek) setCtConfirm("");
   cardUi._keepPeek = false;
+
+  // ── 開戰前：牌意演繹（全好才能打牌）────────────────
+  if (sess.phase === "narr_prep") {
+    const prog = Cards.narrProgress?.(sess) || { done: 0, total: 0 };
+    const rows = Object.entries(sess.cardNarr || {}).map(([id, row]) => {
+      const def = Cards.cardById(id);
+      const st = row.status === "done" ? "✓" : row.status === "error" ? "!" : "…";
+      return `<div class="dim small" style="margin:.15em 0">${st} ${esc(def?.name || id)}</div>`;
+    }).join("");
+    syncCardTableChrome({ ejectMode: true });
+    setCtVn({
+      name: gname,
+      text: "她在感受你帶來的牌意……",
+      meta: `演繹進度 <b>${prog.done}</b> / <b>${prog.total}</b> · 全好才開始`,
+    });
+    setCtHand(`
+      <div class="ct-react-beat">
+        <div class="dim small" style="max-height:30vh;overflow:auto;text-align:left;padding:0 .4em">${
+          rows || "（沒有卡？請先到商店編出戰牌組）"
+        }</div>
+        <div class="dim small ct-react-wait" style="margin-top:.5em">
+          每張卡會依「牌面意思」新寫 3～4 句，不是固定台詞
+        </div>
+        <div class="detail-actions card-actions">
+          <button type="button" id="ct-narr-leave">先離開</button>
+        </div>
+      </div>`);
+    $("#ct-narr-leave")?.addEventListener("click", () => {
+      endCardTableAndReleaseKanban("narr_abort");
+      toast("改天再靠近", "");
+      scheduleSave();
+      renderAll();
+    });
+    return;
+  }
 
   // ── 出卡反應兩拍：①動作 → ②（先生圖）再出她的文字 ──
   if (cardUi.awaitReaction && cardUi.lastPlay) {
@@ -6638,6 +6893,7 @@ function phaseLabel(p) {
   return ({
     idle_present: "陪伴",
     round_setup: "組牌",
+    narr_prep: "牌意演繹",
     round_play: "互動中",
     round_end: "……",
     summoning_prep: "成形中",

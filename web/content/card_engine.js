@@ -666,8 +666,42 @@ export function openSession(state, { mode, girlId, girlCards = [], venueId = nul
     venueCards: venueCards || [],
     log: [],
     pending: null, // { instanceId } 確認層
+    // 開戰前牌意演繹：cardId → { status, text }（動態 scene，非 JSON 固定句）
+    cardNarr: null,
+    narrToken: null,
+    narrDeckKey: null,
   };
   return { ok: true, session: state.cardSession };
+}
+
+/** 本局會用到的卡 id（本體＋出戰牌組＋場地） */
+export function sessionCardIds(state) {
+  const sess = state.cardSession;
+  if (!sess) return [];
+  const ids = new Set();
+  for (const c of sess.girlCards || []) if (c?.cardId) ids.add(c.cardId);
+  for (const c of sess.venueCards || []) if (c?.cardId) ids.add(c.cardId);
+  for (const id of getDeck(state) || []) if (id) ids.add(id);
+  return [...ids];
+}
+
+export function narrProgress(sess) {
+  const map = sess?.cardNarr || {};
+  const ids = Object.keys(map);
+  const total = ids.length;
+  let done = 0;
+  for (const id of ids) {
+    if (map[id]?.status === "done" || map[id]?.status === "error") done++;
+  }
+  return { done, total, ready: total > 0 && done >= total };
+}
+
+/** 打牌用動態場面句；沒有才退回卡面固定 sceneStart */
+export function sceneTextFor(state, cardId) {
+  const def = cardById(cardId);
+  const dyn = state.cardSession?.cardNarr?.[cardId];
+  if (dyn?.status === "done" && dyn.text && !isWeakLine(dyn.text)) return dyn.text;
+  return def?.sceneStart || def?.name || "……";
 }
 
 export function sessionActive(state) {
@@ -720,10 +754,15 @@ export function startPlayRound(state, { stage, guardHigh = false } = {}) {
     return { ok: true, already: true, hand: sess.hand, nLeft: sess.nLeft };
   }
   const okPhases = new Set([
-    "idle_present", "round_setup", "round_end", "round_play",
+    "idle_present", "round_setup", "round_end", "round_play", "narr_prep",
   ]);
   if (!okPhases.has(sess.phase)) {
     return { ok: false, err: "現在不能開戰" };
+  }
+  // 牌意未演繹完不可開戰
+  if (sess.phase === "narr_prep") {
+    const p = narrProgress(sess);
+    if (!p.ready) return { ok: false, err: "牌意還在演繹中" };
   }
 
   const deck = getDeck(state);
@@ -851,7 +890,8 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
     ok: true,
     cardId: def.id,
     name: def.name,
-    sceneStart: def.sceneStart || def.name,
+    // 優先本局 AI 演繹的 3～4 句，不是 JSON 固定句
+    sceneStart: sceneTextFor(state, def.id),
     girlLine: "",
     feelLabel: "",
     open: null,
