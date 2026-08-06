@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.14(2026-08-06)出卡即生圖·加長卡文";
+const APP_VER = "v6.15(2026-08-06)卡文三句+看板生立繪";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1595,9 +1595,14 @@ function comfyCkptOptions(selected) {
 
 // 一張的下單→輪詢。shot 給值(head|half|full)= 三連拍其中一張,尺寸與 seed
 // 由伺服器依規格決定(三張同 seed 才是同一張臉)。回 URL 或 ""。
-async function weaveShot(s, shot, onTick) {
+// opts.forceNew：新 key 強制重跑；opts.randomSeed：半身換樣時用（Comfy）
+async function weaveShot(s, shot, onTick, opts = {}) {
   const comfy = imgProvider() === "comfy";
   const body = {
+    // 強制新單，避免佇列回舊 done 快取
+    key: opts.forceNew
+      ? `portrait:${s.id}:${shot}:${Date.now().toString(36)}`
+      : undefined,
     provider: imgProvider(),
     model: state.settings.model || "grok-4.5",
     // Grok 那條沒有三連拍,只認 framing;head 對它而言最接近半身
@@ -1606,8 +1611,14 @@ async function weaveShot(s, shot, onTick) {
     style: state.settings.imgStyle || "pixel",
     character: s,   // 完整人設(generateGirl 結果),生圖以此為準
     retry: true,
-    ...(comfy ? { shot, char_id: s.id, comfy_url: state.settings.comfyUrl || "",
-                ckpt: state.settings.comfyCkpt || "" } : {}),
+    ...(comfy ? {
+      shot,
+      char_id: s.id,
+      comfy_url: state.settings.comfyUrl || "",
+      ckpt: state.settings.comfyCkpt || "",
+      // 0 = 伺服器用人設 seed；換半身時給隨機 seed 才會變
+      ...(opts.randomSeed ? { seed: (Math.floor(Math.random() * 2147483646) + 1) } : {}),
+    } : {}),
   };
   const t0 = Date.now();
   const timer = onTick ? setInterval(() => onTick(Math.round((Date.now() - t0) / 1000)), 1000) : null;
@@ -1637,12 +1648,52 @@ async function weaveShot(s, shot, onTick) {
 function setShot(s, shot, url) {
   if (!url) return;
   if (!s.portraits) s.portraits = {};
-  s.portraits[shot] = url;
-  s.portrait = s.portraits.full || s.portraits.half || url;   // 舊欄位仍指得到東西
+  // 同路徑覆寫時加版本，避免瀏覽器吃舊半身
+  const bust = url.includes("?") ? url : `${url.split("#")[0]}?v=${Date.now()}`;
+  s.portraits[shot] = bust;
+  s.portrait = s.portraits.full || s.portraits.half || bust;
   s.portraitReady = true;
   syncPortraitCgCache(s);
   dirty = true;
   saveNow();
+}
+
+/**
+ * 召為看板娘：背景必織一張全身立繪；1/3 機率重織半身（新 seed，牌桌用）。
+ * 不擋 UI。
+ */
+async function weaveKanbanArrival(s) {
+  if (!s || !canWeaveNow()) return;
+  if (portraitGenning.has(s.id)) return;
+  portraitGenning.add(s.id);
+  const changeHalf = Math.random() < 1 / 3;
+  try {
+    // 每次上店頭都畫一張 full
+    const fullUrl = await weaveShot(s, "full", null, { forceNew: true });
+    if (fullUrl) setShot(s, "full", fullUrl);
+
+    if (changeHalf) {
+      const halfUrl = await weaveShot(s, "half", null, { forceNew: true, randomSeed: true });
+      if (halfUrl) {
+        setShot(s, "half", halfUrl);
+        toast(`${s.name} 的半身像換了新樣貌`, "good");
+      }
+    } else if (!s.portraits?.half) {
+      // 沒半身就補一張（沿用人設 seed）
+      const halfUrl = await weaveShot(s, "half", null, { forceNew: true });
+      if (halfUrl) setShot(s, "half", halfUrl);
+    }
+    // 缺頭像也順便補（不強制換）
+    if (!s.portraits?.head) {
+      const headUrl = await weaveShot(s, "head", null, { forceNew: true });
+      if (headUrl) setShot(s, "head", headUrl);
+    }
+    renderAll();
+  } catch (e) {
+    console.warn("[kanbanArt]", e);
+  } finally {
+    portraitGenning.delete(s.id);
+  }
 }
 
 // 召喚三連拍:先等 full(召喚結果卡要顯示它),head/half 背景補。
@@ -3869,9 +3920,14 @@ function summonKanban(id) {
   state.lastKanbanId = id;
   log(`召喚 ${s.name} 為看板娘 -${cost} 金(第 ${state.kanbans.length} 位)`);
   toast(`${s.name} 來到店頭——右下角可開始打牌`, "good");
-  // M5：召後背景產製／補織立繪 cache，不擋 UI、不強制開桌
+  // 每次召看板：背景必織一張全身立繪；1/3 機率換半身（不擋 UI）
   syncPortraitCgCache(s);
-  ensureArtCacheBg(s);
+  if (canWeaveNow()) {
+    toast(`${s.name} 的形體正在店頭凝聚…`, "");
+    weaveKanbanArrival(s); // fire-and-forget
+  } else {
+    ensureArtCacheBg(s);
+  }
   // 不立刻開牌桌；玩家按右下角小方塊再進
   scheduleSave();
   renderAll();
