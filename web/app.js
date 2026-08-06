@@ -1658,74 +1658,117 @@ function setShot(s, shot, url) {
   saveNow();
 }
 
-/** 立繪 URL 寫入後立刻換畫面上的圖（看板／名冊／牌桌） */
-function applyPortraitNow(s, shot) {
-  if (!s || !shot) return;
+/**
+ * 把「全身 full」立刻換到主畫面看板娘站位（#kanban-girl）。
+ * 這就是玩家看到的「站著當看板娘」那張，不是半身／頭像。
+ */
+function replaceKanbanFullStand(s) {
+  if (!s) return false;
+  const url = girlShot(s, "full");
+  if (!url) return false;
   syncPortraitCgCache(s);
   dirty = true;
   scheduleSave();
-  // 看板主畫面：直接改 img src，不必等整頁重繪才「像有換」
-  try {
-    const root = document.getElementById("kanban-girl");
-    if (root && shot === "full") {
-      const wrap = root.querySelector(`.kgirl[data-kid="${s.id}"]`);
-      const img = wrap?.querySelector("img.portrait-img, img");
-      const url = girlShot(s, "full");
-      if (img && url) {
-        img.src = url;
-        img.classList.remove("hidden");
-      }
-    }
-  } catch { /* DOM 結構變了就走 renderAll */ }
-  // 牌桌半身
-  if (document.body.classList.contains("card-mode") && girlForSession()?.id === s.id) {
-    setCtPortrait(s, { cardId: cardUi.lastPlay?.cardId || null, prefer: shot === "half" ? "half" : "half" });
+
+  // 先整頁重畫看板（從 SVG 剪影也能變成 <img>）
+  try { renderKanban(); } catch { /* */ }
+
+  const root = document.getElementById("kanban-girl");
+  if (!root || root.classList.contains("hidden")) {
+    // 她應該在店頭；若 DOM 沒站著，再 renderAll 一次
+    try { renderAll(); } catch { /* */ }
   }
-  renderAll();
+  const wrap = document.querySelector(`#kanban-girl .kgirl[data-kid="${CSS.escape?.(s.id) || s.id}"]`)
+    || document.querySelector(`#kanban-girl .kgirl[data-kid="${s.id}"]`);
+  if (!wrap) {
+    try { renderAll(); } catch { /* */ }
+    return !!girlShot(s, "full");
+  }
+
+  let img = wrap.querySelector("img.portrait-img");
+  if (!img) {
+    // 還是剪影 SVG → 拆掉換成 img
+    wrap.querySelectorAll("svg").forEach(el => el.remove());
+    img = document.createElement("img");
+    img.className = "portrait-img shot-full";
+    img.alt = s.name || "";
+    const nameEl = wrap.querySelector(".kname");
+    if (nameEl) wrap.insertBefore(img, nameEl);
+    else wrap.appendChild(img);
+  }
+  // 強制換 src（同檔覆寫也靠 ?v=）
+  img.src = url;
+  img.setAttribute("src", url);
+  img.classList.remove("hidden");
+  // 再觸發一次 load，避免部分瀏覽器卡住舊圖
+  img.decode?.().catch?.(() => {});
+  return true;
 }
 
 /**
- * 召為看板娘：背景必織一張全身立繪；織好立刻替換畫面。
- * 1/3 機率重織半身（新 seed）——織好也立刻替換。
- * 不擋召喚 UI。
+ * 召為看板娘專用：
+ * 1) 必織「全身 full」店頭站姿 → 織好馬上 replaceKanbanFullStand
+ * 2) 1/3 再織 half（牌桌用），織好也立刻更新
+ * 不擋召喚按鈕；失敗會 toast 原因。
  */
 async function weaveKanbanArrival(s) {
-  if (!s || !canWeaveNow()) return;
-  if (portraitGenning.has(s.id)) return;
+  if (!s) return;
+  if (!canWeaveNow()) {
+    toast("現在不能生圖（設定→生圖 Comfy／Grok）", "bad");
+    return;
+  }
+  // 若別的織圖佔著，最多等 45 秒，不要默默放棄
+  const waitT0 = Date.now();
+  while (portraitGenning.has(s.id) && Date.now() - waitT0 < 45000) {
+    await new Promise(r => setTimeout(r, 400));
+  }
+  if (portraitGenning.has(s.id)) {
+    toast("立繪佇列忙碌，看板全身圖稍後再試", "bad");
+    return;
+  }
+
   portraitGenning.add(s.id);
   const changeHalf = Math.random() < 1 / 3;
   try {
-    // 每次上店頭：新 full（隨機 seed 才看得到「換了」；人設 tag 仍是同一人）
+    toast(`${s.name} 的全身立繪繪製中…`, "");
+    lastWeaveError = "";
+    // 看板娘 = full 全身站姿（主畫面 #kanban-girl）
     const fullUrl = await weaveShot(s, "full", null, { forceNew: true, randomSeed: true });
-    if (fullUrl) {
-      setShot(s, "full", fullUrl);
-      applyPortraitNow(s, "full");
-      toast(`${s.name} 的店頭立繪已換上`, "good");
+    if (!fullUrl) {
+      toast(`全身立繪失敗：${lastWeaveError || "無圖"}`, "bad");
+      console.warn("[kanbanArt] full failed", lastWeaveError, imgProvider());
+      return;
     }
+    setShot(s, "full", fullUrl);
+    const ok = replaceKanbanFullStand(s);
+    toast(ok
+      ? `${s.name} 的全身立繪已換上店頭`
+      : `${s.name} 立繪已存檔（畫面刷新中）`, "good");
+    // 保險再刷一次
+    try { renderKanban(); renderAll(); } catch { /* */ }
 
     if (changeHalf) {
+      lastWeaveError = "";
       const halfUrl = await weaveShot(s, "half", null, { forceNew: true, randomSeed: true });
       if (halfUrl) {
         setShot(s, "half", halfUrl);
-        applyPortraitNow(s, "half");
-        toast(`${s.name} 的半身像換了新樣貌`, "good");
+        if (document.body.classList.contains("card-mode") && girlForSession()?.id === s.id) {
+          setCtPortrait(s, { prefer: "half" });
+        }
+        toast(`${s.name} 的半身像也更新了`, "good");
+        try { renderAll(); } catch { /* */ }
       }
     } else if (!s.portraits?.half) {
       const halfUrl = await weaveShot(s, "half", null, { forceNew: true, randomSeed: true });
-      if (halfUrl) {
-        setShot(s, "half", halfUrl);
-        applyPortraitNow(s, "half");
-      }
+      if (halfUrl) setShot(s, "half", halfUrl);
     }
     if (!s.portraits?.head) {
       const headUrl = await weaveShot(s, "head", null, { forceNew: true });
-      if (headUrl) {
-        setShot(s, "head", headUrl);
-        applyPortraitNow(s, "head");
-      }
+      if (headUrl) setShot(s, "head", headUrl);
     }
   } catch (e) {
     console.warn("[kanbanArt]", e);
+    toast(`看板立繪出錯：${e?.message || e}`, "bad");
   } finally {
     portraitGenning.delete(s.id);
   }
@@ -3955,17 +3998,12 @@ function summonKanban(id) {
   state.lastKanbanId = id;
   log(`召喚 ${s.name} 為看板娘 -${cost} 金(第 ${state.kanbans.length} 位)`);
   toast(`${s.name} 來到店頭——右下角可開始打牌`, "good");
-  // 每次召看板：背景必織一張全身立繪；1/3 機率換半身（不擋 UI）
+  // 時機：按下「召喚為看板娘」當下 → 背景織「全身 full」
+  // 織完立刻替換主畫面站姿立繪（#kanban-girl）。1/3 另換半身。
   syncPortraitCgCache(s);
-  if (canWeaveNow()) {
-    toast(`${s.name} 的形體正在店頭凝聚…`, "");
-    weaveKanbanArrival(s); // fire-and-forget
-  } else {
-    ensureArtCacheBg(s);
-  }
-  // 不立刻開牌桌；玩家按右下角小方塊再進
   scheduleSave();
-  renderAll();
+  renderAll(); // 先讓她站上店頭（可能還是舊圖／剪影）
+  weaveKanbanArrival(s); // 完成後 replaceKanbanFullStand
 }
 
 // 到期解除(每秒 tick 呼叫);逐位到期、不提醒玩家。回傳是否有變化
