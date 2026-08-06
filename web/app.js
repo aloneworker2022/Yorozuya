@@ -3010,9 +3010,16 @@ async function genTick(force = false) {
 // 兩拍 UI：① 動作旁白 ② 場景圖備妥後才出她的回應
 // 避免「文字先好就能結束，圖還在跑」。
 
+/** 出卡她的回應：允許多句；去掉過短／純省略號 */
 function cardPlayLines(text) {
-  const lines = (text || "").split("\n").map(l => l.trim()).filter(Boolean);
-  return lines.slice(0, 2).join("\n").slice(0, 220).trim();
+  let t = (text || "").trim();
+  // 去掉整段包引號
+  t = t.replace(/^["「『]+|["」』]+$/g, "").trim();
+  const lines = t.split("\n").map(l => l.trim()).filter(Boolean);
+  // 最多 6 行、約 420 字（配合 3～5 句真實回話）
+  let out = lines.slice(0, 6).join("\n").slice(0, 420).trim();
+  if (Cards.isWeakLine?.(out)) return "";
+  return out;
 }
 
 function cardPlayMsgs(girl, play) {
@@ -3025,12 +3032,14 @@ function cardPlayMsgs(girl, play) {
   const kind = def?.kind || "speech";
   const ctx = buildCtx(girl);
   ctx.want_guard_flag = false;
+  // 餵完整動態場面（牌意演繹），讓她接得住細節
+  const scene = play?.sceneStart || Cards.sceneTextFor?.(state, play?.cardId) || def?.sceneStart || "";
   ctx.card_play = {
     mode: sess?.mode || "kanban",
     venue_name: venueName,
     kind,
     card_name: play?.name || def?.name || "",
-    scene_start: play?.sceneStart || def?.sceneStart || "",
+    scene_start: scene,
     prompt_hint: def?.promptHint || "",
     open_fail: !!(play?.open && play.open.success === false),
     open_ok: !!(play?.open && play.open.success),
@@ -3038,16 +3047,21 @@ function cardPlayMsgs(girl, play) {
     chain_attr: play?.chain?.attr || sess?.chain?.attr || "",
     emotion_delta: play?.emotionDelta ?? 0,
   };
+  // 飢渴若有
+  try {
+    const tier = craveTier?.(girl);
+    if (tier) ctx.craving = { tier };
+  } catch { /* */ }
   const sys = buildCardPlayPrompt(ctx);
   let user;
   if (play?.open && play.open.success === false) {
-    user = "(旁白:他剛才那一下你沒接住。用 1～2 句話反應——只有台詞。)";
+    user = "(旁白:他剛才那一下你沒接住。用 3～5 句話當下回話——先有感受再說話，可以兇、慌、嘴硬。只有台詞，不要旁白。)";
   } else if (kind === "girl_trait") {
-    user = "(旁白:這一拍是你主動帶的節奏。用 1～2 句話開口或接下去——只有台詞。)";
+    user = "(旁白:這一拍是你主動帶的節奏。用 3～5 句話開口或接下去——要像你本人，不是罐頭撒嬌。只有台詞。)";
   } else if (kind === "venue_event") {
-    user = "(旁白:現場剛發生那件事。用 1～2 句話反應——只有台詞。)";
+    user = "(旁白:現場剛發生那件事。用 3～5 句話反應——對準細節，可以吐槽、害羞或心虛。只有台詞。)";
   } else {
-    user = "(旁白:對他剛才的舉動,用 1～2 句話反應——只有台詞。)";
+    user = "(旁白:對他剛才的舉動，用 3～5 句話當下回話——要接住場面細節與你的個性。只有台詞，不要旁白、不要解釋規則。)";
   }
   return [
     { role: "system", content: sys },

@@ -354,7 +354,7 @@ function questLines(ctx, stage) {
 }
 
 /**
- * 打牌短反應（M4）：出卡後她回 1～2 句。
+ * 打牌反應：出卡後她以第一人稱回話（要像真人當下接話，不是標語）。
  * framing 依 kind：girl_trait=她主動、venue_event=場景、其餘=他的舉動。
  * 核心只顯示字串、不解析情感；數值已由感情骰決定。
  * 廠商替換點：可整包改寫。
@@ -368,51 +368,90 @@ export function buildCardPlayPrompt(ctx) {
   const kind = play.kind || "speech";
   const lines = [];
 
+  // 身份與關係（用完整六軸，比舊版「一句 open」更像真人）
   lines.push(
-    `你是「${c.name}」,被召喚而來的女子（他們叫你魅魔）。`,
-    `個性:${(c.personality || []).join("、") || "—"}。${c.tone || SPEECH_STYLE[c.speech_style] || ""}`,
+    `你是「${c.name}」。他們叫你魅魔，但你本來是普通人——現在身體被改過，還在這間萬事屋。`,
+    `年齡:${c.age || "成年"}。職業／過去:${c.job || c.occupation || "—"}。`,
+    `個性:${(c.personality || []).join("、") || "—"}。`,
+    c.tone || SPEECH_STYLE[c.speech_style] || "",
+    c.speech || c.口癖 ? `說話習慣／口癖:${c.speech || c.口癖}` : "",
     `對方是召喚你的人,叫「${you}」。`,
+    "",
+    "【你和他現在的關係——每一條都要照做】",
     ax.open,
-    `稱呼:${ax.address.replace(/\{name\}/g, you)}`,
-    `你的身體感:${ax.body}`,
-    `回覆長度:1～2 句短台詞（比日常聊天更短）。`,
+    `・稱呼:${ax.address.replace(/\{name\}/g, you)}`,
+    `・誰先開口:${ax.initiative}`,
+    `・你願意講多少:${ax.disclose}`,
+    `・你對他的要求權:${ax.claim}`,
+    `・你的身體:${ax.body}`,
+    r.stage === "wife"
+      ? `・界線:幾乎不算越界。${ax.crossReact}`
+      : `・界線（越界時）:${ax.crossLine}。他若踩到:${ax.crossReact}`,
   );
 
   if (play.mode === "date" && play.venue_name) {
-    lines.push(`場景:你們正在「${play.venue_name}」約會。`);
+    lines.push(`場景:你們正在「${play.venue_name}」約會，這不是店頭閒聊。`);
   } else {
-    lines.push("場景:萬事屋店頭,他靠近你互動。");
+    lines.push("場景:萬事屋店頭。他付了代價把你叫到身邊，距離很近。");
   }
 
   // 本體卡／場地卡不是「他對你用了某招」——別把主動權寫反
-  let whatHappened = `他對你做了「${play.card_name || "某個舉動"}」。`;
+  let whatHappened = `他剛才對你做了這件事（牌面「${play.card_name || "某個舉動"}」）。`;
   if (kind === "girl_trait") {
-    whatHappened = `這一拍是你主動的節奏「${play.card_name || "你的本體牌"}」——不是他在進攻。`;
+    whatHappened = `這一拍是你主動的節奏「${play.card_name || "你的本體"}」——不是他在出招進攻。`;
   } else if (kind === "venue_event") {
-    whatHappened = `現場發生了「${play.card_name || "某個場面"}」——場面推著你們,不全是他的算計。`;
+    whatHappened = `現場發生了「${play.card_name || "某個場面"}」——場面推著你們,不全是他算計好的。`;
   }
 
   lines.push(
     "",
-    "【剛才發生的事】",
+    "【剛才發生的事——你必須接住這一拍，不能裝沒發生】",
     whatHappened,
-    play.scene_start ? `現場錨定:${play.scene_start}` : "",
-    play.prompt_hint ? `演出提示（照個性消化,不要照念）:${play.prompt_hint}` : "",
-    play.open_fail ? "他想開門/推進,但你沒接住——你抗拒、退開或冷下來。" : "",
-    play.open_ok ? "某種節奏被他打開了,你被帶著走了一點。" : "",
-    play.feel_label ? `你此刻心裡大致是「${play.feel_label}」(用演技帶出,不要報數、不要說「情感+1」)。` : "",
+    play.scene_start
+      ? `現場細節（已發生的場面，用你的感受接，不要複誦全文）:\n${play.scene_start}`
+      : "",
+    play.prompt_hint ? `演出提示（消化進個性，勿照念）:${play.prompt_hint}` : "",
+    play.open_fail
+      ? "結果:他想推進／開門，你沒接住——抗拒、退開、冷下來，或先生氣再心虛。"
+      : "",
+    play.open_ok
+      ? "結果:某種節奏被打開了，你被帶著走了一點——可以慌、可以嘴硬、可以反而更貼。"
+      : "",
+    play.feel_label
+      ? `心裡大致是「${play.feel_label}」——用語氣與措辭帶出，禁止說「情感+1」或報數。`
+      : "",
     play.chain_attr ? `當下節奏偏「${play.chain_attr}」。` : "",
   );
 
+  // 可選：飢渴／防備（有帶就寫）
+  if (ctx.craving?.tier) {
+    lines.push(`你現在的身體躁動程度偏「${ctx.craving.tier}」——會影響語氣，但你未必肯承認。`);
+  }
+  if (ctx.guard?.hits) {
+    lines.push(
+      ctx.guard.hits >= 2
+        ? "（他最近又越界。這次你比較冷、比較兇，不給好臉色。）"
+        : "（你還在防備他剛才的越界——語氣更短、更刺。）",
+    );
+  }
+
   lines.push(
     "",
-    "規則:",
-    "1. 只輸出你說出口的 1～2 句話（繁體中文）。不加引號、不寫旁白、不用括號舞台指示。",
-    "2. 不要解釋規則、不要提及卡牌/系統/AI/情感數值。",
+    "【怎麼演才像真人】",
+    "・先有感受，再說話：慌、煩、羞、火大、想逃、想靠近——擇一主軸，不要空讚美。",
+    "・可以嘴硬心軟、話講一半、改口、罵一句又補一句；允許不完美、允許停頓用「……」但不能整段只有省略號。",
+    "・要對準「剛才那件事」的細節（觸感、距離、視線、他說的某句），不要講成通用網漫台詞。",
+    "・用你的個性與口癖，不要變成溫柔AI客服。",
+    "",
+    "【輸出格式】",
+    "1. 繁體中文。只輸出你「說出口」的話，可含極少量口語氣音。",
+    "2. 長度：3～5 句（約 80～200 字）。每句要有完整意思，不要碎成單字。",
+    "3. 不加引號、不寫旁白、不用括號舞台指示、不寫（微笑）這類。",
+    "4. 禁止提及：卡牌、系統、AI、玩家、遊戲、情感數值、骰子。",
+    "5. 你不知道自己在玩卡——這是當下真實發生的互動。",
     ctx.content_rating === "nsfw"
-      ? "3. NSFW:尺度依關係與剛才發生的事,可露骨但短。"
-      : "3. 全年齡:可曖昧、害羞、生氣,不寫露骨性描寫。",
-    "4. 你不知道自己在玩卡牌——這是你們之間的即時互動。",
+      ? "6. NSFW：尺度依關係與剛才發生的事，可露骨，但仍要像她本人會說的話。"
+      : "6. 全年齡：可曖昧、害羞、生氣、吃味，不寫露骨性行為。",
   );
 
   return lines.filter(Boolean).join("\n");
