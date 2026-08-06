@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.18c(2026-08-06)準備牌組橫排點";
+const APP_VER = "v6.19(2026-08-06)出卡圖文對齊同一拍";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1976,21 +1976,139 @@ function sceneEnMsgs(girl, play) {
   ];
 }
 
-function sceneEnFallback(play) {
-  const bits = [
-    "anime style, single adult woman, half body portrait",
-    play?.name ? `scene mood: ${play.name}` : "",
-    // 加長 sceneStart 整段送入（中英混用可；重點是立刻開畫）
-    play?.sceneStart ? String(play.sceneStart).slice(0, 400) : "",
-    "detailed face, expressive eyes, emotional atmosphere, cinematic lighting",
-  ].filter(Boolean);
-  return bits.join(", ");
+/**
+ * 依牌種／tags 組「畫面定格」保底（無模型或 LLM 失敗時）。
+ * 目標：圖的構圖對得上「這張牌在幹嘛」，不是隨便半身美圖。
+ */
+function visualBeatFallback(play, def) {
+  const tags = def?.tags || [];
+  const kind = def?.kind || "speech";
+  const name = play?.name || def?.name || "";
+  const scene = String(play?.sceneStart || def?.sceneStart || "").slice(0, 220);
+  let poseEn = "two people close, woman half body, expressive face, eye contact";
+  let poseZh = "兩人距離很近，她半身入鏡，表情清楚，視線有接觸。";
+  if (tags.includes("kiss") || /吻/.test(name)) {
+    poseEn = "kissing or about to kiss, faces very close, intimate, eyes half-closed or startled";
+    poseZh = "幾乎吻上或正在吻，臉很近，親密或被嚇到的表情。";
+  } else if (tags.includes("sex")) {
+    poseEn = "intimate embrace, bodies pressed close, intense expression, upper body focus";
+    poseZh = "身體貼得很近、擁抱或壓近，表情強烈，上半身為主。";
+  } else if (tags.includes("touch") || /觸|碰|腰|手|靠/.test(name)) {
+    poseEn = "hand contact or leaning in, close distance, tension in shoulders, reactive expression";
+    poseZh = "有碰觸或靠得很近，肩線緊繃，表情在反應他的手或距離。";
+  } else if (tags.includes("talk") || kind === "speech") {
+    poseEn = "facing him, talking mid-conversation, mouth slightly open, natural gesture with hands";
+    poseZh = "面對他說話，像對話中途，手勢自然，表情跟剛才的話有關。";
+  } else if (kind === "girl_trait") {
+    poseEn = "she initiates, leaning forward or pointing, confident or teasing expression";
+    poseZh = "她主動靠近或出聲，帶點主導或吐槽的表情。";
+  } else if (kind === "venue_event") {
+    poseEn = "environmental storytelling, reacting to surroundings, half body, clear emotion";
+    poseZh = "對現場突發狀況有反應，半身，情緒清楚。";
+  }
+  if (play?.open?.success === false) {
+    poseEn += ", rejecting, turning away, guarded expression";
+    poseZh += "她在抗拒、想退開，表情防備。";
+  }
+  const visual_zh = [
+    poseZh,
+    scene ? `呼應場面：${scene.slice(0, 100)}` : "",
+    name ? `對應牌意「${name}」。` : "",
+  ].filter(Boolean).join("");
+  const visual_en = [
+    "anime illustration, single adult woman focus, consistent character face",
+    poseEn,
+    name ? `mood of card: ${name}` : "",
+    scene ? scene.slice(0, 120) : "",
+    "detailed face, emotional, cinematic lighting, not generic portrait",
+  ].filter(Boolean).join(", ");
+  return { visual_zh, visual_en };
+}
+
+/** LLM：把牌＋場面收成「畫面定格」中英各一，給圖與回話共用 */
+function visualBeatMsgs(girl, play, def) {
+  const tags = (def?.tags || []).join(", ");
+  return [
+    {
+      role: "system",
+      content: [
+        "你是戀愛互動遊戲的分鏡師。",
+        "任務：把「卡牌＋場面旁白」收成【同一個瞬間】的畫面定格，供插圖與女角台詞共用。",
+        "輸出格式（嚴格兩段，不要其他字）：",
+        "VISUAL_ZH:",
+        "（繁中 2～3 句：現在鏡頭裡她的姿勢、與他的距離、表情、正在發生的肢體／對話狀態。必須對得上這張牌的意思。）",
+        "VISUAL_EN:",
+        "（英文逗號分隔的插圖描述：pose, expression, distance, action。具體、可畫。不要對話引號。不要寫 card/game。）",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `女子：${girl?.name || "她"}，階段：${girl?.stage || "stranger"}`,
+        `卡牌：${def?.name || play?.name || ""}（${def?.kind || ""}）`,
+        `標籤：${tags || "—"}`,
+        `場面旁白：${play?.sceneStart || def?.sceneStart || "—"}`,
+        play?.open?.success === false ? "結果：推進失敗，她沒接住。" : "",
+        play?.open?.success ? "結果：節奏被打開一點。" : "",
+        "請輸出 VISUAL_ZH 與 VISUAL_EN。",
+      ].filter(Boolean).join("\n"),
+    },
+  ];
+}
+
+function parseVisualBeat(raw) {
+  const t = String(raw || "").trim();
+  let zh = "", en = "";
+  const mZh = t.match(/VISUAL_ZH\s*[:：]\s*([\s\S]*?)(?=VISUAL_EN\s*[:：]|$)/i);
+  const mEn = t.match(/VISUAL_EN\s*[:：]\s*([\s\S]*?)$/i);
+  if (mZh) zh = mZh[1].trim();
+  if (mEn) en = mEn[1].trim();
+  if (!zh && !en) {
+    // 整段當中文定格
+    zh = t.slice(0, 280);
+  }
+  zh = zh.replace(/^["「]+|["」]+$/g, "").slice(0, 320);
+  en = en.replace(/^["']+|["']+$/g, "").slice(0, 500);
+  return { visual_zh: zh, visual_en: en };
 }
 
 /**
- * 出卡場景圖：依動作旁白（sceneStart）生圖。
- * 完成／失敗／跳過都會 call onDone（同一 play 仍有效時）。
- * 管線：**先生圖 → onDone 後再出文字**。
+ * 為這一拍產出畫面定格（寫入 play.visualBeatZh / visualBeatEn）。
+ * 圖與回話都必須用這份，才不會各講各的。
+ */
+async function ensurePlayVisualBeat(girl, play, gen) {
+  const def = play.cardId ? Cards.cardById(play.cardId) : null;
+  const fb = visualBeatFallback(play, def);
+  if (!state.settings?.model) {
+    play.visualBeatZh = fb.visual_zh;
+    play.visualBeatEn = fb.visual_en;
+    return fb;
+  }
+  const key = `cardbeat:${girl.id}:${play.cardId}:${gen}`;
+  const deadline = Date.now() + 75000;
+  let r = await genPost(key, visualBeatMsgs(girl, play, def), 11);
+  while (r && Date.now() < deadline) {
+    if (cardSceneJob.gen !== gen) return null;
+    if (r.status === "done" && r.result) {
+      const { text } = stripGuardFlag(typeof r.result === "string" ? r.result : String(r.result ?? ""));
+      const parsed = parseVisualBeat(text);
+      const visual_zh = parsed.visual_zh.length >= 8 ? parsed.visual_zh : fb.visual_zh;
+      const visual_en = parsed.visual_en.length >= 12 ? parsed.visual_en : fb.visual_en;
+      play.visualBeatZh = visual_zh;
+      play.visualBeatEn = visual_en;
+      return { visual_zh, visual_en };
+    }
+    if (r.status === "error") break;
+    await new Promise(res => setTimeout(res, 700));
+    r = await genPost(key, visualBeatMsgs(girl, play, def), 11);
+  }
+  play.visualBeatZh = fb.visual_zh;
+  play.visualBeatEn = fb.visual_en;
+  return fb;
+}
+
+/**
+ * 出卡場景圖：先定格（對齊牌意）→ 再生圖；onDone 後回話也吃同一份定格。
  */
 function queueCardSceneArt(girl, play, onDone) {
   const done = (ok) => {
@@ -2009,13 +2127,11 @@ function queueCardSceneArt(girl, play, onDone) {
       cardUi._sceneArtWarned = true;
       toast(`出卡場景圖略過：${why}`, "");
     }
-    done(false);
+    // 仍要產出定格給回話用
+    ensurePlayVisualBeat(girl, play, (cardSceneJob.gen || 0) + 1).finally(() => done(false));
     return;
   }
-  if (play._sceneArtQueued) {
-    // 已在跑：等現有 job（不重複下單）
-    return;
-  }
+  if (play._sceneArtQueued) return;
   play._sceneArtQueued = true;
 
   const gen = (cardSceneJob.gen || 0) + 1;
@@ -2034,7 +2150,6 @@ function queueCardSceneArt(girl, play, onDone) {
   };
 
   cardUi.sceneArtPending = true;
-  // 刷新 badge（出卡當下就顯示繪製中）
   if (document.body.classList.contains("card-mode") && girlForSession()?.id === girl.id) {
     setCtPortrait(girl, { cardId: play.cardId });
   }
@@ -2042,19 +2157,25 @@ function queueCardSceneArt(girl, play, onDone) {
   (async () => {
     let ok = false;
     try {
-      // 出卡當下立刻生圖：不再等英文 LLM（那會拖到「按繼續」才像開始畫）
-      // sceneStart 中文直接進 extra；Grok 吃得動敘事，Comfy 當 extra tags
-      const def = play.cardId ? Cards.cardById(play.cardId) : null;
-      const sceneEn = [
-        sceneEnFallback(play),
-        def?.promptHint ? String(def.promptHint).slice(0, 120) : "",
-        play.sceneStart ? `narrative: ${String(play.sceneStart).slice(0, 280)}` : "",
-      ].filter(Boolean).join(". ");
-      console.info("[cardSceneArt] start img ASAP:", sceneEn.slice(0, 160));
+      // 1) 同一拍「畫面定格」（中＋英）——圖與回話共用
+      const beat = await ensurePlayVisualBeat(girl, play, gen);
+      if (cardSceneJob.gen !== gen) { done(false); return; }
+      if (cardUi.lastPlay === play || cardUi.lastPlay?.cardId === play.cardId) {
+        // 同步到 lastPlay，供回話 prompt 讀取
+        if (cardUi.lastPlay) {
+          cardUi.lastPlay.visualBeatZh = play.visualBeatZh;
+          cardUi.lastPlay.visualBeatEn = play.visualBeatEn;
+        }
+      }
+      const sceneEn = (beat?.visual_en || play.visualBeatEn || "").trim()
+        || visualBeatFallback(play, Cards.cardById(play.cardId)).visual_en;
+      console.info("[cardSceneArt] beat ZH:", (play.visualBeatZh || "").slice(0, 80));
+      console.info("[cardSceneArt] beat EN:", sceneEn.slice(0, 120));
 
+      // 2) 生圖：只畫定格，不要無關美圖
       const imgKey = `cardscene-img:${girl.id}:${play.cardId}:${gen}`;
       cardSceneJob.key = imgKey;
-      const url = await weaveCardSceneShot(girl, sceneEn, imgKey);
+      const url = await weaveCardSceneShot(girl, sceneEn, imgKey, play);
       const stillThisJob = cardSceneJob.gen === gen;
 
       if (url) {
@@ -2064,6 +2185,7 @@ function queueCardSceneArt(girl, play, onDone) {
           at: Date.now(),
           source: "scene_play",
           sceneEn,
+          visualBeatZh: play.visualBeatZh || "",
         };
         ok = true;
         dirty = true;
@@ -2082,6 +2204,7 @@ function queueCardSceneArt(girl, play, onDone) {
             status: prevUrl ? "ready" : "error",
             at: Date.now(),
             source: prevUrl ? "alias_portrait" : "scene_error",
+            visualBeatZh: play.visualBeatZh || "",
           };
         }
         if (document.body.classList.contains("card-mode") && girlForSession()?.id === girl.id) {
@@ -2096,30 +2219,41 @@ function queueCardSceneArt(girl, play, onDone) {
   })();
 }
 
-/** 場景圖：character + English extra；存 testword，不蓋 portraits */
-async function weaveCardSceneShot(s, sceneEn, key) {
+/** 場景圖：character + 定格英文；構圖依牌 tags；不蓋 portraits */
+async function weaveCardSceneShot(s, sceneEn, key, play = null) {
   if (!s) return "";
   if (!canWeaveNow()) {
     console.warn("[cardSceneArt] weave skip canWeaveNow=false", imgProvider());
     return "";
   }
+  const def = play?.cardId ? Cards.cardById(play.cardId) : null;
+  const tags = def?.tags || [];
+  // speech 偏半身對話；觸碰／吻可更近；默認 half
+  let framing = "half";
+  if (tags.includes("sex")) framing = "full";
+  else if (tags.includes("kiss") || tags.includes("touch")) framing = "half";
+
   const comfy = imgProvider() === "comfy";
   const body = {
     key,
     provider: imgProvider(),
     model: state.settings.model || "grok-4.5",
-    framing: "half",
+    framing,
     rating: state.settings.rating || "sfw",
-    style: state.settings.imgStyle || "anime",
+    // 出卡要像劇情插圖，不要 pixel 立繪風（那會更抽離）
+    style: state.settings.imgStyle === "pixel" ? "anime" : (state.settings.imgStyle || "anime"),
     character: s,
-    extra: sceneEn,
+    extra: [
+      sceneEn,
+      "must match the described action and emotion, not a generic standing portrait",
+      "same woman as character sheet",
+    ].join(", "),
     cutout: false,
     flat_bg: false,
     retry: true,
     ...(comfy ? {
       comfy_url: state.settings.comfyUrl || "",
       ckpt: state.settings.comfyCkpt || "",
-      // 不要 shot／char_id：否則會覆寫召喚三連拍檔
     } : {}),
   };
   let url = "";
@@ -3040,6 +3174,8 @@ function cardPlayMsgs(girl, play) {
     kind,
     card_name: play?.name || def?.name || "",
     scene_start: scene,
+    // 與出卡圖同一拍的畫面定格（中文）
+    visual_beat_zh: play?.visualBeatZh || "",
     prompt_hint: def?.promptHint || "",
     open_fail: !!(play?.open && play.open.success === false),
     open_ok: !!(play?.open && play.open.success),
@@ -3061,7 +3197,9 @@ function cardPlayMsgs(girl, play) {
   } else if (kind === "venue_event") {
     user = "(旁白:現場剛發生那件事。用 3～5 句話反應——對準細節，可以吐槽、害羞或心虛。只有台詞。)";
   } else {
-    user = "(旁白:對他剛才的舉動，用 3～5 句話當下回話——要接住場面細節與你的個性。只有台詞，不要旁白、不要解釋規則。)";
+    user = play?.visualBeatZh
+      ? `(旁白:鏡頭裡正是這瞬間——${String(play.visualBeatZh).slice(0, 120)}。用 3～5 句話回話，必須接得上這個畫面與他的舉動。只有台詞。)`
+      : "(旁白:對他剛才的舉動，用 3～5 句話當下回話——要接住場面細節與你的個性。只有台詞，不要旁白、不要解釋規則。)";
   }
   return [
     { role: "system", content: sys },

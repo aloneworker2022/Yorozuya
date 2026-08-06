@@ -1,7 +1,7 @@
 // 網路優先、離線才退回快取;/api/ 不攔(存檔永遠即時)。
 // 重點:向伺服器要「完整回應」(no-store 的新 Request,不帶條件標頭),
 // 避免拿到空的 304 就丟給頁面 → 造成 app.js/模組載入到空內容而整個炸掉。
-const CACHE = "yorozuya-v26";
+const CACHE = "yorozuya-v27";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", e => e.waitUntil((async () => {
