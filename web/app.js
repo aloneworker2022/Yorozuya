@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.13(2026-08-05)出卡·先生圖後生文";
+const APP_VER = "v6.14(2026-08-06)出卡即生圖·加長卡文";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1849,10 +1849,11 @@ function sceneEnMsgs(girl, play) {
 
 function sceneEnFallback(play) {
   const bits = [
-    "anime style, single adult woman, half body",
-    play?.name ? `scene: ${play.name}` : "",
-    play?.sceneStart ? String(play.sceneStart).slice(0, 160) : "",
-    "detailed face, expressive eyes, emotional reaction",
+    "anime style, single adult woman, half body portrait",
+    play?.name ? `scene mood: ${play.name}` : "",
+    // 加長 sceneStart 整段送入（中英混用可；重點是立刻開畫）
+    play?.sceneStart ? String(play.sceneStart).slice(0, 400) : "",
+    "detailed face, expressive eyes, emotional atmosphere, cinematic lighting",
   ].filter(Boolean);
   return bits.join(", ");
 }
@@ -1904,41 +1905,24 @@ function queueCardSceneArt(girl, play, onDone) {
   };
 
   cardUi.sceneArtPending = true;
-  // 刷新 badge
+  // 刷新 badge（出卡當下就顯示繪製中）
   if (document.body.classList.contains("card-mode") && girlForSession()?.id === girl.id) {
     setCtPortrait(girl, { cardId: play.cardId });
-    renderCardTable();
   }
 
   (async () => {
     let ok = false;
     try {
-      // 1) 英文場景（只靠動作，不靠她的台詞）
-      let sceneEn = "";
-      if (state.settings?.model) {
-        const enKey = `cardscene-en:${girl.id}:${play.cardId}:${gen}`;
-        const deadline = Date.now() + 90000;
-        let r = await genPost(enKey, sceneEnMsgs(girl, play), 11); // 高於一般背景，低於玩家台詞
-        while (r && Date.now() < deadline) {
-          if (cardSceneJob.gen !== gen) { done(false); return; }
-          if (r.status === "done" && r.result) {
-            const { text } = stripGuardFlag(typeof r.result === "string" ? r.result : String(r.result ?? ""));
-            sceneEn = (text || "").replace(/^["'\s]+|["'\s]+$/g, "").trim().slice(0, 500);
-            break;
-          }
-          if (r.status === "error") {
-            console.warn("[cardSceneArt] EN gen error", r.error);
-            break;
-          }
-          await new Promise(res => setTimeout(res, 800));
-          r = await genPost(enKey, sceneEnMsgs(girl, play), 11);
-        }
-      }
-      if (cardSceneJob.gen !== gen) { done(false); return; }
-      if (!sceneEn || sceneEn.length < 8) sceneEn = sceneEnFallback(play);
-      console.info("[cardSceneArt] sceneEn:", sceneEn.slice(0, 160));
+      // 出卡當下立刻生圖：不再等英文 LLM（那會拖到「按繼續」才像開始畫）
+      // sceneStart 中文直接進 extra；Grok 吃得動敘事，Comfy 當 extra tags
+      const def = play.cardId ? Cards.cardById(play.cardId) : null;
+      const sceneEn = [
+        sceneEnFallback(play),
+        def?.promptHint ? String(def.promptHint).slice(0, 120) : "",
+        play.sceneStart ? `narrative: ${String(play.sceneStart).slice(0, 280)}` : "",
+      ].filter(Boolean).join(". ");
+      console.info("[cardSceneArt] start img ASAP:", sceneEn.slice(0, 160));
 
-      // 2) 生圖
       const imgKey = `cardscene-img:${girl.id}:${play.cardId}:${gen}`;
       cardSceneJob.key = imgKey;
       const url = await weaveCardSceneShot(girl, sceneEn, imgKey);
@@ -6486,19 +6470,20 @@ function renderCardTable() {
         const r = Cards.requestPlay(state, inst.instanceId, { stage, guardHigh: guardActive(girl) });
         if (!r.ok) { toast(r.err, "bad"); return; }
         if (r.needConfirm) { renderCardTable(); return; }
-        // requestPlay 對非碎卡會直接 commitPlay；M5 即時 art／即時 AI
+        // 出卡當下立刻開場景圖（不要等飛牌動畫結束才 begin）
+        cardUi.lastPlay = r;
+        cardUi.awaitReaction = true;
+        cardUi.reactBeat = "action";
+        cardUi.endPanel = null;
+        touchInteractDay(girl);
+        bindCardArtAlias(girl, r.cardId);
+        applyPlaySideEffects(girl, r);
+        beginCardPlayAi(girl, r);
+        const n = state.cardSession?.hand?.length || 0;
+        if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
+        scheduleSave();
         flyCard(playCard, "up", () => {
-          cardUi.lastPlay = r;
-          cardUi.awaitReaction = true;
-          cardUi.reactBeat = "action";
-          cardUi.endPanel = null;
-          touchInteractDay(girl);
-          bindCardArtAlias(girl, r.cardId);
-          applyPlaySideEffects(girl, r);
-          beginCardPlayAi(girl, r);
-          const n = state.cardSession?.hand?.length || 0;
-          if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
-          scheduleSave(); renderCardTable();
+          renderCardTable();
         });
       };
       if (playCard && !sess.pending) {
