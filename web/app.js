@@ -2246,8 +2246,9 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
     character: s,
     extra: [
       sceneEn,
-      "must match the described action and emotion, not a generic standing portrait",
-      "same woman as character sheet",
+      "PRIMARY: show the player's/man's action and contact point from the description",
+      "NOT a solo idol portrait, NOT generic standing smile",
+      "same woman as character sheet, interaction frozen mid-action",
     ].join(", "),
     cutout: false,
     flat_bg: false,
@@ -3190,17 +3191,20 @@ function cardPlayMsgs(girl, play) {
     if (tier) ctx.craving = { tier };
   } catch { /* */ }
   const sys = buildCardPlayPrompt(ctx);
+  // 回话必须钉死「玩家动作」——把动作摘要塞进 user，避免模型另开话题
+  const act = String(scene || play?.name || "").replace(/\s+/g, " ").slice(0, 160);
+  const vis = String(play?.visualBeatZh || "").replace(/\s+/g, " ").slice(0, 100);
   let user;
   if (play?.open && play.open.success === false) {
-    user = "(旁白:他剛才那一下你沒接住。用 3～5 句話當下回話——先有感受再說話，可以兇、慌、嘴硬。只有台詞，不要旁白。)";
+    user = `（旁白：他做了「${act}」，你沒接住、退開了。用 3～5 句回話：先對上他的動作，再兇／慌／嘴硬。只有台詞。）`;
   } else if (kind === "girl_trait") {
-    user = "(旁白:這一拍是你主動帶的節奏。用 3～5 句話開口或接下去——要像你本人，不是罐頭撒嬌。只有台詞。)";
+    user = `（旁白：這一拍外在動作是「${act}」。用 3～5 句接下去或開口，要接得上這個動作，不要另開話題。只有台詞。）`;
   } else if (kind === "venue_event") {
-    user = "(旁白:現場剛發生那件事。用 3～5 句話反應——對準細節，可以吐槽、害羞或心虛。只有台詞。)";
+    user = `（旁白：現場與動作是「${act}」。用 3～5 句反應這件事本身。只有台詞。）`;
   } else {
-    user = play?.visualBeatZh
-      ? `(旁白:鏡頭裡正是這瞬間——${String(play.visualBeatZh).slice(0, 120)}。用 3～5 句話回話，必須接得上這個畫面與他的舉動。只有台詞。)`
-      : "(旁白:對他剛才的舉動，用 3～5 句話當下回話——要接住場面細節與你的個性。只有台詞，不要旁白、不要解釋規則。)";
+    user = vis
+      ? `（旁白：他剛做的是「${act}」。畫面定格：${vis}。用 3～5 句回話，第一句就要碰到他的動作或接觸點。只有台詞。）`
+      : `（旁白：他剛做的是「${act}」。用 3～5 句回話，必須承接這個動作／這句話，禁止無關開場。只有台詞。）`;
   }
   return [
     { role: "system", content: sys },
