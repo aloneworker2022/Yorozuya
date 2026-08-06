@@ -1532,6 +1532,24 @@ body.card-mode.has-ct-figure #kanban-girl {
 }
 #ct-portrait-badge.hidden { display: none; }
 
+/* 準備牌組：每張一排點點 → 完成打勾 */
+.narr-prep-list { width: 100%; }
+.narr-rows {
+  display: flex; flex-direction: column; align-items: center;
+  gap: .35em; max-height: 36vh; overflow: auto;
+  padding: .4em 0 .6em;
+}
+.narr-row {
+  font-size: 1.15em; letter-spacing: .12em;
+  color: var(--dim, #9aa0b5);
+  line-height: 1.4;
+}
+.narr-dot.ok {
+  color: var(--cyan, #6fe3e1);
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
 /* 前景：頂欄 + 空白 + 旁白 + 確認 + 手牌 */
 #ct-fore {
   position: relative; z-index: 2;

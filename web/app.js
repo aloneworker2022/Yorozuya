@@ -6552,28 +6552,27 @@ function renderCardTable() {
   if (!sess.pending && !cardUi._keepPeek) setCtConfirm("");
   cardUi._keepPeek = false;
 
-  // ── 開戰前：牌意演繹（全好才能打牌）────────────────
+  // ── 開戰前：準備牌組（每張一排點點，完成打勾）────────────────
   if (sess.phase === "narr_prep") {
     const prog = Cards.narrProgress?.(sess) || { done: 0, total: 0 };
-    const rows = Object.entries(sess.cardNarr || {}).map(([id, row]) => {
-      const def = Cards.cardById(id);
-      const st = row.status === "done" ? "✓" : row.status === "error" ? "!" : "…";
-      return `<div class="dim small" style="margin:.15em 0">${st} ${esc(def?.name || id)}</div>`;
+    const rows = Object.keys(sess.cardNarr || {}).map((id) => {
+      const done = sess.cardNarr[id]?.status === "done" || sess.cardNarr[id]?.status === "error";
+      // 完成 ✓；進行中 · · · · ·
+      const marks = done
+        ? `<span class="narr-dot ok">✓</span>`
+        : `<span class="narr-dot">· · · · ·</span>`;
+      return `<div class="narr-row">${marks}</div>`;
     }).join("");
+    if (title) title.textContent = "準備牌組";
     syncCardTableChrome({ ejectMode: true });
     setCtVn({
-      name: gname,
-      text: "她在感受你帶來的牌意……",
-      meta: `演繹進度 <b>${prog.done}</b> / <b>${prog.total}</b> · 全好才開始`,
+      name: "",
+      text: "準備牌組",
+      meta: prog.total ? `${prog.done} / ${prog.total}` : "",
     });
     setCtHand(`
-      <div class="ct-react-beat">
-        <div class="dim small" style="max-height:30vh;overflow:auto;text-align:left;padding:0 .4em">${
-          rows || "（沒有卡？請先到商店編出戰牌組）"
-        }</div>
-        <div class="dim small ct-react-wait" style="margin-top:.5em">
-          每張卡會依「牌面意思」新寫 3～4 句，不是固定台詞
-        </div>
+      <div class="ct-react-beat narr-prep-list">
+        <div class="narr-rows">${rows || `<div class="narr-row"><span class="narr-dot">· · · · ·</span></div>`}</div>
         <div class="detail-actions card-actions">
           <button type="button" id="ct-narr-leave">先離開</button>
         </div>
