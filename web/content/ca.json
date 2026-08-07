@@ -1,0 +1,79 @@
+{
+  "_meta": {
+    "title": "ca",
+    "spec": "docs/card-system.md",
+    "schema_version": 2,
+    "token_model": "每卡一個詞墜 token；parentId 繼承父鏈詞墜。解析後效果字串如 [問候] [說笑話]。",
+    "pack_note": "獨立牌組檔；上線靠 registry.active 切換，不刪舊檔。",
+    "pack_model": "多檔牌組：registry.active 決定遊戲用哪份；編輯 card_x.json 等草稿，上線只切指標，舊版可回滾。"
+  },
+  "enums": {
+    "kind": [
+      "speech",
+      "shop_premium",
+      "girl_trait",
+      "venue_event"
+    ],
+    "chain_attr": [
+      "talk",
+      "touch",
+      "sex",
+      "play",
+      "any"
+    ],
+    "stage": [
+      "stranger",
+      "friend",
+      "girlfriend",
+      "wife"
+    ],
+    "mode": [
+      "kanban",
+      "date"
+    ]
+  },
+  "defaults": {
+    "hand_size": 5,
+    "max_girl_cards": 3,
+    "max_inject": 5,
+    "shop_slots": 3,
+    "shop_refresh_hours": 4,
+    "bubble_chance": 0.15,
+    "dates_per_girl_per_day": 2,
+    "base_plays_by_stage": {
+      "stranger": 1,
+      "friend": 2,
+      "girlfriend": 3,
+      "wife": 4
+    },
+    "stay_base_by_stage": {
+      "stranger": 0.05,
+      "friend": 0.15,
+      "girlfriend": 0.3,
+      "wife": 0.45
+    },
+    "answer_rate_by_stage": {
+      "stranger": 0.1,
+      "friend": 0.35,
+      "girlfriend": 0.6,
+      "wife": 0.8
+    },
+    "phone_cost_range": [
+      10,
+      30
+    ],
+    "emotion_fail_open": {
+      "min": -3,
+      "max": -1
+    }
+  },
+  "starter_pool": [],
+  "shop_weights": {
+    "speech_pool": [],
+    "premium_pool": []
+  },
+  "cards": [],
+  "venues": [],
+  "girl_card_build_rules": {},
+  "bubble_canned": {}
+}

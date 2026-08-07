@@ -6,7 +6,8 @@
       "file": "cards.json",
       "name": "正式牌庫",
       "note": "預設 content/cards.json",
-      "activatedAt": 1786070538.3692527
+      "activatedAt": 1786070538.3692527,
+      "updatedAt": 1786072229.66158
     },
     {
       "id": "card_x",
@@ -17,6 +18,15 @@
       "createMode": "clone",
       "createdAt": 1786070531.683768,
       "activatedAt": 1786070538.3526099
+    },
+    {
+      "id": "ca",
+      "file": "ca.json",
+      "name": "ca",
+      "note": "空牌組",
+      "clonedFrom": null,
+      "createMode": "empty",
+      "createdAt": 1786072256.606594
     }
   ],
   "history": [
