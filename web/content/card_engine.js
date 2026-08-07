@@ -382,6 +382,14 @@ export function isWeakLine(s) {
   if (s == null) return true;
   const t = String(s).trim();
   if (!t) return true;
+  // 三行格式：若態度／動作仍是省略號且表情也空 → 弱
+  const face = (t.match(/(?:^|\n)\s*表情\s*[：:]\s*(.+)/)?.[1] || "").trim();
+  const att = (t.match(/(?:^|\n)\s*態度\s*[：:]\s*(.+)/)?.[1] || "").trim();
+  const body = (t.match(/(?:^|\n)\s*動作\s*[：:]\s*(.+)/)?.[1] || "").trim();
+  if (face || att || body) {
+    const solid = [face, att, body].filter((x) => x && !/^[…·.．。\s]+$/.test(x));
+    return solid.length < 1;
+  }
   // 去掉省略號、句點、全形空白後幾乎沒字
   const core = t
     .replace(/[\s.…・.．。，,、！!？?～~「」『』（）()【】\[\]\-—–]/g, "")
@@ -726,15 +734,62 @@ function pickLine(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/** 罐頭三行（表情／態度／動作）；舊長台詞池只在缺省時當態度靈感 */
+const TRIPLE_FAIL = [
+  { face: "皺眉", attitude: "拒絕", body: "退開半步" },
+  { face: "冷臉", attitude: "戒備", body: "伸手擋開" },
+  { face: "別開視線", attitude: "不快", body: "側身拉開距離" },
+];
+const TRIPLE_BY_BAND = {
+  hi: {
+    stranger: { face: "微紅", attitude: "不情願地軟化", body: "沒有退開" },
+    friend: { face: "笑一下", attitude: "受用", body: "靠得近了點" },
+    girlfriend: { face: "開心", attitude: "撒嬌", body: "湊近他" },
+    wife: { face: "淡淡笑", attitude: "理所當然", body: "自然貼過去" },
+  },
+  pos: {
+    stranger: { face: "愣一下", attitude: "動搖", body: "攥了下袖口" },
+    friend: { face: "輕笑", attitude: "放鬆", body: "點點頭" },
+    girlfriend: { face: "眉眼彎", attitude: "開心", body: "輕輕碰他" },
+    wife: { face: "平靜微笑", attitude: "熟悉", body: "隨口應了應" },
+  },
+  zero: {
+    stranger: { face: "面無表情", attitude: "戒備", body: "站在原處" },
+    friend: { face: "平常臉", attitude: "隨口", body: "聳聳肩" },
+    girlfriend: { face: "看著他", attitude: "等下文", body: "歪了歪頭" },
+    wife: { face: "淡定", attitude: "習慣", body: "繼續待著" },
+  },
+  neg: {
+    stranger: { face: "冷眼", attitude: "排斥", body: "退半步" },
+    friend: { face: "撇嘴", attitude: "不爽", body: "別開臉" },
+    girlfriend: { face: "鼓臉", attitude: "鬧脾氣", body: "推了他一下" },
+    wife: { face: "無奈", attitude: "有點煩", body: "嘆口氣轉身" },
+  },
+  lo: {
+    stranger: { face: "僵硬", attitude: "敵視", body: "雙手抱胸" },
+    friend: { face: "沉下臉", attitude: "受傷", body: "後退拉開距離" },
+    girlfriend: { face: "眼眶紅", attitude: "委屈", body: "別過身" },
+    wife: { face: "冷淡", attitude: "失望", body: "沉默站遠" },
+  },
+};
+
+function formatTriple(t) {
+  return `表情：${t.face}\n態度：${t.attitude}\n動作：${t.body}`;
+}
+
 export function girlReactionLine({ stage = "stranger", emotionDelta = 0, openFail = false } = {}) {
-  if (openFail) return pickLine(REACT_FAIL);
+  if (openFail) {
+    const t = TRIPLE_FAIL[Math.floor(Math.random() * TRIPLE_FAIL.length)];
+    return formatTriple(t);
+  }
   let band = "zero";
   if (emotionDelta >= 2) band = "hi";
   else if (emotionDelta >= 1) band = "pos";
   else if (emotionDelta <= -2) band = "lo";
   else if (emotionDelta <= -1) band = "neg";
-  const byStage = REACT_BY_BAND[band] || REACT_BY_BAND.zero;
-  return pickLine(byStage[stage] || byStage.stranger || REACT_BY_BAND.zero.stranger);
+  const byStage = TRIPLE_BY_BAND[band] || TRIPLE_BY_BAND.zero;
+  const t = byStage[stage] || byStage.stranger || TRIPLE_BY_BAND.zero.stranger;
+  return formatTriple(t);
 }
 
 export function emotionFeelLabel(delta) {
@@ -1083,9 +1138,12 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
       openFail,
     });
     if (isWeakLine(line)) {
-      line = openFail ? "我沒接住。別這樣。" : "我聽到了。";
+      line = openFail
+        ? "表情：冷臉\n態度：拒絕\n動作：退開"
+        : "表情：平常\n態度：聽著\n動作：站在原處";
     }
     result.girlLine = line;
+    result.reactTriple = null;
     result.fromAi = false;
     result.feelLabel = emotionFeelLabel(result.emotionDelta);
     result.playsLeft = playsLeft(sess);

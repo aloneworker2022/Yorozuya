@@ -471,10 +471,10 @@
     <!-- 人物回應 -->
     <div class="tab-pane" id="tab-react" style="display:none">
       <div class="panel">
-        <h3>人物回應 → 英文畫圖句（與遊戲同一管線）</h3>
+        <h3>反應三欄 → 英文畫圖句（與遊戲同一管線）</h3>
         <p class="mini">
-          遊戲出卡：<strong>① 她的中文回話 → ② 純英文 imgEn → ③ 生圖</strong>。
-          這裡可逐步測，或一鍵跑全流程。
+          出卡 AI <strong>只產三項</strong>：表情／態度／身體動作（不要長台詞）。
+          管線：<strong>① 三欄 → ② 純英文 imgEn → ③ 生圖</strong>。
         </p>
         <div class="grid2">
           <div>
@@ -511,8 +511,8 @@
           <button class="cy" type="button" id="btn-roll-girl">🎲 抽人設</button>
         </div>
         <div class="row" style="margin-top:.45em">
-          <button class="gold" type="button" id="btn-react">① 生成回應</button>
-          <button class="cy" type="button" id="btn-react-imgen">② 回話→英文畫圖句</button>
+          <button class="gold" type="button" id="btn-react">① 產表情／態度／動作</button>
+          <button class="cy" type="button" id="btn-react-imgen">② 三欄→英文畫圖句</button>
           <button type="button" id="btn-react-to-img">③ 填入生圖框</button>
         </div>
         <div class="row" style="margin-top:.35em">
@@ -522,9 +522,9 @@
           </label>
         </div>
         <span class="status" id="re-status"></span>
-        <label style="margin-top:.5em">① 她的回話（可手改再跑 ②）</label>
-        <textarea id="re-line" class="tall" placeholder="生成回應後會出現在這裡…"></textarea>
-        <label>② 純英文畫圖句 imgEn（無 card token / stage direction 標籤）</label>
+        <label style="margin-top:.5em">① 三欄（可手改再跑 ②）</label>
+        <textarea id="re-line" class="tall" placeholder="表情：……&#10;態度：……&#10;動作：……"></textarea>
+        <label>② 純英文畫圖句 imgEn</label>
         <textarea id="re-imgen" class="tall" placeholder="跑 ② 後出現英文姿態／表情／互動…"></textarea>
         <div class="outbox muted" id="re-out" style="margin-top:.45em;min-height:2em"></div>
         <details class="fold" style="margin-top:.4em">

@@ -354,10 +354,9 @@ function questLines(ctx, stage) {
 }
 
 /**
- * 打牌反應：出卡後她以第一人稱回話（要像真人當下接話，不是標語）。
- * framing 依 kind：girl_trait=她主動、venue_event=場景、其餘=他的舉動。
+ * 打牌反應（精簡版）：只產三項——表情／態度／身體動作。
+ * 不要長台詞、不要內心獨白、不要故事旁白。
  * 核心只顯示字串、不解析情感；數值已由感情骰決定。
- * 廠商替換點：可整包改寫。
  */
 export function buildCardPlayPrompt(ctx) {
   const c = ctx.character || {};
@@ -368,108 +367,109 @@ export function buildCardPlayPrompt(ctx) {
   const kind = play.kind || "speech";
   const lines = [];
 
-  // 身份與關係（用完整六軸，比舊版「一句 open」更像真人）
   const L = c.look || {};
-  const eye = L.eyes || "";
-  const bust = L.bust || "";
-  const hair = [L.hair_color, L.hair].filter(Boolean).join("") || L.hair || "";
   lines.push(
-    `你是「${c.name}」。他們叫你魅魔，但你本來是普通人——現在身體被改過，還在這間萬事屋。`,
-    `年齡:${c.age || L.age || "成年"}。職業／過去:${c.job || c.occupation || c.job_desc || "—"}。`,
+    `你是「${c.name}」。對方是「${you}」。關係階段：${r.stage || "stranger"}。`,
     `個性:${(c.personality || []).join("、") || "—"}。`,
     c.tone || SPEECH_STYLE[c.speech_style] || "",
-    c.speech || c.口癖 ? `說話習慣／口癖:${c.speech || c.口癖}` : "",
-    `對方是召喚你的人,叫「${you}」。`,
-    "",
-    "【對象鎖定——不可搞錯人】",
-    `你就是「${c.name}」，不是別人、不是旁白。正在跟你說話／對你動手的人只有「${you}」。`,
-    eye || bust || hair
-      ? `你的外貌（被碰到要認得出是自己）：${[hair && `髮:${hair}`, eye && `眼:${eye}`, bust && `胸:${bust}`, L.build && `體型:${L.build}`].filter(Boolean).join("；")}。`
-      : "",
-    "旁白若出現你的名字或身體部位，那就是在描述你自己——回話要對上「他對準的是你」。",
-    "",
-    "【你和他現在的關係——每一條都要照做】",
-    ax.open,
-    `・稱呼:${ax.address.replace(/\{name\}/g, you)}`,
-    `・誰先開口:${ax.initiative}`,
-    `・你願意講多少:${ax.disclose}`,
-    `・你對他的要求權:${ax.claim}`,
-    `・你的身體:${ax.body}`,
-    r.stage === "wife"
-      ? `・界線:幾乎不算越界。${ax.crossReact}`
-      : `・界線（越界時）:${ax.crossLine}。他若踩到:${ax.crossReact}`,
+    `關係底色（一句）：${ax.open}`,
   );
 
   if (play.mode === "date" && play.venue_name) {
-    lines.push(`場景:你們正在「${play.venue_name}」約會，這不是店頭閒聊。`);
+    lines.push(`場合：約會「${play.venue_name}」。`);
   } else {
-    lines.push("場景:萬事屋店頭。他付了代價把你叫到身邊，距離很近。");
+    lines.push("場合：萬事屋店頭，距離很近。");
   }
 
-  // 本體卡／場地卡不是「他對你用了某招」——別把主動權寫反
-  let whatHappened = `他剛才對你做了這件事（牌面「${play.card_name || "某個舉動"}」）。`;
+  let whatHappened = `他對你做了：牌面「${play.card_name || "某個舉動"}」。`;
   if (kind === "girl_trait") {
-    whatHappened = `這一拍是你主動的節奏「${play.card_name || "你的本體"}」——不是他在出招進攻。`;
+    whatHappened = `這一拍是你主動的節奏「${play.card_name || "你的本體"}」。`;
   } else if (kind === "venue_event") {
-    whatHappened = `現場發生了「${play.card_name || "某個場面"}」——場面推著你們,不全是他算計好的。`;
+    whatHappened = `現場發生「${play.card_name || "某個場面"}」。`;
   }
 
   lines.push(
     "",
-    "【他剛才對你做了什麼——這是唯一真相，你的每一句都要接住】",
+    "【刺激（唯一真相）】",
     whatHappened,
-    play.scene_start
-      ? `【玩家動作旁白】（他做的事／說的話／肢體；不是你的心。你必須回應「這件事」）:\n${play.scene_start}`
-      : "",
-    play.visual_beat_zh
-      ? `【畫面定格】（插圖就是這一瞬；你的台詞要接這個動作結果，例如被碰到哪、距離多近）:\n${play.visual_beat_zh}`
-      : "",
-    play.prompt_hint ? `牌意方向（他想幹嘛，勿照念）:${play.prompt_hint}` : "",
-    play.open_fail
-      ? "肢體結果:你沒接住——退開、擋、冷。回話要對上「拒絕這一拍」。"
-      : "",
-    play.open_ok
-      ? "肢體結果:這一拍有被推進一點——你可以慌、嘴硬、接住，但要承認發生了。"
-      : "",
-    play.feel_label
-      ? `情緒底色「${play.feel_label}」只影響語氣，禁止報數、禁止另開一場無關對話。`
-      : "",
-    play.chain_attr ? `節奏偏「${play.chain_attr}」。` : "",
+    play.scene_start ? `旁白：${String(play.scene_start).replace(/\s+/g, " ").slice(0, 200)}` : "",
+    play.prompt_hint ? `牌意：${String(play.prompt_hint).replace(/\s+/g, " ").slice(0, 120)}` : "",
+    play.open_fail ? "結果：你沒接住，退開／擋。" : "",
+    play.open_ok ? "結果：這一拍有被推進一點。" : "",
+    play.feel_label ? `情緒底色（勿報數）：${play.feel_label}` : "",
   );
 
-  // 可選：飢渴／防備（有帶就寫）
-  if (ctx.craving?.tier) {
-    lines.push(`你現在的身體躁動程度偏「${ctx.craving.tier}」——會影響語氣，但你未必肯承認。`);
-  }
   if (ctx.guard?.hits) {
-    lines.push(
-      ctx.guard.hits >= 2
-        ? "（他最近又越界。這次你比較冷、比較兇，不給好臉色。）"
-        : "（你還在防備他剛才的越界——語氣更短、更刺。）",
-    );
+    lines.push(ctx.guard.hits >= 2 ? "防備偏高：更冷、更兇。" : "仍在防備：語氣更短、更刺。");
   }
 
   lines.push(
     "",
-    "【怎麼接話才連得上】",
-    "・第一句就要對上「他剛做的那一下／那句話」（碰哪、靠多近、說了什麼方向），禁止開場閒聊無關話題。",
-    "・先有反應再組織語言：嚇到、火大、害羞、想逃、想頂回去——擇一，且要由「他的動作」引起。",
-    "・可以嘴硬心軟、改口、罵完又補一句；可以提身體接觸點，但不要長篇自我剖析。",
-    "・禁止：假裝剛才沒發生、換成另一場戲、只講抽象心情不碰動作。",
-    "・用你的個性與口癖，不要客服腔、不要網漫萬能台詞。",
+    "【你只輸出三行，格式必須完全一致】",
+    "表情：……",
+    "態度：……",
+    "動作：……",
     "",
-    "【輸出格式】",
-    "1. 繁體中文。只輸出你「說出口」的話。",
-    "2. 長度：3～5 句（約 80～200 字）。",
-    "3. 不加引號、不寫旁白、不用括號舞台指示。",
-    "4. 禁止提及：卡牌、系統、AI、遊戲、情感數值、插圖、畫面定格、旁白。",
-    "5. 你不知道在玩卡——這是真實發生的接觸／對話。",
+    "規則：",
+    "・繁體中文；每行 4～18 字為佳，一句即可。",
+    "・表情＝臉上可見的（紅、瞪、微笑、撇嘴…），不是台詞。",
+    "・態度＝對他的立場（戒備、軟化、嘲諷、順從、心動…），短詞。",
+    "・動作＝身體／肢體可見（退半步、攥袖、別開視線、點頭…）。",
+    "・必須對上剛才的刺激；關係階段要合理（陌生偏戒備，妻子偏鬆）。",
+    "・禁止：長對話、內心獨白、故事旁白、引號台詞、系統／卡牌／數值字樣。",
+    "・不要多寫第四行；不要解釋。",
     ctx.content_rating === "nsfw"
-      ? "6. NSFW：可依剛才肢體露骨，但仍要像你本人會說的。"
-      : "6. 全年齡：可曖昧、害羞、生氣，不寫露骨性行為。",
+      ? "・NSFW：動作／表情可更露骨，但仍是短描述不是情色長文。"
+      : "・全年齡：可害羞／生氣／曖昧，不寫露骨性行為。",
   );
 
   return lines.filter(Boolean).join("\n");
+}
+
+/**
+ * 解析「表情／態度／動作」三行；失敗回 null。
+ * @returns {{ face: string, attitude: string, body: string, text: string } | null}
+ */
+export function parseCardReactTriple(raw) {
+  const t = String(raw || "").trim();
+  if (!t) return null;
+  const grab = (keys) => {
+    for (const k of keys) {
+      const re = new RegExp(
+        `(?:^|\\n)\\s*${k}\\s*[：:]\\s*(.+)`,
+        "i",
+      );
+      const m = t.match(re);
+      if (m) return m[1].trim().replace(/^["「『]+|["」』]+$/g, "").slice(0, 40);
+    }
+    return "";
+  };
+  let face = grab(["表情", "face", "expression"]);
+  let attitude = grab(["態度", "attitude", "stance"]);
+  let body = grab(["動作", "身體動作", "body", "action", "pose"]);
+  // 容錯：三行無標籤時依序當三欄
+  if (!face && !attitude && !body) {
+    const rows = t.split(/\n+/).map((x) => x.trim()).filter(Boolean).slice(0, 3);
+    if (rows.length >= 3) {
+      face = rows[0].replace(/^[^：:]*[：:]/, "").trim() || rows[0];
+      attitude = rows[1].replace(/^[^：:]*[：:]/, "").trim() || rows[1];
+      body = rows[2].replace(/^[^：:]*[：:]/, "").trim() || rows[2];
+    }
+  }
+  if (!face && !attitude && !body) return null;
+  face = face || "……";
+  attitude = attitude || "……";
+  body = body || "……";
+  const text = `表情：${face}\n態度：${attitude}\n動作：${body}`;
+  return { face, attitude, body, text };
+}
+
+/** 顯示用一行摘要 */
+export function formatCardReactDisplay(triple) {
+  if (!triple) return "";
+  if (typeof triple === "string") return triple;
+  const { face, attitude, body } = triple;
+  return `表情：${face || "……"}　態度：${attitude || "……"}　動作：${body || "……"}`;
 }
 
 /**

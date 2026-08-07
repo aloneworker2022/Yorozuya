@@ -3,13 +3,13 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
-import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildCardPlayPrompt, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
+import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildCardPlayPrompt, parseCardReactTriple, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, WARDROBE_UNLOCK } from "./content/girl_gen.js";
 import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.26(2026-08-07)創角改隨機基礎卡";
+const APP_VER = "v6.27(2026-08-08)出卡反應改表情態度動作";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1950,7 +1950,14 @@ function cardImgEnMsgs(girl, play, def) {
   const rating = state.settings?.rating || "sfw";
   const vEn = cardVisualEn(def);
   const scene = String(play?.sceneStart || "").replace(/\s+/g, " ").slice(0, 220);
-  const line = String(play?.girlLine || "").replace(/\s+/g, " ").slice(0, 220);
+  const triple = play?.reactTriple || parseCardReactTriple(play?.girlLine || "");
+  const reactBits = triple
+    ? [
+        triple.face ? `her expression: ${triple.face}` : "",
+        triple.attitude ? `her attitude: ${triple.attitude}` : "",
+        triple.body ? `her body action: ${triple.body}` : "",
+      ].filter(Boolean).join("; ")
+    : String(play?.girlLine || "").replace(/\s+/g, " ").slice(0, 160);
   return [
     {
       role: "system",
@@ -1958,9 +1965,9 @@ function cardImgEnMsgs(girl, play, def) {
         "You write English visual prompts for anime illustration.",
         "Output ONLY comma-separated English visual phrases (or 1–2 short English sentences).",
         "Content only: pose, gesture, facial expression, eye contact, distance, contact point, framing.",
-        "FORBIDDEN words/labels (never output): card, token, stage direction, prompt, visualEn, authoritative, PRIMARY, tags, kind, speech.",
-        "No Chinese. No quotes. No markdown. No dialogue lines. No character clothing list (outfit is separate).",
-        "If she spoke, convert her reaction into visible face/body language (smile, blush, scowl, lean away…).",
+        "FORBIDDEN labels: card, token, stage direction, prompt, visualEn, authoritative, PRIMARY, tags, kind, speech.",
+        "No Chinese. No quotes. No markdown. No dialogue. No clothing list.",
+        "Use her face / attitude / body fields as the visible reaction.",
         "If greeting/talk: facing each other, eye contact — never blank look-away idle.",
         rating === "nsfw"
           ? "NSFW visual ok if implied; keep visual not erotic prose."
@@ -1971,8 +1978,8 @@ function cardImgEnMsgs(girl, play, def) {
       role: "user",
       content: [
         vEn ? `Seed action (prefer, English): ${vEn}` : "",
-        `His action meaning (Chinese, translate to visual only, do not copy Chinese): ${scene || play?.name || "interaction"}`,
-        line ? `Her spoken reaction (Chinese → visual reaction only): ${line}` : "Her reaction: responsive to him",
+        `His action (Chinese meaning only → visual): ${scene || play?.name || "interaction"}`,
+        reactBits ? `Her reaction fields (Chinese labels → English visual): ${reactBits}` : "Her reaction: responsive",
         play?.open?.success === false ? "She rejects physically (pull back / block)." : "",
         "Write the illustration description now (English content only).",
       ].filter(Boolean).join("\n"),
@@ -3276,16 +3283,36 @@ async function genTick(force = false) {
 // 兩拍 UI：① 動作旁白 ② 場景圖備妥後才出她的回應
 // 避免「文字先好就能結束，圖還在跑」。
 
-/** 出卡她的回應：允許多句；去掉過短／純省略號 */
+/** 出卡反應：只認「表情／態度／動作」三行 */
 function cardPlayLines(text) {
-  let t = (text || "").trim();
-  // 去掉整段包引號
-  t = t.replace(/^["「『]+|["」』]+$/g, "").trim();
-  const lines = t.split("\n").map(l => l.trim()).filter(Boolean);
-  // 最多 6 行、約 420 字（配合 3～5 句真實回話）
-  let out = lines.slice(0, 6).join("\n").slice(0, 420).trim();
-  if (Cards.isWeakLine?.(out)) return "";
-  return out;
+  const triple = parseCardReactTriple(text);
+  if (triple) return triple.text;
+  // 舊格式／亂輸出：勉強收成三行標籤，避免整段長文
+  let t = (text || "").trim().replace(/^["「『]+|["」』]+$/g, "").trim();
+  if (!t || Cards.isWeakLine?.(t)) return "";
+  const rows = t.split(/\n+/).map(l => l.trim()).filter(Boolean).slice(0, 3);
+  if (rows.length >= 3) {
+    return `表情：${rows[0].slice(0, 40)}\n態度：${rows[1].slice(0, 40)}\n動作：${rows[2].slice(0, 40)}`;
+  }
+  // 單段短句 → 塞進態度
+  if (t.length <= 48) return `表情：……\n態度：${t.slice(0, 40)}\n動作：……`;
+  return "";
+}
+
+function applyPlayReact(play, rawText) {
+  const triple = parseCardReactTriple(rawText) || parseCardReactTriple(cardPlayLines(rawText));
+  if (triple) {
+    play.reactTriple = triple;
+    play.girlLine = triple.text;
+    return triple.text;
+  }
+  const line = cardPlayLines(rawText);
+  if (line) {
+    play.girlLine = line;
+    play.reactTriple = parseCardReactTriple(line);
+    return line;
+  }
+  return "";
 }
 
 /** 玩家顯示名（綁定 [player]） */
@@ -3318,15 +3345,7 @@ function cardPlayMsgs(girl, play) {
   const scene = Cards.resolveCardBinds?.(sceneRaw, Cards.bindContextFromGirl?.(girl, player)) || sceneRaw;
   const hintRaw = def?.promptHint || "";
   const hintBound = Cards.resolveCardBinds?.(hintRaw, Cards.bindContextFromGirl?.(girl, player)) || hintRaw;
-  // 詞墜鏈：子卡 = 父鏈 + 自己，對齊 content 與 AI（見 /cardedit）
-  const tokenStr = (def && Cards.cardTokenString?.(def)) || play?.tokenStr || "";
-  const sceneWithTokens = tokenStr
-    ? `${scene}\n（這一拍的詞墜效果：${tokenStr}——每一顆都要接住，後面的建立在前面之上。）`
-    : scene;
-  const promptHint = tokenStr
-    ? `${hintBound}${hintBound ? "\n" : ""}詞墜鏈（必須體現在反應裡）：${tokenStr}`
-    : hintBound;
-  // 寫回 play，讓 UI／生圖也吃綁定後文案
+  // 寫回 play，讓 UI／生圖也吃綁定後文案（不把詞墜標籤塞進 AI 刺激）
   if (play) {
     play.sceneStart = scene;
     play._boundName = girl?.name;
@@ -3336,35 +3355,25 @@ function cardPlayMsgs(girl, play) {
     venue_name: venueName,
     kind,
     card_name: play?.name || def?.name || "",
-    scene_start: sceneWithTokens,
-    // 與出卡圖同一拍的畫面定格（中文）
-    visual_beat_zh: play?.visualBeatZh || "",
-    prompt_hint: promptHint,
+    scene_start: scene,
+    visual_beat_zh: "",
+    prompt_hint: hintBound,
     open_fail: !!(play?.open && play.open.success === false),
     open_ok: !!(play?.open && play.open.success),
     feel_label: play?.feelLabel || "",
     chain_attr: play?.chain?.attr || sess?.chain?.attr || "",
     emotion_delta: play?.emotionDelta ?? 0,
   };
-  // 飢渴若有
   try {
     const tier = craveTier?.(girl);
     if (tier) ctx.craving = { tier };
   } catch { /* */ }
   const sys = buildCardPlayPrompt(ctx);
-  // 先文字後畫圖：回話只對齊玩家動作旁白，不依賴尚未產出的畫面定格
   const act = String(scene || play?.name || "").replace(/\s+/g, " ").slice(0, 160);
   const who = `你是「${girl?.name || "她"}」，對方是「${player}」。`;
-  let user;
-  if (play?.open && play.open.success === false) {
-    user = `（${who}旁白：他做了「${act}」，你沒接住、退開了。用 3～5 句回話：先對上他的動作，再兇／慌／嘴硬。只有台詞。）`;
-  } else if (kind === "girl_trait") {
-    user = `（${who}旁白：這一拍外在動作是「${act}」。用 3～5 句接下去或開口，要接得上這個動作，不要另開話題。只有台詞。）`;
-  } else if (kind === "venue_event") {
-    user = `（${who}旁白：現場與動作是「${act}」。用 3～5 句反應這件事本身。只有台詞。）`;
-  } else {
-    user = `（${who}旁白：他剛做的是「${act}」。用 3～5 句回話，必須承接這個動作／這句話，禁止無關開場。只有台詞。）`;
-  }
+  const user =
+    `（${who}刺激：${act}${play?.open?.success === false ? "；她沒接住" : ""}。` +
+    `只輸出三行——表情：…／態度：…／動作：…。不要台詞、不要解釋。）`;
   return [
     { role: "system", content: sys },
     { role: "user", content: user },
@@ -3470,19 +3479,18 @@ async function genCardPlayOrder() {
 
   if (r.status === "done" && r.result) {
     const { text } = stripGuardFlag(typeof r.result === "string" ? r.result : String(r.result ?? ""));
-    let line = cardPlayLines(text);
-    if (Cards.isWeakLine?.(line)) {
+    let line = applyPlayReact(play, text);
+    if (!line || Cards.isWeakLine?.(line)) {
       line = Cards.girlReactionLine({
         stage: girl.stage || "stranger",
         emotionDelta: play.emotionDelta || 0,
         openFail: !!(play.open && play.open.success === false),
       });
+      applyPlayReact(play, line);
       play.fromAi = false;
     } else {
-      play.girlLine = line;
       play.fromAi = true;
     }
-    if (!Cards.isWeakLine?.(line)) play.girlLine = line;
     cardUi.playAiPending = false;
     cardUi.playAiKey = null;
     cardUi.playAiToken = null;
@@ -3497,12 +3505,12 @@ async function genCardPlayOrder() {
     cardUi.playAiToken = null;
     cardUi.playAiStartedGen = null;
     if (play) play.fromAi = false;
-    if (!play.girlLine) {
-      play.girlLine = Cards.girlReactionLine?.({
+    if (!play.girlLine || !parseCardReactTriple(play.girlLine)) {
+      applyPlayReact(play, Cards.girlReactionLine?.({
         stage: girl.stage || "stranger",
         emotionDelta: play.emotionDelta || 0,
         openFail: !!(play.open && play.open.success === false),
-      }) || "……";
+      }) || "表情：……\n態度：……\n動作：……");
     }
     startSceneArtAfterText(girl, play);
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
@@ -6805,13 +6813,23 @@ function renderCardTable() {
         emotionDelta: last.emotionDelta || 0,
         openFail: !!(last.open && last.open.success === false),
       });
-      last.girlLine = showLine;
+      applyPlayReact(last, showLine);
+      showLine = last.girlLine;
     }
+    const triple = last.reactTriple || parseCardReactTriple(showLine);
+    const displayHtml = triple
+      ? `<div class="ct-react-triple">
+          <div><span class="lab">表情</span>${esc(triple.face)}</div>
+          <div><span class="lab">態度</span>${esc(triple.attitude)}</div>
+          <div><span class="lab">動作</span>${esc(triple.body)}</div>
+        </div>`
+      : null;
     const srcNote = last.fromAi ? "" : (state.settings?.model ? " · 保底" : "");
-    const sceneNote = waitingScene ? " · 場景依台詞補繪中…" : "";
+    const sceneNote = waitingScene ? " · 場景依反應補繪中…" : "";
     setCtVn({
       name: gname,
-      text: showLine || "我聽到了。",
+      text: displayHtml ? "" : (showLine || "表情：……\n態度：……\n動作：……"),
+      textHtml: displayHtml,
       meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${srcNote}${sceneNote} · ${esc(more)}`,
     });
     const vn2 = $("#ct-vn");

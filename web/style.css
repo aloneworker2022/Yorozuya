@@ -1675,6 +1675,21 @@ body.card-mode.has-ct-figure #kanban-girl {
   margin-bottom: .35em;
   min-height: 1.2em;
 }
+.ct-react-triple {
+  display: flex;
+  flex-direction: column;
+  gap: .28em;
+  line-height: 1.45;
+}
+.ct-react-triple .lab {
+  display: inline-block;
+  min-width: 2.6em;
+  margin-right: .45em;
+  color: var(--cyan, #6fe3e1);
+  font-size: .85em;
+  opacity: .9;
+}
+
 #ct-vn-text {
   font-size: .95em; line-height: 1.65;
   white-space: pre-wrap; word-break: break-word;

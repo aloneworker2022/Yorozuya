@@ -17,7 +17,7 @@ import {
   findLineageRoot,
   collectSubtreeIds,
 } from "./token_chain.js";
-import { buildCardPlayPrompt } from "./persona_builder.js";
+import { buildCardPlayPrompt, parseCardReactTriple, formatCardReactDisplay } from "./persona_builder.js";
 import {
   BIND_PLACEHOLDERS,
   bindContextFromGirl,
@@ -1479,17 +1479,16 @@ async function runReact() {
     },
   };
 
-  const sys =
-    identityLockBlock(girlCache, player) + "\n\n" + buildCardPlayPrompt(ctx);
+  const sys = buildCardPlayPrompt(ctx);
   const act = sceneForAi.replace(/\s+/g, " ").slice(0, 180);
   const who = `你是「${girlCache.name}」，對方是「${player}」。`;
-  const user = openFail
-    ? `（${who}旁白：他做了「${act}」，你沒接住、退開了。用 3～5 句回話：先對上他的動作，再兇／慌／嘴硬。只有台詞。）`
-    : `（${who}旁白：他剛做的是「${act}」。用 3～5 句回話，必須承接這個動作／這句話，禁止無關開場。只有台詞。）`;
+  const user =
+    `（${who}刺激：${act}${openFail ? "；她沒接住" : ""}。` +
+    `只輸出三行——表情：…／態度：…／動作：…。不要台詞、不要解釋。）`;
 
   $("re-prompt").textContent = sys + "\n\n[user] " + user;
   $("btn-react").disabled = true;
-  setStatus("re-status", "① 回應生成中…");
+  setStatus("re-status", "① 產表情／態度／動作…");
   $("re-out").textContent = "";
   try {
     const { text, sec } = await genWait(
@@ -1497,21 +1496,22 @@ async function runReact() {
         { role: "system", content: sys },
         { role: "user", content: user },
       ],
-      { keyPrefix: "cardreact", temperature: 0.9 },
+      { keyPrefix: "cardreact", temperature: 0.75 },
     );
-    const line = (text || "").trim();
+    const triple = parseCardReactTriple(text);
+    const line = triple?.text || (text || "").trim();
     pipelineCache.girlLine = line;
+    pipelineCache.reactTriple = triple;
     pipelineCache.sceneBound = scene;
     pipelineCache.meta = `${stageLabel(stage)} · Δ${emotionDelta >= 0 ? "+" : ""}${emotionDelta} · ${feelLabel}`;
     pipelineCache.imgEn = "";
     $("re-line").value = line;
     $("re-imgen").value = "";
     $("re-out").textContent =
-      `【① 回話完成 · ${pipelineCache.meta} · ${sec.toFixed(1)}s】\n` +
-      `【詞墜 ${brief.tokens}（僅玩法，不進畫圖 prompt）】\n\n` +
-      line +
-      `\n\n→ 下一步按「② 回話→英文畫圖句」`;
-    setStatus("re-status", `✓ ① 回話 ${sec.toFixed(1)}s · 可跑 ②`);
+      `【① 三欄反應 · ${pipelineCache.meta} · ${sec.toFixed(1)}s】\n\n` +
+      (formatCardReactDisplay(triple) || line) +
+      `\n\n→ 下一步按「② 反應→英文畫圖句」`;
+    setStatus("re-status", `✓ ① 完成 ${sec.toFixed(1)}s · 可跑 ②`);
   } catch (e) {
     setStatus("re-status", e.message, true);
   }
@@ -1530,10 +1530,11 @@ async function runReactToImgEn() {
   }
   let line = ($("re-line").value || "").trim() || pipelineCache.girlLine;
   if (!line) {
-    setStatus("re-status", "請先跑 ① 生成回應（或手填回話框）", true);
+    setStatus("re-status", "請先跑 ①（或手填 表情／態度／動作 三行）", true);
     return;
   }
   pipelineCache.girlLine = line;
+  const triple = parseCardReactTriple(line) || pipelineCache.reactTriple;
 
   const { girl, player } = editorGirlForBind();
   const bctx = bindContextFromGirl(girl, player);
@@ -1541,6 +1542,13 @@ async function runReactToImgEn() {
     pipelineCache.sceneBound ||
     resolveCardBinds(live.sceneStart || "", bctx);
   const seed = scrubEditImgLabels(live.visualEn || "");
+  const reactBits = triple
+    ? [
+        triple.face ? `expression: ${triple.face}` : "",
+        triple.attitude ? `attitude: ${triple.attitude}` : "",
+        triple.body ? `body: ${triple.body}` : "",
+      ].filter(Boolean).join("; ")
+    : line.slice(0, 160);
 
   const sys = [
     "You write English visual prompts for anime illustration.",
@@ -1548,13 +1556,13 @@ async function runReactToImgEn() {
     "Content only: pose, gesture, facial expression, eye contact, distance, contact point, framing.",
     "FORBIDDEN labels (never output): card, token, stage direction, prompt, visualEn, authoritative, PRIMARY, tags, kind, speech.",
     "No Chinese. No quotes. No markdown. No dialogue lines. No clothing list.",
-    "Convert her spoken reaction into visible face/body language.",
+    "Use her face / attitude / body fields as the visible reaction.",
     "If greeting/talk: facing each other, eye contact — never blank look-away idle.",
   ].join("\n");
   const user = [
     seed ? `Seed action (prefer, English): ${seed}` : "",
-    `His action meaning (Chinese → visual only, do not copy Chinese): ${scene.slice(0, 220) || live.name || "interaction"}`,
-    `Her spoken reaction (Chinese → visual reaction only): ${line.slice(0, 220)}`,
+    `His action (Chinese meaning → visual): ${scene.slice(0, 220) || live.name || "interaction"}`,
+    `Her reaction fields (Chinese → English visual): ${reactBits}`,
     "Write the illustration description now (English content only).",
   ]
     .filter(Boolean)
@@ -1580,7 +1588,7 @@ async function runReactToImgEn() {
     }
     $("re-out").textContent =
       `【② imgEn · ${sec.toFixed(1)}s】\n${en}\n\n` +
-      `【① 回話】\n${line}\n\n→ 可按「③ 填入生圖框」或「全流程」生圖`;
+      `【① 三欄】\n${formatCardReactDisplay(triple) || line}\n\n→ 可按「③ 填入生圖框」或「全流程」生圖`;
     setStatus("re-status", `✓ ② 英文畫圖句 ${sec.toFixed(1)}s`);
   } catch (e) {
     setStatus("re-status", e.message, true);
