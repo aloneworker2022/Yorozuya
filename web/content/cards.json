@@ -2271,6 +2271,126 @@
       "promptHint": "私密空間被外界戳穿一刻。吃味、心虛、關機、或故意給看。",
       "parentId": null,
       "setId": "main"
+    },
+    {
+      "id": "base_1",
+      "name": "新基礎卡",
+      "token": "新詞墜",
+      "tokenDesc": "",
+      "parentId": null,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 40,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "",
+      "promptHint": "",
+      "forceable": false,
+      "nsfwOnly": false,
+      "setId": "local_editor"
+    },
+    {
+      "id": "base_2",
+      "name": "新基礎卡",
+      "token": "新詞墜",
+      "tokenDesc": "",
+      "parentId": null,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 40,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "",
+      "promptHint": "",
+      "forceable": false,
+      "nsfwOnly": false,
+      "setId": "local_editor"
+    },
+    {
+      "id": "base_0001",
+      "name": "HI",
+      "token": "[招呼]",
+      "tokenDesc": "",
+      "parentId": null,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 40,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "",
+      "promptHint": "",
+      "forceable": false,
+      "nsfwOnly": false,
+      "setId": "local_editor"
     }
   ],
   "venues": [
@@ -2384,6 +2504,12 @@
       "id": "main",
       "name": "正式牌庫",
       "live": true
+    },
+    {
+      "id": "local_editor",
+      "name": "本機編輯暫存",
+      "live": false,
+      "note": "pull 前本機多出的卡，未進正式庫"
     }
   ]
 }
