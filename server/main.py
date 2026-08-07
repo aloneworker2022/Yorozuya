@@ -1892,6 +1892,84 @@ def testword():
     return FileResponse(WEB_DIR / "testword.html")
 
 
+# /cardedit 卡牌編輯器：讀寫 content/cards.json（詞墜繼承 · 全方位後台）
+@app.get("/api/cards")
+def get_cards():
+    path = WEB_DIR / "content" / "cards.json"
+    if not path.exists():
+        raise HTTPException(404, "找不到 cards.json")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(500, f"cards.json 解析失敗: {e}")
+
+
+@app.put("/api/cards")
+def put_cards(body: dict):
+    """整包覆寫 cards.json。需含 cards 陣列；其餘 _meta/enums/defaults 等一併寫回。"""
+    if not isinstance(body.get("cards"), list):
+        raise HTTPException(400, "需要 {cards: [...]}")
+    cards = body["cards"]
+    ids = []
+    for i, c in enumerate(cards):
+        if not isinstance(c, dict) or not c.get("id"):
+            raise HTTPException(400, f"cards[{i}] 缺 id")
+        cid = str(c["id"]).strip()
+        if not cid:
+            raise HTTPException(400, f"cards[{i}] id 為空")
+        if cid in ids:
+            raise HTTPException(400, f"重複 id: {cid}")
+        ids.append(cid)
+    # parentId 必須指到存在的卡（或 null）
+    idset = set(ids)
+    for c in cards:
+        pid = c.get("parentId")
+        if pid is None or pid == "":
+            c["parentId"] = None
+            continue
+        if pid not in idset:
+            raise HTTPException(400, f"卡 {c['id']} 的 parentId={pid} 不存在")
+        if pid == c["id"]:
+            raise HTTPException(400, f"卡 {c['id']} 不能 parent 自己")
+    # 簡易環偵測
+    by = {c["id"]: c for c in cards}
+    for c in cards:
+        seen = set()
+        cur = c
+        while cur:
+            if cur["id"] in seen:
+                raise HTTPException(400, f"詞墜繼承成環: {c['id']}")
+            seen.add(cur["id"])
+            pid = cur.get("parentId")
+            cur = by.get(pid) if pid else None
+    path = WEB_DIR / "content" / "cards.json"
+    # 備份一份，避免整包寫壞
+    try:
+        if path.exists():
+            bak = path.with_suffix(".json.bak")
+            bak.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    except Exception:
+        pass
+    # 正規化 _meta 註記（不強迫覆寫使用者自訂 comment）
+    meta = body.get("_meta") if isinstance(body.get("_meta"), dict) else {}
+    meta.setdefault("title", "魅魔萬事屋·互動牌定義（內容模組）")
+    meta.setdefault("spec", "docs/card-system.md")
+    meta["schema_version"] = int(meta.get("schema_version") or 2)
+    meta["token_model"] = (
+        "每卡一個詞墜 token；parentId 繼承父鏈詞墜。"
+        "解析後效果字串如 [問候] [說笑話]。"
+    )
+    body["_meta"] = meta
+    path.write_text(json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"ok": True, "count": len(cards), "schema_version": meta["schema_version"]}
+
+
+@app.get("/cardedit")
+def cardedit():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "cardedit.html")
+
+
 # /edit_person 編輯性趣池;整包覆寫 content/kinks.json
 @app.put("/api/kinks")
 def put_kinks(body: dict):

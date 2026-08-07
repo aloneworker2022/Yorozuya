@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Card Edit — 詞墜卡牌編輯器</title>
+<style>
+  :root {
+    --bg: #0e0c16;
+    --panel: rgba(255,255,255,.035);
+    --line: rgba(255,255,255,.1);
+    --text: #d8d0ec;
+    --muted: #8a82a5;
+    --pink: #ff4fd8;
+    --cyan: #6fe3e1;
+    --gold: #ffd75f;
+    --ok: #6bcb77;
+    --err: #ff5f7a;
+    --side: 280px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: system-ui, "Segoe UI", "Noto Sans TC", sans-serif;
+    font-size: 14px; line-height: 1.45; min-height: 100vh;
+  }
+  a { color: var(--cyan); }
+  header.top {
+    display: flex; flex-wrap: wrap; gap: .6em 1em; align-items: center;
+    padding: .7em 1em; border-bottom: 1px solid var(--line);
+    background: #120f1c; position: sticky; top: 0; z-index: 20;
+  }
+  header.top h1 { color: var(--pink); font-size: 1.05em; letter-spacing: .08em; font-weight: 700; }
+  header.top .sub { color: var(--muted); font-size: .78em; flex: 1 1 12em; }
+  .row { display: flex; gap: .45em; flex-wrap: wrap; align-items: center; }
+  button, .btn {
+    background: rgba(255,79,216,.18); border: none; border-radius: 7px; color: #ff8fe6;
+    font: inherit; padding: .42em .85em; cursor: pointer; white-space: nowrap;
+  }
+  button:hover { background: rgba(255,79,216,.3); }
+  button.cy { background: rgba(111,227,225,.14); color: var(--cyan); }
+  button.cy:hover { background: rgba(111,227,225,.26); }
+  button.gold { background: rgba(255,215,95,.14); color: var(--gold); }
+  button.del { background: rgba(255,95,122,.16); color: #ff8fa3; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .status { font-size: .78em; color: var(--ok); min-height: 1.1em; }
+  .status.err { color: var(--err); }
+  .layout {
+    display: grid;
+    grid-template-columns: var(--side) minmax(0,1fr) minmax(300px, 380px);
+    gap: 0; min-height: calc(100vh - 52px);
+  }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; }
+    .side, .tests { max-height: 48vh; overflow: auto; }
+  }
+  .side, .main, .tests {
+    border-right: 1px solid var(--line);
+    padding: .75em .85em;
+  }
+  .tests { border-right: none; background: rgba(0,0,0,.18); }
+  .side { background: rgba(0,0,0,.22); overflow: auto; max-height: calc(100vh - 52px); }
+  .main { overflow: auto; max-height: calc(100vh - 52px); }
+  .tests { overflow: auto; max-height: calc(100vh - 52px); }
+  h2 {
+    color: var(--cyan); font-size: .82em; letter-spacing: .1em;
+    margin: .2em 0 .55em; text-transform: none;
+  }
+  h3 { color: #b8b0d0; font-size: .78em; margin: .7em 0 .35em; letter-spacing: .06em; }
+  label { display: block; font-size: .72em; color: var(--muted); margin: .45em 0 .18em; }
+  input, textarea, select {
+    width: 100%; background: rgba(0,0,0,.35); border: 1px solid var(--line);
+    border-radius: 7px; color: var(--text); font: inherit; padding: .42em .55em; outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: rgba(111,227,225,.45); }
+  textarea { min-height: 5.5em; resize: vertical; line-height: 1.55; }
+  textarea.tall { min-height: 9em; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: .45em .6em; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .45em .6em; }
+  @media (max-width: 640px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .search { margin-bottom: .5em; }
+  .tree { font-size: .86em; }
+  .tree-item {
+    display: flex; align-items: center; gap: .35em; padding: .28em .4em;
+    border-radius: 6px; cursor: pointer; border: 1px solid transparent;
+  }
+  .tree-item:hover { background: rgba(255,255,255,.05); }
+  .tree-item.on { background: rgba(111,227,225,.12); border-color: rgba(111,227,225,.35); color: var(--cyan); }
+  .tree-item .tok {
+    font-size: .72em; color: var(--gold); background: rgba(255,215,95,.1);
+    padding: 0 .35em; border-radius: 4px; max-width: 6.5em; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tree-item .meta { color: var(--muted); font-size: .7em; margin-left: auto; }
+  .tree-kids { margin-left: .85em; border-left: 1px dashed rgba(255,255,255,.08); padding-left: .25em; }
+  .chip {
+    display: inline-block; font-size: .7em; padding: .1em .4em; border-radius: 4px;
+    background: rgba(255,255,255,.07); color: var(--muted); margin-right: .25em;
+  }
+  .chip.kind-speech { color: #9ad0ff; }
+  .chip.kind-shop_premium { color: #ffb07a; }
+  .chip.kind-girl_trait { color: #c9a0ff; }
+  .chip.kind-venue_event { color: #8fd9a8; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: .75em .85em; margin-bottom: .75em;
+  }
+  .token-bar {
+    font-size: 1.15em; color: var(--gold); letter-spacing: .04em;
+    padding: .55em .7em; background: rgba(0,0,0,.35); border-radius: 8px;
+    border: 1px solid rgba(255,215,95,.2); word-break: break-all; min-height: 2.2em;
+  }
+  .token-bar.empty { color: var(--muted); font-size: .9em; }
+  .emo-table { width: 100%; border-collapse: collapse; font-size: .8em; margin-top: .4em; }
+  .emo-table th, .emo-table td {
+    border: 1px solid var(--line); padding: .3em .4em; text-align: center;
+  }
+  .emo-table th { color: var(--muted); font-weight: 500; }
+  .emo-table input { width: 3.2em; text-align: center; padding: .2em; }
+  .hist { display: flex; gap: 2px; align-items: flex-end; height: 48px; margin-top: .4em; }
+  .hist .bar {
+    flex: 1; background: rgba(111,227,225,.45); border-radius: 2px 2px 0 0; min-width: 8px;
+  }
+  .hist .lab { font-size: .65em; color: var(--muted); text-align: center; }
+  .outbox {
+    background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 8px;
+    padding: .6em .7em; white-space: pre-wrap; min-height: 3.5em; color: var(--gold);
+    max-height: 16em; overflow: auto; font-size: .9em;
+  }
+  .outbox.muted { color: var(--muted); }
+  .preview-img {
+    margin-top: .5em; background: #0a0812; border: 1px solid var(--line);
+    border-radius: 8px; min-height: 120px; display: flex; align-items: center; justify-content: center;
+  }
+  .preview-img img { max-width: 100%; max-height: 320px; border-radius: 6px; }
+  .tabs { display: flex; gap: .3em; flex-wrap: wrap; margin-bottom: .55em; }
+  .tabs button { background: rgba(255,255,255,.05); color: var(--muted); padding: .35em .7em; font-size: .8em; }
+  .tabs button.on { background: rgba(111,227,225,.18); color: var(--cyan); }
+  .dirty-dot { color: var(--gold); }
+  .mini { font-size: .72em; color: var(--muted); }
+  .checkrow { display: flex; flex-wrap: wrap; gap: .5em 1em; margin: .4em 0; }
+  .checkrow label { display: flex; align-items: center; gap: .35em; margin: 0; font-size: .8em; color: var(--text); }
+  .checkrow input { width: auto; }
+  details.fold > summary { cursor: pointer; color: var(--muted); font-size: .8em; padding: .2em 0; }
+  .json-box { font-family: ui-monospace, monospace; font-size: .78em; min-height: 4em; }
+  .badge-warn { color: #ff9d4d; }
+  .inherit-path { font-size: .78em; color: var(--muted); margin-top: .35em; }
+  .inherit-path b { color: #c8c0e0; font-weight: 500; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>🃏 Card Edit</h1>
+  <div class="sub">詞墜繼承卡牌編輯器 · 基礎卡 → 衍伸卡 · AI 生文／生圖／回應／效果試算
+    <a href="/">← 遊戲</a> · <a href="/testword">Testword</a> · <a href="/edit_person">人物池</a>
+  </div>
+  <div class="row">
+    <button class="cy" type="button" id="btn-reload">重新載入</button>
+    <button type="button" id="btn-save">💾 儲存 cards.json</button>
+    <span class="status" id="save-status"></span>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- 左：樹狀清單 -->
+  <aside class="side">
+    <h2>卡牌樹</h2>
+    <input class="search" id="filter" placeholder="搜 id / 名 / 詞墜…">
+    <div class="row" style="margin-bottom:.5em">
+      <button class="cy" type="button" id="btn-new-base">＋基礎卡</button>
+      <button class="cy" type="button" id="btn-new-child">＋子卡</button>
+      <button class="del" type="button" id="btn-del">刪除</button>
+    </div>
+    <div class="row" style="margin-bottom:.55em">
+      <button type="button" id="btn-suggest-tokens" title="對沒有 token 的卡，用名稱推一個短詞墜">推斷詞墜</button>
+      <button type="button" id="btn-expand-all">展開</button>
+    </div>
+    <div class="mini" id="tree-stats" style="margin-bottom:.4em"></div>
+    <div class="tree" id="tree"></div>
+  </aside>
+
+  <!-- 中：編輯表單 -->
+  <main class="main">
+    <div id="empty-hint" class="panel">
+      <h2>選一張卡開始編輯</h2>
+      <p class="mini">概念：每張卡 = 一個<strong>詞墜</strong>。子卡繼承父鏈全部詞墜再疊自己的。<br>
+        例：基礎「問候」→ <code style="color:var(--gold)">[問候]</code>；子卡「打趣」→ <code style="color:var(--gold)">[問候] [說笑話]</code>。<br>
+        遊戲舊欄位（emotion / sceneStart / promptHint…）仍保留；詞墜是內容對齊的主軸。</p>
+    </div>
+
+    <div id="editor" class="hidden" style="display:none">
+      <div class="panel">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">詞墜效果（解析結果）</h2>
+          <span class="chip" id="ed-dirty" style="display:none">未存檔</span>
+        </div>
+        <div class="token-bar" id="resolved-tokens">—</div>
+        <div class="inherit-path" id="inherit-path"></div>
+      </div>
+
+      <div class="panel">
+        <h2>基本 · 繼承</h2>
+        <div class="grid2">
+          <div>
+            <label>id（存檔鍵，勿隨意改）</label>
+            <input id="f-id" spellcheck="false">
+          </div>
+          <div>
+            <label>顯示名稱 name</label>
+            <input id="f-name">
+          </div>
+          <div>
+            <label>本卡詞墜 token *</label>
+            <input id="f-token" placeholder="例：問候、說笑話、牽手">
+          </div>
+          <div>
+            <label>父卡 parentId（空＝基礎卡）</label>
+            <select id="f-parent"></select>
+          </div>
+        </div>
+        <label>詞墜語意 tokenDesc（給 AI／自己看）</label>
+        <input id="f-tokenDesc" placeholder="這顆詞墜代表什麼動作／語氣">
+        <div class="grid3">
+          <div>
+            <label>kind</label>
+            <select id="f-kind">
+              <option value="speech">speech 話術</option>
+              <option value="shop_premium">shop_premium 高級</option>
+              <option value="girl_trait">girl_trait 本體</option>
+              <option value="venue_event">venue_event 場地</option>
+            </select>
+          </div>
+          <div>
+            <label>rarity</label>
+            <select id="f-rarity">
+              <option>N</option><option>R</option><option>S</option><option>SS</option><option>SSR</option>
+            </select>
+          </div>
+          <div>
+            <label>minStage</label>
+            <select id="f-minStage">
+              <option value="">（無）</option>
+              <option value="stranger">stranger</option>
+              <option value="friend">friend</option>
+              <option value="girlfriend">girlfriend</option>
+              <option value="wife">wife</option>
+            </select>
+          </div>
+          <div>
+            <label>price</label>
+            <input id="f-price" type="number" min="0" step="1">
+          </div>
+          <div>
+            <label>shopWeight</label>
+            <input id="f-shopWeight" type="number" min="0" step="0.05">
+          </div>
+          <div>
+            <label>tags（逗號分隔）</label>
+            <input id="f-tags" placeholder="talk, touch, sex, play">
+          </div>
+        </div>
+        <div class="checkrow">
+          <label><input type="checkbox" id="f-shatter"> shatterOnUse 用則碎</label>
+          <label><input type="checkbox" id="f-starter"> starter 創角池</label>
+          <label><input type="checkbox" id="f-forceable"> forceable</label>
+          <label><input type="checkbox" id="f-nsfwOnly"> nsfwOnly</label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>演出文案</h2>
+        <label>sceneStart（玩家動作旁白）</label>
+        <textarea class="tall" id="f-sceneStart"></textarea>
+        <label>promptHint（給 AI 的牌意，勿寫死台詞）</label>
+        <textarea id="f-promptHint"></textarea>
+      </div>
+
+      <div class="panel">
+        <h2>感情表 emotion（四階段 min/max）</h2>
+        <p class="mini">子卡有填就用子卡；沒填的 stage 會沿父鏈往上找。下方空白 min=max=空 表示「本卡不覆蓋」。</p>
+        <table class="emo-table" id="emo-table">
+          <thead>
+            <tr><th>階段</th><th>min</th><th>max</th><th>解析來源</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="grid2" style="margin-top:.5em">
+          <div>
+            <label>emotionOnFail min</label>
+            <input id="f-fail-min" type="number" placeholder="開門失敗">
+          </div>
+          <div>
+            <label>emotionOnFail max</label>
+            <input id="f-fail-max" type="number">
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>數值 effect / 開門 openChain（JSON）</h2>
+        <div class="grid2">
+          <div>
+            <label>effect 物件</label>
+            <textarea class="json-box" id="f-effect" placeholder='{"guardDelta":1,"cravingDelta":10}'></textarea>
+          </div>
+          <div>
+            <label>openChain</label>
+            <textarea class="json-box" id="f-openChain" placeholder='{"attr":"talk","k":3}'></textarea>
+          </div>
+        </div>
+        <label>requires / 其他進階 JSON（可選）</label>
+        <textarea class="json-box" id="f-extra" placeholder='{"requires":{},"lane":"..."}'></textarea>
+        <p class="mini">extra 可放 requires、lane、stageBind、venueIds、template、steps… 會 merge 進卡面。</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- 右：測試面板 -->
+  <aside class="tests">
+    <h2>測試台</h2>
+
+    <div class="panel">
+      <h3>AI 引擎</h3>
+      <div class="grid2">
+        <div>
+          <label>供應商</label>
+          <select id="t-provider">
+            <option value="grok-build">Grok Build</option>
+            <option value="ollama">Ollama</option>
+          </select>
+        </div>
+        <div>
+          <label>模型</label>
+          <input id="t-model" list="t-model-list" placeholder="grok-4.5">
+          <datalist id="t-model-list"></datalist>
+        </div>
+      </div>
+      <label>Ollama 端點</label>
+      <input id="t-endpoint" value="http://localhost:11434">
+      <div class="row" style="margin-top:.4em">
+        <button class="cy" type="button" id="btn-ping">測試引擎</button>
+        <span class="status" id="t-engine"></span>
+      </div>
+    </div>
+
+    <div class="tabs" id="test-tabs">
+      <button type="button" data-tab="effect" class="on">效果</button>
+      <button type="button" data-tab="derive">AI 衍伸</button>
+      <button type="button" data-tab="text">生文</button>
+      <button type="button" data-tab="react">回應</button>
+      <button type="button" data-tab="img">生圖</button>
+    </div>
+
+    <!-- 效果計算 -->
+    <div class="tab-pane" id="tab-effect">
+      <div class="panel">
+        <h3>詞墜 · 繼承效果</h3>
+        <div class="token-bar" id="fx-tokens">—</div>
+        <pre class="outbox muted" id="fx-effect" style="margin-top:.5em;color:var(--text)"></pre>
+        <h3>感情試算</h3>
+        <div class="row">
+          <select id="fx-stage" style="width:auto;min-width:7em">
+            <option value="stranger">陌生</option>
+            <option value="friend">朋友</option>
+            <option value="girlfriend">女友</option>
+            <option value="wife">妻子</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:.3em;margin:0;font-size:.8em">
+            <input type="checkbox" id="fx-fail"> 開門失敗
+          </label>
+          <button class="cy" type="button" id="btn-sim">擲 200 次</button>
+        </div>
+        <div class="mini" id="fx-sim-meta" style="margin-top:.35em"></div>
+        <div class="hist" id="fx-hist"></div>
+      </div>
+    </div>
+
+    <!-- AI 衍伸 -->
+    <div class="tab-pane" id="tab-derive" style="display:none">
+      <div class="panel">
+        <h3>從目前卡 AI 衍伸子卡</h3>
+        <p class="mini">以當前卡為父，請模型各生一個<strong>新詞墜</strong>的子卡草案（不會直接覆寫檔，先預覽再「加入編輯器」）。</p>
+        <div class="grid2">
+          <div>
+            <label>衍伸張數</label>
+            <input id="dr-n" type="number" min="1" max="8" value="3">
+          </div>
+          <div>
+            <label>方向提示（可空）</label>
+            <input id="dr-hint" placeholder="更親密／更玩笑／帶身體感…">
+          </div>
+        </div>
+        <div class="row" style="margin-top:.45em">
+          <button class="gold" type="button" id="btn-derive">✦ AI 衍伸</button>
+          <button class="cy" type="button" id="btn-derive-add" disabled>加入編輯器</button>
+        </div>
+        <span class="status" id="dr-status"></span>
+        <div class="outbox" id="dr-out" style="margin-top:.45em"></div>
+      </div>
+    </div>
+
+    <!-- 生文 -->
+    <div class="tab-pane" id="tab-text" style="display:none">
+      <div class="panel">
+        <h3>AI 生 sceneStart / promptHint</h3>
+        <p class="mini">依詞墜鏈寫玩家動作旁白與牌意提示（不寫她的台詞）。</p>
+        <div class="checkrow">
+          <label><input type="checkbox" id="tx-scene" checked> sceneStart</label>
+          <label><input type="checkbox" id="tx-hint" checked> promptHint</label>
+          <label><input type="checkbox" id="tx-apply"> 生成後寫入表單</label>
+        </div>
+        <button class="gold" type="button" id="btn-textgen">✦ 生文</button>
+        <span class="status" id="tx-status"></span>
+        <div class="outbox" id="tx-out" style="margin-top:.45em"></div>
+      </div>
+    </div>
+
+    <!-- 人物回應 -->
+    <div class="tab-pane" id="tab-react" style="display:none">
+      <div class="panel">
+        <h3>人物回應測試</h3>
+        <p class="mini">用遊戲 <code>buildCardPlayPrompt</code> 同一套：她接詞墜／旁白。</p>
+        <div class="grid2">
+          <div>
+            <label>階段</label>
+            <select id="re-stage">
+              <option value="stranger">陌生</option>
+              <option value="friend" selected>朋友</option>
+              <option value="girlfriend">女友</option>
+              <option value="wife">妻子</option>
+            </select>
+          </div>
+          <div>
+            <label>模式</label>
+            <select id="re-mode">
+              <option value="kanban">看板</option>
+              <option value="date">約會</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div>
+            <label>她的名字</label>
+            <input id="re-name" value="小夜">
+          </div>
+          <div>
+            <label>個性（、分隔）</label>
+            <input id="re-per" value="毒舌、嘴硬心軟">
+          </div>
+        </div>
+        <label>玩家名</label>
+        <input id="re-player" value="你">
+        <div class="checkrow">
+          <label><input type="checkbox" id="re-open-fail"> 模擬開門失敗</label>
+          <button class="cy" type="button" id="btn-roll-girl">🎲 抽人設</button>
+        </div>
+        <button class="gold" type="button" id="btn-react">▶ 生成回應</button>
+        <span class="status" id="re-status"></span>
+        <div class="outbox" id="re-out" style="margin-top:.45em"></div>
+        <details class="fold" style="margin-top:.4em">
+          <summary>▸ 完整 system prompt</summary>
+          <pre class="outbox muted" id="re-prompt" style="max-height:12em"></pre>
+        </details>
+      </div>
+    </div>
+
+    <!-- 生圖 -->
+    <div class="tab-pane" id="tab-img" style="display:none">
+      <div class="panel">
+        <h3>出卡場面生圖測試</h3>
+        <p class="mini">依詞墜 + sceneStart 組場面 prompt（Grok 生圖或 Comfy）。</p>
+        <div class="grid2">
+          <div>
+            <label>provider</label>
+            <select id="ig-provider">
+              <option value="grok-img">grok-img</option>
+              <option value="comfy">comfy</option>
+            </select>
+          </div>
+          <div>
+            <label>分級</label>
+            <select id="ig-rating">
+              <option value="sfw">sfw</option>
+              <option value="nsfw">nsfw</option>
+            </select>
+          </div>
+        </div>
+        <label>額外 prompt（可改）</label>
+        <textarea id="ig-prompt" placeholder="會自動帶入詞墜與旁白摘要…"></textarea>
+        <label>ComfyURL（comfy 用）</label>
+        <input id="ig-comfy" placeholder="http://192.168.x.x:8188">
+        <div class="row" style="margin-top:.4em">
+          <button class="cy" type="button" id="btn-ig-fill">填入建議 prompt</button>
+          <button class="gold" type="button" id="btn-imggen">✦ 生圖</button>
+        </div>
+        <span class="status" id="ig-status"></span>
+        <div class="preview-img" id="ig-preview"><span class="mini">尚無圖</span></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script type="module" src="/content/cardedit.js"></script>
+</body>
+</html>

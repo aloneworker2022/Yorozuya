@@ -1,6 +1,15 @@
 // 互動牌制核心（無 DOM）
 // 規格：docs/card-system.md；內容：web/content/cards.json
 // 常數以 JSON defaults 為準；禁止擅自改 bubble_chance 等鎖定值。
+// 詞墜繼承：token / parentId → content/token_chain.js
+
+import {
+  resolveTokenChain,
+  formatTokenChain,
+  resolveMergedEffect,
+  tokenEffectBrief,
+  tokenOf,
+} from "./token_chain.js";
 
 const STAGE_ORDER = ["stranger", "friend", "girlfriend", "wife"];
 
@@ -33,6 +42,35 @@ export function cardById(id) {
 
 export function allCards() {
   return DATA?.cards || [];
+}
+
+/** 詞墜鏈（祖先→自己） */
+export function cardTokenChain(cardOrId) {
+  const def = typeof cardOrId === "string" ? cardById(cardOrId) : cardOrId;
+  if (!def) return [];
+  return resolveTokenChain(def, BY_ID);
+}
+
+/** 例：`[問候] [說笑話]` */
+export function cardTokenString(cardOrId) {
+  return formatTokenChain(cardTokenChain(cardOrId));
+}
+
+export function cardTokenOf(cardOrId) {
+  const def = typeof cardOrId === "string" ? cardById(cardOrId) : cardOrId;
+  return tokenOf(def);
+}
+
+export function cardMergedEffect(cardOrId) {
+  const def = typeof cardOrId === "string" ? cardById(cardOrId) : cardOrId;
+  if (!def) return {};
+  return resolveMergedEffect(def, BY_ID, { mode: "sum" });
+}
+
+export function cardTokenBrief(cardOrId) {
+  const def = typeof cardOrId === "string" ? cardById(cardOrId) : cardOrId;
+  if (!def) return { tokens: "", descs: "", chain: [] };
+  return tokenEffectBrief(def, BY_ID);
 }
 
 export function cardDefaults() {
@@ -521,8 +559,23 @@ const FALLBACK_EMOTION = {
 
 export function emotionTable(def, stage, { fail = false } = {}) {
   if (fail) {
-    if (def?.emotionOnFail) return def.emotionOnFail;
+    // 父鏈 emotionOnFail：子優先
+    let cur = def;
+    const seen = new Set();
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      if (cur.emotionOnFail) return cur.emotionOnFail;
+      cur = cur.parentId ? BY_ID[cur.parentId] : null;
+    }
     return d("emotion_fail_open", { min: -3, max: -1 });
+  }
+  // 詞墜繼承：子卡有寫該 stage 就用子；否則沿父鏈往上
+  let cur = def;
+  const seen = new Set();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    if (cur.emotion?.[stage]) return cur.emotion[stage];
+    cur = cur.parentId ? BY_ID[cur.parentId] : null;
   }
   if (def?.emotion?.[stage]) return def.emotion[stage];
   const tags = def?.tags || [];
@@ -1047,8 +1100,9 @@ function spendPlayNormal(sess, def) {
 }
 
 function applyCardEffect(sess, def, result) {
-  const eff = def.effect;
-  if (!eff) return;
+  // 詞墜繼承：父鏈 effect 加總後再套用（子覆寫同名非數字鍵）
+  const eff = resolveMergedEffect(def, BY_ID, { mode: "sum" });
+  if (!eff || !Object.keys(eff).length) return;
   if (eff.forceAnotherRound) {
     sess.forceAnotherRound = true;
     result.forceAnotherRound = true;

@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.20(2026-08-06)玩家動作軸·圖文回話對齊";
+const APP_VER = "v6.21(2026-08-07)詞墜繼承·卡牌編輯器";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -3170,15 +3170,24 @@ function cardPlayMsgs(girl, play) {
   ctx.want_guard_flag = false;
   // 餵完整動態場面（牌意演繹），讓她接得住細節
   const scene = play?.sceneStart || Cards.sceneTextFor?.(state, play?.cardId) || def?.sceneStart || "";
+  // 詞墜鏈：子卡 = 父鏈 + 自己，對齊 content 與 AI（見 /cardedit）
+  const tokenStr = (def && Cards.cardTokenString?.(def)) || play?.tokenStr || "";
+  const sceneWithTokens = tokenStr
+    ? `${scene}\n（這一拍的詞墜效果：${tokenStr}——每一顆都要接住，後面的建立在前面之上。）`
+    : scene;
+  const hintBase = def?.promptHint || "";
+  const promptHint = tokenStr
+    ? `${hintBase}${hintBase ? "\n" : ""}詞墜鏈（必須體現在反應裡）：${tokenStr}`
+    : hintBase;
   ctx.card_play = {
     mode: sess?.mode || "kanban",
     venue_name: venueName,
     kind,
     card_name: play?.name || def?.name || "",
-    scene_start: scene,
+    scene_start: sceneWithTokens,
     // 與出卡圖同一拍的畫面定格（中文）
     visual_beat_zh: play?.visualBeatZh || "",
-    prompt_hint: def?.promptHint || "",
+    prompt_hint: promptHint,
     open_fail: !!(play?.open && play.open.success === false),
     open_ok: !!(play?.open && play.open.success),
     feel_label: play?.feelLabel || "",
@@ -5399,6 +5408,7 @@ function formatCardDetailHtml(def, row) {
       ${effLine ? `<div class="cid-row"><span class="k">效果</span><span class="v">${esc(effLine)}</span></div>` : ""}
       ${def.price ? `<div class="cid-row"><span class="k">參考價</span><span class="v">${def.price} 金</span></div>` : ""}
     </div>
+    ${Cards.cardTokenString?.(def) ? `<p class="cid-hint" style="color:var(--gold,#ffd75f)">${esc(Cards.cardTokenString(def))}</p>` : ""}
     ${def.promptHint ? `<p class="cid-hint dim small">${esc(def.promptHint)}</p>` : ""}
     <div class="cid-actions">
       <button type="button" class="cid-close" id="cid-close">收起說明</button>
