@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.24(2026-08-07)生圖英文外貌·卡牌visualEn";
+const APP_VER = "v6.25(2026-08-07)先文字再畫圖·純英文場面";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1943,38 +1943,95 @@ function voidCardSceneArt() {
 }
 
 /**
- * 中文「動作／場面」→ 英文視覺描述。
- * 注意：出卡管線是 **先生圖再出文字**，故此處不依賴 girlLine。
+ * 出卡後：已有她的台詞 → 產「純英文」畫圖描述（不含 card token / stage direction 等標籤詞）。
+ * 給 image 模型：只放可畫的內容（姿態、表情、互動、構圖）。
  */
-function sceneEnMsgs(girl, play) {
+function cardImgEnMsgs(girl, play, def) {
   const rating = state.settings?.rating || "sfw";
+  const vEn = cardVisualEn(def);
+  const scene = String(play?.sceneStart || "").replace(/\s+/g, " ").slice(0, 220);
+  const line = String(play?.girlLine || "").replace(/\s+/g, " ").slice(0, 220);
   return [
     {
       role: "system",
       content: [
-        "You write English visual prompts for a single-character anime illustration.",
-        "Output ONLY the English description (1–2 sentences or comma-separated tags).",
-        "Include: pose, facial expression, gesture, setting/background, lighting, clothing state if relevant.",
-        "Match the character identity only at a high level (adult woman); do NOT invent a different hair color or age.",
-        "No dialogue, no Chinese, no quotes, no markdown, no 'prompt:' prefix.",
+        "You write English visual prompts for anime illustration.",
+        "Output ONLY comma-separated English visual phrases (or 1–2 short English sentences).",
+        "Content only: pose, gesture, facial expression, eye contact, distance, contact point, framing.",
+        "FORBIDDEN words/labels (never output): card, token, stage direction, prompt, visualEn, authoritative, PRIMARY, tags, kind, speech.",
+        "No Chinese. No quotes. No markdown. No dialogue lines. No character clothing list (outfit is separate).",
+        "If she spoke, convert her reaction into visible face/body language (smile, blush, scowl, lean away…).",
+        "If greeting/talk: facing each other, eye contact — never blank look-away idle.",
         rating === "nsfw"
-          ? "NSFW allowed if the scene implies it; keep it visual not prose."
-          : "Keep it all-ages: suggestive is ok, no explicit nudity.",
+          ? "NSFW visual ok if implied; keep visual not erotic prose."
+          : "All-ages: suggestive ok, no explicit nudity.",
       ].join("\n"),
     },
     {
       role: "user",
       content: [
-        `Name: ${girl.name || "her"}`,
-        `Stage: ${girl.stage || "stranger"}`,
-        `Card: ${play.name || play.cardId || ""}`,
-        `What just happened (Chinese stage direction — THIS is the scene to draw): ${play.sceneStart || play.name || ""}`,
-        play.open?.success === false ? "Note: she rejected / pulled away from his advance." : "",
-        play.open?.success ? "Note: a boundary opened; she is being drawn in." : "",
-        "Describe the visual scene at this moment for the illustration.",
+        vEn ? `Seed action (prefer, English): ${vEn}` : "",
+        `His action meaning (Chinese, translate to visual only, do not copy Chinese): ${scene || play?.name || "interaction"}`,
+        line ? `Her spoken reaction (Chinese → visual reaction only): ${line}` : "Her reaction: responsive to him",
+        play?.open?.success === false ? "She rejects physically (pull back / block)." : "",
+        "Write the illustration description now (English content only).",
       ].filter(Boolean).join("\n"),
     },
   ];
+}
+
+/** 去掉會污染 CLIP 的 meta 標籤字樣 */
+function scrubImgPromptLabels(s) {
+  return String(s || "")
+    .replace(/\b(CARD VISUAL|authoritative action|stage direction|card tokens?|player action tokens?|ACTION \(authoritative\)|PRIMARY:|AUTHORITATIVE)\b/gi, " ")
+    .replace(/\b(prompt|visualEn|visualZh|kind|speech|shop_premium)\s*[:=]/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[,;\s]+|[,;\s]+$/g, "")
+    .trim();
+}
+
+/**
+ * 在「她的台詞已就緒」後，產英文畫圖句寫入 play.imgEn / visualBeatEn。
+ */
+async function ensureCardImgEnAfterText(girl, play, gen) {
+  const def = play?.cardId ? Cards.cardById(play.cardId) : null;
+  const fb = visualBeatFallback(play, def, girl);
+  const seed = scrubImgPromptLabels(cardVisualEn(def) || fb.visual_en || "");
+
+  // 無模型：卡牌 visualEn + 保底即可
+  if (!state.settings?.model) {
+    const en = seed || fb.visual_en;
+    play.imgEn = en;
+    play.visualBeatEn = en;
+    play.visualBeatZh = fb.visual_zh;
+    return en;
+  }
+
+  const key = `cardimgen:${girl.id}:${play.cardId}:${gen}`;
+  const deadline = Date.now() + 90000;
+  let r = await genPost(key, cardImgEnMsgs(girl, play, def), 11);
+  while (r && Date.now() < deadline) {
+    if (cardSceneJob.gen !== gen) return null;
+    if (r.status === "done" && r.result) {
+      const { text } = stripGuardFlag(typeof r.result === "string" ? r.result : String(r.result ?? ""));
+      let en = scrubImgPromptLabels(text.replace(/[\u4e00-\u9fff]+/g, " "));
+      if (en.length < 16) en = seed || fb.visual_en;
+      // 再濾掉殘留中文
+      en = en.replace(/[\u4e00-\u9fff]/g, " ").replace(/\s+/g, " ").trim();
+      play.imgEn = en;
+      play.visualBeatEn = en;
+      play.visualBeatZh = fb.visual_zh;
+      return en;
+    }
+    if (r.status === "error") break;
+    await new Promise(res => setTimeout(res, 700));
+    r = await genPost(key, cardImgEnMsgs(girl, play, def), 11);
+  }
+  const en = seed || fb.visual_en;
+  play.imgEn = en;
+  play.visualBeatEn = en;
+  play.visualBeatZh = fb.visual_zh;
+  return en;
 }
 
 /** 卡牌專用畫圖描述（英文）；子卡有寫用子，否則沿 parentId 繼承 */
@@ -2178,7 +2235,9 @@ async function ensurePlayVisualBeat(girl, play, gen) {
 }
 
 /**
- * 出卡場景圖：先定格（對齊牌意）→ 再生圖；onDone 後回話也吃同一份定格。
+ * 出卡場景圖（文字就緒後呼叫）：
+ * 1) 依「動作 + 她的回話」產純英文畫圖句
+ * 2) 再生圖（不塞 card token / stage direction 等標籤）
  */
 function queueCardSceneArt(girl, play, onDone) {
   const done = (ok) => {
@@ -2197,8 +2256,7 @@ function queueCardSceneArt(girl, play, onDone) {
       cardUi._sceneArtWarned = true;
       toast(`出卡場景圖略過：${why}`, "");
     }
-    // 仍要產出定格給回話用
-    ensurePlayVisualBeat(girl, play, (cardSceneJob.gen || 0) + 1).finally(() => done(false));
+    done(false);
     return;
   }
   if (play._sceneArtQueued) return;
@@ -2227,25 +2285,23 @@ function queueCardSceneArt(girl, play, onDone) {
   (async () => {
     let ok = false;
     try {
-      // 1) 同一拍「畫面定格」（中＋英）——圖與回話共用
-      const beat = await ensurePlayVisualBeat(girl, play, gen);
+      // 1) 純英文場面（吃 girlLine + visualEn），不要 meta 標籤
+      const sceneEn = await ensureCardImgEnAfterText(girl, play, gen);
       if (cardSceneJob.gen !== gen) { done(false); return; }
       if (cardUi.lastPlay === play || cardUi.lastPlay?.cardId === play.cardId) {
-        // 同步到 lastPlay，供回話 prompt 讀取
         if (cardUi.lastPlay) {
-          cardUi.lastPlay.visualBeatZh = play.visualBeatZh;
+          cardUi.lastPlay.imgEn = play.imgEn;
           cardUi.lastPlay.visualBeatEn = play.visualBeatEn;
+          cardUi.lastPlay.visualBeatZh = play.visualBeatZh;
         }
       }
-      const sceneEn = (beat?.visual_en || play.visualBeatEn || "").trim()
-        || visualBeatFallback(play, Cards.cardById(play.cardId)).visual_en;
-      console.info("[cardSceneArt] beat ZH:", (play.visualBeatZh || "").slice(0, 80));
-      console.info("[cardSceneArt] beat EN:", sceneEn.slice(0, 120));
+      const en = scrubImgPromptLabels(sceneEn || play.imgEn || play.visualBeatEn || "");
+      console.info("[cardSceneArt] imgEn:", en.slice(0, 160));
 
-      // 2) 生圖：只畫定格，不要無關美圖
+      // 2) 生圖
       const imgKey = `cardscene-img:${girl.id}:${play.cardId}:${gen}`;
       cardSceneJob.key = imgKey;
-      const url = await weaveCardSceneShot(girl, sceneEn, imgKey, play);
+      const url = await weaveCardSceneShot(girl, en, imgKey, play);
       const stillThisJob = cardSceneJob.gen === gen;
 
       if (url) {
@@ -2304,16 +2360,15 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
   else if (tags.includes("kiss") || tags.includes("touch")) framing = "half";
 
   const comfy = imgProvider() === "comfy";
-  // 卡牌 visualEn 優先於 AI 定格——打招呼就要畫打招呼
-  const cardVis = cardVisualEn(def);
-  const actionEn = [
-    cardVis ? `CARD VISUAL (authoritative action): ${cardVis}` : "",
-    sceneEn,
-    "PRIMARY: show the action/gesture from the description",
-    "If greeting/talking: face each other, eye contact, responsive expression — NOT blank look-away",
-    "NOT a solo idol idle portrait",
-    "same woman as character sheet, interaction frozen mid-action",
-  ].filter(Boolean).join(", ");
+  // 只塞「可畫內容」英文，不塞 card token / stage direction 等標籤
+  const cardVis = scrubImgPromptLabels(cardVisualEn(def));
+  const pure = scrubImgPromptLabels([cardVis, sceneEn].filter(Boolean).join(", "));
+  const actionEn = scrubImgPromptLabels([
+    pure,
+    "mid-action, detailed face",
+    "facing each other if talking or greeting",
+    "not idle solo portrait looking away",
+  ].filter(Boolean).join(", "));
   const body = {
     key,
     provider: imgProvider(),
@@ -2324,7 +2379,6 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
     style: state.settings.imgStyle === "pixel" ? "anime" : (state.settings.imgStyle || "anime"),
     character: s,
     extra: actionEn,
-    // prompt 給 Comfy 時也直接塞英文動作（extra 在 sdtags 會併進 positive）
     prompt: comfy ? actionEn : "",
     cutout: false,
     flat_bg: false,
@@ -3218,7 +3272,7 @@ async function genTick(force = false) {
   genTickBusy = false;
 }
 
-// ── M4/實驗 打牌：先生圖（動作場面）→ 再生她的文字 ──
+// ── M4/實驗 打牌：先她的文字 → 英文畫圖句 → 再生圖 ──
 // 兩拍 UI：① 動作旁白 ② 場景圖備妥後才出她的回應
 // 避免「文字先好就能結束，圖還在跑」。
 
@@ -3298,9 +3352,8 @@ function cardPlayMsgs(girl, play) {
     if (tier) ctx.craving = { tier };
   } catch { /* */ }
   const sys = buildCardPlayPrompt(ctx);
-  // 回话必须钉死「玩家动作」+「你是誰」——把动作摘要塞进 user
+  // 先文字後畫圖：回話只對齊玩家動作旁白，不依賴尚未產出的畫面定格
   const act = String(scene || play?.name || "").replace(/\s+/g, " ").slice(0, 160);
-  const vis = String(play?.visualBeatZh || "").replace(/\s+/g, " ").slice(0, 100);
   const who = `你是「${girl?.name || "她"}」，對方是「${player}」。`;
   let user;
   if (play?.open && play.open.success === false) {
@@ -3310,9 +3363,7 @@ function cardPlayMsgs(girl, play) {
   } else if (kind === "venue_event") {
     user = `（${who}旁白：現場與動作是「${act}」。用 3～5 句反應這件事本身。只有台詞。）`;
   } else {
-    user = vis
-      ? `（${who}旁白：他剛做的是「${act}」。畫面定格：${vis}。用 3～5 句回話，第一句就要碰到他的動作或接觸點。只有台詞。）`
-      : `（${who}旁白：他剛做的是「${act}」。用 3～5 句回話，必須承接這個動作／這句話，禁止無關開場。只有台詞。）`;
+    user = `（${who}旁白：他剛做的是「${act}」。用 3～5 句回話，必須承接這個動作／這句話，禁止無關開場。只有台詞。）`;
   }
   return [
     { role: "system", content: sys },
@@ -3339,7 +3390,26 @@ function voidCardPlayAiAndScene() {
   cardUi.sceneArtPending = false;
 }
 
-/** 場景圖完成後才下文字單 */
+/** 台詞就緒後才排場景圖（文字 → 英文畫圖句 → 圖） */
+function startSceneArtAfterText(girl, play) {
+  if (!girl || !play?.ok) return;
+  if (!cardUi.awaitReaction || cardUi.lastPlay !== play) return;
+  if (!cardSceneArtOn()) {
+    cardUi.sceneArtPending = false;
+    return;
+  }
+  if (play._sceneArtQueued) return;
+  cardUi.sceneArtPending = true;
+  queueCardSceneArt(girl, play, () => {
+    if (cardUi.lastPlay === play) cardUi.sceneArtPending = false;
+    if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
+      renderCardTable();
+    }
+  });
+  if (document.body.classList.contains("card-mode")) renderCardTable();
+}
+
+/** 先下她的文字單（不先生圖） */
 function beginCardPlayText(girl, play) {
   if (!girl || !play?.ok) return;
   if (!cardUi.awaitReaction || cardUi.lastPlay !== play) return;
@@ -3348,6 +3418,7 @@ function beginCardPlayText(girl, play) {
     // 罐頭已在 play.girlLine
     play.fromAi = false;
     cardUi.playAiPending = false;
+    startSceneArtAfterText(girl, play);
     if (document.body.classList.contains("card-mode")) renderCardTable();
     return;
   }
@@ -3357,40 +3428,26 @@ function beginCardPlayText(girl, play) {
   cardUi.playAiKey = `cardplay:${girl.id}:${token}`;
   cardUi.playAiPending = true;
   cardUi.playAiStartedGen = gen;
+  cardUi.sceneArtPending = false;
   genPost(cardUi.playAiKey, cardPlayMsgs(girl, play), 12).catch(() => {});
   if (document.body.classList.contains("card-mode")) renderCardTable();
 }
 
 /**
- * 出卡管線：**先生圖（動作場面）→ 再出她的文字**。
- * 圖失敗／關場景圖 → 仍繼續出文字。
+ * 出卡管線：**先她的文字 → 再產英文畫圖描述 → 再生圖**。
+ * 圖失敗／關場景圖 → 文字仍可看。
  */
 function beginCardPlayAi(girl, play) {
   voidCardPlayAiAndScene();
   if (!girl || !play?.ok) return;
 
-  cardUi.sceneArtPending = true;
+  cardUi.sceneArtPending = false;
   cardUi.playAiPending = false;
-
-  const afterScene = () => {
-    if (!cardUi.awaitReaction || cardUi.lastPlay !== play) return;
-    cardUi.sceneArtPending = false;
-    beginCardPlayText(girl, play);
-    if (document.body.classList.contains("card-mode")) renderCardTable();
-  };
-
-  if (!cardSceneArtOn()) {
-    cardUi.sceneArtPending = false;
-    beginCardPlayText(girl, play);
-    return;
-  }
-
-  queueCardSceneArt(girl, play, afterScene);
+  beginCardPlayText(girl, play);
 }
 
 async function genCardPlayOrder() {
-  // 場景圖未完：不下文字單
-  if (cardUi.sceneArtPending) return;
+  // 先收文字；圖在文字完成後另排
   if (!cardUi.awaitReaction || !cardUi.playAiPending || !cardUi.playAiKey) return;
   if (!cardUi.lastPlay || !state.settings?.model) {
     voidCardPlayAi();
@@ -3404,7 +3461,8 @@ async function genCardPlayOrder() {
   const token = cardUi.playAiToken;
   const key = cardUi.playAiKey;
   const startedGen = cardUi.playAiStartedGen;
-  const r = await genPost(key, cardPlayMsgs(girl, cardUi.lastPlay), 12);
+  const play = cardUi.lastPlay;
+  const r = await genPost(key, cardPlayMsgs(girl, play), 12);
   if (!r) return;
   if (cardUi.playAiStartedGen !== startedGen) return;
   if (cardUi.playAiToken !== token || !cardUi.awaitReaction) return;
@@ -3416,19 +3474,20 @@ async function genCardPlayOrder() {
     if (Cards.isWeakLine?.(line)) {
       line = Cards.girlReactionLine({
         stage: girl.stage || "stranger",
-        emotionDelta: cardUi.lastPlay.emotionDelta || 0,
-        openFail: !!(cardUi.lastPlay.open && cardUi.lastPlay.open.success === false),
+        emotionDelta: play.emotionDelta || 0,
+        openFail: !!(play.open && play.open.success === false),
       });
-      cardUi.lastPlay.fromAi = false;
+      play.fromAi = false;
     } else {
-      cardUi.lastPlay.girlLine = line;
-      cardUi.lastPlay.fromAi = true;
+      play.girlLine = line;
+      play.fromAi = true;
     }
-    if (!Cards.isWeakLine?.(line)) cardUi.lastPlay.girlLine = line;
+    if (!Cards.isWeakLine?.(line)) play.girlLine = line;
     cardUi.playAiPending = false;
     cardUi.playAiKey = null;
     cardUi.playAiToken = null;
     cardUi.playAiStartedGen = null;
+    startSceneArtAfterText(girl, play);
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
       renderCardTable();
     }
@@ -3437,7 +3496,15 @@ async function genCardPlayOrder() {
     cardUi.playAiKey = null;
     cardUi.playAiToken = null;
     cardUi.playAiStartedGen = null;
-    if (cardUi.lastPlay) cardUi.lastPlay.fromAi = false;
+    if (play) play.fromAi = false;
+    if (!play.girlLine) {
+      play.girlLine = Cards.girlReactionLine?.({
+        stage: girl.stage || "stranger",
+        emotionDelta: play.emotionDelta || 0,
+        openFail: !!(play.open && play.open.success === false),
+      }) || "……";
+    }
+    startSceneArtAfterText(girl, play);
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
       renderCardTable();
     }
@@ -5144,7 +5211,7 @@ let cardUi = {
   playAiToken: null,
   playAiGen: 0,
   playAiStartedGen: null,
-  // 先生圖後生文：場景圖未完為 true（此時不下文字單、不可結束反應）
+  // 先文字後生圖：sceneArtPending = 圖還在補繪（不擋看台詞／繼續）
   sceneArtPending: false,
 };
 
@@ -6475,12 +6542,12 @@ function commitHandPlay(instanceId, girl, stage) {
   }
   cardUi.lastPlay = r;
   cardUi.awaitReaction = true;
-  cardUi.reactBeat = "action"; // 先讀加長動作文，場景圖同時跑
+  cardUi.reactBeat = "action"; // 先讀動作文；台詞背景生成
   cardUi.endPanel = null;
   touchInteractDay(girl);
   bindCardArtAlias(girl, r.cardId);
   applyPlaySideEffects(girl, r);
-  beginCardPlayAi(girl, r); // 出卡當下立刻生圖
+  beginCardPlayAi(girl, r); // 出卡：先文字，再畫圖
   const n = state.cardSession?.hand?.length || 0;
   if (cardUi.handIdx >= n) cardUi.handIdx = Math.max(0, n - 1);
   scheduleSave(); renderCardTable();
@@ -6852,25 +6919,25 @@ function renderCardTable() {
     return;
   }
 
-  // ── 出卡反應兩拍：①動作 → ②（先生圖）再出她的文字 ──
+  // ── 出卡反應兩拍：①動作 → ②她的文字（先文字；圖在背景補）──
   if (cardUi.awaitReaction && cardUi.lastPlay) {
     const last = cardUi.lastPlay;
     if (!cardUi.reactBeat) cardUi.reactBeat = "action";
     const waitingScene = !!cardUi.sceneArtPending;
     const waitingText = !!(cardUi.playAiPending && !last.fromAi && state.settings?.model);
-    const waitingPipe = waitingScene || waitingText;
+    // 只擋在「等台詞」；圖可背景補，看完台詞就能繼續
+    const waitingPipe = waitingText;
 
-    // 等場景圖／台詞時頂欄只留推出（不能提早結束反應）
     syncCardTableChrome({ ejectMode: waitingPipe && cardUi.reactBeat === "reply" });
 
-    // ① 動作旁白（sceneStart）——場景圖已在背景跑
+    // ① 動作旁白——台詞在背景生成
     if (cardUi.reactBeat === "action") {
       const beat = playActionBeat(last, girl);
-      const sceneHint = waitingScene ? " · 場景繪製中…" : "";
+      const textHint = waitingText ? " · 她正在想怎麼回…" : "";
       setCtVn({
         name: beat.speaker,
         text: beat.text,
-        meta: `${beat.meta || ""}${sceneHint}`,
+        meta: `${beat.meta || ""}${textHint}`,
       });
       const vn = $("#ct-vn");
       if (vn) {
@@ -6880,8 +6947,8 @@ function renderCardTable() {
       setCtHand(`
         <div class="ct-react-beat">
           <div class="dim small ct-react-wait">${
-            waitingScene
-              ? "場景已在繪製——慢慢看完這段，再點繼續"
+            waitingText
+              ? "她還在組織台詞——慢慢看完這段再點繼續"
               : "慢慢看完這段，再點繼續看她怎麼接"
           }</div>
           <div class="detail-actions card-actions">
@@ -6892,7 +6959,7 @@ function renderCardTable() {
       return;
     }
 
-    // ② 回覆節拍：先等場景圖，再等台詞；都好了才可結束
+    // ② 回覆節拍：先等台詞；圖可並行（meta 提示補繪）
     const openNote = last.open && !last.open.success
       ? "沒接住"
       : last.open?.success
@@ -6903,26 +6970,6 @@ function renderCardTable() {
     const more = last.roundEnded
       ? "這是本輪最後一次——繼續後判定她願不願意再來一輪"
       : `之後還能應付 ${last.playsLeft ?? "?"} 次`;
-
-    if (waitingScene) {
-      setCtVn({
-        name: gname,
-        text: "",
-        textHtml: `<span class="ct-typing" aria-label="繪製場景"><i></i><i></i><i></i></span>`,
-        meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""} · 場景繪製中…`,
-      });
-      const vnS = $("#ct-vn");
-      if (vnS) {
-        vnS.classList.remove("ct-vn-tap");
-        vnS.onclick = null;
-      }
-      setCtHand(`
-        <div class="ct-react-beat">
-          <div class="dim small ct-react-you">剛才：${esc(last.name || "")}</div>
-          <div class="dim small ct-react-wait">先畫場面，好了才出她的台詞——左上角可「推出」</div>
-        </div>`);
-      return;
-    }
 
     if (waitingText) {
       setCtVn({
@@ -6939,7 +6986,7 @@ function renderCardTable() {
       setCtHand(`
         <div class="ct-react-beat">
           <div class="dim small ct-react-you">剛才：${esc(last.name || "")}</div>
-          <div class="dim small ct-react-wait">場景好了，等她開口——左上角可「推出」</div>
+          <div class="dim small ct-react-wait">等她開口——左上角可「推出」</div>
         </div>`);
       return;
     }
@@ -6954,10 +7001,11 @@ function renderCardTable() {
       last.girlLine = showLine;
     }
     const srcNote = last.fromAi ? "" : (state.settings?.model ? " · 保底" : "");
+    const sceneNote = waitingScene ? " · 場景依台詞補繪中…" : "";
     setCtVn({
       name: gname,
       text: showLine || "我聽到了。",
-      meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${srcNote} · ${esc(more)}`,
+      meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${srcNote}${sceneNote} · ${esc(more)}`,
     });
     const vn2 = $("#ct-vn");
     if (vn2) {
@@ -6967,6 +7015,9 @@ function renderCardTable() {
     setCtHand(`
       <div class="ct-react-beat">
         <div class="dim small ct-react-you">剛才：${esc(last.name || "")}</div>
+        <div class="dim small ct-react-wait">${
+          waitingScene ? "場景在依她的回話補繪——可先看完台詞再繼續" : ""
+        }</div>
         <div class="detail-actions card-actions">
           <button type="button" class="cyan" id="ct-ack-react">${
             last.roundEnded ? "繼續（輪末判定）" : "繼續"

@@ -1504,19 +1504,12 @@ function fillImgPrompt() {
     .replace(/\s+/g, " ")
     .slice(0, 180);
   const vEn = (live.visualEn || "").trim();
+  // 只塞可畫內容：英文動作 + 人名；不塞 card token / stage direction 標籤
   const prompt = [
     "anime illustration, cinematic interaction scene",
-    // 身分：名字可中文，身體特徵盡量英文動作句
-    `adult woman named ${bctx.name}`,
-    vEn
-      ? `ACTION (authoritative): ${vEn}`
-      : [
-          "he interacts with her, she faces him, eye contact",
-          "responsive expression, NOT blank look-away idle",
-        ].join(", "),
-    brief.tokens ? `card tokens: ${brief.tokens}` : "",
-    scene ? `stage direction (context only): ${scene}` : "",
-    "half body, detailed face, soft lighting",
+    `adult woman ${bctx.name}`,
+    vEn || "he interacts with her, she faces him, eye contact, responsive expression, not looking away",
+    "half body, detailed face, soft lighting, mid-action",
     "no horns, no wings, no tail, no text, no watermark",
   ]
     .filter(Boolean)
