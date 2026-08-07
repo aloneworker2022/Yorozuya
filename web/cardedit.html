@@ -471,8 +471,11 @@
     <!-- 人物回應 -->
     <div class="tab-pane" id="tab-react" style="display:none">
       <div class="panel">
-        <h3>人物回應測試</h3>
-        <p class="mini">用遊戲 <code>buildCardPlayPrompt</code> 同一套：她接詞墜／旁白。</p>
+        <h3>人物回應 → 英文畫圖句（與遊戲同一管線）</h3>
+        <p class="mini">
+          遊戲出卡：<strong>① 她的中文回話 → ② 純英文 imgEn → ③ 生圖</strong>。
+          這裡可逐步測，或一鍵跑全流程。
+        </p>
         <div class="grid2">
           <div>
             <label>階段</label>
@@ -507,11 +510,25 @@
           <label><input type="checkbox" id="re-open-fail"> 模擬開門失敗</label>
           <button class="cy" type="button" id="btn-roll-girl">🎲 抽人設</button>
         </div>
-        <button class="gold" type="button" id="btn-react">▶ 生成回應</button>
+        <div class="row" style="margin-top:.45em">
+          <button class="gold" type="button" id="btn-react">① 生成回應</button>
+          <button class="cy" type="button" id="btn-react-imgen">② 回話→英文畫圖句</button>
+          <button type="button" id="btn-react-to-img">③ 填入生圖框</button>
+        </div>
+        <div class="row" style="margin-top:.35em">
+          <button class="gold" type="button" id="btn-react-full">▶ 全流程 ①②③＋生圖</button>
+          <label style="margin:0;font-size:.78em;display:flex;align-items:center;gap:.3em">
+            <input type="checkbox" id="re-apply-visual"> 把 imgEn 寫入表單 visualEn
+          </label>
+        </div>
         <span class="status" id="re-status"></span>
-        <div class="outbox" id="re-out" style="margin-top:.45em"></div>
+        <label style="margin-top:.5em">① 她的回話（可手改再跑 ②）</label>
+        <textarea id="re-line" class="tall" placeholder="生成回應後會出現在這裡…"></textarea>
+        <label>② 純英文畫圖句 imgEn（無 card token / stage direction 標籤）</label>
+        <textarea id="re-imgen" class="tall" placeholder="跑 ② 後出現英文姿態／表情／互動…"></textarea>
+        <div class="outbox muted" id="re-out" style="margin-top:.45em;min-height:2em"></div>
         <details class="fold" style="margin-top:.4em">
-          <summary>▸ 完整 system prompt</summary>
+          <summary>▸ 完整 system prompt（回話）</summary>
           <pre class="outbox muted" id="re-prompt" style="max-height:12em"></pre>
         </details>
       </div>
@@ -521,7 +538,10 @@
     <div class="tab-pane" id="tab-img" style="display:none">
       <div class="panel">
         <h3>出卡場面生圖測試</h3>
-        <p class="mini">依詞墜 + 已綁定女子的 sceneStart 組場面。可選模型並先測通路。</p>
+        <p class="mini">
+          建議先在「回應」分頁跑 ①②，再來這裡生圖。
+          prompt 只放<strong>可畫的英文內容</strong>，不塞 token／stage direction 標籤。
+        </p>
         <div class="grid2">
           <div>
             <label>生圖供應商</label>

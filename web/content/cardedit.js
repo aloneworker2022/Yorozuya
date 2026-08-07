@@ -1386,6 +1386,24 @@ async function rollGirl() {
   }
 }
 
+/** 測試管線快取：①回話 → ②imgEn → ③生圖 */
+let pipelineCache = {
+  girlLine: "",
+  imgEn: "",
+  sceneBound: "",
+  meta: "",
+};
+
+function scrubEditImgLabels(s) {
+  return String(s || "")
+    .replace(/\b(CARD VISUAL|authoritative action|stage direction|card tokens?|player action tokens?|ACTION \(authoritative\)|PRIMARY:|AUTHORITATIVE)\b/gi, " ")
+    .replace(/\b(prompt|visualEn|visualZh|kind|speech|shop_premium)\s*[:=]/gi, " ")
+    .replace(/[\u4e00-\u9fff]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[,;\s]+|[,;\s]+$/g, "")
+    .trim();
+}
+
 async function runReact() {
   const live = formSnapshot();
   if (!live?.id) {
@@ -1420,10 +1438,11 @@ async function runReact() {
   const bctx = bindContextFromGirl(girlCache, player);
   const sceneRaw =
     (live.sceneStart || "").trim() ||
-    `你對 [name] 做了這件事，詞墜效果：${brief.tokens}。`;
+    `你對 [name] 做了這件事。`;
   const scene = resolveCardBinds(sceneRaw, bctx);
   const hint = resolveCardBinds(live.promptHint || "", bctx);
-  const sceneWithTokens = `${scene}\n（詞墜：${brief.tokens}）`;
+  // 回話用：旁白即可；詞墜只作方向，不要求模型念出 [問候] 字樣
+  const sceneForAi = scene;
 
   const sim = simulateEmotion(live, map, stage, { fail: openFail, trials: 1 });
   const lo = sim.range[0];
@@ -1450,8 +1469,8 @@ async function runReact() {
       venue_name: mode === "date" ? "咖啡店窗邊" : null,
       kind: live.kind || "speech",
       card_name: live.name,
-      scene_start: sceneWithTokens,
-      prompt_hint: `${hint}\n詞墜鏈（必須接住）：${brief.tokens}`,
+      scene_start: sceneForAi,
+      prompt_hint: hint || "",
       open_fail: openFail,
       open_ok: !openFail && !!live.openChain,
       feel_label: feelLabel,
@@ -1462,15 +1481,15 @@ async function runReact() {
 
   const sys =
     identityLockBlock(girlCache, player) + "\n\n" + buildCardPlayPrompt(ctx);
-  const act = sceneWithTokens.replace(/\s+/g, " ").slice(0, 180);
+  const act = sceneForAi.replace(/\s+/g, " ").slice(0, 180);
   const who = `你是「${girlCache.name}」，對方是「${player}」。`;
   const user = openFail
-    ? `（${who}旁白：他做了「${act}」，你沒接住、退開了。詞墜 ${brief.tokens}。用 3～5 句回話。只有台詞。）`
-    : `（${who}旁白：他剛做的是「${act}」。詞墜 ${brief.tokens}。用 3～5 句回話，第一句就要碰到他的動作。只有台詞。）`;
+    ? `（${who}旁白：他做了「${act}」，你沒接住、退開了。用 3～5 句回話：先對上他的動作，再兇／慌／嘴硬。只有台詞。）`
+    : `（${who}旁白：他剛做的是「${act}」。用 3～5 句回話，必須承接這個動作／這句話，禁止無關開場。只有台詞。）`;
 
   $("re-prompt").textContent = sys + "\n\n[user] " + user;
   $("btn-react").disabled = true;
-  setStatus("re-status", "回應生成中…");
+  setStatus("re-status", "① 回應生成中…");
   $("re-out").textContent = "";
   try {
     const { text, sec } = await genWait(
@@ -1480,34 +1499,147 @@ async function runReact() {
       ],
       { keyPrefix: "cardreact", temperature: 0.9 },
     );
+    const line = (text || "").trim();
+    pipelineCache.girlLine = line;
+    pipelineCache.sceneBound = scene;
+    pipelineCache.meta = `${stageLabel(stage)} · Δ${emotionDelta >= 0 ? "+" : ""}${emotionDelta} · ${feelLabel}`;
+    pipelineCache.imgEn = "";
+    $("re-line").value = line;
+    $("re-imgen").value = "";
     $("re-out").textContent =
-      `【${stageLabel(stage)} · Δ情感 ${emotionDelta >= 0 ? "+" : ""}${emotionDelta} · ${feelLabel}】\n` +
-      `【詞墜 ${brief.tokens}】\n\n` +
-      (text || "").trim();
-    setStatus("re-status", `✓ ${sec.toFixed(1)}s`);
+      `【① 回話完成 · ${pipelineCache.meta} · ${sec.toFixed(1)}s】\n` +
+      `【詞墜 ${brief.tokens}（僅玩法，不進畫圖 prompt）】\n\n` +
+      line +
+      `\n\n→ 下一步按「② 回話→英文畫圖句」`;
+    setStatus("re-status", `✓ ① 回話 ${sec.toFixed(1)}s · 可跑 ②`);
   } catch (e) {
     setStatus("re-status", e.message, true);
   }
   $("btn-react").disabled = false;
 }
 
-// ── 生圖 ──────────────────────────────────────────────────
-function fillImgPrompt() {
+/**
+ * ② 與遊戲 ensureCardImgEnAfterText 同精神：
+ * 用 回話 + 旁白 + visualEn 種子 → 純英文畫圖句（無 meta 標籤）
+ */
+async function runReactToImgEn() {
   const live = formSnapshot();
-  if (!live?.id) return;
-  const map = { ...byId(), [live.id]: live };
-  const brief = tokenEffectBrief(live, map);
+  if (!live?.id) {
+    setStatus("re-status", "請先選卡", true);
+    return;
+  }
+  let line = ($("re-line").value || "").trim() || pipelineCache.girlLine;
+  if (!line) {
+    setStatus("re-status", "請先跑 ① 生成回應（或手填回話框）", true);
+    return;
+  }
+  pipelineCache.girlLine = line;
+
   const { girl, player } = editorGirlForBind();
   const bctx = bindContextFromGirl(girl, player);
-  // 外貌用英文備註（中文眼／胸原文只當 fallback 標籤）
-  const scene = resolveCardBinds(live.sceneStart || "", bctx)
-    .replace(/\s+/g, " ")
-    .slice(0, 180);
-  const vEn = (live.visualEn || "").trim();
-  // 只塞可畫內容：英文動作 + 人名；不塞 card token / stage direction 標籤
+  const scene =
+    pipelineCache.sceneBound ||
+    resolveCardBinds(live.sceneStart || "", bctx);
+  const seed = scrubEditImgLabels(live.visualEn || "");
+
+  const sys = [
+    "You write English visual prompts for anime illustration.",
+    "Output ONLY comma-separated English visual phrases (or 1–2 short English sentences).",
+    "Content only: pose, gesture, facial expression, eye contact, distance, contact point, framing.",
+    "FORBIDDEN labels (never output): card, token, stage direction, prompt, visualEn, authoritative, PRIMARY, tags, kind, speech.",
+    "No Chinese. No quotes. No markdown. No dialogue lines. No clothing list.",
+    "Convert her spoken reaction into visible face/body language.",
+    "If greeting/talk: facing each other, eye contact — never blank look-away idle.",
+  ].join("\n");
+  const user = [
+    seed ? `Seed action (prefer, English): ${seed}` : "",
+    `His action meaning (Chinese → visual only, do not copy Chinese): ${scene.slice(0, 220) || live.name || "interaction"}`,
+    `Her spoken reaction (Chinese → visual reaction only): ${line.slice(0, 220)}`,
+    "Write the illustration description now (English content only).",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  $("btn-react-imgen").disabled = true;
+  setStatus("re-status", "② 產英文畫圖句…");
+  try {
+    const { text, sec } = await genWait(
+      [
+        { role: "system", content: sys },
+        { role: "user", content: user },
+      ],
+      { keyPrefix: "cardimgen", temperature: 0.7 },
+    );
+    let en = scrubEditImgLabels(text);
+    if (en.length < 16) en = seed || "facing each other, eye contact, mid-action, detailed face";
+    pipelineCache.imgEn = en;
+    $("re-imgen").value = en;
+    if ($("re-apply-visual")?.checked) {
+      $("f-visualEn").value = en;
+      markDirty();
+    }
+    $("re-out").textContent =
+      `【② imgEn · ${sec.toFixed(1)}s】\n${en}\n\n` +
+      `【① 回話】\n${line}\n\n→ 可按「③ 填入生圖框」或「全流程」生圖`;
+    setStatus("re-status", `✓ ② 英文畫圖句 ${sec.toFixed(1)}s`);
+  } catch (e) {
+    setStatus("re-status", e.message, true);
+  }
+  $("btn-react-imgen").disabled = false;
+}
+
+/** ③ 把 imgEn 填進生圖 tab 的 prompt（純內容） */
+function fillImgFromPipeline() {
+  const en =
+    scrubEditImgLabels($("re-imgen").value || pipelineCache.imgEn || $("f-visualEn").value || "");
+  if (!en) {
+    setStatus("re-status", "還沒有 imgEn，請先跑 ②", true);
+    return;
+  }
+  const { girl } = editorGirlForBind();
+  const name = girl.name || $("re-name").value || "woman";
+  $("ig-prompt").value = [
+    "anime illustration, cinematic interaction scene",
+    `adult woman ${name}`,
+    en,
+    "half body, detailed face, soft lighting, mid-action",
+    "no horns, no wings, no tail, no text, no watermark",
+  ].join(", ");
+  pipelineCache.imgEn = en;
+  setStatus("re-status", "✓ 已填入生圖框 · 可開「生圖」分頁按 ✦ 生圖");
+  // 自動切到生圖分頁
+  const tabBtn = document.querySelector('#test-tabs button[data-tab="img"]');
+  if (tabBtn) tabBtn.click();
+}
+
+/** 全流程：① 回應 → ② 英文 → ③ 填 prompt → 生圖 */
+async function runReactFullPipeline() {
+  $("btn-react-full").disabled = true;
+  try {
+    await runReact();
+    if (!($("re-line").value || "").trim()) throw new Error("① 沒有回話");
+    await runReactToImgEn();
+    if (!($("re-imgen").value || "").trim()) throw new Error("② 沒有 imgEn");
+    fillImgFromPipeline();
+    setStatus("re-status", "全流程 ①②③ 完成 · 正在生圖…");
+    await runImgGen();
+    setStatus("re-status", "✓ 全流程完成（回應→英文→生圖）");
+  } catch (e) {
+    setStatus("re-status", e.message, true);
+  }
+  $("btn-react-full").disabled = false;
+}
+
+// ── 生圖 ──────────────────────────────────────────────────
+function fillImgPrompt() {
+  // 優先用管線 ② 的 imgEn（回话後英文），否則 visualEn，再否則保底
+  const fromPipe = scrubEditImgLabels($("re-imgen")?.value || pipelineCache.imgEn || "");
+  const live = formSnapshot();
+  const { girl } = editorGirlForBind();
+  const vEn = scrubEditImgLabels(fromPipe || live.visualEn || "");
   const prompt = [
     "anime illustration, cinematic interaction scene",
-    `adult woman ${bctx.name}`,
+    `adult woman ${girl.name || "woman"}`,
     vEn || "he interacts with her, she faces him, eye contact, responsive expression, not looking away",
     "half body, detailed face, soft lighting, mid-action",
     "no horns, no wings, no tail, no text, no watermark",
@@ -1774,6 +1906,9 @@ function bind() {
   $("btn-derive-add").onclick = addDerivedToEditor;
   $("btn-textgen").onclick = () => runTextGen();
   $("btn-react").onclick = () => runReact();
+  $("btn-react-imgen").onclick = () => runReactToImgEn();
+  $("btn-react-to-img").onclick = () => fillImgFromPipeline();
+  $("btn-react-full").onclick = () => runReactFullPipeline();
   $("btn-roll-girl").onclick = () => rollGirl();
   $("btn-ig-fill").onclick = fillImgPrompt;
   $("btn-ig-ping").onclick = () => pingImgEngine();
