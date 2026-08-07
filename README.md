@@ -11,8 +11,10 @@ Todo 積分驅動的魅魔召喚養成網頁遊戲。
 
 **教 AI／實作者從哪讀起:**[docs/AI-READING-ORDER.md](docs/AI-READING-ORDER.md)
 
-**卡牌編輯器（詞墜繼承 · AI 衍伸／生文／生圖／回應／效果）:** 開伺服器後進 `/cardedit`  
-概念：每張卡 = 一個詞墜；子卡繼承父鏈再疊自己的（例：`[問候]` → `[問候] [說笑話]`）。資料仍在 `web/content/cards.json`（`token` / `parentId` / `tokenDesc`）。
+**卡牌編輯器（多檔版本 · 詞墜繼承 · AI 測試）:** 開伺服器後進 `/cardedit`  
+- 每份牌組是獨立檔：`cards.json`、`card_x.json`… 由 `card_packs_registry.json` 的 **active** 決定遊戲用哪份  
+- 流程：克隆整包／輩分→新檔 → 編輯草稿 → **上線**（只切指標，舊檔保留可回滾）  
+- 詞墜：`token` / `parentId`（例：`[問候]` → `[問候] [說笑話]`）
 
 ## 啟動伺服器(RP5)
 

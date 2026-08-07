@@ -1,0 +1,34 @@
+{
+  "active": "main",
+  "packs": [
+    {
+      "id": "main",
+      "file": "cards.json",
+      "name": "正式牌庫",
+      "note": "預設 content/cards.json",
+      "activatedAt": 1786070538.3692527
+    },
+    {
+      "id": "card_x",
+      "file": "card_x.json",
+      "name": "實驗 X",
+      "note": "",
+      "clonedFrom": "main",
+      "createMode": "clone",
+      "createdAt": 1786070531.683768,
+      "activatedAt": 1786070538.3526099
+    }
+  ],
+  "history": [
+    {
+      "at": 1786070538.3526113,
+      "from": "main",
+      "to": "card_x"
+    },
+    {
+      "at": 1786070538.369254,
+      "from": "card_x",
+      "to": "main"
+    }
+  ]
+}

@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.21(2026-08-07)詞墜繼承·卡牌編輯器";
+const APP_VER = "v6.22(2026-08-07)多檔牌組版本·上線可回滾";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -21,9 +21,10 @@ let SUMMONERS = [];
 fetch("content/summoners.json").then(r => r.ok ? r.json() : null).then(j => { SUMMONERS = (j && j.summoners) || []; }).catch(() => {});
 function summonerById(id) { return SUMMONERS.find(x => x.id === id) || null; }
 
-// 互動牌制內容(cards.json → card_engine)
-let CARDS_LOAD = fetch("content/cards.json")
-  .then(r => r.ok ? r.json() : null)
+// 互動牌制內容：優先 /api/cards（registry.active 那份），失敗退回 content/cards.json
+let CARDS_LOAD = fetch("/api/cards")
+  .then(r => r.ok ? r.json() : Promise.reject(new Error("api")))
+  .catch(() => fetch("content/cards.json").then(r => r.ok ? r.json() : null))
   .then(j => { if (j) Cards.setCardsData(j); return j; })
   .catch(() => null);
 

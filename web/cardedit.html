@@ -156,7 +156,8 @@
   </div>
   <div class="row">
     <button class="cy" type="button" id="btn-reload">重新載入</button>
-    <button type="button" id="btn-save">💾 儲存 cards.json</button>
+    <button type="button" id="btn-save">💾 儲存此牌組檔</button>
+    <button class="gold" type="button" id="btn-activate" title="只改上線指標，舊檔保留可回滾">🚀 上線此牌組</button>
     <span class="status" id="save-status"></span>
   </div>
 </header>
@@ -164,29 +165,30 @@
 <div class="layout">
   <!-- 左：樹狀清單 -->
   <aside class="side">
-    <h2>卡組 · 輩分</h2>
+    <h2>牌組版本（多檔）</h2>
     <p class="mini" style="margin-bottom:.45em">
-      實驗在<strong>新卡組</strong>改，不直接動正式庫。遊戲只吃標了「正式 live」的組。
+      每份是獨立檔（如 <code>card_x.json</code>）。編輯草稿 → 儲存該檔 →
+      <strong>上線</strong>只切換「遊戲用哪份」，舊版完整保留，出錯就切回去。
     </p>
-    <label>目前編輯卡組</label>
-    <select id="set-select" style="margin-bottom:.4em"></select>
-    <div class="row" style="margin-bottom:.45em">
-      <button class="cy" type="button" id="btn-set-new" title="開一個空卡組從頭做">＋新開空組</button>
-      <button type="button" id="btn-set-rename" title="重新命名目前卡組">改名</button>
-      <button class="del" type="button" id="btn-set-del" title="刪除目前卡組及其全部卡（正式組不可刪）">刪組</button>
+    <label>編輯中的牌組</label>
+    <select id="pack-select" style="margin-bottom:.35em"></select>
+    <div class="mini" id="pack-meta" style="margin-bottom:.5em"></div>
+    <div class="row" style="margin-bottom:.4em">
+      <button class="cy" type="button" id="btn-pack-clone" title="複製目前上線／所選來源整包成新檔">＋克隆整包</button>
+      <button class="cy" type="button" id="btn-pack-empty" title="開一個空的 card_x.json">＋空牌組</button>
+    </div>
+    <div class="row" style="margin-bottom:.4em">
+      <button class="gold" type="button" id="btn-pack-lineage-full"
+        title="只把選中卡的整棵輩分寫進新檔（檔案變小，好改）">⧉ 輩分→新檔</button>
+      <button class="gold" type="button" id="btn-pack-lineage-sub"
+        title="以選中卡為根的子樹寫進新檔">⧉ 子樹→新檔</button>
     </div>
     <div class="row" style="margin-bottom:.55em">
-      <button class="gold" type="button" id="btn-extract-full"
-        title="以選中卡所屬那整棵輩分（從根到全部子孫）複製到新卡組">⧉ 取出整棵輩分</button>
-      <button class="gold" type="button" id="btn-extract-sub"
-        title="以選中卡為新根，連同其子孫複製到新卡組（切斷原父）">⧉ 取出子樹</button>
+      <button type="button" id="btn-pack-rename">改名</button>
+      <button class="del" type="button" id="btn-pack-del" title="刪除版本（不能刪正在上線的）">刪版本</button>
     </div>
-    <div class="checkrow" style="margin-bottom:.5em">
-      <label><input type="checkbox" id="set-live-toggle"> 此組為正式（遊戲會用）</label>
-    </div>
-    <div class="mini" id="set-meta" style="margin-bottom:.6em"></div>
 
-    <h2>卡牌樹</h2>
+    <h2>卡牌樹 <span class="mini" id="pack-file-label"></span></h2>
     <input class="search" id="filter" placeholder="搜 id / 名 / 詞墜…">
     <div class="row" style="margin-bottom:.5em">
       <button class="cy" type="button" id="btn-new-base">＋基礎卡</button>
@@ -207,8 +209,8 @@
       <h2>選一張卡開始編輯</h2>
       <p class="mini">概念：每張卡 = 一個<strong>詞墜</strong>。子卡繼承父鏈全部詞墜再疊自己的。<br>
         例：基礎「問候」→ <code style="color:var(--gold)">[問候]</code>；子卡「打趣」→ <code style="color:var(--gold)">[問候] [說笑話]</code>。<br>
-        <strong>卡組：</strong>不要直接改正式庫——選一張卡 →「取出整棵輩分／子樹」開新組再改；或「新開空組」從頭建。<br>
-        遊戲只載入標了「正式 live」的卡組。</p>
+        <strong>版本：</strong>大檔難改時用「克隆整包」或「輩分→新檔」開 <code>card_x.json</code>，
+        改完按「上線此牌組」。出問題再把 active 切回舊版——不是蓋掉唯一一份。</p>
     </div>
 
     <div id="editor" class="hidden" style="display:none">

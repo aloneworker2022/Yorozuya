@@ -1892,22 +1892,151 @@ def testword():
     return FileResponse(WEB_DIR / "testword.html")
 
 
-# /cardedit 卡牌編輯器：讀寫 content/cards.json（詞墜繼承 · 全方位後台）
-@app.get("/api/cards")
-def get_cards():
-    path = WEB_DIR / "content" / "cards.json"
-    if not path.exists():
-        raise HTTPException(404, "找不到 cards.json")
+# ── 多檔牌組版本（card_x.json 等）────────────────────────────────
+# 註冊表 content/card_packs_registry.json：
+#   { "active": "main", "packs": [{ "id","file","name","note",... }] }
+# 每份牌組是獨立 JSON（與 cards.json 同形）。遊戲只載入 active 那份。
+# 上線 = 改 active 指標；舊檔保留，可一鍵切回。
+
+CONTENT_DIR = WEB_DIR / "content"
+PACK_REGISTRY_PATH = CONTENT_DIR / "card_packs_registry.json"
+_PACK_ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_\-]{0,47}$")
+_PACK_FILE_RE = re.compile(r"^[a-zA-Z0-9_\-]+\.json$")
+
+
+def _default_pack_registry() -> dict:
+    return {
+        "active": "main",
+        "packs": [
+            {
+                "id": "main",
+                "file": "cards.json",
+                "name": "正式牌庫",
+                "note": "預設／相容路徑 content/cards.json",
+            }
+        ],
+    }
+
+
+def _load_pack_registry() -> dict:
+    if not PACK_REGISTRY_PATH.exists():
+        reg = _default_pack_registry()
+        # 若 cards.json 存在就寫出註冊表，方便後續多版本
+        try:
+            PACK_REGISTRY_PATH.write_text(
+                json.dumps(reg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+        except Exception:
+            pass
+        return reg
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        reg = json.loads(PACK_REGISTRY_PATH.read_text(encoding="utf-8"))
     except Exception as e:
-        raise HTTPException(500, f"cards.json 解析失敗: {e}")
+        raise HTTPException(500, f"card_packs_registry.json 損壞: {e}")
+    if not isinstance(reg, dict):
+        raise HTTPException(500, "card_packs_registry.json 格式錯誤")
+    packs = reg.get("packs")
+    if not isinstance(packs, list) or not packs:
+        reg = _default_pack_registry()
+    # 確保 main 在
+    if not any(isinstance(p, dict) and p.get("id") == "main" for p in reg["packs"]):
+        reg["packs"].insert(
+            0,
+            {
+                "id": "main",
+                "file": "cards.json",
+                "name": "正式牌庫",
+                "note": "預設",
+            },
+        )
+    if not reg.get("active") or not any(
+        p.get("id") == reg["active"] for p in reg["packs"] if isinstance(p, dict)
+    ):
+        reg["active"] = "main"
+    return reg
 
 
-@app.put("/api/cards")
-def put_cards(body: dict):
-    """整包覆寫 cards.json。需含 cards 陣列；其餘 _meta/enums/defaults 等一併寫回。"""
-    if not isinstance(body.get("cards"), list):
+def _save_pack_registry(reg: dict) -> None:
+    PACK_REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PACK_REGISTRY_PATH.write_text(
+        json.dumps(reg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _pack_meta(reg: dict, pack_id: str) -> dict:
+    for p in reg.get("packs") or []:
+        if isinstance(p, dict) and p.get("id") == pack_id:
+            return p
+    raise HTTPException(404, f"找不到牌組: {pack_id}")
+
+
+def _pack_path(meta: dict) -> Path:
+    fname = (meta.get("file") or "").strip()
+    if not _PACK_FILE_RE.match(fname):
+        raise HTTPException(400, f"非法牌組檔名: {fname}")
+    # 只允許 content/ 底下單一檔名，擋路徑穿越
+    path = (CONTENT_DIR / fname).resolve()
+    if path.parent != CONTENT_DIR.resolve():
+        raise HTTPException(400, "牌組路徑越界")
+    return path
+
+
+def _empty_pack_doc(title: str = "新牌組") -> dict:
+    return {
+        "_meta": {
+            "title": title,
+            "spec": "docs/card-system.md",
+            "schema_version": 2,
+            "token_model": "每卡一個詞墜 token；parentId 繼承父鏈。",
+            "pack_note": "獨立牌組檔；上線靠 registry.active 切換，不刪舊檔。",
+        },
+        "enums": {
+            "kind": ["speech", "shop_premium", "girl_trait", "venue_event"],
+            "chain_attr": ["talk", "touch", "sex", "play", "any"],
+            "stage": ["stranger", "friend", "girlfriend", "wife"],
+            "mode": ["kanban", "date"],
+        },
+        "defaults": {
+            "hand_size": 5,
+            "max_girl_cards": 3,
+            "max_inject": 5,
+            "shop_slots": 3,
+            "shop_refresh_hours": 4,
+            "bubble_chance": 0.15,
+            "dates_per_girl_per_day": 2,
+            "base_plays_by_stage": {
+                "stranger": 1,
+                "friend": 2,
+                "girlfriend": 3,
+                "wife": 4,
+            },
+            "stay_base_by_stage": {
+                "stranger": 0.05,
+                "friend": 0.15,
+                "girlfriend": 0.3,
+                "wife": 0.45,
+            },
+            "answer_rate_by_stage": {
+                "stranger": 0.1,
+                "friend": 0.35,
+                "girlfriend": 0.6,
+                "wife": 0.8,
+            },
+            "phone_cost_range": [10, 30],
+            "emotion_fail_open": {"min": -3, "max": -1},
+        },
+        "starter_pool": [],
+        "shop_weights": {"speech_pool": [], "premium_pool": []},
+        "cards": [],
+        "venues": [],
+        "girl_card_build_rules": {},
+        "bubble_canned": {},
+    }
+
+
+def _validate_pack_doc(body: dict) -> dict:
+    """驗證並正規化一份牌組文件；回傳可寫入的 body。"""
+    if not isinstance(body, dict) or not isinstance(body.get("cards"), list):
         raise HTTPException(400, "需要 {cards: [...]}")
     cards = body["cards"]
     ids = []
@@ -1920,37 +2049,29 @@ def put_cards(body: dict):
         if cid in ids:
             raise HTTPException(400, f"重複 id: {cid}")
         ids.append(cid)
-    # parentId 必須指到存在的卡（或 null）
-    idset = set(ids)
-    for c in cards:
+        c["id"] = cid
         pid = c.get("parentId")
         if pid is None or pid == "":
             c["parentId"] = None
+    idset = set(ids)
+    by = {c["id"]: c for c in cards}
+    for c in cards:
+        pid = c.get("parentId")
+        if not pid:
             continue
         if pid not in idset:
             raise HTTPException(400, f"卡 {c['id']} 的 parentId={pid} 不存在")
         if pid == c["id"]:
             raise HTTPException(400, f"卡 {c['id']} 不能 parent 自己")
-    # 簡易環偵測
-    by = {c["id"]: c for c in cards}
-    for c in cards:
+        # 環
         seen = set()
         cur = c
         while cur:
             if cur["id"] in seen:
                 raise HTTPException(400, f"詞墜繼承成環: {c['id']}")
             seen.add(cur["id"])
-            pid = cur.get("parentId")
-            cur = by.get(pid) if pid else None
-    path = WEB_DIR / "content" / "cards.json"
-    # 備份一份，避免整包寫壞
-    try:
-        if path.exists():
-            bak = path.with_suffix(".json.bak")
-            bak.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-    except Exception:
-        pass
-    # 正規化 _meta 註記（不強迫覆寫使用者自訂 comment）
+            pp = cur.get("parentId")
+            cur = by.get(pp) if pp else None
     meta = body.get("_meta") if isinstance(body.get("_meta"), dict) else {}
     meta.setdefault("title", "魅魔萬事屋·互動牌定義（內容模組）")
     meta.setdefault("spec", "docs/card-system.md")
@@ -1959,44 +2080,322 @@ def put_cards(body: dict):
         "每卡一個詞墜 token；parentId 繼承父鏈詞墜。"
         "解析後效果字串如 [問候] [說笑話]。"
     )
-    # 卡組：無則補 main；卡無 setId → main
-    sets = body.get("card_sets")
-    if not isinstance(sets, list) or not sets:
-        sets = [{"id": "main", "name": "正式牌庫", "live": True}]
-    set_ids = set()
-    for s in sets:
-        if not isinstance(s, dict) or not s.get("id"):
-            raise HTTPException(400, "card_sets 每項需要 id")
-        set_ids.add(s["id"])
-    if "main" not in set_ids:
-        sets.insert(0, {"id": "main", "name": "正式牌庫", "live": True})
-        set_ids.add("main")
-    if not any(s.get("live") for s in sets):
-        for s in sets:
-            if s["id"] == "main":
-                s["live"] = True
-                break
-    body["card_sets"] = sets
-    for c in cards:
-        sid = c.get("setId") or "main"
-        if sid not in set_ids:
-            raise HTTPException(400, f"卡 {c['id']} 的 setId={sid} 不在 card_sets")
-        c["setId"] = sid
-        # 父卡必須同組
-        pid = c.get("parentId")
-        if pid:
-            p = by.get(pid)
-            if p and (p.get("setId") or "main") != sid:
-                raise HTTPException(400, f"卡 {c['id']} 父卡跨組")
-    meta["card_sets"] = "setId 分組；live=true 的組才進遊戲。實驗組用 /cardedit 取出輩分。"
+    meta["pack_model"] = (
+        "多檔牌組：registry.active 決定遊戲用哪份；"
+        "編輯 card_x.json 等草稿，上線只切指標，舊版可回滾。"
+    )
     body["_meta"] = meta
+    # starter_pool 清幽靈
+    if isinstance(body.get("starter_pool"), list):
+        body["starter_pool"] = [x for x in body["starter_pool"] if x in idset]
+    return body
+
+
+def _read_pack_file(path: Path) -> dict:
+    if not path.exists():
+        raise HTTPException(404, f"找不到牌組檔: {path.name}")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(500, f"{path.name} 解析失敗: {e}")
+
+
+def _write_pack_file(path: Path, body: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # 同檔 .bak
+    try:
+        if path.exists():
+            bak = path.with_suffix(path.suffix + ".bak")
+            bak.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    except Exception:
+        pass
     path.write_text(json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _pack_summary(meta: dict, reg: dict) -> dict:
+    path = _pack_path(meta)
+    count = None
+    if path.exists():
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            count = len(doc.get("cards") or [])
+        except Exception:
+            count = None
+    return {
+        "id": meta.get("id"),
+        "file": meta.get("file"),
+        "name": meta.get("name") or meta.get("id"),
+        "note": meta.get("note") or "",
+        "active": meta.get("id") == reg.get("active"),
+        "exists": path.exists(),
+        "cardCount": count,
+        "clonedFrom": meta.get("clonedFrom"),
+        "createdAt": meta.get("createdAt"),
+        "activatedAt": meta.get("activatedAt"),
+    }
+
+
+@app.get("/api/card-packs")
+def list_card_packs():
+    """列出所有牌組版本 + 目前上線的 active。"""
+    reg = _load_pack_registry()
+    packs = [_pack_summary(p, reg) for p in reg["packs"] if isinstance(p, dict) and p.get("id")]
+    return {"active": reg.get("active"), "packs": packs}
+
+
+@app.get("/api/card-packs/{pack_id}")
+def get_card_pack(pack_id: str):
+    reg = _load_pack_registry()
+    meta = _pack_meta(reg, pack_id)
+    doc = _read_pack_file(_pack_path(meta))
+    return {
+        "pack": _pack_summary(meta, reg),
+        "doc": doc,
+    }
+
+
+@app.put("/api/card-packs/{pack_id}")
+def put_card_pack(pack_id: str, body: dict):
+    """只寫該牌組檔，不動其他版本。body 可為整份 doc，或 {doc:{...}, name?, note?}。"""
+    reg = _load_pack_registry()
+    meta = _pack_meta(reg, pack_id)
+    doc = body.get("doc") if isinstance(body.get("doc"), dict) else body
+    doc = _validate_pack_doc(doc)
+    if "name" in body and body["name"]:
+        meta["name"] = str(body["name"]).strip()
+    if "note" in body:
+        meta["note"] = str(body.get("note") or "")
+    meta["updatedAt"] = time.time()
+    _write_pack_file(_pack_path(meta), doc)
+    _save_pack_registry(reg)
     return {
         "ok": True,
-        "count": len(cards),
-        "sets": len(sets),
-        "schema_version": meta["schema_version"],
+        "pack": _pack_summary(meta, reg),
+        "count": len(doc.get("cards") or []),
+        "schema_version": (doc.get("_meta") or {}).get("schema_version"),
     }
+
+
+class PackCreateIn(BaseModel):
+    id: str
+    name: str = ""
+    note: str = ""
+    # empty | clone | lineage
+    mode: str = "clone"
+    # clone / lineage 來源
+    from_pack: str = "main"
+    # lineage 模式：來源卡 id + full|subtree
+    from_card_id: str = ""
+    lineage_mode: str = "full"
+    file: str = ""  # 可空：自動 card_{id}.json；main 固定 cards.json
+
+
+@app.post("/api/card-packs")
+def create_card_pack(body: PackCreateIn):
+    """新開牌組檔（空 / 整包克隆 / 只抽輩分）。不影響 active。"""
+    reg = _load_pack_registry()
+    pid = (body.id or "").strip()
+    if not _PACK_ID_RE.match(pid):
+        raise HTTPException(400, "id 須為英文開頭的字母數字_-(最多48字)")
+    if any(p.get("id") == pid for p in reg["packs"] if isinstance(p, dict)):
+        raise HTTPException(400, f"牌組 id 已存在: {pid}")
+    fname = (body.file or "").strip()
+    if not fname:
+        fname = "cards.json" if pid == "main" else f"{pid}.json"
+    if not fname.endswith(".json"):
+        fname += ".json"
+    if not _PACK_FILE_RE.match(fname):
+        raise HTTPException(400, f"非法檔名: {fname}")
+    # 檔名不可撞
+    for p in reg["packs"]:
+        if isinstance(p, dict) and p.get("file") == fname:
+            raise HTTPException(400, f"檔名已被 {p.get('id')} 使用: {fname}")
+    path = (CONTENT_DIR / fname).resolve()
+    if path.parent != CONTENT_DIR.resolve():
+        raise HTTPException(400, "路徑越界")
+    if path.exists():
+        raise HTTPException(400, f"檔案已存在: {fname}")
+
+    mode = (body.mode or "clone").lower()
+    if mode == "empty":
+        doc = _empty_pack_doc(body.name or pid)
+    elif mode in ("clone", "lineage"):
+        src_meta = _pack_meta(reg, body.from_pack or "main")
+        src_doc = _read_pack_file(_pack_path(src_meta))
+        if mode == "clone":
+            doc = json.loads(json.dumps(src_doc, ensure_ascii=False))
+        else:
+            # 只抽輩分：縮小檔案，方便編輯
+            from_card = (body.from_card_id or "").strip()
+            if not from_card:
+                raise HTTPException(400, "lineage 模式需要 from_card_id")
+            src_cards = src_doc.get("cards") or []
+            by = {c["id"]: c for c in src_cards if isinstance(c, dict) and c.get("id")}
+            if from_card not in by:
+                raise HTTPException(400, f"來源卡不存在: {from_card}")
+            # 找根 + 子樹
+            lm = (body.lineage_mode or "full").lower()
+            root_id = from_card
+            if lm == "full":
+                cur = by[from_card]
+                seen = set()
+                while cur.get("parentId") and cur["parentId"] in by and cur["id"] not in seen:
+                    seen.add(cur["id"])
+                    cur = by[cur["parentId"]]
+                root_id = cur["id"]
+            # BFS 子孫
+            kids = {}
+            for c in src_cards:
+                pid0 = c.get("parentId")
+                if pid0:
+                    kids.setdefault(pid0, []).append(c["id"])
+            keep = []
+            q = [root_id]
+            seen2 = set()
+            while q:
+                i = q.pop(0)
+                if i in seen2:
+                    continue
+                seen2.add(i)
+                keep.append(i)
+                q.extend(kids.get(i) or [])
+            keep_set = set(keep)
+            new_cards = []
+            for c in src_cards:
+                if c["id"] not in keep_set:
+                    continue
+                cc = json.loads(json.dumps(c, ensure_ascii=False))
+                if lm == "subtree" and c["id"] == root_id:
+                    cc["parentId"] = None
+                elif cc.get("parentId") and cc["parentId"] not in keep_set:
+                    cc["parentId"] = None
+                new_cards.append(cc)
+            doc = json.loads(json.dumps(src_doc, ensure_ascii=False))
+            doc["cards"] = new_cards
+            # starter/shop 只留還在的 id
+            if isinstance(doc.get("starter_pool"), list):
+                doc["starter_pool"] = [x for x in doc["starter_pool"] if x in keep_set]
+            sw = doc.get("shop_weights") if isinstance(doc.get("shop_weights"), dict) else {}
+            for k in ("speech_pool", "premium_pool"):
+                if isinstance(sw.get(k), list):
+                    sw[k] = [x for x in sw[k] if x in keep_set]
+            doc["shop_weights"] = sw
+            meta = doc.get("_meta") if isinstance(doc.get("_meta"), dict) else {}
+            meta["extracted_lineage"] = {
+                "from_pack": body.from_pack,
+                "from_card_id": from_card,
+                "root_id": root_id,
+                "mode": lm,
+                "count": len(new_cards),
+            }
+            doc["_meta"] = meta
+    else:
+        raise HTTPException(400, "mode 須為 empty | clone | lineage")
+
+    doc = _validate_pack_doc(doc)
+    meta = {
+        "id": pid,
+        "file": fname,
+        "name": (body.name or pid).strip() or pid,
+        "note": body.note or "",
+        "clonedFrom": body.from_pack if mode != "empty" else None,
+        "createMode": mode,
+        "createdAt": time.time(),
+    }
+    _write_pack_file(path, doc)
+    reg["packs"].append(meta)
+    _save_pack_registry(reg)
+    return {
+        "ok": True,
+        "pack": _pack_summary(meta, reg),
+        "count": len(doc.get("cards") or []),
+    }
+
+
+@app.post("/api/card-packs/{pack_id}/activate")
+def activate_card_pack(pack_id: str):
+    """上線：只改 registry.active，舊牌組檔完整保留可回滾。"""
+    reg = _load_pack_registry()
+    meta = _pack_meta(reg, pack_id)
+    path = _pack_path(meta)
+    if not path.exists():
+        raise HTTPException(400, f"牌組檔不存在，無法上線: {meta.get('file')}")
+    # 輕量驗證
+    doc = _read_pack_file(path)
+    _validate_pack_doc(doc)
+    prev = reg.get("active")
+    reg["active"] = pack_id
+    meta["activatedAt"] = time.time()
+    # 歷史
+    hist = reg.setdefault("history", [])
+    if not isinstance(hist, list):
+        hist = []
+        reg["history"] = hist
+    hist.append({"at": time.time(), "from": prev, "to": pack_id})
+    hist[:] = hist[-50:]
+    _save_pack_registry(reg)
+    return {
+        "ok": True,
+        "active": pack_id,
+        "previous": prev,
+        "pack": _pack_summary(meta, reg),
+        "count": len(doc.get("cards") or []),
+        "message": f"已上線 {pack_id}（先前 {prev} 仍在，可隨時切回）",
+    }
+
+
+@app.delete("/api/card-packs/{pack_id}")
+def delete_card_pack(pack_id: str, delete_file: bool = False):
+    """刪除牌組版本（不可刪 active；main 預設只移除註冊不刪 cards.json）。"""
+    reg = _load_pack_registry()
+    if pack_id == reg.get("active"):
+        raise HTTPException(400, "不能刪目前上線的牌組；請先切到其他版本")
+    if pack_id == "main" and not delete_file:
+        raise HTTPException(400, "main 請用 delete_file=true 才允許（危險）")
+    meta = _pack_meta(reg, pack_id)
+    path = _pack_path(meta)
+    reg["packs"] = [p for p in reg["packs"] if not (isinstance(p, dict) and p.get("id") == pack_id)]
+    _save_pack_registry(reg)
+    removed_file = False
+    if delete_file and path.exists() and meta.get("file") != "cards.json":
+        try:
+            path.unlink()
+            removed_file = True
+        except Exception as e:
+            raise HTTPException(500, f"註冊已移除但刪檔失敗: {e}")
+    return {"ok": True, "removed": pack_id, "fileDeleted": removed_file}
+
+
+@app.patch("/api/card-packs/{pack_id}")
+def patch_card_pack_meta(pack_id: str, body: dict):
+    """只改註冊名稱／備註，不碰牌組內容。"""
+    reg = _load_pack_registry()
+    meta = _pack_meta(reg, pack_id)
+    if "name" in body and body["name"] is not None:
+        meta["name"] = str(body["name"]).strip() or meta["id"]
+    if "note" in body:
+        meta["note"] = str(body.get("note") or "")
+    _save_pack_registry(reg)
+    return {"ok": True, "pack": _pack_summary(meta, reg)}
+
+
+# 相容：/api/cards 永遠讀寫「目前上線」的那份
+@app.get("/api/cards")
+def get_cards():
+    """遊戲與舊工具：回傳目前 active 牌組內容。"""
+    reg = _load_pack_registry()
+    meta = _pack_meta(reg, reg.get("active") or "main")
+    doc = _read_pack_file(_pack_path(meta))
+    # 附加指標方便除錯（不污染存檔時由 put 剝掉亦可）
+    return doc
+
+
+@app.put("/api/cards")
+def put_cards(body: dict):
+    """寫入目前 active 牌組（相容舊 cardedit）。建議改用 PUT /api/card-packs/{id}。"""
+    reg = _load_pack_registry()
+    active = reg.get("active") or "main"
+    return put_card_pack(active, body)
 
 
 @app.get("/cardedit")
