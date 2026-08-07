@@ -222,4 +222,114 @@ export function stageLabel(stage) {
   );
 }
 
+/** 沿 parentId 走到根（同 byId 可見範圍） */
+export function findLineageRoot(card, byId) {
+  if (!card) return null;
+  let cur = card;
+  const seen = new Set();
+  while (cur?.parentId && byId[cur.parentId] && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    cur = byId[cur.parentId];
+  }
+  return cur;
+}
+
+/**
+ * 收集以 rootId 為根的整棵子樹 id（含自己，BFS）
+ * @param {object[]} cards  搜尋子卡的範圍
+ */
+export function collectSubtreeIds(rootId, cards) {
+  const kids = Object.create(null);
+  for (const c of cards || []) {
+    if (c.parentId) (kids[c.parentId] ??= []).push(c.id);
+  }
+  const out = [];
+  const q = [rootId];
+  const seen = new Set();
+  while (q.length) {
+    const id = q.shift();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    for (const k of kids[id] || []) q.push(k);
+  }
+  return out;
+}
+
+/**
+ * 深拷一整支輩分，重編 id／parentId，掛到新 setId。
+ * @param {"full"|"subtree"} mode
+ *   full    = 從選中卡走到根，再取整棵
+ *   subtree = 以選中卡為新根（切斷對原父的繼承）
+ * @returns {{ clones: object[], idMap: Record<string,string>, rootOldId: string, rootNewId: string }}
+ */
+export function extractLineageClone(selectedCard, allCards, {
+  mode = "full",
+  newSetId,
+  idPrefix = "x",
+  stripStarter = true,
+} = {}) {
+  if (!selectedCard) throw new Error("沒有選中的卡");
+  // 輩分只在「來源卡組」內走
+  const srcSet = selectedCard.setId || "main";
+  const srcCards = (allCards || []).filter((c) => (c.setId || "main") === srcSet);
+  const by = indexById(srcCards);
+  if (!by[selectedCard.id]) throw new Error("選中卡不在來源卡組");
+
+  let rootOld = selectedCard;
+  if (mode === "full") {
+    rootOld = findLineageRoot(selectedCard, by) || selectedCard;
+  }
+  const oldIds = collectSubtreeIds(rootOld.id, srcCards);
+  if (!oldIds.length) throw new Error("輩分是空的");
+
+  const idMap = Object.create(null);
+  const used = new Set((allCards || []).map((c) => c.id));
+
+  function allocId(oldId) {
+    const base = `${idPrefix}_${oldId}`.replace(/[^\w\-]+/g, "_").slice(0, 56);
+    let id = base;
+    let n = 2;
+    while (used.has(id)) {
+      id = `${base}_${n++}`;
+    }
+    idMap[oldId] = id;
+    used.add(id);
+    return id;
+  }
+  for (const oid of oldIds) allocId(oid);
+
+  const clones = oldIds.map((oid) => {
+    const src = by[oid];
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.id = idMap[oid];
+    copy.setId = newSetId || copy.setId;
+    // subtree 模式：選中根切斷父；其餘 remapped
+    if (mode === "subtree" && oid === rootOld.id) {
+      copy.parentId = null;
+    } else if (copy.parentId && idMap[copy.parentId]) {
+      copy.parentId = idMap[copy.parentId];
+    } else {
+      // 父不在子樹內 → 變根
+      copy.parentId = null;
+    }
+    if (stripStarter) copy.starter = false;
+    copy._extract = {
+      fromSetId: srcSet,
+      fromCardId: oid,
+      mode,
+      at: Date.now(),
+    };
+    return copy;
+  });
+
+  return {
+    clones,
+    idMap,
+    rootOldId: rootOld.id,
+    rootNewId: idMap[rootOld.id],
+    count: clones.length,
+  };
+}
+
 export { STAGE_ORDER };

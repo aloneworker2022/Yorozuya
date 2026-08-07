@@ -26,10 +26,29 @@ function clamp(n, a, b) {
   return Math.max(a, Math.min(b, n));
 }
 
+/** 遊戲只用 live 卡組（card_sets[].live）；無 sets 時全部可用 */
+export function liveSetIds(data = DATA) {
+  const sets = data?.card_sets;
+  if (!Array.isArray(sets) || !sets.length) return null; // null = 不篩
+  const live = sets.filter((s) => s && s.live).map((s) => s.id);
+  if (!live.length) return new Set(["main"]);
+  return new Set(live);
+}
+
+export function isCardLive(card, data = DATA) {
+  if (!card) return false;
+  const live = liveSetIds(data);
+  if (!live) return true;
+  const sid = card.setId || "main";
+  return live.has(sid);
+}
+
 export function setCardsData(data) {
   DATA = data;
   for (const k of Object.keys(BY_ID)) delete BY_ID[k];
-  for (const c of data?.cards || []) BY_ID[c.id] = c;
+  for (const c of data?.cards || []) {
+    if (isCardLive(c, data)) BY_ID[c.id] = c;
+  }
 }
 
 export function cardsReady() {
@@ -40,8 +59,18 @@ export function cardById(id) {
   return BY_ID[id] || null;
 }
 
+/** 遊戲可見卡（僅 live 組） */
 export function allCards() {
+  return (DATA?.cards || []).filter((c) => isCardLive(c));
+}
+
+/** 編輯器用：全部卡（含實驗組） */
+export function allCardsRaw() {
   return DATA?.cards || [];
+}
+
+export function cardSets() {
+  return DATA?.card_sets || [];
 }
 
 /** 詞墜鏈（祖先→自己） */

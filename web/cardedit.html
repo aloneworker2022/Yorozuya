@@ -164,6 +164,28 @@
 <div class="layout">
   <!-- 左：樹狀清單 -->
   <aside class="side">
+    <h2>卡組 · 輩分</h2>
+    <p class="mini" style="margin-bottom:.45em">
+      實驗在<strong>新卡組</strong>改，不直接動正式庫。遊戲只吃標了「正式 live」的組。
+    </p>
+    <label>目前編輯卡組</label>
+    <select id="set-select" style="margin-bottom:.4em"></select>
+    <div class="row" style="margin-bottom:.45em">
+      <button class="cy" type="button" id="btn-set-new" title="開一個空卡組從頭做">＋新開空組</button>
+      <button type="button" id="btn-set-rename" title="重新命名目前卡組">改名</button>
+      <button class="del" type="button" id="btn-set-del" title="刪除目前卡組及其全部卡（正式組不可刪）">刪組</button>
+    </div>
+    <div class="row" style="margin-bottom:.55em">
+      <button class="gold" type="button" id="btn-extract-full"
+        title="以選中卡所屬那整棵輩分（從根到全部子孫）複製到新卡組">⧉ 取出整棵輩分</button>
+      <button class="gold" type="button" id="btn-extract-sub"
+        title="以選中卡為新根，連同其子孫複製到新卡組（切斷原父）">⧉ 取出子樹</button>
+    </div>
+    <div class="checkrow" style="margin-bottom:.5em">
+      <label><input type="checkbox" id="set-live-toggle"> 此組為正式（遊戲會用）</label>
+    </div>
+    <div class="mini" id="set-meta" style="margin-bottom:.6em"></div>
+
     <h2>卡牌樹</h2>
     <input class="search" id="filter" placeholder="搜 id / 名 / 詞墜…">
     <div class="row" style="margin-bottom:.5em">
@@ -185,7 +207,8 @@
       <h2>選一張卡開始編輯</h2>
       <p class="mini">概念：每張卡 = 一個<strong>詞墜</strong>。子卡繼承父鏈全部詞墜再疊自己的。<br>
         例：基礎「問候」→ <code style="color:var(--gold)">[問候]</code>；子卡「打趣」→ <code style="color:var(--gold)">[問候] [說笑話]</code>。<br>
-        遊戲舊欄位（emotion / sceneStart / promptHint…）仍保留；詞墜是內容對齊的主軸。</p>
+        <strong>卡組：</strong>不要直接改正式庫——選一張卡 →「取出整棵輩分／子樹」開新組再改；或「新開空組」從頭建。<br>
+        遊戲只載入標了「正式 live」的卡組。</p>
     </div>
 
     <div id="editor" class="hidden" style="display:none">

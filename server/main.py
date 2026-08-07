@@ -1959,9 +1959,44 @@ def put_cards(body: dict):
         "每卡一個詞墜 token；parentId 繼承父鏈詞墜。"
         "解析後效果字串如 [問候] [說笑話]。"
     )
+    # 卡組：無則補 main；卡無 setId → main
+    sets = body.get("card_sets")
+    if not isinstance(sets, list) or not sets:
+        sets = [{"id": "main", "name": "正式牌庫", "live": True}]
+    set_ids = set()
+    for s in sets:
+        if not isinstance(s, dict) or not s.get("id"):
+            raise HTTPException(400, "card_sets 每項需要 id")
+        set_ids.add(s["id"])
+    if "main" not in set_ids:
+        sets.insert(0, {"id": "main", "name": "正式牌庫", "live": True})
+        set_ids.add("main")
+    if not any(s.get("live") for s in sets):
+        for s in sets:
+            if s["id"] == "main":
+                s["live"] = True
+                break
+    body["card_sets"] = sets
+    for c in cards:
+        sid = c.get("setId") or "main"
+        if sid not in set_ids:
+            raise HTTPException(400, f"卡 {c['id']} 的 setId={sid} 不在 card_sets")
+        c["setId"] = sid
+        # 父卡必須同組
+        pid = c.get("parentId")
+        if pid:
+            p = by.get(pid)
+            if p and (p.get("setId") or "main") != sid:
+                raise HTTPException(400, f"卡 {c['id']} 父卡跨組")
+    meta["card_sets"] = "setId 分組；live=true 的組才進遊戲。實驗組用 /cardedit 取出輩分。"
     body["_meta"] = meta
     path.write_text(json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {"ok": True, "count": len(cards), "schema_version": meta["schema_version"]}
+    return {
+        "ok": True,
+        "count": len(cards),
+        "sets": len(sets),
+        "schema_version": meta["schema_version"],
+    }
 
 
 @app.get("/cardedit")

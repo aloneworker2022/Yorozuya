@@ -13,16 +13,22 @@ import {
   tokenOf,
   STAGE_ORDER,
   stageLabel,
+  extractLineageClone,
+  findLineageRoot,
+  collectSubtreeIds,
 } from "./token_chain.js";
 import { buildCardPlayPrompt } from "./persona_builder.js";
 
 // ── 狀態 ──────────────────────────────────────────────────
 let DOC = null;           // 完整 cards.json
-let cards = [];           // DOC.cards
+let cards = [];           // DOC.cards（全部卡組）
+let activeSetId = "main"; // 目前編輯的卡組
 let selectedId = null;
 let dirty = false;
 let draftChildren = [];   // AI 衍伸暫存
 let girlCache = null;
+
+const MAIN_SET_ID = "main";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) =>
@@ -72,8 +78,49 @@ function byId() {
   return indexById(cards);
 }
 
+/** 目前卡組內的卡（編輯樹只顯示這批） */
+function viewCards() {
+  return cards.filter((c) => (c.setId || MAIN_SET_ID) === activeSetId);
+}
+
+function viewById() {
+  return indexById(viewCards());
+}
+
 function selected() {
   return cards.find((c) => c.id === selectedId) || null;
+}
+
+function ensureSets() {
+  if (!Array.isArray(DOC.card_sets) || !DOC.card_sets.length) {
+    DOC.card_sets = [
+      {
+        id: MAIN_SET_ID,
+        name: "正式牌庫",
+        live: true,
+        note: "遊戲實際載入的卡",
+      },
+    ];
+  }
+  // 舊卡無 setId → main
+  for (const c of cards) {
+    if (!c.setId) c.setId = MAIN_SET_ID;
+  }
+  if (!DOC.card_sets.some((s) => s.id === activeSetId)) {
+    activeSetId = DOC.card_sets.find((s) => s.live)?.id || DOC.card_sets[0].id;
+  }
+}
+
+function getSet(id = activeSetId) {
+  return (DOC.card_sets || []).find((s) => s.id === id) || null;
+}
+
+function allocSetId(base = "draft") {
+  const used = new Set((DOC.card_sets || []).map((s) => s.id));
+  let id = base;
+  let n = 1;
+  while (used.has(id)) id = `${base}_${n++}`;
+  return id;
 }
 
 // ── 載入 / 儲存 ───────────────────────────────────────────
@@ -86,47 +133,69 @@ async function loadCards() {
     if (!("parentId" in c)) c.parentId = null;
     if (!("token" in c)) c.token = "";
     if (!("tokenDesc" in c)) c.tokenDesc = "";
+    if (!c.setId) c.setId = MAIN_SET_ID;
   }
+  ensureSets();
   dirty = false;
+  renderSetSelect();
   renderTree();
   fillParentSelect();
-  if (selectedId && cards.some((c) => c.id === selectedId)) {
+  if (selectedId && viewCards().some((c) => c.id === selectedId)) {
     selectCard(selectedId);
   } else {
     selectedId = null;
     showEditor(false);
   }
-  setStatus("save-status", `已載入 ${cards.length} 張`);
+  setStatus("save-status", `已載入 ${cards.length} 張 · ${DOC.card_sets.length} 組`);
   $("tree-stats").textContent = statsLine();
 }
 
 function statsLine() {
-  const roots = cards.filter((c) => !c.parentId || !byId()[c.parentId]).length;
-  const withTok = cards.filter((c) => (c.token || "").trim()).length;
-  return `${cards.length} 張 · 基礎 ${roots} · 已填詞墜 ${withTok}`;
+  const vc = viewCards();
+  const vmap = viewById();
+  const roots = vc.filter((c) => !c.parentId || !vmap[c.parentId]).length;
+  const withTok = vc.filter((c) => (c.token || "").trim()).length;
+  const set = getSet();
+  const liveTag = set?.live ? "·正式" : "·實驗";
+  return `本組 ${vc.length} 張${liveTag} · 基礎 ${roots} · 詞墜 ${withTok} · 全庫 ${cards.length}`;
 }
 
 async function saveCards() {
   // 從表單回收目前編輯
   if (selectedId) commitFormToCard();
+  ensureSets();
   // 驗證
   const ids = new Set();
   for (const c of cards) {
     if (!c.id || !String(c.id).trim()) throw new Error("有卡缺 id");
     if (ids.has(c.id)) throw new Error(`重複 id: ${c.id}`);
     ids.add(c.id);
+    if (!c.setId) c.setId = MAIN_SET_ID;
   }
+  // parent 必須同組
   const map = byId();
   for (const c of cards) {
-    if (c.parentId && wouldCycle(c.id, c.parentId, map)) {
+    if (!c.parentId) continue;
+    const p = map[c.parentId];
+    if (!p) throw new Error(`卡 ${c.id} 的 parentId=${c.parentId} 不存在`);
+    if ((p.setId || MAIN_SET_ID) !== (c.setId || MAIN_SET_ID)) {
+      throw new Error(`卡 ${c.id} 的父卡跨組（不允許）`);
+    }
+    if (wouldCycle(c.id, c.parentId, map)) {
       throw new Error(`繼承成環: ${c.id} → ${c.parentId}`);
     }
   }
-  // starter_pool 同步：所有 starter:true 的 id
-  const starters = cards.filter((c) => c.starter).map((c) => c.id);
+  // starter_pool 只收 live 組的 starter
+  const liveIds = new Set(
+    (DOC.card_sets || []).filter((s) => s.live).map((s) => s.id),
+  );
+  if (!liveIds.size) liveIds.add(MAIN_SET_ID);
+  const starters = cards
+    .filter((c) => c.starter && liveIds.has(c.setId || MAIN_SET_ID))
+    .map((c) => c.id);
   DOC.cards = cards;
+  DOC.card_sets = DOC.card_sets || [];
   if (Array.isArray(DOC.starter_pool)) {
-    // 保留原順序，補上新 starter，去掉已不存在
     const keep = DOC.starter_pool.filter((id) => starters.includes(id));
     for (const id of starters) if (!keep.includes(id)) keep.push(id);
     DOC.starter_pool = keep;
@@ -135,14 +204,213 @@ async function saveCards() {
   const r = await api("/api/cards", "PUT", DOC);
   dirty = false;
   markDirty(false);
-  setStatus("save-status", `✓ 已寫入 ${r.count} 張（schema v${r.schema_version}）`);
+  setStatus(
+    "save-status",
+    `✓ 已寫入 ${r.count} 張 · ${DOC.card_sets.length} 組（schema v${r.schema_version}）`,
+  );
+  renderSetSelect();
   renderTree();
+}
+
+// ── 卡組 UI ───────────────────────────────────────────────
+function renderSetSelect() {
+  ensureSets();
+  const sel = $("set-select");
+  if (!sel) return;
+  const cur = activeSetId;
+  sel.innerHTML = "";
+  for (const s of DOC.card_sets) {
+    const n = cards.filter((c) => (c.setId || MAIN_SET_ID) === s.id).length;
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = `${s.live ? "★ " : ""}${s.name || s.id} (${n})`;
+    sel.appendChild(opt);
+  }
+  if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+  else {
+    activeSetId = sel.value;
+  }
+  const set = getSet();
+  const liveEl = $("set-live-toggle");
+  if (liveEl) {
+    liveEl.checked = !!set?.live;
+    liveEl.disabled = set?.id === MAIN_SET_ID && !!set?.live && DOC.card_sets.filter((s) => s.live).length <= 1;
+  }
+  const meta = $("set-meta");
+  if (meta && set) {
+    const bits = [
+      `id: ${set.id}`,
+      set.live ? "正式 live" : "實驗（遊戲不載入）",
+      set.sourceSetId ? `來自 ${set.sourceSetId}` : "",
+      set.extractedFrom ? `抽出 ${set.extractedFrom}` : "",
+      set.note || "",
+    ].filter(Boolean);
+    meta.textContent = bits.join(" · ");
+  }
+}
+
+function switchSet(id) {
+  if (selectedId) {
+    try {
+      commitFormToCard();
+    } catch (e) {
+      setStatus("save-status", "表單有誤: " + e.message, true);
+      renderSetSelect();
+      return;
+    }
+  }
+  activeSetId = id;
+  selectedId = null;
+  showEditor(false);
+  renderSetSelect();
+  renderTree();
+  fillParentSelect();
+  setStatus("save-status", `切換到卡組：${getSet()?.name || id}`);
+}
+
+function newEmptySet() {
+  const name = prompt("新卡組名稱？", "實驗組");
+  if (name == null) return;
+  const id = allocSetId("draft");
+  DOC.card_sets.push({
+    id,
+    name: name.trim() || id,
+    live: false,
+    note: "空組 · 從頭建",
+    createdAt: Date.now(),
+  });
+  markDirty();
+  switchSet(id);
+  setStatus("save-status", `已新開空組「${name}」— 尚未寫入磁碟`);
+}
+
+function renameActiveSet() {
+  const set = getSet();
+  if (!set) return;
+  const name = prompt("卡組名稱", set.name || set.id);
+  if (name == null) return;
+  set.name = name.trim() || set.id;
+  markDirty();
+  renderSetSelect();
+}
+
+function deleteActiveSet() {
+  const set = getSet();
+  if (!set) return;
+  if (set.id === MAIN_SET_ID) {
+    setStatus("save-status", "正式牌庫 main 不可刪組（可清空卡，但不刪組）", true);
+    return;
+  }
+  const n = viewCards().length;
+  if (!confirm(`刪除卡組「${set.name}」及其 ${n} 張卡？原庫不受影響。`)) return;
+  if (selectedId) {
+    try {
+      commitFormToCard();
+    } catch { /* discard form on delete set */ }
+  }
+  cards = cards.filter((c) => (c.setId || MAIN_SET_ID) !== set.id);
+  DOC.cards = cards;
+  DOC.card_sets = DOC.card_sets.filter((s) => s.id !== set.id);
+  activeSetId = DOC.card_sets.find((s) => s.live)?.id || MAIN_SET_ID;
+  selectedId = null;
+  markDirty();
+  showEditor(false);
+  renderSetSelect();
+  renderTree();
+  setStatus("save-status", `已刪組（記得儲存）`);
+}
+
+function toggleSetLive() {
+  const set = getSet();
+  if (!set) return;
+  const on = $("set-live-toggle").checked;
+  if (!on) {
+    const liveCount = DOC.card_sets.filter((s) => s.live && s.id !== set.id).length;
+    if (liveCount < 1) {
+      setStatus("save-status", "至少要有一組正式 live", true);
+      $("set-live-toggle").checked = true;
+      return;
+    }
+  }
+  set.live = on;
+  markDirty();
+  renderSetSelect();
+  renderTree();
+}
+
+/**
+ * 整組輩分取出 → 新卡組（深拷，不動原卡）
+ * @param {"full"|"subtree"} mode
+ */
+function extractLineageToNewSet(mode) {
+  const src = selected();
+  if (!src) {
+    setStatus("save-status", "請先在樹裡選一張卡（輩分起點）", true);
+    return;
+  }
+  try {
+    commitFormToCard();
+  } catch (e) {
+    setStatus("save-status", e.message, true);
+    return;
+  }
+  const srcCard = selected();
+  const srcSet = getSet(srcCard.setId || MAIN_SET_ID);
+  const defaultName =
+    mode === "full"
+      ? `${srcCard.name || srcCard.id}·整棵輩分`
+      : `${srcCard.name || srcCard.id}·子樹`;
+  const name = prompt(
+    mode === "full"
+      ? "新卡組名稱？（從根整棵輩分複製）"
+      : "新卡組名稱？（以本卡為新根 + 子孫）",
+    defaultName,
+  );
+  if (name == null) return;
+
+  const setId = allocSetId("line");
+  const prefix = setId.replace(/[^\w]/g, "").slice(0, 12) || "x";
+  let result;
+  try {
+    result = extractLineageClone(srcCard, cards, {
+      mode,
+      newSetId: setId,
+      idPrefix: prefix,
+      stripStarter: true,
+    });
+  } catch (e) {
+    setStatus("save-status", e.message, true);
+    return;
+  }
+
+  DOC.card_sets.push({
+    id: setId,
+    name: name.trim() || setId,
+    live: false,
+    sourceSetId: srcCard.setId || MAIN_SET_ID,
+    extractedFrom: srcCard.id,
+    extractMode: mode,
+    rootOldId: result.rootOldId,
+    rootNewId: result.rootNewId,
+    note: `自「${srcSet?.name || srcCard.setId}」${mode === "full" ? "整棵" : "子樹"}抽出`,
+    createdAt: Date.now(),
+  });
+  cards.push(...result.clones);
+  DOC.cards = cards;
+  markDirty();
+  switchSet(setId);
+  selectCard(result.rootNewId);
+  setStatus(
+    "save-status",
+    `✓ 已取出 ${result.count} 張到新組「${name}」（原卡不動 · 記得儲存）`,
+  );
 }
 
 // ── 樹 ────────────────────────────────────────────────────
 function renderTree() {
   const q = ($("filter").value || "").trim().toLowerCase();
-  const forest = buildCardForest(cards);
+  const vc = viewCards();
+  const forest = buildCardForest(vc);
   const box = $("tree");
   box.innerHTML = "";
 
@@ -184,12 +452,10 @@ function renderTree() {
     }
   }
 
-  // 過濾時：也列出「父不匹配但自己匹配」的孤立顯示——buildCardForest 已含全部
   walk(forest, box);
 
-  // 若過濾後沒結果，顯示扁平命中
   if (q && !box.children.length) {
-    for (const c of cards) {
+    for (const c of vc) {
       if (!match(c)) continue;
       const div = document.createElement("div");
       div.className = "tree-item" + (c.id === selectedId ? " on" : "");
@@ -206,7 +472,10 @@ function fillParentSelect(exceptId = null) {
   const sel = $("f-parent");
   const cur = sel.value;
   sel.innerHTML = `<option value="">（無 — 基礎卡）</option>`;
-  const sorted = cards.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "zh"));
+  // 父卡只能是同組
+  const sorted = viewCards()
+    .slice()
+    .sort((a, b) => (a.name || "").localeCompare(b.name || "", "zh"));
   for (const c of sorted) {
     if (exceptId && c.id === exceptId) continue;
     const opt = document.createElement("option");
@@ -306,9 +575,10 @@ function fillForm(c) {
 
   // extra fields
   const known = new Set([
-    "id", "name", "token", "tokenDesc", "parentId", "kind", "rarity", "minStage",
+    "id", "setId", "name", "token", "tokenDesc", "parentId", "kind", "rarity", "minStage",
     "price", "shopWeight", "tags", "shatterOnUse", "starter", "forceable", "nsfwOnly",
     "sceneStart", "promptHint", "effect", "openChain", "emotion", "emotionOnFail",
+    "_extract",
   ]);
   const extra = {};
   for (const [k, v] of Object.entries(c)) {
@@ -361,6 +631,7 @@ function commitFormToCard() {
   }
 
   c.id = newId;
+  c.setId = activeSetId; // 卡永遠屬於目前編輯組
   c.name = $("f-name").value.trim();
   c.token = $("f-token").value.trim();
   c.tokenDesc = $("f-tokenDesc").value.trim();
@@ -404,14 +675,17 @@ function commitFormToCard() {
   // wipe known then merge extra
   const extra = parseJsonField($("f-extra"), "extra") || {};
   const known = new Set([
-    "id", "name", "token", "tokenDesc", "parentId", "kind", "rarity", "minStage",
+    "id", "setId", "name", "token", "tokenDesc", "parentId", "kind", "rarity", "minStage",
     "price", "shopWeight", "tags", "shatterOnUse", "starter", "forceable", "nsfwOnly",
     "sceneStart", "promptHint", "effect", "openChain", "emotion", "emotionOnFail",
+    "_extract",
   ]);
   for (const k of Object.keys(c)) {
     if (!known.has(k) && !(k in extra)) delete c[k];
   }
   Object.assign(c, extra);
+  // setId 不被 extra 蓋掉
+  c.setId = activeSetId;
 
   // clean undefined
   for (const k of Object.keys(c)) {
@@ -537,9 +811,10 @@ function newBaseCard() {
       return;
     }
   }
-  const id = newId("base");
+  const id = newId(activeSetId === MAIN_SET_ID ? "base" : `${activeSetId}_base`);
   const c = {
     id,
+    setId: activeSetId,
     name: "新基礎卡",
     token: "新詞墜",
     tokenDesc: "",
@@ -582,6 +857,7 @@ function newChildCard() {
   const id = newId(p.id + "_x");
   const c = {
     id,
+    setId: p.setId || activeSetId,
     name: p.name + "·衍伸",
     token: "新詞墜",
     tokenDesc: "",
@@ -619,11 +895,13 @@ function deleteSelected() {
   markDirty();
   showEditor(false);
   renderTree();
+  renderSetSelect();
 }
 
 function suggestAllTokens() {
   let n = 0;
-  for (const c of cards) {
+  // 只推斷目前卡組
+  for (const c of viewCards()) {
     if (!(c.token || "").trim()) {
       c.token = suggestTokenFromName(c.name);
       n++;
@@ -636,7 +914,7 @@ function suggestAllTokens() {
     if (c) $("f-token").value = c.token || "";
     updateResolvedPreview();
   }
-  setStatus("save-status", `已為 ${n} 張卡推斷詞墜（請檢查後儲存）`);
+  setStatus("save-status", `已為本組 ${n} 張卡推斷詞墜（請檢查後儲存）`);
 }
 
 // ── 效果試算 ──────────────────────────────────────────────
@@ -1151,6 +1429,14 @@ function bind() {
     renderTree();
   };
   $("filter").oninput = () => renderTree();
+
+  $("set-select").onchange = () => switchSet($("set-select").value);
+  $("btn-set-new").onclick = newEmptySet;
+  $("btn-set-rename").onclick = renameActiveSet;
+  $("btn-set-del").onclick = deleteActiveSet;
+  $("set-live-toggle").onchange = toggleSetLive;
+  $("btn-extract-full").onclick = () => extractLineageToNewSet("full");
+  $("btn-extract-sub").onclick = () => extractLineageToNewSet("subtree");
 
   const liveFields = [
     "f-token", "f-tokenDesc", "f-parent", "f-name", "f-id", "f-kind", "f-tags",
