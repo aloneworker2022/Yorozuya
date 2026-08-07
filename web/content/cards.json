@@ -166,7 +166,9 @@
       "sceneStart": "你把聲音壓低，像怕驚動什麼似的，慢慢安她。空氣裡多了一層小心翼翼，你甚至放慢了呼吸，好讓每個字都落在她聽得見、又不刺耳的距離。你沒有急著要她回應，只是把語氣墊軟，像在她旁邊舖了一塊可以暫時坐下來的地方。光在她側臉停了一下，你等她決定要收下這份安撫，還是把防線重新拉起。",
       "promptHint": "他用溫柔、偏短的句子安撫你。依關係：戒備地聽／有點受用／想靠過去／當成日常。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he speaks softly to her, she faces him, eye contact, gentle listening expression, soft smile or shy look, half body, warm close conversation, NOT looking away blankly",
+      "visualZh": "畫圖：輕聲安撫——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_blunt",
@@ -202,7 +204,9 @@
       "sceneStart": "你不轉彎，把想講的話直接撂在她面前。沒有開場白，也沒有緩衝的笑，句子乾淨得近乎不客氣。你看著她的眼睛，確認她聽完了每一個字——這不是試探，是把話說清楚的時刻。沉默落下半秒，像桌子被拍了一下，輪到她接，或把話推回去。",
       "promptHint": "他說話很直、不修飾。你可能不爽、覺得痛快、或早已習慣他這副德性。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he speaks bluntly facing her, she faces him reacting (surprised or sharp eyes), eye contact, mid-conversation, half body",
+      "visualZh": "畫圖：有話直說——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_tease",
@@ -238,7 +242,9 @@
       "sceneStart": "你用半真半假的玩笑戳她一下，看她怎麼接。語尾帶著一點惡意的輕快，像用指尖點她額前，又在她皺眉前假裝那只是玩笑。你留下半秒的空白，等她決定要回嘴、還是裝作沒聽見。她的表情裂開一絲縫時，你知道這招有沒有戳到真的地方。",
       "promptHint": "他在調侃你，語氣帶刺但不一定惡意。依關係決定你是翻臉、回嘴還是翻白眼笑。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he teases her with a smirk, she faces him with annoyed or playful reaction, eye contact, half body banter pose",
+      "visualZh": "畫圖：帶刺調侃——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_command",
@@ -274,7 +280,9 @@
       "sceneStart": "你不商量，用命令句把要求丟給她。語氣不重，卻沒有留給她改口的空隙；每個字都像被釘在桌面上。你沒有提高音量，只是站得更穩，讓「照做」成為眼前最省事的選項。空氣變薄了一點，你等她是要頂回去，還是把下巴微微收起。",
       "promptHint": "他在使喚你。陌生會抗拒；親近後可能吐槽著照做，或覺得理所當然。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he gives a firm command facing her, she faces him reacting (defiant or complying face), eye contact, tension, half body",
+      "visualZh": "畫圖：直接下令——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_awkward",
@@ -310,7 +318,9 @@
       "sceneStart": "你想關心她，詞卻選得很笨，句子還卡住一次。你清了清喉嚨，把後半句硬接上去，耳尖有點熱。明明是好意，卻講得像第一次用人類語言——你只好把視線稍微移開，好讓她笑你、或接住你。那一點笨拙停在兩人之間，比漂亮的空話更難假裝沒發生。",
       "promptHint": "他關心的方式很笨拙。你可能覺得好笑、暖、或懶得吐槽。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he speaks awkwardly, she faces him with mild confusion or warmth, eye contact, half body",
+      "visualZh": "畫圖：笨拙關心——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_joke",
@@ -346,7 +356,9 @@
       "sceneStart": "氣氛微妙時，你丟了個無關痛癢的玩笑想把空氣掀過去。笑點不大，甚至有點蠢，但你需要那一聲輕的裂縫。你看她有沒有嘴角動一下，好判斷這招是救場，還是讓沉默變得更明顯。遠處的雜音忽然變清楚，你們都知道剛才差一點沉下去。",
       "promptHint": "他在用玩笑帶過。你可被逗到、覺得他在逃、或跟著胡扯。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he cracks a joke, she faces him reacting with smile or deadpan, eye contact, light atmosphere, half body",
+      "visualZh": "畫圖：岔開玩笑——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_listen",
@@ -382,7 +394,9 @@
       "sceneStart": "你少說話，把說話的位置讓給她，只偶爾應一聲。你把重心放輕，身體微側，做出「我在聽」的形狀。房間裡只剩她的聲音與你規律的呼吸，你不插嘴，也不催她把故事講完。她若停頓，你也不急著填，只讓那份被聽見的感覺多停一會兒。",
       "promptHint": "他主要在聽你說。陌生時你不一定想講；親近時你可能講很多。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he listens quietly facing her, she is speaking or about to speak, mutual attention, calm half body",
+      "visualZh": "畫圖：只是聽你說——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_praise",
@@ -418,7 +432,9 @@
       "sceneStart": "你挑了一件具體的事稱讚她，不是敷衍的客套。細節講得很準，像你真的有在看她怎麼做、怎麼撐。稱讚落下時你沒有馬上移開視線，好讓她知道那句話是給她的，不是給氣氛的。她耳尖或肩線可能微微一動，你把那一瞬收進眼底，沒有再追加肉麻的第二句。",
       "promptHint": "他在稱讚你某件具體的事。依關係決定你是警戒、害羞、要更多，還是「嗯我知道」。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he praises her, she faces him looking pleased or shy, eye contact, soft smile, half body",
+      "visualZh": "畫圖：認真稱讚——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_errand",
@@ -457,7 +473,9 @@
       "sceneStart": "你把話題拽到那堆還沒做完的事上——用你的方式講。不是指責，也不是公事公辦，更像把她的名字跟清單綁在同一句裡。你停半拍，看她是要辯解、要轉移，還是乾脆承認今晚還有坑要填。待辦的影子壓在談話上方，連呼吸都帶一點期限將至的味道。",
       "promptHint": "他提到你看得到的那件待辦（由遊戲注入題目）。你依關係吐槽、催、或直接交代。禁止發明清單外的新任務。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he mentions a to-do list, she faces him with exasperated or dutiful expression, conversation half body",
+      "visualZh": "畫圖：盯著待辦——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_silence",
@@ -493,7 +511,9 @@
       "sceneStart": "你沒硬找話題，只是待在她視線邊緣，讓安靜待著。衣料摩挲與遠處的雜音變得很清楚。你偶爾換一下站姿，證明你還在，卻不強迫這份安靜長出什麼意義。時間被拉長成可觸摸的東西，你們誰都沒先承認這很親密。",
       "promptHint": "他幾乎不說話，只是在場。你決定這份安靜是壓迫、安心，還是你們之間的習慣。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he stays close in quiet companionship, she is aware of his presence, soft atmosphere, half body, not dramatic",
+      "visualZh": "畫圖：沉默陪著——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_apology",
@@ -532,7 +552,9 @@
       "sceneStart": "你把姿態放低，把該認的講清楚，不找藉口。語速比平常慢，像在把鋒利的邊折起來。你沒有要求她立刻原諒，只把過錯放在你們中間，讓她決定要撿起來，還是先放著。燈光照著地板的一小塊，你低頭看著那裡，等她的下一個字。",
       "promptHint": "他在道歉或示弱。你決定要不要給台階下。 把場面寫具體一點，留呼吸與停頓。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he softens his words / apologizes, she faces him listening carefully, eye contact, half body",
+      "visualZh": "畫圖：把話說軟——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_jealous",
@@ -568,7 +590,9 @@
       "sceneStart": "你沒忍住，讓那一點說不清的佔有慾漏出一句話來。語調想裝成隨口，尾音卻洩了底。你馬上想用別的話蓋過去，又怕蓋得太用力反而更明顯——於是那句吃味就懸在空氣裡。她若聽出來了，你的表情會比任何辯解都更誠實。",
       "promptHint": "他流露出吃味或在意你被別人看。你覺得煩、好笑，或心底受用。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he speaks with jealous undertone, she faces him reacting, eye contact, half body emotional tension",
+      "visualZh": "畫圖：吃味一句——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_night",
@@ -604,7 +628,9 @@
       "sceneStart": "夜深了，你講了一句白天不會講出口的話。窗外的光很薄，屋裡只剩低低的聲線。你像怕天亮會回收這句話似的，把真心話放得很輕，又放得很近。時鐘的滴答被放大，連呼吸都不敢太響，生怕把夜色嚇醒。",
       "promptHint": "他在偏深夜的氣氛裡對你坦白一點真心。回覆可以短，但要有重量。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "nighttime talk, he faces her, soft lighting, she faces him, intimate conversation half body",
+      "visualZh": "畫圖：深夜自白——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "speech_future",
@@ -640,7 +666,9 @@
       "sceneStart": "你把「以後」兩個字說得很自然，像已經預設她會在。沒有宣誓的隆重，只有一種把她編進接下來日子的口吻。你停在那裡，讓「以後」在兩人之間多停了一會兒。她若沒反駁，那沉默本身就像某種允諾的雛形。",
       "promptHint": "他提起和你有關的未來。你依關係覺得可怕、心動，或早就一起在盤算。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "he talks about the future, she faces him thoughtfully, eye contact, half body",
+      "visualZh": "畫圖：以後的事——雙方面向、有互動，不是茫然看旁邊"
     },
     {
       "id": "touch_glance",
@@ -675,7 +703,8 @@
       "sceneStart": "你的視線在她身上停得比禮貌允許的更久。不是一瞥，是刻意的、可以被察覺的停留——從臉到肩線，再慢慢收回。空氣像被看熱了一小塊，你沒有道歉，只是把目光又穩穩地擱回去。她若別開臉，那也是一種回答；你把那反應收進眼底。",
       "promptHint": "他在盯著你看。用台詞或一個短身體狀態句回應；不要括號舞台指示。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "touch_lean",
@@ -710,7 +739,8 @@
       "sceneStart": "你往前半步，把兩人之間的空氣擠薄。溫度與香水（或她身上乾淨的皂味）忽然變近。你沒有再往前，只是讓這個距離成立，看她要後退、僵住，還是同樣不退。袖口幾乎相觸，時間被拉成細線，誰先斷開誰就輸了這拍。",
       "promptHint": "他靠得過近。你後退、僵住、或故意不退。 把場面寫具體一點，留呼吸與停頓。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "touch_hand",
@@ -749,7 +779,8 @@
       "sceneStart": "你的指尖在她沒有答應的情況下，碰到了她的手背。觸感只有一下，卻清楚得像留下指印。你沒有立刻縮回，也沒有握緊，就讓那點多餘的溫度停在邊界上。皮膚相觸的那一秒，連周圍的雜音都退後了一層。",
       "promptHint": "他碰了你的手。身體可能先有反應；依關係決定你罵、裝沒事、或反扣回去。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "touch_waist",
@@ -789,7 +820,8 @@
       "sceneStart": "你的手掠過她腰側，像不小心，又不夠像。掌心感覺到布料下的弧度與一瞬的緊繃。你可以裝成整理袖口，也可以承認你就是要碰那裡——你選擇讓動作本身說話。她吸氣的節奏變了，你知道界線已被指尖量過一次。",
       "promptHint": "他的手碰到你的腰。尺度依關係；可羞可怒可迎。 把場面寫具體一點，留呼吸與停頓。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "kiss_steal",
@@ -829,7 +861,8 @@
       "sceneStart": "你扣住機會，在她反應過來前吻上去。先是短促的、幾乎像偷來的接觸，呼吸交錯的那一秒裡世界變得很小。你退開一點點，又沒有真的退開，等她的下一個動作替你定罪或批准。唇上還殘著溫度，燈光彷彿也跟著晃了一下。",
       "promptHint": "他親了你。陌生／朋友可能怒或慌；女友以上可回吻或討更多。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "kiss_deep",
@@ -869,7 +902,8 @@
       "sceneStart": "這個吻不打算點到為止。你加深角度，讓它從試探變成佔有，舌尖與呼吸都變得更急。時間被拉長，她的手可能抵在你胸口，也可能揪住你的衣襟——你都沒打算先停。空氣變得稀薄，只剩彼此的心跳在胸腔裡搶發言權。",
       "promptHint": "深吻。呼吸、腿軟、咬他、拉近皆可；依關係。 把場面寫具體一點，留呼吸與停頓。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "strip_button",
@@ -913,7 +947,8 @@
       "sceneStart": "你的手指停在她衣扣上，然後真的撥開了一顆。扣子鬆開的細微聲響在安靜裡被放大。露出的那一小片皮膚讓空氣忽然變得更涼也更熱，你看著那道縫，像在問下一顆還要不要。布料的邊緣微微翹起，像一道被撬開的門縫。",
       "promptHint": "他動了你的衣服。你可以按住他的手、罵、或假裝沒在抖。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "strip_slow",
@@ -995,7 +1030,8 @@
       "sceneStart": "你決定不急，一件一件來。沒有粗暴的撕扯，只有有節奏的解除與停頓——每解一層，你都給她半秒可以喊停的空白。慢本身變成一種壓力，比快更難假裝沒事。衣料滑落的聲音很輕，決定卻一層比一層重。",
       "promptHint": "脫衣過程。每步給 1～2 句反應；停手也要有餘韻。設 flag undressed 由核心在成功走完時處理。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "sex_corner",
@@ -1285,7 +1321,8 @@
       "sceneStart": "你扣住她的去路與手腕之間的選擇，不讓她退開。力道不算狠，卻穩定得令人心煩。你的身體擋住半邊出口，掌心的溫度告訴她：這次不是開玩笑的靠近。她若想掙，會先感覺到你的拇指在脈搏上輕輕一按。",
       "promptHint": "身體接觸鍊的開門。她掙扎、僵住或反而貼近。 把場面寫具體一點，留呼吸與停頓。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "open_strip_chain",
@@ -1334,7 +1371,8 @@
       "sceneStart": "衣服一旦離開肩線，你就不打算讓它回到原位。布料下滑的聲音很輕，決定卻很重。你看著她想伸手拉回去的動作，先一步把那條退路也收走。露出的肌膚在燈光下發亮，像被你當場簽名蓋章。",
       "promptHint": "脫衣／保持暴露狀態的鍊開門。後續應為 touch 向牌。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "open_sex_chain",
@@ -1509,7 +1547,8 @@
       "sceneStart": "激烈過後，你遞水、披外套，或只是讓她靠著緩一會兒。動作變得笨拙而溫柔，像把剛才的鋒利一一收起。你沒急著講話，只讓水聲、布料與穩定的陪伴填滿餘震。她的肩線慢慢放鬆，你把溫度維持在剛好能依靠的那一檔。",
       "promptHint": "aftercare。她可以別扭地接受、罵你現在才裝好人、或安靜靠著。",
       "parentId": null,
-      "setId": "main"
+      "setId": "main",
+      "visualEn": "his hand makes contact with her (hand/waist/shoulder), contact point visible, she reacts physically, close distance, half body"
     },
     {
       "id": "girl_guard_stare",

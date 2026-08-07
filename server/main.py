@@ -498,95 +498,35 @@ async def _run_grok_build(
 
 
 def _character_visual_brief(ch: dict) -> str:
-    """把 generateGirl / 存檔魅魔的完整人設壓成生圖用外貌+氣質說明(不解析語意,只拼接欄位)。"""
+    """生圖用 character sheet：**外貌一律英文 tag**（sdtags 查表，與 Comfy 同表）。
+
+    中文池子字串 CLIP / 多數生圖模型幾乎讀不懂；不顯示給玩家的欄位直接翻成英文。
+    """
     if not isinstance(ch, dict):
-        return "attractive young woman"
-    lines: list[str] = []
-    name = ch.get("name") or ""
-    if name:
-        lines.append(f"Name: {name}")
+        return "1girl, adult woman, modern real world woman"
+    ch2 = dict(ch)
+    worn = _outfit_of(ch2)
+    if worn:
+        ch2["_worn_outfit"] = worn
+    en_brief, unknown = sdtags.appearance_en_brief(ch2)
+    lines: list[str] = [en_brief]
+    if unknown:
+        lines.append(
+            "Unmapped pool fields (ignored, do NOT paste Chinese): "
+            + "; ".join(unknown[:12])
+        )
+    pers = ch.get("personality") or []
+    if isinstance(pers, list) and pers:
+        mood = ", ".join(str(p) for p in pers[:4])
+        lines.append(f"Expression mood (soft, optional): {mood}")
+    if ch.get("tone"):
+        lines.append(f"Speech vibe for face (optional): {ch['tone']}")
+    if ch.get("job"):
+        lines.append(f"Former job vibe (optional): {ch['job']}")
     rarity = ch.get("rarity") or ""
     if rarity:
         lines.append(f"Rarity tier: {rarity}")
-    # 外貌 look(新制)。特殊屬性蓋掉的欄位不列——抽到「巨乳」還寫著 B 罩杯,
-    # 對面讀到的是兩句互相打架的話,畫出來就兩邊都不像。
-    look = ch.get("look") or {}
-    if isinstance(look, dict) and look:
-        over = sdtags.overridden_fields(ch)
-        bits = []
-        if look.get("height_cm"):
-            bits.append(f"{look['height_cm']}cm tall")
-        for k, label in (
-            ("build", "body"), ("bust", "bust"), ("face", "face shape"),
-            ("eyes", "eyes"), ("mouth", "mouth/lips"),
-            ("hair_color", "hair color"), ("hair", "hairstyle"),
-            ("feature", "distinctive feature"),
-        ):
-            if look.get(k) and k not in over:
-                bits.append(f"{label}: {look[k]}")
-        if bits:
-            lines.append("Appearance: " + "; ".join(bits))
-        # 服裝:生涯服裝是預設的那一身(職業決定),個人衣櫃是玩家挑過才換的
-        worn = _outfit_of(ch)
-        if worn:
-            lines.append(f"Outfit she is wearing (AUTHORITATIVE): {worn}")
-        if look.get("career_outfit"):
-            lines.append(f"(Her everyday work outfit: {look['career_outfit']})")
-    # 舊 DNA token
-    dna = ch.get("dna") or ch.get("appearance_dna") or {}
-    traits = dna.get("traits") if isinstance(dna, dict) else None
-    if traits and not look:
-        lines.append("DNA traits: " + ", ".join(str(t) for t in traits))
-    # 特殊屬性
-    st = ch.get("specialTraits") or ch.get("special_traits") or []
-    if st:
-        names = []
-        for t in st:
-            if isinstance(t, dict):
-                names.append(t.get("name") or str(t))
-            else:
-                names.append(str(t))
-        if names:
-            lines.append(
-                "Special traits (these OVERRIDE the Appearance line above where they conflict "
-                "— e.g. a 巨乳 trait wins over the listed cup size): " + ", ".join(names))
-    # 個性原型
-    pers = ch.get("personality") or []
-    if isinstance(pers, list) and pers:
-        lines.append("Personality archetype: " + "、".join(str(p) for p in pers))
-    elif isinstance(pers, str) and pers:
-        lines.append(f"Personality: {pers}")
-    if ch.get("archetype"):
-        lines.append(f"Archetype: {ch['archetype']}")
-    if ch.get("tone"):
-        lines.append(f"Speech/tone vibe (for expression): {ch['tone']}")
-    if ch.get("contrast"):
-        lines.append(f"Contrast quirk: {ch['contrast']}")
-    if ch.get("quirk"):
-        lines.append(f"Quirk: {ch['quirk']}")
-    # 職業與來歷
-    if ch.get("job"):
-        lines.append(f"Former job (pre-summon life): {ch['job']}")
-    if ch.get("jobDesc"):
-        lines.append(f"Job note: {ch['jobDesc']}")
-    if ch.get("backstory"):
-        lines.append(f"Backstory: {ch['backstory']}")
-    # 喜惡興趣(氣質參考)
-    for key, label in (("likes", "Likes"), ("dislikes", "Dislikes"), ("hobbies", "Hobbies")):
-        v = ch.get(key)
-        if isinstance(v, list) and v:
-            lines.append(f"{label}: " + "、".join(str(x) for x in v))
-    # 性慾傾向(NSFW 時影響氣氛)
-    lib = ch.get("libido")
-    if isinstance(lib, dict) and lib.get("name"):
-        lines.append(f"Libido tendency: {lib.get('name')}" + (f" — {lib.get('desc')}" if lib.get("desc") else ""))
-    # 作息/弧線(次要)
-    if ch.get("arc"):
-        lines.append(f"Recent life event: {ch['arc']}")
-    chrono = ch.get("chrono")
-    if isinstance(chrono, dict) and chrono.get("name"):
-        lines.append(f"Chronotype: {chrono['name']}")
-    return "\n".join(lines) if lines else "attractive young woman, distinctive look"
+    return "\n".join(lines)
 
 
 _FRAME_MAP = {
@@ -638,8 +578,6 @@ def _build_girl_image_prompt(
     frame_map, style_map, rating_map = _FRAME_MAP, _STYLE_MAP, _RATING_MAP
     ch = _fill_manual_fields(character, name, personality, backstory)
     brief = _character_visual_brief(ch)
-    if extra.strip():
-        brief += f"\nExtra director notes: {extra.strip()}"
 
     size_note = (
         "Output size MUST be exactly 256x256 pixels."
@@ -654,9 +592,20 @@ def _build_girl_image_prompt(
     rating_txt = rating_map.get(rating, rating_map["sfw"])
     rating_line = f"- Content rating: {rating_txt}\n" if rating_txt else ""
 
-    return f"""You are generating ONE character image for a game art test.
-The character sheet below is AUTHORITATIVE — match hair, eyes, body, fashion, features, and vibe exactly.
-Do not invent conflicting traits. Personality/backstory should only influence expression, pose, and mood.
+    # extra 常帶出卡場面英文（visualEn）；標成 ACTION 優先於站樁立繪
+    extra_block = ""
+    if extra.strip():
+        extra_block = f"""
+=== ACTION / SCENE TO DRAW (AUTHORITATIVE — this is WHAT is happening) ===
+{extra.strip()}
+=== END ACTION ===
+Draw THIS interaction/action. Do NOT invent a blank idle look-away pose if the action is greeting, talking, touching, etc.
+"""
+
+    return f"""You are generating ONE image for a game.
+The CHARACTER SHEET is AUTHORITATIVE for identity (hair, eyes, body, outfit) — match exactly.
+The ACTION block (if present) is AUTHORITATIVE for pose/gesture/expression/interaction — draw that moment, not a generic portrait.
+Appearance lines are English tags only; never invent traits from Chinese.
 
 {tool_note}
 After the image is created, copy/move the final file to this EXACT path:
@@ -664,15 +613,16 @@ After the image is created, copy/move the final file to this EXACT path:
 
 Only create that one image file at the destination. Then reply with a short note: the absolute path and one-line description.
 
-=== CHARACTER SHEET (from edit_person / girl_gen pools) ===
+=== CHARACTER SHEET (English tags from persona pools) ===
 {brief}
 === END SHEET ===
-
+{extra_block}
 Render settings:
 - Framing: {frame_map.get(framing, frame_map["half"])}
 - Art style: {style_map.get(style, style_map["anime"])}
 {rating_line}- {size_note}
-- Single character, plain or simple background, no text overlays, no watermark, no other people
+- Prefer simple or scenic background that fits the action; no text overlays, no watermark
+- If ACTION involves two people (he/she), show both as needed; otherwise single character is fine
 """
 
 

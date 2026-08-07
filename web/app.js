@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.23(2026-08-07)卡牌女子綁定·生圖模型測試";
+const APP_VER = "v6.24(2026-08-07)生圖英文外貌·卡牌visualEn";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1977,9 +1977,36 @@ function sceneEnMsgs(girl, play) {
   ];
 }
 
+/** 卡牌專用畫圖描述（英文）；子卡有寫用子，否則沿 parentId 繼承 */
+function cardVisualEn(def) {
+  if (!def) return "";
+  let cur = def;
+  const seen = new Set();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    const v = (cur.visualEn || cur.imgPrompt || "").trim();
+    if (v) return v;
+    cur = cur.parentId ? Cards.cardById(cur.parentId) : null;
+  }
+  return "";
+}
+
+function cardVisualZh(def) {
+  if (!def) return "";
+  let cur = def;
+  const seen = new Set();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    const v = (cur.visualZh || "").trim();
+    if (v) return v;
+    cur = cur.parentId ? Cards.cardById(cur.parentId) : null;
+  }
+  return "";
+}
+
 /**
  * 畫面定格保底：鏡頭必須看見「玩家動作造成的瞬間」。
- * 女子只畫外在反應（姿勢／被碰到的位置），不畫內心戲。
+ * 優先用卡牌 visualEn（專給畫圖）；女子只畫外在反應。
  */
 function visualBeatFallback(play, def, girl = null) {
   const tags = def?.tags || [];
@@ -1995,23 +2022,33 @@ function visualBeatFallback(play, def, girl = null) {
   }
   const scene = sceneRaw.slice(0, 220);
   const gName = girl?.name || play?._boundName || "";
-  // 以「他的動作」為主軸
-  let poseEn = "man's action toward woman visible, woman half body, clear interaction";
+  const cardVis = cardVisualEn(def);
+  const cardVisZh = cardVisualZh(def);
+  // 以「他的動作」為主軸；有 visualEn 時以卡牌為準（避免打招呼畫成茫然看旁邊）
+  let poseEn = "man's action toward woman visible, woman half body, clear interaction, looking at each other";
   let poseZh = "鏡頭清楚看見他對她做的動作，以及當下的距離。";
-  if (tags.includes("kiss") || /吻/.test(name)) {
-    poseEn = "he is kissing her or leaning in to kiss, faces close, his action primary, her body position reactive";
+  if (cardVis) {
+    poseEn = cardVis;
+    poseZh = cardVisZh || `依卡牌畫圖描述，牌意「${name || "這一拍"}」的動作要看得見。`;
+  } else if (tags.includes("kiss") || /吻/.test(name)) {
+    poseEn = "he is kissing her or leaning in to kiss, faces close, his action primary, her body position reactive, eye contact";
     poseZh = "他正在吻她或湊近要吻；動作主體是他，她的臉與距離是被帶動的結果。";
   } else if (tags.includes("sex")) {
     poseEn = "his body pressing close, intimate contact initiated by him, upper bodies, not generic portrait";
     poseZh = "他壓近、造成親密接觸；畫面重點是他的動作與兩人貼合，不是她單獨擺拍。";
   } else if (tags.includes("touch") || /觸|碰|腰|手|靠|握/.test(name)) {
-    poseEn = "his hand on her (waist/hand/shoulder), contact point visible, close distance, his reach is the focus";
+    poseEn = "his hand on her (waist/hand/shoulder), contact point visible, close distance, his reach is the focus, she reacts to the touch";
     poseZh = "他的手碰到她（腰／手／肩等）的接觸點要看得見；重點是他伸手的動作。";
-  } else if (tags.includes("talk") || kind === "speech") {
-    poseEn = "he is speaking to her, facing her, gesture of talking, mid-conversation, not her monologue pose";
-    poseZh = "他正面對她說話或剛說完，手勢／口型顯示「他在出話」，不是她自己沉思。";
+  } else if (tags.includes("talk") || kind === "speech" || /招呼|問候|安撫|玩笑|稱讚|道歉|沉默/.test(name)) {
+    poseEn = [
+      "he greets or speaks to her, facing her",
+      "she faces him, eye contact, responsive expression (smile, listen, or reply face)",
+      "greeting or conversation gesture visible (wave, nod, soft smile, talking)",
+      "NOT blank distant stare to the side, NOT idle solo portrait",
+    ].join(", ");
+    poseZh = "他正面對她打招呼或說話；她面向他、有眼神接觸與反應，不是茫然看旁邊。";
   } else if (kind === "girl_trait") {
-    poseEn = "her external action toward him visible, he is the receiver, clear body language";
+    poseEn = "her external action toward him visible, he is the receiver, clear body language, mutual facing";
     poseZh = "她做出可見的外在舉動（貼近／開口／比劃），他在接收端。";
   } else if (kind === "venue_event") {
     poseEn = "both reacting to a concrete situation, environment cue, interaction frozen mid-action";
@@ -2028,12 +2065,12 @@ function visualBeatFallback(play, def, girl = null) {
     name ? `牌意「${name}」的動作要看得見。` : "",
   ].filter(Boolean).join("");
   const visual_en = [
-    "anime illustration, interaction scene not solo portrait",
-    "show HIS action clearly, contact point or speech gesture visible",
+    "anime illustration, cinematic interaction scene",
+    "show the action clearly, not solo idol idle",
     poseEn,
-    gName ? `same woman character named mood of ${gName}` : "adult woman character match sheet, detailed face",
-    name ? `action of: ${name}` : "",
-    "cinematic lighting, concrete pose, not generic standing beauty shot",
+    gName ? `same adult woman as character sheet (${gName})` : "adult woman character match sheet, detailed face",
+    name ? `card action: ${name}` : "",
+    "concrete pose, mutual attention if talking or greeting",
   ].filter(Boolean).join(", ");
   return { visual_zh, visual_en };
 }
@@ -2047,19 +2084,21 @@ function visualBeatMsgs(girl, play, def) {
     play?.sceneStart || def?.sceneStart || "",
     bctx,
   ) || (play?.sceneStart || def?.sceneStart || "—");
+  const vEn = cardVisualEn(def);
+  const vZh = cardVisualZh(def);
   return [
     {
       role: "system",
       content: [
         "你是分鏡師。任務：把「玩家剛做的事」收成同一個鏡頭，供插圖與女角回話共用。",
         "核心：畫面主軸是【他的動作／話語造成的瞬間】，不是她的心理描寫。",
-        "她只以「被碰到的位置、退開、僵住」等外在姿勢出現，不要寫她心裡想什麼。",
-        "必須鎖定這一位女子的外貌（名字／眼／胸／髮），不要畫成別人。",
+        "她只以「被碰到的位置、退開、僵住、微笑回應」等外在姿勢出現，不要寫她心裡想什麼。",
+        "必須鎖定這一位女子；若有「卡牌畫圖描述(英文)」，pose 必須服從它（例：打招呼就不能畫成茫然看旁邊）。",
         "輸出格式（嚴格兩段，不要其他字）：",
         "VISUAL_ZH:",
         "（繁中 2～3 句：他做了什麼、手／身體在哪、距離多少；她外在姿勢一句帶過即可。）",
         "VISUAL_EN:",
-        "（英文視覺 tags：his action, contact point, distance, her outer pose. No dialogue. No card/game words.）",
+        "（英文視覺 tags：his action, her reaction pose, eye contact if greeting/talk, contact point. No Chinese. No dialogue.）",
       ].join("\n"),
     },
     {
@@ -2068,10 +2107,12 @@ function visualBeatMsgs(girl, play, def) {
         `女子：${girl?.name || bctx.name || "—"} · 眼:${bctx.eye || "—"} · 胸:${bctx.breast || "—"} · 髮:${bctx.hair || "—"}`,
         `玩家：${player}`,
         `卡牌：${def?.name || play?.name || ""} tags=${tags || "—"}`,
-        `玩家動作旁白（已綁定她的名字／部位；唯一真相，必須對齊）：\n${sceneBound}`,
+        vEn ? `【卡牌畫圖描述 visualEn·權威】\n${vEn}` : "",
+        vZh ? `【卡牌畫圖中文備註】\n${vZh}` : "",
+        `玩家動作旁白（已綁定；須對齊）：\n${sceneBound}`,
         play?.open?.success === false ? "肢體結果：她沒接住、退開。" : "",
         play?.open?.success ? "肢體結果：推進有被接住一點。" : "",
-        "請輸出 VISUAL_ZH 與 VISUAL_EN。",
+        "請輸出 VISUAL_ZH 與 VISUAL_EN。若有 visualEn，英文段必須體現其中的動作／表情。",
       ].filter(Boolean).join("\n"),
     },
   ];
@@ -2263,6 +2304,16 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
   else if (tags.includes("kiss") || tags.includes("touch")) framing = "half";
 
   const comfy = imgProvider() === "comfy";
+  // 卡牌 visualEn 優先於 AI 定格——打招呼就要畫打招呼
+  const cardVis = cardVisualEn(def);
+  const actionEn = [
+    cardVis ? `CARD VISUAL (authoritative action): ${cardVis}` : "",
+    sceneEn,
+    "PRIMARY: show the action/gesture from the description",
+    "If greeting/talking: face each other, eye contact, responsive expression — NOT blank look-away",
+    "NOT a solo idol idle portrait",
+    "same woman as character sheet, interaction frozen mid-action",
+  ].filter(Boolean).join(", ");
   const body = {
     key,
     provider: imgProvider(),
@@ -2272,12 +2323,9 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
     // 出卡要像劇情插圖，不要 pixel 立繪風（那會更抽離）
     style: state.settings.imgStyle === "pixel" ? "anime" : (state.settings.imgStyle || "anime"),
     character: s,
-    extra: [
-      sceneEn,
-      "PRIMARY: show the player's/man's action and contact point from the description",
-      "NOT a solo idol portrait, NOT generic standing smile",
-      "same woman as character sheet, interaction frozen mid-action",
-    ].join(", "),
+    extra: actionEn,
+    // prompt 給 Comfy 時也直接塞英文動作（extra 在 sdtags 會併進 positive）
+    prompt: comfy ? actionEn : "",
     cutout: false,
     flat_bg: false,
     retry: true,

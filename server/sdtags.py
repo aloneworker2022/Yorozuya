@@ -517,6 +517,121 @@ def _look(ch: dict) -> dict:
     return look if isinstance(look, dict) else {}
 
 
+def _table_get(table: dict, raw: str) -> str:
+    raw = str(raw or "").strip()
+    if not raw:
+        return ""
+    return table.get(raw, "")
+
+
+def appearance_en_parts(character: dict | None) -> tuple[dict[str, str], list[str]]:
+    """中文人設外貌 → 英文 tag 字典（給 Grok／任何讀句子的生圖路）。
+
+    查表與 Comfy 的 build_prompt 同一份表；查不到進 unknown，不塞中文原文。
+    回傳 (parts, unknown)。parts 鍵: age, face, eyes, mouth, hair, hair_color,
+    build, bust, feature, outfit, skin, specials, height。
+    """
+    ch = character if isinstance(character, dict) else {}
+    look = _look(ch)
+    unknown: list[str] = []
+    sp_seg, sp_over, sp_unknown = resolve_specials(ch)
+    unknown += list(sp_unknown)
+
+    def tr(table: dict, key: str) -> str:
+        if key in sp_over:
+            return ""
+        raw = str(look.get(key) or "").strip()
+        if not raw:
+            return ""
+        tag = table.get(raw, "")
+        if not tag:
+            unknown.append(f"{key}: {raw}")
+        return tag
+
+    parts: dict[str, str] = {}
+    parts["age"] = age_tags(look.get("age") or ch.get("age") or "")
+    parts["face"] = tr(FACE, "face")
+    parts["eyes"] = tr(EYES, "eyes")
+    parts["mouth"] = tr(MOUTH, "mouth")
+    parts["hair"] = tr(HAIR, "hair")
+    parts["hair_color"] = tr(HAIR_COLOR, "hair_color")
+    parts["build"] = tr(BUILD, "build")
+    parts["bust"] = tr(BUST, "bust")
+    parts["feature"] = tr(FEATURE, "feature")
+
+    # 特殊屬性英文 tag（合併各段）
+    sp_tags: list[str] = []
+    for seg in ("head", "bust", "lower"):
+        sp_tags.extend(sp_seg.get(seg) or [])
+    if sp_tags:
+        # 去重保序
+        seen: set[str] = set()
+        uniq = []
+        for t in sp_tags:
+            for bit in str(t).split(","):
+                b = bit.strip()
+                if b and b.lower() not in seen:
+                    seen.add(b.lower())
+                    uniq.append(b)
+        parts["specials"] = ", ".join(uniq)
+
+    # 服裝：優先 character 上已解析的 worn；否則 career / style
+    worn = str(ch.get("_worn_outfit") or look.get("career_outfit") or look.get("style") or "").strip()
+    if worn:
+        otag = CAREER_OUTFIT.get(worn) or STYLE.get(worn) or ""
+        if otag:
+            parts["outfit"] = "fully clothed, " + otag
+        else:
+            unknown.append(f"outfit: {worn}")
+            parts["outfit"] = "fully clothed, " + CLOTHES_FALLBACK
+
+    h = look.get("height_cm")
+    if h:
+        try:
+            parts["height"] = "tall, long legs" if int(h) >= 170 else f"{int(h)}cm"
+        except (TypeError, ValueError):
+            pass
+
+    return parts, unknown
+
+
+def appearance_en_brief(character: dict | None) -> tuple[str, list[str]]:
+    """壓成給 image agent 的英文 character sheet 片段（無中文外貌）。"""
+    parts, unknown = appearance_en_parts(character)
+    lines: list[str] = []
+    ch = character if isinstance(character, dict) else {}
+    if ch.get("name"):
+        lines.append(f"Name: {ch['name']}")
+    if parts.get("age"):
+        lines.append(f"Age: {parts['age']}")
+    # 外貌一行 tag 串
+    face_bits = [
+        parts.get(k)
+        for k in ("face", "eyes", "mouth", "hair_color", "hair", "feature", "build", "bust", "height", "specials")
+        if parts.get(k)
+    ]
+    if face_bits:
+        # flatten
+        flat: list[str] = []
+        seen: set[str] = set()
+        for chunk in face_bits:
+            for t in str(chunk).split(","):
+                t = t.strip()
+                if t and t.lower() not in seen:
+                    seen.add(t.lower())
+                    flat.append(t)
+        lines.append("Appearance (English Danbooru-style tags, AUTHORITATIVE): " + ", ".join(flat))
+    if parts.get("outfit"):
+        lines.append(f"Outfit (AUTHORITATIVE): {parts['outfit']}")
+    lines.append(f"Base: {HUMAN_TAGS}")
+    if unknown:
+        lines.append(
+            "(Note: some Chinese pool strings had no EN mapping and were omitted — "
+            "do not invent from Chinese.)"
+        )
+    return "\n".join(lines) if lines else "1girl, adult woman, modern real world woman", unknown
+
+
 def build_prompt(
     character: dict | None,
     *,

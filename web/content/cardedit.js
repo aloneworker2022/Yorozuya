@@ -528,6 +528,8 @@ function fillForm(c) {
   $("f-nsfwOnly").checked = !!c.nsfwOnly;
   $("f-sceneStart").value = c.sceneStart || "";
   $("f-promptHint").value = c.promptHint || "";
+  $("f-visualEn").value = c.visualEn || c.imgPrompt || "";
+  $("f-visualZh").value = c.visualZh || "";
   $("f-effect").value = c.effect ? JSON.stringify(c.effect, null, 2) : "";
   $("f-openChain").value = c.openChain ? JSON.stringify(c.openChain, null, 2) : "";
   $("f-fail-min").value = c.emotionOnFail?.min ?? "";
@@ -569,7 +571,8 @@ function fillForm(c) {
   const known = new Set([
     "id", "setId", "name", "token", "tokenDesc", "parentId", "kind", "rarity", "minStage",
     "price", "shopWeight", "tags", "shatterOnUse", "starter", "forceable", "nsfwOnly",
-    "sceneStart", "promptHint", "effect", "openChain", "emotion", "emotionOnFail",
+    "sceneStart", "promptHint", "visualEn", "visualZh", "imgPrompt",
+    "effect", "openChain", "emotion", "emotionOnFail",
     "_extract",
   ]);
   const extra = {};
@@ -642,6 +645,12 @@ function commitFormToCard() {
   c.nsfwOnly = $("f-nsfwOnly").checked;
   c.sceneStart = $("f-sceneStart").value.trim();
   c.promptHint = $("f-promptHint").value.trim();
+  c.visualEn = $("f-visualEn").value.trim();
+  c.visualZh = $("f-visualZh").value.trim();
+  if (!c.visualEn) delete c.visualEn;
+  if (!c.visualZh) delete c.visualZh;
+  // 舊別名：有 visualEn 就清掉 imgPrompt 避免雙寫
+  if (c.visualEn && c.imgPrompt) delete c.imgPrompt;
 
   const eff = parseJsonField($("f-effect"), "effect");
   if (eff) c.effect = eff;
@@ -668,7 +677,8 @@ function commitFormToCard() {
   const known = new Set([
     "id", "setId", "name", "token", "tokenDesc", "parentId", "kind", "rarity", "minStage",
     "price", "shopWeight", "tags", "shatterOnUse", "starter", "forceable", "nsfwOnly",
-    "sceneStart", "promptHint", "effect", "openChain", "emotion", "emotionOnFail",
+    "sceneStart", "promptHint", "visualEn", "visualZh", "imgPrompt",
+    "effect", "openChain", "emotion", "emotionOnFail",
     "_extract",
   ]);
   for (const k of Object.keys(c)) {
@@ -764,6 +774,8 @@ function formSnapshot() {
     tags: $("f-tags").value.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean),
     sceneStart: $("f-sceneStart").value,
     promptHint: $("f-promptHint").value,
+    visualEn: $("f-visualEn")?.value || "",
+    visualZh: $("f-visualZh")?.value || "",
     emotion: peekEmotionFromForm() || c.emotion,
     openChain: (() => {
       try {
@@ -1131,13 +1143,14 @@ async function runDerive() {
 
 規則：
 1. 只輸出 JSON 陣列，不要 markdown 圍欄、不要解說。
-2. 每張子卡欄位：id, name, token, tokenDesc, tags, rarity, sceneStart, promptHint, emotion
+2. 每張子卡欄位：id, name, token, tokenDesc, tags, rarity, sceneStart, promptHint, visualEn, emotion
 3. id 用英文蛇形，以父 id 為前綴，例 ${live.id}_tease
 4. token 必須是新的短中文詞墜（2～6 字），不可與父鏈重複：${brief.tokens}
 5. sceneStart = 玩家動作旁白（中文，80～140 字），要能同時體現整條詞墜鏈
 6. promptHint = 給 AI 的牌意（一句，寫「他…」，不寫死她的台詞）
-7. emotion 含 stranger/friend/girlfriend/wife 各 {min,max} 整數
-8. 不要複製父卡文案；要「在父動作之上再推一步」`;
+7. visualEn = 英文畫圖描述（姿態/表情/互動；打招呼必須 facing + eye contact；禁止 blank look-away）
+8. emotion 含 stranger/friend/girlfriend/wife 各 {min,max} 整數
+9. 不要複製父卡文案；要「在父動作之上再推一步」`;
 
   const user = `父卡：
 - id: ${live.id}
@@ -1220,6 +1233,8 @@ function normalizeDerived(raw, parent, i) {
     emotion: raw.emotion || parent.emotion,
     sceneStart: raw.sceneStart || "",
     promptHint: raw.promptHint || "",
+    visualEn: raw.visualEn || "",
+    visualZh: raw.visualZh || "",
   };
 }
 
@@ -1484,20 +1499,83 @@ function fillImgPrompt() {
   const brief = tokenEffectBrief(live, map);
   const { girl, player } = editorGirlForBind();
   const bctx = bindContextFromGirl(girl, player);
+  // 外貌用英文備註（中文眼／胸原文只當 fallback 標籤）
   const scene = resolveCardBinds(live.sceneStart || "", bctx)
     .replace(/\s+/g, " ")
-    .slice(0, 220);
+    .slice(0, 180);
+  const vEn = (live.visualEn || "").trim();
   const prompt = [
-    "anime illustration, cinematic couple moment, indoor",
-    `adult woman「${bctx.name}」, eyes: ${bctx.eye}, bust: ${bctx.breast}, hair: ${bctx.hair}, body: ${bctx.body}`,
-    `player action tokens: ${brief.tokens}`,
-    scene ? `action (bound): ${scene}` : "",
-    "half body, expressive, detailed face, soft lighting",
+    "anime illustration, cinematic interaction scene",
+    // 身分：名字可中文，身體特徵盡量英文動作句
+    `adult woman named ${bctx.name}`,
+    vEn
+      ? `ACTION (authoritative): ${vEn}`
+      : [
+          "he interacts with her, she faces him, eye contact",
+          "responsive expression, NOT blank look-away idle",
+        ].join(", "),
+    brief.tokens ? `card tokens: ${brief.tokens}` : "",
+    scene ? `stage direction (context only): ${scene}` : "",
+    "half body, detailed face, soft lighting",
     "no horns, no wings, no tail, no text, no watermark",
   ]
     .filter(Boolean)
     .join(", ");
   $("ig-prompt").value = prompt;
+}
+
+/** AI 專生 visualEn（英文畫圖描述） */
+async function runGenVisual() {
+  const live = formSnapshot();
+  if (!live?.id) {
+    setStatus("vis-status", "請先選卡", true);
+    return;
+  }
+  const map = { ...byId(), [live.id]: live };
+  const brief = tokenEffectBrief(live, map);
+  const sys = `You write English IMAGE prompts for anime game cards.
+Output ONLY English comma-separated visual tags / short phrases. No Chinese. No markdown. No quotes.
+Focus on: his action, her pose/expression reaction, eye contact or contact point, framing (half body etc).
+If the card is a greeting/talk, MUST include facing each other + greeting/talk gesture + responsive face — never blank distant stare.
+Do not describe clothing in detail unless essential. Do not invent a second woman's identity.`;
+  const user = `Card name: ${live.name}
+kind: ${live.kind}
+tags: ${(live.tags || []).join(", ")}
+token chain: ${brief.tokens}
+Chinese stage direction (for meaning only, do not output Chinese):
+${(live.sceneStart || "").slice(0, 280)}
+promptHint: ${(live.promptHint || "").slice(0, 160)}
+Write visualEn for the illustration of THIS moment.`;
+
+  $("btn-gen-visual").disabled = true;
+  setStatus("vis-status", "生畫圖描述中…");
+  try {
+    const { text, sec } = await genWait(
+      [
+        { role: "system", content: sys },
+        { role: "user", content: user },
+      ],
+      { keyPrefix: "visen", temperature: 0.7 },
+    );
+    let en = (text || "").trim().replace(/^```[\s\S]*?```/g, "").replace(/^["']|["']$/g, "");
+    // 去掉誤出的中文行
+    en = en
+      .split("\n")
+      .filter((l) => !/[\u4e00-\u9fff]/.test(l) || l.length < 4)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!en || en.length < 12) throw new Error("模型沒產出可用英文描述");
+    $("f-visualEn").value = en;
+    if (!$("f-visualZh").value.trim()) {
+      $("f-visualZh").value = `（AI）${live.name}：${(live.sceneStart || "").slice(0, 80)}`;
+    }
+    markDirty();
+    setStatus("vis-status", `✓ visualEn 已填入（${sec.toFixed(1)}s）`);
+  } catch (e) {
+    setStatus("vis-status", e.message, true);
+  }
+  $("btn-gen-visual").disabled = false;
 }
 
 async function pingImgEngine() {
@@ -1669,7 +1747,7 @@ function bind() {
 
   const liveFields = [
     "f-token", "f-tokenDesc", "f-parent", "f-name", "f-id", "f-kind", "f-tags",
-    "f-sceneStart", "f-promptHint", "f-effect", "f-openChain",
+    "f-sceneStart", "f-promptHint", "f-visualEn", "f-visualZh", "f-effect", "f-openChain",
   ];
   for (const id of liveFields) {
     const el = $(id);
@@ -1708,6 +1786,11 @@ function bind() {
   $("btn-ig-ping").onclick = () => pingImgEngine();
   $("btn-imggen").onclick = () => runImgGen();
   $("ig-provider").onchange = () => pingImgEngine();
+  $("btn-gen-visual").onclick = () => runGenVisual();
+  $("btn-visual-to-img").onclick = () => {
+    fillImgPrompt();
+    setStatus("vis-status", "已把 visualEn／旁白組進生圖 prompt");
+  };
 
   setupBindChips();
   for (const id of ["f-sceneStart", "f-promptHint", "re-name", "re-player", "re-per"]) {

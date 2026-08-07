@@ -306,6 +306,24 @@
       </div>
 
       <div class="panel">
+        <h2>畫圖描述 visualEn（專給生圖）</h2>
+        <p class="mini">
+          旁白是給<strong>人／回話 AI</strong>看的；這裡是給<strong>畫圖模型</strong>的鏡頭指示。
+          請用<strong>英文</strong>寫姿態／表情／互動（例：waving hello, she faces him, eye contact, soft smile）。
+          沒填時會沿父卡繼承；都沒有則用 tags 保底。打招呼請寫清楚 greeting／facing／eye contact，避免畫成茫然看旁邊。
+        </p>
+        <label>visualEn（英文 · 權威畫圖）</label>
+        <textarea id="f-visualEn" class="tall" placeholder="he waves hello, she faces him with a polite smile, eye contact, half body, greeting gesture, NOT looking away blankly"></textarea>
+        <label>visualZh（中文備註 · 可選，給作者自己看）</label>
+        <textarea id="f-visualZh" placeholder="他舉手打招呼，她面向他、對視微笑（不進 CLIP）"></textarea>
+        <div class="row" style="margin-top:.4em">
+          <button class="gold" type="button" id="btn-gen-visual">✦ AI 生畫圖描述</button>
+          <button class="cy" type="button" id="btn-visual-to-img" title="把 visualEn 填進右側生圖 prompt">→ 填入生圖框</button>
+        </div>
+        <span class="status" id="vis-status"></span>
+      </div>
+
+      <div class="panel">
         <h2>感情表 emotion（四階段 min/max）</h2>
         <p class="mini">子卡有填就用子卡；沒填的 stage 會沿父鏈往上找。下方空白 min=max=空 表示「本卡不覆蓋」。</p>
         <table class="emo-table" id="emo-table">
