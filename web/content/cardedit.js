@@ -18,6 +18,12 @@ import {
   collectSubtreeIds,
 } from "./token_chain.js";
 import { buildCardPlayPrompt } from "./persona_builder.js";
+import {
+  BIND_PLACEHOLDERS,
+  bindContextFromGirl,
+  resolveCardBinds,
+  identityLockBlock,
+} from "./card_bind.js";
 
 // ── 狀態 ──────────────────────────────────────────────────
 // 多檔牌組：每份 DOC 對應一個 json（cards.json / card_x.json…）
@@ -498,6 +504,7 @@ function selectCard(id) {
   fillForm(c);
   updateResolvedPreview();
   updateEffectPanel();
+  updateBindPreview();
   renderTree();
   // 預填生圖 prompt
   if (!$("ig-prompt").value.trim()) fillImgPrompt();
@@ -930,10 +937,28 @@ function runSim() {
 }
 
 // ── AI 共用 ───────────────────────────────────────────────
+function fillModelSelect(selId, names, preferred) {
+  const sel = $(selId);
+  if (!sel) return;
+  const cur = preferred || sel.value;
+  sel.innerHTML = "";
+  const list = names?.length ? names : ["grok-4.5"];
+  for (const n of list) {
+    const opt = document.createElement("option");
+    opt.value = n;
+    opt.textContent = n;
+    sel.appendChild(opt);
+  }
+  if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
+  else if (list[0]) sel.value = list[0];
+}
+
 function aiCfg() {
+  const custom = $("t-model-custom")?.value.trim();
+  const fromSel = $("t-model")?.value?.trim();
   return {
     provider: $("t-provider").value,
-    model: $("t-model").value.trim() || "grok-4.5",
+    model: custom || fromSel || "grok-4.5",
     endpoint: $("t-endpoint").value.trim() || "http://localhost:11434",
   };
 }
@@ -963,21 +988,130 @@ async function pingEngine() {
   setStatus("t-engine", "檢查中…");
   try {
     const h = await api("/api/health");
-    const { provider } = aiCfg();
+    const { provider, endpoint } = aiCfg();
     if (provider === "grok-build") {
-      setStatus("t-engine", h.grok_build ? "✓ Grok Build 可用" : "Grok Build 不可用（PATH/login）", !h.grok_build);
+      const tags = await api("/api/llm/tags?provider=grok-build");
+      const names = (tags?.models || []).map((m) => m.name || m).filter(Boolean);
+      fillModelSelect("t-model", names, aiCfg().model);
+      fillModelSelect("ig-model", names, $("ig-model")?.value);
+      const dl = $("t-model-list");
+      if (dl) dl.innerHTML = names.map((n) => `<option value="${esc(n)}">`).join("");
+      setStatus(
+        "t-engine",
+        h.grok_build
+          ? `✓ Grok Build · ${names.length} 模型`
+          : "Grok Build 不可用（PATH/login）",
+        !h.grok_build,
+      );
     } else {
-      const tags = await api(`/api/llm/tags?provider=ollama&endpoint=${encodeURIComponent(aiCfg().endpoint)}`);
+      const tags = await api(
+        `/api/llm/tags?provider=ollama&endpoint=${encodeURIComponent(endpoint)}`,
+      );
       const models = tags?.models || tags || [];
       const list = Array.isArray(models) ? models : [];
       const names = list.map((m) => m.name || m.model || m).filter(Boolean);
+      fillModelSelect("t-model", names, aiCfg().model);
       const dl = $("t-model-list");
-      dl.innerHTML = names.map((n) => `<option value="${esc(n)}">`).join("");
-      setStatus("t-engine", names.length ? `✓ Ollama ${names.length} 模型` : "Ollama 無模型?", !names.length);
+      if (dl) dl.innerHTML = names.map((n) => `<option value="${esc(n)}">`).join("");
+      setStatus(
+        "t-engine",
+        names.length ? `✓ Ollama ${names.length} 模型` : "Ollama 無模型？",
+        !names.length,
+      );
     }
   } catch (e) {
     setStatus("t-engine", e.message, true);
   }
+}
+
+/** 真的送一句話，確認模型會回 */
+async function pingChat() {
+  setStatus("t-engine", "試聊中…");
+  $("t-chat-out").textContent = "";
+  try {
+    const { text, sec } = await genWait(
+      [
+        {
+          role: "system",
+          content: "你是通路測試。只回一個短句繁中，證明你活著。",
+        },
+        { role: "user", content: "ping：請回「引擎正常」四個字即可。" },
+      ],
+      { keyPrefix: "pingchat", temperature: 0.2 },
+    );
+    $("t-chat-out").textContent = `← ${(text || "").trim()}  (${sec.toFixed(1)}s · ${aiCfg().provider}/${aiCfg().model})`;
+    setStatus("t-engine", "✓ 試聊成功", false);
+  } catch (e) {
+    $("t-chat-out").textContent = "失敗: " + e.message;
+    setStatus("t-engine", e.message, true);
+  }
+}
+
+// ── 女子綁定 chips + 預覽 ─────────────────────────────────
+function setupBindChips() {
+  const box = $("bind-chips");
+  if (!box) return;
+  box.innerHTML = "";
+  for (const p of BIND_PLACEHOLDERS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "cy";
+    b.style.fontSize = ".72em";
+    b.style.padding = ".2em .45em";
+    b.textContent = `[${p.key}]`;
+    b.title = `${p.desc}（例：${p.sample}）· 點一下插入 sceneStart`;
+    b.onclick = () => {
+      const ta = $("f-sceneStart");
+      const ins = `[${p.key}]`;
+      const start = ta.selectionStart ?? ta.value.length;
+      const end = ta.selectionEnd ?? start;
+      ta.value = ta.value.slice(0, start) + ins + ta.value.slice(end);
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = start + ins.length;
+      markDirty();
+      updateBindPreview();
+    };
+    box.appendChild(b);
+  }
+}
+
+function editorGirlForBind() {
+  const name = $("re-name")?.value.trim() || girlCache?.name || "小夜";
+  const player = $("re-player")?.value.trim() || "你";
+  const look = girlCache?.look || {
+    eyes: girlCache?.eyes || "明亮的眼睛",
+    bust: girlCache?.bust || "勻稱的胸部",
+    hair: girlCache?.hair || "長髮",
+    hair_color: girlCache?.hair_color || "",
+    build: girlCache?.build || "苗條",
+    face: girlCache?.face || "",
+    mouth: girlCache?.mouth || "",
+    career_outfit: girlCache?.job ? `${girlCache.job}制服` : "便服",
+    age: girlCache?.age || 24,
+  };
+  return {
+    girl: {
+      name,
+      job: girlCache?.job || "店員",
+      age: girlCache?.age || look.age || 24,
+      look,
+      personality: ($("re-per")?.value || "").split(/[、,]/).map((x) => x.trim()).filter(Boolean),
+    },
+    player,
+  };
+}
+
+function updateBindPreview() {
+  const el = $("bind-preview");
+  if (!el) return;
+  const { girl, player } = editorGirlForBind();
+  const ctx = bindContextFromGirl(girl, player);
+  const scene = resolveCardBinds($("f-sceneStart")?.value || "", ctx);
+  const hint = resolveCardBinds($("f-promptHint")?.value || "", ctx);
+  el.textContent =
+    (scene || "（scene 空）") +
+    (hint ? `\n—— hint：${hint}` : "") +
+    `\n〔${ctx.who_line}〕`;
 }
 
 // ── AI 衍伸 ───────────────────────────────────────────────
@@ -1170,38 +1304,70 @@ tags：${(live.tags || []).join(",")}
 }
 
 // ── 人物回應 ──────────────────────────────────────────────
+function pickPoolItem(arr) {
+  if (!Array.isArray(arr) || !arr.length) return null;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+function poolText(x) {
+  if (x == null) return "";
+  if (typeof x === "string") return x;
+  return x.text || x.name || x.label || "";
+}
+
 async function rollGirl() {
   try {
     const pools = await (await fetch("/content/persona_pools.json?ts=" + Date.now())).text().then(JSON.parse);
     const g = pools?.female;
     if (!g) throw new Error("無 female 池");
-    const pick = (arr) => (Array.isArray(arr) && arr.length ? arr[Math.floor(Math.random() * arr.length)] : null);
-    const name = pick(g.names) || "小夜";
-    const arch = pick(g.archetypes);
+    const name = pickPoolItem(g.names) || "小夜";
+    const arch = pickPoolItem(g.archetypes);
     const per = arch?.traits || arch?.personality || [];
     const personality = Array.isArray(per)
       ? per.map((x) => (typeof x === "string" ? x : x.name || x.text)).filter(Boolean).slice(0, 4)
       : ["倔強"];
+    const A = g.appearance || {};
+    const occ = pickPoolItem(g.occupations);
     $("re-name").value = typeof name === "string" ? name : name?.text || "小夜";
     $("re-per").value = personality.join("、");
     girlCache = {
       name: $("re-name").value,
       personality,
-      job: pick(g.occupations)?.name || pick(g.occupations) || "店員",
-      age: 24,
+      job: poolText(occ) || occ?.name || "店員",
+      age: 20 + Math.floor(Math.random() * 12),
       speech_style: arch?.speech_style || arch?.tone || "",
       tone: arch?.tone || "",
+      look: {
+        eyes: poolText(pickPoolItem(A.eyes)) || "明亮的眼睛",
+        bust: poolText(pickPoolItem(A.bust)) || "勻稱的胸部",
+        hair: poolText(pickPoolItem(A.hair)) || "長髮",
+        hair_color: poolText(pickPoolItem(A.hair_color)) || "",
+        build: poolText(pickPoolItem(A.build)) || "苗條",
+        face: poolText(pickPoolItem(A.face)) || "",
+        mouth: poolText(pickPoolItem(A.mouth)) || "",
+        career_outfit: occ?.outfit || "",
+        age: 24,
+      },
     };
-    setStatus("re-status", `抽到 ${girlCache.name} · ${personality.join("、")}`);
+    setStatus(
+      "re-status",
+      `抽到 ${girlCache.name} · ${girlCache.look.eyes} · ${girlCache.look.bust}`,
+    );
+    updateBindPreview();
   } catch (e) {
-    // 輕量 fallback
     girlCache = {
       name: $("re-name").value || "小夜",
       personality: ($("re-per").value || "毒舌").split(/[、,]/).map((x) => x.trim()).filter(Boolean),
       job: "插畫家",
       age: 25,
+      look: {
+        eyes: "深色瞳孔",
+        bust: "豐滿的胸部",
+        hair: "黑色長直髮",
+        build: "纖細",
+      },
     };
     setStatus("re-status", "池子讀取失敗，用表單人設", true);
+    updateBindPreview();
   }
 }
 
@@ -1232,16 +1398,19 @@ async function runReact() {
   const openFail = $("re-open-fail").checked;
   const player = $("re-player").value.trim() || "你";
 
-  // 把詞墜鏈注入 scene，對齊新概念
-  const scene =
+  // 詞墜 + 女子綁定 [name]/[eye]/[breast]…
+  const { girl: gObj } = editorGirlForBind();
+  Object.assign(girlCache, gObj);
+  girlCache.name = gObj.name;
+  const bctx = bindContextFromGirl(girlCache, player);
+  const sceneRaw =
     (live.sceneStart || "").trim() ||
-    `你對她做了這件事，詞墜效果：${brief.tokens}。`;
-  const sceneWithTokens = live.sceneStart
-    ? `${live.sceneStart}\n（詞墜：${brief.tokens}）`
-    : scene;
+    `你對 [name] 做了這件事，詞墜效果：${brief.tokens}。`;
+  const scene = resolveCardBinds(sceneRaw, bctx);
+  const hint = resolveCardBinds(live.promptHint || "", bctx);
+  const sceneWithTokens = `${scene}\n（詞墜：${brief.tokens}）`;
 
   const sim = simulateEmotion(live, map, stage, { fail: openFail, trials: 1 });
-  const delta = sim.range[0]; // 取區間顯示用；真正 dice 再滾一次
   const lo = sim.range[0];
   const hi = sim.range[1];
   const emotionDelta = lo + Math.floor(Math.random() * (hi - lo + 1));
@@ -1257,6 +1426,7 @@ async function runReact() {
       age: girlCache.age || 24,
       speech_style: girlCache.speech_style,
       tone: girlCache.tone,
+      look: girlCache.look || null,
     },
     player: { name: player },
     relationship: { stage },
@@ -1266,7 +1436,7 @@ async function runReact() {
       kind: live.kind || "speech",
       card_name: live.name,
       scene_start: sceneWithTokens,
-      prompt_hint: `${live.promptHint || ""}\n詞墜鏈（必須接住）：${brief.tokens}`,
+      prompt_hint: `${hint}\n詞墜鏈（必須接住）：${brief.tokens}`,
       open_fail: openFail,
       open_ok: !openFail && !!live.openChain,
       feel_label: feelLabel,
@@ -1275,11 +1445,13 @@ async function runReact() {
     },
   };
 
-  const sys = buildCardPlayPrompt(ctx);
+  const sys =
+    identityLockBlock(girlCache, player) + "\n\n" + buildCardPlayPrompt(ctx);
   const act = sceneWithTokens.replace(/\s+/g, " ").slice(0, 180);
+  const who = `你是「${girlCache.name}」，對方是「${player}」。`;
   const user = openFail
-    ? `（旁白：他做了「${act}」，你沒接住、退開了。詞墜 ${brief.tokens}。用 3～5 句回話。只有台詞。）`
-    : `（旁白：他剛做的是「${act}」。詞墜 ${brief.tokens}。用 3～5 句回話，第一句就要碰到他的動作。只有台詞。）`;
+    ? `（${who}旁白：他做了「${act}」，你沒接住、退開了。詞墜 ${brief.tokens}。用 3～5 句回話。只有台詞。）`
+    : `（${who}旁白：他剛做的是「${act}」。詞墜 ${brief.tokens}。用 3～5 句回話，第一句就要碰到他的動作。只有台詞。）`;
 
   $("re-prompt").textContent = sys + "\n\n[user] " + user;
   $("btn-react").disabled = true;
@@ -1310,19 +1482,72 @@ function fillImgPrompt() {
   if (!live?.id) return;
   const map = { ...byId(), [live.id]: live };
   const brief = tokenEffectBrief(live, map);
-  const scene = (live.sceneStart || "").replace(/\s+/g, " ").slice(0, 200);
-  const girl = $("re-name").value || "young woman";
+  const { girl, player } = editorGirlForBind();
+  const bctx = bindContextFromGirl(girl, player);
+  const scene = resolveCardBinds(live.sceneStart || "", bctx)
+    .replace(/\s+/g, " ")
+    .slice(0, 220);
   const prompt = [
     "anime illustration, cinematic couple moment, indoor",
-    `woman named mood of ${girl}, adult female`,
+    `adult woman「${bctx.name}」, eyes: ${bctx.eye}, bust: ${bctx.breast}, hair: ${bctx.hair}, body: ${bctx.body}`,
     `player action tokens: ${brief.tokens}`,
-    scene ? `action: ${scene}` : "",
+    scene ? `action (bound): ${scene}` : "",
     "half body, expressive, detailed face, soft lighting",
     "no horns, no wings, no tail, no text, no watermark",
   ]
     .filter(Boolean)
     .join(", ");
   $("ig-prompt").value = prompt;
+}
+
+async function pingImgEngine() {
+  setStatus("ig-status", "測試生圖引擎…");
+  const provider = $("ig-provider").value;
+  try {
+    if (provider === "grok-img") {
+      const h = await api("/api/health");
+      const tags = await api("/api/llm/tags?provider=grok-build");
+      const names = (tags?.models || []).map((m) => m.name || m).filter(Boolean);
+      fillModelSelect("ig-model", names, $("ig-model")?.value);
+      setStatus(
+        "ig-status",
+        h.grok_build
+          ? `✓ grok-img 通路 OK · 模型 ${names.length} 個`
+          : "Grok Build 不可用",
+        !h.grok_build,
+      );
+    } else {
+      const url = $("ig-comfy").value.trim();
+      const q = url ? `?url=${encodeURIComponent(url)}` : "";
+      const st = await api("/api/comfy/status" + q);
+      const ckpts = st?.models?.checkpoints || st?.checkpoints || [];
+      const names = (Array.isArray(ckpts) ? ckpts : []).map((x) =>
+        typeof x === "string" ? x : x.name || x,
+      );
+      const sel = $("ig-ckpt");
+      if (sel) {
+        const cur = sel.value;
+        sel.innerHTML = `<option value="">（自動／第一個）</option>`;
+        for (const n of names) {
+          const opt = document.createElement("option");
+          opt.value = n;
+          opt.textContent = n;
+          sel.appendChild(opt);
+        }
+        if (cur && names.includes(cur)) sel.value = cur;
+      }
+      const ok = st?.ok !== false && (st?.reachable !== false);
+      setStatus(
+        "ig-status",
+        ok
+          ? `✓ Comfy 通 · checkpoint ${names.length} 個${st?.device ? " · " + st.device : ""}`
+          : `Comfy 異常：${st?.error || st?.message || "連不上"}`,
+        !ok,
+      );
+    }
+  } catch (e) {
+    setStatus("ig-status", e.message, true);
+  }
 }
 
 async function runImgGen() {
@@ -1333,12 +1558,16 @@ async function runImgGen() {
   }
   const provider = $("ig-provider").value;
   const rating = $("ig-rating").value;
-  const model = $("t-model").value.trim() || "grok-4.5";
+  const model =
+    $("ig-model")?.value?.trim() ||
+    aiCfg().model ||
+    "grok-4.5";
   const key = `cardimg:${Date.now().toString(36)}`;
   $("btn-imggen").disabled = true;
   setStatus("ig-status", "生圖排隊中…");
   $("ig-preview").innerHTML = `<span class="mini">生成中…</span>`;
   try {
+    const { girl } = editorGirlForBind();
     const body = {
       key,
       provider,
@@ -1346,12 +1575,13 @@ async function runImgGen() {
       prompt,
       rating,
       framing: "half",
-      name: $("re-name").value || "",
-      personality: $("re-per").value || "",
+      name: girl.name || "",
+      personality: (girl.personality || []).join("、"),
       retry: true,
     };
     if (provider === "comfy") {
       body.comfy_url = $("ig-comfy").value.trim();
+      body.ckpt = $("ig-ckpt")?.value || "";
     }
     const t0 = Date.now();
     while (true) {
@@ -1361,11 +1591,14 @@ async function runImgGen() {
         $("ig-preview").innerHTML = url
           ? `<a href="${esc(url)}" target="_blank"><img src="${esc(url)}?t=${Date.now()}" alt="card scene"></a>`
           : `<span class="mini">完成但無 URL</span>`;
-        setStatus("ig-status", `✓ ${((Date.now() - t0) / 1000).toFixed(1)}s · ${url || ""}`);
+        setStatus(
+          "ig-status",
+          `✓ ${((Date.now() - t0) / 1000).toFixed(1)}s · ${provider}/${model}${url ? " · " + url : ""}`,
+        );
         break;
       }
       if (r.status === "error") throw new Error(r.error || "生圖失敗");
-      setStatus("ig-status", `生成中… ${Math.round((Date.now() - t0) / 1000)}s`);
+      setStatus("ig-status", `生成中… ${Math.round((Date.now() - t0) / 1000)}s · ${provider}`);
       await new Promise((res) => setTimeout(res, 1500));
     }
   } catch (e) {
@@ -1464,13 +1697,24 @@ function bind() {
   $("btn-sim").onclick = runSim;
   $("fx-stage").onchange = () => updateEffectPanel();
   $("btn-ping").onclick = pingEngine;
+  $("btn-ping-chat").onclick = () => pingChat();
+  $("t-provider").onchange = () => pingEngine();
   $("btn-derive").onclick = () => runDerive();
   $("btn-derive-add").onclick = addDerivedToEditor;
   $("btn-textgen").onclick = () => runTextGen();
   $("btn-react").onclick = () => runReact();
   $("btn-roll-girl").onclick = () => rollGirl();
   $("btn-ig-fill").onclick = fillImgPrompt;
+  $("btn-ig-ping").onclick = () => pingImgEngine();
   $("btn-imggen").onclick = () => runImgGen();
+  $("ig-provider").onchange = () => pingImgEngine();
+
+  setupBindChips();
+  for (const id of ["f-sceneStart", "f-promptHint", "re-name", "re-player", "re-per"]) {
+    $(id)?.addEventListener("input", updateBindPreview);
+  }
+  // 表單 live 欄位也刷新綁定預覽
+  $("f-sceneStart")?.addEventListener("change", updateBindPreview);
 
   setupTabs();
 
@@ -1486,4 +1730,8 @@ function bind() {
 bind();
 loadCards()
   .then(() => pingEngine())
+  .then(() => {
+    updateBindPreview();
+    // 生圖分頁若是 comfy 不強制 ping；grok 模型列表已在 pingEngine 填
+  })
   .catch((e) => setStatus("save-status", e.message, true));

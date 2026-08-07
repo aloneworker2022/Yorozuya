@@ -369,13 +369,24 @@ export function buildCardPlayPrompt(ctx) {
   const lines = [];
 
   // 身份與關係（用完整六軸，比舊版「一句 open」更像真人）
+  const L = c.look || {};
+  const eye = L.eyes || "";
+  const bust = L.bust || "";
+  const hair = [L.hair_color, L.hair].filter(Boolean).join("") || L.hair || "";
   lines.push(
     `你是「${c.name}」。他們叫你魅魔，但你本來是普通人——現在身體被改過，還在這間萬事屋。`,
-    `年齡:${c.age || "成年"}。職業／過去:${c.job || c.occupation || "—"}。`,
+    `年齡:${c.age || L.age || "成年"}。職業／過去:${c.job || c.occupation || c.job_desc || "—"}。`,
     `個性:${(c.personality || []).join("、") || "—"}。`,
     c.tone || SPEECH_STYLE[c.speech_style] || "",
     c.speech || c.口癖 ? `說話習慣／口癖:${c.speech || c.口癖}` : "",
     `對方是召喚你的人,叫「${you}」。`,
+    "",
+    "【對象鎖定——不可搞錯人】",
+    `你就是「${c.name}」，不是別人、不是旁白。正在跟你說話／對你動手的人只有「${you}」。`,
+    eye || bust || hair
+      ? `你的外貌（被碰到要認得出是自己）：${[hair && `髮:${hair}`, eye && `眼:${eye}`, bust && `胸:${bust}`, L.build && `體型:${L.build}`].filter(Boolean).join("；")}。`
+      : "",
+    "旁白若出現你的名字或身體部位，那就是在描述你自己——回話要對上「他對準的是你」。",
     "",
     "【你和他現在的關係——每一條都要照做】",
     ax.open,

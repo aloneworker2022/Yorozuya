@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.22(2026-08-07)多檔牌組版本·上線可回滾";
+const APP_VER = "v6.23(2026-08-07)卡牌女子綁定·生圖模型測試";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1981,11 +1981,20 @@ function sceneEnMsgs(girl, play) {
  * 畫面定格保底：鏡頭必須看見「玩家動作造成的瞬間」。
  * 女子只畫外在反應（姿勢／被碰到的位置），不畫內心戲。
  */
-function visualBeatFallback(play, def) {
+function visualBeatFallback(play, def, girl = null) {
   const tags = def?.tags || [];
   const kind = def?.kind || "speech";
   const name = play?.name || def?.name || "";
-  const scene = String(play?.sceneStart || def?.sceneStart || "").slice(0, 220);
+  // 旁白先綁女子（[eye]/[breast]/[name]…）
+  let sceneRaw = String(play?.sceneStart || def?.sceneStart || "");
+  if (girl && Cards.resolveCardBinds) {
+    sceneRaw = Cards.resolveCardBinds(
+      sceneRaw,
+      Cards.bindContextFromGirl?.(girl, playerBindName()),
+    ) || sceneRaw;
+  }
+  const scene = sceneRaw.slice(0, 220);
+  const gName = girl?.name || play?._boundName || "";
   // 以「他的動作」為主軸
   let poseEn = "man's action toward woman visible, woman half body, clear interaction";
   let poseZh = "鏡頭清楚看見他對她做的動作，以及當下的距離。";
@@ -2013,6 +2022,7 @@ function visualBeatFallback(play, def) {
     poseZh += "她身體上退開或擋開，拒絕是肢體可見的。";
   }
   const visual_zh = [
+    gName ? `對象是「${gName}」。` : "",
     poseZh,
     scene ? `對準這段玩家動作：${scene.slice(0, 120)}` : "",
     name ? `牌意「${name}」的動作要看得見。` : "",
@@ -2021,7 +2031,7 @@ function visualBeatFallback(play, def) {
     "anime illustration, interaction scene not solo portrait",
     "show HIS action clearly, contact point or speech gesture visible",
     poseEn,
-    "adult woman character match sheet, detailed face",
+    gName ? `same woman character named mood of ${gName}` : "adult woman character match sheet, detailed face",
     name ? `action of: ${name}` : "",
     "cinematic lighting, concrete pose, not generic standing beauty shot",
   ].filter(Boolean).join(", ");
@@ -2031,6 +2041,12 @@ function visualBeatFallback(play, def) {
 /** 定格：只根據「玩家動作旁白」拆鏡頭，禁止改寫成她的情緒獨白 */
 function visualBeatMsgs(girl, play, def) {
   const tags = (def?.tags || []).join(", ");
+  const player = playerBindName();
+  const bctx = Cards.bindContextFromGirl?.(girl, player) || {};
+  const sceneBound = Cards.resolveCardBinds?.(
+    play?.sceneStart || def?.sceneStart || "",
+    bctx,
+  ) || (play?.sceneStart || def?.sceneStart || "—");
   return [
     {
       role: "system",
@@ -2038,6 +2054,7 @@ function visualBeatMsgs(girl, play, def) {
         "你是分鏡師。任務：把「玩家剛做的事」收成同一個鏡頭，供插圖與女角回話共用。",
         "核心：畫面主軸是【他的動作／話語造成的瞬間】，不是她的心理描寫。",
         "她只以「被碰到的位置、退開、僵住」等外在姿勢出現，不要寫她心裡想什麼。",
+        "必須鎖定這一位女子的外貌（名字／眼／胸／髮），不要畫成別人。",
         "輸出格式（嚴格兩段，不要其他字）：",
         "VISUAL_ZH:",
         "（繁中 2～3 句：他做了什麼、手／身體在哪、距離多少；她外在姿勢一句帶過即可。）",
@@ -2048,8 +2065,10 @@ function visualBeatMsgs(girl, play, def) {
     {
       role: "user",
       content: [
+        `女子：${girl?.name || bctx.name || "—"} · 眼:${bctx.eye || "—"} · 胸:${bctx.breast || "—"} · 髮:${bctx.hair || "—"}`,
+        `玩家：${player}`,
         `卡牌：${def?.name || play?.name || ""} tags=${tags || "—"}`,
-        `玩家動作旁白（唯一真相，必須對齊）：\n${play?.sceneStart || def?.sceneStart || "—"}`,
+        `玩家動作旁白（已綁定她的名字／部位；唯一真相，必須對齊）：\n${sceneBound}`,
         play?.open?.success === false ? "肢體結果：她沒接住、退開。" : "",
         play?.open?.success ? "肢體結果：推進有被接住一點。" : "",
         "請輸出 VISUAL_ZH 與 VISUAL_EN。",
@@ -2080,7 +2099,15 @@ function parseVisualBeat(raw) {
  */
 async function ensurePlayVisualBeat(girl, play, gen) {
   const def = play.cardId ? Cards.cardById(play.cardId) : null;
-  const fb = visualBeatFallback(play, def);
+  // 先把 scene 綁到這位女子，後續定格／圖都吃同一份
+  if (play.sceneStart || def?.sceneStart) {
+    const raw = play.sceneStart || def?.sceneStart || "";
+    play.sceneStart = Cards.resolveCardBinds?.(
+      raw,
+      Cards.bindContextFromGirl?.(girl, playerBindName()),
+    ) || raw;
+  }
+  const fb = visualBeatFallback(play, def, girl);
   if (!state.settings?.model) {
     play.visualBeatZh = fb.visual_zh;
     play.visualBeatEn = fb.visual_en;
@@ -3159,6 +3186,20 @@ function cardPlayLines(text) {
   return out;
 }
 
+/** 玩家顯示名（綁定 [player]） */
+function playerBindName() {
+  return state.playerProfile?.name || state.settings?.playerName || "你";
+}
+
+/** 卡面 scene/hint 的 [name][eye][breast]… → 當前女子實值 */
+function bindPlayScene(girl, raw, def) {
+  const player = playerBindName();
+  const bound = Cards.bindCardText?.(raw, girl, player)
+    || { text: raw, ctx: null };
+  // 順便把 def 的 promptHint 綁一次（若 raw 就是 scene）
+  return bound;
+}
+
 function cardPlayMsgs(girl, play) {
   const sess = state.cardSession;
   const def = play?.cardId ? Cards.cardById(play.cardId) : null;
@@ -3169,17 +3210,25 @@ function cardPlayMsgs(girl, play) {
   const kind = def?.kind || "speech";
   const ctx = buildCtx(girl);
   ctx.want_guard_flag = false;
-  // 餵完整動態場面（牌意演繹），讓她接得住細節
-  const scene = play?.sceneStart || Cards.sceneTextFor?.(state, play?.cardId) || def?.sceneStart || "";
+  const player = playerBindName();
+  // 餵完整動態場面（牌意演繹），並把 [name]/[eye]/[breast] 綁到這位女子
+  const sceneRaw = play?.sceneStart || Cards.sceneTextFor?.(state, play?.cardId) || def?.sceneStart || "";
+  const scene = Cards.resolveCardBinds?.(sceneRaw, Cards.bindContextFromGirl?.(girl, player)) || sceneRaw;
+  const hintRaw = def?.promptHint || "";
+  const hintBound = Cards.resolveCardBinds?.(hintRaw, Cards.bindContextFromGirl?.(girl, player)) || hintRaw;
   // 詞墜鏈：子卡 = 父鏈 + 自己，對齊 content 與 AI（見 /cardedit）
   const tokenStr = (def && Cards.cardTokenString?.(def)) || play?.tokenStr || "";
   const sceneWithTokens = tokenStr
     ? `${scene}\n（這一拍的詞墜效果：${tokenStr}——每一顆都要接住，後面的建立在前面之上。）`
     : scene;
-  const hintBase = def?.promptHint || "";
   const promptHint = tokenStr
-    ? `${hintBase}${hintBase ? "\n" : ""}詞墜鏈（必須體現在反應裡）：${tokenStr}`
-    : hintBase;
+    ? `${hintBound}${hintBound ? "\n" : ""}詞墜鏈（必須體現在反應裡）：${tokenStr}`
+    : hintBound;
+  // 寫回 play，讓 UI／生圖也吃綁定後文案
+  if (play) {
+    play.sceneStart = scene;
+    play._boundName = girl?.name;
+  }
   ctx.card_play = {
     mode: sess?.mode || "kanban",
     venue_name: venueName,
@@ -3201,20 +3250,21 @@ function cardPlayMsgs(girl, play) {
     if (tier) ctx.craving = { tier };
   } catch { /* */ }
   const sys = buildCardPlayPrompt(ctx);
-  // 回话必须钉死「玩家动作」——把动作摘要塞进 user，避免模型另开话题
+  // 回话必须钉死「玩家动作」+「你是誰」——把动作摘要塞进 user
   const act = String(scene || play?.name || "").replace(/\s+/g, " ").slice(0, 160);
   const vis = String(play?.visualBeatZh || "").replace(/\s+/g, " ").slice(0, 100);
+  const who = `你是「${girl?.name || "她"}」，對方是「${player}」。`;
   let user;
   if (play?.open && play.open.success === false) {
-    user = `（旁白：他做了「${act}」，你沒接住、退開了。用 3～5 句回話：先對上他的動作，再兇／慌／嘴硬。只有台詞。）`;
+    user = `（${who}旁白：他做了「${act}」，你沒接住、退開了。用 3～5 句回話：先對上他的動作，再兇／慌／嘴硬。只有台詞。）`;
   } else if (kind === "girl_trait") {
-    user = `（旁白：這一拍外在動作是「${act}」。用 3～5 句接下去或開口，要接得上這個動作，不要另開話題。只有台詞。）`;
+    user = `（${who}旁白：這一拍外在動作是「${act}」。用 3～5 句接下去或開口，要接得上這個動作，不要另開話題。只有台詞。）`;
   } else if (kind === "venue_event") {
-    user = `（旁白：現場與動作是「${act}」。用 3～5 句反應這件事本身。只有台詞。）`;
+    user = `（${who}旁白：現場與動作是「${act}」。用 3～5 句反應這件事本身。只有台詞。）`;
   } else {
     user = vis
-      ? `（旁白：他剛做的是「${act}」。畫面定格：${vis}。用 3～5 句回話，第一句就要碰到他的動作或接觸點。只有台詞。）`
-      : `（旁白：他剛做的是「${act}」。用 3～5 句回話，必須承接這個動作／這句話，禁止無關開場。只有台詞。）`;
+      ? `（${who}旁白：他剛做的是「${act}」。畫面定格：${vis}。用 3～5 句回話，第一句就要碰到他的動作或接觸點。只有台詞。）`
+      : `（${who}旁白：他剛做的是「${act}」。用 3～5 句回話，必須承接這個動作／這句話，禁止無關開場。只有台詞。）`;
   }
   return [
     { role: "system", content: sys },
@@ -6367,6 +6417,14 @@ function applyPlaySideEffects(girl, result) {
 function commitHandPlay(instanceId, girl, stage) {
   const r = Cards.commitPlay(state, instanceId, { stage, guardHigh: guardActive(girl) });
   if (!r.ok) { toast(r.err, "bad"); return; }
+  // 出卡當下就把 [name]/[eye]/[breast]… 綁到這位看板娘
+  if (r.sceneStart && girl) {
+    r.sceneStart = Cards.resolveCardBinds?.(
+      r.sceneStart,
+      Cards.bindContextFromGirl?.(girl, playerBindName()),
+    ) || r.sceneStart;
+    r._boundName = girl.name;
+  }
   cardUi.lastPlay = r;
   cardUi.awaitReaction = true;
   cardUi.reactBeat = "action"; // 先讀加長動作文，場景圖同時跑
@@ -7027,6 +7085,13 @@ function renderCardTable() {
         if (!r.ok) { toast(r.err, "bad"); return; }
         if (r.needConfirm) { renderCardTable(); return; }
         // 出卡當下立刻開場景圖（不要等飛牌動畫結束才 begin）
+        if (r.sceneStart && girl) {
+          r.sceneStart = Cards.resolveCardBinds?.(
+            r.sceneStart,
+            Cards.bindContextFromGirl?.(girl, playerBindName()),
+          ) || r.sceneStart;
+          r._boundName = girl.name;
+        }
         cardUi.lastPlay = r;
         cardUi.awaitReaction = true;
         cardUi.reactBeat = "action";

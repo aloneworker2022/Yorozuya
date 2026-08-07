@@ -293,11 +293,16 @@
       </div>
 
       <div class="panel">
-        <h2>演出文案</h2>
+        <h2>演出文案 · 女子綁定</h2>
+        <p class="mini">可在旁白裡插入占位，出卡時換成<strong>當前面對的那一位</strong>：
+          例如「你盯著 [name] 的 [eye]」「手覆上她的 [breast]」「輕喚 [name]」。</p>
+        <div class="row" id="bind-chips" style="margin:.35em 0 .5em;gap:.3em"></div>
         <label>sceneStart（玩家動作旁白）</label>
-        <textarea class="tall" id="f-sceneStart"></textarea>
+        <textarea class="tall" id="f-sceneStart" placeholder="例：你盯著 [name] 的 [eye]，輕聲叫她的名字「[name]」……"></textarea>
         <label>promptHint（給 AI 的牌意，勿寫死台詞）</label>
-        <textarea id="f-promptHint"></textarea>
+        <textarea id="f-promptHint" placeholder="例：他直視你的眼睛、叫你的名字。依關係……"></textarea>
+        <label>綁定預覽（用右側「回應」分頁的女子／玩家名）</label>
+        <div class="token-bar" id="bind-preview" style="font-size:.9em;min-height:2.8em">—</div>
       </div>
 
       <div class="panel">
@@ -345,7 +350,7 @@
     <h2>測試台</h2>
 
     <div class="panel">
-      <h3>AI 引擎</h3>
+      <h3>AI 引擎（文字）</h3>
       <div class="grid2">
         <div>
           <label>供應商</label>
@@ -356,16 +361,21 @@
         </div>
         <div>
           <label>模型</label>
-          <input id="t-model" list="t-model-list" placeholder="grok-4.5">
+          <select id="t-model" style="margin-bottom:.25em">
+            <option value="grok-4.5">grok-4.5</option>
+          </select>
+          <input id="t-model-custom" list="t-model-list" placeholder="或手打模型名" style="margin-top:.25em">
           <datalist id="t-model-list"></datalist>
         </div>
       </div>
       <label>Ollama 端點</label>
       <input id="t-endpoint" value="http://localhost:11434">
       <div class="row" style="margin-top:.4em">
-        <button class="cy" type="button" id="btn-ping">測試引擎</button>
+        <button class="cy" type="button" id="btn-ping">🔌 測試引擎＋拉模型</button>
+        <button type="button" id="btn-ping-chat" title="真的送一句話確認能回">💬 試聊一句</button>
         <span class="status" id="t-engine"></span>
       </div>
+      <div class="mini" id="t-chat-out" style="margin-top:.35em;white-space:pre-wrap"></div>
     </div>
 
     <div class="tabs" id="test-tabs">
@@ -493,13 +503,13 @@
     <div class="tab-pane" id="tab-img" style="display:none">
       <div class="panel">
         <h3>出卡場面生圖測試</h3>
-        <p class="mini">依詞墜 + sceneStart 組場面 prompt（Grok 生圖或 Comfy）。</p>
+        <p class="mini">依詞墜 + 已綁定女子的 sceneStart 組場面。可選模型並先測通路。</p>
         <div class="grid2">
           <div>
-            <label>provider</label>
+            <label>生圖供應商</label>
             <select id="ig-provider">
-              <option value="grok-img">grok-img</option>
-              <option value="comfy">comfy</option>
+              <option value="grok-img">grok-img（Grok Build）</option>
+              <option value="comfy">comfy（本機 GPU）</option>
             </select>
           </div>
           <div>
@@ -509,16 +519,29 @@
               <option value="nsfw">nsfw</option>
             </select>
           </div>
+          <div>
+            <label>Grok 生圖模型</label>
+            <select id="ig-model">
+              <option value="grok-4.5">grok-4.5</option>
+            </select>
+          </div>
+          <div>
+            <label>Comfy checkpoint</label>
+            <select id="ig-ckpt">
+              <option value="">（自動／第一個）</option>
+            </select>
+          </div>
         </div>
-        <label>額外 prompt（可改）</label>
-        <textarea id="ig-prompt" placeholder="會自動帶入詞墜與旁白摘要…"></textarea>
         <label>ComfyURL（comfy 用）</label>
         <input id="ig-comfy" placeholder="http://192.168.x.x:8188">
         <div class="row" style="margin-top:.4em">
+          <button class="cy" type="button" id="btn-ig-ping">🔌 測試生圖引擎</button>
           <button class="cy" type="button" id="btn-ig-fill">填入建議 prompt</button>
           <button class="gold" type="button" id="btn-imggen">✦ 生圖</button>
         </div>
         <span class="status" id="ig-status"></span>
+        <label style="margin-top:.5em">prompt（可改；會帶 [name]/[eye] 綁定後文案）</label>
+        <textarea id="ig-prompt" placeholder="會自動帶入詞墜與旁白摘要…"></textarea>
         <div class="preview-img" id="ig-preview"><span class="mini">尚無圖</span></div>
       </div>
     </div>

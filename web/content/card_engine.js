@@ -10,6 +10,13 @@ import {
   tokenEffectBrief,
   tokenOf,
 } from "./token_chain.js";
+import {
+  bindContextFromGirl,
+  resolveCardBinds,
+  identityLockBlock,
+  listBindsInText,
+  BIND_PLACEHOLDERS,
+} from "./card_bind.js";
 
 const STAGE_ORDER = ["stranger", "friend", "girlfriend", "wife"];
 
@@ -824,6 +831,40 @@ export function sceneTextFor(state, cardId) {
   const dyn = state.cardSession?.cardNarr?.[cardId];
   if (dyn?.status === "done" && dyn.text && !isWeakLine(dyn.text)) return dyn.text;
   return def?.sceneStart || def?.name || "……";
+}
+
+/** 女子綁定位（[name][eye][breast]…） */
+export {
+  bindContextFromGirl,
+  resolveCardBinds,
+  identityLockBlock,
+  listBindsInText,
+  BIND_PLACEHOLDERS,
+};
+
+/**
+ * 解析卡面文案上的女子綁定。
+ * @param {string} text
+ * @param {object} girl  存檔魅魔或 character
+ * @param {string} [playerName]
+ */
+export function bindCardText(text, girl, playerName = "你") {
+  const ctx = bindContextFromGirl(girl, playerName);
+  return {
+    text: resolveCardBinds(text, ctx),
+    ctx,
+  };
+}
+
+/** scene + promptHint 一併綁定 */
+export function bindCardDefText(def, girl, playerName = "你") {
+  const ctx = bindContextFromGirl(girl, playerName);
+  return {
+    sceneStart: resolveCardBinds(def?.sceneStart || "", ctx),
+    promptHint: resolveCardBinds(def?.promptHint || "", ctx),
+    name: def?.name || "",
+    ctx,
+  };
 }
 
 export function sessionActive(state) {
