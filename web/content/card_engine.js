@@ -219,6 +219,7 @@ export function ensureStarterFallback(state) {
 /**
  * 依 tag 分數從 starter_pool 配一張基礎話術。
  * scores: { soft: n, blunt: n, ... } 對應 speech_* 後綴
+ * （舊創角測驗用；現改隨機 starter，仍保留供相容）
  */
 export function pickStarterByScores(scores = {}) {
   const pool = starterPoolIds();
@@ -235,6 +236,13 @@ export function pickStarterByScores(scores = {}) {
     }
   }
   return bestId;
+}
+
+/** 從 starter_pool 均勻隨機一張基礎話術 */
+export function pickStarterRandom() {
+  const pool = starterPoolIds();
+  if (!pool.length) return "speech_soft";
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 // ── Card shop（state.cardShop；勿與祭品 state.shop 混淆）──
