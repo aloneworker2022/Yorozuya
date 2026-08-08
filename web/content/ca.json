@@ -5,7 +5,8 @@
     "schema_version": 2,
     "token_model": "每卡一個詞墜 token；parentId 繼承父鏈詞墜。解析後效果字串如 [問候] [說笑話]。",
     "pack_note": "獨立牌組檔；上線靠 registry.active 切換，不刪舊檔。",
-    "pack_model": "多檔牌組：registry.active 決定遊戲用哪份；編輯 card_x.json 等草稿，上線只切指標，舊版可回滾。"
+    "pack_model": "多檔牌組：registry.active 決定遊戲用哪份；編輯 card_x.json 等草稿，上線只切指標，舊版可回滾。",
+    "note": "auto-fixed starter pool for onboard"
   },
   "enums": {
     "kind": [
@@ -67,12 +68,97 @@
       "max": -1
     }
   },
-  "starter_pool": [],
+  "starter_pool": [
+    "b0001",
+    "b0002"
+  ],
   "shop_weights": {
     "speech_pool": [],
     "premium_pool": []
   },
-  "cards": [],
+  "cards": [
+    {
+      "id": "b0001",
+      "name": "新基礎卡",
+      "token": "打招呼",
+      "tokenDesc": "",
+      "parentId": null,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 40,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你跟[name]說:HI",
+      "promptHint": "她聽到的反應",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "girl watch"
+    },
+    {
+      "id": "b0002",
+      "name": "新基礎卡",
+      "token": "看著",
+      "tokenDesc": "尷尬地看著對方，不知道要說些甚麼",
+      "parentId": null,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 40,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你看著[name]，不知道要怎麼說",
+      "promptHint": "他直直的站著看著妳",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "sex ,cum",
+      "visualZh": "（AI）新基礎卡：你看著[name]，不知道要怎麼說"
+    }
+  ],
   "venues": [],
   "girl_card_build_rules": {},
   "bubble_canned": {}

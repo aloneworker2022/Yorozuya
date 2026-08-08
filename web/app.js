@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.27(2026-08-08)出卡反應改表情態度動作";
+const APP_VER = "v6.28(2026-08-08)上線卡組掛載·創角starter池";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -21,11 +21,49 @@ let SUMMONERS = [];
 fetch("content/summoners.json").then(r => r.ok ? r.json() : null).then(j => { SUMMONERS = (j && j.summoners) || []; }).catch(() => {});
 function summonerById(id) { return SUMMONERS.find(x => x.id === id) || null; }
 
-// 互動牌制內容：優先 /api/cards（registry.active 那份），失敗退回 content/cards.json
-let CARDS_LOAD = fetch("/api/cards")
-  .then(r => r.ok ? r.json() : Promise.reject(new Error("api")))
-  .catch(() => fetch("content/cards.json").then(r => r.ok ? r.json() : null))
-  .then(j => { if (j) Cards.setCardsData(j); return j; })
+// 互動牌制內容：必須吃 /api/cards（registry.active 上線卡組）
+// 失敗才退 content/cards.json，並在除錯台顯示警告
+let CARDS_PACK_INFO = { packId: null, file: null, name: null, via: null };
+let CARDS_LOAD = fetch("/api/cards?ts=" + Date.now())
+  .then(r => {
+    if (!r.ok) throw new Error("api " + r.status);
+    return r.json();
+  })
+  .then(j => {
+    if (j) {
+      Cards.setCardsData(j);
+      CARDS_PACK_INFO = {
+        packId: j?._meta?.active_pack || "?",
+        file: j?._meta?.active_file || "?",
+        name: j?._meta?.active_name || j?._meta?.title || "?",
+        via: "api",
+        cardCount: (j.cards || []).length,
+        starterCount: (Cards.starterPoolIds?.() || []).length,
+      };
+      console.info("[cards] loaded pack", CARDS_PACK_INFO);
+    }
+    return j;
+  })
+  .catch(err => {
+    console.warn("[cards] /api/cards failed, fallback content/cards.json", err);
+    return fetch("content/cards.json?ts=" + Date.now())
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (j) {
+          Cards.setCardsData(j);
+          CARDS_PACK_INFO = {
+            packId: "main?",
+            file: "cards.json",
+            name: "fallback-static",
+            via: "static-fallback",
+            cardCount: (j.cards || []).length,
+            starterCount: (Cards.starterPoolIds?.() || []).length,
+          };
+          console.warn("[cards] using static fallback — 上線卡組可能沒掛到", CARDS_PACK_INFO);
+        }
+        return j;
+      });
+  })
   .catch(() => null);
 
 // ===== 常數 =====
@@ -758,7 +796,10 @@ function initState(j, offline) {
 
 let bootFailed = false;   // 存檔載入/渲染爆掉 → 臨時全新狀態、且不自動存(保住伺服器上的舊檔待修)
 async function load() {
-  try { await CARDS_LOAD; } catch { /* 牌制內容載失敗仍可跑舊路徑 */ }
+  try {
+    await CARDS_LOAD;
+    try { renderSettings?.(); } catch { /* boot 順序：可能尚無 state */ }
+  } catch { /* 牌制內容載失敗仍可跑舊路徑 */ }
   let j;
   try {
     j = await fetchSave();                 // 網路層:真的連不上才進這個 catch
@@ -5618,12 +5659,20 @@ function resetOnboardUi() {
   };
 }
 
-/** 從 starter_pool 隨機一張基礎話術 */
+/** 從目前上線卡組的 starter 池隨機一張基礎話術 */
 function finishOnboardPickCard() {
-  const pick =
-    Cards.pickStarterRandom?.() ||
-    Cards.starterPoolIds?.()?.[0] ||
-    "speech_soft";
+  const pool = Cards.starterPoolIds?.() || [];
+  const pick = Cards.pickStarterRandom?.() || pool[0] || null;
+  if (!pick) {
+    const info = CARDS_PACK_INFO || {};
+    toast(
+      `目前卡組「${info.name || info.packId || "?"}」沒有基礎卡（starter）。` +
+        `請到 /cardedit 勾 starter 並上線。`,
+      "bad",
+    );
+    onboardUi.resultCardId = null;
+    return null;
+  }
   onboardUi.resultCardId = pick;
   return onboardUi.resultCardId;
 }
@@ -5713,25 +5762,41 @@ function renderStarterModal() {
   } else {
     // result：姓名確認後隨機抽一張
     if (!onboardUi.resultCardId) finishOnboardPickCard();
-    const def = Cards.cardById(onboardUi.resultCardId);
-    panel.innerHTML = `
-      <h2>你的底色話術</h2>
-      <p class="lead">從基礎卡池<strong>隨機</strong>抽到——永久、不碎。之後仍可在商店買更多話術。</p>
-      <div class="onboard-result-card">
-        <div class="tag">STARTER · SPEECH · 隨機</div>
-        <h3>${esc(def?.name || onboardUi.resultCardId)}</h3>
-        <p>${esc(def?.sceneStart || "")}</p>
-      </div>
-      <div class="onboard-summary">
-        ${esc(onboardUi.name || "主人")}
-      </div>
-      <p class="lead dim" style="margin-top:.6em">不滿意？可按「再抽一張」重骰（進遊戲前都行）。</p>`;
-    nav.innerHTML = `
-      <button type="button" class="ob-back" id="ob-back">上一步</button>
-      <div style="display:flex;gap:.5em;flex-wrap:wrap;justify-content:flex-end">
-        <button type="button" class="ob-next" id="ob-reroll">再抽一張</button>
-        <button type="button" class="ob-finish" id="ob-finish">進入萬事屋</button>
-      </div>`;
+    const def = onboardUi.resultCardId ? Cards.cardById(onboardUi.resultCardId) : null;
+    const pack = CARDS_PACK_INFO || {};
+    const poolN = (Cards.starterPoolIds?.() || []).length;
+    if (!def) {
+      panel.innerHTML = `
+        <h2>抽不到基礎卡</h2>
+        <p class="lead">目前掛載的卡組 <b>${esc(pack.name || pack.packId || "?")}</b>
+          （${esc(pack.file || "?")} · via ${esc(pack.via || "?")}）裡
+          <b>沒有 starter 基礎卡</b>（池子 ${poolN} 張）。</p>
+        <p class="lead">請到 <a href="/cardedit" target="_blank">/cardedit</a>：
+          編輯上線那組 → 基礎卡勾「starter」→ 儲存 → 確認已上線 → 再重新開始。</p>`;
+      nav.innerHTML = `
+        <button type="button" class="ob-back" id="ob-back">上一步</button>
+        <button type="button" class="ob-next" id="ob-reroll">再試一次</button>`;
+    } else {
+      panel.innerHTML = `
+        <h2>你的底色話術</h2>
+        <p class="lead">從卡組 <b>${esc(pack.name || pack.packId || "上線組")}</b> 的基礎池
+          （${poolN} 張）<strong>隨機</strong>抽到——永久、不碎。</p>
+        <div class="onboard-result-card">
+          <div class="tag">STARTER · 隨機 · ${esc(pack.file || "")}</div>
+          <h3>${esc(def?.name || onboardUi.resultCardId)}</h3>
+          <p>${esc(def?.sceneStart || "")}</p>
+        </div>
+        <div class="onboard-summary">
+          ${esc(onboardUi.name || "主人")}
+        </div>
+        <p class="lead dim" style="margin-top:.6em">不滿意？可按「再抽一張」重骰（進遊戲前都行）。</p>`;
+      nav.innerHTML = `
+        <button type="button" class="ob-back" id="ob-back">上一步</button>
+        <div style="display:flex;gap:.5em;flex-wrap:wrap;justify-content:flex-end">
+          <button type="button" class="ob-next" id="ob-reroll">再抽一張</button>
+          <button type="button" class="ob-finish" id="ob-finish">進入萬事屋</button>
+        </div>`;
+    }
   }
 
   nav.querySelector("#ob-back")?.addEventListener("click", () => {
@@ -7517,6 +7582,21 @@ function renderSettings() {
     : "還沒有任何記錄。";
 
   $("#set-appver").textContent = APP_VER;
+  {
+    const el = $("#set-cardpack");
+    if (el) {
+      const p = CARDS_PACK_INFO || {};
+      if (p.via === "static-fallback") {
+        el.textContent = `⚠ 未掛 API，退回 ${p.file}（卡組上線無效）`;
+        el.style.color = "#ff9d4d";
+      } else if (p.packId) {
+        el.textContent = `${p.name || p.packId} · ${p.file || "?"} · ${p.cardCount ?? "?"} 張 · 基礎 ${p.starterCount ?? "?"}`;
+        el.style.color = "";
+      } else {
+        el.textContent = "載入中…";
+      }
+    }
+  }
 }
 
 // ===== 分頁滑動 =====

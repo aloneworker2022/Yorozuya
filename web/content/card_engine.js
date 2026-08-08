@@ -99,8 +99,48 @@ export function d(key, fallback) {
   return v !== undefined && v !== null ? v : fallback;
 }
 
+/**
+ * 創角基礎卡池：
+ * 1) starter_pool 裡且卡片存在
+ * 2) 加上 cards 裡 starter:true 的
+ * 3) 若仍空：退回 kind=speech 且不碎的卡
+ * 4) 再空：整包任意卡 id
+ */
 export function starterPoolIds() {
-  return DATA?.starter_pool || [];
+  const cards = DATA?.cards || [];
+  const by = Object.create(null);
+  for (const c of cards) {
+    if (c?.id) by[c.id] = c;
+  }
+  const out = [];
+  const seen = new Set();
+  const push = (id) => {
+    if (!id || seen.has(id) || !by[id]) return;
+    seen.add(id);
+    out.push(id);
+  };
+  for (const id of DATA?.starter_pool || []) push(id);
+  for (const c of cards) {
+    if (c.starter) push(c.id);
+  }
+  if (!out.length) {
+    for (const c of cards) {
+      if (c.kind === "speech" && !c.shatterOnUse) push(c.id);
+    }
+  }
+  if (!out.length) {
+    for (const c of cards) push(c.id);
+  }
+  return out;
+}
+
+export function activePackMeta() {
+  const m = DATA?._meta || {};
+  return {
+    packId: m.active_pack || m.pack_id || null,
+    file: m.active_file || null,
+    title: m.title || null,
+  };
 }
 
 export function venuesList() {
@@ -166,7 +206,18 @@ export function invShatter(state, cardId) {
 }
 
 export function grantStarter(state, cardId) {
-  if (!starterPoolIds().includes(cardId)) return { ok: false, err: "不是創角話術" };
+  const def = BY_ID[cardId];
+  if (!def) {
+    return {
+      ok: false,
+      err: `找不到卡「${cardId}」——目前上線卡組可能沒載入到這張（請在 /cardedit 確認已上線、且 starter_pool／starter 有勾）`,
+    };
+  }
+  const pool = starterPoolIds();
+  if (pool.length && !pool.includes(cardId) && !def.starter) {
+    // 仍允許明確 starter 旗標；否則拒絕
+    return { ok: false, err: "不是創角話術（請在卡上勾 starter 或寫入 starter_pool）" };
+  }
   invAdd(state, cardId, 1);
   state.playerProfile ??= {};
   state.playerProfile.starterSpeechCardId = cardId;
@@ -238,10 +289,10 @@ export function pickStarterByScores(scores = {}) {
   return bestId;
 }
 
-/** 從 starter_pool 均勻隨機一張基礎話術 */
+/** 從 starter 池均勻隨機一張；池空回 null */
 export function pickStarterRandom() {
   const pool = starterPoolIds();
-  if (!pool.length) return "speech_soft";
+  if (!pool.length) return null;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 

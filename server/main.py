@@ -2334,9 +2334,32 @@ def patch_card_pack_meta(pack_id: str, body: dict):
 def get_cards():
     """遊戲與舊工具：回傳目前 active 牌組內容。"""
     reg = _load_pack_registry()
-    meta = _pack_meta(reg, reg.get("active") or "main")
+    active = reg.get("active") or "main"
+    meta = _pack_meta(reg, active)
     doc = _read_pack_file(_pack_path(meta))
-    # 附加指標方便除錯（不污染存檔時由 put 剝掉亦可）
+    # 標上目前掛載的卡組，前端創角／除錯用（存檔時可忽略）
+    if not isinstance(doc.get("_meta"), dict):
+        doc["_meta"] = {}
+    doc["_meta"]["active_pack"] = active
+    doc["_meta"]["active_file"] = meta.get("file")
+    doc["_meta"]["active_name"] = meta.get("name") or active
+    # 若 starter_pool 空但有 starter 旗標／speech 卡，補一份給前端（不寫回檔）
+    cards = doc.get("cards") if isinstance(doc.get("cards"), list) else []
+    pool = doc.get("starter_pool") if isinstance(doc.get("starter_pool"), list) else []
+    idset = {c.get("id") for c in cards if isinstance(c, dict)}
+    pool = [x for x in pool if x in idset]
+    if not pool:
+        pool = [c["id"] for c in cards if isinstance(c, dict) and c.get("starter") and c.get("id")]
+    if not pool:
+        pool = [
+            c["id"]
+            for c in cards
+            if isinstance(c, dict)
+            and c.get("id")
+            and c.get("kind") == "speech"
+            and not c.get("shatterOnUse")
+        ]
+    doc["starter_pool"] = pool
     return doc
 
 

@@ -173,12 +173,23 @@ async function saveCards() {
       throw new Error(`繼承成環: ${c.id} → ${c.parentId}`);
     }
   }
+  // 一律用 starter:true 重建 starter_pool（創角只認這份）
   const starters = cards.filter((c) => c.starter).map((c) => c.id);
   DOC.cards = cards;
-  if (Array.isArray(DOC.starter_pool)) {
-    const keep = DOC.starter_pool.filter((id) => starters.includes(id));
-    for (const id of starters) if (!keep.includes(id)) keep.push(id);
-    DOC.starter_pool = keep;
+  // 若完全沒勾 starter，把「不碎話術」自動當基礎池，避免上線後創角抽不到卡
+  if (starters.length) {
+    DOC.starter_pool = starters;
+  } else {
+    const speech = cards
+      .filter((c) => c.kind === "speech" && !c.shatterOnUse)
+      .map((c) => c.id);
+    DOC.starter_pool = speech;
+    if (speech.length) {
+      // 順手勾上，下次編輯看得到
+      for (const c of cards) {
+        if (speech.includes(c.id)) c.starter = true;
+      }
+    }
   }
   setStatus("save-status", `儲存 ${packInfo?.file || editingPackId}…`);
   const r = await api(`/api/card-packs/${encodeURIComponent(editingPackId)}`, "PUT", {
@@ -203,6 +214,38 @@ async function activateCurrentPack() {
     await saveCards();
   }
   const n = cards.length;
+  if (n < 1) {
+    setStatus("save-status", "這組是空的，無法上線（遊戲會沒有卡）", true);
+    return;
+  }
+  // 創角依賴 starter_pool／starter 旗標
+  let starters = cards.filter((c) => c.starter).map((c) => c.id);
+  if (!starters.length) {
+    const speech = cards.filter((c) => c.kind === "speech" && !c.shatterOnUse);
+    if (speech.length) {
+      if (
+        !confirm(
+          `這組沒有勾「starter 創角池」的卡。\n` +
+            `要先把 ${speech.length} 張話術自動標成基礎卡再上線嗎？\n` +
+            `（取消＝仍上線，但創角可能抽不到卡）`,
+        )
+      ) {
+        /* 使用者堅持上線 */
+      } else {
+        for (const c of speech) c.starter = true;
+        DOC.starter_pool = speech.map((c) => c.id);
+        markDirty();
+        await saveCards();
+        starters = DOC.starter_pool;
+      }
+    } else {
+      alert(
+        "警告：這組沒有 starter 基礎卡，也沒有不碎話術。\n" +
+          "上線後「重新開始」創角會抽不到基礎卡。\n" +
+          "請在編輯器勾 starter，或先加基礎話術。",
+      );
+    }
+  }
   const livePack = (REGISTRY?.packs || []).find((p) => p.id === REGISTRY.active);
   const liveN = livePack?.cardCount;
   if (
@@ -217,7 +260,8 @@ async function activateCurrentPack() {
   if (
     !confirm(
       `將「${packInfo?.name || editingPackId}」(${packInfo?.file}) 設為遊戲上線版？\n` +
-        `舊版「${REGISTRY?.active}」檔案會保留，可隨時切回。`,
+        `舊版「${REGISTRY?.active}」檔案會保留，可隨時切回。\n` +
+        `創角基礎卡：${starters.length || DOC.starter_pool?.length || 0} 張`,
     )
   ) {
     return;
@@ -813,6 +857,8 @@ function newBaseCard() {
     }
   }
   const id = newId(editingPackId === "main" ? "base" : `${editingPackId}_base`);
+  // 新組若還沒有任何 starter，預設勾創角池，避免上線後抽不到基礎卡
+  const hasStarter = cards.some((x) => x.starter || (DOC.starter_pool || []).includes(x.id));
   const c = {
     id,
     name: "新基礎卡",
@@ -821,7 +867,7 @@ function newBaseCard() {
     parentId: null,
     kind: "speech",
     shatterOnUse: false,
-    starter: false,
+    starter: !hasStarter,
     tags: ["talk"],
     price: 40,
     shopWeight: 1,

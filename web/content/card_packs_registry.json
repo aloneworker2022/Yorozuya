@@ -1,5 +1,5 @@
 {
-  "active": "main",
+  "active": "ca",
   "packs": [
     {
       "id": "main",
@@ -26,7 +26,9 @@
       "note": "空牌組",
       "clonedFrom": null,
       "createMode": "empty",
-      "createdAt": 1786072256.606594
+      "createdAt": 1786072256.606594,
+      "updatedAt": 1786092424.9920475,
+      "activatedAt": 1786092427.1266398
     }
   ],
   "history": [
@@ -39,6 +41,11 @@
       "at": 1786070538.369254,
       "from": "card_x",
       "to": "main"
+    },
+    {
+      "at": 1786092427.1266422,
+      "from": "main",
+      "to": "ca"
     }
   ]
 }
