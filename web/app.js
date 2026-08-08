@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.29(2026-08-08)出卡：對話給玩家·表情動作給畫圖";
+const APP_VER = "v6.31(2026-08-08)上線槽硬切：清玩家牌進度";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -36,6 +36,7 @@ let CARDS_LOAD = fetch("/api/cards?ts=" + Date.now())
         packId: j?._meta?.active_pack || "?",
         file: j?._meta?.active_file || "?",
         name: j?._meta?.active_name || j?._meta?.title || "?",
+        liveEpoch: j?._meta?.live_epoch ?? 0,
         via: "api",
         cardCount: (j.cards || []).length,
         starterCount: (Cards.starterPoolIds?.() || []).length,
@@ -576,6 +577,8 @@ function defaultState() {
     deckPresets: [],     // 預留多套牌組
     cardShop: null,      // { nextRefreshAt, slots:[{cardId,price,sold,isSale,salePrice?}] }
     cardSession: null,   // 當前牌桌 session（見 card_engine）
+    // 綁定「上線槽」：與 registry.active + liveEpoch 不一致時硬清牌進度
+    cardsLive: { packId: null, epoch: 0 },
     bubbleAff: { day: null, byGirl: {} }, // M2 氣泡情感日 cap { day, byGirl: { id: used } }
     playerProfile: {
       name: "", body: "", look: "", habit: "",
@@ -723,6 +726,7 @@ function initState(j, offline) {
   state.deckPresets ??= [];
   state.cardShop ??= null;
   state.cardSession ??= null;
+  state.cardsLive ??= { packId: null, epoch: 0 };
   if (state.cardSession) Cards.normalizeSessionPhase?.(state.cardSession);
   state.bubbleAff ??= { day: null, byGirl: {} }; // M2 氣泡情感日 cap
   state.playerProfile = {
@@ -749,6 +753,23 @@ function initState(j, offline) {
     state.settings.features.freeChatRetired = true;
   }
   if (Cards.cardsReady()) {
+    // 上線槽硬切：pack / epoch 變了就清空玩家牌進度（與伺服器 activate 對齊）
+    const meta = Cards.activePackMeta?.() || {};
+    const packId = meta.packId || CARDS_PACK_INFO?.packId || null;
+    const epoch = meta.liveEpoch ?? CARDS_PACK_INFO?.liveEpoch ?? 0;
+    const bind = Cards.bindLivePack?.(state, packId, epoch);
+    if (bind?.wiped) {
+      console.info("[cards] live pack cutover wiped player card progress", bind);
+      log(
+        `上線牌組切換：${bind.from || "（無）"} → ${bind.to || "?"}（epoch ${bind.epoch ?? epoch}），已清空牌庫／貨架／創角話術`,
+      );
+      // toast 在 render 前可能被蓋；進場後再提醒
+      setTimeout(() => {
+        try {
+          toast("已換上線牌組：牌庫與貨架已清空，請重抽基礎話術", "bad");
+        } catch { /* */ }
+      }, 400);
+    }
     Cards.ensureStarterFallback(state);
     Cards.pruneDeck?.(state);
   }
@@ -7799,7 +7820,8 @@ function renderSettings() {
         el.textContent = `⚠ 未掛 API，退回 ${p.file}（卡組上線無效）`;
         el.style.color = "#ff9d4d";
       } else if (p.packId) {
-        el.textContent = `${p.name || p.packId} · ${p.file || "?"} · ${p.cardCount ?? "?"} 張 · 基礎 ${p.starterCount ?? "?"}`;
+        const ep = p.liveEpoch != null ? ` · e${p.liveEpoch}` : "";
+        el.textContent = `${p.name || p.packId} · ${p.file || "?"} · ${p.cardCount ?? "?"} 張 · 基礎 ${p.starterCount ?? "?"}${ep}`;
         el.style.color = "";
       } else {
         el.textContent = "載入中…";

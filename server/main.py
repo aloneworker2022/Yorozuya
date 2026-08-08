@@ -1900,9 +1900,11 @@ def testword():
 
 # ── 多檔牌組版本（card_x.json 等）────────────────────────────────
 # 註冊表 content/card_packs_registry.json：
-#   { "active": "main", "packs": [{ "id","file","name","note",... }] }
-# 每份牌組是獨立 JSON（與 cards.json 同形）。遊戲只載入 active 那份。
-# 上線 = 改 active 指標；舊檔保留，可一鍵切回。
+#   { "active", "liveEpoch", "packs": [{ "id","file","name","note",... }] }
+# 每份牌組是獨立 JSON（與 cards.json 同形）。
+# 遊戲只有一個「上線槽」= active：
+#   - 上線 = 換 active + liveEpoch++ + 清空玩家牌制進度（牌庫／貨架／創角話術）
+#   - 草稿檔仍保留在 disk，方便回滾再上線（再上線仍會再清一次玩家牌進度）
 
 CONTENT_DIR = WEB_DIR / "content"
 PACK_REGISTRY_PATH = CONTENT_DIR / "card_packs_registry.json"
@@ -1913,6 +1915,7 @@ _PACK_FILE_RE = re.compile(r"^[a-zA-Z0-9_\-]+\.json$")
 def _default_pack_registry() -> dict:
     return {
         "active": "main",
+        "liveEpoch": 1,
         "packs": [
             {
                 "id": "main",
@@ -1959,6 +1962,12 @@ def _load_pack_registry() -> dict:
         p.get("id") == reg["active"] for p in reg["packs"] if isinstance(p, dict)
     ):
         reg["active"] = "main"
+    try:
+        reg["liveEpoch"] = int(reg.get("liveEpoch") or 1)
+    except (TypeError, ValueError):
+        reg["liveEpoch"] = 1
+    if reg["liveEpoch"] < 1:
+        reg["liveEpoch"] = 1
     return reg
 
 
@@ -2146,7 +2155,15 @@ def list_card_packs():
     """列出所有牌組版本 + 目前上線的 active。"""
     reg = _load_pack_registry()
     packs = [_pack_summary(p, reg) for p in reg["packs"] if isinstance(p, dict) and p.get("id")]
-    return {"active": reg.get("active"), "packs": packs}
+    try:
+        live_epoch = int(reg.get("liveEpoch") or 1)
+    except (TypeError, ValueError):
+        live_epoch = 1
+    return {
+        "active": reg.get("active"),
+        "liveEpoch": live_epoch,
+        "packs": packs,
+    }
 
 
 @app.get("/api/card-packs/{pack_id}")
@@ -2318,9 +2335,49 @@ def create_card_pack(body: PackCreateIn):
     }
 
 
+def _wipe_player_card_progress_in_save(pack_id: str, epoch: int) -> dict:
+    """
+    上線槽硬切：清空存檔裡的玩家牌制進度。
+    草稿牌組 JSON 檔不動；只動 save 表 blob 的 card* 欄位。
+    """
+    with db() as conn:
+        row = conn.execute("SELECT version, data FROM save WHERE id = 1").fetchone()
+        if row is None:
+            return {"wiped": False, "reason": "no_save"}
+        version, raw = row[0], row[1]
+        try:
+            data = json.loads(raw) if raw else {}
+        except Exception:
+            return {"wiped": False, "reason": "save_corrupt"}
+        if not isinstance(data, dict):
+            return {"wiped": False, "reason": "save_corrupt"}
+        data["cardInventory"] = {}
+        data["cardDeck"] = []
+        data["deckPresets"] = []
+        data["cardShop"] = None
+        data["cardSession"] = None
+        data["cardsLive"] = {"packId": pack_id, "epoch": int(epoch)}
+        pp = data.get("playerProfile")
+        if not isinstance(pp, dict):
+            pp = {}
+        pp["starterSpeechCardId"] = None
+        data["playerProfile"] = pp
+        new_version = int(version) + 1
+        conn.execute(
+            "UPDATE save SET version = ?, data = ?, updated_at = ? WHERE id = 1",
+            (new_version, json.dumps(data, ensure_ascii=False), time.time()),
+        )
+        return {"wiped": True, "saveVersion": new_version, "packId": pack_id, "epoch": int(epoch)}
+
+
 @app.post("/api/card-packs/{pack_id}/activate")
 def activate_card_pack(pack_id: str):
-    """上線：只改 registry.active，舊牌組檔完整保留可回滾。"""
+    """
+    上線到唯一 live 槽：
+    - 換 active + liveEpoch++
+    - 清空玩家牌庫／出戰牌組／卡店貨架／牌局／創角話術
+    - 草稿 JSON 檔仍保留，可再切回（切回也會再清進度）
+    """
     reg = _load_pack_registry()
     meta = _pack_meta(reg, pack_id)
     path = _pack_path(meta)
@@ -2332,21 +2389,42 @@ def activate_card_pack(pack_id: str):
     prev = reg.get("active")
     reg["active"] = pack_id
     meta["activatedAt"] = time.time()
+    # 每次上線（含同包重上線）都推進 epoch，並清玩家牌進度——測試重開很常見
+    try:
+        epoch = int(reg.get("liveEpoch") or 1) + 1
+    except (TypeError, ValueError):
+        epoch = 1
+    reg["liveEpoch"] = epoch
     # 歷史
     hist = reg.setdefault("history", [])
     if not isinstance(hist, list):
         hist = []
         reg["history"] = hist
-    hist.append({"at": time.time(), "from": prev, "to": pack_id})
+    hist.append({
+        "at": time.time(),
+        "from": prev,
+        "to": pack_id,
+        "epoch": epoch,
+        "playerCardsWiped": True,
+    })
     hist[:] = hist[-50:]
     _save_pack_registry(reg)
+    wipe = _wipe_player_card_progress_in_save(pack_id, epoch)
+    msg = (
+        f"已上線 {pack_id}（epoch {epoch}）"
+        + (f" · 已清空玩家牌制進度" if wipe.get("wiped") else " · 尚無存檔可清")
+        + (f" · 草稿「{prev}」仍在 disk" if prev and prev != pack_id else "")
+    )
     return {
         "ok": True,
         "active": pack_id,
         "previous": prev,
+        "liveEpoch": epoch,
+        "playerCardsWiped": bool(wipe.get("wiped")),
+        "wipe": wipe,
         "pack": _pack_summary(meta, reg),
         "count": len(doc.get("cards") or []),
-        "message": f"已上線 {pack_id}（先前 {prev} 仍在，可隨時切回）",
+        "message": msg,
     }
 
 
@@ -2399,6 +2477,10 @@ def get_cards():
     doc["_meta"]["active_pack"] = active
     doc["_meta"]["active_file"] = meta.get("file")
     doc["_meta"]["active_name"] = meta.get("name") or active
+    try:
+        doc["_meta"]["live_epoch"] = int(reg.get("liveEpoch") or 1)
+    except (TypeError, ValueError):
+        doc["_meta"]["live_epoch"] = 1
     # 若 starter_pool 空但有 starter 旗標／speech 卡，補一份給前端（不寫回檔）
     cards = doc.get("cards") if isinstance(doc.get("cards"), list) else []
     pool = doc.get("starter_pool") if isinstance(doc.get("starter_pool"), list) else []

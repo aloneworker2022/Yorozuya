@@ -196,6 +196,19 @@ async function saveCards() {
       }
     }
   }
+  // 商店池與 cards 對齊：去掉幽靈 id；空池則依 kind 補（避免空牌組加卡後貨架永遠空）
+  DOC.shop_weights = DOC.shop_weights && typeof DOC.shop_weights === "object" ? DOC.shop_weights : {};
+  const idOk = (id) => ids.has(id);
+  let speechPool = (DOC.shop_weights.speech_pool || []).filter(idOk);
+  let premPool = (DOC.shop_weights.premium_pool || []).filter(idOk);
+  if (!speechPool.length) {
+    speechPool = cards.filter((c) => c.kind === "speech").map((c) => c.id);
+  }
+  if (!premPool.length) {
+    premPool = cards.filter((c) => c.kind === "shop_premium").map((c) => c.id);
+  }
+  DOC.shop_weights.speech_pool = speechPool;
+  DOC.shop_weights.premium_pool = premPool;
   setStatus("save-status", `儲存 ${packInfo?.file || editingPackId}…`);
   const r = await api(`/api/card-packs/${encodeURIComponent(editingPackId)}`, "PUT", {
     doc: DOC,
@@ -264,8 +277,12 @@ async function activateCurrentPack() {
   }
   if (
     !confirm(
-      `將「${packInfo?.name || editingPackId}」(${packInfo?.file}) 設為遊戲上線版？\n` +
-        `舊版「${REGISTRY?.active}」檔案會保留，可隨時切回。\n` +
+      `將「${packInfo?.name || editingPackId}」(${packInfo?.file}) 掛上遊戲上線槽？\n\n` +
+        `這會：\n` +
+        `· 換成此牌組（目前：${REGISTRY?.active || "?"}）\n` +
+        `· 清空玩家牌庫／出戰牌組／卡牌貨架／進行中牌局／創角話術\n` +
+        `· 金幣、委託、魅魔等其他進度保留\n\n` +
+        `草稿檔不會刪，仍可再切回（切回也會再清牌進度）。\n` +
         `創角基礎卡：${starters.length || DOC.starter_pool?.length || 0} 張`,
     )
   ) {
@@ -279,9 +296,12 @@ async function activateCurrentPack() {
   );
   await refreshRegistry();
   renderPackSelect();
+  const wipeNote = r.playerCardsWiped
+    ? "· 已清空玩家牌進度"
+    : "· 尚無存檔可清";
   setStatus(
     "save-status",
-    `🚀 ${r.message || "已上線"} · 先前 ${r.previous} 可切回`,
+    `🚀 ${r.message || "已上線"} ${wipeNote} · epoch ${r.liveEpoch ?? "?"} · 重開遊戲頁生效`,
   );
 }
 

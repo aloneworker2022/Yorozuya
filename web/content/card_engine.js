@@ -140,6 +140,7 @@ export function activePackMeta() {
     packId: m.active_pack || m.pack_id || null,
     file: m.active_file || null,
     title: m.title || null,
+    liveEpoch: m.live_epoch ?? m.liveEpoch ?? 0,
   };
 }
 
@@ -225,7 +226,71 @@ export function grantStarter(state, cardId) {
 }
 
 /**
+ * 清空玩家端全部卡牌進度（換上線牌組時硬切）。
+ * 不動金幣／委託／魅魔等非牌制欄位。
+ */
+export function resetPlayerCardProgress(state, { packId = null, epoch = 0 } = {}) {
+  state.cardInventory = {};
+  state.cardDeck = [];
+  state.deckPresets = [];
+  state.cardShop = null;
+  state.cardSession = null;
+  state.playerProfile ??= {
+    name: "",
+    body: "",
+    look: "",
+    habit: "",
+    prefs: [],
+    starterSpeechCardId: null,
+    cardPlayerLv: 0,
+  };
+  state.playerProfile.starterSpeechCardId = null;
+  state.cardsLive = {
+    packId: packId || null,
+    epoch: epoch ?? 0,
+  };
+  return state.cardsLive;
+}
+
+/**
+ * 綁定存檔到「目前上線」牌組。
+ * - packId / liveEpoch 與存檔一致 → 不動
+ * - 首次寫入 cardsLive 且庫存全是本包合法卡 → 軟綁定（不洗進度）
+ * - 否則硬清玩家牌庫／貨架／牌組／創角話術
+ */
+export function bindLivePack(state, packId, epoch = 0) {
+  const pid = packId || null;
+  const ep = epoch ?? 0;
+  state.cardsLive ??= { packId: null, epoch: 0 };
+  const prev = state.cardsLive;
+  if (prev.packId === pid && (prev.epoch ?? 0) === ep) {
+    return { wiped: false, reason: "same" };
+  }
+  // 首次導入：無 pack 綁定
+  if (prev.packId == null) {
+    const invIds = Object.keys(state.cardInventory || {});
+    const orphans = invIds.filter(id => !BY_ID[id]);
+    const starter = state.playerProfile?.starterSpeechCardId;
+    const starterOk = !starter || !!BY_ID[starter];
+    const shopOrphans = (state.cardShop?.slots || []).some(
+      s => s?.cardId && !BY_ID[s.cardId],
+    );
+    if (!orphans.length && starterOk && !shopOrphans) {
+      state.cardsLive = { packId: pid, epoch: ep };
+      // 順手標貨架所屬
+      if (state.cardShop && typeof state.cardShop === "object") {
+        state.cardShop.packId = pid;
+      }
+      return { wiped: false, reason: "migrate_bind" };
+    }
+  }
+  resetPlayerCardProgress(state, { packId: pid, epoch: ep });
+  return { wiped: true, reason: "pack_switch", from: prev.packId, to: pid, epoch: ep };
+}
+
+/**
  * 舊存檔相容：已有進度卻沒話術 → 補一張；全新檔不自動給，留給創角輪巡。
+ * 剛因換上線牌組洗過進度時也不自動補（要重抽創角話術）。
  */
 export function ensureStarterFallback(state) {
   state.cardInventory ??= {};
@@ -249,20 +314,27 @@ export function ensureStarterFallback(state) {
     }
     return;
   }
-  // 已寫過 starter id 但庫存空了 → 補回
+  // starter 指向別包幽靈卡 → 清掉，走創角
+  if (state.playerProfile.starterSpeechCardId && !BY_ID[state.playerProfile.starterSpeechCardId]) {
+    state.playerProfile.starterSpeechCardId = null;
+    return;
+  }
+  // 已寫過 starter id 但庫存空了 → 補回（僅本包存在時）
   if (state.playerProfile.starterSpeechCardId) {
     invAdd(state, state.playerProfile.starterSpeechCardId, 1);
     return;
   }
-  // 全新／重置：不自動發卡
+  // 全新／重置／換包後：不自動發卡
   const progressed =
     (state.succubi?.length || 0) > 0 ||
     (state.gold || 0) !== 0 ||
     (state.quests?.length || 0) > 0 ||
     (state.dungeon?.length || 0) > 0;
   if (!progressed) return;
-  // 舊存檔有進度卻沒牌制欄位
-  const sid = starterPoolIds()[0] || "speech_soft";
+  // 舊存檔有進度卻完全沒牌制欄位（且尚未綁定過 cardsLive）
+  if (state.cardsLive?.packId) return;
+  const sid = starterPoolIds()[0];
+  if (!sid) return;
   invAdd(state, sid, 1);
   state.playerProfile.starterSpeechCardId = sid;
 }
@@ -298,6 +370,33 @@ export function pickStarterRandom() {
 
 // ── Card shop（state.cardShop；勿與祭品 state.shop 混淆）──
 
+function currentPackKey() {
+  const m = DATA?._meta || {};
+  return m.active_pack || m.active_file || m.pack_id || m.title || "";
+}
+
+/**
+ * 商店池：優先 shop_weights.speech_pool / premium_pool（只收本包存在的 id）。
+ * 若某池為空（空牌組剛加卡、編輯器沒寫 pool 很常見）→ 回退到本包 kind。
+ * girl_trait / venue_event 永不進玩家貨架。
+ */
+function resolveShopPools() {
+  const sw = DATA?.shop_weights || {};
+  const listedSpeech = (sw.speech_pool || []).filter(id => BY_ID[id]);
+  const listedPrem = (sw.premium_pool || []).filter(id => BY_ID[id]);
+  const speech = listedSpeech.length
+    ? listedSpeech
+    : (DATA?.cards || [])
+        .filter(c => c?.id && c.kind === "speech" && BY_ID[c.id])
+        .map(c => c.id);
+  const premium = listedPrem.length
+    ? listedPrem
+    : (DATA?.cards || [])
+        .filter(c => c?.id && c.kind === "shop_premium" && BY_ID[c.id])
+        .map(c => c.id);
+  return { speech, premium, combined: [...speech, ...premium] };
+}
+
 function weightedPick(ids) {
   const items = [];
   for (const id of ids) {
@@ -315,16 +414,27 @@ function weightedPick(ids) {
   return items[items.length - 1].id;
 }
 
+/** 貨架是否仍對應當前上線牌組（切 pack 後舊 slot 會殘留幽靈卡） */
+function cardShopStale(shop) {
+  if (!shop || !Array.isArray(shop.slots)) return true;
+  const pack = currentPackKey();
+  if (shop.packId != null && pack && shop.packId !== pack) return true;
+  for (const slot of shop.slots) {
+    if (slot?.cardId && !BY_ID[slot.cardId]) return true;
+  }
+  return false;
+}
+
 export function refreshCardShop(state, now = Date.now()) {
   const slotsN = d("shop_slots", 3);
   const hours = d("shop_refresh_hours", 4);
-  const sw = DATA?.shop_weights || {};
-  const speech = sw.speech_pool || [];
-  const premium = sw.premium_pool || [];
-  const combined = [...speech, ...premium];
+  const { speech, premium, combined } = resolveShopPools();
+  // 可上架張數少於槽位時只填能填的，避免 ensure 永遠 length!==3 狂刷
+  const maxUnique = new Set(combined).size;
+  const fillN = maxUnique > 0 ? Math.min(slotsN, maxUnique) : 0;
   const slots = [];
   const used = new Set();
-  for (let i = 0; i < slotsN; i++) {
+  for (let i = 0; i < fillN; i++) {
     const prefer = i === 0 ? speech : Math.random() < 0.3 ? speech : premium;
     let id = null;
     for (let t = 0; t < 24; t++) {
@@ -334,6 +444,7 @@ export function refreshCardShop(state, now = Date.now()) {
         break;
       }
     }
+    if (!id) id = weightedPick(combined.filter(x => !used.has(x)));
     if (!id) id = weightedPick(combined);
     if (!id) continue;
     used.add(id);
@@ -356,17 +467,26 @@ export function refreshCardShop(state, now = Date.now()) {
     slots[i].salePrice = Math.max(1, Math.floor(slots[i].price * 0.7));
   }
   state.cardShop = {
+    packId: currentPackKey() || null,
     nextRefreshAt: now + hours * 3600 * 1000,
     slots,
   };
 }
 
 export function ensureCardShop(state, now = Date.now()) {
-  state.cardShop ??= { nextRefreshAt: 0, slots: [] };
+  state.cardShop ??= { nextRefreshAt: 0, slots: [], packId: null };
+  const shop = state.cardShop;
+  const slotsN = d("shop_slots", 3);
+  const { combined } = resolveShopPools();
+  const expected = Math.min(slotsN, new Set(combined).size);
+  // 已售罄可暫時少於 expected；只有「整架對不上當前 pack／幽靈 id／超額／到期」才重擲
+  const overfilled = Array.isArray(shop.slots) && shop.slots.length > Math.max(expected, slotsN);
   const need =
-    !Array.isArray(state.cardShop.slots) ||
-    state.cardShop.slots.length !== d("shop_slots", 3) ||
-    now >= (state.cardShop.nextRefreshAt || 0);
+    cardShopStale(shop) ||
+    !Array.isArray(shop.slots) ||
+    overfilled ||
+    (expected > 0 && shop.slots.length === 0) ||
+    now >= (shop.nextRefreshAt || 0);
   if (need) refreshCardShop(state, now);
   return state.cardShop;
 }

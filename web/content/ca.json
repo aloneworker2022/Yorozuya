@@ -4,8 +4,8 @@
     "spec": "docs/card-system.md",
     "schema_version": 2,
     "token_model": "每卡一個詞墜 token；parentId 繼承父鏈詞墜。解析後效果字串如 [問候] [說笑話]。",
-    "pack_note": "獨立牌組檔；上線靠 registry.active 切換，不刪舊檔。",
-    "pack_model": "多檔牌組：registry.active 決定遊戲用哪份；編輯 card_x.json 等草稿，上線只切指標，舊版可回滾。",
+    "pack_note": "獨立牌組檔；上線掛到唯一 live 槽，並清空玩家牌進度；草稿檔仍保留。",
+    "pack_model": "多檔牌組：唯一上線槽=registry.active+liveEpoch；上線硬切玩家牌庫，草稿 JSON 可回滾再上線。",
     "note": "auto-fixed starter pool for onboard"
   },
   "enums": {
@@ -73,7 +73,10 @@
     "b0002"
   ],
   "shop_weights": {
-    "speech_pool": [],
+    "speech_pool": [
+      "b0001",
+      "b0002"
+    ],
     "premium_pool": []
   },
   "cards": [
