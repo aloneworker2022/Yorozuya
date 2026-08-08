@@ -3568,18 +3568,64 @@ function voidCardPlayAiAndScene() {
   cardUi.sceneArtPending = false;
 }
 
+/**
+ * 場景圖是否還在等（要擋「繼續」）。
+ * 開著出卡場景圖時：pending 就擋；關了就不擋，避免卡死。
+ */
+function isCardSceneArtWaiting(girl, play) {
+  if (!play?.cardId) return false;
+  if (!cardSceneArtOn()) return false;
+  if (cardUi.sceneArtPending) return true;
+  return girl?.cardCg?.[`card:${play.cardId}`]?.status === "pending";
+}
+
+/** 場景圖結束（成功／失敗／關掉）：清 pending，必要時回退立繪，避免永遠卡住繼續 */
+function settleCardSceneArtWait(girl, cardId, { ok = false, url = "" } = {}) {
+  cardUi.sceneArtPending = false;
+  if (!girl || !cardId) return;
+  const cg = ensureCardCgMap(girl);
+  const key = `card:${cardId}`;
+  const cur = cg[key];
+  if (ok && url) {
+    const bust = url.includes("?") ? url : `${String(url).split("#")[0]}?v=${Date.now()}`;
+    cg[key] = {
+      url: bust,
+      status: "ready",
+      at: Date.now(),
+      source: "scene_play",
+      ...(cur?.sceneEn ? { sceneEn: cur.sceneEn } : {}),
+      ...(cur?.visualBeatZh ? { visualBeatZh: cur.visualBeatZh } : {}),
+    };
+    return;
+  }
+  if (cur?.status !== "pending") return;
+  delete cg[key];
+  syncPortraitCgCache(girl);
+  const place = resolveCardTableArt(girl, { prefer: "half" }).url || cur.url || "";
+  cg[key] = {
+    url: place,
+    status: place ? "ready" : "error",
+    at: Date.now(),
+    source: place ? "alias_portrait" : "scene_error",
+  };
+}
+
 /** 台詞就緒後才排場景圖（文字 → 英文畫圖句 → 圖） */
 function startSceneArtAfterText(girl, play) {
   if (!girl || !play?.ok) return;
   if (!cardUi.awaitReaction || cardUi.lastPlay !== play) return;
   if (!cardSceneArtOn()) {
-    cardUi.sceneArtPending = false;
+    settleCardSceneArtWait(girl, play.cardId, { ok: false });
     return;
   }
   if (play._sceneArtQueued) return;
   cardUi.sceneArtPending = true;
-  queueCardSceneArt(girl, play, () => {
-    if (cardUi.lastPlay === play) cardUi.sceneArtPending = false;
+  queueCardSceneArt(girl, play, (ok) => {
+    if (cardUi.lastPlay === play) {
+      // queue 內已寫 cardCg；這裡確保 pending 旗標清掉
+      if (!ok) settleCardSceneArtWait(girl, play.cardId, { ok: false });
+      else cardUi.sceneArtPending = false;
+    }
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
       renderCardTable();
     }
@@ -5397,7 +5443,7 @@ let cardUi = {
   playAiToken: null,
   playAiGen: 0,
   playAiStartedGen: null,
-  // 先文字後生圖：sceneArtPending = 圖還在補繪（不擋看台詞／繼續）
+  // 先文字後生圖：sceneArtPending = 圖還在畫（回覆節拍會擋「繼續」）
   sceneArtPending: false,
 };
 
@@ -5437,6 +5483,18 @@ function advanceReactBeat() {
     return;
   }
   if (cardUi.reactBeat === "reply") {
+    const girl = girlForSession();
+    const play = cardUi.lastPlay;
+    // 台詞還沒好 → 不能結束
+    if (cardUi.playAiPending && !play.fromAi && state.settings?.model) {
+      toast("她還在想怎麼回…", "");
+      return;
+    }
+    // 場景圖還沒好 → 不能結束（避免只看文字就飛走）
+    if (isCardSceneArtWaiting(girl, play)) {
+      toast("場景還在畫，畫完才能繼續", "");
+      return;
+    }
     ackPlayReaction();
   }
 }
@@ -6937,14 +6995,14 @@ function renderCardTable() {
     return;
   }
 
-  // ── 出卡反應兩拍：①動作 → ②她的文字（先文字；圖在背景補）──
+  // ── 出卡反應兩拍：①動作 → ②她的文字＋場景圖（圖好才能結束）──
   if (cardUi.awaitReaction && cardUi.lastPlay) {
     const last = cardUi.lastPlay;
     if (!cardUi.reactBeat) cardUi.reactBeat = "action";
-    const waitingScene = !!cardUi.sceneArtPending;
     const waitingText = !!(cardUi.playAiPending && !last.fromAi && state.settings?.model);
-    // 只擋在「等台詞」；圖可背景補，看完台詞就能繼續
-    const waitingPipe = waitingText;
+    const waitingScene = isCardSceneArtWaiting(girl, last);
+    // 回覆節拍：台詞或場景任一未好都算管線等待（擋結束／推出）
+    const waitingPipe = waitingText || (cardUi.reactBeat === "reply" && waitingScene);
 
     syncCardTableChrome({ ejectMode: waitingPipe && cardUi.reactBeat === "reply" });
 
@@ -6977,7 +7035,7 @@ function renderCardTable() {
       return;
     }
 
-    // ② 回覆節拍：先等台詞；圖可並行（meta 提示補繪）
+    // ② 回覆節拍：先等台詞；台詞好了可先看，但場景圖好了才能「繼續」結束
     const openNote = last.open && !last.open.success
       ? "沒接住"
       : last.open?.success
@@ -7025,7 +7083,7 @@ function renderCardTable() {
       ? ` · 繪：${pose.face}/${pose.body}`
       : "";
     const srcNote = last.fromAi ? "" : (state.settings?.model ? " · 保底" : "");
-    const sceneNote = waitingScene ? " · 場景依回話補繪中…" : "";
+    const sceneNote = waitingScene ? " · 場景繪製中…" : "";
     setCtVn({
       name: gname,
       text: showLine || "……",
@@ -7033,22 +7091,38 @@ function renderCardTable() {
     });
     const vn2 = $("#ct-vn");
     if (vn2) {
-      vn2.classList.add("ct-vn-tap");
-      vn2.onclick = () => advanceReactBeat();
+      if (waitingScene) {
+        // 圖沒好：不能點旁白跳過
+        vn2.classList.remove("ct-vn-tap");
+        vn2.onclick = null;
+      } else {
+        vn2.classList.add("ct-vn-tap");
+        vn2.onclick = () => advanceReactBeat();
+      }
     }
     setCtHand(`
       <div class="ct-react-beat">
         <div class="dim small ct-react-you">剛才：${esc(last.name || "")}</div>
         <div class="dim small ct-react-wait">${
-          waitingScene ? "場景在依她的回話補繪——可先看完台詞再繼續" : ""
+          waitingScene
+            ? "場景還在畫——畫完才能繼續（可先看台詞）"
+            : ""
         }</div>
         <div class="detail-actions card-actions">
-          <button type="button" class="cyan" id="ct-ack-react">${
-            last.roundEnded ? "繼續（輪末判定）" : "繼續"
+          <button type="button" class="cyan" id="ct-ack-react"
+            ${waitingScene ? "disabled aria-disabled=\"true\"" : ""}>${
+            waitingScene
+              ? "場景繪製中…"
+              : (last.roundEnded ? "繼續（輪末判定）" : "繼續")
           }</button>
         </div>
       </div>`);
-    $("#ct-ack-react").onclick = () => advanceReactBeat();
+    const ackBtn = $("#ct-ack-react");
+    if (ackBtn && !waitingScene) {
+      ackBtn.onclick = () => advanceReactBeat();
+    } else if (ackBtn && waitingScene) {
+      ackBtn.onclick = () => toast("場景還在畫，畫完才能繼續", "");
+    }
     return;
   }
 
