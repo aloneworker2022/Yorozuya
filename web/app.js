@@ -1941,6 +1941,7 @@ function ensureArtCacheBg(girl) {
 /**
  * 出卡後：若該卡尚無專屬 CG，把當前最佳立繪 **別名** 進 card:{id}
  * （先有占位圖；場景生圖完成後會覆寫同一 key。）
+ * 注意：有舊場景圖時不要呼叫這個當「完成」——應走 primeCardSceneArtOnPlay 強制重畫。
  */
 function bindCardArtAlias(girl, cardId) {
   if (!girl || !cardId) return;
@@ -1948,6 +1949,7 @@ function bindCardArtAlias(girl, cardId) {
   const key = `card:${cardId}`;
   if (cg[key]?.status === "ready" && cg[key].url) return;
   if (cg[key]?.status === "pending") return;
+  // 不帶 cardId，避免又命中舊 card: 場景圖
   const art = resolveCardTableArt(girl, { prefer: "half" });
   if (!art.url) return;
   cg[key] = {
@@ -1956,6 +1958,43 @@ function bindCardArtAlias(girl, cardId) {
     at: Date.now(),
     source: "alias_portrait",
   };
+}
+
+/**
+ * 每次打出卡牌：作廢該卡舊場景圖，改成立繪占位 + pending。
+ * 舊行為會直接顯示上次 scene_play，看起來像「不用重畫」——這裡強制每局重繪。
+ */
+function primeCardSceneArtOnPlay(girl, cardId) {
+  if (!girl || !cardId) return;
+  const cg = ensureCardCgMap(girl);
+  const key = `card:${cardId}`;
+  // 先清掉 card: 快取再取立繪，否則 resolve 會回傳舊場景圖
+  const had = cg[key];
+  delete cg[key];
+  syncPortraitCgCache(girl);
+  const placeUrl = resolveCardTableArt(girl, { prefer: "half" }).url
+    || had?.url
+    || "";
+
+  if (cardSceneArtOn()) {
+    cg[key] = {
+      url: placeUrl,
+      status: "pending",
+      at: Date.now(),
+      source: "scene_pending",
+    };
+    cardUi.sceneArtPending = true;
+  } else if (placeUrl) {
+    cg[key] = {
+      url: placeUrl,
+      status: "ready",
+      at: Date.now(),
+      source: "alias_portrait",
+    };
+  }
+  if (document.body.classList.contains("card-mode") && girlForSession()?.id === girl.id) {
+    setCtPortrait(girl, { cardId });
+  }
 }
 
 /** 實驗開關：每出卡依她回應生場景圖 */
@@ -2354,6 +2393,7 @@ function queueCardSceneArt(girl, play, onDone) {
     done(false);
     return;
   }
+  // 同一 play 物件不重複排；但「卡上已有舊圖」絕不能當完成而跳過——每次出卡都要重畫
   if (play._sceneArtQueued) return;
   play._sceneArtQueued = true;
 
@@ -2364,9 +2404,17 @@ function queueCardSceneArt(girl, play, onDone) {
 
   const cg = ensureCardCgMap(girl);
   const key = `card:${play.cardId}`;
-  const prevUrl = cg[key]?.url || resolveCardTableArt(girl, { prefer: "half" }).url || "";
+  // 占位用半身立繪，不用上一局 scene 圖（否則 UI 看起來像已經畫好）
+  const oldScene = cg[key];
+  delete cg[key];
+  syncPortraitCgCache(girl);
+  const placeUrl = resolveCardTableArt(girl, { prefer: "half" }).url
+    || (oldScene?.source === "alias_portrait" || oldScene?.source === "portrait" ? oldScene.url : "")
+    || "";
+  // 失敗時回退立繪，不要把「上一局場景」當成功結果貼回去
+  const fallbackUrl = placeUrl || "";
   cg[key] = {
-    url: prevUrl,
+    url: placeUrl,
     status: "pending",
     at: Date.now(),
     source: "scene_pending",
@@ -2400,8 +2448,10 @@ function queueCardSceneArt(girl, play, onDone) {
       const stillThisJob = cardSceneJob.gen === gen;
 
       if (url) {
+        // 加版本避免瀏覽器把同 path 舊場景圖當完成
+        const bust = url.includes("?") ? url : `${url.split("#")[0]}?v=${Date.now()}`;
         cg[key] = {
-          url,
+          url: bust,
           status: "ready",
           at: Date.now(),
           source: "scene_play",
@@ -2421,10 +2471,10 @@ function queueCardSceneArt(girl, play, onDone) {
         console.warn("[cardSceneArt] imggen failed", { imgKey, provider: imgProvider() });
         if (cg[key]?.status === "pending") {
           cg[key] = {
-            url: prevUrl,
-            status: prevUrl ? "ready" : "error",
+            url: fallbackUrl,
+            status: fallbackUrl ? "ready" : "error",
             at: Date.now(),
-            source: prevUrl ? "alias_portrait" : "scene_error",
+            source: fallbackUrl ? "alias_portrait" : "scene_error",
             visualBeatZh: play.visualBeatZh || "",
           };
         }
@@ -3556,7 +3606,11 @@ function beginCardPlayText(girl, play) {
   cardUi.playAiKey = `cardplay:${girl.id}:${token}`;
   cardUi.playAiPending = true;
   cardUi.playAiStartedGen = gen;
-  cardUi.sceneArtPending = false;
+  // 保留 sceneArtPending：出卡時已 prime 成「要重畫」；文字好了再真正 queue
+  if (cardSceneArtOn() && play.cardId) {
+    const st = girl?.cardCg?.[`card:${play.cardId}`]?.status;
+    if (st === "pending") cardUi.sceneArtPending = true;
+  }
   genPost(cardUi.playAiKey, cardPlayMsgs(girl, play), 12).catch(() => {});
   if (document.body.classList.contains("card-mode")) renderCardTable();
 }
@@ -3564,13 +3618,17 @@ function beginCardPlayText(girl, play) {
 /**
  * 出卡管線：**先她的文字 → 再產英文畫圖描述 → 再生圖**。
  * 圖失敗／關場景圖 → 文字仍可看。
+ * 每次出卡都重畫（prime 已作廢舊 cardCg），不沿用上次場景圖。
  */
 function beginCardPlayAi(girl, play) {
   voidCardPlayAiAndScene();
   if (!girl || !play?.ok) return;
 
-  cardUi.sceneArtPending = false;
   cardUi.playAiPending = false;
+  // sceneArtPending 由 primeCardSceneArtOnPlay 決定，這裡不強制清掉
+  if (cardSceneArtOn() && play.cardId && girl?.cardCg?.[`card:${play.cardId}`]?.status === "pending") {
+    cardUi.sceneArtPending = true;
+  }
   beginCardPlayText(girl, play);
 }
 
@@ -6504,7 +6562,8 @@ function commitHandPlay(instanceId, girl, stage) {
   cardUi.reactBeat = "action"; // 先讀動作文；台詞背景生成
   cardUi.endPanel = null;
   touchInteractDay(girl);
-  bindCardArtAlias(girl, r.cardId);
+  // 每次出卡強制重畫場景（不要直接顯示上次 cardCg）
+  primeCardSceneArtOnPlay(girl, r.cardId);
   applyPlaySideEffects(girl, r);
   beginCardPlayAi(girl, r); // 出卡：先文字，再畫圖
   const n = state.cardSession?.hand?.length || 0;
@@ -7161,7 +7220,8 @@ function renderCardTable() {
         cardUi.reactBeat = "action";
         cardUi.endPanel = null;
         touchInteractDay(girl);
-        bindCardArtAlias(girl, r.cardId);
+        // 每次出卡強制重畫場景（不要直接顯示上次 cardCg）
+        primeCardSceneArtOnPlay(girl, r.cardId);
         applyPlaySideEffects(girl, r);
         beginCardPlayAi(girl, r);
         const n = state.cardSession?.hand?.length || 0;
