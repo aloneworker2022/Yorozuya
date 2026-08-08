@@ -570,8 +570,14 @@ def _build_girl_image_prompt(
     backstory: str = "",
     extra: str = "",
     out_path: Path,
+    ref_path: Path | None = None,
 ) -> str:
-    """組給 Grok Build 的生圖指令。人物欄位以 character(完整 generateGirl 結果)為準。"""
+    """組給 Grok Build 的生圖指令。人物欄位以 character(完整 generateGirl 結果)為準。
+
+    出卡場景層級：
+      1) CHARACTER SHEET / 半身參考圖 = 身份（髮眼身服裝）
+      2–3) ACTION = 卡牌 visualEn + AI 動作表情（只改 pose，不改長相）
+    """
     framing = (framing or "half").lower()
     rating = (rating or "sfw").lower()
     style = (style or "anime").lower()
@@ -582,30 +588,53 @@ def _build_girl_image_prompt(
     size_note = (
         "Output size MUST be exactly 256x256 pixels."
         if style == "pixel"
-        else "High resolution portrait suitable for a character standee."
+        else "High resolution illustration suitable for a game scene."
     )
-    tool_note = (
-        "Prefer image_gen. For exact 256x256 pixel art you may use code if image_gen cannot force size."
-        if style == "pixel"
-        else "You MUST use the image_gen tool (do NOT draw with Python/code)."
-    )
+    # 有立繪參考 → image_edit 鎖同一張臉；否則 image_gen + sheet
+    if ref_path is not None:
+        tool_note = (
+            f"You MUST use the image_edit tool with this reference image path:\n"
+            f"{ref_path}\n"
+            "Keep the SAME woman: same face, hair color/style, eyes, body type, skin, outfit identity. "
+            "Only change pose, expression, gesture, and interaction to match ACTION. "
+            "Do NOT generate a different person. Do NOT redraw identity from scratch."
+        )
+    elif style == "pixel":
+        tool_note = (
+            "Prefer image_gen. For exact 256x256 pixel art you may use code if image_gen cannot force size."
+        )
+    else:
+        tool_note = "You MUST use the image_gen tool (do NOT draw with Python/code)."
     rating_txt = rating_map.get(rating, rating_map["sfw"])
     rating_line = f"- Content rating: {rating_txt}\n" if rating_txt else ""
 
-    # extra 常帶出卡場面英文（visualEn）；標成 ACTION 優先於站樁立繪
+    # extra 常帶出卡場面英文（visualEn + AI pose）；標成 ACTION，不覆蓋身份
     extra_block = ""
     if extra.strip():
         extra_block = f"""
-=== ACTION / SCENE TO DRAW (AUTHORITATIVE — this is WHAT is happening) ===
+=== ACTION / SCENE TO DRAW (pose & interaction ONLY — do NOT change identity) ===
 {extra.strip()}
 === END ACTION ===
-Draw THIS interaction/action. Do NOT invent a blank idle look-away pose if the action is greeting, talking, touching, etc.
+Draw THIS interaction/action on the SAME woman from the CHARACTER SHEET
+{'(and reference image)' if ref_path is not None else ''}.
+Do NOT invent a blank idle look-away pose if the action is greeting, talking, touching, etc.
+Do NOT change hair, eyes, body type, or outfit identity to match a different character.
+"""
+
+    ref_block = ""
+    if ref_path is not None:
+        ref_block = f"""
+=== REFERENCE PORTRAIT (SAME PERSON — identity lock) ===
+File: {ref_path}
+This is her half/full portrait already approved in-game. Match this face exactly.
+=== END REFERENCE ===
 """
 
     return f"""You are generating ONE image for a game.
-The CHARACTER SHEET is AUTHORITATIVE for identity (hair, eyes, body, outfit) — match exactly.
-The ACTION block (if present) is AUTHORITATIVE for pose/gesture/expression/interaction — draw that moment, not a generic portrait.
-Appearance lines are English tags only; never invent traits from Chinese.
+IDENTITY ORDER (strict):
+  1) CHARACTER SHEET + optional REFERENCE PORTRAIT = who she is (hair, eyes, body, outfit).
+  2) ACTION block = what she is doing / expression / interaction only.
+Never swap in a different woman. Appearance lines are English tags only; never invent traits from Chinese.
 
 {tool_note}
 After the image is created, copy/move the final file to this EXACT path:
@@ -616,13 +645,13 @@ Only create that one image file at the destination. Then reply with a short note
 === CHARACTER SHEET (English tags from persona pools) ===
 {brief}
 === END SHEET ===
-{extra_block}
+{ref_block}{extra_block}
 Render settings:
 - Framing: {frame_map.get(framing, frame_map["half"])}
 - Art style: {style_map.get(style, style_map["anime"])}
 {rating_line}- {size_note}
 - Prefer simple or scenic background that fits the action; no text overlays, no watermark
-- If ACTION involves two people (he/she), show both as needed; otherwise single character is fine
+- If ACTION involves two people (he/she), show both as needed; her face must still match the sheet/reference
 """
 
 
@@ -658,13 +687,22 @@ _RATING_ZH = {"sfw": "全年齡", "nsfw": ""}
 
 
 def _resolve_ref_image(ref: str) -> Path | None:
-    """把前端傳來的 /assets/testword/xxx.png 換成本機絕對路徑。
-    只認 testword 目錄下確實存在的檔案(取 basename,擋路徑穿越)。"""
+    """把前端傳來的 /assets/… 換成本機絕對路徑。
+
+    認 portraits（立繪半身／全身，出卡鎖臉用）與 testword（分段第二輪）。
+    只取 basename，擋路徑穿越。
+    """
     ref = (ref or "").strip()
     if not ref:
         return None
-    p = IMG_TEST_DIR / Path(ref).name
-    return p if p.is_file() and p.stat().st_size > 0 else None
+    name = Path(ref.split("?", 1)[0]).name
+    if not name or name in (".", "..") or "/" in name or "\\" in name:
+        return None
+    for base in (PORTRAIT_DIR, IMG_TEST_DIR):
+        p = base / name
+        if p.is_file() and p.stat().st_size > 0:
+            return p
+    return None
 
 
 def _outfit_of(ch: dict) -> str:
@@ -823,11 +861,13 @@ async def _run_grok_image(
         )
         prompt = _wrap_part_prompt(body, out_path=target, ref_path=_resolve_ref_image(ref))
     else:
+        # 出卡場景：可帶半身立繪 ref 鎖同一張臉
         prompt = _build_girl_image_prompt(
             framing=framing, rating=rating, style=style,
             character=character,
             name=name, personality=personality, backstory=backstory, extra=extra,
             out_path=target,
+            ref_path=_resolve_ref_image(ref),
         )
     text, err = await _run_grok_cli(
         prompt,
@@ -937,12 +977,18 @@ async def cutout_run(body: CutIn):
 
 def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
     """人設 → 英文 SD tag。膚色/配色沿用 Grok 那條路的確定性雜湊,
-    同一個人設不管走哪條路都推出同一組,兩邊的圖才是同一個人。"""
+    同一個人設不管走哪條路都推出同一組,兩邊的圖才是同一個人。
+
+    出卡場景：identity tags 在前、extra（visualEn + AI 動作）在後；
+    scene=True 時去掉 solo / looking at viewer，才畫得出互動。
+    """
     ch = opts.get("character") if isinstance(opts.get("character"), dict) else None
     anchor = _identity_anchor(ch or {})
     part = str(opts.get("part") or "").lower()
     # 三連拍的 shot 直接就是取景(head/half/full),蓋掉 framing
     shot = str(opts.get("shot") or "").lower()
+    # 有 extra 且 lock_identity（出卡）→ 場景模式；純立繪仍 solo
+    scene = bool(opts.get("lock_identity")) and bool(str(opts.get("extra") or "").strip())
     return sdtags.build_prompt(
         ch,
         # 要去背的那幾張,prompt 先要一塊平背景(見 cutout.py)。
@@ -960,6 +1006,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         # 第一輪(head0/bust0/lower0)不寫服裝,跟中文那版同一個取捨
         dressed=part not in IMG_BARE_PARTS,
         extra=str(opts.get("extra") or ""),
+        scene=scene,
     )
 
 
@@ -994,11 +1041,12 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
 
     # 三連拍的尺寸與 seed 由伺服器決定:尺寸照 plan-v4 立繪規格,seed 取人設雜湊
     # ——三張同 seed 才會是同一張臉,而且重生還是同一個人。
+    # 出卡場景 lock_identity=True 時同樣鎖人設 seed（不寫進 portraits 檔名）。
     spec = comfy.PORTRAIT_SHOTS.get(shot) or {}
     gen_w, gen_h = spec.get("gen", (0, 0))
     out_w, out_h = spec.get("out", (0, 0))
     seed = int(opts.get("seed") or 0)
-    if shot and not seed:
+    if not seed and (shot or opts.get("lock_identity")):
         seed = _identity_anchor(opts.get("character") or {})["seed"]
 
     # 三連拍照規格去背;testword 那條(沒有 shot)由前端的勾選決定,
@@ -1314,7 +1362,7 @@ class ImgGenIn(BaseModel):
     backstory: str = ""
     extra: str = ""
     part: str = ""              # ""=整張;head0|bust0|lower0=第一輪;head|bust|lower=第二輪穿搭
-    ref: str = ""               # 第一輪同段那張的 /assets/testword/… URL,第二輪當參考圖
+    ref: str = ""               # 參考圖 URL：分段第二輪用 testword；出卡鎖臉可用 /assets/portraits/…
     prompt: str = ""            # 使用者在 testword 改過的 prompt(留空=伺服器依人設自己組)
     # 指定這張圖穿哪一套。留空 = 由 character 決定(生涯服裝優先,見 _outfit_of)
     outfit: str = ""
@@ -1336,7 +1384,9 @@ class ImgGenIn(BaseModel):
     out_height: int = 0
     steps: int = 0
     cfg: float = 0
-    seed: int = 0               # 0 = 每次隨機(三連拍例外:取人設雜湊)
+    seed: int = 0               # 0 = 每次隨機(三連拍 / lock_identity 例外:取人設雜湊)
+    # 出卡場景：與三連拍同一套人設 seed + sdtags 身份前置；extra 只疊動作
+    lock_identity: bool = False
     comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
     # 召喚三連拍:shot=head|half|full 且有 char_id → 存 assets/portraits/{char_id}_{shot}.png,
     # 尺寸與 seed 由伺服器依規格決定(三張同 seed = 同一張臉)
@@ -1406,10 +1456,15 @@ def imggen_submit(t: ImgGenIn):
     key = (t.key or "").strip() or f"img:{int(time.time() * 1000)}:{uuid.uuid4().hex[:8]}"
     part = (t.part or "").lower()
     ep = _gen_endpoint_for(t.provider, "")
+    # ref：分段第二輪、或出卡半身立繪鎖臉（portraits / testword）
+    ref_in = (t.ref or "").strip()
+    allow_ref = bool(part in IMG_SEG_PARTS) or bool(ref_in and t.lock_identity) or bool(
+        ref_in.startswith("/assets/portraits/") or ref_in.startswith("/assets/testword/")
+    )
     opts = {
         "kind": "girl_image",
         "part": part if part in IMG_PARTS else "",
-        "ref": (t.ref or "") if part in IMG_SEG_PARTS else "",
+        "ref": ref_in if allow_ref else "",
         "framing": (t.framing or "half").lower(),
         "rating": (t.rating or "sfw").lower(),
         "style": (t.style or "anime").lower(),
@@ -1419,8 +1474,9 @@ def imggen_submit(t: ImgGenIn):
         "backstory": t.backstory or "",
         "extra": t.extra or "",
         "outfit": t.outfit or "",
-        # ComfyUI 沒有「伺服器依人設自己組」那條路(SD 吃 tag 不吃中文敘述),
-        # 所以 prompt 一律照收;Grok 那條維持原本只在分段時才收的行為。
+        "lock_identity": bool(t.lock_identity),
+        # Comfy：prompt 有值才原樣送；出卡應留空，讓 _comfy_prompt_for 用人設 + extra
+        # Grok：整張圖不吃前端 prompt（只在分段 part 時吃）
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS) else "",
     }
     if ep == "comfy-img":

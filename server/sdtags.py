@@ -646,6 +646,7 @@ def build_prompt(
     dressed: bool = True,
     flat_bg: bool = False,
     extra: str = "",
+    scene: bool = False,
 ) -> tuple[str, list[str]]:
     """回 (positive prompt, 查不到對照的原文清單)。
 
@@ -657,6 +658,9 @@ def build_prompt(
 
     outfit 給值 = 指定要穿的那一套(生涯服裝或個人衣櫃裡的某一套);留空才退回
     look.style。特殊屬性會蓋掉對應的一般欄位,見 resolve_specials。
+
+    scene=True（出卡互動）：身份 tags 仍在最前，但不寫 solo / looking at viewer，
+    讓 extra 的互動動作能畫出兩人或對視，而不是站樁 solo 立繪。
     """
     ch = character if isinstance(character, dict) else {}
     look = _look(ch)
@@ -677,7 +681,11 @@ def build_prompt(
         unknown.append(f"{key}: {raw}")
         return ""
 
-    bits: list[str] = [QUALITY_PREFIX, "1girl, solo", HUMAN_TAGS]
+    # 出卡場景：1girl 但不 solo，身份權重仍壓在最前
+    if scene:
+        bits: list[str] = [QUALITY_PREFIX, "1girl", HUMAN_TAGS]
+    else:
+        bits = [QUALITY_PREFIX, "1girl, solo", HUMAN_TAGS]
     # 年齡緊接在「她是誰」後面:動漫模型對前段權重高,年紀才壓得住
     bits.append(age_tags(age or look.get("age")))
     # 要去背的那幾張:先讓模型畫出一塊平背景,後製才摳得乾淨(見 cutout.py)。
@@ -700,7 +708,8 @@ def build_prompt(
         bits += [tr(FACE, "face"), tr(EYES, "eyes"), tr(MOUTH, "mouth"),
                  tr(HAIR_COLOR, "hair_color"), tr(HAIR, "hair"), tr(FEATURE, "feature")]
         bits += sp_seg["head"]
-        if not p:
+        # 純立繪對鏡；出卡場景由 extra 決定對視對象，不強制 looking at viewer
+        if not p and not scene:
             bits.append("looking at viewer")
     if not p or seg == "bust":
         bits += [tr(BUST, "bust")]
@@ -739,6 +748,7 @@ def build_prompt(
 
     bits.append(ART_STYLE.get(art_style, ""))
     bits.append(RATING.get((rating or "sfw").lower(), ""))
+    # 出卡：extra = visualEn + AI 動作，接在身份後面
     if extra.strip():
         bits.append(extra.strip())
 

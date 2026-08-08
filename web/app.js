@@ -2009,6 +2009,8 @@ function cardVisualPoseMsgs(girl, play) {
 
 /**
  * 已有台詞 + 表情／動作 → 純英文畫圖句（給 image 模型，無 meta 標籤）
+ * 注意：只寫「動作／表情／互動」——外貌（髮眼身服裝）由人設 sheet 單獨鎖，
+ * 這裡若再發明長相差一點就會變成另一個人。
  */
 function cardImgEnMsgs(girl, play, def) {
   const rating = state.settings?.rating || "sfw";
@@ -2016,17 +2018,16 @@ function cardImgEnMsgs(girl, play, def) {
   const scene = String(play?.sceneStart || "").replace(/\s+/g, " ").slice(0, 180);
   const pose = play?.visualPose || parseCardVisualPose(play?.visualPoseText || "");
   const dialogue = String(play?.girlLine || "").replace(/\s+/g, " ").slice(0, 160);
-  const L = girl?.look || {};
   return [
     {
       role: "system",
       content: [
-        "You write English visual prompts for anime illustration.",
+        "You write English visual prompts for anime illustration ACTION only.",
         "Output ONLY comma-separated English visual phrases.",
-        "Content: her facial expression, body pose/gesture, his related action if needed, framing.",
+        "ONLY write: facial expression, body pose/gesture, interaction with him, camera framing.",
+        "FORBIDDEN: inventing hair color/style, eye color, outfit, age, body type, race — identity is locked by character sheet elsewhere.",
         "FORBIDDEN labels: card, token, stage direction, prompt, visualEn, PRIMARY, tags, kind, speech.",
-        "No Chinese. No quotes. No markdown. No spoken dialogue text in the image prompt.",
-        "Match her body type if given (bust/build as English tags only if already English; otherwise ignore Chinese body text).",
+        "No Chinese. No quotes. No markdown. No spoken dialogue text on the image.",
         "If greeting/talk: face each other, eye contact — never blank look-away idle.",
         rating === "nsfw"
           ? "NSFW visual ok if implied."
@@ -2036,14 +2037,13 @@ function cardImgEnMsgs(girl, play, def) {
     {
       role: "user",
       content: [
-        vEn ? `Card visual seed (English): ${vEn}` : "",
-        pose?.face ? `Her face (Chinese → English visual): ${pose.face}` : "",
-        pose?.body ? `Her body action (Chinese → English visual): ${pose.body}` : "",
-        dialogue ? `She said (context only, do not print dialogue on image): ${dialogue}` : "",
+        vEn ? `Card visual seed (English pose baseline): ${vEn}` : "",
+        pose?.face ? `Her expression (Chinese → English): ${pose.face}` : "",
+        pose?.body ? `Her body action (Chinese → English): ${pose.body}` : "",
+        dialogue ? `She said (context only, do not print dialogue): ${dialogue}` : "",
         scene ? `His action context: ${scene}` : "",
-        L.build || L.bust ? `Body note (optional): build/bust described in sheet separately` : "",
         play?.open?.success === false ? "She rejects physically." : "",
-        "Write English illustration tags now (content only).",
+        "Write English ACTION tags only (expression + pose + interaction). No appearance.",
       ].filter(Boolean).join("\n"),
     },
   ];
@@ -2440,7 +2440,15 @@ function queueCardSceneArt(girl, play, onDone) {
   })();
 }
 
-/** 場景圖：character + 定格英文；構圖依牌 tags；不蓋 portraits */
+/**
+ * 出卡場景圖生圖。
+ * 層級（與半身／全身立繪對齊身份，再疊卡牌與 AI）：
+ *   1) 前置 = 完整 character 人設（伺服器用 sdtags／CHARACTER SHEET + 同一 identity seed）
+ *   2) 卡牌 visualEn（牌預設畫圖）
+ *   3) AI 產的動作／表情英文（sceneEn / imgEn）
+ * 不寫 prompt 蓋掉人設（Comfy 以前把 action 當整段 prompt → 畫成另一個人）。
+ * 有半身立繪時傳 ref，Grok 走 image_edit 鎖同一張臉。
+ */
 async function weaveCardSceneShot(s, sceneEn, key, play = null) {
   if (!s) return "";
   if (!canWeaveNow()) {
@@ -2449,38 +2457,62 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
   }
   const def = play?.cardId ? Cards.cardById(play.cardId) : null;
   const tags = def?.tags || [];
-  // speech 偏半身對話；觸碰／吻可更近；默認 half
+  // speech 偏半身對話；觸碰／吻可更近；默認 half（與半身立繪同構圖）
   let framing = "half";
   if (tags.includes("sex")) framing = "full";
   else if (tags.includes("kiss") || tags.includes("touch")) framing = "half";
 
   const comfy = imgProvider() === "comfy";
-  // 只塞「可畫內容」英文，不塞 card token / stage direction 等標籤
+  // 層 2：卡牌預設；層 3：AI 動作（都不帶外貌；相同時不重複）
   const cardVis = scrubImgPromptLabels(cardVisualEn(def));
-  const pure = scrubImgPromptLabels([cardVis, sceneEn].filter(Boolean).join(", "));
-  const actionEn = scrubImgPromptLabels([
-    pure,
+  const aiAction = scrubImgPromptLabels(sceneEn || play?.imgEn || play?.visualBeatEn || "");
+  const actionLayers = [];
+  if (cardVis) actionLayers.push(cardVis);
+  if (aiAction && aiAction.toLowerCase() !== cardVis.toLowerCase()) actionLayers.push(aiAction);
+  actionLayers.push(
     "mid-action, detailed face",
     "facing each other if talking or greeting",
     "not idle solo portrait looking away",
-  ].filter(Boolean).join(", "));
+  );
+  const actionEn = scrubImgPromptLabels(actionLayers.join(", "));
+
+  // 半身立繪當身份參考（Grok image_edit；Comfy 目前仍靠 seed+tags）
+  const halfRef = (s.portraits?.half || s.portrait || "").split("?")[0] || "";
+  const refOk = /^\/assets\/(portraits|testword)\//.test(halfRef);
+
+  console.info("[cardSceneArt] weave layers", {
+    identity: s.name || s.id,
+    framing,
+    cardVis: cardVis.slice(0, 80),
+    aiAction: aiAction.slice(0, 80),
+    ref: refOk ? halfRef : "(none)",
+    lock_identity: true,
+  });
+
   const body = {
     key,
     provider: imgProvider(),
     model: state.settings.model || "grok-4.5",
     framing,
     rating: state.settings.rating || "sfw",
-    // 出卡要像劇情插圖，不要 pixel 立繪風（那會更抽離）
+    // 出卡要像劇情插圖，不要 pixel 立繪風
     style: state.settings.imgStyle === "pixel" ? "anime" : (state.settings.imgStyle || "anime"),
+    // 層 1：完整人設（與 weaveShot 同一份 character）
     character: s,
+    // 層 2+3：只當 ACTION，伺服器接在人設後面
     extra: actionEn,
-    prompt: comfy ? actionEn : "",
+    // 關鍵：Comfy 不可把 action 當整段 prompt，否則跳過 sdtags 人設 → 變臉
+    prompt: "",
+    // 鎖與三連拍相同的人設 seed（伺服器 _identity_anchor）
+    lock_identity: true,
     cutout: false,
     flat_bg: false,
     retry: true,
+    ...(refOk ? { ref: halfRef } : {}),
     ...(comfy ? {
       comfy_url: state.settings.comfyUrl || "",
       ckpt: state.settings.comfyCkpt || "",
+      // 不傳 shot/char_id 當肖像檔名，避免覆寫 half/full 立繪檔
     } : {}),
   };
   let url = "";
