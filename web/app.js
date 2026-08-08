@@ -85,7 +85,7 @@ const EXPANSIONS = {
 };
 // 天賦可能值:8 個擴充軸 + 特殊「取消召喚師」(獻祭刷到就清掉所有召喚師)
 const GIFT_KEYS = [...Object.keys(EXPANSIONS), "cleanse"];
-function giftLabel(g) { return g === "cleanse" ? "取消所有召喚師(特殊)" : (EXPANSIONS[g] || "?"); }
+function giftLabel(g) { return g === "cleanse" ? "取消所有召喚師" : (EXPANSIONS[g] || "?"); }
 function expLv(k) {
   let lv = (state.expansions && state.expansions[k]) || 0;
   // 在任看板娘自帶擴充暫時加到玩家身上(多看板娘可疊,每位 +1)
@@ -1460,14 +1460,10 @@ async function severSummonerWithSacrifice(offerId, fromDetailId) {
   if (state.gold < price) { toast(`今日獻祭費 ${price} 金,你付不起`, "bad"); return; }
 
   const multi = candidates.length >= 2;
-  const oddsTxt = multi
-    ? `目前 ${candidates.length} 人被纏——將隨機解除其中一人(必成)`
-    : `目前只有 ${candidates[0].name} 被纏——成功率 1/3`;
   if (!confirm(
     `獻祭 ${offer.name}(${price} 金) 嘗試破除召喚師?\n\n` +
-    `· ${offer.name} 將永遠消失(無論成功與否)\n` +
-    `· ${oddsTxt}\n` +
-    `· 成功時:該魅魔回到未纏上;與該召喚師的階段會被記住(同類型再纏接續)`
+    `· ${offer.name} 將永遠消失\n` +
+    `· 成功時:隨機一名被纏魅魔回到未纏上(階段會記住)`
   )) return;
 
   state.gold -= price;
@@ -1521,8 +1517,8 @@ async function severSummonerWithSacrifice(offerId, fromDetailId) {
     }
   } else {
     const name = target?.name || "她";
-    log(`獻祭 ${offer.name}(-${price} 金)嘗試破除纏身——失敗(${name} 仍被纏住;獨苗 1/3)`);
-    toast(`破除失敗……${name} 身上的召喚師還在(獨苗時僅 1/3 成功)`, "bad");
+    log(`獻祭 ${offer.name}(-${price} 金)嘗試破除纏身——失敗(${name} 仍被纏住)`);
+    toast(`破除失敗……${name} 身上的召喚師還在`, "bad");
   }
 
   severChooser = false;
@@ -7669,10 +7665,8 @@ function renderDetail(s, root) {
   const ns = nextStage(s);
   const today = dayNum();
   const datesLeft = datesLeftToday(s);
-  const phoneRange = Cards.d?.("phone_cost_range", [10, 30]) || [10, 30];
-  const dateBtnLabel = cardSystemOn()
-    ? `約會 電話${phoneRange[0]}~${phoneRange[1]}+場地(今日剩 ${datesLeft})${isKanban(s.id) ? "·看板中不可約" : ""}`
-    : `約會 ${DATE_COST} 金(今日剩 ${datesLeft})${isKanban(s.id) ? "·看板中不可約" : ""}`;
+  // 牌制:按鈕只寫「電話」;舊約會則寫「約會」
+  const dateBtnLabel = cardSystemOn() ? "電話" : "約會";
 
   let needLine;
   if (s.ntr) {
@@ -7684,32 +7678,20 @@ function renderDetail(s, root) {
     const stTxt = { ok: "心情不錯", due: "今天想見你", danger: "快要離開了!" }[st];
     needLine = `<div class="aff-line dim small">${bits.join(" / ")} — ${stTxt}</div>`;
   }
-  // 被別的召喚師纏上
+  // 被別的召喚師纏上:只顯示名字 + 關係階段
   let summonerLine = "";
   if (s.summoner && !s.ntr) {
     const su = summonerById(s.summoner.id);
-    if (su) {
-      // 玩家看不到過去的紀錄——只有「此刻正被召喚中」才顯示,且要靠聊天/約會當場撞見或事後詢問她
-      const takenTxt = s.summoner.taken
-        ? "她此刻正被召喚到對方身邊——召喚不動她(當不了看板娘);現在約她出門,能撞見實況、有機會把她拉回來"
-        : "他隨時可能把她召喚過去";
-      const ringTxt = s.summoner.ringUnlocked
-        ? `<br><span style="color:var(--red)">⚠ 她已為他解開魔法環——隨時可能懷孕被娶走</span>`
-        : "";
-      summonerLine = `<div class="summoner-note">⚠ ${su.emoji} <b>${esc(su.name)}</b> 纏上了她(${esc(su.desc)})<br>
-      她對他的態度:<b>${rivalStageName(s.summoner.stage ?? 0)}</b> — ${takenTxt}${ringTxt}</div>`;
-    }
+    const nm = su?.name || "召喚師";
+    const em = su?.emoji ? `${su.emoji} ` : "";
+    summonerLine = `<div class="summoner-note">⚠ ${em}<b>${esc(nm)}</b> · ${esc(rivalStageName(s.summoner.stage ?? 0))}</div>`;
   }
 
-  // 破除纏身:獻祭一名祭品 → ≥2 人被纏則隨機解一人;僅 1 人則 1/3
-  // 入口:目前這頁有人被纏(含自己),或她本人可當祭品且名冊上有被纏者
+  // 破除纏身:獻祭一名祭品 → ≥2 人被纏則隨機解一人;僅 1 人則 1/3(機率不對玩家顯示)
   const entangledOthers = state.succubi.filter(x => x.id !== s.id && x.summoner && !x.ntr);
   const anyEntangled = !!(s.summoner && !s.ntr) || entangledOthers.length > 0;
-  // 祭品候選:可獻祭的其他人;若這頁自己也可獻且「還有別人被纏」,自己也能當祭品——用 chooser 列全部可獻者(可含自己)
   const severOffers = anyEntangled
     ? state.succubi.filter(x => !x.ntr && canSacrifice(x) && (
-        // 祭品死後仍須至少留下一名「曾可能被解」的被纏者:祭品不能是唯一被纏且沒別人
-        // 簡化:只要獻掉她之後 candidates = 被纏且不是她 的人數 ≥ 1
         state.succubi.some(y => y.id !== x.id && y.summoner && !y.ntr)
       ))
     : [];
@@ -7717,15 +7699,8 @@ function renderDetail(s, root) {
   const entangledCount = state.succubi.filter(x => x.summoner && !x.ntr).length;
   let severBlock = "";
   if (anyEntangled && !severOffers.length) {
-    severBlock = entangledCount
-      ? "需要可獻祭的祭品(獻掉後仍須有人被纏才擲得成)"
-      : "沒有被纏住的魅魔";
+    severBlock = entangledCount ? "需要可獻祭的祭品" : "沒有被纏住的魅魔";
   }
-  const severOddsHint = entangledCount >= 2
-    ? `目前 ${entangledCount} 人被纏 → 隨機解一人(必成)`
-    : entangledCount === 1
-      ? `目前僅 1 人被纏 → 成功率 1/3`
-      : "";
 
   root.className = `r-${s.rarity}`;
   root.innerHTML = `
@@ -7747,19 +7722,15 @@ function renderDetail(s, root) {
       ${summonerLine}
       ${anyEntangled ? `
         <div class="detail-actions">
-          <button class="danger-btn" id="act-sever" ${severOffers.length ? "" : "disabled"}
-            title="獻祭一名魅魔嘗試破除:多人被纏時隨機解一人;僅一人時 1/3 成功。階段會記住。">
+          <button class="danger-btn" id="act-sever" ${severOffers.length ? "" : "disabled"}>
             ${severOffers.length
               ? `破除纏身(獻祭・${severFee} 金)`
               : `破除纏身(${esc(severBlock)})`}
           </button>
         </div>
-        ${severOddsHint ? `<div class="aff-line dim small">${esc(severOddsHint)}</div>` : ""}
         ${severChooser ? `
           <div class="chooser" style="justify-content:center;flex-wrap:wrap;gap:.4em">
-            <div class="dim small" style="width:100%;text-align:center;margin:.3em 0 .2em">
-              選祭品(永遠消失)。${esc(severOddsHint)} 成功時該魅魔與召喚師的階段會被記住。
-            </div>
+            <div class="dim small" style="width:100%;text-align:center;margin:.3em 0 .2em">選祭品(永遠消失)</div>
             ${severOffers.map(o =>
               `<button type="button" data-sever-offer="${esc(o.id)}" class="danger-btn">${esc(o.name)} · ${o.rarity} · ${stageLabel(o.stage)}</button>`
             ).join("")}
@@ -7790,9 +7761,8 @@ function renderDetail(s, root) {
         </div>` : ""}
       ${dateChooser && !s.ntr && !isKanban(s.id) && !cardSystemOn() ? `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>` : ""}
       ${!s.ntr && !cardSystemOn() ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b></div>` : ""}
-      ${!s.ntr && cardSystemOn() ? `<div class="aff-line dim small">看板：靠近她打牌；非看板可約會（電話→場地牌局）。委託時 15% 碎嘴。</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
-      ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師(階段會記住)" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
+      ${!s.ntr ? `<div class="aff-line dim small">天賦:${esc(giftLabel(s.gift))}</div>
         ${SAC_RITUAL ? `<div class="aff-line dim small">${sacScriptReady(s)
           ? "獻祭文已備妥"
           : (isAsleep() ? "獻祭文織夢中…" : "獻祭文於 01:00 起在夢中織就")}</div>` : ""}
