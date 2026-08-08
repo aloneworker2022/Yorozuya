@@ -6,8 +6,9 @@
 - 本模組只運算「數字/事件」(擲骰、交配、階段推進、taken 時效),act 的『文字』一律留 null,
   由手機在觀戰/詢問時才即時生成(核心零檢視內容原則不變)。
 - 伺服器擁有自己的資料表(sim),絕不碰手機的存檔 blob(save)。手機仍是存檔唯一寫入者。
-  手機把召喚師狀態當「唯讀鏡像」顯示;會改到模擬的玩家動作(看過/掙脫)以 patch 回報。
+  手機把召喚師狀態當「唯讀鏡像」顯示;會改到模擬的玩家動作(看過/掙脫/破除纏身)以 patch 回報。
 - 結局(懷孕娶走)會移除魅魔,這動到名冊=存檔,故伺服器只記 outcome,由手機套用。
+- 破除纏身(patch clear):寫 mem[girl][summonerId]=階段後拔 rel;下次同類型再纏上接續。
 
 常數與邏輯與 web/app.js 的客戶端版本一一對應,是同一套規則的權威實作。
 """
@@ -91,13 +92,58 @@ def summoner_by_id(sid):
     return None
 
 
-def make_rel(su_id, now_ms):
+def remember_rel(store, gid, rel):
+    """破除纏身時記住「這隻魅魔 × 這位召喚師」的階段,下次同類型再纏上會接續。"""
+    if not rel or not gid:
+        return
+    sid = rel.get("id")
+    if not sid:
+        return
+    stg = min(5, max(0, int(rel.get("stage") or 0)))
+    store.setdefault("mem", {}).setdefault(gid, {})[sid] = {
+        "stage": stg,
+        "matingCount": int(rel.get("matingCount") or 0),
+        "ringUnlocked": bool(rel.get("ringUnlocked")),
+        "kinks": list(rel.get("kinks") or []),
+    }
+
+
+def mem_of(store, gid, su_id):
+    return (store.get("mem") or {}).get(gid, {}).get(su_id)
+
+
+def clear_rel(store, gid, now_ms=None):
+    """解除召喚師纏身:寫入 mem 後拔掉 rel;本 30 分窗不再被立刻重纏。"""
+    rel = store.get("rels", {}).get(gid)
+    if not rel:
+        return False
+    remember_rel(store, gid, rel)
+    store["rels"].pop(gid, None)
+    store.get("takenWin", {}).pop(gid, None)
+    if now_ms is not None:
+        store.setdefault("judgeWin", {})[gid] = now_ms // WIN30_MS
+    return True
+
+
+def make_rel(su_id, now_ms, mem=None):
+    """新建召喚師關係;若有同類型記憶(破除後再纏),接續 stage / 解環 / 性趣。"""
     _, kinks = load_content()
     names = [k["name"] for k in kinks]
+    stg = 0
+    mating = 0
+    ring = False
+    kink_list = sample_n(names, rand_int(4, 10)) if names else []
+    if mem:
+        stg = min(5, max(0, int(mem.get("stage") or 0)))
+        mating = int(mem.get("matingCount") or 0)
+        ring = bool(mem.get("ringUnlocked"))
+        if mem.get("kinks"):
+            kink_list = list(mem["kinks"])
     return {
-        "id": su_id, "sinceDay": day_num(now_ms), "stage": 0, "resist": STAGE_RESIST[0],
-        "matingCount": 0, "ringUnlocked": False,
-        "kinks": sample_n(names, rand_int(4, 10)) if names else [], "taken": None, "acts": [],
+        "id": su_id, "sinceDay": day_num(now_ms), "stage": stg,
+        "resist": STAGE_RESIST[stg],
+        "matingCount": mating, "ringUnlocked": ring,
+        "kinks": kink_list, "taken": None, "acts": [],
     }
 
 
@@ -213,10 +259,14 @@ def _tick_girl(store, gid, now_ms):
             sums, _ = load_content()
             if sums:
                 su = pick(sums)
-                store["rels"][gid] = make_rel(su["id"], now_ms)
+                prev = mem_of(store, gid, su["id"])
+                store["rels"][gid] = make_rel(su["id"], now_ms, prev)
                 store.setdefault("takenWin", {})[gid] = now_ms // WIN30_MS   # 纏上當下這輪先不召喚
-                store.setdefault("outcomes", []).append(
-                    {"type": "entangled", "id": gid, "suName": su.get("name"), "t": now_ms})
+                outcome = {"type": "entangled", "id": gid, "suName": su.get("name"), "t": now_ms}
+                if prev:
+                    outcome["resumed"] = True
+                    outcome["stage"] = store["rels"][gid].get("stage", 0)
+                store.setdefault("outcomes", []).append(outcome)
                 return True
         return False
 
@@ -253,9 +303,14 @@ def adopt_seeds(store, seeds):
             store["rels"][gid] = rel
 
 
-def apply_patches(store, patches):
-    """玩家動作回報:標記看過、回填已生成的 act 文字、掙脫召喚。"""
+def apply_patches(store, patches, now_ms=None):
+    """玩家動作回報:標記看過、回填已生成的 act 文字、掙脫召喚、破除纏身(clear)。"""
+    now_ms = int(now_ms if now_ms is not None else time.time() * 1000)
     for gid, p in (patches or {}).items():
+        # 破除纏身:可在無 rel 時略過;有 rel 則寫 mem 後拔掉(不必先有 taken)
+        if p.get("clear") or p.get("sever"):
+            clear_rel(store, gid, now_ms)
+            continue
         rel = store["rels"].get(gid)
         if not rel:
             continue
@@ -325,19 +380,22 @@ def run_tick(store, now_ms):
     for gid in list(store.get("roster", {}).keys()):
         if _tick_girl(store, gid, now_ms):
             changed = True
-    # 名冊已無的魅魔(消失/被娶走/被獻祭):清掉關係與判定旗標
+    # 名冊已無的魅魔(消失/被娶走/被獻祭):清掉關係、記憶與判定旗標
     roster = store.get("roster", {})
     for gid in list(store["rels"].keys()):
         if gid not in roster:
             store["rels"].pop(gid, None)
             changed = True
-    for m in ("judgeWin", "takenWin"):
-        for gid in list(store[m].keys()):
+    for m in ("judgeWin", "takenWin", "mem"):
+        bucket = store.get(m) or {}
+        for gid in list(bucket.keys()):
             if gid not in roster:
-                store[m].pop(gid, None)
+                bucket.pop(gid, None)
+                changed = True
     return changed
 
 
 def new_store():
     return {"rels": {}, "roster": {}, "rating": "sfw", "outcomes": [], "judgeWin": {}, "takenWin": {},
+            "mem": {},  # {girlId: {summonerId: {stage, matingCount, ringUnlocked, kinks}}}
             "clock": {"kanbans": {}, "quests": {}, "lastDay": None}}

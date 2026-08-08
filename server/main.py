@@ -1733,7 +1733,7 @@ class SimSync(BaseModel):
     rating: str | None = None              # 'sfw' | 'nsfw'
     roster: list = []                      # [{id, ntr, kanban, busy}] 名冊快照
     seeds: dict | None = None              # {id: rel} 伺服器沒追蹤到時採用的既有關係
-    patches: dict | None = None            # {id: {seen:[actId], texts:{actId:text}, rescue:bool}}
+    patches: dict | None = None            # {id: {seen:[actId], texts:{actId:text}, rescue:bool, clear:bool}}
     kanbans: list = []                     # [{id, until}] 看板娘計時(權威時鐘用)
     quests: list = []                      # [{id, deadline}] 執行中委託計時(權威時鐘用)
     day: int | None = None                 # 手機當前日序(跨日結算的起點,首次 sync 用)
@@ -1760,7 +1760,7 @@ async def sim_sync(body: SimSync):
         if body.day is not None and clock.get("lastDay") is None:
             clock["lastDay"] = body.day
         sim.adopt_seeds(store, body.seeds)
-        sim.apply_patches(store, body.patches)
+        sim.apply_patches(store, body.patches, now_ms)
         sim.run_tick(store, now_ms)
         rels = {gid: store["rels"].get(gid) for gid in store["roster"].keys()}
         outcomes = store.get("outcomes", [])

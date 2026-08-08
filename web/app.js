@@ -559,6 +559,7 @@ let saveTimer = null;
 let detailId = null;     // 魅魔詳情頁
 let dateChooser = false; // 詳情頁展開約會地點（舊）／場地清單（牌制）
 let dateFlow = null;     // M3：{ girlId, phoneCost } 電話已接通、待選場地
+let severChooser = false; // 詳情頁展開「破除纏身」祭品選擇
 let lastSleepState = null;
 
 function defaultState() {
@@ -1396,15 +1397,21 @@ function sacAdvance() {
 }
 
 // 結算:移除她 + 依階段機率掉永久天賦擴充(在「完成獻祭」時才發生)
+// ss.forSever=true 時:這次獻祭是「破除纏身」的祭品,log 由呼叫端另寫
 function sacSettle(ss) {
   ss.settled = true;
   const dropped = Math.random() < sacrificeDropChance(ss.stage);
   let dropMsg = "";
   if (dropped) {
     if (ss.gift === "cleanse") {
-      const n = state.succubi.filter(x => x.id !== ss.id && x.summoner).length;
-      for (const x of state.succubi) if (x.id !== ss.id) x.summoner = null;
-      dropMsg = `\n\n✦ 特殊天賦發動:所有魅魔身上的召喚師都被抹除了!(${n} 名解除)`;
+      // 必須回報伺服器 clear,否則下一輪 simSync 會把召喚師鏡像蓋回來
+      const victims = state.succubi.filter(x => x.id !== ss.id && x.summoner);
+      for (const x of victims) {
+        simClearOf(x);
+        x.summoner = null;
+      }
+      dropMsg = `\n\n✦ 特殊天賦發動:所有魅魔身上的召喚師都被抹除了!(${victims.length} 名解除;同類型再纏會接續舊階段)`;
+      simSync(true);
     } else {
       state.expansions ??= {};
       const inc = ss.stage === "wife" ? 2 : 1;   // 妻子最豐厚
@@ -1417,9 +1424,111 @@ function sacSettle(ss) {
   state.kanbans = (state.kanbans || []).filter(k => k.id !== ss.id);
   if (state.lastKanbanId === ss.id) state.lastKanbanId = null;
   document.body.classList.remove("card-mode");
-  log(`獻祭了 ${ss.name}(-${ss.price} 金)${dropped ? `,獲得 ${EXPANSIONS[ss.gift]} 擴充` : ""}`);
-  toast(dropMsg.includes("✦") ? "✦ 獲得永久擴充!" : `${ss.name} 化作了獻祭的光`, dropMsg.includes("✦") ? "good" : "");
+  if (!ss.forSever) {
+    log(`獻祭了 ${ss.name}(-${ss.price} 金)${dropped ? (ss.gift === "cleanse" ? ",發動清除召喚師" : `,獲得 ${EXPANSIONS[ss.gift]} 擴充`) : ""}`);
+    toast(dropMsg.includes("✦") ? "✦ 獲得永久擴充!" : `${ss.name} 化作了獻祭的光`, dropMsg.includes("✦") ? "good" : "");
+  } else if (dropMsg.includes("✦")) {
+    toast(dropMsg.includes("清除") ? "✦ 清除召喚師!" : "✦ 獲得永久擴充!", "good");
+  }
   scheduleSave();
+  return { dropped, dropMsg };
+}
+
+// 破除纏身:名冊上「被纏住」只剩 1 人時成功機率;≥2 人時隨機挑一人必成
+const SEVER_SOLO_CHANCE = 1 / 3;
+
+/**
+ * 獻祭一名魅魔,嘗試破除召喚師纏身。
+ * - 被纏住 ≥2 人:隨機選一人解除(必成)
+ * - 被纏住 =1 人:1/3 成功
+ * 成功時伺服器記 mem(同類型再纏接續階段);祭品無論成敗都消失。
+ * @param {string} offerId 祭品魅魔 id
+ * @param {string} [fromDetailId] 從哪頁發起(祭品若是當頁則導回名冊/其他)
+ */
+async function severSummonerWithSacrifice(offerId, fromDetailId) {
+  const offer = state.succubi.find(x => x.id === offerId);
+  if (!offer || offer.ntr) { toast("選一名可獻祭的魅魔當祭品", "bad"); return; }
+  if (!canSacrifice(offer)) { toast(sacrificeBlockReason(offer) || "無法獻祭她", "bad"); return; }
+
+  const candidates = state.succubi.filter(x => x.id !== offer.id && x.summoner && !x.ntr);
+  if (!candidates.length) {
+    toast("沒有其他被召喚師纏住的魅魔可破除", "bad");
+    return;
+  }
+
+  const price = dismissPriceToday();
+  if (state.gold < price) { toast(`今日獻祭費 ${price} 金,你付不起`, "bad"); return; }
+
+  const multi = candidates.length >= 2;
+  const oddsTxt = multi
+    ? `目前 ${candidates.length} 人被纏——將隨機解除其中一人(必成)`
+    : `目前只有 ${candidates[0].name} 被纏——成功率 1/3`;
+  if (!confirm(
+    `獻祭 ${offer.name}(${price} 金) 嘗試破除召喚師?\n\n` +
+    `· ${offer.name} 將永遠消失(無論成功與否)\n` +
+    `· ${oddsTxt}\n` +
+    `· 成功時:該魅魔回到未纏上;與該召喚師的階段會被記住(同類型再纏接續)`
+  )) return;
+
+  state.gold -= price;
+
+  // 擲成敗 / 選目標(在移出祭品前先定案)
+  let target = null;
+  let success = false;
+  if (multi) {
+    target = pick(candidates);
+    success = true;
+  } else {
+    target = candidates[0];
+    success = Math.random() < SEVER_SOLO_CHANCE;
+  }
+
+  // 祭品走既有獻祭結算(天賦掉落照常;forSever 避免重複 toast/log 主文)
+  sacSettle({
+    id: offer.id, name: offer.name, stage: offer.stage, gift: offer.gift,
+    price, forSever: true,
+  });
+  if (sacrificeWith === offer.id) exitSacrifice();
+  if (watchWith === offer.id) exitWatch(true);
+  if (chatWith === offer.id) exitChat();
+
+  // 祭品若是詳情頁對象,或破除成功後想留在被救的人身上
+  if (detailId === offer.id) {
+    detailId = success && target ? target.id : (fromDetailId && fromDetailId !== offer.id ? fromDetailId : null);
+  }
+
+  if (success && target) {
+    // 祭品結算可能觸發 cleanse 已把人清掉——再確認還在名冊且仍有 summoner
+    target = state.succubi.find(x => x.id === target.id) || null;
+    if (target?.summoner) {
+      const su = summonerById(target.summoner.id);
+      const stageTxt = rivalStageName(target.summoner.stage ?? 0);
+      const suName = su?.name || "召喚師";
+      const wasTaken = !!target.summoner.taken;
+      simClearOf(target);
+      target.summoner = null;
+      if (watchWith === target.id) exitWatch(true);
+      if (chatWith === target.id) exitChat();
+      log(`獻祭 ${offer.name}(-${price} 金)破除了 ${target.name} 身上「${suName}」的纏身(階段「${stageTxt}」已記住${multi ? ";隨機選中" : ""})`);
+      toast(
+        `破除成功!${target.name} 身上的召喚師被抹除了` + (wasTaken ? "(她也掙脫了召喚)" : "") +
+        `——「${suName}」的舊情(${stageTxt})仍記著`,
+        "good",
+      );
+    } else {
+      log(`獻祭 ${offer.name}(-${price} 金)嘗試破除纏身——目標已不在或已被其他效果清除`);
+      toast("破除擲中了,但目標已不在纏身狀態", "");
+    }
+  } else {
+    const name = target?.name || "她";
+    log(`獻祭 ${offer.name}(-${price} 金)嘗試破除纏身——失敗(${name} 仍被纏住;獨苗 1/3)`);
+    toast(`破除失敗……${name} 身上的召喚師還在(獨苗時僅 1/3 成功)`, "bad");
+  }
+
+  severChooser = false;
+  await simSync(true);
+  scheduleSave();
+  renderAll();
 }
 
 function dismiss(id) { return sacrificeSuccubus(id); }   // 相容舊呼叫
@@ -4426,13 +4535,15 @@ function processTakenActs() {
 // ── 伺服器端召喚師模擬:同步層 ──────────────────────────────────────────
 // 判定(召喚/約會)與召喚師 act 一律在伺服器運算,手機關螢幕也照跑;此處只負責
 // 上傳名冊快照/回報玩家動作,並把權威狀態鏡像到 s.summoner 顯示。存檔仍只有手機寫。
-let simPatch = {};              // 待送的玩家動作:{succId: {seen:[actId], texts:{actId:text}, rescue}}
+let simPatch = {};              // 待送的玩家動作:{succId: {seen:[actId], texts:{actId:text}, rescue, clear}}
 let simSyncBusy = false, lastSimSyncAt = 0;
 let simSyncWaiters = [];        // force 同步排隊:busy 時後續 await 同一輪結果
 function simBuf(s) { return (simPatch[s.id] ??= { seen: [], texts: {} }); }
 function simTextOf(s, act) { if (act?.text && s?.summoner) simBuf(s).texts[act.id] = act.text; }   // 回填已生成文字
 function simSeenOf(s, act) { if (!act || !s?.summoner) return; const p = simBuf(s); if (!p.seen.includes(act.id)) p.seen.push(act.id); if (act.text) p.texts[act.id] = act.text; }
 function simRescueOf(s) { if (s?.summoner) simBuf(s).rescue = true; }
+/** 破除纏身:伺服器寫 mem(同類型階段)後拔掉 rel;下次同召喚師再纏會接續 */
+function simClearOf(s) { if (s) simBuf(s).clear = true; }
 
 /** @param {boolean} [force] 為 true 時略過 15 秒節流(進觀戰前必須拉到最新預生 acts) */
 async function simSync(force = false) {
@@ -4472,6 +4583,7 @@ async function simSync(force = false) {
         q.seen = [...new Set([...(q.seen || []), ...(p.seen || [])])];
         Object.assign((q.texts ??= {}), p.texts || {});
         if (p.rescue) q.rescue = true;
+        if (p.clear) q.clear = true;
       }
       return false;
     }
@@ -4538,8 +4650,14 @@ function applySimOutcome(o) {
   // 召喚師事件 ────────────────────────────────────
   const s = state.succubi.find(x => x.id === o.id);
   if (o.type === "entangled") {
-    log(`${o.suName || "一位召喚師"} 纏上了 ${s?.name || "一位魅魔"}!`);
-    toast(`⚠ ${o.suName || "召喚師"} 纏上了 ${s?.name || "魅魔"}`, "bad");
+    if (o.resumed) {
+      const st = rivalStageName(o.stage ?? 0);
+      log(`${o.suName || "一位召喚師"} 再次纏上了 ${s?.name || "一位魅魔"}——舊情未了(「${st}」)`);
+      toast(`⚠ ${o.suName || "召喚師"} 再次纏上了 ${s?.name || "魅魔"}(接續「${st}」)`, "bad");
+    } else {
+      log(`${o.suName || "一位召喚師"} 纏上了 ${s?.name || "一位魅魔"}!`);
+      toast(`⚠ ${o.suName || "召喚師"} 纏上了 ${s?.name || "魅魔"}`, "bad");
+    }
   } else if (o.type === "married") {
     const nm = s?.name || "一位魅魔";
     log(`${nm} 懷了 ${o.suName || "召喚師"} 的孩子,脫離魅魔身分、跟他走了,永遠離開萬事屋。`);
@@ -7524,7 +7642,7 @@ function renderSuccubi() {
         <div class="aff-bar"><div class="${s.affection < 0 ? "neg" : ""}" style="width:${barW}%"></div></div>
       </div>
       <div class="status-dot ${st}"></div>`;
-    el.onclick = () => { detailId = s.id; dateChooser = false; dateFlow = null; renderAll(); };
+    el.onclick = () => { detailId = s.id; dateChooser = false; dateFlow = null; severChooser = false; renderAll(); };
     roster.appendChild(el);
   }
   if (!state.succubi.length) roster.innerHTML = `<div class="empty">一個魅魔都沒有。桌上只有那本召喚之書。</div>`;
@@ -7583,6 +7701,32 @@ function renderDetail(s, root) {
     }
   }
 
+  // 破除纏身:獻祭一名祭品 → ≥2 人被纏則隨機解一人;僅 1 人則 1/3
+  // 入口:目前這頁有人被纏(含自己),或她本人可當祭品且名冊上有被纏者
+  const entangledOthers = state.succubi.filter(x => x.id !== s.id && x.summoner && !x.ntr);
+  const anyEntangled = !!(s.summoner && !s.ntr) || entangledOthers.length > 0;
+  // 祭品候選:可獻祭的其他人;若這頁自己也可獻且「還有別人被纏」,自己也能當祭品——用 chooser 列全部可獻者(可含自己)
+  const severOffers = anyEntangled
+    ? state.succubi.filter(x => !x.ntr && canSacrifice(x) && (
+        // 祭品死後仍須至少留下一名「曾可能被解」的被纏者:祭品不能是唯一被纏且沒別人
+        // 簡化:只要獻掉她之後 candidates = 被纏且不是她 的人數 ≥ 1
+        state.succubi.some(y => y.id !== x.id && y.summoner && !y.ntr)
+      ))
+    : [];
+  const severFee = dismissPriceToday();
+  const entangledCount = state.succubi.filter(x => x.summoner && !x.ntr).length;
+  let severBlock = "";
+  if (anyEntangled && !severOffers.length) {
+    severBlock = entangledCount
+      ? "需要可獻祭的祭品(獻掉後仍須有人被纏才擲得成)"
+      : "沒有被纏住的魅魔";
+  }
+  const severOddsHint = entangledCount >= 2
+    ? `目前 ${entangledCount} 人被纏 → 隨機解一人(必成)`
+    : entangledCount === 1
+      ? `目前僅 1 人被纏 → 成功率 1/3`
+      : "";
+
   root.className = `r-${s.rarity}`;
   root.innerHTML = `
     <div class="panel">
@@ -7601,6 +7745,27 @@ function renderDetail(s, root) {
       ${!s.ntr ? craveLine(s) : ""}
       ${needLine}
       ${summonerLine}
+      ${anyEntangled ? `
+        <div class="detail-actions">
+          <button class="danger-btn" id="act-sever" ${severOffers.length ? "" : "disabled"}
+            title="獻祭一名魅魔嘗試破除:多人被纏時隨機解一人;僅一人時 1/3 成功。階段會記住。">
+            ${severOffers.length
+              ? `破除纏身(獻祭・${severFee} 金)`
+              : `破除纏身(${esc(severBlock)})`}
+          </button>
+        </div>
+        ${severOddsHint ? `<div class="aff-line dim small">${esc(severOddsHint)}</div>` : ""}
+        ${severChooser ? `
+          <div class="chooser" style="justify-content:center;flex-wrap:wrap;gap:.4em">
+            <div class="dim small" style="width:100%;text-align:center;margin:.3em 0 .2em">
+              選祭品(永遠消失)。${esc(severOddsHint)} 成功時該魅魔與召喚師的階段會被記住。
+            </div>
+            ${severOffers.map(o =>
+              `<button type="button" data-sever-offer="${esc(o.id)}" class="danger-btn">${esc(o.name)} · ${o.rarity} · ${stageLabel(o.stage)}</button>`
+            ).join("")}
+            <button type="button" data-sever-cancel>取消</button>
+          </div>` : ""}
+      ` : ""}
       ${shotsLine(s)}
       <div class="detail-actions">
         ${s.ntr
@@ -7627,7 +7792,7 @@ function renderDetail(s, root) {
       ${!s.ntr && !cardSystemOn() ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b></div>` : ""}
       ${!s.ntr && cardSystemOn() ? `<div class="aff-line dim small">看板：靠近她打牌；非看板可約會（電話→場地牌局）。委託時 15% 碎嘴。</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
-      ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
+      ${!s.ntr ? `<div class="aff-line dim small">天賦:${giftLabel(s.gift)}(${s.gift === "cleanse" ? "獻祭刷到即清除所有召喚師(階段會記住)" : "當看板娘時暫時 +1"};獻祭有 1/${Math.round(1 / sacrificeDropChance(s.stage))} 機率觸發)</div>
         ${SAC_RITUAL ? `<div class="aff-line dim small">${sacScriptReady(s)
           ? "獻祭文已備妥"
           : (isAsleep() ? "獻祭文織夢中…" : "獻祭文於 01:00 起在夢中織就")}</div>` : ""}
@@ -7642,8 +7807,21 @@ function renderDetail(s, root) {
     detailId = null;
     dateChooser = false;
     dateFlow = null;
+    severChooser = false;
     renderAll();
   };
+  root.querySelector("#act-sever")?.addEventListener("click", () => {
+    if (!severOffers.length) { toast(severBlock || "無法破除", "bad"); return; }
+    severChooser = !severChooser;
+    renderAll();
+  });
+  root.querySelectorAll("[data-sever-offer]").forEach(b => {
+    b.onclick = () => severSummonerWithSacrifice(b.dataset.severOffer, s.id);
+  });
+  root.querySelector("[data-sever-cancel]")?.addEventListener("click", () => {
+    severChooser = false;
+    renderAll();
+  });
   root.querySelector("#act-kanban")?.addEventListener("click", () => summonKanban(s.id));
   root.querySelector("#act-cardtable")?.addEventListener("click", () => openKanbanTable(s.id));
   root.querySelector("#act-weave")?.addEventListener("click", async () => {
