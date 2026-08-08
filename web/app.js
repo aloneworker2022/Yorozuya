@@ -3,13 +3,13 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
-import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildCardPlayPrompt, parseCardReactTriple, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
+import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildCardPlayPrompt, buildCardVisualPosePrompt, parseCardVisualPose, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, WARDROBE_UNLOCK } from "./content/girl_gen.js";
 import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.28(2026-08-08)上線卡組掛載·創角starter池";
+const APP_VER = "v6.29(2026-08-08)出卡：對話給玩家·表情動作給畫圖";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -1984,45 +1984,66 @@ function voidCardSceneArt() {
 }
 
 /**
- * 出卡後：已有她的台詞 → 產「純英文」畫圖描述（不含 card token / stage direction 等標籤詞）。
- * 給 image 模型：只放可畫的內容（姿態、表情、互動、構圖）。
+ * 畫圖第二段（中文標籤）：依「她說了什麼」+ 體態 → 表情／動作（不給玩家當主台詞）
+ */
+function cardVisualPoseMsgs(girl, play) {
+  const player = playerBindName();
+  const ctx = buildCtx(girl);
+  ctx.card_play = {
+    ...(ctx.card_play || {}),
+    scene_start: play?.sceneStart || "",
+    girl_line: play?.girlLine || "",
+    dialogue: play?.girlLine || "",
+    open_fail: !!(play?.open && play.open.success === false),
+    card_name: play?.name || "",
+  };
+  const sys = buildCardVisualPosePrompt(ctx);
+  return [
+    { role: "system", content: sys },
+    {
+      role: "user",
+      content: `她說了：「${String(play?.girlLine || "").slice(0, 180)}」。只輸出 表情：… 與 動作：… 兩行。`,
+    },
+  ];
+}
+
+/**
+ * 已有台詞 + 表情／動作 → 純英文畫圖句（給 image 模型，無 meta 標籤）
  */
 function cardImgEnMsgs(girl, play, def) {
   const rating = state.settings?.rating || "sfw";
   const vEn = cardVisualEn(def);
-  const scene = String(play?.sceneStart || "").replace(/\s+/g, " ").slice(0, 220);
-  const triple = play?.reactTriple || parseCardReactTriple(play?.girlLine || "");
-  const reactBits = triple
-    ? [
-        triple.face ? `her expression: ${triple.face}` : "",
-        triple.attitude ? `her attitude: ${triple.attitude}` : "",
-        triple.body ? `her body action: ${triple.body}` : "",
-      ].filter(Boolean).join("; ")
-    : String(play?.girlLine || "").replace(/\s+/g, " ").slice(0, 160);
+  const scene = String(play?.sceneStart || "").replace(/\s+/g, " ").slice(0, 180);
+  const pose = play?.visualPose || parseCardVisualPose(play?.visualPoseText || "");
+  const dialogue = String(play?.girlLine || "").replace(/\s+/g, " ").slice(0, 160);
+  const L = girl?.look || {};
   return [
     {
       role: "system",
       content: [
         "You write English visual prompts for anime illustration.",
-        "Output ONLY comma-separated English visual phrases (or 1–2 short English sentences).",
-        "Content only: pose, gesture, facial expression, eye contact, distance, contact point, framing.",
-        "FORBIDDEN labels: card, token, stage direction, prompt, visualEn, authoritative, PRIMARY, tags, kind, speech.",
-        "No Chinese. No quotes. No markdown. No dialogue. No clothing list.",
-        "Use her face / attitude / body fields as the visible reaction.",
-        "If greeting/talk: facing each other, eye contact — never blank look-away idle.",
+        "Output ONLY comma-separated English visual phrases.",
+        "Content: her facial expression, body pose/gesture, his related action if needed, framing.",
+        "FORBIDDEN labels: card, token, stage direction, prompt, visualEn, PRIMARY, tags, kind, speech.",
+        "No Chinese. No quotes. No markdown. No spoken dialogue text in the image prompt.",
+        "Match her body type if given (bust/build as English tags only if already English; otherwise ignore Chinese body text).",
+        "If greeting/talk: face each other, eye contact — never blank look-away idle.",
         rating === "nsfw"
-          ? "NSFW visual ok if implied; keep visual not erotic prose."
-          : "All-ages: suggestive ok, no explicit nudity.",
+          ? "NSFW visual ok if implied."
+          : "All-ages: no explicit nudity.",
       ].join("\n"),
     },
     {
       role: "user",
       content: [
-        vEn ? `Seed action (prefer, English): ${vEn}` : "",
-        `His action (Chinese meaning only → visual): ${scene || play?.name || "interaction"}`,
-        reactBits ? `Her reaction fields (Chinese labels → English visual): ${reactBits}` : "Her reaction: responsive",
-        play?.open?.success === false ? "She rejects physically (pull back / block)." : "",
-        "Write the illustration description now (English content only).",
+        vEn ? `Card visual seed (English): ${vEn}` : "",
+        pose?.face ? `Her face (Chinese → English visual): ${pose.face}` : "",
+        pose?.body ? `Her body action (Chinese → English visual): ${pose.body}` : "",
+        dialogue ? `She said (context only, do not print dialogue on image): ${dialogue}` : "",
+        scene ? `His action context: ${scene}` : "",
+        L.build || L.bust ? `Body note (optional): build/bust described in sheet separately` : "",
+        play?.open?.success === false ? "She rejects physically." : "",
+        "Write English illustration tags now (content only).",
       ].filter(Boolean).join("\n"),
     },
   ];
@@ -2039,14 +2060,15 @@ function scrubImgPromptLabels(s) {
 }
 
 /**
- * 在「她的台詞已就緒」後，產英文畫圖句寫入 play.imgEn / visualBeatEn。
+ * 台詞就緒後：
+ * A) 依回話產「表情／動作」（中文，畫圖用）
+ * B) 再產純英文 imgEn
  */
 async function ensureCardImgEnAfterText(girl, play, gen) {
   const def = play?.cardId ? Cards.cardById(play.cardId) : null;
   const fb = visualBeatFallback(play, def, girl);
   const seed = scrubImgPromptLabels(cardVisualEn(def) || fb.visual_en || "");
 
-  // 無模型：卡牌 visualEn + 保底即可
   if (!state.settings?.model) {
     const en = seed || fb.visual_en;
     play.imgEn = en;
@@ -2055,6 +2077,32 @@ async function ensureCardImgEnAfterText(girl, play, gen) {
     return en;
   }
 
+  // A) 表情／動作（給畫圖，不是玩家主台詞）
+  if (!play.visualPose) {
+    const poseKey = `cardpose:${girl.id}:${play.cardId}:${gen}`;
+    const deadlinePose = Date.now() + 60000;
+    let rp = await genPost(poseKey, cardVisualPoseMsgs(girl, play), 11);
+    while (rp && Date.now() < deadlinePose) {
+      if (cardSceneJob.gen !== gen) return null;
+      if (rp.status === "done" && rp.result) {
+        const { text } = stripGuardFlag(
+          typeof rp.result === "string" ? rp.result : String(rp.result ?? ""),
+        );
+        const pose = parseCardVisualPose(text);
+        if (pose) {
+          play.visualPose = pose;
+          play.visualPoseText = pose.text;
+          play.visualBeatZh = `表情：${pose.face}；動作：${pose.body}`;
+        }
+        break;
+      }
+      if (rp.status === "error") break;
+      await new Promise(res => setTimeout(res, 700));
+      rp = await genPost(poseKey, cardVisualPoseMsgs(girl, play), 11);
+    }
+  }
+
+  // B) 英文畫圖句
   const key = `cardimgen:${girl.id}:${play.cardId}:${gen}`;
   const deadline = Date.now() + 90000;
   let r = await genPost(key, cardImgEnMsgs(girl, play, def), 11);
@@ -2064,11 +2112,10 @@ async function ensureCardImgEnAfterText(girl, play, gen) {
       const { text } = stripGuardFlag(typeof r.result === "string" ? r.result : String(r.result ?? ""));
       let en = scrubImgPromptLabels(text.replace(/[\u4e00-\u9fff]+/g, " "));
       if (en.length < 16) en = seed || fb.visual_en;
-      // 再濾掉殘留中文
       en = en.replace(/[\u4e00-\u9fff]/g, " ").replace(/\s+/g, " ").trim();
       play.imgEn = en;
       play.visualBeatEn = en;
-      play.visualBeatZh = fb.visual_zh;
+      if (!play.visualBeatZh) play.visualBeatZh = fb.visual_zh;
       return en;
     }
     if (r.status === "error") break;
@@ -2078,7 +2125,7 @@ async function ensureCardImgEnAfterText(girl, play, gen) {
   const en = seed || fb.visual_en;
   play.imgEn = en;
   play.visualBeatEn = en;
-  play.visualBeatZh = fb.visual_zh;
+  if (!play.visualBeatZh) play.visualBeatZh = fb.visual_zh;
   return en;
 }
 
@@ -3324,33 +3371,25 @@ async function genTick(force = false) {
 // 兩拍 UI：① 動作旁白 ② 場景圖備妥後才出她的回應
 // 避免「文字先好就能結束，圖還在跑」。
 
-/** 出卡反應：只認「表情／態度／動作」三行 */
+/** 出卡【玩家台詞】：正常對話，1～4 句 */
 function cardPlayLines(text) {
-  const triple = parseCardReactTriple(text);
-  if (triple) return triple.text;
-  // 舊格式／亂輸出：勉強收成三行標籤，避免整段長文
-  let t = (text || "").trim().replace(/^["「『]+|["」』]+$/g, "").trim();
-  if (!t || Cards.isWeakLine?.(t)) return "";
-  const rows = t.split(/\n+/).map(l => l.trim()).filter(Boolean).slice(0, 3);
-  if (rows.length >= 3) {
-    return `表情：${rows[0].slice(0, 40)}\n態度：${rows[1].slice(0, 40)}\n動作：${rows[2].slice(0, 40)}`;
+  let t = (text || "").trim();
+  t = t.replace(/^["「『]+|["」』]+$/g, "").trim();
+  // 若模型誤輸出「表情：」格式，不當成玩家主台詞
+  if (/^\s*表情\s*[：:]/m.test(t) && /^\s*動作\s*[：:]/m.test(t) && !t.includes("「")) {
+    return "";
   }
-  // 單段短句 → 塞進態度
-  if (t.length <= 48) return `表情：……\n態度：${t.slice(0, 40)}\n動作：……`;
-  return "";
+  const lines = t.split("\n").map(l => l.trim()).filter(Boolean);
+  let out = lines.slice(0, 5).join("\n").slice(0, 320).trim();
+  if (Cards.isWeakLine?.(out)) return "";
+  return out;
 }
 
 function applyPlayReact(play, rawText) {
-  const triple = parseCardReactTriple(rawText) || parseCardReactTriple(cardPlayLines(rawText));
-  if (triple) {
-    play.reactTriple = triple;
-    play.girlLine = triple.text;
-    return triple.text;
-  }
   const line = cardPlayLines(rawText);
   if (line) {
     play.girlLine = line;
-    play.reactTriple = parseCardReactTriple(line);
+    play.reactTriple = null; // 畫圖用 pose 另產
     return line;
   }
   return "";
@@ -3412,9 +3451,16 @@ function cardPlayMsgs(girl, play) {
   const sys = buildCardPlayPrompt(ctx);
   const act = String(scene || play?.name || "").replace(/\s+/g, " ").slice(0, 160);
   const who = `你是「${girl?.name || "她"}」，對方是「${player}」。`;
-  const user =
-    `（${who}刺激：${act}${play?.open?.success === false ? "；她沒接住" : ""}。` +
-    `只輸出三行——表情：…／態度：…／動作：…。不要台詞、不要解釋。）`;
+  let user;
+  if (play?.open && play.open.success === false) {
+    user = `（${who}旁白：他做了「${act}」，你沒接住。用 1～3 句回話：兇／慌／嘴硬。只有台詞，不要寫表情：動作：。）`;
+  } else if (kind === "girl_trait") {
+    user = `（${who}旁白：這一拍是「${act}」。用 1～3 句接話。只有台詞。）`;
+  } else if (kind === "venue_event") {
+    user = `（${who}旁白：現場是「${act}」。用 1～3 句反應。只有台詞。）`;
+  } else {
+    user = `（${who}旁白：他剛做的是「${act}」。用 1～3 句回話，像真人（例如打招呼就回打招呼）。只有台詞，禁止寫「表情：」「動作：」。）`;
+  }
   return [
     { role: "system", content: sys },
     { role: "user", content: user },
@@ -3536,6 +3582,7 @@ async function genCardPlayOrder() {
     cardUi.playAiKey = null;
     cardUi.playAiToken = null;
     cardUi.playAiStartedGen = null;
+    // 台詞給玩家看完 → 再依台詞產表情／動作 → 英文 → 生圖
     startSceneArtAfterText(girl, play);
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
       renderCardTable();
@@ -3546,12 +3593,12 @@ async function genCardPlayOrder() {
     cardUi.playAiToken = null;
     cardUi.playAiStartedGen = null;
     if (play) play.fromAi = false;
-    if (!play.girlLine || !parseCardReactTriple(play.girlLine)) {
+    if (!play.girlLine || Cards.isWeakLine?.(play.girlLine)) {
       applyPlayReact(play, Cards.girlReactionLine?.({
         stage: girl.stage || "stranger",
         emotionDelta: play.emotionDelta || 0,
         openFail: !!(play.open && play.open.success === false),
-      }) || "表情：……\n態度：……\n動作：……");
+      }) || "……嗯。");
     }
     startSceneArtAfterText(girl, play);
     if (cardUi.awaitReaction && document.body.classList.contains("card-mode")) {
@@ -6881,21 +6928,17 @@ function renderCardTable() {
       applyPlayReact(last, showLine);
       showLine = last.girlLine;
     }
-    const triple = last.reactTriple || parseCardReactTriple(showLine);
-    const displayHtml = triple
-      ? `<div class="ct-react-triple">
-          <div><span class="lab">表情</span>${esc(triple.face)}</div>
-          <div><span class="lab">態度</span>${esc(triple.attitude)}</div>
-          <div><span class="lab">動作</span>${esc(triple.body)}</div>
-        </div>`
-      : null;
+    // 畫圖用的表情／動作可選顯示在 meta，主框只放對話
+    const pose = last.visualPose;
+    const poseNote = pose
+      ? ` · 繪：${pose.face}/${pose.body}`
+      : "";
     const srcNote = last.fromAi ? "" : (state.settings?.model ? " · 保底" : "");
-    const sceneNote = waitingScene ? " · 場景依反應補繪中…" : "";
+    const sceneNote = waitingScene ? " · 場景依回話補繪中…" : "";
     setCtVn({
       name: gname,
-      text: displayHtml ? "" : (showLine || "表情：……\n態度：……\n動作：……"),
-      textHtml: displayHtml,
-      meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${srcNote}${sceneNote} · ${esc(more)}`,
+      text: showLine || "……",
+      meta: `${esc(deltaTxt)}${openNote ? ` · ${openNote}` : ""}${last.shattered ? " · 卡消了" : ""}${srcNote}${poseNote}${sceneNote} · ${esc(more)}`,
     });
     const vn2 = $("#ct-vn");
     if (vn2) {

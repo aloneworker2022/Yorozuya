@@ -17,7 +17,12 @@ import {
   findLineageRoot,
   collectSubtreeIds,
 } from "./token_chain.js";
-import { buildCardPlayPrompt, parseCardReactTriple, formatCardReactDisplay } from "./persona_builder.js";
+import {
+  buildCardPlayPrompt,
+  buildCardVisualPosePrompt,
+  parseCardVisualPose,
+  formatCardReactDisplay,
+} from "./persona_builder.js";
 import {
   BIND_PLACEHOLDERS,
   bindContextFromGirl,
@@ -1528,13 +1533,13 @@ async function runReact() {
   const sys = buildCardPlayPrompt(ctx);
   const act = sceneForAi.replace(/\s+/g, " ").slice(0, 180);
   const who = `你是「${girlCache.name}」，對方是「${player}」。`;
-  const user =
-    `（${who}刺激：${act}${openFail ? "；她沒接住" : ""}。` +
-    `只輸出三行——表情：…／態度：…／動作：…。不要台詞、不要解釋。）`;
+  const user = openFail
+    ? `（${who}旁白：他做了「${act}」，你沒接住。用 1～3 句回話。只有台詞，不要寫表情：動作：。）`
+    : `（${who}旁白：他剛做的是「${act}」。用 1～3 句回話（例如打招呼就回打招呼）。只有台詞。）`;
 
   $("re-prompt").textContent = sys + "\n\n[user] " + user;
   $("btn-react").disabled = true;
-  setStatus("re-status", "① 產表情／態度／動作…");
+  setStatus("re-status", "① 產玩家對話…");
   $("re-out").textContent = "";
   try {
     const { text, sec } = await genWait(
@@ -1542,22 +1547,26 @@ async function runReact() {
         { role: "system", content: sys },
         { role: "user", content: user },
       ],
-      { keyPrefix: "cardreact", temperature: 0.75 },
+      { keyPrefix: "cardreact", temperature: 0.9 },
     );
-    const triple = parseCardReactTriple(text);
-    const line = triple?.text || (text || "").trim();
+    let line = (text || "").trim().replace(/^["「『]+|["」』]+$/g, "");
+    // 誤輸出畫圖格式時丟掉
+    if (/^\s*表情\s*[：:]/m.test(line) && /^\s*動作\s*[：:]/m.test(line)) {
+      line = line.split("\n").filter((l) => !/^\s*(表情|態度|動作)\s*[：:]/.test(l)).join("\n").trim() || "……嗯。";
+    }
     pipelineCache.girlLine = line;
-    pipelineCache.reactTriple = triple;
+    pipelineCache.visualPose = null;
     pipelineCache.sceneBound = scene;
     pipelineCache.meta = `${stageLabel(stage)} · Δ${emotionDelta >= 0 ? "+" : ""}${emotionDelta} · ${feelLabel}`;
     pipelineCache.imgEn = "";
     $("re-line").value = line;
+    $("re-pose").value = "";
     $("re-imgen").value = "";
     $("re-out").textContent =
-      `【① 三欄反應 · ${pipelineCache.meta} · ${sec.toFixed(1)}s】\n\n` +
-      (formatCardReactDisplay(triple) || line) +
-      `\n\n→ 下一步按「② 反應→英文畫圖句」`;
-    setStatus("re-status", `✓ ① 完成 ${sec.toFixed(1)}s · 可跑 ②`);
+      `【① 玩家對話 · ${pipelineCache.meta} · ${sec.toFixed(1)}s】\n\n` +
+      line +
+      `\n\n→ 下一步「② 對話→表情動作→英文畫圖」`;
+    setStatus("re-status", `✓ ① 對話 ${sec.toFixed(1)}s · 可跑 ②`);
   } catch (e) {
     setStatus("re-status", e.message, true);
   }
@@ -1576,48 +1585,68 @@ async function runReactToImgEn() {
   }
   let line = ($("re-line").value || "").trim() || pipelineCache.girlLine;
   if (!line) {
-    setStatus("re-status", "請先跑 ①（或手填 表情／態度／動作 三行）", true);
+    setStatus("re-status", "請先跑 ① 產玩家對話", true);
     return;
   }
   pipelineCache.girlLine = line;
-  const triple = parseCardReactTriple(line) || pipelineCache.reactTriple;
 
   const { girl, player } = editorGirlForBind();
+  Object.assign(girlCache || {}, girl);
   const bctx = bindContextFromGirl(girl, player);
   const scene =
     pipelineCache.sceneBound ||
     resolveCardBinds(live.sceneStart || "", bctx);
   const seed = scrubEditImgLabels(live.visualEn || "");
-  const reactBits = triple
-    ? [
-        triple.face ? `expression: ${triple.face}` : "",
-        triple.attitude ? `attitude: ${triple.attitude}` : "",
-        triple.body ? `body: ${triple.body}` : "",
-      ].filter(Boolean).join("; ")
-    : line.slice(0, 160);
-
-  const sys = [
-    "You write English visual prompts for anime illustration.",
-    "Output ONLY comma-separated English visual phrases (or 1–2 short English sentences).",
-    "Content only: pose, gesture, facial expression, eye contact, distance, contact point, framing.",
-    "FORBIDDEN labels (never output): card, token, stage direction, prompt, visualEn, authoritative, PRIMARY, tags, kind, speech.",
-    "No Chinese. No quotes. No markdown. No dialogue lines. No clothing list.",
-    "Use her face / attitude / body fields as the visible reaction.",
-    "If greeting/talk: facing each other, eye contact — never blank look-away idle.",
-  ].join("\n");
-  const user = [
-    seed ? `Seed action (prefer, English): ${seed}` : "",
-    `His action (Chinese meaning → visual): ${scene.slice(0, 220) || live.name || "interaction"}`,
-    `Her reaction fields (Chinese → English visual): ${reactBits}`,
-    "Write the illustration description now (English content only).",
-  ]
-    .filter(Boolean)
-    .join("\n");
 
   $("btn-react-imgen").disabled = true;
-  setStatus("re-status", "② 產英文畫圖句…");
+  setStatus("re-status", "②a 依對話產表情／動作…");
   try {
-    const { text, sec } = await genWait(
+    // ②a 中文表情／動作（給畫圖，不是主台詞）
+    const poseSys = buildCardVisualPosePrompt({
+      character: {
+        name: girl.name,
+        look: girl.look || girlCache?.look,
+        personality: girl.personality,
+      },
+      card_play: {
+        scene_start: scene,
+        girl_line: line,
+        dialogue: line,
+        open_fail: $("re-open-fail")?.checked,
+        card_name: live.name,
+      },
+    });
+    const { text: poseRaw, sec: secA } = await genWait(
+      [
+        { role: "system", content: poseSys },
+        { role: "user", content: `她說了：「${line.slice(0, 180)}」。只輸出 表情：… 與 動作：… 兩行。` },
+      ],
+      { keyPrefix: "cardpose", temperature: 0.7 },
+    );
+    const pose = parseCardVisualPose(poseRaw);
+    pipelineCache.visualPose = pose;
+    $("re-pose").value = pose?.text || (poseRaw || "").trim();
+
+    // ②b 英文畫圖句
+    setStatus("re-status", "②b 產英文畫圖句…");
+    const sys = [
+      "You write English visual prompts for anime illustration.",
+      "Output ONLY comma-separated English visual phrases.",
+      "Content: facial expression, body pose, interaction, framing.",
+      "No Chinese, no dialogue text, no meta labels (card/token/stage direction).",
+      "If greeting/talk: face each other, eye contact.",
+    ].join("\n");
+    const user = [
+      seed ? `Card visual seed: ${seed}` : "",
+      pose?.face ? `Her face: ${pose.face}` : "",
+      pose?.body ? `Her body: ${pose.body}` : "",
+      `She said (context only): ${line.slice(0, 160)}`,
+      `His action context: ${scene.slice(0, 160) || live.name}`,
+      "English illustration tags now.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const { text, sec: secB } = await genWait(
       [
         { role: "system", content: sys },
         { role: "user", content: user },
@@ -1633,9 +1662,10 @@ async function runReactToImgEn() {
       markDirty();
     }
     $("re-out").textContent =
-      `【② imgEn · ${sec.toFixed(1)}s】\n${en}\n\n` +
-      `【① 三欄】\n${formatCardReactDisplay(triple) || line}\n\n→ 可按「③ 填入生圖框」或「全流程」生圖`;
-    setStatus("re-status", `✓ ② 英文畫圖句 ${sec.toFixed(1)}s`);
+      `【① 對話】\n${line}\n\n` +
+      `【②a 畫圖用表情／動作 · ${secA.toFixed(1)}s】\n${pose?.text || $("re-pose").value}\n\n` +
+      `【②b 英文 imgEn · ${secB.toFixed(1)}s】\n${en}\n\n→ 可③填入生圖框或全流程生圖`;
+    setStatus("re-status", `✓ ② 完成（pose+英文）`);
   } catch (e) {
     setStatus("re-status", e.message, true);
   }

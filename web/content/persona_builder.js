@@ -354,9 +354,12 @@ function questLines(ctx, stage) {
 }
 
 /**
- * 打牌反應（精簡版）：只產三項——表情／態度／身體動作。
- * 不要長台詞、不要內心獨白、不要故事旁白。
+ * 打牌反應【給玩家看的對話】：
+ * 依卡牌 + 關係階段 + 個性／職業／態度，用第一人稱說出口的話。
+ * 例：他打招呼 →「呃呃……你好喔。」
  * 核心只顯示字串、不解析情感；數值已由感情骰決定。
+ *
+ * 畫圖用的表情／肢體是下一階段（見 app cardImgEnMsgs），不在這裡輸出。
  */
 export function buildCardPlayPrompt(ctx) {
   const c = ctx.character || {};
@@ -368,108 +371,177 @@ export function buildCardPlayPrompt(ctx) {
   const lines = [];
 
   const L = c.look || {};
+  const eye = L.eyes || "";
+  const bust = L.bust || "";
+  const hair = [L.hair_color, L.hair].filter(Boolean).join("") || L.hair || "";
+  const job = c.job || c.occupation || c.job_desc || "";
+
   lines.push(
-    `你是「${c.name}」。對方是「${you}」。關係階段：${r.stage || "stranger"}。`,
+    `你是「${c.name}」。他們叫你魅魔，但你本來是普通人——現在身體被改過，還在這間萬事屋。`,
+    `年齡:${c.age || L.age || "成年"}。職業／過去:${job || "—"}。`,
     `個性:${(c.personality || []).join("、") || "—"}。`,
     c.tone || SPEECH_STYLE[c.speech_style] || "",
-    `關係底色（一句）：${ax.open}`,
+    c.speech || c.口癖 ? `說話習慣／口癖:${c.speech || c.口癖}` : "",
+    `對方是召喚你的人,叫「${you}」。`,
+    "",
+    "【對象鎖定】",
+    `你就是「${c.name}」。正在跟你互動的人只有「${you}」。`,
+    eye || bust || hair
+      ? `外貌參考（回话可點到，勿報清單）：${[hair && `髮:${hair}`, eye && `眼:${eye}`, bust && `胸:${bust}`].filter(Boolean).join("；")}`
+      : "",
+    "",
+    "【你和他現在的關係——每一條都要照做】",
+    ax.open,
+    `・稱呼:${ax.address.replace(/\{name\}/g, you)}`,
+    `・誰先開口:${ax.initiative}`,
+    `・你願意講多少:${ax.disclose}`,
+    `・你對他的要求權:${ax.claim}`,
+    `・你的身體感:${ax.body}`,
+    r.stage === "wife"
+      ? `・界線:幾乎不算越界。${ax.crossReact}`
+      : `・界線（越界時）:${ax.crossLine}。他若踩到:${ax.crossReact}`,
   );
 
   if (play.mode === "date" && play.venue_name) {
-    lines.push(`場合：約會「${play.venue_name}」。`);
+    lines.push(`場景:你們正在「${play.venue_name}」約會。`);
   } else {
-    lines.push("場合：萬事屋店頭，距離很近。");
+    lines.push("場景:萬事屋店頭。他付了代價把你叫到身邊，距離很近。");
   }
 
-  let whatHappened = `他對你做了：牌面「${play.card_name || "某個舉動"}」。`;
+  let whatHappened = `他剛才對你做了這件事（牌面「${play.card_name || "某個舉動"}」）。`;
   if (kind === "girl_trait") {
-    whatHappened = `這一拍是你主動的節奏「${play.card_name || "你的本體"}」。`;
+    whatHappened = `這一拍是你主動的節奏「${play.card_name || "你的本體"}」——不是他在出招進攻。`;
   } else if (kind === "venue_event") {
-    whatHappened = `現場發生「${play.card_name || "某個場面"}」。`;
+    whatHappened = `現場發生了「${play.card_name || "某個場面"}」。`;
   }
 
   lines.push(
     "",
-    "【刺激（唯一真相）】",
+    "【他剛才做了什麼——你的每一句都要接住】",
     whatHappened,
-    play.scene_start ? `旁白：${String(play.scene_start).replace(/\s+/g, " ").slice(0, 200)}` : "",
-    play.prompt_hint ? `牌意：${String(play.prompt_hint).replace(/\s+/g, " ").slice(0, 120)}` : "",
-    play.open_fail ? "結果：你沒接住，退開／擋。" : "",
-    play.open_ok ? "結果：這一拍有被推進一點。" : "",
-    play.feel_label ? `情緒底色（勿報數）：${play.feel_label}` : "",
+    play.scene_start
+      ? `【玩家動作旁白】:\n${String(play.scene_start).slice(0, 280)}`
+      : "",
+    play.prompt_hint ? `牌意方向（勿照念）:${String(play.prompt_hint).slice(0, 160)}` : "",
+    play.open_fail ? "肢體結果:你沒接住——退開、擋、冷。回話要對上拒絕。" : "",
+    play.open_ok ? "肢體結果:這一拍有被推進一點。" : "",
+    play.feel_label ? `情緒底色「${play.feel_label}」只影響語氣，禁止報數。` : "",
   );
 
+  if (ctx.craving?.tier) {
+    lines.push(`身體躁動偏「${ctx.craving.tier}」——會影響語氣，但你未必肯承認。`);
+  }
   if (ctx.guard?.hits) {
-    lines.push(ctx.guard.hits >= 2 ? "防備偏高：更冷、更兇。" : "仍在防備：語氣更短、更刺。");
+    lines.push(
+      ctx.guard.hits >= 2
+        ? "（他最近又越界。這次你比較冷、比較兇。）"
+        : "（你還在防備他剛才的越界——語氣更短、更刺。）",
+    );
   }
 
   lines.push(
     "",
-    "【你只輸出三行，格式必須完全一致】",
-    "表情：……",
-    "態度：……",
-    "動作：……",
+    "【怎麼接話】",
+    "・第一句就要對上他剛做的事／說的話，禁止無關開場。",
+    "・用你的個性、職業感與關係階段；可以結巴、嘴硬、軟、兇——像真人。",
+    "・可以短（「呃……你好喔。」）也可以 2～4 句；不要演講。",
     "",
-    "規則：",
-    "・繁體中文；每行 4～18 字為佳，一句即可。",
-    "・表情＝臉上可見的（紅、瞪、微笑、撇嘴…），不是台詞。",
-    "・態度＝對他的立場（戒備、軟化、嘲諷、順從、心動…），短詞。",
-    "・動作＝身體／肢體可見（退半步、攥袖、別開視線、點頭…）。",
-    "・必須對上剛才的刺激；關係階段要合理（陌生偏戒備，妻子偏鬆）。",
-    "・禁止：長對話、內心獨白、故事旁白、引號台詞、系統／卡牌／數值字樣。",
-    "・不要多寫第四行；不要解釋。",
+    "【輸出格式——只給玩家看的對話】",
+    "1. 繁體中文。只輸出你「說出口」的台詞。",
+    "2. 不加引號、不寫旁白、不用括號舞台指示（不要寫「表情：」「動作：」）。",
+    "3. 禁止提及：卡牌、系統、AI、遊戲、情感數值、插圖、畫圖、畫面定格。",
+    "4. 你不知道在玩卡——這是真實發生的接觸／對話。",
     ctx.content_rating === "nsfw"
-      ? "・NSFW：動作／表情可更露骨，但仍是短描述不是情色長文。"
-      : "・全年齡：可害羞／生氣／曖昧，不寫露骨性行為。",
+      ? "5. NSFW：可依剛才肢體露骨，但仍要像你本人會說的。"
+      : "5. 全年齡：可曖昧、害羞、生氣，不寫露骨性行為。",
   );
 
   return lines.filter(Boolean).join("\n");
 }
 
 /**
- * 解析「表情／態度／動作」三行；失敗回 null。
- * @returns {{ face: string, attitude: string, body: string, text: string } | null}
+ * 畫圖用第二段：依「她說了什麼」+ 體態／外貌，產表情與身體動作（給繪圖，不給玩家當主台詞）。
+ * 輸出兩行中文標籤，app 再翻成英文 imgEn。
  */
-export function parseCardReactTriple(raw) {
+export function buildCardVisualPosePrompt(ctx) {
+  const c = ctx.character || {};
+  const play = ctx.card_play || {};
+  const L = c.look || {};
+  const dialogue = (play.girl_line || play.dialogue || "").trim();
+  const lines = [
+    "你是分鏡助手。任務：根據她剛才說的話，寫出「看得見的」表情與身體動作，供插圖使用。",
+    "不要寫台詞，不要解釋劇情。",
+    "",
+    `角色：${c.name || "她"}`,
+    `體型／外貌（中文池，僅作比例與特徵參考）：體型=${L.build || "—"}；胸=${L.bust || "—"}；眼=${L.eyes || "—"}；髮=${[L.hair_color, L.hair].filter(Boolean).join("") || L.hair || "—"}`,
+    play.scene_start ? `他做了什麼：${String(play.scene_start).replace(/\s+/g, " ").slice(0, 160)}` : "",
+    dialogue ? `她剛才說：${dialogue.slice(0, 200)}` : "她剛對他有了反應。",
+    play.open_fail ? "肢體結果：拒絕、退開。" : "",
+    "",
+    "【只輸出兩行】",
+    "表情：……",
+    "動作：……",
+    "",
+    "規則：繁中；每行短（4～20 字）；表情=臉上可見；動作=肢體可見；要對得上她說的話與他的動作。",
+    "禁止：台詞、內心獨白、系統字、卡牌、英文長句。",
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+/**
+ * 解析畫圖用「表情／動作」兩行（可選態度）。
+ * @returns {{ face: string, body: string, attitude?: string, text: string } | null}
+ */
+export function parseCardVisualPose(raw) {
   const t = String(raw || "").trim();
   if (!t) return null;
   const grab = (keys) => {
     for (const k of keys) {
-      const re = new RegExp(
-        `(?:^|\\n)\\s*${k}\\s*[：:]\\s*(.+)`,
-        "i",
-      );
+      const re = new RegExp(`(?:^|\\n)\\s*${k}\\s*[：:]\\s*(.+)`, "i");
       const m = t.match(re);
-      if (m) return m[1].trim().replace(/^["「『]+|["」』]+$/g, "").slice(0, 40);
+      if (m) return m[1].trim().replace(/^["「『]+|["」』]+$/g, "").slice(0, 48);
     }
     return "";
   };
   let face = grab(["表情", "face", "expression"]);
-  let attitude = grab(["態度", "attitude", "stance"]);
   let body = grab(["動作", "身體動作", "body", "action", "pose"]);
-  // 容錯：三行無標籤時依序當三欄
-  if (!face && !attitude && !body) {
-    const rows = t.split(/\n+/).map((x) => x.trim()).filter(Boolean).slice(0, 3);
-    if (rows.length >= 3) {
+  let attitude = grab(["態度", "attitude"]);
+  if (!face && !body) {
+    const rows = t.split(/\n+/).map((x) => x.trim()).filter(Boolean).slice(0, 2);
+    if (rows.length >= 2) {
       face = rows[0].replace(/^[^：:]*[：:]/, "").trim() || rows[0];
-      attitude = rows[1].replace(/^[^：:]*[：:]/, "").trim() || rows[1];
-      body = rows[2].replace(/^[^：:]*[：:]/, "").trim() || rows[2];
+      body = rows[1].replace(/^[^：:]*[：:]/, "").trim() || rows[1];
     }
   }
-  if (!face && !attitude && !body) return null;
+  if (!face && !body) return null;
   face = face || "……";
-  attitude = attitude || "……";
   body = body || "……";
-  const text = `表情：${face}\n態度：${attitude}\n動作：${body}`;
-  return { face, attitude, body, text };
+  const text = attitude
+    ? `表情：${face}\n態度：${attitude}\n動作：${body}`
+    : `表情：${face}\n動作：${body}`;
+  return { face, body, attitude: attitude || "", text };
 }
 
-/** 顯示用一行摘要 */
+/** @deprecated 相容舊三欄；畫圖請用 parseCardVisualPose */
+export function parseCardReactTriple(raw) {
+  const p = parseCardVisualPose(raw);
+  if (!p) return null;
+  return {
+    face: p.face,
+    attitude: p.attitude || "……",
+    body: p.body,
+    text: p.text,
+  };
+}
+
 export function formatCardReactDisplay(triple) {
   if (!triple) return "";
   if (typeof triple === "string") return triple;
   const { face, attitude, body } = triple;
-  return `表情：${face || "……"}　態度：${attitude || "……"}　動作：${body || "……"}`;
+  if (attitude && attitude !== "……") {
+    return `表情：${face || "……"}　態度：${attitude}　動作：${body || "……"}`;
+  }
+  return `表情：${face || "……"}　動作：${body || "……"}`;
 }
 
 /**
