@@ -37,10 +37,54 @@ BUST = {
     "B 罩杯、自然小巧": "small breasts",
     "B 罩杯、剛好一手掌握": "small breasts",
     "C 罩杯、勻稱漂亮": "medium breasts",
-    "C 罩杯、圓潤水滴形": "medium breasts",
+    "C 罩杯、圓潤水滴形": "medium breasts, teardrop breasts",
     "D 罩杯、飽滿有份量": "large breasts",
-    "E 罩杯、傲人豐滿": "large breasts",
+    "E 罩杯、傲人豐滿": "large breasts, full breasts",
     "F 罩杯、誇張的巨乳": "huge breasts",
+    # +15 size/shape
+    "A 罩杯、微微隆起的貧乳": "flat chest, tiny breasts",
+    "B 罩杯、挺俏半球形": "small breasts, perky breasts",
+    "C 罩杯、柔軟饅頭形": "medium breasts, soft breasts, round breasts",
+    "C 罩杯、外擴的開闊胸型": "medium breasts, wide-set breasts",
+    "D 罩杯、高聳木瓜形": "large breasts, perky breasts, papaya-shaped breasts",
+    "D 罩杯、沉甸甸水滴垂墜": "large breasts, hanging breasts, teardrop breasts",
+    "E 罩杯、軟彈半球、擠出深深乳溝": "large breasts, soft breasts, deep cleavage",
+    "E 罩杯、東方式豐滿橫向展開": "large breasts, wide breasts, sideboob",
+    "F 罩杯、沉重下垂的母乳型巨乳": "huge breasts, sagging breasts, heavy breasts",
+    "G 罩杯、誇張到不科學的爆乳": "gigantic breasts, enormous breasts",
+    "H 罩杯、壓迫感十足的超巨乳": "gigantic breasts, hyper breasts",
+    "上半胸豐滿、下半緊實的運動型胸型": "athletic breasts, firm breasts, medium breasts",
+    "左右略不對稱的自然胸型": "asymmetrical breasts, natural breasts",
+    "極窄間距、幾乎貼在一起的密著巨乳": "huge breasts, close-set breasts, deep cleavage",
+    "乳暈周邊脂肪豐厚、托起來沉手的厚重胸": "large breasts, heavy breasts, thick breasts",
+}
+
+# 乳暈大小／顏色(NSFW 軸;persona_pools appearance.areola)
+AREOLA = {
+    "小巧粉嫩的乳暈": "small areolae, pink areolae",
+    "精緻淡粉、面積偏小的乳暈": "small areolae, light pink areolae",
+    "圓潤櫻花粉、中等大小乳暈": "medium areolae, pink areolae",
+    "偏大一圈的粉褐乳暈": "large areolae, pink-brown areolae",
+    "寬廣深粉、邊緣柔和的大乳暈": "large areolae, deep pink areolae",
+    "深咖啡色、中等偏大乳暈": "large areolae, dark brown areolae",
+    "幾乎佔滿半邊乳房的誇張大乳暈": "huge areolae, very large areolae",
+    "淺褐帶點雀斑感的自然乳暈": "medium areolae, light brown areolae, freckles on breasts",
+    "紅潤充血色、敏感看起來偏腫的乳暈": "puffy areolae, red areolae, swollen areolae",
+    "近乎黑色的深色乳暈、對比強烈": "dark areolae, blackish areolae, large areolae",
+}
+
+# 瞳孔顏色(與 EYES 形狀軸分離;persona_pools appearance.eye_color)
+EYE_COLOR = {
+    "深棕色瞳孔": "brown eyes",
+    "琥珀色瞳孔": "amber eyes",
+    "灰綠色瞳孔": "green eyes, grey-green eyes",
+    "澄澈蔚藍瞳孔": "blue eyes, clear blue eyes",
+    "紫羅蘭色瞳孔": "purple eyes, violet eyes",
+    "血紅色瞳孔": "red eyes, blood-red eyes",
+    "金色豎瞳": "gold eyes, slit pupils",
+    "異色雙瞳（左藍右金）": "heterochromia, blue eyes, gold eyes",
+    "粉桃色瞳孔": "pink eyes",
+    "漆黑幾乎無高光的瞳孔": "black eyes, empty eyes, no light reflection",
 }
 
 # 臉是最看得出「有沒有在畫同一個人」的地方,所以拆成五軸各 18 項:
@@ -228,6 +272,17 @@ CAREER_OUTFIT = {
     "亮片小禮服": "sequin cocktail dress",
     "貼身洋裝配高跟鞋": "tight mini dress, high heels",
     "展場短版制服": "showgirl outfit, crop top uniform, mini skirt",
+    # +10 erotic career outfits
+    "情趣內衣配外罩外套": "lingerie, sheer lingerie, open coat over lingerie",
+    "露肩緊身寫真洋裝": "tight off-shoulder dress, glamorous photo dress",
+    "超短旗袍式工裝": "very short cheongsam, revealing qipao uniform",
+    "皮衣緊身馬甲與長靴": "leather corset, tight leather, thigh boots, dominatrix outfit",
+    "超短熱褲配吊帶小背心": "micro shorts, camisole, revealing streamer outfit",
+    "項圈與暴露式僕役裝": "collar, revealing maid outfit, slave attire",
+    "開襟白袍配情趣內衣": "open lab coat, lingerie underneath",
+    "私服短裙與過膝襪": "short skirt, thighhighs, casual revealing clothes",
+    "閃片比基尼與網襪高跟鞋": "sequin bikini, fishnets, high heels, stripper outfit",
+    "居家寬鬆 T 恤下真空": "oversized t-shirt, no bra, casual homewear",
 }
 
 # 有些「特徵」畫不出來(聲音、笑聲)——對到空字串,靜靜丟掉,不算 unknown
@@ -528,8 +583,8 @@ def appearance_en_parts(character: dict | None) -> tuple[dict[str, str], list[st
     """中文人設外貌 → 英文 tag 字典（給 Grok／任何讀句子的生圖路）。
 
     查表與 Comfy 的 build_prompt 同一份表；查不到進 unknown，不塞中文原文。
-    回傳 (parts, unknown)。parts 鍵: age, face, eyes, mouth, hair, hair_color,
-    build, bust, feature, outfit, skin, specials, height。
+    回傳 (parts, unknown)。parts 鍵: age, face, eyes, eye_color, mouth, hair, hair_color,
+    build, bust, areola, feature, outfit, skin, specials, height。
     """
     ch = character if isinstance(character, dict) else {}
     look = _look(ch)
@@ -552,11 +607,13 @@ def appearance_en_parts(character: dict | None) -> tuple[dict[str, str], list[st
     parts["age"] = age_tags(look.get("age") or ch.get("age") or "")
     parts["face"] = tr(FACE, "face")
     parts["eyes"] = tr(EYES, "eyes")
+    parts["eye_color"] = tr(EYE_COLOR, "eye_color")
     parts["mouth"] = tr(MOUTH, "mouth")
     parts["hair"] = tr(HAIR, "hair")
     parts["hair_color"] = tr(HAIR_COLOR, "hair_color")
     parts["build"] = tr(BUILD, "build")
     parts["bust"] = tr(BUST, "bust")
+    parts["areola"] = tr(AREOLA, "areola")
     parts["feature"] = tr(FEATURE, "feature")
 
     # 特殊屬性英文 tag（合併各段）
@@ -607,7 +664,10 @@ def appearance_en_brief(character: dict | None) -> tuple[str, list[str]]:
     # 外貌一行 tag 串
     face_bits = [
         parts.get(k)
-        for k in ("face", "eyes", "mouth", "hair_color", "hair", "feature", "build", "bust", "height", "specials")
+        for k in (
+            "face", "eyes", "eye_color", "mouth", "hair_color", "hair",
+            "feature", "build", "bust", "areola", "height", "specials",
+        )
         if parts.get(k)
     ]
     if face_bits:
@@ -703,16 +763,17 @@ def build_prompt(
         bits.append(FRAMING.get(framing, "upper body"))
 
     if not p or seg == "head":
-        # 臉分五軸(臉型/眼/嘴/髮型/髮色):只寫「大眼睛、長直髮」畫出來的臉
+        # 臉分五軸(臉型/眼/嘴/髮型/髮色)+瞳色:只寫「大眼睛、長直髮」畫出來的臉
         # 每次都不一樣,細到這個程度才看得出是同一個人。
-        bits += [tr(FACE, "face"), tr(EYES, "eyes"), tr(MOUTH, "mouth"),
+        bits += [tr(FACE, "face"), tr(EYES, "eyes"), tr(EYE_COLOR, "eye_color"),
+                 tr(MOUTH, "mouth"),
                  tr(HAIR_COLOR, "hair_color"), tr(HAIR, "hair"), tr(FEATURE, "feature")]
         bits += sp_seg["head"]
         # 純立繪對鏡；出卡場景由 extra 決定對視對象，不強制 looking at viewer
         if not p and not scene:
             bits.append("looking at viewer")
     if not p or seg == "bust":
-        bits += [tr(BUST, "bust")]
+        bits += [tr(BUST, "bust"), tr(AREOLA, "areola")]
     if not p or seg in ("bust", "lower"):
         bits += [tr(BUILD, "build")]
     if p and seg == "lower":

@@ -160,7 +160,8 @@ function lookText(c) {
     const worn = (Number.isInteger(i) && i >= 0 && i < wardrobe.length)
       ? wardrobe[i] : (L.career_outfit || wardrobe[0] || "");
     const bits = [L.height_cm ? `${L.height_cm}cm` : null, L.build, L.bust,
-                  L.face, L.eyes, L.mouth,
+                  L.areola || null,
+                  L.face, L.eyes, L.eye_color || null, L.mouth,
                   [L.hair_color, L.hair].filter(Boolean).join("") || null,
                   worn ? `身上穿著${worn}` : null, L.feature].filter(Boolean);
     let t = bits.join("、");

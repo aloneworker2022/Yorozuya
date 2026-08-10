@@ -745,6 +745,8 @@ def _identity_anchor(ch: dict) -> dict:
         "mouth": look.get("mouth") or "",
         "build": look.get("build") or "",
         "bust": look.get("bust") or "",
+        "areola": look.get("areola") or "",
+        "eye_color": look.get("eye_color") or "",
         "style": look.get("style") or "",
         "outfit": worn,
         # 生涯服裝自己就是一整套配色(護士服白的、巫女服紅白),再疊一組隨機
@@ -764,8 +766,8 @@ def _identity_anchor(ch: dict) -> dict:
 def _seg_lines(seg: str, a: dict, ch: dict, *, dressed: bool) -> tuple[str, str]:
     """回 (特徵, 取景)。特徵只列這一段真的要畫的東西,照抄抽卡原文,不改寫不擴寫。"""
     if seg == "head":
-        # 臉分五軸(臉型/眼/嘴/髮型/髮色):只寫「大眼睛、長直髮」時每張臉都不一樣
-        bits = [a["face"], a["eyes"], a["mouth"],
+        # 臉分五軸(臉型/眼/嘴/髮型/髮色)+瞳色:只寫「大眼睛、長直髮」時每張臉都不一樣
+        bits = [a["face"], a["eyes"], a.get("eye_color") or "", a["mouth"],
                 "、".join(x for x in (a["hair_color"], a["hair"]) if x), a["feature"]]
         # 表情用原型(「傲嬌」「活潑開朗」這種短詞)。tone 是講說話方式的整句話,
         # 塞進生圖 prompt 只是雜訊——畫圖看不見她愛加「呢」「呀」。
@@ -775,7 +777,7 @@ def _seg_lines(seg: str, a: dict, ch: dict, *, dressed: bool) -> tuple[str, str]
             bits.append(f"表情{mood}")
         return "、".join(x for x in bits if x), "臉部特寫,髮頂到鎖骨"
     if seg == "bust":
-        bits = [a["bust"], a["build"], a["skin"]]
+        bits = [a["bust"], a.get("areola") or "", a["build"], a["skin"]]
         if dressed and a["outfit"]:
             bits.append(f"{a['outfit']}的上半身"
                         + ("" if a["outfit_career"] else f",{a['palette']}"))

@@ -198,9 +198,9 @@
         <div class="setting-row"><label>出卡場景圖</label><input id="set-card-scene-art" type="checkbox" title="每打一張卡，依她的回應生場景圖（實驗·費時）"></div>
         <div class="setting-row"><label></label><span class="dim small">實驗：有生圖能力時，打牌會依「動作＋她的回應」翻成英文再畫一張。不擋打牌；牌桌顯示「繪場景中…」。可關。</span></div>
         <div class="setting-row hidden" id="row-comfy-url"><label>ComfyUI</label><input id="set-comfy" type="text" class="wide" placeholder="http://192.168.68.55:8188"></div>
-        <div class="setting-row hidden" id="row-comfy-note"><label></label><span class="dim small">織夢生圖那台(顯卡主機)。<b>不能填 localhost</b>——那是伺服器自己,不是顯卡。召喚時出大頭照 / 半身 / 全身三張。</span></div>
+        <div class="setting-row hidden" id="row-comfy-note"><label></label><span class="dim small">織夢生圖那台(顯卡主機)。<b>不能填 localhost</b>——那是伺服器自己,不是顯卡。召喚時出大頭照 / 半身 / 全身三張。<b>不必選模型</b>：每位魅魔召喚時會從你 checkpoints 裡隨機綁定一個專屬模型，之後她的立繪／場景圖都用那一個。</span></div>
         <div class="setting-row hidden" id="row-comfy-ckpt"><label>模型</label>
-          <select id="set-comfy-ckpt" class="wide"><option value="">(自動:清單第一個能用的)</option></select></div>
+          <select id="set-comfy-ckpt" class="wide"><option value="">(已改為每位妹子自帶)</option></select></div>
         <div class="btn-row hidden" id="row-comfy-test"><button id="btn-comfy-test">測試 ComfyUI</button><span id="comfy-test-result" class="dim small"></span></div>
       </div>
       <div class="panel sub">

@@ -23,11 +23,11 @@
       "id": "ca",
       "file": "ca.json",
       "name": "ca",
-      "note": "空牌組",
+      "note": "6基礎 + 20衍生",
       "clonedFrom": null,
       "createMode": "empty",
       "createdAt": 1786072256.606594,
-      "updatedAt": 1786092424.9920475,
+      "updatedAt": 1786269599.6607523,
       "activatedAt": 1786092427.1266398
     }
   ],
@@ -47,5 +47,6 @@
       "from": "main",
       "to": "ca"
     }
-  ]
+  ],
+  "liveEpoch": 1
 }

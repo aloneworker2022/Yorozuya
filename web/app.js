@@ -600,9 +600,8 @@ function defaultState() {
       comfyUrl: "",
       // 生圖走哪條:"comfy"(本機顯卡,召喚出三連拍)或 "grok-img"(雲端,單張)
       imgProvider: "grok-img",
-      // ComfyUI 用哪個 checkpoint。留空 = 伺服器自動挑清單第一個能用的
-      // ——models/checkpoints 混著「只含主模型」的單件檔時,自動挑會踩雷,
-      // 所以這裡最好指定。測試 ComfyUI 會把清單抓回來填進下拉。
+      // 舊欄位:全局 Comfy checkpoint。已改為「每位妹子 s.comfyCkpt 自帶模型」,
+      // 生圖不再讀這個;保留只為舊存檔相容,可忽略。
       comfyCkpt: "",
       cardColors: null,   // null = 主題預設;{exec|found|acc|vn: {color,opacity}}
       cardCenter: false,  // 卡牌文字水平置中
@@ -806,6 +805,12 @@ function initState(j, offline) {
   renderAll();
   applyBg();
   startBgRotation();
+  // 本機 Comfy:進遊戲就抓 checkpoint 清單,舊妹子補綁專屬模型
+  if (!offline && imgProvider() === "comfy") {
+    refreshComfyCkpts({ force: true }).then(ok => {
+      if (ok) assignMissingGirlCkpts();
+    });
+  }
   if (offline) {
     toast("目前離線,進度會在恢復連線後自動同步", "bad");
     dirty = true;              // 讓 saveNow 的重試迴圈持續嘗試回推
@@ -1667,8 +1672,14 @@ function summonWithCount(n) {
       ...makeBackstory(),
     };
   })();
+  // Comfy 模式:召喚當下就綁定她專屬的 checkpoint(有清單才抽;沒抓過則生圖前再補)
+  if (imgProvider() === "comfy") {
+    const pool = usableComfyCkpts();
+    if (pool.length) s.comfyCkpt = pickRandomComfyCkpt();
+  }
   state.succubi.push(s);
-  log(`獻祭 ${n} 人,召喚出【${s.rarity}】${s.name}`);
+  log(`獻祭 ${n} 人,召喚出【${s.rarity}】${s.name}`
+    + (s.comfyCkpt ? ` · 模型 ${shortCkptName(s.comfyCkpt)}` : ""));
   scheduleSave();
   showSummonOverlay(s, n);
   renderAll();
@@ -1701,6 +1712,8 @@ function renderSummonCard(ov, s) {
         : ""}
       <p class="small">${s.personality.join("・")} / ${s.speech}</p>
       <p class="small dim">她原本是……${esc(s.job || "?")}</p>
+      ${s.comfyCkpt && imgProvider() === "comfy"
+        ? `<p class="small dim">生圖模型 · ${esc(shortCkptName(s.comfyCkpt))}</p>` : ""}
       <button id="summon-close">接受契約</button>
     </div>`;
   document.getElementById("summon-close").onclick = () => { ov.classList.add("hidden"); ov.innerHTML = ""; renderAll(); };
@@ -1740,25 +1753,88 @@ async function pollCutNote() {
   } catch { /* 問不到就算了,不要因為診斷訊息拖累生圖流程 */ }
 }
 
-// ComfyUI 的 checkpoint 清單(按「測試 ComfyUI」時抓)。bad = 試過確定沒有
-// 文字編碼器的單件檔,在下拉裡標出來,免得又選到同一顆地雷。
+// ComfyUI 的 checkpoint 清單(「測試 ComfyUI」或生圖前 refresh 抓)。
+// bad = 試過確定沒有文字編碼器的單件檔——分配給妹子時跳過。
+// 每位妹子自帶 s.comfyCkpt;設定頁不再選全局模型。
 let comfyCkpts = [];
 let comfyBadCkpts = [];
+let comfyCkptRefreshAt = 0;
+/** 最近一次 /api/comfy/status 原文(測試列顯示 VRAM 用) */
+let comfyLastStatus = null;
 
-function comfyCkptOptions(selected) {
-  const sel = $("#set-comfy-ckpt");
-  if (!sel) return;
-  const opts = [`<option value="">(自動:清單第一個能用的)</option>`];
-  for (const c of comfyCkpts) {
-    const bad = comfyBadCkpts.includes(c);
-    opts.push(`<option value="${esc(c)}"${c === selected ? " selected" : ""}${bad ? " disabled" : ""}>${
-      esc(c)}${bad ? "(沒有文字編碼器,載不動)" : ""}</option>`);
+function usableComfyCkpts() {
+  const bad = new Set(comfyBadCkpts);
+  const u = comfyCkpts.filter(c => c && !bad.has(c));
+  return u.length ? u : comfyCkpts.slice();
+}
+
+function pickRandomComfyCkpt(exclude = "") {
+  let pool = usableComfyCkpts();
+  if (exclude && pool.length > 1) pool = pool.filter(c => c !== exclude);
+  if (!pool.length) return "";
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** 檔名太長時詳細頁只顯示尾段 */
+function shortCkptName(name) {
+  if (!name) return "";
+  const base = String(name).split(/[/\\]/).pop() || name;
+  return base.length > 42 ? "…" + base.slice(-40) : base;
+}
+
+async function refreshComfyCkpts({ force = false } = {}) {
+  if (!force && comfyCkpts.length && Date.now() - comfyCkptRefreshAt < 60000) {
+    return true;
   }
-  // 存檔裡指定的那個還沒在清單裡(還沒按過測試)也要留著,不然一進設定就被清掉
-  if (selected && !comfyCkpts.includes(selected)) {
-    opts.push(`<option value="${esc(selected)}" selected>${esc(selected)}</option>`);
+  const u = (state?.settings?.comfyUrl || "").trim();
+  try {
+    const res = await fetch("/api/comfy/status" + (u ? "?url=" + encodeURIComponent(u) : ""));
+    const j = await res.json();
+    comfyLastStatus = j;
+    if (!j?.ok) return false;
+    comfyCkpts = j.checkpoints || [];
+    comfyBadCkpts = j.bad_checkpoints || [];
+    comfyCkptRefreshAt = Date.now();
+    return true;
+  } catch {
+    return false;
   }
-  sel.innerHTML = opts.join("");
+}
+
+/**
+ * 確保這位妹子有固定 Comfy checkpoint。
+ * - 已有且不在壞檔名單 → 沿用(同一人永遠同一模型)
+ * - 沒有 / 已是壞檔 → 從可用清單隨機抽一個綁定並存檔
+ * 回傳要用的 ckpt 名(可能仍空:Comfy 沒模型時交給伺服器自動挑)
+ */
+async function ensureGirlComfyCkpt(s) {
+  if (!s || imgProvider() !== "comfy") return s?.comfyCkpt || "";
+  await refreshComfyCkpts();
+  const cur = (s.comfyCkpt || "").trim();
+  const bad = cur && comfyBadCkpts.includes(cur);
+  if (cur && !bad) return cur;
+  const picked = pickRandomComfyCkpt(cur);
+  if (picked) {
+    s.comfyCkpt = picked;
+    try { dirty = true; scheduleSave(); } catch { /* */ }
+  }
+  return s.comfyCkpt || "";
+}
+
+/** 測試 Comfy 成功後:幫還沒綁模型的舊妹子補上(不覆蓋已有的) */
+function assignMissingGirlCkpts() {
+  if (imgProvider() !== "comfy" || !state?.succubi?.length) return 0;
+  const pool = usableComfyCkpts();
+  if (!pool.length) return 0;
+  let n = 0;
+  for (const s of state.succubi) {
+    const cur = (s.comfyCkpt || "").trim();
+    if (cur && !comfyBadCkpts.includes(cur)) continue;
+    s.comfyCkpt = pickRandomComfyCkpt(cur);
+    if (s.comfyCkpt) n++;
+  }
+  if (n) { try { dirty = true; scheduleSave(); } catch { /* */ } }
+  return n;
 }
 
 // 一張的下單→輪詢。shot 給值(head|half|full)= 三連拍其中一張,尺寸與 seed
@@ -1766,6 +1842,8 @@ function comfyCkptOptions(selected) {
 // opts.forceNew：新 key 強制重跑；opts.randomSeed：半身換樣時用（Comfy）
 async function weaveShot(s, shot, onTick, opts = {}) {
   const comfy = imgProvider() === "comfy";
+  // 每位妹子自帶 checkpoint;沒綁過就現在抽一個綁死
+  const girlCkpt = comfy ? await ensureGirlComfyCkpt(s) : "";
   const body = {
     // 強制新單，避免佇列回舊 done 快取
     key: opts.forceNew
@@ -1783,7 +1861,7 @@ async function weaveShot(s, shot, onTick, opts = {}) {
       shot,
       char_id: s.id,
       comfy_url: state.settings.comfyUrl || "",
-      ckpt: state.settings.comfyCkpt || "",
+      ckpt: girlCkpt || "",
       // 0 = 伺服器用人設 seed；換半身時給隨機 seed 才會變
       ...(opts.randomSeed ? { seed: (Math.floor(Math.random() * 2147483646) + 1) } : {}),
     } : {}),
@@ -2665,6 +2743,7 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
     lock_identity: true,
   });
 
+  const girlCkpt = comfy ? await ensureGirlComfyCkpt(s) : "";
   const body = {
     key,
     provider: imgProvider(),
@@ -2687,7 +2766,7 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
     ...(refOk ? { ref: halfRef } : {}),
     ...(comfy ? {
       comfy_url: state.settings.comfyUrl || "",
-      ckpt: state.settings.comfyCkpt || "",
+      ckpt: girlCkpt || "",
       // 不傳 shot/char_id 當肖像檔名，避免覆寫 half/full 立繪檔
     } : {}),
   };
@@ -4904,16 +4983,19 @@ function shotsLine(s) {
     ? `<div class="aff-line small" style="color:var(--gold)">去背沒成功:${esc(lastCutNote)}
        ${have.length ? `<button class="link-btn" id="act-recut">🩹 再摳一次</button>` : ""}</div>`
     : "";
-  if (!missing.length) return cutNote;
+  const ckptLine = (imgProvider() === "comfy" && s.comfyCkpt)
+    ? `<div class="aff-line dim small">生圖模型 · ${esc(shortCkptName(s.comfyCkpt))}</div>`
+    : "";
+  if (!missing.length) return ckptLine + cutNote;
   if (!canWeaveNow()) {
-    return `<div class="aff-line dim small">${have.length ? "" : "尚未成形——"}今晚讓她織夢,明早見到她的臉(M3)</div>`;
+    return `${ckptLine}<div class="aff-line dim small">${have.length ? "" : "尚未成形——"}今晚讓她織夢,明早見到她的臉(M3)</div>`;
   }
   const what = have.length
     ? `還差 ${missing.map(k => SHOT_LABEL[k]).join("、")}`
     : "尚未成形——大頭照 / 半身 / 全身三張都還沒織";
   const why = !busy && lastWeaveError
     ? `<div class="aff-line small" style="color:var(--red)">上次失敗:${esc(lastWeaveError)}</div>` : "";
-  return `<div class="aff-line dim small">${what}</div>${why}${cutNote}
+  return `${ckptLine}<div class="aff-line dim small">${what}</div>${why}${cutNote}
     <div class="detail-actions"><button class="cyan" id="act-weave" ${busy ? "disabled" : ""}>${
       busy ? "織出形體中…" : "✦ 織出她的形體"}</button></div>`;
 }
@@ -7901,8 +7983,9 @@ function renderSettings() {
   $("#row-comfy-url").classList.toggle("hidden", imgProvider() !== "comfy");
   $("#row-comfy-note").classList.toggle("hidden", imgProvider() !== "comfy");
   $("#row-comfy-test").classList.toggle("hidden", imgProvider() !== "comfy");
-  $("#row-comfy-ckpt").classList.toggle("hidden", imgProvider() !== "comfy");
-  comfyCkptOptions(state.settings.comfyCkpt || "");
+  // 全局模型下拉已廢:每位妹子 s.comfyCkpt 自帶,生圖時用她自己的
+  const ckptRow = $("#row-comfy-ckpt");
+  if (ckptRow) ckptRow.classList.add("hidden");
   const csa = $("#set-card-scene-art");
   if (csa) csa.checked = state.settings.features?.cardSceneArt !== false;
   $("#set-model").value = state.settings.model || "";
@@ -8083,36 +8166,49 @@ on("set-llm-provider", "change", e => {
 });
 on("set-ollama", "change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });
 on("set-comfy", "change", e => { state.settings.comfyUrl = e.target.value.trim(); scheduleSave(); });
-on("set-imgprov", "change", e => { state.settings.imgProvider = e.target.value; scheduleSave(); renderSettings(); });
+on("set-imgprov", "change", e => {
+  state.settings.imgProvider = e.target.value;
+  scheduleSave();
+  renderSettings();
+  // 切到本機時預抓 checkpoint 清單,之後召喚/生圖才能立刻幫妹子綁模型
+  if (imgProvider() === "comfy") {
+    refreshComfyCkpts({ force: true }).then(ok => {
+      if (ok) {
+        const n = assignMissingGirlCkpts();
+        if (n) toast(`已為 ${n} 位魅魔綁定生圖模型`, "good");
+      }
+    });
+  }
+});
 on("set-card-scene-art", "change", e => {
   state.settings.features ??= {};
   state.settings.features.cardSceneArt = !!e.target.checked;
   scheduleSave();
 });
-on("set-comfy-ckpt", "change", e => { state.settings.comfyCkpt = e.target.value; scheduleSave(); });
 on("btn-comfy-test", "click", async () => {
   const r = $("#comfy-test-result");
   if (!r) return;
   r.textContent = "測試中…";
-  const u = (state.settings.comfyUrl || "").trim();
   try {
-    const res = await fetch("/api/comfy/status" + (u ? "?url=" + encodeURIComponent(u) : ""));
-    const j = await res.json();
-    if (!j.ok) {
+    const ok = await refreshComfyCkpts({ force: true });
+    if (!ok) {
+      const u = (state.settings.comfyUrl || "").trim() || "(伺服器預設)";
       // localhost 是最常見的錯:那是遊戲伺服器自己,不是顯卡那台
-      r.textContent = `連不上 ${j.url}` + (/\/\/(localhost|127\.0\.0\.1)/.test(j.url)
+      r.textContent = `連不上 ${u}` + (/\/\/(localhost|127\.0\.0\.1)/.test(String(u))
         ? "——這是伺服器自己。請填顯卡主機的 IP。" : "(ComfyUI 沒開?防火牆?)");
       return;
     }
-    comfyCkpts = j.checkpoints || [];
-    comfyBadCkpts = j.bad_checkpoints || [];
-    comfyCkptOptions(state.settings.comfyCkpt || "");
-    const v = j.vram && j.vram[0];
+    const filled = assignMissingGirlCkpts();
     // 去背要 Pillow。沒裝的話圖照生,只是留著白底疊在遊戲畫面上——那是「怎麼還是
     // 白底」最常見的原因,而且原本只印在伺服器 log 裡,手機上完全看不到。
     const cut = await fetch("/api/cutout").then(x => x.json()).catch(() => null);
-    r.textContent = `OK · ${comfyCkpts.length} 個模型`
-      + (v ? ` · ${v.name} ${Math.round(v.free_mb / 1024 * 10) / 10}/${Math.round(v.total_mb / 1024 * 10) / 10}GB 可用` : "")
+    const v = comfyLastStatus?.vram && comfyLastStatus.vram[0];
+    const vramTxt = v
+      ? ` · ${v.name} ${Math.round(v.free_mb / 1024 * 10) / 10}/${Math.round(v.total_mb / 1024 * 10) / 10}GB 可用`
+      : "";
+    r.textContent = `OK · ${comfyCkpts.length} 個模型(每位妹子自帶其一)`
+      + vramTxt
+      + (filled ? ` · 已為 ${filled} 位補綁模型` : "")
       + (cut ? (cut.available ? " · 去背可用" : " · ⚠ 沒裝 Pillow,立繪不會去背") : "");
   } catch (e) { r.textContent = "失敗:" + e.message; }
 });

@@ -5,8 +5,9 @@
     "schema_version": 2,
     "token_model": "每卡一個詞墜 token；parentId 繼承父鏈詞墜。解析後效果字串如 [問候] [說笑話]。",
     "pack_note": "獨立牌組檔；上線掛到唯一 live 槽，並清空玩家牌進度；草稿檔仍保留。",
-    "pack_model": "多檔牌組：唯一上線槽=registry.active+liveEpoch；上線硬切玩家牌庫，草稿 JSON 可回滾再上線。",
-    "note": "auto-fixed starter pool for onboard"
+    "pack_model": "多檔牌組：registry.active 決定遊戲用哪份；編輯 card_x.json 等草稿，上線只切指標，舊版可回滾。",
+    "note": "6 bases (starters) + 20 derived speech; visualEn = girl reaction look",
+    "visualEn_rule": "卡牌是玩家動作；出圖主體是妹子。visualEn 描述：玩家做出該動作後，妹子可能呈現的樣貌／表情／姿態（結果），不是描述玩家本體動作。"
   },
   "enums": {
     "kind": [
@@ -70,19 +71,47 @@
   },
   "starter_pool": [
     "b0001",
-    "b0002"
+    "b0002",
+    "b0003",
+    "B0004",
+    "B0005",
+    "b0016"
   ],
   "shop_weights": {
     "speech_pool": [
       "b0001",
-      "b0002"
+      "b0002",
+      "b0003",
+      "B0004",
+      "B0005",
+      "b0006",
+      "b0007",
+      "b0008",
+      "b0009",
+      "b0010",
+      "b0011",
+      "b0012",
+      "b0013",
+      "b0014",
+      "b0015",
+      "b0016",
+      "b0017",
+      "b0018",
+      "b0019",
+      "b0020",
+      "b0021",
+      "b0022",
+      "b0023",
+      "b0024",
+      "b0025",
+      "b0026"
     ],
     "premium_pool": []
   },
   "cards": [
     {
       "id": "b0001",
-      "name": "新基礎卡",
+      "name": "打招呼",
       "token": "打招呼",
       "tokenDesc": "",
       "parentId": null,
@@ -115,14 +144,14 @@
         }
       },
       "sceneStart": "你跟[name]說:HI",
-      "promptHint": "她聽到的反應",
+      "promptHint": "他打招呼，好像很平常",
       "forceable": false,
       "nsfwOnly": false,
       "visualEn": "girl watch"
     },
     {
       "id": "b0002",
-      "name": "新基礎卡",
+      "name": "看著",
       "token": "看著",
       "tokenDesc": "尷尬地看著對方，不知道要說些甚麼",
       "parentId": null,
@@ -160,6 +189,962 @@
       "nsfwOnly": false,
       "visualEn": "sex ,cum",
       "visualZh": "（AI）新基礎卡：你看著[name]，不知道要怎麼說"
+    },
+    {
+      "id": "b0003",
+      "name": "閒聊",
+      "token": "聊",
+      "tokenDesc": "故作輕鬆的加入聊天",
+      "parentId": null,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 10,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你和[name]很輕鬆的聊天",
+      "promptHint": "他看著妳，說了一些無關痛癢的話",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "she watch"
+    },
+    {
+      "id": "B0004",
+      "name": "靠近",
+      "token": "靠近",
+      "tokenDesc": "默默的靠近",
+      "parentId": null,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 5,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 0
+        },
+        "wife": {
+          "min": -1,
+          "max": 1
+        }
+      },
+      "sceneStart": "你摸摸的靠近[name]",
+      "promptHint": "他沒有說什麼，只是靠近妳",
+      "forceable": false,
+      "nsfwOnly": false
+    },
+    {
+      "id": "B0005",
+      "name": "微笑",
+      "token": "笑",
+      "tokenDesc": "傻笑",
+      "parentId": null,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "price": 5,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你微笑",
+      "promptHint": "他微笑",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "she watch"
+    },
+    {
+      "id": "b0006",
+      "name": "問名字",
+      "token": "問名字",
+      "tokenDesc": "在招呼之後，正式問她叫什麼",
+      "parentId": "b0001",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 25,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你跟[name]打過招呼後，問她叫什麼名字",
+      "promptHint": "他問妳的名字，語氣普通、有點認真",
+      "forceable": false,
+      "nsfwOnly": false
+    },
+    {
+      "id": "b0007",
+      "name": "道別",
+      "token": "道別",
+      "tokenDesc": "把招呼收成一句簡潔的再見",
+      "parentId": "b0001",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 20,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]揮了揮手，說了聲再見",
+      "promptHint": "他在跟妳道別，語氣不重也不拖泥帶水",
+      "forceable": false,
+      "nsfwOnly": false
+    },
+    {
+      "id": "b0008",
+      "name": "移開視線",
+      "token": "移開視線",
+      "tokenDesc": "對視太久，慌忙把視線轉開",
+      "parentId": "b0002",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 20,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你盯著[name]太久，忽然心虛地把視線移開",
+      "promptHint": "他突然不敢看妳了，耳尖好像有點紅",
+      "forceable": false,
+      "nsfwOnly": false
+    },
+    {
+      "id": "b0009",
+      "name": "多看一眼",
+      "token": "多看一眼",
+      "tokenDesc": "本來只是瞥一眼，卻多停了半秒",
+      "parentId": "b0002",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你看著[name]，本來要移開，卻又多看了一眼",
+      "promptHint": "他的目光多停了一下，像在確認什麼",
+      "forceable": false,
+      "nsfwOnly": false
+    },
+    {
+      "id": "b0010",
+      "name": "聊天氣",
+      "token": "天氣",
+      "tokenDesc": "用最安全的天氣話題填滿空白",
+      "parentId": "b0003",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 15,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你跟[name]閒聊起今天的天氣",
+      "promptHint": "他在講無關痛癢的天氣，想把空氣撐住",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "talk, casual standing"
+    },
+    {
+      "id": "b0011",
+      "name": "問近況",
+      "token": "近況",
+      "tokenDesc": "輕鬆地問她最近過得怎麼樣",
+      "parentId": "b0003",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 25,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你隨口問[name]最近過得怎麼樣",
+      "promptHint": "他問妳近況，語氣輕，卻真的在等答案",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "conversation, attentive"
+    },
+    {
+      "id": "b0012",
+      "name": "並肩",
+      "token": "並肩",
+      "tokenDesc": "從靠近變成站到她旁邊",
+      "parentId": "B0004",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk",
+        "touch"
+      ],
+      "price": 20,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你靠近[name]，默默站到她身邊並肩",
+      "promptHint": "他站到妳旁邊，沒有多說，距離卻近了",
+      "forceable": false,
+      "nsfwOnly": false
+    },
+    {
+      "id": "b0013",
+      "name": "輕碰袖口",
+      "token": "碰袖",
+      "tokenDesc": "靠近時指尖不小心擦過她的袖口",
+      "parentId": "B0004",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk",
+        "touch"
+      ],
+      "price": 35,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": "friend",
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 0
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你靠近[name]時，指尖輕輕碰了一下她的袖口",
+      "promptHint": "他指尖擦過妳袖口，像不小心，又不像",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "men hand near sleeve, soft contact"
+    },
+    {
+      "id": "b0014",
+      "name": "苦笑",
+      "token": "苦笑",
+      "tokenDesc": "笑得有點無奈，像自己也知道很傻",
+      "parentId": "B0005",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 15,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]露出一個有點無奈的苦笑",
+      "promptHint": "他苦笑著，像在自嘲，又像在跟妳示弱",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "she watch"
+    },
+    {
+      "id": "b0015",
+      "name": "對她笑",
+      "token": "對她笑",
+      "tokenDesc": "不是傻笑，是明確對準她的笑",
+      "parentId": "B0005",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你看著[name]，對她露出一個明確的微笑",
+      "promptHint": "他在對妳笑，視線沒有移開",
+      "forceable": false,
+      "nsfwOnly": false
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0016",
+      "name": "點頭",
+      "token": "點頭",
+      "tokenDesc": "輕輕點頭，表示收到或附和",
+      "parentId": null,
+      "price": 10,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]輕輕點了點頭",
+      "promptHint": "他點了點頭，像在說「我知道了」",
+      "visualEn": "girl with mild acknowledging expression, slight nod back or neutral face, eyes half attentive"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0017",
+      "name": "自我介紹",
+      "token": "自我介紹",
+      "tokenDesc": "招呼之後補上自己是誰",
+      "parentId": "b0001",
+      "price": 30,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你跟[name]打過招呼，簡單自我介紹了一下",
+      "promptHint": "他報上名字，語氣平常、有點正式",
+      "visualEn": "girl listening politely, slight curious tilt of head, open neutral expression"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0018",
+      "name": "回禮",
+      "token": "回禮",
+      "tokenDesc": "對方有反應時，再補一個客氣的招呼",
+      "parentId": "b0001",
+      "price": 20,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]的回應又補了一個客氣的回禮",
+      "promptHint": "他又點了點頭回禮，不搶戲",
+      "visualEn": "girl mid polite smile, relaxed shoulders after greeting exchange"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0019",
+      "name": "上下打量",
+      "token": "打量",
+      "tokenDesc": "視線不自覺掃過她的裝扮",
+      "parentId": "b0002",
+      "price": 35,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你看著[name]，視線不自覺上下打量了一下",
+      "promptHint": "他的目光在妳身上停了幾處，又假裝若無其事",
+      "visualEn": "girl noticing a gaze, subtle self-conscious posture, slight frown or flush"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0020",
+      "name": "對視",
+      "token": "對視",
+      "tokenDesc": "沒有移開，讓視線撞上幾秒",
+      "parentId": "b0002",
+      "price": 40,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 3
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你看著[name]，和她對視了幾秒",
+      "promptHint": "他直直看著妳的眼睛，沒有先逃",
+      "visualEn": "girl locked in eye contact, tense soft expression, slightly parted lips"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0021",
+      "name": "講冷笑話",
+      "token": "冷笑話",
+      "tokenDesc": "丟一個有點冷的笑話試水溫",
+      "parentId": "b0003",
+      "price": 25,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你跟[name]閒聊時丟了一個有點冷的笑話",
+      "promptHint": "他講了個冷笑話，自己先愣了一下",
+      "visualEn": "girl deadpan then tiny smirk, raised eyebrow, holding back a laugh"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0022",
+      "name": "換話題",
+      "token": "換話題",
+      "tokenDesc": "氣氛卡住時，生硬但努力地轉場",
+      "parentId": "b0003",
+      "price": 20,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你感覺冷場，硬生生跟[name]換了個話題",
+      "promptHint": "他突然換話題，語氣有點趕",
+      "visualEn": "girl slightly puzzled then adaptive smile, patient listening face"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0023",
+      "name": "後退半步",
+      "token": "後退",
+      "tokenDesc": "靠近後又怕太近，退半步拉開",
+      "parentId": "B0004",
+      "price": 15,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你靠近[name]一下，又慌張地後退半步",
+      "promptHint": "他忽然退開一點，像被自己嚇到",
+      "visualEn": "girl watching someone step back, mild amusement or confusion in eyes"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk",
+        "touch"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0024",
+      "name": "探身",
+      "token": "探身",
+      "tokenDesc": "為了聽清楚或看清楚，身體微微前傾",
+      "parentId": "B0004",
+      "price": 30,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你靠近[name]，微微探身想聽得更清楚",
+      "promptHint": "他往前傾了一點，距離突然近了",
+      "visualEn": "girl face slightly closer frame, startled soft eyes, breath held"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0025",
+      "name": "偷笑",
+      "token": "偷笑",
+      "tokenDesc": "忍著、卻還是漏出一點笑",
+      "parentId": "B0005",
+      "price": 20,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]忍不住偷笑了一下",
+      "promptHint": "他嘴角抽了一下，像在憋笑",
+      "visualEn": "girl catching someone smile, eyes narrowing playfully, soft grin forming"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "id": "b0026",
+      "name": "抿嘴笑",
+      "token": "抿嘴笑",
+      "tokenDesc": "笑得很收斂，只剩嘴角弧度",
+      "parentId": "B0005",
+      "price": 25,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]抿著嘴輕輕笑了一下",
+      "promptHint": "他抿嘴笑，眼神比嘴先洩漏情緒",
+      "visualEn": "girl mirrored soft smile, warm eyes, relaxed cheeks"
     }
   ],
   "venues": [],

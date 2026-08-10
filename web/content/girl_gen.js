@@ -125,6 +125,9 @@ export function generateGirl({ luck = 0, rating = "sfw", usedNames = [] } = {}) 
   const build = rollGraded(A.build, luck, rating);
   const bust = rollGraded(A.bust, luck, rating);
   const eyes = rollGraded(A.eyes, luck, rating);
+  // 乳暈 / 瞳色:新軸;池子缺或 SFW 濾光後為空就留 ""(舊存檔相容)
+  const areola = (A.areola && A.areola.length) ? rollGraded(A.areola, luck, rating) : null;
+  const eyeColor = (A.eye_color && A.eye_color.length) ? rollGraded(A.eye_color, luck, rating) : null;
   // 年齡:池子裡沒有這欄,由這裡抽。生圖非有不可——不給年齡,模型畫出來的
   // 年紀會隨機漂,同一個人設每次看起來都不同歲數。範圍見 persona_pools 的
   // age(沒設就用 18~33:她們都是被從現實生活裡擄來的成年人)。
@@ -139,6 +142,8 @@ export function generateGirl({ luck = 0, rating = "sfw", usedNames = [] } = {}) 
     height_cm: ri(150, 172),
     build: build.text, bust: bust.text, eyes: eyes.text,
     // 池子沒這一軸(舊 persona_pools)就留空,不要塞 undefined 進存檔
+    areola: areola?.text || "",
+    eye_color: eyeColor?.text || "",
     face: pk(A.face || []) || "", mouth: pk(A.mouth || []) || "",
     hair: pk(A.hair), hair_color: pk(A.hair_color || []) || "",
     style: wardrobe[0],   // 舊欄位:仍指得到一套衣服,舊程式路徑不會拿到 undefined
