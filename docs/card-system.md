@@ -1,13 +1,15 @@
 # 互動牌制規格（玩家 ↔ 女子）
 
 > **狀態：M0～M6 已上線（含 M5 CG cache／占位）。**  
+> **看板打牌節奏 v7（規格已鎖、程式待跟）：** 攜帶 **8**、每輪抽 **2** 打 **1**、**N＝輪數**、詞墜 **B 加權**（無 opener 旗標；節拍 C 留給約會）。見 §4.4～§5.2。與舊「手牌補到 5」衝突時**以本文為準**。  
 > 核心玩法（商店／牌庫／牌桌／鍊／氣泡／約會／短 AI）以 `web/app.js` + `web/content/card_engine.js` 為準；本文仍是**規則聖經**（衝突時規則以本文為準，實作 bug 另開修）。  
 > 與 `plan-v5.md` 衝突處，**以本文覆寫「聊天／淫紋聊天／舊約會流程」相關段落**。  
 > 企劃書索引：`plan-v5.md` **§13A**。  
 > **卡牌／場地資料：[`web/content/cards.json`](../web/content/cards.json)**。  
 > 召喚師 × NTR × 交配環與牌制的對接：**本文不寫**，另開文件再鎖。  
-> **v1 不做多節卡演出**（`steps[]` 資料可留，引擎不跑）— 見 §5.4；重開需討論後改本文。
-> **自由輸入長聊已退役**（M6）— 見 §13。
+> **v1 不做多節卡演出**（`steps[]` 資料可留，引擎不跑）— 見 §5.4；重開需討論後改本文。  
+> **自由輸入長聊已退役**（M6）— 見 §13。  
+> **約會牌桌**：暫不套用 v7 節拍 C；未另鎖前可共用引擎，但 **v7 抽牌／回池／B 以看板為準**（§10 待補）。
 >
 > 讀者假設：實作者可能是 **AI coding agent**。故：常數寫死、狀態機寫死、資料形狀給例、禁止事項列清、與舊系統對照表齊全。  
 > **不要自行「優化」鎖定常數（尤其氣泡 15%）。改常數＝改體驗＝當 bug 開。**
@@ -24,6 +26,7 @@
 | 實作存檔欄位 | §2 資料模型 |
 | 實作商店／牌庫／牌組 | §3 |
 | 實作召看板 → 產製 → 打牌 | §4～§6 |
+| 抽 2／回池／詞墜 B 加權（v7） | §4.4～§5.2 |
 | 實作鍊（chain） | §7 |
 | 實作感情骰 | §8 |
 | 實作氣泡（取代淫紋聊天） | §9 |
@@ -35,7 +38,7 @@
 
 ### 0.1 設計一句話
 
-> **委託（子彈筆記）養金幣與牌庫；召看板娘把她放進生活（可陪伴、可碎嘴）；深度互動只透過牌桌；無自由文字聊天；商店高級卡用則碎、話術不碎、未用不碎；虐系只開門給「鍊」；出手次數由女子關係決定；玩家成長管牌庫與可押張數。**
+> **委託（子彈筆記）養金幣與牌庫；召看板娘把她放進生活（可陪伴、可碎嘴）；深度互動只透過牌桌；無自由文字聊天；商店高級卡用則碎、話術不碎、未用不碎；虐系只開門給「鍊」；女子關係決定本局互動輪數 N；每輪抽 2 打 1（AI 回應＋畫圖＝一輪）；攜帶 ≤8＋妹子本體；已打出 id 本局不進可抽池；下輪抽牌偏同一張的直屬子卡（詞墜 B）；玩家成長管牌庫與可攜張數。**
 
 ### 0.2 絕對禁止（AI 常見越權）
 
@@ -46,7 +49,10 @@
 5. **禁止**虐卡一鍵播放整段連打內容；虐**只**給 `chain` 許可。  
 6. **禁止**未使用的碎卡在回合結束銷毀（已改：**未用不碎、退庫**）。  
 7. **禁止**在本文範圍實作「別的召喚師出牌」；那是後話。  
-8. **禁止**為了「平衡」擅自加全局感情 clamp（例如單次不得 +5）；每張卡自己的 min/max 已是邊界。
+8. **禁止**為了「平衡」擅自加全局感情 clamp（例如單次不得 +5）；每張卡自己的 min/max 已是邊界。  
+9. **禁止**恢復舊「手牌補到 5／hand_size 當每輪補牌上限」；看板 v7 是 **每輪抽 2、打 1**（§4.4）。  
+10. **禁止**為開場卡加 `opener` 專用旗標（方案 A 已否決）；已打出靠 `arc.playedIds` 排除。  
+11. **禁止**在看板實作節拍 beat（方案 C）；留給約會另鎖。
 
 ---
 
@@ -69,17 +75,21 @@
     │         │              已召出：可陪伴、氣泡、可開戰、可解召
     │         │              （一經按下召喚就開始；不要中途「取消產製」複雜流）
     │         ▼
-    │    組本輪牌：妹子本體卡 ≤3 + 從牌庫／預設組「押入」的卡
+    │    開戰：妹子本體 ≤3 ∪ 玩家攜帶 ≤8（預設牌組／押入）
     │         ▼
-    │    洗牌 → 抽到手牌 → 打 1～N 張（N 由該女子關係等決定）
-    │         │  可含：話術、碎卡、開門虐、不可走…
+    │    重複最多 N 輪（N＝關係基礎出手＝互動次數）：
+    │         可抽池（−本局已打出 id −已碎）→ 詞墜 B 加權抽 2
+    │         → 打出 1 張（妹子卡抽到則自動打）
+    │         → AI 回應 → 畫圖 → 本輪結束
+    │         → 非碎回池概念上仍在 8 張內，但已打出 id 不再進可抽池
+    │         → 未打出的那張回可抽池
     │         ▼
-    │    輪末：留下判定（或不可走強制 +1 輪）
-    │         走 → 妹子本體卡抽走；未用碎卡退庫
-    │         留 → 可再來一輪組牌／打牌
+    │    N 用完或可抽池空 → 輪末留下判定（或不可走強制 +1 輪）
+    │         走 → 妹子本體抽走；未用碎卡退庫
+    │         留 → 可再開戰（新 session 或再組牌，見實作）
     │
-    └─【約會】（非看板狀態）
-          電話（金 + 接聽率）→ 選場地（金）→ 一輪牌
+    └─【約會】（非看板狀態；節拍 C 未鎖）
+          電話（金 + 接聽率）→ 選場地（金）→ 牌桌
           （場地 3 張事件卡入池；每隻每日最多 2 次）
 ```
 
@@ -88,7 +98,7 @@
 | 通道 | 何時 | 玩家是否出牌 | 情感 |
 |---|---|---|---|
 | **氣泡碎嘴** | 委託三節點各 15% | 否 | 細水（0 或 +1，見 §9） |
-| **打牌演出** | 一輪牌局內打出卡 | 是 | 主養成（感情骰 §8） |
+| **打牌演出** | 每輪打出 1 張（AI＋圖） | 是（妹子卡自動也算） | 主養成（感情骰 §8） |
 | **舊淫紋全螢幕聊天** | — | — | **廢除／不再作為主路徑** |
 
 ### 1.2 看板娘 vs 約會（為何兩者都要）
@@ -98,8 +108,8 @@
 | 她在哪 | 店頭 | 外出場地 |
 | 氣泡盯委託 | **有** | 無（或極少；第一版無） |
 | 在任天賦暫加 | **有** | 無 |
-| 牌池特色 | 妹子本體 ≤3 + 玩家押入 | 場地事件 3 張 + 玩家編組 |
-| 時間 | 限時在任（既有 3～5h 量級／擴充） | 一輪結束即散 |
+| 牌池特色 | 妹子本體 ≤3 + 玩家攜帶 ≤8 | 場地事件 3 張 + 玩家編組（節奏待 C） |
+| 時間 | 限時在任（既有 3～5h 量級／擴充） | 牌桌結束即散 |
 | 次數 | 付錢可召（既有費用表） | **每隻每日 2 次** |
 | 互斥 | **看板中不可約會** | 約會中不是看板 |
 | 後話 | 擋住／保護 NTR 線相關（本文不實作對接） | — |
@@ -189,21 +199,27 @@ cardSession: {
     | "round_end"       // 輪末結算／留下判定
     | "closed",         // 結束（離開／解召／約會散）
 
-  // 本輪
-  roundIndex: number,          // 0,1,2… 同一 session 內第幾輪
-  girlCards: CardInstance[],   // ≤3，本體
-  injected: CardInstance[],    // 玩家本輪押入（≤ maxInject）
-  drawPile: CardInstance[],    // 洗後剩餘
-  hand: CardInstance[],        // 手牌，上限 5
-  nBase: number,               // 本輪女子給的基礎出手
-  nLeft: number,
+  // 本局牌組（開戰時固定意願；實際可抽見 arc）
+  roundIndex: number,          // 0,1,2… 同一 session 內第幾輪（每打出 1 張 +1）
+  girlCards: CardInstance[],   // ≤3，本體（source=girl）
+  injected: CardInstance[],    // 玩家本局攜帶（≤ maxInject=8）
+  // 本局「實體池」= girlCards ∪ injected（∪ venueCards 若約會）
+  // 可抽池 = 實體池 − arc.playedIds 對應 cardId − 已碎掉的實例
+  hand: CardInstance[],        // 本輪出示：固定抽 2（或不足則更少）
+  nBase: number,               // 本局女子給的基礎輪數 N
+  nLeft: number,               // 剩餘輪數（= 剩餘可完成的「打出 1 張」次數）
   chain: null | { attr: ChainAttr, kLeft: number, sourceCardId: string },
-  flags: {                     // 本 session／本輪旗標，供 requires
+  flags: {                     // 本 session 旗標，供 requires
     undressed?: boolean,
     hypnotized?: boolean,
     // ...
   },
-  playedThisRound: string[],   // instanceIds 或 cardIds 日誌
+  // 詞墜 B：互動推演（本 session 生命週期）
+  arc: {
+    lastId: string | null,     // 上一張打出的 cardId
+    playedIds: string[],       // 本局已打出的 cardId（可抽池永久排除）
+  },
+  playedThisRound: string[],   // 本輪日誌（cardId 等）
   venueId?: string,            // 約會
   venueCards?: CardInstance[], // 恰好 3
 }
@@ -224,12 +240,13 @@ cardSession: {
 
 | 誰 | 決定什麼 |
 |---|---|
-| **女子（關係 stage 等）** | 本輪基礎出手 **N**；留下率底；本體卡內容與態度 |
-| **玩家成長** | 牌庫上限、預設牌組套數、**本輪最多押入幾張**（上限 5）、商店特價欄解鎖等 |
+| **女子（關係 stage 等）** | 本局基礎輪數 **N**（＝可完成幾次「打出一張」的互動）；留下率底；本體卡內容與態度 |
+| **玩家成長** | 牌庫上限、預設牌組套數、**本局最多攜帶幾張**（上限 **8**）、商店特價欄解鎖等 |
 
-#### 基礎出手 N（女子）— 建議表（實作可調表，但要集中在一個常數物件）
+#### 基礎輪數 N（女子）— 建議表（實作可調表，但要集中在一個常數物件）
 
 ```js
+// N = 本局最多幾輪；一輪 = 抽 2 → 打 1 → AI 回應 → 畫圖
 const BASE_PLAYS_BY_STAGE = {
   stranger:    1,
   friend:      2,
@@ -238,14 +255,16 @@ const BASE_PLAYS_BY_STAGE = {
 };
 // 可選修正（第一版建議只做防備）：
 // 若 guard 高：N = max(1, N - 1)
+// chain.kLeft 仍可加算「額外可打次數」（見 §5.1／§7）；語意同「多幾輪互動」
 ```
 
-#### 本輪最多押入（玩家）— 建議表
+#### 本局最多攜帶（玩家）— 鎖定
 
 ```js
-// maxInject = min(5, 3 + floor(cardPlayerLv / 2)) 或獨立擴充軸
-// 第一版也可固定 5，僅用牌庫上限表現成長
-const MAX_INJECT_CAP = 5;
+// defaults.max_inject；第一版固定 8（成長軸日後再接 cardPlayerLv）
+const MAX_INJECT_CAP = 8;
+// 每輪出示張數（不是舊的「手牌補滿」）
+const HAND_DRAW = 2; // defaults.hand_draw
 ```
 
 ### 2.6 卡定義（內容模組 JSON）
@@ -327,17 +346,18 @@ const MAX_INJECT_CAP = 5;
 
 - **牌庫** = 擁有的全部卡（收藏）。  
 - **預設牌組** = 出擊意願清單（可多套）。  
-- **本輪押入** = 開戰前從預設組／牌庫勾選，張數 ≤ maxInject，且碎卡不超過 count。
+- **本局攜帶（押入）** = 開戰前從預設組／牌庫勾選，張數 ≤ **maxInject（8）**，且碎卡不超過 count。  
+- 開戰後這 ≤8 張與妹子本體組成**本局實體池**；每輪只從**可抽池**抽 2 張出示（見 §4.4）。
 
 ### 3.3 未用／已用（鎖死）
 
-| 情況 | 碎卡（shatterOnUse true） | 話術 |
-|---|---|---|
-| 押入本輪但未打出 | **退庫，count 不變** | 仍擁有 |
-| 打出（含開門失敗） | **count－1**（視作已使用） | 不減 |
-| 多節卡中途停手 | **（v1 不做多節）** 規格預留：視同已使用 → 碎 | — |
+| 情況 | 碎卡（shatterOnUse true） | 話術／不碎卡 | 妹子本體（girl） |
+|---|---|---|---|
+| 進了本局實體池但本輪未打出 | 回可抽池；局結束退庫 count 不變 | 回可抽池 | 回可抽池 |
+| 打出（含開門失敗） | **count－1**，**不回**可抽池 | 概念上仍在 8 張內，但 **cardId 記入 arc.playedIds → 本局可抽池不再出現** | 同不碎：回實體池語意，但 **playedIds 排除**（無碎卡分支） |
+| 多節卡中途停手 | **（v1 不做多節）** | — | — |
 
-「打出」定義：玩家在確認層按了確認，進入演出／結算流程。  
+「打出」定義：玩家在確認層按了確認（或妹子卡自動打出），進入演出／結算流程。  
 取消確認 → 未使用。
 
 ---
@@ -377,59 +397,141 @@ const MAX_INJECT_CAP = 5;
 她離開店頭（到期、解召、被叫走—後者後話）→ **全部本體卡從任何牌堆移除**。  
 不寫入玩家 `cardInventory`。
 
-### 4.4 一輪牌組建構
+### 4.4 本局牌組與「一輪」（看板 v7・鎖死）
+
+**範圍：** 看板 `mode=== "kanban"`。約會未另鎖前可共用實作，但規格以本節為準。
+
+#### 4.4.1 開戰組池
 
 ```
-girlCards (≤3) ∪ injected (≤ maxInject)
-  → shuffle
-  → draw 直到 hand.length === min(5, pileTotal) 或抽完
-```
+sessionDeck = girlCards (≤3) ∪ injected (≤ max_inject=8)
+// 約會另加 venueCards；此處看板不強制
 
-開戰時：
-
-```
 nBase = BASE_PLAYS_BY_STAGE[stage] （± 修正）
-nLeft = nBase
+nLeft = nBase          // = 剩餘輪數
 chain = null
-roundIndex++
+arc = { lastId: null, playedIds: [] }
+hand = []
 phase = round_play
+// 然後立刻執行「開一輪抽 2」（§4.4.3）
+```
+
+- **沒有**「洗一整副再手牌補到 5」。  
+- **沒有**舊式 drawPile 補牌；每輪都是從**可抽池**重新抽 2。
+
+#### 4.4.2 可抽池
+
+```
+drawPool = sessionDeck 中仍「可抽」的實例
+  − cardId ∈ arc.playedIds 的全部實例   // 本局已打出的 id：完全不進池
+  − 已碎掉（shatter 已結算）的實例
+```
+
+- 話術等不碎卡：打出後**仍算在你的 8 張攜帶裡**（不扣 inventory），但 id 進 `playedIds` → **本局可抽池永遠沒有它**。  
+- 碎卡：打出後不回池、扣 count。  
+- 妹子本體：無碎卡問題；打出後同樣 `playedIds`，本局同 id 不再抽到。
+
+#### 4.4.3 一輪的定義（鎖死）
+
+```
+一輪 = 抽 2 → 打出 1 張 → AI 妹子回應 → 畫圖 → 輪結束
+```
+
+| 項目 | 規則 |
+|---|---|
+| 抽幾張 | **2**（可抽池不足則有幾張抽幾張；0 則無法開輪 → 進 round_end） |
+| 打幾張 | **恰好 1 張**（完成一次互動） |
+| 妹子卡 | `source=== "girl"` 進手牌時：**自動打出**；若 2 張都是妹子卡 → **隨機選 1 張**自動打出 |
+| 玩家卡 | 手牌無強制自動時，玩家從 2 張中選 1 |
+| N | **N 輪 = N 次互動**；每完成一輪（含自動打妹子）`nLeft` 依 §5.1 扣除 |
+| 鍊 | 仍可存在；`playsLeft = nLeft + chain.kLeft` 表示還能再開幾輪 |
+
+#### 4.4.4 輪結束：手牌 2 張去向
+
+手牌清空，再：
+
+| 卡 | 去向 |
+|---|---|
+| **未打出** | 回可抽池（下輪還可能抽到） |
+| **打出且碎** | 不回池；inventory 已扣 |
+| **打出且不碎**（含妹子） | 實體池語意保留；**cardId → arc.playedIds**；可抽池不再含此 id |
+| 更新 arc | `arc.lastId = 打出的 cardId`；`playedIds` 去重 append |
+
+然後：若 `playsLeft > 0` 且可抽池非空 → **再抽 2 開下一輪**；否則 → `round_end`。
+
+#### 4.4.5 詞墜 B 加權抽牌（鎖死）
+
+**不做 A**（無 `opener` 專用旗標）。**不做 C**（節拍 beat；留給約會）。
+
+只對 **T1＝直屬子** 加權：`card.parentId === arc.lastId`。
+
+```js
+// cards.json → defaults.arc_weights（可只改數字）
+arc_weights: {
+  child: 8,   // T1：parentId === arc.lastId
+  other: 1,   // 可抽池內其餘卡
+}
+```
+
+| 情況 | 抽法 |
+|---|---|
+| `arc.lastId == null`（第一輪） | **全可抽池均勻** |
+| 可抽池內 **存在** T1 | 權重抽樣（T1=`child`，其餘=`other`），**不放回**抽至多 2 張 |
+| 可抽池內 **沒有任何 T1** | **全可抽池均勻**（避免抽空；跳題變自然） |
+
+- **跳題**：非 T1 權重 > 0 → 仍可能抽到別樹；抽到並打出後 `lastId` 換成新卡，之後往新樹的 T1 偏。  
+- 有 `parentId` 的妹子／玩家卡同一套權重；**無 parentId** 當 `other`。  
+- **禁止**用 AI／文案 NLP 決定能否進池或權重。
+
+例：
+
+```
+第 1 輪：均勻抽到「打招呼」「看著你」→ 打出「打招呼」
+  → 兩張離手；「看著你」回可抽池；「打招呼」→ playedIds
+第 2 輪：可抽池無「打招呼」；「問名字」等 parent=打招呼 的為 T1 高權重
+  → 「打招呼」抽不到（B + playedIds），不是 opener 旗標
 ```
 
 ---
 
-## 5. 打牌狀態機（單張）
+## 5. 打牌狀態機（一輪一張）
 
 ```
-round_play 且 (nLeft + chain.kLeft) > 0 且 hand 非空（或可跳過結束）
+round_play 且 playsLeft > 0
   │
-  │ 點手牌
+  │ 若 hand 空 → 自可抽池 B 加權抽 2（§4.4.5）；池空 → round_end
+  │
+  │ 若 hand 含妹子卡 → 自動選定要打的那張（2 張皆妹子則隨機 1）
+  │ 否則玩家點手牌 1 張
   ▼
-requires 檢查（階段、flag、mode）→ 不可則拒絕
+requires 檢查（階段、flag、mode）→ 不可則拒絕（自動打出前也要檢；失敗則改抽或改選，見實作容錯）
   │
   ▼
 確認層（高級碎卡建議必確認；顯示「用後消失」）
-  │ 取消 → 回手牌
+  │ 取消 → 回手牌（自動打出的妹子卡不走取消）
   ▼
 標記「已使用」意圖
   │
   ▼
 若 openChain：
   判定開門成功 / 失敗（§7）
-  失敗 → 感情骰(失敗表) → 演出失敗 → shatter → 扣次數 → 補牌 → 仍回 round_play
-  成功 → 設定 chain → 感情骰 → 演出 → 扣次數 → 補牌
+  失敗 → 感情骰(失敗表) → 演出（AI＋圖）→ shatter → 扣輪數 → 輪末回池規則 → 再抽或 round_end
+  成功 → 設定 chain → 感情骰 → 演出（AI＋圖）→ 扣輪數 → 回池規則 → 再抽或 round_end
 若 普通卡：
-  若 chain 存在且不相容 → 不應能點（UI 灰）
-  感情骰 → 演出（v1＝單拍：sceneStart + 她 1～2 句）→ shatter 若需 → 扣次數 → 補牌
+  若 chain 存在且不相容 → 不應能點（UI 灰）；自動選卡時跳過不相容
+  感情骰 → 演出（AI 回應＋畫圖）→ shatter 若需 → 扣輪數 → 回池規則 → 再抽或 round_end
   │
   ▼
 （v1 跳過多節；見 §5.4）
   │
   ▼
-若 nLeft+chain.kLeft === 0 或 玩家按「結束本輪」或 手牌與庫皆空且無法再打
-  → round_end
+若 playsLeft === 0 或 可抽池空無法再抽 → round_end
+否則 hand=[] 後再抽 2，維持 round_play
 ```
 
-### 5.1 扣次數規則（鎖死建議，少 bug）
+### 5.1 扣輪數規則（鎖死建議，少 bug）
+
+語意：**每完成一輪（打出一張並走完演出）消耗 1 次「可互動」**。
 
 ```
 function spendPlay(card):
@@ -440,28 +542,39 @@ function spendPlay(card):
     nLeft -= 1
 ```
 
-開門卡自身：先按「普通一次」扣（優先扣 chain 還是 base？）  
+開門卡自身：  
 **鎖死：開門卡消耗 1 次基礎 N（不消耗舊 chain；開門時清掉舊 chain 再設新 chain）。**
 
 ```
 function playOpener(card, success):
   chain = null  // 舊鍊取消
-  nLeft -= 1    // 開門動作本身
+  nLeft -= 1    // 本輪本身
   if success:
     chain = { attr: card.openChain.attr, kLeft: card.openChain.k, sourceCardId: card.id }
 ```
 
-### 5.2 補牌
+### 5.2 無「補到手牌上限」— 改為每輪重抽 2
+
+**廢除**舊規則：
 
 ```
-每成功結束一張卡的結算後（含失敗開門）：
-  while hand.length < 5 and drawPile.length > 0:
-    hand.push(drawPile.pop())
+// 已廢：while hand.length < 5 and drawPile.length > 0: hand.push(...)
 ```
 
-### 5.3 可打次數顯示
+**現行（v7）：**
 
-給玩家看敘事化，例如：「她今夜還肯應對你的次數」= `nLeft + (chain?.kLeft||0)`。  
+```
+function endRoundAndMaybeDraw(sess):
+  // 1) 未打出回可抽；打出依碎／playedIds（§4.4.4）
+  // 2) hand = []
+  // 3) if playsLeft(sess) <= 0 or drawPool empty: phase = round_end; return
+  // 4) hand = weightedDraw(drawPool, arc, k=2)   // §4.4.5
+  // 5) 若 hand 含 girl → 排程自動打出（仍算一輪）
+```
+
+### 5.3 剩餘輪數顯示
+
+給玩家看敘事化，例如：「她今夜還肯跟你互動的次數」= `nLeft + (chain?.kLeft||0)`。  
 鍊存在時附加：「她正被你帶著走（屬性）」——不要暴露 `kLeft` 數字亦可，但除錯模式可顯示。
 
 ### 5.4 多節卡（`steps[]`）— v1 明確不做
@@ -522,8 +635,9 @@ const STAGE_STAY_BASE = {
 
 ### 6.3 回合結束資源
 
-- 手牌＋抽牌堆裡 **source===inventory && 未標記 used** → 退回（本來就沒扣 count）。  
-- **used** 的碎卡已在打出時扣 count。  
+- 本局實體池裡 **source===inventory && 未進 playedIds（未打出）** → 退庫（本來就沒扣 count）。  
+- 手牌未打出的出示卡在輪與輪之間已回可抽池；**session 關閉**時同上退庫。  
+- **已打出** 的碎卡已在打出時扣 count；話術不扣 count，但本局已在 playedIds。 
 - girl／venue 卡丟棄。
 
 ---
@@ -771,13 +885,33 @@ buildCardPlayPrompt(ctx)  // ctx.card_play = { kind, scene_start, prompt_hint, o
 
 ### 12.3 生圖／CG cache（M5 · 已上線）
 
-**原則：開戰與出卡路徑零等待 GPU。**
+**原則：開戰與出卡路徑零等待 GPU。** 出卡真·場景圖走 `queueCardSceneArt`（背景佇列，不擋打牌）。
+
+#### 12.3.1 出卡 prompt 三層（鎖死語意）
+
+```
+最終送進繪圖引擎 = ① 身份固定  +  ② 卡牌運鏡  +  ③ 回應神態
+```
+
+| 層 | 來源 | 寫什麼 | 不寫什麼 |
+|---|---|---|---|
+| **① 身份固定** | 立繪同一套：`character` + identity **seed** + sdtags 素質（髮眼身服裝、QUALITY） | 她是誰、畫質、與半身立繪同一人 | 這一拍的劇情動作 |
+| **② 卡牌運鏡** | 卡面 `visualEn`（英文逗號 tag） | **玩家眼裡**的構圖：POV、距離、取景、前景痕跡（揮手→手入鏡；站遠→全身；打招呼→頭肩） | 她的情緒表情（生氣／開心…） |
+| **③ 回應神態** | 回話後 AI：`表情`／`動作` → 英文 reaction tags（`play.imgEn`） | 依台詞可見的臉與肢體（生氣→angry, hands on hips；蹲下→crouching；心不在焉→distracted） | 運鏡／POV／外貌身份 |
+
+實作：`app.js` `weaveCardSceneShot`  
+- ① → `character` + `lock_identity`（server）  
+- ②+③ → 串進 `extra`（server 接在身份 tags 後）  
+- `visualEn` **只**當層 ②；禁止把「她很生氣」寫進卡面。  
+- 層 ③ 必須等有 `girlLine`（或罐頭回話）後才產；無模型則只有 ①+②。
+
+#### 12.3.2 CG cache
 
 | 時機 | 行為 |
 |---|---|
 | 召看板娘 | `ensureArtCacheBg` 背景補 half／head／full；不擋 UI |
 | 開牌桌／約會桌 | 同步 `resolveCardTableArt`；背景補缺；**不 await 生圖** |
-| 出卡 | `bindCardArtAlias`：把當前最佳立繪別名進 `card:{cardId}`（一張多用） |
+| 出卡 | 先 `bindCardArtAlias` 占位；有模型時 `queueCardSceneArt` 真畫 `card:{cardId}` |
 | 無圖 | 字首圓形占位 +「成形中…／尚無立繪」badge |
 
 **資料（存在每位魅魔上）：**
@@ -787,12 +921,11 @@ girl.cardCg = {
   "portrait:half": { url, status: "ready", at, source: "portrait" },
   "portrait:full": { … },
   "portrait:head": { … },
-  "card:{cardId}": { url, status: "ready", at, source: "alias_portrait" },
+  "card:{cardId}": { url, status: "ready", at, source: "scene_play" | "alias_portrait" },
 }
 ```
 
 - 立繪三連拍仍走既有 `weaveShot`／`portraits`；`setShot` 會 `syncPortraitCgCache`。  
-- **v1 不做**每張卡另燒場景 GPU 圖（省額度）；日後真·場景 CG 覆寫同一 `card:{id}` 即可。  
 - 多節卡若重開：優先同一 `card:{id}` URL 多用（裁切／暗角可後加）。
 
 ### 12.4 與 `persona_builder.js`
@@ -849,14 +982,16 @@ girl.cardCg = {
 - [ ] 貨架 3 張、4h 刷新  
 - [ ] 氣泡僅三節點、各 15%  
 - [ ] 約會每隻每日 2  
-- [ ] 手牌上限 5、本體 ≤3、押入 ≤5  
+- [ ] 本體 ≤3、本局攜帶 ≤**8**、每輪抽 **2**  
+- [ ] `defaults.arc_weights` 有 child／other  
 - [ ] 無全局情感 clamp  
 
 ### 14.2 碎與不碎
 
-- [ ] 話術打出不減庫存  
-- [ ] 高級卡確認打出後 count－1（失敗開門也減）  
-- [ ] 未打出押入卡退庫  
+- [ ] 話術打出不減庫存，但本局 `playedIds` 後可抽池不再出現  
+- [ ] 高級卡確認打出後 count－1（失敗開門也減）、不回可抽池  
+- [ ] 未打出的出示卡回可抽池；局結束未用碎卡退庫  
+- [ ] 妹子卡打出不碎、進 playedIds  
 - [ ] ~~多節停手仍減~~ → **v1 不驗**（§5.4）  
 
 ### 14.3 鍊
@@ -866,12 +1001,17 @@ girl.cardCg = {
 - [ ] 開門失敗無鍊且碎  
 - [ ] 虐不自動連打三張內容  
 
-### 14.4 流程
+### 14.4 流程（看板 v7）
 
 - [ ] 無封牌步驟  
 - [ ] 召後可不打只陪  
 - [ ] 看板中拒約會  
 - [ ] 不可走只＋1 輪不是無限  
+- [ ] 一輪＝抽 2→打 1→AI→圖；N＝剩餘輪數  
+- [ ] 手牌有妹子卡自動打；兩張皆妹子隨機 1  
+- [ ] 第一輪均勻；有 T1 時 child 加權；無 T1 均勻  
+- [ ] 無 opener 旗標；無看板 beat  
+- [ ] 無「補到手牌 5」
 
 ### 14.5 禁止回退
 
@@ -918,6 +1058,7 @@ girl.cardCg = {
 | 7 | 短 AI 反應（即時、兩拍、作廢） | **已上線（M4）** |
 | 8 | 生圖 CG cache／占位 | **已上線（M5）** |
 | 9 | 舊聊天入口退役／存檔遷移 | **已上線（M6）** |
+| 10 | 看板 v7：攜帶 8／抽 2 打 1／playedIds／B 加權 | **規格已鎖（§4.4～§5.2）；程式待跟** |
 
 ---
 
@@ -930,17 +1071,29 @@ girl.cardCg = {
 | `_meta` / `enums` / `defaults` | 版本、列舉、與本文對齊的常數副本 |
 | `starter_pool` | 創角 10 選 1 的 id 列表（必須與 `starter:true` 的卡一致） |
 | `shop_weights` | 貨架可上架的 speech／premium 池 |
-| `cards[]` | 全部卡（話術／高級碎卡／本體模板／場地事件） |
+| `cards[]` | 全部卡（話術／高級碎卡／本體模板／場地事件）；`parentId`／`token` 供詞墜 B |
 | `venues[]` | 約會場地；每場 **恰好 3** 張 `cardIds` |
 | `girl_card_build_rules` | 產製時如何組 ≤3 本體卡 |
 | `bubble_canned` | 氣泡無 AI 罐頭（`{quest}` 占位） |
+
+`defaults` 與 v7 對齊時應含（名稱可微調，語意不可歪）：
+
+```js
+{
+  hand_draw: 2,          // 每輪抽幾張（廢 hand_size 當補牌上限；舊 hand_size 勿再當補滿目標）
+  max_girl_cards: 3,
+  max_inject: 8,         // 本局攜帶上限
+  arc_weights: { child: 8, other: 1 },
+  // …既有 shop／bubble／base_plays_by_stage 等
+}
+```
 
 實作時：
 
 1. 開機 `fetch`／打包載入此 JSON。  
 2. **數值與規則只信欄位**，不信 `name` 文案。  
-3. 改價、改骰區間、改 `openChain.k` 可只改 JSON；**改 id 會壞存檔**。  
-4. 新增卡：補進 `cards[]`，若可上架再寫入 `shop_weights` 對應池。  
+3. 改價、改骰區間、改 `openChain.k`、改 `arc_weights` 可只改 JSON；**改 id 會壞存檔**。  
+4. 新增卡：補進 `cards[]`，若可上架再寫入 `shop_weights` 對應池；要接 B 推演則設好 `parentId`。  
 
 約略規模（以檔案為準）：話術 14（10 starter）／高級碎卡 19／本體模板 7／場地事件 15／場地 5。
 
@@ -955,6 +1108,7 @@ girl.cardCg = {
 | 2026-08-05 | **M0～M4 標為已上線**；打牌 AI＝即時兩拍（禁止整輪預產）；**§5.4 多節卡 v1 不做**（待討論後再鎖）；M4 作廢在途 AI（`playAiGen`）；§15 狀態表；§14.6 短 AI 驗收 |
 | 2026-08-05 | **M5 CG cache 已上線**：`girl.cardCg`、開戰零等待、別名一張多用、占位 badge |
 | 2026-08-05 | **M6 自由聊退役**：`freeChatRetired`、清殘燈、停 genChat／genReply、觀戰釋放接牌桌、§13／§14.7 |
+| 2026-08-11 | **看板打牌 v7 規格鎖（程式待跟）**：攜帶 **8**；一輪＝抽 **2**→打 **1**→AI→圖；**N＝輪數**；無舊補到手牌 5；打出非碎回實體池但 **playedIds 本局不進可抽池**；碎不回；妹子卡自動打（兩張皆妹子隨機 1）；詞墜 **B** 僅 T1=`parentId===lastId` 加權、無 T1／首輪均勻；**否決 A opener 旗標**；**C beat 留給約會**；§0.2 增 9～11；§4.4～§5.2／§14／§16 defaults 同步 |
 
 ---
 

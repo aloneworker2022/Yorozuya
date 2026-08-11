@@ -2227,7 +2227,11 @@ function voidCardSceneArt() {
 }
 
 /**
- * 畫圖第二段（中文標籤）：依「她說了什麼」+ 體態 → 表情／動作（不給玩家當主台詞）
+ * 出卡生圖三層（見 docs/card-system.md §12.3）：
+ *   ① 身份固定：seed + 人設素質（server sdtags／CHARACTER SHEET）
+ *   ② 卡牌運鏡：visualEn（玩家 POV 構圖／距離／前景痕跡）
+ *   ③ 回應神態：回話後 AI 產表情＋肢體（本段；英文 tag）
+ * 本函式只負責 ③ 的中文分鏡標籤。
  */
 function cardVisualPoseMsgs(girl, play) {
   const player = playerBindName();
@@ -2245,48 +2249,43 @@ function cardVisualPoseMsgs(girl, play) {
     { role: "system", content: sys },
     {
       role: "user",
-      content: `她說了：「${String(play?.girlLine || "").slice(0, 180)}」。只輸出 表情：… 與 動作：… 兩行。`,
+      content: `她說了：「${String(play?.girlLine || "").slice(0, 180)}」。只輸出 表情：… 與 動作：… 兩行（可見神態，不是台詞）。`,
     },
   ];
 }
 
 /**
- * 已有台詞 + 表情／動作 → 純英文畫圖句（給 image 模型，無 meta 標籤）
- * 注意：只寫「動作／表情／互動」——外貌（髮眼身服裝）由人設 sheet 單獨鎖，
- * 這裡若再發明長相差一點就會變成另一個人。
+ * 層 ③：把「表情／動作」中文 → 英文逗號 tag。
+ * 只寫反應神態；不重寫運鏡（② visualEn）、不發明外貌（① 人設）。
  */
 function cardImgEnMsgs(girl, play, def) {
   const rating = state.settings?.rating || "sfw";
-  const vEn = cardVisualEn(def);
-  const scene = String(play?.sceneStart || "").replace(/\s+/g, " ").slice(0, 180);
   const pose = play?.visualPose || parseCardVisualPose(play?.visualPoseText || "");
   const dialogue = String(play?.girlLine || "").replace(/\s+/g, " ").slice(0, 160);
   return [
     {
       role: "system",
       content: [
-        "You write English visual prompts for anime illustration ACTION only.",
-        "Output ONLY comma-separated English visual phrases.",
-        "ONLY write: facial expression, body pose/gesture, interaction with him, camera framing.",
-        "FORBIDDEN: inventing hair color/style, eye color, outfit, age, body type, race — identity is locked by character sheet elsewhere.",
+        "You convert her reaction into English IMAGE TAGS (layer 3 only).",
+        "Output ONLY comma-separated English visual phrases for expression + body pose/gesture.",
+        "Examples: angry face, hands on hips | crouching down | distracted look, looking aside | shy blush, fidgeting hands | gentle smile, nodding",
+        "FORBIDDEN: camera framing, POV, distance, shot type (that is layer 2 card visualEn).",
+        "FORBIDDEN: hair color/style, eye color, outfit, age, body type, race (layer 1 identity).",
         "FORBIDDEN labels: card, token, stage direction, prompt, visualEn, PRIMARY, tags, kind, speech.",
-        "No Chinese. No quotes. No markdown. No spoken dialogue text on the image.",
-        "If greeting/talk: face each other, eye contact — never blank look-away idle.",
+        "No Chinese. No quotes. No markdown. No spoken dialogue text.",
         rating === "nsfw"
-          ? "NSFW visual ok if implied."
+          ? "NSFW body language ok if implied by her reaction."
           : "All-ages: no explicit nudity.",
       ].join("\n"),
     },
     {
       role: "user",
       content: [
-        vEn ? `Card visual seed (English pose baseline): ${vEn}` : "",
-        pose?.face ? `Her expression (Chinese → English): ${pose.face}` : "",
-        pose?.body ? `Her body action (Chinese → English): ${pose.body}` : "",
-        dialogue ? `She said (context only, do not print dialogue): ${dialogue}` : "",
-        scene ? `His action context: ${scene}` : "",
-        play?.open?.success === false ? "She rejects physically." : "",
-        "Write English ACTION tags only (expression + pose + interaction). No appearance.",
+        pose?.face ? `Expression (ZH): ${pose.face}` : "",
+        pose?.body ? `Body (ZH): ${pose.body}` : "",
+        dialogue ? `She said (context only): ${dialogue}` : "",
+        play?.open?.success === false ? "Physical rejection visible." : "",
+        "English reaction tags only (expression + pose).",
       ].filter(Boolean).join("\n"),
     },
   ];
@@ -2303,21 +2302,21 @@ function scrubImgPromptLabels(s) {
 }
 
 /**
- * 台詞就緒後：
- * A) 依回話產「表情／動作」（中文，畫圖用）
- * B) 再產純英文 imgEn
+ * 台詞就緒後組層 ③（反應 tag）：
+ * A) 依回話產「表情／動作」（中文）
+ * B) 翻成英文 imgEn（只含神態，不含運鏡）
+ * 層 ② visualEn 不在這裡混進 imgEn；compose 時再疊。
  */
 async function ensureCardImgEnAfterText(girl, play, gen) {
   const def = play?.cardId ? Cards.cardById(play.cardId) : null;
   const fb = visualBeatFallback(play, def, girl);
-  const seed = scrubImgPromptLabels(cardVisualEn(def) || fb.visual_en || "");
-
+  // 無模型：沒有層 ③，生圖只靠 ①+②
   if (!state.settings?.model) {
-    const en = seed || fb.visual_en;
-    play.imgEn = en;
-    play.visualBeatEn = en;
+    play.imgEn = "";
+    play.visualBeatEn = "";
     play.visualBeatZh = fb.visual_zh;
-    return en;
+    play.cameraEn = scrubImgPromptLabels(cardVisualEn(def) || fb.visual_en || "");
+    return "";
   }
 
   // A) 表情／動作（給畫圖，不是玩家主台詞）
@@ -2345,7 +2344,7 @@ async function ensureCardImgEnAfterText(girl, play, gen) {
     }
   }
 
-  // B) 英文畫圖句
+  // B) 層 ③ 英文反應 tag
   const key = `cardimgen:${girl.id}:${play.cardId}:${gen}`;
   const deadline = Date.now() + 90000;
   let r = await genPost(key, cardImgEnMsgs(girl, play, def), 11);
@@ -2354,10 +2353,12 @@ async function ensureCardImgEnAfterText(girl, play, gen) {
     if (r.status === "done" && r.result) {
       const { text } = stripGuardFlag(typeof r.result === "string" ? r.result : String(r.result ?? ""));
       let en = scrubImgPromptLabels(text.replace(/[\u4e00-\u9fff]+/g, " "));
-      if (en.length < 16) en = seed || fb.visual_en;
       en = en.replace(/[\u4e00-\u9fff]/g, " ").replace(/\s+/g, " ").trim();
+      // 太短才用保底反應，仍不塞運鏡
+      if (en.length < 8) en = reactionFallbackEn(play);
       play.imgEn = en;
       play.visualBeatEn = en;
+      play.cameraEn = scrubImgPromptLabels(cardVisualEn(def) || fb.visual_en || "");
       if (!play.visualBeatZh) play.visualBeatZh = fb.visual_zh;
       return en;
     }
@@ -2365,11 +2366,23 @@ async function ensureCardImgEnAfterText(girl, play, gen) {
     await new Promise(res => setTimeout(res, 700));
     r = await genPost(key, cardImgEnMsgs(girl, play, def), 11);
   }
-  const en = seed || fb.visual_en;
+  const en = reactionFallbackEn(play);
   play.imgEn = en;
   play.visualBeatEn = en;
+  play.cameraEn = scrubImgPromptLabels(cardVisualEn(def) || fb.visual_en || "");
   if (!play.visualBeatZh) play.visualBeatZh = fb.visual_zh;
   return en;
+}
+
+/** 層 ③ 保底（無模型／翻譯失敗）：只給中性可見神態，不寫運鏡 */
+function reactionFallbackEn(play) {
+  if (play?.open?.success === false) return "rejecting expression, pulling back, defensive posture";
+  const pose = play?.visualPose;
+  if (pose?.face || pose?.body) {
+    // 中文保底直出不了 CLIP 時用中性可畫 tag
+    return "responsive facial expression, natural body language, reacting to him";
+  }
+  return "responsive expression, natural pose, reacting to him";
 }
 
 /** 卡牌專用畫圖描述（英文）；子卡有寫用子，否則沿 parentId 繼承 */
@@ -2419,55 +2432,52 @@ function visualBeatFallback(play, def, girl = null) {
   const gName = girl?.name || play?._boundName || "";
   const cardVis = cardVisualEn(def);
   const cardVisZh = cardVisualZh(def);
-  // 以「他的動作」為主軸；有 visualEn 時以卡牌為準（避免打招呼畫成茫然看旁邊）
-  let poseEn = "man's action toward woman visible, woman half body, clear interaction, looking at each other";
-  let poseZh = "鏡頭清楚看見他對她做的動作，以及當下的距離。";
+  // 層 ② 純運鏡（不寫她的表情情緒；那是層 ③）
+  let camEn = "from his POV, looking toward her, half body, conversational distance, she facing viewer";
+  let camZh = "運鏡：玩家 POV 半身對話距離。";
   if (cardVis) {
-    poseEn = cardVis;
-    poseZh = cardVisZh || `依卡牌畫圖描述，牌意「${name || "這一拍"}」的動作要看得見。`;
+    camEn = cardVis;
+    camZh = cardVisZh || `運鏡：牌「${name || "這一拍"}」的玩家視角構圖。`;
   } else if (tags.includes("kiss") || /吻/.test(name)) {
-    poseEn = "he is kissing her or leaning in to kiss, faces close, his action primary, her body position reactive, eye contact";
-    poseZh = "他正在吻她或湊近要吻；動作主體是他，她的臉與距離是被帶動的結果。";
+    camEn = "from his POV, faces close, lean-in distance, head and shoulders, contact almost touching";
+    camZh = "運鏡：湊近吻距、頭肩特寫。";
   } else if (tags.includes("sex")) {
-    poseEn = "his body pressing close, intimate contact initiated by him, upper bodies, not generic portrait";
-    poseZh = "他壓近、造成親密接觸；畫面重點是他的動作與兩人貼合，不是她單獨擺拍。";
-  } else if (tags.includes("touch") || /觸|碰|腰|手|靠|握/.test(name)) {
-    poseEn = "his hand on her (waist/hand/shoulder), contact point visible, close distance, his reach is the focus, she reacts to the touch";
-    poseZh = "他的手碰到她（腰／手／肩等）的接觸點要看得見；重點是他伸手的動作。";
+    camEn = "from his POV, very close intimate framing, upper bodies filling frame, not solo portrait";
+    camZh = "運鏡：親密近景、上半身滿版。";
+  } else if (tags.includes("touch") || /觸|碰|腰|手|靠|握|揮/.test(name)) {
+    camEn = "from his POV, his hand or arm in foreground, contact point toward her, close distance, half body";
+    camZh = "運鏡：前景可見玩家手／臂與接觸點。";
   } else if (tags.includes("talk") || kind === "speech" || /招呼|問候|安撫|玩笑|稱讚|道歉|沉默/.test(name)) {
-    poseEn = [
-      "he greets or speaks to her, facing her",
-      "she faces him, eye contact, responsive expression (smile, listen, or reply face)",
-      "greeting or conversation gesture visible (wave, nod, soft smile, talking)",
-      "NOT blank distant stare to the side, NOT idle solo portrait",
-    ].join(", ");
-    poseZh = "他正面對她打招呼或說話；她面向他、有眼神接觸與反應，不是茫然看旁邊。";
+    camEn = "from his POV, looking toward her face, head and shoulders or half body, conversational distance, she facing viewer";
+    camZh = "運鏡：打招呼／說話看她臉與半身。";
   } else if (kind === "girl_trait") {
-    poseEn = "her external action toward him visible, he is the receiver, clear body language, mutual facing";
-    poseZh = "她做出可見的外在舉動（貼近／開口／比劃），他在接收端。";
+    camEn = "from his POV, looking toward her, half body, she in mid-action toward viewer, clear framing";
+    camZh = "運鏡：她主動時的半身構圖。";
   } else if (kind === "venue_event") {
-    poseEn = "both reacting to a concrete situation, environment cue, interaction frozen mid-action";
-    poseZh = "現場事件與當下動作定格，兩人都在事件裡，不是單人肖像。";
-  }
-  if (play?.open?.success === false) {
-    poseEn += ", she pulls back or blocks, physical rejection visible";
-    poseZh += "她身體上退開或擋開，拒絕是肢體可見的。";
+    camEn = "from his POV, environment cue in frame, medium shot, both in situation, mid-action framing";
+    camZh = "運鏡：場地事件中景定格。";
   }
   const visual_zh = [
     gName ? `對象是「${gName}」。` : "",
-    poseZh,
-    scene ? `對準這段玩家動作：${scene.slice(0, 120)}` : "",
-    name ? `牌意「${name}」的動作要看得見。` : "",
+    camZh,
+    scene ? `旁白對準：${scene.slice(0, 100)}` : "",
   ].filter(Boolean).join("");
-  const visual_en = [
-    "anime illustration, cinematic interaction scene",
-    "show the action clearly, not solo idol idle",
-    poseEn,
-    gName ? `same adult woman as character sheet (${gName})` : "adult woman character match sheet, detailed face",
-    name ? `card action: ${name}` : "",
-    "concrete pose, mutual attention if talking or greeting",
-  ].filter(Boolean).join(", ");
-  return { visual_zh, visual_en };
+  // visual_en = 層 ② only（運鏡 tag）
+  return { visual_zh, visual_en: camEn };
+}
+
+/** 從 visualEn 推 framing（head/half/full） */
+function framingFromCameraEn(camEn, tags = []) {
+  const s = String(camEn || "").toLowerCase();
+  if (/\bfull body\b|\bfull-body\b|\bwide shot\b|\bmedium-wide\b|\bthree-quarter body\b/.test(s)) {
+    return "full";
+  }
+  if (/\bclose-?up (on )?(her )?(face|head)\b|\bhead and shoulders\b|\bheadshot\b|\btight face\b|\bextreme close-up\b/.test(s)) {
+    return "head";
+  }
+  if (tags.includes("sex")) return "full";
+  if (tags.includes("kiss") || tags.includes("touch")) return "half";
+  return "half";
 }
 
 /** 定格：只根據「玩家動作旁白」拆鏡頭，禁止改寫成她的情緒獨白 */
@@ -2695,13 +2705,11 @@ function queueCardSceneArt(girl, play, onDone) {
 }
 
 /**
- * 出卡場景圖生圖。
- * 層級（與半身／全身立繪對齊身份，再疊卡牌與 AI）：
- *   1) 前置 = 完整 character 人設（伺服器用 sdtags／CHARACTER SHEET + 同一 identity seed）
- *   2) 卡牌 visualEn（牌預設畫圖）
- *   3) AI 產的動作／表情英文（sceneEn / imgEn）
- * 不寫 prompt 蓋掉人設（Comfy 以前把 action 當整段 prompt → 畫成另一個人）。
- * 有半身立繪時傳 ref，Grok 走 image_edit 鎖同一張臉。
+ * 出卡場景圖生圖 — prompt 三層疊加：
+ *   ① 身份固定：character + seed（server sdtags／CHARACTER SHEET，與立繪同一人）
+ *   ② 卡牌運鏡：visualEn（玩家 POV 構圖／距離／前景手等）
+ *   ③ 回應神態：imgEn（回話後表情＋肢體；不含運鏡）
+ * 不寫整段 prompt 蓋掉人設。有半身立繪時傳 ref 鎖臉。
  */
 async function weaveCardSceneShot(s, sceneEn, key, play = null) {
   if (!s) return "";
@@ -2711,25 +2719,35 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
   }
   const def = play?.cardId ? Cards.cardById(play.cardId) : null;
   const tags = def?.tags || [];
-  // speech 偏半身對話；觸碰／吻可更近；默認 half（與半身立繪同構圖）
-  let framing = "half";
-  if (tags.includes("sex")) framing = "full";
-  else if (tags.includes("kiss") || tags.includes("touch")) framing = "half";
+  const fb = visualBeatFallback(play, def, s);
+
+  // 層 ② 運鏡（卡牌 visualEn）；層 ③ 反應（imgEn，不應再含運鏡）
+  const layer2 = scrubImgPromptLabels(
+    play?.cameraEn || cardVisualEn(def) || fb.visual_en || "",
+  );
+  const layer3 = scrubImgPromptLabels(
+    sceneEn || play?.imgEn || play?.visualBeatEn || "",
+  );
+  // 若層 ③ 誤複製了整段層 ②，只保留一次
+  const actionLayers = [];
+  if (layer2) actionLayers.push(layer2);
+  if (layer3 && layer3.toLowerCase() !== layer2.toLowerCase()) {
+    // 去掉層 ③ 裡誤帶的 from his POV / shot 類字，避免搶運鏡
+    const pureReact = layer3
+      .replace(/\bfrom his pov\b/gi, "")
+      .replace(/\b(looking toward her|she facing viewer)\b/gi, "")
+      .replace(/\b(half body|full body|head and shoulders|medium shot|close-up)\b/gi, "")
+      .replace(/\s*,\s*,+/g, ",")
+      .replace(/^[,;\s]+|[,;\s]+$/g, "")
+      .trim();
+    if (pureReact.length >= 6) actionLayers.push(pureReact);
+    else if (layer3.length >= 6) actionLayers.push(layer3);
+  }
+  actionLayers.push("mid-action, detailed face, not idle solo portrait looking away");
+  const actionEn = scrubImgPromptLabels(actionLayers.join(", "));
+  const framing = framingFromCameraEn(layer2, tags);
 
   const comfy = imgProvider() === "comfy";
-  // 層 2：卡牌預設；層 3：AI 動作（都不帶外貌；相同時不重複）
-  const cardVis = scrubImgPromptLabels(cardVisualEn(def));
-  const aiAction = scrubImgPromptLabels(sceneEn || play?.imgEn || play?.visualBeatEn || "");
-  const actionLayers = [];
-  if (cardVis) actionLayers.push(cardVis);
-  if (aiAction && aiAction.toLowerCase() !== cardVis.toLowerCase()) actionLayers.push(aiAction);
-  actionLayers.push(
-    "mid-action, detailed face",
-    "facing each other if talking or greeting",
-    "not idle solo portrait looking away",
-  );
-  const actionEn = scrubImgPromptLabels(actionLayers.join(", "));
-
   // 半身立繪當身份參考（Grok image_edit；Comfy 目前仍靠 seed+tags）
   const halfRef = (s.portraits?.half || s.portrait || "").split("?")[0] || "";
   const refOk = /^\/assets\/(portraits|testword)\//.test(halfRef);
@@ -2737,8 +2755,8 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
   console.info("[cardSceneArt] weave layers", {
     identity: s.name || s.id,
     framing,
-    cardVis: cardVis.slice(0, 80),
-    aiAction: aiAction.slice(0, 80),
+    layer2_camera: layer2.slice(0, 90),
+    layer3_reaction: layer3.slice(0, 90),
     ref: refOk ? halfRef : "(none)",
     lock_identity: true,
   });
@@ -2752,9 +2770,9 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
     rating: state.settings.rating || "sfw",
     // 出卡要像劇情插圖，不要 pixel 立繪風
     style: state.settings.imgStyle === "pixel" ? "anime" : (state.settings.imgStyle || "anime"),
-    // 層 1：完整人設（與 weaveShot 同一份 character）
+    // 層 ①：完整人設（與 weaveShot 同一份 character + seed）
     character: s,
-    // 層 2+3：只當 ACTION，伺服器接在人設後面
+    // 層 ②+③：只當 ACTION，伺服器接在人設後面
     extra: actionEn,
     // 關鍵：Comfy 不可把 action 當整段 prompt，否則跳過 sdtags 人設 → 變臉
     prompt: "",
@@ -6617,7 +6635,7 @@ function finishCardNarrPrep(girl, why = "done") {
   document.body.classList.add("card-mode");
   const nAi = Object.values(sess.cardNarr || {}).filter(x => x.from === "ai").length;
   log(`與 ${girl.name} 開桌（牌意 ${prog.done}/${prog.total}，AI ${nAi}）`);
-  toast(`開始——約 ${deal.nLeft} 次`, "good");
+  toast(`開始——約 ${deal.nLeft} 輪互動`, "good");
   scheduleSave();
   renderAll();
 }
@@ -6673,7 +6691,7 @@ function openKanbanTable(girlId, opts = {}) {
         && state.cardSession.cardNarr) {
         const deal = dealFromDeck(s);
         if (!deal.ok && !deal.already) toast(deal.err, "bad");
-        else if (deal.ok && !deal.already) toast(`開始——約 ${deal.nLeft} 次`, "good");
+        else if (deal.ok && !deal.already) toast(`開始——約 ${deal.nLeft} 輪互動`, "good");
       } else {
         beginCardNarrPrep(s);
       }
@@ -6846,7 +6864,7 @@ function commitHandPlay(instanceId, girl, stage) {
   scheduleSave(); renderCardTable();
 }
 
-/** 看完出卡反應 → 若本輪次數用完則進輪末判定；否則回手牌 */
+/** 看完出卡反應 → 若本輪次數用完則進輪末判定；否則回手牌（v7 已預抽下一輪 2 張） */
 function ackPlayReaction() {
   const sess = state.cardSession;
   const girl = girlForSession();
@@ -6859,7 +6877,7 @@ function ackPlayReaction() {
     renderCardTable();
     return;
   }
-  // 次數用完（或引擎已標 roundEnded）→ 進輪末，只做「能否再來一輪」
+  // 輪數用完／可抽池空（或引擎已標 roundEnded）→ 進輪末，只做「能否再來一輪」
   if (last?.roundEnded || sess.phase === "round_end" || Cards.playsLeft(sess) <= 0) {
     if (sess.phase === "round_play") {
       const er = Cards.playerEndRound(state);
@@ -6868,8 +6886,39 @@ function ackPlayReaction() {
     resolveRoundEndToPanel(girl, stage);
     return;
   }
+  // 手牌空但還有輪數 → 嘗試再抽（容錯）
+  if (!sess.hand?.length && Cards.playsLeft(sess) > 0 && Cards.drawHandV7) {
+    Cards.drawHandV7(sess);
+  }
+  if (!sess.hand?.length) {
+    if (sess.phase === "round_play") Cards.playerEndRound(state);
+    resolveRoundEndToPanel(girl, stage);
+    return;
+  }
   scheduleSave();
   renderCardTable();
+  // 下一輪若抽到妹子卡 → 自動打出
+  queueMicrotask(() => maybeAutoPlayGirlCard());
+}
+
+/**
+ * v7：手牌出現妹子本體卡時自動打出（兩張皆妹子則引擎已隨機選一）。
+ * 僅在 round_play、非反應中、無碎卡確認時觸發。
+ */
+function maybeAutoPlayGirlCard() {
+  if (cardUi.awaitReaction || cardUi.endPanel) return;
+  if (!document.body.classList.contains("card-mode")) return;
+  const sess = state.cardSession;
+  if (!sess || sess.phase !== "round_play" || sess.pending) return;
+  if (Cards.playsLeft(sess) <= 0) return;
+  const pick = Cards.pickGirlAutoPlay?.(sess);
+  if (!pick) return;
+  const girl = girlForSession();
+  if (!girl) return;
+  const stage = girl.stage || "stranger";
+  const def = Cards.cardById(pick.cardId);
+  toast(`${girl.name} 出手「${def?.name || pick.cardId}」`, "");
+  commitHandPlay(pick.instanceId, girl, stage);
 }
 
 /** 強制退出牌桌全螢幕（清 session／card-mode），避免主畫面被藏成空白 */
@@ -6920,7 +6969,7 @@ function resolveRoundEndToPanel(girl, stage) {
       renderCardTable();
       return;
     }
-    toast(`${gname} 還願意再來一輪——約 ${deal.nLeft} 次`, "good");
+    toast(`${gname} 還願意再來——約 ${deal.nLeft} 輪互動`, "good");
     scheduleSave();
     renderCardTable();
     return;
@@ -6948,7 +6997,7 @@ function finishEndPanel(choice) {
     cardUi.injectIdx = 0;
     const deal = dealFromDeck(girl);
     if (!deal.ok) toast(deal.err, "bad");
-    else toast(`再來一輪——約 ${deal.nLeft} 次`, "good");
+    else toast(`再來——約 ${deal.nLeft} 輪互動`, "good");
     scheduleSave();
     renderCardTable();
     return;
@@ -7261,8 +7310,8 @@ function renderCardTable() {
     const feel = last.feelLabel || Cards.emotionFeelLabel?.(last.emotionDelta) || "";
     const deltaTxt = `情感 ${last.emotionDelta >= 0 ? "+" : ""}${last.emotionDelta}${feel ? ` · ${feel}` : ""}`;
     const more = last.roundEnded
-      ? "這是本輪最後一次——繼續後判定她願不願意再來一輪"
-      : `之後還能應付 ${last.playsLeft ?? "?"} 次`;
+      ? "這是最後一輪互動——繼續後判定她願不願意再來"
+      : `之後還能互動 ${last.playsLeft ?? "?"} 輪`;
 
     if (waitingText) {
       setCtVn({
@@ -7420,7 +7469,7 @@ function renderCardTable() {
     return;
   }
 
-  // ── 互動中：精簡標題卡左右滑 ────────────────────────────
+  // ── 互動中：每輪出示 2 張，打 1 張（v7）────────────────
   if (sess.phase === "round_play") {
     const left = Cards.playsLeft(sess);
     const chain = sess.chain;
@@ -7428,11 +7477,17 @@ function renderCardTable() {
       ? `節奏正熱（${chain.attr}）`
       : "";
     const hand = sess.hand || [];
+    // 進畫面時若有妹子卡 → 排程自動打出（不擋本次 render 結構）
+    if (!sess.pending && hand.some((h) => h?.source === "girl")) {
+      queueMicrotask(() => maybeAutoPlayGirlCard());
+    }
 
     setCtVn({
       name: gname,
-      text: "左右滑挑選，上滑用出去。長按看內容。",
-      meta: `還肯應付 <b>${left}</b> 次${chainTxt ? ` · <span class="chain-hint">${esc(chainTxt)}</span>` : ""}`,
+      text: hand.some((h) => h?.source === "girl")
+        ? "她要先動……"
+        : "左右滑挑選，上滑用出去。長按看內容。",
+      meta: `還能互動 <b>${left}</b> 輪 · 本輪 ${hand.length}/2 張${chainTxt ? ` · <span class="chain-hint">${esc(chainTxt)}</span>` : ""}`,
     });
 
     if (sess.pending) {
@@ -7459,9 +7514,9 @@ function renderCardTable() {
 
     if (!hand.length) {
       setCtHand(`
-        <div class="dim small ct-empty">手上沒東西了</div>
+        <div class="dim small ct-empty">可抽池空了——無法再抽</div>
         <div class="detail-actions card-actions">
-          <button type="button" id="ct-end-round">結束本輪</button>
+          <button type="button" id="ct-end-round">結束互動</button>
         </div>`);
     } else {
       cardUi.handIdx = Math.min(Math.max(0, cardUi.handIdx || 0), hand.length - 1);
@@ -7469,12 +7524,14 @@ function renderCardTable() {
       const def = Cards.cardById(inst.cardId);
       const check = Cards.canSelectCard(sess, inst, stage);
       const blocked = !check.ok || !!sess.pending;
+      const isGirl = inst.source === "girl";
+      const srcCls = isGirl ? "is-girl" : (def?.shatterOnUse ? "is-shatter" : "is-speech");
 
       setCtHand(`
         <div class="ct-card-wrap">
-          <div class="ct-play-card compact is-selected ${def?.shatterOnUse ? "is-shatter" : "is-speech"}${blocked ? " is-blocked" : ""}"
+          <div class="ct-play-card compact is-selected ${srcCls}${blocked ? " is-blocked" : ""}"
                id="ct-play-card" data-iid="${inst.instanceId}">
-            <div class="ct-pc-body">${esc(def?.name || inst.cardId)}</div>
+            <div class="ct-pc-body">${esc(def?.name || inst.cardId)}${isGirl ? " · 她" : ""}</div>
             <div class="swind"></div>
           </div>
         </div>
@@ -7482,7 +7539,7 @@ function renderCardTable() {
           `<div class="dot${i === cardUi.handIdx ? " on" : ""}"></div>`).join("")}</div>
         <div class="ct-card-nav dim small">${cardUi.handIdx + 1}/${hand.length} · 上滑使用 · 長按內容</div>
         <div class="detail-actions card-actions">
-          <button type="button" id="ct-end-round">結束本輪</button>
+          <button type="button" id="ct-end-round">結束互動</button>
         </div>`);
 
       const playCard = $("#ct-play-card");

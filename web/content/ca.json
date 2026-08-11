@@ -6,8 +6,847 @@
     "token_model": "每卡一個詞墜 token；parentId 繼承父鏈詞墜。解析後效果字串如 [問候] [說笑話]。",
     "pack_note": "獨立牌組檔；上線掛到唯一 live 槽，並清空玩家牌進度；草稿檔仍保留。",
     "pack_model": "多檔牌組：registry.active 決定遊戲用哪份；編輯 card_x.json 等草稿，上線只切指標，舊版可回滾。",
-    "note": "6 bases (starters) + 20 derived speech; visualEn = girl reaction look",
-    "visualEn_rule": "卡牌是玩家動作；出圖主體是妹子。visualEn 描述：玩家做出該動作後，妹子可能呈現的樣貌／表情／姿態（結果），不是描述玩家本體動作。"
+    "note": "14 starters + 42 L1 + 84 L2 = 140 cards. visualEn=layer2 camera only.",
+    "visualEn_rule": "出卡生圖 prompt 三層疊加（順序固定）：\n① 固定層（立繪身份）：QUALITY + seed + 人設素質／體型／髮眼／服裝等（server sdtags／CHARACTER SHEET；與三連拍同一 identity seed）。\n② 卡牌層 visualEn：只寫運鏡／構圖／距離／玩家動作在畫面的痕跡（from his POV）。例：打招呼→看她頭肩；揮手→前景入玩家手；站遠→全身。英文逗號 tag，給繪圖引擎。禁止寫死她的表情／生氣／開心等反應。\n③ 回應層（AI 產）：她回話後，依台詞／情緒補 表情＋肢體神態 tag。例：生氣→angry, hands on hips；蹲下→crouching；心不在焉→distracted, looking away。\nvisualZh=作者中文備註，不進主 prompt。",
+    "design_axes": {
+      "player": "男子",
+      "channels": [
+        "話語",
+        "動作",
+        "眼神"
+      ],
+      "personas": [
+        "自閉",
+        "宅",
+        "無聊男子",
+        "健談",
+        "自大"
+      ],
+      "matrix": {
+        "b0001": {
+          "channel": "話語",
+          "persona": "自閉",
+          "name": "小聲打招呼"
+        },
+        "b0002": {
+          "channel": "動作",
+          "persona": "自閉",
+          "name": "退半步"
+        },
+        "b0003": {
+          "channel": "眼神",
+          "persona": "自閉",
+          "name": "瞟一眼"
+        },
+        "b0004": {
+          "channel": "話語",
+          "persona": "宅",
+          "name": "扯宅話題"
+        },
+        "b0005": {
+          "channel": "動作",
+          "persona": "宅",
+          "name": "掏出手機"
+        },
+        "b0006": {
+          "channel": "眼神",
+          "persona": "宅",
+          "name": "盯著細節"
+        },
+        "b0007": {
+          "channel": "話語",
+          "persona": "無聊男子",
+          "name": "聊天氣"
+        },
+        "b0008": {
+          "channel": "動作",
+          "persona": "無聊男子",
+          "name": "雙手插口袋"
+        },
+        "b0009": {
+          "channel": "眼神",
+          "persona": "無聊男子",
+          "name": "直直看著"
+        },
+        "b0010": {
+          "channel": "話語",
+          "persona": "無聊男子+自閉",
+          "name": "乾笑附和"
+        },
+        "b0011": {
+          "channel": "話語",
+          "persona": "健談",
+          "name": "打開話匣"
+        },
+        "b0012": {
+          "channel": "動作",
+          "persona": "健談",
+          "name": "比手畫腳"
+        },
+        "b0013": {
+          "channel": "話語",
+          "persona": "自大",
+          "name": "自誇一番"
+        },
+        "b0014": {
+          "channel": "眼神",
+          "persona": "自大",
+          "name": "得意打量"
+        }
+      }
+    },
+    "img_prompt_layers": {
+      "1_identity": "立繪固定：seed + quality + character traits（server）",
+      "2_card_camera": "visualEn：玩家 POV 運鏡／距離／前景痕跡",
+      "3_ai_reaction": "回話後 AI：表情 + 動作神態（pose tags）"
+    },
+    "derive_note": "L1：每 starter 3 張同拍下一句；L2：每 L1 分支 2 張同拍再下一句。禁止道別／離場／換任務。",
+    "lineage": {
+      "b0001": [
+        {
+          "id": "b0015",
+          "name": "再叫一次",
+          "token": "再叫一次"
+        },
+        {
+          "id": "b0016",
+          "name": "補上名字",
+          "token": "補名字"
+        },
+        {
+          "id": "b0017",
+          "name": "尾音拖長",
+          "token": "尾音拖長"
+        }
+      ],
+      "b0002": [
+        {
+          "id": "b0018",
+          "name": "再退一點",
+          "token": "再退一點"
+        },
+        {
+          "id": "b0019",
+          "name": "站定不動",
+          "token": "站定"
+        },
+        {
+          "id": "b0020",
+          "name": "肩再縮一點",
+          "token": "縮肩"
+        }
+      ],
+      "b0003": [
+        {
+          "id": "b0021",
+          "name": "再瞟一次",
+          "token": "再瞟"
+        },
+        {
+          "id": "b0022",
+          "name": "對上半秒",
+          "token": "對上半秒"
+        },
+        {
+          "id": "b0023",
+          "name": "視線落鞋尖",
+          "token": "看鞋尖"
+        }
+      ],
+      "b0004": [
+        {
+          "id": "b0024",
+          "name": "補一句設定",
+          "token": "補設定"
+        },
+        {
+          "id": "b0025",
+          "name": "講下一集",
+          "token": "講下去"
+        },
+        {
+          "id": "b0026",
+          "name": "問她懂不懂",
+          "token": "懂不懂"
+        }
+      ],
+      "b0005": [
+        {
+          "id": "b0027",
+          "name": "螢幕再側一點",
+          "token": "側近一點"
+        },
+        {
+          "id": "b0028",
+          "name": "指一下畫面",
+          "token": "指畫面"
+        },
+        {
+          "id": "b0029",
+          "name": "滑到下一張",
+          "token": "滑下一張"
+        }
+      ],
+      "b0006": [
+        {
+          "id": "b0030",
+          "name": "盯更近一點",
+          "token": "盯更近"
+        },
+        {
+          "id": "b0031",
+          "name": "視線停住",
+          "token": "盯停住"
+        },
+        {
+          "id": "b0032",
+          "name": "開口問一句",
+          "token": "這是什麼"
+        }
+      ],
+      "b0007": [
+        {
+          "id": "b0033",
+          "name": "接溫度",
+          "token": "接溫度"
+        },
+        {
+          "id": "b0034",
+          "name": "再評一句",
+          "token": "再評天氣"
+        },
+        {
+          "id": "b0035",
+          "name": "等她接",
+          "token": "等她接"
+        }
+      ],
+      "b0008": [
+        {
+          "id": "b0036",
+          "name": "換腳重心",
+          "token": "換腳"
+        },
+        {
+          "id": "b0037",
+          "name": "口袋手動一下",
+          "token": "口袋動"
+        },
+        {
+          "id": "b0038",
+          "name": "再杵一会儿",
+          "token": "再杵"
+        }
+      ],
+      "b0009": [
+        {
+          "id": "b0039",
+          "name": "繼續平視",
+          "token": "繼續看"
+        },
+        {
+          "id": "b0040",
+          "name": "慢眨眼",
+          "token": "慢眨眼"
+        },
+        {
+          "id": "b0041",
+          "name": "看更專心一點",
+          "token": "看專心"
+        }
+      ],
+      "b0010": [
+        {
+          "id": "b0042",
+          "name": "再笑一聲",
+          "token": "再乾笑"
+        },
+        {
+          "id": "b0043",
+          "name": "對啊對啊",
+          "token": "對啊對啊"
+        },
+        {
+          "id": "b0044",
+          "name": "點頭附和",
+          "token": "點頭附和"
+        }
+      ],
+      "b0011": [
+        {
+          "id": "b0045",
+          "name": "下一句接上",
+          "token": "下一句"
+        },
+        {
+          "id": "b0046",
+          "name": "補充剛才那句",
+          "token": "補充剛才"
+        },
+        {
+          "id": "b0047",
+          "name": "問她一句",
+          "token": "順口問"
+        }
+      ],
+      "b0012": [
+        {
+          "id": "b0048",
+          "name": "手勢再大一點",
+          "token": "手勢加大"
+        },
+        {
+          "id": "b0049",
+          "name": "指一個方向",
+          "token": "指方向"
+        },
+        {
+          "id": "b0050",
+          "name": "雙手比劃",
+          "token": "雙手比"
+        }
+      ],
+      "b0013": [
+        {
+          "id": "b0051",
+          "name": "再誇一句",
+          "token": "再誇"
+        },
+        {
+          "id": "b0052",
+          "name": "強調一次",
+          "token": "強調"
+        },
+        {
+          "id": "b0053",
+          "name": "等她稱讚",
+          "token": "等稱讚"
+        }
+      ],
+      "b0014": [
+        {
+          "id": "b0054",
+          "name": "再掃一眼",
+          "token": "再打量"
+        },
+        {
+          "id": "b0055",
+          "name": "目光停住",
+          "token": "打量停住"
+        },
+        {
+          "id": "b0056",
+          "name": "嘴角一揚",
+          "token": "得意嘴角"
+        }
+      ]
+    },
+    "lineage_l2": {
+      "b0015": [
+        {
+          "id": "b0057",
+          "name": "第三聲更小",
+          "token": "第三聲"
+        },
+        {
+          "id": "b0058",
+          "name": "停住等回",
+          "token": "等她回招呼"
+        }
+      ],
+      "b0016": [
+        {
+          "id": "b0059",
+          "name": "名字再說一次",
+          "token": "名字再說"
+        },
+        {
+          "id": "b0060",
+          "name": "等她報名",
+          "token": "等報名"
+        }
+      ],
+      "b0017": [
+        {
+          "id": "b0061",
+          "name": "尾音再拖",
+          "token": "再拖尾音"
+        },
+        {
+          "id": "b0062",
+          "name": "眼神一起等",
+          "token": "眼神等"
+        }
+      ],
+      "b0018": [
+        {
+          "id": "b0063",
+          "name": "再挪半寸",
+          "token": "再挪半寸"
+        },
+        {
+          "id": "b0064",
+          "name": "退完吸口氣",
+          "token": "退完吸氣"
+        }
+      ],
+      "b0019": [
+        {
+          "id": "b0065",
+          "name": "維持距離",
+          "token": "維持距離"
+        },
+        {
+          "id": "b0066",
+          "name": "目光確認距離",
+          "token": "看距離"
+        }
+      ],
+      "b0020": [
+        {
+          "id": "b0067",
+          "name": "肩再收",
+          "token": "肩再收"
+        },
+        {
+          "id": "b0068",
+          "name": "下巴也收",
+          "token": "收下巴"
+        }
+      ],
+      "b0021": [
+        {
+          "id": "b0069",
+          "name": "第三瞟",
+          "token": "第三瞟"
+        },
+        {
+          "id": "b0070",
+          "name": "瞟完停半拍",
+          "token": "瞟停半拍"
+        }
+      ],
+      "b0022": [
+        {
+          "id": "b0071",
+          "name": "對上再半秒",
+          "token": "再對半秒"
+        },
+        {
+          "id": "b0072",
+          "name": "對上後眨眼",
+          "token": "對上眨眼"
+        }
+      ],
+      "b0023": [
+        {
+          "id": "b0073",
+          "name": "盯鞋尖一秒",
+          "token": "盯鞋尖"
+        },
+        {
+          "id": "b0074",
+          "name": "從鞋尖偷抬",
+          "token": "偷抬視線"
+        }
+      ],
+      "b0024": [
+        {
+          "id": "b0075",
+          "name": "再補一個設定",
+          "token": "再補設定"
+        },
+        {
+          "id": "b0076",
+          "name": "停一下看她",
+          "token": "講完看她"
+        }
+      ],
+      "b0025": [
+        {
+          "id": "b0077",
+          "name": "再往後講",
+          "token": "再往後"
+        },
+        {
+          "id": "b0078",
+          "name": "講到興奮",
+          "token": "講興奮"
+        }
+      ],
+      "b0026": [
+        {
+          "id": "b0079",
+          "name": "再問一次懂嗎",
+          "token": "再問懂嗎"
+        },
+        {
+          "id": "b0080",
+          "name": "用更簡單重講",
+          "token": "講簡單點"
+        }
+      ],
+      "b0027": [
+        {
+          "id": "b0081",
+          "name": "再側半分",
+          "token": "再側近"
+        },
+        {
+          "id": "b0082",
+          "name": "舉穩給她",
+          "token": "舉穩"
+        }
+      ],
+      "b0028": [
+        {
+          "id": "b0083",
+          "name": "指第二處",
+          "token": "指第二處"
+        },
+        {
+          "id": "b0084",
+          "name": "指著等她看",
+          "token": "指著等"
+        }
+      ],
+      "b0029": [
+        {
+          "id": "b0085",
+          "name": "再滑一張",
+          "token": "再滑一張"
+        },
+        {
+          "id": "b0086",
+          "name": "停在這張",
+          "token": "停這張"
+        }
+      ],
+      "b0030": [
+        {
+          "id": "b0087",
+          "name": "再近一點",
+          "token": "再近盯"
+        },
+        {
+          "id": "b0088",
+          "name": "呼吸都近了",
+          "token": "盯到近"
+        }
+      ],
+      "b0031": [
+        {
+          "id": "b0089",
+          "name": "繼續釘住",
+          "token": "繼續釘"
+        },
+        {
+          "id": "b0090",
+          "name": "忘了眨眼",
+          "token": "忘眨眼"
+        }
+      ],
+      "b0032": [
+        {
+          "id": "b0091",
+          "name": "問題再說清楚",
+          "token": "問清楚"
+        },
+        {
+          "id": "b0092",
+          "name": "等她解釋",
+          "token": "等解釋"
+        }
+      ],
+      "b0033": [
+        {
+          "id": "b0093",
+          "name": "再接一句冷熱",
+          "token": "再冷熱"
+        },
+        {
+          "id": "b0094",
+          "name": "等她評天氣",
+          "token": "等她評"
+        }
+      ],
+      "b0034": [
+        {
+          "id": "b0095",
+          "name": "同樣評價再說",
+          "token": "再說一次評"
+        },
+        {
+          "id": "b0096",
+          "name": "點頭認天氣",
+          "token": "點頭認天"
+        }
+      ],
+      "b0035": [
+        {
+          "id": "b0097",
+          "name": "再等一秒",
+          "token": "再等一秒"
+        },
+        {
+          "id": "b0098",
+          "name": "用眼神催一下",
+          "token": "眼神催"
+        }
+      ],
+      "b0036": [
+        {
+          "id": "b0099",
+          "name": "再換回另一腳",
+          "token": "再換腳"
+        },
+        {
+          "id": "b0100",
+          "name": "換腳後站穩",
+          "token": "換腳站穩"
+        }
+      ],
+      "b0037": [
+        {
+          "id": "b0101",
+          "name": "口袋再動",
+          "token": "口袋再動"
+        },
+        {
+          "id": "b0102",
+          "name": "動完又停",
+          "token": "動完停"
+        }
+      ],
+      "b0038": [
+        {
+          "id": "b0103",
+          "name": "繼續杵",
+          "token": "繼續杵"
+        },
+        {
+          "id": "b0104",
+          "name": "杵著看她一眼",
+          "token": "杵著一眼"
+        }
+      ],
+      "b0039": [
+        {
+          "id": "b0105",
+          "name": "還是看著",
+          "token": "還是看"
+        },
+        {
+          "id": "b0106",
+          "name": "平視不說話",
+          "token": "看不說話"
+        }
+      ],
+      "b0040": [
+        {
+          "id": "b0107",
+          "name": "再慢眨一次",
+          "token": "再慢眨"
+        },
+        {
+          "id": "b0108",
+          "name": "眨完仍看著",
+          "token": "眨完看"
+        }
+      ],
+      "b0041": [
+        {
+          "id": "b0109",
+          "name": "焦距再清",
+          "token": "再對焦"
+        },
+        {
+          "id": "b0110",
+          "name": "專心看不移",
+          "token": "專心不移"
+        }
+      ],
+      "b0042": [
+        {
+          "id": "b0111",
+          "name": "第三聲乾笑",
+          "token": "第三乾笑"
+        },
+        {
+          "id": "b0112",
+          "name": "笑完看她",
+          "token": "笑完看"
+        }
+      ],
+      "b0043": [
+        {
+          "id": "b0113",
+          "name": "對對對",
+          "token": "對對對"
+        },
+        {
+          "id": "b0114",
+          "name": "對啊後點頭",
+          "token": "對啊點頭"
+        }
+      ],
+      "b0044": [
+        {
+          "id": "b0115",
+          "name": "再點一下",
+          "token": "再點頭"
+        },
+        {
+          "id": "b0116",
+          "name": "點頭看她",
+          "token": "點頭看"
+        }
+      ],
+      "b0045": [
+        {
+          "id": "b0117",
+          "name": "又接一句",
+          "token": "又接一句"
+        },
+        {
+          "id": "b0118",
+          "name": "語速不減",
+          "token": "語速不減"
+        }
+      ],
+      "b0046": [
+        {
+          "id": "b0119",
+          "name": "細節再加一點",
+          "token": "細節再加"
+        },
+        {
+          "id": "b0120",
+          "name": "補完看反應",
+          "token": "補完看"
+        }
+      ],
+      "b0047": [
+        {
+          "id": "b0121",
+          "name": "問題再說一遍",
+          "token": "問題再說"
+        },
+        {
+          "id": "b0122",
+          "name": "等她答",
+          "token": "等她答"
+        }
+      ],
+      "b0048": [
+        {
+          "id": "b0123",
+          "name": "手勢再開",
+          "token": "手勢再開"
+        },
+        {
+          "id": "b0124",
+          "name": "比完停在空中",
+          "token": "比完停空"
+        }
+      ],
+      "b0049": [
+        {
+          "id": "b0125",
+          "name": "指得更明確",
+          "token": "指更明"
+        },
+        {
+          "id": "b0126",
+          "name": "指著講一句",
+          "token": "指著講"
+        }
+      ],
+      "b0050": [
+        {
+          "id": "b0127",
+          "name": "雙手再比一次",
+          "token": "雙手再比"
+        },
+        {
+          "id": "b0128",
+          "name": "雙手停住給她看",
+          "token": "雙手停住"
+        }
+      ],
+      "b0051": [
+        {
+          "id": "b0129",
+          "name": "自誇再疊",
+          "token": "自誇再疊"
+        },
+        {
+          "id": "b0130",
+          "name": "誇完揚眉",
+          "token": "誇完揚眉"
+        }
+      ],
+      "b0052": [
+        {
+          "id": "b0131",
+          "name": "重點再說",
+          "token": "重點再說"
+        },
+        {
+          "id": "b0132",
+          "name": "強調後盯她",
+          "token": "強調盯她"
+        }
+      ],
+      "b0053": [
+        {
+          "id": "b0133",
+          "name": "再等半拍",
+          "token": "再等稱讚"
+        },
+        {
+          "id": "b0134",
+          "name": "眼神催稱讚",
+          "token": "眼神催誇"
+        }
+      ],
+      "b0054": [
+        {
+          "id": "b0135",
+          "name": "第三輪打量",
+          "token": "第三打量"
+        },
+        {
+          "id": "b0136",
+          "name": "掃完停胸口視線高度",
+          "token": "掃完停"
+        }
+      ],
+      "b0055": [
+        {
+          "id": "b0137",
+          "name": "停在臉上更久",
+          "token": "臉上更久"
+        },
+        {
+          "id": "b0138",
+          "name": "停住微點頭",
+          "token": "停住點頭"
+        }
+      ],
+      "b0056": [
+        {
+          "id": "b0139",
+          "name": "嘴角再揚一點",
+          "token": "嘴角再揚"
+        },
+        {
+          "id": "b0140",
+          "name": "揚完繼續看",
+          "token": "揚完看"
+        }
+      ]
+    }
   },
   "enums": {
     "kind": [
@@ -35,9 +874,9 @@
     ]
   },
   "defaults": {
-    "hand_size": 5,
+    "hand_size": 2,
     "max_girl_cards": 3,
-    "max_inject": 5,
+    "max_inject": 8,
     "shop_slots": 3,
     "shop_refresh_hours": 4,
     "bubble_chance": 0.15,
@@ -67,23 +906,36 @@
     "emotion_fail_open": {
       "min": -3,
       "max": -1
+    },
+    "hand_draw": 2,
+    "arc_weights": {
+      "child": 8,
+      "other": 1
     }
   },
   "starter_pool": [
     "b0001",
     "b0002",
     "b0003",
-    "B0004",
-    "B0005",
-    "b0016"
+    "b0004",
+    "b0005",
+    "b0006",
+    "b0007",
+    "b0008",
+    "b0009",
+    "b0010",
+    "b0011",
+    "b0012",
+    "b0013",
+    "b0014"
   ],
   "shop_weights": {
     "speech_pool": [
       "b0001",
       "b0002",
       "b0003",
-      "B0004",
-      "B0005",
+      "b0004",
+      "b0005",
       "b0006",
       "b0007",
       "b0008",
@@ -104,27 +956,143 @@
       "b0023",
       "b0024",
       "b0025",
-      "b0026"
+      "b0026",
+      "b0027",
+      "b0028",
+      "b0029",
+      "b0030",
+      "b0031",
+      "b0032",
+      "b0033",
+      "b0034",
+      "b0035",
+      "b0036",
+      "b0037",
+      "b0038",
+      "b0039",
+      "b0040",
+      "b0041",
+      "b0042",
+      "b0043",
+      "b0044",
+      "b0045",
+      "b0046",
+      "b0047",
+      "b0048",
+      "b0049",
+      "b0050",
+      "b0051",
+      "b0052",
+      "b0053",
+      "b0054",
+      "b0055",
+      "b0056",
+      "b0057",
+      "b0058",
+      "b0059",
+      "b0060",
+      "b0061",
+      "b0062",
+      "b0063",
+      "b0064",
+      "b0065",
+      "b0066",
+      "b0067",
+      "b0068",
+      "b0069",
+      "b0070",
+      "b0071",
+      "b0072",
+      "b0073",
+      "b0074",
+      "b0075",
+      "b0076",
+      "b0077",
+      "b0078",
+      "b0079",
+      "b0080",
+      "b0081",
+      "b0082",
+      "b0083",
+      "b0084",
+      "b0085",
+      "b0086",
+      "b0087",
+      "b0088",
+      "b0089",
+      "b0090",
+      "b0091",
+      "b0092",
+      "b0093",
+      "b0094",
+      "b0095",
+      "b0096",
+      "b0097",
+      "b0098",
+      "b0099",
+      "b0100",
+      "b0101",
+      "b0102",
+      "b0103",
+      "b0104",
+      "b0105",
+      "b0106",
+      "b0107",
+      "b0108",
+      "b0109",
+      "b0110",
+      "b0111",
+      "b0112",
+      "b0113",
+      "b0114",
+      "b0115",
+      "b0116",
+      "b0117",
+      "b0118",
+      "b0119",
+      "b0120",
+      "b0121",
+      "b0122",
+      "b0123",
+      "b0124",
+      "b0125",
+      "b0126",
+      "b0127",
+      "b0128",
+      "b0129",
+      "b0130",
+      "b0131",
+      "b0132",
+      "b0133",
+      "b0134",
+      "b0135",
+      "b0136",
+      "b0137",
+      "b0138",
+      "b0139",
+      "b0140"
     ],
     "premium_pool": []
   },
   "cards": [
     {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 40,
       "id": "b0001",
-      "name": "打招呼",
-      "token": "打招呼",
-      "tokenDesc": "",
-      "parentId": null,
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": true,
-      "tags": [
-        "talk"
-      ],
-      "price": 40,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "name": "小聲打招呼",
+      "token": "小聲招呼",
+      "tokenDesc": "話語·自閉：音量壓到幾乎聽不見的一句你好",
       "emotion": {
         "stranger": {
           "min": -1,
@@ -143,148 +1111,70 @@
           "max": 1
         }
       },
-      "sceneStart": "你跟[name]說:HI",
-      "promptHint": "他打招呼，好像很平常",
-      "forceable": false,
-      "nsfwOnly": false,
-      "visualEn": "girl watch"
+      "sceneStart": "你對[name]開了口，聲音卻小得像怕被第三個人聽見。字只有半句「……你好」，尾音還收進喉嚨裡。你沒有走近，只是讓那聲招呼從肩線外側掉出來，然後立刻像做錯事一樣停住，等她決定要不要接。",
+      "promptHint": "他用很小的聲音跟妳打招呼，幾乎不敢把話說完整。依關係：聽不清／覺得他緊張／想湊近聽／早就習慣他這種小聲。",
+      "visualEn": "from his POV, looking toward her face, close-up head and shoulders, conversational distance, she facing viewer, soft indoor light",
+      "visualZh": "運鏡：打招呼看她頭肩特寫"
     },
     {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 38,
       "id": "b0002",
-      "name": "看著",
-      "token": "看著",
-      "tokenDesc": "尷尬地看著對方，不知道要說些甚麼",
-      "parentId": null,
+      "name": "退半步",
+      "token": "退半步",
+      "tokenDesc": "動作·自閉：下意識把距離拉開半步",
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你本來站得不算近，卻還是悄悄往後挪了半步。腳跟先著地，像在地毯上找一塊更安全的格子。你沒解釋，手也沒抬，只是讓空氣多出一掌寬——夠你呼吸，也夠她看穿你在躲。",
+      "promptHint": "他沒說話，只是默默退了半步拉開距離。依關係：被冒犯／覺得好笑／知道他在社恐／習以為常甚至覺得可愛。",
+      "visualEn": "from his POV, looking toward her, medium-wide shot, increased distance, empty space in lower foreground, three-quarter body, she smaller in frame, casual indoor",
+      "visualZh": "運鏡：退半步變遠、前景空隙"
+    },
+    {
       "kind": "speech",
       "shatterOnUse": false,
       "starter": true,
       "tags": [
         "talk"
       ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
       "price": 40,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
-      "emotion": {
-        "stranger": {
-          "min": -1,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 2
-        },
-        "girlfriend": {
-          "min": 0,
-          "max": 2
-        },
-        "wife": {
-          "min": 0,
-          "max": 1
-        }
-      },
-      "sceneStart": "你看著[name]，不知道要怎麼說",
-      "promptHint": "他直直的站著看著妳",
-      "forceable": false,
-      "nsfwOnly": false,
-      "visualEn": "sex ,cum",
-      "visualZh": "（AI）新基礎卡：你看著[name]，不知道要怎麼說"
-    },
-    {
       "id": "b0003",
-      "name": "閒聊",
-      "token": "聊",
-      "tokenDesc": "故作輕鬆的加入聊天",
-      "parentId": null,
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": true,
-      "tags": [
-        "talk"
-      ],
-      "price": 10,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
-      "emotion": {
-        "stranger": {
-          "min": -1,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 1
-        },
-        "girlfriend": {
-          "min": 0,
-          "max": 1
-        },
-        "wife": {
-          "min": 0,
-          "max": 1
-        }
-      },
-      "sceneStart": "你和[name]很輕鬆的聊天",
-      "promptHint": "他看著妳，說了一些無關痛癢的話",
-      "forceable": false,
-      "nsfwOnly": false,
-      "visualEn": "she watch"
-    },
-    {
-      "id": "B0004",
-      "name": "靠近",
-      "token": "靠近",
-      "tokenDesc": "默默的靠近",
-      "parentId": null,
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": true,
-      "tags": [
-        "talk"
-      ],
-      "price": 5,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
-      "emotion": {
-        "stranger": {
-          "min": -2,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 1
-        },
-        "girlfriend": {
-          "min": -1,
-          "max": 0
-        },
-        "wife": {
-          "min": -1,
-          "max": 1
-        }
-      },
-      "sceneStart": "你摸摸的靠近[name]",
-      "promptHint": "他沒有說什麼，只是靠近妳",
-      "forceable": false,
-      "nsfwOnly": false
-    },
-    {
-      "id": "B0005",
-      "name": "微笑",
-      "token": "笑",
-      "tokenDesc": "傻笑",
-      "parentId": null,
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": true,
-      "tags": [
-        "talk"
-      ],
-      "price": 5,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "name": "瞟一眼",
+      "token": "瞟一眼",
+      "tokenDesc": "眼神·自閉：飛快掃過又立刻逃開",
       "emotion": {
         "stranger": {
           "min": -1,
@@ -303,28 +1193,111 @@
           "max": 1
         }
       },
-      "sceneStart": "你微笑",
-      "promptHint": "他微笑",
-      "forceable": false,
-      "nsfwOnly": false,
-      "visualEn": "she watch"
+      "sceneStart": "你抬眼掃了[name]一下，視線只在她臉上停不到一秒，就慌忙落到旁邊的牆、地板、或自己的鞋尖。像被燙到似的，你喉結動了動，卻什麼也沒說——那一眼已經把「我有在看妳」洩漏乾淨。",
+      "promptHint": "他只敢快速瞟妳一眼就移開視線。依關係：沒注意到／覺得他心虛／對視成習慣前奏／假裝沒發現逗他。",
+      "visualEn": "from his POV, quick glance angle, her face off-center partially cropped, brief look composition, not centered locked stare, soft indoor",
+      "visualZh": "運鏡：掃視、臉不居中"
     },
     {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 42,
+      "id": "b0004",
+      "name": "扯宅話題",
+      "token": "宅話題",
+      "tokenDesc": "話語·宅：突然把話題拐進興趣圈",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你沒鋪墊，直接把話題拐進自己的興趣——某部作品、某款遊戲、或一句只有同好才會點頭的梗。講到一半你才想起對方未必懂，語速卻停不下來，耳尖有點熱，還是把後半句講完了。空氣裡突然多了一塊「他的房間」。",
+      "promptHint": "他突然開始講很宅的話題或冷梗。依關係：聽不懂愣住／勉強附和／意外同好熱起來／懶得吐槽他又來了。禁止硬說她也超愛同一部作品。",
+      "visualEn": "from his POV, looking toward her, half body conversation framing, she facing viewer, casual indoor distance",
+      "visualZh": "運鏡：半身對話距離（話題不進圖）"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 42,
+      "id": "b0005",
+      "name": "掏出手機",
+      "token": "掏手機",
+      "tokenDesc": "動作·宅：把螢幕遞過去當社交橋",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你從口袋摸出手機，解鎖，把畫面微微側向[name]——不是要她讀訊息，是想用螢幕當一塊可以一起看的遮板。指尖在邊緣摩挲，你還沒決定要不要開口解釋，螢幕的光已經先把兩人之間的距離量了一遍。",
+      "promptHint": "他掏出手機，把螢幕側向妳（可能是圖、攻略、聊天記錄或隨便什麼）。依關係：警覺／湊近看／嫌他社恐用手機擋／一起低頭看。不要替他發明具體內容，用模糊「他想給妳看的東西」即可。",
+      "visualEn": "from his POV, his hand holding phone blurred in lower foreground, looking over phone toward her, half body, cool screen light optional, she facing viewer",
+      "visualZh": "運鏡：前景玩家手+手機，越過螢幕看她"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 44,
       "id": "b0006",
-      "name": "問名字",
-      "token": "問名字",
-      "tokenDesc": "在招呼之後，正式問她叫什麼",
-      "parentId": "b0001",
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "price": 25,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "name": "盯著細節",
+      "token": "盯細節",
+      "tokenDesc": "眼神·宅：用 equ 式專注盯住某樣東西",
       "emotion": {
         "stranger": {
           "min": -1,
@@ -340,147 +1313,32 @@
         },
         "wife": {
           "min": 0,
-          "max": 1
+          "max": 2
         }
       },
-      "sceneStart": "你跟[name]打過招呼後，問她叫什麼名字",
-      "promptHint": "他問妳的名字，語氣普通、有點認真",
-      "forceable": false,
-      "nsfwOnly": false
+      "sceneStart": "你的視線釘在[name]身上某個細節——髮梢的光、袖口、小飾品、或她手邊物件的形狀——久到不像普通的看人。不是色氣的掃視，比較像在對設定集：你在記、在對、在出神。被發現時你才把焦點重新對回她的眼睛。",
+      "promptHint": "他盯著妳身上或旁邊的某個細節看得出神，像在看設定而非看人。依關係：被盯得發毛／問他看什麼／覺得他很認真／早就習慣。不要寫成下流打量。",
+      "visualEn": "from his POV, extreme close-up on her detail (hair tip or sleeve cuff or small accessory), shallow depth of field, bokeh background, not full-face center",
+      "visualZh": "運鏡：細節特寫，非正臉"
     },
     {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 36,
       "id": "b0007",
-      "name": "道別",
-      "token": "道別",
-      "tokenDesc": "把招呼收成一句簡潔的再見",
-      "parentId": "b0001",
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "price": 20,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
-      "emotion": {
-        "stranger": {
-          "min": -1,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 1
-        },
-        "girlfriend": {
-          "min": 0,
-          "max": 1
-        },
-        "wife": {
-          "min": 0,
-          "max": 1
-        }
-      },
-      "sceneStart": "你對[name]揮了揮手，說了聲再見",
-      "promptHint": "他在跟妳道別，語氣不重也不拖泥帶水",
-      "forceable": false,
-      "nsfwOnly": false
-    },
-    {
-      "id": "b0008",
-      "name": "移開視線",
-      "token": "移開視線",
-      "tokenDesc": "對視太久，慌忙把視線轉開",
-      "parentId": "b0002",
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "price": 20,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
-      "emotion": {
-        "stranger": {
-          "min": -1,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 2
-        },
-        "girlfriend": {
-          "min": 0,
-          "max": 2
-        },
-        "wife": {
-          "min": 0,
-          "max": 1
-        }
-      },
-      "sceneStart": "你盯著[name]太久，忽然心虛地把視線移開",
-      "promptHint": "他突然不敢看妳了，耳尖好像有點紅",
-      "forceable": false,
-      "nsfwOnly": false
-    },
-    {
-      "id": "b0009",
-      "name": "多看一眼",
-      "token": "多看一眼",
-      "tokenDesc": "本來只是瞥一眼，卻多停了半秒",
-      "parentId": "b0002",
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "price": 30,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
-      "emotion": {
-        "stranger": {
-          "min": -2,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 2
-        },
-        "girlfriend": {
-          "min": 1,
-          "max": 2
-        },
-        "wife": {
-          "min": 0,
-          "max": 2
-        }
-      },
-      "sceneStart": "你看著[name]，本來要移開，卻又多看了一眼",
-      "promptHint": "他的目光多停了一下，像在確認什麼",
-      "forceable": false,
-      "nsfwOnly": false
-    },
-    {
-      "id": "b0010",
       "name": "聊天氣",
-      "token": "天氣",
-      "tokenDesc": "用最安全的天氣話題填滿空白",
-      "parentId": "b0003",
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "price": 15,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "token": "聊天氣",
+      "tokenDesc": "話語·無聊：最安全也最無趣的開場",
       "emotion": {
         "stranger": {
           "min": -1,
@@ -499,32 +1357,156 @@
           "max": 1
         }
       },
-      "sceneStart": "你跟[name]閒聊起今天的天氣",
-      "promptHint": "他在講無關痛癢的天氣，想把空氣撐住",
-      "forceable": false,
-      "nsfwOnly": false,
-      "visualEn": "talk, casual standing"
+      "sceneStart": "你清了清喉嚨，對[name]丟出最安全的一句：「……今天天氣還不錯。」語氣平得像讀提示板，連抑揚都懶得加。話說完你自己也沉默半秒，像完成了社交任務的打卡。",
+      "promptHint": "他很無聊地跟妳聊天氣。依關係：尬住／隨口回／吐槽他真的很無聊／當成你們的日常暗號。",
+      "visualEn": "from his POV, looking toward her, standard medium shot, neutral conversational distance, half body, flat indoor light",
+      "visualZh": "運鏡：普通中景聊天氣"
     },
     {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 36,
+      "id": "b0008",
+      "name": "雙手插口袋",
+      "token": "插口袋",
+      "tokenDesc": "動作·無聊：整個人變成路燈式待機",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你把雙手插進口袋，肩膀鬆開，人就那樣杵在[name]附近。沒有下一步，也沒有開場白，像一台開著機卻沒載入任務的終端。衣料摩擦的聲音比你的話還多。",
+      "promptHint": "他雙手插口袋站在妳旁邊，什麼特別的事也沒做。依關係：尷尬／不以為意／覺得他很廢但安心／叫他別發呆。",
+      "visualEn": "from his POV, looking toward her, static standby distance, idle framing, three-quarter body, she facing viewer, casual indoor",
+      "visualZh": "運鏡：待機中遠距、近全身上半"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 38,
+      "id": "b0009",
+      "name": "直直看著",
+      "token": "直視",
+      "tokenDesc": "眼神·無聊：沒情緒的平視，不是深情",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你直直看著[name]，眼神裡沒有戲、沒有試探，甚至談不上溫柔——就是把人放進視野正中央，然後停在那。像電視暫停畫面。你自己好像也沒意識到這有多直球，只是暫時想不起視線該往哪放。",
+      "promptHint": "他沒表情地直直看著妳，不像深情，比較像當機。依關係：被盯得不自在／問他幹嘛／回看回去／習以為常戳他臉。",
+      "visualEn": "from his POV, direct eye-level gaze, tight face-centered framing, she facing viewer straight-on, head and shoulders, soft indoor",
+      "visualZh": "運鏡：視線水平、臉居中近拍"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 38,
+      "id": "b0010",
+      "name": "乾笑附和",
+      "token": "乾笑",
+      "tokenDesc": "話語·無聊／自閉：不會接話時的萬能「哈哈…對啊」",
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "輪到你接話時，你只擠出一聲乾笑，再補上含糊的「……哈哈，對啊」。既沒反對，也沒推進，像用最小成本把球擋回去。你低頭看了一眼地面，確認自己已經「有回應」，就可以暫時不用想下一句。",
+      "promptHint": "他用乾笑和「對啊」之類的短句附和妳，幾乎沒有內容。依關係：話題死掉／覺得他很廢／聽出他緊張／故意再說更難接的話逗他。",
+      "visualEn": "from his POV, looking toward her, half body mid-conversation pause distance, she facing viewer, soft indoor",
+      "visualZh": "運鏡：對話空檔半身"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 42,
       "id": "b0011",
-      "name": "問近況",
-      "token": "近況",
-      "tokenDesc": "輕鬆地問她最近過得怎麼樣",
-      "parentId": "b0003",
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "price": 25,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "name": "打開話匣",
+      "token": "話匣",
+      "tokenDesc": "話語·健談：一開口就停不住，把沉默填滿",
       "emotion": {
         "stranger": {
           "min": -1,
-          "max": 1
+          "max": 2
         },
         "friend": {
           "min": 0,
@@ -536,123 +1518,84 @@
         },
         "wife": {
           "min": 0,
-          "max": 2
+          "max": 1
         }
       },
-      "sceneStart": "你隨口問[name]最近過得怎麼樣",
-      "promptHint": "他問妳近況，語氣輕，卻真的在等答案",
-      "forceable": false,
-      "nsfwOnly": false,
-      "visualEn": "conversation, attentive"
+      "sceneStart": "你對[name]一開口就像拉開拉鍊，話題接話題，停頓比呼吸還短。你不讓空氣冷掉，問句與感想輪流丟出去，連她還沒接的半句也被你熱心地補上。",
+      "promptHint": "他很健談，一開口就滔滔不絕、不斷接話。依關係：被說到喘不過氣／覺得熱鬧／習慣他填場／故意不回看他怎麼補。",
+      "visualEn": "from his POV, looking toward her face, half body conversation framing, close conversational distance, she facing viewer, mid-talk energy, soft indoor",
+      "visualZh": "運鏡：健談搭話，半身近距對談"
     },
     {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 40,
       "id": "b0012",
-      "name": "並肩",
-      "token": "並肩",
-      "tokenDesc": "從靠近變成站到她旁邊",
-      "parentId": "B0004",
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk",
-        "touch"
-      ],
-      "price": 20,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "name": "比手畫腳",
+      "token": "比劃",
+      "tokenDesc": "動作·健談：邊說邊比，手勢比話還多",
       "emotion": {
         "stranger": {
-          "min": -2,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 2
-        },
-        "girlfriend": {
-          "min": 0,
-          "max": 2
-        },
-        "wife": {
-          "min": 0,
-          "max": 1
-        }
-      },
-      "sceneStart": "你靠近[name]，默默站到她身邊並肩",
-      "promptHint": "他站到妳旁邊，沒有多說，距離卻近了",
-      "forceable": false,
-      "nsfwOnly": false
-    },
-    {
-      "id": "b0013",
-      "name": "輕碰袖口",
-      "token": "碰袖",
-      "tokenDesc": "靠近時指尖不小心擦過她的袖口",
-      "parentId": "B0004",
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk",
-        "touch"
-      ],
-      "price": 35,
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": "friend",
-      "emotion": {
-        "stranger": {
-          "min": -2,
-          "max": 0
-        },
-        "friend": {
           "min": -1,
           "max": 2
         },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
         "girlfriend": {
           "min": 0,
           "max": 2
         },
         "wife": {
           "min": 0,
-          "max": 2
+          "max": 1
         }
       },
-      "sceneStart": "你靠近[name]時，指尖輕輕碰了一下她的袖口",
-      "promptHint": "他指尖擦過妳袖口，像不小心，又不像",
-      "forceable": false,
-      "nsfwOnly": false,
-      "visualEn": "men hand near sleeve, soft contact"
+      "sceneStart": "你邊跟[name]說話邊比手畫腳，指尖在空氣裡畫出形狀，手掌一張一合，像生怕只用嘴巴不夠清楚。袖口跟著甩，距離被你的手勢不知不覺拉近了一點。",
+      "promptHint": "他邊說邊比手畫腳，手勢很多、很熱絡。依關係：覺得吵／被逗笑／跟著比／叫他手別甩太開。",
+      "visualEn": "from his POV, his gesturing hand blurred in lower foreground, looking toward her, half body, animated talk distance, she facing viewer, soft indoor",
+      "visualZh": "運鏡：前景玩家比劃的手＋看她半身"
     },
     {
-      "id": "b0014",
-      "name": "苦笑",
-      "token": "苦笑",
-      "tokenDesc": "笑得有點無奈，像自己也知道很傻",
-      "parentId": "B0005",
       "kind": "speech",
       "shatterOnUse": false,
-      "starter": false,
+      "starter": true,
       "tags": [
         "talk"
       ],
-      "price": 15,
+      "parentId": null,
       "shopWeight": 1,
       "rarity": "N",
       "minStage": null,
+      "forceable": false,
+      "nsfwOnly": false,
+      "price": 44,
+      "id": "b0013",
+      "name": "自誇一番",
+      "token": "自誇",
+      "tokenDesc": "話語·自大：把功勞與本事擺到台面上說",
       "emotion": {
         "stranger": {
-          "min": -1,
+          "min": -2,
           "max": 1
         },
         "friend": {
-          "min": 0,
+          "min": -1,
           "max": 2
         },
         "girlfriend": {
-          "min": 0,
+          "min": -1,
           "max": 2
         },
         "wife": {
@@ -660,69 +1603,109 @@
           "max": 1
         }
       },
-      "sceneStart": "你對[name]露出一個有點無奈的苦笑",
-      "promptHint": "他苦笑著，像在自嘲，又像在跟妳示弱",
+      "sceneStart": "你對[name]隨口提起自己多懂、多會、或多有把握，語氣輕得像在陳述天氣，內容卻全是把自己往上抬。你停半拍，像在等她點頭——或至少別反駁。",
+      "promptHint": "他在自誇，語氣輕但內容很抬自己。依關係：翻白眼／吐槽／勉強附和／習慣他臭屁、甚至覺得好笑。禁止真的把你寫成被他完全說服崇拜。",
+      "visualEn": "from his POV, looking toward her, half body conversation framing, slightly elevated conversational angle, she facing viewer, casual indoor",
+      "visualZh": "運鏡：自誇對談半身，略帶俯視感構圖"
+    },
+    {
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": true,
+      "tags": [
+        "talk"
+      ],
+      "parentId": null,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
       "forceable": false,
       "nsfwOnly": false,
-      "visualEn": "she watch"
+      "price": 42,
+      "id": "b0014",
+      "name": "得意打量",
+      "token": "得意看",
+      "tokenDesc": "眼神·自大：用打量的目光把優越感放出來",
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你上下打量了[name]一眼，視線慢、穩，帶一點自己都未必承認的得意。不是害羞的偷看，比較像在確認「場面在我這邊」。你沒急著說話，先把這目光放完。",
+      "promptHint": "他用得意或俯視感的眼神打量妳，不急著說話。依關係：不爽／回瞪／覺得他很煩／熟了之後翻白眼笑他。不要寫成溫柔深情凝視。",
+      "visualEn": "from his POV, deliberate once-over framing, slow vertical glance composition, half body to full upper body, she facing viewer, slightly superior distance, indoor",
+      "visualZh": "運鏡：打量式掃視構圖，半身到上半身"
     },
     {
       "id": "b0015",
-      "name": "對她笑",
-      "token": "對她笑",
-      "tokenDesc": "不是傻笑，是明確對準她的笑",
-      "parentId": "B0005",
+      "name": "再叫一次",
+      "token": "再叫一次",
+      "tokenDesc": "小聲招呼→同一聲招呼又輕喚一次",
+      "parentId": "b0001",
       "kind": "speech",
       "shatterOnUse": false,
       "starter": false,
       "tags": [
         "talk"
       ],
-      "price": 30,
+      "price": 26,
       "shopWeight": 1,
       "rarity": "N",
       "minStage": null,
       "emotion": {
         "stranger": {
           "min": -1,
-          "max": 2
+          "max": 1
         },
         "friend": {
           "min": 0,
           "max": 2
         },
         "girlfriend": {
-          "min": 1,
-          "max": 3
+          "min": 0,
+          "max": 2
         },
         "wife": {
           "min": 0,
-          "max": 2
+          "max": 1
         }
       },
-      "sceneStart": "你看著[name]，對她露出一個明確的微笑",
-      "promptHint": "他在對妳笑，視線沒有移開",
-      "forceable": false,
-      "nsfwOnly": false
-    },
-    {
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": true,
-      "tags": [
-        "talk"
-      ],
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "sceneStart": "你對[name]把剛才那聲極輕的招呼又叫了一次，音量一樣小，像怕她沒聽見所以重播，不是換題，只是同一句「你好」的第二遍。",
+      "promptHint": "他又用很小的聲音把招呼叫了一次。依關係：這次聽見／點頭／回你好／覺得他緊張得重複。",
       "forceable": false,
       "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, close-up head and shoulders, conversational distance, she facing viewer, soft indoor, second-greeting moment",
+      "visualZh": "運鏡：同一招呼再喚，頭肩特寫"
+    },
+    {
       "id": "b0016",
-      "name": "點頭",
-      "token": "點頭",
-      "tokenDesc": "輕輕點頭，表示收到或附和",
-      "parentId": null,
-      "price": 10,
+      "name": "補上名字",
+      "token": "補名字",
+      "tokenDesc": "小聲招呼→在招呼後面接上問名（仍是開場）",
+      "parentId": "b0001",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
       "emotion": {
         "stranger": {
           "min": -1,
@@ -730,39 +1713,40 @@
         },
         "friend": {
           "min": 0,
-          "max": 1
+          "max": 2
         },
         "girlfriend": {
           "min": 0,
-          "max": 1
+          "max": 2
         },
         "wife": {
           "min": 0,
           "max": 1
         }
       },
-      "sceneStart": "你對[name]輕輕點了點頭",
-      "promptHint": "他點了點頭，像在說「我知道了」",
-      "visualEn": "girl with mild acknowledging expression, slight nod back or neutral face, eyes half attentive"
-    },
-    {
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "sceneStart": "招呼還掛在空氣裡，你對[name]把下一句也壓得很低：「……妳叫什麼？」仍是開場延續，不是另起爐灶的正式訪談。",
+      "promptHint": "他小聲招呼後接著問妳名字。依關係：報名／反問／聽不清讓他再說／覺得他一步一步湊。",
       "forceable": false,
       "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, close-up head and shoulders, conversational distance, she facing viewer, soft indoor, mid-question",
+      "visualZh": "運鏡：招呼接下問名，頭肩"
+    },
+    {
       "id": "b0017",
-      "name": "自我介紹",
-      "token": "自我介紹",
-      "tokenDesc": "招呼之後補上自己是誰",
+      "name": "尾音拖長",
+      "token": "尾音拖長",
+      "tokenDesc": "小聲招呼→同一句尾音拉長等回應",
       "parentId": "b0001",
-      "price": 30,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
       "emotion": {
         "stranger": {
           "min": -1,
@@ -781,36 +1765,37 @@
           "max": 1
         }
       },
-      "sceneStart": "你跟[name]打過招呼，簡單自我介紹了一下",
-      "promptHint": "他報上名字，語氣平常、有點正式",
-      "visualEn": "girl listening politely, slight curious tilt of head, open neutral expression"
-    },
-    {
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "sceneStart": "你對[name]那聲「你好」沒立刻收掉，尾音輕輕拖長半拍，像把麥克風還開著等她接。還是同一句招呼，只是多留了一點空隙。",
+      "promptHint": "他招呼的尾音拖得很長，在等妳回。依關係：回他／點頭／沉默看他／輕聲回。",
       "forceable": false,
       "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, head and shoulders, slight pause framing, she facing viewer, soft indoor",
+      "visualZh": "運鏡：尾音等待，頭肩停頓"
+    },
+    {
       "id": "b0018",
-      "name": "回禮",
-      "token": "回禮",
-      "tokenDesc": "對方有反應時，再補一個客氣的招呼",
-      "parentId": "b0001",
-      "price": 20,
+      "name": "再退一點",
+      "token": "再退一點",
+      "tokenDesc": "退半步→同一後退動作再挪一點",
+      "parentId": "b0002",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
       "emotion": {
         "stranger": {
-          "min": -1,
+          "min": -2,
           "max": 1
         },
         "friend": {
-          "min": 0,
-          "max": 1
+          "min": -1,
+          "max": 2
         },
         "girlfriend": {
           "min": 0,
@@ -821,28 +1806,29 @@
           "max": 1
         }
       },
-      "sceneStart": "你對[name]的回應又補了一個客氣的回禮",
-      "promptHint": "他又點了點頭回禮，不搶戲",
-      "visualEn": "girl mid polite smile, relaxed shoulders after greeting exchange"
-    },
-    {
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "sceneStart": "你對[name]已經退過半步，腳跟又悄悄再挪一點點——還是後退，只是距離刻度再加一格，沒換成別的社交。",
+      "promptHint": "他又往後退了一點。依關係：想笑／被拉開不爽／跟進一步／習慣他的距離。",
       "forceable": false,
       "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium-wide shot, more empty foreground, she smaller in frame, three-quarter body, casual indoor",
+      "visualZh": "運鏡：再退，畫面更遠"
+    },
+    {
       "id": "b0019",
-      "name": "上下打量",
-      "token": "打量",
-      "tokenDesc": "視線不自覺掃過她的裝扮",
+      "name": "站定不動",
+      "token": "站定",
+      "tokenDesc": "退半步→退完停在那格距離維持",
       "parentId": "b0002",
-      "price": 35,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
       "emotion": {
         "stranger": {
           "min": -2,
@@ -861,68 +1847,70 @@
           "max": 1
         }
       },
-      "sceneStart": "你看著[name]，視線不自覺上下打量了一下",
-      "promptHint": "他的目光在妳身上停了幾處，又假裝若無其事",
-      "visualEn": "girl noticing a gaze, subtle self-conscious posture, slight frown or flush"
-    },
-    {
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "sceneStart": "你退到自認安全的距離後對[name]站定，不再前進也不解釋。動作線仍是「保持這半步外」，只是從移動變成維持。",
+      "promptHint": "他退開後就釘在那裡不動。依關係：尷尬／接受距離／走近／問他幹嘛站那麼遠。",
       "forceable": false,
       "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium shot, fixed increased distance, half body, empty foreground gap, casual indoor",
+      "visualZh": "運鏡：退後站定的固定距離"
+    },
+    {
       "id": "b0020",
-      "name": "對視",
-      "token": "對視",
-      "tokenDesc": "沒有移開，讓視線撞上幾秒",
+      "name": "肩再縮一點",
+      "token": "縮肩",
+      "tokenDesc": "退半步→身體也跟著往後收",
       "parentId": "b0002",
-      "price": 40,
-      "emotion": {
-        "stranger": {
-          "min": -2,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 2
-        },
-        "girlfriend": {
-          "min": 1,
-          "max": 3
-        },
-        "wife": {
-          "min": 0,
-          "max": 2
-        }
-      },
-      "sceneStart": "你看著[name]，和她對視了幾秒",
-      "promptHint": "他直直看著妳的眼睛，沒有先逃",
-      "visualEn": "girl locked in eye contact, tense soft expression, slightly parted lips"
-    },
-    {
       "kind": "speech",
       "shatterOnUse": false,
       "starter": false,
       "tags": [
         "talk"
       ],
+      "price": 28,
       "shopWeight": 1,
       "rarity": "N",
       "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "腳已退開，你對[name]連肩膀也微微後縮，整個人在同一條「拉開」線上再收一寸，像把半步退得更徹底。",
+      "promptHint": "他後退時肩膀也縮了。依關係：覺得他很怕生／好笑／不以為意／靠近一點。",
       "forceable": false,
       "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium-wide, increased personal space, three-quarter body, she facing viewer, casual indoor",
+      "visualZh": "運鏡：縮肩後退的中遠距"
+    },
+    {
       "id": "b0021",
-      "name": "講冷笑話",
-      "token": "冷笑話",
-      "tokenDesc": "丟一個有點冷的笑話試水溫",
+      "name": "再瞟一次",
+      "token": "再瞟",
+      "tokenDesc": "瞟一眼→同一偷看動作再掃一次",
       "parentId": "b0003",
-      "price": 25,
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
       "emotion": {
         "stranger": {
           "min": -1,
@@ -941,115 +1929,76 @@
           "max": 1
         }
       },
-      "sceneStart": "你跟[name]閒聊時丟了一個有點冷的笑話",
-      "promptHint": "他講了個冷笑話，自己先愣了一下",
-      "visualEn": "girl deadpan then tiny smirk, raised eyebrow, holding back a laugh"
-    },
-    {
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk"
-      ],
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
+      "sceneStart": "你剛瞟過[name]又忍不住再快速掃一次，仍是同一種偷瞄，只是次數＋1，還沒換成正視或長談。",
+      "promptHint": "他又偷偷瞟了妳一眼。依關係：逮到／微笑／回看／裝沒發現。",
       "forceable": false,
       "nsfwOnly": false,
+      "visualEn": "from his POV, second brief glance, her face off-center then soft, half body, soft indoor, not locked stare",
+      "visualZh": "運鏡：第二次掃視"
+    },
+    {
       "id": "b0022",
-      "name": "換話題",
-      "token": "換話題",
-      "tokenDesc": "氣氛卡住時，生硬但努力地轉場",
+      "name": "對上半秒",
+      "token": "對上半秒",
+      "tokenDesc": "瞟一眼→不巧對上，仍在視線這拍",
       "parentId": "b0003",
-      "price": 20,
-      "emotion": {
-        "stranger": {
-          "min": -1,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 1
-        },
-        "girlfriend": {
-          "min": 0,
-          "max": 1
-        },
-        "wife": {
-          "min": 0,
-          "max": 1
-        }
-      },
-      "sceneStart": "你感覺冷場，硬生生跟[name]換了個話題",
-      "promptHint": "他突然換話題，語氣有點趕",
-      "visualEn": "girl slightly puzzled then adaptive smile, patient listening face"
-    },
-    {
       "kind": "speech",
       "shatterOnUse": false,
       "starter": false,
       "tags": [
         "talk"
       ],
+      "price": 28,
       "shopWeight": 1,
       "rarity": "N",
       "minStage": null,
-      "forceable": false,
-      "nsfwOnly": false,
-      "id": "b0023",
-      "name": "後退半步",
-      "token": "後退",
-      "tokenDesc": "靠近後又怕太近，退半步拉開",
-      "parentId": "B0004",
-      "price": 15,
-      "emotion": {
-        "stranger": {
-          "min": -1,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 1
-        },
-        "girlfriend": {
-          "min": 0,
-          "max": 1
-        },
-        "wife": {
-          "min": 0,
-          "max": 1
-        }
-      },
-      "sceneStart": "你靠近[name]一下，又慌張地後退半步",
-      "promptHint": "他忽然退開一點，像被自己嚇到",
-      "visualEn": "girl watching someone step back, mild amusement or confusion in eyes"
-    },
-    {
-      "kind": "speech",
-      "shatterOnUse": false,
-      "starter": false,
-      "tags": [
-        "talk",
-        "touch"
-      ],
-      "shopWeight": 1,
-      "rarity": "N",
-      "minStage": null,
-      "forceable": false,
-      "nsfwOnly": false,
-      "id": "b0024",
-      "name": "探身",
-      "token": "探身",
-      "tokenDesc": "為了聽清楚或看清楚，身體微微前傾",
-      "parentId": "B0004",
-      "price": 30,
       "emotion": {
         "stranger": {
           "min": -2,
           "max": 1
         },
         "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你的瞟這次跟[name]對上了半秒，心跳漏拍，視線卻還停在「看她」這條線上——還沒逃、也還沒說話，只是對上了。",
+      "promptHint": "他瞟妳時對上了半秒。依關係：先移開／多對一會兒／笑他／追視。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, brief eye-level lock, face nearer center, half body, soft indoor tension crop",
+      "visualZh": "運鏡：瞟到對上半秒"
+    },
+    {
+      "id": "b0023",
+      "name": "視線落鞋尖",
+      "token": "看鞋尖",
+      "tokenDesc": "瞟一眼→同一視線流線落到地面",
+      "parentId": "b0003",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
           "min": 0,
           "max": 2
         },
@@ -1062,68 +2011,70 @@
           "max": 1
         }
       },
-      "sceneStart": "你靠近[name]，微微探身想聽得更清楚",
-      "promptHint": "他往前傾了一點，距離突然近了",
-      "visualEn": "girl face slightly closer frame, startled soft eyes, breath held"
+      "sceneStart": "你瞟完[name]視線順勢滑到自己鞋尖，仍是剛才那條目光的延續：看她→收不回→落地，不是另開話題。",
+      "promptHint": "他瞟完把視線落到鞋尖。依關係：覺得他害羞／想笑／叫他抬頭／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, gaze dropping to lower frame after glance, her figure upper half, soft indoor",
+      "visualZh": "運鏡：瞟後視線落地"
     },
     {
+      "id": "b0024",
+      "name": "補一句設定",
+      "token": "補設定",
+      "tokenDesc": "宅話題→同一作品／梗再補細節",
+      "parentId": "b0004",
       "kind": "speech",
       "shatterOnUse": false,
       "starter": false,
       "tags": [
         "talk"
       ],
+      "price": 28,
       "shopWeight": 1,
       "rarity": "N",
       "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]把剛扯到的宅話題往下補了一句設定或細節，還是同一部、同一個坑，只是資訊多一層。",
+      "promptHint": "他繼續補同一個宅話題的設定。依關係：聽不懂更聽不懂／勉強跟／意外懂了／叫他慢點。",
       "forceable": false,
       "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body conversation framing, casual indoor, she facing viewer, mid-explain",
+      "visualZh": "運鏡：補設定對談半身"
+    },
+    {
       "id": "b0025",
-      "name": "偷笑",
-      "token": "偷笑",
-      "tokenDesc": "忍著、卻還是漏出一點笑",
-      "parentId": "B0005",
-      "price": 20,
-      "emotion": {
-        "stranger": {
-          "min": -1,
-          "max": 1
-        },
-        "friend": {
-          "min": 0,
-          "max": 2
-        },
-        "girlfriend": {
-          "min": 0,
-          "max": 2
-        },
-        "wife": {
-          "min": 0,
-          "max": 1
-        }
-      },
-      "sceneStart": "你對[name]忍不住偷笑了一下",
-      "promptHint": "他嘴角抽了一下，像在憋笑",
-      "visualEn": "girl catching someone smile, eyes narrowing playfully, soft grin forming"
-    },
-    {
+      "name": "講下一集",
+      "token": "講下去",
+      "tokenDesc": "宅話題→同一條線往後劇情推",
+      "parentId": "b0004",
       "kind": "speech",
       "shatterOnUse": false,
       "starter": false,
       "tags": [
         "talk"
       ],
+      "price": 30,
       "shopWeight": 1,
       "rarity": "N",
       "minStage": null,
-      "forceable": false,
-      "nsfwOnly": false,
-      "id": "b0026",
-      "name": "抿嘴笑",
-      "token": "抿嘴笑",
-      "tokenDesc": "笑得很收斂，只剩嘴角弧度",
-      "parentId": "B0005",
-      "price": 25,
       "emotion": {
         "stranger": {
           "min": -1,
@@ -1134,7 +2085,7 @@
           "max": 2
         },
         "girlfriend": {
-          "min": 1,
+          "min": 0,
           "max": 2
         },
         "wife": {
@@ -1142,9 +2093,4727 @@
           "max": 2
         }
       },
-      "sceneStart": "你對[name]抿著嘴輕輕笑了一下",
-      "promptHint": "他抿嘴笑，眼神比嘴先洩漏情緒",
-      "visualEn": "girl mirrored soft smile, warm eyes, relaxed cheeks"
+      "sceneStart": "你對[name]順著同一個話題往後講——下一集、下一章、下一個梗——沒換作品，只是把話匣在同一坑裡往前推。",
+      "promptHint": "他順著同一個宅話題繼續往下講。依關係：被雷到怕／叫停劇透／聽進去／眼神放空。禁止硬寫她超愛。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, slightly closer talk distance, she facing viewer, animated, casual indoor",
+      "visualZh": "運鏡：往下講時略近半身"
+    },
+    {
+      "id": "b0026",
+      "name": "問她懂不懂",
+      "token": "懂不懂",
+      "tokenDesc": "宅話題→同一話題確認她有沒有跟上",
+      "parentId": "b0004",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你停在同一個宅話題半路，看著[name]問：「……這樣有懂嗎？」仍是這條話題的下一句，不是改聊天氣。",
+      "promptHint": "他問妳有沒有聽懂他剛講的宅內容。依關係：誠實說不懂／點頭裝懂／反問／吐槽太深。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body, question pause framing, she facing viewer, casual indoor",
+      "visualZh": "運鏡：確認是否跟上，半身"
+    },
+    {
+      "id": "b0027",
+      "name": "螢幕再側一點",
+      "token": "側近一點",
+      "tokenDesc": "掏手機→同一支手機更側向她",
+      "parentId": "b0005",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "手機還亮著，你對[name]把螢幕再側近一點，讓她更容易看見——還是「給她看螢幕」這拍，只是角度更誠懇。",
+      "promptHint": "他把手機螢幕又側近妳一點。依關係：湊看／保持距離／問是什麼／心不在焉。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, phone screen clearer in lower foreground, looking over phone toward her, half body, cool light optional",
+      "visualZh": "運鏡：螢幕更近入鏡"
+    },
+    {
+      "id": "b0028",
+      "name": "指一下畫面",
+      "token": "指畫面",
+      "tokenDesc": "掏手機→指著同一畫面某一處",
+      "parentId": "b0005",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]用拇指或指尖點了點螢幕上某處：「……這裡。」手機沒換、話題沒換，只是把視線錨在同一個畫面。",
+      "promptHint": "他指著手機畫面某一處給妳看。依關係：看他指的地方／問那是什麼／點頭／螢幕反光。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, finger pointing at phone screen in foreground, looking toward her over phone, half body, cool light, indoor",
+      "visualZh": "運鏡：指螢幕前景＋她"
+    },
+    {
+      "id": "b0029",
+      "name": "滑到下一張",
+      "token": "滑下一張",
+      "tokenDesc": "掏手機→同一分享動作滑下一則",
+      "parentId": "b0005",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你拇指一滑，對[name]把同一個分享流程推到下一張／下一則，螢幕光還在，仍是「一起看手機」的連續拍。",
+      "promptHint": "他滑到下一張繼續給妳看。依關係：跟著看／說夠了／問還有沒有／沉默滑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, phone in lower frame mid-swipe, looking over phone toward her, half body, cool light spill, indoor",
+      "visualZh": "運鏡：滑動中手機前景"
+    },
+    {
+      "id": "b0030",
+      "name": "盯更近一點",
+      "token": "盯更近",
+      "tokenDesc": "盯細節→同一細節焦距再逼近",
+      "parentId": "b0006",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]那個細節的注視又近了一點，頭微微前傾，仍釘在同一處——髮梢、飾品或袖口——沒改看別的。",
+      "promptHint": "他盯著同一細節更靠近。依關係：不自在／問看什麼／不動／輕笑。不要寫成下流。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, closer extreme close-up on same detail type, shallow DOF, bokeh, not full-face center",
+      "visualZh": "運鏡：同一細節更近特寫"
+    },
+    {
+      "id": "b0031",
+      "name": "視線停住",
+      "token": "盯停住",
+      "tokenDesc": "盯細節→在同一點凍結更久",
+      "parentId": "b0006",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你把視線在[name]那處細節上停死，像對稿對到忘記時間，仍是盯細節，只是時長被拉長。",
+      "promptHint": "他盯著細節不動更久。依關係：揮手／害羞／出聲喚他／由他去。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, held extreme close-up on detail, shallow DOF, still framing, soft indoor",
+      "visualZh": "運鏡：細節長時間定格"
+    },
+    {
+      "id": "b0032",
+      "name": "開口問一句",
+      "token": "這是什麼",
+      "tokenDesc": "盯細節→對同一細節吐出問題",
+      "parentId": "b0006",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "視線還在那處細節上，你對[name]低聲問：「……這是什麼？」問題掛在同一條視線上，不是另起話題。",
+      "promptHint": "他盯著細節問妳那是什麼。依關係：解釋／反問／覺得被盯毛／開玩笑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, close-up on detail with question moment, shallow DOF, not full-face center, soft indoor",
+      "visualZh": "運鏡：細節特寫發問"
+    },
+    {
+      "id": "b0033",
+      "name": "接溫度",
+      "token": "接溫度",
+      "tokenDesc": "聊天氣→同一天氣話題接冷熱",
+      "parentId": "b0007",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]順著天氣往下接：「……有點熱／有點涼。」還是氣象廢話，只是從「天氣不錯」滑到體感。",
+      "promptHint": "他接著聊溫度，還是廢話。依關係：尬回／吐槽／隨口嗯／當成日常。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, standard medium shot, neutral distance, half body, flat indoor light",
+      "visualZh": "運鏡：接溫度中景"
+    },
+    {
+      "id": "b0034",
+      "name": "再評一句",
+      "token": "再評天氣",
+      "tokenDesc": "聊天氣→同一天空再評價一次",
+      "parentId": "b0007",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]又補了一句對今天天氣的評價，內容幾乎重複，語氣一樣平，像把同一格對話多存一次。",
+      "promptHint": "他又評了一次天氣。依關係：無語／回一句／笑他沒梗／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium shot, plain small-talk framing, half body, flat indoor light",
+      "visualZh": "運鏡：再評天氣中景"
+    },
+    {
+      "id": "b0035",
+      "name": "等她接",
+      "token": "等她接",
+      "tokenDesc": "聊天氣→天氣句丟出後停住等",
+      "parentId": "b0007",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "天氣話丟完，你對[name]停住，明顯在等她接下一句——還停在這場無聊氣象對話裡，沒自己換題。",
+      "promptHint": "他聊完天氣就看著妳等接話。依關係：隨便回／不接看他／幫忙換題／享受尬。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, pause after small talk, flat indoor, she facing viewer",
+      "visualZh": "運鏡：丟完天氣等接話"
+    },
+    {
+      "id": "b0036",
+      "name": "換腳重心",
+      "token": "換腳",
+      "tokenDesc": "插口袋→同一待機姿換腳",
+      "parentId": "b0008",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 22,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你雙手仍插口袋，只對[name]把重心換到另一腳，待機繼續，沒掏手、沒開話題，只是同一姿勢的下一幀。",
+      "promptHint": "他插口袋換腳站。依關係：尷尬／一起發呆／叫他別杵／無視。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, static standby distance, idle framing, three-quarter body, casual indoor",
+      "visualZh": "運鏡：待機換腳"
+    },
+    {
+      "id": "b0037",
+      "name": "口袋手動一下",
+      "token": "口袋動",
+      "tokenDesc": "插口袋→手在口袋裡動，人還待機",
+      "parentId": "b0008",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你手仍在口袋裡對[name]微微動了動手指或布料，人沒走、話沒多，還是插口袋待機的延長。",
+      "promptHint": "他手在口袋裡動了一下，人還杵著。依關係：注意到／不以為意／問他緊張嗎／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium shot idle, three-quarter body, hands out of frame, casual indoor",
+      "visualZh": "運鏡：待機中景手不出鏡"
+    },
+    {
+      "id": "b0038",
+      "name": "再杵一会儿",
+      "token": "再杵",
+      "tokenDesc": "插口袋→同一待機再延長",
+      "parentId": "b0008",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 22,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你什麼新動作都沒做，對[name]就是繼續插口袋站著，把「路燈模式」再拉長幾秒，節奏仍是待機。",
+      "promptHint": "他繼續插口袋杵著。依關係：受不了／習慣／開口叫他／一起靜。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, static standby, idle three-quarter body, she facing viewer, casual indoor",
+      "visualZh": "運鏡：持續待機中遠距"
+    },
+    {
+      "id": "b0039",
+      "name": "繼續平視",
+      "token": "繼續看",
+      "tokenDesc": "直視→同一平視再維持",
+      "parentId": "b0009",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]的直視沒有收，就是繼續看，情緒仍然不多，像把暫停畫面再多播兩秒。",
+      "promptHint": "他還是直直看著妳。依關係：不自在／回看／問幹嘛／習慣。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, direct eye-level, tight face-centered framing, she facing viewer straight-on, head and shoulders, soft indoor",
+      "visualZh": "運鏡：持續平視臉居中"
+    },
+    {
+      "id": "b0040",
+      "name": "慢眨眼",
+      "token": "慢眨眼",
+      "tokenDesc": "直視→平視中眨一次，視線不走",
+      "parentId": "b0009",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你仍平視[name]，中間慢眨眼一次，視線沒有移開，還在「直直看著」這條線上。",
+      "promptHint": "他直視妳時慢眨了一次眼。依關係：被盯毛／想笑／回眨／出聲。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, eye-level face center, blink moment, head and shoulders, she facing viewer, soft indoor",
+      "visualZh": "運鏡：平視眨眼"
+    },
+    {
+      "id": "b0041",
+      "name": "看更專心一點",
+      "token": "看專心",
+      "tokenDesc": "直視→焦距微調仍釘在她臉上",
+      "parentId": "b0009",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]的直視微微對焦，像終於對準，仍不是深情戲，只是同一視線變清楚一點。",
+      "promptHint": "他直視變得更專心一點。依關係：心跳／不自在／問他看什麼／平靜回看。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, tighter face-centered eye-level, she facing viewer straight-on, head and shoulders, soft indoor",
+      "visualZh": "運鏡：更緊的臉部平視"
+    },
+    {
+      "id": "b0042",
+      "name": "再笑一聲",
+      "token": "再乾笑",
+      "tokenDesc": "乾笑→同一附和再乾笑一次",
+      "parentId": "b0010",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 22,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]又擠出一聲更乾的笑，還是附和，沒有新內容，像把「我有在聽」的音效再按一次。",
+      "promptHint": "他又乾笑了一聲附和。依關係：無語／繼續說／拆穿他沒在聽／習慣。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body mid-conversation lull, she facing viewer, soft indoor",
+      "visualZh": "運鏡：再乾笑半身"
+    },
+    {
+      "id": "b0043",
+      "name": "對啊對啊",
+      "token": "對啊對啊",
+      "tokenDesc": "乾笑→附和詞加倍仍無內容",
+      "parentId": "b0010",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]接上「……對啊對啊」，還是同意型附和，立場含糊，只是把上一拍的「對啊」拉長成雙拍。",
+      "promptHint": "他連說對啊對啊在附和。依關係：懷疑他沒聽／笑他／追問／繼續講。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, slight awkward pause, she facing viewer, soft indoor",
+      "visualZh": "運鏡：附和對談半身"
+    },
+    {
+      "id": "b0044",
+      "name": "點頭附和",
+      "token": "點頭附和",
+      "tokenDesc": "乾笑→同一附和改成點頭",
+      "parentId": "b0010",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]乾笑後點了點頭，還是「我同意／我收到」的空附和，沒有把話題拐走。",
+      "promptHint": "他邊附和邊點頭。依關係：當有在聽／覺得敷衍／說重點／無視。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, nod-moment framing, she facing viewer, soft indoor",
+      "visualZh": "運鏡：點頭附和半身"
+    },
+    {
+      "id": "b0045",
+      "name": "下一句接上",
+      "token": "下一句",
+      "tokenDesc": "話匣→同一場熱絡再接一句",
+      "parentId": "b0011",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]話還沒斷，下一句已接上，仍是同一場打開的話匣，只是句子＋1，節奏照舊快。",
+      "promptHint": "他話匣開著又接下一句。依關係：跟不上／覺得熱鬧／插嘴／聽。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body, close conversational distance, she facing viewer, rapid-talk, soft indoor",
+      "visualZh": "運鏡：連說近距半身"
+    },
+    {
+      "id": "b0046",
+      "name": "補充剛才那句",
+      "token": "補充剛才",
+      "tokenDesc": "話匣→對剛說的內容加料",
+      "parentId": "b0011",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把剛講的那點再補充兩句細節，還在同一話題氣口裡，不是換頻道，是健談的疊加。",
+      "promptHint": "他對剛才的話又補充一堆。依關係：耐心聽／叫他重點／點頭／被蓋過。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body conversation framing, conversational distance, she facing viewer, indoor",
+      "visualZh": "運鏡：補充說明半身"
+    },
+    {
+      "id": "b0047",
+      "name": "問她一句",
+      "token": "順口問",
+      "tokenDesc": "話匣→同一熱絡裡拋問句給她",
+      "parentId": "b0011",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 32,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]在連說之間順口丟了個問題，讓她接——仍是這場話匣的流動，不是突然面試。",
+      "promptHint": "他健談中順口問妳一句。依關係：簡短答／反問／被問倒／笑他問太快。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body, close talk distance, question moment, she facing viewer, soft indoor",
+      "visualZh": "運鏡：順口發問半身"
+    },
+    {
+      "id": "b0048",
+      "name": "手勢再大一點",
+      "token": "手勢加大",
+      "tokenDesc": "比劃→同一說明手勢放大",
+      "parentId": "b0012",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把剛才的比劃再放大一圈，還是同一句話的肢體說明，手在空氣裡畫得更開。",
+      "promptHint": "他比劃的手勢更大了。依關係：看懂／覺得誇張／跟著比／叫他小心撞到。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, larger gesturing hands blurred in foreground, looking toward her, half body, animated, soft indoor",
+      "visualZh": "運鏡：更大比劃手前景"
+    },
+    {
+      "id": "b0049",
+      "name": "指一個方向",
+      "token": "指方向",
+      "tokenDesc": "比劃→同一比劃線指出方向",
+      "parentId": "b0012",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]邊說邊指向某處，手勢從空比變成有方向，仍是這拍「用手說話」的延續。",
+      "promptHint": "他邊說邊指方向給妳看。依關係：順著看／問指哪／糾正／點頭。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, pointing hand in foreground, looking toward her, half body, talk distance, she facing viewer, indoor",
+      "visualZh": "運鏡：指向前景＋她"
+    },
+    {
+      "id": "b0050",
+      "name": "雙手比劃",
+      "token": "雙手比",
+      "tokenDesc": "比劃→從單手變雙手同一說明",
+      "parentId": "b0012",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]兩隻手都加入比劃，把剛才沒比清楚的形狀用雙手重畫一次，還是同一說明動作。",
+      "promptHint": "他改成雙手一起比。依關係：更懂／想笑／覺得吵／配合。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, both hands gesturing in lower foreground, looking toward her, half body, lively, soft indoor",
+      "visualZh": "運鏡：雙手比劃前景"
+    },
+    {
+      "id": "b0051",
+      "name": "再誇一句",
+      "token": "再誇",
+      "tokenDesc": "自誇→同一抬自己再加一句",
+      "parentId": "b0013",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 32,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把自誇再接一句，還是抬自己，語氣仍輕，內容繼續往自己有多行堆。",
+      "promptHint": "他又接了一句自誇。依關係：白眼／吐槽／勉強嗯／笑他。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body conversation framing, slightly elevated angle, she facing viewer, indoor",
+      "visualZh": "運鏡：再自誇半身"
+    },
+    {
+      "id": "b0052",
+      "name": "強調一次",
+      "token": "強調",
+      "tokenDesc": "自誇→把剛吹的重點再說清楚",
+      "parentId": "b0013",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 32,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把剛才自誇的重點又強調了一遍，像怕她漏聽，優越感同一條線加深。",
+      "promptHint": "他把自誇重點又強調一次。依關係：拆穿／敷衍／反諷／習慣臭屁。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body, mild elevated angle, she facing viewer, soft indoor",
+      "visualZh": "運鏡：強調時半身"
+    },
+    {
+      "id": "b0053",
+      "name": "等她稱讚",
+      "token": "等稱讚",
+      "tokenDesc": "自誇→同一拍停住等回應",
+      "parentId": "b0013",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 34,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "自誇丟完，你對[name]明顯停半拍等她接——最好是稱讚，至少別反駁。還停在這場自誇對話裡。",
+      "promptHint": "他自誇完看著妳，像在等稱讚。依關係：不給／敷衍誇／吐槽／沉默讓他尬。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, pause after boast, slightly elevated conversational angle, she facing viewer",
+      "visualZh": "運鏡：自誇後等待半身"
+    },
+    {
+      "id": "b0054",
+      "name": "再掃一眼",
+      "token": "再打量",
+      "tokenDesc": "得意看→同一打量再掃一次",
+      "parentId": "b0014",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把得意的打量又緩慢掃了一遍，還是上下確認那套目光，不是改成害羞偷看。",
+      "promptHint": "他又得意地打量了妳一次。依關係：不爽／回瞪／翻白眼／冷笑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, deliberate once-over framing again, half body to upper body, she facing viewer, superior distance, indoor",
+      "visualZh": "運鏡：第二次打量掃視"
+    },
+    {
+      "id": "b0055",
+      "name": "目光停住",
+      "token": "打量停住",
+      "tokenDesc": "得意看→掃視後停在她臉上",
+      "parentId": "b0014",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "打量的視線在[name]臉上停住，仍帶一點得意，像確認完畢——還在這拍打量裡，只是從掃變成停。",
+      "promptHint": "他打量後目光停在妳臉上。依關係：對視回瞪／移開／問看完沒／不爽。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, once-over ending on face-centered hold, half body, superior distance, she facing viewer, indoor",
+      "visualZh": "運鏡：打量停在臉上"
+    },
+    {
+      "id": "b0056",
+      "name": "嘴角一揚",
+      "token": "得意嘴角",
+      "tokenDesc": "得意看→同一優越感落到嘴角",
+      "parentId": "b0014",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你打量著[name]，嘴角極淺地揚了一下，視線仍在她身上——優越感從眼走到嘴，動作線沒斷。",
+      "promptHint": "他打量時嘴角揚起一點得意。依關係：更不爽／回刺／當沒看到／翻白眼。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, half body appraisal framing, she facing viewer, superior distance, soft indoor",
+      "visualZh": "運鏡：打量中得意半身"
+    },
+    {
+      "id": "b0057",
+      "name": "第三聲更小",
+      "token": "第三聲",
+      "tokenDesc": "再叫一次→同一招呼第三遍更小",
+      "parentId": "b0015",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把同一聲招呼又叫了第三遍，音量比前兩次更小，仍是「你好」這條線，只是重播次數＋1。",
+      "promptHint": "他又用更小的聲音把招呼叫了第三遍。依關係：這次一定聽見／回他／覺得他卡帶／輕聲回。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, close-up head and shoulders, conversational distance, she facing viewer, soft indoor, third soft greeting",
+      "visualZh": "運鏡：第三聲招呼頭肩"
+    },
+    {
+      "id": "b0058",
+      "name": "停住等回",
+      "token": "等她回招呼",
+      "tokenDesc": "再叫一次→叫完停住等她回",
+      "parentId": "b0015",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "第三拍你不再加新字，對[name]停在剛才那聲招呼後面，明顯等她回——還在招呼這條線上。",
+      "promptHint": "他連叫招呼後看著妳等回應。依關係：回你好／點頭／沉默／輕笑他緊張。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, head and shoulders, pause after greeting, she facing viewer, soft indoor",
+      "visualZh": "運鏡：招呼後等待頭肩"
+    },
+    {
+      "id": "b0059",
+      "name": "名字再說一次",
+      "token": "名字再說",
+      "tokenDesc": "補名字→怕她沒聽清把問名再說一次",
+      "parentId": "b0016",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把「妳叫什麼」又小聲重複一次，還是問名，不是換題。",
+      "promptHint": "他又小聲把問名重複一次。依關係：報名／讓他說清楚／反問他名字／覺得他緊張。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, close-up head and shoulders, mid-question, she facing viewer, soft indoor",
+      "visualZh": "運鏡：重複問名頭肩"
+    },
+    {
+      "id": "b0060",
+      "name": "等她報名",
+      "token": "等報名",
+      "tokenDesc": "補名字→問完停住等她說",
+      "parentId": "b0016",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "問名丟出後你對[name]安靜半拍，視線仍在她臉上，等她報名字——動作線還停在問名。",
+      "promptHint": "他問完名字看著妳等答案。依關係：報名／反問／裝沒聽見／微笑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, head and shoulders, waiting pause, she facing viewer, soft indoor",
+      "visualZh": "運鏡：等報名頭肩"
+    },
+    {
+      "id": "b0061",
+      "name": "尾音再拖",
+      "token": "再拖尾音",
+      "tokenDesc": "尾音拖長→同一句尾音再拉半拍",
+      "parentId": "b0017",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]那聲招呼的尾音又輕輕拉長一點，仍是同一句，只是空隙更明顯。",
+      "promptHint": "他招呼尾音拖得更長。依關係：回他／被逗笑／沉默接住／點頭。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, head and shoulders, longer pause framing, she facing viewer, soft indoor",
+      "visualZh": "運鏡：尾音更長的停頓"
+    },
+    {
+      "id": "b0062",
+      "name": "眼神一起等",
+      "token": "眼神等",
+      "tokenDesc": "尾音拖長→拖音同時看她等接",
+      "parentId": "b0017",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "尾音還掛著，你對[name]的視線也停著等她接話，招呼這拍還沒結束。",
+      "promptHint": "他拖著招呼尾音看著妳等。依關係：輕聲回／點頭／對上視線／裝忙。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, head and shoulders, eye-level wait, she facing viewer, soft indoor",
+      "visualZh": "運鏡：拖音等待對視"
+    },
+    {
+      "id": "b0063",
+      "name": "再挪半寸",
+      "token": "再挪半寸",
+      "tokenDesc": "再退一點→同一後退再微挪",
+      "parentId": "b0018",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]腳跟又挪半寸，還是後退刻度，沒改成走近或其他動作。",
+      "promptHint": "他又往後挪了一點點。依關係：想笑／跟進／站定看他／問站那麼遠幹嘛。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium-wide, more empty foreground, she smaller, three-quarter body, casual indoor",
+      "visualZh": "運鏡：再退更遠"
+    },
+    {
+      "id": "b0064",
+      "name": "退完吸口氣",
+      "token": "退完吸氣",
+      "tokenDesc": "再退一點→退到位後吸氣站定",
+      "parentId": "b0018",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "退到自認夠遠後你對[name]輕輕吸一口氣，人停在新距離上，仍是拉開這條線的收束幀。",
+      "promptHint": "他退開後吸了口氣站住。依關係：覺得他鬆了／好笑／保持距離／走近。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium-wide fixed distance, empty foreground gap, half body, casual indoor",
+      "visualZh": "運鏡：退後站定吸氣"
+    },
+    {
+      "id": "b0065",
+      "name": "維持距離",
+      "token": "維持距離",
+      "tokenDesc": "站定→繼續釘在這格距離",
+      "parentId": "b0019",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]繼續站在剛退開的位置，一秒都沒前進，距離維持就是這拍的下一句。",
+      "promptHint": "他退開後一直維持那個距離。依關係：接受／走近／尷尬／開口。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium shot, fixed increased distance, half body, empty gap, casual indoor",
+      "visualZh": "運鏡：固定距離中景"
+    },
+    {
+      "id": "b0066",
+      "name": "目光確認距離",
+      "token": "看距離",
+      "tokenDesc": "站定→用視線確認這半步外",
+      "parentId": "b0019",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你站定後看了[name]一眼，像在確認距離夠不夠，身體仍不前移，還在「保持半步外」。",
+      "promptHint": "他站定後看妳一眼確認距離。依關係：好笑／被量距離不爽／不以為意／靠近。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium shot, measured distance framing, half body, casual indoor",
+      "visualZh": "運鏡：確認距離半身"
+    },
+    {
+      "id": "b0067",
+      "name": "肩再收",
+      "token": "肩再收",
+      "tokenDesc": "縮肩→肩膀同一方向再收一寸",
+      "parentId": "b0020",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]肩膀又往後收一點，整個人仍在拉開的身體線上。",
+      "promptHint": "他肩膀又縮了。依關係：覺得他很怕生／跟進／站著不動／輕聲叫他。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium-wide, increased space, three-quarter body, casual indoor",
+      "visualZh": "運鏡：再縮肩中遠"
+    },
+    {
+      "id": "b0068",
+      "name": "下巴也收",
+      "token": "收下巴",
+      "tokenDesc": "縮肩→同一防守姿勢收下巴",
+      "parentId": "b0020",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "肩縮著，你對[name]連下巴也微微收，防守姿勢同一套加深，不是換成攻擊或靠近。",
+      "promptHint": "他縮肩又收下巴。依關係：想保護他／好笑／空間變怪／走近。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium shot, defensive distance, half body, casual indoor",
+      "visualZh": "運鏡：防守姿勢半身"
+    },
+    {
+      "id": "b0069",
+      "name": "第三瞟",
+      "token": "第三瞟",
+      "tokenDesc": "再瞟→同一偷瞄再一次",
+      "parentId": "b0021",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]又快速掃了第三眼，仍是瞟，次數疊加，還沒改成長視。",
+      "promptHint": "他又瞟了妳第三眼。依關係：逮到笑／回瞟／裝沒發現／出聲。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, third brief glance, her face off-center, half body, soft indoor",
+      "visualZh": "運鏡：第三瞟"
+    },
+    {
+      "id": "b0070",
+      "name": "瞟完停半拍",
+      "token": "瞟停半拍",
+      "tokenDesc": "再瞟→掃完視線在半空停半拍",
+      "parentId": "b0021",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "第二瞟結束，你對[name]視線在半空停半拍才決定要不要再看，還在偷瞄這條線。",
+      "promptHint": "他瞟完視線停半拍。依關係：等他再看／移開／對上／笑他。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, post-glance pause framing, her face soft mid, half body, soft indoor",
+      "visualZh": "運鏡：瞟後停半拍"
+    },
+    {
+      "id": "b0071",
+      "name": "對上再半秒",
+      "token": "再對半秒",
+      "tokenDesc": "對上半秒→對視時間微延長",
+      "parentId": "b0022",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你跟[name]對上的視線又多撐了半秒，仍是瞟到對上這拍，沒開口、也沒立刻逃。",
+      "promptHint": "他跟妳對視又多半秒。依關係：先移開／多對／心跳／追視。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, brief eye-level lock held longer, face nearer center, half body, soft indoor",
+      "visualZh": "運鏡：對視略延長"
+    },
+    {
+      "id": "b0072",
+      "name": "對上後眨眼",
+      "token": "對上眨眼",
+      "tokenDesc": "對上半秒→對視中眨一次",
+      "parentId": "b0022",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "視線還跟[name]對著，你慢眨一次眼，對視線沒斷，只是多了一幀生理動作。",
+      "promptHint": "他對上妳時眨了眨眼。依關係：想笑／回眨／移開／繼續看。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, eye-level lock with blink, face center, half body, soft indoor",
+      "visualZh": "運鏡：對視眨眼"
+    },
+    {
+      "id": "b0073",
+      "name": "盯鞋尖一秒",
+      "token": "盯鞋尖",
+      "tokenDesc": "看鞋尖→視線在鞋尖多停一秒",
+      "parentId": "b0023",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]瞟完落到鞋尖後，在鞋尖上又停了一秒，目光流線仍是看她→落地。",
+      "promptHint": "他視線在自己鞋尖停了一秒。依關係：覺得害羞／叫他抬頭／沉默／輕咳。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, gaze held on lower frame, her figure upper half, soft indoor",
+      "visualZh": "運鏡：鞋尖停留"
+    },
+    {
+      "id": "b0074",
+      "name": "從鞋尖偷抬",
+      "token": "偷抬視線",
+      "tokenDesc": "看鞋尖→同一視線流線偷偷抬回",
+      "parentId": "b0023",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "視線在鞋尖停過，你又對[name]偷偷抬回一點，像把瞟的流線走完一圈，仍不是正大光明長視。",
+      "promptHint": "他看完鞋尖又偷偷抬眼。依關係：逮到／微笑／對上／裝沒看見。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, gaze rising from lower frame toward her face, partial re-center, half body, soft indoor",
+      "visualZh": "運鏡：從下抬回視線"
+    },
+    {
+      "id": "b0075",
+      "name": "再補一個設定",
+      "token": "再補設定",
+      "tokenDesc": "補設定→同一坑再加一條設定",
+      "parentId": "b0024",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]在同一個宅話題裡又補一條設定，還是這坑，資訊再疊一層。",
+      "promptHint": "他又補了同一話題的設定。依關係：更暈／勉強跟／聽懂點頭／叫停。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body conversation, casual indoor, she facing viewer, mid-explain",
+      "visualZh": "運鏡：再補設定半身"
+    },
+    {
+      "id": "b0076",
+      "name": "停一下看她",
+      "token": "講完看她",
+      "tokenDesc": "補設定→補完看她有沒跟上",
+      "parentId": "b0024",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "設定補完你對[name]看一眼，確認她還在這條話題上，沒換頻道。",
+      "promptHint": "他補完設定看妳一眼。依關係：點頭／一臉問號／追問／放空。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body, check-in pause, she facing viewer, casual indoor",
+      "visualZh": "運鏡：講完確認半身"
+    },
+    {
+      "id": "b0077",
+      "name": "再往後講",
+      "token": "再往後",
+      "tokenDesc": "講下去→同一條劇情線再推進",
+      "parentId": "b0025",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]順著同一作品／梗又往後講一截，劇透或設定都還在這條線上。",
+      "promptHint": "他又往下講同一條宅線。依關係：怕劇透／聽／叫停／眼神死。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, slightly closer talk, she facing viewer, animated, casual indoor",
+      "visualZh": "運鏡：繼續往下講半身"
+    },
+    {
+      "id": "b0078",
+      "name": "講到興奮",
+      "token": "講興奮",
+      "tokenDesc": "講下去→同一話題語速加快",
+      "parentId": "b0025",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "同一話題上你對[name]語速不自覺加快，仍是這坑，只是熱度升高。",
+      "promptHint": "他講同一宅話題越來越興奮。依關係：被帶動／跟不上／叫他慢／微笑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, closer animated talk distance, she facing viewer, indoor",
+      "visualZh": "運鏡：興奮講述近距"
+    },
+    {
+      "id": "b0079",
+      "name": "再問一次懂嗎",
+      "token": "再問懂嗎",
+      "tokenDesc": "懂不懂→同一確認句再說一次",
+      "parentId": "b0026",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]又問了一次「有懂嗎」，還停在確認她有沒跟上這拍。",
+      "promptHint": "他又問妳懂不懂。依關係：說懂／說不懂／反問／笑他急。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body, question pause, she facing viewer, casual indoor",
+      "visualZh": "運鏡：再問懂不懂"
+    },
+    {
+      "id": "b0080",
+      "name": "用更簡單重講",
+      "token": "講簡單點",
+      "tokenDesc": "懂不懂→同一內容換簡單說法",
+      "parentId": "b0026",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "看她可能沒跟上，你對[name]把同一宅點用更簡單的話說一遍，仍是這題，不是換話題。",
+      "promptHint": "他把同一內容講得更簡單。依關係：這次聽懂／還是不懂／感謝／吐槽。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, re-explain framing, she facing viewer, casual indoor",
+      "visualZh": "運鏡：簡化重講半身"
+    },
+    {
+      "id": "b0081",
+      "name": "再側半分",
+      "token": "再側近",
+      "tokenDesc": "側近一點→螢幕角度再調一點",
+      "parentId": "b0027",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]把手機螢幕角度再調近一點，還是給她看同一塊屏。",
+      "promptHint": "手機又側得更靠近妳。依關係：看清了／湊近／問是什麼／退一點。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, phone screen larger in lower foreground, looking over phone toward her, half body, cool light optional",
+      "visualZh": "運鏡：螢幕更大入鏡"
+    },
+    {
+      "id": "b0082",
+      "name": "舉穩給她",
+      "token": "舉穩",
+      "tokenDesc": "側近一點→手舉穩讓她看",
+      "parentId": "b0027",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "角度調好後你對[name]把手機舉穩，分享動作停在「請看」這一幀。",
+      "promptHint": "他把手機舉穩給妳看。依關係：認真看／點頭／問／螢幕刺眼。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, steady phone in lower foreground, looking over phone toward her, half body, cool light, indoor",
+      "visualZh": "運鏡：舉穩手機前景"
+    },
+    {
+      "id": "b0083",
+      "name": "指第二處",
+      "token": "指第二處",
+      "tokenDesc": "指畫面→同一屏再指另一點",
+      "parentId": "b0028",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]在同一螢幕上又指了第二處，還是「看這裡」的連續拍。",
+      "promptHint": "他又指螢幕另一處給妳看。依關係：跟著看／問差異／點頭／看累。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, finger pointing at phone screen, looking toward her over phone, half body, cool light, indoor",
+      "visualZh": "運鏡：再指畫面"
+    },
+    {
+      "id": "b0084",
+      "name": "指著等她看",
+      "token": "指著等",
+      "tokenDesc": "指畫面→指住不動等她視線跟上",
+      "parentId": "b0028",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "指尖還按在畫面上，你對[name]等她視線跟上那一點，手機沒收。",
+      "promptHint": "他指著畫面等妳看。依關係：看了點頭／問那是什麼／催他往下／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, held point on phone screen foreground, looking toward her, half body, cool light",
+      "visualZh": "運鏡：指住等待"
+    },
+    {
+      "id": "b0085",
+      "name": "再滑一張",
+      "token": "再滑一張",
+      "tokenDesc": "滑下一張→同一分享再滑",
+      "parentId": "b0029",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]拇指再滑，下一張接上來，仍是一起看手機這條線。",
+      "promptHint": "他又滑到下一張給妳看。依關係：繼續看／說夠了／問還有嗎／放空。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, phone mid-swipe lower frame, looking over phone toward her, half body, cool light, indoor",
+      "visualZh": "運鏡：再滑一張"
+    },
+    {
+      "id": "b0086",
+      "name": "停在這張",
+      "token": "停這張",
+      "tokenDesc": "滑下一張→滑完停在當前給她看",
+      "parentId": "b0029",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "滑到這張後你對[name]停下拇指，畫面定住給她看，分享拍未結束。",
+      "promptHint": "他滑完停在這張給妳看。依關係：看圖／評價／問來源／點頭。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, steady phone screen after swipe, looking toward her over phone, half body, cool light",
+      "visualZh": "運鏡：停在當前畫面"
+    },
+    {
+      "id": "b0087",
+      "name": "再近一點",
+      "token": "再近盯",
+      "tokenDesc": "盯更近→同一細節焦距再逼",
+      "parentId": "b0030",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]那個細節又靠近一點，頭微前，視線釘死同一處。",
+      "promptHint": "他盯細節又靠近了。依關係：不自在／問看什麼／不動／輕推。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, even closer extreme close-up on detail, shallow DOF, bokeh, not full-face",
+      "visualZh": "運鏡：細節更近特寫"
+    },
+    {
+      "id": "b0088",
+      "name": "呼吸都近了",
+      "token": "盯到近",
+      "tokenDesc": "盯更近→距離近到呼吸可感",
+      "parentId": "b0030",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "同一細節上你對[name]靠得更近，仍是盯不是碰，動作線是逼近觀察。",
+      "promptHint": "他盯細節靠得好近。依關係：心跳／退後／出聲／僵住。不要寫成襲擊。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, very close detail crop, shallow DOF, intimate observation framing, soft indoor",
+      "visualZh": "運鏡：極近細節"
+    },
+    {
+      "id": "b0089",
+      "name": "繼續釘住",
+      "token": "繼續釘",
+      "tokenDesc": "盯停住→同一點再釘更久",
+      "parentId": "b0031",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]那處細節繼續釘著，時間又拉長，還是停住這拍。",
+      "promptHint": "他盯細節釘得更久。依關係：喚他／害羞／由他／揮手。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, held extreme close-up on detail, still framing, shallow DOF, soft indoor",
+      "visualZh": "運鏡：細節持續定格"
+    },
+    {
+      "id": "b0090",
+      "name": "忘了眨眼",
+      "token": "忘眨眼",
+      "tokenDesc": "盯停住→釘到忘眨眼",
+      "parentId": "b0031",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "視線鎖在細節上，你對[name]連眨眼都慢半拍，出神仍在這條盯視線。",
+      "promptHint": "他盯到幾乎忘眨眼。依關係：笑他／戳他／出聲／等他回神。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, locked detail close-up, shallow DOF, still, soft indoor",
+      "visualZh": "運鏡：出神細節鎖"
+    },
+    {
+      "id": "b0091",
+      "name": "問題再說清楚",
+      "token": "問清楚",
+      "tokenDesc": "這是什麼→同一問題講清楚一點",
+      "parentId": "b0032",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你對[name]把「這是什麼」說得稍清楚一點，視線仍掛在那細節上。",
+      "promptHint": "他把問題又問清楚一點。依關係：回答／反問／害羞解釋／笑他直。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, close-up on detail mid-question, shallow DOF, soft indoor",
+      "visualZh": "運鏡：細節發問更清楚"
+    },
+    {
+      "id": "b0092",
+      "name": "等她解釋",
+      "token": "等解釋",
+      "tokenDesc": "這是什麼→問完等她答",
+      "parentId": "b0032",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "問題丟出後你對[name]停住等解釋，目光還在細節與她之間，沒換題。",
+      "promptHint": "他問完等妳解釋。依關係：說明／裝傻／反問他看很久了／簡單回。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, detail-to-face mid framing, waiting after question, soft indoor",
+      "visualZh": "運鏡：問後等待"
+    },
+    {
+      "id": "b0093",
+      "name": "再接一句冷熱",
+      "token": "再冷熱",
+      "tokenDesc": "接溫度→體感廢話再一句",
+      "parentId": "b0033",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]又補一句冷熱體感，還是天氣廢話線。",
+      "promptHint": "他又聊溫度。依關係：尬回／吐槽／嗯／當日常。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, standard medium shot, half body, flat indoor light",
+      "visualZh": "運鏡：再聊溫度中景"
+    },
+    {
+      "id": "b0094",
+      "name": "等她評天氣",
+      "token": "等她評",
+      "tokenDesc": "接溫度→丟完等她也評",
+      "parentId": "b0033",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "溫度話說完你對[name]停住，等她也評一句天氣，還在氣象對話裡。",
+      "promptHint": "他聊完溫度等妳接。依關係：隨便回／不接／換題／笑他。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium shot, pause after small talk, half body, flat indoor",
+      "visualZh": "運鏡：等她評天氣"
+    },
+    {
+      "id": "b0095",
+      "name": "同樣評價再說",
+      "token": "再說一次評",
+      "tokenDesc": "再評天氣→同義廢話重複",
+      "parentId": "b0034",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 22,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把剛評過的天氣又換個同義詞說一次，內容幾乎沒變。",
+      "promptHint": "他用同義詞又評了一次天氣。依關係：無語／回嗯／笑／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium shot, plain small-talk, half body, flat indoor light",
+      "visualZh": "運鏡：重複評天氣"
+    },
+    {
+      "id": "b0096",
+      "name": "點頭認天氣",
+      "token": "點頭認天",
+      "tokenDesc": "再評天氣→自說自話點頭",
+      "parentId": "b0034",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "評完你對[name]自己點了點頭，像同意自己的天氣預報，還在這場廢話。",
+      "promptHint": "他評完天氣自己點頭。依關係：想笑／跟點頭／受不了／開口換題。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, nod after weather talk, flat indoor",
+      "visualZh": "運鏡：自點頭半身"
+    },
+    {
+      "id": "b0097",
+      "name": "再等一秒",
+      "token": "再等一秒",
+      "tokenDesc": "等她接→同一等待再延長",
+      "parentId": "b0035",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]在天氣話後面又多等一秒，明顯還等她接，沒自己換題。",
+      "promptHint": "他還在等妳接天氣話。依關係：回一句／繼續尬／幫忙換題／享受。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, longer pause, flat indoor, she facing viewer",
+      "visualZh": "運鏡：等待延長"
+    },
+    {
+      "id": "b0098",
+      "name": "用眼神催一下",
+      "token": "眼神催",
+      "tokenDesc": "等她接→眼神示意該妳了",
+      "parentId": "b0035",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "等太久你對[name]用眼神輕輕一催，意思仍是「接這句天氣」，不是開新話題。",
+      "promptHint": "他用眼神催妳接話。依關係：接了／裝沒看到／笑他／丟回天氣。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body, expectant pause, flat indoor",
+      "visualZh": "運鏡：眼神催接話"
+    },
+    {
+      "id": "b0099",
+      "name": "再換回另一腳",
+      "token": "再換腳",
+      "tokenDesc": "換腳→待機姿再換一次重心",
+      "parentId": "b0036",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 22,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你雙手仍插口袋，對[name]又把重心換回另一腳，待機幀＋1。",
+      "promptHint": "他又換腳站。依關係：數他換幾次／一起發呆／叫他別杵／無視。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, static standby, idle three-quarter body, casual indoor",
+      "visualZh": "運鏡：再換腳待機"
+    },
+    {
+      "id": "b0100",
+      "name": "換腳後站穩",
+      "token": "換腳站穩",
+      "tokenDesc": "換腳→換完站穩繼續待機",
+      "parentId": "b0036",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 22,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "換完腳你對[name]站穩，手還在口袋，路燈模式繼續。",
+      "promptHint": "他換腳後站穩繼續杵。依關係：尷尬／習慣／開口／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, static standby distance, idle framing, three-quarter body, casual indoor",
+      "visualZh": "運鏡：站穩待機"
+    },
+    {
+      "id": "b0101",
+      "name": "口袋再動",
+      "token": "口袋再動",
+      "tokenDesc": "口袋動→手在口袋再動一下",
+      "parentId": "b0037",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]口袋裡的手又動了動，人沒走、話沒多，還是待機。",
+      "promptHint": "他口袋裡的手又動了。依關係：注意到緊張／不以為意／問／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, medium shot idle, three-quarter body, hands out of frame, casual indoor",
+      "visualZh": "運鏡：待機手不出鏡"
+    },
+    {
+      "id": "b0102",
+      "name": "動完又停",
+      "token": "動完停",
+      "tokenDesc": "口袋動→動完恢復完全靜止",
+      "parentId": "b0037",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 22,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "口袋裡動過後你對[name]又完全靜止，插口袋待機回到靜幀。",
+      "promptHint": "他口袋動完又站著不動。依關係：覺得廢／微笑／叫他／一起靜。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, static standby, idle three-quarter body, casual indoor",
+      "visualZh": "運鏡：恢復靜止待機"
+    },
+    {
+      "id": "b0103",
+      "name": "繼續杵",
+      "token": "繼續杵",
+      "tokenDesc": "再杵→待機再延長",
+      "parentId": "b0038",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 22,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]就是繼續插口袋站著，什麼新動作都沒有。",
+      "promptHint": "他還在杵。依關係：受不了／習慣／開口／並肩發呆。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, static standby, idle three-quarter body, she facing viewer, casual indoor",
+      "visualZh": "運鏡：持續杵"
+    },
+    {
+      "id": "b0104",
+      "name": "杵著看她一眼",
+      "token": "杵著一眼",
+      "tokenDesc": "再杵→待機中掃她一眼",
+      "parentId": "b0038",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "待機中你對[name]只抬眼看一下，手仍在口袋，沒開話題。",
+      "promptHint": "他杵著抬眼看妳一下。依關係：對上／忽略／問想說什麼／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, static distance, idle half body, casual indoor",
+      "visualZh": "運鏡：待機中一眼"
+    },
+    {
+      "id": "b0105",
+      "name": "還是看著",
+      "token": "還是看",
+      "tokenDesc": "繼續看→平視再維持",
+      "parentId": "b0039",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]的直視繼續，情緒仍不多，暫停畫面再多兩秒。",
+      "promptHint": "他還是看著妳。依關係：不自在／回看／問幹嘛／習慣。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, direct eye-level, face-centered, head and shoulders, she facing viewer, soft indoor",
+      "visualZh": "運鏡：持續平視"
+    },
+    {
+      "id": "b0106",
+      "name": "平視不說話",
+      "token": "看不說話",
+      "tokenDesc": "繼續看→同一視線堅持不開口",
+      "parentId": "b0039",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "視線釘著[name]，你仍不說話，交流全靠這道直視。",
+      "promptHint": "他只看不說話。依關係：先開口／對視／移開／笑場。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, eye-level silent hold, face center, head and shoulders, soft indoor",
+      "visualZh": "運鏡：無聲平視"
+    },
+    {
+      "id": "b0107",
+      "name": "再慢眨一次",
+      "token": "再慢眨",
+      "tokenDesc": "慢眨眼→平視中再眨一次",
+      "parentId": "b0040",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你仍平視[name]，又慢眨一次，視線不走。",
+      "promptHint": "他又慢眨了一次眼。依關係：想笑／回眨／被盯毛／出聲。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, eye-level face center, blink moment, head and shoulders, soft indoor",
+      "visualZh": "運鏡：再眨眼平視"
+    },
+    {
+      "id": "b0108",
+      "name": "眨完仍看著",
+      "token": "眨完看",
+      "tokenDesc": "慢眨眼→眨完視線立刻回鎖",
+      "parentId": "b0040",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "眨眼結束你對[name]視線立刻回鎖臉上，直視線幾乎沒斷。",
+      "promptHint": "他眨完眼睛還是看著妳。依關係：心跳／不自在／回看／問看什麼。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, post-blink face lock, eye-level, head and shoulders, soft indoor",
+      "visualZh": "運鏡：眨後回鎖"
+    },
+    {
+      "id": "b0109",
+      "name": "焦距再清",
+      "token": "再對焦",
+      "tokenDesc": "看專心→平視焦距再清一點",
+      "parentId": "b0041",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]的直視又清楚一分，仍不是深情戲，只是對準。",
+      "promptHint": "他看妳更專心了。依關係：被盯住／回看／害羞／問。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, tighter face-centered eye-level, head and shoulders, she facing viewer, soft indoor",
+      "visualZh": "運鏡：更緊臉部平視"
+    },
+    {
+      "id": "b0110",
+      "name": "專心看不移",
+      "token": "專心不移",
+      "tokenDesc": "看專心→對準後不再飄",
+      "parentId": "b0041",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 26,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 1
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 1
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "對準後你對[name]視線不再飄，穩穩平視，還在直視這條線。",
+      "promptHint": "他專心看著妳不移開。依關係：對視／移開自己／出聲／僵住。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, steady face-centered eye-level hold, head and shoulders, soft indoor",
+      "visualZh": "運鏡：穩定平視"
+    },
+    {
+      "id": "b0111",
+      "name": "第三聲乾笑",
+      "token": "第三乾笑",
+      "tokenDesc": "再乾笑→附和音效再一次",
+      "parentId": "b0042",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 22,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]又乾笑第三聲，仍無內容，只是附和。",
+      "promptHint": "他又乾笑。依關係：無語／繼續說／拆穿／習慣。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body lull, she facing viewer, soft indoor",
+      "visualZh": "運鏡：再乾笑半身"
+    },
+    {
+      "id": "b0112",
+      "name": "笑完看她",
+      "token": "笑完看",
+      "tokenDesc": "再乾笑→笑完看她是否還要說",
+      "parentId": "b0042",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "乾笑後你對[name]看一眼，意思仍是附和／請繼續，沒換題。",
+      "promptHint": "他乾笑後看妳。依關係：繼續講／停住／笑他／追問有沒聽。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body after laugh, she facing viewer, soft indoor",
+      "visualZh": "運鏡：乾笑後看她"
+    },
+    {
+      "id": "b0113",
+      "name": "對對對",
+      "token": "對對對",
+      "tokenDesc": "對啊對啊→附和詞再疊",
+      "parentId": "b0043",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]接上「對對對」，還是空同意，內容仍薄。",
+      "promptHint": "他連說對對對。依關係：懷疑沒聽／笑／追問／繼續。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body awkward agree, she facing viewer, soft indoor",
+      "visualZh": "運鏡：連聲附和半身"
+    },
+    {
+      "id": "b0114",
+      "name": "對啊後點頭",
+      "token": "對啊點頭",
+      "tokenDesc": "對啊對啊→口頭附和加點頭",
+      "parentId": "b0043",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "嘴上對啊，你對[name]同時點頭，雙通道空附和。",
+      "promptHint": "他邊說對啊邊點頭。依關係：當有在聽／覺得敷衍／說重點／無視。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body nod-agree, she facing viewer, soft indoor",
+      "visualZh": "運鏡：對啊點頭"
+    },
+    {
+      "id": "b0115",
+      "name": "再點一下",
+      "token": "再點頭",
+      "tokenDesc": "點頭附和→同一附和再點",
+      "parentId": "b0044",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]又點一下頭，還是收到／同意的空動作。",
+      "promptHint": "他又點頭附和。依關係：繼續說／停看他／笑／拆穿。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, second nod, she facing viewer, soft indoor",
+      "visualZh": "運鏡：再點頭半身"
+    },
+    {
+      "id": "b0116",
+      "name": "點頭看她",
+      "token": "點頭看",
+      "tokenDesc": "點頭附和→點完視線確認",
+      "parentId": "b0044",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 24,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "點完頭你對[name]看一眼確認她還要不要說，仍在附和拍。",
+      "promptHint": "他點頭後看妳。依關係：繼續／結束這段／問他意見／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face after nod, half body, she facing viewer, soft indoor",
+      "visualZh": "運鏡：點頭後看她"
+    },
+    {
+      "id": "b0117",
+      "name": "又接一句",
+      "token": "又接一句",
+      "tokenDesc": "下一句→話匣再疊一句",
+      "parentId": "b0045",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]話匣裡又接上一句，節奏仍快，同一場熱絡。",
+      "promptHint": "他又接了一句話。依關係：跟／插嘴／叫慢／聽。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body, close talk, she facing viewer, rapid, soft indoor",
+      "visualZh": "運鏡：連說近距"
+    },
+    {
+      "id": "b0118",
+      "name": "語速不減",
+      "token": "語速不減",
+      "tokenDesc": "下一句→連說保持速度",
+      "parentId": "b0045",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "句子接上的同時你對[name]語速不減，健談輸出同一條線衝。",
+      "promptHint": "他語速還是很快。依關係：跟不上／被帶動／叫停／笑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body close conversational, energetic, she facing viewer, indoor",
+      "visualZh": "運鏡：快語速半身"
+    },
+    {
+      "id": "b0119",
+      "name": "細節再加一點",
+      "token": "細節再加",
+      "tokenDesc": "補充剛才→同一句再加料",
+      "parentId": "b0046",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把剛補充的內容又加一點細節，還在同一話題氣口。",
+      "promptHint": "他又往剛才那句加細節。依關係：聽／叫重點／點頭／被蓋過。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body conversation, she facing viewer, indoor",
+      "visualZh": "運鏡：再補細節半身"
+    },
+    {
+      "id": "b0120",
+      "name": "補完看反應",
+      "token": "補完看",
+      "tokenDesc": "補充剛才→補完看她反應",
+      "parentId": "b0046",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "加料說完你對[name]看她反應，還停在這場說明裡。",
+      "promptHint": "他補完看妳反應。依關係：點頭／疑惑／插話／微笑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body check-in, she facing viewer, soft indoor",
+      "visualZh": "運鏡：補完看反應"
+    },
+    {
+      "id": "b0121",
+      "name": "問題再說一遍",
+      "token": "問題再說",
+      "tokenDesc": "順口問→同一問句再說清楚",
+      "parentId": "b0047",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 32,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把剛順口問的那句再說清楚一點，還是這問。",
+      "promptHint": "他又把問題說清楚一點。依關係：回答／反問／被問倒／笑他急。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body, question moment, she facing viewer, soft indoor",
+      "visualZh": "運鏡：問句再說半身"
+    },
+    {
+      "id": "b0122",
+      "name": "等她答",
+      "token": "等她答",
+      "tokenDesc": "順口問→問完等她答",
+      "parentId": "b0047",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 32,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "問題丟出你對[name]明顯停住等答案，話匣暫時把球給她。",
+      "promptHint": "他問完等妳答。依關係：簡答／長答／反問／跳過。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body waiting after question, she facing viewer, soft indoor",
+      "visualZh": "運鏡：問後等待"
+    },
+    {
+      "id": "b0123",
+      "name": "手勢再開",
+      "token": "手勢再開",
+      "tokenDesc": "手勢加大→比劃幅度再開",
+      "parentId": "b0048",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]手勢再打開一圈，還是同一說明的肢體。",
+      "promptHint": "他比劃更大了。依關係：看懂／誇張／跟著／小心撞。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, large gesturing hands in foreground, looking toward her, half body, animated, soft indoor",
+      "visualZh": "運鏡：更大比劃"
+    },
+    {
+      "id": "b0124",
+      "name": "比完停在空中",
+      "token": "比完停空",
+      "tokenDesc": "手勢加大→比完手停空中一下",
+      "parentId": "b0048",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "大手勢畫完你對[name]手在空中停一拍，說明動作的餘韻。",
+      "promptHint": "他比完手停在空中。依關係：看懂／笑／問比完沒／點頭。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, frozen large gesture in foreground, looking toward her, half body, soft indoor",
+      "visualZh": "運鏡：手停空中"
+    },
+    {
+      "id": "b0125",
+      "name": "指得更明確",
+      "token": "指更明",
+      "tokenDesc": "指方向→同一指向更明確",
+      "parentId": "b0049",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把指向再明確一點，手勢還在「指給她看」。",
+      "promptHint": "他指得更明確。依關係：順著看／問哪／點頭／糾正。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, clearer pointing hand foreground, looking toward her, half body, indoor",
+      "visualZh": "運鏡：明確指向"
+    },
+    {
+      "id": "b0126",
+      "name": "指著講一句",
+      "token": "指著講",
+      "tokenDesc": "指方向→指著同時接一句話",
+      "parentId": "b0049",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "手指方向的同時你對[name]接上一句說明，手嘴同步，還是比劃線。",
+      "promptHint": "他指著那邊邊講。依關係：看＋聽／跟／插嘴／笑他手不停。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, pointing hand + talk framing, looking toward her, half body, animated, indoor",
+      "visualZh": "運鏡：指著說話"
+    },
+    {
+      "id": "b0127",
+      "name": "雙手再比一次",
+      "token": "雙手再比",
+      "tokenDesc": "雙手比→同一形狀重畫一次",
+      "parentId": "b0050",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]用雙手把形狀又比一次，還是說明同一件事。",
+      "promptHint": "他又雙手比了一次。依關係：更懂／想笑／配合／叫他收手。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, both hands gesturing foreground, looking toward her, half body, lively, soft indoor",
+      "visualZh": "運鏡：雙手再比"
+    },
+    {
+      "id": "b0128",
+      "name": "雙手停住給她看",
+      "token": "雙手停住",
+      "tokenDesc": "雙手比→比完定格給她看",
+      "parentId": "b0050",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 28,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -1,
+          "max": 2
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 0,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "雙手比完你對[name]在空中定格一下，像把形狀留給她看清。",
+      "promptHint": "他雙手比完停住。依關係：看懂／點頭／笑／伸手比回去。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, both hands frozen mid-gesture, looking toward her, half body, soft indoor",
+      "visualZh": "運鏡：雙手定格"
+    },
+    {
+      "id": "b0129",
+      "name": "自誇再疊",
+      "token": "自誇再疊",
+      "tokenDesc": "再誇→抬自己再加一句",
+      "parentId": "b0051",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 32,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]自誇再疊一句，語氣仍輕，內容繼續抬自己。",
+      "promptHint": "他又自誇。依關係：白眼／吐槽／勉強嗯／笑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body, slightly elevated angle, she facing viewer, indoor",
+      "visualZh": "運鏡：再自誇半身"
+    },
+    {
+      "id": "b0130",
+      "name": "誇完揚眉",
+      "token": "誇完揚眉",
+      "tokenDesc": "再誇→說完微揚眉等反應",
+      "parentId": "b0051",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 32,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "自誇句落地你對[name]微揚眉，等她接，還在自誇拍。",
+      "promptHint": "他自誇完揚眉看妳。依關係：不給反應／敷衍／吐槽／沉默尬他。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body after boast, elevated angle, she facing viewer",
+      "visualZh": "運鏡：自誇後揚眉"
+    },
+    {
+      "id": "b0131",
+      "name": "重點再說",
+      "token": "重點再說",
+      "tokenDesc": "強調→同一重點再釘一次",
+      "parentId": "b0052",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 32,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]把自誇重點又釘一次，怕她漏聽。",
+      "promptHint": "他又強調自誇重點。依關係：拆穿／敷衍／反諷／習慣。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, half body, mild elevated, she facing viewer, soft indoor",
+      "visualZh": "運鏡：再強調半身"
+    },
+    {
+      "id": "b0132",
+      "name": "強調後盯她",
+      "token": "強調盯她",
+      "tokenDesc": "強調→說完盯她是否聽進",
+      "parentId": "b0052",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 34,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "強調完你對[name]盯一眼，確認她聽到了，還在這場抬自己。",
+      "promptHint": "他強調完盯妳。依關係：點頭敷衍／反駁／白眼／笑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face after emphasis, half body, elevated conversational, indoor",
+      "visualZh": "運鏡：強調後盯"
+    },
+    {
+      "id": "b0133",
+      "name": "再等半拍",
+      "token": "再等稱讚",
+      "tokenDesc": "等稱讚→等待再延長",
+      "parentId": "b0053",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 34,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]在自誇後又多等半拍，明顯還等稱讚或認可。",
+      "promptHint": "他還在等妳稱讚。依關係：不給／敷衍誇／吐槽／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her, half body longer pause after boast, elevated angle, she facing viewer",
+      "visualZh": "運鏡：等待稱讚延長"
+    },
+    {
+      "id": "b0134",
+      "name": "眼神催稱讚",
+      "token": "眼神催誇",
+      "tokenDesc": "等稱讚→眼神催她給反應",
+      "parentId": "b0053",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 34,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "等太久你對[name]用眼神催一下，意思仍是「可以誇了」，沒換話題。",
+      "promptHint": "他用眼神催妳反應。依關係：敷衍誇／拒絕／笑場／更不爽。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, looking toward her face, expectant pause after boast, half body, elevated angle, indoor",
+      "visualZh": "運鏡：眼神催稱讚"
+    },
+    {
+      "id": "b0135",
+      "name": "第三輪打量",
+      "token": "第三打量",
+      "tokenDesc": "再打量→得意掃視再一輪",
+      "parentId": "b0054",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]又緩慢掃了一輪，仍是得意打量，不是害羞偷看。",
+      "promptHint": "他又打量了妳一輪。依關係：不爽／回瞪／翻白眼／冷笑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, deliberate once-over again, half body to upper body, superior distance, she facing viewer, indoor",
+      "visualZh": "運鏡：第三輪掃視"
+    },
+    {
+      "id": "b0136",
+      "name": "掃完停胸口視線高度",
+      "token": "掃完停",
+      "tokenDesc": "再打量→掃完停在適中高度",
+      "parentId": "b0054",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "掃視結束視線停在中段高度再回她臉，打量流程同一套。",
+      "promptHint": "他打量掃完視線停一下。依關係：不爽／對視／問看完沒／冷。不要色情特寫。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, once-over ending mid then to face, half body, superior distance, indoor",
+      "visualZh": "運鏡：掃視收束"
+    },
+    {
+      "id": "b0137",
+      "name": "停在臉上更久",
+      "token": "臉上更久",
+      "tokenDesc": "打量停住→停臉時間加長",
+      "parentId": "b0055",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]打量後的目光在臉上停更久，仍帶得意。",
+      "promptHint": "他目光在妳臉上停更久。依關係：回瞪／移開／問／不爽。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, face-centered hold after appraisal, half body, superior distance, she facing viewer, indoor",
+      "visualZh": "運鏡：臉上停更久"
+    },
+    {
+      "id": "b0138",
+      "name": "停住微點頭",
+      "token": "停住點頭",
+      "tokenDesc": "打量停住→停臉時微點頭",
+      "parentId": "b0055",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 32,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "目光停在她臉上時你對[name]微點頭，像打完分，還在打量拍。",
+      "promptHint": "他看著妳臉點了下頭。依關係：被評分感不爽／回瞪／翻白眼／問分數。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, face hold with slight nod, half body, superior distance, indoor",
+      "visualZh": "運鏡：停臉點頭"
+    },
+    {
+      "id": "b0139",
+      "name": "嘴角再揚一點",
+      "token": "嘴角再揚",
+      "tokenDesc": "得意嘴角→同一優越感嘴角加深",
+      "parentId": "b0056",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "你對[name]嘴角再淺淺揚一點，視線仍在她身上，打量優越感連續。",
+      "promptHint": "他嘴角更得意一點。依關係：更不爽／回刺／當沒看到／冷笑。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, half body appraisal framing, she facing viewer, superior distance, soft indoor",
+      "visualZh": "運鏡：更得意半身"
+    },
+    {
+      "id": "b0140",
+      "name": "揚完繼續看",
+      "token": "揚完看",
+      "tokenDesc": "得意嘴角→揚完視線不收",
+      "parentId": "b0056",
+      "kind": "speech",
+      "shatterOnUse": false,
+      "starter": false,
+      "tags": [
+        "talk"
+      ],
+      "price": 30,
+      "shopWeight": 1,
+      "rarity": "N",
+      "minStage": null,
+      "emotion": {
+        "stranger": {
+          "min": -2,
+          "max": 1
+        },
+        "friend": {
+          "min": -1,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": -1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 1
+        }
+      },
+      "sceneStart": "嘴角揚過你對[name]視線仍不收，打量＋得意同一拍延續。",
+      "promptHint": "他得意笑完還看著妳。依關係：回瞪／移開／嗆他／沉默。",
+      "forceable": false,
+      "nsfwOnly": false,
+      "visualEn": "from his POV, appraisal half body after slight smirk framing, superior distance, she facing viewer, indoor",
+      "visualZh": "運鏡：得意後續看"
     }
   ],
   "venues": [],

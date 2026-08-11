@@ -574,9 +574,9 @@ def _build_girl_image_prompt(
 ) -> str:
     """組給 Grok Build 的生圖指令。人物欄位以 character(完整 generateGirl 結果)為準。
 
-    出卡場景層級：
-      1) CHARACTER SHEET / 半身參考圖 = 身份（髮眼身服裝）
-      2–3) ACTION = 卡牌 visualEn + AI 動作表情（只改 pose，不改長相）
+    出卡場景層級（與 docs/card-system.md §12.3.1 對齊）：
+      ① CHARACTER SHEET / 半身參考圖 = 身份固定（髮眼身服裝 + seed）
+      ②+③ ACTION(extra) = 卡牌運鏡 visualEn + 回話後表情肢體（只改 pose，不改長相）
     """
     framing = (framing or "half").lower()
     rating = (rating or "sfw").lower()

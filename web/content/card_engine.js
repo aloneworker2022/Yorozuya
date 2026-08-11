@@ -569,6 +569,22 @@ export function normalizeSessionPhase(sess) {
   if (sess.phase === "pregen" || sess.phase === "ready") {
     sess.phase = "round_play";
   }
+  ensureArc(sess);
+  // 舊局：只有 drawPile／hand、沒有 sessionDeck → 合成實體池；手牌超過 hand_draw 則截斷
+  if (!Array.isArray(sess.sessionDeck) || !sess.sessionDeck.length) {
+    const merged = [];
+    const seen = new Set();
+    for (const c of [...(sess.hand || []), ...(sess.drawPile || [])]) {
+      if (!c?.instanceId || seen.has(c.instanceId)) continue;
+      seen.add(c.instanceId);
+      merged.push({ ...c, shattered: !!c.shattered, used: !!c.used });
+    }
+    if (merged.length) sess.sessionDeck = merged;
+  }
+  const hd = handDrawCount();
+  if (Array.isArray(sess.hand) && sess.hand.length > hd) {
+    sess.hand = sess.hand.slice(0, hd);
+  }
   return sess;
 }
 
@@ -580,8 +596,13 @@ export function compatible(cardDef, chainAttr) {
 }
 
 export function maxInject(state) {
-  // 第一版固定 5（defaults.max_inject）；成長軸日後再接 cardPlayerLv
-  return d("max_inject", 5);
+  // v7：固定 8（defaults.max_inject）；成長軸日後再接 cardPlayerLv
+  return d("max_inject", 8);
+}
+
+/** 每輪抽幾張（v7；不再用 hand_size 當補牌上限） */
+export function handDrawCount() {
+  return Math.max(1, Number(d("hand_draw", 2)) || 2);
 }
 
 // ── 出戰牌組（商店頁編輯；開戰直接用，不再局內組牌）────────
@@ -941,11 +962,146 @@ function shuffleInPlace(arr) {
   return arr;
 }
 
-function drawToHand(sess) {
-  const handMax = d("hand_size", 5);
-  while (sess.hand.length < handMax && sess.drawPile.length > 0) {
-    sess.hand.push(sess.drawPile.pop());
+function ensureArc(sess) {
+  if (!sess) return { lastId: null, playedIds: [] };
+  if (!sess.arc || typeof sess.arc !== "object") {
+    sess.arc = { lastId: null, playedIds: [] };
   }
+  if (!Array.isArray(sess.arc.playedIds)) sess.arc.playedIds = [];
+  if (sess.arc.lastId === undefined) sess.arc.lastId = null;
+  return sess.arc;
+}
+
+function arcWeightTable() {
+  const w = d("arc_weights", null) || {};
+  const child = Number(w.child);
+  const other = Number(w.other);
+  return {
+    child: child > 0 ? child : 8,
+    other: other > 0 ? other : 1,
+  };
+}
+
+function isT1Child(inst, lastId) {
+  if (!lastId || !inst?.cardId) return false;
+  const def = BY_ID[inst.cardId];
+  return !!(def && def.parentId === lastId);
+}
+
+/**
+ * 可抽池 = 本局實體池 − playedIds − 已碎 − 目前手牌中的實例
+ * （未打出回池：清空 hand 即可，不需額外 push）
+ */
+export function buildDrawPool(sess) {
+  if (!sess) return [];
+  const arc = ensureArc(sess);
+  const played = new Set(arc.playedIds || []);
+  const inHand = new Set((sess.hand || []).map((h) => h.instanceId));
+  return (sess.sessionDeck || []).filter((inst) => {
+    if (!inst || !inst.cardId) return false;
+    if (inst.shattered) return false;
+    if (played.has(inst.cardId)) return false;
+    if (inHand.has(inst.instanceId)) return false;
+    return true;
+  });
+}
+
+function weightOfInst(inst, lastId, weights, boostT1) {
+  if (boostT1 && isT1Child(inst, lastId)) return weights.child;
+  return weights.other;
+}
+
+/** 加權抽 1 張（不放回：呼叫端從 pool 移除）。無 T1 或無 lastId → 均勻（other 權重）。 */
+function weightedPickOne(pool, lastId) {
+  if (!pool.length) return null;
+  const weights = arcWeightTable();
+  const boostT1 = !!lastId && pool.some((p) => isT1Child(p, lastId));
+  let total = 0;
+  const ws = pool.map((p) => {
+    const w = weightOfInst(p, lastId, weights, boostT1);
+    total += w;
+    return w;
+  });
+  if (total <= 0) return pool[Math.floor(Math.random() * pool.length)];
+  let r = Math.random() * total;
+  for (let i = 0; i < pool.length; i++) {
+    r -= ws[i];
+    if (r <= 0) return pool[i];
+  }
+  return pool[pool.length - 1];
+}
+
+/**
+ * v7：每輪從可抽池加權抽 hand_draw 張（預設 2）。
+ * 舊 drawToHand（補到手牌 5）已廢。
+ */
+export function drawHandV7(sess) {
+  if (!sess) return [];
+  ensureArc(sess);
+  const k = handDrawCount();
+  sess.hand = [];
+  for (let i = 0; i < k; i++) {
+    const pool = buildDrawPool(sess);
+    if (!pool.length) break;
+    const pick = weightedPickOne(pool, sess.arc.lastId);
+    if (!pick) break;
+    sess.hand.push(pick);
+  }
+  return sess.hand;
+}
+
+/** @deprecated 改走 drawHandV7；保留避免舊呼叫炸 */
+function drawToHand(sess) {
+  return drawHandV7(sess);
+}
+
+/**
+ * 手牌裡的妹子卡（source===girl）自動打出選中的那張。
+ * 兩張都是妹子 → 隨機 1 張；僅一張妹子 → 打那張。
+ * 只回傳可選中的；無則 null。
+ */
+export function pickGirlAutoPlay(sess) {
+  if (!sess || sess.phase !== "round_play") return null;
+  if (playsLeft(sess) <= 0) return null;
+  const girls = (sess.hand || []).filter((h) => h && h.source === "girl" && !h.used);
+  if (!girls.length) return null;
+  const selectable = girls.filter((g) => canSelectCard(sess, g).ok);
+  const pool = selectable.length ? selectable : girls;
+  if (pool.length === 1) return pool[0];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/**
+ * 打出結算後：更新 arc／碎標記、清空手牌（未打出回可抽池）、若還有輪數再抽 2。
+ * @returns {{ drew: boolean, empty: boolean, hand: object[] }}
+ */
+function settleAfterPlay(sess, inst, def, { shattered = false } = {}) {
+  const arc = ensureArc(sess);
+  if (def?.id) {
+    if (!arc.playedIds.includes(def.id)) arc.playedIds.push(def.id);
+    arc.lastId = def.id;
+  }
+  if (inst) {
+    inst.used = true;
+    if (shattered) {
+      inst.shattered = true;
+      const deckInst = (sess.sessionDeck || []).find((x) => x.instanceId === inst.instanceId);
+      if (deckInst) deckInst.shattered = true;
+    }
+  }
+  // 未打出的一併離手 → 回可抽池（未進 playedIds、未 shattered）
+  sess.hand = [];
+
+  if (playsLeft(sess) <= 0) {
+    return { drew: false, empty: true, hand: [] };
+  }
+  const hand = drawHandV7(sess);
+  if (!hand.length) {
+    // 可抽池空，無法再開下一輪
+    sess.phase = "round_end";
+    return { drew: false, empty: true, hand: [] };
+  }
+  return { drew: true, empty: false, hand };
 }
 
 /**
@@ -963,12 +1119,14 @@ export function openSession(state, { mode, girlId, girlCards = [], venueId = nul
     roundIndex: 0,
     girlCards: girlCards.slice(0, d("max_girl_cards", 3)),
     injected: [],
-    drawPile: [],
+    sessionDeck: [], // v7 本局實體池
+    drawPile: [], // 舊欄位；v7 不再用補牌堆
     hand: [],
     nBase: 0,
     nLeft: 0,
     chain: null,
     flags: {},
+    arc: { lastId: null, playedIds: [] },
     playedThisRound: [],
     forceAnotherRound: false,
     venueId: venueId || null,
@@ -1060,9 +1218,11 @@ export function enterRoundSetup(state) {
   }
   sess.phase = "round_setup";
   sess.injected = [];
+  sess.sessionDeck = [];
   sess.drawPile = [];
   sess.hand = [];
   sess.chain = null;
+  sess.arc = { lastId: null, playedIds: [] };
   sess.playedThisRound = [];
   sess.forceAnotherRound = false;
   sess.pending = null;
@@ -1092,8 +1252,12 @@ export function startPlayRound(state, { stage, guardHigh = false } = {}) {
   const sess = state.cardSession;
   if (!sess) return { ok: false, err: "沒有牌局" };
   normalizeSessionPhase(sess);
-  // 已在打牌且還有次數 → 視為繼續
+  ensureArc(sess);
+  // 已在打牌且還有輪數 → 視為繼續；手牌空則補抽一輪出示
   if (sess.phase === "round_play" && playsLeft(sess) > 0) {
+    if (!sess.hand?.length && (sess.sessionDeck || []).length) {
+      drawHandV7(sess);
+    }
     return { ok: true, already: true, hand: sess.hand, nLeft: sess.nLeft };
   }
   const okPhases = new Set([
@@ -1115,17 +1279,18 @@ export function startPlayRound(state, { stage, guardHigh = false } = {}) {
     sess.injected = [];
   }
 
+  // v7：本局實體池（攜帶≤8 ∪ 妹子 ≤3 ∪ 場地）
   const pile = [
-    ...sess.girlCards.map(c => ({ ...c, used: false })),
-    ...sess.injected.map(c => ({ ...c, used: false })),
-    ...(sess.venueCards || []).map(c => ({ ...c, used: false })),
+    ...sess.girlCards.map((c) => ({ ...c, used: false, shattered: false })),
+    ...sess.injected.map((c) => ({ ...c, used: false, shattered: false })),
+    ...(sess.venueCards || []).map((c) => ({ ...c, used: false, shattered: false })),
   ];
   if (!pile.length) return { ok: false, err: "牌堆是空的——商店編一組牌或等本體卡" };
 
-  shuffleInPlace(pile);
-  sess.drawPile = pile;
+  sess.sessionDeck = pile;
+  sess.drawPile = []; // 舊欄位清空
   sess.hand = [];
-  drawToHand(sess);
+  sess.arc = { lastId: null, playedIds: [] };
 
   sess.girlStage = stage || "stranger";
   sess.nBase = basePlays(sess.girlStage, guardHigh);
@@ -1136,6 +1301,13 @@ export function startPlayRound(state, { stage, guardHigh = false } = {}) {
   sess.forceAnotherRound = false;
   sess.pending = null;
   sess.phase = "round_play";
+
+  // 第一輪：均勻抽 2（無 lastId）
+  drawHandV7(sess);
+  if (!sess.hand.length) {
+    return { ok: false, err: "抽不到牌——可抽池是空的" };
+  }
+
   sess.log = sess.log || [];
   sess.log.push({
     t: Date.now(),
@@ -1143,8 +1315,17 @@ export function startPlayRound(state, { stage, guardHigh = false } = {}) {
     n: sess.nLeft,
     round: sess.roundIndex,
     deck: deck.slice(),
+    handDraw: handDrawCount(),
+    poolSize: pile.length,
   });
-  return { ok: true, hand: sess.hand, nLeft: sess.nLeft, phase: "round_play", deckSize: deck.length };
+  return {
+    ok: true,
+    hand: sess.hand,
+    nLeft: sess.nLeft,
+    phase: "round_play",
+    deckSize: deck.length,
+    poolSize: pile.length,
+  };
 }
 
 /** @deprecated 改走 startPlayRound；保留給舊呼叫 */
@@ -1247,7 +1428,7 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
     roundEnded: false,
   };
 
-  const finishPlay = (openFail = false) => {
+  const finishPlay = (openFail = false, settle = null) => {
     // 即時路徑：先填罐頭；有模型時 app 會背景下單覆寫 girlLine
     let line = girlReactionLine({
       stage,
@@ -1263,29 +1444,32 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
     result.feelLabel = emotionFeelLabel(result.emotionDelta);
     result.playsLeft = playsLeft(sess);
     result.chain = sess.chain ? { ...sess.chain } : null;
-    // 次數用完：標 roundEnded，但等玩家看完反應再進 round_end
-    if (result.playsLeft <= 0) result.roundEnded = true;
-    else maybeRoundEnd(sess);
+    result.arc = sess.arc ? { lastId: sess.arc.lastId, playedIds: [...(sess.arc.playedIds || [])] } : null;
+    // 輪數用完或可抽池空：標 roundEnded，等玩家看完反應再進 round_end
+    if (result.playsLeft <= 0 || settle?.empty) result.roundEnded = true;
+    else if (result.playsLeft <= 0) maybeRoundEnd(sess);
   };
 
   // 開門
   if (def.openChain) {
     const open = tryOpen(def, stage);
     result.open = open;
-    // 開門消耗：清舊鍊、扣 1 base N
+    // 開門消耗：清舊鍊、扣 1 base N（本輪）
     sess.chain = null;
     sess.nLeft = Math.max(0, (sess.nLeft || 0) - 1);
 
     if (!open.success) {
       result.emotionDelta = rollEmotion(def, stage, { fail: true, guardHigh });
+      let shattered = false;
       if (def.shatterOnUse && inst.source === "inventory") {
         invShatter(state, def.id);
         result.shattered = true;
+        shattered = true;
       }
       sess.playedThisRound.push(def.id);
-      drawToHand(sess);
+      const settle = settleAfterPlay(sess, inst, def, { shattered });
       sess.log.push({ t: Date.now(), kind: "open_fail", cardId: def.id, delta: result.emotionDelta });
-      finishPlay(true);
+      finishPlay(true, settle);
       return result;
     }
 
@@ -1296,14 +1480,16 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
     };
     result.emotionDelta = rollEmotion(def, stage, { guardHigh });
     applyCardEffect(sess, def, result);
+    let shattered = false;
     if (def.shatterOnUse && inst.source === "inventory") {
       invShatter(state, def.id);
       result.shattered = true;
+      shattered = true;
     }
     sess.playedThisRound.push(def.id);
-    drawToHand(sess);
+    const settle = settleAfterPlay(sess, inst, def, { shattered });
     sess.log.push({ t: Date.now(), kind: "open_ok", cardId: def.id, chain: result.chain, delta: result.emotionDelta });
-    finishPlay(false);
+    finishPlay(false, settle);
     return result;
   }
 
@@ -1311,14 +1497,16 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
   spendPlayNormal(sess, def);
   result.emotionDelta = rollEmotion(def, stage, { guardHigh });
   applyCardEffect(sess, def, result);
+  let shattered = false;
   if (def.shatterOnUse && inst.source === "inventory") {
     invShatter(state, def.id);
     result.shattered = true;
+    shattered = true;
   }
   sess.playedThisRound.push(def.id);
-  drawToHand(sess);
+  const settle = settleAfterPlay(sess, inst, def, { shattered });
   sess.log.push({ t: Date.now(), kind: "play", cardId: def.id, delta: result.emotionDelta });
-  finishPlay(false);
+  finishPlay(false, settle);
   return result;
 }
 
@@ -1373,14 +1561,15 @@ export function resolveRoundEnd(state, { stage = "stranger" } = {}) {
   const sess = state.cardSession;
   if (!sess || sess.phase !== "round_end") return { ok: false, err: "不在輪末" };
 
-  // 手牌 + 抽牌堆裡未 used 的 inventory：不扣 count（已保證）
-  // used 的已在 commit 時扣完
+  // 未打出 inventory：count 未扣（已保證）；已碎已在 commit 扣完
   sess.hand = [];
   sess.drawPile = [];
+  sess.sessionDeck = [];
   sess.injected = [];
   sess.chain = null;
   sess.nLeft = 0;
   sess.pending = null;
+  sess.arc = { lastId: null, playedIds: [] };
 
   let stay = false;
   if (sess.forceAnotherRound) {
@@ -1421,9 +1610,11 @@ export function closeSession(state, reason = "close") {
   sess.phase = "closed";
   sess.hand = [];
   sess.drawPile = [];
+  sess.sessionDeck = [];
   sess.injected = [];
   sess.chain = null;
   sess.pending = null;
+  sess.arc = { lastId: null, playedIds: [] };
   sess.closedReason = reason;
   state.cardSession = null;
   return { ok: true, reason };

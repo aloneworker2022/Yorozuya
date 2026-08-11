@@ -809,7 +809,7 @@ def build_prompt(
 
     bits.append(ART_STYLE.get(art_style, ""))
     bits.append(RATING.get((rating or "sfw").lower(), ""))
-    # 出卡：extra = visualEn + AI 動作，接在身份後面
+    # 出卡：extra = 層②運鏡 visualEn + 層③ AI 反應神態，接在身份（層①）後面
     if extra.strip():
         bits.append(extra.strip())
 

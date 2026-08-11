@@ -461,8 +461,9 @@ export function buildCardPlayPrompt(ctx) {
 }
 
 /**
- * 畫圖用第二段：依「她說了什麼」+ 體態／外貌，產表情與身體動作（給繪圖，不給玩家當主台詞）。
- * 輸出兩行中文標籤，app 再翻成英文 imgEn。
+ * 畫圖層 ③：依「她說了什麼」產表情與身體動作（給繪圖，不給玩家當主台詞）。
+ * 運鏡／距離／POV 不在這裡（那是卡牌 visualEn 層 ②）。
+ * 輸出兩行中文標籤，app 再翻成英文 reaction tags。
  */
 export function buildCardVisualPosePrompt(ctx) {
   const c = ctx.character || {};
@@ -470,12 +471,13 @@ export function buildCardVisualPosePrompt(ctx) {
   const L = c.look || {};
   const dialogue = (play.girl_line || play.dialogue || "").trim();
   const lines = [
-    "你是分鏡助手。任務：根據她剛才說的話，寫出「看得見的」表情與身體動作，供插圖使用。",
-    "不要寫台詞，不要解釋劇情。",
+    "你是分鏡助手。任務：根據她剛才的回話，寫出「看得見的」表情與身體動作，供插圖第③層使用。",
+    "這層只補神態／肢體，不寫鏡頭、距離、POV、取景（那些由卡牌運鏡另給）。",
+    "不要寫台詞，不要解釋劇情，不要寫內心獨白。",
     "",
     `角色：${c.name || "她"}`,
-    `體型／外貌（中文池，僅作比例與特徵參考）：體型=${L.build || "—"}；胸=${L.bust || "—"}；眼=${L.eyes || "—"}；髮=${[L.hair_color, L.hair].filter(Boolean).join("") || L.hair || "—"}`,
-    play.scene_start ? `他做了什麼：${String(play.scene_start).replace(/\s+/g, " ").slice(0, 160)}` : "",
+    `體型／外貌（僅比例參考，勿重寫髮色服裝）：體型=${L.build || "—"}；胸=${L.bust || "—"}；眼=${L.eyes || "—"}；髮=${[L.hair_color, L.hair].filter(Boolean).join("") || L.hair || "—"}`,
+    play.scene_start ? `他做了什麼（背景）：${String(play.scene_start).replace(/\s+/g, " ").slice(0, 160)}` : "",
     dialogue ? `她剛才說：${dialogue.slice(0, 200)}` : "她剛對他有了反應。",
     play.open_fail ? "肢體結果：拒絕、退開。" : "",
     "",
@@ -483,8 +485,14 @@ export function buildCardVisualPosePrompt(ctx) {
     "表情：……",
     "動作：……",
     "",
-    "規則：繁中；每行短（4～20 字）；表情=臉上可見；動作=肢體可見；要對得上她說的話與他的動作。",
-    "禁止：台詞、內心獨白、系統字、卡牌、英文長句。",
+    "規則：繁中；每行短（4～20 字）；表情=臉上可見；動作=肢體可見；必須對得上她說的話。",
+    "範例（格式示意）：",
+    "・生氣 → 表情：皺眉怒視　動作：雙手叉腰",
+    "・害羞 → 表情：臉紅低頭　動作：捏衣角",
+    "・心不在焉 → 表情：目光渙散　動作：身體微側看別處",
+    "・蹲下 → 表情：平靜或警戒　動作：蹲在地上",
+    "・乾笑敷衍 → 表情：皮笑肉不笑　動作：肩膀微聳",
+    "禁止：台詞、系統字、卡牌、運鏡用語（半身／特寫／POV）、英文長句。",
   ];
   return lines.filter(Boolean).join("\n");
 }

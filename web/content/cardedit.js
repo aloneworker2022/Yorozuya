@@ -1594,8 +1594,8 @@ async function runReact() {
 }
 
 /**
- * ② 與遊戲 ensureCardImgEnAfterText 同精神：
- * 用 回話 + 旁白 + visualEn 種子 → 純英文畫圖句（無 meta 標籤）
+ * ② 與遊戲 ensureCardImgEnAfterText 同精神（層 ③）：
+ * 回話 → 表情／動作 → 英文 reaction tags（不含運鏡；運鏡是 visualEn 層 ②）
  */
 async function runReactToImgEn() {
   const live = formSnapshot();
@@ -1647,22 +1647,20 @@ async function runReactToImgEn() {
     pipelineCache.visualPose = pose;
     $("re-pose").value = pose?.text || (poseRaw || "").trim();
 
-    // ②b 英文畫圖句
-    setStatus("re-status", "②b 產英文畫圖句…");
+    // ②b 層 ③ 英文反應 tag（不重寫運鏡）
+    setStatus("re-status", "②b 產反應英文 tag…");
     const sys = [
-      "You write English visual prompts for anime illustration.",
-      "Output ONLY comma-separated English visual phrases.",
-      "Content: facial expression, body pose, interaction, framing.",
-      "No Chinese, no dialogue text, no meta labels (card/token/stage direction).",
-      "If greeting/talk: face each other, eye contact.",
+      "You convert her reaction into English IMAGE TAGS (layer 3 only).",
+      "Output ONLY comma-separated English phrases: facial expression + body pose/gesture.",
+      "Examples: angry face, hands on hips | crouching down | distracted, looking aside | shy blush, fidgeting",
+      "FORBIDDEN: camera framing, POV, distance, shot type (layer 2 visualEn).",
+      "FORBIDDEN: hair/outfit/identity. No Chinese, no dialogue, no meta labels.",
     ].join("\n");
     const user = [
-      seed ? `Card visual seed: ${seed}` : "",
-      pose?.face ? `Her face: ${pose.face}` : "",
-      pose?.body ? `Her body: ${pose.body}` : "",
+      pose?.face ? `Expression (ZH): ${pose.face}` : "",
+      pose?.body ? `Body (ZH): ${pose.body}` : "",
       `She said (context only): ${line.slice(0, 160)}`,
-      `His action context: ${scene.slice(0, 160) || live.name}`,
-      "English illustration tags now.",
+      "English reaction tags only.",
     ]
       .filter(Boolean)
       .join("\n");
@@ -1674,44 +1672,50 @@ async function runReactToImgEn() {
       { keyPrefix: "cardimgen", temperature: 0.7 },
     );
     let en = scrubEditImgLabels(text);
-    if (en.length < 16) en = seed || "facing each other, eye contact, mid-action, detailed face";
+    if (en.length < 8) en = "responsive expression, natural pose, reacting to him";
     pipelineCache.imgEn = en;
+    pipelineCache.cameraEn = seed || "";
     $("re-imgen").value = en;
+    // 反應 tag 不回寫 visualEn（visualEn 只存運鏡）
     if ($("re-apply-visual")?.checked) {
-      $("f-visualEn").value = en;
-      markDirty();
+      // 勾了也只更新反應預覽，不覆蓋 f-visualEn 運鏡
     }
     $("re-out").textContent =
       `【① 對話】\n${line}\n\n` +
-      `【②a 畫圖用表情／動作 · ${secA.toFixed(1)}s】\n${pose?.text || $("re-pose").value}\n\n` +
-      `【②b 英文 imgEn · ${secB.toFixed(1)}s】\n${en}\n\n→ 可③填入生圖框或全流程生圖`;
-    setStatus("re-status", `✓ ② 完成（pose+英文）`);
+      `【②a 表情／動作 · ${secA.toFixed(1)}s】\n${pose?.text || $("re-pose").value}\n\n` +
+      `【②b 層③ 反應 tag · ${secB.toFixed(1)}s】\n${en}\n\n` +
+      (seed ? `【層② 運鏡 visualEn】\n${seed}\n\n` : "") +
+      `→ 可③填入生圖框（②+③ 疊加）或全流程生圖`;
+    setStatus("re-status", `✓ ② 完成（pose+反應 tag）`);
   } catch (e) {
     setStatus("re-status", e.message, true);
   }
   $("btn-react-imgen").disabled = false;
 }
 
-/** ③ 把 imgEn 填進生圖 tab 的 prompt（純內容） */
+/** ③ 把 層②運鏡 + 層③反應 填進生圖 tab（身份仍由 /api/imggen character 鎖） */
 function fillImgFromPipeline() {
-  const en =
-    scrubEditImgLabels($("re-imgen").value || pipelineCache.imgEn || $("f-visualEn").value || "");
-  if (!en) {
-    setStatus("re-status", "還沒有 imgEn，請先跑 ②", true);
+  const layer3 = scrubEditImgLabels($("re-imgen").value || pipelineCache.imgEn || "");
+  const layer2 = scrubEditImgLabels(
+    pipelineCache.cameraEn || $("f-visualEn")?.value || "",
+  );
+  if (!layer3 && !layer2) {
+    setStatus("re-status", "還沒有運鏡／反應 tag，請先跑 ② 或填 visualEn", true);
     return;
   }
   const { girl } = editorGirlForBind();
   const name = girl.name || $("re-name").value || "woman";
+  const action = [layer2, layer3, "mid-action, detailed face"]
+    .filter(Boolean)
+    .join(", ");
   $("ig-prompt").value = [
     "anime illustration, cinematic interaction scene",
     `adult woman ${name}`,
-    en,
-    "half body, detailed face, soft lighting, mid-action",
+    action,
     "no horns, no wings, no tail, no text, no watermark",
   ].join(", ");
-  pipelineCache.imgEn = en;
-  setStatus("re-status", "✓ 已填入生圖框 · 可開「生圖」分頁按 ✦ 生圖");
-  // 自動切到生圖分頁
+  pipelineCache.imgEn = layer3;
+  setStatus("re-status", "✓ 已填入生圖框（層②運鏡+層③反應）· 可開「生圖」分頁");
   const tabBtn = document.querySelector('#test-tabs button[data-tab="img"]');
   if (tabBtn) tabBtn.click();
 }
@@ -1762,19 +1766,21 @@ async function runGenVisual() {
   }
   const map = { ...byId(), [live.id]: live };
   const brief = tokenEffectBrief(live, map);
-  const sys = `You write English IMAGE prompts for anime game cards.
-Output ONLY English comma-separated visual tags / short phrases. No Chinese. No markdown. No quotes.
-Focus on: his action, her pose/expression reaction, eye contact or contact point, framing (half body etc).
-If the card is a greeting/talk, MUST include facing each other + greeting/talk gesture + responsive face — never blank distant stare.
-Do not describe clothing in detail unless essential. Do not invent a second woman's identity.`;
+  const sys = `You write English IMAGE tags for card visualEn = LAYER 2 CAMERA only.
+Output ONLY English comma-separated tags. No Chinese. No markdown. No quotes.
+Write from the male player's POV: framing, distance, what enters the frame (e.g. his hand if waving), looking toward her.
+Examples: greeting → close-up head and shoulders; wave → his hand in foreground; step back → wider shot, more distance.
+FORBIDDEN: her emotion/expression (angry, shy, smile) — that is layer 3 after dialogue.
+FORBIDDEN: hair color, outfit identity, quality boilerplate.
+Do not invent a second woman's identity.`;
   const user = `Card name: ${live.name}
 kind: ${live.kind}
 tags: ${(live.tags || []).join(", ")}
 token chain: ${brief.tokens}
-Chinese stage direction (for meaning only, do not output Chinese):
+Chinese stage direction (meaning only; do not output Chinese):
 ${(live.sceneStart || "").slice(0, 280)}
 promptHint: ${(live.promptHint || "").slice(0, 160)}
-Write visualEn for the illustration of THIS moment.`;
+Write visualEn = camera/framing tags only (from his POV).`;
 
   $("btn-gen-visual").disabled = true;
   setStatus("vis-status", "生畫圖描述中…");

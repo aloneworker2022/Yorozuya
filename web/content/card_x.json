@@ -44,9 +44,9 @@
     ]
   },
   "defaults": {
-    "hand_size": 5,
+    "hand_size": 2,
     "max_girl_cards": 3,
-    "max_inject": 5,
+    "max_inject": 8,
     "shop_slots": 3,
     "shop_refresh_hours": 4,
     "bubble_chance": 0.15,
@@ -76,6 +76,11 @@
     "emotion_fail_open": {
       "min": -3,
       "max": -1
+    },
+    "hand_draw": 2,
+    "arc_weights": {
+      "child": 8,
+      "other": 1
     }
   },
   "starter_pool": [

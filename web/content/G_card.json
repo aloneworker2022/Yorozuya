@@ -1,0 +1,99 @@
+{
+  "_meta": {
+    "title": "G_card",
+    "spec": "docs/card-system.md",
+    "schema_version": 2,
+    "token_model": "每卡一個詞墜 token；parentId 繼承父鏈詞墜。",
+    "pack_note": "獨立牌組檔；上線靠 registry.active 切換，不刪舊檔。",
+    "note": "重來空白包。先前內容已清空。",
+    "visualEn_rule": "visualEn=玩家打出這卡時預先塞進生圖的構圖／視線種子：寫玩家動作痕跡、距離、鏡頭（from his POV／looking toward her）、取景。不要寫死女子態度／表情／肢體反應——那是後面 AI 依回話再補。visualZh=作者中文備註。"
+  },
+  "enums": {
+    "kind": [
+      "speech",
+      "shop_premium",
+      "girl_trait",
+      "venue_event"
+    ],
+    "chain_attr": [
+      "talk",
+      "touch",
+      "sex",
+      "play",
+      "any"
+    ],
+    "stage": [
+      "stranger",
+      "friend",
+      "girlfriend",
+      "wife"
+    ],
+    "mode": [
+      "kanban",
+      "date"
+    ]
+  },
+  "defaults": {
+    "hand_size": 2,
+    "max_girl_cards": 3,
+    "max_inject": 8,
+    "shop_slots": 3,
+    "shop_refresh_hours": 4,
+    "bubble_chance": 0.15,
+    "dates_per_girl_per_day": 2,
+    "base_plays_by_stage": {
+      "stranger": 1,
+      "friend": 2,
+      "girlfriend": 3,
+      "wife": 4
+    },
+    "stay_base_by_stage": {
+      "stranger": 0.05,
+      "friend": 0.15,
+      "girlfriend": 0.3,
+      "wife": 0.45
+    },
+    "answer_rate_by_stage": {
+      "stranger": 0.1,
+      "friend": 0.35,
+      "girlfriend": 0.6,
+      "wife": 0.8
+    },
+    "phone_cost_range": [
+      10,
+      30
+    ],
+    "emotion_fail_open": {
+      "min": -3,
+      "max": -1
+    },
+    "hand_draw": 2,
+    "arc_weights": {
+      "child": 8,
+      "other": 1
+    }
+  },
+  "starter_pool": [],
+  "shop_weights": {
+    "speech_pool": [],
+    "premium_pool": []
+  },
+  "cards": [],
+  "venues": [],
+  "girl_card_build_rules": {},
+  "bubble_canned": {
+    "comment": "氣泡罐頭。{quest} 會被替成委託文案。",
+    "on_discover": [
+      "……新的？",
+      "看起來就很麻煩。"
+    ],
+    "on_accept": [
+      "接了「{quest}」？",
+      "別拖。"
+    ],
+    "on_complete": [
+      "「{quest}」做完了。",
+      "行。"
+    ]
+  }
+}

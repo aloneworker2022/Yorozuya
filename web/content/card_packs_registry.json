@@ -28,7 +28,18 @@
       "createMode": "empty",
       "createdAt": 1786072256.606594,
       "updatedAt": 1786269599.6607523,
-      "activatedAt": 1786092427.1266398
+      "activatedAt": 1786445575.3880498
+    },
+    {
+      "id": "G_card",
+      "file": "G_card.json",
+      "name": "G_card",
+      "note": "空白重來",
+      "clonedFrom": null,
+      "createMode": "empty",
+      "createdAt": 1786310400,
+      "updatedAt": 1786347179.297213,
+      "activatedAt": 1786329472.4041004
     }
   ],
   "history": [
@@ -46,7 +57,21 @@
       "at": 1786092427.1266422,
       "from": "main",
       "to": "ca"
+    },
+    {
+      "at": 1786329472.404107,
+      "from": "ca",
+      "to": "G_card",
+      "epoch": 2,
+      "playerCardsWiped": true
+    },
+    {
+      "at": 1786445575.3880568,
+      "from": "G_card",
+      "to": "ca",
+      "epoch": 3,
+      "playerCardsWiped": true
     }
   ],
-  "liveEpoch": 1
+  "liveEpoch": 3
 }
