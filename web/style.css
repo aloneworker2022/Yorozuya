@@ -828,6 +828,52 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 }
 .shop-item button:disabled { opacity: .35; cursor: default; }
 .shop-item.sold { opacity: .35; }
+
+/* NTR 日記 */
+/* NTR 日記僅 AI 內部用，玩家 UI 已移除；保留選擇器以免舊快取殘留報錯 */
+.ntr-diary-wrap {
+  margin-top: 1em; padding-top: .8em; border-top: 1px solid var(--line);
+}
+.ntr-diary-toggle {
+  width: 100%;
+  background: rgba(255, 95, 122, .14);
+  border: 1px solid rgba(255, 95, 122, .35);
+  border-radius: 10px;
+  color: var(--red);
+  font: inherit; padding: .55em .8em; cursor: pointer;
+}
+.ntr-diary-list { margin-top: .5em; max-height: 42vh; overflow: auto; }
+.ntr-diary-period {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .5em .65em;
+  margin-bottom: .45em;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+}
+.ntr-diary-period:hover { border-color: color-mix(in srgb, var(--red) 40%, var(--line)); }
+.ntr-diary-period-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: .5em;
+}
+.ntr-diary-body {
+  margin-top: .45em; font-size: .9em; line-height: 1.65;
+  white-space: pre-wrap; color: var(--text);
+}
+.ntr-diary-outline { margin-top: .25em; opacity: .75; }
+
+/* 商店：召喚咒語 */
+#spell-summon-panel .spell-list { margin: .6em 0; }
+#spell-summon-panel .spell-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .6em; padding: .4em 0; border-bottom: 1px solid var(--line);
+}
+#spell-summon-panel .spell-name { color: var(--text); }
+#spell-summon-panel .spell-code {
+  color: var(--gold); font-size: .95em; letter-spacing: .08em;
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  padding: .15em .5em; border-radius: 6px;
+}
+
 #dungeon-list span { display: inline-block; margin: .15em .5em .15em 0; color: var(--dim); }
 
 /* ===== 魅魔名冊 ===== */
@@ -1028,14 +1074,6 @@ body.chat-mode.has-figure #kanban-girl {
   font: inherit; font-size: .85em; padding: .35em .9em; cursor: pointer;
 }
 #chat-send:disabled { opacity: .35; }
-/* 詢問鈕:與輸入框、送出鈕同高對齊,寬度較短 */
-#chat-ask {
-  background: rgba(90, 200, 255, .16); border: 1px solid rgba(90, 200, 255, .35);
-  border-radius: 10px; color: var(--cyan);
-  font: inherit; font-size: .85em; padding: .35em .7em; cursor: pointer;
-  flex-shrink: 0;
-}
-#chat-ask:disabled { opacity: .35; cursor: default; }
 
 /* 觀戰控制列 */
 #watch-controls { display: flex; gap: .5em; background: var(--panel); padding: .8em; margin-top: .5em; border-radius: 8px; flex-shrink: 0; }

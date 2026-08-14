@@ -812,11 +812,14 @@ async function takeGirlAway() {
       : ["交合", "愛撫", "言語調教"].slice(0, 3 + Math.floor(Math.random() * 3)),
     acts: [],
     // 看板型帶走 4 小時；actAt 往回 3h → 進遊戲 / sim tick 會預生多批 act
+    // startedAt／sessionId：NTR 日記與感應記憶只認「本次帶走」
     taken: {
       type: "kanban",
       location: null,
       until: now + 4 * 3600 * 1000,
       actAt: now - 3 * 3600 * 1000,
+      startedAt: now - 3 * 3600 * 1000,
+      sessionId: "tw_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 8),
     },
   };
   s.summoner = rel;
@@ -833,7 +836,7 @@ async function takeGirlAway() {
     status("bd-status", "sim 強制失敗:" + e.message + "（存檔仍會寫 taken）", true);
   }
   await commit(
-    `✓ ${s.name} 被 ${su.emoji || ""} ${su.name} 召喚走（4h・補 3h 紀錄）——回遊戲對她按「電話（窺視）」`,
+    `✓ ${s.name} 被 ${su.emoji || ""} ${su.name} 召喚走（4h・補 3h 紀錄）——回遊戲可「感應」／電話窺視；日記只算本次`,
   );
 }
 
@@ -904,6 +907,8 @@ async function watchScenario() {
       location: null,
       until: now + 4 * 3600 * 1000,
       actAt: now - 3 * 3600 * 1000,
+      startedAt: now - 3 * 3600 * 1000,
+      sessionId: "tw_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 8),
     },
   };
   s.summoner = rel;
@@ -913,7 +918,7 @@ async function watchScenario() {
   try { await twForceSimTaken(s, rel); } catch (e) {
     status("bd-status", "sim 強制失敗:" + e.message, true);
   }
-  await commit(`觀戰場景備妥:${s.name} ← ${su.name} 召喚走——回遊戲「電話（窺視）」`);
+  await commit(`觀戰場景備妥:${s.name} ← ${su.name} 召喚走——回遊戲「感應」／電話窺視；日記只算本次`);
 }
 
 /** 約會測試：隨機名冊妹子 → 清牌局／下看板 → sessionStorage 旗標 → 跳回遊戲直接 openDateTable */

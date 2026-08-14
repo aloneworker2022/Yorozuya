@@ -9,7 +9,7 @@ import * as Cards from "./content/card_engine.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.31(2026-08-08)上線槽硬切：清玩家牌進度";
+const APP_VER = "v6.54(2026-08-14)帶走咒語1/10搶回·感應1/4被叫走";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -788,6 +788,10 @@ function initState(j, offline) {
     // M5：CG cache 欄位；立繪同步進 portrait:* key
     s.cardCg ??= {};
     syncPortraitCgCache(s);
+    // 12h 立繪刷新戳記：已有圖但沒戳 → 從現在起算，避免上線瞬間全名冊重畫
+    if (s.portraitsRefreshedAt == null && hasAnyPortrait(s)) {
+      s.portraitsRefreshedAt = Date.now();
+    }
     if (s.summoner === undefined) s.summoner = null;
     if (s.nextDraw == null) { s.drawIvlH = randInt(2, 5); s.nextDraw = Date.now() + s.drawIvlH * HOUR; }
     if (!s.gift) s.gift = pick(GIFT_KEYS);
@@ -1918,13 +1922,26 @@ function assignMissingGirlCkpts() {
   return n;
 }
 
-// 一張的下單→輪詢。shot 給值(head|half|full)= 三連拍其中一張,尺寸與 seed
+// 半身喜怒哀樂（聊天立繪依情緒切）
+const HALF_EMOTIONS = {
+  xi: { shot: "half_xi", label: "喜", tags: "happy expression, soft smile, cheerful, gentle smile, looking at viewer" },
+  nu: { shot: "half_nu", label: "怒", tags: "angry expression, furrowed brows, frown, upset, glaring" },
+  ai: { shot: "half_ai", label: "哀", tags: "sad expression, teary eyes, sorrowful, downcast eyes, melancholy" },
+  le: { shot: "half_le", label: "樂", tags: "joyful expression, bright smile, laughing, delighted, sparkling eyes" },
+};
+const HALF_EMOTION_KEYS = ["xi", "nu", "ai", "le"];
+
+// 一張的下單→輪詢。shot 給值(head|half|full|half_xi…)= 立繪規格,尺寸與 seed
 // 由伺服器依規格決定(三張同 seed 才是同一張臉)。回 URL 或 ""。
 // opts.forceNew：新 key 強制重跑；opts.randomSeed：半身換樣時用（Comfy）
+// opts.extra：表情／動作英文 tag（喜怒哀樂）
 async function weaveShot(s, shot, onTick, opts = {}) {
   const comfy = imgProvider() === "comfy";
   // 每位妹子自帶 checkpoint;沒綁過就現在抽一個綁死
   const girlCkpt = comfy ? await ensureGirlComfyCkpt(s) : "";
+  const isHalfFamily = shot === "half" || String(shot || "").startsWith("half_");
+  // 立繪（含喜怒哀樂半身）一律要求去背 + 平背景，方便 cutout
+  const wantPortraitCut = isHalfFamily || shot === "full" || shot === "head";
   const body = {
     // 強制新單，避免佇列回舊 done 快取
     key: opts.forceNew
@@ -1937,7 +1954,17 @@ async function weaveShot(s, shot, onTick, opts = {}) {
     rating: state.settings.rating || "nsfw",
     style: state.settings.imgStyle || "pixel",
     character: s,   // 完整人設(generateGirl 結果),生圖以此為準
+    extra: opts.extra || (isHalfFamily
+      ? "half-body portrait, looking at viewer, plain solid color background, simple background"
+      : (wantPortraitCut ? "plain solid color background, simple background" : "")),
+    // Grok 路也要勾去背；Comfy 路 shot 規格本身 cutout=true
+    cutout: wantPortraitCut,
+    flat_bg: wantPortraitCut,
     retry: true,
+    // 情緒半身可帶 half 當 ref 鎖臉
+    ...(opts.ref && /^\/assets\/(portraits|testword)\//.test(String(opts.ref).split("?")[0])
+      ? { ref: String(opts.ref).split("?")[0] }
+      : {}),
     ...(comfy ? {
       shot,
       char_id: s.id,
@@ -1969,7 +1996,33 @@ async function weaveShot(s, shot, onTick, opts = {}) {
   }
   if (timer) clearInterval(timer);
   if (url && comfy) await pollCutNote();
+  // 半身／全身／大頭／喜怒哀樂：生完再強制走一次去背（Grok 路或 cut 失敗時補）
+  const needCut = shot === "full" || shot === "head" || shot === "half"
+    || String(shot || "").startsWith("half_");
+  if (url && needCut) {
+    try {
+      const cut = await ensurePortraitCutout(url);
+      if (cut) url = cut;
+    } catch (e) {
+      console.warn("[weaveShot] cutout", e);
+    }
+  }
   return url;
+}
+
+/** 對 portraits／testword 圖再摳一次背；成功回新 URL（帶 ?v=） */
+async function ensurePortraitCutout(url) {
+  const clean = String(url || "").split("?")[0];
+  if (!clean || !/^\/assets\/(portraits|testword)\//.test(clean)) return url;
+  const j = await fetch("/api/cutout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: clean }),
+  }).then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!j) return url;
+  // changed 或已透明都會回 url；失敗也盡量用原圖
+  const out = j.url || clean;
+  return out.includes("?") ? out : `${out}?v=${Date.now()}`;
 }
 
 function setShot(s, shot, url) {
@@ -1978,11 +2031,50 @@ function setShot(s, shot, url) {
   // 同路徑覆寫時加版本，避免瀏覽器吃舊半身
   const bust = url.includes("?") ? url : `${url.split("#")[0]}?v=${Date.now()}`;
   s.portraits[shot] = bust;
-  s.portrait = s.portraits.full || s.portraits.half || bust;
+  // 喜怒哀樂半身：預設 half 用「喜」當主半身
+  if (shot === "half_xi" && !s.portraits.half) s.portraits.half = bust;
+  if (shot === "half" && !s.portraits.half_xi) s.portraits.half_xi = bust;
+  s.portrait = s.portraits.full || s.portraits.half || s.portraits.half_xi || bust;
   s.portraitReady = true;
   syncPortraitCgCache(s);
   dirty = true;
   saveNow();
+}
+
+/**
+ * 織半身喜怒哀樂四張（half_xi/nu/ai/le）。
+ * 有 half 可作 ref 鎖臉（Grok）；Comfy 靠同 seed／同人設。
+ */
+async function weaveHalfEmotions(s, opts = {}) {
+  if (!s || !canWeaveNow()) return 0;
+  let n = 0;
+  const halfRef = (s.portraits?.half || s.portraits?.half_xi || s.portraits?.full || "").split("?")[0] || "";
+  for (const ek of HALF_EMOTION_KEYS) {
+    const def = HALF_EMOTIONS[ek];
+    if (!def) continue;
+    if (!opts.force && s.portraits?.[def.shot]) continue;
+    const url = await weaveShot(s, def.shot, null, {
+      forceNew: true,
+      randomSeed: !!opts.randomSeed,
+      ref: halfRef || undefined,
+      extra: [
+        "half-body portrait",
+        "same woman as reference",
+        "keep same face, hair, outfit",
+        "looking at viewer",
+        def.tags,
+      ].join(", "),
+    });
+    if (url) {
+      setShot(s, def.shot, url);
+      n++;
+    }
+  }
+  // 確保 half 有圖
+  if (!s.portraits?.half && s.portraits?.half_xi) {
+    s.portraits.half = s.portraits.half_xi;
+  }
+  return n;
 }
 
 /**
@@ -2093,6 +2185,12 @@ async function weaveKanbanArrival(s) {
       const headUrl = await weaveShot(s, "head", null, { forceNew: true });
       if (headUrl) setShot(s, "head", headUrl);
     }
+    // 補喜怒哀樂半身
+    if (s.portraits?.half || s.portraits?.half_xi) {
+      try { await weaveHalfEmotions(s); } catch (e) { console.warn("[kanbanArt] emotions", e); }
+    }
+    s.portraitsRefreshedAt = Date.now();
+    dirty = true;
   } catch (e) {
     console.warn("[kanbanArt]", e);
     toast(`看板立繪出錯：${e?.message || e}`, "bad");
@@ -2113,6 +2211,8 @@ async function weavePortrait(s, onTick) {
     // M5：full 好了立刻同步 cache；half/head 背景補（兩條生圖路都補，不卡 UI）
     if (ok) {
       syncPortraitCgCache(s);
+      s.portraitsRefreshedAt = Date.now(); // 首抽起算 12h 刷新
+      dirty = true;
       weaveRest(s);   // 不 await
     }
   } finally {
@@ -2121,19 +2221,22 @@ async function weavePortrait(s, onTick) {
   return ok;
 }
 
-// 背景補剩下兩張。失敗不重試也不吵——girlShot 會自動退回已經有的那張。
+// 背景補剩下的立繪（含半身喜怒哀樂）。失敗不重試也不吵。
 async function weaveRest(s) {
   for (const shot of ["head", "half"]) {
     if (s.portraits?.[shot]) continue;
     setShot(s, shot, await weaveShot(s, shot));
     syncPortraitCgCache(s);
-    // 牌桌開著就刷新立繪，不整頁 render 打斷手牌
     if (document.body.classList.contains("card-mode")) {
       const g = girlForSession();
       if (g && g.id === s.id) setCtPortrait(s, { cardId: cardUi.lastPlay?.cardId || null });
     } else {
       renderAll();
     }
+  }
+  // 半身有了 → 補喜怒哀樂
+  if (s.portraits?.half || s.portraits?.half_xi) {
+    try { await weaveHalfEmotions(s); } catch (e) { console.warn("weaveHalfEmotions", e); }
   }
 }
 
@@ -2153,7 +2256,7 @@ function syncPortraitCgCache(s) {
   if (!s) return;
   const cg = ensureCardCgMap(s);
   const now = Date.now();
-  for (const shot of ["half", "full", "head"]) {
+  for (const shot of ["half", "full", "head", "half_xi", "half_nu", "half_ai", "half_le"]) {
     const url = s.portraits?.[shot] || (shot === "full" ? s.portrait : "") || "";
     if (!url) continue;
     const k = `portrait:${shot}`;
@@ -3873,20 +3976,85 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
 }
 
 // 詳細頁「補織缺的那幾張」用:三張補齊,已經有的跳過。
-// force=true(換衣服後)則三張全部重織——舊圖穿的是舊衣服,留著只會不一致。
+// force=true(換衣服／12h 刷新)則全身／半身／大頭＋喜怒哀樂全部重織。
 async function weaveMissing(s, force = false) {
   if (!s || portraitGenning.has(s.id)) return;
   portraitGenning.add(s.id);
   try {
     for (const shot of ["full", "half", "head"]) {
       if (!force && s.portraits?.[shot]) continue;
-      setShot(s, shot, await weaveShot(s, shot));
+      setShot(s, shot, await weaveShot(s, shot, null, force
+        ? { forceNew: true, randomSeed: true }
+        : {}));
       renderAll();
+    }
+    // 半身喜怒哀樂
+    if (s.portraits?.half || s.portraits?.half_xi) {
+      await weaveHalfEmotions(s, { force, randomSeed: force });
+    }
+    if (force || !s.portraitsRefreshedAt) {
+      s.portraitsRefreshedAt = Date.now();
+      dirty = true;
     }
   } finally {
     portraitGenning.delete(s.id);
     renderAll();
   }
+}
+
+/** 立繪整組刷新週期：12 小時 */
+const PORTRAIT_REFRESH_MS = 12 * 3600 * 1000;
+let lastPortraitRefreshCheck = 0;
+
+function hasAnyPortrait(s) {
+  return !!(s?.portraits?.full || s?.portraits?.half || s?.portraits?.head || s?.portrait);
+}
+
+/** 是否該 12 小時重畫一整組（full+half+head+喜怒哀樂） */
+function portraitsRefreshDue(s) {
+  if (!s || s.ntr) return false;
+  if (!hasAnyPortrait(s)) return false; // 沒圖走缺圖補織，不走整組刷新
+  const at = Number(s.portraitsRefreshedAt) || 0;
+  if (!at) return true; // 有圖但沒戳記 → 視為到期（init 會盡量補戳記）
+  return Date.now() - at >= PORTRAIT_REFRESH_MS;
+}
+
+/**
+ * 背景：到期則重畫一整組立繪（一次只處理一人，避免 GPU 塞爆）。
+ * 每 60 秒掃一次名冊。
+ */
+function tickPortraitRefresh() {
+  if (!state?.succubi?.length) return;
+  if (Date.now() - lastPortraitRefreshCheck < 60_000) return;
+  lastPortraitRefreshCheck = Date.now();
+  if (!canWeaveNow()) return;
+  if (portraitGenning.size > 0) return; // 已有人在織
+  const due = state.succubi.find(s => portraitsRefreshDue(s) && !portraitGenning.has(s.id));
+  if (!due) return;
+  console.info("[portraitRefresh] 12h 整組重畫", due.name || due.id);
+  refreshPortraitSet(due).catch(e => console.warn("[portraitRefresh]", e));
+}
+
+/** 強制重畫 full / half / head / 喜怒哀樂；更新 portraitsRefreshedAt */
+async function refreshPortraitSet(s) {
+  if (!s || !canWeaveNow()) return false;
+  if (portraitGenning.has(s.id)) return false;
+  toast(`${s.name} 的立繪整組換新中（約每 12 小時）…`, "");
+  await weaveMissing(s, true);
+  s.portraitsRefreshedAt = Date.now();
+  dirty = true;
+  scheduleSave();
+  if (isKanban(s.id)) {
+    try { replaceKanbanFullStand(s); } catch { /* */ }
+  }
+  if (chatWith === s.id) {
+    try { vnFace(s, chatSession?.mood || "xi"); } catch { /* */ }
+  }
+  toast(lastWeaveError
+    ? `${s.name} 立繪刷新有失敗：${lastWeaveError}`
+    : `${s.name} 立繪已全部刷新`, lastWeaveError ? "bad" : "good");
+  renderAll();
+  return true;
 }
 
 // ===== 服裝:生涯服裝 + 個人喜好衣櫃 =====
@@ -4132,13 +4300,22 @@ let chatWith = null;      // 對話中的魅魔 id
 let chatSession = null;   // {type:'chat'|'date', location, playerMsgs, gotReply, busy}
 let chatAbort = null;
 
-function enterChat(id, type = "chat", location = null, prepaid = false) {
+/**
+ * 進入聊天／約會／感應。
+ * opts.fromSense：名冊「感應」接通 → 舊版即時 AI 聊天（半身＋輸入框），繞過 freeChat 退役與淫紋。
+ */
+function enterChat(id, type = "chat", location = null, prepaid = false, opts = {}) {
   const s = state.succubi.find(x => x.id === id);
   if (!s) return;
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
   if (s.ntr) { toast("她不在你身邊……", "bad"); return; }
-  // M2/M3/M6：自由聊退役 → 日常聊改牌桌；約會改電話＋場地牌局
-  if (freeChatRetired() && type === "chat") {
+  const fromSense = !!opts.fromSense;
+
+  // 感應接通：一律走即時 AI 聊天（type=sense）
+  if (fromSense) type = "sense";
+
+  // M2/M3/M6：自由聊退役 → 日常聊改牌桌（感應除外）
+  if (!fromSense && freeChatRetired() && type === "chat") {
     if (isKanban(id)) {
       toast("想說話就靠近她（牌桌）", "");
       openKanbanTable(id);
@@ -4170,62 +4347,86 @@ function enterChat(id, type = "chat", location = null, prepaid = false) {
     s.datesToday.count++;
     s.lastDateDay = today;
     s.lastChatDay = today;
+  } else if (type === "sense") {
+    s.lastChatDay = today;
+    s.wantsTalk = 0;
+    s.chatLine = null;
+    s.typing = null;
   } else {
     // 聊天不花任何資源:淫紋只是「她想跟你說話」的燈,點開就是聊起來。
-    // 她被召喚走：引導去打電話（窺視路徑）
     if (!prepaid) {
       if (isSummonerTaken(s)) {
-        toast(`${s.name} 正被召喚走——打電話給她（1/5 接通，不佔約會次數）`, "bad");
+        toast(`${s.name} 正被召喚走——試試「感應」`, "bad");
         return;
       }
       if (s.typing) { toast(`${s.name} 正在回你……`, ""); return; }
-      // 紋亮著就能聊:她的話備好了就她先說,還沒備好(或是接續沒聊完的那場)就你先說
       if (!s.chatLine && !s.wantsTalk && !s.chatSess) { toast("她現在沒有話要跟你說", "bad"); return; }
     }
-    s.wantsTalk = 0;   // 這一盞紋在這一場兌現了
+    s.wantsTalk = 0;
     s.lastChatDay = today;
   }
   chatWith = id;
   const spot = DATE_SPOTS.find(x => x[0] === location);
-  // 聊天:一場對話跨多次進出(送出即跳出、她慢慢打字),回合數記在她身上
+  // 舊淫紋聊天:回合數記在她身上；約會:有回合上限；感應:可一直聊（見 turnCap=null）
   if (type === "chat") {
     s.chatSess ??= { turnCap: randInt(...CHAT_TURNS), playerMsgs: 0, at: Date.now() };
     s.chatSess.at = Date.now();
   }
   const sess = type === "chat" ? s.chatSess : null;
-  const turnCap = sess ? sess.turnCap : randInt(...DATE_TURNS);
+  // sense：不設回合上限（null）；約會：DATE_TURNS；淫紋聊：chatSess
+  let turnCap = null;
+  if (type === "chat") turnCap = sess.turnCap;
+  else if (type === "date") turnCap = randInt(...DATE_TURNS);
+  // type === "sense" → turnCap 維持 null（可一直聊）
   chatSession = {
     type, location, locationDesc: spot ? spot[1] : null,
     playerMsgs: sess ? sess.playerMsgs : 0, turnCap, gotReply: false, busy: false,
+    fromSense,
+    mood: "xi",
   };
   dateChooser = false;
   document.body.classList.add("chat-mode");
   s.history ??= [];
-  // 場景邊界標記:只有約會另起場景;聊天是跨日連續的簡訊串,不切斷上下文
   if (type === "date") {
     s.history.push({ role: "sys", content: `兩人抵達「${location}」,約會開始`, t: Date.now() });
+  } else if (type === "sense") {
+    s.history.push({
+      role: "sys",
+      content: isSummonerTaken(s)
+        ? `感應接通——她正被帶走，但線路連上了`
+        : `感應接通——與 ${s.name} 連上`,
+      t: Date.now(),
+    });
   }
-  // 重置輸入狀態(修復:上一場鎖住的輸入框會殘留到下一場)
   const inputEl = document.getElementById("chat-input");
-  if (inputEl) { inputEl.disabled = false; inputEl.placeholder = "說點什麼…(Enter 送出)"; inputEl.value = ""; }
+  if (inputEl) {
+    inputEl.disabled = false;
+    inputEl.placeholder = type === "sense" ? "說點什麼…(Enter 送出)" : "說點什麼…(Enter 送出)";
+    inputEl.value = "";
+  }
   const sendBtn = document.getElementById("chat-send");
   if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = "送出"; }
-  const askBtn = document.getElementById("chat-ask");
-  if (askBtn) askBtn.disabled = false;
   setChatWaiting(false);
   scheduleSave(); renderAll();
   renderChatLog(s);
   inputEl?.focus();
   if (type === "date") {
     vnShow("", `—— ${location}・約會開始 ——`, "sys");
-    sceneOpener(s);   // 約會:她先開口,描述場景與心情(即時 session)
+    sceneOpener(s);
+  } else if (type === "sense") {
+    ensureSummonSpell(s);
+    vnShow("", isSummonerTaken(s)
+      ? `—— 感應接通（被帶走中：每句 1/4 可能被對方叫走；咒語 1/10 搶回；她掰掰／你離開也可結束）——`
+      : `—— 感應接通（可一直聊；聊天框念咒語可召她到店頭）——`, "sys");
+    // 她先開一句（即時 AI）
+    senseOpener(s);
   } else if (s.chatLine) {
-    // 她那句話早已在背景寫好(開場白或上一句的回覆)——秒顯示,你回一句就換她慢慢打字
     const line = s.chatLine.text;
     s.chatLine = null;
     s.history.push({ role: "assistant", content: line, t: Date.now() });
     s.history = s.history.slice(-200);
     vnShow(s.name, line, "ai");
+    applyChatMood(s, line);
     vnDone();
     // 這場的回合已用完:這句是收尾,讀完按鈕結束(結算情感)
     if (sess && sess.playerMsgs >= sess.turnCap) {
@@ -4258,10 +4459,119 @@ function chatEndButton(label = "結束對話 ▶") {
   setChatWaiting(false);   // 送出時被隱藏的輸入列要重新露出,收尾鈕才看得到
   const inputEl = document.getElementById("chat-input");
   if (inputEl) { inputEl.disabled = true; inputEl.placeholder = "這次對話結束了…"; }
-  const askBtn = document.getElementById("chat-ask");
-  if (askBtn) askBtn.disabled = true;
   const btn = document.getElementById("chat-send");
   if (btn) { btn.disabled = false; btn.textContent = label; }
+}
+
+/** 聊天立繪依情緒切換（喜怒哀樂） */
+function applyChatMood(s, text) {
+  const mood = moodFromText(text);
+  if (chatSession) chatSession.mood = mood;
+  vnFace(s, mood);
+}
+
+/** 名冊「感應」：固定 1 金；1/3 接通；被召喚走 1/6 → 即時 AI 聊天（與看板咒語無關） */
+const SENSE_COST = 1;
+const SENSE_RATE_NORMAL = 1 / 3;
+const SENSE_RATE_TAKEN = 1 / 6;
+/** 被帶走中：感應每輪對話 1/4 被對方召喚師當場叫去調戲（產日記 act 後斷線） */
+const SENSE_TAKEN_SNATCH_RATE = 1 / 4;
+/** 被帶走中：感應聊天框念咒語搶回店頭的成功率 */
+const SPELL_TAKEN_RESCUE_RATE = 1 / 10;
+
+/**
+ * 每位妹子的召喚咒語（系統隨機產生一次後固定）。
+ * 看板召喚：去商店看咒語 → 輸入施咒 → 不扣金。
+ */
+function ensureSummonSpell(s) {
+  if (!s) return "";
+  if (s.summonSpell && String(s.summonSpell).trim()) return s.summonSpell;
+  const a = ["紫", "銀", "炎", "影", "夢", "星", "血", "月", "璃", "緋", "蒼", "墨"];
+  const b = ["契", "約", "咒", "印", "召", "鏈", "環", "囁", "吻", "縛", "扉", "燈"];
+  const c = ["之", "兮", "羅", "娜", "絲", "琉", "涅", "薇"];
+  // 隨機產生一次（寫進存檔後固定）
+  const i = () => Math.floor(Math.random() * 12);
+  const j = () => Math.floor(Math.random() * 8);
+  s.summonSpell = a[i()] + b[i()] + c[j()];
+  // 極少撞咒：若與名冊其他人相同再重骰
+  const clash = (state.succubi || []).some(x => x !== s && x.summonSpell === s.summonSpell);
+  if (clash) s.summonSpell = a[i()] + b[i()] + c[j()] + a[i()];
+  return s.summonSpell;
+}
+
+function beginSense(girlId) {
+  if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
+  const s = state.succubi.find(x => x.id === girlId);
+  if (!s || s.ntr) { toast("她不在你身邊……", "bad"); return; }
+  if (Cards.sessionActive(state)) {
+    const rec = resumeOrRecoverCardSession({ forceUi: true });
+    toast(`先結束與 ${rec.girlName || "她"} 的牌局`, "bad");
+    return;
+  }
+  if (watchWith || chatWith) {
+    toast("先結束目前的對話", "bad");
+    return;
+  }
+  if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
+  if (state.gold < SENSE_COST) {
+    toast(`感應要 ${SENSE_COST} 金（目前 ${state.gold}）`, "bad");
+    return;
+  }
+  // 先扣 1 金（沒接通也不退）
+  state.gold -= SENSE_COST;
+  const taken = isSummonerTaken(s);
+  const rate = taken ? SENSE_RATE_TAKEN : SENSE_RATE_NORMAL;
+  log(`感應 ${s.name}${taken ? "（被召喚走）" : ""} -${SENSE_COST} 金`);
+  if (Math.random() >= rate) {
+    toast(taken
+      ? `${s.name} 沒感應到……（對方那邊太吵了）· −${SENSE_COST} 金`
+      : `${s.name} 沒感應到……· −${SENSE_COST} 金`, "bad");
+    scheduleSave();
+    renderAll();
+    return;
+  }
+  toast(taken
+    ? `感應接通——${s.name} 好像在很遠的地方`
+    : `感應接通——${s.name}`, "good");
+  // 背景補喜怒哀樂（有 half 才補）
+  if (canWeaveNow() && (s.portraits?.half || s.portraits?.half_xi)) {
+    weaveHalfEmotions(s).catch(() => {});
+  }
+  enterChat(s.id, "sense", null, true, { fromSense: true });
+}
+
+/** 感應進場：她先說一句（即時 AI） */
+async function senseOpener(s) {
+  if (!chatSession || chatSession.type !== "sense") return;
+  chatSession.busy = true;
+  setChatWaiting(true);
+  vnTyping(true);
+  applyChatMood(s, "");
+  const taken = isSummonerTaken(s);
+  // 開場不指定演技；人設＋關係＋（若有）內部日記會由 system 注入，AI 自行帶入處境
+  const inst = taken
+    ? "（旁白：他透過感應連上你。你此刻不在他身邊、正被另一位召喚師帶走中；system 裡若有本次內部記憶，請一併當作真實處境。用 1～2 句簡短回話開場，完全依你的人設、與他的關係、與對方召喚師的關係、以及當下處境。只輸出台詞，不要長篇。）"
+    : "（旁白：他透過感應連上你，像打電話。用 1～2 句主動或應答開場，依你的個性與關係。不要長篇。）";
+  try {
+    const reply = await llmReply(s, acc => vnShow(s.name, acc, "ai"), inst);
+    s.history.push({ role: "assistant", content: reply, t: Date.now() });
+    s.history = s.history.slice(-200);
+    applyChatMood(s, reply);
+    vnDone();
+    dirty = true;
+    saveNow();
+  } catch (e) {
+    if (e.name !== "AbortError") {
+      vnShow(s.name, taken ? "……現在不太方便。" : "……嗯？", "ai");
+      vnDone();
+    }
+  }
+  if (chatSession) {
+    chatSession.busy = false;
+    setChatWaiting(false);
+  }
+  document.getElementById("chat-send") && (document.getElementById("chat-send").disabled = false);
+  document.getElementById("chat-input")?.focus();
 }
 
 // 約會進場開場白:她先開口,不佔玩家回合、不寫入玩家訊息(聊天則由玩家先說話,不走這裡)
@@ -4975,6 +5285,8 @@ async function genTick(force = false) {
       if (idle && !freeChatRetired()) await genChatOrder();
       if (!waitingOnHer() && !waitingCard) {
         await genActOrders();
+        // NTR 日記：依時段彙整調教 act
+        await genNtrDiaryOrders();
         // 看板點立繪碎嘴台詞庫（非自由聊）；牌制仍可備
         if (idle) await genQuipOrders();
       }
@@ -5579,6 +5891,10 @@ function buildCtx(s) {
         tone_override: STAGE_SCRIPTS.chat_rival[name] || null,
       };
     })() : null,
+    // 感應＋本次帶走：把「這次召喚」的交配日記當她的短期記憶（解除後 ntrSessionMemoryForChat 回 null）
+    ntr_session: (chatSession?.type === "sense" && isSummonerTaken(s))
+      ? ntrSessionMemoryForChat(s)
+      : null,
   };
 }
 
@@ -5687,13 +6003,47 @@ async function llmJobRun(messages, onToken, cannedLine) {
   }
 }
 
+/** 感應回話是否主動道別結束（掰掰／先這樣…） */
+function senseReplyIsGoodbye(text) {
+  const t = String(text || "");
+  // 明確道別／不想聊了
+  if (/掰掰|拜拜|再見|先這樣|掛了|不聊了|先忙|有事先走|結束通話|先掛|bye\b|goodbye/i.test(t)) return true;
+  if (/不想(再)?聊|聊夠了|到此為止|下次再|改天再/.test(t)) return true;
+  return false;
+}
+
 async function llmReply(s, onToken, extraUser = null) {
   // 上下文只取「本場景」:最後一個場景標記(sys)之後的對話。
   const hist = s.history || [];
   let cut = 0;
   for (let i = hist.length - 1; i >= 0; i--) if (hist[i].role === "sys") { cut = i + 1; break; }
+  let sys = buildSystemPrompt(buildCtx(s));
+  // 感應：可一直聊；結束條件見規則（玩家離開／念咒語／她道別／被對方當場叫走）
+  if (chatSession?.type === "sense") {
+    sys += [
+      "",
+      "【感應通話規則】",
+      "・這是感應連線，玩家可以一直跟你聊，沒有回合上限。",
+      "・平時請正常回話，不要無故結束。",
+      "・只有在你真的不想再聊、想掛斷時，才用一句明確道別結束——必須含「掰掰」或「先這樣」之類告別，讓玩家知道你要走了。",
+      "・道別時態度依個性：冷淡、溫柔、害羞皆可，但一定要讓人聽得出「結束了」。",
+      "・若旁白要求你「被另一位召喚師當場叫走」，請依旁白回話，那是強制中斷，不是你主動道別。",
+      "・【只輸出台詞】只寫你說出口的話；禁止身體動作、表情、姿態、喘息等描寫。",
+    ].join("\n");
+    // 雙保險：persona 已注入 ntr_session；此處只補「事實記憶」，不指定演技
+    const mem = ntrSessionMemoryForChat(s);
+    if (mem) {
+      sys += [
+        "",
+        "【內部記憶・本次帶走（僅 AI；通話對象看不到）】",
+        `對方召喚師「${mem.rivalName}」・你對他「${mem.stageName}」・你與通話者「${mem.playerStage}」。`,
+        "這次已發生的事（親身經歷，用來帶入處境；反應依人設／關係／暗流，勿套固定劇本）：",
+        mem.diaryText || mem.outlines || "（尚無具體條目）",
+      ].join("\n");
+    }
+  }
   const msgs = [
-    { role: "system", content: buildSystemPrompt(buildCtx(s)) },
+    { role: "system", content: sys },
     ...hist.slice(cut).slice(-40).filter(m => m.role === "user" || m.role === "assistant").map(m => ({ role: m.role, content: m.content })),
   ];
   if (extraUser) msgs.push({ role: "user", content: extraUser });
@@ -5710,8 +6060,8 @@ async function sendChatMsg() {
   const s = state.succubi.find(x => x.id === chatWith);
   const input = document.getElementById("chat-input");
   if (!s || !chatSession || chatSession.busy) return;
-  // M6：自由聊已退役——擋掉殘 session 再寫 history
-  if (freeChatRetired() && chatSession.type === "chat") {
+  // M6：自由聊已退役——擋掉殘 session（感應／約會即時聊除外）
+  if (freeChatRetired() && chatSession.type === "chat" && !chatSession.fromSense) {
     toast("日常互動改走牌桌了", "");
     exitChat();
     if (isKanban(s.id)) openKanbanTable(s.id);
@@ -5721,14 +6071,34 @@ async function sendChatMsg() {
   if (!text) return;
   if (isAsleep()) { toast("睡眠時段——她回夢境了", "bad"); return; }
 
+  // 感應中：聊天框打出「這位」的咒語 → 施放召喚看板／搶回（不進 AI）
+  if (chatSession.type === "sense" && tryCastSpellInSenseChat(s, text)) {
+    input.value = "";
+    return;
+  }
+
   input.value = "";
   s.history ??= [];
   s.history.push({ role: "user", content: text, t: Date.now() });
-  guardTick(s);   // 防備降溫:玩家每送一則就退一格,冷完自然回溫
+  guardTick(s);
   vnShow(state.settings.player || "你", text, "user");
 
-  // 聊天:送出就跳出對話——她要花時間打字,不讓玩家對著空畫面等。
-  // 淫紋改成「對話框 …」表示她正在輸入;她寫完就變回淫紋,點進來讀她的回覆、接著聊。
+  // 被帶走中感應：每一輪玩家發言後 1/4 → 對方當場叫去調戲，產日記項目、她說被叫走、斷線
+  if (chatSession.type === "sense" && isSummonerTaken(s)
+      && Math.random() < SENSE_TAKEN_SNATCH_RATE) {
+    chatSession.busy = true;
+    setChatWaiting(true);
+    document.getElementById("chat-send").disabled = true;
+    try {
+      await senseTakenRivalSnatch(s);
+    } catch (e) {
+      if (e?.name !== "AbortError") console.error("sense snatch:", e);
+      try { await senseTakenRivalSnatch(s, { forceCanned: true }); } catch { /* */ }
+    }
+    return;
+  }
+
+  // 舊淫紋聊天:送出就跳出（背景打字）
   if (chatSession.type === "chat") {
     chatSession.ended = true;
     chatSession.gotReply = true;
@@ -5737,7 +6107,7 @@ async function sendChatMsg() {
     s.chatSess.playerMsgs = ++chatSession.playerMsgs;
     s.chatSess.at = Date.now();
     s.chatLine = null;
-    s.typing = { at: Date.now() };   // 她正在回你(背景生成,見 genReplyOrder)
+    s.typing = { at: Date.now() };
     dirty = true;
     saveNow();
     toast(`訊息傳出去了……${s.name} 正在回你`, "good");
@@ -5746,14 +6116,14 @@ async function sendChatMsg() {
     return;
   }
 
-  // 約會:即時往返——她當場回話,聊到回合上限她才喊停
+  // 約會／感應:即時往返——她當場 AI 回話
+  // 感應結束條件只有：①念咒語 ②玩家離開 ③她主動道別（掰掰）——無回合上限
   vnTyping(true);
   $("#vn-name").textContent = (state.settings.player || "你") + " → " + s.name;
   chatSession.busy = true;
   setChatWaiting(true);
   document.getElementById("chat-send").disabled = true;
   try {
-    // 失敗自動重試一次(手機切回前景時網路常需要一秒回魂)
     let reply;
     try {
       reply = await llmReply(s, acc => vnShow(s.name, acc, "ai"));
@@ -5767,14 +6137,24 @@ async function sendChatMsg() {
     s.history = s.history.slice(-200);
     chatSession.playerMsgs++;
     if (!chatSession.gotReply) { chatSession.gotReply = true; s.lastChatDay = dayNum(); }
+    applyChatMood(s, reply);
     vnDone();
     dirty = true;
-    saveNow();   // 對話內容立即寫入伺服器,不等防抖——關頁面也不掉字
+    saveNow();
 
-    // 回合上限(每次隨機):達標後鎖輸入、顯示收尾鈕,由玩家讀完最後一句自己按著結束(結算情感)
-    if (chatSession.playerMsgs >= chatSession.turnCap) {
+    // 感應：她主動道別 → 結束（玩家按離開／念咒語另處理）
+    if (chatSession.type === "sense" && senseReplyIsGoodbye(reply)) {
       chatSession.ended = true;
-      chatEndButton(chatSession.type === "date" ? "結束約會 ▶" : "結束對話 ▶");
+      chatEndButton("結束感應 ▶");
+      log(`${s.name} 結束了感應通話`);
+      return;
+    }
+    // 約會：仍有回合上限
+    if (chatSession.type === "date"
+      && chatSession.turnCap != null
+      && chatSession.playerMsgs >= chatSession.turnCap) {
+      chatSession.ended = true;
+      chatEndButton("結束約會 ▶");
       return;
     }
   } catch (e) {
@@ -5955,6 +6335,196 @@ function unseenActs(s) { return (s.summoner?.acts || []).filter(a => !a.seen); }
 // 「可看」的未讀:文字已在背景生成好的才算(沒生好的不顯示、不給看,生好才浮出)
 function readyUnseen(s) { return (s.summoner?.acts || []).filter(a => !a.seen && a.text); }
 
+// ── NTR 內部日記（僅「本次被帶走」期間；只給 AI 讀，玩家看不到）──
+// sim 每小時仍產 flirt／mating act；日記只彙整 startedAt 之後的 act。
+// 背景生成 → 感應聊天注入；解除 taken 後不再注入（解除就不算）。
+
+/** 補齊本次帶走 meta（舊存檔／舊 sim） */
+function ensureTakenSessionMeta(s) {
+  const tk = s?.summoner?.taken;
+  if (!tk) return null;
+  if (tk.startedAt == null) {
+    // actAt 會往前推進；盡量用 until 反推或現有 actAt 取較早
+    const until = Number(tk.until) || Date.now();
+    const actAt = Number(tk.actAt) || Date.now();
+    tk.startedAt = Math.min(actAt, until - 2 * HOUR);
+  }
+  if (!tk.sessionId) tk.sessionId = `tk_${tk.startedAt}`;
+  return tk;
+}
+
+/** 本次帶走起點 ms；未在 taken 則 null */
+function takenSessionStart(s) {
+  const tk = ensureTakenSessionMeta(s);
+  return tk ? Number(tk.startedAt) : null;
+}
+
+/** 本次帶走期間的調教 act（解除 taken 後回空——聊天記憶不算舊次） */
+function currentTakenSessionActs(s) {
+  if (!isSummonerTaken(s)) return [];
+  const start = takenSessionStart(s);
+  if (start == null) return [];
+  const slack = 60_000;
+  return (s.summoner.acts || []).filter(a => (a.t || 0) >= start - slack);
+}
+
+function ntrActSummaryLine(a) {
+  if (!a) return "";
+  if (a.kind === "mating") {
+    const beat = a.beat || "";
+    const kink = a.kinkName || "交合";
+    return `交配・${kink}${beat ? `（${beat}）` : ""}${a.ring ? "・環鎖" : ""}`;
+  }
+  if (a.kind === "flirt") {
+    const where = a.location ? ` @${a.location}` : "";
+    const ty = a.type === "date" ? "約會帶走" : "召喚陪伴";
+    return `調教／猥褻（${ty}${where}）`;
+  }
+  return a.kind || "紀錄";
+}
+
+/** 本次帶走：依日＋時段分組（新→舊）。未帶走 → [] */
+function collectNtrDiaryPeriods(s) {
+  if (!isSummonerTaken(s)) return [];
+  const tk = ensureTakenSessionMeta(s);
+  const sid = tk?.sessionId || "cur";
+  const acts = currentTakenSessionActs(s);
+  const map = new Map();
+  for (const a of acts) {
+    const t = a.t || Date.now();
+    const day = dayNum(t);
+    const slot = timeSlot(new Date(t).getHours());
+    const key = `${sid}|${day}|${slot}`;
+    if (!map.has(key)) {
+      map.set(key, { key, day, slot, t0: t, acts: [], sessionId: sid });
+    }
+    const p = map.get(key);
+    p.acts.push(a);
+    if (t < p.t0) p.t0 = t;
+  }
+  const list = [...map.values()].sort((a, b) => b.t0 - a.t0);
+  for (const p of list) {
+    p.acts.sort((a, b) => (a.t || 0) - (b.t || 0));
+    p.label = ntrDiaryPeriodLabel(p);
+    p.outline = p.acts.map(ntrActSummaryLine).filter(Boolean).join(" → ");
+  }
+  return list;
+}
+
+function ntrDiaryPeriodLabel(p) {
+  const today = dayNum();
+  const dayTxt = p.day === today ? "今天"
+    : p.day === today - 1 ? "昨天"
+      : `${Math.max(0, today - p.day)} 天前`;
+  const slotTxt = SLOT_LABEL[p.slot] || p.slot || "某時段";
+  return `${dayTxt}・${slotTxt}`;
+}
+
+function ntrDiaryEntry(s, periodKey) {
+  if (!s?.summoner) return null;
+  s.summoner.ntrDiary ??= {};
+  return s.summoner.ntrDiary[periodKey] || null;
+}
+
+/**
+ * 感應聊天用：本次帶走的內部日記記憶（僅餵 AI，玩家 UI 不顯示；解除後 null）。
+ * 回 { rivalName, stageName, diaryText, outlines }
+ */
+function ntrSessionMemoryForChat(s) {
+  if (!isSummonerTaken(s) || !s.summoner) return null;
+  const periods = collectNtrDiaryPeriods(s);
+  if (!periods.length) return null;
+  const su = summonerById(s.summoner.id);
+  const chunks = [];
+  const outlines = [];
+  for (const p of periods.slice(0, 10)) {
+    const ent = ntrDiaryEntry(s, p.key);
+    outlines.push(`${p.label}：${p.outline || "…"}`);
+    if (ent?.text) chunks.push(`【${p.label}】\n${ent.text}`);
+    else if (p.outline) chunks.push(`【${p.label}】（尚未寫成日記，事件綱要）${p.outline}`);
+  }
+  if (!chunks.length && !outlines.length) return null;
+  const stageIdx = s.summoner.stage ?? 0;
+  return {
+    rivalName: su?.name || "那個男人",
+    stageName: rivalStageName(stageIdx),
+    stage_idx: stageIdx,
+    playerStage: s.stage || "stranger",
+    diaryText: chunks.join("\n\n").slice(0, 3500),
+    outlines: outlines.join("\n"),
+  };
+}
+
+function ntrDiaryMsgs(s, su, period) {
+  const stageName = rivalStageName(s.summoner?.stage ?? 0);
+  const actBits = period.acts.map(a => {
+    if (a.text) return `・[${ntrActSummaryLine(a)}]\n${String(a.text).slice(0, 280)}`;
+    return `・[${ntrActSummaryLine(a)}]（細節未生成）`;
+  }).join("\n");
+  const snatch = (period.acts || []).some(a => a.fromSenseSnatch);
+  // 內部設定用：只給 AI 讀，玩家 UI 不展示。寫成可扮演的「親身經歷紀錄」。
+  const sys = [
+    "你在寫魅魔的「內部經歷紀錄」（玩家看不到）：以第一人稱記錄她這一時段被另一位召喚師調教／交配時實際發生的事與她當下的真實感受。",
+    `女方「${s.name}」。男方召喚師「${su?.name || "他"}」${su?.persona ? `（${su.persona}）` : ""}。`,
+    `她對他的關係階段：「${stageName}」——感受與配合程度必須符合此階段（可厭惡、可冷、可軟、可迎合，依階段，不要硬套單一情緒）。`,
+    snatch
+      ? "補充：這一段包含她正透過感應跟召喚者通話時，被這位召喚師當場叫走調戲的經過——可寫被打斷通話後發生的事。"
+      : "",
+    "格式：繁體中文、第一人稱「我」、3～6 句。",
+    "要具體寫出這時段發生了什麼（地點、對方做了什麼、有無他人、身體／言語上發生什麼），讓後續對話 AI 能據此帶入處境。",
+    "只輸出紀錄本文，不加標題、不加引號。",
+  ].filter(Boolean).join("\n");
+  const user = [
+    `時段：${period.label}`,
+    `本時段事件綱要：${period.outline || "（無）"}`,
+    snatch ? "標記：含感應中被對方當場叫走調戲" : "",
+    "原始紀錄碎片：",
+    actBits || "（僅有結構，無對話文字）",
+    "",
+    "請寫這一時段的內部經歷紀錄：",
+  ].filter(Boolean).join("\n");
+  return [
+    { role: "system", content: sys },
+    { role: "user", content: user },
+  ];
+}
+
+/** 背景：只為「目前仍被帶走」的妹子生本次日記（每輪最多 2 篇） */
+async function genNtrDiaryOrders() {
+  if (!state.settings?.model) return;
+  let n = 0;
+  for (const g of state.succubi) {
+    if (!isSummonerTaken(g)) continue;
+    if (!currentTakenSessionActs(g).length) continue;
+    const su = summonerById(g.summoner.id);
+    if (!su) continue;
+    g.summoner.ntrDiary ??= {};
+    const periods = collectNtrDiaryPeriods(g);
+    for (const p of periods) {
+      const ent = g.summoner.ntrDiary[p.key];
+      if (ent?.text) continue;
+      const fingerprint = p.acts.map(a => a.id || `${a.t}:${a.kind}:${a.beat || ""}`).join("|");
+      const key = `ntrdiary:${g.id}:${p.key}:${strHash(fingerprint)}`;
+      const r = await genPost(key, ntrDiaryMsgs(g, su, p), 0);
+      if (r?.status === "done" && r.result) {
+        g.summoner.ntrDiary[p.key] = {
+          key: p.key,
+          sessionId: p.sessionId,
+          label: p.label,
+          text: String(r.result).trim(),
+          outline: p.outline,
+          at: Date.now(),
+          actIds: p.acts.map(a => a.id).filter(Boolean),
+        };
+        dirty = true;
+        scheduleSave();
+        // 日記僅 AI 內部用，不刷新詳情 UI
+      }
+      if (++n >= 2) return;
+    }
+  }
+}
+
 // 懷孕/娶走:她脫離魅魔身分、跟召喚師走,永久消失(只留日誌)
 function marryAway(s) {
   const su = summonerById(s.summoner.id);
@@ -6043,7 +6613,14 @@ function checkSummonerDraws() {
         const isDate = Math.random() < (su?.dateChance ?? 0.5);
         const loc = isDate ? (su?.spots?.length ? pick(su.spots).name : pick(DATE_SPOTS)[0]) : null;
         const dur = isDate ? 1 : randInt(2, 5);   // 約會 1 小時;召喚 2~5 小時
-        s.summoner.taken = { type: isDate ? "date" : "kanban", location: loc, until: at + dur * HOUR, actAt: at };
+        s.summoner.taken = {
+          type: isDate ? "date" : "kanban",
+          location: loc,
+          until: at + dur * HOUR,
+          actAt: at,
+          startedAt: at,
+          sessionId: uid(),
+        };
       }
       s.nextDraw += step;
       changed = true;
@@ -6146,13 +6723,27 @@ async function simSync(force = false) {
       if (watchWith === s.id || (chatWith === s.id && chatSession)) continue;
       let rel = rels[s.id] ?? null;
       // 伺服器 act 文字常為 null(由手機背景 gen 填);覆蓋鏡像時保留本地已生成的 text,避免預生白做
-      if (rel && s.summoner?.acts?.length) {
+      // 保留客戶端專屬欄位／本地多出的 act（內部日記、感應中被叫走產的 slot）
+      const localDiary = s.summoner?.ntrDiary || null;
+      const localActs = s.summoner?.acts || [];
+      if (rel && localActs.length) {
         const localText = Object.fromEntries(
-          (s.summoner.acts || []).filter(a => a.id && a.text).map(a => [a.id, a.text]));
-        if (Object.keys(localText).length) {
-          rel = { ...rel, acts: (rel.acts || []).map(a =>
-            (!a.text && localText[a.id]) ? { ...a, text: localText[a.id] } : a) };
-        }
+          localActs.filter(a => a.id && a.text).map(a => [a.id, a.text]));
+        const localById = Object.fromEntries(localActs.filter(a => a.id).map(a => [a.id, a]));
+        const serverIds = new Set((rel.acts || []).map(a => a.id).filter(Boolean));
+        let acts = (rel.acts || []).map(a => {
+          if (!a.text && localText[a.id]) return { ...a, text: localText[a.id] };
+          // 保留本地標記（fromSenseSnatch 等）
+          if (localById[a.id]?.fromSenseSnatch) return { ...a, fromSenseSnatch: true, text: a.text || localById[a.id].text || null };
+          return a;
+        });
+        // 伺服器尚無、本地剛 push 的 act（感應 snatch）併入
+        const extras = localActs.filter(a => a.id && !serverIds.has(a.id));
+        if (extras.length) acts = [...acts, ...extras].slice(-ACT_CAP);
+        rel = { ...rel, acts };
+      }
+      if (rel && localDiary && typeof localDiary === "object") {
+        rel = { ...rel, ntrDiary: { ...localDiary, ...(rel.ntrDiary || {}) } };
       }
       if (JSON.stringify(s.summoner ?? null) !== JSON.stringify(rel)) { s.summoner = rel; changed = true; }
     }
@@ -6232,36 +6823,195 @@ function restingSuccubus() {
   return alive[alive.length - 1] || null;
 }
 
-function summonKanban(id) {
+/**
+ * 召喚看板娘。
+ * 正式入口：感應聊天框輸入咒語（免費）。
+ * @param {string} id
+ * @param {{ skipTakenCheck?: boolean }} [opts] skipTakenCheck：已先搶回 taken 時略過檢查
+ */
+function summonKanban(id, opts = {}) {
   const s = state.succubi.find(x => x.id === id);
-  if (!s || s.ntr) return;
-  if (isKanban(id)) { toast("她已經在店頭了", ""); return; }
-  // 她正被另一位召喚師召喚走:你的召喚傳不到她那裡——這段時間不能把她叫來當看板娘
-  if (s.summoner?.taken) {
+  if (!s || s.ntr) return { ok: false, err: "找不到她" };
+  if (isKanban(id)) return { ok: false, err: "她已經在店頭了" };
+  if (!opts.skipTakenCheck && s.summoner?.taken) {
     const su = summonerById(s.summoner.id);
-    toast(`${s.name} 正被 ${su?.name || "另一個召喚師"} 召喚走——你的召喚傳不到她那裡`, "bad");
-    return;
+    return { ok: false, err: `${s.name} 正被 ${su?.name || "另一個召喚師"} 召喚走——試試感應裡念咒語搶回（1/10）` };
   }
   if (cardSystemOn() && Cards.sessionActive(state)) {
-    // 重整後常見：session 還在但牌桌 UI 沒開 → 先幫打開，勿只擋路
     const rec = resumeOrRecoverCardSession({ forceUi: true });
     const nm = rec.girlName || "她";
-    toast(`先結束與 ${nm} 的牌局（已幫你打開牌桌；左上「結束」會解除看板）`, "bad");
-    return;
+    return { ok: false, err: `先結束與 ${nm} 的牌局` };
   }
-  const cost = kanbanCost();
-  if (state.gold < cost) { toast(`召喚第 ${kanbanSuccubi().length + 1} 位看板娘需 ${cost} 金`, "bad"); return; }
-  state.gold -= cost;
+  // 咒語召喚：不扣金
   (state.kanbans ??= []).push({ id, until: Date.now() + kanbanHours() * HOUR });
   state.lastKanbanId = id;
-  log(`召喚 ${s.name} 為看板娘 -${cost} 金(第 ${state.kanbans.length} 位)`);
+  log(`咒語召喚 ${s.name} 為看板娘（免費）`);
   toast(`${s.name} 來到店頭——右下角可開始打牌`, "good");
-  // 時機：按下「召喚為看板娘」當下 → 背景織「全身 full」
-  // 織完立刻替換主畫面站姿立繪（#kanban-girl）。1/3 另換半身。
   syncPortraitCgCache(s);
   scheduleSave();
-  renderAll(); // 先讓她站上店頭（可能還是舊圖／剪影）
-  weaveKanbanArrival(s); // 完成後 replaceKanbanFullStand
+  renderAll();
+  weaveKanbanArrival(s);
+  return { ok: true, cost: 0, girl: s.name };
+}
+
+/**
+ * 被帶走中：咒語 1/10 搶回（清 taken + 召到店頭）。
+ * 失敗只消耗這次施咒意圖，不進 AI 聊天。
+ */
+function trySpellRescueFromTaken(s) {
+  if (!s || !isSummonerTaken(s)) return { ok: false, rescued: false, err: "她沒有被帶走" };
+  const su = summonerById(s.summoner.id);
+  const suName = su?.name || "另一個召喚師";
+  if (Math.random() >= SPELL_TAKEN_RESCUE_RATE) {
+    log(`咒語搶回 ${s.name} 失敗（被 ${suName} 扣著）`);
+    return {
+      ok: false,
+      rescued: false,
+      err: `咒語碰到了，但 ${suName} 扣著 ${s.name}……沒拉回來（1/10）`,
+    };
+  }
+  // 成功掙脫這次帶走
+  s.summoner.taken = null;
+  try { simRescueOf(s); } catch { /* */ }
+  log(`咒語搶回 ${s.name}——掙脫 ${suName} 的召喚`);
+  const r = summonKanban(s.id, { skipTakenCheck: true });
+  if (!r.ok) {
+    // 已清 taken 但上不了看板（極少：已在店頭／牌局）
+    toast(`${s.name} 掙脫了 ${suName}！${r.err || ""}`, "good");
+    scheduleSave();
+    return { ok: true, rescued: true, kanban: false, err: r.err };
+  }
+  return { ok: true, rescued: true, kanban: true };
+}
+
+/**
+ * 感應中被帶走：對方召喚師當場把她叫去調戲。
+ * 產一次調教 act（供內部 NTR 日記）→ 她說被叫走 → 結束感應。
+ */
+async function senseTakenRivalSnatch(s, opts = {}) {
+  if (!s || !chatSession || chatSession.type !== "sense") return;
+  const su = summonerById(s.summoner?.id);
+  const suName = su?.name || "那個男人";
+  ensureTakenSessionMeta(s);
+  // 產日記素材：一次 act slot（flirt 或 mating）
+  const snatchAt = Date.now();
+  let married = false;
+  try {
+    married = !!processActSlot(s, snatchAt);
+  } catch (e) {
+    console.warn("sense snatch act", e);
+  }
+  // 標記本批 act，日記生成可辨識「感應中被叫走」
+  try {
+    for (const a of (s.summoner?.acts || [])) {
+      if (a && Math.abs((a.t || 0) - snatchAt) < 3000) a.fromSenseSnatch = true;
+    }
+  } catch { /* */ }
+  try { genNtrDiaryOrders(); } catch { /* */ }
+
+  vnTyping(true);
+  let reply = "";
+  if (!opts.forceCanned && state.settings?.model) {
+    const inst = [
+      `（旁白：感應通話中途，另一位召喚師「${suName}」把你當場叫走，要調戲／玩弄你。`,
+      "用 1～2 句跟通話中的人說——你被叫走了、得掛了、他在叫你之類。",
+      "完全依人設、與通話者的關係、與對方召喚師的關係、以及當下處境。",
+      "只輸出台詞，不要長篇，不要解釋遊戲規則。）",
+    ].join("");
+    try {
+      reply = await llmReply(s, acc => vnShow(s.name, acc, "ai"), inst);
+    } catch {
+      reply = "";
+    }
+  }
+  if (!String(reply || "").trim()) {
+    reply = pick([
+      `……等一下，${suName}在叫我……我得走了。`,
+      `${suName}……他又叫我了，感應先斷。`,
+      `抱歉……他那邊在叫，我——先這樣。`,
+      `……他叫我過去。掛了。`,
+    ]);
+    vnShow(s.name, reply, "ai");
+  }
+  s.history ??= [];
+  s.history.push({ role: "assistant", content: reply, t: Date.now() });
+  s.history = s.history.slice(-200);
+  applyChatMood(s, reply);
+  vnDone();
+  chatSession.ended = true;
+  chatSession.busy = true;
+  setChatWaiting(true);
+  dirty = true;
+  saveNow();
+  log(`${s.name} 被 ${suName} 從感應中叫走調戲`);
+  toast(`${s.name} 被 ${suName} 叫走了……感應中斷`, "bad");
+  if (married) {
+    // processActSlot 可能已 marryAway
+    setTimeout(() => { try { exitChat(); } catch { /* */ } renderAll(); }, 1200);
+    return;
+  }
+  setTimeout(() => {
+    try { exitChat(); } catch { /* */ }
+    renderAll();
+  }, 1400);
+}
+
+/**
+ * 感應聊天中輸入咒語？
+ * 僅在 sense 對話、且咒語對應「目前這位」時施放。
+ * ・未帶走：免費召到店頭
+ * ・已帶走：1/10 搶回並召到店頭；失敗則咒語無效（不進 AI）
+ * 回 true = 已當咒語處理（不要再當普通聊天送出）。
+ */
+function tryCastSpellInSenseChat(s, raw) {
+  if (!s || chatSession?.type !== "sense") return false;
+  const spell = String(raw || "").trim();
+  if (!spell) return false;
+  ensureSummonSpell(s);
+  // 必須是「正在感應的這位」的咒語（避免串台）
+  if (spell !== s.summonSpell) return false;
+
+  // 被帶走：1/10 搶回
+  if (isSummonerTaken(s)) {
+    const rr = trySpellRescueFromTaken(s);
+    if (!rr.ok) {
+      toast(rr.err || "搶回失敗", "bad");
+      try {
+        vnShow("", `—— 咒語「${spell}」沒拉回 ${s.name} ——`, "sys");
+      } catch { /* */ }
+      return true;
+    }
+    try {
+      vnShow("", `—— 咒語「${spell}」搶回成功！${s.name} 掙脫並來到店頭 ——`, "sys");
+    } catch { /* */ }
+    toast(`${s.name} 被咒語搶回來了！`, "good");
+    setTimeout(() => {
+      try { exitChat(); } catch { /* */ }
+      renderAll();
+    }, 900);
+    return true;
+  }
+
+  const r = summonKanban(s.id);
+  if (!r.ok) {
+    toast(r.err, "bad");
+    // 咒語對了但召喚失敗（已在店頭等）→ 仍算「施咒意圖」，不送當聊天
+    return true;
+  }
+  // 成功：結束感應聊天，她已在店頭
+  try {
+    vnShow("", `—— 咒語「${spell}」生效，${s.name} 被召到店頭 ——`, "sys");
+  } catch { /* */ }
+  setTimeout(() => {
+    try { exitChat(); } catch { /* */ }
+    renderAll();
+  }, 900);
+  return true;
+}
+
+/** 商店列表：未 NTR 的妹子（含已在看板，方便對照咒語） */
+function spellListedGirls() {
+  return (state.succubi || []).filter(s => s && !s.ntr);
 }
 
 // 到期解除(每秒 tick 呼叫);逐位到期、不提醒玩家。回傳是否有變化
@@ -6433,14 +7183,19 @@ function girlSVG(fill, scale = 6) {
   return `<svg viewBox="0 0 16 22" width="${16 * scale}" height="${22 * scale}" shape-rendering="crispEdges">${px.map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`).join("")}</svg>`;
 }
 
-// 召喚三連拍:一位妹子固定出三張,各處各取所需。
+// 立繪 fallback：
 //   head 大頭照 → 名冊縮圖、聊天頭像
-//   half 半身   → 詳細頁(身份)、看板娘
-//   full 全身   → 召喚結果卡(第一次見到她,要看完整形體)
+//   half 半身   → 詳細頁／聊天立繪（可退 half_xi）
+//   half_xi/nu/ai/le → 喜怒哀樂
+//   full 全身   → 看板娘
 const SHOT_FALLBACK = {
-  head: ["head", "half", "full"],
-  half: ["half", "full", "head"],
-  full: ["full", "half", "head"],
+  head: ["head", "half", "half_xi", "full"],
+  half: ["half", "half_xi", "full", "head"],
+  half_xi: ["half_xi", "half", "half_le", "full"],
+  half_nu: ["half_nu", "half", "half_xi", "full"],
+  half_ai: ["half_ai", "half", "half_xi", "full"],
+  half_le: ["half_le", "half", "half_xi", "full"],
+  full: ["full", "half", "half_xi", "head"],
 };
 
 // 想要的那張還沒生好就退而求其次,而不是掉回剪影——有圖總比沒圖好
@@ -6450,7 +7205,26 @@ function girlShot(s, kind = "half") {
   return s?.portrait || "";   // 舊存檔只有單張
 }
 
-const SHOT_LABEL = { head: "大頭照", half: "半身", full: "全身" };
+/** 聊天立繪：依情緒鍵 xi/nu/ai/le 取半身 */
+function girlShotMood(s, mood = "xi") {
+  const key = HALF_EMOTIONS[mood]?.shot || "half_xi";
+  return girlShot(s, key) || girlShot(s, "half");
+}
+
+const SHOT_LABEL = {
+  head: "大頭照", half: "半身", full: "全身",
+  half_xi: "半身·喜", half_nu: "半身·怒", half_ai: "半身·哀", half_le: "半身·樂",
+};
+
+/** 依台詞粗判喜怒哀樂（聊天切立繪） */
+function moodFromText(text) {
+  const t = String(text || "");
+  if (/怒|氣|滾|煩|恨|吵|去死|混蛋|可惡|瞪|火大|不爽/.test(t)) return "nu";
+  if (/哭|難過|傷心|哀|對不起|抱歉|嗚|委屈|寂寞|寂寞|怕|害怕|不要丟/.test(t)) return "ai";
+  if (/哈哈|嘻|開心|好開心|喜歡|愛你|嘿嘿|呀|♪|♡|❤|樂|太棒|耶/.test(t)) return "le";
+  if (/笑|嗯嗯|好呀|可以|嗯|♡|嘻嘻|嘿嘿|溫柔/.test(t)) return "xi";
+  return "xi";
+}
 
 // 詳細頁那行:缺哪幾張、能不能現在補。ComfyUI 是本機顯卡,隨時可織;
 // Grok 是雲端訂單,維持原本只有訂單模式才給按的規則。
@@ -6483,7 +7257,8 @@ function shotsLine(s) {
 // 對已經生好的立繪重摳一次。補裝 Pillow 之後、或摳失敗想再試一次時用——
 // 不必重生(那要再燒一次 GPU),伺服器直接對現有檔案再跑一遍去背。
 async function recutShots(s) {
-  const urls = ["full", "half", "head"].map(k => s.portraits?.[k]).filter(Boolean);
+  const urls = ["full", "half", "head", "half_xi", "half_nu", "half_ai", "half_le"]
+    .map(k => s.portraits?.[k]).filter(Boolean);
   if (!urls.length) return;
   toast("重新去背中……");
   let ok = 0, last = "";
@@ -6561,6 +7336,8 @@ setInterval(() => {
   // 伺服器世界時鐘:每 15 秒同步一次(拿權威 outcome + 召喚師鏡像);與上面的在地檢查各自獨立
   try { if (Date.now() - lastSimSyncAt > 15000) simSync(); } catch (e) { console.error("simSync 失敗:", e); }
   try { genTick(); } catch (e) { console.error("genTick 失敗:", e); }   // 代工生成:下單+收貨
+  // 立繪 12 小時整組刷新（full/half/head + 喜怒哀樂）
+  try { tickPortraitRefresh(); } catch (e) { console.error("portraitRefresh 失敗:", e); }
 
   if (changed) { scheduleSave(); renderAll(); }
 }, 1000);
@@ -7126,6 +7903,36 @@ function renderShop() {
 
   renderCardShopPanel();
   renderPlayerAttrs();
+  renderSpellSummonPanel();
+}
+
+/**
+ * 商店最下方：只顯示咒語（查表用）。
+ * 施咒在「感應聊天」的輸入框：接通後打出咒語 → 她到店頭當看板。
+ */
+function renderSpellSummonPanel() {
+  const root = document.getElementById("spell-summon-panel");
+  if (!root) return;
+  const list = spellListedGirls();
+  for (const s of list) ensureSummonSpell(s);
+  const listHtml = list.length
+    ? list.map(s => {
+        const sp = ensureSummonSpell(s);
+        // 只寫名字＋咒語，不標被帶走／店頭等狀態
+        return `<div class="spell-row">
+          <span class="spell-name">${esc(s.name)}</span>
+          <code class="spell-code">${esc(sp)}</code>
+        </div>`;
+      }).join("")
+    : `<p class="dim small">名冊還沒有可召喚的妹子。</p>`;
+
+  root.innerHTML = `
+    <h2>召喚咒語</h2>
+    <p class="dim small">系統為每位妹子產生一組咒語。<br>
+    <b>流程：</b>在這裡記住咒語 → 名冊「感應」接通 → 聊天框輸入咒語（免費召到店頭）。<br>
+    <b>被帶走時：</b>同一咒語有 <b>1/10</b> 機率搶回；感應每句對話有 <b>1/4</b> 可能被對方當場叫走調戲（斷線）。</p>
+    <div class="spell-list">${listHtml}</div>
+  `;
 }
 
 // ===== v6 互動牌制：商店貨架／牌庫／創角／牌桌 =====
@@ -8727,11 +9534,14 @@ function applyNtrL6Outcome() {
     const hours = Math.max(4, (typeof kanbanHours === "function" ? kanbanHours() : 4) + 2);
     const su = summonerById(girl.summoner?.id);
     const loc = (su?.spots?.length ? pick(su.spots).name : null) || "他的據點";
+    const nowTk = Date.now();
     girl.summoner.taken = {
       type: "kanban",
       location: loc,
-      until: Date.now() + hours * HOUR,
-      actAt: Date.now(),
+      until: nowTk + hours * HOUR,
+      actAt: nowTk,
+      startedAt: nowTk,
+      sessionId: uid(),
       fromNtrDateEnd: true,
     };
     // 關係至少推進一階（被帶走當看板）
@@ -10749,7 +11559,7 @@ function renderPlayerAttrs() {
 // 聊天插播層:蓋在所有分頁之上,只有「結束對話」能退出
 // 聊天畫面的她:名字旁的小頭像(head)+ 對話框上方的立繪(half,已去背)。
 // 沒有(舊存檔、還沒織完)就整個藏起來,不留破圖框。
-function vnFace(s) {
+function vnFace(s, mood = null) {
   const face = $("#vn-face");
   if (face) {
     const url = s ? girlShot(s, "head") : "";
@@ -10759,12 +11569,12 @@ function vnFace(s) {
   }
   const fig = $("#vn-figure");
   if (fig) {
-    // 立繪只認 half:head 是方形大頭照,拉大當立繪只會變成一顆浮在半空的頭
-    const url = s?.portraits?.half || "";
+    // 半身／喜怒哀樂：聊天主立繪（head 不當立繪）
+    const m = mood || chatSession?.mood || "xi";
+    const url = s ? (girlShotMood(s, m) || s.portraits?.half || "") : "";
     fig.classList.toggle("hidden", !url);
     if (url && fig.getAttribute("src") !== url) fig.src = url;
     fig.alt = s?.name || "";
-    // 有立繪時背景那尊看板娘要讓位,不然同一個人站兩次
     document.body.classList.toggle("has-figure", !!url);
   }
 }
@@ -10827,10 +11637,15 @@ function renderChatView() {
       document.body.classList.remove("chat-mode");
     } else {
       chatV.classList.remove("hidden");
-      $("#chat-title").textContent = chatSession.type === "date"
-        ? `${cs.name}・${chatSession.location}約會中`
-        : `${cs.name}・聊天中`;
-      vnFace(cs);
+      inputRow?.classList.remove("hidden");
+      if (chatSession?.type === "date") {
+        $("#chat-title").textContent = `${cs.name}・${chatSession.location}約會中`;
+      } else if (chatSession?.type === "sense") {
+        $("#chat-title").textContent = `${cs.name}・感應中`;
+      } else {
+        $("#chat-title").textContent = `${cs.name}・聊天中`;
+      }
+      vnFace(cs, chatSession?.mood || "xi");
       return;
     }
   }
@@ -10896,143 +11711,41 @@ function renderSuccubi() {
 
 function renderDetail(s, root) {
   const asleep = isAsleep();
-  const st = needStatus(s);
-  const ns = nextStage(s);
   const today = dayNum();
-  const datesLeft = datesLeftToday(s);
-  // 電話鈕文案：被召喚 → 窺視（不限次）；沒被召喚 → 約會（顯示今日剩餘）
   const takenAway = isSummonerTaken(s);
-  let dateBtnLabel;
-  if (takenAway) {
-    dateBtnLabel = "電話（窺視）";
-  } else if (cardSystemOn()) {
-    dateBtnLabel = datesLeft > 0 ? `電話（今剩 ${datesLeft}）` : "電話（今日已滿）";
-  } else {
-    dateBtnLabel = datesLeft > 0 ? `約會（今剩 ${datesLeft}）` : "約會（今日已滿）";
-  }
+  const senseHint = takenAway
+    ? `被帶走中 · ${SENSE_COST} 金 · 1/6 接通 · 每句 1/4 可能被對方叫走 · 咒語 1/10 搶回`
+    : `${SENSE_COST} 金 · 1/3 接通 · 可一直聊（咒語／她掰掰／你離開才結束）`;
 
-  let needLine;
-  if (s.ntr) {
-    needLine = `<div class="ntr-note">她被另一位召喚師奪走了。剩 ${s.ntr.deadlineDay - today} 天可贖回(${RANSOM[s.stage]} 金)</div>`;
-  } else {
-    const interactWord = freeChatRetired() ? "靠近／互動" : "聊";
-    const bits = [`每 ${CHAT_GAP[s.rarity]} 天至少${interactWord} 1 次`];
-    if (DATE_GAP[s.rarity]) bits.push(`每 ${DATE_GAP[s.rarity]} 天至少約會 1 次`);
-    if (!takenAway) bits.push(`約會一天最多 ${dateLimitPerDay()} 次（今剩 ${datesLeft}）`);
-    const stTxt = { ok: "心情不錯", due: "今天想見你", danger: "快要離開了!" }[st];
-    needLine = `<div class="aff-line dim small">${bits.join(" / ")} — ${stTxt}</div>`;
-  }
-  // 被別的召喚師纏上:名字 + 關係階段；被帶走時提示打電話窺視
-  let summonerLine = "";
-  if (s.summoner && !s.ntr) {
-    const su = summonerById(s.summoner.id);
-    const nm = su?.name || "召喚師";
-    const em = su?.emoji ? `${su.emoji} ` : "";
-    const takenNote = takenAway
-      ? `<div class="summoner-note" style="opacity:.9">📞 被帶走中——可一直打電話（1/5 接通）；只播已有片段，沒了會說在忙。不佔約會次數。</div>`
-      : "";
-    summonerLine = `<div class="summoner-note">⚠ ${em}<b>${esc(nm)}</b> · ${esc(rivalStageName(s.summoner.stage ?? 0))}</div>${takenNote}`;
-  }
-
-  // 破除纏身:獻祭一名祭品 → ≥2 人被纏則隨機解一人;僅 1 人則 1/3(機率不對玩家顯示)
-  const entangledOthers = state.succubi.filter(x => x.id !== s.id && x.summoner && !x.ntr);
-  const anyEntangled = !!(s.summoner && !s.ntr) || entangledOthers.length > 0;
-  const severOffers = anyEntangled
-    ? state.succubi.filter(x => !x.ntr && canSacrifice(x) && (
-        state.succubi.some(y => y.id !== x.id && y.summoner && !y.ntr)
-      ))
-    : [];
-  const severFee = dismissPriceToday();
-  const entangledCount = state.succubi.filter(x => x.summoner && !x.ntr).length;
-  let severBlock = "";
-  if (anyEntangled && !severOffers.length) {
-    severBlock = entangledCount ? "需要可獻祭的祭品" : "沒有被纏住的魅魔";
-  }
-
+  // 精簡詳情：肖像（長按獻祭）→ 名 → 天賦 → 時間表 → 感應
   root.className = `r-${s.rarity}`;
   root.innerHTML = `
     <div class="panel">
       <button class="back-btn" id="detail-back">‹ 名冊</button>
-      <div class="portrait">${girlPortrait(s, 6, "half")}</div>
+      <div class="portrait detail-portrait" id="detail-portrait" title="長按獻祭">
+        ${girlPortrait(s, 6, "half")}
+        <div class="dim small" style="margin-top:.35em;opacity:.75">長按立繪可獻祭</div>
+      </div>
       <div class="aff-line">
         <b>${esc(s.name)}</b> <span class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</span>
         ・${s.ntr ? "被奪走" : stageLabel(s.stage)}
+        ${takenAway ? `<span class="stage-chip" style="color:var(--red)">被召喚走</span>` : ""}
+        ${isKanban(s.id) ? `<span class="stage-chip" style="color:var(--gold)">★ 在店頭</span>` : ""}
       </div>
       ${s.backstory ? `<div class="aff-line dim small" style="max-width:32em;margin:0 auto">${esc(s.backstory)}</div>` : ""}
+      ${!s.ntr ? `<div class="aff-line dim small">天賦：${esc(giftLabel(s.gift))}</div>` : ""}
       ${s.schedule ? `<div class="schedule">${SCHEDULE_SLOTS.map(k => {
         const now = timeSlot() === k;
         return `<div class="sch-row${now ? " now" : ""}"><span class="sch-t">${SLOT_LABEL[k]}</span><span>${esc(s.schedule[k])}</span></div>`;
       }).join("")}</div>` : ""}
-      <div class="aff-line">情感 <b>${s.affection}</b>${ns && !s.ntr ? ` <span class="dim small">/ ${ns[2]} 升【${ns[1]}】</span>` : ""}</div>
-      ${!s.ntr ? craveLine(s) : ""}
-      ${needLine}
-      ${summonerLine}
-      ${anyEntangled ? `
-        <div class="detail-actions">
-          <button class="danger-btn" id="act-sever" ${severOffers.length ? "" : "disabled"}>
-            ${severOffers.length
-              ? `破除纏身(獻祭・${severFee} 金)`
-              : `破除纏身(${esc(severBlock)})`}
-          </button>
-        </div>
-        ${severChooser ? `
-          <div class="chooser" style="justify-content:center;flex-wrap:wrap;gap:.4em">
-            <div class="dim small" style="width:100%;text-align:center;margin:.3em 0 .2em">選祭品(永遠消失)</div>
-            ${severOffers.map(o =>
-              `<button type="button" data-sever-offer="${esc(o.id)}" class="danger-btn">${esc(o.name)} · ${o.rarity} · ${stageLabel(o.stage)}</button>`
-            ).join("")}
-            <button type="button" data-sever-cancel>取消</button>
-          </div>` : ""}
-      ` : ""}
-      ${shotsLine(s)}
-      <div class="detail-actions">
+      ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
+      <div class="detail-actions" style="margin-top:.8em">
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
-          : (() => {
-              // 被帶走 → 可連打；沒帶走 → 一天兩次（canPressPhone）
-              const phoneDisabled = !canPressPhone(s);
-              return `<button class="cyan" id="act-date" ${phoneDisabled ? "disabled" : ""}>${esc(dateBtnLabel)}</button>
-             ${isKanban(s.id)
-               ? `<button disabled>★ 看板娘(陪伴中)</button>
-                  ${cardSystemOn() ? `<button class="cyan" id="act-cardtable" ${asleep ? "disabled" : ""}>✦ 靠近她</button>` : ""}`
-               : takenAway
-                 ? `<button disabled>召喚不到她(被召喚走)</button>`
-                 : `<button id="act-kanban">召喚為看板娘(${kanbanCost()} 金)</button>`}`;
-            })()}
+          : `<button class="cyan" id="act-sense" ${asleep || state.gold < SENSE_COST ? "disabled" : ""} title="${esc(senseHint)}">感應（${SENSE_COST} 金）</button>
+             <div class="dim small" style="width:100%;text-align:center;margin-top:.35em">${esc(senseHint)}</div>
+             <div class="dim small" style="width:100%;text-align:center;margin-top:.25em">看板：商店記咒語 → 感應接通 → 聊天框輸入咒語</div>`}
       </div>
-      ${(() => {
-        if (!dateChooser || s.ntr || isKanban(s.id)) return "";
-        if (cardSystemOn() && dateFlow?.girlId === s.id && dateFlow.venueId) {
-          const v = venueById(dateFlow.venueId);
-          const fee = Number(v?.fee) || 0;
-          const canPay = state.gold >= fee;
-          return `<div class="chooser date-venues" style="justify-content:center;flex-wrap:wrap;gap:.4em">
-            <div class="dim small" style="width:100%;text-align:center;margin:.3em 0 .2em">
-              她接了（電話 −${dateFlow.phoneCost ?? 1} 金）。抽到 <b>${esc(v?.name || "？")}</b>
-              ${v?.desc ? ` — ${esc(v.desc)}` : ""}
-            </div>
-            <button type="button" class="cyan" id="date-go" ${canPay ? "" : "disabled"} title="${canPay ? "" : "金幣不夠"}">
-              ${canPay ? `去（${fee} 金）` : `不夠 ${fee} 金`}
-            </button>
-            <button type="button" id="date-decline">不去了</button>
-          </div>`;
-        }
-        if (!cardSystemOn()) {
-          return `<div class="chooser" style="justify-content:center">${dateChoices.map(([l]) => `<button data-loc="${l}">${l}</button>`).join("")}<button data-reroll title="換一批">🎲</button></div>`;
-        }
-        return "";
-      })()}
-      ${!s.ntr && !cardSystemOn() ? `<div class="aff-line dim small">淫紋出現率 <b>${Math.round(crestChance(s) * 100)}%</b></div>` : ""}
-      ${asleep ? `<div class="aff-line dim small">(睡眠時段——她回夢境了)</div>` : ""}
-      ${!s.ntr ? `<div class="aff-line dim small">天賦:${esc(giftLabel(s.gift))}</div>
-        ${SAC_RITUAL ? `<div class="aff-line dim small">${sacScriptReady(s)
-          ? "獻祭文已備妥"
-          : (isAsleep() ? "獻祭文織夢中…" : "獻祭文於 01:00 起在夢中織就")}</div>` : ""}
-        <div class="detail-actions"><button class="danger-btn" id="act-dismiss" ${canSacrifice(s) ? "" : "disabled"}>${
-          canSacrifice(s)
-            ? `獻祭(${dismissPriceToday()} 金)`
-            : sacrificeBlockReason(s)
-        }</button></div>` : ""}
     </div>`;
 
   root.querySelector("#detail-back").onclick = () => {
@@ -11042,48 +11755,34 @@ function renderDetail(s, root) {
     severChooser = false;
     renderAll();
   };
-  root.querySelector("#act-sever")?.addEventListener("click", () => {
-    if (!severOffers.length) { toast(severBlock || "無法破除", "bad"); return; }
-    severChooser = !severChooser;
-    renderAll();
-  });
-  root.querySelectorAll("[data-sever-offer]").forEach(b => {
-    b.onclick = () => severSummonerWithSacrifice(b.dataset.severOffer, s.id);
-  });
-  root.querySelector("[data-sever-cancel]")?.addEventListener("click", () => {
-    severChooser = false;
-    renderAll();
-  });
-  root.querySelector("#act-kanban")?.addEventListener("click", () => summonKanban(s.id));
-  root.querySelector("#act-cardtable")?.addEventListener("click", () => openKanbanTable(s.id));
-  root.querySelector("#act-weave")?.addEventListener("click", async () => {
-    toast(`為 ${s.name} 織出形體中……`, "good");
-    renderAll();   // 立即把按鈕切成「織出形體中…」
-    await weaveMissing(s);   // 只補缺的那幾張,已經有的不重生
-    const left = ["full", "half", "head"].filter(k => !s.portraits?.[k]);
-    toast(left.length ? `還差 ${left.map(k => SHOT_LABEL[k]).join("、")},稍後再試` : `${s.name} 成形了`,
-          left.length ? "bad" : "good");
-    renderAll();
-  });
-  root.querySelector("#act-recut")?.addEventListener("click", () => recutShots(s));
-  root.querySelector("#act-dismiss")?.addEventListener("click", () => sacrificeSuccubus(s.id));
-  root.querySelector("#act-date")?.addEventListener("click", () => {
-    if (cardSystemOn()) {
-      // 牌制：電話 → 2/3 接通 → 抽地點 → 確認是否付費去
-      beginDateFlow(s.id);
-      return;
-    }
-    dateChooser = !dateChooser;
-    if (dateChooser) dateChoices = pickN(DATE_SPOTS, 5);
-    renderAll();
-  });
-  root.querySelector("#date-go")?.addEventListener("click", () => {
-    if (dateFlow?.girlId === s.id) confirmDateVenue(s.id, dateFlow.venueId);
-  });
-  root.querySelector("#date-decline")?.addEventListener("click", () => declineDateVenue(s.id));
+
+  // 長按立繪 → 獻祭
+  const port = root.querySelector("#detail-portrait");
+  if (port && !s.ntr) {
+    let holdT = null;
+    const clearHold = () => { if (holdT) { clearTimeout(holdT); holdT = null; } };
+    const startHold = (e) => {
+      e.preventDefault?.();
+      clearHold();
+      holdT = setTimeout(() => {
+        holdT = null;
+        if (!canSacrifice(s)) {
+          toast(sacrificeBlockReason(s) || "現在不能獻祭", "bad");
+          return;
+        }
+        if (!confirm(`長按確認：獻祭「${s.name}」？\n費用 ${dismissPriceToday()} 金，她會永遠消失。`)) return;
+        sacrificeSuccubus(s.id);
+      }, 650);
+    };
+    port.addEventListener("pointerdown", startHold);
+    port.addEventListener("pointerup", clearHold);
+    port.addEventListener("pointerleave", clearHold);
+    port.addEventListener("pointercancel", clearHold);
+    port.addEventListener("contextmenu", e => e.preventDefault());
+  }
+
+  root.querySelector("#act-sense")?.addEventListener("click", () => beginSense(s.id));
   root.querySelector("#act-ransom")?.addEventListener("click", () => ransom(s.id));
-  root.querySelector("[data-reroll]")?.addEventListener("click", () => { dateChoices = pickN(DATE_SPOTS, 5); renderAll(); });
-  root.querySelectorAll("[data-loc]").forEach(b => b.onclick = () => enterChat(s.id, "date", b.dataset.loc));
 }
 
 function renderKanban() {
@@ -11302,7 +12001,7 @@ on("chat-back", "click", () => {
   if (watchWith) exitWatch(); else exitChat();
 });
 on("chat-send", "click", () => { if (chatSession?.ended) exitChat(); else sendChatMsg(); });
-on("chat-ask", "click", () => askAboutActs());
+// 詢問鈕已移除（感應／聊天不再用）
 on("watch-next", "click", () => { if (watchSession?.atEnd) exitWatch(); else watchNext(); });
 on("watch-end", "click", () => exitWatch());
 on("sac-done", "click", () => sacAdvance());
@@ -11597,7 +12296,12 @@ window.DBG = {
     const s = state.succubi.find(x => x.id === id);
     if (!s) return;
     s.summoner ??= makeSummonerRel(SUMMONERS[0]?.id);
-    s.summoner.taken = { type: "kanban", location: null, until: Date.now() + hours * HOUR, actAt: Date.now() };
+    const nowTk = Date.now();
+    s.summoner.taken = {
+      type: "kanban", location: null,
+      until: nowTk + hours * HOUR, actAt: nowTk,
+      startedAt: nowTk, sessionId: uid(),
+    };
     enterWatch(s, playerType);
   },
   summonKanban: (id) => summonKanban(id),
@@ -11676,6 +12380,25 @@ window.DBG = {
     freeChatRetired: freeChatRetired(), cardSystem: cardSystemOn(),
   }),
   render: () => renderAll(),   // 測試:手動改了 state 之後強制重畫
+  /** 立繪 12h 刷新：狀態 / 立刻整組重畫一人 */
+  portraitRefresh: (id) => {
+    const s = id ? state.succubi.find(x => x.id === id) : state.succubi[0];
+    if (!s) return { ok: false, err: "沒人" };
+    const at = s.portraitsRefreshedAt || 0;
+    return {
+      girl: s.name,
+      due: portraitsRefreshDue(s),
+      refreshedAt: at ? new Date(at).toLocaleString() : null,
+      nextInH: at ? Math.max(0, (PORTRAIT_REFRESH_MS - (Date.now() - at)) / 3600000).toFixed(2) : 0,
+      ms: PORTRAIT_REFRESH_MS,
+    };
+  },
+  portraitRefreshNow: (id) => {
+    const s = id ? state.succubi.find(x => x.id === id) : state.succubi[0];
+    if (!s) return { ok: false };
+    s.portraitsRefreshedAt = 0;
+    return refreshPortraitSet(s);
+  },
   // 測試/調 prompt:看她下一句實際會送出去的訊息陣列(system prompt + 這一場的上下文)
   chatPrompt: (id) => {
     if (freeChatRetired()) return { retired: true, note: "自由聊已退役；打牌用 cardPlay / bubble" };

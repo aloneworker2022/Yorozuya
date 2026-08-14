@@ -71,9 +71,15 @@ DEFAULT_CLIP_SKIP = int(os.environ.get("COMFY_CLIP_SKIP", "2"))
 # border_min 是去背的外框閘門(見 cutout.BORDER_MIN),依構圖分開給:
 # head 是 head-and-shoulders 的正方形構圖,肩膀本來就佔滿整條下緣,而一條邊
 # 就是外圈的四分之一——沿用 0.72 等於「大頭照永遠去不了背」。
+# half_xi/nu/ai/le = 半身喜怒哀樂（聊天立繪依情緒切換；規格同 half）
+_HALF_SPEC = {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72}
 PORTRAIT_SHOTS = {
     "head": {"gen": (1024, 1024), "out": (256, 256), "cutout": True, "border_min": 0.55},
-    "half": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
+    "half": dict(_HALF_SPEC),
+    "half_xi": dict(_HALF_SPEC),  # 喜
+    "half_nu": dict(_HALF_SPEC),  # 怒
+    "half_ai": dict(_HALF_SPEC),  # 哀
+    "half_le": dict(_HALF_SPEC),  # 樂
     "full": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
 }
 

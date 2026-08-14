@@ -129,6 +129,9 @@
         <h2>玩家屬性</h2>
         <div id="player-attrs" class="small"></div>
       </div>
+      <div class="panel sub" id="spell-summon-panel">
+        <!-- renderSpellSummonPanel：感應解鎖的召喚咒語 -->
+      </div>
     </section>
 
     <section class="page" id="page-succubi">
@@ -336,7 +339,6 @@
     <span id="vn-cursor" class="hidden">▼</span>
   </div>
   <div id="chat-input-row">
-    <button id="chat-ask" title="問她:你不在時發生了什麼?">詢問</button>
     <input id="chat-input" type="text" maxlength="300" placeholder="說點什麼…(Enter 送出)">
     <button id="chat-send">送出</button>
   </div>
@@ -394,6 +396,6 @@
   setTimeout(function () { sessionStorage.removeItem("healCount"); }, 10000);
 })();
 </script>
-<script type="module" src="app.js?v=42"></script>
+<script type="module" src="app.js?v=55"></script>
 </body>
 </html>

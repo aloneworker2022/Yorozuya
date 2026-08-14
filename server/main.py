@@ -900,10 +900,12 @@ async def _run_grok_image(
     part: str = "",
     ref: str = "",
     prompt_body: str = "",
+    do_cutout: bool = False,
 ) -> tuple[str, str | None]:
     """Grok Build + image_gen。成功回 (url_path, None),url 如 /assets/testword/xxx.png。
     part 給值(head0/bust0/lower0 或 head/bust/lower)= 只畫那一段;留空 = 舊行為的整張圖。
-    ref = 第一輪同段那張的 /assets/testword/… URL,第二輪拿它當參考圖。"""
+    ref = 第一輪同段那張的 /assets/testword/… URL,第二輪拿它當參考圖。
+    do_cutout=True：半身／立繪去背（平背景 + cutout）。"""
     IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
     part = (part or "").lower()
     stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
@@ -914,12 +916,16 @@ async def _run_grok_image(
     work.mkdir(parents=True, exist_ok=True)
     # 讓 agent 先寫進 work,再 copy 到 abs_out(路徑寫死在 prompt)
     target = abs_out  # absolute path in prompt
+    # 去背：extra 補平背景提示
+    extra_use = (extra or "").strip()
+    if do_cutout and "simple background" not in extra_use.lower():
+        extra_use = (extra_use + ", plain solid color background, simple background, no scenery").strip(", ")
     if part in IMG_PARTS:
         # prompt_body 有值 = 使用者在 testword 改過的版本,原樣送出(只補存檔路徑/參考圖)
         body = prompt_body.strip() or _seg_prompt_body(
             part=part, rating=rating, style=style,
             character=character,
-            name=name, personality=personality, backstory=backstory, extra=extra,
+            name=name, personality=personality, backstory=backstory, extra=extra_use,
         )
         prompt = _wrap_part_prompt(body, out_path=target, ref_path=_resolve_ref_image(ref))
     else:
@@ -927,7 +933,7 @@ async def _run_grok_image(
         prompt = _build_girl_image_prompt(
             framing=framing, rating=rating, style=style,
             character=character,
-            name=name, personality=personality, backstory=backstory, extra=extra,
+            name=name, personality=personality, backstory=backstory, extra=extra_use,
             out_path=target,
             ref_path=_resolve_ref_image(ref),
         )
@@ -962,6 +968,14 @@ async def _run_grok_image(
     except Exception:
         pass
     if found and found.is_file() and found.stat().st_size > 0:
+        if do_cutout and cutout.AVAILABLE:
+            try:
+                changed, why = await asyncio.to_thread(
+                    cutout.cut_background, found,
+                    cutout.TOLERANCE, float(cutout.BORDER_MIN), cutout.DILATE)
+                _note_cut(found.name, changed, why)
+            except Exception as e:
+                _note_cut(found.name, False, f"cutout err:{e}")
         return f"/assets/testword/{fname}", None
     msg = err or (text[:300] if text else "未產生圖片檔")
     return "", f"生圖失敗:{msg}"
@@ -1016,14 +1030,24 @@ def cutout_status():
     }
 
 
+def _portrait_shot_from_stem(stem: str) -> str:
+    """檔名 stem → shot 鍵。支援 half_xi 等（不可只 rsplit 最後一段，會變成 xi）。"""
+    s = (stem or "").lower()
+    for k in ("half_xi", "half_nu", "half_ai", "half_le", "half", "full", "head"):
+        if s.endswith("_" + k) or s == k:
+            return k
+    return s.rsplit("_", 1)[-1] if "_" in s else s
+
+
 @app.post("/api/cutout")
 async def cutout_run(body: CutIn):
     """對已存在的圖重跑去背。回 {changed, why}。"""
     p = _asset_path(body.url)
     if p is None:
         raise HTTPException(404, "找不到這張圖(只認 /assets/portraits/ 與 /assets/testword/)")
+    shot_key = _portrait_shot_from_stem(p.stem)
     bmin = body.border_min or (
-        comfy.PORTRAIT_SHOTS.get(p.stem.rsplit("_", 1)[-1], {}).get("border_min")
+        comfy.PORTRAIT_SHOTS.get(shot_key, {}).get("border_min")
         or cutout.BORDER_MIN)
     changed, why = await asyncio.to_thread(
         cutout.cut_background, p,
@@ -1049,6 +1073,10 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
     part = str(opts.get("part") or "").lower()
     # 三連拍的 shot 直接就是取景(head/half/full),蓋掉 framing
     shot = str(opts.get("shot") or "").lower()
+    # half_xi 等情緒半身用 half 取景
+    fr = "half" if shot.startswith("half") else shot
+    if fr not in sdtags.FRAMING:
+        fr = str(opts.get("framing") or "half")
     # 有 extra 且 lock_identity（出卡）→ 場景模式；純立繪仍 solo
     scene = bool(opts.get("lock_identity")) and bool(str(opts.get("extra") or "").strip())
     return sdtags.build_prompt(
@@ -1057,7 +1085,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         # 三連拍照規格走;testword 那條由勾選決定。
         flat_bg=bool(comfy.PORTRAIT_SHOTS.get(shot, {}).get("cutout")) or bool(opts.get("flat_bg")),
         part=part,
-        framing=shot if shot in sdtags.FRAMING else str(opts.get("framing") or "half"),
+        framing=fr,
         rating=str(opts.get("rating") or "sfw"),
         art_style=str(opts.get("style") or "anime"),
         skin=anchor["skin"],
@@ -1528,6 +1556,9 @@ def imggen_submit(t: ImgGenIn):
     allow_ref = bool(part in IMG_SEG_PARTS) or bool(ref_in and t.lock_identity) or bool(
         ref_in.startswith("/assets/portraits/") or ref_in.startswith("/assets/testword/")
     )
+    shot_in = (t.shot or "").strip().lower()
+    # 立繪 shot（含 half_xi 等）預設去背；前端 cutout 也可強制
+    portrait_cut = shot_in in comfy.PORTRAIT_SHOTS or bool(t.cutout)
     opts = {
         "kind": "girl_image",
         "part": part if part in IMG_PARTS else "",
@@ -1542,13 +1573,16 @@ def imggen_submit(t: ImgGenIn):
         "extra": t.extra or "",
         "outfit": t.outfit or "",
         "lock_identity": bool(t.lock_identity),
+        "shot": shot_in,
+        "char_id": (t.char_id or "").strip(),
+        "cutout": portrait_cut,
+        "flat_bg": bool(t.flat_bg or portrait_cut),
         # Comfy：prompt 有值才原樣送；出卡應留空，讓 _comfy_prompt_for 用人設 + extra
         # Grok：整張圖不吃前端 prompt（只在分段 part 時吃）
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS) else "",
     }
     if ep == "comfy-img":
         # 出卡場景：下單時就寫入隨機 seed，避免 worker 用舊邏輯／固定人設 seed 出同圖
-        shot_in = (t.shot or "").strip().lower()
         seed_in = int(t.seed or 0)
         if not seed_in and not shot_in:
             seed_in = secrets.randbelow(2**31 - 1) or 1
@@ -1563,10 +1597,6 @@ def imggen_submit(t: ImgGenIn):
             "cfg": float(t.cfg or 0),
             "seed": seed_in,
             "comfy_url": (t.comfy_url or "").strip(),
-            "shot": shot_in,
-            "char_id": (t.char_id or "").strip(),
-            "cutout": bool(t.cutout),
-            "flat_bg": bool(t.flat_bg or t.cutout),   # 要去背就一定要平背景
             "workflow": t.workflow if isinstance(t.workflow, dict) else None,
         })
     body = GenIn(
@@ -1736,6 +1766,9 @@ async def _gen_worker():
                     url, err = await _run_comfy_image(opts)
                     text = url or ""
                 elif endpoint == "grok-img":
+                    # 半身立繪／前端 cutout 旗：去背
+                    shot_g = str(opts.get("shot") or "").lower()
+                    want_cut = bool(opts.get("cutout")) or shot_g in comfy.PORTRAIT_SHOTS
                     url, err = await _run_grok_image(
                         model,
                         framing=str(opts.get("framing") or "half"),
@@ -1749,6 +1782,7 @@ async def _gen_worker():
                         part=str(opts.get("part") or ""),
                         ref=str(opts.get("ref") or ""),
                         prompt_body=str(opts.get("prompt") or ""),
+                        do_cutout=want_cut,
                     )
                     text = url or ""
                 elif endpoint in ("grok-build", "grok", "xai"):
