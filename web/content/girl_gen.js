@@ -101,7 +101,7 @@ function pickHobbies(arch, hobbyPool, n) {
  *  luck: 0~100(獻祭人數換算;越高越容易高評級)
  *  rating: 'sfw' | 'nsfw'(nsfw 項目的參與開關)
  *  usedNames: 已用名字(防撞)  */
-export function generateGirl({ luck = 0, rating = "sfw", usedNames = [] } = {}) {
+export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {}) {
   const F = POOLS?.female;
   if (!F) return null;
 

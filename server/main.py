@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import sqlite3
 import time
@@ -590,14 +591,39 @@ def _build_girl_image_prompt(
         if style == "pixel"
         else "High resolution illustration suitable for a game scene."
     )
+    extra_l = (extra or "").lower()
+    # NTR／雙人場面：ACTION 含 1man／sex／groping 等 → 必須畫兩人互動，禁止第一人稱立繪輕改
+    multi_scene = any(
+        k in extra_l
+        for k in (
+            "1man", "1boy", "2people", "2 people", "two people", "couple",
+            "other man", "man and woman", "man fucking", "groping",
+            "molestation", "sex", "fucking", "penetration",
+        )
+    )
+
     # 有立繪參考 → image_edit 鎖同一張臉；否則 image_gen + sheet
-    if ref_path is not None:
+    if ref_path is not None and multi_scene:
         tool_note = (
             f"You MUST use the image_edit tool with this reference image path:\n"
             f"{ref_path}\n"
-            "Keep the SAME woman: same face, hair color/style, eyes, body type, skin, outfit identity. "
-            "Only change pose, expression, gesture, and interaction to match ACTION. "
-            "Do NOT generate a different person. Do NOT redraw identity from scratch."
+            "This reference locks ONLY her face/hair/body identity.\n"
+            "This is a TWO-PERSON scene (1man + 1girl). Draw BOTH people interacting.\n"
+            "Camera MUST be third-person / side view / cinematic — NEVER first-person POV, "
+            "NEVER viewer hands, NEVER portrait staring at camera only.\n"
+            "Obey ACTION tags exactly (1man, 1girl, sex, fucking, groping, etc.).\n"
+            "Do NOT generate a different woman; the man may be a generic adult male."
+        )
+    elif ref_path is not None:
+        tool_note = (
+            f"You MUST use the image_edit tool with this reference image path:\n"
+            f"{ref_path}\n"
+            "This reference is her portrait template (same face, hair, body, outfit).\n"
+            "Edit lightly: keep identity; apply ACTION for expression (happy/shy/angry/etc.) "
+            "and simple pose (standing/sitting/walking).\n"
+            "Only if ACTION mentions male hands or special gaze (chest/thighs/looking away), "
+            "add that change — otherwise keep looking at viewer like the portrait.\n"
+            "Do NOT generate a different person."
         )
     elif style == "pixel":
         tool_note = (
@@ -611,30 +637,62 @@ def _build_girl_image_prompt(
     # extra 常帶出卡場面英文（visualEn + AI pose）；標成 ACTION，不覆蓋身份
     extra_block = ""
     if extra.strip():
-        extra_block = f"""
-=== ACTION / SCENE TO DRAW (pose & interaction ONLY — do NOT change identity) ===
+        if multi_scene:
+            extra_block = f"""
+=== ACTION / SCENE TO DRAW (MANDATORY — two-person NTR/interaction beat) ===
 {extra.strip()}
 === END ACTION ===
-Draw THIS interaction/action on the SAME woman from the CHARACTER SHEET
-{'(and reference image)' if ref_path is not None else ''}.
-Do NOT invent a blank idle look-away pose if the action is greeting, talking, touching, etc.
-Do NOT change hair, eyes, body type, or outfit identity to match a different character.
+CRITICAL COMPOSITION RULES:
+- Tags 1man + 1girl (or 1boy + 1girl) mean BOTH people must be visible and interacting.
+- Third-person camera only. NO first-person. NO from-his-POV. NO viewer hands in foreground.
+- The woman uses CHARACTER SHEET / reference face. The man is a second character in frame.
+- If ACTION contains sex / fucking / vaginal / penetration → draw intercourse between them.
+- If ACTION contains groping / molestation / breast grab → draw him groping her body.
+- If ACTION is clothed talking/walking → fully clothed couple interaction.
+- Do NOT output a solo portrait of only her looking at the camera.
+Do NOT change her hair, eyes, body type, or outfit identity unless ACTION undresses her.
+"""
+        else:
+            extra_block = f"""
+=== ACTION / SCENE TO DRAW (pose, camera, interaction — do NOT change identity) ===
+{extra.strip()}
+=== END ACTION ===
+Draw the SAME woman from the CHARACTER SHEET{(' / reference image' if ref_path is not None else '')}.
+EDIT RULES (portrait template base):
+- Start from the reference portrait look (same face, hair, outfit).
+- Apply ACTION: simple expression tags (happy/shy/angry/crying/etc.) and pose (standing/sitting/walking).
+- Keep looking at viewer UNLESS ACTION says looking away / looking at screen / scenery / special gaze.
+- Add male hands / first-person hands ONLY if ACTION mentions them.
+- Special gaze (chest/thighs/away) ONLY if ACTION mentions them.
+- Do NOT invent complex new camera blocking; light edit of the portrait is preferred.
+Do NOT change hair, eyes, body type, or outfit identity.
 """
 
     ref_block = ""
     if ref_path is not None:
-        ref_block = f"""
+        if multi_scene:
+            ref_block = f"""
+=== REFERENCE PORTRAIT (HER IDENTITY ONLY — not the final composition) ===
+File: {ref_path}
+Use this only for her face/hair/body match. Final image MUST show the full ACTION scene
+(1man + 1girl interaction, third-person), not a copy of this solo portrait pose.
+=== END REFERENCE ===
+"""
+        else:
+            ref_block = f"""
 === REFERENCE PORTRAIT (SAME PERSON — identity lock) ===
 File: {ref_path}
-This is her half/full portrait already approved in-game. Match this face exactly.
+Match this face and identity only. Do NOT copy the portrait's square facing-camera pose if ACTION
+describes a different angle (side seat, walking beside, looking at window, etc.).
 === END REFERENCE ===
 """
 
-    return f"""You are generating ONE image for a game.
+    return f"""You are generating ONE cinematic scene image for a game (not a character select portrait).
 IDENTITY ORDER (strict):
-  1) CHARACTER SHEET + optional REFERENCE PORTRAIT = who she is (hair, eyes, body, outfit).
-  2) ACTION block = what she is doing / expression / interaction only.
-Never swap in a different woman. Appearance lines are English tags only; never invent traits from Chinese.
+  1) CHARACTER SHEET + optional REFERENCE = who she is (hair, eyes, body, outfit, face).
+  2) ACTION = camera, staging, pose, expression, and other people for THIS beat only.
+Never swap in a different woman. Appearance lines are English tags only.
+{"If ACTION lists 1man/1girl: both people and their interaction are mandatory." if multi_scene else ""}
 
 {tool_note}
 After the image is created, copy/move the final file to this EXACT path:
@@ -647,11 +705,13 @@ Only create that one image file at the destination. Then reply with a short note
 === END SHEET ===
 {ref_block}{extra_block}
 Render settings:
-- Framing: {frame_map.get(framing, frame_map["half"])}
+- Framing: {frame_map.get(framing, frame_map["half"])} (still obey ACTION if it asks side/profile/wide/sex scene)
 - Art style: {style_map.get(style, style_map["anime"])}
 {rating_line}- {size_note}
-- Prefer simple or scenic background that fits the action; no text overlays, no watermark
-- If ACTION involves two people (he/she), show both as needed; her face must still match the sheet/reference
+- Background should fit the place (cinema dark, hotel room, park path, beach, mall…)
+- No text overlays, no watermark
+- Prefer cinematic composition over centered facing portrait
+{"- Multi-person: show BOTH characters interacting; never solo mugshot" if multi_scene else ""}
 """
 
 
@@ -1041,15 +1101,20 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     if not prompt and wf is None:
         return "", "ComfyUI 生圖要有 prompt 或人設(或整份 workflow)"
 
-    # 三連拍的尺寸與 seed 由伺服器決定:尺寸照 plan-v4 立繪規格,seed 取人設雜湊
-    # ——三張同 seed 才會是同一張臉,而且重生還是同一個人。
-    # 出卡場景 lock_identity=True 時同樣鎖人設 seed（不寫進 portraits 檔名）。
+    # 三連拍：尺寸照 plan-v4，seed 取人設雜湊（三張同 seed = 同一張臉）。
+    # 出卡場景（lock_identity 但無 shot）：seed 必須每次不同，否則「打兩次同一張圖」；
+    # 臉靠 character tags /（Grok）立繪 ref，不靠固定 seed。
     spec = comfy.PORTRAIT_SHOTS.get(shot) or {}
     gen_w, gen_h = spec.get("gen", (0, 0))
     out_w, out_h = spec.get("out", (0, 0))
     seed = int(opts.get("seed") or 0)
-    if not seed and (shot or opts.get("lock_identity")):
-        seed = _identity_anchor(opts.get("character") or {})["seed"]
+    if not seed:
+        if shot:
+            # 召喚三連拍：固定人設 seed
+            seed = _identity_anchor(opts.get("character") or {})["seed"]
+        else:
+            # 出卡 / testword：每次隨機（含 lock_identity 場景）
+            seed = secrets.randbelow(2**31 - 1) or 1
 
     # 三連拍照規格去背;testword 那條(沒有 shot)由前端的勾選決定,
     # 想在測試台上看去背效果不必先跑一次召喚。
@@ -1386,8 +1451,8 @@ class ImgGenIn(BaseModel):
     out_height: int = 0
     steps: int = 0
     cfg: float = 0
-    seed: int = 0               # 0 = 每次隨機(三連拍 / lock_identity 例外:取人設雜湊)
-    # 出卡場景：與三連拍同一套人設 seed + sdtags 身份前置；extra 只疊動作
+    seed: int = 0               # 0 = 隨機。三連拍(shot)例外：固定人設 seed 鎖臉
+    # 出卡場景：lock_identity + extra 鎖人設 tags；seed 每次隨機（不可固定，否則每張同圖）
     lock_identity: bool = False
     comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
     # 召喚三連拍:shot=head|half|full 且有 char_id → 存 assets/portraits/{char_id}_{shot}.png,
@@ -1482,6 +1547,11 @@ def imggen_submit(t: ImgGenIn):
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS) else "",
     }
     if ep == "comfy-img":
+        # 出卡場景：下單時就寫入隨機 seed，避免 worker 用舊邏輯／固定人設 seed 出同圖
+        shot_in = (t.shot or "").strip().lower()
+        seed_in = int(t.seed or 0)
+        if not seed_in and not shot_in:
+            seed_in = secrets.randbelow(2**31 - 1) or 1
         opts.update({
             "negative": t.negative or "",
             "ckpt": t.ckpt or "",
@@ -1491,9 +1561,9 @@ def imggen_submit(t: ImgGenIn):
             "out_height": int(t.out_height or 0),
             "steps": int(t.steps or 0),
             "cfg": float(t.cfg or 0),
-            "seed": int(t.seed or 0),
+            "seed": seed_in,
             "comfy_url": (t.comfy_url or "").strip(),
-            "shot": (t.shot or "").strip().lower(),
+            "shot": shot_in,
             "char_id": (t.char_id or "").strip(),
             "cutout": bool(t.cutout),
             "flat_bg": bool(t.flat_bg or t.cutout),   # 要去背就一定要平背景
@@ -1654,42 +1724,47 @@ async def _gen_worker():
             with db() as conn:
                 conn.execute("UPDATE gen_tasks SET status='running', updated=? WHERE key=?", (time.time(), key))
             text, err = "", None
-            msgs = json.loads(messages)
-            opts = json.loads(options or "{}")
-            parts: list[str] = []
+            try:
+                msgs = json.loads(messages)
+                opts = json.loads(options or "{}")
+                parts: list[str] = []
 
-            def on_token(piece: str):
-                parts.append(piece)
+                def on_token(piece: str):
+                    parts.append(piece)
 
-            if endpoint == "comfy-img":
-                url, err = await _run_comfy_image(opts)
-                text = url or ""
-            elif endpoint == "grok-img":
-                url, err = await _run_grok_image(
-                    model,
-                    framing=str(opts.get("framing") or "half"),
-                    rating=str(opts.get("rating") or "sfw"),
-                    style=str(opts.get("style") or "anime"),
-                    character=opts.get("character") if isinstance(opts.get("character"), dict) else None,
-                    name=str(opts.get("name") or ""),
-                    personality=str(opts.get("personality") or ""),
-                    backstory=str(opts.get("backstory") or ""),
-                    extra=str(opts.get("extra") or ""),
-                    part=str(opts.get("part") or ""),
-                    ref=str(opts.get("ref") or ""),
-                    prompt_body=str(opts.get("prompt") or ""),
-                )
-                text = url or ""
-            elif endpoint in ("grok-build", "grok", "xai"):
-                text, err = await _run_grok_build(model, msgs, opts)
-            else:
-                body = _ollama_chat_body(model, msgs, opts)
-                err = await _stream_ollama_chat(endpoint, body, on_token)
-                text = "".join(parts)
-            # Qwen3.5 等：即使傳了 think:false，仍可能帶思考塊 → 一律剝掉
-            text = _strip_thinking(text or "")
-            if not text.strip() and not err:
-                err = "空回應"
+                if endpoint == "comfy-img":
+                    url, err = await _run_comfy_image(opts)
+                    text = url or ""
+                elif endpoint == "grok-img":
+                    url, err = await _run_grok_image(
+                        model,
+                        framing=str(opts.get("framing") or "half"),
+                        rating=str(opts.get("rating") or "sfw"),
+                        style=str(opts.get("style") or "anime"),
+                        character=opts.get("character") if isinstance(opts.get("character"), dict) else None,
+                        name=str(opts.get("name") or ""),
+                        personality=str(opts.get("personality") or ""),
+                        backstory=str(opts.get("backstory") or ""),
+                        extra=str(opts.get("extra") or ""),
+                        part=str(opts.get("part") or ""),
+                        ref=str(opts.get("ref") or ""),
+                        prompt_body=str(opts.get("prompt") or ""),
+                    )
+                    text = url or ""
+                elif endpoint in ("grok-build", "grok", "xai"):
+                    text, err = await _run_grok_build(model, msgs, opts)
+                else:
+                    body = _ollama_chat_body(model, msgs, opts)
+                    err = await _stream_ollama_chat(endpoint, body, on_token)
+                    text = "".join(parts)
+                # Qwen3.5 等：即使傳了 think:false，仍可能帶思考塊 → 一律剝掉
+                text = _strip_thinking(text or "")
+                if not text.strip() and not err:
+                    err = "空回應"
+            except Exception as ex:
+                # 單筆失敗（例如缺 import）不可留 running 到逾時；寫 error 讓前端能 retry
+                text, err = "", f"{type(ex).__name__}: {ex}"
+                print(f"[gen_worker] {key} crash: {err}", flush=True)
             with db() as conn:
                 conn.execute(
                     "UPDATE gen_tasks SET status=?, result=?, error=?, updated=? WHERE key=?",
@@ -2039,7 +2114,9 @@ def _empty_pack_doc(title: str = "新牌組") -> dict:
                 "girlfriend": 0.6,
                 "wife": 0.8,
             },
-            "phone_cost_range": [10, 30],
+            "phone_cost": 1,
+            "phone_cost_range": [1, 1],
+            "answer_rate": 2 / 3,
             "emotion_fail_open": {"min": -3, "max": -1},
         },
         "starter_pool": [],

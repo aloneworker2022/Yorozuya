@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="萬事屋">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=32">
 </head>
 <body>
 
@@ -188,7 +188,7 @@
         <div class="setting-row" id="row-ollama-url"><label>端點</label><input id="set-ollama" type="text" class="wide" placeholder="http://&lt;主機&gt;:11434"></div>
         <div class="setting-row hidden" id="row-grok-hint"><label>引擎</label><span class="dim small">伺服器跑 <code>grok -p</code> 無頭(需 <code>grok login</code>),streaming-json end 即完成</span></div>
         <div class="setting-row"><label>模型</label><input id="set-model" type="text" class="wide" list="model-list" placeholder="(留空 = 罐頭模式)"><datalist id="model-list"></datalist></div>
-        <div class="setting-row"><label>內容分級</label><select id="set-rating"><option value="sfw">SFW</option><option value="nsfw">NSFW(依內容模組)</option></select></div>
+        <div class="setting-row"><label>內容分級</label><select id="set-rating"><option value="nsfw">NSFW（全域固定）</option></select></div>
         <div class="btn-row"><button id="btn-llm-test">測試連線</button><span id="llm-test-result" class="dim small"></span></div>
         <div class="setting-row"><label>生圖</label>
           <select id="set-imgprov">
@@ -394,6 +394,6 @@
   setTimeout(function () { sessionStorage.removeItem("healCount"); }, 10000);
 })();
 </script>
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=42"></script>
 </body>
 </html>

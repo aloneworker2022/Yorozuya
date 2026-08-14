@@ -205,10 +205,33 @@ async function saveCards() {
     speechPool = cards.filter((c) => c.kind === "speech").map((c) => c.id);
   }
   if (!premPool.length) {
-    premPool = cards.filter((c) => c.kind === "shop_premium").map((c) => c.id);
+    premPool = cards
+      .filter((c) => c.kind === "shop_premium" || c.kind === "erotic")
+      .map((c) => c.id);
+  }
+  // erotic_pool：只列色情卡（與 premium 並存；引擎會合併）
+  let eroticPool = (DOC.shop_weights.erotic_pool || []).filter(idOk);
+  if (!eroticPool.length) {
+    eroticPool = cards.filter((c) => c.kind === "erotic").map((c) => c.id);
   }
   DOC.shop_weights.speech_pool = speechPool;
   DOC.shop_weights.premium_pool = premPool;
+  if (eroticPool.length) DOC.shop_weights.erotic_pool = eroticPool;
+  else delete DOC.shop_weights.erotic_pool;
+  // sex_pool：前戲+正戲（不上架）
+  let sexPool = (DOC.shop_weights.sex_pool || []).filter(idOk);
+  if (!sexPool.length) {
+    sexPool = cards
+      .filter((c) => c.kind === "sex" || c.kind === "foreplay" || c.kind === "intercourse")
+      .map((c) => c.id);
+  }
+  if (sexPool.length) {
+    DOC.shop_weights.sex_pool = sexPool;
+    DOC.defaults = DOC.defaults && typeof DOC.defaults === "object" ? DOC.defaults : {};
+    DOC.defaults.sex_base_pool = sexPool;
+  } else {
+    delete DOC.shop_weights.sex_pool;
+  }
   setStatus("save-status", `儲存 ${packInfo?.file || editingPackId}…`);
   const r = await api(`/api/card-packs/${encodeURIComponent(editingPackId)}`, "PUT", {
     doc: DOC,
@@ -496,7 +519,7 @@ function renderTree() {
       div.innerHTML = `
         <span class="tok" title="${esc(tokenOf(c))}">${esc(tok)}</span>
         <span>${esc(c.name || c.id)}</span>
-        <span class="meta">${esc((c.kind || "").replace("shop_premium", "prem").replace("venue_event", "venue").replace("girl_trait", "trait"))}</span>
+        <span class="meta">${esc((c.kind || "").replace("shop_premium", "prem").replace("erotic", "色").replace("foreplay", "前").replace("intercourse", "正").replace("sex", "做").replace("venue_event", "venue").replace("girl_trait", "trait"))}</span>
       `;
       div.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -709,6 +732,27 @@ function commitFormToCard() {
     .map((x) => x.trim())
     .filter(Boolean);
   c.shatterOnUse = $("f-shatter").checked;
+  // 色情卡規格：一律消耗；打出必延輪（引擎也會強制，資料層對齊）
+  if (c.kind === "erotic") {
+    c.shatterOnUse = true;
+    $("f-shatter").checked = true;
+    c.effect = c.effect && typeof c.effect === "object" ? c.effect : {};
+    c.effect.forceAnotherRound = true;
+  }
+  // 做愛：前戲／正戲／舊 sex — 不上架、不碎庫
+  if (c.kind === "sex" || c.kind === "foreplay" || c.kind === "intercourse") {
+    c.shatterOnUse = false;
+    $("f-shatter").checked = false;
+    c.price = c.price || 0;
+    c.shopWeight = 0;
+    if (c.kind === "foreplay" && c.sexBase == null && !c.parentId) c.sexBase = true;
+    if (c.kind === "intercourse" && c.sexBase) c.sexBase = false;
+    c.effect = c.effect && typeof c.effect === "object" ? c.effect : {};
+    c.effect.sexScene = true;
+    if (!Array.isArray(c.tags) || !c.tags.includes("sex")) {
+      c.tags = [...(c.tags || []), "sex"];
+    }
+  }
   c.starter = $("f-starter").checked;
   c.forceable = $("f-forceable").checked;
   c.nsfwOnly = $("f-nsfwOnly").checked;
@@ -1219,7 +1263,8 @@ async function runDerive() {
 4. token 必須是新的短中文詞墜（2～6 字），不可與父鏈重複：${brief.tokens}
 5. sceneStart = 玩家動作旁白（中文，80～140 字），要能同時體現整條詞墜鏈
 6. promptHint = 給 AI 的牌意（一句，寫「他…」，不寫死她的台詞）
-7. visualEn = 英文畫圖描述（姿態/表情/互動；打招呼必須 facing + eye contact；禁止 blank look-away）
+7. visualEn = 英文畫圖描述：鏡頭距離、相對位置、身體朝向（side/three-quarter/over-shoulder/facing him 可選）；
+   禁止預設 looking at viewer 證件照；正對僅在場面需要時寫
 8. emotion 含 stranger/friend/girlfriend/wife 各 {min,max} 整數
 9. 不要複製父卡文案；要「在父動作之上再推一步」`;
 

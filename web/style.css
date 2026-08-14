@@ -364,13 +364,13 @@ body[data-tab="2"] #track-wrap { pointer-events: none; }
 body[data-tab="2"] .panel { pointer-events: auto; }
 /* 對話模式:看板娘點亮上移(galgame 式),夢霧狀的模糊身影 */
 body.chat-mode #kanban { filter: brightness(1); pointer-events: none; }
-body.chat-mode #kanban-girl { transform: translateY(-10%) scale(1.25); animation: haze 5s ease-in-out infinite; }
+body.chat-mode #kanban-girl { transform: translateY(-10%) scale(1.35); animation: haze 5s ease-in-out infinite; }
 body.chat-mode #kanban-girl svg {
   filter: blur(1.6px) drop-shadow(0 0 26px var(--rc, #9aa0b5)) drop-shadow(0 0 60px color-mix(in srgb, var(--rc, #9aa0b5) 40%, transparent));
 }
 @keyframes haze {
-  0%, 100% { transform: translateY(-10%) scale(1.25); opacity: .92; }
-  50% { transform: translateY(-11.5%) scale(1.27); opacity: 1; }
+  0%, 100% { transform: translateY(-10%) scale(1.35); opacity: .92; }
+  50% { transform: translateY(-11.5%) scale(1.38); opacity: 1; }
 }
 #book { position: relative; cursor: pointer; animation: float 4s ease-in-out infinite; }
 #book img {
@@ -417,14 +417,14 @@ body.chat-mode #kanban-girl svg {
 }
 #bubble-figure {
   width: 100%;
-  height: min(52vh, 420px);
+  height: min(60vh, 500px);
   display: flex; align-items: flex-end; justify-content: center;
   margin-bottom: -1.2em;
   pointer-events: none;
 }
 #bubble-portrait {
   max-height: 100%;
-  max-width: min(88vw, 360px);
+  max-width: min(92vw, 420px);
   width: auto;
   object-fit: contain;
   object-position: bottom center;
@@ -855,7 +855,7 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 #succubus-detail .portrait svg { filter: drop-shadow(0 0 18px var(--rc)); }
 /* 生成好的立繪(像素 256x256 sprite:pixelated 放大不糊、contain 不裁切人物) */
 .portrait-img {
-  max-width: 100%; max-height: 300px; border-radius: 10px;
+  max-width: 100%; max-height: 360px; border-radius: 10px;
   image-rendering: pixelated; image-rendering: crisp-edges;
   border: 1px solid color-mix(in srgb, var(--rc, var(--pink)) 45%, transparent);
   filter: drop-shadow(0 0 18px color-mix(in srgb, var(--rc, var(--pink)) 45%, transparent));
@@ -869,15 +869,15 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 .portrait-img.shot-half, .portrait-img.shot-full {
   border: none; border-radius: 0; image-rendering: auto;
 }
-.summon-result .portrait-img { max-height: 360px; }
+.summon-result .portrait-img { max-height: 430px; }
 /* 名冊縮圖:固定小方格,完整顯示不裁切 */
-.scard .thumb .portrait-img { width: 54px; height: 54px; object-fit: contain; border-radius: 6px; filter: none; }
+.scard .thumb .portrait-img { width: 64px; height: 64px; object-fit: contain; border-radius: 6px; filter: none; }
 /* 看板娘站位:去背全身當背景板——單人更大更近(貼底 + 近滿高)。
    用 vh 而不是固定 px:手機直式、平板、桌機都要能站好。
    width:auto 保持原比例,不要 132px 見方那種硬塞——那是像素 sprite 時代的規格。 */
 #kanban-girl .kgirl .portrait-img {
-  height: min(96vh, 1400px); width: auto;
-  max-height: none;        /* 蓋掉 .portrait-img 的 300px —— 那是像素 sprite 時代的規格 */
+  height: min(98vh, 1500px); width: auto;
+  max-height: none;        /* 蓋掉 .portrait-img 的 360px —— 那是像素 sprite 時代的規格 */
   max-width: 100vw;
   object-fit: contain; object-position: bottom center;
   border-radius: 0;
@@ -889,10 +889,10 @@ body.card-center .q-body { justify-content: center; text-align: center; }
   position: absolute; left: 0; right: 0; bottom: .2em; margin: 0;
   text-shadow: 0 0 8px #000, 0 0 3px #000;
 }
-#kanban-girl.multi .kgirl .portrait-img { height: min(72vh, 900px); max-width: 48vw; }
+#kanban-girl.multi .kgirl .portrait-img { height: min(80vh, 1000px); max-width: 52vw; }
 /* 三人以上再讓一步,免得互相擠出畫面 */
 #kanban-girl.multi .kgirl:nth-child(n+3) .portrait-img,
-#kanban-girl.multi:has(.kgirl:nth-child(3)) .kgirl .portrait-img { height: min(58vh, 700px); max-width: 32vw; }
+#kanban-girl.multi:has(.kgirl:nth-child(3)) .kgirl .portrait-img { height: min(66vh, 800px); max-width: 36vw; }
 #kanban-girl .kgirl.taken .portrait-img { filter: grayscale(.7) brightness(.75); }
 /* 召喚生圖中:剪影微微呼吸 */
 .summon-brewing { animation: crest-brew 2.2s ease-in-out infinite; }
@@ -951,7 +951,7 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
    min-height 0 + flex-shrink 讓小螢幕先壓縮立繪,對話框永遠不會被擠掉。 */
 #vn-figure {
   display: block; margin: 0 auto -1.2em;
-  height: min(52vh, 460px); width: auto; max-width: 100%;
+  height: min(60vh, 540px); width: auto; max-width: 100%;
   object-fit: contain; object-position: bottom center;
   flex-shrink: 1; min-height: 0;
   filter: drop-shadow(0 6px 22px rgba(0, 0, 0, .55));
@@ -1273,6 +1273,7 @@ body.chat-mode.has-figure #kanban-girl {
 }
 .card-tag.speech { color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 40%, transparent); }
 .card-tag.shatter { color: var(--pink); border-color: color-mix(in srgb, var(--pink) 40%, transparent); }
+.card-tag.erotic { color: #ff7ab8; border-color: color-mix(in srgb, #ff7ab8 50%, transparent); background: color-mix(in srgb, #ff7ab8 12%, transparent); }
 .card-sale { color: var(--gold); font-size: .75em; margin-left: .3em; }
 /* 牌庫：按鈕格 + 下方詳情 */
 .card-inv-filters {
@@ -1495,8 +1496,8 @@ body.card-mode.has-ct-figure #kanban-girl {
 }
 #ct-portrait-img {
   display: block;
-  height: min(64vh, 510px);
-  width: auto; max-width: 98%;
+  height: min(74vh, 600px);
+  width: auto; max-width: 100%;
   object-fit: contain; object-position: bottom center;
   filter: drop-shadow(0 8px 28px rgba(0, 0, 0, .6));
   /* 略往上提一點 */
@@ -1557,6 +1558,11 @@ body.card-mode.has-ct-figure #kanban-girl {
   color: var(--cyan, #6fe3e1);
   font-weight: 700;
   font-size: .9em;
+}
+.narr-dot.mid {
+  color: color-mix(in srgb, var(--cyan, #6fe3e1) 65%, var(--dim, #9aa0b5));
+  font-weight: 600;
+  font-size: .85em;
 }
 
 /* 前景：頂欄 + 空白 + 旁白 + 確認 + 手牌 */
@@ -1862,8 +1868,34 @@ body.card-mode.has-ct-figure #kanban-girl {
 /* 小螢幕 */
 @media (max-height: 620px) {
   #ct-portrait { bottom: calc(10.8em + env(safe-area-inset-bottom, 0)); }
-  #ct-portrait-img { height: min(56vh, 400px); transform: translateY(3%); }
+  #ct-portrait-img { height: min(64vh, 470px); transform: translateY(3%); }
+  #vn-figure { height: min(48vh, 400px); }
+  #bubble-figure { height: min(48vh, 380px); }
   #ct-vn { min-height: 4em; padding: .5em .75em .55em; }
   #ct-hand { max-height: 34vh; }
   .ct-play-card, .ct-play-card.compact { min-height: 3.6em; padding: .75em .9em; }
 }
+
+/* 做愛前戲 2 選 1 */
+.ct-sex-choice { width: 100%; padding: .25rem 0 0.75rem; }
+.ct-sex-choice-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .6rem;
+}
+.ct-sex-choice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .35rem;
+  text-align: left;
+  padding: .75rem .8rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, #ff7ab8 45%, transparent);
+  background: color-mix(in srgb, #ff7ab8 10%, rgba(0,0,0,.35));
+  color: inherit;
+  cursor: pointer;
+  min-height: 5.5rem;
+}
+.ct-sex-choice-card:active { transform: scale(0.98); }
+.ct-sex-choice-name { font-weight: 700; font-size: 1.05em; color: #ffc1dc; }

@@ -112,14 +112,26 @@
     <button onclick="addCrest()">讓看板娘想說話</button>
     <button onclick="kanbanLong()">看板娘 +99h(測試)</button>
     <button onclick="allKanban()">全員看板娘 99h</button>
+    <button class="cy" onclick="setAllStages('stranger')">全部變陌生</button>
+    <button class="cy" onclick="setAllStages('friend')">全部變朋友</button>
+    <button class="cy" onclick="setAllStages('girlfriend')">全部變女友</button>
+    <button class="cy" onclick="setAllStages('wife')">全部變妻子</button>
+    <button class="del" onclick="clearCardSession()">強制結束卡住的牌局</button>
     <button onclick="drawSummoner()">第一隻抽召喚師</button>
     <button onclick="clearSummoners()">清除所有召喚師</button>
+    <button class="cy" onclick="takeGirlAway()">妹子被召喚走</button>
+    <button onclick="releaseTaken()">解除召喚走</button>
     <button onclick="watchScenario()">觀戰測試場景</button>
+    <button class="cy" onclick="startRandomDate()">約會（隨機妹子）</button>
     <button class="del" onclick="wipeSave()">⚠ 重設存檔(急救)</button>
   </div>
   <div class="mini" style="margin-top:.5em">
     <b>刷新魅魔</b>：用 girl_gen 重抽整包取代現有名冊（看板／牌桌一併清）。
     <b>刷新商品</b>：祭品店立即重新進貨 + 卡牌貨架強制刷新（不等 4h）。
+    <b>全部變陌生／朋友／女友／妻子</b>：把存檔裡每隻魅魔的 <code>stage</code> 設成同一關係（含 NTR／被娶走的也改，方便測牌與感情）。
+    <b>妹子被召喚走</b>：隨機（或第一隻）未 NTR 妹子 → 綁召喚師 + <code>taken</code> + 補 3h 既往 act、下看板，並強制寫進 sim。回遊戲對她按「電話（窺視）」。
+    <b>解除召喚走</b>：清掉所有 taken（仍保留纏身召喚師）。
+    <b>約會（隨機妹子）</b>：從名冊隨機挑一隻未 NTR 的，清牌局／下看板，寫入快速約會旗標後跳回遊戲直接開桌（跳過電話費）。
     「重設存檔」用於存檔損壞急救。此頁不吃 app.js,遊戲當掉時仍可用。
   </div>
   <div class="status" id="bd-status"></div>
@@ -655,6 +667,45 @@ async function allKanban() {
   save.kanbans = save.succubi.filter(s => !s.ntr).map(s => ({ id: s.id, until: Date.now() + 99 * 3600 * 1000 }));
   await commit(`全員上工:${save.kanbans.length} 位看板娘 99h`);
 }
+
+/** 全體魅魔關係階段一次切換（testword 測牌／感情用） */
+const STAGE_SET_LABEL = {
+  stranger: "陌生",
+  friend: "朋友",
+  girlfriend: "女友",
+  wife: "妻子",
+};
+async function setAllStages(stage) {
+  if (!ensure()) return;
+  if (!STAGE_SET_LABEL[stage]) {
+    status("bd-status", "未知階段: " + stage, true);
+    return;
+  }
+  const list = save.succubi || [];
+  if (!list.length) { status("bd-status", "沒有魅魔", true); return; }
+  const label = STAGE_SET_LABEL[stage];
+  for (const s of list) {
+    s.stage = stage;
+    // 清掉可能卡在舊階段的臨時旗（不刪 affection，方便只測 stage 閘門）
+    if (s.ntr && stage !== "wife") {
+      // 妻子以外先不當「被娶走」測試態
+    }
+  }
+  await commit(`全部魅魔 → ${label}（${list.length} 隻）`);
+}
+
+/** 急救：清掉卡住的 cardSession（生圖卡死後重整常見） */
+async function clearCardSession() {
+  if (!ensure()) return;
+  if (!save.cardSession) {
+    status("bd-status", "沒有進行中的牌局", true);
+    return;
+  }
+  const gid = save.cardSession.girlId;
+  const name = (save.succubi || []).find(s => s.id === gid)?.name || gid || "?";
+  save.cardSession = null;
+  await commit(`已強制結束牌局（原與 ${name}）——回遊戲重整即可召喚看板娘`);
+}
 async function drawSummoner() {
   if (!ensure()) return;
   const s = (save.succubi || [])[0];
@@ -681,26 +732,231 @@ async function wipeSave() {
     status("bd-status", "✓ 已重設為全新存檔——回遊戲重新整理一次即可");
   } catch (e) { status("bd-status", "失敗:" + e.message + "(再按一次)", true); }
 }
-// 觀戰測試場景:第一隻魅魔被召喚師「召喚中」(陪伴型,含 3 小時的既往紀錄),
-// 並直接設她為看板娘——被召喚走時淫紋不會亮(她不在你身邊),要約她出門才撞得見實況
+/** 交配環抵抗表（與 app.js / sim.py 對齊） */
+const TW_STAGE_RESIST = [40, 20, 10, 10, 5, 1];
+
+/** 從池子抽一位召喚師 */
+async function twPickSummoner() {
+  const pool = await api("/content/summoners.json");
+  const list = pool.summoners || [];
+  if (!list.length) return null;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+/**
+ * 強制把「妹子被召喚走」寫進 sim（權威層）。
+ * 僅改 save 不夠：sim 若已有 rel 會忽略 seeds，下一輪 simSync 會蓋掉 taken。
+ * 作法：先 clear rel → 再 seed 完整 taken 關係 → tick 會依 actAt 補 act。
+ */
+async function twForceSimTaken(girl, rel) {
+  const now = Date.now();
+  const roster = (save.succubi || []).map(g => ({
+    id: g.id,
+    ntr: !!g.ntr,
+    kanban: false,
+    rarity: g.rarity || "N",
+    busy: false,
+  }));
+  const base = {
+    now,
+    rating: (save.settings && save.settings.rating) || "nsfw",
+    roster,
+    kanbans: (save.kanbans || []).filter(k => k.id !== girl.id),
+    quests: [],
+    day: Math.floor(now / 86400000),
+    ack_outcomes: true,
+  };
+  // 1) 拔掉舊 rel
+  await api("/api/sim/sync", "POST", {
+    ...base,
+    seeds: {},
+    patches: { [girl.id]: { clear: true } },
+  });
+  // 2) 種入 taken 關係（伺服器 tick 會補 3h 內 act）
+  await api("/api/sim/sync", "POST", {
+    ...base,
+    seeds: { [girl.id]: rel },
+    patches: {},
+  });
+}
+
+/**
+ * 妹子被召喚走（測試）：
+ *  隨機一隻未 NTR → 綁召喚師 + taken（持續 4h，actAt 往回 3h）
+ *  → 下看板、清牌局 → 寫存檔 + 強制 sim
+ * 回遊戲：對她按「電話（窺視）」1/5 接通。
+ */
+async function takeGirlAway() {
+  if (!ensure()) return;
+  const pool = (save.succubi || []).filter(g => g && !g.ntr);
+  if (!pool.length) {
+    status("bd-status", "沒有可帶走的魅魔（名冊空或全 NTR）", true);
+    return;
+  }
+  const s = pool[Math.floor(Math.random() * pool.length)];
+  const su = await twPickSummoner();
+  if (!su) { status("bd-status", "召喚師池為空", true); return; }
+
+  const now = Date.now();
+  const stage = Math.min(5, Math.max(0, Number(s.summoner?.stage) || 0));
+  // 完整交配環欄位（給 sim 用）
+  const rel = {
+    id: su.id,
+    sinceDay: Math.floor(now / 86400000),
+    stage,
+    resist: TW_STAGE_RESIST[stage] ?? 40,
+    matingCount: Number(s.summoner?.matingCount) || 0,
+    ringUnlocked: !!s.summoner?.ringUnlocked,
+    kinks: Array.isArray(s.summoner?.kinks) && s.summoner.kinks.length
+      ? s.summoner.kinks
+      : ["交合", "愛撫", "言語調教"].slice(0, 3 + Math.floor(Math.random() * 3)),
+    acts: [],
+    // 看板型帶走 4 小時；actAt 往回 3h → 進遊戲 / sim tick 會預生多批 act
+    taken: {
+      type: "kanban",
+      location: null,
+      until: now + 4 * 3600 * 1000,
+      actAt: now - 3 * 3600 * 1000,
+    },
+  };
+  s.summoner = rel;
+  s.ntr = null;
+  // 被帶走不能當看板／打牌
+  save.kanbans = (save.kanbans || []).filter(k => k.id !== s.id);
+  if (save.lastKanbanId === s.id) delete save.lastKanbanId;
+  if (save.cardSession?.girlId === s.id) save.cardSession = null;
+  delete save.forceEncounter;
+
+  try {
+    await twForceSimTaken(s, rel);
+  } catch (e) {
+    status("bd-status", "sim 強制失敗:" + e.message + "（存檔仍會寫 taken）", true);
+  }
+  await commit(
+    `✓ ${s.name} 被 ${su.emoji || ""} ${su.name} 召喚走（4h・補 3h 紀錄）——回遊戲對她按「電話（窺視）」`,
+  );
+}
+
+/** 解除所有「召喚走」(taken)；纏身召喚師保留 */
+async function releaseTaken() {
+  if (!ensure()) return;
+  let n = 0;
+  const patches = {};
+  for (const s of save.succubi || []) {
+    if (s.summoner?.taken) {
+      delete s.summoner.taken;
+      n++;
+      // 回報 sim 掙脫
+      patches[s.id] = { rescue: true };
+    }
+  }
+  if (!n) {
+    status("bd-status", "目前沒有被召喚走的妹子", true);
+    return;
+  }
+  try {
+    const now = Date.now();
+    await api("/api/sim/sync", "POST", {
+      now,
+      rating: (save.settings && save.settings.rating) || "nsfw",
+      roster: (save.succubi || []).map(g => ({
+        id: g.id, ntr: !!g.ntr, kanban: false, rarity: g.rarity || "N", busy: false,
+      })),
+      seeds: {},
+      patches,
+      kanbans: save.kanbans || [],
+      quests: [],
+      day: Math.floor(now / 86400000),
+      ack_outcomes: true,
+    });
+  } catch (e) {
+    status("bd-status", "sim 解除部分失敗:" + e.message, true);
+  }
+  await commit(`已解除 ${n} 隻的「被召喚走」（召喚師仍纏著）`);
+}
+
+// 觀戰測試場景 = takeGirlAway 的固定第一隻版本（相容舊按鈕）
 async function watchScenario() {
   if (!ensure()) return;
-  const s = (save.succubi || [])[0];
+  const s = (save.succubi || []).find(g => g && !g.ntr) || (save.succubi || [])[0];
   if (!s) { status("bd-status", "沒有魅魔,先召喚一隻", true); return; }
-  if (!s.summoner) {
-    const pool = await api("/content/summoners.json");
-    const su = (pool.summoners || [])[Math.floor(Math.random() * (pool.summoners || []).length)];
-    if (!su) { status("bd-status", "召喚師池為空", true); return; }
-    s.summoner = { id: su.id, affection: 0, sinceDay: 0 };
-  }
+  // 暫時把她移到陣列頭再呼叫 take（take 用 random；這裡改直接指定）
+  const pool = (save.succubi || []).filter(g => g && !g.ntr);
+  if (!pool.length) { status("bd-status", "沒有可帶走的魅魔", true); return; }
+  // 強制第一隻：複製 takeGirlAway 但指定 s
+  const su = await twPickSummoner();
+  if (!su) { status("bd-status", "召喚師池為空", true); return; }
   const now = Date.now();
-  // actAt 設 3 小時前:回遊戲 tick 會補算出 3 批紀錄(9~15 則),背景開始生成文字
-  s.summoner.taken = { type: "kanban", location: null, until: now + 2 * 3600 * 1000, actAt: now - 3 * 3600 * 1000 };
-  save.kanbans ??= [];
-  if (!save.kanbans.some(k => k.id === s.id)) save.kanbans.push({ id: s.id, until: now + 99 * 3600 * 1000 });
-  save.lastKanbanId = s.id;
-  delete save.forceEncounter;
-  await commit(`觀戰場景備妥:${s.name} 被召喚中+3 小時既往紀錄——回遊戲約她出門即看實況`);
+  const stage = Math.min(5, Math.max(0, Number(s.summoner?.stage) || 0));
+  const rel = {
+    id: su.id,
+    sinceDay: Math.floor(now / 86400000),
+    stage,
+    resist: TW_STAGE_RESIST[stage] ?? 40,
+    matingCount: Number(s.summoner?.matingCount) || 0,
+    ringUnlocked: !!s.summoner?.ringUnlocked,
+    kinks: Array.isArray(s.summoner?.kinks) && s.summoner.kinks.length
+      ? s.summoner.kinks
+      : ["交合", "愛撫", "言語調教"],
+    acts: [],
+    taken: {
+      type: "kanban",
+      location: null,
+      until: now + 4 * 3600 * 1000,
+      actAt: now - 3 * 3600 * 1000,
+    },
+  };
+  s.summoner = rel;
+  save.kanbans = (save.kanbans || []).filter(k => k.id !== s.id);
+  if (save.lastKanbanId === s.id) delete save.lastKanbanId;
+  if (save.cardSession?.girlId === s.id) save.cardSession = null;
+  try { await twForceSimTaken(s, rel); } catch (e) {
+    status("bd-status", "sim 強制失敗:" + e.message, true);
+  }
+  await commit(`觀戰場景備妥:${s.name} ← ${su.name} 召喚走——回遊戲「電話（窺視）」`);
+}
+
+/** 約會測試：隨機名冊妹子 → 清牌局／下看板 → sessionStorage 旗標 → 跳回遊戲直接 openDateTable */
+const TW_DATE_VENUES = ["park", "cinema", "mall", "beach", "hotel"];
+async function startRandomDate() {
+  if (!ensure()) return;
+  const pool = (save.succubi || []).filter(s => s && !s.ntr);
+  if (!pool.length) {
+    status("bd-status", "沒有可約的魅魔（名冊空或全是 NTR）", true);
+    return;
+  }
+  const s = pool[Math.floor(Math.random() * pool.length)];
+  // 清卡住的牌局，否則 openDateTable 會擋
+  if (save.cardSession) save.cardSession = null;
+  // 看板中不可約 → 測試時強制下看板
+  save.kanbans = (save.kanbans || []).filter(k => k.id !== s.id);
+  if (save.lastKanbanId === s.id) delete save.lastKanbanId;
+  // 若被召喚師帶走中，測試時也解除（否則可能狀態怪）
+  if (s.summoner?.taken) delete s.summoner.taken;
+
+  let venues = TW_DATE_VENUES.slice();
+  try {
+    const pack = await api("/content/ca.json");
+    const ids = (pack.venues || []).map(v => v.id).filter(Boolean);
+    if (ids.length) venues = ids;
+  } catch { /* 用預設 */ }
+  const venueId = venues[Math.floor(Math.random() * venues.length)] || "park";
+
+  try {
+    sessionStorage.setItem("yoro_quick_date", JSON.stringify({
+      girlId: s.id,
+      venueId,
+      force: true,   // 略過睡眠時段
+      ts: Date.now(),
+    }));
+  } catch (e) {
+    status("bd-status", "寫不進 sessionStorage: " + e.message, true);
+    return;
+  }
+
+  await commit(`約會測試備妥：${s.name} @ ${venueId}——即將跳回遊戲`);
+  // 稍等 status 看得見再跳
+  setTimeout(() => { location.href = "/"; }, 280);
 }
 
 // ── 擴充等級 ──

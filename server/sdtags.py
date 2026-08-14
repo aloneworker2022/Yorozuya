@@ -441,8 +441,10 @@ def overridden_fields(character: dict | None) -> dict[str, str]:
 FRAMING = {
     # head 是召喚三連拍的大頭照:名冊縮圖與聊天頭像用,所以要正面看鏡頭
     "head": "portrait, face focus, head and shoulders, looking at viewer",
-    "half": "upper body",
-    "full": "full body, standing, full body visible, head to feet",
+    # 出卡場景 half：不要寫 looking at viewer；姿勢交給 extra
+    "half": "upper body, medium shot",
+    # full 不寫死 standing——影院坐姿／並肩走由 extra 決定
+    "full": "full body visible, environmental shot, head to feet if standing",
 }
 
 PART_FRAMING = {
@@ -741,9 +743,37 @@ def build_prompt(
         unknown.append(f"{key}: {raw}")
         return ""
 
-    # 出卡場景：1girl 但不 solo，身份權重仍壓在最前
+    # 出卡場景：身份權重仍壓在最前；禁止預設 looking at viewer
+    # NTR／雙人：extra 若寫 1man／1boy／2people → 人數 tag 前置（否則模型只畫 1girl solo）
+    extra_l = (extra or "").lower()
+    multi = scene and any(
+        k in extra_l
+        for k in (
+            "1man", "1boy", "2people", "2 people", "two people",
+            "couple", "other man", "man and woman", "man fucking",
+            "groping", "molestation",
+        )
+    )
     if scene:
-        bits: list[str] = [QUALITY_PREFIX, "1girl", HUMAN_TAGS]
+        if multi:
+            # 人數 tag 最前：1man 1girl（兼 1boy 提高 SD 命中）
+            bits: list[str] = [
+                QUALITY_PREFIX,
+                "1man",
+                "1girl",
+                "1boy",
+                "2people",
+                HUMAN_TAGS,
+            ]
+        else:
+            bits = [QUALITY_PREFIX, "1girl", HUMAN_TAGS]
+        # 場景圖：明確不要證件照正對（extra 若要求正對會再寫）
+        if "looking at viewer" not in extra_l:
+            bits.append("not looking at viewer")
+        if multi and not any(x in extra_l for x in ("looking at viewer", "solo girl")):
+            bits.append("third person view")
+            bits.append("no first person")
+            bits.append("not pov")
     else:
         bits = [QUALITY_PREFIX, "1girl, solo", HUMAN_TAGS]
     # 年齡緊接在「她是誰」後面:動漫模型對前段權重高,年紀才壓得住
@@ -772,8 +802,17 @@ def build_prompt(
         # 純立繪對鏡；出卡場景由 extra 決定對視對象，不強制 looking at viewer
         if not p and not scene:
             bits.append("looking at viewer")
+    rating_l = (rating or "sfw").lower()
+    # 出卡對話／SFW：不塞乳暈（易誘發露點特寫）；罩杯比例仍可保留鎖同人
+    skip_areola = rating_l == "sfw" or (
+        scene and ("no groping" in (extra or "").lower() or "conversation" in (extra or "").lower()
+                   or "safe for work" in (extra or "").lower())
+    )
+
     if not p or seg == "bust":
-        bits += [tr(BUST, "bust"), tr(AREOLA, "areola")]
+        bits += [tr(BUST, "bust")]
+        if not skip_areola:
+            bits += [tr(AREOLA, "areola")]
     if not p or seg in ("bust", "lower"):
         bits += [tr(BUILD, "build")]
     if p and seg == "lower":
@@ -781,7 +820,15 @@ def build_prompt(
         if h:
             bits.append("long legs" if int(h or 0) >= 170 else "short stature")
     if not p or seg == "bust":
-        bits += sp_seg["bust"]
+        # SFW／對話：過濾 specials 裡的 nipple／areola 類
+        if skip_areola:
+            for t in sp_seg["bust"]:
+                tl = str(t).lower()
+                if any(x in tl for x in ("nipple", "areola", "topless", "nude")):
+                    continue
+                bits.append(t)
+        else:
+            bits += sp_seg["bust"]
     if not p or seg == "lower":
         bits += sp_seg["lower"]
 
@@ -791,6 +838,15 @@ def build_prompt(
             if skin and skin not in SKIN:
                 unknown.append(f"skin: {skin}")
 
+    nsfw_act = any(
+        k in extra_l
+        for k in (
+            "sex", "fucking", "penetration", "vaginal", "groping",
+            "molestation", "creampie", "orgasm", "nsfw", "explicit",
+            "breast grab", "intercourse",
+        )
+    )
+
     if dressed:
         # 沒有任何服裝 tag = 模型自由發揮 = 多半不穿。查不到對照就墊一件,
         # 寧可衣服普通,也不要因為池子改過一個字就整張變裸的。
@@ -798,7 +854,12 @@ def build_prompt(
         tag = CAREER_OUTFIT.get(worn) or STYLE.get(worn) or ""
         if worn and not tag:
             unknown.append(f"outfit: {worn}")
-        bits.append("fully clothed, " + (tag or CLOTHES_FALLBACK))
+        # 雙人 NSFW 動作：只保留服裝身份 tag，不要硬釘 fully clothed（會蓋掉 sex/groping）
+        if nsfw_act:
+            bits.append(tag or CLOTHES_FALLBACK)
+            bits.append("clothes pulled aside or partially undressed")
+        else:
+            bits.append("fully clothed, " + (tag or CLOTHES_FALLBACK))
         # 生涯服裝自己就是一整套配色(護士服是白的、巫女服是紅白),再疊一組
         # 隨機配色只會打架。個人衣櫃那邊才用得上調色盤。
         if palette and worn not in CAREER_OUTFIT:
@@ -808,10 +869,13 @@ def build_prompt(
                 unknown.append(f"palette: {palette}")
 
     bits.append(ART_STYLE.get(art_style, ""))
-    bits.append(RATING.get((rating or "sfw").lower(), ""))
+    bits.append(RATING.get(rating_l, ""))
     # 出卡：extra = 層②運鏡 visualEn + 層③ AI 反應神態，接在身份（層①）後面
     if extra.strip():
         bits.append(extra.strip())
+    # SFW／對話出卡：再釘一次穿衣，壓過 extra 裡可能殘留的性暗示
+    if skip_areola and dressed and not nsfw_act:
+        bits.append("fully clothed, clothes, covered")
 
     # 去重但保留順序:tag 重複不會加權,只會擠掉 CLIP 的 77 token 額度
     seen: set[str] = set()

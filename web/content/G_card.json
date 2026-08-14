@@ -6,14 +6,19 @@
     "token_model": "每卡一個詞墜 token；parentId 繼承父鏈詞墜。",
     "pack_note": "獨立牌組檔；上線靠 registry.active 切換，不刪舊檔。",
     "note": "重來空白包。先前內容已清空。",
-    "visualEn_rule": "visualEn=玩家打出這卡時預先塞進生圖的構圖／視線種子：寫玩家動作痕跡、距離、鏡頭（from his POV／looking toward her）、取景。不要寫死女子態度／表情／肢體反應——那是後面 AI 依回話再補。visualZh=作者中文備註。"
+    "visualEn_rule": "visualEn=玩家打出這卡時預先塞進生圖的構圖／視線種子：寫玩家動作痕跡、距離、鏡頭（from his POV／looking toward her）、取景。不要寫死女子態度／表情／肢體反應——那是後面 AI 依回話再補。visualZh=作者中文備註。",
+    "visualEn_staging": "visualEn 必須寫清：鏡頭距離、她與玩家的相對位置、身體朝向（side / three-quarter / over-shoulder / facing him 可選），禁止預設 looking at viewer 證件照。正對僅在場面需要時寫入。"
   },
   "enums": {
     "kind": [
       "speech",
       "shop_premium",
+      "erotic",
+      "sex",
       "girl_trait",
-      "venue_event"
+      "venue_event",
+      "foreplay",
+      "intercourse"
     ],
     "chain_attr": [
       "talk",
@@ -60,8 +65,8 @@
       "wife": 0.8
     },
     "phone_cost_range": [
-      10,
-      30
+      1,
+      1
     ],
     "emotion_fail_open": {
       "min": -3,
@@ -71,6 +76,53 @@
     "arc_weights": {
       "child": 8,
       "other": 1
+    },
+    "sex_trigger_by_stage": {
+      "stranger": 0.1,
+      "friend": 0.125,
+      "girlfriend": 0.3333333333333333,
+      "wife": 0.5
+    },
+    "sex_base_pool": [],
+    "sex_intercourse_roll": {
+      "same": 0.5,
+      "finish": 0.3333333333333333,
+      "next": 0.3333333333333333,
+      "comment": "相對權重（正規化後使用）；口頭 1/2 同卡、1/3 跳射精、1/3 下一張"
+    },
+    "sex_same_max": 2,
+    "sex_choice_count": 2,
+    "emotion_nsfw_erotic": {
+      "min": -15,
+      "max": -5
+    },
+    "emotion_nsfw_foreplay": {
+      "min": 3,
+      "max": 9
+    },
+    "emotion_nsfw_intercourse": {
+      "min": 5,
+      "max": 10
+    },
+    "phone_cost": 1,
+    "answer_rate": 0.6666666666666666,
+    "date_chapter_emotion": {
+      "1": {
+        "min": 2,
+        "max": 5
+      },
+      "2": {
+        "min": 5,
+        "max": 10
+      },
+      "3": {
+        "min": 10,
+        "max": 15
+      }
+    },
+    "date_continue_chance": {
+      "2": 0.5,
+      "3": 0.25
     }
   },
   "starter_pool": [],
@@ -78,8 +130,1470 @@
     "speech_pool": [],
     "premium_pool": []
   },
-  "cards": [],
-  "venues": [],
+  "cards": [
+    {
+      "id": "venue_park_l1",
+      "name": "公園並肩",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "talk",
+        "play"
+      ],
+      "venueIds": [
+        "park"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 1,
+      "pairBase": "venue_park_l1",
+      "token": "公園並肩",
+      "tokenDesc": "公園並肩",
+      "parentId": null,
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "風把樹葉聲送得很近。你們並肩走在步道上，誰也沒急著找話題。影子在地上差一點就要連起來——這一小段空白，像被公園暫時批准的約會開場。",
+      "promptHint": "約會第1章·公園開場並肩。",
+      "visualEn": "from his POV walking on park path, medium-wide shot, she walking beside him on his right, body in PROFILE facing forward along path, looking at trees ahead NOT at camera, daylight, depth of path, fully clothed, cinematic side-by-side date, looking away from viewer",
+      "visualZh": "場面取景（禁止正對鏡頭）：公園並肩",
+      "setId": "main"
+    },
+    {
+      "id": "venue_park_l2a",
+      "name": "長椅坐下來",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "park"
+      ],
+      "lane": "color",
+      "dateTrack": "normal",
+      "dateStage": 2,
+      "pairBase": "venue_park_l2a",
+      "token": "長椅坐下來",
+      "tokenDesc": "長椅坐下來",
+      "parentId": "venue_park_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "步道走到一半，長椅空著。你們坐下，間距比走路時更清楚。陽光從樹縫漏在她的膝蓋上，話題可有可無——誰先把肩再靠過去一寸，都像默認這場約會可以再久一點。",
+      "promptHint": "約會第2章·公園長椅。",
+      "visualEn": "from his POV sitting on park bench, medium shot, she seated BESIDE him sharing bench, body angled forward three-quarter PROFILE, gaze toward park ground or ahead, not facing camera, daylight dappled light, fully clothed, side seating composition",
+      "visualZh": "場面取景（禁止正對鏡頭）：長椅坐下來",
+      "setId": "main"
+    },
+    {
+      "id": "venue_park_l2b",
+      "name": "繞到少人的小徑",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "park"
+      ],
+      "lane": "color",
+      "dateTrack": "normal",
+      "dateStage": 2,
+      "pairBase": "venue_park_l2b",
+      "token": "少人的小徑",
+      "tokenDesc": "繞到少人的小徑",
+      "parentId": "venue_park_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "主步道人聲多了一點，你帶她拐進樹蔭更深的小徑。腳步聲變輕，她的聲音也自然放低。像把約會從「被看見」挪到「只留給彼此」的那一步。",
+      "promptHint": "約會第2章·公園小徑。",
+      "visualEn": "from his POV on shaded park side path, medium shot, she a half step AHEAD to the side, three-quarter BACK view, looking down the path, may soft head turn, tree canopy, fully clothed, walking composition not portrait",
+      "visualZh": "場面取景（禁止正對鏡頭）：繞到少人的小徑",
+      "setId": "main"
+    },
+    {
+      "id": "venue_park_l3a",
+      "name": "往回走的路",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "park"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_park_l3a",
+      "token": "往回走的路",
+      "tokenDesc": "往回走的路",
+      "parentId": "venue_park_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "該散了，腳步卻比來時慢。回家的方向明明很清楚，誰都沒把話說死。袖口擦過袖口時她沒有立刻拉開——這段往回走，反而比抵達更像約會的核心。",
+      "promptHint": "約會第3章·散場不捨。",
+      "visualEn": "from his POV dusk park path, medium-wide, she walking beside slightly ahead, SIDE VIEW silhouette, sleeves nearly touching, looking ahead not at camera, warm dusk, fully clothed",
+      "visualZh": "場面取景（禁止正對鏡頭）：往回走的路",
+      "setId": "main"
+    },
+    {
+      "id": "venue_park_l3b",
+      "name": "在樹下停一下",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "park"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_park_l3b",
+      "token": "樹下停一下",
+      "tokenDesc": "在樹下停一下",
+      "parentId": "venue_park_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "大樹底下有一小塊陰涼。你們停住，話題忽然變短、變真。風吹過樹葉，她看你的眼神多停半秒——像問「今天到這裡，夠不夠」。",
+      "promptHint": "約會第3章·樹下停駐。",
+      "visualEn": "from his POV under large tree, medium shot, she standing 1-2 meters AHEAD angled, three-quarter face toward tree shadow then soft glance back, not square to camera, fully clothed, depth under canopy",
+      "visualZh": "場面取景（禁止正對鏡頭）：在樹下停一下",
+      "setId": "main"
+    },
+    {
+      "id": "venue_park_l3c",
+      "name": "牽一下就好",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "park"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_park_l3c",
+      "token": "牽一下就好",
+      "tokenDesc": "牽一下就好",
+      "parentId": "venue_park_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "出口前，人潮變多。你的手碰到她的指尖，沒用力，只是確認她還在。她沒甩開，也沒十指緊扣——剛好的力度，剛好的結束。",
+      "promptHint": "約會第3章·輕牽手收尾。",
+      "visualEn": "from his POV near park exit crowd soft, medium shot, she beside him, hand near his fingers at EDGE of frame, body SIDE by side walking out, face three-quarter not frontal passport, fully clothed",
+      "visualZh": "場面取景（禁止正對鏡頭）：牽一下就好",
+      "setId": "main"
+    },
+    {
+      "id": "venue_cinema_l1",
+      "name": "暗場並肩",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "talk",
+        "play"
+      ],
+      "venueIds": [
+        "cinema"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 1,
+      "pairBase": "venue_cinema_l1",
+      "token": "暗場並肩",
+      "tokenDesc": "暗場並肩",
+      "parentId": null,
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "燈光滅了。預告片的光在她臉上閃，爆米花的味道很近。袖子與袖子之間只剩一點空隙——黑暗像在允許這場約會靠得更近。",
+      "promptHint": "約會第1章·影院開場。",
+      "visualEn": "from his POV seated in dark cinema, she in NEXT SEAT to the side, body PROFILE facing the screen, eyes on movie screen, screen light on profile face, armrest between, half-to-medium shot showing seats, NOT facing camera, looking at screen",
+      "visualZh": "場面取景（禁止正對鏡頭）：暗場並肩",
+      "setId": "main"
+    },
+    {
+      "id": "venue_cinema_l2a",
+      "name": "扶手上的指尖",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "cinema"
+      ],
+      "lane": "color",
+      "dateTrack": "normal",
+      "dateStage": 2,
+      "pairBase": "venue_cinema_l2a",
+      "token": "扶手上的指尖",
+      "tokenDesc": "扶手上的指尖",
+      "parentId": "venue_cinema_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "共享扶手上，兩隻手差一點就要碰到。誰先移開都像認輸。銀幕槍林彈雨，你們卻只在聽對方的呼吸。指尖相碰的那一下，比爆炸聲還清楚。",
+      "promptHint": "約會第2章·影院牽手邊緣。",
+      "visualEn": "from his POV dark cinema, shared armrest FOREGROUND, she seated beside PROFILE, eyes on screen, fingertips near armrest, screen glow, composition shows two seats side by side, not looking at viewer",
+      "visualZh": "場面取景（禁止正對鏡頭）：扶手上的指尖",
+      "setId": "main"
+    },
+    {
+      "id": "venue_cinema_l2b",
+      "name": "演到哭點",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "cinema"
+      ],
+      "lane": "color",
+      "dateTrack": "normal",
+      "dateStage": 2,
+      "pairBase": "venue_cinema_l2b",
+      "token": "演到哭點",
+      "tokenDesc": "演到哭點",
+      "parentId": "venue_cinema_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "電影不講理地煽了大家一把。你把紙巾往她那邊推，假裝在看字幕，其實在看她。熒光在淚光上跳了一下——這比劇情更像約會。",
+      "promptHint": "約會第2章·共用情緒。",
+      "visualEn": "from his POV dark cinema, she beside in seat, three-quarter PROFILE toward screen, eyes watery from movie, tissue near her, ambient screen light, NOT frontal portrait",
+      "visualZh": "場面取景（禁止正對鏡頭）：演到哭點",
+      "setId": "main"
+    },
+    {
+      "id": "venue_cinema_l3a",
+      "name": "散場燈亮",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "cinema"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_cinema_l3a",
+      "token": "散場燈亮",
+      "tokenDesc": "散場燈亮",
+      "parentId": "venue_cinema_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "片尾字幕滾完，燈慢慢亮起。眼睛還沒習慣亮度，她已經在揉眼角或裝没事。你們並肩擠進人潮，剛在黑暗裡的靠近忽然要面對走廊的日光燈。",
+      "promptHint": "約會第3章·散場餘韻。",
+      "visualEn": "from his POV cinema lobby after lights up, medium-wide, she walking slightly AHEAD toward exit, three-quarter BACK, looking forward into hallway light, crowd soft bokeh, not facing camera",
+      "visualZh": "場面取景（禁止正對鏡頭）：散場燈亮",
+      "setId": "main"
+    },
+    {
+      "id": "venue_cinema_l3b",
+      "name": "討論劇透",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "cinema"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_cinema_l3b",
+      "token": "討論劇透",
+      "tokenDesc": "討論劇透",
+      "parentId": "venue_cinema_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "走出影廳，她先開砲吐槽結局。你接話、抬槓、或坦白話看不懂。螢光燈下她的表情比片中角色真實——約會的後半場，從黑暗變成說話。",
+      "promptHint": "約會第3章·散場討論。",
+      "visualEn": "from his POV bright cinema hallway, medium shot, she standing angled toward him but body three-quarter, talking with hands, environment hallway depth, not passport frontal",
+      "visualZh": "場面取景（禁止正對鏡頭）：討論劇透",
+      "setId": "main"
+    },
+    {
+      "id": "venue_cinema_l3c",
+      "name": "一起等末班",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "cinema"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_cinema_l3c",
+      "token": "一起等末班",
+      "tokenDesc": "一起等末班",
+      "parentId": "venue_cinema_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "夜風有點涼。你們在站牌或停車場多站一會兒，誰都沒催。電影已經結束，約會卻像還卡在片尾曲裡，捨不得按停。",
+      "promptHint": "約會第3章·散場不捨。",
+      "visualEn": "from his POV outdoor night by bus stop or parking, medium-wide, she standing BESIDE him looking at street or phone, side profile, night lights, cold air, not facing camera square",
+      "visualZh": "場面取景（禁止正對鏡頭）：一起等末班",
+      "setId": "main"
+    },
+    {
+      "id": "venue_mall_l1",
+      "name": "專櫃並肩",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "talk",
+        "play"
+      ],
+      "venueIds": [
+        "mall"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 1,
+      "pairBase": "venue_mall_l1",
+      "token": "專櫃並肩",
+      "tokenDesc": "專櫃並肩",
+      "parentId": null,
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "電梯叮一聲，專櫃香氣把空氣擠得甜甜的。你們停在同一面櫥窗前，為一件無關緊要的東西交換意見。購物籃邊緣，手背差一點碰上。",
+      "promptHint": "約會第1章·逛街開場。",
+      "visualEn": "from his POV department store aisle, medium-wide, she standing at shop display slightly AHEAD, three-quarter BACK looking into glass showcase, mall lights, shopping bags optional, not facing camera",
+      "visualZh": "場面取景（禁止正對鏡頭）：專櫃並肩",
+      "setId": "main"
+    },
+    {
+      "id": "venue_mall_l2a",
+      "name": "問你合不合",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "mall"
+      ],
+      "lane": "color",
+      "dateTrack": "normal",
+      "dateStage": 2,
+      "pairBase": "venue_mall_l2a",
+      "token": "問你合不合",
+      "tokenDesc": "問你合不合",
+      "parentId": "venue_mall_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "試衣間外你假裝研究價牌。門開一條縫，她探出頭問合不合身——距離近到能聞見新衣漿味。走廊鏡子把你們都收進去。",
+      "promptHint": "約會第2章·試衣。",
+      "visualEn": "from his POV fitting-room corridor, medium shot, she PEERING from door at ANGLE, door frame visible, hallway depth behind him, three-quarter face at door gap, not centered frontal portrait",
+      "visualZh": "場面取景（禁止正對鏡頭）：問你合不合",
+      "setId": "main"
+    },
+    {
+      "id": "venue_mall_l2b",
+      "name": "扶梯並排",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "mall"
+      ],
+      "lane": "color",
+      "dateTrack": "normal",
+      "dateStage": 2,
+      "pairBase": "venue_mall_l2b",
+      "token": "扶梯並排",
+      "tokenDesc": "扶梯並排",
+      "parentId": "venue_mall_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "手扶梯把人送往下一層。你們並排站著，話題被樓層廣告打斷又接上。她的手扶在扶手上，指尖離你的手只有一點點。",
+      "promptHint": "約會第2章·扶梯並排。",
+      "visualEn": "from his POV on escalator, medium shot, she standing on SAME step BESIDE or one step ahead, body facing escalator direction PROFILE, hand on rail, mall atrium depth, not looking at viewer",
+      "visualZh": "場面取景（禁止正對鏡頭）：扶梯並排",
+      "setId": "main"
+    },
+    {
+      "id": "venue_mall_l3a",
+      "name": "分食同一杯",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "mall"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_mall_l3a",
+      "token": "分食同一杯",
+      "tokenDesc": "分食同一杯",
+      "parentId": "venue_mall_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "美食街桌子很小，兩杯變成一杯比較划算。吸管換邊時誰都沒說破。她把下一口讓給你，像把約會的節奏也讓了一半。",
+      "promptHint": "約會第3章·分食。",
+      "visualEn": "from his POV food court table, medium shot, she seated ACROSS or 45-degree angle, three-quarter face over table, shared cup between them, background food court blur, conversational table distance",
+      "visualZh": "場面取景（禁止正對鏡頭）：分食同一杯",
+      "setId": "main"
+    },
+    {
+      "id": "venue_mall_l3b",
+      "name": "幫她提袋子",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "mall"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_mall_l3b",
+      "token": "幫她提袋子",
+      "tokenDesc": "幫她提袋子",
+      "parentId": "venue_mall_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "結帳後袋子換手。你自然接過，她愣了一下才道謝。塑料袋提把勒進掌心，比剛才任何櫥窗都更像「我們一起逛完了」。",
+      "promptHint": "約會第3章·提袋收尾。",
+      "visualEn": "from his POV mall corridor walking out, medium-wide, she beside him, he carries bags in foreground edge, she three-quarter SIDE looking slightly down smiling, exit light ahead",
+      "visualZh": "場面取景（禁止正對鏡頭）：幫她提袋子",
+      "setId": "main"
+    },
+    {
+      "id": "venue_mall_l3c",
+      "name": "地下街出口",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "mall"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_mall_l3c",
+      "token": "地下街出口",
+      "tokenDesc": "地下街出口",
+      "parentId": "venue_mall_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "往出口的人潮變密。她側身讓你走在外側，像習慣又像試探。地上街的光灌進來時，這場逛街約會有了明確的句點——也有「下次再來」的縫。",
+      "promptHint": "約會第3章·出口。",
+      "visualEn": "from his POV underground mall exit ramp, medium-wide, she walking toward daylight exit slightly ahead SIDE VIEW, he on outer side, street light pouring in, not frontal",
+      "visualZh": "場面取景（禁止正對鏡頭）：地下街出口",
+      "setId": "main"
+    },
+    {
+      "id": "venue_beach_l1",
+      "name": "踩浪散步",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "talk",
+        "play"
+      ],
+      "venueIds": [
+        "beach"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 1,
+      "pairBase": "venue_beach_l1",
+      "token": "踩浪散步",
+      "tokenDesc": "踩浪散步",
+      "parentId": null,
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "沙子還帶著白天的熱。浪一來，腳踝就被涼意咬住。你們沿著水線走，鞋子提在手上，談話被風吹成斷句。腳印被下一波抹平。",
+      "promptHint": "約會第1章·海邊開場。",
+      "visualEn": "from his POV walking wet sand shoreline, medium-wide, she BESIDE him PROFILE, looking at waves not camera, wind hair, ocean horizon, shoes in hand, cinematic walk",
+      "visualZh": "場面取景（禁止正對鏡頭）：踩浪散步",
+      "setId": "main"
+    },
+    {
+      "id": "venue_beach_l2a",
+      "name": "浪潑到笑聲",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "beach"
+      ],
+      "lane": "color",
+      "dateTrack": "normal",
+      "dateStage": 2,
+      "pairBase": "venue_beach_l2a",
+      "token": "浪潑到笑聲",
+      "tokenDesc": "浪潑到笑聲",
+      "parentId": "venue_beach_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "浪忽然大了一檔，水花濺上小腿與衣角。她短促叫了一聲，笑聲被海風扯散。你伸手擦她頰邊的水珠，指尖停得比必要久了一點。",
+      "promptHint": "約會第2章·被浪潑到。",
+      "visualEn": "from his POV on beach, medium shot, she HALF-TURNED laughing after splash, three-quarter back-to-side, looking at waves or him over shoulder, wet lower clothes still covered, ocean spray",
+      "visualZh": "場面取景（禁止正對鏡頭）：浪潑到笑聲",
+      "setId": "main"
+    },
+    {
+      "id": "venue_beach_l2b",
+      "name": "坐在防波堤",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "beach"
+      ],
+      "lane": "color",
+      "dateTrack": "normal",
+      "dateStage": 2,
+      "pairBase": "venue_beach_l2b",
+      "token": "坐在防波堤",
+      "tokenDesc": "坐在防波堤",
+      "parentId": "venue_beach_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "防波堤的石頭被曬得溫熱。你們並肩坐下，腿懸在半空，看浪一下下撞上來。話題變慢，海的聲音把約會填滿。",
+      "promptHint": "約會第2章·防波堤並坐。",
+      "visualEn": "from his POV on seawall rocks, medium-wide, she sitting BESIDE him legs dangling, both facing ocean PROFILE, backs partly to camera optional, sea spray, calm",
+      "visualZh": "場面取景（禁止正對鏡頭）：坐在防波堤",
+      "setId": "main"
+    },
+    {
+      "id": "venue_beach_l3a",
+      "name": "夕陽把影子拉長",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "beach"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_beach_l3a",
+      "token": "夕陽把影子拉長",
+      "tokenDesc": "夕陽把影子拉長",
+      "parentId": "venue_beach_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "太陽貼近海平面，影子被拉得特別長。你們的影子先牽在一起，人還假裝沒有。誰先說「該走了」都會破壞這一點剛好的溫度。",
+      "promptHint": "約會第3章·夕陽。",
+      "visualEn": "from his POV beach golden hour, medium-wide, she standing BESIDE looking at sunset HORIZON, three-quarter BACK silhouette, long shadows, ocean, not facing camera",
+      "visualZh": "場面取景（禁止正對鏡頭）：夕陽把影子拉長",
+      "setId": "main"
+    },
+    {
+      "id": "venue_beach_l3b",
+      "name": "撿一顆石頭",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "beach"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_beach_l3b",
+      "token": "撿一顆石頭",
+      "tokenDesc": "撿一顆石頭",
+      "parentId": "venue_beach_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "她彎腰撿起一顆圓石頭，塞進你手心說「記念」。石頭還帶著海水的涼。你握著它，比握著任何紀念品都更像今天有發生過。",
+      "promptHint": "約會第3章·小記念。",
+      "visualEn": "from his POV beach, medium shot, she crouched or bent picking stone, three-quarter side, offering stone toward camera hand, face looking at stone then soft glance, ocean behind",
+      "visualZh": "場面取景（禁止正對鏡頭）：撿一顆石頭",
+      "setId": "main"
+    },
+    {
+      "id": "venue_beach_l3c",
+      "name": "風變大了",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "beach"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_beach_l3c",
+      "token": "風變大了",
+      "tokenDesc": "風變大了",
+      "parentId": "venue_beach_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "傍晚風忽然變大，她把頭髮撥開，往你身側靠半步擋風。沒說要走，也沒說要留。海的噪音裡，這半步就是結局。",
+      "promptHint": "約會第3章·靠風收尾。",
+      "visualEn": "from his POV windy beach evening, medium shot, she stepping CLOSER from side against wind, three-quarter profile, hair windblown, looking toward sea or his shoulder, not frontal passport",
+      "visualZh": "場面取景（禁止正對鏡頭）：風變大了",
+      "setId": "main"
+    },
+    {
+      "id": "venue_hotel_l1",
+      "name": "門關上之後",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "talk",
+        "play"
+      ],
+      "venueIds": [
+        "hotel"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 1,
+      "pairBase": "venue_hotel_l1",
+      "token": "門關上之後",
+      "tokenDesc": "門關上之後",
+      "parentId": null,
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "房卡冰涼，門在身後扣上時，外面的規則暫時失效。房裡只開一盞燈。你們都清楚這是約會走到私密的那一步，只是誰先把沉默撕開。",
+      "promptHint": "約會第1章·旅館進房。",
+      "visualEn": "from his POV just inside hotel room doorway, medium-wide showing room depth, she standing A FEW STEPS INTO the room back three-quarter, looking at room or window not camera, warm lamp, door frame edge, not face-on",
+      "visualZh": "場面取景（禁止正對鏡頭）：門關上之後",
+      "setId": "main"
+    },
+    {
+      "id": "venue_hotel_l2a",
+      "name": "窗邊的夜景",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "hotel"
+      ],
+      "lane": "color",
+      "dateTrack": "normal",
+      "dateStage": 2,
+      "pairBase": "venue_hotel_l2a",
+      "token": "窗邊的夜景",
+      "tokenDesc": "窗邊的夜景",
+      "parentId": "venue_hotel_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "窗簾拉開一點，城市燈火在玻璃上跳動。你們靠在窗邊，話題比白天更低、更真。她的肩膀輕輕碰上你的。",
+      "promptHint": "約會第2章·窗邊。",
+      "visualEn": "from his POV hotel room, medium shot, she at WINDOW looking OUT at night city lights, three-quarter BACK, city bokeh, optional soft head turn, warm interior, not facing camera",
+      "visualZh": "場面取景（禁止正對鏡頭）：窗邊的夜景",
+      "setId": "main"
+    },
+    {
+      "id": "venue_hotel_l2b",
+      "name": "泡茶的空檔",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "hotel"
+      ],
+      "lane": "color",
+      "dateTrack": "normal",
+      "dateStage": 2,
+      "pairBase": "venue_hotel_l2b",
+      "token": "泡茶的空檔",
+      "tokenDesc": "泡茶的空檔",
+      "parentId": "venue_hotel_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "熱水壺響了。兩人分到馬克杯，坐在床沿或沙發角，像故意用喝茶把節奏放慢。蒸汽模糊了視線的一小塊。",
+      "promptHint": "約會第2章·喝茶放慢。",
+      "visualEn": "from his POV hotel room, medium shot, she sitting on bed EDGE or sofa ANGLED 45 degrees, three-quarter view, tea cup steam, space between them, lamp light, not passport frontal",
+      "visualZh": "場面取景（禁止正對鏡頭）：泡茶的空檔",
+      "setId": "main"
+    },
+    {
+      "id": "venue_hotel_l3a",
+      "name": "燈只開一盞",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "hotel"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_hotel_l3a",
+      "token": "燈只開一盞",
+      "tokenDesc": "燈只開一盞",
+      "parentId": "venue_hotel_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "你把主燈關掉，只留床頭那盞。光變軟，距離也變近。誰都沒有下一步指令，空氣卻比進門時更密——結局可以是擁抱，也可以是並肩坐到沉默變甜。",
+      "promptHint": "約會第3章·燈光親密（仍可非色情）。",
+      "visualEn": "from his POV dim hotel room bedside lamp only, medium shot, she sitting or standing mid-room three-quarter, soft shadows, body not square to camera, intimate atmosphere fully clothed",
+      "visualZh": "場面取景（禁止正對鏡頭）：燈只開一盞",
+      "setId": "main"
+    },
+    {
+      "id": "venue_hotel_l3b",
+      "name": "說今晚就到這",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "hotel"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_hotel_l3b",
+      "token": "說今晚就到這",
+      "tokenDesc": "說今晚就到這",
+      "parentId": "venue_hotel_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "她先開口，語氣輕：「……今天這樣就好。」不是拒絕，是把界線畫在甜蜜的位置。你應了，房間裡的緊張卸下一半，留下的是可以被記住的約會完整形狀。",
+      "promptHint": "約會第3章·溫柔收束。",
+      "visualEn": "from his POV hotel room, medium shot, she seated angled toward him three-quarter, gentle sincere expression, table or bed between partial, warm light, conversational not frontal mugshot",
+      "visualZh": "場面取景（禁止正對鏡頭）：說今晚就到這",
+      "setId": "main"
+    },
+    {
+      "id": "venue_hotel_l3c",
+      "name": "出門前整理衣領",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "touch",
+        "play"
+      ],
+      "venueIds": [
+        "hotel"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "pairBase": "venue_hotel_l3c",
+      "token": "出門前整理衣領",
+      "tokenDesc": "出門前整理衣領",
+      "parentId": "venue_hotel_l1",
+      "emotion": {
+        "stranger": {
+          "min": 0,
+          "max": 1
+        },
+        "friend": {
+          "min": 0,
+          "max": 2
+        },
+        "girlfriend": {
+          "min": 1,
+          "max": 2
+        },
+        "wife": {
+          "min": 0,
+          "max": 2
+        }
+      },
+      "sceneStart": "離開前，她伸手幫你整理衣領或頭髮。動作很短，卻像蓋章：這場私密的約會結束了，外面的世界要重新開機。門把轉動的聲音很輕。",
+      "promptHint": "約會第3章·出門整理。",
+      "visualEn": "from his POV near hotel door interior, medium shot, she close, hands near his collar, looking at COLLAR not camera first, three-quarter face, door behind, fully clothed exit moment",
+      "visualZh": "場面取景（禁止正對鏡頭）：出門前整理衣領",
+      "setId": "main"
+    }
+  ],
+  "venues": [
+    {
+      "id": "park",
+      "name": "公園",
+      "fee": 3,
+      "desc": "白天人不多的長椅與步道。",
+      "dateChapters": {
+        "1": [
+          "venue_park_l1"
+        ],
+        "2": [
+          "venue_park_l2a",
+          "venue_park_l2b"
+        ],
+        "3": [
+          "venue_park_l3a",
+          "venue_park_l3b",
+          "venue_park_l3c"
+        ]
+      },
+      "cardIds": [
+        "venue_park_l1",
+        "venue_park_l2a",
+        "venue_park_l2b",
+        "venue_park_l3a",
+        "venue_park_l3b",
+        "venue_park_l3c"
+      ]
+    },
+    {
+      "id": "cinema",
+      "name": "電影院",
+      "fee": 13,
+      "desc": "黑暗把世界縮成兩張椅背的距離。",
+      "dateChapters": {
+        "1": [
+          "venue_cinema_l1"
+        ],
+        "2": [
+          "venue_cinema_l2a",
+          "venue_cinema_l2b"
+        ],
+        "3": [
+          "venue_cinema_l3a",
+          "venue_cinema_l3b",
+          "venue_cinema_l3c"
+        ]
+      },
+      "cardIds": [
+        "venue_cinema_l1",
+        "venue_cinema_l2a",
+        "venue_cinema_l2b",
+        "venue_cinema_l3a",
+        "venue_cinema_l3b",
+        "venue_cinema_l3c"
+      ]
+    },
+    {
+      "id": "mall",
+      "name": "百貨公司",
+      "fee": 10,
+      "desc": "扶梯、專櫃香氣與試衣間的門縫。",
+      "dateChapters": {
+        "1": [
+          "venue_mall_l1"
+        ],
+        "2": [
+          "venue_mall_l2a",
+          "venue_mall_l2b"
+        ],
+        "3": [
+          "venue_mall_l3a",
+          "venue_mall_l3b",
+          "venue_mall_l3c"
+        ]
+      },
+      "cardIds": [
+        "venue_mall_l1",
+        "venue_mall_l2a",
+        "venue_mall_l2b",
+        "venue_mall_l3a",
+        "venue_mall_l3b",
+        "venue_mall_l3c"
+      ]
+    },
+    {
+      "id": "beach",
+      "name": "海邊",
+      "fee": 7,
+      "desc": "浪聲、風、曬熱的沙子與並肩的腳印。",
+      "dateChapters": {
+        "1": [
+          "venue_beach_l1"
+        ],
+        "2": [
+          "venue_beach_l2a",
+          "venue_beach_l2b"
+        ],
+        "3": [
+          "venue_beach_l3a",
+          "venue_beach_l3b",
+          "venue_beach_l3c"
+        ]
+      },
+      "cardIds": [
+        "venue_beach_l1",
+        "venue_beach_l2a",
+        "venue_beach_l2b",
+        "venue_beach_l3a",
+        "venue_beach_l3b",
+        "venue_beach_l3c"
+      ]
+    },
+    {
+      "id": "hotel",
+      "name": "旅館",
+      "fee": 20,
+      "desc": "門一關，店頭的規矩就暫時不管用。",
+      "dateChapters": {
+        "1": [
+          "venue_hotel_l1"
+        ],
+        "2": [
+          "venue_hotel_l2a",
+          "venue_hotel_l2b"
+        ],
+        "3": [
+          "venue_hotel_l3a",
+          "venue_hotel_l3b",
+          "venue_hotel_l3c"
+        ]
+      },
+      "cardIds": [
+        "venue_hotel_l1",
+        "venue_hotel_l2a",
+        "venue_hotel_l2b",
+        "venue_hotel_l3a",
+        "venue_hotel_l3b",
+        "venue_hotel_l3c"
+      ]
+    }
+  ],
   "girl_card_build_rules": {},
   "bubble_canned": {
     "comment": "氣泡罐頭。{quest} 會被替成委託文案。",

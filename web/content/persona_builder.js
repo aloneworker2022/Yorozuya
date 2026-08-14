@@ -2,7 +2,7 @@
 // PersonaBuilder — 內容模組銜接口①(企劃書 8.2)
 // 廠商替換點:整個檔案可整包換掉,遊戲核心零改碼。
 // 核心對回傳字串不檢視、不修改;內容分級責任在本模組。
-// 此為隨附 SFW stub:content_rating 無論為何,一律輸出全年齡 prompt。
+// 全域 NSFW：content_rating 由 app 固定為 nsfw；下方仍保留分支寫法以免舊呼叫崩掉。
 // ============================================================
 
 // ── 四階段關係:六條可執行的行為軸(規格見 docs/relationship-axes.md)──
@@ -105,6 +105,82 @@ function stageBlock(ctx) {
   const cr = CRAVE[r.stage]?.[ctx.craving] ;
   if (cr) L.push(cr);
   return L;
+}
+
+/**
+ * 親密／猥褻／做愛時的態度（最高優先於空泛「害羞」）。
+ * 陌生：盛怒＋羞恥＋抗拒
+ * 朋友：憤怒＋羞恥
+ * 女友：羞恥但身體享受
+ * 妻子：順從、享受、投入
+ */
+const NSFW_STAGE_ATTITUDE = {
+  stranger: {
+    label: "陌生·盛怒羞恥抗拒",
+    talk: [
+      "態度鎖定【盛怒＋羞恥＋強烈抗拒】：你非常生氣、丟臉、覺得被侵犯。",
+      "台詞要兇、要罵、要推拒、質問「你幹嘛」「變態」「放開」；可混羞恥結巴，但核心是憤怒不是撒嬌。",
+      "禁止：享受語氣、撒嬌、配合、求更多、溫柔喘息當主調。",
+      "即使身體有反應，嘴上也要否認並用怒氣蓋過去。",
+    ],
+    sex_crumb: "碎語也要帶怒／不要／放開／變態；不是享受呻吟。",
+    pose: "表情：怒瞪、咬牙、淚、羞紅、皺眉。動作：推、扭開、併腿、抓衣服遮、後退。",
+    tags: "angry, furious, glare, tears, blush, resistance, rejecting, furrowed brows, ashamed",
+  },
+  friend: {
+    label: "朋友·憤怒羞恥",
+    talk: [
+      "態度鎖定【憤怒＋羞恥】：你們是朋友，他不該這樣——你生氣、丟臉、尷尬。",
+      "可罵「太過分」「我們不是那種關係」；語氣衝但比陌生少一點殺氣，仍以拒絕／羞恥為主。",
+      "禁止：主動配合、享受告白、女友式撒嬌求歡。",
+      "身體若有反應，你更羞、更氣，會岔開或硬撐否認。",
+    ],
+    sex_crumb: "碎語混怒與羞：等一下、太過分、不要看……不是全盤沉溺。",
+    pose: "表情：羞怒、別開眼、咬唇、臉紅。動作：半推半就也像在擋、抓袖、扭身。",
+    tags: "angry, embarrassed, blush, averted eyes, ashamed, reluctant, tears",
+  },
+  girlfriend: {
+    label: "女友·羞恥但享受",
+    talk: [
+      "態度鎖定【羞恥但身體在享受】：你們在交往，你會臉紅、小聲、嘴硬，但不會真的討厭到底。",
+      "可嗔「討厭」「羞死了」「慢一點」——底下是情動／依賴，不是陌生那種恨。",
+      "禁止：盛怒要報警、徹底厭惡、把關係當強暴仇敵（那是陌生）。",
+      "可承認舒服但很羞，或一邊罵一邊夾緊／迎合一點。",
+    ],
+    sex_crumb: "碎語可混舒服、喜歡、太深、不要停……仍帶羞。",
+    pose: "表情：羞紅、半閉眼、咬唇、享受與害羞交織。動作：輕抓他、腿半開、迎合又遮臉。",
+    tags: "blush, shy, pleasure, half-closed eyes, biting lip, aroused, embarrassed smile, loving",
+  },
+  wife: {
+    label: "妻子·順從享受投入",
+    talk: [
+      "態度鎖定【順從＋享受＋投入】：你們是夫妻，身體是日常親密。",
+      "語氣可軟、可喘、可直接要；順從他的節奏，主動投入，不必演仇視。",
+      "可羞一點但不是抗拒主調；可說「嗯」「進來」「再深一點」這類投入。",
+      "禁止：陌生式怒罵推開、把親密當侵犯仇敵。",
+    ],
+    sex_crumb: "碎語投入：嗯、好深、還要、射進來……順從享受。",
+    pose: "表情：沉溺、享受、半失神、柔順。動作：抱緊、迎合扭腰、腿纏、主動送。",
+    tags: "pleasure, submissive, loving, aroused, half-closed eyes, devoted, open mouth, engaged",
+  },
+};
+
+function nsfwAttitudeFor(stage) {
+  return NSFW_STAGE_ATTITUDE[stage] || NSFW_STAGE_ATTITUDE.stranger;
+}
+
+/** 打牌親密場面：注入階段態度（猥褻／前戲／正戲皆用） */
+function nsfwAttitudeBlock(stage, { isL2 = false } = {}) {
+  const att = nsfwAttitudeFor(stage);
+  const lines = [
+    "",
+    `【親密態度·關係階段＝${att.label}】（必須呈現，不可變成「每階段都一樣害羞」）`,
+    ...att.talk,
+  ];
+  if (isL2) {
+    lines.push(`・L2+ 雖多是淫聲碎語，態度碎渣仍要符合：${att.sex_crumb}`);
+  }
+  return lines;
 }
 
 // 飢渴的三檔 × 四階段。曲線與身體感同調:抗拒 → 迴避 → 佔有 → 日常。
@@ -386,7 +462,7 @@ export function buildCardPlayPrompt(ctx) {
     `對方是召喚你的人,叫「${you}」。`,
     "",
     "【對象鎖定】",
-    `你就是「${c.name}」。正在跟你互動的人只有「${you}」。`,
+    `你就是「${c.name}」。`,
     eye || bust || hair
       ? `外貌參考（回话可點到，勿報清單）：${[hair && `髮:${hair}`, eye && `眼:${eye}`, bust && `胸:${bust}`].filter(Boolean).join("；")}`
       : "",
@@ -403,25 +479,125 @@ export function buildCardPlayPrompt(ctx) {
       : `・界線（越界時）:${ax.crossLine}。他若踩到:${ax.crossReact}`,
   );
 
+  const ntrStage = Number(play.date_stage || play.dateChapterStage || 0) || 0;
+  const isNtr = play.mode === "date" && (play.date_track === "ntr" || play.rival_name);
+  // L2+：玩家不在場——場面是「另一召喚師×你」；L1：玩家在旁看著你們互動
+  const ntrFar = isNtr && ntrStage >= 2;
+  const rnEarly = play.rival_name || "另一個男人";
+
+  if (ntrFar) {
+    lines.push(`這一拍正在跟你肢體／言語互動的人是「${rnEarly}」，不是「${you}」（「${you}」不在場）。`);
+  } else if (isNtr) {
+    lines.push(`這一拍肢體／言語的主動方是「${rnEarly}」；「${you}」在場旁觀，不是出手者。`);
+  } else {
+    lines.push(`正在跟你互動的人只有「${you}」。`);
+  }
+
   if (play.mode === "date" && play.venue_name) {
-    lines.push(`場景:你們正在「${play.venue_name}」約會。`);
+    if (ntrFar) {
+      lines.push(
+        `場景:「${play.venue_name}」某處——「${you}」不在場。`,
+        `這不是你跟「${you}」的約會鏡頭；旁白描述的是另一位召喚師正在與你做的事。`,
+      );
+    } else if (isNtr) {
+      lines.push(
+        `場景:「${play.venue_name}」約會現場。`,
+        `「${you}」在場，但他此刻是旁觀者——他看著另一個男人跟你互動。`,
+      );
+    } else {
+      lines.push(`場景:你們正在「${play.venue_name}」約會。`);
+    }
   } else {
     lines.push("場景:萬事屋店頭。他付了代價把你叫到身邊，距離很近。");
+  }
+
+  if (isNtr) {
+    const rn = play.rival_name || "另一個男人";
+    if (ntrFar) {
+      const ntrEnding = ntrStage >= 6;
+      const ntrClimax = ntrStage >= 5 && !ntrEnding;
+      const ntrMating = ntrStage >= 4 && !ntrClimax && !ntrEnding;
+      const ntrMolest = ntrStage >= 3 && !ntrMating && !ntrClimax && !ntrEnding;
+      if (ntrEnding) {
+        const endKind = play.date_ending || play.dateEnding || "";
+        if (endKind === "taken" || /帶走|看板/.test(String(play.card_name || "") + String(play.scene_start || ""))) {
+          lines.push(
+            `【結局·被帶走】另一位召喚師「${rn}」正把你帶走，你將成為他那邊的看板娘。`,
+            `回話可對「${rn}」或含糊、可對「${you}」道別式的隻字片語；心虛、軟、被帶走的感覺。不要說自己沒事回到${you}身邊。`,
+          );
+        } else {
+          lines.push(
+            `【結局·回到${you}身邊】場面是你走回「${you}」身邊。`,
+            `回話重點：安撫他——「沒事了」「我們回去吧」之類；可心虛、可勉強笑，但明確是回到玩家身邊，不是跟${rn}走。`,
+            `不要繼續跟${rn}调情或求歡。只寫台詞。`,
+          );
+        }
+      } else if (ntrClimax) {
+        lines.push(
+          `【岔路·NTR高潮｜玩家不在場】在「${you}」不在的地方，另一位召喚師「${rn}」正在幹你、讓你高潮／中出你——絕對不是「${you}」。`,
+          `你的身體已對「${rn}」甜蜜迎合（扭腰、纏腿、求他更深、接受他的精液——依場面旁白）。`,
+          `回話可對「${rn}」撒嬌／失神／求射／迎合，或無對象的喘與泣音；禁止寫成在跟「${you}」做愛。只寫台詞。`,
+        );
+      } else if (ntrMating) {
+        lines.push(
+          `【岔路·交配｜玩家不在場】在「${you}」不在的地方，你正與另一位召喚師「${rn}」性交（插入、抽送、體位——依場面旁白）。`,
+          `回話重點：接住被插入／被做到的身體感與情緒——驚怒羞慌、喘、罵、或破碎的拒絕；依你跟「${you}」的關係與你跟${rn}的暗流。可含喘與短促，但不要突然變成全盤享受配種狂。只寫台詞。`,
+        );
+      } else if (ntrMolest) {
+        lines.push(
+          `【岔路·猥褻｜玩家不在場】在「${you}」不在的地方，「${rn}」正對你上下其手（揉胸、探裙、隔衣亂摸等——依場面旁白）。`,
+          `回話重點：接住他正在對你身體做的事——驚、怒、羞、慌、咬唇、想推開或罵；依你跟「${you}」的關係與你跟${rn}的暗流，不要瞬間變成享受配種。只寫台詞，不要旁白自己的手在幹嘛。`,
+        );
+      } else {
+        lines.push(
+          `【岔路·玩家不在場】場面不在「${you}」身邊：在「${play.venue_name || "約會地"}」某處，另一位召喚師「${rn}」正在與你互動。`,
+          `回話重點：接住你與「${rn}」之間正在發生的事（他說什麼、碰你什麼、你怎麼應）。`,
+          `禁止當成三人還並肩聊天；禁止對「${you}」當面回話（他不在場）。也不要瞬間愛上${rn}——依你跟${you}的關係與你跟${rn}的暗流演。`,
+        );
+      }
+    } else {
+      // L1：玩家在場旁觀——看到 rival × 妹子 的互動
+      lines.push(
+        `【L1·玩家旁觀】另一位召喚師「${rn}」已經介入，正在跟你說話／靠近／搶節奏。`,
+        `「${you}」看在眼裡——他是旁觀者，不是這一拍的主動出手者。`,
+        `回話要接住「${rn}」對你做的事與你的反應：驚／尷尬／防備／心虛／不爽；可瞥向「${you}」、可對${rn}應聲，但不要瞬間愛上路人，也不要當沒事。`,
+      );
+    }
   }
 
   let whatHappened = `他剛才對你做了這件事（牌面「${play.card_name || "某個舉動"}」）。`;
   if (kind === "girl_trait") {
     whatHappened = `這一拍是你主動的節奏「${play.card_name || "你的本體"}」——不是他在出招進攻。`;
   } else if (kind === "venue_event") {
-    whatHappened = `現場發生了「${play.card_name || "某個場面"}」。`;
+    if (ntrFar && ntrStage >= 6) {
+      whatHappened = `結局場面「${play.card_name || "結尾"}」。依旁白：被另一召喚師帶走，或回到「${you}」身邊安撫。`;
+    } else if (ntrFar && ntrStage >= 5) {
+      whatHappened = `【玩家不在場】另一個召喚師「${play.rival_name || "那個男人"}」把你幹到高潮／中出「${play.card_name || "高潮迎合"}」——不是「${you}」。重點在你對他的融化與迎合。`;
+    } else if (ntrFar && ntrStage >= 4) {
+      whatHappened = `【玩家不在場】另一個召喚師正與你交配「${play.card_name || "被插入抽送"}」。重點在交合與你的反應（驚怒羞喘慌）。`;
+    } else if (ntrFar && ntrStage >= 3) {
+      whatHappened = `【玩家不在場】另一個召喚師正在猥褻你「${play.card_name || "被上下其手"}」。重點在他的手對你身體做了什麼、你怎麼反應（驚怒羞慌）。`;
+    } else if (ntrFar) {
+      whatHappened = `【玩家不在場】另一個召喚師「${play.rival_name || "那個男人"}」正在與你互動「${play.card_name || "兩人獨處"}」。重點在他對你做了什麼、你怎麼反應——不是「${you}」在出招。`;
+    } else if (isNtr) {
+      whatHappened = `【玩家旁觀】「${you}」看著另一個男人介入你：「${play.card_name || "第三人出現"}」。重點是 rival 與你的互動，以及你被看著時的反應。`;
+    } else {
+      whatHappened = `現場發生了「${play.card_name || "某個場面"}」。`;
+    }
   }
 
   lines.push(
     "",
-    "【他剛才做了什麼——你的每一句都要接住】",
+    isNtr
+      ? (ntrFar
+        ? "【這一拍（玩家不在場）——你與另一個召喚師之間發生了什麼；每一句都要接住】"
+        : "【這一拍（玩家旁觀）——另一個男人對你做了什麼；每一句都要接住】")
+      : "【他剛才做了什麼——你的每一句都要接住】",
     whatHappened,
     play.scene_start
-      ? `【玩家動作旁白】:\n${String(play.scene_start).slice(0, 280)}`
+      ? (isNtr
+        ? `【場面旁白·${ntrFar ? "玩家不在場" : "玩家旁觀"}】:\n${String(play.scene_start).slice(0, 360)}`
+        : `【玩家動作旁白】:\n${String(play.scene_start).slice(0, 280)}`)
       : "",
     play.prompt_hint ? `牌意方向（勿照念）:${String(play.prompt_hint).slice(0, 160)}` : "",
     play.open_fail ? "肢體結果:你沒接住——退開、擋、冷。回話要對上拒絕。" : "",
@@ -440,21 +616,83 @@ export function buildCardPlayPrompt(ctx) {
     );
   }
 
+  // ── 台詞能力分級：僅 L2 正戲以上才喘／胡言；其餘可正常說話 ──
+  // L0 猥褻 erotic ／ L1 前戲 foreplay → 正常對話（態度掛關係階段）
+  // L2 intercourse ／ L3 intense ／ L4 climax ／ L5 player_climax → 淫聲胡言（態度碎渣仍掛階段）
+  const sexPhase = play.sex_phase || play.sexPhase || "";
+  const stageKey = r.stage || "stranger";
+  const isIntimate =
+    kind === "erotic" || kind === "foreplay" || kind === "intercourse" || kind === "sex"
+    || sexPhase === "foreplay" || sexPhase === "intercourse" || sexPhase === "intercourse_intense"
+    || sexPhase === "climax" || sexPhase === "player_climax";
+  const isL2SexTalk =
+    kind === "intercourse" || kind === "sex"
+    || sexPhase === "intercourse" || sexPhase === "intercourse_intense"
+    || sexPhase === "climax" || sexPhase === "player_climax";
+
+  if (isIntimate) {
+    lines.push(...nsfwAttitudeBlock(stageKey, { isL2: isL2SexTalk }));
+  }
+
+  if (kind === "erotic") {
+    lines.push(
+      "",
+      "【猥褻（尚未插入）——仍可正常說話】",
+      "・他在對你做下流／碰觸：完整句子回話；態度必須符合上面的【親密態度】。",
+      "・可以結巴、臉紅，但禁止整段只剩「啊啊嗯嗯」（那是插入正戲才用）。",
+      "・禁止長篇演講或岔到無關待辦；第一句要對上他剛做的事。",
+    );
+  } else if (kind === "foreplay" || sexPhase === "foreplay") {
+    lines.push(
+      "",
+      "【前戲 L1——仍可正常說話】",
+      "・被親／解衣／愛撫：仍是句子；態度必須符合上面的【親密態度】。",
+      "・可略喘或結巴；禁止整段胡言亂語或只剩呻吟。",
+    );
+  } else if (isL2SexTalk) {
+    lines.push(
+      "",
+      "【正戲 L2 以上——說話被身體占滿】",
+      "・已插入／抽送／高潮：不可能正常長句對話。",
+      "・必須以淫聲／氣音／破碎詞為主；但態度碎渣仍要符合【親密態度】（怒／羞／享受／順從）。",
+      "・禁止：冷靜分析、問待辦、講道理、日常聊天腔。",
+    );
+    if (sexPhase === "climax" || /高潮|潮吹|去了|失神/.test(String(play.card_name || ""))) {
+      lines.push("・【L4 她的高潮】大腦空白：哭喘、啊啊、去了；禁止講清楚句子。");
+    } else if (sexPhase === "player_climax" || /射|中出|內射|射滿|結束/.test(String(play.card_name || ""))) {
+      lines.push("・【L5 中出／他射】失神餘韻：熱、滿、裡面……；禁止正常聊天。");
+    } else if (sexPhase === "intercourse_intense") {
+      lines.push("・【L3 激烈】每一下被頂斷氣：喘、哭腔、求慢又被頂碎。");
+    } else {
+      lines.push("・【L2 插入】被幹到說話斷續：啊、嗯、太深……立刻被頂碎。");
+    }
+  }
+
+  const attLabel = nsfwAttitudeFor(stageKey).label;
   lines.push(
     "",
     "【怎麼接話】",
     "・第一句就要對上他剛做的事／說的話，禁止無關開場。",
-    "・用你的個性、職業感與關係階段；可以結巴、嘴硬、軟、兇——像真人。",
-    "・可以短（「呃……你好喔。」）也可以 2～4 句；不要演講。",
+    isIntimate
+      ? `・親密場面態度＝「${attLabel}」——必須聽得出階段差，不可四階段同一副害羞臉。`
+      : "・用你的個性、職業感與關係階段——像真人。",
+    isL2SexTalk
+      ? "・L2+：形式＝淫聲碎語；態度碎渣仍掛階段。"
+      : "・用你的個性＋階段態度；可以結巴、嘴硬、軟、兇。",
+    isL2SexTalk
+      ? "・長度：1～3 短段氣音／碎語即可。"
+      : "・可以短也可以 2～4 句；不要演講。",
     "",
     "【輸出格式——只給玩家看的對話】",
     "1. 繁體中文。只輸出你「說出口」的台詞。",
     "2. 不加引號、不寫旁白、不用括號舞台指示（不要寫「表情：」「動作：」）。",
     "3. 禁止提及：卡牌、系統、AI、遊戲、情感數值、插圖、畫圖、畫面定格。",
-    "4. 你不知道在玩卡——這是真實發生的接觸／對話。",
-    ctx.content_rating === "nsfw"
-      ? "5. NSFW：可依剛才肢體露骨，但仍要像你本人會說的。"
-      : "5. 全年齡：可曖昧、害羞、生氣，不寫露骨性行為。",
+    "4. 你不知道在玩卡——這是真實發生的接觸。",
+    isL2SexTalk
+      ? `5. L2+：淫聲＋胡言；態度碎渣＝${attLabel}。高潮大腦空白。`
+      : isIntimate
+        ? `5. 親密台詞必須呈現「${attLabel}」；可略喘，禁止整段只呻吟（L2 前）。`
+        : "5. NSFW 若有肢體，仍用你本人會說的話接。",
   );
 
   return lines.filter(Boolean).join("\n");
@@ -468,32 +706,72 @@ export function buildCardPlayPrompt(ctx) {
 export function buildCardVisualPosePrompt(ctx) {
   const c = ctx.character || {};
   const play = ctx.card_play || {};
+  const r = ctx.relationship || {};
   const L = c.look || {};
   const dialogue = (play.girl_line || play.dialogue || "").trim();
-  const lines = [
-    "你是分鏡助手。任務：根據她剛才的回話，寫出「看得見的」表情與身體動作，供插圖第③層使用。",
-    "這層只補神態／肢體，不寫鏡頭、距離、POV、取景（那些由卡牌運鏡另給）。",
-    "不要寫台詞，不要解釋劇情，不要寫內心獨白。",
-    "",
-    `角色：${c.name || "她"}`,
-    `體型／外貌（僅比例參考，勿重寫髮色服裝）：體型=${L.build || "—"}；胸=${L.bust || "—"}；眼=${L.eyes || "—"}；髮=${[L.hair_color, L.hair].filter(Boolean).join("") || L.hair || "—"}`,
-    play.scene_start ? `他做了什麼（背景）：${String(play.scene_start).replace(/\s+/g, " ").slice(0, 160)}` : "",
-    dialogue ? `她剛才說：${dialogue.slice(0, 200)}` : "她剛對他有了反應。",
-    play.open_fail ? "肢體結果：拒絕、退開。" : "",
-    "",
-    "【只輸出兩行】",
-    "表情：……",
-    "動作：……",
-    "",
-    "規則：繁中；每行短（4～20 字）；表情=臉上可見；動作=肢體可見；必須對得上她說的話。",
-    "範例（格式示意）：",
-    "・生氣 → 表情：皺眉怒視　動作：雙手叉腰",
-    "・害羞 → 表情：臉紅低頭　動作：捏衣角",
-    "・心不在焉 → 表情：目光渙散　動作：身體微側看別處",
-    "・蹲下 → 表情：平靜或警戒　動作：蹲在地上",
-    "・乾笑敷衍 → 表情：皮笑肉不笑　動作：肩膀微聳",
-    "禁止：台詞、系統字、卡牌、運鏡用語（半身／特寫／POV）、英文長句。",
-  ];
+  const kind = play.kind || "";
+  const sexPhase = play.sex_phase || play.sexPhase || "";
+  const stageKey = r.stage || play.stage || "stranger";
+  const att = nsfwAttitudeFor(stageKey);
+  const intimate = kind === "erotic" || kind === "foreplay" || kind === "intercourse" || kind === "sex";
+  const lines = intimate
+    ? [
+      "你是 NSFW 分鏡助手。任務：根據她剛才的回話，主動寫出「看得見的」表情與身體狀態，供插圖第③層使用。",
+      "主詞是她：臉、胸、腰、腿、衣物錯位、被碰後的姿勢——要具體、可畫。",
+      "這層補神態／肢體／性場面反應；鏡頭／POV 另由卡牌 visualEn 給，這裡可不寫運鏡。",
+      "不要寫台詞，不要解釋劇情，不要寫內心獨白。",
+      "",
+      `角色：${c.name || "她"}`,
+      `關係階段：${stageKey} → 態度【${att.label}】（表情與動作必須對上）`,
+      `態度分鏡指引：${att.pose}`,
+      `體型／外貌（僅比例參考，勿重寫髮色服裝）：體型=${L.build || "—"}；胸=${L.bust || "—"}；眼=${L.eyes || "—"}；髮=${[L.hair_color, L.hair].filter(Boolean).join("") || L.hair || "—"}`,
+      play.scene_start ? `他對她做了什麼（背景）：${String(play.scene_start).replace(/\s+/g, " ").slice(0, 180)}` : "",
+      kind ? `卡種：${kind}${sexPhase ? `／階段:${sexPhase}` : ""}` : "",
+      dialogue
+        ? `她剛才說：${dialogue.slice(0, 200)}${
+          kind === "intercourse" || kind === "sex" || sexPhase === "climax" || sexPhase === "player_climax" || sexPhase === "intercourse_intense" || sexPhase === "intercourse"
+            ? "（L2+ 多為喘／淫聲，但仍要畫得出階段態度）"
+            : "（說話腔應符合階段態度）"
+        }`
+        : "她剛對他有了身體／言語反應。",
+      play.open_fail ? "肢體結果：拒絕、退開，但仍可見被碰過的身體。" : "",
+      "",
+      "【只輸出兩行】",
+      "表情：……",
+      "動作：……",
+      "",
+      "規則：繁中；每行可稍長（6～28 字）；表情=臉上可見；動作=身體／衣物／姿勢；必須對得上場面＋關係態度。",
+      "階段表情鎖定：",
+      "・陌生＝怒瞪／盛怒／羞恥抗拒／推開",
+      "・朋友＝羞怒／尷尬／不情願",
+      "・女友＝羞紅但享受／咬唇情動",
+      "・妻子＝順從沉溺／投入迎合",
+      "高潮時陌生仍可帶淚怒餘韻；女友／妻子才是純粹沉溺阿黑顏。",
+      "禁止：系統字、卡牌名、運鏡術語當主內容、英文長句。成人露骨允許。",
+    ]
+    : [
+      "你是對話分鏡助手。任務：根據她剛才的回話，寫出「看得見的」表情與上半身姿態，供插圖第③層使用。",
+      "這是普通對話／輕互動，不是性場面。主詞是臉與姿態：眼神、嘴角、頭部角度、肩線——要具體、可畫。",
+      "禁止：被摸胸、裸露、性交姿勢、衣物錯位露點、阿黑顏。",
+      "鏡頭／POV 另由卡牌 visualEn 給，這裡不寫運鏡。",
+      "不要寫台詞，不要解釋劇情，不要寫內心獨白。",
+      "",
+      `角色：${c.name || "她"}`,
+      `關係階段：${stageKey}（對話態度，不是 NSFW 被摸態度）`,
+      `體型／外貌（僅比例參考，勿重寫髮色服裝）：體型=${L.build || "—"}；眼=${L.eyes || "—"}；髮=${[L.hair_color, L.hair].filter(Boolean).join("") || L.hair || "—"}`,
+      play.scene_start ? `場面（他說／做了什麼）：${String(play.scene_start).replace(/\s+/g, " ").slice(0, 180)}` : "",
+      kind ? `卡種：${kind}` : "",
+      dialogue ? `她剛才說：${dialogue.slice(0, 200)}` : "她剛有言語反應。",
+      play.open_fail ? "結果：她沒接住／推開話題，表情尷尬或僵硬。" : "",
+      "",
+      "【只輸出兩行】",
+      "表情：……",
+      "動作：……",
+      "",
+      "規則：繁中；每行 6～28 字；表情=臉上可見；動作=站姿／手勢／頭部（非被摸）。",
+      "對話表情例：輕笑、挑眉、別開視線、點頭、咬唇思考、眼神好奇——依回話調整。",
+      "禁止：系統字、卡牌名、摸胸、脫衣、性交、英文長句。",
+    ];
   return lines.filter(Boolean).join("\n");
 }
 

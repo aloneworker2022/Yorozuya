@@ -276,8 +276,8 @@ const HAND_DRAW = 2; // defaults.hand_draw
 {
   id: "speech_soft",
   name: "輕聲安撫",
-  kind: "speech",              // speech | shop_premium | girl_trait | venue_event
-  shatterOnUse: false,         // speech false；商店高級 true
+  kind: "speech",              // speech | shop_premium | erotic | sex | girl_trait | venue_event
+  shatterOnUse: false,         // speech false；商店高級 true；erotic **一律 true**；sex 不進庫
   tags: ["talk"],              // 鍊相容：talk | touch | sex | play | any
   price: 0,                    // 商店售價；非賣品 0
   rarity: "N",                 // 展示用
@@ -315,6 +315,8 @@ const HAND_DRAW = 2; // defaults.hand_draw
 |---|---|---|
 | `speech` | **false** | 創角 10 選 1、商店話術（貴）、之後解鎖 |
 | `shop_premium` | **true** | 商店高級：侵略／虐開門／不可走／重口味等 |
+| `erotic` | **true（強制）** | 色情卡：消耗；**打出必 `forceAnotherRound`**；機率觸發做愛（見 §6.1A） |
+| `sex` | false（**不進庫存**） | 做愛卡：由 `pendingSex` 系統抽演（見 §6.1B）；不上架、不進牌組 |
 | `girl_trait` | false（不進玩家庫） | 關係＋特色臨時生成 |
 | `venue_event` | false（不進玩家庫） | 場地 3 張 |
 
@@ -602,6 +604,99 @@ function endRoundAndMaybeDraw(sess):
 
 資料：`cardSession.forceAnotherRound = true`。
 
+### 6.1A 色情卡（`kind: erotic`）— 鎖死
+
+| 項目 | 值 |
+|---|---|
+| 消耗 | **一律用則碎**（`shatterOnUse` 強制 true；JSON 寫錯引擎也碎） |
+| 下一輪 | 打出成功 → **無條件** `forceAnotherRound = true`（輪末不骰留下，必再來一輪） |
+| 做愛觸發 | 打出時依關係階段擲骰；中了 → `sess.pendingSex` → 看完反應後 `commitSexPlay`（§6.1B） |
+
+**做愛觸發率（鎖死，禁止當成長公式改）：**
+
+```js
+// defaults.sex_trigger_by_stage
+const SEX_TRIGGER_BY_STAGE = {
+  stranger:   1 / 10,  // 陌生
+  friend:     1 / 8,   // 朋友
+  girlfriend: 1 / 3,   // 女友
+  wife:       1 / 2,   // 妻子
+};
+```
+
+**禁止：**
+
+1. 把色情卡做成不碎／可反覆刷。  
+2. 改上述四個分數「平衡」。改＝改體驗＝當 bug 開。  
+3. 用 NLP 解析台詞假裝做愛好感；做愛場面只走 `kind=sex` 卡。  
+4. 未觸發時清掉「別張已掛的 pendingSex」以外的多餘狀態機（目前一打一結算即可）。
+
+**資料／實作：**
+
+- 引擎：`isEroticCard` / `shattersOnUse` / `rollSexTrigger` / `applyCardEffect` 內建 force＋擲骰。  
+- 商店：可走 `shop_weights.erotic_pool`；未列則 `kind===erotic` 回退進 premium 槽。  
+- UI：確認層提示「用後消失 · 無條件可下一輪 · 機率做愛」；觸發時 meta 標「觸發做愛（下一幕）」。
+
+### 6.1B 做愛卡（`kind: sex`）— 鎖死
+
+| 項目 | 值 |
+|---|---|
+| 來源 | **不上商店、不進玩家庫存、不進牌組**；只由系統在 `pendingSex` 時抽 |
+| 池 | `defaults.sex_base_pool` 或 `shop_weights.sex_pool` 或 `kind=sex` |
+| 何時演 | 色情卡反應「繼續」後，若 `hasPendingSex` → `commitSexPlay` 自動一張 |
+| 輪數 | **不扣 `nLeft`**（色情卡後的追加場面） |
+| 感情 | 正常 `rollEmotion`（tags 含 `sex` → sex lane fallback） |
+| 結束 | 清 `pendingSex`；若原已無輪數 → `roundEnded` 再進輪末 |
+
+**做愛樹（`parentId` 詞墜；每層分支各 2 張）：**
+
+| 階段 | 層 | 內容 |
+|---|---|---|
+| **前戲** | 根 `sexBase` + L1 `foreplay_l1` | 強吻／扯衣／褪底褲／指探及其加深 |
+| **正戲** | L2 `sex_act` / `intercourse` | **進入插入** |
+| **激烈正戲** | L3 `sex_act_l3` / `intercourse_intense` | 更狠、更快、中出邊緣／失神等 |
+| **迎合高潮** | L4 `sex_act_l4` / `climax` | **女子主動迎合**＋**她的高潮** |
+| **玩家收束** | L5 `sex_act_l5` / `player_climax` / `sexEnd` | **玩家高潮**（內射／拔出射等）並**結束鏈** |
+
+| 層 | 數量 | 分支規則 |
+|---|---|---|
+| 根 | 4 | — |
+| L1 | 8 | 每根 ×2 |
+| L2 | 16 | 每 L1 ×2 |
+| L3 | 32 | 每 L2 ×2 |
+| L4 | 64 | 每 L3 ×2 |
+| L5 | 128 | 每 L4 ×2 |
+| **合計** | **252** | |
+
+**種類（資料 kind）：**
+
+| kind | 中文 | 誰選 |
+|---|---|---|
+| `foreplay` | 前戲 | **玩家 2 選 1**（根與 L1） |
+| `intercourse` | 正戲 | **系統隨機**（L2～L5） |
+
+**流程（鎖死）：**
+
+1. 色情卡觸發 → 從前戲根池抽 **2** 張 → 玩家選 1  
+2. 前戲 L1：該根的 2 張 L1 → 玩家再選 1  
+3. 進入正戲後：系統隨機走樹；**每打完一張正戲**（非收束）擲：  
+   - **same** 權重 1/2：再出**同一張**  
+   - **finish** 權重 1/3：**直接跳射精**（L5 收束）  
+   - **next** 權重 1/3：進**下一張**子卡  
+   - 三權重**正規化**後抽（口頭 1/2+1/3+1/3；同卡最多 `sex_same_max` 預設 2 次）  
+4. L5 / `sexEnd`：鏈結束  
+
+詞墜例：`… [她主動纏緊高潮] [射滿在最裡結束]`。
+
+**禁止：**
+
+1. 讓玩家在商店買做愛卡刷庫存。  
+2. 做愛卡再擲一次「觸發做愛」套娃。  
+3. 池空時卡住整局——應 toast 並略過，清 pending。  
+4. **根／L1 寫成陰莖插入**（插入從 L2 起）。  
+5. **L2 仍停在前戲**；**L3 不得比 L2 更弱**；**L4 必須有迎合＋她的高潮**；**L5 必須是玩家高潮收束**。  
+6. **正戲階段給玩家選卡**（只能系統隨機 + 上述三分支）。
+
 ### 6.2 預設留下判定
 
 當 `!forceAnotherRound`：
@@ -611,16 +706,15 @@ P = STAGE_STAY_BASE[stage]  // 建議落在 5%～50% 總區間
 // 可選修正（第一版可只做 base；要加修正必須集中常數）
 P = clamp(P, 0.05, 0.50)
 if random() < P: 進入下一輪 round_setup
-else: 她離開本 session（看板仍可能在任直到 until——需定）
+else: 她離開本 session → **結束打牌並解除看板召喚**
 ```
 
-**看板留下 vs 解除看板（鎖死建議）：**
+**看板：結束打牌 ＝ 解除看板（鎖死）：**
 
-- 輪末「離開」= **結束本 session 的打牌**，不是立刻從 `kanbans` 移除。  
-- 她仍可在店頭陪伴／氣泡，直到既有 `until` 到期。  
-- 若要再打，開新 session（新一輪組牌），是否允許由產品定：  
-  **建議：同一在任期可再開 session，但每段 session 仍受 N／留下限制。**  
-  若怕刷，可加「在任期最多 S 次 session」— 第一版可 **不限制**，靠碎卡成本與 N 限制。
+- 輪末「離開」／關桌／「結束牌局」= **從 `kanbans` 移除**（這次召喚結束）。  
+- 名冊保留（不是獻祭）；可再付費「召喚為看板娘」。  
+- 約會 mode 只散場，不碰看板名單。  
+- （舊稿「人仍在店頭直到 until」已作廢。）
 
 `STAGE_STAY_BASE` 建議起點（可調表，集中常數）：
 
@@ -750,6 +844,19 @@ affection += Δ
 | -3 | -1 |
 
 卡 JSON 有 `emotion` 則 **蓋過** fallback。
+
+### 8.2A NSFW 三階段感情（鎖死 · 優先於卡面與「女友前必負」）
+
+| 階段 | kind | min | max | 說明 |
+|---|---|---|---|---|
+| **猥褻** | `erotic` | **−15** | **−5** | 色情消耗卡 |
+| **前戲** | `foreplay` | **+3** | **+9** | 玩家 2 選 1 |
+| **正戲** | `intercourse` | **+5** | **+10** | 含激烈／她高潮／玩家收束 |
+
+- **全關係階段共用**同一區間（不依 stranger／wife 分表）。  
+- 引擎 `nsfwPhaseEmotion` **優先**；不套用舊「女友前感情硬夾負分」。  
+- 常數：`defaults.emotion_nsfw_erotic` / `emotion_nsfw_foreplay` / `emotion_nsfw_intercourse`。  
+- **禁止**把猥褻做成正分，或把前戲／正戲做成負分「平衡」。
 
 ### 8.3 三線養成
 
@@ -1070,8 +1177,8 @@ girl.cardCg = {
 |---|---|
 | `_meta` / `enums` / `defaults` | 版本、列舉、與本文對齊的常數副本 |
 | `starter_pool` | 創角 10 選 1 的 id 列表（必須與 `starter:true` 的卡一致） |
-| `shop_weights` | 貨架可上架的 speech／premium 池 |
-| `cards[]` | 全部卡（話術／高級碎卡／本體模板／場地事件）；`parentId`／`token` 供詞墜 B |
+| `shop_weights` | 貨架可上架的 speech／premium／**erotic** 池 |
+| `cards[]` | 全部卡（話術／高級碎卡／**色情**／本體模板／場地事件）；`parentId`／`token` 供詞墜 B |
 | `venues[]` | 約會場地；每場 **恰好 3** 張 `cardIds` |
 | `girl_card_build_rules` | 產製時如何組 ≤3 本體卡 |
 | `bubble_canned` | 氣泡無 AI 罐頭（`{quest}` 占位） |
@@ -1084,6 +1191,13 @@ girl.cardCg = {
   max_girl_cards: 3,
   max_inject: 8,         // 本局攜帶上限
   arc_weights: { child: 8, other: 1 },
+  // 色情卡 → 做愛觸發率（鎖死；見 §6.1A）
+  sex_trigger_by_stage: {
+    stranger: 0.1,        // 1/10
+    friend: 0.125,        // 1/8
+    girlfriend: 1 / 3,
+    wife: 0.5,            // 1/2
+  },
   // …既有 shop／bubble／base_plays_by_stage 等
 }
 ```
@@ -1109,6 +1223,18 @@ girl.cardCg = {
 | 2026-08-05 | **M5 CG cache 已上線**：`girl.cardCg`、開戰零等待、別名一張多用、占位 badge |
 | 2026-08-05 | **M6 自由聊退役**：`freeChatRetired`、清殘燈、停 genChat／genReply、觀戰釋放接牌桌、§13／§14.7 |
 | 2026-08-11 | **看板打牌 v7 規格鎖（程式待跟）**：攜帶 **8**；一輪＝抽 **2**→打 **1**→AI→圖；**N＝輪數**；無舊補到手牌 5；打出非碎回實體池但 **playedIds 本局不進可抽池**；碎不回；妹子卡自動打（兩張皆妹子隨機 1）；詞墜 **B** 僅 T1=`parentId===lastId` 加權、無 T1／首輪均勻；**否決 A opener 旗標**；**C beat 留給約會**；§0.2 增 9～11；§4.4～§5.2／§14／§16 defaults 同步 |
+| 2026-08-11 | **色情卡 `kind=erotic`**：一律消耗；打出必 `forceAnotherRound`；做愛觸發率陌生 1/10、朋友 1/8、女友 1/3、妻子 1/2（§6.1A）；`pendingSex` 掛點，做愛卡另做；ca 包 10 張已轉 erotic |
+| 2026-08-12 | **做愛卡 `kind=sex`**：§6.1B；基礎五張 s0001–s0005；`commitSexPlay` 在色情反應後自動演出、不扣 N、不上架 |
+| 2026-08-12 | **做愛基礎池改前戲**：強吻／扯衣／吸奶／褪底褲／指探；禁止基礎卡一上來插入；插入另做進階 |
+| 2026-08-12 | **做愛：移除吸奶**；四根各一 L1（吻到腿軟／剝到半裸／分開腿／指加深）；觸發後根→L1 鏈式演出 |
+| 2026-08-12 | **做愛 L1 改每根 2 張**（共 8）；鏈接時從該根兩張 L1 隨機抽一 |
+| 2026-08-12 | **做愛 L2：每 L1 各 2 張**（共 16）；鏈變根→L1→L2 三幕 |
+| 2026-08-12 | **L2 改正戲階段**（插入）；根/L1 僅前戲；`sexTier=sex_act` / `sexPhase=intercourse` |
+| 2026-08-12 | **L3 激烈正戲**：每 L2 ×2（共 32）；鏈四幕；`sex_act_l3` / `intercourse_intense` |
+| 2026-08-12 | **L4 迎合高潮**：每 L3 ×2（共 64）；鏈五幕；`sex_act_l4` / `climax`；必有女子主動迎合＋高潮 |
+| 2026-08-12 | **L5 玩家高潮收束**：每 L4 ×2（共 128）；鏈六幕；`sex_act_l5` / `player_climax` / `sexEnd` |
+| 2026-08-12 | **kind 拆 foreplay／intercourse**；前戲玩家2選1；正戲系統隨機；幕後 same½·finish⅓·next⅓（權重正規化） |
+| 2026-08-12 | **NSFW 感情三階段**：猥褻 −15～−5；前戲 +3～+9；正戲 +5～+10（全關係共用；不套女友前必負） |
 
 ---
 
