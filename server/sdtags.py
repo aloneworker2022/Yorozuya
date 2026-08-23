@@ -15,34 +15,63 @@ unknown 裡)。
 
 from __future__ import annotations
 
+import re
+
 # ---- 外貌:persona_pools.json female.appearance ----
 
 BUILD = {
-    "勻稱有致": "well-proportioned figure",
-    "骨感清瘦": "slender, thin",
+    "勻稱有致": "slender",
+    "骨感清瘦": "skinny, slender",
     "纖細苗條": "slim, slender",
-    "嬌小玲瓏": "petite, short",
+    "嬌小玲瓏": "petite",
     "肉感微肉": "plump",
-    "微肉圓潤": "chubby, soft body",
-    "結實緊緻": "toned, fit",
-    "運動健美": "athletic, muscular female, abs",
-    "高挑纖長": "tall, long legs, slender",
-    "豐滿火辣": "curvy, voluptuous, wide hips",
+    "微肉圓潤": "plump, chubby",
+    "結實緊緻": "toned",
+    "運動健美": "athletic, abs",
+    "高挑纖長": "tall, slender, long legs",
+    "豐滿火辣": "curvy, voluptuous",
+    "軟肉感有腰": "plump, narrow waist",
+    "細腰寬臀": "narrow waist, wide hips",
     "凹凸有致的沙漏身材": "hourglass figure, narrow waist, wide hips",
+    "極端腰臀比的漫畫比例": "hourglass figure, narrow waist, wide hips",
+}
+
+# 新制:罩杯與乳型分軸。CUP + BREAST_SHAPE 組 tag;舊存檔的合寫字串仍留在 BUST。
+CUP = {
+    "A 罩杯、平坦俐落": "flat chest",
+    "A 罩杯、小巧清秀": "flat chest",
+    "A 罩杯、微微隆起的貧乳": "flat chest, tiny breasts",
+    "B 罩杯、自然小巧": "small breasts",
+    "B 罩杯、剛好一手掌握": "small breasts",
+    "B 罩杯、挺俏": "small breasts, perky breasts",
+    "D 罩杯、飽滿有份量": "large breasts",
+    "D 罩杯、勻稱漂亮": "large breasts",
+    "D 罩杯、圓潤有份量": "large breasts",
+    "E 罩杯、傲人豐滿": "large breasts, huge breasts",
+    "E 罩杯、軟彈有乳溝": "large breasts, deep cleavage",
+    "I 罩杯、不科學爆乳": "gigantic breasts",
+    "I 罩杯、壓迫感超巨乳": "gigantic breasts, hyper breasts",
+    "I 罩杯、誇張巨乳": "gigantic breasts, huge breasts",
+}
+
+BREAST_SHAPE = {
+    "半球型": "round breasts",
+    "饅頭型": "round breasts, soft breasts",
+    "挺俏上挺": "perky breasts",
+    "自然圓潤": "round breasts",
+    "水滴型": "teardrop breasts",
+    "木瓜型": "teardrop breasts, perky breasts",
+    "鐘型": "hanging breasts",
+    "外擴／八字": "wide-set breasts, sideboob",
+    "母乳型沉重下垂": "sagging breasts, hanging breasts",
+    "極密著深溝": "close-set breasts, deep cleavage",
 }
 
 BUST = {
-    "A 罩杯、平坦俐落": "flat chest",
-    "A 罩杯、小巧清秀": "flat chest",
-    "B 罩杯、自然小巧": "small breasts",
-    "B 罩杯、剛好一手掌握": "small breasts",
+    **CUP,
     "C 罩杯、勻稱漂亮": "medium breasts",
     "C 罩杯、圓潤水滴形": "medium breasts, teardrop breasts",
-    "D 罩杯、飽滿有份量": "large breasts",
-    "E 罩杯、傲人豐滿": "large breasts, full breasts",
     "F 罩杯、誇張的巨乳": "huge breasts",
-    # +15 size/shape
-    "A 罩杯、微微隆起的貧乳": "flat chest, tiny breasts",
     "B 罩杯、挺俏半球形": "small breasts, perky breasts",
     "C 罩杯、柔軟饅頭形": "medium breasts, soft breasts, round breasts",
     "C 罩杯、外擴的開闊胸型": "medium breasts, wide-set breasts",
@@ -62,94 +91,136 @@ BUST = {
 # 乳暈大小／顏色(NSFW 軸;persona_pools appearance.areola)
 AREOLA = {
     "小巧粉嫩的乳暈": "small areolae, pink areolae",
-    "精緻淡粉、面積偏小的乳暈": "small areolae, light pink areolae",
-    "圓潤櫻花粉、中等大小乳暈": "medium areolae, pink areolae",
-    "偏大一圈的粉褐乳暈": "large areolae, pink-brown areolae",
-    "寬廣深粉、邊緣柔和的大乳暈": "large areolae, deep pink areolae",
-    "深咖啡色、中等偏大乳暈": "large areolae, dark brown areolae",
-    "幾乎佔滿半邊乳房的誇張大乳暈": "huge areolae, very large areolae",
-    "淺褐帶點雀斑感的自然乳暈": "medium areolae, light brown areolae, freckles on breasts",
-    "紅潤充血色、敏感看起來偏腫的乳暈": "puffy areolae, red areolae, swollen areolae",
-    "近乎黑色的深色乳暈、對比強烈": "dark areolae, blackish areolae, large areolae",
+    "精緻淡粉、面積偏小的乳暈": "small areolae, pink areolae",
+    "圓潤櫻花粉、中等大小乳暈": "pink areolae",
+    "偏大一圈的粉褐乳暈": "large areolae, brown areolae",
+    "寬廣深粉、邊緣柔和的大乳暈": "large areolae, pink areolae",
+    "深咖啡色、中等偏大乳暈": "large areolae, dark areolae",
+    "幾乎佔滿半邊乳房的誇張大乳暈": "huge areolae",
+    "淺褐帶點雀斑感的自然乳暈": "brown areolae",
+    "紅潤充血色、敏感看起來偏腫的乳暈": "puffy areolae",
+    "近乎黑色的深色乳暈、對比強烈": "dark areolae, large areolae",
 }
+
+NIPPLE = {
+    "小巧內收、幾乎看不出形的乳頭": "inverted nipples, small nipples",
+    "粉嫩、微微凸起的乳頭": "pink nipples",
+    "明顯挺立的粉嫩乳尖": "pink nipples, erect nipples",
+    "較大、深粉或褐、看起來充血敏感的乳頭": "large nipples, puffy nipples",
+    "粗長、深色、非常明顯的乳頭": "long nipples, dark nipples",
+}
+
+# 性器軸(NSFW;persona_pools appearance.labia_size / clitoris_size / labia_color / pubic_hair)
+# 前三各三級、陰毛四級、不分等級。只在特寫／下半素體／extra 寫到陰部時才進 prompt。
+LABIA_SIZE = {
+    "內收小巧的陰唇": "innies, small labia, innie pussy",
+    "適中微開的陰唇": "slightly parted labia",
+    "外翻飽滿的陰唇": "outies, large labia, plump labia, protruding inner labia",
+}
+
+CLITORIS_SIZE = {
+    "小巧含蓄的陰蒂": "small clitoris",
+    "明顯可見的陰蒂": "clitoris",
+    "腫大突出的陰蒂": "large clitoris, prominent clitoris",
+}
+
+LABIA_COLOR = {
+    "粉嫩淺色的陰唇": "pink pussy, pink labia, pale labia",
+    "淺褐自然的陰唇": "brown labia",
+    "深褐近黑的陰唇": "dark pussy, dark labia",
+}
+
+PUBIC_HAIR = {
+    "完全剃光、沒有陰毛": "shaved, completely shaved, no pubic hair",
+    "稀疏細軟的陰毛": "sparse pubic hair, light pubic hair",
+    "適中自然的陰毛": "pubic hair",
+    "濃密茂盛的陰毛": "thick pubic hair, bush, messy pubic hair",
+}
+
+_GENITAL_KEYS = ("pussy", "labia", "clitoris", "vulva", "vagina")
+_GENITAL_PART_KEYS = ("labia_size", "clitoris_size", "labia_color", "pubic_hair")
 
 # 瞳孔顏色(與 EYES 形狀軸分離;persona_pools appearance.eye_color)
 EYE_COLOR = {
     "深棕色瞳孔": "brown eyes",
     "琥珀色瞳孔": "amber eyes",
-    "灰綠色瞳孔": "green eyes, grey-green eyes",
-    "澄澈蔚藍瞳孔": "blue eyes, clear blue eyes",
-    "紫羅蘭色瞳孔": "purple eyes, violet eyes",
-    "血紅色瞳孔": "red eyes, blood-red eyes",
+    "灰綠色瞳孔": "green eyes",
+    "澄澈蔚藍瞳孔": "blue eyes",
+    "紫羅蘭色瞳孔": "purple eyes",
+    "血紅色瞳孔": "red eyes",
     "金色豎瞳": "gold eyes, slit pupils",
     "異色雙瞳（左藍右金）": "heterochromia, blue eyes, gold eyes",
     "粉桃色瞳孔": "pink eyes",
-    "漆黑幾乎無高光的瞳孔": "black eyes, empty eyes, no light reflection",
+    "漆黑幾乎無高光的瞳孔": "black eyes, empty eyes",
 }
 
 # 臉是最看得出「有沒有在畫同一個人」的地方,所以拆成五軸各 18 項:
 # 眼睛 / 嘴巴 / 臉型 / 髮型 / 髮色。只寫「長相」,表情由個性原型另外給。
 EYES = {
-    "圓圓的杏眼、很有神": "round eyes, bright eyes",
+    "圓圓的杏眼、很有神": "round eyes",
     "笑起來瞇成月牙": "closed eyes, smile",
-    "標準的杏仁眼、眼皮乾淨": "almond-shaped eyes, neat eyelids",
+    "標準的杏仁眼、眼皮乾淨": "almond eyes",
     "單眼皮、看起來有點冷": "monolid, narrow eyes",
-    "內雙、笑起來眼尾會彎": "thin eyelid crease, gentle eyes",
+    "內雙、笑起來眼尾會彎": "tareme",
     "半睜的睡眼、總像沒睡飽": "sleepy eyes, half-closed eyes",
-    "三白眼、看人有點凶": "sanpaku, sharp eyes",
-    "沒什麼情緒的死魚眼": "jitome, expressionless eyes",
-    "細長的丹鳳眼": "narrow eyes, slanted eyes",
-    "下垂眼、看起來很溫柔": "tareme, droopy eyes",
-    "圓瞳大眼、像小動物": "round pupils, large eyes",
-    "眼尾微揚、有點鋒利": "tsurime, upturned eyes",
+    "三白眼、看人有點凶": "sanpaku",
+    "沒什麼情緒的死魚眼": "jitome",
+    "細長的丹鳳眼": "narrow eyes",
+    "下垂眼、看起來很溫柔": "tareme",
+    "圓瞳大眼、像小動物": "large eyes, round eyes",
+    "眼尾微揚、有點鋒利": "tsurime",
     "大眼睛、睫毛很長": "large eyes, long eyelashes",
     "上揚的狐狸眼、有點媚": "tsurime, fox eyes",
-    "濕潤的淚眼、總像剛哭過": "teary eyes, wet eyes",
-    "瞳色偏淺、像貓": "pale eyes, slit pupils",
-    "含情的桃花眼、天生勾人": "bedroom eyes, half-closed eyes",
-    "深邃的雙眼皮大眼、眼窩有陰影": "deep-set eyes, large eyes, defined eyelids",
+    "濕潤的淚眼、總像剛哭過": "teary eyes",
+    "瞳色偏淺、像貓": "slit pupils",
+    "含情的桃花眼、天生勾人": "bedroom eyes",
+    "深邃的雙眼皮大眼、眼窩有陰影": "large eyes, tsurime",
 }
 
 MOUTH = {
-    "小巧的櫻桃小嘴": "small mouth, cherry lips",
-    "飽滿的厚唇": "thick lips, full lips",
+    "小巧的櫻桃小嘴": "small mouth",
+    "飽滿的厚唇": "full lips",
     "薄唇、線條俐落": "thin lips",
-    "微微上揚的嘴角": "slight smile, upturned mouth",
-    "嘴角天生下垂": "frown, downturned mouth",
-    "明顯的唇珠": "cupid's bow, defined lips",
-    "花瓣一樣的唇形": "petal-shaped lips, soft lips",
+    "微微上揚的嘴角": "slight smile",
+    "嘴角天生下垂": "frown",
+    "明顯的唇珠": "cupid's bow",
+    "花瓣一樣的唇形": "full lips",
     "常常微張的唇": "parted lips",
-    "抿著嘴、話不多": "closed mouth, pursed lips",
-    "笑起來露出整排牙": "open mouth, wide smile, teeth",
+    "抿著嘴、話不多": "closed mouth",
+    "笑起來露出整排牙": "smile, teeth",
     "唇色偏淡、像沒血色": "pale lips",
-    "唇色紅潤、像抹了口紅": "red lips, glossy lips",
-    "幾乎不上妝的素唇": "bare lips, no lipstick",
+    "唇色紅潤、像抹了口紅": "red lips",
+    "幾乎不上妝的素唇": "pale lips",
     "咬唇的習慣": "biting own lip",
-    "有點嘟的唇、像在撒嬌": "pout, puckered lips",
-    "唇形寬、笑起來很大方": "wide mouth, big smile",
-    "下唇比上唇厚": "full lower lip",
+    "有點嘟的唇、像在撒嬌": "pout",
+    "唇形寬、笑起來很大方": "wide mouth, smile",
+    "下唇比上唇厚": "full lips",
     "嘴角有顆小痣": "mole near mouth",
+    "厚唇微張像剛被吻過": "full lips, parted lips",
+    "花瓣厚唇天生勾人": "full lips, parted lips",
 }
 
 FACE = {
     "標準的鵝蛋臉": "oval face",
-    "圓潤的圓臉": "round face, soft cheeks",
+    "圓潤的圓臉": "round face",
     "稍長的長臉": "long face",
-    "尖下巴的瓜子臉": "pointed chin, v-shaped jaw",
-    "方一點的鵝蛋臉、線條清楚": "oval face, defined jawline",
+    "尖下巴的瓜子臉": "pointed chin",
+    "方一點的鵝蛋臉、線條清楚": "oval face, sharp jawline",
     "下顎線俐落": "sharp jawline",
     "顴骨明顯": "high cheekbones",
     "臉頰有嬰兒肥": "chubby cheeks",
-    "臉小、五官集中": "small face, delicate features",
+    "臉小、五官集中": "small face",
     "額頭飽滿": "broad forehead",
-    "額頭窄、常被瀏海蓋住": "narrow forehead, covered forehead",
+    "額頭窄、常被瀏海蓋住": "bangs",
     "鼻樑高挺": "high nose bridge",
     "鼻頭小巧": "small nose",
-    "輪廓深、五官立體": "defined facial features, deep-set features",
-    "五官偏平、乾淨清秀": "flat facial features, plain pretty face",
+    "輪廓深、五官立體": "high cheekbones",
+    "五官偏平、乾淨清秀": "small face",
     "臉頰有雀斑": "freckles",
-    "皮膚薄、容易泛紅": "flushed cheeks, blush",
+    "皮膚薄、容易泛紅": "blush",
     "下巴中間有一道淺溝": "cleft chin",
+    "極小臉又立體的媚臉": "small face, high cheekbones",
+    "天生臥蠶含情的臉": "aegyo-sal",
 }
 
 # 髮型只講形狀,顏色歸 HAIR_COLOR。舊存檔的 hair 是「顏色+形狀」混在一起的
@@ -173,6 +244,8 @@ HAIR = {
     "一條麻花辮": "single braid, braided hair",
     "兩側編辮的長髮": "braided sidelocks, long hair",
     "隨手綁起的亂丸子": "messy bun, messy hair",
+    "及腰大波浪": "very long hair, wavy hair",
+    "妖媚側分長捲": "long hair, wavy hair, sidelocks",
     # 舊存檔相容(拆軸前的「顏色+形狀」合寫)
     "烏黑長直髮": "black hair, long hair, straight hair",
     "及肩棕色微捲": "brown hair, shoulder-length hair, wavy hair",
@@ -199,8 +272,8 @@ HAIR_COLOR = {
     "薰衣草紫": "lavender hair, light purple hair",
     "薄荷綠": "mint green hair",
     "天空藍": "light blue hair",
-    "內層挑染彩色": "multicolored hair, streaked hair, inner hair color",
-    "漸層的髮尾": "gradient hair, colored tips",
+    "內層挑染彩色": "streaked hair",
+    "漸層的髮尾": "gradient hair",
 }
 
 # 個人喜好衣櫃(persona_pools 的 appearance.style)。**這一整組要對得齊**:
@@ -230,6 +303,38 @@ STYLE = {
     "可愛甜美": "cute pastel dress, ribbon",
     "輕熟女風": "chic blouse, midi skirt, heels",
 }
+
+# 女友／妻子解鎖的色情裝
+EROTIC_STYLE = {
+    "黑色蕾絲胸罩配吊襪帶": "black lace bra, garter belt, stockings, lingerie",
+    "深紅情趣連身衣": "red teddy, sheer bodysuit, erotic lingerie",
+    "半透明白襯衫不扣鈕": "unbuttoned sheer white shirt, no bra, see-through shirt",
+    "皮質束腰與丁字褲": "leather corset, thong, erotic leather",
+    "開襟緞面睡袍真空": "open satin robe, nude under robe, silk robe",
+    "貓耳項圈與露胸圍裙": "cat ears, collar, revealing apron, bare breasts under apron",
+    "濕身白 T 恤真空": "wet white t-shirt, no bra, see-through t-shirt",
+    "絲襪馬甲套裝": "corset, stockings, garter, bustier lingerie",
+    "超短旗袍開襟": "very short cheongsam, open qipao, revealing",
+    "半透明薄紗只遮重點": "sheer veil, barely covering, translucent fabric",
+}
+
+# 妻子解鎖的睡衣
+SLEEP_STYLE = {
+    "條紋棉質睡衣套裝": "striped cotton pajamas, pajama set",
+    "寬鬆男友襯衫當睡衣": "oversized boyfriend shirt as sleepwear",
+    "緞面吊帶短褲睡衣": "satin camisole, sleep shorts, silk sleepwear",
+    "法蘭絨格紋睡衣": "flannel plaid pajamas",
+    "連帽家居睡裙": "hoodie sleep dress, lounge nightdress",
+    "短版背心配睡褲": "short camisole, pajama pants",
+}
+
+
+def outfit_en(worn: str) -> str:
+    """中文服裝名 → 英文 tag。生涯／日常／色情裝／睡衣同一入口。"""
+    w = str(worn or "").strip()
+    if not w:
+        return ""
+    return CAREER_OUTFIT.get(w) or STYLE.get(w) or EROTIC_STYLE.get(w) or SLEEP_STYLE.get(w) or ""
 
 # 生涯服裝(persona_pools 的 occupations[].outfit)。她被擄來之前每天穿的那身。
 # 這一組存在的理由:抽卡抽出「女高中生」卻畫成西裝套裝,是這遊戲最出戲的錯——
@@ -298,6 +403,10 @@ FEATURE = {
     "耳朵很小、容易紅": "small ears, blush",
     "後頸有一顆小痣": "mole on nape",
     "嘴唇飽滿": "full lips",   # 舊存檔相容:嘴巴獨立成一軸後,這項已移出池子
+    "唇下痣": "mole under mouth",
+    "深臥蠶": "aegyo-sal",
+    "眼尾一顆淚痣配薄紅膚": "mole under eye, flushed skin",
+    "鎖骨到胸口的痣點": "mole on collarbone, mole on chest",
 }
 
 # main.py 的確定性雜湊補的兩組(池子裡沒有,同一人設永遠推出同一組)
@@ -339,7 +448,7 @@ SPECIAL: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "白皙細嫩的皮膚": ("pale skin, smooth skin", "bust", ("skin",)),
     "筆直美腿": ("straight legs, beautiful legs", "lower", ()),
     "纖細小蠻腰": ("narrow waist", "bust", ()),
-    "形狀漂亮的美胸": ("well-shaped breasts", "bust", ()),
+    "形狀漂亮的美胸": ("perky breasts", "bust", ()),
     "水潤的杏眼": ("almond-shaped eyes, glossy eyes", "head", ("eyes",)),
     "明顯精緻的鎖骨": ("visible collarbone", "bust", ()),
     "白皙修長的脖頸": ("slender neck, pale neck", "head", ()),
@@ -354,7 +463,7 @@ SPECIAL: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "細腰豐臀的沙漏身材": ("hourglass figure, narrow waist, wide hips", "bust", ("build",)),
     "水汪汪的大眼": ("large eyes, sparkling eyes", "head", ("eyes",)),
     "深邃的事業線": ("deep cleavage", "bust", ()),
-    "性感的馬甲線": ("toned abs, defined waistline", "bust", ()),
+    "性感的馬甲線": ("abs, narrow waist", "bust", ()),
     "光滑無暇的美背": ("smooth back, bare back", "bust", ()),
     "軟糯敏感的耳垂": ("", "", ()),
     "淡淡的奶香體味": ("", "", ()),
@@ -368,24 +477,23 @@ SPECIAL: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "通透的雪白肌膚": ("very pale skin, translucent skin", "bust", ("skin",)),
     "湛藍色的眼睛": ("blue eyes", "head", ()),
     "爆乳配上不科學的細腰": (
-        "gigantic breasts, extremely narrow waist", "bust", ("bust", "build")),
+        "gigantic breasts, narrow waist", "bust", ("bust", "build")),
     "一捏會陷下去的綿密酥胸": ("soft breasts", "bust", ()),
     "極度敏感、一碰就軟的體質": ("", "", ()),
     "勾魂的沙啞低喘嗓": ("", "", ()),
     "天生會勾人的費洛蒙體香": ("", "", ()),
-    "漫畫般凹陷的反差腰窩": ("back dimples, deep waistline", "bust", ()),
-    "緊緻飽滿的水蜜桃臀": ("peach shaped ass, firm ass", "lower", ()),
+    "漫畫般凹陷的反差腰窩": ("back dimples", "bust", ()),
+    "緊緻飽滿的水蜜桃臀": ("round ass", "lower", ()),
     # 傳說
     "赤紅色的眼睛": ("red eyes", "head", ()),
     "左右異色的雙瞳": ("heterochromia", "head", ()),
     "宛如模特兒的黃金三圍": (
-        "model figure, perfect proportions, hourglass figure", "bust", ("build",)),
-    "吹彈可破、會發光似的奶白肌": ("flawless milky skin, glowing skin", "bust", ("skin",)),
+        "hourglass figure, narrow waist, wide hips", "bust", ("build",)),
+    "吹彈可破、會發光似的奶白肌": ("pale skin, shiny skin", "bust", ("skin",)),
     "傳說級的名器體質": ("", "", ()),
-    "全身佈滿敏感帶的淫紋體質": ("", "", ()),
     "雌性費洛蒙濃到讓人失神的體香": ("", "", ()),
     "豐乳肥臀又不科學細腰的魔鬼身材": (
-        "huge breasts, wide hips, extremely narrow waist, voluptuous", "bust", ("bust", "build")),
+        "huge breasts, wide hips, narrow waist, curvy", "bust", ("bust", "build")),
 }
 
 
@@ -439,26 +547,24 @@ def overridden_fields(character: dict | None) -> dict[str, str]:
 # ---- 取景。part 對應分段生圖的六段,framing 對應整張 ----
 
 FRAMING = {
-    # head 是召喚三連拍的大頭照:名冊縮圖與聊天頭像用,所以要正面看鏡頭
-    "head": "portrait, face focus, head and shoulders, looking at viewer",
-    # 出卡場景 half：不要寫 looking at viewer；姿勢交給 extra
-    "half": "upper body, medium shot",
-    # full 不寫死 standing——影院坐姿／並肩走由 extra 決定
-    "full": "full body visible, environmental shot, head to feet if standing",
+    "head": "portrait, face focus, looking at viewer",
+    "half": "upper body",
+    "full": "full body",
+    "lower": "lower body, below waist, head out of frame",
 }
 
 PART_FRAMING = {
-    "head0": "portrait, face focus, head and shoulders",
-    "head": "portrait, face focus, head and shoulders",
-    "bust0": "upper body, from below, head out of frame",
+    "head0": "portrait, face focus",
+    "head": "portrait, face focus",
+    "bust0": "upper body, head out of frame",
     "bust": "upper body, head out of frame",
-    "lower0": "lower body, from waist down, head out of frame",
-    "lower": "lower body, from waist down, head out of frame",
+    "lower0": "lower body, head out of frame",
+    "lower": "lower body, head out of frame",
 }
 
 ART_STYLE = {
-    "anime": "anime style",
-    "realistic": "photorealistic, realistic",
+    "anime": "anime",
+    "realistic": "photorealistic",
     "pixel": "pixel art",
 }
 
@@ -516,7 +622,7 @@ FLAT_BG_NEGATIVE = "scenery, detailed background, indoors, outdoors, gradient ba
 # 「你還是你,只是身體不是了」。職業池也全是現代人:女高中生、護理師、OL、
 # 圖書館員。所以立繪就是一個現代成年女性,沒有角、沒有翅膀、沒有尖耳。
 # 被改的是感覺與慾望,那些畫不出來,也不該用長角來代替。
-HUMAN_TAGS = "adult woman, modern real world woman"
+HUMAN_TAGS = "adult"
 
 # 只寫在正面「她是人」還不夠——動漫模型看到這種遊戲語境會自己長角。
 # 這組留著,因為它擋的正是「畫面跑偏」:長角、長翅膀就是跑偏。
@@ -526,6 +632,273 @@ NOT_DEMON_NEGATIVE = "horns, pointy ears, wings, tail, demon girl, monster girl"
 
 # 服裝欄位查不到對照時的墊底。沒有任何服裝 tag = 模型自由發揮 = 多半不穿。
 CLOTHES_FALLBACK = "casual clothes"
+
+# 穿衣場面：罩杯只留體積。cleavage / sideboob / hanging / areola / nipple
+# 對 SD 幾乎等於「把胸露出來」——立繪寫了 G 罩杯＋乳溝，衣服就會被畫掉。
+_EXPOSED_CHEST_SUBSTR = (
+    "cleavage", "sideboob", "hanging breast", "sagging breast",
+    "areola", "nipple", "topless", "nude", "naked", "bare back",
+    "bare breast", "uncovered", "exposed breast", "breasts out",
+    "shirt lift", "clothes pull", "undress", "open shirt",
+    "papaya",
+)
+_NSFW_ACT_KEYS = (
+    "sex", "fucking", "penetration", "vaginal", "groping",
+    "molestation", "creampie", "orgasm", "nsfw", "explicit",
+    "breast grab", "intercourse",
+    "fellatio", "oral", "blowjob", "cowgirl",
+    "deepthroat", "irrumatio", "cum in mouth", "oral creampie",
+    "ejaculation", "penis",
+    "ass grab", "butt grab", "grabbing her ass", "grabbing her thigh",
+    "doggy", "from behind", "cervix", "womb bulge",
+)
+_CUP_ZH_RE = re.compile(r"([A-I])\s*罩杯")
+
+# 舊版穿衣 negative（nude / nipples…）。不要再用：
+# 禁止項寫進 CLIP 正向或預設負向都會讓模型「聽到那個詞」。
+# 卡面禁止走 visualNeg；對話卡不要預設塞這串。
+CLOTHED_NEGATIVE = ""
+
+_NEG_PREFIX = re.compile(r"^(?:no|not|don't|dont|without|禁止)\s+", re.I)
+_MULTI_KEYS = (
+    "1man", "1boy", "2people", "2 people", "two people",
+    "couple", "other man", "man and woman", "man fucking",
+)
+
+
+def iter_tag_bits(text: str):
+    """逗號／分號切 tag。小括號整段當一個 token，裡面的逗號不切開。"""
+    buf: list[str] = []
+    depth = 0
+    for ch in (text or ""):
+        if ch == "(":
+            depth += 1
+            buf.append(ch)
+        elif ch == ")" and depth:
+            depth -= 1
+            buf.append(ch)
+        elif ch in ",/;" and depth == 0:
+            t = "".join(buf).strip()
+            if t:
+                yield t
+            buf = []
+        else:
+            buf.append(ch)
+    t = "".join(buf).strip()
+    if t:
+        yield t
+
+
+def split_paren_aside(text: str) -> tuple[str, str]:
+    """主畫面 tag 與小括號內容分開。
+
+    extra 寫 `半身立繪…, (male hand on her buttocks)`：
+    括號外＝主畫面，括號內＝角落插圖。SD 的 () 是加權不是分區，
+    所以 Comfy 只把括號裡的詞接在最後；Grok 另開一段指令。
+    """
+    mains: list[str] = []
+    asides: list[str] = []
+    for t in iter_tag_bits(text):
+        if len(t) >= 2 and t.startswith("(") and t.endswith(")"):
+            inner = t[1:-1].strip()
+            if inner:
+                asides.append(inner)
+        else:
+            mains.append(t)
+    return ", ".join(mains), ", ".join(asides)
+
+
+def split_pos_neg_tags(text: str) -> tuple[str, str]:
+    """把「NO groping / NOT looking away」從正向拆進負向。
+
+    SD 正向寫 NO xxx 幾乎等於在畫 xxx。禁止項只該進 negative。
+    """
+    pos: list[str] = []
+    neg: list[str] = []
+    for t in iter_tag_bits(text):
+        m = _NEG_PREFIX.match(t)
+        if m:
+            rest = t[m.end():].strip()
+            if rest:
+                neg.append(rest)
+        else:
+            pos.append(t)
+    return ", ".join(pos), ", ".join(neg)
+
+
+def extra_has_key(extra: str, keys: tuple[str, ...]) -> bool:
+    """只在正向 token 裡找。『NO groping』不算有 groping。"""
+    pos, _ = split_pos_neg_tags(extra)
+    el = pos.lower()
+    return any(k in el for k in keys)
+
+
+def is_nsfw_act(extra: str = "") -> bool:
+    return extra_has_key(extra, _NSFW_ACT_KEYS)
+
+
+_ORAL_ACT_KEYS = (
+    "fellatio", "oral", "blowjob", "deepthroat", "irrumatio",
+    "cum in mouth", "oral creampie",
+)
+
+
+def is_oral_act(extra: str = "") -> bool:
+    """口交四連：動作是 NSFW，但不因此脫衣。衣服只看關係階段。"""
+    return extra_has_key(extra, _ORAL_ACT_KEYS)
+
+
+_DOGGY_ACT_KEYS = (
+    "doggy", "doggy style",
+    "womb bulge", "hitting cervix",
+    "halfway inside", "glans entering", "glans inside", "going deeper", "hilted",
+    "internal ejaculation",
+    "about to penetrate", "awaiting insertion",
+    "groin slamming",
+)
+
+
+def is_doggy_act(extra: str = "") -> bool:
+    """背後交配四連：動作是 NSFW，但不因此脫衣。衣服只看關係階段。"""
+    return extra_has_key(extra, _DOGGY_ACT_KEYS)
+
+
+_COWGIRL_ACT_KEYS = (
+    "cowgirl", "girl on top", "straddling",
+)
+
+
+def is_cowgirl_act(extra: str = "") -> bool:
+    """騎乘四連：動作是 NSFW，但不因此脫衣。衣服只看關係階段。"""
+    return extra_has_key(extra, _COWGIRL_ACT_KEYS)
+
+
+def keeps_stage_clothes(extra: str = "") -> bool:
+    """口交／背後／騎乘：NSFW 動作不升級脫衣，裸只留給妻子。"""
+    return is_oral_act(extra) or is_doggy_act(extra) or is_cowgirl_act(extra)
+
+
+def is_multi_scene(extra: str = "") -> bool:
+    """雙人／NTR／做愛才算。對話卡 visualEn 的 NO groping 不算。"""
+    return extra_has_key(extra, _MULTI_KEYS) or is_nsfw_act(extra)
+
+
+def is_pov_cam(extra: str = "") -> bool:
+    return extra_has_key(extra, (
+        "from his pov", "first-person", "first person", "pov",
+        "viewer hands", "male hands",
+    ))
+
+
+# 關係階段 → 衣服／胸暴露（立繪與出卡共用）
+#   covered   陌生／朋友：穿好，罩杯只留體積
+#   shape     女友：仍穿衣服，但可露胸型／乳溝／水滴／八字
+#   exposed   妻子：可全裸，乳暈乳頭寫進 prompt
+_NIPPLE_SUBSTR = (
+    "areola", "nipple", "topless", "nude", "naked",
+    "bare breast", "uncovered", "exposed breast", "breasts out",
+)
+
+
+def resolve_stage(character: dict | None = None, stage: str = "") -> str:
+    raw = (stage or "").strip().lower()
+    if raw in ("stranger", "friend", "girlfriend", "wife"):
+        return raw
+    ch = character if isinstance(character, dict) else {}
+    cand = ch.get("stage")
+    if isinstance(ch.get("relationship"), dict):
+        cand = cand or ch["relationship"].get("stage")
+    raw = str(cand or "").strip().lower()
+    return raw if raw in ("stranger", "friend", "girlfriend", "wife") else "stranger"
+
+
+def clothing_level(stage: str = "", *, nsfw_act: bool = False, character: dict | None = None) -> str:
+    ch = character if isinstance(character, dict) else {}
+    # 半身立繪臨時旗標：SS／SSR 性慾 1/2 裸體（前端 weaveShot 才會掛）
+    if ch.get("_force_exposed"):
+        return "exposed"
+    st = resolve_stage(character, stage)
+    if st == "wife":
+        return "exposed"
+    if st == "girlfriend":
+        return "shape"
+    if nsfw_act:
+        return "shape"
+    return "covered"
+
+
+def filter_tag_chunk(tag: str, drop_keys: tuple[str, ...]) -> str:
+    kept: list[str] = []
+    seen: set[str] = set()
+    for t in str(tag or "").split(","):
+        t = t.strip()
+        if not t:
+            continue
+        tl = t.lower()
+        if any(x in tl for x in drop_keys):
+            continue
+        if tl not in seen:
+            seen.add(tl)
+            kept.append(t)
+    return ", ".join(kept)
+
+
+def bust_tags_for_level(tag: str, level: str) -> str:
+    """covered=只留體積；shape=胸型可見（水滴／八字／乳溝）但不寫乳頭；exposed=全寫。"""
+    if not tag:
+        return ""
+    if level == "exposed":
+        return tag
+    if level == "shape":
+        return filter_tag_chunk(tag, _NIPPLE_SUBSTR)
+    # 陌生／朋友：連水滴／八字／挺俏都拿掉，只留 small/medium/large
+    covered = clothe_tag_chunk(tag)
+    return filter_tag_chunk(covered, (
+        "teardrop", "wide-set", "wide breasts", "perky",
+    ))
+
+
+def outfit_tags_for_level(base_outfit: str, level: str) -> str:
+    cloth = (base_outfit or "").strip() or CLOTHES_FALLBACK
+    if level == "exposed":
+        return "nude, nipples"
+    if level == "shape":
+        return f"{cloth}, revealing clothes, cleavage"
+    return "fully clothed, " + cloth
+
+
+def clothe_tag_chunk(tag: str) -> str:
+    """從一段逗號 tag 拿掉露胸詞，體積／形狀留下。"""
+    kept: list[str] = []
+    seen: set[str] = set()
+    for t in str(tag or "").split(","):
+        t = t.strip()
+        if not t:
+            continue
+        tl = t.lower()
+        if any(x in tl for x in _EXPOSED_CHEST_SUBSTR):
+            continue
+        if tl not in seen:
+            seen.add(tl)
+            kept.append(t)
+    return ", ".join(kept)
+
+
+def clothed_bust_zh(raw: str) -> str:
+    """中文罩杯：穿衣時只留 A~I 罩杯／巨乳，丟掉乳溝、下垂、乳暈。"""
+    raw = str(raw or "").strip()
+    if not raw:
+        return ""
+    m = _CUP_ZH_RE.search(raw)
+    if m:
+        return f"{m.group(1)} 罩杯"
+    if "爆乳" in raw:
+        return "爆乳"
+    if "巨乳" in raw:
+        return "巨乳"
+    if "貧乳" in raw or "平坦" in raw:
+        return "平坦胸部"
+    return raw
 
 # 年齡:池子抽 18~33(persona_pools 的 age 可調)。**非有不可**——不給年齡,
 # 模型畫出來的年紀會隨機漂,同一個人設每次看起來都不同歲數。
@@ -539,13 +912,7 @@ def age_tags(age) -> str:
     except (TypeError, ValueError):
         return ""
     a = max(AGE_MIN, min(AGE_MAX, a))
-    if a <= 21:
-        band = "young adult"
-    elif a <= 26:
-        band = "young adult, mature female"
-    else:
-        band = "mature female, adult face"
-    return f"{a} years old, {band}"
+    return "young adult" if a <= 22 else "mature female"
 
 
 # 年紀不要往下漂。正面已經寫了「29 years old, mature female」,這幾個是把
@@ -558,15 +925,19 @@ AGE_NEGATIVE = "child, loli, chibi, baby face"
 FLAT_BG_TAGS = "simple background, white background, plain background"
 
 
-def negative_for(flat_bg: bool = False) -> str:
-    """組 negative。**不看分級**——分級是抽卡在管的,不是靠 negative 擋內容。
+def negative_for(flat_bg: bool = False, clothed: bool = False, extra_neg: str = "") -> str:
+    """組 negative。預設只擋畫崩／魔物／幼態，不塞 nude／nipples。
 
-    只有一個變數:要不要去背。要的話多擋場景,不然外框判定會失敗、整張放棄去背。
+    extra_neg = 卡面 visualNeg，或從 visualEn 拆出來的 NO xxx。
+    clothed 參數保留相容，不再自動加內容詞。
     """
     bits = [NEGATIVE, AESTHETIC_NEGATIVE, NOT_DEMON_NEGATIVE, AGE_NEGATIVE]
+    extra_neg = (extra_neg or "").strip()
+    if extra_neg:
+        bits.append(extra_neg)
     if flat_bg:
         bits.append(FLAT_BG_NEGATIVE)
-    return ", ".join(bits)
+    return ", ".join(b for b in bits if b)
 
 
 def _look(ch: dict) -> dict:
@@ -581,16 +952,99 @@ def _table_get(table: dict, raw: str) -> str:
     return table.get(raw, "")
 
 
-def appearance_en_parts(character: dict | None) -> tuple[dict[str, str], list[str]]:
+def compose_bust_en(look: dict, unknown: list[str]) -> str:
+    """新制 cup + breast_shape;舊存檔只剩 bust 合寫字串。"""
+    bits: list[str] = []
+    cup = str(look.get("cup") or "").strip()
+    shape = str(look.get("breast_shape") or "").strip()
+    if cup:
+        tag = CUP.get(cup) or BUST.get(cup, "")
+        if tag:
+            bits.append(tag)
+        else:
+            unknown.append(f"cup: {cup}")
+    if shape:
+        tag = BREAST_SHAPE.get(shape, "")
+        if tag:
+            bits.append(tag)
+        else:
+            unknown.append(f"breast_shape: {shape}")
+    if bits:
+        # 去重保序
+        seen: set[str] = set()
+        out: list[str] = []
+        for chunk in bits:
+            for t in chunk.split(","):
+                t = t.strip()
+                if t and t.lower() not in seen:
+                    seen.add(t.lower())
+                    out.append(t)
+        return ", ".join(out)
+    raw = str(look.get("bust") or "").strip()
+    if not raw:
+        return ""
+    tag = BUST.get(raw, "")
+    if not tag:
+        unknown.append(f"bust: {raw}")
+    return tag
+
+
+def compose_bust_en(look: dict, unknown: list[str]) -> str:
+    """新制 cup + breast_shape;舊存檔只剩 bust 合寫字串。"""
+    bits: list[str] = []
+    cup = str(look.get("cup") or "").strip()
+    shape = str(look.get("breast_shape") or "").strip()
+    if cup:
+        tag = CUP.get(cup) or BUST.get(cup, "")
+        if tag:
+            bits.append(tag)
+        else:
+            unknown.append(f"cup: {cup}")
+    if shape:
+        tag = BREAST_SHAPE.get(shape, "")
+        if tag:
+            bits.append(tag)
+        else:
+            unknown.append(f"breast_shape: {shape}")
+    if bits:
+        seen: set[str] = set()
+        out: list[str] = []
+        for chunk in bits:
+            for t in chunk.split(","):
+                t = t.strip()
+                if t and t.lower() not in seen:
+                    seen.add(t.lower())
+                    out.append(t)
+        return ", ".join(out)
+    raw = str(look.get("bust") or "").strip()
+    if not raw:
+        return ""
+    tag = BUST.get(raw, "")
+    if not tag:
+        unknown.append(f"bust: {raw}")
+    return tag
+
+
+def appearance_en_parts(
+    character: dict | None,
+    *,
+    clothed: bool = True,
+    stage: str = "",
+    crop: str = "",
+) -> tuple[dict[str, str], list[str]]:
     """中文人設外貌 → 英文 tag 字典（給 Grok／任何讀句子的生圖路）。
 
     查表與 Comfy 的 build_prompt 同一份表；查不到進 unknown，不塞中文原文。
-    回傳 (parts, unknown)。parts 鍵: age, face, eyes, eye_color, mouth, hair, hair_color,
-    build, bust, areola, feature, outfit, skin, specials, height。
+    stage 管衣服多寡：陌生／朋友穿好；女友露胸型；妻子可全裸含乳暈乳頭。
+    clothed=False 仍當 exposed（舊呼叫）。
+    crop=lower：腰部以下特寫，不寫臉／眼／髮／胸。
     """
     ch = character if isinstance(character, dict) else {}
     look = _look(ch)
     unknown: list[str] = []
+    level = clothing_level(stage, character=ch) if (stage or ch.get("stage")) else (
+        "covered" if clothed else "exposed"
+    )
     sp_seg, sp_over, sp_unknown = resolve_specials(ch)
     unknown += list(sp_unknown)
 
@@ -614,14 +1068,26 @@ def appearance_en_parts(character: dict | None) -> tuple[dict[str, str], list[st
     parts["hair"] = tr(HAIR, "hair")
     parts["hair_color"] = tr(HAIR_COLOR, "hair_color")
     parts["build"] = tr(BUILD, "build")
-    parts["bust"] = tr(BUST, "bust")
-    parts["areola"] = tr(AREOLA, "areola")
+    bust = "" if "bust" in sp_over else compose_bust_en(look, unknown)
+    parts["bust"] = bust_tags_for_level(bust, level)
+    if level == "exposed":
+        parts["areola"] = tr(AREOLA, "areola")
+        parts["nipple"] = tr(NIPPLE, "nipple")
+    parts["labia_size"] = tr(LABIA_SIZE, "labia_size")
+    parts["clitoris_size"] = tr(CLITORIS_SIZE, "clitoris_size")
+    parts["labia_color"] = tr(LABIA_COLOR, "labia_color")
+    parts["pubic_hair"] = tr(PUBIC_HAIR, "pubic_hair")
     parts["feature"] = tr(FEATURE, "feature")
+    parts["clothing_level"] = level
 
     # 特殊屬性英文 tag（合併各段）
     sp_tags: list[str] = []
     for seg in ("head", "bust", "lower"):
-        sp_tags.extend(sp_seg.get(seg) or [])
+        chunk = ", ".join(sp_seg.get(seg) or [])
+        if seg == "bust":
+            chunk = bust_tags_for_level(chunk, level)
+        if chunk:
+            sp_tags.append(chunk)
     if sp_tags:
         # 去重保序
         seen: set[str] = set()
@@ -632,66 +1098,195 @@ def appearance_en_parts(character: dict | None) -> tuple[dict[str, str], list[st
                 if b and b.lower() not in seen:
                     seen.add(b.lower())
                     uniq.append(b)
-        parts["specials"] = ", ".join(uniq)
+        if uniq:
+            parts["specials"] = ", ".join(uniq)
 
     # 服裝：優先 character 上已解析的 worn；否則 career / style
     worn = str(ch.get("_worn_outfit") or look.get("career_outfit") or look.get("style") or "").strip()
     if worn:
-        otag = CAREER_OUTFIT.get(worn) or STYLE.get(worn) or ""
-        if otag:
-            parts["outfit"] = "fully clothed, " + otag
-        else:
+        otag = outfit_en(worn)
+        if worn and not otag:
             unknown.append(f"outfit: {worn}")
-            parts["outfit"] = "fully clothed, " + CLOTHES_FALLBACK
+        parts["outfit"] = outfit_tags_for_level(otag or CLOTHES_FALLBACK, level)
 
     h = look.get("height_cm")
     if h:
         try:
-            parts["height"] = "tall, long legs" if int(h) >= 170 else f"{int(h)}cm"
+            cm = int(h)
+            if cm >= 170:
+                parts["height"] = "tall, long legs"
+            elif cm <= 154:
+                parts["height"] = "petite, short"
         except (TypeError, ValueError):
             pass
+
+    if (crop or "").lower() == "lower":
+        parts = drop_upper_look(parts)
+        lower_sp = ", ".join(sp_seg.get("lower") or [])
+        if lower_sp:
+            parts["specials"] = lower_sp
+        else:
+            parts.pop("specials", None)
+        if level == "exposed":
+            parts["outfit"] = "nude"
+        elif parts.get("outfit"):
+            parts["outfit"] = filter_tag_chunk(parts["outfit"], _UPPER_OUTFIT_DROP)
 
     return parts, unknown
 
 
-def appearance_en_brief(character: dict | None) -> tuple[str, list[str]]:
-    """壓成給 image agent 的英文 character sheet 片段（無中文外貌）。"""
-    parts, unknown = appearance_en_parts(character)
-    lines: list[str] = []
-    ch = character if isinstance(character, dict) else {}
-    if ch.get("name"):
-        lines.append(f"Name: {ch['name']}")
-    if parts.get("age"):
-        lines.append(f"Age: {parts['age']}")
-    # 外貌一行 tag 串
-    face_bits = [
-        parts.get(k)
-        for k in (
-            "face", "eyes", "eye_color", "mouth", "hair_color", "hair",
-            "feature", "build", "bust", "areola", "height", "specials",
-        )
-        if parts.get(k)
+def flatten_tags(*chunks: str) -> str:
+    """多段 tag 去重保序,逗號串起來。空段丟掉。"""
+    seen: set[str] = set()
+    out: list[str] = []
+    for chunk in chunks:
+        for t in str(chunk or "").split(","):
+            t = t.strip()
+            if t and t.lower() not in seen:
+                seen.add(t.lower())
+                out.append(t)
+    return ", ".join(out)
+
+
+# 腰部以下特寫（摸大腿）不能沿用半身立繪前半：臉／眼／髮／胸／上半身
+UPPER_LOOK_KEYS = (
+    "face", "eyes", "eye_color", "mouth",
+    "hair", "hair_color", "feature",
+    "bust", "areola", "nipple",
+)
+_UPPER_OUTFIT_DROP = (
+    "cleavage", "sideboob", "revealing", "nipple", "areola",
+    "bare breast", "exposed breast", "breasts out", "open shirt",
+)
+
+
+def drop_upper_look(parts: dict[str, str]) -> dict[str, str]:
+    """從外貌字典拿掉臉、眼睛、頭髮、胸部。"""
+    out = dict(parts)
+    for k in UPPER_LOOK_KEYS:
+        out.pop(k, None)
+    return out
+
+
+def appearance_en_brief(
+    character: dict | None,
+    *,
+    stage: str = "",
+    framing: str = "",
+) -> tuple[str, list[str]]:
+    """生圖用:一行 Danbooru tag,沒有中文、沒有英文句子。"""
+    parts, unknown = appearance_en_parts(character, stage=stage, crop=framing)
+    bits = [
+        "1girl",
+        HUMAN_TAGS,
+        parts.get("age") or "",
+        parts.get("face") or "",
+        parts.get("eyes") or "",
+        parts.get("eye_color") or "",
+        parts.get("mouth") or "",
+        parts.get("hair_color") or "",
+        parts.get("hair") or "",
+        parts.get("feature") or "",
+        parts.get("build") or "",
+        parts.get("bust") or "",
+        parts.get("areola") or "",
+        parts.get("nipple") or "",
+        parts.get("height") or "",
+        parts.get("specials") or "",
+        parts.get("outfit") or "",
     ]
-    if face_bits:
-        # flatten
-        flat: list[str] = []
-        seen: set[str] = set()
-        for chunk in face_bits:
-            for t in str(chunk).split(","):
-                t = t.strip()
-                if t and t.lower() not in seen:
-                    seen.add(t.lower())
-                    flat.append(t)
-        lines.append("Appearance (English Danbooru-style tags, AUTHORITATIVE): " + ", ".join(flat))
-    if parts.get("outfit"):
-        lines.append(f"Outfit (AUTHORITATIVE): {parts['outfit']}")
-    lines.append(f"Base: {HUMAN_TAGS}")
-    if unknown:
-        lines.append(
-            "(Note: some Chinese pool strings had no EN mapping and were omitted — "
-            "do not invent from Chinese.)"
-        )
-    return "\n".join(lines) if lines else "1girl, adult woman, modern real world woman", unknown
+    # 性器三軸只在腰部以下特寫進身份行,免得把頭／半身鏡頭拉到下體
+    if (framing or "").lower() == "lower":
+        bits += [
+            parts.get("labia_size") or "",
+            parts.get("clitoris_size") or "",
+            parts.get("labia_color") or "",
+            parts.get("pubic_hair") or "",
+        ]
+    tag = flatten_tags(*bits)
+    return tag or "1girl, adult", unknown
+
+
+def appearance_en_head(
+    character: dict | None,
+    *,
+    skip_closed_eyes: bool = True,
+) -> tuple[str, list[str]]:
+    """口交／大頭特寫用人設：臉、眼、嘴、髮。不含胸、性器、衣服。"""
+    parts, unknown = appearance_en_parts(character, clothed=True, stage="")
+    sp_seg, _, sp_unk = resolve_specials(character if isinstance(character, dict) else {})
+    unknown += list(sp_unk)
+    eyes = parts.get("eyes") or ""
+    if skip_closed_eyes and "closed eyes" in eyes.lower():
+        eyes = ""
+    tag = flatten_tags(
+        "1girl",
+        HUMAN_TAGS,
+        parts.get("age") or "",
+        parts.get("face") or "",
+        eyes,
+        parts.get("eye_color") or "",
+        parts.get("mouth") or "",
+        parts.get("hair_color") or "",
+        parts.get("hair") or "",
+        parts.get("feature") or "",
+        ", ".join(sp_seg.get("head") or []),
+    )
+    return tag or "1girl, adult", unknown
+
+
+# 分段生圖每段要帶的欄位(頭 / 胸 / 下半身)
+_PART_KEYS = {
+    "head": ("age", "face", "eyes", "eye_color", "mouth", "hair_color", "hair", "feature"),
+    "bust": ("build", "bust", "areola", "nipple", "outfit"),
+    "lower": ("build", "height", "labia_size", "clitoris_size", "labia_color", "pubic_hair", "outfit"),
+}
+_PART_FRAME = {
+    "head0": "portrait, face focus",
+    "head": "portrait, face focus",
+    "bust0": "upper body, head out of frame",
+    "bust": "upper body, head out of frame",
+    "lower0": "lower body, head out of frame",
+    "lower": "lower body, head out of frame",
+}
+_STYLE_TAGS = {
+    "anime": "anime",
+    "realistic": "photorealistic",
+    "pixel": "pixel art",
+}
+
+
+def part_tag_line(
+    character: dict | None,
+    part: str,
+    *,
+    dressed: bool = True,
+    art_style: str = "anime",
+) -> tuple[str, list[str]]:
+    """一段生圖 = 一行 tag。第一輪 dressed=False 不寫服裝。"""
+    ch = character if isinstance(character, dict) else {}
+    stage = "" if not dressed else str(ch.get("stage") or "")
+    parts, unknown = appearance_en_parts(ch, clothed=dressed, stage=stage)
+    seg = (part or "").lower().rstrip("0") or "bust"
+    keys = _PART_KEYS.get(seg, _PART_KEYS["bust"])
+    bits = ["1girl", HUMAN_TAGS]
+    if not dressed:
+        bits.append("nude")
+    for k in keys:
+        if k == "outfit" and not dressed:
+            continue
+        if k in _GENITAL_PART_KEYS and dressed:
+            continue
+        if parts.get(k):
+            bits.append(parts[k])
+    sp_seg, _, sp_unk = resolve_specials(ch)
+    unknown += list(sp_unk)
+    if sp_seg.get(seg):
+        bits.append(", ".join(sp_seg[seg]))
+    bits.append(_PART_FRAME.get((part or "").lower(), "upper body"))
+    bits.append(_STYLE_TAGS.get((art_style or "anime").lower(), "anime"))
+    bits.append("simple background")
+    return flatten_tags(*bits), unknown
 
 
 def build_prompt(
@@ -709,6 +1304,7 @@ def build_prompt(
     flat_bg: bool = False,
     extra: str = "",
     scene: bool = False,
+    stage: str = "",
 ) -> tuple[str, list[str]]:
     """回 (positive prompt, 查不到對照的原文清單)。
 
@@ -743,34 +1339,34 @@ def build_prompt(
         unknown.append(f"{key}: {raw}")
         return ""
 
-    # 出卡場景：身份權重仍壓在最前；禁止預設 looking at viewer
-    # NTR／雙人：extra 若寫 1man／1boy／2people → 人數 tag 前置（否則模型只畫 1girl solo）
-    extra_l = (extra or "").lower()
-    multi = scene and any(
-        k in extra_l
-        for k in (
-            "1man", "1boy", "2people", "2 people", "two people",
-            "couple", "other man", "man and woman", "man fucking",
-            "groping", "molestation",
-        )
+    extra_pos, extra_neg = split_pos_neg_tags(extra)
+    extra, extra_aside = split_paren_aside(extra_pos)
+    extra_l = extra.lower()
+    nsfw_act = is_nsfw_act(extra)
+    keep_act = keeps_stage_clothes(extra)
+    # 口交／背後交配不靠動作把陌生／朋友升到露胸或扯開衣服；裸只留給妻子
+    level = clothing_level(
+        stage,
+        nsfw_act=nsfw_act and not keep_act,
+        character=ch,
     )
+    keep_clothes = dressed and level == "covered" and not (nsfw_act and not keep_act)
+    # 雙人／做愛／NTR 只寫 1man 1girl。不要 1boy／2people（人數衝突、畫風跑掉）。
+    multi = scene and is_multi_scene(extra)
+    pov = is_pov_cam(extra)
     if scene:
         if multi:
-            # 人數 tag 最前：1man 1girl（兼 1boy 提高 SD 命中）
             bits: list[str] = [
                 QUALITY_PREFIX,
                 "1man",
                 "1girl",
-                "1boy",
-                "2people",
                 HUMAN_TAGS,
             ]
         else:
             bits = [QUALITY_PREFIX, "1girl", HUMAN_TAGS]
-        # 場景圖：明確不要證件照正對（extra 若要求正對會再寫）
-        if "looking at viewer" not in extra_l:
+        # 第三人稱／不要看鏡頭：只給雙人 NTR／交配。玩家 POV 對話不要加。
+        if multi and not pov:
             bits.append("not looking at viewer")
-        if multi and not any(x in extra_l for x in ("looking at viewer", "solo girl")):
             bits.append("third person view")
             bits.append("no first person")
             bits.append("not pov")
@@ -787,12 +1383,17 @@ def build_prompt(
     seg = p.rstrip("0") if p else ""
 
     # 取景先寫,模型才知道要畫哪一塊
+    lower_shot = (framing or "").lower() == "lower"
     if p in PART_FRAMING:
         bits.append(PART_FRAMING[p])
     else:
-        bits.append(FRAMING.get(framing, "upper body"))
+        fr = FRAMING.get(framing, "upper body")
+        # 回頭看臉時不要 head out of frame，否則表情畫不出來
+        if lower_shot and extra_has_key(extra, ("looking back",)):
+            fr = filter_tag_chunk(fr, ("head out of frame",))
+        bits.append(fr)
 
-    if not p or seg == "head":
+    if (not p or seg == "head") and not lower_shot:
         # 臉分五軸(臉型/眼/嘴/髮型/髮色)+瞳色:只寫「大眼睛、長直髮」畫出來的臉
         # 每次都不一樣,細到這個程度才看得出是同一個人。
         bits += [tr(FACE, "face"), tr(EYES, "eyes"), tr(EYE_COLOR, "eye_color"),
@@ -803,34 +1404,36 @@ def build_prompt(
         if not p and not scene:
             bits.append("looking at viewer")
     rating_l = (rating or "sfw").lower()
-    # 出卡對話／SFW：不塞乳暈（易誘發露點特寫）；罩杯比例仍可保留鎖同人
-    skip_areola = rating_l == "sfw" or (
-        scene and ("no groping" in (extra or "").lower() or "conversation" in (extra or "").lower()
-                   or "safe for work" in (extra or "").lower())
-    )
+    # 乳暈／乳頭只在妻子 exposed；女友留胸型但不寫乳頭。不要被 rating=sfw 蓋掉階段。
+    skip_areola = level != "exposed"
 
-    if not p or seg == "bust":
-        bits += [tr(BUST, "bust")]
-        if not skip_areola:
-            bits += [tr(AREOLA, "areola")]
+    if (not p or seg == "bust") and not lower_shot:
+        bust = "" if "bust" in sp_over else compose_bust_en(look, unknown)
+        bits.append(bust_tags_for_level(bust, level))
+        if level == "exposed":
+            bits += [tr(AREOLA, "areola"), tr(NIPPLE, "nipple")]
     if not p or seg in ("bust", "lower"):
         bits += [tr(BUILD, "build")]
-    if p and seg == "lower":
+    if (p and seg == "lower") or (not p and lower_shot):
         h = look.get("height_cm")
         if h:
-            bits.append("long legs" if int(h or 0) >= 170 else "short stature")
-    if not p or seg == "bust":
-        # SFW／對話：過濾 specials 裡的 nipple／areola 類
-        if skip_areola:
-            for t in sp_seg["bust"]:
-                tl = str(t).lower()
-                if any(x in tl for x in ("nipple", "areola", "topless", "nude")):
-                    continue
-                bits.append(t)
-        else:
-            bits += sp_seg["bust"]
+            bits.append("long legs" if int(h or 0) >= 170 else "petite")
+    if (not p or seg == "bust") and not lower_shot:
+        for t in sp_seg["bust"]:
+            cleaned = bust_tags_for_level(t, level)
+            if cleaned:
+                bits.append(cleaned)
     if not p or seg == "lower":
         bits += sp_seg["lower"]
+    # 性器軸：下半素體、或 extra 已經在畫陰部時才寫，避免把頭／半身／摸臀拉去下體
+    show_genitals = extra_has_key(extra, _GENITAL_KEYS) or (bool(p) and seg == "lower" and not dressed)
+    if show_genitals:
+        bits += [
+            tr(LABIA_SIZE, "labia_size"),
+            tr(CLITORIS_SIZE, "clitoris_size"),
+            tr(LABIA_COLOR, "labia_color"),
+            tr(PUBIC_HAIR, "pubic_hair"),
+        ]
 
     if not p or seg in ("bust", "lower"):
         if "skin" not in sp_over:
@@ -838,28 +1441,23 @@ def build_prompt(
             if skin and skin not in SKIN:
                 unknown.append(f"skin: {skin}")
 
-    nsfw_act = any(
-        k in extra_l
-        for k in (
-            "sex", "fucking", "penetration", "vaginal", "groping",
-            "molestation", "creampie", "orgasm", "nsfw", "explicit",
-            "breast grab", "intercourse",
-        )
-    )
-
     if dressed:
         # 沒有任何服裝 tag = 模型自由發揮 = 多半不穿。查不到對照就墊一件,
         # 寧可衣服普通,也不要因為池子改過一個字就整張變裸的。
         worn = (outfit or "").strip() or str(look.get("style") or "").strip()
-        tag = CAREER_OUTFIT.get(worn) or STYLE.get(worn) or ""
+        tag = outfit_en(worn)
         if worn and not tag:
             unknown.append(f"outfit: {worn}")
-        # 雙人 NSFW 動作：只保留服裝身份 tag，不要硬釘 fully clothed（會蓋掉 sex/groping）
-        if nsfw_act:
+        if lower_shot:
+            if level == "exposed":
+                bits.append("nude")
+            else:
+                bits.append(filter_tag_chunk(tag or CLOTHES_FALLBACK, _UPPER_OUTFIT_DROP))
+        elif nsfw_act and level != "exposed" and not keep_act:
             bits.append(tag or CLOTHES_FALLBACK)
             bits.append("clothes pulled aside or partially undressed")
         else:
-            bits.append("fully clothed, " + (tag or CLOTHES_FALLBACK))
+            bits.append(outfit_tags_for_level(tag, level))
         # 生涯服裝自己就是一整套配色(護士服是白的、巫女服是紅白),再疊一組
         # 隨機配色只會打架。個人衣櫃那邊才用得上調色盤。
         if palette and worn not in CAREER_OUTFIT:
@@ -869,13 +1467,20 @@ def build_prompt(
                 unknown.append(f"palette: {palette}")
 
     bits.append(ART_STYLE.get(art_style, ""))
-    bits.append(RATING.get(rating_l, ""))
+    if level == "covered":
+        bits.append(RATING["sfw"])
+    else:
+        bits.append(RATING.get("nsfw", "nsfw"))
     # 出卡：extra = 層②運鏡 visualEn + 層③ AI 反應神態，接在身份（層①）後面
     if extra.strip():
         bits.append(extra.strip())
-    # SFW／對話出卡：再釘一次穿衣，壓過 extra 裡可能殘留的性暗示
-    if skip_areola and dressed and not nsfw_act:
-        bits.append("fully clothed, clothes, covered")
+    # 小括號內容接最後，不當主構圖（SD 無法真的畫分鏡，只當弱提示）
+    if extra_aside.strip():
+        bits.append(extra_aside.strip())
+    # 陌生／朋友再釘一次穿衣；女友／妻子不要 covered breasts 蓋掉胸型
+    # 腰部以下特寫不要寫胸，否則鏡頭會被拉回上半身
+    if keep_clothes:
+        bits.append("fully clothed" if lower_shot else "fully clothed, covered breasts, clothes covering chest")
 
     # 去重但保留順序:tag 重複不會加權,只會擠掉 CLIP 的 77 token 額度
     seen: set[str] = set()

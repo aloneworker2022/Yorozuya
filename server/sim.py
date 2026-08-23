@@ -238,8 +238,9 @@ def _process_taken(store, gid, rel, now_ms):
 
 def _tick_girl(store, gid, now_ms):
     """每次 tick(sync 每 15 秒 / worker 每 60 秒)對一隻魅魔跑一次。判定用「時窗旗標」擋重複:
-    - 纏上:每 30 分鐘一輪(對齊整點/30分),同輪只判一次;不是看板娘(且非 NTR)才判,1/5 命中。
-    - 已纏上未被召喚:每「小時」一輪判定是否被召喚/約會(TAKEN_CHANCE)。
+    - 纏上:每 30 分鐘一輪(對齊整點/30分),同輪只判一次;看板娘/NTR 不判。
+    - 已纏上未被召喚:每 30 分一輪判定是否被召喚/約會(TAKEN_CHANCE);看板娘/NTR/busy 不判。
+    - 看板娘在店頭 = 受保護:不能被帶走;若先前已被帶走則當場解除 taken。
     - 被召喚中:只生 act、等時效解召喚,不重判。"""
     meta = store.get("roster", {}).get(gid, {})
     ntr = bool(meta.get("ntr"))
@@ -270,6 +271,12 @@ def _tick_girl(store, gid, now_ms):
                 return True
         return False
 
+    # ── 看板娘在店頭 = 受保護:不能同時被別的召喚師帶走 ──
+    if kanban and rel.get("taken"):
+        rel["taken"] = None
+        store.setdefault("takenWin", {})[gid] = now_ms // WIN30_MS
+        return True
+
     # ── 已纏上、被召喚中 → 生 act / 到期解召喚 ──
     if rel.get("taken"):
         return _process_taken(store, gid, rel, now_ms)
@@ -277,7 +284,7 @@ def _tick_girl(store, gid, now_ms):
     # ── 已纏上、未被召喚 → 每 30 分鐘一輪判定是否召喚/約會(對齊整點/30分)──
     winT = now_ms // WIN30_MS
     tw = store.setdefault("takenWin", {})
-    if (ntr or busy) or tw.get(gid) == winT:
+    if (kanban or ntr or busy) or tw.get(gid) == winT:
         return False
     tw[gid] = winT
     if random.random() < TAKEN_CHANCE.get(rarity, DEFAULT_TAKEN):

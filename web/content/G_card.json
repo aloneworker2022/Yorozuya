@@ -83,6 +83,16 @@
       "girlfriend": 0.3333333333333333,
       "wife": 0.5
     },
+    "sex_trigger_libido_bonus": {
+      "S": 0.1,
+      "SS": 0.2,
+      "SSR": 0.3
+    },
+    "emotion_erotic_libido_bonus": {
+      "S": 1,
+      "SS": 2,
+      "SSR": 4
+    },
     "sex_base_pool": [],
     "sex_intercourse_roll": {
       "same": 0.5,

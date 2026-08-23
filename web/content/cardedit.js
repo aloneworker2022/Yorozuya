@@ -621,6 +621,7 @@ function fillForm(c) {
   $("f-sceneStart").value = c.sceneStart || "";
   $("f-promptHint").value = c.promptHint || "";
   $("f-visualEn").value = c.visualEn || c.imgPrompt || "";
+  if ($("f-visualNeg")) $("f-visualNeg").value = c.visualNeg || "";
   $("f-visualZh").value = c.visualZh || "";
   $("f-effect").value = c.effect ? JSON.stringify(c.effect, null, 2) : "";
   $("f-openChain").value = c.openChain ? JSON.stringify(c.openChain, null, 2) : "";
@@ -663,7 +664,7 @@ function fillForm(c) {
   const known = new Set([
     "id", "setId", "name", "token", "tokenDesc", "parentId", "kind", "rarity", "minStage",
     "price", "shopWeight", "tags", "shatterOnUse", "starter", "forceable", "nsfwOnly",
-    "sceneStart", "promptHint", "visualEn", "visualZh", "imgPrompt",
+    "sceneStart", "promptHint", "visualEn", "visualNeg", "visualZh", "imgPrompt",
     "effect", "openChain", "emotion", "emotionOnFail",
     "_extract",
   ]);
@@ -759,8 +760,10 @@ function commitFormToCard() {
   c.sceneStart = $("f-sceneStart").value.trim();
   c.promptHint = $("f-promptHint").value.trim();
   c.visualEn = $("f-visualEn").value.trim();
+  c.visualNeg = ($("f-visualNeg")?.value || "").trim();
   c.visualZh = $("f-visualZh").value.trim();
   if (!c.visualEn) delete c.visualEn;
+  if (!c.visualNeg) delete c.visualNeg;
   if (!c.visualZh) delete c.visualZh;
   // 舊別名：有 visualEn 就清掉 imgPrompt 避免雙寫
   if (c.visualEn && c.imgPrompt) delete c.imgPrompt;
@@ -790,7 +793,7 @@ function commitFormToCard() {
   const known = new Set([
     "id", "setId", "name", "token", "tokenDesc", "parentId", "kind", "rarity", "minStage",
     "price", "shopWeight", "tags", "shatterOnUse", "starter", "forceable", "nsfwOnly",
-    "sceneStart", "promptHint", "visualEn", "visualZh", "imgPrompt",
+    "sceneStart", "promptHint", "visualEn", "visualNeg", "visualZh", "imgPrompt",
     "effect", "openChain", "emotion", "emotionOnFail",
     "_extract",
   ]);
@@ -1458,6 +1461,8 @@ async function rollGirl() {
       : ["倔強"];
     const A = g.appearance || {};
     const occ = pickPoolItem(g.occupations);
+    const cup = poolText(pickPoolItem(A.cup || A.bust)) || "";
+    const shape = poolText(pickPoolItem(A.breast_shape)) || "";
     $("re-name").value = typeof name === "string" ? name : name?.text || "小夜";
     $("re-per").value = personality.join("、");
     girlCache = {
@@ -1469,7 +1474,9 @@ async function rollGirl() {
       tone: arch?.tone || "",
       look: {
         eyes: poolText(pickPoolItem(A.eyes)) || "明亮的眼睛",
-        bust: poolText(pickPoolItem(A.bust)) || "勻稱的胸部",
+        cup,
+        breast_shape: shape,
+        bust: [cup, shape].filter(Boolean).join("、") || "勻稱的胸部",
         hair: poolText(pickPoolItem(A.hair)) || "長髮",
         hair_color: poolText(pickPoolItem(A.hair_color)) || "",
         build: poolText(pickPoolItem(A.build)) || "苗條",

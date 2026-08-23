@@ -316,10 +316,12 @@
           請用<strong>英文</strong>寫姿態／表情／互動（例：waving hello, she faces him, eye contact, soft smile）。
           沒填時會沿父卡繼承；都沒有則用 tags 保底。打招呼請寫清楚 greeting／facing／eye contact，避免畫成茫然看旁邊。
         </p>
-        <label>visualEn（英文 · 權威畫圖）</label>
-        <textarea id="f-visualEn" class="tall" placeholder="he waves hello, she faces him with a polite smile, eye contact, half body, greeting gesture, NOT looking away blankly"></textarea>
+        <label>visualEn（英文 · 正向：玩家動作／運鏡）</label>
+        <textarea id="f-visualEn" class="tall" placeholder="from his POV, he speaks softly, she faces him, eye contact, medium shot, three-quarter view"></textarea>
+        <label>visualNeg（英文 · 負向：不要畫什麼。不要寫在 visualEn 裡用 NO xxx）</label>
+        <textarea id="f-visualNeg" placeholder="groping, breast grab, nude, looking away blankly"></textarea>
         <label>visualZh（中文備註 · 可選，給作者自己看）</label>
-        <textarea id="f-visualZh" placeholder="他舉手打招呼，她面向他、對視微笑（不進 CLIP）"></textarea>
+        <textarea id="f-visualZh" placeholder="他輕聲說話，她面向他（不進 CLIP）"></textarea>
         <div class="row" style="margin-top:.4em">
           <button class="gold" type="button" id="btn-gen-visual">✦ AI 生畫圖描述</button>
           <button class="cy" type="button" id="btn-visual-to-img" title="把 visualEn 填進右側生圖 prompt">→ 填入生圖框</button>

@@ -1,0 +1,112 @@
+{
+  "packs": [
+    {
+      "id": "3bd2454f7b",
+      "name": "A",
+      "pose": "cowgirl_front",
+      "created": 1787376131.280822,
+      "frames": {
+        "1": {
+          "url": "/assets/frame_packs/3bd2454f7b/1.png",
+          "width": 1216,
+          "height": 832,
+          "bytes": 866955,
+          "index": 1
+        },
+        "2": {
+          "url": "/assets/frame_packs/3bd2454f7b/2.png",
+          "width": 1208,
+          "height": 674,
+          "bytes": 821029,
+          "index": 2
+        },
+        "3": {
+          "url": "/assets/frame_packs/3bd2454f7b/3.png",
+          "width": 1216,
+          "height": 470,
+          "bytes": 559437,
+          "index": 3
+        },
+        "4": {
+          "url": "/assets/frame_packs/3bd2454f7b/4.png",
+          "width": 1195,
+          "height": 586,
+          "bytes": 712651,
+          "index": 4
+        }
+      }
+    },
+    {
+      "id": "7e64d548c5",
+      "name": "back1",
+      "pose": "doggy",
+      "created": 1787407068.4139848,
+      "frames": {
+        "1": {
+          "url": "/assets/frame_packs/7e64d548c5/1.png",
+          "width": 1216,
+          "height": 731,
+          "bytes": 926827,
+          "index": 1
+        },
+        "2": {
+          "url": "/assets/frame_packs/7e64d548c5/2.png",
+          "width": 1216,
+          "height": 704,
+          "bytes": 773852,
+          "index": 2
+        },
+        "3": {
+          "url": "/assets/frame_packs/7e64d548c5/3.png",
+          "width": 1216,
+          "height": 704,
+          "bytes": 754812,
+          "index": 3
+        },
+        "4": {
+          "url": "/assets/frame_packs/7e64d548c5/4.png",
+          "width": 1216,
+          "height": 704,
+          "bytes": 792009,
+          "index": 4
+        }
+      }
+    },
+    {
+      "id": "f6a5fb5059",
+      "name": "R1",
+      "pose": "cowgirl_front",
+      "created": 1787409201.369123,
+      "frames": {
+        "1": {
+          "url": "/assets/frame_packs/f6a5fb5059/1.png",
+          "width": 1216,
+          "height": 601,
+          "bytes": 922119,
+          "index": 1
+        },
+        "2": {
+          "url": "/assets/frame_packs/f6a5fb5059/2.png",
+          "width": 1216,
+          "height": 601,
+          "bytes": 839497,
+          "index": 2
+        },
+        "3": {
+          "url": "/assets/frame_packs/f6a5fb5059/3.png",
+          "width": 1216,
+          "height": 600,
+          "bytes": 751137,
+          "index": 3
+        },
+        "4": {
+          "url": "/assets/frame_packs/f6a5fb5059/4.png",
+          "width": 1216,
+          "height": 601,
+          "bytes": 839497,
+          "index": 4
+        }
+      }
+    }
+  ]
+}

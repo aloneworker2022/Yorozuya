@@ -98,7 +98,7 @@ export function bindContextFromGirl(girl, playerName = "你") {
     Array.isArray(L.wardrobe) ? L.wardrobe[0] : "",
   );
   const eye = pickStr(L.eyes, "她的眼睛");
-  const breast = pickStr(L.bust, "她的胸部");
+  const breast = pickStr(L.bust, [L.cup, L.breast_shape].filter(Boolean).join("、"), "她的胸部");
   const hair = hairLine(L) || "她的頭髮";
   const face = pickStr(L.face, "她的臉");
   const mouth = pickStr(L.mouth, "她的嘴唇");

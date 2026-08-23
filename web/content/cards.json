@@ -16,7 +16,7 @@
       "編輯器：/cardedit（AI 衍伸／生文／生圖／回應／效果試算）。"
     ],
     "card_sets": "setId 分組；live=true 的組才進遊戲。實驗組用 /cardedit 取出輩分。",
-    "visualEn_staging": "visualEn 必須寫清：鏡頭距離、她與玩家的相對位置、身體朝向（side / three-quarter / over-shoulder / facing him 可選），禁止預設 looking at viewer 證件照。正對僅在場面需要時寫入。"
+    "visualEn_staging": "visualEn = 正向：這張卡玩家呈現的動作＋運鏡（鏡頭距離、相對位置、朝向）。禁止寫 NO groping 這種否定句——否定進 visualNeg。visualNeg = 負向：不要畫的東西（groping, breast grab）。1boy／第三人稱只給做愛／NTR／交配卡。"
   },
   "enums": {
     "kind": [
@@ -91,6 +91,16 @@
       "friend": 0.125,
       "girlfriend": 0.3333333333333333,
       "wife": 0.5
+    },
+    "sex_trigger_libido_bonus": {
+      "S": 0.1,
+      "SS": 0.2,
+      "SSR": 0.3
+    },
+    "emotion_erotic_libido_bonus": {
+      "S": 1,
+      "SS": 2,
+      "SSR": 4
     },
     "sex_base_pool": [],
     "sex_intercourse_roll": {

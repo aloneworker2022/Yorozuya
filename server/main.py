@@ -9,6 +9,7 @@
 
 import asyncio
 import hashlib
+import io
 import json
 import os
 import re
@@ -17,10 +18,11 @@ import shutil
 import sqlite3
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -57,7 +59,48 @@ _GROK_IMG_TOOLS = "image_gen,image_edit,run_terminal_cmd,list_dir,read_file"
 IMG_TEST_DIR = ASSETS_DIR / "testword"
 # 遊戲本體的召喚三連拍(head/half/full),與 testword 的實驗圖分開放
 PORTRAIT_DIR = ASSETS_DIR / "portraits"
-SHOT_LABEL_ZH = {"head": "大頭照", "half": "半身(聊天立繪)", "full": "全身(看板娘)"}
+# 姿勢／骨架參考圖（使用者上傳，不當正式立繪；做愛局部動畫骨架會用）
+POSE_REF_DIR = ASSETS_DIR / "pose_refs"
+FRAME_PACK_DIR = ASSETS_DIR / "frame_packs"
+FRAME_PACK_INDEX = FRAME_PACK_DIR / "index.json"
+_POSE_MAX_BYTES = 15 * 1024 * 1024
+_POSE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+# 不去背的測試檔前綴(cutout 示範)。GC 不會刪。
+_ASSET_KEEP_PREFIXES = frozenset({"chk"})
+_SHOT_FILE_SUFS = (
+    "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
+    "tease_cowgirl", "tease_breast", "tease_thigh", "tease_butt",
+    "tease_oral_ready", "tease_oral_suck", "tease_oral_deep", "tease_oral_cum",
+    "tease_oral",
+    "tease_doggy_ready", "tease_doggy_half", "tease_doggy_more", "tease_doggy_deep", "tease_doggy_cum",
+    "tease_doggy",
+    "half_xiu", "half_xi", "half_nu", "half_ai", "half_le",
+    "half", "full", "head",
+)
+SHOT_LABEL_ZH = {
+    "head": "大頭照", "half": "半身(聊天立繪)", "full": "全身(看板娘)",
+    "half_xi": "半身·喜", "half_nu": "半身·怒", "half_ai": "半身·哀",
+    "half_le": "半身·樂", "half_xiu": "半身·害羞",
+    "tease_breast": "調戲·摸乳", "tease_thigh": "調戲·摸大腿",
+    "tease_butt": "調戲·摸臀",
+    "tease_oral": "調戲·口交",
+    "tease_oral_ready": "調戲·口交·頂嘴",
+    "tease_oral_suck": "調戲·口交·含住",
+    "tease_oral_deep": "調戲·口交·整根",
+    "tease_oral_cum": "調戲·口交·口內射",
+    "tease_doggy": "調戲·背後插入",
+    "tease_doggy_ready": "調戲·背後·抓臀勃起",
+    "tease_doggy_half": "調戲·背後·龜頭進入",
+    "tease_doggy_more": "調戲·背後·插一半",
+    "tease_doggy_deep": "調戲·背後·整根頂到底",
+    "tease_doggy_cum": "調戲·背後·高潮內射",
+    "tease_cowgirl": "調戲·騎乘",
+    "tease_cowgirl_ready": "調戲·騎乘·坐下勃起",
+    "tease_cowgirl_half": "調戲·騎乘·龜頭進入",
+    "tease_cowgirl_more": "調戲·騎乘·插一半",
+    "tease_cowgirl_deep": "調戲·騎乘·整根頂到底",
+    "tease_cowgirl_cum": "調戲·騎乘·高潮內射",
+}
 GROK_IMG_TIMEOUT = float(os.environ.get("GROK_IMG_TIMEOUT", "300"))
 GROK_IMG_MAX_TURNS = int(os.environ.get("GROK_IMG_MAX_TURNS", "8") or "8")
 
@@ -203,6 +246,340 @@ async def upload_bg(file: UploadFile = File(...)):
 @app.delete("/api/backgrounds/{name}")
 def delete_bg(name: str):
     p = BG_DIR / Path(name).name  # 防路徑跳脫
+    p.unlink(missing_ok=True)
+    return {"ok": True}
+
+
+def _normalize_pose_image(data: bytes) -> tuple[bytes, int, int]:
+    """把使用者丟進來的檔解成 RGB/RGBA PNG。不靠副檔名。長邊超過 2048 會縮小。"""
+    try:
+        from PIL import Image
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail="伺服器沒裝 Pillow，無法讀圖") from e
+    try:
+        im = Image.open(io.BytesIO(data))
+        im.load()
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail="讀不了這張圖。畫素沒有下限；iPhone 請先「另存 JPG」，不要用 HEIC。",
+        ) from e
+    if im.mode not in ("RGB", "RGBA"):
+        im = im.convert("RGBA" if "A" in im.getbands() else "RGB")
+    w, h = im.size
+    if w < 8 or h < 8:
+        raise HTTPException(status_code=400, detail=f"圖太小（{w}×{h}）。隨便一張正常照片即可，沒有畫素下限，但至少要看得出畫面。")
+    max_side = 2048
+    if max(w, h) > max_side:
+        scale = max_side / max(w, h)
+        im = im.resize((max(8, int(w * scale)), max(8, int(h * scale))), Image.Resampling.LANCZOS)
+        w, h = im.size
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    return buf.getvalue(), w, h
+
+
+def _pose_gen_size(path: Path, default_w: int = 832, default_h: int = 1216) -> tuple[int, int]:
+    """依參考圖長寬比挑 SDXL 桶，不要硬裁成 832×1216。"""
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            w, h = im.size
+    except Exception:
+        return default_w, default_h
+    if w <= 0 or h <= 0:
+        return default_w, default_h
+    long = 1216
+    if h >= w:
+        nh = long
+        nw = int(round((long * w / h) / 64) * 64)
+    else:
+        nw = long
+        nh = int(round((long * h / w) / 64) * 64)
+    return min(1536, max(512, nw or 64)), min(1536, max(512, nh or 64))
+
+
+def _save_pose_png(data: bytes) -> dict:
+    if not data:
+        raise HTTPException(status_code=400, detail="空檔")
+    if len(data) > _POSE_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="圖太大（上限 15MB）")
+    png, w, h = _normalize_pose_image(data)
+    POSE_REF_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}.png"
+    (POSE_REF_DIR / name).write_bytes(png)
+    return {
+        "name": name,
+        "url": f"/assets/pose_refs/{name}",
+        "width": w,
+        "height": h,
+        "bytes": len(png),
+    }
+
+
+_PACK_IDX = re.compile(r"(?:^|[^0-9])([1-4])(?:[^0-9]|$)")
+
+
+def _pack_index(name: str) -> int | None:
+    """檔名裡獨立的 1～4。10.png 不算 1。"""
+    stem = Path(name or "").name
+    m = _PACK_IDX.search(stem)
+    return int(m.group(1)) if m else None
+
+
+def _pack_from_zip(data: bytes) -> list[tuple[int | None, str, bytes]]:
+    out: list[tuple[int | None, str, bytes]] = []
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as e:
+        raise HTTPException(status_code=400, detail="不是有效的 zip") from e
+    for info in zf.infolist():
+        if info.is_dir():
+            continue
+        raw_name = Path(info.filename.replace("\\", "/")).name
+        if raw_name.startswith(".") or raw_name.startswith("._"):
+            continue
+        if "__macosx" in info.filename.lower():
+            continue
+        ext = Path(raw_name).suffix.lower()
+        if ext not in _POSE_EXTS:
+            continue
+        blob = zf.read(info)
+        out.append((_pack_index(raw_name), raw_name, blob))
+    return out
+
+
+def _number_pack_blobs(
+    collected: list[tuple[int | None, str, bytes]],
+) -> dict[int, tuple[str, bytes]]:
+    numbered: dict[int, tuple[str, bytes]] = {}
+    unnumbered: list[tuple[str, bytes]] = []
+    for idx, fname, blob in collected:
+        if idx in (1, 2, 3, 4):
+            numbered[idx] = (fname, blob)
+        else:
+            unnumbered.append((fname, blob))
+    empty = [i for i in (1, 2, 3, 4) if i not in numbered]
+    if unnumbered and empty:
+        unnumbered.sort(key=lambda x: x[0].lower())
+        for i, item in zip(empty, unnumbered):
+            numbered[i] = item
+    if not numbered:
+        raise HTTPException(
+            status_code=400,
+            detail="對不到 1～4。請把檔名寫成 1.png、2.png、3.png、4.png（或 zip 裡同樣編號）。",
+        )
+    return numbered
+
+
+async def _collect_pack_uploads(files: list[UploadFile]) -> tuple[list[tuple[int | None, str, bytes]], str]:
+    collected: list[tuple[int | None, str, bytes]] = []
+    hint = ""
+    for f in files:
+        data = await f.read()
+        fname = f.filename or "bone.png"
+        if not hint:
+            hint = Path(fname).stem
+        if Path(fname).suffix.lower() == ".zip" or (len(files) == 1 and data[:2] == b"PK"):
+            collected.extend(_pack_from_zip(data))
+            if fname.lower().endswith(".zip"):
+                hint = Path(fname).stem
+            continue
+        collected.append((_pack_index(fname), fname, data))
+    if not collected:
+        raise HTTPException(status_code=400, detail="包裡沒有圖片（要 png／jpg／webp，檔名含 1～4）")
+    return collected, hint
+
+
+def _frame_pack_load() -> list[dict]:
+    if not FRAME_PACK_INDEX.is_file():
+        return []
+    try:
+        data = json.loads(FRAME_PACK_INDEX.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    packs = data.get("packs") if isinstance(data, dict) else data
+    return [p for p in (packs or []) if isinstance(p, dict) and p.get("id")]
+
+
+def _frame_pack_save(packs: list[dict]) -> None:
+    FRAME_PACK_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = FRAME_PACK_INDEX.with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps({"packs": packs}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    tmp.replace(FRAME_PACK_INDEX)
+
+
+FRAME_PACK_POSES = ("missionary", "doggy", "cowgirl_front")
+
+
+def _norm_pack_pose(raw: str) -> str:
+    p = (raw or "").strip()
+    return p if p in FRAME_PACK_POSES else "missionary"
+
+
+def _frame_pack_public(p: dict) -> dict:
+    frames = p.get("frames") if isinstance(p.get("frames"), dict) else {}
+    return {
+        "id": p.get("id"),
+        "name": p.get("name") or p.get("id"),
+        "pose": _norm_pack_pose(p.get("pose")),
+        "created": p.get("created") or 0,
+        "frames": {str(i): frames.get(str(i)) for i in (1, 2, 3, 4) if frames.get(str(i))},
+    }
+
+
+@app.post("/api/pose-refs")
+async def upload_pose_ref(file: UploadFile = File(...)):
+    """姿勢／骨架參考圖。人設仍用人設＋立繪。"""
+    data = await file.read()
+    return _save_pose_png(data)
+
+
+@app.post("/api/pose-refs/pack")
+async def upload_pose_pack(files: list[UploadFile] = File(...)):
+    """一次收四張骨架（檔名含 1～4）或一個 zip。回 frames[1..4]。不入組庫。"""
+    if not files:
+        raise HTTPException(status_code=400, detail="沒有檔")
+    collected, _hint = await _collect_pack_uploads(files)
+    numbered = _number_pack_blobs(collected)
+    frames = {}
+    for i, (fname, blob) in sorted(numbered.items()):
+        saved = _save_pose_png(blob)
+        saved["from"] = fname
+        saved["index"] = i
+        frames[str(i)] = saved
+    return {
+        "frames": frames,
+        "got": sorted(int(k) for k in frames),
+        "missing": [i for i in (1, 2, 3, 4) if str(i) not in frames],
+    }
+
+
+@app.get("/api/frame-packs")
+def list_frame_packs(pose: str = ""):
+    """圖組庫：很多組，每組四張（1～4）。pose 給值只回該體位。"""
+    packs = [_frame_pack_public(p) for p in _frame_pack_load()]
+    want = (pose or "").strip()
+    if want:
+        want = _norm_pack_pose(want) if want in FRAME_PACK_POSES else want
+        packs = [p for p in packs if p.get("pose") == want]
+    packs.sort(key=lambda p: p.get("created") or 0, reverse=True)
+    return {"packs": packs}
+
+
+@app.post("/api/frame-packs")
+async def create_frame_pack(
+    files: list[UploadFile] = File(...),
+    name: str = Form(""),
+    pose: str = Form(""),
+):
+    """新增一組：四張圖（檔名 1～4）或 zip。pose 綁體位。"""
+    if not files:
+        raise HTTPException(status_code=400, detail="沒有檔")
+    collected, hint = await _collect_pack_uploads(files)
+    numbered = _number_pack_blobs(collected)
+    missing = [i for i in (1, 2, 3, 4) if i not in numbered]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"這一組要四張。還缺第 { '、'.join(str(i) for i in missing) } 張。",
+        )
+    pid = uuid.uuid4().hex[:10]
+    dest = FRAME_PACK_DIR / pid
+    dest.mkdir(parents=True, exist_ok=True)
+    frames: dict[str, dict] = {}
+    for i in (1, 2, 3, 4):
+        _fname, blob = numbered[i]
+        png, w, h = _normalize_pose_image(blob)
+        fname = f"{i}.png"
+        (dest / fname).write_bytes(png)
+        frames[str(i)] = {
+            "url": f"/assets/frame_packs/{pid}/{fname}",
+            "width": w,
+            "height": h,
+            "bytes": len(png),
+            "index": i,
+        }
+    label = (name or "").strip() or hint or f"組 {pid[:6]}"
+    pack = {
+        "id": pid,
+        "name": label[:40],
+        "pose": _norm_pack_pose(pose),
+        "created": time.time(),
+        "frames": frames,
+    }
+    packs = _frame_pack_load()
+    packs.append(pack)
+    _frame_pack_save(packs)
+    return {"pack": _frame_pack_public(pack)}
+
+
+class FramePackPatch(BaseModel):
+    name: str = ""
+    pose: str = ""
+
+
+@app.patch("/api/frame-packs/{pack_id}")
+def rename_frame_pack(pack_id: str, body: FramePackPatch):
+    pid = _safe_token(pack_id, 16)
+    packs = _frame_pack_load()
+    hit = next((p for p in packs if p.get("id") == pid), None)
+    if not hit:
+        raise HTTPException(status_code=404, detail="沒有這一組")
+    label = (body.name or "").strip()
+    if label:
+        hit["name"] = label[:40]
+    if (body.pose or "").strip():
+        if body.pose.strip() not in FRAME_PACK_POSES:
+            raise HTTPException(status_code=400, detail="未知體位")
+        hit["pose"] = body.pose.strip()
+    if not label and not (body.pose or "").strip():
+        raise HTTPException(status_code=400, detail="名稱或體位要填一個")
+    _frame_pack_save(packs)
+    return {"pack": _frame_pack_public(hit)}
+
+
+@app.delete("/api/frame-packs/{pack_id}")
+def delete_frame_pack(pack_id: str):
+    pid = _safe_token(pack_id, 16)
+    packs = _frame_pack_load()
+    keep = [p for p in packs if p.get("id") != pid]
+    if len(keep) == len(packs):
+        raise HTTPException(status_code=404, detail="沒有這一組")
+    _frame_pack_save(keep)
+    folder = FRAME_PACK_DIR / pid
+    if folder.is_dir():
+        shutil.rmtree(folder, ignore_errors=True)
+    return {"ok": True}
+
+
+@app.get("/api/pose-refs")
+def list_pose_refs(limit: int = 16):
+    POSE_REF_DIR.mkdir(parents=True, exist_ok=True)
+    files = [
+        p for p in POSE_REF_DIR.iterdir()
+        if p.is_file() and p.suffix.lower() in _POSE_EXTS
+    ]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    out = []
+    for p in files[: max(1, min(int(limit or 16), 40))]:
+        out.append({
+            "name": p.name,
+            "url": f"/assets/pose_refs/{p.name}",
+            "size": p.stat().st_size,
+            "mtime": p.stat().st_mtime,
+        })
+    return {"items": out}
+
+
+@app.delete("/api/pose-refs/{name}")
+def delete_pose_ref(name: str):
+    p = POSE_REF_DIR / Path(name).name
+    if p.suffix.lower() not in _POSE_EXTS:
+        raise HTTPException(status_code=400, detail="不是圖片")
     p.unlink(missing_ok=True)
     return {"ok": True}
 
@@ -498,46 +875,29 @@ async def _run_grok_build(
     )
 
 
-def _character_visual_brief(ch: dict) -> str:
-    """生圖用 character sheet：**外貌一律英文 tag**（sdtags 查表，與 Comfy 同表）。
-
-    中文池子字串 CLIP / 多數生圖模型幾乎讀不懂；不顯示給玩家的欄位直接翻成英文。
-    """
+def _character_visual_brief(ch: dict, framing: str = "") -> str:
+    """生圖用 character sheet:一行 Danbooru tag,不塞中文、不塞英文句子。"""
     if not isinstance(ch, dict):
-        return "1girl, adult woman, modern real world woman"
+        return "1girl, adult"
     ch2 = dict(ch)
     worn = _outfit_of(ch2)
     if worn:
         ch2["_worn_outfit"] = worn
-    en_brief, unknown = sdtags.appearance_en_brief(ch2)
-    lines: list[str] = [en_brief]
-    if unknown:
-        lines.append(
-            "Unmapped pool fields (ignored, do NOT paste Chinese): "
-            + "; ".join(unknown[:12])
-        )
-    pers = ch.get("personality") or []
-    if isinstance(pers, list) and pers:
-        mood = ", ".join(str(p) for p in pers[:4])
-        lines.append(f"Expression mood (soft, optional): {mood}")
-    if ch.get("tone"):
-        lines.append(f"Speech vibe for face (optional): {ch['tone']}")
-    if ch.get("job"):
-        lines.append(f"Former job vibe (optional): {ch['job']}")
-    rarity = ch.get("rarity") or ""
-    if rarity:
-        lines.append(f"Rarity tier: {rarity}")
-    return "\n".join(lines)
+    en_brief, _unknown = sdtags.appearance_en_brief(
+        ch2, stage=str(ch.get("stage") or ""), framing=framing,
+    )
+    return en_brief
 
 
 _FRAME_MAP = {
-    "half": "half-body portrait (waist-up), face and upper body clearly visible",
-    "full": "full-body standing figure, head to toe visible, complete outfit",
+    "half": "upper body",
+    "full": "full body",
+    "lower": "lower body, below waist",
 }
 _STYLE_MAP = {
-    "anime": "Japanese anime style, clean lineart, cel shading, vibrant colors, high quality illustration",
-    "realistic": "photorealistic, natural skin texture, cinematic lighting, DSLR photo look",
-    "pixel": "pixel art, 256x256 pixels exact, limited palette, crisp pixels, no anti-aliasing, game sprite style",
+    "anime": "anime",
+    "realistic": "photorealistic",
+    "pixel": "pixel art",
 }
 # NSFW 一樣不寫分級字眼(理由同 _RATING_ZH):寫了只會被 grok 的生圖擋掉。
 _RATING_MAP = {
@@ -572,38 +932,71 @@ def _build_girl_image_prompt(
     extra: str = "",
     out_path: Path,
     ref_path: Path | None = None,
+    pose_path: Path | None = None,
+    scene_kind: str = "",
 ) -> str:
     """組給 Grok Build 的生圖指令。人物欄位以 character(完整 generateGirl 結果)為準。
 
     出卡場景層級（與 docs/card-system.md §12.3.1 對齊）：
       ① CHARACTER SHEET / 半身參考圖 = 身份固定（髮眼身服裝 + seed）
       ②+③ ACTION(extra) = 卡牌運鏡 visualEn + 回話後表情肢體（只改 pose，不改長相）
+    pose_path = 姿勢／構圖參考（機位、體位、插入深度）；與身份 ref 分開。
     """
     framing = (framing or "half").lower()
     rating = (rating or "sfw").lower()
     style = (style or "anime").lower()
     frame_map, style_map, rating_map = _FRAME_MAP, _STYLE_MAP, _RATING_MAP
     ch = _fill_manual_fields(character, name, personality, backstory)
-    brief = _character_visual_brief(ch)
+    brief = _character_visual_brief(ch, framing=framing)
 
     size_note = (
         "Output size MUST be exactly 256x256 pixels."
         if style == "pixel"
         else "High resolution illustration suitable for a game scene."
     )
-    extra_l = (extra or "").lower()
-    # NTR／雙人場面：ACTION 含 1man／sex／groping 等 → 必須畫兩人互動，禁止第一人稱立繪輕改
-    multi_scene = any(
-        k in extra_l
-        for k in (
-            "1man", "1boy", "2people", "2 people", "two people", "couple",
-            "other man", "man and woman", "man fucking", "groping",
-            "molestation", "sex", "fucking", "penetration",
-        )
-    )
+    extra, extra_neg = sdtags.split_pos_neg_tags(extra)
+    extra, extra_aside = sdtags.split_paren_aside(extra)
+    extra_l = extra.lower()
+    # 雙人／做愛／NTR 才走兩人構圖。對話卡 visualEn 的 NO groping 不算。
+    multi_scene = sdtags.is_multi_scene(extra)
+    pov = sdtags.is_pov_cam(extra)
 
-    # 有立繪參考 → image_edit 鎖同一張臉；否則 image_gen + sheet
-    if ref_path is not None and multi_scene:
+    # 有姿勢參考 → image_edit 以那張為主構圖；立繪 ref 只鎖臉。
+    # 沒有姿勢圖時：有立繪參考 → image_edit 鎖同一張臉；否則 image_gen + sheet
+    if pose_path is not None:
+        if ref_path is not None:
+            id_lines = (
+                f"SECONDARY image (her identity only):\n{ref_path}\n"
+                "Replace the woman in the pose image with THIS character (face, hair, body).\n"
+                "Do NOT copy the other woman's face from the pose image.\n"
+            )
+        else:
+            id_lines = (
+                "Redraw the woman as the CHARACTER SHEET person.\n"
+                "Do NOT keep the other woman's face from the pose image.\n"
+            )
+        tool_note = (
+            "You MUST use the image_edit tool.\n"
+            f"PRIMARY image (composition — MANDATORY):\n{pose_path}\n"
+            "This image locks camera, POV, body arrangement, and the general sexual position.\n"
+            "Keep the same camera angle and the same position (oral / doggy / cowgirl).\n"
+            f"{id_lines}"
+            "ACTION tags still decide the exact beat: insertion depth, ejaculation, expression, clothes, hands.\n"
+            "If ACTION says not yet inserted / glans entering / vaginal x-ray / cutaway / fully inserted / creampie, follow ACTION "
+            "for that detail even if the pose image shows a different depth.\n"
+            "Do NOT invent a different position or a third-person couple shot."
+        )
+    elif ref_path is not None and multi_scene and pov:
+        tool_note = (
+            f"You MUST use the image_edit tool with this reference image path:\n"
+            f"{ref_path}\n"
+            "This reference locks ONLY her face/hair/body identity.\n"
+            "This is a FIRST-PERSON / player-POV scene: she is the subject; "
+            "the man is only viewer hands / body at the camera edge, not a second full face.\n"
+            "Obey ACTION tags exactly (groping, breast grab, fellatio, doggy, cowgirl, etc.).\n"
+            "Do NOT generate a different woman."
+        )
+    elif ref_path is not None and multi_scene:
         tool_note = (
             f"You MUST use the image_edit tool with this reference image path:\n"
             f"{ref_path}\n"
@@ -631,19 +1024,125 @@ def _build_girl_image_prompt(
         )
     else:
         tool_note = "You MUST use the image_gen tool (do NOT draw with Python/code)."
+    # 立繪／穿衣場面：就算遊戲設定是 nsfw，也不把「露胸」當預設。
+    # 罩杯只描述衣服底下的輪廓；只有 ACTION 明確脫衣才放行。
+    lewd_action = sdtags.is_nsfw_act(extra)
+    keep_act = sdtags.keeps_stage_clothes(extra)
+    level = sdtags.clothing_level(
+        str((ch or {}).get("stage") or ""),
+        nsfw_act=lewd_action and not keep_act,
+        character=ch,
+    )
+    if level == "covered" and not lewd_action:
+        rating = "sfw"
+    else:
+        rating = "nsfw"
     rating_txt = rating_map.get(rating, rating_map["sfw"])
     rating_line = f"- Content rating: {rating_txt}\n" if rating_txt else ""
 
     # extra 常帶出卡場面英文（visualEn + AI pose）；標成 ACTION，不覆蓋身份
     extra_block = ""
-    if extra.strip():
-        if multi_scene:
+    script_mode = str(scene_kind or "").strip().lower() == "script"
+    if extra_aside.strip():
+        extra_block = f"""
+=== MAIN PICTURE (tags outside parentheses) ===
+{extra.strip() or "half-body portrait, looking at viewer"}
+=== END MAIN ===
+=== PARENTHETICAL (tags inside parentheses) ===
+{extra_aside.strip()}
+=== END PARENTHETICAL ===
+The MAIN PICTURE is the large image: her half-body portrait, face and upper body, looking at viewer.
+Draw the PARENTHETICAL tags ONLY inside one small rectangular inset in a corner.
+Do not let the parenthetical become the whole picture. Do not turn the canvas into a from-behind / ass-focus shot.
+Keep the large image as the portrait. The inset is a small extra panel only.
+"""
+    elif extra.strip():
+        if script_mode:
+            extra_block = f"""
+=== ACTION / SCENE TO DRAW (MANDATORY — designer prompt, both positive tags) ===
+{extra.strip()}
+=== END ACTION ===
+CRITICAL: ACTION is the picture. Draw that camera, those hands, that pose, that act.
+Do NOT output a solo ID portrait looking at the viewer unless ACTION says so.
+CHARACTER SHEET is identity only (face, hair, body, clothes). Do not ignore ACTION.
+"""
+        elif multi_scene and pov:
+            extra_block = f"""
+=== ACTION / SCENE TO DRAW (MANDATORY — first-person player POV) ===
+{extra.strip()}
+=== END ACTION ===
+CRITICAL COMPOSITION RULES:
+- Camera is FIRST-PERSON / from his POV. She is the subject filling the frame.
+- Draw viewer hands / male hands / his body at the camera edge as ACTION says.
+- Do NOT draw a second man's face looking at the camera. Do NOT make it a solo portrait.
+- If ACTION contains groping / breast grab / ass grab / thigh → his hands on that body part.
+- If ACTION contains fellatio / oral / blowjob / penis at lips / cum in mouth:
+  this is a HALF-BODY close-up, penis in the foreground.
+  Do NOT force her to look up or look at the viewer / camera; let the oral pose decide her head.
+  Keep her clothes unless ACTION says nude; only a wife-level nude beat should be fully naked.
+  Hands in the oral beat belong to HER, not the player, unless ACTION says male hand on her head.
+  covering own eyes / covering own face → one of HER own hands over her own eyes or her own face (either is fine); not his hand.
+  holding the penis → one of HER own hands wrapped around the shaft.
+  Follow the exact beat in ACTION — do not collapse all oral beats into the same pose:
+  * tip / glans against lips / about to start / hand on her head → penis tip touching her lips, NOT inside the mouth; one male hand pressing her head down.
+  * penis in mouth / sucking / blowjob (and NOT deepthroat, NOT cum) → lips around the shaft, performing oral, not swallowing the whole length.
+  * deepthroat / entire penis / irrumatio → the whole penis is inside her mouth, nose against his body.
+  * cum in mouth / oral creampie / ejaculation in mouth → he ejaculates into her mouth; semen visible in/around her mouth.
+- If ACTION contains doggy / from behind / grabbing her buttocks with an erect penis:
+  this is a FROM-BEHIND / first-person shot. Keep the same camera across doggy beats. Do not add girl on all fours — doggy style already covers the pose.
+  Keep her clothes unless ACTION says nude; only a wife-level nude beat should be fully naked.
+  Tags prefixed girl belong to the woman (face, hands, clothes). Tags prefixed male belong to the man.
+  Do NOT add girl looking at viewer / camera / player. Do NOT add girl looking back.
+  Never have her look at the camera or over her shoulder at the player.
+  girl head up / girl looking up → her chin up, not looking at the camera.
+  girl head down / girl looking down → her face toward the floor or bed, not looking at the camera.
+  Girl hand tags are short (not sentences). Follow ACTION:
+    girl hand grabbing male hand → one girl hand on his hand (resistance).
+    girl other hand reaching back / girl hand gripping male arm → her other hand reaches back and grabs his arm.
+    girl hands on bed / girl hands supporting → both girl hands on the bed or floor.
+  Male hands stay on her ass / hips as ACTION says.
+  Follow the exact beat in ACTION — do not collapse all doggy beats into the same insertion depth:
+  * grabbing buttocks / erect penis / against her pussy / about to penetrate / not yet inserted →
+    both male hands gripping her ass; a fully erect penis visible against her vulva or between her buttocks; NOT inside.
+  * glans entering / only the glans inserted / glans wrapped by labia / labia enveloping the glans / long penis / very long penis / half of the penis still outside → only the glans is inside; labia wrap and envelop the glans; the penis is long, very long; half of it still remains outside; NOT fully inserted.
+  * girl open mouth / buttocks slamming / ass impacting / body shaking / vaginal x-ray / cutaway / cross-section / internal view → her mouth is open; her buttocks slam / impact his groin; her body is shaking; show a vaginal x-ray / cutaway of internal penetration.
+  * first-person POV / glans / glans inside girl vagina / glans at vaginal opening / long vagina / deep vagina / long vaginal canal / vaginal x-ray / cutaway →
+    first-person POV; use glans tags only, do not add penis/shaft tags; the vagina is long; the glans does NOT hit the uterus or cervix; show a vaginal x-ray.
+  * hitting cervix / glans hitting uterus / buttocks slamming →
+    hitting the cervix / uterus; do not add penis/shaft tags; show a vaginal x-ray if ACTION has x-ray.
+  * creampie / cum inside / internal ejaculation / orgasm creampie →
+    he climaxes inside her; semen overflows around the shaft and from her pussy.
+- If ACTION contains cowgirl / girl on top / straddling:
+  this is a FIRST-PERSON shot from below. She straddles him, girl on top. Keep the same camera across cowgirl beats.
+  Keep her clothes unless ACTION says nude; only a wife-level nude beat should be fully naked.
+  Tags prefixed girl belong to the woman. Tags prefixed male belong to the man.
+  Do NOT add girl looking at viewer / camera / player. Do NOT add girl looking back.
+  Never have her look at the camera. girl head up → chin up; girl head down → face toward his body or the bed.
+  Girl hand tags are short. Follow ACTION:
+    girl hand grabbing male hand → one girl hand on his hand (resistance).
+    girl other hand on male chest / girl hand pushing male chest → her other hand on his chest.
+    girl hands on male chest / girl hands supporting → both girl hands on his chest or the bed.
+  Male hands stay on her hips / waist as ACTION says.
+  Follow the exact beat — do not collapse all cowgirl beats into the same insertion depth:
+  * about to penetrate / still outside / awaiting insertion →
+    she hovers over him; erect penis against her vulva; NOT inside.
+  * glans entering / only the glans inserted / glans wrapped by labia / labia enveloping the glans / long penis / very long penis / half of the penis still outside → she has lowered just enough that only the glans is inside; labia wrap and envelop the glans; the penis is long, very long; half of it still remains outside; NOT fully seated.
+  * girl open mouth / labia pressed tightly against male abdomen / male pubic hair / vaginal x-ray / cutaway / cross-section / internal view → her mouth is open; her labia are pressed tightly against his abdomen; male pubic hair is visible; show a vaginal x-ray / cutaway of internal penetration.
+  * first-person POV / glans / glans inside girl vagina / glans at vaginal opening / long vagina / deep vagina / long vaginal canal / vaginal x-ray / cutaway →
+    first-person POV from below; use glans tags only, do not add penis/shaft tags; the vagina is long; the glans does NOT hit the uterus or cervix; show a vaginal x-ray.
+  * hitting cervix / glans hitting uterus / labia pressed tightly against male abdomen →
+    hitting the cervix / uterus; do not add penis/shaft tags; show a vaginal x-ray if ACTION has x-ray.
+  * creampie / cum inside / internal ejaculation → he climaxes inside her; semen overflows around the shaft.
+- If ACTION contains sex / fucking / vaginal / penetration → draw intercourse, unless the beat above says not yet inserted.
+Do NOT change her hair, eyes, body type, or outfit identity unless ACTION undresses her.
+"""
+        elif multi_scene:
             extra_block = f"""
 === ACTION / SCENE TO DRAW (MANDATORY — two-person NTR/interaction beat) ===
 {extra.strip()}
 === END ACTION ===
 CRITICAL COMPOSITION RULES:
-- Tags 1man + 1girl (or 1boy + 1girl) mean BOTH people must be visible and interacting.
+- Tags 1man + 1girl mean BOTH people must be visible and interacting.
 - Third-person camera only. NO first-person. NO from-his-POV. NO viewer hands in foreground.
 - The woman uses CHARACTER SHEET / reference face. The man is a second character in frame.
 - If ACTION contains sex / fucking / vaginal / penetration → draw intercourse between them.
@@ -668,9 +1167,42 @@ EDIT RULES (portrait template base):
 Do NOT change hair, eyes, body type, or outfit identity.
 """
 
+    pose_block = ""
+    if pose_path is not None:
+        pose_block = f"""
+=== POSE / COMPOSITION REFERENCE (PRIMARY — not her identity) ===
+File: {pose_path}
+Copy camera, POV, body arrangement, and sexual position from this image.
+Do NOT copy the other woman's face, hair, or body type.
+The woman in the output MUST match CHARACTER SHEET{(' / identity reference' if ref_path is not None else '')}.
+=== END POSE REFERENCE ===
+"""
+
     ref_block = ""
     if ref_path is not None:
-        if multi_scene:
+        if pose_path is not None:
+            ref_block = f"""
+=== IDENTITY REFERENCE (FACE / HAIR / BODY ONLY) ===
+File: {ref_path}
+Use this only for her face/hair/body match. Keep the pose image's camera and position.
+=== END REFERENCE ===
+"""
+        elif script_mode:
+            ref_block = f"""
+=== IDENTITY REFERENCE (FACE / HAIR / BODY ONLY) ===
+File: {ref_path}
+Use this only for her face/hair/body. Composition MUST follow ACTION, not this portrait's pose.
+=== END REFERENCE ===
+"""
+        elif multi_scene and pov:
+            ref_block = f"""
+=== REFERENCE PORTRAIT (HER IDENTITY ONLY — not the final composition) ===
+File: {ref_path}
+Use this only for her face/hair/body match. Final image MUST be the ACTION scene
+(first-person player POV, she as subject), not a copy of this solo portrait pose.
+=== END REFERENCE ===
+"""
+        elif multi_scene:
             ref_block = f"""
 === REFERENCE PORTRAIT (HER IDENTITY ONLY — not the final composition) ===
 File: {ref_path}
@@ -687,31 +1219,25 @@ describes a different angle (side seat, walking beside, looking at window, etc.)
 === END REFERENCE ===
 """
 
-    return f"""You are generating ONE cinematic scene image for a game (not a character select portrait).
-IDENTITY ORDER (strict):
-  1) CHARACTER SHEET + optional REFERENCE = who she is (hair, eyes, body, outfit, face).
-  2) ACTION = camera, staging, pose, expression, and other people for THIS beat only.
-Never swap in a different woman. Appearance lines are English tags only.
-{"If ACTION lists 1man/1girl: both people and their interaction are mandatory." if multi_scene else ""}
+    do_not = ""
+    if extra_neg:
+        do_not = f"""
+=== DO NOT DRAW (negative — not in the picture) ===
+{extra_neg}
+=== END DO NOT DRAW ===
+"""
 
-{tool_note}
-After the image is created, copy/move the final file to this EXACT path:
+    tool_name = "image_edit" if (pose_path is not None or ref_path is not None) else "image_gen"
+    return f"""Generate ONE image. Use {tool_name}. Save to:
 {out_path}
 
-Only create that one image file at the destination. Then reply with a short note: the absolute path and one-line description.
+Tags (identity — do not write Chinese, do not write sentences):
+{brief}, {frame_map.get(framing, frame_map["half"])}, {style_map.get(style, style_map["anime"])}
 
-=== CHARACTER SHEET (English tags from persona pools) ===
-{brief}
-=== END SHEET ===
-{ref_block}{extra_block}
-Render settings:
-- Framing: {frame_map.get(framing, frame_map["half"])} (still obey ACTION if it asks side/profile/wide/sex scene)
-- Art style: {style_map.get(style, style_map["anime"])}
-{rating_line}- {size_note}
-- Background should fit the place (cinema dark, hotel room, park path, beach, mall…)
-- No text overlays, no watermark
-- Prefer cinematic composition over centered facing portrait
-{"- Multi-person: show BOTH characters interacting; never solo mugshot" if multi_scene else ""}
+{tool_note}
+{pose_block}{ref_block}{extra_block}{do_not}{rating_line}{size_note}
+No text overlay, no watermark.
+{"1man and 1girl both visible." if multi_scene else ""}
 """
 
 
@@ -749,16 +1275,39 @@ _RATING_ZH = {"sfw": "全年齡", "nsfw": ""}
 def _resolve_ref_image(ref: str) -> Path | None:
     """把前端傳來的 /assets/… 換成本機絕對路徑。
 
-    認 portraits（立繪半身／全身，出卡鎖臉用）與 testword（分段第二輪）。
-    只取 basename，擋路徑穿越。
+    認 portraits（立繪鎖臉）、testword（分段第二輪／實驗圖）、pose_refs（姿勢構圖）。
+    只取 basename，擋路徑穿越。URL 有目錄前綴時只在那個目錄找。
     """
     ref = (ref or "").strip()
     if not ref:
         return None
-    name = Path(ref.split("?", 1)[0]).name
+    u = ref.split("?", 1)[0].split("#", 1)[0]
+    if u.startswith("/assets/frame_packs/"):
+        rel = u[len("/assets/frame_packs/"):]
+        parts = Path(rel).parts
+        if (
+            len(parts) == 2
+            and re.fullmatch(r"[A-Za-z0-9_-]+", parts[0] or "")
+            and Path(parts[1]).suffix.lower() in _POSE_EXTS
+            and parts[1] not in (".", "..")
+        ):
+            p = FRAME_PACK_DIR / parts[0] / parts[1]
+            return p if p.is_file() and p.stat().st_size > 0 else None
+        return None
+    name = Path(u).name
     if not name or name in (".", "..") or "/" in name or "\\" in name:
         return None
-    for base in (PORTRAIT_DIR, IMG_TEST_DIR):
+    hinted = (
+        (POSE_REF_DIR, "/assets/pose_refs/"),
+        (PORTRAIT_DIR, "/assets/portraits/"),
+        (IMG_TEST_DIR, "/assets/testword/"),
+        (FRAME_PACK_DIR, "/assets/frame_packs/"),
+    )
+    for base, prefix in hinted:
+        if u.startswith(prefix):
+            p = base / name
+            return p if p.is_file() and p.stat().st_size > 0 else None
+    for base, _ in hinted:
         p = base / name
         if p.is_file() and p.stat().st_size > 0:
             return p
@@ -777,6 +1326,17 @@ def _outfit_of(ch: dict) -> str:
     pick = ch.get("outfitPick")
     if isinstance(pick, bool):
         pick = None   # True/False 不是索引
+    if isinstance(pick, str):
+        kind = pick[:1]
+        try:
+            i = int(pick[1:] or 0)
+        except ValueError:
+            i = -1
+        extras = look.get("eroticOutfits") if kind == "e" else (
+            look.get("sleepOutfits") if kind == "s" else None
+        )
+        if isinstance(extras, list) and 0 <= i < len(extras):
+            return str(extras[i] or "")
     if isinstance(pick, int) and 0 <= pick < len(wardrobe):
         return str(wardrobe[pick] or "")
     return str(look.get("career_outfit") or look.get("style") or "")
@@ -804,8 +1364,15 @@ def _identity_anchor(ch: dict) -> dict:
         "face": look.get("face") or "",
         "mouth": look.get("mouth") or "",
         "build": look.get("build") or "",
-        "bust": look.get("bust") or "",
+        "bust": look.get("bust") or "、".join(x for x in (look.get("cup"), look.get("breast_shape")) if x),
+        "cup": look.get("cup") or "",
+        "breast_shape": look.get("breast_shape") or "",
         "areola": look.get("areola") or "",
+        "nipple": look.get("nipple") or "",
+        "labia_size": look.get("labia_size") or "",
+        "clitoris_size": look.get("clitoris_size") or "",
+        "labia_color": look.get("labia_color") or "",
+        "pubic_hair": look.get("pubic_hair") or "",
         "eye_color": look.get("eye_color") or "",
         "style": look.get("style") or "",
         "outfit": worn,
@@ -837,12 +1404,19 @@ def _seg_lines(seg: str, a: dict, ch: dict, *, dressed: bool) -> tuple[str, str]
             bits.append(f"表情{mood}")
         return "、".join(x for x in bits if x), "臉部特寫,髮頂到鎖骨"
     if seg == "bust":
-        bits = [a["bust"], a.get("areola") or "", a["build"], a["skin"]]
+        bust = sdtags.clothed_bust_zh(a["bust"]) if dressed else a["bust"]
+        bits = [bust, a["build"], a["skin"]]
+        if not dressed:
+            bits.insert(1, a.get("areola") or "")
+            bits.insert(2, a.get("nipple") or "")
         if dressed and a["outfit"]:
             bits.append(f"{a['outfit']}的上半身"
                         + ("" if a["outfit_career"] else f",{a['palette']}"))
+            bits.append("衣服穿好、胸部被衣服完全蓋住")
         return "、".join(x for x in bits if x), "下巴到腰,不畫臉"
     bits = [a["build"], f"{a['height_cm']}cm" if a["height_cm"] else "", a["skin"]]
+    if not dressed:
+        bits += [a.get("labia_size") or "", a.get("clitoris_size") or "", a.get("labia_color") or "", a.get("pubic_hair") or ""]
     if dressed and a["outfit"]:
         bits.append(f"{a['outfit']}的下半身,含鞋襪")
     return "、".join(x for x in bits if x), "腰到腳"
@@ -859,23 +1433,21 @@ def _seg_prompt_body(
     backstory: str = "",
     extra: str = "",
 ) -> str:
-    """一段 prompt 裡「可以改」的那部分:特徵、取景、風格。刻意短。
-    存檔路徑與參考圖那兩行不在這裡——那是送出前才由 _wrap_part_prompt 補的機械欄位,
-    改壞了圖就落不了地,所以不讓它出現在編輯框裡。"""
+    """一段生圖 = Danbooru tag 一行。中文池子字串先查表再送,不寫英文句子。"""
     part = (part or "bust0").lower()
     if part not in IMG_PARTS:
         part = "bust0"
     dressed = part in IMG_SEG_PARTS
-    seg = part if dressed else part[:-1]
     ch = _fill_manual_fields(character, name, personality, backstory)
-    traits, frame = _seg_lines(seg, _identity_anchor(ch), ch, dressed=dressed)
-
-    tail = [_STYLE_ZH.get((style or "anime").lower(), _STYLE_ZH["anime"]),
-            _RATING_ZH.get((rating or "sfw").lower(), _RATING_ZH["sfw"]), "單人", "背景留白"]
-    lines = [traits, frame, "、".join(x for x in tail if x)]
+    worn = _outfit_of(ch)
+    if worn:
+        ch["_worn_outfit"] = worn
+    tags, _unknown = sdtags.part_tag_line(ch, part, dressed=dressed, art_style=style)
     if extra.strip():
-        lines.append(extra.strip())
-    return "\n".join(x for x in lines if x)
+        extra_pos, _neg = sdtags.split_pos_neg_tags(extra)
+        if extra_pos:
+            tags = sdtags.flatten_tags(tags, extra_pos)
+    return tags
 
 
 def _wrap_part_prompt(body: str, *, out_path: Path, ref_path: Path | None = None) -> str:
@@ -884,6 +1456,97 @@ def _wrap_part_prompt(body: str, *, out_path: Path, ref_path: Path | None = None
     if ref_path is not None:
         lines.append(f"參考 {ref_path}:同一個人,臉、膚色、身形照這張,把衣服畫上去")
     return "\n".join(lines) + "\n"
+
+
+def _is_oral_strip(pos: str) -> bool:
+    el = (pos or "").lower()
+    return any(k in el for k in ("fellatio", "oral", "deepthroat", "girl mouth", "glans against girl lips"))
+
+
+def _merge_oral_identity(body: str, character: dict | None) -> str:
+    """口交特寫把人設臉／髮／嘴疊進 prompt。已有的 tag flatten 去重。"""
+    if not character or not isinstance(character, dict):
+        return body
+    pos, neg = sdtags.split_pos_neg_tags(body)
+    if not _is_oral_strip(pos):
+        return body
+    ident, _ = sdtags.appearance_en_head(character)
+    merged = sdtags.flatten_tags(ident, pos)
+    if neg:
+        return merged + ", NO " + neg.replace(",", ", NO ")
+    return merged
+
+
+def _sex_strip_camera(pos: str) -> str:
+    """口交看嘴與臉；性器特寫不畫陰莖；其餘是腹部交合特寫。"""
+    el = (pos or "").lower()
+    if _is_oral_strip(pos):
+        return "Single camera: close-up of mouth and penis. Her face and lips in frame."
+    has_pussy = any(k in el for k in ("pussy", "labia", "vulva", "clitoris"))
+    has_penis = any(k in el for k in ("penis", "glans", "shaft"))
+    if has_pussy and not has_penis:
+        return "Single camera: close-up of vulva and labia. Faces out of frame. No penis."
+    return "Single camera: close-up of both abdomens, focusing on penis and labia. Faces out of frame."
+
+
+def _wrap_sex_strip_prompt(
+    body: str, *, out_path: Path, style: str = "anime", extra_neg: str = "",
+    pose_path: Path | None = None,
+) -> str:
+    """做愛局部單幀。口交的人設臉／髮已由 _merge_oral_identity 疊進 body。"""
+    style_txt = _STYLE_MAP.get((style or "anime").lower(), _STYLE_MAP["anime"])
+    pos, from_en = sdtags.split_pos_neg_tags(body)
+    neg = ", ".join(x for x in (from_en, extra_neg) if x)
+    do_not = f"\nDo NOT draw: {neg}\n" if neg else ""
+    if pose_path is not None:
+        return f"""Generate ONE image. Use image_edit. Save to:
+{out_path}
+
+You MUST use the image_edit tool.
+PRIMARY image (skeleton / paint sketch — composition lock):
+{pose_path}
+
+Keep the same camera, crop, and body arrangement as this sketch.
+This is a stick-figure / MS Paint skeleton: follow the lines for pose and insertion depth.
+Paint a finished illustration over it. Do NOT leave the stick figure or pencil lines visible.
+Solid black background. No text, no numbers, no captions, no watermarks.
+
+Draw this (tags, not Chinese, not sentences):
+{pos}
+
+Style: {style_txt}
+High resolution.{do_not}
+"""
+    cam = _sex_strip_camera(pos)
+    return f"""Generate ONE image. Use image_gen. Save to:
+{out_path}
+
+You MUST use the image_gen tool (do NOT draw with Python/code).
+Use aspect_ratio "3:2" (wide close-up).
+
+This is one still from a 4-frame sex animation, not a comic, not a sprite sheet.
+{cam}
+Solid black background. No text, no numbers, no captions, no watermarks, no extra panels.
+
+Draw this (tags, not Chinese, not sentences):
+{pos}
+
+Style: {style_txt}
+High resolution.{do_not}
+"""
+
+
+def _stage_ref_in_work(src: Path | None, work: Path, stem: str) -> Path | None:
+    """把參考圖拷進 grok 工作目錄,沙箱比較找得到。"""
+    if src is None or not src.is_file() or src.stat().st_size <= 0:
+        return None
+    ext = src.suffix.lower() if src.suffix.lower() in _POSE_EXTS else ".png"
+    dest = work / f"{stem}{ext}"
+    try:
+        dest.write_bytes(src.read_bytes())
+    except OSError:
+        return src
+    return dest
 
 
 async def _run_grok_image(
@@ -899,23 +1562,43 @@ async def _run_grok_image(
     extra: str = "",
     part: str = "",
     ref: str = "",
+    pose_ref: str = "",
     prompt_body: str = "",
     do_cutout: bool = False,
+    char_id: str = "",
+    shot: str = "",
+    card_id: str = "",
+    scene_kind: str = "",
 ) -> tuple[str, str | None]:
-    """Grok Build + image_gen。成功回 (url_path, None),url 如 /assets/testword/xxx.png。
+    """Grok Build + image_gen。成功回 (url_path, None)。
     part 給值(head0/bust0/lower0 或 head/bust/lower)= 只畫那一段;留空 = 舊行為的整張圖。
     ref = 第一輪同段那張的 /assets/testword/… URL,第二輪拿它當參考圖。
-    do_cutout=True：半身／立繪去背（平背景 + cutout）。"""
-    IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+    pose_ref = 姿勢／構圖／骨架參考圖。
+    do_cutout=True：半身／立繪去背（平背景 + cutout）。
+    有 char_id+shot／card_id 時落到 portraits（覆寫）；否則 testword 實驗圖。"""
     part = (part or "").lower()
-    stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
-    fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
-    abs_out = IMG_TEST_DIR / fname
+    dest_opts = {
+        "shot": shot, "char_id": char_id, "card_id": card_id,
+        "scene_kind": scene_kind, "part": part,
+    }
+    out_dir, url_dir, fname = _dest_for_image(dest_opts)
+    abs_out = out_dir / fname
     # 工作目錄放空沙箱,產圖後搬到 assets
-    work = GROK_CWD / f"img-{stamp}"
+    work = GROK_CWD / f"img-{uuid.uuid4().hex[:12]}"
     work.mkdir(parents=True, exist_ok=True)
     # 讓 agent 先寫進 work,再 copy 到 abs_out(路徑寫死在 prompt)
     target = abs_out  # absolute path in prompt
+    shot_l = (shot or "").strip().lower()
+    use_pose = bool(pose_ref) and (
+        not shot_l
+        or comfy.is_tease_shot(shot_l)
+        or str(scene_kind or "").lower() == "sex_strip"
+    )
+    id_local = _stage_ref_in_work(_resolve_ref_image(ref), work, "identity")
+    pose_local = _stage_ref_in_work(
+        _resolve_ref_image(pose_ref) if use_pose else None, work, "pose"
+    )
+    staged = {p.resolve() for p in (id_local, pose_local) if p is not None}
     # 去背：extra 補平背景提示
     extra_use = (extra or "").strip()
     if do_cutout and "simple background" not in extra_use.lower():
@@ -927,15 +1610,27 @@ async def _run_grok_image(
             character=character,
             name=name, personality=personality, backstory=backstory, extra=extra_use,
         )
-        prompt = _wrap_part_prompt(body, out_path=target, ref_path=_resolve_ref_image(ref))
+        prompt = _wrap_part_prompt(body, out_path=target, ref_path=id_local)
+    elif str(scene_kind or "").lower() == "sex_strip":
+        body = prompt_body.strip() or extra_use
+        if not body:
+            return "", "做愛局部動畫要有 prompt"
+        body = _merge_oral_identity(body, character)
+        _, extra_neg = sdtags.split_pos_neg_tags(extra_use)
+        prompt = _wrap_sex_strip_prompt(
+            body, out_path=target, style=style, extra_neg=extra_neg,
+            pose_path=pose_local,
+        )
     else:
-        # 出卡場景：可帶半身立繪 ref 鎖同一張臉
+        # 出卡場景：可帶半身立繪 ref 鎖同一張臉；tease 可再帶姿勢圖鎖構圖
         prompt = _build_girl_image_prompt(
             framing=framing, rating=rating, style=style,
             character=character,
             name=name, personality=personality, backstory=backstory, extra=extra_use,
             out_path=target,
-            ref_path=_resolve_ref_image(ref),
+            ref_path=id_local,
+            pose_path=pose_local,
+            scene_kind=scene_kind,
         )
     text, err = await _run_grok_cli(
         prompt,
@@ -954,7 +1649,9 @@ async def _run_grok_image(
     else:
         cands = [
             p for p in work.rglob("*")
-            if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
+            if p.is_file()
+            and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
+            and p.resolve() not in staged
         ]
         cands.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         if cands:
@@ -976,7 +1673,8 @@ async def _run_grok_image(
                 _note_cut(found.name, changed, why)
             except Exception as e:
                 _note_cut(found.name, False, f"cutout err:{e}")
-        return f"/assets/testword/{fname}", None
+        ver = f"?v={int(time.time())}" if out_dir == PORTRAIT_DIR else ""
+        return f"{url_dir}/{fname}{ver}", None
     msg = err or (text[:300] if text else "未產生圖片檔")
     return "", f"生圖失敗:{msg}"
 
@@ -1005,14 +1703,271 @@ class CutIn(BaseModel):
 
 
 def _asset_path(url: str) -> Path | None:
-    """把 /assets/xxx/yyy.png 換成本機路徑。只認 portraits 與 testword 兩個目錄,
+    """把 /assets/xxx/yyy.png 換成本機路徑。認 portraits / testword / pose_refs,
     取 basename 擋路徑穿越。"""
     u = (url or "").strip().split("?")[0].split("#")[0]
-    for prefix, base in (("/assets/portraits/", PORTRAIT_DIR), ("/assets/testword/", IMG_TEST_DIR)):
+    if u.startswith("/assets/frame_packs/"):
+        return _resolve_ref_image(u)
+    for prefix, base in (
+        ("/assets/portraits/", PORTRAIT_DIR),
+        ("/assets/testword/", IMG_TEST_DIR),
+        ("/assets/pose_refs/", POSE_REF_DIR),
+    ):
         if u.startswith(prefix):
             p = base / Path(u).name
             return p if p.is_file() else None
     return None
+
+
+def _safe_token(s, n: int = 40) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "", str(s or ""))[:n]
+
+
+def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
+    """生圖落地。(out_dir, url_prefix, fname)
+
+    - shot + char_id → portraits/{id}_{shot}.png（覆寫）
+    - char_id + card_id／scene_kind → portraits/{id}_card_{tag}.png（覆寫）
+    - 其餘（testword 實驗）→ testword/{stamp}.png（每次新檔）
+    """
+    shot = str(opts.get("shot") or "").lower()
+    char_id = _safe_token(opts.get("char_id"), 40)
+    card_id = _safe_token(opts.get("card_id"), 48)
+    scene_kind = str(opts.get("scene_kind") or "").strip().lower()
+    part = str(opts.get("part") or "").lower()
+    if shot in comfy.PORTRAIT_SHOTS and char_id:
+        PORTRAIT_DIR.mkdir(parents=True, exist_ok=True)
+        return PORTRAIT_DIR, "/assets/portraits", f"{char_id}_{shot}.png"
+    if char_id and (card_id or scene_kind in ("card", "watch", "scene")):
+        PORTRAIT_DIR.mkdir(parents=True, exist_ok=True)
+        tag = card_id or scene_kind or "scene"
+        return PORTRAIT_DIR, "/assets/portraits", f"{char_id}_card_{tag}.png"
+    IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+    fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
+    return IMG_TEST_DIR, "/assets/testword", fname
+
+
+def _portrait_owner(stem: str) -> str:
+    """檔名 stem → 角色 id。{id}_half / {id}_card_{cardId}。"""
+    s = str(stem or "")
+    if "_card_" in s:
+        return s.split("_card_", 1)[0]
+    low = s.lower()
+    for suf in _SHOT_FILE_SUFS:
+        tail = "_" + suf
+        if low.endswith(tail):
+            return s[: -len(tail)]
+    return s
+
+
+def _dir_stats(d: Path) -> dict:
+    n, b = 0, 0
+    if d.is_dir():
+        for p in d.iterdir():
+            if p.is_file():
+                n += 1
+                try:
+                    b += p.stat().st_size
+                except OSError:
+                    pass
+    return {"count": n, "bytes": b}
+
+
+def _unlink_files(paths) -> tuple[int, int]:
+    n, b = 0, 0
+    for p in paths:
+        try:
+            if not p.is_file():
+                continue
+            sz = p.stat().st_size
+            p.unlink()
+            n += 1
+            b += sz
+        except OSError:
+            pass
+    return n, b
+
+
+def _live_ids_from_save() -> set[str]:
+    ids: set[str] = set()
+    try:
+        with db() as conn:
+            row = conn.execute("SELECT data FROM save WHERE id = 1").fetchone()
+        if not row:
+            return ids
+        data = json.loads(row[0])
+        for s in (data.get("succubi") or []):
+            if isinstance(s, dict):
+                tid = _safe_token(s.get("id"), 40)
+                if tid:
+                    ids.add(tid)
+    except Exception:
+        pass
+    return ids
+
+
+def _keep_urls_from_save() -> set[str]:
+    names: set[str] = set()
+    try:
+        with db() as conn:
+            row = conn.execute("SELECT data FROM save WHERE id = 1").fetchone()
+        if not row:
+            return names
+        data = json.loads(row[0])
+        girls = list(data.get("succubi") or [])
+        snap = (data.get("cardSession") or {}).get("girlSnap")
+        if isinstance(snap, dict):
+            girls.append(snap)
+        for s in girls:
+            if not isinstance(s, dict):
+                continue
+            if s.get("portrait"):
+                p = _asset_path(str(s.get("portrait")))
+                if p:
+                    names.add(p.name)
+            for u in (s.get("portraits") or {}).values():
+                p = _asset_path(str(u or ""))
+                if p:
+                    names.add(p.name)
+            for v in (s.get("cardCg") or {}).values():
+                if isinstance(v, dict) and v.get("url"):
+                    p = _asset_path(str(v.get("url")))
+                    if p:
+                        names.add(p.name)
+        chain = (data.get("cardSession") or {}).get("sceneChainUrl")
+        p = _asset_path(str(chain or ""))
+        if p:
+            names.add(p.name)
+    except Exception:
+        pass
+    return names
+
+
+class PurgeGirlIn(BaseModel):
+    char_id: str
+    urls: list[str] = []
+
+
+class AssetGcIn(BaseModel):
+    keep_ids: list[str] = []
+    keep_urls: list[str] = []
+    prune_testword: bool = True
+    keep_testword_recent: int = 48
+    prune_grok_cwd: bool = True
+
+
+@app.get("/api/assets/stats")
+def asset_stats():
+    """磁碟上的生成圖用量（立繪 / testword 實驗 / grok 工作目錄）。"""
+    cwd_n, cwd_b = 0, 0
+    if GROK_CWD.is_dir():
+        for p in GROK_CWD.rglob("*"):
+            if p.is_file():
+                cwd_n += 1
+                try:
+                    cwd_b += p.stat().st_size
+                except OSError:
+                    pass
+    return {
+        "portraits": _dir_stats(PORTRAIT_DIR),
+        "testword": _dir_stats(IMG_TEST_DIR),
+        "pose_refs": _dir_stats(POSE_REF_DIR),
+        "grok_cwd": {"count": cwd_n, "bytes": cwd_b},
+        "live_ids": sorted(_live_ids_from_save()),
+    }
+
+
+@app.post("/api/assets/purge-girl")
+def purge_girl_assets(body: PurgeGirlIn):
+    """妹子離開名冊：刪她的立繪三連拍、出卡覆寫檔、以及仍指到 testword 的舊 URL。"""
+    cid = _safe_token(body.char_id, 40)
+    if not cid:
+        raise HTTPException(400, "需要 char_id")
+    doomed: list[Path] = []
+    if PORTRAIT_DIR.is_dir():
+        for p in PORTRAIT_DIR.iterdir():
+            if p.is_file() and _portrait_owner(p.stem) == cid:
+                doomed.append(p)
+    for u in body.urls or []:
+        p = _asset_path(u)
+        if p and p not in doomed:
+            doomed.append(p)
+    n, b = _unlink_files(doomed)
+    return {"ok": True, "char_id": cid, "deleted": n, "bytes": b}
+
+
+@app.post("/api/assets/gc")
+def assets_gc(body: AssetGcIn):
+    """清孤兒圖：名冊裡沒有的妹子立繪、沒人引用的出卡圖、過舊的 testword 實驗圖。"""
+    keep_ids = {_safe_token(x, 40) for x in (body.keep_ids or []) if _safe_token(x, 40)}
+    keep_ids |= _live_ids_from_save()
+    keep_names = set(_keep_urls_from_save())
+    for u in body.keep_urls or []:
+        p = _asset_path(u)
+        if p:
+            keep_names.add(p.name)
+
+    doomed: list[Path] = []
+    if PORTRAIT_DIR.is_dir():
+        for p in PORTRAIT_DIR.iterdir():
+            if not p.is_file():
+                continue
+            owner = _portrait_owner(p.stem)
+            if owner in _ASSET_KEEP_PREFIXES:
+                continue
+            if p.name in keep_names:
+                continue
+            if owner not in keep_ids:
+                doomed.append(p)
+
+    testword_pruned = 0
+    if body.prune_testword and IMG_TEST_DIR.is_dir():
+        tw = [
+            p for p in IMG_TEST_DIR.iterdir()
+            if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
+        ]
+        tw.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        keep_n = max(0, int(body.keep_testword_recent or 0))
+        recent = {p.name for p in tw[:keep_n]}
+        for p in tw:
+            if p.name in keep_names or p.name in recent:
+                continue
+            doomed.append(p)
+            testword_pruned += 1
+
+    n, b = _unlink_files(doomed)
+
+    cwd_n, cwd_b = 0, 0
+    if body.prune_grok_cwd and GROK_CWD.is_dir():
+        cutoff = time.time() - 3600
+        for child in list(GROK_CWD.iterdir()):
+            try:
+                if not child.is_dir():
+                    continue
+                mt = child.stat().st_mtime
+                if mt > cutoff:
+                    continue
+                sz = sum(f.stat().st_size for f in child.rglob("*") if f.is_file())
+                shutil.rmtree(child, ignore_errors=True)
+                cwd_n += 1
+                cwd_b += sz
+            except OSError:
+                pass
+
+    return {
+        "ok": True,
+        "deleted": n,
+        "bytes": b,
+        "testwordPruned": testword_pruned,
+        "grokCwdRemoved": cwd_n,
+        "grokCwdBytes": cwd_b,
+        "keptIds": len(keep_ids),
+        "after": {
+            "portraits": _dir_stats(PORTRAIT_DIR),
+            "testword": _dir_stats(IMG_TEST_DIR),
+        },
+    }
 
 
 @app.get("/api/cutout")
@@ -1033,7 +1988,7 @@ def cutout_status():
 def _portrait_shot_from_stem(stem: str) -> str:
     """檔名 stem → shot 鍵。支援 half_xi 等（不可只 rsplit 最後一段，會變成 xi）。"""
     s = (stem or "").lower()
-    for k in ("half_xi", "half_nu", "half_ai", "half_le", "half", "full", "head"):
+    for k in _SHOT_FILE_SUFS:
         if s.endswith("_" + k) or s == k:
             return k
     return s.rsplit("_", 1)[-1] if "_" in s else s
@@ -1069,16 +2024,29 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
     scene=True 時去掉 solo / looking at viewer，才畫得出互動。
     """
     ch = opts.get("character") if isinstance(opts.get("character"), dict) else None
+    extra_pos, extra_from_en = sdtags.split_pos_neg_tags(str(opts.get("extra") or ""))
+    if extra_pos:
+        opts = {**opts, "extra": extra_pos}
+    if extra_from_en and not str(opts.get("visual_neg") or "").strip():
+        opts = {**opts, "visual_neg": extra_from_en}
+    elif extra_from_en:
+        opts = {**opts, "visual_neg": ", ".join(x for x in (opts.get("visual_neg"), extra_from_en) if x)}
     anchor = _identity_anchor(ch or {})
     part = str(opts.get("part") or "").lower()
     # 三連拍的 shot 直接就是取景(head/half/full),蓋掉 framing
     shot = str(opts.get("shot") or "").lower()
-    # half_xi 等情緒半身用 half 取景
-    fr = "half" if shot.startswith("half") else shot
+    # half_xi 等情緒半身用 half 取景；感應調戲看前端 framing（half／full／lower）
+    if comfy.is_tease_shot(shot):
+        fr = str(opts.get("framing") or "half")
+    else:
+        fr = "half" if shot.startswith("half") else shot
     if fr not in sdtags.FRAMING:
         fr = str(opts.get("framing") or "half")
     # 有 extra 且 lock_identity（出卡）→ 場景模式；純立繪仍 solo
+    # 感應調戲一律當雙人場景（玩家 POV），不要畫成 solo 立繪
     scene = bool(opts.get("lock_identity")) and bool(str(opts.get("extra") or "").strip())
+    if comfy.is_tease_shot(shot):
+        scene = True
     return sdtags.build_prompt(
         ch,
         # 要去背的那幾張,prompt 先要一塊平背景(見 cutout.py)。
@@ -1095,39 +2063,45 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         outfit=str(opts.get("outfit") or "") or anchor["outfit"],
         # 第一輪(head0/bust0/lower0)不寫服裝,跟中文那版同一個取捨
         dressed=part not in IMG_BARE_PARTS,
+        stage=str(opts.get("stage") or (ch or {}).get("stage") or ""),
         extra=str(opts.get("extra") or ""),
         scene=scene,
     )
 
 
 async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
-    """ComfyUI 生一張。
-
-    shot 有值(head|half|full)= 召喚三連拍,存進 assets/portraits/ 並以角色 id
-    命名(同一張永遠同一個檔名,重生就覆蓋);否則存 assets/testword/,沿用
-    Grok 那條路的 `{stamp}_{part}.png` 規則,兩條路的圖在相簿裡混排也不用分開處理。
-    """
+    """ComfyUI 生一張。落地規則見 `_dest_for_image`。"""
+    out_dir, url_dir, fname = _dest_for_image(opts)
     shot = str(opts.get("shot") or "").lower()
-    char_id = re.sub(r"[^A-Za-z0-9_-]", "", str(opts.get("char_id") or ""))[:40]
-    if shot in comfy.PORTRAIT_SHOTS and char_id:
-        PORTRAIT_DIR.mkdir(parents=True, exist_ok=True)
-        out_dir, url_dir = PORTRAIT_DIR, "/assets/portraits"
-        fname = f"{char_id}_{shot}.png"
-    else:
+    if shot not in comfy.PORTRAIT_SHOTS:
         shot = ""
-        IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
-        out_dir, url_dir = IMG_TEST_DIR, "/assets/testword"
-        part = str(opts.get("part") or "").lower()
-        stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
-        fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
+
+    extra_pos, extra_from_en = sdtags.split_pos_neg_tags(str(opts.get("extra") or ""))
+    opts["extra"] = extra_pos
+    extra_neg = ", ".join(
+        x for x in (
+            extra_from_en,
+            str(opts.get("visual_neg") or "").strip(),
+            str(opts.get("negative") or "").strip(),
+        ) if x
+    )
 
     wf = opts.get("workflow") if isinstance(opts.get("workflow"), dict) else None
     # prompt 有值 = 使用者在 testword 改過的版本,原樣送出;留空才由人設現組
     prompt = str(opts.get("prompt") or "").strip()
+    sex_strip = str(opts.get("scene_kind") or "").lower() == "sex_strip"
     if not prompt and wf is None:
-        prompt, _ = _comfy_prompt_for(opts)
+        if sex_strip:
+            prompt = str(opts.get("extra") or "").strip()
+        else:
+            prompt, _ = _comfy_prompt_for(opts)
     if not prompt and wf is None:
-        return "", "ComfyUI 生圖要有 prompt 或人設(或整份 workflow)"
+        return "", "ComfyUI 生圖要有 prompt 或整份 workflow"
+    if sex_strip and prompt:
+        ppos, pneg = sdtags.split_pos_neg_tags(prompt)
+        prompt = ppos
+        extra_neg = ", ".join(x for x in (extra_neg, pneg) if x)
+        prompt = _merge_oral_identity(prompt, opts.get("character") if isinstance(opts.get("character"), dict) else None)
 
     # 三連拍：尺寸照 plan-v4，seed 取人設雜湊（三張同 seed = 同一張臉）。
     # 出卡場景（lock_identity 但無 shot）：seed 必須每次不同，否則「打兩次同一張圖」；
@@ -1147,10 +2121,15 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     # 三連拍照規格去背;testword 那條(沒有 shot)由前端的勾選決定,
     # 想在測試台上看去背效果不必先跑一次召喚。
     want_cut = bool(spec.get("cutout")) if shot else bool(opts.get("cutout"))
-    # negative 只有一個變數:要不要去背(要的話多擋場景,不然外框判定會失敗)。
-    # 分級不影響 negative——那是抽卡在管的,不是靠 negative 擋內容(見 sdtags)。
-    negative = str(opts.get("negative") or "") or sdtags.negative_for(want_cut)
+    # 畫崩／魔物／幼態 + 卡面 visualNeg／從 visualEn 拆出的 NO xxx。不塞 nude 預設詞。
+    negative = sdtags.negative_for(want_cut, clothed=False, extra_neg=extra_neg)
 
+    pose_src = _resolve_ref_image(str(opts.get("pose_ref") or ""))
+    if pose_src is not None and shot and not comfy.is_tease_shot(shot):
+        pose_src = None
+    if pose_src is not None:
+        gen_w, gen_h = _pose_gen_size(pose_src, gen_w or comfy.DEFAULT_WIDTH, gen_h or comfy.DEFAULT_HEIGHT)
+        out_w, out_h = 0, 0
     name, err = await comfy.generate(
         positive=prompt,
         negative=negative,
@@ -1165,6 +2144,8 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
         seed=seed,
         workflow=wf,
         base=str(opts.get("comfy_url") or ""),
+        pose_image=pose_src,
+        denoise=float(opts.get("pose_denoise") or 0),
     )
     if err:
         return "", err
@@ -1175,8 +2156,8 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
             cutout.cut_background, out_dir / fname,
             cutout.TOLERANCE, float(spec.get("border_min") or cutout.BORDER_MIN))
         _note_cut(fname, changed, why)
-    # 三連拍會覆蓋同一個檔名,URL 帶版本號才不會被瀏覽器拿舊的
-    ver = f"?v={int(time.time())}" if shot else ""
+    # 立繪／出卡覆寫同一個檔名,URL 帶版本號才不會被瀏覽器拿舊的
+    ver = f"?v={int(time.time())}" if out_dir == PORTRAIT_DIR else ""
     return f"{url_dir}/{name}{ver}", None
 
 
@@ -1458,6 +2439,8 @@ class ImgGenIn(BaseModel):
     extra: str = ""
     part: str = ""              # ""=整張;head0|bust0|lower0=第一輪;head|bust|lower=第二輪穿搭
     ref: str = ""               # 參考圖 URL：分段第二輪用 testword；出卡鎖臉可用 /assets/portraits/…
+    pose_ref: str = ""          # 姿勢／構圖／骨架參考圖
+    pose_denoise: float = 0     # Comfy img2img；0 = 預設 0.40
     prompt: str = ""            # 使用者在 testword 改過的 prompt(留空=伺服器依人設自己組)
     # 指定這張圖穿哪一套。留空 = 由 character 決定(生涯服裝優先,見 _outfit_of)
     outfit: str = ""
@@ -1487,6 +2470,8 @@ class ImgGenIn(BaseModel):
     # 尺寸與 seed 由伺服器依規格決定(三張同 seed = 同一張臉)
     shot: str = ""
     char_id: str = ""
+    card_id: str = ""             # 出卡場景：覆寫 portraits/{id}_card_{cardId}.png
+    scene_kind: str = ""          # card | watch | scene（無 card_id 時當檔名標籤）
     workflow: dict | None = None  # 整份 API 格式 workflow;給了就原樣送出,上面全部忽略
 
 
@@ -1556,13 +2541,23 @@ def imggen_submit(t: ImgGenIn):
     allow_ref = bool(part in IMG_SEG_PARTS) or bool(ref_in and t.lock_identity) or bool(
         ref_in.startswith("/assets/portraits/") or ref_in.startswith("/assets/testword/")
     )
+    pose_in = (t.pose_ref or "").strip()
+    allow_pose = bool(
+        pose_in.startswith("/assets/pose_refs/")
+        or pose_in.startswith("/assets/testword/")
+        or pose_in.startswith("/assets/portraits/")
+        or pose_in.startswith("/assets/frame_packs/")
+    )
     shot_in = (t.shot or "").strip().lower()
-    # 立繪 shot（含 half_xi 等）預設去背；前端 cutout 也可強制
-    portrait_cut = shot_in in comfy.PORTRAIT_SHOTS or bool(t.cutout)
+    sex_strip = (t.scene_kind or "").strip().lower() == "sex_strip"
+    # 立繪 shot 看規格（調戲場景 cutout=False）；沒登記才吃前端 cutout
+    portrait_cut = comfy.shot_wants_cutout(shot_in, bool(t.cutout))
     opts = {
-        "kind": "girl_image",
+        "kind": "sex_strip" if sex_strip else "girl_image",
         "part": part if part in IMG_PARTS else "",
         "ref": ref_in if allow_ref else "",
+        "pose_ref": pose_in if allow_pose else "",
+        "pose_denoise": float(t.pose_denoise or 0),
         "framing": (t.framing or "half").lower(),
         "rating": (t.rating or "sfw").lower(),
         "style": (t.style or "anime").lower(),
@@ -1571,15 +2566,22 @@ def imggen_submit(t: ImgGenIn):
         "personality": t.personality or "",
         "backstory": t.backstory or "",
         "extra": t.extra or "",
+        "negative": t.negative or "",
         "outfit": t.outfit or "",
+        "stage": (
+            (t.character.get("stage") if isinstance(t.character, dict) else "")
+            or ""
+        ),
         "lock_identity": bool(t.lock_identity),
         "shot": shot_in,
         "char_id": (t.char_id or "").strip(),
+        "card_id": (t.card_id or "").strip(),
+        "scene_kind": (t.scene_kind or "").strip(),
         "cutout": portrait_cut,
         "flat_bg": bool(t.flat_bg or portrait_cut),
         # Comfy：prompt 有值才原樣送；出卡應留空，讓 _comfy_prompt_for 用人設 + extra
-        # Grok：整張圖不吃前端 prompt（只在分段 part 時吃）
-        "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS) else "",
+        # Grok：整張圖不吃前端 prompt（只在分段 part、或做愛局部橫幅時吃）
+        "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip) else "",
     }
     if ep == "comfy-img":
         # 出卡場景：下單時就寫入隨機 seed，避免 worker 用舊邏輯／固定人設 seed 出同圖
@@ -1664,7 +2666,7 @@ def comfy_preview(t: ImgGenIn):
             "shot": k,
             "label": SHOT_LABEL_ZH.get(k, k),
             "prompt": text,
-            "negative": sdtags.negative_for(bool(spec.get("cutout"))),
+            "negative": sdtags.negative_for(bool(spec.get("cutout")), clothed=True),
             "gen": list(spec["gen"]),
             "out": list(spec["out"]),
             "cutout": bool(spec.get("cutout")),
@@ -1674,7 +2676,7 @@ def comfy_preview(t: ImgGenIn):
         "whole": whole,
         "parts": parts,
         "shots": shots,
-        "negative": sdtags.negative_for(),
+        "negative": sdtags.negative_for(clothed=True),
         "unknown": sorted(set(unknown)),
         "defaults": {
             "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT,
@@ -1685,10 +2687,124 @@ def comfy_preview(t: ImgGenIn):
     }
 
 
+_LOOK_SRC_ZH = {
+    "age": "人設 look.age（年齡）",
+    "face": "人設 look.face（臉型）",
+    "eyes": "人設 look.eyes（眼睛）",
+    "eye_color": "人設 look.eye_color（瞳色）",
+    "mouth": "人設 look.mouth（嘴）",
+    "hair": "人設 look.hair（髮型）",
+    "hair_color": "人設 look.hair_color（髮色）",
+    "build": "人設 look.build（體型）",
+    "bust": "人設 look.bust（胸）",
+    "cup": "人設 look.cup（罩杯）",
+    "breast_shape": "人設 look.breast_shape（乳型）",
+    "areola": "人設 look.areola（乳暈）",
+    "nipple": "人設 look.nipple（乳頭）",
+    "labia_size": "人設 look.labia_size（陰唇大小）",
+    "clitoris_size": "人設 look.clitoris_size（陰蒂大小）",
+    "labia_color": "人設 look.labia_color（陰唇顏色）",
+    "pubic_hair": "人設 look.pubic_hair（陰毛）",
+    "feature": "人設 look.feature（特徵）",
+    "outfit": "人設服裝（生涯／衣櫃）",
+    "skin": "人設膚色（雜湊）",
+    "specials": "人設 specialTraits（特殊屬性）",
+    "height": "人設 look.height_cm（身高）",
+}
+
+
+def _img_prompt_trace(t: ImgGenIn) -> dict:
+    """把這次生圖會用到的每一段標上來處，給 testword 圖下展開。"""
+    ch = _fill_manual_fields(
+        t.character if isinstance(t.character, dict) else None,
+        t.name or "", t.personality or "", t.backstory or "",
+    )
+    worn = _outfit_of(ch)
+    if worn:
+        ch["_worn_outfit"] = worn
+    extra_pos, extra_from_en = sdtags.split_pos_neg_tags(t.extra or "")
+    extra = extra_pos
+    visual_neg = ", ".join(x for x in ((t.negative or "").strip(), extra_from_en) if x)
+    framing = (t.framing or "half").lower()
+    look_parts, unknown = sdtags.appearance_en_parts(
+        ch, stage=str(ch.get("stage") or ""), crop=framing,
+    )
+    brief = _character_visual_brief(ch, framing=framing)
+    rating = (t.rating or "sfw").lower()
+    style = (t.style or "anime").lower()
+    layers: list[dict] = []
+    if ch.get("name"):
+        layers.append({"id": "name", "src": "人設 name", "text": str(ch.get("name"))})
+    if ch.get("job"):
+        layers.append({"id": "job", "src": "人設 job", "text": str(ch.get("job"))})
+    if ch.get("tone"):
+        layers.append({"id": "tone", "src": "人設 tone", "text": str(ch.get("tone"))})
+    pers = ch.get("personality") or []
+    if isinstance(pers, list) and pers:
+        layers.append({"id": "personality", "src": "人設 personality", "text": "、".join(str(p) for p in pers[:6])})
+    elif pers:
+        layers.append({"id": "personality", "src": "人設 personality", "text": str(pers)})
+    genital_ok = (framing or "").lower() == "lower" or sdtags.extra_has_key(
+        extra, ("pussy", "labia", "clitoris", "vulva", "vagina")
+    )
+    for k, tag in look_parts.items():
+        if tag and k != "clothing_level":
+            if k in ("labia_size", "clitoris_size", "labia_color", "pubic_hair") and not genital_ok:
+                continue
+            layers.append({"id": f"look_{k}", "src": _LOOK_SRC_ZH.get(k, f"人設 look.{k}"), "text": tag})
+    lv = look_parts.get("clothing_level") or sdtags.clothing_level(str(ch.get("stage") or ""), character=ch)
+    lv_zh = {"covered": "陌生／朋友·穿好只留罩杯", "shape": "女友·露胸型／乳溝", "exposed": "妻子·可全裸含乳暈乳頭"}.get(lv, lv)
+    layers.append({"id": "clothing_level", "src": "衣服多寡（關係階段）", "text": lv_zh})
+    if extra:
+        layers.append({"id": "extra", "src": "正向 extra（運鏡＋玩家動作）", "text": extra})
+    if visual_neg:
+        layers.append({"id": "visual_neg", "src": "負向（visualNeg／從 visualEn 拆出的 NO）", "text": visual_neg})
+    layers.append({"id": "framing", "src": "設定 framing", "text": framing})
+    layers.append({"id": "style", "src": "設定 style", "text": style})
+    layers.append({"id": "rating", "src": "設定 rating", "text": rating})
+    if t.ref:
+        layers.append({"id": "ref", "src": "參考圖 ref", "text": t.ref})
+    if t.pose_ref:
+        layers.append({"id": "pose_ref", "src": "姿勢參考圖 pose_ref", "text": t.pose_ref})
+    if t.ckpt:
+        layers.append({"id": "ckpt", "src": "Comfy checkpoint", "text": t.ckpt})
+    extra_for_grok = extra
+    if visual_neg:
+        extra_for_grok = extra + ", " + ", ".join(
+            f"NO {x.strip()}" for x in visual_neg.split(",") if x.strip()
+        )
+    grok_full = _build_girl_image_prompt(
+        framing=framing, rating=rating, style=style,
+        character=ch, extra=extra_for_grok,
+        out_path=Path("/assets/testword/_preview.png"),
+        ref_path=_resolve_ref_image(t.ref or ""),
+        pose_path=_resolve_ref_image(t.pose_ref or ""),
+        scene_kind=str(t.scene_kind or ""),
+    )
+    comfy_full, unk2 = _comfy_prompt_for({
+        "character": ch, "framing": framing, "rating": rating,
+        "style": style, "extra": extra, "outfit": t.outfit or "",
+        "lock_identity": bool(t.lock_identity),
+        "flat_bg": bool(t.flat_bg),
+        "shot": (t.shot or "").strip().lower(),
+    })
+    unknown = list(dict.fromkeys([*unknown, *unk2]))
+    return {
+        "layers": layers,
+        "character_sheet": brief,
+        "grok_prompt": grok_full,
+        "comfy_prompt": comfy_full,
+        "comfy_negative": sdtags.negative_for(flat_bg=bool(t.flat_bg), clothed=False, extra_neg=visual_neg),
+        "unknown": unknown,
+        "provider": t.provider or "grok-img",
+    }
+
+
 @app.post("/api/imggen/preview")
 def imggen_preview(t: ImgGenIn):
     """不生圖,只回這份人設組出來的 prompt(六段各一份)。
-    testword 拿它填編輯框:使用者改完再按各自的生成鍵,改過的版本原樣送回 /api/imggen。"""
+    testword 拿它填編輯框:使用者改完再按各自的生成鍵,改過的版本原樣送回 /api/imggen。
+    另附 trace：整張場景圖每一段從哪裡來（卡牌測試器用）。"""
     parts = [(t.part or "").lower()] if (t.part or "").lower() in IMG_PARTS else list(IMG_PARTS)
     out = []
     for p in parts:
@@ -1706,7 +2822,7 @@ def imggen_preview(t: ImgGenIn):
                 backstory=t.backstory or "", extra=t.extra or "",
             ),
         })
-    return {"parts": out}
+    return {"parts": out, "trace": _img_prompt_trace(t)}
 
 
 @app.delete("/api/gen")
@@ -1766,9 +2882,20 @@ async def _gen_worker():
                     url, err = await _run_comfy_image(opts)
                     text = url or ""
                 elif endpoint == "grok-img":
-                    # 半身立繪／前端 cutout 旗：去背
+                    # 立繪去背看 shot 規格；調戲場景不去背
                     shot_g = str(opts.get("shot") or "").lower()
-                    want_cut = bool(opts.get("cutout")) or shot_g in comfy.PORTRAIT_SHOTS
+                    want_cut = comfy.shot_wants_cutout(shot_g, bool(opts.get("cutout")))
+                    extra_g = str(opts.get("extra") or "")
+                    neg_g = ", ".join(
+                        x for x in (
+                            str(opts.get("visual_neg") or "").strip(),
+                            str(opts.get("negative") or "").strip(),
+                        ) if x
+                    )
+                    if neg_g:
+                        extra_g = extra_g + ", " + ", ".join(
+                            f"NO {b.strip()}" for b in neg_g.split(",") if b.strip()
+                        )
                     url, err = await _run_grok_image(
                         model,
                         framing=str(opts.get("framing") or "half"),
@@ -1778,11 +2905,16 @@ async def _gen_worker():
                         name=str(opts.get("name") or ""),
                         personality=str(opts.get("personality") or ""),
                         backstory=str(opts.get("backstory") or ""),
-                        extra=str(opts.get("extra") or ""),
+                        extra=extra_g,
                         part=str(opts.get("part") or ""),
                         ref=str(opts.get("ref") or ""),
+                        pose_ref=str(opts.get("pose_ref") or ""),
                         prompt_body=str(opts.get("prompt") or ""),
                         do_cutout=want_cut,
+                        char_id=str(opts.get("char_id") or ""),
+                        shot=str(opts.get("shot") or ""),
+                        card_id=str(opts.get("card_id") or ""),
+                        scene_kind=str(opts.get("scene_kind") or ""),
                     )
                     text = url or ""
                 elif endpoint in ("grok-build", "grok", "xai"):
@@ -2668,6 +3800,41 @@ def put_sacrifice(body: dict):
     current["methods"] = body["methods"]
     path.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"ok": True, "count": len(body["methods"])}
+
+
+def _script_packs_path():
+    return WEB_DIR / "content" / "script_packs.json"
+
+
+@app.get("/api/script-packs")
+def get_script_packs():
+    path = _script_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeByKind": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeByKind": {}}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeByKind": {}}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    active = data.get("activeByKind") if isinstance(data.get("activeByKind"), dict) else {}
+    return {"packs": packs, "activeByKind": active}
+
+
+@app.put("/api/script-packs")
+def put_script_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeByKind:{}}")
+    active = body.get("activeByKind") if isinstance(body.get("activeByKind"), dict) else {}
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    doc = {"packs": packs, "activeByKind": active}
+    path = _script_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
 
 
 @app.get("/body")

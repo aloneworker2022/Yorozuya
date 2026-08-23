@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="萬事屋">
-<link rel="stylesheet" href="style.css?v=32">
+<link rel="stylesheet" href="style.css?v=35">
 </head>
 <body>
 
@@ -92,8 +92,13 @@
 
       </div>
       <div id="quest-input-row">
-        <input id="quest-input" type="text" maxlength="80" placeholder="輸入現實中的待辦…(Enter 送出)">
-        <button id="quest-add">發現</button>
+        <input id="quest-input" type="text" maxlength="80" placeholder="待辦…或打她的名字叫過來">
+        <button id="quest-add" type="button" aria-label="送出" title="送出">
+          <svg class="paper-plane" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M22 2 15 22l-4-9-9-4z"/>
+            <path d="M22 2 11 13" fill="none" stroke="color-mix(in srgb, var(--panel) 85%, #000)" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
     </section>
 
@@ -129,9 +134,6 @@
         <h2>玩家屬性</h2>
         <div id="player-attrs" class="small"></div>
       </div>
-      <div class="panel sub" id="spell-summon-panel">
-        <!-- renderSpellSummonPanel：感應解鎖的召喚咒語 -->
-      </div>
     </section>
 
     <section class="page" id="page-succubi">
@@ -157,6 +159,10 @@
           <span><input id="set-sleep-start" type="time"> ~ <input id="set-sleep-end" type="time"></span>
         </div>
         <div class="setting-row"><label>配色</label><select id="set-theme"></select></div>
+        <div class="setting-row"><label>對話打字速度</label>
+          <span class="range-wrap"><input type="range" id="set-type-speed" min="0.1" max="1" step="0.1"><span id="type-speed-val" class="dim small"></span></span>
+        </div>
+        <div class="dim small" style="margin-top:-.35em">感應／聊天／約會台詞一個字一個字印。0.1 最慢，1 最快。點畫面可跳過。</div>
       </div>
       <div class="panel sub">
         <h2>版面(卡片顏色/透明度・字體自動反差)</h2>
@@ -201,10 +207,12 @@
         <div class="setting-row"><label>出卡場景圖</label><input id="set-card-scene-art" type="checkbox" title="每打一張卡，依她的回應生場景圖（實驗·費時）"></div>
         <div class="setting-row"><label></label><span class="dim small">實驗：有生圖能力時，打牌會依「動作＋她的回應」翻成英文再畫一張。不擋打牌；牌桌顯示「繪場景中…」。可關。</span></div>
         <div class="setting-row hidden" id="row-comfy-url"><label>ComfyUI</label><input id="set-comfy" type="text" class="wide" placeholder="http://192.168.68.55:8188"></div>
-        <div class="setting-row hidden" id="row-comfy-note"><label></label><span class="dim small">織夢生圖那台(顯卡主機)。<b>不能填 localhost</b>——那是伺服器自己,不是顯卡。召喚時出大頭照 / 半身 / 全身三張。<b>不必選模型</b>：每位魅魔召喚時會從你 checkpoints 裡隨機綁定一個專屬模型，之後她的立繪／場景圖都用那一個。</span></div>
+        <div class="setting-row hidden" id="row-comfy-note"><label></label><span class="dim small">生圖那台(顯卡主機)。<b>不能填 localhost</b>——那是伺服器自己,不是顯卡。召喚時出大頭照 / 半身 / 全身三張。<b>不必選模型</b>：每位魅魔召喚時會從你 checkpoints 裡隨機綁定一個專屬模型，之後她的立繪／場景圖都用那一個。</span></div>
         <div class="setting-row hidden" id="row-comfy-ckpt"><label>模型</label>
           <select id="set-comfy-ckpt" class="wide"><option value="">(已改為每位妹子自帶)</option></select></div>
         <div class="btn-row hidden" id="row-comfy-test"><button id="btn-comfy-test">測試 ComfyUI</button><span id="comfy-test-result" class="dim small"></span></div>
+        <div class="btn-row"><button id="btn-asset-gc">清理孤兒圖</button><span id="asset-gc-result" class="dim small"></span></div>
+        <div class="setting-row"><label></label><span class="dim small">獻祭／離開的妹子立繪、打過的出卡場景圖、testword 舊實驗圖（最近 48 張會留）。名冊上還在的人不會動。</span></div>
       </div>
       <div class="panel sub">
         <h2>存檔</h2>
@@ -281,42 +289,7 @@
   </div>
 </div>
 
-<!-- 淫紋圖騰:定義一次,每位看板娘的通知燈以 <use> 引用 -->
-<svg width="0" height="0" aria-hidden="true" style="position:absolute" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="crest-g" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#9a3fb0"/>
-      <stop offset=".22" stop-color="#cc2380"/>
-      <stop offset=".5" stop-color="#e0104f"/>
-      <stop offset=".78" stop-color="#cc2380"/>
-      <stop offset="1" stop-color="#9a3fb0"/>
-    </linearGradient>
-    <symbol id="crest-sym" viewBox="0 0 200 210">
-    <g fill="url(#crest-g)" fill-rule="evenodd">
-      <path d="M100 26 C95 15 80 16 81 26 C82 34 92 38 100 47 C108 38 118 34 119 26 C120 16 105 15 100 26 Z"/>
-      <g id="crest-half">
-        <path d="M110 34 C118 26 124 16 125 6 C132 18 126 34 113 43 Z"/>
-        <path d="M122 42 C134 34 142 26 150 22 C146 36 136 46 123 51 Z"/>
-        <path d="M116 56 C126 40 152 32 168 38 C184 44 186 62 174 78 C162 92 138 100 124 95 C136 90 152 81 158 68 C164 54 156 44 144 45 C132 46 122 51 116 56 Z
-                 M148 52 C157 50 163 57 158 66 C153 73 143 70 143 61 C143 56 145 53 148 52 Z"/>
-        <path d="M146 30 C156 20 170 15 181 17 C172 26 160 33 150 37 Z"/>
-        <path d="M176 44 C188 50 195 62 194 76 C187 64 178 57 168 53 Z"/>
-        <path d="M100 58 C114 46 133 51 134 67 C135 82 118 94 100 106 C106 97 114 91 121 83 C129 74 128 62 119 59 C111 56 104 59 100 64 Z"/>
-        <path d="M109 66 C116 70 118 80 111 87 C116 78 113 70 106 68 Z"/>
-        <path d="M112 108 C119 111 122 120 117 127 C121 118 116 111 109 110 Z"/>
-        <circle cx="117" cy="125" r="3.4"/>
-        <path d="M103 104 C111 126 112 158 103 190 L100 199 L100 188 C107 158 106 128 99 108 Z"/>
-      </g>
-      <use href="#crest-half" transform="translate(200,0) scale(-1,1)"/>
-      <path d="M100 68 C96 61 87 62 88 69 C89 74 95 77 100 83 C105 77 111 74 112 69 C113 62 104 61 100 68 Z"/>
-      <path d="M100 118 L109 141 L100 164 L91 141 Z  M100 127 L104.5 141 L100 155 L95.5 141 Z"/>
-      <path d="M100 169 L104.5 177 L100 185 L95.5 177 Z"/>
-    </g>
-    </symbol>
-  </defs>
-</svg>
-
-<!-- 主畫面右下：牌制開 = 可打牌小卡；舊路徑 = 淫紋燈 -->
+<!-- 主畫面右下：打牌小卡 -->
 <div id="crests" class="hidden"></div>
 
 <!-- 聊天/約會:全螢幕插播層(不可被分頁切換打斷,結束對話才退出) -->
@@ -324,11 +297,18 @@
   <div class="chat-top">
     <button class="back-btn" id="chat-back">‹ 結束對話</button>
     <span id="chat-title" class="dim small"></span>
+    <span id="chat-hearts" class="hearts hidden" aria-live="polite"></span>
     <button class="back-btn" id="chat-log-btn">紀錄</button>
   </div>
   <div id="chat-spacer"></div>
   <!-- 對話對象的立繪(去背半身):文字冒險式,站在對話框上方 -->
-  <img id="vn-figure" class="hidden" alt="" draggable="false">
+  <div id="vn-figure-slot">
+    <img id="vn-figure" class="hidden" alt="" draggable="false">
+    <div id="sex-anim-overlay" class="hidden">
+      <img id="sex-anim-img" alt="">
+    </div>
+  </div>
+  <span id="aff-pop" class="hidden" aria-hidden="true"></span>
   <div id="vn-box">
     <div id="vn-nameline">
       <img id="vn-face" class="hidden" alt="">
@@ -341,6 +321,10 @@
   <div id="chat-input-row">
     <input id="chat-input" type="text" maxlength="300" placeholder="說點什麼…(Enter 送出)">
     <button id="chat-send">送出</button>
+  </div>
+  <div id="tease-act-row" class="hidden">
+    <button type="button" id="tease-thrust">肏</button>
+    <button type="button" id="tease-cum">射精</button>
   </div>
   <div id="watch-controls" class="hidden">
     <button id="watch-next">下一句 ▶</button>
@@ -396,6 +380,6 @@
   setTimeout(function () { sessionStorage.removeItem("healCount"); }, 10000);
 })();
 </script>
-<script type="module" src="app.js?v=55"></script>
+<script type="module" src="app.js?v=71"></script>
 </body>
 </html>

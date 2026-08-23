@@ -72,7 +72,9 @@ DEFAULT_CLIP_SKIP = int(os.environ.get("COMFY_CLIP_SKIP", "2"))
 # head 是 head-and-shoulders 的正方形構圖,肩膀本來就佔滿整條下緣,而一條邊
 # 就是外圈的四分之一——沿用 0.72 等於「大頭照永遠去不了背」。
 # half_xi/nu/ai/le = 半身喜怒哀樂（聊天立繪依情緒切換；規格同 half）
+# tease_* = 感應調戲雙人場景（玩家 POV；不去背）
 _HALF_SPEC = {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72}
+_TEASE_SPEC = {"gen": (832, 1216), "out": (0, 0), "cutout": False, "border_min": 0.72}
 PORTRAIT_SHOTS = {
     "head": {"gen": (1024, 1024), "out": (256, 256), "cutout": True, "border_min": 0.55},
     "half": dict(_HALF_SPEC),
@@ -80,8 +82,50 @@ PORTRAIT_SHOTS = {
     "half_nu": dict(_HALF_SPEC),  # 怒
     "half_ai": dict(_HALF_SPEC),  # 哀
     "half_le": dict(_HALF_SPEC),  # 樂
+    "half_xiu": dict(_HALF_SPEC),  # 害羞
     "full": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
+    "tease_breast": dict(_TEASE_SPEC),   # 玩家摸乳
+    "tease_thigh": dict(_TEASE_SPEC),    # 玩家摸大腿
+    "tease_butt": dict(_TEASE_SPEC),     # 玩家摸臀
+    "tease_oral": dict(_TEASE_SPEC),     # 口交（舊單張；新圖走下面四連）
+    "tease_oral_ready": dict(_TEASE_SPEC),  # 口交半身① 手壓頭、龜頭頂嘴
+    "tease_oral_suck": dict(_TEASE_SPEC),   # 口交半身② 含住口交
+    "tease_oral_deep": dict(_TEASE_SPEC),   # 口交半身③ 整根含入
+    "tease_oral_cum": dict(_TEASE_SPEC),    # 口交半身④ 口內射精
+    "tease_doggy": dict(_TEASE_SPEC),    # 背後插入（舊單張；新圖走下面五連）
+    "tease_doggy_ready": dict(_TEASE_SPEC),  # 背後① 抓住臀部、陰莖勃起
+    "tease_doggy_half": dict(_TEASE_SPEC),   # 背後② 龜頭進入陰道
+    "tease_doggy_more": dict(_TEASE_SPEC),   # 背後③ 插一半、龜頭在陰道內
+    "tease_doggy_deep": dict(_TEASE_SPEC),   # 背後④ 整根頂到底、臀撞擊、陰道透視
+    "tease_doggy_cum": dict(_TEASE_SPEC),    # 背後⑤ 高潮內射
+    "tease_cowgirl": dict(_TEASE_SPEC),  # 騎乘（舊單張；新圖走下面五連）
+    "tease_cowgirl_ready": dict(_TEASE_SPEC),  # 騎乘① 坐下、陰莖勃起
+    "tease_cowgirl_half": dict(_TEASE_SPEC),   # 騎乘② 龜頭進入陰道
+    "tease_cowgirl_more": dict(_TEASE_SPEC),   # 騎乘③ 插一半、龜頭在陰道內
+    "tease_cowgirl_deep": dict(_TEASE_SPEC),   # 騎乘④ 整根頂到底、陰唇貼腹、陰道透視
+    "tease_cowgirl_cum": dict(_TEASE_SPEC),    # 騎乘⑤ 高潮內射
 }
+TEASE_SHOTS = (
+    "tease_breast", "tease_thigh", "tease_butt",
+    "tease_oral",
+    "tease_oral_ready", "tease_oral_suck", "tease_oral_deep", "tease_oral_cum",
+    "tease_doggy",
+    "tease_doggy_ready", "tease_doggy_half", "tease_doggy_more", "tease_doggy_deep", "tease_doggy_cum",
+    "tease_cowgirl",
+    "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
+)
+
+
+def is_tease_shot(shot: str) -> bool:
+    return str(shot or "").lower() in TEASE_SHOTS
+
+
+def shot_wants_cutout(shot: str, fallback: bool = False) -> bool:
+    """立繪 shot 看規格；沒登記的才吃前端 cutout 旗。"""
+    spec = PORTRAIT_SHOTS.get(str(shot or "").lower())
+    if spec is not None:
+        return bool(spec.get("cutout"))
+    return bool(fallback)
 
 # 沒人給 negative 時的退路。**直接用 sdtags 那一份**,不要在這裡再抄一串——
 # 兩處各寫一份的下場就是改了一邊忘了另一邊,然後同一個遊戲兩條路吐出不同的圖。
@@ -376,6 +420,153 @@ def build_workflow(
     return wf
 
 
+DEFAULT_POSE_DENOISE = 0.40
+
+
+async def upload_input_image(path: Path, base: str = "") -> tuple[str, str | None]:
+    """把本機圖丟進 ComfyUI 的 input 資料夾。回 (LoadImage 用的檔名, 錯誤)。
+
+    RP5 與顯卡主機通常不是同一台，不能塞本機路徑，一定要走 /upload/image。
+    """
+    note_comfy_url(base)
+    base = base or comfy_url()
+    p = Path(path)
+    if not p.is_file() or p.stat().st_size <= 0:
+        return "", "姿勢參考圖檔案不存在"
+    dest_name = f"yorozuya_pose_{int(time.time() * 1000)}{p.suffix.lower() or '.png'}"
+    try:
+        data = p.read_bytes()
+    except OSError as e:
+        return "", f"讀姿勢參考圖失敗:{e}"
+    mime = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }.get(p.suffix.lower(), "application/octet-stream")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30, connect=5)) as c:
+            r = await c.post(
+                f"{base}/upload/image",
+                files={"image": (dest_name, data, mime)},
+                data={"overwrite": "true", "type": "input"},
+            )
+        if r.status_code >= 400:
+            return "", f"ComfyUI 拒收參考圖(HTTP {r.status_code}):{r.text[:300]}"
+        info = r.json() if r.content else {}
+        name = str((info or {}).get("name") or dest_name)
+        sub = str((info or {}).get("subfolder") or "").strip()
+        return (f"{sub}/{name}" if sub else name), None
+    except httpx.HTTPError as e:
+        return "", f"ComfyUI 上傳參考圖失敗({type(e).__name__}):{base}"
+    except Exception as e:  # noqa: BLE001
+        return "", f"ComfyUI 上傳參考圖失敗:{type(e).__name__}"
+
+
+def build_img2img_workflow(
+    *,
+    ckpt: str,
+    positive: str,
+    image_name: str,
+    negative: str = "",
+    width: int = DEFAULT_WIDTH,
+    height: int = DEFAULT_HEIGHT,
+    out_width: int = 0,
+    out_height: int = 0,
+    steps: int = DEFAULT_STEPS,
+    cfg: float = DEFAULT_CFG,
+    sampler: str = DEFAULT_SAMPLER,
+    scheduler: str = DEFAULT_SCHEDULER,
+    clip_skip: int = DEFAULT_CLIP_SKIP,
+    seed: int = 0,
+    denoise: float = DEFAULT_POSE_DENOISE,
+    filename_prefix: str = "yorozuya/img",
+) -> dict:
+    """img2img：姿勢參考圖當 latent 起點，denoise < 1 才留得住機位／體位。"""
+    d = float(denoise)
+    if d <= 0:
+        d = DEFAULT_POSE_DENOISE
+    d = min(0.90, max(0.25, d))
+    wf: dict = {
+        "1": {
+            "class_type": "CheckpointLoaderSimple",
+            "inputs": {"ckpt_name": ckpt},
+        },
+    }
+    clip_src = ["1", 1]
+    if clip_skip and clip_skip > 1:
+        wf["9"] = {
+            "class_type": "CLIPSetLastLayer",
+            "inputs": {"clip": ["1", 1], "stop_at_clip_layer": -int(clip_skip)},
+        }
+        clip_src = ["9", 0]
+    wf |= {
+        "10": {
+            "class_type": "LoadImage",
+            "inputs": {"image": image_name},
+        },
+        "11": {
+            "class_type": "ImageScale",
+            "inputs": {
+                "upscale_method": "lanczos",
+                "width": int(width),
+                "height": int(height),
+                "crop": "disabled",
+                "image": ["10", 0],
+            },
+        },
+        "12": {
+            "class_type": "VAEEncode",
+            "inputs": {"pixels": ["11", 0], "vae": ["1", 2]},
+        },
+        "2": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": positive, "clip": clip_src},
+        },
+        "3": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": negative, "clip": clip_src},
+        },
+        "5": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": int(seed),
+                "steps": int(steps),
+                "cfg": float(cfg),
+                "sampler_name": sampler,
+                "scheduler": scheduler,
+                "denoise": d,
+                "model": ["1", 0],
+                "positive": ["2", 0],
+                "negative": ["3", 0],
+                "latent_image": ["12", 0],
+            },
+        },
+        "6": {
+            "class_type": "VAEDecode",
+            "inputs": {"samples": ["5", 0], "vae": ["1", 2]},
+        },
+    }
+    src = ["6", 0]
+    if out_width and out_height:
+        wf["7"] = {
+            "class_type": "ImageScale",
+            "inputs": {
+                "upscale_method": "nearest-exact",
+                "width": int(out_width),
+                "height": int(out_height),
+                "crop": "disabled",
+                "image": ["6", 0],
+            },
+        }
+        src = ["7", 0]
+    wf["8"] = {
+        "class_type": "SaveImage",
+        "inputs": {"filename_prefix": filename_prefix, "images": src},
+    }
+    return wf
+
+
 # ------------------------------------------------------------- 送單與收圖
 
 
@@ -474,15 +665,23 @@ async def generate(
     clip_skip: int = DEFAULT_CLIP_SKIP,
     workflow: dict | None = None,
     base: str = "",
+    pose_image: Path | None = None,
+    denoise: float = 0.0,
 ) -> tuple[str, str | None]:
     """生一張圖並存到 save_to。回 (檔名, None) 或 ("", 錯誤訊息)。
 
     workflow 給值 = 原樣送出(testword 想貼自訂 workflow 時用),此時
     positive/ckpt 等參數全部忽略——這是 plan-v4 §8.3「worker 不檢視、
     不修改回傳值」那條的實作。
+    pose_image 給值且沒有自訂 workflow → img2img（鎖機位／體位）。
     """
     note_comfy_url(base)
     base = base or comfy_url()
+    pose_name = ""
+    if pose_image is not None and workflow is None:
+        pose_name, uerr = await upload_input_image(Path(pose_image), base)
+        if uerr:
+            return "", uerr
     async with lease("comfy"):
         # 自動挑的 checkpoint 撞到「沒有 CLIP」就把它記進黑名單,換下一個再試。
         # models/checkpoints 裡混著單件檔時,「取清單第一個」是一顆會重複踩的地雷。
@@ -496,14 +695,26 @@ async def generate(
                 # seed 沒給就隨機:同一份 prompt 重按會出不同的臉,不會每次都同一張
                 if int(seed) <= 0:
                     seed = random.randrange(1, 2**31 - 1)
-                wf = build_workflow(
-                    ckpt=picked, positive=positive, negative=negative or DEFAULT_NEGATIVE,
-                    width=width, height=height,
-                    out_width=out_width, out_height=out_height,
-                    steps=steps, cfg=cfg, seed=seed,
-                    sampler=sampler, scheduler=scheduler, clip_skip=clip_skip,
-                    filename_prefix="yorozuya/" + save_to.stem,
-                )
+                if pose_name:
+                    wf = build_img2img_workflow(
+                        ckpt=picked, positive=positive, negative=negative or DEFAULT_NEGATIVE,
+                        image_name=pose_name,
+                        width=width, height=height,
+                        out_width=out_width, out_height=out_height,
+                        steps=steps, cfg=cfg, seed=seed,
+                        sampler=sampler, scheduler=scheduler, clip_skip=clip_skip,
+                        denoise=denoise,
+                        filename_prefix="yorozuya/" + save_to.stem,
+                    )
+                else:
+                    wf = build_workflow(
+                        ckpt=picked, positive=positive, negative=negative or DEFAULT_NEGATIVE,
+                        width=width, height=height,
+                        out_width=out_width, out_height=out_height,
+                        steps=steps, cfg=cfg, seed=seed,
+                        sampler=sampler, scheduler=scheduler, clip_skip=clip_skip,
+                        filename_prefix="yorozuya/" + save_to.stem,
+                    )
             err = await _one_run(base, wf, save_to)
             if err and auto and err.startswith(MISSING_ENCODER_TAG):
                 _BAD_CKPTS.add(picked)

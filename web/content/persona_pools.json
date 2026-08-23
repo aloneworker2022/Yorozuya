@@ -1,5 +1,5 @@
 {
- "_comment": "人物生成池(廠商件)。/edit_person 可編輯;nsfw:true 的項目只在遊戲分級為 NSFW 時參與抽取。搬運自 hermesperson,適配萬事屋(職業=被召喚前的人生)。男性=召喚師,在 summoners.json 另編。appearance.areola / eye_color 為 NSFW 向身體細節軸;英文畫圖 tag 見 server/sdtags.py 對照表。",
+ "_comment": "人物生成池(廠商件)。/edit_person 可編輯;nsfw:true 的項目只在遊戲分級為 NSFW 時參與抽取。搬運自 hermesperson,適配萬事屋(職業=被召喚前的人生)。男性=召喚師,在 summoners.json 另編。appearance.areola / eye_color 為 NSFW 向身體細節軸;appearance.labia_size / clitoris_size / labia_color / pubic_hair 為性器特寫軸(前三各三級、陰毛四級、不分等級、不進稀有度)。英文畫圖 tag 見 server/sdtags.py 對照表。",
  "female": {
   "names": [
    "莉莉絲",
@@ -85,7 +85,8 @@
     "hobby_vibes": [
      "活潑",
      "居家"
-    ]
+    ],
+    "grade": "N"
    },
    {
     "name": "高冷",
@@ -110,7 +111,8 @@
      "文靜",
      "文藝",
      "時髦"
-    ]
+    ],
+    "grade": "R"
    },
    {
     "name": "傲嬌",
@@ -134,7 +136,8 @@
     "hobby_vibes": [
      "文藝",
      "居家"
-    ]
+    ],
+    "grade": "R"
    },
    {
     "name": "文靜溫柔",
@@ -158,7 +161,8 @@
     "hobby_vibes": [
      "文靜",
      "居家"
-    ]
+    ],
+    "grade": "N"
    },
    {
     "name": "天然呆",
@@ -182,7 +186,8 @@
     "hobby_vibes": [
      "居家",
      "文靜"
-    ]
+    ],
+    "grade": "N"
    },
    {
     "name": "御姊",
@@ -206,7 +211,8 @@
     "hobby_vibes": [
      "時髦",
      "文藝"
-    ]
+    ],
+    "grade": "S"
    },
    {
     "name": "病嬌",
@@ -231,7 +237,8 @@
     "hobby_vibes": [
      "文靜",
      "文藝"
-    ]
+    ],
+    "grade": "S"
    },
    {
     "name": "淫蕩放蕩",
@@ -256,7 +263,8 @@
     "hobby_vibes": [
      "時髦",
      "活潑"
-    ]
+    ],
+    "grade": "SSR"
    },
    {
     "name": "抖M 受虐",
@@ -281,7 +289,8 @@
     "hobby_vibes": [
      "文靜",
      "居家"
-    ]
+    ],
+    "grade": "SS"
    },
    {
     "name": "抖S 施虐",
@@ -306,7 +315,8 @@
     "hobby_vibes": [
      "時髦",
      "文藝"
-    ]
+    ],
+    "grade": "SS"
    },
    {
     "name": "癡女主動",
@@ -331,7 +341,8 @@
     "hobby_vibes": [
      "活潑",
      "時髦"
-    ]
+    ],
+    "grade": "SSR"
    },
    {
     "name": "清純反差",
@@ -356,7 +367,8 @@
     "hobby_vibes": [
      "文靜",
      "文藝"
-    ]
+    ],
+    "grade": "SS"
    },
    {
     "name": "人妻風味",
@@ -381,7 +393,8 @@
     "hobby_vibes": [
      "居家",
      "文靜"
-    ]
+    ],
+    "grade": "SS"
    },
    {
     "name": "露出癖",
@@ -406,7 +419,8 @@
     "hobby_vibes": [
      "時髦",
      "活潑"
-    ]
+    ],
+    "grade": "SSR"
    },
    {
     "name": "痴漢容忍型",
@@ -431,7 +445,8 @@
     "hobby_vibes": [
      "文靜",
      "居家"
-    ]
+    ],
+    "grade": "SSR"
    },
    {
     "name": "精液中毒",
@@ -456,7 +471,8 @@
     "hobby_vibes": [
      "活潑",
      "時髦"
-    ]
+    ],
+    "grade": "SSR"
    },
    {
     "name": "妊娠渴望",
@@ -481,7 +497,8 @@
     "hobby_vibes": [
      "居家",
      "文靜"
-    ]
+    ],
+    "grade": "SSR"
    },
    {
     "name": "多P 開放",
@@ -506,7 +523,8 @@
     "hobby_vibes": [
      "時髦",
      "活潑"
-    ]
+    ],
+    "grade": "SSR"
    },
    {
     "name": "嗜虐嬌喘",
@@ -531,7 +549,8 @@
     "hobby_vibes": [
      "文藝",
      "居家"
-    ]
+    ],
+    "grade": "SSR"
    },
    {
     "name": "女王様",
@@ -556,7 +575,8 @@
     "hobby_vibes": [
      "時髦",
      "文藝"
-    ]
+    ],
+    "grade": "SSR"
    },
    {
     "name": "悶騷內衣控",
@@ -581,7 +601,8 @@
     "hobby_vibes": [
      "時髦",
      "居家"
-    ]
+    ],
+    "grade": "SS"
    },
    {
     "name": "NTR 癖好",
@@ -606,13 +627,14 @@
     "hobby_vibes": [
      "文藝",
      "時髦"
-    ]
+    ],
+    "grade": "SSR"
    }
   ],
   "occupations": [
    {
     "name": "女高中生",
-    "grade": "R",
+    "grade": "N",
     "life": "每天搭電車通學、和同學混社團,考試前才熬夜抱佛腳",
     "outfit": "水手服制服",
     "sch": [
@@ -636,7 +658,7 @@
    },
    {
     "name": "便利商店大夜班店員",
-    "grade": "R",
+    "grade": "N",
     "life": "習慣了凌晨四點的城市,收銀速度是店裡最快的",
     "outfit": "便利商店制服圍裙",
     "sch": [
@@ -708,7 +730,7 @@
    },
    {
     "name": "圖書館員",
-    "grade": "R",
+    "grade": "N",
     "life": "喜歡書頁的味道,對吵鬧的人會用眼神殺人",
     "outfit": "開襟針織衫配長裙",
     "sch": [
@@ -732,7 +754,7 @@
    },
    {
     "name": "麵包店學徒",
-    "grade": "R",
+    "grade": "N",
     "life": "凌晨三點起床揉麵,身上總有一股奶油香",
     "outfit": "烘焙圍裙配頭巾",
     "sch": [
@@ -744,7 +766,7 @@
    },
    {
     "name": "家裡蹲網路寫手",
-    "grade": "R",
+    "grade": "N",
     "life": "足不出戶,靠外送維生,深夜論戰從沒輸過",
     "outfit": "連帽外套配睡褲",
     "sch": [
@@ -756,7 +778,7 @@
    },
    {
     "name": "花店店員",
-    "grade": "R",
+    "grade": "N",
     "life": "指尖總有花草味,能背出每種花的花語,但不太信那一套",
     "outfit": "工作圍裙配棉麻襯衫",
     "sch": [
@@ -768,7 +790,7 @@
    },
    {
     "name": "甜點師學徒",
-    "grade": "R",
+    "grade": "N",
     "life": "夢想開自己的店,手臂上有好幾道烤盤燙疤",
     "outfit": "白色廚師服配圍裙",
     "sch": [
@@ -780,7 +802,7 @@
    },
    {
     "name": "深夜電台DJ",
-    "grade": "SR",
+    "grade": "SS",
     "life": "聲音好聽得犯規,聽眾的煩惱信她每封都讀",
     "outfit": "慵懶寬鬆針織配耳機",
     "sch": [
@@ -816,7 +838,7 @@
    },
    {
     "name": "動物園飼育員",
-    "grade": "R",
+    "grade": "N",
     "life": "身上常沾著飼料味,動物比人好懂是她的口頭禪",
     "outfit": "卡其色工作服配長靴",
     "sch": [
@@ -852,7 +874,7 @@
    },
    {
     "name": "婚紗店造型師",
-    "grade": "R",
+    "grade": "S",
     "life": "見過幾百個新娘哭著笑,自己卻沒談過像樣的戀愛",
     "outfit": "全黑俐落套裝",
     "sch": [
@@ -864,7 +886,7 @@
    },
    {
     "name": "巫女",
-    "grade": "SR",
+    "grade": "SS",
     "life": "在小神社打工幫忙,掃不完的落葉,對神明的存在半信半疑",
     "outfit": "巫女服(紅袴白衣)",
     "sch": [
@@ -900,7 +922,7 @@
    },
    {
     "name": "漁港攤販女兒",
-    "grade": "R",
+    "grade": "N",
     "life": "凌晨的魚市場長大,殺魚俐落,聲音天生比人大",
     "outfit": "防水圍裙配長筒膠靴",
     "sch": [
@@ -912,7 +934,7 @@
    },
    {
     "name": "寵物美容師",
-    "grade": "R",
+    "grade": "N",
     "life": "被貓抓狗咬是日常,還是覺得毛小孩比人可愛",
     "outfit": "短袖工作服配防水圍裙",
     "sch": [
@@ -924,7 +946,7 @@
    },
    {
     "name": "檔案室公務員",
-    "grade": "R",
+    "grade": "N",
     "life": "在地下室管檔案,安靜到能聽見日光燈的聲音,蓋章蓋得行雲流水",
     "outfit": "樸素襯衫配及膝裙",
     "sch": [
@@ -948,7 +970,7 @@
    },
    {
     "name": "天文台研究助理",
-    "grade": "SR",
+    "grade": "S",
     "life": "熬夜看星星是工作,許願是給觀測順利用的",
     "outfit": "白袍配保暖外套",
     "sch": [
@@ -960,7 +982,7 @@
    },
    {
     "name": "模特兒",
-    "grade": "SR",
+    "grade": "SS",
     "life": "服裝/平面/廣告模特兒——拍攝、走秀的正當模特工作",
     "outfit": "極簡剪裁的拍攝套裝",
     "sch": [
@@ -972,7 +994,7 @@
    },
    {
     "name": "聲優",
-    "grade": "SR",
+    "grade": "S",
     "life": "配音員——幫動畫、遊戲、廣告配音,靠聲音演出",
     "outfit": "舒適便服配耳機",
     "sch": [
@@ -997,7 +1019,7 @@
    },
    {
     "name": "半套店小姐",
-    "grade": "SR",
+    "grade": "SS",
     "life": "在『半套店』(也叫個人工作室、油壓半套)上班",
     "outfit": "薄綢短浴袍",
     "desc": "在『半套店』(也叫個人工作室、油壓半套)上班——提供全身按摩,外加『半套』的手部性服務(用手幫客人打手槍紓解),原則上不進行性交。這和酒店陪酒、應召性交易、泡泡浴都不一樣,別搞混。",
@@ -1053,7 +1075,7 @@
    },
    {
     "name": "showgirl",
-    "grade": "SR",
+    "grade": "SS",
     "life": "展場活動的展演模特兒(showgirl)",
     "outfit": "展場短版制服",
     "desc": "展場活動的展演模特兒(showgirl)——在電玩展、車展、夜場穿主題服裝走檯、炒熱人氣、跟粉絲互動拍照,是表演性質、不是性服務。",
@@ -1080,7 +1102,7 @@
    },
    {
     "name": "情色寫真偶像",
-    "grade": "SR",
+    "grade": "SS",
     "life": "拍半裸寫真、週邊簽名會,遊走在偶像與色情之間",
     "outfit": "露肩緊身寫真洋裝",
     "desc": "以情色寫真為主的偶像——賣色氣與半裸,不一定有實質性交易。",
@@ -1094,7 +1116,7 @@
    },
    {
     "name": "風俗按摩師",
-    "grade": "SR",
+    "grade": "SS",
     "life": "在風俗店做全身油壓與性向服務,班表排到深夜",
     "outfit": "超短旗袍式工裝",
     "desc": "風俗店專職按摩與性服務的小姐——比半套更完整,含肢體接觸與性向服務,依店規。",
@@ -1122,7 +1144,7 @@
    },
    {
     "name": "直播擦邊主播",
-    "grade": "S",
+    "grade": "SS",
     "life": "每晚開台擦邊跳舞、賣色氣,靠打賞維生",
     "outfit": "超短熱褲配吊帶小背心",
     "desc": "網路直播以擦邊、色氣互動賺打賞——原則上不直接性交,尺度依平台與私下交易。",
@@ -1150,7 +1172,7 @@
    },
    {
     "name": "成人用品示範員",
-    "grade": "S",
+    "grade": "SS",
     "life": "在情趣店與展場示範玩具用法,順便帶貨",
     "outfit": "開襟白袍配情趣內衣",
     "desc": "情趣商品業務/示範——在店面或展場解說與展示用品,尺度偏色情但不必然性交。",
@@ -1164,7 +1186,7 @@
    },
    {
     "name": "援交女大生",
-    "grade": "SR",
+    "grade": "SS",
     "life": "白天上課、晚上約飯與援交賺生活費",
     "outfit": "私服短裙與過膝襪",
     "desc": "大學生身份的援助交際——金錢換約會與性服務,不是店家編制的酒店小姐。",
@@ -1178,7 +1200,7 @@
    },
    {
     "name": "脫衣舞娘",
-    "grade": "SR",
+    "grade": "SS",
     "life": "夜店鋼管與脫衣秀,小費決定收入",
     "outfit": "閃片比基尼與網襪高跟鞋",
     "desc": "舞台脫衣與鋼管表演——以視覺色情為主,私下陪酒另議。",
@@ -1192,7 +1214,7 @@
    },
    {
     "name": "電話色情接線員",
-    "grade": "S",
+    "grade": "SS",
     "life": "在公寓接語音/視訊色情電話,聲音就是商品",
     "outfit": "居家寬鬆 T 恤下真空",
     "desc": "語音或視訊色情服務——以言語與表演取悅來電者,未必有實體接觸。",
@@ -1414,20 +1436,33 @@
     "name": "性冷感",
     "grade": "N",
     "shyness_delta": 25,
-    "desc": "對性事冷淡、被動,慾望低;需要很多安全感與鋪陳才願意,容易抗拒、興致缺缺,平常也不太主動談這些。",
-    "nsfw": true
+    "desc": "對性事冷淡、被動,慾望低;需要很多安全感與鋪陳才願意,容易抗拒、興致缺缺,平常也不太主動談這些。"
    },
    {
     "name": "普通",
     "grade": "R",
     "shyness_delta": 0,
-    "desc": "對這方面的態度普通,依關係與氣氛而定。"
+    "desc": "對這方面的態度普通,依關係與氣氛而定。會回應,很少自己先開口。"
    },
    {
     "name": "好色",
     "grade": "S",
     "shyness_delta": -25,
     "desc": "慾望旺盛、對性事主動又好奇;容易動情、放得開,常會自己撩你、主動湊近、不掩飾想要。",
+    "nsfw": true
+   },
+   {
+    "name": "飢渴體質",
+    "grade": "SS",
+    "shyness_delta": -40,
+    "desc": "身體比理智快;隔不久就想要,忍得很辛苦,會主動湊上來要。接觸與氣氛很容易把她點燃。",
+    "nsfw": true
+   },
+   {
+    "name": "發情體質",
+    "grade": "SSR",
+    "shyness_delta": -55,
+    "desc": "幾乎隨時能燃;接觸就軟、高潮敏感、會自己求配。魅魔全開,慾望停不下來。",
     "nsfw": true
    }
   ],
@@ -1455,10 +1490,6 @@
      "grade": "R"
     },
     {
-     "text": "肉感微肉",
-     "grade": "R"
-    },
-    {
      "text": "微肉圓潤",
      "grade": "R"
     },
@@ -1471,145 +1502,111 @@
      "grade": "S"
     },
     {
+     "text": "軟肉感有腰",
+     "grade": "S"
+    },
+    {
      "text": "高挑纖長",
-     "grade": "SR"
+     "grade": "SS"
     },
     {
      "text": "豐滿火辣",
-     "grade": "SR"
+     "grade": "SS"
+    },
+    {
+     "text": "細腰寬臀",
+     "grade": "SS"
     },
     {
      "text": "凹凸有致的沙漏身材",
      "grade": "SSR"
-    }
-   ],
-   "bust": [
-    {
-     "text": "A 罩杯、平坦俐落",
-     "grade": "N"
     },
     {
-     "text": "A 罩杯、小巧清秀",
-     "grade": "N"
-    },
-    {
-     "text": "B 罩杯、自然小巧",
-     "grade": "N"
-    },
-    {
-     "text": "B 罩杯、剛好一手掌握",
-     "grade": "R"
-    },
-    {
-     "text": "C 罩杯、勻稱漂亮",
-     "grade": "R"
-    },
-    {
-     "text": "C 罩杯、圓潤水滴形",
-     "grade": "S"
-    },
-    {
-     "text": "D 罩杯、飽滿有份量",
-     "grade": "S"
-    },
-    {
-     "text": "E 罩杯、傲人豐滿",
-     "grade": "SR"
-    },
-    {
-     "text": "F 罩杯、誇張的巨乳",
+     "text": "極端腰臀比的漫畫比例",
      "grade": "SSR"
-    },
-    {
-     "text": "A 罩杯、微微隆起的貧乳",
-     "grade": "N"
-    },
-    {
-     "text": "B 罩杯、挺俏半球形",
-     "grade": "R"
-    },
-    {
-     "text": "C 罩杯、柔軟饅頭形",
-     "grade": "R"
-    },
-    {
-     "text": "C 罩杯、外擴的開闊胸型",
-     "grade": "S",
-     "nsfw": true
-    },
-    {
-     "text": "D 罩杯、高聳木瓜形",
-     "grade": "S"
-    },
-    {
-     "text": "D 罩杯、沉甸甸水滴垂墜",
-     "grade": "S",
-     "nsfw": true
-    },
-    {
-     "text": "E 罩杯、軟彈半球、擠出深深乳溝",
-     "grade": "SR",
-     "nsfw": true
-    },
-    {
-     "text": "E 罩杯、東方式豐滿橫向展開",
-     "grade": "SR",
-     "nsfw": true
-    },
-    {
-     "text": "F 罩杯、沉重下垂的母乳型巨乳",
-     "grade": "SSR",
-     "nsfw": true
-    },
-    {
-     "text": "G 罩杯、誇張到不科學的爆乳",
-     "grade": "SSR",
-     "nsfw": true
-    },
-    {
-     "text": "H 罩杯、壓迫感十足的超巨乳",
-     "grade": "SSR",
-     "nsfw": true
-    },
-    {
-     "text": "上半胸豐滿、下半緊實的運動型胸型",
-     "grade": "S"
-    },
-    {
-     "text": "左右略不對稱的自然胸型",
-     "grade": "R",
-     "nsfw": true
-    },
-    {
-     "text": "極窄間距、幾乎貼在一起的密著巨乳",
-     "grade": "SR",
-     "nsfw": true
-    },
-    {
-     "text": "乳暈周邊脂肪豐厚、托起來沉手的厚重胸",
-     "grade": "SR",
-     "nsfw": true
     }
    ],
    "face": [
-    "標準的鵝蛋臉",
-    "圓潤的圓臉",
-    "稍長的長臉",
-    "尖下巴的瓜子臉",
-    "方一點的鵝蛋臉、線條清楚",
-    "下顎線俐落",
-    "顴骨明顯",
-    "臉頰有嬰兒肥",
-    "臉小、五官集中",
-    "額頭飽滿",
-    "額頭窄、常被瀏海蓋住",
-    "鼻樑高挺",
-    "鼻頭小巧",
-    "輪廓深、五官立體",
-    "五官偏平、乾淨清秀",
-    "臉頰有雀斑",
-    "皮膚薄、容易泛紅",
-    "下巴中間有一道淺溝"
+    {
+     "text": "標準的鵝蛋臉",
+     "grade": "N"
+    },
+    {
+     "text": "稍長的長臉",
+     "grade": "N"
+    },
+    {
+     "text": "方一點的鵝蛋臉、線條清楚",
+     "grade": "N"
+    },
+    {
+     "text": "額頭飽滿",
+     "grade": "N"
+    },
+    {
+     "text": "額頭窄、常被瀏海蓋住",
+     "grade": "N"
+    },
+    {
+     "text": "圓潤的圓臉",
+     "grade": "R"
+    },
+    {
+     "text": "五官偏平、乾淨清秀",
+     "grade": "R"
+    },
+    {
+     "text": "鼻頭小巧",
+     "grade": "R"
+    },
+    {
+     "text": "臉頰有嬰兒肥",
+     "grade": "R"
+    },
+    {
+     "text": "下巴中間有一道淺溝",
+     "grade": "R"
+    },
+    {
+     "text": "尖下巴的瓜子臉",
+     "grade": "S"
+    },
+    {
+     "text": "下顎線俐落",
+     "grade": "S"
+    },
+    {
+     "text": "臉小、五官集中",
+     "grade": "S"
+    },
+    {
+     "text": "皮膚薄、容易泛紅",
+     "grade": "S"
+    },
+    {
+     "text": "臉頰有雀斑",
+     "grade": "S"
+    },
+    {
+     "text": "顴骨明顯",
+     "grade": "SS"
+    },
+    {
+     "text": "鼻樑高挺",
+     "grade": "SS"
+    },
+    {
+     "text": "輪廓深、五官立體",
+     "grade": "SS"
+    },
+    {
+     "text": "極小臉又立體的媚臉",
+     "grade": "SSR"
+    },
+    {
+     "text": "天生臥蠶含情的臉",
+     "grade": "SSR"
+    }
    ],
    "eyes": [
     {
@@ -1662,15 +1659,15 @@
     },
     {
      "text": "大眼睛、睫毛很長",
-     "grade": "SR"
+     "grade": "SS"
     },
     {
      "text": "上揚的狐狸眼、有點媚",
-     "grade": "SR"
+     "grade": "SS"
     },
     {
      "text": "濕潤的淚眼、總像剛哭過",
-     "grade": "SR"
+     "grade": "SS"
     },
     {
      "text": "瞳色偏淺、像貓",
@@ -1686,64 +1683,242 @@
     }
    ],
    "mouth": [
-    "小巧的櫻桃小嘴",
-    "飽滿的厚唇",
-    "薄唇、線條俐落",
-    "微微上揚的嘴角",
-    "嘴角天生下垂",
-    "明顯的唇珠",
-    "花瓣一樣的唇形",
-    "常常微張的唇",
-    "抿著嘴、話不多",
-    "笑起來露出整排牙",
-    "唇色偏淡、像沒血色",
-    "唇色紅潤、像抹了口紅",
-    "幾乎不上妝的素唇",
-    "咬唇的習慣",
-    "有點嘟的唇、像在撒嬌",
-    "唇形寬、笑起來很大方",
-    "下唇比上唇厚",
-    "嘴角有顆小痣"
+    {
+     "text": "薄唇、線條俐落",
+     "grade": "N"
+    },
+    {
+     "text": "抿著嘴、話不多",
+     "grade": "N"
+    },
+    {
+     "text": "幾乎不上妝的素唇",
+     "grade": "N"
+    },
+    {
+     "text": "唇色偏淡、像沒血色",
+     "grade": "N"
+    },
+    {
+     "text": "嘴角天生下垂",
+     "grade": "N"
+    },
+    {
+     "text": "微微上揚的嘴角",
+     "grade": "R"
+    },
+    {
+     "text": "笑起來露出整排牙",
+     "grade": "R"
+    },
+    {
+     "text": "唇形寬、笑起來很大方",
+     "grade": "R"
+    },
+    {
+     "text": "小巧的櫻桃小嘴",
+     "grade": "S"
+    },
+    {
+     "text": "花瓣一樣的唇形",
+     "grade": "S"
+    },
+    {
+     "text": "下唇比上唇厚",
+     "grade": "S"
+    },
+    {
+     "text": "嘴角有顆小痣",
+     "grade": "S"
+    },
+    {
+     "text": "咬唇的習慣",
+     "grade": "S"
+    },
+    {
+     "text": "飽滿的厚唇",
+     "grade": "SS"
+    },
+    {
+     "text": "明顯的唇珠",
+     "grade": "SS"
+    },
+    {
+     "text": "有點嘟的唇、像在撒嬌",
+     "grade": "SS"
+    },
+    {
+     "text": "唇色紅潤、像抹了口紅",
+     "grade": "SS"
+    },
+    {
+     "text": "常常微張的唇",
+     "grade": "SS"
+    },
+    {
+     "text": "厚唇微張像剛被吻過",
+     "grade": "SSR"
+    },
+    {
+     "text": "花瓣厚唇天生勾人",
+     "grade": "SSR"
+    }
    ],
    "hair": [
-    "及腰長直髮",
-    "及肩微捲",
-    "俏麗短髮",
-    "大波浪捲",
-    "高馬尾",
-    "低馬尾",
-    "雙馬尾",
-    "丸子頭",
-    "雙丸子頭",
-    "空氣瀏海長髮",
-    "齊瀏海公主切",
-    "旁分無瀏海",
-    "中分長髮",
-    "鎖骨長度的內彎髮",
-    "俐落短鮑伯",
-    "一條麻花辮",
-    "兩側編辮的長髮",
-    "隨手綁起的亂丸子"
+    {
+     "text": "及肩微捲",
+     "grade": "N"
+    },
+    {
+     "text": "旁分無瀏海",
+     "grade": "N"
+    },
+    {
+     "text": "中分長髮",
+     "grade": "N"
+    },
+    {
+     "text": "隨手綁起的亂丸子",
+     "grade": "N"
+    },
+    {
+     "text": "及腰長直髮",
+     "grade": "R"
+    },
+    {
+     "text": "低馬尾",
+     "grade": "R"
+    },
+    {
+     "text": "鎖骨長度的內彎髮",
+     "grade": "R"
+    },
+    {
+     "text": "俐落短鮑伯",
+     "grade": "R"
+    },
+    {
+     "text": "丸子頭",
+     "grade": "R"
+    },
+    {
+     "text": "高馬尾",
+     "grade": "S"
+    },
+    {
+     "text": "俏麗短髮",
+     "grade": "S"
+    },
+    {
+     "text": "空氣瀏海長髮",
+     "grade": "S"
+    },
+    {
+     "text": "一條麻花辮",
+     "grade": "S"
+    },
+    {
+     "text": "雙丸子頭",
+     "grade": "S"
+    },
+    {
+     "text": "大波浪捲",
+     "grade": "SS"
+    },
+    {
+     "text": "齊瀏海公主切",
+     "grade": "SS"
+    },
+    {
+     "text": "雙馬尾",
+     "grade": "SS"
+    },
+    {
+     "text": "兩側編辮的長髮",
+     "grade": "SS"
+    },
+    {
+     "text": "及腰大波浪",
+     "grade": "SSR"
+    },
+    {
+     "text": "妖媚側分長捲",
+     "grade": "SSR"
+    }
    ],
    "hair_color": [
-    "烏黑",
-    "深棕",
-    "淺棕",
-    "栗色",
-    "亞麻色",
-    "蜜金色",
-    "白金色",
-    "灰白",
-    "銀白",
-    "藍黑",
-    "酒紅",
-    "橘紅",
-    "玫瑰粉",
-    "薰衣草紫",
-    "薄荷綠",
-    "天空藍",
-    "內層挑染彩色",
-    "漸層的髮尾"
+    {
+     "text": "烏黑",
+     "grade": "N"
+    },
+    {
+     "text": "深棕",
+     "grade": "N"
+    },
+    {
+     "text": "淺棕",
+     "grade": "R"
+    },
+    {
+     "text": "栗色",
+     "grade": "R"
+    },
+    {
+     "text": "藍黑",
+     "grade": "R"
+    },
+    {
+     "text": "亞麻色",
+     "grade": "S"
+    },
+    {
+     "text": "蜜金色",
+     "grade": "S"
+    },
+    {
+     "text": "酒紅",
+     "grade": "S"
+    },
+    {
+     "text": "白金色",
+     "grade": "SS"
+    },
+    {
+     "text": "灰白",
+     "grade": "SS"
+    },
+    {
+     "text": "銀白",
+     "grade": "SS"
+    },
+    {
+     "text": "橘紅",
+     "grade": "SS"
+    },
+    {
+     "text": "玫瑰粉",
+     "grade": "SSR"
+    },
+    {
+     "text": "薰衣草紫",
+     "grade": "SSR"
+    },
+    {
+     "text": "薄荷綠",
+     "grade": "SSR"
+    },
+    {
+     "text": "天空藍",
+     "grade": "SSR"
+    },
+    {
+     "text": "內層挑染彩色",
+     "grade": "SSR"
+    },
+    {
+     "text": "漸層的髮尾",
+     "grade": "SSR"
+    }
    ],
    "style": [
     "簡約日系",
@@ -1770,17 +1945,83 @@
     "可愛甜美",
     "輕熟女風"
    ],
+   "erotic_style": [
+    "黑色蕾絲胸罩配吊襪帶",
+    "深紅情趣連身衣",
+    "半透明白襯衫不扣鈕",
+    "皮質束腰與丁字褲",
+    "開襟緞面睡袍真空",
+    "貓耳項圈與露胸圍裙",
+    "濕身白 T 恤真空",
+    "絲襪馬甲套裝",
+    "超短旗袍開襟",
+    "半透明薄紗只遮重點"
+   ],
+   "sleep_style": [
+    "條紋棉質睡衣套裝",
+    "寬鬆男友襯衫當睡衣",
+    "緞面吊帶短褲睡衣",
+    "法蘭絨格紋睡衣",
+    "連帽家居睡裙",
+    "短版背心配睡褲"
+   ],
    "feature": [
-    "左臉笑起來有個酒窩",
-    "有顆小虎牙",
-    "鎖骨上有一顆痣",
-    "眼角有淚痣",
-    "聲音偏甜、有點黏",
-    "脖子細長好看",
-    "手指修長",
-    "笑聲很有感染力",
-    "耳朵很小、容易紅",
-    "後頸有一顆小痣"
+    {
+     "text": "左臉笑起來有個酒窩",
+     "grade": "N"
+    },
+    {
+     "text": "手指修長",
+     "grade": "N"
+    },
+    {
+     "text": "笑聲很有感染力",
+     "grade": "N"
+    },
+    {
+     "text": "有顆小虎牙",
+     "grade": "R"
+    },
+    {
+     "text": "脖子細長好看",
+     "grade": "R"
+    },
+    {
+     "text": "耳朵很小、容易紅",
+     "grade": "R"
+    },
+    {
+     "text": "後頸有一顆小痣",
+     "grade": "R"
+    },
+    {
+     "text": "鎖骨上有一顆痣",
+     "grade": "S"
+    },
+    {
+     "text": "眼角有淚痣",
+     "grade": "S"
+    },
+    {
+     "text": "聲音偏甜、有點黏",
+     "grade": "S"
+    },
+    {
+     "text": "唇下痣",
+     "grade": "SS"
+    },
+    {
+     "text": "深臥蠶",
+     "grade": "SS"
+    },
+    {
+     "text": "眼尾一顆淚痣配薄紅膚",
+     "grade": "SSR"
+    },
+    {
+     "text": "鎖骨到胸口的痣點",
+     "grade": "SSR"
+    }
    ],
    "areola": [
     {
@@ -1795,6 +2036,11 @@
     },
     {
      "text": "圓潤櫻花粉、中等大小乳暈",
+     "grade": "R",
+     "nsfw": true
+    },
+    {
+     "text": "淺褐帶點雀斑感的自然乳暈",
      "grade": "R",
      "nsfw": true
     },
@@ -1815,17 +2061,12 @@
     },
     {
      "text": "幾乎佔滿半邊乳房的誇張大乳暈",
-     "grade": "SR",
-     "nsfw": true
-    },
-    {
-     "text": "淺褐帶點雀斑感的自然乳暈",
-     "grade": "R",
+     "grade": "SS",
      "nsfw": true
     },
     {
      "text": "紅潤充血色、敏感看起來偏腫的乳暈",
-     "grade": "SR",
+     "grade": "SS",
      "nsfw": true
     },
     {
@@ -1856,25 +2097,226 @@
      "grade": "S"
     },
     {
-     "text": "血紅色瞳孔",
-     "grade": "SR",
-     "nsfw": true
-    },
-    {
-     "text": "金色豎瞳",
-     "grade": "SR"
-    },
-    {
-     "text": "異色雙瞳（左藍右金）",
-     "grade": "SSR"
-    },
-    {
      "text": "粉桃色瞳孔",
      "grade": "S"
     },
     {
+     "text": "血紅色瞳孔",
+     "grade": "SS",
+     "nsfw": true
+    },
+    {
+     "text": "金色豎瞳",
+     "grade": "SS"
+    },
+    {
      "text": "漆黑幾乎無高光的瞳孔",
-     "grade": "SR",
+     "grade": "SS",
+     "nsfw": true
+    },
+    {
+     "text": "異色雙瞳（左藍右金）",
+     "grade": "SSR"
+    }
+   ],
+   "cup": [
+    {
+     "text": "A 罩杯、平坦俐落",
+     "grade": "N",
+     "cup": "A"
+    },
+    {
+     "text": "A 罩杯、小巧清秀",
+     "grade": "N",
+     "cup": "A"
+    },
+    {
+     "text": "A 罩杯、微微隆起的貧乳",
+     "grade": "N",
+     "cup": "A"
+    },
+    {
+     "text": "B 罩杯、自然小巧",
+     "grade": "R",
+     "cup": "B"
+    },
+    {
+     "text": "B 罩杯、剛好一手掌握",
+     "grade": "R",
+     "cup": "B"
+    },
+    {
+     "text": "B 罩杯、挺俏",
+     "grade": "R",
+     "cup": "B"
+    },
+    {
+     "text": "D 罩杯、飽滿有份量",
+     "grade": "S",
+     "cup": "D"
+    },
+    {
+     "text": "D 罩杯、勻稱漂亮",
+     "grade": "S",
+     "cup": "D"
+    },
+    {
+     "text": "D 罩杯、圓潤有份量",
+     "grade": "S",
+     "cup": "D"
+    },
+    {
+     "text": "E 罩杯、傲人豐滿",
+     "grade": "SS",
+     "cup": "E"
+    },
+    {
+     "text": "E 罩杯、軟彈有乳溝",
+     "grade": "SS",
+     "cup": "E"
+    },
+    {
+     "text": "I 罩杯、不科學爆乳",
+     "grade": "SSR",
+     "cup": "I"
+    },
+    {
+     "text": "I 罩杯、壓迫感超巨乳",
+     "grade": "SSR",
+     "cup": "I"
+    },
+    {
+     "text": "I 罩杯、誇張巨乳",
+     "grade": "SSR",
+     "cup": "I"
+    }
+   ],
+   "breast_shape": [
+    {
+     "text": "半球型",
+     "grade": "N"
+    },
+    {
+     "text": "饅頭型",
+     "grade": "N"
+    },
+    {
+     "text": "挺俏上挺",
+     "grade": "R"
+    },
+    {
+     "text": "自然圓潤",
+     "grade": "R"
+    },
+    {
+     "text": "水滴型",
+     "grade": "S"
+    },
+    {
+     "text": "木瓜型",
+     "grade": "S"
+    },
+    {
+     "text": "鐘型",
+     "grade": "SS"
+    },
+    {
+     "text": "外擴／八字",
+     "grade": "SS"
+    },
+    {
+     "text": "母乳型沉重下垂",
+     "grade": "SSR"
+    },
+    {
+     "text": "極密著深溝",
+     "grade": "SSR"
+    }
+   ],
+   "nipple": [
+    {
+     "text": "小巧內收、幾乎看不出形的乳頭",
+     "grade": "N",
+     "nsfw": true
+    },
+    {
+     "text": "粉嫩、微微凸起的乳頭",
+     "grade": "R",
+     "nsfw": true
+    },
+    {
+     "text": "明顯挺立的粉嫩乳尖",
+     "grade": "S",
+     "nsfw": true
+    },
+    {
+     "text": "較大、深粉或褐、看起來充血敏感的乳頭",
+     "grade": "SS",
+     "nsfw": true
+    },
+    {
+     "text": "粗長、深色、非常明顯的乳頭",
+     "grade": "SSR",
+     "nsfw": true
+    }
+   ],
+   "labia_size": [
+    {
+     "text": "內收小巧的陰唇",
+     "nsfw": true
+    },
+    {
+     "text": "適中微開的陰唇",
+     "nsfw": true
+    },
+    {
+     "text": "外翻飽滿的陰唇",
+     "nsfw": true
+    }
+   ],
+   "clitoris_size": [
+    {
+     "text": "小巧含蓄的陰蒂",
+     "nsfw": true
+    },
+    {
+     "text": "明顯可見的陰蒂",
+     "nsfw": true
+    },
+    {
+     "text": "腫大突出的陰蒂",
+     "nsfw": true
+    }
+   ],
+   "labia_color": [
+    {
+     "text": "粉嫩淺色的陰唇",
+     "nsfw": true
+    },
+    {
+     "text": "淺褐自然的陰唇",
+     "nsfw": true
+    },
+    {
+     "text": "深褐近黑的陰唇",
+     "nsfw": true
+    }
+   ],
+   "pubic_hair": [
+    {
+     "text": "完全剃光、沒有陰毛",
+     "nsfw": true
+    },
+    {
+     "text": "稀疏細軟的陰毛",
+     "nsfw": true
+    },
+    {
+     "text": "適中自然的陰毛",
+     "nsfw": true
+    },
+    {
+     "text": "濃密茂盛的陰毛",
      "nsfw": true
     }
    ]
@@ -1882,243 +2324,283 @@
   "special_traits": [
    {
     "name": "紅潤飽滿的雙唇",
-    "rarity": "普通",
-    "cat": "唇"
+    "rarity": "N",
+    "cat": "唇",
+    "grade": "N"
    },
    {
     "name": "白皙細嫩的皮膚",
-    "rarity": "普通",
-    "cat": "膚"
+    "rarity": "N",
+    "cat": "膚",
+    "grade": "N"
    },
    {
     "name": "筆直美腿",
-    "rarity": "普通",
-    "cat": "腿"
+    "rarity": "N",
+    "cat": "腿",
+    "grade": "N"
    },
    {
     "name": "纖細小蠻腰",
-    "rarity": "普通",
-    "cat": "腰"
+    "rarity": "N",
+    "cat": "腰",
+    "grade": "N"
    },
    {
     "name": "形狀漂亮的美胸",
-    "rarity": "普通",
-    "cat": "胸"
+    "rarity": "N",
+    "cat": "胸",
+    "grade": "N"
    },
    {
     "name": "水潤的杏眼",
-    "rarity": "普通",
-    "cat": "瞳"
+    "rarity": "N",
+    "cat": "瞳",
+    "grade": "N"
    },
    {
     "name": "明顯精緻的鎖骨",
-    "rarity": "普通",
-    "cat": "鎖骨"
+    "rarity": "N",
+    "cat": "鎖骨",
+    "grade": "N"
    },
    {
     "name": "白皙修長的脖頸",
-    "rarity": "普通",
-    "cat": "頸"
+    "rarity": "N",
+    "cat": "頸",
+    "grade": "N"
    },
    {
     "name": "柔順的長髮",
-    "rarity": "普通",
-    "cat": "髮質"
+    "rarity": "N",
+    "cat": "髮質",
+    "grade": "N"
    },
    {
     "name": "甜美的少女嗓",
-    "rarity": "普通",
-    "cat": "聲"
+    "rarity": "N",
+    "cat": "聲",
+    "grade": "N"
    },
    {
     "name": "巨乳",
-    "rarity": "稀有",
-    "cat": "胸"
+    "rarity": "R",
+    "cat": "胸",
+    "grade": "R"
    },
    {
     "name": "修長大長腿",
-    "rarity": "稀有",
-    "cat": "腿"
+    "rarity": "R",
+    "cat": "腿",
+    "grade": "R"
    },
    {
     "name": "緊實蜜大腿",
-    "rarity": "稀有",
-    "cat": "腿"
+    "rarity": "R",
+    "cat": "腿",
+    "grade": "R"
    },
    {
     "name": "渾圓翹臀",
-    "rarity": "稀有",
-    "cat": "臀"
+    "rarity": "R",
+    "cat": "臀",
+    "grade": "R"
    },
    {
     "name": "古銅小麥膚色",
-    "rarity": "稀有",
-    "cat": "膚"
+    "rarity": "R",
+    "cat": "膚",
+    "grade": "R"
    },
    {
     "name": "細腰豐臀的沙漏身材",
-    "rarity": "稀有",
-    "cat": "身"
+    "rarity": "R",
+    "cat": "身",
+    "grade": "R"
    },
    {
     "name": "水汪汪的大眼",
-    "rarity": "稀有",
-    "cat": "瞳"
+    "rarity": "R",
+    "cat": "瞳",
+    "grade": "R"
    },
    {
     "name": "深邃的事業線",
-    "rarity": "稀有",
-    "cat": "胸溝"
+    "rarity": "R",
+    "cat": "胸溝",
+    "grade": "R"
    },
    {
     "name": "性感的馬甲線",
-    "rarity": "稀有",
-    "cat": "腰線"
+    "rarity": "R",
+    "cat": "腰線",
+    "grade": "R"
    },
    {
     "name": "光滑無暇的美背",
-    "rarity": "稀有",
-    "cat": "背"
+    "rarity": "R",
+    "cat": "背",
+    "grade": "R"
    },
    {
     "name": "軟糯敏感的耳垂",
-    "rarity": "稀有",
+    "rarity": "R",
     "cat": "敏",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "R"
    },
    {
     "name": "淡淡的奶香體味",
-    "rarity": "稀有",
-    "cat": "香"
+    "rarity": "R",
+    "cat": "香",
+    "grade": "R"
    },
    {
     "name": "帶點鼻音的甜膩奶音",
-    "rarity": "稀有",
-    "cat": "聲"
+    "rarity": "R",
+    "cat": "聲",
+    "grade": "R"
    },
    {
     "name": "豐潤圓翹的唇珠",
-    "rarity": "稀有",
-    "cat": "唇"
+    "rarity": "R",
+    "cat": "唇",
+    "grade": "R"
    },
    {
     "name": "白皙大長腿",
-    "rarity": "史詩",
-    "cat": "腿"
+    "rarity": "S",
+    "cat": "腿",
+    "grade": "S"
    },
    {
     "name": "沉甸甸的下垂巨乳",
-    "rarity": "史詩",
+    "rarity": "S",
     "cat": "胸",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "S"
    },
    {
     "name": "粉嫩飽滿、面積偏大的乳暈",
-    "rarity": "史詩",
+    "rarity": "S",
     "cat": "乳暈",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "S"
    },
    {
     "name": "粉嫩挺立的乳尖",
-    "rarity": "史詩",
+    "rarity": "S",
     "cat": "乳尖",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "S"
    },
    {
     "name": "通透的雪白肌膚",
-    "rarity": "史詩",
-    "cat": "膚"
+    "rarity": "S",
+    "cat": "膚",
+    "grade": "S"
    },
    {
     "name": "湛藍色的眼睛",
-    "rarity": "史詩",
-    "cat": "瞳"
+    "rarity": "S",
+    "cat": "瞳",
+    "grade": "S"
    },
    {
     "name": "爆乳配上不科學的細腰",
-    "rarity": "史詩",
+    "rarity": "S",
     "cat": "身",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "S"
    },
    {
     "name": "一捏會陷下去的綿密酥胸",
-    "rarity": "史詩",
+    "rarity": "S",
     "cat": "胸感",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "S"
    },
    {
     "name": "極度敏感、一碰就軟的體質",
-    "rarity": "史詩",
+    "rarity": "S",
     "cat": "敏",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "S"
    },
    {
     "name": "勾魂的沙啞低喘嗓",
-    "rarity": "史詩",
+    "rarity": "S",
     "cat": "聲",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "S"
    },
    {
     "name": "天生會勾人的費洛蒙體香",
-    "rarity": "史詩",
+    "rarity": "S",
     "cat": "香",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "S"
    },
    {
     "name": "漫畫般凹陷的反差腰窩",
-    "rarity": "史詩",
-    "cat": "腰線"
+    "rarity": "S",
+    "cat": "腰線",
+    "grade": "S"
    },
    {
     "name": "緊緻飽滿的水蜜桃臀",
-    "rarity": "史詩",
+    "rarity": "S",
     "cat": "臀",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "S"
    },
    {
     "name": "赤紅色的眼睛",
-    "rarity": "傳說",
-    "cat": "瞳"
+    "rarity": "SSR",
+    "cat": "瞳",
+    "grade": "SSR"
    },
    {
     "name": "左右異色的雙瞳",
-    "rarity": "傳說",
-    "cat": "瞳"
+    "rarity": "SSR",
+    "cat": "瞳",
+    "grade": "SSR"
    },
    {
     "name": "宛如模特兒的黃金三圍",
-    "rarity": "傳說",
-    "cat": "身"
+    "rarity": "SSR",
+    "cat": "身",
+    "grade": "SSR"
    },
    {
     "name": "吹彈可破、會發光似的奶白肌",
-    "rarity": "傳說",
-    "cat": "膚"
+    "rarity": "SSR",
+    "cat": "膚",
+    "grade": "SSR"
    },
    {
     "name": "傳說級的名器體質",
-    "rarity": "傳說",
+    "rarity": "SSR",
     "cat": "私",
-    "nsfw": true
-   },
-   {
-    "name": "全身佈滿敏感帶的淫紋體質",
-    "rarity": "傳說",
-    "cat": "敏",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "SSR"
    },
    {
     "name": "雌性費洛蒙濃到讓人失神的體香",
-    "rarity": "傳說",
+    "rarity": "SSR",
     "cat": "香",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "SSR"
    },
    {
     "name": "豐乳肥臀又不科學細腰的魔鬼身材",
-    "rarity": "傳說",
+    "rarity": "SSR",
     "cat": "身",
-    "nsfw": true
+    "nsfw": true,
+    "grade": "SSR"
    }
-  ]
+  ],
+  "_grade_ladder": "N/R/S/SS/SSR",
+  "_grade_note": "各軸獨立依稀有度加權抽;名冊稀有度=全部計分軸純平均。罩杯 A/B/D/E/I;A/B 乳型只抽 N/R。性器軸(陰唇大小／陰蒂大小／陰唇顏色各三級、陰毛四級)等機率抽、不進分。"
  }
 }

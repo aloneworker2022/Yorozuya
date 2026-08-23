@@ -114,6 +114,17 @@ const SEX_TRIGGER_FALLBACK = {
   girlfriend: 1 / 3,
   wife: 1 / 2,
 };
+// 調戲牌：性慾階額外加在感情骰上（S +1 / SS +2 / SSR +4）
+const EROTIC_LIBIDO_EMOTION = { S: 1, SS: 2, SSR: 4 };
+// 調戲進做愛：S 以上在階段基礎率上再加
+const SEX_TRIGGER_LIBIDO_BONUS = { S: 0.10, SS: 0.20, SSR: 0.30 };
+
+export function libidoGradeOf(girlOrGrade) {
+  if (!girlOrGrade) return "";
+  if (typeof girlOrGrade === "string") return girlOrGrade.toUpperCase();
+  const g = girlOrGrade.libido?.grade || girlOrGrade.libidoGrade || girlOrGrade.grade || "";
+  return String(g).toUpperCase();
+}
 
 /** 是否色情卡（kind=erotic） */
 export function isEroticCard(cardOrId) {
@@ -165,17 +176,21 @@ export function eroticShatters(def) {
  * 色情卡 → 做愛觸發率（0～1）。
  * 優先 defaults.sex_trigger_by_stage；缺表用分數常數。
  */
-export function sexTriggerChance(stage) {
+export function sexTriggerChance(stage, opts = {}) {
   const table = d("sex_trigger_by_stage", null);
   const raw = table?.[stage] ?? SEX_TRIGGER_FALLBACK[stage] ?? SEX_TRIGGER_FALLBACK.stranger;
-  const p = Number(raw);
-  if (!Number.isFinite(p)) return SEX_TRIGGER_FALLBACK.stranger;
+  let p = Number(raw);
+  if (!Number.isFinite(p)) p = SEX_TRIGGER_FALLBACK.stranger;
+  const bonusTable = d("sex_trigger_libido_bonus", SEX_TRIGGER_LIBIDO_BONUS) || SEX_TRIGGER_LIBIDO_BONUS;
+  const grade = libidoGradeOf(opts.libidoGrade || opts.girl);
+  const bonus = Number(bonusTable[grade]);
+  if (Number.isFinite(bonus) && bonus > 0) p += bonus;
   return clamp(p, 0, 1);
 }
 
 /** 擲是否觸發做愛 */
-export function rollSexTrigger(stage) {
-  return Math.random() < sexTriggerChance(stage);
+export function rollSexTrigger(stage, opts = {}) {
+  return Math.random() < sexTriggerChance(stage, opts);
 }
 
 function sampleIds(ids, n) {
@@ -1324,6 +1339,12 @@ export function rollEmotion(def, stage, opts = {}) {
   } else if (!phaseLocked && opts.guardHigh && delta > 0) {
     delta = 0;
   }
+  // 調戲牌：性慾 S+1 / SS+2 / SSR+4（加在骰完之後，不受女友前硬夾）
+  if (isEroticCard(def)) {
+    const bonusTable = d("emotion_erotic_libido_bonus", EROTIC_LIBIDO_EMOTION) || EROTIC_LIBIDO_EMOTION;
+    const bonus = Number(bonusTable[libidoGradeOf(opts.libidoGrade || opts.girl)]);
+    if (Number.isFinite(bonus)) delta += bonus;
+  }
   return delta;
 }
 
@@ -2150,7 +2171,7 @@ export function cancelPending(state) {
  * 確認打出。
  * @returns result for UI / affection
  */
-export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = false } = {}) {
+export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = false, libidoGrade = "", girl = null } = {}) {
   const sess = state.cardSession;
   if (!sess || sess.phase !== "round_play") return { ok: false, err: "不在打牌中" };
   const handIdx = sess.hand.findIndex(h => h.instanceId === instanceId);
@@ -2159,6 +2180,7 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
   const check = canSelectCard(sess, inst);
   if (!check.ok) return check;
   const def = check.def;
+  const libG = libidoGradeOf(libidoGrade || girl);
 
   sess.pending = null;
 
@@ -2227,7 +2249,7 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
     sess.nLeft = Math.max(0, (sess.nLeft || 0) - 1);
 
     if (!open.success) {
-      result.emotionDelta = rollEmotion(def, stage, { fail: true, guardHigh });
+      result.emotionDelta = rollEmotion(def, stage, { fail: true, guardHigh, libidoGrade: libG });
       let shattered = false;
       const shouldShatter = shattersOnUse(def) && inst.source === "inventory";
       if (shouldShatter) {
@@ -2247,8 +2269,8 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
       kLeft: def.openChain.k,
       sourceCardId: def.id,
     };
-    result.emotionDelta = rollEmotion(def, stage, { guardHigh });
-    applyCardEffect(sess, def, result, stage);
+    result.emotionDelta = rollEmotion(def, stage, { guardHigh, libidoGrade: libG });
+    applyCardEffect(sess, def, result, stage, { libidoGrade: libG });
     let shattered = false;
     // 色情卡規格一律碎；其餘看 shatterOnUse
     const shouldShatter = shattersOnUse(def) && inst.source === "inventory";
@@ -2273,8 +2295,8 @@ export function commitPlay(state, instanceId, { stage = "stranger", guardHigh = 
 
   // 普通卡
   spendPlayNormal(sess, def);
-  result.emotionDelta = rollEmotion(def, stage, { guardHigh });
-  applyCardEffect(sess, def, result, stage);
+  result.emotionDelta = rollEmotion(def, stage, { guardHigh, libidoGrade: libG });
+  applyCardEffect(sess, def, result, stage, { libidoGrade: libG });
   let shattered = false;
   const shouldShatter = shattersOnUse(def) && inst.source === "inventory";
   if (shouldShatter) {
@@ -2616,7 +2638,7 @@ export function hasPendingSex(state) {
   return !!(state.cardSession?.pendingSex);
 }
 
-function applyCardEffect(sess, def, result, stage = "stranger") {
+function applyCardEffect(sess, def, result, stage = "stranger", opts = {}) {
   // 詞墜繼承：父鏈 effect 加總後再套用（子覆寫同名非數字鍵）
   const eff = resolveMergedEffect(def, BY_ID, { mode: "sum" }) || {};
 
@@ -2627,7 +2649,7 @@ function applyCardEffect(sess, def, result, stage = "stranger") {
     result.effects.push("erotic:force_next_round");
     // 做愛機率：陌生 1/10、朋友 1/8、女友 1/3、妻子 1/2
     // 觸發 → 前戲 2 選 1（看完反應後 UI 選）
-    if (rollSexTrigger(stage)) {
+    if (rollSexTrigger(stage, { libidoGrade: opts.libidoGrade })) {
       const pool = sexBasePoolIds();
       const choiceN = Math.max(1, Number(d("sex_choice_count", 2)) || 2);
       const choices = sampleIds(pool, Math.min(choiceN, pool.length || 0));

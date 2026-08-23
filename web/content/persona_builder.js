@@ -235,13 +235,19 @@ function lookText(c) {
     const i = c.outfitPick;
     const worn = (Number.isInteger(i) && i >= 0 && i < wardrobe.length)
       ? wardrobe[i] : (L.career_outfit || wardrobe[0] || "");
-    const bits = [L.height_cm ? `${L.height_cm}cm` : null, L.build, L.bust,
-                  L.areola || null,
+    const bits = [L.height_cm ? `${L.height_cm}cm` : null, L.build,
+                  L.bust || [L.cup, L.breast_shape].filter(Boolean).join("、") || null,
+                  L.areola || null, L.nipple || null,
+                  L.labia_size || null, L.clitoris_size || null, L.labia_color || null,
+                  L.pubic_hair || null,
                   L.face, L.eyes, L.eye_color || null, L.mouth,
                   [L.hair_color, L.hair].filter(Boolean).join("") || null,
                   worn ? `身上穿著${worn}` : null, L.feature].filter(Boolean);
     let t = bits.join("、");
-    if (c.special_traits?.length) t += `。特別之處:${c.special_traits.map(x => x.name).join("、")}`;
+    const traits = (c.special_traits || c.specialTraits || [])
+      .map(x => (typeof x === "string" ? x : x?.name) || "")
+      .filter(n => n && !/淫紋/.test(n));
+    if (traits.length) t += `。特別之處:${traits.join("、")}`;
     return t;
   }
   return appearanceZh(c.appearance_dna);
@@ -313,6 +319,8 @@ export function buildSystemPrompt(ctx) {
     `個性:${(c.personality || []).join("、")}。${c.tone || SPEECH_STYLE[c.speech_style] || ""}`,
     `對方是召喚你的人,他叫「${ctx.player?.name || "他"}」(怎麼稱呼他見下方關係段)。`,
   );
+
+  lines.push(...journalLines(ctx));
 
   // ── 人設素材(依自我揭露分級 gate;規格見 docs/relationship-axes.md「人設 gate」)──
   // 口癖與情緒反應四階段全開:那是「她是誰」,不是她願不願意講。
@@ -391,6 +399,19 @@ export function buildSystemPrompt(ctx) {
       "- 分享你當下的心情,親暱程度嚴格依下方關係段",
       "- 肢體／場景感受只能用說出口的話帶過,不要寫動作旁白或身體描寫",
     );
+  } else if (s.type === "sense") {
+    lines.push(
+      "【感應】這是遠距連線，像打電話。你們不在同一現場。",
+      "他看不見你的樣子、摸不到你。禁止演出現場肢體、禁止配合被他調戲。",
+      "若他要摸、親、做，用台詞拒絕：感應裡做不到。",
+    );
+  } else if (s.type === "talk") {
+    const you = ctx.player?.name || "他";
+    lines.push(
+      `【店頭】你正站在召喚者「${you}」的萬事屋店頭當看板娘，人就在他眼前。`,
+      "這不是電話、不是感應——他看得到你、碰得到你。",
+      "你會從他的閒聊裡忽然想到萬事屋能做的事，依個性／職業／喜好派一件短委託（另起一行 #發現 短待辦）。不是幫他抄筆記；沒靈感就不要派。對他或委託有新理解時另起一行 #日誌。",
+    );
   }
 
   // ── 關係段:放最後(規則之前)= 注意力最強的位置 ──
@@ -411,18 +432,66 @@ export function buildSystemPrompt(ctx) {
     "8. 不要加引號包住整段;直接輸出台詞本文。",
   );
 
-  // 防備旗標:只在陌生階段索取(其他階段用不到,也省 token)。
-  // 第 2 行一律被 app.js 的 stripGuardFlag 吃掉,不會漏到畫面或歷史。
-  if (ctx.want_guard_flag) {
+  // 旗標行一律被 app.js 的 stripGuardFlag 吃掉,不會漏到畫面或歷史。
+  // 第 1 行必須是台詞——模型若只吐旗標,玩家會看到空白或「越界」。
+  if (ctx.date_invite) {
+    const st = ctx.relationship?.stage || "stranger";
+    const judge = {
+      stranger: "約你出門等於要求陪伴,對現在的你算越界。幾乎一定拒絕,用台詞擋回去。",
+      friend: "可以當朋友出門,也可以拒絕。依個性和剛才氣氛決定,不要無腦答應。",
+      girlfriend: "傾向答應;若你在鬧脾氣或心情不好可以拒絕。",
+      wife: "幾乎答應,像在講今天去哪;只有真的去不了才拒絕。",
+    }[st] || "";
+    const block = ctx.date_invite.block || "";
+    lines.push(
+      "",
+      "【他這句在邀你出門約會】",
+      "遊戲會聽你的決定:#赴約 = 真的出門約會;#不去 = 繼續通話。",
+      judge,
+      block
+        ? `硬性去不了:${block}。這次必須寫 #不去,用你的個性拒絕(不必唸出系統原因)。`
+        : "沒有硬性阻擋,由你自己決定。",
+      "輸出格式(嚴格遵守):",
+      "第 1 行:你說出口的話。必填。就算拒絕、不想理他、不想出門,也要有台詞。",
+      "不想答就依個性／態度／職業拒絕,例如「……」「不想說」「關你什麼事」「誰要跟你去」。禁止寫（沉默）這類括號舞台指示,用「……」或一句拒絕代替。",
+      "禁止空白,禁止只寫旗標。他只能看到第 1 行。",
+      ctx.want_guard_flag
+        ? "第 2 行:#越界 或 #正常"
+        : "第 2 行:#赴約 或 #不去",
+      ctx.want_guard_flag ? "第 3 行:#赴約 或 #不去" : "",
+      "禁止把旗標寫進第 1 行,也禁止整段只有旗標。",
+    );
+  } else if (ctx.want_guard_flag) {
     lines.push(
       "",
       "輸出格式(嚴格遵守,共兩行):",
-      "第 1 行:你要說的話(只有這行會被他看到)",
-      `第 2 行:如果他上一句踩到了上面界線那條列出的項目就寫 #越界,否則寫 #正常`,
+      "第 1 行:你說出口的話。必填。他只能看到這行。",
+      "就算不想回答、覺得他越界、懶得理他——第 1 行也必須是台詞,不能空白、不能只寫旗標。",
+      "拒絕要依你的個性、態度、職業來說,例如冷淡的「……」、兇的「少噁心」、職業習慣的「這種話別在這裡講」、或「我不想說」「關你什麼事」。",
+      "禁止寫（沉默）（臉紅）這類括號舞台指示;沉默就用「……」。",
+      "第 2 行:如果他上一句踩到了上面界線那條列出的項目就寫 #越界,否則寫 #正常。這行不是台詞,不能拿來代替第 1 行。",
+      "禁止把第 2 行的旗標寫進第 1 行。",
     );
   }
 
   return lines.join("\n");
+}
+
+/** 記憶日誌：開口前先讀。超過一個月的條目 app 不會傳進來。 */
+function journalLines(ctx) {
+  const entries = ctx.journal || [];
+  if (!entries.length) return [];
+  const lines = [
+    "【你的記憶日誌——開口前先讀完。超過一個月的已經忘了，不在這裡。】",
+  ];
+  for (const e of entries) {
+    const when = e.when || "";
+    const q = e.questText ? `［${e.questText}］` : "";
+    const body = e.text || "";
+    lines.push(`・${when} ${q}${body}`.replace(/\s+/g, " ").trim());
+  }
+  lines.push("這些是你自己寫下來的。聊天時可以自然用到，不要整本照唸，也不要說出「日誌」兩個字。");
+  return lines;
 }
 
 /** 委託段:陌生階段只給背景清單(她不管你),朋友以上給遊戲挑好的「點名那一件」。 */
@@ -933,6 +1002,36 @@ export function buildQuipPrompt(ctx) {
     "規則:只輸出那一句話本身;繁體中文;40 字以內;不加引號、不加動作描寫、不提及清單以外的事。",
   );
   return lines.join("\n");
+}
+
+/** 看板娘被「看見」時的兩句碎嘴：打開畫面／切回前景／切到魅魔頁。
+ *  背景預生成、進場即顯示;廠商替換點。 */
+export function buildNoticePrompt(ctx) {
+  const c = ctx.character || {};
+  const r = ctx.relationship || {};
+  const ax = STAGE_AXES[r.stage] || STAGE_AXES.stranger;
+  const you = ctx.player?.name || "他";
+  const why = (ctx.notice_reason || "").trim()
+    || "他剛把這個畫面打開、或從別的地方切回來，看見你站在店頭。";
+  const lines = [
+    `你是「${c.name}」,被召喚而來的女子,正站在召喚者「${you}」的萬事屋店頭當看板娘。`,
+    `個性:${(c.personality || []).join("、") || "—"}。${c.tone || SPEECH_STYLE[c.speech_style] || ""}`,
+    ax.open,
+    `稱呼:${ax.address.replace(/\{name\}/g, you)}`,
+    `你對他的要求權:${ax.claim}`,
+    "",
+    "【剛發生的事】",
+    why,
+    "你注意到他在看你了。挑出來跟他說兩句——不是長篇、不是自我介紹。",
+    r.stage === "stranger"
+      ? "分寸:你沒有立場真的管他。可以不耐、戒備、冷冷點一句;不要甜蜜歡迎。"
+      : "可以打招呼、吐槽他跑去別處、問委託、撒嬌、吃味——依個性與要求權擇一。",
+    "規則:只輸出兩句台詞,每句一行;繁體中文;每句 28 字以內;不加引號、不加括號動作、不提系統/卡牌/AI。",
+    ctx.content_rating === "nsfw"
+      ? "尺度:可帶一點色氣口吻,仍要短、要像剛看見他時脫口而出。"
+      : "尺度:全年齡,可曖昧不可露骨。",
+  ];
+  return lines.filter(Boolean).join("\n");
 }
 
 /** 交配環節:生成「起/承/合」其中一步的交配旁白(玩家窺視)。

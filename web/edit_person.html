@@ -61,8 +61,8 @@
 
 <script>
 let POOLS = null, curG = "female";
-const GRADES = ["N","R","S","SR","SSR"];
-const RARITIES = ["普通","稀有","史詩","傳說"];
+const GRADES = ["N","R","S","SS","SSR"];
+const RARITIES = ["N","R","S","SS","SSR"];
 
 async function api(path, method="GET", body=null) {
   const r = await fetch(path, { method, headers: body ? {"Content-Type":"application/json"} : {},
@@ -87,18 +87,26 @@ const SCHEMA = {
     ["chronotypes", "chronotypes", "睡眠型(生理時鐘)"],
     ["arcs", "lines", "近期人生事件"],
     ["libido", "libido", "性慾傾向"],
-    ["appearance.build", "graded", "體型(含評級)"],
-    ["appearance.bust", "graded", "乳房大小／形狀(含評級;生圖英文見 sdtags BUST)"],
-    ["appearance.areola", "graded", "乳暈大小／顏色(含評級;多 nsfw;生圖見 sdtags AREOLA)"],
-    ["appearance.face", "lines", "臉型"],
-    ["appearance.eyes", "graded", "眼睛形狀(含評級)"],
-    ["appearance.eye_color", "graded", "瞳孔顏色(含評級;生圖見 sdtags EYE_COLOR)"],
-    ["appearance.mouth", "lines", "嘴巴"],
-    ["appearance.hair", "lines", "髮型(只講形狀,顏色在下一欄)"],
-    ["appearance.hair_color", "lines", "髮色"],
+    ["appearance.build", "graded", "體態(含評級)"],
+    ["appearance.cup", "graded", "罩杯 A/B/D/E/I = N/R/S/SS/SSR(生圖見 sdtags CUP)"],
+    ["appearance.breast_shape", "graded", "乳型(A/B 只抽 N/R;生圖見 sdtags BREAST_SHAPE)"],
+    ["appearance.areola", "graded", "乳暈(含評級;多 nsfw;生圖見 sdtags AREOLA)"],
+    ["appearance.nipple", "graded", "乳頭(含評級;nsfw;生圖見 sdtags NIPPLE)"],
+    ["appearance.labia_size", "flagged", "陰唇大小(三級、不分等級、不進分;nsfw;生圖見 sdtags LABIA_SIZE)"],
+    ["appearance.clitoris_size", "flagged", "陰蒂大小(三級、不分等級、不進分;nsfw;生圖見 sdtags CLITORIS_SIZE)"],
+    ["appearance.labia_color", "flagged", "陰唇顏色(三級、不分等級、不進分;nsfw;生圖見 sdtags LABIA_COLOR)"],
+    ["appearance.pubic_hair", "flagged", "陰毛(四級、不分等級、不進分;nsfw;生圖見 sdtags PUBIC_HAIR)"],
+    ["appearance.face", "graded", "臉(含評級)"],
+    ["appearance.eyes", "graded", "眼型(含評級)"],
+    ["appearance.eye_color", "graded", "瞳色(含評級;生圖見 sdtags EYE_COLOR)"],
+    ["appearance.mouth", "graded", "嘴(含評級)"],
+    ["appearance.hair", "graded", "髮型(只講形狀,顏色在下一欄)"],
+    ["appearance.hair_color", "graded", "髮色(含評級)"],
     ["appearance.style", "lines", "穿搭風格(個人喜好衣櫃:朋友解 1 套、女友 3 套、妻子 6 套)"],
-    ["appearance.feature", "lines", "小特徵"],
-    ["special_traits", "traits", "特殊屬性(抽卡 1~3 個;⚪普通 🔵稀有 🟣史詩 🌟傳說)"],
+    ["appearance.erotic_style", "lines", "色情裝(女友解 1 套、妻子解 3 套)"],
+    ["appearance.sleep_style", "lines", "睡衣(妻子解 2 套)"],
+    ["appearance.feature", "graded", "小特徵(含評級)"],
+    ["special_traits", "traits", "特殊屬性(抽卡 1~3 個;與名冊同一套 N/R/S/SS/SSR,全部進平均)"],
   ],
   // 男子=召喚師,獨立資料源(summoners.json),用專屬編輯器,不走 SCHEMA
 };
@@ -126,10 +134,11 @@ function renderSec(type, data, path) {
   if (type === "lines")
     return `<div class="mini">一行一項</div><textarea class="lines" data-lines>${esc(data.join("\n"))}</textarea>`;
   if (type === "graded")
-    return data.map((x,i)=>`<div class="itemrow" data-i="${i}">
+    return data.map((x,i)=>`<div class="itemrow" data-i="${i}"${x.cup?` data-cup="${esc(x.cup)}"`:""}>
         <input value="${esc(x.text)}" data-f="text">
         <select data-f="grade">${GRADES.map(g=>`<option ${x.grade===g?"selected":""}>${g}</option>`).join("")}</select>
-        <span></span><button class="del" onclick="delItem(this)">✕</button></div>`).join("")
+        <label class="nsfw-tag" style="display:flex;gap:.2em;align-items:center;margin:0">18+<input type="checkbox" data-f="nsfw" ${x.nsfw?"checked":""}></label>
+        <button class="del" onclick="delItem(this)">✕</button></div>`).join("")
       + `<button class="cy" onclick="addItem(this,'graded')">＋新增</button>`;
   if (type === "flagged")
     return data.map((x,i)=>`<div class="itemrow" data-i="${i}">
@@ -140,7 +149,7 @@ function renderSec(type, data, path) {
   if (type === "traits")
     return data.map((x,i)=>`<div class="itemrow" data-i="${i}" style="grid-template-columns:1fr 6.5em 5em auto auto">
         <input value="${esc(x.name)}" data-f="name">
-        <select data-f="rarity">${RARITIES.map(r=>`<option ${x.rarity===r?"selected":""}>${r}</option>`).join("")}</select>
+        <select data-f="rarity">${RARITIES.map(r=>`<option ${(x.grade||x.rarity)===r?"selected":""}>${r}</option>`).join("")}</select>
         <input value="${esc(x.cat)}" data-f="cat" title="同類不重複的分類鍵">
         <label class="nsfw-tag" style="display:flex;gap:.2em;align-items:center;margin:0">18+<input type="checkbox" data-f="nsfw" ${x.nsfw?"checked":""}></label>
         <button class="del" onclick="delItem(this)">✕</button></div>`).join("")
@@ -161,6 +170,7 @@ function renderSec(type, data, path) {
   if (type === "archetypes")
     return data.map((x,i)=>`<div class="card" data-i="${i}">
         <div class="row"><input value="${esc(x.name)}" data-f="name" placeholder="原型名" style="flex:1">
+          <select data-f="grade" style="width:6.5em">${GRADES.map(g=>`<option ${x.grade===g?"selected":""}>${g}</option>`).join("")}</select>
           <label class="nsfw-tag" style="display:flex;gap:.2em;align-items:center;margin:0">18+<input type="checkbox" data-f="nsfw" ${x.nsfw?"checked":""}></label>
           <button class="del" onclick="delItem(this)">✕</button></div>
         <label>語氣描述(給 AI 的說話方式)</label><textarea data-f="tone">${esc(x.tone)}</textarea>
@@ -216,9 +226,15 @@ function collect() {
         const val = f => get(f)?.value.trim();
         const chk = f => !!get(f)?.checked;
         let o = null;
-        if (type === "graded") { if (val("text")) o = { text: val("text"), grade: val("grade") }; }
+        if (type === "graded") {
+          if (val("text")) {
+            o = { text: val("text"), grade: val("grade") };
+            if (chk("nsfw")) o.nsfw = true;
+            if (c.dataset.cup) o.cup = c.dataset.cup;
+          }
+        }
         else if (type === "flagged") { if (val("text")) { o = { text: val("text") }; if (chk("nsfw")) o.nsfw = true; } }
-        else if (type === "traits") { if (val("name")) { o = { name: val("name"), rarity: val("rarity"), cat: val("cat") || val("name") }; if (chk("nsfw")) o.nsfw = true; } }
+        else if (type === "traits") { if (val("name")) { const g = val("rarity") || "N"; o = { name: val("name"), grade: g, rarity: g, cat: val("cat") || val("name") }; if (chk("nsfw")) o.nsfw = true; } }
         else if (type === "occupations") {
           if (val("name")) {
             o = { name: val("name"), grade: val("grade"), life: val("life") || "" };
@@ -230,7 +246,7 @@ function collect() {
           }
         } else if (type === "archetypes") {
           if (val("name")) {
-            o = { name: val("name"), tone: val("tone") || "",
+            o = { name: val("name"), grade: val("grade") || "N", tone: val("tone") || "",
               catchphrases: (val("catchphrases")||"").split(/[、,]/).map(x=>x.trim()).filter(Boolean),
               reactions: { "開心": val("re_開心")||"", "低落": val("re_低落")||"", "生氣": val("re_生氣")||"", "不安": val("re_不安")||"" },
               proactivity: +val("proactivity")||50, shyness: +val("shyness")||50,
@@ -260,9 +276,9 @@ function addItem(btn, type) {
   const G = POOLS[curG], path = sec.dataset.sec;
   const arr = getPath(G, path) || [];
   const blank = { graded: {text:"",grade:"N"}, flagged: {text:""},
-    traits: {name:"",rarity:"普通",cat:""},
+    traits: {name:"",grade:"N",rarity:"N",cat:""},
     occupations: {name:"",grade:"R",life:"",outfit:""},
-    archetypes: {name:"",tone:"",catchphrases:[],reactions:{},proactivity:50,shyness:50,jealousy:50,loyalty:60,hobby_vibes:[]},
+    archetypes: {name:"",grade:"N",tone:"",catchphrases:[],reactions:{},proactivity:50,shyness:50,jealousy:50,loyalty:60,hobby_vibes:[]},
     libido: {name:"",grade:"R",shyness_delta:0,desc:""},
     chronotypes: {name:"",desc:"",wake_react:""} }[type];
   arr.push(blank); setPath(G, path, arr);

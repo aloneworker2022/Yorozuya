@@ -3,6 +3,7 @@ data/
 assets/portraits/
 assets/album/
 assets/testword/
+assets/pose_refs/
 .venv/
 .env
 .env.*

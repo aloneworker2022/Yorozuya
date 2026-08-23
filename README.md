@@ -3,7 +3,7 @@
 Todo 積分驅動的魅魔召喚養成網頁遊戲。
 
 - 白天:做現實委託賺金幣,聊天/約會養魅魔(**Ollama** 或 **Grok Build 無頭**)
-- 夜間:魅魔回夢境織夢,ComfyUI 生成立繪與相簿(GPU 換班制)
+- 立繪／場景圖:需要時即時生成(Grok Build 或 ComfyUI)
 
 企劃書:[docs/plan-v5.md](docs/plan-v5.md)(關係演出規格另見 [docs/relationship-axes.md](docs/relationship-axes.md))
 
@@ -43,7 +43,7 @@ cd server && uvicorn main:app --host 0.0.0.0 --port 8000
 
 完成偵測:用 `--output-format streaming-json`,收到 `{"type":"end"}` 立刻寫入訂單並結束行程(不等 process 自然退出)。
 
-測試頁:`/testword` → AI 互動測試台 + **Grok Build 生圖測試**。生圖有兩種:整張,或**分段生圖**——
+測試頁:`/testword` → AI 互動測試台 + **Grok Build 生圖測試**。立繪測試器只跑三連拍與喜怒哀樂害羞。生圖有兩種:整張,或**分段生圖**——
 **頭 / 胸 / 下半身**各一張,每段兩輪:第一輪不寫任何服裝欄位,第二輪拿第一輪同段那張當參考圖再把衣服畫上去。
 prompt 刻意短,只有該段的抽卡原文加取景(例:`G 罩杯、傲人豐滿、纖細苗條、皮膚白皙 / 下巴到腰,不畫臉`)。
 流程是**先出 prompt、人改完、再一段一段按**:`① 產生 prompt` 只組字不生圖,每段各有自己的編輯框與生成鍵,
@@ -370,6 +370,8 @@ SD 畫不出 alpha,所以是**先要一塊平背景、生完再摳掉**:prompt �
   玩家在讀結果卡時另外兩張正好織完。
 - 算圖尺寸挑 SDXL 標準桶(1024×1024 / 832×1216),出圖才縮到上表尺寸。
 - 存 `assets/portraits/{角色id}_{shot}.png`,與 testword 的實驗圖分開。
+- 出卡場景圖覆寫同一檔:`assets/portraits/{角色id}_card_{卡id}.png`（電話窺視用 `_card_watch`）。同一張卡再打就蓋掉舊圖,不再往 testword 堆時間戳檔。
+- **圖檔生命週期**：妹子獻祭／離開／被娶走時刪她的立繪與出卡圖。名冊裡沒有的孤兒立繪、沒人引用的舊出卡圖、testword 超過最近 48 張的實驗圖,進遊戲或設定頁「清理孤兒圖」會掃掉。`chk_*` 測試檔保留。
 - 缺哪張、什麼時候補,詳細頁那行會講;按「✦ 織出她的形體」只補缺的,不重生已有的。
 - 想要的那張還沒好,`girlShot()` 會退而求其次拿已有的;舊存檔的單張 `portrait`
   也仍然認得(`SHOT_FALLBACK`)。
@@ -386,9 +388,15 @@ SD 畫不出 alpha,所以是**先要一塊平背景、生完再摳掉**:prompt �
 | PUT | `/api/save` | 寫入存檔(版本衝突 409) |
 | GET | `/api/llm/tags?provider=ollama\|grok-build` | 模型列表 |
 | POST | `/api/gen` | 訂單佇列 `{key, provider, model, messages}` |
-| POST | `/api/imggen` | 生圖訂單(構圖/分級/風格;`part=head0\|bust0\|lower0` 第一輪、`head\|bust\|lower` 第二輪穿搭,`ref` 帶第一輪同段那張,`prompt` 帶改過的版本)→ result 為 `/assets/testword/….png` |
+| POST | `/api/imggen` | 生圖訂單(構圖/分級/風格;`part=head0\|bust0\|lower0` 第一輪、`head\|bust\|lower` 第二輪穿搭,`ref` 帶第一輪同段那張,`pose_ref` 帶姿勢／構圖參考圖,`prompt` 帶改過的版本)。立繪／出卡落到 `/assets/portraits/` 覆寫;testword 實驗圖才進 `/assets/testword/` |
+| POST | `/api/pose-refs` | 上傳姿勢參考圖 → `/assets/pose_refs/` |
+| GET | `/api/pose-refs` | 最近上傳的姿勢參考圖 |
+| DELETE | `/api/pose-refs/{name}` | 刪一張姿勢參考圖 |
 | POST | `/api/imggen/preview` | 不生圖,只組這份人設的六段 prompt(存檔路徑與參考圖那兩行送出前才補) |
 | GET | `/api/imggen/list` | 最近生圖列表(含 `part`) |
+| GET | `/api/assets/stats` | 立繪／testword／grok 工作目錄用量 |
+| POST | `/api/assets/purge-girl` | 刪一名妹子的立繪與出卡圖 `{char_id, urls?}` |
+| POST | `/api/assets/gc` | 清孤兒立繪與過舊實驗圖 `{keep_ids, keep_urls, keep_testword_recent}` |
 | GET | `/api/comfy/status?url=` | ComfyUI 通不通、checkpoint 清單、VRAM、GPU 現在歸誰用(`url` 給值 = 測那台並記住) |
 | GET | `/api/cutout` | 去背能不能用、參數、最近 30 筆結果 |
 | POST | `/api/cutout` | 對已存在的圖重摳(`{url, tol, border_min, dilate}`) |

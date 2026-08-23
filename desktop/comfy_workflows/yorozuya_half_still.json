@@ -1,0 +1,179 @@
+{
+  "last_node_id": 10,
+  "last_link_id": 12,
+  "nodes": [
+    {
+      "id": 10,
+      "type": "MarkdownNote",
+      "pos": [40, 40],
+      "size": [420, 220],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "## 萬事屋靜圖半身（對照用）\n\n參數對齊 RP5 `server/comfy.py`：\n- 832×1216　euler_ancestral / normal\n- steps 30　CFG 5　CLIP skip 2\n\n**請把節點 1 的 checkpoint 改成你們平常那顆 Illustrious / SDXL。**\n\n這份不會動。動圖請 Load `yorozuya_half_anim.json`。"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 1,
+      "type": "CheckpointLoaderSimple",
+      "pos": [40, 300],
+      "size": [360, 100],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [1], "slot_index": 0},
+        {"name": "CLIP", "type": "CLIP", "links": [2], "slot_index": 1},
+        {"name": "VAE", "type": "VAE", "links": [8], "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "CheckpointLoaderSimple"},
+      "widgets_values": [""]
+    },
+    {
+      "id": 9,
+      "type": "CLIPSetLastLayer",
+      "pos": [440, 300],
+      "size": [280, 60],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "clip", "type": "CLIP", "link": 2}
+      ],
+      "outputs": [
+        {"name": "CLIP", "type": "CLIP", "links": [3, 4], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "CLIPSetLastLayer"},
+      "widgets_values": [-2]
+    },
+    {
+      "id": 2,
+      "type": "CLIPTextEncode",
+      "pos": [760, 80],
+      "size": [420, 180],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "clip", "type": "CLIP", "link": 3}
+      ],
+      "outputs": [
+        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [5], "slot_index": 0}
+      ],
+      "title": "正向（短 tag，跟遊戲同一套）",
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": [
+        "masterpiece, best quality, 1girl, adult, solo, upper body, looking at viewer, simple background"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "CLIPTextEncode",
+      "pos": [760, 300],
+      "size": [420, 160],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "clip", "type": "CLIP", "link": 4}
+      ],
+      "outputs": [
+        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [6], "slot_index": 0}
+      ],
+      "title": "負向",
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": [
+        "worst quality, low quality, lowres, blurry, bad anatomy, bad hands, extra digits, signature, watermark, monochrome, child, loli, chibi, horns, wings, demon girl"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "EmptyLatentImage",
+      "pos": [440, 420],
+      "size": [280, 110],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "outputs": [
+        {"name": "LATENT", "type": "LATENT", "links": [7], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "EmptyLatentImage"},
+      "widgets_values": [832, 1216, 1]
+    },
+    {
+      "id": 5,
+      "type": "KSampler",
+      "pos": [1240, 160],
+      "size": [300, 262],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 1},
+        {"name": "positive", "type": "CONDITIONING", "link": 5},
+        {"name": "negative", "type": "CONDITIONING", "link": 6},
+        {"name": "latent_image", "type": "LATENT", "link": 7}
+      ],
+      "outputs": [
+        {"name": "LATENT", "type": "LATENT", "links": [9], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "KSampler"},
+      "widgets_values": [123456789, "fixed", 30, 5, "euler_ancestral", "normal", 1]
+    },
+    {
+      "id": 6,
+      "type": "VAEDecode",
+      "pos": [1580, 220],
+      "size": [220, 50],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 9},
+        {"name": "vae", "type": "VAE", "link": 8}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [10], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "VAEDecode"}
+    },
+    {
+      "id": 8,
+      "type": "SaveImage",
+      "pos": [1840, 220],
+      "size": [280, 80],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 10}
+      ],
+      "properties": {"Node name for S&R": "SaveImage"},
+      "widgets_values": ["yorozuya/still"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 5, 0, "MODEL"],
+    [2, 1, 1, 9, 0, "CLIP"],
+    [3, 9, 0, 2, 0, "CLIP"],
+    [4, 9, 0, 3, 0, "CLIP"],
+    [5, 2, 0, 5, 1, "CONDITIONING"],
+    [6, 3, 0, 5, 2, "CONDITIONING"],
+    [7, 4, 0, 5, 3, "LATENT"],
+    [8, 1, 2, 6, 1, "VAE"],
+    [9, 5, 0, 6, 0, "LATENT"],
+    [10, 6, 0, 8, 0, "IMAGE"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {"scale": 0.72, "offset": [0, 0]}
+  },
+  "version": 0.4
+}

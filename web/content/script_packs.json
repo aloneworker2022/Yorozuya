@@ -1,0 +1,152 @@
+{
+  "packs": [
+    {
+      "id": "mt50vl7p8exhpw",
+      "name": "摸臀部",
+      "kind": "tease",
+      "keywords": ["摸臀", "臀部", "屁股", "摸屁股", "揉臀", "捏臀", "打屁股", "揉屁股"],
+      "updated": 1787457286646,
+      "scenes": {
+        "1": {
+          "attitude": "玩家一步一步靠近[name]，然後摸[name]臀部。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
+          "imgMode": "prompt",
+          "slots": [
+            {
+              "prompt": "man's left hand touching girl buttocks ,left hand touching buttocks,mela hand touching buttocks,",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787446813383_a8ff62a0.png"
+            }
+          ],
+          "narr": [
+            "你靠近[name]",
+            "你忽然伸手抓[name]的屁股"
+          ]
+        }
+      }
+    },
+    {
+      "id": "mt51cl707wlj2z",
+      "name": "摸奶",
+      "kind": "tease",
+      "keywords": ["摸奶", "摸乳", "揉奶", "揉胸", "摸胸", "胸部", "奶子", "乳房", "吃奶", "吸奶", "玩奶"],
+      "updated": 1787454856447,
+      "scenes": {
+        "1": {
+          "attitude": "[name]看到你忽然靠近，接著忽然伸手摸[name]的奶子。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
+          "imgMode": "prompt",
+          "slots": [
+            {
+              "prompt": "male left hand touches girl's breasts , one hand touching breasts,",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787443424393_f9f71078.png"
+            }
+          ],
+          "narr": [
+            "你靠近[name]",
+            "你伸出手摸[name]的奶子"
+          ]
+        }
+      }
+    },
+    {
+      "id": "mt53kl0p0jwd9e",
+      "name": "口交劇本",
+      "kind": "oral",
+      "keywords": ["口交", "含住", "含著", "幫我口", "給我吸", "口我", "吹簫", "含我"],
+      "updated": 1787446632593,
+      "scenes": {
+        "1": {
+          "attitude": "剛開始被調戲玩弄。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
+          "imgMode": "prompt",
+          "slots": [
+            {
+              "prompt": "",
+              "negative": "",
+              "ref": "",
+              "url": ""
+            }
+          ],
+          "narr": [
+            "你伸手調戲玩弄 [name]。"
+          ]
+        },
+        "4": {
+          "attitude": "玩家正在高潮射精。陌生／朋友抗拒丟臉；女友複雜；妻子接受。",
+          "imgMode": "prompt",
+          "slots": [
+            {
+              "prompt": "",
+              "negative": "",
+              "ref": "",
+              "url": ""
+            },
+            {
+              "prompt": "",
+              "negative": "",
+              "ref": "",
+              "url": ""
+            }
+          ],
+          "narr": [
+            "你繳械了，全射進 [name] 裡面。"
+          ]
+        }
+      }
+    },
+    {
+      "id": "mt58gy67f4d240",
+      "name": "摸奶",
+      "kind": "tease",
+      "keywords": ["摸奶", "摸乳", "揉奶", "揉胸", "摸胸", "胸部", "奶子", "乳房", "吃奶", "吸奶", "玩奶"],
+      "updated": 1787455993282,
+      "scenes": {
+        "1": {
+          "attitude": "[name]被玩家伸手進去摸奶。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
+          "imgMode": "prompt",
+          "slots": [
+            {
+              "prompt": "male hand kneading girl breast,male hand kneading breast,male hand touching breast,1 male ,1 girl",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787455943945_425e5286.png"
+            }
+          ],
+          "narr": [
+            "你伸手調戲玩弄 [name]的奶。"
+          ]
+        }
+      }
+    },
+    {
+      "id": "mt59x1bqu0gddp",
+      "name": "扯上衣",
+      "kind": "tease",
+      "keywords": ["扯上衣", "撕衣服", "扯開", "扯開衣服", "撕開", "扯衣服"],
+      "updated": 1787464045727,
+      "scenes": {
+        "1": {
+          "attitude": "他忽然上前扯開妳的上衣露出胸部。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
+          "imgMode": "prompt",
+          "slots": [
+            {
+              "prompt": "male hand tear open girl's clothing :2,male hand ripping open girl's clothing ,(exposing breast:1.6),(boy tear open clothing :1.6)\nexposed,(exposed breast:2),",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787464011200_5b84a29f.png"
+            }
+          ],
+          "narr": [
+            "你靠近[name]。",
+            "你伸手把[name]的上衣扯開，露出[breast]"
+          ]
+        }
+      }
+    }
+  ],
+  "activeByKind": {
+    "tease": "mt59x1bqu0gddp",
+    "oral": "mt53kl0p0jwd9e"
+  }
+}
