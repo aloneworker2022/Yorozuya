@@ -27,8 +27,8 @@
       "clonedFrom": null,
       "createMode": "empty",
       "createdAt": 1786072256.606594,
-      "updatedAt": 1786601296.3488767,
-      "activatedAt": 1786445575.3880498
+      "updatedAt": 1787792075.6304398,
+      "activatedAt": 1787791723.5823457
     },
     {
       "id": "G_card",
@@ -71,7 +71,21 @@
       "to": "ca",
       "epoch": 3,
       "playerCardsWiped": true
+    },
+    {
+      "at": 1787791506.194556,
+      "from": "ca",
+      "to": "ca",
+      "epoch": 4,
+      "playerCardsWiped": true
+    },
+    {
+      "at": 1787791723.58235,
+      "from": "ca",
+      "to": "ca",
+      "epoch": 5,
+      "playerCardsWiped": true
     }
   ],
-  "liveEpoch": 3
+  "liveEpoch": 5
 }

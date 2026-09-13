@@ -1,5 +1,5 @@
 {
- "_comment": "人物生成池(廠商件)。/edit_person 可編輯;nsfw:true 的項目只在遊戲分級為 NSFW 時參與抽取。搬運自 hermesperson,適配萬事屋(職業=被召喚前的人生)。男性=召喚師,在 summoners.json 另編。appearance.areola / eye_color 為 NSFW 向身體細節軸;appearance.labia_size / clitoris_size / labia_color / pubic_hair 為性器特寫軸(前三各三級、陰毛四級、不分等級、不進稀有度)。英文畫圖 tag 見 server/sdtags.py 對照表。",
+ "_comment": "人物生成池(廠商件)。/edit_person 可編輯;nsfw:true 的項目只在遊戲分級為 NSFW 時參與抽取。搬運自 hermesperson,適配萬事屋(職業=被召喚前的人生)。男性=其他召喚師,在 /editmale 編輯 summoners.json。appearance.areola / eye_color 為 NSFW 向身體細節軸;appearance.labia_size / clitoris_size / labia_color / pubic_hair 為性器特寫軸(前三各三級、陰毛四級、不分等級、不進稀有度)。英文畫圖 tag 見 server/sdtags.py 對照表。",
  "female": {
   "names": [
    "莉莉絲",

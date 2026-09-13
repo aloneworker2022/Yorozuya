@@ -4,12 +4,24 @@
       "id": "mt50vl7p8exhpw",
       "name": "摸臀部",
       "kind": "tease",
-      "keywords": ["摸臀", "臀部", "屁股", "摸屁股", "揉臀", "捏臀", "打屁股", "揉屁股"],
-      "updated": 1787457286646,
+      "pose": "",
+      "framePackId": "",
+      "keywords": [
+        "摸臀",
+        "臀部",
+        "屁股",
+        "摸屁股",
+        "揉臀",
+        "捏臀",
+        "打屁股",
+        "揉屁股"
+      ],
+      "updated": 1787893227188,
       "scenes": {
         "1": {
           "attitude": "玩家一步一步靠近[name]，然後摸[name]臀部。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
           "imgMode": "prompt",
+          "framePackId": "",
           "slots": [
             {
               "prompt": "man's left hand touching girl buttocks ,left hand touching buttocks,mela hand touching buttocks,",
@@ -29,12 +41,27 @@
       "id": "mt51cl707wlj2z",
       "name": "摸奶",
       "kind": "tease",
-      "keywords": ["摸奶", "摸乳", "揉奶", "揉胸", "摸胸", "胸部", "奶子", "乳房", "吃奶", "吸奶", "玩奶"],
+      "pose": "",
+      "framePackId": "",
+      "keywords": [
+        "摸奶",
+        "摸乳",
+        "揉奶",
+        "揉胸",
+        "摸胸",
+        "胸部",
+        "奶子",
+        "乳房",
+        "吃奶",
+        "吸奶",
+        "玩奶"
+      ],
       "updated": 1787454856447,
       "scenes": {
         "1": {
           "attitude": "[name]看到你忽然靠近，接著忽然伸手摸[name]的奶子。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
           "imgMode": "prompt",
+          "framePackId": "",
           "slots": [
             {
               "prompt": "male left hand touches girl's breasts , one hand touching breasts,",
@@ -52,45 +79,58 @@
     },
     {
       "id": "mt53kl0p0jwd9e",
-      "name": "口交劇本",
+      "name": "口交",
       "kind": "oral",
-      "keywords": ["口交", "含住", "含著", "幫我口", "給我吸", "口我", "吹簫", "含我"],
-      "updated": 1787446632593,
+      "pose": "",
+      "framePackId": "",
+      "keywords": [
+        "口交",
+        "含住",
+        "含著",
+        "幫我吸",
+        "給我吸",
+        "吹"
+      ],
+      "updated": 1787630833093,
       "scenes": {
         "1": {
-          "attitude": "剛開始被調戲玩弄。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
+          "attitude": "被強迫按頭口交。依關係：陌生驚怒、朋友羞怒、女友害羞不太敢做、妻子很享受不抗拒這種事情。只演開場，不要自己演高潮。",
           "imgMode": "prompt",
+          "framePackId": "",
           "slots": [
             {
-              "prompt": "",
+              "prompt": "fellatio,blowjob,male hand on girl head,male grabbing hair,head pressed down by hand,(deepthroat:1.6),(fellatio:1.5),(blowjob:1.5)",
               "negative": "",
               "ref": "",
-              "url": ""
+              "url": "/assets/testword/1787628271501_aea0dbb2.png"
             }
           ],
           "narr": [
-            "你伸手調戲玩弄 [name]。"
+            "你脫下褲子露出陰莖。",
+            "你手壓著[name]的頭，要她幫妳口交。"
           ]
         },
         "4": {
-          "attitude": "玩家正在高潮射精。陌生／朋友抗拒丟臉；女友複雜；妻子接受。",
+          "attitude": "女子正在幫玩家口交，玩家高潮射精。陌生抗拒丟點丟臉；朋友抗拒丟臉；女友感覺很噁心沒有體諒複雜；妻子害羞吞下精液。",
           "imgMode": "prompt",
+          "framePackId": "",
           "slots": [
             {
-              "prompt": "",
+              "prompt": "fellatio,blowjob,male hand on girl head,male grabbing hair,head pressed down by hand,(deepthroat:1.6),(fellatio:1.5),(blowjob:1.5),",
               "negative": "",
               "ref": "",
-              "url": ""
+              "url": "/assets/testword/1787628914481_9b7cfafc.png"
             },
             {
-              "prompt": "",
+              "prompt": "fellatio,blowjob,male hand on girl head,male grabbing hair,head pressed down by hand,(deepthroat:1.6),(fellatio:1.5),(blowjob:1.5),ejaculation,oral cumshot,cum in mouth,cum overflow,dripping cum",
               "negative": "",
               "ref": "",
-              "url": ""
+              "url": "/assets/testword/1787628986492_a3c64c15.png"
             }
           ],
           "narr": [
-            "你繳械了，全射進 [name] 裡面。"
+            "[name]正在幫妳口交，你忍不住了 ...感覺腦袋一陣酥麻 ，陰莖一抖一抖得發硬(感覺要射精了)\n",
+            "你忍不住，把精液射進正在幫你口交的[name]嘴裡。"
           ]
         }
       }
@@ -99,12 +139,27 @@
       "id": "mt58gy67f4d240",
       "name": "摸奶",
       "kind": "tease",
-      "keywords": ["摸奶", "摸乳", "揉奶", "揉胸", "摸胸", "胸部", "奶子", "乳房", "吃奶", "吸奶", "玩奶"],
+      "pose": "",
+      "framePackId": "",
+      "keywords": [
+        "摸奶",
+        "摸乳",
+        "揉奶",
+        "揉胸",
+        "摸胸",
+        "胸部",
+        "奶子",
+        "乳房",
+        "吃奶",
+        "吸奶",
+        "玩奶"
+      ],
       "updated": 1787455993282,
       "scenes": {
         "1": {
           "attitude": "[name]被玩家伸手進去摸奶。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
           "imgMode": "prompt",
+          "framePackId": "",
           "slots": [
             {
               "prompt": "male hand kneading girl breast,male hand kneading breast,male hand touching breast,1 male ,1 girl",
@@ -123,12 +178,22 @@
       "id": "mt59x1bqu0gddp",
       "name": "扯上衣",
       "kind": "tease",
-      "keywords": ["扯上衣", "撕衣服", "扯開", "扯開衣服", "撕開", "扯衣服"],
-      "updated": 1787464045727,
+      "pose": "",
+      "framePackId": "",
+      "keywords": [
+        "扯上衣",
+        "撕衣服",
+        "扯開",
+        "扯開衣服",
+        "撕開",
+        "扯衣服"
+      ],
+      "updated": 1787709290455,
       "scenes": {
         "1": {
           "attitude": "他忽然上前扯開妳的上衣露出胸部。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
           "imgMode": "prompt",
+          "framePackId": "",
           "slots": [
             {
               "prompt": "male hand tear open girl's clothing :2,male hand ripping open girl's clothing ,(exposing breast:1.6),(boy tear open clothing :1.6)\nexposed,(exposed breast:2),",
@@ -143,10 +208,163 @@
           ]
         }
       }
+    },
+    {
+      "id": "mt85aii1p8szxs",
+      "name": "背後",
+      "kind": "sex",
+      "pose": "doggy",
+      "framePackId": "7e64d548c5",
+      "keywords": [
+        "做愛",
+        "交配",
+        "插入",
+        "肏你",
+        "幹你"
+      ],
+      "updated": 1787893228740,
+      "scenes": {
+        "1": {
+          "attitude": "他趁你不注意走到背後抓住你的臀部。依關係：陌生驚怒、朋友羞怒、女友害羞、妻子享受。只演開場，不要自己演高潮。",
+          "imgMode": "prompt",
+          "framePackId": "",
+          "slots": [
+            {
+              "prompt": "POV, from behind, grabbing girl's buttocks, squeezing butt, hands on butt, close-up, perspective,mela standing,fully clothed,clothed sex",
+              "negative": "(naked:1.5),(nude:1.6),bottomless",
+              "ref": "",
+              "url": "/assets/testword/1787882722134_6b4f356f.png"
+            }
+          ],
+          "narr": [
+            "你在[name]背後，伸手捉著她的臀部。",
+            "你掏出陰莖，在[name]的陰唇和屁眼上磨蹭。"
+          ]
+        },
+        "2": {
+          "attitude": "正戲進行中，還沒到高潮。依關係：陌生抗拒、朋友羞怒、女友又羞又要、妻子投入。",
+          "imgMode": "prompt",
+          "framePackId": "",
+          "slots": [
+            {
+              "prompt": "from behind, back focus, viewing from behind,fucking ,sex,(nude:1.6),labia,",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787884280789_15d0000c.png"
+            },
+            {
+              "prompt": "from behind, back focus, viewing from behind,fucking ,sex,(nude:1.6),labia,",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787884316185_59733376.png"
+            }
+          ],
+          "narr": [
+            "你抓住 [name] 的腰，你的陰莖開始進入[name]的體內，不斷的肏"
+          ]
+        },
+        "3": {
+          "attitude": "不論關係，她比剛才更興奮、更投入。語氣碎、喘，講不了正常長句。",
+          "imgMode": "prompt",
+          "framePackId": "",
+          "slots": [
+            {
+              "prompt": "from behind, back focus, viewing from behind,fucking ,sex,(nude:1.6),labia,",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787884367584_5ecd8971.png"
+            },
+            {
+              "prompt": "from behind, back focus, viewing from behind,fucking ,sex,(nude:1.6),labia,",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787884467641_e6fb4d4b.png"
+            }
+          ],
+          "narr": [
+            "[name] 已經軟了，每一下都撞得更深。"
+          ]
+        },
+        "4": {
+          "attitude": "玩家正在高潮射精。陌生／朋友抗拒丟臉；女友複雜；妻子接受。",
+          "imgMode": "prompt",
+          "framePackId": "",
+          "slots": [
+            {
+              "prompt": "from behind, back focus, viewing from behind,fucking ,sex,(nude:1.6),labia,Semen, ejaculation, internal ejaculation",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787884588544_bfc9b468.png"
+            },
+            {
+              "prompt": "from behind, back focus, viewing from behind,fucking ,sex,(nude:1.6),labia,Semen, ejaculation, internal ejaculation",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787884630236_f86a733a.png"
+            }
+          ],
+          "narr": [
+            "你繳械了，全射進 [name] 裡面。"
+          ]
+        },
+        "5": {
+          "attitude": "她也高潮，同時被射進去。失神、氣音。",
+          "imgMode": "prompt",
+          "framePackId": "",
+          "slots": [
+            {
+              "prompt": "from behind, back focus, viewing from behind,fucking ,sex,(nude:1.6),labia,Semen, ejaculation, internal ejaculation",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787884689889_a2857be2.png"
+            },
+            {
+              "prompt": "from behind, back focus, viewing from behind,fucking ,sex,(nude:1.6),labia,Semen, ejaculation, internal ejaculation",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787884726287_b802ca34.png"
+            }
+          ],
+          "narr": [
+            "[name] 夾緊、自己先去了；你跟著射滿。"
+          ]
+        }
+      }
+    },
+    {
+      "id": "mt9eqi8qq73bpj",
+      "name": "扯開衣服",
+      "kind": "tease",
+      "pose": "",
+      "framePackId": "",
+      "keywords": [
+        "扯開",
+        "扯衣服"
+      ],
+      "updated": 1787710110085,
+      "scenes": {
+        "1": {
+          "attitude": "你的衣服被玩家扯開露出胸部。依關係：陌生驚怒、朋友驚嚇、女友驚嚇、妻子驚嚇。",
+          "imgMode": "prompt",
+          "framePackId": "",
+          "slots": [
+            {
+              "prompt": "male hand tear open girl's clothing :2,male hand ripping open girl's clothing ,(exposing breast:1.6),(boy tear open clothing :1.6)\nexposed,(exposed breast:2),tearing open shirt,ripping shirt open,revealing chest,revealing breast",
+              "negative": "",
+              "ref": "",
+              "url": "/assets/testword/1787709777568_a68c5142.png"
+            }
+          ],
+          "narr": [
+            "你伸手把[name]的上衣扯開!!!!露出[breast]\n"
+          ]
+        }
+      }
     }
   ],
   "activeByKind": {
-    "tease": "mt59x1bqu0gddp",
-    "oral": "mt53kl0p0jwd9e"
+    "tease": "mt50vl7p8exhpw",
+    "oral": "mt53kl0p0jwd9e",
+    "sex": "mt85aii1p8szxs"
   }
 }

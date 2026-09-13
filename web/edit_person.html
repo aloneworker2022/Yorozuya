@@ -27,9 +27,6 @@
   button:hover { background: rgba(255,79,216,.3); }
   button.cy { background: rgba(111,227,225,.16); color: #6fe3e1; }
   button.del { background: rgba(255,95,122,.18); color: #ff8fa3; padding: .25em .6em; font-size: .8em; }
-  .tabs { display: flex; gap: .4em; margin-bottom: 1em; }
-  .tabs button { background: rgba(255,255,255,.05); color: #9a92b5; padding: .55em 1.3em; }
-  .tabs button.on { background: rgba(111,227,225,.2); color: #6fe3e1; }
   .card { border-top: 1px solid rgba(255,255,255,.08); padding: .6em 0; }
   .itemrow { display: grid; grid-template-columns: 1fr auto auto auto; gap: .4em; align-items: center; margin: .3em 0; }
   .itemrow input[type=checkbox] { width: auto; }
@@ -43,12 +40,7 @@
 </head>
 <body>
 <h1>⚙ Edit Person — 人物生成池</h1>
-<div class="warn">召喚時的所有抽取池都在這裡。勾「18+」的項目只在遊戲分級為 NSFW 時參與抽取(SFW 模式看不到)。改完按最下方儲存,寫回 persona_pools.json,遊戲重整後生效。<a href="/testword">← Testword</a> | <a href="/">回遊戲</a></div>
-
-<div class="tabs" id="g-tabs">
-  <button data-g="female" class="on">女子(魅魔)</button>
-  <button data-g="male">男子(召喚師)</button>
-</div>
+<div class="warn">召喚時的所有抽取池都在這裡。勾「18+」的項目只在遊戲分級為 NSFW 時參與抽取(SFW 模式看不到)。改完按最下方儲存,寫回 persona_pools.json,遊戲重整後生效。<a href="/editmale">其他召喚師</a> | <a href="/testword">← Testword</a> | <a href="/testdate">約會編輯器</a> | <a href="/">回遊戲</a></div>
 
 <div id="editor"></div>
 
@@ -108,7 +100,6 @@ const SCHEMA = {
     ["appearance.feature", "graded", "小特徵(含評級)"],
     ["special_traits", "traits", "特殊屬性(抽卡 1~3 個;與名冊同一套 N/R/S/SS/SSR,全部進平均)"],
   ],
-  // 男子=召喚師,獨立資料源(summoners.json),用專屬編輯器,不走 SCHEMA
 };
 
 function getPath(obj, path) { return path.split(".").reduce((o,k)=>o?.[k], obj); }
@@ -119,7 +110,6 @@ function setPath(obj, path, v) {
 }
 
 function render() {
-  if (curG === "male") return renderSummoners();
   const G = POOLS[curG];
   const el = document.getElementById("editor");
   el.innerHTML = SCHEMA[curG].map(([path, type, title], si) => {
@@ -287,129 +277,11 @@ function addItem(btn, type) {
   [...document.querySelectorAll("details")].forEach((d,i)=>d.open=open[i]);
 }
 
-document.querySelectorAll("#g-tabs button").forEach(b => b.onclick = () => {
-  if (curG === "male") { collectSummoners(); collectKinks(); } else collect();   // 保住當前分頁的編輯
-  curG = b.dataset.g;
-  document.querySelectorAll("#g-tabs button").forEach(x=>x.classList.toggle("on", x===b));
-  render();
-});
-
-// ── 男子=召喚師編輯器(summoners.json)+ 性趣池(kinks.json) ──
-let SUMMONERS = null, KINKS = null;
-async function loadSummoners() {
-  try { SUMMONERS = (await api("/content/summoners.json?ts=" + Date.now())).summoners || []; }
-  catch { SUMMONERS = []; }
-  try { KINKS = (await api("/content/kinks.json?ts=" + Date.now())).kinks || []; }
-  catch { KINKS = []; }
-}
-function renderSummoners() {
-  const el = document.getElementById("editor");
-  el.innerHTML = `<section>
-    <div class="mini" style="margin-bottom:.6em">召喚師池(現實裡覬覦你魅魔的男人)。展開編輯;約會傾向 = 他召喚妹子時「帶出門約會」的機率(其餘為召去身邊陪伴)。</div>
-    <div id="su-list">${(SUMMONERS||[]).map((su,i)=>suCard(su,i)).join("") || `<div class="mini">目前沒有召喚師。</div>`}</div>
-    <div class="row" style="margin-top:.7em"><button class="cy" onclick="addSummoner()">＋新增召喚師</button></div>
-  </section>
-  <section>
-    <div class="mini" style="margin-bottom:.6em">性趣池(交配環節)。召喚師纏上魅魔時隨機抽 4~10 個給那對;每次交配挑一個,依起/承/合三步演出。<b style="color:#ff8fa3">這裡寫的就是 NSFW 演出內容</b>——魔法環的內/外射由核心處理,不用自己寫。</div>
-    <div id="kink-list">${(KINKS||[]).map((k,i)=>kinkCard(k,i)).join("") || `<div class="mini">目前沒有性趣。</div>`}</div>
-    <div class="row" style="margin-top:.7em"><button class="cy" onclick="addKink()">＋新增性趣</button></div>
-  </section>`;
-}
-function kinkCard(k, i) {
-  return `<div class="card" data-kink="${i}"><details>
-    <summary>💗 <b>${esc(k.name||"(未命名)")}</b></summary>
-    <label>性趣名稱</label><input value="${esc(k.name||"")}" data-kf="name">
-    <label>起(開始:男開始、女回應)</label><textarea data-kf="qi">${esc(k.qi||"")}</textarea>
-    <label>承(中間:男女互動)</label><textarea data-kf="cheng">${esc(k.cheng||"")}</textarea>
-    <label>合(結束:高潮)</label><textarea data-kf="he">${esc(k.he||"")}</textarea>
-    <div class="row" style="margin-top:.4em"><button class="del" onclick="delKink(${i})">刪除這個性趣</button></div>
-  </details></div>`;
-}
-function collectKinks() {
-  document.querySelectorAll("#kink-list [data-kink]").forEach(card => {
-    const k = KINKS[+card.dataset.kink]; if (!k) return;
-    card.querySelectorAll("[data-kf]").forEach(inp => { k[inp.dataset.kf] = inp.value.trim(); });
-  });
-}
-function addKink() { collectSummoners(); collectKinks(); KINKS.push({ name:"", qi:"", cheng:"", he:"" }); renderSummoners();
-  document.querySelector(`[data-kink="${KINKS.length-1}"] details`)?.setAttribute("open",""); }
-function delKink(i) { if (!confirm(`刪除性趣「${KINKS[i]?.name||"(未命名)"}」?`)) return; collectSummoners(); collectKinks(); KINKS.splice(i,1); renderSummoners(); }
-function suCard(su, i) {
-  const spots = (su.spots||[]).map((sp,j)=>`
-    <div class="row" style="gap:.4em;margin:.3em 0" data-spot="${i}:${j}">
-      <input value="${esc(sp.name||"")}" data-sf="name" placeholder="地點名" style="flex:0 1 8em">
-      <input value="${esc(sp.desc||"")}" data-sf="desc" placeholder="他在這個地點的互動習性(給 AI)" style="flex:1 1 12em">
-      <button class="del" onclick="delSpot(${i},${j})">✕</button>
-    </div>`).join("");
-  return `<div class="card" data-su="${i}"><details>
-    <summary>${su.emoji||"👤"} <b>${esc(su.name||"(未命名)")}</b> <span class="mini">(猥瑣 ${su.creep??1}・約會 ${Math.round((su.dateChance??.5)*100)}%)</span></summary>
-    <div class="row" style="gap:.5em;margin-top:.5em">
-      <span style="flex:1 1 8em"><label>名稱</label><input value="${esc(su.name||"")}" data-f="name"></span>
-      <span style="flex:0 1 5em"><label>Emoji</label><input value="${esc(su.emoji||"")}" data-f="emoji"></span>
-      <span style="flex:0 1 6em"><label>猥瑣 1~3</label><input type="number" min="1" max="3" value="${su.creep??1}" data-f="creep"></span>
-      <span style="flex:0 1 7em"><label>約會傾向 %</label><input type="number" min="0" max="100" step="5" value="${Math.round((su.dateChance??.5)*100)}" data-f="dateChance"></span>
-    </div>
-    <label>一句話形象(給玩家看)</label><input value="${esc(su.desc||"")}" data-f="desc">
-    <label>體態外貌(給 AI)</label><input value="${esc(su.body||"")}" data-f="body">
-    <label>聊天方法/人設(給 AI 演他怎麼糾纏她)</label><textarea data-f="persona">${esc(su.persona||"")}</textarea>
-    <label>愛去的地點(約會型事件優先選這裡)</label>
-    ${spots || `<div class="mini">(還沒有地點——不填則隨機用遊戲內建約會地點)</div>`}
-    <div class="row" style="margin-top:.4em">
-      <button class="cy" style="font-size:.8em" onclick="addSpot(${i})">＋地點</button>
-      <button class="del" onclick="delSummoner(${i})">刪除這個召喚師</button>
-    </div>
-  </details></div>`;
-}
-function collectSummoners() {
-  document.querySelectorAll("#su-list [data-su]").forEach(card => {
-    const i = +card.dataset.su, su = SUMMONERS[i];
-    if (!su) return;
-    card.querySelectorAll('[data-f]').forEach(inp => {
-      const f = inp.dataset.f;
-      if (f === "creep") su.creep = Math.max(1, Math.min(3, parseInt(inp.value)||1));
-      else if (f === "dateChance") su.dateChance = Math.max(0, Math.min(100, parseInt(inp.value)||0))/100;
-      else su[f] = inp.value.trim();
-    });
-    su.spots = [];
-    card.querySelectorAll('[data-spot]').forEach(row => {
-      const name = row.querySelector('[data-sf="name"]').value.trim();
-      const desc = row.querySelector('[data-sf="desc"]').value.trim();
-      if (name) su.spots.push({ name, desc });
-    });
-  });
-}
-function addSummoner() {
-  collectSummoners(); collectKinks();
-  SUMMONERS.push({ id: "su_"+Date.now().toString(36), name: "", emoji: "👤", creep: 1, dateChance: 0.5, desc: "", body: "", persona: "", spots: [] });
-  renderSummoners();
-  document.querySelector(`[data-su="${SUMMONERS.length-1}"] details`)?.setAttribute("open","");
-}
-function delSummoner(i) {
-  if (!confirm(`刪除召喚師「${SUMMONERS[i]?.name||"(未命名)"}」?`)) return;
-  collectSummoners(); collectKinks(); SUMMONERS.splice(i,1); renderSummoners();
-}
-function addSpot(i) { collectSummoners(); collectKinks(); (SUMMONERS[i].spots ??= []).push({name:"",desc:""}); renderSummoners();
-  document.querySelector(`[data-su="${i}"] details`)?.setAttribute("open",""); }
-function delSpot(i,j) { collectSummoners(); collectKinks(); SUMMONERS[i].spots.splice(j,1); renderSummoners();
-  document.querySelector(`[data-su="${i}"] details`)?.setAttribute("open",""); }
-
 async function saveAll() {
   try {
-    if (curG === "male") {
-      collectSummoners(); collectKinks();
-      const bad = SUMMONERS.find(su => !su.name || !su.persona);
-      if (bad) throw new Error("有召喚師缺「名稱」或「人設」");
-      for (const su of SUMMONERS) su.spots = (su.spots||[]).filter(s => s.name);
-      const badK = KINKS.find(k => !k.name);
-      if (badK) throw new Error("有性趣缺「名稱」");
-      await api("/api/summoners", "PUT", { summoners: SUMMONERS });
-      await api("/api/kinks", "PUT", { kinks: KINKS });
-      done("✓ 已寫回 summoners.json + kinks.json(遊戲重整後生效)");
-    } else {
-      collect();
-      await api("/api/pools", "PUT", POOLS);
-      done("✓ 已寫回 persona_pools.json(遊戲重整後生效)");
-    }
+    collect();
+    await api("/api/pools", "PUT", POOLS);
+    done("✓ 已寫回 persona_pools.json(遊戲重整後生效)");
   } catch (e) { fail(e.message); }
 }
 function done(m){ const s=document.getElementById("save-status"); s.textContent=m; s.className="status"; }
@@ -417,7 +289,6 @@ function fail(m){ const s=document.getElementById("save-status"); s.textContent=
 
 (async () => {
   POOLS = await api("/content/persona_pools.json?ts=" + Date.now());
-  await loadSummoners();
   render();
 })();
 </script>

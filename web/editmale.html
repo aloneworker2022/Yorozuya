@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edit Male — 其他召喚師</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #12101c; color: #d8d0ec; font-family: system-ui, "Cubic 11", monospace;
+         font-size: 15px; padding: 1em; max-width: 760px; margin: 0 auto; line-height: 1.5; }
+  h1 { color: #6fe3e1; font-size: 1.2em; letter-spacing: .1em; margin-bottom: .2em; }
+  .warn { color: #ff9d4d; font-size: .8em; margin-bottom: 1em; }
+  section { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 10px; padding: 1em 1.1em; margin-bottom: 1em; }
+  h2 { color: #ff8fe6; font-size: .9em; letter-spacing: .1em; }
+  .mini { font-size: .78em; color: #8a82a5; }
+  label { display: block; font-size: .75em; color: #9a92b5; margin: .5em 0 .2em; }
+  input, textarea { width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .45em .6em; outline: none; }
+  input:focus, textarea:focus { border-color: rgba(111,227,225,.45); }
+  textarea { min-height: 4.5em; resize: vertical; line-height: 1.55; }
+  textarea.lines { min-height: 12em; }
+  .row { display: flex; gap: .5em; flex-wrap: wrap; align-items: center; }
+  button { background: rgba(255,79,216,.18); border: none; border-radius: 7px; color: #ff8fe6;
+           font: inherit; padding: .45em .9em; cursor: pointer; }
+  button:hover { background: rgba(255,79,216,.3); }
+  button.cy { background: rgba(111,227,225,.16); color: #6fe3e1; }
+  button.del { background: rgba(255,95,122,.18); color: #ff8fa3; padding: .25em .6em; font-size: .8em; }
+  select { background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .4em .55em; outline: none; }
+  .tabs { display: flex; gap: .35em; flex-wrap: wrap; margin: .45em 0 .6em; }
+  .tabs button { background: rgba(255,255,255,.05); color: #9a92b5; padding: .4em 1em; }
+  .tabs button.on { background: rgba(201,168,255,.22); color: #e2cfff; }
+  .chip { font-size: .72em; color: #8a82a5; margin-left: .35em; }
+  .chip.approach { color: #6fe3e1; }
+  .chip.chat { color: #ffd75f; }
+  .chip.otaku { color: #e2cfff; }
+  .chip.creep { color: #ff8fa3; }
+  .chip.erotic { color: #ff8fe6; }
+  .chip.talk { color: #6fe3e1; }
+  .chip.touch { color: #ffd75f; }
+  .chip.strip { color: #ff8fe6; }
+  .chip.penis { color: #ff8fa3; }
+  .chip.invite { color: #e2cfff; }
+  .chip.mate { color: #ff5f7a; }
+  h3 { color: #c8c0e0; font-size: .82em; letter-spacing: .06em; margin: .2em 0 .4em; }
+  .bh-group { margin-top: .7em; padding-top: .55em; border-top: 1px dashed rgba(255,255,255,.08); }
+  .bh-group:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  .card { border-top: 1px solid rgba(255,255,255,.08); padding: .55em 0; }
+  .card:first-child { border-top: none; padding-top: 0; }
+  details > summary { cursor: pointer; padding: .15em 0; list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  .savebar { position: sticky; bottom: 0; background: #12101c; padding: .8em 0; border-top: 1px solid rgba(255,255,255,.1); }
+  .status { font-size: .8em; color: #6bcb77; min-height: 1.2em; }
+  .status.err { color: #ff5f7a; }
+  a { color: #6fe3e1; }
+  #name-count, #bh-count, #act-count, #da-count { color: #6fe3e1; }
+</style>
+</head>
+<body>
+<h1>⚙ Edit Male — 其他召喚師</h1>
+<div class="warn">其他召喚師生成池。名字一行一個正常人名。行為卡＝怎麼開口（含系：宅男／變態／色情）。行為＝搭訕肢體。「約會動作」依女子性慾值換手，約會現場走這份，不要一直看。下面「猥褻五階」是備用梯子。<a href="/edit_person">女子人物池</a> | <a href="/testword">Testword</a> | <a href="/testdate">約會編輯器</a> | <a href="/">回遊戲</a></div>
+
+<section>
+  <h2>名字池 <span class="mini">(<span id="name-count">0</span> 項)</span></h2>
+  <div class="mini" style="margin:.4em 0 .6em">一行一項。遊戲之後會從這裡抽其他召喚師的名字。</div>
+  <textarea id="names" class="lines" placeholder="例：&#10;林哲宇&#10;高志豪&#10;李醫師"></textarea>
+</section>
+
+<section>
+  <h2>行為卡 <span class="mini">(<span id="bh-count">0</span> 張)</span></h2>
+  <div class="mini" style="margin:.4em 0 .35em">名稱給人看；「怎麼做」給 AI。搭訕卡用來開口靠近，聊天卡用來把對話往下推。系決定口吻：普通、宅、變態或色情。</div>
+  <div class="tabs" id="line-tabs">
+    <button data-line="all" class="on">全部</button>
+    <button data-line="common">通用</button>
+    <button data-line="otaku">宅男</button>
+    <button data-line="creep">變態</button>
+    <button data-line="erotic">色情</button>
+  </div>
+  <div id="bh-list"></div>
+</section>
+
+<section>
+  <h2>行為 <span class="mini">(<span id="act-count">0</span> 項)</span></h2>
+  <div class="mini" style="margin:.4em 0 .6em">肢體動作。搭訕時用來靠近、佔位置；聊天時用來留人、收距離。不要寫台詞——台詞走上面的行為卡。</div>
+  <div id="act-list"></div>
+</section>
+
+<section>
+  <h2>約會動作（依她性慾） <span class="mini">(<span id="da-count">0</span> 種)</span></h2>
+  <div class="mini" style="margin:.4em 0 .35em">搭訕開頭仍走上面的行為卡。入場之後嚴格依性慾區間抽：0–5 言語挑釁、6–11 摸／摳、12–17 脫衣／露莖、18–23 邀交配、24–30 帶走／插入。性慾到頂不會退回言語。指令寫「脫 她上衣」「掀 她裙子」「摸 她陰唇」。換地方寫「提議 去沒人處」，不要寫死地名。</div>
+  <div id="da-list"></div>
+  <div class="row" style="margin-top:.45em">
+    <button class="cy" onclick="addDateAct()">＋新增動作</button>
+    <button onclick="resetDateActs()">還原各檔 30 種預設</button>
+  </div>
+</section>
+
+<section>
+  <h2>猥褻五階 <span class="mini">三型 × 五階 × 各六種</span></h2>
+  <div class="mini" style="margin:.4em 0 .35em">搭訕語氣仍走上面的系。這裡是玩弄梯子：初階只能走自己那型的起手；二階起三型可以混搭。第五階都是交配，只是手段不同。名稱給人看，「怎麼做」給 AI，「指令」給系統（例：親 嘴唇、摸 胸部、磨 下面）。</div>
+  <div class="tabs" id="play-type-tabs">
+    <button data-pt="talk" class="on">言語調戲</button>
+    <button data-pt="touch">觸碰玩弄</button>
+    <button data-pt="expose">猥褻露出</button>
+  </div>
+  <div id="play-list"></div>
+</section>
+
+<div class="savebar">
+  <div class="row">
+    <button onclick="saveAll()">💾 儲存</button>
+    <span class="status" id="save-status"></span>
+  </div>
+</div>
+
+<script type="module">
+import { DEFAULT_DATE_ACTS, DATE_ACT_BANDS, DATE_ACT_KINDS, DATE_ACT_KIND_IDS, cloneDateActs } from "./content/date_act.js";
+
+let BEHAVIORS = [];
+let ACTIONS = [];
+let DATE_ACTS = [];
+let PLAY = { talk: [], touch: [], expose: [] };
+let lineFilter = "all";
+let playTypeFilter = "talk";
+const PLAY_TYPE = { talk: "言語調戲", touch: "觸碰玩弄", expose: "猥褻露出" };
+const PLAY_TYPE_ORDER = ["talk", "touch", "expose"];
+const PLAY_STEP_NAME = ["", "起手（正常，不混搭）", "調戲", "越線", "猥褻", "交配"];
+const WHEN = { approach: "搭訕時", chat: "聊天時" };
+const WHEN_ORDER = ["approach", "chat"];
+const LINE = { common: "通用", otaku: "宅男", creep: "變態", erotic: "色情" };
+const LINE_ORDER = ["common", "otaku", "creep", "erotic"];
+const KIND_ZH = Object.fromEntries(DATE_ACT_KIND_IDS.map((k) => [k, DATE_ACT_KINDS[k].zh]));
+function normLine(v) { return LINE[v] ? v : "common"; }
+function normWhen(v) { return v === "chat" ? "chat" : "approach"; }
+function normKind(v) { return DATE_ACT_KINDS[v] ? v : "talk"; }
+
+async function api(path, method="GET", body=null) {
+  const r = await fetch(path, { method, headers: body ? {"Content-Type":"application/json"} : {},
+    body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || r.status);
+  return r.status === 204 ? null : r.json();
+}
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function parseNames(raw) {
+  return String(raw || "").split("\n").map(x => x.trim()).filter(Boolean);
+}
+function countNames() {
+  document.getElementById("name-count").textContent = parseNames(document.getElementById("names").value).length;
+}
+function done(m){ const s=document.getElementById("save-status"); s.textContent=m; s.className="status"; }
+function fail(m){ const s=document.getElementById("save-status"); s.textContent="失敗:"+m; s.className="status err"; }
+
+function collectBehaviors() {
+  document.querySelectorAll("#bh-list [data-bh]").forEach(card => {
+    const i = +card.dataset.bh, b = BEHAVIORS[i];
+    if (!b) return;
+    b.name = card.querySelector('[data-f="name"]')?.value.trim() || "";
+    b.how = card.querySelector('[data-f="how"]')?.value.trim() || "";
+    b.when = normWhen(card.querySelector('[data-f="when"]')?.value);
+    b.line = normLine(card.querySelector('[data-f="line"]')?.value);
+  });
+}
+function cardHtml(b, i, open) {
+  const when = normWhen(b.when);
+  const line = normLine(b.line);
+  const lineChip = line !== "common" ? ` <span class="chip ${line}">${LINE[line]}</span>` : "";
+  return `<div class="card" data-bh="${i}"><details${open ? " open" : ""}>
+      <summary>🃏 <b>${esc(b.name || "(未命名)")}</b> <span class="chip ${when}">${WHEN[when]}</span>${lineChip}</summary>
+      <div class="row" style="gap:.5em;margin-top:.45em">
+        <span style="flex:1 1 10em"><label>名稱</label><input value="${esc(b.name || "")}" data-f="name" placeholder="例：問路靠近"></span>
+        <span style="flex:0 1 7em"><label>時機</label>
+          <select data-f="when" onchange="onCardMeta(${i})">${WHEN_ORDER.map(w => `<option value="${w}" ${when===w?"selected":""}>${WHEN[w]}</option>`).join("")}</select>
+        </span>
+        <span style="flex:0 1 7em"><label>系</label>
+          <select data-f="line" onchange="onCardMeta(${i})">${LINE_ORDER.map(l => `<option value="${l}" ${line===l?"selected":""}>${LINE[l]}</option>`).join("")}</select>
+        </span>
+      </div>
+      <label>怎麼做（給 AI）</label>
+      <textarea data-f="how" placeholder="${when==="approach" ? "例：假裝問路站到她旁邊，問完不走，再補一句閒話。" : "例：已經在說話了，一個問題接一個，不給她空檔走開。"}">${esc(b.how || "")}</textarea>
+      <div class="row" style="margin-top:.4em"><button class="del" onclick="delBehavior(${i})">刪除這張</button></div>
+    </details></div>`;
+}
+function visibleIdxs(when) {
+  return BEHAVIORS.map((b,i) => i).filter(i => {
+    const b = BEHAVIORS[i];
+    if (normWhen(b.when) !== when) return false;
+    if (lineFilter !== "all" && normLine(b.line) !== lineFilter) return false;
+    return true;
+  });
+}
+function renderBehaviors(openIdx = -1) {
+  const el = document.getElementById("bh-list");
+  const shown = lineFilter === "all" ? BEHAVIORS.length
+    : BEHAVIORS.filter(b => normLine(b.line) === lineFilter).length;
+  document.getElementById("bh-count").textContent = lineFilter === "all" ? shown : (shown + "／" + BEHAVIORS.length);
+  document.querySelectorAll("#line-tabs button").forEach(btn => {
+    btn.classList.toggle("on", btn.dataset.line === lineFilter);
+  });
+  if (!BEHAVIORS.length) {
+    el.innerHTML = `<div class="mini">目前沒有行為卡。</div>
+      <div class="row" style="margin-top:.6em">
+        <button class="cy" onclick="addBehavior('approach')">＋新增搭訕卡</button>
+        <button class="cy" onclick="addBehavior('chat')">＋新增聊天卡</button>
+      </div>`;
+    return;
+  }
+  el.innerHTML = WHEN_ORDER.map(w => {
+    const idxs = visibleIdxs(w);
+    const cards = idxs.map(i => cardHtml(BEHAVIORS[i], i, i === openIdx)).join("")
+      || `<div class="mini">這一組還沒有卡。</div>`;
+    return `<div class="bh-group">
+      <h3>${WHEN[w]} <span class="mini">(${idxs.length})</span></h3>
+      ${cards}
+      <div class="row" style="margin-top:.45em"><button class="cy" onclick="addBehavior('${w}')">＋新增${WHEN[w].replace("時","")}卡</button></div>
+    </div>`;
+  }).join("");
+}
+function addBehavior(when) {
+  collectBehaviors();
+  const w = normWhen(when);
+  const line = LINE[lineFilter] ? lineFilter : "common";
+  BEHAVIORS.push({ id: "bh_" + Date.now().toString(36), name: "", how: "", when: w, line });
+  renderBehaviors(BEHAVIORS.length - 1);
+}
+function onCardMeta(i) {
+  collectBehaviors();
+  renderBehaviors(i);
+}
+function delBehavior(i) {
+  collectBehaviors();
+  const n = BEHAVIORS[i]?.name || "(未命名)";
+  if (!confirm(`刪除行為卡「${n}」?`)) return;
+  BEHAVIORS.splice(i, 1);
+  renderBehaviors();
+}
+
+function collectActions() {
+  document.querySelectorAll("#act-list [data-act]").forEach(card => {
+    const i = +card.dataset.act, a = ACTIONS[i];
+    if (!a) return;
+    a.name = card.querySelector('[data-f="name"]')?.value.trim() || "";
+    a.how = card.querySelector('[data-f="how"]')?.value.trim() || "";
+    a.when = normWhen(card.querySelector('[data-f="when"]')?.value);
+  });
+}
+function actHtml(a, i, open) {
+  const when = normWhen(a.when);
+  return `<div class="card" data-act="${i}"><details${open ? " open" : ""}>
+      <summary>✋ <b>${esc(a.name || "(未命名)")}</b> <span class="chip ${when}">${WHEN[when]}</span></summary>
+      <div class="row" style="gap:.5em;margin-top:.45em">
+        <span style="flex:1 1 10em"><label>名稱</label><input value="${esc(a.name || "")}" data-f="name" placeholder="例：伸手擋路"></span>
+        <span style="flex:0 1 8em"><label>時機</label>
+          <select data-f="when" onchange="onActMeta(${i})">${WHEN_ORDER.map(w => `<option value="${w}" ${when===w?"selected":""}>${WHEN[w]}</option>`).join("")}</select>
+        </span>
+      </div>
+      <label>怎麼做（給 AI：肢體，不要寫台詞）</label>
+      <textarea data-f="how" placeholder="${when==="approach" ? "例：用手擋在她要走的方向，先把路封住。" : "例：已經在說話時把手搭上她肩，不立刻拿開。"}">${esc(a.how || "")}</textarea>
+      <div class="row" style="margin-top:.4em"><button class="del" onclick="delAction(${i})">刪除這項</button></div>
+    </details></div>`;
+}
+function renderActions(openIdx = -1) {
+  const el = document.getElementById("act-list");
+  document.getElementById("act-count").textContent = ACTIONS.length;
+  if (!ACTIONS.length) {
+    el.innerHTML = `<div class="mini">目前沒有行為。</div>
+      <div class="row" style="margin-top:.6em">
+        <button class="cy" onclick="addAction('approach')">＋新增搭訕行為</button>
+        <button class="cy" onclick="addAction('chat')">＋新增聊天行為</button>
+      </div>`;
+    return;
+  }
+  el.innerHTML = WHEN_ORDER.map(w => {
+    const idxs = ACTIONS.map((a,i) => i).filter(i => normWhen(ACTIONS[i].when) === w);
+    const cards = idxs.map(i => actHtml(ACTIONS[i], i, i === openIdx)).join("")
+      || `<div class="mini">這一組還沒有項。</div>`;
+    return `<div class="bh-group">
+      <h3>${WHEN[w]} <span class="mini">(${idxs.length})</span></h3>
+      ${cards}
+      <div class="row" style="margin-top:.45em"><button class="cy" onclick="addAction('${w}')">＋新增${WHEN[w].replace("時","")}行為</button></div>
+    </div>`;
+  }).join("");
+}
+function addAction(when) {
+  collectActions();
+  ACTIONS.push({ id: "act_" + Date.now().toString(36), name: "", how: "", when: normWhen(when) });
+  renderActions(ACTIONS.length - 1);
+}
+function onActMeta(i) {
+  collectActions();
+  renderActions(i);
+}
+function delAction(i) {
+  collectActions();
+  const n = ACTIONS[i]?.name || "(未命名)";
+  if (!confirm(`刪除行為「${n}」?`)) return;
+  ACTIONS.splice(i, 1);
+  renderActions();
+}
+
+function collectDateActs() {
+  document.querySelectorAll("#da-list [data-da]").forEach(card => {
+    const i = +card.dataset.da, a = DATE_ACTS[i];
+    if (!a) return;
+    a.name = card.querySelector('[data-f="name"]')?.value.trim() || "";
+    a.how = card.querySelector('[data-f="how"]')?.value.trim() || "";
+    a.cmd = card.querySelector('[data-f="cmd"]')?.value.trim() || "";
+    a.kind = normKind(card.querySelector('[data-f="kind"]')?.value);
+    const mn = Number(card.querySelector('[data-f="min"]')?.value);
+    a.minArousal = Number.isFinite(mn) ? Math.max(0, Math.min(30, Math.round(mn))) : 0;
+  });
+}
+function daHtml(a, i, open) {
+  const kind = normKind(a.kind);
+  return `<div class="card" data-da="${i}"><details${open ? " open" : ""}>
+      <summary>${i + 1}. <b>${esc(a.name || "(未命名)")}</b> <span class="chip ${kind}">${KIND_ZH[kind]}</span> <span class="chip">性慾 ${a.minArousal ?? 0}–${a.maxArousal ?? a.minArousal ?? 0}</span> <span class="chip">${esc(a.cmd || "無指令")}</span></summary>
+      <div class="row" style="gap:.5em;margin-top:.45em">
+        <span style="flex:1 1 9em"><label>名稱</label><input value="${esc(a.name || "")}" data-f="name" placeholder="例：裙底摳陰唇"></span>
+        <span style="flex:0 1 7em"><label>性慾門檻</label><input type="number" min="0" max="30" value="${esc(a.minArousal ?? 0)}" data-f="min"></span>
+        <span style="flex:0 1 7em"><label>類型</label>
+          <select data-f="kind" onchange="onDateActMeta(${i})">${DATE_ACT_KIND_IDS.map(k => `<option value="${k}" ${kind===k?"selected":""}>${KIND_ZH[k]}</option>`).join("")}</select>
+        </span>
+        <span style="flex:1 1 8em"><label>指令</label><input value="${esc(a.cmd || "")}" data-f="cmd" placeholder="例：摸 陰唇"></span>
+      </div>
+      <label>怎麼做（給 AI）</label>
+      <textarea data-f="how" placeholder="他實際動手／開口的方式。不要寫成只看她。">${esc(a.how || "")}</textarea>
+      <div class="row" style="margin-top:.4em"><button class="del" onclick="delDateAct(${i})">刪除這項</button></div>
+    </details></div>`;
+}
+function renderDateActs(openIdx = -1) {
+  const el = document.getElementById("da-list");
+  document.getElementById("da-count").textContent = DATE_ACTS.length;
+  if (!DATE_ACTS.length) {
+    el.innerHTML = `<div class="mini">目前沒有約會動作。可還原各檔 30 種預設。</div>`;
+    return;
+  }
+  el.innerHTML = DATE_ACT_BANDS.map(band => {
+    const idxs = DATE_ACTS.map((a, i) => i).filter(i => {
+      const n = DATE_ACTS[i].minArousal || 0;
+      return n >= band.min && n <= band.max;
+    });
+    const cards = idxs.map(i => daHtml(DATE_ACTS[i], i, i === openIdx)).join("")
+      || `<div class="mini">這一檔還沒有動作。</div>`;
+    return `<div class="bh-group">
+      <h3>${band.zh} <span class="mini">(${idxs.length})</span></h3>
+      ${cards}
+    </div>`;
+  }).join("");
+}
+function addDateAct() {
+  collectDateActs();
+  DATE_ACTS.push({
+    id: "da_" + Date.now().toString(36),
+    name: "",
+    how: "",
+    cmd: "",
+    kind: "talk",
+    minArousal: 0,
+  });
+  renderDateActs(DATE_ACTS.length - 1);
+}
+function onDateActMeta(i) {
+  collectDateActs();
+  renderDateActs(i);
+}
+function delDateAct(i) {
+  collectDateActs();
+  const n = DATE_ACTS[i]?.name || "(未命名)";
+  if (!confirm(`刪除約會動作「${n}」?`)) return;
+  DATE_ACTS.splice(i, 1);
+  renderDateActs();
+}
+function resetDateActs() {
+  if (DATE_ACTS.length && !confirm("用內建各檔 30 種預設覆蓋現在的約會動作？")) return;
+  DATE_ACTS = DEFAULT_DATE_ACTS.map((x) => ({ ...x }));
+  renderDateActs();
+}
+
+function emptyPlaySlot(t, step, j) {
+  return { id: `pl_${t}_${step}_${j + 1}`, name: "", how: "", cmd: "" };
+}
+function ensurePlay() {
+  for (const t of PLAY_TYPE_ORDER) {
+    if (!Array.isArray(PLAY[t])) PLAY[t] = [];
+    for (let s = 0; s < 5; s++) {
+      if (!Array.isArray(PLAY[t][s])) PLAY[t][s] = [];
+      const row = PLAY[t][s].slice(0, 6).map((x, j) => ({
+        id: x.id || `pl_${t}_${s + 1}_${j + 1}`,
+        name: x.name || "",
+        how: x.how || "",
+        cmd: x.cmd || "",
+      }));
+      while (row.length < 6) row.push(emptyPlaySlot(t, s + 1, row.length));
+      PLAY[t][s] = row;
+    }
+  }
+}
+function collectPlay() {
+  document.querySelectorAll("#play-list [data-pl]").forEach(card => {
+    const t = card.dataset.pt, s = +card.dataset.step, j = +card.dataset.slot;
+    const x = PLAY[t]?.[s]?.[j];
+    if (!x) return;
+    x.name = card.querySelector('[data-f="name"]')?.value.trim() || "";
+    x.how = card.querySelector('[data-f="how"]')?.value.trim() || "";
+    x.cmd = card.querySelector('[data-f="cmd"]')?.value.trim() || "";
+  });
+}
+function playCardHtml(t, s, j, x, open) {
+  return `<div class="card" data-pl data-pt="${t}" data-step="${s}" data-slot="${j}"><details${open ? " open" : ""}>
+    <summary>${j + 1}. <b>${esc(x.name || "(空)")}</b> <span class="chip">${esc(x.cmd || "無指令")}</span></summary>
+    <div class="row" style="gap:.5em;margin-top:.45em">
+      <span style="flex:1 1 10em"><label>名稱</label><input value="${esc(x.name || "")}" data-f="name" placeholder="例：握手"></span>
+      <span style="flex:0 1 9em"><label>指令</label><input value="${esc(x.cmd || "")}" data-f="cmd" placeholder="例：摸 胸部"></span>
+    </div>
+    <label>怎麼做（給 AI）</label>
+    <textarea data-f="how" placeholder="肢體或怎麼開口。初階要像正常人。">${esc(x.how || "")}</textarea>
+  </details></div>`;
+}
+function renderPlay(openKey = "") {
+  ensurePlay();
+  const t = PLAY_TYPE_ORDER.includes(playTypeFilter) ? playTypeFilter : "talk";
+  document.querySelectorAll("#play-type-tabs button").forEach(btn => {
+    btn.classList.toggle("on", btn.dataset.pt === t);
+  });
+  const el = document.getElementById("play-list");
+  el.innerHTML = [0,1,2,3,4].map(s => {
+    const row = PLAY[t][s];
+    const filled = row.filter(x => x.name).length;
+    const cards = row.map((x, j) => playCardHtml(t, s, j, x, openKey === t + "-" + s + "-" + j)).join("");
+    return `<div class="bh-group">
+      <h3>${s + 1} ${PLAY_STEP_NAME[s + 1]} <span class="mini">(${filled}/6)</span></h3>
+      ${cards}
+    </div>`;
+  }).join("");
+}
+
+async function saveAll() {
+  try {
+    collectBehaviors();
+    collectActions();
+    collectDateActs();
+    collectPlay();
+    const names = parseNames(document.getElementById("names").value);
+    countNames();
+    const behaviors = BEHAVIORS.filter(b => b.name);
+    const bad = behaviors.find(b => !b.how);
+    if (bad) throw new Error(`行為卡「${bad.name}」還沒寫「怎麼做」`);
+    const actions = ACTIONS.filter(a => a.name);
+    const badA = actions.find(a => !a.how);
+    if (badA) throw new Error(`行為「${badA.name}」還沒寫「怎麼做」`);
+    const date_acts = DATE_ACTS.filter(a => a.name);
+    const badD = date_acts.find(a => !a.how || !a.cmd);
+    if (badD) throw new Error(`約會動作「${badD.name}」要寫怎麼做和指令`);
+    ensurePlay();
+    const play_ladders = {};
+    for (const pt of PLAY_TYPE_ORDER) {
+      play_ladders[pt] = PLAY[pt].map(row => row.filter(x => x.name));
+      const miss = play_ladders[pt].find(row => row.find(x => x.name && (!x.how || !x.cmd)));
+      if (miss) {
+        const badP = miss.find(x => x.name && (!x.how || !x.cmd));
+        throw new Error(`玩弄「${badP.name}」要寫怎麼做和指令`);
+      }
+    }
+    await api("/api/summoners", "PUT", { names, behaviors, actions, play_ladders, date_acts });
+    BEHAVIORS = behaviors;
+    ACTIONS = actions;
+    DATE_ACTS = date_acts;
+    PLAY = play_ladders;
+    ensurePlay();
+    renderBehaviors();
+    renderActions();
+    renderDateActs();
+    renderPlay();
+    done("✓ 已寫回 summoners.json（" + names.length + " 個名字、" + behaviors.length + " 張行為卡、" + actions.length + " 項行為、" + date_acts.length + " 種約會動作、猥褻五階）");
+  } catch (e) { fail(e.message); }
+}
+
+document.getElementById("names").addEventListener("input", countNames);
+document.querySelectorAll("#line-tabs button").forEach(btn => {
+  btn.onclick = () => { collectBehaviors(); lineFilter = btn.dataset.line; renderBehaviors(); };
+});
+document.querySelectorAll("#play-type-tabs button").forEach(btn => {
+  btn.onclick = () => { collectPlay(); playTypeFilter = btn.dataset.pt; renderPlay(); };
+});
+
+(async () => {
+  try {
+    const j = await api("/content/summoners.json?ts=" + Date.now());
+    const names = Array.isArray(j.names) ? j.names : [];
+    document.getElementById("names").value = names.join("\n");
+    countNames();
+    BEHAVIORS = Array.isArray(j.behaviors) ? j.behaviors.map(b => ({
+      id: b.id || ("bh_" + Date.now().toString(36)),
+      name: b.name || "",
+      how: b.how || "",
+      when: b.when === "chat" ? "chat" : "approach",
+      line: LINE[b.line] ? b.line : "common",
+    })) : [];
+    renderBehaviors();
+    ACTIONS = Array.isArray(j.actions) ? j.actions.map(a => ({
+      id: a.id || ("act_" + Date.now().toString(36)),
+      name: a.name || "",
+      how: a.how || "",
+      when: a.when === "chat" ? "chat" : "approach",
+    })) : [];
+    renderActions();
+    PLAY = j.play_ladders && typeof j.play_ladders === "object" ? j.play_ladders : { talk: [], touch: [], expose: [] };
+    ensurePlay();
+    renderPlay();
+    DATE_ACTS = Array.isArray(j.date_acts) && j.date_acts.length
+      ? cloneDateActs(j.date_acts)
+      : DEFAULT_DATE_ACTS.map((x) => ({ ...x }));
+    renderDateActs();
+  } catch (e) { fail("載入失敗:" + e.message); }
+})();
+
+Object.assign(window, {
+  saveAll, addBehavior, addAction, addDateAct,
+  delBehavior, delAction, delDateAct,
+  onCardMeta, onActMeta, onDateActMeta, resetDateActs,
+});
+</script>
+</body>
+</html>

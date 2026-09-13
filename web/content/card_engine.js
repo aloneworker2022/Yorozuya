@@ -1088,9 +1088,9 @@ export function buildGirlCards(girl, opts = {}) {
 
 /**
  * 約會章節結構（每景點）：
- *   第1章固定 1 張（normal）→ 感情 2～5
+ *   第1章固定 1 張（normal）→ 感情 5～10
  *   之後 ½ 進正常第2章（2選1）、½ 進 NTR 第一階段（遇其他召喚師）
- *   正常線：1/4 進第3章、3 選 1 → 感情 10～15 → 結束
+ *   正常線：1/2 進第3章、3 選 1 → 感情 16～24 → 結束
  *   NTR 線：L1→L2→L3猥褻→L4交配；一半 L4→L5 高潮迎合；L6 雙結局
  *           （帶走當他看板／回到玩家身邊）
  *           各階繼續：1/6 抽離／5/12 A／5/12 B（L6 為 1/2 結局）
@@ -1114,23 +1114,30 @@ export function dateChapterEmotion(stage, { track = "normal" } = {}) {
   }
   const key = String(stage);
   const t = d("date_chapter_emotion", {
-    1: { min: 2, max: 5 },
-    2: { min: 5, max: 10 },
-    3: { min: 10, max: 15 },
+    1: { min: 5, max: 10 },
+    2: { min: 10, max: 16 },
+    3: { min: 16, max: 24 },
   });
-  const r = t[key] || t[stage] || { min: 1, max: 2 };
+  const r = t[key] || t[stage] || { min: 5, max: 10 };
   return {
     min: Number(r.min) || 0,
     max: Number(r.max) || 0,
   };
 }
 
+export function dateChapterEmotionHint(stage, opts = {}) {
+  const r = dateChapterEmotion(stage, opts);
+  const lo = Math.min(r.min, r.max);
+  const hi = Math.max(r.min, r.max);
+  return `感情 ${lo}～${hi}`;
+}
+
 /** 進入 normal stage（2 或 3）的機率。L1→L2 已改由 dateNtrBranchChance 分流，此處 2 僅作後備。 */
 export function dateContinueChance(stage) {
-  const t = d("date_continue_chance", { 2: 0.5, 3: 0.25 });
+  const t = d("date_continue_chance", { 2: 0.5, 3: 0.5 });
   const v = t[String(stage)] ?? t[stage];
   const n = Number(v);
-  return Number.isFinite(n) ? n : (stage === 2 ? 0.5 : 0.25);
+  return Number.isFinite(n) ? n : 0.5;
 }
 
 /**
@@ -1163,28 +1170,42 @@ export function getVenueDateChapters(venueId, { track = "normal" } = {}) {
   const v = (DATA?.venues || []).find((x) => x.id === venueId);
   if (!v) return null;
   const stages = [1, 2, 3, 4, 5, 6];
+  const out = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+  const seen = new Set();
+  const want = (def) => {
+    if (!def) return false;
+    const t = def.dateTrack === "ntr" || (def.tags || []).includes("rival_shadow")
+      ? "ntr"
+      : (def.dateTrack || "normal");
+    return t === track;
+  };
+  const push = (id, fallbackStage) => {
+    if (!id || seen.has(id)) return;
+    const def = BY_ID[id];
+    if (!want(def)) return;
+    const st = Number(def.dateStage) || Number(fallbackStage) || 1;
+    if (!out[st]) return;
+    out[st].push(id);
+    seen.add(id);
+  };
   if (v.dateChapters && typeof v.dateChapters === "object") {
-    const out = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
     for (const st of stages) {
       const raw = v.dateChapters[String(st)] || v.dateChapters[st] || [];
-      out[st] = (raw || []).filter((id) => {
-        const def = BY_ID[id];
-        if (!def) return false;
-        return (def.dateTrack || "normal") === track;
-      });
+      for (const id of raw || []) push(id, st);
     }
-    if (out[1].length) return out;
   }
-  // 後備：依 dateStage 欄位掃 cardIds
-  const ids = v.cardIds || [];
-  const out = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
-  for (const id of ids) {
-    const def = BY_ID[id];
-    if (!def || (def.dateTrack || "normal") !== track) continue;
-    const st = Number(def.dateStage) || 1;
-    if (out[st]) out[st].push(id);
+  for (const id of v.cardIds || []) push(id);
+  for (const def of DATA?.cards || []) {
+    if (!def?.id || seen.has(def.id)) continue;
+    if (!want(def)) continue;
+    if (!((def.venueIds || []).includes(venueId))) continue;
+    if (def.kind !== "venue_event" && !((def.tags || []).includes("date")) && !def.dateStage && !def.dateTrack) {
+      continue;
+    }
+    push(def.id);
   }
-  return out[1].length ? out : null;
+  const any = stages.some((st) => out[st].length);
+  return any ? out : null;
 }
 
 /** 該場地約會會用到的全部卡 instance（給準備／牌池） */

@@ -3046,24 +3046,24 @@
     "answer_rate": 0.6666666666666666,
     "date_chapter_emotion": {
       "1": {
-        "min": 2,
-        "max": 5
-      },
-      "2": {
         "min": 5,
         "max": 10
       },
-      "3": {
+      "2": {
         "min": 10,
-        "max": 15
+        "max": 16
+      },
+      "3": {
+        "min": 16,
+        "max": 24
       }
     },
     "date_continue_chance": {
       "2": 0.5,
-      "3": 0.25
+      "3": 0.5
     },
     "date_ntr_branch_chance": 0.5,
-    "_comment_date": "L1 後：date_ntr_branch_chance 進 NTR 第一階段（遇其他召喚師）；其餘進正常 L2。L2→L3 仍用 date_continue_chance.3",
+    "_comment_date": "L1 後：date_ntr_branch_chance 進 NTR 第一階段（遇其他召喚師）；其餘進正常 L2。L2→L3 用 date_continue_chance.3（½）",
     "date_chapter_emotion_ntr": {
       "1": {
         "min": -2,
@@ -25983,9 +25983,14 @@
       },
       "sceneStart": "風把樹葉聲送得很近。你們並肩走在步道上，誰也沒急著找話題。影子在地上差一點就要連起來——這一小段空白，像被公園暫時批准的約會開場。",
       "promptHint": "約會第1章·公園開場並肩。",
-      "visualEn": "from his POV walking on park path, medium-wide shot, she walking beside him on his right, body in PROFILE facing forward along path, looking at trees ahead NOT at camera, daylight, depth of path, fully clothed, cinematic side-by-side date, looking away from viewer",
+      "visualEn": "from his POV walking on park path, medium-wide shot, body in PROFILE facing forward along path, looking at trees ahead NOT at camera, daylight, depth of path, fully clothed, cinematic side-by-side date, looking away from viewer",
       "visualZh": "場面取景（禁止正對鏡頭）：公園並肩",
-      "setId": "main"
+      "setId": "main",
+      "visualRef": "/assets/pose_refs/1787746306189_3ce2df.png",
+      "imgMode": "ref",
+      "imgPos": "1 girl",
+      "imgNeg": "2 girl",
+      "visualNeg": "2 girl"
     },
     {
       "id": "venue_park_ntr1",
@@ -27077,7 +27082,8 @@
       "promptHint": "約會第2章·公園長椅。",
       "visualEn": "from his POV sitting on park bench, medium shot, she seated BESIDE him sharing bench, body angled forward three-quarter PROFILE, gaze toward park ground or ahead, not facing camera, daylight dappled light, fully clothed, side seating composition",
       "visualZh": "場面取景（禁止正對鏡頭）：長椅坐下來",
-      "setId": "main"
+      "setId": "main",
+      "visualRef": "/assets/pose_refs/1787746306189_3ce2df.png"
     },
     {
       "id": "venue_park_l2b",
@@ -27121,7 +27127,11 @@
       "promptHint": "約會第2章·公園小徑。",
       "visualEn": "from his POV on shaded park side path, medium shot, she a half step AHEAD to the side, three-quarter BACK view, looking down the path, may soft head turn, tree canopy, fully clothed, walking composition not portrait",
       "visualZh": "場面取景（禁止正對鏡頭）：繞到少人的小徑",
-      "setId": "main"
+      "setId": "main",
+      "visualRef": "/assets/pose_refs/1787746306189_3ce2df.png",
+      "imgNeg": "2 girls",
+      "visualNeg": "2 girls",
+      "imgPos": "1 girl"
     },
     {
       "id": "venue_park_l3a",
@@ -27165,7 +27175,11 @@
       "promptHint": "約會第3章·散場不捨。",
       "visualEn": "from his POV dusk park path, medium-wide, she walking beside slightly ahead, SIDE VIEW silhouette, sleeves nearly touching, looking ahead not at camera, warm dusk, fully clothed",
       "visualZh": "場面取景（禁止正對鏡頭）：往回走的路",
-      "setId": "main"
+      "setId": "main",
+      "visualRef": "/assets/pose_refs/1787746306189_3ce2df.png",
+      "imgPos": "1 girl",
+      "imgNeg": "2 girl",
+      "visualNeg": "2 girl"
     },
     {
       "id": "venue_park_l3b",
@@ -27209,7 +27223,11 @@
       "promptHint": "約會第3章·樹下停駐。",
       "visualEn": "from his POV under large tree, medium shot, she standing 1-2 meters AHEAD angled, three-quarter face toward tree shadow then soft glance back, not square to camera, fully clothed, depth under canopy",
       "visualZh": "場面取景（禁止正對鏡頭）：在樹下停一下",
-      "setId": "main"
+      "setId": "main",
+      "visualRef": "/assets/pose_refs/1787746306189_3ce2df.png",
+      "imgNeg": "2 girl",
+      "visualNeg": "2 girl",
+      "imgPos": "1 girl"
     },
     {
       "id": "venue_park_l3c",
@@ -27253,7 +27271,8 @@
       "promptHint": "約會第3章·輕牽手收尾。",
       "visualEn": "from his POV near park exit crowd soft, medium shot, she beside him, hand near his fingers at EDGE of frame, body SIDE by side walking out, face three-quarter not frontal passport, fully clothed",
       "visualZh": "場面取景（禁止正對鏡頭）：牽一下就好",
-      "setId": "main"
+      "setId": "main",
+      "visualRef": "/assets/pose_refs/1787746306189_3ce2df.png"
     },
     {
       "id": "venue_cinema_l1",
@@ -32962,6 +32981,31 @@
       "visualEn": "1man, 1girl, third person view, no first person, hotel doorway, she returning to viewer soft smile, slightly disheveled hair, fully clothed, reunion, looking at viewer, gentle intimate, anime",
       "visualZh": "結局：她敲玩家房門說回來了",
       "setId": "main"
+    },
+    {
+      "id": "venue_park_l3d",
+      "name": "公園第3章",
+      "kind": "venue_event",
+      "shatterOnUse": false,
+      "tags": [
+        "date",
+        "talk",
+        "play"
+      ],
+      "venueIds": [
+        "park"
+      ],
+      "lane": "play",
+      "dateTrack": "normal",
+      "dateStage": 3,
+      "token": "公園第3章",
+      "tokenDesc": "公園第3章",
+      "parentId": "venue_park_l2a",
+      "sceneStart": "",
+      "promptHint": "約會第3章·公園。",
+      "visualEn": "",
+      "visualZh": "",
+      "visualRef": "/assets/pose_refs/1787746306189_3ce2df.png"
     }
   ],
   "venues": [
@@ -32988,7 +33032,8 @@
           "venue_park_ntr3a",
           "venue_park_ntr3b",
           "venue_park_ntr3c",
-          "venue_park_ntr3d"
+          "venue_park_ntr3d",
+          "venue_park_l3d"
         ],
         "4": [
           "venue_park_ntr3a_m1",
@@ -33017,18 +33062,19 @@
       },
       "cardIds": [
         "venue_park_l1",
+        "venue_park_ntr1",
         "venue_park_l2a",
         "venue_park_l2b",
+        "venue_park_ntr2a",
+        "venue_park_ntr2b",
         "venue_park_l3a",
         "venue_park_l3b",
         "venue_park_l3c",
-        "venue_park_ntr1",
-        "venue_park_ntr2a",
-        "venue_park_ntr2b",
         "venue_park_ntr3a",
         "venue_park_ntr3b",
         "venue_park_ntr3c",
         "venue_park_ntr3d",
+        "venue_park_l3d",
         "venue_park_ntr3a_m1",
         "venue_park_ntr3a_m2",
         "venue_park_ntr3b_m1",
@@ -33101,14 +33147,14 @@
       },
       "cardIds": [
         "venue_cinema_l1",
+        "venue_cinema_ntr1",
         "venue_cinema_l2a",
         "venue_cinema_l2b",
+        "venue_cinema_ntr2a",
+        "venue_cinema_ntr2b",
         "venue_cinema_l3a",
         "venue_cinema_l3b",
         "venue_cinema_l3c",
-        "venue_cinema_ntr1",
-        "venue_cinema_ntr2a",
-        "venue_cinema_ntr2b",
         "venue_cinema_ntr3a",
         "venue_cinema_ntr3b",
         "venue_cinema_ntr3c",
@@ -33185,14 +33231,14 @@
       },
       "cardIds": [
         "venue_mall_l1",
+        "venue_mall_ntr1",
         "venue_mall_l2a",
         "venue_mall_l2b",
+        "venue_mall_ntr2a",
+        "venue_mall_ntr2b",
         "venue_mall_l3a",
         "venue_mall_l3b",
         "venue_mall_l3c",
-        "venue_mall_ntr1",
-        "venue_mall_ntr2a",
-        "venue_mall_ntr2b",
         "venue_mall_ntr3a",
         "venue_mall_ntr3b",
         "venue_mall_ntr3c",
@@ -33269,14 +33315,14 @@
       },
       "cardIds": [
         "venue_beach_l1",
+        "venue_beach_ntr1",
         "venue_beach_l2a",
         "venue_beach_l2b",
+        "venue_beach_ntr2a",
+        "venue_beach_ntr2b",
         "venue_beach_l3a",
         "venue_beach_l3b",
         "venue_beach_l3c",
-        "venue_beach_ntr1",
-        "venue_beach_ntr2a",
-        "venue_beach_ntr2b",
         "venue_beach_ntr3a",
         "venue_beach_ntr3b",
         "venue_beach_ntr3c",
@@ -33353,14 +33399,14 @@
       },
       "cardIds": [
         "venue_hotel_l1",
+        "venue_hotel_ntr1",
         "venue_hotel_l2a",
         "venue_hotel_l2b",
+        "venue_hotel_ntr2a",
+        "venue_hotel_ntr2b",
         "venue_hotel_l3a",
         "venue_hotel_l3b",
         "venue_hotel_l3c",
-        "venue_hotel_ntr1",
-        "venue_hotel_ntr2a",
-        "venue_hotel_ntr2b",
         "venue_hotel_ntr3a",
         "venue_hotel_ntr3b",
         "venue_hotel_ntr3c",

@@ -3,15 +3,17 @@
 Todo 積分驅動的魅魔召喚養成網頁遊戲。
 
 - 白天:做現實委託賺金幣,聊天/約會養魅魔(**Ollama** 或 **Grok Build 無頭**)
+- 日誌連寫:連續每天寫滿 12 字領金幣,並同步到本機 **Memos**
 - 立繪／場景圖:需要時即時生成(Grok Build 或 ComfyUI)
 
 企劃書:[docs/plan-v5.md](docs/plan-v5.md)(關係演出規格另見 [docs/relationship-axes.md](docs/relationship-axes.md))
 
-**互動牌制 v6**(M0～M6 已上線:商店／牌桌／氣泡／約會／出卡短 AI／CG cache／自由聊退役):[docs/card-system.md](docs/card-system.md)
+**深度互動只走約會**(看板打牌已取消；電話 → 場地章節卡；氣泡／出卡短 AI 仍在):[docs/card-system.md](docs/card-system.md)
 
 **教 AI／實作者從哪讀起:**[docs/AI-READING-ORDER.md](docs/AI-READING-ORDER.md)
 
 **卡牌編輯器（多檔版本 · 詞墜繼承 · AI 測試）:** 開伺服器後進 `/cardedit`  
+**約會編輯器（場地／章節卡 · 場景試演 · 出卡生圖）:** `/testdate`  
 - 每份牌組是獨立檔：`cards.json`、`card_x.json`… 由 `card_packs_registry.json` 的 **active** 決定遊戲用哪份  
 - 流程：克隆整包／輩分→新檔 → 編輯草稿 → **上線**（只切指標，舊檔保留可回滾）  
 - 詞墜：`token` / `parentId`（例：`[問候]` → `[問候] [說笑話]`）
@@ -24,6 +26,27 @@ cd server && uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 開瀏覽器進 `http://<RP5>:8000/`。存檔在 `data/game.db`(SQLite),生成圖像放 `assets/`。
+
+### 日誌連寫 → 金幣 + 本機 Memos
+
+委託板左側紅色「日誌」頁籤。遊戲日（睡眠結束為日界）連續寫滿 **12 字**：
+
+| 連寫天數 | 當天金幣（一天只領一次） |
+|---|---|
+| 1 | 1 |
+| 2 | 2 |
+| … | … |
+| 5+ | 5（上限） |
+
+斷一天就從 1 重算。寫滿的當日／舊頁會由遊戲伺服器代打到本機 Memos（Docker `0.0.0.0:9968` → 容器 5230），標籤 `#yorozuya` `#日誌`；同一天覆寫同一則，不另開新篇。
+
+Token **不進存檔、不進瀏覽器**。伺服器解析順序：
+
+1. 環境變數 `MEMOS_TOKEN` / `MEMOS_URL`（網址預設 `http://127.0.0.1:9968`）
+2. `~/.config/cthulhu-note/config.toml`
+3. `~/.openclaw/openclaw.json` 的 memos-buddy skill env
+
+`GET /api/health` 的 `memos`、設定頁「測試 Memos」可看有沒有連上。
 
 ### AI 供應商
 

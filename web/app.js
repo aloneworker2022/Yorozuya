@@ -3,7 +3,7 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 
-import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildNoticePrompt, buildCardPlayPrompt, buildCardVisualPosePrompt, parseCardVisualPose, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
+import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildDiaryCommentPrompt, buildNoticePrompt, buildCardPlayPrompt, buildCardVisualPosePrompt, parseCardVisualPose, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, WARDROBE_UNLOCK, EROTIC_UNLOCK, SLEEP_UNLOCK, POOLS } from "./content/girl_gen.js";
 import * as Cards from "./content/card_engine.js";
 import {
@@ -15,10 +15,13 @@ import {
   teasePlayAffDelta, TEASE_PLAY_CLIMAX_RATE,
 } from "./content/tease_shots.js";
 import * as ScriptMode from "./content/script_mode.js";
+import * as FramePack from "./content/frame_pack.js";
+import * as SexAnim from "./content/sex_anim.js";
+import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v6.85(2026-08-23)拿掉淫紋織夢／調戲關鍵詞檢定／愛心好感";
+const APP_VER = "v6.96(2026-09-01)日誌連寫上 Memos";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -31,6 +34,17 @@ fetch("content/summoners.json").then(r => r.ok ? r.json() : null).then(j => { SU
 function summonerById(id) { return SUMMONERS.find(x => x.id === id) || null; }
 
 let SCRIPT_PACKS = { packs: [], activeByKind: {} };
+let FRAME_PACKS = [];
+function loadFramePacks() {
+  return fetch("/api/frame-packs?ts=" + Date.now())
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { FRAME_PACKS = Array.isArray(j?.packs) ? j.packs : []; })
+    .catch(() => { FRAME_PACKS = FRAME_PACKS || []; });
+}
+function boundScriptFramePack(pack, spec) {
+  const id = ScriptMode.boundFramePackId(pack, spec);
+  return FramePack.findPack(FRAME_PACKS, id);
+}
 function loadScriptPacks() {
   return fetch("/api/script-packs?ts=" + Date.now())
     .then(r => r.ok ? r.json() : null)
@@ -44,6 +58,7 @@ function loadScriptPacks() {
     });
 }
 loadScriptPacks();
+loadFramePacks();
 
 // 互動牌制內容：必須吃 /api/cards（registry.active 上線卡組）
 // 失敗才退 content/cards.json，並在除錯台顯示警告
@@ -125,6 +140,8 @@ const JOURNAL_TTL = 30 * 24 * HOUR; // 一則日誌保存一個月
 const JOURNAL_CAP = 40;
 const JOURNAL_ASK_COOLDOWN = 90 * 1000;
 const DISCOVER_BONUS_CAP = 10;   // 每日前 N 次發現有 0~2 金獎勵
+const NOTEBOOK_MIN_CHARS = 12;   // 當日日誌寫滿才算「有寫」、才領連寫金、才上傳 Memos
+const NOTEBOOK_STREAK_GOLD_CAP = 5; // 連寫獎勵 = min(連續天數, 5) 金,一天只領一次
 
 // 每次進對話隨機決定能聊幾個來回(玩家不知道她何時喊停,製造驚喜)
 // 聊天回到即時多回合 session:她當場回話,情感在 session 結束時結算一次
@@ -268,13 +285,22 @@ async function genBubbleOrders() {
       changed = true;
       continue;
     }
-    const r = await genPost(it.aiKey, bubbleMsgs(girl, it.eventKey || "discover", it.questText || ""), 8);
+    const msgs = it.eventKey === "diary"
+      ? diaryCommentMsgs(girl, it.diaryEntry)
+      : bubbleMsgs(girl, it.eventKey || "discover", it.questText || "");
+    const r = await genPost(it.aiKey, msgs, 8);
     if (!r) continue;
     if (r.status === "pending" || r.status === "running" || r.status === "queued") continue;
     if (r.status === "done" && r.result) {
-      const line = bubbleLineFromAi(r.result);
-      it.text = line || it.canned || "……";
-      it.fromAi = !!line;
+      if (it.eventKey === "diary") {
+        const lines = noticeLinesFromAi(r.result);
+        it.text = lines.join("\n") || it.canned || "……";
+        it.fromAi = !!lines.length;
+      } else {
+        const line = bubbleLineFromAi(r.result);
+        it.text = line || it.canned || "……";
+        it.fromAi = !!line;
+      }
     } else {
       it.text = it.canned || "……";
       it.fromAi = false;
@@ -571,7 +597,6 @@ function makeBackstory() {
   };
 }
 const MERCHANT_LINES = ["今天的貨色不錯吧?", "都是自願的,大概。", "早買早享受,晚了就沒了。", "便宜貨也有便宜貨的用法。", "別問來歷。問了也不便宜。"];
-const TAUNTS = ["哼,金幣呢?空著手就想召喚魅魔?", "先去做點委託吧,窮鬼。", "祭品。沒有祭品,一切免談。", "你的錢包比夢境還要空。", "急什麼。書頁翻爛了她們也不會出來。"];
 const REACT = {
   complete: ["幹得好♥", "今天也很可靠呢。", "嗯,不錯嘛。", "獎勵你一個微笑。"],
   fail: ["喂……違約了啦。", "唉,金幣又飛走了。", "……我就這樣看著你。"],
@@ -633,6 +658,9 @@ function defaultState() {
   return {
     gold: 0,
     quests: [],   // {id, text, lv:0|1|2, startedAt?, deadline?}
+    notebook: [], // 玩家日誌 [{day, ymd, text, t, memosName?}]
+    notebookPeek: { day: null, byGirl: {} }, // 看板娘今日是否已評過日誌
+    notebookStreak: { rewardedDay: null, count: 0 }, // 連寫金幣：當天領過沒、目前連續天數
     discover: null, // {day, count} 每日發現獎勵計數
     expansions: {}, // 擴充等級(8 軸,見 EXPANSIONS);名額/格數等由此推導
     dismiss: null,  // {day, price} 今日遣散費
@@ -659,6 +687,7 @@ function defaultState() {
     lastKanbanId: null, // 最後一位看板娘(全過期後背景顯示她的休息剪影)
     notices: {},        // 進場碎嘴預生 { [girlId]: { pair, seq, got } }
     lastSettledDay: null,
+    daydream: { stamp: "", completed: false, running: false, label: "", done: 0, total: 0, girlId: "" },
     log: [],
     settings: {
       player: "", sleepStart: "01:00", sleepEnd: "06:00", theme: "aqua",
@@ -798,6 +827,7 @@ function dropGirlFromRoster(sOrId, extra = {}) {
   state.kanbans = (state.kanbans || []).filter(k => k.id !== id);
   if (state.lastKanbanId === id) state.lastKanbanId = null;
   if (typeof detailId !== "undefined" && detailId === id) detailId = null;
+  if (typeof stopDaydreamIfNoGirls === "function") stopDaydreamIfNoGirls();
 }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function pick2(arr) { const a = [...arr]; const i = a.splice(Math.floor(Math.random() * a.length), 1)[0]; return [i, pick(a)]; }
@@ -890,7 +920,15 @@ function initState(j, offline) {
   state.cardsLive ??= { packId: null, epoch: 0 };
   if (state.cardSession) Cards.normalizeSessionPhase?.(state.cardSession);
   state.bubbleAff ??= { day: null, byGirl: {} }; // M2 氣泡情感日 cap
+  state.notebook ??= [];
+  state.notebookPeek ??= { day: null, byGirl: {} };
+  state.notebookStreak ??= { rewardedDay: null, count: 0 };
+  for (const e of state.notebook) {
+    if (e && e.text == null) e.text = notebookText(e);
+  }
   state.senseHour ??= { key: 0, count: 0 };
+  state.daydream ??= { stamp: "", completed: false, running: false, label: "", done: 0, total: 0, girlId: "" };
+  // running 由伺服器發呆迴圈擁有；開網頁不再清掉，否則會把正在跑的預產圖當成死掉
   state.playerProfile = {
     name: "", body: "", look: "", habit: "",
     prefs: [], quiz: {},
@@ -918,6 +956,11 @@ function initState(j, offline) {
   if (state.settings.features.cardSystem !== false) {
     state.settings.features.freeChatRetired = true;
   }
+  // 看板打牌已取消：舊存檔若還卡在看板牌局，直接關 session（約會桌保留）
+  if (state.cardSession?.mode === "kanban") {
+    try { Cards.closeSession(state, "kanban_play_retired"); } catch { /* */ }
+    state.cardSession = null;
+  }
   if (Cards.cardsReady()) {
     // 上線槽硬切：pack / epoch 變了就清空玩家牌進度（與伺服器 activate 對齊）
     const meta = Cards.activePackMeta?.() || {};
@@ -927,16 +970,14 @@ function initState(j, offline) {
     if (bind?.wiped) {
       console.info("[cards] live pack cutover wiped player card progress", bind);
       log(
-        `上線牌組切換：${bind.from || "（無）"} → ${bind.to || "?"}（epoch ${bind.epoch ?? epoch}），已清空牌庫／貨架／創角話術`,
+        `上線約會卡組切換：${bind.from || "（無）"} → ${bind.to || "?"}（epoch ${bind.epoch ?? epoch}）`,
       );
-      // toast 在 render 前可能被蓋；進場後再提醒
       setTimeout(() => {
         try {
-          toast("已換上線牌組：牌庫與貨架已清空，請重抽基礎話術", "bad");
+          toast("已換上線約會卡組", "");
         } catch { /* */ }
       }, 400);
     }
-    Cards.ensureStarterFallback(state);
     Cards.pruneDeck?.(state);
   }
   if (cardSystemOn()) {
@@ -991,6 +1032,10 @@ function initState(j, offline) {
   try { consumeQuickDateTest(); } catch (e) {
     console.warn("quick date test failed", e);
   }
+  try { consumeDaydreamForce(); } catch (e) {
+    console.warn("daydream force failed", e);
+  }
+  try { refreshMemosStatus(); } catch { /* */ }
   // 本機 Comfy:進遊戲就抓 checkpoint 清單,舊妹子補綁專屬模型
   if (!offline && imgProvider() === "comfy") {
     refreshComfyCkpts({ force: true }).then(ok => {
@@ -1029,6 +1074,14 @@ function consumeQuickDateTest() {
   const girlId = payload?.girlId;
   const venueId = payload?.venueId || "park";
   const force = !!payload?.force;
+  const jumpTrack = payload?.track === "ntr" ? "ntr" : (payload?.track || "");
+  const jump = (jumpTrack || payload?.cardId)
+    ? {
+        track: jumpTrack || "normal",
+        cardId: payload?.cardId || "",
+        stage: Number(payload?.stage) || 1,
+      }
+    : null;
   // 超過 5 分鐘視為過期（防舊分頁誤觸）
   if (payload?.ts && Date.now() - payload.ts > 5 * 60 * 1000) {
     toast("快速約會旗標已過期——請在 testword 再按一次", "bad");
@@ -1061,9 +1114,15 @@ function consumeQuickDateTest() {
 
   // 延後一幀：等 resumeOrRecover / render 完再進桌
   setTimeout(() => {
-    openDateTable(s.id, venueId, { force });
+    openDateTable(s.id, venueId, { force, jump });
     if (state.cardSession?.mode === "date" && state.cardSession.girlId === s.id) {
-      toast(`🧪 測試約會：${s.name} @ ${venueId}`, "good");
+      const j = state.cardSession.dateChapter?.jump;
+      toast(
+        j?.track === "ntr"
+          ? `🧪 測試約會（NTR L${j.stage || 1}）：${s.name} @ ${venueId}`
+          : `🧪 測試約會：${s.name} @ ${venueId}`,
+        "good",
+      );
     }
   }, 60);
 }
@@ -1094,6 +1153,7 @@ async function load() {
     try { version = j.version; state = defaultState(); renderAll(); applyBg(); } catch { }
     toast("⚠ 存檔載入失敗,已用臨時全新狀態開啟(未覆蓋舊檔)。可開 /testword 按「重設存檔」急救。", "bad");
   }
+  if (!bootFailed) drainQuestInbox();
 }
 
 // ---- 前端版本偵測:git pull 後手機回前景自動載入新版 ----
@@ -1134,6 +1194,7 @@ document.addEventListener("visibilitychange", async () => {
   ensureShop();
   renderAll();
   scheduleKanbanNotice("resume");
+  drainQuestInbox();
 });
 
 function scheduleSave() {
@@ -1186,11 +1247,14 @@ async function saveNow(keepalive = false) {
   }
 }
 
-window.addEventListener("beforeunload", () => { if (dirty) saveNow(true); });
+window.addEventListener("beforeunload", () => { if (dirty) saveNow(true); try { flushMemosSync(); } catch { /* */ } });
 // 手機切走/關閉 PWA 時 beforeunload 常不觸發,pagehide 與隱藏時也強制沖存
-window.addEventListener("pagehide", () => { if (dirty) saveNow(true); });
+window.addEventListener("pagehide", () => { if (dirty) saveNow(true); try { flushMemosSync(); } catch { /* */ } });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden" && dirty) saveNow(true);
+  if (document.visibilityState === "hidden") {
+    if (dirty) saveNow(true);
+    try { flushMemosSync(); } catch { /* */ }
+  }
 });
 // iOS 從 bfcache 拉回前景時 visibilitychange 不一定可靠
 window.addEventListener("pageshow", (e) => {
@@ -1286,13 +1350,17 @@ function errandReward(qid) {
   }
 }
 
-function addQuest(text) {
-  text = text.trim();
+function addQuest(text, opts = {}) {
+  text = String(text || "").trim();
   if (!text) return;
-  const talkCmd = parseTalkCommand(text);
-  if (talkCmd.cmd) {
-    beginShopTalk(talkCmd.id || talkCmd.name);
-    return;
+  if (text.length > 80) text = text.slice(0, 80).trim();
+  const quiet = !!opts.quiet;
+  if (!quiet) {
+    const talkCmd = parseTalkCommand(text);
+    if (talkCmd.cmd) {
+      beginShopTalk(talkCmd.id || talkCmd.name);
+      return;
+    }
   }
   const q = { id: uid(), text, lv: 0 };
   state.quests.push(q);
@@ -1305,30 +1373,53 @@ function addQuest(text) {
     if (g > 0) {
       state.gold += g;
       log(`發現「${text}」 +${g} 金`);
-      toast(`發現委託!+${g} 金`, "good");
-    } else toast("已加入發現池", "");
-  } else toast("已加入發現池", "");
-  const asker = maybeJournalAsk(q);
-  if (asker) {
-    pushJournal(asker, {
-      questId: q.id,
-      questText: q.text,
-      text: `他把「${q.text}」寫上委託板。我還不知道這是什麼。`,
-      kind: "ask",
-    });
-    scheduleSave();
-    renderAll();
-    const gid = asker.id;
-    setTimeout(() => {
-      if (chatWith || watchWith || sacrificeWith) return;
-      beginShopTalk(gid, { journalQuest: q });
-    }, 560);
+      if (!quiet) toast(`發現委託!+${g} 金`, "good");
+    } else if (!quiet) toast("已加入發現池", "");
+  } else if (!quiet) toast("已加入發現池", "");
+  if (!quiet) {
+    const asker = maybeJournalAsk(q);
+    if (asker) {
+      pushJournal(asker, {
+        questId: q.id,
+        questText: q.text,
+        text: `他把「${q.text}」寫上委託板。我還不知道這是什麼。`,
+        kind: "ask",
+      });
+      scheduleSave();
+      renderAll();
+      const gid = asker.id;
+      setTimeout(() => {
+        if (chatWith || watchWith || sacrificeWith) return;
+        beginShopTalk(gid, { journalQuest: q });
+      }, 560);
+      return;
+    }
+    // M2：發現 → 氣泡 15%；舊路徑仍 crest
+    if (cardSystemOn()) questBubbleRoll("discover", text);
+    else crestRoll();
+    scheduleSave(); renderAll();
     return;
   }
-  // M2：發現 → 氣泡 15%；舊路徑仍 crest
-  if (cardSystemOn()) questBubbleRoll("discover", text);
-  else crestRoll();
-  scheduleSave(); renderAll();
+  scheduleSave();
+}
+
+let inboxBusy = false;
+let lastInboxAt = 0;
+async function drainQuestInbox() {
+  if (!state || bootFailed || inboxBusy) return;
+  inboxBusy = true;
+  lastInboxAt = Date.now();
+  try {
+    const r = await fetch("/api/quests/inbox/drain", { method: "POST", cache: "no-store" });
+    if (!r.ok) return;
+    const j = await r.json();
+    const items = Array.isArray(j.items) ? j.items : [];
+    if (!items.length) return;
+    for (const it of items) addQuest(it.text, { quiet: true });
+    toast(items.length === 1 ? `已加入發現：「${items[0].text}」` : `已加入發現 ${items.length} 件`, "good");
+    renderAll();
+  } catch { /* 下輪再試 */ }
+  finally { inboxBusy = false; }
 }
 
 function normalizeQuestText(raw) {
@@ -1558,7 +1649,7 @@ function complete(id) {
   state.gold += g;
   const qText = q.text;
   state.quests = state.quests.filter(x => x.id !== id);
-  log(`完成「${qText}」 +${g} 金`);
+  log(`${q.lv === 1 ? "直接完成" : "完成"}「${qText}」 +${g} 金`);
   toast(g >= 19 ? `大豐收!委託完成 +${g} 金!!` : `委託完成!+${g} 金`, "good");
   errandReward(id);   // 有人盯著這件的話,她要的東西做到了
   if (cardSystemOn()) {
@@ -1596,7 +1687,30 @@ function drop(id) {
   scheduleSave(); renderAll();
 }
 
-// (點兩下編輯/退回已移除——提示拿掉後成了看不懂的意外行為;卡片只吃滑動手勢)
+// 已承接卡:上滑開始執行;連點三下可跳過執行格、直接完成領金(先做完再記的捷徑)
+// 長按對話卡寫多一件,原件+新件一起退回發現(大事拆小,不扣信用、不刪委託)
+
+function splitAcceptedQuest(id, extraText) {
+  const orig = state.quests.find(x => x.id === id);
+  if (!orig || orig.lv !== 1) return { ok: false, err: "這件不是已承接" };
+  const extra = normalizeQuestText(extraText);
+  if (!extra) return { ok: false, err: "先寫多出來的任務" };
+  if (normalizeQuestText(orig.text).toLowerCase() === extra.toLowerCase()) {
+    return { ok: false, err: "和原本一樣,換一件" };
+  }
+  if (questTextExists(extra)) return { ok: false, err: "這件已經在板上" };
+  orig.lv = 0;
+  state.quests.push({ id: uid(), text: extra, lv: 0 });
+  log(`「${orig.text}」拆出「${extra}」,兩件退回發現`);
+  procPool = 0;
+  const found = poolItems(0);
+  const i = found.findIndex(x => x.id === orig.id);
+  procIdx[0] = i >= 0 ? i : 0;
+  scheduleSave();
+  renderAll();
+  toast("兩件已退回發現", "good");
+  return { ok: true };
+}
 
 function settleOffline() {
   const now = Date.now();
@@ -2366,8 +2480,9 @@ const HALF_EMOTIONS = {
   nu: { shot: "half_nu", label: "怒", tags: "angry expression, furrowed brows, frown, upset, glaring" },
   ai: { shot: "half_ai", label: "哀", tags: "sad expression, teary eyes, sorrowful, downcast eyes, melancholy" },
   le: { shot: "half_le", label: "樂", tags: "joyful expression, bright smile, laughing, delighted, sparkling eyes" },
+  xiu: { shot: "half_xiu", label: "害羞", tags: "shy, blush, bashful, embarrassed smile, looking aside, fidgeting" },
 };
-const HALF_EMOTION_KEYS = ["xi", "nu", "ai", "le"];
+const HALF_EMOTION_KEYS = ["xi", "nu", "ai", "le", "xiu"];
 
 // 一張的下單→輪詢。shot 給值(head|half|full|half_xi…)= 立繪規格,尺寸與 seed
 // 由伺服器依規格決定(三張同 seed 才是同一張臉)。回 URL 或 ""。
@@ -2569,11 +2684,13 @@ async function weaveOneEmotionShot(s, mood) {
   return url;
 }
 
-/** 感應用到哪張情緒半身才織哪張；已有且未過 12h 沿用。 */
+/** 聊天／感應切情緒半身：發呆已備的直接用，現場不重畫。 */
 function ensureEmotionShot(s, mood) {
-  if (!s || !canWeaveNow()) return;
+  if (!s) return;
   const def = HALF_EMOTIONS[mood] || HALF_EMOTIONS.xi;
   if (!def) return;
+  if (s.portraits?.[def.shot]) return;
+  if (!canWeaveNow()) return;
   if (extraShotFresh(s, def.shot)) return;
   const lock = `${s.id}:${def.shot}`;
   if (extraWeaving.has(lock)) return;
@@ -2633,11 +2750,13 @@ async function weaveOneTeaseShot(s, shot) {
   return url;
 }
 
-/** 感應用到哪張才織哪張。套圖還在 12h 內就沿用；缺的那一步再補。 */
+/** 調戲圖：發呆已備的直接用；沒有才現場補。 */
 function ensureTeaseShot(s, kind, step) {
-  if (!s || !kind || !canWeaveNow() || !gameIsNsfw()) return;
+  if (!s || !kind || !gameIsNsfw()) return;
   const shot = teaseShotAt(kind, step | 0);
   if (!shot) return;
+  if (s.portraits?.[shot]) return;
+  if (!canWeaveNow()) return;
   const stage = s.stage || "stranger";
   const stageChanged = !!(s.teaseStage && s.teaseStage !== stage);
   if (!stageChanged && teaseSetFresh(s, kind) && s.portraits?.[shot]) return;
@@ -2847,7 +2966,7 @@ function syncPortraitCgCache(s) {
   if (!s) return;
   const cg = ensureCardCgMap(s);
   const now = Date.now();
-  for (const shot of ["half", "full", "head", "half_xi", "half_nu", "half_ai", "half_le"]) {
+  for (const shot of ["half", "full", "head", "half_xi", "half_nu", "half_ai", "half_le", "half_xiu"]) {
     const url = s.portraits?.[shot] || (shot === "full" ? s.portrait : "") || "";
     if (!url) continue;
     const k = `portrait:${shot}`;
@@ -2984,9 +3103,34 @@ function bindCardArtAlias(girl, cardId) {
   };
 }
 
+function pickDaydreamCardUrl(girl, def) {
+  if (!girl || !def || !isIntimateContactCard(def)) return "";
+  const text = [def.name, def.token, def.sceneStart, def.visualZh, def.visualEn]
+    .filter(Boolean).join(" ");
+  const kind = (def.kind === "intercourse" || def.kind === "sex")
+    ? "sex"
+    : (def.kind === "foreplay" ? "oral" : "tease");
+  girl.dreamPickI = (girl.dreamPickI || 0) + 1;
+  return Daydream.pickLewdUrl(girl, { packs: SCRIPT_PACKS, kind, text }, girl.dreamPickI - 1);
+}
+
+function applyDaydreamCardArt(girl, cardId, def) {
+  const url = pickDaydreamCardUrl(girl, def);
+  if (!url) return "";
+  const cg = ensureCardCgMap(girl);
+  const key = `card:${cardId}`;
+  const bust = url.includes("?") ? url : `${String(url).split("#")[0]}?v=${Date.now()}`;
+  cg[key] = {
+    url: bust,
+    status: "ready",
+    at: Date.now(),
+    source: "daydream",
+  };
+  return bust;
+}
+
 /**
- * 每次打出卡牌：作廢該卡舊場景圖，改占位 + pending。
- * 占位優先「本桌上一張場景」，沒有才用半身——連續打牌不要閃回立繪。
+ * 每次打出卡牌：猥褻／前戲／正戲優先用發呆圖；其餘作廢舊場景、占位後再畫。
  */
 function primeCardSceneArtOnPlay(girl, cardId) {
   if (!girl || !cardId) return;
@@ -2994,6 +3138,18 @@ function primeCardSceneArtOnPlay(girl, cardId) {
   cacheGirlSnapOnSession(g);
   const cg = ensureCardCgMap(g);
   const key = `card:${cardId}`;
+  const def = Cards.cardById(cardId);
+  // 猥褻／前戲／正戲：發呆預產的劇本／局部動畫直接上桌，不現場重畫
+  if (isIntimateContactCard(def)) {
+    const dream = applyDaydreamCardArt(g, cardId, def);
+    if (dream) {
+      cardUi.sceneArtPending = false;
+      if (document.body.classList.contains("card-mode")) {
+        setCtPortrait(g, { cardId });
+      }
+      return;
+    }
+  }
   // 先清掉 card: 快取再取占位，否則 resolve 會回傳這張卡的舊場景
   delete cg[key];
   syncPortraitCgCache(g);
@@ -3888,6 +4044,34 @@ function cardVisualZh(def) {
   return "";
 }
 
+/** 設計者手寫正向 extra tag（約會卡／猥褻劇本同款） */
+function cardImgPos(def) {
+  if (!def) return "";
+  let cur = def;
+  const seen = new Set();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    const v = String(cur.imgPos || "").trim();
+    if (v) return v;
+    cur = cur.parentId ? Cards.cardById(cur.parentId) : null;
+  }
+  return "";
+}
+
+/** 設計者手寫負向；舊卡 visualNeg 當後備 */
+function cardImgNeg(def) {
+  if (!def) return "";
+  let cur = def;
+  const seen = new Set();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    const v = String(cur.imgNeg || cur.visualNeg || "").trim();
+    if (v) return v;
+    cur = cur.parentId ? Cards.cardById(cur.parentId) : null;
+  }
+  return "";
+}
+
 /** 是否為「色／性接觸」類卡（玩家猥褻／前戲／正戲） */
 function isIntimateContactCard(def) {
   const kind = def?.kind || "";
@@ -4316,6 +4500,26 @@ function queueCardSceneArt(girl, play, onDone) {
     done(false);
     return;
   }
+  const def = Cards.cardById(play.cardId);
+  if (isIntimateContactCard(def)) {
+    const dream = girl.cardCg?.[`card:${play.cardId}`];
+    if (dream?.source === "daydream" && dream.url) {
+      play._sceneArtQueued = true;
+      cardUi.sceneArtPending = false;
+      done(true);
+      return;
+    }
+    const url = applyDaydreamCardArt(girl, play.cardId, def);
+    if (url) {
+      play._sceneArtQueued = true;
+      cardUi.sceneArtPending = false;
+      if (document.body.classList.contains("card-mode") && girlForSession()?.id === girl.id) {
+        setCtPortrait(girl, { cardId: play.cardId });
+      }
+      done(true);
+      return;
+    }
+  }
   // 同一 play 物件不重複排；但「卡上已有舊圖」絕不能當完成而跳過——每次出卡都要重畫
   if (play._sceneArtQueued) return;
   play._sceneArtQueued = true;
@@ -4524,7 +4728,8 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
     // 跟立繪同一風格（pixel 立繪則出卡也 pixel；否則 anime）
     style: state.settings.imgStyle || "anime",
     character: charPayload,
-    extra: actionEn,
+    extra: [actionEn, cardImgPos(def)].map(x => String(x || "").trim()).filter(Boolean).join(", "),
+    negative: cardImgNeg(def),
     // 關鍵：Comfy 不可把 action 當整段 prompt，否則跳過 sdtags 人設 → 變臉
     prompt: "",
     // 鎖人設 tags；seed 則每次隨機（見 sceneSeed）
@@ -4608,19 +4813,10 @@ function portraitsRefreshDue(s) {
 }
 
 /**
- * 背景：到期則重畫一整組立繪（一次只處理一人，避免 GPU 塞爆）。
- * 每 60 秒掃一次名冊。
+ * 立繪整組換新改走發呆時段，打牌／聊天不再自己重畫。
  */
 function tickPortraitRefresh() {
-  if (!state?.succubi?.length) return;
-  if (Date.now() - lastPortraitRefreshCheck < 60_000) return;
-  lastPortraitRefreshCheck = Date.now();
-  if (!canWeaveNow()) return;
-  if (portraitGenning.size > 0) return; // 已有人在織
-  const due = state.succubi.find(s => portraitsRefreshDue(s) && !portraitGenning.has(s.id));
-  if (!due) return;
-  console.info("[portraitRefresh] 12h 整組重畫", due.name || due.id);
-  refreshPortraitSet(due).catch(e => console.warn("[portraitRefresh]", e));
+  return;
 }
 
 /** 強制重畫 full / half / head；感應 extras 下次用到再織 */
@@ -4643,6 +4839,379 @@ async function refreshPortraitSet(s) {
     : `${s.name} 立繪已全部刷新`, lastWeaveError ? "bad" : "good");
   renderAll();
   return true;
+}
+
+// ── 發呆時段：6:00／14:00／19:00／3:00 預產立繪、表情、做愛動畫、劇本圖 ──
+let daydreamLoop = 0;
+function isDaydreaming() {
+  return !!(state?.daydream?.running);
+}
+/** 發呆只對名冊上還在的魅魔。空名冊＝沒對象，不進發呆、不佔時段。 */
+function daydreamGirls() {
+  return (state?.succubi || []).filter(s => s && s.id);
+}
+function stopDaydreamIfNoGirls() {
+  if (daydreamGirls().length) return false;
+  if (!isDaydreaming() && !state?.daydream?.running) return false;
+  daydreamLoop += 1;
+  setDaydreamProgress({ running: false, completed: false, girlId: "", label: "" });
+  paintDaydreamBanner();
+  return true;
+}
+function daydreamPlayerBusy() {
+  if (document.body.classList.contains("card-mode")) return true;
+  if (chatWith || watchWith || sacrificeWith || sacSummon) return true;
+  return false;
+}
+function paintDaydreamBanner() {
+  const dd = state?.daydream;
+  const running = !!(dd && dd.running) && daydreamGirls().length > 0;
+  const hud = document.getElementById("hud-daydream");
+  if (hud) {
+    hud.classList.toggle("hidden", !running);
+    if (running) {
+      const bit = dd.label ? ` · ${dd.label}` : "";
+      const frac = dd.total ? ` ${dd.done}/${dd.total}` : "";
+      hud.textContent = `發呆中${frac}${bit}`;
+    }
+  }
+  const banner = document.getElementById("roster-daydream");
+  if (banner) {
+    banner.classList.toggle("hidden", !running);
+    if (running) {
+      const who = dd.girlId
+        ? (state.succubi.find(x => x.id === dd.girlId)?.name || "")
+        : "";
+      const bit = [who, dd.label].filter(Boolean).join(" · ");
+      const frac = dd.total ? `${dd.done}/${dd.total}` : "";
+      banner.textContent = bit
+        ? `發呆中 ${frac} · ${bit}`
+        : (frac ? `發呆中 ${frac}` : "發呆中");
+    }
+  }
+}
+function setDaydreamProgress(patch) {
+  state.daydream = { ...(state.daydream || {}), ...patch };
+  paintDaydreamBanner();
+}
+async function waitDaydreamText(key, messages) {
+  let r = await genPost(key, messages, 0);
+  const deadline = Date.now() + 120000;
+  while (r && Date.now() < deadline) {
+    if (r.status === "done") return String(r.result || "").trim();
+    if (r.status === "error") return "";
+    await new Promise(res => setTimeout(res, 1500));
+    r = await genPost(key, messages, 0);
+  }
+  return "";
+}
+function framePackForPose(poseId, scriptPack) {
+  const boundId = scriptPack?.pose === poseId ? scriptPack.framePackId : "";
+  if (boundId) {
+    const hit = FramePack.findPack(FRAME_PACKS, boundId);
+    if (hit) return hit;
+  }
+  return (FRAME_PACKS || []).find(p => p.pose === poseId) || null;
+}
+async function daydreamSexPose(s, poseId) {
+  if (!s || !gameIsNsfw()) return false;
+  const style = state.settings.imgStyle || "anime";
+  const look = s.look || {};
+  const built = SexAnim.buildSexAnimFrames(poseId, style, "mid", look, s);
+  const sexPack = (SCRIPT_PACKS.packs || []).find(p => p.kind === "sex" && p.pose === poseId)
+    || (SCRIPT_PACKS.packs || []).find(p => p.kind === "sex")
+    || null;
+  const pack = framePackForPose(poseId, sexPack);
+  const urls = [];
+  const size = SexAnim.SEX_ANIM_SIZE || { width: 1216, height: 832 };
+  const comfy = imgProvider() === "comfy";
+  for (let i = 0; i < 4; i++) {
+    setDaydreamProgress({
+      girlId: s.id,
+      label: `做愛動畫 · ${built.pose?.label || poseId} · 第 ${i + 1} 幀`,
+    });
+    paintDaydreamBanner();
+    const pos = built.frames[i]?.pos || "";
+    const extraNeg = built.frames[i]?.extraNeg || "";
+    const neg = [built.neg, extraNeg].filter(Boolean).join(", ");
+    const bone = pack ? FramePack.packFrameUrl(pack, i + 1) : "";
+    const body = {
+      key: `daydream:${s.id}:sex:${poseId}:${i}:${Date.now().toString(36)}`,
+      provider: comfy ? "comfy" : "grok-img",
+      model: state.settings.model || "grok-4.5",
+      framing: "lower",
+      rating: "nsfw",
+      style,
+      character: s,
+      extra: pos,
+      prompt: pos,
+      negative: neg,
+      cutout: false,
+      flat_bg: false,
+      retry: true,
+      scene_kind: "sex_strip",
+      ...(bone ? { pose_ref: bone, pose_denoise: 0.70 } : {}),
+      ...(comfy ? {
+        comfy_url: state.settings.comfyUrl || "",
+        ckpt: s.comfyCkpt || state.settings.comfyCkpt || "",
+        width: size.width,
+        height: size.height,
+      } : {}),
+    };
+    let url = "";
+    try {
+      let r = await imgGenPost(body);
+      let key = r?.key;
+      const deadline = Date.now() + 180000;
+      while (r && Date.now() < deadline) {
+        if (r.status === "done") { url = r.result || ""; break; }
+        if (r.status === "error") break;
+        await new Promise(res => setTimeout(res, 1500));
+        r = await imgGenPost({ ...body, key, retry: false });
+        key = r?.key || key;
+      }
+    } catch { /* */ }
+    urls.push(url || "");
+  }
+  s.sexAnim ??= {};
+  const prev = s.sexAnim[poseId]?.urls || [];
+  s.sexAnim[poseId] = {
+    urls: urls.map((u, i) => u || prev[i] || ""),
+    at: Date.now(),
+  };
+  dirty = true;
+  try { saveNow(); } catch { /* */ }
+  return urls.filter(Boolean).length >= 2;
+}
+async function daydreamScriptScene(s, job) {
+  const spec = job.spec;
+  const pack = job.pack;
+  const scene = job.scene;
+  const g = s;
+  const lines = ScriptMode.narrLines(spec).map(t => ScriptMode.fillBinds(t, g, playerBindName()));
+  const narr = lines[lines.length - 1] || lines[0] || "……";
+  const attitude = ScriptMode.fillBinds(spec.attitude, g, playerBindName());
+  setDaydreamProgress({ girlId: s.id, label: `${job.label} · 回話` });
+  paintDaydreamBanner();
+  const reply = await waitDaydreamText(
+    `daydream:${s.id}:reply:${pack.id}:${scene}:${Date.now().toString(36)}`,
+    ScriptMode.buildReplyMsgs(g.name, attitude, narr, g.stage),
+  );
+  setDaydreamProgress({ girlId: s.id, label: `${job.label} · 組 prompt` });
+  paintDaydreamBanner();
+  let pose = "";
+  if (reply) {
+    const raw = await waitDaydreamText(
+      `daydream:${s.id}:pose:${pack.id}:${scene}:${Date.now().toString(36)}`,
+      ScriptMode.buildPoseMsgs(g.name, reply),
+    );
+    pose = ScriptMode.parsePoseLines(raw).text;
+  }
+  const urls = [];
+  for (let i = 0; i < (spec.slots || []).length; i++) {
+    setDaydreamProgress({ girlId: s.id, label: `${job.label} · 圖 ${i + 1}` });
+    paintDaydreamBanner();
+    const url = await scriptGenImage(s, spec.slots[i], spec, pose, i, { pack, scene });
+    urls.push(url || "");
+  }
+  s.scriptArt ??= {};
+  s.scriptArt[pack.id] ??= {};
+  const prev = s.scriptArt[pack.id][String(scene)]?.urls || [];
+  s.scriptArt[pack.id][String(scene)] = {
+    urls: urls.map((u, i) => u || prev[i] || ""),
+    pose,
+    at: Date.now(),
+  };
+  dirty = true;
+  try { saveNow(); } catch { /* */ }
+  return urls.some(Boolean);
+}
+function buildDaydreamJobs(s) {
+  const jobs = [];
+  jobs.push({ kind: "portraits", label: "立繪三張" });
+  for (const ek of HALF_EMOTION_KEYS) {
+    const def = HALF_EMOTIONS[ek];
+    if (!def) continue;
+    jobs.push({ kind: "emotion", mood: ek, label: `表情 · ${def.label}` });
+  }
+  if (gameIsNsfw() && !s.ntr) {
+    for (const pose of Daydream.sexPoses()) {
+      jobs.push({ kind: "sex", poseId: pose.id, label: `做愛動畫 · ${pose.label}` });
+    }
+    for (const job of Daydream.listScriptJobs(SCRIPT_PACKS)) {
+      jobs.push({ kind: "script", job, label: job.label });
+    }
+  }
+  return jobs;
+}
+async function runDaydreamJobs() {
+  const token = ++daydreamLoop;
+  try { await loadScriptPacks(); } catch { /* */ }
+  try { await loadFramePacks(); } catch { /* */ }
+  const girls = daydreamGirls();
+  const plan = girls.map(s => ({ s, jobs: buildDaydreamJobs(s) })).filter(x => x.jobs.length);
+  const total = plan.reduce((n, x) => n + x.jobs.length, 0);
+  if (!girls.length || !total) {
+    setDaydreamProgress({ running: false, completed: false, girlId: "", label: "" });
+    paintDaydreamBanner();
+    return;
+  }
+  setDaydreamProgress({ running: true, done: 0, total, label: "開始換新圖", girlId: "" });
+  paintDaydreamBanner();
+  let done = 0;
+  for (const { s, jobs } of plan) {
+    if (token !== daydreamLoop) return;
+    if (!daydreamGirls().length) {
+      setDaydreamProgress({ running: false, completed: false, girlId: "", label: "" });
+      paintDaydreamBanner();
+      return;
+    }
+    if (!state.succubi.some(x => x.id === s.id)) continue;
+    for (const job of jobs) {
+      if (token !== daydreamLoop) return;
+      if (!daydreamGirls().length) {
+        setDaydreamProgress({ running: false, completed: false, girlId: "", label: "" });
+        paintDaydreamBanner();
+        return;
+      }
+      setDaydreamProgress({ running: true, girlId: s.id, label: job.label, done, total });
+      paintDaydreamBanner();
+      try {
+        if (job.kind === "portraits") {
+          await weaveMissing(s, true);
+        } else if (job.kind === "emotion") {
+          await weaveOneEmotionShot(s, job.mood);
+        } else if (job.kind === "sex") {
+          await daydreamSexPose(s, job.poseId);
+        } else if (job.kind === "script") {
+          await daydreamScriptScene(s, job.job);
+        }
+      } catch (e) {
+        console.warn("[daydream]", job.label, e);
+      }
+      done += 1;
+      setDaydreamProgress({ done, total });
+      paintDaydreamBanner();
+    }
+  }
+  if (token !== daydreamLoop) return;
+  setDaydreamProgress({ running: false, completed: true, label: "", girlId: "", done: total, total });
+  paintDaydreamBanner();
+  dirty = true;
+  try { saveNow(); } catch { /* */ }
+  toast("發呆完成——已換上一套新圖", "good");
+  renderAll();
+}
+function applyDaydreamPatches(patches) {
+  if (!patches || !state?.succubi) return false;
+  let changed = false;
+  for (const s of state.succubi) {
+    const p = patches[s.id];
+    if (!p) continue;
+    if (p.portraits) {
+      s.portraits = { ...(s.portraits || {}), ...p.portraits };
+      changed = true;
+    }
+    if (p.extraShotAt) {
+      s.extraShotAt = { ...(s.extraShotAt || {}), ...p.extraShotAt };
+      changed = true;
+    }
+    if (p.portraitsRefreshedAt) {
+      s.portraitsRefreshedAt = p.portraitsRefreshedAt;
+      changed = true;
+    }
+    if (p.sexAnim) {
+      s.sexAnim = { ...(s.sexAnim || {}), ...p.sexAnim };
+      changed = true;
+    }
+    if (p.scriptArt) {
+      s.scriptArt = s.scriptArt || {};
+      for (const [pid, scenes] of Object.entries(p.scriptArt)) {
+        s.scriptArt[pid] = { ...(s.scriptArt[pid] || {}), ...scenes };
+      }
+      changed = true;
+    }
+  }
+  return changed;
+}
+let lastDaydreamPollAt = 0;
+let daydreamPollBusy = false;
+async function pollDaydreamStatus(force = false) {
+  if (!state || daydreamPollBusy) return;
+  if (!force && Date.now() - lastDaydreamPollAt < 4000) return;
+  lastDaydreamPollAt = Date.now();
+  daydreamPollBusy = true;
+  try {
+    const r = await fetch("/api/daydream");
+    if (!r.ok) return;
+    const j = await r.json();
+    const prevRun = !!state.daydream?.running;
+    const prevDone = state.daydream?.done;
+    state.daydream = {
+      ...(state.daydream || {}),
+      stamp: j.stamp || "",
+      slot: j.slot || "",
+      running: !!j.running,
+      completed: !!j.completed,
+      label: j.label || "",
+      done: j.done || 0,
+      total: j.total || 0,
+      girlId: j.girlId || "",
+    };
+    const patched = applyDaydreamPatches(j.patches);
+    paintDaydreamBanner();
+    if (patched) {
+      try { if (typeof renderKanban === "function") renderKanban(); } catch { /* */ }
+      try { renderAll(); } catch { /* */ }
+    }
+    if (prevRun && !j.running && j.completed) {
+      toast("發呆完成——已換上一套新圖", "good");
+      try { renderAll(); } catch { /* */ }
+    } else if (prevDone !== j.done) {
+      paintDaydreamBanner();
+    }
+  } catch { /* 下輪再問 */ }
+  finally { daydreamPollBusy = false; }
+}
+function startDaydream({ force = false } = {}) {
+  if (!force) return !!state?.daydream?.running;
+  fetch("/api/daydream/force", { method: "POST" })
+    .then(r => r.json())
+    .then(j => {
+      if (j?.err) { toast(j.err, "bad"); return; }
+      state.daydream = {
+        ...(state.daydream || {}),
+        stamp: j.stamp || "",
+        slot: j.slot || "",
+        running: !!j.running,
+        completed: !!j.completed,
+        label: j.label || "",
+        done: j.done || 0,
+        total: j.total || 0,
+        girlId: j.girlId || "",
+      };
+      paintDaydreamBanner();
+      pollDaydreamStatus(true);
+    })
+    .catch(() => toast("發呆下單失敗", "bad"));
+  return true;
+}
+function tickDaydream() {
+  paintDaydreamBanner();
+  pollDaydreamStatus();
+}
+function consumeDaydreamForce() {
+  let raw;
+  try { raw = sessionStorage.getItem("yoro_daydream_force"); } catch { return; }
+  if (!raw) return;
+  try { sessionStorage.removeItem("yoro_daydream_force"); } catch { /* */ }
+  let payload;
+  try { payload = JSON.parse(raw); } catch { return; }
+  if (payload?.ts && Date.now() - payload.ts > 5 * 60 * 1000) {
+    toast("發呆測試旗標已過期——請在 testword 再按一次", "bad");
+    return;
+  }
+  startDaydream({ force: true });
 }
 
 // ===== 服裝:生涯服裝 + 個人喜好衣櫃 =====
@@ -4941,13 +5510,13 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
   // 感應接通：一律走即時 AI 聊天（type=sense）
   if (fromSense) type = "sense";
 
-  // M2/M3/M6：自由聊退役 → 日常聊改牌桌（感應／店頭聊除外）
+  // M2/M3/M6：自由聊退役 → 日常聊改感應／店頭；深度互動只走約會
   if (!fromSense && freeChatRetired() && type === "chat") {
     if (isKanban(id)) {
-      toast("想說話就打她的名字叫過來；深度互動走牌桌", "");
+      toast("想說話就打她的名字叫過來；深度互動請打電話約會", "");
       beginShopTalk(id);
     } else {
-      toast("先召喚她為看板娘，再靠近互動", "bad");
+      toast("不在店頭時用感應；深度互動請到名冊打電話約會", "bad");
     }
     return;
   }
@@ -5120,6 +5689,29 @@ function chatEndButton(label = "結束對話 ▶") {
   if (btn) { btn.disabled = false; btn.textContent = label; }
 }
 
+/** 感應／店頭聊都可以邀約出門。 */
+function isChatDateInviteType(sess = chatSession) {
+  return sess?.type === "sense" || sess?.type === "talk";
+}
+
+/**
+ * 非看板聊天裡約會／召喚失敗：立刻結束這次對話。
+ * 看板娘店頭聊失敗則不走這裡（可繼續聊）。
+ */
+function endChatOnActionFail(s, toastMsg) {
+  if (toastMsg) toast(toastMsg, "bad");
+  if (!chatSession) return;
+  chatSession.ended = true;
+  chatSession.busy = true;
+  setChatWaiting(true);
+  const gid = s?.id;
+  setTimeout(() => {
+    if (chatWith !== gid) return;
+    try { exitChat(); } catch { /* */ }
+    renderAll();
+  }, 1100);
+}
+
 /** 聊天立繪依情緒切換（喜怒哀樂）；騷擾模式改顯示調戲圖。感應遠距不織圖、不顯示。 */
 function applyChatMood(s, text) {
   const mood = moodFromText(text);
@@ -5144,9 +5736,10 @@ function teaseNowShot(tease) {
 function teaseImageUrl(s, tease) {
   if (!s || !tease?.kind) return "";
   if (tease.script && tease.play) {
+    if (!tease.play.revealImg) return "";
     const urls = tease.play.urls || [];
-    if (!urls.length) return "";
-    return urls[(tease.play.imgI || 0) % urls.length] || "";
+    if (urls.length) return urls[(tease.play.imgI || 0) % urls.length] || "";
+    return tease.play.holdUrl || "";
   }
   const shot = teaseNowShot(tease);
   return (shot && s.portraits?.[shot]) || "";
@@ -5173,7 +5766,7 @@ function syncTeasePlayUi() {
   const live = isTeasePlay() && !chatSession?.ended;
   const p = chatSession?.tease?.play;
   const scene = Number(p?.scene) || 0;
-  const canThrust = !!(live && p?.ready && !p.ending && scene >= 2);
+  const canThrust = !!(live && !p?.ending && (scene === 2 || scene === 3));
   const inputRow = document.getElementById("chat-input-row");
   const actRow = document.getElementById("tease-act-row");
   if (inputRow) {
@@ -5210,6 +5803,7 @@ function startTeaseMode(s, kind, pack) {
   kind = ScriptMode.resolveScriptKind(resolveTeaseKind(kind));
   void (async () => {
     try { await loadScriptPacks(); } catch { /* 用記憶體裡的 */ }
+    try { await loadFramePacks(); } catch { /* */ }
     if (!chatSession || chatWith !== s.id) return;
     const chosen = (pack && ScriptMode.resolveScriptKind(pack.kind) === kind)
       ? ScriptMode.normalizePack(pack)
@@ -5255,28 +5849,50 @@ function stopScriptAnim() {
   }
   document.getElementById("sex-anim-overlay")?.classList.add("hidden");
 }
+function scriptAnimUrls() {
+  const play = chatSession?.tease?.play;
+  const g = state.succubi.find(x => x.id === chatWith);
+  const poseId = play?.pack?.pose || "";
+  const fromGirl = (poseId && g?.sexAnim?.[poseId]?.urls)
+    || Object.values(g?.sexAnim || {}).find(x => x?.urls?.filter(Boolean).length >= 2)?.urls;
+  if (Array.isArray(fromGirl) && fromGirl.filter(Boolean).length >= 2) {
+    return fromGirl.filter(Boolean);
+  }
+  const spec = play?.pack?.scenes?.[String(play?.scene)];
+  const bound = boundScriptFramePack(play?.pack, spec);
+  let urls = FramePack.packFrameUrls(bound).filter(Boolean);
+  if (urls.length >= 2) return urls;
+  const posePack = (FRAME_PACKS || []).find(p => p.pose && p.pose === poseId);
+  urls = FramePack.packFrameUrls(posePack).filter(Boolean);
+  if (urls.length >= 2) return urls;
+  const any = (FRAME_PACKS || []).find(p => FramePack.packFrameUrls(p).filter(Boolean).length >= 2);
+  return FramePack.packFrameUrls(any).filter(Boolean);
+}
 async function flashScriptAnim() {
   const box = document.getElementById("sex-anim-overlay");
   const img = document.getElementById("sex-anim-img");
   if (!box || !img) return;
-  let urls = [];
-  try {
-    const j = await fetch("/api/frame-packs").then(r => r.ok ? r.json() : null);
-    const pack = (j?.packs || [])[0];
-    const frames = pack?.frames || {};
-    urls = [1, 2, 3, 4].map(i => frames[String(i)]?.url).filter(Boolean);
-  } catch { urls = []; }
+  if (!FRAME_PACKS.length) {
+    try { await loadFramePacks(); } catch { /* */ }
+  }
+  const urls = scriptAnimUrls();
   if (urls.length < 2) return;
+  if (scriptAnimTimer) {
+    clearInterval(scriptAnimTimer);
+    scriptAnimTimer = 0;
+  }
   box.classList.remove("hidden");
   let i = 0;
   const tick = () => {
-    img.src = urls[i % urls.length];
+    if (i >= urls.length) {
+      stopScriptAnim();
+      return;
+    }
+    img.src = urls[i];
     i += 1;
-    if (i >= urls.length * 2) stopScriptAnim();
   };
-  stopScriptAnim();
   tick();
-  scriptAnimTimer = setInterval(tick, 160);
+  scriptAnimTimer = setInterval(tick, 220);
 }
 
 function scriptShowBeat(s, beat) {
@@ -5296,12 +5912,19 @@ function scriptShowBeat(s, beat) {
   });
 }
 
-async function scriptGenImage(s, slot, spec, pose) {
+async function scriptGenImage(s, slot, spec, pose, slotIndex, extra = {}) {
+  const play = chatSession?.tease?.play;
+  const pack = extra.pack || play?.pack;
+  const scene = extra.scene || play?.scene || 1;
+  const fpId = ScriptMode.boundFramePackId(pack, spec);
+  if (fpId && !FramePack.findPack(FRAME_PACKS, fpId)) {
+    try { await loadFramePacks(); } catch { /* */ }
+  }
   const body = ScriptMode.buildScriptImgBody({
     girl: s,
     slot,
     spec,
-    scene: chatSession?.tease?.play?.scene || 1,
+    scene,
     extraPose: pose,
     playerName: playerBindName(),
     imgProvider: imgProvider(),
@@ -5311,7 +5934,10 @@ async function scriptGenImage(s, slot, spec, pose) {
     comfyCkpt: s.comfyCkpt || state.settings.comfyCkpt || "",
     style: state.settings.imgStyle || "anime",
     outfit: outfitWorn(s),
-    keyPrefix: "script",
+    keyPrefix: extra.keyPrefix || "script",
+    pack,
+    framePack: boundScriptFramePack(pack, spec),
+    slotIndex: slotIndex || 0,
   });
   try {
     let r = await imgGenPost(body);
@@ -5328,7 +5954,61 @@ async function scriptGenImage(s, slot, spec, pose) {
   return "";
 }
 
-async function beginScriptScene(s, n) {
+function scriptSceneUrls(s, pack, n) {
+  const pre = s?.scriptArt?.[pack?.id]?.[String(n)]?.urls;
+  if (Array.isArray(pre) && pre.filter(Boolean).length) return pre.filter(Boolean);
+  const slots = pack?.scenes?.[String(n)]?.slots || [];
+  return slots.map(x => x.url).filter(Boolean);
+}
+
+function scriptFirstNarr(s, pack, n) {
+  const spec = pack?.scenes?.[String(n)];
+  const lines = ScriptMode.narrLines(spec).map(x => ScriptMode.fillBinds(x, s, playerBindName()));
+  return lines[0] || "……";
+}
+
+async function scriptTypeNarr(s, text) {
+  const t = String(text || "……");
+  s.history ??= [];
+  s.history.push({ role: "sys", content: t, t: Date.now() });
+  await vnType("", t, "sys");
+}
+
+async function scriptTypeAi(s, extra) {
+  const tok = chatSession?.tease;
+  try {
+    const reply = await llmReply(s, null, extra);
+    if (chatSession?.tease !== tok) return "abort";
+    const text = String(reply || "").trim() || "……";
+    s.history ??= [];
+    s.history.push({ role: "assistant", content: text, t: Date.now() });
+    await vnType(s.name, text, "ai");
+  } catch {
+    if (chatSession?.tease !== tok) return "abort";
+    await vnType(s.name, "……", "ai");
+  }
+  return "ok";
+}
+
+async function scriptNarrAndAi(s, scene) {
+  const t = chatSession?.tease;
+  const play = t?.play;
+  if (!play) return "abort";
+  const gen = play.flowGen || 0;
+  const spec = play.pack?.scenes?.[String(scene)];
+  const narr = scriptFirstNarr(s, play.pack, scene);
+  const attitude = ScriptMode.fillBinds(spec?.attitude || "", s, playerBindName());
+  play.awaiting = true;
+  await scriptTypeNarr(s, narr);
+  if (chatSession?.tease !== t || play.flowGen !== gen) return "abort";
+  const extra = `（旁白：${narr}。這一景態度：${attitude}。只輸出台詞。）`;
+  const r = await scriptTypeAi(s, extra);
+  if (chatSession?.tease !== t || play.flowGen !== gen) return "abort";
+  play.awaiting = false;
+  return r;
+}
+
+async function beginScriptScene(s, n, opts = {}) {
   const t = chatSession?.tease;
   const play = t?.play;
   if (!t?.script || !play) return;
@@ -5337,130 +6017,125 @@ async function beginScriptScene(s, n) {
     scriptFinish(s, "這一景沒寫。");
     return;
   }
+  play.flowGen = (play.flowGen || 0) + 1;
   play.scene = n;
-  play.ready = false;
-  play.awaiting = false;
-  play.lineDone = false;
-  play.lineI = -1;
-  play.urls = [];
-  play.imgI = 0;
-  play.lines = ScriptMode.narrLines(spec).map(x => ScriptMode.fillBinds(x, s, playerBindName()));
-  if (!play.lines.length) play.lines = ["……"];
-  syncTeasePlayUi();
-  vnFace(s, chatSession?.mood);
-  vnShow("", "畫面正在成形……", "sys");
-  vnDone();
-  const got = [];
-  for (const slot of spec.slots || []) {
-    const url = await scriptGenImage(s, slot, spec, "");
-    if (url) got.push(url);
-    if (chatSession?.tease !== t) return;
-  }
-  play.urls = got;
-  if (chatSession?.tease !== t) return;
   play.ready = true;
-  vnFace(s, chatSession?.mood);
-  syncTeasePlayUi();
-  await scriptStartLine(s, 0);
-}
-
-async function scriptStartLine(s, i) {
-  const t = chatSession?.tease;
-  const play = t?.play;
-  if (!t?.script || !play) return "wait";
-  const lines = play.lines || [];
-  if (i >= lines.length) {
-    play.lineDone = true;
-    return "done";
-  }
-  play.awaiting = true;
-  play.lineI = i;
-  play.lineDone = false;
-  const narr = lines[i];
-  const spec = play.pack.scenes[String(play.scene)];
-  vnShow("", narr, "sys");
-  vnDone();
-  s.history ??= [];
-  s.history.push({ role: "sys", content: narr, t: Date.now() });
-  try {
-    const extra = `（旁白：${narr}。這一景態度：${ScriptMode.fillBinds(spec?.attitude || "", s, playerBindName())}。只輸出台詞。）`;
-    const reply = await llmReply(s, null, extra);
-    if (chatSession?.tease !== t) return "abort";
-    const text = String(reply || "").trim() || "……";
-    await vnType(s.name, text, "ai");
-    s.history.push({ role: "assistant", content: text, t: Date.now() });
-  } catch {
-    if (chatSession?.tease !== t) return "abort";
-    vnShow(s.name, "……", "ai");
-    vnDone();
-  }
-  if (play.urls.length > 1) {
-    play.imgI = (play.imgI + 1) % play.urls.length;
-    vnFace(s, chatSession?.mood);
-  }
   play.awaiting = false;
-  if (i >= lines.length - 1) play.lineDone = true;
-  return "ok";
-}
-
-async function scriptAfterBeats(s) {
-  const t = chatSession?.tease;
-  const play = t?.play;
-  if (!play) return;
-  if (ScriptMode.sceneEndsTalk(play.scene) || t.kind === "tease") {
-    scriptFinish(s);
-    return;
-  }
-  if (play.scene === 1) {
-    const nx = ScriptMode.nextAfterScene1(t.kind);
-    if (!nx) { scriptFinish(s); return; }
-    await beginScriptScene(s, nx);
-    return;
-  }
-  play.lineI = -1;
   play.lineDone = false;
-  vnShow("", "可以再按肏。", "sys");
-  vnDone();
+  play.lineI = 0;
+  play.imgPending = false;
+  play.urls = scriptSceneUrls(s, play.pack, n);
+  play.imgI = 0;
+  if (n === 1) {
+    play.revealImg = false;
+    play.openStep = "wait_ai";
+    play.ending = false;
+    syncTeasePlayUi();
+    vnFace(s, chatSession?.mood);
+    await scriptTypeNarr(s, scriptFirstNarr(s, play.pack, 1));
+    return;
+  }
+  if (n === 2 || n === 3) {
+    play.revealImg = true;
+    play.openStep = "";
+    play.ending = false;
+    syncTeasePlayUi();
+    vnFace(s, chatSession?.mood);
+    await scriptNarrAndAi(s, n);
+    return;
+  }
+  play.revealImg = true;
+  play.openStep = "";
+  play.ending = true;
+  syncTeasePlayUi();
+  vnFace(s, chatSession?.mood);
+  const done = await scriptNarrAndAi(s, n);
+  if (done === "abort" || chatSession?.tease !== t) return;
+  play.openStep = "wait_end";
+  play.awaiting = false;
 }
 
 async function scriptHandleTap(s) {
-  const play = chatSession?.tease?.play;
-  if (!isTeasePlay() || !play || play.ending) return;
-  if (!play.ready) { toast("還在等畫面", ""); return; }
-  if (play.awaiting) { toast("等她說完", ""); return; }
-  if (play.scene >= 2) return;
-  if (play.lineDone) {
-    await scriptAfterBeats(s);
+  const t = chatSession?.tease;
+  const play = t?.play;
+  if (!isTeasePlay() || !play) return;
+  if (play.openStep === "wait_end") {
+    scriptFinish(s);
     return;
   }
-  await scriptStartLine(s, (play.lineI | 0) + 1);
+  if (play.ending) return;
+  if (play.scene !== 1) return;
+  if (play.awaiting) return;
+  if (play.openStep === "wait_ai") {
+    play.openStep = "ai";
+    play.awaiting = true;
+    const spec = play.pack?.scenes?.["1"];
+    const narr = scriptFirstNarr(s, play.pack, 1);
+    const attitude = ScriptMode.fillBinds(spec?.attitude || "", s, playerBindName());
+    const r = await scriptTypeAi(s, `（旁白：${narr}。這一景態度：${attitude}。只輸出台詞。）`);
+    if (r === "abort" || chatSession?.tease !== t) return;
+    play.revealImg = true;
+    play.openStep = "wait_go";
+    play.awaiting = false;
+    vnFace(s, chatSession?.mood);
+    return;
+  }
+  if (play.openStep === "wait_go") {
+    const nx = ScriptMode.nextAfterScene1(t.kind);
+    if (!nx) {
+      scriptFinish(s);
+      return;
+    }
+    await beginScriptScene(s, nx);
+  }
 }
 
 async function scriptHandleThrust(s) {
   const t = chatSession?.tease;
   const play = t?.play;
   if (!isTeasePlay() || !play || play.ending) return;
-  if (!play.ready) { toast("還在等畫面", ""); return; }
-  if (play.awaiting) { toast("等她說完", ""); return; }
-  if (play.scene < 2) return;
-  if (play.scene <= 3) void flashScriptAnim();
+  if (play.scene !== 2 && play.scene !== 3) return;
+  void flashScriptAnim();
   const d = ScriptMode.rollAffDelta(play.scene, s.stage);
   if (d) {
     applyAffection(s, d, { skipBreak: true });
     popAffFx(d);
   }
-  if (play.scene === 2 || play.scene === 3) {
-    const jump = ScriptMode.rollThrustJump(play.scene);
-    if (jump !== play.scene) {
-      await beginScriptScene(s, jump);
-      return;
+  const act = ScriptMode.rollSexThrust(play.scene);
+  if (act === "swap") {
+    const n = play.urls?.length || 0;
+    if (n >= 2) {
+      play.imgI = play.imgI === 0 ? 1 : 0;
+      vnFace(s, chatSession?.mood);
     }
-  }
-  if (play.lineDone) {
-    await scriptAfterBeats(s);
     return;
   }
-  await scriptStartLine(s, (play.lineI | 0) + 1);
+  if (act === "player") {
+    vnCancelType();
+    play.awaiting = false;
+    await beginScriptScene(s, 4);
+    return;
+  }
+  if (act === "both") {
+    vnCancelType();
+    play.awaiting = false;
+    await beginScriptScene(s, 5);
+    return;
+  }
+  if (act === "scene3") {
+    vnCancelType();
+    play.awaiting = false;
+    await beginScriptScene(s, 3, { flash: false });
+    return;
+  }
+  if (act === "ai") {
+    if (play.awaiting) return;
+    play.awaiting = true;
+    const spec = play.pack?.scenes?.[String(play.scene)];
+    const attitude = ScriptMode.fillBinds(spec?.attitude || "", s, playerBindName());
+    await scriptTypeAi(s, `（正戲進行中。這一景態度：${attitude}。只輸出台詞，短句、喘。）`);
+    if (chatSession?.tease === t) play.awaiting = false;
+  }
 }
 
 function scriptFinish(s, msg) {
@@ -5473,8 +6148,10 @@ function scriptFinish(s, msg) {
   s.history?.push({ role: "sys", content: msg || "調戲結束了。", t: Date.now() });
   toast(`${s.name} 結束了這次對話`, "");
   stopTeaseMode(s);
-  if (chatSession) chatSession.ended = true;
-  exitChat();
+  if (chatSession) {
+    chatSession.ended = true;
+    chatEndButton("結束對話 ▶");
+  }
 }
 
 function applyTeaseStep(s, action) {
@@ -5983,6 +6660,7 @@ function resolveTeasePack(text) {
 function rollTeaseStart(s, pack) {
   if (!s || !pack) return false;
   const rate = ScriptMode.triggerRate(pack.kind, s.stage);
+  if (rate >= 1) return true;
   const ok = Math.random() < rate;
   const pct = Math.round(rate * 100);
   const st = ScriptMode.STAGE_ZH[s.stage] || stageLabel(s.stage);
@@ -6002,7 +6680,7 @@ function inferTeaseAccept(stage, flags, reply) {
 
 /** 名冊「感應」：免費；每整點時段 6 次。接通後聊天框輸入「召喚」花 2 金召到店頭。 */
 const SENSE_PER_HOUR = 6;
-/** 感應聊天輸入「召喚」：2 金（失敗也吃掉），失敗機率 1/4 */
+/** 感應聊天輸入「召喚」：2 金（失敗也吃掉），失敗機率 1/4；失敗立刻結束這次感應 */
 const SUMMON_SENSE_COST = 2;
 const SUMMON_SENSE_FAIL = 1 / 4;
 /** 被帶走中：感應每輪對話 1/4 被對方召喚師當場叫去調戲（產日記 act 後斷線） */
@@ -6033,6 +6711,7 @@ function isSummonCommand(text) {
 
 function beginSense(girlId) {
   if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
+  if (isDaydreaming()) { toast("發呆中——這段時間在備圖，等跑完再感應", ""); return; }
   const s = state.succubi.find(x => x.id === girlId);
   if (!s || s.ntr) { toast("她不在你身邊……", "bad"); return; }
   // 人就在店頭不用感應——發現欄打她的名字叫過來
@@ -6954,8 +7633,10 @@ async function genTick(force = false) {
   lastGenAt = Date.now();
   genTickBusy = true;
   try {
-    if (isAsleep()) await genSacOrders();
-    if (state.settings.model) {
+    if (isAsleep() && !isDaydreaming()) await genSacOrders();
+    if (isDaydreaming()) {
+      /* 發呆時段：不下聊天／氣泡／碎嘴，GPU 留給預產圖 */
+    } else if (state.settings.model) {
       // 打牌即時反應最優先（玩家盯著牌桌）
       await genCardPlayOrder();
       // 口交／做愛：預設旁白已上，背景收她的台詞
@@ -7281,6 +7962,12 @@ function startSceneArtAfterText(girl, play) {
     return;
   }
   if (play._sceneArtQueued) return;
+  const cur = girl.cardCg?.[`card:${play.cardId}`];
+  if (cur?.source === "daydream" && cur.url) {
+    play._sceneArtQueued = true;
+    cardUi.sceneArtPending = false;
+    return;
+  }
   cardUi.sceneArtPending = true;
   queueCardSceneArt(girl, play, (ok) => {
     if (cardUi.lastPlay === play) {
@@ -7449,7 +8136,7 @@ function rescueFromWatch(s) {
   setTimeout(() => {
     watchWith = null; watchSession = null;
     document.body.classList.remove("chat-mode");
-    // M6：牌制下接回牌桌／約會桌，不進自由聊
+    // 深度互動只走約會；看板打牌已取消
     if (cardSystemOn()) {
       if (playerType === "date") {
         const venues = Cards.venuesList?.() || [];
@@ -7462,8 +8149,6 @@ function rescueFromWatch(s) {
           toast("回來了——再開一次約會吧", "good");
           renderAll();
         }
-      } else if (isKanban(s.id)) {
-        openKanbanTable(s.id);
       } else {
         toast(`${s.name} 回來了`, "good");
         renderAll();
@@ -7566,7 +8251,7 @@ function buildCtx(s) {
     craving: craveTier(s),
     // 陌生階段才要她回報 #越界 旗標(其他階段用不到,也省 token)
     want_guard_flag: s.stage === "stranger",
-    // 感應這句是在邀約出門：persona 讓她自己判，並回 #赴約 / #不去
+    // 感應／店頭這句是在邀約出門：persona 讓她自己判，並回 #赴約 / #不去
     date_invite: chatSession?.dateInvite ? { block: dateInviteBlockReason(s) } : null,
     scene: {
       type: chatSession?.type || "chat", location: chatSession?.location || null,
@@ -7826,8 +8511,8 @@ async function llmReply(s, onToken, extraUser = null) {
       sys += [
         "",
         "【店頭調戲・劇本】",
-        "・他用話說要調戲／口交／做愛時，成不成功由系統判定，不是你決定。",
-        "・檢定失敗時拒絕或罵他；成功後會進劇本，那時再依態度演。",
+        "・調戲、口交他開口就發生，不是你決定讓不讓；依關係演驚怒／羞怒／害羞／享受。",
+        "・做愛才由系統擲關係檢定。失敗時拒絕或罵他；成功後進劇本再依態度演。",
         "・不要自己寫 #答應 #拒絕。不要寫身體畫面。",
       ].join("\n");
       const live = chatSession?.tease;
@@ -7911,6 +8596,7 @@ async function sendChatMsg() {
   const text = input.value.trim();
   if (!text) return;
   if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
+  if (isDaydreaming()) { toast("發呆中——這段時間在備圖，等跑完再聊", ""); return; }
 
   // 感應中：聊天框輸入「召喚」→ 花 2 金召到店頭／搶回（不進 AI）
   if (chatSession.type === "sense" && isSummonCommand(text)) {
@@ -7924,7 +8610,7 @@ async function sendChatMsg() {
   s.history.push({ role: "user", content: text, t: Date.now() });
   guardTick(s);
   vnShow(state.settings.player || "你", text, "user");
-  if (chatSession.type === "sense") {
+  if (isChatDateInviteType()) {
     chatSession.dateInvite = isDateInviteLine(text);
   }
   let teaseAct = null;
@@ -8046,16 +8732,22 @@ async function sendChatMsg() {
       });
     }
 
-    // 感應邀約：她自己判；#赴約（或台詞像答應）且沒硬擋 → 結束通話去抽場地
-    const wasDateInvite = !!(chatSession.type === "sense" && chatSession.dateInvite);
+    // 邀約：她自己判；#赴約（或台詞像答應）且沒硬擋 → 結束對話去抽場地
+    // 非看板（感應）失敗＝立刻結束這次聊天；看板娘店頭聊失敗可繼續聊
+    const wasDateInvite = !!(isChatDateInviteType() && chatSession.dateInvite);
     if (wasDateInvite) {
       const flags = lastLlmFlags || {};
       const saidYes = flags.dateAccept && !flags.dateDecline;
       const inferred = !flags.dateAccept && !flags.dateDecline && inferDateAcceptFromLine(reply);
       chatSession.dateInvite = false;
+      const hangOnFail = !isKanban(s.id);
       if (saidYes || inferred) {
         const why = dateInviteBlockReason(s);
         if (why) {
+          if (hangOnFail) {
+            endChatOnActionFail(s, why);
+            return;
+          }
           toast(why, "bad");
         } else {
           const v = beginDateFromSenseAccept(s);
@@ -8064,7 +8756,6 @@ async function sendChatMsg() {
             const vid = v.id;
             chatSession.leavingForDate = true;
             toast(`${s.name} 答應了——去「${v.name}」`, "good");
-            // 先讓她這句話說完，感應自己結束、直接開桌，不把送出鈕改成約會鈕
             setTimeout(() => {
               if (chatWith !== gid) return;
               exitChat();
@@ -8072,12 +8763,18 @@ async function sendChatMsg() {
             }, 900);
             return;
           }
+          if (hangOnFail) {
+            endChatOnActionFail(s);
+            return;
+          }
         }
+      } else if (hangOnFail) {
+        endChatOnActionFail(s, `${s.name} 拒絕了約會——這次感應結束`);
+        return;
       }
     }
 
-    // 感應：她主動道別 → 結束（玩家按離開／輸入召喚另處理）
-    // 邀約這輪若她回「改天再」是拒約，不是掛斷
+    // 感應／店頭：她主動道別 → 結束（玩家按離開／輸入召喚另處理）
     if ((isSenseChat() || isShopTalk()) && !wasDateInvite && senseReplyIsGoodbye(reply)) {
       chatSession.ended = true;
       chatEndButton(isShopTalk() ? "結束聊天 ▶" : "結束感應 ▶");
@@ -8279,9 +8976,9 @@ function kanbanCost() {
   if (n === 0) return 1;
   return Math.max(2, 50 * n - expLv("cheap"));
 }
-// ⚠ 召喚師模擬的權威實作已搬到 server/sim.py(纏上=每 30 分一輪 1/5、召喚=每小時判定)。
+// ⚠ 召喚師模擬的權威實作已搬到 server/sim.py(非看板纏上=每小時一輪 1/10、召喚=每 30 分判定)。
 // 以下客戶端版與常數僅供 DBG 測試殘留,不再參與正式流程(正式一律由 simSync 取伺服器狀態)。
-const DRAW_CHANCE = 1 / 20;   // (legacy)未纏上抽召喚師機率——實際規則見 sim.py 的 ENTANGLE_CHANCE(1/5)
+const DRAW_CHANCE = 1 / 10;   // (legacy)未纏上抽召喚師機率——實際規則見 sim.py 的 ENTANGLE_CHANCE(1/10)
 const TAKEN_CHANCE = 1 / 3;   // (legacy)已纏上被召喚機率——實際規則見 sim.py 的 TAKEN_CHANCE
 const ACT_CAP = 60;           // 每隻魅魔保留的互動紀錄上限(好感早已入帳,丟的只是舊文字)
 
@@ -8537,8 +9234,8 @@ function processActSlot(s, at) {
   return removed;
 }
 
-// 召喚師擲骰(離線會補算,at 用歷史時點):
-// 未纏上 → 每 drawIvlH(2~5)小時擲一次,1/20 被召喚師纏上(同時抽 4~10 個性趣給這對)。
+// 召喚師擲骰(離線會補算,at 用歷史時點;正式流程已改走 server/sim.py):
+// 未纏上、非看板 → 每小時擲一次,1/10 被召喚師纏上(同時抽 4~10 個性趣給這對)。
 // 已纏上且未被召喚中 → 每「一小時」判定一次,TAKEN_CHANCE 機率他召喚她。
 //   召喚(看板型)持續 2~5 小時,約會(date 型)固定持續 1 小時;解召喚後隔一小時才會再判定。
 function checkSummonerDraws() {
@@ -8807,7 +9504,7 @@ function summonKanban(id, opts = {}) {
   (state.kanbans ??= []).push({ id, until: Date.now() + kanbanHours() * HOUR });
   state.lastKanbanId = id;
   log(`召喚 ${s.name} 為看板娘`);
-  toast(`${s.name} 來到店頭——右下角可開始打牌`, "good");
+  toast(`${s.name} 來到店頭——打她的名字叫過來；深度互動請打電話約會`, "good");
   syncPortraitCgCache(s);
   scheduleSave();
   renderAll();
@@ -8933,7 +9630,7 @@ async function senseTakenRivalSnatch(s, opts = {}) {
 /**
  * 感應聊天中輸入「召喚」。
  * ・先扣 2 金（失敗也吃掉）
- * ・1/4 失敗；被帶走時失敗再擲 1/4 被對方當場叫走
+ * ・1/4 失敗 → 立刻結束這次感應；被帶走時失敗再擲 1/4 被對方當場叫走
  * ・成功：召到店頭（被帶走則先掙脫）
  */
 async function tryCastSummonInSenseChat(s) {
@@ -8965,7 +9662,7 @@ async function tryCastSummonInSenseChat(s) {
       await runSenseTakenRivalSnatch(s, { fromSummon: true });
       return true;
     }
-    toast(`召喚失敗……${SUMMON_SENSE_COST} 金被吃掉了`, "bad");
+    endChatOnActionFail(s, `召喚失敗……${SUMMON_SENSE_COST} 金被吃掉了。感應結束`);
     return true;
   }
 
@@ -9192,6 +9889,7 @@ function fireKanbanNotice(reason = "view", force = false) {
   lastKanbanNoticeAt = Date.now();
   const g = pickNoticeGirl(force);
   if (!g) return false;
+  if (maybeSpeakDiaryComment(g, false)) return true;
   const [a, b] = pickNoticePair(g);
   const text = [a, b].filter((s, i, arr) => s && (i === 0 || s !== arr[0])).join("\n");
   enqueueKanbanBubbles([{
@@ -9357,6 +10055,7 @@ const SHOT_FALLBACK = {
   half_nu: ["half_nu", "half", "half_xi", "full"],
   half_ai: ["half_ai", "half", "half_xi", "full"],
   half_le: ["half_le", "half", "half_xi", "full"],
+  half_xiu: ["half_xiu", "half", "half_xi", "full"],
   full: ["full", "half", "half_xi", "head"],
 };
 
@@ -9376,6 +10075,7 @@ function girlShotMood(s, mood = "xi") {
 const SHOT_LABEL = {
   head: "大頭照", half: "半身", full: "全身",
   half_xi: "半身·喜", half_nu: "半身·怒", half_ai: "半身·哀", half_le: "半身·樂",
+  half_xiu: "半身·害羞",
   tease_breast: "調戲·摸乳", tease_butt: "調戲·摸臀",
   tease_oral_ready: "調戲·口交·頂嘴", tease_oral_suck: "調戲·口交·含住",
   tease_oral_deep: "調戲·口交·整根", tease_oral_cum: "調戲·口交·口內射",
@@ -9509,6 +10209,8 @@ setInterval(() => {
   try { genTick(); } catch (e) { console.error("genTick 失敗:", e); }   // 代工生成:下單+收貨
   // 立繪 12 小時刷新（只重畫 full/half/head）
   try { tickPortraitRefresh(); } catch (e) { console.error("portraitRefresh 失敗:", e); }
+  try { tickDaydream(); } catch (e) { console.error("daydream 失敗:", e); }
+  try { if (Date.now() - lastInboxAt > 5000) drainQuestInbox(); } catch (e) { console.error("發現 inbox 失敗:", e); }
 
   if (changed) { scheduleSave(); renderAll(); }
 }, 1000);
@@ -9683,58 +10385,7 @@ const TYPING_SVG = `<svg class="typing-svg" viewBox="0 0 52 44" width="44" heigh
 function renderCrests() {
   const el = $("#crests");
   if (!el) return;
-  // 打牌全螢幕／其他全螢幕演出時藏入口
-  if (document.body.classList.contains("card-mode") || chatWith || watchWith || sacrificeWith || sacSummon) {
-    el.classList.add("hidden");
-    el.innerHTML = "";
-    return;
-  }
-
-  // v6 牌制：右下角小方塊打牌鍵（不擋委託輸入列）
-  if (cardSystemOn()) {
-    const girls = isAsleep()
-      ? []
-      : kanbanSuccubi().filter(s => !s.ntr);
-    el.classList.toggle("hidden", !girls.length);
-    el.innerHTML = girls.map(s => {
-      const sess = state.cardSession?.girlId === s.id ? state.cardSession : null;
-      const phase = sess?.phase || null;
-      const prepping = phase === "narr_prep";
-      const prepReady = phase === "narr_ready";
-      // 重整後可能 playsLeft=0 但仍卡在做愛／反應；只要有 session 就算進行中
-      const playing = !!sess && (
-        phase === "round_play" || phase === "round_setup" || phase === "round_end"
-        || Cards.hasPendingSex?.(state)
-      );
-      const prog = prepping ? Cards.narrProgress?.(sess) : null;
-      const face = girlShot(s, "head");
-      const title = prepping
-        ? `準備 ${prog?.done || 0}/${prog?.total || "?"}（動作 ${prog?.actionDone || 0}／回話 ${prog?.replyDone || 0}）`
-        : prepReady
-          ? `與 ${s.name}：動作＋回話備妥，按開始打牌`
-          : playing
-            ? `繼續與 ${s.name} 的牌局（卡住可按左上「結束」）`
-            : `與 ${s.name} 開始打牌`;
-      const badge = prepping
-        ? `${prog?.done || 0}/${prog?.total || "?"}`
-        : prepReady
-          ? "始"
-          : playing ? "中" : "牌";
-      return `
-      <button type="button" class="play-fab r-${s.rarity}${playing || prepping || prepReady ? " active-sess" : ""}" data-cid="${s.id}"
-              title="${esc(title)}" aria-label="${esc(title)}">
-        ${face
-          ? `<img class="play-fab-face" src="${esc(face)}" alt="">`
-          : `<span class="play-fab-icon" aria-hidden="true">✦</span>`}
-        <span class="play-fab-badge" aria-hidden="true">${badge}</span>
-      </button>`;
-    }).join("");
-    el.querySelectorAll(".play-fab").forEach(b => {
-      b.onclick = () => openKanbanTable(b.dataset.cid);
-    });
-    return;
-  }
-
+  // 看板打牌已取消：右下角入口不再出現
   el.classList.add("hidden");
   el.innerHTML = "";
 }
@@ -9752,6 +10403,7 @@ function renderHud() {
 
   const asleep = isAsleep();
   $("#hud-sleep").classList.toggle("hidden", !asleep);
+  paintDaydreamBanner();
   document.body.classList.toggle("asleep", asleep);
 }
 
@@ -9759,13 +10411,18 @@ function renderHud() {
 
 // ===== 委託卡片場景(cthulhu-note 式:一次一張,手勢操作)=====
 
-let qScene = "exec";        // exec(執行中三格)| proc(處理)
+let qScene = "exec";        // exec(執行中三格)| proc(處理)| diary(日誌)
 let pinIdx = 0;
 let procPool = null;        // 強制池:0 發現 | 1 已承接 | null 自動
 let procIdx = { 0: 0, 1: 0 };
+let diaryIdx = 0;
+let diaryReturn = "exec";
 let _pinAbort = null;
 let _pinSnapTok = 0;        // 無縫輪動:克隆張跳回真身的排程令牌(新動作作廢舊排程)
+let _nbAbort = null;
 const PIN_EASE = "transform .3s cubic-bezier(.4,0,.2,1)";
+const NOTEBOOK_CAP = 90;
+const NOTEBOOK_FIELD_MAX = 600;
 
 function poolItems(lv) { return state.quests.filter(q => q.lv === lv); }
 function curPool() {
@@ -9773,12 +10430,519 @@ function curPool() {
   procPool = null;
   return poolItems(0).length ? 0 : 1;
 }
-function goProc() { qScene = "proc"; document.getElementById("page-quests").classList.add("on-proc"); renderQuests(); }
-function goExec() { qScene = "exec"; procPool = null; document.getElementById("page-quests").classList.remove("on-proc"); renderQuests(); }
+function goProc() {
+  qScene = "proc";
+  const pg = document.getElementById("page-quests");
+  if (pg) { pg.classList.remove("on-diary"); pg.classList.add("on-proc"); }
+  const tab = document.getElementById("diary-tab");
+  if (tab) tab.classList.remove("on");
+  renderQuests();
+}
+function goExec() {
+  qScene = "exec";
+  procPool = null;
+  const pg = document.getElementById("page-quests");
+  if (pg) pg.classList.remove("on-proc", "on-diary");
+  const tab = document.getElementById("diary-tab");
+  if (tab) tab.classList.remove("on");
+  renderQuests();
+}
+function goDiary() {
+  if (qScene !== "diary") diaryReturn = qScene === "proc" ? "proc" : "exec";
+  qScene = "diary";
+  const pg = document.getElementById("page-quests");
+  if (pg) { pg.classList.remove("on-proc"); pg.classList.add("on-diary"); }
+  const tab = document.getElementById("diary-tab");
+  if (tab) tab.classList.add("on");
+  diaryIdx = 0;
+  renderQuests();
+  maybeGrantNotebookStreak();
+  const e = notebookPages()[0];
+  if (e && notebookQualifies(notebookText(e))) scheduleMemosSync(e);
+  paintDiaryMeta();
+}
+function leaveDiary() {
+  pruneNotebook();
+  flushMemosSync();
+  if (diaryReturn === "proc") goProc();
+  else goExec();
+}
+function toggleDiary() {
+  if (qScene === "diary") leaveDiary();
+  else goDiary();
+}
 
 function renderQuests() {
   renderExec();
   renderProc();
+  renderDiary();
+}
+
+function gameYmd(t = Date.now()) {
+  const d = new Date(t - minOf(state.settings.sleepEnd) * 60000);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function notebookDateTitle(ymd, isToday) {
+  if (!ymd) return isToday ? "今日" : "某日";
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const w = "日一二三四五六"[dt.getDay()];
+  return `${isToday ? "今日 · " : ""}${m}月${d}日 週${w}`;
+}
+
+function notebookText(e) {
+  if (!e) return "";
+  if (e.text != null && String(e.text).length) return String(e.text);
+  return [e.doubt, e.thought].map(x => String(x || "").trim()).filter(Boolean).join("\n\n");
+}
+
+function pruneNotebook() {
+  const today = dayNum();
+  state.notebook = (state.notebook || []).filter(e => {
+    if (!e || e.day == null) return false;
+    if (e.day === today) return true;
+    return !!notebookText(e).trim();
+  });
+  const others = state.notebook.filter(e => e.day !== today)
+    .sort((a, b) => a.day - b.day);
+  if (others.length > NOTEBOOK_CAP) {
+    const drop = new Set(others.slice(0, others.length - NOTEBOOK_CAP).map(e => e.day));
+    state.notebook = state.notebook.filter(e => e.day === today || !drop.has(e.day));
+  }
+}
+
+function ensureTodayNote() {
+  state.notebook ??= [];
+  const day = dayNum();
+  let e = state.notebook.find(x => x.day === day);
+  if (!e) {
+    e = { day, ymd: gameYmd(), text: "", t: Date.now() };
+    state.notebook.push(e);
+  } else if (!e.ymd) {
+    e.ymd = gameYmd();
+  }
+  if (e.text == null) e.text = notebookText(e);
+  return e;
+}
+
+function notebookPages() {
+  ensureTodayNote();
+  const today = dayNum();
+  const pages = (state.notebook || []).filter(e =>
+    e.day === today || !!notebookText(e).trim()
+  );
+  pages.sort((a, b) => {
+    if (a.day === today) return -1;
+    if (b.day === today) return 1;
+    return b.day - a.day;
+  });
+  return pages;
+}
+
+function latestNotebookForPeek() {
+  return (state.notebook || [])
+    .filter(e => !!notebookText(e).trim())
+    .sort((a, b) => b.day - a.day)[0] || null;
+}
+
+function writeNotebookText(value) {
+  const pages = notebookPages();
+  const e = pages[diaryIdx];
+  if (!e) return;
+  e.text = String(value || "").slice(0, NOTEBOOK_FIELD_MAX);
+  delete e.doubt;
+  delete e.thought;
+  e.t = Date.now();
+  maybeGrantNotebookStreak();
+  scheduleMemosSync(e);
+  paintDiaryMeta();
+  dirty = true;
+  scheduleSave();
+}
+
+function notebookQualifies(text) {
+  return String(text || "").trim().length >= NOTEBOOK_MIN_CHARS;
+}
+
+function notebookStreakGold(count) {
+  return Math.min(Math.max(1, count | 0), NOTEBOOK_STREAK_GOLD_CAP);
+}
+
+function writtenNotebookDays() {
+  const s = new Set();
+  for (const e of state.notebook || []) {
+    if (e && e.day != null && notebookQualifies(notebookText(e))) s.add(e.day);
+  }
+  return s;
+}
+
+function notebookStreakCount(today = dayNum()) {
+  const days = writtenNotebookDays();
+  if (!days.has(today)) return 0;
+  let n = 0;
+  for (let d = today; days.has(d); d--) n++;
+  return n;
+}
+
+function maybeGrantNotebookStreak() {
+  if (!state) return 0;
+  const e = (state.notebook || []).find(x => x.day === dayNum());
+  if (!e || !notebookQualifies(notebookText(e))) return 0;
+  const today = dayNum();
+  state.notebookStreak ??= { rewardedDay: null, count: 0 };
+  const st = state.notebookStreak;
+  const count = notebookStreakCount(today);
+  st.count = count;
+  if (st.rewardedDay === today) return 0;
+  const g = notebookStreakGold(count);
+  st.rewardedDay = today;
+  state.gold += g;
+  log(`日誌連寫 ${count} 天 +${g} 金`);
+  toast(count > 1 ? `日誌連寫 ${count} 天!+${g} 金` : `寫了今日日誌 +${g} 金`, "good");
+  try { renderHud(); } catch { /* */ }
+  return g;
+}
+
+let _memosTimer = null;
+let _memosInflight = false;
+let _memosOk = null; // null=未知 true/false
+const _memosPending = new Set();
+
+function scheduleMemosSync(entry, immediate = false) {
+  if (!entry || !notebookQualifies(notebookText(entry))) return;
+  const hash = strHash(notebookText(entry).trim());
+  if (entry.memosHash === hash && entry.memosName) return;
+  _memosPending.add(entry);
+  clearTimeout(_memosTimer);
+  if (immediate) {
+    flushMemosSync();
+    return;
+  }
+  _memosTimer = setTimeout(flushMemosSync, 1600);
+}
+
+async function flushMemosSync() {
+  clearTimeout(_memosTimer);
+  _memosTimer = null;
+  if (_memosInflight) return;
+  const batch = [..._memosPending];
+  _memosPending.clear();
+  for (const e of batch) {
+    await syncNotebookToMemos(e);
+  }
+}
+
+async function syncNotebookToMemos(entry) {
+  if (!entry || !state) return;
+  const text = notebookText(entry).trim();
+  if (!notebookQualifies(text)) return;
+  const hash = strHash(text);
+  if (entry.memosHash === hash && entry.memosName) return;
+  _memosInflight = true;
+  paintDiaryMeta();
+  try {
+    const r = await fetch("/api/memos/diary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ymd: entry.ymd || gameYmd(),
+        text,
+        name: entry.memosName || null,
+      }),
+      keepalive: document.visibilityState === "hidden",
+    });
+    let j = null;
+    try { j = await r.json(); } catch { j = null; }
+    if (!r.ok) {
+      _memosOk = false;
+      entry.memosErr = (j && (j.detail || j.message)) || ("HTTP " + r.status);
+      paintDiaryMeta();
+      return;
+    }
+    _memosOk = true;
+    entry.memosName = j.name || entry.memosName || "";
+    entry.memosHash = hash;
+    entry.memosAt = Date.now();
+    delete entry.memosErr;
+    dirty = true;
+    scheduleSave();
+    paintDiaryMeta();
+  } catch (err) {
+    _memosOk = false;
+    entry.memosErr = String(err && err.message || err);
+    paintDiaryMeta();
+  } finally {
+    _memosInflight = false;
+    if (_memosPending.size) flushMemosSync();
+  }
+}
+
+function paintDiaryMeta() {
+  const streakEl = $("#nb-streak");
+  const syncEl = $("#nb-sync");
+  const hintEl = $("#nb-hint");
+  if (!state) return;
+  const pages = notebookPages();
+  const e = pages[diaryIdx];
+  if (!e) return;
+  const today = dayNum();
+  const isToday = e.day === today;
+  const n = String(notebookText(e)).trim().length;
+  const need = Math.max(0, NOTEBOOK_MIN_CHARS - n);
+  const streak = notebookStreakCount(isToday ? today : e.day);
+  const rewarded = state.notebookStreak?.rewardedDay === today;
+  if (streakEl) {
+    if (!isToday) streakEl.textContent = streak ? `當時連寫 ${streak} 天` : "";
+    else if (need > 0) streakEl.textContent = `再 ${need} 字可領連寫金`;
+    else streakEl.textContent = rewarded
+      ? `連寫 ${streak} 天 · 今日 +${notebookStreakGold(streak)} 金`
+      : `連寫 ${streak} 天`;
+  }
+  if (hintEl) {
+    hintEl.textContent = isToday
+      ? (need > 0
+        ? `連續每天寫滿 ${NOTEBOOK_MIN_CHARS} 字：第 n 天領 n 金（上限 ${NOTEBOOK_STREAK_GOLD_CAP}）。寫滿會同步到本機 Memos。`
+        : "這一頁會同步到本機 Memos（#yorozuya #日誌）。")
+      : "舊頁改了也會覆寫那天的 Memos。";
+  }
+  if (syncEl) {
+    syncEl.classList.remove("ok", "bad", "busy");
+    if (!notebookQualifies(notebookText(e))) {
+      syncEl.textContent = "";
+    } else if (_memosPending.has(e) || (_memosInflight && !e.memosName)) {
+      syncEl.textContent = "同步中";
+      syncEl.classList.add("busy");
+    } else if (e.memosName && e.memosHash === strHash(notebookText(e).trim())) {
+      syncEl.textContent = "已上 Memos";
+      syncEl.classList.add("ok");
+    } else if (e.memosErr || _memosOk === false) {
+      syncEl.textContent = "Memos 未連上";
+      syncEl.classList.add("bad");
+    } else {
+      syncEl.textContent = "待同步";
+    }
+  }
+}
+
+let _memosStatus = null;
+async function refreshMemosStatus() {
+  try {
+    const j = await fetch("/api/memos/status", { cache: "no-store" }).then(r => r.json());
+    _memosStatus = j;
+    _memosOk = !!j.ok;
+    const el = $("#set-memos");
+    if (el) {
+      el.textContent = j.ok
+        ? (`OK · ${j.user || "已登入"}`)
+        : (j.error || "未連上");
+    }
+    paintDiaryMeta();
+    return j;
+  } catch (e) {
+    _memosOk = false;
+    _memosStatus = { ok: false, error: String(e && e.message || e) };
+    const el = $("#set-memos");
+    if (el) el.textContent = "連線失敗";
+    paintDiaryMeta();
+    return _memosStatus;
+  }
+}
+
+function autoGrowNb(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = Math.max(28 * 8, el.scrollHeight) + "px";
+}
+
+function renderDiary() {
+  const stage = $("#diary-stage");
+  const nav = $("#diary-nav");
+  const badge = $("#diary-badge");
+  const tab = $("#diary-tab");
+  if (!stage) return;
+  if (tab) tab.classList.toggle("on", qScene === "diary");
+  const ae = document.activeElement;
+  if (ae && stage.contains(ae) && ae.dataset?.nb) return;
+
+  if (!state) {
+    stage.innerHTML = "";
+    if (nav) nav.textContent = "";
+    return;
+  }
+  const pages = notebookPages();
+  diaryIdx = Math.max(0, Math.min(diaryIdx, pages.length - 1));
+  const e = pages[diaryIdx];
+  const today = dayNum();
+  const isToday = e.day === today;
+  if (badge) badge.textContent = isToday ? "今日" : "日誌";
+
+  stage.innerHTML = `<div class="nb-card" id="nb-card">
+    <div class="nb-head">
+      <span class="nb-date">${esc(notebookDateTitle(e.ymd, isToday))}</span>
+      <span class="nb-meta">
+        <span class="nb-streak" id="nb-streak"></span>
+        <span class="nb-sync" id="nb-sync"></span>
+      </span>
+    </div>
+    <div class="nb-body">
+      <textarea id="nb-text" data-nb="text" maxlength="${NOTEBOOK_FIELD_MAX}" rows="8" placeholder="可以寫下自己的心情、疑惑和思考…">${esc(notebookText(e))}</textarea>
+    </div>
+    <p class="nb-hint" id="nb-hint"></p>
+    <div class="nb-swind"></div>
+  </div>`;
+  if (nav) {
+    nav.textContent = pages.length > 1
+      ? `${diaryIdx + 1} / ${pages.length}　↑較早　↓較新`
+      : "寫下就留在這一頁";
+  }
+  paintDiaryMeta();
+  const card = $("#nb-card");
+  const textEl = $("#nb-text");
+  if (textEl) {
+    textEl.addEventListener("input", ev => {
+      writeNotebookText(ev.target.value);
+      autoGrowNb(ev.target);
+    });
+    autoGrowNb(textEl);
+  }
+  attachNbSwipe(card, pages.length);
+}
+
+function flipDiary(dir) {
+  const pages = notebookPages();
+  if (pages.length <= 1) return;
+  const next = diaryIdx + dir;
+  if (next < 0) { toast("這是最新的一頁", ""); return; }
+  if (next >= pages.length) { toast("沒有更早的日誌", ""); return; }
+  diaryIdx = next;
+  renderDiary();
+}
+
+function attachNbSwipe(el, nPages) {
+  if (!el) return;
+  if (_nbAbort) _nbAbort.abort();
+  _nbAbort = new AbortController();
+  const sig = _nbAbort.signal;
+  const THRESH = 50;
+  let sx, sy, active = false;
+  const fromField = t => t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable);
+  const s = (cx, cy, target) => {
+    if (fromField(target)) { active = false; return; }
+    sx = cx; sy = cy; active = true;
+  };
+  const e = (cx, cy) => {
+    if (!active) return; active = false;
+    const dx = cx - sx, dy = cy - sy;
+    if (Math.abs(dy) < THRESH || Math.abs(dy) < Math.abs(dx)) return;
+    if (nPages <= 1) return;
+    if (dy < 0) flipDiary(1);
+    else flipDiary(-1);
+  };
+  el.addEventListener("touchstart", ev => {
+    const t = ev.touches[0];
+    s(t.clientX, t.clientY, ev.target);
+  }, { passive: true, signal: sig });
+  el.addEventListener("touchend", ev => {
+    const t = ev.changedTouches[0];
+    e(t.clientX, t.clientY);
+  }, { passive: true, signal: sig });
+  el.addEventListener("mousedown", ev => s(ev.clientX, ev.clientY, ev.target), { signal: sig });
+  window.addEventListener("mouseup", ev => { if (active) e(ev.clientX, ev.clientY); }, { signal: sig });
+}
+
+function diaryPeekChance(s) {
+  const p = noticeProactivity(s);
+  const shy = Number(s?.stats?.shyness);
+  let c = 0.12 + (Math.max(0, Math.min(100, p)) / 100) * 0.5;
+  if (Number.isFinite(shy)) c -= (shy / 100) * 0.12;
+  const name = noticeArchName(s);
+  if (/活潑|開朗|天然|溫柔|病嬌|癡女|御姊/.test(name)) c += 0.12;
+  if (/高冷|女王/.test(name)) c -= 0.1;
+  if (/傲嬌/.test(name)) c += 0.04;
+  return Math.max(0.06, Math.min(0.72, c));
+}
+
+function alreadyDiaryPeeked(girlId) {
+  return state.notebookPeek?.day === dayNum() && !!state.notebookPeek.byGirl?.[girlId];
+}
+
+function markDiaryPeek(girlId) {
+  const d = dayNum();
+  if (state.notebookPeek?.day !== d) state.notebookPeek = { day: d, byGirl: {} };
+  state.notebookPeek.byGirl[girlId] = true;
+  dirty = true;
+}
+
+function pickDiaryCanned(g, entry) {
+  const bit = notebookText(entry).replace(/\s+/g, " ").trim().slice(0, 14);
+  const name = noticeArchName(g);
+  const clip = bit ? `「${bit}」` : "你寫的那些";
+  if (/高冷/.test(name)) return [`${clip}……自己想清楚。`, `我沒在管。只是看到了。`].join("\n");
+  if (/傲嬌/.test(name)) return [`才、才沒有偷看你的本子！`, `${clip}那種程度，想太多了。`].join("\n");
+  if (/溫柔/.test(name)) return [`你寫的那些，我看見了。`, `不必一個人扛，慢慢來就好。`].join("\n");
+  if (/活潑|開朗/.test(name)) return [`哇你有在想耶！${clip}`, `寫下來就成功一半，我們拆開看好不好？`].join("\n");
+  if (/天然/.test(name)) return [`欸？你在煩 ${clip} 嗎？`, `我想想……先吃飯？不對，先說出來。`].join("\n");
+  if (/御姊/.test(name)) return [`你想的方向沒有錯。`, `${clip}這件事，先做能做的那一步。`].join("\n");
+  if (/病嬌/.test(name)) return [`你腦子裡都在想這個……`, `跟我說。不要只寫在本子上。`].join("\n");
+  return [`你寫的${clip}，我看到了。`, `想不通的先擱著，眼前這件做完再說。`].join("\n");
+}
+
+function diaryCommentMsgs(girl, entry) {
+  const e = entry || {};
+  return [
+    { role: "system", content: buildDiaryCommentPrompt({
+      character: { name: girl.name, personality: girl.personality, speech_style: girl.speech,
+                   tone: girl.tone || null, backstory: girl.backstory || "" },
+      relationship: { stage: girl.stage },
+      player: { name: state.settings.player || "主人" },
+      notebook: {
+        when: notebookDateTitle(e.ymd, e.day === dayNum()),
+        text: notebookText(e),
+      },
+      content_rating: state.settings.rating || "nsfw",
+    }) },
+    { role: "user", content: "輸出 1～2 句台詞，每句一行。" },
+  ];
+}
+
+function maybeSpeakDiaryComment(g, force = false) {
+  const entry = latestNotebookForPeek();
+  if (!entry) return false;
+  if (!force) {
+    if (alreadyDiaryPeeked(g.id)) return false;
+    if (Math.random() >= diaryPeekChance(g)) return false;
+  }
+  markDiaryPeek(g.id);
+  const canned = pickDiaryCanned(g, entry);
+  if (!state.settings?.model) {
+    enqueueKanbanBubbles([{
+      girlId: g.id, name: g.name, text: canned, emotionDelta: 0, pending: false,
+    }]);
+    scheduleSave();
+    return true;
+  }
+  const token = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  const aiKey = `bubble:${g.id}:diary:${token}`;
+  enqueueKanbanBubbles([{
+    girlId: g.id,
+    name: g.name,
+    text: "",
+    canned,
+    emotionDelta: 0,
+    pending: true,
+    aiKey,
+    eventKey: "diary",
+    questText: notebookText(entry).slice(0, 40),
+    diaryEntry: { day: entry.day, ymd: entry.ymd, text: notebookText(entry) },
+  }]);
+  genPost(aiKey, diaryCommentMsgs(g, entry), 8).catch(() => {});
+  try { genTick(true); } catch { /* */ }
+  scheduleSave();
+  return true;
 }
 
 // 飢渴:玩家看得到她現在的狀態,但看不到數字(她自己也不會承認)。
@@ -9961,6 +11125,10 @@ function renderProc() {
   stage.innerHTML = `<div class="q-card ${lv === 0 ? "c-found" : "c-acc"}" id="proc-card">
     <div class="q-body">${esc(q.text)}</div>
     ${errandNoteHTML(q.id)}
+    ${lv === 1 ? `<div class="q-tapfx" id="proc-tapfx">
+      <div class="q-tap-msg"></div>
+      <div class="q-tap-pips"><i></i><i></i><i></i></div>
+    </div>` : ""}
     <div class="swind"></div>
   </div>`;
   nav.textContent = list.length > 1 ? `${i + 1} / ${list.length}` : "";
@@ -9971,6 +11139,14 @@ function renderProc() {
     if (n <= 1) return;
     procIdx[lv] = (procIdx[lv] + dir + n) % n;   // 循環:第一張往右→最後一張,最後一張往左→第一張
     renderProc();
+  };
+  const showAccTap = n => {
+    const fx = $("#proc-tapfx");
+    if (!fx) return;
+    fx.classList.toggle("on", n > 0);
+    const msg = fx.querySelector(".q-tap-msg");
+    if (msg) msg.textContent = n === 1 ? "再點兩下直接完成" : n === 2 ? "再點一下領金幣" : "";
+    fx.querySelectorAll(".q-tap-pips i").forEach((d, i) => d.classList.toggle("on", i < n));
   };
   const H = lv === 0 ? {
     up: () => flyCard(card, "up", () => { accept(q.id); toast("已承接", "good"); }),
@@ -9983,6 +11159,12 @@ function renderProc() {
     },
     down: () => flyCard(card, "down", () => drop(q.id)),
     left: () => nav2(1), right: () => nav2(-1),
+    tap: showAccTap,
+    hold: () => openSplitCard(q),
+    triple: () => {
+      card.classList.add("q-instant");
+      flyCard(card, "up", () => complete(q.id));
+    },
   };
   swipeable(card, H);
 }
@@ -9996,15 +11178,100 @@ function flyCard(el, dir, action) {
   setTimeout(action, 240);
 }
 
+let splitTargetId = null;
+let splitBound = false;
+
+function bindSplitOverlay() {
+  if (splitBound) return;
+  const ov = $("#split-overlay");
+  const input = $("#split-input");
+  const ok = $("#split-ok");
+  if (!ov) return;
+  splitBound = true;
+  ov.addEventListener("click", e => { if (e.target === ov) closeSplitCard(); });
+  ok?.addEventListener("click", commitSplitCard);
+  input?.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); commitSplitCard(); }
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if (ov.classList.contains("hidden")) return;
+    closeSplitCard();
+  });
+}
+
+function openSplitCard(q) {
+  if (!q || q.lv !== 1) return;
+  bindSplitOverlay();
+  const ov = $("#split-overlay");
+  const name = $("#split-name");
+  const input = $("#split-input");
+  if (!ov || !name || !input) return;
+  splitTargetId = q.id;
+  name.textContent = q.text;
+  input.value = "";
+  ov.classList.remove("hidden");
+  ov.setAttribute("aria-hidden", "false");
+  setTimeout(() => input.focus(), 40);
+}
+
+function closeSplitCard() {
+  const ov = $("#split-overlay");
+  const input = $("#split-input");
+  splitTargetId = null;
+  if (input) input.blur();
+  if (ov) {
+    ov.classList.add("hidden");
+    ov.setAttribute("aria-hidden", "true");
+  }
+}
+
+function commitSplitCard() {
+  const id = splitTargetId;
+  const extra = $("#split-input")?.value || "";
+  if (!id) { closeSplitCard(); return; }
+  const r = splitAcceptedQuest(id, extra);
+  if (!r.ok) { toast(r.err, "bad"); return; }
+  closeSplitCard();
+}
+
 // --- 滑動引擎(照抄 cthulhu-note)---
 
-function swipeable(el, { up, down, left, right, dbl }) {
-  let sx, sy, active = false, lastTap = 0;
-  const THRESH = 55, noLR = !left && !right;
-  const s = (cx, cy) => { sx = cx; sy = cy; active = true; el.style.transition = "none"; };
+function swipeable(el, { up, down, left, right, dbl, triple, tap, hold, holdMs = 520 }) {
+  let sx, sy, active = false, lastTap = 0, tapCount = 0, tapTimer = 0, touchLock = false;
+  let holdTimer = 0, held = false;
+  const THRESH = 55, TAP_WIN = 500, HOLD_MOVE = 12, noLR = !left && !right;
+  const resetTaps = () => {
+    tapCount = 0;
+    lastTap = 0;
+    clearTimeout(tapTimer);
+    if (tap) tap(0);
+  };
+  const clearHold = () => {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = 0; }
+  };
+  const fireHold = () => {
+    if (!active || held || !hold) return;
+    held = true;
+    active = false;
+    holdTimer = 0;
+    resetTaps();
+    el.style.transition = "transform .15s ease";
+    el.style.transform = "";
+    const ov = el.querySelector(".swind"); if (ov) ov.style.opacity = 0;
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch { /* */ }
+    hold();
+  };
+  const s = (cx, cy) => {
+    sx = cx; sy = cy; active = true; held = false;
+    el.style.transition = "none";
+    clearHold();
+    if (hold) holdTimer = setTimeout(fireHold, holdMs);
+  };
   const m = (cx, cy) => {
-    if (!active) return;
+    if (!active || held) return;
     const dx = cx - sx, dy = cy - sy, h = Math.abs(dx) > Math.abs(dy);
+    if (holdTimer && (Math.abs(dx) > HOLD_MOVE || Math.abs(dy) > HOLD_MOVE)) clearHold();
     let tx = 0, ty = 0;
     if (h && !noLR) tx = Math.sign(dx) * Math.min(Math.abs(dx), THRESH * 1.5);
     else if (!h) ty = Math.sign(dy) * Math.min(Math.abs(dy), THRESH * 1.5);
@@ -10020,23 +11287,43 @@ function swipeable(el, { up, down, left, right, dbl }) {
     }
   };
   const e = (cx, cy) => {
+    if (held) { held = false; active = false; clearHold(); return; }
     if (!active) return; active = false;
+    clearHold();
     const dx = cx - sx, dy = cy - sy, h = Math.abs(dx) > Math.abs(dy);
     el.style.transition = "transform .15s ease"; el.style.transform = "";
     const ov = el.querySelector(".swind"); if (ov) ov.style.opacity = 0;
-    if (h && !noLR) { if (dx < -THRESH && left) { left(); return; } if (dx > THRESH && right) { right(); return; } }
-    else if (!h) { if (dy < -THRESH && up) { up(); return; } if (dy > THRESH && down) { down(); return; } }
-    if (dbl && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
-      const now = Date.now();
-      if (now - lastTap < 320) { dbl(); lastTap = 0; } else lastTap = now;
-    }
+    if (h && !noLR) { if (dx < -THRESH && left) { resetTaps(); left(); return; } if (dx > THRESH && right) { resetTaps(); right(); return; } }
+    else if (!h) { if (dy < -THRESH && up) { resetTaps(); up(); return; } if (dy > THRESH && down) { resetTaps(); down(); return; } }
+    const isTap = Math.abs(dx) < 12 && Math.abs(dy) < 12;
+    if (!isTap || !(dbl || triple || tap)) return;
+    const now = Date.now();
+    if (now - lastTap > TAP_WIN) tapCount = 0;
+    tapCount++;
+    lastTap = now;
+    clearTimeout(tapTimer);
+    if (triple && tapCount >= 3) { resetTaps(); triple(); return; }
+    if (dbl && !triple && tapCount >= 2) { resetTaps(); dbl(); return; }
+    if (tap) tap(tapCount);
+    tapTimer = setTimeout(resetTaps, TAP_WIN);
   };
-  el.addEventListener("touchstart", ev => { const t = ev.touches[0]; s(t.clientX, t.clientY); }, { passive: true });
+  el.addEventListener("touchstart", ev => {
+    touchLock = true;
+    const t = ev.touches[0]; s(t.clientX, t.clientY);
+  }, { passive: true });
   el.addEventListener("touchmove", ev => { const t = ev.touches[0]; m(t.clientX, t.clientY); if (ev.cancelable) ev.preventDefault(); }, { passive: false });
   el.addEventListener("touchend", ev => { const t = ev.changedTouches[0]; e(t.clientX, t.clientY); }, { passive: true });
-  el.addEventListener("mousedown", ev => s(ev.clientX, ev.clientY));
-  window.addEventListener("mousemove", ev => { if (ev.buttons === 1) m(ev.clientX, ev.clientY); });
-  window.addEventListener("mouseup", ev => { if (active) e(ev.clientX, ev.clientY); });
+  el.addEventListener("touchcancel", () => {
+    active = false; held = false; touchLock = false; clearHold(); el.style.transform = "";
+  }, { passive: true });
+  el.addEventListener("mousedown", ev => { if (touchLock) return; s(ev.clientX, ev.clientY); });
+  window.addEventListener("mousemove", ev => { if (touchLock || ev.buttons !== 1) return; m(ev.clientX, ev.clientY); });
+  window.addEventListener("mouseup", ev => {
+    if (touchLock) { touchLock = false; return; }
+    if (held) { held = false; return; }
+    if (active) e(ev.clientX, ev.clientY);
+  });
+  if (hold) el.addEventListener("contextmenu", ev => ev.preventDefault());
 }
 
 
@@ -10044,22 +11331,26 @@ function renderShop() {
   ensureShop();
   $("#merchant-line").textContent = "「" + state.shop.line + "」";
   const st = $("#shop-stock"); st.innerHTML = "";
-  for (const it of state.shop.stock) {
-    const d = document.createElement("div");
-    d.className = "shop-item" + (it.sold ? " sold" : "");
-    d.innerHTML = `
-      <span class="sname">${esc(it.name)}</span>
-      <span class="sprice">${it.price} 金</span>
-      <button ${it.sold || state.gold < it.price ? "disabled" : ""}>${it.sold ? "已售出" : "購買"}</button>`;
-    if (!it.sold) d.querySelector("button").onclick = () => buy(it.id);
-    st.appendChild(d);
+  const unsold = (state.shop.stock || []).filter(it => !it.sold);
+  if (!unsold.length) {
+    st.innerHTML = `<p class="dim small">今日售完。</p>`;
+  } else {
+    for (const it of unsold) {
+      const d = document.createElement("div");
+      d.className = "shop-item";
+      d.innerHTML = `
+        <span class="sname">${esc(it.name)}</span>
+        <span class="sprice">${it.price} 金</span>
+        <button ${state.gold < it.price ? "disabled" : ""}>購買</button>`;
+      d.querySelector("button").onclick = () => buy(it.id);
+      st.appendChild(d);
+    }
   }
   $("#dungeon-count").textContent = `(${state.dungeon.length} 人)`;
   $("#dungeon-list").innerHTML = state.dungeon.length
     ? state.dungeon.map(p => `<span>${esc(p.name)}</span>`).join("")
     : `<span class="dim">空無一人。</span>`;
 
-  renderCardShopPanel();
   renderPlayerAttrs();
 }
 
@@ -10110,12 +11401,12 @@ function resumeOrRecoverCardSession({ forceUi = false, silent = false } = {}) {
     return { ok: true, closed: true, girlName };
   }
 
-  // 看板模式但她已不在店頭（含被帶走）→ 關 session
-  if (sess.mode === "kanban" && !isKanban(sess.girlId)) {
-    Cards.closeSession(state, "recover_no_kanban");
+  // 看板打牌已取消：舊看板牌局一律關掉
+  if (sess.mode === "kanban") {
+    Cards.closeSession(state, "kanban_play_retired");
     resetCardUiEphemeral();
     document.body.classList.remove("card-mode", "has-ct-figure");
-    if (!silent) toast("未完成的牌局已清除（她已不在店頭）", "");
+    if (!silent) toast("看板打牌已取消——未完成的牌局已結束", "");
     scheduleSave();
     return { ok: true, closed: true, girlName };
   }
@@ -10142,7 +11433,7 @@ function resumeOrRecoverCardSession({ forceUi = false, silent = false } = {}) {
       ensureArtCacheBg?.(girl);
     } catch { /* */ }
     if (!silent) {
-      toast(`已恢復與 ${girl.name} 的牌局——可繼續，或按左上「結束」（解除看板）`, "good");
+      toast(`已恢復與 ${girl.name} 的約會——可繼續，或按左上「結束」`, "good");
     }
   }
   return { ok: true, resumed: true, girlId: girl.id, girlName: girl.name, needUi };
@@ -10567,12 +11858,11 @@ function formatCardDetailHtml(def, row) {
 }
 
 // ===== 創角輪巡（全新／清空重來）=====
-// 歡迎 → 姓名 → 隨機發一張 starter 基礎話術（已取消測驗／體型／喜好）
-// NSFW 包若無 starter 池：姓名後可直接進入，到商店買碎卡。
+// 歡迎 → 姓名。看板打牌已取消，不再發基礎話術／編牌組。
 
-/** 步驟：0 歡迎 · 1 姓名 · 2 結果（隨機基礎卡／無池則略過） */
+/** 步驟：0 歡迎 · 1 姓名 */
 function onboardStepMeta() {
-  return { intro: 0, name: 1, result: 2, total: 3 };
+  return { intro: 0, name: 1, total: 2 };
 }
 
 let onboardUi = {
@@ -10588,11 +11878,7 @@ function hasStarterPool() {
 }
 
 function needsStarterPick() {
-  if (!cardSystemOn()) return false;
-  // 已領底色，或曾完成創角（含「無 starter 池直接進」）
-  if (state.playerProfile?.starterSpeechCardId) return false;
-  if (state.playerProfile?.onboardDone) return false;
-  return true;
+  return !state.playerProfile?.onboardDone;
 }
 
 function resetOnboardUi() {
@@ -10620,8 +11906,6 @@ function canAdvanceOnboard(step) {
   const m = onboardStepMeta();
   if (step === m.intro) return true;
   if (step === m.name) return !!(onboardUi.name || "").trim();
-  // 結果步：有抽到卡，或本包本來就沒 starter（允許略過）
-  if (step === m.result) return !!onboardUi.resultCardId || !hasStarterPool();
   return false;
 }
 
@@ -10632,32 +11916,10 @@ function commitOnboard() {
   state.playerProfile.prefs = state.playerProfile.prefs || [];
   state.playerProfile.quiz = state.playerProfile.quiz || {};
   state.settings.player = name;
-
-  // 無 starter 池（例如 NSFW 純碎卡包）：只取名進入，不發卡
-  if (!hasStarterPool()) {
-    state.playerProfile.starterSpeechCardId = null;
-    state.playerProfile.onboardDone = true;
-    state.cardDeck = Cards.getDeck?.(state) || state.cardDeck || [];
-    log(`創角完成：${name}／本卡組無基礎話術（略過底色）`);
-    toast("創角完成——本卡組沒有基礎話術，請到商店買牌編組", "good");
-    scheduleSave();
-    return true;
-  }
-
-  const cardId = onboardUi.resultCardId || finishOnboardPickCard();
-  if (!cardId) {
-    toast("抽不到基礎卡，請到 /cardedit 勾 starter 並上線", "bad");
-    return false;
-  }
-  const r = Cards.grantStarter(state, cardId);
-  if (!r.ok) { toast(r.err || "創角失敗", "bad"); return false; }
-  state.playerProfile.starterSpeechCardId = cardId;
+  state.playerProfile.starterSpeechCardId = null;
   state.playerProfile.onboardDone = true;
-  // 創角話術預設放進出戰牌組
-  state.cardDeck = [cardId];
-  const def = Cards.cardById(cardId);
-  log(`創角完成：${name}／隨機話術「${def?.name || cardId}」`);
-  toast(`你的底色話術：${def?.name || cardId}（已放進牌組）`, "good");
+  log(`創角完成：${name}`);
+  toast("歡迎來到萬事屋——委託賺金幣，打電話約會", "good");
   scheduleSave();
   return true;
 }
@@ -10679,8 +11941,8 @@ function renderStarterModal() {
 
   const prog = $("#onboard-progress");
   if (prog) {
-    const labels = ["迎", "名", "卡"];
-    const phase = step === m.intro ? 0 : step === m.name ? 1 : 2;
+    const labels = ["迎", "名"];
+    const phase = step === m.intro ? 0 : 1;
     prog.innerHTML = labels.map((lb, i) =>
       `<span class="onboard-dot${i === phase ? " on" : i < phase ? " done" : ""}" title="${lb}"></span>`
     ).join("");
@@ -10694,18 +11956,13 @@ function renderStarterModal() {
   void panel.offsetWidth;
   panel.style.animation = "";
 
-  const poolN = (Cards.starterPoolIds?.() || []).length;
-  const noStarterPool = poolN <= 0;
-
   if (step === m.intro) {
     panel.innerHTML = `
       <h2>歡迎來到魅魔萬事屋</h2>
       <p class="lead">在召喚任何人之前，先取個名字——她們會這樣叫你。</p>
-      <p class="lead">${noStarterPool
-        ? "目前上線卡組<strong>沒有基礎話術</strong>（例如 NSFW 碎卡包）。取名後即可進入，再到<strong>商店買牌、編牌組</strong>。"
-        : "接著系統會<strong>隨機給你一張基礎話術</strong>（永久、不碎），當作你說話的底色。之後仍可在商店買更多牌。"}</p>`;
+      <p class="lead">白天做委託賺金幣；想靠近她，就到名冊<strong>打電話約會</strong>。</p>`;
     nav.innerHTML = `<span></span><button type="button" class="ob-next" id="ob-next">開始</button>`;
-  } else if (step === m.name) {
+  } else {
     panel.innerHTML = `
       <h2>怎麼稱呼你</h2>
       <p class="lead">她們會用這個名字叫你。之後可在設定改顯示。</p>
@@ -10714,80 +11971,35 @@ function renderStarterModal() {
     nameIn?.focus();
     nameIn?.addEventListener("input", () => {
       onboardUi.name = nameIn.value;
-      const btn = nav.querySelector("#ob-next");
+      const btn = nav.querySelector("#ob-finish");
       if (btn) btn.disabled = !canAdvanceOnboard(step);
+    });
+    nameIn?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && canAdvanceOnboard(step)) {
+        if (!commitOnboard()) return;
+        onboardUi.started = false;
+        renderAll();
+      }
     });
     nav.innerHTML = `
       <button type="button" class="ob-back" id="ob-back">上一步</button>
-      <button type="button" class="ob-next" id="ob-next" ${canAdvanceOnboard(step) ? "" : "disabled"}>${
-        noStarterPool ? "下一步" : "抽基礎卡"
-      }</button>`;
-  } else {
-    // result：有池 → 隨機抽；無池 → 直接可進
-    if (!noStarterPool && !onboardUi.resultCardId) finishOnboardPickCard();
-    const def = onboardUi.resultCardId ? Cards.cardById(onboardUi.resultCardId) : null;
-    const pack = CARDS_PACK_INFO || {};
-    if (noStarterPool || !def) {
-      panel.innerHTML = `
-        <h2>${noStarterPool ? "跳過基礎話術" : "抽不到基礎卡"}</h2>
-        <p class="lead">目前掛載的卡組 <b>${esc(pack.name || pack.packId || "?")}</b>
-          （${esc(pack.file || "?")}）裡
-          <b>沒有 starter 基礎卡</b>（池子 ${poolN} 張）。</p>
-        <p class="lead">${noStarterPool
-          ? "可以直接進入萬事屋。請到<strong>商店</strong>購買碎卡，長按加入<strong>出戰牌組</strong>後再開戰。"
-          : "請到 <a href=\"/cardedit\" target=\"_blank\">/cardedit</a> 勾 starter 並上線，或直接進入後用商店買牌。"}</p>
-        <div class="onboard-summary">${esc(onboardUi.name || "主人")}</div>`;
-      nav.innerHTML = `
-        <button type="button" class="ob-back" id="ob-back">上一步</button>
-        <div style="display:flex;gap:.5em;flex-wrap:wrap;justify-content:flex-end">
-          ${noStarterPool ? "" : `<button type="button" class="ob-next" id="ob-reroll">再試一次</button>`}
-          <button type="button" class="ob-finish" id="ob-finish">進入萬事屋</button>
-        </div>`;
-    } else {
-      panel.innerHTML = `
-        <h2>你的底色話術</h2>
-        <p class="lead">從卡組 <b>${esc(pack.name || pack.packId || "上線組")}</b> 的基礎池
-          （${poolN} 張）<strong>隨機</strong>抽到——永久、不碎。</p>
-        <div class="onboard-result-card">
-          <div class="tag">STARTER · 隨機 · ${esc(pack.file || "")}</div>
-          <h3>${esc(def?.name || onboardUi.resultCardId)}</h3>
-          <p>${esc(def?.sceneStart || "")}</p>
-        </div>
-        <div class="onboard-summary">
-          ${esc(onboardUi.name || "主人")}
-        </div>
-        <p class="lead dim" style="margin-top:.6em">不滿意？可按「再抽一張」重骰（進遊戲前都行）。</p>`;
-      nav.innerHTML = `
-        <button type="button" class="ob-back" id="ob-back">上一步</button>
-        <div style="display:flex;gap:.5em;flex-wrap:wrap;justify-content:flex-end">
-          <button type="button" class="ob-next" id="ob-reroll">再抽一張</button>
-          <button type="button" class="ob-finish" id="ob-finish">進入萬事屋</button>
-        </div>`;
-    }
+      <button type="button" class="ob-finish" id="ob-finish" ${canAdvanceOnboard(step) ? "" : "disabled"}>進入萬事屋</button>`;
   }
 
   nav.querySelector("#ob-back")?.addEventListener("click", () => {
     if (onboardUi.step > 0) {
-      if (onboardUi.step === m.result) onboardUi.resultCardId = null;
       onboardUi.step--;
       renderStarterModal();
     }
   });
   nav.querySelector("#ob-next")?.addEventListener("click", () => {
     if (!canAdvanceOnboard(onboardUi.step)) return;
-    if (onboardUi.step === m.name) {
-      onboardUi.name = (onboardUi.name || "").trim().slice(0, 12);
-      // 輸入姓名後立刻隨機抽卡
-      finishOnboardPickCard();
-    }
     onboardUi.step++;
     renderStarterModal();
   });
-  nav.querySelector("#ob-reroll")?.addEventListener("click", () => {
-    finishOnboardPickCard();
-    renderStarterModal();
-  });
   nav.querySelector("#ob-finish")?.addEventListener("click", () => {
+    if (!canAdvanceOnboard(onboardUi.step)) return;
+    onboardUi.name = (onboardUi.name || "").trim().slice(0, 12);
     if (!commitOnboard()) return;
     onboardUi.started = false;
     renderAll();
@@ -10908,13 +12120,12 @@ function isSummonerTaken(s) {
 /**
  * 電話鈕是否可按：
  *  · 被召喚走 → 永遠可打（窺視，不限一天兩次）
- *  · 沒被召喚 → 一般約會流程，受「一天兩次」限制
- *  · 看板中／睡眠 → 不可
+ *  · 沒被召喚 → 一般約會流程，受「一天兩次」限制（看板娘也可約）
+ *  · 睡眠 → 不可
  */
 function canPressPhone(s) {
   if (!s || s.ntr) return false;
   if (isAsleep()) return false;
-  if (isKanban(s.id)) return false;
   if (isSummonerTaken(s)) return true;           // 被帶走：可連打
   return datesLeftToday(s) > 0;                  // 一般約會：一天兩次
 }
@@ -11024,7 +12235,6 @@ function inferDateAcceptFromLine(text) {
 function dateInviteBlockReason(s) {
   if (!s || s.ntr) return "她不在你身邊";
   if (isAsleep()) return "睡眠時段——她在睡覺";
-  if (isKanban(s.id)) return "看板中不可約會";
   if (isSummonerTaken(s)) return "她正被帶走，現在走不開";
   if (datesLeftToday(s) <= 0) return `今天已經約過了（每天 ${dateLimitPerDay()} 次）`;
   const venues = availableVenues();
@@ -11036,8 +12246,8 @@ function dateInviteBlockReason(s) {
 }
 
 /**
- * 感應裡她答應赴約：不扣電話、不骰接通、不跳約會鈕。
- * 當場抽地點、付場地費，接著直接開約會牌桌。
+ * 感應／店頭聊裡她答應赴約：不扣電話、不骰接通、不跳約會鈕。
+ * 當場抽地點、付場地費，接著直接開約會牌桌。看板娘也可以赴約。
  */
 function beginDateFromSenseAccept(s) {
   const why = dateInviteBlockReason(s);
@@ -11076,8 +12286,7 @@ function beginDateFlow(girlId) {
     return;
   }
 
-  // ★ 分支 2：一般約會（一天兩次）
-  if (isKanban(girlId)) { toast("看板中不可約會——先結束店頭互動", "bad"); return; }
+  // ★ 分支 2：一般約會（一天兩次；看板娘也可約）
   if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
   if (Cards.sessionActive(state)) {
     const rec = resumeOrRecoverCardSession({ forceUi: true });
@@ -11193,8 +12402,8 @@ function confirmDateVenue(girlId, venueId) {
 
 /**
  * 約會章節制（非看板牌桌）：
- *  L1 固定打出基礎卡 → 感情 2～5
- *  ½ → 正常 L2 二選一 → 感情 5～10；¼ → L3 三選一
+ *  L1 固定打出基礎卡 → 感情 5～10
+ *  ½ → 正常 L2 二選一 → 感情 10～16；½ → L3 三選一 → 感情 16～24
  *  ½ → NTR：L1 遇召喚師 → 繼續時 ⅓ 帶走／⅓ L2a／⅓ L2b（不可選）
  *  NTR 中途逃離／離開 → 她與該召喚師關係進一階
  */
@@ -11203,19 +12412,26 @@ function openDateTable(girlId, venueId, opts = {}) {
   if (!opts.force && isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
   const s = state.succubi.find(x => x.id === girlId);
   if (!s || s.ntr) return;
-  if (isKanban(girlId)) { toast("看板中不可約會", "bad"); return; }
   if (Cards.sessionActive(state)) {
     toast("先結束進行中的牌局", "bad");
     return;
   }
 
+  const jump = opts.jump && typeof opts.jump === "object" ? opts.jump : null;
+  const jumpTrack = jump?.track === "ntr" ? "ntr" : (jump?.track || "normal");
   const venue = (Cards.venuesList?.() || []).find(x => x.id === venueId);
-  const chapters = Cards.getVenueDateChapters?.(venueId);
-  if (!chapters?.[1]?.length) {
+  const chapters = Cards.getVenueDateChapters?.(venueId, { track: jumpTrack })
+    || Cards.getVenueDateChapters?.(venueId);
+  if (!chapters?.[1]?.length && !(jumpTrack === "ntr" && (chapters?.[2]?.length || chapters?.[3]?.length))) {
     toast("這個場地還沒有約會章節卡", "bad");
     return;
   }
-  const venueCards = Cards.buildVenueCards(venueId);
+  const venueCards = [
+    ...(Cards.buildVenueCards(venueId, { track: "normal" }) || []),
+    ...(jumpTrack === "ntr" || jump?.cardId
+      ? (Cards.buildVenueCards(venueId, { track: "ntr" }) || [])
+      : []),
+  ];
   if (!venueCards.length) {
     toast("這場約會沒有可用的卡", "bad");
     return;
@@ -11234,7 +12450,8 @@ function openDateTable(girlId, venueId, opts = {}) {
   state.cardSession.dateChapter = {
     stage: 0,           // 尚未開打；開始後 1/2/3
     pickOptions: null,  // L2/L3 待選 id[]
-    track: "normal",
+    track: jumpTrack === "ntr" ? "ntr" : "normal",
+    ...(jump ? { jump } : {}),
   };
   cardUi.injectPick = [];
   cardUi.lastPlay = null;
@@ -11302,7 +12519,7 @@ function playDateChapterCard(cardId, stage) {
   stage = Number(stage) || 1;
   // 以 session 軌道為準；勿被卡面 dateTrack 蓋掉（正常 L1 卡若誤標會整段進錯線）
   const track = String(sess.dateChapter?.track || "normal");
-  const range = Cards.dateChapterEmotion?.(stage, { track }) || { min: 2, max: 5 };
+  const range = Cards.dateChapterEmotion?.(stage, { track }) || { min: 5, max: 10 };
   const lo = Math.min(range.min, range.max);
   const hi = Math.max(range.min, range.max);
   const delta = randInt(lo, hi);
@@ -11377,6 +12594,48 @@ function playDateChapterCard(cardId, stage) {
   renderCardTable();
 }
 
+/**
+ * testdate／testword 快速約會：直接打指定卡（NTR 不必先走正常 L1）。
+ * @returns {boolean} 已接手（呼叫端不要再 startDateChapterOne）
+ */
+function jumpDateChapterFromTest(jump) {
+  const sess = state.cardSession;
+  if (!sess || sess.mode !== "date" || !jump) return false;
+  const track = jump.track === "ntr" ? "ntr" : "normal";
+  const stage = Number(jump.stage) || 1;
+  let cardId = jump.cardId || "";
+  if (cardId && !Cards.cardById(cardId)) cardId = "";
+  if (!cardId) {
+    const opts = Cards.dateChapterOptionIds?.(sess.venueId, stage, { track }) || [];
+    cardId = opts[0] || "";
+  }
+  delete sess.dateChapter.jump;
+  sess.dateChapter.track = track;
+  sess.dateChapter.stage = stage;
+  sess.dateChapter.pickOptions = null;
+  if (track === "ntr") {
+    const girl = girlForSession();
+    const rival = ensureDateRivalSummoner(girl);
+    if (!rival) {
+      toast("岔路生成失敗——改走正常第1章", "bad");
+      startDateChapterOne();
+      return true;
+    }
+    sess.dateChapter.rivalId = rival.su?.id || girl?.summoner?.id || null;
+    sess.dateChapter.rivalName = rival.su?.name || "另一個男人";
+    sess.dateChapter.ntrEscaped = false;
+    sess.dateChapter.ntrParentId = cardId;
+    sess.dateChapter.ntrCardId = cardId;
+    if (!cardId) {
+      beginDateNtrStage1();
+      return true;
+    }
+  }
+  if (!cardId) return false;
+  playDateChapterCard(cardId, stage);
+  return true;
+}
+
 /** 第1章：固定打出基礎卡（normal track） */
 function startDateChapterOne() {
   const sess = state.cardSession;
@@ -11425,8 +12684,8 @@ function beginDateNormalChapter(next) {
   cardUi.datePick = true;
   toast(
     next === 2
-      ? `約會繼續——第2章（${opts.length} 選 1，感情 5～10）`
-      : `氣氛還在——第3章（${opts.length} 選 1，感情 10～15）`,
+      ? `約會繼續——第2章（${opts.length} 選 1，${Cards.dateChapterEmotionHint?.(2) || "感情 10～16"}）`
+      : `氣氛還在——第3章（${opts.length} 選 1，${Cards.dateChapterEmotionHint?.(3) || "感情 16～24"}）`,
     "good",
   );
   if (opts.length === 1) {
@@ -12213,7 +13472,7 @@ async function genOneCardNarr(girl, cardId, token) {
 }
 
 /**
- * 準備完成（動作＋預回話）→ narr_ready，等「開始打牌」。
+ * 準備完成（動作＋預回話）→ narr_ready，等開始約會。
  */
 function finishCardNarrPrep(girl, why = "done") {
   const sess = state.cardSession;
@@ -12238,8 +13497,11 @@ function finishCardNarrPrep(girl, why = "done") {
   document.body.classList.add("card-mode");
   const nAi = Object.values(sess.cardNarr || {}).filter(x => x.from === "ai").length;
   const nRep = Object.values(sess.cardNarr || {}).filter(x => x.replyFrom === "ai").length;
-  log(`與 ${girl.name} 牌組備妥（${prog.done}/${prog.total}，動作AI ${nAi}，回話AI ${nRep}）——待開始`);
-  toast("牌組準備好了（動作＋回話）——按「開始打牌」", "good");
+  const isDate = sess.mode === "date";
+  log(`與 ${girl.name} ${isDate ? "約會章節" : "牌組"}備妥（${prog.done}/${prog.total}，動作AI ${nAi}，回話AI ${nRep}）——待開始`);
+  toast(isDate
+    ? "約會準備好了（動作＋回話）——按「開始約會」"
+    : "準備好了——看板打牌已取消，請結束後打電話約會", "good");
   scheduleSave();
   renderAll();
 }
@@ -12285,8 +13547,14 @@ function beginCardDealFromPrep(girl) {
     // 讓 sceneTextFor 吃得到 cardNarr
     sess.phase = "round_play";
     sess.nLeft = 1;
-    toast("約會開始——第1章", "good");
+    toast(
+      sess.dateChapter?.jump?.track === "ntr"
+        ? `約會開始——NTR L${sess.dateChapter.jump.stage || 1}`
+        : "約會開始——第1章",
+      sess.dateChapter?.jump?.track === "ntr" ? "bad" : "good",
+    );
     scheduleSave();
+    if (jumpDateChapterFromTest(sess.dateChapter.jump)) return;
     startDateChapterOne();
     return;
   }
@@ -12312,103 +13580,24 @@ function beginCardDealFromPrep(girl) {
 }
 
 /**
- * 開看板牌桌。
- * 新局：先 narr_prep（每張卡 AI 演繹 3～4 句）→ 全好才 deal。
- * 已在 round_play：直接繼續。
+ * 看板打牌已取消。殘留呼叫改提示去約會；若還卡著舊看板牌局就關掉。
  */
-function openKanbanTable(girlId, opts = {}) {
-  if (!cardSystemOn()) { toast("卡牌系統未就緒", "bad"); return; }
-  if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
-  const s = state.succubi.find(x => x.id === girlId);
-  if (!s || s.ntr) return;
-  if (!isKanban(girlId)) { toast("她不在店頭，先召喚為看板娘", "bad"); return; }
-  if (keepKanbanFromTaken(s)) { /* 店頭保護:清掉誤套的 taken */ }
-  if (Cards.sessionActive(state) && state.cardSession.girlId !== girlId) {
-    // 別隻卡住：先恢復那一桌 UI，讓玩家能推出
+function openKanbanTable(girlId) {
+  if (state.cardSession?.mode === "date") {
     resumeOrRecoverCardSession({ forceUi: true, silent: true });
-    const other = state.succubi.find(x => x.id === state.cardSession?.girlId);
-    toast(`先結束與 ${other?.name || "另一人"} 的牌局（已打開；可按返回強制結束）`, "bad");
+    toast("看板打牌已取消——正在進行的約會已打開", "");
     renderCardTable();
-    renderCrests();
     return;
   }
-
-  // 既有 session
-  if (Cards.sessionActive(state) && state.cardSession.girlId === girlId) {
-    const phase = state.cardSession.phase;
-    document.body.classList.add("card-mode");
-    touchInteractDay(s);
-    cacheGirlSnapOnSession(s);
-    syncPortraitCgCache(s);
-    ensureArtCacheBg(s);
-    // 重整後進桌：清掉等生圖／等 AI 的記憶體鎖，避免永久卡「場景繪製中」
+  if (state.cardSession?.mode === "kanban") {
+    try { Cards.closeSession(state, "kanban_play_retired"); } catch { /* */ }
+    state.cardSession = null;
     resetCardUiEphemeral();
-    if (Cards.sexNeedsChoice?.(state)) cardUi.sexChoice = true;
-    cardUi.endPanel = null;
-
-    if (phase === "narr_prep") {
-      if (state.settings?.model && state.cardSession.narrToken) {
-        runCardNarrPrep(s, state.cardSession.narrToken);
-      }
-      scheduleSave();
-      renderCardTable();
-      renderCrests();
-      return;
-    }
-
-    // 演繹完、等玩家按開始——不要偷偷 deal
-    if (phase === "narr_ready") {
-      scheduleSave();
-      renderCardTable();
-      renderCrests();
-      return;
-    }
-
-    if (phase === "round_play" && Cards.playsLeft(state.cardSession) > 0) {
-      scheduleSave();
-      renderCardTable();
-      renderCrests();
-      return;
-    }
-
-    // 新一輪：牌組沒變且演繹還在 → 回待命；否則重演繹（都不自動出牌）
-    if (phase === "round_play" || phase === "idle_present" || phase === "round_setup"
-      || phase === "round_end") {
-      const dk = deckKeyForNarr(state);
-      if (state.cardSession.narrDeckKey === dk && narrAllReady(state.cardSession)
-        && state.cardSession.cardNarr) {
-        state.cardSession.phase = "narr_ready";
-      } else {
-        beginCardNarrPrep(s);
-      }
-    }
+    document.body.classList.remove("card-mode", "has-ct-figure");
     scheduleSave();
-    renderCardTable();
-    renderCrests();
-    return;
   }
-
-  // 新 session：本體卡 + 牌組 → 先演繹，不准直接打
-  const girlCards = Cards.buildGirlCards(s, {
-    cravingMidOrHigh: !!craveTier(s),
-  });
-  const r = Cards.openSession(state, { mode: "kanban", girlId, girlCards });
-  if (!r.ok) { toast(r.err, "bad"); return; }
-  cardUi.injectPick = [];
-  cardUi.lastPlay = null;
-  cardUi.handIdx = 0;
-  cardUi.injectIdx = 0;
-  cardUi.awaitReaction = false;
-  cardUi.reactBeat = null;
-  cardUi.endPanel = null;
-  touchInteractDay(s);
-  syncPortraitCgCache(s);
-  ensureArtCacheBg(s);
-  cacheGirlSnapOnSession(s);
-  document.body.classList.add("card-mode");
-  log(`與 ${s.name} 準備牌組`);
-  beginCardNarrPrep(s);
-  scheduleSave();
+  const s = girlId ? state.succubi.find(x => x.id === girlId) : null;
+  toast(s ? `看板打牌已取消——請到名冊打電話約 ${s.name}` : "看板打牌已取消——請到名冊打電話約會", "");
   renderAll();
 }
 
@@ -13865,12 +15054,13 @@ function renderSuccubi() {
         ${ScriptMode.affHeartsHtml(s.affection)}
       </div>
       <div class="status-dot ${st}"></div>`;
-    el.onclick = () => { detailId = s.id; dateChooser = false; dateFlow = null; severChooser = false; renderAll(); };
+    el.onclick = () => { detailId = s.id; dateChooser = false; severChooser = false; renderAll(); };
     roster.appendChild(el);
   }
   if (!state.succubi.length) roster.innerHTML = `<div class="empty">一個魅魔都沒有。桌上只有那本召喚之書。</div>`;
 
   document.querySelector("#roster-panel h2").textContent = `魅魔名冊(${state.succubi.length}/${rosterCap()})`;
+  paintDaydreamBanner();
   const hint = $("#summon-hint");
   const counts = $("#summon-counts");
   const full = state.succubi.length >= rosterCap();
@@ -13890,11 +15080,23 @@ function renderDetail(s, root) {
   const asleep = isAsleep();
   const takenAway = isSummonerTaken(s);
   const left = senseLeft();
+  const datesLeft = datesLeftToday(s);
+  const phoneDisabled = !canPressPhone(s);
+  const phoneLabel = takenAway
+    ? "電話（窺視）"
+    : datesLeft > 0
+      ? `電話（今剩 ${datesLeft}）`
+      : "電話（今日已滿）";
+  const pendingVenue = (dateFlow?.girlId === s.id) ? venueById(dateFlow.venueId) : null;
+  const pendingFee = Number(pendingVenue?.fee) || 0;
   const senseHint = takenAway
-    ? `被帶走中 · 免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只有聲音、不能調戲 · 每句 1/4 可能被對方叫走 · 輸入「召喚」花 ${SUMMON_SENSE_COST} 金搶回（1/4 失敗）`
-    : `免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 遠距通話（無畫面、不能調戲；輸入「召喚」花 ${SUMMON_SENSE_COST} 金召到店頭，1/4 失敗）`;
+    ? `被帶走中 · 免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只有聲音、不能調戲 · 每句 1/4 可能被對方叫走 · 輸入「召喚」花 ${SUMMON_SENSE_COST} 金搶回（失敗立刻結束感應）`
+    : `免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 遠距通話（無畫面、不能調戲；輸入「召喚」花 ${SUMMON_SENSE_COST} 金召到店頭；約會或召喚失敗會立刻結束這次感應）`;
+  const phoneHint = takenAway
+    ? "窺視被帶走的她（1/5 接通，不佔約會次數）"
+    : "打電話約會：扣電話費、接通後抽場地，再決定要不要付場地費出門";
 
-  // 精簡詳情：肖像（長按獻祭）→ 名 → 天賦 → 時間表 → 感應
+  // 精簡詳情：肖像（長按獻祭）→ 名 → 天賦 → 時間表 → 感應／電話
   root.className = `r-${s.rarity}`;
   root.innerHTML = `
     <div class="panel">
@@ -13922,15 +15124,23 @@ function renderDetail(s, root) {
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她在睡覺)</div>` : ""}
       ${s.ntr
         ? `<div class="detail-actions" style="margin-top:.8em"><button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button></div>`
-        : isKanban(s.id)
-          ? ""
-          : `<div class="detail-actions" style="margin-top:.8em"><button class="cyan" id="act-sense" ${asleep || left <= 0 ? "disabled" : ""} title="${esc(senseHint)}">感應（${left}/${SENSE_PER_HOUR}）</button></div>`}
+        : `<div class="detail-actions" style="margin-top:.8em">
+            ${isKanban(s.id) ? "" : `<button class="cyan" id="act-sense" ${asleep || left <= 0 ? "disabled" : ""} title="${esc(senseHint)}">感應（${left}/${SENSE_PER_HOUR}）</button>`}
+            <button class="cyan" id="act-date" ${phoneDisabled ? "disabled" : ""} title="${esc(phoneHint)}">${esc(phoneLabel)}</button>
+          </div>
+          ${pendingVenue ? `
+          <div class="chooser date-venues">
+            <div class="dim small" style="width:100%;text-align:center;margin:.3em 0 .2em">
+              她接了（電話 −${dateFlow.phoneCost ?? 1} 金）。抽到「${esc(pendingVenue.name || "？")}」${pendingFee ? ` · 場地費 ${pendingFee} 金` : ""}
+            </div>
+            <button type="button" class="cyan" id="act-date-go">去約會</button>
+            <button type="button" id="act-date-cancel">先不約了</button>
+          </div>` : ""}`}
     </div>`;
 
   root.querySelector("#detail-back").onclick = () => {
     detailId = null;
     dateChooser = false;
-    dateFlow = null;
     severChooser = false;
     renderAll();
   };
@@ -13962,6 +15172,9 @@ function renderDetail(s, root) {
 
   root.querySelector("#act-sense")?.addEventListener("click", () => beginSense(s.id));
   root.querySelector("#act-ransom")?.addEventListener("click", () => ransom(s.id));
+  root.querySelector("#act-date")?.addEventListener("click", () => beginDateFlow(s.id));
+  root.querySelector("#act-date-go")?.addEventListener("click", () => confirmDateVenue(s.id));
+  root.querySelector("#act-date-cancel")?.addEventListener("click", () => declineDateVenue(s.id));
 }
 
 function renderKanban() {
@@ -13972,7 +15185,7 @@ function renderKanban() {
   zzz.classList.toggle("hidden", !asleep);
 
   // 主畫面只站「此刻真的在店頭」的看板娘:對話中的那位,或付費時段仍在任的。
-  // 沒召喚看板娘 → 店頭空無一人;名冊全空 → 召喚書。暫時被召喚走不能把她從店頭拆走。
+  // 沒召喚看板娘／名冊全空 → 店頭空無一人(不放召喚書)。暫時被召喚走不能把她從店頭拆走。
   const chatGirl = chatWith && state.succubi.find(x => x.id === chatWith);
   const girls = chatGirl ? [chatGirl] : kanbanSuccubi();
 
@@ -13991,15 +15204,10 @@ function renderKanban() {
       // 優先冒她自己的預生委託台詞(秒出,零等待);沒貨才用罐頭
       kanbanSay(asleep ? pick(REACT.sleepClick) : (popQuip(g) || pick(REACT.idle)));
     });
-  } else if (!state.succubi.length) {
-    girl.classList.add("hidden");
-    book.classList.remove("hidden");
-    book.onclick = () => kanbanSay(asleep ? pick(REACT.sleepClick) : pick(TAUNTS));
   } else {
-    // 有魅魔但沒人在店頭：提示去名冊再召看板（不要像人間蒸發）
     girl.classList.add("hidden");
     book.classList.add("hidden");
-    // 若有 lastKanbanId 可顯示休息提示（不佔立繪層，避免誤點）
+    book.onclick = null;
   }
 }
 
@@ -14097,6 +15305,22 @@ function renderSettings() {
 
   $("#set-appver").textContent = APP_VER;
   {
+    const nbs = $("#set-nb-streak");
+    if (nbs) {
+      const c = notebookStreakCount();
+      const rewarded = state.notebookStreak?.rewardedDay === dayNum();
+      nbs.textContent = c
+        ? `連寫 ${c} 天${rewarded ? "（今日已領）" : ""}`
+        : "今天還沒寫滿 12 字";
+    }
+    const ms = $("#set-memos");
+    if (ms) {
+      if (_memosStatus?.ok) ms.textContent = `OK · ${_memosStatus.user || "已登入"}`;
+      else if (_memosStatus?.error) ms.textContent = _memosStatus.error;
+      else ms.textContent = "偵測中…";
+    }
+  }
+  {
     const el = $("#set-cardpack");
     if (el) {
       const p = CARDS_PACK_INFO || {};
@@ -14105,7 +15329,7 @@ function renderSettings() {
         el.style.color = "#ff9d4d";
       } else if (p.packId) {
         const ep = p.liveEpoch != null ? ` · e${p.liveEpoch}` : "";
-        el.textContent = `${p.name || p.packId} · ${p.file || "?"} · ${p.cardCount ?? "?"} 張 · 基礎 ${p.starterCount ?? "?"}${ep}`;
+        el.textContent = `${p.name || p.packId} · ${p.file || "?"} · ${p.cardCount ?? "?"} 張${ep}`;
         el.style.color = "";
       } else {
         el.textContent = "載入中…";
@@ -14141,6 +15365,8 @@ on("quest-add", "click", () => { const i = $("#quest-input"); if (i) { addQuest(
 on("quest-input", "keydown", e => { if (e.key === "Enter") { addQuest(e.target.value); e.target.value = ""; } });
 on("hud-need", "click", () => switchTab(2));
 on("q-back", "click", () => goExec());
+on("diary-tab", "click", () => toggleDiary());
+on("diary-back", "click", () => leaveDiary());
 
 on("set-player", "change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
 on("set-sleep-start", "change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
@@ -14186,10 +15412,7 @@ on("btn-bg-clear", "click", async () => {
 
 // 聊天室
 on("card-table-back", "click", () => leaveCardTableUi());
-// 右上「推出」＝結束牌局並解除看板（與左上結束同效）
-on("card-table-close", "click", () => {
-  ejectCardTable("player_eject_btn");
-});
+on("card-table-close", "click", () => leaveCardTableUi());
 
 on("chat-back", "click", () => {
   if (sacrificeWith) { exitSacrifice(); return; }   // 儀式中途離開=中止(她未結算、存活)
@@ -14308,6 +15531,12 @@ on("btn-comfy-test", "click", async () => {
 });
 on("set-model", "change", e => { state.settings.model = e.target.value.trim(); scheduleSave(); });
 on("set-rating", "change", () => { state.settings.rating = "nsfw"; scheduleSave(); });
+on("btn-memos-test", "click", async () => {
+  const r = $("#memos-test-result");
+  if (r) r.textContent = "測試中…";
+  const j = await refreshMemosStatus();
+  if (r) r.textContent = j?.ok ? `OK · ${j.user || ""} · ${j.url || ""}` : (j?.error || "失敗");
+});
 on("btn-llm-test", "click", async () => {
   const r = $("#llm-test-result");
   if (!r) return;
@@ -14423,11 +15652,30 @@ function toast(msg, cls = "") {
 window.DBG = {
   dayNum: () => dayNum(),
   state: () => state,
+  goProc,
+  renderAll,
+  splitAccepted: (id, extra) => splitAcceptedQuest(id, extra),
+  openSplit: (id) => {
+    const q = (id && state.quests.find(x => x.id === id)) || state.quests.find(x => x.lv === 1);
+    if (!q) return { err: "no accepted" };
+    openSplitCard(q);
+    return { ok: true, id: q.id, text: q.text };
+  },
   isAsleep: () => isAsleep(),
+  daydream: () => ({
+    slot: Daydream.currentSlot(),
+    stamp: Daydream.slotStamp(),
+    state: state.daydream,
+    running: isDaydreaming(),
+  }),
+  startDaydream: (force = true) => startDaydream({ force }),
   cards: () => Cards.debugDump(),
   cardShop: () => { Cards.ensureCardShop(state); return state.cardShop; },
   cardInv: () => Cards.inventoryList(state),
-  openTable: (id) => openKanbanTable(id || kanbanSuccubi()[0]?.id),
+  openTable: (id) => {
+    toast("看板打牌已取消——請用 DBG.dateTable / DBG.randomDate", "");
+    return { retired: true, girlId: id || null };
+  },
   /** 測 L1→NTR 五成機率：DBG.testDateNtr(1000) */
   testDateNtr: (n = 1000) => {
     let ntr = 0, normal = 0;
@@ -14565,6 +15813,38 @@ window.DBG = {
       : (kanbanSuccubi()[0] || state.succubi[0]);
     return { ok: tryAddChatQuest(s, text), text: normalizeQuestText(text), quests: state.quests.filter(q => q.lv === 0).map(q => q.text) };
   },
+  notebook: () => {
+    pruneNotebook();
+    return {
+      today: dayNum(),
+      streak: notebookStreakCount(),
+      rewarded: state.notebookStreak,
+      memos: _memosStatus,
+      pages: notebookPages().map(e => ({
+        day: e.day, ymd: e.ymd, text: notebookText(e),
+        memosName: e.memosName || null, memosErr: e.memosErr || null,
+      })),
+    };
+  },
+  notebookSync: () => {
+    const e = notebookPages()[diaryIdx];
+    if (!e) return { ok: false };
+    scheduleMemosSync(e, true);
+    return { ymd: e.ymd, n: notebookText(e).trim().length };
+  },
+  notebookPeek: (force = true) => {
+    const g = kanbanSuccubi()[0];
+    if (!g) return { ok: false, err: "沒有看板娘" };
+    lastKanbanNoticeAt = 0;
+    const chance = diaryPeekChance(g);
+    return {
+      ok: maybeSpeakDiaryComment(g, force),
+      girl: g.name,
+      arch: noticeArchName(g),
+      chance,
+      entry: latestNotebookForPeek(),
+    };
+  },
   // 測試：記憶日誌
   journal: (id) => {
     const s = id ? state.succubi.find(x => x.id === id) : (kanbanSuccubi()[0] || state.succubi[0]);
@@ -14620,9 +15900,8 @@ window.DBG = {
   },
   // 測試 M3 約會：跳過電話骰，直接開指定場地牌桌（預設公園）
   dateTable: (id, venueId = "park") => {
-    const s = id ? state.succubi.find(x => x.id === id) : state.succubi.find(x => !isKanban(x.id) && !x.ntr);
+    const s = id ? state.succubi.find(x => x.id === id) : state.succubi.find(x => !x.ntr);
     if (!s) return { ok: false, err: "沒有可約的魅魔" };
-    if (isKanban(s.id)) return { ok: false, err: "看板中不可約" };
     openDateTable(s.id, venueId, { force: true });
     return { ok: true, girl: s.name, venueId };
   },
@@ -14674,7 +15953,7 @@ window.DBG = {
   },
   // 測試/調 prompt:看她下一句實際會送出去的訊息陣列(system prompt + 這一場的上下文)
   chatPrompt: (id) => {
-    if (freeChatRetired()) return { retired: true, note: "自由聊已退役；打牌用 cardPlay / bubble" };
+    if (freeChatRetired()) return { retired: true, note: "自由聊已退役；深度互動走約會電話" };
     const s = state.succubi.find(x => x.id === id) || kanbanSuccubi()[0];
     return s ? chatLineMsgs(s) : null;
   },
@@ -14682,7 +15961,7 @@ window.DBG = {
   whyNoCrest: () => {
     if (freeChatRetired()) {
       return {
-        note: "M6：淫紋自由聊已退役。店頭打名字叫過來；不在時感應只有聲音。深度互動走牌桌。",
+        note: "看板打牌已取消。店頭打名字叫過來；不在時感應只有聲音。深度互動走名冊電話約會。",
         cardSystem: cardSystemOn(),
         freeChatRetired: true,
         看板: kanbanSuccubi().map(s => s.name),

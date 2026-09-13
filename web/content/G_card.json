@@ -118,21 +118,21 @@
     "answer_rate": 0.6666666666666666,
     "date_chapter_emotion": {
       "1": {
-        "min": 2,
-        "max": 5
-      },
-      "2": {
         "min": 5,
         "max": 10
       },
-      "3": {
+      "2": {
         "min": 10,
-        "max": 15
+        "max": 16
+      },
+      "3": {
+        "min": 16,
+        "max": 24
       }
     },
     "date_continue_chance": {
       "2": 0.5,
-      "3": 0.25
+      "3": 0.5
     }
   },
   "starter_pool": [],

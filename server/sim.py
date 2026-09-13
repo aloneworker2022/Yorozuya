@@ -29,14 +29,14 @@ STAGE_ADVANCE = [2, 3, 5, 5]            # ⓪~③ 交配 N 次推進
 CONFESS_CHANCE = 1 / 5                  # ④ 每次交配 1/5 告白升女友
 FIANCEE_MATINGS = 20                    # ⑤ 累積 20 次交配解環
 PREGNANCY_CHANCE = 1 / 2               # 解環後每次內射 1/2 懷孕娶走
-# 未纏上:每 30 分鐘一輪,依稀有度決定被纏上機率(越稀有越容易被召喚師盯上;SSR 必定)
-ENTANGLE_CHANCE = {"N": 1 / 5, "R": 1 / 4, "S": 1 / 3, "SS": 1 / 2, "SSR": 1.0}
-DEFAULT_ENTANGLE = 1 / 5               # 未知稀有度時的保底(比照 N)
+# 未纏上、非看板:每 1 小時一輪,固定 1/10 被纏上(看板娘/NTR 不判)
+ENTANGLE_CHANCE = 1 / 10
 # 已纏上:每 30 分鐘一輪,依稀有度決定被召喚/約會機率(越稀有越常被召喚;SSR 必定)
 TAKEN_CHANCE = {"N": 1 / 3, "R": 1 / 3, "S": 1 / 2, "SS": 1 / 2, "SSR": 1.0}
 DEFAULT_TAKEN = 1 / 3                   # 未知稀有度時的保底(比照 N)
 ACT_CAP = 60                            # 每隻魅魔保留的互動紀錄上限
-WIN30_MS = 30 * 60 * 1000              # 纏上判定的 30 分鐘窗(對齊整點與 30 分,等同旗標清除)
+WIN30_MS = 30 * 60 * 1000              # 召喚/約會判定的 30 分鐘窗(對齊整點與 30 分)
+WIN_HOUR_MS = 60 * 60 * 1000           # 非看板纏上判定的 1 小時窗(對齊整點)
 
 DEFAULT_SPOTS = ["咖啡廳", "夜景展望台", "海邊", "電影院", "遊樂園"]
 
@@ -121,7 +121,7 @@ def clear_rel(store, gid, now_ms=None):
     store["rels"].pop(gid, None)
     store.get("takenWin", {}).pop(gid, None)
     if now_ms is not None:
-        store.setdefault("judgeWin", {})[gid] = now_ms // WIN30_MS
+        store.setdefault("judgeWin", {})[gid] = now_ms // WIN_HOUR_MS
     return True
 
 
@@ -238,7 +238,7 @@ def _process_taken(store, gid, rel, now_ms):
 
 def _tick_girl(store, gid, now_ms):
     """每次 tick(sync 每 15 秒 / worker 每 60 秒)對一隻魅魔跑一次。判定用「時窗旗標」擋重複:
-    - 纏上:每 30 分鐘一輪(對齊整點/30分),同輪只判一次;看板娘/NTR 不判。
+    - 纏上:非看板每 1 小時一輪(對齊整點,機率 1/10),同輪只判一次;看板娘/NTR 不判。
     - 已纏上未被召喚:每 30 分一輪判定是否被召喚/約會(TAKEN_CHANCE);看板娘/NTR/busy 不判。
     - 看板娘在店頭 = 受保護:不能被帶走;若先前已被帶走則當場解除 taken。
     - 被召喚中:只生 act、等時效解召喚,不重判。"""
@@ -249,14 +249,14 @@ def _tick_girl(store, gid, now_ms):
     rarity = meta.get("rarity")
     rel = store["rels"].get(gid)
 
-    # ── 未纏上 → 纏上判定 ──
+    # ── 未纏上 → 纏上判定(非看板,每小時 1/10)──
     if not rel:
-        win = now_ms // WIN30_MS                 # 30 分鐘窗編號(對齊整點/30分)= 判定旗標
+        win = now_ms // WIN_HOUR_MS              # 1 小時窗編號(對齊整點)= 判定旗標
         jw = store.setdefault("judgeWin", {})
         if (kanban or ntr) or jw.get(gid) == win:
             return False                          # 看板娘/NTR中,或這一輪已判過 → 略過
         jw[gid] = win                             # 標記本輪已判(不論成敗)
-        if random.random() < ENTANGLE_CHANCE.get(rarity, DEFAULT_ENTANGLE):
+        if random.random() < ENTANGLE_CHANCE:
             sums, _ = load_content()
             if sums:
                 su = pick(sums)

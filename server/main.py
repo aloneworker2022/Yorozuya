@@ -16,6 +16,7 @@ import re
 import secrets
 import shutil
 import sqlite3
+import threading
 import time
 import uuid
 import zipfile
@@ -28,6 +29,8 @@ from pydantic import BaseModel
 
 import comfy
 import cutout
+import daydream as ddream
+import memos
 import sdtags
 import sim
 
@@ -112,18 +115,23 @@ def _grok_build_available() -> bool:
 app = FastAPI(title="魅魔萬事屋")
 
 
-# 前端檔案一律要求瀏覽器「用前先驗證」(no-cache):避免 app.js 與它 import 的模組被
-# 各自長期快取、版本不同步 → import 失敗把整個 app 炸成無法互動的空殼。
-# (no-cache ≠ no-store:仍可快取,但每次都要跟伺服器對驗;沒變回 304、變了拿新版。)
+# 前端檔案禁止 304：ES module（testdate.js → sex_scene.js / hotel.js）若拿到空的
+# 304，整份腳本載入失敗，抽妹子／抽召喚師按鈕綁不上。no-store + 去掉條件標頭。
 _REVALIDATE_EXT = (".html", ".js", ".css", ".json", ".md", ".webmanifest")
+_NO_304_HEADERS = (b"if-none-match", b"if-modified-since")
 
 
 @app.middleware("http")
 async def _revalidate_frontend(request, call_next):
-    resp = await call_next(request)
     p = request.url.path
     if p == "/" or p.endswith(_REVALIDATE_EXT):
-        resp.headers["Cache-Control"] = "no-cache"
+        request.scope["headers"] = [
+            (k, v) for k, v in request.scope["headers"] if k not in _NO_304_HEADERS
+        ]
+    resp = await call_next(request)
+    if p == "/" or p.endswith(_REVALIDATE_EXT):
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["Pragma"] = "no-cache"
     return resp
 
 
@@ -177,12 +185,31 @@ def db() -> sqlite3.Connection:
             updated_at REAL NOT NULL
         )"""
     )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS daydream (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            data       TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )"""
+    )
+    # 發現小工具 inbox:手機 widget 丟待辦,遊戲開著時再收進發現池(避免跟存檔互蓋)
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS quest_inbox (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            text    TEXT NOT NULL,
+            created REAL NOT NULL
+        )"""
+    )
     return conn
 
 
 class SavePut(BaseModel):
     base_version: int  # 客戶端手上的版本;與伺服器不符 → 409,防舊裝置蓋新檔
     data: dict
+
+
+class QuestDiscoverIn(BaseModel):
+    text: str
 
 
 @app.get("/api/health")
@@ -195,7 +222,29 @@ def health():
         "comfy_url": comfy.COMFY_URL,
         "gpu": comfy.gpu_state(),
         "cutout": cutout.AVAILABLE,   # 立繪去背要 Pillow;沒裝就是留著背景
+        "memos": memos.configured(),
+        "memos_url": memos.memos_url(),
+        "daydream": _dd_public(),
     }
+
+
+class DiaryUpsert(BaseModel):
+    ymd: str
+    text: str
+    name: str | None = None
+
+
+@app.get("/api/memos/status")
+def memos_status():
+    return memos.status()
+
+
+@app.post("/api/memos/diary")
+def memos_diary(body: DiaryUpsert):
+    try:
+        return memos.upsert_diary(body.ymd, body.text, body.name)
+    except memos.MemosError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
 
 
 @app.get("/api/save")
@@ -204,7 +253,47 @@ def get_save():
         row = conn.execute("SELECT version, data, updated_at FROM save WHERE id = 1").fetchone()
     if row is None:
         return {"version": 0, "data": None, "updated_at": None}
-    return {"version": row[0], "data": json.loads(row[1]), "updated_at": row[2]}
+    data = json.loads(row[1])
+    if isinstance(data, dict):
+        ddream.apply_patches(data, _dd_load())
+    return {"version": row[0], "data": data, "updated_at": row[2]}
+
+
+_QUEST_TEXT_MAX = 80
+
+
+def _clean_quest_text(raw: str) -> str:
+    text = " ".join(str(raw or "").split())
+    if len(text) > _QUEST_TEXT_MAX:
+        text = text[:_QUEST_TEXT_MAX].rstrip()
+    return text
+
+
+@app.post("/api/quests/discover")
+def post_discover_quest(body: QuestDiscoverIn):
+    """發現小工具:把待辦丟進 inbox,遊戲端收進發現池。"""
+    text = _clean_quest_text(body.text)
+    if not text:
+        raise HTTPException(status_code=400, detail="請輸入待辦")
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO quest_inbox (text, created) VALUES (?, ?)",
+            (text, time.time()),
+        )
+        pending = conn.execute("SELECT COUNT(*) FROM quest_inbox").fetchone()[0]
+    return {"ok": True, "text": text, "pending": pending}
+
+
+@app.post("/api/quests/inbox/drain")
+def drain_quest_inbox():
+    """遊戲端收走 inbox。一次拿走並清空,避免重複入池。"""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, text FROM quest_inbox ORDER BY id"
+        ).fetchall()
+        if rows:
+            conn.execute("DELETE FROM quest_inbox")
+    return {"items": [{"id": r[0], "text": r[1]} for r in rows]}
 
 
 @app.put("/api/save")
@@ -217,12 +306,14 @@ def put_save(body: SavePut):
                 status_code=409,
                 detail={"message": "版本衝突:伺服器上有更新的存檔,請先 GET /api/save", "version": current},
             )
+        data = body.data if isinstance(body.data, dict) else {}
+        ddream.apply_patches(data, _dd_load())
         new_version = current + 1
         conn.execute(
             "INSERT INTO save (id, version, data, updated_at) VALUES (1, ?, ?, ?) "
             "ON CONFLICT (id) DO UPDATE SET version = excluded.version, "
             "data = excluded.data, updated_at = excluded.updated_at",
-            (new_version, json.dumps(body.data, ensure_ascii=False), time.time()),
+            (new_version, json.dumps(data, ensure_ascii=False), time.time()),
         )
     return {"version": new_version}
 
@@ -3060,6 +3151,454 @@ async def sim_live_act(body: SimLive):
         return {"rel": store.get("rels", {}).get(body.id), "married": married}
 
 
+# ── 發呆時段（伺服器權威：關網頁也照跑）──
+_DD_LOCK = threading.Lock()
+DAYDREAM_WAKE = asyncio.Event()
+_DD_WAIT_SEC = 180
+
+
+def _dd_load() -> dict:
+    with _DD_LOCK:
+        with db() as conn:
+            row = conn.execute("SELECT data FROM daydream WHERE id = 1").fetchone()
+        if not row:
+            return ddream.new_store()
+        try:
+            data = json.loads(row[0])
+        except Exception:
+            data = None
+        if not isinstance(data, dict):
+            data = ddream.new_store()
+        base = ddream.new_store()
+        base.update(data)
+        base.setdefault("queue", [])
+        base.setdefault("patches", {})
+        return base
+
+
+def _dd_save(store: dict) -> None:
+    with _DD_LOCK:
+        with db() as conn:
+            conn.execute(
+                "INSERT INTO daydream (id, data, updated_at) VALUES (1, ?, ?) "
+                "ON CONFLICT (id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+                (json.dumps(store, ensure_ascii=False), time.time()),
+            )
+
+
+def _dd_public() -> dict:
+    return ddream.public_status(_dd_load())
+
+
+def _dd_read_save() -> dict | None:
+    with db() as conn:
+        row = conn.execute("SELECT data FROM save WHERE id = 1").fetchone()
+    if not row:
+        return None
+    try:
+        data = json.loads(row[0])
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _dd_settings(data: dict) -> dict:
+    s = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+    img = str(s.get("imgProvider") or "grok-img").strip().lower()
+    provider = "comfy" if img in ("comfy", "comfyui", "comfy-img") else "grok-img"
+    return {
+        "provider": provider,
+        "model": str(s.get("model") or "grok-4.5"),
+        "style": str(s.get("imgStyle") or "anime"),
+        "rating": str(s.get("rating") or "nsfw"),
+        "comfy_url": str(s.get("comfyUrl") or ""),
+        "player": str(s.get("player") or (data.get("playerProfile") or {}).get("name") or "你"),
+        "nsfw": str(s.get("rating") or "nsfw") == "nsfw",
+        "llm_provider": (
+            "grok-build"
+            if str(s.get("llmProvider") or "").lower().startswith("grok")
+            else "ollama"
+        ),
+        "ollama_url": str(s.get("ollamaUrl") or "http://localhost:11434"),
+    }
+
+
+def _dd_girl(data: dict, gid: str) -> dict | None:
+    for g in data.get("succubi") or []:
+        if isinstance(g, dict) and g.get("id") == gid:
+            return g
+    return None
+
+
+async def _dd_wait_key(key: str, timeout: float = _DD_WAIT_SEC) -> str:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        with db() as conn:
+            row = conn.execute(
+                "SELECT status, result FROM gen_tasks WHERE key = ?", (key,)
+            ).fetchone()
+        if row:
+            status, result = row
+            if status == "done":
+                return str(result or "")
+            if status == "error":
+                return ""
+        await asyncio.sleep(1.2)
+    return ""
+
+
+async def _dd_llm(key: str, messages: list, model: str, provider: str, endpoint: str = "") -> str:
+    if not model or not messages:
+        return ""
+    body = GenIn(
+        key=key, model=model, messages=messages, provider=provider,
+        endpoint=endpoint or "http://localhost:11434", retry=True, prio=0,
+    )
+    r = gen_submit(body)
+    if r.get("status") == "done":
+        return str(r.get("result") or "").strip()
+    return (await _dd_wait_key(key, 120)).strip()
+
+
+async def _dd_image(t: ImgGenIn) -> str:
+    r = imggen_submit(t)
+    if r.get("status") == "done":
+        return str(r.get("result") or "")
+    if r.get("status") == "error" and not t.retry:
+        return ""
+    return await _dd_wait_key(str(r.get("key") or t.key or ""))
+
+
+def _dd_img_base(girl: dict, cfg: dict, key: str, **kw) -> ImgGenIn:
+    return ImgGenIn(
+        key=key,
+        provider=cfg["provider"],
+        model=cfg["model"],
+        style=cfg["style"],
+        character=ddream.slim_girl(girl),
+        retry=True,
+        comfy_url=cfg["comfy_url"],
+        ckpt=str(girl.get("comfyCkpt") or ""),
+        char_id=str(girl.get("id") or ""),
+        **kw,
+    )
+
+
+async def _dd_run_portraits(girl: dict, cfg: dict, key: str, on_label) -> dict:
+    portraits = {}
+    for shot in ("full", "half", "head"):
+        await on_label(f"立繪 · {shot}")
+        extra = "plain solid color background, simple background"
+        if shot == "half":
+            extra = "half-body portrait, looking at viewer, " + extra
+        url = await _dd_image(_dd_img_base(
+            girl, cfg, f"{key}:{shot}",
+            shot=shot,
+            framing="full" if cfg["provider"] == "comfy" else ("full" if shot == "full" else "half"),
+            rating="sfw",
+            extra=extra,
+            cutout=True,
+            flat_bg=True,
+        ))
+        if url:
+            portraits[shot] = url
+    return {"portraits": portraits, "portraitsRefreshedAt": int(time.time() * 1000)}
+
+
+async def _dd_run_emotion(girl: dict, cfg: dict, key: str, mood: str, on_label) -> dict:
+    defn = ddream.HALF_EMOTIONS.get(mood) or ddream.HALF_EMOTIONS["xi"]
+    await on_label(f"表情 · {defn['label']}")
+    half_ref = str((girl.get("portraits") or {}).get("half") or (girl.get("portraits") or {}).get("full") or "")
+    extra = ", ".join([
+        "half-body portrait", "same woman as reference",
+        "keep same face, hair, outfit", "looking at viewer", defn["tags"],
+    ])
+    url = await _dd_image(_dd_img_base(
+        girl, cfg, key,
+        shot=defn["shot"],
+        framing="half",
+        rating="sfw",
+        extra=extra,
+        cutout=True,
+        flat_bg=True,
+        ref=half_ref.split("?")[0] if half_ref.startswith("/assets/") else "",
+        lock_identity=True,
+    ))
+    if not url:
+        return {}
+    return {
+        "portraits": {defn["shot"]: url},
+        "extraShotAt": {defn["shot"]: int(time.time() * 1000)},
+    }
+
+
+async def _dd_run_sex(girl: dict, cfg: dict, key: str, pose_id: str, on_label) -> dict:
+    built = ddream.sex_frames(pose_id, cfg["style"], girl.get("look") if isinstance(girl.get("look"), dict) else {})
+    pose = built["pose"]
+    sex_pack = None
+    for p in ddream.load_script_packs().get("packs") or []:
+        if p.get("kind") == "sex" and p.get("pose") == pose_id:
+            sex_pack = p
+            break
+    if not sex_pack:
+        for p in ddream.load_script_packs().get("packs") or []:
+            if p.get("kind") == "sex":
+                sex_pack = p
+                break
+    pack = ddream.frame_pack(str((sex_pack or {}).get("framePackId") or ""), pose_id)
+    urls = []
+    for i, fr in enumerate(built["frames"]):
+        await on_label(f"做愛動畫 · {pose['label']} · 第 {i + 1} 幀")
+        bone = ddream.pack_frame_url(pack, i + 1)
+        url = await _dd_image(_dd_img_base(
+            girl, cfg, f"{key}:{i}",
+            framing="lower",
+            rating="nsfw",
+            extra=fr["pos"],
+            prompt=fr["pos"],
+            negative=", ".join(x for x in (built["neg"], fr.get("extraNeg")) if x),
+            cutout=False,
+            flat_bg=False,
+            scene_kind="sex_strip",
+            pose_ref=bone,
+            pose_denoise=0.70 if bone else 0,
+            width=1216,
+            height=832,
+        ))
+        urls.append(url or "")
+    prev = ((girl.get("sexAnim") or {}).get(pose_id) or {}).get("urls") or []
+    merged = [u or (prev[i] if i < len(prev) else "") for i, u in enumerate(urls)]
+    return {"sexAnim": {pose_id: {"urls": merged, "at": int(time.time() * 1000)}}}
+
+
+async def _dd_run_script(girl: dict, cfg: dict, key: str, pack_id: str, scene: int, on_label) -> dict:
+    job = next((j for j in ddream.list_script_jobs() if j.get("packId") == pack_id and j.get("scene") == scene), None)
+    if not job:
+        return {}
+    spec = job["spec"]
+    pack = job["pack"]
+    player = cfg["player"]
+    attitude = ddream.fill_binds(spec.get("attitude") or "", girl, player)
+    narr = ddream.narr_last(spec, girl, player)
+    await on_label(f"{job['label']} · 回話")
+    reply = ""
+    pose = ""
+    if cfg["model"]:
+        reply = await _dd_llm(
+            f"{key}:reply",
+            ddream.reply_msgs(girl.get("name"), attitude, narr, girl.get("stage")),
+            cfg["model"],
+            cfg["llm_provider"],
+            cfg.get("ollama_url") or "",
+        )
+        if reply:
+            await on_label(f"{job['label']} · 組 prompt")
+            raw = await _dd_llm(
+                f"{key}:pose",
+                ddream.pose_msgs(girl.get("name"), reply),
+                cfg["model"],
+                cfg["llm_provider"],
+                cfg.get("ollama_url") or "",
+            )
+            pose = ddream.parse_pose_lines(raw)
+    fp_id = str(spec.get("framePackId") or pack.get("framePackId") or "").strip()
+    frame = ddream.frame_pack(fp_id, str(pack.get("pose") or ""))
+    slots = spec.get("slots") if isinstance(spec.get("slots"), list) else []
+    urls = []
+    for i, slot in enumerate(slots):
+        await on_label(f"{job['label']} · 圖 {i + 1}")
+        if not isinstance(slot, dict):
+            urls.append("")
+            continue
+        extra = ddream.fill_binds(
+            ", ".join(x for x in (str(slot.get("prompt") or "").strip(), pose) if x),
+            girl, player,
+        )
+        neg = ddream.fill_binds(slot.get("negative") or "", girl, player)
+        bone = ddream.pose_ref_for_slot(spec, slot, i, pack, frame)
+        url = await _dd_image(_dd_img_base(
+            girl, cfg, f"{key}:img:{i}",
+            framing="half" if int(scene or 1) <= 1 else "full",
+            rating="nsfw",
+            extra=extra,
+            negative=neg,
+            cutout=False,
+            lock_identity=True,
+            scene_kind="script",
+            pose_ref=bone,
+            pose_denoise=0.55 if bone else 0,
+        ))
+        urls.append(url or "")
+    prev = (((girl.get("scriptArt") or {}).get(pack_id) or {}).get(str(scene)) or {}).get("urls") or []
+    merged = [u or (prev[i] if i < len(prev) else "") for i, u in enumerate(urls)]
+    return {"scriptArt": {pack_id: {str(scene): {"urls": merged, "pose": pose, "at": int(time.time() * 1000)}}}}
+
+
+def _dd_begin(store: dict, data: dict, force: bool) -> dict:
+    girls = [g for g in (data.get("succubi") or []) if isinstance(g, dict) and g.get("id")]
+    slot = ddream.current_slot()
+    stamp = ddream.slot_stamp()
+    nsfw = _dd_settings(data)["nsfw"]
+    queue = ddream.build_queue(girls, nsfw, stamp)
+    keep_patches = (not force) and store.get("stamp") == stamp
+    store.update({
+        "stamp": stamp,
+        "slot": slot["id"],
+        "running": bool(queue),
+        "completed": False,
+        "force": bool(force) and bool(queue),
+        "done": 0,
+        "total": len(queue),
+        "label": f"{slot['label']}發呆" if queue else "",
+        "girlId": "",
+        "queue": queue,
+        "patches": (store.get("patches") or {}) if keep_patches else {},
+    })
+    # 名冊空：這一窗先不算完成，等有魅魔再跑
+    if not queue:
+        store["completed"] = False
+        store["running"] = False
+        store["force"] = False
+    return store
+
+
+async def _dd_tick_once() -> None:
+    data = _dd_read_save()
+    if not data:
+        return
+    girls = [g for g in (data.get("succubi") or []) if isinstance(g, dict) and g.get("id")]
+    store = _dd_load()
+    stamp = ddream.slot_stamp()
+    if not girls:
+        if store.get("running"):
+            store["running"] = False
+            store["label"] = ""
+            store["girlId"] = ""
+            store["queue"] = []
+            _dd_save(store)
+        return
+    same = store.get("stamp") == stamp
+    if store.get("force") and store.get("running") and store.get("queue"):
+        pass
+    elif (not same) or (not store.get("running") and not store.get("completed")):
+        store = _dd_begin(store, data, force=bool(store.get("force") and same))
+        _dd_save(store)
+        if store.get("running"):
+            print(
+                f"[發呆] {time.strftime('%Y-%m-%d %H:%M:%S')} 開始 {store.get('label')} "
+                f"stamp={store.get('stamp')} jobs={store.get('total')}",
+                flush=True,
+            )
+        if not store.get("running"):
+            return
+    elif same and store.get("completed") and not store.get("force"):
+        return
+    elif store.get("running") and store.get("queue"):
+        pass
+    else:
+        return
+    job = (store.get("queue") or [None])[0]
+    if not job:
+        store["running"] = False
+        store["completed"] = True
+        store["force"] = False
+        store["label"] = ""
+        store["girlId"] = ""
+        _dd_save(store)
+        print(f"[發呆] {time.strftime('%Y-%m-%d %H:%M:%S')} 完成 stamp={store.get('stamp')}", flush=True)
+        return
+    gid = job.get("girlId")
+    girl = _dd_girl(data, gid)
+    cfg = _dd_settings(data)
+
+    async def on_label(text):
+        st = _dd_load()
+        st["label"] = text
+        st["girlId"] = gid
+        st["running"] = True
+        _dd_save(st)
+
+    patch = {}
+    try:
+        if not girl:
+            patch = {}
+        elif job.get("kind") == "portraits":
+            patch = await _dd_run_portraits(girl, cfg, job["key"], on_label)
+        elif job.get("kind") == "emotion":
+            patch = await _dd_run_emotion(girl, cfg, job["key"], job.get("mood"), on_label)
+        elif job.get("kind") == "sex":
+            patch = await _dd_run_sex(girl, cfg, job["key"], job.get("poseId"), on_label)
+        elif job.get("kind") == "script":
+            patch = await _dd_run_script(girl, cfg, job["key"], job.get("packId"), int(job.get("scene") or 1), on_label)
+    except Exception as e:
+        print(f"[發呆] job 失敗 {job.get('label')}: {e}", flush=True)
+        patch = {}
+    store = _dd_load()
+    q = list(store.get("queue") or [])
+    if q and q[0].get("key") == job.get("key"):
+        q.pop(0)
+    store["queue"] = q
+    store["done"] = int(store.get("done") or 0) + 1
+    store["girlId"] = gid or ""
+    if patch and gid:
+        ddream.set_patch(store, gid, **patch)
+    if not q:
+        store["running"] = False
+        store["completed"] = True
+        store["force"] = False
+        store["label"] = ""
+        store["girlId"] = ""
+        print(f"[發呆] {time.strftime('%Y-%m-%d %H:%M:%S')} 完成 stamp={store.get('stamp')}", flush=True)
+    _dd_save(store)
+
+
+def _dd_force() -> dict:
+    data = _dd_read_save() or {}
+    store = _dd_load()
+    store = _dd_begin(store, data, force=True)
+    _dd_save(store)
+    try:
+        DAYDREAM_WAKE.set()
+    except Exception:
+        pass
+    return ddream.public_status(store)
+
+
+@app.get("/api/daydream")
+def daydream_status():
+    store = _dd_load()
+    return {
+        **ddream.public_status(store),
+        "queue": len(store.get("queue") or []),
+        "patches": store.get("patches") or {},
+    }
+
+
+@app.post("/api/daydream/force")
+def daydream_force():
+    """testword／除錯：立刻開一輪發呆，不開遊戲頁也會在伺服器跑。"""
+    return _dd_force()
+
+
+async def _daydream_loop():
+    """發呆編排：看時窗、丟 gen_tasks、把圖補回存檔合併層。"""
+    print("[發呆] 啟動 — 時窗 6:00／14:00／19:00／3:00，關網頁也照跑", flush=True)
+    while True:
+        try:
+            await _dd_tick_once()
+            store = _dd_load()
+            if store.get("running") and store.get("queue"):
+                continue
+            DAYDREAM_WAKE.clear()
+            try:
+                await asyncio.wait_for(DAYDREAM_WAKE.wait(), timeout=15)
+            except asyncio.TimeoutError:
+                pass
+        except Exception as e:
+            print(f"[發呆] 檢查發生例外(將續跑):{e}", flush=True)
+            await asyncio.sleep(5)
+
+
 _HEARTBEAT_SEC = 600            # 每 10 分鐘印一次「已執行檢查」心跳
 _last_beat = 0.0
 
@@ -3071,10 +3610,12 @@ def _world_beat(store, now: float, forced: bool = False) -> None:
         return
     _last_beat = now
     st = sim.world_stats(store)
+    dd = _dd_public()
     print(
         f"[世界時鐘] {time.strftime('%Y-%m-%d %H:%M:%S')} 已執行檢查 — "
         f"名冊={st['roster']} 召喚師關係={st['rels']} 召喚中={st['taken']} "
-        f"看板娘計時={st['kanbanTimers']} 委託計時={st['questTimers']} 待套用={st['pendingOutcomes']}",
+        f"看板娘計時={st['kanbanTimers']} 委託計時={st['questTimers']} 待套用={st['pendingOutcomes']} "
+        f"發呆={dd.get('done', 0)}/{dd.get('total', 0) or '-'}{'跑' if dd.get('running') else ''}",
         flush=True,
     )
 
@@ -3106,13 +3647,116 @@ async def _start_gen_worker():
     print("[世界時鐘] 啟動 — 伺服器權威 runtime 上線,每 30 秒跑檢查、每 10 分鐘印心跳", flush=True)
     asyncio.create_task(_gen_worker())
     asyncio.create_task(_world_clock())
+    asyncio.create_task(_daydream_loop())
 
 
-# Testword 編輯召喚師池(dateChance 等行為參數);整包覆寫 content/summoners.json
+# /editmale 編輯其他召喚師池: names、behaviors(行為卡)、actions(肢體行為)。
+def _norm_behaviors(raw):
+    out = []
+    seen = set()
+    for i, x in enumerate(raw or []):
+        if isinstance(x, str):
+            name = x.strip()
+            if not name:
+                continue
+            sid = f"bh_{i}"
+            out.append({"id": sid, "name": name, "how": "", "when": "approach", "line": "common"})
+            seen.add(sid)
+            continue
+        if not isinstance(x, dict):
+            continue
+        name = str(x.get("name") or "").strip()
+        if not name:
+            continue
+        sid = str(x.get("id") or "").strip() or f"bh_{i}"
+        if sid in seen:
+            sid = f"{sid}_{i}"
+        seen.add(sid)
+        when = str(x.get("when") or "approach").strip()
+        if when not in ("approach", "chat"):
+            when = "approach"
+        line = str(x.get("line") or "common").strip()
+        if line not in ("common", "otaku", "creep", "erotic"):
+            line = "common"
+        out.append({"id": sid, "name": name, "how": str(x.get("how") or "").strip(), "when": when, "line": line})
+    return out
+
+
+def _norm_actions(raw):
+    out = []
+    seen = set()
+    for i, x in enumerate(raw or []):
+        if not isinstance(x, dict):
+            continue
+        name = str(x.get("name") or "").strip()
+        if not name:
+            continue
+        sid = str(x.get("id") or "").strip() or f"act_{i}"
+        if sid in seen:
+            sid = f"{sid}_{i}"
+        seen.add(sid)
+        when = str(x.get("when") or "approach").strip()
+        if when not in ("approach", "chat"):
+            when = "approach"
+        out.append({"id": sid, "name": name, "how": str(x.get("how") or "").strip(), "when": when})
+    return out
+
+
+def _norm_date_acts(raw):
+    kinds = ("talk", "touch", "strip", "penis", "invite", "mate")
+    out = []
+    seen = set()
+    for i, x in enumerate(raw or []):
+        if not isinstance(x, dict):
+            continue
+        name = str(x.get("name") or "").strip()
+        if not name:
+            continue
+        sid = str(x.get("id") or "").strip() or f"da_{i}"
+        if sid in seen:
+            sid = f"{sid}_{i}"
+        seen.add(sid)
+        kind = str(x.get("kind") or "talk").strip()
+        if kind not in kinds:
+            kind = "talk"
+        try:
+            mn = int(x.get("minArousal") or 0)
+        except Exception:
+            mn = 0
+        mn = max(0, min(30, mn))
+        out.append({
+            "id": sid,
+            "name": name,
+            "how": str(x.get("how") or "").strip(),
+            "cmd": str(x.get("cmd") or "").strip(),
+            "kind": kind,
+            "minArousal": mn,
+        })
+    return out
+
+
 @app.put("/api/summoners")
 def put_summoners(body: dict):
-    if not isinstance(body.get("summoners"), list):
-        raise HTTPException(400, "需要 {summoners: [...]}")
+    has_names = "names" in body
+    has_summoners = "summoners" in body
+    has_behaviors = "behaviors" in body
+    has_actions = "actions" in body
+    has_play = "play_ladders" in body
+    has_date_acts = "date_acts" in body
+    if not has_names and not has_summoners and not has_behaviors and not has_actions and not has_play and not has_date_acts:
+        raise HTTPException(400, "需要 {names:[...]}、{behaviors:[...]}、{actions:[...]}、{play_ladders:{...}}、{date_acts:[...]} 或 {summoners:[...]}")
+    if has_names and not isinstance(body.get("names"), list):
+        raise HTTPException(400, "names 必須是字串陣列")
+    if has_summoners and not isinstance(body.get("summoners"), list):
+        raise HTTPException(400, "summoners 必須是陣列")
+    if has_behaviors and not isinstance(body.get("behaviors"), list):
+        raise HTTPException(400, "behaviors 必須是陣列")
+    if has_actions and not isinstance(body.get("actions"), list):
+        raise HTTPException(400, "actions 必須是陣列")
+    if has_play and not isinstance(body.get("play_ladders"), dict):
+        raise HTTPException(400, "play_ladders 必須是物件")
+    if has_date_acts and not isinstance(body.get("date_acts"), list):
+        raise HTTPException(400, "date_acts 必須是陣列")
     path = WEB_DIR / "content" / "summoners.json"
     current = {}
     if path.exists():
@@ -3120,12 +3764,30 @@ def put_summoners(body: dict):
             current = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             current = {}
-    current["summoners"] = body["summoners"]
+    out = {"ok": True}
+    if has_names:
+        current["names"] = [str(x).strip() for x in body["names"] if str(x).strip()]
+        out["names"] = len(current["names"])
+    if has_behaviors:
+        current["behaviors"] = _norm_behaviors(body["behaviors"])
+        out["behaviors"] = len(current["behaviors"])
+    if has_actions:
+        current["actions"] = _norm_actions(body["actions"])
+        out["actions"] = len(current["actions"])
+    if has_summoners:
+        current["summoners"] = body["summoners"]
+        out["count"] = len(body["summoners"])
+    if has_play:
+        current["play_ladders"] = body["play_ladders"]
+        out["play_ladders"] = True
+    if has_date_acts:
+        current["date_acts"] = _norm_date_acts(body["date_acts"])
+        out["date_acts"] = len(current["date_acts"])
     path.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {"ok": True, "count": len(body["summoners"])}
+    return out
 
 
-# /edit_person 編輯魅魔生成池;整包覆寫 content/persona_pools.json(男性=召喚師,走 /api/summoners)
+# /edit_person 編輯魅魔生成池;整包覆寫 content/persona_pools.json(男性=召喚師,走 /editmale)
 @app.put("/api/pools")
 def put_pools(body: dict):
     if not isinstance(body.get("female"), dict):
@@ -3139,6 +3801,12 @@ def put_pools(body: dict):
 def testword():
     from fastapi.responses import FileResponse
     return FileResponse(WEB_DIR / "testword.html")
+
+
+@app.get("/testdate")
+def testdate():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "testdate.html")
 
 
 # ── 多檔牌組版本（card_x.json 等）────────────────────────────────
@@ -3783,6 +4451,12 @@ def edit_person():
     return FileResponse(WEB_DIR / "edit_person.html")
 
 
+@app.get("/editmale")
+def editmale():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "editmale.html")
+
+
 # /testword 編輯魅魔獻祭三場景腳本;整包覆寫 content/sacrifice.json
 @app.put("/api/sacrifice")
 def put_sacrifice(body: dict):
@@ -3842,6 +4516,25 @@ def body():
     # 虛擬設計台:偽 3D 點陣胸部人台,供胸罩/衣著版型預覽
     from fastapi.responses import FileResponse
     return FileResponse(WEB_DIR / "body.html")
+
+
+@app.get("/widget")
+def widget():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "widget.html")
+
+
+@app.get("/discover.apk")
+def discover_apk():
+    from fastapi.responses import FileResponse
+    path = WEB_DIR / "discover.apk"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="還沒有 APK")
+    return FileResponse(
+        path,
+        media_type="application/vnd.android.package-archive",
+        filename="discover.apk",
+    )
 
 
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)

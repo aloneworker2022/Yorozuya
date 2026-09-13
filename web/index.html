@@ -12,17 +12,17 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="萬事屋">
-<link rel="stylesheet" href="style.css?v=35">
+<link rel="stylesheet" href="style.css?v=50">
 </head>
 <body>
 
 <!-- z0:全域背景圖層 -->
 <div id="bg-layer"></div>
 
-<!-- z1:看板娘層(有魅魔 = 剪影立繪;無魅魔 = 召喚書) -->
+<!-- z1:看板娘層(有看板娘 = 剪影立繪;沒人在店頭 = 空背板) -->
 <div id="kanban">
   <div id="kanban-zzz" class="hidden">Z z z…</div>
-  <div id="book">
+  <div id="book" class="hidden">
     <img src="img/summon-book.png" alt="魅魔召喚之書" draggable="false">
     <div id="magic-circle"></div>
   </div>
@@ -53,6 +53,7 @@
   <span id="hud-debt" class="hidden">負債中</span>
   <button id="hud-need" class="hidden">● <span>0</span></button>
   <span id="hud-sleep" class="hidden">🌙 夢境時間</span>
+  <span id="hud-daydream" class="hidden">發呆中</span>
 </header>
 
 <!-- z2:功能面板(四分頁滑動) -->
@@ -61,6 +62,7 @@
 
     <section class="page" id="page-quests">
       <div class="q-scenes">
+        <button type="button" id="diary-tab" class="diary-tab" aria-label="日誌"><span>日誌</span></button>
 
         <!-- 場景一:執行中三格(輪播,上滑完成) -->
         <div class="q-scene" id="qs-exec">
@@ -90,6 +92,20 @@
           <div class="q-force-tabs" id="q-force-tabs"></div>
         </div>
 
+        <!-- 場景三:玩家日誌(橫線小本子,上下翻日期) -->
+        <div class="q-scene" id="qs-diary">
+          <div class="lv-hdr">
+            <button class="back-btn" id="diary-back"><span class="back-icon">‹</span> 委託板</button>
+            <span class="lv-badge diary-badge" id="diary-badge">日誌</span>
+          </div>
+          <div class="lv-area">
+            <div class="lv-inner">
+              <div id="diary-stage"></div>
+              <div class="lv-nav" id="diary-nav"></div>
+            </div>
+          </div>
+        </div>
+
       </div>
       <div id="quest-input-row">
         <input id="quest-input" type="text" maxlength="80" placeholder="待辦…或打她的名字叫過來">
@@ -103,24 +119,6 @@
     </section>
 
     <section class="page" id="page-shop">
-      <div class="panel">
-        <h2>卡牌貨架</h2>
-        <p class="dim small">3 槽 · 約 4 小時刷新 · 高級卡用則碎、話術不碎</p>
-        <p id="card-shop-refresh" class="dim small"></p>
-        <div id="card-shop-stock"></div>
-      </div>
-      <div class="panel sub" id="card-deck-panel">
-        <h2>出戰牌組 <span id="card-deck-count" class="dim"></span></h2>
-        <p class="dim small">長按牌庫卡片加入；長按牌組晶片移出。看板／約會開戰直接用這組。</p>
-        <div id="card-deck-list" class="card-deck-list"></div>
-      </div>
-      <div class="panel sub" id="card-inv-panel">
-        <h2>我的牌庫 <span id="card-inv-count" class="dim"></span></h2>
-        <p class="dim small">短按看說明 · 長按加入／移出牌組。話術不碎；高級卡用則碎。</p>
-        <div id="card-inv-filters" class="card-inv-filters"></div>
-        <div id="card-inv-btns" class="card-inv-btns"></div>
-        <div id="card-inv-detail" class="card-inv-detail hidden"></div>
-      </div>
       <div class="panel">
         <h2>祭品商店</h2>
         <p id="merchant-line" class="dim small"></p>
@@ -140,6 +138,7 @@
       <div id="succubi-home">
         <div class="panel" id="roster-panel">
           <h2>魅魔名冊</h2>
+          <div id="roster-daydream" class="daydream-banner hidden">發呆中</div>
           <div id="roster"></div>
         </div>
         <div class="panel sub center-note" id="summon-block">
@@ -204,8 +203,8 @@
             <option value="grok-img">Grok Build(雲端·單張)</option>
             <option value="comfy">ComfyUI(本機顯卡·三連拍)</option>
           </select></div>
-        <div class="setting-row"><label>出卡場景圖</label><input id="set-card-scene-art" type="checkbox" title="每打一張卡，依她的回應生場景圖（實驗·費時）"></div>
-        <div class="setting-row"><label></label><span class="dim small">實驗：有生圖能力時，打牌會依「動作＋她的回應」翻成英文再畫一張。不擋打牌；牌桌顯示「繪場景中…」。可關。</span></div>
+        <div class="setting-row"><label>約會場景圖</label><input id="set-card-scene-art" type="checkbox" title="約會出卡時依她的回應生場景圖（實驗·費時）"></div>
+        <div class="setting-row"><label></label><span class="dim small">實驗：有生圖能力時，約會章節會依「場面＋她的回應」翻成英文再畫一張。不擋約會；畫面顯示「繪場景中…」。可關。</span></div>
         <div class="setting-row hidden" id="row-comfy-url"><label>ComfyUI</label><input id="set-comfy" type="text" class="wide" placeholder="http://192.168.68.55:8188"></div>
         <div class="setting-row hidden" id="row-comfy-note"><label></label><span class="dim small">生圖那台(顯卡主機)。<b>不能填 localhost</b>——那是伺服器自己,不是顯卡。召喚時出大頭照 / 半身 / 全身三張。<b>不必選模型</b>：每位魅魔召喚時會從你 checkpoints 裡隨機綁定一個專屬模型，之後她的立繪／場景圖都用那一個。</span></div>
         <div class="setting-row hidden" id="row-comfy-ckpt"><label>模型</label>
@@ -233,9 +232,16 @@
         <div id="log-list" class="dim small"></div>
       </div>
       <div class="panel sub">
+        <h2>日誌 / Memos</h2>
+        <div class="dim small">連續每天寫滿 12 字：第 n 天領 n 金（上限 5）。寫滿會同步到這台電腦的 Memos（標籤 #yorozuya #日誌）。</div>
+        <div class="setting-row"><label>連寫</label><span id="set-nb-streak" class="dim">—</span></div>
+        <div class="setting-row"><label>Memos</label><span id="set-memos" class="dim">—</span></div>
+        <div class="btn-row"><button id="btn-memos-test" type="button">測試 Memos</button><span id="memos-test-result" class="dim small"></span></div>
+      </div>
+      <div class="panel sub">
         <h2>版本</h2>
         <div class="setting-row"><label>遊戲版本</label><span id="set-appver" class="dim">—</span></div>
-        <div class="setting-row"><label>上線卡組</label><span id="set-cardpack" class="dim">—</span></div>
+        <div class="setting-row"><label>約會卡組</label><span id="set-cardpack" class="dim">—</span></div>
         <div class="btn-row">
           <button id="btn-force-update">⟳ 強制更新(清快取重載,存檔不受影響)</button>
         </div>
@@ -265,7 +271,7 @@
   </div>
 </div>
 
-<!-- 牌桌全螢幕：立繪在底層；頂欄／旁白／手牌浮在上層 -->
+<!-- 約會桌全螢幕：立繪在底層；頂欄／旁白／章節選項浮在上層 -->
 <div id="card-table-view" class="hidden">
   <div id="ct-portrait" aria-hidden="true">
     <img id="ct-portrait-img" class="hidden" alt="" draggable="false">
@@ -276,7 +282,7 @@
     <div class="card-table-top">
       <button class="back-btn" id="card-table-back">‹ 返回</button>
       <span id="card-table-title" class="dim small"></span>
-      <button class="back-btn" id="card-table-close" title="結束這次靠近">先走</button>
+      <button class="back-btn" id="card-table-close" title="結束這次約會">先走</button>
     </div>
     <div id="ct-space"></div>
     <div id="ct-vn">
@@ -289,7 +295,7 @@
   </div>
 </div>
 
-<!-- 主畫面右下：打牌小卡 -->
+<!-- 主畫面右下：舊打牌入口（已取消，僅佔位） -->
 <div id="crests" class="hidden"></div>
 
 <!-- 聊天/約會:全螢幕插播層(不可被分頁切換打斷,結束對話才退出) -->
@@ -304,9 +310,6 @@
   <!-- 對話對象的立繪(去背半身):文字冒險式,站在對話框上方 -->
   <div id="vn-figure-slot">
     <img id="vn-figure" class="hidden" alt="" draggable="false">
-    <div id="sex-anim-overlay" class="hidden">
-      <img id="sex-anim-img" alt="">
-    </div>
   </div>
   <span id="aff-pop" class="hidden" aria-hidden="true"></span>
   <div id="vn-box">
@@ -326,6 +329,9 @@
     <button type="button" id="tease-thrust">肏</button>
     <button type="button" id="tease-cum">射精</button>
   </div>
+  <div id="sex-anim-overlay" class="hidden">
+    <img id="sex-anim-img" alt="">
+  </div>
   <div id="watch-controls" class="hidden">
     <button id="watch-next">下一句 ▶</button>
     <button id="watch-end">結束觀戰</button>
@@ -341,6 +347,17 @@
 </div>
 
 <!-- 斷線重連畫面 -->
+<!-- 已承接長按:遊戲對話卡(不是網頁 prompt),寫多一件後退回發現 -->
+<div id="split-overlay" class="hidden" aria-hidden="true">
+  <div class="split-card" id="split-card" role="dialog" aria-labelledby="split-name">
+    <div class="split-name" id="split-name"></div>
+    <div class="split-input-row">
+      <input id="split-input" type="text" maxlength="80" placeholder="多出來的任務…" autocomplete="off">
+      <button id="split-ok" type="button">分裂</button>
+    </div>
+  </div>
+</div>
+
 <div id="conn-overlay" class="hidden">
   <div class="conn-box">
     <div>連線伺服器中…</div>
@@ -380,6 +397,6 @@
   setTimeout(function () { sessionStorage.removeItem("healCount"); }, 10000);
 })();
 </script>
-<script type="module" src="app.js?v=71"></script>
+<script type="module" src="app.js?v=85"></script>
 </body>
 </html>

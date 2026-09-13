@@ -363,7 +363,7 @@ export function teaseNoRef(shot) {
   return String(shot || "") === "tease_butt";
 }
 
-/** 劇本模式：調戲／口交／做愛都要檢定。舊摸乳口令視為調戲。 */
+/** 劇本模式：調戲／口交可強迫必發；做愛才擲關係檢定。舊摸乳口令視為調戲。 */
 export function isForcedTeaseKind() {
   return false;
 }

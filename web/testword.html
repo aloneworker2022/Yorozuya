@@ -157,11 +157,14 @@
   .sm-play .stage { min-height: 14em; display: flex; align-items: center; justify-content: center; }
   .sm-play .stage img { width: 100%; display: block; }
   .sm-play .anim {
-    position: absolute; inset: 12% 10% 38%; display: none; align-items: center; justify-content: center;
-    background: rgba(0,0,0,.5); border-radius: 8px; z-index: 2;
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    background: transparent; z-index: 8; pointer-events: none;
   }
   .sm-play .anim.on { display: flex; }
-  .sm-play .anim img { max-width: 100%; max-height: 100%; display: block; }
+  .sm-play .anim img { max-width: 42%; max-height: 38%; display: block; }
+  @media (max-width: 700px) {
+    .sm-play .anim img { max-width: 92%; max-height: 72%; }
+  }
   .sm-play .vn { padding: .65em .75em 0.8em; background: rgba(18,16,28,.92); position: relative; z-index: 1; }
   .sm-play .who { font-size: .75em; color: #ff8fe6; margin-bottom: .25em; }
   .sm-play .tx { min-height: 3.2em; white-space: pre-wrap; }
@@ -174,15 +177,16 @@
 </head>
 <body>
 <h1>⚙ Testword 後台</h1>
-<div class="warn">開發/測試用後門與內容編寫。卡牌／立繪測試器已收進摺疊。做愛局部動畫暫擱、不寫正式存檔。<a href="/">← 回遊戲</a> · <a href="/cardedit">🃏 卡牌編輯器（詞墜）</a> · <a href="/edit_person">人物池</a></div>
+<div class="warn">開發/測試用後門與內容編寫。卡牌／立繪測試器已收進摺疊。做愛局部動畫暫擱、不寫正式存檔。<a href="/">← 回遊戲</a> · <a href="/cardedit">🃏 卡牌編輯器（詞墜）</a> · <a href="/testdate">📅 約會編輯器</a> · <a href="/edit_person">人物池</a> · <a href="/editmale">其他召喚師</a></div>
 
 <!-- ── 做愛局部動畫（暫擱） ── -->
 <details class="fold">
   <summary>做愛局部動畫（四幀 · 暫擱）</summary>
   <div class="mini" style="margin-bottom:.6em">
-    四格各一張、各有 prompt。小畫家畫骨架（線稿）丟進格子，生成會跟那張的機位／插入深度。
-    沒掛自己骨架的幀會用上面的共用骨架。骨架請走 <b>ComfyUI 圖生圖</b>。
-    圖組可存很多組：拖入四張（檔名 1～4）新增一組，再點選其中一組測試。<br>
+    四格各一張、各有 prompt。圖組把四張骨架綑成一組（檔名 1～4），點選＝掛載。
+    <b>有掛圖組時，每一幀產生都會帶該組對應張當圖生圖參考</b>（第 1 幀→1.png）。
+    單格另外丟的骨架會蓋掉圖組那張。沒掛圖組、也沒單格骨架時才用共用骨架。
+    圖生圖：<b>Grok image_edit</b> 或 <b>ComfyUI img2img</b> 都可以。<br>
     <b>性器軸</b>不分等級：陰唇大小／陰蒂大小／陰唇顏色各三級、陰毛四級。空白＝跟上面召喚的妹子；也可手動指定或隨機。
     交合四幀會帶進這些 tag。<b>性器特寫</b>不畫陰莖，用來對照各軸。<b>對照各軸</b>每軸各級、另外各軸用中等。
   </div>
@@ -244,7 +248,7 @@
   </div>
   <div class="cd-sub">圖組庫（跟上面體位掛鉤）</div>
   <div class="mini">
-    圖組屬於目前選的體位（正常／背後／騎乘分開）。檔名 <code>1.png</code>～<code>4.png</code>（或 zip）。拖入＝新增到這個體位。點一組＝選用。
+    圖組屬於目前選的體位（正常／背後／騎乘分開）。檔名 <code>1.png</code>～<code>4.png</code>（或 zip）。拖入＝新增到這個體位。點一組＝掛載（再點一次取消）。掛著時「全部產生／產生這一幀」都會帶這組當參考。
   </div>
   <div class="row" style="gap:.5em;align-items:flex-end">
     <span style="flex:1 1 12em"><label>新組名稱</label>
@@ -386,10 +390,11 @@
 <details class="fold" open>
   <summary>劇本模式（調戲 · 口交 · 做愛）</summary>
   <div class="mini" style="margin-bottom:.6em">
-    店頭調戲：玩家打到劇本<strong>關鍵詞</strong>後，依關係擲發動機率（調戲 陌生20／朋友40／女友75／妻子100；口交與做愛更嚴）。通過進場景1。
+    店頭：玩家打到劇本<strong>關鍵詞</strong>後，<b>調戲／口交必發</b>（可強迫，不論關係）；<b>做愛</b>才擲關係檢定（陌生 10%／朋友 12.5%／女友 33%／妻子 50%）。通過進場景1。
     <b>調戲</b>只到場景1；<b>口交</b>場景1完跳場景4（玩家高潮）；<b>做愛</b>有場景2正戲、3投入、4玩家高潮、5雙方高潮。
     旁白／態度可寫 <code>[name]</code> <code>[eye]</code> <code>[breast]</code> <code>[player]</code> <code>[hair]</code> <code>[body]</code> <code>[job]</code> <code>[outfit]</code>，上線換成這隻妹子。
     每張圖下面的<strong>正向 prompt／負向 prompt 是手寫進生圖的</strong>（英文 tag）。場景2起可兩張圖。
+    做愛劇本可掛上面「做愛局部動畫」測過的圖組：按肏時中央播那四幀；場景若選圖生圖，每一張都會掛該組對應幀。
   </div>
   <div class="row" style="gap:.5em">
     <span style="flex:0 1 8em"><label>種類</label>
@@ -408,6 +413,20 @@
     <button type="button" onclick="smNew()">＋新劇本</button>
     <button class="del" type="button" onclick="smDel()">刪除</button>
   </div>
+  <div class="row" id="sm-bind-row" style="gap:.5em;margin-top:.35em;display:none">
+    <span style="flex:0 1 8em"><label>體位</label>
+      <select id="sm-pose">
+        <option value="">（不指定）</option>
+      </select></span>
+    <span style="flex:1 1 16em"><label>局部動畫圖組</label>
+      <select id="sm-frame-pack">
+        <option value="">（不掛）</option>
+      </select></span>
+  </div>
+  <div class="mini" id="sm-bind-hint" style="display:none">
+    掛上圖組後，按肏時中央播這組四幀。場景選「圖生圖」時，每一張都會帶該組對應幀當參考（圖1→1.png、圖2→2.png）；單張另外上傳的參考圖優先。
+  </div>
+  <div id="sm-frame-pack-preview"></div>
   <div class="sm-tabs" id="sm-scene-tabs"></div>
   <div class="mini" id="sm-scene-blurb"></div>
   <div class="sm-scene" id="sm-scene"></div>
@@ -415,8 +434,8 @@
 
   <div class="cd-sub">正式鏈接測試</div>
   <div class="mini">
-    先立定繪。在輸入框打「摸奶／口交／猥褻／做愛」等，檢定通過後才進場景（場景圖即時生成，不沿用上面預覽）。
-    場景1點對話框推進；場景2起按肏。結束後退回立繪，可再下指令。
+    先立定繪。在輸入框打「摸奶／口交／猥褻／做愛」等。調戲／口交必發；做愛才擲關係檢定。
+    做愛：旁白 → 點框 → AI → 開場圖 → 點框進正戲（肏鈕＋局部動畫一輪）。每次肏播一輪動畫；1/10 換圖、1/10 玩家高潮、1/10 投入、3/10 新 AI。投入另 1/10 雙方高潮。
   </div>
   <div class="row" style="gap:.5em;margin-top:.35em">
     <button class="cy" type="button" onclick="smPlayStart()">開始鏈接測試</button>
@@ -468,6 +487,7 @@
     <button onclick="releaseTaken()">解除召喚走</button>
     <button onclick="watchScenario()">觀戰測試場景</button>
     <button class="cy" onclick="startRandomDate()">約會（隨機妹子）</button>
+    <button class="cy" onclick="forceDaydream()">強制發呆（預產圖）</button>
     <button class="del" onclick="wipeSave()">⚠ 重設存檔(急救)</button>
   </div>
   <div class="mini" style="margin-top:.5em">
@@ -477,6 +497,7 @@
     <b>妹子被召喚走</b>：隨機（或第一隻）未 NTR 妹子 → 綁召喚師 + <code>taken</code> + 補 3h 既往 act、下看板，並強制寫進 sim。回遊戲對她按「電話（窺視）」。
     <b>解除召喚走</b>：清掉所有 taken（仍保留纏身召喚師）。
     <b>約會（隨機妹子）</b>：從名冊隨機挑一隻未 NTR 的，清牌局／下看板，寫入快速約會旗標後跳回遊戲直接開桌（跳過電話費）。
+    <b>強制發呆（預產圖）</b>：伺服器立刻開跑發呆時段（<b>不必開著遊戲頁</b>），整套重產並蓋掉舊圖。名冊上方會顯示「發呆中」。
     「重設存檔」用於存檔損壞急救。此頁不吃 app.js,遊戲當掉時仍可用。
   </div>
   <div class="status" id="bd-status"></div>
@@ -1035,7 +1056,7 @@ async function startRandomDate() {
   const s = pool[Math.floor(Math.random() * pool.length)];
   // 清卡住的牌局，否則 openDateTable 會擋
   if (save.cardSession) save.cardSession = null;
-  // 看板中不可約 → 測試時強制下看板
+  // 測試時強制下看板，避免殘 session／店頭保護干擾開桌
   save.kanbans = (save.kanbans || []).filter(k => k.id !== s.id);
   if (save.lastKanbanId === s.id) delete save.lastKanbanId;
   // 若被召喚師帶走中，測試時也解除（否則可能狀態怪）
@@ -1064,6 +1085,23 @@ async function startRandomDate() {
   await commit(`約會測試備妥：${s.name} @ ${venueId}——即將跳回遊戲`);
   // 稍等 status 看得見再跳
   setTimeout(() => { location.href = "/"; }, 280);
+}
+
+/** 強制發呆：伺服器立刻開跑預產圖（不必開著遊戲頁）。 */
+async function forceDaydream() {
+  try {
+    const r = await fetch("/api/daydream/force", { method: "POST" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      status("bd-status", "發呆下單失敗: " + (j.detail || r.status), true);
+      return;
+    }
+    status("bd-status", j.running
+      ? `伺服器已開始發呆（${j.done || 0}/${j.total || 0}）——關網頁也會繼續跑`
+      : (j.total === 0 ? "名冊沒有魅魔，發呆沒對象" : "這一窗已經跑完"));
+  } catch (e) {
+    status("bd-status", "發呆下單失敗: " + e.message, true);
+  }
 }
 
 // ── 擴充等級 ──
@@ -2633,20 +2671,41 @@ function saSeedVal() {
 }
 const saBone = { shared: "", frames: ["", "", "", ""] };
 let saBoneTarget = "shared";
+const SA_PACK_KEY = "yoro_sa_pack_by_pose";
+function saPackMap() {
+  try { return JSON.parse(sessionStorage.getItem(SA_PACK_KEY) || "{}") || {}; }
+  catch { return {}; }
+}
+function saRememberPack() {
+  const map = saPackMap();
+  if (saPackId) map[saPoseId()] = saPackId;
+  else delete map[saPoseId()];
+  try { sessionStorage.setItem(SA_PACK_KEY, JSON.stringify(map)); } catch { /* */ }
+}
+function saSelectedPack() {
+  return saPacks.find(p => p.id === saPackId) || null;
+}
+function saPackFrameUrl(i) {
+  const pack = saSelectedPack();
+  if (!pack || !window.FramePack) return "";
+  return FramePack.packFrameUrls(pack)[i] || "";
+}
 function saBoneUrl(i) {
-  const own = saBone.frames[i] || "";
-  return own || saBone.shared || "";
+  return saBone.frames[i] || saPackFrameUrl(i) || saBone.shared || "";
 }
 function saDenoise() {
   const n = parseFloat(document.getElementById("sa-denoise")?.value || "0.70");
   return Number.isFinite(n) ? n : 0.70;
 }
 function saPaintBone(target) {
-  const url = target === "shared" ? saBone.shared : (saBone.frames[target] || "");
+  const own = target === "shared" ? saBone.shared : (saBone.frames[target] || "");
+  const packUrl = target !== "shared" ? saPackFrameUrl(target) : "";
+  const url = own || packUrl;
   const el = document.getElementById(target === "shared" ? "sa-bone-shared" : "sa-bone-" + target);
   if (!el) return;
   if (url) {
-    el.innerHTML = `<img src="${cdEsc(url)}" alt="骨架">`;
+    const via = packUrl && url === packUrl ? `<span class="mini">圖組第 ${target + 1} 張</span>` : "";
+    el.innerHTML = `<img src="${cdEsc(url)}" alt="骨架">${via}`;
   } else if (target === "shared") {
     el.textContent = "把骨架圖拖到這裡／點選／ Ctrl+V";
   } else {
@@ -2666,7 +2725,11 @@ function saBoneClear(target) {
   if (target === "shared") saBone.shared = "";
   else saBone.frames[target] = "";
   saPaintBones();
-  status("sa-status", target === "shared" ? "已拿掉共用骨架" : `已拿掉第 ${target + 1} 幀骨架`);
+  if (target !== "shared" && saPackFrameUrl(target)) {
+    status("sa-status", `已拿掉第 ${target + 1} 幀自訂骨架，產生時改回圖組那張。`);
+  } else {
+    status("sa-status", target === "shared" ? "已拿掉共用骨架" : `已拿掉第 ${target + 1} 幀骨架`);
+  }
 }
 async function saBoneUpload(file, target) {
   if (!file) return;
@@ -2683,7 +2746,7 @@ async function saBoneUpload(file, target) {
     else saBone.frames[target] = url;
     saPaintBones();
     const wh = data.width && data.height ? ` ${data.width}×${data.height}` : "";
-    status("sa-status", `✓ ${who}已掛上${wh}。生圖請用 ComfyUI，跟骨架走。`);
+    status("sa-status", `✓ ${who}已掛上${wh}。產生時當圖生圖參考（Grok 或 Comfy）。`);
   } catch (err) {
     status("sa-status", "骨架上傳失敗：" + err.message, true);
   }
@@ -2741,15 +2804,25 @@ function saPoseLabel() {
   const p = window.SexAnim && SexAnim.sexAnimPose(id);
   return (p && p.label) || id;
 }
-function saOnPoseChange() {
-  const pose = saPoseId();
-  const pack = saPacks.find(p => p.id === saPackId);
-  if (pack && pack.pose && pack.pose !== pose) {
-    saPackId = "";
-    saBone.frames = ["", "", "", ""];
-    saPaintBones();
+function saClearPackBones() {
+  for (let i = 0; i < 4; i++) {
+    if ((saBone.frames[i] || "").includes("/assets/frame_packs/")) saBone.frames[i] = "";
   }
+}
+function saRestorePackForPose() {
+  const id = saPackMap()[saPoseId()] || "";
+  const pack = saPacks.find(p => p.id === id && (!p.pose || p.pose === saPoseId()));
+  if (pack) {
+    saApplyPack(pack, { remember: false });
+    return;
+  }
+  saPackId = "";
+  saClearPackBones();
+  saPaintBones();
   saRenderPacks();
+}
+function saOnPoseChange() {
+  saRestorePackForPose();
 }
 function saPackPick() {
   document.getElementById("sa-pack-file")?.click();
@@ -2794,9 +2867,10 @@ function saRenderPacks() {
       : `<span class="mini">${i + 1}</span>`
     ).join("");
     const on = p.id === saPackId ? " on" : "";
+    const mark = p.id === saPackId ? " · 產生時掛載" : "";
     return `<div class="sa-pack${on}" data-pack="${cdEsc(p.id)}" onclick="saSelectPack('${cdEsc(p.id)}')">
       <div class="thumbs">${thumbs}</div>
-      <div class="nm">${cdEsc(p.name || p.id)}</div>
+      <div class="nm">${cdEsc(p.name || p.id)}${mark}</div>
       <div class="acts">
         <button class="cy" type="button" onclick="event.stopPropagation(); saTestPack('${cdEsc(p.id)}')">測試這組</button>
         <button type="button" onclick="event.stopPropagation(); saRenamePack('${cdEsc(p.id)}')">改名</button>
@@ -2813,20 +2887,30 @@ async function saLoadPacks() {
     status("sa-status", "圖組庫讀不到：" + err.message, true);
     saPacks = [];
   }
-  saRenderPacks();
+  saRestorePackForPose();
 }
-function saApplyPack(pack) {
+function saApplyPack(pack, { remember = true } = {}) {
   const urls = window.FramePack ? FramePack.packFrameUrls(pack) : [];
   for (let i = 0; i < 4; i++) saBone.frames[i] = urls[i] || "";
   saPackId = pack.id || "";
   saPaintBones();
   saRenderPacks();
+  if (remember) saRememberPack();
 }
 function saSelectPack(id) {
   const pack = saPacks.find(p => p.id === id);
   if (!pack) { status("sa-status", "沒有這一組", true); return; }
+  if (saPackId === id) {
+    saPackId = "";
+    saClearPackBones();
+    saPaintBones();
+    saRenderPacks();
+    saRememberPack();
+    status("sa-status", "已取消掛載圖組。產生時不再自動帶參考圖。");
+    return;
+  }
   saApplyPack(pack);
-  status("sa-status", `已選「${pack.name || pack.id}」。按全部產生或全部測試。`);
+  status("sa-status", `已掛「${pack.name || pack.id}」。全部產生／單幀產生都會帶這組第 1～4 張當圖生圖參考。`);
 }
 async function saTestPack(id) {
   saSelectPack(id);
@@ -2876,8 +2960,9 @@ async function saDeletePack(id) {
     saPacks = saPacks.filter(p => p.id !== id);
     if (saPackId === id) {
       saPackId = "";
-      saBone.frames = ["", "", "", ""];
+      saClearPackBones();
       saPaintBones();
+      saRememberPack();
     }
     saRenderPacks();
     status("sa-status", "已刪除圖組");
@@ -2888,7 +2973,7 @@ async function saDeletePack(id) {
 function saBuildBody(i, pos, seed) {
   const e = saEngGet();
   const bone = saBoneUrl(i);
-  const comfy = e.imgProvider === "comfy" || !!bone;
+  const comfy = e.imgProvider === "comfy";
   const sharedNeg = document.getElementById("sa-neg")?.value.trim() || "";
   const poseId = document.getElementById("sa-pose")?.value || "missionary";
   const beats = (window.SexAnim && SexAnim.sexAnimBeats)
@@ -3155,9 +3240,8 @@ async function saGenOne(i, seed) {
     return false;
   }
   const e = saEngGet();
-  const bone = saBoneUrl(i);
-  if ((e.imgProvider === "comfy" || bone) && !e.comfyUrl) {
-    status("sa-status", "有骨架時必須走 ComfyUI 圖生圖。上面改成 ComfyUI 並填端點。", true);
+  if (e.imgProvider === "comfy" && !e.comfyUrl) {
+    status("sa-status", "ComfyUI 要填端點。", true);
     return false;
   }
   const own = seed == null;
@@ -3171,7 +3255,10 @@ async function saGenOne(i, seed) {
   saState[i] = { pending: true, msg: "生成中…", key: body.key, body };
   saPaintCell(i);
   saPersist();
-  status("sa-status", `正在產第 ${i + 1} 幀…`);
+  const bone = saBoneUrl(i);
+  const packU = saPackFrameUrl(i);
+  const via = bone && packU && bone === packU ? " · 圖組參考" : (bone ? " · 骨架參考" : "");
+  status("sa-status", `正在產第 ${i + 1} 幀${via}…`);
   try {
     const r = await saWaitImg(body, k => {
       saState[i].key = k;
@@ -3210,9 +3297,8 @@ async function saGenOne(i, seed) {
 async function saGenAll() {
   if (saBusy) { status("sa-status", "上一組還在跑", true); return; }
   const e = saEngGet();
-  const anyBone = !!saBone.shared || saBone.frames.some(Boolean);
-  if ((e.imgProvider === "comfy" || anyBone) && !e.comfyUrl) {
-    status("sa-status", "有骨架時必須走 ComfyUI 圖生圖。上面改成 ComfyUI 並填端點。", true);
+  if (e.imgProvider === "comfy" && !e.comfyUrl) {
+    status("sa-status", "ComfyUI 要填端點。", true);
     return;
   }
   const n = saN();
@@ -3230,14 +3316,15 @@ async function saGenAll() {
   }
   saBusy = true;
   saStopAnim();
-  status("sa-status", `全部產生中（seed ${seed}）…`);
+  const packHint = saSelectedPack() ? ` · 圖組「${saSelectedPack().name || saPackId}」` : "";
+  status("sa-status", `全部產生中（seed ${seed}${packHint}）…`);
   try {
     let ok = 0;
     for (let i = 0; i < n; i++) {
       const r = await saGenOne(i, seed);
       if (r) ok += 1;
     }
-    status("sa-status", ok === n ? `✓ 四幀完成 · seed ${seed}` : `完成 ${ok}/${n} · seed ${seed}`, ok !== n);
+    status("sa-status", ok === n ? `✓ 四幀完成 · seed ${seed}${packHint}` : `完成 ${ok}/${n} · seed ${seed}${packHint}`, ok !== n);
   } finally {
     saBusy = false;
   }
@@ -3278,6 +3365,7 @@ function saClear() {
   saBone.shared = "";
   saBone.frames = ["", "", "", ""];
   saPackId = "";
+  saRememberPack();
   saRenderPacks();
   for (let i = 0; i < n; i++) {
     saState[i] = {};
@@ -3526,6 +3614,7 @@ const sm = {
   scene: 1,
   play: null,
   animTimer: 0,
+  framePacks: [],
 };
 function smPack() {
   return sm.data.packs.find(p => p.id === sm.packId) || null;
@@ -3552,6 +3641,10 @@ function smCollect() {
   p.name = document.getElementById("sm-name")?.value.trim() || p.name;
   p.kind = sm.kind;
   p.keywords = SM.parseKeywords(document.getElementById("sm-keywords")?.value);
+  if (sm.kind === "sex") {
+    p.pose = document.getElementById("sm-pose")?.value || "";
+    p.framePackId = document.getElementById("sm-frame-pack")?.value || "";
+  }
   p.updated = Date.now();
   const spec = p.scenes[String(sm.scene)];
   if (!spec) return p;
@@ -3577,6 +3670,74 @@ function smRenderPacks() {
   if (name) name.value = p?.name || "";
   const kw = document.getElementById("sm-keywords");
   if (kw) kw.value = (p?.keywords || []).join("、");
+  smRenderPackBind();
+}
+function smRenderPackBind() {
+  const row = document.getElementById("sm-bind-row");
+  const hint = document.getElementById("sm-bind-hint");
+  const preview = document.getElementById("sm-frame-pack-preview");
+  const show = sm.kind === "sex";
+  if (row) row.style.display = show ? "flex" : "none";
+  if (hint) hint.style.display = show ? "block" : "none";
+  if (!show) {
+    if (preview) preview.innerHTML = "";
+    return;
+  }
+  const p = smPack();
+  const poseSel = document.getElementById("sm-pose");
+  if (poseSel && !poseSel.dataset.smBound) {
+    poseSel.dataset.smBound = "1";
+    poseSel.addEventListener("change", () => {
+      smCollect();
+      smRenderPackBind();
+    });
+  }
+  if (poseSel) {
+    const poses = (SM.SEX_POSES || []).map(x =>
+      `<option value="${cdEsc(x.id)}"${p?.pose === x.id ? " selected" : ""}>${cdEsc(x.label)}</option>`
+    ).join("");
+    poseSel.innerHTML = `<option value="">（不指定）</option>` + poses;
+    if (p?.pose) poseSel.value = p.pose;
+  }
+  const fpSel = document.getElementById("sm-frame-pack");
+  if (fpSel && !fpSel.dataset.smBound) {
+    fpSel.dataset.smBound = "1";
+    fpSel.addEventListener("change", () => {
+      smCollect();
+      smRenderPackBind();
+    });
+  }
+  const pose = p?.pose || "";
+  let list = sm.framePacks || [];
+  if (pose) list = list.filter(x => !x.pose || x.pose === pose);
+  const cur = p?.framePackId || "";
+  if (cur && !list.some(x => x.id === cur)) {
+    const hit = (sm.framePacks || []).find(x => x.id === cur);
+    if (hit) list = [hit, ...list];
+  }
+  if (fpSel) {
+    fpSel.innerHTML = `<option value="">（不掛）</option>` + list.map(x => {
+      const lab = (SM.sexPose(x.pose)?.label || x.pose || "") + (x.pose ? " · " : "") + (x.name || x.id);
+      return `<option value="${cdEsc(x.id)}"${x.id === cur ? " selected" : ""}>${cdEsc(lab)}</option>`;
+    }).join("");
+    fpSel.value = cur;
+  }
+  const pack = (sm.framePacks || []).find(x => x.id === cur) || null;
+  if (preview) {
+    if (!pack) {
+      preview.innerHTML = "";
+      return;
+    }
+    const urls = window.FramePack ? FramePack.packFrameUrls(pack) : [];
+    const thumbs = urls.map((u, i) => u
+      ? `<img src="${cdEsc(u)}" alt="${i + 1}">`
+      : `<span class="mini">${i + 1}</span>`
+    ).join("");
+    preview.innerHTML = `<div class="sa-pack on" style="max-width:280px;cursor:default">
+      <div class="thumbs">${thumbs}</div>
+      <div class="nm">${cdEsc(pack.name || pack.id)} · 已掛，圖生圖／按肏動畫用這組</div>
+    </div>`;
+  }
 }
 function smRenderTabs() {
   const box = document.getElementById("sm-scene-tabs");
@@ -3587,6 +3748,23 @@ function smRenderTabs() {
   ).join("");
   const blurb = document.getElementById("sm-scene-blurb");
   if (blurb) blurb.textContent = SM.SCENE_BLURB[sm.scene] || "";
+}
+function smBoundFramePack() {
+  const p = smPack();
+  const spec = smSpec();
+  const id = window.SM ? SM.boundFramePackId(p, spec) : (p?.framePackId || "");
+  return (sm.framePacks || []).find(x => x.id === id) || null;
+}
+function smRefFlag(slot, i) {
+  if (slot?.ref) return "已掛 " + slot.ref;
+  const pack = smBoundFramePack();
+  if (pack) {
+    const url = window.FramePack ? FramePack.packFrameUrl(pack, i + 1) : "";
+    return url
+      ? `圖生圖會掛圖組「${pack.name || pack.id}」第 ${i + 1} 張`
+      : "沒有參考圖（圖組缺這一幀）";
+  }
+  return "沒有參考圖";
 }
 function smSlotHtml(slot, i, n) {
   const art = slot.url
@@ -3599,13 +3777,13 @@ function smSlotHtml(slot, i, n) {
     <textarea id="sm-prompt-${i}" placeholder="英文 tags，例如 first-person POV, groping breast, nsfw">${cdEsc(slot.prompt)}</textarea>
     <label>負向 prompt（不要畫的，會進 negative）</label>
     <textarea id="sm-neg-${i}" style="min-height:3em" placeholder="ugly, extra fingers, looking at viewer, text">${cdEsc(slot.negative)}</textarea>
-    <div class="mini" style="margin:.35em 0">參考圖（圖生圖用；JPG／PNG）</div>
+    <div class="mini" style="margin:.35em 0">參考圖（圖生圖用；JPG／PNG）。已掛圖組時，沒上傳就用圖組第 ${i + 1} 張。</div>
     <div class="row">
       <input id="sm-ref-file-${i}" type="file" accept="image/*">
       <button type="button" onclick="smRefPick(${i})">上傳參考圖</button>
       <button type="button" onclick="smRefClear(${i})">拿掉</button>
     </div>
-    <div class="mini" id="sm-ref-flag-${i}">${slot.ref ? "已掛 " + cdEsc(slot.ref) : "沒有參考圖"}</div>
+    <div class="mini" id="sm-ref-flag-${i}">${smRefFlag(slot, i)}</div>
     <div class="row" style="margin-top:.35em">
       <button class="cy" type="button" onclick="smGenSlot(${i})">產生這張</button>
     </div>
@@ -3714,13 +3892,15 @@ function smRefClear(i) {
   if (spec?.slots[i]) spec.slots[i].ref = "";
   smRenderScene();
 }
-function smImgBody(slot, extraPose) {
+function smImgBody(slot, extraPose, slotIndex) {
   const g = cdGirl();
   const e = cdEngGet();
+  const spec = smSpec();
+  const pack = smPack();
   return SM.buildScriptImgBody({
     girl: g,
     slot,
-    spec: smSpec(),
+    spec,
     scene: sm.scene,
     extraPose,
     imgProvider: e.imgProvider,
@@ -3731,6 +3911,9 @@ function smImgBody(slot, extraPose) {
     style: document.getElementById("po-style")?.value || "anime",
     outfit: cdWornOutfit(g),
     keyPrefix: "smscript",
+    pack,
+    framePack: smBoundFramePack(),
+    slotIndex: slotIndex || 0,
   });
 }
 async function smGenSlot(i, extraPose) {
@@ -3740,8 +3923,8 @@ async function smGenSlot(i, extraPose) {
   const spec = smSpec();
   const slot = spec?.slots[i];
   if (!slot) return;
-  if (spec.imgMode === "ref" && !slot.ref) {
-    status("sm-status", "圖生圖要先掛參考圖，或改成直接 prompt", true);
+  if (spec.imgMode === "ref" && !slot.ref && !SM.boundFramePackId(smPack(), spec)) {
+    status("sm-status", "圖生圖要先掛參考圖或選圖組，或改成直接 prompt", true);
     return;
   }
   if (!String(slot.prompt || "").trim() && !String(extraPose || "").trim()) {
@@ -3752,7 +3935,7 @@ async function smGenSlot(i, extraPose) {
   if (art) art.innerHTML = `<span class="mini">生成中…</span>`;
   status("sm-status", `場景${sm.scene} 圖${i + 1} 生成中…`);
   try {
-    const r = await twWaitImg(smImgBody(slot, extraPose), { statusId: "sm-status", ms: 360000 });
+    const r = await twWaitImg(smImgBody(slot, extraPose, i), { statusId: "sm-status", ms: 360000 });
     if (r.status === "done" && r.result) {
       slot.url = String(r.result).split("?")[0];
       if (art) art.innerHTML = `<img src="${cdEsc(r.result)}" alt="圖${i + 1}">`;
@@ -3851,23 +4034,36 @@ async function smPlayFlashAnim() {
   if (!box || !window.FramePack) return;
   let urls = [];
   try {
-    const packs = await FramePack.listPacks();
-    const pack = packs[0];
+    if (!(sm.framePacks || []).length) {
+      sm.framePacks = await FramePack.listPacks();
+    }
+    const play = sm.play;
+    const spec = play?.pack?.scenes?.[String(play?.scene)];
+    const id = SM.boundFramePackId(play?.pack, spec);
+    const pose = play?.pack?.pose || "";
+    const pack = (sm.framePacks || []).find(p => p.id === id)
+      || (sm.framePacks || []).find(p => p.pose === pose)
+      || (sm.framePacks || []).find(p => FramePack.packFrameUrls(p).filter(Boolean).length >= 2)
+      || null;
     urls = pack ? FramePack.packFrameUrls(pack).filter(Boolean) : [];
   } catch { urls = []; }
   if (urls.length < 2) return;
+  if (sm.animTimer) {
+    clearInterval(sm.animTimer);
+    sm.animTimer = 0;
+  }
   box.classList.add("on");
   let i = 0;
   const tick = () => {
-    box.innerHTML = `<img src="${cdEsc(urls[i % urls.length])}" alt="anim">`;
-    i += 1;
-    if (i >= urls.length * 2) {
+    if (i >= urls.length) {
       smPlayStopAnim();
+      return;
     }
+    box.innerHTML = `<img src="${cdEsc(urls[i])}" alt="anim">`;
+    i += 1;
   };
-  smPlayStopAnim();
   tick();
-  sm.animTimer = setInterval(tick, 160);
+  sm.animTimer = setInterval(tick, 220);
 }
 function smPlayPaint(who, text, hint) {
   const w = document.getElementById("sm-play-who");
@@ -3893,9 +4089,9 @@ function smSetPlayUi() {
   const play = sm.play;
   const idle = !play || play.phase === "idle";
   const scene = Number(play?.scene) || 0;
-  const inScene = play?.phase === "scene" && play.ready && !play.ending;
+  const inScene = play?.phase === "scene" && !play.ending;
   document.getElementById("sm-play-inrow")?.classList.toggle("hidden", !idle);
-  document.getElementById("sm-thrust-btn")?.classList.toggle("hidden", !(inScene && scene >= 2));
+  document.getElementById("sm-thrust-btn")?.classList.toggle("hidden", !(inScene && (scene === 2 || scene === 3)));
 }
 function smPlayShowImg() {
   const play = sm.play;
@@ -3905,11 +4101,14 @@ function smPlayShowImg() {
     smShowPortrait();
     return;
   }
+  if (!play.revealImg) {
+    smShowPortrait();
+    return;
+  }
   const urls = play.urls || [];
   const url = urls.length ? urls[play.imgI % urls.length] : "";
-  stage.innerHTML = url
-    ? `<img src="${cdEsc(url)}" alt="scene">`
-    : `<span class="mini">即時生圖中…</span>`;
+  if (!url) return;
+  stage.innerHTML = `<img src="${cdEsc(url)}" alt="scene">`;
 }
 function smPlayMeta() {
   const play = sm.play;
@@ -3919,12 +4118,13 @@ function smPlayMeta() {
   if (!play) { el.textContent = "尚未開始"; return; }
   const hearts = SM.affHeartsHtml(g?.affection ?? 0);
   if (play.phase === "idle") {
-    const rate = SM.triggerRate("tease", g?.stage);
-    el.innerHTML = `店頭 · ${cdEsc(g?.name || "?")} · ${cdEsc(CD_STAGE[g?.stage] || g?.stage || "")} · ${hearts} · 調戲 ${Math.round(rate * 100)}%`;
+    const sexPct = Math.round(SM.triggerRate("sex", g?.stage) * 100);
+    el.innerHTML = `店頭 · ${cdEsc(g?.name || "?")} · ${cdEsc(CD_STAGE[g?.stage] || g?.stage || "")} · ${hearts} · 調戲／口交必發 · 做愛 ${sexPct}%`;
     return;
   }
   const rate = SM.triggerRate(play.kind, g?.stage);
-  el.innerHTML = `${cdEsc(SM.KIND_ZH[play.kind] || "")} · ${cdEsc(SM.SCENE_ZH[play.scene] || "")} · ${hearts} · ${Math.round(rate * 100)}%`;
+  const rateTxt = rate >= 1 ? "必發" : `${Math.round(rate * 100)}%`;
+  el.innerHTML = `${cdEsc(SM.KIND_ZH[play.kind] || "")} · ${cdEsc(SM.SCENE_ZH[play.scene] || "")} · ${hearts} · ${rateTxt}`;
 }
 function smPackForKind(kind) {
   const k = SM.resolveScriptKind(kind);
@@ -3947,52 +4147,52 @@ function smInferAccept(stage, reply) {
 function smStripFlags(text) {
   return String(text || "").replace(/#答應|#拒絕|#射精/g, "").trim();
 }
-async function smGenLive(slot, extraPose) {
+async function smGenLive(slot, extraPose, slotIndex) {
   const g = cdGirl();
   if (!g) return "";
-  const body = smImgBody(slot, extraPose);
+  const body = smImgBody(slot, extraPose, slotIndex);
   const r = await twWaitImg(body, { statusId: "sm-play-status", ms: 360000 });
   return r.status === "done" && r.result ? String(r.result) : "";
 }
-async function smPlayLine(i) {
+function smSceneUrls(g, pack, n) {
+  const pre = g?.scriptArt?.[pack?.id]?.[String(n)]?.urls;
+  if (Array.isArray(pre) && pre.filter(Boolean).length) return pre.filter(Boolean);
+  const slots = pack?.scenes?.[String(n)]?.slots || [];
+  return slots.map(x => x.url).filter(Boolean);
+}
+function smFirstNarr(g, pack, n) {
+  const spec = pack?.scenes?.[String(n)];
+  const lines = SM.narrLines(spec).map(t => SM.fillBinds(t, g));
+  return lines[0] || "……";
+}
+async function smTypeAi(g, narr, scene) {
   const play = sm.play;
-  const g = cdGirl();
-  if (!play || !g) return "wait";
-  const lines = play.lines || [];
-  if (i >= lines.length) {
-    play.lineDone = true;
-    return "done";
-  }
-  play.awaiting = true;
-  play.lineI = i;
-  play.lineDone = false;
-  const narr = lines[i];
-  smPlayPaint("旁白", narr, "她正在回話…");
-  const spec = play.pack.scenes[String(play.scene)];
+  const spec = play?.pack?.scenes?.[String(scene)];
   try {
     const r = await cdGenWait(
-      `smplay:${g.id}:${play.scene}:${i}:${Date.now().toString(36)}`,
+      `smplay:${g.id}:${scene}:${Date.now().toString(36)}`,
       SM.buildReplyMsgs(g.name, SM.fillBinds(spec?.attitude, g), narr, cdStage()),
       11,
     );
     if (sm.play !== play) return "abort";
     const reply = r.ok ? smStripFlags(r.text) || "……" : "……";
-    smPlayPaint(g.name, reply, i >= lines.length - 1
-      ? (play.scene <= 1 ? "點對話框進下一景／結束" : "可再按肏")
-      : (play.scene <= 1 ? "點對話框出下一句旁白" : "按肏出下一句旁白"));
+    smPlayPaint(g.name, reply, play.scene === 1 ? "點對話框繼續" : "可按肏");
   } catch (err) {
     if (sm.play !== play) return "abort";
     smPlayPaint(g.name, "……", err.message);
   }
-  if (play.urls.length > 1) {
-    play.imgI = (play.imgI + 1) % play.urls.length;
-    smPlayShowImg();
-  }
-  play.awaiting = false;
-  if (i >= lines.length - 1) play.lineDone = true;
   return "ok";
 }
-async function smEnterScene(n) {
+async function smNarrAndAi(g, scene, hint) {
+  const play = sm.play;
+  const narr = smFirstNarr(g, play.pack, scene);
+  play.awaiting = true;
+  smPlayPaint("旁白", narr, hint || "她正在回話…");
+  const r = await smTypeAi(g, narr, scene);
+  if (sm.play === play) play.awaiting = false;
+  return r;
+}
+async function smEnterScene(n, opts = {}) {
   const play = sm.play;
   if (!play) return;
   const spec = play.pack.scenes[String(n)];
@@ -4000,30 +4200,43 @@ async function smEnterScene(n) {
   const g = cdGirl();
   play.phase = "scene";
   play.scene = n;
-  play.ready = false;
+  play.ready = true;
   play.ending = false;
   play.awaiting = false;
   play.lineDone = false;
-  play.lineI = -1;
-  play.urls = [];
+  play.imgPending = false;
+  play.urls = smSceneUrls(g, play.pack, n);
   play.imgI = 0;
-  play.lines = SM.narrLines(spec).map(t => SM.fillBinds(t, g));
-  if (!play.lines.length) play.lines = ["……"];
-  smSetPlayUi();
-  smPlayShowImg();
-  smPlayPaint("系統", "即時生圖中…", SM.SCENE_ZH[n]);
-  smPlayMeta();
-  for (const slot of spec.slots || []) {
-    status("sm-play-status", `場景${n} 即時生圖…`);
-    const url = await smGenLive(slot, "");
-    if (url) play.urls.push(url);
-    if (sm.play !== play) return;
+  if (n === 1) {
+    play.revealImg = false;
+    play.openStep = "wait_ai";
+    play.ending = false;
+    smSetPlayUi();
+    smPlayMeta();
+    smPlayShowImg();
+    smPlayPaint("旁白", smFirstNarr(g, play.pack, 1), "點對話框出 AI");
+    return;
   }
-  play.ready = true;
-  smPlayShowImg();
+  if (n === 2 || n === 3) {
+    play.revealImg = true;
+    play.openStep = "";
+    play.ending = false;
+    smSetPlayUi();
+    smPlayMeta();
+    smPlayShowImg();
+    await smNarrAndAi(g, n, "可按肏");
+    return;
+  }
+  play.revealImg = true;
+  play.openStep = "";
+  play.ending = true;
   smSetPlayUi();
   smPlayMeta();
-  await smPlayLine(0);
+  smPlayShowImg();
+  const done = await smNarrAndAi(g, n, "點對話框結束");
+  if (done === "abort" || sm.play !== play) return;
+  play.openStep = "wait_end";
+  play.awaiting = false;
 }
 function smPlayIdle(msg) {
   smPlayStopAnim();
@@ -4090,7 +4303,7 @@ async function smPlaySend() {
     }
     const pack = SM.normalizePack(packHit);
     const rate = SM.triggerRate(pack.kind, g.stage);
-    const ok = Math.random() < rate;
+    const ok = rate >= 1 || Math.random() < rate;
     const pct = Math.round(rate * 100);
     const st = SM.STAGE_ZH[g.stage] || g.stage;
     const label = SM.KIND_ZH[pack.kind] || teaseKindLabel(pack.kind);
@@ -4107,7 +4320,7 @@ async function smPlaySend() {
       status("sm-play-status", `${label}檢定失敗`);
       return;
     }
-    smPlayPaint("系統", `${label}檢定（${st} ${pct}%）成功`, "進入場景…");
+    smPlayPaint("系統", rate >= 1 ? `${label}必發，進入場景…` : `${label}檢定（${st} ${pct}%）成功`, "進入場景…");
     play.kind = pack.kind;
     play.pack = pack;
     status("sm-play-status", `進入${SM.KIND_ZH[pack.kind]} · 即時生圖`);
@@ -4116,64 +4329,93 @@ async function smPlaySend() {
     status("sm-play-status", "失敗：" + err.message, true);
   }
 }
-async function smAfterBeats() {
+async function smPlayTap() {
   const play = sm.play;
-  if (!play) return;
-  if (SM.sceneEndsTalk(play.scene) || play.kind === "tease") {
+  const g = cdGirl();
+  if (!play || !g || play.phase !== "scene") return;
+  if (play.openStep === "wait_end") {
     smPlayIdle("結束了。退回立繪。");
     status("sm-play-status", "退回店頭立繪");
     return;
   }
-  if (play.scene === 1) {
+  if (play.ending) return;
+  if (play.scene !== 1) return;
+  if (play.awaiting) return;
+  if (play.openStep === "wait_ai") {
+    play.openStep = "ai";
+    play.awaiting = true;
+    const narr = smFirstNarr(g, play.pack, 1);
+    const r = await smTypeAi(g, narr, 1);
+    if (r === "abort" || sm.play !== play) return;
+    play.revealImg = true;
+    play.openStep = "wait_go";
+    play.awaiting = false;
+    smPlayShowImg();
+    smPlayPaint(g.name, document.getElementById("sm-play-tx")?.textContent || "……", "點對話框進正戲／結束");
+    return;
+  }
+  if (play.openStep === "wait_go") {
     const nx = SM.nextAfterScene1(play.kind);
     if (!nx) {
       smPlayIdle("調戲結束。退回立繪。");
       return;
     }
     await smEnterScene(nx);
-    return;
   }
-  play.lineI = -1;
-  play.lineDone = false;
-  smPlayPaint("系統", "這一輪旁白／回話走完，可再按肏。", "");
-}
-async function smPlayTap() {
-  const play = sm.play;
-  if (!play || play.phase !== "scene" || play.ending) return;
-  if (!play.ready) { status("sm-play-status", "還在等圖"); return; }
-  if (play.awaiting) { status("sm-play-status", "等她說完"); return; }
-  if (play.scene >= 2) return;
-  if (play.lineDone) {
-    await smAfterBeats();
-    return;
-  }
-  await smPlayLine((play.lineI | 0) + 1);
 }
 async function smPlayThrust() {
   const play = sm.play;
   const g = cdGirl();
   if (!play || !g || play.phase !== "scene" || play.ending) return;
-  if (!play.ready) { status("sm-play-status", "還在等圖／AI"); return; }
-  if (play.scene < 2) { status("sm-play-status", "場景1請點對話框"); return; }
-  if (play.scene <= 3) void smPlayFlashAnim();
+  if (play.scene !== 2 && play.scene !== 3) return;
+  void smPlayFlashAnim();
   const d = SM.rollAffDelta(play.scene, g.stage);
   if (d) g.affection = (g.affection || 0) + d;
   cdRenderGirl();
   smPlayMeta();
-  status("sm-play-status", `肏 · 感情 ${d >= 0 ? "+" : ""}${d}`);
-  if (play.scene === 2 || play.scene === 3) {
-    const jump = SM.rollThrustJump(play.scene);
-    if (jump !== play.scene) {
-      await smEnterScene(jump);
-      return;
+  const act = SM.rollSexThrust(play.scene);
+  status("sm-play-status", `肏 · ${act}`);
+  if (act === "swap") {
+    const n = play.urls?.length || 0;
+    if (n >= 2) {
+      play.imgI = play.imgI === 0 ? 1 : 0;
+      smPlayShowImg();
     }
-  }
-  if (play.awaiting) { status("sm-play-status", "等她說完"); return; }
-  if (play.lineDone) {
-    await smAfterBeats();
     return;
   }
-  await smPlayLine((play.lineI | 0) + 1);
+  if (act === "player") {
+    play.awaiting = false;
+    await smEnterScene(4);
+    return;
+  }
+  if (act === "both") {
+    play.awaiting = false;
+    await smEnterScene(5);
+    return;
+  }
+  if (act === "scene3") {
+    play.awaiting = false;
+    await smEnterScene(3, { flash: false });
+    return;
+  }
+  if (act === "ai") {
+    if (play.awaiting) return;
+    play.awaiting = true;
+    const spec = play.pack?.scenes?.[String(play.scene)];
+    try {
+      const r = await cdGenWait(
+        `smplay:${g.id}:${play.scene}:ai:${Date.now().toString(36)}`,
+        SM.buildReplyMsgs(g.name, SM.fillBinds(spec?.attitude, g), "正戲進行中", cdStage()),
+        11,
+      );
+      if (sm.play !== play) return;
+      smPlayPaint(g.name, r.ok ? smStripFlags(r.text) || "……" : "……", "可再按肏");
+    } catch (err) {
+      if (sm.play !== play) return;
+      smPlayPaint(g.name, "……", err.message);
+    }
+    if (sm.play === play) play.awaiting = false;
+  }
 }
 async function smInit() {
   const kindSel = document.getElementById("sm-kind");
@@ -4191,6 +4433,11 @@ async function smInit() {
     sm.data = SM.normalizeData(j);
   } catch {
     sm.data = SM.normalizeData({ packs: [], activeByKind: {} });
+  }
+  try {
+    sm.framePacks = window.FramePack ? await FramePack.listPacks() : [];
+  } catch {
+    sm.framePacks = [];
   }
   sm.kind = "tease";
   smEnsurePack();

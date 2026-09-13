@@ -24,6 +24,21 @@ export function packFrameUrls(pack) {
   return [1, 2, 3, 4].map(i => (frames[String(i)] || {}).url || "");
 }
 
+/** 1-based 幀號；超出 4 會繞回。沒有那張就空字串。 */
+export function packFrameUrl(pack, index) {
+  const urls = packFrameUrls(pack);
+  if (!urls.some(Boolean)) return "";
+  const n = Number(index);
+  const i = Number.isFinite(n) && n >= 1 ? Math.floor(n) - 1 : 0;
+  return urls[((i % 4) + 4) % 4] || "";
+}
+
+export function findPack(packs, id) {
+  const want = String(id || "");
+  if (!want) return null;
+  return (packs || []).find(p => p && p.id === want) || null;
+}
+
 export async function listPacks(pose) {
   const q = pose ? "?pose=" + encodeURIComponent(pose) : "";
   const j = await _json(API + q);

@@ -585,8 +585,39 @@ body.asleep #book { animation: none; opacity: .7; }
 }
 #qs-exec { transform: translateX(0); }
 #qs-proc { transform: translateX(100%); }
+#qs-diary { transform: translateX(-100%); }
 #page-quests.on-proc #qs-exec { transform: translateX(-40%); }
 #page-quests.on-proc #qs-proc { transform: translateX(0); }
+#page-quests.on-diary #qs-exec { transform: translateX(40%); }
+#page-quests.on-diary #qs-proc { transform: translateX(140%); }
+#page-quests.on-diary #qs-diary { transform: translateX(0); }
+#page-quests.on-diary #quest-input-row { visibility: hidden; pointer-events: none; }
+#page-quests.on-diary .q-force-tabs { opacity: 0; pointer-events: none; }
+
+/* 左側紅色日誌頁籤(貼委託板左緣,像小本子的索引) */
+.diary-tab {
+  position: absolute; left: 0; top: 34%; z-index: 8;
+  width: 26px; padding: 16px 5px 18px 4px;
+  background: #c4453c; color: #f6e6d8;
+  border: 1px solid #9a2f28; border-left: none;
+  border-radius: 0 11px 11px 0;
+  font: inherit; font-size: .66em;
+  cursor: pointer;
+  box-shadow: 2px 3px 10px rgba(0, 0, 0, .38);
+}
+.diary-tab span {
+  display: block; width: 1em; margin: 0 auto;
+  word-break: break-all; line-height: 1.45; letter-spacing: 0;
+}
+.diary-tab:active { transform: translateX(1px); }
+.diary-tab.on, #page-quests.on-diary .diary-tab {
+  background: #e25a4e; color: #fff8f0;
+  box-shadow: 2px 3px 14px rgba(226, 90, 78, .45);
+}
+#qs-diary .lv-area { padding-left: 38px; }
+.lv-badge.diary-badge {
+  background: color-mix(in srgb, #c4453c 32%, transparent); color: #e25a4e;
+}
 
 /* 執行中三格 */
 .pin-hdr {
@@ -653,6 +684,149 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 .q-card .swind {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 3.5rem; opacity: 0; pointer-events: none; z-index: 4;
+}
+/* 已承接:連點三下直接完成的進度 */
+.q-tapfx {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 0 12px 14px; pointer-events: none; z-index: 3;
+  opacity: 0; transform: translateY(6px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.q-tapfx.on { opacity: 1; transform: none; }
+.q-tap-msg {
+  font-size: .68em; letter-spacing: .1em; color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 16%, transparent);
+  padding: 4px 10px; margin-bottom: 8px;
+}
+.q-tap-pips { display: flex; gap: 7px; }
+.q-tap-pips i {
+  display: block; width: 7px; height: 7px; border-radius: 50%;
+  background: color-mix(in srgb, var(--gold) 28%, transparent);
+  transition: background .12s, box-shadow .12s, transform .12s;
+}
+.q-tap-pips i.on {
+  background: var(--gold);
+  box-shadow: 0 0 8px var(--gold);
+  transform: scale(1.2);
+}
+.q-card.q-instant {
+  box-shadow: 0 0 36px color-mix(in srgb, var(--gold) 55%, transparent), 0 20px 60px rgba(0, 0, 0, .5);
+}
+
+/* 已承接長按:畫面正中的對話卡(不是網頁 dialog/prompt) */
+#split-overlay {
+  position: fixed; inset: 0; z-index: 56;
+  background: rgba(5, 2, 10, .72); backdrop-filter: blur(8px);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 16vh 16px calc(16px + env(safe-area-inset-bottom));
+}
+#split-overlay.hidden { display: none; }
+.split-card {
+  width: 100%; max-width: 340px;
+  background: var(--card-vn, var(--panel)); color: var(--card-vn-text, var(--text));
+  border: 1px solid var(--line); padding: 22px 20px 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .55);
+  display: flex; flex-direction: column;
+  animation: cIn .22s cubic-bezier(.25, .8, .25, 1);
+  user-select: text; touch-action: auto; cursor: default;
+}
+.split-name {
+  font-size: calc(1.15rem * var(--card-font-scale, 1)); line-height: 1.6;
+  word-break: break-all; margin-bottom: 14px;
+  text-shadow: var(--card-vn-halo, none);
+}
+.split-input-row { display: flex; gap: .5em; width: 100%; }
+#split-input {
+  flex: 1; min-width: 0;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: none; color: var(--text);
+  font: inherit; font-size: 1.05em; padding: .75em .9em; outline: none;
+}
+#split-input::placeholder { color: var(--dim); }
+#split-ok {
+  flex: 0 0 auto; border: none; cursor: pointer;
+  background: rgba(111, 227, 225, .2); color: var(--cyan);
+  font: inherit; font-size: .82em; letter-spacing: .06em;
+  padding: .7em .85em; white-space: nowrap;
+}
+#split-ok:hover { background: rgba(111, 227, 225, .32); }
+
+/* 玩家日誌:橫線小本子 */
+.nb-card {
+  --nb-line: 28px;
+  --nb-ink: #3a2a1c;
+  --nb-paper: #f3ead8;
+  --nb-rule: rgba(70, 110, 160, .28);
+  --nb-margin: #d96a62;
+  width: 100%; max-width: 340px; min-height: 280px;
+  background: var(--nb-paper); color: var(--nb-ink);
+  border: 1px solid color-mix(in srgb, #8a5a3a 40%, #c4b49a);
+  box-shadow: 0 18px 50px rgba(40, 18, 8, .42), inset 0 1px 0 rgba(255, 255, 255, .55);
+  display: flex; flex-direction: column;
+  position: relative; overflow: hidden;
+  user-select: text; touch-action: pan-y;
+  animation: cIn .22s cubic-bezier(.25, .8, .25, 1);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Songti TC", "Noto Serif TC", serif;
+}
+.nb-card::before {
+  content: ""; position: absolute; left: 30px; top: 0; bottom: 0; width: 1.5px;
+  background: var(--nb-margin); pointer-events: none; z-index: 1;
+}
+.nb-head {
+  flex-shrink: 0; padding: 12px 16px 8px 40px;
+  border-bottom: 1.5px solid var(--nb-margin);
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+}
+.nb-date { font-size: .92em; letter-spacing: .06em; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nb-flip {
+  flex-shrink: 0; font-size: .62em; letter-spacing: .08em;
+  color: color-mix(in srgb, var(--nb-ink) 55%, transparent);
+}
+.nb-meta {
+  display: flex; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.nb-streak {
+  font-size: .62em; letter-spacing: .04em; color: #8a5a18; white-space: nowrap;
+}
+.nb-sync {
+  font-size: .58em; letter-spacing: .04em;
+  color: color-mix(in srgb, var(--nb-ink) 45%, transparent);
+}
+.nb-sync.ok { color: #2f6b3a; }
+.nb-sync.bad { color: #a33; }
+.nb-sync.busy { color: #8a5a18; }
+.nb-hint {
+  flex-shrink: 0; margin: 0; padding: 0 16px 10px 40px;
+  font-size: .58em; line-height: 1.45;
+  color: color-mix(in srgb, var(--nb-ink) 48%, transparent);
+}
+.nb-body {
+  flex: 1; padding: 6px 16px 14px 40px; min-height: 0;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 calc(var(--nb-line) - 1px),
+    var(--nb-rule) calc(var(--nb-line) - 1px) var(--nb-line)
+  );
+  background-attachment: local;
+}
+.nb-body textarea {
+  display: block; width: 100%; min-height: calc(var(--nb-line) * 8);
+  margin: 0; padding: 0; border: none; resize: none;
+  background: transparent; color: inherit; font: inherit;
+  font-size: .92em; line-height: var(--nb-line);
+  outline: none; overflow: hidden; box-sizing: border-box;
+  overflow-wrap: anywhere; word-break: break-word;
+  caret-color: var(--nb-margin);
+}
+.nb-body textarea::placeholder {
+  color: color-mix(in srgb, var(--nb-ink) 38%, #888);
+  letter-spacing: .02em;
+}
+.nb-swind {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 2.4rem; opacity: 0; pointer-events: none; z-index: 4;
+  color: var(--nb-margin);
 }
 .q-card .bar-wrap { margin-top: 12px; }
 .q-card .remain { font-size: .72em; color: color-mix(in srgb, currentColor 60%, transparent); margin-top: .4em; }
@@ -759,6 +933,16 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 .chooser button { background: rgba(255, 215, 95, .12); color: var(--gold); }
 .chooser button:hover { background: rgba(255, 215, 95, .25); }
 .chooser button small { color: var(--dim); }
+.date-venues {
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: .4em;
+  margin-top: .7em;
+  padding: .65em .7em .75em;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+}
 
 /* 倒數條(分段像素) */
 .bar-wrap { margin-top: .5em; height: 10px; background: rgba(0, 0, 0, .4); position: relative; }
@@ -872,6 +1056,18 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 #dungeon-list span { display: inline-block; margin: .15em .5em .15em 0; color: var(--dim); }
 
 /* ===== 魅魔名冊 ===== */
+.daydream-banner {
+  font-size: .82em;
+  color: var(--cyan);
+  letter-spacing: .08em;
+  padding: .35em .15em .55em;
+  border-bottom: 1px solid var(--line);
+}
+#hud-daydream {
+  color: var(--cyan);
+  font-size: .78em;
+  letter-spacing: .06em;
+}
 .scard {
   display: flex; align-items: center; gap: .8em; cursor: pointer;
   padding: .6em .2em; border-bottom: 1px solid var(--line);
@@ -1047,21 +1243,28 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 }
 #sex-anim-overlay {
   position: absolute;
-  inset: 8% 8% 22%;
-  z-index: 5;
+  inset: 0;
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, .52);
-  border-radius: 10px;
+  background: transparent;
   pointer-events: none;
 }
 #sex-anim-overlay.hidden { display: none; }
 #sex-anim-overlay img {
-  max-width: 100%;
-  max-height: 100%;
+  max-width: 42%;
+  max-height: 38%;
+  width: auto;
+  height: auto;
   object-fit: contain;
   display: block;
+}
+@media (max-width: 700px) {
+  #sex-anim-overlay img {
+    max-width: 92%;
+    max-height: 72%;
+  }
 }
 #aff-pop {
   position: absolute;
@@ -1385,7 +1588,7 @@ body.tease-play #chat-input-row { display: none; }
 
 /* ===== 小圓角統一(容器 8px / 控件 6px / 小標籤 4px) ===== */
 .panel, .q-card, .pin-slot, #vn-box, #chat-input-row, #quest-input-row,
-.reward-sheet, .summon-result .portrait, .conn-box {
+.reward-sheet, .summon-result .portrait, .conn-box, .split-card {
   border-radius: 8px;
 }
 .msg, #quest-input, #chat-input, #chat-send,
@@ -1393,7 +1596,8 @@ body.tease-play #chat-input-row { display: none; }
 .btn-row button, .reward-grid button, .reward-cancel, .conn-box button,
 .summon-result button, .chooser button,
 .setting-row input, .setting-row select, .bg-thumb,
-.card-color-row input[type="color"] {
+.card-color-row input[type="color"],
+#split-input, #split-ok {
   border-radius: 6px;
 }
 #quest-add { border-radius: 10px; }

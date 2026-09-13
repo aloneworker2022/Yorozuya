@@ -225,8 +225,9 @@ function appearanceZh(dna) {
   return t.length ? t.join("、") : null;
 }
 
-// 外貌描述:新制(look 物件+特殊屬性)優先,舊制退回 DNA token 映射
-function lookText(c) {
+// 外貌描述:新制(look 物件+特殊屬性)優先,舊制退回 DNA token 映射。
+// 預設只給認人用的公開外貌；胸／乳頭／陰唇等要被看或被摸才另外注入。
+function lookText(c, { intimate = false } = {}) {
   if (c.look) {
     const L = c.look;
     // 身上穿的那一套:生涯服裝(職業給的)優先,玩家挑過個人衣櫃才換。
@@ -235,15 +236,29 @@ function lookText(c) {
     const i = c.outfitPick;
     const worn = (Number.isInteger(i) && i >= 0 && i < wardrobe.length)
       ? wardrobe[i] : (L.career_outfit || wardrobe[0] || "");
-    const bits = [L.height_cm ? `${L.height_cm}cm` : null, L.build,
-                  L.bust || [L.cup, L.breast_shape].filter(Boolean).join("、") || null,
-                  L.areola || null, L.nipple || null,
-                  L.labia_size || null, L.clitoris_size || null, L.labia_color || null,
-                  L.pubic_hair || null,
-                  L.face, L.eyes, L.eye_color || null, L.mouth,
-                  [L.hair_color, L.hair].filter(Boolean).join("") || null,
-                  worn ? `身上穿著${worn}` : null, L.feature].filter(Boolean);
-    let t = bits.join("、");
+    const bits = [
+      L.height_cm ? `${L.height_cm}cm` : null,
+      L.build,
+      L.face,
+      L.eyes,
+      L.eye_color || null,
+      L.mouth,
+      [L.hair_color, L.hair].filter(Boolean).join("") || null,
+      worn ? `身上穿著${worn}` : null,
+      L.feature,
+    ];
+    if (intimate) {
+      bits.push(
+        L.bust || [L.cup, L.breast_shape].filter(Boolean).join("、") || null,
+        L.areola || null,
+        L.nipple || null,
+        L.labia_size || null,
+        L.clitoris_size || null,
+        L.labia_color || null,
+        L.pubic_hair || null,
+      );
+    }
+    let t = bits.filter(Boolean).join("、");
     const traits = (c.special_traits || c.specialTraits || [])
       .map(x => (typeof x === "string" ? x : x?.name) || "")
       .filter(n => n && !/淫紋/.test(n));
@@ -446,7 +461,7 @@ export function buildSystemPrompt(ctx) {
     lines.push(
       "",
       "【他這句在邀你出門約會】",
-      "遊戲會聽你的決定:#赴約 = 真的出門約會;#不去 = 繼續通話。",
+      "遊戲會聽你的決定:#赴約 = 真的出門約會;#不去 = 繼續這次對話。",
       judge,
       block
         ? `硬性去不了:${block}。這次必須寫 #不去,用你的個性拒絕(不必唸出系統原因)。`
@@ -545,9 +560,13 @@ export function buildCardPlayPrompt(ctx) {
 
   const L = c.look || {};
   const eye = L.eyes || "";
-  const bust = L.bust || "";
+  const bust = L.bust || [L.cup, L.breast_shape].filter(Boolean).join("、") || "";
   const hair = [L.hair_color, L.hair].filter(Boolean).join("") || L.hair || "";
   const job = c.job || c.occupation || c.job_desc || "";
+  const sceneBlob = `${play.scene_start || ""} ${play.prompt_hint || ""} ${play.card_name || ""}`;
+  const kindNeedsBody = kind === "erotic" || kind === "foreplay" || kind === "intercourse" || kind === "sex";
+  const sceneNeedsBody = /胸|乳|breast|bust|乳頭|陰唇|私處|臀|裸|脫/.test(sceneBlob);
+  const showBust = !!(bust && (kindNeedsBody || sceneNeedsBody));
 
   lines.push(
     `你是「${c.name}」。他們叫你魅魔，但你本來是普通人——現在身體被改過，還在這間萬事屋。`,
@@ -559,8 +578,8 @@ export function buildCardPlayPrompt(ctx) {
     "",
     "【對象鎖定】",
     `你就是「${c.name}」。`,
-    eye || bust || hair
-      ? `外貌參考（回话可點到，勿報清單）：${[hair && `髮:${hair}`, eye && `眼:${eye}`, bust && `胸:${bust}`].filter(Boolean).join("；")}`
+    eye || hair || showBust
+      ? `外貌參考（回话可點到，勿報清單）：${[hair && `髮:${hair}`, eye && `眼:${eye}`, showBust && bust && `胸:${bust}`].filter(Boolean).join("；")}`
       : "",
     "",
     "【你和他現在的關係——每一條都要照做】",
@@ -931,6 +950,41 @@ export function formatCardReactDisplay(triple) {
  * 委託三節點氣泡（發現／承接／完成）短反應。
  * 1 句、繁中、對「這次委託事件」有感，不是通用罐頭。
  */
+/**
+ * 看板娘瞥見玩家日誌後的短評（建議／感想／吐槽）。
+ * 1～2 句、繁中、對準他寫在日誌裡的內容。
+ */
+export function buildDiaryCommentPrompt(ctx) {
+  const c = ctx.character || {};
+  const r = ctx.relationship || {};
+  const ax = STAGE_AXES[r.stage] || STAGE_AXES.stranger;
+  const you = ctx.player?.name || "他";
+  const nb = ctx.notebook || {};
+  const when = nb.when || "最近";
+  const body = (nb.text || "").trim() || "（這天是空白的）";
+  return [
+    `你是「${c.name}」,被召喚而來的女子,正站在召喚者「${you}」的萬事屋店頭當看板娘。`,
+    `個性:${(c.personality || []).join("、") || "—"}。${c.tone || SPEECH_STYLE[c.speech_style] || ""}`,
+    ax.open,
+    `稱呼:${ax.address.replace(/\{name\}/g, you)}`,
+    `你對他的要求權:${ax.claim}`,
+    "",
+    "【你剛瞥見他寫的東西】",
+    `日期:${when}`,
+    `他寫的:${body}`,
+    "",
+    "依你的個性對這篇給評論、建議或感想。可以心疼、吐槽、給一個具體下一步、或輕描淡寫——必須像你這個人會說的。",
+    "不要把整篇唸出來。不要說「日誌」「筆記本」「系統」；可以說「你寫的」「你想的那些」。",
+    r.stage === "stranger"
+      ? "分寸:你沒有立場真的管他。冷冷一句、或懶得深究都可以。"
+      : "可以給建議、追問、鼓勵、吃味——依個性與要求權。",
+    "規則:只輸出 1～2 句台詞,每句一行;繁體中文;每句 32 字以內;不加引號、不加括號動作、不提卡牌/AI。",
+    ctx.content_rating === "nsfw"
+      ? "尺度:可帶一點口吻上的親暱或色氣,但仍要對準他寫的內容。"
+      : "尺度:全年齡,可曖昧不可露骨。",
+  ].filter(Boolean).join("\n");
+}
+
 export function buildBubblePrompt(ctx) {
   const c = ctx.character || {};
   const r = ctx.relationship || {};
@@ -1046,7 +1100,7 @@ export function buildMatingPrompt(ctx) {
   lines.push(
     "【交配場景】你是敘述者,描寫另一位召喚師與這名被他召喚走的魅魔交合的其中一段。",
     `● 男方「${su.name}」:${su.persona || "一個佔有她的男人"}${su.body ? `體態:${su.body}。` : ""}`,
-    `● 女方「${c.name}」:${c.personality?.join("、") || ""}。${lookText(c) ? `外貌:${lookText(c)}。` : ""}${c.backstory || ""}`,
+    `● 女方「${c.name}」:${c.personality?.join("、") || ""}。${lookText(c, { intimate: true }) ? `外貌:${lookText(c, { intimate: true })}。` : ""}${c.backstory || ""}`,
     `目前她對他的階段:「${m.stage_name || "抗拒"}」——依此決定她是抗拒、隱忍、還是漸漸迎合。`,
     `這一步是「${m.beat}」(起=開始/承=中間互動/合=高潮結束),本次體位/行為:「${m.kink}」。`,
   );
@@ -1075,7 +1129,7 @@ export function buildWatchPrompt(ctx) {
   lines.push(
     "【觀戰場景】你要同時扮演兩個角色,生成他們的一來一往:",
     `● 男方「${su.name}」——另一位召喚師,把這名魅魔也召喚了過去。人設:${su.persona || "一個糾纏她的男人"}${su.body ? `體態外貌:${su.body}` : ""}`,
-    `● 女方「${c.name}」——${c.personality?.join("、") || ""}。${lookText(c) ? `外貌:${lookText(c)}。` : ""}${c.backstory || ""}`,
+    `● 女方「${c.name}」——${c.personality?.join("、") || ""}。${lookText(c, { intimate: true }) ? `外貌:${lookText(c, { intimate: true })}。` : ""}${c.backstory || ""}`,
     ctx.scene?.type === "date"
       ? `情境:男方硬拉著她在「${ctx.scene.location || "某處"}」約會。${ctx.scene.location_style ? `他在這個地點的互動習性:${ctx.scene.location_style}` : ""}`
       : "情境:她被召喚到男方身邊陪伴。",

@@ -1,4 +1,4 @@
-/** 劇本模式：調戲／口交／做愛。設計者寫場景、態度、旁白、生圖；上線依檢定進入。 */
+/** 劇本模式：調戲／口交／做愛。設計者寫場景、態度、旁白、生圖；調戲／口交必發，做愛依關係檢定進入。 */
 
 import { bindContextFromGirl, resolveCardBinds, BIND_PLACEHOLDERS } from "./card_bind.js";
 
@@ -40,11 +40,11 @@ export const SCENE_ZH = {
 };
 
 export const SCENE_BLURB = {
-  1: "起始檢定通過後進入。一張圖。點對話框推進旁白／AI；旁白與 AI 都跑完才能進下一景。",
-  2: "只有做愛。按肏推進，中央播局部做愛動畫掩飾。每次肏 1/10 跳場景4、1/10 進場景3。",
-  3: "只有做愛。她更興奮投入（不論關係）。每次肏 1/10 到場景4、1/10 到場景5。",
-  4: "玩家高潮射精。口交從場景1跳來。播完結束對話。",
-  5: "女子高潮＋玩家射精。播完結束對話。",
+  1: "開場：旁白打字 → 點對話框 → AI 打字 → 開場圖 → 再點。做愛接著進正戲；口交跳玩家高潮；調戲結束。",
+  2: "正戲。肏鈕出現。每次肏先播一輪局部動畫。1/10 換正戲圖、1/10 玩家高潮、1/10 進投入、3/10 新 AI。",
+  3: "投入。每次肏先播一輪局部動畫。1/10 換圖、1/10 玩家高潮、1/10 雙方高潮、3/10 新 AI。",
+  4: "玩家高潮：換圖 → 旁白打字 → AI 打字 → 結束。",
+  5: "雙方高潮：換圖 → 旁白打字 → AI 打字 → 結束。",
 };
 
 /** 肏時感情。場景4 的「第三場景」表＝玩家高潮（非妻偏負）；場景5＝雙方高潮。 */
@@ -56,6 +56,32 @@ export const AFF_RANGE = {
 };
 
 export const JUMP_RATE = 1 / 10;
+export const THRUST_AI_RATE = 3 / 10;
+
+/**
+ * 正戲／投入按肏（互斥一骰）。
+ * 場景2：換圖 / 玩家高潮 / 投入 / 新AI / 只播動畫
+ * 場景3：換圖 / 玩家高潮 / 雙方高潮 / 新AI / 只播動畫
+ */
+export function rollSexThrust(scene) {
+  const n = Number(scene) || 0;
+  const r = Math.random();
+  if (n === 2) {
+    if (r < JUMP_RATE) return "swap";
+    if (r < JUMP_RATE * 2) return "player";
+    if (r < JUMP_RATE * 3) return "scene3";
+    if (r < JUMP_RATE * 3 + THRUST_AI_RATE) return "ai";
+    return "none";
+  }
+  if (n === 3) {
+    if (r < JUMP_RATE) return "swap";
+    if (r < JUMP_RATE * 2) return "player";
+    if (r < JUMP_RATE * 3) return "both";
+    if (r < JUMP_RATE * 3 + THRUST_AI_RATE) return "ai";
+    return "none";
+  }
+  return "none";
+}
 
 export function kindScenes(kind) {
   return (KIND_SCENES[kind] || KIND_SCENES.tease).slice();
@@ -67,6 +93,40 @@ export function slotCount(scene) {
 
 export function emptySlot() {
   return { prompt: "", negative: "", ref: "", url: "" };
+}
+
+/** 跟 sex_anim／圖組庫同一組體位 id。劇本用來對上局部動畫圖組。 */
+export const SEX_POSES = [
+  { id: "missionary", label: "正常" },
+  { id: "doggy", label: "背後" },
+  { id: "cowgirl_front", label: "正面騎乘" },
+];
+
+export function sexPose(id) {
+  return SEX_POSES.find(p => p.id === id) || null;
+}
+
+/** 這一景／這本劇本掛的圖組 id。景可覆寫本。 */
+export function boundFramePackId(pack, spec) {
+  const scene = String(spec?.framePackId || "").trim();
+  if (scene) return scene;
+  return String(pack?.framePackId || "").trim();
+}
+
+/**
+ * 圖生圖參考圖：單張 slot.ref 優先；圖生圖模式再退回已掛圖組的對應幀。
+ * slotIndex 0 → 1.png，1 → 2.png，以此類推（繞回 4）。
+ * 直接 prompt 不掛圖組，免得開場穿衣服鏡頭被特寫骨架帶跑。
+ */
+export function poseRefForSlot({ spec, slot, slotIndex = 0, pack, framePack } = {}) {
+  const own = String(slot?.ref || "").trim();
+  if (own) return own;
+  if (spec?.imgMode !== "ref") return "";
+  if (!boundFramePackId(pack, spec) && !framePack) return "";
+  const frames = (framePack && framePack.frames) || {};
+  const i = Math.max(0, Number(slotIndex) || 0);
+  const n = (i % 4) + 1;
+  return String((frames[String(n)] || {}).url || "").trim();
 }
 
 /** 設計者手寫的正向／負向 tag。負向另轉 NO … 給 Grok。 */
@@ -97,11 +157,14 @@ export function buildScriptImgBody({
   style = "anime",
   outfit = "",
   keyPrefix = "script",
+  pack = null,
+  framePack = null,
+  slotIndex = 0,
 } = {}) {
   const pos = fillBinds(slotExtra(slot, extraPose), girl, playerName);
   const neg = fillBinds(slotNegative(slot), girl, playerName);
-  const pose = spec?.imgMode === "ref" ? String(slot?.ref || "") : "";
-  const comfy = imgProvider === "comfy" || !!pose;
+  const pose = poseRefForSlot({ spec, slot, slotIndex, pack, framePack });
+  const comfy = imgProvider === "comfy";
   const n = Number(scene) || 1;
   return {
     key: `${keyPrefix}:${girl?.id || "x"}:${n}:${Date.now().toString(36)}`,
@@ -130,6 +193,7 @@ export function emptyScene(n) {
   return {
     attitude: defaultAttitude(n),
     imgMode: "prompt",
+    framePackId: "",
     slots: Array.from({ length: count }, emptySlot),
     narr: [defaultNarr(n)],
   };
@@ -172,6 +236,8 @@ export function emptyPack(kind, name) {
     id: uid(),
     name: name || (KIND_ZH[k] + "劇本"),
     kind: k,
+    pose: "",
+    framePackId: "",
     keywords: (DEFAULT_KEYWORDS[k] || DEFAULT_KEYWORDS.tease).slice(),
     updated: Date.now(),
     scenes,
@@ -202,6 +268,7 @@ export function normalizeScene(n, raw) {
   return {
     attitude: String(s.attitude || base.attitude),
     imgMode: s.imgMode === "ref" ? "ref" : "prompt",
+    framePackId: String(s.framePackId || "").slice(0, 16),
     slots: slots.slice(0, want),
     narr: narr.length ? narr : [""],
   };
@@ -214,10 +281,13 @@ export function normalizePack(raw) {
     scenes[String(n)] = normalizeScene(n, raw?.scenes?.[String(n)] || raw?.scenes?.[n]);
   }
   const keywords = parseKeywords(raw?.keywords);
+  const pose = SEX_POSES.some(p => p.id === raw?.pose) ? raw.pose : "";
   return {
     id: String(raw?.id || uid()),
     name: String(raw?.name || KIND_ZH[kind] + "劇本").slice(0, 40),
     kind,
+    pose,
+    framePackId: String(raw?.framePackId || "").slice(0, 16),
     keywords: keywords.length ? keywords : (DEFAULT_KEYWORDS[kind] || DEFAULT_KEYWORDS.tease).slice(),
     updated: Number(raw?.updated) || Date.now(),
     scenes,
@@ -284,16 +354,17 @@ export function matchPackByText(data, text) {
   return hits[Math.floor(Math.random() * hits.length)];
 }
 
-/** 關係發動機率：調戲較鬆、口交居中、做愛對齊牌制色情卡。 */
+/** 調戲／口交可強迫、一律發動；只有做愛依關係檢定（對齊牌制色情卡）。 */
 export const TRIGGER_RATE = {
-  tease: { stranger: 0.20, friend: 0.40, girlfriend: 0.75, wife: 1 },
-  oral: { stranger: 0.10, friend: 0.25, girlfriend: 0.55, wife: 0.90 },
+  tease: { stranger: 1, friend: 1, girlfriend: 1, wife: 1 },
+  oral: { stranger: 1, friend: 1, girlfriend: 1, wife: 1 },
   sex: { stranger: 0.10, friend: 0.125, girlfriend: 1 / 3, wife: 0.50 },
 };
 
 export function triggerRate(kind, stage) {
   const k = KIND_SCENES[kind] ? kind : "tease";
-  const table = TRIGGER_RATE[k] || TRIGGER_RATE.tease;
+  if (k === "tease" || k === "oral") return 1;
+  const table = TRIGGER_RATE.sex;
   const st = String(stage || "stranger");
   return table[st] ?? table.stranger;
 }
@@ -339,21 +410,13 @@ export function sceneEndsTalk(n) {
   return n === 4 || n === 5;
 }
 
-/** 場景2／3 按肏：1/10 高潮跳4；場景2另 1/10 到3；場景3另 1/10 到5。 */
+/** 場景2／3 按肏跳景（相容舊呼叫）。新流程請用 rollSexThrust。 */
 export function rollThrustJump(scene) {
-  const n = Number(scene) || 0;
-  const r = Math.random();
-  if (n === 2) {
-    if (r < JUMP_RATE) return 4;
-    if (r < JUMP_RATE * 2) return 3;
-    return 2;
-  }
-  if (n === 3) {
-    if (r < JUMP_RATE) return 4;
-    if (r < JUMP_RATE * 2) return 5;
-    return 3;
-  }
-  return n;
+  const act = rollSexThrust(scene);
+  if (act === "player") return 4;
+  if (act === "both") return 5;
+  if (act === "scene3") return 3;
+  return Number(scene) || 0;
 }
 
 export function rollAffDelta(scene, stage) {
