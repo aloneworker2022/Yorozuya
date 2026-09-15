@@ -55,7 +55,7 @@
     "shop_slots": 3,
     "shop_refresh_hours": 4,
     "bubble_chance": 0.15,
-    "dates_per_girl_per_day": 2,
+    "dates_per_girl_per_day": 1,
     "base_plays_by_stage": {
       "stranger": 1,
       "friend": 2,

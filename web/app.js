@@ -412,7 +412,7 @@ const CHAT_GAP = { N: 3, R: 2, S: 1, SS: 1, SSR: 1 };  // 每 X 天至少聊 1 �
 const DATE_GAP = { SS: 5, SSR: 3 };                     // 每 X 天至少約 1 次
 const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 30], ["girlfriend", "女友", 90], ["wife", "妻子", 180]];
 const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
-const DATE_COST = 5, DATE_LIMIT = 2, NTR_WINDOW = 7; // 聊天計費:每 2 則玩家訊息 1 金
+const DATE_COST = 5, DATE_LIMIT = 1, NTR_WINDOW = 7; // 聊天計費:每 2 則玩家訊息 1 金；約會每天 1 次
 // 約會地點池(30 個情境;每次隨機抽 5 個給玩家選)
 const DATE_SPOTS = [
   ["夜景展望台", "能俯瞰整座城市燈火的展望台,夜風微涼"],
@@ -5513,10 +5513,10 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
   // M2/M3/M6：自由聊退役 → 日常聊改感應／店頭；深度互動只走約會
   if (!fromSense && freeChatRetired() && type === "chat") {
     if (isKanban(id)) {
-      toast("想說話就打她的名字叫過來；深度互動請打電話約會", "");
+      toast("想說話就打她的名字叫過來；深度互動請到名冊約會", "");
       beginShopTalk(id);
     } else {
-      toast("不在店頭時用感應；深度互動請到名冊打電話約會", "bad");
+      toast("不在店頭時用感應；深度互動請到名冊約會", "bad");
     }
     return;
   }
@@ -5526,7 +5526,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
   }
   const today = dayNum();
   if (type === "date") {
-    // 被召喚走：電話窺視（不扣約會費、不佔一天兩次）
+    // 被召喚走：窺視（不扣約會費、不佔一天一次）
     if (isSummonerTaken(s)) {
       beginTakenPhoneCall(id);
       return;
@@ -5535,7 +5535,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
       if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
       if (state.gold < DATE_COST) { toast("金幣不夠", "bad"); return; }
       if (s.datesToday?.day !== today) s.datesToday = { day: today, count: 0 };
-      if (s.datesToday.count >= DATE_LIMIT) { toast(`今天約會夠多了（每天 ${DATE_LIMIT} 次）,她需要休息`, "bad"); return; }
+      if (s.datesToday.count >= DATE_LIMIT) { toast("今天已經約過了,她需要休息", "bad"); return; }
       state.gold -= DATE_COST;
       log(`與 ${s.name} 去${location}約會 -${DATE_COST} 金`);
     }
@@ -5596,6 +5596,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
     fromSense,
     mood: "xi",
     journalQuest: jq,
+    affGained: 0,
   };
   dateChooser = false;
   document.body.classList.add("chat-mode");
@@ -6393,12 +6394,16 @@ function teasePlayRollAff(s) {
   return d;
 }
 
-/** 感應／店頭聊：她每回一句話 −1～+1。有變化才播金幣。 */
+/** 感應／店頭聊：每回 0 或 +1，同一通最多 +2。聊天不加負分。 */
+const CHAT_AFF_SESSION_CAP = 2;
 function chatTickAffection(s) {
   if (!s || (chatSession?.type !== "sense" && chatSession?.type !== "talk")) return 0;
-  const d = randInt(-1, 1);
+  const gained = chatSession.affGained | 0;
+  if (gained >= CHAT_AFF_SESSION_CAP) return 0;
+  const d = Math.random() < 0.5 ? 1 : 0;
   if (!d) return 0;
   applyAffection(s, d);
+  chatSession.affGained = gained + d;
   popAffFx(d);
   return d;
 }
@@ -9504,7 +9509,7 @@ function summonKanban(id, opts = {}) {
   (state.kanbans ??= []).push({ id, until: Date.now() + kanbanHours() * HOUR });
   state.lastKanbanId = id;
   log(`召喚 ${s.name} 為看板娘`);
-  toast(`${s.name} 來到店頭——打她的名字叫過來；深度互動請打電話約會`, "good");
+  toast(`${s.name} 來到店頭——打她的名字叫過來；深度互動請到名冊約會`, "good");
   syncPortraitCgCache(s);
   scheduleSave();
   renderAll();
@@ -11919,7 +11924,7 @@ function commitOnboard() {
   state.playerProfile.starterSpeechCardId = null;
   state.playerProfile.onboardDone = true;
   log(`創角完成：${name}`);
-  toast("歡迎來到萬事屋——委託賺金幣，打電話約會", "good");
+  toast("歡迎來到萬事屋——委託賺金幣，到名冊約會", "good");
   scheduleSave();
   return true;
 }
@@ -11960,7 +11965,7 @@ function renderStarterModal() {
     panel.innerHTML = `
       <h2>歡迎來到魅魔萬事屋</h2>
       <p class="lead">在召喚任何人之前，先取個名字——她們會這樣叫你。</p>
-      <p class="lead">白天做委託賺金幣；想靠近她，就到名冊<strong>打電話約會</strong>。</p>`;
+      <p class="lead">白天做委託賺金幣；想靠近她，就到名冊<strong>約會</strong>。</p>`;
     nav.innerHTML = `<span></span><button type="button" class="ob-next" id="ob-next">開始</button>`;
   } else {
     panel.innerHTML = `
@@ -12117,17 +12122,19 @@ function isSummonerTaken(s) {
   return !!(s && s.summoner?.taken && !s.ntr);
 }
 
-/**
- * 電話鈕是否可按：
- *  · 被召喚走 → 永遠可打（窺視，不限一天兩次）
- *  · 沒被召喚 → 一般約會流程，受「一天兩次」限制（看板娘也可約）
- *  · 睡眠 → 不可
- */
-function canPressPhone(s) {
+/** 今天還能不能跟她出門約會（被帶走不算） */
+function canDateToday(s) {
   if (!s || s.ntr) return false;
   if (isAsleep()) return false;
-  if (isSummonerTaken(s)) return true;           // 被帶走：可連打
-  return datesLeftToday(s) > 0;                  // 一般約會：一天兩次
+  if (isSummonerTaken(s)) return false;
+  return datesLeftToday(s) > 0;
+}
+
+/** 被帶走時可窺視（不佔約會次數） */
+function canPeekTaken(s) {
+  if (!s || s.ntr) return false;
+  if (isAsleep()) return false;
+  return isSummonerTaken(s);
 }
 
 function venueById(venueId) {
@@ -12148,7 +12155,7 @@ async function beginTakenPhoneCall(girlId) {
   if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
   const s = state.succubi.find(x => x.id === girlId);
   if (!s || s.ntr) { toast("她不在你身邊……", "bad"); return; }
-  // 已不在 taken → 改走一般約會（會判斷一天兩次）
+  // 已不在 taken → 改走一般約會（會判斷一天一次）
   if (!isSummonerTaken(s)) {
     beginDateFlow(girlId);
     return;
@@ -12236,7 +12243,7 @@ function dateInviteBlockReason(s) {
   if (!s || s.ntr) return "她不在你身邊";
   if (isAsleep()) return "睡眠時段——她在睡覺";
   if (isSummonerTaken(s)) return "她正被帶走，現在走不開";
-  if (datesLeftToday(s) <= 0) return `今天已經約過了（每天 ${dateLimitPerDay()} 次）`;
+  if (datesLeftToday(s) <= 0) return "今天已經約過了";
   const venues = availableVenues();
   if (!venues.length) return "還沒有可去的約會場地";
   const minFee = Math.min(...venues.map(v => Number(v.fee) || 0));
@@ -12270,9 +12277,9 @@ function beginDateFromSenseAccept(s) {
 }
 
 /**
- * 電話入口（詳細頁「電話」）：
- *  ┌─ 被召喚走（taken）→ 窺視電話：1/5 接通、可連打、不扣額度
- *  └─ 沒被召喚         → 約會流程：扣電話費、2/3 接通、一天兩次、抽場地
+ * 名冊「約會」／被帶走時「窺視」：
+ *  ┌─ 被召喚走（taken）→ 窺視：1/5 接通、可連打、不扣額度
+ *  └─ 沒被召喚         → 約會：扣電話費、2/3 接通、一天一次、抽場地
  */
 function beginDateFlow(girlId) {
   if (!cardSystemOn()) return;
@@ -12286,22 +12293,22 @@ function beginDateFlow(girlId) {
     return;
   }
 
-  // ★ 分支 2：一般約會（一天兩次；看板娘也可約）
+  // ★ 分支 2：一般約會（一天一次；看板娘也可約）
   if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
   if (Cards.sessionActive(state)) {
     const rec = resumeOrRecoverCardSession({ forceUi: true });
     toast(`先結束與 ${rec.girlName || "她"} 的牌局（已打開牌桌）`, "bad");
     return;
   }
-  // 已抽好地點、待確認：再按電話只是重顯確認列
+  // 已抽好地點、待確認：再按約會只是重顯確認列
   if (dateFlow?.girlId === girlId && dateFlow.venueId) {
     dateChooser = true;
     renderAll();
     return;
   }
-  // 一天兩次只套在「沒被召喚」的約會
+  // 一天一次只套在「沒被召喚」的約會
   if (datesLeftToday(s) <= 0) {
-    toast(`今天約會夠多了（每天 ${dateLimitPerDay()} 次）,她需要休息`, "bad");
+    toast("今天已經約過了,她需要休息", "bad");
     return;
   }
 
@@ -12366,7 +12373,7 @@ function confirmDateVenue(girlId, venueId) {
   const s = state.succubi.find(x => x.id === girlId);
   if (!s || s.ntr) return;
   if (dateFlow?.girlId !== girlId) {
-    toast("請先打電話", "bad");
+    toast("請先按約會", "bad");
     return;
   }
   const wantId = venueId || dateFlow.venueId;
@@ -13501,7 +13508,7 @@ function finishCardNarrPrep(girl, why = "done") {
   log(`與 ${girl.name} ${isDate ? "約會章節" : "牌組"}備妥（${prog.done}/${prog.total}，動作AI ${nAi}，回話AI ${nRep}）——待開始`);
   toast(isDate
     ? "約會準備好了（動作＋回話）——按「開始約會」"
-    : "準備好了——看板打牌已取消，請結束後打電話約會", "good");
+    : "準備好了——看板打牌已取消，請結束後到名冊約會", "good");
   scheduleSave();
   renderAll();
 }
@@ -13597,7 +13604,7 @@ function openKanbanTable(girlId) {
     scheduleSave();
   }
   const s = girlId ? state.succubi.find(x => x.id === girlId) : null;
-  toast(s ? `看板打牌已取消——請到名冊打電話約 ${s.name}` : "看板打牌已取消——請到名冊打電話約會", "");
+  toast(s ? `看板打牌已取消——請到名冊約 ${s.name}` : "看板打牌已取消——請到名冊約會", "");
   renderAll();
 }
 
@@ -15080,23 +15087,19 @@ function renderDetail(s, root) {
   const asleep = isAsleep();
   const takenAway = isSummonerTaken(s);
   const left = senseLeft();
-  const datesLeft = datesLeftToday(s);
-  const phoneDisabled = !canPressPhone(s);
-  const phoneLabel = takenAway
-    ? "電話（窺視）"
-    : datesLeft > 0
-      ? `電話（今剩 ${datesLeft}）`
-      : "電話（今日已滿）";
+  const showDate = canDateToday(s);
+  const showPeek = canPeekTaken(s);
+  const dateBtnLabel = showPeek ? "窺視" : "約會";
   const pendingVenue = (dateFlow?.girlId === s.id) ? venueById(dateFlow.venueId) : null;
   const pendingFee = Number(pendingVenue?.fee) || 0;
   const senseHint = takenAway
     ? `被帶走中 · 免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只有聲音、不能調戲 · 每句 1/4 可能被對方叫走 · 輸入「召喚」花 ${SUMMON_SENSE_COST} 金搶回（失敗立刻結束感應）`
     : `免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 遠距通話（無畫面、不能調戲；輸入「召喚」花 ${SUMMON_SENSE_COST} 金召到店頭；約會或召喚失敗會立刻結束這次感應）`;
-  const phoneHint = takenAway
-    ? "窺視被帶走的她（1/5 接通，不佔約會次數）"
-    : "打電話約會：扣電話費、接通後抽場地，再決定要不要付場地費出門";
+  const dateHint = showPeek
+    ? "她正被帶走，可以窺視（1/5 接通，不佔約會次數）"
+    : "約會：接通後抽場地，再決定要不要付場地費出門";
 
-  // 精簡詳情：肖像（長按獻祭）→ 名 → 天賦 → 時間表 → 感應／電話
+  // 精簡詳情：肖像（長按獻祭）→ 名 → 天賦 → 時間表 → 感應／約會
   root.className = `r-${s.rarity}`;
   root.innerHTML = `
     <div class="panel">
@@ -15126,7 +15129,7 @@ function renderDetail(s, root) {
         ? `<div class="detail-actions" style="margin-top:.8em"><button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button></div>`
         : `<div class="detail-actions" style="margin-top:.8em">
             ${isKanban(s.id) ? "" : `<button class="cyan" id="act-sense" ${asleep || left <= 0 ? "disabled" : ""} title="${esc(senseHint)}">感應（${left}/${SENSE_PER_HOUR}）</button>`}
-            <button class="cyan" id="act-date" ${phoneDisabled ? "disabled" : ""} title="${esc(phoneHint)}">${esc(phoneLabel)}</button>
+            ${(showDate || showPeek) ? `<button class="cyan" id="act-date" title="${esc(dateHint)}">${esc(dateBtnLabel)}</button>` : ""}
           </div>
           ${pendingVenue ? `
           <div class="chooser date-venues">
@@ -15953,7 +15956,7 @@ window.DBG = {
   },
   // 測試/調 prompt:看她下一句實際會送出去的訊息陣列(system prompt + 這一場的上下文)
   chatPrompt: (id) => {
-    if (freeChatRetired()) return { retired: true, note: "自由聊已退役；深度互動走約會電話" };
+    if (freeChatRetired()) return { retired: true, note: "自由聊已退役；深度互動走約會" };
     const s = state.succubi.find(x => x.id === id) || kanbanSuccubi()[0];
     return s ? chatLineMsgs(s) : null;
   },
@@ -15961,7 +15964,7 @@ window.DBG = {
   whyNoCrest: () => {
     if (freeChatRetired()) {
       return {
-        note: "看板打牌已取消。店頭打名字叫過來；不在時感應只有聲音。深度互動走名冊電話約會。",
+        note: "看板打牌已取消。店頭打名字叫過來；不在時感應只有聲音。深度互動走名冊約會。",
         cardSystem: cardSystemOn(),
         freeChatRetired: true,
         看板: kanbanSuccubi().map(s => s.name),

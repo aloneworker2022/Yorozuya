@@ -3809,6 +3809,12 @@ def testdate():
     return FileResponse(WEB_DIR / "testdate.html")
 
 
+@app.get("/test_date")
+def test_date():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_date.html")
+
+
 # ── 多檔牌組版本（card_x.json 等）────────────────────────────────
 # 註冊表 content/card_packs_registry.json：
 #   { "active", "liveEpoch", "packs": [{ "id","file","name","note",... }] }

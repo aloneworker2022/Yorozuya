@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>約會</title>
+<style>
+  @font-face {
+    font-family: "Fusion Pixel";
+    src: url("/fonts/fusion-pixel-12px-zh-hant.woff2") format("woff2");
+    font-display: swap;
+  }
+  :root {
+    --px: 4px;
+    --ink: #f8f8f8;
+    --gold: #f8d878;
+    --cyan: #70d0d8;
+    --pink: #e878c0;
+    --dim: #a0a0a0;
+    --fill: rgba(0, 0, 0, .62);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; }
+  body[data-time="morning"] { --sky: #c9a06a; --sky2: #3a2a18; }
+  body[data-time="afternoon"] { --sky: #6fe3e1; --sky2: #163038; }
+  body[data-time="evening"] { --sky: #ff7aa8; --sky2: #3a1424; }
+  body[data-time="night"] { --sky: #6a7cff; --sky2: #101428; }
+  body {
+    background:
+      radial-gradient(1200px 420px at 50% -80px, color-mix(in srgb, var(--sky) 28%, transparent), transparent 70%),
+      linear-gradient(180deg, var(--sky2), #0c0a12 42%);
+    color: var(--ink);
+    font-family: "Fusion Pixel", ui-monospace, monospace;
+    font-size: 24px;
+    line-height: 1.5;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: unset;
+    font-smooth: never;
+    image-rendering: pixelated;
+  }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 0;
+    image-rendering: pixelated;
+  }
+  button:disabled { opacity: .35; cursor: not-allowed; }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    background: transparent;
+  }
+
+  .win {
+    background: var(--fill);
+    border: var(--px) solid #f8f8f8;
+    box-shadow:
+      0 0 0 var(--px) #000,
+      inset 0 0 0 2px #000;
+    border-radius: 0;
+  }
+
+  .hud {
+    display: flex;
+    gap: 0;
+    padding: 8px 10px 10px;
+    margin-bottom: 10px;
+  }
+  .stat {
+    flex: 1;
+    min-width: 0;
+    padding: 0 6px;
+  }
+  .stat .lab {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    line-height: 1.2;
+    color: var(--gold);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    gap: 8px;
+  }
+  .stat .lab b { color: var(--ink); font-weight: 400; }
+  .bar {
+    height: 8px;
+    background: #202020;
+    box-shadow: inset 0 0 0 2px #000;
+    overflow: hidden;
+  }
+  .bar i { display: block; height: 100%; width: 0; }
+  .bar.stamina i { background: #58c840; }
+  .bar.arousal i { background: #e850a0; }
+  .bar.shame i { background: #58c8d8; }
+  .stat.plain .bar { display: none; }
+  .stat.plain .lab { margin-bottom: 0; justify-content: center; gap: 8px; }
+  .stat.obey { display: none; }
+  .hud.has-male .stat.obey { display: block; }
+
+  .stage {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 280px;
+    margin-bottom: 10px;
+  }
+  .stage-head {
+    padding: 8px 12px 6px;
+    border-bottom: 2px solid #f8f8f8;
+  }
+  .where {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .where .scene { font-size: 12px; color: var(--gold); }
+  .where h2 { font-size: 24px; font-weight: 400; }
+  .where .money { font-size: 12px; color: var(--gold); }
+  .place-desc { margin-top: 6px; font-size: 12px; color: var(--dim); }
+
+  .log {
+    flex: 1;
+    overflow: auto;
+    padding: 10px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 180px;
+    max-height: 46vh;
+    cursor: pointer;
+  }
+  .log .bubble { align-self: stretch; max-width: 100%; }
+  .empty {
+    margin: auto;
+    color: var(--dim);
+    font-size: 24px;
+    text-align: left;
+    width: 100%;
+  }
+  .bubble { max-width: 100%; }
+  .bubble .who { font-size: 12px; color: var(--gold); margin-bottom: 2px; }
+  .bubble.player .who { color: var(--cyan); }
+  .bubble.girl .who { color: var(--pink); }
+  .bubble.sys .who { color: var(--gold); }
+  .bubble.sys { color: var(--gold); font-size: 12px; }
+  .bubble.male .who { color: #ffb07a; }
+  .bubble.male { color: #ffd0b0; }
+  .bubble.sex { color: #f8a0b8; }
+  .delta { font-size: 12px; color: var(--dim); margin-top: 2px; }
+
+  .acts-bar { padding: 8px; }
+  .acts {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+  }
+  .acts-bar.paging .acts { display: none; }
+  .acts.has-male { grid-template-columns: 1fr 1fr; }
+  .acts.has-male [data-act="interact"],
+  .acts.has-male [data-act="tease"],
+  .acts.has-male [data-act="molest"] { display: none; }
+  .acts:not(.has-male) [data-act="rescue"] { display: none; }
+  .acts-bar:not(.paging) #btn-next { display: none; }
+  #btn-next {
+    display: block;
+    width: 100%;
+    padding: 12px 4px;
+    background: #000;
+    color: var(--gold);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000;
+    font-size: 24px;
+  }
+  #btn-next:hover::before { content: "▶"; margin-right: 4px; }
+  .act {
+    padding: 12px 4px;
+    background: #000;
+    color: var(--ink);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000;
+    font-size: 24px;
+    letter-spacing: 0;
+  }
+  .act:hover { color: var(--gold); }
+  .act:hover::before { content: "▶"; margin-right: 2px; }
+  .act.admin { color: var(--dim); }
+  .act.admin:hover { color: var(--ink); }
+  .act.hot { color: #f8a0b8; box-shadow: 0 0 0 var(--px) #f8a0b8; }
+
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 40;
+  }
+  .overlay.on { display: flex; }
+  .modal {
+    width: min(520px, 100%);
+    max-height: 90vh;
+    overflow: auto;
+    background: rgba(0,0,0,.82);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000, inset 0 0 0 2px #000;
+    padding: 14px 16px 12px;
+  }
+  .modal h3 { color: var(--gold); margin-bottom: 10px; font-size: 24px; font-weight: 400; }
+  .modal p { color: var(--dim); font-size: 12px; margin-bottom: 12px; }
+  .modal .row { margin-bottom: 12px; }
+  .modal .lab { font-size: 12px; color: var(--gold); margin-bottom: 6px; }
+  .modal input, .modal select {
+    width: 100%;
+    background: #000;
+    color: var(--ink);
+    border: 2px solid #f8f8f8;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12px;
+    border-radius: 0;
+  }
+  .modal .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  #admin-girl { font-size: 12px; color: var(--ink); line-height: 1.5; }
+  #admin-status { font-size: 12px; min-height: 1.2em; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill {
+    background: #000;
+    color: var(--dim);
+    border: 2px solid #f8f8f8;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  .pill.on { color: var(--gold); }
+  .modal .close {
+    margin-top: 6px;
+    background: #000;
+    color: var(--ink);
+    border: var(--px) solid #f8f8f8;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  @media (max-width: 640px) {
+    body { font-size: 12px; }
+    .where h2, .act, .empty { font-size: 12px; }
+    .acts { grid-template-columns: repeat(3, 1fr); }
+    #btn-next { font-size: 12px; }
+    .act { padding: 10px 2px; }
+    .act:hover::before { content: ""; margin: 0; }
+  }
+</style>
+</head>
+<body data-time="morning">
+
+<div class="page">
+  <div class="hud win" id="hud">
+    <div class="stat">
+      <div class="lab">體力 <b id="stamina-n">10/10</b></div>
+      <div class="bar stamina"><i id="stamina-bar"></i></div>
+    </div>
+    <div class="stat">
+      <div class="lab">性慾 <b id="arousal-n">0/20</b></div>
+      <div class="bar arousal"><i id="arousal-bar"></i></div>
+    </div>
+    <div class="stat">
+      <div class="lab">羞恥 <b id="shame-n">0/15</b></div>
+      <div class="bar shame"><i id="shame-bar"></i></div>
+    </div>
+    <div class="stat plain">
+      <div class="lab">感情 <b id="heart-n">0</b></div>
+    </div>
+    <div class="stat obey">
+      <div class="lab">順從 <b id="obey-n">抗拒</b></div>
+      <div class="bar shame"><i id="obey-bar"></i></div>
+    </div>
+  </div>
+
+  <section class="stage win">
+    <div class="stage-head">
+      <div class="where">
+        <div>
+          <div class="scene">公園 · <span id="girl-now"></span></div>
+          <h2 id="zone-name">廣場</h2>
+        </div>
+        <div class="money">金錢 <span id="money-n">200</span></div>
+      </div>
+      <p class="place-desc" id="zone-desc"></p>
+    </div>
+    <div class="log" id="log">
+      <div class="empty" id="empty">後台抽妹子、設模型、開始一場。</div>
+    </div>
+  </section>
+
+  <div class="acts-bar win" id="acts-bar">
+    <div class="acts" id="acts">
+      <button class="act" type="button" data-act="interact">互動</button>
+      <button class="act" type="button" data-act="tease">調戲</button>
+      <button class="act" type="button" data-act="molest" id="btn-molest">猥褻</button>
+      <button class="act" type="button" data-act="rescue">帶女子脫離騷擾</button>
+      <button class="act" type="button" data-act="eat">吃東西</button>
+      <button class="act" type="button" data-act="end">回家</button>
+      <button class="act admin" type="button" data-act="admin">後台</button>
+    </div>
+    <button class="act next" type="button" id="btn-next">下一頁</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="modal-title">特殊場景</h3>
+    <p id="modal-body"></p>
+    <button type="button" class="close" id="modal-ok">知道了</button>
+  </div>
+</div>
+
+<div class="overlay" id="admin">
+  <div class="modal">
+    <h3>後台</h3>
+    <p>抽妹子、設模型、開始一場。時段與地點不是玩家選的。</p>
+    <div class="row">
+      <div class="lab">妹子</div>
+      <div id="admin-girl">還沒抽妹子。</div>
+      <div class="btns" style="margin-top:6px">
+        <button type="button" class="close" id="btn-draw-girl">抽妹子</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lab">Ollama 網址</div>
+      <input id="t-endpoint" value="http://192.168.68.55:11434" spellcheck="false">
+    </div>
+    <div class="row">
+      <div class="lab">回應模型</div>
+      <input id="t-model" value="e-girl:latest" list="t-model-list">
+      <datalist id="t-model-list"></datalist>
+      <div class="btns" style="margin-top:6px">
+        <button type="button" class="close" id="btn-ping">測連線</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lab">時段</div>
+      <div class="pills" id="times"></div>
+    </div>
+    <div class="row">
+      <div class="lab">地點</div>
+      <div class="pills" id="zones"></div>
+    </div>
+    <div id="admin-status"></div>
+    <div class="btns">
+      <button type="button" class="close" id="btn-start">開始一場</button>
+      <button type="button" class="close" id="admin-ok">關閉</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/content/t_d.js?v=20260914i"></script>
+</body>
+</html>
