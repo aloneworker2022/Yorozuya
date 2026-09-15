@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edit Date — 約會聊天劇本</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #12101c; color: #d8d0ec; font-family: system-ui, "Cubic 11", monospace;
+         font-size: 15px; padding: 1em; max-width: 760px; margin: 0 auto; line-height: 1.5; }
+  h1 { color: #ff4fd8; font-size: 1.2em; letter-spacing: .1em; margin-bottom: .2em; }
+  .warn { color: #ff9d4d; font-size: .8em; margin-bottom: 1em; }
+  section { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 10px; padding: 1em 1.1em; margin-bottom: 1em; }
+  h2 { color: #6fe3e1; font-size: .9em; letter-spacing: .1em; margin-bottom: .35em; }
+  .mini { font-size: .78em; color: #8a82a5; margin-bottom: .55em; }
+  label { display: block; font-size: .75em; color: #9a92b5; margin: .5em 0 .2em; }
+  textarea { width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .45em .6em; outline: none;
+    min-height: 7em; resize: vertical; line-height: 1.55; }
+  textarea.lines { min-height: 9em; }
+  textarea:focus { border-color: rgba(111,227,225,.45); }
+  .row { display: flex; gap: .5em; flex-wrap: wrap; align-items: center; }
+  button { background: rgba(255,79,216,.18); border: none; border-radius: 7px; color: #ff8fe6;
+           font: inherit; padding: .45em .9em; cursor: pointer; }
+  button:hover { background: rgba(255,79,216,.3); }
+  button.cy { background: rgba(111,227,225,.16); color: #6fe3e1; }
+  .savebar { position: sticky; bottom: 0; background: #12101c; padding: .8em 0; border-top: 1px solid rgba(255,255,255,.1); }
+  .status { font-size: .8em; color: #6bcb77; min-height: 1.2em; }
+  .status.err { color: #ff5f7a; }
+  a { color: #6fe3e1; }
+  .grid { display: grid; gap: .8em; }
+  @media (min-width: 640px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<h1>⚙ Edit Date — 約會聊天劇本</h1>
+<div class="warn">
+  <code>/test_date</code> 輸入框依關鍵字分類。下面「調戲／猥褻」按鈕抽這份寫的旁白＋玩家台詞，不抽場景卡。口交與做愛禁止。改完儲存，測試頁重整後生效。
+  <a href="/test_date">約會測試頁</a> | <a href="/edit_person">人物池</a> | <a href="/editmale">其他召喚師</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
+</div>
+
+<section>
+  <h2>女子回話語劇</h2>
+  <p class="mini">餵給女子 AI 的規則。看板娘店頭聊那套搬來：只輸出台詞、人就在眼前。這裡另外鎖死口交／做愛。</p>
+  <textarea id="girl_system"></textarea>
+</section>
+
+<section>
+  <h2>旁白劇本</h2>
+  <p class="mini">玩家送出後，旁白依這段寫 1～2 句已經發生的事。不要讓旁白自己發明口交或做愛。</p>
+  <textarea id="narr_system"></textarea>
+</section>
+
+<section>
+  <h2>調戲（按鈕）</h2>
+  <p class="mini">按「調戲」從這裡抽。兩行一組：第一行旁白方向，第二行玩家台詞。組與組空一行。這場約會抽過的先不重複。</p>
+  <textarea id="act-tease" class="lines"></textarea>
+</section>
+
+<section>
+  <h2>猥褻（按鈕）</h2>
+  <p class="mini">按「猥褻」從這裡抽。格式同上。不要寫成口交或做愛。</p>
+  <textarea id="act-molest" class="lines"></textarea>
+</section>
+
+<section>
+  <h2>分類關鍵字</h2>
+  <p class="mini">一行一詞。判定順序：口交 → 做愛 → 猥褻 → 言語調戲 → 其餘算互動。較具體的詞請寫完整，例如「摸胸」會吃掉「想摸你胸部」裡的摸胸而判成猥褻。</p>
+  <div class="grid two">
+    <div>
+      <label>言語調戲</label>
+      <textarea id="kw-talk" class="lines"></textarea>
+    </div>
+    <div>
+      <label>猥褻（動手）</label>
+      <textarea id="kw-molest" class="lines"></textarea>
+    </div>
+    <div>
+      <label>口交（禁止）</label>
+      <textarea id="kw-oral" class="lines"></textarea>
+      <label>拒絕句</label>
+      <textarea id="refuse-oral" style="min-height:3.2em"></textarea>
+    </div>
+    <div>
+      <label>做愛（禁止）</label>
+      <textarea id="kw-sex" class="lines"></textarea>
+      <label>拒絕句</label>
+      <textarea id="refuse-sex" style="min-height:3.2em"></textarea>
+    </div>
+  </div>
+</section>
+
+<div class="savebar">
+  <div class="row">
+    <button onclick="saveAll()">💾 儲存</button>
+    <button class="cy" type="button" id="btn-reset">還原預設</button>
+    <span class="status" id="save-status"></span>
+  </div>
+</div>
+
+<script type="module">
+import { DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs } from "./content/edit_date.js";
+
+function $(id) { return document.getElementById(id); }
+function lines(s) { return String(s || "").split("\n").map(x => x.trim()).filter(Boolean); }
+function done(m) { const s = $("save-status"); s.textContent = m; s.className = "status"; }
+function fail(m) { const s = $("save-status"); s.textContent = "失敗:" + m; s.className = "status err"; }
+
+function fill(script) {
+  const s = normalizeDateScript(script);
+  $("girl_system").value = s.girl_system;
+  $("narr_system").value = s.narr_system;
+  $("act-tease").value = formatActs(s.acts.tease);
+  $("act-molest").value = formatActs(s.acts.molest);
+  $("kw-talk").value = s.classify.talk.keywords.join("\n");
+  $("kw-molest").value = s.classify.molest.keywords.join("\n");
+  $("kw-oral").value = s.classify.oral.keywords.join("\n");
+  $("kw-sex").value = s.classify.sex.keywords.join("\n");
+  $("refuse-oral").value = s.classify.oral.refuse;
+  $("refuse-sex").value = s.classify.sex.refuse;
+}
+
+function collect() {
+  return normalizeDateScript({
+    girl_system: $("girl_system").value,
+    narr_system: $("narr_system").value,
+    acts: {
+      tease: parseActs($("act-tease").value),
+      molest: parseActs($("act-molest").value),
+    },
+    classify: {
+      talk: { keywords: lines($("kw-talk").value) },
+      molest: { keywords: lines($("kw-molest").value) },
+      oral: { keywords: lines($("kw-oral").value), refuse: $("refuse-oral").value },
+      sex: { keywords: lines($("kw-sex").value), refuse: $("refuse-sex").value },
+    },
+  });
+}
+
+async function saveAll() {
+  try {
+    const body = collect();
+    const r = await fetch("/api/edit_date", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+    done("✓ 已寫回 edit_date.json（測試頁重整後生效）");
+  } catch (e) {
+    fail(e.message);
+  }
+}
+
+$("btn-reset").addEventListener("click", () => {
+  fill(DEFAULT_DATE_SCRIPT);
+  done("已還原預設（尚未儲存）");
+});
+window.saveAll = saveAll;
+
+(async () => {
+  try {
+    const r = await fetch("/content/edit_date.json?ts=" + Date.now());
+    fill(r.ok ? await r.json() : DEFAULT_DATE_SCRIPT);
+  } catch {
+    fill(DEFAULT_DATE_SCRIPT);
+  }
+})();
+</script>
+</body>
+</html>

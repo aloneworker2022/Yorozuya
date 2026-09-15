@@ -147,25 +147,53 @@
   .bubble .who { font-size: 12px; color: var(--gold); margin-bottom: 2px; }
   .bubble.player .who { color: var(--cyan); }
   .bubble.girl .who { color: var(--pink); }
-  .bubble.sys .who { color: var(--gold); }
-  .bubble.sys { color: var(--gold); font-size: 12px; }
+  .bubble.sys .who { color: var(--gold); font-size: 12px; }
+  .bubble.sys { color: var(--gold); font-size: 24px; }
   .bubble.male .who { color: #ffb07a; }
   .bubble.male { color: #ffd0b0; }
   .bubble.sex { color: #f8a0b8; }
   .delta { font-size: 12px; color: var(--dim); margin-top: 2px; }
 
   .acts-bar { padding: 8px; }
+  .chat-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .acts-bar.paging .chat-row,
+  .acts-bar.no-chat .chat-row { display: none; }
+  #date-input {
+    flex: 1;
+    min-width: 0;
+    background: #000;
+    color: var(--ink);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000;
+    padding: 10px 10px;
+    font: inherit;
+    font-size: 24px;
+    border-radius: 0;
+    outline: none;
+  }
+  #date-input::placeholder { color: var(--dim); font-size: 12px; }
+  #date-input:disabled { opacity: .35; }
+  #date-send {
+    flex: 0 0 auto;
+    padding: 10px 12px;
+    background: #000;
+    color: var(--cyan);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000;
+    font-size: 12px;
+  }
+  #date-send:hover { color: var(--gold); }
   .acts {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 8px;
   }
   .acts-bar.paging .acts { display: none; }
-  .acts.has-male { grid-template-columns: 1fr 1fr; }
-  .acts.has-male [data-act="interact"],
-  .acts.has-male [data-act="tease"],
-  .acts.has-male [data-act="molest"] { display: none; }
-  .acts:not(.has-male) [data-act="rescue"] { display: none; }
+  .acts [data-act="rescue"] { display: none; }
   .acts-bar:not(.paging) #btn-next { display: none; }
   #btn-next {
     display: block;
@@ -250,7 +278,9 @@
   @media (max-width: 640px) {
     body { font-size: 12px; }
     .where h2, .act, .empty { font-size: 12px; }
+    .bubble.sys { font-size: 16px; }
     .acts { grid-template-columns: repeat(3, 1fr); }
+    #date-input { font-size: 12px; }
     #btn-next { font-size: 12px; }
     .act { padding: 10px 2px; }
     .act:hover::before { content: ""; margin: 0; }
@@ -299,11 +329,14 @@
   </section>
 
   <div class="acts-bar win" id="acts-bar">
+    <div class="chat-row" id="chat-row">
+      <input id="date-input" type="text" maxlength="200" placeholder="說點什麼…(Enter 送出)" autocomplete="off">
+      <button class="act" type="button" id="date-send">送出</button>
+    </div>
     <div class="acts" id="acts">
-      <button class="act" type="button" data-act="interact">互動</button>
-      <button class="act" type="button" data-act="tease">調戲</button>
-      <button class="act" type="button" data-act="molest" id="btn-molest">猥褻</button>
       <button class="act" type="button" data-act="rescue">帶女子脫離騷擾</button>
+      <button class="act" type="button" data-act="tease">調戲</button>
+      <button class="act hot" type="button" data-act="molest">猥褻</button>
       <button class="act" type="button" data-act="eat">吃東西</button>
       <button class="act" type="button" data-act="end">回家</button>
       <button class="act admin" type="button" data-act="admin">後台</button>
@@ -323,7 +356,7 @@
 <div class="overlay" id="admin">
   <div class="modal">
     <h3>後台</h3>
-    <p>抽妹子、設模型、開始一場。時段與地點不是玩家選的。</p>
+    <p>抽妹子、設模型、開始一場。關係決定她怎麼回話（跟看板店頭聊同一套）。男子線先不用。聊天劇本在 <a href="/edit_date" style="color:var(--cyan)">/edit_date</a>。</p>
     <div class="row">
       <div class="lab">妹子</div>
       <div id="admin-girl">還沒抽妹子。</div>
@@ -344,6 +377,10 @@
       </div>
     </div>
     <div class="row">
+      <div class="lab">關係</div>
+      <div class="pills" id="rels"></div>
+    </div>
+    <div class="row">
       <div class="lab">時段</div>
       <div class="pills" id="times"></div>
     </div>
@@ -359,6 +396,6 @@
   </div>
 </div>
 
-<script type="module" src="/content/t_d.js?v=20260914i"></script>
+<script type="module" src="/content/t_d.js?v=20260915d"></script>
 </body>
 </html>

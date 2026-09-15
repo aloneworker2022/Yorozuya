@@ -1,5 +1,12 @@
-/** t_d 約會測試機。舊 testdate.js 不動。 */
+/** t_d 約會測試機。舊 testdate.js 不動。聊天輸入走看板叫名那套，劇本在 /edit_date。 */
 import { loadPools, generateGirl, RARITY_MARK } from "./girl_gen.js";
+import { buildSystemPrompt } from "./persona_builder.js";
+import {
+  DATE_ACT_ZH,
+  DEFAULT_DATE_SCRIPT,
+  normalizeDateScript,
+  classifyDateLine,
+} from "./edit_date.js";
 
 const DEFAULT_ENDPOINT = "http://192.168.68.55:11434";
 const DEFAULT_MODEL = "e-girl:latest";
@@ -16,13 +23,34 @@ const ZONES = [
   { id: "play", name: "遊戲區" },
   { id: "path", name: "步道區" },
 ];
+const RELS = [
+  { id: "stranger", name: "陌生" },
+  { id: "friend", name: "朋友" },
+  { id: "girlfriend", name: "女友" },
+  { id: "wife", name: "妻子" },
+];
+/** 店頭調戲同一套，但約會現場陌生會鬆一點。 */
+const REL_TEASE = {
+  stranger: "態度鎖定【害羞＋無奈＋想擋】。你們約出來了，不必盛怒仇視，可是也不配合。可罵「你認真的」「這裡有人」，可結巴、別開臉。禁止享受、撒嬌、求更多。",
+  friend: "態度鎖定【憤怒＋羞恥】。你們是朋友，他不該這樣。可罵太過分；禁止主動配合或女友式撒嬌。身體若有反應，更羞、更氣。",
+  girlfriend: "態度鎖定【羞恥但身體在享受】。可嗔「討厭」「羞死了」，底下是情動，不是恨。禁止盛怒仇視。",
+  wife: "態度鎖定【順從＋享受＋投入】。身體是日常親密。可軟、可直接。禁止陌生式怒罵推開。",
+};
+/** 約會比店頭鬆：尤其陌生——人已經願意出門。 */
+const DATE_REL_OPEN = {
+  stranger:
+    "【約會微調·陌生】這段蓋過上方關係裡「幾乎不主動／只回一句」。你們已經約出來了，比店頭戒備鬆：可以接話、可以吐槽這場約會，不必每句只回一個字。稱呼仍不親暱。身體或性話題仍算越界，用害羞／無奈／小聲擋，不要一上來就當仇敵盛怒。還沒答應交往，保持距離，可是人已經在現場。",
+  friend: "【約會微調】照朋友關係。人已經在約會現場，比店頭再自然一點。",
+  girlfriend: "【約會微調】照女友關係。這是約會，可以更黏、更在場。",
+  wife: "【約會微調】照妻子關係。出門約會是日常。",
+};
 const NEXT = { plaza: "path", path: "play", play: "woods", woods: "toilet", toilet: "plaza" };
 const EAT_COST = { morning: 20, afternoon: 40, evening: 60, night: 30 };
 const STAMINA_MAX = 10;
 const AROUSAL_MAX = 20;
 const SHAME_MAX = 15;
 const OBEY_MAX = 35;
-const ACT_ZH = { interact: "互動", tease: "調戲", molest: "猥褻", eat: "吃東西", end: "回家", rescue: "帶女子脫離騷擾" };
+const ACT_ZH = DATE_ACT_ZH;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) =>
@@ -32,7 +60,9 @@ const esc = (s) =>
 
 let cards = [];
 let malePack = null;
+let dateScript = normalizeDateScript(DEFAULT_DATE_SCRIPT);
 let girl = null;
+let relStage = "stranger";
 let busy = false;
 let started = false;
 let paging = false;
@@ -111,6 +141,9 @@ function zoneOf(id) {
 function timeOf(id) {
   return TIMES.find((t) => t.id === id) || TIMES[0];
 }
+function relOf(id) {
+  return RELS.find((r) => r.id === id) || RELS[0];
+}
 function normalizeEndpoint(raw) {
   let s = String(raw || "").trim();
   if (!s) return DEFAULT_ENDPOINT;
@@ -142,21 +175,28 @@ function renderHud() {
   const obeyBar = $("obey-bar");
   if (obeyN) obeyN.textContent = `${obeyZh()} ${obeyScore()}`;
   if (obeyBar) obeyBar.style.width = `${(obeyScore() / OBEY_MAX) * 100}%`;
-  $("hud")?.classList.toggle("has-male", !!state.male);
+  $("hud")?.classList.remove("has-male");
   document.body.dataset.time = state.time;
   $("zone-name").textContent = zoneOf(state.zone).name;
   const desc = $("zone-desc");
   if (desc) desc.textContent = state.card ? state.card.scene : "";
   const who = $("girl-now");
   if (who) {
-    let t = girl ? `${girl.name} · ${girl.archetype || (girl.personality || []).join("、")} · ${girl.job || ""}` : "";
-    if (state.male?.onField) t += ` · ${state.male.name}`;
-    who.textContent = t;
+    who.textContent = girl
+      ? `${girl.name} · ${relOf(relStage).name} · ${girl.archetype || (girl.personality || []).join("、")} · ${girl.job || ""}`
+      : "";
   }
   document.querySelectorAll("#times .pill").forEach((el) => el.classList.toggle("on", el.dataset.id === state.time));
   document.querySelectorAll("#zones .pill").forEach((el) => el.classList.toggle("on", el.dataset.id === state.zone));
+  document.querySelectorAll("#rels .pill").forEach((el) => el.classList.toggle("on", el.dataset.id === relStage));
   $("acts-bar")?.classList.toggle("paging", paging);
-  $("acts")?.classList.toggle("has-male", !!state.male?.onField && !state.ended);
+  $("acts-bar")?.classList.toggle("no-chat", !started || state.ended);
+  $("acts")?.classList.remove("has-male");
+  const chatOn = started && !busy && !paging && !state.ended && state.stamina > 0 && !!state.card;
+  const input = $("date-input");
+  const send = $("date-send");
+  if (input) input.disabled = !chatOn;
+  if (send) send.disabled = !chatOn;
   const rescueBtn = document.querySelector('[data-act="rescue"]');
   if (rescueBtn) {
     rescueBtn.textContent = state.male?.onField
@@ -183,8 +223,8 @@ function renderHud() {
       return;
     }
     if (act === "eat") el.disabled = state.money < EAT_COST[state.time];
-    else if (act === "end" || act === "rescue") el.disabled = false;
-    else el.disabled = state.stamina <= 0 || !!state.male?.onField;
+    else if (act === "tease" || act === "talk" || act === "molest") el.disabled = state.stamina <= 0;
+    else el.disabled = false;
   });
 }
 
@@ -226,8 +266,8 @@ async function exitPaging() {
   queue = [];
   busy = false;
   if (shouldResolve) resolveAfterRound();
-  if (shouldResolve && (await maybeMaleBeat())) return;
   renderHud();
+  if (started && !state.ended) $("date-input")?.focus();
 }
 
 async function showPage(item) {
@@ -284,7 +324,7 @@ function renderGirlAdmin() {
     return;
   }
   const mark = RARITY_MARK[girl.rarity] || "";
-  el.innerHTML = `<b>${esc(girl.name)}</b> ${esc(mark + (girl.rarity || ""))}<br>${esc((girl.personality || []).join("、"))} · ${esc(girl.job || "")}`;
+  el.innerHTML = `<b>${esc(girl.name)}</b> ${esc(mark + (girl.rarity || ""))}<br>${esc(relOf(relStage).name)} · ${esc((girl.personality || []).join("、"))} · ${esc(girl.job || "")}`;
 }
 
 function pickArrive() {
@@ -324,6 +364,19 @@ function pickActionLine(card, act) {
   const pickFrom = left.length ? left : pool.map((_, i) => i);
   const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
   state.usedLines[key] = left.length ? used.concat(chosen) : [chosen];
+  return pool[chosen];
+}
+
+function pickScriptLine(act) {
+  const key = act === "talk" ? "tease" : act;
+  const pool = actionPool(dateScript.acts?.[key]);
+  if (!pool.length) return null;
+  const usedKey = `edit:${key}`;
+  const used = state.usedLines[usedKey] || [];
+  const left = pool.map((_, i) => i).filter((i) => !used.includes(i));
+  const pickFrom = left.length ? left : pool.map((_, i) => i);
+  const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+  state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
   return pool[chosen];
 }
 
@@ -401,8 +454,7 @@ async function aiNarrate(hint) {
     const raw = await llmChat([
       {
         role: "system",
-        content:
-          "你是約會場景的旁白。只根據給定的演出方向寫 1～2 句中文旁白。只描述已經發生的事。不要寫人物台詞，不要替任何人下指令，不要發明新事件，不要唸數值。",
+        content: dateScript.narr_system,
       },
       { role: "user", content: `演出方向：${hint}` },
     ]);
@@ -412,24 +464,71 @@ async function aiNarrate(hint) {
   }
 }
 
+function buildDateGirlCtx() {
+  const g = girl || {};
+  return {
+    character: {
+      name: g.name || "她",
+      rarity: g.rarity,
+      personality: g.personality,
+      speech_style: g.speech,
+      backstory: g.backstory || "",
+      tone: g.tone || null,
+      catchphrases: g.catchphrases || null,
+      reactions: g.reactions || null,
+      quirk: g.quirk || null,
+      contrast: g.contrast || null,
+      likes: g.likes || null,
+      dislikes: g.dislikes || null,
+      hobbies: g.hobbies || null,
+      chrono: g.chrono || null,
+      arc: g.arc || null,
+      libido: g.libido || null,
+      look: g.look || null,
+      special_traits: g.specialTraits || null,
+      job_desc: g.jobDesc || null,
+    },
+    relationship: { stage: relStage, progress: null, days_since_summon: 0 },
+    scene: {
+      type: "date_park",
+      time_of_day: state.time,
+      time_label: timeOf(state.time).name,
+    },
+    content_rating: "nsfw",
+    player: { name: "你" },
+  };
+}
+
+function scenePromptBlock(card, narr, act) {
+  const zone = zoneOf(state.zone);
+  const bits = [
+    "【這一拍場景】（看板店頭聊沒有這段；約會要帶進去）",
+    `你們正在公園「${zone.name}」約會。時段：${timeOf(state.time).name}。人就在他眼前。`,
+    card?.name ? `場景「${card.name}」：${card.scene}` : "",
+    card?.narration ? `場景旁白：${card.narration}` : "",
+    narr ? `剛才發生的事：${narr}` : "",
+    `這一拍系統判定：${ACT_ZH[act] || act}。`,
+    act === "talk" || act === "tease" || act === "molest"
+      ? REL_TEASE[relStage] || REL_TEASE.stranger
+      : "",
+    "把場景裡正在發生的事帶進台詞。不要當沒這回事。不准自己換地、結束約會、口交或做愛。",
+  ];
+  return bits.filter(Boolean).join("\n");
+}
+
 async function aiGirlReply({ card, act, narr, playerLine, delta }) {
   const name = girl?.name || "她";
   const sys = [
-    `你是「${name}」。個性：${(girl?.personality || []).join("、") || "—"}。職業：${girl?.job || "—"}。`,
-    girl?.tone ? `語氣：${girl.tone}` : "",
-    "你只能對已經發生的事做反應。不准下達行動、不准提議換地、不准結束約會、不准唸出體力性慾羞恥感情的數字。",
-    "用一句到三句中文第一人稱說話。不要角色名冒號。",
+    buildSystemPrompt(buildDateGirlCtx()),
+    DATE_REL_OPEN[relStage] || DATE_REL_OPEN.stranger,
+    dateScript.girl_system,
+    scenePromptBlock(card, narr, act),
   ]
     .filter(Boolean)
-    .join("\n");
+    .join("\n\n");
   const user = [
-    `地點：公園${zoneOf(state.zone).name}　時段：${timeOf(state.time).name}`,
-    `場景卡：${card.name}　${card.scene}`,
-    `玩家按了：${ACT_ZH[act]}`,
-    `旁白：${narr}`,
     `我：${playerLine}`,
-    `運算後（她感覺得到，但不要唸數字）：性慾${tierZh(tier(state.arousal, "arousal"))} 羞恥${tierZh(tier(state.shame, "shame"))} 感情${state.heart} 體力${state.stamina}`,
-    delta ? `這一拍變化：${delta}` : "",
+    delta ? `這一拍變化（她感覺得到，不要唸數字）：${delta}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -459,7 +558,7 @@ function applyAct(act) {
     const gain = 1 + bonus;
     state.heart += gain;
     bits.push(`感情 +${gain}`);
-  } else if (act === "tease") {
+  } else if (act === "talk" || act === "tease") {
     state.arousal = clamp(state.arousal + 1, AROUSAL_MAX);
     state.shame = clamp(state.shame + 1, SHAME_MAX);
     bits.push("性慾 +1　羞恥 +1");
@@ -472,12 +571,9 @@ function applyAct(act) {
 }
 
 function endPages() {
-  if (state.shame >= SHAME_MAX && !state.male?.onField) {
+  if (state.shame >= SHAME_MAX) {
     state.ended = true;
     return [{ role: "sys", who: "散場", text: `${girl?.name || "她"}羞恥全滿，跑掉了。約會結束。` }];
-  }
-  if (state.shame >= SHAME_MAX && state.male?.onField) {
-    return [{ role: "sys", who: "旁白", text: `${girl?.name || "她"}想跑，被${state.male.name}一把攔住了。這場還不能散。` }];
   }
   if (state.stamina <= 0) {
     state.ended = true;
@@ -826,6 +922,68 @@ async function doRescue() {
   await playQueue(pages);
 }
 
+function chatHint(act, playerLine, card) {
+  const scene = card?.scene || zoneOf(state.zone).name;
+  const name = girl?.name || "她";
+  if (act === "molest") {
+    return `玩家在「${scene}」對「${name}」動手猥褻。他說／做：「${playerLine}」。只描述已經發生的肢體，不要寫成口交或做愛。`;
+  }
+  if (act === "talk") {
+    return `玩家在「${scene}」用話調戲「${name}」。他說：「${playerLine}」。只描述已經發生的言語調戲，不要動手寫成猥褻，不要寫成口交或做愛。`;
+  }
+  return `玩家在「${scene}」跟「${name}」說話。他說：「${playerLine}」。只描述已經發生的對話現場。`;
+}
+
+async function doChat(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return;
+  if (!started || busy || paging || state.ended) return;
+  const card = state.card;
+  if (!card) return;
+  const cls = classifyDateLine(text, dateScript);
+  const input = $("date-input");
+  if (input) input.value = "";
+  if (cls.act === "oral" || cls.act === "sex") {
+    await playQueue([
+      { role: "player", who: "我", text },
+      { role: "sys", who: "系統", text: cls.refuse || "這裡不行。" },
+    ]);
+    return;
+  }
+  const result = applyAct(cls.act);
+  if (!result.ok) {
+    await playQueue([{ role: "sys", who: "系統", text: result.reason }]);
+    return;
+  }
+  state.round += 1;
+  const delta = `${ACT_ZH[cls.act] || cls.act}　${result.bits.join("　")}`;
+  const hint = chatHint(cls.act, text, card);
+  busy = true;
+  enterPaging();
+  waitingAi = true;
+  renderHud();
+  await showPage({
+    role: "sys",
+    who: "旁白",
+    load: () => aiNarrate(hint),
+    fallback: hint,
+  });
+  const narr = document.querySelector("#log .tx")?.textContent || hint;
+  waitingAi = false;
+  const girlP = aiGirlReply({ card, act: cls.act, narr, playerLine: text, delta });
+  enqueue({ role: "player", who: "我", text, extra: delta });
+  enqueue({
+    role: "girl",
+    who: girl.name,
+    fallback: "……",
+    load: () => girlP,
+  });
+  endPages().forEach(enqueue);
+  pendingResolve = !state.ended;
+  busy = false;
+  renderHud();
+}
+
 async function startDate() {
   if (!girl) {
     setAdminStatus("先抽妹子。", true);
@@ -839,12 +997,13 @@ async function startDate() {
   pendingResolve = false;
   $("admin").classList.remove("on");
   state.arrive = pickArrive();
-  state.male = spawnMale();
+  state.male = null;
   const card = drawCard();
   const pages = [{ role: "sys", who: "旁白", text: arriveText(state.arrive, girl.name) }];
   if (!card) pages.push({ role: "sys", who: "系統", text: "沒有可抽的廣場卡。" });
   else pages.push({ role: "sys", who: "旁白", text: card.narration });
   await playQueue(pages);
+  $("date-input")?.focus();
 }
 
 async function doAct(act) {
@@ -865,16 +1024,13 @@ async function doAct(act) {
     return;
   }
   if (state.ended) return;
-  if (act === "rescue") {
-    await doRescue();
-    return;
-  }
-  if (state.male?.onField && act !== "eat") return;
+  if (act === "rescue" || act === "interact") return;
   const card = state.card;
   if (!card) return;
-  const spec = pickActionLine(card, act);
+  const fromEdit = act === "tease" || act === "talk" || act === "molest";
+  const spec = fromEdit ? pickScriptLine(act) : pickActionLine(card, act);
   if (!spec) {
-    await playQueue([{ role: "sys", who: "系統", text: "這張卡沒有這個行動。" }]);
+    await playQueue([{ role: "sys", who: "系統", text: fromEdit ? "edit_date 還沒寫這個行動。" : "這張卡沒有這個行動。" }]);
     return;
   }
   const result = applyAct(act);
@@ -883,7 +1039,7 @@ async function doAct(act) {
     return;
   }
   state.round += 1;
-  const delta = result.bits.join("　");
+  const delta = `${ACT_ZH[act] || act}　${result.bits.join("　")}`;
   busy = true;
   enterPaging();
   waitingAi = true;
@@ -943,6 +1099,7 @@ async function pingEngine() {
 function mountPills() {
   $("times").innerHTML = TIMES.map((t) => `<button class="pill" type="button" data-id="${t.id}">${t.name}</button>`).join("");
   $("zones").innerHTML = ZONES.map((z) => `<button class="pill" type="button" data-id="${z.id}">${z.name}</button>`).join("");
+  $("rels").innerHTML = RELS.map((r) => `<button class="pill" type="button" data-id="${r.id}">${r.name}</button>`).join("");
   $("times").addEventListener("click", (e) => {
     const id = e.target.dataset?.id;
     if (!id) return;
@@ -955,17 +1112,34 @@ function mountPills() {
     state.zone = id;
     renderHud();
   });
+  $("rels").addEventListener("click", (e) => {
+    const id = e.target.dataset?.id;
+    if (!id) return;
+    relStage = id;
+    lsSet("t_d.rel", id);
+    renderGirlAdmin();
+    renderHud();
+  });
 }
 
 async function boot() {
   $("t-endpoint").value = normalizeEndpoint(lsGet("t_d.endpoint", lsGet("testdate.endpoint", DEFAULT_ENDPOINT)));
   $("t-model").value = lsGet("t_d.model", lsGet("testdate.model", DEFAULT_MODEL));
+  const savedRel = lsGet("t_d.rel", "stranger");
+  if (RELS.some((r) => r.id === savedRel)) relStage = savedRel;
   mountPills();
   renderHud();
   document.querySelector("#acts").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-act]");
     if (!btn || btn.disabled) return;
     doAct(btn.dataset.act);
+  });
+  $("date-send")?.addEventListener("click", () => doChat($("date-input")?.value));
+  $("date-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      doChat(e.target.value);
+    }
   });
   $("btn-next").addEventListener("click", () => advance());
   $("log").addEventListener("click", () => {
@@ -993,11 +1167,17 @@ async function boot() {
       return r.json();
     });
     cards = pack.cards || [];
-    malePack = await fetch("/content/t_d_male.json?ts=" + Date.now()).then((r) => {
-      if (!r.ok) throw new Error("讀男子卡失敗");
-      return r.json();
-    });
-    setAdminStatus(`卡 ${cards.length} 張 · 男子台詞已載入 · 人設池已載入`);
+    malePack = null;
+    try {
+      const raw = await fetch("/content/edit_date.json?ts=" + Date.now()).then((r) => {
+        if (!r.ok) throw new Error("讀劇本失敗");
+        return r.json();
+      });
+      dateScript = normalizeDateScript(raw);
+    } catch {
+      dateScript = normalizeDateScript(DEFAULT_DATE_SCRIPT);
+    }
+    setAdminStatus(`卡 ${cards.length} 張 · 人設池已載入 · 約會劇本已載入（男子線暫停）`);
   } catch (e) {
     setAdminStatus(e.message, true);
   }

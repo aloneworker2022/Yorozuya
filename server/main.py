@@ -4463,6 +4463,24 @@ def editmale():
     return FileResponse(WEB_DIR / "editmale.html")
 
 
+@app.get("/edit_date")
+def edit_date():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "edit_date.html")
+
+
+@app.put("/api/edit_date")
+def put_edit_date(body: dict):
+    if not isinstance(body, dict):
+        raise HTTPException(400, "需要劇本物件")
+    path = WEB_DIR / "content" / "edit_date.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True}
+
+
 # /testword 編輯魅魔獻祭三場景腳本;整包覆寫 content/sacrifice.json
 @app.put("/api/sacrifice")
 def put_sacrifice(body: dict):
