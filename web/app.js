@@ -5109,7 +5109,20 @@ function applyDaydreamPatches(patches) {
     const p = patches[s.id];
     if (!p) continue;
     if (p.portraits) {
-      s.portraits = { ...(s.portraits || {}), ...p.portraits };
+      // 發呆覆寫同路徑立繪時必須換 ?v=，否則畫面仍顯示舊快取
+      const ver = p.portraitsRefreshedAt || Date.now();
+      const next = {};
+      for (const [k, url] of Object.entries(p.portraits)) {
+        if (!url) continue;
+        const clean = String(url).split("?")[0].split("#")[0];
+        next[k] = `${clean}?v=${ver}`;
+      }
+      s.portraits = { ...(s.portraits || {}), ...next };
+      if (next.full || next.half || next.head) {
+        s.portrait = s.portraits.full || s.portraits.half || s.portraits.head || s.portrait;
+        s.portraitReady = true;
+        try { if (typeof syncPortraitCgCache === "function") syncPortraitCgCache(s); } catch { /* */ }
+      }
       changed = true;
     }
     if (p.extraShotAt) {
@@ -5161,6 +5174,13 @@ async function pollDaydreamStatus(force = false) {
     const patched = applyDaydreamPatches(j.patches);
     paintDaydreamBanner();
     if (patched) {
+      try {
+        for (const s of state.succubi || []) {
+          if (typeof isKanban === "function" && isKanban(s.id) && typeof replaceKanbanFullStand === "function") {
+            replaceKanbanFullStand(s);
+          }
+        }
+      } catch { /* */ }
       try { if (typeof renderKanban === "function") renderKanban(); } catch { /* */ }
       try { renderAll(); } catch { /* */ }
     }

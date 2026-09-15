@@ -158,6 +158,20 @@ def new_store() -> dict:
     }
 
 
+def bust_asset_url(url: str, version: int | str | None = None) -> str:
+    """同路徑覆寫的立繪要加 ?v=，否則瀏覽器／UI 一直吃舊圖。"""
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    base = raw.split("?", 1)[0].split("#", 1)[0]
+    if not base:
+        return ""
+    ver = version if version is not None else ""
+    if ver == "" or ver is None:
+        return base
+    return f"{base}?v={ver}"
+
+
 def public_status(store: dict | None) -> dict:
     s = store or {}
     return {
@@ -402,7 +416,21 @@ def apply_patches(data: dict, store: dict) -> None:
         if not g or not isinstance(patch, dict):
             continue
         if patch.get("portraits"):
-            g.setdefault("portraits", {}).update(patch["portraits"])
+            ver = patch.get("portraitsRefreshedAt")
+            busted = {
+                k: bust_asset_url(v, ver)
+                for k, v in patch["portraits"].items()
+                if v
+            }
+            g.setdefault("portraits", {}).update(busted)
+            if busted:
+                g["portrait"] = (
+                    g["portraits"].get("full")
+                    or g["portraits"].get("half")
+                    or g["portraits"].get("head")
+                    or g.get("portrait")
+                )
+                g["portraitReady"] = True
         if patch.get("extraShotAt"):
             g.setdefault("extraShotAt", {}).update(patch["extraShotAt"])
         if "portraitsRefreshedAt" in patch:

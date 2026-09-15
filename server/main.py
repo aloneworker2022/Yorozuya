@@ -3286,6 +3286,7 @@ def _dd_img_base(girl: dict, cfg: dict, key: str, **kw) -> ImgGenIn:
 
 async def _dd_run_portraits(girl: dict, cfg: dict, key: str, on_label) -> dict:
     portraits = {}
+    ts = int(time.time() * 1000)
     for shot in ("full", "half", "head"):
         await on_label(f"立繪 · {shot}")
         extra = "plain solid color background, simple background"
@@ -3301,8 +3302,9 @@ async def _dd_run_portraits(girl: dict, cfg: dict, key: str, on_label) -> dict:
             flat_bg=True,
         ))
         if url:
-            portraits[shot] = url
-    return {"portraits": portraits, "portraitsRefreshedAt": int(time.time() * 1000)}
+            # 檔名固定覆寫；URL 必須換 ?v=，否則前端/瀏覽器一直顯示舊立繪
+            portraits[shot] = ddream.bust_asset_url(url, ts)
+    return {"portraits": portraits, "portraitsRefreshedAt": ts}
 
 
 async def _dd_run_emotion(girl: dict, cfg: dict, key: str, mood: str, on_label) -> dict:
@@ -3326,9 +3328,10 @@ async def _dd_run_emotion(girl: dict, cfg: dict, key: str, mood: str, on_label) 
     ))
     if not url:
         return {}
+    ts = int(time.time() * 1000)
     return {
-        "portraits": {defn["shot"]: url},
-        "extraShotAt": {defn["shot"]: int(time.time() * 1000)},
+        "portraits": {defn["shot"]: ddream.bust_asset_url(url, ts)},
+        "extraShotAt": {defn["shot"]: ts},
     }
 
 
@@ -3439,7 +3442,10 @@ def _dd_begin(store: dict, data: dict, force: bool) -> dict:
     slot = ddream.current_slot()
     stamp = ddream.slot_stamp()
     nsfw = _dd_settings(data)["nsfw"]
-    queue = ddream.build_queue(girls, nsfw, stamp)
+    # 強制發呆若沿用同 stamp 的 gen_tasks key，會直接吃到已 done 的舊圖不重產。
+    # force 時在 key 裡加 nonce，逼生圖佇列重跑。
+    run_tag = f"{stamp}:force:{int(time.time() * 1000)}" if force else stamp
+    queue = ddream.build_queue(girls, nsfw, run_tag)
     keep_patches = (not force) and store.get("stamp") == stamp
     store.update({
         "stamp": stamp,
