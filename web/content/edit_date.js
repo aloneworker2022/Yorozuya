@@ -2,7 +2,7 @@
 
 export const DATE_ACT_ZH = {
   interact: "互動",
-  talk: "調戲",
+  talk: "言語調戲",
   tease: "調戲",
   molest: "猥褻",
   eat: "吃東西",

@@ -367,11 +367,46 @@ function pickActionLine(card, act) {
   return pool[chosen];
 }
 
-function pickScriptLine(act) {
-  const key = act === "talk" ? "tease" : act;
-  const pool = actionPool(dateScript.acts?.[key]);
+/** 言語調戲：從 edit_date「言語調戲」清單隨機抽一句當玩家輸出（本場先不重複）。 */
+function pickTalkLine() {
+  const pool = (dateScript.classify?.talk?.keywords || [])
+    .map((s) => String(s || "").trim())
+    .filter(Boolean);
   if (!pool.length) return null;
-  const usedKey = `edit:${key}`;
+  const usedKey = "edit:talk-kw";
+  const used = state.usedLines[usedKey] || [];
+  const left = pool.map((_, i) => i).filter((i) => !used.includes(i));
+  const pickFrom = left.length ? left : pool.map((_, i) => i);
+  const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+  state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
+  return {
+    narr: "玩家開口調戲她。",
+    player: pool[chosen],
+  };
+}
+
+function pickScriptLine(act) {
+  // 言語調戲（talk／調戲按鈕）→ edit_date 的「言語調戲」關鍵字／台詞池
+  if (act === "talk" || act === "tease") {
+    const talk = pickTalkLine();
+    if (talk) return talk;
+    // 池空時才退回舊的調戲按鈕劇本
+    if (act === "tease") {
+      const pool = actionPool(dateScript.acts?.tease);
+      if (!pool.length) return null;
+      const usedKey = "edit:tease";
+      const used = state.usedLines[usedKey] || [];
+      const left = pool.map((_, i) => i).filter((i) => !used.includes(i));
+      const pickFrom = left.length ? left : pool.map((_, i) => i);
+      const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+      state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
+      return pool[chosen];
+    }
+    return null;
+  }
+  const pool = actionPool(dateScript.acts?.[act]);
+  if (!pool.length) return null;
+  const usedKey = `edit:${act}`;
   const used = state.usedLines[usedKey] || [];
   const left = pool.map((_, i) => i).filter((i) => !used.includes(i));
   const pickFrom = left.length ? left : pool.map((_, i) => i);
@@ -928,7 +963,7 @@ function chatHint(act, playerLine, card) {
   if (act === "molest") {
     return `玩家在「${scene}」對「${name}」動手猥褻。他說／做：「${playerLine}」。只描述已經發生的肢體，不要寫成口交或做愛。`;
   }
-  if (act === "talk") {
+  if (act === "talk" || act === "tease") {
     return `玩家在「${scene}」用話調戲「${name}」。他說：「${playerLine}」。只描述已經發生的言語調戲，不要動手寫成猥褻，不要寫成口交或做愛。`;
   }
   return `玩家在「${scene}」跟「${name}」說話。他說：「${playerLine}」。只描述已經發生的對話現場。`;
