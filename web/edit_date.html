@@ -7,7 +7,7 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #12101c; color: #d8d0ec; font-family: system-ui, "Cubic 11", monospace;
-         font-size: 15px; padding: 1em; max-width: 760px; margin: 0 auto; line-height: 1.5; }
+         font-size: 15px; padding: 1em; max-width: 860px; margin: 0 auto; line-height: 1.5; }
   h1 { color: #ff4fd8; font-size: 1.2em; letter-spacing: .1em; margin-bottom: .2em; }
   .warn { color: #ff9d4d; font-size: .8em; margin-bottom: 1em; }
   section { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
@@ -15,29 +15,38 @@
   h2 { color: #6fe3e1; font-size: .9em; letter-spacing: .1em; margin-bottom: .35em; }
   .mini { font-size: .78em; color: #8a82a5; margin-bottom: .55em; }
   label { display: block; font-size: .75em; color: #9a92b5; margin: .5em 0 .2em; }
-  textarea { width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
-    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .45em .6em; outline: none;
-    min-height: 7em; resize: vertical; line-height: 1.55; }
+  textarea, input, select { width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .45em .6em; outline: none; }
+  textarea { min-height: 5.5em; resize: vertical; line-height: 1.55; }
   textarea.lines { min-height: 9em; }
-  textarea:focus { border-color: rgba(111,227,225,.45); }
-  .row { display: flex; gap: .5em; flex-wrap: wrap; align-items: center; }
+  textarea:focus, input:focus, select:focus { border-color: rgba(111,227,225,.45); }
+  .row { display: flex; gap: .5em; flex-wrap: wrap; align-items: flex-end; }
+  .row > span { min-width: 0; }
   button { background: rgba(255,79,216,.18); border: none; border-radius: 7px; color: #ff8fe6;
            font: inherit; padding: .45em .9em; cursor: pointer; }
   button:hover { background: rgba(255,79,216,.3); }
   button.cy { background: rgba(111,227,225,.16); color: #6fe3e1; }
-  .savebar { position: sticky; bottom: 0; background: #12101c; padding: .8em 0; border-top: 1px solid rgba(255,255,255,.1); }
+  button.del { background: rgba(255,95,122,.16); color: #ff8fa3; }
+  .savebar { position: sticky; bottom: 0; background: #12101c; padding: .8em 0; border-top: 1px solid rgba(255,255,255,.1); z-index: 2; }
   .status { font-size: .8em; color: #6bcb77; min-height: 1.2em; }
   .status.err { color: #ff5f7a; }
   a { color: #6fe3e1; }
-  .grid { display: grid; gap: .8em; }
-  @media (min-width: 640px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+  code { font-size: .92em; }
+  .art { min-height: 160px; background: rgba(0,0,0,.35); border-radius: 8px; display: flex;
+         align-items: center; justify-content: center; overflow: hidden; margin: .4em 0; }
+  .art img { max-width: 100%; max-height: 320px; display: block; }
+  .sheet { background: rgba(0,0,0,.28); border-radius: 8px; padding: .7em .8em; white-space: pre-wrap;
+           font-size: .85em; color: #c8c0dc; min-height: 3em; }
+  .grow { flex: 1 1 12em; }
+  .fix0 { flex: 0 1 9em; }
 </style>
 </head>
 <body>
 <h1>⚙ Edit Date — 約會聊天劇本</h1>
 <div class="warn">
-  <code>/test_date</code> 的「調戲／猥褻」按鈕抽這份寫的旁白＋玩家台詞，不抽場景卡。文案可用 <code>[name]</code> <code>[head]</code> <code>[breast]</code> <code>[eye]</code> <code>[player]</code> 等標註，開局會換成這隻女子的身體／名字參數。分類關鍵字先不在這裡編。口交與做愛仍禁止。改完儲存，測試頁重整後生效。
-  <a href="/test_date">約會測試頁</a> | <a href="/edit_person">人物池</a> | <a href="/editmale">其他召喚師</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
+  <code>/test_date</code> 的「調戲」抽下方調戲池；「猥褻」抽猥褻劇本包（態度／動作／旁白／感覺／生圖）。
+  文案可用 <code>[name]</code> <code>[head]</code> <code>[breast]</code> 等標註。改完按儲存，測試頁重整後生效。
+  <a href="/test_date">約會測試頁</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
 </div>
 <p class="mini" id="bind-hint" style="margin:-.4em 0 1em"></p>
 
@@ -49,26 +58,100 @@
 
 <section>
   <h2>旁白劇本</h2>
-  <p class="mini">玩家送出後，旁白依這段寫 1～2 句已經發生的事。不要讓旁白自己發明口交或做愛。</p>
+  <p class="mini">一般互動／調戲用的旁白規則。猥褻包另有自己的旁白 prompt。</p>
   <textarea id="narr_system"></textarea>
 </section>
 
 <section>
   <h2>調戲（按鈕）</h2>
-  <p class="mini">按「調戲」從這裡抽。兩行一組：第一行旁白方向，第二行玩家台詞。組與組空一行。這場約會抽過的先不重複。可用 <code>[name]</code> <code>[head]</code> <code>[breast]</code> <code>[nipple]</code> <code>[labia]</code> <code>[eye]</code> <code>[hair]</code> <code>[player]</code> 等（與卡牌綁定同套）。</p>
+  <p class="mini">按「調戲」從這裡抽。兩行一組：第一行旁白方向，第二行玩家台詞。組與組空一行。可用身體標註。</p>
   <textarea id="act-tease" class="lines"></textarea>
 </section>
 
 <section>
-  <h2>猥褻（按鈕）</h2>
-  <p class="mini">按「猥褻」從這裡抽。格式同上。可用身體標註。不要寫成口交或做愛。</p>
-  <textarea id="act-molest" class="lines"></textarea>
-</section>
+  <h2>猥褻（按鈕）· 劇本編輯</h2>
+  <p class="mini">抄 testword 劇本模式場景編輯：一份劇本一個下拉標題；寫態度、玩家動作、旁白 prompt、女子感覺 prompt、參考圖與正負向 prompt；可產圖與綜合測試。測試直接用存檔裡現有魅子。</p>
 
+  <div class="row" style="margin-bottom:.4em">
+    <span class="grow"><label>這份劇本（標題）</label>
+      <select id="mo-pack"></select></span>
+    <span class="grow"><label>名稱</label>
+      <input id="mo-name" placeholder="劇本名稱" maxlength="40"></span>
+    <button class="cy" type="button" id="mo-save-one">儲存此劇本</button>
+    <button type="button" id="mo-new">＋新劇本</button>
+    <button class="del" type="button" id="mo-del">刪除</button>
+  </div>
+
+  <div class="row" style="margin-bottom:.55em">
+    <span class="grow"><label>測試用魅子（現有存檔）</label>
+      <select id="mo-girl"></select></span>
+    <span class="fix0"><label>關係</label>
+      <select id="mo-stage">
+        <option value="stranger">陌生</option>
+        <option value="friend">朋友</option>
+        <option value="girlfriend">女友</option>
+        <option value="wife">妻子</option>
+      </select></span>
+    <span class="fix0"><label>生圖</label>
+      <select id="mo-img-prov">
+        <option value="grok-img">Grok 圖</option>
+        <option value="comfy">ComfyUI</option>
+      </select></span>
+    <button type="button" id="mo-reload-girls">重新讀名冊</button>
+  </div>
+
+  <label>女子態度</label>
+  <textarea id="mo-attitude" placeholder="例：陌生驚怒。被你在公園對 [name] 動手……"></textarea>
+
+  <label>玩家動作描述</label>
+  <textarea id="mo-player" placeholder="例：你從後面把手伸進 [name] 的衣襬，按住她的 [waist]。"></textarea>
+
+  <label>旁白 prompt</label>
+  <textarea id="mo-narr" placeholder="給旁白 AI 的方向：寫體態／現場，不要台詞。"></textarea>
+
+  <label>女子感覺 prompt</label>
+  <textarea id="mo-feel" placeholder="這一拍身體感覺，只影響她台詞口氣。"></textarea>
+
+  <div class="row">
+    <span class="fix0"><label>生圖方式</label>
+      <select id="mo-img-mode">
+        <option value="prompt">直接 prompt</option>
+        <option value="ref">圖生圖（參考圖）</option>
+      </select></span>
+  </div>
+
+  <div class="art" id="mo-art"><span class="mini">尚未產生</span></div>
+
+  <label>上傳參考圖</label>
+  <div class="row">
+    <input id="mo-ref-file" type="file" accept="image/*" style="flex:1 1 14em">
+    <button type="button" id="mo-ref-up">上傳參考圖</button>
+    <button type="button" id="mo-ref-clear">拿掉</button>
+  </div>
+  <div class="mini" id="mo-ref-flag">沒有參考圖</div>
+
+  <label>正向 prompt</label>
+  <textarea id="mo-pos" placeholder="英文 tags，例：first-person POV, groping waist, nsfw, park"></textarea>
+
+  <label>負向 prompt</label>
+  <textarea id="mo-neg" style="min-height:3.2em" placeholder="ugly, extra fingers, looking at viewer, text"></textarea>
+
+  <label>輸出 prompt（展開身體標註後，實際會送生圖的正向）</label>
+  <div class="sheet" id="mo-out-prompt">（選魅子並填正向 prompt 後更新）</div>
+
+  <div class="row" style="margin-top:.55em">
+    <button class="cy" type="button" id="mo-gen">產圖</button>
+    <button class="cy" type="button" id="mo-test">綜合測試（動作→旁白→女子→產圖）</button>
+    <button type="button" id="mo-refresh-out">更新輸出 prompt</button>
+  </div>
+  <div class="status" id="mo-status"></div>
+  <div class="cd-sub mini" style="margin-top:.6em;color:#6fe3e1">綜合測試結果</div>
+  <div class="sheet" id="mo-test-out">還沒測。</div>
+</section>
 
 <div class="savebar">
   <div class="row">
-    <button onclick="saveAll()">💾 儲存</button>
+    <button onclick="saveAll()">💾 全部儲存（含調戲池＋猥褻劇本）</button>
     <button class="cy" type="button" id="btn-reset">還原預設</button>
     <span class="status" id="save-status"></span>
   </div>
@@ -76,40 +159,101 @@
 
 <script type="module">
 import { DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs } from "./content/edit_date.js";
-import { bindHint } from "./content/script_mode.js";
+import {
+  emptyMolestPack, normalizeMolestPack, filledPack, outputPromptOf,
+  buildMolestImgBody, buildMolestReplyMsgs, buildMolestNarrMsgs, bindHint, fillBinds,
+} from "./content/date_molest.js";
+
+const ENG_KEY = "yoro_testword_engines";
 
 function $(id) { return document.getElementById(id); }
-const bh = $("bind-hint"); if (bh) bh.textContent = "可用標註：" + bindHint();
+function esc(s) {
+  return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
 function done(m) { const s = $("save-status"); s.textContent = m; s.className = "status"; }
 function fail(m) { const s = $("save-status"); s.textContent = "失敗:" + m; s.className = "status err"; }
+function moStatus(m, err) {
+  const s = $("mo-status");
+  s.textContent = m;
+  s.className = "status" + (err ? " err" : "");
+}
 
-/** 分類關鍵字 UI 先拿掉；存檔時原樣帶回，避免覆寫 edit_date.json 裡既有 classify。 */
+const bh = $("bind-hint");
+if (bh) bh.textContent = "可用標註：" + bindHint();
+
 let keptClassify = null;
+let script = normalizeDateScript(DEFAULT_DATE_SCRIPT);
+let moId = script.activeMolestId || script.molestPacks[0]?.id || "";
+let girls = [];
+let girlId = "";
 
-function fill(script) {
-  const s = normalizeDateScript(script);
+function engGet() {
+  let e = { imgProvider: "grok-img", imgModel: "grok-4.5", llmProvider: "grok-build", llmModel: "grok-4.5", comfyUrl: "", comfyCkpt: "" };
+  try { e = { ...e, ...JSON.parse(localStorage.getItem(ENG_KEY) || "{}") }; } catch {}
+  e.imgProvider = $("mo-img-prov")?.value || e.imgProvider || "grok-img";
+  try { localStorage.setItem(ENG_KEY, JSON.stringify({ ...e, imgProvider: e.imgProvider })); } catch {}
+  return e;
+}
+
+function moPack() {
+  return script.molestPacks.find((p) => p.id === moId) || script.molestPacks[0] || null;
+}
+
+function moCollect() {
+  const p = moPack();
+  if (!p) return;
+  p.name = ($("mo-name").value || "").trim() || p.name;
+  p.attitude = $("mo-attitude").value || "";
+  p.playerAct = $("mo-player").value || "";
+  p.narrPrompt = $("mo-narr").value || "";
+  p.feelPrompt = $("mo-feel").value || "";
+  p.imgMode = $("mo-img-mode").value === "ref" ? "ref" : "prompt";
+  p.slot = p.slot || { prompt: "", negative: "", ref: "", url: "" };
+  p.slot.prompt = $("mo-pos").value || "";
+  p.slot.negative = $("mo-neg").value || "";
+  p.updated = Date.now();
+  script.activeMolestId = p.id;
+  moId = p.id;
+}
+
+function moGirl() {
+  return girls.find((g) => g.id === girlId) || girls[0] || null;
+}
+
+function fillTease(s) {
   keptClassify = s.classify;
   $("girl_system").value = s.girl_system;
   $("narr_system").value = s.narr_system;
   $("act-tease").value = formatActs(s.acts.tease);
-  $("act-molest").value = formatActs(s.acts.molest);
+}
+
+function fill(raw) {
+  script = normalizeDateScript(raw);
+  moId = script.activeMolestId || script.molestPacks[0]?.id || "";
+  fillTease(script);
+  moRenderPacks();
+  moRenderForm();
 }
 
 function collect() {
+  moCollect();
   return normalizeDateScript({
     girl_system: $("girl_system").value,
     narr_system: $("narr_system").value,
     acts: {
       tease: parseActs($("act-tease").value),
-      molest: parseActs($("act-molest").value),
+      molest: script.acts.molest,
     },
     classify: keptClassify || undefined,
+    molestPacks: script.molestPacks.map(normalizeMolestPack),
+    activeMolestId: moId,
   });
 }
 
 async function saveAll() {
   try {
     const body = collect();
+    script = body;
     const r = await fetch("/api/edit_date", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -121,6 +265,261 @@ async function saveAll() {
     fail(e.message);
   }
 }
+
+function moRenderPacks() {
+  const sel = $("mo-pack");
+  const list = script.molestPacks || [];
+  if (!list.some((p) => p.id === moId) && list[0]) moId = list[0].id;
+  sel.innerHTML = list.map((p) =>
+    `<option value="${esc(p.id)}"${p.id === moId ? " selected" : ""}>${esc(p.name)}</option>`
+  ).join("") || `<option value="">（尚無）</option>`;
+}
+
+function moRenderForm() {
+  const p = moPack();
+  if (!p) return;
+  $("mo-name").value = p.name || "";
+  $("mo-attitude").value = p.attitude || "";
+  $("mo-player").value = p.playerAct || "";
+  $("mo-narr").value = p.narrPrompt || "";
+  $("mo-feel").value = p.feelPrompt || "";
+  $("mo-img-mode").value = p.imgMode === "ref" ? "ref" : "prompt";
+  $("mo-pos").value = p.slot?.prompt || "";
+  $("mo-neg").value = p.slot?.negative || "";
+  const art = $("mo-art");
+  if (p.slot?.url) art.innerHTML = `<img src="${esc(p.slot.url)}" alt="molest">`;
+  else art.innerHTML = `<span class="mini">尚未產生</span>`;
+  $("mo-ref-flag").textContent = p.slot?.ref ? ("已掛 " + p.slot.ref) : "沒有參考圖";
+  moRefreshOut();
+}
+
+function moRefreshOut() {
+  moCollect();
+  const g = moGirl();
+  const p = moPack();
+  const el = $("mo-out-prompt");
+  if (!p) { el.textContent = "（無劇本）"; return; }
+  if (!g) { el.textContent = "（先選存檔魅子，才會展開 [name]／[breast]…）\n" + (p.slot?.prompt || ""); return; }
+  const out = outputPromptOf(p, g) || "（正向 prompt 空白）";
+  el.textContent = out;
+}
+
+function moRenderGirls() {
+  const sel = $("mo-girl");
+  sel.innerHTML = girls.length
+    ? girls.map((g) => `<option value="${esc(g.id)}"${g.id === girlId ? " selected" : ""}>${esc(g.name || g.id)}</option>`).join("")
+    : `<option value="">（存檔沒有魅子）</option>`;
+  if (!girls.some((g) => g.id === girlId) && girls[0]) girlId = girls[0].id;
+  if (girls[0] && $("mo-stage") && girls.find((g) => g.id === girlId)?.stage) {
+    $("mo-stage").value = girls.find((g) => g.id === girlId).stage || "stranger";
+  }
+  moRefreshOut();
+}
+
+async function loadGirls() {
+  try {
+    const r = await fetch("/api/save", { cache: "no-store" });
+    const j = await r.json();
+    const list = (j?.data?.succubi || []).filter((g) => g && g.id && !g.taken);
+    girls = list;
+    if (!girls.some((g) => g.id === girlId)) girlId = girls[0]?.id || "";
+    moRenderGirls();
+    moStatus(girls.length ? `名冊 ${girls.length} 隻` : "存檔沒有可用魅子", !girls.length);
+  } catch (e) {
+    girls = [];
+    moRenderGirls();
+    moStatus("讀存檔失敗：" + e.message, true);
+  }
+}
+
+async function apiJson(url, method, body) {
+  const r = await fetch(url, {
+    method: method || "GET",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  return j;
+}
+
+async function waitImg(body, ms = 360000) {
+  let key = body.key;
+  let r = await apiJson("/api/imggen", "POST", { ...body, retry: body.retry !== false });
+  if (r.key) key = r.key;
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (r.status === "done" || r.status === "error") return r;
+    await new Promise((x) => setTimeout(x, 1500));
+    r = await apiJson("/api/imggen", "POST", { ...body, key, retry: false });
+    if (r.key) key = r.key;
+  }
+  return { status: "error", error: "逾時" };
+}
+
+async function llmOnce(messages) {
+  const e = engGet();
+  const start = await apiJson("/api/llm/chat_job", "POST", {
+    provider: e.llmProvider || "grok-build",
+    endpoint: e.ollamaUrl || "",
+    model: e.llmModel || "grok-4.5",
+    messages,
+    options: { temperature: 0.85, num_predict: 180 },
+  });
+  const job = start.job_id;
+  const t0 = Date.now();
+  let acc = "";
+  while (Date.now() - t0 < 120000) {
+    await new Promise((x) => setTimeout(x, 350));
+    const j = await apiJson("/api/llm/chat_job/" + job);
+    if (j.error) throw new Error(j.error);
+    if (j.text) acc = j.text;
+    if (j.done) {
+      if (!String(acc || "").trim()) throw new Error("模型回了空訊息");
+      return acc;
+    }
+  }
+  throw new Error("模型逾時");
+}
+
+$("mo-pack").addEventListener("change", () => {
+  moCollect();
+  moId = $("mo-pack").value;
+  script.activeMolestId = moId;
+  moRenderForm();
+});
+$("mo-girl").addEventListener("change", () => {
+  girlId = $("mo-girl").value;
+  const g = moGirl();
+  if (g?.stage) $("mo-stage").value = g.stage;
+  moRefreshOut();
+});
+["mo-pos", "mo-player", "mo-attitude", "mo-narr", "mo-feel"].forEach((id) => {
+  $(id).addEventListener("input", () => moRefreshOut());
+});
+$("mo-refresh-out").addEventListener("click", () => moRefreshOut());
+$("mo-reload-girls").addEventListener("click", () => loadGirls());
+
+$("mo-new").addEventListener("click", () => {
+  moCollect();
+  const p = emptyMolestPack("猥褻 " + (script.molestPacks.length + 1));
+  script.molestPacks.push(p);
+  moId = p.id;
+  script.activeMolestId = moId;
+  moRenderPacks();
+  moRenderForm();
+  moStatus("已新增劇本（記得儲存）");
+});
+
+$("mo-del").addEventListener("click", () => {
+  if (script.molestPacks.length <= 1) {
+    moStatus("至少留一份猥褻劇本", true);
+    return;
+  }
+  script.molestPacks = script.molestPacks.filter((p) => p.id !== moId);
+  moId = script.molestPacks[0].id;
+  script.activeMolestId = moId;
+  moRenderPacks();
+  moRenderForm();
+  moStatus("已刪除（記得儲存）");
+});
+
+$("mo-save-one").addEventListener("click", () => saveAll());
+
+$("mo-ref-up").addEventListener("click", () => $("mo-ref-file").click());
+$("mo-ref-file").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  moCollect();
+  moStatus("上傳參考圖…");
+  const fd = new FormData();
+  fd.append("file", file, file.name || "pose.png");
+  try {
+    const r = await fetch("/api/pose-refs", { method: "POST", body: fd });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || r.status);
+    const p = moPack();
+    p.slot.ref = data.url || "";
+    p.imgMode = "ref";
+    moRenderForm();
+    moStatus("✓ 參考圖已掛上");
+  } catch (err) {
+    moStatus("上傳失敗：" + err.message, true);
+  }
+});
+$("mo-ref-clear").addEventListener("click", () => {
+  moCollect();
+  const p = moPack();
+  if (p?.slot) p.slot.ref = "";
+  moRenderForm();
+});
+
+$("mo-gen").addEventListener("click", async () => {
+  moCollect();
+  const g = moGirl();
+  const p = moPack();
+  if (!g) { moStatus("先選存檔魅子", true); return; }
+  if (!p) return;
+  if (p.imgMode === "ref" && !p.slot.ref) { moStatus("圖生圖要先上傳參考圖，或改成直接 prompt", true); return; }
+  if (!String(p.slot.prompt || "").trim()) { moStatus("先寫正向 prompt", true); return; }
+  $("mo-art").innerHTML = `<span class="mini">生成中…</span>`;
+  moStatus("產圖中…");
+  moRefreshOut();
+  try {
+    const body = buildMolestImgBody(p, g, engGet());
+    const r = await waitImg(body);
+    if (r.status === "done" && r.result) {
+      p.slot.url = String(r.result).split("?")[0];
+      $("mo-art").innerHTML = `<img src="${esc(r.result)}" alt="molest">`;
+      moStatus("✓ 產圖完成（記得儲存）");
+    } else {
+      $("mo-art").innerHTML = `<span class="mini">失敗</span>`;
+      moStatus(r.error || "生圖失敗", true);
+    }
+  } catch (err) {
+    $("mo-art").innerHTML = `<span class="mini">失敗</span>`;
+    moStatus(err.message, true);
+  }
+});
+
+$("mo-test").addEventListener("click", async () => {
+  moCollect();
+  const g = moGirl();
+  const p = moPack();
+  if (!g) { moStatus("先選存檔魅子", true); return; }
+  if (!p) return;
+  const stage = $("mo-stage").value || g.stage || "stranger";
+  const f = filledPack(p, g);
+  const out = $("mo-test-out");
+  out.textContent = "綜合測試中…";
+  moStatus("綜合測試：旁白…");
+  try {
+    const narr = await llmOnce(buildMolestNarrMsgs(f.narrPrompt, f.playerAct, g.name));
+    out.textContent = `【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n女子回話中…`;
+    moStatus("綜合測試：女子…");
+    const reply = await llmOnce(buildMolestReplyMsgs(g.name, f.attitude, f.feelPrompt, narr, f.playerAct, stage));
+    out.textContent = `【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n產圖中…`;
+    moStatus("綜合測試：產圖…");
+    let imgLine = "（略過產圖：正向 prompt 空白）";
+    if (String(p.slot.prompt || "").trim()) {
+      if (p.imgMode === "ref" && !p.slot.ref) throw new Error("圖生圖要先上傳參考圖");
+      const body = buildMolestImgBody(p, g, engGet());
+      const r = await waitImg(body);
+      if (r.status === "done" && r.result) {
+        p.slot.url = String(r.result).split("?")[0];
+        $("mo-art").innerHTML = `<img src="${esc(r.result)}" alt="molest">`;
+        imgLine = "產圖 ✓ " + p.slot.url;
+      } else {
+        imgLine = "產圖失敗：" + (r.error || "");
+      }
+    }
+    out.textContent = `【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n【圖】\n${imgLine}\n\n【輸出 prompt】\n${outputPromptOf(p, g) || "（空）"}`;
+    moStatus("✓ 綜合測試完成（記得儲存）");
+  } catch (err) {
+    out.textContent = "失敗：" + err.message;
+    moStatus(err.message, true);
+  }
+});
 
 $("btn-reset").addEventListener("click", () => {
   fill(DEFAULT_DATE_SCRIPT);
@@ -135,6 +534,11 @@ window.saveAll = saveAll;
   } catch {
     fill(DEFAULT_DATE_SCRIPT);
   }
+  try {
+    const e = JSON.parse(localStorage.getItem(ENG_KEY) || "{}");
+    if (e.imgProvider) $("mo-img-prov").value = e.imgProvider;
+  } catch {}
+  await loadGirls();
 })();
 </script>
 </body>

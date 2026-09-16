@@ -1,5 +1,7 @@
 /** 約會聊天劇本：分類關鍵字與 AI 規則。/edit_date 可改，寫回 edit_date.json。 */
 
+import { normalizeMolestPacks, normalizeMolestPack } from "./date_molest.js";
+
 export const DATE_ACT_ZH = {
   interact: "互動",
   talk: "調戲",
@@ -130,6 +132,15 @@ export function normalizeDateScript(raw) {
     return out;
   };
   const acts = src.acts && typeof src.acts === "object" ? src.acts : {};
+  const tease = actList(acts.tease, d.acts.tease);
+  const legacyMolest = actList(acts.molest, d.acts.molest);
+  const molestPacks = normalizeMolestPacks(src.molestPacks, legacyMolest);
+  // 舊格式相容：acts.molest 由 packs 同步成 narr/player
+  const molestActs = molestPacks.map((p) => ({
+    narr: String(p.narrPrompt || "").trim() || "玩家動手猥褻。",
+    player: String(p.playerAct || "").trim() || "……",
+  }));
+  const activeMolestId = String(src.activeMolestId || molestPacks[0]?.id || "");
   return {
     girl_system: String(src.girl_system || d.girl_system).trim() || d.girl_system,
     narr_system: String(src.narr_system || d.narr_system).trim() || d.narr_system,
@@ -140,9 +151,13 @@ export function normalizeDateScript(raw) {
       talk: block("talk"),
     },
     acts: {
-      tease: actList(acts.tease, d.acts.tease),
-      molest: actList(acts.molest, d.acts.molest),
+      tease,
+      molest: molestActs.length ? molestActs : legacyMolest,
     },
+    molestPacks,
+    activeMolestId: molestPacks.some((p) => p.id === activeMolestId)
+      ? activeMolestId
+      : (molestPacks[0]?.id || ""),
   };
 }
 
@@ -156,3 +171,5 @@ export function classifyDateLine(text, script) {
   if (hit(cls.talk.keywords)) return { act: "talk" };
   return { act: "interact" };
 }
+
+export { normalizeMolestPack, normalizeMolestPacks } from "./date_molest.js";

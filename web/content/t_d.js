@@ -8,6 +8,7 @@ import {
   classifyDateLine,
 } from "./edit_date.js";
 import { fillBinds, bindHint } from "./script_mode.js";
+import { filledPack, normalizeMolestPack } from "./date_molest.js";
 
 const DEFAULT_ENDPOINT = "http://192.168.68.55:11434";
 const DEFAULT_MODEL = "e-girl:latest";
@@ -229,12 +230,21 @@ function renderHud() {
   });
 }
 
-function addBubble(role, who, text, extra) {
+function addBubble(role, who, text, extra, img) {
   $("empty")?.remove();
   const div = document.createElement("div");
   div.className = "bubble " + role;
-  div.innerHTML = `<div class="who">${esc(who)}</div><div class="tx"></div>` + (extra ? `<div class="delta"></div>` : "");
-  div.querySelector(".tx").textContent = text;
+  div.innerHTML = `<div class="who">${esc(who)}</div><div class="tx"></div>`
+    + (img ? `<div class="cg"><img alt=""></div>` : "")
+    + (extra ? `<div class="delta"></div>` : "");
+  const tx = div.querySelector(".tx");
+  if (img) {
+    tx.textContent = text && !String(text).startsWith("/assets/") ? text : "";
+    const im = div.querySelector(".cg img");
+    if (im) im.src = img;
+  } else {
+    tx.textContent = text;
+  }
   if (extra) div.querySelector(".delta").textContent = extra;
   $("log").appendChild(div);
   $("log").scrollTop = $("log").scrollHeight;
@@ -286,7 +296,7 @@ async function showPage(item) {
     waitingAi = false;
     clearLog("");
   }
-  addBubble(item.role, item.who, item.text, item.extra);
+  addBubble(item.role, item.who, item.text, item.extra, item.img);
   if (item.role === "girl") state.lastGirlLine = item.text;
   renderHud();
 }
@@ -374,6 +384,8 @@ function fillDateText(text) {
 
 function fillActSpec(spec) {
   if (!spec) return null;
+  // molest packs 已在 pickMolestSpec 展開標註
+  if (spec.attitude != null || spec.feel != null) return { ...spec };
   return {
     ...spec,
     narr: fillDateText(spec.narr),
@@ -381,8 +393,28 @@ function fillActSpec(spec) {
   };
 }
 
+function pickMolestSpec() {
+  const packs = (dateScript.molestPacks || []).map(normalizeMolestPack);
+  if (!packs.length) return null;
+  const usedKey = "edit:molest-pack";
+  const used = state.usedLines[usedKey] || [];
+  const left = packs.map((_, i) => i).filter((i) => !used.includes(i));
+  const pickFrom = left.length ? left : packs.map((_, i) => i);
+  const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+  state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
+  const f = filledPack(packs[chosen], girl);
+  return {
+    narr: f.narrPrompt,
+    player: f.playerAct,
+    attitude: f.attitude,
+    feel: f.feelPrompt,
+    imgUrl: f.slot?.url || "",
+    packName: f.name,
+  };
+}
+
 function pickScriptLine(act) {
-  // 調戲按鈕 → edit_date「調戲（按鈕）」acts.tease；言語調戲池已取消
+  // 調戲按鈕 → edit_date「調戲（按鈕）」acts.tease
   if (act === "tease" || act === "talk") {
     const pool = actionPool(dateScript.acts?.tease);
     if (!pool.length) return null;
@@ -394,6 +426,7 @@ function pickScriptLine(act) {
     state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
     return pool[chosen];
   }
+  if (act === "molest") return pickMolestSpec();
   const pool = actionPool(dateScript.acts?.[act]);
   if (!pool.length) return null;
   const usedKey = `edit:${act}`;
@@ -541,13 +574,15 @@ function scenePromptBlock(card, narr, act) {
   return bits.filter(Boolean).join("\n");
 }
 
-async function aiGirlReply({ card, act, narr, playerLine, delta }) {
+async function aiGirlReply({ card, act, narr, playerLine, delta, attitude, feel }) {
   const name = girl?.name || "她";
   const sys = [
     buildSystemPrompt(buildDateGirlCtx()),
     DATE_REL_OPEN[relStage] || DATE_REL_OPEN.stranger,
     fillDateText(dateScript.girl_system),
     scenePromptBlock(card, narr, act),
+    attitude ? `【這一拍態度】${attitude}` : "",
+    feel ? `【身體感覺】${feel}` : "",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -1077,7 +1112,19 @@ async function doAct(act) {
   });
   const narr = document.querySelector("#log .tx")?.textContent || spec.narr;
   waitingAi = false;
-  const girlP = aiGirlReply({ card, act, narr, playerLine: spec.player, delta });
+  if (spec.imgUrl) {
+    enqueue({
+      role: "sys",
+      who: spec.packName ? `圖・${spec.packName}` : "圖",
+      text: "",
+      img: spec.imgUrl,
+    });
+  }
+  const girlP = aiGirlReply({
+    card, act, narr, playerLine: spec.player, delta,
+    attitude: spec.attitude || "",
+    feel: spec.feel || "",
+  });
   enqueue({ role: "player", who: "我", text: spec.player, extra: delta });
   enqueue({
     role: "girl",
