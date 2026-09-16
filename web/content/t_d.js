@@ -78,6 +78,15 @@ let cgGirlReady = false;
 let cgCloseResolve = null;
 
 /** 強制關掉覆蓋層（後台逃生／卡住時） */
+function openAdminPanel() {
+  // 先關覆蓋層（中止這一輪），後台一定要壓在最上層
+  if (cgOpen) forceCloseCg(true);
+  const el = $("admin");
+  if (!el) return;
+  el.style.zIndex = "100";
+  el.classList.add("on");
+}
+
 function forceCloseCg(resolveOk = true) {
   const ov = $("cg-overlay");
   const img = $("cg-img");
@@ -91,7 +100,7 @@ function forceCloseCg(resolveOk = true) {
   cgOpen = false;
   cgGirlReady = false;
   cgCloseResolve = null;
-  if (resolveOk && typeof done === "function") done();
+  if (resolveOk && typeof done === "function") done({ aborted: true });
   renderHud();
 }
 
@@ -1303,12 +1312,12 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
       img.removeAttribute("src");
     };
 
-    const finish = () => {
+    const finish = (opts = {}) => {
       if (phase >= 2) return;
       phase = 2;
       const out = girlText || tx.textContent || "……";
       cleanup();
-      resolve({ girlText: out });
+      resolve({ girlText: out, aborted: !!opts.aborted });
     };
 
     const showPlayer = () => {
@@ -1383,24 +1392,9 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
 }
 
 
-
-    cgOpen = true;
-    cgGirlReady = false;
-    cgCloseResolve = finish;
-    img.src = url || "";
-    showPlayer();
-    ov.classList.add("on");
-    ov.setAttribute("aria-hidden", "false");
-    img.addEventListener("click", onImgClick);
-    cap?.addEventListener("click", onImgClick);
-    renderHud();
-  });
-}
-
 async function doAct(act) {
   if (act === "admin") {
-    if (cgOpen) forceCloseCg(true);
-    $("admin").classList.add("on");
+    openAdminPanel();
     return;
   }
   if (act === "next") {
@@ -1459,6 +1453,16 @@ async function doAct(act) {
       girlPromise: girlP,
       delta,
     });
+    if (cg?.aborted) {
+      // 開後台中止：不要硬接餘韻旁白
+      busy = false;
+      waitingAi = false;
+      paging = false;
+      queue = [];
+      pendingResolve = false;
+      renderHud();
+      return;
+    }
     const girlLine = cg?.girlText || state.lastGirlLine || "……";
     // 她說完＋下一頁關圖之後：先出餘韻旁白，再按下一頁才回到可操作
     waitingAi = true;
