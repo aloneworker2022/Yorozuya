@@ -8,7 +8,7 @@ import {
   classifyDateLine,
 } from "./edit_date.js";
 import { fillBinds, bindHint } from "./script_mode.js";
-import { filledPack, normalizeMolestPack } from "./date_molest.js";
+import { filledPack, normalizeMolestPack, buildMolestImgBody } from "./date_molest.js";
 import { pickDateOutfit, girlForDate, dateOutfitText } from "./date_outfit.js";
 import { placeZh, fillPlaceTokens } from "./date_place.js";
 
@@ -93,6 +93,7 @@ function emptyState() {
     male: null,
     round: 0,
     lastGirlLine: "",
+    molestImgs: {},
   };
 }
 
@@ -342,14 +343,129 @@ function renderGirlAdmin() {
 }
 
 function pickArrive() {
-  const modes = ["player_wait", "girl_wait", "together"];
+  const modes = ["player_wait", "girl_wait"];
   return modes[Math.floor(Math.random() * modes.length)];
 }
 
+/** 預產圖期間的開場旁白（不含省略號；省略號由動畫補上）。 */
+function arriveLoadingText(mode, name) {
+  if (mode === "girl_wait") return `你正在趕路去見${name}`;
+  return `你先到了。正在等${name}`;
+}
+
+/** 預產完成後的真正抵達旁白。 */
 function arriveText(mode, name) {
-  if (mode === "girl_wait") return `你走到廣場。${name}已經坐在長椅那邊了。`;
-  if (mode === "together") return `你們前後腳到廣場入口，對上眼。`;
-  return `你先到廣場。晨風還涼，${name}還沒出現。過了一會兒，她從入口走過來。`;
+  if (mode === "girl_wait") return `你趕到時，${name}已經在長椅那邊等你了。`;
+  return `過了一會兒，${name}從入口走過來。`;
+}
+
+const ENG_KEY = "yoro_testword_engines";
+
+function engFromLs() {
+  let e = {
+    imgProvider: "grok-img",
+    imgModel: "grok-4.5",
+    llmProvider: "grok-build",
+    llmModel: "grok-4.5",
+    comfyUrl: "",
+    comfyCkpt: "",
+  };
+  try {
+    e = { ...e, ...JSON.parse(localStorage.getItem(ENG_KEY) || "{}") };
+  } catch {
+    /* ignore */
+  }
+  return e;
+}
+
+/** 讀 localStorage 引擎，並合併存檔 settings 的 imgProvider／comfyUrl。 */
+async function getImgEng() {
+  const e = engFromLs();
+  try {
+    const r = await fetch("/api/save", { cache: "no-store" });
+    const j = await r.json();
+    const s = j?.data?.settings || {};
+    if (s.imgProvider) e.imgProvider = s.imgProvider === "comfy" ? "comfy" : s.imgProvider;
+    if (s.comfyUrl) e.comfyUrl = s.comfyUrl;
+  } catch {
+    /* 沒存檔就用 LS／預設 */
+  }
+  return e;
+}
+
+async function apiJson(url, method, body) {
+  const r = await fetch(url, {
+    method: method || "GET",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  return j;
+}
+
+/** 同 edit_date：POST /api/imggen 再輪詢至 done／error。 */
+async function waitImg(body, ms = 360000) {
+  let key = body.key;
+  let r = await apiJson("/api/imggen", "POST", { ...body, retry: body.retry !== false });
+  if (r.key) key = r.key;
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (r.status === "done" || r.status === "error") return r;
+    await new Promise((x) => setTimeout(x, 1500));
+    r = await apiJson("/api/imggen", "POST", { ...body, key, retry: false });
+    if (r.key) key = r.key;
+  }
+  return { status: "error", error: "逾時" };
+}
+
+/** 省略號循環＋可選進度（done/total）。回傳 stop 函式。 */
+function startArriveDots(txEl, base, getProgress) {
+  const frames = ["…", "……", "………"];
+  let i = 0;
+  const tick = () => {
+    if (!txEl) return;
+    const p = typeof getProgress === "function" ? getProgress() : null;
+    const suf = p && p.total > 0 ? `（${p.done}/${p.total}）` : "";
+    txEl.textContent = base + frames[i % frames.length] + suf;
+    i += 1;
+  };
+  tick();
+  const id = setInterval(tick, 450);
+  return () => clearInterval(id);
+}
+
+/**
+ * 約會開場前依序預產所有有參考圖的猥褻包。
+ * 結果寫入 state.molestImgs[packId]；失敗不中止整場約會。
+ */
+async function pregenMolestImages(onProgress) {
+  state.molestImgs = {};
+  const packs = (dateScript.molestPacks || []).map(normalizeMolestPack);
+  const need = packs.filter((p) => String(p.slot?.ref || "").trim());
+  if (!need.length) {
+    if (onProgress) onProgress(0, 0);
+    return;
+  }
+  const eng = await getImgEng();
+  const g = girl;
+  for (let i = 0; i < need.length; i += 1) {
+    if (onProgress) onProgress(i, need.length);
+    const pack = need[i];
+    const placeId = pack.placeId || "plaza";
+    try {
+      const built = await buildMolestImgBody(pack, g, eng, "anime", relStage, placeId);
+      const r = await waitImg(built.body);
+      if (r.status === "done" && r.result) {
+        state.molestImgs[pack.id] = String(r.result).split("?")[0];
+      } else {
+        console.warn("[t_d] molest pregen failed", pack.id || pack.name, r.error || r.status);
+      }
+    } catch (err) {
+      console.warn("[t_d] molest pregen error", pack.id || pack.name, err);
+    }
+    if (onProgress) onProgress(i + 1, need.length);
+  }
 }
 
 function matchingCards() {
@@ -418,13 +534,15 @@ function pickMolestSpec() {
   const pickFrom = left.length ? left : packs.map((_, i) => i);
   const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
   state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
-  const f = filledPack(packs[chosen], datedGirl() || girl, "你", state.zone || packs[chosen].placeId || "plaza");
+  const pack = packs[chosen];
+  const f = filledPack(pack, datedGirl() || girl, "你", state.zone || pack.placeId || "plaza");
+  const pre = state.molestImgs?.[pack.id] || "";
   return {
     narr: f.narrPrompt,
     player: f.playerAct,
     attitude: f.attitude,
     feel: f.feelPrompt,
-    imgUrl: f.slot?.url || "",
+    imgUrl: pre || f.slot?.url || "",
     packName: f.name,
   };
 }
@@ -1082,6 +1200,34 @@ async function startDate() {
   state.arrive = pickArrive();
   state.male = null;
   const card = drawCard();
+
+  // 開場前預產猥褻圖：先到／趕路旁白＋省略號，期間鎖操作
+  const needPregen = (dateScript.molestPacks || [])
+    .map(normalizeMolestPack)
+    .some((p) => String(p.slot?.ref || "").trim());
+  if (needPregen) {
+    busy = true;
+    enterPaging();
+    waitingAi = true;
+    renderHud();
+    const base = arriveLoadingText(state.arrive, girl.name);
+    clearLog("");
+    const bubble = addBubble("sys", "旁白", base + "…");
+    const tx = bubble.querySelector(".tx");
+    const progress = { done: 0, total: 0 };
+    const stopDots = startArriveDots(tx, base, () => progress);
+    try {
+      await pregenMolestImages((done, total) => {
+        progress.done = done;
+        progress.total = total;
+      });
+    } finally {
+      stopDots();
+      waitingAi = false;
+      busy = false;
+    }
+  }
+
   const pages = [
     { role: "sys", who: "旁白", text: arriveText(state.arrive, girl.name) },
     { role: "sys", who: "穿著", text: `${girl.name} 今天穿著約會便服「${wear.text}」，不是上班／制服那身。` },
