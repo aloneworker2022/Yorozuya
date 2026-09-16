@@ -174,23 +174,36 @@
   <h2 class="panel-toggle" data-panel="male" id="toggle-male"><span class="chev">▼</span> 單男</h2>
   <div class="panel-body" id="panel-male-body">
     <h3 class="subh">① 男子種類</h3>
-    <p class="mini">可編輯 id、顯示名、talkWeight（0～1，越高越常抽「騷擾」而非「猥褻」）。預設對應舊 t_d_male 的 fat／gym／lust。</p>
-    <div id="male-types"></div>
-    <button type="button" class="cy" id="male-type-add">＋新增種類</button>
+    <p class="mini">下拉選種類後，編輯該種類的名稱、talkWeight（0～1，越高越常抽「騷擾」而非「猥褻」），以及下方②③④⑤互動池。每種男子各自有搭訕／騷擾／猥褻／交配請求。</p>
+    <div class="type-row" id="male-type-bar">
+      <span class="grow"><label>種類</label>
+        <select id="male-type"></select>
+      </span>
+      <span class="grow"><label>顯示名</label>
+        <input id="male-type-name" maxlength="40" placeholder="顯示名">
+      </span>
+      <span class="fix0"><label>talkWeight</label>
+        <input id="male-type-talk" type="number" min="0" max="1" step="0.05" value="0.5">
+      </span>
+    </div>
+    <div class="row" style="margin:.4em 0 .8em; gap:.4em;">
+      <button type="button" class="cy" id="male-type-add">＋新增種類</button>
+      <button type="button" class="del" id="male-type-del">刪除種類</button>
+    </div>
 
-    <h3 class="subh">② 搭訕</h3>
+    <h3 class="subh">② 搭訕（此種類）</h3>
     <p class="mini">首次出場第一句。兩行一組：第一行旁白方向，第二行男子台詞。組與組空一行。格式同調戲。</p>
     <textarea id="male-approach" class="lines"></textarea>
 
-    <h3 class="subh">③ 騷擾</h3>
+    <h3 class="subh">③ 騷擾（此種類）</h3>
     <p class="mini">場上後的言語騷擾。格式同調戲（旁白＋男子台詞）。</p>
     <textarea id="male-harass" class="lines"></textarea>
 
-    <h3 class="subh">④ 猥褻</h3>
+    <h3 class="subh">④ 猥褻（此種類）</h3>
     <p class="mini">場上後的肢體猥褻。目前用簡單旁白＋男子台詞池（同調戲格式）；packs／圖之後再接。</p>
     <textarea id="male-molest" class="lines"></textarea>
 
-    <h3 class="subh">⑤ 交配請求</h3>
+    <h3 class="subh">⑤ 交配請求（此種類）</h3>
     <p class="mini">順從偏高或男子回合觸發時抽。格式同調戲（旁白＋男子台詞）。</p>
     <textarea id="male-mate" class="lines"></textarea>
   </div>
@@ -298,57 +311,101 @@ function fillTease(s) {
   fillMale(s.male || DEFAULT_DATE_SCRIPT.male);
 }
 
-function fillMale(m) {
-  maleTypes = (m?.types || []).map((t) => ({ ...t }));
-  renderMaleTypes();
-  $("male-approach").value = formatMaleActs(m?.approach || []);
-  $("male-harass").value = formatMaleActs(m?.harass || []);
-  $("male-molest").value = formatMaleActs(m?.molest || []);
-  $("male-mate").value = formatMaleActs(m?.mate || []);
+let maleTypes = [];
+let maleActiveTypeId = "";
+
+function emptyMalePools() {
+  return { approach: [], harass: [], molest: [], mate: [] };
 }
 
-let maleTypes = [];
+function maleTypeById(id) {
+  return maleTypes.find((t) => t.id === id) || maleTypes[0] || null;
+}
 
-function renderMaleTypes() {
-  const box = $("male-types");
-  if (!box) return;
-  box.innerHTML = maleTypes.map((t, i) => `
-    <div class="type-row" data-i="${i}">
-      <span class="fid"><label>id</label><input data-f="id" value="${esc(t.id || "")}" maxlength="24"></span>
-      <span class="grow"><label>顯示名</label><input data-f="name" value="${esc(t.name || "")}" maxlength="40"></span>
-      <span class="fix0"><label>talkWeight</label><input data-f="talkWeight" type="number" min="0" max="1" step="0.05" value="${esc(t.talkWeight ?? 0.5)}"></span>
-      <button type="button" class="del" data-del="${i}">刪</button>
-    </div>`).join("") || `<p class="mini">（尚無種類，請新增）</p>`;
-  box.querySelectorAll("input").forEach((inp) => {
-    inp.addEventListener("input", () => {
-      const row = inp.closest(".type-row");
-      const i = Number(row.dataset.i);
-      const f = inp.dataset.f;
-      if (!maleTypes[i]) return;
-      if (f === "talkWeight") maleTypes[i].talkWeight = parseFloat(inp.value);
-      else maleTypes[i][f] = inp.value;
-    });
-  });
-  box.querySelectorAll("[data-del]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      maleTypes.splice(Number(btn.dataset.del), 1);
-      renderMaleTypes();
-    });
-  });
+function flushMaleTypeFields() {
+  const t = maleTypeById(maleActiveTypeId);
+  if (!t) return;
+  const nameEl = $("male-type-name");
+  const talkEl = $("male-type-talk");
+  if (nameEl) t.name = (nameEl.value || "").trim() || t.name || "男子";
+  if (talkEl) {
+    const tw = parseFloat(talkEl.value);
+    t.talkWeight = Number.isFinite(tw) ? Math.min(1, Math.max(0, tw)) : (t.talkWeight ?? 0.5);
+  }
+  t.approach = parseMaleActs($("male-approach")?.value || "");
+  t.harass = parseMaleActs($("male-harass")?.value || "");
+  t.molest = parseMaleActs($("male-molest")?.value || "");
+  t.mate = parseMaleActs($("male-mate")?.value || "");
+}
+
+function refillMaleTypeFields() {
+  const t = maleTypeById(maleActiveTypeId);
+  const nameEl = $("male-type-name");
+  const talkEl = $("male-type-talk");
+  if (!t) {
+    if (nameEl) nameEl.value = "";
+    if (talkEl) talkEl.value = "0.5";
+    $("male-approach").value = "";
+    $("male-harass").value = "";
+    $("male-molest").value = "";
+    $("male-mate").value = "";
+    return;
+  }
+  maleActiveTypeId = t.id;
+  if (nameEl) nameEl.value = t.name || "";
+  if (talkEl) talkEl.value = String(t.talkWeight ?? 0.5);
+  $("male-approach").value = formatMaleActs(t.approach || []);
+  $("male-harass").value = formatMaleActs(t.harass || []);
+  $("male-molest").value = formatMaleActs(t.molest || []);
+  $("male-mate").value = formatMaleActs(t.mate || []);
+}
+
+function renderMaleTypeSelect() {
+  const sel = $("male-type");
+  if (!sel) return;
+  const cur = maleActiveTypeId;
+  sel.innerHTML = maleTypes.map((t) =>
+    `<option value="${esc(t.id)}">${esc(t.name || t.id)}</option>`
+  ).join("");
+  if (!maleTypes.length) {
+    maleActiveTypeId = "";
+    sel.value = "";
+    return;
+  }
+  if (!maleTypes.some((t) => t.id === cur)) maleActiveTypeId = maleTypes[0].id;
+  sel.value = maleActiveTypeId;
+}
+
+function fillMale(m) {
+  const n = normalizeDateScript({ male: m || {} }).male;
+  maleTypes = (n.types || []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    talkWeight: t.talkWeight,
+    approach: (t.approach || []).map((x) => ({ ...x })),
+    harass: (t.harass || []).map((x) => ({ ...x })),
+    molest: (t.molest || []).map((x) => ({ ...x })),
+    mate: (t.mate || []).map((x) => ({ ...x })),
+  }));
+  maleActiveTypeId = n.activeTypeId || maleTypes[0]?.id || "";
+  renderMaleTypeSelect();
+  refillMaleTypeFields();
 }
 
 function collectMale() {
-  return {
-    types: maleTypes.map((t, i) => ({
-      id: String(t.id || `m${i + 1}`).trim() || `m${i + 1}`,
-      name: String(t.name || "男子").trim() || "男子",
-      talkWeight: Math.min(1, Math.max(0, Number(t.talkWeight) || 0.5)),
-    })),
-    approach: parseMaleActs($("male-approach").value),
-    harass: parseMaleActs($("male-harass").value),
-    molest: parseMaleActs($("male-molest").value),
-    mate: parseMaleActs($("male-mate").value),
-  };
+  flushMaleTypeFields();
+  const types = maleTypes.map((t, i) => ({
+    id: String(t.id || `m${i + 1}`).trim() || `m${i + 1}`,
+    name: String(t.name || "男子").trim() || "男子",
+    talkWeight: Math.min(1, Math.max(0, Number(t.talkWeight) || 0.5)),
+    approach: Array.isArray(t.approach) ? t.approach : [],
+    harass: Array.isArray(t.harass) ? t.harass : [],
+    molest: Array.isArray(t.molest) ? t.molest : [],
+    mate: Array.isArray(t.mate) ? t.mate : [],
+  }));
+  let activeTypeId = maleActiveTypeId;
+  if (!types.some((t) => t.id === activeTypeId)) activeTypeId = types[0]?.id || "";
+  return { activeTypeId, types };
 }
 
 function fill(raw) {
@@ -713,9 +770,50 @@ function setupPanels() {
 }
 setupPanels();
 
+$("male-type")?.addEventListener("change", () => {
+  flushMaleTypeFields();
+  maleActiveTypeId = $("male-type").value || maleTypes[0]?.id || "";
+  refillMaleTypeFields();
+});
+
+$("male-type-name")?.addEventListener("input", () => {
+  const t = maleTypeById(maleActiveTypeId);
+  if (!t) return;
+  t.name = ($("male-type-name").value || "").trim() || t.name;
+  renderMaleTypeSelect();
+});
+
+$("male-type-talk")?.addEventListener("input", () => {
+  const t = maleTypeById(maleActiveTypeId);
+  if (!t) return;
+  const tw = parseFloat($("male-type-talk").value);
+  t.talkWeight = Number.isFinite(tw) ? Math.min(1, Math.max(0, tw)) : 0.5;
+});
+
 $("male-type-add")?.addEventListener("click", () => {
-  maleTypes.push({ id: "m" + (maleTypes.length + 1), name: "新男子", talkWeight: 0.5 });
-  renderMaleTypes();
+  flushMaleTypeFields();
+  let n = maleTypes.length + 1;
+  let id = "m" + n;
+  while (maleTypes.some((t) => t.id === id)) { n += 1; id = "m" + n; }
+  maleTypes.push({
+    id,
+    name: "新男子",
+    talkWeight: 0.5,
+    ...emptyMalePools(),
+  });
+  maleActiveTypeId = id;
+  renderMaleTypeSelect();
+  refillMaleTypeFields();
+});
+
+$("male-type-del")?.addEventListener("click", () => {
+  if (!maleTypes.length) return;
+  const idx = maleTypes.findIndex((t) => t.id === maleActiveTypeId);
+  if (idx < 0) return;
+  maleTypes.splice(idx, 1);
+  maleActiveTypeId = maleTypes[Math.min(idx, maleTypes.length - 1)]?.id || "";
+  renderMaleTypeSelect();
+  refillMaleTypeFields();
 });
 
 (async () => {

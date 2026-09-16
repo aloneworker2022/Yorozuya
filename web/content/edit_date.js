@@ -80,35 +80,85 @@ export const DEFAULT_DATE_SCRIPT = {
       ],
     },
   },
-  /** 單男系統：搭訕／騷擾／猥褻／交配請求。猥褻目前用簡單旁白+台詞池；packs／圖可之後再接。 */
+  /** 單男系統：每種男子各自有搭訕／騷擾／猥褻／交配請求池。 */
   male: {
+    activeTypeId: "fat",
     types: [
-      { id: "fat", name: "噁心胖肥宅", talkWeight: 0.7 },
-      { id: "gym", name: "健身變態男", talkWeight: 0.3 },
-      { id: "lust", name: "色慾單身男", talkWeight: 0.25 },
-    ],
-    approach: [
-      { narr: "一個穿著寬鬆T恤、肚子把衣襬撐開的男人喘著走過來，眼睛先落在她胸口。", male: "嘿美女，一個人喔？肥宅我也是有需求的啦，讓哥靠近一點嘛。" },
-      { narr: "一個肩很寬、背心貼著胸肌的男人放慢腳步，從她側後方靠近。", male: "身材不錯。過來，讓我摟一下就知道妳多軟。" },
-      { narr: "一個眼神發亮的男人徑直走來，視線黏在她胸和腿之間，沒有要打招呼的意思。", male: "奶形看得出來。別裝沒聽到，我是來摸的。" },
-    ],
-    harass: [
-      { narr: "那名男子站在她身側，壓低聲音卻故意讓周圍聽見。", male: "跟這種貨色約會？不如跟哥聊兩句。" },
-      { narr: "他盯著她的領口，嘴角扯開。", male: "這樣穿是故意的吧？胸型都看出來了。" },
-      { narr: "男子湊近她耳邊，氣息噴在她頸側。", male: "別裝沒聽到。妳聞起來就很好幹。" },
-      { narr: "他上下打量她，笑得很大聲。", male: "旁邊那傢伙養不起妳。換哥試試？" },
-    ],
-    // 單男猥褻：暫用與調戲相同的旁白+台詞池；之後可接 packs／圖
-    molest: [
-      { narr: "男子從側後方伸手，隔著衣服按住她腰。", male: "別動。就摸一下。" },
-      { narr: "他的手從她背後滑到臀側，假裝只是擠過去。", male: "這麼軟，借哥摸兩下不過分吧。" },
-      { narr: "男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。", male: "她喜歡這樣，你看她沒推開。" },
-      { narr: "他一把把她拉近，掌心貼在她大腿外側。", male: "腿夾緊一點。給哥好好摸摸。" },
-    ],
-    mate: [
-      { narr: "男子把她拉近自己，聲音又粗又急。", male: "跟我走。現在就去做愛。" },
-      { narr: "他指了指旁邊的小路，另一隻手還攬著她。", male: "別裝了。跟哥去一趟，保證妳爽。" },
-      { narr: "男子對玩家揚了揚下巴，把她往自己身側帶。", male: "她要跟我去交配了。你在旁邊看就好。" },
+      {
+        id: "fat",
+        name: "噁心胖肥宅",
+        talkWeight: 0.7,
+        approach: [
+          { narr: "一個穿著寬鬆T恤、肚子把衣襬撐開的男人喘著走過來，眼睛先落在她胸口。", male: "嘿美女，一個人喔？肥宅我也是有需求的啦，讓哥靠近一點嘛。" },
+        ],
+        harass: [
+          { narr: "肥宅站在她身側，喘著壓低聲音卻故意讓周圍聽見。", male: "跟這種貨色約會？不如跟肥宅哥聊兩句。" },
+          { narr: "他盯著她的領口，肚子一晃，嘴角扯開。", male: "這樣穿是故意的吧？胸型都看出來了。" },
+          { narr: "他湊近她耳邊，氣息又熱又黏。", male: "別裝沒聽到。妳聞起來就很好幹。" },
+          { narr: "他上下打量她，笑得很大聲。", male: "旁邊那傢伙養不起妳。換肥宅試試？" },
+        ],
+        molest: [
+          { narr: "肥宅從側後方伸手，隔著衣服按住她腰。", male: "別動。就摸一下，肥宅手軟。" },
+          { narr: "他的手從她背後滑到臀側，假裝只是擠過去。", male: "這麼軟，借哥摸兩下不過分吧。" },
+          { narr: "他把手伸向她胸口下緣，眼睛盯著玩家挑釁。", male: "她喜歡這樣，你看她沒推開。" },
+          { narr: "他一把把她拉近，掌心貼在她大腿外側。", male: "腿夾緊一點。給哥好好摸摸。" },
+        ],
+        mate: [
+          { narr: "肥宅把她拉近自己，聲音又粗又急。", male: "跟我走。現在就去做愛。" },
+          { narr: "他指了指旁邊的小路，另一隻手還攬著她。", male: "別裝了。跟肥宅去一趟，保證妳爽。" },
+          { narr: "他對玩家揚了揚下巴，把她往自己身側帶。", male: "她要跟我去交配了。你在旁邊看就好。" },
+        ],
+      },
+      {
+        id: "gym",
+        name: "健身變態男",
+        talkWeight: 0.3,
+        approach: [
+          { narr: "一個肩很寬、背心貼著胸肌的男人放慢腳步，從她側後方靠近。", male: "身材不錯。過來，讓我摟一下就知道妳多軟。" },
+        ],
+        harass: [
+          { narr: "健身男站在她身側，壓低聲音卻故意讓周圍聽見。", male: "跟這種貨色約會？不如跟有練的聊兩句。" },
+          { narr: "他盯著她的領口，嘴角扯開。", male: "這樣穿是故意的吧？胸型都看出來了。" },
+          { narr: "他湊近她耳邊，氣息噴在她頸側。", male: "別裝沒聽到。妳聞起來就很好幹。" },
+          { narr: "他上下打量她，笑得很大聲。", male: "旁邊那傢伙養不起妳。換哥試試？" },
+        ],
+        molest: [
+          { narr: "健身男從側後方伸手，隔著衣服按住她腰。", male: "別動。就摸一下。" },
+          { narr: "他的手從她背後滑到臀側，假裝只是擠過去。", male: "這麼軟，借哥摸兩下不過分吧。" },
+          { narr: "他把手伸向她胸口下緣，眼睛盯著玩家挑釁。", male: "她喜歡這樣，你看她沒推開。" },
+          { narr: "他一把把她拉近，掌心貼在她大腿外側。", male: "腿夾緊一點。給哥好好摸摸。" },
+        ],
+        mate: [
+          { narr: "健身男把她拉近自己，聲音又粗又急。", male: "跟我走。現在就去做愛。" },
+          { narr: "他指了指旁邊的小路，另一隻手還攬著她。", male: "別裝了。跟哥去一趟，保證妳爽。" },
+          { narr: "他對玩家揚了揚下巴，把她往自己身側帶。", male: "她要跟我去交配了。你在旁邊看就好。" },
+        ],
+      },
+      {
+        id: "lust",
+        name: "色慾單身男",
+        talkWeight: 0.25,
+        approach: [
+          { narr: "一個眼神發亮的男人徑直走來，視線黏在她胸和腿之間，沒有要打招呼的意思。", male: "奶形看得出來。別裝沒聽到，我是來摸的。" },
+        ],
+        harass: [
+          { narr: "色慾男站在她身側，壓低聲音卻故意讓周圍聽見。", male: "跟這種貨色約會？不如跟哥聊兩句。" },
+          { narr: "他盯著她的領口，嘴角扯開。", male: "這樣穿是故意的吧？胸型都看出來了。" },
+          { narr: "他湊近她耳邊，氣息噴在她頸側。", male: "別裝沒聽到。妳聞起來就很好幹。" },
+          { narr: "他上下打量她，笑得很大聲。", male: "旁邊那傢伙養不起妳。換哥試試？" },
+        ],
+        molest: [
+          { narr: "色慾男從側後方伸手，隔著衣服按住她腰。", male: "別動。就摸一下。" },
+          { narr: "他的手從她背後滑到臀側，假裝只是擠過去。", male: "這麼軟，借哥摸兩下不過分吧。" },
+          { narr: "他把手伸向她胸口下緣，眼睛盯著玩家挑釁。", male: "她喜歡這樣，你看她沒推開。" },
+          { narr: "他一把把她拉近，掌心貼在她大腿外側。", male: "腿夾緊一點。給哥好好摸摸。" },
+        ],
+        mate: [
+          { narr: "色慾男把她拉近自己，聲音又粗又急。", male: "跟我走。現在就去做愛。" },
+          { narr: "他指了指旁邊的小路，另一隻手還攬著她。", male: "別裝了。跟哥去一趟，保證妳爽。" },
+          { narr: "他對玩家揚了揚下巴，把她往自己身側帶。", male: "她要跟我去交配了。你在旁邊看就好。" },
+        ],
+      },
     ],
   },
 };
@@ -162,22 +212,83 @@ function maleActList(list, fallback) {
     .filter((x) => x.narr && x.male);
 }
 
-function maleTypesList(list, fallback) {
+const MALE_POOL_KEYS = ["approach", "harass", "molest", "mate"];
+
+function cloneMaleActs(list) {
+  return maleActList(list, []).map((x) => ({ narr: x.narr, male: x.male }));
+}
+
+function defaultMaleTypeById(id, fallbackTypes) {
+  const fb = Array.isArray(fallbackTypes) ? fallbackTypes : [];
+  return fb.find((t) => t.id === id) || fb[0] || null;
+}
+
+function seedApproachForType(id, index, legacyApproach, dType) {
+  const legacy = Array.isArray(legacyApproach) ? legacyApproach : [];
+  const byId = { fat: 0, gym: 1, lust: 2 };
+  const idx = id in byId ? byId[id] : index;
+  if (legacy[idx]) return cloneMaleActs([legacy[idx]]);
+  if (legacy.length === 1) return cloneMaleActs(legacy);
+  return cloneMaleActs(dType?.approach);
+}
+
+function seedSharedPool(key, legacyTop, dType, dMale) {
+  if (Array.isArray(legacyTop?.[key]) && legacyTop[key].length) {
+    return cloneMaleActs(legacyTop[key]);
+  }
+  if (Array.isArray(dType?.[key]) && dType[key].length) {
+    return cloneMaleActs(dType[key]);
+  }
+  // 最後退回第一個預設種類的同名池
+  const first = (dMale?.types || [])[0];
+  return cloneMaleActs(first?.[key]);
+}
+
+function normalizeMaleType(raw, i, ctx) {
+  const { legacyTop, dMale } = ctx;
+  const dType = defaultMaleTypeById(String(raw?.id || "").trim(), dMale.types)
+    || dMale.types[i]
+    || dMale.types[0]
+    || { id: `m${i + 1}`, name: "男子", talkWeight: 0.5, approach: [], harass: [], molest: [], mate: [] };
+  let id = String(raw?.id || dType.id || `m${i + 1}`).trim() || `m${i + 1}`;
+  const tw = Number(raw?.talkWeight ?? dType.talkWeight);
+  const out = {
+    id,
+    name: String(raw?.name || dType.name || "男子").trim() || "男子",
+    talkWeight: Number.isFinite(tw) ? Math.min(1, Math.max(0, tw)) : 0.5,
+  };
+  for (const key of MALE_POOL_KEYS) {
+    const perType = Array.isArray(raw?.[key]) && raw[key].length
+      ? maleActList(raw[key], [])
+      : null;
+    if (perType && perType.length) {
+      out[key] = perType;
+      continue;
+    }
+    if (key === "approach") {
+      out[key] = seedApproachForType(id, i, legacyTop?.approach, dType);
+    } else {
+      out[key] = seedSharedPool(key, legacyTop, dType, dMale);
+    }
+    if (!out[key].length) out[key] = cloneMaleActs(dType[key]);
+  }
+  return out;
+}
+
+function maleTypesList(list, fallback, legacyTop, dMale) {
   const src = Array.isArray(list) && list.length ? list : fallback;
   const out = [];
   const seen = new Set();
+  const ctx = { legacyTop: legacyTop || {}, dMale: dMale || { types: fallback || [] } };
   src.forEach((x, i) => {
-    let id = String(x?.id || `m${i + 1}`).trim() || `m${i + 1}`;
+    const t = normalizeMaleType(x, i, ctx);
+    let id = t.id;
     if (seen.has(id)) id = `${id}_${i + 1}`;
     seen.add(id);
-    const tw = Number(x?.talkWeight);
-    out.push({
-      id,
-      name: String(x?.name || "男子").trim() || "男子",
-      talkWeight: Number.isFinite(tw) ? Math.min(1, Math.max(0, tw)) : 0.5,
-    });
+    t.id = id;
+    out.push(t);
   });
-  return out.length ? out : maleTypesList(null, fallback);
+  return out.length ? out : maleTypesList(null, fallback, legacyTop, dMale);
 }
 
 export function formatMaleActs(list) {
@@ -218,6 +329,16 @@ export function normalizeDateScript(raw) {
   const activeMolestId = String(src.activeMolestId || molestPacks[0]?.id || "");
   const maleSrc = src.male && typeof src.male === "object" ? src.male : {};
   const dMale = d.male;
+  // 舊格式相容：頂層 shared pools → 各 type 自有池；正規化後不再保留頂層池
+  const legacyTop = {
+    approach: maleSrc.approach,
+    harass: maleSrc.harass,
+    molest: maleSrc.molest,
+    mate: maleSrc.mate,
+  };
+  const types = maleTypesList(maleSrc.types, dMale.types, legacyTop, dMale);
+  let activeTypeId = String(maleSrc.activeTypeId || dMale.activeTypeId || types[0]?.id || "").trim();
+  if (!types.some((t) => t.id === activeTypeId)) activeTypeId = types[0]?.id || "";
   return {
     girl_system: String(src.girl_system || d.girl_system).trim() || d.girl_system,
     narr_system: String(src.narr_system || d.narr_system).trim() || d.narr_system,
@@ -236,11 +357,8 @@ export function normalizeDateScript(raw) {
       ? activeMolestId
       : (molestPacks[0]?.id || ""),
     male: {
-      types: maleTypesList(maleSrc.types, dMale.types),
-      approach: maleActList(maleSrc.approach, dMale.approach),
-      harass: maleActList(maleSrc.harass, dMale.harass),
-      molest: maleActList(maleSrc.molest, dMale.molest),
-      mate: maleActList(maleSrc.mate, dMale.mate),
+      activeTypeId,
+      types,
     },
   };
 }

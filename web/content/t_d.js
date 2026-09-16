@@ -882,10 +882,13 @@ function escapeOddsZh() {
   return `1/${escapeDenom()}`;
 }
 
-/** 從 dateScript.male 池抽旁白+男子台詞（approach / harass / molest / mate） */
+/** 從當前男子種類的池抽旁白+男子台詞（approach / harass / molest / mate） */
 function pickMaleScriptLine(poolKey) {
   const male = dateScript?.male || {};
-  const pack = Array.isArray(male[poolKey]) ? male[poolKey] : [];
+  const types = Array.isArray(male.types) ? male.types : [];
+  const typeId = state.male?.type;
+  const typ = types.find((t) => t.id === typeId) || types[0] || null;
+  const pack = Array.isArray(typ?.[poolKey]) ? typ[poolKey] : [];
   if (!pack.length) {
     return {
       narr: fillDateText("那名男子靠近她。"),
