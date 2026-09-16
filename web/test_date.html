@@ -277,6 +277,58 @@
     font-size: 12px;
   }
 
+  .cg-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, .88);
+  }
+  .cg-overlay.on { display: flex; }
+  .cg-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: min(920px, 100%);
+    max-height: 100%;
+    width: 100%;
+  }
+  .cg-stage > img {
+    display: block;
+    max-width: 100%;
+    max-height: min(72vh, calc(100vh - 160px));
+    object-fit: contain;
+    cursor: pointer;
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000;
+    background: #000;
+  }
+  .cg-cap {
+    width: 100%;
+    cursor: pointer;
+    background: rgba(0, 0, 0, .72);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000, inset 0 0 0 2px #000;
+    padding: 10px 12px;
+  }
+  .cg-who {
+    font-size: 12px;
+    color: var(--cyan);
+    margin-bottom: 2px;
+  }
+  .cg-overlay[data-phase="girl"] .cg-who { color: var(--pink); }
+  .cg-tx { font-size: 24px; line-height: 1.5; }
+  .cg-delta { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .cg-delta:empty { display: none; }
+  @media (max-width: 640px) {
+    .cg-tx { font-size: 12px; }
+    .cg-stage > img { max-height: min(60vh, calc(100vh - 140px)); }
+  }
+
   @media (max-width: 640px) {
     body { font-size: 12px; }
     .where h2, .act, .empty { font-size: 12px; }
@@ -347,6 +399,18 @@
   </div>
 </div>
 
+
+<div id="cg-overlay" class="cg-overlay" data-phase="player" aria-hidden="true">
+  <div class="cg-stage">
+    <img id="cg-img" alt="">
+    <div class="cg-cap" id="cg-cap">
+      <div class="cg-who" id="cg-who"></div>
+      <div class="cg-tx" id="cg-tx"></div>
+      <div class="cg-delta" id="cg-delta"></div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="overlay">
   <div class="modal">
     <h3 id="modal-title">特殊場景</h3>
@@ -398,6 +462,6 @@
   </div>
 </div>
 
-<script type="module" src="/content/t_d.js?v=20260915e"></script>
+<script type="module" src="/content/t_d.js?v=20260916a"></script>
 </body>
 </html>

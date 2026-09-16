@@ -73,6 +73,7 @@ let started = false;
 let paging = false;
 let waitingAi = false;
 let pendingResolve = false;
+let cgOpen = false;
 let queue = [];
 const state = emptyState();
 
@@ -306,7 +307,7 @@ async function showPage(item) {
 }
 
 async function advance() {
-  if (!paging || waitingAi) return;
+  if (!paging || waitingAi || cgOpen) return;
   if (!queue.length) {
     await exitPaging();
     return;
@@ -1237,6 +1238,105 @@ async function startDate() {
   $("date-input")?.focus();
 }
 
+
+/** 猥褻有圖：全螢幕覆蓋，點圖片推進 玩家動作 → 女子回應 → 關閉 */
+function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
+  return new Promise((resolve) => {
+    const ov = $("cg-overlay");
+    const img = $("cg-img");
+    const who = $("cg-who");
+    const tx = $("cg-tx");
+    const deltaEl = $("cg-delta");
+    const cap = $("cg-cap");
+    if (!ov || !img || !who || !tx) {
+      resolve();
+      return;
+    }
+
+    let phase = 0; // 0 player → 1 girl → 2 done
+    let girlText = "";
+    let girlSettled = false;
+    let lock = false;
+
+    const cleanup = () => {
+      img.removeEventListener("click", onClick);
+      cap?.removeEventListener("click", onClick);
+      ov.classList.remove("on");
+      ov.setAttribute("aria-hidden", "true");
+      ov.dataset.phase = "player";
+      cgOpen = false;
+      img.removeAttribute("src");
+    };
+
+    const showPlayer = () => {
+      ov.dataset.phase = "player";
+      who.textContent = "玩家動作";
+      tx.textContent = playerLine || "";
+      if (deltaEl) deltaEl.textContent = delta || "";
+    };
+
+    const showGirl = (text) => {
+      ov.dataset.phase = "girl";
+      who.textContent = "女子回應";
+      tx.textContent = text || "……";
+      if (deltaEl) deltaEl.textContent = "";
+      if (text) state.lastGirlLine = text;
+    };
+
+    // 平行等女子 AI（與開啟覆蓋同時）
+    Promise.resolve(girlPromise)
+      .then((t) => {
+        girlText = String(t || "……");
+        girlSettled = true;
+        if (phase === 1 && !lock) showGirl(girlText);
+      })
+      .catch(() => {
+        girlText = "……";
+        girlSettled = true;
+        if (phase === 1 && !lock) showGirl(girlText);
+      });
+
+    const onClick = async (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      if (lock || phase >= 2) return;
+
+      if (phase === 0) {
+        phase = 1;
+        if (girlSettled) {
+          showGirl(girlText || "……");
+          return;
+        }
+        showGirl("……");
+        lock = true;
+        try {
+          girlText = String((await girlPromise) || "……");
+        } catch {
+          girlText = "……";
+        }
+        girlSettled = true;
+        lock = false;
+        if (phase === 1) showGirl(girlText);
+        return;
+      }
+
+      if (phase === 1) {
+        phase = 2;
+        cleanup();
+        resolve();
+      }
+    };
+
+    cgOpen = true;
+    img.src = url || "";
+    showPlayer();
+    ov.classList.add("on");
+    ov.setAttribute("aria-hidden", "false");
+    img.addEventListener("click", onClick);
+    cap?.addEventListener("click", onClick);
+  });
+}
+
 async function doAct(act) {
   if (act === "admin") {
     $("admin").classList.add("on");
@@ -1283,19 +1383,34 @@ async function doAct(act) {
   });
   const narr = document.querySelector("#log .tx")?.textContent || spec.narr;
   waitingAi = false;
-  if (spec.imgUrl) {
-    enqueue({
-      role: "sys",
-      who: spec.packName ? `圖・${spec.packName}` : "圖",
-      text: "",
-      img: spec.imgUrl,
-    });
-  }
   const girlP = aiGirlReply({
     card, act, narr, playerLine: spec.player, delta,
     attitude: spec.attitude || "",
     feel: spec.feel || "",
   });
+
+  // 猥褻有預產圖：全螢幕覆蓋推進（不進對話泡泡）
+  if (act === "molest" && spec.imgUrl) {
+    await runMolestCg({
+      url: spec.imgUrl,
+      playerLine: spec.player,
+      girlName: girl?.name || "她",
+      girlPromise: girlP,
+      delta,
+    });
+    const ends = endPages();
+    pendingResolve = !state.ended;
+    busy = false;
+    if (ends.length) {
+      queue = ends.slice(1);
+      await showPage(ends[0]);
+      renderHud();
+    } else {
+      await exitPaging();
+    }
+    return;
+  }
+
   enqueue({ role: "player", who: "我", text: spec.player, extra: delta });
   enqueue({
     role: "girl",
