@@ -14,6 +14,14 @@ export const DATE_ACT_ZH = {
   sex: "做愛",
 };
 
+
+/** 各種類預設英文外觀 tags（文生圖用） */
+export const DEFAULT_MALE_LOOK_EN = {
+  fat: "1boy, overweight obese man, large protruding belly, round face, double chin, greasy skin, unkempt messy hair, baggy stained t-shirt, unattractive, lewd smirk",
+  gym: "1boy, muscular athletic man, broad shoulders, thick arms, defined chest, short hair, tight tank top, intense hungry stare, gym body",
+  lust: "1boy, average slim man, hungry lewd eyes, messy hair, casual street clothes, predatory smile, looking at woman, lustful expression",
+};
+
 export const DEFAULT_DATE_SCRIPT = {
   girl_system: [
     "你正在公園跟他約會。人就在他眼前。這不是店頭看板，這是約會現場。",
@@ -88,6 +96,7 @@ export const DEFAULT_DATE_SCRIPT = {
         id: "fat",
         name: "噁心胖肥宅",
         talkWeight: 0.7,
+        lookEn: DEFAULT_MALE_LOOK_EN.fat,
         approach: [
           { narr: "一個穿著寬鬆T恤、肚子把衣襬撐開的男人喘著走過來，眼睛先落在她胸口。", male: "嘿美女，一個人喔？肥宅我也是有需求的啦，讓哥靠近一點嘛。" },
         ],
@@ -113,6 +122,7 @@ export const DEFAULT_DATE_SCRIPT = {
         id: "gym",
         name: "健身變態男",
         talkWeight: 0.3,
+        lookEn: DEFAULT_MALE_LOOK_EN.gym,
         approach: [
           { narr: "一個肩很寬、背心貼著胸肌的男人放慢腳步，從她側後方靠近。", male: "身材不錯。過來，讓我摟一下就知道妳多軟。" },
         ],
@@ -138,6 +148,7 @@ export const DEFAULT_DATE_SCRIPT = {
         id: "lust",
         name: "色慾單身男",
         talkWeight: 0.25,
+        lookEn: DEFAULT_MALE_LOOK_EN.lust,
         approach: [
           { narr: "一個眼神發亮的男人徑直走來，視線黏在她胸和腿之間，沒有要打招呼的意思。", male: "奶形看得出來。別裝沒聽到，我是來摸的。" },
         ],
@@ -212,7 +223,7 @@ function maleActList(list, fallback) {
     .filter((x) => x.narr && x.male);
 }
 
-const MALE_POOL_KEYS = ["approach", "harass", "molest", "mate"];
+const MALE_POOL_KEYS = ["approach", "harass", "mate"]; // molest → molestPacks
 
 function cloneMaleActs(list) {
   return maleActList(list, []).map((x) => ({ narr: x.narr, male: x.male }));
@@ -249,13 +260,15 @@ function normalizeMaleType(raw, i, ctx) {
   const dType = defaultMaleTypeById(String(raw?.id || "").trim(), dMale.types)
     || dMale.types[i]
     || dMale.types[0]
-    || { id: `m${i + 1}`, name: "男子", talkWeight: 0.5, approach: [], harass: [], molest: [], mate: [] };
+    || { id: `m${i + 1}`, name: "男子", talkWeight: 0.5, lookEn: "", approach: [], harass: [], molest: [], mate: [] };
   let id = String(raw?.id || dType.id || `m${i + 1}`).trim() || `m${i + 1}`;
   const tw = Number(raw?.talkWeight ?? dType.talkWeight);
+  const lookFallback = (DEFAULT_MALE_LOOK_EN[id] || dType.lookEn || "");
   const out = {
     id,
     name: String(raw?.name || dType.name || "男子").trim() || "男子",
     talkWeight: Number.isFinite(tw) ? Math.min(1, Math.max(0, tw)) : 0.5,
+    lookEn: String(raw?.lookEn ?? lookFallback ?? "").trim(),
   };
   for (const key of MALE_POOL_KEYS) {
     const perType = Array.isArray(raw?.[key]) && raw[key].length
@@ -272,6 +285,29 @@ function normalizeMaleType(raw, i, ctx) {
     }
     if (!out[key].length) out[key] = cloneMaleActs(dType[key]);
   }
+  // ④ 猥褻：packs 優先；舊 type.molest / 頂層 molest → packsFromLegacyActs
+  const legacyMolestActs = (Array.isArray(raw?.molest) && raw.molest.length)
+    ? raw.molest
+    : (Array.isArray(raw?.molestPacks) && raw.molestPacks.length)
+      ? []
+      : seedSharedPool("molest", legacyTop, dType, dMale);
+  const molestPacks = normalizeMolestPacks(raw?.molestPacks, legacyMolestActs).map((p) =>
+    normalizeMolestPack({ ...p, imgMode: p.imgMode === "ref" && !String(p.slot?.ref || "").trim() ? "txt" : p.imgMode })
+  );
+  // 若從舊池剛遷過來，標記為文生圖
+  for (const p of molestPacks) {
+    if (!String(p.slot?.ref || "").trim()) p.imgMode = "txt";
+  }
+  const activeMolestId = String(raw?.activeMolestId || molestPacks[0]?.id || "");
+  out.molestPacks = molestPacks;
+  out.activeMolestId = molestPacks.some((p) => p.id === activeMolestId)
+    ? activeMolestId
+    : (molestPacks[0]?.id || "");
+  // 舊格式相容：molest 陣列由 packs 同步
+  out.molest = molestPacks.map((p) => ({
+    narr: String(p.narrPrompt || "").trim() || "男子動手猥褻。",
+    male: String(p.playerAct || "").trim() || "……",
+  }));
   return out;
 }
 
@@ -374,4 +410,4 @@ export function classifyDateLine(text, script) {
   return { act: "interact" };
 }
 
-export { normalizeMolestPack, normalizeMolestPacks } from "./date_molest.js";
+export { normalizeMolestPack, normalizeMolestPacks, emptyMaleMolestPack, buildMaleMolestImgBody } from "./date_molest.js";

@@ -56,6 +56,8 @@
   .type-row .grow { flex: 1 1 8em; }
   .type-row .fix0 { flex: 0 1 6em; }
   .type-row .fid { flex: 0 1 7em; }
+  textarea.look { min-height: 4.2em; width: 100%; margin: .35em 0 .55em; }
+  .mm-box { background: rgba(0,0,0,.18); border-radius: 8px; padding: .65em .75em; margin: .4em 0 .8em; }
 </style>
 </head>
 <body>
@@ -174,7 +176,7 @@
   <h2 class="panel-toggle" data-panel="male" id="toggle-male"><span class="chev">▼</span> 單男</h2>
   <div class="panel-body" id="panel-male-body">
     <h3 class="subh">① 男子種類</h3>
-    <p class="mini">下拉選種類後，編輯該種類的名稱、talkWeight（0～1，越高越常抽「騷擾」而非「猥褻」），以及下方②③④⑤互動池。每種男子各自有搭訕／騷擾／猥褻／交配請求。</p>
+    <p class="mini">下拉選種類後，編輯該種類的名稱、talkWeight（0～1，越高越常抽「騷擾」而非「猥褻」）、外觀描述（英文 lookEn，給文生圖），以及下方②③④⑤。每種男子各自有搭訕／騷擾／猥褻劇本包／交配請求。</p>
     <div class="type-row" id="male-type-bar">
       <span class="grow"><label>種類</label>
         <select id="male-type"></select>
@@ -186,7 +188,9 @@
         <input id="male-type-talk" type="number" min="0" max="1" step="0.05" value="0.5">
       </span>
     </div>
-    <div class="row" style="margin:.4em 0 .8em; gap:.4em;">
+    <label>外觀描述 lookEn（英文 tags，文生圖會併入正向）</label>
+    <textarea id="male-type-look" class="look" placeholder="1boy, overweight obese man, large belly, …"></textarea>
+    <div class="row" style="margin:.2em 0 .8em; gap:.4em;">
       <button type="button" class="cy" id="male-type-add">＋新增種類</button>
       <button type="button" class="del" id="male-type-del">刪除種類</button>
     </div>
@@ -199,9 +203,61 @@
     <p class="mini">場上後的言語騷擾。格式同調戲（旁白＋男子台詞）。</p>
     <textarea id="male-harass" class="lines"></textarea>
 
-    <h3 class="subh">④ 猥褻（此種類）</h3>
-    <p class="mini">場上後的肢體猥褻。目前用簡單旁白＋男子台詞池（同調戲格式）；packs／圖之後再接。</p>
-    <textarea id="male-molest" class="lines"></textarea>
+    <h3 class="subh">④ 猥褻（此種類）· 文生圖劇本包</h3>
+    <p class="mini">類似玩家猥褻包，但<strong>純文生圖</strong>（不需參考圖）。產圖時會把此種類的 lookEn 併入正向。測試回覆用上方／下方選的魅子。</p>
+    <div class="mm-box" id="mm-box">
+      <div class="row" style="margin-bottom:.4em">
+        <span class="grow"><label>這份劇本（標題）</label>
+          <select id="mm-pack"></select></span>
+        <span class="grow"><label>名稱</label>
+          <input id="mm-name" placeholder="劇本名稱" maxlength="40"></span>
+        <button class="cy" type="button" id="mm-save-one">儲存此劇本</button>
+        <button type="button" id="mm-new">＋新劇本</button>
+        <button class="del" type="button" id="mm-del">刪除</button>
+      </div>
+      <div class="row" style="margin-bottom:.55em">
+        <span class="grow"><label>測試用魅子</label>
+          <select id="mm-girl"></select></span>
+        <span class="fix0"><label>關係</label>
+          <select id="mm-stage">
+            <option value="stranger">陌生</option>
+            <option value="friend">朋友</option>
+            <option value="girlfriend">女友</option>
+            <option value="wife">妻子</option>
+          </select></span>
+        <span class="fix0"><label>場所</label>
+          <select id="mm-place"></select></span>
+        <span class="fix0"><label>生圖</label>
+          <select id="mm-img-prov">
+            <option value="grok-img">Grok 圖</option>
+            <option value="comfy">ComfyUI</option>
+          </select></span>
+      </div>
+      <label>女子態度</label>
+      <textarea id="mm-attitude" placeholder="依關係：陌生驚怒……這是場上男子動手。"></textarea>
+      <label>男子動作</label>
+      <textarea id="mm-male-act" placeholder="例：男子從後面把手伸向 [name] 的 [waist]。"></textarea>
+      <label>旁白 prompt</label>
+      <textarea id="mm-narr" placeholder="給旁白 AI 的方向。"></textarea>
+      <label>女子感覺 prompt</label>
+      <textarea id="mm-feel" placeholder="這一拍身體感覺，只影響她台詞口氣。"></textarea>
+      <p class="mini">產圖為<strong>文生圖</strong>：會合併 lookEn＋場所英文＋下方正向。不需參考圖／骨架。</p>
+      <div class="art" id="mm-art"><span class="mini">尚未產生</span></div>
+      <label>正向 prompt</label>
+      <textarea id="mm-pos" placeholder="英文 tags，例：1boy groping from behind, nsfw, public"></textarea>
+      <label>負向 prompt</label>
+      <textarea id="mm-neg" style="min-height:3.2em" placeholder="ugly, extra fingers, looking at viewer"></textarea>
+      <label>輸出 prompt（lookEn＋場所＋輸入）</label>
+      <div class="sheet" id="mm-out-prompt">（填 lookEn／正向後更新）</div>
+      <div class="row" style="margin-top:.55em">
+        <button class="cy" type="button" id="mm-gen">產圖</button>
+        <button class="cy" type="button" id="mm-test">綜合測試（動作→旁白→女子→產圖）</button>
+        <button type="button" id="mm-refresh-out">更新輸出 prompt</button>
+      </div>
+      <div class="status" id="mm-status"></div>
+      <div class="cd-sub mini" style="margin-top:.6em;color:#f0bc55">綜合測試結果</div>
+      <div class="sheet" id="mm-test-out">還沒測。</div>
+    </div>
 
     <h3 class="subh">⑤ 交配請求（此種類）</h3>
     <p class="mini">順從偏高或男子回合觸發時抽。格式同調戲（旁白＋男子台詞）。</p>
@@ -220,11 +276,12 @@
 <script type="module">
 import { DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs, formatMaleActs, parseMaleActs } from "./content/edit_date.js";
 import {
-  emptyMolestPack, normalizeMolestPack, filledPack,
+  emptyMolestPack, emptyMaleMolestPack, normalizeMolestPack, filledPack,
   fetchMolestBasePrompt, mergeMolestPrompts, formatOutputPromptSheet,
-  buildMolestImgBody, buildMolestReplyMsgs, buildMolestNarrMsgs, bindHint, fillBinds,
+  buildMolestImgBody, buildMaleMolestImgBody, buildMolestReplyMsgs, buildMolestNarrMsgs, bindHint, fillBinds,
+  joinPromptParts,
 } from "./content/date_molest.js";
-import { DATE_PLACES, placeZh } from "./content/date_place.js";
+import { DATE_PLACES, placeZh, placeEn } from "./content/date_place.js";
 
 const ENG_KEY = "yoro_testword_engines";
 
@@ -239,12 +296,24 @@ function moStatus(m, err) {
   s.textContent = m;
   s.className = "status" + (err ? " err" : "");
 }
+function mmStatus(m, err) {
+  const s = $("mm-status");
+  if (!s) return;
+  s.textContent = m;
+  s.className = "status" + (err ? " err" : "");
+}
 
 const bh = $("bind-hint");
 if (bh) bh.textContent = "可用標註：" + bindHint() + " [place]";
 const moPlaceSel = $("mo-place");
 if (moPlaceSel) {
   moPlaceSel.innerHTML = DATE_PLACES.map((z) =>
+    `<option value="${z.id}">${z.name}</option>`
+  ).join("");
+}
+const mmPlaceSel = $("mm-place");
+if (mmPlaceSel) {
+  mmPlaceSel.innerHTML = DATE_PLACES.map((z) =>
     `<option value="${z.id}">${z.name}</option>`
   ).join("");
 }
@@ -267,10 +336,11 @@ function girlCkptHint(g) {
   return c ? `模型 · ${c}` : "模型 · （此魅子尚未綁定）";
 }
 
-function engGet() {
+function engGet(provSelId) {
   let e = { imgProvider: "grok-img", imgModel: "grok-4.5", llmProvider: "grok-build", llmModel: "grok-4.5", comfyUrl: "", comfyCkpt: "" };
   try { e = { ...e, ...JSON.parse(localStorage.getItem(ENG_KEY) || "{}") }; } catch {}
-  e.imgProvider = $("mo-img-prov")?.value || e.imgProvider || "grok-img";
+  const fromSel = provSelId ? $(provSelId)?.value : "";
+  e.imgProvider = fromSel || $("mo-img-prov")?.value || $("mm-img-prov")?.value || e.imgProvider || "grok-img";
   try { localStorage.setItem(ENG_KEY, JSON.stringify({ ...e, imgProvider: e.imgProvider })); } catch {}
   return e;
 }
@@ -313,13 +383,140 @@ function fillTease(s) {
 
 let maleTypes = [];
 let maleActiveTypeId = "";
+let mmId = "";
 
 function emptyMalePools() {
-  return { approach: [], harass: [], molest: [], mate: [] };
+  const p = emptyMaleMolestPack("預設猥褻");
+  return {
+    approach: [],
+    harass: [],
+    mate: [],
+    molest: [{ narr: p.narrPrompt, male: p.playerAct }],
+    molestPacks: [p],
+    activeMolestId: p.id,
+    lookEn: "",
+  };
 }
 
 function maleTypeById(id) {
   return maleTypes.find((t) => t.id === id) || maleTypes[0] || null;
+}
+
+function mmPack() {
+  const t = maleTypeById(maleActiveTypeId);
+  const list = t?.molestPacks || [];
+  if (!list.length) return null;
+  return list.find((p) => p.id === mmId) || list[0] || null;
+}
+
+function mmCollect() {
+  const t = maleTypeById(maleActiveTypeId);
+  const p = mmPack();
+  if (!t || !p) return;
+  p.name = ($("mm-name")?.value || "").trim() || p.name;
+  p.attitude = $("mm-attitude")?.value || "";
+  p.playerAct = $("mm-male-act")?.value || "";
+  p.narrPrompt = $("mm-narr")?.value || "";
+  p.feelPrompt = $("mm-feel")?.value || "";
+  p.placeId = $("mm-place")?.value || p.placeId || "plaza";
+  p.imgMode = "txt";
+  p.slot = p.slot || { prompt: "", negative: "", ref: "", url: "" };
+  p.slot.prompt = $("mm-pos")?.value || "";
+  p.slot.negative = $("mm-neg")?.value || "";
+  p.updated = Date.now();
+  t.activeMolestId = p.id;
+  mmId = p.id;
+  t.molest = (t.molestPacks || []).map((x) => ({
+    narr: String(x.narrPrompt || "").trim() || "男子動手猥褻。",
+    male: String(x.playerAct || "").trim() || "……",
+  }));
+}
+
+function mmRenderPacks() {
+  const sel = $("mm-pack");
+  const t = maleTypeById(maleActiveTypeId);
+  if (!sel) return;
+  const list = t?.molestPacks || [];
+  if (!list.some((p) => p.id === mmId) && list[0]) mmId = list[0].id;
+  sel.innerHTML = list.map((p) =>
+    `<option value="${esc(p.id)}"${p.id === mmId ? " selected" : ""}>${esc(p.name)}</option>`
+  ).join("") || `<option value="">（尚無）</option>`;
+}
+
+function mmRefreshOut() {
+  mmCollect();
+  const t = maleTypeById(maleActiveTypeId);
+  const p = mmPack();
+  const el = $("mm-out-prompt");
+  if (!el) return;
+  if (!p) { el.textContent = "（無劇本）"; return; }
+  const pid = $("mm-place")?.value || p.placeId || "plaza";
+  const look = String(t?.lookEn || "").trim();
+  const userPos = String(p.slot?.prompt || "").trim();
+  const userNeg = String(p.slot?.negative || "").trim();
+  const placePos = placeEn(pid);
+  const positive = joinPromptParts(look, placePos, userPos);
+  el.textContent = [
+    `【場所】${placeZh(pid)}`,
+    "",
+    "【lookEn】",
+    look || "（空）",
+    "",
+    "【場所英文】",
+    placePos || "（空）",
+    "",
+    "【＋輸入正向】",
+    userPos || "（空白）",
+    "",
+    "【合併正向 → 送出】",
+    positive || "（空）",
+    "",
+    "【負向】",
+    userNeg || "（空）",
+  ].join("\n");
+}
+
+function mmRenderForm() {
+  const p = mmPack();
+  if (!p) {
+    if ($("mm-name")) $("mm-name").value = "";
+    if ($("mm-attitude")) $("mm-attitude").value = "";
+    if ($("mm-male-act")) $("mm-male-act").value = "";
+    if ($("mm-narr")) $("mm-narr").value = "";
+    if ($("mm-feel")) $("mm-feel").value = "";
+    if ($("mm-pos")) $("mm-pos").value = "";
+    if ($("mm-neg")) $("mm-neg").value = "";
+    if ($("mm-art")) $("mm-art").innerHTML = `<span class="mini">尚未產生</span>`;
+    if ($("mm-out-prompt")) $("mm-out-prompt").textContent = "（無劇本）";
+    return;
+  }
+  if ($("mm-name")) $("mm-name").value = p.name || "";
+  if ($("mm-attitude")) $("mm-attitude").value = p.attitude || "";
+  if ($("mm-male-act")) $("mm-male-act").value = p.playerAct || "";
+  if ($("mm-narr")) $("mm-narr").value = p.narrPrompt || "";
+  if ($("mm-feel")) $("mm-feel").value = p.feelPrompt || "";
+  if ($("mm-place")) $("mm-place").value = p.placeId || "plaza";
+  if ($("mm-pos")) $("mm-pos").value = p.slot?.prompt || "";
+  if ($("mm-neg")) $("mm-neg").value = p.slot?.negative || "";
+  const art = $("mm-art");
+  if (art) {
+    if (p.slot?.url) art.innerHTML = `<img src="${esc(p.slot.url)}" alt="male-molest">`;
+    else art.innerHTML = `<span class="mini">尚未產生</span>`;
+  }
+  mmRefreshOut();
+}
+
+function mmRenderGirls() {
+  const sel = $("mm-girl");
+  if (!sel) return;
+  sel.innerHTML = girls.length
+    ? girls.map((g) => `<option value="${esc(g.id)}"${g.id === girlId ? " selected" : ""}>${esc(g.name || g.id)}</option>`).join("")
+    : `<option value="">（存檔沒有魅子）</option>`;
+  if (!girls.some((g) => g.id === girlId) && girls[0]) girlId = girls[0].id;
+  if (girls[0] && $("mm-stage")) {
+    const g = girls.find((x) => x.id === girlId);
+    if (g?.stage) $("mm-stage").value = g.stage || "stranger";
+  }
 }
 
 function flushMaleTypeFields() {
@@ -327,37 +524,52 @@ function flushMaleTypeFields() {
   if (!t) return;
   const nameEl = $("male-type-name");
   const talkEl = $("male-type-talk");
+  const lookEl = $("male-type-look");
   if (nameEl) t.name = (nameEl.value || "").trim() || t.name || "男子";
   if (talkEl) {
     const tw = parseFloat(talkEl.value);
     t.talkWeight = Number.isFinite(tw) ? Math.min(1, Math.max(0, tw)) : (t.talkWeight ?? 0.5);
   }
+  if (lookEl) t.lookEn = lookEl.value || "";
   t.approach = parseMaleActs($("male-approach")?.value || "");
   t.harass = parseMaleActs($("male-harass")?.value || "");
-  t.molest = parseMaleActs($("male-molest")?.value || "");
   t.mate = parseMaleActs($("male-mate")?.value || "");
+  mmCollect();
 }
 
 function refillMaleTypeFields() {
   const t = maleTypeById(maleActiveTypeId);
   const nameEl = $("male-type-name");
   const talkEl = $("male-type-talk");
+  const lookEl = $("male-type-look");
   if (!t) {
     if (nameEl) nameEl.value = "";
     if (talkEl) talkEl.value = "0.5";
-    $("male-approach").value = "";
-    $("male-harass").value = "";
-    $("male-molest").value = "";
-    $("male-mate").value = "";
+    if (lookEl) lookEl.value = "";
+    if ($("male-approach")) $("male-approach").value = "";
+    if ($("male-harass")) $("male-harass").value = "";
+    if ($("male-mate")) $("male-mate").value = "";
+    mmId = "";
+    mmRenderPacks();
+    mmRenderForm();
     return;
   }
   maleActiveTypeId = t.id;
+  if (!Array.isArray(t.molestPacks) || !t.molestPacks.length) {
+    const p = emptyMaleMolestPack("預設猥褻");
+    t.molestPacks = [p];
+    t.activeMolestId = p.id;
+  }
+  t.molestPacks = t.molestPacks.map((p) => normalizeMolestPack({ ...p, imgMode: "txt" }));
   if (nameEl) nameEl.value = t.name || "";
   if (talkEl) talkEl.value = String(t.talkWeight ?? 0.5);
-  $("male-approach").value = formatMaleActs(t.approach || []);
-  $("male-harass").value = formatMaleActs(t.harass || []);
-  $("male-molest").value = formatMaleActs(t.molest || []);
-  $("male-mate").value = formatMaleActs(t.mate || []);
+  if (lookEl) lookEl.value = t.lookEn || "";
+  if ($("male-approach")) $("male-approach").value = formatMaleActs(t.approach || []);
+  if ($("male-harass")) $("male-harass").value = formatMaleActs(t.harass || []);
+  if ($("male-mate")) $("male-mate").value = formatMaleActs(t.mate || []);
+  mmId = t.activeMolestId || t.molestPacks[0]?.id || "";
+  mmRenderPacks();
+  mmRenderForm();
 }
 
 function renderMaleTypeSelect() {
@@ -382,12 +594,17 @@ function fillMale(m) {
     id: t.id,
     name: t.name,
     talkWeight: t.talkWeight,
+    lookEn: t.lookEn || "",
     approach: (t.approach || []).map((x) => ({ ...x })),
     harass: (t.harass || []).map((x) => ({ ...x })),
-    molest: (t.molest || []).map((x) => ({ ...x })),
     mate: (t.mate || []).map((x) => ({ ...x })),
+    molest: (t.molest || []).map((x) => ({ ...x })),
+    molestPacks: (t.molestPacks || []).map((p) => normalizeMolestPack({ ...p, imgMode: "txt" })),
+    activeMolestId: t.activeMolestId || "",
   }));
   maleActiveTypeId = n.activeTypeId || maleTypes[0]?.id || "";
+  const cur = maleTypeById(maleActiveTypeId);
+  mmId = cur?.activeMolestId || cur?.molestPacks?.[0]?.id || "";
   renderMaleTypeSelect();
   refillMaleTypeFields();
 }
@@ -398,10 +615,16 @@ function collectMale() {
     id: String(t.id || `m${i + 1}`).trim() || `m${i + 1}`,
     name: String(t.name || "男子").trim() || "男子",
     talkWeight: Math.min(1, Math.max(0, Number(t.talkWeight) || 0.5)),
+    lookEn: String(t.lookEn || "").trim(),
     approach: Array.isArray(t.approach) ? t.approach : [],
     harass: Array.isArray(t.harass) ? t.harass : [],
-    molest: Array.isArray(t.molest) ? t.molest : [],
     mate: Array.isArray(t.mate) ? t.mate : [],
+    molestPacks: (t.molestPacks || []).map((p) => normalizeMolestPack({ ...p, imgMode: "txt" })),
+    activeMolestId: t.activeMolestId || t.molestPacks?.[0]?.id || "",
+    molest: (t.molestPacks || []).map((p) => ({
+      narr: String(p.narrPrompt || "").trim() || "男子動手猥褻。",
+      male: String(p.playerAct || "").trim() || "……",
+    })),
   }));
   let activeTypeId = maleActiveTypeId;
   if (!types.some((t) => t.id === activeTypeId)) activeTypeId = types[0]?.id || "";
@@ -528,16 +751,21 @@ async function loadGirls() {
     girls = list;
     if (!girls.some((g) => g.id === girlId)) girlId = girls[0]?.id || "";
     moRenderGirls();
+    mmRenderGirls();
     if (girls.length) {
       const g = girls.find((x) => x.id === girlId) || girls[0];
       moStatus(`名冊 ${girls.length} 隻 · ${girlCkptHint(g)}`);
+      mmStatus(`名冊 ${girls.length} 隻 · ${girlCkptHint(g)}`);
     } else {
       moStatus("存檔沒有可用魅子", true);
+      mmStatus("存檔沒有可用魅子", true);
     }
   } catch (e) {
     girls = [];
     moRenderGirls();
+    mmRenderGirls();
     moStatus("讀存檔失敗：" + e.message, true);
+    mmStatus("讀存檔失敗：" + e.message, true);
   }
 }
 
@@ -790,18 +1018,33 @@ $("male-type-talk")?.addEventListener("input", () => {
   t.talkWeight = Number.isFinite(tw) ? Math.min(1, Math.max(0, tw)) : 0.5;
 });
 
+$("male-type-look")?.addEventListener("input", () => {
+  const t = maleTypeById(maleActiveTypeId);
+  if (!t) return;
+  t.lookEn = $("male-type-look").value || "";
+  mmRefreshOut();
+});
+
 $("male-type-add")?.addEventListener("click", () => {
   flushMaleTypeFields();
   let n = maleTypes.length + 1;
   let id = "m" + n;
   while (maleTypes.some((t) => t.id === id)) { n += 1; id = "m" + n; }
+  const pools = emptyMalePools();
   maleTypes.push({
     id,
     name: "新男子",
     talkWeight: 0.5,
-    ...emptyMalePools(),
+    lookEn: pools.lookEn,
+    approach: pools.approach,
+    harass: pools.harass,
+    mate: pools.mate,
+    molest: pools.molest,
+    molestPacks: pools.molestPacks,
+    activeMolestId: pools.activeMolestId,
   });
   maleActiveTypeId = id;
+  mmId = pools.activeMolestId;
   renderMaleTypeSelect();
   refillMaleTypeFields();
 });
@@ -812,8 +1055,140 @@ $("male-type-del")?.addEventListener("click", () => {
   if (idx < 0) return;
   maleTypes.splice(idx, 1);
   maleActiveTypeId = maleTypes[Math.min(idx, maleTypes.length - 1)]?.id || "";
+  const cur = maleTypeById(maleActiveTypeId);
+  mmId = cur?.activeMolestId || cur?.molestPacks?.[0]?.id || "";
   renderMaleTypeSelect();
   refillMaleTypeFields();
+});
+
+$("mm-pack")?.addEventListener("change", () => {
+  mmCollect();
+  mmId = $("mm-pack").value;
+  const t = maleTypeById(maleActiveTypeId);
+  if (t) t.activeMolestId = mmId;
+  mmRenderForm();
+});
+$("mm-girl")?.addEventListener("change", () => {
+  girlId = $("mm-girl").value;
+  const g = moGirl();
+  if (g?.stage && $("mm-stage")) $("mm-stage").value = g.stage;
+  if ($("mo-girl")) $("mo-girl").value = girlId;
+  mmStatus(g ? girlCkptHint(g) : "沒有魅子", !g);
+});
+["mm-pos", "mm-male-act", "mm-attitude", "mm-narr", "mm-feel"].forEach((id) => {
+  $(id)?.addEventListener("input", () => mmRefreshOut());
+});
+$("mm-refresh-out")?.addEventListener("click", () => mmRefreshOut());
+$("mm-place")?.addEventListener("change", () => {
+  mmCollect();
+  mmRefreshOut();
+});
+$("mm-img-prov")?.addEventListener("change", () => engGet("mm-img-prov"));
+
+$("mm-new")?.addEventListener("click", () => {
+  flushMaleTypeFields();
+  const t = maleTypeById(maleActiveTypeId);
+  if (!t) return;
+  if (!Array.isArray(t.molestPacks)) t.molestPacks = [];
+  const p = emptyMaleMolestPack("猥褻 " + (t.molestPacks.length + 1));
+  t.molestPacks.push(p);
+  mmId = p.id;
+  t.activeMolestId = mmId;
+  mmRenderPacks();
+  mmRenderForm();
+  mmStatus("已新增劇本（記得儲存）");
+});
+
+$("mm-del")?.addEventListener("click", () => {
+  const t = maleTypeById(maleActiveTypeId);
+  if (!t?.molestPacks) return;
+  if (t.molestPacks.length <= 1) {
+    mmStatus("至少留一份猥褻劇本", true);
+    return;
+  }
+  t.molestPacks = t.molestPacks.filter((p) => p.id !== mmId);
+  mmId = t.molestPacks[0].id;
+  t.activeMolestId = mmId;
+  mmRenderPacks();
+  mmRenderForm();
+  mmStatus("已刪除（記得儲存）");
+});
+
+$("mm-save-one")?.addEventListener("click", () => saveAll());
+
+$("mm-gen")?.addEventListener("click", async () => {
+  flushMaleTypeFields();
+  const t = maleTypeById(maleActiveTypeId);
+  const p = mmPack();
+  if (!t || !p) return;
+  if (!String(t.lookEn || "").trim()) {
+    mmStatus("請先填此種類的 lookEn 外觀描述", true);
+    return;
+  }
+  $("mm-art").innerHTML = `<span class="mini">生成中…</span>`;
+  mmStatus("文生圖產圖中…");
+  try {
+    const built = buildMaleMolestImgBody(p, t, engGet("mm-img-prov"), "anime", $("mm-place")?.value || p.placeId || "plaza");
+    $("mm-out-prompt").textContent = formatOutputPromptSheet({
+      ...built.merged,
+      basePositive: built.lookEn || built.merged.basePositive,
+    });
+    const r = await waitImg(built.body);
+    if (r.status === "done" && r.result) {
+      p.slot.url = String(r.result).split("?")[0];
+      $("mm-art").innerHTML = `<img src="${esc(r.result)}" alt="male-molest">`;
+      mmStatus("✓ 產圖完成 · " + (built.place?.name || "") + " · lookEn 已合併（記得儲存）");
+    } else {
+      $("mm-art").innerHTML = `<span class="mini">失敗</span>`;
+      mmStatus(r.error || "生圖失敗", true);
+    }
+  } catch (err) {
+    $("mm-art").innerHTML = `<span class="mini">失敗</span>`;
+    mmStatus(err.message, true);
+  }
+});
+
+$("mm-test")?.addEventListener("click", async () => {
+  flushMaleTypeFields();
+  const t = maleTypeById(maleActiveTypeId);
+  const p = mmPack();
+  const g = moGirl();
+  if (!t || !p) return;
+  if (!g) { mmStatus("先選存檔魅子", true); return; }
+  const stage = $("mm-stage")?.value || g.stage || "stranger";
+  const pid = $("mm-place")?.value || p.placeId || "plaza";
+  const f = filledPack(p, g, t.name || "男子", pid);
+  const out = $("mm-test-out");
+  out.textContent = "綜合測試中…";
+  mmStatus("綜合測試：旁白…");
+  try {
+    const narr = await llmOnce(buildMolestNarrMsgs(f.narrPrompt, f.playerAct, g.name));
+    out.textContent = `【男子動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n女子回話中…`;
+    mmStatus("綜合測試：女子…");
+    const reply = await llmOnce(buildMolestReplyMsgs(g.name, f.attitude, f.feelPrompt, narr, f.playerAct, stage));
+    out.textContent = `【男子動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n產圖中…`;
+    mmStatus("綜合測試：產圖…");
+    if (!String(t.lookEn || "").trim()) throw new Error("請先填 lookEn");
+    const built = buildMaleMolestImgBody(p, t, engGet("mm-img-prov"), "anime", pid);
+    $("mm-out-prompt").textContent = formatOutputPromptSheet({
+      ...built.merged,
+      basePositive: built.lookEn || built.merged.basePositive,
+    });
+    let imgLine = "";
+    const r = await waitImg(built.body);
+    if (r.status === "done" && r.result) {
+      p.slot.url = String(r.result).split("?")[0];
+      $("mm-art").innerHTML = `<img src="${esc(r.result)}" alt="male-molest">`;
+      imgLine = "產圖 ✓ " + p.slot.url;
+    } else {
+      imgLine = "產圖失敗：" + (r.error || "");
+    }
+    out.textContent = `【場所】\n${f.placeZh || placeZh(pid)}\n\n【男子動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n【圖】\n${imgLine}\n\n【輸出 prompt】\n${formatOutputPromptSheet(built.merged)}`;
+    mmStatus("✓ 綜合測試完成（記得儲存）");
+  } catch (err) {
+    out.textContent = "失敗：" + err.message;
+    mmStatus(err.message, true);
+  }
 });
 
 (async () => {
@@ -825,7 +1200,10 @@ $("male-type-del")?.addEventListener("click", () => {
   }
   try {
     const e = JSON.parse(localStorage.getItem(ENG_KEY) || "{}");
-    if (e.imgProvider) $("mo-img-prov").value = e.imgProvider;
+    if (e.imgProvider) {
+      if ($("mo-img-prov")) $("mo-img-prov").value = e.imgProvider;
+      if ($("mm-img-prov")) $("mm-img-prov").value = e.imgProvider;
+    }
   } catch {}
   await loadGirls();
 })();

@@ -883,11 +883,42 @@ function escapeOddsZh() {
 }
 
 /** 從當前男子種類的池抽旁白+男子台詞（approach / harass / molest / mate） */
-function pickMaleScriptLine(poolKey) {
+function currentMaleType() {
   const male = dateScript?.male || {};
   const types = Array.isArray(male.types) ? male.types : [];
   const typeId = state.male?.type;
-  const typ = types.find((t) => t.id === typeId) || types[0] || null;
+  return types.find((t) => t.id === typeId) || types[0] || null;
+}
+
+function pickMaleMolestSpec() {
+  const typ = currentMaleType();
+  const packs = (typ?.molestPacks || []).map((p) => normalizeMolestPack(p));
+  if (!packs.length) return null;
+  const usedKey = "molest-pack";
+  const m = state.male;
+  const used = (m.used[usedKey] || []);
+  const left = packs.map((_, i) => i).filter((i) => !used.includes(i));
+  const pickFrom = left.length ? left : packs.map((_, i) => i);
+  const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+  m.used[usedKey] = left.length ? used.concat(chosen) : [chosen];
+  const pack = packs[chosen];
+  const f = filledPack(pack, datedGirl() || girl, typ?.name || state.male?.name || "男子", state.zone || pack.placeId || "plaza");
+  return {
+    narr: f.narrPrompt || "男子動手猥褻。",
+    male: f.playerAct || "……",
+    attitude: f.attitude || "",
+    feel: f.feelPrompt || "",
+    imgUrl: String(f.slot?.url || "").trim(),
+    packName: f.name,
+  };
+}
+
+function pickMaleScriptLine(poolKey) {
+  if (poolKey === "molest") {
+    const fromPack = pickMaleMolestSpec();
+    if (fromPack) return fromPack;
+  }
+  const typ = currentMaleType();
   const pack = Array.isArray(typ?.[poolKey]) ? typ[poolKey] : [];
   if (!pack.length) {
     return {
@@ -1154,6 +1185,51 @@ async function startMaleTurn() {
   const delta = applyMaleAct(kind);
   const success = maleSucceeds();
   if (state.male) state.male.escapeDenom = (state.male.escapeDenom || 15) + 2;
+  const isTouch = kind === "touch" || kind === "molest";
+  if (isTouch && success && spec.imgUrl) {
+    const m = state.male;
+    enterPaging();
+    queue = [];
+    await showPage({
+      role: "male",
+      who: m.name,
+      text: spec.male,
+      extra: `成功　${delta || ""}`,
+    });
+    waitingAi = true;
+    const girlP = aiGirlReplyToMale({
+      narr: spec.narr,
+      maleLine: spec.male,
+      success: true,
+      kind,
+    });
+    const cg = await runMolestCg({
+      url: spec.imgUrl,
+      playerLine: spec.male,
+      playerWho: m.name,
+      girlName: girl?.name || "她",
+      girlPromise: girlP,
+      delta,
+    });
+    waitingAi = false;
+    if (cg?.aborted) {
+      busy = false;
+      paging = false;
+      queue = [];
+      pendingResolve = false;
+      renderHud();
+      return;
+    }
+    const ends = endPages();
+    pendingResolve = !state.ended;
+    if (ends.length) {
+      await playQueue(ends);
+    } else {
+      busy = false;
+      await exitPaging();
+    }
+    return;
+  }
   await playQueue(maleBeatPages({ kind, spec, success, delta }));
 }
 
@@ -1358,7 +1434,7 @@ async function startDate() {
 
 
 /** 猥褻有圖：全螢幕覆蓋，點圖推進 你 → 她的名字 → 關閉（回到 v7.10，不用下一頁） */
-function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
+function runMolestCg({ url, playerLine, girlName, girlPromise, delta, playerWho }) {
   return new Promise((resolve) => {
     const ov = $("cg-overlay");
     const img = $("cg-img");
@@ -1400,7 +1476,7 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
     const showPlayer = () => {
       ov.dataset.phase = "player";
       cgGirlReady = false;
-      who.textContent = "你";
+      who.textContent = playerWho || "你";
       tx.textContent = playerLine || "";
       if (deltaEl) deltaEl.textContent = delta || "";
       renderHud();
