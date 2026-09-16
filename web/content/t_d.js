@@ -700,7 +700,7 @@ function scenePromptBlock(card, narr, act) {
   const bits = [
     "【這一拍場景】（看板店頭聊沒有這段；約會要帶進去）",
     `你們正在公園「${zone.name}」約會（${placeZh(state.zone)}）。時段：${timeOf(state.time).name}。人就在他眼前。`,
-    `她今天出門穿的是約會便服「${dateOutfitText(datedGirl() || girl, ensureDateOutfit())}」，不是上班／制服那身。`,
+    `她今天穿著「${dateOutfitText(datedGirl() || girl, ensureDateOutfit())}」。`,
     card?.name ? `場景「${card.name}」：${card.scene}` : "",
     card?.narration ? `場景旁白：${card.narration}` : "",
     narr ? `剛才發生的事：${narr}` : "",
@@ -1191,7 +1191,7 @@ async function startDate() {
   Object.assign(state, emptyState());
   state.time = $("times")?.querySelector(".pill.on")?.dataset.id || "morning";
   dateOutfit = null;
-  const wear = ensureDateOutfit();
+  ensureDateOutfit();
   started = true;
   state.ended = false;
   busy = false;
@@ -1230,7 +1230,6 @@ async function startDate() {
 
   const pages = [
     { role: "sys", who: "旁白", text: arriveText(state.arrive, girl.name) },
-    { role: "sys", who: "穿著", text: `${girl.name} 今天穿著約會便服「${wear.text}」，不是上班／制服那身。` },
   ];
   if (!card) pages.push({ role: "sys", who: "系統", text: "沒有可抽的廣場卡。" });
   else pages.push({ role: "sys", who: "旁白", text: card.narration });
