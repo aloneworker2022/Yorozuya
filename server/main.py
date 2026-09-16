@@ -1640,6 +1640,21 @@ def _stage_ref_in_work(src: Path | None, work: Path, stem: str) -> Path | None:
     return dest
 
 
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    """寫到 path.suffix.buff 再 replace 正式檔（省空間、原子覆寫）。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    buff = path.with_suffix(path.suffix + ".buff")
+    try:
+        buff.write_bytes(data)
+        buff.replace(path)
+    finally:
+        if buff.exists():
+            try:
+                buff.unlink()
+            except OSError:
+                pass
+
+
 async def _run_grok_image(
     model: str,
     *,
@@ -1747,7 +1762,7 @@ async def _run_grok_image(
         cands.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         if cands:
             try:
-                abs_out.write_bytes(cands[0].read_bytes())
+                _atomic_write_bytes(abs_out, cands[0].read_bytes())
                 found = abs_out
             except Exception as e:
                 return "", f"搬移圖片失敗:{e}"
@@ -2553,7 +2568,7 @@ class ImgGenIn(BaseModel):
     out_height: int = 0
     steps: int = 0
     cfg: float = 0
-    seed: int = 0               # 0 = 隨機。三連拍(shot)例外：固定人設 seed 鎖臉
+    seed: int = 0               # 0 = 隨機；有 shot 時 0→人設 seed。發呆刷新會傳新 seed 覆寫同檔
     # 出卡場景：lock_identity + extra 鎖人設 tags；seed 每次隨機（不可固定，否則每張同圖）
     lock_identity: bool = False
     comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
@@ -3287,6 +3302,9 @@ def _dd_img_base(girl: dict, cfg: dict, key: str, **kw) -> ImgGenIn:
 async def _dd_run_portraits(girl: dict, cfg: dict, key: str, on_label) -> dict:
     portraits = {}
     ts = int(time.time() * 1000)
+    # 發呆刷新：三張同 seed 鎖臉，但每輪必須換新 seed。
+    # 若沿用召喚的人設 seed，Comfy 會產出幾乎同一張圖，看起來像沒蓋掉。
+    refresh_seed = secrets.randbelow(2**31 - 1) or 1
     for shot in ("full", "half", "head"):
         await on_label(f"立繪 · {shot}")
         extra = "plain solid color background, simple background"
@@ -3300,9 +3318,10 @@ async def _dd_run_portraits(girl: dict, cfg: dict, key: str, on_label) -> dict:
             extra=extra,
             cutout=True,
             flat_bg=True,
+            seed=refresh_seed,
         ))
         if url:
-            # 檔名固定覆寫；URL 必須換 ?v=，否則前端/瀏覽器一直顯示舊立繪
+            # 檔名固定覆寫（buff→正式檔）；URL 換 ?v= 逼前端重抓
             portraits[shot] = ddream.bust_asset_url(url, ts)
     return {"portraits": portraits, "portraitsRefreshedAt": ts}
 
@@ -3325,6 +3344,7 @@ async def _dd_run_emotion(girl: dict, cfg: dict, key: str, mood: str, on_label) 
         flat_bg=True,
         ref=half_ref.split("?")[0] if half_ref.startswith("/assets/") else "",
         lock_identity=True,
+        seed=secrets.randbelow(2**31 - 1) or 1,
     ))
     if not url:
         return {}

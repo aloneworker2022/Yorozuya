@@ -752,7 +752,17 @@ async def _one_run(base: str, wf: dict, save_to: Path) -> str | None:
             )
             r.raise_for_status()
             save_to.parent.mkdir(parents=True, exist_ok=True)
-            save_to.write_bytes(r.content)
+            # 先寫 .buff 再 replace 正式檔：覆寫同路徑、不留第二份立繪
+            buff = save_to.with_suffix(save_to.suffix + ".buff")
+            try:
+                buff.write_bytes(r.content)
+                buff.replace(save_to)
+            finally:
+                if buff.exists():
+                    try:
+                        buff.unlink()
+                    except OSError:
+                        pass
     except httpx.HTTPError as e:
         return f"ComfyUI 連線失敗({type(e).__name__}):{base}"
     return None
