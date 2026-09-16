@@ -250,10 +250,11 @@ function renderHud() {
   document.querySelectorAll("#acts .act").forEach((el) => {
     const act = el.dataset.act;
     if (act === "admin") {
-      el.disabled = false;
+      // 只在玩家行動列可見時可按（與調戲／猥褻同一時段）
+      el.disabled = !started || busy || paging || cgOpen || state.ended;
       return;
     }
-    if (!started || busy || paging) {
+    if (!started || busy || paging || cgOpen) {
       el.disabled = true;
       return;
     }
@@ -1559,11 +1560,6 @@ async function boot() {
     }
   });
   $("btn-next").addEventListener("click", () => advance());
-  $("cg-admin")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    doAct("admin");
-  });
   $("log").addEventListener("click", () => {
     if (paging) advance();
   });

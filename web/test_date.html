@@ -194,14 +194,8 @@
     grid-template-columns: repeat(5, 1fr);
     gap: 8px;
   }
-  /* paging 時仍留後台可點；其他行動隱藏 */
-  .acts-bar.paging .acts .act:not(.admin) { display: none; }
-  .acts-bar.paging .acts {
-    display: grid;
-    grid-template-columns: 1fr;
-    max-width: 8em;
-    margin-left: auto;
-  }
+  /* paging／覆蓋層：行動列整組藏起（後台也一併藏，只在可操作時出現） */
+  .acts-bar.paging .acts { display: none; }
   .acts [data-act="rescue"] { display: none; }
   .acts-bar:not(.paging) #btn-next { display: none; }
   /* 猥褻覆蓋層開啟時：整條底欄藏掉（含下一頁），只留覆蓋層上的後台 */
@@ -301,24 +295,10 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 16px 16px 72px;
+    padding: 16px;
     background: rgba(0, 0, 0, .88);
   }
   .cg-overlay.on { display: flex; }
-  .cg-toolbar {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 61;
-    display: flex;
-    gap: 8px;
-    padding: 10px 12px;
-    background: rgba(0, 0, 0, .92);
-    border-top: var(--px) solid #f8f8f8;
-    box-shadow: 0 0 0 var(--px) #000;
-  }
-  .cg-toolbar .act.admin { margin-left: auto; min-width: 5em; font-size: 24px; }
   .cg-stage {
     display: flex;
     flex-direction: column;
@@ -439,9 +419,6 @@
       <div class="cg-tx" id="cg-tx"></div>
       <div class="cg-delta" id="cg-delta"></div>
     </div>
-  </div>
-  <div class="cg-toolbar">
-    <button type="button" class="act admin" id="cg-admin">後台</button>
   </div>
 </div>
 
