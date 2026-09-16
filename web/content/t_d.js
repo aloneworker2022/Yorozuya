@@ -55,6 +55,31 @@ const AROUSAL_MAX = 20;
 const SHAME_MAX = 15;
 const OBEY_MAX = 35;
 const ACT_ZH = DATE_ACT_ZH;
+/** 猥褻成功分母：1/n；妻子 n=1 必成 */
+const MOLEST_ODDS = {
+  stranger: 10,
+  friend: 8,
+  girlfriend: 4,
+  wife: 1,
+};
+
+function molestOddsDenom() {
+  const n = MOLEST_ODDS[relStage];
+  return Number.isFinite(n) && n > 0 ? n : 10;
+}
+
+function molestOddsZh() {
+  const n = molestOddsDenom();
+  return n <= 1 ? "必成" : `1/${n}`;
+}
+
+/** @returns {{ ok: boolean, oddsZh: string }} */
+function rollMolestSuccess() {
+  const n = molestOddsDenom();
+  if (n <= 1) return { ok: true, oddsZh: "必成" };
+  return { ok: Math.random() < 1 / n, oddsZh: `1/${n}` };
+}
+
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) =>
@@ -265,6 +290,9 @@ function renderHud() {
     if (act === "eat") el.disabled = state.money < EAT_COST[state.time];
     else if (act === "tease" || act === "talk" || act === "molest") el.disabled = state.stamina <= 0;
     else el.disabled = false;
+    if (act === "molest") {
+      el.textContent = `猥褻（${molestOddsZh()}）`;
+    }
   });
 }
 
@@ -772,7 +800,7 @@ async function aiGirlReply({ card, act, narr, playerLine, delta, attitude, feel 
   return cleanLine(raw, name) || "……";
 }
 
-function applyAct(act) {
+function applyAct(act, opts = {}) {
   const bits = [];
   if (act === "eat") {
     const cost = EAT_COST[state.time];
@@ -796,9 +824,15 @@ function applyAct(act) {
     state.shame = clamp(state.shame + 1, SHAME_MAX);
     bits.push("性慾 +1　羞恥 +1");
   } else if (act === "molest") {
-    state.arousal = clamp(state.arousal + 3, AROUSAL_MAX);
-    state.shame = clamp(state.shame + 5, SHAME_MAX);
-    bits.push("性慾 +3　羞恥 +5");
+    if (opts.molestOk === false) {
+      // 失敗：仍耗體力；羞恥微增、無性慾獎勵
+      state.shame = clamp(state.shame + 1, SHAME_MAX);
+      bits.push(`猥褻失敗（${opts.oddsZh || molestOddsZh()}）　羞恥 +1`);
+    } else {
+      state.arousal = clamp(state.arousal + 3, AROUSAL_MAX);
+      state.shame = clamp(state.shame + 5, SHAME_MAX);
+      bits.push(`猥褻成功（${opts.oddsZh || molestOddsZh()}）　性慾 +3　羞恥 +5`);
+    }
   }
   return { ok: true, bits };
 }
@@ -1183,14 +1217,22 @@ async function doChat(raw) {
     ]);
     return;
   }
-  const result = applyAct(cls.act);
+  const molestRoll = cls.act === "molest" ? rollMolestSuccess() : null;
+  const result = applyAct(cls.act, molestRoll
+    ? { molestOk: molestRoll.ok, oddsZh: molestRoll.oddsZh }
+    : {});
   if (!result.ok) {
     await playQueue([{ role: "sys", who: "系統", text: result.reason }]);
     return;
   }
   state.round += 1;
   const delta = `${ACT_ZH[cls.act] || cls.act}　${result.bits.join("　")}`;
-  const hint = chatHint(cls.act, text, card);
+  let hint = chatHint(cls.act, text, card);
+  if (cls.act === "molest" && molestRoll && !molestRoll.ok) {
+    hint =
+      `玩家想猥褻「${girl?.name || "她"}」（成功率 ${molestRoll.oddsZh}，失敗）。他說／做：「${text}」。` +
+      `旁白只寫被擋開、沒得逞。不要寫成成功。`;
+  }
   busy = true;
   enterPaging();
   waitingAi = true;
@@ -1203,12 +1245,22 @@ async function doChat(raw) {
   });
   const narr = document.querySelector("#log .tx")?.textContent || hint;
   waitingAi = false;
-  const girlP = aiGirlReply({ card, act: cls.act, narr, playerLine: text, delta });
+  const girlP = aiGirlReply({
+    card,
+    act: cls.act,
+    narr,
+    playerLine: text,
+    delta,
+    attitude: molestRoll && !molestRoll.ok
+      ? "拒絕、羞憤、把他的手打開。明確不讓他得逞。"
+      : "",
+    feel: molestRoll && !molestRoll.ok ? "被嚇到／生氣／羞恥，身體沒有配合。" : "",
+  });
   enqueue({ role: "player", who: "我", text, extra: delta });
   enqueue({
     role: "girl",
     who: girl.name,
-    fallback: "……",
+    fallback: molestRoll && !molestRoll.ok ? "別碰我……！" : "……",
     load: () => girlP,
   });
   endPages().forEach(enqueue);
@@ -1414,7 +1466,10 @@ async function doAct(act) {
     await playQueue([{ role: "sys", who: "系統", text: fromEdit ? "edit_date 還沒寫這個行動。" : "這張卡沒有這個行動。" }]);
     return;
   }
-  const result = applyAct(act);
+  const molestRoll = act === "molest" ? rollMolestSuccess() : null;
+  const result = applyAct(act, molestRoll
+    ? { molestOk: molestRoll.ok, oddsZh: molestRoll.oddsZh }
+    : {});
   if (!result.ok) {
     await playQueue([{ role: "sys", who: "系統", text: result.reason }]);
     return;
@@ -1425,6 +1480,43 @@ async function doAct(act) {
   enterPaging();
   waitingAi = true;
   renderHud();
+
+  // 猥褻失敗：旁白＋她拒絕，不出圖
+  if (act === "molest" && molestRoll && !molestRoll.ok) {
+    const failHint =
+      `玩家想對「${girl?.name || "她"}」動手猥褻（成功率 ${molestRoll.oddsZh}，這次失敗）。` +
+      `他原本要做：「${spec.player}」。寫旁白：被她擋開／躲开／喝止，肢體沒得逞。不要寫成成功，不要口交或做愛。`;
+    await showPage({
+      role: "sys",
+      who: "旁白",
+      load: () => aiNarrate(failHint),
+      fallback: `你伸手想碰，被${girl?.name || "她"}躲开了。（${molestRoll.oddsZh}）`,
+    });
+    const narr = document.querySelector("#log .tx")?.textContent || failHint;
+    waitingAi = false;
+    const girlP = aiGirlReply({
+      card,
+      act: "molest",
+      narr,
+      playerLine: spec.player,
+      delta,
+      attitude: "拒絕、羞憤、把他的手打開。明確不讓他得逞。",
+      feel: "被嚇到／生氣／羞恥，身體沒有配合。",
+    });
+    enqueue({ role: "player", who: "你", text: spec.player, extra: delta });
+    enqueue({
+      role: "girl",
+      who: girl.name,
+      fallback: "別碰我……！",
+      load: () => girlP,
+    });
+    endPages().forEach(enqueue);
+    pendingResolve = !state.ended;
+    busy = false;
+    renderHud();
+    return;
+  }
+
   await showPage({
     role: "sys",
     who: "旁白",
@@ -1439,7 +1531,7 @@ async function doAct(act) {
     feel: spec.feel || "",
   });
 
-  // 猥褻有預產圖：全螢幕覆蓋推進（不進對話泡泡）
+  // 猥褻成功且有預產圖：全螢幕覆蓋推進
   if (act === "molest" && spec.imgUrl) {
     const cg = await runMolestCg({
       url: spec.imgUrl,
