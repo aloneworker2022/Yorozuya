@@ -227,6 +227,7 @@ function renderHud() {
   document.querySelectorAll("#zones .pill").forEach((el) => el.classList.toggle("on", el.dataset.id === state.zone));
   document.querySelectorAll("#rels .pill").forEach((el) => el.classList.toggle("on", el.dataset.id === relStage));
   $("acts-bar")?.classList.toggle("paging", paging);
+  $("acts-bar")?.classList.toggle("cg-open", cgOpen);
   $("acts-bar")?.classList.toggle("no-chat", !started || state.ended);
   $("acts")?.classList.remove("has-male");
   const chatOn = started && !busy && !paging && !state.ended && state.stamina > 0 && !!state.card;
@@ -244,6 +245,7 @@ function renderHud() {
   if (next) {
     next.disabled = waitingAi || cgOpen;
     next.textContent = waitingAi ? "……" : "下一頁";
+    next.hidden = !!cgOpen;
   }
   document.querySelectorAll("#acts .act").forEach((el) => {
     const act = el.dataset.act;

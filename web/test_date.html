@@ -204,10 +204,14 @@
   }
   .acts [data-act="rescue"] { display: none; }
   .acts-bar:not(.paging) #btn-next { display: none; }
-  /* 覆蓋層開啟時底欄浮在圖上面，才按得到下一頁／後台 */
+  /* 猥褻覆蓋層開啟時：整條底欄藏掉（含下一頁），只留覆蓋層上的後台 */
+  .acts-bar.cg-open {
+    visibility: hidden;
+    pointer-events: none;
+  }
   .acts-bar {
     position: relative;
-    z-index: 70;
+    z-index: 50;
   }
   #btn-next {
     display: block;
