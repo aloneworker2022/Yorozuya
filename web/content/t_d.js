@@ -76,6 +76,25 @@ let pendingResolve = false;
 let cgOpen = false;
 let cgGirlReady = false;
 let cgCloseResolve = null;
+
+/** 強制關掉覆蓋層（後台逃生／卡住時） */
+function forceCloseCg(resolveOk = true) {
+  const ov = $("cg-overlay");
+  const img = $("cg-img");
+  if (img) img.removeAttribute("src");
+  if (ov) {
+    ov.classList.remove("on");
+    ov.setAttribute("aria-hidden", "true");
+    ov.dataset.phase = "player";
+  }
+  const done = cgCloseResolve;
+  cgOpen = false;
+  cgGirlReady = false;
+  cgCloseResolve = null;
+  if (resolveOk && typeof done === "function") done();
+  renderHud();
+}
+
 let queue = [];
 const state = emptyState();
 
@@ -212,15 +231,17 @@ function renderHud() {
       ? `帶女子脫離騷擾 ${escapeOddsZh()}`
       : "帶女子脫離騷擾";
   }
+  const nextDisabled = waitingAi || (cgOpen && !cgGirlReady);
+  const nextLabel = waitingAi ? "……" : "下一頁";
   const next = $("btn-next");
   if (next) {
-    if (cgOpen) {
-      next.disabled = waitingAi || !cgGirlReady;
-      next.textContent = waitingAi ? "……" : "下一頁";
-    } else {
-      next.disabled = waitingAi;
-      next.textContent = waitingAi ? "……" : "下一頁";
-    }
+    next.disabled = nextDisabled;
+    next.textContent = nextLabel;
+  }
+  const cgNext = $("cg-next");
+  if (cgNext) {
+    cgNext.disabled = nextDisabled;
+    cgNext.textContent = nextLabel;
   }
   document.querySelectorAll("#acts .act").forEach((el) => {
     const act = el.dataset.act;
@@ -1325,8 +1346,11 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
       e?.preventDefault?.();
       e?.stopPropagation?.();
       if (lock || phase >= 2) return;
-      // 只有第一下點圖：你 → 她；她說完後改按「下一頁」
-      if (phase !== 0) return;
+      // 第一下：你 → 她；她說完後再點圖等同「下一頁」
+      if (phase !== 0) {
+        if (cgGirlReady) finish();
+        return;
+      }
 
       phase = 1;
       if (girlSettled) {
@@ -1375,6 +1399,7 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
 
 async function doAct(act) {
   if (act === "admin") {
+    if (cgOpen) forceCloseCg(true);
     $("admin").classList.add("on");
     return;
   }
@@ -1547,6 +1572,16 @@ async function boot() {
     }
   });
   $("btn-next").addEventListener("click", () => advance());
+  $("cg-next")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    advance();
+  });
+  $("cg-admin")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    doAct("admin");
+  });
   $("log").addEventListener("click", () => {
     if (paging) advance();
   });
