@@ -125,6 +125,12 @@ export function joinPromptParts(...parts) {
   return out.join(", ");
 }
 
+
+/** 生圖用這位魅子自帶的 Comfy checkpoint（跟主遊戲立繪同一規則）。 */
+function girlOwnCkpt(girl) {
+  return String(girl?.comfyCkpt || "").trim();
+}
+
 /** 跟 testword 一樣：先抓人設基礎 prompt（空 extra），再給呼叫端疊加輸入。 */
 export async function fetchMolestBasePrompt(girl, eng = {}, style = "anime", relStage = "stranger") {
   if (!girl) throw new Error("先選魅子");
@@ -145,7 +151,7 @@ export async function fetchMolestBasePrompt(girl, eng = {}, style = "anime", rel
     cutout: false,
     lock_identity: true,
     scene_kind: "script",
-    ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: eng.comfyCkpt || "" } : {}),
+    ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: girlOwnCkpt(dated) || girlOwnCkpt(girl) } : {}),
   };
   const r = await fetch("/api/imggen/preview", {
     method: "POST",
@@ -240,7 +246,7 @@ export async function buildMolestImgBody(pack, girl, eng = {}, style = "anime", 
       scene_kind: "script",
       pose_ref: ref,
       pose_denoise: clampDenoise(p.poseDenoise),
-      ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: eng.comfyCkpt || "" } : {}),
+      ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: girlOwnCkpt(dated) || girlOwnCkpt(girl) } : {}),
     },
     merged,
     base,

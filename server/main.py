@@ -2696,7 +2696,11 @@ def imggen_submit(t: ImgGenIn):
             seed_in = secrets.randbelow(2**31 - 1) or 1
         opts.update({
             "negative": t.negative or "",
-            "ckpt": t.ckpt or "",
+            # 優先前端明確傳的 ckpt；空則用魅子自帶 comfyCkpt（避免 resolve 隨便挑清單第一個）
+            "ckpt": (t.ckpt or "").strip() or (
+                str((t.character or {}).get("comfyCkpt") or "").strip()
+                if isinstance(t.character, dict) else ""
+            ),
             "width": int(t.width or 0),
             "height": int(t.height or 0),
             "out_width": int(t.out_width or 0),

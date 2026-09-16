@@ -197,6 +197,18 @@ let moId = script.activeMolestId || script.molestPacks[0]?.id || "";
 let girls = [];
 let girlId = "";
 
+
+function shortCkpt(n) {
+  const s = String(n || "").trim();
+  if (!s) return "";
+  const base = s.split(/[\\/]/).pop() || s;
+  return base.replace(/\.(safetensors|ckpt|pt)$/i, "");
+}
+function girlCkptHint(g) {
+  const c = shortCkpt(g?.comfyCkpt);
+  return c ? `模型 · ${c}` : "模型 · （此魅子尚未綁定）";
+}
+
 function engGet() {
   let e = { imgProvider: "grok-img", imgModel: "grok-4.5", llmProvider: "grok-build", llmModel: "grok-4.5", comfyUrl: "", comfyCkpt: "" };
   try { e = { ...e, ...JSON.parse(localStorage.getItem(ENG_KEY) || "{}") }; } catch {}
@@ -359,7 +371,12 @@ async function loadGirls() {
     girls = list;
     if (!girls.some((g) => g.id === girlId)) girlId = girls[0]?.id || "";
     moRenderGirls();
-    moStatus(girls.length ? `名冊 ${girls.length} 隻` : "存檔沒有可用魅子", !girls.length);
+    if (girls.length) {
+      const g = girls.find((x) => x.id === girlId) || girls[0];
+      moStatus(`名冊 ${girls.length} 隻 · ${girlCkptHint(g)}`);
+    } else {
+      moStatus("存檔沒有可用魅子", true);
+    }
   } catch (e) {
     girls = [];
     moRenderGirls();
@@ -429,6 +446,7 @@ $("mo-girl").addEventListener("change", () => {
   if (g?.stage) $("mo-stage").value = g.stage;
   moBaseCache = { girlId: "", base: null, t: 0 };
   moRefreshOut();
+  if (g) moStatus(girlCkptHint(g));
 });
 ["mo-pos", "mo-player", "mo-attitude", "mo-narr", "mo-feel"].forEach((id) => {
   $(id).addEventListener("input", () => moRefreshOut());
@@ -515,7 +533,7 @@ $("mo-gen").addEventListener("click", async () => {
     if (r.status === "done" && r.result) {
       p.slot.url = String(r.result).split("?")[0];
       $("mo-art").innerHTML = `<img src="${esc(r.result)}" alt="molest">`;
-      moStatus("✓ 產圖完成 · " + (built.place?.name || "") + " · 便服「" + (built.outfit?.text || "") + "」（記得儲存）");
+      moStatus("✓ 產圖完成 · " + (built.place?.name || "") + " · 便服「" + (built.outfit?.text || "") + "」 · " + girlCkptHint(g) + "（記得儲存）");
     } else {
       $("mo-art").innerHTML = `<span class="mini">失敗</span>`;
       moStatus(r.error || "生圖失敗", true);
