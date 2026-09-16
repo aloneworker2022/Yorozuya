@@ -36,7 +36,7 @@
 <body>
 <h1>⚙ Edit Date — 約會聊天劇本</h1>
 <div class="warn">
-  <code>/test_date</code> 輸入框依關鍵字分類。下面「調戲／猥褻」按鈕抽這份寫的旁白＋玩家台詞，不抽場景卡。口交與做愛禁止。改完儲存，測試頁重整後生效。
+  <code>/test_date</code> 的「調戲／猥褻」按鈕抽這份寫的旁白＋玩家台詞，不抽場景卡。分類關鍵字先不在這裡編。口交與做愛仍禁止。改完儲存，測試頁重整後生效。
   <a href="/test_date">約會測試頁</a> | <a href="/edit_person">人物池</a> | <a href="/editmale">其他召喚師</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
 </div>
 
@@ -64,32 +64,6 @@
   <textarea id="act-molest" class="lines"></textarea>
 </section>
 
-<section>
-  <h2>分類關鍵字</h2>
-  <p class="mini">一行一詞／一句。判定順序：口交 → 做愛 → 猥褻 → 調戲 → 其餘算互動。較具體的詞請寫完整，例如「摸胸」會吃掉「想摸你胸部」裡的摸胸而判成猥褻。輸入框命中這裡的詞會判成調戲；/test_date 按「調戲」則抽上方「調戲（按鈕）」劇本，不抽這份關鍵字。</p>
-  <div class="grid two">
-    <div>
-      <label>調戲（輸入分類）</label>
-      <textarea id="kw-talk" class="lines"></textarea>
-    </div>
-    <div>
-      <label>猥褻（動手）</label>
-      <textarea id="kw-molest" class="lines"></textarea>
-    </div>
-    <div>
-      <label>口交（禁止）</label>
-      <textarea id="kw-oral" class="lines"></textarea>
-      <label>拒絕句</label>
-      <textarea id="refuse-oral" style="min-height:3.2em"></textarea>
-    </div>
-    <div>
-      <label>做愛（禁止）</label>
-      <textarea id="kw-sex" class="lines"></textarea>
-      <label>拒絕句</label>
-      <textarea id="refuse-sex" style="min-height:3.2em"></textarea>
-    </div>
-  </div>
-</section>
 
 <div class="savebar">
   <div class="row">
@@ -103,22 +77,19 @@
 import { DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs } from "./content/edit_date.js";
 
 function $(id) { return document.getElementById(id); }
-function lines(s) { return String(s || "").split("\n").map(x => x.trim()).filter(Boolean); }
 function done(m) { const s = $("save-status"); s.textContent = m; s.className = "status"; }
 function fail(m) { const s = $("save-status"); s.textContent = "失敗:" + m; s.className = "status err"; }
 
+/** 分類關鍵字 UI 先拿掉；存檔時原樣帶回，避免覆寫 edit_date.json 裡既有 classify。 */
+let keptClassify = null;
+
 function fill(script) {
   const s = normalizeDateScript(script);
+  keptClassify = s.classify;
   $("girl_system").value = s.girl_system;
   $("narr_system").value = s.narr_system;
   $("act-tease").value = formatActs(s.acts.tease);
   $("act-molest").value = formatActs(s.acts.molest);
-  $("kw-talk").value = s.classify.talk.keywords.join("\n");
-  $("kw-molest").value = s.classify.molest.keywords.join("\n");
-  $("kw-oral").value = s.classify.oral.keywords.join("\n");
-  $("kw-sex").value = s.classify.sex.keywords.join("\n");
-  $("refuse-oral").value = s.classify.oral.refuse;
-  $("refuse-sex").value = s.classify.sex.refuse;
 }
 
 function collect() {
@@ -129,12 +100,7 @@ function collect() {
       tease: parseActs($("act-tease").value),
       molest: parseActs($("act-molest").value),
     },
-    classify: {
-      talk: { keywords: lines($("kw-talk").value) },
-      molest: { keywords: lines($("kw-molest").value) },
-      oral: { keywords: lines($("kw-oral").value), refuse: $("refuse-oral").value },
-      sex: { keywords: lines($("kw-sex").value), refuse: $("refuse-sex").value },
-    },
+    classify: keptClassify || undefined,
   });
 }
 
