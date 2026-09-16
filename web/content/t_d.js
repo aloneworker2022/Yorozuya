@@ -1239,7 +1239,7 @@ async function startDate() {
 }
 
 
-/** 猥褻有圖：全螢幕覆蓋，點圖片推進 玩家動作 → 女子回應 → 關閉 */
+/** 猥褻有圖：全螢幕覆蓋，點圖片推進 你 → 她的名字 → 關閉 */
 function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
   return new Promise((resolve) => {
     const ov = $("cg-overlay");
@@ -1270,14 +1270,14 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
 
     const showPlayer = () => {
       ov.dataset.phase = "player";
-      who.textContent = "玩家動作";
+      who.textContent = "你";
       tx.textContent = playerLine || "";
       if (deltaEl) deltaEl.textContent = delta || "";
     };
 
     const showGirl = (text) => {
       ov.dataset.phase = "girl";
-      who.textContent = "女子回應";
+      who.textContent = girlName || "她";
       tx.textContent = text || "……";
       if (deltaEl) deltaEl.textContent = "";
       if (text) state.lastGirlLine = text;
