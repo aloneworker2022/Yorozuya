@@ -39,12 +39,29 @@
            font-size: .85em; color: #c8c0dc; min-height: 3em; }
   .grow { flex: 1 1 12em; }
   .fix0 { flex: 0 1 9em; }
+
+  .panel-player { border: 2px solid #58c840 !important; background: rgba(88,200,64,.05); }
+  .panel-male { border: 2px solid #e8a838 !important; background: rgba(232,168,56,.05); }
+  .panel-toggle { cursor: pointer; user-select: none; display: flex; align-items: center; gap: .45em; }
+  .panel-player .panel-toggle { color: #7adb5e; }
+  .panel-male .panel-toggle { color: #f0bc55; }
+  .panel-toggle .chev { display: inline-block; transition: transform .15s; font-size: .85em; }
+  .panel.collapsed .panel-toggle .chev { transform: rotate(-90deg); }
+  .panel.collapsed .panel-body { display: none; }
+  .subh { color: #c8c0dc; font-size: .82em; letter-spacing: .06em; margin: 1em 0 .35em; }
+  .panel-body > .subh:first-child { margin-top: 0; }
+  .type-row { display: flex; gap: .4em; flex-wrap: wrap; align-items: flex-end; margin-bottom: .4em;
+              background: rgba(0,0,0,.2); border-radius: 8px; padding: .5em .6em; }
+  .type-row label { margin: 0 0 .15em; }
+  .type-row .grow { flex: 1 1 8em; }
+  .type-row .fix0 { flex: 0 1 6em; }
+  .type-row .fid { flex: 0 1 7em; }
 </style>
 </head>
 <body>
 <h1>⚙ Edit Date — 約會聊天劇本</h1>
 <div class="warn">
-  <code>/test_date</code> 的「調戲」抽下方調戲池；「猥褻」抽猥褻劇本包（態度／動作／旁白／感覺／生圖）。
+  <code>/test_date</code> 的「調戲」抽玩家調戲池；「猥褻」抽猥褻劇本包。單男（搭訕／騷擾／猥褻／交配請求）約 1/20 出場。
   文案可用 <code>[name]</code> <code>[head]</code> <code>[breast]</code> 等標註。改完按儲存，測試頁重整後生效。
   <a href="/test_date">約會測試頁</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
 </div>
@@ -62,15 +79,15 @@
   <textarea id="narr_system"></textarea>
 </section>
 
-<section>
-  <h2>調戲（按鈕）</h2>
-  <p class="mini">按「調戲」從這裡抽。兩行一組：第一行旁白方向，第二行玩家台詞。組與組空一行。可用身體標註。</p>
-  <textarea id="act-tease" class="lines"></textarea>
-</section>
+<section class="panel panel-player" id="panel-player">
+  <h2 class="panel-toggle" data-panel="player" id="toggle-player"><span class="chev">▼</span> 玩家</h2>
+  <div class="panel-body" id="panel-player-body">
+    <h3 class="subh">調戲（按鈕）</h3>
+    <p class="mini">按「調戲」從這裡抽。兩行一組：第一行旁白方向，第二行玩家台詞。組與組空一行。可用身體標註。</p>
+    <textarea id="act-tease" class="lines"></textarea>
 
-<section>
-  <h2>猥褻（按鈕）· 劇本編輯</h2>
-  <p class="mini">抄 testword 劇本模式場景編輯：一份劇本一個下拉標題；寫態度、玩家動作、旁白 prompt、女子感覺 prompt、參考圖與正負向 prompt；可產圖與綜合測試。測試直接用存檔裡現有魅子。</p>
+    <h3 class="subh">猥褻（按鈕）· 劇本編輯</h3>
+    <p class="mini">抄 testword 劇本模式場景編輯：一份劇本一個下拉標題；寫態度、玩家動作、旁白 prompt、女子感覺 prompt、參考圖與正負向 prompt；可產圖與綜合測試。測試直接用存檔裡現有魅子。</p>
 
   <div class="row" style="margin-bottom:.4em">
     <span class="grow"><label>這份劇本（標題）</label>
@@ -149,18 +166,46 @@
   <div class="status" id="mo-status"></div>
   <div class="cd-sub mini" style="margin-top:.6em;color:#6fe3e1">綜合測試結果</div>
   <div class="sheet" id="mo-test-out">還沒測。</div>
+
+  </div>
+</section>
+
+<section class="panel panel-male" id="panel-male">
+  <h2 class="panel-toggle" data-panel="male" id="toggle-male"><span class="chev">▼</span> 單男</h2>
+  <div class="panel-body" id="panel-male-body">
+    <h3 class="subh">① 男子種類</h3>
+    <p class="mini">可編輯 id、顯示名、talkWeight（0～1，越高越常抽「騷擾」而非「猥褻」）。預設對應舊 t_d_male 的 fat／gym／lust。</p>
+    <div id="male-types"></div>
+    <button type="button" class="cy" id="male-type-add">＋新增種類</button>
+
+    <h3 class="subh">② 搭訕</h3>
+    <p class="mini">首次出場第一句。兩行一組：第一行旁白方向，第二行男子台詞。組與組空一行。格式同調戲。</p>
+    <textarea id="male-approach" class="lines"></textarea>
+
+    <h3 class="subh">③ 騷擾</h3>
+    <p class="mini">場上後的言語騷擾。格式同調戲（旁白＋男子台詞）。</p>
+    <textarea id="male-harass" class="lines"></textarea>
+
+    <h3 class="subh">④ 猥褻</h3>
+    <p class="mini">場上後的肢體猥褻。目前用簡單旁白＋男子台詞池（同調戲格式）；packs／圖之後再接。</p>
+    <textarea id="male-molest" class="lines"></textarea>
+
+    <h3 class="subh">⑤ 交配請求</h3>
+    <p class="mini">順從偏高或男子回合觸發時抽。格式同調戲（旁白＋男子台詞）。</p>
+    <textarea id="male-mate" class="lines"></textarea>
+  </div>
 </section>
 
 <div class="savebar">
   <div class="row">
-    <button onclick="saveAll()">💾 全部儲存（含調戲池＋猥褻劇本）</button>
+    <button onclick="saveAll()">💾 全部儲存（含玩家調戲／猥褻＋單男）</button>
     <button class="cy" type="button" id="btn-reset">還原預設</button>
     <span class="status" id="save-status"></span>
   </div>
 </div>
 
 <script type="module">
-import { DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs } from "./content/edit_date.js";
+import { DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs, formatMaleActs, parseMaleActs } from "./content/edit_date.js";
 import {
   emptyMolestPack, normalizeMolestPack, filledPack,
   fetchMolestBasePrompt, mergeMolestPrompts, formatOutputPromptSheet,
@@ -250,6 +295,60 @@ function fillTease(s) {
   $("girl_system").value = s.girl_system;
   $("narr_system").value = s.narr_system;
   $("act-tease").value = formatActs(s.acts.tease);
+  fillMale(s.male || DEFAULT_DATE_SCRIPT.male);
+}
+
+function fillMale(m) {
+  maleTypes = (m?.types || []).map((t) => ({ ...t }));
+  renderMaleTypes();
+  $("male-approach").value = formatMaleActs(m?.approach || []);
+  $("male-harass").value = formatMaleActs(m?.harass || []);
+  $("male-molest").value = formatMaleActs(m?.molest || []);
+  $("male-mate").value = formatMaleActs(m?.mate || []);
+}
+
+let maleTypes = [];
+
+function renderMaleTypes() {
+  const box = $("male-types");
+  if (!box) return;
+  box.innerHTML = maleTypes.map((t, i) => `
+    <div class="type-row" data-i="${i}">
+      <span class="fid"><label>id</label><input data-f="id" value="${esc(t.id || "")}" maxlength="24"></span>
+      <span class="grow"><label>顯示名</label><input data-f="name" value="${esc(t.name || "")}" maxlength="40"></span>
+      <span class="fix0"><label>talkWeight</label><input data-f="talkWeight" type="number" min="0" max="1" step="0.05" value="${esc(t.talkWeight ?? 0.5)}"></span>
+      <button type="button" class="del" data-del="${i}">刪</button>
+    </div>`).join("") || `<p class="mini">（尚無種類，請新增）</p>`;
+  box.querySelectorAll("input").forEach((inp) => {
+    inp.addEventListener("input", () => {
+      const row = inp.closest(".type-row");
+      const i = Number(row.dataset.i);
+      const f = inp.dataset.f;
+      if (!maleTypes[i]) return;
+      if (f === "talkWeight") maleTypes[i].talkWeight = parseFloat(inp.value);
+      else maleTypes[i][f] = inp.value;
+    });
+  });
+  box.querySelectorAll("[data-del]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      maleTypes.splice(Number(btn.dataset.del), 1);
+      renderMaleTypes();
+    });
+  });
+}
+
+function collectMale() {
+  return {
+    types: maleTypes.map((t, i) => ({
+      id: String(t.id || `m${i + 1}`).trim() || `m${i + 1}`,
+      name: String(t.name || "男子").trim() || "男子",
+      talkWeight: Math.min(1, Math.max(0, Number(t.talkWeight) || 0.5)),
+    })),
+    approach: parseMaleActs($("male-approach").value),
+    harass: parseMaleActs($("male-harass").value),
+    molest: parseMaleActs($("male-molest").value),
+    mate: parseMaleActs($("male-mate").value),
+  };
 }
 
 function fill(raw) {
@@ -272,6 +371,7 @@ function collect() {
     classify: keptClassify || undefined,
     molestPacks: script.molestPacks.map(normalizeMolestPack),
     activeMolestId: moId,
+    male: collectMale(),
   });
 }
 
@@ -285,7 +385,7 @@ async function saveAll() {
       body: JSON.stringify(body),
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
-    done("✓ 已寫回 edit_date.json（測試頁重整後生效）");
+    done("✓ 已寫回 edit_date.json（含單男；測試頁重整後生效）");
   } catch (e) {
     fail(e.message);
   }
@@ -589,6 +689,34 @@ $("btn-reset").addEventListener("click", () => {
   done("已還原預設（尚未儲存）");
 });
 window.saveAll = saveAll;
+
+function setupPanels() {
+  ["player", "male"].forEach((key) => {
+    const panel = $("panel-" + key);
+    const btn = $("toggle-" + key);
+    if (!panel || !btn) return;
+    const lsKey = "edit_date_panel_" + key;
+    let open = true;
+    try {
+      const v = localStorage.getItem(lsKey);
+      if (v === "0") open = false;
+      if (v === "1") open = true;
+    } catch {}
+    panel.classList.toggle("collapsed", !open);
+    btn.addEventListener("click", () => {
+      panel.classList.toggle("collapsed");
+      try {
+        localStorage.setItem(lsKey, panel.classList.contains("collapsed") ? "0" : "1");
+      } catch {}
+    });
+  });
+}
+setupPanels();
+
+$("male-type-add")?.addEventListener("click", () => {
+  maleTypes.push({ id: "m" + (maleTypes.length + 1), name: "新男子", talkWeight: 0.5 });
+  renderMaleTypes();
+});
 
 (async () => {
   try {

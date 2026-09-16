@@ -80,6 +80,37 @@ export const DEFAULT_DATE_SCRIPT = {
       ],
     },
   },
+  /** 單男系統：搭訕／騷擾／猥褻／交配請求。猥褻目前用簡單旁白+台詞池；packs／圖可之後再接。 */
+  male: {
+    types: [
+      { id: "fat", name: "噁心胖肥宅", talkWeight: 0.7 },
+      { id: "gym", name: "健身變態男", talkWeight: 0.3 },
+      { id: "lust", name: "色慾單身男", talkWeight: 0.25 },
+    ],
+    approach: [
+      { narr: "一個穿著寬鬆T恤、肚子把衣襬撐開的男人喘著走過來，眼睛先落在她胸口。", male: "嘿美女，一個人喔？肥宅我也是有需求的啦，讓哥靠近一點嘛。" },
+      { narr: "一個肩很寬、背心貼著胸肌的男人放慢腳步，從她側後方靠近。", male: "身材不錯。過來，讓我摟一下就知道妳多軟。" },
+      { narr: "一個眼神發亮的男人徑直走來，視線黏在她胸和腿之間，沒有要打招呼的意思。", male: "奶形看得出來。別裝沒聽到，我是來摸的。" },
+    ],
+    harass: [
+      { narr: "那名男子站在她身側，壓低聲音卻故意讓周圍聽見。", male: "跟這種貨色約會？不如跟哥聊兩句。" },
+      { narr: "他盯著她的領口，嘴角扯開。", male: "這樣穿是故意的吧？胸型都看出來了。" },
+      { narr: "男子湊近她耳邊，氣息噴在她頸側。", male: "別裝沒聽到。妳聞起來就很好幹。" },
+      { narr: "他上下打量她，笑得很大聲。", male: "旁邊那傢伙養不起妳。換哥試試？" },
+    ],
+    // 單男猥褻：暫用與調戲相同的旁白+台詞池；之後可接 packs／圖
+    molest: [
+      { narr: "男子從側後方伸手，隔著衣服按住她腰。", male: "別動。就摸一下。" },
+      { narr: "他的手從她背後滑到臀側，假裝只是擠過去。", male: "這麼軟，借哥摸兩下不過分吧。" },
+      { narr: "男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。", male: "她喜歡這樣，你看她沒推開。" },
+      { narr: "他一把把她拉近，掌心貼在她大腿外側。", male: "腿夾緊一點。給哥好好摸摸。" },
+    ],
+    mate: [
+      { narr: "男子把她拉近自己，聲音又粗又急。", male: "跟我走。現在就去做愛。" },
+      { narr: "他指了指旁邊的小路，另一隻手還攬著她。", male: "別裝了。跟哥去一趟，保證妳爽。" },
+      { narr: "男子對玩家揚了揚下巴，把她往自己身側帶。", male: "她要跟我去交配了。你在旁邊看就好。" },
+    ],
+  },
 };
 
 function linesOf(list, fallback) {
@@ -120,6 +151,50 @@ export function parseActs(text) {
     .filter(Boolean);
 }
 
+
+function maleActList(list, fallback) {
+  const src = Array.isArray(list) && list.length ? list : fallback;
+  return src
+    .map((x) => ({
+      narr: String(x?.narr || "").trim(),
+      male: String(x?.male || "").trim(),
+    }))
+    .filter((x) => x.narr && x.male);
+}
+
+function maleTypesList(list, fallback) {
+  const src = Array.isArray(list) && list.length ? list : fallback;
+  const out = [];
+  const seen = new Set();
+  src.forEach((x, i) => {
+    let id = String(x?.id || `m${i + 1}`).trim() || `m${i + 1}`;
+    if (seen.has(id)) id = `${id}_${i + 1}`;
+    seen.add(id);
+    const tw = Number(x?.talkWeight);
+    out.push({
+      id,
+      name: String(x?.name || "男子").trim() || "男子",
+      talkWeight: Number.isFinite(tw) ? Math.min(1, Math.max(0, tw)) : 0.5,
+    });
+  });
+  return out.length ? out : maleTypesList(null, fallback);
+}
+
+export function formatMaleActs(list) {
+  return maleActList(list, []).map((x) => `${x.narr}\n${x.male}`).join("\n\n");
+}
+
+export function parseMaleActs(text) {
+  return String(text || "")
+    .split(/\n\s*\n/)
+    .map((block) => {
+      const ls = block.split("\n").map((s) => s.trim()).filter(Boolean);
+      if (ls.length < 2) return null;
+      return { narr: ls[0], male: ls.slice(1).join("") };
+    })
+    .filter(Boolean);
+}
+
 export function normalizeDateScript(raw) {
   const d = DEFAULT_DATE_SCRIPT;
   const src = raw && typeof raw === "object" ? raw : {};
@@ -141,6 +216,8 @@ export function normalizeDateScript(raw) {
     player: String(p.playerAct || "").trim() || "……",
   }));
   const activeMolestId = String(src.activeMolestId || molestPacks[0]?.id || "");
+  const maleSrc = src.male && typeof src.male === "object" ? src.male : {};
+  const dMale = d.male;
   return {
     girl_system: String(src.girl_system || d.girl_system).trim() || d.girl_system,
     narr_system: String(src.narr_system || d.narr_system).trim() || d.narr_system,
@@ -158,6 +235,13 @@ export function normalizeDateScript(raw) {
     activeMolestId: molestPacks.some((p) => p.id === activeMolestId)
       ? activeMolestId
       : (molestPacks[0]?.id || ""),
+    male: {
+      types: maleTypesList(maleSrc.types, dMale.types),
+      approach: maleActList(maleSrc.approach, dMale.approach),
+      harass: maleActList(maleSrc.harass, dMale.harass),
+      molest: maleActList(maleSrc.molest, dMale.molest),
+      mate: maleActList(maleSrc.mate, dMale.mate),
+    },
   };
 }
 

@@ -88,7 +88,6 @@ const esc = (s) =>
   );
 
 let cards = [];
-let malePack = null;
 let dateScript = normalizeDateScript(DEFAULT_DATE_SCRIPT);
 let girl = null;
 let dateOutfit = null; // { text, index, girlId }
@@ -237,16 +236,18 @@ function renderHud() {
   const obeyBar = $("obey-bar");
   if (obeyN) obeyN.textContent = `${obeyZh()} ${obeyScore()}`;
   if (obeyBar) obeyBar.style.width = `${(obeyScore() / OBEY_MAX) * 100}%`;
-  $("hud")?.classList.remove("has-male");
+  $("hud")?.classList.toggle("has-male", !!state.male);
   document.body.dataset.time = state.time;
   $("zone-name").textContent = zoneOf(state.zone).name;
   const desc = $("zone-desc");
   if (desc) desc.textContent = state.card ? state.card.scene : "";
   const who = $("girl-now");
   if (who) {
-    who.textContent = girl
+    let t = girl
       ? `${girl.name} · ${relOf(relStage).name} · ${girl.archetype || (girl.personality || []).join("、")} · ${girl.job || ""}`
       : "";
+    if (state.male?.onField) t += ` · ${state.male.name}`;
+    who.textContent = t;
   }
   document.querySelectorAll("#times .pill").forEach((el) => el.classList.toggle("on", el.dataset.id === state.time));
   document.querySelectorAll("#zones .pill").forEach((el) => el.classList.toggle("on", el.dataset.id === state.zone));
@@ -254,8 +255,8 @@ function renderHud() {
   $("acts-bar")?.classList.toggle("paging", paging);
   $("acts-bar")?.classList.toggle("cg-open", cgOpen);
   $("acts-bar")?.classList.toggle("no-chat", !started || state.ended);
-  $("acts")?.classList.remove("has-male");
-  const chatOn = started && !busy && !paging && !state.ended && state.stamina > 0 && !!state.card;
+  $("acts")?.classList.toggle("has-male", !!state.male?.onField && !state.ended);
+  const chatOn = started && !busy && !paging && !state.ended && state.stamina > 0 && !!state.card && !state.male?.onField;
   const input = $("date-input");
   const send = $("date-send");
   if (input) input.disabled = !chatOn;
@@ -288,8 +289,10 @@ function renderHud() {
       return;
     }
     if (act === "eat") el.disabled = state.money < EAT_COST[state.time];
-    else if (act === "tease" || act === "talk" || act === "molest") el.disabled = state.stamina <= 0;
-    else el.disabled = false;
+    else if (act === "rescue") el.disabled = !state.male?.onField;
+    else if (act === "tease" || act === "talk" || act === "molest") {
+      el.disabled = state.stamina <= 0 || !!state.male?.onField;
+    } else el.disabled = !!state.male?.onField && act !== "end";
     if (act === "molest") {
       el.textContent = `猥褻（${molestOddsZh()}）`;
     }
@@ -343,6 +346,7 @@ async function exitPaging() {
   queue = [];
   busy = false;
   if (shouldResolve) resolveAfterRound();
+  if (shouldResolve && (await maybeMaleBeat())) return;
   renderHud();
   if (started && !state.ended) $("date-input")?.focus();
 }
@@ -850,19 +854,15 @@ function endPages() {
 }
 
 function spawnMale() {
-  const ids = Object.keys(malePack?.types || { fat: 1, gym: 1, lust: 1 });
-  const type = ids[Math.floor(Math.random() * ids.length)];
-  const meta = malePack?.types?.[type] || {
-    name: "男子",
-    talkWeight: 0.5,
-    approach: "嗨。",
-    approachNarr: "有個男人走過來。",
-  };
+  const types = dateScript?.male?.types || [];
+  const list = types.length
+    ? types
+    : [{ id: "fat", name: "男子", talkWeight: 0.5 }];
+  const meta = list[Math.floor(Math.random() * list.length)];
   return {
-    type,
-    name: meta.name,
+    type: meta.id,
+    name: meta.name || "男子",
     talkWeight: meta.talkWeight ?? 0.5,
-    appearAfter: 2 + Math.floor(Math.random() * 3),
     onField: false,
     appeared: false,
     gone: false,
@@ -882,19 +882,33 @@ function escapeOddsZh() {
   return `1/${escapeDenom()}`;
 }
 
-function pickMaleLine(kind) {
+/** 從 dateScript.male 池抽旁白+男子台詞（approach / harass / molest / mate） */
+function pickMaleScriptLine(poolKey) {
+  const male = dateScript?.male || {};
+  const pack = Array.isArray(male[poolKey]) ? male[poolKey] : [];
+  if (!pack.length) {
+    return {
+      narr: fillDateText("那名男子靠近她。"),
+      male: fillDateText("……"),
+    };
+  }
   const m = state.male;
-  const cardId = state.card?.id;
-  const lv = obeyLevel();
-  const pack = malePack?.lines?.[m.type]?.[cardId]?.[lv]?.[kind];
-  if (!pack?.length) return { narr: "那名男子靠近她。", male: "……" };
-  const key = `${cardId}:${lv}:${kind}`;
-  const used = m.used[key] || [];
+  const used = (m.used[poolKey] || []);
   const left = pack.map((_, i) => i).filter((i) => !used.includes(i));
   const pickFrom = left.length ? left : pack.map((_, i) => i);
   const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
-  m.used[key] = left.length ? used.concat(chosen) : [chosen];
-  return pack[chosen];
+  m.used[poolKey] = left.length ? used.concat(chosen) : [chosen];
+  const line = pack[chosen] || {};
+  return {
+    narr: fillDateText(line.narr || "那名男子靠近她。"),
+    male: fillDateText(line.male || "……"),
+  };
+}
+
+/** 舊 talk→harass、touch→molest */
+function pickMaleLine(kind) {
+  const pool = kind === "talk" ? "harass" : kind === "touch" ? "molest" : kind;
+  return pickMaleScriptLine(pool);
 }
 
 function maleActKind() {
@@ -910,11 +924,19 @@ function maleSucceeds() {
 }
 
 function applyMaleAct(kind) {
-  const a = kind === "touch" ? 2 : 1;
-  const s = kind === "touch" ? 2 : 1;
+  const a = kind === "touch" || kind === "molest" || kind === "mate" ? 2 : 1;
+  const s = kind === "touch" || kind === "molest" || kind === "mate" ? 2 : 1;
   state.arousal = clamp(state.arousal + a, AROUSAL_MAX);
   state.shame = clamp(state.shame + s, SHAME_MAX);
   return `性慾 +${a}　羞恥 +${s}`;
+}
+
+function maleKindZh(kind) {
+  if (kind === "approach") return "搭訕";
+  if (kind === "talk" || kind === "harass") return "騷擾";
+  if (kind === "touch" || kind === "molest") return "猥褻";
+  if (kind === "mate") return "交配請求";
+  return "接近";
 }
 
 async function aiGirlReplyToMale({ narr, maleLine, success, kind }) {
@@ -934,7 +956,7 @@ async function aiGirlReplyToMale({ narr, maleLine, success, kind }) {
   const user = [
     `地點：公園${zoneOf(state.zone).name}`,
     `場景：${state.card?.name || ""}　${state.card?.scene || ""}`,
-    `男子「${mn}」動作：${kind === "approach" ? "搭訕" : kind === "talk" ? "調戲" : "肢體碰觸"}`,
+    `男子「${mn}」動作：${maleKindZh(kind)}`,
     `旁白：${narr}`,
     `${mn}：${maleLine}`,
     `順從：${obeyZh()}　判定：${success ? "成功" : "失敗"}`,
@@ -970,21 +992,22 @@ async function aiSexAnnounce(who) {
   return cleanLine(raw, mn) || "我們要去做愛了。";
 }
 
+/**
+ * 玩家成功行動回合後：
+ * - 場上已有單男 → 男子再打一拍（騷擾／猥褻，順從高時可交配請求）
+ * - 否則且非交配中 → 1/20 抽種類搭訕
+ */
 async function maybeMaleBeat() {
+  if (state.ended) return false;
   const m = state.male;
-  if (state.ended || !m || m.sex) return false;
-  if (m.onField) {
+  if (m?.sex) return false;
+  if (m?.onField) {
     await startMaleTurn();
     return true;
   }
-  if (!m.appeared && state.round >= m.appearAfter) {
+  if (Math.random() < 1 / 20) {
+    state.male = spawnMale();
     await startMaleApproach();
-    return true;
-  }
-  if (m.appeared && !m.onField && Math.random() < 1 / 3) {
-    m.onField = true;
-    m.gone = false;
-    await startMaleTurn();
     return true;
   }
   return false;
@@ -1022,7 +1045,7 @@ async function aiBodyNarr({ actionNarr, maleLine, success, kind }) {
     success
       ? "判定成功：她沒有躲開，身體留在原地或讓他碰到。"
       : "判定失敗：她躲開、推開、別過臉、後退。",
-    `男子這次是：${kind === "approach" ? "走過來搭訕" : kind === "talk" ? "調戲" : "肢體碰觸"}`,
+    `男子這次是：${maleKindZh(kind)}`,
     `動作方向：${actionNarr}`,
     `他剛說：${maleLine}`,
     state.lastGirlLine ? `她剛說：${state.lastGirlLine}` : "",
@@ -1072,7 +1095,7 @@ function maleBeatPages({ kind, spec, success, delta }) {
         }),
     },
   ];
-  if (kind === "approach" || m.sex) return pages;
+  if (kind === "approach" || kind === "mate" || m.sex) return pages;
   const lv = obeyLevel();
   if (lv === "obey" && state.arousal >= AROUSAL_MAX) {
     pages.push({
@@ -1092,20 +1115,11 @@ function maleBeatPages({ kind, spec, success, delta }) {
     });
     pages.push(...sexPages(true));
   } else if (lv === "obey" && Math.random() < 1 / 3) {
+    const mateSpec = pickMaleScriptLine("mate");
     pages.push({
       role: "male",
       who: m.name,
-      fallback: "跟我走，去做愛。",
-      load: async () => {
-        const raw = await llmChat([
-          {
-            role: "system",
-            content: `你是「${m.name}」。你要帶這個女人去做愛，或強邀。一句。不要角色名冒號。`,
-          },
-          { role: "user", content: `女的叫${girl.name}。` },
-        ]);
-        return cleanLine(raw, m.name) || "跟我走，去做愛。";
-      },
+      text: mateSpec.male || "跟我走，去做愛。",
     });
     pages.push(...sexPages(false));
   }
@@ -1114,18 +1128,25 @@ function maleBeatPages({ kind, spec, success, delta }) {
 
 async function startMaleApproach() {
   const m = state.male;
-  const meta = malePack?.types?.[m.type] || {};
   m.onField = true;
   m.appeared = true;
-  const spec = {
-    narr: meta.approachNarr || "有個男人走過來。",
-    male: meta.approach || "嗨。",
-  };
+  const spec = pickMaleScriptLine("approach");
   await playQueue(maleBeatPages({ kind: "approach", spec, success: false, delta: "" }));
 }
 
 async function startMaleTurn() {
-  const kind = maleActKind();
+  const lv = obeyLevel();
+  // 順從偏高時偶爾直接抽交配請求
+  const kind = lv === "obey" && Math.random() < 0.25 ? "mate" : maleActKind();
+  if (kind === "mate") {
+    const spec = pickMaleScriptLine("mate");
+    const delta = applyMaleAct("mate");
+    if (state.male) state.male.escapeDenom = (state.male.escapeDenom || 15) + 2;
+    const pages = maleBeatPages({ kind: "mate", spec, success: true, delta });
+    pages.push(...sexPages(false));
+    await playQueue(pages);
+    return;
+  }
   const spec = pickMaleLine(kind);
   const delta = applyMaleAct(kind);
   const success = maleSucceeds();
@@ -1466,7 +1487,13 @@ async function doAct(act) {
     return;
   }
   if (state.ended) return;
-  if (act === "rescue" || act === "interact") return;
+  if (act === "interact") return;
+  if (act === "rescue") {
+    if (!state.male?.onField) return;
+    await doRescue();
+    return;
+  }
+  if (state.male?.onField && act !== "eat" && act !== "end") return;
   const card = state.card;
   if (!card) return;
   const fromEdit = act === "tease" || act === "talk" || act === "molest";
@@ -1672,7 +1699,6 @@ async function boot() {
       return r.json();
     });
     cards = pack.cards || [];
-    malePack = null;
     try {
       const raw = await fetch("/content/edit_date.json?ts=" + Date.now()).then((r) => {
         if (!r.ok) throw new Error("讀劇本失敗");
@@ -1682,7 +1708,8 @@ async function boot() {
     } catch {
       dateScript = normalizeDateScript(DEFAULT_DATE_SCRIPT);
     }
-    setAdminStatus(`卡 ${cards.length} 張 · 人設池已載入 · 約會劇本已載入（男子線暫停）`);
+    const mt = dateScript.male?.types?.length || 0;
+    setAdminStatus(`卡 ${cards.length} 張 · 人設池已載入 · 約會／單男劇本已載入（種類 ${mt}）`);
   } catch (e) {
     setAdminStatus(e.message, true);
   }
