@@ -124,6 +124,12 @@
   </div>
   <div class="mini" id="mo-ref-flag">沒有參考圖（未上傳不能產圖）</div>
 
+  <div class="row">
+    <span class="fix0"><label>骨架強度 denoise</label>
+      <input id="mo-denoise" type="number" min="0.35" max="0.9" step="0.05" value="0.55"></span>
+    <span class="mini" style="flex:1 1 14em;margin:0;padding-bottom:.35em">越高越貼參考圖姿勢；越低越聽 prompt。範圍 0.35～0.9（同 testword）。</span>
+  </div>
+
   <label>正向 prompt</label>
   <textarea id="mo-pos" placeholder="英文 tags，例：first-person POV, groping waist, nsfw, park"></textarea>
 
@@ -203,6 +209,8 @@ function moCollect() {
   p.narrPrompt = $("mo-narr").value || "";
   p.feelPrompt = $("mo-feel").value || "";
   p.imgMode = "ref";
+  const dn = parseFloat($("mo-denoise")?.value || "0.55");
+  p.poseDenoise = Number.isFinite(dn) ? Math.min(0.9, Math.max(0.35, dn)) : 0.55;
   p.slot = p.slot || { prompt: "", negative: "", ref: "", url: "" };
   p.slot.prompt = $("mo-pos").value || "";
   p.slot.negative = $("mo-neg").value || "";
@@ -278,6 +286,7 @@ function moRenderForm() {
   $("mo-player").value = p.playerAct || "";
   $("mo-narr").value = p.narrPrompt || "";
   $("mo-feel").value = p.feelPrompt || "";
+  $("mo-denoise").value = String(p.poseDenoise ?? 0.55);
   $("mo-pos").value = p.slot?.prompt || "";
   $("mo-neg").value = p.slot?.negative || "";
   const art = $("mo-art");

@@ -13,6 +13,7 @@ export function emptyMolestPack(name = "猥褻劇本") {
     narrPrompt: "寫 1～2 句旁白：玩家對 [name] 動手猥褻的現場（體態、視線、周圍人潮）。不要寫成口交或做愛，不要寫台詞。",
     feelPrompt: "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
     imgMode: "ref",
+    poseDenoise: 0.55,
     slot: {
       prompt: "",
       negative: "looking at viewer, text, watermark, ugly, extra fingers",
@@ -41,9 +42,16 @@ export function normalizeMolestPack(raw) {
     feelPrompt: String(s.feelPrompt ?? base.feelPrompt),
     // 猥褻產圖一律圖生圖
     imgMode: "ref",
+    poseDenoise: clampDenoise(s.poseDenoise ?? s.pose_denoise ?? base.poseDenoise),
     slot,
     updated: Number(s.updated) || Date.now(),
   };
+}
+
+function clampDenoise(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0.55;
+  return Math.min(0.9, Math.max(0.35, Math.round(n * 100) / 100));
 }
 
 /** 舊 acts.molest {narr,player} → 猥褻包 */
@@ -210,7 +218,7 @@ export async function buildMolestImgBody(pack, girl, eng = {}, style = "anime") 
       retry: true,
       scene_kind: "script",
       pose_ref: ref,
-      pose_denoise: 0.55,
+      pose_denoise: clampDenoise(p.poseDenoise),
       ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: eng.comfyCkpt || "" } : {}),
     },
     merged,
