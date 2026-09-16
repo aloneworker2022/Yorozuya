@@ -367,42 +367,18 @@ function pickActionLine(card, act) {
   return pool[chosen];
 }
 
-/** 言語調戲：從 edit_date「言語調戲」清單隨機抽一句當玩家輸出（本場先不重複）。 */
-function pickTalkLine() {
-  const pool = (dateScript.classify?.talk?.keywords || [])
-    .map((s) => String(s || "").trim())
-    .filter(Boolean);
-  if (!pool.length) return null;
-  const usedKey = "edit:talk-kw";
-  const used = state.usedLines[usedKey] || [];
-  const left = pool.map((_, i) => i).filter((i) => !used.includes(i));
-  const pickFrom = left.length ? left : pool.map((_, i) => i);
-  const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
-  state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
-  return {
-    narr: "玩家開口調戲她。",
-    player: pool[chosen],
-  };
-}
-
 function pickScriptLine(act) {
-  // 言語調戲（talk／調戲按鈕）→ edit_date 的「言語調戲」關鍵字／台詞池
-  if (act === "talk" || act === "tease") {
-    const talk = pickTalkLine();
-    if (talk) return talk;
-    // 池空時才退回舊的調戲按鈕劇本
-    if (act === "tease") {
-      const pool = actionPool(dateScript.acts?.tease);
-      if (!pool.length) return null;
-      const usedKey = "edit:tease";
-      const used = state.usedLines[usedKey] || [];
-      const left = pool.map((_, i) => i).filter((i) => !used.includes(i));
-      const pickFrom = left.length ? left : pool.map((_, i) => i);
-      const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
-      state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
-      return pool[chosen];
-    }
-    return null;
+  // 調戲按鈕 → edit_date「調戲（按鈕）」acts.tease；言語調戲池已取消
+  if (act === "tease" || act === "talk") {
+    const pool = actionPool(dateScript.acts?.tease);
+    if (!pool.length) return null;
+    const usedKey = "edit:tease";
+    const used = state.usedLines[usedKey] || [];
+    const left = pool.map((_, i) => i).filter((i) => !used.includes(i));
+    const pickFrom = left.length ? left : pool.map((_, i) => i);
+    const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+    state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
+    return pool[chosen];
   }
   const pool = actionPool(dateScript.acts?.[act]);
   if (!pool.length) return null;
@@ -702,7 +678,7 @@ async function aiGirlReplyToMale({ narr, maleLine, success, kind }) {
   const user = [
     `地點：公園${zoneOf(state.zone).name}`,
     `場景：${state.card?.name || ""}　${state.card?.scene || ""}`,
-    `男子「${mn}」動作：${kind === "approach" ? "搭訕" : kind === "talk" ? "言語調戲" : "肢體碰觸"}`,
+    `男子「${mn}」動作：${kind === "approach" ? "搭訕" : kind === "talk" ? "調戲" : "肢體碰觸"}`,
     `旁白：${narr}`,
     `${mn}：${maleLine}`,
     `順從：${obeyZh()}　判定：${success ? "成功" : "失敗"}`,
@@ -790,7 +766,7 @@ async function aiBodyNarr({ actionNarr, maleLine, success, kind }) {
     success
       ? "判定成功：她沒有躲開，身體留在原地或讓他碰到。"
       : "判定失敗：她躲開、推開、別過臉、後退。",
-    `男子這次是：${kind === "approach" ? "走過來搭訕" : kind === "talk" ? "言語調戲" : "肢體碰觸"}`,
+    `男子這次是：${kind === "approach" ? "走過來搭訕" : kind === "talk" ? "調戲" : "肢體碰觸"}`,
     `動作方向：${actionNarr}`,
     `他剛說：${maleLine}`,
     state.lastGirlLine ? `她剛說：${state.lastGirlLine}` : "",
@@ -964,7 +940,7 @@ function chatHint(act, playerLine, card) {
     return `玩家在「${scene}」對「${name}」動手猥褻。他說／做：「${playerLine}」。只描述已經發生的肢體，不要寫成口交或做愛。`;
   }
   if (act === "talk" || act === "tease") {
-    return `玩家在「${scene}」用話調戲「${name}」。他說：「${playerLine}」。只描述已經發生的言語調戲，不要動手寫成猥褻，不要寫成口交或做愛。`;
+    return `玩家在「${scene}」用話調戲「${name}」。他說：「${playerLine}」。只描述已經發生的調戲，不要動手寫成猥褻，不要寫成口交或做愛。`;
   }
   return `玩家在「${scene}」跟「${name}」說話。他說：「${playerLine}」。只描述已經發生的對話現場。`;
 }
