@@ -36,9 +36,10 @@
 <body>
 <h1>⚙ Edit Date — 約會聊天劇本</h1>
 <div class="warn">
-  <code>/test_date</code> 的「調戲／猥褻」按鈕抽這份寫的旁白＋玩家台詞，不抽場景卡。分類關鍵字先不在這裡編。口交與做愛仍禁止。改完儲存，測試頁重整後生效。
+  <code>/test_date</code> 的「調戲／猥褻」按鈕抽這份寫的旁白＋玩家台詞，不抽場景卡。文案可用 <code>[name]</code> <code>[head]</code> <code>[breast]</code> <code>[eye]</code> <code>[player]</code> 等標註，開局會換成這隻女子的身體／名字參數。分類關鍵字先不在這裡編。口交與做愛仍禁止。改完儲存，測試頁重整後生效。
   <a href="/test_date">約會測試頁</a> | <a href="/edit_person">人物池</a> | <a href="/editmale">其他召喚師</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
 </div>
+<p class="mini" id="bind-hint" style="margin:-.4em 0 1em"></p>
 
 <section>
   <h2>女子回話語劇</h2>
@@ -54,13 +55,13 @@
 
 <section>
   <h2>調戲（按鈕）</h2>
-  <p class="mini">按「調戲」從這裡抽。兩行一組：第一行旁白方向，第二行玩家台詞。組與組空一行。這場約會抽過的先不重複。</p>
+  <p class="mini">按「調戲」從這裡抽。兩行一組：第一行旁白方向，第二行玩家台詞。組與組空一行。這場約會抽過的先不重複。可用 <code>[name]</code> <code>[head]</code> <code>[breast]</code> <code>[nipple]</code> <code>[labia]</code> <code>[eye]</code> <code>[hair]</code> <code>[player]</code> 等（與卡牌綁定同套）。</p>
   <textarea id="act-tease" class="lines"></textarea>
 </section>
 
 <section>
   <h2>猥褻（按鈕）</h2>
-  <p class="mini">按「猥褻」從這裡抽。格式同上。不要寫成口交或做愛。</p>
+  <p class="mini">按「猥褻」從這裡抽。格式同上。可用身體標註。不要寫成口交或做愛。</p>
   <textarea id="act-molest" class="lines"></textarea>
 </section>
 
@@ -75,8 +76,10 @@
 
 <script type="module">
 import { DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs } from "./content/edit_date.js";
+import { bindHint } from "./content/script_mode.js";
 
 function $(id) { return document.getElementById(id); }
+const bh = $("bind-hint"); if (bh) bh.textContent = "可用標註：" + bindHint();
 function done(m) { const s = $("save-status"); s.textContent = m; s.className = "status"; }
 function fail(m) { const s = $("save-status"); s.textContent = "失敗:" + m; s.className = "status err"; }
 

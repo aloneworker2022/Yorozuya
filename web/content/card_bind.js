@@ -18,6 +18,7 @@ export const BIND_PLACEHOLDERS = [
   { key: "thigh", aliases: ["thighs", "腿", "大腿"], sample: "修長的大腿", desc: "腿" },
   { key: "hair", aliases: ["髮", "頭髮"], sample: "黑色長直髮", desc: "髮型（可含髮色）" },
   { key: "face", aliases: ["臉", "臉型"], sample: "鵝蛋臉", desc: "臉型" },
+  { key: "head", aliases: ["頭", "頭部"], sample: "鵝蛋臉、黑色長直髮、赤紅眼", desc: "頭部外貌（臉／髮／眼摘要）" },
   { key: "mouth", aliases: ["唇", "嘴", "嘴唇"], sample: "薄唇", desc: "嘴巴" },
   { key: "body", aliases: ["build", "身材", "體型"], sample: "纖細", desc: "體型" },
   { key: "job", aliases: ["occupation", "職業", "工作"], sample: "護理師", desc: "職業" },
@@ -124,12 +125,19 @@ export function bindContextFromGirl(girl, playerName = "你") {
   const face = pickStr(L.face, "她的臉");
   const mouth = pickStr(L.mouth, "她的嘴唇");
   const look = lookSummary(L, girl);
+  const head = pickStr(
+    [face !== "她的臉" ? face : "", hair !== "她的頭髮" ? hair : "", eye !== "她的眼睛" ? eye : ""]
+      .filter(Boolean).join("、"),
+    face,
+    "她的頭部外貌",
+  );
 
   return {
     name,
     player: pickStr(playerName, "你") || "你",
     eye,
     eyes: eye,
+    head,
     breast,
     bust: breast,
     chest: breast,

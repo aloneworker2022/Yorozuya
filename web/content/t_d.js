@@ -7,6 +7,7 @@ import {
   normalizeDateScript,
   classifyDateLine,
 } from "./edit_date.js";
+import { fillBinds, bindHint } from "./script_mode.js";
 
 const DEFAULT_ENDPOINT = "http://192.168.68.55:11434";
 const DEFAULT_MODEL = "e-girl:latest";
@@ -367,6 +368,19 @@ function pickActionLine(card, act) {
   return pool[chosen];
 }
 
+function fillDateText(text) {
+  return fillBinds(text, girl);
+}
+
+function fillActSpec(spec) {
+  if (!spec) return null;
+  return {
+    ...spec,
+    narr: fillDateText(spec.narr),
+    player: fillDateText(spec.player),
+  };
+}
+
 function pickScriptLine(act) {
   // 調戲按鈕 → edit_date「調戲（按鈕）」acts.tease；言語調戲池已取消
   if (act === "tease" || act === "talk") {
@@ -465,7 +479,7 @@ async function aiNarrate(hint) {
     const raw = await llmChat([
       {
         role: "system",
-        content: dateScript.narr_system,
+        content: fillDateText(dateScript.narr_system),
       },
       { role: "user", content: `演出方向：${hint}` },
     ]);
@@ -532,7 +546,7 @@ async function aiGirlReply({ card, act, narr, playerLine, delta }) {
   const sys = [
     buildSystemPrompt(buildDateGirlCtx()),
     DATE_REL_OPEN[relStage] || DATE_REL_OPEN.stranger,
-    dateScript.girl_system,
+    fillDateText(dateScript.girl_system),
     scenePromptBlock(card, narr, act),
   ]
     .filter(Boolean)
@@ -1039,7 +1053,7 @@ async function doAct(act) {
   const card = state.card;
   if (!card) return;
   const fromEdit = act === "tease" || act === "talk" || act === "molest";
-  const spec = fromEdit ? pickScriptLine(act) : pickActionLine(card, act);
+  const spec = fillActSpec(fromEdit ? pickScriptLine(act) : pickActionLine(card, act));
   if (!spec) {
     await playQueue([{ role: "sys", who: "系統", text: fromEdit ? "edit_date 還沒寫這個行動。" : "這張卡沒有這個行動。" }]);
     return;
