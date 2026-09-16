@@ -1227,12 +1227,31 @@ async function doChat(raw) {
   }
   state.round += 1;
   const delta = `${ACT_ZH[cls.act] || cls.act}　${result.bits.join("　")}`;
-  let hint = chatHint(cls.act, text, card);
+  // 聊天判成猥褻且失敗：玩家 → 旁白，女子不輸出
   if (cls.act === "molest" && molestRoll && !molestRoll.ok) {
-    hint =
+    const failHint =
       `玩家想猥褻「${girl?.name || "她"}」（成功率 ${molestRoll.oddsZh}，失敗）。他說／做：「${text}」。` +
-      `旁白只寫被擋開、沒得逞。不要寫成成功。`;
+      `旁白只寫被擋開、沒得逞。不要寫成成功。不要寫女子台詞。`;
+    busy = true;
+    waitingAi = false;
+    renderHud();
+    await playQueue([
+      { role: "player", who: "我", text, extra: delta },
+      {
+        role: "sys",
+        who: "旁白",
+        load: () => aiNarrate(failHint),
+        fallback: `你伸手想碰，被${girl?.name || "她"}躲开了。（${molestRoll.oddsZh}）`,
+      },
+      ...endPages(),
+    ]);
+    pendingResolve = !state.ended;
+    busy = false;
+    renderHud();
+    return;
   }
+
+  const hint = chatHint(cls.act, text, card);
   busy = true;
   enterPaging();
   waitingAi = true;
@@ -1245,22 +1264,12 @@ async function doChat(raw) {
   });
   const narr = document.querySelector("#log .tx")?.textContent || hint;
   waitingAi = false;
-  const girlP = aiGirlReply({
-    card,
-    act: cls.act,
-    narr,
-    playerLine: text,
-    delta,
-    attitude: molestRoll && !molestRoll.ok
-      ? "拒絕、羞憤、把他的手打開。明確不讓他得逞。"
-      : "",
-    feel: molestRoll && !molestRoll.ok ? "被嚇到／生氣／羞恥，身體沒有配合。" : "",
-  });
+  const girlP = aiGirlReply({ card, act: cls.act, narr, playerLine: text, delta });
   enqueue({ role: "player", who: "我", text, extra: delta });
   enqueue({
     role: "girl",
     who: girl.name,
-    fallback: molestRoll && !molestRoll.ok ? "別碰我……！" : "……",
+    fallback: "……",
     load: () => girlP,
   });
   endPages().forEach(enqueue);
@@ -1481,36 +1490,22 @@ async function doAct(act) {
   waitingAi = true;
   renderHud();
 
-  // 猥褻失敗：旁白＋她拒絕，不出圖
+  // 猥褻失敗：玩家 → 旁白，女子不輸出，不出圖
   if (act === "molest" && molestRoll && !molestRoll.ok) {
     const failHint =
       `玩家想對「${girl?.name || "她"}」動手猥褻（成功率 ${molestRoll.oddsZh}，這次失敗）。` +
-      `他原本要做：「${spec.player}」。寫旁白：被她擋開／躲开／喝止，肢體沒得逞。不要寫成成功，不要口交或做愛。`;
-    await showPage({
-      role: "sys",
-      who: "旁白",
-      load: () => aiNarrate(failHint),
-      fallback: `你伸手想碰，被${girl?.name || "她"}躲开了。（${molestRoll.oddsZh}）`,
-    });
-    const narr = document.querySelector("#log .tx")?.textContent || failHint;
+      `他原本要做：「${spec.player}」。寫旁白：被她擋開／躲开／喝止，肢體沒得逞。不要寫成成功，不要口交或做愛。不要寫女子台詞。`;
     waitingAi = false;
-    const girlP = aiGirlReply({
-      card,
-      act: "molest",
-      narr,
-      playerLine: spec.player,
-      delta,
-      attitude: "拒絕、羞憤、把他的手打開。明確不讓他得逞。",
-      feel: "被嚇到／生氣／羞恥，身體沒有配合。",
-    });
-    enqueue({ role: "player", who: "你", text: spec.player, extra: delta });
-    enqueue({
-      role: "girl",
-      who: girl.name,
-      fallback: "別碰我……！",
-      load: () => girlP,
-    });
-    endPages().forEach(enqueue);
+    await playQueue([
+      { role: "player", who: "你", text: spec.player, extra: delta },
+      {
+        role: "sys",
+        who: "旁白",
+        load: () => aiNarrate(failHint),
+        fallback: `你伸手想碰，被${girl?.name || "她"}躲开了。（${molestRoll.oddsZh}）`,
+      },
+      ...endPages(),
+    ]);
     pendingResolve = !state.ended;
     busy = false;
     renderHud();
