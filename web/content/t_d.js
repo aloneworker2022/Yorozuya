@@ -9,6 +9,7 @@ import {
 } from "./edit_date.js";
 import { fillBinds, bindHint } from "./script_mode.js";
 import { filledPack, normalizeMolestPack } from "./date_molest.js";
+import { pickDateOutfit, girlForDate, dateOutfitText } from "./date_outfit.js";
 
 const DEFAULT_ENDPOINT = "http://192.168.68.55:11434";
 const DEFAULT_MODEL = "e-girl:latest";
@@ -64,6 +65,7 @@ let cards = [];
 let malePack = null;
 let dateScript = normalizeDateScript(DEFAULT_DATE_SCRIPT);
 let girl = null;
+let dateOutfit = null; // { text, index, girlId }
 let relStage = "stranger";
 let busy = false;
 let started = false;
@@ -378,8 +380,21 @@ function pickActionLine(card, act) {
   return pool[chosen];
 }
 
+
+function ensureDateOutfit() {
+  if (!girl) return { text: "便服", index: 0, girlId: "" };
+  if (!dateOutfit || dateOutfit.girlId !== girl.id) {
+    dateOutfit = pickDateOutfit(girl, relStage);
+  }
+  return dateOutfit;
+}
+
+function datedGirl() {
+  return girlForDate(girl, ensureDateOutfit());
+}
+
 function fillDateText(text) {
-  return fillBinds(text, girl);
+  return fillBinds(text, datedGirl() || girl);
 }
 
 function fillActSpec(spec) {
@@ -402,7 +417,7 @@ function pickMolestSpec() {
   const pickFrom = left.length ? left : packs.map((_, i) => i);
   const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
   state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
-  const f = filledPack(packs[chosen], girl);
+  const f = filledPack(packs[chosen], datedGirl() || girl);
   return {
     narr: f.narrPrompt,
     player: f.playerAct,
@@ -523,7 +538,8 @@ async function aiNarrate(hint) {
 }
 
 function buildDateGirlCtx() {
-  const g = girl || {};
+  const g = datedGirl() || girl || {};
+  const worn = dateOutfitText(g, ensureDateOutfit());
   return {
     character: {
       name: g.name || "她",
@@ -545,7 +561,10 @@ function buildDateGirlCtx() {
       look: g.look || null,
       special_traits: g.specialTraits || null,
       job_desc: g.jobDesc || null,
+      outfitPick: g.outfitPick,
     },
+    // 約會穿著提示（給 persona／旁白）
+    _dateWear: worn,
     relationship: { stage: relStage, progress: null, days_since_summon: 0 },
     scene: {
       type: "date_park",
@@ -562,6 +581,7 @@ function scenePromptBlock(card, narr, act) {
   const bits = [
     "【這一拍場景】（看板店頭聊沒有這段；約會要帶進去）",
     `你們正在公園「${zone.name}」約會。時段：${timeOf(state.time).name}。人就在他眼前。`,
+    `她今天出門穿的是約會便服「${dateOutfitText(datedGirl() || girl, ensureDateOutfit())}」，不是上班／制服那身。`,
     card?.name ? `場景「${card.name}」：${card.scene}` : "",
     card?.narration ? `場景旁白：${card.narration}` : "",
     narr ? `剛才發生的事：${narr}` : "",
@@ -1051,6 +1071,8 @@ async function startDate() {
   }
   Object.assign(state, emptyState());
   state.time = $("times")?.querySelector(".pill.on")?.dataset.id || "morning";
+  dateOutfit = null;
+  const wear = ensureDateOutfit();
   started = true;
   state.ended = false;
   busy = false;
@@ -1059,7 +1081,10 @@ async function startDate() {
   state.arrive = pickArrive();
   state.male = null;
   const card = drawCard();
-  const pages = [{ role: "sys", who: "旁白", text: arriveText(state.arrive, girl.name) }];
+  const pages = [
+    { role: "sys", who: "旁白", text: arriveText(state.arrive, girl.name) },
+    { role: "sys", who: "穿著", text: `${girl.name} 今天穿著約會便服「${wear.text}」，不是上班／制服那身。` },
+  ];
   if (!card) pages.push({ role: "sys", who: "系統", text: "沒有可抽的廣場卡。" });
   else pages.push({ role: "sys", who: "旁白", text: card.narration });
   await playQueue(pages);
@@ -1143,6 +1168,7 @@ function drawGirlFromPool() {
   if (!g) throw new Error("人設池還沒載入");
   g.id = "drawn-" + Date.now().toString(36);
   girl = g;
+  dateOutfit = null;
   renderGirlAdmin();
   renderHud();
   setAdminStatus(`抽到 ${g.name}`);

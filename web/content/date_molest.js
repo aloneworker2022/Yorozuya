@@ -1,6 +1,7 @@
 /** 約會猥褻（按鈕）劇本：接近 testword 劇本模式單景編輯。一定圖生圖。 */
 
 import { fillBinds, bindHint, uid, normalizeSlot } from "./script_mode.js";
+import { girlForDate, dateOutfitText, pickDateOutfit } from "./date_outfit.js";
 
 export { fillBinds, bindHint };
 
@@ -112,8 +113,9 @@ export function joinPromptParts(...parts) {
 }
 
 /** 跟 testword 一樣：先抓人設基礎 prompt（空 extra），再給呼叫端疊加輸入。 */
-export async function fetchMolestBasePrompt(girl, eng = {}, style = "anime") {
+export async function fetchMolestBasePrompt(girl, eng = {}, style = "anime", relStage = "stranger") {
   if (!girl) throw new Error("先選魅子");
+  const dated = girlForDate(girl, pickDateOutfit(girl, relStage));
   const comfy = (eng.imgProvider || "grok-img") === "comfy";
   const body = {
     key: `molest-base:${girl.id || "x"}:${Date.now().toString(36)}`,
@@ -122,7 +124,8 @@ export async function fetchMolestBasePrompt(girl, eng = {}, style = "anime") {
     framing: "half",
     rating: "nsfw",
     style: style || "anime",
-    character: girl,
+    character: dated,
+    outfit: dateOutfitText(dated),
     extra: "",
     negative: "",
     prompt: "",
@@ -187,15 +190,17 @@ export function formatOutputPromptSheet(merged) {
  * 組生圖下單。一定要有參考圖（圖生圖）。
  * Comfy：prompt = 基礎＋輸入（整份原樣送）；Grok：extra = 輸入正向（人設由伺服器打底）。
  */
-export async function buildMolestImgBody(pack, girl, eng = {}, style = "anime") {
+export async function buildMolestImgBody(pack, girl, eng = {}, style = "anime", relStage = "stranger") {
   const p = normalizeMolestPack(pack);
   const ref = String(p.slot?.ref || "").trim();
   if (!ref) {
     throw new Error("猥褻產圖一定要圖生圖，請先上傳參考圖");
   }
-  const userPos = fillBinds(p.slot.prompt, girl);
-  const userNeg = fillBinds(p.slot.negative, girl);
-  const base = await fetchMolestBasePrompt(girl, eng, style);
+  const outfitInfo = pickDateOutfit(girl, relStage);
+  const dated = girlForDate(girl, outfitInfo);
+  const userPos = fillBinds(p.slot.prompt, dated);
+  const userNeg = fillBinds(p.slot.negative, dated);
+  const base = await fetchMolestBasePrompt(girl, eng, style, relStage);
   const merged = mergeMolestPrompts(base, userPos, userNeg);
   const comfy = (eng.imgProvider || "grok-img") === "comfy";
   return {
@@ -206,8 +211,8 @@ export async function buildMolestImgBody(pack, girl, eng = {}, style = "anime") 
       framing: "half",
       rating: "nsfw",
       style: style || "anime",
-      character: girl,
-      outfit: "",
+      character: dated,
+      outfit: dateOutfitText(dated, outfitInfo),
       // Comfy 吃整份合併 prompt；Grok 整張圖以 character 打底、extra 加輸入正向
       prompt: comfy ? merged.positive : "",
       extra: comfy ? "" : merged.userPositive,
@@ -223,6 +228,8 @@ export async function buildMolestImgBody(pack, girl, eng = {}, style = "anime") 
     },
     merged,
     base,
+    outfit: outfitInfo,
+    dated,
   };
 }
 
