@@ -2,6 +2,7 @@
 
 import { fillBinds, bindHint, uid, normalizeSlot } from "./script_mode.js";
 import { girlForDate, dateOutfitText, pickDateOutfit } from "./date_outfit.js";
+import { placeOf, placeZh, placeEn, fillPlaceTokens } from "./date_place.js";
 
 export { fillBinds, bindHint };
 
@@ -13,6 +14,7 @@ export function emptyMolestPack(name = "猥褻劇本") {
     playerAct: "你從後面把手伸向 [name] 的 [waist]。",
     narrPrompt: "寫 1～2 句旁白：玩家對 [name] 動手猥褻的現場（體態、視線、周圍人潮）。不要寫成口交或做愛，不要寫台詞。",
     feelPrompt: "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+    placeId: "plaza",
     imgMode: "ref",
     poseDenoise: 0.55,
     slot: {
@@ -41,12 +43,18 @@ export function normalizeMolestPack(raw) {
     playerAct: String(s.playerAct ?? s.player ?? base.playerAct),
     narrPrompt: String(s.narrPrompt ?? s.narr ?? base.narrPrompt),
     feelPrompt: String(s.feelPrompt ?? base.feelPrompt),
+    placeId: strPlace(s.placeId || s.place || base.placeId),
     // 猥褻產圖一律圖生圖
     imgMode: "ref",
     poseDenoise: clampDenoise(s.poseDenoise ?? s.pose_denoise ?? base.poseDenoise),
     slot,
     updated: Number(s.updated) || Date.now(),
   };
+}
+
+function strPlace(id) {
+  const p = placeOf(id);
+  return p.id;
 }
 
 function clampDenoise(v) {
@@ -80,18 +88,23 @@ export function normalizeMolestPacks(rawList, legacyActs) {
   return migrated.length ? migrated : [emptyMolestPack("預設猥褻")];
 }
 
-export function filledPack(pack, girl, playerName = "你") {
+export function filledPack(pack, girl, playerName = "你", placeId) {
   const p = normalizeMolestPack(pack);
+  const pid = placeId || p.placeId || "plaza";
+  const fill = (text) => fillPlaceTokens(fillBinds(text, girl, playerName), pid);
   return {
     ...p,
-    attitude: fillBinds(p.attitude, girl, playerName),
-    playerAct: fillBinds(p.playerAct, girl, playerName),
-    narrPrompt: fillBinds(p.narrPrompt, girl, playerName),
-    feelPrompt: fillBinds(p.feelPrompt, girl, playerName),
+    placeId: pid,
+    placeName: placeOf(pid).name,
+    placeZh: placeZh(pid),
+    attitude: fill(p.attitude),
+    playerAct: fill(p.playerAct),
+    narrPrompt: fill(p.narrPrompt),
+    feelPrompt: fill(p.feelPrompt),
     slot: {
       ...p.slot,
-      prompt: fillBinds(p.slot.prompt, girl, playerName),
-      negative: fillBinds(p.slot.negative, girl, playerName),
+      prompt: fill(p.slot.prompt),
+      negative: fill(p.slot.negative),
     },
   };
 }
@@ -190,18 +203,21 @@ export function formatOutputPromptSheet(merged) {
  * 組生圖下單。一定要有參考圖（圖生圖）。
  * Comfy：prompt = 基礎＋輸入（整份原樣送）；Grok：extra = 輸入正向（人設由伺服器打底）。
  */
-export async function buildMolestImgBody(pack, girl, eng = {}, style = "anime", relStage = "stranger") {
+export async function buildMolestImgBody(pack, girl, eng = {}, style = "anime", relStage = "stranger", placeId) {
   const p = normalizeMolestPack(pack);
+  const pid = placeId || p.placeId || "plaza";
   const ref = String(p.slot?.ref || "").trim();
   if (!ref) {
     throw new Error("猥褻產圖一定要圖生圖，請先上傳參考圖");
   }
   const outfitInfo = pickDateOutfit(girl, relStage);
   const dated = girlForDate(girl, outfitInfo);
-  const userPos = fillBinds(p.slot.prompt, dated);
-  const userNeg = fillBinds(p.slot.negative, dated);
+  const userPos = fillPlaceTokens(fillBinds(p.slot.prompt, dated), pid);
+  const userNeg = fillPlaceTokens(fillBinds(p.slot.negative, dated), pid);
+  // 場所進正向：在哪裡發生
+  const placePos = placeEn(pid);
   const base = await fetchMolestBasePrompt(girl, eng, style, relStage);
-  const merged = mergeMolestPrompts(base, userPos, userNeg);
+  const merged = mergeMolestPrompts(base, joinPromptParts(placePos, userPos), userNeg);
   const comfy = (eng.imgProvider || "grok-img") === "comfy";
   return {
     body: {
@@ -230,6 +246,7 @@ export async function buildMolestImgBody(pack, girl, eng = {}, style = "anime", 
     base,
     outfit: outfitInfo,
     dated,
+    place: placeOf(pid),
   };
 }
 

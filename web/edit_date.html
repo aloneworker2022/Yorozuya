@@ -92,6 +92,8 @@
         <option value="girlfriend">女友</option>
         <option value="wife">妻子</option>
       </select></span>
+    <span class="fix0"><label>場所</label>
+      <select id="mo-place"></select></span>
     <span class="fix0"><label>生圖</label>
       <select id="mo-img-prov">
         <option value="grok-img">Grok 圖</option>
@@ -164,6 +166,7 @@ import {
   fetchMolestBasePrompt, mergeMolestPrompts, formatOutputPromptSheet,
   buildMolestImgBody, buildMolestReplyMsgs, buildMolestNarrMsgs, bindHint, fillBinds,
 } from "./content/date_molest.js";
+import { DATE_PLACES, placeZh } from "./content/date_place.js";
 
 const ENG_KEY = "yoro_testword_engines";
 
@@ -180,7 +183,13 @@ function moStatus(m, err) {
 }
 
 const bh = $("bind-hint");
-if (bh) bh.textContent = "可用標註：" + bindHint();
+if (bh) bh.textContent = "可用標註：" + bindHint() + " [place]";
+const moPlaceSel = $("mo-place");
+if (moPlaceSel) {
+  moPlaceSel.innerHTML = DATE_PLACES.map((z) =>
+    `<option value="${z.id}">${z.name}</option>`
+  ).join("");
+}
 
 let keptClassify = null;
 let script = normalizeDateScript(DEFAULT_DATE_SCRIPT);
@@ -208,6 +217,7 @@ function moCollect() {
   p.playerAct = $("mo-player").value || "";
   p.narrPrompt = $("mo-narr").value || "";
   p.feelPrompt = $("mo-feel").value || "";
+  p.placeId = $("mo-place")?.value || p.placeId || "plaza";
   p.imgMode = "ref";
   const dn = parseFloat($("mo-denoise")?.value || "0.55");
   p.poseDenoise = Number.isFinite(dn) ? Math.min(0.9, Math.max(0.35, dn)) : 0.55;
@@ -286,6 +296,7 @@ function moRenderForm() {
   $("mo-player").value = p.playerAct || "";
   $("mo-narr").value = p.narrPrompt || "";
   $("mo-feel").value = p.feelPrompt || "";
+  if ($("mo-place")) $("mo-place").value = p.placeId || "plaza";
   $("mo-denoise").value = String(p.poseDenoise ?? 0.55);
   $("mo-pos").value = p.slot?.prompt || "";
   $("mo-neg").value = p.slot?.negative || "";
@@ -318,10 +329,11 @@ async function moRefreshOut() {
         t: now,
       };
     }
-    const userPos = fillBinds(p.slot?.prompt || "", g);
-    const userNeg = fillBinds(p.slot?.negative || "", g);
-    const merged = mergeMolestPrompts(moBaseCache.base, userPos, userNeg);
-    el.textContent = formatOutputPromptSheet(merged);
+    const pid = $("mo-place")?.value || p.placeId || "plaza";
+    const f = filledPack(p, g, "你", pid);
+    const merged = mergeMolestPrompts(moBaseCache.base, f.slot.prompt, f.slot.negative);
+    el.textContent = `【場所】${placeZh(pid)}\n\n` + formatOutputPromptSheet(merged)
+      + "\n\n（產圖時會再併入場所英文場景 tags）";
   } catch (err) {
     el.textContent = "抓基礎 prompt 失敗：" + err.message + "\n\n【輸入正向】\n" + (p.slot?.prompt || "");
   }
@@ -427,6 +439,10 @@ $("mo-stage").addEventListener("change", () => {
   moBaseCache = { girlId: "", base: null, t: 0 };
   moRefreshOut();
 });
+$("mo-place").addEventListener("change", () => {
+  moCollect();
+  moRefreshOut();
+});
 
 $("mo-new").addEventListener("click", () => {
   moCollect();
@@ -492,14 +508,14 @@ $("mo-gen").addEventListener("click", async () => {
   $("mo-art").innerHTML = `<span class="mini">生成中…</span>`;
   moStatus("抓基礎 prompt 並產圖中…");
   try {
-    const built = await buildMolestImgBody(p, g, engGet(), "anime", $("mo-stage")?.value || "stranger");
+    const built = await buildMolestImgBody(p, g, engGet(), "anime", $("mo-stage")?.value || "stranger", $("mo-place")?.value || p.placeId || "plaza");
     moBaseCache = { girlId: g.id, base: built.base, t: Date.now() };
     $("mo-out-prompt").textContent = formatOutputPromptSheet(built.merged);
     const r = await waitImg(built.body);
     if (r.status === "done" && r.result) {
       p.slot.url = String(r.result).split("?")[0];
       $("mo-art").innerHTML = `<img src="${esc(r.result)}" alt="molest">`;
-      moStatus("✓ 產圖完成 · 約會便服「" + (built.outfit?.text || "") + "」（記得儲存）");
+      moStatus("✓ 產圖完成 · " + (built.place?.name || "") + " · 便服「" + (built.outfit?.text || "") + "」（記得儲存）");
     } else {
       $("mo-art").innerHTML = `<span class="mini">失敗</span>`;
       moStatus(r.error || "生圖失敗", true);
@@ -517,19 +533,20 @@ $("mo-test").addEventListener("click", async () => {
   if (!g) { moStatus("先選存檔魅子", true); return; }
   if (!p) return;
   const stage = $("mo-stage").value || g.stage || "stranger";
-  const f = filledPack(p, g);
+  const pid = $("mo-place")?.value || p.placeId || "plaza";
+  const f = filledPack(p, g, "你", pid);
   const out = $("mo-test-out");
   out.textContent = "綜合測試中…";
   moStatus("綜合測試：旁白…");
   try {
     const narr = await llmOnce(buildMolestNarrMsgs(f.narrPrompt, f.playerAct, g.name));
-    out.textContent = `【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n女子回話中…`;
+    out.textContent = `【場所】\n${f.placeZh || placeZh(pid)}\n\n【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n女子回話中…`;
     moStatus("綜合測試：女子…");
     const reply = await llmOnce(buildMolestReplyMsgs(g.name, f.attitude, f.feelPrompt, narr, f.playerAct, stage));
-    out.textContent = `【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n產圖中…`;
+    out.textContent = `【場所】\n${f.placeZh || placeZh(pid)}\n\n【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n產圖中…`;
     moStatus("綜合測試：產圖…");
     if (!String(p.slot?.ref || "").trim()) throw new Error("一定要圖生圖：請先上傳參考圖");
-    const built = await buildMolestImgBody(p, g, engGet(), "anime", $("mo-stage")?.value || "stranger");
+    const built = await buildMolestImgBody(p, g, engGet(), "anime", $("mo-stage")?.value || "stranger", $("mo-place")?.value || p.placeId || "plaza");
     moBaseCache = { girlId: g.id, base: built.base, t: Date.now() };
     $("mo-out-prompt").textContent = formatOutputPromptSheet(built.merged);
     let imgLine = "";
@@ -541,7 +558,7 @@ $("mo-test").addEventListener("click", async () => {
     } else {
       imgLine = "產圖失敗：" + (r.error || "");
     }
-    out.textContent = `【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n【圖】\n${imgLine}\n\n【輸出 prompt】\n${formatOutputPromptSheet(built.merged)}`;
+    out.textContent = `【場所】\n${f.placeZh || placeZh(pid)}\n\n【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n【圖】\n${imgLine}\n\n【輸出 prompt】\n${formatOutputPromptSheet(built.merged)}`;
     moStatus("✓ 綜合測試完成（記得儲存）");
   } catch (err) {
     out.textContent = "失敗：" + err.message;

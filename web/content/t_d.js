@@ -10,6 +10,7 @@ import {
 import { fillBinds, bindHint } from "./script_mode.js";
 import { filledPack, normalizeMolestPack } from "./date_molest.js";
 import { pickDateOutfit, girlForDate, dateOutfitText } from "./date_outfit.js";
+import { placeZh, fillPlaceTokens } from "./date_place.js";
 
 const DEFAULT_ENDPOINT = "http://192.168.68.55:11434";
 const DEFAULT_MODEL = "e-girl:latest";
@@ -394,7 +395,7 @@ function datedGirl() {
 }
 
 function fillDateText(text) {
-  return fillBinds(text, datedGirl() || girl);
+  return fillPlaceTokens(fillBinds(text, datedGirl() || girl), state.zone || "plaza");
 }
 
 function fillActSpec(spec) {
@@ -417,7 +418,7 @@ function pickMolestSpec() {
   const pickFrom = left.length ? left : packs.map((_, i) => i);
   const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)];
   state.usedLines[usedKey] = left.length ? used.concat(chosen) : [chosen];
-  const f = filledPack(packs[chosen], datedGirl() || girl);
+  const f = filledPack(packs[chosen], datedGirl() || girl, "你", state.zone || packs[chosen].placeId || "plaza");
   return {
     narr: f.narrPrompt,
     player: f.playerAct,
@@ -580,7 +581,7 @@ function scenePromptBlock(card, narr, act) {
   const zone = zoneOf(state.zone);
   const bits = [
     "【這一拍場景】（看板店頭聊沒有這段；約會要帶進去）",
-    `你們正在公園「${zone.name}」約會。時段：${timeOf(state.time).name}。人就在他眼前。`,
+    `你們正在公園「${zone.name}」約會（${placeZh(state.zone)}）。時段：${timeOf(state.time).name}。人就在他眼前。`,
     `她今天出門穿的是約會便服「${dateOutfitText(datedGirl() || girl, ensureDateOutfit())}」，不是上班／制服那身。`,
     card?.name ? `場景「${card.name}」：${card.scene}` : "",
     card?.narration ? `場景旁白：${card.narration}` : "",
@@ -1003,7 +1004,7 @@ async function doRescue() {
 }
 
 function chatHint(act, playerLine, card) {
-  const scene = card?.scene || zoneOf(state.zone).name;
+  const scene = card?.scene || placeZh(state.zone) || zoneOf(state.zone).name;
   const name = girl?.name || "她";
   if (act === "molest") {
     return `玩家在「${scene}」對「${name}」動手猥褻。他說／做：「${playerLine}」。只描述已經發生的肢體，不要寫成口交或做愛。`;
