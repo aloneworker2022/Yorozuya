@@ -1,6 +1,6 @@
-/** 約會猥褻（按鈕）劇本：接近 testword 劇本模式單景編輯。 */
+/** 約會猥褻（按鈕）劇本：接近 testword 劇本模式單景編輯。一定圖生圖。 */
 
-import { fillBinds, bindHint, buildScriptImgBody, uid, normalizeSlot } from "./script_mode.js";
+import { fillBinds, bindHint, uid, normalizeSlot } from "./script_mode.js";
 
 export { fillBinds, bindHint };
 
@@ -12,8 +12,13 @@ export function emptyMolestPack(name = "猥褻劇本") {
     playerAct: "你從後面把手伸向 [name] 的 [waist]。",
     narrPrompt: "寫 1～2 句旁白：玩家對 [name] 動手猥褻的現場（體態、視線、周圍人潮）。不要寫成口交或做愛，不要寫台詞。",
     feelPrompt: "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
-    imgMode: "prompt",
-    slot: { prompt: "", negative: "looking at viewer, text, watermark, ugly, extra fingers", ref: "", url: "" },
+    imgMode: "ref",
+    slot: {
+      prompt: "",
+      negative: "looking at viewer, text, watermark, ugly, extra fingers",
+      ref: "",
+      url: "",
+    },
     updated: Date.now(),
   };
 }
@@ -34,7 +39,8 @@ export function normalizeMolestPack(raw) {
     playerAct: String(s.playerAct ?? s.player ?? base.playerAct),
     narrPrompt: String(s.narrPrompt ?? s.narr ?? base.narrPrompt),
     feelPrompt: String(s.feelPrompt ?? base.feelPrompt),
-    imgMode: s.imgMode === "ref" ? "ref" : "prompt",
+    // 猥褻產圖一律圖生圖
+    imgMode: "ref",
     slot,
     updated: Number(s.updated) || Date.now(),
   };
@@ -81,32 +87,142 @@ export function filledPack(pack, girl, playerName = "你") {
   };
 }
 
-/** 輸出 prompt：展開後會送進生圖的正向字串 */
-export function outputPromptOf(pack, girl, playerName = "你") {
-  const f = filledPack(pack, girl, playerName);
-  return String(f.slot.prompt || "").trim();
+export function joinPromptParts(...parts) {
+  const seen = new Set();
+  const out = [];
+  for (const part of parts) {
+    for (const bit of String(part || "").split(",")) {
+      const s = bit.trim();
+      if (!s) continue;
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+  }
+  return out.join(", ");
 }
 
-export function buildMolestImgBody(pack, girl, eng = {}, style = "anime") {
-  const p = normalizeMolestPack(pack);
-  const spec = { imgMode: p.imgMode, slots: [p.slot] };
-  return buildScriptImgBody({
-    girl,
-    slot: p.slot,
-    spec,
-    scene: 1,
-    imgProvider: eng.imgProvider || "grok-img",
-    imgModel: eng.imgModel || "",
-    llmModel: eng.llmModel || "",
-    comfyUrl: eng.comfyUrl || "",
-    comfyCkpt: eng.comfyCkpt || "",
-    style,
-    outfit: "",
-    keyPrefix: "date-molest",
-    pack: null,
-    framePack: null,
-    slotIndex: 0,
+/** 跟 testword 一樣：先抓人設基礎 prompt（空 extra），再給呼叫端疊加輸入。 */
+export async function fetchMolestBasePrompt(girl, eng = {}, style = "anime") {
+  if (!girl) throw new Error("先選魅子");
+  const comfy = (eng.imgProvider || "grok-img") === "comfy";
+  const body = {
+    key: `molest-base:${girl.id || "x"}:${Date.now().toString(36)}`,
+    provider: comfy ? "comfy" : "grok-img",
+    model: comfy ? (eng.imgModel || eng.llmModel || "grok-4.5") : (eng.imgModel || "grok-4.5"),
+    framing: "half",
+    rating: "nsfw",
+    style: style || "anime",
+    character: girl,
+    extra: "",
+    negative: "",
+    prompt: "",
+    cutout: false,
+    lock_identity: true,
+    scene_kind: "script",
+    ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: eng.comfyCkpt || "" } : {}),
+  };
+  const r = await fetch("/api/imggen/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  const tr = j.trace || {};
+  return {
+    positive: String(tr.comfy_prompt || "").trim(),
+    negative: String(tr.comfy_negative || "").trim(),
+    grokPrompt: String(tr.grok_prompt || "").trim(),
+    provider: tr.provider || body.provider,
+  };
+}
+
+export function mergeMolestPrompts(base, userPos, userNeg) {
+  const b = base || { positive: "", negative: "" };
+  return {
+    positive: joinPromptParts(b.positive, userPos),
+    negative: joinPromptParts(b.negative, userNeg),
+    basePositive: String(b.positive || "").trim(),
+    baseNegative: String(b.negative || "").trim(),
+    userPositive: String(userPos || "").trim(),
+    userNegative: String(userNeg || "").trim(),
+  };
+}
+
+/** 輸出 prompt 說明字串（給編輯頁預覽） */
+export function formatOutputPromptSheet(merged) {
+  const m = merged || {};
+  return [
+    "【基礎正向】",
+    m.basePositive || "（尚未抓到／沒選魅子）",
+    "",
+    "【＋輸入正向】",
+    m.userPositive || "（空白）",
+    "",
+    "【合併正向 → 送出】",
+    m.positive || "（空）",
+    "",
+    "【基礎負向】",
+    m.baseNegative || "（空）",
+    "",
+    "【＋輸入負向】",
+    m.userNegative || "（空白）",
+    "",
+    "【合併負向 → 送出】",
+    m.negative || "（空）",
+  ].join("\n");
+}
+
+/**
+ * 組生圖下單。一定要有參考圖（圖生圖）。
+ * Comfy：prompt = 基礎＋輸入（整份原樣送）；Grok：extra = 輸入正向（人設由伺服器打底）。
+ */
+export async function buildMolestImgBody(pack, girl, eng = {}, style = "anime") {
+  const p = normalizeMolestPack(pack);
+  const ref = String(p.slot?.ref || "").trim();
+  if (!ref) {
+    throw new Error("猥褻產圖一定要圖生圖，請先上傳參考圖");
+  }
+  const userPos = fillBinds(p.slot.prompt, girl);
+  const userNeg = fillBinds(p.slot.negative, girl);
+  const base = await fetchMolestBasePrompt(girl, eng, style);
+  const merged = mergeMolestPrompts(base, userPos, userNeg);
+  const comfy = (eng.imgProvider || "grok-img") === "comfy";
+  return {
+    body: {
+      key: `date-molest:${girl?.id || "x"}:${Date.now().toString(36)}`,
+      provider: comfy ? "comfy" : "grok-img",
+      model: comfy ? (eng.imgModel || eng.llmModel || "grok-4.5") : (eng.imgModel || "grok-4.5"),
+      framing: "half",
+      rating: "nsfw",
+      style: style || "anime",
+      character: girl,
+      outfit: "",
+      // Comfy 吃整份合併 prompt；Grok 整張圖以 character 打底、extra 加輸入正向
+      prompt: comfy ? merged.positive : "",
+      extra: comfy ? "" : merged.userPositive,
+      negative: merged.negative,
+      visual_neg: merged.negative,
+      cutout: false,
+      lock_identity: true,
+      retry: true,
+      scene_kind: "script",
+      pose_ref: ref,
+      pose_denoise: 0.55,
+      ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: eng.comfyCkpt || "" } : {}),
+    },
+    merged,
+    base,
+  };
+}
+
+/** 同步輸出預覽用（已有 base 快取時） */
+export function outputPromptOf(pack, girl, playerName = "你", base = null) {
+  const f = filledPack(pack, girl, playerName);
+  if (!base) return String(f.slot.prompt || "").trim();
+  return mergeMolestPrompts(base, f.slot.prompt, f.slot.negative).positive;
 }
 
 export function buildMolestReplyMsgs(girlName, attitude, feelPrompt, narr, playerAct, stage) {

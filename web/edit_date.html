@@ -112,13 +112,7 @@
   <label>女子感覺 prompt</label>
   <textarea id="mo-feel" placeholder="這一拍身體感覺，只影響她台詞口氣。"></textarea>
 
-  <div class="row">
-    <span class="fix0"><label>生圖方式</label>
-      <select id="mo-img-mode">
-        <option value="prompt">直接 prompt</option>
-        <option value="ref">圖生圖（參考圖）</option>
-      </select></span>
-  </div>
+  <p class="mini">產圖<strong>一定圖生圖</strong>：沒上傳參考圖不能生。送出前會先抓人設基礎正／負向，再疊你填的輸入（跟 testword 一樣）。</p>
 
   <div class="art" id="mo-art"><span class="mini">尚未產生</span></div>
 
@@ -128,7 +122,7 @@
     <button type="button" id="mo-ref-up">上傳參考圖</button>
     <button type="button" id="mo-ref-clear">拿掉</button>
   </div>
-  <div class="mini" id="mo-ref-flag">沒有參考圖</div>
+  <div class="mini" id="mo-ref-flag">沒有參考圖（未上傳不能產圖）</div>
 
   <label>正向 prompt</label>
   <textarea id="mo-pos" placeholder="英文 tags，例：first-person POV, groping waist, nsfw, park"></textarea>
@@ -136,7 +130,7 @@
   <label>負向 prompt</label>
   <textarea id="mo-neg" style="min-height:3.2em" placeholder="ugly, extra fingers, looking at viewer, text"></textarea>
 
-  <label>輸出 prompt（展開身體標註後，實際會送生圖的正向）</label>
+  <label>輸出 prompt（基礎＋輸入 → 合併後送出）</label>
   <div class="sheet" id="mo-out-prompt">（選魅子並填正向 prompt 後更新）</div>
 
   <div class="row" style="margin-top:.55em">
@@ -160,7 +154,8 @@
 <script type="module">
 import { DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs } from "./content/edit_date.js";
 import {
-  emptyMolestPack, normalizeMolestPack, filledPack, outputPromptOf,
+  emptyMolestPack, normalizeMolestPack, filledPack,
+  fetchMolestBasePrompt, mergeMolestPrompts, formatOutputPromptSheet,
   buildMolestImgBody, buildMolestReplyMsgs, buildMolestNarrMsgs, bindHint, fillBinds,
 } from "./content/date_molest.js";
 
@@ -207,7 +202,7 @@ function moCollect() {
   p.playerAct = $("mo-player").value || "";
   p.narrPrompt = $("mo-narr").value || "";
   p.feelPrompt = $("mo-feel").value || "";
-  p.imgMode = $("mo-img-mode").value === "ref" ? "ref" : "prompt";
+  p.imgMode = "ref";
   p.slot = p.slot || { prompt: "", negative: "", ref: "", url: "" };
   p.slot.prompt = $("mo-pos").value || "";
   p.slot.negative = $("mo-neg").value || "";
@@ -283,7 +278,6 @@ function moRenderForm() {
   $("mo-player").value = p.playerAct || "";
   $("mo-narr").value = p.narrPrompt || "";
   $("mo-feel").value = p.feelPrompt || "";
-  $("mo-img-mode").value = p.imgMode === "ref" ? "ref" : "prompt";
   $("mo-pos").value = p.slot?.prompt || "";
   $("mo-neg").value = p.slot?.negative || "";
   const art = $("mo-art");
@@ -293,15 +287,35 @@ function moRenderForm() {
   moRefreshOut();
 }
 
-function moRefreshOut() {
+let moBaseCache = { girlId: "", base: null, t: 0 };
+
+async function moRefreshOut() {
   moCollect();
   const g = moGirl();
   const p = moPack();
   const el = $("mo-out-prompt");
   if (!p) { el.textContent = "（無劇本）"; return; }
-  if (!g) { el.textContent = "（先選存檔魅子，才會展開 [name]／[breast]…）\n" + (p.slot?.prompt || ""); return; }
-  const out = outputPromptOf(p, g) || "（正向 prompt 空白）";
-  el.textContent = out;
+  if (!g) {
+    el.textContent = "（先選存檔魅子）\n【輸入正向】\n" + (p.slot?.prompt || "（空）");
+    return;
+  }
+  el.textContent = "抓取基礎 prompt 中…";
+  try {
+    const now = Date.now();
+    if (!moBaseCache.base || moBaseCache.girlId !== g.id || now - moBaseCache.t > 60000) {
+      moBaseCache = {
+        girlId: g.id,
+        base: await fetchMolestBasePrompt(g, engGet()),
+        t: now,
+      };
+    }
+    const userPos = fillBinds(p.slot?.prompt || "", g);
+    const userNeg = fillBinds(p.slot?.negative || "", g);
+    const merged = mergeMolestPrompts(moBaseCache.base, userPos, userNeg);
+    el.textContent = formatOutputPromptSheet(merged);
+  } catch (err) {
+    el.textContent = "抓基礎 prompt 失敗：" + err.message + "\n\n【輸入正向】\n" + (p.slot?.prompt || "");
+  }
 }
 
 function moRenderGirls() {
@@ -392,6 +406,7 @@ $("mo-girl").addEventListener("change", () => {
   girlId = $("mo-girl").value;
   const g = moGirl();
   if (g?.stage) $("mo-stage").value = g.stage;
+  moBaseCache = { girlId: "", base: null, t: 0 };
   moRefreshOut();
 });
 ["mo-pos", "mo-player", "mo-attitude", "mo-narr", "mo-feel"].forEach((id) => {
@@ -460,14 +475,14 @@ $("mo-gen").addEventListener("click", async () => {
   const p = moPack();
   if (!g) { moStatus("先選存檔魅子", true); return; }
   if (!p) return;
-  if (p.imgMode === "ref" && !p.slot.ref) { moStatus("圖生圖要先上傳參考圖，或改成直接 prompt", true); return; }
-  if (!String(p.slot.prompt || "").trim()) { moStatus("先寫正向 prompt", true); return; }
+  if (!String(p.slot?.ref || "").trim()) { moStatus("一定要圖生圖：請先上傳參考圖", true); return; }
   $("mo-art").innerHTML = `<span class="mini">生成中…</span>`;
-  moStatus("產圖中…");
-  moRefreshOut();
+  moStatus("抓基礎 prompt 並產圖中…");
   try {
-    const body = buildMolestImgBody(p, g, engGet());
-    const r = await waitImg(body);
+    const built = await buildMolestImgBody(p, g, engGet());
+    moBaseCache = { girlId: g.id, base: built.base, t: Date.now() };
+    $("mo-out-prompt").textContent = formatOutputPromptSheet(built.merged);
+    const r = await waitImg(built.body);
     if (r.status === "done" && r.result) {
       p.slot.url = String(r.result).split("?")[0];
       $("mo-art").innerHTML = `<img src="${esc(r.result)}" alt="molest">`;
@@ -500,20 +515,20 @@ $("mo-test").addEventListener("click", async () => {
     const reply = await llmOnce(buildMolestReplyMsgs(g.name, f.attitude, f.feelPrompt, narr, f.playerAct, stage));
     out.textContent = `【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n產圖中…`;
     moStatus("綜合測試：產圖…");
-    let imgLine = "（略過產圖：正向 prompt 空白）";
-    if (String(p.slot.prompt || "").trim()) {
-      if (p.imgMode === "ref" && !p.slot.ref) throw new Error("圖生圖要先上傳參考圖");
-      const body = buildMolestImgBody(p, g, engGet());
-      const r = await waitImg(body);
-      if (r.status === "done" && r.result) {
-        p.slot.url = String(r.result).split("?")[0];
-        $("mo-art").innerHTML = `<img src="${esc(r.result)}" alt="molest">`;
-        imgLine = "產圖 ✓ " + p.slot.url;
-      } else {
-        imgLine = "產圖失敗：" + (r.error || "");
-      }
+    if (!String(p.slot?.ref || "").trim()) throw new Error("一定要圖生圖：請先上傳參考圖");
+    const built = await buildMolestImgBody(p, g, engGet());
+    moBaseCache = { girlId: g.id, base: built.base, t: Date.now() };
+    $("mo-out-prompt").textContent = formatOutputPromptSheet(built.merged);
+    let imgLine = "";
+    const r = await waitImg(built.body);
+    if (r.status === "done" && r.result) {
+      p.slot.url = String(r.result).split("?")[0];
+      $("mo-art").innerHTML = `<img src="${esc(r.result)}" alt="molest">`;
+      imgLine = "產圖 ✓ " + p.slot.url;
+    } else {
+      imgLine = "產圖失敗：" + (r.error || "");
     }
-    out.textContent = `【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n【圖】\n${imgLine}\n\n【輸出 prompt】\n${outputPromptOf(p, g) || "（空）"}`;
+    out.textContent = `【玩家動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n【圖】\n${imgLine}\n\n【輸出 prompt】\n${formatOutputPromptSheet(built.merged)}`;
     moStatus("✓ 綜合測試完成（記得儲存）");
   } catch (err) {
     out.textContent = "失敗：" + err.message;
