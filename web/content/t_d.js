@@ -240,17 +240,10 @@ function renderHud() {
       ? `帶女子脫離騷擾 ${escapeOddsZh()}`
       : "帶女子脫離騷擾";
   }
-  const nextDisabled = waitingAi || (cgOpen && !cgGirlReady);
-  const nextLabel = waitingAi ? "……" : "下一頁";
   const next = $("btn-next");
   if (next) {
-    next.disabled = nextDisabled;
-    next.textContent = nextLabel;
-  }
-  const cgNext = $("cg-next");
-  if (cgNext) {
-    cgNext.disabled = nextDisabled;
-    cgNext.textContent = nextLabel;
+    next.disabled = waitingAi || cgOpen;
+    next.textContent = waitingAi ? "……" : "下一頁";
   }
   document.querySelectorAll("#acts .act").forEach((el) => {
     const act = el.dataset.act;
@@ -344,12 +337,7 @@ async function showPage(item) {
 }
 
 async function advance() {
-  if (!paging || waitingAi) return;
-  // 覆蓋層：魅子說完後，「下一頁」關閉圖並接後續旁白
-  if (cgOpen) {
-    if (cgGirlReady && typeof cgCloseResolve === "function") cgCloseResolve();
-    return;
-  }
+  if (!paging || waitingAi || cgOpen) return;
   if (!queue.length) {
     await exitPaging();
     return;
@@ -1281,7 +1269,7 @@ async function startDate() {
 }
 
 
-/** 猥褻有圖：全螢幕覆蓋，點圖 你→她名；她說完後按「下一頁」關閉並接旁白 */
+/** 猥褻有圖：全螢幕覆蓋，點圖推進 你 → 她的名字 → 關閉（回到 v7.10，不用下一頁） */
 function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
   return new Promise((resolve) => {
     const ov = $("cg-overlay");
@@ -1291,18 +1279,18 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
     const deltaEl = $("cg-delta");
     const cap = $("cg-cap");
     if (!ov || !img || !who || !tx) {
-      resolve({ girlText: "" });
+      resolve({ girlText: "", aborted: false });
       return;
     }
 
-    let phase = 0; // 0 player → 1 girl（等下一頁關閉）
+    let phase = 0; // 0 player → 1 girl → 2 done
     let girlText = "";
     let girlSettled = false;
     let lock = false;
 
     const cleanup = () => {
-      img.removeEventListener("click", onImgClick);
-      cap?.removeEventListener("click", onImgClick);
+      img.removeEventListener("click", onClick);
+      cap?.removeEventListener("click", onClick);
       ov.classList.remove("on");
       ov.setAttribute("aria-hidden", "true");
       ov.dataset.phase = "player";
@@ -1318,6 +1306,7 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
       const out = girlText || tx.textContent || "……";
       cleanup();
       resolve({ girlText: out, aborted: !!opts.aborted });
+      renderHud();
     };
 
     const showPlayer = () => {
@@ -1340,8 +1329,8 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
     };
 
     Promise.resolve(girlPromise)
-      .then((t) => {
-        girlText = String(t || "……");
+      .then((x) => {
+        girlText = String(x || "……");
         girlSettled = true;
         if (phase === 1 && !lock) showGirl(girlText);
       })
@@ -1351,31 +1340,33 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
         if (phase === 1 && !lock) showGirl(girlText);
       });
 
-    const onImgClick = async (e) => {
+    const onClick = async (e) => {
       e?.preventDefault?.();
       e?.stopPropagation?.();
       if (lock || phase >= 2) return;
-      // 第一下：你 → 她；她說完後再點圖等同「下一頁」
-      if (phase !== 0) {
-        if (cgGirlReady) finish();
+
+      if (phase === 0) {
+        phase = 1;
+        if (girlSettled) {
+          showGirl(girlText || "……");
+          return;
+        }
+        showGirl("……");
+        lock = true;
+        try {
+          girlText = String((await girlPromise) || "……");
+        } catch {
+          girlText = "……";
+        }
+        girlSettled = true;
+        lock = false;
+        if (phase === 1) showGirl(girlText);
         return;
       }
 
-      phase = 1;
-      if (girlSettled) {
-        showGirl(girlText || "……");
-        return;
+      if (phase === 1) {
+        finish();
       }
-      showGirl("……");
-      lock = true;
-      try {
-        girlText = String((await girlPromise) || "……");
-      } catch {
-        girlText = "……";
-      }
-      girlSettled = true;
-      lock = false;
-      if (phase === 1) showGirl(girlText);
     };
 
     cgOpen = true;
@@ -1385,11 +1376,12 @@ function runMolestCg({ url, playerLine, girlName, girlPromise, delta }) {
     showPlayer();
     ov.classList.add("on");
     ov.setAttribute("aria-hidden", "false");
-    img.addEventListener("click", onImgClick);
-    cap?.addEventListener("click", onImgClick);
+    img.addEventListener("click", onClick);
+    cap?.addEventListener("click", onClick);
     renderHud();
   });
 }
+
 
 
 async function doAct(act) {
@@ -1454,7 +1446,6 @@ async function doAct(act) {
       delta,
     });
     if (cg?.aborted) {
-      // 開後台中止：不要硬接餘韻旁白
       busy = false;
       waitingAi = false;
       paging = false;
@@ -1463,26 +1454,16 @@ async function doAct(act) {
       renderHud();
       return;
     }
-    const girlLine = cg?.girlText || state.lastGirlLine || "……";
-    // 她說完＋下一頁關圖之後：先出餘韻旁白，再按下一頁才回到可操作
-    waitingAi = true;
-    renderHud();
-    await showPage({
-      role: "sys",
-      who: "旁白",
-      load: () =>
-        aiNarrate(
-          `剛才玩家對「${girl?.name || "她"}」做了：「${spec.player}」。她回：「${girlLine}」。寫一句到兩句現場餘韻旁白，不要重複對話原文，不要寫成口交或做愛。`,
-        ),
-      fallback: "現場一陣安靜。",
-    });
-    waitingAi = false;
     const ends = endPages();
-    ends.forEach(enqueue);
     pendingResolve = !state.ended;
     busy = false;
-    renderHud();
-    // 仍在 paging：玩家按「下一頁」清掉旁白（與 endPages）後才 exitPaging 可操作
+    if (ends.length) {
+      queue = ends.slice(1);
+      await showPage(ends[0]);
+      renderHud();
+    } else {
+      await exitPaging();
+    }
     return;
   }
 
@@ -1576,11 +1557,6 @@ async function boot() {
     }
   });
   $("btn-next").addEventListener("click", () => advance());
-  $("cg-next")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    advance();
-  });
   $("cg-admin")?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
