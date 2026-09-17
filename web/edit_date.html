@@ -270,6 +270,77 @@
     <h3 class="subh">⑤ 交配請求（此種類）</h3>
     <p class="mini">順從偏高或男子回合觸發時抽。格式同調戲（旁白＋男子台詞）。</p>
     <textarea id="male-mate" class="lines"></textarea>
+
+    <h3 class="subh">⑥ 做愛行為／旅館（全種類共用）</h3>
+    <p class="mini">付 10 金一起去旅館時會<strong>隨機抽一間</strong>。每間旅館有獨立流程：階段 1→2 依序播完；階段 3 隨機抽且 2/3 機率再抽；階段 4 結尾依序。行為包欄位類似單男猥褻，另加射精／門外聲音／場內對玩家回應／階段。</p>
+    <div class="mm-box" id="mh-box">
+      <div class="row" style="margin-bottom:.4em">
+        <span class="grow"><label>旅館</label>
+          <select id="mh-hotel"></select></span>
+        <span class="grow"><label>旅館名稱</label>
+          <input id="mh-hotel-name" placeholder="溫泉旅館" maxlength="40"></span>
+        <button class="cy" type="button" id="mh-hotel-add">＋旅館</button>
+        <button class="del" type="button" id="mh-hotel-del">刪旅館</button>
+      </div>
+      <div class="row" style="margin-bottom:.55em">
+        <span class="grow"><label>行為包</label>
+          <select id="mh-act"></select></span>
+        <span class="grow"><label>行為名稱</label>
+          <input id="mh-name" placeholder="行為名稱" maxlength="40"></span>
+        <button class="cy" type="button" id="mh-save-one">儲存此行為</button>
+        <button type="button" id="mh-new">＋新行為</button>
+        <button class="del" type="button" id="mh-del">刪行為</button>
+      </div>
+      <div class="row" style="margin-bottom:.55em">
+        <span class="fix0"><label>階段</label>
+          <select id="mh-stage">
+            <option value="1">1 前戲／進場</option>
+            <option value="2">2 進入正題</option>
+            <option value="3">3 主幹（可重複抽）</option>
+            <option value="4">4 收尾</option>
+          </select></span>
+        <span class="fix0"><label>射精</label>
+          <select id="mh-ejac">
+            <option value="none">無</option>
+            <option value="in">內射</option>
+            <option value="out">外射</option>
+          </select></span>
+        <span class="fix0"><label>場所</label>
+          <select id="mh-place"></select></span>
+        <span class="fix0"><label>生圖</label>
+          <select id="mh-img-prov">
+            <option value="grok-img">Grok 圖</option>
+            <option value="comfy">ComfyUI</option>
+          </select></span>
+      </div>
+      <label>女子態度</label>
+      <textarea id="mh-attitude" placeholder="旅館裡對場上男子的態度……"></textarea>
+      <label>男子動作／台詞</label>
+      <textarea id="mh-male-act" placeholder="例：男子把她壓在床上整根進入。"></textarea>
+      <label>旁白 prompt</label>
+      <textarea id="mh-narr" placeholder="給旁白 AI 的方向。"></textarea>
+      <label>女子感覺 prompt</label>
+      <textarea id="mh-feel" placeholder="這一拍身體感覺。"></textarea>
+      <label>女子傳出來的聲音（門外／在門外等）</label>
+      <textarea id="mh-voice" placeholder="門外聽到的喘息、撞擊、對話片段……"></textarea>
+      <label>女子對玩家的回應（跟進去看時）</label>
+      <textarea id="mh-reply" placeholder="場內她對玩家說的話……"></textarea>
+      <p class="mini">產圖為<strong>文生圖</strong>：合併「目前選中男子種類」的 lookEn＋場所＋正向。可選填已產 url。</p>
+      <div class="art" id="mh-art"><span class="mini">尚未產生</span></div>
+      <label>正向 prompt</label>
+      <textarea id="mh-pos" placeholder="英文 tags，例：1boy sex in hotel, nsfw, explicit"></textarea>
+      <label>負向 prompt</label>
+      <textarea id="mh-neg" style="min-height:3.2em" placeholder="ugly, extra fingers, looking at viewer"></textarea>
+      <label>圖片 URL（可選，有則優先用）</label>
+      <input id="mh-img-url" placeholder="/assets/… 或 https://…" style="width:100%;margin:.25em 0 .4em;padding:.35em .5em;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.25);color:inherit">
+      <label>輸出 prompt（lookEn＋場所＋輸入）</label>
+      <div class="sheet" id="mh-out-prompt">（填 lookEn／正向後更新）</div>
+      <div class="row" style="margin-top:.55em">
+        <button class="cy" type="button" id="mh-gen">產圖</button>
+        <button type="button" id="mh-refresh-out">更新輸出 prompt</button>
+      </div>
+      <div class="status" id="mh-status"></div>
+    </div>
   </div>
 </section>
 
@@ -282,7 +353,10 @@
 </div>
 
 <script type="module">
-import { DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs, formatMaleActs, parseMaleActs } from "./content/edit_date.js";
+import {
+  DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs, formatMaleActs, parseMaleActs,
+  normalizeHotels, normalizeHotel, normalizeHotelSexAct, emptyHotel, emptyHotelSexAct,
+} from "./content/edit_date.js";
 import {
   emptyMolestPack, emptyMaleMolestPack, normalizeMolestPack, filledPack,
   fetchMolestBasePrompt, mergeMolestPrompts, formatOutputPromptSheet,
@@ -310,6 +384,12 @@ function mmStatus(m, err) {
   s.textContent = m;
   s.className = "status" + (err ? " err" : "");
 }
+function mhStatus(m, err) {
+  const s = $("mh-status");
+  if (!s) return;
+  s.textContent = m;
+  s.className = "status" + (err ? " err" : "");
+}
 
 const bh = $("bind-hint");
 if (bh) bh.textContent = "可用標註：" + bindHint() + " [place]";
@@ -322,6 +402,12 @@ if (moPlaceSel) {
 const mmPlaceSel = $("mm-place");
 if (mmPlaceSel) {
   mmPlaceSel.innerHTML = DATE_PLACES.map((z) =>
+    `<option value="${z.id}">${z.name}</option>`
+  ).join("");
+}
+const mhPlaceSel = $("mh-place");
+if (mhPlaceSel) {
+  mhPlaceSel.innerHTML = DATE_PLACES.map((z) =>
     `<option value="${z.id}">${z.name}</option>`
   ).join("");
 }
@@ -348,7 +434,7 @@ function engGet(provSelId) {
   let e = { imgProvider: "grok-img", imgModel: "grok-4.5", llmProvider: "grok-build", llmModel: "grok-4.5", comfyUrl: "", comfyCkpt: "" };
   try { e = { ...e, ...JSON.parse(localStorage.getItem(ENG_KEY) || "{}") }; } catch {}
   const fromSel = provSelId ? $(provSelId)?.value : "";
-  e.imgProvider = fromSel || $("mo-img-prov")?.value || $("mm-img-prov")?.value || e.imgProvider || "grok-img";
+  e.imgProvider = fromSel || $("mo-img-prov")?.value || $("mm-img-prov")?.value || $("mh-img-prov")?.value || e.imgProvider || "grok-img";
   try { localStorage.setItem(ENG_KEY, JSON.stringify({ ...e, imgProvider: e.imgProvider })); } catch {}
   return e;
 }
@@ -393,6 +479,9 @@ function fillTease(s) {
 let maleTypes = [];
 let maleActiveTypeId = "";
 let mmId = "";
+let maleHotels = [];
+let mhHotelId = "";
+let mhActId = "";
 
 function emptyMalePools() {
   const p = emptyMaleMolestPack("預設猥褻");
@@ -601,6 +690,142 @@ function renderMaleTypeSelect() {
   sel.value = maleActiveTypeId;
 }
 
+
+function mhHotel() {
+  return maleHotels.find((h) => h.id === mhHotelId) || maleHotels[0] || null;
+}
+
+function mhAct() {
+  const h = mhHotel();
+  const list = h?.acts || [];
+  if (!list.length) return null;
+  return list.find((a) => a.id === mhActId) || list[0] || null;
+}
+
+function mhCollect() {
+  const h = mhHotel();
+  const a = mhAct();
+  if (!h) return;
+  h.name = ($("mh-hotel-name")?.value || "").trim() || h.name || "旅館";
+  if (!a) return;
+  a.name = ($("mh-name")?.value || "").trim() || a.name;
+  a.stage = Number($("mh-stage")?.value || a.stage || 1) || 1;
+  a.ejac = $("mh-ejac")?.value || "none";
+  a.attitude = $("mh-attitude")?.value || "";
+  a.playerAct = $("mh-male-act")?.value || "";
+  a.narrPrompt = $("mh-narr")?.value || "";
+  a.feelPrompt = $("mh-feel")?.value || "";
+  a.voiceOut = $("mh-voice")?.value || "";
+  a.replyToPlayer = $("mh-reply")?.value || "";
+  a.placeId = $("mh-place")?.value || a.placeId || "plaza";
+  a.imgMode = "txt";
+  a.slot = a.slot || { prompt: "", negative: "", ref: "", url: "" };
+  a.slot.prompt = $("mh-pos")?.value || "";
+  a.slot.negative = $("mh-neg")?.value || "";
+  a.slot.url = ($("mh-img-url")?.value || "").trim() || a.slot.url || "";
+  a.updated = Date.now();
+  const norm = normalizeHotelSexAct(a);
+  Object.assign(a, norm);
+  mhActId = a.id;
+  mhHotelId = h.id;
+}
+
+function mhRenderHotels() {
+  const sel = $("mh-hotel");
+  if (!sel) return;
+  if (!maleHotels.some((h) => h.id === mhHotelId) && maleHotels[0]) mhHotelId = maleHotels[0].id;
+  sel.innerHTML = maleHotels.map((h) =>
+    `<option value="${esc(h.id)}"${h.id === mhHotelId ? " selected" : ""}>${esc(h.name)}</option>`
+  ).join("") || `<option value="">（尚無）</option>`;
+  const h = mhHotel();
+  if ($("mh-hotel-name")) $("mh-hotel-name").value = h?.name || "";
+}
+
+function mhRenderActs() {
+  const sel = $("mh-act");
+  const h = mhHotel();
+  if (!sel) return;
+  const list = h?.acts || [];
+  if (!list.some((a) => a.id === mhActId) && list[0]) mhActId = list[0].id;
+  sel.innerHTML = list.map((a) => {
+    const tag = `S${a.stage || 1}`;
+    return `<option value="${esc(a.id)}"${a.id === mhActId ? " selected" : ""}>[${tag}] ${esc(a.name)}</option>`;
+  }).join("") || `<option value="">（尚無）</option>`;
+}
+
+function mhRefreshOut() {
+  mhCollect();
+  const t = maleTypeById(maleActiveTypeId);
+  const a = mhAct();
+  const el = $("mh-out-prompt");
+  if (!el) return;
+  if (!a) { el.textContent = "（無行為）"; return; }
+  const pid = $("mh-place")?.value || a.placeId || "plaza";
+  const look = String(t?.lookEn || "").trim();
+  const userPos = String(a.slot?.prompt || "").trim();
+  const userNeg = String(a.slot?.negative || "").trim();
+  const placePos = placeEn(pid);
+  const positive = joinPromptParts(look, placePos, userPos);
+  el.textContent = [
+    `【旅館】${mhHotel()?.name || ""}`,
+    `【階段】${a.stage}　【射精】${a.ejac}`,
+    `【場所】${placeZh(pid)}`,
+    "",
+    "【lookEn（目前男子種類）】",
+    look || "（空）",
+    "",
+    "【場所英文】",
+    placePos || "（空）",
+    "",
+    "【＋輸入正向】",
+    userPos || "（空白）",
+    "",
+    "【合併正向 → 送出】",
+    positive || "（空）",
+    "",
+    "【負向】",
+    userNeg || "（空）",
+  ].join("\n");
+}
+
+function mhRenderForm() {
+  const a = mhAct();
+  if (!a) {
+    ["mh-name","mh-attitude","mh-male-act","mh-narr","mh-feel","mh-voice","mh-reply","mh-pos","mh-neg","mh-img-url"].forEach((id) => {
+      if ($(id)) $(id).value = "";
+    });
+    if ($("mh-art")) $("mh-art").innerHTML = `<span class="mini">尚未產生</span>`;
+    if ($("mh-out-prompt")) $("mh-out-prompt").textContent = "（無行為）";
+    return;
+  }
+  if ($("mh-name")) $("mh-name").value = a.name || "";
+  if ($("mh-stage")) $("mh-stage").value = String(a.stage || 1);
+  if ($("mh-ejac")) $("mh-ejac").value = a.ejac || "none";
+  if ($("mh-attitude")) $("mh-attitude").value = a.attitude || "";
+  if ($("mh-male-act")) $("mh-male-act").value = a.playerAct || "";
+  if ($("mh-narr")) $("mh-narr").value = a.narrPrompt || "";
+  if ($("mh-feel")) $("mh-feel").value = a.feelPrompt || "";
+  if ($("mh-voice")) $("mh-voice").value = a.voiceOut || "";
+  if ($("mh-reply")) $("mh-reply").value = a.replyToPlayer || "";
+  if ($("mh-place")) $("mh-place").value = a.placeId || "plaza";
+  if ($("mh-pos")) $("mh-pos").value = a.slot?.prompt || "";
+  if ($("mh-neg")) $("mh-neg").value = a.slot?.negative || "";
+  if ($("mh-img-url")) $("mh-img-url").value = a.slot?.url || "";
+  const art = $("mh-art");
+  if (art) {
+    if (a.slot?.url) art.innerHTML = `<img src="${esc(a.slot.url)}" alt="hotel-act">`;
+    else art.innerHTML = `<span class="mini">尚未產生</span>`;
+  }
+  mhRefreshOut();
+}
+
+function mhRenderAll() {
+  mhRenderHotels();
+  mhRenderActs();
+  mhRenderForm();
+}
+
+
 function fillMale(m) {
   const n = normalizeDateScript({ male: m || {} }).male;
   maleTypes = (n.types || []).map((t) => ({
@@ -619,8 +844,16 @@ function fillMale(m) {
   maleActiveTypeId = n.activeTypeId || maleTypes[0]?.id || "";
   const cur = maleTypeById(maleActiveTypeId);
   mmId = cur?.activeMolestId || cur?.molestPacks?.[0]?.id || "";
+  maleHotels = normalizeHotels(n.hotels).map((h) => normalizeHotel({
+    ...h,
+    acts: (h.acts || []).map((a) => normalizeHotelSexAct(a)),
+  }));
+  mhHotelId = n.activeHotelId || maleHotels[0]?.id || "";
+  const hh = mhHotel();
+  mhActId = hh?.acts?.[0]?.id || "";
   renderMaleTypeSelect();
   refillMaleTypeFields();
+  mhRenderAll();
 }
 
 function collectMale() {
@@ -643,7 +876,15 @@ function collectMale() {
   }));
   let activeTypeId = maleActiveTypeId;
   if (!types.some((t) => t.id === activeTypeId)) activeTypeId = types[0]?.id || "";
-  return { activeTypeId, types };
+  mhCollect();
+  const hotels = normalizeHotels(maleHotels.map((h) => normalizeHotel({
+    id: h.id,
+    name: h.name,
+    acts: (h.acts || []).map((a) => normalizeHotelSexAct(a)),
+  })));
+  let activeHotelId = mhHotelId;
+  if (!hotels.some((h) => h.id === activeHotelId)) activeHotelId = hotels[0]?.id || "";
+  return { activeTypeId, types, hotels, activeHotelId };
 }
 
 function fill(raw) {
@@ -1207,6 +1448,103 @@ $("mm-test")?.addEventListener("click", async () => {
   }
 });
 
+
+$("mh-hotel")?.addEventListener("change", () => {
+  mhCollect();
+  mhHotelId = $("mh-hotel").value || maleHotels[0]?.id || "";
+  const h = mhHotel();
+  mhActId = h?.acts?.[0]?.id || "";
+  mhRenderAll();
+});
+$("mh-hotel-name")?.addEventListener("input", () => {
+  const h = mhHotel();
+  if (!h) return;
+  h.name = ($("mh-hotel-name").value || "").trim() || h.name;
+  mhRenderHotels();
+});
+$("mh-act")?.addEventListener("change", () => {
+  mhCollect();
+  mhActId = $("mh-act").value || "";
+  mhRenderForm();
+});
+$("mh-hotel-add")?.addEventListener("click", () => {
+  mhCollect();
+  const h = emptyHotel("", "新旅館");
+  h.acts = [emptyHotelSexAct("新行為", 1)].map(normalizeHotelSexAct);
+  maleHotels.push(normalizeHotel(h));
+  mhHotelId = h.id;
+  mhActId = h.acts[0]?.id || "";
+  mhRenderAll();
+  mhStatus("已新增旅館（記得儲存）");
+});
+$("mh-hotel-del")?.addEventListener("click", () => {
+  if (maleHotels.length <= 1) { mhStatus("至少留一間旅館", true); return; }
+  maleHotels = maleHotels.filter((h) => h.id !== mhHotelId);
+  mhHotelId = maleHotels[0]?.id || "";
+  mhActId = maleHotels[0]?.acts?.[0]?.id || "";
+  mhRenderAll();
+  mhStatus("已刪旅館（記得儲存）");
+});
+$("mh-new")?.addEventListener("click", () => {
+  mhCollect();
+  const h = mhHotel();
+  if (!h) return;
+  const a = normalizeHotelSexAct(emptyHotelSexAct("新行為", 1));
+  h.acts = h.acts || [];
+  h.acts.push(a);
+  mhActId = a.id;
+  mhRenderActs();
+  mhRenderForm();
+  mhStatus("已新增行為（記得儲存）");
+});
+$("mh-del")?.addEventListener("click", () => {
+  const h = mhHotel();
+  if (!h?.acts?.length) return;
+  if (h.acts.length <= 1) { mhStatus("每間至少留一個行為", true); return; }
+  h.acts = h.acts.filter((a) => a.id !== mhActId);
+  mhActId = h.acts[0]?.id || "";
+  mhRenderActs();
+  mhRenderForm();
+  mhStatus("已刪行為（記得儲存）");
+});
+$("mh-save-one")?.addEventListener("click", () => {
+  mhCollect();
+  mhRenderActs();
+  mhStatus("✓ 此行為已寫入記憶體（再按全部儲存）");
+});
+$("mh-refresh-out")?.addEventListener("click", () => mhRefreshOut());
+["mh-pos", "mh-male-act", "mh-attitude", "mh-narr", "mh-feel", "mh-voice", "mh-reply", "mh-stage", "mh-ejac", "mh-place"].forEach((id) => {
+  $(id)?.addEventListener("change", () => mhRefreshOut());
+  $(id)?.addEventListener("input", () => { if (id !== "mh-stage" && id !== "mh-ejac" && id !== "mh-place") return; mhRefreshOut(); });
+});
+$("mh-gen")?.addEventListener("click", async () => {
+  mhCollect();
+  const t = maleTypeById(maleActiveTypeId);
+  const a = mhAct();
+  if (!a) return;
+  if (!t) { mhStatus("先選男子種類（用 lookEn）", true); return; }
+  if ($("mh-art")) $("mh-art").innerHTML = `<span class="mini">生成中…</span>`;
+  mhStatus("產圖中…");
+  try {
+    const built = buildMaleMolestImgBody(a, t, engGet("mh-img-prov"), "anime", $("mh-place")?.value || a.placeId || "plaza");
+    mhRefreshOut();
+    const r = await waitImg(built.body);
+    if (r.status === "done" && r.result) {
+      a.slot.url = String(r.result).split("?")[0];
+      if ($("mh-img-url")) $("mh-img-url").value = a.slot.url;
+      if ($("mh-art")) $("mh-art").innerHTML = `<img src="${esc(r.result)}" alt="hotel-act">`;
+      mhStatus("✓ 產圖完成（記得儲存）");
+    } else {
+      if ($("mh-art")) $("mh-art").innerHTML = `<span class="mini">失敗</span>`;
+      mhStatus(r.error || "生圖失敗", true);
+    }
+  } catch (err) {
+    if ($("mh-art")) $("mh-art").innerHTML = `<span class="mini">失敗</span>`;
+    mhStatus(err.message, true);
+  }
+});
+
+
 (async () => {
   try {
     const r = await fetch("/content/edit_date.json?ts=" + Date.now());
@@ -1219,6 +1557,7 @@ $("mm-test")?.addEventListener("click", async () => {
     if (e.imgProvider) {
       if ($("mo-img-prov")) $("mo-img-prov").value = e.imgProvider;
       if ($("mm-img-prov")) $("mm-img-prov").value = e.imgProvider;
+      if ($("mh-img-prov")) $("mh-img-prov").value = e.imgProvider;
     }
   } catch {}
   await loadGirls();

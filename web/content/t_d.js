@@ -6,9 +6,13 @@ import {
   DEFAULT_DATE_SCRIPT,
   normalizeDateScript,
   classifyDateLine,
+  buildHotelPlayQueue,
+  countHotelStats,
+  normalizeHotelSexAct,
+  normalizeHotels,
 } from "./edit_date.js";
 import { fillBinds, bindHint } from "./script_mode.js";
-import { filledPack, normalizeMolestPack, buildMolestImgBody } from "./date_molest.js";
+import { filledPack, normalizeMolestPack, buildMolestImgBody, buildMaleMolestImgBody } from "./date_molest.js";
 import { pickDateOutfit, girlForDate, dateOutfitText } from "./date_outfit.js";
 import { placeZh, fillPlaceTokens } from "./date_place.js";
 
@@ -150,6 +154,8 @@ function emptyState() {
     round: 0,
     lastGirlLine: "",
     molestImgs: {},
+    hotelScene: false,
+    hotelWatching: false,
   };
 }
 
@@ -273,9 +279,9 @@ function renderHud() {
   document.querySelectorAll("#times .pill").forEach((el) => el.classList.toggle("on", el.dataset.id === state.time));
   document.querySelectorAll("#zones .pill").forEach((el) => el.classList.toggle("on", el.dataset.id === state.zone));
   document.querySelectorAll("#rels .pill").forEach((el) => el.classList.toggle("on", el.dataset.id === relStage));
-  $("acts-bar")?.classList.toggle("paging", paging);
+  $("acts-bar")?.classList.toggle("paging", paging || !!state.hotelScene);
   $("acts-bar")?.classList.toggle("cg-open", cgOpen);
-  $("acts-bar")?.classList.toggle("no-chat", !started || state.ended);
+  $("acts-bar")?.classList.toggle("no-chat", !started || state.ended || !!state.hotelScene);
   const maleField = !!state.male?.onField && !state.ended && !state.male?.sex;
   const maleFree = maleField && (state.male.freeTurns > 0);
   $("acts")?.classList.toggle("has-male", maleField);
@@ -1353,6 +1359,184 @@ async function afterMaleResolved() {
   }
 }
 
+
+function scriptHotels() {
+  return normalizeHotels(dateScript?.male?.hotels);
+}
+
+function pickRandomHotel() {
+  const list = scriptHotels();
+  if (!list.length) return null;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+async function ensureHotelActImage(act) {
+  const url = String(act?.slot?.url || "").trim();
+  if (url) return url;
+  const typ = currentMaleType();
+  if (!typ) return "";
+  try {
+    const eng = await getImgEng();
+    const built = buildMaleMolestImgBody(act, typ, eng, "anime", act.placeId || "plaza");
+    const r = await waitImg(built.body);
+    if (r.status === "done" && r.result) {
+      const u = String(r.result).split("?")[0];
+      if (act.slot) act.slot.url = u;
+      return u;
+    }
+  } catch (err) {
+    console.warn("[t_d] hotel act img failed", act?.id || act?.name, err);
+  }
+  return "";
+}
+
+/**
+ * 旅館做愛流程：扣金後隨機旅館 → 跟進／門外 → 階段播放 → 結算。
+ */
+async function runHotelSexScene() {
+  const m = state.male;
+  const gn = girl?.name || "她";
+  if (!m) return;
+
+  const hotel = pickRandomHotel();
+  if (!hotel) {
+    await playQueueAndWait([
+      { role: "sys", who: "系統", text: "劇本還沒設定旅館。請到 /edit_date 單男 → 做愛行為／旅館 新增。" },
+    ]);
+    m.sex = true;
+    m.onField = false;
+    state.ended = true;
+    renderHud();
+    return;
+  }
+
+  m.sex = true;
+  m.onField = false;
+  state.hotelScene = true;
+  state.hotelWatching = false;
+  renderHud();
+
+  await playQueueAndWait([
+    {
+      role: "sys",
+      who: "旁白",
+      text: `你付了 10 金。三人來到「${hotel.name}」。金錢 -10`,
+    },
+  ]);
+
+  const enterChoice = await showChoices({
+    title: hotel.name,
+    body: "要跟進去看，還是在門外等？一開始選門外就不能再進。",
+    choices: [
+      { id: "enter", label: "跟進去" },
+      { id: "outside", label: "在門外等" },
+    ],
+  });
+
+  let watching = enterChoice === "enter";
+  state.hotelWatching = watching;
+
+  const queueActs = buildHotelPlayQueue(hotel).map(normalizeHotelSexAct);
+  const played = [];
+
+  for (let i = 0; i < queueActs.length; i += 1) {
+    if (state.ended && !state.hotelScene) break;
+    const act = queueActs[i];
+    played.push(act);
+
+    if (watching) {
+      if (act.narrPrompt) {
+        await playQueueAndWait([
+          { role: "sys", who: "旁白", text: act.narrPrompt },
+        ]);
+      }
+
+      waitingAi = true;
+      renderHud();
+      const imgUrl = await ensureHotelActImage(act);
+      waitingAi = false;
+
+      if (imgUrl) {
+        enterPaging();
+        queue = [];
+        const cg = await runMolestCg({
+          url: imgUrl,
+          playerLine: act.playerAct || act.name || "",
+          playerWho: m.name,
+          girlName: gn,
+          girlPromise: Promise.resolve(act.replyToPlayer || "……"),
+          delta: `階段 ${act.stage}　${act.name || ""}`,
+        });
+        if (cg?.aborted) {
+          /* 後台中止：仍繼續下一拍 */
+        }
+        busy = false;
+        paging = false;
+        queue = [];
+        notifyPagingDone();
+        renderHud();
+      } else {
+        const pages = [];
+        if (act.playerAct) pages.push({ role: "male", who: m.name, text: act.playerAct });
+        if (act.replyToPlayer) pages.push({ role: "girl", who: gn, text: act.replyToPlayer });
+        if (!pages.length) {
+          pages.push({ role: "sys", who: "旁白", text: `（${act.name || "行為"}）` });
+        }
+        await playQueueAndWait(pages);
+      }
+
+      // 場內選擇：打手槍＝繼續；出門等＝改門外（不可再進）
+      if (i < queueActs.length - 1) {
+        const next = await showChoices({
+          title: `${hotel.name}　階段 ${act.stage}`,
+          body: act.name || "下一拍",
+          choices: [
+            { id: "stroke", label: "打手槍（繼續看）" },
+            { id: "leave_door", label: "出門等" },
+          ],
+        });
+        if (next === "leave_door") {
+          watching = false;
+          state.hotelWatching = false;
+          await playQueueAndWait([
+            {
+              role: "sys",
+              who: "旁白",
+              text: `你退到門外。從現在起只能聽見裡面的聲音。`,
+            },
+          ]);
+        }
+      }
+    } else {
+      // 門外：只播 voiceOut
+      const voice = String(act.voiceOut || "").trim()
+        || `（門內隱約傳來聲響……階段 ${act.stage}）`;
+      await playQueueAndWait([
+        { role: "sys", who: "門外", text: voice },
+      ]);
+    }
+  }
+
+  const stats = countHotelStats(played);
+  const summary =
+    `這晚：行為 ${stats.acts} 次，內射 ${stats.ejacIn} 次，外射 ${stats.ejacOut} 次。`
+    + (stats.ejacTotal ? `（射精 ${stats.ejacTotal} 次）` : "");
+
+  state.hotelScene = false;
+  state.hotelWatching = false;
+  state.ended = true;
+  await playQueueAndWait([
+    { role: "sys", who: "旁白", text: summary },
+    {
+      role: "sys",
+      who: "散場",
+      text: `約會告一段落。感情 ${state.heart}、性慾 ${state.arousal}、羞恥 ${state.shame}。`,
+    },
+  ]);
+  renderHud();
+}
+
+
 async function resolveSexBranch(from) {
   const m = state.male;
   if (!m?.onField || m.sex) return;
@@ -1380,7 +1564,7 @@ async function resolveSexBranch(from) {
 
   const choice = await showChoices({
     title: from === "girl" ? `${gn}想跟他去旅館` : `${m.name}要帶她去旅館`,
-    body: "旅館場景尚未實作，先選結局分支。付 10 金可一起去；離開則約會結束。",
+    body: "付 10 金可一起去旅館（隨機一間）；離開則她會私下跟他做。",
     choices: [
       { id: "hotel", label: "付 10 金，一起去旅館" },
       { id: "leave", label: "自己離開（她會私下跟他做）" },
@@ -1394,22 +1578,8 @@ async function resolveSexBranch(from) {
       ]);
     } else {
       state.money -= 10;
-      m.sex = true;
-      m.onField = false;
-      state.ended = true;
-      await playQueueAndWait([
-        {
-          role: "sys",
-          who: "旁白",
-          text: `你付了 10 金。三人往旅館走去……（旅館詳細場景尚未實作）　金錢 -10`,
-        },
-        {
-          role: "sys",
-          who: "散場",
-          text: `約會告一段落。感情 ${state.heart}、性慾 ${state.arousal}、羞恥 ${state.shame}。`,
-        },
-      ]);
       renderHud();
+      await runHotelSexScene();
       return;
     }
   }
@@ -1422,7 +1592,7 @@ async function resolveSexBranch(from) {
     {
       role: "sys",
       who: "旁白",
-      text: `你轉身離開。${gn}會在你不知道的地方，跟${m.name}做 ${n} 次……（分支 stub）`,
+      text: `你轉身離開。${gn}會在你不知道的地方，跟${m.name}做 ${n} 次……`,
     },
     {
       role: "sys",

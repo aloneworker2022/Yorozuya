@@ -1,6 +1,14 @@
 /** 約會聊天劇本：分類關鍵字與 AI 規則。/edit_date 可改，寫回 edit_date.json。 */
 
 import { normalizeMolestPacks, normalizeMolestPack } from "./date_molest.js";
+import {
+  normalizeHotels,
+  normalizeHotel,
+  normalizeHotelSexAct,
+  emptyHotel,
+  emptyHotelSexAct,
+  defaultHotels,
+} from "./date_hotel_sex.js";
 
 export const DATE_ACT_ZH = {
   interact: "互動",
@@ -400,6 +408,9 @@ export function normalizeDateScript(raw) {
   const types = maleTypesList(maleSrc.types, dMale.types, legacyTop, dMale);
   let activeTypeId = String(maleSrc.activeTypeId || dMale.activeTypeId || types[0]?.id || "").trim();
   if (!types.some((t) => t.id === activeTypeId)) activeTypeId = types[0]?.id || "";
+  const hotels = normalizeHotels(maleSrc.hotels);
+  let activeHotelId = String(maleSrc.activeHotelId || hotels[0]?.id || "").trim();
+  if (!hotels.some((h) => h.id === activeHotelId)) activeHotelId = hotels[0]?.id || "";
   return {
     girl_system: String(src.girl_system || d.girl_system).trim() || d.girl_system,
     narr_system: String(src.narr_system || d.narr_system).trim() || d.narr_system,
@@ -421,6 +432,8 @@ export function normalizeDateScript(raw) {
     male: {
       activeTypeId,
       types,
+      hotels,
+      activeHotelId,
     },
   };
 }
@@ -437,3 +450,15 @@ export function classifyDateLine(text, script) {
 }
 
 export { normalizeMolestPack, normalizeMolestPacks, emptyMaleMolestPack, buildMaleMolestImgBody } from "./date_molest.js";
+export {
+  normalizeHotels,
+  normalizeHotel,
+  normalizeHotelSexAct,
+  emptyHotel,
+  emptyHotelSexAct,
+  defaultHotels,
+  hotelActsByStage,
+  buildHotelPlayQueue,
+  countHotelStats,
+  ejacZh,
+} from "./date_hotel_sex.js";
