@@ -8,6 +8,8 @@ import {
   SCENE_ZH,
   nextAfterScene1,
   narrLines,
+  rollSexThrust,
+  rollAffDelta,
   buildReplyMsgs,
   resolveScriptKind,
   boundFramePackId,
@@ -27,7 +29,7 @@ let worldLore = "";
 
 /** @type {null | {
  *   kind: string, pack: object, scene: number,
- *   openStep: string, awaiting: boolean, ending: boolean, animating: boolean,
+ *   openStep: string, awaiting: boolean, ending: boolean, transitionBusy: boolean,
  *   flowGen: number, history: Array
  * }} */
 let play = null;
@@ -211,7 +213,7 @@ function scriptAnimPreload(run, urls) {
   })));
 }
 
-/** 肏：播幀 1–4（各約 160ms）後隱藏 overlay。無圖則 toast／status 並立刻返回。 */
+/** 肏：播幀 1–4（慢快快慢）後隱藏 overlay。無圖則 toast／status 並立刻返回。 */
 async function flashScriptAnim() {
   const box = $("sex-anim-popup");
   const img = $("sex-anim-img");
@@ -242,6 +244,8 @@ async function flashScriptAnim() {
     }
     box.classList.remove("hidden");
     box.setAttribute("aria-hidden", "false");
+    // 節奏：慢快快慢（幀 1–4）
+    const FRAME_HOLDS = [300, 110, 110, 300];
     const playUrls = async (list) => {
       await scriptAnimPreload(run, list);
       if (run.cancelled) return 0;
@@ -251,8 +255,9 @@ async function flashScriptAnim() {
         const ok = await scriptAnimLoad(run, img, url);
         if (run.cancelled) break;
         if (ok) {
+          const hold = FRAME_HOLDS[Math.min(shown, FRAME_HOLDS.length - 1)];
           shown += 1;
-          await scriptAnimHold(run, 160);
+          await scriptAnimHold(run, hold);
         }
       }
       return shown;
@@ -458,7 +463,7 @@ function syncUi() {
   const live = !!play && !play.ending;
   const scene = Number(play?.scene) || 0;
   const kind = play?.kind || "";
-  // 肏／含：場景 2/3 且進行中即顯示；不因 awaiting／animating／typeBusy 灰掉
+  // 肏／含：場景 2/3 且進行中即顯示；不因 awaiting／transitionBusy／typeBusy／anim 灰掉
   const canThrust = !!(live && (scene === 2 || scene === 3));
   const needNext = !!(live && (
     play.openStep === "wait_ai" ||
@@ -733,12 +738,71 @@ async function handleNext() {
   }
 }
 
-/** 肏／含：只播局部動圖（1→2→3→4→hide）。與生文／轉場互不鎖定；連點可重啟。 */
+/** 肏／含：立刻重啟動圖；並行擲骰轉場（不鎖鈕）。 */
 function handleThrust() {
   if (!play || play.ending) return;
   if (play.scene !== 2 && play.scene !== 3) return;
-  // flashScriptAnim 內會 stop 再播；不閘 typeBusy／awaiting／animating
+  // 動圖立刻啟動／重啟（不閘 typeBusy／awaiting／transitionBusy）
   void flashScriptAnim();
+  void runThrustTransition();
+}
+
+/** 骰子／AI／換景；transitionBusy 防堆疊，不影響肏鈕與動圖。 */
+async function runThrustTransition() {
+  const girl = currentGirl;
+  if (!play || !girl || play.ending) return;
+  if (play.scene !== 2 && play.scene !== 3) return;
+  // 已在轉場／AI／換景中：略過本次骰，動圖仍已重啟
+  if (play.transitionBusy || play.awaiting) return;
+  play.transitionBusy = true;
+  try {
+    if (!play || play.ending) return;
+    const d = rollAffDelta(play.scene, girl.stage);
+    if (d) {
+      girl.affection = (Number(girl.affection) || 0) + d;
+      setStatus("play-status", `好感 ${d > 0 ? "+" : ""}${d} → ${girl.affection}（僅本頁，不寫回存檔）`);
+    }
+    const act = rollSexThrust(play.scene);
+    if (act === "swap") {
+      setStatus("play-status", "（無圖）略過換圖");
+      return;
+    }
+    if (act === "player") {
+      vnCancelType();
+      play.awaiting = false;
+      await beginScene(4);
+      return;
+    }
+    if (act === "both") {
+      vnCancelType();
+      play.awaiting = false;
+      await beginScene(5);
+      return;
+    }
+    if (act === "scene3") {
+      vnCancelType();
+      play.awaiting = false;
+      await beginScene(3);
+      return;
+    }
+    if (act === "ai") {
+      if (play.awaiting) return;
+      play.awaiting = true;
+      // 不 disable 肏；awaiting 只閘「下一句」
+      syncUi();
+      const spec = play.pack?.scenes?.[String(play.scene)];
+      const attitude = fillBinds(spec?.attitude || "", girl, playerName);
+      await scriptTypeAi(girl, `（正戲進行中。這一景態度：${attitude}。只輸出台詞，短句、喘。）`);
+      if (play) play.awaiting = false;
+    } else if (act && act !== "none") {
+      setStatus("play-status", `肏 → ${act}`);
+    }
+  } finally {
+    if (play) {
+      play.transitionBusy = false;
+      syncUi();
+    }
+  }
 }
 
 function finishPlay(msg) {
@@ -776,7 +840,7 @@ function startPlay() {
     openStep: "",
     awaiting: false,
     ending: false,
-    animating: false,
+    transitionBusy: false,
     flowGen: 0,
     history: [],
   };

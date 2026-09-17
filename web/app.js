@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.68(2026-09-17)肏動圖加速互不干擾";
+const APP_VER = "v7.69(2026-09-17)肏轉場不鎖＋慢快快慢";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5919,7 +5919,7 @@ function syncTeasePlayUi() {
   const live = isTeasePlay() && !chatSession?.ended;
   const p = chatSession?.tease?.play;
   const scene = Number(p?.scene) || 0;
-  // 肏／含：不因 animating／awaiting 灰掉；連點可重啟動圖
+  // 肏／含：不因 transitionBusy／awaiting／typeBusy 灰掉；連點可重啟動圖
   const canThrust = !!(live && !p?.ending && (scene === 2 || scene === 3));
   // 場景1／結局：專用「下一句」推進，不再靠點整塊 chat-view
   const needNext = !!(live && (
@@ -5997,7 +5997,7 @@ function startTeaseMode(s, kind, pack) {
         ready: false,
         ending: false,
         leaving: false,
-        animating: false,
+        transitionBusy: false,
         startedAt: Date.now(),
       },
     };
@@ -6191,6 +6191,8 @@ async function flashScriptAnim() {
     }
     box.classList.remove("hidden");
     box.setAttribute("aria-hidden", "false");
+    // 節奏：慢快快慢（幀 1–4）
+    const FRAME_HOLDS = [300, 110, 110, 300];
     const playUrls = async (list) => {
       await scriptAnimPreload(run, list);
       if (run.cancelled) return 0;
@@ -6200,8 +6202,9 @@ async function flashScriptAnim() {
         const ok = await scriptAnimLoad(run, img, url);
         if (run.cancelled) break;
         if (ok) {
+          const hold = FRAME_HOLDS[Math.min(shown, FRAME_HOLDS.length - 1)];
           shown += 1;
-          await scriptAnimHold(run, 160);
+          await scriptAnimHold(run, hold);
         }
       }
       return shown;
@@ -6485,8 +6488,8 @@ async function scriptHandleThrust(s) {
   // 動圖立刻啟動／重啟（與擲骰／生文並行，不互鎖按鈕）
   void flashScriptAnim();
   // 擲骰／轉場進行中則略過本次骰子，避免連點堆疊；動圖仍已重啟
-  if (play.animating || play.awaiting) return;
-  play.animating = true;
+  if (play.transitionBusy || play.awaiting) return;
+  play.transitionBusy = true;
   try {
     if (chatSession?.tease !== t || t.play !== play || !isTeasePlay()) return;
     const d = ScriptMode.rollAffDelta(play.scene, s.stage);
@@ -6524,6 +6527,7 @@ async function scriptHandleThrust(s) {
     if (act === "ai") {
       if (play.awaiting) return;
       play.awaiting = true;
+      // 不 disable 肏；awaiting 只閘「下一句」
       const spec = play.pack?.scenes?.[String(play.scene)];
       const attitude = ScriptMode.fillBinds(spec?.attitude || "", s, playerBindName());
       await scriptTypeAi(s, `（正戲進行中。這一景態度：${attitude}。只輸出台詞，短句、喘。）`);
@@ -6531,7 +6535,7 @@ async function scriptHandleThrust(s) {
     }
   } finally {
     if (chatSession?.tease === t && t.play === play) {
-      play.animating = false;
+      play.transitionBusy = false;
     }
   }
 }
