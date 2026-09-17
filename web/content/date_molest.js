@@ -283,9 +283,22 @@ export function emptyMaleMolestPack(name = "單男猥褻") {
   return p;
 }
 
+const MALE_MOLEST_FRAMING = "2people, 1girl, 1boy, hetero";
+const MALE_MOLEST_ANTI_BLEED =
+  "solo, 1girl only, one person, merged body, fused body, gender blend, masculine woman, girl with male physique, obese woman, fat woman as only subject";
+
+/** Remove subject-count tags only when they lead an editor-supplied block. */
+function stripLeadingSubjectTags(value) {
+  let out = String(value || "").trim();
+  while (/^(?:1boy|1girl)\b/i.test(out)) {
+    out = out.replace(/^(?:1boy|1girl)\b\s*,?\s*/i, "").trim();
+  }
+  return out;
+}
+
 /**
  * 單男猥褻文生圖下單。不要求 pose_ref。
- * 正向層級：【1girl 女孩基礎】→【1boy＋lookEn＋場所＋動作】；模型用女子 comfyCkpt。
+ * 正向固定分成【女孩】→BREAK→【男子】→BREAK→【場所／動作】；模型用女子 comfyCkpt。
  */
 export async function buildMaleMolestImgBody(
   pack,
@@ -308,20 +321,35 @@ export async function buildMaleMolestImgBody(
   const outfitInfo = pickDateOutfit(girl, relStage);
   const dated = girlForDate(girl, outfitInfo);
   const base = await fetchMolestBasePrompt(girl, eng, style, relStage);
-  // 女孩塊必須有 1girl；男子層以 1boy 開頭，勿只送 lookEn 當整份 prompt
-  const girlBase = /\b1girl\b/i.test(base.positive || "")
-    ? String(base.positive || "").trim()
-    : joinPromptParts("1girl", base.positive);
-  const userPositive = joinPromptParts("1boy", lookEn, placePos, userPos);
-  const userNegative = joinPromptParts(
-    userNeg,
-    "looking at viewer, text, watermark, ugly, extra fingers",
-  );
-  const merged = mergeMolestPrompts(
-    { ...base, positive: girlBase },
-    userPositive,
+  const girlBlock = joinPromptParts("1girl", base.positive);
+  const boyBlock = joinPromptParts("1boy", stripLeadingSubjectTags(lookEn));
+  const sceneBlock = joinPromptParts(placePos, stripLeadingSubjectTags(userPos));
+  // BREAK is for Comfy/anime tag parsers; the natural join is the Grok fallback.
+  const positive = [
+    MALE_MOLEST_FRAMING,
+    girlBlock,
+    "BREAK",
+    boyBlock,
+    "BREAK",
+    sceneBlock,
+  ].filter(Boolean).join(", ");
+  const boyScene = [boyBlock, sceneBlock].filter(Boolean).join(". and ");
+  const userNegative = joinPromptParts(userNeg, "looking at viewer, text, watermark, ugly, extra fingers");
+  const negative = joinPromptParts(base.negative, userNegative, MALE_MOLEST_ANTI_BLEED);
+  const merged = {
+    positive,
+    negative,
+    framingPositive: MALE_MOLEST_FRAMING,
+    girlBlock,
+    boyBlock,
+    sceneBlock,
+    naturalPositive: [MALE_MOLEST_FRAMING, `${girlBlock}. and ${boyScene}`].filter(Boolean).join(", "),
+    basePositive: girlBlock,
+    baseNegative: String(base.negative || "").trim(),
+    userPositive: boyScene,
     userNegative,
-  );
+    antiBleedNegative: MALE_MOLEST_ANTI_BLEED,
+  };
   const comfy = (eng.imgProvider || "grok-img") === "comfy";
   return {
     body: {
@@ -333,9 +361,9 @@ export async function buildMaleMolestImgBody(
       style: style || "anime",
       character: dated,
       outfit: dateOutfitText(dated, outfitInfo),
-      // Comfy：整份合併正向；Grok：女子人設打底，extra 放 1boy＋lookEn／場所／動作。
+      // Comfy 吃 BREAK 分隔的整份正向；Grok 仍由女子 character 打底，extra 用自然語法保留 1boy。
       prompt: comfy ? merged.positive : "",
-      extra: comfy ? "" : merged.userPositive,
+      extra: comfy ? "" : boyScene,
       negative: merged.negative,
       visual_neg: merged.negative,
       cutout: false,
@@ -345,31 +373,43 @@ export async function buildMaleMolestImgBody(
       ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: girlOwnCkpt(dated) || girlOwnCkpt(girl) } : {}),
     },
     merged,
-    base: { ...base, positive: girlBase },
+    base: { ...base, positive: girlBlock },
     lookEn,
     place: customPlace || placeOf(pid),
     dated,
   };
 }
 
-/** 單男／旅館預覽：標出 1girl 女孩塊 → 1boy＋場所＋動作 */
+/** 單男／旅館預覽：明列構圖、女孩、男子、場所／動作與實際合併字串。 */
 export function formatMaleMolestOutputSheet(merged) {
   const m = merged || {};
   return [
-    "【1girl 女孩】",
-    m.basePositive || "（尚未抓到／沒選魅子）",
+    "【構圖】",
+    m.framingPositive || MALE_MOLEST_FRAMING,
     "",
-    "【1boy＋場所＋動作】",
-    m.userPositive || "（空白）",
+    "【1girl 女孩塊】",
+    m.girlBlock || m.basePositive || "（尚未抓到／沒選魅子）",
     "",
-    "【合併正向 → 送出】",
+    "【1boy 男子外觀塊】",
+    m.boyBlock || "（空白）",
+    "",
+    "【場所／動作塊】",
+    m.sceneBlock || "（空白）",
+    "",
+    "【Comfy 合併正向（BREAK 分隔）】",
     m.positive || "（空）",
+    "",
+    "【Grok extra（自然 . and 分隔）】",
+    m.userPositive || "（空白）",
     "",
     "【基礎負向】",
     m.baseNegative || "（空）",
     "",
     "【＋輸入負向】",
     m.userNegative || "（空白）",
+    "",
+    "【固定防融合負向】",
+    m.antiBleedNegative || MALE_MOLEST_ANTI_BLEED,
     "",
     "【合併負向 → 送出】",
     m.negative || "（空）",
