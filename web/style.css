@@ -1287,8 +1287,8 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   animation: none;
   margin-bottom: -0.4em;
 }
-/* 劇本局部動畫：必須高過 #chat-view(15) 裡的劇本揭圖 #vn-figure。
-   掛 body + fixed；播放時 body.sex-anim-on 會藏起立繪，避免被故事圖蓋住。 */
+/* 劇本局部動畫：掛 body + fixed，直接疊在劇本圖上面。
+   不藏立繪、不加薄霧遮罩，省重繪。 */
 #sex-anim-overlay {
   position: fixed !important;
   inset: 0 !important;
@@ -1296,7 +1296,7 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   display: flex !important;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, .45);
+  background: transparent;
   pointer-events: none;
 }
 #sex-anim-overlay.hidden { display: none !important; }
@@ -1310,10 +1310,6 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   margin: 0 auto;
   position: relative;
   z-index: 1;
-  filter: drop-shadow(0 8px 28px rgba(0, 0, 0, .65));
-}
-body.sex-anim-on #vn-figure {
-  visibility: hidden !important;
 }
 #aff-pop {
   position: absolute;
