@@ -616,16 +616,31 @@ body.asleep #book { animation: none; opacity: .7; }
   border: 1px solid #9a2f28; border-left: none;
 }
 .line-tab {
-  /* 大部分被日誌蓋住，只留底下一節可點 */
-  top: calc(28% + 44px);
+  /* 大部分被日誌蓋住，只留底下一節；再往上疊 */
+  top: calc(28% + 32px);
   z-index: 7;
-  padding: 10px 5px 12px 4px;
+  padding: 18px 2px 18px;
   background: #06c755; color: #f0fff4;
   border: 1px solid #049a40; border-left: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.diary-tab span, .line-tab span {
+.diary-tab span {
   display: block; width: 1em; margin: 0 auto;
   word-break: break-all; line-height: 1.45; letter-spacing: 0;
+}
+/* LINE 橫排：整詞橫寫再旋轉，沿頁籤長邊讀 */
+.line-tab span {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+  white-space: nowrap;
+  word-break: normal;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  transform: rotate(-90deg);
+  transform-origin: center center;
 }
 .diary-tab:active, .line-tab:active { transform: translateX(1px); }
 .diary-tab.on {
