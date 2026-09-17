@@ -1312,12 +1312,9 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   z-index: 1;
   filter: drop-shadow(0 8px 28px rgba(0, 0, 0, .65));
 }
-<<<<<<< HEAD
 body.sex-anim-on #vn-figure {
   visibility: hidden !important;
 }
-=======
->>>>>>> 5b87eee (fix(script): 局部做愛動畫改固定最上層圖層)
 #aff-pop {
   position: absolute;
   left: 0.7em;
