@@ -1029,7 +1029,7 @@ async function aiSexAnnounce(who) {
 /**
  * 玩家成功行動回合後：
  * - 場上已有單男 → 男子再打一拍（騷擾／猥褻，順從高時可交配請求）
- * - 否則且非交配中 → 1/20 抽種類搭訕
+ * - 否則且非交配中 → 1/2 抽種類搭訕（測單男暫調；正式應回 1/20）
  */
 async function maybeMaleBeat() {
   if (state.ended) return false;
@@ -1039,7 +1039,7 @@ async function maybeMaleBeat() {
     await startMaleTurn();
     return true;
   }
-  if (Math.random() < 1 / 20) {
+  if (Math.random() < 1 / 2) {
     state.male = spawnMale();
     await startMaleApproach();
     return true;
