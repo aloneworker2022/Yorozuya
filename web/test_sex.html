@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>性愛場景測試 / test_sex</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #12101c; color: #d8d0ec; font-family: system-ui, "Cubic 11", monospace;
+         font-size: 15px; padding: 1em; max-width: 720px; margin: 0 auto; line-height: 1.55; }
+  h1 { color: #ff4fd8; font-size: 1.15em; letter-spacing: .08em; margin-bottom: .2em; }
+  .warn { color: #ff9d4d; font-size: .8em; margin-bottom: 1em; }
+  section { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 10px; padding: 1em 1.1em; margin-bottom: 1em; }
+  h2 { color: #6fe3e1; font-size: .9em; letter-spacing: .1em; margin-bottom: .35em; }
+  .mini { font-size: .78em; color: #8a82a5; margin-bottom: .55em; }
+  label { display: block; font-size: .75em; color: #9a92b5; margin: .5em 0 .2em; }
+  select { width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .45em .6em; outline: none; }
+  select:focus { border-color: rgba(111,227,225,.45); }
+  .row { display: flex; gap: .5em; flex-wrap: wrap; align-items: flex-end; }
+  .grow { flex: 1 1 12em; }
+  button { background: rgba(255,79,216,.18); border: none; border-radius: 7px; color: #ff8fe6;
+           font: inherit; padding: .45em .9em; cursor: pointer; }
+  button:hover { background: rgba(255,79,216,.3); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.cy { background: rgba(111,227,225,.16); color: #6fe3e1; }
+  button.big { font-size: 1.05em; padding: .7em 1.4em; letter-spacing: .08em; }
+  .status { font-size: .8em; color: #6bcb77; min-height: 1.2em; margin-top: .4em; }
+  .status.err { color: #ff5f7a; }
+  a { color: #6fe3e1; }
+  code { font-size: .92em; }
+  .girl-meta { margin-top: .5em; background: rgba(0,0,0,.22); border-radius: 8px;
+               padding: .7em .8em; font-size: .88em; }
+  .girl-meta b { color: #ff8fe6; }
+  /* 純文字 VN：故意不放圖區（之後若要加圖再開） */
+  /* .art-placeholder { display:none; } */
+  #vn-log { background: rgba(0,0,0,.35); border-radius: 8px; padding: .75em .9em;
+            min-height: 12em; max-height: 28em; overflow: auto; }
+  .beat { margin: .55em 0; }
+  .beat .who { font-size: .72em; letter-spacing: .08em; margin-bottom: .15em; }
+  .beat.narr .who { color: #8a82a5; }
+  .beat.girl .who { color: #ff8fe6; }
+  .beat.player .who { color: #6fe3e1; }
+  .beat .tx { white-space: pre-wrap; }
+  .tag { display: inline-block; font-size: .68em; padding: .1em .4em; border-radius: 4px;
+         margin-left: .35em; background: rgba(255,157,77,.18); color: #ff9d4d; }
+  .src { font-size: .75em; color: #8a82a5; margin-top: .5em; }
+</style>
+</head>
+<body>
+<h1>性愛場景測試 / test_sex</h1>
+<div class="warn">
+  步驟 1：選看板娘 → 開始第一場景。目前<strong>只顯示文字</strong>（旁白／女子／玩家），無圖、無局部動畫。
+  <a href="/edit_date">約會劇本</a> | <a href="/test_date">約會測試</a> | <a href="/edit_pic">生圖測試</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
+</div>
+
+<section>
+  <h2>1. 看板娘</h2>
+  <p class="mini">從存檔名冊讀取（同 <code>/api/save</code> · <code>succubi</code>）。</p>
+  <div class="row">
+    <span class="grow"><label>存檔名冊</label>
+      <select id="girl-sel"><option value="">（讀取中…）</option></select></span>
+    <button type="button" class="cy" id="btn-reload">重新讀名冊</button>
+  </div>
+  <div class="girl-meta" id="girl-meta"><span class="mini">尚未選擇</span></div>
+  <div class="status" id="roster-status"></div>
+</section>
+
+<section>
+  <h2>2. 場景</h2>
+  <p class="mini">優先用 script_packs 做愛／調戲包的場景 1 旁白；沒有則用暫定台詞。</p>
+  <button class="big" type="button" id="btn-start">開始第一場景</button>
+  <div class="status" id="scene-status"></div>
+  <div class="src" id="scene-src"></div>
+</section>
+
+<section>
+  <h2>3. 文字紀錄</h2>
+  <!-- 無圖區：本頁刻意不渲染圖片／立繪／sex-anim -->
+  <div id="vn-log"><span class="mini">按「開始第一場景」後顯示旁白／女子／玩家。</span></div>
+</section>
+
+<script type="module" src="/content/test_sex.js"></script>
+</body>
+</html>
