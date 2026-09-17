@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.26(2026-09-17)Line左側頁籤";
+const APP_VER = "v7.27(2026-09-17)Line清到上一則";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -11056,6 +11056,44 @@ function lineEntryPreview() {
 
 function openLineChat() { goLine(); }
 
+
+/** 清掉較早訊息，只留「最後一則玩家訊息」起（含其後回覆／已讀）。 */
+function clearLineToLastPlayer() {
+  if (lineBusy) { toast("回覆處理中，稍后再清", ""); return; }
+  const lg = ensureLineGroup();
+  if (!lg) return;
+  const msgs = lg.messages || [];
+  let lastPi = -1;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].kind === "player") { lastPi = i; break; }
+  }
+  if (lastPi < 0) {
+    if (!msgs.length) { toast("沒有訊息可清", ""); return; }
+    lg.messages = [];
+    lg.cursors = {};
+  } else if (lastPi === 0) {
+    toast("已經只剩上一則了", "");
+    return;
+  } else {
+    const kept = msgs.slice(lastPi);
+    const keepIds = new Set(kept.map(m => m.id));
+    lg.messages = kept;
+    const anchor = kept[0].id;
+    const cursors = lg.cursors || {};
+    for (const gid of Object.keys(cursors)) {
+      const id = cursors[gid]?.lastPlayerMsgId;
+      cursors[gid] = { lastPlayerMsgId: keepIds.has(id) ? id : anchor };
+    }
+    lg.cursors = cursors;
+  }
+  dirty = true;
+  scheduleSave();
+  _lineScrollStick = true;
+  paintLineMessages();
+  toast("已清到上一則", "good");
+}
+
+
 function closeLineChat() { leaveLine(); }
 
 function lineMsgId() {
@@ -11355,6 +11393,7 @@ function renderLineChat(stage, nav) {
         <div class="line-hdr-title">${esc(lg.title || "名冊群")}</div>
         <div class="line-hdr-sub">${n} 人</div>
       </div>
+      <button type="button" class="line-clear" id="line-clear" title="清掉較早，只留上一則玩家訊息起">清除</button>
     </div>
     <div class="line-msgs" id="line-msgs"></div>
     <div class="line-composer">
@@ -11366,6 +11405,7 @@ function renderLineChat(stage, nav) {
   _lineScrollStick = true;
   paintLineMessages();
   $("#line-back")?.addEventListener("click", () => closeLineChat());
+  $("#line-clear")?.addEventListener("click", () => clearLineToLastPlayer());
   $("#line-send")?.addEventListener("click", () => sendLinePlayerMsg());
   $("#line-input")?.addEventListener("keydown", ev => {
     if (ev.key === "Enter") { ev.preventDefault(); sendLinePlayerMsg(); }

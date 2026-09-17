@@ -2285,6 +2285,15 @@ body.card-mode.has-ct-figure #kanban-girl {
 .line-hdr-main { min-width: 0; }
 .line-hdr-title { font-weight: 700; font-size: 1em; letter-spacing: .04em; }
 .line-hdr-sub { font-size: .68em; opacity: .9; }
+.line-hdr-main { flex: 1; min-width: 0; }
+.line-clear {
+  flex-shrink: 0; margin-left: auto;
+  border: none; border-radius: 10px;
+  padding: 7px 10px; font: inherit; font-size: .72em; font-weight: 700;
+  background: rgba(255,255,255,.2); color: #fff; cursor: pointer;
+  letter-spacing: .04em;
+}
+.line-clear:active { background: rgba(255,255,255,.35); }
 
 .line-msgs {
   flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
