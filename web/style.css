@@ -1314,14 +1314,15 @@ body.sex-anim-on.script-reveal #vn-figure {
   animation: none;
   margin-bottom: -0.4em;
 }
-/* 局部動畫獨立彈窗：脫離 #chat-view 堆疊，固定蓋過全 UI */
+/* 局部動畫：縮小置頂（flex-start）；播完可留幀連肏 */
 #sex-anim-popup {
   position: fixed !important;
   inset: 0 !important;
   z-index: 2147483000 !important;
   display: flex !important;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  padding-top: max(0.5em, env(safe-area-inset-top, 0px));
   background: transparent;
   pointer-events: none;
   isolation: isolate;
@@ -1330,12 +1331,12 @@ body.sex-anim-on.script-reveal #vn-figure {
 #sex-anim-popup .sex-anim-popup-card {
   position: relative;
   z-index: 1;
-  max-width: min(92vw, 560px);
-  max-height: min(78vh, 720px);
-  border-radius: 14px;
+  max-width: min(42vw, 220px);
+  max-height: min(32vh, 280px);
+  border-radius: 10px;
   overflow: hidden;
   background: #0a0812;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 79, 216, .35);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 79, 216, .35);
   pointer-events: none;
 }
 #sex-anim-popup .sex-anim-popup-card img,
@@ -1343,7 +1344,7 @@ body.sex-anim-on.script-reveal #vn-figure {
   display: block;
   width: 100%;
   height: auto;
-  max-height: min(78vh, 720px);
+  max-height: min(32vh, 280px);
   object-fit: contain;
   margin: 0;
 }

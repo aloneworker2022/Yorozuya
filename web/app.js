@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.73(2026-09-18)對話框下移半透明";
+const APP_VER = "v7.74(2026-09-18)動圖置頂可連肏";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5919,7 +5919,8 @@ function syncTeasePlayUi() {
   const live = isTeasePlay() && !chatSession?.ended;
   const p = chatSession?.tease?.play;
   const scene = Number(p?.scene) || 0;
-  const animOn = scriptAnimPlaying || !!scriptAnimRun || document.body.classList.contains("sex-anim-on");
+  // mid-anim 藏鈕；animLinger 期間只放肏（mutex）
+  const animOn = scriptAnimPlaying || !!scriptAnimRun;
   const canThrust = !!(live && !p?.ending && (scene === 2 || scene === 3) && !animOn);
   // 場景1／結局：專用「下一句」推進，不再靠點整塊 chat-view
   const needNext = !!(live && !animOn && (
@@ -6029,7 +6030,19 @@ function stopTeaseMode(s) {
 let scriptAnimTimer = 0;
 let scriptAnimRun = null;
 let scriptAnimPlaying = false;
+/** 播完留最後一幀；約 3s 無再按肏才收 overlay（可連肏下一輪） */
+const ANIM_LINGER_MS = 3000;
+let animLinger = false;
+let animLingerTimer = 0;
+function clearAnimLinger() {
+  if (animLingerTimer) {
+    clearTimeout(animLingerTimer);
+    animLingerTimer = 0;
+  }
+  animLinger = false;
+}
 function stopScriptAnim() {
+  clearAnimLinger();
   if (scriptAnimTimer) {
     clearTimeout(scriptAnimTimer);
     scriptAnimTimer = 0;
@@ -6045,6 +6058,33 @@ function stopScriptAnim() {
   document.getElementById("sex-anim-popup")?.classList.add("hidden");
   document.body.classList.remove("sex-anim-on");
   syncTeasePlayUi();
+}
+/** 一輪播完：留最後一幀、放開肏鈕；~3s 無連按則收 overlay */
+function endAnimRoundToLinger() {
+  if (scriptAnimTimer) {
+    clearTimeout(scriptAnimTimer);
+    scriptAnimTimer = 0;
+  }
+  const run = scriptAnimRun;
+  scriptAnimRun = null;
+  scriptAnimPlaying = false;
+  if (run) {
+    run.cancelled = true;
+    for (const cancel of run.waiters) cancel();
+    run.waiters.clear();
+  }
+  clearAnimLinger();
+  animLinger = true;
+  document.body.classList.add("sex-anim-on");
+  syncTeasePlayUi();
+  animLingerTimer = setTimeout(() => {
+    animLingerTimer = 0;
+    if (!animLinger || scriptAnimPlaying || scriptAnimRun) return;
+    animLinger = false;
+    document.getElementById("sex-anim-popup")?.classList.add("hidden");
+    document.body.classList.remove("sex-anim-on");
+    syncTeasePlayUi();
+  }, ANIM_LINGER_MS);
 }
 function scriptAnimUrlCandidates() {
   const play = chatSession?.tease?.play;
@@ -6177,12 +6217,14 @@ async function flashScriptAnim() {
   }
   stopScriptAnim();
   scriptAnimPlaying = true;
+  animLinger = false;
   document.body.classList.add("sex-anim-on");
   syncTeasePlayUi();
   // 獨立彈窗：掛到 <html> 最末，脫離任何 transform / 聊天堆疊上下文
   (document.documentElement || document.body).appendChild(box);
   const run = { cancelled: false, waiters: new Set() };
   scriptAnimRun = run;
+  let completedOk = false;
   try {
     try { await loadFramePacks(); } catch { /* */ }
     if (run.cancelled) return;
@@ -6226,8 +6268,12 @@ async function flashScriptAnim() {
     }
     // 若全部載入失敗，至少讓遮罩停一下，避免「完全沒反應」
     if (!shown && !run.cancelled) await scriptAnimHold(run, 120);
+    completedOk = !run.cancelled;
   } finally {
-    if (scriptAnimRun === run) stopScriptAnim();
+    if (scriptAnimRun === run) {
+      if (completedOk) endAnimRoundToLinger();
+      else stopScriptAnim();
+    }
   }
 }
 
@@ -6407,6 +6453,10 @@ async function beginScriptScene(s, n, opts = {}) {
   if (!spec) {
     scriptFinish(s, "這一景沒寫。");
     return;
+  }
+  // 離開正戲／投入（場景 2–3）時清動圖與 linger
+  if ((play.scene === 2 || play.scene === 3) && n !== 2 && n !== 3) {
+    stopScriptAnim();
   }
   play.flowGen = (play.flowGen || 0) + 1;
   play.scene = n;

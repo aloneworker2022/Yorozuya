@@ -172,14 +172,15 @@
     flex: 0 0 auto;
   }
 
-  /* 局部動畫獨立彈窗：固定蓋過全 UI（含置中對話框） */
+  /* 局部動畫：縮小置頂（flex-start）；播完可留幀連肏 */
   #sex-anim-popup {
     position: fixed !important;
     inset: 0 !important;
     z-index: 2147483000 !important;
     display: flex !important;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
+    padding-top: max(0.5em, env(safe-area-inset-top, 0px));
     background: transparent;
     pointer-events: none;
     isolation: isolate;
@@ -188,12 +189,12 @@
   #sex-anim-popup .sex-anim-popup-card {
     position: relative;
     z-index: 1;
-    max-width: min(92vw, 560px);
-    max-height: min(78vh, 720px);
-    border-radius: 14px;
+    max-width: min(42vw, 220px);
+    max-height: min(32vh, 280px);
+    border-radius: 10px;
     overflow: hidden;
     background: #0a0812;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 79, 216, .35);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 79, 216, .35);
     pointer-events: none;
   }
   #sex-anim-popup .sex-anim-popup-card img,
@@ -201,7 +202,7 @@
     display: block;
     width: 100%;
     height: auto;
-    max-height: min(78vh, 720px);
+    max-height: min(32vh, 280px);
     object-fit: contain;
     margin: 0;
   }
@@ -209,9 +210,9 @@
 </head>
 <body>
 <div class="top">
-  <h1>性愛場景測試 / test_sex <span class="badge">場景圖下層</span></h1>
+  <h1>性愛場景測試 / test_sex <span class="badge">動圖置頂可連肏</span></h1>
   <div class="warn">
-    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。場景圖在對話／肏動圖下層；按「肏」時短暫播局部動圖 1–4。
+    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。場景圖在對話／肏動圖下層；按「肏」時頂部小動圖 1–4，播完留幀可連按下一輪（約 3 秒無按才收）。
     <a href="/edit_date">約會劇本</a> | <a href="/test_date">約會測試</a> | <a href="/edit_pic">生圖測試</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
   </div>
   <div class="row">
@@ -252,7 +253,7 @@
   </div>
 </div>
 
-<!-- 局部動畫獨立彈層：肏時置頂播 1–4 幀後消失 -->
+<!-- 局部動畫：縮小置頂；播完留幀可連肏，軟逾時才收 -->
 <div id="sex-anim-popup" class="hidden" aria-hidden="true" role="dialog" aria-label="局部動畫">
   <div class="sex-anim-popup-card">
     <img id="sex-anim-img" alt="">

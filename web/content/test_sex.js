@@ -44,6 +44,10 @@ let FRAME_PACKS = [];
 let scriptAnimRun = null;
 let scriptAnimTimer = 0;
 let animPlaying = false;
+/** 播完留最後一幀；約 3s 無再按肏才收 overlay（可連肏下一輪） */
+const ANIM_LINGER_MS = 3000;
+let animLinger = false;
+let animLingerTimer = 0;
 
 function bustAssetUrl(url, ver) {
   if (!url) return "";
@@ -252,7 +256,16 @@ function scriptAnimUrls() {
   return primary.length ? primary : fallback;
 }
 
+function clearAnimLinger() {
+  if (animLingerTimer) {
+    clearTimeout(animLingerTimer);
+    animLingerTimer = 0;
+  }
+  animLinger = false;
+}
+
 function stopScriptAnim() {
+  clearAnimLinger();
   const run = scriptAnimRun;
   scriptAnimRun = null;
   animPlaying = false;
@@ -272,6 +285,38 @@ function stopScriptAnim() {
   if (img) img.removeAttribute("src");
   document.body.classList.remove("sex-anim-on");
   syncUi();
+}
+
+/** 一輪播完：留最後一幀、放開肏鈕；~3s 無連按則收 overlay */
+function endAnimRoundToLinger() {
+  if (scriptAnimTimer) {
+    clearTimeout(scriptAnimTimer);
+    scriptAnimTimer = 0;
+  }
+  const run = scriptAnimRun;
+  scriptAnimRun = null;
+  animPlaying = false;
+  if (run) {
+    run.cancelled = true;
+    for (const cancel of run.waiters) cancel();
+    run.waiters.clear();
+  }
+  clearAnimLinger();
+  animLinger = true;
+  document.body.classList.add("sex-anim-on");
+  syncUi();
+  animLingerTimer = setTimeout(() => {
+    animLingerTimer = 0;
+    if (!animLinger || animPlaying || scriptAnimRun) return;
+    animLinger = false;
+    const box = $("sex-anim-popup");
+    const img = $("sex-anim-img");
+    box?.classList.add("hidden");
+    box?.setAttribute("aria-hidden", "true");
+    if (img) img.removeAttribute("src");
+    document.body.classList.remove("sex-anim-on");
+    syncUi();
+  }, ANIM_LINGER_MS);
 }
 
 function scriptAnimLoad(run, img, url) {
@@ -339,7 +384,7 @@ function scriptAnimPreload(run, urls) {
   })));
 }
 
-/** 肏：播幀 1–4（慢快快慢）後隱藏 overlay。無圖則 toast／status 並立刻返回。 */
+/** 肏：播幀 1–4（慢快快慢）；播完留最後一幀並可連按下一輪，~3s 無按才收。無圖則 toast／status。 */
 async function flashScriptAnim() {
   const box = $("sex-anim-popup");
   const img = $("sex-anim-img");
@@ -349,12 +394,14 @@ async function flashScriptAnim() {
   }
   stopScriptAnim();
   animPlaying = true;
+  animLinger = false;
   document.body.classList.add("sex-anim-on");
   syncUi();
   // 獨立彈窗：掛到 <html> 最末，脫離任何 transform / 對話堆疊
   (document.documentElement || document.body).appendChild(box);
   const run = { cancelled: false, waiters: new Set() };
   scriptAnimRun = run;
+  let completedOk = false;
   try {
     try { await loadFramePacks(); } catch { /* */ }
     if (run.cancelled) return;
@@ -397,8 +444,12 @@ async function flashScriptAnim() {
       shown = await playUrls(fallback.slice(0, 4));
     }
     if (!shown && !run.cancelled) await scriptAnimHold(run, 120);
+    completedOk = !run.cancelled;
   } finally {
-    if (scriptAnimRun === run) stopScriptAnim();
+    if (scriptAnimRun === run) {
+      if (completedOk) endAnimRoundToLinger();
+      else stopScriptAnim();
+    }
   }
 }
 
@@ -591,7 +642,8 @@ function syncUi() {
   const live = !!play && !play.ending;
   const scene = Number(play?.scene) || 0;
   const kind = play?.kind || "";
-  const animOn = animPlaying || !!scriptAnimRun || document.body.classList.contains("sex-anim-on");
+  // mid-anim 藏鈕；animLinger 期間只放肏（mutex：showNext = !showThrust && needNext）
+  const animOn = animPlaying || !!scriptAnimRun;
   const canThrust = !!(live && (scene === 2 || scene === 3) && !animOn);
   const needNext = !!(live && !animOn && (
     play.openStep === "wait_ai" ||
@@ -798,6 +850,10 @@ async function beginScene(n) {
   if (!spec) {
     finishPlay("這一景沒寫。");
     return;
+  }
+  // 離開正戲／投入（場景 2–3）時清動圖與 linger
+  if ((play.scene === 2 || play.scene === 3) && n !== 2 && n !== 3) {
+    stopScriptAnim();
   }
   play.flowGen = (play.flowGen || 0) + 1;
   play.scene = n;
