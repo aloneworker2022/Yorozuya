@@ -1182,12 +1182,12 @@ async function aiBodyNarr({ actionNarr, maleLine, success, kind }) {
 
 function maleBeatPages({ kind, spec, success, delta }) {
   const m = state.male;
-  return [
+  const pages = [
     {
       role: "male",
       who: m.name,
       text: spec.male,
-      extra: kind === "approach" ? "" : `${success ? "成功" : "失敗"}　${delta || ""}`,
+      extra: kind === "approach" ? "" : success ? `成功　${delta || ""}` : delta || "",
     },
     {
       role: "girl",
@@ -1201,7 +1201,9 @@ function maleBeatPages({ kind, spec, success, delta }) {
           kind,
         }),
     },
-    {
+  ];
+  if (success) {
+    pages.push({
       role: "sys",
       who: "旁白",
       fallback: spec.narr,
@@ -1212,8 +1214,9 @@ function maleBeatPages({ kind, spec, success, delta }) {
           success,
           kind,
         }),
-    },
-  ];
+    });
+  }
+  return pages;
 }
 
 async function startMaleApproach() {
@@ -1594,18 +1597,6 @@ async function doGuessInterrupt(guess) {
       text: `阻止失敗（他要的是${maleKindZh(secret)}）`,
     },
     { role: "male", who: m.name, text: taunt.male },
-    {
-      role: "sys",
-      who: "旁白",
-      fallback: taunt.narr,
-      load: () =>
-        aiBodyNarr({
-          actionNarr: taunt.narr,
-          maleLine: taunt.male,
-          success: true,
-          kind: "taunt",
-        }),
-    },
   ]);
 
   const r = await performMaleAction(secret);
