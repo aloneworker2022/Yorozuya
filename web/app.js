@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.49(2026-09-17)劇本下一句＋修破圖";
+const APP_VER = "v7.50(2026-09-17)劇本圖別變立繪";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5855,10 +5855,12 @@ function teaseNowShot(tease) {
 function teaseImageUrl(s, tease) {
   if (!s || !tease?.kind) return "";
   if (tease.script && tease.play) {
+    // 劇本 reveal：只用 play.urls，絕不退 holdUrl／立繪
     if (!tease.play.revealImg) return "";
     const urls = tease.play.urls || [];
-    if (urls.length) return urls[(tease.play.imgI || 0) % urls.length] || "";
-    return tease.play.holdUrl || "";
+    if (!urls.length) return "";
+    const u = urls[(tease.play.imgI || 0) % urls.length] || "";
+    return String(u).trim();
   }
   const shot = teaseNowShot(tease);
   return (shot && s.portraits?.[shot]) || "";
@@ -15853,11 +15855,23 @@ function vnFace(s, mood = null) {
   }
   const fig = $("#vn-figure");
   if (fig) {
-    const rawTease = show && chatSession?.tease ? teaseImageUrl(s, chatSession.tease) : "";
+    const tease = chatSession?.tease;
+    const scriptReveal = !!(tease?.script && tease?.play?.revealImg);
+    const rawTease = show && tease ? teaseImageUrl(s, tease) : "";
     // 空／假 URL 不當有效 tease 圖，避免留下上一張破圖 src
     const teaseUrl = rawTease && String(rawTease).trim() ? rawTease : "";
     const m = mood || chatSession?.mood || "xi";
-    const url = teaseUrl || (show ? (girlShotMood(s, m) || s.portraits?.half || "") : "");
+    let url = "";
+    if (scriptReveal) {
+      // 劇本已揭圖：只用 scriptArt／play.urls，缺圖寧可不顯示，絕不退半身立繪
+      url = teaseUrl;
+      if (!url && tease?.play && !tease.play._scriptArtMissingToast) {
+        tease.play._scriptArtMissingToast = true;
+        try { toast("劇本圖未就緒", ""); } catch { /* */ }
+      }
+    } else {
+      url = teaseUrl || (show ? (girlShotMood(s, m) || s.portraits?.half || "") : "");
+    }
     fig.classList.toggle("tease-on", !!teaseUrl);
     setVnImgSrc(fig, url);
     fig.alt = s?.name || "";

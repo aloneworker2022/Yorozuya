@@ -651,6 +651,10 @@ _NSFW_ACT_KEYS = (
     "ejaculation", "penis",
     "ass grab", "butt grab", "grabbing her ass", "grabbing her thigh",
     "doggy", "from behind", "cervix", "womb bulge",
+    # 劇本 tease 槽位常寫 touching／kneading／buttocks，勿當純立繪
+    "touching breast", "touching breasts", "kneading", "buttocks",
+    "exposing breast", "exposed breast", "tear open", "ripping",
+    "male hand", "male hands",
 )
 _CUP_ZH_RE = re.compile(r"([A-I])\s*罩杯")
 
@@ -1305,6 +1309,7 @@ def build_prompt(
     extra: str = "",
     scene: bool = False,
     stage: str = "",
+    action_first: bool = False,
 ) -> tuple[str, list[str]]:
     """回 (positive prompt, 查不到對照的原文清單)。
 
@@ -1319,6 +1324,9 @@ def build_prompt(
 
     scene=True（出卡互動）：身份 tags 仍在最前，但不寫 solo / looking at viewer，
     讓 extra 的互動動作能畫出兩人或對視，而不是站樁 solo 立繪。
+
+    action_first=True（劇本 script）：動作／extra 緊接在 1girl／1man 後，
+    避免被整段身份 dump 壓成證件照半身立繪。
     """
     ch = character if isinstance(character, dict) else {}
     look = _look(ch)
@@ -1374,6 +1382,9 @@ def build_prompt(
         bits = [QUALITY_PREFIX, "1girl, solo", HUMAN_TAGS]
     # 年齡緊接在「她是誰」後面:動漫模型對前段權重高,年紀才壓得住
     bits.append(age_tags(age or look.get("age")))
+    # 劇本：動作 tags 立刻接上，權重才壓過身份／upper body 立繪感
+    if action_first and extra.strip():
+        bits.append(extra.strip())
     # 要去背的那幾張:先讓模型畫出一塊平背景,後製才摳得乾淨(見 cutout.py)。
     # simple background / white background 是 danbooru 訓練得很紮實的一組。
     if flat_bg:
@@ -1472,7 +1483,8 @@ def build_prompt(
     else:
         bits.append(RATING.get("nsfw", "nsfw"))
     # 出卡：extra = 層②運鏡 visualEn + 層③ AI 反應神態，接在身份（層①）後面
-    if extra.strip():
+    # action_first 已在前面寫過，勿重複稀釋 CLIP 額度
+    if extra.strip() and not action_first:
         bits.append(extra.strip())
     # 小括號內容接最後，不當主構圖（SD 無法真的畫分鏡，只當弱提示）
     if extra_aside.strip():

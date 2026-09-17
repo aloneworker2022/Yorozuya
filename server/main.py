@@ -1841,6 +1841,12 @@ def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
     card_id = _safe_token(opts.get("card_id"), 48)
     scene_kind = str(opts.get("scene_kind") or "").strip().lower()
     part = str(opts.get("part") or "").lower()
+    # 劇本／sex_strip 優先：就算誤帶 portrait shot 也不進 portraits/
+    if scene_kind in ("script", "sex_strip"):
+        IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+        fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
+        return IMG_TEST_DIR, "/assets/testword", fname
     if shot in comfy.PORTRAIT_SHOTS and char_id:
         PORTRAIT_DIR.mkdir(parents=True, exist_ok=True)
         return PORTRAIT_DIR, "/assets/portraits", f"{char_id}_{shot}.png"
@@ -2128,6 +2134,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
 
     出卡場景：identity tags 在前、extra（visualEn + AI 動作）在後；
     scene=True 時去掉 solo / looking at viewer，才畫得出互動。
+    scene_kind=script：強制互動場景、動作 early、禁立繪 flat_bg。
     """
     ch = opts.get("character") if isinstance(opts.get("character"), dict) else None
     extra_pos, extra_from_en = sdtags.split_pos_neg_tags(str(opts.get("extra") or ""))
@@ -2148,16 +2155,40 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         fr = "half" if shot.startswith("half") else shot
     if fr not in sdtags.FRAMING:
         fr = str(opts.get("framing") or "half")
+    script_mode = str(opts.get("scene_kind") or "").strip().lower() == "script"
     # 有 extra 且 lock_identity（出卡）→ 場景模式；純立繪仍 solo
     # 感應調戲一律當雙人場景（玩家 POV），不要畫成 solo 立繪
+    # 劇本預產：即使 extra 弱／中文，也強制場景，勿畫成證件照半身
     scene = bool(opts.get("lock_identity")) and bool(str(opts.get("extra") or "").strip())
     if comfy.is_tease_shot(shot):
         scene = True
+    if script_mode:
+        scene = True
+        extra = str(opts.get("extra") or "").strip()
+        boost: list[str] = []
+        # 劇本一律補雙人；弱／中文 slot 否則會變成 solo upper-body 立繪
+        if not sdtags.is_multi_scene(extra):
+            boost.extend(["1man", "1girl"])
+        # 背後第三人稱已寫 from behind 且無 pov → 不硬塞 first-person
+        third = sdtags.extra_has_key(extra, ("from behind", "back focus", "third person"))
+        if not sdtags.is_pov_cam(extra) and not third:
+            boost.extend(["from his pov", "male hands"])
+        elif not sdtags.is_pov_cam(extra) and sdtags.is_oral_act(extra):
+            boost.extend(["from his pov"])
+        if boost:
+            extra = ", ".join(boost) + (", " + extra if extra else "")
+            opts = {**opts, "extra": extra}
+        # 劇本禁止證件照構圖詞；half 仍用 upper body，但不寫 looking at viewer（scene 已擋）
+        if fr == "head":
+            fr = "half"
+    want_flat = False if script_mode else (
+        bool(comfy.PORTRAIT_SHOTS.get(shot, {}).get("cutout")) or bool(opts.get("flat_bg"))
+    )
     return sdtags.build_prompt(
         ch,
         # 要去背的那幾張,prompt 先要一塊平背景(見 cutout.py)。
-        # 三連拍照規格走;testword 那條由勾選決定。
-        flat_bg=bool(comfy.PORTRAIT_SHOTS.get(shot, {}).get("cutout")) or bool(opts.get("flat_bg")),
+        # 三連拍照規格走;testword 那條由勾選決定。劇本永不 flat_bg。
+        flat_bg=want_flat,
         part=part,
         framing=fr,
         rating=str(opts.get("rating") or "sfw"),
@@ -2172,6 +2203,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         stage=str(opts.get("stage") or (ch or {}).get("stage") or ""),
         extra=str(opts.get("extra") or ""),
         scene=scene,
+        action_first=script_mode,
     )
 
 
@@ -2656,8 +2688,12 @@ def imggen_submit(t: ImgGenIn):
     )
     shot_in = (t.shot or "").strip().lower()
     sex_strip = (t.scene_kind or "").strip().lower() == "sex_strip"
+    script_kind = (t.scene_kind or "").strip().lower() == "script"
+    # 劇本／sex_strip 絕不能當 portrait shot（否則落到 portraits/ 變立繪路徑）
+    if script_kind or sex_strip:
+        shot_in = ""
     # 立繪 shot 看規格（調戲場景 cutout=False）；沒登記才吃前端 cutout
-    portrait_cut = comfy.shot_wants_cutout(shot_in, bool(t.cutout))
+    portrait_cut = False if (script_kind or sex_strip) else comfy.shot_wants_cutout(shot_in, bool(t.cutout))
     opts = {
         "kind": "sex_strip" if sex_strip else "girl_image",
         "part": part if part in IMG_PARTS else "",
@@ -2683,8 +2719,8 @@ def imggen_submit(t: ImgGenIn):
         "char_id": (t.char_id or "").strip(),
         "card_id": (t.card_id or "").strip(),
         "scene_kind": (t.scene_kind or "").strip(),
-        "cutout": portrait_cut,
-        "flat_bg": bool(t.flat_bg or portrait_cut),
+        "cutout": False if script_kind else portrait_cut,
+        "flat_bg": False if script_kind else bool(t.flat_bg or portrait_cut),
         # Comfy：prompt 有值才原樣送；出卡應留空，讓 _comfy_prompt_for 用人設 + extra
         # Grok：整張圖不吃前端 prompt（只在分段 part、或做愛局部橫幅時吃）
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip) else "",
@@ -3445,13 +3481,16 @@ async def _dd_run_script(girl: dict, cfg: dict, key: str, pack_id: str, scene: i
         bone = ddream.pose_ref_for_slot(spec, slot, i, pack, frame)
         url = await _dd_image(_dd_img_base(
             girl, cfg, f"{key}:img:{i}",
+            # scene1 half 仍要動作構圖（非證件照）；scene≥2 full
             framing="half" if int(scene or 1) <= 1 else "full",
             rating="nsfw",
             extra=extra,
             negative=neg,
             cutout=False,
+            flat_bg=False,
             lock_identity=True,
             scene_kind="script",
+            shot="",  # 絕不能帶 portrait shot，否則落入 portraits/
             pose_ref=bone,
             pose_denoise=0.55 if bone else 0,
         ))
