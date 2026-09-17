@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.55(2026-09-17)局部動畫要真的出現";
+const APP_VER = "v7.56(2026-09-17)優先播發呆sexAnim";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5212,7 +5212,14 @@ function applyDaydreamPatches(patches) {
       changed = true;
     }
     if (p.sexAnim) {
-      s.sexAnim = { ...(s.sexAnim || {}), ...p.sexAnim };
+      s.sexAnim = { ...(s.sexAnim || {}) };
+      for (const [pose, rec] of Object.entries(p.sexAnim)) {
+        const at = rec?.at || Date.now();
+        const urls = Array.isArray(rec?.urls)
+          ? rec.urls.map(u => (u ? bustAssetUrl(u, at) : ""))
+          : [];
+        s.sexAnim[pose] = { ...(rec || {}), urls, at };
+      }
       changed = true;
     }
     if (p.scriptArt) {
@@ -6028,44 +6035,54 @@ function scriptAnimUrls() {
   const g = state.succubi.find(x => x.id === chatWith);
   const poseId = String(play?.pack?.pose || "").trim();
   const pick = urls => (Array.isArray(urls) ? urls : []).map(u => String(u || "").trim()).filter(Boolean);
+  const bust = (urls, ver) => pick(urls).map(u => {
+    try { return typeof bustAssetUrl === "function" ? bustAssetUrl(u, ver) : u; } catch { return u; }
+  });
 
-  // 1) 該魅魔、這個體位的局部四幀（發呆產的 sexAnim）
-  let urls = pick(poseId && g?.sexAnim?.[poseId]?.urls);
-  if (urls.length) return urls;
+  // ★ 發呆產的局部動畫優先（testword「連續局部動畫」／daydream sexAnim）
+  // 幀包只是生圖骨架，不能排在 sexAnim 前面，否則會播到空／骨架或載入失敗→看起來「沒動畫」。
+  if (g?.sexAnim) {
+    if (poseId) {
+      const hit = g.sexAnim[poseId];
+      const urls = bust(hit?.urls, hit?.at);
+      if (urls.length) return urls;
+    }
+    // 體位沒對上或劇本沒填 pose：用這隻魅魔任何一組已產好的局部動畫
+    for (const rec of Object.values(g.sexAnim)) {
+      const urls = bust(rec?.urls, rec?.at);
+      if (urls.length >= 2) return urls;
+    }
+    for (const rec of Object.values(g.sexAnim)) {
+      const urls = bust(rec?.urls, rec?.at);
+      if (urls.length) return urls;
+    }
+  }
 
-  // 2) 劇本／本景綁定的幀包
+  // 再退回劇本綁定／同體位的幀包（骨架庫）
   const spec = play?.pack?.scenes?.[String(play?.scene)];
   const bound = boundScriptFramePack(play?.pack, spec);
-  urls = pick(FramePack.packFrameUrls(bound));
+  let urls = pick(FramePack.packFrameUrls(bound));
   if (urls.length) return urls;
 
-  // 3) 同體位的幀包
   if (poseId) {
     const posePack = (FRAME_PACKS || []).find(p => p && p.pose === poseId && pick(FramePack.packFrameUrls(p)).length);
     urls = pick(FramePack.packFrameUrls(posePack));
     if (urls.length) return urls;
   }
 
-  // 4) 該魅魔任何一組局部動畫
-  const anyGirl = Object.values(g?.sexAnim || {}).find(x => pick(x?.urls).length >= 2)
-    || Object.values(g?.sexAnim || {}).find(x => pick(x?.urls).length);
-  urls = pick(anyGirl?.urls);
-  if (urls.length) return urls;
-
-  // 5) 庫裡任何一組幀包
   const anyPack = (FRAME_PACKS || []).find(p => pick(FramePack.packFrameUrls(p)).length >= 2)
     || (FRAME_PACKS || []).find(p => pick(FramePack.packFrameUrls(p)).length);
   urls = pick(FramePack.packFrameUrls(anyPack));
   if (urls.length) return urls;
 
-  // 6) 最後手段：用當前劇本揭圖輪播（總比完全不顯示好）
+  // 最後才用劇本揭圖／立繪湊數
   urls = pick(play?.urls);
   if (urls.length) return urls;
-
   const fig = document.getElementById("vn-figure");
   const src = fig && !fig.classList.contains("hidden") ? String(fig.getAttribute("src") || "").trim() : "";
   return src ? [src] : [];
 }
+
 function scriptAnimLoad(run, img, url) {
   if (run.cancelled) return Promise.resolve(false);
   return new Promise(resolve => {
