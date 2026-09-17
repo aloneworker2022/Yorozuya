@@ -95,37 +95,180 @@
         "player": "這件衣服很襯妳。還是在襯我。"
       }
     ],
+    "interruptOk": [
+      {
+        "narr": "你擋在她身前，一把推開那隻伸過來的手。",
+        "player": "別碰她。給我滾開。"
+      },
+      {
+        "narr": "你抓住他的手腕，把他從她身邊拉開。",
+        "player": "眼睛給我放乾淨。她是跟我來的。"
+      },
+      {
+        "narr": "你側身擋住他，聲音壓得很低。",
+        "player": "再靠近一步試試。"
+      }
+    ],
     "molest": [
       {
-        "narr": "趁她看旁邊的空檔，手從後面碰她腰。",
+        "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：趁她看旁邊的空檔，手從後面碰她腰。",
         "player": "別動。沒人注意這邊。"
       },
       {
-        "narr": "玩家站到她身後，掌心貼上她腰側。",
+        "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：玩家站到她身後，掌心貼上她腰側。",
         "player": "站好。假裝還在看前面。"
       },
       {
-        "narr": "有人走過去，玩家的手指在她衣襬邊。",
+        "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：有人走過去，玩家的手指在她衣襬邊。",
         "player": "等他們走過去。"
       },
       {
-        "narr": "玩家用身體擋住側邊視線，手往她背上滑。",
+        "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：玩家用身體擋住側邊視線，手往她背上滑。",
         "player": "廣場很大，沒人盯著妳。"
       },
       {
-        "narr": "玩家的手環過她腰，把她帶近一點。",
+        "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：玩家的手環過她腰，把她帶近一點。",
         "player": "靠過來。就幾秒。"
       },
       {
-        "narr": "她視線還在場中央，玩家的拇指在她腰窩按一下。",
+        "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：她視線還在場中央，玩家的拇指在她腰窩按一下。",
         "player": "看前面就好。"
       },
       {
-        "narr": "玩家的手從腰側往上，隔著衣服停在她胸口下緣。",
+        "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：玩家的手從腰側往上，隔著衣服停在她胸口下緣。",
         "player": "噓。別叫出來。"
       }
     ]
   },
+  "molestPacks": [
+    {
+      "id": "mu51fx2boduwuz",
+      "name": "猥褻 1",
+      "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+      "playerAct": "別動。沒人注意這邊。",
+      "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：趁她看旁邊的空檔，手從後面碰她腰。",
+      "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+      "placeId": "plaza",
+      "imgMode": "ref",
+      "poseDenoise": 0.55,
+      "slot": {
+        "prompt": "",
+        "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+        "ref": "",
+        "url": ""
+      },
+      "updated": 1789619833379
+    },
+    {
+      "id": "mu51fx2bcxs4lq",
+      "name": "猥褻 2",
+      "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+      "playerAct": "站好。假裝還在看前面。",
+      "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：玩家站到她身後，掌心貼上她腰側。",
+      "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+      "placeId": "plaza",
+      "imgMode": "ref",
+      "poseDenoise": 0.55,
+      "slot": {
+        "prompt": "",
+        "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+        "ref": "",
+        "url": ""
+      },
+      "updated": 1789619833379
+    },
+    {
+      "id": "mu51fx2b2daen8",
+      "name": "猥褻 3",
+      "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+      "playerAct": "等他們走過去。",
+      "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：有人走過去，玩家的手指在她衣襬邊。",
+      "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+      "placeId": "plaza",
+      "imgMode": "ref",
+      "poseDenoise": 0.55,
+      "slot": {
+        "prompt": "",
+        "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+        "ref": "",
+        "url": ""
+      },
+      "updated": 1789619833379
+    },
+    {
+      "id": "mu51fx2bmypasv",
+      "name": "猥褻 4",
+      "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+      "playerAct": "廣場很大，沒人盯著妳。",
+      "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：玩家用身體擋住側邊視線，手往她背上滑。",
+      "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+      "placeId": "plaza",
+      "imgMode": "ref",
+      "poseDenoise": 0.55,
+      "slot": {
+        "prompt": "",
+        "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+        "ref": "",
+        "url": ""
+      },
+      "updated": 1789619833379
+    },
+    {
+      "id": "mu51fx2bp77jp0",
+      "name": "猥褻 5",
+      "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+      "playerAct": "靠過來。就幾秒。",
+      "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：玩家的手環過她腰，把她帶近一點。",
+      "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+      "placeId": "plaza",
+      "imgMode": "ref",
+      "poseDenoise": 0.55,
+      "slot": {
+        "prompt": "",
+        "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+        "ref": "",
+        "url": ""
+      },
+      "updated": 1789619833379
+    },
+    {
+      "id": "mu51fx2bd7iuch",
+      "name": "猥褻 6",
+      "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+      "playerAct": "看前面就好。",
+      "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：她視線還在場中央，玩家的拇指在她腰窩按一下。",
+      "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+      "placeId": "plaza",
+      "imgMode": "ref",
+      "poseDenoise": 0.55,
+      "slot": {
+        "prompt": "",
+        "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+        "ref": "",
+        "url": ""
+      },
+      "updated": 1789619833379
+    },
+    {
+      "id": "mu51fx2bqwn05f",
+      "name": "猥褻 7",
+      "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+      "playerAct": "噓。別叫出來。",
+      "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：玩家的手從腰側往上，隔著衣服停在她胸口下緣。",
+      "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+      "placeId": "plaza",
+      "imgMode": "ref",
+      "poseDenoise": 0.55,
+      "slot": {
+        "prompt": "",
+        "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+        "ref": "",
+        "url": ""
+      },
+      "updated": 1789619833379
+    }
+  ],
+  "activeMolestId": "mu51fx2boduwuz",
   "male": {
     "activeTypeId": "fat",
     "types": [
@@ -133,6 +276,7 @@
         "id": "fat",
         "name": "噁心胖肥宅",
         "talkWeight": 0.7,
+        "lookEn": "1boy, overweight obese man, large protruding belly, round face, double chin, greasy skin, unkempt messy hair, baggy stained t-shirt, unattractive, lewd smirk",
         "approach": [
           {
             "narr": "一個穿著寬鬆T恤、肚子把衣襬撐開的男人喘著走過來，眼睛先落在她胸口。",
@@ -157,24 +301,6 @@
             "male": "旁邊那傢伙養不起妳。換哥試試？"
           }
         ],
-        "molest": [
-          {
-            "narr": "男子從側後方伸手，隔著衣服按住她腰。",
-            "male": "別動。就摸一下。"
-          },
-          {
-            "narr": "他的手從她背後滑到臀側，假裝只是擠過去。",
-            "male": "這麼軟，借哥摸兩下不過分吧。"
-          },
-          {
-            "narr": "男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。",
-            "male": "她喜歡這樣，你看她沒推開。"
-          },
-          {
-            "narr": "他一把把她拉近，掌心貼在她大腿外側。",
-            "male": "腿夾緊一點。給哥好好摸摸。"
-          }
-        ],
         "mate": [
           {
             "narr": "男子把她拉近自己，聲音又粗又急。",
@@ -188,12 +314,120 @@
             "narr": "男子對玩家揚了揚下巴，把她往自己身側帶。",
             "male": "她要跟我去交配了。你在旁邊看就好。"
           }
+        ],
+        "taunt": [
+          {
+            "narr": "肥宅咧嘴笑，把你的手撥開。",
+            "male": "擋錯了吧？肥宅說了算。"
+          },
+          {
+            "narr": "他推了你一把，得意地看著她。",
+            "male": "猜錯囉。她比較喜歡我這樣。"
+          },
+          {
+            "narr": "他拍了拍肚子，嘲諷地看你。",
+            "male": "弱雞，連擋都擋不住。"
+          }
+        ],
+        "molestPacks": [
+          {
+            "id": "mu51fx2cm8lajl",
+            "name": "猥褻 1",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "別動。就摸一下。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子從側後方伸手，隔著衣服按住她腰。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          },
+          {
+            "id": "mu51fx2c0hk2ov",
+            "name": "猥褻 2",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "這麼軟，借哥摸兩下不過分吧。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他的手從她背後滑到臀側，假裝只是擠過去。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          },
+          {
+            "id": "mu51fx2c6c6nhc",
+            "name": "猥褻 3",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "她喜歡這樣，你看她沒推開。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          },
+          {
+            "id": "mu51fx2c9naair",
+            "name": "猥褻 4",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "腿夾緊一點。給哥好好摸摸。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他一把把她拉近，掌心貼在她大腿外側。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          }
+        ],
+        "activeMolestId": "mu51fx2cm8lajl",
+        "molest": [
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子從側後方伸手，隔著衣服按住她腰。",
+            "male": "別動。就摸一下。"
+          },
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他的手從她背後滑到臀側，假裝只是擠過去。",
+            "male": "這麼軟，借哥摸兩下不過分吧。"
+          },
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。",
+            "male": "她喜歡這樣，你看她沒推開。"
+          },
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他一把把她拉近，掌心貼在她大腿外側。",
+            "male": "腿夾緊一點。給哥好好摸摸。"
+          }
         ]
       },
       {
         "id": "gym",
         "name": "健身變態男",
         "talkWeight": 0.3,
+        "lookEn": "1boy, muscular athletic man, broad shoulders, thick arms, defined chest, short hair, tight tank top, intense hungry stare, gym body",
         "approach": [
           {
             "narr": "一個肩很寬、背心貼著胸肌的男人放慢腳步，從她側後方靠近。",
@@ -218,24 +452,6 @@
             "male": "旁邊那傢伙養不起妳。換哥試試？"
           }
         ],
-        "molest": [
-          {
-            "narr": "男子從側後方伸手，隔著衣服按住她腰。",
-            "male": "別動。就摸一下。"
-          },
-          {
-            "narr": "他的手從她背後滑到臀側，假裝只是擠過去。",
-            "male": "這麼軟，借哥摸兩下不過分吧。"
-          },
-          {
-            "narr": "男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。",
-            "male": "她喜歡這樣，你看她沒推開。"
-          },
-          {
-            "narr": "他一把把她拉近，掌心貼在她大腿外側。",
-            "male": "腿夾緊一點。給哥好好摸摸。"
-          }
-        ],
         "mate": [
           {
             "narr": "男子把她拉近自己，聲音又粗又急。",
@@ -249,12 +465,120 @@
             "narr": "男子對玩家揚了揚下巴，把她往自己身側帶。",
             "male": "她要跟我去交配了。你在旁邊看就好。"
           }
+        ],
+        "taunt": [
+          {
+            "narr": "健身男一把甩開你的手，肩線壓過來。",
+            "male": "力氣不夠就別擋。看著就好。"
+          },
+          {
+            "narr": "他冷笑一聲，把你撥到一旁。",
+            "male": "猜錯了。下一步才是重點。"
+          },
+          {
+            "narr": "他用胸膛頂開你，視線還黏在她身上。",
+            "male": "擋錯方向了，廢物。"
+          }
+        ],
+        "molestPacks": [
+          {
+            "id": "mu51fx2clh9e3z",
+            "name": "猥褻 1",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "別動。就摸一下。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子從側後方伸手，隔著衣服按住她腰。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          },
+          {
+            "id": "mu51fx2c088kkd",
+            "name": "猥褻 2",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "這麼軟，借哥摸兩下不過分吧。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他的手從她背後滑到臀側，假裝只是擠過去。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          },
+          {
+            "id": "mu51fx2ccryow7",
+            "name": "猥褻 3",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "她喜歡這樣，你看她沒推開。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          },
+          {
+            "id": "mu51fx2cxiusfp",
+            "name": "猥褻 4",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "腿夾緊一點。給哥好好摸摸。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他一把把她拉近，掌心貼在她大腿外側。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          }
+        ],
+        "activeMolestId": "mu51fx2clh9e3z",
+        "molest": [
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子從側後方伸手，隔著衣服按住她腰。",
+            "male": "別動。就摸一下。"
+          },
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他的手從她背後滑到臀側，假裝只是擠過去。",
+            "male": "這麼軟，借哥摸兩下不過分吧。"
+          },
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。",
+            "male": "她喜歡這樣，你看她沒推開。"
+          },
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他一把把她拉近，掌心貼在她大腿外側。",
+            "male": "腿夾緊一點。給哥好好摸摸。"
+          }
         ]
       },
       {
         "id": "lust",
         "name": "色慾單身男",
         "talkWeight": 0.25,
+        "lookEn": "1boy, average slim man, hungry lewd eyes, messy hair, casual street clothes, predatory smile, looking at woman, lustful expression",
         "approach": [
           {
             "narr": "一個眼神發亮的男人徑直走來，視線黏在她胸和腿之間，沒有要打招呼的意思。",
@@ -279,24 +603,6 @@
             "male": "旁邊那傢伙養不起妳。換哥試試？"
           }
         ],
-        "molest": [
-          {
-            "narr": "男子從側後方伸手，隔著衣服按住她腰。",
-            "male": "別動。就摸一下。"
-          },
-          {
-            "narr": "他的手從她背後滑到臀側，假裝只是擠過去。",
-            "male": "這麼軟，借哥摸兩下不過分吧。"
-          },
-          {
-            "narr": "男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。",
-            "male": "她喜歡這樣，你看她沒推開。"
-          },
-          {
-            "narr": "他一把把她拉近，掌心貼在她大腿外側。",
-            "male": "腿夾緊一點。給哥好好摸摸。"
-          }
-        ],
         "mate": [
           {
             "narr": "男子把她拉近自己，聲音又粗又急。",
@@ -309,6 +615,113 @@
           {
             "narr": "男子對玩家揚了揚下巴，把她往自己身側帶。",
             "male": "她要跟我去交配了。你在旁邊看就好。"
+          }
+        ],
+        "taunt": [
+          {
+            "narr": "色慾男偏頭笑，根本不看你。",
+            "male": "猜錯了。她已經濕了你不知道？"
+          },
+          {
+            "narr": "他撥開你的手，舌頭舔了下嘴唇。",
+            "male": "擋錯招。接下來更有趣。"
+          },
+          {
+            "narr": "他嗤了一聲，又往她身邊靠。",
+            "male": "廢物男友，連猜都猜不中。"
+          }
+        ],
+        "molestPacks": [
+          {
+            "id": "mu51fx2cuywyjg",
+            "name": "猥褻 1",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "別動。就摸一下。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子從側後方伸手，隔著衣服按住她腰。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          },
+          {
+            "id": "mu51fx2coxak5m",
+            "name": "猥褻 2",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "這麼軟，借哥摸兩下不過分吧。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他的手從她背後滑到臀側，假裝只是擠過去。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          },
+          {
+            "id": "mu51fx2c6gtvzg",
+            "name": "猥褻 3",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "她喜歡這樣，你看她沒推開。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          },
+          {
+            "id": "mu51fx2ct5waxh",
+            "name": "猥褻 4",
+            "attitude": "依關係：陌生驚怒擋開、朋友羞怒、女友又羞又受、妻子默許享受。不要自己演成口交或做愛。",
+            "playerAct": "腿夾緊一點。給哥好好摸摸。",
+            "narrPrompt": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他一把把她拉近，掌心貼在她大腿外側。",
+            "feelPrompt": "這一拍身體感覺：被碰到的部位、緊張／羞恥／快感（依關係）。只影響台詞口氣，不要自己描述肢體。",
+            "placeId": "plaza",
+            "imgMode": "txt",
+            "poseDenoise": 0.55,
+            "slot": {
+              "prompt": "",
+              "negative": "looking at viewer, text, watermark, ugly, extra fingers",
+              "ref": "",
+              "url": ""
+            },
+            "updated": 1789619833380
+          }
+        ],
+        "activeMolestId": "mu51fx2cuywyjg",
+        "molest": [
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子從側後方伸手，隔著衣服按住她腰。",
+            "male": "別動。就摸一下。"
+          },
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他的手從她背後滑到臀側，假裝只是擠過去。",
+            "male": "這麼軟，借哥摸兩下不過分吧。"
+          },
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：男子把手伸向她胸口下緣，眼睛盯著玩家挑釁。",
+            "male": "她喜歡這樣，你看她沒推開。"
+          },
+          {
+            "narr": "依這句方向寫旁白（可改寫通順，勿加口交／做愛）：他一把把她拉近，掌心貼在她大腿外側。",
+            "male": "腿夾緊一點。給哥好好摸摸。"
           }
         ]
       }

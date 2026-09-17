@@ -63,7 +63,7 @@
 <body>
 <h1>⚙ Edit Date — 約會聊天劇本</h1>
 <div class="warn">
-  <code>/test_date</code> 的「調戲」抽玩家調戲池；「猥褻」抽猥褻劇本包。單男（搭訕／騷擾／猥褻／交配請求）約 1/2 出場（測試用）。
+  <code>/test_date</code> 的「調戲」抽玩家調戲池；「猥褻」抽猥褻劇本包。單男猜招戰：出場後玩家先猜「阻止調戲／阻止猥褻」；成功抽 interruptOk，失敗抽男子 taunt。約 1/2 出場（測試用）。
   文案可用 <code>[name]</code> <code>[head]</code> <code>[breast]</code> 等標註。改完按儲存，測試頁重整後生效。
   <a href="/test_date">約會測試頁</a> | <a href="/testword">Testword</a> | <a href="/edit_pic">生圖測試</a> | <a href="/">回遊戲</a>
 </div>
@@ -87,6 +87,10 @@
     <h3 class="subh">調戲（按鈕）</h3>
     <p class="mini">按「調戲」從這裡抽。兩行一組：第一行旁白方向，第二行玩家台詞。組與組空一行。可用身體標註。</p>
     <textarea id="act-tease" class="lines"></textarea>
+
+    <h3 class="subh">阻止成功（猜招戰）</h3>
+    <p class="mini">單男場上猜對招式時抽。兩行一組：第一行旁白方向，第二行玩家台詞。組與組空一行。</p>
+    <textarea id="act-interrupt-ok" class="lines"></textarea>
 
     <h3 class="subh">猥褻（按鈕）· 劇本編輯</h3>
     <p class="mini">抄 testword 劇本模式場景編輯：一份劇本一個下拉標題；寫態度、玩家動作、旁白 prompt、女子感覺 prompt、參考圖與正負向 prompt；可產圖與綜合測試。測試直接用存檔裡現有魅子。</p>
@@ -176,7 +180,7 @@
   <h2 class="panel-toggle" data-panel="male" id="toggle-male"><span class="chev">▼</span> 單男</h2>
   <div class="panel-body" id="panel-male-body">
     <h3 class="subh">① 男子種類</h3>
-    <p class="mini">下拉選種類後，編輯該種類的名稱、talkWeight（0～1，越高越常抽「騷擾」而非「猥褻」）、外觀描述（英文 lookEn，給文生圖），以及下方②③④⑤。每種男子各自有搭訕／騷擾／猥褻劇本包／交配請求。</p>
+    <p class="mini">下拉選種類後，編輯該種類的名稱、talkWeight（0～1，越高越常抽「騷擾」而非「猥褻」）、外觀描述（英文 lookEn，給文生圖），以及下方②③④⑤。每種男子各自有搭訕／調戲／嘲諷／猥褻劇本包／交配請求。</p>
     <div class="type-row" id="male-type-bar">
       <span class="grow"><label>種類</label>
         <select id="male-type"></select>
@@ -199,9 +203,13 @@
     <p class="mini">首次出場第一句。兩行一組：第一行旁白方向，第二行男子台詞。組與組空一行。格式同調戲。</p>
     <textarea id="male-approach" class="lines"></textarea>
 
-    <h3 class="subh">③ 騷擾（此種類）</h3>
-    <p class="mini">場上後的言語騷擾。格式同調戲（旁白＋男子台詞）。</p>
+    <h3 class="subh">③ 調戲／騷擾（此種類）</h3>
+    <p class="mini">猜招戰男子抽「調戲」時用。格式同調戲（旁白＋男子台詞）。talkWeight 越高越常抽這池。</p>
     <textarea id="male-harass" class="lines"></textarea>
+
+    <h3 class="subh">③′ 嘲諷（猜招失敗・此種類）</h3>
+    <p class="mini">玩家猜錯招式時男子嘲諷。兩行一組：旁白＋男子台詞。</p>
+    <textarea id="male-taunt" class="lines"></textarea>
 
     <h3 class="subh">④ 猥褻（此種類）· 文生圖劇本包</h3>
     <p class="mini">類似玩家猥褻包，但<strong>純文生圖</strong>（不需參考圖）。產圖時會把此種類的 lookEn 併入正向。測試回覆用上方／下方選的魅子。</p>
@@ -378,6 +386,7 @@ function fillTease(s) {
   $("girl_system").value = s.girl_system;
   $("narr_system").value = s.narr_system;
   $("act-tease").value = formatActs(s.acts.tease);
+  if ($("act-interrupt-ok")) $("act-interrupt-ok").value = formatActs(s.acts.interruptOk || []);
   fillMale(s.male || DEFAULT_DATE_SCRIPT.male);
 }
 
@@ -390,6 +399,7 @@ function emptyMalePools() {
   return {
     approach: [],
     harass: [],
+    taunt: [],
     mate: [],
     molest: [{ narr: p.narrPrompt, male: p.playerAct }],
     molestPacks: [p],
@@ -533,6 +543,7 @@ function flushMaleTypeFields() {
   if (lookEl) t.lookEn = lookEl.value || "";
   t.approach = parseMaleActs($("male-approach")?.value || "");
   t.harass = parseMaleActs($("male-harass")?.value || "");
+  t.taunt = parseMaleActs($("male-taunt")?.value || "");
   t.mate = parseMaleActs($("male-mate")?.value || "");
   mmCollect();
 }
@@ -548,6 +559,7 @@ function refillMaleTypeFields() {
     if (lookEl) lookEl.value = "";
     if ($("male-approach")) $("male-approach").value = "";
     if ($("male-harass")) $("male-harass").value = "";
+    if ($("male-taunt")) $("male-taunt").value = "";
     if ($("male-mate")) $("male-mate").value = "";
     mmId = "";
     mmRenderPacks();
@@ -566,6 +578,7 @@ function refillMaleTypeFields() {
   if (lookEl) lookEl.value = t.lookEn || "";
   if ($("male-approach")) $("male-approach").value = formatMaleActs(t.approach || []);
   if ($("male-harass")) $("male-harass").value = formatMaleActs(t.harass || []);
+  if ($("male-taunt")) $("male-taunt").value = formatMaleActs(t.taunt || []);
   if ($("male-mate")) $("male-mate").value = formatMaleActs(t.mate || []);
   mmId = t.activeMolestId || t.molestPacks[0]?.id || "";
   mmRenderPacks();
@@ -597,6 +610,7 @@ function fillMale(m) {
     lookEn: t.lookEn || "",
     approach: (t.approach || []).map((x) => ({ ...x })),
     harass: (t.harass || []).map((x) => ({ ...x })),
+    taunt: (t.taunt || []).map((x) => ({ ...x })),
     mate: (t.mate || []).map((x) => ({ ...x })),
     molest: (t.molest || []).map((x) => ({ ...x })),
     molestPacks: (t.molestPacks || []).map((p) => normalizeMolestPack({ ...p, imgMode: "txt" })),
@@ -618,6 +632,7 @@ function collectMale() {
     lookEn: String(t.lookEn || "").trim(),
     approach: Array.isArray(t.approach) ? t.approach : [],
     harass: Array.isArray(t.harass) ? t.harass : [],
+    taunt: Array.isArray(t.taunt) ? t.taunt : [],
     mate: Array.isArray(t.mate) ? t.mate : [],
     molestPacks: (t.molestPacks || []).map((p) => normalizeMolestPack({ ...p, imgMode: "txt" })),
     activeMolestId: t.activeMolestId || t.molestPacks?.[0]?.id || "",
@@ -646,6 +661,7 @@ function collect() {
     narr_system: $("narr_system").value,
     acts: {
       tease: parseActs($("act-tease").value),
+      interruptOk: parseActs($("act-interrupt-ok")?.value || ""),
       molest: script.acts.molest,
     },
     classify: keptClassify || undefined,

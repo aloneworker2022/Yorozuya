@@ -10,6 +10,9 @@ export const DATE_ACT_ZH = {
   eat: "吃東西",
   end: "回家",
   rescue: "帶女子脫離騷擾",
+  "block-tease": "阻止調戲",
+  "block-molest": "阻止猥褻",
+  interruptOk: "阻止成功",
   oral: "口交",
   sex: "做愛",
 };
@@ -53,6 +56,11 @@ export const DEFAULT_DATE_SCRIPT = {
       { narr: "她視線還在場中央，玩家的拇指在她腰窩按一下。", player: "看前面就好。" },
       { narr: "玩家的手從腰側往上，隔著衣服停在她胸口下緣。", player: "噓。別叫出來。" },
     ],
+    interruptOk: [
+      { narr: "你擋在她身前，一把推開那隻伸過來的手。", player: "別碰她。給我滾開。" },
+      { narr: "你抓住他的手腕，把他從她身邊拉開。", player: "眼睛給我放乾淨。她是跟我來的。" },
+      { narr: "你側身擋住他，聲音壓得很低。", player: "再靠近一步試試。" },
+    ],
   },
   classify: {
     oral: {
@@ -88,7 +96,7 @@ export const DEFAULT_DATE_SCRIPT = {
       ],
     },
   },
-  /** 單男系統：每種男子各自有搭訕／騷擾／猥褻／交配請求池。 */
+  /** 單男系統：每種男子各自有搭訕／調戲(harass)／猥褻／嘲諷(taunt)／交配請求池。 */
   male: {
     activeTypeId: "fat",
     types: [
@@ -117,6 +125,11 @@ export const DEFAULT_DATE_SCRIPT = {
           { narr: "他指了指旁邊的小路，另一隻手還攬著她。", male: "別裝了。跟肥宅去一趟，保證妳爽。" },
           { narr: "他對玩家揚了揚下巴，把她往自己身側帶。", male: "她要跟我去交配了。你在旁邊看就好。" },
         ],
+        taunt: [
+          { narr: "肥宅咧嘴笑，把你的手撥開。", male: "擋錯了吧？肥宅說了算。" },
+          { narr: "他推了你一把，得意地看著她。", male: "猜錯囉。她比較喜歡我這樣。" },
+          { narr: "他拍了拍肚子，嘲諷地看你。", male: "弱雞，連擋都擋不住。" }
+        ]
       },
       {
         id: "gym",
@@ -143,6 +156,11 @@ export const DEFAULT_DATE_SCRIPT = {
           { narr: "他指了指旁邊的小路，另一隻手還攬著她。", male: "別裝了。跟哥去一趟，保證妳爽。" },
           { narr: "他對玩家揚了揚下巴，把她往自己身側帶。", male: "她要跟我去交配了。你在旁邊看就好。" },
         ],
+        taunt: [
+          { narr: "健身男一把甩開你的手，肩線壓過來。", male: "力氣不夠就別擋。看著就好。" },
+          { narr: "他冷笑一聲，把你撥到一旁。", male: "猜錯了。下一步才是重點。" },
+          { narr: "他用胸膛頂開你，視線還黏在她身上。", male: "擋錯方向了，廢物。" }
+        ]
       },
       {
         id: "lust",
@@ -169,6 +187,11 @@ export const DEFAULT_DATE_SCRIPT = {
           { narr: "他指了指旁邊的小路，另一隻手還攬著她。", male: "別裝了。跟哥去一趟，保證妳爽。" },
           { narr: "他對玩家揚了揚下巴，把她往自己身側帶。", male: "她要跟我去交配了。你在旁邊看就好。" },
         ],
+        taunt: [
+          { narr: "色慾男偏頭笑，根本不看你。", male: "猜錯了。她已經濕了你不知道？" },
+          { narr: "他撥開你的手，舌頭舔了下嘴唇。", male: "擋錯招。接下來更有趣。" },
+          { narr: "他嗤了一聲，又往她身邊靠。", male: "廢物男友，連猜都猜不中。" }
+        ]
       },
     ],
   },
@@ -223,7 +246,7 @@ function maleActList(list, fallback) {
     .filter((x) => x.narr && x.male);
 }
 
-const MALE_POOL_KEYS = ["approach", "harass", "mate"]; // molest → molestPacks
+const MALE_POOL_KEYS = ["approach", "harass", "mate", "taunt"]; // molest → molestPacks
 
 function cloneMaleActs(list) {
   return maleActList(list, []).map((x) => ({ narr: x.narr, male: x.male }));
@@ -260,7 +283,7 @@ function normalizeMaleType(raw, i, ctx) {
   const dType = defaultMaleTypeById(String(raw?.id || "").trim(), dMale.types)
     || dMale.types[i]
     || dMale.types[0]
-    || { id: `m${i + 1}`, name: "男子", talkWeight: 0.5, lookEn: "", approach: [], harass: [], molest: [], mate: [] };
+    || { id: `m${i + 1}`, name: "男子", talkWeight: 0.5, lookEn: "", approach: [], harass: [], molest: [], mate: [], taunt: [] };
   let id = String(raw?.id || dType.id || `m${i + 1}`).trim() || `m${i + 1}`;
   const tw = Number(raw?.talkWeight ?? dType.talkWeight);
   const lookFallback = (DEFAULT_MALE_LOOK_EN[id] || dType.lookEn || "");
@@ -355,6 +378,7 @@ export function normalizeDateScript(raw) {
   };
   const acts = src.acts && typeof src.acts === "object" ? src.acts : {};
   const tease = actList(acts.tease, d.acts.tease);
+  const interruptOk = actList(acts.interruptOk, d.acts.interruptOk);
   const legacyMolest = actList(acts.molest, d.acts.molest);
   const molestPacks = normalizeMolestPacks(src.molestPacks, legacyMolest);
   // 舊格式相容：acts.molest 由 packs 同步成 narr/player
@@ -371,6 +395,7 @@ export function normalizeDateScript(raw) {
     harass: maleSrc.harass,
     molest: maleSrc.molest,
     mate: maleSrc.mate,
+    taunt: maleSrc.taunt,
   };
   const types = maleTypesList(maleSrc.types, dMale.types, legacyTop, dMale);
   let activeTypeId = String(maleSrc.activeTypeId || dMale.activeTypeId || types[0]?.id || "").trim();
@@ -386,6 +411,7 @@ export function normalizeDateScript(raw) {
     },
     acts: {
       tease,
+      interruptOk,
       molest: molestActs.length ? molestActs : legacyMolest,
     },
     molestPacks,

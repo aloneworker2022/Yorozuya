@@ -101,6 +101,9 @@
   .stat.plain .lab { margin-bottom: 0; justify-content: center; gap: 8px; }
   .stat.obey { display: none; }
   .hud.has-male .stat.obey { display: block; }
+  .stat.hype { display: none; }
+  .hud.has-male .stat.hype { display: block; }
+  .bar.hype i { background: #f0a040; }
 
   .stage {
     flex: 1;
@@ -198,8 +201,26 @@
   .acts-bar.paging .acts { display: none; }
   .acts.has-male { grid-template-columns: 1fr 1fr; }
   .acts.has-male [data-act="tease"],
-  .acts.has-male [data-act="molest"] { display: none; }
+  .acts.has-male [data-act="molest"],
+  .acts.has-male [data-act="end"],
+  .acts.has-male [data-act="rescue"] { display: none; }
+  .acts:not(.has-male) [data-act="block-tease"],
+  .acts:not(.has-male) [data-act="block-molest"],
   .acts:not(.has-male) [data-act="rescue"] { display: none; }
+  .acts.male-free [data-act="block-tease"],
+  .acts.male-free [data-act="block-molest"],
+  .acts.male-free [data-act="eat"],
+  .acts.male-free [data-act="end"],
+  .acts.male-free [data-act="tease"],
+  .acts.male-free [data-act="molest"],
+  .acts.male-free [data-act="rescue"] { display: none; }
+  .modal .choice-btns { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .modal .choice-btns button {
+    background: #000; color: var(--ink); border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000; padding: 10px 12px; font: inherit; font-size: 16px; text-align: left;
+  }
+  .modal .choice-btns button:hover { color: var(--gold); }
+  .modal #modal-ok.hidden { display: none; }
   .acts-bar:not(.paging) #btn-next { display: none; }
   /* 猥褻覆蓋層開啟時：整條底欄藏掉（含下一頁），只留覆蓋層上的後台 */
   .acts-bar.cg-open {
@@ -378,6 +399,10 @@
       <div class="lab">順從 <b id="obey-n">抗拒</b></div>
       <div class="bar shame"><i id="obey-bar"></i></div>
     </div>
+    <div class="stat hype">
+      <div class="lab">性奮 <b id="hype-n">0/5</b></div>
+      <div class="bar hype"><i id="hype-bar"></i></div>
+    </div>
   </div>
 
   <section class="stage win">
@@ -402,6 +427,8 @@
       <button class="act" type="button" id="date-send">送出</button>
     </div>
     <div class="acts" id="acts">
+      <button class="act" type="button" data-act="block-tease">阻止調戲</button>
+      <button class="act hot" type="button" data-act="block-molest">阻止猥褻</button>
       <button class="act" type="button" data-act="rescue">帶女子脫離騷擾</button>
       <button class="act" type="button" data-act="tease">調戲</button>
       <button class="act hot" type="button" data-act="molest">猥褻</button>
@@ -429,6 +456,7 @@
   <div class="modal">
     <h3 id="modal-title">特殊場景</h3>
     <p id="modal-body"></p>
+    <div class="choice-btns" id="modal-choices" hidden></div>
     <button type="button" class="close" id="modal-ok">知道了</button>
   </div>
 </div>
@@ -436,7 +464,7 @@
 <div class="overlay" id="admin">
   <div class="modal">
     <h3>後台</h3>
-    <p>抽妹子、設模型、開始一場。關係決定她怎麼回話（跟看板店頭聊同一套）。單男約 1/2 搭訕（測試用）（劇本在 /edit_date）。聊天劇本在 <a href="/edit_date" style="color:var(--cyan)">/edit_date</a>。生圖測試 <a href="/edit_pic" style="color:var(--cyan)">/edit_pic</a>。</p>
+    <p>抽妹子、設模型、開始一場。關係決定她怎麼回話（跟看板店頭聊同一套）。單男猜招戰約 1/2 出場（測試用）（劇本在 /edit_date）。聊天劇本在 <a href="/edit_date" style="color:var(--cyan)">/edit_date</a>。生圖測試 <a href="/edit_pic" style="color:var(--cyan)">/edit_pic</a>。</p>
     <div class="row">
       <div class="lab">妹子</div>
       <div id="admin-girl">還沒抽妹子。</div>
@@ -476,6 +504,6 @@
   </div>
 </div>
 
-<script type="module" src="/content/t_d.js?v=20260916a"></script>
+<script type="module" src="/content/t_d.js?v=20260917a"></script>
 </body>
 </html>
