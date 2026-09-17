@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.77(2026-09-18)留幀不秒消＋按鈕不跳排版";
+const APP_VER = "v7.78(2026-09-18)連肏改234";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -6046,6 +6046,8 @@ let scriptAnimPlaying = false;
 const ANIM_LINGER_IDLE_MS = 0; // 可選長閒置（≥20000）；0=場景2/3內永不因閒置收
 let animLinger = false;
 let animLingerTimer = 0;
+// 本場景首輪已播過後，連按只播第 2–4 幀。
+let animDidFirstRound = false;
 function clearAnimLinger() {
   if (animLingerTimer) {
     clearTimeout(animLingerTimer);
@@ -6071,6 +6073,7 @@ function cancelScriptAnimRunOnly() {
 }
 function stopScriptAnim() {
   cancelScriptAnimRunOnly();
+  animDidFirstRound = false;
   const box = document.getElementById("sex-anim-popup");
   const img = document.getElementById("sex-anim-img");
   box?.classList.add("hidden");
@@ -6098,6 +6101,7 @@ function endAnimRoundToLinger() {
   const box = document.getElementById("sex-anim-popup");
   const img = document.getElementById("sex-anim-img");
   if (scene !== 2 && scene !== 3) {
+    animDidFirstRound = false;
     box?.classList.add("hidden");
     box?.setAttribute("aria-hidden", "true");
     if (img) img.removeAttribute("src");
@@ -6105,6 +6109,7 @@ function endAnimRoundToLinger() {
     syncTeasePlayUi();
     return;
   }
+  animDidFirstRound = true;
   box?.classList.remove("hidden");
   box?.setAttribute("aria-hidden", "false");
   animLinger = true;
@@ -6249,7 +6254,7 @@ function scriptAnimPreload(run, urls) {
     if (im.complete) queueMicrotask(finish);
   })));
 }
-/** opts.fromLinger / 當前 animLinger：不藏 overlay，直接換幀 1 無閃爍重播 */
+/** opts.fromLinger / 當前 animLinger：不藏 overlay，直接換幀 2 無閃爍連播 */
 async function flashScriptAnim(opts = {}) {
   const box = document.getElementById("sex-anim-popup");
   const img = document.getElementById("sex-anim-img");
@@ -6257,7 +6262,7 @@ async function flashScriptAnim(opts = {}) {
     console.warn("[sex-anim] overlay DOM missing");
     return;
   }
-  const fromLinger = !!(opts?.fromLinger || animLinger);
+  const fromLinger = !!(opts?.fromLinger || animLinger || animDidFirstRound);
   // 連肏／首播皆只取消舊 run，不清 src／不藏 overlay（避免轉場競態把動圖砍掉）
   cancelScriptAnimRunOnly();
   scriptAnimPlaying = true;
@@ -6287,10 +6292,14 @@ async function flashScriptAnim(opts = {}) {
       try { toast("沒有局部動畫圖（幀包／sexAnim 皆空）", "bad"); } catch { /* */ }
       return;
     }
-    // 節奏：慢快快慢（幀 1–4）
-    const FRAME_HOLDS = [300, 180, 180, 300];
-    const playUrls = async (list) => {
-      // 連肏：先立刻換幀 1，再預載其餘，避免消失再出現
+    // 首輪慢快快慢 1–4；連按只播 2–4，節奏快快慢。
+    const FIRST_HOLDS = [300, 180, 180, 300];
+    const CONTINUE_HOLDS = [180, 180, 300];
+    const playUrls = async (sourceList) => {
+      const list = (fromLinger ? sourceList.slice(1, 4) : sourceList.slice(0, 4));
+      const holds = fromLinger ? CONTINUE_HOLDS : FIRST_HOLDS;
+      if (!list.length) return 0;
+      // 連肏：先立刻換幀 2，再預載其餘，避免消失再出現
       if (fromLinger && list[0]) {
         await scriptAnimLoad(run, img, list[0]);
         if (run.cancelled) return 0;
@@ -6298,13 +6307,13 @@ async function flashScriptAnim(opts = {}) {
         if (rest.length) await scriptAnimPreload(run, rest);
         if (run.cancelled) return 0;
         let n = 1;
-        await scriptAnimHold(run, FRAME_HOLDS[0]);
+        await scriptAnimHold(run, holds[0]);
         for (const url of rest) {
           if (run.cancelled) break;
           const ok = await scriptAnimLoad(run, img, url);
           if (run.cancelled) break;
           if (ok) {
-            const hold = FRAME_HOLDS[Math.min(n, FRAME_HOLDS.length - 1)];
+            const hold = holds[Math.min(n, holds.length - 1)];
             n += 1;
             await scriptAnimHold(run, hold);
           }
@@ -6319,7 +6328,7 @@ async function flashScriptAnim(opts = {}) {
         const ok = await scriptAnimLoad(run, img, url);
         if (run.cancelled) break;
         if (ok) {
-          const hold = FRAME_HOLDS[Math.min(n, FRAME_HOLDS.length - 1)];
+          const hold = holds[Math.min(n, holds.length - 1)];
           n += 1;
           await scriptAnimHold(run, hold);
         }
@@ -6522,8 +6531,11 @@ async function beginScriptScene(s, n, opts = {}) {
     return;
   }
   // 離開正戲／投入（場景 2–3）時：若動圖仍在播不立刻砍；已 linger 則進非 2/3 清 overlay。
-  if (n !== 2 && n !== 3 && (animLinger || document.body.classList.contains("sex-anim-on"))) {
-    if (!scriptAnimPlaying && !scriptAnimRun) stopScriptAnim();
+  if (n !== 2 && n !== 3) {
+    animDidFirstRound = false;
+    if (animLinger || document.body.classList.contains("sex-anim-on")) {
+      if (!scriptAnimPlaying && !scriptAnimRun) stopScriptAnim();
+    }
   }
   play.flowGen = (play.flowGen || 0) + 1;
   play.scene = n;

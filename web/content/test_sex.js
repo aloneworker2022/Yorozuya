@@ -48,6 +48,8 @@ let animPlaying = false;
 const ANIM_LINGER_IDLE_MS = 0; // 可選長閒置（≥20000）；0=場景2/3內永不因閒置收
 let animLinger = false;
 let animLingerTimer = 0;
+// 本場景首輪已播過後，連按只播第 2–4 幀。
+let animDidFirstRound = false;
 
 function bustAssetUrl(url, ver) {
   if (!url) return "";
@@ -283,6 +285,7 @@ function cancelScriptAnimRunOnly() {
 
 function stopScriptAnim() {
   cancelScriptAnimRunOnly();
+  animDidFirstRound = false;
   const box = $("sex-anim-popup");
   const img = $("sex-anim-img");
   box?.classList.add("hidden");
@@ -312,6 +315,7 @@ function endAnimRoundToLinger() {
   const img = $("sex-anim-img");
   // 已離開正戲／投入 → 不 linger，直接收
   if (scene !== 2 && scene !== 3) {
+    animDidFirstRound = false;
     box?.classList.add("hidden");
     box?.setAttribute("aria-hidden", "true");
     if (img) img.removeAttribute("src");
@@ -320,6 +324,7 @@ function endAnimRoundToLinger() {
     return;
   }
   // 明確保持 overlay 可見、保留 src
+  animDidFirstRound = true;
   box?.classList.remove("hidden");
   box?.setAttribute("aria-hidden", "false");
   animLinger = true;
@@ -410,7 +415,7 @@ function scriptAnimPreload(run, urls) {
 }
 
 /** 肏：播幀 1–4（慢快快慢）；播完留最後一幀可連按下一輪；場景 2/3 內不自動消失。
- *  opts.fromLinger / 當前 animLinger：不藏 overlay，直接換幀 1 無閃爍重播。 */
+ *  opts.fromLinger / 當前 animLinger：不藏 overlay，直接換幀 2 無閃爍連播。 */
 async function flashScriptAnim(opts = {}) {
   const box = $("sex-anim-popup");
   const img = $("sex-anim-img");
@@ -418,7 +423,7 @@ async function flashScriptAnim(opts = {}) {
     console.warn("[test_sex sex-anim] overlay DOM missing");
     return;
   }
-  const fromLinger = !!(opts?.fromLinger || animLinger);
+  const fromLinger = !!(opts?.fromLinger || animLinger || animDidFirstRound);
   // 連肏／首播皆只取消舊 run，不清 src／不藏 overlay（避免轉場競態把動圖砍掉）
   cancelScriptAnimRunOnly();
   animPlaying = true;
@@ -448,10 +453,14 @@ async function flashScriptAnim(opts = {}) {
       setStatus("play-status", "沒有局部動畫圖（幀包／sexAnim 皆空）", true);
       return;
     }
-    // 節奏：慢快快慢（幀 1–4）
-    const FRAME_HOLDS = [300, 180, 180, 300];
-    const playUrls = async (list) => {
-      // 連肏：先立刻換幀 1，再背景預載其餘，避免先藏再開
+    // 首輪慢快快慢 1–4；連按只播 2–4，節奏快快慢。
+    const FIRST_HOLDS = [300, 180, 180, 300];
+    const CONTINUE_HOLDS = [180, 180, 300];
+    const playUrls = async (sourceList) => {
+      const list = (fromLinger ? sourceList.slice(1, 4) : sourceList.slice(0, 4));
+      const holds = fromLinger ? CONTINUE_HOLDS : FIRST_HOLDS;
+      if (!list.length) return 0;
+      // 連肏：先立刻換幀 2，再背景預載其餘，避免先藏再開
       if (fromLinger && list[0]) {
         await scriptAnimLoad(run, img, list[0]);
         if (run.cancelled) return 0;
@@ -459,13 +468,13 @@ async function flashScriptAnim(opts = {}) {
         if (rest.length) await scriptAnimPreload(run, rest);
         if (run.cancelled) return 0;
         let n = 1;
-        await scriptAnimHold(run, FRAME_HOLDS[0]);
+        await scriptAnimHold(run, holds[0]);
         for (const url of rest) {
           if (run.cancelled) break;
           const ok = await scriptAnimLoad(run, img, url);
           if (run.cancelled) break;
           if (ok) {
-            const hold = FRAME_HOLDS[Math.min(n, FRAME_HOLDS.length - 1)];
+            const hold = holds[Math.min(n, holds.length - 1)];
             n += 1;
             await scriptAnimHold(run, hold);
           }
@@ -480,7 +489,7 @@ async function flashScriptAnim(opts = {}) {
         const ok = await scriptAnimLoad(run, img, url);
         if (run.cancelled) break;
         if (ok) {
-          const hold = FRAME_HOLDS[Math.min(n, FRAME_HOLDS.length - 1)];
+          const hold = holds[Math.min(n, holds.length - 1)];
           n += 1;
           await scriptAnimHold(run, hold);
         }
@@ -913,8 +922,11 @@ async function beginScene(n) {
   }
   // 離開正戲／投入（場景 2–3）時：若動圖仍在播（肏→結局並行）不立刻砍；
   // 若已 linger，進入非 2/3（結局／場景1）則清 overlay。
-  if (n !== 2 && n !== 3 && (animLinger || document.body.classList.contains("sex-anim-on"))) {
-    if (!animPlaying && !scriptAnimRun) stopScriptAnim();
+  if (n !== 2 && n !== 3) {
+    animDidFirstRound = false;
+    if (animLinger || document.body.classList.contains("sex-anim-on")) {
+      if (!animPlaying && !scriptAnimRun) stopScriptAnim();
+    }
   }
   play.flowGen = (play.flowGen || 0) + 1;
   play.scene = n;
