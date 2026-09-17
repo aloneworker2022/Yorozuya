@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.70(2026-09-18)快幀180＋按鈕互斥";
+const APP_VER = "v7.71(2026-09-18)動畫中藏鈕＋互斥";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5919,17 +5919,16 @@ function syncTeasePlayUi() {
   const live = isTeasePlay() && !chatSession?.ended;
   const p = chatSession?.tease?.play;
   const scene = Number(p?.scene) || 0;
-  // 肏／含：不因 transitionBusy／awaiting／typeBusy 灰掉；連點可重啟動圖
-  const canThrust = !!(live && !p?.ending && (scene === 2 || scene === 3));
+  const animOn = scriptAnimPlaying || !!scriptAnimRun || document.body.classList.contains("sex-anim-on");
+  const canThrust = !!(live && !p?.ending && (scene === 2 || scene === 3) && !animOn);
   // 場景1／結局：專用「下一句」推進，不再靠點整塊 chat-view
-  const needNext = !!(live && (
+  const needNext = !!(live && !animOn && (
     p?.openStep === "wait_ai" ||
     p?.openStep === "wait_go" ||
     p?.openStep === "wait_end"
   ));
-  // 互斥：正戲優先顯示肏／含，否則才顯示下一句
   const showThrust = canThrust;
-  const showNext = !canThrust && needNext;
+  const showNext = !showThrust && needNext;
   const showAct = showThrust || showNext;
   const inputRow = document.getElementById("chat-input-row");
   const actRow = document.getElementById("tease-act-row");
@@ -5952,10 +5951,12 @@ function syncTeasePlayUi() {
   const cum = document.getElementById("tease-cum");
   const kind = chatSession?.tease?.kind || "";
   if (nextBtn) {
+    nextBtn.hidden = !showNext;
     nextBtn.classList.toggle("hidden", !showNext);
     nextBtn.disabled = !showNext;
   }
   if (thrust) {
+    thrust.hidden = !showThrust;
     thrust.classList.toggle("hidden", !showThrust);
     thrust.disabled = false;
     thrust.textContent = kind === "oral" ? "含" : "肏";
@@ -6027,6 +6028,7 @@ function stopTeaseMode(s) {
 
 let scriptAnimTimer = 0;
 let scriptAnimRun = null;
+let scriptAnimPlaying = false;
 function stopScriptAnim() {
   if (scriptAnimTimer) {
     clearTimeout(scriptAnimTimer);
@@ -6034,6 +6036,7 @@ function stopScriptAnim() {
   }
   const run = scriptAnimRun;
   scriptAnimRun = null;
+  scriptAnimPlaying = false;
   if (run) {
     run.cancelled = true;
     for (const cancel of run.waiters) cancel();
@@ -6041,6 +6044,7 @@ function stopScriptAnim() {
   }
   document.getElementById("sex-anim-popup")?.classList.add("hidden");
   document.body.classList.remove("sex-anim-on");
+  syncTeasePlayUi();
 }
 function scriptAnimUrlCandidates() {
   const play = chatSession?.tease?.play;
@@ -6172,7 +6176,9 @@ async function flashScriptAnim() {
     return;
   }
   stopScriptAnim();
+  scriptAnimPlaying = true;
   document.body.classList.add("sex-anim-on");
+  syncTeasePlayUi();
   // 獨立彈窗：掛到 <html> 最末，脫離任何 transform / 聊天堆疊上下文
   (document.documentElement || document.body).appendChild(box);
   const run = { cancelled: false, waiters: new Set() };

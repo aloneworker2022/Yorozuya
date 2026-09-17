@@ -42,6 +42,7 @@ let typeBusy = false;
 let FRAME_PACKS = [];
 let scriptAnimRun = null;
 let scriptAnimTimer = 0;
+let animPlaying = false;
 
 function bustAssetUrl(url, ver) {
   if (!url) return "";
@@ -131,6 +132,7 @@ function scriptAnimUrls() {
 function stopScriptAnim() {
   const run = scriptAnimRun;
   scriptAnimRun = null;
+  animPlaying = false;
   if (scriptAnimTimer) {
     clearTimeout(scriptAnimTimer);
     scriptAnimTimer = 0;
@@ -146,6 +148,7 @@ function stopScriptAnim() {
   box?.setAttribute("aria-hidden", "true");
   if (img) img.removeAttribute("src");
   document.body.classList.remove("sex-anim-on");
+  syncUi();
 }
 
 function scriptAnimLoad(run, img, url) {
@@ -222,7 +225,9 @@ async function flashScriptAnim() {
     return;
   }
   stopScriptAnim();
+  animPlaying = true;
   document.body.classList.add("sex-anim-on");
+  syncUi();
   // 獨立彈窗：掛到 <html> 最末，脫離任何 transform / 對話堆疊
   (document.documentElement || document.body).appendChild(box);
   const run = { cancelled: false, waiters: new Set() };
@@ -463,29 +468,31 @@ function syncUi() {
   const live = !!play && !play.ending;
   const scene = Number(play?.scene) || 0;
   const kind = play?.kind || "";
-  // 肏／含：場景 2/3 且進行中即顯示；不因 awaiting／transitionBusy／typeBusy／anim 灰掉
-  const canThrust = !!(live && (scene === 2 || scene === 3));
-  const needNext = !!(live && (
+  const animOn = animPlaying || !!scriptAnimRun || document.body.classList.contains("sex-anim-on");
+  const canThrust = !!(live && (scene === 2 || scene === 3) && !animOn);
+  const needNext = !!(live && !animOn && (
     play.openStep === "wait_ai" ||
     play.openStep === "wait_go" ||
     play.openStep === "wait_end"
   ));
-  // 互斥：正戲優先顯示肏／含，否則才顯示下一句
   const showThrust = canThrust;
-  const showNext = !canThrust && needNext;
+  const showNext = !showThrust && needNext;
+  const showAct = showThrust || showNext;
 
   $("stage-idle")?.classList.toggle("hidden", !!play);
-  $("act-row")?.classList.toggle("hidden", !play);
+  $("act-row")?.classList.toggle("hidden", !showAct);
 
   const nextBtn = $("btn-next");
   const thrust = $("btn-thrust");
   if (nextBtn) {
+    nextBtn.hidden = !showNext;
     nextBtn.classList.toggle("hidden", !showNext);
     nextBtn.disabled = !showNext || !!play?.awaiting || typeBusy;
     if (play?.openStep === "wait_end") nextBtn.textContent = "結束 ▶";
     else nextBtn.textContent = "下一句 ▶";
   }
   if (thrust) {
+    thrust.hidden = !showThrust;
     thrust.classList.toggle("hidden", !showThrust);
     thrust.disabled = false;
     thrust.textContent = kind === "oral" ? "含" : "肏";
