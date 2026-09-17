@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.32(2026-09-17)感情花束戒指求婚";
+const APP_VER = "v7.33(2026-09-17)物品欄標籤式";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -12103,14 +12103,16 @@ function renderShop() {
 
 function renderInventory() {
   const el = $("#inv-list");
+  const panel = $("#inv-panel");
   if (!el) return;
   state.inventory ??= { bouquet: 0, ring: 0 };
   const b = state.inventory.bouquet | 0;
   const r = state.inventory.ring | 0;
-  el.innerHTML = `
-    <div class="inv-row"><span class="sname">花束</span><span class="sprice">×${b}</span></div>
-    <div class="inv-row"><span class="sname">戒指</span><span class="sprice">×${r}</span></div>
-    <p class="dim small" style="margin-top:.4em">花束：朋友且情感≥230 時可在店頭告白。戒指：女友時可求婚（成功率＝情感/200）。</p>`;
+  const tags = [];
+  if (b > 0) tags.push(`<span>花束${b > 1 ? " ×" + b : ""}</span>`);
+  if (r > 0) tags.push(`<span>戒指${r > 1 ? " ×" + r : ""}</span>`);
+  el.innerHTML = tags.join("");
+  if (panel) panel.hidden = tags.length === 0;
 }
 
 // ===== v6 互動牌制：商店貨架／牌庫／創角／牌桌 =====

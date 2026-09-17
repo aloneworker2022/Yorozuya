@@ -1099,7 +1099,7 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 }
 .ntr-diary-outline { margin-top: .25em; opacity: .75; }
 
-#dungeon-list span { display: inline-block; margin: .15em .5em .15em 0; color: var(--dim); }
+#dungeon-list span, #inv-list span { display: inline-block; margin: .15em .5em .15em 0; color: var(--dim); }
 
 /* ===== 魅魔名冊 ===== */
 .daydream-banner {
