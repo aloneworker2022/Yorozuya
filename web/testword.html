@@ -177,7 +177,7 @@
 </head>
 <body>
 <h1>⚙ Testword 後台</h1>
-<div class="warn">開發/測試用後門與內容編寫。卡牌／立繪測試器已收進摺疊。做愛局部動畫暫擱、不寫正式存檔。<a href="/">← 回遊戲</a> · <a href="/cardedit">🃏 卡牌編輯器（詞墜）</a> · <a href="/testdate">📅 約會編輯器</a> · <a href="/test_date">約會測試頁</a> · <a href="/edit_date">約會劇本</a> · <a href="/edit_person">人物池</a> · <a href="/editmale">其他召喚師</a> · <a href="/edit_pic">生圖測試</a> · <a href="/test_sex">性愛場景測試</a></div>
+<div class="warn">開發/測試用後門與內容編寫。卡牌／立繪測試器已收進摺疊。做愛局部動畫暫擱、不寫正式存檔。後門改錢／關係會重讀存檔並重試，避免與遊戲分頁版本衝突。<a href="/">← 回遊戲</a> · <a href="/cardedit">🃏 卡牌編輯器（詞墜）</a> · <a href="/testdate">📅 約會編輯器</a> · <a href="/test_date">約會測試頁</a> · <a href="/edit_date">約會劇本</a> · <a href="/edit_person">人物池</a> · <a href="/editmale">其他召喚師</a> · <a href="/edit_pic">生圖測試</a> · <a href="/test_sex">性愛場景測試</a></div>
 
 <!-- ── 做愛局部動畫（暫擱） ── -->
 <details class="fold">
@@ -565,12 +565,34 @@
 <script>
 let save = null, ver = 0, curCat = "sacrifice_offering";
 
+/** FastAPI detail → readable string (string | {message} | [{msg}] ) */
+function formatApiDetail(detail) {
+  if (detail == null || detail === "") return "";
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(x => {
+      if (x == null) return "";
+      if (typeof x === "string") return x;
+      if (typeof x === "object") return x.msg || x.message || JSON.stringify(x);
+      return String(x);
+    }).filter(Boolean).join("; ");
+  }
+  if (typeof detail === "object") return detail.message || JSON.stringify(detail);
+  return String(detail);
+}
 async function api(path, method = "GET", body) {
   const r = await fetch(path, {
     method, headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    const msg = formatApiDetail(j.detail) || String(r.status);
+    const err = new Error(msg);
+    err.status = r.status;
+    err.detail = j.detail;
+    throw err;
+  }
   return r.status === 204 ? null : r.json();
 }
 function twIsNetErr(e) {
@@ -639,21 +661,67 @@ function status(id, msg, err) {
 
 // ── 後門 ──
 async function reloadSave() {
-  const j = await api("/api/save");
-  ver = j.version; save = j.data;
-  document.getElementById("cur-gold").textContent = save ? save.gold : "(無存檔)";
-  document.getElementById("cur-succ").textContent = save ? (save.succubi || []).length : "—";
-  document.getElementById("cur-slots").textContent = save ? (1 + ((save.expansions || {}).roster || 0)) : "—";
-  renderExpRows();
-}
-async function commit(desc) {
   try {
-    await api("/api/save", "PUT", { base_version: ver, data: save });
-    await reloadSave();
-    status("bd-status", "✓ " + desc);
-  } catch (e) { status("bd-status", "失敗:" + e.message + "(先按重新讀取)", true); }
+    const j = await api("/api/save");
+    ver = j.version; save = j.data;
+    document.getElementById("cur-gold").textContent = save ? save.gold : "(無存檔)";
+    document.getElementById("cur-succ").textContent = save ? (save.succubi || []).length : "—";
+    document.getElementById("cur-slots").textContent = save ? (1 + ((save.expansions || {}).roster || 0)) : "—";
+    renderExpRows();
+    if (!save) status("bd-status", "目前沒有存檔——請先在遊戲裡玩一下，再按「重新讀取」", true);
+  } catch (e) {
+    status("bd-status", "讀取失敗:" + e.message, true);
+    throw e;
+  }
 }
-function ensure() { if (!save) { status("bd-status", "沒有存檔,先在遊戲裡玩一下", true); return false; } return true; }
+/**
+ * 寫回存檔。prefer: commit(desc, apply) — 每次重讀最新版再套用 apply，遇 409 最多重試 3 次。
+ * 相容: commit(desc) — 直接 PUT 目前的 save；409 則重讀並請使用者再按一次。
+ */
+async function commit(desc, apply) {
+  const hasApply = typeof apply === "function";
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (hasApply) {
+        const j = await api("/api/save");
+        ver = j.version;
+        save = j.data;
+        if (!save) {
+          status("bd-status", "沒有存檔——請先在遊戲裡玩一下，再按「重新讀取」", true);
+          return;
+        }
+        apply(save);
+      } else if (attempt > 0) {
+        await reloadSave();
+        status("bd-status", "版本衝突，已重新讀取。請再按一次同一按鈕（或先關遊戲分頁）。", true);
+        return;
+      }
+      if (!save) {
+        status("bd-status", "沒有存檔——請先在遊戲裡玩一下，再按「重新讀取」", true);
+        return;
+      }
+      await api("/api/save", "PUT", { base_version: ver, data: save });
+      await reloadSave();
+      status("bd-status", "✓ " + desc);
+      return;
+    } catch (e) {
+      lastErr = e;
+      const is409 = e && (e.status === 409 || /版本衝突|\b409\b/.test(String(e.message || "")));
+      if (is409 && attempt < 2) continue;
+      status("bd-status", "失敗:" + ((e && e.message) || e) + "（可按重新讀取後再試）", true);
+      return;
+    }
+  }
+  status("bd-status", "版本一直衝突——請關掉遊戲分頁或按「重新讀取」後再試" + (lastErr ? "：" + lastErr.message : ""), true);
+}
+function ensure() {
+  if (!save) {
+    status("bd-status", "沒有存檔——請先在遊戲裡玩一下，再按「重新讀取」", true);
+    return false;
+  }
+  return true;
+}
 function twUid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function twPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function twRi(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
@@ -662,39 +730,61 @@ const TW_SACRIFICE_POOL = ["迷路的冒險者", "落魄的商人", "自願的�
 const TW_MERCHANT_LINES = ["今天的貨色不錯吧?", "都是自願的,大概。", "早買早享受,晚了就沒了。", "便宜貨也有便宜貨的用法。", "別問來歷。問了也不便宜。"];
 const TW_GIFT_KEYS = ["roster", "exec", "reward", "offering", "duration", "drop", "discount"];
 
-async function addGold(n) { if (!ensure()) return; save.gold += n; await commit(`金幣 ${n >= 0 ? "+" : ""}${n}`); }
-async function setGoldPrompt() { if (!ensure()) return; const v = prompt("設定金幣為:", save.gold); if (v == null) return; save.gold = parseInt(v) || 0; await commit("設定金幣 " + save.gold); }
+async function addGold(n) {
+  if (!ensure()) return;
+  await commit(`金幣 ${n >= 0 ? "+" : ""}${n}`, s => {
+    s.gold = (Number(s.gold) || 0) + n;
+  });
+}
+async function setGoldPrompt() {
+  if (!ensure()) return;
+  const v = prompt("設定金幣為:", save.gold);
+  if (v == null) return;
+  const n = parseInt(v, 10) || 0;
+  await commit("設定金幣 " + n, s => { s.gold = n; });
+}
 
 /** 刷新商品：祭品店 + 卡牌貨架（立即進貨，不必回遊戲等日界／4h） */
 async function refreshGoods() {
   if (!ensure()) return;
-  const offeringN = 2 + ((save.expansions || {}).offering || 0);
-  // day 用很大的數避免與遊戲 dayNum 撞到「今日已進貨」而跳過；回遊戲 ensureShop 若日不同會再刷一次也無妨
-  save.shop = {
-    day: 999999,
-    stock: Array.from({ length: offeringN }, () => ({
-      id: twUid(),
-      name: twPick(TW_SACRIFICE_POOL),
-      price: twRi(5, 30),
-      sold: false,
-    })),
-    line: twPick(TW_MERCHANT_LINES),
-  };
+  // 先預建卡牌貨架（async），再以 apply 寫入最新存檔，避免 409 重試時丟掉變更
+  let preCardShop = null;
   let cardNote = "";
   try {
     if (typeof window.Cards_refreshShop === "function") {
-      await window.Cards_refreshShop(save);
-      const slots = save.cardShop?.slots || [];
+      const tmp = { cardShop: save.cardShop ? JSON.parse(JSON.stringify(save.cardShop)) : null, expansions: save.expansions };
+      await window.Cards_refreshShop(tmp);
+      preCardShop = tmp.cardShop;
+      const slots = preCardShop?.slots || [];
       cardNote = `；卡牌貨架 ${slots.length} 格：` + slots.map(s => s.cardId).join(", ");
     } else {
-      save.cardShop = { nextRefreshAt: 0, slots: [] };
+      preCardShop = { nextRefreshAt: 0, slots: [] };
       cardNote = "；卡牌貨架已標記待刷新(回遊戲載入)";
     }
   } catch (e) {
-    save.cardShop = { nextRefreshAt: 0, slots: [] };
+    preCardShop = { nextRefreshAt: 0, slots: [] };
     cardNote = "；卡牌刷新失敗已標記待刷(" + e.message + ")";
   }
-  await commit(`商品已刷新：祭品 ${offeringN} 件${cardNote}`);
+  let offeringN = 0;
+  await commit(`商品已刷新：祭品…${cardNote}`, s => {
+    offeringN = 2 + ((s.expansions || {}).offering || 0);
+    // day 用很大的數避免與遊戲 dayNum 撞到「今日已進貨」而跳過
+    s.shop = {
+      day: 999999,
+      stock: Array.from({ length: offeringN }, () => ({
+        id: twUid(),
+        name: twPick(TW_SACRIFICE_POOL),
+        price: twRi(5, 30),
+        sold: false,
+      })),
+      line: twPick(TW_MERCHANT_LINES),
+    };
+    s.cardShop = preCardShop || { nextRefreshAt: 0, slots: [] };
+  });
+  // 成功後用實際數量補狀態（commit 已寫 ✓；再覆寫更準）
+  if (document.getElementById("bd-status")?.textContent?.startsWith("✓")) {
+    status("bd-status", `✓ 商品已刷新：祭品 ${offeringN} 件${cardNote}`);
+  }
 }
 // 舊名相容
 async function refreshShop() { return refreshGoods(); }
@@ -764,31 +854,54 @@ async function refreshGirls() {
         outfitPick: -1,
       });
     }
-    save.succubi = girls;
-    save.kanbans = [];
-    save.lastKanbanId = null;
-    save.cardSession = null;
-    await commit(`已刷新魅魔 ${girls.length} 隻：` + girls.map(s => `【${s.rarity}】${s.name}`).join("、"));
+    await commit(
+      `已刷新魅魔 ${girls.length} 隻：` + girls.map(g => `【${g.rarity}】${g.name}`).join("、"),
+      s => {
+        s.succubi = girls;
+        s.kanbans = [];
+        s.lastKanbanId = null;
+        s.cardSession = null;
+      },
+    );
   } catch (e) {
     status("bd-status", "刷新魅魔失敗:" + e.message, true);
   }
 }
 
-async function jumpDay() { if (!ensure()) return; save.lastSettledDay = (save.lastSettledDay || 0) - 1; await commit("日界 -1(回遊戲會結算一天)"); }
+async function jumpDay() {
+  if (!ensure()) return;
+  await commit("日界 -1(回遊戲會結算一天)", s => {
+    s.lastSettledDay = (s.lastSettledDay || 0) - 1;
+  });
+}
 async function kanbanLong() {
   if (!ensure()) return;
-  const s = (save.succubi || [])[0];
-  if (!s) { status("bd-status", "沒有魅魔", true); return; }
-  save.kanbans ??= [];
-  if (!save.kanbans.some(k => k.id === s.id)) save.kanbans.push({ id: s.id, until: Date.now() + 99 * 3600 * 1000 });
-  else save.kanbans.find(k => k.id === s.id).until = Date.now() + 99 * 3600 * 1000;
-  await commit(`${s.name} 設為看板娘 99h`);
+  const first = (save.succubi || [])[0];
+  if (!first) { status("bd-status", "沒有魅魔", true); return; }
+  const gid = first.id;
+  const gname = first.name;
+  await commit(`${gname} 設為看板娘 99h`, s => {
+    const g = (s.succubi || []).find(x => x.id === gid) || (s.succubi || [])[0];
+    if (!g) throw new Error("沒有魅魔");
+    s.kanbans ??= [];
+    const until = Date.now() + 99 * 3600 * 1000;
+    const hit = s.kanbans.find(k => k.id === g.id);
+    if (!hit) s.kanbans.push({ id: g.id, until });
+    else hit.until = until;
+  });
 }
 async function allKanban() {
   if (!ensure()) return;
   if (!(save.succubi || []).length) { status("bd-status", "沒有魅魔", true); return; }
-  save.kanbans = save.succubi.filter(s => !s.ntr).map(s => ({ id: s.id, until: Date.now() + 99 * 3600 * 1000 }));
-  await commit(`全員上工:${save.kanbans.length} 位看板娘 99h`);
+  let n = 0;
+  await commit("全員上工:看板娘 99h", s => {
+    const until = Date.now() + 99 * 3600 * 1000;
+    s.kanbans = (s.succubi || []).filter(g => !g.ntr).map(g => ({ id: g.id, until }));
+    n = s.kanbans.length;
+  });
+  if (document.getElementById("bd-status")?.textContent?.startsWith("✓")) {
+    status("bd-status", `✓ 全員上工:${n} 位看板娘 99h`);
+  }
 }
 
 /** 全體魅魔關係階段一次切換（testword 測牌／感情用） */
@@ -804,17 +917,23 @@ async function setAllStages(stage) {
     status("bd-status", "未知階段: " + stage, true);
     return;
   }
-  const list = save.succubi || [];
-  if (!list.length) { status("bd-status", "沒有魅魔", true); return; }
+  if (!(save.succubi || []).length) { status("bd-status", "沒有魅魔", true); return; }
   const label = STAGE_SET_LABEL[stage];
-  for (const s of list) {
-    s.stage = stage;
-    // 清掉可能卡在舊階段的臨時旗（不刪 affection，方便只測 stage 閘門）
-    if (s.ntr && stage !== "wife") {
-      // 妻子以外先不當「被娶走」測試態
+  let n = 0;
+  await commit(`全部魅魔 → ${label}`, s => {
+    const list = s.succubi || [];
+    n = list.length;
+    for (const g of list) {
+      g.stage = stage;
+      // friend：affection 至少 50，與遊戲門檻一致；女友／妻子維持原 affection（手動測 stage）
+      if (stage === "friend") {
+        g.affection = Math.max(Number(g.affection) || 0, 50);
+      }
     }
+  });
+  if (document.getElementById("bd-status")?.textContent?.startsWith("✓")) {
+    status("bd-status", `✓ 全部魅魔 → ${label}（${n} 隻）`);
   }
-  await commit(`全部魅魔 → ${label}（${list.length} 隻）`);
 }
 
 /** 急救：清掉卡住的 cardSession（生圖卡死後重整常見） */
@@ -826,24 +945,31 @@ async function clearCardSession() {
   }
   const gid = save.cardSession.girlId;
   const name = (save.succubi || []).find(s => s.id === gid)?.name || gid || "?";
-  save.cardSession = null;
-  await commit(`已強制結束牌局（原與 ${name}）——回遊戲重整即可召喚看板娘`);
+  await commit(`已強制結束牌局（原與 ${name}）——回遊戲重整即可召喚看板娘`, s => {
+    s.cardSession = null;
+  });
 }
 async function drawSummoner() {
   if (!ensure()) return;
-  const s = (save.succubi || [])[0];
-  if (!s) { status("bd-status", "沒有魅魔", true); return; }
+  const first = (save.succubi || [])[0];
+  if (!first) { status("bd-status", "沒有魅魔", true); return; }
   const pool = await api("/content/summoners.json");
   const su = (pool.summoners || [])[Math.floor(Math.random() * (pool.summoners || []).length)];
   if (!su) { status("bd-status", "召喚師池為空", true); return; }
-  s.summoner = { id: su.id, affection: 0, sinceDay: 0 };
-  await commit(`${su.name} 纏上 ${s.name}`);
+  const gid = first.id;
+  const gname = first.name;
+  await commit(`${su.name} 纏上 ${gname}`, s => {
+    const g = (s.succubi || []).find(x => x.id === gid) || (s.succubi || [])[0];
+    if (!g) throw new Error("沒有魅魔");
+    g.summoner = { id: su.id, affection: 0, sinceDay: 0 };
+  });
 }
 async function clearSummoners() {
   if (!ensure()) return;
-  for (const s of save.succubi || []) s.summoner = null;
-  delete save.forceEncounter;
-  await commit("清除所有召喚師");
+  await commit("清除所有召喚師", s => {
+    for (const g of s.succubi || []) g.summoner = null;
+    delete s.forceEncounter;
+  });
 }
 // 急救:把伺服器存檔覆蓋成空物件,遊戲載入時會自動填成全新預設(不需要本地有存檔)
 async function wipeSave() {
@@ -945,21 +1071,27 @@ async function takeGirlAway() {
       sessionId: "tw_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 8),
     },
   };
-  s.summoner = rel;
-  s.ntr = null;
-  // 被帶走不能當看板／打牌
-  save.kanbans = (save.kanbans || []).filter(k => k.id !== s.id);
-  if (save.lastKanbanId === s.id) delete save.lastKanbanId;
-  if (save.cardSession?.girlId === s.id) save.cardSession = null;
-  delete save.forceEncounter;
-
+  const girlId = s.id;
+  const girlName = s.name;
+  const applyTaken = (sv) => {
+    const g = (sv.succubi || []).find(x => x.id === girlId);
+    if (!g) throw new Error("妹子已不在名冊");
+    g.summoner = rel;
+    g.ntr = null;
+    sv.kanbans = (sv.kanbans || []).filter(k => k.id !== girlId);
+    if (sv.lastKanbanId === girlId) delete sv.lastKanbanId;
+    if (sv.cardSession?.girlId === girlId) sv.cardSession = null;
+    delete sv.forceEncounter;
+  };
+  applyTaken(save);
   try {
     await twForceSimTaken(s, rel);
   } catch (e) {
     status("bd-status", "sim 強制失敗:" + e.message + "（存檔仍會寫 taken）", true);
   }
   await commit(
-    `✓ ${s.name} 被 ${su.emoji || ""} ${su.name} 召喚走（4h・補 3h 紀錄）——回遊戲可「感應」／「窺視」；日記只算本次`,
+    `${girlName} 被 ${su.emoji || ""} ${su.name} 召喚走（4h・補 3h 紀錄）——回遊戲可「感應」／「窺視」；日記只算本次`,
+    applyTaken,
   );
 }
 
@@ -968,12 +1100,10 @@ async function releaseTaken() {
   if (!ensure()) return;
   let n = 0;
   const patches = {};
-  for (const s of save.succubi || []) {
-    if (s.summoner?.taken) {
-      delete s.summoner.taken;
+  for (const g of save.succubi || []) {
+    if (g.summoner?.taken) {
       n++;
-      // 回報 sim 掙脫
-      patches[s.id] = { rescue: true };
+      patches[g.id] = { rescue: true };
     }
   }
   if (!n) {
@@ -998,7 +1128,11 @@ async function releaseTaken() {
   } catch (e) {
     status("bd-status", "sim 解除部分失敗:" + e.message, true);
   }
-  await commit(`已解除 ${n} 隻的「被召喚走」（召喚師仍纏著）`);
+  await commit(`已解除 ${n} 隻的「被召喚走」（召喚師仍纏著）`, s => {
+    for (const g of s.succubi || []) {
+      if (g.summoner?.taken) delete g.summoner.taken;
+    }
+  });
 }
 
 // 觀戰測試場景 = takeGirlAway 的固定第一隻版本（相容舊按鈕）
@@ -1034,14 +1168,24 @@ async function watchScenario() {
       sessionId: "tw_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 8),
     },
   };
-  s.summoner = rel;
-  save.kanbans = (save.kanbans || []).filter(k => k.id !== s.id);
-  if (save.lastKanbanId === s.id) delete save.lastKanbanId;
-  if (save.cardSession?.girlId === s.id) save.cardSession = null;
+  const girlId = s.id;
+  const girlName = s.name;
+  const applyWatch = (sv) => {
+    const g = (sv.succubi || []).find(x => x.id === girlId);
+    if (!g) throw new Error("沒有魅魔");
+    g.summoner = rel;
+    sv.kanbans = (sv.kanbans || []).filter(k => k.id !== girlId);
+    if (sv.lastKanbanId === girlId) delete sv.lastKanbanId;
+    if (sv.cardSession?.girlId === girlId) sv.cardSession = null;
+  };
+  applyWatch(save);
   try { await twForceSimTaken(s, rel); } catch (e) {
     status("bd-status", "sim 強制失敗:" + e.message, true);
   }
-  await commit(`觀戰場景備妥:${s.name} ← ${su.name} 召喚走——回遊戲「感應」／「窺視」；日記只算本次`);
+  await commit(
+    `觀戰場景備妥:${girlName} ← ${su.name} 召喚走——回遊戲「感應」／「窺視」；日記只算本次`,
+    applyWatch,
+  );
 }
 
 /** 約會測試：隨機名冊妹子 → 清牌局／下看板 → sessionStorage 旗標 → 跳回遊戲直接 openDateTable */
@@ -1054,13 +1198,8 @@ async function startRandomDate() {
     return;
   }
   const s = pool[Math.floor(Math.random() * pool.length)];
-  // 清卡住的牌局，否則 openDateTable 會擋
-  if (save.cardSession) save.cardSession = null;
-  // 測試時強制下看板，避免殘 session／店頭保護干擾開桌
-  save.kanbans = (save.kanbans || []).filter(k => k.id !== s.id);
-  if (save.lastKanbanId === s.id) delete save.lastKanbanId;
-  // 若被召喚師帶走中，測試時也解除（否則可能狀態怪）
-  if (s.summoner?.taken) delete s.summoner.taken;
+  const girlId = s.id;
+  const girlName = s.name;
 
   let venues = TW_DATE_VENUES.slice();
   try {
@@ -1072,7 +1211,7 @@ async function startRandomDate() {
 
   try {
     sessionStorage.setItem("yoro_quick_date", JSON.stringify({
-      girlId: s.id,
+      girlId,
       venueId,
       force: true,   // 略過睡眠時段
       ts: Date.now(),
@@ -1082,7 +1221,16 @@ async function startRandomDate() {
     return;
   }
 
-  await commit(`約會測試備妥：${s.name} @ ${venueId}——即將跳回遊戲`);
+  await commit(`約會測試備妥：${girlName} @ ${venueId}——即將跳回遊戲`, sv => {
+    // 清卡住的牌局，否則 openDateTable 會擋
+    if (sv.cardSession) sv.cardSession = null;
+    // 測試時強制下看板，避免殘 session／店頭保護干擾開桌
+    sv.kanbans = (sv.kanbans || []).filter(k => k.id !== girlId);
+    if (sv.lastKanbanId === girlId) delete sv.lastKanbanId;
+    const g = (sv.succubi || []).find(x => x.id === girlId);
+    // 若被召喚師帶走中，測試時也解除（否則可能狀態怪）
+    if (g?.summoner?.taken) delete g.summoner.taken;
+  });
   // 稍等 status 看得見再跳
   setTimeout(() => { location.href = "/"; }, 280);
 }
@@ -1093,7 +1241,7 @@ async function forceDaydream() {
     const r = await fetch("/api/daydream/force", { method: "POST" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
-      status("bd-status", "發呆下單失敗: " + (j.detail || r.status), true);
+      status("bd-status", "發呆下單失敗: " + (formatApiDetail(j.detail) || r.status), true);
       return;
     }
     status("bd-status", j.running
@@ -1121,13 +1269,15 @@ function renderExpRows() {
 }
 async function bumpExp(k, d) {
   if (!ensure()) return;
-  save.expansions ??= {};
-  save.expansions[k] = Math.max(0, (save.expansions[k] || 0) + d);
-  try {
-    await api("/api/save", "PUT", { base_version: ver, data: save });
-    await reloadSave();
-    status("exp-status", `✓ ${EXP_AXES[k]} → Lv${save.expansions[k]}`);
-  } catch (e) { status("exp-status", "失敗:" + e.message, true); }
+  // 與後門共用 commit 重試；額外寫 exp-status
+  await commit(`${EXP_AXES[k]} ${d > 0 ? "+" : ""}${d}`, s => {
+    s.expansions ??= {};
+    s.expansions[k] = Math.max(0, (s.expansions[k] || 0) + d);
+  });
+  const el = document.getElementById("bd-status");
+  const ok = el && el.textContent.startsWith("✓");
+  if (ok) status("exp-status", `✓ ${EXP_AXES[k]} → Lv${(save.expansions || {})[k] || 0}`);
+  else status("exp-status", el ? el.textContent : "失敗", true);
 }
 
 // ── 階段語氣腳本 ──
