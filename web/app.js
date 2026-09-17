@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.27(2026-09-17)Line清到上一則";
+const APP_VER = "v7.28(2026-09-17)Line標註自己發言";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -11125,17 +11125,24 @@ function lineContextWindow(girlId) {
 function lineTranscriptForPrompt(girlId) {
   const slice = lineContextWindow(girlId);
   const player = state.settings?.player || "召喚師";
+  const me = state.succubi.find(x => x.id === girlId);
+  const myName = me?.name || "你";
   const lines = [];
   for (const m of slice) {
     if (m.kind === "player") {
-      lines.push(`[${player}] ${m.text || ""}`);
+      lines.push(`[召喚師・${player}] ${m.text || ""}`);
       const reads = (m.reads || []).map(id => {
         const g = state.succubi.find(x => x.id === id);
         return g?.name || id;
       }).filter(Boolean);
       if (reads.length) lines.push(`（已讀：${reads.join("、")}）`);
     } else if (m.kind === "girl") {
-      lines.push(`[${m.name || "她"}] ${m.text || ""}`);
+      const isMe = m.girlId === girlId;
+      if (isMe) {
+        lines.push(`[你自己・${myName}] ${m.text || ""}`);
+      } else {
+        lines.push(`[群友・${m.name || "她"}] ${m.text || ""}`);
+      }
     }
   }
   return lines.join("\n") || "（尚無訊息）";
@@ -11151,18 +11158,20 @@ function buildLineGroupMsgs(girl) {
   const sys = buildSystemPrompt(buildCtx(girl)) + [
     "",
     "【名冊群 LINE】",
-    `・你在「${ensureLineGroup().title}」這個群組裡，成員是召喚師「${player}」與名冊上的妹子：${lineRosterNames()}。`,
+    `・你是「${girl.name}」。你在「${ensureLineGroup().title}」這個群組裡，成員是召喚師「${player}」與名冊上的妹子：${lineRosterNames()}。`,
     "・這是文字群組聊天（像 LINE），不是面對面、也不是電話。",
     "・你只看得到下方「你的閱讀窗」內的對話——那是你上次已讀／回覆之後到現在的片段，不是從頭全部。",
+    "・閱讀窗標籤：`[你自己・…]`＝你先前在群裡傳過的話；`[群友・…]`＝其他妹子；`[召喚師・…]`＝玩家。不要搞混。",
+    "・看到 `[你自己・…]` 就當成你已經說過，不要裝成第一次說、也不要否認那是你。",
     "・你可以回「一句很短的台詞」（口語、像傳訊），或選擇不說話只已讀。",
     "・若只已讀、不發言：只輸出 #已讀 （或 #略過），不要加其他字。",
-    "・若要回覆：只寫你說出口的那一句，不要寫動作／表情／旁白，也不要加 #。",
-    "・不要冒充別人；不要一次回很多句。",
-    others.length ? `・群裡還有：${others.join("、")}（你看得到她們在窗內說過的話）。` : "",
+    "・若要回覆：只寫你現在要新傳的那一句，不要重複貼上 `[你自己・…]` 裡已有的句子，不要寫動作／表情／旁白，也不要加 #、不要冒充群友或召喚師。",
+    "・不要一次回很多句。",
+    others.length ? `・群裡還有：${others.join("、")}（窗內若出現 [群友・名字] 就是她們說的）。` : "",
   ].filter(Boolean).join("\n");
   return [
     { role: "system", content: sys },
-    { role: "user", content: `【你的閱讀窗】\n${lineTranscriptForPrompt(girl.id)}\n\n請回覆一句，或輸出 #已讀。` },
+    { role: "user", content: `【你的閱讀窗】（[你自己・${girl.name}] 是你先前的發言）\n${lineTranscriptForPrompt(girl.id)}\n\n以「${girl.name}」身分回一句新訊息，或輸出 #已讀。` },
   ];
 }
 
