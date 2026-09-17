@@ -1343,10 +1343,15 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 body.chat-mode.has-figure #kanban-girl {
   animation: none; opacity: 0; transform: none; pointer-events: none;
 }
-/* 感應遠距：沒有立繪、沒有頭像，只留對話框 */
+/* 感應遠距：沒有立繪、沒有頭像，只留對話框；背板不顯示看板娘肖像 */
 body.sense-mode #vn-figure,
 body.sense-mode #vn-face { display: none !important; }
 body.sense-mode #vn-figure.tease-on { display: none !important; }
+body.sense-mode #kanban-girl {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
 
 /* ===== VN 對話框(日式文字冒險) ===== */
 #vn-box {
@@ -1430,6 +1435,35 @@ body.sense-mode #vn-figure.tease-on { display: none !important; }
   margin-top: .5em; flex-shrink: 0;
 }
 #tease-act-row.hidden { display: none; }
+
+#sense-act-row {
+  display: flex; flex-wrap: wrap; gap: .5em; background: var(--panel); padding: .8em;
+  margin-top: .5em; flex-shrink: 0; align-items: stretch;
+}
+#sense-act-row.hidden { display: none; }
+#sense-act-row > button {
+  flex: 1; min-width: 6em; border: none; border-radius: 10px; font: inherit;
+  font-size: 1.05em; letter-spacing: .2em; padding: .75em 0; cursor: pointer;
+  background: rgba(111, 227, 225, .18); color: var(--cyan);
+}
+#sense-act-row > button:disabled { opacity: .35; cursor: default; }
+#sense-act-row.sense-confirming > button#sense-summon,
+#sense-act-row.sense-confirming > button#sense-date { display: none; }
+.sense-date-confirm {
+  width: 100%; display: flex; flex-wrap: wrap; gap: .5em; align-items: center;
+  justify-content: center; text-align: center;
+}
+.sense-date-confirm.hidden { display: none; }
+.sense-date-confirm .sense-date-msg {
+  width: 100%; font-size: .85em; color: var(--dim); margin: .1em 0 .2em;
+}
+.sense-date-confirm button {
+  flex: 1; min-width: 6em; border: none; border-radius: 10px; font: inherit;
+  font-size: .95em; padding: .65em 0; cursor: pointer;
+}
+.sense-date-confirm button.cyan {
+  background: rgba(111, 227, 225, .18); color: var(--cyan);
+}
 #tease-thrust, #tease-cum {
   flex: 1; border: none; border-radius: 10px; font: inherit;
   font-size: 1.15em; letter-spacing: .35em; padding: .75em 0; cursor: pointer;

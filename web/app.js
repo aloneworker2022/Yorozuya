@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.33(2026-09-17)物品欄標籤式";
+const APP_VER = "v7.34(2026-09-17)感應只召喚約會";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5562,14 +5562,14 @@ let chatSession = null;   // {type:'chat'|'date', location, playerMsgs, gotReply
 let chatAbort = null;
 let lastLlmFlags = { crossed: false, dateAccept: false, dateDecline: false, teaseAccept: false, teaseDecline: false, climax: false, discoverQuest: "", journalNote: "" };
 
-/** 感應＝遠距通話（無立繪、無圖、不能調戲）。店頭聊＝人在現場（有立繪、可調戲）。 */
+/** 感應＝遠距（無立繪、不能聊天；只能召喚／約會）。店頭聊＝人在現場（有立繪、可調戲）。 */
 function isSenseChat(sess = chatSession) { return sess?.type === "sense"; }
 function isShopTalk(sess = chatSession) { return sess?.type === "talk"; }
 function chatShowsPortrait(sess = chatSession) { return !!sess && sess.type !== "sense"; }
 
 /**
  * 進入聊天／約會／感應／店頭聊。
- * opts.fromSense：名冊「感應」接通 → 遠距即時通話（只有對話）。
+ * opts.fromSense：名冊「感應」接通 → 只能召喚或約會（不能聊天）。
  */
 function enterChat(id, type = "chat", location = null, prepaid = false, opts = {}) {
   const s = state.succubi.find(x => x.id === id);
@@ -5678,9 +5678,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
   } else if (type === "sense") {
     s.history.push({
       role: "sys",
-      content: isSummonerTaken(s)
-        ? `感應接通——她正被帶走，但線路連上了`
-        : `感應接通——與 ${s.name} 連上（遠距，看不見、碰不到）`,
+      content: `感應接通——只能「召喚」或「約會」`,
       t: Date.now(),
     });
   } else if (type === "talk") {
@@ -5694,29 +5692,31 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
   }
   const inputEl = document.getElementById("chat-input");
   if (inputEl) {
-    inputEl.disabled = false;
-    inputEl.placeholder = type === "sense"
-      ? "說點什麼，或輸入「召喚」（2金）…"
-      : type === "talk"
+    if (type === "sense") {
+      inputEl.disabled = true;
+      inputEl.placeholder = "";
+      inputEl.value = "";
+    } else {
+      inputEl.disabled = false;
+      inputEl.placeholder = type === "talk"
         ? (jq ? "跟她解釋這件委託…(Enter 送出)" : "她就在眼前…(Enter 送出)")
         : "說點什麼…(Enter 送出)";
-    inputEl.value = "";
+      inputEl.value = "";
+    }
   }
   const sendBtn = document.getElementById("chat-send");
-  if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = "送出"; }
+  if (sendBtn) { sendBtn.disabled = type === "sense"; sendBtn.textContent = "送出"; }
   setChatWaiting(false);
   scheduleSave(); renderAll();
   renderChatLog(s);
   refreshRomanceBtn();
-  inputEl?.focus();
+  if (type !== "sense") inputEl?.focus();
   if (type === "date") {
     vnShow("", `—— ${location}・約會開始 ——`, "sys");
     sceneOpener(s);
   } else if (type === "sense") {
-    vnShow("", isSummonerTaken(s)
-      ? `—— 感應接通（只有聲音。被帶走中：每句 1/4 可能被對方叫走；輸入「召喚」花 ${SUMMON_SENSE_COST} 金搶回，1/4 失敗）——`
-      : `—— 感應接通（遠距通話，沒有畫面、不能調戲；輸入「召喚」花 ${SUMMON_SENSE_COST} 金召到店頭，1/4 失敗）——`, "sys");
-    senseOpener(s);
+    vnShow("", `—— 感應接通——只能「召喚」或「約會」 ——`, "sys");
+    vnDone();
   } else if (type === "talk") {
     vnShow("", `—— ${s.name} 就在店頭 ——`, "sys");
     talkOpener(s);
@@ -6999,8 +6999,8 @@ function beginSense(girlId) {
   scheduleSave();
   log(`感應 ${s.name}${taken ? "（被召喚走）" : ""}（本時段剩 ${left}/${SENSE_PER_HOUR}）`);
   toast(taken
-    ? `感應接通——${s.name} 好像在很遠的地方（只有聲音）· 剩 ${left}/${SENSE_PER_HOUR}`
-    : `感應接通——${s.name}（遠距，沒有畫面）· 剩 ${left}/${SENSE_PER_HOUR}`, "good");
+    ? `感應接通——${s.name}（只能召喚／約會）· 剩 ${left}/${SENSE_PER_HOUR}`
+    : `感應接通——${s.name}（只能召喚／約會）· 剩 ${left}/${SENSE_PER_HOUR}`, "good");
   enterChat(s.id, "sense", null, true, { fromSense: true });
 }
 
@@ -8862,17 +8862,16 @@ async function sendChatMsg() {
     if (isKanban(s.id)) beginShopTalk(s.id);
     return;
   }
+  // 感應不能聊天（召喚／約會走按鈕）
+  if (chatSession.type === "sense") {
+    toast("感應不能聊天", "bad");
+    return;
+  }
+
   const text = input.value.trim();
   if (!text) return;
   if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
   if (isDaydreaming()) { toast("發呆中——這段時間在備圖，等跑完再聊", ""); return; }
-
-  // 感應中：聊天框輸入「召喚」→ 花 2 金召到店頭／搶回（不進 AI）
-  if (chatSession.type === "sense" && isSummonCommand(text)) {
-    input.value = "";
-    await tryCastSummonInSenseChat(s);
-    return;
-  }
 
   input.value = "";
   s.history ??= [];
@@ -9904,6 +9903,7 @@ async function senseTakenRivalSnatch(s, opts = {}) {
  */
 async function tryCastSummonInSenseChat(s) {
   if (!s || chatSession?.type !== "sense") return false;
+  if (chatSession.busy) return true;
   if (state.gold < 0) {
     toast("負債中,先去做委託還債吧", "bad");
     return true;
@@ -9912,10 +9912,20 @@ async function tryCastSummonInSenseChat(s) {
     toast(`召喚要 ${SUMMON_SENSE_COST} 金（目前 ${state.gold}）`, "bad");
     return true;
   }
+  chatSession.busy = true;
+  const summonBtn = document.getElementById("sense-summon");
+  const dateBtn = document.getElementById("sense-date");
+  if (summonBtn) summonBtn.disabled = true;
+  if (dateBtn) dateBtn.disabled = true;
   state.gold -= SUMMON_SENSE_COST;
   renderHud();
   scheduleSave();
 
+  const clearBusy = () => {
+    if (chatSession) chatSession.busy = false;
+    if (summonBtn) summonBtn.disabled = false;
+    if (dateBtn) dateBtn.disabled = false;
+  };
   const refund = () => {
     state.gold += SUMMON_SENSE_COST;
     renderHud();
@@ -9940,6 +9950,8 @@ async function tryCastSummonInSenseChat(s) {
     if (!rr.ok) {
       refund();
       toast(rr.err || "搶回失敗", "bad");
+      clearBusy();
+      paintSenseActRow();
       return true;
     }
     try {
@@ -9956,6 +9968,8 @@ async function tryCastSummonInSenseChat(s) {
   if (!r.ok) {
     refund();
     toast(r.err, "bad");
+    clearBusy();
+    paintSenseActRow();
     return true;
   }
   try {
@@ -13042,6 +13056,7 @@ function beginDateFlow(girlId) {
   if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
   const s = state.succubi.find(x => x.id === girlId);
   if (!s || s.ntr) { toast("她不在你身邊……", "bad"); return; }
+  const inSense = chatSession?.type === "sense" && chatWith === girlId;
 
   // ★ 分支 1：被召喚走 → 只走窺視，不進約會額度
   if (isSummonerTaken(s)) {
@@ -13049,7 +13064,7 @@ function beginDateFlow(girlId) {
     return;
   }
 
-  // ★ 分支 2：一般約會（一天一次；看板娘也可約）
+  // ★ 分支 2：一般約會（一天一次；看板娘也可約；非看板從感應進）
   if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
   if (Cards.sessionActive(state)) {
     const rec = resumeOrRecoverCardSession({ forceUi: true });
@@ -13058,6 +13073,10 @@ function beginDateFlow(girlId) {
   }
   // 已抽好地點、待確認：再按約會只是重顯確認列
   if (dateFlow?.girlId === girlId && dateFlow.venueId) {
+    if (inSense) {
+      paintSenseActRow();
+      return;
+    }
     dateChooser = true;
     renderAll();
     return;
@@ -13088,6 +13107,7 @@ function beginDateFlow(girlId) {
     dateFlow = null;
     dateChooser = false;
     scheduleSave();
+    if (inSense) { renderHud(); paintSenseActRow(); return; }
     renderAll();
     return;
   }
@@ -13102,9 +13122,15 @@ function beginDateFlow(girlId) {
   // 全池隨機抽地點（不可選）；玩家再決定要不要付錢去
   const v = venues[Math.floor(Math.random() * venues.length)];
   dateFlow = { girlId, phoneCost: cost, venueId: v.id };
-  dateChooser = true;
   toast(`${s.name} 接了——抽到「${v.name}」`, "good");
   scheduleSave();
+  if (inSense) {
+    dateChooser = false;
+    renderHud();
+    paintSenseActRow();
+    return;
+  }
+  dateChooser = true;
   renderAll();
 }
 
@@ -13117,6 +13143,11 @@ function declineDateVenue(girlId) {
   dateChooser = false;
   toast("下次再約吧（電話費不退）", "");
   scheduleSave();
+  // 感應中婉拒：留在感應，只刷新召喚／約會列
+  if (chatSession?.type === "sense" && chatWith === girlId) {
+    paintSenseActRow();
+    return;
+  }
   renderAll();
 }
 
@@ -13150,6 +13181,12 @@ function confirmDateVenue(girlId, venueId) {
 
   dateFlow = null;
   dateChooser = false;
+
+  // 感應中確認約會：先結束感應再開牌桌
+  const fromSense = chatSession?.type === "sense" && chatWith === girlId;
+  if (fromSense) {
+    try { exitChat(); } catch { /* */ }
+  }
 
   // 被召喚走：錢已付，改觀戰；釋放後用 venueId 接回約會牌桌
   if (s.summoner?.taken) {
@@ -15697,6 +15734,42 @@ function vnFace(s, mood = null) {
   }
 }
 
+/** 感應列：召喚／約會，或待確認場地 */
+function paintSenseActRow() {
+  const row = document.getElementById("sense-act-row");
+  const confirm = document.getElementById("sense-date-confirm");
+  const summonBtn = document.getElementById("sense-summon");
+  const dateBtn = document.getElementById("sense-date");
+  if (!row) return;
+  const senseOn = chatSession?.type === "sense" && !!chatWith;
+  if (!senseOn) {
+    row.classList.add("hidden");
+    row.classList.remove("sense-confirming");
+    if (confirm) { confirm.classList.add("hidden"); confirm.innerHTML = ""; }
+    return;
+  }
+  row.classList.remove("hidden");
+  const pending = (dateFlow?.girlId === chatWith) ? venueById(dateFlow.venueId) : null;
+  const busy = !!chatSession?.busy;
+  if (pending && confirm) {
+    row.classList.add("sense-confirming");
+    const fee = Number(pending.fee) || 0;
+    const phone = dateFlow.phoneCost ?? 1;
+    confirm.classList.remove("hidden");
+    confirm.innerHTML = `
+      <div class="sense-date-msg">她接了（電話 −${phone} 金）。抽到「${esc(pending.name || "？")}」${fee ? ` · 場地費 ${fee} 金` : ""}</div>
+      <button type="button" class="cyan" id="sense-date-go">去約會</button>
+      <button type="button" id="sense-date-cancel">先不約了</button>`;
+    if (summonBtn) summonBtn.disabled = true;
+    if (dateBtn) dateBtn.disabled = true;
+  } else {
+    row.classList.remove("sense-confirming");
+    if (confirm) { confirm.classList.add("hidden"); confirm.innerHTML = ""; }
+    if (summonBtn) summonBtn.disabled = busy;
+    if (dateBtn) dateBtn.disabled = busy;
+  }
+}
+
 function renderChatView() {
   const chatV = $("#chat-view");
   const inputRow = $("#chat-input-row");
@@ -15705,11 +15778,13 @@ function renderChatView() {
 
   const ssacCtl = $("#ssac-controls");
   const teaseRow = $("#tease-act-row");
+  const senseRow = $("#sense-act-row");
   // 召喚獻祭最優先
   if (sacSummon) {
     chatV.classList.remove("hidden");
     inputRow?.classList.add("hidden");
     teaseRow?.classList.add("hidden");
+    senseRow?.classList.add("hidden");
     watchCtl?.classList.add("hidden");
     sacCtl?.classList.add("hidden");
     ssacCtl?.classList.remove("hidden");
@@ -15725,6 +15800,7 @@ function renderChatView() {
     chatV.classList.remove("hidden");
     inputRow?.classList.add("hidden");
     teaseRow?.classList.add("hidden");
+    senseRow?.classList.add("hidden");
     watchCtl?.classList.add("hidden");
     sacCtl?.classList.remove("hidden");
     $("#chat-title").textContent = sacSession
@@ -15744,6 +15820,7 @@ function renderChatView() {
       chatV.classList.remove("hidden");
       inputRow?.classList.add("hidden");
       teaseRow?.classList.add("hidden");
+      senseRow?.classList.add("hidden");
       watchCtl?.classList.remove("hidden");
       const su = summonerById(s.summoner?.id);
       $("#chat-title").textContent = `觀戰:${s.name} 與 ${su?.name || "他"}`;
@@ -15759,14 +15836,25 @@ function renderChatView() {
     const cs = state.succubi.find(x => x.id === chatWith);
     if (!cs) {
       chatWith = null; chatSession = null;
-      document.body.classList.remove("chat-mode");
+      document.body.classList.remove("chat-mode", "sense-mode");
     } else {
       chatV.classList.remove("hidden");
+      if (chatSession?.type === "sense") {
+        inputRow?.classList.add("hidden");
+        teaseRow?.classList.add("hidden");
+        document.getElementById("chat-romance")?.classList.add("hidden");
+        $("#chat-title").textContent = `${cs.name}・感應中（召喚／約會）`;
+        paintAffHearts(cs);
+        refreshRomanceBtn();
+        vnFace(null);
+        paintSenseActRow();
+        syncTeasePlayUi();
+        return;
+      }
+      senseRow?.classList.add("hidden");
       inputRow?.classList.remove("hidden");
       if (chatSession?.type === "date") {
         $("#chat-title").textContent = `${cs.name}・${chatSession.location}約會中`;
-      } else if (chatSession?.type === "sense") {
-        $("#chat-title").textContent = `${cs.name}・感應中（只有聲音）`;
       } else if (chatSession?.type === "talk") {
         $("#chat-title").textContent = `${cs.name}・店頭`;
       } else {
@@ -15781,6 +15869,7 @@ function renderChatView() {
     }
   }
   teaseRow?.classList.add("hidden");
+  senseRow?.classList.add("hidden");
   document.body.classList.remove("tease-play");
   paintAffHearts(null);
   refreshRomanceBtn();
@@ -15851,11 +15940,14 @@ function renderDetail(s, root) {
   const pendingVenue = (dateFlow?.girlId === s.id) ? venueById(dateFlow.venueId) : null;
   const pendingFee = Number(pendingVenue?.fee) || 0;
   const senseHint = takenAway
-    ? `被帶走中 · 免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只有聲音、不能調戲 · 每句 1/4 可能被對方叫走 · 輸入「召喚」花 ${SUMMON_SENSE_COST} 金搶回（失敗立刻結束感應）`
-    : `免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 遠距通話（無畫面、不能調戲；輸入「召喚」花 ${SUMMON_SENSE_COST} 金召到店頭；約會或召喚失敗會立刻結束這次感應）`;
+    ? `被帶走中 · 免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只能「召喚」或「約會」 · 召喚花 ${SUMMON_SENSE_COST} 金搶回（失敗結束感應）`
+    : `免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只能「召喚」或「約會」（召喚 ${SUMMON_SENSE_COST} 金；約會失敗會結束感應）`;
   const dateHint = showPeek
     ? "她正被帶走，可以窺視（1/5 接通，不佔約會次數）"
     : "約會：接通後抽場地，再決定要不要付場地費出門";
+  const kanbanHere = isKanban(s.id);
+  // 非看板：約會走感應；看板娘仍從詳情約會（否則沒入口）
+  const showDetailDate = kanbanHere && (showDate || showPeek);
 
   // 精簡詳情：肖像（長按獻祭）→ 名 → 天賦 → 時間表 → 感應／約會
   root.className = `r-${s.rarity}`;
@@ -15886,10 +15978,10 @@ function renderDetail(s, root) {
       ${s.ntr
         ? `<div class="detail-actions" style="margin-top:.8em"><button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button></div>`
         : `<div class="detail-actions" style="margin-top:.8em">
-            ${isKanban(s.id) ? "" : `<button class="cyan" id="act-sense" ${asleep || left <= 0 ? "disabled" : ""} title="${esc(senseHint)}">感應（${left}/${SENSE_PER_HOUR}）</button>`}
-            ${(showDate || showPeek) ? `<button class="cyan" id="act-date" title="${esc(dateHint)}">${esc(dateBtnLabel)}</button>` : ""}
+            ${kanbanHere ? "" : `<button class="cyan" id="act-sense" ${asleep || left <= 0 ? "disabled" : ""} title="${esc(senseHint)}">感應（${left}/${SENSE_PER_HOUR}）</button>`}
+            ${showDetailDate ? `<button class="cyan" id="act-date" title="${esc(dateHint)}">${esc(dateBtnLabel)}</button>` : ""}
           </div>
-          ${pendingVenue ? `
+          ${pendingVenue && kanbanHere ? `
           <div class="chooser date-venues">
             <div class="dim small" style="width:100%;text-align:center;margin:.3em 0 .2em">
               她接了（電話 −${dateFlow.phoneCost ?? 1} 金）。抽到「${esc(pendingVenue.name || "？")}」${pendingFee ? ` · 場地費 ${pendingFee} 金` : ""}
@@ -15944,6 +16036,16 @@ function renderKanban() {
   const zzz = $("#kanban-zzz");
   const asleep = isAsleep();
   zzz.classList.toggle("hidden", !asleep);
+
+  // 感應中：背板不顯示立繪（只留背景圖）
+  if (document.body.classList.contains("sense-mode")) {
+    girl.classList.add("hidden");
+    girl.innerHTML = "";
+    girl.onclick = null;
+    book.classList.add("hidden");
+    book.onclick = null;
+    return;
+  }
 
   // 主畫面只站「此刻真的在店頭」的看板娘:對話中的那位,或付費時段仍在任的。
   // 沒召喚看板娘／名冊全空 → 店頭空無一人(不放召喚書)。暫時被召喚走不能把她從店頭拆走。
@@ -16184,6 +16286,21 @@ on("chat-back", "click", () => {
   if (watchWith) exitWatch(); else exitChat();
 });
 on("chat-send", "click", () => { if (chatSession?.ended) exitChat(); else sendChatMsg(); });
+on("sense-summon", "click", () => {
+  const s = state.succubi.find(x => x.id === chatWith);
+  if (!s || chatSession?.type !== "sense") return;
+  void tryCastSummonInSenseChat(s);
+});
+on("sense-date", "click", () => {
+  if (chatSession?.type !== "sense" || !chatWith) return;
+  beginDateFlow(chatWith);
+});
+document.getElementById("sense-act-row")?.addEventListener("click", (e) => {
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  if (t.id === "sense-date-go" && chatWith) confirmDateVenue(chatWith);
+  else if (t.id === "sense-date-cancel" && chatWith) declineDateVenue(chatWith);
+});
 on("chat-romance", "click", () => {
   const btn = document.getElementById("chat-romance");
   if (!btn || btn.classList.contains("hidden") || btn.disabled) return;
