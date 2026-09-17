@@ -1331,11 +1331,12 @@ body.sex-anim-on.script-reveal #vn-figure {
 #sex-anim-popup .sex-anim-popup-card {
   position: relative;
   z-index: 1;
-  max-width: min(56vw, 360px);
-  max-height: min(38vh, 420px);
+  max-width: min(72vw, 480px);
+  max-height: min(48vh, 520px);
   border-radius: 12px;
   overflow: hidden;
   background: rgba(0, 0, 0, .4);
+  opacity: 0.4;
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
   box-shadow: 0 12px 32px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 79, 216, .35);
@@ -1346,7 +1347,7 @@ body.sex-anim-on.script-reveal #vn-figure {
   display: block;
   width: 100%;
   height: auto;
-  max-height: min(38vh, 420px);
+  max-height: min(48vh, 520px);
   object-fit: contain;
   margin: 0;
 }
