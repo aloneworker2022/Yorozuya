@@ -286,14 +286,37 @@ export function emptyMaleMolestPack(name = "單男猥褻") {
 const MALE_MOLEST_FRAMING = "2people, 1girl, 1boy, hetero";
 const MALE_MOLEST_ANTI_BLEED =
   "solo, 1girl only, one person, merged body, fused body, gender blend, masculine woman, girl with male physique, obese woman, fat woman as only subject";
+const MALE_LOOK_FAT_RE = /\b(?:fat|obese|overweight)\b/i;
+const MALE_LOOK_UGLY_RE = /\b(?:ugly|unattractive|greasy)\b/i;
 
 /** Remove subject-count tags only when they lead an editor-supplied block. */
-function stripLeadingSubjectTags(value) {
+export function stripLeadingSubjectTags(value) {
   let out = String(value || "").trim();
   while (/^(?:1boy|1girl)\b/i.test(out)) {
     out = out.replace(/^(?:1boy|1girl)\b\s*,?\s*/i, "").trim();
   }
   return out;
+}
+
+function maleLookScopeDetails(lookEn) {
+  const source = String(lookEn || "").trim();
+  const tags = source.split(",").map((tag) => tag.trim()).filter(Boolean);
+  const scopedTags = tags.map((tag) =>
+    /\b(?:1?boy|male|man)\b/i.test(tag) ? tag : `${tag} male`
+  );
+  const hasFat = MALE_LOOK_FAT_RE.test(source);
+  const hasUgly = MALE_LOOK_UGLY_RE.test(source);
+  const ensureTag = (tag) => {
+    if (!scopedTags.some((item) => item.toLowerCase() === tag)) scopedTags.push(tag);
+  };
+  if (hasFat) ensureTag("fat male");
+  if (hasUgly) ensureTag("ugly male");
+  return { scopedTags, hasFat, hasUgly };
+}
+
+/** Qualify every editor-supplied look tag so it cannot bleed onto 1girl. */
+export function scopeMaleLookEn(lookEn) {
+  return maleLookScopeDetails(lookEn).scopedTags.join(", ");
 }
 
 /**
@@ -314,6 +337,7 @@ export async function buildMaleMolestImgBody(
   const p = normalizeMolestPack({ ...pack, imgMode: "txt" });
   const pid = placeId || p.placeId || "plaza";
   const lookEn = String(maleType?.lookEn || "").trim();
+  const maleLook = maleLookScopeDetails(lookEn);
   const userPos = String(p.slot?.prompt || "").trim();
   const userNeg = String(p.slot?.negative || "").trim();
   const customPlace = Array.isArray(customPlaces) ? customPlaces.find((x) => x?.id === pid) : null;
@@ -322,7 +346,12 @@ export async function buildMaleMolestImgBody(
   const dated = girlForDate(girl, outfitInfo);
   const base = await fetchMolestBasePrompt(girl, eng, style, relStage);
   const girlBlock = joinPromptParts("1girl", base.positive);
-  const boyBlock = joinPromptParts("1boy", stripLeadingSubjectTags(lookEn));
+  const boyBlock = joinPromptParts(
+    "1boy",
+    "male",
+    "man",
+    scopeMaleLookEn(stripLeadingSubjectTags(lookEn)),
+  );
   const sceneBlock = joinPromptParts(placePos, stripLeadingSubjectTags(userPos));
   // BREAK is for Comfy/anime tag parsers; the natural join is the Grok fallback.
   const positive = [
@@ -335,7 +364,13 @@ export async function buildMaleMolestImgBody(
   ].filter(Boolean).join(", ");
   const boyScene = [boyBlock, sceneBlock].filter(Boolean).join(". and ");
   const userNegative = joinPromptParts(userNeg, "looking at viewer, text, watermark, ugly, extra fingers");
-  const negative = joinPromptParts(base.negative, userNegative, MALE_MOLEST_ANTI_BLEED);
+  const scopedAntiBleed = [
+    maleLook.hasFat ? "fat girl, obese girl" : "",
+    maleLook.hasUgly ? "ugly girl" : "",
+    maleLook.hasFat || maleLook.hasUgly ? "masculine girl" : "",
+  ].filter(Boolean).join(", ");
+  const antiBleedNegative = joinPromptParts(MALE_MOLEST_ANTI_BLEED, scopedAntiBleed);
+  const negative = joinPromptParts(base.negative, userNegative, antiBleedNegative);
   const merged = {
     positive,
     negative,
@@ -348,7 +383,7 @@ export async function buildMaleMolestImgBody(
     baseNegative: String(base.negative || "").trim(),
     userPositive: boyScene,
     userNegative,
-    antiBleedNegative: MALE_MOLEST_ANTI_BLEED,
+    antiBleedNegative,
   };
   const comfy = (eng.imgProvider || "grok-img") === "comfy";
   return {

@@ -276,7 +276,7 @@
         "id": "fat",
         "name": "噁心胖肥宅",
         "talkWeight": 0.7,
-        "lookEn": "1boy, overweight obese man, large protruding belly, round face, double chin, greasy skin, unkempt messy hair, baggy stained t-shirt, unattractive, lewd smirk",
+        "lookEn": "fat male, ugly male, overweight obese male, large protruding belly male, round face male, double chin male, greasy skin male, unkempt messy hair male, baggy stained t-shirt male, unattractive male, lewd smirk male",
         "approach": [
           {
             "narr": "一個穿著寬鬆T恤、肚子把衣襬撐開的男人喘著走過來，眼睛先落在她胸口。",
@@ -427,7 +427,7 @@
         "id": "gym",
         "name": "健身變態男",
         "talkWeight": 0.3,
-        "lookEn": "1boy, muscular athletic man, broad shoulders, thick arms, defined chest, short hair, tight tank top, intense hungry stare, gym body",
+        "lookEn": "muscular male, athletic male, broad shoulders male, thick arms male, defined chest male, short hair male, tight tank top male, intense hungry stare male, gym body male",
         "approach": [
           {
             "narr": "一個肩很寬、背心貼著胸肌的男人放慢腳步，從她側後方靠近。",
@@ -578,7 +578,7 @@
         "id": "lust",
         "name": "色慾單身男",
         "talkWeight": 0.25,
-        "lookEn": "1boy, average slim man, hungry lewd eyes, messy hair, casual street clothes, predatory smile, looking at woman, lustful expression",
+        "lookEn": "lustful male, slim male, average male, hungry lewd eyes male, messy hair male, casual street clothes male, predatory smile male, male looking at woman, lustful expression male",
         "approach": [
           {
             "narr": "一個眼神發亮的男人徑直走來，視線黏在她胸和腿之間，沒有要打招呼的意思。",

@@ -368,6 +368,7 @@ import {
   emptyMolestPack, emptyMaleMolestPack, normalizeMolestPack, filledPack,
   fetchMolestBasePrompt, mergeMolestPrompts, formatOutputPromptSheet, formatMaleMolestOutputSheet,
   buildMolestImgBody, buildMaleMolestImgBody, buildMolestReplyMsgs, buildMolestNarrMsgs, bindHint, fillBinds,
+  scopeMaleLookEn, stripLeadingSubjectTags,
   joinPromptParts,
 } from "./content/date_molest.js";
 import { DATE_PLACES, placeZh, placeEn } from "./content/date_place.js";
@@ -555,7 +556,13 @@ function mmRefreshOut() {
   const userPos = String(p.slot?.prompt || "").trim();
   const userNeg = String(p.slot?.negative || "").trim();
   const placePos = placeEn(pid);
-  const boyLayer = joinPromptParts("1boy", look, placePos, userPos);
+  const scopedBoyBlock = joinPromptParts(
+    "1boy",
+    "male",
+    "man",
+    scopeMaleLookEn(stripLeadingSubjectTags(look)),
+  );
+  const sceneLayer = joinPromptParts(placePos, userPos);
   const g = moGirl();
   el.textContent = [
     `【場所】${placeZh(pid)}`,
@@ -563,11 +570,14 @@ function mmRefreshOut() {
     "【1girl 女孩】",
     `女子基本設定${g ? `（${g.name || g.id}）` : "（先選女子）"}（實際產圖時由伺服器抓）`,
     "",
-    "【1boy＋場所＋動作】",
-    boyLayer || "（空白）",
+    "【1boy 男子外觀塊（已加 male 修飾）】",
+    scopedBoyBlock || "（空白）",
+    "",
+    "【場所＋動作】",
+    sceneLayer || "（空白）",
     "",
     "【合併正向 → 送出】",
-    joinPromptParts("1girl", "（女孩設定）", boyLayer) || "（空）",
+    joinPromptParts("1girl", "（女孩設定）", "BREAK", scopedBoyBlock, "BREAK", sceneLayer) || "（空）",
     "",
     "【負向】",
     userNeg || "（空）",
@@ -785,7 +795,13 @@ function mhRefreshOut() {
   const userPos = String(a.slot?.prompt || "").trim();
   const userNeg = String(a.slot?.negative || "").trim();
   const placePos = hotelPlaceEn(pid, hotelPlaces);
-  const boyLayer = joinPromptParts("1boy", look, placePos, userPos);
+  const scopedBoyBlock = joinPromptParts(
+    "1boy",
+    "male",
+    "man",
+    scopeMaleLookEn(stripLeadingSubjectTags(look)),
+  );
+  const sceneLayer = joinPromptParts(placePos, userPos);
   const g = moGirl();
   el.textContent = [
     `【旅館】${mhHotel()?.name || ""}`,
@@ -795,11 +811,14 @@ function mhRefreshOut() {
     "【1girl 女孩】",
     `女子基本設定${g ? `（${g.name || g.id}）` : "（先選女子）"}（實際產圖時由伺服器抓）`,
     "",
-    "【1boy＋場所＋動作】",
-    boyLayer || "（空白）",
+    "【1boy 男子外觀塊（已加 male 修飾）】",
+    scopedBoyBlock || "（空白）",
+    "",
+    "【場所＋動作】",
+    sceneLayer || "（空白）",
     "",
     "【合併正向 → 送出】",
-    joinPromptParts("1girl", "（女孩設定）", boyLayer) || "（空）",
+    joinPromptParts("1girl", "（女孩設定）", "BREAK", scopedBoyBlock, "BREAK", sceneLayer) || "（空）",
     "",
     "【負向】",
     userNeg || "（空）",

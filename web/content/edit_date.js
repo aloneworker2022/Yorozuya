@@ -30,9 +30,9 @@ export const DATE_ACT_ZH = {
 
 /** 各種類預設英文外觀 tags（文生圖用） */
 export const DEFAULT_MALE_LOOK_EN = {
-  fat: "1boy, overweight obese man, large protruding belly, round face, double chin, greasy skin, unkempt messy hair, baggy stained t-shirt, unattractive, lewd smirk",
-  gym: "1boy, muscular athletic man, broad shoulders, thick arms, defined chest, short hair, tight tank top, intense hungry stare, gym body",
-  lust: "1boy, average slim man, hungry lewd eyes, messy hair, casual street clothes, predatory smile, looking at woman, lustful expression",
+  fat: "fat male, ugly male, overweight obese male, large protruding belly male, round face male, double chin male, greasy skin male, unkempt messy hair male, baggy stained t-shirt male, unattractive male, lewd smirk male",
+  gym: "muscular male, athletic male, broad shoulders male, thick arms male, defined chest male, short hair male, tight tank top male, intense hungry stare male, gym body male",
+  lust: "lustful male, slim male, average male, hungry lewd eyes male, messy hair male, casual street clothes male, predatory smile male, male looking at woman, lustful expression male",
 };
 
 export const DEFAULT_DATE_SCRIPT = {
