@@ -1287,30 +1287,33 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   animation: none;
   margin-bottom: -0.4em;
 }
+/* 劇本局部動畫：必須高過 #chat-view(15) 裡的劇本揭圖 #vn-figure。
+   掛 body + fixed；播放時 body.sex-anim-on 會藏起立繪，避免被故事圖蓋住。 */
 #sex-anim-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 50;
-  display: flex;
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  display: flex !important;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background: rgba(0, 0, 0, .55);
   pointer-events: none;
 }
-#sex-anim-overlay.hidden { display: none; }
+#sex-anim-overlay.hidden { display: none !important; }
 #sex-anim-overlay img {
-  max-width: 42%;
-  max-height: 38%;
+  max-width: min(96vw, 640px);
+  max-height: min(82vh, 780px);
   width: auto;
   height: auto;
   object-fit: contain;
   display: block;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 8px 28px rgba(0, 0, 0, .65));
 }
-@media (max-width: 700px) {
-  #sex-anim-overlay img {
-    max-width: 92%;
-    max-height: 72%;
-  }
+body.sex-anim-on #vn-figure {
+  visibility: hidden !important;
 }
 #aff-pop {
   position: absolute;

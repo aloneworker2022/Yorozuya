@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="萬事屋">
-<link rel="stylesheet" href="style.css?v=50">
+<link rel="stylesheet" href="style.css?v=51">
 </head>
 <body>
 
@@ -341,9 +341,6 @@
     <button type="button" id="tease-thrust">肏</button>
     <button type="button" id="tease-cum">射精</button>
   </div>
-  <div id="sex-anim-overlay" class="hidden">
-    <img id="sex-anim-img" alt="">
-  </div>
   <div id="watch-controls" class="hidden">
     <button id="watch-next">下一句 ▶</button>
     <button id="watch-end">結束觀戰</button>
@@ -360,6 +357,9 @@
 
 <!-- 斷線重連畫面 -->
 <!-- 已承接長按:遊戲對話卡(不是網頁 prompt),寫多一件後退回發現 -->
+<div id="sex-anim-overlay" class="hidden" aria-hidden="true">
+  <img id="sex-anim-img" alt="">
+</div>
 <div id="split-overlay" class="hidden" aria-hidden="true">
   <div class="split-card" id="split-card" role="dialog" aria-labelledby="split-name">
     <div class="split-name" id="split-name"></div>
@@ -409,6 +409,6 @@
   setTimeout(function () { sessionStorage.removeItem("healCount"); }, 10000);
 })();
 </script>
-<script type="module" src="app.js?v=85"></script>
+<script type="module" src="app.js?v=54"></script>
 </body>
 </html>
