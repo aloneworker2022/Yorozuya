@@ -599,9 +599,9 @@ body.asleep #book { animation: none; opacity: .7; }
 #page-quests.on-diary .q-force-tabs,
 #page-quests.on-line .q-force-tabs { opacity: 0; pointer-events: none; }
 
-/* 左側頁籤：日誌（紅）＋其下 Line（綠），貼委託板左緣 */
+/* 左側頁籤：Line 疊在日誌後面，只露出底下一節 */
 .diary-tab, .line-tab {
-  position: absolute; left: 0; z-index: 8;
+  position: absolute; left: 0;
   width: 26px; padding: 14px 5px 16px 4px;
   border-left: none;
   border-radius: 0 11px 11px 0;
@@ -611,11 +611,15 @@ body.asleep #book { animation: none; opacity: .7; }
 }
 .diary-tab {
   top: 28%;
+  z-index: 9;
   background: #c4453c; color: #f6e6d8;
   border: 1px solid #9a2f28; border-left: none;
 }
 .line-tab {
-  top: calc(28% + 78px);
+  /* 大部分被日誌蓋住，只留底下一節可點 */
+  top: calc(28% + 44px);
+  z-index: 7;
+  padding: 10px 5px 12px 4px;
   background: #06c755; color: #f0fff4;
   border: 1px solid #049a40; border-left: none;
 }
@@ -625,10 +629,12 @@ body.asleep #book { animation: none; opacity: .7; }
 }
 .diary-tab:active, .line-tab:active { transform: translateX(1px); }
 .diary-tab.on {
+  z-index: 10;
   background: #e25a4e; color: #fff8f0;
   box-shadow: 2px 3px 14px rgba(226, 90, 78, .45);
 }
 .line-tab.on {
+  z-index: 10;
   background: #1adf6a; color: #fff;
   box-shadow: 2px 3px 14px rgba(6, 199, 85, .45);
 }
