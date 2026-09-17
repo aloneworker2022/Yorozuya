@@ -12,9 +12,11 @@ import {
   rollAffDelta,
   buildReplyMsgs,
   resolveScriptKind,
+  boundFramePackId,
 } from "./script_mode.js";
 import { buildSystemPrompt } from "./persona_builder.js";
 import { RARITY_MARK } from "./girl_gen.js";
+import * as FramePack from "./frame_pack.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,6 +37,195 @@ let play = null;
 let typeJob = 0;
 let typeSkip = false;
 let typeBusy = false;
+
+/** 幀包快取（肏局部動畫退路） */
+let FRAME_PACKS = [];
+let scriptAnimRun = null;
+let scriptAnimTimer = 0;
+
+function bustAssetUrl(url, ver) {
+  if (!url) return "";
+  const clean = String(url).split("?")[0].split("#")[0];
+  if (!clean) return "";
+  const v = ver != null && ver !== "" ? ver : Date.now();
+  return `${clean}?v=${v}`;
+}
+
+async function loadFramePacks() {
+  try {
+    const r = await fetch("/api/frame-packs?ts=" + Date.now(), { cache: "no-store" });
+    const j = await r.json();
+    const packs = Array.isArray(j?.packs) ? j.packs : (Array.isArray(j) ? j : []);
+    FRAME_PACKS = packs.filter((p) => p && p.id);
+  } catch {
+    FRAME_PACKS = FRAME_PACKS || [];
+  }
+  return FRAME_PACKS;
+}
+
+function boundScriptFramePack(pack, spec) {
+  const id = boundFramePackId(pack, spec);
+  return FramePack.findPack(FRAME_PACKS, id);
+}
+
+/**
+ * 與主遊戲 scriptAnimUrls 對齊：
+ * 優先看板娘 daydream sexAnim（對應劇本 pose）；否則幀包 1–4。
+ */
+function scriptAnimUrls() {
+  const g = currentGirl;
+  const poseId = String(play?.pack?.pose || "").trim();
+  const pick = (urls) => (Array.isArray(urls) ? urls : []).map((u) => String(u || "").trim()).filter(Boolean);
+  const bust = (urls, ver) => pick(urls).map((u) => {
+    try { return bustAssetUrl(u, ver); } catch { return u; }
+  });
+
+  // ★ 發呆產的局部動畫優先
+  if (g?.sexAnim) {
+    if (poseId) {
+      const hit = g.sexAnim[poseId];
+      const urls = bust(hit?.urls, hit?.at);
+      if (urls.length) return urls.slice(0, 4);
+    }
+    for (const rec of Object.values(g.sexAnim)) {
+      const urls = bust(rec?.urls, rec?.at);
+      if (urls.length >= 2) return urls.slice(0, 4);
+    }
+    for (const rec of Object.values(g.sexAnim)) {
+      const urls = bust(rec?.urls, rec?.at);
+      if (urls.length) return urls.slice(0, 4);
+    }
+  }
+
+  // 再退回劇本綁定／同體位的幀包（骨架庫）
+  const spec = play?.pack?.scenes?.[String(play?.scene)];
+  const bound = boundScriptFramePack(play?.pack, spec);
+  let urls = pick(FramePack.packFrameUrls(bound));
+  if (urls.length) return urls.slice(0, 4);
+
+  if (poseId) {
+    const posePack = (FRAME_PACKS || []).find(
+      (p) => p && p.pose === poseId && pick(FramePack.packFrameUrls(p)).length,
+    );
+    urls = pick(FramePack.packFrameUrls(posePack));
+    if (urls.length) return urls.slice(0, 4);
+  }
+
+  const anyPack = (FRAME_PACKS || []).find((p) => pick(FramePack.packFrameUrls(p)).length >= 2)
+    || (FRAME_PACKS || []).find((p) => pick(FramePack.packFrameUrls(p)).length);
+  urls = pick(FramePack.packFrameUrls(anyPack));
+  if (urls.length) return urls.slice(0, 4);
+
+  return [];
+}
+
+function stopScriptAnim() {
+  const run = scriptAnimRun;
+  scriptAnimRun = null;
+  if (scriptAnimTimer) {
+    clearTimeout(scriptAnimTimer);
+    scriptAnimTimer = 0;
+  }
+  if (run) {
+    run.cancelled = true;
+    for (const cancel of run.waiters) cancel();
+    run.waiters.clear();
+  }
+  const box = $("sex-anim-popup");
+  const img = $("sex-anim-img");
+  box?.classList.add("hidden");
+  box?.setAttribute("aria-hidden", "true");
+  if (img) img.removeAttribute("src");
+  document.body.classList.remove("sex-anim-on");
+}
+
+function scriptAnimLoad(run, img, url) {
+  if (run.cancelled) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let settled = false;
+    const cancel = () => finish(false);
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      run.waiters.delete(cancel);
+      img.onload = null;
+      img.onerror = null;
+      resolve(ok);
+    };
+    run.waiters.add(cancel);
+    img.onload = () => finish(true);
+    img.onerror = () => finish(false);
+    img.src = url;
+    if (img.complete && img.naturalWidth) queueMicrotask(() => finish(true));
+  });
+}
+
+function scriptAnimHold(run, ms) {
+  if (run.cancelled) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = 0;
+    const cancel = () => finish(false);
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (scriptAnimTimer === timer) scriptAnimTimer = 0;
+      run.waiters.delete(cancel);
+      resolve(ok);
+    };
+    run.waiters.add(cancel);
+    timer = setTimeout(() => finish(true), ms);
+    scriptAnimTimer = timer;
+  });
+}
+
+/** 肏：播幀 1–4（各約 420ms）後隱藏 overlay。無圖則 toast／status 並立刻返回。 */
+async function flashScriptAnim() {
+  const box = $("sex-anim-popup");
+  const img = $("sex-anim-img");
+  if (!box || !img) {
+    console.warn("[test_sex sex-anim] overlay DOM missing");
+    return;
+  }
+  stopScriptAnim();
+  document.body.classList.add("sex-anim-on");
+  // 獨立彈窗：掛到 <html> 最末，脫離任何 transform / 對話堆疊
+  (document.documentElement || document.body).appendChild(box);
+  const run = { cancelled: false, waiters: new Set() };
+  scriptAnimRun = run;
+  try {
+    try { await loadFramePacks(); } catch { /* */ }
+    if (run.cancelled) return;
+    const urls = scriptAnimUrls();
+    if (!urls.length) {
+      console.warn("[test_sex sex-anim] no urls", {
+        pose: play?.pack?.pose,
+        framePackId: play?.pack?.framePackId,
+        packs: (FRAME_PACKS || []).length,
+        sexAnim: Object.keys(currentGirl?.sexAnim || {}),
+      });
+      setStatus("play-status", "沒有局部動畫圖（幀包／sexAnim 皆空）", true);
+      return;
+    }
+    box.classList.remove("hidden");
+    box.setAttribute("aria-hidden", "false");
+    let shown = 0;
+    for (const url of urls) {
+      if (run.cancelled) break;
+      const ok = await scriptAnimLoad(run, img, url);
+      if (run.cancelled) break;
+      if (ok) {
+        shown += 1;
+        await scriptAnimHold(run, 420);
+      }
+    }
+    if (!shown && !run.cancelled) await scriptAnimHold(run, 280);
+  } finally {
+    if (scriptAnimRun === run) stopScriptAnim();
+  }
+}
+
 
 function esc(s) {
   return String(s ?? "")
@@ -430,7 +621,7 @@ async function beginScene(n) {
   play.scene = n;
   play.awaiting = false;
   play.ending = false;
-  // 無圖：不載 urls、不揭圖、不播 sex-anim
+  // 無圖：不載劇本揭圖／立繪；局部動畫僅在肏時 flash
 
   if (n === 1) {
     play.openStep = "wait_ai";
@@ -510,7 +701,9 @@ async function handleThrust() {
   play.animating = true;
   syncUi();
   try {
-    // 無圖：略過 flashScriptAnim / 換圖，仍跑擲骰與台詞
+    // 局部動圖：先播 1–4 幀再繼續擲骰／台詞（對齊主遊戲 flashScriptAnim）
+    await flashScriptAnim();
+    if (!play || play.ending) return;
     const d = rollAffDelta(play.scene, girl.stage);
     if (d) {
       girl.affection = (Number(girl.affection) || 0) + d;
@@ -518,7 +711,7 @@ async function handleThrust() {
     }
     const act = rollSexThrust(play.scene);
     if (act === "swap") {
-      // 無圖：換圖 no-op
+      // 無持久立繪／揭圖：換圖 no-op（局部動畫已在上方播完）
       setStatus("play-status", "（無圖）略過換圖");
       return;
     }
@@ -549,7 +742,7 @@ async function handleThrust() {
       await scriptTypeAi(girl, `（正戲進行中。這一景態度：${attitude}。只輸出台詞，短句、喘。）`);
       if (play) play.awaiting = false;
     } else {
-      setStatus("play-status", `（無圖）肏 → ${act}（僅動畫／換圖則略過）`);
+      setStatus("play-status", `肏 → ${act}`);
     }
   } finally {
     if (play) {
@@ -564,6 +757,7 @@ function finishPlay(msg) {
     play.ending = true;
     play.openStep = "";
   }
+  stopScriptAnim();
   vnCancelType();
   const g = currentGirl;
   const line = msg || "調戲結束了。";
@@ -630,4 +824,4 @@ function bind() {
 
 bind();
 syncUi();
-Promise.all([loadGirls(), loadPacks(), loadWorld()]).catch(() => {});
+Promise.all([loadGirls(), loadPacks(), loadWorld(), loadFramePacks()]).catch(() => {});

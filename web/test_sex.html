@@ -71,7 +71,7 @@
     background: rgba(0,0,0,.45); border: 1px solid rgba(111,227,225,.25);
     color: #6fe3e1; padding: .15em .5em; border-radius: 4px; letter-spacing: .06em;
   }
-  /* 故意不放 #vn-figure / 劇本揭圖 / sex-anim */
+  /* 無立繪／無揭圖；肏時才短暫播 #sex-anim-popup */
 
   #vn-box {
     position: relative; z-index: 3;
@@ -137,13 +137,47 @@
     width: min(720px, 100%);
     flex: 0 0 auto;
   }
+
+  /* 局部動畫獨立彈窗：固定蓋過全 UI（含置中對話框） */
+  #sex-anim-popup {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483000 !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    pointer-events: none;
+    isolation: isolate;
+  }
+  #sex-anim-popup.hidden { display: none !important; }
+  #sex-anim-popup .sex-anim-popup-card {
+    position: relative;
+    z-index: 1;
+    max-width: min(92vw, 560px);
+    max-height: min(78vh, 720px);
+    border-radius: 14px;
+    overflow: hidden;
+    background: #0a0812;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 79, 216, .35);
+    pointer-events: none;
+  }
+  #sex-anim-popup .sex-anim-popup-card img,
+  #sex-anim-popup #sex-anim-img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: min(78vh, 720px);
+    object-fit: contain;
+    margin: 0;
+  }
 </style>
 </head>
 <body>
 <div class="top">
   <h1>性愛場景測試 / test_sex <span class="badge">無圖模式</span></h1>
   <div class="warn">
-    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。不顯示立繪／揭圖／局部動畫。
+    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。不顯示立繪／揭圖；按「肏」時短暫播局部動圖 1–4。
     <a href="/edit_date">約會劇本</a> | <a href="/test_date">約會測試</a> | <a href="/edit_pic">生圖測試</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
   </div>
   <div class="row">
@@ -181,6 +215,12 @@
   </div>
 </div>
 
+<!-- 局部動畫獨立彈層：肏時置頂播 1–4 幀後消失 -->
+<div id="sex-anim-popup" class="hidden" aria-hidden="true" role="dialog" aria-label="局部動畫">
+  <div class="sex-anim-popup-card">
+    <img id="sex-anim-img" alt="">
+  </div>
+</div>
 <script type="module" src="/content/test_sex.js"></script>
 </body>
 </html>
