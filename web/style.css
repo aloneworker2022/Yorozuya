@@ -1292,17 +1292,17 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 #sex-anim-overlay {
   position: fixed !important;
   inset: 0 !important;
-  z-index: 9999 !important;
+  z-index: 100 !important;
   display: flex !important;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, .55);
+  background: rgba(0, 0, 0, .45);
   pointer-events: none;
 }
 #sex-anim-overlay.hidden { display: none !important; }
 #sex-anim-overlay img {
-  max-width: min(96vw, 640px);
-  max-height: min(82vh, 780px);
+  max-width: min(94vw, 520px);
+  max-height: 72vh;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -1312,9 +1312,12 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   z-index: 1;
   filter: drop-shadow(0 8px 28px rgba(0, 0, 0, .65));
 }
+<<<<<<< HEAD
 body.sex-anim-on #vn-figure {
   visibility: hidden !important;
 }
+=======
+>>>>>>> 5b87eee (fix(script): 局部做愛動畫改固定最上層圖層)
 #aff-pop {
   position: absolute;
   left: 0.7em;
