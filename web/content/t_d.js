@@ -174,6 +174,7 @@ function emptyState() {
     round: 0,
     lastGirlLine: "",
     molestImgs: {},
+    hotelImgs: {},
     hotelScene: false,
     hotelWatching: false,
   };
@@ -1394,31 +1395,162 @@ function pickRandomHotel() {
   return list[Math.floor(Math.random() * list.length)];
 }
 
-async function ensureHotelActImage(act) {
-  const url = String(act?.slot?.url || "").trim();
-  if (url) return url;
-  const typ = currentMaleType();
-  if (!typ) return "";
-  try {
-    const eng = await getImgEng();
-    const places = scriptHotelPlaces();
-    const built = await buildMaleMolestImgBody(
-      act, typ, girl, eng, "anime", act.placeId || places[0]?.id || "hotel_room", places, relStage,
-    );
-    const r = await waitImg(built.body);
-    if (r.status === "done" && r.result) {
-      const u = String(r.result).split("?")[0];
-      if (act.slot) act.slot.url = u;
-      return u;
-    }
-  } catch (err) {
-    console.warn("[t_d] hotel act img failed", act?.id || act?.name, err);
-  }
-  return "";
+/** 先抽完整旅館播放序列（含階段 3 預滾），播放時不再重抽。 */
+function planHotelSequence(hotel) {
+  return buildHotelPlayQueue(hotel).map(normalizeHotelSexAct);
 }
 
 /**
- * 旅館做愛流程：扣金後隨機旅館 → 跟進／門外 → 階段播放 → 結算。
+ * 依序列預產旅館行為圖（文生圖：1girl→1boy）。
+ * 結果寫入 state.hotelImgs[actId]；失敗不中止。同 id 重複只產一次。
+ */
+async function pregenHotelImages(seq, onProgress) {
+  state.hotelImgs = {};
+  const list = Array.isArray(seq) ? seq : [];
+  const typ = currentMaleType();
+  if (!typ || !list.length) {
+    if (onProgress) onProgress(0, 0);
+    return;
+  }
+  const places = scriptHotelPlaces();
+  const need = [];
+  const seen = new Set();
+  for (const act of list) {
+    const id = String(act?.id || act?.name || "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const existing = String(act?.slot?.url || "").trim();
+    if (existing) {
+      state.hotelImgs[id] = existing.split("?")[0];
+      continue;
+    }
+    need.push(act);
+  }
+  if (!need.length) {
+    if (onProgress) onProgress(0, 0);
+    return;
+  }
+  const eng = await getImgEng();
+  for (let i = 0; i < need.length; i += 1) {
+    if (onProgress) onProgress(i, need.length);
+    const act = need[i];
+    const id = String(act.id || act.name || "").trim();
+    try {
+      const built = await buildMaleMolestImgBody(
+        act, typ, girl, eng, "anime",
+        act.placeId || places[0]?.id || "hotel_room", places, relStage,
+      );
+      const r = await waitImg(built.body);
+      if (r.status === "done" && r.result) {
+        const u = String(r.result).split("?")[0];
+        state.hotelImgs[id] = u;
+        if (act.slot) act.slot.url = u;
+      } else {
+        console.warn("[t_d] hotel pregen failed", id, r.error || r.status);
+      }
+    } catch (err) {
+      console.warn("[t_d] hotel pregen error", id, err);
+    }
+    if (onProgress) onProgress(i + 1, need.length);
+  }
+}
+
+function hotelActImageUrl(act) {
+  const id = String(act?.id || act?.name || "").trim();
+  return String(state.hotelImgs?.[id] || act?.slot?.url || "").trim();
+}
+
+/**
+ * 播放預抽序列。mode=true／watching＝場內；false＝門外。
+ * 回傳 { played, watchedActs }。
+ */
+async function playHotelSequence(seq, mode, hotelName = "") {
+  const m = state.male;
+  const gn = girl?.name || "她";
+  let watching = !!mode;
+  state.hotelWatching = watching;
+  const queueActs = Array.isArray(seq) ? seq : [];
+  const played = [];
+  let watchedActs = 0;
+
+  for (let i = 0; i < queueActs.length; i += 1) {
+    if (state.ended && !state.hotelScene) break;
+    const act = queueActs[i];
+    played.push(act);
+
+    if (watching) {
+      watchedActs += 1;
+      if (act.narrPrompt) {
+        const places = scriptHotelPlaces();
+        await playQueueAndWait([
+          { role: "sys", who: "旁白", text: fillHotelPlaceTokens(act.narrPrompt, act.placeId, places) },
+        ]);
+      }
+
+      const imgUrl = hotelActImageUrl(act);
+      if (imgUrl) {
+        enterPaging();
+        queue = [];
+        const cg = await runMolestCg({
+          url: imgUrl,
+          playerLine: act.playerAct || act.name || "",
+          playerWho: m?.name || "男子",
+          girlName: gn,
+          girlPromise: Promise.resolve(act.replyToPlayer || "……"),
+          delta: `階段 ${act.stage}　${act.name || ""}`,
+        });
+        if (cg?.aborted) {
+          /* 後台中止：仍繼續下一拍 */
+        }
+        busy = false;
+        paging = false;
+        queue = [];
+        notifyPagingDone();
+        renderHud();
+      } else {
+        const pages = [];
+        if (act.playerAct) pages.push({ role: "male", who: m?.name || "男子", text: act.playerAct });
+        if (act.replyToPlayer) pages.push({ role: "girl", who: gn, text: act.replyToPlayer });
+        if (!pages.length) {
+          pages.push({ role: "sys", who: "旁白", text: `（${act.name || "行為"}）` });
+        }
+        await playQueueAndWait(pages);
+      }
+
+      if (i < queueActs.length - 1) {
+        const next = await showChoices({
+          title: `${hotelName || "旅館"}　階段 ${act.stage}`,
+          body: act.name || "下一拍",
+          choices: [
+            { id: "stroke", label: "打手槍（繼續看）" },
+            { id: "leave_door", label: "出門等" },
+          ],
+        });
+        if (next === "leave_door") {
+          watching = false;
+          state.hotelWatching = false;
+          await playQueueAndWait([
+            {
+              role: "sys",
+              who: "旁白",
+              text: `你退到門外。從現在起只能聽見裡面的聲音。`,
+            },
+          ]);
+        }
+      }
+    } else {
+      const voice = String(act.voiceOut || "").trim()
+        || `（門內隱約傳來聲響……階段 ${act.stage}）`;
+      await playQueueAndWait([
+        { role: "sys", who: "門外", text: voice },
+      ]);
+    }
+  }
+  return { played, watchedActs };
+}
+
+/**
+ * 旅館做愛流程：扣金後隨機旅館 → 預抽序列＋預產圖 → 到旅館 → 跟進／門外 → 播放 → 結算。
  */
 async function runHotelSexScene() {
   const m = state.male;
@@ -1443,11 +1575,39 @@ async function runHotelSexScene() {
   state.hotelWatching = false;
   renderHud();
 
+  // 1) 先組完整播放序列（階段 3 在此預滾）
+  const seq = planHotelSequence(hotel);
+
+  // 2) 預產圖（趕路旁白＋省略號，失敗不中止）
+  busy = true;
+  enterPaging();
+  waitingAi = true;
+  renderHud();
+  const loadBase = "正在趕往旅館";
+  const bubble = addBubble("sys", "旁白", loadBase + "…");
+  const tx = bubble.querySelector(".tx");
+  const progress = { done: 0, total: 0 };
+  const stopDots = startArriveDots(tx, loadBase, () => progress);
+  try {
+    await pregenHotelImages(seq, (done, total) => {
+      progress.done = done;
+      progress.total = total;
+    });
+  } finally {
+    stopDots();
+    waitingAi = false;
+    busy = false;
+    paging = false;
+    notifyPagingDone();
+    renderHud();
+  }
+
+  // 3) 抵達後才問跟進／門外
   await playQueueAndWait([
     {
       role: "sys",
       who: "旁白",
-      text: `你付了 10 金。三人來到「${hotel.name}」。金錢 -10`,
+      text: `你付了 10 金。到了「${hotel.name}」。金錢 -10`,
     },
   ]);
 
@@ -1460,92 +1620,8 @@ async function runHotelSexScene() {
     ],
   });
 
-  let watching = enterChoice === "enter";
-  state.hotelWatching = watching;
-
-  const queueActs = buildHotelPlayQueue(hotel).map(normalizeHotelSexAct);
-  const played = [];
-  let watchedActs = 0;
-
-  for (let i = 0; i < queueActs.length; i += 1) {
-    if (state.ended && !state.hotelScene) break;
-    const act = queueActs[i];
-    played.push(act);
-
-    if (watching) {
-      watchedActs += 1;
-      if (act.narrPrompt) {
-        const places = scriptHotelPlaces();
-        await playQueueAndWait([
-          { role: "sys", who: "旁白", text: fillHotelPlaceTokens(act.narrPrompt, act.placeId, places) },
-        ]);
-      }
-
-      waitingAi = true;
-      renderHud();
-      const imgUrl = await ensureHotelActImage(act);
-      waitingAi = false;
-
-      if (imgUrl) {
-        enterPaging();
-        queue = [];
-        const cg = await runMolestCg({
-          url: imgUrl,
-          playerLine: act.playerAct || act.name || "",
-          playerWho: m.name,
-          girlName: gn,
-          girlPromise: Promise.resolve(act.replyToPlayer || "……"),
-          delta: `階段 ${act.stage}　${act.name || ""}`,
-        });
-        if (cg?.aborted) {
-          /* 後台中止：仍繼續下一拍 */
-        }
-        busy = false;
-        paging = false;
-        queue = [];
-        notifyPagingDone();
-        renderHud();
-      } else {
-        const pages = [];
-        if (act.playerAct) pages.push({ role: "male", who: m.name, text: act.playerAct });
-        if (act.replyToPlayer) pages.push({ role: "girl", who: gn, text: act.replyToPlayer });
-        if (!pages.length) {
-          pages.push({ role: "sys", who: "旁白", text: `（${act.name || "行為"}）` });
-        }
-        await playQueueAndWait(pages);
-      }
-
-      // 場內選擇：打手槍＝繼續；出門等＝改門外（不可再進）
-      if (i < queueActs.length - 1) {
-        const next = await showChoices({
-          title: `${hotel.name}　階段 ${act.stage}`,
-          body: act.name || "下一拍",
-          choices: [
-            { id: "stroke", label: "打手槍（繼續看）" },
-            { id: "leave_door", label: "出門等" },
-          ],
-        });
-        if (next === "leave_door") {
-          watching = false;
-          state.hotelWatching = false;
-          await playQueueAndWait([
-            {
-              role: "sys",
-              who: "旁白",
-              text: `你退到門外。從現在起只能聽見裡面的聲音。`,
-            },
-          ]);
-        }
-      }
-    } else {
-      // 門外：只播 voiceOut
-      const voice = String(act.voiceOut || "").trim()
-        || `（門內隱約傳來聲響……階段 ${act.stage}）`;
-      await playQueueAndWait([
-        { role: "sys", who: "門外", text: voice },
-      ]);
-    }
-  }
+  const watching = enterChoice === "enter";
+  const { played, watchedActs } = await playHotelSequence(seq, watching, hotel.name);
 
   const stats = countHotelStats(played);
   const ejacHeartGain = stats.ejacTotal * 2;

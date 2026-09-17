@@ -1,4 +1,4 @@
-/** 約會猥褻劇本：玩家包一定圖生圖；單男包文生圖（女子基礎＋lookEn＋prompt）。 */
+/** 約會猥褻劇本：玩家包一定圖生圖；單男包文生圖（1girl 女孩基礎 → 1boy＋lookEn＋動作）。 */
 
 import { fillBinds, bindHint, uid, normalizeSlot } from "./script_mode.js";
 import { girlForDate, dateOutfitText, pickDateOutfit } from "./date_outfit.js";
@@ -285,7 +285,7 @@ export function emptyMaleMolestPack(name = "單男猥褻") {
 
 /**
  * 單男猥褻文生圖下單。不要求 pose_ref。
- * 正向：女子基本設定 + lookEn + 場所英文 + 使用者正向（男性外觀／動作為主）。
+ * 正向層級：【1girl 女孩基礎】→【1boy＋lookEn＋場所＋動作】；模型用女子 comfyCkpt。
  */
 export async function buildMaleMolestImgBody(
   pack,
@@ -308,12 +308,20 @@ export async function buildMaleMolestImgBody(
   const outfitInfo = pickDateOutfit(girl, relStage);
   const dated = girlForDate(girl, outfitInfo);
   const base = await fetchMolestBasePrompt(girl, eng, style, relStage);
-  const userPositive = joinPromptParts(lookEn, placePos, userPos);
+  // 女孩塊必須有 1girl；男子層以 1boy 開頭，勿只送 lookEn 當整份 prompt
+  const girlBase = /\b1girl\b/i.test(base.positive || "")
+    ? String(base.positive || "").trim()
+    : joinPromptParts("1girl", base.positive);
+  const userPositive = joinPromptParts("1boy", lookEn, placePos, userPos);
   const userNegative = joinPromptParts(
     userNeg,
     "looking at viewer, text, watermark, ugly, extra fingers",
   );
-  const merged = mergeMolestPrompts(base, userPositive, userNegative);
+  const merged = mergeMolestPrompts(
+    { ...base, positive: girlBase },
+    userPositive,
+    userNegative,
+  );
   const comfy = (eng.imgProvider || "grok-img") === "comfy";
   return {
     body: {
@@ -325,7 +333,7 @@ export async function buildMaleMolestImgBody(
       style: style || "anime",
       character: dated,
       outfit: dateOutfitText(dated, outfitInfo),
-      // Comfy：整份合併正向；Grok：女子人設打底，extra 只放 lookEn／場所／輸入。
+      // Comfy：整份合併正向；Grok：女子人設打底，extra 放 1boy＋lookEn／場所／動作。
       prompt: comfy ? merged.positive : "",
       extra: comfy ? "" : merged.userPositive,
       negative: merged.negative,
@@ -337,11 +345,35 @@ export async function buildMaleMolestImgBody(
       ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: girlOwnCkpt(dated) || girlOwnCkpt(girl) } : {}),
     },
     merged,
-    base,
+    base: { ...base, positive: girlBase },
     lookEn,
     place: customPlace || placeOf(pid),
     dated,
   };
+}
+
+/** 單男／旅館預覽：標出 1girl 女孩塊 → 1boy＋場所＋動作 */
+export function formatMaleMolestOutputSheet(merged) {
+  const m = merged || {};
+  return [
+    "【1girl 女孩】",
+    m.basePositive || "（尚未抓到／沒選魅子）",
+    "",
+    "【1boy＋場所＋動作】",
+    m.userPositive || "（空白）",
+    "",
+    "【合併正向 → 送出】",
+    m.positive || "（空）",
+    "",
+    "【基礎負向】",
+    m.baseNegative || "（空）",
+    "",
+    "【＋輸入負向】",
+    m.userNegative || "（空白）",
+    "",
+    "【合併負向 → 送出】",
+    m.negative || "（空）",
+  ].join("\n");
 }
 
 export function buildMolestReplyMsgs(girlName, attitude, feelPrompt, narr, playerAct, stage) {

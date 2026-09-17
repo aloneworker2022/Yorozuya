@@ -454,7 +454,7 @@ export function classifyDateLine(text, script) {
   return { act: "interact" };
 }
 
-export { normalizeMolestPack, normalizeMolestPacks, emptyMaleMolestPack, buildMaleMolestImgBody } from "./date_molest.js";
+export { normalizeMolestPack, normalizeMolestPacks, emptyMaleMolestPack, buildMaleMolestImgBody, formatMaleMolestOutputSheet } from "./date_molest.js";
 export {
   normalizeHotels,
   normalizeHotel,
