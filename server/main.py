@@ -1832,9 +1832,9 @@ def _safe_token(s, n: int = 40) -> str:
 def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
     """生圖落地。(out_dir, url_prefix, fname)
 
-    - shot + char_id → portraits/{id}_{shot}.png（覆寫）
-    - char_id + card_id／scene_kind → portraits/{id}_card_{tag}.png（覆寫）
-    - 其餘（testword 實驗）→ testword/{stamp}.png（每次新檔）
+    - shot + char_id → portraits/{id}_{shot}.png（覆寫；.buff 原子寫）
+    - char_id + card_id／scene_kind∈{card,watch,scene} → portraits/{id}_card_{tag}.png（覆寫）
+    - scene_kind=script／sex_strip／其餘 → testword/{stamp}.png（每次新檔，不與立繪同路徑）
     """
     shot = str(opts.get("shot") or "").lower()
     char_id = _safe_token(opts.get("char_id"), 40)
@@ -3457,8 +3457,11 @@ async def _dd_run_script(girl: dict, cfg: dict, key: str, pack_id: str, scene: i
         ))
         urls.append(url or "")
     prev = (((girl.get("scriptArt") or {}).get(pack_id) or {}).get(str(scene)) or {}).get("urls") or []
+    at = int(time.time() * 1000)
     merged = [u or (prev[i] if i < len(prev) else "") for i, u in enumerate(urls)]
-    return {"scriptArt": {pack_id: {str(scene): {"urls": merged, "pose": pose, "at": int(time.time() * 1000)}}}}
+    # 劇本圖落 testword（新檔），仍加 ?v= 與立繪一致，避免發呆後前端吃到舊快取／殘留路徑
+    merged = [ddream.bust_asset_url(u, at) if u else "" for u in merged]
+    return {"scriptArt": {pack_id: {str(scene): {"urls": merged, "pose": pose, "at": at}}}}
 
 
 def _dd_begin(store: dict, data: dict, force: bool) -> dict:

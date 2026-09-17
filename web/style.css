@@ -1475,14 +1475,15 @@ body.sense-mode #kanban-girl {
 .sense-date-confirm button.cyan {
   background: rgba(111, 227, 225, .18); color: var(--cyan);
 }
-#tease-thrust, #tease-cum {
+#tease-next, #tease-thrust, #tease-cum {
   flex: 1; border: none; border-radius: 10px; font: inherit;
   font-size: 1.15em; letter-spacing: .35em; padding: .75em 0; cursor: pointer;
 }
+#tease-next { background: rgba(111, 227, 225, .2); color: var(--cyan); letter-spacing: .2em; }
 #tease-thrust { background: rgba(255, 79, 216, .28); color: var(--pink); }
 #tease-cum { background: rgba(255, 210, 80, .28); color: var(--gold); }
-#tease-cum.hidden { display: none; }
-#tease-thrust:disabled, #tease-cum:disabled { opacity: .35; cursor: default; }
+#tease-next.hidden, #tease-cum.hidden, #tease-thrust.hidden { display: none; }
+#tease-next:disabled, #tease-thrust:disabled, #tease-cum:disabled { opacity: .35; cursor: default; }
 body.tease-play #chat-input-row { display: none; }
 
 /* 觀戰控制列 */

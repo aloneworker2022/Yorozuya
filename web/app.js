@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.48(2026-09-17)約會改edit_date";
+const APP_VER = "v7.49(2026-09-17)劇本下一句＋修破圖";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5066,10 +5066,14 @@ async function daydreamScriptScene(s, job) {
   s.scriptArt ??= {};
   s.scriptArt[pack.id] ??= {};
   const prev = s.scriptArt[pack.id][String(scene)]?.urls || [];
+  const artAt = Date.now();
   s.scriptArt[pack.id][String(scene)] = {
-    urls: urls.map((u, i) => u || prev[i] || ""),
+    urls: urls.map((u, i) => {
+      const raw = u || prev[i] || "";
+      return raw ? bustAssetUrl(raw, artAt) : "";
+    }),
     pose,
-    at: Date.now(),
+    at: artAt,
   };
   dirty = true;
   try { saveNow(); } catch { /* */ }
@@ -5151,6 +5155,16 @@ async function runDaydreamJobs() {
   toast("發呆完成——已換上一套新圖", "good");
   renderAll();
 }
+
+/** 同路徑覆寫的資產 URL 加 ?v=，逼瀏覽器重抓（立繪／劇本圖共用）。 */
+function bustAssetUrl(url, ver) {
+  if (!url) return "";
+  const clean = String(url).split("?")[0].split("#")[0];
+  if (!clean) return "";
+  const v = ver != null && ver !== "" ? ver : Date.now();
+  return `${clean}?v=${v}`;
+}
+
 function applyDaydreamPatches(patches) {
   if (!patches || !state?.succubi) return false;
   let changed = false;
@@ -5189,8 +5203,26 @@ function applyDaydreamPatches(patches) {
     if (p.scriptArt) {
       s.scriptArt = s.scriptArt || {};
       for (const [pid, scenes] of Object.entries(p.scriptArt)) {
-        s.scriptArt[pid] = { ...(s.scriptArt[pid] || {}), ...scenes };
+        const nextScenes = {};
+        for (const [sn, rec] of Object.entries(scenes || {})) {
+          const at = rec?.at || p.portraitsRefreshedAt || Date.now();
+          const urls = Array.isArray(rec?.urls)
+            ? rec.urls.map(u => (u ? bustAssetUrl(u, at) : ""))
+            : [];
+          nextScenes[sn] = { ...(rec || {}), urls, at };
+        }
+        s.scriptArt[pid] = { ...(s.scriptArt[pid] || {}), ...nextScenes };
       }
+      // 發呆覆寫劇本圖後，若正播這隻的 ScriptMode，立刻換上 bust 過的 URL
+      try {
+        if (isTeasePlay() && chatWith === s.id) {
+          const play = chatSession?.tease?.play;
+          if (play?.pack) {
+            play.urls = scriptSceneUrls(s, play.pack, play.scene);
+            if (typeof vnFace === "function") vnFace(s, chatSession?.mood);
+          }
+        }
+      } catch { /* */ }
       changed = true;
     }
   }
@@ -5854,6 +5886,13 @@ function syncTeasePlayUi() {
   const p = chatSession?.tease?.play;
   const scene = Number(p?.scene) || 0;
   const canThrust = !!(live && !p?.ending && (scene === 2 || scene === 3));
+  // 場景1／結局：專用「下一句」推進，不再靠點整塊 chat-view
+  const needNext = !!(live && (
+    p?.openStep === "wait_ai" ||
+    p?.openStep === "wait_go" ||
+    p?.openStep === "wait_end"
+  ));
+  const showAct = canThrust || needNext;
   const inputRow = document.getElementById("chat-input-row");
   const actRow = document.getElementById("tease-act-row");
   if (inputRow) {
@@ -5868,12 +5907,18 @@ function syncTeasePlayUi() {
       else inputRow.style.visibility = "";
     }
   }
-  if (actRow) actRow.classList.toggle("hidden", !canThrust);
+  if (actRow) actRow.classList.toggle("hidden", !showAct);
   document.body.classList.toggle("tease-play", live);
+  const nextBtn = document.getElementById("tease-next");
   const thrust = document.getElementById("tease-thrust");
   const cum = document.getElementById("tease-cum");
   const kind = chatSession?.tease?.kind || "";
+  if (nextBtn) {
+    nextBtn.classList.toggle("hidden", !needNext);
+    nextBtn.disabled = !needNext;
+  }
   if (thrust) {
+    thrust.classList.toggle("hidden", !canThrust);
     thrust.disabled = !canThrust;
     thrust.textContent = kind === "oral" ? "含" : "肏";
   }
@@ -6049,10 +6094,20 @@ async function scriptGenImage(s, slot, spec, pose, slotIndex, extra = {}) {
 }
 
 function scriptSceneUrls(s, pack, n) {
-  const pre = s?.scriptArt?.[pack?.id]?.[String(n)]?.urls;
-  if (Array.isArray(pre) && pre.filter(Boolean).length) return pre.filter(Boolean);
+  const rec = s?.scriptArt?.[pack?.id]?.[String(n)];
+  const pre = rec?.urls;
+  const ver = rec?.at || s?.portraitsRefreshedAt || Date.now();
+  if (Array.isArray(pre) && pre.filter(Boolean).length) {
+    return pre.filter(Boolean).map(u => {
+      if (!u) return "";
+      // 已有 ?v= 就沿用；否則用 at／portraitsRefreshedAt 補 bust
+      return String(u).includes("?v=") ? u : bustAssetUrl(u, ver);
+    });
+  }
   const slots = pack?.scenes?.[String(n)]?.slots || [];
-  return slots.map(x => x.url).filter(Boolean);
+  return slots.map(x => x.url).filter(Boolean).map(u => (
+    String(u).includes("?v=") ? u : bustAssetUrl(u, ver)
+  ));
 }
 
 function scriptFirstNarr(s, pack, n) {
@@ -6147,6 +6202,7 @@ async function beginScriptScene(s, n, opts = {}) {
   if (done === "abort" || chatSession?.tease !== t) return;
   play.openStep = "wait_end";
   play.awaiting = false;
+  syncTeasePlayUi();
 }
 
 async function scriptHandleTap(s) {
@@ -6171,6 +6227,7 @@ async function scriptHandleTap(s) {
     play.revealImg = true;
     play.openStep = "wait_go";
     play.awaiting = false;
+    syncTeasePlayUi();
     vnFace(s, chatSession?.mood);
     return;
   }
@@ -15751,23 +15808,58 @@ function renderPlayerAttrs() {
 // 聊天插播層:蓋在所有分頁之上,只有「結束對話」能退出
 // 聊天畫面的她:名字旁的小頭像(head)+ 對話框上方的立繪(half,已去背)。
 // 沒有(舊存檔、還沒織完)就整個藏起來,不留破圖框。
+function bindVnImgSafe(img) {
+  if (!img || img.dataset.safeBound) return;
+  img.dataset.safeBound = "1";
+  img.addEventListener("error", () => {
+    img.classList.add("hidden");
+    try { img.removeAttribute("src"); } catch { /* */ }
+    if (img.id === "vn-figure") document.body.classList.remove("has-figure");
+  });
+  img.addEventListener("load", () => {
+    if (img.getAttribute("src")) img.classList.remove("hidden");
+    if (img.id === "vn-figure" && img.getAttribute("src")) {
+      document.body.classList.add("has-figure");
+    }
+  });
+}
+
+function setVnImgSrc(img, url) {
+  if (!img) return;
+  bindVnImgSafe(img);
+  const next = String(url || "").trim();
+  if (!next) {
+    img.classList.add("hidden");
+    try { img.removeAttribute("src"); } catch { /* */ }
+    return;
+  }
+  if (img.getAttribute("src") === next) {
+    // 同 URL 已在畫：保持顯示（避免誤藏）
+    if (img.complete && img.naturalWidth > 0) img.classList.remove("hidden");
+    return;
+  }
+  // 先藏，等 load 再顯；onerror 會清掉破圖框
+  img.classList.add("hidden");
+  img.src = next;
+}
+
 function vnFace(s, mood = null) {
   const show = !!s && chatShowsPortrait();
   const face = $("#vn-face");
   if (face) {
     const url = show ? girlShot(s, "head") : "";
-    face.classList.toggle("hidden", !url);
-    if (url && face.getAttribute("src") !== url) face.src = url;
+    setVnImgSrc(face, url);
     face.alt = s?.name || "";
   }
   const fig = $("#vn-figure");
   if (fig) {
-    const teaseUrl = show && chatSession?.tease ? teaseImageUrl(s, chatSession.tease) : "";
+    const rawTease = show && chatSession?.tease ? teaseImageUrl(s, chatSession.tease) : "";
+    // 空／假 URL 不當有效 tease 圖，避免留下上一張破圖 src
+    const teaseUrl = rawTease && String(rawTease).trim() ? rawTease : "";
     const m = mood || chatSession?.mood || "xi";
     const url = teaseUrl || (show ? (girlShotMood(s, m) || s.portraits?.half || "") : "");
-    fig.classList.toggle("hidden", !url);
     fig.classList.toggle("tease-on", !!teaseUrl);
-    if (url && fig.getAttribute("src") !== url) fig.src = url;
+    setVnImgSrc(fig, url);
     fig.alt = s?.name || "";
     document.body.classList.toggle("has-figure", !!url);
   }
@@ -16359,6 +16451,10 @@ on("chat-romance", "click", () => {
   if (btn.dataset.mode === "propose") void doPropose();
   else void doConfess();
 });
+on("tease-next", "click", () => {
+  const s = state.succubi.find(x => x.id === chatWith);
+  if (s && isTeasePlay()) void scriptHandleTap(s);
+});
 on("tease-thrust", "click", () => {
   const s = state.succubi.find(x => x.id === chatWith);
   if (s && isTeasePlay()) void scriptHandleThrust(s);
@@ -16369,10 +16465,8 @@ on("tease-cum", "click", () => {
 });
 on("chat-view", "click", (e) => {
   if (e.target.closest("button, input, a, #chat-backlog")) return;
-  if (vnSkipType()) return;
-  if (!isTeasePlay()) return;
-  const s = state.succubi.find(x => x.id === chatWith);
-  if (s) void scriptHandleTap(s);
+  // 劇本推進改走 #tease-next；點畫面只略過打字機
+  vnSkipType();
 });
 // 詢問鈕已移除（感應／聊天不再用）
 on("watch-next", "click", () => { if (watchSession?.atEnd) exitWatch(); else watchNext(); });
