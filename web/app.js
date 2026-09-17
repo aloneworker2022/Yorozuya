@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.46(2026-09-17)正式公園約會";
+const APP_VER = "v7.47(2026-09-17)公園限定＋單男1/36";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -12915,7 +12915,8 @@ function availableVenues() {
 
 /** 名冊／感應約會可抽場地。暫時只開公園 VN；其他場地晚點回來。 */
 function dateVenues() {
-  return availableVenues().filter((v) => v.id === "park");
+  const park = availableVenues().find((v) => v.id === "park");
+  return [park || { id: "park", name: "公園", fee: 2 }];
 }
 
 function datesLeftToday(s) {
@@ -12948,7 +12949,17 @@ function canPeekTaken(s) {
 function venueById(venueId) {
   return availableVenues().find(x => x.id === venueId)
     || (Cards.venuesList?.() || []).find(x => x.id === venueId)
+    || (venueId === "park" ? { id: "park", name: "公園", fee: 2 } : null)
     || null;
+}
+
+/** 舊版殘留的待確認場地一律收斂成公園，避免旅館重新出現在約會確認列。 */
+function normalizePendingDateFlow(girlId) {
+  if (dateFlow?.girlId !== girlId) return null;
+  if (dateFlow.venueId !== "park") {
+    dateFlow = { ...dateFlow, venueId: "park" };
+  }
+  return dateFlow;
 }
 
 /** 被召喚走時打電話：接通率 1/5（可連打、不扣金、不佔約會額度） */
@@ -13110,6 +13121,11 @@ function beginDateFlow(girlId) {
     toast(`先結束與 ${rec.girlName || "她"} 的牌局（已打開牌桌）`, "bad");
     return;
   }
+  // 舊版可能留下旅館待確認；清掉後重新抽一通，不能重顯旅館。
+  if (dateFlow?.girlId === girlId && dateFlow.venueId !== "park") {
+    dateFlow = null;
+    dateChooser = false;
+  }
   // 已抽好地點、待確認：再按約會只是重顯確認列
   if (dateFlow?.girlId === girlId && dateFlow.venueId) {
     if (inSense) {
@@ -13160,7 +13176,7 @@ function beginDateFlow(girlId) {
 
   // 全池隨機抽地點（不可選）；玩家再決定要不要付錢去
   const v = venues[Math.floor(Math.random() * venues.length)];
-  dateFlow = { girlId, phoneCost: cost, venueId: v.id };
+  dateFlow = { girlId, phoneCost: cost, venueId: "park" };
   toast(`${s.name} 接了——抽到「${v.name}」`, "good");
   scheduleSave();
   if (inSense) {
@@ -15820,7 +15836,8 @@ function paintSenseActRow() {
     return;
   }
   row.classList.remove("hidden");
-  const pending = (dateFlow?.girlId === chatWith) ? venueById(dateFlow.venueId) : null;
+  const pendingFlow = normalizePendingDateFlow(chatWith);
+  const pending = pendingFlow ? venueById("park") : null;
   const busy = !!chatSession?.busy;
   if (pending && confirm) {
     row.classList.add("sense-confirming");
@@ -16021,7 +16038,8 @@ function renderDetail(s, root) {
   const showDate = canDateToday(s);
   const showPeek = canPeekTaken(s);
   const dateBtnLabel = showPeek ? "窺視" : "約會";
-  const pendingVenue = (dateFlow?.girlId === s.id) ? venueById(dateFlow.venueId) : null;
+  const pendingFlow = normalizePendingDateFlow(s.id);
+  const pendingVenue = pendingFlow ? venueById("park") : null;
   const pendingFee = Number(pendingVenue?.fee) || 0;
   const senseHint = takenAway
     ? `被帶走中 · 免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只能「召喚」或「約會」 · 召喚費依店頭看板人數階梯（失敗結束感應）`

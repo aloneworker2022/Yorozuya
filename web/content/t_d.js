@@ -102,9 +102,14 @@ function clearOfficialParkFlag() {
   try { sessionStorage.removeItem(OFFICIAL_PARK_KEY); } catch { /* */ }
 }
 
+function maleSpawnDenom() {
+  const arousal = Number(state.arousal) || 0;
+  const shame = Number(state.shame) || 0;
+  return Math.max(1, 36 - arousal - shame);
+}
+
 function maleSpawnChance() {
-  // 正式名冊 1/20；手動 /test_date 測試仍 1/2
-  return isOfficialDate() ? 1 / 20 : 1 / 2;
+  return 1 / maleSpawnDenom();
 }
 
 async function fetchSaveDoc() {
@@ -1296,7 +1301,7 @@ async function aiSexAnnounce(who) {
 /**
  * 玩家成功行動回合後：
  * - 場上已有單男 → 等玩家猜招（不自動男子回合）
- * - 否則 → 抽種類搭訕（正式名冊 1/20；手動測試 1/2）
+ * - 否則 → 抽種類搭訕（單男 1/N；性慾／羞恥每點減分母）
  */
 async function maybeMaleBeat() {
   if (state.ended) return false;
@@ -2671,7 +2676,7 @@ async function boot() {
       showOfficialExit(false);
       const empty = $("empty");
       if (empty) empty.textContent = `正式公園約會：${g.name}（關係 ${relOf(relStage).name}）`;
-      setAdminStatus(`正式約會 · ${g.name} · 單男 1/20`);
+      setAdminStatus(`正式約會 · ${g.name} · 單男 1/${maleSpawnDenom()}`);
       await startDate();
     }
   } catch (e) {
