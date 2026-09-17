@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.30(2026-09-17)Line橫排再上疊";
+const APP_VER = "v7.31(2026-09-17)日誌LINE點空白回委託板";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -10537,6 +10537,34 @@ function toggleLine() {
   else goLine();
 }
 
+/** 日誌／LINE：點筆記本或聊天卡以外的空白 → 回委託板 */
+function wireDiaryBackdropLeave() {
+  const scene = document.getElementById("qs-diary");
+  if (!scene || scene.dataset.bgLeave === "1") return;
+  scene.dataset.bgLeave = "1";
+  scene.addEventListener("click", (ev) => {
+    if (qScene !== "diary" && qScene !== "line") return;
+    const t = ev.target;
+    if (!(t instanceof Element)) return;
+    // 互動元件與主內容不觸發
+    if (t.closest("button, a, input, textarea, select, label, .nb-card, .line-chat, .diary-tab, .line-tab")) return;
+    // 點到場景空白／標題列空白／舞台空白
+    if (
+      t.id === "qs-diary"
+      || t.id === "diary-stage"
+      || t.id === "diary-nav"
+      || t.id === "diary-badge"
+      || t.classList.contains("lv-area")
+      || t.classList.contains("lv-inner")
+      || t.classList.contains("lv-hdr")
+      || t.classList.contains("diary-badge")
+    ) {
+      if (qScene === "line" || lineOpen) leaveLine();
+      else leaveDiary();
+    }
+  });
+}
+
 function renderQuests() {
   renderExec();
   renderProc();
@@ -11397,10 +11425,9 @@ function renderLineChat(stage, nav) {
   const n = lineRosterGirls().length;
   stage.innerHTML = `<div class="line-chat" id="line-chat">
     <div class="line-hdr">
-      <button type="button" class="line-back" id="line-back" aria-label="回委託板">‹</button>
       <div class="line-hdr-main">
         <div class="line-hdr-title">${esc(lg.title || "名冊群")}</div>
-        <div class="line-hdr-sub">${n} 人</div>
+        <div class="line-hdr-sub">${n} 人・點空白或「委託板」可返回</div>
       </div>
       <button type="button" class="line-clear" id="line-clear" title="清掉較早，只留上一則玩家訊息起">清除</button>
     </div>
@@ -11413,7 +11440,6 @@ function renderLineChat(stage, nav) {
   if (nav) nav.textContent = "名冊群・每人獨立已讀";
   _lineScrollStick = true;
   paintLineMessages();
-  $("#line-back")?.addEventListener("click", () => closeLineChat());
   $("#line-clear")?.addEventListener("click", () => clearLineToLastPlayer());
   $("#line-send")?.addEventListener("click", () => sendLinePlayerMsg());
   $("#line-input")?.addEventListener("keydown", ev => {
@@ -15846,7 +15872,10 @@ on("hud-need", "click", () => switchTab(2));
 on("q-back", "click", () => goExec());
 on("diary-tab", "click", () => toggleDiary());
 on("line-tab", "click", () => toggleLine());
-on("diary-back", "click", () => leaveDiary());
+on("diary-back", "click", () => {
+  if (qScene === "line" || lineOpen) leaveLine();
+  else leaveDiary();
+});
 
 on("set-player", "change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
 on("set-sleep-start", "change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });

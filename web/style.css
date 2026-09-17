@@ -589,9 +589,15 @@ body.asleep #book { animation: none; opacity: .7; }
 #page-quests.on-proc #qs-exec { transform: translateX(-40%); }
 #page-quests.on-proc #qs-proc { transform: translateX(0); }
 #page-quests.on-diary #qs-exec,
-#page-quests.on-line #qs-exec { transform: translateX(40%); }
+#page-quests.on-line #qs-exec {
+  transform: translateX(40%);
+  pointer-events: none; /* 勿點穿回委託板 */
+}
 #page-quests.on-diary #qs-proc,
-#page-quests.on-line #qs-proc { transform: translateX(140%); }
+#page-quests.on-line #qs-proc {
+  transform: translateX(140%);
+  pointer-events: none;
+}
 #page-quests.on-diary #qs-diary,
 #page-quests.on-line #qs-diary { transform: translateX(0); }
 #page-quests.on-diary #quest-input-row,
@@ -2381,16 +2387,18 @@ body.card-mode.has-ct-figure #kanban-girl {
   align-items: stretch;
 }
 
-#page-quests.on-line #qs-diary > .lv-hdr,
 #page-quests.on-line #diary-nav {
   display: none;
 }
 #page-quests.on-line #qs-diary .lv-area {
   padding-left: 38px;
-  padding-top: 8px;
 }
 #page-quests.on-line .line-chat {
-  height: min(78vh, 620px);
+  height: min(72vh, 560px);
+}
+/* 日誌／LINE：點卡片外空白可回委託板 */
+#qs-diary .lv-area, #qs-diary .lv-inner, #diary-stage {
+  cursor: default;
 }
 
 #diary-stage:has(.line-chat) {
