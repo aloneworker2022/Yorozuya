@@ -67,6 +67,22 @@ const MOLEST_ODDS = {
   girlfriend: 4,
   wife: 1,
 };
+const HOTEL_HEART_PENALTY = {
+  stranger: 1,
+  friend: 2,
+  girlfriend: 4,
+  wife: 0,
+};
+
+function signedDelta(n) {
+  return n >= 0 ? `+${n}` : String(n);
+}
+
+function applyHeartDelta(delta) {
+  const before = Number(state.heart) || 0;
+  state.heart = Math.max(0, before + delta);
+  return state.heart - before;
+}
 
 function molestOddsDenom() {
   const n = MOLEST_ODDS[relStage];
@@ -1438,6 +1454,7 @@ async function runHotelSexScene() {
 
   const queueActs = buildHotelPlayQueue(hotel).map(normalizeHotelSexAct);
   const played = [];
+  let watchedActs = 0;
 
   for (let i = 0; i < queueActs.length; i += 1) {
     if (state.ended && !state.hotelScene) break;
@@ -1445,6 +1462,7 @@ async function runHotelSexScene() {
     played.push(act);
 
     if (watching) {
+      watchedActs += 1;
       if (act.narrPrompt) {
         await playQueueAndWait([
           { role: "sys", who: "旁白", text: act.narrPrompt },
@@ -1518,9 +1536,14 @@ async function runHotelSexScene() {
   }
 
   const stats = countHotelStats(played);
+  const ejacHeartGain = stats.ejacTotal * 2;
+  const insideHeartLoss = watchedActs * (HOTEL_HEART_PENALTY[relStage] ?? 0);
+  const rawHeartDelta = ejacHeartGain - insideHeartLoss;
+  const appliedHeartDelta = applyHeartDelta(rawHeartDelta);
   const summary =
     `這晚：行為 ${stats.acts} 次，內射 ${stats.ejacIn} 次，外射 ${stats.ejacOut} 次。`
-    + (stats.ejacTotal ? `（射精 ${stats.ejacTotal} 次）` : "");
+    + (stats.ejacTotal ? `（射精 ${stats.ejacTotal} 次）` : "")
+    + `感情 ${signedDelta(appliedHeartDelta)}（射精獎勵 +${ejacHeartGain}；場內行為 -${insideHeartLoss}，${relOf(relStage).name}每次 -${HOTEL_HEART_PENALTY[relStage] ?? 0}）。`;
 
   state.hotelScene = false;
   state.hotelWatching = false;
@@ -1585,6 +1608,8 @@ async function resolveSexBranch(from) {
   }
 
   const n = 3 + Math.floor(Math.random() * 4); // 3–6
+  const leaveHeartLoss = 10 + (n * 10);
+  const appliedHeartDelta = applyHeartDelta(-leaveHeartLoss);
   m.sex = true;
   m.onField = false;
   state.ended = true;
@@ -1592,7 +1617,7 @@ async function resolveSexBranch(from) {
     {
       role: "sys",
       who: "旁白",
-      text: `你轉身離開。${gn}會在你不知道的地方，跟${m.name}做 ${n} 次……`,
+      text: `你轉身離開。${gn}會在你不知道的地方，跟${m.name}做 ${n} 次……感情 ${signedDelta(appliedHeartDelta)}（離開分支射精 ${n} 次，-10 - ${n}×10）。`,
     },
     {
       role: "sys",
