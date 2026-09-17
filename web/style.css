@@ -1280,6 +1280,33 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   pointer-events: none;
   animation: float 6s ease-in-out infinite;
 }
+/* 劇本揭圖是聊天內的最底層背景板；對話與操作仍在其上 */
+body.script-reveal #vn-figure-slot {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  width: 100%;
+  pointer-events: none;
+  min-height: 0;
+}
+body.script-reveal .chat-top,
+body.script-reveal #vn-box,
+body.script-reveal #chat-input-row,
+body.script-reveal #tease-act-row,
+body.script-reveal #sense-act-row,
+body.script-reveal #watch-controls,
+body.script-reveal #sac-controls,
+body.script-reveal #ssac-controls {
+  position: relative;
+  z-index: 2;
+}
+body.sex-anim-on.script-reveal #vn-figure {
+  /* 劇本圖仍可見於局部動畫下方，不藏立繪 */
+  filter: brightness(.55);
+}
 #vn-figure.hidden { display: none; }
 #vn-figure.tease-on {
   object-position: center center;

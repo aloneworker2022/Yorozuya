@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.60(2026-09-17)局部動畫獨立彈窗置頂";
+const APP_VER = "v7.61(2026-09-17)劇本圖最下層";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -6075,12 +6075,8 @@ function scriptAnimUrls() {
   urls = pick(FramePack.packFrameUrls(anyPack));
   if (urls.length) return urls;
 
-  // 最後才用劇本揭圖／立繪湊數
-  urls = pick(play?.urls);
-  if (urls.length) return urls;
-  const fig = document.getElementById("vn-figure");
-  const src = fig && !fig.classList.contains("hidden") ? String(fig.getAttribute("src") || "").trim() : "";
-  return src ? [src] : [];
+  // 劇本揭圖／立繪不是局部動畫，絕不拿來湊數，避免整張劇本圖蓋住動畫
+  return [];
 }
 
 function scriptAnimLoad(run, img, url) {
@@ -6130,6 +6126,7 @@ async function flashScriptAnim() {
     return;
   }
   stopScriptAnim();
+  document.body.classList.add("sex-anim-on");
   // 獨立彈窗：掛到 <html> 最末，脫離任何 transform / 聊天堆疊上下文
   (document.documentElement || document.body).appendChild(box);
   const run = { cancelled: false, waiters: new Set() };
@@ -7457,7 +7454,7 @@ function exitChat() {
   stopScriptAnim();
   chatAbort?.abort();
   chatWith = null; chatSession = null;
-  document.body.classList.remove("chat-mode", "sense-mode", "tease-play");
+  document.body.classList.remove("chat-mode", "sense-mode", "tease-play", "script-reveal", "sex-anim-on");
   syncTeasePlayUi();
   scheduleSave(); renderAll();
 }
@@ -16039,6 +16036,9 @@ function setVnImgSrc(img, url) {
 
 function vnFace(s, mood = null) {
   const show = !!s && chatShowsPortrait();
+  const tease = chatSession?.tease;
+  const scriptReveal = !!(tease?.script && tease?.play?.revealImg);
+  document.body.classList.toggle("script-reveal", scriptReveal);
   const face = $("#vn-face");
   if (face) {
     const url = show ? girlShot(s, "head") : "";
@@ -16047,8 +16047,6 @@ function vnFace(s, mood = null) {
   }
   const fig = $("#vn-figure");
   if (fig) {
-    const tease = chatSession?.tease;
-    const scriptReveal = !!(tease?.script && tease?.play?.revealImg);
     const rawTease = show && tease ? teaseImageUrl(s, tease) : "";
     // 空／假 URL 不當有效 tease 圖，避免留下上一張破圖 src
     const teaseUrl = rawTease && String(rawTease).trim() ? rawTease : "";
