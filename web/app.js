@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.50(2026-09-17)劇本圖別變立繪";
+const APP_VER = "v7.51(2026-09-17)劇本圖寫入存檔套用";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5255,6 +5255,8 @@ async function pollDaydreamStatus(force = false) {
     const patched = applyDaydreamPatches(j.patches);
     paintDaydreamBanner();
     if (patched) {
+      // 發呆 patches 寫進名冊記憶體後立刻排程存檔，避免只活在 ephemeral 層
+      try { dirty = true; scheduleSave(); } catch { /* */ }
       try {
         for (const s of state.succubi || []) {
           if (typeof isKanban === "function" && isKanban(s.id) && typeof replaceKanbanFullStand === "function") {
@@ -5949,7 +5951,7 @@ function startTeaseMode(s, kind, pack) {
     const chosen = (pack && ScriptMode.resolveScriptKind(pack.kind) === kind)
       ? ScriptMode.normalizePack(pack)
       : ScriptMode.pickPack(SCRIPT_PACKS, kind);
-    const usePack = chosen;
+    const usePack = preferScriptPackWithArt(s, chosen, kind);
     chatSession.tease = {
       kind,
       label: ScriptMode.KIND_ZH[kind] || teaseKindLabel(kind),
@@ -5969,6 +5971,12 @@ function startTeaseMode(s, kind, pack) {
     };
     s.history?.push({ role: "sys", content: `劇本・${ScriptMode.KIND_ZH[kind]}・場景1`, t: Date.now() });
     syncTeasePlayUi();
+    // 缺預產圖才提示一次；有圖保持安靜
+    try {
+      if (packScriptArtCount(s, usePack, 1) <= 0 && !scriptSceneUrls(s, usePack, 1).length) {
+        toast("劇本圖未就緒（尚無預產／槽位圖）", "");
+      }
+    } catch { /* */ }
     await beginScriptScene(s, 1);
   })();
 }
@@ -6095,21 +6103,66 @@ async function scriptGenImage(s, slot, spec, pose, slotIndex, extra = {}) {
   return "";
 }
 
+/** 這份劇本在名冊裡有幾張非空預產圖（可限某一景）。 */
+function packScriptArtCount(s, pack, scene) {
+  if (!s || !pack?.id) return 0;
+  if (scene != null) {
+    const urls = s.scriptArt?.[pack.id]?.[String(scene)]?.urls;
+    return Array.isArray(urls) ? urls.filter(Boolean).length : 0;
+  }
+  const art = s.scriptArt?.[pack.id];
+  if (!art || typeof art !== "object") return 0;
+  let n = 0;
+  for (const rec of Object.values(art)) {
+    if (Array.isArray(rec?.urls)) n += rec.urls.filter(Boolean).length;
+  }
+  return n;
+}
+
+/**
+ * 關鍵詞命中的 pack 可能沒有發呆預產圖；改挑同 kind 有 scriptArt 的
+ *（優先 active），避免預產圖浪費。
+ */
+function preferScriptPackWithArt(s, pack, kind) {
+  if (!pack) return pack;
+  const k = ScriptMode.resolveScriptKind(kind || pack.kind);
+  if (packScriptArtCount(s, pack) > 0) return pack;
+  const active = ScriptMode.pickPack(SCRIPT_PACKS, k);
+  if (active && packScriptArtCount(s, active) > 0) {
+    return ScriptMode.normalizePack(active);
+  }
+  const packs = SCRIPT_PACKS?.packs || [];
+  const hit = packs.find(
+    p => ScriptMode.resolveScriptKind(p.kind) === k && packScriptArtCount(s, p) > 0,
+  );
+  return hit ? ScriptMode.normalizePack(hit) : pack;
+}
+
 function scriptSceneUrls(s, pack, n) {
+  const bust = (list, ver) => (list || []).filter(Boolean).map(u => (
+    String(u).includes("?v=") ? u : bustAssetUrl(u, ver)
+  ));
   const rec = s?.scriptArt?.[pack?.id]?.[String(n)];
   const pre = rec?.urls;
   const ver = rec?.at || s?.portraitsRefreshedAt || Date.now();
+  // 1) 本 pack 的 scriptArt（全空則不算，避免蓋掉後面好來源）
   if (Array.isArray(pre) && pre.filter(Boolean).length) {
-    return pre.filter(Boolean).map(u => {
-      if (!u) return "";
-      // 已有 ?v= 就沿用；否則用 at／portraitsRefreshedAt 補 bust
-      return String(u).includes("?v=") ? u : bustAssetUrl(u, ver);
-    });
+    return bust(pre, ver);
   }
+  // 2) 同 kind 其他 pack 的 scriptArt（預產圖勿浪費）
+  const k = ScriptMode.resolveScriptKind(pack?.kind);
+  for (const p of (SCRIPT_PACKS?.packs || [])) {
+    if (!p?.id || p.id === pack?.id) continue;
+    if (ScriptMode.resolveScriptKind(p.kind) !== k) continue;
+    const alt = s?.scriptArt?.[p.id]?.[String(n)];
+    const urls = alt?.urls;
+    if (Array.isArray(urls) && urls.filter(Boolean).length) {
+      return bust(urls, alt?.at || ver);
+    }
+  }
+  // 3) 最後才退 slots[].url
   const slots = pack?.scenes?.[String(n)]?.slots || [];
-  return slots.map(x => x.url).filter(Boolean).map(u => (
-    String(u).includes("?v=") ? u : bustAssetUrl(u, ver)
-  ));
+  return bust(slots.map(x => x.url), ver);
 }
 
 function scriptFirstNarr(s, pack, n) {
@@ -6175,6 +6228,10 @@ async function beginScriptScene(s, n, opts = {}) {
   play.lineDone = false;
   play.lineI = 0;
   play.imgPending = false;
+  // 場景一开始就載好 urls（revealImg 仍 false），等 wait_go 揭圖時才顯示
+  if (play.pack && packScriptArtCount(s, play.pack) <= 0) {
+    play.pack = preferScriptPackWithArt(s, play.pack, t.kind || play.pack.kind);
+  }
   play.urls = scriptSceneUrls(s, play.pack, n);
   play.imgI = 0;
   if (n === 1) {
@@ -6226,6 +6283,8 @@ async function scriptHandleTap(s) {
     const attitude = ScriptMode.fillBinds(spec?.attitude || "", s, playerBindName());
     const r = await scriptTypeAi(s, `（旁白：${narr}。這一景態度：${attitude}。只輸出台詞。）`);
     if (r === "abort" || chatSession?.tease !== t) return;
+    // 揭圖前再抓一次（發呆可能在旁白／台詞期間寫入 scriptArt）
+    play.urls = scriptSceneUrls(s, play.pack, 1);
     play.revealImg = true;
     play.openStep = "wait_go";
     play.awaiting = false;

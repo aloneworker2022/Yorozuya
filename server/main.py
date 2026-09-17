@@ -3257,6 +3257,34 @@ def _dd_read_save() -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def _dd_flush_patches_to_save(store: dict) -> bool:
+    """把 daydream patches 合併進存檔 succubi（scriptArt／portraits／sexAnim 等）。
+
+    發呆圖原本只活在 patches；新 stamp 清 patches 時若不先寫入存檔，劇本模式就會
+    找不到 s.scriptArt。get_save／put_save 的 apply_patches 仍保留當雙保險。
+    """
+    if not (store.get("patches") or {}):
+        return False
+    with db() as conn:
+        row = conn.execute("SELECT version, data FROM save WHERE id = 1").fetchone()
+        if row is None:
+            return False
+        version, raw = row[0], row[1]
+        try:
+            data = json.loads(raw) if raw else {}
+        except Exception:
+            return False
+        if not isinstance(data, dict):
+            return False
+        ddream.apply_patches(data, store)
+        new_version = int(version) + 1
+        conn.execute(
+            "UPDATE save SET version = ?, data = ?, updated_at = ? WHERE id = 1",
+            (new_version, json.dumps(data, ensure_ascii=False), time.time()),
+        )
+    return True
+
+
 def _dd_settings(data: dict) -> dict:
     s = data.get("settings") if isinstance(data.get("settings"), dict) else {}
     img = str(s.get("imgProvider") or "grok-img").strip().lower()
@@ -3513,6 +3541,17 @@ def _dd_begin(store: dict, data: dict, force: bool) -> dict:
     run_tag = f"{stamp}:force:{int(time.time() * 1000)}" if force else stamp
     queue = ddream.build_queue(girls, nsfw, run_tag)
     keep_patches = (not force) and store.get("stamp") == stamp
+    # 新 stamp／force 會丟棄 patches：先寫進存檔，避免劇本預產圖蒸發
+    if not keep_patches and (store.get("patches") or {}):
+        try:
+            if _dd_flush_patches_to_save(store):
+                print(
+                    f"[發呆] {time.strftime('%Y-%m-%d %H:%M:%S')} 清 patches 前已寫入存檔 "
+                    f"stamp={store.get('stamp')}",
+                    flush=True,
+                )
+        except Exception as e:
+            print(f"[發呆] flush patches 失敗(仍繼續清): {e}", flush=True)
     store.update({
         "stamp": stamp,
         "slot": slot["id"],
@@ -3614,6 +3653,11 @@ async def _dd_tick_once() -> None:
     store["girlId"] = gid or ""
     if patch and gid:
         ddream.set_patch(store, gid, **patch)
+        # 每張成功產圖立刻合併進存檔，避免只靠 ephemeral patches
+        try:
+            _dd_flush_patches_to_save(store)
+        except Exception as e:
+            print(f"[發呆] set_patch 後 flush 失敗: {e}", flush=True)
     if not q:
         store["running"] = False
         store["completed"] = True
@@ -3621,6 +3665,11 @@ async def _dd_tick_once() -> None:
         store["label"] = ""
         store["girlId"] = ""
         print(f"[發呆] {time.strftime('%Y-%m-%d %H:%M:%S')} 完成 stamp={store.get('stamp')}", flush=True)
+        # 完成時再 flush 一次（無新 patch 時 no-op）
+        try:
+            _dd_flush_patches_to_save(store)
+        except Exception as e:
+            print(f"[發呆] 完成 flush 失敗: {e}", flush=True)
     _dd_save(store)
 
 
