@@ -245,7 +245,7 @@ async function flashScriptAnim() {
     box.classList.remove("hidden");
     box.setAttribute("aria-hidden", "false");
     // 節奏：慢快快慢（幀 1–4）
-    const FRAME_HOLDS = [300, 110, 110, 300];
+    const FRAME_HOLDS = [300, 180, 180, 300];
     const playUrls = async (list) => {
       await scriptAnimPreload(run, list);
       if (run.cancelled) return 0;
@@ -470,6 +470,9 @@ function syncUi() {
     play.openStep === "wait_go" ||
     play.openStep === "wait_end"
   ));
+  // 互斥：正戲優先顯示肏／含，否則才顯示下一句
+  const showThrust = canThrust;
+  const showNext = !canThrust && needNext;
 
   $("stage-idle")?.classList.toggle("hidden", !!play);
   $("act-row")?.classList.toggle("hidden", !play);
@@ -477,13 +480,13 @@ function syncUi() {
   const nextBtn = $("btn-next");
   const thrust = $("btn-thrust");
   if (nextBtn) {
-    nextBtn.classList.toggle("hidden", !needNext);
-    nextBtn.disabled = !needNext || !!play?.awaiting || typeBusy;
+    nextBtn.classList.toggle("hidden", !showNext);
+    nextBtn.disabled = !showNext || !!play?.awaiting || typeBusy;
     if (play?.openStep === "wait_end") nextBtn.textContent = "結束 ▶";
     else nextBtn.textContent = "下一句 ▶";
   }
   if (thrust) {
-    thrust.classList.toggle("hidden", !canThrust);
+    thrust.classList.toggle("hidden", !showThrust);
     thrust.disabled = false;
     thrust.textContent = kind === "oral" ? "含" : "肏";
   }

@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.69(2026-09-17)肏轉場不鎖＋慢快快慢";
+const APP_VER = "v7.70(2026-09-18)快幀180＋按鈕互斥";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5927,7 +5927,10 @@ function syncTeasePlayUi() {
     p?.openStep === "wait_go" ||
     p?.openStep === "wait_end"
   ));
-  const showAct = canThrust || needNext;
+  // 互斥：正戲優先顯示肏／含，否則才顯示下一句
+  const showThrust = canThrust;
+  const showNext = !canThrust && needNext;
+  const showAct = showThrust || showNext;
   const inputRow = document.getElementById("chat-input-row");
   const actRow = document.getElementById("tease-act-row");
   if (inputRow) {
@@ -5949,11 +5952,11 @@ function syncTeasePlayUi() {
   const cum = document.getElementById("tease-cum");
   const kind = chatSession?.tease?.kind || "";
   if (nextBtn) {
-    nextBtn.classList.toggle("hidden", !needNext);
-    nextBtn.disabled = !needNext;
+    nextBtn.classList.toggle("hidden", !showNext);
+    nextBtn.disabled = !showNext;
   }
   if (thrust) {
-    thrust.classList.toggle("hidden", !canThrust);
+    thrust.classList.toggle("hidden", !showThrust);
     thrust.disabled = false;
     thrust.textContent = kind === "oral" ? "含" : "肏";
   }
@@ -6192,7 +6195,7 @@ async function flashScriptAnim() {
     box.classList.remove("hidden");
     box.setAttribute("aria-hidden", "false");
     // 節奏：慢快快慢（幀 1–4）
-    const FRAME_HOLDS = [300, 110, 110, 300];
+    const FRAME_HOLDS = [300, 180, 180, 300];
     const playUrls = async (list) => {
       await scriptAnimPreload(run, list);
       if (run.cancelled) return 0;
