@@ -1,10 +1,78 @@
 /** 約會旅館做愛：旅館列表＋階段行為包（單男共用）。 */
 
 import { normalizeMolestPack, emptyMaleMolestPack } from "./date_molest.js";
+import { placeZh, placeEn } from "./date_place.js";
 import { uid } from "./script_mode.js";
 
 const EJAC = new Set(["none", "in", "out"]);
 const STAGES = new Set([1, 2, 3, 4]);
+
+const DEFAULT_HOTEL_PLACES = [
+  { id: "hotel_room", name: "客房", zh: "在客房", en: "in a hotel guest room, hotel room interior" },
+  { id: "hotel_bath", name: "浴室", zh: "在浴室", en: "in a hotel bathroom, bathroom interior" },
+  { id: "hotel_corridor", name: "走廊", zh: "在旅館走廊", en: "in a hotel corridor, hotel hallway" },
+  { id: "outdoor_onsen", name: "露天風呂", zh: "在露天風呂", en: "in an outdoor hot spring bath, open-air onsen" },
+  { id: "motel_bed", name: "汽車旅館床上", zh: "在汽車旅館床上", en: "on a motel bed, cheap motel room" },
+];
+
+export function defaultHotelPlaces() {
+  return DEFAULT_HOTEL_PLACES.map((p) => ({ ...p }));
+}
+
+function placeIdFromName(name, index) {
+  const slug = String(name || "場所")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 28);
+  return slug ? `hotel_${slug}` : `hotel_place_${index + 1}`;
+}
+
+export function normalizeHotelPlaces(rawList) {
+  const src = Array.isArray(rawList) && rawList.length ? rawList : defaultHotelPlaces();
+  const out = [];
+  const seen = new Set();
+  src.forEach((raw, index) => {
+    const s = raw && typeof raw === "object" ? raw : {};
+    let id = String(s.id || placeIdFromName(s.name, index)).trim().slice(0, 40) || `hotel_place_${index + 1}`;
+    if (seen.has(id)) id = `${id}_${index + 1}`.slice(0, 40);
+    seen.add(id);
+    const name = String(s.name || s.zh || "場所").trim().slice(0, 40) || "場所";
+    const zh = String(s.zh || `在${name}`).trim().slice(0, 80) || `在${name}`;
+    const en = String(s.en || `in a hotel ${name}`).trim().slice(0, 240) || `in a hotel ${name}`;
+    out.push({ id, name, zh, en });
+  });
+  return out.length ? out : defaultHotelPlaces();
+}
+
+function hotelPlaceOf(id, places) {
+  const list = normalizeHotelPlaces(places);
+  return list.find((p) => p.id === String(id || "").trim()) || null;
+}
+
+export function hotelPlaceZh(id, places) {
+  const p = hotelPlaceOf(id, places);
+  return p?.zh || (p ? `在${p.name}` : placeZh(id));
+}
+
+export function hotelPlaceEn(id, places) {
+  const p = hotelPlaceOf(id, places);
+  return p?.en || placeEn(id);
+}
+
+export function fillHotelPlaceTokens(text, placeId, places) {
+  const p = hotelPlaceOf(placeId, places);
+  const zh = hotelPlaceZh(placeId, places);
+  const name = p?.name || placeZh(placeId).replace(/^在/, "");
+  let s = String(text || "");
+  for (const token of ["[place]", "{place}", "[zone]", "{zone}", "[場所]", "{場所}"]) s = s.split(token).join(zh);
+  return s
+    .replace(/\[place\]/gi, zh).replace(/\{place\}/gi, zh)
+    .replace(/\[zone\]/gi, zh).replace(/\{zone\}/gi, zh)
+    .replace(/\[場所\]/g, zh).replace(/\{場所\}/g, zh)
+    .replace(/\[placeName\]/gi, name).replace(/\{placeName\}/gi, name);
+}
 
 export function emptyHotelSexAct(name = "行為", stage = 1) {
   const base = emptyMaleMolestPack(name);
@@ -20,7 +88,7 @@ export function emptyHotelSexAct(name = "行為", stage = 1) {
     playerAct: "男子把她壓在床上，分開腿整根進入。",
     narrPrompt: "寫 1～2 句旁白：旅館裡男子與她做愛的現場（體態、結合、喘息）。不要寫台詞。",
     feelPrompt: "這一拍被插入／摩擦的感覺、羞恥與快感。只影響台詞口氣。",
-    placeId: "plaza",
+    placeId: "hotel_room",
     imgMode: "txt",
     slot: {
       prompt: "1boy having sex with woman in hotel room, nsfw, explicit",
@@ -423,12 +491,19 @@ export function defaultHotels() {
   ].map((h) => normalizeHotel(h));
 }
 
-export function normalizeHotel(raw) {
+export function normalizeHotel(raw, places = defaultHotelPlaces()) {
   const s = raw && typeof raw === "object" ? raw : {};
   const id = String(s.id || uid()).slice(0, 24) || uid();
   const name = String(s.name || "旅館").slice(0, 40) || "旅館";
   const actsSrc = Array.isArray(s.acts) ? s.acts : [];
-  const acts = actsSrc.map(normalizeHotelSexAct).filter((a) => a.id);
+  const hotelPlaces = normalizeHotelPlaces(places);
+  const validPlaceIds = new Set(hotelPlaces.map((p) => p.id));
+  const fallbackPlaceId = hotelPlaces[0]?.id || "hotel_room";
+  const acts = actsSrc.map((x) => {
+    const a = normalizeHotelSexAct(x);
+    if (!validPlaceIds.has(a.placeId)) a.placeId = fallbackPlaceId;
+    return a;
+  }).filter((a) => a.id);
   const seen = new Set();
   const uniq = [];
   for (const a of acts) {
@@ -441,8 +516,9 @@ export function normalizeHotel(raw) {
   return { id, name, acts: uniq };
 }
 
-export function normalizeHotels(rawList) {
-  const list = Array.isArray(rawList) ? rawList.map(normalizeHotel).filter((h) => h.id) : [];
+export function normalizeHotels(rawList, places = defaultHotelPlaces()) {
+  const hotelPlaces = normalizeHotelPlaces(places);
+  const list = Array.isArray(rawList) ? rawList.map((h) => normalizeHotel(h, hotelPlaces)).filter((h) => h.id) : [];
   if (list.length) {
     const seen = new Set();
     return list.map((h, i) => {

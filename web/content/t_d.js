@@ -10,6 +10,10 @@ import {
   countHotelStats,
   normalizeHotelSexAct,
   normalizeHotels,
+  normalizeHotelPlaces,
+  hotelPlaceZh,
+  hotelPlaceEn,
+  fillHotelPlaceTokens,
 } from "./edit_date.js";
 import { fillBinds, bindHint } from "./script_mode.js";
 import { filledPack, normalizeMolestPack, buildMolestImgBody, buildMaleMolestImgBody } from "./date_molest.js";
@@ -1376,8 +1380,12 @@ async function afterMaleResolved() {
 }
 
 
+function scriptHotelPlaces() {
+  return normalizeHotelPlaces(dateScript?.male?.hotelPlaces);
+}
+
 function scriptHotels() {
-  return normalizeHotels(dateScript?.male?.hotels);
+  return normalizeHotels(dateScript?.male?.hotels, scriptHotelPlaces());
 }
 
 function pickRandomHotel() {
@@ -1393,7 +1401,8 @@ async function ensureHotelActImage(act) {
   if (!typ) return "";
   try {
     const eng = await getImgEng();
-    const built = buildMaleMolestImgBody(act, typ, eng, "anime", act.placeId || "plaza");
+    const places = scriptHotelPlaces();
+    const built = buildMaleMolestImgBody(act, typ, eng, "anime", act.placeId || places[0]?.id || "hotel_room", places);
     const r = await waitImg(built.body);
     if (r.status === "done" && r.result) {
       const u = String(r.result).split("?")[0];
@@ -1464,8 +1473,9 @@ async function runHotelSexScene() {
     if (watching) {
       watchedActs += 1;
       if (act.narrPrompt) {
+        const places = scriptHotelPlaces();
         await playQueueAndWait([
-          { role: "sys", who: "旁白", text: act.narrPrompt },
+          { role: "sys", who: "旁白", text: fillHotelPlaceTokens(act.narrPrompt, act.placeId, places) },
         ]);
       }
 

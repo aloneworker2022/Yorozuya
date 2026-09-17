@@ -307,6 +307,12 @@
           </select></span>
         <span class="fix0"><label>場所</label>
           <select id="mh-place"></select></span>
+        <span class="grow"><label>場所名稱</label>
+          <input id="mh-place-name" placeholder="客房" maxlength="40"></span>
+        <span class="grow"><label>英文 tags</label>
+          <input id="mh-place-en" placeholder="in a hotel guest room" maxlength="240"></span>
+        <button class="cy" type="button" id="mh-place-add">＋場所</button>
+        <button class="del" type="button" id="mh-place-del">刪場所</button>
         <span class="fix0"><label>生圖</label>
           <select id="mh-img-prov">
             <option value="grok-img">Grok 圖</option>
@@ -356,6 +362,7 @@
 import {
   DEFAULT_DATE_SCRIPT, normalizeDateScript, formatActs, parseActs, formatMaleActs, parseMaleActs,
   normalizeHotels, normalizeHotel, normalizeHotelSexAct, emptyHotel, emptyHotelSexAct,
+  normalizeHotelPlaces, hotelPlaceZh, hotelPlaceEn,
 } from "./content/edit_date.js";
 import {
   emptyMolestPack, emptyMaleMolestPack, normalizeMolestPack, filledPack,
@@ -405,13 +412,6 @@ if (mmPlaceSel) {
     `<option value="${z.id}">${z.name}</option>`
   ).join("");
 }
-const mhPlaceSel = $("mh-place");
-if (mhPlaceSel) {
-  mhPlaceSel.innerHTML = DATE_PLACES.map((z) =>
-    `<option value="${z.id}">${z.name}</option>`
-  ).join("");
-}
-
 let keptClassify = null;
 let script = normalizeDateScript(DEFAULT_DATE_SCRIPT);
 let moId = script.activeMolestId || script.molestPacks[0]?.id || "";
@@ -480,6 +480,7 @@ let maleTypes = [];
 let maleActiveTypeId = "";
 let mmId = "";
 let maleHotels = [];
+let hotelPlaces = normalizeHotelPlaces();
 let mhHotelId = "";
 let mhActId = "";
 
@@ -691,6 +692,25 @@ function renderMaleTypeSelect() {
 }
 
 
+function mhRenderPlaces() {
+  const sel = $("mh-place");
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = hotelPlaces.map((p) =>
+    `<option value="${esc(p.id)}">${esc(p.name)}</option>`
+  ).join("") || `<option value="">（尚無）</option>`;
+  if (hotelPlaces.some((p) => p.id === cur)) sel.value = cur;
+  else if (hotelPlaces[0]) sel.value = hotelPlaces[0].id;
+  const p = hotelPlaces.find((x) => x.id === sel.value) || hotelPlaces[0];
+  if ($("mh-place-name")) $("mh-place-name").value = p?.name || "";
+  if ($("mh-place-en")) $("mh-place-en").value = p?.en || "";
+}
+
+function mhPlace() {
+  const id = $("mh-place")?.value || hotelPlaces[0]?.id;
+  return hotelPlaces.find((p) => p.id === id) || hotelPlaces[0] || null;
+}
+
 function mhHotel() {
   return maleHotels.find((h) => h.id === mhHotelId) || maleHotels[0] || null;
 }
@@ -717,7 +737,7 @@ function mhCollect() {
   a.feelPrompt = $("mh-feel")?.value || "";
   a.voiceOut = $("mh-voice")?.value || "";
   a.replyToPlayer = $("mh-reply")?.value || "";
-  a.placeId = $("mh-place")?.value || a.placeId || "plaza";
+  a.placeId = $("mh-place")?.value || a.placeId || hotelPlaces[0]?.id || "hotel_room";
   a.imgMode = "txt";
   a.slot = a.slot || { prompt: "", negative: "", ref: "", url: "" };
   a.slot.prompt = $("mh-pos")?.value || "";
@@ -760,16 +780,16 @@ function mhRefreshOut() {
   const el = $("mh-out-prompt");
   if (!el) return;
   if (!a) { el.textContent = "（無行為）"; return; }
-  const pid = $("mh-place")?.value || a.placeId || "plaza";
+  const pid = $("mh-place")?.value || a.placeId || hotelPlaces[0]?.id || "hotel_room";
   const look = String(t?.lookEn || "").trim();
   const userPos = String(a.slot?.prompt || "").trim();
   const userNeg = String(a.slot?.negative || "").trim();
-  const placePos = placeEn(pid);
+  const placePos = hotelPlaceEn(pid, hotelPlaces);
   const positive = joinPromptParts(look, placePos, userPos);
   el.textContent = [
     `【旅館】${mhHotel()?.name || ""}`,
     `【階段】${a.stage}　【射精】${a.ejac}`,
-    `【場所】${placeZh(pid)}`,
+    `【場所】${hotelPlaceZh(pid, hotelPlaces)}`,
     "",
     "【lookEn（目前男子種類）】",
     look || "（空）",
@@ -807,7 +827,11 @@ function mhRenderForm() {
   if ($("mh-feel")) $("mh-feel").value = a.feelPrompt || "";
   if ($("mh-voice")) $("mh-voice").value = a.voiceOut || "";
   if ($("mh-reply")) $("mh-reply").value = a.replyToPlayer || "";
-  if ($("mh-place")) $("mh-place").value = a.placeId || "plaza";
+  mhRenderPlaces();
+  if ($("mh-place")) $("mh-place").value = hotelPlaces.some((p) => p.id === a.placeId) ? a.placeId : (hotelPlaces[0]?.id || "");
+  const hp = mhPlace();
+  if ($("mh-place-name")) $("mh-place-name").value = hp?.name || "";
+  if ($("mh-place-en")) $("mh-place-en").value = hp?.en || "";
   if ($("mh-pos")) $("mh-pos").value = a.slot?.prompt || "";
   if ($("mh-neg")) $("mh-neg").value = a.slot?.negative || "";
   if ($("mh-img-url")) $("mh-img-url").value = a.slot?.url || "";
@@ -844,10 +868,11 @@ function fillMale(m) {
   maleActiveTypeId = n.activeTypeId || maleTypes[0]?.id || "";
   const cur = maleTypeById(maleActiveTypeId);
   mmId = cur?.activeMolestId || cur?.molestPacks?.[0]?.id || "";
-  maleHotels = normalizeHotels(n.hotels).map((h) => normalizeHotel({
+  hotelPlaces = normalizeHotelPlaces(n.hotelPlaces);
+  maleHotels = normalizeHotels(n.hotels, hotelPlaces).map((h) => normalizeHotel({
     ...h,
     acts: (h.acts || []).map((a) => normalizeHotelSexAct(a)),
-  }));
+  }, hotelPlaces));
   mhHotelId = n.activeHotelId || maleHotels[0]?.id || "";
   const hh = mhHotel();
   mhActId = hh?.acts?.[0]?.id || "";
@@ -881,14 +906,15 @@ function collectMale() {
     id: h.id,
     name: h.name,
     acts: (h.acts || []).map((a) => normalizeHotelSexAct(a)),
-  })));
+  }, hotelPlaces)), hotelPlaces);
   let activeHotelId = mhHotelId;
   if (!hotels.some((h) => h.id === activeHotelId)) activeHotelId = hotels[0]?.id || "";
-  return { activeTypeId, types, hotels, activeHotelId };
+  return { activeTypeId, types, hotelPlaces: normalizeHotelPlaces(hotelPlaces), hotels, activeHotelId };
 }
 
 function fill(raw) {
   script = normalizeDateScript(raw);
+  hotelPlaces = normalizeHotelPlaces(script.male?.hotelPlaces);
   moId = script.activeMolestId || script.molestPacks[0]?.id || "";
   fillTease(script);
   moRenderPacks();
@@ -1449,6 +1475,47 @@ $("mm-test")?.addEventListener("click", async () => {
 });
 
 
+$("mh-place")?.addEventListener("change", () => {
+  const p = mhPlace();
+  if ($("mh-place-name")) $("mh-place-name").value = p?.name || "";
+  if ($("mh-place-en")) $("mh-place-en").value = p?.en || "";
+  mhRefreshOut();
+});
+$("mh-place-name")?.addEventListener("input", () => {
+  const p = mhPlace();
+  if (!p) return;
+  p.name = ($("mh-place-name").value || "").trim() || p.name;
+  p.zh = `在${p.name}`;
+  mhRenderPlaces();
+  mhRefreshOut();
+});
+$("mh-place-en")?.addEventListener("input", () => {
+  const p = mhPlace();
+  if (!p) return;
+  p.en = ($("mh-place-en").value || "").trim() || `in a hotel ${p.name}`;
+  mhRefreshOut();
+});
+$("mh-place-add")?.addEventListener("click", () => {
+  mhCollect();
+  const name = ($("mh-place-name")?.value || "新場所").trim() || "新場所";
+  const base = `hotel_${Date.now().toString(36)}`;
+  const p = { id: base, name, zh: `在${name}`, en: ($("mh-place-en")?.value || `in a hotel ${name}`).trim() };
+  hotelPlaces.push(p);
+  mhRenderPlaces();
+  $("mh-place").value = p.id;
+  mhStatus("已新增場所（記得儲存）");
+});
+$("mh-place-del")?.addEventListener("click", () => {
+  if (hotelPlaces.length <= 1) { mhStatus("至少留一個場所", true); return; }
+  const removed = $("mh-place")?.value;
+  hotelPlaces = hotelPlaces.filter((p) => p.id !== removed);
+  const fallback = hotelPlaces[0]?.id || "";
+  for (const h of maleHotels) for (const a of (h.acts || [])) if (a.placeId === removed) a.placeId = fallback;
+  mhRenderPlaces();
+  mhRenderForm();
+  mhStatus("已刪場所（記得儲存）");
+});
+
 $("mh-hotel")?.addEventListener("change", () => {
   mhCollect();
   mhHotelId = $("mh-hotel").value || maleHotels[0]?.id || "";
@@ -1526,7 +1593,7 @@ $("mh-gen")?.addEventListener("click", async () => {
   if ($("mh-art")) $("mh-art").innerHTML = `<span class="mini">生成中…</span>`;
   mhStatus("產圖中…");
   try {
-    const built = buildMaleMolestImgBody(a, t, engGet("mh-img-prov"), "anime", $("mh-place")?.value || a.placeId || "plaza");
+    const built = buildMaleMolestImgBody(a, t, engGet("mh-img-prov"), "anime", $("mh-place")?.value || a.placeId || hotelPlaces[0]?.id || "hotel_room", hotelPlaces);
     mhRefreshOut();
     const r = await waitImg(built.body);
     if (r.status === "done" && r.result) {

@@ -8,6 +8,8 @@ import {
   emptyHotel,
   emptyHotelSexAct,
   defaultHotels,
+  defaultHotelPlaces,
+  normalizeHotelPlaces,
 } from "./date_hotel_sex.js";
 
 export const DATE_ACT_ZH = {
@@ -107,6 +109,7 @@ export const DEFAULT_DATE_SCRIPT = {
   /** 單男系統：每種男子各自有搭訕／調戲(harass)／猥褻／嘲諷(taunt)／交配請求池。 */
   male: {
     activeTypeId: "fat",
+    hotelPlaces: defaultHotelPlaces(),
     types: [
       {
         id: "fat",
@@ -408,7 +411,8 @@ export function normalizeDateScript(raw) {
   const types = maleTypesList(maleSrc.types, dMale.types, legacyTop, dMale);
   let activeTypeId = String(maleSrc.activeTypeId || dMale.activeTypeId || types[0]?.id || "").trim();
   if (!types.some((t) => t.id === activeTypeId)) activeTypeId = types[0]?.id || "";
-  const hotels = normalizeHotels(maleSrc.hotels);
+  const hotelPlaces = normalizeHotelPlaces(maleSrc.hotelPlaces ?? d.male.hotelPlaces);
+  const hotels = normalizeHotels(maleSrc.hotels, hotelPlaces);
   let activeHotelId = String(maleSrc.activeHotelId || hotels[0]?.id || "").trim();
   if (!hotels.some((h) => h.id === activeHotelId)) activeHotelId = hotels[0]?.id || "";
   return {
@@ -432,6 +436,7 @@ export function normalizeDateScript(raw) {
     male: {
       activeTypeId,
       types,
+      hotelPlaces,
       hotels,
       activeHotelId,
     },
@@ -457,6 +462,11 @@ export {
   emptyHotel,
   emptyHotelSexAct,
   defaultHotels,
+  defaultHotelPlaces,
+  normalizeHotelPlaces,
+  hotelPlaceZh,
+  hotelPlaceEn,
+  fillHotelPlaceTokens,
   hotelActsByStage,
   buildHotelPlayQueue,
   countHotelStats,

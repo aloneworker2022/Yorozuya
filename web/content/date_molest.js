@@ -287,13 +287,14 @@ export function emptyMaleMolestPack(name = "單男猥褻") {
  * 單男猥褻文生圖下單。不要求 pose_ref。
  * 正向：lookEn + 場所英文 + 使用者正向（男性外觀／動作為主）。
  */
-export function buildMaleMolestImgBody(pack, maleType, eng = {}, style = "anime", placeId) {
+export function buildMaleMolestImgBody(pack, maleType, eng = {}, style = "anime", placeId, customPlaces) {
   const p = normalizeMolestPack({ ...pack, imgMode: "txt" });
   const pid = placeId || p.placeId || "plaza";
   const lookEn = String(maleType?.lookEn || "").trim();
   const userPos = String(p.slot?.prompt || "").trim();
   const userNeg = String(p.slot?.negative || "").trim();
-  const placePos = placeEn(pid);
+  const customPlace = Array.isArray(customPlaces) ? customPlaces.find((x) => x?.id === pid) : null;
+  const placePos = customPlace?.en || placeEn(pid);
   const positive = joinPromptParts(lookEn, placePos, userPos);
   const negative = joinPromptParts(
     userNeg,
