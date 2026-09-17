@@ -117,6 +117,26 @@
   #btn-next { background: rgba(111,227,225,.18); color: #6fe3e1; }
   #btn-thrust { background: rgba(255,79,216,.22); color: #ff8fe6; }
   #btn-end { margin-left: auto; }
+
+  /* 開始後進入全螢幕 VN 舞台，其他選擇／說明區塊暫時收起。 */
+  body.playing {
+    max-width: none;
+    width: 100%;
+  }
+  body.playing .top { display: none; }
+  body.playing #stage {
+    width: 100%;
+    min-height: 100vh;
+    justify-content: center;
+    align-items: center;
+    padding: 1.5em 1em;
+  }
+  body.playing #stage-idle { display: none; }
+  body.playing #vn-box,
+  body.playing #act-row {
+    width: min(720px, 100%);
+    flex: 0 0 auto;
+  }
 </style>
 </head>
 <body>
@@ -157,7 +177,7 @@
   <div id="act-row" class="hidden">
     <button type="button" id="btn-next" class="hidden">下一句 ▶</button>
     <button type="button" id="btn-thrust" class="hidden">肏</button>
-    <button type="button" class="ghost" id="btn-end">結束</button>
+    <button type="button" class="ghost" id="btn-end">結束／重選</button>
   </div>
 </div>
 

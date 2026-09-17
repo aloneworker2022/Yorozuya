@@ -51,6 +51,10 @@ function setStatus(id, msg, err = false) {
   el.classList.toggle("err", !!err);
 }
 
+function setPlaying(active) {
+  document.body.classList.toggle("playing", !!active);
+}
+
 function lookSummary(g) {
   const L = g?.look || {};
   return [L.age != null ? `${L.age}歲` : "", L.hair_color, L.hair, L.eye_color, L.cup || L.bust, L.build]
@@ -567,6 +571,7 @@ function finishPlay(msg) {
   vnShow("", `—— ${line} ——`, "sys");
   setStatus("play-status", `${g?.name || ""} 結束了這次劇本互動`);
   play = null;
+  setPlaying(false);
   syncUi();
 }
 
@@ -592,6 +597,7 @@ function startPlay() {
     flowGen: 0,
     history: [],
   };
+  setPlaying(true);
   pushHist("sys", `劇本・${KIND_ZH[kind] || kind}・場景1・無圖`);
   setStatus(
     "play-status",
@@ -614,6 +620,7 @@ function bind() {
   $("btn-thrust")?.addEventListener("click", () => void handleThrust());
   $("btn-end")?.addEventListener("click", () => {
     if (play) finishPlay("手動結束。");
+    else setPlaying(false);
   });
   // 點對話框只略過打字，不推進（同正式 app 劇本 UX）
   $("vn-box")?.addEventListener("click", () => {
