@@ -6,80 +6,160 @@
 <title>性愛場景測試 / test_sex</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #12101c; color: #d8d0ec; font-family: system-ui, "Cubic 11", monospace;
-         font-size: 15px; padding: 1em; max-width: 720px; margin: 0 auto; line-height: 1.55; }
-  h1 { color: #ff4fd8; font-size: 1.15em; letter-spacing: .08em; margin-bottom: .2em; }
-  .warn { color: #ff9d4d; font-size: .8em; margin-bottom: 1em; }
-  section { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
-            border-radius: 10px; padding: 1em 1.1em; margin-bottom: 1em; }
-  h2 { color: #6fe3e1; font-size: .9em; letter-spacing: .1em; margin-bottom: .35em; }
-  .mini { font-size: .78em; color: #8a82a5; margin-bottom: .55em; }
-  label { display: block; font-size: .75em; color: #9a92b5; margin: .5em 0 .2em; }
-  select { width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
-    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .45em .6em; outline: none; }
+  html, body { height: 100%; }
+  body {
+    background: #0c0a14; color: #d8d0ec;
+    font-family: system-ui, "Cubic 11", "Noto Sans TC", sans-serif;
+    font-size: 15px; line-height: 1.55;
+    display: flex; flex-direction: column; max-width: 720px; margin: 0 auto;
+  }
+  a { color: #6fe3e1; }
+  code { font-size: .92em; }
+  .top {
+    flex: 0 0 auto; padding: .85em 1em .6em;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    background: rgba(18,16,28,.95);
+  }
+  h1 { color: #ff4fd8; font-size: 1.05em; letter-spacing: .08em; margin-bottom: .15em; }
+  .warn { color: #ff9d4d; font-size: .78em; margin-bottom: .55em; }
+  .badge {
+    display: inline-block; font-size: .68em; letter-spacing: .08em;
+    padding: .12em .45em; border-radius: 4px; margin-left: .35em;
+    background: rgba(111,227,225,.14); color: #6fe3e1; vertical-align: middle;
+  }
+  label { display: block; font-size: .72em; color: #9a92b5; margin: .15em 0 .2em; }
+  select {
+    width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .45em .6em; outline: none;
+  }
   select:focus { border-color: rgba(111,227,225,.45); }
   .row { display: flex; gap: .5em; flex-wrap: wrap; align-items: flex-end; }
   .grow { flex: 1 1 12em; }
-  button { background: rgba(255,79,216,.18); border: none; border-radius: 7px; color: #ff8fe6;
-           font: inherit; padding: .45em .9em; cursor: pointer; }
+  button {
+    background: rgba(255,79,216,.18); border: none; border-radius: 7px; color: #ff8fe6;
+    font: inherit; padding: .45em .9em; cursor: pointer;
+  }
   button:hover { background: rgba(255,79,216,.3); }
   button:disabled { opacity: .4; cursor: not-allowed; }
   button.cy { background: rgba(111,227,225,.16); color: #6fe3e1; }
-  button.big { font-size: 1.05em; padding: .7em 1.4em; letter-spacing: .08em; }
-  .status { font-size: .8em; color: #6bcb77; min-height: 1.2em; margin-top: .4em; }
+  button.big { font-size: 1.02em; padding: .65em 1.25em; letter-spacing: .08em; }
+  button.ghost { background: rgba(255,255,255,.06); color: #b0a8c8; }
+  .status { font-size: .78em; color: #6bcb77; min-height: 1.15em; margin-top: .35em; }
   .status.err { color: #ff5f7a; }
-  a { color: #6fe3e1; }
-  code { font-size: .92em; }
-  .girl-meta { margin-top: .5em; background: rgba(0,0,0,.22); border-radius: 8px;
-               padding: .7em .8em; font-size: .88em; }
+  .girl-meta { margin-top: .45em; font-size: .82em; color: #9a92b5; }
   .girl-meta b { color: #ff8fe6; }
-  /* 純文字 VN：故意不放圖區（之後若要加圖再開） */
-  /* .art-placeholder { display:none; } */
-  #vn-log { background: rgba(0,0,0,.35); border-radius: 8px; padding: .75em .9em;
-            min-height: 12em; max-height: 28em; overflow: auto; }
-  .beat { margin: .55em 0; }
-  .beat .who { font-size: .72em; letter-spacing: .08em; margin-bottom: .15em; }
-  .beat.narr .who { color: #8a82a5; }
-  .beat.girl .who { color: #ff8fe6; }
-  .beat.player .who { color: #6fe3e1; }
-  .beat .tx { white-space: pre-wrap; }
-  .tag { display: inline-block; font-size: .68em; padding: .1em .4em; border-radius: 4px;
-         margin-left: .35em; background: rgba(255,157,77,.18); color: #ff9d4d; }
-  .src { font-size: .75em; color: #8a82a5; margin-top: .5em; }
+
+  /* 劇本舞台：無立繪／無揭圖／無局部動畫 */
+  #stage {
+    flex: 1 1 auto; position: relative; min-height: 14em;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    background:
+      radial-gradient(ellipse at 50% 20%, rgba(255,79,216,.07), transparent 55%),
+      linear-gradient(180deg, #14101f 0%, #0a0810 100%);
+  }
+  #stage-idle {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #6a6280; font-size: .9em; text-align: center; padding: 1.5em;
+  }
+  #stage-idle.hidden { display: none; }
+  #stage-hud {
+    position: absolute; top: .7em; left: .9em; right: .9em;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: .72em; color: #8a82a5; pointer-events: none; z-index: 2;
+  }
+  #stage-hud .mode {
+    background: rgba(0,0,0,.45); border: 1px solid rgba(111,227,225,.25);
+    color: #6fe3e1; padding: .15em .5em; border-radius: 4px; letter-spacing: .06em;
+  }
+  /* 故意不放 #vn-figure / 劇本揭圖 / sex-anim */
+
+  #vn-box {
+    position: relative; z-index: 3;
+    background: rgba(12,10,20,.92);
+    border-top: 1px solid rgba(255,255,255,.12);
+    padding: .85em 1em 1.15em;
+    min-height: 7.2em;
+  }
+  #vn-nameline {
+    display: flex; align-items: center; gap: .55em; margin-bottom: .4em; min-height: 1.2em;
+  }
+  #vn-name {
+    font-size: .85em; letter-spacing: .14em; color: #ff8fe6;
+    text-shadow: 0 0 8px rgba(255,79,216,.45);
+  }
+  #vn-name.sys { color: #8a82a5; letter-spacing: .08em; text-shadow: none; }
+  #vn-typing { display: inline-flex; gap: 3px; margin-left: .2em; }
+  #vn-typing.hidden { display: none; }
+  #vn-typing i {
+    display: inline-block; width: 5px; height: 5px;
+    background: #ff8fe6; border-radius: 50%;
+    animation: pulse 1s infinite;
+  }
+  #vn-typing i:nth-child(2) { animation-delay: .25s; }
+  #vn-typing i:nth-child(3) { animation-delay: .5s; }
+  @keyframes pulse { 0%,100%{opacity:.25} 50%{opacity:1} }
+  #vn-text {
+    font-size: .98em; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+    min-height: 3.4em; color: #e6dff5;
+  }
+  #vn-cursor {
+    position: absolute; right: .95em; bottom: .55em;
+    color: #6fe3e1; font-size: .8em; animation: pulse 1s infinite;
+  }
+  #vn-cursor.hidden { display: none; }
+
+  #act-row {
+    display: flex; gap: .5em; flex-wrap: wrap; padding: .7em 1em .95em;
+    background: rgba(8,6,14,.96); border-top: 1px solid rgba(255,255,255,.06);
+  }
+  #act-row.hidden { display: none; }
+  #act-row button { flex: 0 0 auto; min-width: 5.5em; }
+  #btn-next { background: rgba(111,227,225,.18); color: #6fe3e1; }
+  #btn-thrust { background: rgba(255,79,216,.22); color: #ff8fe6; }
+  #btn-end { margin-left: auto; }
 </style>
 </head>
 <body>
-<h1>性愛場景測試 / test_sex</h1>
-<div class="warn">
-  步驟 1：選看板娘 → 開始第一場景。目前<strong>只顯示文字</strong>（旁白／女子／玩家），無圖、無局部動畫。
-  <a href="/edit_date">約會劇本</a> | <a href="/test_date">約會測試</a> | <a href="/edit_pic">生圖測試</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
+<div class="top">
+  <h1>性愛場景測試 / test_sex <span class="badge">無圖模式</span></h1>
+  <div class="warn">
+    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。不顯示立繪／揭圖／局部動畫。
+    <a href="/edit_date">約會劇本</a> | <a href="/test_date">約會測試</a> | <a href="/edit_pic">生圖測試</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
+  </div>
+  <div class="row">
+    <span class="grow">
+      <label>看板娘（存檔 succubi）</label>
+      <select id="girl-sel"><option value="">（讀取中…）</option></select>
+    </span>
+    <button type="button" class="cy" id="btn-reload">重新讀名冊</button>
+    <button type="button" class="big" id="btn-start">開始</button>
+  </div>
+  <div class="girl-meta" id="girl-meta"><span>尚未選擇</span></div>
+  <div class="status" id="roster-status"></div>
+  <div class="status" id="play-status"></div>
 </div>
 
-<section>
-  <h2>1. 看板娘</h2>
-  <p class="mini">從存檔名冊讀取（同 <code>/api/save</code> · <code>succubi</code>）。</p>
-  <div class="row">
-    <span class="grow"><label>存檔名冊</label>
-      <select id="girl-sel"><option value="">（讀取中…）</option></select></span>
-    <button type="button" class="cy" id="btn-reload">重新讀名冊</button>
+<div id="stage">
+  <div id="stage-hud">
+    <span id="hud-title">尚未開始</span>
+    <span class="mode">無圖模式</span>
   </div>
-  <div class="girl-meta" id="girl-meta"><span class="mini">尚未選擇</span></div>
-  <div class="status" id="roster-status"></div>
-</section>
+  <div id="stage-idle">按「開始」後進入 VN 對話框。<br>優先用 active 做愛劇本場景 1；沒有則調戲。</div>
 
-<section>
-  <h2>2. 場景</h2>
-  <p class="mini">優先用 script_packs 做愛／調戲包的場景 1 旁白；沒有則用暫定台詞。</p>
-  <button class="big" type="button" id="btn-start">開始第一場景</button>
-  <div class="status" id="scene-status"></div>
-  <div class="src" id="scene-src"></div>
-</section>
-
-<section>
-  <h2>3. 文字紀錄</h2>
-  <!-- 無圖區：本頁刻意不渲染圖片／立繪／sex-anim -->
-  <div id="vn-log"><span class="mini">按「開始第一場景」後顯示旁白／女子／玩家。</span></div>
-</section>
+  <div id="vn-box">
+    <div id="vn-nameline">
+      <span id="vn-name"></span>
+      <span id="vn-typing" class="hidden"><i></i><i></i><i></i></span>
+    </div>
+    <div id="vn-text"></div>
+    <span id="vn-cursor" class="hidden">▼</span>
+  </div>
+  <div id="act-row" class="hidden">
+    <button type="button" id="btn-next" class="hidden">下一句 ▶</button>
+    <button type="button" id="btn-thrust" class="hidden">肏</button>
+    <button type="button" class="ghost" id="btn-end">結束</button>
+  </div>
+</div>
 
 <script type="module" src="/content/test_sex.js"></script>
 </body>
