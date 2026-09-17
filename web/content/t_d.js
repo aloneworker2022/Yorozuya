@@ -54,6 +54,7 @@ const STAMINA_MAX = 10;
 const AROUSAL_MAX = 20;
 const SHAME_MAX = 15;
 const OBEY_MAX = 35;
+const HYPE_MAX = 8;
 const ACT_ZH = DATE_ACT_ZH;
 /** 猥褻成功分母：1/n；妻子 n=1 必成 */
 const MOLEST_ODDS = {
@@ -251,11 +252,11 @@ function renderHud() {
   const hypeBar = $("hype-bar");
   if (hypeN) {
     const hv = state.male?.onField ? (state.male.hype ?? 0) : 0;
-    hypeN.textContent = `${hv}/5`;
+    hypeN.textContent = `${hv}/${HYPE_MAX}`;
   }
   if (hypeBar) {
     const hv = state.male?.onField ? (state.male.hype ?? 0) : 0;
-    hypeBar.style.width = `${(hv / 5) * 100}%`;
+    hypeBar.style.width = `${(hv / HYPE_MAX) * 100}%`;
   }
   document.body.dataset.time = state.time;
   $("zone-name").textContent = zoneOf(state.zone).name;
@@ -907,7 +908,7 @@ function spawnMale() {
     appeared: false,
     gone: false,
     sex: false,
-    hype: 5,
+    hype: HYPE_MAX,
     freeTurns: 0,
     used: {},
     escapeDenom: 15,
@@ -1223,7 +1224,7 @@ async function startMaleApproach() {
   const m = state.male;
   m.onField = true;
   m.appeared = true;
-  m.hype = 5;
+  m.hype = HYPE_MAX;
   m.freeTurns = 0;
   m.sex = false;
   // 出場重置女子性慾／羞恥（體力不變）
@@ -1235,7 +1236,7 @@ async function startMaleApproach() {
       {
         role: "sys",
         who: "系統",
-        text: `男子性奮 ${m.hype}/5。猜他下一招：阻止調戲或阻止猥褻。`,
+        text: `男子性奮 ${m.hype}/${HYPE_MAX}。猜他下一招：阻止調戲或阻止猥褻。`,
       },
     ]),
   );
@@ -1550,10 +1551,10 @@ async function doGuessInterrupt(guess) {
   renderHud();
 
   if (ok) {
-    m.hype = Math.max(0, (m.hype ?? 5) - 1);
+    m.hype = Math.max(0, (m.hype ?? HYPE_MAX) - 1);
     state.heart = (state.heart || 0) + 5;
     const spec = pickInterruptOkLine();
-    const delta = `阻止成功　男子性奮 -1（${m.hype}/5）　感情 +5`;
+    const delta = `阻止成功　男子性奮 -1（${m.hype}/${HYPE_MAX}）　感情 +5`;
     await playQueueAndWait([
       { role: "player", who: "我", text: spec.player, extra: delta },
       {
