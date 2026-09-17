@@ -1287,10 +1287,11 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   animation: none;
   margin-bottom: -0.4em;
 }
+/* 劇本局部動畫：掛在 body，fixed 全螢幕最上層中央（不可留在 #chat-view 內——該層有 transform） */
 #sex-anim-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 200;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1299,18 +1300,13 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 }
 #sex-anim-overlay.hidden { display: none; }
 #sex-anim-overlay img {
-  max-width: 42%;
-  max-height: 38%;
+  max-width: min(92vw, 560px);
+  max-height: min(78vh, 720px);
   width: auto;
   height: auto;
   object-fit: contain;
   display: block;
-}
-@media (max-width: 700px) {
-  #sex-anim-overlay img {
-    max-width: 92%;
-    max-height: 72%;
-  }
+  margin: 0 auto;
 }
 #aff-pop {
   position: absolute;
