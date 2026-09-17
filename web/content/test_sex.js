@@ -8,8 +8,6 @@ import {
   SCENE_ZH,
   nextAfterScene1,
   narrLines,
-  rollSexThrust,
-  rollAffDelta,
   buildReplyMsgs,
   resolveScriptKind,
   boundFramePackId,
@@ -189,7 +187,31 @@ function scriptAnimHold(run, ms) {
   });
 }
 
-/** 肏：播幀 1–4（各約 420ms）後隱藏 overlay。無圖則 toast／status 並立刻返回。 */
+/** 預載幀圖，減少換幀空白。 */
+function scriptAnimPreload(run, urls) {
+  if (run.cancelled || !urls?.length) return Promise.resolve();
+  return Promise.all(urls.map((url) => new Promise((resolve) => {
+    if (run.cancelled) return resolve();
+    const im = new Image();
+    let settled = false;
+    const cancel = () => finish();
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      run.waiters.delete(cancel);
+      im.onload = null;
+      im.onerror = null;
+      resolve();
+    };
+    run.waiters.add(cancel);
+    im.onload = finish;
+    im.onerror = finish;
+    im.src = url;
+    if (im.complete) queueMicrotask(finish);
+  })));
+}
+
+/** 肏：播幀 1–4（各約 160ms）後隱藏 overlay。無圖則 toast／status 並立刻返回。 */
 async function flashScriptAnim() {
   const box = $("sex-anim-popup");
   const img = $("sex-anim-img");
@@ -221,6 +243,8 @@ async function flashScriptAnim() {
     box.classList.remove("hidden");
     box.setAttribute("aria-hidden", "false");
     const playUrls = async (list) => {
+      await scriptAnimPreload(run, list);
+      if (run.cancelled) return 0;
       let shown = 0;
       for (const url of list) {
         if (run.cancelled) break;
@@ -228,7 +252,7 @@ async function flashScriptAnim() {
         if (run.cancelled) break;
         if (ok) {
           shown += 1;
-          await scriptAnimHold(run, 420);
+          await scriptAnimHold(run, 160);
         }
       }
       return shown;
@@ -239,7 +263,7 @@ async function flashScriptAnim() {
       setStatus("play-status", "sexAnim 圖已失效，改用幀包");
       shown = await playUrls(fallback.slice(0, 4));
     }
-    if (!shown && !run.cancelled) await scriptAnimHold(run, 280);
+    if (!shown && !run.cancelled) await scriptAnimHold(run, 120);
   } finally {
     if (scriptAnimRun === run) stopScriptAnim();
   }
@@ -434,7 +458,8 @@ function syncUi() {
   const live = !!play && !play.ending;
   const scene = Number(play?.scene) || 0;
   const kind = play?.kind || "";
-  const canThrust = !!(live && !play.animating && (scene === 2 || scene === 3));
+  // 肏／含：場景 2/3 且進行中即顯示；不因 awaiting／animating／typeBusy 灰掉
+  const canThrust = !!(live && (scene === 2 || scene === 3));
   const needNext = !!(live && (
     play.openStep === "wait_ai" ||
     play.openStep === "wait_go" ||
@@ -454,7 +479,7 @@ function syncUi() {
   }
   if (thrust) {
     thrust.classList.toggle("hidden", !canThrust);
-    thrust.disabled = !canThrust || !!play?.awaiting;
+    thrust.disabled = false;
     thrust.textContent = kind === "oral" ? "含" : "肏";
   }
 
@@ -708,67 +733,12 @@ async function handleNext() {
   }
 }
 
-async function handleThrust() {
-  const girl = currentGirl;
-  if (!play || !girl || play.ending || play.animating) return;
+/** 肏／含：只播局部動圖（1→2→3→4→hide）。與生文／轉場互不鎖定；連點可重啟。 */
+function handleThrust() {
+  if (!play || play.ending) return;
   if (play.scene !== 2 && play.scene !== 3) return;
-  if (typeBusy) {
-    typeSkip = true;
-    return;
-  }
-
-  play.animating = true;
-  syncUi();
-  try {
-    // 局部動圖：先播 1–4 幀再繼續擲骰／台詞（對齊主遊戲 flashScriptAnim）
-    await flashScriptAnim();
-    if (!play || play.ending) return;
-    const d = rollAffDelta(play.scene, girl.stage);
-    if (d) {
-      girl.affection = (Number(girl.affection) || 0) + d;
-      setStatus("play-status", `好感 ${d > 0 ? "+" : ""}${d} → ${girl.affection}（僅本頁，不寫回存檔）`);
-    }
-    const act = rollSexThrust(play.scene);
-    if (act === "swap") {
-      // 無持久立繪／揭圖：換圖 no-op（局部動畫已在上方播完）
-      setStatus("play-status", "（無圖）略過換圖");
-      return;
-    }
-    if (act === "player") {
-      vnCancelType();
-      play.awaiting = false;
-      await beginScene(4);
-      return;
-    }
-    if (act === "both") {
-      vnCancelType();
-      play.awaiting = false;
-      await beginScene(5);
-      return;
-    }
-    if (act === "scene3") {
-      vnCancelType();
-      play.awaiting = false;
-      await beginScene(3);
-      return;
-    }
-    if (act === "ai") {
-      if (play.awaiting) return;
-      play.awaiting = true;
-      syncUi();
-      const spec = play.pack?.scenes?.[String(play.scene)];
-      const attitude = fillBinds(spec?.attitude || "", girl, playerName);
-      await scriptTypeAi(girl, `（正戲進行中。這一景態度：${attitude}。只輸出台詞，短句、喘。）`);
-      if (play) play.awaiting = false;
-    } else {
-      setStatus("play-status", `肏 → ${act}`);
-    }
-  } finally {
-    if (play) {
-      play.animating = false;
-      syncUi();
-    }
-  }
+  // flashScriptAnim 內會 stop 再播；不閘 typeBusy／awaiting／animating
+  void flashScriptAnim();
 }
 
 function finishPlay(msg) {

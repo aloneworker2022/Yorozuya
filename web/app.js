@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.67(2026-09-17)前端也保住sexAnim";
+const APP_VER = "v7.68(2026-09-17)肏動圖加速互不干擾";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5919,7 +5919,8 @@ function syncTeasePlayUi() {
   const live = isTeasePlay() && !chatSession?.ended;
   const p = chatSession?.tease?.play;
   const scene = Number(p?.scene) || 0;
-  const canThrust = !!(live && !p?.ending && !p?.animating && (scene === 2 || scene === 3));
+  // 肏／含：不因 animating／awaiting 灰掉；連點可重啟動圖
+  const canThrust = !!(live && !p?.ending && (scene === 2 || scene === 3));
   // 場景1／結局：專用「下一句」推進，不再靠點整塊 chat-view
   const needNext = !!(live && (
     p?.openStep === "wait_ai" ||
@@ -5953,7 +5954,7 @@ function syncTeasePlayUi() {
   }
   if (thrust) {
     thrust.classList.toggle("hidden", !canThrust);
-    thrust.disabled = !canThrust;
+    thrust.disabled = false;
     thrust.textContent = kind === "oral" ? "含" : "肏";
   }
   if (cum) {
@@ -6138,6 +6139,28 @@ function scriptAnimHold(run, ms) {
     scriptAnimTimer = timer;
   });
 }
+function scriptAnimPreload(run, urls) {
+  if (run.cancelled || !urls?.length) return Promise.resolve();
+  return Promise.all(urls.map(url => new Promise(resolve => {
+    if (run.cancelled) return resolve();
+    const im = new Image();
+    let settled = false;
+    const cancel = () => finish();
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      run.waiters.delete(cancel);
+      im.onload = null;
+      im.onerror = null;
+      resolve();
+    };
+    run.waiters.add(cancel);
+    im.onload = finish;
+    im.onerror = finish;
+    im.src = url;
+    if (im.complete) queueMicrotask(finish);
+  })));
+}
 async function flashScriptAnim() {
   const box = document.getElementById("sex-anim-popup");
   const img = document.getElementById("sex-anim-img");
@@ -6169,6 +6192,8 @@ async function flashScriptAnim() {
     box.classList.remove("hidden");
     box.setAttribute("aria-hidden", "false");
     const playUrls = async (list) => {
+      await scriptAnimPreload(run, list);
+      if (run.cancelled) return 0;
       let shown = 0;
       for (const url of list) {
         if (run.cancelled) break;
@@ -6176,7 +6201,7 @@ async function flashScriptAnim() {
         if (run.cancelled) break;
         if (ok) {
           shown += 1;
-          await scriptAnimHold(run, 420);
+          await scriptAnimHold(run, 160);
         }
       }
       return shown;
@@ -6188,7 +6213,7 @@ async function flashScriptAnim() {
       shown = await playUrls(fallback.slice(0, 4));
     }
     // 若全部載入失敗，至少讓遮罩停一下，避免「完全沒反應」
-    if (!shown && !run.cancelled) await scriptAnimHold(run, 280);
+    if (!shown && !run.cancelled) await scriptAnimHold(run, 120);
   } finally {
     if (scriptAnimRun === run) stopScriptAnim();
   }
@@ -6455,12 +6480,14 @@ async function scriptHandleTap(s) {
 async function scriptHandleThrust(s) {
   const t = chatSession?.tease;
   const play = t?.play;
-  if (!isTeasePlay() || !play || play.ending || play.animating) return;
+  if (!isTeasePlay() || !play || play.ending) return;
   if (play.scene !== 2 && play.scene !== 3) return;
+  // 動圖立刻啟動／重啟（與擲骰／生文並行，不互鎖按鈕）
+  void flashScriptAnim();
+  // 擲骰／轉場進行中則略過本次骰子，避免連點堆疊；動圖仍已重啟
+  if (play.animating || play.awaiting) return;
   play.animating = true;
-  syncTeasePlayUi();
   try {
-    await flashScriptAnim();
     if (chatSession?.tease !== t || t.play !== play || !isTeasePlay()) return;
     const d = ScriptMode.rollAffDelta(play.scene, s.stage);
     if (d) {
@@ -6505,7 +6532,6 @@ async function scriptHandleThrust(s) {
   } finally {
     if (chatSession?.tease === t && t.play === play) {
       play.animating = false;
-      syncTeasePlayUi();
     }
   }
 }
