@@ -62,16 +62,47 @@
     color: #6a6280; font-size: .9em; text-align: center; padding: 1.5em;
   }
   #stage-idle.hidden { display: none; }
+
+  /* 場景圖：舞台最底層（在對話框／操作列／肏動圖之下） */
+  #scene-art {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    pointer-events: none;
+    background: #0a0810;
+  }
+  #scene-art.on { display: flex; }
+  #scene-art-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center center;
+  }
+  body.playing #scene-art {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+  body.playing.sex-anim-on #scene-art-img {
+    filter: brightness(.55);
+  }
+
   #stage-hud {
     position: absolute; top: .7em; left: .9em; right: .9em;
     display: flex; justify-content: space-between; align-items: center;
     font-size: .72em; color: #8a82a5; pointer-events: none; z-index: 2;
   }
+  body.playing #stage-hud { z-index: 2; }
   #stage-hud .mode {
     background: rgba(0,0,0,.45); border: 1px solid rgba(111,227,225,.25);
     color: #6fe3e1; padding: .15em .5em; border-radius: 4px; letter-spacing: .06em;
   }
-  /* 無立繪／無揭圖；肏時才短暫播 #sex-anim-popup */
+  /* 場景圖在 #scene-art；肏時短暫播 #sex-anim-popup（最上層） */
 
   #vn-box {
     position: relative; z-index: 3;
@@ -109,6 +140,7 @@
   #vn-cursor.hidden { display: none; }
 
   #act-row {
+    position: relative; z-index: 3;
     display: flex; gap: .5em; flex-wrap: wrap; padding: .7em 1em .95em;
     background: rgba(8,6,14,.96); border-top: 1px solid rgba(255,255,255,.06);
   }
@@ -175,9 +207,9 @@
 </head>
 <body>
 <div class="top">
-  <h1>性愛場景測試 / test_sex <span class="badge">無圖模式</span></h1>
+  <h1>性愛場景測試 / test_sex <span class="badge">場景圖下層</span></h1>
   <div class="warn">
-    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。不顯示立繪／揭圖；按「肏」時短暫播局部動圖 1–4。
+    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。場景圖在對話／肏動圖下層；按「肏」時短暫播局部動圖 1–4。
     <a href="/edit_date">約會劇本</a> | <a href="/test_date">約會測試</a> | <a href="/edit_pic">生圖測試</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
   </div>
   <div class="row">
@@ -194,9 +226,12 @@
 </div>
 
 <div id="stage">
+  <div id="scene-art" aria-hidden="true">
+    <img id="scene-art-img" alt="">
+  </div>
   <div id="stage-hud">
     <span id="hud-title">尚未開始</span>
-    <span class="mode">無圖模式</span>
+    <span class="mode">場景圖下層</span>
   </div>
   <div id="stage-idle">按「開始」後進入 VN 對話框。<br>優先用 active 做愛劇本場景 1；沒有則調戲。</div>
 

@@ -1,4 +1,4 @@
-/** test_sex — 正式劇本對話框互動（無圖）。鏡像 beginScriptScene / ScriptMode。 */
+/** test_sex — 正式劇本對話框互動（場景圖下層）。鏡像 beginScriptScene / ScriptMode。 */
 import {
   fillBinds,
   pickPack,
@@ -30,7 +30,8 @@ let worldLore = "";
 /** @type {null | {
  *   kind: string, pack: object, scene: number,
  *   openStep: string, awaiting: boolean, ending: boolean, transitionBusy: boolean,
- *   flowGen: number, history: Array
+ *   flowGen: number, history: Array,
+ *   urls: string[], imgI: number, revealImg: boolean
  * }} */
 let play = null;
 
@@ -51,6 +52,128 @@ function bustAssetUrl(url, ver) {
   const v = ver != null && ver !== "" ? ver : Date.now();
   return `${clean}?v=${v}`;
 }
+
+
+function packScriptArtCount(s, pack, scene) {
+  if (!s || !pack?.id) return 0;
+  if (scene != null) {
+    const urls = s.scriptArt?.[pack.id]?.[String(scene)]?.urls;
+    return Array.isArray(urls) ? urls.filter(Boolean).length : 0;
+  }
+  const art = s.scriptArt?.[pack.id];
+  if (!art || typeof art !== "object") return 0;
+  let n = 0;
+  for (const rec of Object.values(art)) {
+    if (Array.isArray(rec?.urls)) n += rec.urls.filter(Boolean).length;
+  }
+  return n;
+}
+
+/**
+ * 與 app.js preferScriptPackWithArt 對齊：本 pack 沒預產圖時改挑同 kind 有 scriptArt 的。
+ */
+function preferScriptPackWithArt(s, pack, kind) {
+  if (!pack) return pack;
+  const k = resolveScriptKind(kind || pack.kind);
+  if (packScriptArtCount(s, pack) > 0) return pack;
+  const data = packData || normalizeData({});
+  const active = pickPack(data, k);
+  if (active && packScriptArtCount(s, active) > 0) {
+    return normalizePack(active);
+  }
+  const packs = data.packs || [];
+  const hit = packs.find(
+    (p) => resolveScriptKind(p.kind) === k && packScriptArtCount(s, p) > 0,
+  );
+  return hit ? normalizePack(hit) : pack;
+}
+
+/** 鏡像 app.js scriptSceneUrls：scriptArt → 同 kind 其他 pack → slots[].url；bust 快取。 */
+function scriptSceneUrls(s, pack, n) {
+  const bust = (list, ver) => (list || []).filter(Boolean).map((u) => (
+    String(u).includes("?v=") ? u : bustAssetUrl(u, ver)
+  ));
+  const rec = s?.scriptArt?.[pack?.id]?.[String(n)];
+  const pre = rec?.urls;
+  const ver = rec?.at || s?.portraitsRefreshedAt || Date.now();
+  if (Array.isArray(pre) && pre.filter(Boolean).length) {
+    return bust(pre, ver);
+  }
+  const k = resolveScriptKind(pack?.kind);
+  for (const p of ((packData || normalizeData({})).packs || [])) {
+    if (!p?.id || p.id === pack?.id) continue;
+    if (resolveScriptKind(p.kind) !== k) continue;
+    const alt = s?.scriptArt?.[p.id]?.[String(n)];
+    const urls = alt?.urls;
+    if (Array.isArray(urls) && urls.filter(Boolean).length) {
+      return bust(urls, alt?.at || ver);
+    }
+  }
+  const slots = pack?.scenes?.[String(n)]?.slots || [];
+  return bust(slots.map((x) => x.url), ver);
+}
+
+function hideSceneArt() {
+  const box = $("scene-art");
+  const img = $("scene-art-img");
+  box?.classList.remove("on");
+  box?.setAttribute("aria-hidden", "true");
+  if (img) {
+    try { img.removeAttribute("src"); } catch { /* */ }
+    img.alt = "";
+  }
+}
+
+function showSceneArtUrl(url) {
+  const box = $("scene-art");
+  const img = $("scene-art-img");
+  if (!box || !img) return;
+  const next = String(url || "").trim();
+  if (!next) {
+    hideSceneArt();
+    return;
+  }
+  const apply = () => {
+    box.classList.add("on");
+    box.setAttribute("aria-hidden", "false");
+  };
+  if (img.getAttribute("src") === next) {
+    if (img.complete && img.naturalWidth > 0) apply();
+    return;
+  }
+  img.onload = () => {
+    if (img.getAttribute("src") !== next) return;
+    apply();
+  };
+  img.onerror = () => {
+    if (img.getAttribute("src") !== next) return;
+    hideSceneArt();
+    setStatus("play-status", "場景圖未就緒", true);
+  };
+  // 先掛 src；成功後才顯示，避免破圖框
+  img.alt = currentGirl?.name || "";
+  img.src = next;
+}
+
+function refreshSceneArt() {
+  if (!play?.revealImg) {
+    hideSceneArt();
+    return;
+  }
+  const urls = play.urls || [];
+  const i = ((Number(play.imgI) || 0) % Math.max(urls.length, 1) + Math.max(urls.length, 1)) % Math.max(urls.length, 1);
+  const url = urls.length ? urls[i] : "";
+  if (!url) {
+    hideSceneArt();
+    if (play && !play._scriptArtMissingToast) {
+      play._scriptArtMissingToast = true;
+      setStatus("play-status", "場景圖未就緒");
+    }
+    return;
+  }
+  showSceneArtUrl(url);
+}
+
 
 async function loadFramePacks() {
   try {
@@ -502,7 +625,7 @@ function syncUi() {
   const title = $("hud-title");
   if (title) {
     if (play && g) {
-      title.textContent = `${g.name}・${KIND_ZH[kind] || kind}・${SCENE_ZH[scene] || `場景${scene}`} · 無圖`;
+      title.textContent = `${g.name}・${KIND_ZH[kind] || kind}・${SCENE_ZH[scene] || `場景${scene}`}`;
     } else {
       title.textContent = "尚未開始";
     }
@@ -557,7 +680,7 @@ function buildGirlCtx(girl) {
     scene: {
       type: "talk",
       location: "test_sex",
-      scene_prompt: "劇本測試・無圖模式",
+      scene_prompt: "劇本測試・場景圖下層",
       time_of_day: "night",
       time_label: "夜",
     },
@@ -680,9 +803,17 @@ async function beginScene(n) {
   play.scene = n;
   play.awaiting = false;
   play.ending = false;
-  // 無圖：不載劇本揭圖／立繪；局部動畫僅在肏時 flash
+  // 場景一開始就載好 urls（scene1 等 wait_go 揭圖；2+ 立刻顯示）
+  if (play.pack && packScriptArtCount(girl, play.pack) <= 0) {
+    play.pack = preferScriptPackWithArt(girl, play.pack, play.kind || play.pack.kind);
+  }
+  play.urls = scriptSceneUrls(girl, play.pack, n);
+  play.imgI = 0;
+  play._scriptArtMissingToast = false;
 
   if (n === 1) {
+    play.revealImg = false;
+    hideSceneArt();
     play.openStep = "wait_ai";
     syncUi();
     await scriptTypeNarr(girl, firstNarr(play.pack, 1, girl));
@@ -690,6 +821,8 @@ async function beginScene(n) {
     return;
   }
   if (n === 2 || n === 3) {
+    play.revealImg = true;
+    refreshSceneArt();
     play.openStep = "";
     syncUi();
     await scriptNarrAndAi(girl, n);
@@ -697,6 +830,8 @@ async function beginScene(n) {
     return;
   }
   // 4 / 5 結局景
+  play.revealImg = true;
+  refreshSceneArt();
   play.openStep = "";
   play.ending = true;
   syncUi();
@@ -731,7 +866,11 @@ async function handleNext() {
     const attitude = fillBinds(spec?.attitude || "", girl, playerName);
     const r = await scriptTypeAi(girl, `（旁白：${narr}。這一景態度：${attitude}。只輸出台詞。）`);
     if (r === "abort" || !play) return;
-    // 正式遊戲此處會 revealImg；無圖模式直接進 wait_go
+    // 正式遊戲此處 revealImg：再抓一次 urls（發呆可能剛寫入）並顯示場景圖
+    play.urls = scriptSceneUrls(girl, play.pack, 1);
+    play.imgI = 0;
+    play.revealImg = true;
+    refreshSceneArt();
     play.openStep = "wait_go";
     play.awaiting = false;
     syncUi();
@@ -774,7 +913,14 @@ async function runThrustTransition() {
     }
     const act = rollSexThrust(play.scene);
     if (act === "swap") {
-      setStatus("play-status", "（無圖）略過換圖");
+      const n = play.urls?.length || 0;
+      if (n >= 2) {
+        play.imgI = play.imgI === 0 ? 1 : 0;
+        refreshSceneArt();
+        setStatus("play-status", `換場景圖 ${play.imgI + 1}/${n}`);
+      } else {
+        setStatus("play-status", "場景圖不足兩張，無法換圖");
+      }
       return;
     }
     if (act === "player") {
@@ -821,6 +967,7 @@ function finishPlay(msg) {
     play.openStep = "";
   }
   stopScriptAnim();
+  hideSceneArt();
   vnCancelType();
   const g = currentGirl;
   const line = msg || "調戲結束了。";
@@ -853,9 +1000,13 @@ function startPlay() {
     transitionBusy: false,
     flowGen: 0,
     history: [],
+    urls: [],
+    imgI: 0,
+    revealImg: false,
   };
+  hideSceneArt();
   setPlaying(true);
-  pushHist("sys", `劇本・${KIND_ZH[kind] || kind}・場景1・無圖`);
+  pushHist("sys", `劇本・${KIND_ZH[kind] || kind}・場景1`);
   setStatus(
     "play-status",
     `開始：${KIND_ZH[kind] || kind}「${pack.name || pack.id}」· 模型 ${settings.model || "罐頭"}`,
