@@ -4499,6 +4499,12 @@ def edit_date():
     return FileResponse(WEB_DIR / "edit_date.html")
 
 
+@app.get("/edit_pic")
+def edit_pic():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "edit_pic.html")
+
+
 @app.put("/api/edit_date")
 def put_edit_date(body: dict):
     if not isinstance(body, dict):

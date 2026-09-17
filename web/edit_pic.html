@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edit Pic — 生圖測試器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #12101c; color: #d8d0ec; font-family: system-ui, "Cubic 11", monospace;
+         font-size: 15px; padding: 1em; max-width: 860px; margin: 0 auto; line-height: 1.5; }
+  h1 { color: #ff4fd8; font-size: 1.2em; letter-spacing: .1em; margin-bottom: .2em; }
+  .warn { color: #ff9d4d; font-size: .8em; margin-bottom: 1em; }
+  section { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 10px; padding: 1em 1.1em; margin-bottom: 1em; }
+  h2 { color: #6fe3e1; font-size: .9em; letter-spacing: .1em; margin-bottom: .35em; }
+  .mini { font-size: .78em; color: #8a82a5; margin-bottom: .55em; }
+  label { display: block; font-size: .75em; color: #9a92b5; margin: .5em 0 .2em; }
+  textarea, input, select { width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .45em .6em; outline: none; }
+  textarea { min-height: 5.5em; resize: vertical; line-height: 1.55; }
+  textarea:focus, input:focus, select:focus { border-color: rgba(111,227,225,.45); }
+  .row { display: flex; gap: .5em; flex-wrap: wrap; align-items: flex-end; }
+  .row > span { min-width: 0; }
+  button { background: rgba(255,79,216,.18); border: none; border-radius: 7px; color: #ff8fe6;
+           font: inherit; padding: .45em .9em; cursor: pointer; }
+  button:hover { background: rgba(255,79,216,.3); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.cy { background: rgba(111,227,225,.16); color: #6fe3e1; }
+  button.del { background: rgba(255,95,122,.16); color: #ff8fa3; }
+  button.big { font-size: 1.05em; padding: .7em 1.4em; letter-spacing: .08em; }
+  .status { font-size: .8em; color: #6bcb77; min-height: 1.2em; margin-top: .4em; }
+  .status.err { color: #ff5f7a; }
+  a { color: #6fe3e1; }
+  code { font-size: .92em; }
+  .art { min-height: 200px; background: rgba(0,0,0,.35); border-radius: 8px; display: flex;
+         align-items: center; justify-content: center; overflow: hidden; margin: .4em 0; }
+  .art img { max-width: 100%; max-height: 480px; display: block; }
+  .sheet { background: rgba(0,0,0,.28); border-radius: 8px; padding: .7em .8em; white-space: pre-wrap;
+           font-size: .85em; color: #c8c0dc; min-height: 3em; max-height: 18em; overflow: auto; }
+  .grow { flex: 1 1 12em; }
+  .fix0 { flex: 0 1 9em; }
+  .girl-card { display: flex; gap: .8em; align-items: flex-start; margin-top: .5em;
+                background: rgba(0,0,0,.22); border-radius: 8px; padding: .7em .8em; }
+  .girl-card .port { width: 72px; height: 108px; object-fit: cover; border-radius: 6px;
+                     background: rgba(0,0,0,.35); flex: 0 0 auto; }
+  .girl-card .meta { flex: 1; min-width: 0; font-size: .88em; }
+  .girl-card .meta b { color: #ff8fe6; }
+  .mode-row { display: flex; gap: 1em; flex-wrap: wrap; margin: .4em 0 .6em; }
+  .mode-row label { display: inline-flex; align-items: center; gap: .35em; margin: 0;
+                    font-size: .85em; color: #d8d0ec; cursor: pointer; }
+  .mode-row input { width: auto; }
+  .thumb { max-width: 160px; max-height: 160px; border-radius: 6px; margin-top: .4em;
+           background: rgba(0,0,0,.35); }
+  .mode-flag { display: inline-block; padding: .15em .55em; border-radius: 4px;
+               font-size: .75em; letter-spacing: .06em; margin-left: .4em; }
+  .mode-flag.txt { background: rgba(111,227,225,.18); color: #6fe3e1; }
+  .mode-flag.img { background: rgba(255,79,216,.2); color: #ff8fe6; }
+  .ref-list { display: flex; flex-wrap: wrap; gap: .4em; margin-top: .45em; }
+  .ref-list button { padding: .25em; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1); }
+  .ref-list button.sel { border-color: #ff4fd8; }
+  .ref-list img { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; display: block; }
+</style>
+</head>
+<body>
+<h1>✦ Edit Pic — 生圖測試器</h1>
+<div class="warn">
+  可選存檔魅子，或當場抽一隻新的來測 prompt／pose_ref。有參考圖＝圖生圖（img2img），沒有＝文生圖。
+  Grok：正向會放進 <code>extra</code>；Comfy：正向當 <code>prompt</code>。
+  <a href="/edit_date">約會劇本</a> | <a href="/test_date">約會測試</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
+</div>
+
+<section>
+  <h2>1. 魅子</h2>
+  <p class="mini">存檔魅子從 <code>/api/save</code> 讀；抽新的只在本頁暫用，不會寫進存檔。</p>
+  <div class="mode-row">
+    <label><input type="radio" name="girl-mode" value="saved" checked> 存檔魅子</label>
+    <label><input type="radio" name="girl-mode" value="draw"> 抽一隻新的</label>
+  </div>
+  <div class="row" id="saved-row">
+    <span class="grow"><label>存檔名冊</label>
+      <select id="girl-sel"><option value="">（讀取中…）</option></select></span>
+    <button type="button" id="btn-reload-girls">重新讀名冊</button>
+  </div>
+  <div class="row" id="draw-row" style="display:none;margin-top:.4em">
+    <button class="cy" type="button" id="btn-draw">抽一隻</button>
+    <span class="mini" style="align-self:center">運氣固定 50；分級跟下方「基本設定」的 rating</span>
+  </div>
+  <div class="girl-card" id="girl-card">
+    <img class="port" id="girl-port" alt="" style="display:none">
+    <div class="meta" id="girl-meta"><span class="mini">尚未選擇魅子</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>2. 基本設定</h2>
+  <div class="row">
+    <span class="fix0"><label>引擎 provider</label>
+      <select id="ig-provider">
+        <option value="grok-img">Grok 圖</option>
+        <option value="comfy">ComfyUI</option>
+      </select></span>
+    <span class="fix0"><label>分級 rating</label>
+      <select id="ig-rating">
+        <option value="sfw">sfw</option>
+        <option value="nsfw" selected>nsfw</option>
+      </select></span>
+    <span class="fix0"><label>風格 style</label>
+      <select id="ig-style">
+        <option value="anime" selected>anime</option>
+        <option value="pixel">pixel</option>
+        <option value="realistic">realistic</option>
+      </select></span>
+    <span class="fix0"><label>構圖 framing</label>
+      <select id="ig-framing">
+        <option value="half" selected>half</option>
+        <option value="full">full</option>
+      </select></span>
+  </div>
+  <div class="row">
+    <span class="grow"><label>Grok 模型</label>
+      <select id="ig-model"><option value="grok-4.5">grok-4.5</option></select></span>
+    <span class="grow"><label>Comfy checkpoint</label>
+      <select id="ig-ckpt"><option value="">（測引擎後載入／用魅子綁定）</option></select></span>
+  </div>
+  <div class="row">
+    <span class="grow"><label>Comfy URL</label>
+      <input id="ig-comfy" type="text" placeholder="http://192.168.x.x:8188"></span>
+    <span class="fix0"><label>pose_denoise</label>
+      <input id="ig-denoise" type="number" min="0.35" max="0.9" step="0.05" value="0.55"></span>
+    <span class="fix0"><label>seed（0＝隨機）</label>
+      <input id="ig-seed" type="number" min="0" step="1" value="0"></span>
+  </div>
+  <div class="row" style="margin-top:.55em">
+    <button class="cy" type="button" id="btn-ig-ping">🔌 測試引擎</button>
+  </div>
+  <div class="status" id="ig-eng-status"></div>
+</section>
+
+<section>
+  <h2>3. Prompt</h2>
+  <p class="mini">Grok：正向會放進 <code>extra</code>（人設由伺服器打底）；Comfy：正向整份當 <code>prompt</code>。負向兩邊都送。</p>
+  <label>正向（英文 tags）</label>
+  <textarea id="prompt" placeholder="例：standing pose, looking at viewer, park background…"></textarea>
+  <label>負向 negative</label>
+  <textarea id="negative" placeholder="例：blurry, low quality, deformed…"></textarea>
+  <div class="row" style="margin-top:.45em">
+    <button type="button" id="btn-preview-prompt">預覽基礎 prompt</button>
+  </div>
+  <label style="margin-top:.6em">基礎／合併預覽（唯讀）</label>
+  <div class="sheet" id="prompt-sheet">按「預覽基礎 prompt」後顯示人設組出來的正／負向。</div>
+</section>
+
+<section>
+  <h2>4. 參考圖（圖生圖）
+    <span class="mode-flag txt" id="mode-flag">文生圖</span>
+  </h2>
+  <p class="mini">上傳後走 <code>/api/pose-refs</code>；也可貼 URL 或選最近用過的。</p>
+  <div class="row">
+    <input id="ref-file" type="file" accept="image/*" style="flex:1 1 14em">
+    <button type="button" id="btn-ref-up">上傳參考圖</button>
+    <button class="del" type="button" id="btn-ref-clear">清除</button>
+  </div>
+  <label>或貼 URL（須為 /assets/pose_refs/… 等允許路徑）</label>
+  <div class="row">
+    <span class="grow"><input id="ref-url" type="text" placeholder="/assets/pose_refs/xxx.png"></span>
+    <button type="button" id="btn-ref-apply">套用 URL</button>
+  </div>
+  <label>最近參考圖</label>
+  <div class="ref-list" id="ref-recent"></div>
+  <img class="thumb" id="ref-thumb" alt="" style="display:none">
+  <div class="mini" id="ref-flag">沒有參考圖 → 文生圖</div>
+</section>
+
+<section>
+  <h2>5. 產出</h2>
+  <button class="big" type="button" id="btn-gen">✦ 生圖</button>
+  <div class="status" id="gen-status"></div>
+  <div class="art" id="gen-art"><span class="mini">尚未產生</span></div>
+</section>
+
+<script type="module" src="/content/edit_pic.js"></script>
+</body>
+</html>
