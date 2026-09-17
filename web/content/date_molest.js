@@ -1,4 +1,4 @@
-/** 約會猥褻劇本：玩家包一定圖生圖；單男包文生圖（lookEn＋prompt）。 */
+/** 約會猥褻劇本：玩家包一定圖生圖；單男包文生圖（女子基礎＋lookEn＋prompt）。 */
 
 import { fillBinds, bindHint, uid, normalizeSlot } from "./script_mode.js";
 import { girlForDate, dateOutfitText, pickDateOutfit } from "./date_outfit.js";
@@ -285,9 +285,19 @@ export function emptyMaleMolestPack(name = "單男猥褻") {
 
 /**
  * 單男猥褻文生圖下單。不要求 pose_ref。
- * 正向：lookEn + 場所英文 + 使用者正向（男性外觀／動作為主）。
+ * 正向：女子基本設定 + lookEn + 場所英文 + 使用者正向（男性外觀／動作為主）。
  */
-export function buildMaleMolestImgBody(pack, maleType, eng = {}, style = "anime", placeId, customPlaces) {
+export async function buildMaleMolestImgBody(
+  pack,
+  maleType,
+  girl,
+  eng = {},
+  style = "anime",
+  placeId,
+  customPlaces,
+  relStage = "stranger",
+) {
+  if (!girl) throw new Error("先選魅子");
   const p = normalizeMolestPack({ ...pack, imgMode: "txt" });
   const pid = placeId || p.placeId || "plaza";
   const lookEn = String(maleType?.lookEn || "").trim();
@@ -295,48 +305,42 @@ export function buildMaleMolestImgBody(pack, maleType, eng = {}, style = "anime"
   const userNeg = String(p.slot?.negative || "").trim();
   const customPlace = Array.isArray(customPlaces) ? customPlaces.find((x) => x?.id === pid) : null;
   const placePos = customPlace?.en || placeEn(pid);
-  const positive = joinPromptParts(lookEn, placePos, userPos);
-  const negative = joinPromptParts(
+  const outfitInfo = pickDateOutfit(girl, relStage);
+  const dated = girlForDate(girl, outfitInfo);
+  const base = await fetchMolestBasePrompt(girl, eng, style, relStage);
+  const userPositive = joinPromptParts(lookEn, placePos, userPos);
+  const userNegative = joinPromptParts(
     userNeg,
     "looking at viewer, text, watermark, ugly, extra fingers",
   );
+  const merged = mergeMolestPrompts(base, userPositive, userNegative);
   const comfy = (eng.imgProvider || "grok-img") === "comfy";
-  const fakeChar = {
-    id: String(maleType?.id || "male").slice(0, 24) || "male",
-    name: String(maleType?.name || "男子").slice(0, 40) || "男子",
-  };
-  const merged = {
-    positive,
-    negative,
-    basePositive: lookEn,
-    baseNegative: "",
-    userPositive: joinPromptParts(placePos, userPos),
-    userNegative: userNeg,
-  };
   return {
     body: {
-      key: `date-male-molest:${fakeChar.id}:${Date.now().toString(36)}`,
+      key: `date-male-molest:${girl.id || "x"}:${maleType?.id || "male"}:${Date.now().toString(36)}`,
       provider: comfy ? "comfy" : "grok-img",
       model: comfy ? (eng.imgModel || eng.llmModel || "grok-4.5") : (eng.imgModel || "grok-4.5"),
       framing: "half",
       rating: "nsfw",
       style: style || "anime",
-      character: fakeChar,
-      outfit: "",
-      // Comfy：整份合併正向；Grok：extra 放 lookEn＋動作／場所，不鎖女子臉
-      prompt: comfy ? positive : "",
-      extra: comfy ? "" : positive,
-      negative,
-      visual_neg: negative,
+      character: dated,
+      outfit: dateOutfitText(dated, outfitInfo),
+      // Comfy：整份合併正向；Grok：女子人設打底，extra 只放 lookEn／場所／輸入。
+      prompt: comfy ? merged.positive : "",
+      extra: comfy ? "" : merged.userPositive,
+      negative: merged.negative,
+      visual_neg: merged.negative,
       cutout: false,
-      lock_identity: false,
+      lock_identity: true,
       retry: true,
-      scene_kind: "male_molest",
-      ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: String(eng.comfyCkpt || "").trim() } : {}),
+      scene_kind: "script",
+      ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: girlOwnCkpt(dated) || girlOwnCkpt(girl) } : {}),
     },
     merged,
-    place: placeOf(pid),
+    base,
     lookEn,
+    place: customPlace || placeOf(pid),
+    dated,
   };
 }
 

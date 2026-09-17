@@ -249,14 +249,14 @@
       <textarea id="mm-narr" placeholder="給旁白 AI 的方向。"></textarea>
       <label>女子感覺 prompt</label>
       <textarea id="mm-feel" placeholder="這一拍身體感覺，只影響她台詞口氣。"></textarea>
-      <p class="mini">產圖為<strong>文生圖</strong>：會合併 lookEn＋場所英文＋下方正向。不需參考圖／骨架。</p>
+      <p class="mini">產圖為<strong>文生圖</strong>：先女子基本設定，再疊 lookEn／場所／動作；模型用女子 comfyCkpt。</p>
       <div class="art" id="mm-art"><span class="mini">尚未產生</span></div>
       <label>正向 prompt</label>
       <textarea id="mm-pos" placeholder="英文 tags，例：1boy groping from behind, nsfw, public"></textarea>
       <label>負向 prompt</label>
       <textarea id="mm-neg" style="min-height:3.2em" placeholder="ugly, extra fingers, looking at viewer"></textarea>
-      <label>輸出 prompt（lookEn＋場所＋輸入）</label>
-      <div class="sheet" id="mm-out-prompt">（填 lookEn／正向後更新）</div>
+      <label>輸出 prompt（女子基礎＋lookEn＋場所＋輸入）</label>
+      <div class="sheet" id="mm-out-prompt">（先選女子，填 lookEn／正向後更新）</div>
       <div class="row" style="margin-top:.55em">
         <button class="cy" type="button" id="mm-gen">產圖</button>
         <button class="cy" type="button" id="mm-test">綜合測試（動作→旁白→女子→產圖）</button>
@@ -331,7 +331,7 @@
       <textarea id="mh-voice" placeholder="門外聽到的喘息、撞擊、對話片段……"></textarea>
       <label>女子對玩家的回應（跟進去看時）</label>
       <textarea id="mh-reply" placeholder="場內她對玩家說的話……"></textarea>
-      <p class="mini">產圖為<strong>文生圖</strong>：合併「目前選中男子種類」的 lookEn＋場所＋正向。可選填已產 url。</p>
+      <p class="mini">產圖為<strong>文生圖</strong>：先女子基本設定，再疊 lookEn／場所／動作；模型用女子 comfyCkpt。可選填已產 url。</p>
       <div class="art" id="mh-art"><span class="mini">尚未產生</span></div>
       <label>正向 prompt</label>
       <textarea id="mh-pos" placeholder="英文 tags，例：1boy sex in hotel, nsfw, explicit"></textarea>
@@ -339,8 +339,8 @@
       <textarea id="mh-neg" style="min-height:3.2em" placeholder="ugly, extra fingers, looking at viewer"></textarea>
       <label>圖片 URL（可選，有則優先用）</label>
       <input id="mh-img-url" placeholder="/assets/… 或 https://…" style="width:100%;margin:.25em 0 .4em;padding:.35em .5em;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.25);color:inherit">
-      <label>輸出 prompt（lookEn＋場所＋輸入）</label>
-      <div class="sheet" id="mh-out-prompt">（填 lookEn／正向後更新）</div>
+      <label>輸出 prompt（女子基礎＋lookEn＋場所＋輸入）</label>
+      <div class="sheet" id="mh-out-prompt">（先選女子，填 lookEn／正向後更新）</div>
       <div class="row" style="margin-top:.55em">
         <button class="cy" type="button" id="mh-gen">產圖</button>
         <button type="button" id="mh-refresh-out">更新輸出 prompt</button>
@@ -556,22 +556,24 @@ function mmRefreshOut() {
   const userNeg = String(p.slot?.negative || "").trim();
   const placePos = placeEn(pid);
   const positive = joinPromptParts(look, placePos, userPos);
+  const g = moGirl();
   el.textContent = [
     `【場所】${placeZh(pid)}`,
+    `【基礎】女子基本設定${g ? `（${g.name || g.id}）` : "（先選女子）"}`,
     "",
-    "【lookEn】",
+    "【＋lookEn】",
     look || "（空）",
     "",
-    "【場所英文】",
+    "【＋場所英文】",
     placePos || "（空）",
     "",
-    "【＋輸入正向】",
+    "【＋輸入正向／動作】",
     userPos || "（空白）",
     "",
-    "【合併正向 → 送出】",
+    "【女子基礎＋lookEn＋場所＋輸入 → 送出】",
     positive || "（空）",
     "",
-    "【負向】",
+    "【負向（女子基礎＋輸入＋預設）】",
     userNeg || "（空）",
   ].join("\n");
 }
@@ -617,6 +619,8 @@ function mmRenderGirls() {
     const g = girls.find((x) => x.id === girlId);
     if (g?.stage) $("mm-stage").value = g.stage || "stranger";
   }
+  mmRefreshOut();
+  mhRefreshOut();
 }
 
 function flushMaleTypeFields() {
@@ -786,24 +790,26 @@ function mhRefreshOut() {
   const userNeg = String(a.slot?.negative || "").trim();
   const placePos = hotelPlaceEn(pid, hotelPlaces);
   const positive = joinPromptParts(look, placePos, userPos);
+  const g = moGirl();
   el.textContent = [
     `【旅館】${mhHotel()?.name || ""}`,
     `【階段】${a.stage}　【射精】${a.ejac}`,
     `【場所】${hotelPlaceZh(pid, hotelPlaces)}`,
+    `【基礎】女子基本設定${g ? `（${g.name || g.id}）` : "（先選女子）"}`,
     "",
-    "【lookEn（目前男子種類）】",
+    "【＋lookEn】",
     look || "（空）",
     "",
-    "【場所英文】",
+    "【＋場所英文】",
     placePos || "（空）",
     "",
-    "【＋輸入正向】",
+    "【＋輸入正向／動作】",
     userPos || "（空白）",
     "",
-    "【合併正向 → 送出】",
+    "【女子基礎＋lookEn＋場所＋輸入 → 送出】",
     positive || "（空）",
     "",
-    "【負向】",
+    "【負向（女子基礎＋輸入＋預設）】",
     userNeg || "（空）",
   ].join("\n");
 }
@@ -1356,6 +1362,8 @@ $("mm-girl")?.addEventListener("change", () => {
   const g = moGirl();
   if (g?.stage && $("mm-stage")) $("mm-stage").value = g.stage;
   if ($("mo-girl")) $("mo-girl").value = girlId;
+  mmRefreshOut();
+  mhRefreshOut();
   mmStatus(g ? girlCkptHint(g) : "沒有魅子", !g);
 });
 ["mm-pos", "mm-male-act", "mm-attitude", "mm-narr", "mm-feel"].forEach((id) => {
@@ -1403,7 +1411,9 @@ $("mm-gen")?.addEventListener("click", async () => {
   flushMaleTypeFields();
   const t = maleTypeById(maleActiveTypeId);
   const p = mmPack();
+  const g = moGirl();
   if (!t || !p) return;
+  if (!g) { mmStatus("先選存檔魅子", true); return; }
   if (!String(t.lookEn || "").trim()) {
     mmStatus("請先填此種類的 lookEn 外觀描述", true);
     return;
@@ -1411,11 +1421,12 @@ $("mm-gen")?.addEventListener("click", async () => {
   $("mm-art").innerHTML = `<span class="mini">生成中…</span>`;
   mmStatus("文生圖產圖中…");
   try {
-    const built = buildMaleMolestImgBody(p, t, engGet("mm-img-prov"), "anime", $("mm-place")?.value || p.placeId || "plaza");
-    $("mm-out-prompt").textContent = formatOutputPromptSheet({
-      ...built.merged,
-      basePositive: built.lookEn || built.merged.basePositive,
-    });
+    const built = await buildMaleMolestImgBody(
+      p, t, g, engGet("mm-img-prov"), "anime",
+      $("mm-place")?.value || p.placeId || "plaza", undefined,
+      $("mm-stage")?.value || g.stage || "stranger",
+    );
+    $("mm-out-prompt").textContent = formatOutputPromptSheet(built.merged);
     const r = await waitImg(built.body);
     if (r.status === "done" && r.result) {
       p.slot.url = String(r.result).split("?")[0];
@@ -1452,11 +1463,10 @@ $("mm-test")?.addEventListener("click", async () => {
     out.textContent = `【男子動作】\n${f.playerAct}\n\n【旁白】\n${narr}\n\n【${g.name}】\n${reply}\n\n產圖中…`;
     mmStatus("綜合測試：產圖…");
     if (!String(t.lookEn || "").trim()) throw new Error("請先填 lookEn");
-    const built = buildMaleMolestImgBody(p, t, engGet("mm-img-prov"), "anime", pid);
-    $("mm-out-prompt").textContent = formatOutputPromptSheet({
-      ...built.merged,
-      basePositive: built.lookEn || built.merged.basePositive,
-    });
+    const built = await buildMaleMolestImgBody(
+      p, t, g, engGet("mm-img-prov"), "anime", pid, undefined, stage,
+    );
+    $("mm-out-prompt").textContent = formatOutputPromptSheet(built.merged);
     let imgLine = "";
     const r = await waitImg(built.body);
     if (r.status === "done" && r.result) {
@@ -1588,12 +1598,18 @@ $("mh-gen")?.addEventListener("click", async () => {
   mhCollect();
   const t = maleTypeById(maleActiveTypeId);
   const a = mhAct();
+  const g = moGirl();
   if (!a) return;
   if (!t) { mhStatus("先選男子種類（用 lookEn）", true); return; }
+  if (!g) { mhStatus("先選存檔魅子", true); return; }
   if ($("mh-art")) $("mh-art").innerHTML = `<span class="mini">生成中…</span>`;
   mhStatus("產圖中…");
   try {
-    const built = buildMaleMolestImgBody(a, t, engGet("mh-img-prov"), "anime", $("mh-place")?.value || a.placeId || hotelPlaces[0]?.id || "hotel_room", hotelPlaces);
+    const built = await buildMaleMolestImgBody(
+      a, t, g, engGet("mh-img-prov"), "anime",
+      $("mh-place")?.value || a.placeId || hotelPlaces[0]?.id || "hotel_room", hotelPlaces,
+      g.stage || "stranger",
+    );
     mhRefreshOut();
     const r = await waitImg(built.body);
     if (r.status === "done" && r.result) {

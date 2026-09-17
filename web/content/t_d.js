@@ -1402,7 +1402,9 @@ async function ensureHotelActImage(act) {
   try {
     const eng = await getImgEng();
     const places = scriptHotelPlaces();
-    const built = buildMaleMolestImgBody(act, typ, eng, "anime", act.placeId || places[0]?.id || "hotel_room", places);
+    const built = await buildMaleMolestImgBody(
+      act, typ, girl, eng, "anime", act.placeId || places[0]?.id || "hotel_room", places, relStage,
+    );
     const r = await waitImg(built.body);
     if (r.status === "done" && r.result) {
       const u = String(r.result).split("?")[0];
