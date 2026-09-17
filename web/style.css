@@ -2242,3 +2242,118 @@ body.card-mode.has-ct-figure #kanban-girl {
 }
 .ct-sex-choice-card:active { transform: scale(0.98); }
 .ct-sex-choice-name { font-weight: 700; font-size: 1.05em; color: #ffc1dc; }
+
+/* ── 日誌・名冊群 LINE ── */
+.line-entry {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; max-width: 340px; margin: 12px auto 0;
+  padding: 10px 12px; border: none; border-radius: 12px;
+  background: linear-gradient(135deg, #06c755 0%, #05a847 100%);
+  color: #fff; cursor: pointer; text-align: left;
+  box-shadow: 0 8px 22px rgba(6, 199, 85, .28);
+  font: inherit;
+}
+.line-entry:active { transform: scale(0.98); }
+.line-entry-mark {
+  flex-shrink: 0; font-size: .62em; font-weight: 800; letter-spacing: .08em;
+  background: rgba(255,255,255,.22); border-radius: 8px; padding: 6px 8px;
+}
+.line-entry-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.line-entry-title { font-weight: 700; font-size: .95em; }
+.line-entry-sub {
+  font-size: .72em; opacity: .88; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.line-entry-chev { font-size: 1.4em; opacity: .85; }
+
+.line-chat {
+  display: flex; flex-direction: column;
+  width: 100%; max-width: 420px; margin: 0 auto;
+  height: min(70vh, 560px); min-height: 320px;
+  background: #748a9e;
+  border-radius: 14px; overflow: hidden;
+  box-shadow: 0 16px 40px rgba(20, 30, 40, .45);
+  animation: cIn .22s cubic-bezier(.25, .8, .25, 1);
+}
+.line-hdr {
+  flex-shrink: 0; display: flex; align-items: center; gap: 6px;
+  padding: 10px 12px; background: #06c755; color: #fff;
+}
+.line-back {
+  flex-shrink: 0; width: 36px; height: 36px; border: none; border-radius: 10px;
+  background: rgba(255,255,255,.18); color: #fff; font-size: 1.4em; line-height: 1;
+  cursor: pointer;
+}
+.line-back:active { background: rgba(255,255,255,.3); }
+.line-hdr-main { min-width: 0; }
+.line-hdr-title { font-weight: 700; font-size: 1em; letter-spacing: .04em; }
+.line-hdr-sub { font-size: .68em; opacity: .9; }
+
+.line-msgs {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 12px 10px 8px; display: flex; flex-direction: column; gap: 10px;
+  background: #748a9e;
+  -webkit-overflow-scrolling: touch;
+}
+.line-row { display: flex; align-items: flex-end; gap: 6px; max-width: 92%; }
+.line-row.me { align-self: flex-end; flex-direction: row-reverse; }
+.line-row.them { align-self: flex-start; }
+.line-av {
+  width: 34px; height: 34px; border-radius: 10px; object-fit: cover;
+  background: rgba(255,255,255,.25); flex-shrink: 0;
+}
+.line-av-fallback { display: inline-block; }
+.line-bubble-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.line-row.me .line-bubble-col { align-items: flex-end; }
+.line-name {
+  font-size: .62em; color: rgba(255,255,255,.92); padding-left: 2px;
+  letter-spacing: .02em;
+}
+.line-bubble {
+  max-width: 240px; padding: 8px 11px; border-radius: 14px;
+  font-size: .88em; line-height: 1.45; word-break: break-word;
+  box-shadow: 0 1px 2px rgba(0,0,0,.12);
+}
+.line-bubble.them {
+  background: #fff; color: #222;
+  border-top-left-radius: 4px;
+}
+.line-bubble.me {
+  background: #8cef6a; color: #163018;
+  border-top-right-radius: 4px;
+}
+.line-bubble.line-typing {
+  color: #666; font-style: italic; opacity: .9;
+}
+.line-reads {
+  font-size: .58em; color: rgba(255,255,255,.85);
+  letter-spacing: .02em; padding-right: 2px; max-width: 200px;
+  text-align: right;
+}
+
+.line-composer {
+  flex-shrink: 0; display: flex; gap: 8px; align-items: center;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: #eeeef0; border-top: 1px solid rgba(0,0,0,.08);
+}
+.line-composer input {
+  flex: 1; min-width: 0; border: none; border-radius: 18px;
+  padding: 10px 14px; font: inherit; font-size: .92em;
+  background: #fff; color: #222; outline: none;
+}
+.line-composer input:disabled { opacity: .65; }
+.line-send {
+  flex-shrink: 0; border: none; border-radius: 18px;
+  padding: 10px 14px; font: inherit; font-weight: 700; font-size: .88em;
+  background: #06c755; color: #fff; cursor: pointer;
+}
+.line-send:disabled { opacity: .45; cursor: default; }
+.line-send:not(:disabled):active { filter: brightness(0.95); }
+
+#qs-diary .lv-inner:has(.line-chat) {
+  align-items: stretch;
+}
+#diary-stage:has(.line-chat) {
+  width: 100%;
+  display: flex; justify-content: center;
+}

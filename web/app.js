@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.24(2026-09-17)單男測試機率1/2";
+const APP_VER = "v7.25(2026-09-17)日誌Line名冊群";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -661,6 +661,11 @@ function defaultState() {
     notebook: [], // 玩家日誌 [{day, ymd, text, t, memosName?}]
     notebookPeek: { day: null, byGirl: {} }, // 看板娘今日是否已評過日誌
     notebookStreak: { rewardedDay: null, count: 0 }, // 連寫金幣：當天領過沒、目前連續天數
+    lineGroup: { // 日誌・名冊群 LINE（單群；每人獨立閱讀游標）
+      title: "名冊群",
+      messages: [], // { id, t, kind:"player"|"girl", girlId?, name?, text?, reads? }
+      cursors: {},  // girlId → { lastPlayerMsgId }
+    },
     discover: null, // {day, count} 每日發現獎勵計數
     expansions: {}, // 擴充等級(8 軸,見 EXPANSIONS);名額/格數等由此推導
     dismiss: null,  // {day, price} 今日遣散費
@@ -923,6 +928,10 @@ function initState(j, offline) {
   state.notebook ??= [];
   state.notebookPeek ??= { day: null, byGirl: {} };
   state.notebookStreak ??= { rewardedDay: null, count: 0 };
+  state.lineGroup ??= { title: "名冊群", messages: [], cursors: {} };
+  state.lineGroup.title ||= "名冊群";
+  state.lineGroup.messages ??= [];
+  state.lineGroup.cursors ??= {};
   for (const e of state.notebook) {
     if (e && e.text == null) e.text = notebookText(e);
   }
@@ -10442,6 +10451,10 @@ let procPool = null;        // 強制池:0 發現 | 1 已承接 | null 自動
 let procIdx = { 0: 0, 1: 0 };
 let diaryIdx = 0;
 let diaryReturn = "exec";
+let lineOpen = false;       // 日誌內開啟名冊群 LINE
+let lineBusy = false;       // 一波回覆處理中（暫時禁送）
+let lineTypingIds = [];     // 正在「輸入中…」的 girlId
+let _lineScrollStick = true;
 let _pinAbort = null;
 let _pinSnapTok = 0;        // 無縫輪動:克隆張跳回真身的排程令牌(新動作作廢舊排程)
 let _nbAbort = null;
@@ -10487,6 +10500,7 @@ function goDiary() {
   paintDiaryMeta();
 }
 function leaveDiary() {
+  lineOpen = false;
   pruneNotebook();
   flushMemosSync();
   if (diaryReturn === "proc") goProc();
@@ -10791,13 +10805,26 @@ function renderDiary() {
   if (!stage) return;
   if (tab) tab.classList.toggle("on", qScene === "diary");
   const ae = document.activeElement;
-  if (ae && stage.contains(ae) && ae.dataset?.nb) return;
+  if (ae && stage.contains(ae) && (ae.dataset?.nb || ae.dataset?.line)) return;
 
   if (!state) {
     stage.innerHTML = "";
     if (nav) nav.textContent = "";
     return;
   }
+  ensureLineGroup();
+  if (lineOpen) {
+    if (badge) badge.textContent = "Line";
+    const existing = stage.querySelector("#line-chat");
+    if (existing) {
+      paintLineMessages();
+      if (nav) nav.textContent = "名冊群・每人獨立已讀";
+      return;
+    }
+    renderLineChat(stage, nav);
+    return;
+  }
+
   const pages = notebookPages();
   diaryIdx = Math.max(0, Math.min(diaryIdx, pages.length - 1));
   const e = pages[diaryIdx];
@@ -10818,7 +10845,15 @@ function renderDiary() {
     </div>
     <p class="nb-hint" id="nb-hint"></p>
     <div class="nb-swind"></div>
-  </div>`;
+  </div>
+  <button type="button" class="line-entry" id="line-open-btn" aria-label="打開名冊群">
+    <span class="line-entry-mark">LINE</span>
+    <span class="line-entry-body">
+      <span class="line-entry-title">名冊群</span>
+      <span class="line-entry-sub">${esc(lineEntryPreview())}</span>
+    </span>
+    <span class="line-entry-chev">›</span>
+  </button>`;
   if (nav) {
     nav.textContent = pages.length > 1
       ? `${diaryIdx + 1} / ${pages.length}　↑較早　↓較新`
@@ -10835,6 +10870,7 @@ function renderDiary() {
     autoGrowNb(textEl);
   }
   attachNbSwipe(card, pages.length);
+  $("#line-open-btn")?.addEventListener("click", () => openLineChat());
 }
 
 function flipDiary(dir) {
@@ -10968,6 +11004,368 @@ function maybeSpeakDiaryComment(g, force = false) {
   try { genTick(true); } catch { /* */ }
   scheduleSave();
   return true;
+}
+
+// ===== 日誌・名冊群 LINE（單群；每人獨立閱讀游標）=====
+const LINE_CTX_MSG_CAP = 28;
+const LINE_READ_TOKEN = /#\s*(已讀|略過)\b/;
+
+function ensureLineGroup() {
+  if (!state) return null;
+  state.lineGroup ??= { title: "名冊群", messages: [], cursors: {} };
+  const g = state.lineGroup;
+  g.title = g.title || "名冊群";
+  g.messages ??= [];
+  g.cursors ??= {};
+  return g;
+}
+
+/** 名冊上仍在的妹子（有 id）；含被帶走／NTR 窗口中；已永久消失者不在 succubi。 */
+function lineRosterGirls() {
+  return (state?.succubi || []).filter(s => s && s.id && s.name);
+}
+
+function lineEntryPreview() {
+  const lg = ensureLineGroup();
+  const msgs = lg?.messages || [];
+  if (!msgs.length) return "跟名冊上的大家聊聊";
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.kind === "player" && m.text) return `你：${String(m.text).slice(0, 22)}`;
+    if (m.kind === "girl" && m.text) return `${m.name || "她"}：${String(m.text).slice(0, 18)}`;
+  }
+  return "跟名冊上的大家聊聊";
+}
+
+function openLineChat() {
+  ensureLineGroup();
+  lineOpen = true;
+  _lineScrollStick = true;
+  renderDiary();
+}
+
+function closeLineChat() {
+  lineOpen = false;
+  renderDiary();
+}
+
+function lineMsgId() {
+  return `lg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function linePortraitUrl(s) {
+  const u = girlShot(s, "half") || girlShot(s, "head") || s?.portrait || "";
+  return u || `/assets/portraits/${encodeURIComponent(s.id)}_half.png`;
+}
+
+/** 從該妹上次互動的玩家訊息（含）起，到最新為止；無游標則取尾段。 */
+function lineContextWindow(girlId) {
+  const lg = ensureLineGroup();
+  const msgs = lg.messages || [];
+  const cur = lg.cursors?.[girlId]?.lastPlayerMsgId || null;
+  let start = 0;
+  if (cur) {
+    const idx = msgs.findIndex(m => m.id === cur);
+    start = idx >= 0 ? idx : 0;
+  } else if (msgs.length > LINE_CTX_MSG_CAP) {
+    start = msgs.length - LINE_CTX_MSG_CAP;
+  }
+  let slice = msgs.slice(start);
+  if (slice.length > LINE_CTX_MSG_CAP) slice = slice.slice(-LINE_CTX_MSG_CAP);
+  return slice;
+}
+
+function lineTranscriptForPrompt(girlId) {
+  const slice = lineContextWindow(girlId);
+  const player = state.settings?.player || "召喚師";
+  const lines = [];
+  for (const m of slice) {
+    if (m.kind === "player") {
+      lines.push(`[${player}] ${m.text || ""}`);
+      const reads = (m.reads || []).map(id => {
+        const g = state.succubi.find(x => x.id === id);
+        return g?.name || id;
+      }).filter(Boolean);
+      if (reads.length) lines.push(`（已讀：${reads.join("、")}）`);
+    } else if (m.kind === "girl") {
+      lines.push(`[${m.name || "她"}] ${m.text || ""}`);
+    }
+  }
+  return lines.join("\n") || "（尚無訊息）";
+}
+
+function lineRosterNames() {
+  return lineRosterGirls().map(s => s.name).join("、") || "（無人）";
+}
+
+function buildLineGroupMsgs(girl) {
+  const player = state.settings?.player || "召喚師";
+  const others = lineRosterGirls().filter(x => x.id !== girl.id).map(x => x.name);
+  const sys = buildSystemPrompt(buildCtx(girl)) + [
+    "",
+    "【名冊群 LINE】",
+    `・你在「${ensureLineGroup().title}」這個群組裡，成員是召喚師「${player}」與名冊上的妹子：${lineRosterNames()}。`,
+    "・這是文字群組聊天（像 LINE），不是面對面、也不是電話。",
+    "・你只看得到下方「你的閱讀窗」內的對話——那是你上次已讀／回覆之後到現在的片段，不是從頭全部。",
+    "・你可以回「一句很短的台詞」（口語、像傳訊），或選擇不說話只已讀。",
+    "・若只已讀、不發言：只輸出 #已讀 （或 #略過），不要加其他字。",
+    "・若要回覆：只寫你說出口的那一句，不要寫動作／表情／旁白，也不要加 #。",
+    "・不要冒充別人；不要一次回很多句。",
+    others.length ? `・群裡還有：${others.join("、")}（你看得到她們在窗內說過的話）。` : "",
+  ].filter(Boolean).join("\n");
+  return [
+    { role: "system", content: sys },
+    { role: "user", content: `【你的閱讀窗】\n${lineTranscriptForPrompt(girl.id)}\n\n請回覆一句，或輸出 #已讀。` },
+  ];
+}
+
+function pickLineCanned(g) {
+  // 離線可測：約 40% 只已讀
+  if (Math.random() < 0.4) return "#已讀";
+  const name = noticeArchName(g);
+  const pool = {
+    高冷: ["嗯。", "知道了。", "……隨便。", "別吵。"],
+    傲嬌: ["才、才沒在等你傳訊！", "哼，收到了。", "別以為我會回很長。", "你很閒喔。"],
+    溫柔: ["收到了喔。", "嗯嗯，我在。", "辛苦了。", "慢慢來就好。"],
+    活潑: ["哈哈哈好喔！", "收到～", "欸我也想說！", "讚啦！"],
+    開朗: ["好呀好呀！", "哈哈懂！", "衝啊！", "我也在～"],
+    天然: ["欸？喔喔。", "這樣啊……", "嗯？好喔。", "我有看到！"],
+    御姊: ["知道了。", "嗯，可以。", "別太勉強。", "我聽著。"],
+    病嬌: ["……只有傳給大家嗎。", "我有看。", "回我。", "嗯。"],
+    女王: ["准了。", "哼。", "報告收到。", "別讓我等太久。"],
+  };
+  for (const k of Object.keys(pool)) {
+    if (name.includes(k)) return pick(pool[k]);
+  }
+  const stagePool = CHAT_LINES[g.stage] || CHAT_LINES.stranger;
+  return pick(stagePool) || "嗯。";
+}
+
+function parseLineReply(raw) {
+  const t = String(raw || "").trim();
+  if (!t || LINE_READ_TOKEN.test(t.split("\n")[0].trim()) || /^#\s*(已讀|略過)\s*$/.test(t)) {
+    return { readOnly: true, text: "" };
+  }
+  // 若整段含 #已讀 且幾乎沒台詞
+  if (LINE_READ_TOKEN.test(t) && t.replace(LINE_READ_TOKEN, "").replace(/[#\s]/g, "").length < 2) {
+    return { readOnly: true, text: "" };
+  }
+  let text = t
+    .replace(LINE_READ_TOKEN, "")
+    .replace(/^["「『]|["」』]$/g, "")
+    .split("\n").map(x => x.trim()).filter(Boolean)[0] || "";
+  text = text.replace(/^#\S+\s*/, "").trim();
+  if (!text || text === "#已讀" || text === "#略過") return { readOnly: true, text: "" };
+  if (text.length > 60) text = text.slice(0, 60);
+  return { readOnly: false, text };
+}
+
+function advanceLineCursor(girlId, playerMsgId) {
+  const lg = ensureLineGroup();
+  lg.cursors[girlId] = { lastPlayerMsgId: playerMsgId };
+}
+
+function markLineRead(playerMsgId, girlId) {
+  const lg = ensureLineGroup();
+  const m = lg.messages.find(x => x.id === playerMsgId && x.kind === "player");
+  if (!m) return;
+  m.reads ??= [];
+  if (!m.reads.includes(girlId)) m.reads.push(girlId);
+}
+
+function appendLineGirlMsg(girl, text) {
+  const lg = ensureLineGroup();
+  lg.messages.push({
+    id: lineMsgId(),
+    t: Date.now(),
+    kind: "girl",
+    girlId: girl.id,
+    name: girl.name,
+    text,
+  });
+}
+
+async function lineGirlDecide(girl, playerMsgId) {
+  const canned = pickLineCanned(girl);
+  let raw;
+  try {
+    if (!state.settings?.model) {
+      await new Promise(r => setTimeout(r, 280 + Math.random() * 420));
+      raw = canned;
+    } else {
+      const msgs = buildLineGroupMsgs(girl);
+      raw = await llmJobRun(msgs, null, canned);
+    }
+  } catch (e) {
+    raw = canned;
+  }
+  const parsed = parseLineReply(raw);
+  if (parsed.readOnly) {
+    markLineRead(playerMsgId, girl.id);
+  } else {
+    appendLineGirlMsg(girl, parsed.text);
+  }
+  advanceLineCursor(girl.id, playerMsgId);
+  dirty = true;
+  scheduleSave();
+}
+
+async function processLineWave(playerMsgId) {
+  const girls = lineRosterGirls();
+  if (!girls.length) {
+    toast("名冊上空空的", "");
+    return;
+  }
+  // 每波輕微洗牌，避免永遠同一順序
+  const order = girls.slice();
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  lineBusy = true;
+  lineTypingIds = [];
+  try {
+    for (const g of order) {
+      lineTypingIds = [g.id];
+      if (lineOpen) paintLineMessages();
+      await lineGirlDecide(g, playerMsgId);
+      lineTypingIds = [];
+      if (lineOpen) paintLineMessages();
+    }
+  } finally {
+    lineBusy = false;
+    lineTypingIds = [];
+    if (lineOpen) {
+      paintLineMessages();
+      const sendBtn = $("#line-send");
+      const inp = $("#line-input");
+      if (sendBtn) sendBtn.disabled = false;
+      if (inp) inp.disabled = false;
+    }
+  }
+}
+
+function sendLinePlayerMsg() {
+  if (!state || lineBusy) return;
+  const inp = $("#line-input");
+  const text = (inp?.value || "").trim();
+  if (!text) return;
+  if (!lineRosterGirls().length) { toast("名冊上空空的", ""); return; }
+  const lg = ensureLineGroup();
+  const id = lineMsgId();
+  lg.messages.push({ id, t: Date.now(), kind: "player", text, reads: [] });
+  if (inp) inp.value = "";
+  dirty = true;
+  scheduleSave();
+  _lineScrollStick = true;
+  paintLineMessages();
+  const sendBtn = $("#line-send");
+  if (sendBtn) sendBtn.disabled = true;
+  if (inp) inp.disabled = true;
+  processLineWave(id).catch(() => {
+    lineBusy = false;
+    lineTypingIds = [];
+    if (lineOpen) paintLineMessages();
+  });
+}
+
+function lineBubbleHTML(m) {
+  if (m.kind === "player") {
+    const reads = (m.reads || []).map(id => {
+      const g = state.succubi.find(x => x.id === id);
+      return g?.name || "";
+    }).filter(Boolean);
+    const readHtml = reads.length
+      ? `<div class="line-reads">已讀 ${esc(reads.join(" "))}</div>`
+      : "";
+    return `<div class="line-row me">
+      <div class="line-bubble-col">
+        <div class="line-bubble me">${esc(m.text || "")}</div>
+        ${readHtml}
+      </div>
+    </div>`;
+  }
+  if (m.kind === "girl") {
+    const g = state.succubi.find(x => x.id === m.girlId);
+    const src = g ? linePortraitUrl(g) : "";
+    const av = src
+      ? `<img class="line-av" src="${esc(src)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+      : `<span class="line-av line-av-fallback"></span>`;
+    return `<div class="line-row them">
+      ${av}
+      <div class="line-bubble-col">
+        <div class="line-name">${esc(m.name || g?.name || "她")}</div>
+        <div class="line-bubble them">${esc(m.text || "")}</div>
+      </div>
+    </div>`;
+  }
+  return "";
+}
+
+function lineTypingHTML() {
+  if (!lineTypingIds.length) return "";
+  return lineTypingIds.map(id => {
+    const g = state.succubi.find(x => x.id === id);
+    if (!g) return "";
+    const src = linePortraitUrl(g);
+    const av = `<img class="line-av" src="${esc(src)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
+    return `<div class="line-row them line-typing-row">
+      ${av}
+      <div class="line-bubble-col">
+        <div class="line-name">${esc(g.name)}</div>
+        <div class="line-bubble them line-typing">輸入中…</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function paintLineMessages() {
+  const list = $("#line-msgs");
+  if (!list) return;
+  const lg = ensureLineGroup();
+  const stick = _lineScrollStick
+    || (list.scrollHeight - list.scrollTop - list.clientHeight < 80);
+  list.innerHTML = (lg.messages || []).map(lineBubbleHTML).join("") + lineTypingHTML();
+  if (stick) {
+    list.scrollTop = list.scrollHeight;
+    _lineScrollStick = false;
+  }
+  const sendBtn = $("#line-send");
+  const inp = $("#line-input");
+  if (sendBtn) sendBtn.disabled = !!lineBusy;
+  if (inp) inp.disabled = !!lineBusy;
+}
+
+function renderLineChat(stage, nav) {
+  const lg = ensureLineGroup();
+  const n = lineRosterGirls().length;
+  stage.innerHTML = `<div class="line-chat" id="line-chat">
+    <div class="line-hdr">
+      <button type="button" class="line-back" id="line-back" aria-label="回日誌">‹</button>
+      <div class="line-hdr-main">
+        <div class="line-hdr-title">${esc(lg.title || "名冊群")}</div>
+        <div class="line-hdr-sub">${n} 人</div>
+      </div>
+    </div>
+    <div class="line-msgs" id="line-msgs"></div>
+    <div class="line-composer">
+      <input id="line-input" data-line="1" type="text" maxlength="120" placeholder="傳訊…" autocomplete="off" ${lineBusy ? "disabled" : ""}>
+      <button type="button" id="line-send" class="line-send" ${lineBusy ? "disabled" : ""}>送出</button>
+    </div>
+  </div>`;
+  if (nav) nav.textContent = "名冊群・每人獨立已讀";
+  _lineScrollStick = true;
+  paintLineMessages();
+  $("#line-back")?.addEventListener("click", () => closeLineChat());
+  $("#line-send")?.addEventListener("click", () => sendLinePlayerMsg());
+  $("#line-input")?.addEventListener("keydown", ev => {
+    if (ev.key === "Enter") { ev.preventDefault(); sendLinePlayerMsg(); }
+  });
+  const list = $("#line-msgs");
+  list?.addEventListener("scroll", () => {
+    if (!list) return;
+    _lineScrollStick = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+  }, { passive: true });
 }
 
 // 飢渴:玩家看得到她現在的狀態,但看不到數字(她自己也不會承認)。
