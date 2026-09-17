@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="萬事屋">
-<link rel="stylesheet" href="style.css?v=54">
+<link rel="stylesheet" href="style.css?v=55">
 </head>
 <body>
 
@@ -357,8 +357,11 @@
 
 <!-- 斷線重連畫面 -->
 <!-- 已承接長按:遊戲對話卡(不是網頁 prompt),寫多一件後退回發現 -->
-<div id="sex-anim-overlay" class="hidden" aria-hidden="true">
-  <img id="sex-anim-img" alt="">
+<!-- 局部動畫獨立彈層：不掛在 #chat-view 框架內，永遠置頂 -->
+<div id="sex-anim-popup" class="hidden" aria-hidden="true" role="dialog" aria-label="局部動畫">
+  <div class="sex-anim-popup-card">
+    <img id="sex-anim-img" alt="">
+  </div>
 </div>
 <div id="split-overlay" class="hidden" aria-hidden="true">
   <div class="split-card" id="split-card" role="dialog" aria-labelledby="split-name">
@@ -409,6 +412,6 @@
   setTimeout(function () { sessionStorage.removeItem("healCount"); }, 10000);
 })();
 </script>
-<script type="module" src="app.js?v=59"></script>
+<script type="module" src="app.js?v=60"></script>
 </body>
 </html>

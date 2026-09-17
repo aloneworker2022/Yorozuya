@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.59(2026-09-17)局部動畫直疊不遮劇本";
+const APP_VER = "v7.60(2026-09-17)局部動畫獨立彈窗置頂";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -6027,7 +6027,7 @@ function stopScriptAnim() {
     for (const cancel of run.waiters) cancel();
     run.waiters.clear();
   }
-  document.getElementById("sex-anim-overlay")?.classList.add("hidden");
+  document.getElementById("sex-anim-popup")?.classList.add("hidden");
   document.body.classList.remove("sex-anim-on");
 }
 function scriptAnimUrls() {
@@ -6123,15 +6123,15 @@ function scriptAnimHold(run, ms) {
   });
 }
 async function flashScriptAnim() {
-  const box = document.getElementById("sex-anim-overlay");
+  const box = document.getElementById("sex-anim-popup");
   const img = document.getElementById("sex-anim-img");
   if (!box || !img) {
     console.warn("[sex-anim] overlay DOM missing");
     return;
   }
   stopScriptAnim();
-  // 移到 body 最末，確保壓過 #chat-view 內劇本揭圖
-  document.body.appendChild(box);
+  // 獨立彈窗：掛到 <html> 最末，脫離任何 transform / 聊天堆疊上下文
+  (document.documentElement || document.body).appendChild(box);
   const run = { cancelled: false, waiters: new Set() };
   scriptAnimRun = run;
   try {

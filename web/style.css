@@ -1287,29 +1287,38 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   animation: none;
   margin-bottom: -0.4em;
 }
-/* 劇本局部動畫：掛 body + fixed，直接疊在劇本圖上面。
-   不藏立繪、不加薄霧遮罩，省重繪。 */
-#sex-anim-overlay {
+/* 局部動畫獨立彈窗：脫離 #chat-view 堆疊，固定蓋過全 UI */
+#sex-anim-popup {
   position: fixed !important;
   inset: 0 !important;
-  z-index: 100 !important;
+  z-index: 2147483000 !important;
   display: flex !important;
   align-items: center;
   justify-content: center;
   background: transparent;
   pointer-events: none;
+  isolation: isolate;
 }
-#sex-anim-overlay.hidden { display: none !important; }
-#sex-anim-overlay img {
-  max-width: min(94vw, 520px);
-  max-height: 72vh;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-  display: block;
-  margin: 0 auto;
+#sex-anim-popup.hidden { display: none !important; }
+#sex-anim-popup .sex-anim-popup-card {
   position: relative;
   z-index: 1;
+  max-width: min(92vw, 560px);
+  max-height: min(78vh, 720px);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0a0812;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 79, 216, .35);
+  pointer-events: none;
+}
+#sex-anim-popup .sex-anim-popup-card img,
+#sex-anim-popup #sex-anim-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(78vh, 720px);
+  object-fit: contain;
+  margin: 0;
 }
 #aff-pop {
   position: absolute;
