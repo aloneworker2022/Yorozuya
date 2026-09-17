@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.54(2026-09-17)動畫壓過故事圖";
+const APP_VER = "v7.55(2026-09-17)局部動畫要真的出現";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -36,10 +36,25 @@ function summonerById(id) { return SUMMONERS.find(x => x.id === id) || null; }
 let SCRIPT_PACKS = { packs: [], activeByKind: {} };
 let FRAME_PACKS = [];
 function loadFramePacks() {
+  const apply = j => {
+    const packs = Array.isArray(j?.packs) ? j.packs : (Array.isArray(j) ? j : []);
+    FRAME_PACKS = packs.filter(p => p && p.id);
+    return FRAME_PACKS;
+  };
   return fetch("/api/frame-packs?ts=" + Date.now())
     .then(r => r.ok ? r.json() : null)
-    .then(j => { FRAME_PACKS = Array.isArray(j?.packs) ? j.packs : []; })
-    .catch(() => { FRAME_PACKS = FRAME_PACKS || []; });
+    .then(j => {
+      if (j && (Array.isArray(j?.packs) ? j.packs.length : Array.isArray(j) && j.length)) return apply(j);
+      // API 掛了或空的：直接讀靜態索引，否則局部動畫永遠沒圖
+      return fetch("/assets/frame_packs/index.json?ts=" + Date.now())
+        .then(r2 => r2.ok ? r2.json() : null)
+        .then(j2 => apply(j2 || { packs: [] }))
+        .catch(() => apply({ packs: [] }));
+    })
+    .catch(() => fetch("/assets/frame_packs/index.json?ts=" + Date.now())
+      .then(r => r.ok ? r.json() : null)
+      .then(j => apply(j || { packs: [] }))
+      .catch(() => { FRAME_PACKS = FRAME_PACKS || []; return FRAME_PACKS; }));
 }
 function boundScriptFramePack(pack, spec) {
   const id = ScriptMode.boundFramePackId(pack, spec);
@@ -6011,24 +6026,45 @@ function stopScriptAnim() {
 function scriptAnimUrls() {
   const play = chatSession?.tease?.play;
   const g = state.succubi.find(x => x.id === chatWith);
-  const poseId = play?.pack?.pose || "";
-  const fromGirl = poseId && g?.sexAnim?.[poseId]?.urls;
-  let urls = Array.isArray(fromGirl) ? fromGirl.filter(Boolean) : [];
+  const poseId = String(play?.pack?.pose || "").trim();
+  const pick = urls => (Array.isArray(urls) ? urls : []).map(u => String(u || "").trim()).filter(Boolean);
+
+  // 1) 該魅魔、這個體位的局部四幀（發呆產的 sexAnim）
+  let urls = pick(poseId && g?.sexAnim?.[poseId]?.urls);
   if (urls.length) return urls;
-  const anyGirl = Object.values(g?.sexAnim || {}).find(x => x?.urls?.filter(Boolean).length >= 2)
-    || Object.values(g?.sexAnim || {}).find(x => x?.urls?.filter(Boolean).length);
-  urls = anyGirl?.urls?.filter(Boolean) || [];
-  if (urls.length) return urls;
+
+  // 2) 劇本／本景綁定的幀包
   const spec = play?.pack?.scenes?.[String(play?.scene)];
   const bound = boundScriptFramePack(play?.pack, spec);
-  urls = FramePack.packFrameUrls(bound).filter(Boolean);
+  urls = pick(FramePack.packFrameUrls(bound));
   if (urls.length) return urls;
-  const posePack = (FRAME_PACKS || []).find(p => p.pose && p.pose === poseId);
-  urls = FramePack.packFrameUrls(posePack).filter(Boolean);
+
+  // 3) 同體位的幀包
+  if (poseId) {
+    const posePack = (FRAME_PACKS || []).find(p => p && p.pose === poseId && pick(FramePack.packFrameUrls(p)).length);
+    urls = pick(FramePack.packFrameUrls(posePack));
+    if (urls.length) return urls;
+  }
+
+  // 4) 該魅魔任何一組局部動畫
+  const anyGirl = Object.values(g?.sexAnim || {}).find(x => pick(x?.urls).length >= 2)
+    || Object.values(g?.sexAnim || {}).find(x => pick(x?.urls).length);
+  urls = pick(anyGirl?.urls);
   if (urls.length) return urls;
-  const any = (FRAME_PACKS || []).find(p => FramePack.packFrameUrls(p).filter(Boolean).length >= 2)
-    || (FRAME_PACKS || []).find(p => FramePack.packFrameUrls(p).filter(Boolean).length);
-  return FramePack.packFrameUrls(any).filter(Boolean);
+
+  // 5) 庫裡任何一組幀包
+  const anyPack = (FRAME_PACKS || []).find(p => pick(FramePack.packFrameUrls(p)).length >= 2)
+    || (FRAME_PACKS || []).find(p => pick(FramePack.packFrameUrls(p)).length);
+  urls = pick(FramePack.packFrameUrls(anyPack));
+  if (urls.length) return urls;
+
+  // 6) 最後手段：用當前劇本揭圖輪播（總比完全不顯示好）
+  urls = pick(play?.urls);
+  if (urls.length) return urls;
+
+  const fig = document.getElementById("vn-figure");
+  const src = fig && !fig.classList.contains("hidden") ? String(fig.getAttribute("src") || "").trim() : "";
+  return src ? [src] : [];
 }
 function scriptAnimLoad(run, img, url) {
   if (run.cancelled) return Promise.resolve(false);
@@ -6072,27 +6108,44 @@ function scriptAnimHold(run, ms) {
 async function flashScriptAnim() {
   const box = document.getElementById("sex-anim-overlay");
   const img = document.getElementById("sex-anim-img");
-  if (!box || !img) return;
+  if (!box || !img) {
+    console.warn("[sex-anim] overlay DOM missing");
+    return;
+  }
   stopScriptAnim();
   // 移到 body 最末，確保壓過 #chat-view 內劇本揭圖
   document.body.appendChild(box);
   const run = { cancelled: false, waiters: new Set() };
   scriptAnimRun = run;
   try {
-    if (!FRAME_PACKS.length) {
-      try { await loadFramePacks(); } catch { /* */ }
-    }
+    try { await loadFramePacks(); } catch { /* */ }
     if (run.cancelled) return;
     const urls = scriptAnimUrls();
-    if (!urls.length) return;
+    if (!urls.length) {
+      console.warn("[sex-anim] no urls", {
+        pose: chatSession?.tease?.play?.pack?.pose,
+        framePackId: chatSession?.tease?.play?.pack?.framePackId,
+        packs: (FRAME_PACKS || []).length,
+        sexAnim: Object.keys(state.succubi.find(x => x.id === chatWith)?.sexAnim || {}),
+      });
+      try { toast("沒有局部動畫圖（幀包／sexAnim 皆空）", "bad"); } catch { /* */ }
+      return;
+    }
     document.body.classList.add("sex-anim-on"); // 暫時藏 #vn-figure 故事圖
     box.classList.remove("hidden");
+    box.setAttribute("aria-hidden", "false");
+    let shown = 0;
     for (const url of urls) {
       if (run.cancelled) break;
-      await scriptAnimLoad(run, img, url);
+      const ok = await scriptAnimLoad(run, img, url);
       if (run.cancelled) break;
-      await scriptAnimHold(run, 420);
+      if (ok) {
+        shown += 1;
+        await scriptAnimHold(run, 420);
+      }
     }
+    // 若全部載入失敗，至少讓遮罩停一下，避免「完全沒反應」
+    if (!shown && !run.cancelled) await scriptAnimHold(run, 280);
   } finally {
     if (scriptAnimRun === run) stopScriptAnim();
   }
