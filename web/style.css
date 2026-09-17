@@ -588,33 +588,52 @@ body.asleep #book { animation: none; opacity: .7; }
 #qs-diary { transform: translateX(-100%); }
 #page-quests.on-proc #qs-exec { transform: translateX(-40%); }
 #page-quests.on-proc #qs-proc { transform: translateX(0); }
-#page-quests.on-diary #qs-exec { transform: translateX(40%); }
-#page-quests.on-diary #qs-proc { transform: translateX(140%); }
-#page-quests.on-diary #qs-diary { transform: translateX(0); }
-#page-quests.on-diary #quest-input-row { visibility: hidden; pointer-events: none; }
-#page-quests.on-diary .q-force-tabs { opacity: 0; pointer-events: none; }
+#page-quests.on-diary #qs-exec,
+#page-quests.on-line #qs-exec { transform: translateX(40%); }
+#page-quests.on-diary #qs-proc,
+#page-quests.on-line #qs-proc { transform: translateX(140%); }
+#page-quests.on-diary #qs-diary,
+#page-quests.on-line #qs-diary { transform: translateX(0); }
+#page-quests.on-diary #quest-input-row,
+#page-quests.on-line #quest-input-row { visibility: hidden; pointer-events: none; }
+#page-quests.on-diary .q-force-tabs,
+#page-quests.on-line .q-force-tabs { opacity: 0; pointer-events: none; }
 
-/* 左側紅色日誌頁籤(貼委託板左緣,像小本子的索引) */
-.diary-tab {
-  position: absolute; left: 0; top: 34%; z-index: 8;
-  width: 26px; padding: 16px 5px 18px 4px;
-  background: #c4453c; color: #f6e6d8;
-  border: 1px solid #9a2f28; border-left: none;
+/* 左側頁籤：日誌（紅）＋其下 Line（綠），貼委託板左緣 */
+.diary-tab, .line-tab {
+  position: absolute; left: 0; z-index: 8;
+  width: 26px; padding: 14px 5px 16px 4px;
+  border-left: none;
   border-radius: 0 11px 11px 0;
   font: inherit; font-size: .66em;
   cursor: pointer;
   box-shadow: 2px 3px 10px rgba(0, 0, 0, .38);
 }
-.diary-tab span {
+.diary-tab {
+  top: 28%;
+  background: #c4453c; color: #f6e6d8;
+  border: 1px solid #9a2f28; border-left: none;
+}
+.line-tab {
+  top: calc(28% + 78px);
+  background: #06c755; color: #f0fff4;
+  border: 1px solid #049a40; border-left: none;
+}
+.diary-tab span, .line-tab span {
   display: block; width: 1em; margin: 0 auto;
   word-break: break-all; line-height: 1.45; letter-spacing: 0;
 }
-.diary-tab:active { transform: translateX(1px); }
-.diary-tab.on, #page-quests.on-diary .diary-tab {
+.diary-tab:active, .line-tab:active { transform: translateX(1px); }
+.diary-tab.on {
   background: #e25a4e; color: #fff8f0;
   box-shadow: 2px 3px 14px rgba(226, 90, 78, .45);
 }
+.line-tab.on {
+  background: #1adf6a; color: #fff;
+  box-shadow: 2px 3px 14px rgba(6, 199, 85, .45);
+}
 #qs-diary .lv-area { padding-left: 38px; }
+#page-quests.on-line #qs-diary .lv-area { padding-left: 38px; }
 .lv-badge.diary-badge {
   background: color-mix(in srgb, #c4453c 32%, transparent); color: #e25a4e;
 }
@@ -2244,28 +2263,6 @@ body.card-mode.has-ct-figure #kanban-girl {
 .ct-sex-choice-name { font-weight: 700; font-size: 1.05em; color: #ffc1dc; }
 
 /* ── 日誌・名冊群 LINE ── */
-.line-entry {
-  display: flex; align-items: center; gap: 10px;
-  width: 100%; max-width: 340px; margin: 12px auto 0;
-  padding: 10px 12px; border: none; border-radius: 12px;
-  background: linear-gradient(135deg, #06c755 0%, #05a847 100%);
-  color: #fff; cursor: pointer; text-align: left;
-  box-shadow: 0 8px 22px rgba(6, 199, 85, .28);
-  font: inherit;
-}
-.line-entry:active { transform: scale(0.98); }
-.line-entry-mark {
-  flex-shrink: 0; font-size: .62em; font-weight: 800; letter-spacing: .08em;
-  background: rgba(255,255,255,.22); border-radius: 8px; padding: 6px 8px;
-}
-.line-entry-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.line-entry-title { font-weight: 700; font-size: .95em; }
-.line-entry-sub {
-  font-size: .72em; opacity: .88; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
-}
-.line-entry-chev { font-size: 1.4em; opacity: .85; }
-
 .line-chat {
   display: flex; flex-direction: column;
   width: 100%; max-width: 420px; margin: 0 auto;
@@ -2353,6 +2350,19 @@ body.card-mode.has-ct-figure #kanban-girl {
 #qs-diary .lv-inner:has(.line-chat) {
   align-items: stretch;
 }
+
+#page-quests.on-line #qs-diary > .lv-hdr,
+#page-quests.on-line #diary-nav {
+  display: none;
+}
+#page-quests.on-line #qs-diary .lv-area {
+  padding-left: 38px;
+  padding-top: 8px;
+}
+#page-quests.on-line .line-chat {
+  height: min(78vh, 620px);
+}
+
 #diary-stage:has(.line-chat) {
   width: 100%;
   display: flex; justify-content: center;

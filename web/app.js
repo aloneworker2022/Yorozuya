@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.25(2026-09-17)日誌Line名冊群";
+const APP_VER = "v7.26(2026-09-17)Line左側頁籤";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -10451,7 +10451,7 @@ let procPool = null;        // 強制池:0 發現 | 1 已承接 | null 自動
 let procIdx = { 0: 0, 1: 0 };
 let diaryIdx = 0;
 let diaryReturn = "exec";
-let lineOpen = false;       // 日誌內開啟名冊群 LINE
+let lineOpen = false;       // 左側 Line 頁籤開啟名冊群
 let lineBusy = false;       // 一波回覆處理中（暫時禁送）
 let lineTypingIds = [];     // 正在「輸入中…」的 girlId
 let _lineScrollStick = true;
@@ -10468,36 +10468,53 @@ function curPool() {
   procPool = null;
   return poolItems(0).length ? 0 : 1;
 }
+function syncSideTabs() {
+  const d = document.getElementById("diary-tab");
+  const l = document.getElementById("line-tab");
+  if (d) d.classList.toggle("on", qScene === "diary" && !lineOpen);
+  if (l) l.classList.toggle("on", qScene === "line" || (qScene === "diary" && lineOpen));
+}
 function goProc() {
   qScene = "proc";
+  lineOpen = false;
   const pg = document.getElementById("page-quests");
-  if (pg) { pg.classList.remove("on-diary"); pg.classList.add("on-proc"); }
-  const tab = document.getElementById("diary-tab");
-  if (tab) tab.classList.remove("on");
+  if (pg) { pg.classList.remove("on-diary", "on-line"); pg.classList.add("on-proc"); }
+  syncSideTabs();
   renderQuests();
 }
 function goExec() {
   qScene = "exec";
+  lineOpen = false;
   procPool = null;
   const pg = document.getElementById("page-quests");
-  if (pg) pg.classList.remove("on-proc", "on-diary");
-  const tab = document.getElementById("diary-tab");
-  if (tab) tab.classList.remove("on");
+  if (pg) pg.classList.remove("on-proc", "on-diary", "on-line");
+  syncSideTabs();
   renderQuests();
 }
 function goDiary() {
-  if (qScene !== "diary") diaryReturn = qScene === "proc" ? "proc" : "exec";
+  if (qScene !== "diary" && qScene !== "line") diaryReturn = qScene === "proc" ? "proc" : "exec";
   qScene = "diary";
+  lineOpen = false;
   const pg = document.getElementById("page-quests");
-  if (pg) { pg.classList.remove("on-proc"); pg.classList.add("on-diary"); }
-  const tab = document.getElementById("diary-tab");
-  if (tab) tab.classList.add("on");
+  if (pg) { pg.classList.remove("on-proc", "on-line"); pg.classList.add("on-diary"); }
+  syncSideTabs();
   diaryIdx = 0;
   renderQuests();
   maybeGrantNotebookStreak();
   const e = notebookPages()[0];
   if (e && notebookQualifies(notebookText(e))) scheduleMemosSync(e);
   paintDiaryMeta();
+}
+function goLine() {
+  if (qScene !== "diary" && qScene !== "line") diaryReturn = qScene === "proc" ? "proc" : "exec";
+  qScene = "line";
+  lineOpen = true;
+  _lineScrollStick = true;
+  const pg = document.getElementById("page-quests");
+  if (pg) { pg.classList.remove("on-proc", "on-diary"); pg.classList.add("on-line"); }
+  syncSideTabs();
+  ensureLineGroup();
+  renderQuests();
 }
 function leaveDiary() {
   lineOpen = false;
@@ -10506,9 +10523,18 @@ function leaveDiary() {
   if (diaryReturn === "proc") goProc();
   else goExec();
 }
+function leaveLine() {
+  lineOpen = false;
+  if (diaryReturn === "proc") goProc();
+  else goExec();
+}
 function toggleDiary() {
-  if (qScene === "diary") leaveDiary();
+  if (qScene === "diary" && !lineOpen) leaveDiary();
   else goDiary();
+}
+function toggleLine() {
+  if (qScene === "line" || (qScene === "diary" && lineOpen)) leaveLine();
+  else goLine();
 }
 
 function renderQuests() {
@@ -10801,9 +10827,8 @@ function renderDiary() {
   const stage = $("#diary-stage");
   const nav = $("#diary-nav");
   const badge = $("#diary-badge");
-  const tab = $("#diary-tab");
   if (!stage) return;
-  if (tab) tab.classList.toggle("on", qScene === "diary");
+  syncSideTabs();
   const ae = document.activeElement;
   if (ae && stage.contains(ae) && (ae.dataset?.nb || ae.dataset?.line)) return;
 
@@ -10813,7 +10838,8 @@ function renderDiary() {
     return;
   }
   ensureLineGroup();
-  if (lineOpen) {
+  // Line 左側頁籤：同一 qs-diary 舞台顯示名冊群
+  if (lineOpen || qScene === "line") {
     if (badge) badge.textContent = "Line";
     const existing = stage.querySelector("#line-chat");
     if (existing) {
@@ -10845,15 +10871,7 @@ function renderDiary() {
     </div>
     <p class="nb-hint" id="nb-hint"></p>
     <div class="nb-swind"></div>
-  </div>
-  <button type="button" class="line-entry" id="line-open-btn" aria-label="打開名冊群">
-    <span class="line-entry-mark">LINE</span>
-    <span class="line-entry-body">
-      <span class="line-entry-title">名冊群</span>
-      <span class="line-entry-sub">${esc(lineEntryPreview())}</span>
-    </span>
-    <span class="line-entry-chev">›</span>
-  </button>`;
+  </div>`;
   if (nav) {
     nav.textContent = pages.length > 1
       ? `${diaryIdx + 1} / ${pages.length}　↑較早　↓較新`
@@ -10870,7 +10888,6 @@ function renderDiary() {
     autoGrowNb(textEl);
   }
   attachNbSwipe(card, pages.length);
-  $("#line-open-btn")?.addEventListener("click", () => openLineChat());
 }
 
 function flipDiary(dir) {
@@ -11037,17 +11054,9 @@ function lineEntryPreview() {
   return "跟名冊上的大家聊聊";
 }
 
-function openLineChat() {
-  ensureLineGroup();
-  lineOpen = true;
-  _lineScrollStick = true;
-  renderDiary();
-}
+function openLineChat() { goLine(); }
 
-function closeLineChat() {
-  lineOpen = false;
-  renderDiary();
-}
+function closeLineChat() { leaveLine(); }
 
 function lineMsgId() {
   return `lg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -11341,7 +11350,7 @@ function renderLineChat(stage, nav) {
   const n = lineRosterGirls().length;
   stage.innerHTML = `<div class="line-chat" id="line-chat">
     <div class="line-hdr">
-      <button type="button" class="line-back" id="line-back" aria-label="回日誌">‹</button>
+      <button type="button" class="line-back" id="line-back" aria-label="回委託板">‹</button>
       <div class="line-hdr-main">
         <div class="line-hdr-title">${esc(lg.title || "名冊群")}</div>
         <div class="line-hdr-sub">${n} 人</div>
@@ -15787,6 +15796,7 @@ on("quest-input", "keydown", e => { if (e.key === "Enter") { addQuest(e.target.v
 on("hud-need", "click", () => switchTab(2));
 on("q-back", "click", () => goExec());
 on("diary-tab", "click", () => toggleDiary());
+on("line-tab", "click", () => toggleLine());
 on("diary-back", "click", () => leaveDiary());
 
 on("set-player", "change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
