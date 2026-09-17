@@ -1408,6 +1408,22 @@ body.sense-mode #vn-figure.tease-on { display: none !important; }
   font: inherit; font-size: .85em; padding: .35em .9em; cursor: pointer;
 }
 #chat-send:disabled { opacity: .35; }
+#chat-romance {
+  flex-shrink: 0; border: none; border-radius: 10px;
+  font: inherit; font-size: .85em; padding: .35em .75em; cursor: pointer;
+  background: linear-gradient(135deg, rgba(255, 120, 180, .35), rgba(255, 200, 80, .28));
+  color: #ffb6d9; font-weight: 600; letter-spacing: .05em;
+}
+#chat-romance.hidden { display: none; }
+#chat-romance:disabled { opacity: .35; cursor: default; }
+.shop-item.special .sname { color: var(--pink); }
+.inv-row {
+  display: flex; align-items: center; gap: .6em;
+  padding: .45em 0; border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+.inv-row:last-of-type { border-bottom: none; }
+.inv-row .sname { flex: 1; }
+.inv-row .sprice { color: var(--gold); }
 
 #tease-act-row {
   display: flex; gap: .5em; background: var(--panel); padding: .8em;

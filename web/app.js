@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.31(2026-09-17)日誌LINE點空白回委託板";
+const APP_VER = "v7.32(2026-09-17)感情花束戒指求婚";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -410,7 +410,7 @@ const SUMMON_TABLE = { 1: [100], 2: [50, 50], 3: [50, 20, 30], 4: [40, 30, 20, 1
 const MULT = { N: 1.0, R: 1.1, S: 1.2, SS: 1.35, SSR: 1.5 };
 const CHAT_GAP = { N: 3, R: 2, S: 1, SS: 1, SSR: 1 };  // 每 X 天至少聊 1 次
 const DATE_GAP = { SS: 5, SSR: 3 };                     // 每 X 天至少約 1 次
-const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 30], ["girlfriend", "女友", 90], ["wife", "妻子", 180]];
+const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 50], ["girlfriend", "女友", null], ["wife", "妻子", null]];
 const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
 const DATE_COST = 5, DATE_LIMIT = 1, NTR_WINDOW = 7; // 聊天計費:每 2 則玩家訊息 1 金；約會每天 1 次
 // 約會地點池(30 個情境;每次隨機抽 5 個給玩家選)
@@ -671,7 +671,8 @@ function defaultState() {
     dismiss: null,  // {day, price} 今日遣散費
     succubi: [],  // 見 summon()
     dungeon: [],  // [{name}]
-    shop: null,   // {day, stock:[{id,name,price,sold}], line} 祭品商店
+    inventory: { bouquet: 0, ring: 0 },  // 花束／戒指（告白／求婚）
+    shop: null,   // {day, stock:[{id,name,price,sold}], specials?, line} 祭品商店
     // v6 互動牌制（勿與祭品 shop 混淆）
     cardInventory: {},   // cardId → { count, unlocked? }
     cardDeck: [],        // 出戰牌組 cardId[]（商店頁編輯；開戰直接用）
@@ -936,6 +937,9 @@ function initState(j, offline) {
     if (e && e.text == null) e.text = notebookText(e);
   }
   state.senseHour ??= { key: 0, count: 0 };
+  state.inventory ??= { bouquet: 0, ring: 0 };
+  state.inventory.bouquet = state.inventory.bouquet | 0;
+  state.inventory.ring = state.inventory.ring | 0;
   state.daydream ??= { stamp: "", completed: false, running: false, label: "", done: 0, total: 0, girlId: "" };
   // running 由伺服器發呆迴圈擁有；開網頁不再清掉，否則會把正在跑的預產圖當成死掉
   state.playerProfile = {
@@ -1296,7 +1300,7 @@ function questHash() { return state.quests.map(q => q.id + ":" + q.lv).join(",")
 // 點名：只能盯清單裡已經有的一件。
 // 店頭聊：看板娘可從對話靈感＋個性／認知忽然想到，派一件給萬事屋（#發現）。
 const ERRAND_STAGE = { stranger: 0, friend: 0.5, girlfriend: 1, wife: 1 };   // 點名機率
-const ERRAND_BONUS = { friend: 1, girlfriend: 2, wife: 2 };                  // 做完給的好感
+const ERRAND_BONUS = { friend: 2, girlfriend: 3, wife: 3 };                  // 舊參考；實際獎勵改為 randInt(2,4)
 
 // 遊戲挑件(不讓 AI 挑,更不讓它輸出結構化資料):
 // 剩時間最短的執行中 > 承接最久沒動的 > 隨機一件發現池的
@@ -1350,7 +1354,7 @@ function markErrandAsked(s) {
 function errandReward(qid) {
   for (const s of state.succubi) {
     if (s.errand?.qid !== qid) continue;
-    const base = ERRAND_BONUS[s.stage] || 1;
+    const base = randInt(2, 4);
     const d = applyAffection(s, base);
     log(`${s.name} 盯的「${s.errand.text}」完成了 情感 +${d}`);
     toast(`${s.name} 交代的事做完了!情感 +${d}`, "good");
@@ -1733,13 +1737,34 @@ function settleOffline() {
 
 // ===== 商店與地牢 =====
 
+function buildShopSpecials() {
+  const specials = [];
+  // 花束：名冊有朋友且情感≥230 → 今日進一束
+  if ((state.succubi || []).some(s => !s.ntr && s.stage === "friend" && (s.affection || 0) >= 230)) {
+    specials.push({ id: uid(), kind: "bouquet", name: "花束", price: randInt(20, 50), sold: false });
+  }
+  // 戒指：名冊有女友 → 今日進一枚
+  if ((state.succubi || []).some(s => !s.ntr && s.stage === "girlfriend")) {
+    specials.push({ id: uid(), kind: "ring", name: "戒指", price: randInt(60, 120), sold: false });
+  }
+  return specials;
+}
+
 function ensureShop() {
   const today = dayNum();
-  if (state.shop && state.shop.day === today) return;
+  // 今日商店已建、但舊存檔尚無 specials → 補一次（當日只補空陣列／缺欄）
+  if (state.shop && state.shop.day === today) {
+    if (!Array.isArray(state.shop.specials)) {
+      state.shop.specials = buildShopSpecials();
+      scheduleSave();
+    }
+    return;
+  }
   const n = 2 + expLv("offering");   // 每日進貨數 = 2 + 「商店祭品」擴充
   state.shop = {
     day: today,
     stock: Array.from({ length: n }, () => ({ id: uid(), name: pick(SACRIFICE_POOL), price: randInt(5, 30), sold: false })),
+    specials: buildShopSpecials(),
     line: pick(MERCHANT_LINES),
   };
   scheduleSave();
@@ -2178,14 +2203,28 @@ async function severSummonerWithSacrifice(offerId, fromDetailId) {
 function dismiss(id) { return sacrificeSuccubus(id); }   // 相容舊呼叫
 
 function buy(itemId) {
-  const it = state.shop.stock.find(i => i.id === itemId);
+  const stock = state.shop?.stock || [];
+  const specials = state.shop?.specials || [];
+  const it = stock.find(i => i.id === itemId) || specials.find(i => i.id === itemId);
   if (!it || it.sold) return;
   if (state.gold < it.price) { toast("金幣不夠", "bad"); return; }
   state.gold -= it.price;
   it.sold = true;
-  state.dungeon.push({ name: it.name });
-  log(`購入祭品「${it.name}」 -${it.price} 金`);
+  state.inventory ??= { bouquet: 0, ring: 0 };
+  if (it.kind === "bouquet") {
+    state.inventory.bouquet = (state.inventory.bouquet | 0) + 1;
+    log(`購入花束 -${it.price} 金`);
+    toast("買到花束了", "good");
+  } else if (it.kind === "ring") {
+    state.inventory.ring = (state.inventory.ring | 0) + 1;
+    log(`購入戒指 -${it.price} 金`);
+    toast("買到戒指了", "good");
+  } else {
+    state.dungeon.push({ name: it.name });
+    log(`購入祭品「${it.name}」 -${it.price} 金`);
+  }
   scheduleSave(); renderAll();
+  refreshRomanceBtn();
 }
 
 // ===== 召喚 =====
@@ -5431,9 +5470,9 @@ function applyAffection(s, base, opts = {}) {
   if (!s) return 0;
   const d = Math.round(base * MULT[s.rarity] * 10) / 10;
   s.affection = Math.round((s.affection + d) * 10) / 10;
-  // 升階(里程碑,不回退)
+  // 升階：只自動 stranger→friend（門檻 50）。女友／妻子需告白／求婚，不在此自動升。
   let ns = nextStage(s);
-  while (ns && s.affection >= ns[2]) {
+  while (ns && ns[2] != null && s.affection >= ns[2]) {
     s.stage = ns[0];
     log(`${s.name} 與你的關係升級為【${ns[1]}】`);
     toast(`${s.name} 成為你的${ns[1]}了!`, "good");
@@ -5443,7 +5482,10 @@ function applyAffection(s, base, opts = {}) {
     ns = nextStage(s);
   }
   if (!opts.skipBreak) checkBreak(s);
-  if (chatWith === s.id) paintAffHearts(s);
+  if (chatWith === s.id) {
+    paintAffHearts(s);
+    refreshRomanceBtn();
+  }
   return d;
 }
 
@@ -5665,6 +5707,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
   setChatWaiting(false);
   scheduleSave(); renderAll();
   renderChatLog(s);
+  refreshRomanceBtn();
   inputEl?.focus();
   if (type === "date") {
     vnShow("", `—— ${location}・約會開始 ——`, "sys");
@@ -5707,6 +5750,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
 function setChatWaiting(b) {
   const row = document.getElementById("chat-input-row");
   if (row) row.style.visibility = b ? "hidden" : "";
+  if (!b) refreshRomanceBtn();
 }
 
 // 對話收尾:不自動跳出,把「送出」鈕換成收尾鈕,讓玩家讀完最後一句自己按著結束
@@ -6423,16 +6467,195 @@ function teasePlayRollAff(s) {
   return d;
 }
 
-/** 感應／店頭聊：每回 0 或 +1，同一通最多 +2。聊天不加負分。 */
-const CHAT_AFF_SESSION_CAP = 2;
+// ===== 告白／求婚（花束・戒指）=====
+const CONFESS_LINES = [
+  "我喜歡你。不只是朋友那種——想跟你正式交往。",
+  "一直把話悶在心裡……我想跟你在一起。可以嗎？",
+  "這束花給你。我喜歡你，想當你的男朋友。",
+  "從陌生到朋友，每一步都想再靠近你一點。跟我交往吧。",
+  "我認真的。喜歡你，想跟你交往。",
+  "別當普通朋友了——我想當你最特別的那個人。",
+  "每天看著你，心都亂了。我喜歡你，交往好嗎？",
+  "花和心意一起送上。請跟我交往。",
+  "我鼓起勇氣了：喜歡你，想跟你走下去。",
+  "不是玩笑。我想跟你交往——你願意嗎？",
+  "站在你面前這句話拖很久了。我喜歡你。",
+  "朋友很好，但我想要更多。跟我在一起吧。",
+  "這束花代表我的心意。請當我的女友。",
+  "我喜歡你的一切。想正式成為一對。",
+  "可以答應我嗎？我想跟你交往。",
+  "心裡一直有你的位子。喜歡你——交往吧。",
+  "今天不說會後悔。我喜歡你，想跟你在一起。",
+  "請收下這束花，還有我的告白。",
+  "從今以後，想以戀人的身分待在你身邊。",
+  "我喜歡你。想跟你交往，一直一直。",
+];
+const CONFESS_ACCEPT = [
+  "……我也是。那就，從今天起當戀人吧。",
+  "終於說出口了啊……好。我也喜歡你。",
+  "花很漂亮……答應你。我們交往吧。",
+  "笨蛋……害我心跳好大聲。嗯，我也願意。",
+  "等這句好久了。好啊，當你的女友。",
+];
+const PROPOSE_LINES = [
+  "這枚戒指給你——嫁給我，好嗎？",
+  "想跟你共度餘生。跟我結婚吧。",
+  "請當我的妻子。這是我的求婚。",
+  "喜歡你到想永遠綁在一起。結婚吧。",
+  "跪下來也沒關係——請跟我結婚。",
+  "戒指代表承諾。成為我的妻子吧。",
+  "從女友再進一步——嫁給我。",
+  "我想每天醒來都看見你。結婚好嗎？",
+  "這一生只想牽你的手。請答應求婚。",
+  "正式問一次：願意當我的妻子嗎？",
+];
+const PROPOSE_ACCEPT = [
+  "……笨蛋。當然願意。我嫁給你。",
+  "戒指好閃……嗯，我答應你。",
+  "從今以後是妻子了喔。要好好對我。",
+  "等這一天很久了。我願意。",
+  "好。我們結婚吧——永遠在一起。",
+];
+const PROPOSE_DECLINE = [
+  "……還、還太早了。再給我一點時間好嗎？",
+  "心意我收到了，可是現在還不行……再培養一下。",
+  "戒指很漂亮，但我還沒準備好。抱歉。",
+  "別急……我們再靠近一點，好嗎？",
+];
+
+function canConfessGirl(s) {
+  if (!s || s.ntr) return false;
+  state.inventory ??= { bouquet: 0, ring: 0 };
+  return s.stage === "friend" && (s.affection || 0) >= 230 && (state.inventory.bouquet | 0) > 0;
+}
+function canProposeGirl(s) {
+  if (!s || s.ntr) return false;
+  state.inventory ??= { bouquet: 0, ring: 0 };
+  return s.stage === "girlfriend" && (state.inventory.ring | 0) > 0;
+}
+
+/** 店頭 talk 時顯示告白或求婚鈕（互斥，同一槽）。 */
+function refreshRomanceBtn() {
+  const btn = document.getElementById("chat-romance");
+  if (!btn) return;
+  const s = chatWith && state.succubi.find(x => x.id === chatWith);
+  const talk = chatSession?.type === "talk" && s && !chatSession.busy && !chatSession.ended;
+  if (!talk) {
+    btn.classList.add("hidden");
+    btn.disabled = true;
+    return;
+  }
+  if (canConfessGirl(s)) {
+    btn.textContent = "告白";
+    btn.dataset.mode = "confess";
+    btn.classList.remove("hidden");
+    btn.disabled = false;
+  } else if (canProposeGirl(s)) {
+    btn.textContent = "求婚";
+    btn.dataset.mode = "propose";
+    btn.classList.remove("hidden");
+    btn.disabled = false;
+  } else {
+    btn.classList.add("hidden");
+    btn.disabled = true;
+  }
+}
+
+async function doConfess() {
+  const s = state.succubi.find(x => x.id === chatWith);
+  if (!s || chatSession?.type !== "talk" || chatSession.busy) return;
+  state.inventory ??= { bouquet: 0, ring: 0 };
+  if (!canConfessGirl(s)) {
+    toast("需要花束，且對方須為朋友且情感≥230", "bad");
+    refreshRomanceBtn();
+    return;
+  }
+  state.inventory.bouquet -= 1;
+  chatSession.busy = true;
+  setChatWaiting(true);
+  refreshRomanceBtn();
+  const line = pick(CONFESS_LINES);
+  s.history ??= [];
+  s.history.push({ role: "user", content: line, t: Date.now() });
+  vnShow(state.settings.player || "你", line, "user");
+  await new Promise(r => setTimeout(r, 400));
+  const accept = pick(CONFESS_ACCEPT);
+  s.history.push({ role: "assistant", content: accept, t: Date.now() });
+  s.history = s.history.slice(-200);
+  await vnType(s.name, accept, "ai");
+  s.stage = "girlfriend";
+  s.affection = 0;
+  s.teaseStage = "";
+  log(`${s.name} 接受告白 → 女友（情感歸零）`);
+  toast(`${s.name} 成為你的女友了！`, "good");
+  kanbanReact("stage");
+  paintAffHearts(s);
+  dirty = true;
+  scheduleSave();
+  chatSession.busy = false;
+  setChatWaiting(false);
+  refreshRomanceBtn();
+  renderAll();
+}
+
+async function doPropose() {
+  const s = state.succubi.find(x => x.id === chatWith);
+  if (!s || chatSession?.type !== "talk" || chatSession.busy) return;
+  state.inventory ??= { bouquet: 0, ring: 0 };
+  if (!canProposeGirl(s)) {
+    toast("需要戒指，且對方須為女友", "bad");
+    refreshRomanceBtn();
+    return;
+  }
+  chatSession.busy = true;
+  setChatWaiting(true);
+  refreshRomanceBtn();
+  // 1/2 機率消耗戒指（無論成敗）
+  let ringGone = false;
+  if (Math.random() < 0.5) {
+    state.inventory.ring = Math.max(0, (state.inventory.ring | 0) - 1);
+    ringGone = true;
+  }
+  const chance = Math.min(1, (s.affection || 0) / 200);
+  const ok = Math.random() < chance;
+  const line = pick(PROPOSE_LINES);
+  s.history ??= [];
+  s.history.push({ role: "user", content: line, t: Date.now() });
+  vnShow(state.settings.player || "你", line, "user");
+  await new Promise(r => setTimeout(r, 400));
+  if (ok) {
+    const accept = pick(PROPOSE_ACCEPT);
+    s.history.push({ role: "assistant", content: accept, t: Date.now() });
+    s.history = s.history.slice(-200);
+    await vnType(s.name, accept, "ai");
+    s.stage = "wife";
+    s.teaseStage = "";
+    log(`${s.name} 答應求婚 → 妻子${ringGone ? "（戒指已用）" : "（戒指還在）"}`);
+    toast(`${s.name} 成為你的妻子了！結婚了！`, "good");
+    kanbanReact("stage");
+  } else {
+    const decline = pick(PROPOSE_DECLINE);
+    s.history.push({ role: "assistant", content: decline, t: Date.now() });
+    s.history = s.history.slice(-200);
+    await vnType(s.name, decline, "ai");
+    log(`${s.name} 暫時沒答應求婚${ringGone ? "（戒指消失了）" : "（戒指還在）"}`);
+    toast(ringGone ? "還沒答應……戒指也不見了。再培養吧。" : "還沒答應……再培養感情吧。", "bad");
+  }
+  paintAffHearts(s);
+  dirty = true;
+  scheduleSave();
+  chatSession.busy = false;
+  setChatWaiting(false);
+  refreshRomanceBtn();
+  renderAll();
+}
+
+/** 店頭聊（talk）專用：每回覆 1/5 機率 +1 情感。感應不加。無 session cap。 */
 function chatTickAffection(s) {
-  if (!s || (chatSession?.type !== "sense" && chatSession?.type !== "talk")) return 0;
-  const gained = chatSession.affGained | 0;
-  if (gained >= CHAT_AFF_SESSION_CAP) return 0;
-  const d = Math.random() < 0.5 ? 1 : 0;
+  if (!s || chatSession?.type !== "talk") return 0;
+  const d = Math.random() < 1 / 5 ? 1 : 0;
   if (!d) return 0;
   applyAffection(s, d);
-  chatSession.affGained = gained + d;
   popAffFx(d);
   return d;
 }
@@ -8235,6 +8458,18 @@ function stageProgress(s) {
   const ns = nextStage(s);
   if (s.affection < 0) return "你們最近有點僵,你自己也說不上來為什麼。";
   if (!ns) return "你們早就穩定下來了,這樣的日子過得理所當然。";
+  // 女友／妻子門檻為 null：不靠數值自動升，要花束告白／戒指求婚
+  if (ns[2] == null) {
+    if (s.stage === "friend") {
+      if ((s.affection || 0) >= 230) return "你覺得可以送花告白了——不會自己變成女友。";
+      return "你們是朋友。再親近也要靠花束告白，不會自動升級。";
+    }
+    if (s.stage === "girlfriend") {
+      if ((s.affection || 0) >= 200) return "時機差不多了——求婚要靠戒指，不會自動變妻子。";
+      return "她是你的女友。求婚要戒指與感情，不會自動升級。";
+    }
+    return null;
+  }
   const p = (s.affection - cur) / Math.max(1, ns[2] - cur);
   if (p < 0.25) return "你們才剛走到這一步沒多久,你自己都還有點不習慣。";
   if (p > 0.75) return "你隱隱覺得你們之間又要變了,但還沒說破。";
@@ -11838,27 +12073,44 @@ function renderShop() {
   ensureShop();
   $("#merchant-line").textContent = "「" + state.shop.line + "」";
   const st = $("#shop-stock"); st.innerHTML = "";
-  const unsold = (state.shop.stock || []).filter(it => !it.sold);
+  const unsold = [
+    ...(state.shop.stock || []).filter(it => !it.sold),
+    ...(state.shop.specials || []).filter(it => !it.sold),
+  ];
   if (!unsold.length) {
     st.innerHTML = `<p class="dim small">今日售完。</p>`;
   } else {
     for (const it of unsold) {
       const d = document.createElement("div");
-      d.className = "shop-item";
+      d.className = "shop-item" + (it.kind ? " special" : "");
+      const tag = it.kind === "bouquet" ? " · 告白用" : it.kind === "ring" ? " · 求婚用" : "";
       d.innerHTML = `
-        <span class="sname">${esc(it.name)}</span>
+        <span class="sname">${esc(it.name)}${tag}</span>
         <span class="sprice">${it.price} 金</span>
         <button ${state.gold < it.price ? "disabled" : ""}>購買</button>`;
       d.querySelector("button").onclick = () => buy(it.id);
       st.appendChild(d);
     }
   }
+  renderInventory();
   $("#dungeon-count").textContent = `(${state.dungeon.length} 人)`;
   $("#dungeon-list").innerHTML = state.dungeon.length
     ? state.dungeon.map(p => `<span>${esc(p.name)}</span>`).join("")
     : `<span class="dim">空無一人。</span>`;
 
   renderPlayerAttrs();
+}
+
+function renderInventory() {
+  const el = $("#inv-list");
+  if (!el) return;
+  state.inventory ??= { bouquet: 0, ring: 0 };
+  const b = state.inventory.bouquet | 0;
+  const r = state.inventory.ring | 0;
+  el.innerHTML = `
+    <div class="inv-row"><span class="sname">花束</span><span class="sprice">×${b}</span></div>
+    <div class="inv-row"><span class="sname">戒指</span><span class="sprice">×${r}</span></div>
+    <p class="dim small" style="margin-top:.4em">花束：朋友且情感≥230 時可在店頭告白。戒指：女友時可求婚（成功率＝情感/200）。</p>`;
 }
 
 // ===== v6 互動牌制：商店貨架／牌庫／創角／牌桌 =====
@@ -15519,6 +15771,7 @@ function renderChatView() {
         $("#chat-title").textContent = `${cs.name}・聊天中`;
       }
       paintAffHearts(cs);
+      refreshRomanceBtn();
       if (chatShowsPortrait()) vnFace(cs, chatSession?.mood || "xi");
       else vnFace(null);
       syncTeasePlayUi();
@@ -15528,6 +15781,7 @@ function renderChatView() {
   teaseRow?.classList.add("hidden");
   document.body.classList.remove("tease-play");
   paintAffHearts(null);
+  refreshRomanceBtn();
   chatV.classList.add("hidden");
 }
 
@@ -15928,6 +16182,12 @@ on("chat-back", "click", () => {
   if (watchWith) exitWatch(); else exitChat();
 });
 on("chat-send", "click", () => { if (chatSession?.ended) exitChat(); else sendChatMsg(); });
+on("chat-romance", "click", () => {
+  const btn = document.getElementById("chat-romance");
+  if (!btn || btn.classList.contains("hidden") || btn.disabled) return;
+  if (btn.dataset.mode === "propose") void doPropose();
+  else void doConfess();
+});
 on("tease-thrust", "click", () => {
   const s = state.succubi.find(x => x.id === chatWith);
   if (s && isTeasePlay()) void scriptHandleThrust(s);
