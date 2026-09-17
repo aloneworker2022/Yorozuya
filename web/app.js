@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.51(2026-09-17)劇本圖寫入存檔套用";
+const APP_VER = "v7.52(2026-09-17)肏動畫播完";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5889,7 +5889,7 @@ function syncTeasePlayUi() {
   const live = isTeasePlay() && !chatSession?.ended;
   const p = chatSession?.tease?.play;
   const scene = Number(p?.scene) || 0;
-  const canThrust = !!(live && !p?.ending && (scene === 2 || scene === 3));
+  const canThrust = !!(live && !p?.ending && !p?.animating && (scene === 2 || scene === 3));
   // 場景1／結局：專用「下一句」推進，不再靠點整塊 chat-view
   const needNext = !!(live && (
     p?.openStep === "wait_ai" ||
@@ -5966,6 +5966,7 @@ function startTeaseMode(s, kind, pack) {
         ready: false,
         ending: false,
         leaving: false,
+        animating: false,
         startedAt: Date.now(),
       },
     };
@@ -5991,10 +5992,18 @@ function stopTeaseMode(s) {
 }
 
 let scriptAnimTimer = 0;
+let scriptAnimRun = null;
 function stopScriptAnim() {
   if (scriptAnimTimer) {
-    clearInterval(scriptAnimTimer);
+    clearTimeout(scriptAnimTimer);
     scriptAnimTimer = 0;
+  }
+  const run = scriptAnimRun;
+  scriptAnimRun = null;
+  if (run) {
+    run.cancelled = true;
+    for (const cancel of run.waiters) cancel();
+    run.waiters.clear();
   }
   document.getElementById("sex-anim-overlay")?.classList.add("hidden");
 }
@@ -6002,46 +6011,87 @@ function scriptAnimUrls() {
   const play = chatSession?.tease?.play;
   const g = state.succubi.find(x => x.id === chatWith);
   const poseId = play?.pack?.pose || "";
-  const fromGirl = (poseId && g?.sexAnim?.[poseId]?.urls)
-    || Object.values(g?.sexAnim || {}).find(x => x?.urls?.filter(Boolean).length >= 2)?.urls;
-  if (Array.isArray(fromGirl) && fromGirl.filter(Boolean).length >= 2) {
-    return fromGirl.filter(Boolean);
-  }
+  const fromGirl = poseId && g?.sexAnim?.[poseId]?.urls;
+  let urls = Array.isArray(fromGirl) ? fromGirl.filter(Boolean) : [];
+  if (urls.length) return urls;
+  const anyGirl = Object.values(g?.sexAnim || {}).find(x => x?.urls?.filter(Boolean).length >= 2)
+    || Object.values(g?.sexAnim || {}).find(x => x?.urls?.filter(Boolean).length);
+  urls = anyGirl?.urls?.filter(Boolean) || [];
+  if (urls.length) return urls;
   const spec = play?.pack?.scenes?.[String(play?.scene)];
   const bound = boundScriptFramePack(play?.pack, spec);
-  let urls = FramePack.packFrameUrls(bound).filter(Boolean);
-  if (urls.length >= 2) return urls;
+  urls = FramePack.packFrameUrls(bound).filter(Boolean);
+  if (urls.length) return urls;
   const posePack = (FRAME_PACKS || []).find(p => p.pose && p.pose === poseId);
   urls = FramePack.packFrameUrls(posePack).filter(Boolean);
-  if (urls.length >= 2) return urls;
-  const any = (FRAME_PACKS || []).find(p => FramePack.packFrameUrls(p).filter(Boolean).length >= 2);
+  if (urls.length) return urls;
+  const any = (FRAME_PACKS || []).find(p => FramePack.packFrameUrls(p).filter(Boolean).length >= 2)
+    || (FRAME_PACKS || []).find(p => FramePack.packFrameUrls(p).filter(Boolean).length);
   return FramePack.packFrameUrls(any).filter(Boolean);
+}
+function scriptAnimLoad(run, img, url) {
+  if (run.cancelled) return Promise.resolve(false);
+  return new Promise(resolve => {
+    let settled = false;
+    const cancel = () => finish(false);
+    const finish = ok => {
+      if (settled) return;
+      settled = true;
+      run.waiters.delete(cancel);
+      img.onload = null;
+      img.onerror = null;
+      resolve(ok);
+    };
+    run.waiters.add(cancel);
+    img.onload = () => finish(true);
+    img.onerror = () => finish(false);
+    img.src = url;
+    if (img.complete && img.naturalWidth) queueMicrotask(() => finish(true));
+  });
+}
+function scriptAnimHold(run, ms) {
+  if (run.cancelled) return Promise.resolve(false);
+  return new Promise(resolve => {
+    let settled = false;
+    let timer = 0;
+    const cancel = () => finish(false);
+    const finish = ok => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (scriptAnimTimer === timer) scriptAnimTimer = 0;
+      run.waiters.delete(cancel);
+      resolve(ok);
+    };
+    run.waiters.add(cancel);
+    timer = setTimeout(() => finish(true), ms);
+    scriptAnimTimer = timer;
+  });
 }
 async function flashScriptAnim() {
   const box = document.getElementById("sex-anim-overlay");
   const img = document.getElementById("sex-anim-img");
   if (!box || !img) return;
-  if (!FRAME_PACKS.length) {
-    try { await loadFramePacks(); } catch { /* */ }
-  }
-  const urls = scriptAnimUrls();
-  if (urls.length < 2) return;
-  if (scriptAnimTimer) {
-    clearInterval(scriptAnimTimer);
-    scriptAnimTimer = 0;
-  }
-  box.classList.remove("hidden");
-  let i = 0;
-  const tick = () => {
-    if (i >= urls.length) {
-      stopScriptAnim();
-      return;
+  stopScriptAnim();
+  const run = { cancelled: false, waiters: new Set() };
+  scriptAnimRun = run;
+  try {
+    if (!FRAME_PACKS.length) {
+      try { await loadFramePacks(); } catch { /* */ }
     }
-    img.src = urls[i];
-    i += 1;
-  };
-  tick();
-  scriptAnimTimer = setInterval(tick, 220);
+    if (run.cancelled) return;
+    const urls = scriptAnimUrls();
+    if (!urls.length) return;
+    box.classList.remove("hidden");
+    for (const url of urls) {
+      if (run.cancelled) break;
+      await scriptAnimLoad(run, img, url);
+      if (run.cancelled) break;
+      await scriptAnimHold(run, 420);
+    }
+  } finally {
+    if (scriptAnimRun === run) stopScriptAnim();
+  }
 }
 
 function scriptShowBeat(s, beat) {
@@ -6305,48 +6355,58 @@ async function scriptHandleTap(s) {
 async function scriptHandleThrust(s) {
   const t = chatSession?.tease;
   const play = t?.play;
-  if (!isTeasePlay() || !play || play.ending) return;
+  if (!isTeasePlay() || !play || play.ending || play.animating) return;
   if (play.scene !== 2 && play.scene !== 3) return;
-  void flashScriptAnim();
-  const d = ScriptMode.rollAffDelta(play.scene, s.stage);
-  if (d) {
-    applyAffection(s, d, { skipBreak: true });
-    popAffFx(d);
-  }
-  const act = ScriptMode.rollSexThrust(play.scene);
-  if (act === "swap") {
-    const n = play.urls?.length || 0;
-    if (n >= 2) {
-      play.imgI = play.imgI === 0 ? 1 : 0;
-      vnFace(s, chatSession?.mood);
+  play.animating = true;
+  syncTeasePlayUi();
+  try {
+    await flashScriptAnim();
+    if (chatSession?.tease !== t || t.play !== play || !isTeasePlay()) return;
+    const d = ScriptMode.rollAffDelta(play.scene, s.stage);
+    if (d) {
+      applyAffection(s, d, { skipBreak: true });
+      popAffFx(d);
     }
-    return;
-  }
-  if (act === "player") {
-    vnCancelType();
-    play.awaiting = false;
-    await beginScriptScene(s, 4);
-    return;
-  }
-  if (act === "both") {
-    vnCancelType();
-    play.awaiting = false;
-    await beginScriptScene(s, 5);
-    return;
-  }
-  if (act === "scene3") {
-    vnCancelType();
-    play.awaiting = false;
-    await beginScriptScene(s, 3, { flash: false });
-    return;
-  }
-  if (act === "ai") {
-    if (play.awaiting) return;
-    play.awaiting = true;
-    const spec = play.pack?.scenes?.[String(play.scene)];
-    const attitude = ScriptMode.fillBinds(spec?.attitude || "", s, playerBindName());
-    await scriptTypeAi(s, `（正戲進行中。這一景態度：${attitude}。只輸出台詞，短句、喘。）`);
-    if (chatSession?.tease === t) play.awaiting = false;
+    const act = ScriptMode.rollSexThrust(play.scene);
+    if (act === "swap") {
+      const n = play.urls?.length || 0;
+      if (n >= 2) {
+        play.imgI = play.imgI === 0 ? 1 : 0;
+        vnFace(s, chatSession?.mood);
+      }
+      return;
+    }
+    if (act === "player") {
+      vnCancelType();
+      play.awaiting = false;
+      await beginScriptScene(s, 4);
+      return;
+    }
+    if (act === "both") {
+      vnCancelType();
+      play.awaiting = false;
+      await beginScriptScene(s, 5);
+      return;
+    }
+    if (act === "scene3") {
+      vnCancelType();
+      play.awaiting = false;
+      await beginScriptScene(s, 3, { flash: false });
+      return;
+    }
+    if (act === "ai") {
+      if (play.awaiting) return;
+      play.awaiting = true;
+      const spec = play.pack?.scenes?.[String(play.scene)];
+      const attitude = ScriptMode.fillBinds(spec?.attitude || "", s, playerBindName());
+      await scriptTypeAi(s, `（正戲進行中。這一景態度：${attitude}。只輸出台詞，短句、喘。）`);
+      if (chatSession?.tease === t) play.awaiting = false;
+    }
+  } finally {
+    if (chatSession?.tease === t && t.play === play) {
+      play.animating = false;
+      syncTeasePlayUi();
+    }
   }
 }
 
