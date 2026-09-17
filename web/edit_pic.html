@@ -65,7 +65,7 @@
 <h1>✦ Edit Pic — 生圖測試器</h1>
 <div class="warn">
   可選存檔魅子，或當場抽一隻新的來測 prompt／pose_ref。有參考圖＝圖生圖（img2img），沒有＝文生圖。
-  Grok：正向會放進 <code>extra</code>；Comfy：正向當 <code>prompt</code>。
+  目前只走 Comfy：正向整份當 <code>prompt</code>，checkpoint 可選（空則用魅子綁定）。
   <a href="/edit_date">約會劇本</a> | <a href="/test_date">約會測試</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
 </div>
 
@@ -94,11 +94,6 @@
 <section>
   <h2>2. 基本設定</h2>
   <div class="row">
-    <span class="fix0"><label>引擎 provider</label>
-      <select id="ig-provider">
-        <option value="grok-img">Grok 圖</option>
-        <option value="comfy">ComfyUI</option>
-      </select></span>
     <span class="fix0"><label>分級 rating</label>
       <select id="ig-rating">
         <option value="sfw">sfw</option>
@@ -115,10 +110,6 @@
         <option value="half" selected>half</option>
         <option value="full">full</option>
       </select></span>
-  </div>
-  <div class="row">
-    <span class="grow"><label>Grok 模型</label>
-      <select id="ig-model"><option value="grok-4.5">grok-4.5</option></select></span>
     <span class="grow"><label>Comfy checkpoint</label>
       <select id="ig-ckpt"><option value="">（測引擎後載入／用魅子綁定）</option></select></span>
   </div>
@@ -138,7 +129,7 @@
 
 <section>
   <h2>3. Prompt</h2>
-  <p class="mini">Grok：正向會放進 <code>extra</code>（人設由伺服器打底）；Comfy：正向整份當 <code>prompt</code>。負向兩邊都送。</p>
+  <p class="mini">正向整份當 Comfy <code>prompt</code>（人設 tags 可按「預覽基礎 prompt」帶入）；負向一併送出。</p>
   <label>正向（英文 tags）</label>
   <textarea id="prompt" placeholder="例：standing pose, looking at viewer, park background…"></textarea>
   <label>負向 negative</label>

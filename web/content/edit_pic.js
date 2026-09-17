@@ -50,28 +50,12 @@ async function waitImg(body, ms = 360000) {
   while (Date.now() - t0 < ms) {
     if (r.status === "done" || r.status === "error") return r;
     const sec = Math.round((Date.now() - t0) / 1000);
-    setStatus("gen-status", `生成中… ${sec}s · ${body.provider || ""}`);
+    setStatus("gen-status", `生成中… ${sec}s · comfy`);
     await new Promise((x) => setTimeout(x, 1500));
     r = await apiJson("/api/imggen", "POST", { ...body, key, retry: false });
     if (r.key) key = r.key;
   }
   return { status: "error", error: "逾時" };
-}
-
-function fillModelSelect(selId, names, preferred) {
-  const sel = $(selId);
-  if (!sel) return;
-  const cur = preferred || sel.value;
-  sel.innerHTML = "";
-  const list = names?.length ? names : ["grok-4.5"];
-  for (const n of list) {
-    const opt = document.createElement("option");
-    opt.value = n;
-    opt.textContent = n;
-    sel.appendChild(opt);
-  }
-  if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
-  else if (list[0]) sel.value = list[0];
 }
 
 function fillCkptSelect(names, preferred) {
@@ -90,12 +74,7 @@ function fillCkptSelect(names, preferred) {
 }
 
 async function getImgEngDefaults() {
-  let e = {
-    imgProvider: "grok-img",
-    imgModel: "grok-4.5",
-    comfyUrl: "",
-    comfyCkpt: "",
-  };
+  let e = { comfyUrl: "", comfyCkpt: "" };
   try {
     e = { ...e, ...JSON.parse(localStorage.getItem(ENG_KEY) || "{}") };
   } catch {
@@ -105,7 +84,6 @@ async function getImgEngDefaults() {
     const r = await fetch("/api/save", { cache: "no-store" });
     const j = await r.json();
     const s = j?.data?.settings || {};
-    if (s.imgProvider) e.imgProvider = s.imgProvider === "comfy" ? "comfy" : s.imgProvider;
     if (s.comfyUrl) e.comfyUrl = s.comfyUrl;
   } catch {
     /* 沒存檔就用 LS／預設 */
@@ -289,39 +267,24 @@ async function loadRecentRefs() {
 }
 
 async function pingImgEngine() {
-  setStatus("ig-eng-status", "測試生圖引擎…");
-  const provider = $("ig-provider").value;
+  setStatus("ig-eng-status", "測試 Comfy…");
   try {
-    if (provider === "grok-img") {
-      const h = await apiJson("/api/health");
-      const tags = await apiJson("/api/llm/tags?provider=grok-build");
-      const names = (tags?.models || []).map((m) => m.name || m).filter(Boolean);
-      fillModelSelect("ig-model", names, $("ig-model")?.value || "grok-4.5");
-      setStatus(
-        "ig-eng-status",
-        h.grok_build
-          ? `✓ grok-img 通路 OK · 模型 ${names.length} 個`
-          : "Grok Build 不可用",
-        !h.grok_build,
-      );
-    } else {
-      const url = $("ig-comfy").value.trim();
-      const q = url ? `?url=${encodeURIComponent(url)}` : "";
-      const st = await apiJson("/api/comfy/status" + q);
-      const ckpts = st?.models?.checkpoints || st?.checkpoints || [];
-      const names = (Array.isArray(ckpts) ? ckpts : []).map((x) =>
-        typeof x === "string" ? x : x.name || x,
-      );
-      fillCkptSelect(names, $("ig-ckpt")?.value || currentGirl?.comfyCkpt || "");
-      const ok = st?.ok !== false && st?.reachable !== false;
-      setStatus(
-        "ig-eng-status",
-        ok
-          ? `✓ Comfy 通 · checkpoint ${names.length} 個${st?.device ? " · " + st.device : ""}`
-          : `Comfy 異常：${st?.error || st?.message || "連不上"}`,
-        !ok,
-      );
-    }
+    const url = $("ig-comfy").value.trim();
+    const q = url ? `?url=${encodeURIComponent(url)}` : "";
+    const st = await apiJson("/api/comfy/status" + q);
+    const ckpts = st?.models?.checkpoints || st?.checkpoints || [];
+    const names = (Array.isArray(ckpts) ? ckpts : []).map((x) =>
+      typeof x === "string" ? x : x.name || x,
+    );
+    fillCkptSelect(names, $("ig-ckpt")?.value || currentGirl?.comfyCkpt || "");
+    const ok = st?.ok !== false && st?.reachable !== false;
+    setStatus(
+      "ig-eng-status",
+      ok
+        ? `✓ Comfy 通 · checkpoint ${names.length} 個${st?.device ? " · " + st.device : ""}`
+        : `Comfy 異常：${st?.error || st?.message || "連不上"}`,
+      !ok,
+    );
   } catch (e) {
     setStatus("ig-eng-status", e.message, true);
   }
@@ -329,31 +292,28 @@ async function pingImgEngine() {
 
 function buildImgBody() {
   if (!currentGirl) throw new Error("先選或抽一隻魅子");
-  const provider = $("ig-provider").value;
   const positive = $("prompt").value.trim();
   const negative = $("negative").value.trim();
-  const model = $("ig-model")?.value?.trim() || "grok-4.5";
   const selectedCkpt = $("ig-ckpt")?.value || "";
   const comfyUrl = $("ig-comfy")?.value.trim() || "";
   const denoise = Number($("ig-denoise")?.value || 0.55);
   const seed = Number($("ig-seed")?.value || 0);
   return {
     key: `editpic:${Date.now().toString(36)}`,
-    provider,
-    model,
+    provider: "comfy",
     character: currentGirl,
     name: currentGirl.name || "",
     rating: $("ig-rating").value,
     style: $("ig-style").value,
     framing: $("ig-framing").value,
-    prompt: provider === "comfy" ? positive : "",
-    extra: provider === "grok-img" ? positive : "",
+    prompt: positive,
+    extra: "",
     negative,
     pose_ref: refUrl || "",
     pose_denoise: denoise,
     seed,
-    ckpt: provider === "comfy" ? selectedCkpt || currentGirl.comfyCkpt || "" : "",
-    comfy_url: provider === "comfy" ? comfyUrl : "",
+    ckpt: selectedCkpt || currentGirl.comfyCkpt || "",
+    comfy_url: comfyUrl,
     retry: true,
   };
 }
@@ -366,10 +326,8 @@ async function previewBasePrompt() {
   setStatus("gen-status", "抓基礎 prompt…");
   $("prompt-sheet").textContent = "抓取中…";
   try {
-    const provider = $("ig-provider").value;
     const body = {
-      provider,
-      model: $("ig-model")?.value?.trim() || "grok-4.5",
+      provider: "comfy",
       character: currentGirl,
       name: currentGirl.name || "",
       rating: $("ig-rating").value,
@@ -381,16 +339,12 @@ async function previewBasePrompt() {
     };
     const j = await apiJson("/api/imggen/preview", "POST", body);
     const tr = j.trace || {};
-    const basePos =
-      provider === "comfy"
-        ? String(tr.comfy_prompt || "").trim()
-        : String(tr.grok_prompt || tr.comfy_prompt || "").trim();
+    const basePos = String(tr.comfy_prompt || "").trim();
     const baseNeg = String(tr.comfy_negative || "").trim();
     const userPos = $("prompt").value.trim();
     const userNeg = $("negative").value.trim();
 
-    // 正向空才自動填入基礎（Comfy 用 SD tags；Grok 用完整指令摘要太長，只填 sheet）
-    if (!userPos && provider === "comfy" && basePos) {
+    if (!userPos && basePos) {
       $("prompt").value = basePos;
     }
     if (!userNeg && baseNeg) {
@@ -398,13 +352,13 @@ async function previewBasePrompt() {
     }
 
     $("prompt-sheet").textContent = [
-      `【引擎】${provider}`,
+      "【引擎】comfy",
       "",
       "【基礎正向】",
       basePos || "（空）",
       "",
       "【目前輸入正向】",
-      (userPos || (provider === "comfy" && !userPos && basePos ? basePos : "")) || "（空白）",
+      ($("prompt").value.trim() || "（空白）"),
       "",
       "【基礎負向】",
       baseNeg || "（空）",
@@ -412,7 +366,7 @@ async function previewBasePrompt() {
       "【目前輸入負向】",
       ($("negative").value.trim() || "（空白）"),
       "",
-      "※ Grok：送出時正向 → extra；Comfy：正向 → prompt",
+      "※ 送出時正向 → prompt",
     ].join("\n");
     setStatus("gen-status", "✓ 已預覽基礎 prompt");
   } catch (e) {
@@ -499,7 +453,6 @@ function wire() {
   $("btn-reload-girls")?.addEventListener("click", () => loadGirls());
   $("btn-draw")?.addEventListener("click", () => drawGirl());
   $("btn-ig-ping")?.addEventListener("click", () => pingImgEngine());
-  $("ig-provider")?.addEventListener("change", () => pingImgEngine());
   $("btn-preview-prompt")?.addEventListener("click", () => previewBasePrompt());
   $("btn-gen")?.addEventListener("click", () => runGen());
 
@@ -526,11 +479,7 @@ async function init() {
   wire();
   updateRefUi();
   const eng = await getImgEngDefaults();
-  if ($("ig-provider")) $("ig-provider").value = eng.imgProvider === "comfy" ? "comfy" : "grok-img";
   if ($("ig-comfy") && eng.comfyUrl) $("ig-comfy").value = eng.comfyUrl;
-  if ($("ig-model") && eng.imgModel) {
-    fillModelSelect("ig-model", [eng.imgModel, "grok-4.5"], eng.imgModel);
-  }
   await loadGirls();
   await loadRecentRefs();
   updateModeUi();
