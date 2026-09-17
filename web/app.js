@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.74(2026-09-18)動圖置頂可連肏";
+const APP_VER = "v7.75(2026-09-18)動圖尺寸半透明連播";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -6041,7 +6041,8 @@ function clearAnimLinger() {
   }
   animLinger = false;
 }
-function stopScriptAnim() {
+/** 取消進行中的 run／計時，但不藏 overlay（連肏無閃爍） */
+function cancelScriptAnimRunOnly() {
   clearAnimLinger();
   if (scriptAnimTimer) {
     clearTimeout(scriptAnimTimer);
@@ -6055,6 +6056,9 @@ function stopScriptAnim() {
     for (const cancel of run.waiters) cancel();
     run.waiters.clear();
   }
+}
+function stopScriptAnim() {
+  cancelScriptAnimRunOnly();
   document.getElementById("sex-anim-popup")?.classList.add("hidden");
   document.body.classList.remove("sex-anim-on");
   syncTeasePlayUi();
@@ -6208,14 +6212,20 @@ function scriptAnimPreload(run, urls) {
     if (im.complete) queueMicrotask(finish);
   })));
 }
-async function flashScriptAnim() {
+/** opts.fromLinger / 當前 animLinger：不藏 overlay，直接換幀 1 無閃爍重播 */
+async function flashScriptAnim(opts = {}) {
   const box = document.getElementById("sex-anim-popup");
   const img = document.getElementById("sex-anim-img");
   if (!box || !img) {
     console.warn("[sex-anim] overlay DOM missing");
     return;
   }
-  stopScriptAnim();
+  const fromLinger = !!(opts?.fromLinger || animLinger);
+  if (fromLinger) {
+    cancelScriptAnimRunOnly();
+  } else {
+    stopScriptAnim();
+  }
   scriptAnimPlaying = true;
   animLinger = false;
   document.body.classList.add("sex-anim-on");
@@ -6245,6 +6255,27 @@ async function flashScriptAnim() {
     // 節奏：慢快快慢（幀 1–4）
     const FRAME_HOLDS = [300, 180, 180, 300];
     const playUrls = async (list) => {
+      // 連肏：先立刻換幀 1，再預載其餘，避免消失再出現
+      if (fromLinger && list[0]) {
+        await scriptAnimLoad(run, img, list[0]);
+        if (run.cancelled) return 0;
+        const rest = list.slice(1);
+        if (rest.length) await scriptAnimPreload(run, rest);
+        if (run.cancelled) return 0;
+        let shown = 1;
+        await scriptAnimHold(run, FRAME_HOLDS[0]);
+        for (const url of rest) {
+          if (run.cancelled) break;
+          const ok = await scriptAnimLoad(run, img, url);
+          if (run.cancelled) break;
+          if (ok) {
+            const hold = FRAME_HOLDS[Math.min(shown, FRAME_HOLDS.length - 1)];
+            shown += 1;
+            await scriptAnimHold(run, hold);
+          }
+        }
+        return shown;
+      }
       await scriptAnimPreload(run, list);
       if (run.cancelled) return 0;
       let shown = 0;

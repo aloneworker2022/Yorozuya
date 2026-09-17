@@ -264,20 +264,25 @@ function clearAnimLinger() {
   animLinger = false;
 }
 
-function stopScriptAnim() {
+/** 取消進行中的 run／計時，但不藏 overlay、不清 img.src（連肏無閃爍） */
+function cancelScriptAnimRunOnly() {
   clearAnimLinger();
-  const run = scriptAnimRun;
-  scriptAnimRun = null;
-  animPlaying = false;
   if (scriptAnimTimer) {
     clearTimeout(scriptAnimTimer);
     scriptAnimTimer = 0;
   }
+  const run = scriptAnimRun;
+  scriptAnimRun = null;
+  animPlaying = false;
   if (run) {
     run.cancelled = true;
     for (const cancel of run.waiters) cancel();
     run.waiters.clear();
   }
+}
+
+function stopScriptAnim() {
+  cancelScriptAnimRunOnly();
   const box = $("sex-anim-popup");
   const img = $("sex-anim-img");
   box?.classList.add("hidden");
@@ -384,15 +389,22 @@ function scriptAnimPreload(run, urls) {
   })));
 }
 
-/** 肏：播幀 1–4（慢快快慢）；播完留最後一幀並可連按下一輪，~3s 無按才收。無圖則 toast／status。 */
-async function flashScriptAnim() {
+/** 肏：播幀 1–4（慢快快慢）；播完留最後一幀並可連按下一輪，~3s 無按才收。
+ *  opts.fromLinger / 當前 animLinger：不藏 overlay，直接換幀 1 無閃爍重播。 */
+async function flashScriptAnim(opts = {}) {
   const box = $("sex-anim-popup");
   const img = $("sex-anim-img");
   if (!box || !img) {
     console.warn("[test_sex sex-anim] overlay DOM missing");
     return;
   }
-  stopScriptAnim();
+  const fromLinger = !!(opts?.fromLinger || animLinger);
+  if (fromLinger) {
+    // 連肏：取消舊 run／計時，overlay 保持可見，不清 src
+    cancelScriptAnimRunOnly();
+  } else {
+    stopScriptAnim();
+  }
   animPlaying = true;
   animLinger = false;
   document.body.classList.add("sex-anim-on");
@@ -422,6 +434,27 @@ async function flashScriptAnim() {
     // 節奏：慢快快慢（幀 1–4）
     const FRAME_HOLDS = [300, 180, 180, 300];
     const playUrls = async (list) => {
+      // 連肏：先立刻換幀 1，再背景預載其餘，避免先藏再開
+      if (fromLinger && list[0]) {
+        await scriptAnimLoad(run, img, list[0]);
+        if (run.cancelled) return 0;
+        const rest = list.slice(1);
+        if (rest.length) await scriptAnimPreload(run, rest);
+        if (run.cancelled) return 0;
+        let shown = 1;
+        await scriptAnimHold(run, FRAME_HOLDS[0]);
+        for (const url of rest) {
+          if (run.cancelled) break;
+          const ok = await scriptAnimLoad(run, img, url);
+          if (run.cancelled) break;
+          if (ok) {
+            const hold = FRAME_HOLDS[Math.min(shown, FRAME_HOLDS.length - 1)];
+            shown += 1;
+            await scriptAnimHold(run, hold);
+          }
+        }
+        return shown;
+      }
       await scriptAnimPreload(run, list);
       if (run.cancelled) return 0;
       let shown = 0;
