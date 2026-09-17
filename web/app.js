@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.65(2026-09-17)test_sex肏局部動畫";
+const APP_VER = "v7.66(2026-09-17)保住sexAnim圖";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -6030,7 +6030,7 @@ function stopScriptAnim() {
   document.getElementById("sex-anim-popup")?.classList.add("hidden");
   document.body.classList.remove("sex-anim-on");
 }
-function scriptAnimUrls() {
+function scriptAnimUrlCandidates() {
   const play = chatSession?.tease?.play;
   const g = state.succubi.find(x => x.id === chatWith);
   const poseId = String(play?.pack?.pose || "").trim();
@@ -6041,42 +6041,54 @@ function scriptAnimUrls() {
 
   // ★ 發呆產的局部動畫優先（testword「連續局部動畫」／daydream sexAnim）
   // 幀包只是生圖骨架，不能排在 sexAnim 前面，否則會播到空／骨架或載入失敗→看起來「沒動畫」。
+  let primary = [];
   if (g?.sexAnim) {
     if (poseId) {
       const hit = g.sexAnim[poseId];
       const urls = bust(hit?.urls, hit?.at);
-      if (urls.length) return urls;
+      if (urls.length) primary = urls;
     }
     // 體位沒對上或劇本沒填 pose：用這隻魅魔任何一組已產好的局部動畫
-    for (const rec of Object.values(g.sexAnim)) {
-      const urls = bust(rec?.urls, rec?.at);
-      if (urls.length >= 2) return urls;
+    if (!primary.length) {
+      for (const rec of Object.values(g.sexAnim)) {
+        const urls = bust(rec?.urls, rec?.at);
+        if (urls.length >= 2) { primary = urls; break; }
+      }
     }
-    for (const rec of Object.values(g.sexAnim)) {
-      const urls = bust(rec?.urls, rec?.at);
-      if (urls.length) return urls;
+    if (!primary.length) {
+      for (const rec of Object.values(g.sexAnim)) {
+        const urls = bust(rec?.urls, rec?.at);
+        if (urls.length) { primary = urls; break; }
+      }
     }
   }
 
   // 再退回劇本綁定／同體位的幀包（骨架庫）
+  let fallback = [];
   const spec = play?.pack?.scenes?.[String(play?.scene)];
   const bound = boundScriptFramePack(play?.pack, spec);
   let urls = pick(FramePack.packFrameUrls(bound));
-  if (urls.length) return urls;
+  if (urls.length) fallback = urls;
 
-  if (poseId) {
+  if (!fallback.length && poseId) {
     const posePack = (FRAME_PACKS || []).find(p => p && p.pose === poseId && pick(FramePack.packFrameUrls(p)).length);
     urls = pick(FramePack.packFrameUrls(posePack));
-    if (urls.length) return urls;
+    if (urls.length) fallback = urls;
   }
 
-  const anyPack = (FRAME_PACKS || []).find(p => pick(FramePack.packFrameUrls(p)).length >= 2)
-    || (FRAME_PACKS || []).find(p => pick(FramePack.packFrameUrls(p)).length);
-  urls = pick(FramePack.packFrameUrls(anyPack));
-  if (urls.length) return urls;
+  if (!fallback.length) {
+    const anyPack = (FRAME_PACKS || []).find(p => pick(FramePack.packFrameUrls(p)).length >= 2)
+      || (FRAME_PACKS || []).find(p => pick(FramePack.packFrameUrls(p)).length);
+    urls = pick(FramePack.packFrameUrls(anyPack));
+    if (urls.length) fallback = urls;
+  }
 
   // 劇本揭圖／立繪不是局部動畫，絕不拿來湊數，避免整張劇本圖蓋住動畫
-  return [];
+  return { primary, fallback };
+}
+function scriptAnimUrls() {
+  const { primary, fallback } = scriptAnimUrlCandidates();
+  return primary.length ? primary : fallback;
 }
 
 function scriptAnimLoad(run, img, url) {
@@ -6134,7 +6146,8 @@ async function flashScriptAnim() {
   try {
     try { await loadFramePacks(); } catch { /* */ }
     if (run.cancelled) return;
-    const urls = scriptAnimUrls();
+    const { primary, fallback } = scriptAnimUrlCandidates();
+    let urls = primary.length ? primary : fallback;
     if (!urls.length) {
       console.warn("[sex-anim] no urls", {
         pose: chatSession?.tease?.play?.pack?.pose,
@@ -6147,15 +6160,24 @@ async function flashScriptAnim() {
     }
     box.classList.remove("hidden");
     box.setAttribute("aria-hidden", "false");
-    let shown = 0;
-    for (const url of urls) {
-      if (run.cancelled) break;
-      const ok = await scriptAnimLoad(run, img, url);
-      if (run.cancelled) break;
-      if (ok) {
-        shown += 1;
-        await scriptAnimHold(run, 420);
+    const playUrls = async (list) => {
+      let shown = 0;
+      for (const url of list) {
+        if (run.cancelled) break;
+        const ok = await scriptAnimLoad(run, img, url);
+        if (run.cancelled) break;
+        if (ok) {
+          shown += 1;
+          await scriptAnimHold(run, 420);
+        }
       }
+      return shown;
+    };
+    let shown = await playUrls(urls);
+    // sexAnim 全 404（GC 刪檔）→ 改播幀包
+    if (!shown && !run.cancelled && primary.length && fallback.length) {
+      console.warn("[sex-anim] sexAnim dead, fallback to frame packs");
+      shown = await playUrls(fallback.slice(0, 4));
     }
     // 若全部載入失敗，至少讓遮罩停一下，避免「完全沒反應」
     if (!shown && !run.cancelled) await scriptAnimHold(run, 280);

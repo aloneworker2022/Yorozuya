@@ -1947,6 +1947,28 @@ def _keep_urls_from_save() -> set[str]:
                     p = _asset_path(str(v.get("url")))
                     if p:
                         names.add(p.name)
+            # daydream sex_strip／劇本圖也落 testword；GC 必須保住引用中的檔
+            sex_anim = s.get("sexAnim") or {}
+            if isinstance(sex_anim, dict):
+                for rec in sex_anim.values():
+                    if not isinstance(rec, dict):
+                        continue
+                    for u in (rec.get("urls") or []):
+                        p = _asset_path(str(u or ""))
+                        if p:
+                            names.add(p.name)
+            script_art = s.get("scriptArt") or {}
+            if isinstance(script_art, dict):
+                for pack in script_art.values():
+                    if not isinstance(pack, dict):
+                        continue
+                    for rec in pack.values():
+                        if not isinstance(rec, dict):
+                            continue
+                        for u in (rec.get("urls") or []):
+                            p = _asset_path(str(u or ""))
+                            if p:
+                                names.add(p.name)
         chain = (data.get("cardSession") or {}).get("sceneChainUrl")
         p = _asset_path(str(chain or ""))
         if p:

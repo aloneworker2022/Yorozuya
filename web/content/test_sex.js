@@ -69,10 +69,10 @@ function boundScriptFramePack(pack, spec) {
 }
 
 /**
- * 與主遊戲 scriptAnimUrls 對齊：
- * 優先看板娘 daydream sexAnim（對應劇本 pose）；否則幀包 1–4。
+ * 與主遊戲對齊：primary=daydream sexAnim；fallback=幀包 1–4。
+ * sexAnim URL 可能已被 GC 刪檔→播放時若 primary 全掛才改播 fallback。
  */
-function scriptAnimUrls() {
+function scriptAnimUrlCandidates() {
   const g = currentGirl;
   const poseId = String(play?.pack?.pose || "").trim();
   const pick = (urls) => (Array.isArray(urls) ? urls : []).map((u) => String(u || "").trim()).filter(Boolean);
@@ -80,43 +80,52 @@ function scriptAnimUrls() {
     try { return bustAssetUrl(u, ver); } catch { return u; }
   });
 
-  // ★ 發呆產的局部動畫優先
+  let primary = [];
   if (g?.sexAnim) {
     if (poseId) {
       const hit = g.sexAnim[poseId];
       const urls = bust(hit?.urls, hit?.at);
-      if (urls.length) return urls.slice(0, 4);
+      if (urls.length) primary = urls.slice(0, 4);
     }
-    for (const rec of Object.values(g.sexAnim)) {
-      const urls = bust(rec?.urls, rec?.at);
-      if (urls.length >= 2) return urls.slice(0, 4);
+    if (!primary.length) {
+      for (const rec of Object.values(g.sexAnim)) {
+        const urls = bust(rec?.urls, rec?.at);
+        if (urls.length >= 2) { primary = urls.slice(0, 4); break; }
+      }
     }
-    for (const rec of Object.values(g.sexAnim)) {
-      const urls = bust(rec?.urls, rec?.at);
-      if (urls.length) return urls.slice(0, 4);
+    if (!primary.length) {
+      for (const rec of Object.values(g.sexAnim)) {
+        const urls = bust(rec?.urls, rec?.at);
+        if (urls.length) { primary = urls.slice(0, 4); break; }
+      }
     }
   }
 
-  // 再退回劇本綁定／同體位的幀包（骨架庫）
+  let fallback = [];
   const spec = play?.pack?.scenes?.[String(play?.scene)];
   const bound = boundScriptFramePack(play?.pack, spec);
   let urls = pick(FramePack.packFrameUrls(bound));
-  if (urls.length) return urls.slice(0, 4);
-
-  if (poseId) {
+  if (urls.length) fallback = urls.slice(0, 4);
+  if (!fallback.length && poseId) {
     const posePack = (FRAME_PACKS || []).find(
       (p) => p && p.pose === poseId && pick(FramePack.packFrameUrls(p)).length,
     );
     urls = pick(FramePack.packFrameUrls(posePack));
-    if (urls.length) return urls.slice(0, 4);
+    if (urls.length) fallback = urls.slice(0, 4);
+  }
+  if (!fallback.length) {
+    const anyPack = (FRAME_PACKS || []).find((p) => pick(FramePack.packFrameUrls(p)).length >= 2)
+      || (FRAME_PACKS || []).find((p) => pick(FramePack.packFrameUrls(p)).length);
+    urls = pick(FramePack.packFrameUrls(anyPack));
+    if (urls.length) fallback = urls.slice(0, 4);
   }
 
-  const anyPack = (FRAME_PACKS || []).find((p) => pick(FramePack.packFrameUrls(p)).length >= 2)
-    || (FRAME_PACKS || []).find((p) => pick(FramePack.packFrameUrls(p)).length);
-  urls = pick(FramePack.packFrameUrls(anyPack));
-  if (urls.length) return urls.slice(0, 4);
+  return { primary, fallback };
+}
 
-  return [];
+function scriptAnimUrls() {
+  const { primary, fallback } = scriptAnimUrlCandidates();
+  return primary.length ? primary : fallback;
 }
 
 function stopScriptAnim() {
@@ -197,7 +206,8 @@ async function flashScriptAnim() {
   try {
     try { await loadFramePacks(); } catch { /* */ }
     if (run.cancelled) return;
-    const urls = scriptAnimUrls();
+    const { primary, fallback } = scriptAnimUrlCandidates();
+    let urls = primary.length ? primary : fallback;
     if (!urls.length) {
       console.warn("[test_sex sex-anim] no urls", {
         pose: play?.pack?.pose,
@@ -210,15 +220,24 @@ async function flashScriptAnim() {
     }
     box.classList.remove("hidden");
     box.setAttribute("aria-hidden", "false");
-    let shown = 0;
-    for (const url of urls) {
-      if (run.cancelled) break;
-      const ok = await scriptAnimLoad(run, img, url);
-      if (run.cancelled) break;
-      if (ok) {
-        shown += 1;
-        await scriptAnimHold(run, 420);
+    const playUrls = async (list) => {
+      let shown = 0;
+      for (const url of list) {
+        if (run.cancelled) break;
+        const ok = await scriptAnimLoad(run, img, url);
+        if (run.cancelled) break;
+        if (ok) {
+          shown += 1;
+          await scriptAnimHold(run, 420);
+        }
       }
+      return shown;
+    };
+    let shown = await playUrls(urls);
+    // sexAnim 全 404（GC 刪檔）→ 改播幀包
+    if (!shown && !run.cancelled && primary.length && fallback.length) {
+      setStatus("play-status", "sexAnim 圖已失效，改用幀包");
+      shown = await playUrls(fallback.slice(0, 4));
     }
     if (!shown && !run.cancelled) await scriptAnimHold(run, 280);
   } finally {
