@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.53(2026-09-17)動畫置頂置中";
+const APP_VER = "v7.54(2026-09-17)動畫壓過故事圖";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -6006,6 +6006,7 @@ function stopScriptAnim() {
     run.waiters.clear();
   }
   document.getElementById("sex-anim-overlay")?.classList.add("hidden");
+  document.body.classList.remove("sex-anim-on");
 }
 function scriptAnimUrls() {
   const play = chatSession?.tease?.play;
@@ -6073,6 +6074,8 @@ async function flashScriptAnim() {
   const img = document.getElementById("sex-anim-img");
   if (!box || !img) return;
   stopScriptAnim();
+  // 移到 body 最末，確保壓過 #chat-view 內劇本揭圖
+  document.body.appendChild(box);
   const run = { cancelled: false, waiters: new Set() };
   scriptAnimRun = run;
   try {
@@ -6082,6 +6085,7 @@ async function flashScriptAnim() {
     if (run.cancelled) return;
     const urls = scriptAnimUrls();
     if (!urls.length) return;
+    document.body.classList.add("sex-anim-on"); // 暫時藏 #vn-figure 故事圖
     box.classList.remove("hidden");
     for (const url of urls) {
       if (run.cancelled) break;
