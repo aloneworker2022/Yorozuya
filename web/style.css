@@ -1287,7 +1287,7 @@ body.script-reveal #vn-figure-slot {
   z-index: 0;
   display: flex;
   justify-content: center;
-  align-items: flex-end;
+  align-items: flex-start;
   width: 100%;
   pointer-events: none;
   min-height: 0;
@@ -1313,6 +1313,10 @@ body.sex-anim-on.script-reveal #vn-figure {
   height: min(68vh, 640px);
   animation: none;
   margin-bottom: -0.4em;
+}
+body.script-reveal #vn-figure.tease-on {
+  object-position: top center;
+  margin-bottom: 0;
 }
 /* 局部動畫：中間偏下、加大、半透明卡；播完可留幀連肏 */
 #sex-anim-popup {
