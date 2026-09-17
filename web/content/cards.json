@@ -3332,7 +3332,7 @@
     {
       "id": "park",
       "name": "公園",
-      "fee": 3,
+      "fee": 2,
       "desc": "白天人不多的長椅與步道。",
       "dateChapters": {
         "1": [

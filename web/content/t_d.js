@@ -78,6 +78,127 @@ const HOTEL_HEART_PENALTY = {
   wife: 0,
 };
 
+/** 正式名冊公園約會：sessionStorage yoro_park_vn_date */
+const OFFICIAL_PARK_KEY = "yoro_park_vn_date";
+let officialMeta = null; // { girlId, fee, official, hotelPaid, persisted }
+
+function isOfficialDate() {
+  return !!(officialMeta && officialMeta.official);
+}
+
+function peekOfficialParkFlag() {
+  try {
+    const raw = sessionStorage.getItem(OFFICIAL_PARK_KEY);
+    if (!raw) return null;
+    const j = JSON.parse(raw);
+    if (!j || !j.girlId) return null;
+    return j;
+  } catch {
+    return null;
+  }
+}
+
+function clearOfficialParkFlag() {
+  try { sessionStorage.removeItem(OFFICIAL_PARK_KEY); } catch { /* */ }
+}
+
+function maleSpawnChance() {
+  // 正式名冊 1/20；手動 /test_date 測試仍 1/2
+  return isOfficialDate() ? 1 / 20 : 1 / 2;
+}
+
+async function fetchSaveDoc() {
+  const r = await fetch("/api/save", { cache: "no-store" });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j?.detail || "讀存檔失敗");
+  return j;
+}
+
+/** 把本場 VN 感情／旅館金寫回主存檔（affection 數值；陌生≥50 → 朋友）。 */
+function applyOfficialToSaveData(data) {
+  if (!data || !girl?.id) return;
+  const g = (data.succubi || []).find((x) => x.id === girl.id);
+  if (g) {
+    const delta = Number(state.heart) || 0;
+    const before = Number(g.affection) || 0;
+    g.affection = Math.round((before + delta) * 10) / 10;
+    // 與 app.js applyAffection 對齊：只自動 stranger→friend（門檻 50）
+    if ((g.stage || "stranger") === "stranger" && g.affection >= 50) {
+      g.stage = "friend";
+    }
+  }
+  const hotel = Number(officialMeta?.hotelPaid) || 0;
+  if (hotel > 0) {
+    data.gold = Math.max(0, (Number(data.gold) || 0) - hotel);
+  }
+}
+
+async function persistOfficialResults() {
+  if (!isOfficialDate() || officialMeta.persisted) return;
+  officialMeta.persisted = true;
+  try {
+    const doc = await fetchSaveDoc();
+    const data = doc?.data;
+    if (!data) return;
+    applyOfficialToSaveData(data);
+    await putSaveSimple(doc.version, data);
+  } catch (e) {
+    console.warn("[t_d] persist official failed", e);
+    officialMeta.persisted = false;
+  }
+}
+
+async function putSaveSimple(version, data) {
+  const r = await fetch("/api/save", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base_version: version, data }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 409) {
+    const again = await fetchSaveDoc();
+    if (!again?.data) throw new Error("存檔衝突");
+    applyOfficialToSaveData(again.data);
+    const r2 = await fetch("/api/save", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base_version: again.version, data: again.data }),
+    });
+    if (!r2.ok) {
+      const j2 = await r2.json().catch(() => ({}));
+      throw new Error(j2?.detail?.message || j2?.detail || "寫存檔失敗");
+    }
+    return;
+  }
+  if (!r.ok) throw new Error(j?.detail?.message || j?.detail || "寫存檔失敗");
+}
+
+function showOfficialExit(visible) {
+  const btn = $("btn-home");
+  if (btn) btn.hidden = !visible;
+  document.body.classList.toggle("official-date", isOfficialDate());
+}
+
+function goMainScreen() {
+  location.href = "/";
+}
+
+let officialPersistInflight = false;
+async function maybePersistOfficialOnEnd() {
+  if (!isOfficialDate() || !state.ended) return;
+  if (officialMeta.persisted || officialPersistInflight) {
+    showOfficialExit(true);
+    return;
+  }
+  officialPersistInflight = true;
+  try {
+    await persistOfficialResults();
+  } finally {
+    officialPersistInflight = false;
+  }
+  showOfficialExit(true);
+}
+
 function signedDelta(n) {
   return n >= 0 ? `+${n}` : String(n);
 }
@@ -303,6 +424,14 @@ function renderHud() {
   $("acts-bar")?.classList.toggle("paging", paging || !!state.hotelScene);
   $("acts-bar")?.classList.toggle("cg-open", cgOpen);
   $("acts-bar")?.classList.toggle("no-chat", !started || state.ended || !!state.hotelScene);
+  const homeBtn = $("btn-home");
+  if (homeBtn) {
+    // 正式模式：進行中也可回主畫面；結束後必顯
+    homeBtn.hidden = !isOfficialDate();
+  }
+  if (isOfficialDate() && state.ended) {
+    maybePersistOfficialOnEnd();
+  }
   const maleField = !!state.male?.onField && !state.ended && !state.male?.sex;
   const maleFree = maleField && (state.male.freeTurns > 0);
   $("acts")?.classList.toggle("has-male", maleField);
@@ -326,6 +455,10 @@ function renderHud() {
   }
   document.querySelectorAll("#acts .act").forEach((el) => {
     const act = el.dataset.act;
+    if (act === "home") {
+      el.disabled = !isOfficialDate() || busy || paging || cgOpen;
+      return;
+    }
     if (act === "admin") {
       // 只在玩家行動列可見時可按（與調戲／猥褻同一時段）
       el.disabled = !started || busy || paging || cgOpen || state.ended;
@@ -336,7 +469,7 @@ function renderHud() {
       return;
     }
     if (state.ended) {
-      el.disabled = act !== "end";
+      el.disabled = act !== "end" && act !== "home";
       return;
     }
     const maleOn = !!state.male?.onField && !state.male?.sex;
@@ -1163,14 +1296,14 @@ async function aiSexAnnounce(who) {
 /**
  * 玩家成功行動回合後：
  * - 場上已有單男 → 等玩家猜招（不自動男子回合）
- * - 否則 → 1/2 抽種類搭訕（測單男暫調；正式應回 1/20）
+ * - 否則 → 抽種類搭訕（正式名冊 1/20；手動測試 1/2）
  */
 async function maybeMaleBeat() {
   if (state.ended) return false;
   const m = state.male;
   if (m?.sex) return false;
   if (m?.onField) return false;
-  if (Math.random() < 1 / 2) {
+  if (Math.random() < maleSpawnChance()) {
     state.male = spawnMale();
     await startMaleApproach();
     return true;
@@ -1644,6 +1777,7 @@ async function runHotelSexScene() {
       text: `約會告一段落。感情 ${state.heart}、性慾 ${state.arousal}、羞恥 ${state.shame}。`,
     },
   ]);
+  await maybePersistOfficialOnEnd();
   renderHud();
 }
 
@@ -1689,6 +1823,9 @@ async function resolveSexBranch(from) {
       ]);
     } else {
       state.money -= 10;
+      if (isOfficialDate()) {
+        officialMeta.hotelPaid = (Number(officialMeta.hotelPaid) || 0) + 10;
+      }
       renderHud();
       await runHotelSexScene();
       return;
@@ -1713,6 +1850,7 @@ async function resolveSexBranch(from) {
       text: `約會結束。感情 ${state.heart}、性慾 ${state.arousal}、羞恥 ${state.shame}。`,
     },
   ]);
+  await maybePersistOfficialOnEnd();
   renderHud();
 }
 
@@ -2069,7 +2207,9 @@ async function startDate() {
     setAdminStatus("先抽妹子。", true);
     return;
   }
+  const keepMoney = isOfficialDate() ? state.money : null;
   Object.assign(state, emptyState());
+  if (keepMoney != null) state.money = keepMoney;
   state.time = $("times")?.querySelector(".pill.on")?.dataset.id || "morning";
   dateOutfit = null;
   ensureDateOutfit();
@@ -2077,6 +2217,7 @@ async function startDate() {
   state.ended = false;
   busy = false;
   pendingResolve = false;
+  if (isOfficialDate() && officialMeta) officialMeta.persisted = false;
   $("admin").classList.remove("on");
   state.arrive = pickArrive();
   state.male = null;
@@ -2244,11 +2385,20 @@ async function doAct(act) {
     return;
   }
   if (!started || busy || paging) return;
+  if (act === "home") {
+    if (isOfficialDate()) {
+      state.ended = true;
+      await persistOfficialResults();
+    }
+    goMainScreen();
+    return;
+  }
   if (act === "end") {
     state.ended = true;
     await playQueue([
       { role: "sys", who: "散場", text: `回家。感情 ${state.heart}、性慾 ${state.arousal}、羞恥 ${state.shame}。` },
     ]);
+    await maybePersistOfficialOnEnd();
     return;
   }
   if (state.ended) return;
@@ -2471,7 +2621,11 @@ async function boot() {
   $("btn-ping").addEventListener("click", () => pingEngine());
   $("btn-start").addEventListener("click", () => startDate());
   $("modal-ok")?.addEventListener("click", () => $("overlay").classList.remove("on"));
-  $("admin").classList.add("on");
+  $("btn-home")?.addEventListener("click", () => goMainScreen());
+
+  const flag = peekOfficialParkFlag();
+  if (!flag) $("admin").classList.add("on");
+
   try {
     await loadPools();
     const pack = await fetch("/content/t_d_cards.json?ts=" + Date.now()).then((r) => {
@@ -2490,8 +2644,42 @@ async function boot() {
     }
     const mt = dateScript.male?.types?.length || 0;
     setAdminStatus(`卡 ${cards.length} 張 · 人設池已載入 · 約會／單男劇本已載入（種類 ${mt}）`);
+
+    // 正式名冊公園約會：載入存檔妹子、跳過抽卡閘、自動開始
+    if (flag?.girlId) {
+      officialMeta = {
+        girlId: flag.girlId,
+        fee: Number(flag.fee) || 2,
+        official: true,
+        hotelPaid: 0,
+        persisted: false,
+      };
+      clearOfficialParkFlag();
+      const doc = await fetchSaveDoc();
+      const g = (doc?.data?.succubi || []).find((x) => x.id === flag.girlId);
+      if (!g) throw new Error("存檔找不到這位名冊妹子");
+      girl = g;
+      relStage = g.stage || "stranger";
+      if (RELS.some((r) => r.id === relStage)) {
+        lsSet("t_d.rel", relStage);
+      }
+      // 正式模式金錢對齊主存檔（旅館 10 金會再扣回主存檔）
+      const gold = Number(doc?.data?.gold);
+      if (Number.isFinite(gold)) state.money = Math.max(0, gold);
+      dateOutfit = null;
+      renderGirlAdmin();
+      showOfficialExit(false);
+      const empty = $("empty");
+      if (empty) empty.textContent = `正式公園約會：${g.name}（關係 ${relOf(relStage).name}）`;
+      setAdminStatus(`正式約會 · ${g.name} · 單男 1/20`);
+      await startDate();
+    }
   } catch (e) {
     setAdminStatus(e.message, true);
+    if (flag) {
+      $("admin").classList.add("on");
+      showOfficialExit(true);
+    }
   }
 }
 

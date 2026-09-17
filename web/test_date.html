@@ -255,6 +255,11 @@
   .act:hover::before { content: "▶"; margin-right: 2px; }
   .act.admin { color: var(--dim); }
   .act.admin:hover { color: var(--ink); }
+  .act.home {
+    color: var(--cyan);
+    grid-column: 1 / -1;
+  }
+  body.official-date .act.admin { display: none; }
   .act.hot { color: #f8a0b8; box-shadow: 0 0 0 var(--px) #f8a0b8; }
 
   .overlay {
@@ -434,6 +439,7 @@
       <button class="act hot" type="button" data-act="molest">猥褻</button>
       <button class="act" type="button" data-act="eat">吃東西</button>
       <button class="act" type="button" data-act="end">回家</button>
+      <button class="act home" type="button" data-act="home" id="btn-home" hidden>回主畫面</button>
       <button class="act admin" type="button" data-act="admin">後台</button>
     </div>
     <button class="act next" type="button" id="btn-next">下一頁</button>
@@ -464,7 +470,7 @@
 <div class="overlay" id="admin">
   <div class="modal">
     <h3>後台</h3>
-    <p>抽妹子、設模型、開始一場。關係決定她怎麼回話（跟看板店頭聊同一套）。單男猜招戰約 1/2 出場（測試用）（劇本在 /edit_date）。聊天劇本在 <a href="/edit_date" style="color:var(--cyan)">/edit_date</a>。生圖測試 <a href="/edit_pic" style="color:var(--cyan)">/edit_pic</a>。</p>
+    <p>抽妹子、設模型、開始一場。關係決定她怎麼回話（跟看板店頭聊同一套）。單男猜招戰約 1/2 出場（手動測試；正式名冊公園為 1/20）（劇本在 /edit_date）。聊天劇本在 <a href="/edit_date" style="color:var(--cyan)">/edit_date</a>。生圖測試 <a href="/edit_pic" style="color:var(--cyan)">/edit_pic</a>。</p>
     <div class="row">
       <div class="lab">妹子</div>
       <div id="admin-girl">還沒抽妹子。</div>

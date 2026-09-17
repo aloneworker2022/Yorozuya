@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.45(2026-09-17)男子標籤加male";
+const APP_VER = "v7.46(2026-09-17)正式公園約會";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -8422,8 +8422,12 @@ function rescueFromWatch(s) {
         const vid = venues.find(x => x.id === playerLocation)?.id
           || venues.find(x => x.name === playerLocation)?.id
           || playerLocation;
-        if (vid && venues.some(x => x.id === vid)) {
-          openDateTable(s.id, vid);
+        if (vid === "park") {
+          const fee = venues.find(x => x.id === "park")?.fee || 2;
+          launchOfficialParkVn(s.id, fee);
+        } else if (vid && venues.some(x => x.id === vid)) {
+          toast("目前只開放公園", "bad");
+          renderAll();
         } else {
           toast("回來了——再開一次約會吧", "good");
           renderAll();
@@ -9046,10 +9050,16 @@ async function sendChatMsg() {
             const vid = v.id;
             chatSession.leavingForDate = true;
             toast(`${s.name} 答應了——去「${v.name}」`, "good");
-            setTimeout(() => {
+            setTimeout(async () => {
               if (chatWith !== gid) return;
               exitChat();
-              openDateTable(gid, vid);
+              if (vid === "park") {
+                await launchOfficialParkVn(gid, v.fee || 2);
+              } else {
+                toast("目前只開放公園", "bad");
+                scheduleSave();
+                renderAll();
+              }
             }, 900);
             return;
           }
@@ -12899,8 +12909,13 @@ function dateAnswerRate(_stage) {
 }
 
 function availableVenues() {
-  // 全域 NSFW：不再依 nsfwOnly 過濾場地
+  // 全域 NSFW：不再依 nsfwOnly 過濾場地（cardedit／除錯仍用完整列表）
   return (Cards.venuesList?.() || []).slice();
+}
+
+/** 名冊／感應約會可抽場地。暫時只開公園 VN；其他場地晚點回來。 */
+function dateVenues() {
+  return availableVenues().filter((v) => v.id === "park");
 }
 
 function datesLeftToday(s) {
@@ -13037,7 +13052,7 @@ function dateInviteBlockReason(s) {
   if (isAsleep()) return "睡眠時段——她在睡覺";
   if (isSummonerTaken(s)) return "她正被帶走，現在走不開";
   if (datesLeftToday(s) <= 0) return "今天已經約過了";
-  const venues = availableVenues();
+  const venues = dateVenues();
   if (!venues.length) return "還沒有可去的約會場地";
   const minFee = Math.min(...venues.map(v => Number(v.fee) || 0));
   if (state.gold < minFee) return "他好像沒錢出門";
@@ -13052,7 +13067,7 @@ function dateInviteBlockReason(s) {
 function beginDateFromSenseAccept(s) {
   const why = dateInviteBlockReason(s);
   if (why) { toast(why, "bad"); return null; }
-  const venues = availableVenues();
+  const venues = dateVenues();
   const v = venues[Math.floor(Math.random() * venues.length)];
   const fee = Number(v?.fee) || 0;
   if (state.gold < fee) {
@@ -13066,6 +13081,7 @@ function beginDateFromSenseAccept(s) {
   s.lastDateDay = today;
   s.lastChatDay = today;
   log(`${s.name} 答應感應邀約 → ${v.name} -${fee} 金`);
+  toast(`公園約會 −${fee} 金`, "");
   return v;
 }
 
@@ -13110,7 +13126,7 @@ function beginDateFlow(girlId) {
     return;
   }
 
-  const venues = availableVenues();
+  const venues = dateVenues();
   if (!venues.length) {
     toast("還沒有可去的約會場地", "bad");
     return;
@@ -13175,10 +13191,37 @@ function declineDateVenue(girlId) {
 }
 
 /**
- * 付場地費 → 開約會牌桌（被召喚中則改觀戰）。
+ * 寫 session 旗標並跳轉公園 VN（/test_date）。付費／存檔由呼叫端處理。
+ */
+function launchOfficialParkVn(girlId, fee = 2) {
+  const payload = {
+    girlId,
+    paidAt: Date.now(),
+    fee: Number(fee) || 2,
+    official: true,
+  };
+  try {
+    sessionStorage.setItem("yoro_park_vn_date", JSON.stringify(payload));
+  } catch (e) {
+    toast("無法寫入約會旗標", "bad");
+    return false;
+  }
+  dirty = true;
+  // 先沖存再離開主畫面，避免場地費沒寫進存檔
+  return Promise.resolve(saveNow(true)).then(() => {
+    location.href = "/test_date";
+    return true;
+  }).catch(() => {
+    location.href = "/test_date";
+    return true;
+  });
+}
+
+/**
+ * 付場地費 → 公園走 VN；其他場地暫鎖。被召喚中則改觀戰。
  * 必須已接通並抽到該 venueId（dateFlow）。
  */
-function confirmDateVenue(girlId, venueId) {
+async function confirmDateVenue(girlId, venueId) {
   if (!cardSystemOn()) return;
   const s = state.succubi.find(x => x.id === girlId);
   if (!s || s.ntr) return;
@@ -13193,6 +13236,10 @@ function confirmDateVenue(girlId, venueId) {
   }
   const v = venueById(wantId);
   if (!v) { toast("找不到這個場地", "bad"); return; }
+  if (v.id !== "park") {
+    toast("目前只開放公園", "bad");
+    return;
+  }
   if (state.gold < (v.fee || 0)) {
     toast(`場地費 ${v.fee} 金不夠`, "bad");
     scheduleSave();
@@ -13201,17 +13248,18 @@ function confirmDateVenue(girlId, venueId) {
   }
   state.gold -= (v.fee || 0);
   log(`與 ${s.name} 去「${v.name}」約會 -${v.fee || 0} 金`);
+  toast(`公園約會 −${v.fee || 0} 金`, "");
 
   dateFlow = null;
   dateChooser = false;
 
-  // 感應中確認約會：先結束感應再開牌桌
+  // 感應中確認約會：先結束感應再出發
   const fromSense = chatSession?.type === "sense" && chatWith === girlId;
   if (fromSense) {
     try { exitChat(); } catch { /* */ }
   }
 
-  // 被召喚走：錢已付，改觀戰；釋放後用 venueId 接回約會牌桌
+  // 被召喚走：錢已付，改觀戰；釋放後用 venueId 接回（公園改走 VN）
   if (s.summoner?.taken) {
     log(`約 ${s.name} 出門——她卻被召喚到別人身邊`);
     enterWatch(s, "date", v.id);
@@ -13220,7 +13268,7 @@ function confirmDateVenue(girlId, venueId) {
     return;
   }
 
-  openDateTable(girlId, v.id);
+  await launchOfficialParkVn(girlId, v.fee || 2);
 }
 
 /**
