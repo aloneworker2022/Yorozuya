@@ -106,10 +106,12 @@
 
   #vn-box {
     position: relative; z-index: 3;
-    background: rgba(12,10,20,.92);
-    border-top: 1px solid rgba(255,255,255,.12);
+    background: rgba(10,8,18,.62);
+    border-top: 1px solid rgba(255,255,255,.16);
     padding: .85em 1em 1.15em;
     min-height: 7.2em;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
   #vn-nameline {
     display: flex; align-items: center; gap: .55em; margin-bottom: .4em; min-height: 1.2em;
@@ -159,9 +161,9 @@
   body.playing #stage {
     width: 100%;
     min-height: 100vh;
-    justify-content: center;
+    justify-content: flex-end;
     align-items: center;
-    padding: 1.5em 1em;
+    padding: 0 1em;
   }
   body.playing #stage-idle { display: none; }
   body.playing #vn-box,
