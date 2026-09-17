@@ -1314,15 +1314,15 @@ body.sex-anim-on.script-reveal #vn-figure {
   animation: none;
   margin-bottom: -0.4em;
 }
-/* 局部動畫：置頂稍下移、加大、半透明卡；播完可留幀連肏 */
+/* 局部動畫：中間偏下、加大、半透明卡；播完可留幀連肏 */
 #sex-anim-popup {
   position: fixed !important;
   inset: 0 !important;
   z-index: 2147483000 !important;
   display: flex !important;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding-top: max(5vh, env(safe-area-inset-top, 0px));
+  padding-top: max(18vh, env(safe-area-inset-top, 0px));
   background: transparent;
   pointer-events: none;
   isolation: isolate;

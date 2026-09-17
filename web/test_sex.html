@@ -171,7 +171,7 @@
     min-height: 100vh;
     justify-content: flex-end;
     align-items: center;
-    padding: 0 1em;
+    padding: 0 1em calc(5vh + env(safe-area-inset-bottom, 0px));
   }
   body.playing #stage-idle { display: none; }
   body.playing #vn-box,
@@ -180,15 +180,15 @@
     flex: 0 0 auto;
   }
 
-  /* 局部動畫：置頂稍下移、加大、半透明卡；播完可留幀連肏 */
+  /* 局部動畫：中間偏下、加大、半透明卡；播完可留幀連肏 */
   #sex-anim-popup {
     position: fixed !important;
     inset: 0 !important;
     z-index: 2147483000 !important;
     display: flex !important;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
-    padding-top: max(5vh, env(safe-area-inset-top, 0px));
+    padding-top: max(18vh, env(safe-area-inset-top, 0px));
     background: transparent;
     pointer-events: none;
     isolation: isolate;
@@ -222,7 +222,7 @@
 <div class="top">
   <h1>性愛場景測試 / test_sex <span class="badge">留幀不秒消</span></h1>
   <div class="warn">
-    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。場景圖在對話／肏動圖下層；按「肏」時頂部稍下半透明動圖 1–4，播完留幀可連按無閃爍重播（正戲內不自動消失，結束／離開才清）。
+    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。場景圖在對話／肏動圖下層；按「肏」時中間偏下半透明動圖 1–4，播完留幀可連按無閃爍重播（正戲內不自動消失，結束／離開才清）。
     <a href="/edit_date">約會劇本</a> | <a href="/test_date">約會測試</a> | <a href="/edit_pic">生圖測試</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
   </div>
   <div class="row">
@@ -263,7 +263,7 @@
   </div>
 </div>
 
-<!-- 局部動畫：加大下移半透明；播完留幀可連肏無閃爍，正戲內不自動消失 -->
+<!-- 局部動畫：中間偏下半透明；播完留幀可連肏無閃爍，正戲內不自動消失 -->
 <div id="sex-anim-popup" class="hidden" aria-hidden="true" role="dialog" aria-label="局部動畫">
   <div class="sex-anim-popup-card">
     <img id="sex-anim-img" alt="">
