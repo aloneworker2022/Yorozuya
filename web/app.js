@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.75(2026-09-18)動圖尺寸半透明連播";
+const APP_VER = "v7.76(2026-09-18)轉場不砍動圖";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -6221,17 +6221,17 @@ async function flashScriptAnim(opts = {}) {
     return;
   }
   const fromLinger = !!(opts?.fromLinger || animLinger);
-  if (fromLinger) {
-    cancelScriptAnimRunOnly();
-  } else {
-    stopScriptAnim();
-  }
+  // 連肏／首播皆只取消舊 run，不清 src／不藏 overlay（避免轉場競態把動圖砍掉）
+  cancelScriptAnimRunOnly();
   scriptAnimPlaying = true;
   animLinger = false;
   document.body.classList.add("sex-anim-on");
   syncTeasePlayUi();
   // 獨立彈窗：掛到 <html> 最末，脫離任何 transform / 聊天堆疊上下文
   (document.documentElement || document.body).appendChild(box);
+  // 先顯 overlay，再 await 載幀包，縮短「按下肏→第一幀」空白
+  box.classList.remove("hidden");
+  box.setAttribute("aria-hidden", "false");
   const run = { cancelled: false, waiters: new Set() };
   scriptAnimRun = run;
   let completedOk = false;
@@ -6250,8 +6250,6 @@ async function flashScriptAnim(opts = {}) {
       try { toast("沒有局部動畫圖（幀包／sexAnim 皆空）", "bad"); } catch { /* */ }
       return;
     }
-    box.classList.remove("hidden");
-    box.setAttribute("aria-hidden", "false");
     // 節奏：慢快快慢（幀 1–4）
     const FRAME_HOLDS = [300, 180, 180, 300];
     const playUrls = async (list) => {
@@ -6301,6 +6299,7 @@ async function flashScriptAnim(opts = {}) {
     if (!shown && !run.cancelled) await scriptAnimHold(run, 120);
     completedOk = !run.cancelled;
   } finally {
+    // 僅本 run 仍是 current：完成→linger（即使場景已換）；被新 run 取代則不動新的
     if (scriptAnimRun === run) {
       if (completedOk) endAnimRoundToLinger();
       else stopScriptAnim();
@@ -6485,10 +6484,9 @@ async function beginScriptScene(s, n, opts = {}) {
     scriptFinish(s, "這一景沒寫。");
     return;
   }
-  // 離開正戲／投入（場景 2–3）時清動圖與 linger
-  if ((play.scene === 2 || play.scene === 3) && n !== 2 && n !== 3) {
-    stopScriptAnim();
-  }
+  // 離開正戲／投入（場景 2–3）時不立刻 stopScriptAnim：
+  // scriptHandleThrust 與 beginScriptScene 並行，砍掉會讓肏動圖「不見了」。
+  // 動圖由 flashScriptAnim 播完→linger→soft timeout，或 scriptFinish 才清。
   play.flowGen = (play.flowGen || 0) + 1;
   play.scene = n;
   play.ready = true;

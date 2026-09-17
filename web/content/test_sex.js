@@ -399,18 +399,17 @@ async function flashScriptAnim(opts = {}) {
     return;
   }
   const fromLinger = !!(opts?.fromLinger || animLinger);
-  if (fromLinger) {
-    // 連肏：取消舊 run／計時，overlay 保持可見，不清 src
-    cancelScriptAnimRunOnly();
-  } else {
-    stopScriptAnim();
-  }
+  // 連肏／首播皆只取消舊 run，不清 src／不藏 overlay（避免轉場競態把動圖砍掉）
+  cancelScriptAnimRunOnly();
   animPlaying = true;
   animLinger = false;
   document.body.classList.add("sex-anim-on");
   syncUi();
   // 獨立彈窗：掛到 <html> 最末，脫離任何 transform / 對話堆疊
   (document.documentElement || document.body).appendChild(box);
+  // 先顯 overlay，再 await 載幀包，縮短「按下肏→第一幀」空白
+  box.classList.remove("hidden");
+  box.setAttribute("aria-hidden", "false");
   const run = { cancelled: false, waiters: new Set() };
   scriptAnimRun = run;
   let completedOk = false;
@@ -429,8 +428,6 @@ async function flashScriptAnim(opts = {}) {
       setStatus("play-status", "沒有局部動畫圖（幀包／sexAnim 皆空）", true);
       return;
     }
-    box.classList.remove("hidden");
-    box.setAttribute("aria-hidden", "false");
     // 節奏：慢快快慢（幀 1–4）
     const FRAME_HOLDS = [300, 180, 180, 300];
     const playUrls = async (list) => {
@@ -479,6 +476,7 @@ async function flashScriptAnim(opts = {}) {
     if (!shown && !run.cancelled) await scriptAnimHold(run, 120);
     completedOk = !run.cancelled;
   } finally {
+    // 僅本 run 仍是 current：完成→linger（即使場景已換）；被新 run 取代則不動新的
     if (scriptAnimRun === run) {
       if (completedOk) endAnimRoundToLinger();
       else stopScriptAnim();
@@ -884,10 +882,9 @@ async function beginScene(n) {
     finishPlay("這一景沒寫。");
     return;
   }
-  // 離開正戲／投入（場景 2–3）時清動圖與 linger
-  if ((play.scene === 2 || play.scene === 3) && n !== 2 && n !== 3) {
-    stopScriptAnim();
-  }
+  // 離開正戲／投入（場景 2–3）時不立刻 stopScriptAnim：
+  // handleThrust 與 beginScene 並行，砍掉會讓肏動圖「不見了」。
+  // 動圖由 flashScriptAnim 播完→linger→soft timeout，或 finishPlay 才清。
   play.flowGen = (play.flowGen || 0) + 1;
   play.scene = n;
   play.awaiting = false;
