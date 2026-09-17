@@ -21,7 +21,7 @@ import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.34(2026-09-17)感應只召喚約會";
+const APP_VER = "v7.35(2026-09-17)感應藏輸入框＋階梯召喚費";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -5749,7 +5749,19 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
 // 送出後隱藏輸入列,等她回完才出現(避免連發沒人回)
 function setChatWaiting(b) {
   const row = document.getElementById("chat-input-row");
-  if (row) row.style.visibility = b ? "hidden" : "";
+  // 感應沒有聊天框：絕不用 visibility 把淡化框露回來
+  if (chatSession?.type === "sense" || document.body.classList.contains("sense-mode")) {
+    if (row) {
+      row.classList.add("hidden");
+      row.style.visibility = "hidden";
+      row.style.display = "none";
+    }
+    return;
+  }
+  if (row) {
+    row.style.display = "";
+    row.style.visibility = b ? "hidden" : "";
+  }
   if (!b) refreshRomanceBtn();
 }
 
@@ -5844,9 +5856,16 @@ function syncTeasePlayUi() {
   const inputRow = document.getElementById("chat-input-row");
   const actRow = document.getElementById("tease-act-row");
   if (inputRow) {
-    inputRow.classList.toggle("hidden", live);
-    if (live) inputRow.style.visibility = "hidden";
-    else inputRow.style.visibility = "";
+    if (chatSession?.type === "sense" || document.body.classList.contains("sense-mode")) {
+      inputRow.classList.add("hidden");
+      inputRow.style.visibility = "hidden";
+      inputRow.style.display = "none";
+    } else {
+      inputRow.classList.toggle("hidden", live);
+      inputRow.style.display = "";
+      if (live) inputRow.style.visibility = "hidden";
+      else inputRow.style.visibility = "";
+    }
   }
   if (actRow) actRow.classList.toggle("hidden", !canThrust);
   document.body.classList.toggle("tease-play", live);
@@ -6937,9 +6956,12 @@ function inferTeaseAccept(stage, flags, reply) {
 
 /** 名冊「感應」：免費；每整點時段 6 次。接通後聊天框輸入「召喚」花 2 金召到店頭。 */
 const SENSE_PER_HOUR = 6;
-/** 感應聊天輸入「召喚」：2 金（失敗也吃掉），失敗機率 1/4；失敗立刻結束這次感應 */
-const SUMMON_SENSE_COST = 2;
+/** 感應召喚失敗機率 1/4；失敗立刻結束這次感應。費用見 senseSummonCost()＝看板階梯費 */
 const SUMMON_SENSE_FAIL = 1 / 4;
+/** 感應「召喚」費用：店頭尚無看板 1 金；已有 n 位則 50×n（減費後地板 2）→ 50／100／150… */
+function senseSummonCost() {
+  return kanbanCost();
+}
 /** 被帶走中：感應每輪對話 1/4 被對方召喚師當場叫去調戲（產日記 act 後斷線） */
 const SENSE_TAKEN_SNATCH_RATE = 1 / 4;
 
@@ -9908,8 +9930,9 @@ async function tryCastSummonInSenseChat(s) {
     toast("負債中,先去做委託還債吧", "bad");
     return true;
   }
-  if (state.gold < SUMMON_SENSE_COST) {
-    toast(`召喚要 ${SUMMON_SENSE_COST} 金（目前 ${state.gold}）`, "bad");
+  const cost = senseSummonCost();
+  if (state.gold < cost) {
+    toast(`召喚要 ${cost} 金（目前 ${state.gold}）`, "bad");
     return true;
   }
   chatSession.busy = true;
@@ -9917,7 +9940,7 @@ async function tryCastSummonInSenseChat(s) {
   const dateBtn = document.getElementById("sense-date");
   if (summonBtn) summonBtn.disabled = true;
   if (dateBtn) dateBtn.disabled = true;
-  state.gold -= SUMMON_SENSE_COST;
+  state.gold -= cost;
   renderHud();
   scheduleSave();
 
@@ -9927,21 +9950,21 @@ async function tryCastSummonInSenseChat(s) {
     if (dateBtn) dateBtn.disabled = false;
   };
   const refund = () => {
-    state.gold += SUMMON_SENSE_COST;
+    state.gold += cost;
     renderHud();
     scheduleSave();
   };
 
   if (Math.random() < SUMMON_SENSE_FAIL) {
-    log(`感應召喚 ${s.name} 失敗 −${SUMMON_SENSE_COST} 金`);
+    log(`感應召喚 ${s.name} 失敗 −${cost} 金`);
     try {
-      vnShow("", `—— 召喚失敗，${SUMMON_SENSE_COST} 金被吃掉了 ——`, "sys");
+      vnShow("", `—— 召喚失敗，${cost} 金被吃掉了 ——`, "sys");
     } catch { /* */ }
     if (isSummonerTaken(s) && Math.random() < SENSE_TAKEN_SNATCH_RATE) {
       await runSenseTakenRivalSnatch(s, { fromSummon: true });
       return true;
     }
-    endChatOnActionFail(s, `召喚失敗……${SUMMON_SENSE_COST} 金被吃掉了。感應結束`);
+    endChatOnActionFail(s, `召喚失敗……${cost} 金被吃掉了。感應結束`);
     return true;
   }
 
@@ -9955,7 +9978,7 @@ async function tryCastSummonInSenseChat(s) {
       return true;
     }
     try {
-      vnShow("", `—— 召喚成功！${s.name} 掙脫並來到店頭（−${SUMMON_SENSE_COST} 金）——`, "sys");
+      vnShow("", `—— 召喚成功！${s.name} 掙脫並來到店頭（−${cost} 金）——`, "sys");
     } catch { /* */ }
     setTimeout(() => {
       try { exitChat(); } catch { /* */ }
@@ -9973,7 +9996,7 @@ async function tryCastSummonInSenseChat(s) {
     return true;
   }
   try {
-    vnShow("", `—— 召喚生效，${s.name} 被召到店頭（−${SUMMON_SENSE_COST} 金）——`, "sys");
+    vnShow("", `—— 召喚生效，${s.name} 被召到店頭（−${cost} 金）——`, "sys");
   } catch { /* */ }
   setTimeout(() => {
     try { exitChat(); } catch { /* */ }
@@ -15765,7 +15788,10 @@ function paintSenseActRow() {
   } else {
     row.classList.remove("sense-confirming");
     if (confirm) { confirm.classList.add("hidden"); confirm.innerHTML = ""; }
-    if (summonBtn) summonBtn.disabled = busy;
+    if (summonBtn) {
+      summonBtn.disabled = busy;
+      summonBtn.textContent = `召喚（${senseSummonCost()}金）`;
+    }
     if (dateBtn) dateBtn.disabled = busy;
   }
 }
@@ -15830,7 +15856,13 @@ function renderChatView() {
     }
   }
   watchCtl?.classList.add("hidden");
-  inputRow?.classList.remove("hidden");
+  if (chatSession?.type !== "sense") {
+    if (inputRow) {
+      inputRow.classList.remove("hidden");
+      inputRow.style.display = "";
+      // waiting 狀態另由 setChatWaiting 管 visibility
+    }
+  }
 
   if (chatWith) {
     const cs = state.succubi.find(x => x.id === chatWith);
@@ -15840,7 +15872,11 @@ function renderChatView() {
     } else {
       chatV.classList.remove("hidden");
       if (chatSession?.type === "sense") {
-        inputRow?.classList.add("hidden");
+        if (inputRow) {
+          inputRow.classList.add("hidden");
+          inputRow.style.visibility = "hidden";
+          inputRow.style.display = "none";
+        }
         teaseRow?.classList.add("hidden");
         document.getElementById("chat-romance")?.classList.add("hidden");
         $("#chat-title").textContent = `${cs.name}・感應中（召喚／約會）`;
@@ -15940,8 +15976,8 @@ function renderDetail(s, root) {
   const pendingVenue = (dateFlow?.girlId === s.id) ? venueById(dateFlow.venueId) : null;
   const pendingFee = Number(pendingVenue?.fee) || 0;
   const senseHint = takenAway
-    ? `被帶走中 · 免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只能「召喚」或「約會」 · 召喚花 ${SUMMON_SENSE_COST} 金搶回（失敗結束感應）`
-    : `免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只能「召喚」或「約會」（召喚 ${SUMMON_SENSE_COST} 金；約會失敗會結束感應）`;
+    ? `被帶走中 · 免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只能「召喚」或「約會」 · 召喚費依店頭看板人數階梯（失敗結束感應）`
+    : `免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只能「召喚」或「約會」（召喚費：無看板 1 金，已有則 50／100／150…）`;
   const dateHint = showPeek
     ? "她正被帶走，可以窺視（1/5 接通，不佔約會次數）"
     : "約會：接通後抽場地，再決定要不要付場地費出門";

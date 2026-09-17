@@ -1347,6 +1347,17 @@ body.chat-mode.has-figure #kanban-girl {
 body.sense-mode #vn-figure,
 body.sense-mode #vn-face { display: none !important; }
 body.sense-mode #vn-figure.tease-on { display: none !important; }
+body.sense-mode #chat-input-row,
+body.sense-mode #chat-romance,
+body.sense-mode #tease-act-row {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
 body.sense-mode #kanban-girl {
   display: none !important;
   visibility: hidden !important;
