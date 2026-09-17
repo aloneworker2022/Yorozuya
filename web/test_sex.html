@@ -143,11 +143,19 @@
 
   #act-row {
     position: relative; z-index: 3;
-    display: flex; gap: .5em; flex-wrap: wrap; padding: .7em 1em .95em;
+    display: flex; gap: .5em; flex-wrap: wrap; align-items: center;
+    padding: .7em 1em .95em;
+    min-height: 3.35em; /* 一列按鈕高度，藏鈕不塌 */
     background: rgba(8,6,14,.96); border-top: 1px solid rgba(255,255,255,.06);
   }
   #act-row.hidden { display: none; }
   #act-row button { flex: 0 0 auto; min-width: 5.5em; }
+  /* 藏鈕用 visibility，不 display:none，避免對話區跳排版 */
+  #act-row #btn-next.is-ghost,
+  #act-row #btn-thrust.is-ghost {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
   #btn-next { background: rgba(111,227,225,.18); color: #6fe3e1; }
   #btn-thrust { background: rgba(255,79,216,.22); color: #ff8fe6; }
   #btn-end { margin-left: auto; }
@@ -212,9 +220,9 @@
 </head>
 <body>
 <div class="top">
-  <h1>性愛場景測試 / test_sex <span class="badge">動圖半透明連播</span></h1>
+  <h1>性愛場景測試 / test_sex <span class="badge">留幀不秒消</span></h1>
   <div class="warn">
-    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。場景圖在對話／肏動圖下層；按「肏」時頂部稍下半透明動圖 1–4，播完留幀可連按無閃爍重播（約 3 秒無按才收）。
+    選看板娘 →「開始」進入正式劇本對話框（同店頭劇本模式流程）。場景圖在對話／肏動圖下層；按「肏」時頂部稍下半透明動圖 1–4，播完留幀可連按無閃爍重播（正戲內不自動消失，結束／離開才清）。
     <a href="/edit_date">約會劇本</a> | <a href="/test_date">約會測試</a> | <a href="/edit_pic">生圖測試</a> | <a href="/testword">Testword</a> | <a href="/">回遊戲</a>
   </div>
   <div class="row">
@@ -249,13 +257,13 @@
     <span id="vn-cursor" class="hidden">▼</span>
   </div>
   <div id="act-row" class="hidden">
-    <button type="button" id="btn-next" class="hidden">下一句 ▶</button>
-    <button type="button" id="btn-thrust" class="hidden">肏</button>
+    <button type="button" id="btn-next" class="is-ghost">下一句 ▶</button>
+    <button type="button" id="btn-thrust" class="is-ghost">肏</button>
     <button type="button" class="ghost" id="btn-end">結束／重選</button>
   </div>
 </div>
 
-<!-- 局部動畫：加大下移半透明；播完留幀可連肏無閃爍，軟逾時才收 -->
+<!-- 局部動畫：加大下移半透明；播完留幀可連肏無閃爍，正戲內不自動消失 -->
 <div id="sex-anim-popup" class="hidden" aria-hidden="true" role="dialog" aria-label="局部動畫">
   <div class="sex-anim-popup-card">
     <img id="sex-anim-img" alt="">

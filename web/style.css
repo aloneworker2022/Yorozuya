@@ -1480,10 +1480,17 @@ body.sense-mode #kanban-girl {
 .inv-row .sprice { color: var(--gold); }
 
 #tease-act-row {
-  display: flex; gap: .5em; background: var(--panel); padding: .8em;
+  display: flex; gap: .5em; align-items: center; background: var(--panel); padding: .8em;
   margin-top: .5em; flex-shrink: 0;
+  min-height: 3.6em; /* 一列按鈕高度，藏鈕不塌 */
 }
 #tease-act-row.hidden { display: none; }
+/* 藏鈕用 visibility，不 display:none，避免對話跳排版 */
+#tease-act-row #tease-next.is-ghost,
+#tease-act-row #tease-thrust.is-ghost {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
 
 #sense-act-row {
   display: flex; flex-wrap: wrap; gap: .5em; background: var(--panel); padding: .8em;
