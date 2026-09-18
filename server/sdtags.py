@@ -778,7 +778,7 @@ def is_cowgirl_act(extra: str = "") -> bool:
 
 
 def keeps_stage_clothes(extra: str = "") -> bool:
-    """口交／背後／騎乘：NSFW 動作不升級脫衣，裸只留給妻子。"""
+    """口交／背後／騎乘：NSFW 動作不升級脫衣；妻子預設情色裝非全裸，裸只靠 _force_exposed／動作脫衣。"""
     return is_oral_act(extra) or is_doggy_act(extra) or is_cowgirl_act(extra)
 
 
@@ -797,7 +797,8 @@ def is_pov_cam(extra: str = "") -> bool:
 # 關係階段 → 衣服／胸暴露（立繪與出卡共用）
 #   covered   陌生／朋友：穿好，罩杯只留體積
 #   shape     女友：仍穿衣服，但可露胸型／乳溝／水滴／八字
-#   exposed   妻子：可全裸，乳暈乳頭寫進 prompt
+#   erotic    妻子：情色服裝，露膚／情趣，不預設全裸
+#   exposed   僅明確強制裸時（_force_exposed／SS·SSR 半裸 roll）
 _NIPPLE_SUBSTR = (
     "areola", "nipple", "topless", "nude", "naked",
     "bare breast", "uncovered", "exposed breast", "breasts out",
@@ -823,7 +824,7 @@ def clothing_level(stage: str = "", *, nsfw_act: bool = False, character: dict |
         return "exposed"
     st = resolve_stage(character, stage)
     if st == "wife":
-        return "exposed"
+        return "erotic"
     if st == "girlfriend":
         return "shape"
     if nsfw_act:
@@ -848,12 +849,12 @@ def filter_tag_chunk(tag: str, drop_keys: tuple[str, ...]) -> str:
 
 
 def bust_tags_for_level(tag: str, level: str) -> str:
-    """covered=只留體積；shape=胸型可見（水滴／八字／乳溝）但不寫乳頭；exposed=全寫。"""
+    """covered=只留體積；shape／erotic=胸型可見（水滴／八字／乳溝）但不寫乳頭；exposed=全寫。"""
     if not tag:
         return ""
     if level == "exposed":
         return tag
-    if level == "shape":
+    if level in ("shape", "erotic"):
         return filter_tag_chunk(tag, _NIPPLE_SUBSTR)
     # 陌生／朋友：連水滴／八字／挺俏都拿掉，只留 small/medium/large
     covered = clothe_tag_chunk(tag)
@@ -866,8 +867,10 @@ def outfit_tags_for_level(base_outfit: str, level: str) -> str:
     cloth = (base_outfit or "").strip() or CLOTHES_FALLBACK
     if level == "exposed":
         return "nude, nipples"
+    if level == "erotic":
+        return flatten_tags(cloth, "erotic lingerie, revealing clothes, seductive outfit")
     if level == "shape":
-        return f"{cloth}, revealing clothes, cleavage"
+        return flatten_tags(cloth, "revealing clothes, cleavage")
     return "fully clothed, " + cloth
 
 
@@ -1039,7 +1042,7 @@ def appearance_en_parts(
     """中文人設外貌 → 英文 tag 字典（給 Grok／任何讀句子的生圖路）。
 
     查表與 Comfy 的 build_prompt 同一份表；查不到進 unknown，不塞中文原文。
-    stage 管衣服多寡：陌生／朋友穿好；女友露胸型；妻子可全裸含乳暈乳頭。
+    stage 管衣服多寡：陌生／朋友穿好；女友露胸型；妻子穿情色裝（露膚／情趣，不預設全裸）。
     clothed=False 仍當 exposed（舊呼叫）。
     crop=lower：腰部以下特寫，不寫臉／眼／髮／胸。
     """
@@ -1352,7 +1355,7 @@ def build_prompt(
     extra_l = extra.lower()
     nsfw_act = is_nsfw_act(extra)
     keep_act = keeps_stage_clothes(extra)
-    # 口交／背後交配不靠動作把陌生／朋友升到露胸或扯開衣服；裸只留給妻子
+    # 口交／背後交配不靠動作把陌生／朋友升到露胸或扯開衣服；妻子預設情色裝非全裸
     level = clothing_level(
         stage,
         nsfw_act=nsfw_act and not keep_act,
@@ -1415,7 +1418,7 @@ def build_prompt(
         if not p and not scene:
             bits.append("looking at viewer")
     rating_l = (rating or "sfw").lower()
-    # 乳暈／乳頭只在妻子 exposed；女友留胸型但不寫乳頭。不要被 rating=sfw 蓋掉階段。
+    # 乳暈／乳頭只在 exposed（強制裸）；erotic／女友留胸型但不寫乳頭。不要被 rating=sfw 蓋掉階段。
     skip_areola = level != "exposed"
 
     if (not p or seg == "bust") and not lower_shot:
@@ -1489,7 +1492,7 @@ def build_prompt(
     # 小括號內容接最後，不當主構圖（SD 無法真的畫分鏡，只當弱提示）
     if extra_aside.strip():
         bits.append(extra_aside.strip())
-    # 陌生／朋友再釘一次穿衣；女友／妻子不要 covered breasts 蓋掉胸型
+    # 陌生／朋友再釘一次穿衣；女友／妻子情色裝不要 covered breasts 蓋掉胸型
     # 腰部以下特寫不要寫胸，否則鏡頭會被拉回上半身
     if keep_clothes:
         bits.append("fully clothed" if lower_shot else "fully clothed, covered breasts, clothes covering chest")

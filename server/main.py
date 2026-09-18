@@ -1411,6 +1411,9 @@ def _outfit_of(ch: dict) -> str:
     預設是**生涯服裝**——職業給的那一身(學生就是制服)。抽卡人設裡職業寫得
     清清楚楚,衣服卻跟它無關,是這遊戲最出戲的一種錯。個人衣櫃要玩家在詳細頁
     挑過才換;哪幾套解得開由前端依關係階段管,伺服器只認索引。
+
+    例外：妻子／女友且未指定 outfitPick 時，若有 eroticOutfits，預設穿第一套
+    情色裝（lace／lingerie 名進 prompt），不再強制生涯制服或全裸。
     """
     look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
     wardrobe = look.get("wardrobe") if isinstance(look.get("wardrobe"), list) else []
@@ -1430,6 +1433,16 @@ def _outfit_of(ch: dict) -> str:
             return str(extras[i] or "")
     if isinstance(pick, int) and 0 <= pick < len(wardrobe):
         return str(wardrobe[pick] or "")
+    # 妻子／女友無明確挑裝：優先情色衣櫃第一套
+    stage = str(ch.get("stage") or "").strip().lower()
+    if not stage and isinstance(ch.get("relationship"), dict):
+        stage = str(ch["relationship"].get("stage") or "").strip().lower()
+    if stage in ("wife", "girlfriend"):
+        erotic = look.get("eroticOutfits")
+        if isinstance(erotic, list) and erotic:
+            first = str(erotic[0] or "").strip()
+            if first:
+                return first
     return str(look.get("career_outfit") or look.get("style") or "")
 
 
@@ -2921,7 +2934,7 @@ def _img_prompt_trace(t: ImgGenIn) -> dict:
                 continue
             layers.append({"id": f"look_{k}", "src": _LOOK_SRC_ZH.get(k, f"人設 look.{k}"), "text": tag})
     lv = look_parts.get("clothing_level") or sdtags.clothing_level(str(ch.get("stage") or ""), character=ch)
-    lv_zh = {"covered": "陌生／朋友·穿好只留罩杯", "shape": "女友·露胸型／乳溝", "exposed": "妻子·可全裸含乳暈乳頭"}.get(lv, lv)
+    lv_zh = {"covered": "陌生／朋友·穿好只留罩杯", "shape": "女友·露胸型／乳溝", "erotic": "妻子·情色服裝（露膚／情趣，非全裸）", "exposed": "強制全裸含乳暈乳頭"}.get(lv, lv)
     layers.append({"id": "clothing_level", "src": "衣服多寡（關係階段）", "text": lv_zh})
     if extra:
         layers.append({"id": "extra", "src": "正向 extra（運鏡＋玩家動作）", "text": extra})

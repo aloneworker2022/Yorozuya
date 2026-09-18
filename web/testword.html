@@ -355,7 +355,7 @@
   <div class="mini" style="margin-bottom:.6em">
     用上面召喚的妹子。規格跟遊戲召喚一樣：大頭／半身／全身 + 半身表情。
     沙盒圖落在測試目錄，不覆蓋正式立繪。每張都能展開看 prompt。
-    衣服多寡跟上面的關係階段走：陌生／朋友穿好；女友露胸型；妻子可全裸含乳暈乳頭。
+    衣服多寡跟上面的關係階段走：陌生／朋友穿好；女友露胸型；妻子穿情色裝（露膚／情趣，不預設全裸）。
   </div>
   <div class="row" style="gap:.5em">
     <span style="flex:0 1 8em"><label>風格</label>
@@ -1536,7 +1536,7 @@ function cdSheet(g) {
     L.career_outfit ? `生涯服裝（陌生預設）：${L.career_outfit}` : null,
     worn ? `現在穿：${worn}` : null,
     g.stage === "girlfriend" ? "衣服：女友——可露胸型／乳溝（水滴、八字），不寫乳頭" : null,
-    g.stage === "wife" ? "衣服：妻子——可全裸，胸型＋乳暈乳頭寫進 prompt" : null,
+    g.stage === "wife" ? "衣服：妻子——情色服裝（露膚／情趣），非預設全裸；乳暈乳頭僅強制裸時" : null,
     (!g.stage || g.stage === "stranger" || g.stage === "friend") ? "衣服：陌生／朋友——穿好，只寫罩杯體積" : null,
     ward.length ? `個人衣櫃：${ward.map((w, i) => `${i + 1}.${w}`).join("　")}` : null,
     (L.eroticOutfits || []).length ? `色情裝（女友 1／妻子 3）：${(L.eroticOutfits || []).join("、")}` : null,
