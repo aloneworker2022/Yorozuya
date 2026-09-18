@@ -177,7 +177,7 @@
 </head>
 <body>
 <h1>⚙ Testword 後台</h1>
-<div class="warn">開發/測試用後門與內容編寫。卡牌／立繪測試器已收進摺疊。做愛局部動畫暫擱、不寫正式存檔。後門改錢／關係會重讀存檔並重試，避免與遊戲分頁版本衝突。<a href="/">← 回遊戲</a> · <a href="/cardedit">🃏 卡牌編輯器（詞墜）</a> · <a href="/testdate">📅 約會編輯器</a> · <a href="/test_date">約會測試頁</a> · <a href="/edit_date">約會劇本</a> · <a href="/edit_person">人物池</a> · <a href="/editmale">其他召喚師</a> · <a href="/edit_pic">生圖測試</a> · <a href="/test_sex">性愛場景測試</a></div>
+<div class="warn">開發/測試用後門與內容編寫。卡牌／立繪測試器已收進摺疊。做愛局部動畫暫擱、不寫正式存檔。後門改錢／關係會重讀存檔並重試，避免與遊戲分頁版本衝突。<a href="/">← 回遊戲</a> · <a href="/cardedit">🃏 卡牌編輯器（詞墜）</a> · <a href="/testdate">📅 約會編輯器</a> · <a href="/test_date">約會測試頁</a> · <a href="/edit_date">約會劇本</a> · <a href="/edit_person">人物池</a> · <a href="/editmale">其他召喚師</a> · <a href="/edit_pic">生圖測試</a> · <a href="/edit_room">房事劇本／edit_room</a> · <a href="/test_sex">性愛場景測試</a></div>
 
 <!-- ── 做愛局部動畫（暫擱） ── -->
 <details class="fold">
@@ -388,20 +388,19 @@
 
 <!-- ── 劇本模式 ── -->
 <details class="fold" open>
-  <summary>劇本模式（調戲 · 口交 · 做愛）</summary>
+  <summary>劇本模式（調戲 · 口交）</summary>
   <div class="mini" style="margin-bottom:.6em">
-    店頭：玩家打到劇本<strong>關鍵詞</strong>後，<b>調戲／口交必發</b>（可強迫，不論關係）；<b>做愛</b>才擲關係檢定（陌生 10%／朋友 12.5%／女友 33%／妻子 50%）。通過進場景1。
-    <b>調戲</b>只到場景1；<b>口交</b>場景1完跳場景4（玩家高潮）；<b>做愛</b>有場景2正戲、3投入、4玩家高潮、5雙方高潮。
+    本區只編<strong>調戲／口交</strong>。<b>做愛（房事）劇本</b>請到專頁 <a href="/edit_room"><strong>／edit_room</strong></a>。
+    店頭：玩家打到劇本<strong>關鍵詞</strong>後，<b>調戲／口交必發</b>（可強迫，不論關係）；<b>做愛</b>才擲關係檢定（陌生 10%／朋友 12.5%／女友 33%／妻子 50%）——執行仍讀同一 <code>script_packs.json</code>。
+    <b>調戲</b>只到場景1；<b>口交</b>場景1完跳場景4（玩家高潮）。
     旁白／態度可寫 <code>[name]</code> <code>[eye]</code> <code>[breast]</code> <code>[player]</code> <code>[hair]</code> <code>[body]</code> <code>[job]</code> <code>[outfit]</code>，上線換成這隻妹子。
     每張圖下面的<strong>正向 prompt／負向 prompt 是手寫進生圖的</strong>（英文 tag）。場景2起可兩張圖。
-    做愛劇本可掛上面「做愛局部動畫」測過的圖組：按肏時中央播那四幀；場景若選圖生圖，每一張都會掛該組對應幀。
   </div>
   <div class="row" style="gap:.5em">
     <span style="flex:0 1 8em"><label>種類</label>
       <select id="sm-kind">
         <option value="tease">調戲</option>
         <option value="oral">口交</option>
-        <option value="sex">做愛</option>
       </select></span>
     <span style="flex:1 1 12em"><label>這份劇本</label>
       <select id="sm-pack"></select></span>
@@ -3985,7 +3984,14 @@ function smRenderAll() {
 }
 function smGoKind() {
   smCollect();
-  sm.kind = document.getElementById("sm-kind")?.value || "tease";
+  let k = document.getElementById("sm-kind")?.value || "tease";
+  if (k === "sex") {
+    status("sm-status", "做愛劇本請到 /edit_room 編輯", true);
+    k = "tease";
+    const kindSel = document.getElementById("sm-kind");
+    if (kindSel) kindSel.value = "tease";
+  }
+  sm.kind = k;
   sm.packId = sm.data.activeByKind[sm.kind] || "";
   sm.scene = SM.kindScenes(sm.kind)[0];
   smRenderAll();

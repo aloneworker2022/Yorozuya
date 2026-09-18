@@ -4625,6 +4625,12 @@ def edit_date():
     return FileResponse(WEB_DIR / "edit_date.html")
 
 
+@app.get("/edit_room")
+def edit_room():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "edit_room.html")
+
+
 @app.get("/edit_pic")
 def edit_pic():
     from fastapi.responses import FileResponse
