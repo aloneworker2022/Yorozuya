@@ -4643,6 +4643,12 @@ def test_sex():
     return FileResponse(WEB_DIR / "test_sex.html")
 
 
+@app.get("/test_jspace")
+def test_jspace():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_jspace.html")
+
+
 @app.put("/api/edit_date")
 def put_edit_date(body: dict):
     if not isinstance(body, dict):
