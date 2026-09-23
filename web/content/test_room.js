@@ -16,11 +16,14 @@
   const MIN_ZOOM = .6, MAX_ZOOM = 3;
   const origin = { x: 240, y: 132 };
   const wallHeight = 100;
-  const furniture = window.RoomFurniture.chair;
-  const chair = { u: 1, v: 3, facing: 'left' };
-  const moveButton = document.getElementById('move-chair');
-  const status = document.getElementById('chair-status');
+  const catalog = window.RoomFurniture;
+  const items = [{id:1,type:'chair',u:1,v:3,facing:'left'}];
+  let selectedId = 1, nextId = 2;
+  const moveButton = document.getElementById('move-item');
+  const status = document.getElementById('furniture-status');
   let placing = false, drag = null, candidate = null;
+  const selected = () => items.find(item => item.id === selectedId);
+  const frameOf = item => catalog[item.type].frames[item.facing];
   let showGrid = false;
   const project = (u, v, z = 0) => [origin.x + (u - v) * TILE_WIDTH / 2, origin.y + (u + v) * TILE_HEIGHT / 2 - z];
 
@@ -96,17 +99,41 @@
       for (let u = 0; u <= COLS; u++) line([u,0],[u,ROWS],'#7c8061');
       for (let v = 0; v <= ROWS; v++) line([0,v],[COLS,v],'#7c8061');
     }
-    const pos = candidate || chair;
-    if (placing || drag) {
-      face([[pos.u,pos.v],[pos.u+1,pos.v],[pos.u+1,pos.v+1],[pos.u,pos.v+1]], fits(pos) ? '#9aa982' : '#bf8073');
+    const active = selected();
+    if (active) {
+      const pos = candidate ? {...active,...candidate} : active;
+      const f=frameOf(pos);
+      face([[pos.u,pos.v],[pos.u+f.cols,pos.v],[pos.u+f.cols,pos.v+f.rows],[pos.u,pos.v+f.rows]], canPlace(pos) ? '#9aa982' : '#bf8073');
     }
-    const [x,y] = project(pos.u,pos.v);
-    ctx.drawImage(furniture.sprites[chair.facing], x-furniture.anchor.x, y-furniture.anchor.y);
+    // Composite furniture by depth per pixel, so long tables and tall cabinets
+    // occlude correctly even when their screen-space silhouettes overlap.
+    const output=ctx.getImageData(0,0,canvas.width,canvas.height);
+    const depths=new Float64Array(canvas.width*canvas.height).fill(-Infinity);
+    for(const original of items) {
+      const item=original.id===selectedId && candidate ? {...original,...candidate} : original;
+      const f=frameOf(item),[px,py]=project(item.u,item.v);
+      const ox=Math.round(px-f.anchor.x),oy=Math.round(py-f.anchor.y);
+      for(let sy=0;sy<f.canvas.height;sy++) for(let sx=0;sx<f.canvas.width;sx++) {
+        const source=sy*f.canvas.width+sx;
+        if(!f.pixels[source*4+3]) continue;
+        const x=ox+sx,y=oy+sy;
+        if(x<0||y<0||x>=canvas.width||y>=canvas.height) continue;
+        const target=y*canvas.width+x,d=f.depth[source]+item.u+item.v;
+        if(d>=depths[target]) {depths[target]=d;output.data.set(f.pixels.subarray(source*4,source*4+4),target*4);}
+      }
+    }
+    ctx.putImageData(output,0,0);
     renderView();
   }
 
-  function fits(pos) {
-    return pos.u >= 0 && pos.v >= 0 && pos.u + furniture.footprint.cols <= COLS && pos.v + furniture.footprint.rows <= ROWS;
+  function canPlace(pos) {
+    const f=frameOf(pos);
+    return Number.isInteger(pos.u) && Number.isInteger(pos.v) && pos.u>=0 && pos.v>=0 && pos.u+f.cols<=COLS && pos.v+f.rows<=ROWS &&
+      items.every(other => {
+        if(other.id===pos.id) return true;
+        const g=frameOf(other);
+        return pos.u+f.cols<=other.u || other.u+g.cols<=pos.u || pos.v+f.rows<=other.v || other.v+g.rows<=pos.v;
+      });
   }
   function worldPoint(point) {
     return { x: (point.x-camera.x)/camera.scale, y: (point.y-camera.y)/camera.scale };
@@ -115,33 +142,95 @@
     const p = worldPoint(point), x = (p.x-origin.x)/(TILE_WIDTH/2), y = (p.y-origin.y)/(TILE_HEIGHT/2);
     return { u: (x+y)/2, v: (y-x)/2 };
   }
-  function hitsChair(point) {
-    const p = worldPoint(point), [x,y] = project(chair.u,chair.v);
-    const sx = Math.floor(p.x-x+furniture.anchor.x), sy = Math.floor(p.y-y+furniture.anchor.y);
-    const sprite = furniture.sprites[chair.facing];
-    return sx >= 0 && sy >= 0 && sx < sprite.width && sy < sprite.height && sprite.getContext('2d').getImageData(sx,sy,1,1).data[3] > 0;
+  function hitItem(point) {
+    const p=worldPoint(point);let best=null,bestDepth=-Infinity;
+    for(const item of items) {
+      const f=frameOf(item),[x,y]=project(item.u,item.v);
+      const sx=Math.floor(p.x-x+f.anchor.x),sy=Math.floor(p.y-y+f.anchor.y);
+      if(sx<0||sy<0||sx>=f.canvas.width||sy>=f.canvas.height) continue;
+      const index=sy*f.canvas.width+sx,d=f.depth[index]+item.u+item.v;
+      if(f.pixels[index*4+3] && d>=bestDepth){best=item;bestDepth=d;}
+    }
+    return best;
   }
   function setPlacing(value) {
-    placing = value;
-    moveButton.setAttribute('aria-pressed', String(value));
-    moveButton.textContent = value ? '取消移動' : '移動位置';
+    placing=value;moveButton.setAttribute('aria-pressed',String(value));
+    moveButton.textContent=value?'取消移動':'移動';
   }
-  function cancelDrag() { drag = null; candidate = null; draw(); }
-  moveButton.addEventListener('click', () => {
-    cancelDrag(); setPlacing(!placing);
-    status.textContent = placing ? '點選地板，椅子會對齊格子。' : '拖曳椅子，或按「移動位置」後點選地板。';
-    draw();
-  });
-  function updateFacing() {
-    document.getElementById('turn-chair').textContent = `朝向：${furniture.labels[chair.facing]}`;
-    document.getElementById('chair-preview').alt = `${furniture.name}，朝向${furniture.labels[chair.facing]}`;
-    document.getElementById('chair-preview').src = furniture.sprites[chair.facing].toDataURL();
+  function cancelDrag() { drag=null;candidate=null; }
+  function refresh() {
+    const item=selected();
+    document.getElementById('selection').hidden=!item;
+    document.getElementById('empty-selection').hidden=!!item;
+    if(item) {
+      const def=catalog[item.type],f=frameOf(item);
+      document.getElementById('item-name').textContent=def.name;
+      document.getElementById('item-size').textContent=`占地 ${f.cols} × ${f.rows}・第 ${item.u+1} 列，第 ${item.v+1} 格`;
+      document.getElementById('item-preview').src=f.canvas.toDataURL();
+      document.getElementById('item-preview').alt=def.name;
+      document.getElementById('turn-item').textContent=`${def.labels[item.facing]} 旋轉`;
+    }
+    document.getElementById('room-count').textContent=`房間內 ${items.length} 件`;
+    const placed=document.getElementById('placed-items');placed.replaceChildren();
+    for(const entry of items) {
+      const btn=document.createElement('button');btn.type='button';btn.dataset.instance=entry.id;
+      btn.textContent=`${catalog[entry.type].name} #${entry.id}`;btn.setAttribute('aria-pressed',String(entry.id===selectedId));
+      btn.addEventListener('click',()=>{cancelDrag();setPlacing(false);selectedId=entry.id;status.textContent='已選取，可移動、旋轉或收回。';refresh();draw();});
+      placed.append(btn);
+    }
+    for(const card of document.querySelectorAll('[data-add]')) {
+      const n=items.filter(entry=>entry.type===card.dataset.add).length;
+      card.querySelector('.in-room').textContent=n?`房內 ${n} 件`:'尚未擺放';
+    }
   }
-  document.getElementById('turn-chair').addEventListener('click', () => {
-    cancelDrag();
-    chair.facing = furniture.directions[(furniture.directions.indexOf(chair.facing)+1)%furniture.directions.length];
-    updateFacing(); draw();
+  moveButton.addEventListener('click',()=>{
+    if(!selected()) return;
+    cancelDrag();setPlacing(!placing);
+    status.textContent=placing?'點選空地，或拖曳選中的家具。':'已取消移動。';draw();
   });
+  document.getElementById('turn-item').addEventListener('click',()=>{
+    const item=selected();if(!item)return;
+    cancelDrag();const def=catalog[item.type];
+    const next={...item,facing:def.directions[(def.directions.indexOf(item.facing)+1)%4]};
+    if(canPlace(next)) {Object.assign(item,next);status.textContent='已旋轉家具。';}
+    else status.textContent='旋轉後會超出房間或碰到其他家具，請先移到空位。';
+    refresh();draw();
+  });
+  document.getElementById('remove-item').addEventListener('click',()=>{
+    const index=items.findIndex(item=>item.id===selectedId);if(index<0)return;
+    const name=catalog[items[index].type].name;items.splice(index,1);
+    cancelDrag();setPlacing(false);selectedId=null;status.textContent=`已收回${name}，可以從下方列表再次加入。`;
+    refresh();draw();
+  });
+  function addItem(type) {
+    cancelDrag();setPlacing(false);
+    const item={id:nextId,type,u:0,v:0,facing:'left'};let found=false;
+    // Try the default direction first, then the perpendicular footprint.
+    for(const facing of ['left','right']) {
+      item.facing=facing;
+      for(let v=0;v<ROWS&&!found;v++)for(let u=0;u<COLS&&!found;u++) {
+        item.u=u;item.v=v;if(canPlace(item))found=true;
+      }
+      if(found)break;
+    }
+    if(found){nextId++;items.push(item);selectedId=item.id;status.textContent=`已加入${catalog[type].name}，可拖曳調整位置。`;}
+    else status.textContent='房間沒有足夠的連續空位，請先移動或收回家具。';
+    refresh();draw();
+    document.querySelector('.scene').scrollIntoView({block:'start',behavior:'smooth'});
+  }
+  function buildCatalog() {
+    const list=document.getElementById('furniture-list');
+    for(const [type,def] of Object.entries(catalog)) {
+      const btn=document.createElement('button');btn.type='button';btn.className='furniture-card';btn.dataset.add=type;
+      btn.setAttribute('aria-label',`加入${def.name}`);
+      const img=document.createElement('img');img.src=def.frames.left.canvas.toDataURL();img.alt='';
+      const name=document.createElement('strong');name.textContent=def.name;
+      const size=document.createElement('span');size.className='catalog-size';size.textContent=`${def.frames.left.cols} × ${def.frames.left.rows} 格`;
+      const count=document.createElement('span');count.className='in-room';
+      const add=document.createElement('span');add.className='add-label';add.textContent='＋ 加入房間';
+      btn.append(img,name,size,count,add);btn.addEventListener('click',()=>addItem(type));list.append(btn);
+    }
+  }
 
   function renderView() {
     // Keep part of the room reachable even after a long drag.
@@ -181,12 +270,17 @@
     const point = localPoint(event);
     pointers.set(event.pointerId, point);
     if (pointers.size === 2) {
-      cancelDrag();
-    } else if (hitsChair(point) || placing) {
-      const ground = groundPoint(point);
-      drag = { id: event.pointerId, start: ground, onChair: hitsChair(point) };
-      candidate = drag.onChair ? {u:chair.u,v:chair.v} : {u:Math.floor(ground.u),v:Math.floor(ground.v)};
-      draw();
+      cancelDrag();draw();
+    } else {
+      const hit=hitItem(point);
+      if(hit || (placing && selected())) {
+        const wasPlacing=placing;
+        if(!wasPlacing && hit) {selectedId=hit.id;refresh();}
+        const item=selected(),ground=groundPoint(point),onItem=hit && hit.id===item.id;
+        drag={id:event.pointerId,start:ground,onItem,original:{...item}};
+        candidate=onItem?{u:item.u,v:item.v}:{u:Math.floor(ground.u),v:Math.floor(ground.v)};
+        draw();
+      }
     }
     canvas.classList.add('dragging');
   });
@@ -196,7 +290,7 @@
     pointers.set(event.pointerId, localPoint(event));
     if (drag && pointers.size === 1) {
       const ground = groundPoint(localPoint(event));
-      candidate = drag.onChair ? {u:chair.u+Math.round(ground.u-drag.start.u),v:chair.v+Math.round(ground.v-drag.start.v)}
+      candidate = drag.onItem ? {u:drag.original.u+Math.round(ground.u-drag.start.u),v:drag.original.v+Math.round(ground.v-drag.start.v)}
         : {u:Math.floor(ground.u),v:Math.floor(ground.v)};
       draw(); return;
     }
@@ -206,18 +300,19 @@
   function release(event) {
     if (drag && drag.id === event.pointerId) {
       if (event.type === 'pointerup' && candidate) {
-        if (fits(candidate)) {
-          Object.assign(chair,candidate); setPlacing(false);
-          status.textContent = `已放在第 ${chair.u+1} 列、第 ${chair.v+1} 格。`;
-        } else status.textContent = '超出房間了，椅子保留在原位。';
+        const item=selected();
+        if (item && canPlace({...item,...candidate})) {
+          Object.assign(item,candidate); setPlacing(false);
+          status.textContent = `已放好${catalog[item.type].name}。`;
+        } else status.textContent = '這裡超出房間或與其他家具重疊，已保留原位。';
       }
-      cancelDrag();
+      cancelDrag();refresh();draw();
     }
     pointers.delete(event.pointerId);
     if (!pointers.size) canvas.classList.remove('dragging');
   }
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, release);
-  window.addEventListener('blur', () => { pointers.clear(); cancelDrag(); canvas.classList.remove('dragging'); });
+  window.addEventListener('blur', () => { pointers.clear(); cancelDrag(); draw(); canvas.classList.remove('dragging'); });
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
     if (drag) return;
@@ -232,7 +327,7 @@
     cancelDrag();
     canvas.classList.remove('dragging');
     Object.assign(camera, { scale: 1, x: 0, y: 0 });
-    renderView();
+    draw();
   });
   button.addEventListener('click', () => {
     showGrid = !showGrid;
@@ -240,6 +335,7 @@
     button.textContent = showGrid ? '隱藏格線' : '顯示格線';
     draw();
   });
-  updateFacing();
+  buildCatalog();
+  refresh();
   draw();
 })();

@@ -16,7 +16,16 @@ canvas.dragging{cursor:grabbing}
 .furniture-panel{max-width:360px;margin:18px auto 0;padding:14px;background:#f5efe3;border:1px solid #d5c9b5}
 .furniture-info{display:flex;align-items:center;gap:12px}.furniture-info img{width:64px;height:70px;object-fit:contain;image-rendering:pixelated}.furniture-info strong{font-size:16px;font-weight:400}.furniture-info p{font-size:12px;color:#8b8071;line-height:1.6;margin:8px 0}
 .furniture-actions{display:flex;gap:10px;flex-wrap:wrap}.furniture-actions button{flex:1;font-size:14px}
-#chair-status{font-size:12px;color:#776c5b;line-height:1.6;min-height:38px;margin:12px 0 0}
+#furniture-status,#empty-selection{font-size:12px;color:#776c5b;line-height:1.6;min-height:38px;margin:12px 0 0}
+.inventory{margin:32px auto 0;max-width:560px}
+.inventory-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:22px 0 14px}.inventory-heading h2{margin:0;font-size:18px;font-weight:400}.inventory-heading span{font-size:12px;color:#897d6c}
+#furniture-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;padding:12px 8px;background:#f7f1e6}
+.furniture-card img{width:112px;height:112px;max-width:100%;object-fit:contain;image-rendering:pixelated}
+.furniture-card strong{font-weight:400;font-size:14px}.catalog-size,.in-room{font-size:12px;color:#8c806f}.add-label{font-size:12px;margin-top:4px;padding:6px;background:#dce2cf;color:#58654b;width:100%}
+#placed-items{display:flex;gap:8px;flex-wrap:wrap}#placed-items button{font-size:12px;padding:10px}
+#remove-item{color:#975e50}
+@media(min-width:600px){#furniture-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .controls{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:360px;margin:0 auto;font-size:14px}.controls i{font-style:normal;color:#b3a796;margin:0 5px}
 button{font:inherit;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;padding:12px 16px;min-height:44px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
 button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-visible,a:focus-visible{outline:2px solid #657353;outline-offset:4px}
