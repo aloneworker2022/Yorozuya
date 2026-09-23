@@ -26,6 +26,10 @@
   const frameOf = item => catalog[item.type].frames[item.facing];
   let showGrid = false;
   const project = (u, v, z = 0) => [origin.x + (u - v) * TILE_WIDTH / 2, origin.y + (u + v) * TILE_HEIGHT / 2 - z];
+  const actor=window.RoomCharacter.create({cols:COLS,rows:ROWS,blocked:(u,v)=>items.some(item=>{
+    const f=frameOf(item);return u>=item.u&&u<item.u+f.cols&&v>=item.v&&v<item.v+f.rows;
+  })});
+  let scenePixels=null,sceneDepth=null,wandering=true,sceneVisible=true;
 
   // Scanline fills and integer lines keep the artwork pixel crisp.
   function polygon(points, color) {
@@ -122,13 +126,33 @@
         if(d>=depths[target]) {depths[target]=d;output.data.set(f.pixels.subarray(source*4,source*4+4),target*4);}
       }
     }
-    ctx.putImageData(output,0,0);
-    renderView();
+    scenePixels=output;sceneDepth=depths;
+    drawActor();
+  }
+
+  function drawActor() {
+    if(!scenePixels)return;
+    const output=new ImageData(new Uint8ClampedArray(scenePixels.data),canvas.width,canvas.height);
+    const {u,v}=actor.state,f=actor.frame(),[px,py]=project(u,v);
+    const ox=Math.round(px-f.anchor.x),oy=Math.round(py-f.anchor.y);
+    function blend(x,y,color,alpha,depth){
+      if(x<0||y<0||x>=canvas.width||y>=canvas.height)return;
+      const index=y*canvas.width+x;if(depth<sceneDepth[index])return;
+      for(let c=0;c<3;c++)output.data[index*4+c]=Math.round(color[c]*alpha+output.data[index*4+c]*(1-alpha));
+    }
+    for(let y=-3;y<=3;y++)for(let x=-12;x<=12;x++)if(x*x/144+y*y/9<=1)blend(Math.round(px)+x,Math.round(py)+y,[40,33,45],.16,u+v);
+    for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++){
+      const i=(y*f.width+x)*4,alpha=f.pixels[i+3]/255;
+      if(alpha)blend(ox+x,oy+y,f.pixels.subarray(i,i+3),alpha,u+v+Math.max(0,f.anchor.y-y)/32);
+    }
+    ctx.putImageData(output,0,0);renderView();
   }
 
   function canPlace(pos) {
     const f=frameOf(pos);
-    return Number.isInteger(pos.u) && Number.isInteger(pos.v) && pos.u>=0 && pos.v>=0 && pos.u+f.cols<=COLS && pos.v+f.rows<=ROWS &&
+    let touchesActor=false;
+    for(let u=pos.u;u<pos.u+f.cols;u++)for(let v=pos.v;v<pos.v+f.rows;v++)if(actor.occupies(u,v))touchesActor=true;
+    return !touchesActor && Number.isInteger(pos.u) && Number.isInteger(pos.v) && pos.u>=0 && pos.v>=0 && pos.u+f.cols<=COLS && pos.v+f.rows<=ROWS &&
       items.every(other => {
         if(other.id===pos.id) return true;
         const g=frameOf(other);
@@ -193,7 +217,7 @@
     cancelDrag();const def=catalog[item.type];
     const next={...item,facing:def.directions[(def.directions.indexOf(item.facing)+1)%4]};
     if(canPlace(next)) {Object.assign(item,next);status.textContent='已旋轉家具。';}
-    else status.textContent='旋轉後會超出房間或碰到其他家具，請先移到空位。';
+    else status.textContent='旋轉後會碰到家具、人物或超出房間，請先移到空位。';
     refresh();draw();
   });
   document.getElementById('remove-item').addEventListener('click',()=>{
@@ -304,7 +328,7 @@
         if (item && canPlace({...item,...candidate})) {
           Object.assign(item,candidate); setPlacing(false);
           status.textContent = `已放好${catalog[item.type].name}。`;
-        } else status.textContent = '這裡超出房間或與其他家具重疊，已保留原位。';
+        } else status.textContent = '這裡超出房間，或有家具、人物，已保留原位。';
       }
       cancelDrag();refresh();draw();
     }
@@ -338,4 +362,22 @@
   buildCatalog();
   refresh();
   draw();
+  const actorToggle=document.getElementById('actor-toggle');
+  actorToggle.addEventListener('click',()=>{
+    wandering=!wandering;actorToggle.setAttribute('aria-pressed',String(!wandering));
+    actorToggle.textContent=wandering?'暫停走動':'繼續走動';
+    document.getElementById('actor-status').textContent=wandering?'她會在空位間走動，偶爾停下來。':'她暫時站在原地。';
+    actor.update(0,true);drawActor();
+  });
+  new IntersectionObserver(entries=>{sceneVisible=entries[0].isIntersecting;}).observe(canvas);
+  let previous=0;
+  function animate(now){
+    requestAnimationFrame(animate);
+    if(document.hidden||!sceneVisible){previous=now;return;}
+    if(now-previous<50)return;
+    const dt=previous?Math.min((now-previous)/1000,.1):0;previous=now;
+    actor.update(dt,!wandering||placing||!!drag||pointers.size>0);
+    drawActor();
+  }
+  requestAnimationFrame(animate);
 })();
