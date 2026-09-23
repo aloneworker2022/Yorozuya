@@ -1,8 +1,8 @@
-/* One ground cell is a true 64 x 64 diamond. World coordinates are in cells;
+/* Ground cells project to 64 x 32 diamonds (2:1). World coordinates are in cells;
    z is pixel height. Keep this projection shared with future furniture. */
 (() => {
   'use strict';
-  const COLS = 4, ROWS = 6, TILE_WIDTH = 64, TILE_HEIGHT = 64;
+  const COLS = 4, ROWS = 6, TILE_WIDTH = 64, TILE_HEIGHT = 32;
   const canvas = document.getElementById('room');
   const ctx = canvas.getContext('2d');
   const button = document.getElementById('grid');
@@ -40,7 +40,10 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = false;
     // Ground shadow and the two exposed edges of the room platform.
-    polygon([[48,337],[176,465],[385,256],[250,122]], '#ded4c4');
+    polygon([[0,0],[COLS,0],[COLS,ROWS],[0,ROWS]].map(([u,v]) => {
+      const [x,y] = project(u,v);
+      return [x+9,y+16];
+    }), '#ded4c4');
     face([[0,ROWS,0],[COLS,ROWS,0],[COLS,ROWS,-12],[0,ROWS,-12]], '#aa8060');
     face([[COLS,0,0],[COLS,ROWS,0],[COLS,ROWS,-12],[COLS,0,-12]], '#89664f');
     // Walls, with a small visible thickness and a wooden cap.
