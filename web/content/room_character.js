@@ -25,7 +25,7 @@
   const frames=[false,true].map(mirrored=>[0,1,2,3].map(step=>sprite(step,mirrored)));
   const directions=['left','right','back-right','back-left'];
   const fronts={left:[0,1],right:[1,0],'back-right':[0,-1],'back-left':[-1,0]};
-  function seatedSprite(facing) {
+  function seatedSprite(facing,seatHeight) {
     const width=96,height=128,anchor={x:48,y:112};
     const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
     const ctx=canvas.getContext('2d'),depth=new Float64Array(width*height).fill(-Infinity);
@@ -41,6 +41,9 @@
       }
     }
     function box(u,v,w,d,z,h){
+      const originalZ=z;
+      const heightAt=value=>value<=35?value*seatHeight/35:value+seatHeight-35;
+      z=heightAt(originalZ);h=heightAt(originalZ+h)-z;
       const a=rotate(u,v),b=rotate(u+w,v+d);u=Math.min(a[0],b[0]);v=Math.min(a[1],b[1]);w=Math.abs(b[0]-a[0]);d=Math.abs(b[1]-a[1]);
       face([[u,v+d,z],[u+w,v+d,z],[u+w,v+d,z+h],[u,v+d,z+h]]);
       face([[u+w,v,z],[u+w,v+d,z],[u+w,v+d,z+h],[u+w,v,z+h]]);
@@ -57,9 +60,14 @@
     for(let i=3;i<pixels.length;i+=4)if(pixels[i])pixels[i]=158;
     return {width,height,anchor,pixels,depth};
   }
-  const seated=Object.fromEntries(directions.map(direction=>[direction,seatedSprite(direction)]));
-  function create({cols,rows,blocked,getChairs=()=>[],random=Math.random}) {
-    const state={u:2.5,v:3.5,moving:false,mirrored:false,step:0,mode:'idle',chairId:null,facing:'left'};
+  const seated=new Map();
+  function seatedFrame(facing,height){
+    const key=`${facing}:${height}`;
+    if(!seated.has(key))seated.set(key,seatedSprite(facing,height));
+    return seated.get(key);
+  }
+  function create({cols,rows,blocked,getSeats=()=>[],random=Math.random}) {
+    const state={u:2.5,v:3.5,moving:false,mirrored:false,step:0,mode:'idle',furnitureId:null,facing:'left',seatHeight:35};
     let route=[],next=null,wait=1.8,elapsed=0,seat=null,sitTime=0,sitCooldown=0;
     const valid=(u,v)=>u>=0&&v>=0&&u<cols&&v<rows&&!blocked(u,v);
     if(!valid(Math.floor(state.u),Math.floor(state.v))){
@@ -80,23 +88,27 @@
       return Math.abs(state.u-u-.5)+Math.abs(state.v-v-.5)>.001?[{u,v},...path]:path;
     }
     function requestSit(id) {
-      if(seat)return {ok:false,message:state.mode==='sitting'?'她已經坐下了。':'她正在使用椅子，請稍候。'};
+      if(seat)return {ok:false,message:state.mode==='sitting'?'她已經坐下了。':'她正在使用座位，請稍候。'};
       const reachableCells=reachable();
-      // Interact from any reachable adjacent tile, never path into the chair.
-      // Prefer the closest approach; use the front only to break equal distances.
-      const choices=getChairs().filter(chair=>id===undefined||chair.id===id).flatMap(chair=>{
-        const front=fronts[chair.facing];
-        return [[0,1],[1,0],[0,-1],[-1,0]].map(([du,dv])=>{
-          const exit={u:chair.u+du,v:chair.v+dv};
+      // Furniture defines seat anchors and rotated footprints. Navigation ends
+      // on its reachable perimeter, never on an occupied furniture tile.
+      const choices=getSeats().filter(item=>id===undefined||item.id===id).flatMap(item=>{
+        const perimeter=[];
+        for(let u=item.u;u<item.u+item.cols;u++)perimeter.push({u,v:item.v-1},{u,v:item.v+item.rows});
+        for(let v=item.v;v<item.v+item.rows;v++)perimeter.push({u:item.u-1,v},{u:item.u+item.cols,v});
+        return item.seats.flatMap(anchor=>perimeter.map(exit=>{
           const cell=reachableCells.find(c=>c.u===exit.u&&c.v===exit.v);
-          return valid(exit.u,exit.v)&&cell?{chair,exit,path:cell.path,priority:du===front[0]&&dv===front[1]?0:1}:null;
-        }).filter(Boolean);
-      }).sort((a,b)=>a.path.length-b.path.length||a.priority-b.priority);
-      if(!choices.length)return {ok:false,message:'椅子旁沒有能走到的空位，請留出至少一側的走道。'};
-      const choice=choices[0];seat={...choice.chair,exit:choice.exit};
+          const distance=Math.hypot(exit.u+.5-anchor.u,exit.v+.5-anchor.v);
+          const [du,dv]=fronts[anchor.facing];
+          const front=(exit.u+.5-anchor.u)*du+(exit.v+.5-anchor.v)*dv;
+          return valid(exit.u,exit.v)&&cell?{item,anchor,exit,path:cell.path,distance,priority:front>0?0:1}:null;
+        }).filter(Boolean));
+      }).sort((a,b)=>a.path.length-b.path.length||a.distance-b.distance||a.priority-b.priority);
+      if(!choices.length)return {ok:false,message:'沒有能靠近的座位，請在可坐的家具旁留出走道。'};
+      const choice=choices[0];seat={id:choice.item.id,name:choice.item.name,anchor:choice.anchor,exit:choice.exit};
       route=alignRoute(choice.path);next=null;
-      state.chairId=seat.id;state.facing=seat.facing;state.mode='approaching';state.moving=false;
-      return {ok:true,message:'她正走到椅子旁，靠近後就會坐下。'};
+      state.furnitureId=seat.id;state.facing=seat.anchor.facing;state.seatHeight=seat.anchor.height;state.mode='approaching';state.moving=false;
+      return {ok:true,message:`她正走到${seat.name}旁，靠近後就會坐下。`};
     }
     function standUp() {
       if(!seat||state.mode!=='sitting')return false;
@@ -109,10 +121,10 @@
     return {
       state,requestSit,standUp,
       // Sitting uses a visual seat anchor, while navigation stays beside it.
-      position(){return state.mode==='sitting'&&seat?{u:seat.u+.5,v:seat.v+.5}:{u:state.u,v:state.v};},
-      isChairLocked(id){return !!seat&&seat.id===id;},
+      position(){return state.mode==='sitting'&&seat?{u:seat.anchor.u,v:seat.anchor.v}:{u:state.u,v:state.v};},
+      isFurnitureLocked(id){return !!seat&&seat.id===id;},
       occupies(u,v){return (Math.floor(state.u)===u&&Math.floor(state.v)===v)||!!(next&&next.u===u&&next.v===v)||!!(seat&&seat.exit.u===u&&seat.exit.v===v);},
-      frame(){return state.mode==='sitting'?seated[state.facing]:frames[state.mirrored?1:0][state.moving?state.step:0];},
+      frame(){return state.mode==='sitting'?seatedFrame(state.facing,state.seatHeight):frames[state.mirrored?1:0][state.moving?state.step:0];},
       update(dt,paused=false){
         if(paused){state.moving=false;return;}
         sitCooldown=Math.max(0,sitCooldown-dt);
@@ -120,7 +132,7 @@
         if(!next){
           if(!route.length){
             if(state.mode==='approaching'){state.mode='sitting';sitTime=6;state.moving=false;return;}
-            if(state.mode==='leaving'){seat=null;state.chairId=null;state.mode='idle';sitCooldown=15;wait=2;}
+            if(state.mode==='leaving'){seat=null;state.furnitureId=null;state.mode='idle';sitCooldown=15;wait=2;}
             wait-=dt;if(wait>0){state.moving=false;state.mode='idle';return;}
             if(!sitCooldown&&requestSit().ok)return;
             const choices=reachable().filter(c=>c.path.length);
@@ -131,7 +143,7 @@
           next=route.shift();
           if(!valid(next.u,next.v)){
             const retryId=state.mode==='approaching'?seat?.id:undefined;
-            next=null;route=[];seat=null;state.chairId=null;state.mode='idle';state.moving=false;
+            next=null;route=[];seat=null;state.furnitureId=null;state.mode='idle';state.moving=false;
             if(retryId!==undefined)requestSit(retryId);
             return;
           }

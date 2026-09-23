@@ -26,7 +26,10 @@
   const frameOf = item => catalog[item.type].frames[item.facing];
   let showGrid = false;
   const project = (u, v, z = 0) => [origin.x + (u - v) * TILE_WIDTH / 2, origin.y + (u + v) * TILE_HEIGHT / 2 - z];
-  const actor=window.RoomCharacter.create({cols:COLS,rows:ROWS,getChairs:()=>items.filter(item=>item.type==='chair'),blocked:(u,v)=>items.some(item=>{
+  const actor=window.RoomCharacter.create({cols:COLS,rows:ROWS,getSeats:()=>items.map(item=>{
+    const f=frameOf(item);return {...item,name:catalog[item.type].name,cols:f.cols,rows:f.rows,
+      seats:f.seats.map(seat=>({...seat,u:item.u+seat.u,v:item.v+seat.v}))};
+  }).filter(item=>item.seats.length),blocked:(u,v)=>items.some(item=>{
     const f=frameOf(item);return u>=item.u&&u<item.u+f.cols&&v>=item.v&&v<item.v+f.rows;
   })});
   let scenePixels=null,sceneDepth=null,wandering=true,sceneVisible=true;
@@ -107,7 +110,7 @@
     if (active) {
       const pos = candidate ? {...active,...candidate} : active;
       const f=frameOf(pos);
-      const tint=actor.isChairLocked(pos.id)?'#abb8bd':canPlace(pos)?'#9aa982':'#bf8073';
+      const tint=actor.isFurnitureLocked(pos.id)?'#abb8bd':canPlace(pos)?'#9aa982':'#bf8073';
       face([[pos.u,pos.v],[pos.u+f.cols,pos.v],[pos.u+f.cols,pos.v+f.rows],[pos.u,pos.v+f.rows]],tint);
     }
     // Composite furniture by depth per pixel, so long tables and tall cabinets
@@ -150,7 +153,7 @@
   }
 
   function canPlace(pos) {
-    if(actor.isChairLocked(pos.id))return false;
+    if(actor.isFurnitureLocked(pos.id))return false;
     const f=frameOf(pos);
     let touchesActor=false;
     for(let u=pos.u;u<pos.u+f.cols;u++)for(let v=pos.v;v<pos.v+f.rows;v++)if(actor.occupies(u,v))touchesActor=true;
@@ -185,14 +188,17 @@
   }
   function cancelDrag() { drag=null;candidate=null; }
   function refreshActorControls(){
-    const item=selected(),locked=!!item&&actor.isChairLocked(item.id);
+    const item=selected(),locked=!!item&&actor.isFurnitureLocked(item.id);
     for(const id of ['move-item','turn-item','remove-item']){
       const control=document.getElementById(id);control.disabled=locked;
-      control.title=locked?'她正在使用這張椅子，起身離開後才能調整。':'';
+      control.title=locked?'她正在使用這件家具，起身離開後才能調整。':'';
     }
-    document.getElementById('actor-sit').disabled=actor.state.chairId!==null;
+    const sitButton=document.getElementById('actor-sit');
+    sitButton.disabled=actor.state.furnitureId!==null||!!item&&!frameOf(item).seats.length;
+    sitButton.title=item&&!frameOf(item).seats.length?'這件家具不是座位。':'';
+    sitButton.textContent=item?'坐這裡':'找位置坐';
     document.getElementById('actor-stand').disabled=actor.state.mode!=='sitting';
-    const descriptions={idle:'她正在休息，稍後會找椅子坐。',walking:'她正在房間裡走動。',approaching:'她正走到椅子旁。',sitting:'她正坐在椅子上休息。',leaving:'她正起身離開椅子。'};
+    const descriptions={idle:'她正在休息，稍後會找座位休息。',walking:'她正在房間裡走動。',approaching:'她正走到座位旁。',sitting:'她正坐著休息。',leaving:'她正起身離開座位。'};
     const text=descriptions[actor.state.mode]+(!wandering?'（已暫停）':'');
     const label=document.getElementById('actor-status');
     if(label.textContent!==text)label.textContent=text;
@@ -204,7 +210,7 @@
     if(item) {
       const def=catalog[item.type],f=frameOf(item);
       document.getElementById('item-name').textContent=def.name;
-      document.getElementById('item-size').textContent=`占地 ${f.cols} × ${f.rows}・第 ${item.u+1} 列，第 ${item.v+1} 格`;
+      document.getElementById('item-size').textContent=`占地 ${f.cols} × ${f.rows}・第 ${item.u+1} 列，第 ${item.v+1} 格${f.seats.length?'・可坐':''}`;
       document.getElementById('item-preview').src=f.canvas.toDataURL();
       document.getElementById('item-preview').alt=def.name;
       document.getElementById('turn-item').textContent=`${def.labels[item.facing]} 旋轉`;
@@ -224,12 +230,12 @@
     refreshActorControls();
   }
   moveButton.addEventListener('click',()=>{
-    if(!selected()||actor.isChairLocked(selectedId)) return;
+    if(!selected()||actor.isFurnitureLocked(selectedId)) return;
     cancelDrag();setPlacing(!placing);
     status.textContent=placing?'點選空地，或拖曳選中的家具。':'已取消移動。';draw();
   });
   document.getElementById('turn-item').addEventListener('click',()=>{
-    const item=selected();if(!item||actor.isChairLocked(item.id))return;
+    const item=selected();if(!item||actor.isFurnitureLocked(item.id))return;
     cancelDrag();const def=catalog[item.type];
     const next={...item,facing:def.directions[(def.directions.indexOf(item.facing)+1)%4]};
     if(canPlace(next)) {Object.assign(item,next);status.textContent='已旋轉家具。';}
@@ -237,7 +243,7 @@
     refresh();draw();
   });
   document.getElementById('remove-item').addEventListener('click',()=>{
-    if(actor.isChairLocked(selectedId))return;
+    if(actor.isFurnitureLocked(selectedId))return;
     const index=items.findIndex(item=>item.id===selectedId);if(index<0)return;
     const name=catalog[items[index].type].name;items.splice(index,1);
     cancelDrag();setPlacing(false);selectedId=null;status.textContent=`已收回${name}，可以從下方列表再次加入。`;
@@ -266,7 +272,7 @@
       btn.setAttribute('aria-label',`加入${def.name}`);
       const img=document.createElement('img');img.src=def.frames.left.canvas.toDataURL();img.alt='';
       const name=document.createElement('strong');name.textContent=def.name;
-      const size=document.createElement('span');size.className='catalog-size';size.textContent=`${def.frames.left.cols} × ${def.frames.left.rows} 格`;
+      const size=document.createElement('span');size.className='catalog-size';size.textContent=`${def.frames.left.cols} × ${def.frames.left.rows} 格${def.frames.left.seats.length?'・可坐':''}`;
       const count=document.createElement('span');count.className='in-room';
       const add=document.createElement('span');add.className='add-label';add.textContent='＋ 加入房間';
       btn.append(img,name,size,count,add);btn.addEventListener('click',()=>addItem(type));list.append(btn);
@@ -314,9 +320,9 @@
       cancelDrag();draw();
     } else {
       const hit=hitItem(point);
-      if(hit&&actor.isChairLocked(hit.id)){
+      if(hit&&actor.isFurnitureLocked(hit.id)){
         selectedId=hit.id;cancelDrag();setPlacing(false);
-        status.textContent='她正在使用這張椅子，起身離開後才能調整。';refresh();draw();return;
+        status.textContent='她正在使用這件家具，起身離開後才能調整。';refresh();draw();return;
       }
       if(hit || (placing && selected())) {
         const wasPlacing=placing;
@@ -394,7 +400,9 @@
     cancelDrag();setPlacing(false);
   }
   document.getElementById('actor-sit').addEventListener('click',()=>{
-    const item=selected(),result=actor.requestSit(item?.type==='chair'?item.id:undefined);
+    const item=selected();
+    if(item&&!frameOf(item).seats.length){status.textContent='這件家具不是座位，請選擇椅子、沙發或床。';return;}
+    const result=actor.requestSit(item?.id);
     status.textContent=result.message;
     if(result.ok)resumeActor();
     refreshActorControls();draw();

@@ -8,7 +8,7 @@
   const green=['#b7c397','#8e9f77','#728763'], blue=['#a8bfcb','#819caa','#637f91'];
   const dark=['#987659','#76583f','#5d4635'], rose=['#d8ae9e','#b8897e','#946c67'];
   const definitions = {
-    chair: {name:'鼠尾草木椅',cols:1,rows:1,draw(box) {
+    chair: {name:'鼠尾草木椅',cols:1,rows:1,seats:[{u:.5,v:.5,height:35,direction:0}],draw(box) {
     // Rear posts, side rails and front legs.
     for (const u of [.17,.73]) box(u,.18,.1,.1,0,66,'#d5ae7b','#99724f','#78573f');
     for (const u of [.17,.73]) {
@@ -33,13 +33,13 @@
       b(1.12,.2,.6,.6,25,12,...pale); b(1.34,.807,.15,.03,30,2,...dark);
       b(.25,.25,.4,.4,42,2,...blue);b(.29,.25,.32,.38,44,1,...pale);
     }},
-    bed: {name:'雲朵單人床',cols:1,rows:2,draw(b) {
+    bed: {name:'雲朵單人床',cols:1,rows:2,seats:[{u:.72,v:1.25,height:29,direction:1}],draw(b) {
       b(.08,.06,.84,1.84,5,11,...wood); b(.08,.04,.84,.13,0,44,...pale);
       b(.12,.2,.76,1.66,16,9,...pale);b(.15,.7,.7,1.13,25,4,...blue);
       b(.16,.27,.68,.34,25,6,'#fff0d9','#e6d8c0','#c9bca8');
       b(.15,.72,.7,.1,29,1,'#d3e0df','#bbcdcd','#97b1b8');
     }},
-    sofa: {name:'奶茶雙人沙發',cols:2,rows:1,draw(b) {
+    sofa: {name:'奶茶雙人沙發',cols:2,rows:1,seats:[{u:.61,v:.56,height:30,direction:0},{u:1.39,v:.56,height:30,direction:0}],draw(b) {
       for(const u of [.16,1.74])for(const v of [.2,.74])b(u,v,.1,.1,0,8,...dark);
       b(.1,.15,1.8,.74,8,16,...rose);b(.13,.13,1.74,.18,24,27,...rose);
       for(const u of [.25,1.03])b(u,.35,.72,.48,24,6,'#e4beac','#c99b8b','#ac8078');
@@ -105,7 +105,11 @@
       face([[u,v,z+h],[u+w,v,z+h],[u+w,v+d,z+h],[u,v+d,z+h]],top);
     }
     def.draw(box);
-    return {canvas,anchor,cols,rows,depth,pixels:ctx.getImageData(0,0,canvas.width,canvas.height).data};
+    const seats=(def.seats||[]).map(seat=>{
+      const [u,v]=rotate(seat.u,seat.v);
+      return {u,v,height:seat.height,facing:directions[(directions.indexOf(facing)+seat.direction)%4]};
+    });
+    return {canvas,anchor,cols,rows,seats,depth,pixels:ctx.getImageData(0,0,canvas.width,canvas.height).data};
   }
   window.RoomFurniture=Object.fromEntries(Object.entries(definitions).map(([id,def])=>[id,{id,name:def.name,directions,labels,
     frames:Object.fromEntries(directions.map(facing=>[facing,frame(def,facing)]))}]));
