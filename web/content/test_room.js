@@ -171,6 +171,30 @@
     const p = worldPoint(point), x = (p.x-origin.x)/(TILE_WIDTH/2), y = (p.y-origin.y)/(TILE_HEIGHT/2);
     return { u: (x+y)/2, v: (y-x)/2 };
   }
+  function actorDepthAt(sx, sy, u, v, frame) {
+    return u + v + (frame.depth ? frame.depth[sy * frame.width + sx] : Math.max(0, frame.anchor.y - sy) / 32);
+  }
+  function hitActor(point) {
+    const p = worldPoint(point);
+    const {u, v} = actor.position(), f = actor.frame(), [x, y] = project(u, v);
+    const sx = Math.floor(p.x - x + f.anchor.x), sy = Math.floor(p.y - y + f.anchor.y);
+    if (sx < 0 || sy < 0 || sx >= f.width || sy >= f.height) return false;
+    if (f.pixels[(sy * f.width + sx) * 4 + 3] <= 20) return false;
+    const hers = actorDepthAt(sx, sy, u, v, f);
+    const item = hitItem(point);
+    if (!item) return true;
+    const frame = frameOf(item), [ix, iy] = project(item.u, item.v);
+    const isx = Math.floor(p.x - ix + frame.anchor.x), isy = Math.floor(p.y - iy + frame.anchor.y);
+    if (isx < 0 || isy < 0 || isx >= frame.canvas.width || isy >= frame.canvas.height) return true;
+    const index = isy * frame.canvas.width + isx;
+    if (!frame.pixels[index * 4 + 3]) return true;
+    return hers >= frame.depth[index] + item.u + item.v;
+  }
+  let actorPress = null;
+  function openPortrait() {
+    if (window.RoomPortrait?.open) window.RoomPortrait.open();
+    else status.textContent = '立繪面板還在載入，稍後再點她。';
+  }
   function hitItem(point) {
     const p=worldPoint(point);let best=null,bestDepth=-Infinity;
     for(const item of items) {
@@ -317,7 +341,11 @@
     const point = localPoint(event);
     pointers.set(event.pointerId, point);
     if (pointers.size === 2) {
+      actorPress = null;
       cancelDrag();draw();
+    } else if (!placing && hitActor(point)) {
+      actorPress = {id: event.pointerId, x: point.x, y: point.y};
+      return;
     } else {
       const hit=hitItem(point);
       if(hit&&actor.isFurnitureLocked(hit.id)){
@@ -337,6 +365,12 @@
   });
   canvas.addEventListener('pointermove', event => {
     if (!pointers.has(event.pointerId)) return;
+    if (actorPress && actorPress.id === event.pointerId) {
+      const moved = localPoint(event);
+      pointers.set(event.pointerId, moved);
+      if (Math.hypot(moved.x - actorPress.x, moved.y - actorPress.y) <= 8) return;
+      actorPress = null;
+    }
     const before = gesture();
     pointers.set(event.pointerId, localPoint(event));
     if (drag && pointers.size === 1) {
@@ -349,6 +383,13 @@
     zoomAt(before.distance > 0 ? after.distance / before.distance : 1, before, after);
   });
   function release(event) {
+    if (actorPress && actorPress.id === event.pointerId) {
+      actorPress = null;
+      pointers.delete(event.pointerId);
+      if (!pointers.size) canvas.classList.remove('dragging');
+      if (event.type === 'pointerup') openPortrait();
+      return;
+    }
     if (drag && drag.id === event.pointerId) {
       if (event.type === 'pointerup' && candidate) {
         const item=selected();
@@ -363,7 +404,7 @@
     if (!pointers.size) canvas.classList.remove('dragging');
   }
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, release);
-  window.addEventListener('blur', () => { pointers.clear(); cancelDrag(); draw(); canvas.classList.remove('dragging'); });
+  window.addEventListener('blur', () => { pointers.clear(); actorPress = null; cancelDrag(); draw(); canvas.classList.remove('dragging'); });
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
     if (drag) return;

@@ -43,6 +43,9 @@ ASSETS_DIR = ROOT / "assets"
 GROK_BIN = os.environ.get("GROK_BIN", "grok")
 GROK_CWD = Path(os.environ.get("GROK_CWD", str(ROOT / "data" / "grok_cwd")))
 GROK_TIMEOUT = float(os.environ.get("GROK_TIMEOUT", "180"))
+# streaming-json 一條事件可以超過 StreamReader 預設的 64KB。
+# 超過時 readline 會丟 ValueError，立繪單就整張失敗。
+GROK_STREAM_LIMIT = int(os.environ.get("GROK_STREAM_LIMIT", str(8 * 1024 * 1024)))
 # Build 預設 1 回合(0=不帶 --max-turns)
 GROK_MAX_TURNS = int(os.environ.get("GROK_MAX_TURNS", "1") or "0")
 GROK_DEFAULT_MODELS = [
@@ -851,6 +854,7 @@ async def _run_grok_cli(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            limit=GROK_STREAM_LIMIT,
             env=env,
             start_new_session=True,
         )
