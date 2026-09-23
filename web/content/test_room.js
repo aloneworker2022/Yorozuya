@@ -133,11 +133,14 @@
     draw();
   });
   function updateFacing() {
-    document.getElementById('turn-chair').textContent = `朝向：${chair.facing === 'left' ? '左' : '右'} ↔`;
+    document.getElementById('turn-chair').textContent = `朝向：${furniture.labels[chair.facing]}`;
+    document.getElementById('chair-preview').alt = `${furniture.name}，朝向${furniture.labels[chair.facing]}`;
     document.getElementById('chair-preview').src = furniture.sprites[chair.facing].toDataURL();
   }
   document.getElementById('turn-chair').addEventListener('click', () => {
-    cancelDrag(); chair.facing = chair.facing === 'left' ? 'right' : 'left'; updateFacing(); draw();
+    cancelDrag();
+    chair.facing = furniture.directions[(furniture.directions.indexOf(chair.facing)+1)%furniture.directions.length];
+    updateFacing(); draw();
   });
 
   function renderView() {
