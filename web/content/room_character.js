@@ -7,13 +7,10 @@
     if(mirrored){ctx.translate(64,0);ctx.scale(-1,1);}
     ctx.fillStyle='#332d40';
     const rect=(x,y,w,h)=>ctx.fillRect(x,y,w,h);
-    // Hair and horns, small wings, dress, hands, legs and a curled tail.
+    // Plain human silhouette: hair, torso, dress, arms and legs.
     for(const r of [[23,16,18,22],[20,22,5,31],[39,23,6,32],[24,14,15,6],
-      [20,9,4,11],[18,7,3,7],[39,8,4,12],[42,6,3,7],
       [28,35,8,6],[23,40,18,16],[20,51,24,13],[17,62,30,5],
-      [17,42,5,17],[42,42,5,17],[16,55,5,8],[44,55,5,8],
-      [12,35,9,4],[10,36,5,12],[14,40,7,6],[44,35,8,5],[49,38,5,11],[44,41,7,5],
-      [44,63,9,3],[51,56,3,9],[52,53,6,4],[54,50,4,3]])rect(...r);
+      [17,42,5,17],[42,42,5,17],[16,55,5,8],[44,55,5,8]])rect(...r);
     const stride=[0,2,0,-2][step];
     rect(23,66,6,13+stride);rect(22,77+stride,8,4);
     rect(35,66,6,13-stride);rect(34,77-stride,8,4);
