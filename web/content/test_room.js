@@ -134,7 +134,7 @@
   function drawActor() {
     if(!scenePixels)return;
     const output=new ImageData(new Uint8ClampedArray(scenePixels.data),canvas.width,canvas.height);
-    const {u,v}=actor.state,f=actor.frame(),[px,py]=project(u,v);
+    const {u,v}=actor.position(),f=actor.frame(),[px,py]=project(u,v);
     const ox=Math.round(px-f.anchor.x),oy=Math.round(py-f.anchor.y);
     function blend(x,y,color,alpha,depth){
       if(x<0||y<0||x>=canvas.width||y>=canvas.height)return;
@@ -192,7 +192,7 @@
     }
     document.getElementById('actor-sit').disabled=actor.state.chairId!==null;
     document.getElementById('actor-stand').disabled=actor.state.mode!=='sitting';
-    const descriptions={idle:'她正在休息，稍後會找椅子坐。',walking:'她正在房間裡走動。',approaching:'她正走向椅子。',sitting:'她正坐在椅子上休息。',leaving:'她正起身離開椅子。'};
+    const descriptions={idle:'她正在休息，稍後會找椅子坐。',walking:'她正在房間裡走動。',approaching:'她正走到椅子旁。',sitting:'她正坐在椅子上休息。',leaving:'她正起身離開椅子。'};
     const text=descriptions[actor.state.mode]+(!wandering?'（已暫停）':'');
     const label=document.getElementById('actor-status');
     if(label.textContent!==text)label.textContent=text;

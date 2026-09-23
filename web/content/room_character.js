@@ -82,23 +82,34 @@
     function requestSit(id) {
       if(seat)return {ok:false,message:state.mode==='sitting'?'她已經坐下了。':'她正在使用椅子，請稍候。'};
       const reachableCells=reachable();
-      const choices=getChairs().filter(chair=>id===undefined||chair.id===id).map(chair=>{
-        const [du,dv]=fronts[chair.facing],exit={u:chair.u+du,v:chair.v+dv};
-        const cell=reachableCells.find(c=>c.u===exit.u&&c.v===exit.v);
-        return valid(exit.u,exit.v)&&cell?{chair,exit,path:cell.path}:null;
-      }).filter(Boolean).sort((a,b)=>a.path.length-b.path.length);
-      if(!choices.length)return {ok:false,message:'沒有能走到正面的空椅子，請轉向或留出走道。'};
+      // Interact from any reachable adjacent tile, never path into the chair.
+      // Prefer the closest approach; use the front only to break equal distances.
+      const choices=getChairs().filter(chair=>id===undefined||chair.id===id).flatMap(chair=>{
+        const front=fronts[chair.facing];
+        return [[0,1],[1,0],[0,-1],[-1,0]].map(([du,dv])=>{
+          const exit={u:chair.u+du,v:chair.v+dv};
+          const cell=reachableCells.find(c=>c.u===exit.u&&c.v===exit.v);
+          return valid(exit.u,exit.v)&&cell?{chair,exit,path:cell.path,priority:du===front[0]&&dv===front[1]?0:1}:null;
+        }).filter(Boolean);
+      }).sort((a,b)=>a.path.length-b.path.length||a.priority-b.priority);
+      if(!choices.length)return {ok:false,message:'椅子旁沒有能走到的空位，請留出至少一側的走道。'};
       const choice=choices[0];seat={...choice.chair,exit:choice.exit};
-      route=alignRoute([...choice.path,{u:seat.u,v:seat.v}]);next=null;
+      route=alignRoute(choice.path);next=null;
       state.chairId=seat.id;state.facing=seat.facing;state.mode='approaching';state.moving=false;
-      return {ok:true,message:'她正走向椅子。'};
+      return {ok:true,message:'她正走到椅子旁，靠近後就會坐下。'};
     }
     function standUp() {
       if(!seat||state.mode!=='sitting')return false;
-      route=[{...seat.exit}];next=null;state.mode='leaving';state.moving=false;return true;
+      // Restore the standing pose at the reserved adjacent tile. If there is
+      // room, take one step away; there is no walk through the chair's footprint.
+      const exit=seat.exit;
+      const away=[[0,1],[1,0],[0,-1],[-1,0]].map(([du,dv])=>({u:exit.u+du,v:exit.v+dv})).find(p=>valid(p.u,p.v));
+      route=away?[away]:[];next=null;state.mode='leaving';state.moving=false;return true;
     }
     return {
       state,requestSit,standUp,
+      // Sitting uses a visual seat anchor, while navigation stays beside it.
+      position(){return state.mode==='sitting'&&seat?{u:seat.u+.5,v:seat.v+.5}:{u:state.u,v:state.v};},
       isChairLocked(id){return !!seat&&seat.id===id;},
       occupies(u,v){return (Math.floor(state.u)===u&&Math.floor(state.v)===v)||!!(next&&next.u===u&&next.v===v)||!!(seat&&seat.exit.u===u&&seat.exit.v===v);},
       frame(){return state.mode==='sitting'?seated[state.facing]:frames[state.mirrored?1:0][state.moving?state.step:0];},
@@ -118,8 +129,12 @@
           }
           if(!route.length){state.moving=false;return;}
           next=route.shift();
-          const enteringSeat=seat&&state.mode==='approaching'&&next.u===seat.u&&next.v===seat.v;
-          if(!valid(next.u,next.v)&&!enteringSeat){next=null;route=[];seat=null;state.chairId=null;state.mode='idle';state.moving=false;return;}
+          if(!valid(next.u,next.v)){
+            const retryId=state.mode==='approaching'?seat?.id:undefined;
+            next=null;route=[];seat=null;state.chairId=null;state.mode='idle';state.moving=false;
+            if(retryId!==undefined)requestSit(retryId);
+            return;
+          }
         }
         const du=next.u+.5-state.u,dv=next.v+.5-state.v,distance=Math.hypot(du,dv),travel=Math.min(distance,dt*.8);
         state.moving=true;state.mirrored=du-dv>0;
