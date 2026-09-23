@@ -4,8 +4,16 @@
   'use strict';
   const COLS = 4, ROWS = 6, TILE_WIDTH = 64, TILE_HEIGHT = 32;
   const canvas = document.getElementById('room');
-  const ctx = canvas.getContext('2d');
+  const view = canvas.getContext('2d');
+  const artwork = document.createElement('canvas');
+  artwork.width = canvas.width;
+  artwork.height = canvas.height;
+  const ctx = artwork.getContext('2d');
   const button = document.getElementById('grid');
+  const zoomLabel = document.getElementById('zoom-level');
+  const camera = { scale: 1, x: 0, y: 0 };
+  const pointers = new Map();
+  const MIN_ZOOM = .6, MAX_ZOOM = 3;
   const origin = { x: 240, y: 132 };
   const wallHeight = 100;
   let showGrid = false;
@@ -83,7 +91,74 @@
       for (let u = 0; u <= COLS; u++) line([u,0],[u,ROWS],'#7c8061');
       for (let v = 0; v <= ROWS; v++) line([0,v],[COLS,v],'#7c8061');
     }
+    renderView();
   }
+
+  function renderView() {
+    // Keep part of the room reachable even after a long drag.
+    for (const [axis, size] of [['x', canvas.width], ['y', canvas.height]]) {
+      const center = size * (1 - camera.scale) / 2;
+      const travel = Math.max(0, size * (camera.scale - 1)) / 2 + size * .2;
+      camera[axis] = Math.max(center - travel, Math.min(center + travel, camera[axis]));
+    }
+    view.clearRect(0, 0, canvas.width, canvas.height);
+    view.imageSmoothingEnabled = false;
+    view.drawImage(artwork, camera.x, camera.y, canvas.width * camera.scale, canvas.height * camera.scale);
+    zoomLabel.textContent = `${Math.round(camera.scale * 100)}%`;
+  }
+
+  function zoomAt(factor, from, to = from) {
+    const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.scale * factor));
+    const ratio = next / camera.scale;
+    camera.x = to.x - (from.x - camera.x) * ratio;
+    camera.y = to.y - (from.y - camera.y) * ratio;
+    camera.scale = next;
+    renderView();
+  }
+  function localPoint(event) {
+    const bounds = canvas.getBoundingClientRect();
+    return { x: (event.clientX - bounds.left) * canvas.width / bounds.width,
+      y: (event.clientY - bounds.top) * canvas.height / bounds.height };
+  }
+  function gesture() {
+    const [a, b] = [...pointers.values()];
+    return b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.hypot(a.x - b.x, a.y - b.y) }
+      : { ...a, distance: 0 };
+  }
+  canvas.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (pointers.size >= 2) return;
+    canvas.setPointerCapture(event.pointerId);
+    pointers.set(event.pointerId, localPoint(event));
+    canvas.classList.add('dragging');
+  });
+  canvas.addEventListener('pointermove', event => {
+    if (!pointers.has(event.pointerId)) return;
+    const before = gesture();
+    pointers.set(event.pointerId, localPoint(event));
+    const after = gesture();
+    zoomAt(before.distance > 0 ? after.distance / before.distance : 1, before, after);
+  });
+  function release(event) {
+    pointers.delete(event.pointerId);
+    if (!pointers.size) canvas.classList.remove('dragging');
+  }
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, release);
+  window.addEventListener('blur', () => { pointers.clear(); canvas.classList.remove('dragging'); });
+  canvas.addEventListener('wheel', event => {
+    event.preventDefault();
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
+    zoomAt(Math.exp(-Math.max(-150, Math.min(150, event.deltaY * unit)) * .003), localPoint(event));
+  }, { passive: false });
+  const center = { x: canvas.width / 2, y: canvas.height / 2 };
+  document.getElementById('zoom-in').addEventListener('click', () => zoomAt(1.25, center));
+  document.getElementById('zoom-out').addEventListener('click', () => zoomAt(1 / 1.25, center));
+  document.getElementById('reset-view').addEventListener('click', () => {
+    pointers.clear();
+    canvas.classList.remove('dragging');
+    Object.assign(camera, { scale: 1, x: 0, y: 0 });
+    renderView();
+  });
   button.addEventListener('click', () => {
     showGrid = !showGrid;
     button.setAttribute('aria-pressed', String(showGrid));

@@ -7,7 +7,12 @@ header span{color:#8a8276}
 main{width:min(100%,640px);margin:auto; padding:12px 20px 24px}
 .heading{text-align:center}.heading p{font-size:12px;color:#8b8071;letter-spacing:2px;margin:0 0 14px}h1{font-size:26px;letter-spacing:5px;font-weight:400;margin:0}
 .scene{display:flex;justify-content:center;margin:12px 0 0}
-canvas{display:block;width:min(100%,416px);height:auto;image-rendering:pixelated}
+canvas{display:block;width:min(100%,416px);height:auto;image-rendering:pixelated;touch-action:none;user-select:none;cursor:grab}
+canvas.dragging{cursor:grabbing}
+.view-controls{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;margin:18px auto 0}
+.view-controls button{min-width:44px;padding:10px 12px}
+#zoom-level{min-width:48px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums}
+.gesture-hint{text-align:center;font-size:12px;color:#93897b;margin:12px 0 0;line-height:1.6}
 .controls{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:360px;margin:0 auto;font-size:14px}.controls i{font-style:normal;color:#b3a796;margin:0 5px}
 button{font:inherit;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;padding:12px 16px;min-height:44px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
 button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-visible,a:focus-visible{outline:2px solid #657353;outline-offset:4px}
