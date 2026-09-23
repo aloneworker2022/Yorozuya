@@ -26,7 +26,7 @@
   const frameOf = item => catalog[item.type].frames[item.facing];
   let showGrid = false;
   const project = (u, v, z = 0) => [origin.x + (u - v) * TILE_WIDTH / 2, origin.y + (u + v) * TILE_HEIGHT / 2 - z];
-  const actor=window.RoomCharacter.create({cols:COLS,rows:ROWS,blocked:(u,v)=>items.some(item=>{
+  const actor=window.RoomCharacter.create({cols:COLS,rows:ROWS,getChairs:()=>items.filter(item=>item.type==='chair'),blocked:(u,v)=>items.some(item=>{
     const f=frameOf(item);return u>=item.u&&u<item.u+f.cols&&v>=item.v&&v<item.v+f.rows;
   })});
   let scenePixels=null,sceneDepth=null,wandering=true,sceneVisible=true;
@@ -107,7 +107,8 @@
     if (active) {
       const pos = candidate ? {...active,...candidate} : active;
       const f=frameOf(pos);
-      face([[pos.u,pos.v],[pos.u+f.cols,pos.v],[pos.u+f.cols,pos.v+f.rows],[pos.u,pos.v+f.rows]], canPlace(pos) ? '#9aa982' : '#bf8073');
+      const tint=actor.isChairLocked(pos.id)?'#abb8bd':canPlace(pos)?'#9aa982':'#bf8073';
+      face([[pos.u,pos.v],[pos.u+f.cols,pos.v],[pos.u+f.cols,pos.v+f.rows],[pos.u,pos.v+f.rows]],tint);
     }
     // Composite furniture by depth per pixel, so long tables and tall cabinets
     // occlude correctly even when their screen-space silhouettes overlap.
@@ -143,12 +144,13 @@
     for(let y=-3;y<=3;y++)for(let x=-12;x<=12;x++)if(x*x/144+y*y/9<=1)blend(Math.round(px)+x,Math.round(py)+y,[40,33,45],.16,u+v);
     for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++){
       const i=(y*f.width+x)*4,alpha=f.pixels[i+3]/255;
-      if(alpha)blend(ox+x,oy+y,f.pixels.subarray(i,i+3),alpha,u+v+Math.max(0,f.anchor.y-y)/32);
+      if(alpha)blend(ox+x,oy+y,f.pixels.subarray(i,i+3),alpha,u+v+(f.depth?f.depth[y*f.width+x]:Math.max(0,f.anchor.y-y)/32));
     }
     ctx.putImageData(output,0,0);renderView();
   }
 
   function canPlace(pos) {
+    if(actor.isChairLocked(pos.id))return false;
     const f=frameOf(pos);
     let touchesActor=false;
     for(let u=pos.u;u<pos.u+f.cols;u++)for(let v=pos.v;v<pos.v+f.rows;v++)if(actor.occupies(u,v))touchesActor=true;
@@ -182,6 +184,19 @@
     moveButton.textContent=value?'取消移動':'移動';
   }
   function cancelDrag() { drag=null;candidate=null; }
+  function refreshActorControls(){
+    const item=selected(),locked=!!item&&actor.isChairLocked(item.id);
+    for(const id of ['move-item','turn-item','remove-item']){
+      const control=document.getElementById(id);control.disabled=locked;
+      control.title=locked?'她正在使用這張椅子，起身離開後才能調整。':'';
+    }
+    document.getElementById('actor-sit').disabled=actor.state.chairId!==null;
+    document.getElementById('actor-stand').disabled=actor.state.mode!=='sitting';
+    const descriptions={idle:'她正在休息，稍後會找椅子坐。',walking:'她正在房間裡走動。',approaching:'她正走向椅子。',sitting:'她正坐在椅子上休息。',leaving:'她正起身離開椅子。'};
+    const text=descriptions[actor.state.mode]+(!wandering?'（已暫停）':'');
+    const label=document.getElementById('actor-status');
+    if(label.textContent!==text)label.textContent=text;
+  }
   function refresh() {
     const item=selected();
     document.getElementById('selection').hidden=!item;
@@ -206,14 +221,15 @@
       const n=items.filter(entry=>entry.type===card.dataset.add).length;
       card.querySelector('.in-room').textContent=n?`房內 ${n} 件`:'尚未擺放';
     }
+    refreshActorControls();
   }
   moveButton.addEventListener('click',()=>{
-    if(!selected()) return;
+    if(!selected()||actor.isChairLocked(selectedId)) return;
     cancelDrag();setPlacing(!placing);
     status.textContent=placing?'點選空地，或拖曳選中的家具。':'已取消移動。';draw();
   });
   document.getElementById('turn-item').addEventListener('click',()=>{
-    const item=selected();if(!item)return;
+    const item=selected();if(!item||actor.isChairLocked(item.id))return;
     cancelDrag();const def=catalog[item.type];
     const next={...item,facing:def.directions[(def.directions.indexOf(item.facing)+1)%4]};
     if(canPlace(next)) {Object.assign(item,next);status.textContent='已旋轉家具。';}
@@ -221,6 +237,7 @@
     refresh();draw();
   });
   document.getElementById('remove-item').addEventListener('click',()=>{
+    if(actor.isChairLocked(selectedId))return;
     const index=items.findIndex(item=>item.id===selectedId);if(index<0)return;
     const name=catalog[items[index].type].name;items.splice(index,1);
     cancelDrag();setPlacing(false);selectedId=null;status.textContent=`已收回${name}，可以從下方列表再次加入。`;
@@ -297,6 +314,10 @@
       cancelDrag();draw();
     } else {
       const hit=hitItem(point);
+      if(hit&&actor.isChairLocked(hit.id)){
+        selectedId=hit.id;cancelDrag();setPlacing(false);
+        status.textContent='她正在使用這張椅子，起身離開後才能調整。';refresh();draw();return;
+      }
       if(hit || (placing && selected())) {
         const wasPlacing=placing;
         if(!wasPlacing && hit) {selectedId=hit.id;refresh();}
@@ -365,9 +386,21 @@
   const actorToggle=document.getElementById('actor-toggle');
   actorToggle.addEventListener('click',()=>{
     wandering=!wandering;actorToggle.setAttribute('aria-pressed',String(!wandering));
-    actorToggle.textContent=wandering?'暫停走動':'繼續走動';
-    document.getElementById('actor-status').textContent=wandering?'她會在空位間走動，偶爾停下來。':'她暫時站在原地。';
-    actor.update(0,true);drawActor();
+    actorToggle.textContent=wandering?'暫停動作':'繼續動作';
+    actor.update(0,true);refreshActorControls();drawActor();
+  });
+  function resumeActor(){
+    wandering=true;actorToggle.setAttribute('aria-pressed','false');actorToggle.textContent='暫停動作';
+    cancelDrag();setPlacing(false);
+  }
+  document.getElementById('actor-sit').addEventListener('click',()=>{
+    const item=selected(),result=actor.requestSit(item?.type==='chair'?item.id:undefined);
+    status.textContent=result.message;
+    if(result.ok)resumeActor();
+    refreshActorControls();draw();
+  });
+  document.getElementById('actor-stand').addEventListener('click',()=>{
+    if(actor.standUp())resumeActor();refreshActorControls();draw();
   });
   new IntersectionObserver(entries=>{sceneVisible=entries[0].isIntersecting;}).observe(canvas);
   let previous=0;
@@ -377,6 +410,7 @@
     if(now-previous<50)return;
     const dt=previous?Math.min((now-previous)/1000,.1):0;previous=now;
     actor.update(dt,!wandering||placing||!!drag||pointers.size>0);
+    refreshActorControls();
     drawActor();
   }
   requestAnimationFrame(animate);
