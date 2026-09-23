@@ -2,26 +2,29 @@
 (() => {
   'use strict';
   function sprite(step, mirrored) {
-    const canvas=document.createElement('canvas');canvas.width=64;canvas.height=88;
+    const canvas=document.createElement('canvas');canvas.width=64;canvas.height=124;
     const ctx=canvas.getContext('2d');
     if(mirrored){ctx.translate(64,0);ctx.scale(-1,1);}
     ctx.fillStyle='#332d40';
     const rect=(x,y,w,h)=>ctx.fillRect(x,y,w,h);
-    // Plain human silhouette: hair, torso, dress, arms and legs.
-    for(const r of [[23,16,18,22],[20,22,5,31],[39,23,6,32],[24,14,15,6],
-      [28,35,8,6],[23,40,18,16],[20,51,24,13],[17,62,30,5],
-      [17,42,5,17],[42,42,5,17],[16,55,5,8],[44,55,5,8]])rect(...r);
+    // Adult proportions: 110 px standing height versus a 69 px chair back
+    // and a 42 px desk. Lengthen torso/legs rather than enlarging the head.
+    for(const r of [[25,8,14,4],[23,12,18,18],[21,17,4,26],[39,17,4,26],
+      [28,29,8,7],[22,35,20,12],[24,47,16,17],
+      [22,62,20,9],[20,71,24,8],[18,79,28,5],
+      [18,37,5,17],[17,54,5,18],[16,71,6,7],
+      [41,37,5,17],[42,54,5,18],[42,71,6,7]])rect(...r);
     const stride=[0,2,0,-2][step];
-    rect(23,66,6,13+stride);rect(22,77+stride,8,4);
-    rect(35,66,6,13-stride);rect(34,77-stride,8,4);
+    rect(23,83,6,31+stride);rect(21,113+stride,9,5);
+    rect(35,83,6,31-stride);rect(34,113-stride,9,5);
     // Apply opacity once, so overlaps do not produce darker patches.
-    const data=ctx.getImageData(0,0,64,88);
+    const data=ctx.getImageData(0,0,64,124);
     for(let i=3;i<data.data.length;i+=4)if(data.data[i])data.data[i]=158;
-    return {width:64,height:88,anchor:{x:32,y:82},pixels:data.data};
+    return {width:64,height:124,anchor:{x:32,y:118},pixels:data.data};
   }
   const frames=[false,true].map(mirrored=>[0,1,2,3].map(step=>sprite(step,mirrored)));
   function create({cols,rows,blocked,random=Math.random}) {
-    const state={u:2.5,v:4.5,moving:false,mirrored:false,step:0};
+    const state={u:2.5,v:3.5,moving:false,mirrored:false,step:0};
     let route=[],next=null,wait=1.8,elapsed=0;
     const valid=(u,v)=>u>=0&&v>=0&&u<cols&&v<rows&&!blocked(u,v);
     if(!valid(Math.floor(state.u),Math.floor(state.v))){
