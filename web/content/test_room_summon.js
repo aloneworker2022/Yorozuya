@@ -454,7 +454,7 @@ async function drawGirl() {
     if (result?.status === "done" && result.result) {
       portraitUrl = String(result.result);
       error = "";
-      $("summon-status").textContent = `${rolled.name}的半身立繪好了。點房間裡的她也能看。`;
+      $("summon-status").textContent = `${rolled.name}的半身立繪好了。長按房間裡的她，再選擇聊天。`;
     } else {
       error = result?.error || "生圖失敗";
       $("summon-status").textContent = `人抽到了，立繪沒畫出來：${error}`;
