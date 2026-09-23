@@ -16,6 +16,11 @@
   const MIN_ZOOM = .6, MAX_ZOOM = 3;
   const origin = { x: 240, y: 132 };
   const wallHeight = 100;
+  const furniture = window.RoomFurniture.chair;
+  const chair = { u: 1, v: 3, facing: 'left' };
+  const moveButton = document.getElementById('move-chair');
+  const status = document.getElementById('chair-status');
+  let placing = false, drag = null, candidate = null;
   let showGrid = false;
   const project = (u, v, z = 0) => [origin.x + (u - v) * TILE_WIDTH / 2, origin.y + (u + v) * TILE_HEIGHT / 2 - z];
 
@@ -87,12 +92,53 @@
     line([0,0,7],[COLS,0,7],'#ffe3b9');
     line([0,ROWS],[COLS,ROWS],'#f3d3a5');
     line([COLS,0],[COLS,ROWS],'#f0cda0');
-    if (showGrid) {
+    if (showGrid || placing || drag) {
       for (let u = 0; u <= COLS; u++) line([u,0],[u,ROWS],'#7c8061');
       for (let v = 0; v <= ROWS; v++) line([0,v],[COLS,v],'#7c8061');
     }
+    const pos = candidate || chair;
+    if (placing || drag) {
+      face([[pos.u,pos.v],[pos.u+1,pos.v],[pos.u+1,pos.v+1],[pos.u,pos.v+1]], fits(pos) ? '#9aa982' : '#bf8073');
+    }
+    const [x,y] = project(pos.u,pos.v);
+    ctx.drawImage(furniture.sprites[chair.facing], x-furniture.anchor.x, y-furniture.anchor.y);
     renderView();
   }
+
+  function fits(pos) {
+    return pos.u >= 0 && pos.v >= 0 && pos.u + furniture.footprint.cols <= COLS && pos.v + furniture.footprint.rows <= ROWS;
+  }
+  function worldPoint(point) {
+    return { x: (point.x-camera.x)/camera.scale, y: (point.y-camera.y)/camera.scale };
+  }
+  function groundPoint(point) {
+    const p = worldPoint(point), x = (p.x-origin.x)/(TILE_WIDTH/2), y = (p.y-origin.y)/(TILE_HEIGHT/2);
+    return { u: (x+y)/2, v: (y-x)/2 };
+  }
+  function hitsChair(point) {
+    const p = worldPoint(point), [x,y] = project(chair.u,chair.v);
+    const sx = Math.floor(p.x-x+furniture.anchor.x), sy = Math.floor(p.y-y+furniture.anchor.y);
+    const sprite = furniture.sprites[chair.facing];
+    return sx >= 0 && sy >= 0 && sx < sprite.width && sy < sprite.height && sprite.getContext('2d').getImageData(sx,sy,1,1).data[3] > 0;
+  }
+  function setPlacing(value) {
+    placing = value;
+    moveButton.setAttribute('aria-pressed', String(value));
+    moveButton.textContent = value ? '取消移動' : '移動位置';
+  }
+  function cancelDrag() { drag = null; candidate = null; draw(); }
+  moveButton.addEventListener('click', () => {
+    cancelDrag(); setPlacing(!placing);
+    status.textContent = placing ? '點選地板，椅子會對齊格子。' : '拖曳椅子，或按「移動位置」後點選地板。';
+    draw();
+  });
+  function updateFacing() {
+    document.getElementById('turn-chair').textContent = `朝向：${chair.facing === 'left' ? '左' : '右'} ↔`;
+    document.getElementById('chair-preview').src = furniture.sprites[chair.facing].toDataURL();
+  }
+  document.getElementById('turn-chair').addEventListener('click', () => {
+    cancelDrag(); chair.facing = chair.facing === 'left' ? 'right' : 'left'; updateFacing(); draw();
+  });
 
   function renderView() {
     // Keep part of the room reachable even after a long drag.
@@ -129,24 +175,49 @@
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     if (pointers.size >= 2) return;
     canvas.setPointerCapture(event.pointerId);
-    pointers.set(event.pointerId, localPoint(event));
+    const point = localPoint(event);
+    pointers.set(event.pointerId, point);
+    if (pointers.size === 2) {
+      cancelDrag();
+    } else if (hitsChair(point) || placing) {
+      const ground = groundPoint(point);
+      drag = { id: event.pointerId, start: ground, onChair: hitsChair(point) };
+      candidate = drag.onChair ? {u:chair.u,v:chair.v} : {u:Math.floor(ground.u),v:Math.floor(ground.v)};
+      draw();
+    }
     canvas.classList.add('dragging');
   });
   canvas.addEventListener('pointermove', event => {
     if (!pointers.has(event.pointerId)) return;
     const before = gesture();
     pointers.set(event.pointerId, localPoint(event));
+    if (drag && pointers.size === 1) {
+      const ground = groundPoint(localPoint(event));
+      candidate = drag.onChair ? {u:chair.u+Math.round(ground.u-drag.start.u),v:chair.v+Math.round(ground.v-drag.start.v)}
+        : {u:Math.floor(ground.u),v:Math.floor(ground.v)};
+      draw(); return;
+    }
     const after = gesture();
     zoomAt(before.distance > 0 ? after.distance / before.distance : 1, before, after);
   });
   function release(event) {
+    if (drag && drag.id === event.pointerId) {
+      if (event.type === 'pointerup' && candidate) {
+        if (fits(candidate)) {
+          Object.assign(chair,candidate); setPlacing(false);
+          status.textContent = `已放在第 ${chair.u+1} 列、第 ${chair.v+1} 格。`;
+        } else status.textContent = '超出房間了，椅子保留在原位。';
+      }
+      cancelDrag();
+    }
     pointers.delete(event.pointerId);
     if (!pointers.size) canvas.classList.remove('dragging');
   }
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, release);
-  window.addEventListener('blur', () => { pointers.clear(); canvas.classList.remove('dragging'); });
+  window.addEventListener('blur', () => { pointers.clear(); cancelDrag(); canvas.classList.remove('dragging'); });
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
+    if (drag) return;
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
     zoomAt(Math.exp(-Math.max(-150, Math.min(150, event.deltaY * unit)) * .003), localPoint(event));
   }, { passive: false });
@@ -155,6 +226,7 @@
   document.getElementById('zoom-out').addEventListener('click', () => zoomAt(1 / 1.25, center));
   document.getElementById('reset-view').addEventListener('click', () => {
     pointers.clear();
+    cancelDrag();
     canvas.classList.remove('dragging');
     Object.assign(camera, { scale: 1, x: 0, y: 0 });
     renderView();
@@ -165,5 +237,6 @@
     button.textContent = showGrid ? '隱藏格線' : '顯示格線';
     draw();
   });
+  updateFacing();
   draw();
 })();
