@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content">
   <meta name="theme-color" content="#eee8dd">
   <title>我的房間 · Yorozuya</title>
-  <link rel="stylesheet" href="/content/test_room.css?v=39">
+  <link rel="stylesheet" href="/content/test_room.css?v=41">
 </head>
 <body>
   <main class="stage">
@@ -68,6 +68,38 @@
         </div>
         <p class="note">試抽不進遊戲名冊。重新整理就回到沒有這隻人的房間。</p>
       </section>
+
+      <section id="body-panel" class="body-panel" hidden aria-label="身體狀態">
+        <div class="inventory-heading"><h2>身體狀態・性欲</h2><span id="body-summary">尚無對象</span></div>
+        <div class="body-grid">
+          <label>性欲 <output id="body-libido-val">0</output><span class="body-stage" id="body-libido-stage"></span>
+            <input id="body-libido" type="range" min="0" max="30" value="0"></label>
+          <label>性奮 <output id="body-arousal-val">0</output><span class="body-stage" id="body-arousal-stage"></span>
+            <input id="body-arousal" type="range" min="0" max="30" value="0"></label>
+          <label>羞恥 <output id="body-shame-val">0</output>
+            <input id="body-shame" type="range" min="0" max="30" value="0"></label>
+          <label>乳頭腫 <output id="body-nipple-swell-val">0</output>
+            <input id="body-nipple-swell" type="range" min="0" max="3" value="0"></label>
+          <label class="body-check"><input id="body-nipple-wet" type="checkbox"> 乳尖濕</label>
+          <label>乳房脹 <output id="body-breast-swell-val">0</output>
+            <input id="body-breast-swell" type="range" min="0" max="3" value="0"></label>
+          <label>陰蒂腫 <output id="body-clit-swell-val">0</output>
+            <input id="body-clit-swell" type="range" min="0" max="3" value="0"></label>
+          <label class="body-check"><input id="body-clit-wet" type="checkbox"> 陰蒂濕</label>
+          <label>陰唇腫 <output id="body-labia-swell-val">0</output>
+            <input id="body-labia-swell" type="range" min="0" max="3" value="0"></label>
+          <label class="body-check"><input id="body-labia-wet" type="checkbox"> 陰唇濕</label>
+          <label>陰道濕 <output id="body-vagina-wet-val">0</output>
+            <input id="body-vagina-wet" type="range" min="0" max="3" value="0"></label>
+          <label>陰道內
+            <select id="body-vagina-stuffed"></select></label>
+          <label>後穴內
+            <select id="body-anus-stuffed"></select></label>
+          <label>子宮精液 <output id="body-semen-val">沒有</output>
+            <input id="body-semen" type="range" min="0" max="3" value="0"></label>
+        </div>
+        <p class="note">調這裡會立刻寫進她的狀態，聊天語氣會跟著變。長按她說話時模型會讀到這些（不唸數字）。</p>
+      </section>
       <div class="actor-panel" hidden><div><strong>她</strong><p id="actor-status">她會走動，也會找椅子、沙發或床邊坐下休息。</p><p class="actor-hint">長按她跟她說話。</p></div><div class="actor-actions"><button id="actor-sit" type="button">找位置坐</button><button id="actor-stand" type="button" disabled>起身</button><button id="actor-toggle" type="button" aria-pressed="false">暫停動作</button></div></div>
       <div class="tool-row">
         <button id="grid" type="button" aria-pressed="false">顯示格線</button>
@@ -118,6 +150,6 @@
   <script src="/content/room_furniture.js?v=4"></script>
   <script src="/content/room_character.js?v=7"></script>
   <script src="/content/test_room.js?v=14"></script>
-  <script type="module" src="/content/test_room_summon.js?v=44"></script>
+  <script type="module" src="/content/test_room_summon.js?v=46"></script>
 </body>
 </html>

@@ -1,5 +1,18 @@
 /* 試煉房抽妹子：人設跟 /testword 同一套。抽到後背景補半身立繪。不寫遊戲名冊。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=2";
+import {
+  ensureBody,
+  bodyPromptLines,
+  applyBodyFromUserText,
+  snapshotBodyForUi,
+  applyUiSnapshot,
+  SEMEN_ZH,
+  STUFFED_OPTIONS,
+  AROUSAL_STAGE,
+  LIBIDO_STAGE,
+  arousalStage,
+  libidoStage,
+} from "./body_state.js?v=2";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -444,6 +457,7 @@ function renderCard() {
   if (!girl) {
     card.hidden = true;
     $("let-leave").hidden = true;
+    renderBodyPanel();
     renderDebug();
     return;
   }
@@ -452,6 +466,7 @@ function renderCard() {
   $("summon-name").textContent = titleOf(girl);
   $("summon-meta").textContent = region && sheIsOut() ? `${lookLine(girl)} · 人在日本的${region.name}` : lookLine(girl);
   $("let-leave").hidden = sheIsOut();
+  renderBodyPanel();
   renderDebug();
 }
 
@@ -1194,6 +1209,7 @@ function talkSystem() {
     "只寫你說出口的話，1 到 3 句。",
     "不要旁白、不要動作、不要表情描寫、不要引號標題。",
     "依個性回話，不要無故結束對話。",
+    ...bodyPromptLines(girl),
     guardLine(),
     ...personalityStageLines(),
     ...kinkRevealLines(),
@@ -1357,6 +1373,10 @@ async function sendTalk(event) {
   lines.push({ role: "user", content: text });
   talkBusy = true;
   setTalkEnabled(true);
+  ensureBody(girl);
+  applyBodyFromUserText(girl, text);
+  renderBodyPanel();
+  persistRoom();
   const naming = takeCall(text, "");
   if (!naming) applyMark(await judgeTurn(text));
   await typeLine("你", text);
@@ -1515,7 +1535,7 @@ async function makeGirl() {
     usedNames: girl?.name ? [girl.name] : [],
   });
   if (!rolled?.name) throw new Error("generateGirl 回傳空");
-  return {
+  const out = {
     ...rolled,
     id: `cd_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     affection: 0,
@@ -1526,6 +1546,8 @@ async function makeGirl() {
     portrait: null,
     crave: { v: 10 + Math.floor(Math.random() * 20), at: Date.now() },
   };
+  ensureBody(out);
+  return out;
 }
 
 async function drawGirl() {
@@ -2015,11 +2037,122 @@ function normalizeGirlTags(who) {
   if (!Array.isArray(who.kinkMeta)) who.kinkMeta = [];
 }
 
+
+let bodyUiBound = false;
+let bodyUiSyncing = false;
+
+function fillStuffedSelect(sel) {
+  if (!sel || sel.options.length) return;
+  for (const opt of STUFFED_OPTIONS) {
+    const o = document.createElement("option");
+    o.value = opt.value;
+    o.textContent = opt.label;
+    sel.append(o);
+  }
+}
+
+function renderBodyPanel() {
+  const panel = $("body-panel");
+  if (!panel) return;
+  fillStuffedSelect($("body-vagina-stuffed"));
+  fillStuffedSelect($("body-anus-stuffed"));
+  if (!girl) {
+    panel.hidden = true;
+    if ($("body-summary")) $("body-summary").textContent = "尚無對象";
+    return;
+  }
+  panel.hidden = false;
+  const snap = snapshotBodyForUi(girl);
+  if (!snap) return;
+  bodyUiSyncing = true;
+  const setRange = (id, val, outId) => {
+    const el = $(id);
+    if (el) el.value = String(val);
+    if (outId && $(outId)) $(outId).textContent = String(val);
+  };
+  setRange("body-libido", snap.libido, "body-libido-val");
+  setRange("body-arousal", snap.arousal, "body-arousal-val");
+  setRange("body-shame", snap.shame, "body-shame-val");
+  setRange("body-nipple-swell", snap.nipplesSwell, "body-nipple-swell-val");
+  setRange("body-breast-swell", snap.breastsSwell, "body-breast-swell-val");
+  setRange("body-clit-swell", snap.clitSwell, "body-clit-swell-val");
+  setRange("body-labia-swell", snap.labiaSwell, "body-labia-swell-val");
+  setRange("body-vagina-wet", snap.vaginaWet, "body-vagina-wet-val");
+  setRange("body-semen", snap.uterusSemen, "body-semen-val");
+  if ($("body-semen-val")) $("body-semen-val").textContent = SEMEN_ZH[snap.uterusSemen] || "沒有";
+  if ($("body-libido-stage")) $("body-libido-stage").textContent = snap.libidoLabel;
+  if ($("body-arousal-stage")) $("body-arousal-stage").textContent = snap.arousalLabel;
+  if ($("body-nipple-wet")) $("body-nipple-wet").checked = !!snap.nipplesWet;
+  if ($("body-clit-wet")) $("body-clit-wet").checked = !!snap.clitWet;
+  if ($("body-labia-wet")) $("body-labia-wet").checked = !!snap.labiaWet;
+  if ($("body-vagina-stuffed")) $("body-vagina-stuffed").value = snap.vaginaStuffed || "";
+  if ($("body-anus-stuffed")) $("body-anus-stuffed").value = snap.anusStuffed || "";
+  if ($("body-summary")) {
+    $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・精液${SEMEN_ZH[snap.uterusSemen]}`;
+  }
+  bodyUiSyncing = false;
+}
+
+function readBodyPanelToGirl() {
+  if (!girl || bodyUiSyncing) return;
+  applyUiSnapshot(girl, {
+    libido: $("body-libido")?.value,
+    arousal: $("body-arousal")?.value,
+    shame: $("body-shame")?.value,
+    nipplesSwell: $("body-nipple-swell")?.value,
+    nipplesWet: $("body-nipple-wet")?.checked,
+    breastsSwell: $("body-breast-swell")?.value,
+    clitSwell: $("body-clit-swell")?.value,
+    clitWet: $("body-clit-wet")?.checked,
+    labiaSwell: $("body-labia-swell")?.value,
+    labiaWet: $("body-labia-wet")?.checked,
+    vaginaWet: $("body-vagina-wet")?.value,
+    vaginaStuffed: $("body-vagina-stuffed")?.value,
+    anusStuffed: $("body-anus-stuffed")?.value,
+    uterusSemen: $("body-semen")?.value,
+  });
+  const snap = snapshotBodyForUi(girl);
+  if ($("body-libido-val")) $("body-libido-val").textContent = String(snap.libido);
+  if ($("body-arousal-val")) $("body-arousal-val").textContent = String(snap.arousal);
+  if ($("body-shame-val")) $("body-shame-val").textContent = String(snap.shame);
+  if ($("body-nipple-swell-val")) $("body-nipple-swell-val").textContent = String(snap.nipplesSwell);
+  if ($("body-breast-swell-val")) $("body-breast-swell-val").textContent = String(snap.breastsSwell);
+  if ($("body-clit-swell-val")) $("body-clit-swell-val").textContent = String(snap.clitSwell);
+  if ($("body-labia-swell-val")) $("body-labia-swell-val").textContent = String(snap.labiaSwell);
+  if ($("body-vagina-wet-val")) $("body-vagina-wet-val").textContent = String(snap.vaginaWet);
+  if ($("body-semen-val")) $("body-semen-val").textContent = SEMEN_ZH[snap.uterusSemen] || "沒有";
+  if ($("body-libido-stage")) $("body-libido-stage").textContent = snap.libidoLabel;
+  if ($("body-arousal-stage")) $("body-arousal-stage").textContent = snap.arousalLabel;
+  if ($("body-summary")) {
+    $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・精液${SEMEN_ZH[snap.uterusSemen]}`;
+  }
+  persistRoom();
+}
+
+function bindBodyPanel() {
+  if (bodyUiBound) return;
+  bodyUiBound = true;
+  const ids = [
+    "body-libido", "body-arousal", "body-shame",
+    "body-nipple-swell", "body-breast-swell", "body-clit-swell", "body-labia-swell",
+    "body-vagina-wet", "body-semen",
+    "body-nipple-wet", "body-clit-wet", "body-labia-wet",
+    "body-vagina-stuffed", "body-anus-stuffed",
+  ];
+  for (const id of ids) {
+    const el = $(id);
+    if (!el) continue;
+    el.addEventListener("input", readBodyPanelToGirl);
+    el.addEventListener("change", readBodyPanelToGirl);
+  }
+}
+
 (function restoreRoom() {
   const saved = loadRoomSave();
   if (!saved?.girl) return;
   girl = saved.girl;
   if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
+  ensureBody(girl);
   normalizeGirlTags(girl);
   if (!Array.isArray(girl.chatLines) && Array.isArray(saved.lines)) girl.chatLines = saved.lines;
   if ((girl.chatLines || []).length) girl.sessionEnded = true;
@@ -2038,6 +2171,7 @@ $("summon-back").addEventListener("click", summonHerBack);
 $("open-activity").addEventListener("click", toggleActivity);
 $("activity-work").addEventListener("click", () => { startActivity("work"); });
 $("activity-wander").addEventListener("click", () => { startActivity("wander"); });
+bindBodyPanel();
 renderCard();
 renderWorld();
 renderDebug();

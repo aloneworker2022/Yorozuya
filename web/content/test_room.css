@@ -103,3 +103,14 @@ button{font:inherit;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;pa
 button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-visible,a:focus-visible{outline:2px solid #657353;outline-offset:4px}
 .note{font-size:12px;letter-spacing:1px;color:#93897b;margin:16px 0 0}
 @media(min-width:800px){canvas{width:416px}}
+
+.body-panel{margin:16px 0 0;padding:12px 0 8px;border-bottom:1px solid #d5c9b5}
+.body-panel[hidden]{display:none}
+.body-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;margin-top:10px}
+.body-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#776c5b}
+.body-grid label output{display:inline;font-variant-numeric:tabular-nums;color:#514c45;margin-left:4px}
+.body-grid .body-stage{margin-left:6px;color:#657353}
+.body-grid input[type=range]{width:100%;accent-color:#657353}
+.body-grid select{font:inherit;color:inherit;background:#f5efe3;border:1px solid #c8bba7;padding:6px 8px;border-radius:6px}
+.body-check{flex-direction:row!important;align-items:center;gap:8px!important}
+@media(min-width:600px){.body-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
