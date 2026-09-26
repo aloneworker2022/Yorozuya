@@ -14,7 +14,16 @@ import {
   LIBIDO_STAGE,
   arousalStage,
   libidoStage,
-} from "./body_state.js?v=4";
+} from "./body_state.js?v=5";
+import {
+  effectiveStun,
+  shouldSkipLlm,
+  scrambleReply,
+  stunTemplate,
+  noteActShock,
+  tickStunAfterReply,
+  ensureStunFields,
+} from "./stun_speech.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -1334,15 +1343,25 @@ async function openTalk() {
   setTyping(true);
   let streamed = false;
   try {
+    ensureStunFields(girl);
+    const openerStun = effectiveStun(girl, "");
     const opener = resume ? continuityOpener() : openerLine();
-    const reply = await askGirl(opener, (partial) => {
-      if (!partial || !sheetOpen()) return;
-      streamed = true;
+    let line = "";
+    if (shouldSkipLlm(openerStun)) {
+      line = stunTemplate(openerStun, "");
       setTyping(false);
-      $("portrait-name").textContent = girl.name;
-      $("portrait-meta").textContent = partial;
-    });
-    const line = reply || "……嗯？";
+    } else {
+      const streamOk = openerStun < 25;
+      const reply = await askGirl(opener, streamOk ? (partial) => {
+        if (!partial || !sheetOpen()) return;
+        streamed = true;
+        setTyping(false);
+        $("portrait-name").textContent = girl.name;
+        $("portrait-meta").textContent = partial;
+      } : null);
+      line = scrambleReply(reply || "……嗯？", openerStun, "") || "……嗯？";
+    }
+    tickStunAfterReply(girl);
     if (!resume && girl.nameWait === "pet") takeCall("", line);
     lines.push({ role: "assistant", content: line });
     rememberChat();
@@ -1377,9 +1396,15 @@ async function deliverUserTalk(text, opts = {}) {
   talkBusy = true;
   setTalkEnabled(true);
   ensureBody(girl);
+  ensureStunFields(girl);
   if (!opts.skipBody) {
-    if (opts.actId) applyAct(girl, opts.actId);
-    else applyBodyFromUserText(girl, raw);
+    if (opts.actId) {
+      applyAct(girl, opts.actId);
+      noteActShock(girl, opts.actId);
+    } else {
+      const hit = applyBodyFromUserText(girl, raw);
+      if (hit && girl.bodyState?.lastPart) noteActShock(girl, girl.bodyState.lastPart);
+    }
   }
   renderBodyPanel();
   persistRoom();
@@ -1391,23 +1416,35 @@ async function deliverUserTalk(text, opts = {}) {
     setTalkEnabled(true);
     return;
   }
+
+  const actId = opts.actId || "";
+  const stun = effectiveStun(girl, actId);
   setTyping(true);
   $("portrait-name").textContent = girl.name;
   let streamed = false;
   try {
-    const reply = await askGirl(null, (partial) => {
-      if (!partial || !sheetOpen()) return;
-      streamed = true;
+    let line = "";
+    if (shouldSkipLlm(stun)) {
+      // ≥75：不走模型，直接失神模板
+      line = stunTemplate(stun, actId);
       setTyping(false);
-      $("portrait-name").textContent = girl.name;
-      $("portrait-meta").textContent = partial;
-    });
-    const line = reply || "……";
+    } else {
+      const streamOk = stun < 25;
+      const reply = await askGirl(null, streamOk ? (partial) => {
+        if (!partial || !sheetOpen()) return;
+        streamed = true;
+        setTyping(false);
+        $("portrait-name").textContent = girl.name;
+        $("portrait-meta").textContent = partial;
+      } : null);
+      line = scrambleReply(reply || "……", stun, actId);
+    }
     if (girl.guard) girl.guard -= 1;
+    tickStunAfterReply(girl);
     lines.push({ role: "assistant", content: line });
     rememberChat();
     persistRoom();
-    if (streamed) {
+    if (streamed && stun < 25) {
       setTyping(false);
       $("portrait-name").textContent = girl.name;
       $("portrait-meta").textContent = line;
@@ -1418,6 +1455,7 @@ async function deliverUserTalk(text, opts = {}) {
   talkBusy = false;
   if (sheetOpen()) setTalkEnabled(true);
 }
+
 
 async function sendTalk(event) {
   event.preventDefault();

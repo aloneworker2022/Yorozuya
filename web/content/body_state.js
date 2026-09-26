@@ -102,6 +102,7 @@ export function ensureBody(who) {
   b.arousal = clampBody(b.arousal);
   b.libido = clampBody(b.libido == null ? libidoSeedFromGirl(who) : b.libido);
   if ("shame" in b) delete b.shame;
+  if (b.shock != null) b.shock = Math.max(0, Math.min(45, Math.round(Number(b.shock) || 0)));
   b.organs = b.organs || emptyOrgans();
   const o = b.organs;
   o.nipples = { swell: clampBody(o.nipples?.swell, 3), wet: !!o.nipples?.wet };
