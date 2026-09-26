@@ -1,6 +1,9 @@
 @font-face{font-family:RoomPixel;src:url('/fonts/fusion-pixel-12px-zh-hant.woff2') format('woff2');font-display:swap}
 *{box-sizing:border-box}
+html{--kb-inset:0px}
 body{margin:0;min-height:100svh;background:#eee8dd;color:#514c45;font-family:RoomPixel,system-ui,sans-serif;display:flex;flex-direction:column;justify-content:center}
+html.sheet-open,html.sheet-open body{overflow:hidden;overscroll-behavior:none}
+body.sheet-open{position:fixed;left:0;right:0;width:100%}
 body.editing{justify-content:flex-start}
 a{color:inherit;text-decoration:none}
 .stage{width:min(100%,640px);margin:0 auto;padding:24px 20px 96px}
@@ -69,14 +72,15 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #summon-name{font-size:16px;font-weight:400}
 #summon-meta{font-size:12px;color:#8b8071;line-height:1.6;margin:6px 0 0}
 .summon-panel .note{margin:12px 0 0;text-align:left;letter-spacing:0}
-#portrait-sheet{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center;padding:0 0 max(8px,env(safe-area-inset-bottom));pointer-events:none}
+#portrait-sheet{position:fixed;left:0;right:0;top:0;bottom:0;width:100%;height:100%;z-index:20;display:flex;align-items:flex-end;justify-content:center;padding:0 0 max(8px,env(safe-area-inset-bottom));pointer-events:none;/* lock to layout viewport; kb handled via --kb-inset on #talk-panel */}
 #portrait-sheet[hidden]{display:none}
 #portrait-backdrop{position:absolute;inset:0;margin:0;padding:0;min-height:0;border:0;border-radius:0;box-shadow:none;background:transparent;cursor:pointer;pointer-events:auto}
 .talk{position:relative;z-index:1;width:min(100%,440px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:6px 8px 8px;pointer-events:none}
-#portrait-img{display:block;height:min(52vh,500px);width:auto;max-width:min(92vw,420px);margin:0 auto -1.2em;object-fit:contain;object-position:bottom center;background:none;filter:drop-shadow(0 12px 22px rgba(0,0,0,.45));pointer-events:none;transform:translate3d(42%,0,0);opacity:0;transition:transform .55s cubic-bezier(.2,.85,.2,1),opacity .45s ease-out;will-change:transform,opacity}
+#talk-panel{width:100%;display:flex;flex-direction:column;align-items:stretch;transform:translate3d(0,calc(-1 * var(--kb-inset,0px)),0);transition:transform .18s ease-out;will-change:transform;pointer-events:none}
+#portrait-img{display:block;height:min(52svh,500px);width:auto;max-width:min(92vw,420px);margin:0 auto -1.2em;object-fit:contain;object-position:bottom center;background:none;filter:drop-shadow(0 12px 22px rgba(0,0,0,.45));pointer-events:none;transform:translate3d(42%,0,0);opacity:0;transition:transform .55s cubic-bezier(.2,.85,.2,1),opacity .45s ease-out;will-change:transform,opacity}
 #portrait-img[hidden]{display:none}
 #portrait-img.portrait-in{transform:translate3d(0,0,0);opacity:1}
-@media(prefers-reduced-motion:reduce){#portrait-img{transition:none;transform:none;opacity:1}#portrait-img.portrait-in{transform:none}}
+@media(prefers-reduced-motion:reduce){#portrait-img{transition:none;transform:none;opacity:1}#portrait-img.portrait-in{transform:none}#talk-panel{transition:none}}
 #talk-box,#talk-input-row{border:3px solid #fff;position:relative}
 #talk-box{width:100%;box-sizing:border-box;background:rgba(10,16,40,.92);color:#f4fbff;padding:10px 14px 12px;min-height:6.8em;pointer-events:auto}
 #talk-nameline{display:flex;align-items:center;gap:.6em;margin-bottom:.45em}
