@@ -1155,12 +1155,14 @@ function topicHintFrom(history) {
   return her.length >= 2 ? her.slice(0, 24) : "";
 }
 
-function continuityOpener() {
-  const hint = girl.topicHint || topicHintFrom(lines) || topicHintFrom(girl.chatLines);
-  if (hint) {
-    return `（旁白：你們剛才聊到一半。他回來了。用一兩句自然接上「${hint}」這個話題，不要當陌生人重開場。只輸出台詞。）`;
-  }
-  return "（旁白：他剛才離開過，現在又在你面前。用一兩句接上剛才的氣氛，不要當第一次見面。只輸出台詞。）";
+function reopenOpener() {
+  // Still need name/nick/pet — reuse stage opener which sets nameWait.
+  const stage = girl.stage || "stranger";
+  const idx = STAGE_INDEX[stage] ?? 0;
+  if ((stage === "stranger" || stage === "acquaintance") && !girl.playerName) return openerLine();
+  if ((stage === "friend" || stage === "close_friend") && !girl.playerNick) return openerLine();
+  if (idx >= (STAGE_INDEX.girlfriend ?? 4) && !girl.playerPet) return openerLine();
+  return "（旁白：他剛才離開過（掰掰或關掉對話），現在又回來找你。這是新的一輪對話，不要接續上一句告別或結尾，也不要從上一段話中間接著講。用一兩句重新打招呼，依你們現在的關係自然反應。只輸出台詞。）";
 }
 
 function openerLine() {
@@ -1365,14 +1367,13 @@ async function openTalk() {
   if (talkFor === girl.id && (lines.length || talkBusy)) {
     return;
   }
-  const prior = Array.isArray(girl.chatLines) ? girl.chatLines : [];
-  const resume = !!girl.sessionEnded && prior.length > 0;
+  // Closed session → fresh dialogue context; keep affection/body/names.
+  const returning = !!girl.sessionEnded;
+  girl.sessionEnded = false;
   talkFor = girl.id;
-  lines = resume ? prior.slice(-40) : [];
-  if (resume) {
-    girl.sessionEnded = false;
-    girl.topicHint = girl.topicHint || topicHintFrom(lines);
-  }
+  lines = [];
+  girl.chatLines = [];
+  girl.topicHint = "";
   talkBusy = true;
   setTalkEnabled(true);
   $("portrait-name").textContent = girl.name;
@@ -1383,7 +1384,7 @@ async function openTalk() {
     ensureStunFields(girl);
     ensureTeaseFields(girl);
     const openerStun = effectiveStun(girl, "");
-    const opener = resume ? continuityOpener() : openerLine();
+    const opener = returning ? reopenOpener() : openerLine();
     let line = "";
     if (shouldSkipLlm(openerStun, girl) || inSpasm(girl)) {
       line = inSpasm(girl) ? spasmTemplate(girl, "") : stunTemplate(openerStun, "");
@@ -1401,7 +1402,7 @@ async function openTalk() {
     }
     tickStunAfterReply(girl);
     noteTalkExchange(girl);
-    if (!resume && girl.nameWait === "pet") takeCall("", line);
+    if (girl.nameWait === "pet") takeCall("", line);
     lines.push({ role: "assistant", content: line });
     rememberChat();
     persistRoom();
@@ -1713,8 +1714,10 @@ function rememberChat() {
 
 function endTalkSession() {
   if (!girl) return;
-  rememberChat();
-  if ((girl.chatLines || []).length) girl.sessionEnded = true;
+  // Soft-reset in-session LLM history; do not wipe affection/body/player names.
+  girl.chatLines = [];
+  girl.topicHint = "";
+  girl.sessionEnded = true;
   girl.nameWait = "";
 }
 
@@ -1933,8 +1936,9 @@ function summonHerBack() {
   if (!girl?.world?.home || !sheIsOut()) return;
   clearShift();
   girl.world.justBack = true;
-  if (lines.length) rememberChat();
-  if ((girl.chatLines || []).length) girl.sessionEnded = true;
+  girl.chatLines = [];
+  girl.topicHint = "";
+  girl.sessionEnded = true;
   lines = [];
   talkFor = "";
   renderDebug();
@@ -2402,15 +2406,20 @@ function bindBodyPanel() {
   if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
   ensureBody(girl);
   normalizeGirlTags(girl);
-  if (!Array.isArray(girl.chatLines) && Array.isArray(saved.lines)) girl.chatLines = saved.lines;
-  if ((girl.chatLines || []).length) girl.sessionEnded = true;
+  // Page load = closed session: soft-reset dialogue, keep long-term girl state.
+  const hadTalk = (Array.isArray(girl.chatLines) && girl.chatLines.length)
+    || (Array.isArray(saved.lines) && saved.lines.length)
+    || !!girl.sessionEnded;
+  girl.chatLines = [];
+  girl.topicHint = "";
+  girl.sessionEnded = hadTalk || !!girl.sessionEnded;
   syncStage(girl);
   if (typeof saved.present === "boolean") {
     window.RoomActor?.setPresent(saved.present);
   } else {
     window.RoomActor?.setPresent(!girl.world?.home);
   }
-  $("summon-status").textContent = `${girl.name}還在（已接續上次）。長按她繼續聊，或讓她離開。`;
+  $("summon-status").textContent = `${girl.name}還在（狀態已保留）。長按她繼續聊，或讓她離開。`;
 })();
 
 $("draw-girl").addEventListener("click", () => { drawGirl(); });
