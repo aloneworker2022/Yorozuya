@@ -124,3 +124,6 @@ button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-v
 .talk-acts button:active:not(:disabled):not(.is-locked){background:rgba(40,70,120,.95)}
 .talk-acts button .act-lock{display:block;font-size:.65em;letter-spacing:0;color:rgba(244,251,255,.55);margin-top:2px;font-weight:400}
 .talk-acts-hint{flex:0 0 auto;align-self:center;font-size:.72em;color:rgba(244,251,255,.65);padding:0 6px;white-space:nowrap}
+
+.body-player-row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
+.body-player-row .note{margin:0}

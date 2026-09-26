@@ -17,13 +17,18 @@ import {
 } from "./body_state.js?v=7";
 import {
   effectiveStun,
+  calcStun,
   shouldSkipLlm,
   scrambleReply,
   stunTemplate,
+  spasmTemplate,
   noteActShock,
   tickStunAfterReply,
   ensureStunFields,
-} from "./stun_speech.js?v=3";
+  applyTeaseSpasm,
+  noteTalkExchange,
+  inSpasm,
+} from "./stun_speech.js?v=4";
 import {
   ensureTeaseFields,
   actLockState,
@@ -34,7 +39,7 @@ import {
   availableActs,
   decayBodyIdle,
   insertUnlocked,
-} from "./tease.js?v=2";
+} from "./tease.js?v=3";
 import {
   ensurePlayer,
   emptyPlayer,
@@ -43,8 +48,9 @@ import {
   applyTeaseClimax,
   decayPlayerIdle,
   playerHint,
+  refillSemen,
   SEMEN_MIN_TEASE_CC,
-} from "./player_state.js?v=1";
+} from "./player_state.js?v=2";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -1084,6 +1090,18 @@ function pushDebug(text) {
   girl.debugLog.length = Math.min(girl.debugLog.length, 8);
 }
 
+function bumpAffection(delta, reason = "") {
+  if (!girl) return;
+  const d = Number(delta) || 0;
+  if (!d) return;
+  girl.affection = (girl.affection || 0) + d;
+  const before = girl.stage || "stranger";
+  syncStage(girl);
+  const stageNote = girl.stage !== before ? `，關係變成${STAGE_NAME[girl.stage]}` : "";
+  pushData(`感情 ${girl.affection}（${d >= 0 ? "+" : ""}${d}）${reason ? "　" + reason : ""}${stageNote}`);
+  renderDebug();
+}
+
 function applyMark(mark) {
   let delta = 0;
   let shown = mark;
@@ -1367,8 +1385,8 @@ async function openTalk() {
     const openerStun = effectiveStun(girl, "");
     const opener = resume ? continuityOpener() : openerLine();
     let line = "";
-    if (shouldSkipLlm(openerStun)) {
-      line = stunTemplate(openerStun, "");
+    if (shouldSkipLlm(openerStun, girl) || inSpasm(girl)) {
+      line = inSpasm(girl) ? spasmTemplate(girl, "") : stunTemplate(openerStun, "");
       setTyping(false);
     } else {
       const streamOk = openerStun < 25;
@@ -1379,9 +1397,10 @@ async function openTalk() {
         $("portrait-name").textContent = girl.name;
         $("portrait-meta").textContent = partial;
       } : null);
-      line = scrambleReply(reply || "……嗯？", openerStun, "") || "……嗯？";
+      line = scrambleReply(reply || "……嗯？", openerStun, "", girl) || "……嗯？";
     }
     tickStunAfterReply(girl);
+    noteTalkExchange(girl);
     if (!resume && girl.nameWait === "pet") takeCall("", line);
     lines.push({ role: "assistant", content: line });
     rememberChat();
@@ -1416,9 +1435,9 @@ async function deliverUserTalk(text, opts = {}) {
   ensureBody(girl);
   ensureStunFields(girl);
   ensureTeaseFields(girl);
+  player = ensurePlayer(player);
 
   if (opts.actId) {
-    player = ensurePlayer(player);
     if (!canTease(player)) {
       const status = $("summon-status");
       if (status) status.textContent = teaseBlockReason(player);
@@ -1438,14 +1457,27 @@ async function deliverUserTalk(text, opts = {}) {
   talkBusy = true;
   setTalkEnabled(true);
   let climaxLine = "";
+  let spasmNote = "";
   if (!opts.skipBody) {
     if (opts.actId) {
+      const stunBefore = calcStun(girl);
       applyAct(girl, opts.actId);
       recordTeasePress(girl, opts.actId);
       noteActShock(girl, opts.actId);
+      bumpAffection(1, "挑逗");
+      const spasm = applyTeaseSpasm(girl, opts.actId, stunBefore);
+      if (spasm.enteredSpasm) {
+        spasmNote = "（她突然痙攣——身體止不住地顫。）";
+        bumpAffection(2, "痙攣");
+      } else if (spasm.enteredPain) {
+        spasmNote = "（過感——碰一下就痛得縮起來。）";
+      }
       const climax = applyTeaseClimax(player, opts.actId);
       player = climax.player;
-      if (climax.climaxed) climaxLine = climax.line;
+      if (climax.climaxed) {
+        climaxLine = climax.line;
+        bumpAffection(2, "射精");
+      }
     } else {
       const hit = applyBodyFromUserText(girl, raw);
       if (hit && girl.bodyState?.lastPart) noteActShock(girl, girl.bodyState.lastPart);
@@ -1460,8 +1492,12 @@ async function deliverUserTalk(text, opts = {}) {
   if (climaxLine) {
     lines.push({ role: "user", content: climaxLine });
     await typeLine("你", climaxLine);
-    persistRoom();
   }
+  if (spasmNote) {
+    lines.push({ role: "user", content: spasmNote });
+    await typeLine("旁白", spasmNote);
+  }
+  if (climaxLine || spasmNote) persistRoom();
   if (!sheetOpen() || talkFor !== girl.id) {
     talkBusy = false;
     setTalkEnabled(true);
@@ -1476,11 +1512,11 @@ async function deliverUserTalk(text, opts = {}) {
   let streamed = false;
   try {
     let line = "";
-    if (shouldSkipLlm(stun)) {
-      line = stunTemplate(stun, actId);
+    if (shouldSkipLlm(stun, girl) || inSpasm(girl)) {
+      line = inSpasm(girl) ? spasmTemplate(girl, actId) : stunTemplate(stun, actId);
       setTyping(false);
     } else {
-      const streamOk = stun < 25;
+      const streamOk = stun < 25 && !inSpasm(girl);
       const reply = await askGirl(null, streamOk ? (partial) => {
         if (!partial || !sheetOpen()) return;
         streamed = true;
@@ -1488,10 +1524,11 @@ async function deliverUserTalk(text, opts = {}) {
         $("portrait-name").textContent = girl.name;
         $("portrait-meta").textContent = partial;
       } : null);
-      line = scrambleReply(reply || "……", stun, actId);
+      line = scrambleReply(reply || "……", stun, actId, girl);
     }
     if (girl.guard) girl.guard -= 1;
     tickStunAfterReply(girl);
+    noteTalkExchange(girl);
     lines.push({ role: "assistant", content: line });
     rememberChat();
     persistRoom();
@@ -1587,7 +1624,7 @@ function startIdleDecay() {
     // 最近剛挑逗過則跳過一輪
     if (sinceTease < 5000) return;
     decayBodyIdle(girl);
-    player = decayPlayerIdle(player);
+    player = ensurePlayer(decayPlayerIdle(player)); // ensurePlayer 也會按小時回補精液
     renderBodyPanel();
     refreshTalkActs();
     persistRoom();
@@ -2364,6 +2401,19 @@ $("open-activity").addEventListener("click", toggleActivity);
 $("activity-work").addEventListener("click", () => { startActivity("work"); });
 $("activity-wander").addEventListener("click", () => { startActivity("wander"); });
 bindBodyPanel();
+const refillBtn = $("body-refill-semen");
+if (refillBtn) {
+  refillBtn.addEventListener("click", () => {
+    player = refillSemen(player, { resetClimax: true });
+    persistRoom();
+    refreshTalkActs();
+    const status = $("summon-status");
+    if (status) status.textContent = `精液已恢復（${player.semenCc}cc）。`;
+    if ($("body-summary") && girl) {
+      /* hint refresh via refreshTalkActs */
+    }
+  });
+}
 renderCard();
 renderWorld();
 renderDebug();

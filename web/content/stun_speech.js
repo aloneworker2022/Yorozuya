@@ -1,9 +1,14 @@
 /** 房間聊天：程式化「失神」亂語（非只靠 prompt）。 */
 
 import { ensureBody, talkActById } from "./body_state.js?v=7";
-import { insertUnlocked } from "./tease.js?v=2";
+import { insertUnlocked } from "./tease.js?v=3";
 
 const SHOCK_MAX = 45;
+
+/** 痙攣持續 10 分鐘。 */
+export const SPASM_MS = 10 * 60 * 1000;
+export const SPASM_ENTER_STUN = 70;
+
 
 /** 動作／命中部位 → 短暫衝擊（回覆 1–2 次或數秒後衰減） */
 const SHOCK_BY_ID = {
@@ -54,6 +59,24 @@ const STUN_BITS = [
   "……哈啊",
   "等、等一下…啊",
 ];
+
+const SPASM_BITS = [
+  "噫…！身、身體…抽…",
+  "哈啊…哈啊…停、停不下來…",
+  "腳…軟…嗯嗯…！",
+  "去、去了…啊啊…",
+  "顫、顫抖…說不了…",
+  "嗯咿…！頭…空白…",
+];
+const PAIN_BITS = [
+  "痛…！不要碰…！",
+  "過、過敏…好痛…",
+  "啊痛…求你停…",
+  "碰不得…太、太過了…",
+  "不要…痛死了…嗯…！",
+  "禁、禁臠…碰一下就…痛…",
+];
+
 const ACT_BITS = {
   waist: ["腰…嗯…", "好癢…"],
   butt: ["臀…嗯…", "不要揉…"],
@@ -94,6 +117,13 @@ export function ensureStunFields(who) {
   b.shock = clamp(b.shock, 0, SHOCK_MAX);
   b.shockAt = Number(b.shockAt) || 0;
   b.shockRepliesLeft = Math.max(0, Number(b.shockRepliesLeft) || 0);
+  b.talkExchangeCount = Math.max(0, Math.round(Number(b.talkExchangeCount) || 0));
+  b.spasmUntil = Math.max(0, Number(b.spasmUntil) || 0);
+  b.overstim = !!b.overstim;
+  if (b.spasmUntil && Date.now() >= b.spasmUntil) {
+    b.spasmUntil = 0;
+    b.overstim = false;
+  }
   return b;
 }
 
@@ -190,9 +220,71 @@ export function stunTier(stun) {
   return "calm";
 }
 
-export function shouldSkipLlm(stun) {
+
+export function inSpasm(who) {
+  const b = ensureStunFields(who);
+  if (!b) return false;
+  return !!(b.spasmUntil && Date.now() < b.spasmUntil);
+}
+
+export function inOverstim(who) {
+  const b = ensureStunFields(who);
+  return !!(b && b.overstim && inSpasm(who));
+}
+
+/**
+ * 高失神後繼續挑逗 → 痙攣；痙攣中再挑逗 → 過感痛苦。
+ */
+export function applyTeaseSpasm(who, actId = "", stunBefore = null) {
+  const b = ensureStunFields(who);
+  if (!b) return { enteredSpasm: false, enteredPain: false, mode: "normal" };
+  let enteredSpasm = false;
+  let enteredPain = false;
+  if (inSpasm(who)) {
+    if (actId) {
+      b.overstim = true;
+      enteredPain = true;
+      b.spasmUntil = Math.max(b.spasmUntil, Date.now() + Math.floor(SPASM_MS / 2));
+    }
+  } else if (actId && stunBefore != null && stunBefore >= SPASM_ENTER_STUN) {
+    // 已經高失神後還繼續挑逗 → 痙攣（同一下達標不算）
+    b.spasmUntil = Date.now() + SPASM_MS;
+    b.overstim = false;
+    enteredSpasm = true;
+  }
+  const mode = inOverstim(who) ? "pain" : inSpasm(who) ? "spasm" : "normal";
+  return { enteredSpasm, enteredPain, mode };
+}
+
+export function spasmTemplate(who, actId = "") {
+  ensureStunFields(who);
+  const pool = inOverstim(who)
+    ? [...PAIN_BITS, ...STUN_BITS.slice(0, 3)]
+    : [...SPASM_BITS, ...(ACT_BITS[actId] || []), ...MOANS];
+  const n = 2 + Math.floor(Math.random() * 2);
+  const parts = [];
+  for (let i = 0; i < n; i++) parts.push(pick(pool));
+  return parts.join("").replace(/(…)+/g, "…").slice(0, 28);
+}
+
+/** 每完成一輪對話 +1；每 2–3 輪降性奮／衝擊。 */
+export function noteTalkExchange(who) {
+  const b = ensureStunFields(who);
+  if (!b) return b;
+  b.talkExchangeCount = (b.talkExchangeCount || 0) + 1;
+  // 每 3 輪淡化一次（2–3 的穩定落點）
+  if (b.talkExchangeCount % 3 === 0 && !inSpasm(who)) {
+    b.arousal = clamp((b.arousal || 0) - 2, 0, 30);
+    b.shock = clamp((b.shock || 0) - 8, 0, SHOCK_MAX);
+  }
+  return b;
+}
+
+export function shouldSkipLlm(stun, who = null) {
+  if (who && inSpasm(who)) return true;
   return clamp(stun, 0, 100) >= 75;
 }
+
 
 function stripCausal(text) {
   return String(text || "")
@@ -276,12 +368,15 @@ export function stunTemplate(stun, actId = "") {
 /**
  * 依失神階改寫回覆。≥75 應走模板；若仍傳入則整段替換。
  */
-export function scrambleReply(text, stun, actId = "") {
+export function scrambleReply(text, stun, actId = "", who = null) {
+  // 痙攣／過感期間：強制模板，不管話題
+  if (who && inSpasm(who)) {
+    return spasmTemplate(who, actId);
+  }
   const s = clamp(stun, 0, 100);
   const tier = stunTier(s);
   const raw = String(text || "").trim();
   if (tier === "calm") {
-    // 仍截斷超長說明
     if (raw.length > 80) return raw.slice(0, 72) + "…";
     return raw || "……";
   }
@@ -291,18 +386,20 @@ export function scrambleReply(text, stun, actId = "") {
     if (out.length > 56) out = out.slice(0, 52) + "…";
     return out || pick(MOANS);
   }
-  // broken 50–74
   return scrambleBroken(raw, actId);
 }
 
 /** 給 UI／除錯：當前分數與階。 */
 export function stunSnapshot(who, actId = "") {
   const score = effectiveStun(who, actId);
+  const mode = inOverstim(who) ? "pain" : inSpasm(who) ? "spasm" : "normal";
   return {
     stun: score,
     base: calcStun(who),
     tier: stunTier(score),
-    skipLlm: shouldSkipLlm(score),
+    skipLlm: shouldSkipLlm(score, who),
     shock: ensureStunFields(who)?.shock || 0,
+    mode,
+    spasmUntil: ensureStunFields(who)?.spasmUntil || 0,
   };
 }

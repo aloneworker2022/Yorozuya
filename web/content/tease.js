@@ -17,9 +17,9 @@ export const PULL_ACT = "pull_out";
 
 /** 插入所需：已解鎖陰蒂階 + 性奮門檻 */
 export const INSERT_MIN_STAGE = 4;
-export const INSERT_MIN_AROUSAL = 15;
+export const INSERT_MIN_AROUSAL = 30;
 
-const PRESSES_PER_ADVANCE = 2;
+const PRESSES_PER_ADVANCE = 4;
 
 export function ensureTeaseFields(who) {
   const b = ensureBody(who);
