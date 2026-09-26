@@ -68,7 +68,7 @@
   }
   function create({cols,rows,blocked,getSeats=()=>[],random=Math.random}) {
     const state={u:2.5,v:3.5,moving:false,mirrored:false,step:0,mode:'idle',furnitureId:null,facing:'left',seatHeight:35};
-    let route=[],next=null,wait=1.8,elapsed=0,seat=null,sitTime=0,sitCooldown=0;
+    let route=[],next=null,wait=1.8,elapsed=0,seat=null,sitTime=0,sitCooldown=0,present=false;
     const valid=(u,v)=>u>=0&&v>=0&&u<cols&&v<rows&&!blocked(u,v);
     if(!valid(Math.floor(state.u),Math.floor(state.v))){
       for(let v=0;v<rows;v++)for(let u=0;u<cols;u++)if(valid(u,v)){state.u=u+.5;state.v=v+.5;v=rows;break;}
@@ -88,6 +88,7 @@
       return Math.abs(state.u-u-.5)+Math.abs(state.v-v-.5)>.001?[{u,v},...path]:path;
     }
     function requestSit(id) {
+      if(!present)return {ok:false,message:'房間裡還沒有人。'};
       if(seat)return {ok:false,message:state.mode==='sitting'?'她已經坐下了。':'她正在使用座位，請稍候。'};
       const reachableCells=reachable();
       // Furniture defines seat anchors and rotated footprints. Navigation ends
@@ -120,13 +121,22 @@
     }
     return {
       state,requestSit,standUp,
+      get present(){return present;},
+      setPresent(value){
+        present=!!value;
+        if(!present){seat=null;state.furnitureId=null;route=[];next=null;state.moving=false;state.mode='idle';return;}
+        if(!valid(Math.floor(state.u),Math.floor(state.v))){
+          for(let v=0;v<rows;v++)for(let u=0;u<cols;u++)if(valid(u,v)){state.u=u+.5;state.v=v+.5;v=rows;break;}
+        }
+        wait=1.2;
+      },
       // Sitting uses a visual seat anchor, while navigation stays beside it.
       position(){return state.mode==='sitting'&&seat?{u:seat.anchor.u,v:seat.anchor.v}:{u:state.u,v:state.v};},
-      isFurnitureLocked(id){return !!seat&&seat.id===id;},
-      occupies(u,v){return (Math.floor(state.u)===u&&Math.floor(state.v)===v)||!!(next&&next.u===u&&next.v===v)||!!(seat&&seat.exit.u===u&&seat.exit.v===v);},
+      isFurnitureLocked(id){return present&&!!seat&&seat.id===id;},
+      occupies(u,v){return present&&((Math.floor(state.u)===u&&Math.floor(state.v)===v)||!!(next&&next.u===u&&next.v===v)||!!(seat&&seat.exit.u===u&&seat.exit.v===v));},
       frame(){return state.mode==='sitting'?seatedFrame(state.facing,state.seatHeight):frames[state.mirrored?1:0][state.moving?state.step:0];},
       update(dt,paused=false){
-        if(paused){state.moving=false;return;}
+        if(!present||paused){state.moving=false;return;}
         sitCooldown=Math.max(0,sitCooldown-dt);
         if(state.mode==='sitting'){sitTime-=dt;state.moving=false;if(sitTime<=0)standUp();return;}
         if(!next){

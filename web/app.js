@@ -492,8 +492,8 @@ const TRAIT_POOL = {
 };
 const SACRIFICE_POOL = ["迷路的冒險者", "落魄的商人", "自願的信徒", "酒館的醉漢", "負債的賭徒", "失戀的詩人", "貪婪的盜賊", "無名的流浪者", "可疑的煉金術士", "逃兵"];
 
-// 背景故事:魅魔不是魔界來的,是被從現實世界召喚來的女子——
-// 召喚當下由核心擲骰生成並寫入存檔,人設永遠一致,AI 只負責「演」它。
+// 新召喚的魅魔沒有過去、沒有經歷,也沒有職業。
+// 下面的職業表只留給名冊裡舊的人;新的召喚不再抽。
 // 每項 = [職業, 人生描述, [早/午/下午/晚 作息]]
 const JOB_POOL = [
   ["女高中生", "每天搭電車通學、和同學混社團,考試前才熬夜抱佛腳",
@@ -555,18 +555,6 @@ const JOB_POOL = [
   ["天文台研究助理", "熬夜看星星是工作,許願是給觀測順利用的",
     ["觀測剛結束、補眠中", "起床整理昨晚的數據", "寫報告、校準儀器", "上山,準備今晚的觀測"]],
 ];
-const ATTITUDE_POOL = [
-  "對突然被召喚到這裡感到莫名其妙,滿腦子想著原本的生活",
-  "嘴上抱怨自己被綁架了,心裡卻對這個奇怪的地方有一點點好奇",
-  "非常不情願,認為這是非法拘禁,三不五時揚言要告你",
-  "半信半疑,懷疑這是整人節目,或只是一場還沒醒的夢",
-  "意外地看得開,覺得反正原本的日子也過膩了",
-  "表面上配合,其實一直在暗中觀察這裡有沒有逃跑路線",
-  "比起自己的處境,更擔心原本世界裡沒人餵的貓",
-  "乾脆當成免費長假,順便逃避原本世界堆著的爛攤子",
-  "認定召喚她的人遲早會後悔,抱著看好戲的心態住下來",
-  "出乎意料地興奮,覺得這比原本一成不變的日子刺激多了",
-];
 const SCHEDULE_SLOTS = ["morning", "noon", "afternoon", "evening", "night"];
 const SLOT_LABEL = { morning: "早上", noon: "中午", afternoon: "下午", evening: "晚上", night: "深夜" };
 function timeSlot(h = new Date().getHours()) {
@@ -578,6 +566,15 @@ function timeSlot(h = new Date().getHours()) {
   return "night";
 }
 function makeSchedule(job) {
+  if (!job) {
+    return {
+      morning: "醒著,但沒有昨天可以想",
+      noon: "還沒學會怎麼過一天",
+      afternoon: "看著萬事屋,什麼都是第一次",
+      evening: "沒有經歷可以拿出來講",
+      night: "睡覺",
+    };
+  }
   const entry = JOB_POOL.find(([j]) => j === job);
   const acts = entry?.[2] || ["過著自己的生活", "吃頓飯歇口氣", "忙自己的事", "度過一個平凡的夜晚"];
   const sch = {};
@@ -604,11 +601,11 @@ function stripRetiredGirlBits(s) {
 }
 
 function makeBackstory() {
-  const [job, life] = pick(JOB_POOL);
   return {
-    job,
-    backstory: `她原本是現實世界的${job}——${life}。某天毫無預警地被召喚到魅魔萬事屋,成了所謂的「魅魔」。${pick(ATTITUDE_POOL)}。`,
-    schedule: makeSchedule(job),
+    job: "",
+    jobDesc: null,
+    backstory: "她是魅魔,一個沒有過去、沒有經歷的魔女。被召喚到魅魔萬事屋時,人生才剛開始。",
+    schedule: makeSchedule(""),
   };
 }
 const MERCHANT_LINES = ["今天的貨色不錯吧?", "都是自願的,大概。", "早買早享受,晚了就沒了。", "便宜貨也有便宜貨的用法。", "別問來歷。問了也不便宜。"];
@@ -2416,8 +2413,8 @@ function renderSummonCard(ov, s) {
       ${!ready && lastWeaveError
         ? `<p class="small" style="color:var(--red)">織不出形體:${esc(lastWeaveError)}</p>`
         : ""}
-      <p class="small">${s.personality.join("・")} / ${s.speech}</p>
-      <p class="small dim">她原本是……${esc(s.job || "?")}</p>
+      <p class="small">${esc([].concat(s.personality || [], s.tone || []).filter(Boolean).join("・"))}</p>
+      <p class="small dim">${s.job ? `她原本是……${esc(s.job)}` : "她沒有過去,也還沒有經歷。個性是與生俱來的。"}</p>
       ${s.comfyCkpt && imgProvider() === "comfy"
         ? `<p class="small dim">生圖模型 · ${esc(shortCkptName(s.comfyCkpt))}</p>` : ""}
       <button id="summon-close">接受契約</button>
@@ -5453,7 +5450,7 @@ function craveSet(s, v) {
   dirty = true;
 }
 function craveAdd(s, d) { craveSet(s, craveValue(s) + d); }
-/** 注入 prompt 的檔位:平靜時回 null(完全不提),她就只是個被擄來的普通人 */
+/** 注入 prompt 的檔位:平靜時回 null(完全不提)。她是沒有過去的魅魔,不是被擄來的人。 */
 function craveTier(s) {
   const v = craveValue(s);
   return v >= CRAVE_HIGH ? "high" : v >= CRAVE_MID ? "mid" : null;
@@ -8966,6 +8963,7 @@ function buildCtx(s) {
       libido: s.libido || null, look: s.look || null, special_traits: s.specialTraits || null,
       // 她身上穿的是哪一套(生涯服裝 or 衣櫃第幾套)——聊天講的要跟立繪畫的一致
       outfitPick: s.outfitPick ?? null,
+      job: s.job || null,
       job_desc: s.jobDesc || null,
     },
     relationship: {

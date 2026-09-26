@@ -2377,11 +2377,20 @@ async def _stream_ollama_chat(endpoint: str, body: dict, on_token) -> str | None
     所有 Ollama 流量都經過這裡,所以 GPU 換班鎖也開在這 —— 進來前先把
     ComfyUI 的 checkpoint 卸出 VRAM,免得 Ollama 載模型時撞到 OOM。
     連續聊天只有第一句會付換班成本(lease 是黏著的)。
+    整段再套一層逾時:半開的連線不會觸發 httpx 讀取逾時,會把鎖佔到重開機。
     """
     comfy.note_ollama_endpoint(endpoint)
+    try:
+        return await asyncio.wait_for(_stream_ollama_chat_locked(endpoint, body, on_token), timeout=180)
+    except asyncio.TimeoutError:
+        return "Ollama 逾時，沒有產生文字"
+
+
+async def _stream_ollama_chat_locked(endpoint: str, body: dict, on_token) -> str | None:
     async with comfy.lease("llm"):
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
+            timeout = httpx.Timeout(connect=5, read=120, write=30, pool=5)
+            async with httpx.AsyncClient(timeout=timeout) as c:
                 async with c.stream("POST", endpoint.rstrip("/") + "/api/chat", json=body) as r:
                     async for line in r.aiter_lines():
                         if not line.strip():
@@ -2389,7 +2398,9 @@ async def _stream_ollama_chat(endpoint: str, body: dict, on_token) -> str | None
                         o = json.loads(line)
                         if o.get("error"):
                             return str(o["error"])
-                        piece = (o.get("message") or {}).get("content", "")
+                        message = o.get("message") or {}
+                        # 0.34 起思考放在 thinking，台詞在 content。沒關思考時 content 會一直是空的。
+                        piece = message.get("content") or ""
                         if piece:
                             on_token(piece)
                         if o.get("done"):

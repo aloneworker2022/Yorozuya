@@ -40,8 +40,8 @@ const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const pk = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(v)));
 const allow = (item, rating) => rating === "nsfw" || !item.nsfw;
-// 未成年設定的職業:NSFW 抽卡一律排除(見 generateGirl 的 occPool)
-const MINOR_OCC = new Set(["女高中生"]);
+// 職業池仍留在 persona_pools。魅魔人生：召喚當下不配職業。
+
 
 function pickPlain(pool, rating) {
   const av = (pool || []).filter(x => x != null && allow(typeof x === "string" ? {} : x, rating));
@@ -166,20 +166,13 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
   if (!F) return null;
 
   const arch = rollGraded(F.archetypes, luck, rating) || pk(F.archetypes.filter(a => allow(a, rating)));
+  if (!arch) return null;
   const proactivity = clamp(arch.proactivity + ri(-12, 12), 5, 98);
   const shynessBase = arch.shyness;
-
-  // 職業:NSFW 模式排除未成年設定的職業。這一整套人設會直接餵給性向描寫的
-  // prompt(身體感軸、飢渴、交配演出),未成年職業不能走那條路徑。
-  const occPool = rating === "nsfw" ? F.occupations.filter(o => !MINOR_OCC.has(o.name)) : F.occupations;
-  const occ = rollGraded(occPool, luck, rating);
-  if (!occ || !arch) return null;
   const lib = rollGraded(F.libido, luck, rating) || { name: "普通", grade: "R", shyness_delta: 0, desc: "" };
   const shyness = clamp(shynessBase + (lib.shyness_delta || 0));
   const quirk = pk(F.quirks.filter(q => allow(q, rating))).text;
   const chrono = pk(F.chronotypes);
-  const attitude = pk(F.attitudes);
-  const arc = pk(F.arcs);
 
   const A = F.appearance;
   const txt = x => (x && (x.text || x.name)) || "";
@@ -205,10 +198,8 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
   // 年紀會隨機漂,同一個人設每次看起來都不同歲數。範圍見 persona_pools 的
   // age(沒設就用 18~33:她們都是被從現實生活裡擄來的成年人)。
   const ageRange = F.age || {};
-  // 服裝分兩個維度(見 README「服裝:生涯服裝 + 個人衣櫃」):
-  //   career_outfit —— 職業給的,她平常就穿這身。學生就是制服,不會是西裝。
-  //   wardrobe      —— 個人喜好,依關係解鎖(朋友 1 / 女友 3 / 妻子 6 套)。
-  // 陌生階段她只讓你看見工作時的樣子,所以預設作畫用的是 career_outfit。
+  // 召喚時沒有職業,也就沒有生涯制服。平常穿個人衣櫃的第一套。
+  // wardrobe 仍依關係解鎖(朋友 1 / 女友 3 / 妻子 6 套)。
   const wardrobe = pickN(A.style, WARDROBE_SIZE);
   const eroticPool = (A.erotic_style || []).filter(x => allow(typeof x === "string" ? { nsfw: true } : x, rating));
   const eroticSrc = eroticPool.length ? eroticPool.map(x => typeof x === "string" ? x : x.text) : [];
@@ -238,7 +229,7 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
     hair: txt(hair),
     hair_color: txt(hairColor),
     style: wardrobe[0],   // 舊欄位:仍指得到一套衣服,舊程式路徑不會拿到 undefined
-    career_outfit: occ.outfit || "",
+    career_outfit: "",
     wardrobe,
     eroticOutfits,
     sleepOutfits,
@@ -249,7 +240,6 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
   // 總評 = 計分軸純平均。髮色／特徵仍抽進 look,但不進分(鑑別度低、只會把 SSR 稀釋掉)。
   // 性器軸等機率抽、不進分。NSFW 沒抽到的軸(乳暈／乳頭)不進平均,避免 SFW 被缺軸扭曲。
   const grades = {
-    occupation: itemGrade(occ),
     personality: itemGrade(arch),
     libido: itemGrade(lib),
     build: itemGrade(build),
@@ -282,12 +272,14 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
   const freeNames = F.names.filter(x => !used.has(x));
   const name = pk(freeNames.length ? freeNames : F.names);
 
-  // 作息:職業四時段;深夜睡覺（不再預設「織夢」）
-  const slots = ["morning", "noon", "afternoon", "evening"];
-  const acts = occ.sch || ["過著自己的生活", "吃頓飯歇口氣", "忙自己的事", "度過一個平凡的夜晚"];
-  const schedule = {};
-  slots.forEach((k, i) => schedule[k] = acts[i]);
-  schedule.night = "睡覺";
+  // 作息:沒有過去的魅魔,日子從零開始。深夜睡覺。
+  const schedule = {
+    morning: "醒著,但沒有昨天可以想",
+    noon: "還沒學會怎麼過一天",
+    afternoon: "看著萬事屋,什麼都是第一次",
+    evening: "沒有經歷可以拿出來講",
+    night: "睡覺",
+  };
 
   return {
     name,
@@ -307,10 +299,10 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
     dislikes: pickN(F.dislikes, 2),
     hobbies: pickHobbies(arch, F.hobby_pool, ri(2, 3)),
     chrono: { name: chrono.name, desc: chrono.desc, wake_react: chrono.wake_react },
-    arc,
-    job: occ.name,
-    jobDesc: occ.desc || null,
-    backstory: `她原本是現實世界的${occ.name}——${occ.life}。某天毫無預警地被召喚到魅魔萬事屋,成了所謂的「魅魔」。${attitude}。`,
+    arc: null,
+    job: "",
+    jobDesc: null,
+    backstory: "她是魅魔,一個沒有過去、沒有經歷的魔女。被召喚到魅魔萬事屋時,人生才剛開始。",
     schedule,
     look,
     specialTraits: traits,

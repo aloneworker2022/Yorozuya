@@ -18,13 +18,12 @@
   const wallHeight = 100;
   const catalog = window.RoomFurniture;
   const items = [{id:1,type:'chair',u:1,v:3,facing:'left'}];
-  let selectedId = 1, nextId = 2;
+  let selectedId = null, nextId = 2;
   const moveButton = document.getElementById('move-item');
-  const status = document.getElementById('furniture-status');
   const editButton = document.getElementById('edit-room');
-  const interactionMenu = document.getElementById('actor-menu');
-  let editing = false;
-  let placing = false, drag = null, candidate = null;
+  const editor = document.getElementById('room-editor');
+  const status = document.getElementById('furniture-status');
+  let editing = false, placing = false;
   const selected = () => items.find(item => item.id === selectedId);
   const frameOf = item => catalog[item.type].frames[item.facing];
   let showGrid = false;
@@ -105,13 +104,13 @@
     line([0,0,7],[COLS,0,7],'#ffe3b9');
     line([0,ROWS],[COLS,ROWS],'#f3d3a5');
     line([COLS,0],[COLS,ROWS],'#f0cda0');
-    if (showGrid || placing || drag) {
+    if (showGrid || (editing && placing)) {
       for (let u = 0; u <= COLS; u++) line([u,0],[u,ROWS],'#7c8061');
       for (let v = 0; v <= ROWS; v++) line([0,v],[COLS,v],'#7c8061');
     }
-    const active = selected();
-    if (editing && active) {
-      const pos = candidate ? {...active,...candidate} : active;
+    const active = editing ? selected() : null;
+    if (active) {
+      const pos = active;
       const f=frameOf(pos);
       const tint=actor.isFurnitureLocked(pos.id)?'#abb8bd':canPlace(pos)?'#9aa982':'#bf8073';
       face([[pos.u,pos.v],[pos.u+f.cols,pos.v],[pos.u+f.cols,pos.v+f.rows],[pos.u,pos.v+f.rows]],tint);
@@ -121,7 +120,7 @@
     const output=ctx.getImageData(0,0,canvas.width,canvas.height);
     const depths=new Float64Array(canvas.width*canvas.height).fill(-Infinity);
     for(const original of items) {
-      const item=original.id===selectedId && candidate ? {...original,...candidate} : original;
+      const item=original;
       const f=frameOf(item),[px,py]=project(item.u,item.v);
       const ox=Math.round(px-f.anchor.x),oy=Math.round(py-f.anchor.y);
       for(let sy=0;sy<f.canvas.height;sy++) for(let sx=0;sx<f.canvas.width;sx++) {
@@ -140,6 +139,7 @@
   function drawActor() {
     if(!scenePixels)return;
     const output=new ImageData(new Uint8ClampedArray(scenePixels.data),canvas.width,canvas.height);
+    if(!actor.present){ctx.putImageData(output,0,0);renderView();return;}
     const {u,v}=actor.position(),f=actor.frame(),[px,py]=project(u,v);
     const ox=Math.round(px-f.anchor.x),oy=Math.round(py-f.anchor.y);
     function blend(x,y,color,alpha,depth){
@@ -178,74 +178,61 @@
     return u + v + (frame.depth ? frame.depth[sy * frame.width + sx] : Math.max(0, frame.anchor.y - sy) / 32);
   }
   function hitActor(point) {
+    if(!actor.present)return false;
     const p = worldPoint(point);
     const {u, v} = actor.position(), f = actor.frame(), [x, y] = project(u, v);
-    const sx = Math.floor(p.x - Math.round(x - f.anchor.x)), sy = Math.floor(p.y - Math.round(y - f.anchor.y));
+    const sx = Math.floor(p.x - x + f.anchor.x), sy = Math.floor(p.y - y + f.anchor.y);
     if (sx < 0 || sy < 0 || sx >= f.width || sy >= f.height) return false;
     if (f.pixels[(sy * f.width + sx) * 4 + 3] <= 20) return false;
     const hers = actorDepthAt(sx, sy, u, v, f);
-    const px = Math.floor(p.x), py = Math.floor(p.y);
-    if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) return false;
-    return hers >= sceneDepth[py * canvas.width + px];
+    const item = hitItem(point);
+    if (!item) return true;
+    const frame = frameOf(item), [ix, iy] = project(item.u, item.v);
+    const isx = Math.floor(p.x - ix + frame.anchor.x), isy = Math.floor(p.y - iy + frame.anchor.y);
+    if (isx < 0 || isy < 0 || isx >= frame.canvas.width || isy >= frame.canvas.height) return true;
+    const index = isy * frame.canvas.width + isx;
+    if (!frame.pixels[index * 4 + 3]) return true;
+    return hers >= frame.depth[index] + item.u + item.v;
   }
-  let press = null;
-  let holdTimer = null;
-  const HOLD_MS = 500;
-  const DRAG_THRESHOLD = 8; // CSS pixels, independent of zoom and display density.
-  function cancelHold() {
-    clearTimeout(holdTimer);holdTimer=null;
-    canvas.classList.remove('holding');
-  }
-  function clearPress() { cancelHold();press=null; }
-  function openInteraction() {
-    if(editing||interactionMenu.open)return;
-    refreshActorControls();
-    const name=document.getElementById('summon-name').textContent.trim();
-    document.getElementById('actor-menu-title').textContent=name?`和${name}互動`:'和她互動';
-    document.querySelector('#actor-menu p').textContent='想一起做些什麼？';
-    interactionMenu.showModal();
-  }
+  let press = null, longTimer = null;
+  const LONG_PRESS_MS = 500, TAP_PX = 8;
   function openPortrait() {
     if (window.RoomPortrait?.open) window.RoomPortrait.open();
-    else status.textContent = '立繪面板還在載入，稍後再點她。';
+    else status.textContent = '對話還在載入，稍後再長按她。';
+  }
+  function clearLong() {
+    if (longTimer) { clearTimeout(longTimer); longTimer = null; }
   }
   function hitItem(point) {
     const p=worldPoint(point);let best=null,bestDepth=-Infinity;
     for(const item of items) {
       const f=frameOf(item),[x,y]=project(item.u,item.v);
-      const sx=Math.floor(p.x-Math.round(x-f.anchor.x)),sy=Math.floor(p.y-Math.round(y-f.anchor.y));
+      const sx=Math.floor(p.x-x+f.anchor.x),sy=Math.floor(p.y-y+f.anchor.y);
       if(sx<0||sy<0||sx>=f.canvas.width||sy>=f.canvas.height) continue;
       const index=sy*f.canvas.width+sx,d=f.depth[index]+item.u+item.v;
       if(f.pixels[index*4+3] && d>=bestDepth){best=item;bestDepth=d;}
     }
     return best;
   }
-  function hitTarget(point, pointerType) {
-    const exact = p => !editing && hitActor(p) ? {actor:true} : hitItem(p);
-    const direct = exact(point);
-    if (direct || placing) return direct; // Placement must use the requested ground cell.
-    const bounds = canvas.getBoundingClientRect();
-    const radius = pointerType === 'mouse' ? 4 : 10;
-    // Search outward in CSS pixels; only visible pixels are eligible.
-    for (let r = 2; r <= radius; r += 2) {
-      for (let i = 0; i < 16; i++) {
-        const angle = i * Math.PI / 8;
-        const hit = exact({x:point.x+Math.cos(angle)*r*canvas.width/bounds.width,
-          y:point.y+Math.sin(angle)*r*canvas.height/bounds.height});
-        if (hit) return hit;
-      }
-    }
-    return null;
-  }
   function setPlacing(value) {
     placing=value;moveButton.setAttribute('aria-pressed',String(value));
     moveButton.textContent=value?'取消移動':'移動';
   }
-  function cancelDrag() { drag=null;candidate=null; }
+  function setEditing(on) {
+    editing=!!on;
+    editButton.setAttribute('aria-pressed',String(editing));
+    editButton.setAttribute('aria-expanded',String(editing));
+    editButton.textContent=editing?'完成':'編輯';
+    editor.hidden=!editing;
+    document.body.classList.toggle('editing',editing);
+    if(!editing){setPlacing(false);selectedId=null;}
+    else status.textContent='點選家具後可移動、旋轉或收回，也可從下方加入。';
+    refresh();draw();
+  }
   function refreshActorControls(){
-    const item=editing?selected():null,locked=!!item&&actor.isFurnitureLocked(item.id);
+    const item=selected(),locked=!!item&&actor.isFurnitureLocked(item.id);
     for(const id of ['move-item','turn-item','remove-item']){
-      const control=document.getElementById(id);control.disabled=!editing||locked;
+      const control=document.getElementById(id);control.disabled=locked;
       control.title=locked?'她正在使用這件家具，起身離開後才能調整。':'';
     }
     const sitButton=document.getElementById('actor-sit');
@@ -275,7 +262,7 @@
     for(const entry of items) {
       const btn=document.createElement('button');btn.type='button';btn.dataset.instance=entry.id;
       btn.textContent=`${catalog[entry.type].name} #${entry.id}`;btn.setAttribute('aria-pressed',String(entry.id===selectedId));
-      btn.addEventListener('click',()=>{if(!editing)return;cancelDrag();setPlacing(false);selectedId=entry.id;status.textContent='已選取，可移動、旋轉或收回。';refresh();draw();});
+      btn.addEventListener('click',()=>{if(!editing)return;setPlacing(false);selectedId=entry.id;status.textContent='已選取，可移動、旋轉或收回。';refresh();draw();});
       placed.append(btn);
     }
     for(const card of document.querySelectorAll('[data-add]')) {
@@ -286,12 +273,12 @@
   }
   moveButton.addEventListener('click',()=>{
     if(!editing||!selected()||actor.isFurnitureLocked(selectedId)) return;
-    cancelDrag();setPlacing(!placing);
-    status.textContent=placing?'點選空地，或拖曳選中的家具。':'已取消移動。';draw();
+    setPlacing(!placing);
+    status.textContent=placing?'點房間裡的空地放下。按住拖曳只會移動畫面。':'已取消移動。';draw();
   });
   document.getElementById('turn-item').addEventListener('click',()=>{
     const item=selected();if(!editing||!item||actor.isFurnitureLocked(item.id))return;
-    cancelDrag();const def=catalog[item.type];
+    const def=catalog[item.type];
     const next={...item,facing:def.directions[(def.directions.indexOf(item.facing)+1)%4]};
     if(canPlace(next)) {Object.assign(item,next);status.textContent='已旋轉家具。';}
     else status.textContent='旋轉後會碰到家具、人物或超出房間，請先移到空位。';
@@ -301,12 +288,12 @@
     if(!editing||actor.isFurnitureLocked(selectedId))return;
     const index=items.findIndex(item=>item.id===selectedId);if(index<0)return;
     const name=catalog[items[index].type].name;items.splice(index,1);
-    cancelDrag();setPlacing(false);selectedId=null;status.textContent=`已收回${name}，可以從下方列表再次加入。`;
+    setPlacing(false);selectedId=null;status.textContent=`已收回${name}，可以從下方列表再次加入。`;
     refresh();draw();
   });
   function addItem(type) {
     if(!editing)return;
-    cancelDrag();setPlacing(false);
+    setPlacing(false);
     const item={id:nextId,type,u:0,v:0,facing:'left'};let found=false;
     // Try the default direction first, then the perpendicular footprint.
     for(const facing of ['left','right']) {
@@ -316,7 +303,7 @@
       }
       if(found)break;
     }
-    if(found){nextId++;items.push(item);selectedId=item.id;status.textContent=`已加入${catalog[type].name}，可拖曳調整位置。`;}
+    if(found){nextId++;items.push(item);selectedId=item.id;status.textContent=`已加入${catalog[type].name}。按「移動」後點空地可換位置。`;}
     else status.textContent='房間沒有足夠的連續空位，請先移動或收回家具。';
     refresh();draw();
     document.querySelector('.scene').scrollIntoView({block:'start',behavior:'smooth'});
@@ -373,104 +360,81 @@
     const point = localPoint(event);
     pointers.set(event.pointerId, point);
     if (pointers.size === 2) {
-      clearPress();
-      cancelDrag();draw();
-    } else {
-      const target=hitTarget(point,event.pointerType),hit=target?.actor?null:target;
-      press={id:event.pointerId,point,clientX:event.clientX,clientY:event.clientY,target,
-        placing,ground:groundPoint(point),original:selected()?{...selected()}:null};
-      if(editing&&hit&&!placing){
-        selectedId=hit.id;cancelDrag();setPlacing(false);
-        press.original={...hit};
-        status.textContent=actor.isFurnitureLocked(hit.id)?'她正在使用這件家具，起身離開後才能調整。':'已選取，可拖曳移動、旋轉或收回。';
-        refresh();draw();
-      }
-      if(!editing&&target?.actor){
-        canvas.classList.add('holding');
-        holdTimer=setTimeout(()=>{
-          if(!press||pointers.size!==1)return;
-          press.handled=true;cancelHold();openInteraction();
-        },HOLD_MS);
-      }
+      clearLong();
+      press = null;
+      return;
     }
+    const onActor = !placing && hitActor(point);
+    press = {id: event.pointerId, x: point.x, y: point.y, moved: false, actor: onActor, longFired: false};
+    if (onActor) {
+      clearLong();
+      longTimer = setTimeout(() => {
+        if (!press || press.id !== event.pointerId || press.moved) return;
+        press.longFired = true;
+        openPortrait();
+      }, LONG_PRESS_MS);
+      return;
+    }
+    canvas.classList.add('dragging');
   });
   canvas.addEventListener('pointermove', event => {
     if (!pointers.has(event.pointerId)) return;
-    if (press && press.id === event.pointerId) {
-      if(press.handled)return;
-      if (Math.hypot(event.clientX-press.clientX,event.clientY-press.clientY) <= DRAG_THRESHOLD) return;
-      const item=press.original;
-      if(editing&&item&&!press.target?.actor&&(press.target||press.placing)&&!actor.isFurnitureLocked(item.id)){
-        drag={id:event.pointerId,start:press.ground,onItem:press.target?.id===item.id,original:item};
-      }
-      clearPress();
+    const moved = localPoint(event);
+    if (press && press.id === event.pointerId && Math.hypot(moved.x - press.x, moved.y - press.y) > TAP_PX) {
+      press.moved = true;
+      clearLong();
+      canvas.classList.add('dragging');
     }
-    canvas.classList.add('dragging');
+    if (press && press.actor && !press.moved) {
+      pointers.set(event.pointerId, moved);
+      return;
+    }
     const before = gesture();
-    pointers.set(event.pointerId, localPoint(event));
-    if (drag && pointers.size === 1) {
-      const ground = groundPoint(localPoint(event));
-      candidate = drag.onItem ? {u:drag.original.u+Math.round(ground.u-drag.start.u),v:drag.original.v+Math.round(ground.v-drag.start.v)}
-        : {u:Math.floor(ground.u),v:Math.floor(ground.v)};
-      draw(); return;
-    }
+    pointers.set(event.pointerId, moved);
+    if (pointers.size === 1 && press && !press.moved) return;
     const after = gesture();
     zoomAt(before.distance > 0 ? after.distance / before.distance : 1, before, after);
   });
-  function commitPlacement(position) {
-    if(!editing)return;
-    const item=selected();
-    if(item&&canPlace({...item,...position})){
-      Object.assign(item,position);setPlacing(false);
-      status.textContent=`已放好${catalog[item.type].name}。`;
-    }else status.textContent='這裡超出房間，或有家具、人物，已保留原位。';
-  }
   function release(event) {
-    if (!pointers.has(event.pointerId)) return;
-    if (press && press.id === event.pointerId) {
-      const tapped=!press.handled&&event.type==='pointerup'&&Math.hypot(event.clientX-press.clientX,event.clientY-press.clientY)<=DRAG_THRESHOLD;
-      if(tapped){
-        if(editing&&press.placing&&press.original){
-          const ground=groundPoint(localPoint(event));
-          commitPlacement(press.target?.id===press.original.id?{u:press.original.u,v:press.original.v}:{u:Math.floor(ground.u),v:Math.floor(ground.v)});
-          refresh();draw();
-        }
-      }
-      clearPress();
-    }
-    if (drag && drag.id === event.pointerId) {
-      if (event.type === 'pointerup' && candidate) {
-        commitPlacement(candidate);
-      }
-      cancelDrag();refresh();draw();
-    }
+    const was = press && press.id === event.pointerId ? press : null;
+    if (was) { clearLong(); press = null; }
     pointers.delete(event.pointerId);
     if (!pointers.size) canvas.classList.remove('dragging');
+    if (!was || event.type !== 'pointerup' || was.moved || was.longFired || was.actor || !editing) return;
+    const point = localPoint(event);
+    const hit = hitItem(point);
+    if (placing) {
+      const item = selected();
+      if (!item) { setPlacing(false); refresh(); draw(); return; }
+      const ground = groundPoint(point);
+      const next = {u: Math.floor(ground.u), v: Math.floor(ground.v)};
+      if (canPlace({...item, ...next})) {
+        Object.assign(item, next);
+        setPlacing(false);
+        status.textContent = `已放好${catalog[item.type].name}。`;
+      } else status.textContent = '這裡超出房間，或有家具、人物，已保留原位。';
+      refresh(); draw();
+      return;
+    }
+    if (hit && actor.isFurnitureLocked(hit.id)) {
+      selectedId = hit.id;
+      status.textContent = '她正在使用這件家具，起身離開後才能調整。';
+      refresh(); draw();
+      return;
+    }
+    if (hit) {
+      selectedId = hit.id;
+      status.textContent = '已選取，可移動、旋轉或收回。';
+    } else {
+      selectedId = null;
+      status.textContent = '編輯中。點選家具，或從下方列表加入。';
+    }
+    refresh(); draw();
   }
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, release);
-  function resetGesture(){pointers.clear();clearPress();cancelDrag();canvas.classList.remove('dragging');draw();}
-  window.addEventListener('blur', resetGesture);
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)resetGesture();});
-  canvas.addEventListener('contextmenu',event=>event.preventDefault());
-  editButton.addEventListener('click',()=>{
-    editing=!editing;resetGesture();setPlacing(false);
-    editButton.textContent=editing?'完成':'編輯';
-    editButton.setAttribute('aria-pressed',String(editing));
-    document.querySelector('.furniture-panel').hidden=!editing;
-    document.querySelector('.inventory').hidden=!editing;
-    document.getElementById('actor-interact').disabled=editing;
-    document.getElementById('gesture-hint').innerHTML=editing
-      ?'輕點選家具・拖家具換位置<br>拖空白處移動畫面・按「完成」回到房間'
-      :'長按她開啟互動・拖曳移動畫面<br>雙指或滾輪縮放・按「編輯」布置家具';
-    interactionMenu.close();refresh();draw();
-  });
-  document.getElementById('actor-interact').addEventListener('click',openInteraction);
-  document.getElementById('actor-menu-close').addEventListener('click',()=>interactionMenu.close());
-  interactionMenu.addEventListener('close',resetGesture);
-  document.getElementById('actor-chat').addEventListener('click',()=>{interactionMenu.close();openPortrait();});
+  window.addEventListener('blur', () => { pointers.clear(); clearLong(); press = null; canvas.classList.remove('dragging'); });
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
-    if (pointers.size) return;
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
     zoomAt(Math.exp(-Math.max(-150, Math.min(150, event.deltaY * unit)) * .003), localPoint(event));
   }, { passive: false });
@@ -479,12 +443,13 @@
   document.getElementById('zoom-out').addEventListener('click', () => zoomAt(1 / 1.25, center));
   document.getElementById('reset-view').addEventListener('click', () => {
     pointers.clear();
-    clearPress();
-    cancelDrag();
+    clearLong();
+    press = null;
     canvas.classList.remove('dragging');
     Object.assign(camera, { scale: 1, x: 0, y: 0 });
     draw();
   });
+  editButton.addEventListener('click', () => setEditing(!editing));
   button.addEventListener('click', () => {
     showGrid = !showGrid;
     button.setAttribute('aria-pressed', String(showGrid));
@@ -502,21 +467,35 @@
   });
   function resumeActor(){
     wandering=true;actorToggle.setAttribute('aria-pressed','false');actorToggle.textContent='暫停動作';
-    cancelDrag();setPlacing(false);
+    setPlacing(false);
   }
+  function setActorPresent(on){
+    actor.setPresent(on);
+    document.querySelector('.actor-panel').hidden=!on;
+    if(on){wandering=true;actorToggle.setAttribute('aria-pressed','false');actorToggle.textContent='暫停動作';}
+    refreshActorControls();draw();
+  }
+  window.RoomActor={setPresent:setActorPresent,isPresent:()=>actor.present};
+  window.RoomView={
+    furniture(){
+      const counts=new Map();
+      for(const item of items){
+        const name=catalog[item.type]?.name||item.type;
+        counts.set(name,(counts.get(name)||0)+1);
+      }
+      return [...counts].map(([name,count])=>count>1?`${name}×${count}`:name);
+    },
+  };
   document.getElementById('actor-sit').addEventListener('click',()=>{
-    const item=editing?selected():null;
+    const item=selected();
     if(item&&!frameOf(item).seats.length){status.textContent='這件家具不是座位，請選擇椅子、沙發或床。';return;}
     const result=actor.requestSit(item?.id);
     status.textContent=result.message;
-    if(result.ok){interactionMenu.close();resumeActor();}
-    else {
-      document.querySelector('#actor-menu p').textContent=result.message;
-    }
+    if(result.ok)resumeActor();
     refreshActorControls();draw();
   });
   document.getElementById('actor-stand').addEventListener('click',()=>{
-    if(actor.standUp()){interactionMenu.close();resumeActor();}refreshActorControls();draw();
+    if(actor.standUp())resumeActor();refreshActorControls();draw();
   });
   new IntersectionObserver(entries=>{sceneVisible=entries[0].isIntersecting;}).observe(canvas);
   let previous=0;
@@ -525,9 +504,9 @@
     if(document.hidden||!sceneVisible){previous=now;return;}
     if(now-previous<50)return;
     const dt=previous?Math.min((now-previous)/1000,.1):0;previous=now;
-    actor.update(dt,!wandering||placing||!!drag||pointers.size>0||interactionMenu.open);
+    actor.update(dt,!actor.present||!wandering||placing||pointers.size>0);
     refreshActorControls();
-    drawActor();
+    if(actor.present)drawActor();
   }
   requestAnimationFrame(animate);
 })();
