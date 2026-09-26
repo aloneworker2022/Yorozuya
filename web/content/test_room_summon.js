@@ -4,6 +4,8 @@ import {
   ensureBody,
   bodyPromptLines,
   applyBodyFromUserText,
+  applyAct,
+  TALK_ACTS,
   snapshotBodyForUi,
   applyUiSnapshot,
   SEMEN_ZH,
@@ -12,7 +14,7 @@ import {
   LIBIDO_STAGE,
   arousalStage,
   libidoStage,
-} from "./body_state.js?v=3";
+} from "./body_state.js?v=4";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -489,6 +491,12 @@ function setTyping(on) {
 function setTalkEnabled(on) {
   $("talk-input").disabled = !on;
   $("talk-send").disabled = !on || talkBusy;
+  const acts = $("talk-acts");
+  if (acts) {
+    for (const btn of acts.querySelectorAll("button")) {
+      btn.disabled = !on || talkBusy || !girl;
+    }
+  }
 }
 
 function cleanLine(raw) {
@@ -1209,6 +1217,7 @@ function talkSystem() {
     "只寫你說出口的話，1 到 3 句。",
     "不要旁白、不要動作、不要表情描寫、不要引號標題。",
     "依個性回話，不要無故結束對話。",
+    "若對方正在摸／插你的身體：回覆必須立刻反應被碰到的部位（陰蒂／陰唇／陰道等），讓濕、腫、塞著的感覺進台詞。",
     ...bodyPromptLines(girl),
     guardLine(),
     ...personalityStageLines(),
@@ -1353,35 +1362,33 @@ async function openTalk() {
   }
 }
 
-async function sendTalk(event) {
-  event.preventDefault();
-  if (!girl) return;
-  const input = $("talk-input");
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = "";
-  if (isFarewell(text)) {
-    if (girl) {
-      girl.lastMark = "結束對話";
-      pushDebug("結束對話");
-      renderDebug();
-    }
+async function deliverUserTalk(text, opts = {}) {
+  const raw = String(text || "").trim();
+  if (!girl || !raw) return;
+  if (isFarewell(raw)) {
+    girl.lastMark = "結束對話";
+    pushData("結束對話");
+    renderDebug();
     hideSheet();
     return;
   }
   if (talkBusy || talkFor !== girl.id) return;
-  lines.push({ role: "user", content: text });
+  lines.push({ role: "user", content: raw });
   talkBusy = true;
   setTalkEnabled(true);
   ensureBody(girl);
-  applyBodyFromUserText(girl, text);
+  if (!opts.skipBody) {
+    if (opts.actId) applyAct(girl, opts.actId);
+    else applyBodyFromUserText(girl, raw);
+  }
   renderBodyPanel();
   persistRoom();
-  const naming = takeCall(text, "");
-  if (!naming) applyMark(await judgeTurn(text));
-  await typeLine("你", text);
+  const naming = takeCall(raw, "");
+  if (!naming) applyMark(await judgeTurn(raw));
+  await typeLine("你", raw);
   if (!sheetOpen() || talkFor !== girl.id) {
     talkBusy = false;
+    setTalkEnabled(true);
     return;
   }
   setTyping(true);
@@ -1409,10 +1416,45 @@ async function sendTalk(event) {
     await typeLine(girl.name, talkError(err));
   }
   talkBusy = false;
-  if (sheetOpen()) {
-    setTalkEnabled(true);
+  if (sheetOpen()) setTalkEnabled(true);
+}
+
+async function sendTalk(event) {
+  event.preventDefault();
+  if (!girl) return;
+  const input = $("talk-input");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  await deliverUserTalk(text);
+}
+
+async function sendTalkAct(actId) {
+  if (!girl || talkBusy || talkFor !== girl.id) return;
+  const act = TALK_ACTS.find((a) => a.id === actId);
+  if (!act) return;
+  await deliverUserTalk(act.text, { actId });
+}
+
+function bindTalkActs() {
+  const row = $("talk-acts");
+  if (!row || row.dataset.bound) return;
+  row.dataset.bound = "1";
+  row.replaceChildren();
+  for (const act of TALK_ACTS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = act.label;
+    btn.dataset.act = act.id;
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      sendTalkAct(act.id);
+    });
+    row.append(btn);
   }
 }
+
 
 let sheetScrollY = 0;
 
@@ -2182,6 +2224,7 @@ $("dbg-jump").addEventListener("change", () => {
   persistRoom();
   renderDebug();
 });
+bindTalkActs();
 $("talk-input-row").addEventListener("submit", (event) => { sendTalk(event); });
 $("portrait-backdrop").addEventListener("click", hideSheet);
 $("portrait-sheet").addEventListener("click", (event) => {

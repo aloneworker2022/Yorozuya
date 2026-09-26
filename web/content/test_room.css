@@ -114,3 +114,10 @@ button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-v
 .body-grid select{font:inherit;color:inherit;background:#f5efe3;border:1px solid #c8bba7;padding:6px 8px;border-radius:6px}
 .body-check{flex-direction:row!important;align-items:center;gap:8px!important}
 @media(min-width:600px){.body-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.talk-acts{display:flex;flex-wrap:nowrap;gap:6px;width:100%;box-sizing:border-box;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 0 4px;pointer-events:auto;scrollbar-width:none}
+.talk-acts::-webkit-scrollbar{display:none}
+.talk-acts[hidden]{display:none}
+.talk-acts button{flex:0 0 auto;min-height:44px;min-width:44px;padding:8px 12px;margin:0;border:2px solid rgba(244,251,255,.35);border-radius:999px;background:rgba(22,48,92,.92);color:#ffe14a;box-shadow:none;font:inherit;font-size:.82em;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
+.talk-acts button:disabled{opacity:.35;cursor:default}
+.talk-acts button:active:not(:disabled){background:rgba(40,70,120,.95)}
