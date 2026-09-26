@@ -365,12 +365,45 @@ function namesOf(list) {
   return (Array.isArray(list) ? list : []).map((item) => typeof item === "string" ? item : (item?.name || item?.text || "")).filter(Boolean);
 }
 
+const STAGE_HYSTERESIS = 5;
+const STAGE_LADDER = [
+  { key: "stranger", name: "陌生", at: 0 },
+  { key: "acquaintance", name: "普通", at: 15 },
+  { key: "friend", name: "朋友", at: 35 },
+  { key: "close_friend", name: "親密好友", at: 60 },
+  { key: "girlfriend", name: "女友", at: 100 },
+  { key: "passionate", name: "熱戀", at: 140 },
+  { key: "lover", name: "愛人", at: 180 },
+  { key: "wife", name: "妻子", at: 230 },
+  { key: "devoted_wife", name: "貼心妻子", at: 280 },
+  { key: "obedient_wife", name: "順從妻子", at: 330 },
+];
+const STAGE_NAME = Object.fromEntries(STAGE_LADDER.map((s) => [s.key, s.name]));
+const STAGE_AT = Object.fromEntries(STAGE_LADDER.map((s) => [s.key, s.at]));
+const STAGE_INDEX = Object.fromEntries(STAGE_LADDER.map((s, i) => [s.key, i]));
+
+const COLD_BRUSH = /不關(?:我|你)的事|跟你無關|還不熟|隨便你/;
+
+function stageIdx(who = girl) {
+  return STAGE_INDEX[who?.stage || "stranger"] ?? 0;
+}
+
 function mannerLine() {
   const stats = girl.stats;
   if (!stats) return "";
   const lead = stats.proactivity >= 60 ? "她會自己起話。" : stats.proactivity <= 40 ? "她多半等對方先說。" : "她會接話，但不搶著說。";
   const shy = stats.shyness >= 60 ? "她容易不好意思，話偏短。" : stats.shyness <= 40 ? "她說話直接，不太害羞。" : "她害羞程度普通。";
-  const jealous = stats.jealousy >= 60 ? "忌妒心偏高，但你們還不熟，先不要演出來。" : "";
+  let jealous = "";
+  if (stats.jealousy >= 60) {
+    const idx = stageIdx();
+    if (idx <= (STAGE_INDEX.friend ?? 2)) {
+      jealous = "忌妒心偏高，但你們還不熟，先不要演出來。";
+    } else if (idx === (STAGE_INDEX.close_friend ?? 3)) {
+      jealous = "忌妒心偏高，熟了會在乎他身邊有誰；用關心表現，不要用生分擋回去。";
+    } else {
+      jealous = "忌妒心偏高，會吃醋、會黏、會想確認他在不在乎你——用在乎表現，不要推開他。";
+    }
+  }
   return `${lead}${shy}${jealous}`;
 }
 
@@ -409,25 +442,84 @@ function chronoLine() {
 
 function catchLine() {
   const lines = namesOf(girl.catchphrases);
-  return lines.length ? `口頭禪可以偶爾用：${lines.join("、")}。不要每句都用。` : "";
+  if (!lines.length) return "";
+  const idx = stageIdx();
+  if (idx >= (STAGE_INDEX.close_friend ?? 3)) {
+    const warm = lines.filter((line) => !COLD_BRUSH.test(line));
+    const pool = warm.length ? warm : lines;
+    const ban = idx >= (STAGE_INDEX.girlfriend ?? 4)
+      ? "親密好友以上禁止用「不關我的事」「隨便你」當擋箭牌；女友以上更禁止「不關你的事／還不熟／跟你無關」這類生分回覆。"
+      : "親密好友階段禁止用陌生人式打發（「不關我的事」「隨便你」當擋箭牌）。";
+    return `口頭禪可以偶爾用：${pool.join("、")}。不要每句都用。${ban}`;
+  }
+  return `口頭禪可以偶爾用：${lines.join("、")}。不要每句都用。`;
 }
 
-const STAGE_HYSTERESIS = 5;
-const STAGE_LADDER = [
-  { key: "stranger", name: "陌生", at: 0 },
-  { key: "acquaintance", name: "普通", at: 15 },
-  { key: "friend", name: "朋友", at: 35 },
-  { key: "close_friend", name: "親密好友", at: 60 },
-  { key: "girlfriend", name: "女友", at: 100 },
-  { key: "passionate", name: "熱戀", at: 140 },
-  { key: "lover", name: "愛人", at: 180 },
-  { key: "wife", name: "妻子", at: 230 },
-  { key: "devoted_wife", name: "貼心妻子", at: 280 },
-  { key: "obedient_wife", name: "順從妻子", at: 330 },
-];
-const STAGE_NAME = Object.fromEntries(STAGE_LADDER.map((s) => [s.key, s.name]));
-const STAGE_AT = Object.fromEntries(STAGE_LADDER.map((s) => [s.key, s.at]));
-const STAGE_INDEX = Object.fromEntries(STAGE_LADDER.map((s, i) => [s.key, i]));
+function toneLine() {
+  if (!girl.tone) return "";
+  const idx = stageIdx();
+  if (idx >= (STAGE_INDEX.wife ?? 7)) {
+    return `語氣底色：${girl.tone}。你們是夫妻——叫他老公，私事可以敞開講；冷淡個性只留口吻，不要用生分擋話。`;
+  }
+  if (idx >= (STAGE_INDEX.girlfriend ?? 4)) {
+    return `語氣底色：${girl.tone}。你們已是戀人——冷淡只留口吻，禁止「不關你的事／還不熟／跟你無關」；可以黏、可以吃醋、可以講私事。`;
+  }
+  if (idx >= (STAGE_INDEX.close_friend ?? 3)) {
+    return `語氣底色：${girl.tone}。親密好友：不要用陌生人式打發；可以關心他。`;
+  }
+  return `語氣：${girl.tone}`;
+}
+
+function guardLine() {
+  if (!girl.guard) return "";
+  const idx = stageIdx();
+  if (idx >= (STAGE_INDEX.girlfriend ?? 4)) {
+    return "他剛剛讓你不舒服。這一句可以短一點、語氣硬一點，但仍是戀人在生氣——不要變陌生、不要說不關你的事。不要提到分數。";
+  }
+  if (idx >= (STAGE_INDEX.close_friend ?? 3)) {
+    return "他剛剛讓你不舒服。接下來這句更短一點，但不要裝成剛認識。不要提到分數。";
+  }
+  return "他剛剛讓你不舒服。接下來這幾句更短、更冷。不要解釋原因，也不要提到分數。";
+}
+
+function stageOverride() {
+  const idx = stageIdx();
+  if (idx >= (STAGE_INDEX.obedient_wife ?? 9)) {
+    return [
+      "【關係優先｜覆蓋前面所有冷淡與防備規則】",
+      "你們是夫妻。禁止用陌生擋話。禁止「還不熟」「不關你的事」「跟你無關」「不關我的事」。",
+      "叫他老公。私事、心情、打算都可以講。以他為主接住他，不要突然變冷或變陌生。",
+    ];
+  }
+  if (idx >= (STAGE_INDEX.devoted_wife ?? 8)) {
+    return [
+      "【關係優先｜覆蓋前面所有冷淡與防備規則】",
+      "你們是夫妻。禁止用陌生擋話。禁止「還不熟」「不關你的事」「跟你無關」。",
+      "叫他老公。什麼都講，包括抱怨他；用關心把氣氛接住。",
+    ];
+  }
+  if (idx >= (STAGE_INDEX.wife ?? 7)) {
+    return [
+      "【關係優先｜覆蓋前面所有冷淡與防備規則】",
+      "你們是夫妻。禁止用陌生擋話。禁止「還不熟」「不關你的事」「跟你無關」。",
+      "叫他老公。可以講私事、家常、抱怨；敞開分享。",
+    ];
+  }
+  if (idx >= (STAGE_INDEX.girlfriend ?? 4)) {
+    return [
+      "【關係優先｜覆蓋前面所有冷淡與防備規則】",
+      "你們已是戀人。禁止用陌生擋話。禁止回「還不熟」「不關你的事」「跟你無關」「不關我的事」這類推開他的話。",
+      "可以講私事、心情、不安；可以黏、可以吃醋。冷淡個性只留口吻，內容要接住他。",
+    ];
+  }
+  if (idx >= (STAGE_INDEX.close_friend ?? 3)) {
+    return [
+      "【關係優先｜覆蓋前面冷淡規則】",
+      "你們是親密好友。禁止用陌生人式打發。可以關心他、可以講日常與心事外緣。",
+    ];
+  }
+  return [];
+}
 
 function stageByAffection(aff) {
   let key = "stranger";
@@ -592,7 +684,7 @@ function applyMark(mark) {
     girl.guard = 0;
   } else if (mark === "冒犯") {
     delta = -1;
-    girl.guard = 2;
+    girl.guard = stageIdx(girl) >= (STAGE_INDEX.girlfriend ?? 4) ? 1 : 2;
   }
   girl.affection = (girl.affection || 0) + delta;
   const before = girl.stage || "stranger";
@@ -727,7 +819,7 @@ function talkSystem() {
     roomSight(),
     "沒有過去不是沒有個性。語氣和脾氣照下面來,不要演成一張白紙。",
     `個性：${(girl.personality || []).join("、") || "普通"}。`,
-    girl.tone ? `語氣：${girl.tone}` : "",
+    toneLine(),
     girl.quirk ? `但${girl.quirk}` : "",
     mannerLine(),
     reactionLine(),
@@ -735,14 +827,15 @@ function talkSystem() {
     tasteLine(),
     chronoLine(),
     `外表：${look.age != null ? `${look.age}歲，` : ""}${look.hair_color || ""}${look.hair || ""}，${look.eye_color || ""}眼。穿著${wornOutfit(girl) || "自己的衣服"}。`,
-    ...stageTalk(),
-    girl.guard ? "他剛剛讓你不舒服。接下來這幾句更短、更冷。不要解釋原因，也不要提到分數。" : "",
     returnMood(),
     ...lived,
     "【房間聊天】",
     "只寫你說出口的話，1 到 3 句。",
     "不要旁白、不要動作、不要表情描寫、不要引號標題。",
     "依個性回話，不要無故結束對話。",
+    guardLine(),
+    ...stageTalk(),
+    ...stageOverride(),
   ];
   return bits.filter(Boolean).join("\n");
 }
