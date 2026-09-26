@@ -172,20 +172,52 @@ async function waitImage(body) {
   return { status: "error", error: "逾時" };
 }
 
+function resetPortraitEntrance(img = $("portrait-img")) {
+  if (!img) return;
+  img.classList.remove("portrait-in");
+  img.hidden = true;
+}
+
+function startPortraitEntrance(img) {
+  if (!img || !sheetOpen()) return;
+  // Already settled in this open session — do not replay.
+  if (!img.hidden && img.classList.contains("portrait-in")) return;
+  img.hidden = false;
+  img.classList.remove("portrait-in");
+  // Force starting pose (off-screen) before adding .portrait-in.
+  void img.offsetWidth;
+  requestAnimationFrame(() => {
+    if (!sheetOpen() || img.hidden) return;
+    img.classList.add("portrait-in");
+  });
+}
+
 function paintHalfPortrait(who = girl) {
   const img = $("portrait-img");
   if (!img) return;
   const url = who?.portraits?.half || (who?.portrait && !who?.portraits?.full ? who.portrait : "") || "";
-  if (url && who) {
-    img.alt = `${who.name}的半身立繪`;
-    if (img.getAttribute("src") !== url) img.src = url;
-    // Keep hidden for now: entrance slide comes later; src is ready for debug/unhide.
-    img.hidden = true;
-  } else {
-    img.hidden = true;
+  if (!url || !who) {
+    resetPortraitEntrance(img);
     img.removeAttribute("src");
     img.alt = "";
+    return;
   }
+  img.alt = `${who.name}的半身立繪`;
+  const prev = img.getAttribute("src") || "";
+  const srcChanged = prev !== url;
+  if (srcChanged) img.src = url;
+  // Prefetch while sheet closed: keep off-screen until long-press opens chat.
+  if (!sheetOpen()) {
+    resetPortraitEntrance(img);
+    return;
+  }
+  const reveal = () => startPortraitEntrance(img);
+  if (srcChanged && !img.complete) {
+    img.addEventListener("load", reveal, { once: true });
+    img.addEventListener("error", reveal, { once: true });
+    return;
+  }
+  reveal();
 }
 
 async function ensureHalfPortrait(who) {
@@ -1443,6 +1475,7 @@ function hideSheet() {
   endTalkSession();
   lines = [];
   talkFor = "";
+  resetPortraitEntrance();
   $("portrait-sheet").hidden = true;
   persistRoom();
 }
