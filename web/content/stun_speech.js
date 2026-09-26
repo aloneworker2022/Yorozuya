@@ -1,7 +1,7 @@
 /** 房間聊天：程式化「失神」亂語（非只靠 prompt）。 */
 
-import { ensureBody, talkActById } from "./body_state.js?v=6";
-import { insertUnlocked } from "./tease.js?v=1";
+import { ensureBody, talkActById } from "./body_state.js?v=7";
+import { insertUnlocked } from "./tease.js?v=2";
 
 const SHOCK_MAX = 45;
 

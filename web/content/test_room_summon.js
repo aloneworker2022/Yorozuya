@@ -14,7 +14,7 @@ import {
   LIBIDO_STAGE,
   arousalStage,
   libidoStage,
-} from "./body_state.js?v=6";
+} from "./body_state.js?v=7";
 import {
   effectiveStun,
   shouldSkipLlm,
@@ -23,7 +23,7 @@ import {
   noteActShock,
   tickStunAfterReply,
   ensureStunFields,
-} from "./stun_speech.js?v=2";
+} from "./stun_speech.js?v=3";
 import {
   ensureTeaseFields,
   actLockState,
@@ -31,8 +31,20 @@ import {
   recordTeasePress,
   teaseHint,
   orderedTalkActs,
+  availableActs,
+  decayBodyIdle,
   insertUnlocked,
-} from "./tease.js?v=1";
+} from "./tease.js?v=2";
+import {
+  ensurePlayer,
+  emptyPlayer,
+  canTease,
+  teaseBlockReason,
+  applyTeaseClimax,
+  decayPlayerIdle,
+  playerHint,
+  SEMEN_MIN_TEASE_CC,
+} from "./player_state.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -45,7 +57,10 @@ import { rollPlaceScp, rollWorkScp, scpBrief, scpLabel } from "./japan_scp.js";
 const $ = (id) => document.getElementById(id);
 
 let girl = null;
+let player = emptyPlayer();
 let pending = false;
+let idleDecayTimer = 0;
+let lastIdleDecayAt = 0;
 let activityOpen = false;
 let workToken = 0;
 let lines = [];
@@ -1403,6 +1418,13 @@ async function deliverUserTalk(text, opts = {}) {
   ensureTeaseFields(girl);
 
   if (opts.actId) {
+    player = ensurePlayer(player);
+    if (!canTease(player)) {
+      const status = $("summon-status");
+      if (status) status.textContent = teaseBlockReason(player);
+      refreshTalkActs();
+      return;
+    }
     const lock = actLockState(girl, opts.actId);
     if (!lock.ok) {
       const status = $("summon-status");
@@ -1415,11 +1437,15 @@ async function deliverUserTalk(text, opts = {}) {
   lines.push({ role: "user", content: raw });
   talkBusy = true;
   setTalkEnabled(true);
+  let climaxLine = "";
   if (!opts.skipBody) {
     if (opts.actId) {
       applyAct(girl, opts.actId);
       recordTeasePress(girl, opts.actId);
       noteActShock(girl, opts.actId);
+      const climax = applyTeaseClimax(player, opts.actId);
+      player = climax.player;
+      if (climax.climaxed) climaxLine = climax.line;
     } else {
       const hit = applyBodyFromUserText(girl, raw);
       if (hit && girl.bodyState?.lastPart) noteActShock(girl, girl.bodyState.lastPart);
@@ -1431,6 +1457,11 @@ async function deliverUserTalk(text, opts = {}) {
   const naming = takeCall(raw, "");
   if (!naming) applyMark(await judgeTurn(raw));
   await typeLine("你", raw);
+  if (climaxLine) {
+    lines.push({ role: "user", content: climaxLine });
+    await typeLine("你", climaxLine);
+    persistRoom();
+  }
   if (!sheetOpen() || talkFor !== girl.id) {
     talkBusy = false;
     setTalkEnabled(true);
@@ -1499,26 +1530,37 @@ function refreshTalkActs() {
   const row = $("talk-acts");
   if (!row) return;
   row.hidden = !sheetOpen() || !girl;
-  const hint = row.querySelector(".talk-acts-hint");
-  if (hint) hint.textContent = girl ? teaseHint(girl) : "";
-  for (const btn of row.querySelectorAll("button[data-act]")) {
-    const id = btn.dataset.act;
-    const lock = girl ? actLockState(girl, id) : { ok: false, locked: true, reason: "" };
-    const busy = talkBusy || !girl;
-    btn.disabled = busy || !lock.ok;
-    btn.classList.toggle("is-locked", !lock.ok);
-    btn.title = lock.ok ? (btn.dataset.label || "") : (lock.reason || "未解鎖");
-    let sub = btn.querySelector(".act-lock");
-    if (!lock.ok) {
-      if (!sub) {
-        sub = document.createElement("span");
-        sub.className = "act-lock";
-        btn.append(sub);
-      }
-      sub.textContent = lock.reason || "鎖";
-    } else if (sub) {
-      sub.remove();
-    }
+  player = ensurePlayer(player);
+  const hint = row.querySelector(".talk-acts-hint") || (() => {
+    const h = document.createElement("span");
+    h.className = "talk-acts-hint";
+    row.prepend(h);
+    return h;
+  })();
+  const block = girl ? teaseBlockReason(player) : "";
+  const teaseLine = girl ? teaseHint(girl) : "";
+  hint.textContent = girl
+    ? (block || `${teaseLine}　${playerHint(player)}`)
+    : "";
+
+  // 只渲染目前解鎖的按鈕（鎖住的不出現）
+  for (const btn of [...row.querySelectorAll("button[data-act]")]) btn.remove();
+  if (!girl || !sheetOpen()) return;
+  const acts = availableActs(girl, { canTease: canTease(player) });
+  for (const act of acts) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.act = act.id;
+    btn.dataset.label = act.label;
+    btn.textContent = act.label;
+    btn.disabled = !!talkBusy;
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (btn.disabled) return;
+      sendTalkAct(act.id);
+    });
+    row.append(btn);
   }
 }
 
@@ -1529,23 +1571,34 @@ function bindTalkActs() {
   row.replaceChildren();
   const hint = document.createElement("span");
   hint.className = "talk-acts-hint";
-  hint.textContent = "";
   row.append(hint);
-  for (const act of orderedTalkActs()) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.dataset.act = act.id;
-    btn.dataset.label = act.label;
-    btn.append(document.createTextNode(act.label));
-    btn.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (btn.disabled || btn.classList.contains("is-locked")) return;
-      sendTalkAct(act.id);
-    });
-    row.append(btn);
-  }
   refreshTalkActs();
+}
+
+function startIdleDecay() {
+  stopIdleDecay();
+  idleDecayTimer = window.setInterval(() => {
+    if (!girl || !sheetOpen()) return;
+    if (talkBusy) return;
+    const now = Date.now();
+    if (now - lastIdleDecayAt < 4000) return;
+    lastIdleDecayAt = now;
+    const sinceTease = now - (ensurePlayer(player).lastTeaseAt || 0);
+    // 最近剛挑逗過則跳過一輪
+    if (sinceTease < 5000) return;
+    decayBodyIdle(girl);
+    player = decayPlayerIdle(player);
+    renderBodyPanel();
+    refreshTalkActs();
+    persistRoom();
+  }, 5000);
+}
+
+function stopIdleDecay() {
+  if (idleDecayTimer) {
+    clearInterval(idleDecayTimer);
+    idleDecayTimer = 0;
+  }
 }
 
 
@@ -1570,6 +1623,7 @@ function unlockSheetScroll() {
 function showSheet() {
   $("portrait-sheet").hidden = false;
   lockSheetScroll();
+  startIdleDecay();
   refreshTalkActs();
   if (!girl) {
     typeJob += 1;
@@ -1611,8 +1665,10 @@ function endTalkSession() {
 function persistRoom() {
   if (!girl) return;
   try {
+    player = ensurePlayer(player);
     const payload = {
       girl,
+      player,
       lines: lines.length ? lines.slice(-40) : (girl.chatLines || []),
       talkFor: talkFor || girl.id || "",
       present: typeof window.RoomActor?.isPresent === "function" ? !!window.RoomActor.isPresent() : !sheIsOut(),
@@ -1650,6 +1706,7 @@ function hideSheet() {
   resetPortraitEntrance();
   $("portrait-sheet").hidden = true;
   unlockSheetScroll();
+  stopIdleDecay();
   persistRoom();
   refreshTalkActs();
 }
@@ -2285,6 +2342,7 @@ function bindBodyPanel() {
   const saved = loadRoomSave();
   if (!saved?.girl) return;
   girl = saved.girl;
+  player = ensurePlayer(saved.player);
   if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
   ensureBody(girl);
   normalizeGirlTags(girl);

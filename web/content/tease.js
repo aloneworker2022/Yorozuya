@@ -1,6 +1,6 @@
 /** 房間調情階梯：週邊→陰部→插入解鎖。 */
 
-import { ensureBody, talkActById, TALK_ACTS } from "./body_state.js?v=6";
+import { ensureBody, talkActById, TALK_ACTS } from "./body_state.js?v=7";
 
 /** 主階梯（不含胸／抽出）。index = teaseStage 門檻。 */
 export const TEASE_LADDER = [
@@ -140,4 +140,51 @@ export function orderedTalkActs() {
   ];
   const byId = Object.fromEntries(TALK_ACTS.map((a) => [a.id, a]));
   return order.map((id) => byId[id]).filter(Boolean);
+}
+
+
+/** 只回傳目前可顯示的動作（鎖住的不出現）。 */
+export function availableActs(who, opts = {}) {
+  const can = opts.canTease !== false;
+  const acts = orderedTalkActs();
+  if (!can) return [];
+  return acts.filter((a) => isActUnlocked(who, a.id));
+}
+
+/**
+ * 閒置衰減：性奮／器官腫濕／衝擊往基線。
+ * 陰道塞著假陰莖(dildo)時幾乎不衰減（保持被填滿狀態）。
+ */
+export function decayBodyIdle(who) {
+  const b = ensureTeaseFields(who);
+  if (!b) return null;
+  const o = b.organs;
+  const stuffed = o?.vagina?.stuffed || "";
+  const dildoHold = stuffed === "dildo";
+  if (dildoHold) {
+    // 假陰莖撐著：只微降衝擊，保持性奮與濕腫
+    if ((b.shock || 0) > 0) b.shock = Math.max(0, (b.shock || 0) - 1);
+    return b;
+  }
+  b.arousal = Math.max(0, (b.arousal || 0) - 1);
+  if ((b.shock || 0) > 0) b.shock = Math.max(0, (b.shock || 0) - 3);
+  const soft = (part, key, step = 1) => {
+    if (!o[part]) return;
+    if (typeof o[part][key] === "number" && o[part][key] > 0) {
+      o[part][key] = Math.max(0, o[part][key] - step);
+    }
+  };
+  soft("nipples", "swell");
+  soft("breasts", "swell");
+  soft("clit", "swell");
+  soft("labia", "swell");
+  soft("vagina", "wet");
+  if (o.nipples?.wet && Math.random() < 0.45) o.nipples.wet = false;
+  if (o.clit?.wet && Math.random() < 0.4) o.clit.wet = false;
+  if (o.labia?.wet && Math.random() < 0.4) o.labia.wet = false;
+  // 手指／一般填充：緩慢變乾；精液／陰莖另議，這裡不自動拔出
+  if (stuffed === "fingers" && (b.arousal || 0) <= 4 && Math.random() < 0.15) {
+    o.vagina.stuffed = "";
+  }
+  return b;
 }
