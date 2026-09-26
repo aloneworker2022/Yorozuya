@@ -14,7 +14,7 @@ import {
   LIBIDO_STAGE,
   arousalStage,
   libidoStage,
-} from "./body_state.js?v=5";
+} from "./body_state.js?v=6";
 import {
   effectiveStun,
   shouldSkipLlm,
@@ -23,7 +23,16 @@ import {
   noteActShock,
   tickStunAfterReply,
   ensureStunFields,
-} from "./stun_speech.js?v=1";
+} from "./stun_speech.js?v=2";
+import {
+  ensureTeaseFields,
+  actLockState,
+  isActUnlocked,
+  recordTeasePress,
+  teaseHint,
+  orderedTalkActs,
+  insertUnlocked,
+} from "./tease.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -500,12 +509,7 @@ function setTyping(on) {
 function setTalkEnabled(on) {
   $("talk-input").disabled = !on;
   $("talk-send").disabled = !on || talkBusy;
-  const acts = $("talk-acts");
-  if (acts) {
-    for (const btn of acts.querySelectorAll("button")) {
-      btn.disabled = !on || talkBusy || !girl;
-    }
-  }
+  refreshTalkActs();
 }
 
 function cleanLine(raw) {
@@ -1344,6 +1348,7 @@ async function openTalk() {
   let streamed = false;
   try {
     ensureStunFields(girl);
+    ensureTeaseFields(girl);
     const openerStun = effectiveStun(girl, "");
     const opener = resume ? continuityOpener() : openerLine();
     let line = "";
@@ -1392,14 +1397,28 @@ async function deliverUserTalk(text, opts = {}) {
     return;
   }
   if (talkBusy || talkFor !== girl.id) return;
+
+  ensureBody(girl);
+  ensureStunFields(girl);
+  ensureTeaseFields(girl);
+
+  if (opts.actId) {
+    const lock = actLockState(girl, opts.actId);
+    if (!lock.ok) {
+      const status = $("summon-status");
+      if (status) status.textContent = lock.reason || "尚未解鎖";
+      refreshTalkActs();
+      return;
+    }
+  }
+
   lines.push({ role: "user", content: raw });
   talkBusy = true;
   setTalkEnabled(true);
-  ensureBody(girl);
-  ensureStunFields(girl);
   if (!opts.skipBody) {
     if (opts.actId) {
       applyAct(girl, opts.actId);
+      recordTeasePress(girl, opts.actId);
       noteActShock(girl, opts.actId);
     } else {
       const hit = applyBodyFromUserText(girl, raw);
@@ -1407,6 +1426,7 @@ async function deliverUserTalk(text, opts = {}) {
     }
   }
   renderBodyPanel();
+  refreshTalkActs();
   persistRoom();
   const naming = takeCall(raw, "");
   if (!naming) applyMark(await judgeTurn(raw));
@@ -1414,6 +1434,7 @@ async function deliverUserTalk(text, opts = {}) {
   if (!sheetOpen() || talkFor !== girl.id) {
     talkBusy = false;
     setTalkEnabled(true);
+    refreshTalkActs();
     return;
   }
 
@@ -1425,7 +1446,6 @@ async function deliverUserTalk(text, opts = {}) {
   try {
     let line = "";
     if (shouldSkipLlm(stun)) {
-      // ≥75：不走模型，直接失神模板
       line = stunTemplate(stun, actId);
       setTyping(false);
     } else {
@@ -1454,6 +1474,7 @@ async function deliverUserTalk(text, opts = {}) {
   }
   talkBusy = false;
   if (sheetOpen()) setTalkEnabled(true);
+  refreshTalkActs();
 }
 
 
@@ -1474,23 +1495,57 @@ async function sendTalkAct(actId) {
   await deliverUserTalk(act.text, { actId });
 }
 
+function refreshTalkActs() {
+  const row = $("talk-acts");
+  if (!row) return;
+  row.hidden = !sheetOpen() || !girl;
+  const hint = row.querySelector(".talk-acts-hint");
+  if (hint) hint.textContent = girl ? teaseHint(girl) : "";
+  for (const btn of row.querySelectorAll("button[data-act]")) {
+    const id = btn.dataset.act;
+    const lock = girl ? actLockState(girl, id) : { ok: false, locked: true, reason: "" };
+    const busy = talkBusy || !girl;
+    btn.disabled = busy || !lock.ok;
+    btn.classList.toggle("is-locked", !lock.ok);
+    btn.title = lock.ok ? (btn.dataset.label || "") : (lock.reason || "未解鎖");
+    let sub = btn.querySelector(".act-lock");
+    if (!lock.ok) {
+      if (!sub) {
+        sub = document.createElement("span");
+        sub.className = "act-lock";
+        btn.append(sub);
+      }
+      sub.textContent = lock.reason || "鎖";
+    } else if (sub) {
+      sub.remove();
+    }
+  }
+}
+
 function bindTalkActs() {
   const row = $("talk-acts");
   if (!row || row.dataset.bound) return;
   row.dataset.bound = "1";
   row.replaceChildren();
-  for (const act of TALK_ACTS) {
+  const hint = document.createElement("span");
+  hint.className = "talk-acts-hint";
+  hint.textContent = "";
+  row.append(hint);
+  for (const act of orderedTalkActs()) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = act.label;
     btn.dataset.act = act.id;
+    btn.dataset.label = act.label;
+    btn.append(document.createTextNode(act.label));
     btn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (btn.disabled || btn.classList.contains("is-locked")) return;
       sendTalkAct(act.id);
     });
     row.append(btn);
   }
+  refreshTalkActs();
 }
 
 
@@ -1515,6 +1570,7 @@ function unlockSheetScroll() {
 function showSheet() {
   $("portrait-sheet").hidden = false;
   lockSheetScroll();
+  refreshTalkActs();
   if (!girl) {
     typeJob += 1;
     setTyping(false);
@@ -1595,6 +1651,7 @@ function hideSheet() {
   $("portrait-sheet").hidden = true;
   unlockSheetScroll();
   persistRoom();
+  refreshTalkActs();
 }
 
 function errorText(payload, status) {

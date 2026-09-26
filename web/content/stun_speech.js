@@ -1,38 +1,44 @@
 /** 房間聊天：程式化「失神」亂語（非只靠 prompt）。 */
 
-import { ensureBody, talkActById } from "./body_state.js?v=5";
+import { ensureBody, talkActById } from "./body_state.js?v=6";
+import { insertUnlocked } from "./tease.js?v=1";
 
 const SHOCK_MAX = 45;
 
 /** 動作／命中部位 → 短暫衝擊（回覆 1–2 次或數秒後衰減） */
 const SHOCK_BY_ID = {
-  clit: 36,
-  labia: 28,
-  vagina: 32,
-  finger_in: 40,
-  fingers_out: 22,
-  pull_out: 22,
-  uterus: 30,
-  creampie: 38,
-  penis_in: 40,
-  vibe_in: 34,
-  dildo_in: 36,
-  cucumber_in: 34,
-  nipple: 18,
-  breast: 14,
-  anus: 26,
-  lips: 8,
-  butt: 12,
+  waist: 2,
+  butt: 4,
+  thigh: 5,
+  breast: 6,
+  nipple: 8,
+  labia: 10,
+  clit: 14,
+  vagina: 12,
+  finger_in: 28,
+  fingers_out: 12,
+  pull_out: 12,
+  uterus: 16,
+  creampie: 24,
+  penis_in: 26,
+  vibe_in: 18,
+  dildo_in: 20,
+  cucumber_in: 18,
+  anus: 14,
+  lips: 4,
 };
 
+/** 週邊動作地板低；插入僅在解鎖路徑給較高地板。 */
 const FLOOR_ACT = {
-  clit: 55,
-  labia: 50,
-  vagina: 52,
-  finger_in: 60,
-  pull_out: 35,
-  breast: 30,
-  nipple: 32,
+  waist: 0,
+  butt: 0,
+  thigh: 4,
+  breast: 6,
+  nipple: 8,
+  labia: 12,
+  clit: 18,
+  finger_in: 42,
+  pull_out: 16,
 };
 
 const MOANS = ["嗯…", "啊…", "哈啊…", "唔…", "嗯啊…", "咿…", "……"];
@@ -49,6 +55,9 @@ const STUN_BITS = [
   "等、等一下…啊",
 ];
 const ACT_BITS = {
+  waist: ["腰…嗯…", "好癢…"],
+  butt: ["臀…嗯…", "不要揉…"],
+  thigh: ["大腿…熱…", "再往上…嗯"],
   clit: ["陰蒂…！", "那裡…不行…", "嗯咿…！", "碰、碰到…"],
   labia: ["陰唇…熱…", "滑…嗯…", "不要揉…啊"],
   vagina: ["裡面…", "穴口…嗯…", "進、進來…"],
@@ -92,11 +101,21 @@ export function noteActShock(who, actOrHitId) {
   const b = ensureStunFields(who);
   if (!b) return 0;
   const id = String(actOrHitId || "");
-  const add = SHOCK_BY_ID[id] || (id ? 16 : 0);
+  let add = SHOCK_BY_ID[id] || (id ? 8 : 0);
+  if (id === "finger_in" && !insertUnlocked(who)) add = Math.min(add, 5);
+  const peripheral = ["waist", "butt", "thigh", "breast", "nipple"].includes(id);
+  if (peripheral) add = Math.min(add, 6);
   if (!add) return b.shock;
-  b.shock = clamp((b.shock || 0) + add, 0, SHOCK_MAX);
+  if (peripheral) {
+    // 週邊不疊滿，頂在低衝擊
+    b.shock = clamp(Math.max(b.shock || 0, add) + Math.floor(add / 2), 0, 14);
+  } else if (id === "labia" || id === "clit") {
+    b.shock = clamp((b.shock || 0) + add, 0, 28);
+  } else {
+    b.shock = clamp((b.shock || 0) + add, 0, SHOCK_MAX);
+  }
   b.shockAt = Date.now();
-  b.shockRepliesLeft = Math.max(b.shockRepliesLeft || 0, 2);
+  b.shockRepliesLeft = Math.max(b.shockRepliesLeft || 0, id === "finger_in" ? 2 : 1);
   return b.shock;
 }
 
@@ -121,32 +140,46 @@ export function calcStun(who) {
   if (!b) return 0;
   decayShock(b);
   const o = b.organs || {};
-  const arousalPts = (clamp(b.arousal, 0, 30) / 30) * 40;
-  const libidoBoost = (clamp(b.libido, 0, 30) / 30) * 16;
+  const arousalPts = (clamp(b.arousal, 0, 30) / 30) * 34;
+  const libidoBoost = (clamp(b.libido, 0, 30) / 30) * 12;
+  const stage = Math.max(0, Math.min(4, Number(b.teaseStage) || 0));
+  const stageScale = 0.35 + stage * 0.16; // 週邊階壓低器官失神
   let organ = 0;
-  organ += (o.clit?.swell || 0) * 4;
-  if (o.clit?.wet) organ += 6;
-  organ += (o.labia?.swell || 0) * 3;
-  if (o.labia?.wet) organ += 5;
-  organ += (o.vagina?.wet || 0) * 5;
-  if (o.vagina?.stuffed) organ += 12;
-  if (o.anus?.stuffed) organ += 8;
-  organ += (o.uterus?.semen || 0) * 3;
+  organ += (o.clit?.swell || 0) * 3;
+  if (o.clit?.wet) organ += 4;
+  organ += (o.labia?.swell || 0) * 2;
+  if (o.labia?.wet) organ += 3;
+  organ += (o.vagina?.wet || 0) * 3;
+  if (o.vagina?.stuffed) organ += insertUnlocked(who) ? 10 : 4;
+  if (o.anus?.stuffed) organ += 5;
+  organ += (o.uterus?.semen || 0) * 2;
   if ((o.nipples?.swell || 0) >= 2) organ += 2;
+  if ((o.breasts?.swell || 0) >= 2) organ += 2;
+  organ *= stageScale;
 
-  const libMult = 0.88 + (clamp(b.libido, 0, 30) / 30) * 0.3;
-  let score = (arousalPts + organ) * libMult + libidoBoost + clamp(b.shock || 0, 0, SHOCK_MAX);
+  const libMult = 0.85 + (clamp(b.libido, 0, 30) / 30) * 0.25;
+  const shock = clamp(b.shock || 0, 0, SHOCK_MAX);
+  let score = (arousalPts + organ) * libMult + libidoBoost + shock;
+  // 階梯軟頂：沒真正插入前不進失神跳過 LLM
+  if (!o.vagina?.stuffed) {
+    const softCap = stage <= 2 ? 38 : stage === 3 ? 50 : 64;
+    score = Math.min(score, softCap);
+  }
   return clamp(score, 0, 100);
 }
 
-export function stunFloorForAct(actId) {
+export function stunFloorForAct(actId, who = null) {
   if (!actId) return 0;
-  return FLOOR_ACT[actId] || 30;
+  if (actId === "finger_in") {
+    if (who && insertUnlocked(who)) return FLOOR_ACT.finger_in;
+    return 8; // 未解鎖／旁路：幾乎不抬地板
+  }
+  return FLOOR_ACT[actId] ?? 0;
 }
 
 /** 含動作地板的有效失神值。 */
 export function effectiveStun(who, actId = "") {
-  return Math.max(calcStun(who), stunFloorForAct(actId));
+  return Math.max(calcStun(who), stunFloorForAct(actId, who));
 }
 
 export function stunTier(stun) {

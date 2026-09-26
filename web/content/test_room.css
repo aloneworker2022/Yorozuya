@@ -115,9 +115,12 @@ button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-v
 .body-check{flex-direction:row!important;align-items:center;gap:8px!important}
 @media(min-width:600px){.body-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
-.talk-acts{display:flex;flex-wrap:nowrap;gap:6px;width:100%;box-sizing:border-box;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 0 4px;pointer-events:auto;scrollbar-width:none}
+/* 互動鍵列：螢幕底部，不在輸入框下方 */
+.talk-acts{position:fixed;left:0;right:0;bottom:0;z-index:26;display:flex;flex-wrap:nowrap;gap:6px;width:100%;box-sizing:border-box;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:8px 10px max(10px,env(safe-area-inset-bottom));pointer-events:auto;scrollbar-width:none;background:linear-gradient(180deg,rgba(10,16,40,0),rgba(10,16,40,.72) 28%);justify-content:flex-start}
 .talk-acts::-webkit-scrollbar{display:none}
-.talk-acts[hidden]{display:none}
+.talk-acts[hidden]{display:none!important}
 .talk-acts button{flex:0 0 auto;min-height:44px;min-width:44px;padding:8px 12px;margin:0;border:2px solid rgba(244,251,255,.35);border-radius:999px;background:rgba(22,48,92,.92);color:#ffe14a;box-shadow:none;font:inherit;font-size:.82em;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
-.talk-acts button:disabled{opacity:.35;cursor:default}
-.talk-acts button:active:not(:disabled){background:rgba(40,70,120,.95)}
+.talk-acts button:disabled,.talk-acts button.is-locked{opacity:.38;cursor:not-allowed;color:rgba(244,251,255,.55);border-color:rgba(244,251,255,.18);background:rgba(20,28,48,.75)}
+.talk-acts button:active:not(:disabled):not(.is-locked){background:rgba(40,70,120,.95)}
+.talk-acts button .act-lock{display:block;font-size:.65em;letter-spacing:0;color:rgba(244,251,255,.55);margin-top:2px;font-weight:400}
+.talk-acts-hint{flex:0 0 auto;align-self:center;font-size:.72em;color:rgba(244,251,255,.65);padding:0 6px;white-space:nowrap}
