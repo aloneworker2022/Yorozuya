@@ -1,4 +1,4 @@
-/* 試煉房抽妹子：人設跟 /testword 同一套。長按時背景補半身立繪。不寫遊戲名冊。 */
+/* 試煉房抽妹子：人設跟 /testword 同一套。抽到後背景補半身立繪。不寫遊戲名冊。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=2";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
@@ -1377,10 +1377,6 @@ function showSheet() {
     return;
   }
   paintHalfPortrait(girl);
-  // Fire-and-forget: chat must not wait on imggen.
-  ensureHalfPortrait(girl).catch((err) => {
-    console.warn("[ensureHalfPortrait]", err?.message || err);
-  });
   openTalk();
 }
 
@@ -1501,7 +1497,15 @@ async function drawGirl() {
     if (sheetOpen()) hideSheet();
     renderCard();
     renderWorld();
-    $("summon-status").textContent = `抽到了${rolled.name}。長按房間裡的她跟她說話，或讓她離開。`;
+    $("summon-status").textContent = `抽到了${rolled.name}。半身立繪繪製中…長按房間裡的她跟她說話，或讓她離開。`;
+    // Fire-and-forget on summon: do not block the edit-screen draw button path.
+    ensureHalfPortrait(rolled).then(() => {
+      if (girl && girl.id === rolled.id && girl.portraits?.half) {
+        $("summon-status").textContent = `抽到了${rolled.name}。半身立繪好了。長按房間裡的她跟她說話，或讓她離開。`;
+      }
+    }).catch((err) => {
+      console.warn("[ensureHalfPortrait]", err?.message || err);
+    });
   } catch (err) {
     $("summon-status").textContent = err?.message || String(err);
   }
