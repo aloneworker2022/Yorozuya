@@ -1398,88 +1398,24 @@ async function sendTalk(event) {
 }
 
 let sheetScrollY = 0;
-let kbInsetBound = false;
-
-function syncKeyboardInset() {
-  if (!sheetOpen()) {
-    document.documentElement.style.setProperty("--kb-inset", "0px");
-    return;
-  }
-  const vv = window.visualViewport;
-  let inset = 0;
-  if (vv) {
-    // Layout bottom → visual bottom. Covers iOS offsetTop + Android keyboard overlay.
-    inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-  }
-  // Ignore tiny jitter from browser chrome.
-  if (inset < 40) inset = 0;
-  document.documentElement.style.setProperty("--kb-inset", `${Math.round(inset)}px`);
-}
 
 function lockSheetScroll() {
-  if (document.body.classList.contains("sheet-open")) {
-    syncKeyboardInset();
-    return;
-  }
+  if (document.body.classList.contains("sheet-open")) return;
   sheetScrollY = window.scrollY || document.documentElement.scrollTop || 0;
   document.documentElement.classList.add("sheet-open");
   document.body.classList.add("sheet-open");
   document.body.style.top = `-${sheetScrollY}px`;
-  syncKeyboardInset();
 }
 
 function unlockSheetScroll() {
-  if (!document.body.classList.contains("sheet-open")) {
-    document.documentElement.style.setProperty("--kb-inset", "0px");
-    return;
-  }
+  if (!document.body.classList.contains("sheet-open")) return;
   document.documentElement.classList.remove("sheet-open");
   document.body.classList.remove("sheet-open");
   document.body.style.top = "";
-  document.documentElement.style.setProperty("--kb-inset", "0px");
   window.scrollTo(0, sheetScrollY);
 }
 
-function bindKeyboardInset() {
-  if (kbInsetBound) return;
-  kbInsetBound = true;
-  const sync = () => syncKeyboardInset();
-  const vv = window.visualViewport;
-  if (vv) {
-    vv.addEventListener("resize", sync);
-    vv.addEventListener("scroll", sync);
-  }
-  window.addEventListener("resize", sync);
-  window.addEventListener("orientationchange", () => {
-    setTimeout(sync, 120);
-    setTimeout(sync, 360);
-  });
-  const input = $("talk-input");
-  if (input) {
-    input.addEventListener("focus", () => {
-      syncKeyboardInset();
-      // iOS may scroll the document to the focused field after focus.
-      const pin = () => {
-        if (!sheetOpen()) return;
-        window.scrollTo(0, 0);
-        if (document.body.classList.contains("sheet-open")) {
-          document.body.style.top = `-${sheetScrollY}px`;
-        }
-        syncKeyboardInset();
-      };
-      requestAnimationFrame(pin);
-      setTimeout(pin, 50);
-      setTimeout(pin, 250);
-    });
-    input.addEventListener("blur", () => {
-      setTimeout(syncKeyboardInset, 50);
-      setTimeout(syncKeyboardInset, 280);
-    });
-  }
-}
-
 function showSheet() {
-  bindKeyboardInset();
   $("portrait-sheet").hidden = false;
   lockSheetScroll();
   if (!girl) {
@@ -2128,5 +2064,4 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && sheetOpen()) hideSheet();
 });
 
-bindKeyboardInset();
 window.RoomPortrait = { open: showSheet };
