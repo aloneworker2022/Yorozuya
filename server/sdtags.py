@@ -808,11 +808,11 @@ _NIPPLE_SUBSTR = (
 _STAGE_KEYS = (
     "stranger", "acquaintance", "friend", "close_friend",
     "girlfriend", "passionate", "lover",
-    "wife", "devoted_wife", "obedient_wife",
+    "wife", "devoted_wife", "obedient_wife", "pathological_wife",
 )
 _STAGE_COVERED = {"stranger", "acquaintance", "friend", "close_friend"}
 _STAGE_SHAPE = {"girlfriend", "passionate", "lover"}
-_STAGE_EROTIC = {"wife", "devoted_wife", "obedient_wife"}
+_STAGE_EROTIC = {"wife", "devoted_wife", "obedient_wife", "pathological_wife"}
 
 
 def resolve_stage(character: dict | None = None, stage: str = "") -> str:

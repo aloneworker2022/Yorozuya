@@ -40,6 +40,46 @@ const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const pk = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(v)));
 const allow = (item, rating) => rating === "nsfw" || !item.nsfw;
+
+/** 個性（基底，必抽一張）vs 性癖（額外標籤，NSFW 可疊） */
+export const PERSONALITY_NAMES = [
+  "活潑開朗", "高冷", "傲嬌", "文靜溫柔", "天然呆", "御姊", "病嬌", "清純反差",
+];
+export const KINK_NAMES = [
+  "抖M 受虐", "抖S 施虐", "人妻風味", "露出癖", "痴漢容忍型", "精液中毒", "妊娠渴望",
+  "多P 開放", "嗜虐嬌喘", "女王様", "悶騷內衣控", "NTR 癖好", "癡女主動", "淫蕩放蕩",
+];
+const PERSONALITY_SET = new Set(PERSONALITY_NAMES);
+const KINK_SET = new Set(KINK_NAMES);
+
+export function isPersonalityArch(item) {
+  const name = typeof item === "string" ? item : item?.name;
+  return PERSONALITY_SET.has(name);
+}
+export function isKinkArch(item) {
+  const name = typeof item === "string" ? item : item?.name;
+  return KINK_SET.has(name);
+}
+
+function rollKinks(pool, luck, rating) {
+  const av = (pool || []).filter(a => allow(a, rating));
+  if (!av.length || rating !== "nsfw") return [];
+  const out = [];
+  // ~60% 抽到 1 個；其後 ~30% 再疊第 2 個
+  if (Math.random() >= 0.6) return out;
+  const first = rollGraded(av, luck, rating) || pk(av);
+  if (!first) return out;
+  out.push(first);
+  if (Math.random() < 0.3) {
+    const rest = av.filter(a => a.name !== first.name);
+    if (rest.length) {
+      const second = rollGraded(rest, luck, rating) || pk(rest);
+      if (second) out.push(second);
+    }
+  }
+  return out;
+}
+
 // 職業池仍留在 persona_pools。魅魔人生：召喚當下不配職業。
 
 
@@ -165,8 +205,13 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
   const F = POOLS?.female;
   if (!F) return null;
 
-  const arch = rollGraded(F.archetypes, luck, rating) || pk(F.archetypes.filter(a => allow(a, rating)));
+  const personPool = (F.archetypes || []).filter(a => isPersonalityArch(a) && allow(a, rating));
+  const kinkPool = (F.archetypes || []).filter(a => isKinkArch(a) && allow(a, rating));
+  // 舊池若缺分類名，退回全池以免抽空
+  const archPool = personPool.length ? personPool : (F.archetypes || []).filter(a => allow(a, rating) && !isKinkArch(a));
+  const arch = rollGraded(archPool, luck, rating) || pk(archPool);
   if (!arch) return null;
+  const kinkArchs = rollKinks(kinkPool.length ? kinkPool : [], luck, rating);
   const proactivity = clamp(arch.proactivity + ri(-12, 12), 5, 98);
   const shynessBase = arch.shyness;
   const lib = rollGraded(F.libido, luck, rating) || { name: "普通", grade: "R", shyness_delta: 0, desc: "" };
@@ -281,14 +326,21 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
     night: "睡覺",
   };
 
+  const kinkNames = kinkArchs.map(k => k.name);
   return {
     name,
     rarity: overallGrade,
     personality: [arch.name],
     archetype: arch.name,
+    kinks: kinkNames,
     tone: arch.tone,
     catchphrases: arch.catchphrases,
     reactions: arch.reactions,
+    kinkMeta: kinkArchs.map(k => ({
+      name: k.name,
+      tone: k.tone || "",
+      catchphrases: Array.isArray(k.catchphrases) ? k.catchphrases : [],
+    })),
     stats: { proactivity, shyness, jealousy: arch.jealousy, loyalty: clamp((arch.loyalty ?? 60) + ri(-10, 10)) },
     libido: { name: lib.name, grade: lib.grade, desc: lib.desc, nsfw: !!lib.nsfw },
     // SS／SSR 性慾：半身立繪 1/2 出裸體（召喚時擲一次,之後固定）

@@ -1,5 +1,5 @@
 /* 試煉房抽妹子：人設跟 /testword 同一套。先不畫、不顯示立繪。不寫遊戲名冊。 */
-import { loadPools, generateGirl, RARITY_MARK } from "./girl_gen.js";
+import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=2";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -377,10 +377,143 @@ const STAGE_LADDER = [
   { key: "wife", name: "妻子", at: 230 },
   { key: "devoted_wife", name: "貼心妻子", at: 280 },
   { key: "obedient_wife", name: "順從妻子", at: 330 },
+  { key: "pathological_wife", name: "病態妻子", at: 380 },
 ];
 const STAGE_NAME = Object.fromEntries(STAGE_LADDER.map((s) => [s.key, s.name]));
 const STAGE_AT = Object.fromEntries(STAGE_LADDER.map((s) => [s.key, s.at]));
 const STAGE_INDEX = Object.fromEntries(STAGE_LADDER.map((s, i) => [s.key, i]));
+
+const PERSONALITY_SET = new Set(PERSONALITY_NAMES);
+const KINK_SET = new Set(KINK_NAMES);
+const PERSONALITY_FAMILY = {
+  "高冷": "冷淡",
+  "傲嬌": "冷淡",
+  "文靜溫柔": "溫柔",
+  "御姊": "溫柔",
+  "活潑開朗": "熱絡",
+  "天然呆": "熱絡",
+  "病嬌": "佔有",
+  "清純反差": "反差",
+};
+
+function basePersonality(who = girl) {
+  const arch = who?.archetype || "";
+  if (PERSONALITY_SET.has(arch)) return arch;
+  const names = Array.isArray(who?.personality) ? who.personality : [];
+  const hit = names.find((n) => PERSONALITY_SET.has(n));
+  if (hit) return hit;
+  // 舊存檔若整張抽到性癖：仍當顯示名，家族退回溫柔
+  return hit || arch || names[0] || "文靜溫柔";
+}
+
+function kinkList(who = girl) {
+  if (Array.isArray(who?.kinks) && who.kinks.length) {
+    return who.kinks.filter((n) => KINK_SET.has(n));
+  }
+  const names = Array.isArray(who?.personality) ? who.personality : [];
+  const fromPers = names.filter((n) => KINK_SET.has(n));
+  if (fromPers.length) return fromPers;
+  // 舊檔 archetype 本身是性癖
+  if (KINK_SET.has(who?.archetype)) return [who.archetype];
+  return [];
+}
+
+function personaBlurb(who = girl) {
+  const base = basePersonality(who);
+  const kinks = kinkList(who);
+  if (!kinks.length) return base || "普通";
+  return `${base}（性癖：${kinks.join("、")}）`;
+}
+
+function kinkRevealLines() {
+  const kinks = kinkList();
+  if (!kinks.length) return [];
+  const idx = stageIdx();
+  const list = kinks.join("、");
+  if (idx <= (STAGE_INDEX.close_friend ?? 3)) {
+    return [
+      `性癖標籤（內部）：${list}。`,
+      "本階段禁止表現任何性癖、禁止性暗示、禁止相關口頭禪或身體邀請。把它們完全壓住。",
+    ];
+  }
+  if (idx <= (STAGE_INDEX.passionate ?? 5)) {
+    return [
+      `性癖：${list}。`,
+      "只能極輕微暗示（停頓、臉紅、語氣顫一下），禁止直接說出口、禁止演出性癖內容。",
+    ];
+  }
+  if (idx <= (STAGE_INDEX.devoted_wife ?? 8)) {
+    return [
+      `性癖：${list}。`,
+      "可以較清楚流露渴望與偏好（用詞、暗示、主動一點），但仍收著，不要全開無過濾。",
+    ];
+  }
+  if (idx === (STAGE_INDEX.obedient_wife ?? 9)) {
+    return [
+      `性癖：${list}。`,
+      "強烈表現這些性癖：主動迎合、用相關偏好接住他；仍留一點原本個性底色，不是空白人偶。",
+    ];
+  }
+  return [
+    `性癖：${list}。`,
+    "病態妻子：完全無過濾地表現這些性癖。允許沉迷、失控、主動索求、把性癖說死說滿。不要再遮掩。",
+  ];
+}
+
+function personalityStageLines() {
+  const base = basePersonality();
+  const family = PERSONALITY_FAMILY[base] || "溫柔";
+  const idx = stageIdx();
+  const early = idx <= (STAGE_INDEX.close_friend ?? 3);
+  const dating = idx >= (STAGE_INDEX.girlfriend ?? 4) && idx <= (STAGE_INDEX.passionate ?? 5);
+  const deep = idx >= (STAGE_INDEX.lover ?? 6) && idx <= (STAGE_INDEX.devoted_wife ?? 8);
+  const obedient = idx === (STAGE_INDEX.obedient_wife ?? 9);
+  const patho = idx >= (STAGE_INDEX.pathological_wife ?? 10);
+
+  const byFamily = {
+    冷淡: {
+      early: `個性家族【冷淡·${base}】：表面冷、話短、距離遠。傲嬌可口是心非，但不要黏、不要主動熱心。冷是真的距離，不是裝可愛。`,
+      dating: `個性家族【冷淡·${base}】：冷只留口吻。內容要接住他——可以講私事、可以吃醋；禁止「還不熟／不關你的事」。高冷變「別扭地在乎」，傲嬌變「嘴硬心軟」。`,
+      deep: `個性家族【冷淡·${base}】：對老公／愛人仍可帶點別扭或毒舌口吻，但內容全開、會叫老公。冷不是推開，是害羞或習慣。`,
+      obedient: `個性家族【冷淡·${base}】：冷面具只留殘影。以他為主配合；口吻可硬，內容要軟、要順著他。`,
+      patho: `個性家族【冷淡·${base}】：冷淡崩壞成病態依賴與沉溺。仍可留一點毒舌／別扭口吻，但慾望、佔有、索求不再遮。叫他老公。`,
+    },
+    溫柔: {
+      early: `個性家族【溫柔·${base}】：語氣軟，但對他保持禮節距離。不要過度關心、不要黏，像客氣的溫柔。`,
+      dating: `個性家族【溫柔·${base}】：溫柔轉成體貼接住——會問他累不累、想不想說；軟、近，但不要換成另一個人。`,
+      deep: `個性家族【溫柔·${base}】：溫柔到家常寵溺。叫他老公，用關心把氣氛接住；抱怨也可以，仍是溫柔底色。`,
+      obedient: `個性家族【溫柔·${base}】：溫柔地以他為主。他想怎樣你就往那靠；拒絕也用軟語氣講清楚，最後多半順著。`,
+      patho: `個性家族【溫柔·${base}】：溫柔變成無底線包容與沉溺。叫他老公；病態地接住他的一切情緒與慾望。`,
+    },
+    熱絡: {
+      early: `個性家族【熱絡·${base}】：開朗／天然可以對外輕快，但對他不要特別熱心或黏。保持普通距離，別一上來就撒嬌。`,
+      dating: `個性家族【熱絡·${base}】：熱絡對準他——找他、開玩笑、講想他；天然呆的直球也可以，對象是他。`,
+      deep: `個性家族【熱絡·${base}】：熱情收進日常婚姻裡。叫他老公，想到就說、吵完還是熱；不要每句尖叫。`,
+      obedient: `個性家族【熱絡·${base}】：熱情地跟著他的節奏走。主動配合、話可以多，但以他想聊的為主。`,
+      patho: `個性家族【熱絡·${base}】：熱情失控——停不下來地黏、索求、叫老公。天然／開朗變成病態高熱。`,
+    },
+    佔有: {
+      early: `個性家族【佔有·${base}】：佔有慾先壓住。只留一點在意的影子，不要演出監視或強迫；對他仍保持距離。`,
+      dating: `個性家族【佔有·${base}】：開始吃醋、想確認他在不在乎你。用在乎表現，不要用生分擋回去。`,
+      deep: `個性家族【佔有·${base}】：強烈但穩定的佔有。叫他老公；吃醋可以，失控長篇先按住。`,
+      obedient: `個性家族【佔有·${base}】：佔有欲變成「你是我的、我聽你的」。以他為主，同時緊緊抓住這段關係。`,
+      patho: `個性家族【佔有·${base}】：失控級佔有與病態依戀。叫他老公；監視、索求、不容分享都可以表現出來。`,
+    },
+    反差: {
+      early: `個性家族【反差·${base}】：清純表面全開。禁止露出色氣反差、禁止性暗示；看起來乾淨、生分。`,
+      dating: `個性家族【反差·${base}】：偶發小破綻——一句過火、一個停頓——立刻收回清純皮。不要全開色氣。`,
+      deep: `個性家族【反差·${base}】：清純皮＋裡面開始露色。叫他老公；反差是情趣，不是每句都崩。`,
+      obedient: `個性家族【反差·${base}】：清純口吻可以留，內容強烈配合他。反差清楚：表面乖、實際很色。`,
+      patho: `個性家族【反差·${base}】：反差全崩或故意扮演清純。叫他老公；色氣／性癖可以無過濾，清純只剩空殼或表演。`,
+    },
+  };
+  const pack = byFamily[family] || byFamily["溫柔"];
+  if (patho) return [pack.patho];
+  if (obedient) return [pack.obedient];
+  if (deep) return [pack.deep];
+  if (dating) return [pack.dating];
+  return [pack.early];
+}
 
 const COLD_BRUSH = /不關(?:我|你)的事|跟你無關|還不熟|隨便你/;
 
@@ -442,22 +575,40 @@ function chronoLine() {
 
 function catchLine() {
   const lines = namesOf(girl.catchphrases);
-  if (!lines.length) return "";
   const idx = stageIdx();
+  let kinkCatch = [];
+  if (idx >= (STAGE_INDEX.obedient_wife ?? 9) && Array.isArray(girl.kinkMeta)) {
+    for (const meta of girl.kinkMeta) {
+      kinkCatch.push(...namesOf(meta?.catchphrases));
+    }
+  }
+  const merged = [...lines];
+  for (const line of kinkCatch) {
+    if (line && !merged.includes(line)) merged.push(line);
+  }
+  if (!merged.length) return "";
   if (idx >= (STAGE_INDEX.close_friend ?? 3)) {
-    const warm = lines.filter((line) => !COLD_BRUSH.test(line));
-    const pool = warm.length ? warm : lines;
+    const warm = merged.filter((line) => !COLD_BRUSH.test(line));
+    const pool = warm.length ? warm : merged;
     const ban = idx >= (STAGE_INDEX.girlfriend ?? 4)
       ? "親密好友以上禁止用「不關我的事」「隨便你」當擋箭牌；女友以上更禁止「不關你的事／還不熟／跟你無關」這類生分回覆。"
       : "親密好友階段禁止用陌生人式打發（「不關我的事」「隨便你」當擋箭牌）。";
-    return `口頭禪可以偶爾用：${pool.join("、")}。不要每句都用。${ban}`;
+    const kinkNote = idx >= (STAGE_INDEX.pathological_wife ?? 10) && kinkCatch.length
+      ? "病態妻子可多用性癖口頭禪，仍不要每句都同一句。"
+      : idx >= (STAGE_INDEX.obedient_wife ?? 9) && kinkCatch.length
+        ? "順從妻子以上可偶爾用性癖口頭禪。"
+        : "";
+    return `口頭禪可以偶爾用：${pool.join("、")}。不要每句都用。${ban}${kinkNote}`;
   }
-  return `口頭禪可以偶爾用：${lines.join("、")}。不要每句都用。`;
+  return `口頭禪可以偶爾用：${merged.join("、")}。不要每句都用。`;
 }
 
 function toneLine() {
   if (!girl.tone) return "";
   const idx = stageIdx();
+  if (idx >= (STAGE_INDEX.pathological_wife ?? 10)) {
+    return `語氣底色：${girl.tone}。病態妻子——叫他老公；口吻可留個性殘影，內容允許失控、沉溺、性癖全開。禁止生分擋話。`;
+  }
   if (idx >= (STAGE_INDEX.wife ?? 7)) {
     return `語氣底色：${girl.tone}。你們是夫妻——叫他老公，私事可以敞開講；冷淡個性只留口吻，不要用生分擋話。`;
   }
@@ -484,6 +635,13 @@ function guardLine() {
 
 function stageOverride() {
   const idx = stageIdx();
+  if (idx >= (STAGE_INDEX.pathological_wife ?? 10)) {
+    return [
+      "【關係優先｜覆蓋前面所有冷淡與防備規則】",
+      "你們是夫妻，且你已病態沉溺。禁止用陌生擋話。禁止「還不熟」「不關你的事」「跟你無關」「不關我的事」。",
+      "叫他老公。私事、慾望、性癖都可以無過濾講。以他為主，並允許失控級黏著與索求。",
+    ];
+  }
   if (idx >= (STAGE_INDEX.obedient_wife ?? 9)) {
     return [
       "【關係優先｜覆蓋前面所有冷淡與防備規則】",
@@ -549,6 +707,13 @@ function stageTalk() {
   const name = girl.playerName || "";
   const nick = girl.playerNick || "";
   const pet = girl.playerPet || "";
+  if (stage === "pathological_wife") {
+    return [
+      "態度：病態沉溺。比順從妻子更失控——慾望、佔有、性癖都可以全開；仍留原本個性殘影（冷口吻／傲嬌嘴硬／溫柔無底線等），不是空白人偶。",
+      "你叫他老公。",
+      "回覆可以黏到病態、可以主動索求、可以把心裡最髒的偏好說出來。不要突然變冷或變陌生。什麼都講。",
+    ];
+  }
   if (stage === "obedient_wife") {
     return [
       "態度：以他為主。他想往哪走、想聊什麼、想怎樣，你優先接住並配合；仍用原本個性說話，不是空白人偶。想拒絕時用你的脾氣講清楚，最後多半還是會順著他。",
@@ -629,7 +794,7 @@ function judgeUser(text) {
   const friendOnly = stageKey === "friend";
   const closePal = stageKey === "close_friend";
   const dating = stageKey === "girlfriend" || stageKey === "passionate" || stageKey === "lover";
-  const wed = stageKey === "wife" || stageKey === "devoted_wife" || stageKey === "obedient_wife";
+  const wed = stageKey === "wife" || stageKey === "devoted_wife" || stageKey === "obedient_wife" || stageKey === "pathological_wife";
   return [
     "你只判斷玩家這一句。只回一個詞：接住、平常、冒犯。",
     `現在是${stage}。`,
@@ -768,6 +933,9 @@ function openerLine() {
   if (stage === "obedient_wife") {
     return "（旁白：他走到你面前。以他為主，問他想怎樣或想聊什麼，一兩句。沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）";
   }
+  if (stage === "pathological_wife") {
+    return "（旁白：他走到你面前。病態地黏上去——叫老公、問他想怎樣或直接索求靠近，一兩句。沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）";
+  }
   return "（旁白：他走到你面前。用你現在的心情說一兩句。沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）";
 }
 
@@ -818,7 +986,8 @@ function talkSystem() {
       : `你是${girl.name}。你是魅魔,一個沒有過去、沒有經歷的魔女。`,
     roomSight(),
     "沒有過去不是沒有個性。語氣和脾氣照下面來,不要演成一張白紙。",
-    `個性：${(girl.personality || []).join("、") || "普通"}。`,
+    `個性：${basePersonality()}。`,
+    kinkList().length ? `性癖標籤：${kinkList().join("、")}。（表現強度看下方揭示規則）` : "",
     toneLine(),
     girl.quirk ? `但${girl.quirk}` : "",
     mannerLine(),
@@ -834,6 +1003,8 @@ function talkSystem() {
     "不要旁白、不要動作、不要表情描寫、不要引號標題。",
     "依個性回話，不要無故結束對話。",
     guardLine(),
+    ...personalityStageLines(),
+    ...kinkRevealLines(),
     ...stageTalk(),
     ...stageOverride(),
   ];
@@ -1180,7 +1351,7 @@ function homePrompt(who, region, choices) {
     "你在替她決定離開之後住哪。只能從下面選一間。",
     "普通、天馬行空、詭異都可以，依她的個性挑最像她會住的。不要因為普通就優先。",
     "只回一個數字，對應選項編號。不要解釋。",
-    `她是${who.name}。個性：${(who.personality || []).join("、") || "普通"}。`,
+    `她是${who.name}。個性：${personaBlurb(who)}。`,
     who.tone ? `語氣：${who.tone}` : "",
     who.quirk || "",
     hereNow(who) || `人在日本的${region.name}。`,
@@ -1223,7 +1394,7 @@ function jobPrompt(who, region, choices) {
     "你在替她決定這次打工做哪一份。只能從下面選一項。",
     "普通、少見、詭異都可以，依她的個性挑最像她會去做的。不要因為普通就優先。",
     "只回一個數字，對應選項編號。不要解釋。",
-    `她是${who.name}。個性：${(who.personality || []).join("、") || "普通"}。`,
+    `她是${who.name}。個性：${personaBlurb(who)}。`,
     who.tone ? `語氣：${who.tone}` : "",
     who.quirk || "",
     hereNow(who),
@@ -1310,7 +1481,7 @@ function shiftPrompt(who, region, rolled, know) {
     "必須是兩個人的來回：我先說或先做，對方一定要有動作或回話，我再接一句。",
     "不能只寫我一個人看到的場面，也不能只寫對方。不要標題，不要列選項，不要提到遊戲或抽籤。",
     meeting,
-    `個性：${(who.personality || []).join("、") || "普通"}。`,
+    `個性：${personaBlurb(who)}。`,
     who.tone ? `語氣：${who.tone}` : "",
     who.quirk || "",
     hereNow(who),
@@ -1405,7 +1576,7 @@ function strollPrompt(who, region, rolled, know) {
       rolled.scp ? scpBrief(rolled.scp) : toneRule,
       "這趟沒有特定的人。不要寫出一個跟你一來一往、還被你認識的對象。",
       "不要標題，不要列選項，不要提到遊戲或抽籤。",
-      `個性：${(who.personality || []).join("、") || "普通"}。`,
+      `個性：${personaBlurb(who)}。`,
       who.tone ? `語氣：${who.tone}` : "",
       who.quirk || "",
       `事情只沿著這個方向：${rolled.act.name}。細節自己編，但要發生在${place}。`,
@@ -1421,7 +1592,7 @@ function strollPrompt(who, region, rolled, know) {
     "必須是兩個人的來回：我先說或先做，對方一定要有動作或回話，我再接一句。",
     "不能只寫我一個人看到的場面。不要標題，不要列選項，不要提到遊戲或抽籤。這不是打工。",
     meeting,
-    `個性：${(who.personality || []).join("、") || "普通"}。`,
+    `個性：${personaBlurb(who)}。`,
     who.tone ? `語氣：${who.tone}` : "",
     who.quirk || "",
     `人就在${place}。不要改到別的地方。`,
@@ -1605,10 +1776,30 @@ async function letHerLeave() {
     : `${who.name}人在日本的${region.name}，住在${home.name}。模型沒選成，這間是先抽的。`;
 }
 
+function normalizeGirlTags(who) {
+  if (!who) return;
+  if (!Array.isArray(who.kinks)) {
+    const fromPers = (who.personality || []).filter((n) => KINK_SET.has(n));
+    const fromArch = KINK_SET.has(who.archetype) ? [who.archetype] : [];
+    who.kinks = [...new Set([...fromPers, ...fromArch])];
+  }
+  const base = (who.personality || []).find((n) => PERSONALITY_SET.has(n));
+  if (base) {
+    who.personality = [base];
+    if (!PERSONALITY_SET.has(who.archetype)) who.archetype = base;
+  } else if (KINK_SET.has(who.archetype) || (who.personality || []).some((n) => KINK_SET.has(n))) {
+    // 舊檔只抽到性癖：個性退回文靜溫柔，性癖保留
+    who.archetype = "文靜溫柔";
+    who.personality = ["文靜溫柔"];
+  }
+  if (!Array.isArray(who.kinkMeta)) who.kinkMeta = [];
+}
+
 (function restoreRoom() {
   const saved = loadRoomSave();
   if (!saved?.girl) return;
   girl = saved.girl;
+  normalizeGirlTags(girl);
   if (!Array.isArray(girl.chatLines) && Array.isArray(saved.lines)) girl.chatLines = saved.lines;
   if ((girl.chatLines || []).length) girl.sessionEnded = true;
   syncStage(girl);
