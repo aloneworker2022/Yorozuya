@@ -39,24 +39,24 @@ export const STUFFED_OPTIONS = [
 ];
 
 const BODY_HITS = [
-  { re: /拔掉?(?:跳蛋|按摩器)|取出(?:跳蛋|按摩器)/, id: "vibe_out", arousal: 2, shame: 3 },
-  { re: /拔掉?假[陰陽][莖具]|取出假[陰陽][莖具]/, id: "dildo_out", arousal: 3, shame: 4 },
-  { re: /拔掉?小黃瓜|取出小黃瓜/, id: "cucumber_out", arousal: 3, shame: 4 },
-  { re: /(?:陰莖|肉棒|鸡巴).{0,4}(?:拔|抽)出|(?:拔|抽)出.{0,4}(?:陰莖|肉棒|鸡巴)/, id: "penis_out", arousal: 4, shame: 5 },
-  { re: /跳蛋|按摩器|震動棒/, id: "vibe_in", arousal: 8, shame: 10 },
-  { re: /假陰莖|假陽具|按摩棒/, id: "dildo_in", arousal: 10, shame: 12 },
-  { re: /小黃瓜/, id: "cucumber_in", arousal: 10, shame: 12 },
-  { re: /內射|射進|灌進子宮|射在裡面/, id: "creampie", arousal: 14, shame: 10 },
-  { re: /(?:陰莖|肉棒|鸡巴).{0,6}(?:插|進|入)|插入|抽送|做愛|幹[她妳]/, id: "penis_in", arousal: 14, shame: 10 },
-  { re: /子宮|宮口/, id: "uterus", arousal: 12, shame: 8 },
-  { re: /陰蒂/, id: "clit", arousal: 11, shame: 8 },
-  { re: /陰唇|小穴|私處|下面/, id: "labia", arousal: 10, shame: 8 },
-  { re: /陰道|穴口|裡面/, id: "vagina", arousal: 12, shame: 10 },
-  { re: /屁眼|肛門|後穴/, id: "anus", arousal: 9, shame: 12 },
-  { re: /乳頭|乳尖/, id: "nipple", arousal: 9, shame: 7 },
-  { re: /乳房|胸部|奶子|揉胸/, id: "breast", arousal: 6, shame: 5 },
-  { re: /親|吻|嘴唇/, id: "lips", arousal: 4, shame: 3 },
-  { re: /屁股|臀部/, id: "butt", arousal: 6, shame: 5 },
+  { re: /拔掉?(?:跳蛋|按摩器)|取出(?:跳蛋|按摩器)/, id: "vibe_out", arousal: 2 },
+  { re: /拔掉?假[陰陽][莖具]|取出假[陰陽][莖具]/, id: "dildo_out", arousal: 3 },
+  { re: /拔掉?小黃瓜|取出小黃瓜/, id: "cucumber_out", arousal: 3 },
+  { re: /(?:陰莖|肉棒|鸡巴).{0,4}(?:拔|抽)出|(?:拔|抽)出.{0,4}(?:陰莖|肉棒|鸡巴)/, id: "penis_out", arousal: 4 },
+  { re: /跳蛋|按摩器|震動棒/, id: "vibe_in", arousal: 8 },
+  { re: /假陰莖|假陽具|按摩棒/, id: "dildo_in", arousal: 10 },
+  { re: /小黃瓜/, id: "cucumber_in", arousal: 10 },
+  { re: /內射|射進|灌進子宮|射在裡面/, id: "creampie", arousal: 14 },
+  { re: /(?:陰莖|肉棒|鸡巴).{0,6}(?:插|進|入)|插入|抽送|做愛|幹[她妳]/, id: "penis_in", arousal: 14 },
+  { re: /子宮|宮口/, id: "uterus", arousal: 12 },
+  { re: /陰蒂/, id: "clit", arousal: 11 },
+  { re: /陰唇|小穴|私處|下面/, id: "labia", arousal: 10 },
+  { re: /陰道|穴口|裡面/, id: "vagina", arousal: 12 },
+  { re: /屁眼|肛門|後穴/, id: "anus", arousal: 9 },
+  { re: /乳頭|乳尖/, id: "nipple", arousal: 9 },
+  { re: /乳房|胸部|奶子|揉胸/, id: "breast", arousal: 6 },
+  { re: /親|吻|嘴唇/, id: "lips", arousal: 4 },
+  { re: /屁股|臀部/, id: "butt", arousal: 6 },
 ];
 
 export function clampBody(n, max = BODY_MAX) {
@@ -78,7 +78,6 @@ export function emptyOrgans() {
 export function emptyBody(seedLibido = 8) {
   return {
     arousal: 0,
-    shame: 0,
     libido: clampBody(seedLibido),
     lastPart: "",
     lastVerb: "",
@@ -100,8 +99,8 @@ export function ensureBody(who) {
   }
   const b = who.bodyState;
   b.arousal = clampBody(b.arousal);
-  b.shame = clampBody(b.shame);
   b.libido = clampBody(b.libido == null ? libidoSeedFromGirl(who) : b.libido);
+  if ("shame" in b) delete b.shame;
   b.organs = b.organs || emptyOrgans();
   const o = b.organs;
   o.nipples = { swell: clampBody(o.nipples?.swell, 3), wet: !!o.nipples?.wet };
@@ -183,8 +182,6 @@ export function bodyPromptLines(who) {
   } else {
     tone.push("身體平靜時不要硬寫情色；除非對方主動碰，否則保持日常。");
   }
-  if ((b.shame || 0) >= 18) tone.push("羞恥很高：聲音發顫、想躲、詞彙破碎，但仍被身體帶著走。");
-  else if ((b.shame || 0) >= 10) tone.push("有點羞：會罵、會裝沒事，但壓不住反應。");
   if (b.organs?.vagina?.stuffed) tone.push("體內還塞著東西：每一句都要帶著被撐開／異物感，不准假裝空的。");
   if ((b.organs?.uterus?.semen || 0) >= 1) tone.push("子宮裡有精液：熱、沉、可能還在往外滲；語氣要帶餘韻。");
   return [
@@ -284,22 +281,20 @@ export function applyOrganFromHit(who, hit, text = "") {
   return b;
 }
 
-/** 依使用者台詞輕觸更新身體＋性慾／羞恥。回傳是否命中。 */
+/** 依使用者台詞輕觸更新身體＋性慾。回傳是否命中。 */
 export function applyBodyFromUserText(who, text) {
   const b = ensureBody(who);
   if (!b) return false;
   const hit = matchBodyHit(text);
   if (!hit) {
-    // 閒聊：性慾略降、羞恥略降
+    // 閒聊：性奮略降
     b.arousal = clampBody(b.arousal - 1);
-    b.shame = clampBody(b.shame - 1);
     b.lastPart = "";
     b.lastVerb = "";
     return false;
   }
   applyOrganFromHit(who, hit, text);
   b.arousal = clampBody(b.arousal + (hit.arousal || 0));
-  b.shame = clampBody(b.shame + (hit.shame || 0));
   b.lastPart = hit.id;
   b.lastVerb = actVerb(text);
   // 高性欲底色：被碰到時更容易再往上衝
@@ -314,7 +309,6 @@ export function snapshotBodyForUi(who) {
   return {
     libido: b.libido,
     arousal: b.arousal,
-    shame: b.shame,
     nipplesSwell: o.nipples.swell,
     nipplesWet: o.nipples.wet,
     breastsSwell: o.breasts.swell,
@@ -336,7 +330,7 @@ export function applyUiSnapshot(who, snap) {
   if (!b || !snap) return b;
   b.libido = clampBody(snap.libido);
   b.arousal = clampBody(snap.arousal);
-  b.shame = clampBody(snap.shame);
+  if ("shame" in b) delete b.shame;
   const o = b.organs;
   o.nipples.swell = clampBody(snap.nipplesSwell, 3);
   o.nipples.wet = !!snap.nipplesWet;

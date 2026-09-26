@@ -12,7 +12,7 @@ import {
   LIBIDO_STAGE,
   arousalStage,
   libidoStage,
-} from "./body_state.js?v=2";
+} from "./body_state.js?v=3";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -2072,7 +2072,6 @@ function renderBodyPanel() {
   };
   setRange("body-libido", snap.libido, "body-libido-val");
   setRange("body-arousal", snap.arousal, "body-arousal-val");
-  setRange("body-shame", snap.shame, "body-shame-val");
   setRange("body-nipple-swell", snap.nipplesSwell, "body-nipple-swell-val");
   setRange("body-breast-swell", snap.breastsSwell, "body-breast-swell-val");
   setRange("body-clit-swell", snap.clitSwell, "body-clit-swell-val");
@@ -2098,7 +2097,6 @@ function readBodyPanelToGirl() {
   applyUiSnapshot(girl, {
     libido: $("body-libido")?.value,
     arousal: $("body-arousal")?.value,
-    shame: $("body-shame")?.value,
     nipplesSwell: $("body-nipple-swell")?.value,
     nipplesWet: $("body-nipple-wet")?.checked,
     breastsSwell: $("body-breast-swell")?.value,
@@ -2114,7 +2112,6 @@ function readBodyPanelToGirl() {
   const snap = snapshotBodyForUi(girl);
   if ($("body-libido-val")) $("body-libido-val").textContent = String(snap.libido);
   if ($("body-arousal-val")) $("body-arousal-val").textContent = String(snap.arousal);
-  if ($("body-shame-val")) $("body-shame-val").textContent = String(snap.shame);
   if ($("body-nipple-swell-val")) $("body-nipple-swell-val").textContent = String(snap.nipplesSwell);
   if ($("body-breast-swell-val")) $("body-breast-swell-val").textContent = String(snap.breastsSwell);
   if ($("body-clit-swell-val")) $("body-clit-swell-val").textContent = String(snap.clitSwell);
@@ -2133,7 +2130,7 @@ function bindBodyPanel() {
   if (bodyUiBound) return;
   bodyUiBound = true;
   const ids = [
-    "body-libido", "body-arousal", "body-shame",
+    "body-libido", "body-arousal",
     "body-nipple-swell", "body-breast-swell", "body-clit-swell", "body-labia-swell",
     "body-vagina-wet", "body-semen",
     "body-nipple-wet", "body-clit-wet", "body-labia-wet",
