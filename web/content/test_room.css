@@ -73,6 +73,8 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #portrait-sheet[hidden]{display:none}
 #portrait-backdrop{position:absolute;inset:0;margin:0;padding:0;min-height:0;border:0;border-radius:0;box-shadow:none;background:transparent;cursor:pointer;pointer-events:auto}
 .talk{position:relative;z-index:1;width:min(100%,440px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:6px 8px 8px;pointer-events:none}
+#portrait-img{display:block;height:min(52vh,500px);width:auto;max-width:min(92vw,420px);margin:0 auto -1.2em;object-fit:contain;object-position:bottom center;background:none;filter:drop-shadow(0 12px 22px rgba(0,0,0,.45));pointer-events:none}
+#portrait-img[hidden]{display:none}
 #talk-box,#talk-input-row{border:3px solid #fff;position:relative}
 #talk-box{width:100%;box-sizing:border-box;background:rgba(10,16,40,.92);color:#f4fbff;padding:10px 14px 12px;min-height:6.8em;pointer-events:auto}
 #talk-nameline{display:flex;align-items:center;gap:.6em;margin-bottom:.45em}

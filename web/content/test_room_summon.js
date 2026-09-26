@@ -1,4 +1,4 @@
-/* 試煉房抽妹子：人設跟 /testword 同一套。先不畫、不顯示立繪。不寫遊戲名冊。 */
+/* 試煉房抽妹子：人設跟 /testword 同一套。長按時背景補半身立繪。不寫遊戲名冊。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=2";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
@@ -57,6 +57,166 @@ function wornOutfit(g) {
   }
   if (Number.isInteger(pick) && pick >= 0 && pick < wardrobe.length) return String(wardrobe[pick] || "");
   return String(look.career_outfit || look.style || "");
+}
+
+const halfGenning = new Set();
+
+async function gameImgRoute() {
+  const response = await fetch("/api/save", { cache: "no-store" });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(errorText(data, response.status));
+  const settings = data?.data?.settings || {};
+  const comfy = String(settings.imgProvider || "").toLowerCase() === "comfy";
+  return {
+    imgProvider: comfy ? "comfy" : "grok-img",
+    imgModel: String(settings.model || "grok-4.5").trim() || "grok-4.5",
+    imgStyle: String(settings.imgStyle || "pixel").trim() || "pixel",
+    comfyUrl: String(settings.comfyUrl || "").trim(),
+    comfyCkpt: String(settings.comfyCkpt || "").trim(),
+  };
+}
+
+function halfExtra(g) {
+  const bits = [
+    "half-body portrait, looking at viewer, plain solid color background, simple background",
+  ];
+  const worn = wornOutfit(g);
+  if (worn) bits.push(`wearing: ${worn}`);
+  return bits.join(", ");
+}
+
+function halfRating(g) {
+  const stage = String(g?.stage || "stranger");
+  if (stage.includes("wife") || stage === "girlfriend" || stage === "lover" || stage === "passionate") {
+    return "nsfw";
+  }
+  return "sfw";
+}
+
+function portraitBody(g, engine) {
+  const comfy = engine.imgProvider === "comfy";
+  return {
+    key: `poportrait:${g.id}:half:${Date.now().toString(36)}`,
+    provider: comfy ? "comfy" : "grok-img",
+    model: engine.imgModel || "grok-4.5",
+    framing: "half",
+    rating: halfRating(g),
+    style: engine.imgStyle || "pixel",
+    character: g,
+    outfit: wornOutfit(g),
+    extra: halfExtra(g),
+    prompt: "",
+    cutout: true,
+    flat_bg: true,
+    retry: true,
+    shot: "half",
+    char_id: g.id,
+    ...(comfy ? {
+      comfy_url: engine.comfyUrl || "",
+      ckpt: engine.comfyCkpt || "",
+    } : {}),
+  };
+}
+
+function isNetErr(err) {
+  const message = String(err?.message || err || "");
+  return /failed to fetch|load failed|networkerror|network error|offline|abort|internet connection|timed out|timeout|lost connection|connection reset|network changed/i.test(message);
+}
+
+async function postImage(body) {
+  try {
+    const response = await fetch("/api/imggen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(errorText(payload, response.status));
+    return payload;
+  } catch (err) {
+    if (isNetErr(err)) return null;
+    throw err;
+  }
+}
+
+function whenVisible() {
+  if (document.visibilityState === "visible") return Promise.resolve();
+  return new Promise((resolve) => {
+    const go = () => {
+      if (document.visibilityState !== "visible") return;
+      document.removeEventListener("visibilitychange", go);
+      window.removeEventListener("pageshow", go);
+      resolve();
+    };
+    document.addEventListener("visibilitychange", go);
+    window.addEventListener("pageshow", go);
+  });
+}
+
+async function waitImage(body) {
+  let key = body.key;
+  let visibleWait = 0;
+  let result = await postImage({ ...body, retry: body.retry !== false });
+  if (result?.key) key = result.key;
+  while (visibleWait < 360000) {
+    if (document.visibilityState !== "visible") await whenVisible();
+    if (result?.status === "done" || result?.status === "error") return result;
+    const started = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, result ? 1500 : 2500));
+    if (document.visibilityState === "visible") {
+      visibleWait += Math.min(5000, Date.now() - started);
+    }
+    result = await postImage({ ...body, key: key || body.key, retry: false });
+    if (result?.key) key = result.key;
+  }
+  return { status: "error", error: "逾時" };
+}
+
+function paintHalfPortrait(who = girl) {
+  const img = $("portrait-img");
+  if (!img) return;
+  const url = who?.portraits?.half || (who?.portrait && !who?.portraits?.full ? who.portrait : "") || "";
+  if (url && who) {
+    img.alt = `${who.name}的半身立繪`;
+    if (img.getAttribute("src") !== url) img.src = url;
+    // Keep hidden for now: entrance slide comes later; src is ready for debug/unhide.
+    img.hidden = true;
+  } else {
+    img.hidden = true;
+    img.removeAttribute("src");
+    img.alt = "";
+  }
+}
+
+async function ensureHalfPortrait(who) {
+  if (!who?.id) return;
+  if (who.portraits?.half) {
+    paintHalfPortrait(who);
+    return;
+  }
+  if (halfGenning.has(who.id)) return;
+  halfGenning.add(who.id);
+  try {
+    const engine = await gameImgRoute();
+    const result = await waitImage(portraitBody(who, engine));
+    if (result?.status === "done" && result.result) {
+      const url = String(result.result);
+      who.portraits = who.portraits || {};
+      who.portraits.half = url.includes("?") ? url : `${url}?v=${Date.now()}`;
+      who.portrait = who.portraits.full || who.portraits.half;
+      // Only touch live UI / session if this is still the room girl.
+      if (girl && girl.id === who.id) {
+        paintHalfPortrait(who);
+        persistRoom();
+      }
+    } else if (result?.status === "error") {
+      console.warn("[ensureHalfPortrait]", result.error || "生圖失敗");
+    }
+  } catch (err) {
+    console.warn("[ensureHalfPortrait]", err?.message || err);
+  } finally {
+    halfGenning.delete(who.id);
+  }
 }
 
 function lookLine(g) {
@@ -1213,8 +1373,14 @@ function showSheet() {
     $("portrait-name").textContent = "還沒有人";
     $("portrait-meta").textContent = "先按「抽妹子」。";
     setTalkEnabled(false);
+    paintHalfPortrait(null);
     return;
   }
+  paintHalfPortrait(girl);
+  // Fire-and-forget: chat must not wait on imggen.
+  ensureHalfPortrait(girl).catch((err) => {
+    console.warn("[ensureHalfPortrait]", err?.message || err);
+  });
   openTalk();
 }
 
@@ -1310,7 +1476,7 @@ async function makeGirl() {
     stage: "stranger",
     ntr: null,
     summoner: null,
-    portraits: null,
+    portraits: {},
     portrait: null,
     crave: { v: 10 + Math.floor(Math.random() * 20), at: Date.now() },
   };
@@ -1799,6 +1965,7 @@ function normalizeGirlTags(who) {
   const saved = loadRoomSave();
   if (!saved?.girl) return;
   girl = saved.girl;
+  if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
   normalizeGirlTags(girl);
   if (!Array.isArray(girl.chatLines) && Array.isArray(saved.lines)) girl.chatLines = saved.lines;
   if ((girl.chatLines || []).length) girl.sessionEnded = true;
