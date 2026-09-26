@@ -84,7 +84,7 @@ export function applyTeaseClimax(player, actId) {
   if (p.climax < CLIMAX_MAX) {
     return { player: p, climaxed: false, spentCc: 0, line: "" };
   }
-  const spent = 6 + Math.floor(Math.random() * 13); // 6–18
+  const spent = 13 + Math.floor(Math.random() * 4); // 13–16
   const before = p.semenCc;
   p.semenCc = clamp(p.semenCc - spent, 0, SEMEN_MAX_CC);
   const actual = before - p.semenCc;

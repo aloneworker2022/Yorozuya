@@ -50,7 +50,7 @@ import {
   playerHint,
   refillSemen,
   SEMEN_MIN_TEASE_CC,
-} from "./player_state.js?v=2";
+} from "./player_state.js?v=3";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -1466,10 +1466,15 @@ async function deliverUserTalk(text, opts = {}) {
     if (!opts.skipBody) {
       if (opts.actId) {
         const stunBefore = calcStun(girl);
+        const arousalBefore = girl.bodyState?.arousal || 0;
         applyAct(girl, opts.actId);
         recordTeasePress(girl, opts.actId);
         noteActShock(girl, opts.actId);
-        bumpAffection(1, "挑逗");
+        // 情感：一般挑逗不加；接近高潮／失神門檻才小幅＋1，痙攣／射精＋2
+        const nearClimax = stunBefore >= 50 || arousalBefore >= 22
+          || (girl.bodyState?.arousal || 0) >= 22
+          || effectiveStun(girl, opts.actId) >= 50;
+        if (nearClimax) bumpAffection(1, "接近高潮");
         const spasm = applyTeaseSpasm(girl, opts.actId, stunBefore);
         if (spasm.enteredSpasm) {
           spasmNote = "（她突然痙攣——身體止不住地顫。）";
