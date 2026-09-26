@@ -1098,7 +1098,7 @@ function bumpAffection(delta, reason = "") {
   const before = girl.stage || "stranger";
   syncStage(girl);
   const stageNote = girl.stage !== before ? `，關係變成${STAGE_NAME[girl.stage]}` : "";
-  pushData(`感情 ${girl.affection}（${d >= 0 ? "+" : ""}${d}）${reason ? "　" + reason : ""}${stageNote}`);
+  pushDebug(`感情 ${girl.affection}（${d >= 0 ? "+" : ""}${d}）${reason ? "　" + reason : ""}${stageNote}`);
   renderDebug();
 }
 
@@ -1425,7 +1425,7 @@ async function deliverUserTalk(text, opts = {}) {
   if (!girl || !raw) return;
   if (isFarewell(raw)) {
     girl.lastMark = "結束對話";
-    pushData("結束對話");
+    pushDebug("結束對話");
     renderDebug();
     hideSheet();
     return;
@@ -1456,93 +1456,107 @@ async function deliverUserTalk(text, opts = {}) {
   lines.push({ role: "user", content: raw });
   talkBusy = true;
   setTalkEnabled(true);
-  let climaxLine = "";
-  let spasmNote = "";
-  if (!opts.skipBody) {
-    if (opts.actId) {
-      const stunBefore = calcStun(girl);
-      applyAct(girl, opts.actId);
-      recordTeasePress(girl, opts.actId);
-      noteActShock(girl, opts.actId);
-      bumpAffection(1, "挑逗");
-      const spasm = applyTeaseSpasm(girl, opts.actId, stunBefore);
-      if (spasm.enteredSpasm) {
-        spasmNote = "（她突然痙攣——身體止不住地顫。）";
-        bumpAffection(2, "痙攣");
-      } else if (spasm.enteredPain) {
-        spasmNote = "（過感——碰一下就痛得縮起來。）";
-      }
-      const climax = applyTeaseClimax(player, opts.actId);
-      player = climax.player;
-      if (climax.climaxed) {
-        climaxLine = climax.line;
-        bumpAffection(2, "射精");
-      }
-    } else {
-      const hit = applyBodyFromUserText(girl, raw);
-      if (hit && girl.bodyState?.lastPart) noteActShock(girl, girl.bodyState.lastPart);
-    }
-  }
-  renderBodyPanel();
-  refreshTalkActs();
-  persistRoom();
-  const naming = takeCall(raw, "");
-  if (!naming) applyMark(await judgeTurn(raw));
-  await typeLine("你", raw);
-  if (climaxLine) {
-    lines.push({ role: "user", content: climaxLine });
-    await typeLine("你", climaxLine);
-  }
-  if (spasmNote) {
-    lines.push({ role: "user", content: spasmNote });
-    await typeLine("旁白", spasmNote);
-  }
-  if (climaxLine || spasmNote) persistRoom();
-  if (!sheetOpen() || talkFor !== girl.id) {
-    talkBusy = false;
-    setTalkEnabled(true);
-    refreshTalkActs();
-    return;
-  }
 
-  const actId = opts.actId || "";
-  const stun = effectiveStun(girl, actId);
-  setTyping(true);
-  $("portrait-name").textContent = girl.name;
-  let streamed = false;
   try {
+    // 先立刻顯示玩家台詞，避免等 LLM／判定時畫面上無反應
+    await typeLine("你", raw);
+
+    let climaxLine = "";
+    let spasmNote = "";
+    if (!opts.skipBody) {
+      if (opts.actId) {
+        const stunBefore = calcStun(girl);
+        applyAct(girl, opts.actId);
+        recordTeasePress(girl, opts.actId);
+        noteActShock(girl, opts.actId);
+        bumpAffection(1, "挑逗");
+        const spasm = applyTeaseSpasm(girl, opts.actId, stunBefore);
+        if (spasm.enteredSpasm) {
+          spasmNote = "（她突然痙攣——身體止不住地顫。）";
+          bumpAffection(2, "痙攣");
+        } else if (spasm.enteredPain) {
+          spasmNote = "（過感——碰一下就痛得縮起來。）";
+        }
+        const climax = applyTeaseClimax(player, opts.actId);
+        player = climax.player;
+        if (climax.climaxed) {
+          climaxLine = climax.line;
+          bumpAffection(2, "射精");
+        }
+      } else {
+        const hit = applyBodyFromUserText(girl, raw);
+        if (hit && girl.bodyState?.lastPart) noteActShock(girl, girl.bodyState.lastPart);
+      }
+    }
+    renderBodyPanel();
+    refreshTalkActs();
+    persistRoom();
+
+    // 挑逗動作略過 judgeTurn（避免多等一次 LLM 卡住）
+    if (!opts.actId) {
+      const naming = takeCall(raw, "");
+      if (!naming) applyMark(await judgeTurn(raw));
+    }
+
+    if (climaxLine) {
+      lines.push({ role: "user", content: climaxLine });
+      await typeLine("你", climaxLine);
+    }
+    if (spasmNote) {
+      lines.push({ role: "user", content: spasmNote });
+      await typeLine("旁白", spasmNote);
+    }
+    if (climaxLine || spasmNote) persistRoom();
+
+    if (!sheetOpen() || talkFor !== girl.id) return;
+
+    const actId = opts.actId || "";
+    const stun = effectiveStun(girl, actId);
+    setTyping(true);
+    $("portrait-name").textContent = girl.name;
+    let streamed = false;
     let line = "";
-    if (shouldSkipLlm(stun, girl) || inSpasm(girl)) {
-      line = inSpasm(girl) ? spasmTemplate(girl, actId) : stunTemplate(stun, actId);
-      setTyping(false);
-    } else {
-      const streamOk = stun < 25 && !inSpasm(girl);
-      const reply = await askGirl(null, streamOk ? (partial) => {
-        if (!partial || !sheetOpen()) return;
-        streamed = true;
+    try {
+      if (shouldSkipLlm(stun, girl) || inSpasm(girl)) {
+        line = inSpasm(girl) ? spasmTemplate(girl, actId) : stunTemplate(stun, actId);
+        if (!line) line = "……嗯啊…";
+        setTyping(false);
+      } else {
+        const streamOk = stun < 25 && !inSpasm(girl);
+        const reply = await askGirl(null, streamOk ? (partial) => {
+          if (!partial || !sheetOpen()) return;
+          streamed = true;
+          setTyping(false);
+          $("portrait-name").textContent = girl.name;
+          $("portrait-meta").textContent = partial;
+        } : null);
+        line = scrambleReply(reply || "……", stun, actId, girl) || "……";
+      }
+      if (girl.guard) girl.guard -= 1;
+      tickStunAfterReply(girl);
+      noteTalkExchange(girl);
+      lines.push({ role: "assistant", content: line });
+      rememberChat();
+      persistRoom();
+      if (streamed && stun < 25) {
         setTyping(false);
         $("portrait-name").textContent = girl.name;
-        $("portrait-meta").textContent = partial;
-      } : null);
-      line = scrambleReply(reply || "……", stun, actId, girl);
-    }
-    if (girl.guard) girl.guard -= 1;
-    tickStunAfterReply(girl);
-    noteTalkExchange(girl);
-    lines.push({ role: "assistant", content: line });
-    rememberChat();
-    persistRoom();
-    if (streamed && stun < 25) {
+        $("portrait-meta").textContent = line;
+      } else {
+        await typeLine(girl.name, line);
+      }
+    } catch (err) {
       setTyping(false);
-      $("portrait-name").textContent = girl.name;
-      $("portrait-meta").textContent = line;
-    } else await typeLine(girl.name, line);
+      await typeLine(girl.name, talkError(err));
+    }
   } catch (err) {
-    await typeLine(girl.name, talkError(err));
+    setTyping(false);
+    try { await typeLine(girl.name, talkError(err)); } catch { /* ignore */ }
+  } finally {
+    talkBusy = false;
+    if (sheetOpen()) setTalkEnabled(true);
+    refreshTalkActs();
   }
-  talkBusy = false;
-  if (sheetOpen()) setTalkEnabled(true);
-  refreshTalkActs();
 }
 
 
