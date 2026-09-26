@@ -805,16 +805,26 @@ _NIPPLE_SUBSTR = (
 )
 
 
+_STAGE_KEYS = (
+    "stranger", "acquaintance", "friend", "close_friend",
+    "girlfriend", "passionate", "lover",
+    "wife", "devoted_wife", "obedient_wife",
+)
+_STAGE_COVERED = {"stranger", "acquaintance", "friend", "close_friend"}
+_STAGE_SHAPE = {"girlfriend", "passionate", "lover"}
+_STAGE_EROTIC = {"wife", "devoted_wife", "obedient_wife"}
+
+
 def resolve_stage(character: dict | None = None, stage: str = "") -> str:
     raw = (stage or "").strip().lower()
-    if raw in ("stranger", "friend", "girlfriend", "wife"):
+    if raw in _STAGE_KEYS:
         return raw
     ch = character if isinstance(character, dict) else {}
     cand = ch.get("stage")
     if isinstance(ch.get("relationship"), dict):
         cand = cand or ch["relationship"].get("stage")
     raw = str(cand or "").strip().lower()
-    return raw if raw in ("stranger", "friend", "girlfriend", "wife") else "stranger"
+    return raw if raw in _STAGE_KEYS else "stranger"
 
 
 def clothing_level(stage: str = "", *, nsfw_act: bool = False, character: dict | None = None) -> str:
@@ -823,9 +833,9 @@ def clothing_level(stage: str = "", *, nsfw_act: bool = False, character: dict |
     if ch.get("_force_exposed"):
         return "exposed"
     st = resolve_stage(character, stage)
-    if st == "wife":
+    if st in _STAGE_EROTIC:
         return "erotic"
-    if st == "girlfriend":
+    if st in _STAGE_SHAPE:
         return "shape"
     if nsfw_act:
         return "shape"

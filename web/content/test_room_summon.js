@@ -412,17 +412,44 @@ function catchLine() {
   return lines.length ? `口頭禪可以偶爾用：${lines.join("、")}。不要每句都用。` : "";
 }
 
-const FRIEND_AT = 20;
-const STAGE_NAME = { stranger: "陌生", friend: "朋友", girlfriend: "女友", wife: "妻子" };
+const STAGE_HYSTERESIS = 5;
+const STAGE_LADDER = [
+  { key: "stranger", name: "陌生", at: 0 },
+  { key: "acquaintance", name: "普通", at: 15 },
+  { key: "friend", name: "朋友", at: 35 },
+  { key: "close_friend", name: "親密好友", at: 60 },
+  { key: "girlfriend", name: "女友", at: 100 },
+  { key: "passionate", name: "熱戀", at: 140 },
+  { key: "lover", name: "愛人", at: 180 },
+  { key: "wife", name: "妻子", at: 230 },
+  { key: "devoted_wife", name: "貼心妻子", at: 280 },
+  { key: "obedient_wife", name: "順從妻子", at: 330 },
+];
+const STAGE_NAME = Object.fromEntries(STAGE_LADDER.map((s) => [s.key, s.name]));
+const STAGE_AT = Object.fromEntries(STAGE_LADDER.map((s) => [s.key, s.at]));
+const STAGE_INDEX = Object.fromEntries(STAGE_LADDER.map((s, i) => [s.key, i]));
+
+function stageByAffection(aff) {
+  let key = "stranger";
+  for (const step of STAGE_LADDER) {
+    if (aff >= step.at) key = step.key;
+  }
+  return key;
+}
 
 function syncStage(who) {
-  if (who.stageLock === "girlfriend" || who.stageLock === "wife") {
+  if (who.stageLock && STAGE_NAME[who.stageLock]) {
     who.stage = who.stageLock;
     return;
   }
   const aff = who.affection || 0;
-  const hold = (who.stage || "stranger") === "friend" && aff >= FRIEND_AT - 3;
-  who.stage = hold || aff >= FRIEND_AT ? "friend" : "stranger";
+  const target = stageByAffection(aff);
+  const current = STAGE_NAME[who.stage] ? who.stage : "stranger";
+  if ((STAGE_INDEX[target] ?? 0) < (STAGE_INDEX[current] ?? 0)) {
+    const holdAt = (STAGE_AT[current] ?? 0) - STAGE_HYSTERESIS;
+    if (aff >= holdAt) return;
+  }
+  who.stage = target;
 }
 
 function stageTalk() {
@@ -430,11 +457,39 @@ function stageTalk() {
   const name = girl.playerName || "";
   const nick = girl.playerNick || "";
   const pet = girl.playerPet || "";
+  if (stage === "obedient_wife") {
+    return [
+      "語氣：比妻子更願意順著他，但個性不要換成另一個人。想拒絕時仍用你原本的脾氣說，最後多半會妥協。",
+      "你叫他老公。",
+      "什麼都講。他提的事你會接、會配合，不要突然變冷或變陌生。",
+    ];
+  }
+  if (stage === "devoted_wife") {
+    return [
+      "語氣：照顧他、貼心，甜收在日常裡。不要每句撒嬌。個性不要換掉。",
+      "你叫他老公。",
+      "什麼都講，包括抱怨他。會多關心他有沒有吃、累不累。外面沒有特別的事就不要硬報。",
+    ];
+  }
   if (stage === "wife") {
     return [
       "語氣：甜收在日常裡。想到什麼就說，不要每句撒嬌。個性不要換掉。",
       "你叫他老公。",
       "什麼都講，包括抱怨他。外面沒有特別的事，就不要報你剛剛在做什麼。",
+    ];
+  }
+  if (stage === "lover") {
+    return [
+      "語氣：親密、安定，比熱戀少一點衝動，但比女友更深。個性不要換掉。",
+      pet ? `你給他的小名是「${pet}」。可以叫老公，也可以叫小名。` : "你要幫他取一個小名，小名用「」包起來。",
+      "心情、不安、打算都講給他。沒有特別的事就不要硬報。",
+    ];
+  }
+  if (stage === "passionate") {
+    return [
+      "語氣：熱、黏一點，會想念他。甜是距離近，不是把個性換成另一個人。",
+      pet ? `你給他的小名是「${pet}」。` : "你要幫他取一個小名，小名用「」包起來。",
+      "會主動找他、講想他。不安和異常可以講。沒有特別的事就不要硬報。",
     ];
   }
   if (stage === "girlfriend") {
@@ -444,11 +499,25 @@ function stageTalk() {
       "心情、不舒服的事、異常進行到哪，可以講給他。沒有特別的事就不要硬報。",
     ];
   }
+  if (stage === "close_friend") {
+    return [
+      "語氣：很熟的好友，比朋友更鬆，但還不是情人。不要突然變甜成女友。",
+      nick ? `你叫他的綽號是「${nick}」。` : `他叫${name || "你"}。你可以問他要不要一個綽號。`,
+      "日常、心事的外緣、打工和閒逛可以講。告白或身體話題還太早。沒有特別的事就不要硬報。",
+    ];
+  }
   if (stage === "friend") {
     return [
       "語氣：會接話，比剛認識時放軟，但還不是情人。",
       nick ? `你叫他的綽號是「${nick}」。` : `他叫${name || "你"}。你可以問他要不要一個綽號。`,
       "日常、喜好、打工和閒逛可以講。不安和異常只說有點不對勁，不講編號。沒有特別的事就不要硬報。",
+    ];
+  }
+  if (stage === "acquaintance") {
+    return [
+      "語氣：比剛認識時鬆一點，還保持普通距離。不要甜、不要撒嬌。",
+      name ? `他叫${name}。用「你」或這個名字，不要用綽號。` : "你還不知道他的名字。開場就問他怎麼稱呼。",
+      "可以接幾句日常。外面沒有特別的事就不要提。他問到只說表面。",
     ];
   }
   return [
@@ -459,17 +528,21 @@ function stageTalk() {
 }
 
 function judgeUser(text) {
-  const stage = STAGE_NAME[girl.stage || "stranger"];
+  const stageKey = girl.stage || "stranger";
+  const stage = STAGE_NAME[stageKey] || "陌生";
   const hates = namesOf(girl.dislikes).join("、");
   const last = [...lines].reverse().find((line) => line.role === "assistant")?.content || "";
   const mood = girl.world?.mood || "";
+  const early = stageKey === "stranger" || stageKey === "acquaintance";
+  const pals = stageKey === "friend" || stageKey === "close_friend";
+  const dating = stageKey === "girlfriend" || stageKey === "passionate" || stageKey === "lover";
   return [
     "你只判斷玩家這一句。只回一個詞：接住、平常、冒犯。",
     `現在是${stage}。`,
     hates ? `她討厭：${hates}。踩到就冒犯。` : "",
-    stage === "陌生" ? "說喜歡、想她、身體、性、要她陪，算冒犯。" : "",
-    stage === "朋友" ? "說喜歡、想她、身體或性，算冒犯。" : "",
-    stage === "女友" ? "只有很直接的性要求算冒犯。" : "",
+    early ? "說喜歡、想她、身體、性、要她陪，算冒犯。" : "",
+    pals ? "說喜歡、想她、身體或性，算冒犯。" : "",
+    dating ? "只有很直接的性要求算冒犯。" : "",
     mood === "不安" || mood === "不悅" ? "她心情不好。開玩笑、逼她、叫她別在意，算冒犯。" : "",
     last ? `她上一句：${last}` : "",
     `玩家這一句：${text}`,
@@ -523,6 +596,7 @@ function applyMark(mark) {
   girl.lastMark = shown;
   const stageNote = girl.stage !== before ? `，關係變成${STAGE_NAME[girl.stage]}` : "";
   pushDebug(`判定 ${shown}　感情 ${girl.affection}（${delta >= 0 ? "+" : ""}${delta}）${stageNote}`);
+  persistRoom();
   renderDebug();
 }
 
@@ -549,17 +623,36 @@ function renderDebug() {
   }
 }
 
+function topicHintFrom(history) {
+  const recent = [...(history || [])].reverse();
+  const lastUser = recent.find((line) => line.role === "user");
+  const raw = String(lastUser?.content || "").replace(/\s+/g, "");
+  if (raw.length >= 2) return raw.slice(0, 24);
+  const lastHer = recent.find((line) => line.role === "assistant");
+  const her = String(lastHer?.content || "").replace(/\s+/g, "");
+  return her.length >= 2 ? her.slice(0, 24) : "";
+}
+
+function continuityOpener() {
+  const hint = girl.topicHint || topicHintFrom(lines) || topicHintFrom(girl.chatLines);
+  if (hint) {
+    return `（旁白：你們剛才聊到一半。他回來了。用一兩句自然接上「${hint}」這個話題，不要當陌生人重開場。只輸出台詞。）`;
+  }
+  return "（旁白：他剛才離開過，現在又在你面前。用一兩句接上剛才的氣氛，不要當第一次見面。只輸出台詞。）";
+}
+
 function openerLine() {
   const stage = girl.stage || "stranger";
-  if (stage === "stranger" && !girl.playerName) {
+  const idx = STAGE_INDEX[stage] ?? 0;
+  if ((stage === "stranger" || stage === "acquaintance") && !girl.playerName) {
     girl.nameWait = "name";
     return "（旁白：他剛走到你面前。你還不知道他的名字。用一兩句問他怎麼稱呼。沒有特別的事就不要提外面。只輸出台詞。）";
   }
-  if (stage === "friend" && !girl.playerNick) {
+  if ((stage === "friend" || stage === "close_friend") && !girl.playerNick) {
     girl.nameWait = "nick";
     return `（旁白：他叫${girl.playerName || "你"}。用一兩句問他要不要一個綽號。沒有特別的事就不要提外面。只輸出台詞。）`;
   }
-  if (stage === "girlfriend" && !girl.playerPet) {
+  if (idx >= (STAGE_INDEX.girlfriend ?? 4) && !girl.playerPet) {
     girl.nameWait = "pet";
     return "（旁白：用一兩句幫他取一個小名，小名用「」包起來。沒有特別的事就不要提外面。只輸出台詞。）";
   }
@@ -726,8 +819,14 @@ async function openTalk() {
     $("talk-input").focus();
     return;
   }
+  const prior = Array.isArray(girl.chatLines) ? girl.chatLines : [];
+  const resume = !!girl.sessionEnded && prior.length > 0;
   talkFor = girl.id;
-  lines = [];
+  lines = resume ? prior.slice(-40) : [];
+  if (resume) {
+    girl.sessionEnded = false;
+    girl.topicHint = girl.topicHint || topicHintFrom(lines);
+  }
   talkBusy = true;
   setTalkEnabled(true);
   $("portrait-name").textContent = girl.name;
@@ -735,7 +834,7 @@ async function openTalk() {
   setTyping(true);
   let streamed = false;
   try {
-    const opener = openerLine();
+    const opener = resume ? continuityOpener() : openerLine();
     const reply = await askGirl(opener, (partial) => {
       if (!partial || !sheetOpen()) return;
       streamed = true;
@@ -744,8 +843,10 @@ async function openTalk() {
       $("portrait-meta").textContent = partial;
     });
     const line = reply || "……嗯？";
-    if (girl.nameWait === "pet") takeCall("", line);
+    if (!resume && girl.nameWait === "pet") takeCall("", line);
     lines.push({ role: "assistant", content: line });
+    rememberChat();
+    persistRoom();
     if (streamed) {
       setTyping(false);
       $("portrait-name").textContent = girl.name;
@@ -803,6 +904,8 @@ async function sendTalk(event) {
     const line = reply || "……";
     if (girl.guard) girl.guard -= 1;
     lines.push({ role: "assistant", content: line });
+    rememberChat();
+    persistRoom();
     if (streamed) {
       setTyping(false);
       $("portrait-name").textContent = girl.name;
@@ -838,14 +941,64 @@ function isFarewell(text) {
   return /掰+|拜拜|再見|先這樣|等一下?再聊|等等再聊|下次再聊|回頭再聊|先不聊|先別聊|先走了|晚安/.test(line);
 }
 
+const ROOM_SAVE_KEY = "yoro_test_room_session";
+
+function rememberChat() {
+  if (!girl) return;
+  if (lines.length) {
+    girl.chatLines = lines.slice(-40);
+    girl.topicHint = topicHintFrom(lines);
+  }
+}
+
+function endTalkSession() {
+  if (!girl) return;
+  rememberChat();
+  if ((girl.chatLines || []).length) girl.sessionEnded = true;
+  girl.nameWait = "";
+}
+
+function persistRoom() {
+  if (!girl) return;
+  try {
+    const payload = {
+      girl,
+      lines: lines.length ? lines.slice(-40) : (girl.chatLines || []),
+      talkFor: talkFor || girl.id || "",
+      present: typeof window.RoomActor?.isPresent === "function" ? !!window.RoomActor.isPresent() : !sheIsOut(),
+      savedAt: Date.now(),
+    };
+    localStorage.setItem(ROOM_SAVE_KEY, JSON.stringify(payload));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function clearRoomSave() {
+  try { localStorage.removeItem(ROOM_SAVE_KEY); } catch { /* ignore */ }
+}
+
+function loadRoomSave() {
+  try {
+    const raw = localStorage.getItem(ROOM_SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data?.girl?.id) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 function hideSheet() {
   typeJob += 1;
   setTyping(false);
   talkBusy = false;
+  endTalkSession();
   lines = [];
   talkFor = "";
-  if (girl) girl.nameWait = "";
   $("portrait-sheet").hidden = true;
+  persistRoom();
 }
 
 function errorText(payload, status) {
@@ -890,6 +1043,8 @@ async function drawGirl() {
     window.RoomActor?.setPresent(true);
     lines = [];
     talkFor = "";
+    clearRoomSave();
+    persistRoom();
     activityOpen = false;
     workToken += 1;
     typeJob += 1;
@@ -994,6 +1149,7 @@ function sendHerOutAgain() {
   if (sheetOpen()) hideSheet();
   renderCard();
   renderWorld();
+  persistRoom();
   $("summon-status").textContent = `${girl.name}離開房間，回到日本的${region.name}。`;
 }
 
@@ -1001,12 +1157,15 @@ function summonHerBack() {
   if (!girl?.world?.home || !sheIsOut()) return;
   clearShift();
   girl.world.justBack = true;
+  if (lines.length) rememberChat();
+  if ((girl.chatLines || []).length) girl.sessionEnded = true;
   lines = [];
   talkFor = "";
   renderDebug();
   window.RoomActor?.setPresent(true);
   renderCard();
   renderWorld();
+  persistRoom();
   $("summon-status").textContent = `${girl.name}被召喚回房間了。`;
 }
 
@@ -1313,6 +1472,7 @@ async function letHerLeave() {
   if (sheetOpen()) hideSheet();
   renderCard();
   renderWorld();
+  persistRoom();
   $("summon-status").textContent = `${who.name}已經離開房間，人在${ground.name}。正在決定她住哪。`;
   let home = null;
   let pickedByModel = true;
@@ -1332,20 +1492,38 @@ async function letHerLeave() {
     : `${who.name}人在日本的${region.name}，住在${home.name}。模型沒選成，這間是先抽的。`;
 }
 
+(function restoreRoom() {
+  const saved = loadRoomSave();
+  if (!saved?.girl) return;
+  girl = saved.girl;
+  if (!Array.isArray(girl.chatLines) && Array.isArray(saved.lines)) girl.chatLines = saved.lines;
+  if ((girl.chatLines || []).length) girl.sessionEnded = true;
+  syncStage(girl);
+  if (typeof saved.present === "boolean") {
+    window.RoomActor?.setPresent(saved.present);
+  } else {
+    window.RoomActor?.setPresent(!girl.world?.home);
+  }
+  $("summon-status").textContent = `${girl.name}還在（已接續上次）。長按她繼續聊，或讓她離開。`;
+})();
+
 $("draw-girl").addEventListener("click", () => { drawGirl(); });
 $("let-leave").addEventListener("click", letHerLeave);
 $("summon-back").addEventListener("click", summonHerBack);
 $("open-activity").addEventListener("click", toggleActivity);
 $("activity-work").addEventListener("click", () => { startActivity("work"); });
 $("activity-wander").addEventListener("click", () => { startActivity("wander"); });
+renderCard();
 renderWorld();
 renderDebug();
 $("dbg-jump").addEventListener("change", () => {
   if (!girl) return;
-  girl.stageLock = $("dbg-jump").value;
+  const value = $("dbg-jump").value;
+  girl.stageLock = STAGE_NAME[value] ? value : "";
   syncStage(girl);
   girl.lastMark = girl.stageLock ? `設定跳到${STAGE_NAME[girl.stageLock]}` : "設定改回照感情";
   pushDebug(girl.lastMark);
+  persistRoom();
   renderDebug();
 });
 $("talk-input-row").addEventListener("submit", (event) => { sendTalk(event); });
