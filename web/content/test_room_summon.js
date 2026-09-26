@@ -1292,7 +1292,6 @@ async function openTalk() {
   if (!girl) return;
   setTalkEnabled(true);
   if (talkFor === girl.id && (lines.length || talkBusy)) {
-    $("talk-input").focus();
     return;
   }
   const prior = Array.isArray(girl.chatLines) ? girl.chatLines : [];
@@ -1335,7 +1334,6 @@ async function openTalk() {
   talkBusy = false;
   if (sheetOpen() && talkFor === girl.id) {
     setTalkEnabled(true);
-    $("talk-input").focus();
   }
 }
 
@@ -1393,7 +1391,6 @@ async function sendTalk(event) {
   talkBusy = false;
   if (sheetOpen()) {
     setTalkEnabled(true);
-    $("talk-input").focus();
   }
 }
 
