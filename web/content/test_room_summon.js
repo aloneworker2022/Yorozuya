@@ -1730,18 +1730,90 @@ const PLAYER_HUD_HTML = `
     </svg>
   </span>
   <span class="player-hud-cock" aria-hidden="true">
-    <svg viewBox="0 0 28 40" focusable="false">
-      <g class="ph-shaft">
-        <path d="M11 34 L11 12 Q11 5 14 4 Q17 5 17 12 L17 34 Z"/>
-        <ellipse cx="14" cy="7" rx="5.2" ry="5.5"/>
-      </g>
-    </svg>
+    <span class="ph-pixels"></span>
   </span>
 `.replace(/\n\s+/g, "");
 
+const PH_PIXEL = 4;
+const PH_COCK_H = 40;
+
+/** Soft 2×3 hang → erect ~4×6 staircase (~45°). Returns cell {c,r}. */
+function climaxCockCells(t) {
+  const tt = Math.max(0, Math.min(1, Number(t) || 0));
+  const length = 3 + Math.round(tt * 3); // 3..6
+  const width = 2 + Math.round(tt * 2); // 2..4
+  // soft hang down (0,+1) → erect stair up-right (+1,-1)
+  const dx = tt;
+  const dy = 1 - 2 * tt;
+  const seen = new Set();
+  const cells = [];
+  const put = (c, r) => {
+    const k = `${c},${r}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    cells.push({ c, r });
+  };
+  let x = 0;
+  let y = 0;
+  let prevC = null;
+  let prevR = null;
+  for (let i = 0; i < length; i++) {
+    let c = Math.round(x);
+    let r = Math.round(y);
+    // keep segments connected but never stacked on the same cell
+    if (prevC !== null && c === prevC && r === prevR) {
+      if (Math.abs(dx) >= Math.abs(dy)) c += dx >= 0 ? 1 : -1;
+      else r += dy >= 0 ? 1 : -1;
+    }
+    prevC = c;
+    prevR = r;
+    const left = tt < 0.2 ? 0 : c - Math.floor((width - 1) / 2);
+    const segW = i === length - 1 && width > 2 ? width - 1 : width;
+    for (let w = 0; w < segW; w++) put(left + w, r);
+    x += dx;
+    y += dy;
+  }
+  let minC = Infinity;
+  let minR = Infinity;
+  for (const p of cells) {
+    if (p.c < minC) minC = p.c;
+    if (p.r < minR) minR = p.r;
+  }
+  for (const p of cells) {
+    p.c -= minC;
+    p.r -= minR;
+  }
+  return cells;
+}
+
+function renderCockPixels(pixelsEl, t) {
+  if (!pixelsEl) return;
+  const level = Math.round(Math.max(0, Math.min(1, t)) * 100);
+  if (pixelsEl.dataset.level === String(level)) return;
+  pixelsEl.dataset.level = String(level);
+  const cells = climaxCockCells(t);
+  let maxR = 0;
+  for (const p of cells) if (p.r > maxR) maxR = p.r;
+  const gridH = (maxR + 1) * PH_PIXEL;
+  const offY = Math.max(0, PH_COCK_H - gridH);
+  const offX = 2;
+  let html = "";
+  for (const p of cells) {
+    html += `<span class="ph-pixel" style="left:${offX + p.c * PH_PIXEL}px;top:${offY + p.r * PH_PIXEL}px"></span>`;
+  }
+  pixelsEl.innerHTML = html;
+}
+
 function ensurePlayerHud(row) {
   let hud = row.querySelector(".player-hud");
-  if (hud) return hud;
+  if (hud) {
+    // 舊版平滑 SVG 陰莖 → 改成像素容器（保留球）
+    const cock = hud.querySelector(".player-hud-cock");
+    if (cock && !cock.querySelector(".ph-pixels")) {
+      cock.innerHTML = '<span class="ph-pixels"></span>';
+    }
+    return hud;
+  }
   // 清掉舊文字提示節點
   for (const old of [...row.querySelectorAll(".talk-acts-hint")]) old.remove();
   hud = document.createElement("span");
@@ -1758,6 +1830,17 @@ function updatePlayerHud(hud, p) {
   const semenT = SEMEN_MAX_CC > 0 ? Math.max(0, Math.min(1, p.semenCc / SEMEN_MAX_CC)) : 0;
   hud.style.setProperty("--climax", String(climaxT));
   hud.style.setProperty("--semen", String(semenT));
+  let pixels = hud.querySelector(".ph-pixels");
+  if (!pixels) {
+    const cock = hud.querySelector(".player-hud-cock");
+    if (cock) {
+      cock.innerHTML = "";
+      pixels = document.createElement("span");
+      pixels.className = "ph-pixels";
+      cock.appendChild(pixels);
+    }
+  }
+  renderCockPixels(pixels, climaxT);
   const label = playerHint(p);
   hud.setAttribute("aria-label", label);
   hud.title = label;
