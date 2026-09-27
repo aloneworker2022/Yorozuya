@@ -14,6 +14,9 @@ export const AFTERGLOW_HERS_MS = 90 * 1000;
 export const AFTERGLOW_HERS_REPLIES = 3;
 export const AFTERGLOW_HIS_MS = 60 * 1000;
 export const AFTERGLOW_HIS_REPLIES = 2;
+/** 朋友線肉體／炮友：短餘韻鎖（弱於她高潮 90s／3句）。 */
+export const AFTERGLOW_FRIEND_MS = 50 * 1000;
+export const AFTERGLOW_FRIEND_REPLIES = 2;
 
 /** 動作／命中部位 → 短暫衝擊 */
 const SHOCK_BY_ID = {
@@ -403,11 +406,13 @@ export function ensureStunFields(who) {
   b.afterglowUntil = Math.max(0, Number(b.afterglowUntil) || 0);
   b.afterglowReplies = Math.max(0, Math.round(Number(b.afterglowReplies) || 0));
   if (!["hers", "his", "both"].includes(b.afterglowKind)) b.afterglowKind = "";
+  b.afterglowSource = b.afterglowSource === "friend" ? "friend" : "";
   // 雙重門檻：時間與回覆數皆耗盡才清掉
   if (!(b.afterglowUntil && Date.now() < b.afterglowUntil) && !(b.afterglowReplies > 0)) {
     b.afterglowUntil = 0;
     b.afterglowReplies = 0;
     b.afterglowKind = "";
+    b.afterglowSource = "";
   }
   ensureMoanVoice(who);
   return b;
@@ -538,15 +543,20 @@ export function inAfterglow(who) {
 
 /**
  * 標記餘韻。kind: "hers" | "his" | "both"
+ * opts: { ms?, replies?, source? } — source="friend" 為朋友線短餘韻
  * 疊加：until=max；若 hers+his → kind=both、replies=max(replies,3)
  */
-export function noteAfterglow(who, kind = "hers") {
+export function noteAfterglow(who, kind = "hers", opts = {}) {
   const b = ensureStunFields(who);
   if (!b) return null;
   const k = kind === "his" ? "his" : kind === "both" ? "both" : "hers";
   const now = Date.now();
-  const addMs = k === "his" ? AFTERGLOW_HIS_MS : AFTERGLOW_HERS_MS;
-  const addReplies = k === "his" ? AFTERGLOW_HIS_REPLIES : AFTERGLOW_HERS_REPLIES;
+  const addMs = Number(opts?.ms) > 0
+    ? Math.round(Number(opts.ms))
+    : (k === "his" ? AFTERGLOW_HIS_MS : AFTERGLOW_HERS_MS);
+  const addReplies = Number(opts?.replies) > 0
+    ? Math.max(1, Math.round(Number(opts.replies)))
+    : (k === "his" ? AFTERGLOW_HIS_REPLIES : AFTERGLOW_HERS_REPLIES);
   const prevUntil = Math.max(0, Number(b.afterglowUntil) || 0);
   const prevReplies = Math.max(0, Number(b.afterglowReplies) || 0);
   const prevKind = ["hers", "his", "both"].includes(b.afterglowKind) ? b.afterglowKind : "";
@@ -564,6 +574,8 @@ export function noteAfterglow(who, kind = "hers") {
     b.afterglowKind = k;
     b.afterglowReplies = Math.max(prevReplies, addReplies);
   }
+  if (opts?.source) b.afterglowSource = String(opts.source);
+  else if (!prevActive) b.afterglowSource = "";
   return b;
 }
 
@@ -577,6 +589,7 @@ export function consumeAfterglowReply(who) {
     b.afterglowUntil = 0;
     b.afterglowReplies = 0;
     b.afterglowKind = "";
+    b.afterglowSource = "";
   }
 }
 
@@ -588,6 +601,23 @@ export function afterglowTemplate(who, actId = "") {
   const kind = b?.afterglowKind || "hers";
   const actBits = ACT_BITS[actId] || [];
   const semen = b?.organs?.uterus?.semen || 0;
+  // 朋友線短餘韻：較輕的喘／腿軟，不當她剛被玩家弄到高潮
+  if (b?.afterglowSource === "friend") {
+    const friendBits = [
+      "哈…身體還熱…", "腿…有點軟…", "嗯…別盯著看…",
+      "剛…外面…哈…", "還有點喘…", "身體…還沒平…",
+      "……哈。", "嗯…等一下…",
+    ];
+    const pool = [
+      ...friendBits,
+      ...style.blankBits.slice(0, 3),
+      ...style.moans.slice(0, 2),
+    ];
+    const n = 1 + Math.floor(Math.random() * 2);
+    const parts = [];
+    for (let i = 0; i < n; i++) parts.push(pick(pool));
+    return parts.join("").replace(/(…)+/g, "…").slice(0, 22);
+  }
   const hisBits = [
     "被射到…裡面…熱…", "裡面好熱…嗯…", "精液…還在…啊…",
     "滿、滿的…哈…", "射進來了…腿軟…", "裡面…燙…說不了…",
@@ -620,6 +650,13 @@ export function afterglowPromptLines(who) {
   if (!b || !inAfterglow(who)) return [];
   const kind = b.afterglowKind || "hers";
   const semen = b.organs?.uterus?.semen || 0;
+  if (b.afterglowSource === "friend") {
+    return [
+      "【餘韻・外人】你剛與房間外的人有過身體關係，身體還軟、喘還沒完全平。",
+      "硬性：這幾句偏短、帶餘韻；不准突然冷靜長句；不准報狀態名（餘韻／高潮等）。",
+      "不要詳細交代過程；可帶一點心虛或坦然（看個性），仍以短喘／空白為主。",
+    ];
+  }
   const lines = [
     "【餘韻】你剛高潮／剛被弄到洩身（或剛被他射過），這幾句必須餘韻、喘、空白、腿軟。",
     "硬性：不准突然恢復冷靜長句；不准報狀態名（高潮／失神／餘韻等）；句子要短、斷、多省略。",

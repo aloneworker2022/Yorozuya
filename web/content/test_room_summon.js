@@ -2,6 +2,7 @@
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=2";
 import {
   ensureBody,
+  clampBody,
   bodyPromptLines,
   applyBodyFromUserText,
   applyAct,
@@ -35,7 +36,9 @@ import {
   afterglowPromptLines,
   stunTier,
   moanVoicePromptLines,
-} from "./stun_speech.js?v=9";
+  AFTERGLOW_FRIEND_MS,
+  AFTERGLOW_FRIEND_REPLIES,
+} from "./stun_speech.js?v=10";
 import {
   ensureTeaseFields,
   actLockState,
@@ -788,6 +791,125 @@ function friendRevisitPrompt(friend, advanced) {
     `這次她再次碰到認識的${name}（${zh}）。${genderLine}`,
     "不要再取新名字。寫普通再碰面，2到4句。",
   ].join("");
+}
+
+/** 朋友線剛發生肉體／炮友事件時：對玩家感情微調（尺度約 ±1～2）。
+ * 規則：女友／妻子階 → 冷淡心虛扣、佔有反而黏一下、其餘微扣；
+ * 親密好友／更早 → 小幅隨機 ±1。保持細微，不跨儀式門檻。 */
+function friendSexAffectionDelta(who, random = Math.random) {
+  const stage = who?.stage || "stranger";
+  const family = PERSONALITY_FAMILY[basePersonality(who)] || "溫柔";
+  if (DATING_OR_WIFE_STAGES.has(stage)) {
+    if (family === "佔有") return 2; // clingy bump
+    if (family === "冷淡") return -2; // guilt withdraw
+    return -1; // mild guilt
+  }
+  if (stage === "close_friend") return Number(random()) < 0.5 ? -1 : 1;
+  return Number(random()) < 0.5 ? -1 : 1;
+}
+
+/** 是否為「肉體／炮友性行為」事件（首次肉體、升炮友、或炮友再遇）。 */
+function friendSexEventKind(bondResult) {
+  if (!bondResult) return "";
+  if (bondResult.advanced === "physical") return "physical";
+  if (bondResult.advanced === "fwb") return "fwb";
+  if (bondResult.bond === "fwb") return "fwb_again";
+  return "";
+}
+
+/**
+ * 朋友線肉體／炮友後果：身體性奮＋濕潤、短餘韻鎖、聊天語氣旗標、對你感情微調。
+ * 不改旁白呈現（仍短文＋標籤），不開性愛場景。
+ */
+function applyFriendPhysicalAftermath(who, friend, kind, random = Math.random) {
+  if (!who || !friend || !kind) return null;
+  ensureBody(who);
+  ensureStunFields(who);
+  const b = who.bodyState;
+  const o = b.organs;
+
+  // 1) Body：性奮 +15～35（clamp 30）；濕潤 0–3 階 +1～2（非 0–100 假尺）
+  const aroAdd = 15 + Math.floor(Number(random()) * 21); // 15–35
+  b.arousal = clampBody((b.arousal || 0) + aroAdd);
+  const wetAdd = Number(random()) < 0.45 ? 2 : 1;
+  o.vagina.wet = Math.min(3, (o.vagina.wet || 0) + wetAdd);
+  o.labia.wet = true;
+  if (wetAdd >= 2 || (o.vagina.wet || 0) >= 2) o.clit.wet = true;
+
+  // 2) Short afterglow：50s／2 replies（弱於她高潮 90s／3）
+  noteAfterglow(who, "hers", {
+    ms: AFTERGLOW_FRIEND_MS,
+    replies: AFTERGLOW_FRIEND_REPLIES,
+    source: "friend",
+  });
+
+  // 3) Chat tone flag：「剛發生」約 4 句聊天後衰減；餘韻期間也保有
+  if (!who.world) who.world = {};
+  who.world.friendSex = {
+    at: Date.now(),
+    name: friend.name || "",
+    kind,
+    chatLeft: 4,
+  };
+
+  // 4) Affection nudge
+  const beforeAff = who.affection || 0;
+  const beforeStage = who.stage || "stranger";
+  const delta = friendSexAffectionDelta(who, random);
+  who.affection = beforeAff + delta;
+  syncStage(who);
+  const stageNote = who.stage !== beforeStage ? `，關係變成${STAGE_NAME[who.stage]}` : "";
+  const kindZh = kind === "physical" ? "肉體關係" : kind === "fwb" ? "成炮友" : "炮友再遇";
+  pushDebug(
+    `朋友線 ${kindZh}・${friend.name || "對方"}　性奮+${aroAdd}　濕潤+${wetAdd}　短餘韻${AFTERGLOW_FRIEND_REPLIES}句／${Math.round(AFTERGLOW_FRIEND_MS / 1000)}s　感情 ${who.affection}（${delta >= 0 ? "+" : ""}${delta}）${stageNote}`,
+  );
+  return { aroAdd, wetAdd, delta, kind };
+}
+
+function decayFriendSexFlag(who = girl) {
+  const fs = who?.world?.friendSex;
+  if (!fs) return;
+  fs.chatLeft = Math.max(0, (Number(fs.chatLeft) || 0) - 1);
+  const agOn = inAfterglow(who) && who.bodyState?.afterglowSource === "friend";
+  if (fs.chatLeft <= 0 && !agOn) {
+    who.world.friendSex = null;
+  }
+}
+
+/** 房間聊天：剛與外人有身體／炮友再遇，或長期 bond≥肉體 時的語氣注入。 */
+function friendPhysicalPromptLines(who = girl) {
+  if (!who?.world) return [];
+  const fs = who.world.friendSex;
+  const friends = ensureFriends(who);
+  const hasBond = friends.some((f) => f.bond === "physical" || f.bond === "fwb");
+  const family = PERSONALITY_FAMILY[basePersonality(who)] || "溫柔";
+  const lines = [];
+  const recent = fs && ((Number(fs.chatLeft) || 0) > 0 || (inAfterglow(who) && who.bodyState?.afterglowSource === "friend"));
+  if (recent) {
+    const name = fs.name || "對方";
+    if (fs.kind === "fwb_again") {
+      lines.push(`【剛與外人有過身體關係／炮友再遇】你剛又和炮友${name}做過。`);
+    } else if (fs.kind === "fwb") {
+      lines.push(`【剛與外人有過身體關係／炮友再遇】你剛和${name}成了炮友（又有身體關係）。`);
+    } else {
+      lines.push(`【剛與外人有過身體關係】你剛和${name}跨進肉體關係。`);
+    }
+    if (family === "冷淡") {
+      lines.push("語氣帶心虛、彆扭、話短；不要坦白開黃腔，被問到可支吾。");
+    } else if (family === "佔有") {
+      lines.push("可心虛，但更想確認召喚者在不在乎你；語氣偏黏或試探。");
+    } else if (family === "熱絡" || family === "反差") {
+      lines.push("可較坦然或帶一點破綻／臉紅帶過；仍不要長篇交代過程。");
+    } else {
+      lines.push("可帶一點心虛或 candid 的餘韻，依個性收著說；不要主動詳細描述。");
+    }
+    if (DATING_OR_WIFE_STAGES.has(who.stage || "stranger")) {
+      lines.push("你對召喚者已是女友／妻子：這件事讓你心虛；不要主動講細節，被問到短答即可。");
+    }
+  } else if (hasBond) {
+    lines.push("【背景】你在外面和某些朋友已有肉體關係或炮友。日常可偶發意識到，但不要每句提、不要主動細說。");
+  }
+  return lines;
 }
 
 function renderCard() {
@@ -1953,6 +2075,7 @@ function talkSystem() {
     ...bodyPromptLines(girl),
     ...moanVoicePromptLines(girl),
     ...afterglowPromptLines(girl),
+    ...friendPhysicalPromptLines(girl),
     guardLine(),
     ...personalityStageLines(),
     ...kinkRevealLines(),
@@ -2098,6 +2221,7 @@ async function openTalk() {
     // 痙攣期間不消耗餘韻回覆數，讓痙攣結束後仍鎖餘韻幾句
     if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
     noteTalkExchange(girl);
+    decayFriendSexFlag(girl);
     if (girl.nameWait === "pet") takeCall("", line);
     lines.push({ role: "assistant", content: line });
     rememberChat();
@@ -2298,6 +2422,7 @@ async function deliverUserTalk(text, opts = {}) {
       tickStunAfterReply(girl);
       if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
       noteTalkExchange(girl);
+      decayFriendSexFlag(girl);
       lines.push({ role: "assistant", content: line });
       rememberChat();
       persistRoom();
@@ -2984,6 +3109,8 @@ async function runShift(who, region) {
   };
   if (rolled.scp) noteScpStep(who, rolled.scp);
   if (know) addFriend(who, { name: personName, role: rolled.role.name, gender: newGender });
+  const sexKindShift = revisit ? friendSexEventKind(bondResult) : "";
+  if (sexKindShift) applyFriendPhysicalAftermath(who, revisit, sexKindShift);
   setMood(who, moodFromShift(rolled));
   rememberShift(who, rolled, written.event, know, personName, {
     revisit: !!revisit,
@@ -2992,6 +3119,8 @@ async function runShift(who, region) {
     bondAdvanced: bondResult?.advanced || "",
   });
   renderWorld();
+  renderBodyPanel();
+  renderDebug();
   persistRoom();
   const again = revisit ? `又碰到${revisit.name}` : `碰到一位${roleName}`;
   $("summon-status").textContent = pickedByModel
@@ -3168,6 +3297,8 @@ async function runStroll(who, region) {
   };
   if (rolled.scp) noteScpStep(who, rolled.scp);
   if (know) addFriend(who, { name: personName, role: "路人", gender: newGender });
+  const sexKindStroll = revisit ? friendSexEventKind(bondResult) : "";
+  if (sexKindStroll) applyFriendPhysicalAftermath(who, revisit, sexKindStroll);
   setMood(who, moodFromStroll(rolled));
   rememberMoment(who, {
     placeName: rolled.place.name,
@@ -3182,6 +3313,8 @@ async function runStroll(who, region) {
     bondAdvanced: bondResult?.advanced || "",
   });
   renderWorld();
+  renderBodyPanel();
+  renderDebug();
   persistRoom();
   const where = `${who.name}在${rolled.place.name}遇到${rolled.tone.name}`;
   const met = revisit
