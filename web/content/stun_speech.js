@@ -54,62 +54,64 @@ const FLOOR_ACT = {
   pull_out: 16,
 };
 
-const MOANS = ["嗯…", "啊…", "哈啊…", "唔…", "嗯啊…", "咿…", "……"];
-const STUN_BITS = [
-  "啊…！",
-  "嗯啊…",
-  "哈…啊…",
-  "不要…嗯…",
-  "還要…啊…",
-  "頭、腦袋…",
-  "說、說不了…",
-  "咿嗯…！",
-  "……哈啊",
-  "等、等一下…啊",
-];
+const VOICES = ["scream", "refuse", "gasp", "beggy", "blankish"];
 
-/** 50–64：空白語氣——短、稀疏、…… */
-const BLANK_BITS = [
-  "……",
-  "……嗯",
-  "……啊",
-  "……。",
-  "嗯……",
-  "……哈",
-  "……唔",
-  "…………",
-];
+export const MOAN_VOICE_LABELS = {
+  scream: "連叫型",
+  refuse: "碎拒崩壞型",
+  gasp: "短喘型",
+  beggy: "黏求型",
+  blankish: "失語含糊型",
+};
 
-/** 65–74：求饒語氣——求停／求慢／軟，可混空白 */
-const BEG_BITS = [
-  "求、求你…停…",
-  "慢、慢一點…",
-  "不要…再…",
-  "等一下…求你…",
-  "輕、輕一點…嗯…",
-  "受、受不了…停…",
-  "拜託…慢…",
-  "求饒…啊…",
-  "不要那麼…深…",
-  "讓我…緩一下…",
-];
-
-const SPASM_BITS = [
-  "噫…！身、身體…抽…",
-  "哈啊…哈啊…停、停不下來…",
-  "腳…軟…嗯嗯…！",
-  "去、去了…啊啊…",
-  "顫、顫抖…說不了…",
-  "嗯咿…！頭…空白…",
-];
-const PAIN_BITS = [
-  "痛…！不要碰…！",
-  "過、過敏…好痛…",
-  "啊痛…求你停…",
-  "碰不得…太、太過了…",
-  "不要…痛死了…嗯…！",
-  "禁、禁臠…碰一下就…痛…",
-];
+/** 五種呻吟／失神語氣池；每女永久抽一種。 */
+const VOICE_POOLS = {
+  scream: {
+    moans: ["誒誒誒…", "啊啊啊…", "咿咿咿…", "嗯嗯嗯！", "啊啊…！", "咿啊啊…"],
+    blankBits: ["啊啊……", "……誒", "嗯嗯……", "……啊啊", "咿……", "啊……啊"],
+    begBits: ["啊啊…慢、慢一點…", "不要啊啊…求你…", "嗯嗯…停、停一下…", "啊啊啊…受不了…", "咿…求你慢…啊啊", "不要那麼…啊啊啊"],
+    stunBits: ["啊啊啊啊…！", "誒誒誒誒…", "嗯嗯嗯…！", "咿咿咿…啊！", "啊…啊啊啊…", "頭、腦袋…啊啊…", "說不了…啊啊啊！", "等、等一下…啊啊"],
+    spasmBits: ["啊啊啊…身、身體…抽…！", "嗯嗯嗯…停、停不下來…", "咿啊啊…腳軟…！", "去、去了…啊啊啊！", "顫、顫抖…嗯嗯…！", "啊啊…頭…空白…！"],
+    painBits: ["痛啊啊…！不要碰…！", "過、過敏…好痛啊啊…", "啊痛…求你停…嗯嗯！", "碰不得…太、太過了…啊！", "不要…痛死了…啊啊！", "禁、禁臠…碰一下就…痛啊…"],
+    climaxBits: ["去了…啊啊啊啊！", "要去了…嗯嗯嗯！", "高潮…啊啊…！", "不行…去了啊啊！", "咿啊啊…射、腦子…！"],
+  },
+  refuse: {
+    moans: ["不…", "不要…", "停…", "要要…阿…", "不、不要…", "嗯…不…"],
+    blankBits: ["不……", "……不要", "停……", "……不", "要……", "不、……"],
+    begBits: ["不要…求你…停…", "不、不要再…", "停停…拜託…", "求你…不要啊…", "要要…不要…慢…", "不要那麼…深…求你"],
+    stunBits: ["不要啊啊…", "不、不…要要阿阿…", "停停…求你…", "不要…嗯…不…", "求你…停…啊", "頭…不要…說不了…", "不…還要…不…", "等、等一下…不要"],
+    spasmBits: ["不要…身、身體…抽…！", "停…停不下來…不要…", "不…腳軟…嗯…！", "去了…不要啊…", "顫…求你停…", "不要…頭…空白…"],
+    painBits: ["痛…！不要碰…！", "不要…好痛…停…", "啊痛…求你停…不要…", "碰不得…不要再…", "不要…痛死了…停…！", "禁…不要碰…痛…"],
+    climaxBits: ["不要…去了…啊…", "求你…要去了…不…", "不要高潮…啊啊…", "停…去了…不要…", "不…脑子…去了…"],
+  },
+  gasp: {
+    moans: ["哈…", "啊…", "嗯…", "唔…", "哈啊…", "……啊"],
+    blankBits: ["哈……", "……啊", "嗯……", "……唔", "啊、", "哈啊……"],
+    begBits: ["哈…慢、慢一點…", "啊…求你…停…", "嗯…等一下…", "唔…輕、輕一點…", "哈啊…受不了…", "啊…慢…求你…"],
+    stunBits: ["哈…啊…！", "嗯…唔…", "啊、啊…", "哈啊…說不了…", "唔…頭、腦袋…", "啊…等一下…哈…", "嗯…哈啊…", "……啊、唔"],
+    spasmBits: ["哈…哈…身、身體…抽…", "啊…停、停不下來…", "嗯…腳軟…唔…！", "哈啊…去了…啊…", "顫…哈…說不了…", "唔…頭…空白…"],
+    painBits: ["痛…！哈…不要碰…", "過感…好痛…啊…", "啊痛…求你停…唔…", "碰不得…太過了…哈…", "不要…痛…嗯…！", "禁…碰一下就…痛…啊"],
+    climaxBits: ["哈…要去了…啊…", "嗯…去了…唔…", "哈啊…高潮…", "啊…去了…哈…", "唔…脑子…空白…去了…"],
+  },
+  beggy: {
+    moans: ["還要…", "嗯…還要…", "不要停…", "啊…要…", "慢一點啦…", "嗯啊…要…"],
+    blankBits: ["還要……", "……要", "嗯……還", "不要停……", "……啦", "要……嗯"],
+    begBits: ["慢一點啦…求你…", "還要…可是慢…", "不要停…可是輕一點…", "受不了了…慢…", "要去了…抱緊…", "拜託…慢一點啦…還要…"],
+    stunBits: ["還要…啊…", "不要停…嗯…", "慢一點啦…啊嗯…", "受不了了…還要…", "要去了…說不了…", "頭…還要…空白…", "嗯…求你…不要停…", "等、等一下…還要…"],
+    spasmBits: ["還要…身、身體…抽…！", "不要停…哈啊…停不下來…", "慢一點啦…腳軟…嗯嗯…！", "要去了…啊啊…還要…", "顫、顫抖…不要停…", "嗯咿…頭…還要…空白…"],
+    painBits: ["痛…！可是…不要停…", "過感…好痛…還要…慢…", "啊痛…求你輕一點…還要…", "碰不得…太過了…可是要…", "不要那麼用力…痛…還要…", "禁…碰一下就…痛…可是…"],
+    climaxBits: ["要去了…還要…啊…", "去了…不要停…嗯…", "高潮…抱緊…還要…", "受不了了…去了…！", "慢一點啦…要去了…啊啊…"],
+  },
+  blankish: {
+    moans: ["……", "嗯……", "啊", "唔", "……嗯", "……啊"],
+    blankBits: ["……", "嗯……", "啊", "唔", "說、說不了…", "頭…空白…", "…………", "……。"],
+    begBits: ["……求…停…", "慢……", "不要……", "……輕一點…", "受、……停…", "……求你…"],
+    stunBits: ["……啊", "嗯……", "說、說不了…", "頭、腦袋…", "……哈", "唔……", "……空白…", "等、……啊"],
+    spasmBits: ["……身、身體…抽…", "……停不下來…", "腳…軟……嗯…", "去……啊…", "顫……說不了…", "嗯……頭…空白…"],
+    painBits: ["痛……不要碰…", "……好痛…", "啊痛……停…", "碰不得……太過了…", "不要……痛……", "禁……痛…"],
+    climaxBits: ["……去了…", "要……去…", "……高潮…", "頭…空白…去了…", "說不了…去了…"],
+  },
+};
 
 const ACT_BITS = {
   waist: ["腰…嗯…", "好癢…"],
@@ -139,6 +141,34 @@ function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)] || "";
 }
 
+export function moanVoiceId(who) {
+  const id = who?.bodyState?.moanVoice;
+  return VOICES.includes(id) ? id : null;
+}
+
+/** 每人永久抽一種呻吟語氣；缺／無效才賦值一次。 */
+export function ensureMoanVoice(who) {
+  const b = ensureBody(who);
+  if (!b) return "gasp";
+  if (!VOICES.includes(b.moanVoice)) {
+    b.moanVoice = pick(VOICES);
+  }
+  return b.moanVoice;
+}
+
+function voicePools(who) {
+  const id = ensureMoanVoice(who);
+  return VOICE_POOLS[id] || VOICE_POOLS.gasp;
+}
+
+function mixClimax(pool, style, chance = 0.3) {
+  if (Math.random() >= chance) return pool;
+  const bits = style.climaxBits || [];
+  if (!bits.length) return pool;
+  return [...pool, ...bits];
+}
+
+
 function decayShock(b) {
   if (!b) return;
   const now = Date.now();
@@ -165,6 +195,7 @@ export function ensureStunFields(who) {
     b.spasmUntil = 0;
     b.overstim = false;
   }
+  ensureMoanVoice(who);
   return b;
 }
 
@@ -306,9 +337,11 @@ export function applyTeaseSpasm(who, actId = "", stunBefore = null) {
 
 export function spasmTemplate(who, actId = "") {
   ensureStunFields(who);
-  const pool = inOverstim(who)
-    ? [...PAIN_BITS, ...STUN_BITS.slice(0, 3)]
-    : [...SPASM_BITS, ...(ACT_BITS[actId] || []), ...MOANS];
+  const style = voicePools(who);
+  let pool = inOverstim(who)
+    ? [...style.painBits, ...style.stunBits.slice(0, 3)]
+    : [...style.spasmBits, ...(ACT_BITS[actId] || []), ...style.moans];
+  pool = mixClimax(pool, style, 0.3);
   const n = 2 + Math.floor(Math.random() * 2);
   const parts = [];
   for (let i = 0; i < n; i++) parts.push(pick(pool));
@@ -360,72 +393,78 @@ function keepScrap(clause) {
   return "";
 }
 
-function insertBreaths(text) {
+function insertBreaths(text, who = null) {
+  const moans = who ? voicePools(who).moans : VOICE_POOLS.gasp.moans;
   const parts = splitClauses(text);
-  if (!parts.length) return pick(MOANS);
+  if (!parts.length) return pick(moans);
   const out = [];
   for (let i = 0; i < parts.length; i++) {
     let p = parts[i];
     if (p.length > 18) {
       const cut = Math.max(6, Math.floor(p.length / 2));
       out.push(`${p.slice(0, cut)}…`);
-      out.push(pick(MOANS));
+      out.push(pick(moans));
       out.push(p.slice(cut));
     } else {
       out.push(p);
     }
-    if (i < parts.length - 1 && Math.random() < 0.55) out.push(pick(MOANS));
+    if (i < parts.length - 1 && Math.random() < 0.55) out.push(pick(moans));
   }
   return out.join("").replace(/(…)+/g, "…").trim();
 }
 
-function scrambleBroken(text, actId = "") {
+function scrambleBroken(text, actId = "", who = null) {
+  const style = voicePools(who);
   const stripped = stripCausal(text);
   const scraps = splitClauses(stripped).map(keepScrap).filter(Boolean);
   const bits = scraps.slice(0, 3);
   if (bits.join("").replace(/[。．…！!？?\s]/g, "").length < 4) {
-    return blankTemplate(actId);
+    return blankTemplate(actId, who);
   }
-  if (Math.random() < 0.75) bits.splice(Math.min(1, bits.length), 0, pick(MOANS));
-  while (bits.length < 2) bits.push(pick(MOANS));
+  if (Math.random() < 0.75) bits.splice(Math.min(1, bits.length), 0, pick(style.moans));
+  while (bits.length < 2) bits.push(pick(style.moans));
   let out = bits.join("");
   if (out.length > 28) out = out.slice(0, 28) + "…";
   out = stripCausal(out).replace(/^[。．…！!？?\s]+/, "").trim();
-  if (!out || out.length < 2) return blankTemplate(actId);
+  if (!out || out.length < 2) return blankTemplate(actId, who);
   return out;
 }
 
-function blankTemplate(actId = "") {
+function blankTemplate(actId = "", who = null) {
+  const style = voicePools(who);
   const actBits = ACT_BITS[actId] || [];
-  const pool = [...BLANK_BITS, ...MOANS.slice(0, 3)];
+  const pool = [...style.blankBits, ...style.moans.slice(0, 3)];
   // 極稀疏：1–2 片，常只有 ……
-  if (Math.random() < 0.45) return pick(BLANK_BITS);
+  if (Math.random() < 0.45) return pick(style.blankBits);
   const parts = [pick(pool)];
   if (Math.random() < 0.35 && actBits.length) parts.push(pick(actBits).slice(0, 4));
-  else if (Math.random() < 0.4) parts.push(pick(BLANK_BITS));
+  else if (Math.random() < 0.4) parts.push(pick(style.blankBits));
   return parts.join("").replace(/(…)+/g, "…").slice(0, 16);
 }
 
-function begTemplate(actId = "") {
+function begTemplate(actId = "", who = null) {
+  const style = voicePools(who);
   const actBits = ACT_BITS[actId] || [];
-  const pool = [...BEG_BITS, ...BLANK_BITS.slice(0, 3), ...actBits.slice(0, 2)];
+  const pool = [...style.begBits, ...style.blankBits.slice(0, 3), ...actBits.slice(0, 2)];
   const parts = [];
   // 求饒為主，偶爾夾空白
-  parts.push(pick(BEG_BITS));
+  parts.push(pick(style.begBits));
   if (Math.random() < 0.55) {
-    parts.push(Math.random() < 0.4 ? pick(BLANK_BITS) : pick(pool));
+    parts.push(Math.random() < 0.4 ? pick(style.blankBits) : pick(pool));
   }
   return parts.join("").replace(/(…)+/g, "…").slice(0, 24);
 }
 
-export function stunTemplate(stun, actId = "") {
+export function stunTemplate(stun, actId = "", who = null) {
+  const style = voicePools(who);
   const tier = stunTier(stun);
-  if (tier === "blank") return blankTemplate(actId);
-  if (tier === "beg") return begTemplate(actId);
+  if (tier === "blank") return blankTemplate(actId, who);
+  if (tier === "beg") return begTemplate(actId, who);
   const actBits = ACT_BITS[actId] || ACT_BITS[talkActById(actId)?.hitId] || [];
-  const pool = tier === "stun"
-    ? [...STUN_BITS, ...actBits, ...MOANS]
-    : [...MOANS, ...actBits, "等、等一下…", "嗯…哈…"];
+  let pool = tier === "stun"
+    ? [...style.stunBits, ...actBits, ...style.moans]
+    : [...style.moans, ...actBits, "等、等一下…", "嗯…哈…"];
+  if (tier === "stun") pool = mixClimax(pool, style, 0.3);
   const n = tier === "stun" ? 2 + Math.floor(Math.random() * 2) : 2;
   const parts = [];
   for (let i = 0; i < n; i++) parts.push(pick(pool));
@@ -440,6 +479,7 @@ export function scrambleReply(text, stun, actId = "", who = null) {
   if (who && inSpasm(who)) {
     return spasmTemplate(who, actId);
   }
+  const style = voicePools(who);
   const s = clamp(stun, 0, 100);
   const tier = stunTier(s);
   const raw = String(text || "").trim();
@@ -447,27 +487,27 @@ export function scrambleReply(text, stun, actId = "", who = null) {
     if (raw.length > 80) return raw.slice(0, 72) + "…";
     return raw || "……";
   }
-  if (tier === "stun" || !raw) return stunTemplate(s, actId);
+  if (tier === "stun" || !raw) return stunTemplate(s, actId, who);
   if (tier === "blank") {
     // LLM 回覆壓成空白碎片，或整段換成空白模板
-    if (Math.random() < 0.6) return blankTemplate(actId);
+    if (Math.random() < 0.6) return blankTemplate(actId, who);
     const scraps = splitClauses(stripCausal(raw)).map(keepScrap).filter(Boolean).slice(0, 2);
-    if (!scraps.length) return blankTemplate(actId);
+    if (!scraps.length) return blankTemplate(actId, who);
     return (scraps.join("") + (Math.random() < 0.5 ? "……" : "")).slice(0, 18);
   }
   if (tier === "beg") {
     // 求饒模板為主，偶留一點原文碎片
-    if (Math.random() < 0.7 || !raw) return begTemplate(actId);
+    if (Math.random() < 0.7 || !raw) return begTemplate(actId, who);
     const scraps = splitClauses(stripCausal(raw)).map(keepScrap).filter(Boolean).slice(0, 1);
-    const beg = pick(BEG_BITS);
-    return (beg + (scraps[0] || pick(BLANK_BITS))).replace(/(…)+/g, "…").slice(0, 24);
+    const beg = pick(style.begBits);
+    return (beg + (scraps[0] || pick(style.blankBits))).replace(/(…)+/g, "…").slice(0, 24);
   }
   if (tier === "interfere") {
-    let out = insertBreaths(raw);
+    let out = insertBreaths(raw, who);
     if (out.length > 56) out = out.slice(0, 52) + "…";
-    return out || pick(MOANS);
+    return out || pick(style.moans);
   }
-  return scrambleBroken(raw, actId);
+  return scrambleBroken(raw, actId, who);
 }
 
 /** 給 UI／除錯：當前分數與階。 */
@@ -482,5 +522,6 @@ export function stunSnapshot(who, actId = "") {
     shock: ensureStunFields(who)?.shock || 0,
     mode,
     spasmUntil: ensureStunFields(who)?.spasmUntil || 0,
+    moanVoice: ensureMoanVoice(who),
   };
 }

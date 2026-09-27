@@ -29,7 +29,7 @@ import {
   noteTalkExchange,
   inSpasm,
   stunTier,
-} from "./stun_speech.js?v=5";
+} from "./stun_speech.js?v=6";
 import {
   ensureTeaseFields,
   actLockState,
@@ -1475,7 +1475,7 @@ async function openTalk() {
     const opener = returning ? reopenOpener() : openerLine();
     let line = "";
     if (shouldSkipLlm(openerStun, girl) || inSpasm(girl)) {
-      line = inSpasm(girl) ? spasmTemplate(girl, "") : stunTemplate(openerStun, "");
+      line = inSpasm(girl) ? spasmTemplate(girl, "") : stunTemplate(openerStun, "", girl);
       setTyping(false);
     } else {
       const streamOk = openerStun < 25;
@@ -1646,12 +1646,12 @@ async function deliverUserTalk(text, opts = {}) {
       const tier = stunTier(stun);
       // 優先：痙攣 → 高失神空白／求饒／skip-LLM；否則才套本回合侵犯抗議語氣
       if (shouldSkipLlm(stun, girl) || inSpasm(girl)) {
-        line = inSpasm(girl) ? spasmTemplate(girl, actId) : stunTemplate(stun, actId);
+        line = inSpasm(girl) ? spasmTemplate(girl, actId) : stunTemplate(stun, actId, girl);
         if (!line) line = "……嗯啊…";
         setTyping(false);
       } else if (tier === "blank" || tier === "beg") {
         // 50–64 空白／65–74 求饒：走模板，蓋過正常抗議（太失神罵不完整）
-        line = stunTemplate(stun, actId) || (tier === "beg" ? "求、求你…慢一點…" : "……");
+        line = stunTemplate(stun, actId, girl) || (tier === "beg" ? "求、求你…慢一點…" : "……");
         setTyping(false);
       } else {
         const streamOk = stun < 25 && !inSpasm(girl);
