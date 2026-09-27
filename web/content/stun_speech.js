@@ -3,7 +3,7 @@
 import { ensureBody, talkActById, arousalStage } from "./body_state.js?v=9";
 import { insertUnlocked } from "./tease.js?v=4";
 
-const SHOCK_MAX = 45;
+export const SHOCK_MAX = 45;
 
 /** 痙攣持續 10 分鐘。 */
 export const SPASM_MS = 10 * 60 * 1000;
@@ -17,6 +17,11 @@ export const AFTERGLOW_HIS_REPLIES = 2;
 /** 朋友線肉體／炮友：短餘韻鎖（弱於她高潮 90s／3句）。 */
 export const AFTERGLOW_FRIEND_MS = 50 * 1000;
 export const AFTERGLOW_FRIEND_REPLIES = 2;
+/** 朋友線連續交配／虛脫：較長餘韻。 */
+export const AFTERGLOW_FRIEND_CONT_MS = 70 * 1000;
+export const AFTERGLOW_FRIEND_CONT_REPLIES = 3;
+export const AFTERGLOW_FRIEND_MARATHON_MS = 90 * 1000;
+export const AFTERGLOW_FRIEND_MARATHON_REPLIES = 3;
 
 /** 動作／命中部位 → 短暫衝擊 */
 const SHOCK_BY_ID = {

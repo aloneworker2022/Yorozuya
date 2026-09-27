@@ -36,9 +36,15 @@ import {
   afterglowPromptLines,
   stunTier,
   moanVoicePromptLines,
+  SPASM_MS,
+  SHOCK_MAX,
   AFTERGLOW_FRIEND_MS,
   AFTERGLOW_FRIEND_REPLIES,
-} from "./stun_speech.js?v=10";
+  AFTERGLOW_FRIEND_CONT_MS,
+  AFTERGLOW_FRIEND_CONT_REPLIES,
+  AFTERGLOW_FRIEND_MARATHON_MS,
+  AFTERGLOW_FRIEND_MARATHON_REPLIES,
+} from "./stun_speech.js?v=11";
 import {
   ensureTeaseFields,
   actLockState,
@@ -444,6 +450,12 @@ function sceneLine() {
     else if (scene.bondAdvanced === "fwb") known = `\n又碰到${scene.personName}，成了炮友。`;
     else known = `\n又碰到${scene.personName}（${zh}）。`;
   }
+  const sexBits = [];
+  if (scene.sexIntensity === "continuous") sexBits.push("連續交配");
+  else if (scene.sexIntensity === "marathon") sexBits.push("做到虛脫");
+  if (scene.spasm) sexBits.push("痙攣餘韻");
+  if (scene.pregnant) sexBits.push("有孕");
+  if (sexBits.length) known += `\n${sexBits.join("・")}。`;
   if (!scene.roleName) return `${tone}${scene.event || ""}${known}`;
   return `${tone}一位${scene.roleName}，情緒是${scene.emotionName}。\n${scene.event}${known}`;
 }
@@ -525,6 +537,7 @@ const MOODS = {
   不悅: "心情不悅。話短一點，可以帶火氣，不要罵很長。",
   低落: "心情低落。話少，不要突然變開朗。",
   不安: "心情不安。人在房間裡，害怕還沒退。不要描寫血腥。",
+  虛脫: "身體虛脫、腿軟站不穩。話短、喘，不要裝成精力充沛。",
 };
 
 function noteScpStep(who, scp) {
@@ -557,10 +570,17 @@ function moodFromShift(rolled) {
 }
 
 function renderMood() {
-  const mood = girl?.world?.mood;
+  const world = girl?.world;
+  if (world?.exhaustedUntil && Date.now() >= world.exhaustedUntil) {
+    world.exhaustedUntil = 0;
+    if (world.mood === "虛脫") world.mood = "平靜";
+  }
+  const mood = world?.mood;
+  const preg = world?.pregnancy ? "・有孕" : "";
   const line = $("girl-mood");
-  line.hidden = !mood;
-  line.textContent = mood ? `心情 ${mood}` : "";
+  const text = mood ? `心情 ${mood}${preg}` : (preg ? "有孕" : "");
+  line.hidden = !text;
+  line.textContent = text;
 }
 
 const FRIEND_LIMIT = 5;
@@ -733,10 +753,17 @@ function memoryFriendNote(item) {
   if (!item?.personName) return "";
   if (item.known) return `，因此認識了${item.personName}`;
   if (!item.revisit) return "";
-  if (item.bondAdvanced === "familiar") return `，跟${item.personName}變熟了`;
-  if (item.bondAdvanced === "physical") return `，和${item.personName}有了身體關係`;
-  if (item.bondAdvanced === "fwb") return `，和${item.personName}成了炮友`;
-  return `，又碰到${item.personName}`;
+  let base = "";
+  if (item.bondAdvanced === "familiar") base = `，跟${item.personName}變熟了`;
+  else if (item.bondAdvanced === "physical") base = `，和${item.personName}有了身體關係`;
+  else if (item.bondAdvanced === "fwb") base = `，和${item.personName}成了炮友`;
+  else base = `，又碰到${item.personName}`;
+  const bits = [];
+  if (item.sexIntensity === "continuous") bits.push("連續交配");
+  else if (item.sexIntensity === "marathon") bits.push("做到虛脫");
+  if (item.spasm) bits.push("痙攣");
+  if (item.pregnant) bits.push("有孕");
+  return bits.length ? `${base}（${bits.join("・")}）` : base;
 }
 
 function friendGenderPrompt(gender) {
@@ -745,22 +772,40 @@ function friendGenderPrompt(gender) {
   return "";
 }
 
-function friendRevisitPrompt(friend, advanced) {
+function friendSexIntensityPrompt(intensity) {
+  if (intensity === "continuous") {
+    return "暗示連續做了好幾回，身體發軟，仍短2到4句，不要色情長文。";
+  }
+  if (intensity === "marathon") {
+    return "暗示一直做到虛脫／腿軟站不穩，可帶痙攣餘韻暗示，仍短2到4句不要長文。";
+  }
+  if (intensity === "single") {
+    return "暗示一次性行為／身體越界，可帶一點餘韻；2到4句，不要色情長文。";
+  }
+  return "";
+}
+
+function friendRevisitPrompt(friend, advanced, intensity = "") {
   if (!friend) return "";
   const name = friend.name;
   const bond = friend.bond || "acquaintance";
   const zh = bondLabel(bond);
   const genderLine = friendGenderPrompt(friend.gender);
+  const intensityLine = friendSexIntensityPrompt(intensity);
   if (advanced === "physical") {
     return [
       `這次她再次碰到已經認識的${name}（關係從熟悉跨進肉體關係）。${genderLine}`,
-      "不要再取新名字。寫兩人又見面，並暗示這次發生了一次性行為／身體越界，可帶一點餘韻；2到4句，不要色情長文。",
+      "不要再取新名字。寫兩人又見面，並",
+      intensityLine || "暗示這次發生了一次性行為／身體越界，可帶一點餘韻；2到4句，不要色情長文。",
     ].join("");
   }
   if (advanced === "fwb") {
     return [
       `這次她再次碰到${name}（關係成了炮友）。${genderLine}`,
-      "不要再取新名字。寫成較明確的固定約炮／再見面的鉤子語氣，仍短，2到4句。",
+      "不要再取新名字。",
+      intensityLine
+        ? intensityLine
+        : "寫成較明確的固定約炮／再見面的鉤子語氣，仍短，2到4句。",
     ].join("");
   }
   if (advanced === "familiar") {
@@ -770,6 +815,13 @@ function friendRevisitPrompt(friend, advanced) {
     ].join("");
   }
   if (bond === "fwb") {
+    if (intensity) {
+      return [
+        `這次她再次碰到炮友${name}。${genderLine}`,
+        "不要再取新名字。寫熟練的約見，並",
+        intensityLine,
+      ].join("");
+    }
     return [
       `這次她再次碰到炮友${name}。${genderLine}`,
       "不要再取新名字。寫熟練的約見／身體後輕鬆互動，2到4句。",
@@ -817,42 +869,129 @@ function friendSexEventKind(bondResult) {
   return "";
 }
 
+/** 強度擲骰：single 50% / continuous 32% / marathon 18%。 */
+function rollFriendSexIntensity(random = Math.random) {
+  const r = Number(random());
+  if (r < 0.50) return "single";
+  if (r < 0.82) return "continuous"; // 50+32
+  return "marathon";
+}
+
+const FRIEND_SEX_SPASM_CHANCE = { single: 0.10, continuous: 0.28, marathon: 0.55 };
+const FRIEND_SEX_PREG_CHANCE = { single: 0.08, continuous: 0.16, marathon: 0.28 };
+
+/** 打工／亂逛結束狀態列：連續／虛脫／痙攣／有孕短尾。 */
+function friendSexStatusTail(aftermath) {
+  if (!aftermath) return "";
+  const bits = [];
+  if (aftermath.intensity === "continuous") bits.push("連續交配");
+  else if (aftermath.intensity === "marathon") bits.push("做到虛脫");
+  if (aftermath.spasm) bits.push("痙攣");
+  if (aftermath.pregnantNew) bits.push("有孕");
+  return bits.length ? bits.join("・") + "。" : "";
+}
+
 /**
- * 朋友線肉體／炮友後果：身體性奮＋濕潤、短餘韻鎖、聊天語氣旗標、對你感情微調。
- * 不改旁白呈現（仍短文＋標籤），不開性愛場景。
+ * 朋友線肉體／炮友後果：依強度套身體／精液／衝擊／痙攣／餘韻／房間有孕。
+ * intensity 應由呼叫端先擲好傳入（與旁白 prompt 同一份）；缺省才補擲。
  */
-function applyFriendPhysicalAftermath(who, friend, kind, random = Math.random) {
+function applyFriendPhysicalAftermath(who, friend, kind, random = Math.random, opts = {}) {
   if (!who || !friend || !kind) return null;
   ensureBody(who);
   ensureStunFields(who);
   const b = who.bodyState;
   const o = b.organs;
+  if (!who.world) who.world = {};
 
-  // 1) Body：性奮 +15～35（clamp 30）；濕潤 0–3 階 +1～2（非 0–100 假尺）
-  const aroAdd = 15 + Math.floor(Number(random()) * 21); // 15–35
+  const pending = who.world._pendingFriendSex;
+  let intensity = opts.intensity || pending?.intensity || "";
+  if (!intensity) intensity = rollFriendSexIntensity(random);
+  if (!["single", "continuous", "marathon"].includes(intensity)) intensity = "single";
+
+  // 1) Body by intensity（既有性奮／濕潤為地板，再往上）
+  let aroAdd = 15 + Math.floor(Number(random()) * 21); // 15–35
+  let wetAdd = Number(random()) < 0.45 ? 2 : 1;
+  let semenAdd = 1;
+  let shockAdd = 8 + Math.floor(Number(random()) * 7); // 8–14
+  let agMs = AFTERGLOW_FRIEND_MS;
+  let agReplies = AFTERGLOW_FRIEND_REPLIES;
+
+  if (intensity === "continuous") {
+    aroAdd = 20 + Math.floor(Number(random()) * 16); // 20–35
+    wetAdd = 2;
+    semenAdd = 2;
+    shockAdd = 18 + Math.floor(Number(random()) * 11); // 18–28
+    agMs = AFTERGLOW_FRIEND_CONT_MS;
+    agReplies = AFTERGLOW_FRIEND_CONT_REPLIES;
+  } else if (intensity === "marathon") {
+    aroAdd = 20 + Math.floor(Number(random()) * 16); // 20–35，可維持偏高
+    wetAdd = 3; // max toward 3
+    semenAdd = 2 + (Number(random()) < 0.5 ? 1 : 0); // 2–3
+    shockAdd = 28 + Math.floor(Number(random()) * 13); // 28–40
+    agMs = AFTERGLOW_FRIEND_MARATHON_MS;
+    agReplies = AFTERGLOW_FRIEND_MARATHON_REPLIES;
+    b.libido = clampBody((b.libido || 0) - 2);
+    who.world.exhaustedUntil = Date.now() + 10 * 60 * 1000;
+    setMood(who, "虛脫");
+  }
+
   b.arousal = clampBody((b.arousal || 0) + aroAdd);
-  const wetAdd = Number(random()) < 0.45 ? 2 : 1;
   o.vagina.wet = Math.min(3, (o.vagina.wet || 0) + wetAdd);
   o.labia.wet = true;
   if (wetAdd >= 2 || (o.vagina.wet || 0) >= 2) o.clit.wet = true;
 
-  // 2) Short afterglow：50s／2 replies（弱於她高潮 90s／3）
+  o.uterus.semen = Math.min(3, (o.uterus.semen || 0) + semenAdd);
+  if (o.vagina.stuffed === "penis") o.vagina.stuffed = "semen";
+  else o.vagina.stuffed = "semen";
+
+  b.shock = Math.max(0, Math.min(SHOCK_MAX, (b.shock || 0) + shockAdd));
+
+  // 2) Afterglow by intensity
   noteAfterglow(who, "hers", {
-    ms: AFTERGLOW_FRIEND_MS,
-    replies: AFTERGLOW_FRIEND_REPLIES,
+    ms: agMs,
+    replies: agReplies,
     source: "friend",
   });
 
-  // 3) Chat tone flag：「剛發生」約 4 句聊天後衰減；餘韻期間也保有
-  if (!who.world) who.world = {};
+  // 3) Spasm
+  let spasm = false;
+  const spasmChance = FRIEND_SEX_SPASM_CHANCE[intensity] || 0;
+  if (Number(random()) < spasmChance) {
+    b.spasmUntil = Date.now() + SPASM_MS;
+    b.overstim = false;
+    spasm = true;
+  }
+
+  // 4) Room-local pregnancy（不移除、不碰 sim.py）
+  let pregnantNew = false;
+  const already = !!who.world.pregnancy;
+  if (!already) {
+    const pregChance = FRIEND_SEX_PREG_CHANCE[intensity] || 0;
+    if (Number(random()) < pregChance) {
+      who.world.pregnancy = {
+        at: Date.now(),
+        fatherName: friend.name || "",
+        fatherRole: friend.role || "",
+        intensity,
+        kind,
+      };
+      pregnantNew = true;
+    }
+  }
+
+  // 5) Chat tone flag
   who.world.friendSex = {
     at: Date.now(),
     name: friend.name || "",
     kind,
-    chatLeft: 4,
+    intensity,
+    spasm,
+    pregnant: pregnantNew || already,
+    chatLeft: intensity === "single" ? 4 : 5,
   };
+  who.world._pendingFriendSex = null;
 
-  // 4) Affection nudge
+  // 6) Affection nudge
   const beforeAff = who.affection || 0;
   const beforeStage = who.stage || "stranger";
   const delta = friendSexAffectionDelta(who, random);
@@ -860,10 +999,18 @@ function applyFriendPhysicalAftermath(who, friend, kind, random = Math.random) {
   syncStage(who);
   const stageNote = who.stage !== beforeStage ? `，關係變成${STAGE_NAME[who.stage]}` : "";
   const kindZh = kind === "physical" ? "肉體關係" : kind === "fwb" ? "成炮友" : "炮友再遇";
+  const intenZh = intensity === "continuous" ? "連續" : intensity === "marathon" ? "虛脫" : "單次";
+  const extra = [
+    spasm ? "痙攣" : "",
+    pregnantNew ? "有孕" : (already ? "已孕" : ""),
+  ].filter(Boolean).join("・");
   pushDebug(
-    `朋友線 ${kindZh}・${friend.name || "對方"}　性奮+${aroAdd}　濕潤+${wetAdd}　短餘韻${AFTERGLOW_FRIEND_REPLIES}句／${Math.round(AFTERGLOW_FRIEND_MS / 1000)}s　感情 ${who.affection}（${delta >= 0 ? "+" : ""}${delta}）${stageNote}`,
+    `朋友線 ${kindZh}・${friend.name || "對方"}・${intenZh}　性奮+${aroAdd}　濕潤+${wetAdd}　精液+${semenAdd}　衝擊+${shockAdd}　餘韻${agReplies}句／${Math.round(agMs / 1000)}s　感情 ${who.affection}（${delta >= 0 ? "+" : ""}${delta}）${stageNote}${extra ? "　" + extra : ""}`,
   );
-  return { aroAdd, wetAdd, delta, kind };
+  return {
+    aroAdd, wetAdd, semenAdd, shockAdd, delta, kind, intensity, spasm,
+    pregnant: pregnantNew || already, pregnantNew,
+  };
 }
 
 function decayFriendSexFlag(who = girl) {
@@ -876,10 +1023,11 @@ function decayFriendSexFlag(who = girl) {
   }
 }
 
-/** 房間聊天：外人肉體／炮友事件的口吻——依對召喚者關係分「較會透露」vs「女友／妻子隱瞞」。 */
+/** 房間聊天：外人肉體／炮友／有孕——依對召喚者關係分透露 vs 隱瞞。 */
 function friendPhysicalPromptLines(who = girl) {
   if (!who?.world) return [];
   const fs = who.world.friendSex;
+  const preg = who.world.pregnancy;
   const friends = ensureFriends(who);
   const hasBond = friends.some((f) => f.bond === "physical" || f.bond === "fwb");
   const family = PERSONALITY_FAMILY[basePersonality(who)] || "溫柔";
@@ -887,6 +1035,16 @@ function friendPhysicalPromptLines(who = girl) {
   const dating = DATING_OR_WIFE_STAGES.has(stage);
   const lines = [];
   const recent = fs && ((Number(fs.chatLeft) || 0) > 0 || (inAfterglow(who) && who.bodyState?.afterglowSource === "friend"));
+
+  if (preg) {
+    const dad = preg.fatherName || "對方";
+    lines.push(`【背景・有孕・事實・勿主動照念】你已有孕，父親是${dad}${preg.fatherRole ? `（${preg.fatherRole}）` : ""}。房間狀態，不會被帶走。`);
+    if (dating) {
+      lines.push("【有孕・女友／妻子・口吻】懷孕對召喚者是秘密：不要主動提；被明確逼問才可能心虛漏一點、閃避或沉默，不要細說父親是誰。");
+    } else {
+      lines.push("【有孕・陌生／朋友・口吻】被問身體／近況時可自然露出一點有孕的跡象或事實，仍不要每句提、不要長篇。");
+    }
+  }
 
   if (recent) {
     const name = fs.name || "對方";
@@ -897,6 +1055,14 @@ function friendPhysicalPromptLines(who = girl) {
       lines.push(`【剛發生・事實・勿主動照念】你剛和${name}成了炮友（又有身體關係）。`);
     } else {
       lines.push(`【剛發生・事實・勿主動照念】你剛和${name}跨進肉體關係。`);
+    }
+    if (fs.intensity === "continuous") {
+      lines.push("【強度・事實】這次是連續做了好幾回，身體發軟；敘述語氣可帶疲軟餘韻，但不要主動向召喚者告白細節。");
+    } else if (fs.intensity === "marathon") {
+      lines.push("【強度・事實】這次一直做到虛脫／腿軟；可帶痙攣餘韻或站不穩感，仍不要主動向召喚者細說。");
+    }
+    if (fs.spasm || inSpasm(who)) {
+      lines.push("【身體・事實】剛結束後有痙攣餘韻：台詞可短、喘、斷續，不要假裝完全沒事。");
     }
 
     if (dating) {
@@ -1018,6 +1184,9 @@ function rememberShift(who, rolled, event, know, personName, extra = {}) {
     revisit: !!extra.revisit,
     bond: extra.bond || "",
     bondAdvanced: extra.bondAdvanced || "",
+    sexIntensity: extra.sexIntensity || "",
+    spasm: !!extra.spasm,
+    pregnant: !!extra.pregnant,
   });
 }
 
@@ -1031,6 +1200,10 @@ function lifeNotes() {
   const friends = ensureFriends(girl);
   if (friends.length) {
     notes.push(`朋友：${friends.map((friend) => `${friend.name}（${friend.role}・${bondLabel(friend.bond)}）`).join("、")}。`);
+  }
+  if (world.pregnancy) {
+    const dad = world.pregnancy.fatherName || "對方";
+    notes.push(`她目前有孕（父親：${dad}）。這是房間狀態，不要編成被帶走或離開。`);
   }
   const memories = world.memories || [];
   if (!memories.length) return notes;
@@ -3014,11 +3187,12 @@ function shiftPrompt(who, region, rolled, know, opts = {}) {
   const revisit = opts.revisit || null;
   const advanced = opts.bondAdvanced || "";
   const newGender = opts.newGender || "";
+  const sexIntensity = opts.sexIntensity || "";
   let meeting;
   if (rolled.scp) {
     meeting = scpBrief(rolled.scp);
   } else if (revisit) {
-    meeting = friendRevisitPrompt(revisit, advanced);
+    meeting = friendRevisitPrompt(revisit, advanced, sexIntensity);
   } else if (know) {
     meeting = [
       "這次她會因此認識對方。第一行只寫「名字：」加一個日本名字，換行後再寫互動。",
@@ -3089,10 +3263,21 @@ async function runShift(who, region) {
     know = rollBefriend(who, rolled.act);
     if (know) newGender = rollFriendGender(rolled.role.name);
   }
+  const sexKindEarly = revisit ? friendSexEventKind(bondResult) : "";
+  let sexIntensity = "";
+  if (sexKindEarly) {
+    sexIntensity = rollFriendSexIntensity();
+    who.world._pendingFriendSex = {
+      intensity: sexIntensity,
+      friendName: revisit.name,
+      kind: sexKindEarly,
+    };
+  }
   const promptOpts = {
     revisit,
     bondAdvanced: bondResult?.advanced || "",
     newGender,
+    sexIntensity,
   };
   const roleName = revisit?.role || rolled.role.name;
   who.world.activity = "work";
@@ -3132,23 +3317,33 @@ async function runShift(who, region) {
   };
   if (rolled.scp) noteScpStep(who, rolled.scp);
   if (know) addFriend(who, { name: personName, role: rolled.role.name, gender: newGender });
-  const sexKindShift = revisit ? friendSexEventKind(bondResult) : "";
-  if (sexKindShift) applyFriendPhysicalAftermath(who, revisit, sexKindShift);
   setMood(who, moodFromShift(rolled));
+  const sexKindShift = revisit ? friendSexEventKind(bondResult) : "";
+  let aftermathShift = null;
+  if (sexKindShift) {
+    aftermathShift = applyFriendPhysicalAftermath(who, revisit, sexKindShift, Math.random, { intensity: sexIntensity });
+    who.world.shift.sexIntensity = aftermathShift?.intensity || sexIntensity || "";
+    who.world.shift.spasm = !!aftermathShift?.spasm;
+    who.world.shift.pregnant = !!aftermathShift?.pregnantNew;
+  }
   rememberShift(who, rolled, written.event, know, personName, {
     revisit: !!revisit,
     roleName,
     bond: who.world.shift.bond,
     bondAdvanced: bondResult?.advanced || "",
+    sexIntensity: who.world.shift.sexIntensity || "",
+    spasm: !!who.world.shift.spasm,
+    pregnant: !!who.world.shift.pregnant,
   });
   renderWorld();
   renderBodyPanel();
   renderDebug();
   persistRoom();
   const again = revisit ? `又碰到${revisit.name}` : `碰到一位${roleName}`;
+  const sexStatus = friendSexStatusTail(aftermathShift);
   $("summon-status").textContent = pickedByModel
-    ? `${who.name}在${who.world.job.name}${rolled.scp ? `遇到${rolled.scp.code}，` : ""}${again}。`
-    : `${who.name}在${who.world.job.name}${rolled.scp ? `遇到${rolled.scp.code}，` : ""}${again}。模型沒寫成，這段是先補的。`;
+    ? `${who.name}在${who.world.job.name}${rolled.scp ? `遇到${rolled.scp.code}，` : ""}${again}。${sexStatus}`
+    : `${who.name}在${who.world.job.name}${rolled.scp ? `遇到${rolled.scp.code}，` : ""}${again}。模型沒寫成，這段是先補的。${sexStatus}`;
 }
 
 const STROLL_TONE_RULE = {
@@ -3164,6 +3359,7 @@ function strollPrompt(who, region, rolled, know, opts = {}) {
   const revisit = opts.revisit || null;
   const advanced = opts.bondAdvanced || "";
   const newGender = opts.newGender || "";
+  const sexIntensity = opts.sexIntensity || "";
   if (!rolled.person && !revisit) {
     return [
       `你是${who.name}。用「我」寫在${place}亂逛時發生的事，2到4句。`,
@@ -3179,7 +3375,7 @@ function strollPrompt(who, region, rolled, know, opts = {}) {
   }
   let meeting;
   if (revisit) {
-    meeting = friendRevisitPrompt(revisit, advanced);
+    meeting = friendRevisitPrompt(revisit, advanced, sexIntensity);
   } else if (know) {
     meeting = [
       "這次她會因此認識對方。第一行只寫「名字：」加一個日本名字，換行後再寫互動。",
@@ -3268,10 +3464,21 @@ async function runStroll(who, region) {
     know = rollBefriend(who, rolled.act);
     if (know) newGender = rollFriendGender("路人");
   }
+  const sexKindEarlyStroll = revisit ? friendSexEventKind(bondResult) : "";
+  let sexIntensity = "";
+  if (sexKindEarlyStroll) {
+    sexIntensity = rollFriendSexIntensity();
+    who.world._pendingFriendSex = {
+      intensity: sexIntensity,
+      friendName: revisit.name,
+      kind: sexKindEarlyStroll,
+    };
+  }
   const promptOpts = {
     revisit,
     bondAdvanced: bondResult?.advanced || "",
     newGender,
+    sexIntensity,
   };
   const roleName = revisit?.role || (rolled.person ? "路人" : "");
   who.world.activity = "wander";
@@ -3320,9 +3527,15 @@ async function runStroll(who, region) {
   };
   if (rolled.scp) noteScpStep(who, rolled.scp);
   if (know) addFriend(who, { name: personName, role: "路人", gender: newGender });
-  const sexKindStroll = revisit ? friendSexEventKind(bondResult) : "";
-  if (sexKindStroll) applyFriendPhysicalAftermath(who, revisit, sexKindStroll);
   setMood(who, moodFromStroll(rolled));
+  const sexKindStroll = revisit ? friendSexEventKind(bondResult) : "";
+  let aftermathStroll = null;
+  if (sexKindStroll) {
+    aftermathStroll = applyFriendPhysicalAftermath(who, revisit, sexKindStroll, Math.random, { intensity: sexIntensity });
+    who.world.stroll.sexIntensity = aftermathStroll?.intensity || sexIntensity || "";
+    who.world.stroll.spasm = !!aftermathStroll?.spasm;
+    who.world.stroll.pregnant = !!aftermathStroll?.pregnantNew;
+  }
   rememberMoment(who, {
     placeName: rolled.place.name,
     toneName: rolled.tone.name,
@@ -3334,6 +3547,9 @@ async function runStroll(who, region) {
     revisit: !!revisit,
     bond: who.world.stroll.bond,
     bondAdvanced: bondResult?.advanced || "",
+    sexIntensity: who.world.stroll.sexIntensity || "",
+    spasm: !!who.world.stroll.spasm,
+    pregnant: !!who.world.stroll.pregnant,
   });
   renderWorld();
   renderBodyPanel();
@@ -3345,9 +3561,11 @@ async function runStroll(who, region) {
     : rolled.person
     ? "，碰到一位路人。"
     : "。";
+  const sexStatus = friendSexStatusTail(aftermathStroll);
+  const sexTail = sexStatus ? sexStatus : "";
   $("summon-status").textContent = pickedByModel
-    ? `${where}${met}`
-    : `${where}${met}模型沒寫成，這段是先補的。`;
+    ? `${where}${met}${sexTail}`
+    : `${where}${met}模型沒寫成，這段是先補的。${sexTail}`;
 }
 
 function toggleActivity() {
@@ -3513,7 +3731,10 @@ function renderBodyPanel() {
   if ($("body-vagina-stuffed")) $("body-vagina-stuffed").value = snap.vaginaStuffed || "";
   if ($("body-anus-stuffed")) $("body-anus-stuffed").value = snap.anusStuffed || "";
   if ($("body-summary")) {
-    $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・開放${snap.openness ?? 0}・侵犯${snap.invasion ?? 0}・精液${SEMEN_ZH[snap.uterusSemen]}`;
+    {
+      const preg = girl?.world?.pregnancy ? "・有孕" : "";
+      $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・開放${snap.openness ?? 0}・侵犯${snap.invasion ?? 0}・精液${SEMEN_ZH[snap.uterusSemen]}${preg}`;
+    }
   }
   bodyUiSyncing = false;
 }
@@ -3547,7 +3768,10 @@ function readBodyPanelToGirl() {
   if ($("body-libido-stage")) $("body-libido-stage").textContent = snap.libidoLabel;
   if ($("body-arousal-stage")) $("body-arousal-stage").textContent = snap.arousalLabel;
   if ($("body-summary")) {
-    $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・開放${snap.openness ?? 0}・侵犯${snap.invasion ?? 0}・精液${SEMEN_ZH[snap.uterusSemen]}`;
+    {
+      const preg = girl?.world?.pregnancy ? "・有孕" : "";
+      $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・開放${snap.openness ?? 0}・侵犯${snap.invasion ?? 0}・精液${SEMEN_ZH[snap.uterusSemen]}${preg}`;
+    }
   }
   persistRoom();
 }
