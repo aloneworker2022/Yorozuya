@@ -123,7 +123,17 @@ button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-v
 .talk-acts button:disabled,.talk-acts button.is-locked{opacity:.38;cursor:not-allowed;color:rgba(244,251,255,.55);border-color:rgba(244,251,255,.18);background:rgba(20,28,48,.75)}
 .talk-acts button:active:not(:disabled):not(.is-locked){background:rgba(40,70,120,.95)}
 .talk-acts button .act-lock{display:block;font-size:.65em;letter-spacing:0;color:rgba(244,251,255,.55);margin-top:2px;font-weight:400}
-.talk-acts-hint{flex:0 0 auto;align-self:center;font-size:.72em;color:rgba(244,251,255,.65);padding:0 6px;white-space:nowrap}
+/* 玩家興奮／精液 HUD（陰莖＋睾丸圖示，取代底欄文字提示） */
+.player-hud{flex:0 0 auto;align-self:center;display:flex;align-items:flex-end;gap:1px;height:44px;padding:0 4px 2px;pointer-events:none;user-select:none;-webkit-user-select:none}
+.player-hud-balls{position:relative;width:30px;height:22px;flex:0 0 auto}
+.player-hud-balls svg{display:block;width:100%;height:100%;overflow:visible}
+.player-hud-balls .ph-ball-bg{fill:#0a0e18;stroke:rgba(244,251,255,.55);stroke-width:1.4}
+.player-hud-balls .ph-semen-fill{fill:#f4fbff;transform-box:fill-box;transform-origin:center bottom;transform:scaleY(var(--semen,0));transition:transform .4s cubic-bezier(.25,.8,.25,1)}
+.player-hud-cock{position:relative;width:22px;height:36px;flex:0 0 auto;margin-left:-4px;margin-bottom:2px}
+.player-hud-cock svg{display:block;width:100%;height:100%;overflow:visible}
+.player-hud-cock .ph-shaft{fill:#e8b896;stroke:rgba(20,28,48,.55);stroke-width:1.1;transform-box:view-box;transform-origin:14px 34px;transform:rotate(calc(105deg - var(--climax,0)*150deg)) scale(calc(.7 + var(--climax,0)*.4),calc(.72 + var(--climax,0)*.38));transition:transform .45s cubic-bezier(.2,.85,.2,1)}
+.player-hud.is-low .ph-ball-bg{stroke:rgba(255,180,120,.7)}
+.player-hud.is-empty .ph-semen-fill{opacity:.15}
 
 .body-player-row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
 .body-player-row .note{margin:0}

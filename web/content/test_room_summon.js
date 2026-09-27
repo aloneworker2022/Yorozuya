@@ -35,7 +35,6 @@ import {
   actLockState,
   isActUnlocked,
   recordTeasePress,
-  teaseHint,
   orderedTalkActs,
   availableActs,
   decayBodyIdle,
@@ -51,6 +50,8 @@ import {
   playerHint,
   refillSemen,
   SEMEN_MIN_TEASE_CC,
+  SEMEN_MAX_CC,
+  CLIMAX_MAX,
 } from "./player_state.js?v=4";
 import { ensureOpenness, getOpenness } from "./openness.js?v=1";
 import {
@@ -1713,23 +1714,65 @@ async function sendTalkAct(actId) {
   await deliverUserTalk(act.text, { actId });
 }
 
+
+const PLAYER_HUD_HTML = `
+  <span class="player-hud-balls" aria-hidden="true">
+    <svg viewBox="0 0 36 26" focusable="false">
+      <defs>
+        <clipPath id="ph-balls-clip">
+          <ellipse cx="12" cy="14" rx="11" ry="11"/>
+          <ellipse cx="24" cy="14" rx="11" ry="11"/>
+        </clipPath>
+      </defs>
+      <ellipse class="ph-ball-bg" cx="12" cy="14" rx="11" ry="11"/>
+      <ellipse class="ph-ball-bg" cx="24" cy="14" rx="11" ry="11"/>
+      <rect class="ph-semen-fill" x="0" y="0" width="36" height="26" clip-path="url(#ph-balls-clip)"/>
+    </svg>
+  </span>
+  <span class="player-hud-cock" aria-hidden="true">
+    <svg viewBox="0 0 28 40" focusable="false">
+      <g class="ph-shaft">
+        <path d="M11 34 L11 12 Q11 5 14 4 Q17 5 17 12 L17 34 Z"/>
+        <ellipse cx="14" cy="7" rx="5.2" ry="5.5"/>
+      </g>
+    </svg>
+  </span>
+`.replace(/\n\s+/g, "");
+
+function ensurePlayerHud(row) {
+  let hud = row.querySelector(".player-hud");
+  if (hud) return hud;
+  // 清掉舊文字提示節點
+  for (const old of [...row.querySelectorAll(".talk-acts-hint")]) old.remove();
+  hud = document.createElement("span");
+  hud.className = "player-hud";
+  hud.setAttribute("role", "status");
+  hud.innerHTML = PLAYER_HUD_HTML;
+  row.prepend(hud);
+  return hud;
+}
+
+function updatePlayerHud(hud, p) {
+  if (!hud) return;
+  const climaxT = CLIMAX_MAX > 0 ? Math.max(0, Math.min(1, p.climax / CLIMAX_MAX)) : 0;
+  const semenT = SEMEN_MAX_CC > 0 ? Math.max(0, Math.min(1, p.semenCc / SEMEN_MAX_CC)) : 0;
+  hud.style.setProperty("--climax", String(climaxT));
+  hud.style.setProperty("--semen", String(semenT));
+  const label = playerHint(p);
+  hud.setAttribute("aria-label", label);
+  hud.title = label;
+  hud.classList.toggle("is-low", p.semenCc < SEMEN_MIN_TEASE_CC);
+  hud.classList.toggle("is-empty", p.semenCc <= 0);
+}
+
 function refreshTalkActs() {
   const row = $("talk-acts");
   if (!row) return;
   // 專屬場面開啟時隱藏互動列（overlay 蓋住；關閉後再顯示）
   row.hidden = !sheetOpen() || !girl || sceneOpen();
   player = ensurePlayer(player);
-  const hint = row.querySelector(".talk-acts-hint") || (() => {
-    const h = document.createElement("span");
-    h.className = "talk-acts-hint";
-    row.prepend(h);
-    return h;
-  })();
-  const block = girl ? teaseBlockReason(player) : "";
-  const teaseLine = girl ? teaseHint(girl) : "";
-  hint.textContent = girl
-    ? (block || `${teaseLine}　${playerHint(player)}`)
-    : "";
+  const hud = ensurePlayerHud(row);
+  updatePlayerHud(hud, player);
 
   // 只渲染目前解鎖的按鈕（鎖住的不出現）
   for (const btn of [...row.querySelectorAll("button[data-act],button[data-scene]")]) btn.remove();
@@ -1776,9 +1819,7 @@ function bindTalkActs() {
   if (!row || row.dataset.bound) return;
   row.dataset.bound = "1";
   row.replaceChildren();
-  const hint = document.createElement("span");
-  hint.className = "talk-acts-hint";
-  row.append(hint);
+  ensurePlayerHud(row);
   refreshTalkActs();
 }
 
