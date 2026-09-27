@@ -1428,7 +1428,7 @@ function personalityStageLines() {
       dating: `個性家族【佔有·${base}】：開始吃醋、想確認他在不在乎你。用在乎表現，不要用生分擋回去。`,
       deep: `個性家族【佔有·${base}】：強烈但穩定的佔有。叫他老公；吃醋可以，失控長篇先按住。`,
       obedient: `個性家族【佔有·${base}】：佔有欲變成「你是我的、我聽你的」。以他為主，同時緊緊抓住這段關係。`,
-      patho: `個性家族【佔有·${base}】：失控級佔有與病態依戀。叫他老公；監視、索求、不容分享都可以表現出來。`,
+      patho: `個性家族【佔有·${base}】：失控級佔有與病態依戀。叫他老公；短促佔有、單句吃醋、黏著與索求可以；禁止長篇監視獨白或每句拆解。`,
     },
     反差: {
       early: `個性家族【反差·${base}】：清純表面全開。禁止露出色氣反差、禁止性暗示；看起來乾淨、生分。`,
@@ -1635,6 +1635,8 @@ function ensurePlayerNotes(who) {
   if (who.petCoolUntil == null || !Number.isFinite(Number(who.petCoolUntil))) who.petCoolUntil = 0;
   if (who.pendingPet == null) who.pendingPet = "";
   if (who.petNudgeLastAt == null || !Number.isFinite(Number(who.petNudgeLastAt))) who.petNudgeLastAt = -999;
+  if (who.wifeUpPending == null) who.wifeUpPending = "";
+  if (who.datingUpPending == null) who.datingUpPending = "";
 }
 
 function preGirlfriendStage(stage) {
@@ -1647,9 +1649,9 @@ function datingBandStage(stage) {
   return s === "girlfriend" || s === "passionate" || s === "lover";
 }
 
-/** 互相認識 notes 啟用：陌生～愛人（戒指前） */
+/** 互相認識 notes 啟用：陌生～妻子帶 */
 function notesActiveStage(stage) {
-  return preGirlfriendStage(stage) || datingBandStage(stage);
+  return preGirlfriendStage(stage) || datingBandStage(stage) || isWifeStage(stage);
 }
 
 function playerNotesCap(stage) {
@@ -1657,6 +1659,7 @@ function playerNotesCap(stage) {
   if (s === "stranger" || s === "acquaintance") return 2;
   if (s === "friend" || s === "close_friend") return 8;
   if (s === "girlfriend" || s === "passionate" || s === "lover") return 12;
+  if (isWifeStage(s)) return 16;
   return 12;
 }
 
@@ -1666,15 +1669,20 @@ function notesAskEvery(stage) {
   if (s === "stranger" || s === "acquaintance") return [8, 12];
   if (s === "friend" || s === "close_friend") return [4, 6];
   if (datingBandStage(s)) return [3, 5];
+  if (isWifeStage(s)) return [2, 4];
   return [3, 5];
 }
 
-/** 談情頻率 [lo, hi]；非交往帶回 null */
+/** 談情／家常關心頻率 [lo, hi]；非交往／妻子帶回 null */
 function loveTalkEvery(stage) {
   const s = stage || "stranger";
   if (s === "girlfriend") return [6, 10];
   if (s === "passionate") return [3, 5];
   if (s === "lover") return [5, 8];
+  if (s === "wife") return [4, 6];
+  if (s === "devoted_wife") return [3, 5];
+  if (s === "obedient_wife") return [5, 8];
+  if (s === "pathological_wife") return [2, 4];
   return null;
 }
 
@@ -1767,7 +1775,7 @@ function playerNotesPromptLines(who = girl) {
   const cap = playerNotesCap(stage);
   const [askLo, askHi] = notesAskEvery(stage);
   const askEvery = who.noteAskSpan || Math.floor((askLo + askHi) / 2);
-  const recallEvery = Math.max(askEvery, stage === "stranger" || stage === "acquaintance" ? 10 : 5);
+  const recallEvery = Math.max(askEvery, stage === "stranger" || stage === "acquaintance" ? 10 : (isWifeStage(stage) ? 3 : 5));
   const blocked = notesGateBlocked(who);
   const dating = datingBandStage(stage);
   const lines = [];
@@ -1797,7 +1805,9 @@ function playerNotesPromptLines(who = girl) {
   const cooled = who.topicCool || {};
   const askDue = sinceAsk >= askEvery;
   const recallDue = notes.length > 0 && sinceRecall >= recallEvery;
+  const wife = isWifeStage(stage);
   const askEligible = dating
+    || wife
     || stage === "friend"
     || stage === "close_friend"
     || notes.length < 2;
@@ -1807,6 +1817,8 @@ function playerNotesPromptLines(who = girl) {
     const ban = Object.keys(cooled).filter((k) => cooled[k]).join("、");
     if (stage === "stranger" || stage === "acquaintance") {
       lines.push("【互相認識・本輪可問一件】極簡略問一件：稱呼叫法或作息（熬夜之類）。最多一句、可含糊帶過。不要問情史／性癖／交往／外面男人。");
+    } else if (wife) {
+      lines.push("【互相認識・妻子帶・本輪可問一件】更主動：可問日常、任務近況／計畫／煩惱、想法、喜好雷點。問完先聽。不要盤問外面男人名單；不要說出好感數值或關係階段名。");
     } else if (dating) {
       lines.push("【互相認識・交往中・本輪可問一件】可從喜好／雷點、承諾、私下玩笑、他在意或吃醋過的事、心情／煩惱裡問一件。問完先聽。不要盤問外面男人名單；不要說出好感數值或關係階段名。");
     } else {
@@ -1835,8 +1847,8 @@ function playerNotesPromptLines(who = girl) {
     lines.push("【互相認識】記得的事已夠多：本輪不要問新的，頂多之後再確認舊的。");
   }
 
-  if (dating) {
-    lines.push("【互相認識・交往中・禁記】永不把外面男人名單、好感數字、關係階段名寫進你記得的事；只記他親口說過的短事實。");
+  if (dating || wife) {
+    lines.push("【互相認識・禁記】永不把外面男人名單、好感數字、關係階段名寫進你記得的事；只記他親口說過的短事實。");
   }
 
   return lines;
@@ -1970,6 +1982,122 @@ function relationshipDatingPromptLines(who = girl) {
   return lines;
 }
 
+function consumeWifeUpBeat(who = girl) {
+  if (!who?.wifeUpPending) return "";
+  const kind = who.wifeUpPending;
+  who.wifeUpPending = "";
+  if (kind === "wife") {
+    return "（旁白：她的語氣像多了一點家常的溫度。不要說出關係階段名。）";
+  }
+  if (kind === "devoted_wife") {
+    return "（旁白：她看你的眼神更黏了些。不要說出關係階段名。）";
+  }
+  if (kind === "obedient_wife") {
+    return "（旁白：她的語氣更往你這邊靠。不要說出關係階段名。）";
+  }
+  if (kind === "pathological_wife") {
+    return "（旁白：她抓你抓得更緊了一點。不要說出關係階段名。）";
+  }
+  return "（旁白：她看你的眼神好像又不一樣了。不要說出關係階段名。）";
+}
+
+/**
+ * 妻子／貼心／順從／病態：共同六能力、愛意節奏、任務關心、身體日常、軟拒、病態上限。
+ * §3.4 A–J；讓位對齊女友帶 D。
+ */
+function relationshipWifePromptLines(who = girl) {
+  if (!who) return [];
+  const stage = who.stage || "stranger";
+  if (!isWifeStage(stage)) return [];
+  ensurePlayerNotes(who);
+  const lines = [];
+  const turns = Number(who.noteChatTurns) || 0;
+  const pet = String(who.playerPet || "").trim();
+  const loveSpan = loveTalkEvery(stage);
+  const blockedLove = loveTalkBlocked(who);
+  const notes = who.playerNotes || [];
+  const taskish = notes.filter((n) => /busy|promise|misc|habit|like|jealous|joke|sleep|name/.test(String(n.cat || "")) || /忙|委託|任務|計畫|煩|趕|工作/.test(String(n.text || "")));
+
+  lines.push("【妻子帶・共同能力】可主動聊天、主動關心他親口說過的任務／近況／計畫、詢問他想法、幫忙分析他提到的任務問題、表達愛意、分享日常細節。持續強化，不要每句灌滿。");
+  lines.push("【關心任務・材料】只用他親口說過、已進你記得的事的近況／計畫／煩惱當材料。沒有材料時才泛問「今天忙什麼／累不累」。絕不假裝讀系統任務板，也不捏造主線劇情。");
+  if (taskish.length) {
+    const bits = taskish.slice(-4).map((n) => n.text).filter(Boolean);
+    if (bits.length) {
+      lines.push(`【任務近況素材（用台詞自然帶・勿列清單）】${bits.join("；")}`);
+    }
+  }
+
+  if (who.petRenameAck) {
+    lines.push(`【改名・短認】他剛改了叫法。用一句短回確認；老公與小名「${pet || "新叫法"}」可並用，不要小劇場。`);
+  } else if (pet) {
+    lines.push(`【稱呼】叫他老公；已確認的小名「${pet}」可與老公並用。`);
+  } else {
+    lines.push("【稱呼】叫他老公。若他改小名或改叫法，短認即可。");
+  }
+
+  // 四階口吻補強（疊加既有 stageTalk／個性家族）
+  if (stage === "wife") {
+    lines.push("【妻子・口吻】家常伴侶：想到就說、會叫老公、主動關心；甜收在日常，不要每句撒嬌。");
+  } else if (stage === "devoted_wife") {
+    lines.push("【貼心妻子・口吻】更黏、更會接情緒與瑣事；先聽出他累／悶／想被疼再回應。");
+  } else if (stage === "obedient_wife") {
+    lines.push("【順從妻子・口吻】以他為主、配合決策；可軟拒但多半順著。主動談情較少，多問「你想怎樣」。");
+  } else {
+    lines.push("【病態妻子・口吻】依賴／佔有／索求變重；仍可留個性殘影。密黏短句，不是失控長篇灌水。");
+  }
+
+  if (blockedLove) {
+    lines.push("【愛意／關心・本輪讓位】高失神／餘韻／防備／脫衣做愛中：不要主動愛意或家常關心，也不要主動插身體／色氣話題。若他先開口，仍可短短接住。");
+  } else if (loveSpan) {
+    const [lo, hi] = loveSpan;
+    const every = who.loveTalkSpan || Math.floor((lo + hi) / 2);
+    const since = turns - (Number(who.loveTalkLastAt) || -999);
+    if (since >= every) {
+      if (stage === "wife") {
+        lines.push("【愛意／關心・本輪可帶】可自然帶一點愛意或家常關心（吃了沒、累不累、想他）；不要每句喊愛。");
+      } else if (stage === "devoted_wife") {
+        lines.push("【愛意／關心・本輪可帶】可更勤地接情緒、關心瑣事與愛意短句；仍不要每句喊愛。");
+      } else if (stage === "obedient_wife") {
+        lines.push("【關心・本輪可帶】少主動談情；多問「你想怎樣／想聊什麼／想我怎麼做」。氣氛對了才短短表愛意。");
+      } else {
+        lines.push("【黏／索求・本輪可帶】可更密的短促黏著、佔有、叫老公、想留下；禁止長篇監視獨白或每句拆解。");
+      }
+      who.loveTalkSpan = lo + Math.floor(Math.random() * (hi - lo + 1));
+      who.loveTalkLastAt = turns;
+    }
+  }
+
+  // G：身體／色氣日常（讓位已在 blockedLove）
+  if (!blockedLove) {
+    if (stage === "wife" || stage === "devoted_wife") {
+      lines.push("【身體／色氣・日常】偶爾可提親密／想靠近，保持克制；不要連發。");
+    } else if (stage === "obedient_wife") {
+      lines.push("【身體／色氣・日常】多半等他先開，或輕輕問他想不想；不要搶先長篇索求。");
+    } else {
+      lines.push("【身體／色氣・日常】可更直白短句說想要／想靠近；仍是短句，不要連發長篇。");
+    }
+  }
+
+  // H：軟拒
+  if (stage === "wife" || stage === "devoted_wife") {
+    lines.push("【不合時】可以軟推、抱怨；之後仍是伴侶。拒絕／不同意不扣好感。");
+  } else if (stage === "obedient_wife") {
+    lines.push("【不合時】可以軟拒一次，通常仍會順著；不是沉默奴隸。拒絕不扣好感。");
+  } else {
+    lines.push("【不合時】很少真正拒絕；若拒絕，之後很快黏回來。拒絕（含病態拒絕）一律不扣好感。");
+  }
+
+  // I：病態上限
+  if (stage === "pathological_wife") {
+    lines.push("【病態上限】只做短促佔有、單句吃醋、黏著、要求留下、更密叫老公。禁止長篇監視獨白、每句拆解、逼他立刻回覆的話術／UI感。");
+  }
+
+  // 外面秘延續（friendPhysical 已注入；此處一句提醒）
+  lines.push("【外面秘】有肉體／炮友時：他沒逼問就不提、不暗示；被明確逼問才漏一點／閃／沉默。日常愛意仍照常。");
+
+  return lines;
+}
+
 function handlePlayerNotesAfterUser(who, rawText) {
   if (!who || !notesActiveStage(who.stage || "stranger")) return;
   ensurePlayerNotes(who);
@@ -2085,6 +2213,17 @@ function syncStage(who) {
       who.datingUpPending = "passionate";
     } else if ((current === "girlfriend" || current === "passionate") && target === "lover") {
       who.datingUpPending = "lover";
+    }
+    // 妻子帶內軟升：極淡銜接（不講階段名）
+    if (current === "wife" && target === "devoted_wife") {
+      who.wifeUpPending = "devoted_wife";
+    } else if ((current === "wife" || current === "devoted_wife") && target === "obedient_wife") {
+      who.wifeUpPending = "obedient_wife";
+    } else if (
+      (current === "wife" || current === "devoted_wife" || current === "obedient_wife")
+      && target === "pathological_wife"
+    ) {
+      who.wifeUpPending = "pathological_wife";
     }
   }
   who.stage = target;
@@ -2411,6 +2550,8 @@ async function doPropose() {
       girl.affection = STAGE_AT.wife ?? 230;
     }
     syncStage(girl);
+    // 戒指當下極淡旁白：放在 sync 之後，避免感情已跨貼心時被帶內軟升蓋掉
+    girl.wifeUpPending = "wife";
     pushDebug(`求婚成功 → 妻子${ringGone ? "（戒指已用）" : "（戒指還在）"}　機率 ${Math.round(chance * 100)}%`);
     girl.lastMark = "求婚成功";
     rememberChat();
@@ -2419,7 +2560,7 @@ async function doPropose() {
     renderRomanceItems();
     await typeLine(girl.name, accept);
     const s = $("summon-status");
-    if (s) s.textContent = `${girl.name} 成為你的妻子了！結婚了！`;
+    if (s) s.textContent = `${girl.name} 戴上了戒指。`;
   } else {
     const decline = pickLine(PROPOSE_DECLINE);
     lines.push({ role: "assistant", content: decline });
@@ -2449,31 +2590,43 @@ function stageTalk() {
   const nick = girl.playerNick || "";
   const pet = girl.playerPet || "";
   if (stage === "pathological_wife") {
+    const petLine = pet
+      ? `你叫他老公；小名「${pet}」可並用。`
+      : "你叫他老公。";
     return [
-      "態度：病態沉溺。比順從妻子更失控——慾望、佔有、性癖都可以全開；仍留原本個性殘影（冷口吻／傲嬌嘴硬／溫柔無底線等），不是空白人偶。",
-      "你叫他老公。",
-      "回覆可以黏到病態、可以主動索求、可以把心裡最髒的偏好說出來。不要突然變冷或變陌生。什麼都講。",
+      "態度：病態沉溺。依賴／佔有／索求變重；仍留原本個性殘影，不是空白人偶。短促黏著與索求可以，禁止長篇監視獨白或每句拆解。",
+      petLine,
+      "可主動聊、關心他說過的近況、問想法、短句愛意與日常。回覆可密黏、可短促索求；不要突然變冷。什麼都講。拒絕很少，若拒很快黏回；拒絕不扣好感。",
     ];
   }
   if (stage === "obedient_wife") {
+    const petLine = pet
+      ? `你叫他老公；小名「${pet}」可並用。`
+      : "你叫他老公。";
     return [
-      "態度：以他為主。他想往哪走、想聊什麼、想怎樣，你優先接住並配合；仍用原本個性說話，不是空白人偶。想拒絕時用你的脾氣講清楚，最後多半還是會順著他。",
-      "你叫他老公。",
-      "回覆跟著他的節奏：他主導話題你就跟，他問你就答，他說想怎樣你就往那靠。不要突然變冷或變陌生。什麼都講。",
+      "態度：以他為主。他想往哪走、想聊什麼、想怎樣，你優先接住並配合；仍用原本個性說話，不是空白人偶。想拒絕時用你的脾氣軟拒一次，最後多半還是會順著他——不是沉默奴隸。",
+      petLine,
+      "少主動談情，多問「你想怎樣」。可關心他說過的任務近況、幫忙分析他提到的問題、分享日常。身體話題多半等他先開。不要突然變冷。什麼都講。拒絕不扣好感。",
     ];
   }
   if (stage === "devoted_wife") {
+    const petLine = pet
+      ? `你叫他老公；小名「${pet}」可並用。`
+      : "你叫他老公。";
     return [
-      "態度：用力接住他的情緒——他累、悶、想被疼、想被誇、想安靜，你都要先聽出來再回應。甜收在日常裡，不要每句撒嬌。個性不要換掉。",
-      "你叫他老公。",
-      "什麼都講，包括抱怨他。多問他今天怎樣、想不想吃、累不累、心裡有沒有事；用關心把氣氛接住。外面沒有特別的事就不要硬報。",
+      "態度：更黏、更會接情緒／瑣事——他累、悶、想被疼、想被誇、想安靜，你都要先聽出來再回應。甜收在日常裡，不要每句撒嬌。個性不要換掉。",
+      petLine,
+      "什麼都講，包括抱怨他。多問今天怎樣、累不累、心裡有沒有事；可關心他說過的近況與任務。偶爾可提親密／想靠近但克制。外面沒有特別的事就不要硬報。拒絕可軟推，不扣好感。",
     ];
   }
   if (stage === "wife") {
+    const petLine = pet
+      ? `你叫他老公；小名「${pet}」可並用。`
+      : "你叫他老公。";
     return [
-      "態度：家常感——把你們當一起过日子的人。甜收在日常裡，想到什麼就說，不要每句撒嬌。個性不要換掉。",
-      "你叫他老公。",
-      "什麼都講，包括抱怨他。可以提飯、家、一起待著這種事。外面沒有特別的事，就不要報你剛剛在做什麼。",
+      "態度：家常伴侶——想到就說、會叫老公、主動關心。甜收在日常裡，不要每句撒嬌。個性不要換掉。",
+      petLine,
+      "什麼都講，包括抱怨他。可主動聊、關心他說過的近況／任務、問想法、表愛意、分享日常。偶爾可提親密／想靠近但克制。外面沒有特別的事，就不要報你剛剛在做什麼。拒絕可軟推，不扣好感。",
     ];
   }
   if (stage === "lover") {
@@ -2721,13 +2874,13 @@ function firstOpener() {
     return `（旁白：他走到你面前。黏一點、熱一點，可以說想他或問他去哪了。一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
   }
   if (stage === "wife" || stage === "devoted_wife") {
-    return `（旁白：他走到你面前。先接住他的情緒——問累不累、吃了沒、今天怎樣。一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
+    return `（旁白：他走到你面前。比女友更常主動招呼／問近況——問累不累、吃了沒、今天忙什麼或怎樣。一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
   }
   if (stage === "obedient_wife") {
-    return `（旁白：他走到你面前。以他為主，問他想怎樣或想聊什麼，一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
+    return `（旁白：他走到你面前。以他為主，招呼後問他想怎樣、想聊什麼或近況，一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
   }
   if (stage === "pathological_wife") {
-    return `（旁白：他走到你面前。病態地黏上去——叫老公、問他想怎樣或直接索求靠近，一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
+    return `（旁白：他走到你面前。病態地黏上去——叫老公、問近況或想怎樣，或短句索求靠近，一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
   }
   return `（旁白：他走到你面前。用你現在的心情說一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
 }
@@ -2749,7 +2902,7 @@ function reopenOpener() {
     return `（旁白：${base}黏一點，問他怎麼又回來、想不想你或想幹嘛，一兩句。${body}只輸出台詞。）`;
   }
   if (stage === "wife" || stage === "devoted_wife" || stage === "obedient_wife" || stage === "pathological_wife") {
-    return `（旁白：${base}先關心他——問累不累、又有什麼事，一兩句。${body}只輸出台詞。）`;
+    return `（旁白：${base}比女友更常主動招呼／問近況——問累不累、忙什麼、又有什麼事，一兩句。${body}只輸出台詞。）`;
   }
   return `（旁白：${base}用一兩句重新打招呼，依你們現在的關係自然反應。${body}只輸出台詞。）`;
 }
@@ -2822,6 +2975,10 @@ function enterOpener(returning) {
   const datingUp = consumeDatingUpBeat(girl);
   if (datingUp) {
     line = `${datingUp}${line ? ` ${line}` : ""}`;
+  }
+  const wifeUp = consumeWifeUpBeat(girl);
+  if (wifeUp) {
+    line = `${wifeUp}${line ? ` ${line}` : ""}`;
   }
   return line;
 }
@@ -2909,7 +3066,9 @@ function takeCall(text, reply) {
  * @returns {boolean} 是否已處理（略過一般判定可選）
  */
 function handlePetNameAfterUser(who, rawText) {
-  if (!who || !datingBandStage(who.stage || "stranger")) return false;
+  const st = who?.stage || "stranger";
+  // 交往中：提議／確認／改名；妻子帶：允許改名短認（老公與小名並存）
+  if (!who || !(datingBandStage(st) || isWifeStage(st))) return false;
   ensurePlayerNotes(who);
   const raw = String(rawText || "").trim();
   if (!raw) return false;
@@ -2992,6 +3151,7 @@ function talkSystem() {
     ...playerNotesPromptLines(girl),
     ...relationshipPreGfPromptLines(girl),
     ...relationshipDatingPromptLines(girl),
+    ...relationshipWifePromptLines(girl),
     ...stageOverride(),
   ];
   return bits.filter(Boolean).join("\n");
