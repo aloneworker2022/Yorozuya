@@ -1,6 +1,6 @@
 /** 房間調情：開放度／性奮解鎖動作（取代按次階梯）。 */
 
-import { ensureBody, talkActById, TALK_ACTS } from "./body_state.js?v=8";
+import { ensureBody, talkActById, TALK_ACTS } from "./body_state.js?v=9";
 import {
   ensureOpenness,
   actOpennessLock,

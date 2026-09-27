@@ -1,6 +1,6 @@
 /** 房間聊天：程式化「失神」亂語（非只靠 prompt）。 */
 
-import { ensureBody, talkActById } from "./body_state.js?v=8";
+import { ensureBody, talkActById, arousalStage } from "./body_state.js?v=9";
 import { insertUnlocked } from "./tease.js?v=4";
 
 const SHOCK_MAX = 45;
@@ -322,6 +322,37 @@ export function ensureMoanVoice(who) {
     b.moanVoice = pick(VOICES);
   }
   return b.moanVoice;
+}
+
+
+/** 日常 LLM：依 moanVoice 描述斷句／發熱時怎麼破句（不唸類型名）。 */
+export function moanVoicePromptLines(who) {
+  const b = ensureStunFields(who);
+  if (!b) return [];
+  const id = ensureMoanVoice(who);
+  const ar = arousalStage(b.arousal);
+  const stun = calcStun(who);
+  const strong = ["aroused", "wantFill", "climax"].includes(ar) || stun >= 25;
+  const hard = "硬性規則：不准唸出語氣類型名稱；只准用斷句與叫聲習慣演出。";
+  const byId = {
+    scream: strong
+      ? "一旦發熱或被打斷，容易拉長母音（啊啊、誒誒），句子不平穩，常被叫聲截斷。"
+      : "斷句略不穩；偶爾把母音拉長一點點，仍以日常話為主。",
+    refuse: strong
+      ? "習慣碎成「不要／不／要…」式推拒或口是心非，正常話裡會夾短拒。"
+      : "偶爾把否定縮成短音（不、不要…），仍能說完整句。",
+    gasp: strong
+      ? "短促換氣、哈…啊… 斷句；話說一半會喘一下再接。"
+      : "習慣在句中留一點氣口，偶爾「哈…」一下，不要整段變喘。",
+    beggy: strong
+      ? "黏、求慢／還要 會夾在正常話裡；語氣軟、愛撒一點。"
+      : "語氣偏黏，偶夾「慢點／還要」意味，但仍是日常回話。",
+    blankish: strong
+      ? "話變短、多省略、常 ……；說不完整句也沒關係。"
+      : "習慣話短一點、偶用省略，不要無故整句空白。",
+  };
+  const line = byId[id] || byId.gasp;
+  return [hard, `【發聲習慣】${line}`];
 }
 
 function voicePools(who) {
@@ -646,6 +677,37 @@ export function stunTemplate(stun, actId = "", who = null) {
  * 依失神階改寫回覆。≥75 應走模板；若仍傳入則整段替換。
  * 50–64 空白；65–74 求饒混空白；痙攣／過感覆寫。
  */
+
+/**
+ * 日常回覆輕量點綴：不整段替換成模板。
+ * calm：僅在 aroused+ 或 stun≥25 時偶插短喘／斷句。
+ * interfere：可稍強一點，仍保留原文可讀。
+ */
+function lightMoanSprinkle(text, who, stun, interfere) {
+  if (!who || !text) return text;
+  const b = ensureStunFields(who);
+  if (!b) return text;
+  const ar = arousalStage(b.arousal);
+  const hot = ["aroused", "wantFill", "climax"].includes(ar) || stun >= 25;
+  if (!hot) return text;
+  const style = voicePools(who);
+  const moan = pick(style.moans);
+  if (!moan) return text;
+  const chance = interfere ? 0.55 : 0.35;
+  if (Math.random() >= chance) return text;
+  const mode = Math.random();
+  // 插入短喘、或在中段斷開、或句尾加省略＋短音
+  if (mode < 0.4 && text.length >= 8) {
+    const cut = Math.max(3, Math.floor(text.length * (0.35 + Math.random() * 0.3)));
+    return `${text.slice(0, cut)}…${moan}${text.slice(cut)}`.replace(/(…)+/g, "…");
+  }
+  if (mode < 0.7) {
+    return `${moan}${text}`.replace(/(…)+/g, "…");
+  }
+  const trimmed = text.length > 40 ? text.slice(0, 36) + "…" : text;
+  return `${trimmed}${moan}`.replace(/(…)+/g, "…");
+}
+
 export function scrambleReply(text, stun, actId = "", who = null) {
   if (who && inSpasm(who)) {
     return spasmTemplate(who, actId);
@@ -655,8 +717,10 @@ export function scrambleReply(text, stun, actId = "", who = null) {
   const tier = stunTier(s);
   const raw = String(text || "").trim();
   if (tier === "calm") {
-    if (raw.length > 80) return raw.slice(0, 72) + "…";
-    return raw || "……";
+    let out = raw;
+    if (out.length > 80) out = out.slice(0, 72) + "…";
+    out = lightMoanSprinkle(out, who, s, false) || out;
+    return out || "……";
   }
   if (tier === "stun" || !raw) return stunTemplate(s, actId, who);
   if (tier === "blank") {
@@ -676,6 +740,7 @@ export function scrambleReply(text, stun, actId = "", who = null) {
   if (tier === "interfere") {
     let out = insertBreaths(raw, who);
     if (out.length > 56) out = out.slice(0, 52) + "…";
+    out = lightMoanSprinkle(out, who, s, true) || out;
     return out || pick(style.moans);
   }
   return scrambleBroken(raw, actId, who);

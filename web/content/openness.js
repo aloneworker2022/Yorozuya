@@ -1,6 +1,6 @@
 /** 開放度：信任／接受度 0–100，與性奮分開；解鎖挑逗動作。 */
 
-import { ensureBody } from "./body_state.js?v=8";
+import { ensureBody } from "./body_state.js?v=9";
 
 export const OPENNESS_MAX = 100;
 

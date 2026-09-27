@@ -186,6 +186,41 @@ export function organLines(who) {
   return bits;
 }
 
+
+/** 依開放度 0–100 給 LLM 接納態度（不唸數字／標籤名）。 */
+export function opennessPromptLines(openness) {
+  const o = Math.max(0, Math.min(100, Math.round(Number(openness) || 0)));
+  const hard = "硬性規則：不准唸出開放度數字或【接納・…】標籤名；只准用對話態度演出來。";
+  if (o <= 19) {
+    return [
+      hard,
+      "【接納・封閉】身體話題會躲、推開、尷尬；不許突然淫語連發；被碰才短促反應。",
+    ];
+  }
+  if (o <= 39) {
+    return [
+      hard,
+      "【接納・動搖】會害羞接一兩句身體話，仍想扯回日常；語氣彆扭、躲閃。",
+    ];
+  }
+  if (o <= 59) {
+    return [
+      hard,
+      "【接納・半開】曖昧變多，身體感覺可直接進台詞，但仍保留個性，不要變成人偶。",
+    ];
+  }
+  if (o <= 79) {
+    return [
+      hard,
+      "【接納・敞開】較敢講舒服／想要／不要；仍非人偶，要有自己的脾氣與節奏。",
+    ];
+  }
+  return [
+    hard,
+    "【接納・無防】幾乎不遮身體感受；主動提或接住親密話題，仍用台詞演、不要旁白。",
+  ];
+}
+
 export function bodyPromptLines(who) {
   const b = ensureBody(who);
   if (!b) return [];
@@ -205,11 +240,14 @@ export function bodyPromptLines(who) {
     tone.push("【語氣・渴望】喘、黏、心不在焉；會把話題拐回身體；主動求填滿或求再碰，詞彙可以露骨。");
   } else if (ar === "aroused" || lib === "mid") {
     tone.push("【語氣・性奮】帶黏與散漫，聲音發軟；偶爾露骨，但仍壓著一點；被碰到會漏出短喘。");
-  } else if (ar === "slight" || lib === "mid") {
+  } else if (ar === "slight") {
     tone.push("【語氣・微熱】比平常多曖昧與不好意思；身體感若有若無，碰到敏感處才明顯。");
   } else {
     tone.push("【語氣・平靜】不要硬寫情色；除非對方主動碰，否則保持日常。一旦被碰，立刻讓狀態進台詞。");
   }
+
+  // 接納／開放度：只透過台詞演，不准唸數字或標籤名
+  tone.push(...opennessPromptLines(b.openness));
 
   // 器官特化：陰蒂／陰唇／陰道
   if ((o.clit?.swell || 0) >= 2 || o.clit?.wet) {

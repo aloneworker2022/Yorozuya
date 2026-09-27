@@ -1,6 +1,6 @@
 /** 侵犯值 0–100：依關係階段倍率與失神抑制累加；滿值則逃離房間。 */
 
-import { ensureBody } from "./body_state.js?v=8";
+import { ensureBody } from "./body_state.js?v=9";
 
 export const INVASION_MAX = 100;
 

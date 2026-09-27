@@ -14,7 +14,7 @@ import {
   LIBIDO_STAGE,
   arousalStage,
   libidoStage,
-} from "./body_state.js?v=8";
+} from "./body_state.js?v=9";
 import {
   effectiveStun,
   calcStun,
@@ -29,7 +29,8 @@ import {
   noteTalkExchange,
   inSpasm,
   stunTier,
-} from "./stun_speech.js?v=7";
+  moanVoicePromptLines,
+} from "./stun_speech.js?v=8";
 import {
   ensureTeaseFields,
   actLockState,
@@ -1355,6 +1356,7 @@ function talkSystem() {
     "依個性回話，不要無故結束對話。",
     "若對方正在摸／插你的身體：回覆必須立刻反應被碰到的部位（陰蒂／陰唇／陰道等），讓濕、腫、塞著的感覺進台詞。",
     ...bodyPromptLines(girl),
+    ...moanVoicePromptLines(girl),
     guardLine(),
     ...personalityStageLines(),
     ...kinkRevealLines(),
