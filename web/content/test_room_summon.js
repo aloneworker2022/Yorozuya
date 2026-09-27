@@ -22,15 +22,20 @@ import {
   scrambleReply,
   stunTemplate,
   spasmTemplate,
+  afterglowTemplate,
   noteActShock,
   tickStunAfterReply,
   ensureStunFields,
   applyTeaseSpasm,
   noteTalkExchange,
   inSpasm,
+  inAfterglow,
+  noteAfterglow,
+  consumeAfterglowReply,
+  afterglowPromptLines,
   stunTier,
   moanVoicePromptLines,
-} from "./stun_speech.js?v=8";
+} from "./stun_speech.js?v=9";
 import {
   ensureTeaseFields,
   actLockState,
@@ -1466,6 +1471,7 @@ function talkSystem() {
     "若對方正在摸／插你的身體：回覆必須立刻反應被碰到的部位（陰蒂／陰唇／陰道等），讓濕、腫、塞著的感覺進台詞。",
     ...bodyPromptLines(girl),
     ...moanVoicePromptLines(girl),
+    ...afterglowPromptLines(girl),
     guardLine(),
     ...personalityStageLines(),
     ...kinkRevealLines(),
@@ -1585,11 +1591,19 @@ async function openTalk() {
     const openerStun = effectiveStun(girl, "");
     const opener = enterOpener(returning);
     let line = "";
-    if (shouldSkipLlm(openerStun, girl) || inSpasm(girl)) {
-      line = inSpasm(girl) ? spasmTemplate(girl, "") : stunTemplate(openerStun, "", girl);
+    // 優先：痙攣 → 餘韻 → 高失神 skip → LLM
+    if (inSpasm(girl)) {
+      line = spasmTemplate(girl, "");
+      setTyping(false);
+    } else if (inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
+      line = afterglowTemplate(girl, "") || "……哈…";
+      setTyping(false);
+    } else if (shouldSkipLlm(openerStun, girl)) {
+      line = stunTemplate(openerStun, "", girl);
       setTyping(false);
     } else {
-      const streamOk = openerStun < 25;
+      // afterglowPromptLines 已進 talkSystem；此處仍用 opener 當開場提示
+      const streamOk = openerStun < 25 && !inAfterglow(girl);
       const reply = await askGirl(opener, streamOk ? (partial) => {
         if (!partial || !sheetOpen()) return;
         streamed = true;
@@ -1600,6 +1614,8 @@ async function openTalk() {
       line = scrambleReply(reply || "……嗯？", openerStun, "", girl) || "……嗯？";
     }
     tickStunAfterReply(girl);
+    // 痙攣期間不消耗餘韻回覆數，讓痙攣結束後仍鎖餘韻幾句
+    if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
     noteTalkExchange(girl);
     if (girl.nameWait === "pet") takeCall("", line);
     lines.push({ role: "assistant", content: line });
@@ -1669,6 +1685,7 @@ async function deliverUserTalk(text, opts = {}) {
       if (opts.actId) {
         const stunBefore = calcStun(girl);
         const arousalBefore = girl.bodyState?.arousal || 0;
+        const stageBefore = arousalStage(arousalBefore);
         applyAct(girl, opts.actId);
         recordTeasePress(girl, opts.actId);
         noteActShock(girl, opts.actId);
@@ -1681,14 +1698,25 @@ async function deliverUserTalk(text, opts = {}) {
         if (spasm.enteredSpasm) {
           spasmNote = "（她突然痙攣——身體止不住地顫。）";
           bumpAffection(2, "痙攣");
+          noteAfterglow(girl, "hers");
         } else if (spasm.enteredPain) {
           spasmNote = "（過感——碰一下就痛得縮起來。）";
+        }
+        const stageAfter = arousalStage(girl.bodyState?.arousal || 0);
+        if (stageBefore !== "climax" && stageAfter === "climax") {
+          noteAfterglow(girl, "hers");
+        }
+        const stunAfter = effectiveStun(girl, opts.actId);
+        // 首次因 stun≥75 進入 skip-LLM（非痙攣路徑也標她高潮餘韻）
+        if (stunBefore < 75 && stunAfter >= 75) {
+          noteAfterglow(girl, "hers");
         }
         const climax = applyTeaseClimax(player, opts.actId);
         player = climax.player;
         if (climax.climaxed) {
           climaxLine = climax.line;
           bumpAffection(2, "射精");
+          noteAfterglow(girl, "his");
         }
       } else {
         const hit = applyBodyFromUserText(girl, raw);
@@ -1755,19 +1783,27 @@ async function deliverUserTalk(text, opts = {}) {
     let line = "";
     try {
       const tier = stunTier(stun);
-      // 優先：痙攣 → 高失神空白／求饒／skip-LLM；否則才套本回合侵犯抗議語氣
-      if (shouldSkipLlm(stun, girl) || inSpasm(girl)) {
-        line = inSpasm(girl) ? spasmTemplate(girl, actId) : stunTemplate(stun, actId, girl);
-        if (!line) line = "……嗯啊…";
+      // 優先：痙攣／過感 → 餘韻 → 高失神空白／求饒／skip-LLM → 抗議 → 正常
+      if (inSpasm(girl)) {
+        line = spasmTemplate(girl, actId) || "……嗯啊…";
+        setTyping(false);
+      } else if (inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
+        line = afterglowTemplate(girl, actId) || "……哈…腿…軟…";
+        setTyping(false);
+      } else if (shouldSkipLlm(stun, girl)) {
+        line = stunTemplate(stun, actId, girl) || "……嗯啊…";
         setTyping(false);
       } else if (tier === "blank" || tier === "beg") {
         // 50–64 空白／65–74 求饒：走模板，蓋過正常抗議（太失神罵不完整）
         line = stunTemplate(stun, actId, girl) || (tier === "beg" ? "求、求你…慢一點…" : "……");
         setTyping(false);
       } else {
-        const streamOk = stun < 25 && !inSpasm(girl);
+        const streamOk = stun < 25 && !inSpasm(girl) && !inAfterglow(girl);
         const protestExtra = actId ? protestPromptBlock(invAdded, { invasion: invTotal }) : "";
-        const reply = await askGirl(protestExtra || null, streamOk ? (partial) => {
+        // afterglowPromptLines 已在 talkSystem；若仍餘韻（僅時間門檻）再塞一層
+        const agLines = inAfterglow(girl) ? afterglowPromptLines(girl).join("\n") : "";
+        const extra = [protestExtra, agLines].filter(Boolean).join("\n") || null;
+        const reply = await askGirl(extra, streamOk ? (partial) => {
           if (!partial || !sheetOpen()) return;
           streamed = true;
           setTyping(false);
@@ -1775,10 +1811,11 @@ async function deliverUserTalk(text, opts = {}) {
           $("portrait-meta").textContent = partial;
         } : null);
         line = scrambleReply(reply || "……", stun, actId, girl) || "……";
-        if (actId && invAdded > 1) line = blendProtestReply(line, invAdded) || line;
+        if (actId && invAdded > 1 && !inAfterglow(girl)) line = blendProtestReply(line, invAdded) || line;
       }
       if (girl.guard) girl.guard -= 1;
       tickStunAfterReply(girl);
+      if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
       noteTalkExchange(girl);
       lines.push({ role: "assistant", content: line });
       rememberChat();

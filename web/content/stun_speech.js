@@ -9,6 +9,12 @@ const SHOCK_MAX = 45;
 export const SPASM_MS = 10 * 60 * 1000;
 export const SPASM_ENTER_STUN = 70;
 
+/** 餘韻（afterglow）：高潮後幾句保持喘／空白，不立刻正常聊天。 */
+export const AFTERGLOW_HERS_MS = 90 * 1000;
+export const AFTERGLOW_HERS_REPLIES = 3;
+export const AFTERGLOW_HIS_MS = 60 * 1000;
+export const AFTERGLOW_HIS_REPLIES = 2;
+
 /** 動作／命中部位 → 短暫衝擊 */
 const SHOCK_BY_ID = {
   waist: 2,
@@ -394,6 +400,15 @@ export function ensureStunFields(who) {
     b.spasmUntil = 0;
     b.overstim = false;
   }
+  b.afterglowUntil = Math.max(0, Number(b.afterglowUntil) || 0);
+  b.afterglowReplies = Math.max(0, Math.round(Number(b.afterglowReplies) || 0));
+  if (!["hers", "his", "both"].includes(b.afterglowKind)) b.afterglowKind = "";
+  // 雙重門檻：時間與回覆數皆耗盡才清掉
+  if (!(b.afterglowUntil && Date.now() < b.afterglowUntil) && !(b.afterglowReplies > 0)) {
+    b.afterglowUntil = 0;
+    b.afterglowReplies = 0;
+    b.afterglowKind = "";
+  }
   ensureMoanVoice(who);
   return b;
 }
@@ -511,6 +526,118 @@ export function inOverstim(who) {
   return !!(b && b.overstim && inSpasm(who));
 }
 
+/** 是否處於餘韻（時間未到 或 尚有強制餘韻回覆）。 */
+export function inAfterglow(who) {
+  const b = ensureStunFields(who);
+  if (!b) return false;
+  const timeOk = !!(b.afterglowUntil && Date.now() < b.afterglowUntil);
+  const repliesOk = (b.afterglowReplies || 0) > 0;
+  if (!timeOk && !repliesOk) return false;
+  return true;
+}
+
+/**
+ * 標記餘韻。kind: "hers" | "his" | "both"
+ * 疊加：until=max；若 hers+his → kind=both、replies=max(replies,3)
+ */
+export function noteAfterglow(who, kind = "hers") {
+  const b = ensureStunFields(who);
+  if (!b) return null;
+  const k = kind === "his" ? "his" : kind === "both" ? "both" : "hers";
+  const now = Date.now();
+  const addMs = k === "his" ? AFTERGLOW_HIS_MS : AFTERGLOW_HERS_MS;
+  const addReplies = k === "his" ? AFTERGLOW_HIS_REPLIES : AFTERGLOW_HERS_REPLIES;
+  const prevUntil = Math.max(0, Number(b.afterglowUntil) || 0);
+  const prevReplies = Math.max(0, Number(b.afterglowReplies) || 0);
+  const prevKind = ["hers", "his", "both"].includes(b.afterglowKind) ? b.afterglowKind : "";
+  const prevActive = (prevUntil && now < prevUntil) || prevReplies > 0;
+
+  b.afterglowUntil = Math.max(prevUntil, now + addMs);
+
+  if (k === "both" || (prevActive && prevKind && prevKind !== k && prevKind !== "both")) {
+    b.afterglowKind = "both";
+    b.afterglowReplies = Math.max(prevReplies, addReplies, 3);
+  } else if (prevActive && prevKind === "both") {
+    b.afterglowKind = "both";
+    b.afterglowReplies = Math.max(prevReplies, addReplies, 3);
+  } else {
+    b.afterglowKind = k;
+    b.afterglowReplies = Math.max(prevReplies, addReplies);
+  }
+  return b;
+}
+
+/** 每句助手回覆後消耗一次強制餘韻回覆數。 */
+export function consumeAfterglowReply(who) {
+  const b = ensureStunFields(who);
+  if (!b) return;
+  if (!inAfterglow(who)) return;
+  if ((b.afterglowReplies || 0) > 0) b.afterglowReplies -= 1;
+  if (!(b.afterglowUntil && Date.now() < b.afterglowUntil) && !(b.afterglowReplies > 0)) {
+    b.afterglowUntil = 0;
+    b.afterglowReplies = 0;
+    b.afterglowKind = "";
+  }
+}
+
+/** 餘韻模板：高潮碎片＋空白／短喘，依 kind 微調。 */
+export function afterglowTemplate(who, actId = "") {
+  ensureStunFields(who);
+  const b = ensureStunFields(who);
+  const style = voicePools(who);
+  const kind = b?.afterglowKind || "hers";
+  const actBits = ACT_BITS[actId] || [];
+  const semen = b?.organs?.uterus?.semen || 0;
+  const hisBits = [
+    "被射到…裡面…熱…", "裡面好熱…嗯…", "精液…還在…啊…",
+    "滿、滿的…哈…", "射進來了…腿軟…", "裡面…燙…說不了…",
+  ];
+  const hersBits = style.climaxBits || [];
+  const bothBits = [...hersBits.slice(0, 4), ...hisBits.slice(0, 3)];
+  let flavor = hersBits;
+  if (kind === "his") flavor = hisBits;
+  else if (kind === "both") {
+    flavor = (semen > 0 && Math.random() < 0.55) ? hisBits : bothBits;
+  }
+
+  let pool = [
+    ...flavor,
+    ...style.blankBits.slice(0, 5),
+    ...style.moans.slice(0, 4),
+    ...(actBits.length ? actBits.slice(0, 2) : []),
+  ];
+  if (kind === "his" || kind === "both") pool = [...pool, ...hisBits];
+  pool = mixClimax(pool, style, 0.55);
+  const n = 2 + Math.floor(Math.random() * 2);
+  const parts = [];
+  for (let i = 0; i < n; i++) parts.push(pick(pool));
+  return parts.join("").replace(/(…)+/g, "…").slice(0, 26);
+}
+
+/** LLM 仍跑時：強制餘韻語氣（不准恢復冷靜長句）。 */
+export function afterglowPromptLines(who) {
+  const b = ensureStunFields(who);
+  if (!b || !inAfterglow(who)) return [];
+  const kind = b.afterglowKind || "hers";
+  const semen = b.organs?.uterus?.semen || 0;
+  const lines = [
+    "【餘韻】你剛高潮／剛被弄到洩身（或剛被他射過），這幾句必須餘韻、喘、空白、腿軟。",
+    "硬性：不准突然恢復冷靜長句；不准報狀態名（高潮／失神／餘韻等）；句子要短、斷、多省略。",
+  ];
+  if (kind === "hers") {
+    lines.push("剛自己去過：頭還空白、腿軟、呼吸亂；可夾「去了…」「還在顫…」碎片。");
+  } else if (kind === "his") {
+    lines.push(semen > 0
+      ? "剛被他射過／裡面還熱：可夾「被射到…」「裡面好熱…」；仍是喘與空白，不是敘事。"
+      : "剛看他／感覺他射了：餘韻喘、腿軟；可夾「射了…」「好熱…」短碎片。");
+  } else {
+    lines.push(semen > 0
+      ? "兩人剛一起過：你剛去、他又射在裡面——餘韻＋裡面熱；短喘空白為主。"
+      : "兩人剛一起過：雙重餘韻；喘、空白、腿軟；不准長篇冷靜回話。");
+  }
+  return lines;
+}
+
 /**
  * 高失神後繼續挑逗 → 痙攣；痙攣中再挑逗 → 過感痛苦。
  */
@@ -561,6 +688,11 @@ export function noteTalkExchange(who) {
 
 export function shouldSkipLlm(stun, who = null) {
   if (who && inSpasm(who)) return true;
+  // 餘韻強制回覆數尚餘：優先走模板（與 blank/beg 同層偏好）
+  if (who && inAfterglow(who)) {
+    const b = ensureStunFields(who);
+    if (b && (b.afterglowReplies || 0) > 0) return true;
+  }
   return clamp(stun, 0, 100) >= 75;
 }
 
@@ -712,6 +844,16 @@ export function scrambleReply(text, stun, actId = "", who = null) {
   if (who && inSpasm(who)) {
     return spasmTemplate(who, actId);
   }
+  // 餘韻：優先模板；若仍有原文則大幅壓成喘／空白碎片
+  if (who && inAfterglow(who)) {
+    const rawAg = String(text || "").trim();
+    if (!rawAg || Math.random() < 0.8) return afterglowTemplate(who, actId);
+    const styleAg = voicePools(who);
+    const scraps = splitClauses(stripCausal(rawAg)).map(keepScrap).filter(Boolean).slice(0, 2);
+    const bit = pick((styleAg.climaxBits || []).concat(styleAg.blankBits.slice(0, 4), styleAg.moans.slice(0, 3)));
+    if (!scraps.length) return afterglowTemplate(who, actId);
+    return (bit + scraps.join("")).replace(/(…)+/g, "…").slice(0, 24) || afterglowTemplate(who, actId);
+  }
   const style = voicePools(who);
   const s = clamp(stun, 0, 100);
   const tier = stunTier(s);
@@ -749,15 +891,19 @@ export function scrambleReply(text, stun, actId = "", who = null) {
 /** 給 UI／除錯：當前分數與階。 */
 export function stunSnapshot(who, actId = "") {
   const score = effectiveStun(who, actId);
-  const mode = inOverstim(who) ? "pain" : inSpasm(who) ? "spasm" : "normal";
+  const mode = inOverstim(who) ? "pain" : inSpasm(who) ? "spasm" : inAfterglow(who) ? "afterglow" : "normal";
+  const b = ensureStunFields(who);
   return {
     stun: score,
     base: calcStun(who),
     tier: stunTier(score),
     skipLlm: shouldSkipLlm(score, who),
-    shock: ensureStunFields(who)?.shock || 0,
+    shock: b?.shock || 0,
     mode,
-    spasmUntil: ensureStunFields(who)?.spasmUntil || 0,
+    spasmUntil: b?.spasmUntil || 0,
+    afterglowUntil: b?.afterglowUntil || 0,
+    afterglowReplies: b?.afterglowReplies || 0,
+    afterglowKind: b?.afterglowKind || "",
     moanVoice: ensureMoanVoice(who),
   };
 }
