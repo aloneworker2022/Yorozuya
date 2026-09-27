@@ -454,7 +454,7 @@ function sceneLine() {
   if (scene.sexIntensity === "continuous") sexBits.push("連續交配");
   else if (scene.sexIntensity === "marathon") sexBits.push("做到虛脫");
   if (scene.spasm) sexBits.push("痙攣餘韻");
-  if (scene.pregnant) sexBits.push(scene.breeding || breedingLabel(girl) || "配種");
+  if (scene.pregnant) sexBits.push(scene.breeding || breedingLabel(girl) || "配種成功");
   if (sexBits.length) known += `\n${sexBits.join("・")}。`;
   if (!scene.roleName) return `${tone}${scene.event || ""}${known}`;
   return `${tone}一位${scene.roleName}，情緒是${scene.emotionName}。\n${scene.event}${known}`;
@@ -624,12 +624,12 @@ function isWifeStage(stage) {
   return WIFE_STAGES.has(stage || "");
 }
 
-/** 有孕時對外標註：配種（男子名） */
+/** 有孕時對外標註：配種成功（男子名） */
 function breedingLabel(who = girl) {
   const preg = who?.world?.pregnancy;
   if (!preg) return "";
   const dad = preg.fatherName || "對方";
-  return `配種（${dad}）`;
+  return `配種成功（${dad}）`;
 }
 
 
@@ -785,7 +785,7 @@ function memoryFriendNote(item) {
   if (item.sexIntensity === "continuous") bits.push("連續交配");
   else if (item.sexIntensity === "marathon") bits.push("做到虛脫");
   if (item.spasm) bits.push("痙攣");
-  if (item.pregnant) bits.push(item.breeding || "配種");
+  if (item.pregnant) bits.push(item.breeding || "配種成功");
   return bits.length ? `${base}（${bits.join("・")}）` : base;
 }
 
@@ -910,7 +910,7 @@ function friendSexStatusTail(aftermath) {
   if (aftermath.intensity === "continuous") bits.push("連續交配");
   else if (aftermath.intensity === "marathon") bits.push("做到虛脫");
   if (aftermath.spasm) bits.push("痙攣");
-  if (aftermath.pregnantNew) bits.push(aftermath.breeding || breedingLabel(girl) || "配種");
+  if (aftermath.pregnantNew) bits.push(aftermath.breeding || breedingLabel(girl) || "配種成功");
   return bits.length ? bits.join("・") + "。" : "";
 }
 
@@ -1026,7 +1026,7 @@ function applyFriendPhysicalAftermath(who, friend, kind, random = Math.random, o
   const intenZh = intensity === "continuous" ? "連續" : intensity === "marathon" ? "虛脫" : "單次";
   const extra = [
     spasm ? "痙攣" : "",
-    pregnantNew ? (breedingLabel(who) || "配種") : (already ? (breedingLabel(who) || "已孕") : ""),
+    pregnantNew ? (breedingLabel(who) || "配種成功") : (already ? (breedingLabel(who) || "已孕") : ""),
   ].filter(Boolean).join("・");
   pushDebug(
     `朋友線 ${kindZh}・${friend.name || "對方"}・${intenZh}　性奮+${aroAdd}　濕潤+${wetAdd}　精液+${semenAdd}　衝擊+${shockAdd}　餘韻${agReplies}句／${Math.round(agMs / 1000)}s　感情 ${who.affection}（${delta >= 0 ? "+" : ""}${delta}）${stageNote}${extra ? "　" + extra : ""}`,
@@ -1064,13 +1064,13 @@ function friendPhysicalPromptLines(who = girl) {
   if (preg) {
     const dad = preg.fatherName || "對方";
     const wife = isWifeStage(stage);
-    lines.push(`【背景・配種・事實・勿主動照念】你目前狀態為「配種（${dad}）」——已有孕，父親是${dad}${preg.fatherRole ? `（${preg.fatherRole}）` : ""}。可用打胎藥打掉。`);
+    lines.push(`【背景・配種成功・事實・勿主動照念】你目前狀態為「配種成功（${dad}）」——已有孕，父親是${dad}${preg.fatherRole ? `（${preg.fatherRole}）` : ""}。可用打胎藥打掉。`);
     if (wife) {
-      lines.push("【配種・妻子】若未打胎而生產：你不會被帶走；召喚者會強制花費金幣安頓小孩。對召喚者仍盡量隱瞞父親，被逼問才心虛漏一點。");
+      lines.push("【配種成功・妻子】若未打胎而生產：你不會被帶走；召喚者會強制花費金幣安頓小孩。對召喚者仍盡量隱瞞父親，被逼問才心虛漏一點。");
     } else if (dating) {
-      lines.push("【配種・女友／戀人・口吻】懷孕對召喚者是秘密：不要主動提；被明確逼問才可能心虛漏一點、閃避或沉默。若未打胎而生產，可能被那位男子帶走。");
+      lines.push("【配種成功・女友／戀人・口吻】懷孕對召喚者是秘密：不要主動提；被明確逼問才可能心虛漏一點、閃避或沉默。若未打胎而生產，可能被那位男子帶走。");
     } else {
-      lines.push("【配種・陌生／朋友・口吻】被問身體／近況時可自然露出「配種／有孕」跡象；若未打胎而生產，可能被父親帶走。不要每句提、不要長篇。");
+      lines.push("【配種成功・陌生／朋友・口吻】被問身體／近況時可自然露出「配種成功／有孕」跡象；若未打胎而生產，可能被父親帶走。不要每句提、不要長篇。");
     }
   }
 
@@ -1232,9 +1232,9 @@ function lifeNotes() {
   if (world.pregnancy) {
     const dad = world.pregnancy.fatherName || "對方";
     if (isWifeStage(who.stage)) {
-      notes.push(`她目前「配種（${dad}）」。若未打胎而生產，她留下，召喚者強制花 ${CHILD_SETTLE_GOLD} 金安頓小孩。`);
+      notes.push(`她目前「配種成功（${dad}）」。若未打胎而生產，她留下，召喚者強制花 ${CHILD_SETTLE_GOLD} 金安頓小孩。`);
     } else {
-      notes.push(`她目前「配種（${dad}）」。若未打胎、繼續打工／亂逛，可能生產並被父親帶走。`);
+      notes.push(`她目前「配種成功（${dad}）」。若未打胎、繼續打工／亂逛，可能生產並被父親帶走。`);
     }
   }
   const memories = world.memories || [];
@@ -3296,7 +3296,7 @@ async function resolvePregnancyBirth(who) {
     const short = spent < CHILD_SETTLE_GOLD
       ? `（金幣不足，仍強制安頓；現有 ${goldLeft} 金）`
       : `（−${CHILD_SETTLE_GOLD} 金，剩 ${goldLeft} 金）`;
-    const msg = `${name}生產了，但身為妻子留下。強制花費 ${CHILD_SETTLE_GOLD} 金安頓小孩${short}。配種對象：${dad}。`;
+    const msg = `${name}生產了，但身為妻子留下。強制花費 ${CHILD_SETTLE_GOLD} 金安頓小孩${short}。配種成功對象：${dad}。`;
     rememberMoment(who, {
       event: msg,
       pregnant: false,
@@ -3321,7 +3321,7 @@ async function resolvePregnancyBirth(who) {
   rememberMoment(who, {
     event: msg,
     pregnant: true,
-    breeding: `配種（${dad}）`,
+    breeding: `配種成功（${dad}）`,
     personName: dad,
     roleName: role,
   });
