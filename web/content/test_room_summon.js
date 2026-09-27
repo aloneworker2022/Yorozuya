@@ -624,12 +624,24 @@ function isWifeStage(stage) {
   return WIFE_STAGES.has(stage || "");
 }
 
-/** 有孕時對外標註：配種成功（男子名） */
+/** 妻子安頓後顯示「配種成功 ×次數」；有孕時另帶進行中男子名。非妻子僅有孕時顯示配種成功（名）。 */
+function breedingSuccessCount(who = girl) {
+  const kids = who?.world?.children;
+  return Array.isArray(kids) ? kids.length : 0;
+}
+
 function breedingLabel(who = girl) {
   const preg = who?.world?.pregnancy;
-  if (!preg) return "";
-  const dad = preg.fatherName || "對方";
-  return `配種成功（${dad}）`;
+  const n = breedingSuccessCount(who);
+  const wife = isWifeStage(who?.stage);
+  if (preg) {
+    const dad = preg.fatherName || "對方";
+    if (wife && n > 0) return `配種成功 ×${n}・進行中（${dad}）`;
+    return `配種成功（${dad}）`;
+  }
+  // 妻子：生產安頓後常駐標註次數
+  if (wife && n > 0) return `配種成功 ×${n}`;
+  return "";
 }
 
 
@@ -1231,11 +1243,15 @@ function lifeNotes() {
   }
   if (world.pregnancy) {
     const dad = world.pregnancy.fatherName || "對方";
+    const n = breedingSuccessCount(who);
     if (isWifeStage(who.stage)) {
-      notes.push(`她目前「配種成功（${dad}）」。若未打胎而生產，她留下，召喚者強制花 ${CHILD_SETTLE_GOLD} 金安頓小孩。`);
+      const hist = n > 0 ? `（已安頓配種成功 ×${n}）` : "";
+      notes.push(`她目前「配種成功（${dad}）」${hist}。若未打胎而生產，她留下，召喚者強制花 ${CHILD_SETTLE_GOLD} 金安頓小孩，次數＋1。`);
     } else {
       notes.push(`她目前「配種成功（${dad}）」。若未打胎、繼續打工／亂逛，可能生產並被父親帶走。`);
     }
+  } else if (isWifeStage(who.stage) && breedingSuccessCount(who) > 0) {
+    notes.push(`她已安頓小孩，標註「配種成功 ×${breedingSuccessCount(who)}」。`);
   }
   const memories = world.memories || [];
   if (!memories.length) return notes;
@@ -3296,11 +3312,12 @@ async function resolvePregnancyBirth(who) {
     const short = spent < CHILD_SETTLE_GOLD
       ? `（金幣不足，仍強制安頓；現有 ${goldLeft} 金）`
       : `（−${CHILD_SETTLE_GOLD} 金，剩 ${goldLeft} 金）`;
-    const msg = `${name}生產了，但身為妻子留下。強制花費 ${CHILD_SETTLE_GOLD} 金安頓小孩${short}。配種成功對象：${dad}。`;
+    const times = breedingSuccessCount(who);
+    const msg = `${name}生產了，但身為妻子留下。強制花費 ${CHILD_SETTLE_GOLD} 金安頓小孩${short}。配種成功對象：${dad}。現為配種成功 ×${times}。`;
     rememberMoment(who, {
       event: msg,
       pregnant: false,
-      breeding: `安頓・${dad}`,
+      breeding: `配種成功 ×${times}`,
       personName: dad,
       roleName: role,
     });
