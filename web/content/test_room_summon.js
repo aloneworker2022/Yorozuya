@@ -60,7 +60,10 @@ import {
   clearInvasion,
   getInvasion,
   INVASION_MAX,
-} from "./invasion.js?v=1";
+  protestTone,
+  protestPromptBlock,
+  blendProtestReply,
+} from "./invasion.js?v=2";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -1605,15 +1608,20 @@ async function deliverUserTalk(text, opts = {}) {
     }
     if (climaxLine || spasmNote) persistRoom();
 
-    // 侵犯值：動作後擲骰；滿值則逃離房間
+    // 侵犯值：動作後擲骰；滿值則逃離房間。保留本回合 added 供抗議語氣。
+    let invAdded = 0;
+    let invTotal = getInvasion(girl);
     if (opts.actId && !opts.skipBody) {
       ensureInvasion(girl);
       const invRoll = applyInvasionRoll(girl, opts.actId, {
         stage: girl.stage || "stranger",
         stun: effectiveStun(girl, opts.actId),
       });
+      invAdded = invRoll.added || 0;
+      invTotal = invRoll.invasion;
       if (invRoll.added > 0) {
-        pushDebug(`侵犯 +${invRoll.added} → ${invRoll.invasion}/${INVASION_MAX}`);
+        const pt = protestTone(invRoll.added);
+        pushDebug(`侵犯 +${invRoll.added} → ${invRoll.invasion}/${INVASION_MAX}${pt.tier !== "none" ? `・抗議${pt.label}` : ""}`);
         renderDebug();
       }
       persistRoom();
@@ -1638,17 +1646,19 @@ async function deliverUserTalk(text, opts = {}) {
     let line = "";
     try {
       const tier = stunTier(stun);
+      // 優先：痙攣 → 高失神空白／求饒／skip-LLM；否則才套本回合侵犯抗議語氣
       if (shouldSkipLlm(stun, girl) || inSpasm(girl)) {
         line = inSpasm(girl) ? spasmTemplate(girl, actId) : stunTemplate(stun, actId);
         if (!line) line = "……嗯啊…";
         setTyping(false);
       } else if (tier === "blank" || tier === "beg") {
-        // 50–64 空白／65–74 求饒：走模板，與平靜明顯區隔
+        // 50–64 空白／65–74 求饒：走模板，蓋過正常抗議（太失神罵不完整）
         line = stunTemplate(stun, actId) || (tier === "beg" ? "求、求你…慢一點…" : "……");
         setTyping(false);
       } else {
         const streamOk = stun < 25 && !inSpasm(girl);
-        const reply = await askGirl(null, streamOk ? (partial) => {
+        const protestExtra = actId ? protestPromptBlock(invAdded, { invasion: invTotal }) : "";
+        const reply = await askGirl(protestExtra || null, streamOk ? (partial) => {
           if (!partial || !sheetOpen()) return;
           streamed = true;
           setTyping(false);
@@ -1656,6 +1666,7 @@ async function deliverUserTalk(text, opts = {}) {
           $("portrait-meta").textContent = partial;
         } : null);
         line = scrambleReply(reply || "……", stun, actId, girl) || "……";
+        if (actId && invAdded > 1) line = blendProtestReply(line, invAdded) || line;
       }
       if (girl.guard) girl.guard -= 1;
       tickStunAfterReply(girl);
