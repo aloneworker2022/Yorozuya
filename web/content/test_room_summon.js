@@ -14,7 +14,7 @@ import {
   LIBIDO_STAGE,
   arousalStage,
   libidoStage,
-} from "./body_state.js?v=7";
+} from "./body_state.js?v=8";
 import {
   effectiveStun,
   calcStun,
@@ -28,7 +28,8 @@ import {
   applyTeaseSpasm,
   noteTalkExchange,
   inSpasm,
-} from "./stun_speech.js?v=4";
+  stunTier,
+} from "./stun_speech.js?v=5";
 import {
   ensureTeaseFields,
   actLockState,
@@ -39,7 +40,7 @@ import {
   availableActs,
   decayBodyIdle,
   insertUnlocked,
-} from "./tease.js?v=3";
+} from "./tease.js?v=4";
 import {
   ensurePlayer,
   emptyPlayer,
@@ -50,7 +51,16 @@ import {
   playerHint,
   refillSemen,
   SEMEN_MIN_TEASE_CC,
-} from "./player_state.js?v=3";
+} from "./player_state.js?v=4";
+import { ensureOpenness, getOpenness } from "./openness.js?v=1";
+import {
+  ensureInvasion,
+  applyInvasionRoll,
+  decayInvasion,
+  clearInvasion,
+  getInvasion,
+  INVASION_MAX,
+} from "./invasion.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -1205,7 +1215,10 @@ function renderDebug() {
   panel.hidden = false;
   $("dbg-stage").textContent = STAGE_NAME[girl.stage || "stranger"] || "陌生";
   $("dbg-aff").textContent = String(girl.affection || 0);
-  $("dbg-mark").textContent = girl.lastMark || "—";
+  ensureOpenness(girl);
+  ensureInvasion(girl);
+  const openInv = `開放 ${getOpenness(girl)}・侵犯 ${getInvasion(girl)}`;
+  $("dbg-mark").textContent = girl.lastMark ? `${girl.lastMark}　${openInv}` : openInv;
   $("dbg-names").textContent = `名字 ${girl.playerName || "—"}　綽號 ${girl.playerNick || "—"}　小名 ${girl.playerPet || "—"}`;
   $("dbg-mood").textContent = girl.world?.mood || "—";
   const jump = $("dbg-jump");
@@ -1510,6 +1523,8 @@ async function deliverUserTalk(text, opts = {}) {
   ensureBody(girl);
   ensureStunFields(girl);
   ensureTeaseFields(girl);
+  ensureOpenness(girl);
+  ensureInvasion(girl);
   player = ensurePlayer(player);
 
   if (opts.actId) {
@@ -1566,6 +1581,8 @@ async function deliverUserTalk(text, opts = {}) {
       } else {
         const hit = applyBodyFromUserText(girl, raw);
         if (hit && girl.bodyState?.lastPart) noteActShock(girl, girl.bodyState.lastPart);
+        // 閒聊：侵犯值略降
+        decayInvasion(girl);
       }
     }
     renderBodyPanel();
@@ -1588,6 +1605,29 @@ async function deliverUserTalk(text, opts = {}) {
     }
     if (climaxLine || spasmNote) persistRoom();
 
+    // 侵犯值：動作後擲骰；滿值則逃離房間
+    if (opts.actId && !opts.skipBody) {
+      ensureInvasion(girl);
+      const invRoll = applyInvasionRoll(girl, opts.actId, {
+        stage: girl.stage || "stranger",
+        stun: effectiveStun(girl, opts.actId),
+      });
+      if (invRoll.added > 0) {
+        pushDebug(`侵犯 +${invRoll.added} → ${invRoll.invasion}/${INVASION_MAX}`);
+        renderDebug();
+      }
+      persistRoom();
+      refreshTalkActs();
+      if (invRoll.fled) {
+        const fleeNote = `（旁白：侵犯感爆滿——${girl.name}推開你，慌忙逃離了房間。）`;
+        lines.push({ role: "assistant", content: fleeNote });
+        await typeLine("旁白", fleeNote);
+        persistRoom();
+        await fleeRoomFromInvasion();
+        return;
+      }
+    }
+
     if (!sheetOpen() || talkFor !== girl.id) return;
 
     const actId = opts.actId || "";
@@ -1597,9 +1637,14 @@ async function deliverUserTalk(text, opts = {}) {
     let streamed = false;
     let line = "";
     try {
+      const tier = stunTier(stun);
       if (shouldSkipLlm(stun, girl) || inSpasm(girl)) {
         line = inSpasm(girl) ? spasmTemplate(girl, actId) : stunTemplate(stun, actId);
         if (!line) line = "……嗯啊…";
+        setTyping(false);
+      } else if (tier === "blank" || tier === "beg") {
+        // 50–64 空白／65–74 求饒：走模板，與平靜明顯區隔
+        line = stunTemplate(stun, actId) || (tier === "beg" ? "求、求你…慢一點…" : "……");
         setTyping(false);
       } else {
         const streamOk = stun < 25 && !inSpasm(girl);
@@ -1738,6 +1783,7 @@ function startIdleDecay() {
     // 最近剛挑逗過則跳過一輪
     if (sinceTease < 5000) return;
     decayBodyIdle(girl);
+    decayInvasion(girl);
     player = ensurePlayer(decayPlayerIdle(player)); // ensurePlayer 也會按小時回補精液
     renderBodyPanel();
     refreshTalkActs();
@@ -2044,6 +2090,35 @@ function summonHerBack() {
   persistRoom();
   $("summon-status").textContent = `${girl.name}被召喚回房間了。`;
 }
+
+/** 侵犯值滿：清侵犯、關對話、趕出房間（需再召喚或再抽）。 */
+async function fleeRoomFromInvasion() {
+  if (!girl) return;
+  const who = girl;
+  const name = who.name;
+  clearInvasion(who);
+  persistRoom();
+  if (who.world?.home) {
+    sendHerOutAgain();
+    $("summon-status").textContent = `${name}因侵犯感過重逃離了房間。可再召喚回來。`;
+    return;
+  }
+  if (who.world) {
+    window.RoomActor?.setPresent(false);
+    if (sheetOpen()) hideSheet();
+    renderCard();
+    renderWorld();
+    persistRoom();
+    $("summon-status").textContent = `${name}因侵犯感過重逃離了房間。`;
+    return;
+  }
+  // 尚無 world：走完整離開流程（安置日本）
+  await letHerLeave();
+  if ($("summon-status")) {
+    $("summon-status").textContent = `${name}因侵犯感過重逃離了房間，人已回到日本。`;
+  }
+}
+
 
 function parseShiftReply(text, know) {
   const cleaned = cleanLine(text);
@@ -2437,7 +2512,7 @@ function renderBodyPanel() {
   if ($("body-vagina-stuffed")) $("body-vagina-stuffed").value = snap.vaginaStuffed || "";
   if ($("body-anus-stuffed")) $("body-anus-stuffed").value = snap.anusStuffed || "";
   if ($("body-summary")) {
-    $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・精液${SEMEN_ZH[snap.uterusSemen]}`;
+    $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・開放${snap.openness ?? 0}・侵犯${snap.invasion ?? 0}・精液${SEMEN_ZH[snap.uterusSemen]}`;
   }
   bodyUiSyncing = false;
 }
@@ -2471,7 +2546,7 @@ function readBodyPanelToGirl() {
   if ($("body-libido-stage")) $("body-libido-stage").textContent = snap.libidoLabel;
   if ($("body-arousal-stage")) $("body-arousal-stage").textContent = snap.arousalLabel;
   if ($("body-summary")) {
-    $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・精液${SEMEN_ZH[snap.uterusSemen]}`;
+    $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・開放${snap.openness ?? 0}・侵犯${snap.invasion ?? 0}・精液${SEMEN_ZH[snap.uterusSemen]}`;
   }
   persistRoom();
 }

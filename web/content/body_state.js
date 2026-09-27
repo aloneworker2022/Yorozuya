@@ -84,6 +84,9 @@ export function emptyBody(seedLibido = 8) {
     libido: clampBody(seedLibido),
     lastPart: "",
     lastVerb: "",
+    openness: 0,
+    invasion: 0,
+    // 舊階梯欄位保留相容；解鎖改走 openness
     teaseStage: 0,
     teaseProgress: 0,
     teaseCounts: {},
@@ -108,6 +111,8 @@ export function ensureBody(who) {
   b.libido = clampBody(b.libido == null ? libidoSeedFromGirl(who) : b.libido);
   if ("shame" in b) delete b.shame;
   if (b.shock != null) b.shock = Math.max(0, Math.min(45, Math.round(Number(b.shock) || 0)));
+  b.openness = Math.max(0, Math.min(100, Math.round(Number(b.openness) || 0)));
+  b.invasion = Math.max(0, Math.min(100, Math.round(Number(b.invasion) || 0)));
   if (!b.teaseCounts || typeof b.teaseCounts !== "object") b.teaseCounts = {};
   b.teaseStage = Math.max(0, Math.min(4, Math.round(Number(b.teaseStage) || 0)));
   b.teaseProgress = Math.max(0, Math.round(Number(b.teaseProgress) || 0));
@@ -384,16 +389,19 @@ export function applyBodyFromUserText(who, text) {
 }
 
 
-/** 聊天快捷動作：階梯＋胸部分支＋插入／抽出。hitId 走器官模型。 */
+/** 聊天快捷動作：開放度階梯（摟腰→…→揉子宮口）＋抽出。hitId 走器官模型。 */
 export const TALK_ACTS = [
-  { id: "waist", label: "摸腰", text: "用手掌撫過她的腰", hitId: "waist", arousal: 2 },
-  { id: "butt", label: "揉臀", text: "揉她的臀部", hitId: "butt", arousal: 3 },
-  { id: "thigh", label: "撫大腿", text: "撫摸她的大腿內側", hitId: "thigh", arousal: 4 },
-  { id: "labia", label: "撫陰唇", text: "用手指撫過她的陰唇", hitId: "labia", arousal: 7 },
-  { id: "clit", label: "摸陰蒂", text: "輕輕揉弄她的陰蒂", hitId: "clit", arousal: 9 },
-  { id: "breast", label: "揉胸", text: "揉她的胸部", hitId: "breast", arousal: 4 },
-  { id: "nipple", label: "撥弄乳頭", text: "撥弄她的乳頭", hitId: "nipple", arousal: 5 },
+  { id: "waist", label: "摟腰", text: "輕輕摟住她的腰", hitId: "waist", arousal: 2 },
+  { id: "breast", label: "摸奶", text: "用手掌覆上她的胸部輕摸", hitId: "breast", arousal: 3 },
+  { id: "butt", label: "摸臀", text: "用手掌撫過她的臀部", hitId: "butt", arousal: 3 },
+  { id: "breast_knead", label: "揉奶", text: "用力揉捏她的乳房", hitId: "breast", arousal: 5 },
+  { id: "labia", label: "摸陰唇", text: "用手指輕撫她的陰唇", hitId: "labia", arousal: 6 },
+  { id: "labia_rub", label: "揉陰唇", text: "用手指揉弄她的陰唇", hitId: "labia", arousal: 8 },
+  { id: "breast_suck", label: "吸奶", text: "含住她的乳房吸吮", hitId: "nipple", arousal: 6 },
+  { id: "nipple_lick", label: "舔奶頭", text: "舔弄她的乳頭", hitId: "nipple", arousal: 6 },
   { id: "finger_in", label: "插入手指", text: "把手指伸進她的陰道", hitId: "vagina", arousal: 10 },
+  { id: "vagina_finger", label: "扣陰道", text: "用手指在她陰道裡扣弄", hitId: "vagina", arousal: 11 },
+  { id: "cervix_rub", label: "揉子宮口", text: "用指腹揉她的子宮口", hitId: "uterus", arousal: 12 },
   { id: "pull_out", label: "抽出", text: "把手指抽出來", hitId: "fingers_out", arousal: 3 },
 ];
 
@@ -411,15 +419,35 @@ export function applyAct(who, actId) {
   const b = ensureBody(who);
   if (!b) return null;
   const hit = { id: act.hitId, arousal: act.arousal || 0 };
-  // finger_in 台詞需含「指」才會塞入手指
+  // finger_in／扣陰道台詞需含「指」才會塞入手指；吸／舔走 lick 動詞
   applyOrganFromHit(who, hit, act.text);
+  const o = b.organs;
+  // 強度變體額外加成
+  if (actId === "breast_knead") {
+    o.breasts.swell = Math.min(3, (o.breasts.swell || 0) + 1);
+  } else if (actId === "labia_rub") {
+    o.labia.swell = Math.min(3, (o.labia.swell || 0) + 1);
+    o.labia.wet = true;
+    o.vagina.wet = Math.min(3, (o.vagina.wet || 0) + 1);
+  } else if (actId === "breast_suck" || actId === "nipple_lick") {
+    o.nipples.swell = Math.min(3, (o.nipples.swell || 0) + 1);
+    o.nipples.wet = true;
+  } else if (actId === "vagina_finger") {
+    if (!o.vagina.stuffed) o.vagina.stuffed = "fingers";
+    o.vagina.wet = Math.min(3, (o.vagina.wet || 0) + 1);
+    o.labia.swell = Math.min(3, (o.labia.swell || 0) + 1);
+  } else if (actId === "cervix_rub") {
+    if (!o.vagina.stuffed) o.vagina.stuffed = "fingers";
+    o.vagina.wet = Math.min(3, (o.vagina.wet || 0) + 1);
+    o.clit.swell = Math.min(3, (o.clit.swell || 0) + 1);
+  }
   b.arousal = clampBody(b.arousal + (hit.arousal || 0));
-  b.lastPart = hit.id;
+  b.lastPart = actId === "cervix_rub" ? "uterus" : hit.id;
   b.lastVerb = actVerb(act.text);
-  // 性欲加成只在陰部／胸，避免摸腰就衝滿
+  // 性欲加成只在陰部／胸，避免摟腰就衝滿
   if (b.libido >= 16 && ["clit", "labia", "vagina", "breast", "nipple", "uterus"].includes(hit.id)) {
     b.arousal = clampBody(b.arousal + 2);
-  } else if (b.libido >= 20 && ["thigh", "butt"].includes(hit.id)) {
+  } else if (b.libido >= 20 && ["butt"].includes(hit.id)) {
     b.arousal = clampBody(b.arousal + 1);
   }
   return { act, hit: true };
@@ -432,6 +460,8 @@ export function snapshotBodyForUi(who) {
   return {
     libido: b.libido,
     arousal: b.arousal,
+    openness: b.openness || 0,
+    invasion: b.invasion || 0,
     nipplesSwell: o.nipples.swell,
     nipplesWet: o.nipples.wet,
     breastsSwell: o.breasts.swell,

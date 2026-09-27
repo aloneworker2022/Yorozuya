@@ -1,7 +1,7 @@
 /** 房間聊天：程式化「失神」亂語（非只靠 prompt）。 */
 
-import { ensureBody, talkActById } from "./body_state.js?v=7";
-import { insertUnlocked } from "./tease.js?v=3";
+import { ensureBody, talkActById } from "./body_state.js?v=8";
+import { insertUnlocked } from "./tease.js?v=4";
 
 const SHOCK_MAX = 45;
 
@@ -9,21 +9,26 @@ const SHOCK_MAX = 45;
 export const SPASM_MS = 10 * 60 * 1000;
 export const SPASM_ENTER_STUN = 70;
 
-
-/** 動作／命中部位 → 短暫衝擊（回覆 1–2 次或數秒後衰減） */
+/** 動作／命中部位 → 短暫衝擊 */
 const SHOCK_BY_ID = {
   waist: 2,
   butt: 4,
   thigh: 5,
-  breast: 6,
+  breast: 5,
+  breast_knead: 8,
+  breast_suck: 10,
   nipple: 8,
+  nipple_lick: 10,
   labia: 10,
+  labia_rub: 14,
   clit: 14,
   vagina: 12,
+  vagina_finger: 18,
   finger_in: 28,
   fingers_out: 12,
   pull_out: 12,
-  uterus: 16,
+  uterus: 22,
+  cervix_rub: 24,
   creampie: 24,
   penis_in: 26,
   vibe_in: 18,
@@ -33,16 +38,19 @@ const SHOCK_BY_ID = {
   lips: 4,
 };
 
-/** 週邊動作地板低；插入僅在解鎖路徑給較高地板。 */
+/** 動作地板：深部較高。 */
 const FLOOR_ACT = {
   waist: 0,
   butt: 0,
-  thigh: 4,
-  breast: 6,
-  nipple: 8,
+  breast: 4,
+  breast_knead: 8,
+  breast_suck: 10,
+  nipple_lick: 10,
   labia: 12,
-  clit: 18,
+  labia_rub: 16,
   finger_in: 42,
+  vagina_finger: 48,
+  cervix_rub: 55,
   pull_out: 16,
 };
 
@@ -58,6 +66,32 @@ const STUN_BITS = [
   "咿嗯…！",
   "……哈啊",
   "等、等一下…啊",
+];
+
+/** 50–64：空白語氣——短、稀疏、…… */
+const BLANK_BITS = [
+  "……",
+  "……嗯",
+  "……啊",
+  "……。",
+  "嗯……",
+  "……哈",
+  "……唔",
+  "…………",
+];
+
+/** 65–74：求饒語氣——求停／求慢／軟，可混空白 */
+const BEG_BITS = [
+  "求、求你…停…",
+  "慢、慢一點…",
+  "不要…再…",
+  "等一下…求你…",
+  "輕、輕一點…嗯…",
+  "受、受不了…停…",
+  "拜託…慢…",
+  "求饒…啊…",
+  "不要那麼…深…",
+  "讓我…緩一下…",
 ];
 
 const SPASM_BITS = [
@@ -79,15 +113,22 @@ const PAIN_BITS = [
 
 const ACT_BITS = {
   waist: ["腰…嗯…", "好癢…"],
-  butt: ["臀…嗯…", "不要揉…"],
+  butt: ["臀…嗯…", "不要摸…"],
   thigh: ["大腿…熱…", "再往上…嗯"],
   clit: ["陰蒂…！", "那裡…不行…", "嗯咿…！", "碰、碰到…"],
-  labia: ["陰唇…熱…", "滑…嗯…", "不要揉…啊"],
+  labia: ["陰唇…熱…", "滑…嗯…", "不要摸…啊"],
+  labia_rub: ["陰唇…揉…！", "滑膩…嗯啊…", "不要一直揉…"],
   vagina: ["裡面…", "穴口…嗯…", "進、進來…"],
+  vagina_finger: ["扣…！", "裡面…攪…", "指尖…啊嗯…"],
   finger_in: ["手指…！", "裡面滿…", "攪…啊嗯…", "拔、不要拔…"],
   pull_out: ["空了…！", "嗯啊…抽出…", "還、還要…"],
-  breast: ["胸…嗯…", "揉…哈…"],
+  breast: ["胸…嗯…", "摸…哈…"],
+  breast_knead: ["奶…揉…嗯…", "用力…哈啊…"],
+  breast_suck: ["吸…！", "乳…含著…嗯"],
   nipple: ["乳頭…！", "乳尖…麻…"],
+  nipple_lick: ["舔…奶頭…！", "舌尖…麻…"],
+  cervix_rub: ["宮口…！", "最裡面…啊…", "揉、揉到…！"],
+  uterus: ["子宮…！", "宮口…麻…"],
 };
 
 function clamp(n, lo, hi) {
@@ -132,20 +173,22 @@ export function noteActShock(who, actOrHitId) {
   if (!b) return 0;
   const id = String(actOrHitId || "");
   let add = SHOCK_BY_ID[id] || (id ? 8 : 0);
-  if (id === "finger_in" && !insertUnlocked(who)) add = Math.min(add, 5);
-  const peripheral = ["waist", "butt", "thigh", "breast", "nipple"].includes(id);
-  if (peripheral) add = Math.min(add, 6);
+  if ((id === "finger_in" || id === "vagina_finger" || id === "cervix_rub") && !insertUnlocked(who)) {
+    add = Math.min(add, 5);
+  }
+  const peripheral = ["waist", "butt", "thigh", "breast", "breast_knead"].includes(id);
+  if (peripheral) add = Math.min(add, id === "breast_knead" ? 8 : 6);
   if (!add) return b.shock;
   if (peripheral) {
-    // 週邊不疊滿，頂在低衝擊
-    b.shock = clamp(Math.max(b.shock || 0, add) + Math.floor(add / 2), 0, 14);
-  } else if (id === "labia" || id === "clit") {
-    b.shock = clamp((b.shock || 0) + add, 0, 28);
+    b.shock = clamp(Math.max(b.shock || 0, add) + Math.floor(add / 2), 0, 16);
+  } else if (id === "labia" || id === "labia_rub" || id === "clit" || id === "nipple_lick" || id === "breast_suck") {
+    b.shock = clamp((b.shock || 0) + add, 0, 32);
   } else {
     b.shock = clamp((b.shock || 0) + add, 0, SHOCK_MAX);
   }
   b.shockAt = Date.now();
-  b.shockRepliesLeft = Math.max(b.shockRepliesLeft || 0, id === "finger_in" ? 2 : 1);
+  const deep = id === "finger_in" || id === "vagina_finger" || id === "cervix_rub";
+  b.shockRepliesLeft = Math.max(b.shockRepliesLeft || 0, deep ? 2 : 1);
   return b.shock;
 }
 
@@ -164,6 +207,7 @@ export function tickStunAfterReply(who) {
 /**
  * 失神分數 0–100。
  * arousal→最多約40；libido 加成／倍率；器官濕腫塞；shock 暫衝。
+ * 軟頂改依開放度（取代 teaseStage）。
  */
 export function calcStun(who) {
   const b = ensureStunFields(who);
@@ -172,8 +216,9 @@ export function calcStun(who) {
   const o = b.organs || {};
   const arousalPts = (clamp(b.arousal, 0, 30) / 30) * 34;
   const libidoBoost = (clamp(b.libido, 0, 30) / 30) * 12;
-  const stage = Math.max(0, Math.min(4, Number(b.teaseStage) || 0));
-  const stageScale = 0.35 + stage * 0.16; // 週邊階壓低器官失神
+  const open = Math.max(0, Math.min(100, Number(b.openness) || 0));
+  // 開放度壓低週邊失神：0→0.35，55→約0.7，100→1.0
+  const openScale = 0.35 + (open / 100) * 0.65;
   let organ = 0;
   organ += (o.clit?.swell || 0) * 3;
   if (o.clit?.wet) organ += 4;
@@ -185,14 +230,14 @@ export function calcStun(who) {
   organ += (o.uterus?.semen || 0) * 2;
   if ((o.nipples?.swell || 0) >= 2) organ += 2;
   if ((o.breasts?.swell || 0) >= 2) organ += 2;
-  organ *= stageScale;
+  organ *= openScale;
 
   const libMult = 0.85 + (clamp(b.libido, 0, 30) / 30) * 0.25;
   const shock = clamp(b.shock || 0, 0, SHOCK_MAX);
   let score = (arousalPts + organ) * libMult + libidoBoost + shock;
-  // 階梯軟頂：沒真正插入前不進失神跳過 LLM
+  // 未插入前軟頂：低開放度壓失神跳過 LLM
   if (!o.vagina?.stuffed) {
-    const softCap = stage <= 2 ? 38 : stage === 3 ? 50 : 64;
+    const softCap = open < 32 ? 38 : open < 55 ? 50 : open < 78 ? 64 : 80;
     score = Math.min(score, softCap);
   }
   return clamp(score, 0, 100);
@@ -200,9 +245,9 @@ export function calcStun(who) {
 
 export function stunFloorForAct(actId, who = null) {
   if (!actId) return 0;
-  if (actId === "finger_in") {
-    if (who && insertUnlocked(who)) return FLOOR_ACT.finger_in;
-    return 8; // 未解鎖／旁路：幾乎不抬地板
+  if (actId === "finger_in" || actId === "vagina_finger" || actId === "cervix_rub") {
+    if (who && insertUnlocked(who)) return FLOOR_ACT[actId] ?? 42;
+    return 8;
   }
   return FLOOR_ACT[actId] ?? 0;
 }
@@ -212,14 +257,18 @@ export function effectiveStun(who, actId = "") {
   return Math.max(calcStun(who), stunFloorForAct(actId, who));
 }
 
+/**
+ * calm <25 | interfere 25–49 | blank 50–64 | beg 65–74 | stun ≥75
+ * （舊 broken 拆成 blank／beg）
+ */
 export function stunTier(stun) {
   const s = clamp(stun, 0, 100);
   if (s >= 75) return "stun";
-  if (s >= 50) return "broken";
+  if (s >= 65) return "beg";
+  if (s >= 50) return "blank";
   if (s >= 25) return "interfere";
   return "calm";
 }
-
 
 export function inSpasm(who) {
   const b = ensureStunFields(who);
@@ -247,7 +296,6 @@ export function applyTeaseSpasm(who, actId = "", stunBefore = null) {
       b.spasmUntil = Math.max(b.spasmUntil, Date.now() + Math.floor(SPASM_MS / 2));
     }
   } else if (actId && stunBefore != null && stunBefore >= SPASM_ENTER_STUN) {
-    // 已經高失神後還繼續挑逗 → 痙攣（同一下達標不算）
     b.spasmUntil = Date.now() + SPASM_MS;
     b.overstim = false;
     enteredSpasm = true;
@@ -272,7 +320,6 @@ export function noteTalkExchange(who) {
   const b = ensureStunFields(who);
   if (!b) return b;
   b.talkExchangeCount = (b.talkExchangeCount || 0) + 1;
-  // 每 3 輪淡化一次（2–3 的穩定落點）
   if (b.talkExchangeCount % 3 === 0 && !inSpasm(who)) {
     b.arousal = clamp((b.arousal || 0) - 2, 0, 30);
     b.shock = clamp((b.shock || 0) - 8, 0, SHOCK_MAX);
@@ -284,7 +331,6 @@ export function shouldSkipLlm(stun, who = null) {
   if (who && inSpasm(who)) return true;
   return clamp(stun, 0, 100) >= 75;
 }
-
 
 function stripCausal(text) {
   return String(text || "")
@@ -306,10 +352,9 @@ function keepScrap(clause) {
   const s = String(clause || "").trim();
   if (!s) return "";
   if (/^(嗯|啊|唔|哈|咿|呀|喔|哦|……|…)+[!！?？]*$/.test(s)) return s;
-  if (/不要|還要|不行|等一下|那裡|裡面|陰蒂|陰唇|乳頭|好爽|不行了/.test(s)) {
+  if (/不要|還要|不行|等一下|那裡|裡面|陰蒂|陰唇|乳頭|好爽|不行了|求|停|慢/.test(s)) {
     return s.length > 10 ? s.slice(0, 10) : s;
   }
-  // 短碎片才留
   if (s.length <= 6) return s;
   if (s.length <= 12 && /[嗯啊唔哈咿呀]/.test(s)) return s.slice(0, 8);
   return "";
@@ -338,27 +383,49 @@ function scrambleBroken(text, actId = "") {
   const stripped = stripCausal(text);
   const scraps = splitClauses(stripped).map(keepScrap).filter(Boolean);
   const bits = scraps.slice(0, 3);
-  // 說明句被剝光時，改塞反應碎片，避免只剩標點
   if (bits.join("").replace(/[。．…！!？?\s]/g, "").length < 4) {
-    return stunTemplate(62, actId);
+    return blankTemplate(actId);
   }
   if (Math.random() < 0.75) bits.splice(Math.min(1, bits.length), 0, pick(MOANS));
   while (bits.length < 2) bits.push(pick(MOANS));
   let out = bits.join("");
   if (out.length > 28) out = out.slice(0, 28) + "…";
   out = stripCausal(out).replace(/^[。．…！!？?\s]+/, "").trim();
-  if (!out || out.length < 2) return stunTemplate(62, actId);
+  if (!out || out.length < 2) return blankTemplate(actId);
   return out;
+}
+
+function blankTemplate(actId = "") {
+  const actBits = ACT_BITS[actId] || [];
+  const pool = [...BLANK_BITS, ...MOANS.slice(0, 3)];
+  // 極稀疏：1–2 片，常只有 ……
+  if (Math.random() < 0.45) return pick(BLANK_BITS);
+  const parts = [pick(pool)];
+  if (Math.random() < 0.35 && actBits.length) parts.push(pick(actBits).slice(0, 4));
+  else if (Math.random() < 0.4) parts.push(pick(BLANK_BITS));
+  return parts.join("").replace(/(…)+/g, "…").slice(0, 16);
+}
+
+function begTemplate(actId = "") {
+  const actBits = ACT_BITS[actId] || [];
+  const pool = [...BEG_BITS, ...BLANK_BITS.slice(0, 3), ...actBits.slice(0, 2)];
+  const parts = [];
+  // 求饒為主，偶爾夾空白
+  parts.push(pick(BEG_BITS));
+  if (Math.random() < 0.55) {
+    parts.push(Math.random() < 0.4 ? pick(BLANK_BITS) : pick(pool));
+  }
+  return parts.join("").replace(/(…)+/g, "…").slice(0, 24);
 }
 
 export function stunTemplate(stun, actId = "") {
   const tier = stunTier(stun);
+  if (tier === "blank") return blankTemplate(actId);
+  if (tier === "beg") return begTemplate(actId);
   const actBits = ACT_BITS[actId] || ACT_BITS[talkActById(actId)?.hitId] || [];
   const pool = tier === "stun"
     ? [...STUN_BITS, ...actBits, ...MOANS]
-    : tier === "broken"
-      ? [...STUN_BITS.slice(0, 6), ...actBits, ...MOANS]
-      : [...MOANS, ...actBits, "等、等一下…", "嗯…哈…"];
+    : [...MOANS, ...actBits, "等、等一下…", "嗯…哈…"];
   const n = tier === "stun" ? 2 + Math.floor(Math.random() * 2) : 2;
   const parts = [];
   for (let i = 0; i < n; i++) parts.push(pick(pool));
@@ -367,9 +434,9 @@ export function stunTemplate(stun, actId = "") {
 
 /**
  * 依失神階改寫回覆。≥75 應走模板；若仍傳入則整段替換。
+ * 50–64 空白；65–74 求饒混空白；痙攣／過感覆寫。
  */
 export function scrambleReply(text, stun, actId = "", who = null) {
-  // 痙攣／過感期間：強制模板，不管話題
   if (who && inSpasm(who)) {
     return spasmTemplate(who, actId);
   }
@@ -381,6 +448,20 @@ export function scrambleReply(text, stun, actId = "", who = null) {
     return raw || "……";
   }
   if (tier === "stun" || !raw) return stunTemplate(s, actId);
+  if (tier === "blank") {
+    // LLM 回覆壓成空白碎片，或整段換成空白模板
+    if (Math.random() < 0.6) return blankTemplate(actId);
+    const scraps = splitClauses(stripCausal(raw)).map(keepScrap).filter(Boolean).slice(0, 2);
+    if (!scraps.length) return blankTemplate(actId);
+    return (scraps.join("") + (Math.random() < 0.5 ? "……" : "")).slice(0, 18);
+  }
+  if (tier === "beg") {
+    // 求饒模板為主，偶留一點原文碎片
+    if (Math.random() < 0.7 || !raw) return begTemplate(actId);
+    const scraps = splitClauses(stripCausal(raw)).map(keepScrap).filter(Boolean).slice(0, 1);
+    const beg = pick(BEG_BITS);
+    return (beg + (scraps[0] || pick(BLANK_BITS))).replace(/(…)+/g, "…").slice(0, 24);
+  }
   if (tier === "interfere") {
     let out = insertBreaths(raw);
     if (out.length > 56) out = out.slice(0, 52) + "…";

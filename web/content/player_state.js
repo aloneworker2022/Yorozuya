@@ -10,12 +10,17 @@ export const SEMEN_REGEN_CC_PER_HOUR = 1;
 export const CLIMAX_BY_ACT = {
   waist: 1,
   butt: 1,
-  thigh: 2,
   breast: 2,
+  breast_knead: 3,
+  breast_suck: 3,
+  nipple_lick: 3,
   nipple: 2,
   labia: 3,
+  labia_rub: 4,
   clit: 4,
   finger_in: 5,
+  vagina_finger: 5,
+  cervix_rub: 6,
   pull_out: 2,
   vagina: 3,
 };
