@@ -29,7 +29,7 @@ import {
   noteTalkExchange,
   inSpasm,
   stunTier,
-} from "./stun_speech.js?v=6";
+} from "./stun_speech.js?v=7";
 import {
   ensureTeaseFields,
   actLockState,
