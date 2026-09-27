@@ -1749,33 +1749,35 @@ function climaxCockStage(t) {
 /**
  * 肉色像素陰莖四階段（row 小＝朝上／龜頭方向，bottom-align 後貼球）：
  * 0 soft: 1×2 下垂
- * 1: 2×3 微上翹（階梯斜）
- * 2: 2×4 直挺
- * 3 max: 幹 2×4 + 頭直四格（1×4 置於 2 寬幹左側／近似置中）
+ * 1 rising: solid 2×3
+ * 2 straight: solid 2×4 erect
+ * 3 full: head 2×2 on shaft 2×4（頭直四格＝同寬 2×2 塊）→ total 2×6
  */
 function climaxCockCells(t) {
   const stage = climaxCockStage(t);
   const cells = [];
   const put = (c, r) => cells.push({ c, r });
   if (stage === 0) {
-    // 1×2 hanging down
+    // 1×2 hanging soft
     put(0, 0);
     put(0, 1);
   } else if (stage === 1) {
-    // 2×3 slight upward (stepped diagonal)
-    put(1, 0); put(2, 0);
-    put(0, 1); put(1, 1);
-    put(0, 2); put(1, 2);
+    // solid 2×3 rising
+    for (let r = 0; r < 3; r++) {
+      put(0, r); put(1, r);
+    }
   } else if (stage === 2) {
-    // 2×4 straight erect
+    // solid 2×4 straight erect
     for (let r = 0; r < 4; r++) {
       put(0, r); put(1, r);
     }
   } else {
-    // shaft 2×4 + head 1×4 straight up from tip
-    for (let r = 0; r < 4; r++) put(0, r); // 頭直四格（1 wide）
-    for (let r = 4; r < 8; r++) {
-      put(0, r); put(1, r); // 幹 2×4
+    // head 2×2 on top + shaft 2×4 → 2×6（頭是直四格＝2×2，勿用偏置 1×4）
+    for (let r = 0; r < 2; r++) {
+      put(0, r); put(1, r);
+    }
+    for (let r = 2; r < 6; r++) {
+      put(0, r); put(1, r);
     }
   }
   return cells;
