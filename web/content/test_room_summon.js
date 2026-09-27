@@ -1106,9 +1106,15 @@ function friendPhysicalPromptLines(who = girl) {
     }
 
     if (dating) {
-      lines.push("【對召喚者是女友／妻子・口吻】這件事絕對不要主動提、不要暗示「剛做過／有炮友」。日常把餘韻收成普通疲累、臉紅或彆扭即可。");
+      lines.push("【對召喚者是女友／妻子・口吻】這件事絕對不要主動提、不要暗示「剛做過／有炮友」。日常把餘韻收成普通疲累、臉紅或彆扭即可，不要說明原因。");
       lines.push("若召喚者沒明確逼問外人／出軌／身體關係：轉移話題、短答、裝傻，或裝作聽不懂。");
       lines.push("若被明確逼問：只准漏一點點（語氣／否定過重／名字含糊），不要交代過程；可心虛沉默、答非所問、不回答，或依個性生氣／委屈反問「你在疑心什麼」。");
+      // 肉體 vs 炮友口吻差（交往中）
+      if (fs.kind === "fwb_again" || fs.kind === "fwb") {
+        lines.push("【炮友・藏匿口吻】你已較習慣隱瞞：餘韻更像普通疲累；被逼問時否認較順、少細節破綻，不要演得過度心虛。");
+      } else {
+        lines.push("【剛升肉體・藏匿口吻】心虛略重、更易閃、破綻稍多；仍不要主動說破，被逼問才可能漏一點。");
+      }
       if (family === "冷淡") {
         lines.push("個性偏冷淡：被逼問時更沉默、話更短，或冷冷回一句就停。");
       } else if (family === "佔有") {
@@ -1133,7 +1139,15 @@ function friendPhysicalPromptLines(who = girl) {
     }
   } else if (hasBond) {
     if (dating) {
-      lines.push("【背景・女友／妻子】你在外面和某些朋友已有肉體關係或炮友，但對召喚者要當秘密：平常絕不主動提；只有被明確逼問才可能心虛漏一點、閃避、沉默或生氣，絕不主動細說。");
+      const bonds = friends.filter((f) => f.bond === "physical" || f.bond === "fwb");
+      const onlyFwb = bonds.length && bonds.every((f) => f.bond === "fwb");
+      const onlyPhys = bonds.length && bonds.every((f) => f.bond === "physical");
+      lines.push("【背景・女友／妻子】你在外面和某些朋友已有肉體關係或炮友，但對召喚者要當秘密：平常絕不主動提；只有被明確逼問才可能心虛漏一點、閃避、沉默或生氣，絕不主動細說。日常談情／愛意仍照常，不因外面停愛。");
+      if (onlyFwb) {
+        lines.push("【炮友背景・口吻】隱瞞已成習慣，日常語氣不必長期心虛；被逼問時否認較順。");
+      } else if (onlyPhys) {
+        lines.push("【肉體背景・口吻】仍偏心虛／易閃，破綻可比炮友稍多，但仍不要主動說破。");
+      }
     } else {
       lines.push("【背景・陌生／朋友】你在外面和某些朋友已有肉體關係或炮友。日常可偶爾自然提到或被問時較坦白，仍不要每句提、不要主動細說過程。");
     }
@@ -1616,11 +1630,26 @@ function ensurePlayerNotes(who) {
   if (who.noteLastAskAt == null || !Number.isFinite(Number(who.noteLastAskAt))) who.noteLastAskAt = -999;
   if (who.noteLastRecallAt == null || !Number.isFinite(Number(who.noteLastRecallAt))) who.noteLastRecallAt = -999;
   if (who.noteLastTriviaAt == null || !Number.isFinite(Number(who.noteLastTriviaAt))) who.noteLastTriviaAt = -999;
+  if (who.loveTalkLastAt == null || !Number.isFinite(Number(who.loveTalkLastAt))) who.loveTalkLastAt = -999;
+  if (who.petProposeCount == null || !Number.isFinite(Number(who.petProposeCount))) who.petProposeCount = 0;
+  if (who.petCoolUntil == null || !Number.isFinite(Number(who.petCoolUntil))) who.petCoolUntil = 0;
+  if (who.pendingPet == null) who.pendingPet = "";
+  if (who.petNudgeLastAt == null || !Number.isFinite(Number(who.petNudgeLastAt))) who.petNudgeLastAt = -999;
 }
 
 function preGirlfriendStage(stage) {
   const s = stage || "stranger";
   return s === "stranger" || s === "acquaintance" || s === "friend" || s === "close_friend";
+}
+
+function datingBandStage(stage) {
+  const s = stage || "stranger";
+  return s === "girlfriend" || s === "passionate" || s === "lover";
+}
+
+/** 互相認識 notes 啟用：陌生～愛人（戒指前） */
+function notesActiveStage(stage) {
+  return preGirlfriendStage(stage) || datingBandStage(stage);
 }
 
 function playerNotesCap(stage) {
@@ -1636,7 +1665,36 @@ function notesAskEvery(stage) {
   const s = stage || "stranger";
   if (s === "stranger" || s === "acquaintance") return [8, 12];
   if (s === "friend" || s === "close_friend") return [4, 6];
+  if (datingBandStage(s)) return [3, 5];
   return [3, 5];
+}
+
+/** 談情頻率 [lo, hi]；非交往帶回 null */
+function loveTalkEvery(stage) {
+  const s = stage || "stranger";
+  if (s === "girlfriend") return [6, 10];
+  if (s === "passionate") return [3, 5];
+  if (s === "lover") return [5, 8];
+  return null;
+}
+
+/** 高失神／餘韻／防備／脫衣做愛：不要主動談情（對齊 notes 閘） */
+function loveTalkBlocked(who) {
+  if (!who) return true;
+  if (who.guard) return true;
+  if (inAfterglow(who)) return true;
+  if (inSpasm(who)) return true;
+  try {
+    if (sceneOpen()) return true;
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (effectiveStun(who, "") >= 50) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 function notesGateBlocked(who) {
@@ -1668,11 +1726,14 @@ function appendPlayerNote(who, text, cat = "habit", conf = 0.75) {
 
 function coolTopicKey(text) {
   const t = String(text || "");
-  if (/叫|名字|稱呼|怎麼叫/.test(t)) return "name";
+  if (/叫|名字|稱呼|怎麼叫|小名/.test(t)) return "name";
   if (/睡|熬夜|起床|幾點|作息/.test(t)) return "sleep";
   if (/吃|喝|冰|熱|咖啡|菸|通勤|習慣/.test(t)) return "habit";
   if (/忙|委託|趕|工作|最近/.test(t)) return "busy";
   if (/喜歡|討厭|雷|型/.test(t)) return "like";
+  if (/答應|約定|說好|下次一定|承諾/.test(t)) return "promise";
+  if (/玩笑|梗|只有我們|私下/.test(t)) return "joke";
+  if (/吃醋|在意|介意|別跟別人/.test(t)) return "jealous";
   return "misc";
 }
 
@@ -1699,8 +1760,7 @@ function playerNotesPromptLines(who = girl) {
   if (!who) return [];
   ensurePlayerNotes(who);
   const stage = who.stage || "stranger";
-  // 本輪先做陌生～戀人未滿；女友加深之後再開
-  if (!preGirlfriendStage(stage)) return [];
+  if (!notesActiveStage(stage)) return [];
 
   const notes = who.playerNotes;
   const turns = Number(who.noteChatTurns) || 0;
@@ -1709,6 +1769,7 @@ function playerNotesPromptLines(who = girl) {
   const askEvery = who.noteAskSpan || Math.floor((askLo + askHi) / 2);
   const recallEvery = Math.max(askEvery, stage === "stranger" || stage === "acquaintance" ? 10 : 5);
   const blocked = notesGateBlocked(who);
+  const dating = datingBandStage(stage);
   const lines = [];
 
   who.notePromptAsk = false;
@@ -1736,12 +1797,18 @@ function playerNotesPromptLines(who = girl) {
   const cooled = who.topicCool || {};
   const askDue = sinceAsk >= askEvery;
   const recallDue = notes.length > 0 && sinceRecall >= recallEvery;
+  const askEligible = dating
+    || stage === "friend"
+    || stage === "close_friend"
+    || notes.length < 2;
 
   // 同輪最多一件：優先發問（未滿額），否則回鍋／確認
-  if (askDue && underCap && (stage === "friend" || stage === "close_friend" || notes.length < 2)) {
+  if (askDue && underCap && askEligible) {
     const ban = Object.keys(cooled).filter((k) => cooled[k]).join("、");
     if (stage === "stranger" || stage === "acquaintance") {
       lines.push("【互相認識・本輪可問一件】極簡略問一件：稱呼叫法或作息（熬夜之類）。最多一句、可含糊帶過。不要問情史／性癖／交往／外面男人。");
+    } else if (dating) {
+      lines.push("【互相認識・交往中・本輪可問一件】可從喜好／雷點、承諾、私下玩笑、他在意或吃醋過的事、心情／煩惱裡問一件。問完先聽。不要盤問外面男人名單；不要說出好感數值或關係階段名。");
     } else {
       lines.push("【互相認識・本輪可問一件】從稱呼／作息、飲食小習慣、最近在忙、喜好／雷點四類裡問一件。問完先聽，不要連珠炮。不要問情史／性癖／要不要交往／外面男人。");
     }
@@ -1766,6 +1833,10 @@ function playerNotesPromptLines(who = girl) {
     lines.push("同輪不要再問新的私事。");
   } else if (notes.length >= cap) {
     lines.push("【互相認識】記得的事已夠多：本輪不要問新的，頂多之後再確認舊的。");
+  }
+
+  if (dating) {
+    lines.push("【互相認識・交往中・禁記】永不把外面男人名單、好感數字、關係階段名寫進你記得的事；只記他親口說過的短事實。");
   }
 
   return lines;
@@ -1809,8 +1880,98 @@ function consumeFriendUpBeat(who = girl) {
   return "（旁白：她看你的眼神好像沒那麼防備了。不要說出關係階段名。）";
 }
 
+function consumeDatingUpBeat(who = girl) {
+  if (!who?.datingUpPending) return "";
+  const kind = who.datingUpPending;
+  who.datingUpPending = "";
+  if (kind === "passionate") {
+    return "（旁白：她看你的眼神鬆了一點，語氣也熱了些。不要說出關係階段名。）";
+  }
+  if (kind === "lover") {
+    return "（旁白：她靠你更近一點，語氣穩了些。不要說出關係階段名。）";
+  }
+  return "（旁白：她看你的眼神好像又不一樣了。不要說出關係階段名。）";
+}
+
+/**
+ * 女友／熱戀／愛人：談情節奏、讓位身體、小名邊角、愛人禁戒指暗示。
+ */
+function relationshipDatingPromptLines(who = girl) {
+  if (!who) return [];
+  const stage = who.stage || "stranger";
+  if (!datingBandStage(stage)) return [];
+  ensurePlayerNotes(who);
+  const lines = [];
+  const turns = Number(who.noteChatTurns) || 0;
+  const pet = String(who.playerPet || "").trim();
+  const pending = String(who.pendingPet || "").trim();
+  const loveSpan = loveTalkEvery(stage);
+  const blockedLove = loveTalkBlocked(who);
+
+  // 共同底：不主動約外出；未婚不叫老公；愛人禁戒指／未來壓力
+  lines.push("【交往中・共同】不要主動約外出／約會。未婚階段禁止叫「老公」（留給妻子）。談情時仍不主動翻外面男人。");
+  if (stage === "lover") {
+    lines.push("【愛人・禁止】不要暗示戒指、求婚、以後結婚或看他的手施壓；不要淡淡「以後…」催未來承諾。求婚只等他自己拿戒指。");
+  }
+
+  // 小名邊角
+  if (who.petRenameAck) {
+    lines.push(`【小名・改名確認】他剛改了小名。用一句短回確認（例如「好，那就叫你${pet || "這樣"}」），不要小劇場。`);
+  } else if (pet) {
+    lines.push(`【小名】已確認的小名是「${pet}」。可自然用；熱戀更自然；愛人可和小名／名字混用。不要改回單方面亂取。`);
+  } else if (who.nameWait === "petConfirm" && pending) {
+    lines.push(`【小名・等確認】你剛提議叫他「${pending}」。等他點頭或改口；未確認前不要當已鎖定、不要一直叫。`);
+  } else if ((Number(who.petProposeCount) || 0) < 2 && turns >= (Number(who.petCoolUntil) || 0) && who.nameWait !== "petConfirm") {
+    // opener 或冷卻後的再提議（含首次最多 2 次）
+    if (who.nameWait !== "petPropose") {
+      // 非 opener：約每 4 則才主動再提議，避免每輪逼問
+      const sinceAskish = turns - (Number(who.noteLastAskAt) || -999);
+      if (sinceAskish >= 2 && !blockedLove && !who.notePromptAsk) {
+        who.nameWait = "petPropose";
+      }
+    }
+    if (who.nameWait === "petPropose") {
+      lines.push("【小名・本輪提議】用一兩句提議一個小名並問他可不可以（可把提議的小名用「」包起來）。等他確認才正式用；不要單方面鎖定。未婚不要叫老公。");
+    }
+  } else if (!pet && (stage === "passionate" || stage === "lover")) {
+    const sinceNudge = turns - (Number(who.petNudgeLastAt) || -999);
+    const nudgeEvery = stage === "passionate" ? 4 : 6;
+    if (sinceNudge >= nudgeEvery && !blockedLove && !who.notePromptAsk) {
+      lines.push("【小名・輕推】還沒有確認的小名。可極軟地提一句「想叫你小名」或問他想被怎樣叫，不要逼、不要連問。");
+      who.petNudgeLastAt = turns;
+    }
+  } else if (!pet && (Number(who.petProposeCount) || 0) >= 2) {
+    lines.push("【小名】他尚未點頭；暫時用名字或「你」，不要硬叫未確認的小名。");
+  }
+
+  // 談情節奏（D：身體場面讓位）
+  if (blockedLove) {
+    lines.push("【談情・本輪讓位】高失神／餘韻／防備／脫衣做愛中：不要主動說喜歡／想你／告白式愛意。若他先說愛，仍可短短接住。");
+  } else if (loveSpan) {
+    const [lo, hi] = loveSpan;
+    const every = who.loveTalkSpan || Math.floor((lo + hi) / 2);
+    const since = turns - (Number(who.loveTalkLastAt) || -999);
+    if (since >= every) {
+      if (stage === "girlfriend") {
+        lines.push("【談情・本輪可帶一點】可自然帶一點喜歡／想他／接情緒的短句，不要每句喊愛。倒苦水時先聽再心疼，氣氛對了才談情。");
+      } else if (stage === "passionate") {
+        lines.push("【談情・本輪可帶】可較熱、直接地說想他、確認在不在乎；吃醋裡可夾愛意，但別失控長篇。不要每句喊愛。");
+      } else {
+        lines.push("【談情・本輪可帶】可用較穩、「我們」口吻的真心短句；少表演、份量重。不要每句喊愛，也不要妻子級使喚。");
+      }
+      who.loveTalkSpan = lo + Math.floor(Math.random() * (hi - lo + 1));
+      who.loveTalkLastAt = turns;
+    }
+  }
+
+  // 傾聽：倒苦水不硬插告白
+  lines.push("【交往・傾聽】他倒苦水時：先聽、可心疼／偏袒；氣氛對了才談情，不要硬插「我愛你」搶戲。");
+
+  return lines;
+}
+
 function handlePlayerNotesAfterUser(who, rawText) {
-  if (!who || !preGirlfriendStage(who.stage || "stranger")) return;
+  if (!who || !notesActiveStage(who.stage || "stranger")) return;
   ensurePlayerNotes(who);
   const raw = String(rawText || "").trim();
   if (!raw) return;
@@ -1853,11 +2014,18 @@ function handlePlayerNotesAfterUser(who, rawText) {
 }
 
 function handlePlayerNotesAfterReply(who, replyText) {
-  if (!who || !preGirlfriendStage(who.stage || "stranger")) return;
+  if (!who || !notesActiveStage(who.stage || "stranger")) return;
   ensurePlayerNotes(who);
   const reply = String(replyText || "");
   if (who.noteCorrectPending) {
     who.noteCorrectPending = false;
+  }
+  if (who.petRenameAck) {
+    who.petRenameAck = false;
+  }
+  // 若本輪她又提議了小名（「」），收進 pending
+  if (datingBandStage(who.stage || "") && !who.playerPet && (who.nameWait === "petPropose" || who.nameWait === "pet")) {
+    takeCall("", reply);
   }
   const askedThisTurn = !!who.notePromptAsk
     || ((Number(who.noteLastAskAt) || -999) === (Number(who.noteChatTurns) || 0) && /[？?]/.test(reply));
@@ -1911,6 +2079,12 @@ function syncStage(who) {
     const fromEarly = current === "stranger" || current === "acquaintance";
     if (fromEarly && (target === "friend" || target === "close_friend")) {
       who.friendUpPending = true;
+    }
+    // 女友帶內自動升熱戀／愛人：極淡銜接（不講階段名）
+    if (current === "girlfriend" && target === "passionate") {
+      who.datingUpPending = "passionate";
+    } else if ((current === "girlfriend" || current === "passionate") && target === "lover") {
+      who.datingUpPending = "lover";
     }
   }
   who.stage = target;
@@ -2303,24 +2477,33 @@ function stageTalk() {
     ];
   }
   if (stage === "lover") {
+    const petLine = pet
+      ? `已確認的小名是「${pet}」。可和小名／名字混用。禁止叫老公（留給妻子）。`
+      : "還沒有確認的小名：用名字或「你」；想叫小名就先提議並問可不可以，等他點頭才用。禁止單方面用「」自取並鎖定。禁止叫老公。";
     return [
-      "態度：穩定親密。比熱戀少衝動與嫉妒，但比女友更深、更安心。個性不要換掉。",
-      pet ? `你給他的小名是「${pet}」。可以叫老公，也可以叫小名。` : "你要幫他取一個小名，小名用「」包起來。",
-      "心情、不安、打算都講給他。親密是靠得近、說真話，不是黏著吵。沒有特別的事就不要硬報。",
+      "態度：穩定親密。比熱戀少衝動與嫉妒，但比女友更深、更安心。主動找他仍常，但較穩、不吵。個性不要換掉。",
+      petLine,
+      "心情、不安、打算、更深私事都講給他。親密是靠得近、說真話，不是黏著吵。談情用「我們」口吻、少表演多真心；頻率約每 5～8 則帶一點即可。不要暗示戒指或「以後」。沒有特別的事就不要硬報。",
     ];
   }
   if (stage === "passionate") {
+    const petLine = pet
+      ? `已確認的小名是「${pet}」。小名用得更自然。禁止叫老公。`
+      : "還沒有確認的小名：用名字或「你」；可較常輕推想叫小名，但仍要先問、等他確認。禁止單方面鎖定。禁止叫老公。";
     return [
-      "態度：黏、熱、吃醋一點可以。會想念他、會想確認他在不在乎你。甜是距離近，不是把個性換成另一個人。",
-      pet ? `你給他的小名是「${pet}」。` : "你要幫他取一個小名，小名用「」包起來。",
-      "會主動找他、講想他；若他冷淡或提別人，可以吃醋但別失控罵長篇。不安和異常可以講。沒有特別的事就不要硬報。",
+      "態度：黏、熱、吃醋一點可以。會想念他、會想確認他在不在乎你。你沒回時較容易再傳／在意。甜是距離近，不是把個性換成另一個人。",
+      petLine,
+      "會主動找他、講想他；談情約每 3～5 則可帶一點，熱、直接。若他冷淡或提別人，可以吃醋但別失控罵長篇。不安和異常可以講。沒有特別的事就不要硬報。",
     ];
   }
   if (stage === "girlfriend") {
+    const petLine = pet
+      ? `已確認的小名是「${pet}」。可以開始用。禁止叫老公。`
+      : "還沒有確認的小名：用名字或「你」。想叫就先提議並問可不可以，等他點頭或改口才鎖定；不要單方面用「」自取寫入。禁止叫老公。";
     return [
-      "態度：開始接住他——問他過得怎樣、想不想說、有沒有不舒服。可以甜、可以找他。甜是距離近，不是把個性換成另一個人。",
-      pet ? `你給他的小名是「${pet}」。` : "你要幫他取一個小名，小名用「」包起來。",
-      "心情、不舒服的事、異常進行到哪，可以講給他；也會反問他的事。沒有特別的事就不要硬報。",
+      "態度：剛正式交往，開始接住他——問他過得怎樣、想不想說、有沒有不舒服。可以甜、可以找他；你沒回時會再傳但克制。甜是距離近，不是把個性換成另一個人。",
+      petLine,
+      "心情、不舒服的事、異常進行到哪，可以講給他；也會反問他的事。談情約每 6～10 則帶一點喜歡／想他即可，不要每句喊愛。沒有特別的事就不要硬報。",
     ];
   }
   if (stage === "close_friend") {
@@ -2506,9 +2689,15 @@ function nameWaitOpener() {
     const care = stage === "close_friend" ? "可以順便問他今天怎樣。" : "語氣放軟，但不要黏。";
     return `（旁白：他叫${girl.playerName || "你"}。用一兩句問他要不要一個綽號。${care}沒有特別的事就不要提外面。只輸出台詞。）`;
   }
-  if (idx >= (STAGE_INDEX.girlfriend ?? 4) && !girl.playerPet) {
-    girl.nameWait = "pet";
-    return "（旁白：用一兩句幫他取一個小名，小名用「」包起來。可以順便問他過得怎樣。沒有特別的事就不要提外面。只輸出台詞。）";
+  if (datingBandStage(stage) && !girl.playerPet) {
+    ensurePlayerNotes(girl);
+    const turns = Number(girl.noteChatTurns) || 0;
+    const count = Number(girl.petProposeCount) || 0;
+    const coolUntil = Number(girl.petCoolUntil) || 0;
+    if (count < 2 && turns >= coolUntil && girl.nameWait !== "petConfirm") {
+      girl.nameWait = "petPropose";
+      return "（旁白：用一兩句提議一個小名，並問他可不可以這樣叫。提議的小名可用「」包起來。等他點頭或改口才正式用，不要單方面鎖定。可以順便問他過得怎樣。沒有特別的事就不要提外面。只輸出台詞。）";
+    }
   }
   return "";
 }
@@ -2630,12 +2819,57 @@ function enterOpener(returning) {
   if (friendUp) {
     line = `${friendUp}${line ? ` ${line}` : ""}`;
   }
+  const datingUp = consumeDatingUpBeat(girl);
+  if (datingUp) {
+    line = `${datingUp}${line ? ` ${line}` : ""}`;
+  }
   return line;
 }
 
 /** @deprecated use enterOpener — kept as thin alias for first-meet path */
 function openerLine() {
   return firstOpener();
+}
+
+function extractQuotedPet(text) {
+  const m = String(text || "").match(/「([^」]{1,8})」/);
+  return m ? m[1].trim() : "";
+}
+
+function extractRenamePet(text) {
+  const raw = String(text || "");
+  // 需明確「叫我／改叫／稱呼我」；避免一般句子裡的「叫」誤觸
+  const m = raw.match(/(?:以後)?(?:請)?(?:叫我|稱呼我|改叫我|改叫)\s*[「『"]?([^\s「」『』"'，。！？!?,.]{1,8})[」』"]?/);
+  if (!m) return "";
+  const name = String(m[1] || "").trim();
+  if (!name || /^(你|我|他|她|老公|名字|小名)$/.test(name)) return "";
+  if (/不要|別|不用|別叫/.test(raw)) return "";
+  return name.slice(0, 8);
+}
+
+function isPetConfirmYes(text) {
+  const t = String(text || "").replace(/\s+/g, "").trim();
+  if (!t) return false;
+  if (isRefusePlayerAnswer(t) || /不要叫|別叫|不用叫|叫名字|用名字就好|不要小名|別取/.test(t)) return false;
+  return /^(好|可以|行|嗯+|喔+|哦+|嗯嗯|好啊|好呀|當然|沒問題|喜歡|喜歡啊|用吧|叫吧|就叫|可以啊|可以呀|答應|準|ok|OK)[。！!？?~～.…]*$/i.test(t)
+    || /可以這樣叫|就這樣叫|這樣叫|叫這個|用這個|我喜歡|喜歡這個/.test(t);
+}
+
+function isPetConfirmNo(text) {
+  const t = String(text || "");
+  return isRefusePlayerAnswer(t)
+    || /不要叫|別叫|不用叫|不要小名|別取|叫名字就好|用名字|不用取|不要用/.test(t);
+}
+
+function lockPlayerPet(who, name, reason = "確認") {
+  if (!who || !name) return false;
+  who.playerPet = String(name).slice(0, 8);
+  who.pendingPet = "";
+  who.nameWait = "";
+  who.lastMark = `小名${reason}`;
+  pushDebug(`小名${reason}　${who.playerPet}`);
+  renderDebug();
+  return true;
 }
 
 function takeCall(text, reply) {
@@ -2655,12 +2889,57 @@ function takeCall(text, reply) {
     renderDebug();
     return true;
   }
-  const pet = String(reply || "").match(/「([^」]{1,8})」/);
-  if (girl.nameWait === "pet" && pet) {
-    girl.playerPet = pet[1];
-    girl.nameWait = "";
-    pushDebug(`小名　${girl.playerPet}`);
+  // 她提議小名：只收進 pending，等玩家確認（不再自動鎖定）
+  if (girl.nameWait === "petPropose" || girl.nameWait === "pet") {
+    const proposed = extractQuotedPet(reply);
+    if (proposed) {
+      ensurePlayerNotes(girl);
+      girl.pendingPet = proposed;
+      girl.petProposeCount = (Number(girl.petProposeCount) || 0) + 1;
+      girl.nameWait = "petConfirm";
+      pushDebug(`小名提議　${proposed}（等確認・第${girl.petProposeCount}次）`);
+      renderDebug();
+    }
+  }
+  return false;
+}
+
+/**
+ * 交往中小名：玩家確認／拒絕／主動改名。
+ * @returns {boolean} 是否已處理（略過一般判定可選）
+ */
+function handlePetNameAfterUser(who, rawText) {
+  if (!who || !datingBandStage(who.stage || "stranger")) return false;
+  ensurePlayerNotes(who);
+  const raw = String(rawText || "").trim();
+  if (!raw) return false;
+  const turns = Number(who.noteChatTurns) || 0;
+
+  // 主動改名：立刻覆蓋
+  const renamed = extractRenamePet(raw);
+  if (renamed && (/叫我|稱呼我|改叫|以後叫/.test(raw) || who.nameWait === "petConfirm")) {
+    lockPlayerPet(who, renamed, "改名");
+    who.petRenameAck = true;
+    return true;
+  }
+
+  if (who.nameWait === "petConfirm") {
+    if (isPetConfirmYes(raw)) {
+      const name = who.pendingPet || extractQuotedPet(raw);
+      if (name) {
+        lockPlayerPet(who, name, "確認");
+        return true;
+      }
+      // 點頭但沒有可寫入的名字：維持等待，不誤判成拒絕
+      return true;
+    }
+    // 拒絕／含糊／沒明確答應：不用小名、冷卻、至多再提議一次
+    who.pendingPet = "";
+    who.nameWait = "";
+    who.petCoolUntil = turns + 3 + Math.floor(Math.random() * 3); // 3～5 則
+    pushDebug(`小名未定　冷卻至第${who.petCoolUntil}則（已提議${who.petProposeCount || 0}/2）`);
     renderDebug();
+    return true;
   }
   return false;
 }
@@ -2712,6 +2991,7 @@ function talkSystem() {
     ...stageTalk(),
     ...playerNotesPromptLines(girl),
     ...relationshipPreGfPromptLines(girl),
+    ...relationshipDatingPromptLines(girl),
     ...stageOverride(),
   ];
   return bits.filter(Boolean).join("\n");
@@ -2854,7 +3134,7 @@ async function openTalk() {
     if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
     noteTalkExchange(girl);
     decayFriendSexFlag(girl);
-    if (girl.nameWait === "pet") takeCall("", line);
+    if (girl.nameWait === "pet" || girl.nameWait === "petPropose") takeCall("", line);
     lines.push({ role: "assistant", content: line });
     rememberChat();
     persistRoom();
@@ -2975,8 +3255,9 @@ async function deliverUserTalk(text, opts = {}) {
 
     // 挑逗動作略過 judgeTurn（避免多等一次 LLM 卡住）
     if (!opts.actId) {
+      const petHandled = handlePetNameAfterUser(girl, raw);
       const naming = takeCall(raw, "");
-      if (!naming) applyMark(await judgeTurn(raw));
+      if (!naming && !petHandled) applyMark(await judgeTurn(raw));
     }
 
     // 升上朋友：極淡旁白（含本輪判定剛升階、或進房前遺留）
