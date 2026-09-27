@@ -4104,6 +4104,10 @@ if (refillBtn) {
 }
 const claimBouquetBtn = $("claim-bouquet");
 const claimGoldBtn = $("claim-gold");
+if (claimGoldBtn && !claimGoldBtn.dataset.bound) {
+  claimGoldBtn.dataset.bound = "1";
+  claimGoldBtn.addEventListener("click", () => { claimGold(); });
+}
 if (claimBouquetBtn && !claimBouquetBtn.dataset.bound) {
   claimBouquetBtn.dataset.bound = "1";
   claimBouquetBtn.addEventListener("click", () => { claimBouquet(); });
