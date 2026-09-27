@@ -2083,12 +2083,13 @@ function clearShift() {
 function sendHerOutAgain() {
   const region = placedRegion();
   clearShift();
+  activityOpen = false;
   window.RoomActor?.setPresent(false);
   if (sheetOpen()) hideSheet();
   renderCard();
   renderWorld();
   persistRoom();
-  $("summon-status").textContent = `${girl.name}離開房間，回到日本的${region.name}。`;
+  $("summon-status").textContent = `${girl.name}離開房間，回到日本的${region?.name || "某處"}。`;
 }
 
 function summonHerBack() {
@@ -2108,31 +2109,72 @@ function summonHerBack() {
   $("summon-status").textContent = `${girl.name}被召喚回房間了。`;
 }
 
+function pickRandomHome(choices = sampleHomes()) {
+  return choices[Math.floor(Math.random() * choices.length)] || HOMES[0];
+}
+
+function assignHome(who, home) {
+  if (!who?.world || !home) return;
+  who.world.home = { id: home.id, name: home.name };
+  if (!who.world.mood) setMood(who, "平靜");
+}
+
+/** 半狀態（有 world 無 home）時立刻補住所，避免卡在「正在決定她住哪」。 */
+function ensureWorldHome(who) {
+  if (!who?.world) return null;
+  if (who.world.home?.id && who.world.home?.name) return who.world.home;
+  assignHome(who, pickRandomHome());
+  return who.world.home;
+}
+
+/** 逃離／強制離房時先關對話與座位鎖，讓房間可再操作。 */
+function closeTalkForLeave() {
+  if (sheetOpen()) hideSheet();
+  else {
+    talkBusy = false;
+    typeJob += 1;
+    setTyping(false);
+    if (sceneOpen() || activeRoomScene) closeRoomScene();
+  }
+}
+
 /** 侵犯值滿：清侵犯、關對話、趕出房間（需再召喚或再抽）。 */
 async function fleeRoomFromInvasion() {
   if (!girl) return;
   const who = girl;
   const name = who.name;
   clearInvasion(who);
-  persistRoom();
+  // 先關對話／busy／scroll lock，再趕人——避免房間被鎖、找地點卡住
+  closeTalkForLeave();
+  window.RoomActor?.setPresent(false);
+  activityOpen = false;
+
   if (who.world?.home) {
-    sendHerOutAgain();
+    clearShift();
+    renderCard();
+    renderWorld();
+    persistRoom();
     $("summon-status").textContent = `${name}因侵犯感過重逃離了房間。可再召喚回來。`;
     return;
   }
   if (who.world) {
-    window.RoomActor?.setPresent(false);
-    if (sheetOpen()) hideSheet();
+    // 半狀態：補住所後離房，勿停在「正在決定她住哪」且召喚鍵被藏
+    ensureWorldHome(who);
+    clearShift();
     renderCard();
     renderWorld();
     persistRoom();
-    $("summon-status").textContent = `${name}因侵犯感過重逃離了房間。`;
+    const region = placedRegion();
+    const homeName = who.world.home?.name || "某處";
+    $("summon-status").textContent = region
+      ? `${name}因侵犯感過重逃離了房間，人在日本的${region.name}，住在${homeName}。可再召喚回來。`
+      : `${name}因侵犯感過重逃離了房間。可再召喚回來。`;
     return;
   }
-  // 尚無 world：走完整離開流程（安置日本）
-  await letHerLeave();
+  // 尚無 world：同步安置日本＋隨機住所（逃離不等人模選房）
+  await letHerLeave({ instantHome: true });
   if ($("summon-status")) {
-    $("summon-status").textContent = `${name}因侵犯感過重逃離了房間，人已回到日本。`;
+    $("summon-status").textContent = `${name}因侵犯感過重逃離了房間，人已回到日本。可再召喚回來。`;
   }
 }
 
@@ -2424,23 +2466,38 @@ async function startActivity(kind) {
     : `${who.name}在日本的${region.name}打工，做的是${job.name}。模型沒選成，這份是先抽的。`;
 }
 
-async function letHerLeave() {
+async function letHerLeave(opts = {}) {
   if (!girl || pending || sheIsOut()) return;
   if (girl.world?.home) {
     sendHerOutAgain();
     return;
   }
-  if (girl.world) return;
+  // 半狀態：補住所後再送出，避免永遠「正在決定她住哪」
+  if (girl.world) {
+    ensureWorldHome(girl);
+    sendHerOutAgain();
+    return;
+  }
   const region = rollJapanRegion();
   const ground = rollGround(region.id);
   const who = girl;
   const choices = sampleHomes();
+  const fallback = pickRandomHome(choices);
   who.world = { regionId: region.id, ground, at: Date.now(), home: null };
+  // 先掛暫定住所：召喚／活動鍵立刻可用，不卡找地點
+  assignHome(who, fallback);
   window.RoomActor?.setPresent(false);
   if (sheetOpen()) hideSheet();
+  activityOpen = false;
   renderCard();
   renderWorld();
   persistRoom();
+
+  if (opts.instantHome) {
+    $("summon-status").textContent = `${who.name}人在日本的${region.name}，住在${fallback.name}。`;
+    return;
+  }
+
   $("summon-status").textContent = `${who.name}已經離開房間，人在${ground.name}。正在決定她住哪。`;
   let home = null;
   let pickedByModel = true;
@@ -2448,16 +2505,16 @@ async function letHerLeave() {
     home = await askHome(who, region, choices);
   } catch {
     pickedByModel = false;
-    home = choices[Math.floor(Math.random() * choices.length)] || HOMES[0];
+    home = fallback;
   }
   if (girl !== who || !who.world) return;
-  who.world.home = { id: home.id, name: home.name };
-  if (!who.world.mood) setMood(who, "平靜");
+  assignHome(who, home || fallback);
   renderCard();
   renderWorld();
+  persistRoom();
   $("summon-status").textContent = pickedByModel
-    ? `${who.name}人在日本的${region.name}，住在${home.name}。`
-    : `${who.name}人在日本的${region.name}，住在${home.name}。模型沒選成，這間是先抽的。`;
+    ? `${who.name}人在日本的${region.name}，住在${who.world.home.name}。`
+    : `${who.name}人在日本的${region.name}，住在${who.world.home.name}。模型沒選成，這間是先抽的。`;
 }
 
 function normalizeGirlTags(who) {
@@ -2602,6 +2659,11 @@ function bindBodyPanel() {
   girl.topicHint = "";
   girl.sessionEnded = hadTalk || !!girl.sessionEnded;
   syncStage(girl);
+  // 舊存檔若停在「正在決定她住哪」（home 空），立刻補住所解卡
+  if (girl.world && !girl.world.home?.id) {
+    ensureWorldHome(girl);
+    try { persistRoom(); } catch { /* ignore */ }
+  }
   if (typeof saved.present === "boolean") {
     window.RoomActor?.setPresent(saved.present);
   } else {
