@@ -73,6 +73,80 @@ let lines = [];
 let talkFor = "";
 let talkBusy = false;
 let typeJob = 0;
+/** 高失神解鎖的專屬場面 stub：undress | sex | "" */
+let activeRoomScene = "";
+
+const ROOM_SCENE_STUBS = {
+  undress: {
+    title: "脫衣場面",
+    body: "場面建置中\n（之後會做成逐步脫衣；規則待補。）",
+  },
+  sex: {
+    title: "做愛場面",
+    body: "場面建置中\n（做愛規則待定；此為空白佔位。）",
+  },
+};
+
+const SCENE_UNLOCK_STUN = 50;
+
+function sceneOpen() {
+  return !!activeRoomScene && !$("room-scene-overlay")?.hidden;
+}
+
+/** 有效失神 ≥50 或痙攣中 → 可開脫衣／做愛 stub。 */
+function highStunSceneUnlocked(who = girl) {
+  if (!who) return false;
+  ensureStunFields(who);
+  if (inSpasm(who)) return true;
+  return effectiveStun(who, "") >= SCENE_UNLOCK_STUN;
+}
+
+function openRoomScene(kind) {
+  const stub = ROOM_SCENE_STUBS[kind];
+  const overlay = $("room-scene-overlay");
+  if (!stub || !overlay || !girl) return;
+  if (!highStunSceneUnlocked(girl)) return;
+  activeRoomScene = kind;
+  const title = $("room-scene-title");
+  const body = $("room-scene-body");
+  if (title) title.textContent = stub.title;
+  if (body) body.textContent = stub.body;
+  overlay.hidden = false;
+  // 蓋住互動列，但不關 portrait-sheet，以免 wipe chat／affection／body
+  const acts = $("talk-acts");
+  if (acts) acts.hidden = true;
+}
+
+function closeRoomScene() {
+  const overlay = $("room-scene-overlay");
+  if (overlay) overlay.hidden = true;
+  activeRoomScene = "";
+  // 回到房間對話：不呼叫 hideSheet，保留 affection／body／本輪對話
+  if (sheetOpen() && girl) {
+    refreshTalkActs();
+    setTalkEnabled(!talkBusy);
+  }
+}
+
+function bindRoomSceneOverlay() {
+  const back = $("room-scene-back");
+  if (back && !back.dataset.bound) {
+    back.dataset.bound = "1";
+    back.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeRoomScene();
+    });
+  }
+  const overlay = $("room-scene-overlay");
+  if (overlay && !overlay.dataset.bound) {
+    overlay.dataset.bound = "1";
+    overlay.addEventListener("click", (event) => {
+      // 點空白處也回房間對話；點卡片本身不關
+      if (event.target === overlay) closeRoomScene();
+    });
+  }
+}
 
 function llmProviderOf(settings) {
   const provider = String(settings?.llmProvider || "ollama").toLowerCase();
@@ -1586,7 +1660,8 @@ async function sendTalkAct(actId) {
 function refreshTalkActs() {
   const row = $("talk-acts");
   if (!row) return;
-  row.hidden = !sheetOpen() || !girl;
+  // 專屬場面開啟時隱藏互動列（overlay 蓋住；關閉後再顯示）
+  row.hidden = !sheetOpen() || !girl || sceneOpen();
   player = ensurePlayer(player);
   const hint = row.querySelector(".talk-acts-hint") || (() => {
     const h = document.createElement("span");
@@ -1601,8 +1676,8 @@ function refreshTalkActs() {
     : "";
 
   // 只渲染目前解鎖的按鈕（鎖住的不出現）
-  for (const btn of [...row.querySelectorAll("button[data-act]")]) btn.remove();
-  if (!girl || !sheetOpen()) return;
+  for (const btn of [...row.querySelectorAll("button[data-act],button[data-scene]")]) btn.remove();
+  if (!girl || !sheetOpen() || sceneOpen()) return;
   const acts = availableActs(girl, { canTease: canTease(player) });
   for (const act of acts) {
     const btn = document.createElement("button");
@@ -1618,6 +1693,25 @@ function refreshTalkActs() {
       sendTalkAct(act.id);
     });
     row.append(btn);
+  }
+  // 高失神／痙攣 → 脫衣／做愛 stub 入口（獨立場面，不是聊天台詞）
+  if (highStunSceneUnlocked(girl)) {
+    for (const kind of ["undress", "sex"]) {
+      const stub = ROOM_SCENE_STUBS[kind];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.dataset.scene = kind;
+      btn.textContent = stub.title;
+      btn.disabled = !!talkBusy;
+      btn.title = "場面建置中";
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (btn.disabled) return;
+        openRoomScene(kind);
+      });
+      row.append(btn);
+    }
   }
 }
 
@@ -1756,6 +1850,8 @@ function loadRoomSave() {
 }
 
 function hideSheet() {
+  // 先收 stub 場面，避免 overlay 懸在已關閉的對話上
+  if (sceneOpen() || activeRoomScene) closeRoomScene();
   typeJob += 1;
   setTyping(false);
   talkBusy = false;
@@ -2457,13 +2553,31 @@ $("dbg-jump").addEventListener("change", () => {
 });
 bindTalkActs();
 $("talk-input-row").addEventListener("submit", (event) => { sendTalk(event); });
-$("portrait-backdrop").addEventListener("click", hideSheet);
+$("portrait-backdrop").addEventListener("click", () => {
+  if (sceneOpen()) {
+    closeRoomScene();
+    return;
+  }
+  hideSheet();
+});
 $("portrait-sheet").addEventListener("click", (event) => {
+  if (sceneOpen()) return;
   if (event.target.closest(".talk")) return;
   hideSheet();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && sheetOpen()) hideSheet();
+  if (event.key !== "Escape") return;
+  if (sceneOpen()) {
+    closeRoomScene();
+    return;
+  }
+  if (sheetOpen()) hideSheet();
 });
 
+bindRoomSceneOverlay();
 window.RoomPortrait = { open: showSheet };
+window.RoomScenes = {
+  open: openRoomScene,
+  close: closeRoomScene,
+  unlocked: () => highStunSceneUnlocked(girl),
+};
