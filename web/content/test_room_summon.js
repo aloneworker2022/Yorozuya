@@ -49,9 +49,6 @@ import {
   decayPlayerIdle,
   playerHint,
   refillSemen,
-  SEMEN_MIN_TEASE_CC,
-  SEMEN_MAX_CC,
-  CLIMAX_MAX,
 } from "./player_state.js?v=4";
 import { ensureOpenness, getOpenness } from "./openness.js?v=1";
 import {
@@ -1715,140 +1712,22 @@ async function sendTalkAct(actId) {
 }
 
 
-const PLAYER_HUD_HTML = `
-  <span class="player-hud-balls" aria-hidden="true">
-    <svg viewBox="0 0 36 26" focusable="false">
-      <defs>
-        <clipPath id="ph-balls-clip">
-          <ellipse cx="12" cy="14" rx="11" ry="11"/>
-          <ellipse cx="24" cy="14" rx="11" ry="11"/>
-        </clipPath>
-      </defs>
-      <ellipse class="ph-ball-bg" cx="12" cy="14" rx="11" ry="11"/>
-      <ellipse class="ph-ball-bg" cx="24" cy="14" rx="11" ry="11"/>
-      <rect class="ph-semen-fill" x="0" y="0" width="36" height="26" clip-path="url(#ph-balls-clip)"/>
-    </svg>
-  </span>
-  <span class="player-hud-cock" aria-hidden="true">
-    <span class="ph-pixels"></span>
-  </span>
-`.replace(/\n\s+/g, "");
 
-const PH_PIXEL = 4;
-const PH_COCK_H = 40;
-
-/** Climax 0→1 → discrete stage 0..3 (after orgasm climax=0 → stage 0). */
-function climaxCockStage(t) {
-  const tt = Math.max(0, Math.min(1, Number(t) || 0));
-  if (tt < 0.25) return 0;
-  if (tt < 0.5) return 1;
-  if (tt < 0.75) return 2;
-  return 3;
+function ensurePlayerHint(row) {
+  for (const old of [...row.querySelectorAll(".player-hud")]) old.remove();
+  let hint = row.querySelector(".talk-acts-hint");
+  if (!hint) {
+    hint = document.createElement("span");
+    hint.className = "talk-acts-hint";
+    hint.setAttribute("role", "status");
+    row.prepend(hint);
+  }
+  return hint;
 }
 
-/**
- * 肉色像素陰莖四階段（row 小＝朝上／龜頭方向，bottom-align 後貼球）：
- * 0 soft: solid 2×2
- * 1 rising: solid 5×2 horizontal（側向加長、仍偏軟）
- * 2 erect: solid 2×4 vertical
- * 3 full: head 2×2 on shaft 2×4 → total 2×6（同寬，勿偏置 1×4）
- */
-function climaxCockCells(t) {
-  const stage = climaxCockStage(t);
-  const cells = [];
-  const put = (c, r) => cells.push({ c, r });
-  if (stage === 0) {
-    // solid 2×2 soft
-    for (let r = 0; r < 2; r++) {
-      put(0, r); put(1, r);
-    }
-  } else if (stage === 1) {
-    // solid 5×2 horizontal rising (sideways / longer, still soft-ish)
-    for (let r = 0; r < 2; r++) {
-      for (let c = 0; c < 5; c++) put(c, r);
-    }
-  } else if (stage === 2) {
-    // solid 2×4 vertical erect
-    for (let r = 0; r < 4; r++) {
-      put(0, r); put(1, r);
-    }
-  } else {
-    // head 2×2 on top + shaft 2×4 → 2×6（同寬，勿用偏置 1×4）
-    for (let r = 0; r < 2; r++) {
-      put(0, r); put(1, r); // head
-    }
-    for (let r = 2; r < 6; r++) {
-      put(0, r); put(1, r); // shaft
-    }
-  }
-  return cells;
-}
-
-function renderCockPixels(pixelsEl, t) {
-  if (!pixelsEl) return;
-  const stage = climaxCockStage(t);
-  if (pixelsEl.dataset.stage === String(stage)) return;
-  pixelsEl.dataset.stage = String(stage);
-  const cells = climaxCockCells(t);
-  let maxR = 0;
-  let maxC = 0;
-  for (const p of cells) {
-    if (p.r > maxR) maxR = p.r;
-    if (p.c > maxC) maxC = p.c;
-  }
-  const gridH = (maxR + 1) * PH_PIXEL;
-  const gridW = (maxC + 1) * PH_PIXEL;
-  const offY = Math.max(0, PH_COCK_H - gridH);
-  const offX = Math.max(2, Math.floor((36 - gridW) / 2));
-  let html = "";
-  for (const p of cells) {
-    html += `<span class="ph-pixel" style="left:${offX + p.c * PH_PIXEL}px;top:${offY + p.r * PH_PIXEL}px"></span>`;
-  }
-  pixelsEl.innerHTML = html;
-}
-
-function ensurePlayerHud(row) {
-  let hud = row.querySelector(".player-hud");
-  if (hud) {
-    // 舊版平滑 SVG 陰莖 → 改成像素容器（保留球）
-    const cock = hud.querySelector(".player-hud-cock");
-    if (cock && !cock.querySelector(".ph-pixels")) {
-      cock.innerHTML = '<span class="ph-pixels"></span>';
-    }
-    return hud;
-  }
-  // 清掉舊文字提示節點
-  for (const old of [...row.querySelectorAll(".talk-acts-hint")]) old.remove();
-  hud = document.createElement("span");
-  hud.className = "player-hud";
-  hud.setAttribute("role", "status");
-  hud.innerHTML = PLAYER_HUD_HTML;
-  row.prepend(hud);
-  return hud;
-}
-
-function updatePlayerHud(hud, p) {
-  if (!hud) return;
-  const climaxT = CLIMAX_MAX > 0 ? Math.max(0, Math.min(1, p.climax / CLIMAX_MAX)) : 0;
-  const semenT = SEMEN_MAX_CC > 0 ? Math.max(0, Math.min(1, p.semenCc / SEMEN_MAX_CC)) : 0;
-  hud.style.setProperty("--climax", String(climaxT));
-  hud.style.setProperty("--semen", String(semenT));
-  let pixels = hud.querySelector(".ph-pixels");
-  if (!pixels) {
-    const cock = hud.querySelector(".player-hud-cock");
-    if (cock) {
-      cock.innerHTML = "";
-      pixels = document.createElement("span");
-      pixels.className = "ph-pixels";
-      cock.appendChild(pixels);
-    }
-  }
-  renderCockPixels(pixels, climaxT);
-  const label = playerHint(p);
-  hud.setAttribute("aria-label", label);
-  hud.title = label;
-  hud.classList.toggle("is-low", p.semenCc < SEMEN_MIN_TEASE_CC);
-  hud.classList.toggle("is-empty", p.semenCc <= 0);
+function updatePlayerHint(hint, p) {
+  if (!hint) return;
+  hint.textContent = girl ? playerHint(p) : "";
 }
 
 function refreshTalkActs() {
@@ -1857,8 +1736,8 @@ function refreshTalkActs() {
   // 專屬場面開啟時隱藏互動列（overlay 蓋住；關閉後再顯示）
   row.hidden = !sheetOpen() || !girl || sceneOpen();
   player = ensurePlayer(player);
-  const hud = ensurePlayerHud(row);
-  updatePlayerHud(hud, player);
+  const hint = ensurePlayerHint(row);
+  updatePlayerHint(hint, player);
 
   // 只渲染目前解鎖的按鈕（鎖住的不出現）
   for (const btn of [...row.querySelectorAll("button[data-act],button[data-scene]")]) btn.remove();
@@ -1905,7 +1784,7 @@ function bindTalkActs() {
   if (!row || row.dataset.bound) return;
   row.dataset.bound = "1";
   row.replaceChildren();
-  ensurePlayerHud(row);
+  ensurePlayerHint(row);
   refreshTalkActs();
 }
 
