@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content">
   <meta name="theme-color" content="#eee8dd">
   <title>我的房間 · Yorozuya</title>
-  <link rel="stylesheet" href="/content/test_room.css?v=53">
+  <link rel="stylesheet" href="/content/test_room.css?v=54">
 </head>
 <body>
   <main class="stage">
@@ -102,6 +102,15 @@
         </div>
         <p class="note">調這裡會立刻寫進她的狀態，聊天語氣會跟著變。長按她說話時模型會讀到這些（不唸數字）。</p>
       </section>
+
+      <section id="romance-items" class="romance-items" hidden aria-label="戀愛道具">
+        <div class="inventory-heading"><h2>戀愛道具</h2><span id="romance-inv">花束 ×0　戒指 ×0</span></div>
+        <div class="romance-row">
+          <button id="claim-bouquet" type="button" disabled>領取花束</button>
+          <button id="claim-ring" type="button" disabled>領取戒指</button>
+        </div>
+        <p class="note" id="romance-status">親密好友且感情≥100 可領花束；女友／熱戀／愛人可領戒指。（沙盒免費）</p>
+      </section>
       <div class="actor-panel" hidden><div><strong>她</strong><p id="actor-status">她會走動，也會找椅子、沙發或床邊坐下休息。</p><p class="actor-hint">長按她跟她說話。</p></div><div class="actor-actions"><button id="actor-sit" type="button">找位置坐</button><button id="actor-stand" type="button" disabled>起身</button><button id="actor-toggle" type="button" aria-pressed="false">暫停動作</button></div></div>
       <div class="tool-row">
         <button id="grid" type="button" aria-pressed="false">顯示格線</button>
@@ -160,6 +169,6 @@
   <script src="/content/room_furniture.js?v=4"></script>
   <script src="/content/room_character.js?v=7"></script>
   <script src="/content/test_room.js?v=14"></script>
-  <script type="module" src="/content/test_room_summon.js?v=70"></script>
+  <script type="module" src="/content/test_room_summon.js?v=71"></script>
 </body>
 </html>

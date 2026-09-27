@@ -35,6 +35,7 @@ export function emptyPlayer() {
     semenCc: SEMEN_MAX_CC,
     lastTeaseAt: 0,
     lastSemenAt: Date.now(),
+    inventory: { bouquet: 0, ring: 0 },
   };
 }
 
@@ -45,6 +46,11 @@ function normalizePlayer(player) {
   p.semenCc = clamp(p.semenCc, 0, SEMEN_MAX_CC);
   p.lastTeaseAt = Number(p.lastTeaseAt) || 0;
   p.lastSemenAt = Number(p.lastSemenAt) || Date.now();
+  const inv = p.inventory && typeof p.inventory === "object" ? p.inventory : {};
+  p.inventory = {
+    bouquet: Math.max(0, inv.bouquet | 0),
+    ring: Math.max(0, inv.ring | 0),
+  };
   return p;
 }
 

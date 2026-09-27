@@ -55,7 +55,7 @@ import {
   decayPlayerIdle,
   playerHint,
   refillSemen,
-} from "./player_state.js?v=4";
+} from "./player_state.js?v=5";
 import { ensureOpenness, getOpenness } from "./openness.js?v=1";
 import {
   ensureInvasion,
@@ -1033,13 +1033,281 @@ function syncStage(who) {
     return;
   }
   const aff = who.affection || 0;
-  const target = stageByAffection(aff);
+  let target = stageByAffection(aff);
   const current = STAGE_NAME[who.stage] ? who.stage : "stranger";
-  if ((STAGE_INDEX[target] ?? 0) < (STAGE_INDEX[current] ?? 0)) {
+  const curIdx = STAGE_INDEX[current] ?? 0;
+  const gfIdx = STAGE_INDEX.girlfriend ?? 4;
+  const wifeIdx = STAGE_INDEX.wife ?? 7;
+  const loverIdx = STAGE_INDEX.lover ?? 6;
+  const cfIdx = STAGE_INDEX.close_friend ?? 3;
+  // 儀式門檻：感情不能自動跨進女友／妻子
+  let maxAuto;
+  if (curIdx < gfIdx) maxAuto = cfIdx;
+  else if (curIdx < wifeIdx) maxAuto = loverIdx;
+  else maxAuto = STAGE_LADDER.length - 1;
+  if ((STAGE_INDEX[target] ?? 0) > maxAuto) {
+    target = STAGE_LADDER[maxAuto].key;
+  }
+  if ((STAGE_INDEX[target] ?? 0) < curIdx) {
     const holdAt = (STAGE_AT[current] ?? 0) - STAGE_HYSTERESIS;
     if (aff >= holdAt) return;
   }
   who.stage = target;
+}
+
+/* —— 房間戀愛道具：花束告白／戒指求婚 —— */
+const CONFESS_LINES = [
+  "我喜歡你。不只是朋友那種——想跟你正式交往。",
+  "這束花給你。我喜歡你，想當你的男朋友。",
+  "我認真的。喜歡你，想跟你交往。",
+  "請收下這束花，還有我的告白。",
+  "從今以後，想以戀人的身分待在你身邊。",
+];
+const CONFESS_ACCEPT = [
+  "……我也是。那就，從今天起當戀人吧。",
+  "終於說出口了啊……好。我也喜歡你。",
+  "花很漂亮……答應你。我們交往吧。",
+  "等這句好久了。好啊，當你的女友。",
+];
+const PROPOSE_LINES = [
+  "這枚戒指給你——嫁給我，好嗎？",
+  "想跟你共度餘生。跟我結婚吧。",
+  "請當我的妻子。這是我的求婚。",
+  "正式問一次：願意當我的妻子嗎？",
+];
+const PROPOSE_ACCEPT = [
+  "……笨蛋。當然願意。我嫁給你。",
+  "戒指好閃……嗯，我答應你。",
+  "從今以後是妻子了喔。要好好對我。",
+  "好。我們結婚吧——永遠在一起。",
+];
+const PROPOSE_DECLINE = [
+  "……還、還太早了。再給我一點時間好嗎？",
+  "心意我收到了，可是現在還不行……再培養一下。",
+  "戒指很漂亮，但我還沒準備好。抱歉。",
+  "別急……我們再靠近一點，好嗎？",
+];
+
+function pickLine(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function playerInv() {
+  player = ensurePlayer(player);
+  player.inventory ??= { bouquet: 0, ring: 0 };
+  return player.inventory;
+}
+
+function datingStages() {
+  return new Set(["girlfriend", "passionate", "lover"]);
+}
+
+function canClaimBouquet() {
+  if (!girl) return { ok: false, why: "尚無對象" };
+  const stage = girl.stage || "stranger";
+  const aff = girl.affection || 0;
+  if (stage !== "close_friend") return { ok: false, why: "需為親密好友" };
+  if (aff < (STAGE_AT.girlfriend ?? 100)) {
+    return { ok: false, why: `感情需≥${STAGE_AT.girlfriend ?? 100}（現 ${aff}）` };
+  }
+  return { ok: true, why: "" };
+}
+
+function canClaimRing() {
+  if (!girl) return { ok: false, why: "尚無對象" };
+  if (!datingStages().has(girl.stage || "")) {
+    return { ok: false, why: "需為女友／熱戀／愛人" };
+  }
+  return { ok: true, why: "" };
+}
+
+function canConfessGirl() {
+  if (!girl || !sheetOpen() || talkBusy || sceneOpen()) return false;
+  const inv = playerInv();
+  return (girl.stage || "") === "close_friend"
+    && (girl.affection || 0) >= (STAGE_AT.girlfriend ?? 100)
+    && (inv.bouquet | 0) >= 1;
+}
+
+function canProposeGirl() {
+  if (!girl || !sheetOpen() || talkBusy || sceneOpen()) return false;
+  const inv = playerInv();
+  return datingStages().has(girl.stage || "") && (inv.ring | 0) >= 1;
+}
+
+function renderRomanceItems() {
+  const panel = $("romance-items");
+  if (!panel) return;
+  if (!girl) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  player = ensurePlayer(player);
+  const inv = playerInv();
+  const count = $("romance-inv");
+  if (count) count.textContent = `花束 ×${inv.bouquet | 0}　戒指 ×${inv.ring | 0}`;
+  const bOk = canClaimBouquet();
+  const rOk = canClaimRing();
+  const bBtn = $("claim-bouquet");
+  const rBtn = $("claim-ring");
+  if (bBtn) {
+    bBtn.disabled = !bOk.ok;
+    bBtn.title = bOk.ok ? "沙盒免費領取花束" : bOk.why;
+  }
+  if (rBtn) {
+    rBtn.disabled = !rOk.ok;
+    rBtn.title = rOk.ok ? "沙盒免費領取戒指" : rOk.why;
+  }
+  const status = $("romance-status");
+  if (status) {
+    const parts = [];
+    if (!bOk.ok) parts.push(`花束：${bOk.why}`);
+    else parts.push("花束：可領取");
+    if (!rOk.ok) parts.push(`戒指：${rOk.why}`);
+    else parts.push("戒指：可領取");
+    status.textContent = parts.join("　");
+  }
+}
+
+function claimBouquet() {
+  const gate = canClaimBouquet();
+  if (!gate.ok) {
+    const status = $("romance-status");
+    if (status) status.textContent = gate.why;
+    renderRomanceItems();
+    return;
+  }
+  const inv = playerInv();
+  inv.bouquet = (inv.bouquet | 0) + 1;
+  pushDebug(`領取花束　花束 ×${inv.bouquet}`);
+  const s = $("summon-status");
+  if (s) s.textContent = `領取花束（現有 ×${inv.bouquet}）。長按她對話可告白。`;
+  persistRoom();
+  renderRomanceItems();
+  renderDebug();
+  refreshTalkActs();
+}
+
+function claimRing() {
+  const gate = canClaimRing();
+  if (!gate.ok) {
+    const status = $("romance-status");
+    if (status) status.textContent = gate.why;
+    renderRomanceItems();
+    return;
+  }
+  const inv = playerInv();
+  inv.ring = (inv.ring | 0) + 1;
+  pushDebug(`領取戒指　戒指 ×${inv.ring}`);
+  const s = $("summon-status");
+  if (s) s.textContent = `領取戒指（現有 ×${inv.ring}）。長按她對話可求婚。`;
+  persistRoom();
+  renderRomanceItems();
+  renderDebug();
+  refreshTalkActs();
+}
+
+async function doConfess() {
+  if (!canConfessGirl()) {
+    renderRomanceItems();
+    refreshTalkActs();
+    return;
+  }
+  const inv = playerInv();
+  inv.bouquet = Math.max(0, (inv.bouquet | 0) - 1);
+  talkBusy = true;
+  setTalkEnabled(false);
+  refreshTalkActs();
+  const line = pickLine(CONFESS_LINES);
+  lines.push({ role: "user", content: line });
+  $("portrait-name").textContent = "你";
+  $("portrait-meta").textContent = line;
+  await new Promise((r) => setTimeout(r, 400));
+  const accept = pickLine(CONFESS_ACCEPT);
+  lines.push({ role: "assistant", content: accept });
+  girl.stage = "girlfriend";
+  girl.stageLock = "";
+  if ((girl.affection || 0) < (STAGE_AT.girlfriend ?? 100)) {
+    girl.affection = STAGE_AT.girlfriend ?? 100;
+  }
+  syncStage(girl);
+  pushDebug(`告白成功 → 女友（花束 −1，剩 ×${inv.bouquet}）`);
+  girl.lastMark = "告白成功";
+  rememberChat();
+  persistRoom();
+  renderDebug();
+  renderRomanceItems();
+  await typeLine(girl.name, accept);
+  const s = $("summon-status");
+  if (s) s.textContent = `${girl.name} 成為你的女友了！`;
+  talkBusy = false;
+  if (sheetOpen() && talkFor === girl.id) setTalkEnabled(true);
+  else refreshTalkActs();
+  renderCard();
+}
+
+async function doPropose() {
+  if (!canProposeGirl()) {
+    renderRomanceItems();
+    refreshTalkActs();
+    return;
+  }
+  talkBusy = true;
+  setTalkEnabled(false);
+  refreshTalkActs();
+  const inv = playerInv();
+  let ringGone = false;
+  if (Math.random() < 0.5) {
+    inv.ring = Math.max(0, (inv.ring | 0) - 1);
+    ringGone = true;
+  }
+  const chance = Math.min(1, (girl.affection || 0) / 200);
+  const ok = Math.random() < chance;
+  const line = pickLine(PROPOSE_LINES);
+  lines.push({ role: "user", content: line });
+  $("portrait-name").textContent = "你";
+  $("portrait-meta").textContent = line;
+  await new Promise((r) => setTimeout(r, 400));
+  if (ok) {
+    const accept = pickLine(PROPOSE_ACCEPT);
+    lines.push({ role: "assistant", content: accept });
+    girl.stage = "wife";
+    girl.stageLock = "";
+    if ((girl.affection || 0) < (STAGE_AT.wife ?? 230)) {
+      girl.affection = STAGE_AT.wife ?? 230;
+    }
+    syncStage(girl);
+    pushDebug(`求婚成功 → 妻子${ringGone ? "（戒指已用）" : "（戒指還在）"}　機率 ${Math.round(chance * 100)}%`);
+    girl.lastMark = "求婚成功";
+    rememberChat();
+    persistRoom();
+    renderDebug();
+    renderRomanceItems();
+    await typeLine(girl.name, accept);
+    const s = $("summon-status");
+    if (s) s.textContent = `${girl.name} 成為你的妻子了！結婚了！`;
+  } else {
+    const decline = pickLine(PROPOSE_DECLINE);
+    lines.push({ role: "assistant", content: decline });
+    pushDebug(`求婚未成${ringGone ? "（戒指消失）" : "（戒指還在）"}　機率 ${Math.round(chance * 100)}%`);
+    girl.lastMark = "求婚未成";
+    rememberChat();
+    persistRoom();
+    renderDebug();
+    renderRomanceItems();
+    await typeLine(girl.name, decline);
+    const s = $("summon-status");
+    if (s) {
+      s.textContent = ringGone
+        ? "還沒答應……戒指也不見了。再培養吧。"
+        : "還沒答應……再培養感情吧。";
+    }
+  }
+  talkBusy = false;
+  if (sheetOpen() && talkFor === girl.id) setTalkEnabled(true);
+  else refreshTalkActs();
+  renderCard();
 }
 
 function stageTalk() {
@@ -1217,6 +1485,7 @@ function renderDebug() {
   const panel = $("bond-debug");
   if (!girl) {
     panel.hidden = true;
+    renderRomanceItems();
     return;
   }
   panel.hidden = false;
@@ -1237,6 +1506,7 @@ function renderDebug() {
     item.textContent = line;
     log.append(item);
   }
+  renderRomanceItems();
 }
 
 function topicHintFrom(history) {
@@ -1888,7 +2158,7 @@ function refreshTalkActs() {
   updatePlayerHint(hint, player);
 
   // 只渲染目前解鎖的按鈕（鎖住的不出現）
-  for (const btn of [...row.querySelectorAll("button[data-act],button[data-scene]")]) btn.remove();
+  for (const btn of [...row.querySelectorAll("button[data-act],button[data-scene],button[data-romance]")]) btn.remove();
   if (!girl || !sheetOpen() || sceneOpen()) return;
   const acts = availableActs(girl, { canTease: canTease(player) });
   for (const act of acts) {
@@ -1905,6 +2175,36 @@ function refreshTalkActs() {
       sendTalkAct(act.id);
     });
     row.append(btn);
+  }
+  // 告白／求婚（互斥；條件不符則不顯示）
+  if (!talkBusy) {
+    if (canConfessGirl()) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.dataset.romance = "confess";
+      btn.textContent = "告白";
+      btn.title = "消耗 1 花束 → 女友";
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (btn.disabled) return;
+        void doConfess();
+      });
+      row.append(btn);
+    } else if (canProposeGirl()) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.dataset.romance = "propose";
+      btn.textContent = "求婚";
+      btn.title = "消耗戒指（50%）· 成功率＝感情/200";
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (btn.disabled) return;
+        void doPropose();
+      });
+      row.append(btn);
+    }
   }
   // 高失神／痙攣 → 脫衣／做愛 stub 入口（獨立場面，不是聊天台詞）
   if (highStunSceneUnlocked(girl)) {
@@ -2849,6 +3149,17 @@ if (refillBtn) {
     }
   });
 }
+const claimBouquetBtn = $("claim-bouquet");
+if (claimBouquetBtn && !claimBouquetBtn.dataset.bound) {
+  claimBouquetBtn.dataset.bound = "1";
+  claimBouquetBtn.addEventListener("click", () => { claimBouquet(); });
+}
+const claimRingBtn = $("claim-ring");
+if (claimRingBtn && !claimRingBtn.dataset.bound) {
+  claimRingBtn.dataset.bound = "1";
+  claimRingBtn.addEventListener("click", () => { claimRing(); });
+}
+renderRomanceItems();
 renderCard();
 renderWorld();
 renderDebug();
@@ -2859,8 +3170,17 @@ $("dbg-jump").addEventListener("change", () => {
   syncStage(girl);
   girl.lastMark = girl.stageLock ? `設定跳到${STAGE_NAME[girl.stageLock]}` : "設定改回照感情";
   pushDebug(girl.lastMark);
+  if (girl.stageLock) {
+    const idx = STAGE_INDEX[girl.stageLock] ?? 0;
+    if (idx >= (STAGE_INDEX.girlfriend ?? 4) && idx < (STAGE_INDEX.wife ?? 7)) {
+      pushDebug("（除錯跳過：正式流程需花束告白才能進女友帶）");
+    } else if (idx >= (STAGE_INDEX.wife ?? 7)) {
+      pushDebug("（除錯跳過：正式流程需戒指求婚才能進妻子帶）");
+    }
+  }
   persistRoom();
   renderDebug();
+  refreshTalkActs();
 });
 bindTalkActs();
 $("talk-input-row").addEventListener("submit", (event) => { sendTalk(event); });

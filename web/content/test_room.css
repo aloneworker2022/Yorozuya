@@ -128,6 +128,15 @@ button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-v
 
 .body-player-row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
 .body-player-row .note{margin:0}
+.romance-items{margin:16px 0 0;padding:12px 0 8px;border-bottom:1px solid #d5c9b5}
+.romance-items[hidden]{display:none}
+.romance-items .inventory-heading{margin-bottom:8px}
+.romance-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.romance-row button{min-height:36px;padding:6px 14px;font:inherit;cursor:pointer}
+.romance-row button:disabled{opacity:.45;cursor:not-allowed}
+.romance-items .note{margin:8px 0 0;text-align:left}
+.talk-acts button[data-romance]{border-color:rgba(255,200,120,.6);color:#ffd27a;background:rgba(72,40,20,.92)}
+.talk-acts button[data-romance]:active:not(:disabled){background:rgba(100,55,28,.95)}
 
 
 /* 高失神解鎖的專屬場面 stub（脫衣／做愛） */
