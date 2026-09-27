@@ -1737,66 +1737,66 @@ const PLAYER_HUD_HTML = `
 const PH_PIXEL = 4;
 const PH_COCK_H = 40;
 
-/** Soft 2×3 hang → erect ~4×6 staircase (~45°). Returns cell {c,r}. */
-function climaxCockCells(t) {
+/** Climax 0→1 → discrete stage 0..3 (after orgasm climax=0 → stage 0). */
+function climaxCockStage(t) {
   const tt = Math.max(0, Math.min(1, Number(t) || 0));
-  const length = 3 + Math.round(tt * 3); // 3..6
-  const width = 2 + Math.round(tt * 2); // 2..4
-  // soft hang down (0,+1) → erect stair up-right (+1,-1)
-  const dx = tt;
-  const dy = 1 - 2 * tt;
-  const seen = new Set();
+  if (tt < 0.25) return 0;
+  if (tt < 0.5) return 1;
+  if (tt < 0.75) return 2;
+  return 3;
+}
+
+/**
+ * 肉色像素陰莖四階段（row 小＝朝上／龜頭方向，bottom-align 後貼球）：
+ * 0 soft: 1×2 下垂
+ * 1: 2×3 微上翹（階梯斜）
+ * 2: 2×4 直挺
+ * 3 max: 幹 2×4 + 頭直四格（1×4 置於 2 寬幹左側／近似置中）
+ */
+function climaxCockCells(t) {
+  const stage = climaxCockStage(t);
   const cells = [];
-  const put = (c, r) => {
-    const k = `${c},${r}`;
-    if (seen.has(k)) return;
-    seen.add(k);
-    cells.push({ c, r });
-  };
-  let x = 0;
-  let y = 0;
-  let prevC = null;
-  let prevR = null;
-  for (let i = 0; i < length; i++) {
-    let c = Math.round(x);
-    let r = Math.round(y);
-    // keep segments connected but never stacked on the same cell
-    if (prevC !== null && c === prevC && r === prevR) {
-      if (Math.abs(dx) >= Math.abs(dy)) c += dx >= 0 ? 1 : -1;
-      else r += dy >= 0 ? 1 : -1;
+  const put = (c, r) => cells.push({ c, r });
+  if (stage === 0) {
+    // 1×2 hanging down
+    put(0, 0);
+    put(0, 1);
+  } else if (stage === 1) {
+    // 2×3 slight upward (stepped diagonal)
+    put(1, 0); put(2, 0);
+    put(0, 1); put(1, 1);
+    put(0, 2); put(1, 2);
+  } else if (stage === 2) {
+    // 2×4 straight erect
+    for (let r = 0; r < 4; r++) {
+      put(0, r); put(1, r);
     }
-    prevC = c;
-    prevR = r;
-    const left = tt < 0.2 ? 0 : c - Math.floor((width - 1) / 2);
-    const segW = i === length - 1 && width > 2 ? width - 1 : width;
-    for (let w = 0; w < segW; w++) put(left + w, r);
-    x += dx;
-    y += dy;
-  }
-  let minC = Infinity;
-  let minR = Infinity;
-  for (const p of cells) {
-    if (p.c < minC) minC = p.c;
-    if (p.r < minR) minR = p.r;
-  }
-  for (const p of cells) {
-    p.c -= minC;
-    p.r -= minR;
+  } else {
+    // shaft 2×4 + head 1×4 straight up from tip
+    for (let r = 0; r < 4; r++) put(0, r); // 頭直四格（1 wide）
+    for (let r = 4; r < 8; r++) {
+      put(0, r); put(1, r); // 幹 2×4
+    }
   }
   return cells;
 }
 
 function renderCockPixels(pixelsEl, t) {
   if (!pixelsEl) return;
-  const level = Math.round(Math.max(0, Math.min(1, t)) * 100);
-  if (pixelsEl.dataset.level === String(level)) return;
-  pixelsEl.dataset.level = String(level);
+  const stage = climaxCockStage(t);
+  if (pixelsEl.dataset.stage === String(stage)) return;
+  pixelsEl.dataset.stage = String(stage);
   const cells = climaxCockCells(t);
   let maxR = 0;
-  for (const p of cells) if (p.r > maxR) maxR = p.r;
+  let maxC = 0;
+  for (const p of cells) {
+    if (p.r > maxR) maxR = p.r;
+    if (p.c > maxC) maxC = p.c;
+  }
   const gridH = (maxR + 1) * PH_PIXEL;
+  const gridW = (maxC + 1) * PH_PIXEL;
   const offY = Math.max(0, PH_COCK_H - gridH);
-  const offX = 2;
+  const offX = Math.max(2, Math.floor((36 - gridW) / 2));
   let html = "";
   for (const p of cells) {
     html += `<span class="ph-pixel" style="left:${offX + p.c * PH_PIXEL}px;top:${offY + p.r * PH_PIXEL}px"></span>`;

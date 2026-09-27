@@ -131,7 +131,7 @@ button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-v
 .player-hud-balls .ph-semen-fill{fill:#f4fbff;transform-box:fill-box;transform-origin:center bottom;transform:scaleY(var(--semen,0));transition:transform .4s cubic-bezier(.25,.8,.25,1)}
 .player-hud-cock{position:relative;width:36px;height:40px;flex:0 0 auto;margin-left:-4px;margin-bottom:0}
 .player-hud-cock .ph-pixels{display:block;position:absolute;inset:0;pointer-events:none}
-.player-hud-cock .ph-pixel{position:absolute;width:4px;height:4px;background:#e8b896;box-shadow:inset 0 0 0 1px rgba(20,28,48,.4);image-rendering:pixelated}
+.player-hud-cock .ph-pixel{position:absolute;width:4px;height:4px;background:#e8a88a;box-shadow:inset 0 0 0 1px #d4927a;image-rendering:pixelated}
 .player-hud.is-low .ph-ball-bg{stroke:rgba(255,180,120,.7)}
 .player-hud.is-empty .ph-semen-fill{opacity:.15}
 
