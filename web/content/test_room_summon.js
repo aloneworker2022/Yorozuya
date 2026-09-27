@@ -64,7 +64,7 @@ import {
   decayPlayerIdle,
   playerHint,
   refillSemen,
-} from "./player_state.js?v=5";
+} from "./player_state.js?v=6";
 import { ensureOpenness, getOpenness } from "./openness.js?v=1";
 import {
   ensureInvasion,
@@ -454,7 +454,7 @@ function sceneLine() {
   if (scene.sexIntensity === "continuous") sexBits.push("連續交配");
   else if (scene.sexIntensity === "marathon") sexBits.push("做到虛脫");
   if (scene.spasm) sexBits.push("痙攣餘韻");
-  if (scene.pregnant) sexBits.push("有孕");
+  if (scene.pregnant) sexBits.push(scene.breeding || breedingLabel(girl) || "配種");
   if (sexBits.length) known += `\n${sexBits.join("・")}。`;
   if (!scene.roleName) return `${tone}${scene.event || ""}${known}`;
   return `${tone}一位${scene.roleName}，情緒是${scene.emotionName}。\n${scene.event}${known}`;
@@ -576,9 +576,10 @@ function renderMood() {
     if (world.mood === "虛脫") world.mood = "平靜";
   }
   const mood = world?.mood;
-  const preg = world?.pregnancy ? "・有孕" : "";
+  const breed = breedingLabel(girl);
+  const preg = breed ? `・${breed}` : "";
   const line = $("girl-mood");
-  const text = mood ? `心情 ${mood}${preg}` : (preg ? "有孕" : "");
+  const text = mood ? `心情 ${mood}${preg}` : (breed || "");
   line.hidden = !text;
   line.textContent = text;
 }
@@ -609,6 +610,28 @@ const DATING_OR_WIFE_STAGES = new Set([
   "obedient_wife",
   "pathological_wife",
 ]);
+
+/** 妻子階（不含女友／熱戀／愛人）：生產後留下並強制安頓小孩。 */
+const WIFE_STAGES = new Set([
+  "wife",
+  "devoted_wife",
+  "obedient_wife",
+  "pathological_wife",
+]);
+const CHILD_SETTLE_GOLD = 100;
+
+function isWifeStage(stage) {
+  return WIFE_STAGES.has(stage || "");
+}
+
+/** 有孕時對外標註：配種（男子名） */
+function breedingLabel(who = girl) {
+  const preg = who?.world?.pregnancy;
+  if (!preg) return "";
+  const dad = preg.fatherName || "對方";
+  return `配種（${dad}）`;
+}
+
 
 function bondLabel(bond) {
   return BOND_ZH[bond] || BOND_ZH.acquaintance;
@@ -762,7 +785,7 @@ function memoryFriendNote(item) {
   if (item.sexIntensity === "continuous") bits.push("連續交配");
   else if (item.sexIntensity === "marathon") bits.push("做到虛脫");
   if (item.spasm) bits.push("痙攣");
-  if (item.pregnant) bits.push("有孕");
+  if (item.pregnant) bits.push(item.breeding || "配種");
   return bits.length ? `${base}（${bits.join("・")}）` : base;
 }
 
@@ -887,7 +910,7 @@ function friendSexStatusTail(aftermath) {
   if (aftermath.intensity === "continuous") bits.push("連續交配");
   else if (aftermath.intensity === "marathon") bits.push("做到虛脫");
   if (aftermath.spasm) bits.push("痙攣");
-  if (aftermath.pregnantNew) bits.push("有孕");
+  if (aftermath.pregnantNew) bits.push(aftermath.breeding || breedingLabel(girl) || "配種");
   return bits.length ? bits.join("・") + "。" : "";
 }
 
@@ -1003,7 +1026,7 @@ function applyFriendPhysicalAftermath(who, friend, kind, random = Math.random, o
   const intenZh = intensity === "continuous" ? "連續" : intensity === "marathon" ? "虛脫" : "單次";
   const extra = [
     spasm ? "痙攣" : "",
-    pregnantNew ? "有孕" : (already ? "已孕" : ""),
+    pregnantNew ? (breedingLabel(who) || "配種") : (already ? (breedingLabel(who) || "已孕") : ""),
   ].filter(Boolean).join("・");
   pushDebug(
     `朋友線 ${kindZh}・${friend.name || "對方"}・${intenZh}　性奮+${aroAdd}　濕潤+${wetAdd}　精液+${semenAdd}　衝擊+${shockAdd}　餘韻${agReplies}句／${Math.round(agMs / 1000)}s　感情 ${who.affection}（${delta >= 0 ? "+" : ""}${delta}）${stageNote}${extra ? "　" + extra : ""}`,
@@ -1011,6 +1034,7 @@ function applyFriendPhysicalAftermath(who, friend, kind, random = Math.random, o
   return {
     aroAdd, wetAdd, semenAdd, shockAdd, delta, kind, intensity, spasm,
     pregnant: pregnantNew || already, pregnantNew,
+    breeding: breedingLabel(who) || "",
   };
 }
 
@@ -1039,11 +1063,14 @@ function friendPhysicalPromptLines(who = girl) {
 
   if (preg) {
     const dad = preg.fatherName || "對方";
-    lines.push(`【背景・有孕・事實・勿主動照念】你已有孕，父親是${dad}${preg.fatherRole ? `（${preg.fatherRole}）` : ""}。若未打胎、繼續外出生活，有機會生產並被那位男子帶走；可用打胎藥打掉。`);
-    if (dating) {
-      lines.push("【有孕・女友／妻子・口吻】懷孕對召喚者是秘密：不要主動提；被明確逼問才可能心虛漏一點、閃避或沉默，不要細說父親是誰。");
+    const wife = isWifeStage(stage);
+    lines.push(`【背景・配種・事實・勿主動照念】你目前狀態為「配種（${dad}）」——已有孕，父親是${dad}${preg.fatherRole ? `（${preg.fatherRole}）` : ""}。可用打胎藥打掉。`);
+    if (wife) {
+      lines.push("【配種・妻子】若未打胎而生產：你不會被帶走；召喚者會強制花費金幣安頓小孩。對召喚者仍盡量隱瞞父親，被逼問才心虛漏一點。");
+    } else if (dating) {
+      lines.push("【配種・女友／戀人・口吻】懷孕對召喚者是秘密：不要主動提；被明確逼問才可能心虛漏一點、閃避或沉默。若未打胎而生產，可能被那位男子帶走。");
     } else {
-      lines.push("【有孕・陌生／朋友・口吻】被問身體／近況時可自然露出一點有孕的跡象或事實，仍不要每句提、不要長篇。");
+      lines.push("【配種・陌生／朋友・口吻】被問身體／近況時可自然露出「配種／有孕」跡象；若未打胎而生產，可能被父親帶走。不要每句提、不要長篇。");
     }
   }
 
@@ -1204,7 +1231,11 @@ function lifeNotes() {
   }
   if (world.pregnancy) {
     const dad = world.pregnancy.fatherName || "對方";
-    notes.push(`她目前有孕（父親：${dad}）。若未打胎、繼續打工／亂逛，可能生產並被父親帶走。`);
+    if (isWifeStage(who.stage)) {
+      notes.push(`她目前「配種（${dad}）」。若未打胎而生產，她留下，召喚者強制花 ${CHILD_SETTLE_GOLD} 金安頓小孩。`);
+    } else {
+      notes.push(`她目前「配種（${dad}）」。若未打胎、繼續打工／亂逛，可能生產並被父親帶走。`);
+    }
   }
   const memories = world.memories || [];
   if (!memories.length) return notes;
@@ -1695,7 +1726,8 @@ function renderRomanceItems() {
   const inv = playerInv();
   const count = $("romance-inv");
   if (count) {
-    count.textContent = `花束 ×${inv.bouquet | 0}　戒指 ×${inv.ring | 0}　打胎藥 ×${inv.abortPill | 0}`;
+    const g = ensurePlayer(player).gold | 0;
+    count.textContent = `金幣 ${g}　花束 ×${inv.bouquet | 0}　戒指 ×${inv.ring | 0}　打胎藥 ×${inv.abortPill | 0}`;
   }
   const bOk = canClaimBouquet();
   const rOk = canClaimRing();
@@ -1736,6 +1768,17 @@ function renderRomanceItems() {
     }
     status.textContent = parts.join("　");
   }
+}
+
+function claimGold() {
+  player = ensurePlayer(player);
+  player.gold = (player.gold | 0) + 100;
+  pushDebug(`沙盒領取金幣 +100　現有 ${player.gold}`);
+  const s = $("summon-status");
+  if (s) s.textContent = `領取金幣（現有 ${player.gold}）。妻子生產安頓需 ${CHILD_SETTLE_GOLD} 金。`;
+  persistRoom();
+  renderRomanceItems();
+  renderDebug();
 }
 
 function claimBouquet() {
@@ -3201,7 +3244,7 @@ function ensureWorldHome(who) {
 }
 
 /**
- * 打工／亂逛完成時推進有孕 tick，並依機率判定生產→被父親帶走。
+ * 打工／亂逛完成時推進有孕 tick，並依機率判定生產→妻子安頓留下／其餘被父親帶走。
  * 同趟剛懷孕（ticks 仍為 0 且 caller 應略過）不應呼叫；呼叫端在 !pregnantNew 時才叫。
  * Birth chance = min(0.50, 0.12 + ticks * 0.10)（tick1≈22%、tick2≈32%、tick3≈42%、tick4+→50%）。
  */
@@ -3218,17 +3261,69 @@ async function tickPregnancyTowardBirth(who) {
   return false;
 }
 
-/** 生產：旁白＋記憶，並由父親帶走（清房間對象）。 */
+/** 妻子階生產：留下，強制扣金幣安頓小孩，清懷孕標記。 */
+function settleChildWithWife(who) {
+  const preg = who?.world?.pregnancy;
+  if (!preg) return { spent: 0, dad: "對方", goldLeft: 0 };
+  const dad = preg.fatherName || "對方";
+  player = ensurePlayer(player);
+  const before = player.gold | 0;
+  player.gold = Math.max(0, before - CHILD_SETTLE_GOLD);
+  const actualSpent = before - (player.gold | 0);
+  if (!who.world.children) who.world.children = [];
+  who.world.children.push({
+    at: Date.now(),
+    fatherName: dad,
+    fatherRole: preg.fatherRole || "",
+    settledGold: CHILD_SETTLE_GOLD,
+  });
+  who.world.pregnancy = null;
+  try {
+    ensureBody(who);
+    if (who.bodyState?.organs?.uterus) who.bodyState.organs.uterus.semen = 0;
+  } catch { /* ignore */ }
+  return { spent: actualSpent, dad, goldLeft: player.gold | 0 };
+}
+
+/** 生產：妻子→安頓留下；其餘→被父親帶走。 */
 async function resolvePregnancyBirth(who) {
   if (!who?.world?.pregnancy) return;
   const name = who.name || "她";
   const dad = who.world.pregnancy.fatherName || "對方";
+  const role = who.world.pregnancy.fatherRole || "";
+  if (isWifeStage(who.stage)) {
+    const { spent, goldLeft } = settleChildWithWife(who);
+    const short = spent < CHILD_SETTLE_GOLD
+      ? `（金幣不足，仍強制安頓；現有 ${goldLeft} 金）`
+      : `（−${CHILD_SETTLE_GOLD} 金，剩 ${goldLeft} 金）`;
+    const msg = `${name}生產了，但身為妻子留下。強制花費 ${CHILD_SETTLE_GOLD} 金安頓小孩${short}。配種對象：${dad}。`;
+    rememberMoment(who, {
+      event: msg,
+      pregnant: false,
+      breeding: `安頓・${dad}`,
+      personName: dad,
+      roleName: role,
+    });
+    pushDebug(msg);
+    const status = $("summon-status");
+    if (status) status.textContent = msg;
+    const lead = $("world-lead");
+    if (lead && !lead.hidden) lead.textContent = msg;
+    renderMood();
+    renderRomanceItems();
+    renderBodyPanel();
+    renderWorld();
+    renderDebug();
+    persistRoom();
+    return;
+  }
   const msg = `${name}生產了，被${dad}帶走了。`;
   rememberMoment(who, {
     event: msg,
     pregnant: true,
+    breeding: `配種（${dad}）`,
     personName: dad,
-    roleName: who.world.pregnancy.fatherRole || "",
+    roleName: role,
   });
   pushDebug(msg);
   const status = $("summon-status");
@@ -3894,7 +3989,7 @@ function renderBodyPanel() {
   if ($("body-anus-stuffed")) $("body-anus-stuffed").value = snap.anusStuffed || "";
   if ($("body-summary")) {
     {
-      const preg = girl?.world?.pregnancy ? "・有孕" : "";
+      const preg = breedingLabel(girl) ? `・${breedingLabel(girl)}` : "";
       $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・開放${snap.openness ?? 0}・侵犯${snap.invasion ?? 0}・精液${SEMEN_ZH[snap.uterusSemen]}${preg}`;
     }
   }
@@ -3931,7 +4026,7 @@ function readBodyPanelToGirl() {
   if ($("body-arousal-stage")) $("body-arousal-stage").textContent = snap.arousalLabel;
   if ($("body-summary")) {
     {
-      const preg = girl?.world?.pregnancy ? "・有孕" : "";
+      const preg = breedingLabel(girl) ? `・${breedingLabel(girl)}` : "";
       $("body-summary").textContent = `${snap.libidoLabel}・${snap.arousalLabel}・開放${snap.openness ?? 0}・侵犯${snap.invasion ?? 0}・精液${SEMEN_ZH[snap.uterusSemen]}${preg}`;
     }
   }
@@ -4008,6 +4103,7 @@ if (refillBtn) {
   });
 }
 const claimBouquetBtn = $("claim-bouquet");
+const claimGoldBtn = $("claim-gold");
 if (claimBouquetBtn && !claimBouquetBtn.dataset.bound) {
   claimBouquetBtn.dataset.bound = "1";
   claimBouquetBtn.addEventListener("click", () => { claimBouquet(); });

@@ -35,7 +35,8 @@ export function emptyPlayer() {
     semenCc: SEMEN_MAX_CC,
     lastTeaseAt: 0,
     lastSemenAt: Date.now(),
-    inventory: { bouquet: 0, ring: 0 },
+    inventory: { bouquet: 0, ring: 0, abortPill: 0 },
+    gold: 200,
   };
 }
 
@@ -50,7 +51,9 @@ function normalizePlayer(player) {
   p.inventory = {
     bouquet: Math.max(0, inv.bouquet | 0),
     ring: Math.max(0, inv.ring | 0),
+    abortPill: Math.max(0, inv.abortPill | 0),
   };
+  p.gold = Math.max(0, Number(p.gold) || 0);
   return p;
 }
 
