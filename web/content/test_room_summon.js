@@ -876,38 +876,61 @@ function decayFriendSexFlag(who = girl) {
   }
 }
 
-/** 房間聊天：剛與外人有身體／炮友再遇，或長期 bond≥肉體 時的語氣注入。 */
+/** 房間聊天：外人肉體／炮友事件的口吻——依對召喚者關係分「較會透露」vs「女友／妻子隱瞞」。 */
 function friendPhysicalPromptLines(who = girl) {
   if (!who?.world) return [];
   const fs = who.world.friendSex;
   const friends = ensureFriends(who);
   const hasBond = friends.some((f) => f.bond === "physical" || f.bond === "fwb");
   const family = PERSONALITY_FAMILY[basePersonality(who)] || "溫柔";
+  const stage = who.stage || "stranger";
+  const dating = DATING_OR_WIFE_STAGES.has(stage);
   const lines = [];
   const recent = fs && ((Number(fs.chatLeft) || 0) > 0 || (inAfterglow(who) && who.bodyState?.afterglowSource === "friend"));
+
   if (recent) {
     const name = fs.name || "對方";
+    // 事實欄只給模型；是否說出口由下方關係規則決定
     if (fs.kind === "fwb_again") {
-      lines.push(`【剛與外人有過身體關係／炮友再遇】你剛又和炮友${name}做過。`);
+      lines.push(`【剛發生・事實・勿主動照念】你剛又和炮友${name}做過。`);
     } else if (fs.kind === "fwb") {
-      lines.push(`【剛與外人有過身體關係／炮友再遇】你剛和${name}成了炮友（又有身體關係）。`);
+      lines.push(`【剛發生・事實・勿主動照念】你剛和${name}成了炮友（又有身體關係）。`);
     } else {
-      lines.push(`【剛與外人有過身體關係】你剛和${name}跨進肉體關係。`);
+      lines.push(`【剛發生・事實・勿主動照念】你剛和${name}跨進肉體關係。`);
     }
-    if (family === "冷淡") {
-      lines.push("語氣帶心虛、彆扭、話短；不要坦白開黃腔，被問到可支吾。");
-    } else if (family === "佔有") {
-      lines.push("可心虛，但更想確認召喚者在不在乎你；語氣偏黏或試探。");
-    } else if (family === "熱絡" || family === "反差") {
-      lines.push("可較坦然或帶一點破綻／臉紅帶過；仍不要長篇交代過程。");
+
+    if (dating) {
+      lines.push("【對召喚者是女友／妻子・口吻】這件事絕對不要主動提、不要暗示「剛做過／有炮友」。日常把餘韻收成普通疲累、臉紅或彆扭即可。");
+      lines.push("若召喚者沒明確逼問外人／出軌／身體關係：轉移話題、短答、裝傻，或裝作聽不懂。");
+      lines.push("若被明確逼問：只准漏一點點（語氣／否定過重／名字含糊），不要交代過程；可心虛沉默、答非所問、不回答，或依個性生氣／委屈反問「你在疑心什麼」。");
+      if (family === "冷淡") {
+        lines.push("個性偏冷淡：被逼問時更沉默、話更短，或冷冷回一句就停。");
+      } else if (family === "佔有") {
+        lines.push("個性偏佔有：被逼問時易委屈或反咬「你是不是不相信我」，仍不承認細節。");
+      } else if (family === "熱絡" || family === "反差") {
+        lines.push("個性偏熱／反差：被逼問時可能先笑著搪塞，再突然心虛或鬧一下脾氣。");
+      } else {
+        lines.push("個性偏溫柔：被逼問時聲音變小、眼神躲，頂多含糊認一點「有點事…」就打住。");
+      }
     } else {
-      lines.push("可帶一點心虛或 candid 的餘韻，依個性收著說；不要主動詳細描述。");
-    }
-    if (DATING_OR_WIFE_STAGES.has(who.stage || "stranger")) {
-      lines.push("你對召喚者已是女友／妻子：這件事讓你心虛；不要主動講細節，被問到短答即可。");
+      // 陌生／朋友（含親密好友以前）：較可能透露
+      lines.push("【對召喚者仍是陌生／朋友・口吻】你可以較自然地把這件事露一點出來——閒聊提起、臉紅帶過、或被問日常活動時順便說到，但不要每句都講、也不要長篇黃腔細節。");
+      if (family === "冷淡") {
+        lines.push("個性偏冷淡：透露得短、像陳述事實，仍帶一點彆扭。");
+      } else if (family === "佔有") {
+        lines.push("個性偏佔有：透露時會觀察他反應，像在試探「你會不會在意」。");
+      } else if (family === "熱絡" || family === "反差") {
+        lines.push("個性偏熱／反差：較坦然或帶玩笑破綻，可能主動多提一句。");
+      } else {
+        lines.push("個性偏溫柔：半遮半掩地說，有點害羞但仍願意讓他知道發生過。");
+      }
     }
   } else if (hasBond) {
-    lines.push("【背景】你在外面和某些朋友已有肉體關係或炮友。日常可偶發意識到，但不要每句提、不要主動細說。");
+    if (dating) {
+      lines.push("【背景・女友／妻子】你在外面和某些朋友已有肉體關係或炮友，但對召喚者要當秘密：平常絕不主動提；只有被明確逼問才可能心虛漏一點、閃避、沉默或生氣，絕不主動細說。");
+    } else {
+      lines.push("【背景・陌生／朋友】你在外面和某些朋友已有肉體關係或炮友。日常可偶爾自然提到或被問時較坦白，仍不要每句提、不要主動細說過程。");
+    }
   }
   return lines;
 }
