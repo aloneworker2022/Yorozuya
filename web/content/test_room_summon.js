@@ -432,8 +432,16 @@ function sceneLine() {
   if (!scene) return "";
   const tone = scene.toneName ? `${scene.toneName}\n` : "";
   if (scene.pending) return scene.toneName ? `${scene.toneName}\n事情正在發生。` : "事情正在發生。";
-  const known = scene.known ? `\n她認識了${scene.personName}。` : "";
-  if (!scene.roleName) return `${tone}${scene.event || ""}`;
+  let known = "";
+  if (scene.known && scene.personName) known = `\n她認識了${scene.personName}。`;
+  else if (scene.revisit && scene.personName) {
+    const zh = bondLabel(scene.bond);
+    if (scene.bondAdvanced === "familiar") known = `\n又碰到${scene.personName}，變熟了（${zh}）。`;
+    else if (scene.bondAdvanced === "physical") known = `\n又碰到${scene.personName}，有了身體關係。`;
+    else if (scene.bondAdvanced === "fwb") known = `\n又碰到${scene.personName}，成了炮友。`;
+    else known = `\n又碰到${scene.personName}（${zh}）。`;
+  }
+  if (!scene.roleName) return `${tone}${scene.event || ""}${known}`;
   return `${tone}一位${scene.roleName}，情緒是${scene.emotionName}。\n${scene.event}${known}`;
 }
 
@@ -554,9 +562,68 @@ function renderMood() {
 
 const FRIEND_LIMIT = 5;
 const FRIEND_CHANCE = 1 / 3;
+const REVISIT_CHANCE = 0.45;
+const PHYSICAL_BASE = 0.18;
+const PHYSICAL_AROUSAL_BONUS = 0.08;
+const PHYSICAL_OPENNESS_BONUS = 0.06;
+const FWB_BASE = 0.28;
+const SLOW_DATING_OR_WIFE = 0.35;
+const SLOW_CLOSE_FRIEND = 0.55;
+
+const BOND_ZH = {
+  acquaintance: "普通",
+  familiar: "熟悉",
+  physical: "肉體關係",
+  fwb: "炮友",
+};
+
+const DATING_OR_WIFE_STAGES = new Set([
+  "girlfriend",
+  "passionate",
+  "lover",
+  "wife",
+  "devoted_wife",
+  "obedient_wife",
+  "pathological_wife",
+]);
+
+function bondLabel(bond) {
+  return BOND_ZH[bond] || BOND_ZH.acquaintance;
+}
+
+function inferFriendGender(role, explicit) {
+  if (explicit === "male" || explicit === "female" || explicit === "unknown") return explicit;
+  const s = String(role || "");
+  if (/男|哥哥|弟弟|先生|君|おじさん|店員男|男孩|男子|少爺|小伙|男友|老公/.test(s)) return "male";
+  if (/女|姊|姐|妹|小姐|夫人|阿姨|店員女|女孩|女子|姑娘|女友|老婆/.test(s)) return "female";
+  return "unknown";
+}
+
+/** 身分看不出性別時擲幣，讓男性肉體線可達成。 */
+function rollFriendGender(role, random = Math.random, explicit) {
+  const fromRole = inferFriendGender(role, explicit);
+  if (fromRole !== "unknown") return fromRole;
+  return Number(random()) < 0.5 ? "male" : "female";
+}
+
+function ensureFriends(who) {
+  if (!who?.world) return [];
+  if (!Array.isArray(who.world.friends)) who.world.friends = [];
+  for (const friend of who.world.friends) {
+    if (!friend || typeof friend !== "object") continue;
+    if (!BOND_ZH[friend.bond]) friend.bond = "acquaintance";
+    friend.meets = Math.max(1, Math.round(Number(friend.meets) || 1));
+    if (!friend.lastMeetAt) friend.lastMeetAt = friend.at || Date.now();
+    if (!friend.at) friend.at = friend.lastMeetAt;
+    if (friend.gender !== "male" && friend.gender !== "female" && friend.gender !== "unknown") {
+      friend.gender = inferFriendGender(friend.role);
+    }
+  }
+  return who.world.friends;
+}
 
 function renderFriends() {
-  const friends = girl?.world?.friends || [];
+  const friends = ensureFriends(girl);
   const panel = $("girl-friends");
   panel.hidden = friends.length === 0;
   $("friend-heading").textContent = `朋友 ${friends.length}/${FRIEND_LIMIT}`;
@@ -564,24 +631,163 @@ function renderFriends() {
   list.replaceChildren();
   for (const friend of friends) {
     const item = document.createElement("li");
-    item.textContent = `${friend.name} · ${friend.role}`;
+    item.textContent = `${friend.name} · ${friend.role} · ${bondLabel(friend.bond)}`;
     list.append(item);
   }
 }
 
 function rollBefriend(who, act, random = Math.random) {
   if (!act?.know) return false;
-  if ((who?.world?.friends?.length || 0) >= FRIEND_LIMIT) return false;
+  if ((ensureFriends(who).length || 0) >= FRIEND_LIMIT) return false;
   return Number(random()) < FRIEND_CHANCE;
 }
 
-function addFriend(who, friend) {
+function addFriend(who, friend, random = Math.random) {
   if (!who?.world || !friend?.name) return false;
-  if (!Array.isArray(who.world.friends)) who.world.friends = [];
+  ensureFriends(who);
   if (who.world.friends.length >= FRIEND_LIMIT) return false;
   if (who.world.friends.some((item) => item.name === friend.name)) return false;
-  who.world.friends.push({ name: friend.name, role: friend.role, at: Date.now() });
+  const now = Date.now();
+  who.world.friends.push({
+    name: friend.name,
+    role: friend.role || "路人",
+    at: now,
+    gender: rollFriendGender(friend.role, random, friend.gender),
+    bond: BOND_ZH[friend.bond] ? friend.bond : "acquaintance",
+    meets: Math.max(1, Math.round(Number(friend.meets) || 1)),
+    lastMeetAt: now,
+  });
   return true;
+}
+
+function shouldRevisitFriend(who, random = Math.random) {
+  return ensureFriends(who).length > 0 && Number(random()) < REVISIT_CHANCE;
+}
+
+function pickRevisitFriend(who, preferredRole, random = Math.random) {
+  const friends = ensureFriends(who);
+  if (!friends.length) return null;
+  const same = preferredRole ? friends.filter((item) => item.role === preferredRole) : [];
+  const pool = same.length ? same : friends;
+  return pool[Math.floor(Number(random()) * pool.length)] || null;
+}
+
+function friendBondSlow(who) {
+  const stage = who?.stage || "stranger";
+  if (DATING_OR_WIFE_STAGES.has(stage)) return SLOW_DATING_OR_WIFE;
+  if (stage === "close_friend") return SLOW_CLOSE_FRIEND;
+  return 1;
+}
+
+function friendBodyHot(who) {
+  ensureBody(who);
+  const arousal = who?.bodyState?.arousal || 0;
+  const libido = who?.bodyState?.libido || 0;
+  return arousal >= 8 || libido >= 16 || (arousal >= 5 && libido >= 12);
+}
+
+function friendOpenHigh(who) {
+  return getOpenness(who) >= 45;
+}
+
+function physicalAdvanceChance(who) {
+  let chance = PHYSICAL_BASE;
+  if (friendBodyHot(who)) chance += PHYSICAL_AROUSAL_BONUS;
+  if (friendOpenHigh(who)) chance += PHYSICAL_OPENNESS_BONUS;
+  return chance * friendBondSlow(who);
+}
+
+function fwbAdvanceChance(who) {
+  return FWB_BASE * friendBondSlow(who);
+}
+
+/** 再碰面：meets+1，並依階梯擲進階。回傳 { before, bond, advanced }。 */
+function advanceFriendOnRevisit(who, friend, random = Math.random) {
+  ensureFriends(who);
+  if (!friend) return null;
+  friend.meets = (Number(friend.meets) || 1) + 1;
+  friend.lastMeetAt = Date.now();
+  const before = BOND_ZH[friend.bond] ? friend.bond : "acquaintance";
+  let advanced = "";
+  if (before === "acquaintance" && friend.meets >= 3) {
+    friend.bond = "familiar";
+    advanced = "familiar";
+  } else if (before === "familiar" && friend.gender === "male") {
+    if (Number(random()) < physicalAdvanceChance(who)) {
+      friend.bond = "physical";
+      advanced = "physical";
+    }
+  } else if (before === "physical" && friend.gender === "male") {
+    if (Number(random()) < fwbAdvanceChance(who)) {
+      friend.bond = "fwb";
+      advanced = "fwb";
+    }
+  }
+  return { before, bond: friend.bond || before, advanced };
+}
+
+function memoryFriendNote(item) {
+  if (!item?.personName) return "";
+  if (item.known) return `，因此認識了${item.personName}`;
+  if (!item.revisit) return "";
+  if (item.bondAdvanced === "familiar") return `，跟${item.personName}變熟了`;
+  if (item.bondAdvanced === "physical") return `，和${item.personName}有了身體關係`;
+  if (item.bondAdvanced === "fwb") return `，和${item.personName}成了炮友`;
+  return `，又碰到${item.personName}`;
+}
+
+function friendGenderPrompt(gender) {
+  if (gender === "male") return "對方是男性，代名詞用他。";
+  if (gender === "female") return "對方是女性，代名詞用她。";
+  return "";
+}
+
+function friendRevisitPrompt(friend, advanced) {
+  if (!friend) return "";
+  const name = friend.name;
+  const bond = friend.bond || "acquaintance";
+  const zh = bondLabel(bond);
+  const genderLine = friendGenderPrompt(friend.gender);
+  if (advanced === "physical") {
+    return [
+      `這次她再次碰到已經認識的${name}（關係從熟悉跨進肉體關係）。${genderLine}`,
+      "不要再取新名字。寫兩人又見面，並暗示這次發生了一次性行為／身體越界，可帶一點餘韻；2到4句，不要色情長文。",
+    ].join("");
+  }
+  if (advanced === "fwb") {
+    return [
+      `這次她再次碰到${name}（關係成了炮友）。${genderLine}`,
+      "不要再取新名字。寫成較明確的固定約炮／再見面的鉤子語氣，仍短，2到4句。",
+    ].join("");
+  }
+  if (advanced === "familiar") {
+    return [
+      `這次她再次碰到${name}，兩人變熟了（熟悉）。${genderLine}`,
+      "不要再取新名字。寫熟人再見面，2到4句。",
+    ].join("");
+  }
+  if (bond === "fwb") {
+    return [
+      `這次她再次碰到炮友${name}。${genderLine}`,
+      "不要再取新名字。寫熟練的約見／身體後輕鬆互動，2到4句。",
+    ].join("");
+  }
+  if (bond === "physical") {
+    return [
+      `這次她再次碰到${name}（已有肉體關係）。${genderLine}`,
+      "不要再取新名字。可輕帶上次身體餘韻或曖昧，2到4句。",
+    ].join("");
+  }
+  if (bond === "familiar") {
+    return [
+      `這次她再次碰到已經變熟的${name}（${zh}）。${genderLine}`,
+      "不要再取新名字。寫熟人再見面，2到4句。",
+    ].join("");
+  }
+  return [
+    `這次她再次碰到認識的${name}（${zh}）。${genderLine}`,
+    "不要再取新名字。寫普通再碰面，2到4句。",
+  ].join("");
 }
 
 function renderCard() {
@@ -655,15 +861,18 @@ function rememberMoment(who, moment) {
   if (who.world.memories.length > 6) who.world.memories.splice(0, who.world.memories.length - 6);
 }
 
-function rememberShift(who, rolled, event, know, personName) {
+function rememberShift(who, rolled, event, know, personName, extra = {}) {
   rememberMoment(who, {
     job: who.world.job?.name || "",
     toneName: rolled.scp ? scpLabel(rolled.scp) : "",
-    roleName: rolled.role.name,
-    emotionName: rolled.emotion.name,
+    roleName: rolled.role?.name || extra.roleName || "",
+    emotionName: rolled.emotion?.name || "",
     event,
     known: !!know,
     personName: personName || "",
+    revisit: !!extra.revisit,
+    bond: extra.bond || "",
+    bondAdvanced: extra.bondAdvanced || "",
   });
 }
 
@@ -674,13 +883,15 @@ function lifeNotes() {
   const notes = [];
   if (region) notes.push(`她在日本落腳的地方是${world.ground?.name || region.name}。${world.home ? `那裡的住所是${world.home.name}。` : ""}人現在不在那裡。`);
   if (world.job) notes.push(`打工是${world.job.name}。`);
-  const friends = world.friends || [];
-  if (friends.length) notes.push(`朋友：${friends.map((friend) => `${friend.name}（${friend.role}）`).join("、")}。`);
+  const friends = ensureFriends(girl);
+  if (friends.length) {
+    notes.push(`朋友：${friends.map((friend) => `${friend.name}（${friend.role}・${bondLabel(friend.bond)}）`).join("、")}。`);
+  }
   const memories = world.memories || [];
   if (!memories.length) return notes;
   notes.push("下面是真的發生過的事。他問到就說。沒有列在這裡的事不要編成已經發生。");
   memories.slice(-4).forEach((item, index) => {
-    const met = item.known && item.personName ? `，因此認識了${item.personName}` : "";
+    const met = memoryFriendNote(item);
     if (item.placeName) {
       const who = item.roleName ? `碰到${item.roleName}，對方情緒是${item.emotionName}${met}。` : "沒有碰到特定的人。";
       const tone = item.toneName ? `遇到${item.toneName}。` : "";
@@ -2651,14 +2862,29 @@ function isInteraction(event) {
   return /我/.test(text) && /他|她|對方|同事|顧客/.test(text);
 }
 
-function shiftPrompt(who, region, rolled, know) {
-  const meeting = rolled.scp
-    ? scpBrief(rolled.scp)
-    : know
-    ? "這次她會因此認識對方。第一行只寫「名字：」加一個日本名字，換行後再寫互動。"
-    : "這次只是碰上，還不算認識對方。不要替對方取名字。";
+function shiftPrompt(who, region, rolled, know, opts = {}) {
+  const revisit = opts.revisit || null;
+  const advanced = opts.bondAdvanced || "";
+  const newGender = opts.newGender || "";
+  let meeting;
+  if (rolled.scp) {
+    meeting = scpBrief(rolled.scp);
+  } else if (revisit) {
+    meeting = friendRevisitPrompt(revisit, advanced);
+  } else if (know) {
+    meeting = [
+      "這次她會因此認識對方。第一行只寫「名字：」加一個日本名字，換行後再寫互動。",
+      friendGenderPrompt(newGender),
+    ].filter(Boolean).join("");
+  } else {
+    meeting = "這次只是碰上，還不算認識對方。不要替對方取名字。";
+  }
+  const roleName = revisit?.role || rolled.role.name;
+  const whoLine = revisit
+    ? `對方是已經認識的${revisit.name}（${roleName}），情緒是${rolled.emotion.name}。情緒要出現在對方對我的反應裡，不要單獨標註。`
+    : `對方是${roleName}，情緒是${rolled.emotion.name}。情緒要出現在對方對我的反應裡，不要單獨標註。`;
   return [
-    `你是${who.name}。用「我」寫剛剛和這位${rolled.role.name}的互動，2到4句。`,
+    `你是${who.name}。用「我」寫剛剛和這位${roleName}的互動，2到4句。`,
     "必須是兩個人的來回：我先說或先做，對方一定要有動作或回話，我再接一句。",
     "不能只寫我一個人看到的場面，也不能只寫對方。不要標題，不要列選項，不要提到遊戲或抽籤。",
     meeting,
@@ -2667,16 +2893,16 @@ function shiftPrompt(who, region, rolled, know) {
     who.quirk || "",
     hereNow(who),
     `打工是${who.world.job.name}。`,
-    `對方是${rolled.role.name}，情緒是${rolled.emotion.name}。情緒要出現在對方對我的反應裡，不要單獨標註。`,
+    whoLine,
     `互動只沿著這個方向：${rolled.act.name}。細節自己編，但兩邊都要出場。`,
   ].filter(Boolean).join("\n");
 }
 
-async function askShift(who, region, rolled, know) {
+async function askShift(who, region, rolled, know, opts = {}) {
   const route = await gameChatRoute();
   const messages = [
     { role: "system", content: "你只寫她和對方的互動。沒有對方的反應就不算寫完。" },
-    { role: "user", content: shiftPrompt(who, region, rolled, know) },
+    { role: "user", content: shiftPrompt(who, region, rolled, know, opts) },
   ];
   const once = () => (route.provider === "ollama"
     ? askOllama(route, messages)
@@ -2701,43 +2927,76 @@ async function runShift(who, region) {
     rolled.scp = scp;
     rolled.act = { id: scp.id, name: scp.title, know: false };
   }
-  const know = rollBefriend(who, rolled.act);
+  ensureFriends(who);
+  let revisit = null;
+  let bondResult = null;
+  let know = false;
+  let newGender = "";
+  if (!rolled.scp && shouldRevisitFriend(who)) {
+    revisit = pickRevisitFriend(who, rolled.role.name);
+  }
+  if (revisit) {
+    bondResult = advanceFriendOnRevisit(who, revisit);
+  } else {
+    know = rollBefriend(who, rolled.act);
+    if (know) newGender = rollFriendGender(rolled.role.name);
+  }
+  const promptOpts = {
+    revisit,
+    bondAdvanced: bondResult?.advanced || "",
+    newGender,
+  };
+  const roleName = revisit?.role || rolled.role.name;
   who.world.activity = "work";
-  who.world.shift = { pending: true, roleName: rolled.role.name, emotionName: rolled.emotion.name, toneName: scp ? scpLabel(scp) : "" };
+  who.world.shift = { pending: true, roleName, emotionName: rolled.emotion.name, toneName: scp ? scpLabel(scp) : "" };
   renderWorld();
   $("summon-status").textContent = `${who.name}在${who.world.job.name}開始工作。`;
   let written = null;
   let pickedByModel = true;
   try {
-    written = await askShift(who, region, rolled, know);
+    written = await askShift(who, region, rolled, know, promptOpts);
   } catch {
     pickedByModel = false;
     written = {
-      name: know ? `那位${rolled.role.name}` : "",
+      name: know ? `那位${roleName}` : "",
       event: rolled.scp
-        ? `我在打工時看見${rolled.act.name}，那位${rolled.role.name}也注意到了，我們都沒有再靠近。`
-        : `我先跟那位${rolled.role.name}開口，對方情緒是${rolled.emotion.name}，也回了我。我們${rolled.act.name}，我又接了一句，對方有反應。`,
+        ? `我在打工時看見${rolled.act.name}，那位${roleName}也注意到了，我們都沒有再靠近。`
+        : revisit
+        ? `我在打工又碰到${revisit.name}，對方情緒是${rolled.emotion.name}，也回了我。我們${rolled.act.name}，我又接了一句。`
+        : `我先跟那位${roleName}開口，對方情緒是${rolled.emotion.name}，也回了我。我們${rolled.act.name}，我又接了一句，對方有反應。`,
     };
   }
   if (token !== workToken || girl !== who || who.world?.activity !== "work") return;
-  const personName = know ? (written.name || `那位${rolled.role.name}`) : "";
+  const personName = revisit
+    ? revisit.name
+    : (know ? (written.name || `那位${roleName}`) : "");
   who.world.shift = {
     pending: false,
-    roleName: rolled.role.name,
+    roleName,
     emotionName: rolled.emotion.name,
     toneName: rolled.scp ? scpLabel(rolled.scp) : "",
     event: written.event,
     known: know,
+    revisit: !!revisit,
     personName,
+    bond: revisit ? (revisit.bond || "") : (know ? "acquaintance" : ""),
+    bondAdvanced: bondResult?.advanced || "",
   };
   if (rolled.scp) noteScpStep(who, rolled.scp);
-  if (know) addFriend(who, { name: personName, role: rolled.role.name });
+  if (know) addFriend(who, { name: personName, role: rolled.role.name, gender: newGender });
   setMood(who, moodFromShift(rolled));
-  rememberShift(who, rolled, written.event, know, personName);
+  rememberShift(who, rolled, written.event, know, personName, {
+    revisit: !!revisit,
+    roleName,
+    bond: who.world.shift.bond,
+    bondAdvanced: bondResult?.advanced || "",
+  });
   renderWorld();
+  persistRoom();
+  const again = revisit ? `又碰到${revisit.name}` : `碰到一位${roleName}`;
   $("summon-status").textContent = pickedByModel
-    ? `${who.name}在${who.world.job.name}${rolled.scp ? `遇到${rolled.scp.code}，` : ""}碰到一位${rolled.role.name}。`
-    : `${who.name}在${who.world.job.name}${rolled.scp ? `遇到${rolled.scp.code}，` : ""}碰到一位${rolled.role.name}。模型沒寫成，這段是先補的。`;
+    ? `${who.name}在${who.world.job.name}${rolled.scp ? `遇到${rolled.scp.code}，` : ""}${again}。`
+    : `${who.name}在${who.world.job.name}${rolled.scp ? `遇到${rolled.scp.code}，` : ""}${again}。模型沒寫成，這段是先補的。`;
 }
 
 const STROLL_TONE_RULE = {
@@ -2747,10 +3006,13 @@ const STROLL_TONE_RULE = {
   scp: "這是一次異常。寫撞見的那一刻。不要寫收容程序，不要寫血腥。",
 };
 
-function strollPrompt(who, region, rolled, know) {
+function strollPrompt(who, region, rolled, know, opts = {}) {
   const place = rolled.place.name;
   const toneRule = STROLL_TONE_RULE[rolled.tone.id];
-  if (!rolled.person) {
+  const revisit = opts.revisit || null;
+  const advanced = opts.bondAdvanced || "";
+  const newGender = opts.newGender || "";
+  if (!rolled.person && !revisit) {
     return [
       `你是${who.name}。用「我」寫在${place}亂逛時發生的事，2到4句。`,
       hereNow(who),
@@ -2763,11 +3025,23 @@ function strollPrompt(who, region, rolled, know) {
       `事情只沿著這個方向：${rolled.act.name}。細節自己編，但要發生在${place}。`,
     ].filter(Boolean).join("\n");
   }
-  const meeting = know
-    ? "這次她會因此認識對方。第一行只寫「名字：」加一個日本名字，換行後再寫互動。"
-    : "這次只是碰上，還不算認識對方。不要替對方取名字。";
+  let meeting;
+  if (revisit) {
+    meeting = friendRevisitPrompt(revisit, advanced);
+  } else if (know) {
+    meeting = [
+      "這次她會因此認識對方。第一行只寫「名字：」加一個日本名字，換行後再寫互動。",
+      friendGenderPrompt(newGender),
+    ].filter(Boolean).join("");
+  } else {
+    meeting = "這次只是碰上，還不算認識對方。不要替對方取名字。";
+  }
+  const roleName = revisit?.role || "路人";
+  const whoLine = revisit
+    ? `對方是已經認識的${revisit.name}（${roleName}），情緒是${rolled.emotion.name}。情緒要出現在對方對我的反應裡，不要單獨標註。`
+    : `對方是路人，情緒是${rolled.emotion.name}。情緒要出現在對方對我的反應裡，不要單獨標註。`;
   return [
-    `你是${who.name}。用「我」寫在${place}亂逛時，和這位路人的互動，2到4句。`,
+    `你是${who.name}。用「我」寫在${place}亂逛時，和這位${roleName}的互動，2到4句。`,
     hereNow(who),
     rolled.scp ? scpBrief(rolled.scp) : toneRule,
     "必須是兩個人的來回：我先說或先做，對方一定要有動作或回話，我再接一句。",
@@ -2777,7 +3051,7 @@ function strollPrompt(who, region, rolled, know) {
     who.tone ? `語氣：${who.tone}` : "",
     who.quirk || "",
     `人就在${place}。不要改到別的地方。`,
-    `對方是路人，情緒是${rolled.emotion.name}。情緒要出現在對方對我的反應裡，不要單獨標註。`,
+    whoLine,
     `互動只沿著這個方向：${rolled.act.name}。細節自己編，但兩邊都要出場。`,
   ].filter(Boolean).join("\n");
 }
@@ -2786,22 +3060,24 @@ function isSoloStroll(event, placeName) {
   return /我/.test(event) && String(event).includes(placeName);
 }
 
-async function askStroll(who, region, rolled, know) {
+async function askStroll(who, region, rolled, know, opts = {}) {
   const route = await gameChatRoute();
+  const hasPerson = !!(rolled.person || opts.revisit);
   const messages = [
-    { role: "system", content: rolled.person ? "你只寫她和路人的互動。沒有對方的反應就不算寫完。" : "你只寫她一個人在那個地方亂逛的經過。不要硬加一個認識的人。" },
-    { role: "user", content: strollPrompt(who, region, rolled, know) },
+    { role: "system", content: hasPerson ? "你只寫她和對方的互動。沒有對方的反應就不算寫完。" : "你只寫她一個人在那個地方亂逛的經過。不要硬加一個認識的人。" },
+    { role: "user", content: strollPrompt(who, region, rolled, know, opts) },
   ];
   const once = () => (route.provider === "ollama"
     ? askOllama(route, messages)
     : askGrok(route, messages, `roomstroll:${who.id}:${Date.now().toString(36)}`));
-  const accept = (written) => written && (rolled.person ? isInteraction(written.event) : isSoloStroll(written.event, rolled.place.name));
+  const hasPerson = !!(rolled.person || opts.revisit);
+  const accept = (written) => written && (hasPerson ? isInteraction(written.event) : isSoloStroll(written.event, rolled.place.name));
   let reply = await once();
   let written = parseShiftReply(reply, know);
   if (!accept(written)) {
     if (reply) messages.push({ role: "assistant", content: reply });
-    messages.push({ role: "user", content: rolled.person
-      ? "上一則不是兩個人的互動。用「我」重寫：我先說或先做，路人一定要回話或有動作，我再接一句。2到4句。"
+    messages.push({ role: "user", content: hasPerson
+      ? "上一則不是兩個人的互動。用「我」重寫：我先說或先做，對方一定要回話或有動作，我再接一句。2到4句。"
       : `上一則不像在${rolled.place.name}自己走。用「我」重寫，一定要提到${rolled.place.name}，不要加一個認識的人。2到4句。` });
     reply = await once();
     written = parseShiftReply(reply, know);
@@ -2821,7 +3097,31 @@ async function runStroll(who, region) {
     rolled.tone = { id: "scp", name: scpLabel(scp) };
     rolled.act = { id: scp.id, name: scp.title, know: false };
   }
-  const know = rolled.person ? rollBefriend(who, rolled.act) : false;
+  ensureFriends(who);
+  let revisit = null;
+  let bondResult = null;
+  let know = false;
+  let newGender = "";
+  // 有人場景（或可改成再碰面）才走朋友線
+  if (!rolled.scp && rolled.person && shouldRevisitFriend(who)) {
+    revisit = pickRevisitFriend(who, "路人");
+  }
+  if (revisit) {
+    bondResult = advanceFriendOnRevisit(who, revisit);
+    rolled.person = true;
+    if (!rolled.emotion) {
+      rolled.emotion = { id: "joy", name: "喜" };
+    }
+  } else if (rolled.person) {
+    know = rollBefriend(who, rolled.act);
+    if (know) newGender = rollFriendGender("路人");
+  }
+  const promptOpts = {
+    revisit,
+    bondAdvanced: bondResult?.advanced || "",
+    newGender,
+  };
+  const roleName = revisit?.role || (rolled.person ? "路人" : "");
   who.world.activity = "wander";
   who.world.shift = null;
   who.world.stroll = { pending: true, placeName: rolled.place.name, toneName: rolled.tone.name };
@@ -2830,7 +3130,7 @@ async function runStroll(who, region) {
   let written = null;
   let pickedByModel = true;
   try {
-    written = await askStroll(who, region, rolled, know);
+    written = await askStroll(who, region, rolled, know, promptOpts);
   } catch {
     pickedByModel = false;
     const tail = rolled.scp
@@ -2840,40 +3140,55 @@ async function runStroll(who, region) {
       : rolled.tone.id === "wonder"
         ? "事情巧得有點過分。"
         : "待了一會兒就繼續走。";
-    written = rolled.person
+    written = (rolled.person || revisit)
       ? {
         name: know ? "那位路人" : "",
-        event: `我在${rolled.place.name}先跟那位路人開口，對方情緒是${rolled.emotion.name}，也回了我。我們${rolled.act.name}，我又接了一句。${tail}`,
+        event: revisit
+          ? `我在${rolled.place.name}又碰到${revisit.name}，對方情緒是${rolled.emotion?.name || "平靜"}，也回了我。我們${rolled.act.name}，我又接了一句。${tail}`
+          : `我在${rolled.place.name}先跟那位路人開口，對方情緒是${rolled.emotion.name}，也回了我。我們${rolled.act.name}，我又接了一句。${tail}`,
       }
       : { name: "", event: `我在${rolled.place.name}${rolled.act.name}，${tail}` };
   }
   if (token !== workToken || girl !== who || who.world?.activity !== "wander") return;
-  const personName = know ? (written.name || "那位路人") : "";
+  const personName = revisit
+    ? revisit.name
+    : (know ? (written.name || "那位路人") : "");
   who.world.stroll = {
     pending: false,
     placeName: rolled.place.name,
     toneName: rolled.tone.name,
-    roleName: rolled.person ? "路人" : "",
+    roleName,
     emotionName: rolled.emotion?.name || "",
     event: written.event,
     known: know,
+    revisit: !!revisit,
     personName,
+    bond: revisit ? (revisit.bond || "") : (know ? "acquaintance" : ""),
+    bondAdvanced: bondResult?.advanced || "",
   };
   if (rolled.scp) noteScpStep(who, rolled.scp);
-  if (know) addFriend(who, { name: personName, role: "路人" });
+  if (know) addFriend(who, { name: personName, role: "路人", gender: newGender });
   setMood(who, moodFromStroll(rolled));
   rememberMoment(who, {
     placeName: rolled.place.name,
     toneName: rolled.tone.name,
-    roleName: rolled.person ? "路人" : "",
+    roleName,
     emotionName: rolled.emotion?.name || "",
     event: written.event,
     known: know,
     personName,
+    revisit: !!revisit,
+    bond: who.world.stroll.bond,
+    bondAdvanced: bondResult?.advanced || "",
   });
   renderWorld();
+  persistRoom();
   const where = `${who.name}在${rolled.place.name}遇到${rolled.tone.name}`;
-  const met = rolled.person ? "，碰到一位路人。" : "。";
+  const met = revisit
+    ? `，又碰到${revisit.name}。`
+    : rolled.person
+    ? "，碰到一位路人。"
+    : "。";
   $("summon-status").textContent = pickedByModel
     ? `${where}${met}`
     : `${where}${met}模型沒寫成，這段是先補的。`;
@@ -3106,6 +3421,7 @@ function bindBodyPanel() {
   player = ensurePlayer(saved.player);
   if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
   ensureBody(girl);
+  ensureFriends(girl);
   normalizeGirlTags(girl);
   // Page load = closed session: soft-reset dialogue, keep long-term girl state.
   const hadTalk = (Array.isArray(girl.chatLines) && girl.chatLines.length)
