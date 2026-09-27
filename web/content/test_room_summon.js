@@ -1244,17 +1244,23 @@ function topicHintFrom(history) {
   return her.length >= 2 ? her.slice(0, 24) : "";
 }
 
-function reopenOpener() {
-  // Still need name/nick/pet — reuse stage opener which sets nameWait.
-  const stage = girl.stage || "stranger";
-  const idx = STAGE_INDEX[stage] ?? 0;
-  if ((stage === "stranger" || stage === "acquaintance") && !girl.playerName) return openerLine();
-  if ((stage === "friend" || stage === "close_friend") && !girl.playerNick) return openerLine();
-  if (idx >= (STAGE_INDEX.girlfriend ?? 4) && !girl.playerPet) return openerLine();
-  return "（旁白：他剛才離開過（掰掰或關掉對話），現在又回來找你。這是新的一輪對話，不要接續上一句告別或結尾，也不要從上一段話中間接著講。用一兩句重新打招呼，依你們現在的關係自然反應。只輸出台詞。）";
+function openerBodyHint(opts = {}) {
+  ensureBody(girl);
+  ensureStunFields(girl);
+  const stun = effectiveStun(girl, "");
+  if (stun >= 50 || inSpasm(girl)) return "";
+  const aro = girl.bodyState?.arousal || 0;
+  const open = getOpenness(girl);
+  if (opts.forceBody || stun >= 25 || aro >= 18) {
+    return "身體狀態要滲進第一句（喘、腿軟、餘韻、還在發抖之類），不要裝完全平靜。";
+  }
+  if (open >= 45 || aro >= 12) {
+    return "若身體／開放度偏高，語氣可微熱一點，但不要搶主軸。";
+  }
+  return "";
 }
 
-function openerLine() {
+function nameWaitOpener() {
   const stage = girl.stage || "stranger";
   const idx = STAGE_INDEX[stage] ?? 0;
   if ((stage === "stranger" || stage === "acquaintance") && !girl.playerName) {
@@ -1270,25 +1276,128 @@ function openerLine() {
     girl.nameWait = "pet";
     return "（旁白：用一兩句幫他取一個小名，小名用「」包起來。可以順便問他過得怎樣。沒有特別的事就不要提外面。只輸出台詞。）";
   }
+  return "";
+}
+
+/** first：首次長按／新抽進房 */
+function firstOpener() {
+  const wait = nameWaitOpener();
+  if (wait) return wait;
+  const body = openerBodyHint();
+  const stage = girl.stage || "stranger";
   if (stage === "stranger" || stage === "acquaintance") {
-    return "（旁白：他走到你面前。愛理不理，用短句、低興趣回一兩句。沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）";
+    return `（旁白：他走到你面前。愛理不理，用短句、低興趣回一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
+  }
+  if (stage === "friend") {
+    return `（旁白：他走到你面前。語氣放軟一點，用一兩句打招呼或問他找你幹嘛。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
   }
   if (stage === "close_friend" || stage === "girlfriend") {
-    return "（旁白：他走到你面前。接住他一點——問他怎麼了或今天怎樣，用一兩句。沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）";
+    return `（旁白：他走到你面前。接住他一點——問他怎麼了或今天怎樣，用一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
   }
-  if (stage === "passionate") {
-    return "（旁白：他走到你面前。黏一點、熱一點，可以說想他或問他去哪了。一兩句。沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）";
+  if (stage === "passionate" || stage === "lover") {
+    return `（旁白：他走到你面前。黏一點、熱一點，可以說想他或問他去哪了。一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
   }
-  if (stage === "devoted_wife") {
-    return "（旁白：他走到你面前。先接住他的情緒——問累不累、吃了沒、今天怎樣。一兩句。沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）";
+  if (stage === "wife" || stage === "devoted_wife") {
+    return `（旁白：他走到你面前。先接住他的情緒——問累不累、吃了沒、今天怎樣。一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
   }
   if (stage === "obedient_wife") {
-    return "（旁白：他走到你面前。以他為主，問他想怎樣或想聊什麼，一兩句。沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）";
+    return `（旁白：他走到你面前。以他為主，問他想怎樣或想聊什麼，一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
   }
   if (stage === "pathological_wife") {
-    return "（旁白：他走到你面前。病態地黏上去——叫老公、問他想怎樣或直接索求靠近，一兩句。沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）";
+    return `（旁白：他走到你面前。病態地黏上去——叫老公、問他想怎樣或直接索求靠近，一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
   }
-  return "（旁白：他走到你面前。用你現在的心情說一兩句。沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）";
+  return `（旁白：他走到你面前。用你現在的心情說一兩句。${body}沒有特別的事就不要報你剛剛在做什麼。只輸出台詞。）`;
+}
+
+/** reopen：同房關掉對話／掰掰後再開 */
+function reopenOpener() {
+  const wait = nameWaitOpener();
+  if (wait) return wait;
+  const body = openerBodyHint({ forceBody: true });
+  const stage = girl.stage || "stranger";
+  const base = "他剛才離開過（掰掰或關掉對話），現在又回來找你。這是新的一輪，不要接續上一句告別或結尾。";
+  if (stage === "stranger" || stage === "acquaintance") {
+    return `（旁白：${base}短冷一點，用一兩句重新打招呼，別熱心。${body}只輸出台詞。）`;
+  }
+  if (stage === "friend" || stage === "close_friend") {
+    return `（旁白：${base}像朋友再開口——問他怎麼了或又找你幹嘛，一兩句。${body}只輸出台詞。）`;
+  }
+  if (stage === "girlfriend" || stage === "passionate" || stage === "lover") {
+    return `（旁白：${base}黏一點，問他怎麼又回來、想不想你或想幹嘛，一兩句。${body}只輸出台詞。）`;
+  }
+  if (stage === "wife" || stage === "devoted_wife" || stage === "obedient_wife" || stage === "pathological_wife") {
+    return `（旁白：${base}先關心他——問累不累、又有什麼事，一兩句。${body}只輸出台詞。）`;
+  }
+  return `（旁白：${base}用一兩句重新打招呼，依你們現在的關係自然反應。${body}只輸出台詞。）`;
+}
+
+/** summon：正常離開後再被召喚回來 */
+function summonOpener() {
+  const body = openerBodyHint();
+  const stage = girl.stage || "stranger";
+  const idx = STAGE_INDEX[stage] ?? 0;
+  const base = "你剛被再次召喚進這房間（不是自己走回來）。可用「又把我叫回來？」這類反應。禁止報日本流水帳。";
+  if (idx <= (STAGE_INDEX.acquaintance ?? 1)) {
+    return `（旁白：${base}陌生／低關係：不悅、冷淡、懶得理，一兩句。${body}只輸出台詞。）`;
+  }
+  if (idx <= (STAGE_INDEX.close_friend ?? 3)) {
+    return `（旁白：${base}好友：抱怨帶笑或碎念「又叫我」，一兩句。${body}只輸出台詞。）`;
+  }
+  if (idx <= (STAGE_INDEX.lover ?? 6)) {
+    return `（旁白：${base}戀人：黏或嗔「又把我抓回來」，一兩句。${body}只輸出台詞。）`;
+  }
+  return `（旁白：${base}妻子／更深：嗔或黏地應他，可問要做什麼，一兩句。${body}只輸出台詞。）`;
+}
+
+/** flee_back：侵犯逃出後再被召喚 */
+function fleeBackOpener() {
+  const body = openerBodyHint({ forceBody: true });
+  const stage = girl.stage || "stranger";
+  const idx = STAGE_INDEX[stage] ?? 0;
+  const open = getOpenness(girl);
+  const base = "你剛才因他太過分而逃離房間，現在又被召喚回來。餘怒／害怕／羞耻／彆扭要進第一句。不要說侵犯數字；用「剛才太過分」「你嚇到我了」這類感覺。禁止報日本流水帳。";
+  if (idx <= (STAGE_INDEX.friend ?? 2) || open < 30) {
+    return `（旁白：${base}低關係或低開放：罵、躲、要他保證不再亂來、或想立刻走，一兩句。${body}只輸出台詞。）`;
+  }
+  if (idx <= (STAGE_INDEX.lover ?? 6)) {
+    return `（旁白：${base}高關係：軟著抱怨、委屈、仍生氣，但不要裝成陌生路人，一兩句。${body}只輸出台詞。）`;
+  }
+  return `（旁白：${base}妻子／更深：委屈嗔怪、怕又被亂來，仍認他是親密的人，一兩句。${body}只輸出台詞。）`;
+}
+
+/**
+ * 依 girl.chatEnter 選開場旁白。
+ * 優先 summon|flee_back（剛召回第一次）→ reopen（同房再開）→ first。
+ * 用過一次後把 chatEnter 收成 reopen。
+ */
+function resolveEnterReason(returning) {
+  const reason = girl.chatEnter || "";
+  if (reason === "summon" || reason === "flee_back") return reason;
+  if (returning || reason === "reopen") return "reopen";
+  return "first";
+}
+
+function consumeEnterReason(reason) {
+  if (!girl) return;
+  if (reason === "summon" || reason === "flee_back" || reason === "first" || reason === "reopen") {
+    girl.chatEnter = "reopen";
+  }
+}
+
+function enterOpener(returning) {
+  const reason = resolveEnterReason(returning);
+  let line = "";
+  if (reason === "flee_back") line = fleeBackOpener();
+  else if (reason === "summon") line = summonOpener();
+  else if (reason === "reopen") line = reopenOpener();
+  else line = firstOpener();
+  consumeEnterReason(reason);
+  return line;
+}
+
+/** @deprecated use enterOpener — kept as thin alias for first-meet path */
+function openerLine() {
+  return firstOpener();
 }
 
 function takeCall(text, reply) {
@@ -1474,7 +1583,7 @@ async function openTalk() {
     ensureStunFields(girl);
     ensureTeaseFields(girl);
     const openerStun = effectiveStun(girl, "");
-    const opener = returning ? reopenOpener() : openerLine();
+    const opener = enterOpener(returning);
     let line = "";
     if (shouldSkipLlm(openerStun, girl) || inSpasm(girl)) {
       line = inSpasm(girl) ? spasmTemplate(girl, "") : stunTemplate(openerStun, "", girl);
@@ -1878,6 +1987,9 @@ function endTalkSession() {
   girl.topicHint = "";
   girl.sessionEnded = true;
   girl.nameWait = "";
+  if (girl.chatEnter !== "flee_back" && girl.chatEnter !== "summon") {
+    girl.chatEnter = "reopen";
+  }
 }
 
 function persistRoom() {
@@ -1954,6 +2066,7 @@ async function makeGirl() {
     id: `cd_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     affection: 0,
     stage: "stranger",
+    chatEnter: "first",
     ntr: null,
     summoner: null,
     portraits: {},
@@ -2086,6 +2199,7 @@ function sendHerOutAgain() {
   const region = placedRegion();
   clearShift();
   activityOpen = false;
+  if (girl.chatEnter !== "flee_back") girl.chatEnter = "summon";
   window.RoomActor?.setPresent(false);
   if (sheetOpen()) hideSheet();
   renderCard();
@@ -2098,6 +2212,7 @@ function summonHerBack() {
   if (!girl?.world?.home || !sheIsOut()) return;
   clearShift();
   girl.world.justBack = true;
+  if (girl.chatEnter !== "flee_back") girl.chatEnter = "summon";
   girl.chatLines = [];
   girl.topicHint = "";
   girl.sessionEnded = true;
@@ -2145,6 +2260,7 @@ async function fleeRoomFromInvasion() {
   if (!girl) return;
   const who = girl;
   const name = who.name;
+  who.chatEnter = "flee_back";
   clearInvasion(who);
   // 先關對話／busy／scroll lock，再趕人——避免房間被鎖、找地點卡住
   closeTalkForLeave();
@@ -2488,6 +2604,7 @@ async function letHerLeave(opts = {}) {
   who.world = { regionId: region.id, ground, at: Date.now(), home: null };
   // 先掛暫定住所：召喚／活動鍵立刻可用，不卡找地點
   assignHome(who, fallback);
+  if (who.chatEnter !== "flee_back") who.chatEnter = "summon";
   window.RoomActor?.setPresent(false);
   if (sheetOpen()) hideSheet();
   activityOpen = false;
@@ -2660,6 +2777,7 @@ function bindBodyPanel() {
   girl.chatLines = [];
   girl.topicHint = "";
   girl.sessionEnded = hadTalk || !!girl.sessionEnded;
+  if (!girl.chatEnter) girl.chatEnter = girl.sessionEnded ? "reopen" : "first";
   syncStage(girl);
   // 舊存檔若停在「正在決定她住哪」（home 空），立刻補住所解卡
   if (girl.world && !girl.world.home?.id) {
