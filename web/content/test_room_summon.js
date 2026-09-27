@@ -974,6 +974,7 @@ function applyFriendPhysicalAftermath(who, friend, kind, random = Math.random, o
         fatherRole: friend.role || "",
         intensity,
         kind,
+        ticks: 0,
       };
       pregnantNew = true;
     }
@@ -1038,7 +1039,7 @@ function friendPhysicalPromptLines(who = girl) {
 
   if (preg) {
     const dad = preg.fatherName || "對方";
-    lines.push(`【背景・有孕・事實・勿主動照念】你已有孕，父親是${dad}${preg.fatherRole ? `（${preg.fatherRole}）` : ""}。房間狀態，不會被帶走。`);
+    lines.push(`【背景・有孕・事實・勿主動照念】你已有孕，父親是${dad}${preg.fatherRole ? `（${preg.fatherRole}）` : ""}。若未打胎、繼續外出生活，有機會生產並被那位男子帶走；可用打胎藥打掉。`);
     if (dating) {
       lines.push("【有孕・女友／妻子・口吻】懷孕對召喚者是秘密：不要主動提；被明確逼問才可能心虛漏一點、閃避或沉默，不要細說父親是誰。");
     } else {
@@ -1203,7 +1204,7 @@ function lifeNotes() {
   }
   if (world.pregnancy) {
     const dad = world.pregnancy.fatherName || "對方";
-    notes.push(`她目前有孕（父親：${dad}）。這是房間狀態，不要編成被帶走或離開。`);
+    notes.push(`她目前有孕（父親：${dad}）。若未打胎、繼續打工／亂逛，可能生產並被父親帶走。`);
   }
   const memories = world.memories || [];
   if (!memories.length) return notes;
@@ -1623,8 +1624,12 @@ function pickLine(list) {
 
 function playerInv() {
   player = ensurePlayer(player);
-  player.inventory ??= { bouquet: 0, ring: 0 };
-  return player.inventory;
+  player.inventory ??= { bouquet: 0, ring: 0, abortPill: 0 };
+  const inv = player.inventory;
+  if (inv.abortPill == null) inv.abortPill = 0;
+  if (inv.bouquet == null) inv.bouquet = 0;
+  if (inv.ring == null) inv.ring = 0;
+  return inv;
 }
 
 function datingStages() {
@@ -1664,6 +1669,20 @@ function canProposeGirl() {
   return datingStages().has(girl.stage || "") && (inv.ring | 0) >= 1;
 }
 
+function canBuyAbortPill() {
+  if (!girl) return { ok: false, why: "尚無對象" };
+  if (!girl?.world?.pregnancy) return { ok: false, why: "需有孕才能購買打胎藥" };
+  return { ok: true, why: "" };
+}
+
+function canUseAbortPill() {
+  if (!girl) return { ok: false, why: "尚無對象" };
+  if (!girl?.world?.pregnancy) return { ok: false, why: "目前無孕" };
+  const inv = playerInv();
+  if ((inv.abortPill | 0) < 1) return { ok: false, why: "沒有打胎藥" };
+  return { ok: true, why: "" };
+}
+
 function renderRomanceItems() {
   const panel = $("romance-items");
   if (!panel) return;
@@ -1675,11 +1694,17 @@ function renderRomanceItems() {
   player = ensurePlayer(player);
   const inv = playerInv();
   const count = $("romance-inv");
-  if (count) count.textContent = `花束 ×${inv.bouquet | 0}　戒指 ×${inv.ring | 0}`;
+  if (count) {
+    count.textContent = `花束 ×${inv.bouquet | 0}　戒指 ×${inv.ring | 0}　打胎藥 ×${inv.abortPill | 0}`;
+  }
   const bOk = canClaimBouquet();
   const rOk = canClaimRing();
+  const buyOk = canBuyAbortPill();
+  const useOk = canUseAbortPill();
   const bBtn = $("claim-bouquet");
   const rBtn = $("claim-ring");
+  const buyBtn = $("buy-abort-pill");
+  const useBtn = $("use-abort-pill");
   if (bBtn) {
     bBtn.disabled = !bOk.ok;
     bBtn.title = bOk.ok ? "沙盒免費領取花束" : bOk.why;
@@ -1688,6 +1713,14 @@ function renderRomanceItems() {
     rBtn.disabled = !rOk.ok;
     rBtn.title = rOk.ok ? "沙盒免費領取戒指" : rOk.why;
   }
+  if (buyBtn) {
+    buyBtn.disabled = !buyOk.ok;
+    buyBtn.title = buyOk.ok ? "商店：沙盒免費購買打胎藥（需有孕）" : buyOk.why;
+  }
+  if (useBtn) {
+    useBtn.disabled = !useOk.ok;
+    useBtn.title = useOk.ok ? "使用打胎藥打掉孕" : useOk.why;
+  }
   const status = $("romance-status");
   if (status) {
     const parts = [];
@@ -1695,6 +1728,12 @@ function renderRomanceItems() {
     else parts.push("花束：可領取");
     if (!rOk.ok) parts.push(`戒指：${rOk.why}`);
     else parts.push("戒指：可領取");
+    if (!buyOk.ok) parts.push(`打胎藥：${buyOk.why}`);
+    else parts.push("打胎藥：可購買");
+    if (girl?.world?.pregnancy) {
+      if (useOk.ok) parts.push("可使用打胎藥");
+      else if ((inv.abortPill | 0) < 1) parts.push("先購買打胎藥再使用");
+    }
     status.textContent = parts.join("　");
   }
 }
@@ -1735,6 +1774,54 @@ function claimRing() {
   renderRomanceItems();
   renderDebug();
   refreshTalkActs();
+}
+
+function buyAbortPill() {
+  const gate = canBuyAbortPill();
+  if (!gate.ok) {
+    const status = $("romance-status");
+    if (status) status.textContent = gate.why;
+    renderRomanceItems();
+    return;
+  }
+  const inv = playerInv();
+  inv.abortPill = (inv.abortPill | 0) + 1;
+  pushDebug(`商店購買打胎藥　打胎藥 ×${inv.abortPill}`);
+  const s = $("summon-status");
+  if (s) s.textContent = `已購買打胎藥（現有 ×${inv.abortPill}）。有孕時可使用打掉。`;
+  const rs = $("romance-status");
+  if (rs) rs.textContent = `已購買打胎藥（×${inv.abortPill}）`;
+  persistRoom();
+  renderRomanceItems();
+  renderBodyPanel();
+  renderDebug();
+}
+
+function useAbortPill() {
+  const gate = canUseAbortPill();
+  if (!gate.ok) {
+    const status = $("romance-status");
+    if (status) status.textContent = gate.why;
+    renderRomanceItems();
+    return;
+  }
+  const inv = playerInv();
+  inv.abortPill = Math.max(0, (inv.abortPill | 0) - 1);
+  if (girl?.world) girl.world.pregnancy = null;
+  // 輕身體註記：精液等不變，僅清孕
+  if (girl) {
+    girl.lastMark = "已使用打胎藥，孕已打掉";
+    pushDebug(`使用打胎藥　打胎藥剩 ×${inv.abortPill}　孕已打掉`);
+  }
+  const s = $("summon-status");
+  if (s) s.textContent = "已使用打胎藥，孕已打掉。";
+  const rs = $("romance-status");
+  if (rs) rs.textContent = "已使用打胎藥，孕已打掉";
+  persistRoom();
+  renderRomanceItems();
+  renderBodyPanel();
+  renderDebug();
+  renderWorld();
 }
 
 async function doConfess() {
@@ -3113,6 +3200,71 @@ function ensureWorldHome(who) {
   return who.world.home;
 }
 
+/**
+ * 打工／亂逛完成時推進有孕 tick，並依機率判定生產→被父親帶走。
+ * 同趟剛懷孕（ticks 仍為 0 且 caller 應略過）不應呼叫；呼叫端在 !pregnantNew 時才叫。
+ * Birth chance = min(0.50, 0.12 + ticks * 0.10)（tick1≈22%、tick2≈32%、tick3≈42%、tick4+→50%）。
+ */
+async function tickPregnancyTowardBirth(who) {
+  if (!who?.world?.pregnancy) return false;
+  const preg = who.world.pregnancy;
+  preg.ticks = (preg.ticks | 0) + 1;
+  const chance = Math.min(0.50, 0.12 + preg.ticks * 0.10);
+  pushDebug(`有孕進度 tick=${preg.ticks}　生產機率 ${Math.round(chance * 100)}%`);
+  if (Number(Math.random()) < chance) {
+    await resolvePregnancyBirth(who);
+    return true;
+  }
+  return false;
+}
+
+/** 生產：旁白＋記憶，並由父親帶走（清房間對象）。 */
+async function resolvePregnancyBirth(who) {
+  if (!who?.world?.pregnancy) return;
+  const name = who.name || "她";
+  const dad = who.world.pregnancy.fatherName || "對方";
+  const msg = `${name}生產了，被${dad}帶走了。`;
+  rememberMoment(who, {
+    event: msg,
+    pregnant: true,
+    personName: dad,
+    roleName: who.world.pregnancy.fatherRole || "",
+  });
+  pushDebug(msg);
+  const status = $("summon-status");
+  if (status) status.textContent = msg;
+  const lead = $("world-lead");
+  if (lead && !lead.hidden) lead.textContent = msg;
+  takeAwayByFather(who);
+}
+
+/**
+ * 被父親帶走：關對話、離場、清活動，girl=null 並清存檔——本趟不可再召喚同一懷孕狀態。
+ * 沙盒房間，不碰主遊戲 sim.py 名冊。
+ */
+function takeAwayByFather(who) {
+  if (!who) return;
+  closeTalkForLeave();
+  workToken += 1;
+  activityOpen = false;
+  if (who.world) {
+    who.world.pregnancy = null;
+    who.world.activity = null;
+    who.world.shift = null;
+    who.world.stroll = null;
+  }
+  window.RoomActor?.setPresent(false);
+  if (girl === who) girl = null;
+  lines = [];
+  talkFor = "";
+  clearRoomSave();
+  renderCard();
+  renderWorld();
+  renderRomanceItems();
+  renderBodyPanel();
+  renderDebug();
+}
+
 /** 逃離／強制離房時先關對話與座位鎖，讓房間可再操作。 */
 function closeTalkForLeave() {
   if (sheetOpen()) hideSheet();
@@ -3335,6 +3487,11 @@ async function runShift(who, region) {
     spasm: !!who.world.shift.spasm,
     pregnant: !!who.world.shift.pregnant,
   });
+  // 有孕推進：同趟剛懷孕略過；否則 tick 後可能生產被帶走
+  if (who.world?.pregnancy && !aftermathShift?.pregnantNew) {
+    const born = await tickPregnancyTowardBirth(who);
+    if (born || girl !== who) return;
+  }
   renderWorld();
   renderBodyPanel();
   renderDebug();
@@ -3551,6 +3708,11 @@ async function runStroll(who, region) {
     spasm: !!who.world.stroll.spasm,
     pregnant: !!who.world.stroll.pregnant,
   });
+  // 有孕推進：同趟剛懷孕略過；否則 tick 後可能生產被帶走
+  if (who.world?.pregnancy && !aftermathStroll?.pregnantNew) {
+    const born = await tickPregnancyTowardBirth(who);
+    if (born || girl !== who) return;
+  }
   renderWorld();
   renderBodyPanel();
   renderDebug();
@@ -3854,6 +4016,16 @@ const claimRingBtn = $("claim-ring");
 if (claimRingBtn && !claimRingBtn.dataset.bound) {
   claimRingBtn.dataset.bound = "1";
   claimRingBtn.addEventListener("click", () => { claimRing(); });
+}
+const buyAbortBtn = $("buy-abort-pill");
+if (buyAbortBtn && !buyAbortBtn.dataset.bound) {
+  buyAbortBtn.dataset.bound = "1";
+  buyAbortBtn.addEventListener("click", () => { buyAbortPill(); });
+}
+const useAbortBtn = $("use-abort-pill");
+if (useAbortBtn && !useAbortBtn.dataset.bound) {
+  useAbortBtn.dataset.bound = "1";
+  useAbortBtn.addEventListener("click", () => { useAbortPill(); });
 }
 renderRomanceItems();
 renderCard();
