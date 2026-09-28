@@ -302,8 +302,8 @@ body.room-home #main-room-stage .scene {
   pointer-events: none;
 }
 body.room-home #main-room-stage #room {
-  /* 畫布 Y＝原本舞台高的兩倍；寬度跟 416:328 比例走 */
-  height: 200%;
+  /* 畫布 Y＝舞台高的 120%（200% 太大）；舞台框本身不放大 */
+  height: 120%;
   width: auto;
   max-width: none;
   aspect-ratio: 416 / 328;
