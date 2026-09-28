@@ -2553,7 +2553,7 @@ body.room-home #page-quests {
 }
 body.room-home #home-card-strip {
   flex: 0 0 auto;
-  max-height: 36vh;
+  max-height: 30vh;
   min-height: 0;
   margin-top: 0.55em; /* 略往下，別貼死 HUD */
   position: relative;
@@ -2562,8 +2562,8 @@ body.room-home #home-card-strip {
 }
 body.room-home #home-card-strip .q-scenes {
   flex: none;
-  height: 36vh;
-  max-height: 36vh;
+  height: 30vh;
+  max-height: 30vh;
   min-height: 0;
 }
 body.room-home #home-card-strip .pin-hdr {
@@ -2572,12 +2572,26 @@ body.room-home #home-card-strip .pin-hdr {
   font-size: 0.85em;
 }
 body.room-home #home-card-strip .pin-carousel {
-  max-height: calc(36vh - 2.4em);
+  max-height: calc(30vh - 2.4em);
 }
 body.room-home #home-card-strip .pin-slot,
-body.room-home #home-card-strip .pin-card {
-  transform: scale(1.06);
+body.room-home #home-card-strip .pin-card,
+body.room-home #home-card-strip .q-card {
+  transform: scale(0.96);
   transform-origin: top center;
+}
+/* 執行中卡：不要陰影 */
+body.room-home #home-card-strip .q-card,
+body.room-home #home-card-strip .q-card.q-instant,
+body.room-home #home-card-strip .q-card.c-exec {
+  box-shadow: none;
+  filter: none;
+}
+body.room-home #home-card-strip .pin-hdr-title {
+  text-shadow: none;
+}
+body.room-home #home-card-strip .dot.on {
+  box-shadow: none;
 }
 /* 日誌／處理展開時：卡區拉高，房間讓位 */
 body.room-home #page-quests.on-proc #home-card-strip,
