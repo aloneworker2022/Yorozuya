@@ -75,7 +75,7 @@ _POSE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 _ASSET_KEEP_PREFIXES = frozenset({"chk"})
 _SHOT_FILE_SUFS = (
     "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
-    "tease_cowgirl", "tease_breast", "tease_thigh", "tease_butt", "tease_waist",
+    "tease_cowgirl", "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_thigh", "tease_butt", "tease_waist",
     "tease_oral_ready", "tease_oral_suck", "tease_oral_deep", "tease_oral_cum",
     "tease_oral",
     "tease_doggy_ready", "tease_doggy_half", "tease_doggy_more", "tease_doggy_deep", "tease_doggy_cum",
@@ -87,7 +87,8 @@ SHOT_LABEL_ZH = {
     "head": "大頭照", "half": "半身(聊天立繪)", "full": "全身(看板娘)",
     "half_xi": "半身·喜", "half_nu": "半身·怒", "half_ai": "半身·哀",
     "half_le": "半身·樂", "half_xiu": "半身·害羞",
-    "tease_breast": "調戲·摸乳", "tease_thigh": "調戲·摸大腿",
+    "tease_breast": "調戲·摸奶", "tease_breast_knead": "調戲·揉奶", "tease_breast_suck": "調戲·吸奶頭",
+    "tease_thigh": "調戲·摸大腿",
     "tease_butt": "調戲·摸臀",
     "tease_waist": "調戲·摟腰",
     "tease_oral": "調戲·口交",
@@ -2308,8 +2309,8 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     if pose_src is not None:
         gen_w, gen_h = _pose_gen_size(pose_src, gen_w or comfy.DEFAULT_WIDTH, gen_h or comfy.DEFAULT_HEIGHT)
         out_w, out_h = 0, 0
-        # 摸臀／摟腰動作圖固定正方形；勿被 pose 參考圖長寬比蓋成直圖
-        if shot in ("tease_butt", "tease_waist"):
+        # 動作裁切圖固定正方形；勿被 pose 參考圖長寬比蓋成直圖
+        if shot in ("tease_butt", "tease_waist", "tease_breast", "tease_breast_knead", "tease_breast_suck"):
             sq = (comfy.PORTRAIT_SHOTS.get(shot) or {}).get("gen") or (1024, 1024)
             gen_w, gen_h = int(sq[0]), int(sq[1])
     name, err = await comfy.generate(
@@ -4792,6 +4793,140 @@ def put_waist_packs(body: dict):
         active = ""
     doc = {"packs": packs, "activeId": active}
     path = _waist_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+
+
+def _breast_packs_path():
+    return WEB_DIR / "content" / "breast_packs.json"
+
+
+@app.get("/api/breast-packs")
+def get_breast_packs():
+    path = _breast_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/breast-packs")
+def put_breast_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _breast_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _knead_packs_path():
+    return WEB_DIR / "content" / "knead_packs.json"
+
+
+@app.get("/api/knead-packs")
+def get_knead_packs():
+    path = _knead_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/knead-packs")
+def put_knead_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _knead_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _suck_packs_path():
+    return WEB_DIR / "content" / "suck_packs.json"
+
+
+@app.get("/api/suck-packs")
+def get_suck_packs():
+    path = _suck_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/suck-packs")
+def put_suck_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _suck_packs_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

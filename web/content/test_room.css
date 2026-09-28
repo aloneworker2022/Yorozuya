@@ -408,34 +408,55 @@ body.room-home #home-room-chrome { display: none !important; }
 .tease-pack-panel select{width:100%;font:inherit;color:inherit;background:#eee8dd;border:1px solid #cbbfaa;border-radius:4px;padding:.4em .55em}
 .tease-pack-panel textarea{resize:vertical;line-height:1.5;min-height:4em}
 .tease-pack-panel button{font:inherit;padding:8px 12px;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;min-height:40px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
-.bp-row,.wp-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
-.bp-grow,.wp-grow{flex:1 1 10em;min-width:0}
-.bp-fix0,.wp-fix0{flex:0 1 7em}
+.bp-row,.wp-row,.br-row,.kn-row,.su-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
+.bp-grow,.wp-grow,.br-grow,.kn-grow,.su-grow{flex:1 1 10em;min-width:0}
+.bp-fix0,.wp-fix0,.br-fix0,.kn-fix0,.su-fix0{flex:0 1 7em}
 .tease-pack-panel button.bp-cy,
-.tease-pack-panel button.wp-cy{background:#dce2cf;color:#48604a}
+.tease-pack-panel button.wp-cy,
+.tease-pack-panel button.br-cy,
+.tease-pack-panel button.kn-cy,
+.tease-pack-panel button.su-cy{background:#dce2cf;color:#48604a}
 .tease-pack-panel button.bp-del,
-.tease-pack-panel button.wp-del{color:#975e50}
+.tease-pack-panel button.wp-del,
+.tease-pack-panel button.br-del,
+.tease-pack-panel button.kn-del,
+.tease-pack-panel button.su-del{color:#975e50}
 .tease-pack-panel button.bp-big,
-.tease-pack-panel button.wp-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
-.bp-ref-head,.wp-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bp-mode-flag,.wp-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
-.bp-mode-flag.txt,.wp-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
-.bp-mode-flag.img,.wp-mode-flag.img{background:#e8d5e4;color:#8a3d78}
-.bp-thumb,.wp-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
-.bp-status,.wp-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
-.bp-status.err,.wp-status.err{color:#975e50}
-.bp-art,.wp-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
-.bp-art img,.wp-art img{max-width:100%;max-height:360px;display:block}
-.bp-art .mini,.wp-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
-/* 摸臀／摟腰圖編輯器只屬於獨立 test_room 頁，主站永不顯示。 */
+.tease-pack-panel button.wp-big,
+.tease-pack-panel button.br-big,
+.tease-pack-panel button.kn-big,
+.tease-pack-panel button.su-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
+.bp-ref-head,.wp-ref-head,.br-ref-head,.kn-ref-head,.su-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bp-mode-flag,.wp-mode-flag,.br-mode-flag,.kn-mode-flag,.su-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
+.bp-mode-flag.txt,.wp-mode-flag.txt,.br-mode-flag.txt,.kn-mode-flag.txt,.su-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
+.bp-mode-flag.img,.wp-mode-flag.img,.br-mode-flag.img,.kn-mode-flag.img,.su-mode-flag.img{background:#e8d5e4;color:#8a3d78}
+.bp-thumb,.wp-thumb,.br-thumb,.kn-thumb,.su-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
+.bp-status,.wp-status,.br-status,.kn-status,.su-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
+.bp-status.err,.wp-status.err,.br-status.err,.kn-status.err,.su-status.err{color:#975e50}
+.bp-art,.wp-art,.br-art,.kn-art,.su-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
+.bp-art img,.wp-art img,.br-art img,.kn-art img,.su-art img{max-width:100%;max-height:360px;display:block}
+.bp-art .mini,.wp-art .mini,.br-art .mini,.kn-art .mini,.su-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
+/* 摸臀／摟腰／摸奶／揉奶／吸奶頭圖編輯器只屬於獨立 test_room 頁，主站永不顯示。 */
 body.room-home #btn-butt-packs,
 body.room-home #btn-waist-packs,
+body.room-home #btn-breast-packs,
+body.room-home #btn-knead-packs,
+body.room-home #btn-suck-packs,
 body.room-home #butt-pack-editor,
 body.room-home #waist-pack-editor,
+body.room-home #breast-pack-editor,
+body.room-home #knead-pack-editor,
+body.room-home #suck-pack-editor,
 html:not(.room-page) #btn-butt-packs,
 html:not(.room-page) #btn-waist-packs,
+html:not(.room-page) #btn-breast-packs,
+html:not(.room-page) #btn-knead-packs,
+html:not(.room-page) #btn-suck-packs,
 html:not(.room-page) #butt-pack-editor,
-html:not(.room-page) #waist-pack-editor {
+html:not(.room-page) #waist-pack-editor,
+html:not(.room-page) #breast-pack-editor,
+html:not(.room-page) #knead-pack-editor,
+html:not(.room-page) #suck-pack-editor {
   display: none !important;
 }
 

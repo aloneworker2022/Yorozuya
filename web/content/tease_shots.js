@@ -99,8 +99,8 @@ export function isTeaseShot(shot) {
 
 export function teaseFraming(shot) {
   const s = String(shot || "");
-  if (s === "tease_butt" || s === "tease_waist") return "lower";
-  if (s === "tease_breast" || s.startsWith("tease_oral")) return "half";
+  if (s === "tease_butt" || s === "tease_waist" || s === "tease_breast" || s === "tease_breast_knead" || s === "tease_breast_suck") return "lower";
+  if (s.startsWith("tease_oral")) return "half";
   return "full";
 }
 
@@ -294,10 +294,28 @@ function cowgirlAct(shot) {
 export function composeTeaseExtra(shot, stage, worn) {
   const s = String(shot || "");
   if (s === "tease_breast") {
+    // 局部繪圖（胸裁切）：無頭／無表情；人設於生圖時由 character 合併
     return [
-      "simple background, half-body portrait",
-      teaseExpr(stage),
-      breastHands(stage),
+      "simple background, white background",
+      "breasts focus, chest crop, upper torso, head out of frame",
+      "first-person POV, one male hand, male hand grabbing one breast",
+      "NO both hands, NO face, NO head",
+    ].join(", ");
+  }
+  if (s === "tease_breast_knead") {
+    return [
+      "simple background, white background",
+      "breasts focus, chest crop, upper torso, head out of frame",
+      "first-person POV, male hands kneading breasts, squeezing breasts",
+      "NO face, NO head",
+    ].join(", ");
+  }
+  if (s === "tease_breast_suck") {
+    return [
+      "simple background, white background",
+      "breasts focus, nipple focus, close-up, head out of frame",
+      "first-person POV, mouth sucking nipple, lips on nipple, tongue on nipple",
+      "NO face of girl, NO head of girl",
     ].join(", ");
   }
   if (s === "tease_butt") {

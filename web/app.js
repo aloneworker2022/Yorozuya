@@ -13,7 +13,7 @@ import {
   teaseShotAt, teaseStartStep, teaseAdvanceStep, teaseCumStep, teasePlayableSteps,
   teasePhaseOf, teasePhaseLabel, teaseBeatLine, teaseWilling,
   teasePlayAffDelta, TEASE_PLAY_CLIMAX_RATE,
-} from "./content/tease_shots.js?v=3";
+} from "./content/tease_shots.js?v=4";
 import * as ScriptMode from "./content/script_mode.js";
 import * as FramePack from "./content/frame_pack.js";
 import {
@@ -21,6 +21,18 @@ import {
   buildButtImgBody,
   getButtPacksCached,
 } from "./content/butt_packs.js?v=5";
+import {
+  pickRuntimeBreastPack,
+  buildBreastImgBody,
+} from "./content/breast_packs.js?v=1";
+import {
+  pickRuntimeKneadPack,
+  buildKneadImgBody,
+} from "./content/knead_packs.js?v=1";
+import {
+  pickRuntimeSuckPack,
+  buildSuckImgBody,
+} from "./content/suck_packs.js?v=1";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
@@ -2605,7 +2617,7 @@ async function weaveShot(s, shot, onTick, opts = {}) {
       : (wantPortraitCut ? "plain solid color background, simple background" : ""))),
     // Grok 路也要勾去背；Comfy 路 shot 規格本身 cutout=true
     cutout: wantPortraitCut,
-    flat_bg: tease ? (shot === "tease_butt") : wantPortraitCut,
+    flat_bg: tease ? (shot === "tease_butt" || shot === "tease_waist" || shot === "tease_breast" || shot === "tease_breast_knead" || shot === "tease_breast_suck") : wantPortraitCut,
     lock_identity: tease,
     retry: true,
     // 情緒半身可帶 half 當 ref 鎖臉
@@ -2860,6 +2872,66 @@ async function weaveOneTeaseShot(s, shot) {
       }
     } catch (e) {
       console.warn("[tease_butt pack]", e);
+    }
+  }
+  // 摸奶／揉奶／吸奶頭：有存檔圖組才生（與房間 pack 同一契約；無組略過）
+  {
+    const cropShot = String(shot || "");
+    const cropPick = cropShot === "tease_breast" ? pickRuntimeBreastPack
+      : cropShot === "tease_breast_knead" ? pickRuntimeKneadPack
+      : cropShot === "tease_breast_suck" ? pickRuntimeSuckPack
+      : null;
+    const cropBuild = cropShot === "tease_breast" ? buildBreastImgBody
+      : cropShot === "tease_breast_knead" ? buildKneadImgBody
+      : cropShot === "tease_breast_suck" ? buildSuckImgBody
+      : null;
+    if (cropPick && cropBuild) {
+      try {
+        const pack = await cropPick();
+        if (!pack) return "";
+        const eng = {
+          imgProvider: imgProvider(),
+          imgModel: state.settings?.model || "grok-4.5",
+          imgStyle: state.settings?.imgStyle || "pixel",
+          comfyUrl: state.settings?.comfyUrl || "",
+          comfyCkpt: "",
+        };
+        const body = cropBuild(pack, s, eng, { stage, worn });
+        const girlCkpt = imgProvider() === "comfy" ? await ensureGirlComfyCkpt(s) : "";
+        if (girlCkpt) body.ckpt = girlCkpt;
+        body.key = `portrait:${s.id}:${shot}:${Date.now().toString(36)}`;
+        body.char_id = s.id;
+        body.shot = shot;
+        let url = "";
+        lastWeaveError = "";
+        try {
+          let r = await imgGenPost(body);
+          if (!r) lastWeaveError = "伺服器沒回應(/api/imggen)";
+          let key = r?.key;
+          const deadline = Date.now() + 180000;
+          while (r && Date.now() < deadline) {
+            if (r.status === "done") { url = r.result || ""; break; }
+            if (r.status === "error") { lastWeaveError = r.error || "生圖失敗"; break; }
+            await new Promise(res => setTimeout(res, 1500));
+            r = await imgGenPost({ ...body, key, retry: false });
+            key = r?.key || key;
+          }
+          if (!url && !lastWeaveError) lastWeaveError = "等了 3 分鐘還沒好";
+        } catch (e) {
+          lastWeaveError = String(e?.message || e);
+        }
+        if (url) {
+          setShot(s, shot, url);
+          markExtraShot(s, shot);
+          s.teaseStage = stage;
+          dirty = true;
+          try { saveNow(); } catch { /* */ }
+        }
+        return url;
+      } catch (e) {
+        console.warn(`[${cropShot} pack]`, e);
+        return "";
+      }
     }
   }
   const extra = composeTeaseExtra(shot, stage, worn);
@@ -11158,7 +11230,7 @@ const SHOT_LABEL = {
   head: "大頭照", half: "半身", full: "全身",
   half_xi: "半身·喜", half_nu: "半身·怒", half_ai: "半身·哀", half_le: "半身·樂",
   half_xiu: "半身·害羞",
-  tease_breast: "調戲·摸乳", tease_butt: "調戲·摸臀", tease_waist: "調戲·摟腰",
+  tease_breast: "調戲·摸奶", tease_breast_knead: "調戲·揉奶", tease_breast_suck: "調戲·吸奶頭", tease_butt: "調戲·摸臀", tease_waist: "調戲·摟腰",
   tease_oral_ready: "調戲·口交·頂嘴", tease_oral_suck: "調戲·口交·含住",
   tease_oral_deep: "調戲·口交·整根", tease_oral_cum: "調戲·口交·口內射",
   tease_doggy_ready: "調戲·背後·抓臀勃起", tease_doggy_half: "調戲·背後·龜頭進入",

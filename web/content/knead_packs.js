@@ -1,8 +1,8 @@
-/** 房間「摟腰」生圖預設組：多組命名存檔，執行時隨機抽一組；無組時不生圖（僅對話／身體）。 */
+/** 房間「揉奶」生圖預設組：多組命名存檔，執行時隨機抽一組；無組時不生圖（僅對話／身體）。 */
 
 import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=4";
 
-const API = "/api/waist-packs";
+const API = "/api/knead-packs";
 
 export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -15,39 +15,38 @@ export function clampDenoise(v) {
 }
 
 /** 動作／裁切 tags only（無頭／表情／人設；人設於生圖時由 character 合併）。 */
-export function defaultWaistPrompt(stage = "stranger") {
-  return composeTeaseExtra("tease_waist", stage, "") || [
-    "simple background",
-    "mid torso crop, lower torso, waist focus, hips visible, head out of frame",
-    "from side or behind",
-    "first-person POV, one male arm, male arm around her waist",
-    "NO both arms, NO both hands",
+export function defaultKneadPrompt(stage = "stranger") {
+  return composeTeaseExtra("tease_breast_knead", stage, "") || [
+    "simple background, white background",
+    "breasts focus, chest crop, upper torso, head out of frame",
+    "first-person POV, male hands kneading breasts, squeezing breasts",
+    "NO face, NO head",
   ].join(", ");
 }
 
 /** 局部繪圖負向：排除頭／臉／表情與常見瑕疵。 */
-export function defaultWaistNegative() {
+export function defaultKneadNegative() {
   return [
-    "head, face, hair, eyes, smile, looking back, looking at viewer, portrait, upper body",
-    "text, watermark, ugly, extra fingers, both arms, both hands, two hands",
+    "head, face, hair, eyes, smile, looking at viewer, portrait",
+    "text, watermark, ugly, extra fingers",
   ].join(", ");
 }
 
-export function emptyWaistPack(name = "摟腰圖組") {
+export function emptyKneadPack(name = "揉奶圖組") {
   return {
     id: uid(),
-    name: String(name || "摟腰圖組").slice(0, 40),
+    name: String(name || "揉奶圖組").slice(0, 40),
     poseDenoise: 0.55,
-    prompt: defaultWaistPrompt(),
-    negative: defaultWaistNegative(),
+    prompt: defaultKneadPrompt(),
+    negative: defaultKneadNegative(),
     ref: "",
     url: "",
     updated: Date.now(),
   };
 }
 
-export function normalizeWaistPack(raw) {
-  const base = emptyWaistPack();
+export function normalizeKneadPack(raw) {
+  const base = emptyKneadPack();
   const s = raw && typeof raw === "object" ? raw : {};
   const slot = s.slot && typeof s.slot === "object" ? s.slot : null;
   return {
@@ -62,17 +61,17 @@ export function normalizeWaistPack(raw) {
   };
 }
 
-export function normalizeWaistDoc(raw) {
+export function normalizeKneadDoc(raw) {
   const src = raw && typeof raw === "object" ? raw : {};
-  const packs = (Array.isArray(src.packs) ? src.packs : []).map(normalizeWaistPack).filter((p) => p.id);
+  const packs = (Array.isArray(src.packs) ? src.packs : []).map(normalizeKneadPack).filter((p) => p.id);
   let activeId = String(src.activeId || "");
   if (packs.length && !packs.some((p) => p.id === activeId)) activeId = packs[0].id;
   if (!packs.length) activeId = "";
   return { packs, activeId };
 }
 
-export function pickRandomWaistPack(packs) {
-  const list = (Array.isArray(packs) ? packs : []).map(normalizeWaistPack).filter((p) => p.id);
+export function pickRandomKneadPack(packs) {
+  const list = (Array.isArray(packs) ? packs : []).map(normalizeKneadPack).filter((p) => p.id);
   if (!list.length) return null;
   return list[Math.floor(Math.random() * list.length)];
 }
@@ -129,14 +128,14 @@ function wornOutfit(g) {
   return String(look.career_outfit || look.style || "");
 }
 
-export async function fetchWaistBasePrompt(girl, eng = {}) {
+export async function fetchKneadBasePrompt(girl, eng = {}) {
   if (!girl) throw new Error("先選魅子");
   const comfy = (eng.imgProvider || "grok-img") === "comfy";
   const body = {
-    key: `waist-base:${girl.id || "x"}:${Date.now().toString(36)}`,
+    key: `knead-base:${girl.id || "x"}:${Date.now().toString(36)}`,
     provider: comfy ? "comfy" : "grok-img",
     model: comfy ? (eng.imgModel || "grok-4.5") : (eng.imgModel || "grok-4.5"),
-    framing: teaseFraming("tease_waist"),
+    framing: teaseFraming("tease_breast_knead"),
     rating: "nsfw",
     style: eng.imgStyle || "pixel",
     character: girl,
@@ -147,7 +146,7 @@ export async function fetchWaistBasePrompt(girl, eng = {}) {
     cutout: false,
     lock_identity: true,
     scene_kind: "tease",
-    shot: "tease_waist",
+    shot: "tease_breast_knead",
     ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: resolveComfyCkpt(girl, eng) } : {}),
   };
   const r = await fetch("/api/imggen/preview", {
@@ -167,28 +166,28 @@ export async function fetchWaistBasePrompt(girl, eng = {}) {
 }
 
 /**
- * 組摟腰生圖下單。有 pack → 用組內「動作」prompt／ref／denoise；
+ * 組揉奶生圖下單。有 pack → 用組內「動作」prompt／ref／denoise；
  * pack 為 null 時呼叫端應略過生圖（無硬編碼退回）。
  * 契約：pack.prompt = 動作／裁切 only；執行時 character+outfit+extra(action)+girl ckpt。
  */
-export function buildWaistImgBody(pack, girl, eng = {}, opts = {}) {
+export function buildKneadImgBody(pack, girl, eng = {}, opts = {}) {
   if (!girl) throw new Error("先選魅子");
   const comfy = (eng.imgProvider || "grok-img") === "comfy";
   const stage = String(opts.stage || girl.stage || "stranger");
   const worn = opts.worn != null ? opts.worn : wornOutfit(girl);
-  const p = pack ? normalizeWaistPack(pack) : null;
+  const p = pack ? normalizeKneadPack(pack) : null;
   const action = p
     ? String(p.prompt || "").trim()
-    : composeTeaseExtra("tease_waist", stage, worn);
-  const userNeg = p ? String(p.negative || "").trim() : defaultWaistNegative();
+    : composeTeaseExtra("tease_breast_knead", stage, worn);
+  const userNeg = p ? String(p.negative || "").trim() : defaultKneadNegative();
   const ref = p ? String(p.ref || "").trim() : "";
   const denoise = p ? clampDenoise(p.poseDenoise) : 0.55;
   const ckpt = comfy ? resolveComfyCkpt(girl, eng) : "";
   return {
-    key: `room-waist:${girl.id || "x"}:${Date.now().toString(36)}`,
+    key: `room-knead:${girl.id || "x"}:${Date.now().toString(36)}`,
     provider: comfy ? "comfy" : "grok-img",
     model: eng.imgModel || "grok-4.5",
-    framing: teaseFraming("tease_waist"),
+    framing: teaseFraming("tease_breast_knead"),
     rating: "nsfw",
     style: eng.imgStyle || "pixel",
     character: girl,
@@ -203,7 +202,7 @@ export function buildWaistImgBody(pack, girl, eng = {}, opts = {}) {
     lock_identity: true,
     retry: true,
     scene_kind: "tease",
-    shot: "tease_waist",
+    shot: "tease_breast_knead",
     char_id: girl.id,
     ...(ref ? { pose_ref: ref, pose_denoise: denoise } : {}),
     ...(comfy ? {
@@ -213,37 +212,37 @@ export function buildWaistImgBody(pack, girl, eng = {}, opts = {}) {
   };
 }
 
-const WAIST_LOAD_HINT = "讀不到摟腰圖組（/api/waist-packs）。請 pull 最新 grok-telephon 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）";
-const WAIST_SAVE_HINT = "伺服器未重啟，無法儲存摟腰圖組（PUT /api/waist-packs）。請 pull 最新 grok-telephon 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）";
+const KNEAD_LOAD_HINT = "讀不到揉奶圖組（/api/knead-packs）。請 pull 最新 grok-telephon 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）";
+const KNEAD_SAVE_HINT = "伺服器未重啟，無法儲存揉奶圖組（PUT /api/knead-packs）。請 pull 最新 grok-telephon 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）";
 
-export async function loadWaistDoc() {
+export async function loadKneadDoc() {
   let r;
   try {
     r = await fetch(API + "?ts=" + Date.now(), { cache: "no-store" });
   } catch {
-    return loadWaistDocStatic();
+    return loadKneadDocStatic();
   }
   const j = await r.json().catch(() => ({}));
-  if (r.ok) return normalizeWaistDoc(j);
+  if (r.ok) return normalizeKneadDoc(j);
   if (r.status !== 404) {
     throw new Error(formatApiError("GET", API, j.detail || j.error || r.status));
   }
-  return loadWaistDocStatic();
+  return loadKneadDocStatic();
 }
 
-async function loadWaistDocStatic() {
+async function loadKneadDocStatic() {
   try {
-    const r = await fetch("/content/waist_packs.json?ts=" + Date.now(), { cache: "no-store" });
+    const r = await fetch("/content/knead_packs.json?ts=" + Date.now(), { cache: "no-store" });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(formatApiError("GET", "/content/waist_packs.json", j.detail || j.error || r.status));
-    return normalizeWaistDoc(j);
+    if (!r.ok) throw new Error(formatApiError("GET", "/content/knead_packs.json", j.detail || j.error || r.status));
+    return normalizeKneadDoc(j);
   } catch {
-    throw new Error(WAIST_LOAD_HINT);
+    throw new Error(KNEAD_LOAD_HINT);
   }
 }
 
-export async function saveWaistDoc(doc) {
-  const body = normalizeWaistDoc(doc);
+export async function saveKneadDoc(doc) {
+  const body = normalizeKneadDoc(doc);
   const r = await fetch(API, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -251,7 +250,7 @@ export async function saveWaistDoc(doc) {
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
-    if (r.status === 404) throw new Error(WAIST_SAVE_HINT);
+    if (r.status === 404) throw new Error(KNEAD_SAVE_HINT);
     throw new Error(formatApiError("PUT", API, j.detail || j.error || r.status));
   }
   return body;
@@ -261,11 +260,11 @@ export async function saveWaistDoc(doc) {
 let _cache = null;
 let _cacheAt = 0;
 
-export async function getWaistPacksCached(force = false) {
+export async function getKneadPacksCached(force = false) {
   const now = Date.now();
   if (!force && _cache && now - _cacheAt < 15000) return _cache;
   try {
-    _cache = await loadWaistDoc();
+    _cache = await loadKneadDoc();
     _cacheAt = now;
   } catch {
     if (!_cache) _cache = { packs: [], activeId: "" };
@@ -273,15 +272,15 @@ export async function getWaistPacksCached(force = false) {
   return _cache;
 }
 
-export function invalidateWaistCache() {
+export function invalidateKneadCache() {
   _cache = null;
   _cacheAt = 0;
 }
 
 /** 隨機一組；無組回 null（呼叫端走硬編碼）。 */
-export async function pickRuntimeWaistPack() {
-  const doc = await getWaistPacksCached();
-  return pickRandomWaistPack(doc.packs);
+export async function pickRuntimeKneadPack() {
+  const doc = await getKneadPacksCached();
+  return pickRandomKneadPack(doc.packs);
 }
 
 function $(id) {
@@ -328,12 +327,12 @@ async function waitImg(body, onTick, ms = 360000) {
 }
 
 /**
- * 摟腰生圖（編輯器／預產／執行時共用）。
- * comfy 時 buildWaistImgBody → resolveComfyCkpt 會丟「尚未綁定」；
+ * 揉奶生圖（編輯器／預產／執行時共用）。
+ * comfy 時 buildKneadImgBody → resolveComfyCkpt 會丟「尚未綁定」；
  * 不寫入 pack.url（呼叫端決定）。回傳 { status, result, error, body, … }。
  */
-export async function generateWaistPackImage(pack, girl, eng, opts = {}) {
-  const body = buildWaistImgBody(pack, girl, eng, opts);
+export async function generateKneadPackImage(pack, girl, eng, opts = {}) {
+  const body = buildKneadImgBody(pack, girl, eng, opts);
   const r = await waitImg(body, opts.onTick);
   return {
     status: r.status,
@@ -345,12 +344,12 @@ export async function generateWaistPackImage(pack, girl, eng, opts = {}) {
 }
 
 /**
- * 掛載房間編輯器內的「摟腰圖」面板。
+ * 掛載房間編輯器內的「揉奶圖」面板。
  * @param {{ getGirl: () => object|null, getEngine: () => Promise<object> }} hooks
  */
-export function mountWaistPackEditor(hooks = {}) {
-  const openBtn = $("btn-waist-packs");
-  const panel = $("waist-pack-editor");
+export function mountKneadPackEditor(hooks = {}) {
+  const openBtn = $("btn-knead-packs");
+  const panel = $("knead-pack-editor");
   if (!openBtn || !panel || panel.dataset.bound) return;
   panel.dataset.bound = "1";
 
@@ -360,7 +359,7 @@ export function mountWaistPackEditor(hooks = {}) {
   let girlId = "";
 
   const setStatus = (msg, err = false) => {
-    const el = $("wp-status");
+    const el = $("kn-status");
     if (!el) return;
     el.textContent = msg || "";
     el.classList.toggle("err", !!err);
@@ -369,7 +368,7 @@ export function mountWaistPackEditor(hooks = {}) {
   const activePack = () => doc.packs.find((p) => p.id === activeId) || doc.packs[0] || null;
 
   const renderPacks = () => {
-    const sel = $("wp-pack");
+    const sel = $("kn-pack");
     if (!sel) return;
     if (!doc.packs.some((p) => p.id === activeId) && doc.packs[0]) activeId = doc.packs[0].id;
     sel.innerHTML = doc.packs.length
@@ -379,7 +378,7 @@ export function mountWaistPackEditor(hooks = {}) {
   };
 
   const renderGirls = () => {
-    const sel = $("wp-girl");
+    const sel = $("kn-girl");
     if (!sel) return;
     const live = hooks.getGirl?.();
     if (live?.id && !girls.some((g) => g.id === live.id)) {
@@ -401,22 +400,22 @@ export function mountWaistPackEditor(hooks = {}) {
   const renderForm = () => {
     const p = activePack();
     if (!p) {
-      if ($("wp-name")) $("wp-name").value = "";
-      if ($("wp-pos")) $("wp-pos").value = "";
-      if ($("wp-neg")) $("wp-neg").value = "";
-      if ($("wp-denoise")) $("wp-denoise").value = "0.55";
-      if ($("wp-ref-flag")) $("wp-ref-flag").textContent = "沒有參考圖 → 文生圖";
-      if ($("wp-art")) $("wp-art").innerHTML = `<span class="mini">尚無圖組</span>`;
+      if ($("kn-name")) $("kn-name").value = "";
+      if ($("kn-pos")) $("kn-pos").value = "";
+      if ($("kn-neg")) $("kn-neg").value = "";
+      if ($("kn-denoise")) $("kn-denoise").value = "0.55";
+      if ($("kn-ref-flag")) $("kn-ref-flag").textContent = "沒有參考圖 → 文生圖";
+      if ($("kn-art")) $("kn-art").innerHTML = `<span class="mini">尚無圖組</span>`;
       updateRefFlag();
       return;
     }
-    if ($("wp-name")) $("wp-name").value = p.name || "";
-    if ($("wp-pos")) $("wp-pos").value = p.prompt || "";
-    if ($("wp-neg")) $("wp-neg").value = p.negative || "";
-    if ($("wp-denoise")) $("wp-denoise").value = String(p.poseDenoise ?? 0.55);
-    if ($("wp-art")) {
-      $("wp-art").innerHTML = p.url
-        ? `<img src="${esc(p.url)}" alt="waist">`
+    if ($("kn-name")) $("kn-name").value = p.name || "";
+    if ($("kn-pos")) $("kn-pos").value = p.prompt || "";
+    if ($("kn-neg")) $("kn-neg").value = p.negative || "";
+    if ($("kn-denoise")) $("kn-denoise").value = String(p.poseDenoise ?? 0.55);
+    if ($("kn-art")) {
+      $("kn-art").innerHTML = p.url
+        ? `<img src="${esc(p.url)}" alt="knead">`
         : `<span class="mini">尚未產生</span>`;
     }
     updateRefFlag();
@@ -425,12 +424,12 @@ export function mountWaistPackEditor(hooks = {}) {
   const updateRefFlag = () => {
     const p = activePack();
     const ref = p?.ref || "";
-    const flag = $("wp-mode-flag");
-    const refFlag = $("wp-ref-flag");
-    const thumb = $("wp-ref-thumb");
+    const flag = $("kn-mode-flag");
+    const refFlag = $("kn-ref-flag");
+    const thumb = $("kn-ref-thumb");
     if (flag) {
       flag.textContent = ref ? "圖生圖（pose_ref）" : "文生圖";
-      flag.className = "wp-mode-flag " + (ref ? "img" : "txt");
+      flag.className = "kn-mode-flag " + (ref ? "img" : "txt");
     }
     if (refFlag) refFlag.textContent = ref ? ("已掛 " + ref) : "沒有參考圖 → 文生圖";
     if (thumb) {
@@ -447,10 +446,10 @@ export function mountWaistPackEditor(hooks = {}) {
   const collectForm = () => {
     const p = activePack();
     if (!p) return;
-    p.name = String($("wp-name")?.value || p.name || "摟腰圖組").slice(0, 40);
-    p.prompt = $("wp-pos")?.value || "";
-    p.negative = $("wp-neg")?.value || "";
-    p.poseDenoise = clampDenoise($("wp-denoise")?.value);
+    p.name = String($("kn-name")?.value || p.name || "揉奶圖組").slice(0, 40);
+    p.prompt = $("kn-pos")?.value || "";
+    p.negative = $("kn-neg")?.value || "";
+    p.poseDenoise = clampDenoise($("kn-denoise")?.value);
     p.updated = Date.now();
     doc.activeId = p.id;
     activeId = p.id;
@@ -459,7 +458,7 @@ export function mountWaistPackEditor(hooks = {}) {
   const load = async () => {
     setStatus("讀取中…");
     try {
-      doc = await loadWaistDoc();
+      doc = await loadKneadDoc();
       activeId = doc.activeId || doc.packs[0]?.id || "";
       renderPacks();
       renderForm();
@@ -486,12 +485,12 @@ export function mountWaistPackEditor(hooks = {}) {
     const btn0 = $("btn-butt-packs");
     if (el0 && !el0.hidden) el0.hidden = true;
     if (btn0) btn0.setAttribute("aria-expanded", "false");
-    const el1 = $("breast-pack-editor");
-    const btn1 = $("btn-breast-packs");
+    const el1 = $("waist-pack-editor");
+    const btn1 = $("btn-waist-packs");
     if (el1 && !el1.hidden) el1.hidden = true;
     if (btn1) btn1.setAttribute("aria-expanded", "false");
-    const el2 = $("knead-pack-editor");
-    const btn2 = $("btn-knead-packs");
+    const el2 = $("breast-pack-editor");
+    const btn2 = $("btn-breast-packs");
     if (el2 && !el2.hidden) el2.hidden = true;
     if (btn2) btn2.setAttribute("aria-expanded", "false");
     const el3 = $("suck-pack-editor");
@@ -518,22 +517,22 @@ export function mountWaistPackEditor(hooks = {}) {
     else close();
   });
 
-  $("wp-close")?.addEventListener("click", () => close());
+  $("kn-close")?.addEventListener("click", () => close());
 
-  $("wp-pack")?.addEventListener("change", () => {
+  $("kn-pack")?.addEventListener("change", () => {
     collectForm();
-    activeId = $("wp-pack").value;
+    activeId = $("kn-pack").value;
     doc.activeId = activeId;
     renderForm();
   });
 
-  $("wp-girl")?.addEventListener("change", () => {
-    girlId = $("wp-girl").value;
+  $("kn-girl")?.addEventListener("change", () => {
+    girlId = $("kn-girl").value;
   });
 
-  $("wp-new")?.addEventListener("click", () => {
+  $("kn-new")?.addEventListener("click", () => {
     collectForm();
-    const p = emptyWaistPack("摟腰 " + (doc.packs.length + 1));
+    const p = emptyKneadPack("揉奶 " + (doc.packs.length + 1));
     doc.packs.push(p);
     activeId = p.id;
     doc.activeId = p.id;
@@ -542,10 +541,10 @@ export function mountWaistPackEditor(hooks = {}) {
     setStatus("已新增（記得按儲存）");
   });
 
-  $("wp-del")?.addEventListener("click", () => {
+  $("kn-del")?.addEventListener("click", () => {
     if (!doc.packs.length) return;
     if (doc.packs.length <= 1) {
-      if (!confirm("刪掉最後一組？刪掉後執行摟腰不會生圖。")) return;
+      if (!confirm("刪掉最後一組？刪掉後執行揉奶不會生圖。")) return;
     } else if (!confirm("刪除這一組？")) return;
     collectForm();
     doc.packs = doc.packs.filter((p) => p.id !== activeId);
@@ -556,21 +555,21 @@ export function mountWaistPackEditor(hooks = {}) {
     setStatus("已刪除（記得按儲存）");
   });
 
-  $("wp-save")?.addEventListener("click", async () => {
+  $("kn-save")?.addEventListener("click", async () => {
     collectForm();
     try {
-      doc = await saveWaistDoc(doc);
-      invalidateWaistCache();
+      doc = await saveKneadDoc(doc);
+      invalidateKneadCache();
       activeId = doc.activeId || doc.packs[0]?.id || "";
       renderPacks();
       renderForm();
-      setStatus(`✓ 已寫入 waist_packs.json（${doc.packs.length} 組）`);
+      setStatus(`✓ 已寫入 knead_packs.json（${doc.packs.length} 組）`);
     } catch (e) {
       setStatus("儲存失敗：" + e.message, true);
     }
   });
 
-  $("wp-inject")?.addEventListener("click", async () => {
+  $("kn-inject")?.addEventListener("click", async () => {
     const g = currentGirl();
     if (!g) {
       setStatus("先選魅子或抽一隻進房", true);
@@ -578,12 +577,12 @@ export function mountWaistPackEditor(hooks = {}) {
     }
     try {
       const stage = g.stage || "stranger";
-      const action = defaultWaistPrompt(stage);
-      const posEl = $("wp-pos");
-      const negEl = $("wp-neg");
+      const action = defaultKneadPrompt(stage);
+      const posEl = $("kn-pos");
+      const negEl = $("kn-neg");
       // 只填動作／裁切預設；人設與模型於生圖時由 live girl 帶入，不烤進組
       if (posEl) posEl.value = action;
-      if (negEl && !String(negEl.value || "").trim()) negEl.value = defaultWaistNegative();
+      if (negEl && !String(negEl.value || "").trim()) negEl.value = defaultKneadNegative();
       collectForm();
       const worn = wornOutfit(g);
       const ck = girlOwnCkpt(g);
@@ -598,8 +597,8 @@ export function mountWaistPackEditor(hooks = {}) {
     }
   });
 
-  $("wp-ref-up")?.addEventListener("click", () => $("wp-ref-file")?.click());
-  $("wp-ref-file")?.addEventListener("change", async (e) => {
+  $("kn-ref-up")?.addEventListener("click", () => $("kn-ref-file")?.click());
+  $("kn-ref-file")?.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     const p = activePack();
@@ -619,7 +618,7 @@ export function mountWaistPackEditor(hooks = {}) {
     }
   });
 
-  $("wp-ref-clear")?.addEventListener("click", () => {
+  $("kn-ref-clear")?.addEventListener("click", () => {
     const p = activePack();
     if (!p) return;
     p.ref = "";
@@ -627,10 +626,10 @@ export function mountWaistPackEditor(hooks = {}) {
     setStatus("已拿掉參考圖");
   });
 
-  $("wp-ref-apply")?.addEventListener("click", () => {
+  $("kn-ref-apply")?.addEventListener("click", () => {
     const p = activePack();
     if (!p) return;
-    const url = String($("wp-ref-url")?.value || "").trim();
+    const url = String($("kn-ref-url")?.value || "").trim();
     if (!url) {
       setStatus("先貼 URL", true);
       return;
@@ -640,7 +639,7 @@ export function mountWaistPackEditor(hooks = {}) {
     setStatus("✓ 已套用 URL");
   });
 
-  $("wp-gen")?.addEventListener("click", async () => {
+  $("kn-gen")?.addEventListener("click", async () => {
     collectForm();
     const p = activePack();
     const g = currentGirl();
@@ -652,28 +651,28 @@ export function mountWaistPackEditor(hooks = {}) {
       setStatus("先選魅子或抽一隻進房", true);
       return;
     }
-    const btn = $("wp-gen");
+    const btn = $("kn-gen");
     if (btn) btn.disabled = true;
-    if ($("wp-art")) $("wp-art").innerHTML = `<span class="mini">生成中…</span>`;
+    if ($("kn-art")) $("kn-art").innerHTML = `<span class="mini">生成中…</span>`;
     setStatus("排隊中…");
     try {
       const eng = (await hooks.getEngine?.()) || { imgProvider: "comfy", imgStyle: "pixel" };
-      const r = await generateWaistPackImage(p, g, eng, {
+      const r = await generateKneadPackImage(p, g, eng, {
         stage: g.stage || "stranger",
         onTick: (sec) => setStatus(`生成中… ${sec}s`),
       });
       if (r.status === "done" && r.result) {
         const url = String(r.result);
         p.url = url;
-        if ($("wp-art")) {
-          $("wp-art").innerHTML = `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}?t=${Date.now()}" alt="result"></a>`;
+        if ($("kn-art")) {
+          $("kn-art").innerHTML = `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}?t=${Date.now()}" alt="result"></a>`;
         }
         setStatus("✓ 測試生圖完成（記得按儲存）");
       } else {
         throw new Error(r.error || "生圖失敗");
       }
     } catch (e) {
-      if ($("wp-art")) $("wp-art").innerHTML = `<span class="mini">失敗</span>`;
+      if ($("kn-art")) $("kn-art").innerHTML = `<span class="mini">失敗</span>`;
       setStatus(e.message, true);
     } finally {
       if (btn) btn.disabled = false;

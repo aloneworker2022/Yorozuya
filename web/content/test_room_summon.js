@@ -15,7 +15,7 @@ import {
   LIBIDO_STAGE,
   arousalStage,
   libidoStage,
-} from "./body_state.js?v=9";
+} from "./body_state.js?v=10";
 import {
   effectiveStun,
   calcStun,
@@ -89,6 +89,24 @@ import {
   loadWaistDoc,
   generateWaistPackImage,
 } from "./waist_packs.js?v=4";
+import {
+  mountBreastPackEditor,
+  pickRuntimeBreastPack,
+  loadBreastDoc,
+  generateBreastPackImage,
+} from "./breast_packs.js?v=1";
+import {
+  mountKneadPackEditor,
+  pickRuntimeKneadPack,
+  loadKneadDoc,
+  generateKneadPackImage,
+} from "./knead_packs.js?v=1";
+import {
+  mountSuckPackEditor,
+  pickRuntimeSuckPack,
+  loadSuckDoc,
+  generateSuckPackImage,
+} from "./suck_packs.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -492,6 +510,9 @@ function startPortraitEntrance(img) {
 
 const buttGenning = new Set();
 const waistGenning = new Set();
+const breastGenning = new Set();
+const kneadGenning = new Set();
+const suckGenning = new Set();
 let pregenning = false;
 
 function stampPortraitUrl(url) {
@@ -500,13 +521,13 @@ function stampPortraitUrl(url) {
   return s.includes("?") ? s : `${s}?v=${Date.now()}`;
 }
 
-/** 動作閃現層：左滑入 → 停 1.5s → 右滑出；不永久蓋掉立繪。 */
+/** 動作閃現層：左滑入 → 停 1s → 右滑出；不永久蓋掉立繪。 */
 let actionFlashToken = 0;
 let actionFlashTimer = 0;
 let actionFlashLoadCancel = null;
 let actionFlashTransitionCancel = null;
 const ACTION_FLASH_ENTER_MS = 500;
-const ACTION_FLASH_HOLD_MS = 1500;
+const ACTION_FLASH_HOLD_MS = 1000;
 const ACTION_FLASH_EXIT_MS = 550;
 
 function cancelActionFlashLoad() {
@@ -725,7 +746,115 @@ async function maybeGenWaistShot(who, actId) {
   }
 }
 
-/** 預產圖：半身＋各摸臀組＋各摟腰組（寫入 who.portraits，不寫 pack.json）。走 pack 模組 generate*。 */
+/** 摸奶：僅在有存檔圖組時；先用 per-girl 預產圖，缺才 live gen。 */
+async function maybeGenBreastShot(who, actId) {
+  if (actId !== "breast" || !who?.id) return;
+  if (breastGenning.has(who.id)) return;
+  breastGenning.add(who.id);
+  try {
+    const pack = await pickRuntimeBreastPack();
+    if (!pack) return;
+    who.portraits = who.portraits || {};
+    const cached = String(who.portraits.tease_breast_packs?.[pack.id] || "");
+    if (cached) {
+      showTeasePortrait(who, "tease_breast", cached, `${who.name}的摸奶圖`);
+      return;
+    }
+    const engine = await gameImgRoute();
+    await ensureGirlComfyCkpt(who);
+    const result = await generateBreastPackImage(pack, who, engine, {
+      stage: who.stage || "stranger",
+      worn: wornOutfit(who),
+    });
+    if (result?.status === "done" && result.result) {
+      const stamped = stampPortraitUrl(result.result);
+      who.portraits.tease_breast_packs = who.portraits.tease_breast_packs || {};
+      who.portraits.tease_breast_packs[pack.id] = stamped;
+      showTeasePortrait(who, "tease_breast", stamped, `${who.name}的摸奶圖`);
+      persistRoom();
+    } else if (result?.status === "error") {
+      console.warn("[maybeGenBreastShot]", result.error || "生圖失敗");
+    }
+  } catch (err) {
+    console.warn("[maybeGenBreastShot]", err?.message || err);
+  } finally {
+    breastGenning.delete(who.id);
+  }
+}
+
+/** 揉奶：僅在有存檔圖組時；先用 per-girl 預產圖，缺才 live gen。 */
+async function maybeGenKneadShot(who, actId) {
+  if (actId !== "breast_knead" || !who?.id) return;
+  if (kneadGenning.has(who.id)) return;
+  kneadGenning.add(who.id);
+  try {
+    const pack = await pickRuntimeKneadPack();
+    if (!pack) return;
+    who.portraits = who.portraits || {};
+    const cached = String(who.portraits.tease_breast_knead_packs?.[pack.id] || "");
+    if (cached) {
+      showTeasePortrait(who, "tease_breast_knead", cached, `${who.name}的揉奶圖`);
+      return;
+    }
+    const engine = await gameImgRoute();
+    await ensureGirlComfyCkpt(who);
+    const result = await generateKneadPackImage(pack, who, engine, {
+      stage: who.stage || "stranger",
+      worn: wornOutfit(who),
+    });
+    if (result?.status === "done" && result.result) {
+      const stamped = stampPortraitUrl(result.result);
+      who.portraits.tease_breast_knead_packs = who.portraits.tease_breast_knead_packs || {};
+      who.portraits.tease_breast_knead_packs[pack.id] = stamped;
+      showTeasePortrait(who, "tease_breast_knead", stamped, `${who.name}的揉奶圖`);
+      persistRoom();
+    } else if (result?.status === "error") {
+      console.warn("[maybeGenKneadShot]", result.error || "生圖失敗");
+    }
+  } catch (err) {
+    console.warn("[maybeGenKneadShot]", err?.message || err);
+  } finally {
+    kneadGenning.delete(who.id);
+  }
+}
+
+/** 吸奶頭：僅在有存檔圖組時；先用 per-girl 預產圖，缺才 live gen。 */
+async function maybeGenSuckShot(who, actId) {
+  if (actId !== "breast_suck" || !who?.id) return;
+  if (suckGenning.has(who.id)) return;
+  suckGenning.add(who.id);
+  try {
+    const pack = await pickRuntimeSuckPack();
+    if (!pack) return;
+    who.portraits = who.portraits || {};
+    const cached = String(who.portraits.tease_breast_suck_packs?.[pack.id] || "");
+    if (cached) {
+      showTeasePortrait(who, "tease_breast_suck", cached, `${who.name}的吸奶頭圖`);
+      return;
+    }
+    const engine = await gameImgRoute();
+    await ensureGirlComfyCkpt(who);
+    const result = await generateSuckPackImage(pack, who, engine, {
+      stage: who.stage || "stranger",
+      worn: wornOutfit(who),
+    });
+    if (result?.status === "done" && result.result) {
+      const stamped = stampPortraitUrl(result.result);
+      who.portraits.tease_breast_suck_packs = who.portraits.tease_breast_suck_packs || {};
+      who.portraits.tease_breast_suck_packs[pack.id] = stamped;
+      showTeasePortrait(who, "tease_breast_suck", stamped, `${who.name}的吸奶頭圖`);
+      persistRoom();
+    } else if (result?.status === "error") {
+      console.warn("[maybeGenSuckShot]", result.error || "生圖失敗");
+    }
+  } catch (err) {
+    console.warn("[maybeGenSuckShot]", err?.message || err);
+  } finally {
+    suckGenning.delete(who.id);
+  }
+}
+
+/** 預產圖：半身＋各摸臀／摟腰／摸奶／揉奶／吸奶頭組（寫入 who.portraits，不寫 pack.json）。走 pack 模組 generate*。 */
 async function pregenGirlPortraits() {
   if (!girl || sheIsOut()) return;
   if (pregenning) return;
@@ -736,6 +865,9 @@ async function pregenGirlPortraits() {
   if (btn) btn.disabled = true;
   let buttCount = 0;
   let waistCount = 0;
+  let breastCount = 0;
+  let kneadCount = 0;
+  let suckCount = 0;
   let halfOk = false;
   try {
     await ensureGirlComfyCkpt(who);
@@ -756,64 +888,75 @@ async function pregenGirlPortraits() {
     who.portraits = who.portraits || {};
     who.portraits.tease_butt_packs = who.portraits.tease_butt_packs || {};
     who.portraits.tease_waist_packs = who.portraits.tease_waist_packs || {};
+    who.portraits.tease_breast_packs = who.portraits.tease_breast_packs || {};
+    who.portraits.tease_breast_knead_packs = who.portraits.tease_breast_knead_packs || {};
+    who.portraits.tease_breast_suck_packs = who.portraits.tease_breast_suck_packs || {};
 
     const buttDoc = await loadButtDoc();
     const buttPacks = Array.isArray(buttDoc?.packs) ? buttDoc.packs : [];
-
-    for (let i = 0; i < buttPacks.length; i++) {
-      const pack = buttPacks[i];
-      if (!pack?.id) continue;
-      if (status) status.textContent = `預產圖：摸臀工作流 ${i + 1}/${buttPacks.length}…`;
-      const result = await generateButtPackImage(pack, who, engine, {
-        stage: who.stage || "stranger",
-        worn: wornOutfit(who),
-        onTick: (sec) => {
-          if (status) status.textContent = `預產圖：摸臀工作流 ${i + 1}/${buttPacks.length}… ${sec}s`;
-        },
-      });
-      if (result?.status === "done" && result.result) {
-        const stamped = stampPortraitUrl(result.result);
-        who.portraits.tease_butt_packs[pack.id] = stamped;
-        who.portraits.tease_butt = stamped;
-        buttCount += 1;
-        persistRoom();
-      } else {
-        throw new Error(result?.error || `摸臀圖組「${pack.name || pack.id}」生圖失敗`);
-      }
-    }
-
     const waistDoc = await loadWaistDoc();
     const waistPacks = Array.isArray(waistDoc?.packs) ? waistDoc.packs : [];
-    if (!buttPacks.length && !waistPacks.length) {
-      if (status) status.textContent = "半身好了。尚未存摸臀／摟腰圖組工作流——先開右下「摸臀圖」「摟腰圖」新增並儲存，再預產。";
-      return;
-    }
-    for (let i = 0; i < waistPacks.length; i++) {
-      const pack = waistPacks[i];
-      if (!pack?.id) continue;
-      if (status) status.textContent = `預產圖：摟腰工作流 ${i + 1}/${waistPacks.length}…`;
-      const result = await generateWaistPackImage(pack, who, engine, {
-        stage: who.stage || "stranger",
-        worn: wornOutfit(who),
-        onTick: (sec) => {
-          if (status) status.textContent = `預產圖：摟腰工作流 ${i + 1}/${waistPacks.length}… ${sec}s`;
-        },
-      });
-      if (result?.status === "done" && result.result) {
-        const stamped = stampPortraitUrl(result.result);
-        who.portraits.tease_waist_packs[pack.id] = stamped;
-        who.portraits.tease_waist = stamped;
-        waistCount += 1;
-        persistRoom();
-      } else {
-        throw new Error(result?.error || `摟腰圖組「${pack.name || pack.id}」生圖失敗`);
+    const breastDoc = await loadBreastDoc();
+    const breastPacks = Array.isArray(breastDoc?.packs) ? breastDoc.packs : [];
+    const kneadDoc = await loadKneadDoc();
+    const kneadPacks = Array.isArray(kneadDoc?.packs) ? kneadDoc.packs : [];
+    const suckDoc = await loadSuckDoc();
+    const suckPacks = Array.isArray(suckDoc?.packs) ? suckDoc.packs : [];
+
+    async function runPackLoop(packs, label, generateFn, packsKey, shotKey, counterRef) {
+      for (let i = 0; i < packs.length; i++) {
+        const pack = packs[i];
+        if (!pack?.id) continue;
+        if (status) status.textContent = `預產圖：${label}工作流 ${i + 1}/${packs.length}…`;
+        const result = await generateFn(pack, who, engine, {
+          stage: who.stage || "stranger",
+          worn: wornOutfit(who),
+          onTick: (sec) => {
+            if (status) status.textContent = `預產圖：${label}工作流 ${i + 1}/${packs.length}… ${sec}s`;
+          },
+        });
+        if (result?.status === "done" && result.result) {
+          const stamped = stampPortraitUrl(result.result);
+          who.portraits[packsKey][pack.id] = stamped;
+          who.portraits[shotKey] = stamped;
+          counterRef.n += 1;
+          persistRoom();
+        } else {
+          throw new Error(result?.error || `${label}圖組「${pack.name || pack.id}」生圖失敗`);
+        }
       }
+    }
+
+    const buttRef = { n: 0 };
+    const waistRef = { n: 0 };
+    const breastRef = { n: 0 };
+    const kneadRef = { n: 0 };
+    const suckRef = { n: 0 };
+
+    await runPackLoop(buttPacks, "摸臀", generateButtPackImage, "tease_butt_packs", "tease_butt", buttRef);
+    await runPackLoop(waistPacks, "摟腰", generateWaistPackImage, "tease_waist_packs", "tease_waist", waistRef);
+    await runPackLoop(breastPacks, "摸奶", generateBreastPackImage, "tease_breast_packs", "tease_breast", breastRef);
+    await runPackLoop(kneadPacks, "揉奶", generateKneadPackImage, "tease_breast_knead_packs", "tease_breast_knead", kneadRef);
+    await runPackLoop(suckPacks, "吸奶頭", generateSuckPackImage, "tease_breast_suck_packs", "tease_breast_suck", suckRef);
+
+    buttCount = buttRef.n;
+    waistCount = waistRef.n;
+    breastCount = breastRef.n;
+    kneadCount = kneadRef.n;
+    suckCount = suckRef.n;
+
+    if (!buttPacks.length && !waistPacks.length && !breastPacks.length && !kneadPacks.length && !suckPacks.length) {
+      if (status) status.textContent = "半身好了。尚未存圖組工作流——先開右下「摸臀圖」「摟腰圖」「摸奶圖」「揉奶圖」「吸奶頭圖」新增並儲存，再預產。";
+      return;
     }
 
     const bits = [];
     if (halfOk) bits.push("半身");
     bits.push(`摸臀工作流×${buttCount}`);
     bits.push(`摟腰工作流×${waistCount}`);
+    bits.push(`摸奶工作流×${breastCount}`);
+    bits.push(`揉奶工作流×${kneadCount}`);
+    bits.push(`吸奶頭工作流×${suckCount}`);
     if (status) status.textContent = `預產圖完成（${bits.join("＋")}）`;
   } catch (err) {
     const message = String(err?.message || err || "未知錯誤");
@@ -827,6 +970,7 @@ async function pregenGirlPortraits() {
     if (btn) btn.disabled = false;
   }
 }
+
 
 function paintHalfPortrait(who = girl) {
   const img = $("portrait-img");
@@ -3933,6 +4077,9 @@ async function deliverUserTalk(text, opts = {}) {
         noteActShock(girl, opts.actId);
         if (opts.actId === "butt") void maybeGenButtShot(girl, opts.actId);
         if (opts.actId === "waist") void maybeGenWaistShot(girl, opts.actId);
+        if (opts.actId === "breast") void maybeGenBreastShot(girl, opts.actId);
+        if (opts.actId === "breast_knead") void maybeGenKneadShot(girl, opts.actId);
+        if (opts.actId === "breast_suck") void maybeGenSuckShot(girl, opts.actId);
         // 情感：一般挑逗不加；接近高潮／失神門檻才小幅＋1，痙攣／射精＋2
         const nearClimax = stunBefore >= 50 || arousalBefore >= 22
           || (girl.bodyState?.arousal || 0) >= 22
@@ -5840,16 +5987,43 @@ if (document.documentElement.classList.contains("room-page")) {
   } catch (err) {
     console.warn("[waist-pack-editor]", err?.message || err);
   }
+  try {
+    mountBreastPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[breast-pack-editor]", err?.message || err);
+  }
+  try {
+    mountKneadPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[knead-pack-editor]", err?.message || err);
+  }
+  try {
+    mountSuckPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[suck-pack-editor]", err?.message || err);
+  }
 }
 
 // 開「編輯」時收合浮動圖組面板（面板不依賴 room-editor，但避免重疊）
 $("edit-room")?.addEventListener("click", () => {
-  for (const id of ["butt-pack-editor", "waist-pack-editor"]) {
+  for (const id of ["butt-pack-editor", "waist-pack-editor", "breast-pack-editor", "knead-pack-editor", "suck-pack-editor"]) {
     const el = $(id);
     if (el) el.hidden = true;
   }
   $("btn-butt-packs")?.setAttribute("aria-expanded", "false");
   $("btn-waist-packs")?.setAttribute("aria-expanded", "false");
+  $("btn-breast-packs")?.setAttribute("aria-expanded", "false");
+  $("btn-knead-packs")?.setAttribute("aria-expanded", "false");
+  $("btn-suck-packs")?.setAttribute("aria-expanded", "false");
 });
 
 bindRoomSceneOverlay();

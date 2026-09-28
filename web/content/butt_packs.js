@@ -1,6 +1,6 @@
 /** 房間「摸臀」生圖預設組：多組命名存檔，執行時隨機抽一組；無組時退回硬編碼 tease_butt。 */
 
-import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=3";
+import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=4";
 
 const API = "/api/butt-packs";
 
@@ -481,10 +481,22 @@ export function mountButtPackEditor(hooks = {}) {
   };
 
   const closeSibling = () => {
-    const other = $("waist-pack-editor");
-    const otherBtn = $("btn-waist-packs");
-    if (other && !other.hidden) other.hidden = true;
-    if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
+    const el0 = $("waist-pack-editor");
+    const btn0 = $("btn-waist-packs");
+    if (el0 && !el0.hidden) el0.hidden = true;
+    if (btn0) btn0.setAttribute("aria-expanded", "false");
+    const el1 = $("breast-pack-editor");
+    const btn1 = $("btn-breast-packs");
+    if (el1 && !el1.hidden) el1.hidden = true;
+    if (btn1) btn1.setAttribute("aria-expanded", "false");
+    const el2 = $("knead-pack-editor");
+    const btn2 = $("btn-knead-packs");
+    if (el2 && !el2.hidden) el2.hidden = true;
+    if (btn2) btn2.setAttribute("aria-expanded", "false");
+    const el3 = $("suck-pack-editor");
+    const btn3 = $("btn-suck-packs");
+    if (el3 && !el3.hidden) el3.hidden = true;
+    if (btn3) btn3.setAttribute("aria-expanded", "false");
   };
 
   const open = async () => {

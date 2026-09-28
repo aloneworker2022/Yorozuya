@@ -435,7 +435,7 @@ export const TALK_ACTS = [
   { id: "breast_knead", label: "揉奶", text: "用力揉捏她的乳房", hitId: "breast", arousal: 5 },
   { id: "labia", label: "摸陰唇", text: "用手指輕撫她的陰唇", hitId: "labia", arousal: 6 },
   { id: "labia_rub", label: "揉陰唇", text: "用手指揉弄她的陰唇", hitId: "labia", arousal: 8 },
-  { id: "breast_suck", label: "吸奶", text: "含住她的乳房吸吮", hitId: "nipple", arousal: 6 },
+  { id: "breast_suck", label: "吸奶頭", text: "含住她的乳頭吸吮", hitId: "nipple", arousal: 6 },
   { id: "nipple_lick", label: "舔奶頭", text: "舔弄她的乳頭", hitId: "nipple", arousal: 6 },
   { id: "finger_in", label: "插入手指", text: "把手指伸進她的陰道", hitId: "vagina", arousal: 10 },
   { id: "vagina_finger", label: "扣陰道", text: "用手指在她陰道裡扣弄", hitId: "vagina", arousal: 11 },
