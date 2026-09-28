@@ -668,6 +668,7 @@ async function pregenGirlPortraits() {
     if (status) status.textContent = "預產圖：半身…";
     await ensureHalfPortrait(who, {
       required: true,
+      force: true,
       onTick: (sec) => { if (status) status.textContent = `預產圖：半身… ${sec}s`; },
     });
     halfOk = !!who.portraits?.half;
@@ -683,10 +684,6 @@ async function pregenGirlPortraits() {
     for (let i = 0; i < buttPacks.length; i++) {
       const pack = buttPacks[i];
       if (!pack?.id) continue;
-      if (who.portraits.tease_butt_packs[pack.id]) {
-        buttCount += 1;
-        continue;
-      }
       if (status) status.textContent = `預產圖：摸臀工作流 ${i + 1}/${buttPacks.length}…`;
       const result = await generateButtPackImage(pack, who, engine, {
         stage: who.stage || "stranger",
@@ -715,10 +712,6 @@ async function pregenGirlPortraits() {
     for (let i = 0; i < waistPacks.length; i++) {
       const pack = waistPacks[i];
       if (!pack?.id) continue;
-      if (who.portraits.tease_waist_packs[pack.id]) {
-        waistCount += 1;
-        continue;
-      }
       if (status) status.textContent = `預產圖：摟腰工作流 ${i + 1}/${waistPacks.length}…`;
       const result = await generateWaistPackImage(pack, who, engine, {
         stage: who.stage || "stranger",
@@ -795,26 +788,27 @@ async function ensureHalfPortrait(who, opts = {}) {
   } catch (err) {
     if (opts.required) throw err;
   }
-  if (who.portraits?.half) {
+  if (who.portraits?.half && !opts.force) {
     paintHalfPortrait(who);
     return opts.required ? { ok: true } : undefined;
   }
-  // 已有進行中的生圖：非 required 直接返回；required 則等結果
+  // 已有進行中的生圖：非 required 直接返回；required 則等結果。
+  // force 會等前一個工作流結束後再開一輪，確保本次按鈕一定重產。
   if (halfGenning.has(who.id)) {
-    if (!opts.required) return;
+    if (!opts.required && !opts.force) return;
     const t0 = Date.now();
     while (halfGenning.has(who.id) && Date.now() - t0 < 360000) {
       await new Promise((r) => setTimeout(r, 800));
-      if (who.portraits?.half) {
+      if (!opts.force && who.portraits?.half) {
         paintHalfPortrait(who);
         return { ok: true };
       }
     }
-    if (who.portraits?.half) {
+    if (halfGenning.has(who.id)) throw new Error("半身立繪生圖逾時");
+    if (!opts.force && who.portraits?.half) {
       paintHalfPortrait(who);
       return { ok: true };
     }
-    throw new Error("半身立繪生圖逾時");
   }
   halfGenning.add(who.id);
   try {
