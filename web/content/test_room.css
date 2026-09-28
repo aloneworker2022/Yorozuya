@@ -291,20 +291,21 @@ body.room-home #main-room-stage {
 body.room-home #main-room-stage .scene {
   flex: 1 1 auto;
   display: flex;
-  align-items: flex-end; /* 不要垂直置中浮中間；貼舞台下緣 */
+  align-items: flex-end; /* 貼舞台下緣；Y 變兩倍時往上長 */
   justify-content: center;
   width: 100%;
   height: 100%;
   min-height: 0;
   padding: 0;
   margin: 0;
+  overflow: visible;
   pointer-events: none;
 }
 body.room-home #main-room-stage #room {
-  /* 以「高度」撐滿上下界，寬度跟比例走（不是左右撐滿） */
-  height: 100%;
+  /* 畫布 Y＝原本舞台高的兩倍；寬度跟 416:328 比例走 */
+  height: 200%;
   width: auto;
-  max-width: min(100%, calc(100vh * 416 / 328));
+  max-width: none;
   aspect-ratio: 416 / 328;
   object-fit: contain;
   pointer-events: auto;
