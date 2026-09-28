@@ -285,14 +285,14 @@ body.room-home #room-editor {
   display: none !important;
 }
 body.room-home #main-room-stage {
-  /* size/position set in style.css as full-bleed backdrop */
+  /* top/bottom 由 style.css：輸入框上～執行中上 */
   pointer-events: none;
   z-index: 1;
 }
 body.room-home #main-room-stage .scene {
   flex: 1 1 auto;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   width: 100%;
   height: 100%;
@@ -302,10 +302,12 @@ body.room-home #main-room-stage .scene {
   pointer-events: none;
 }
 body.room-home #main-room-stage #room {
-  width: min(96vw, 560px);
-  max-height: min(92%, 720px);
-  height: auto;
-  pointer-events: auto; /* 長按人物 */
+  /* 填滿背板區：下貼輸入上、上到執行中上 */
+  width: min(100%, 520px);
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+  pointer-events: auto;
   image-rendering: pixelated;
 }
 body.room-home #main-room-stage .girl-where,
