@@ -4570,7 +4570,6 @@ async function askStroll(who, region, rolled, know, opts = {}) {
   const once = () => (route.provider === "ollama"
     ? askOllama(route, messages)
     : askGrok(route, messages, `roomstroll:${who.id}:${Date.now().toString(36)}`));
-  const hasPerson = !!(rolled.person || opts.revisit);
   const accept = (written) => written && (hasPerson ? isInteraction(written.event) : isSoloStroll(written.event, rolled.place.name));
   let reply = await once();
   let written = parseShiftReply(reply, know);

@@ -7560,14 +7560,18 @@ function enterEmbeddedRoomCompanion(payload) {
   const adoptNow = () => {
     const api = window.RoomCompanion;
     if (!api?.adopt) return false;
-    const ok = api.adopt(payload);
+    let ok = false;
+    try { ok = !!api.adopt(payload); } catch (err) {
+      console.error("[RoomCompanion.adopt]", err);
+      return false;
+    }
     if (ok) {
       try { localStorage.removeItem(ROOM_PENDING_KEY); } catch { /* ignore */ }
       try { document.getElementById("talk-input")?.focus({ preventScroll: true }); } catch { /* ignore */ }
       try { document.getElementById("main-room-stage")?.scrollIntoView({ block: "nearest" }); } catch { /* ignore */ }
       renderAll?.();
     }
-    return !!ok;
+    return ok;
   };
   if (adoptNow()) return;
   // 模組尚未就緒：保留 pending，短輪詢 adopt
@@ -7577,7 +7581,11 @@ function enterEmbeddedRoomCompanion(payload) {
   let tries = 0;
   const timer = setInterval(() => {
     tries += 1;
-    if (adoptNow() || tries > 40) clearInterval(timer);
+    if (adoptNow()) { clearInterval(timer); return; }
+    if (tries > 40) {
+      clearInterval(timer);
+      toast("房間模組還沒就緒——請硬重新整理後再召喚", "bad");
+    }
   }, 50);
 }
 
