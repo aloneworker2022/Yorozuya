@@ -302,7 +302,7 @@ body.room-home #main-room-stage .scene {
   pointer-events: none;
 }
 body.room-home #main-room-stage #room {
-  /* 畫布外框 Y＝舞台 150%；中間房子用 camera.scale 維持約 100% 可縮放 */
+  /* 畫布外框 Y＝舞台 150%；中間房子 camera 預設 30% 可放大 */
   height: 150%;
   width: auto;
   max-width: none;

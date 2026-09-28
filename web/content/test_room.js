@@ -14,10 +14,12 @@
   const camera = { scale: 1, x: 0, y: 0 };
   const pointers = new Map();
   const MIN_ZOOM = .6, MAX_ZOOM = 3;
-  /* room-home：畫布 CSS 150%，房子預設 100%（= 1/1.5）仍可 pinch 縮放 */
+  /* room-home：畫布 CSS 150%；房子預設 30%，可 pinch 放大 */
   const HOME_CANVAS_Y = 1.5;
+  const HOME_HOUSE_SCALE = 0.3;
   const isRoomHome = () => document.body.classList.contains('room-home');
-  const defaultHouseScale = () => (isRoomHome() ? 1 / HOME_CANVAS_Y : 1);
+  const defaultHouseScale = () => (isRoomHome() ? HOME_HOUSE_SCALE : 1);
+  const minZoom = () => (isRoomHome() ? 0.25 : MIN_ZOOM);
   function centerCamera(scale) {
     camera.scale = scale;
     camera.x = canvas.width * (1 - scale) / 2;
@@ -342,13 +344,12 @@
     view.imageSmoothingEnabled = false;
     view.drawImage(artwork, camera.x, camera.y, canvas.width * camera.scale, canvas.height * camera.scale);
     if (zoomLabel) {
-      const base = defaultHouseScale();
-      zoomLabel.textContent = `${Math.round(camera.scale / base * 100)}%`;
+      zoomLabel.textContent = `${Math.round(camera.scale * 100)}%`;
     }
   }
 
   function zoomAt(factor, from, to = from) {
-    const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.scale * factor));
+    const next = Math.max(minZoom(), Math.min(MAX_ZOOM, camera.scale * factor));
     const ratio = next / camera.scale;
     camera.x = to.x - (from.x - camera.x) * ratio;
     camera.y = to.y - (from.y - camera.y) * ratio;
