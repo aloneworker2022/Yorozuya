@@ -2549,43 +2549,65 @@ body.room-home #page-quests {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
   padding-bottom: calc(0.6em + env(safe-area-inset-bottom));
 }
 body.room-home #home-card-strip {
   flex: 0 0 auto;
-  max-height: 30vh;
+  max-height: 24vh;
   min-height: 0;
-  margin-top: 0.55em; /* 略往下，別貼死 HUD */
+  margin-top: 0.55em;
   position: relative;
   z-index: 3;
   overflow: hidden;
+  background: transparent;
 }
 body.room-home #home-card-strip .q-scenes {
   flex: none;
-  height: 30vh;
-  max-height: 30vh;
+  height: 24vh;
+  max-height: 24vh;
   min-height: 0;
+  background: transparent;
+}
+body.room-home #home-card-strip .q-scene {
+  background: transparent;
 }
 body.room-home #home-card-strip .pin-hdr {
   margin: 0;
-  padding: 0.2em 0;
-  font-size: 0.85em;
+  padding: 0.15em 0;
+  font-size: 0.8em;
 }
 body.room-home #home-card-strip .pin-carousel {
-  max-height: calc(30vh - 2.4em);
+  max-height: calc(24vh - 2.2em);
+}
+body.room-home #home-card-strip .pin-slide {
+  padding: 4px 22px;
 }
 body.room-home #home-card-strip .pin-slot,
 body.room-home #home-card-strip .pin-card,
 body.room-home #home-card-strip .q-card {
-  transform: scale(0.96);
+  transform: scale(0.82);
   transform-origin: top center;
+  max-width: 280px;
+  min-height: 150px;
+  padding: 16px 14px 12px;
 }
-/* 執行中卡：不要陰影 */
+body.room-home #home-card-strip .pin-slot {
+  border-style: dashed;
+  border-width: 1px;
+  min-height: 150px;
+  padding: 18px 14px;
+}
+/* 執行中／選卡：無陰影、無邊線 */
 body.room-home #home-card-strip .q-card,
 body.room-home #home-card-strip .q-card.q-instant,
-body.room-home #home-card-strip .q-card.c-exec {
+body.room-home #home-card-strip .q-card.c-exec,
+body.room-home #home-card-strip .q-card.c-found,
+body.room-home #home-card-strip .q-card.c-acc {
   box-shadow: none;
   filter: none;
+  border: none;
+  outline: none;
 }
 body.room-home #home-card-strip .pin-hdr-title {
   text-shadow: none;
@@ -2593,40 +2615,86 @@ body.room-home #home-card-strip .pin-hdr-title {
 body.room-home #home-card-strip .dot.on {
   box-shadow: none;
 }
-/* 日誌／處理展開時：卡區拉高，房間讓位 */
+/* 選卡／處理／日誌：卡疊在房間上，房間仍可見 */
 body.room-home #page-quests.on-proc #home-card-strip,
 body.room-home #page-quests.on-diary #home-card-strip,
 body.room-home #page-quests.on-line #home-card-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: calc(3.2em + env(safe-area-inset-bottom));
   max-height: none;
-  flex: 1 1 auto;
+  flex: none;
+  margin-top: 0.35em;
+  z-index: 6;
+  overflow: hidden;
+  background: transparent;
+  pointer-events: none; /* 空白穿透看到房間；卡自己可點 */
 }
 body.room-home #page-quests.on-proc #home-card-strip .q-scenes,
 body.room-home #page-quests.on-diary #home-card-strip .q-scenes,
 body.room-home #page-quests.on-line #home-card-strip .q-scenes {
   height: 100%;
   max-height: none;
+  pointer-events: none;
+  background: transparent;
+}
+body.room-home #page-quests.on-proc #home-card-strip .q-scene,
+body.room-home #page-quests.on-diary #home-card-strip .q-scene,
+body.room-home #page-quests.on-line #home-card-strip .q-scene {
+  pointer-events: none;
+  background: transparent;
+}
+body.room-home #page-quests.on-proc #home-card-strip .q-card,
+body.room-home #page-quests.on-proc #home-card-strip .pin-slot,
+body.room-home #page-quests.on-proc #home-card-strip .lv-inner,
+body.room-home #page-quests.on-proc #home-card-strip .lv-hdr,
+body.room-home #page-quests.on-proc #home-card-strip .q-force-tabs,
+body.room-home #page-quests.on-proc #home-card-strip .back-btn,
+body.room-home #page-quests.on-proc #home-card-strip .pin-dots,
+body.room-home #page-quests.on-proc #home-card-strip .pin-hdr,
+body.room-home #page-quests.on-diary #home-card-strip .q-card,
+body.room-home #page-quests.on-diary #home-card-strip .lv-inner,
+body.room-home #page-quests.on-diary #home-card-strip .lv-hdr,
+body.room-home #page-quests.on-diary #home-card-strip .back-btn,
+body.room-home #page-quests.on-line #home-card-strip .q-card,
+body.room-home #page-quests.on-line #home-card-strip .lv-inner,
+body.room-home #page-quests.on-line #home-card-strip .lv-hdr,
+body.room-home #page-quests.on-line #home-card-strip .back-btn,
+body.room-home #page-quests.on-proc #home-card-strip .diary-tab,
+body.room-home #page-quests.on-proc #home-card-strip .line-tab,
+body.room-home #page-quests.on-diary #home-card-strip .diary-tab,
+body.room-home #page-quests.on-diary #home-card-strip .line-tab,
+body.room-home #page-quests.on-line #home-card-strip .diary-tab,
+body.room-home #page-quests.on-line #home-card-strip .line-tab {
+  pointer-events: auto;
 }
 body.room-home #page-quests.on-proc #main-room-stage,
 body.room-home #page-quests.on-diary #main-room-stage,
 body.room-home #page-quests.on-line #main-room-stage {
-  display: none;
+  display: flex;
+  opacity: 1;
+  /* 房間永遠在後，可被看見 */
 }
 body.room-home #main-room-stage {
   flex: 1 1 auto;
   min-height: 0;
   margin: 0 auto;
-  margin-top: auto; /* 空白擠在上方，房間貼近輸入框 */
+  margin-top: auto;
   width: 100%;
   max-width: 520px;
   padding-bottom: 2px;
+  z-index: 1;
 }
 body.room-home #quest-input-row {
   flex-shrink: 0;
   margin-top: 0.15em;
-  position: relative; /* sticky 在窄 flex 內改相對，避免蓋房 */
+  position: relative;
   bottom: auto;
-  z-index: 4;
+  z-index: 7;
 }
+
 /* 委託頁：看板娘退居背景，房間當主視覺 */
 body.room-home[data-tab="0"] #kanban {
   opacity: 0.18;
