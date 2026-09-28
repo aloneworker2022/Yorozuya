@@ -1717,6 +1717,7 @@ async def _run_grok_image(
     use_pose = bool(pose_ref) and (
         not shot_l
         or comfy.is_tease_shot(shot_l)
+        or comfy.is_standee_shot(shot_l)
         or str(scene_kind or "").lower() == "sex_strip"
     )
     id_local = _stage_ref_in_work(_resolve_ref_image(ref), work, "identity")
@@ -2282,19 +2283,19 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
         extra_neg = ", ".join(x for x in (extra_neg, pneg) if x)
         prompt = _merge_oral_identity(prompt, opts.get("character") if isinstance(opts.get("character"), dict) else None)
 
-    # 三連拍：尺寸照 plan-v4，seed 取人設雜湊（三張同 seed = 同一張臉）。
-    # 出卡場景（lock_identity 但無 shot）：seed 必須每次不同，否則「打兩次同一張圖」；
-    # 臉靠 character tags /（Grok）立繪 ref，不靠固定 seed。
+    # 三連拍／情緒半身表：尺寸照 plan-v4，seed 取人設雜湊（同 seed = 同一張臉）。
+    # tease_*／standee_*／出卡：客戶端沒帶 seed 時每次隨機；否則重產幾乎同一張。
+    # （pose_ref + 低 denoise 仍會偏相似，但主因是固定 identity seed。）
     spec = comfy.PORTRAIT_SHOTS.get(shot) or {}
     gen_w, gen_h = spec.get("gen", (0, 0))
     out_w, out_h = spec.get("out", (0, 0))
     seed = int(opts.get("seed") or 0)
     if not seed:
-        if shot:
-            # 召喚三連拍：固定人設 seed
+        if comfy.is_identity_sheet_shot(shot):
+            # head/half/half_*/full：固定人設 seed（召喚臉鎖）
             seed = _identity_anchor(opts.get("character") or {})["seed"]
         else:
-            # 出卡 / testword：每次隨機（含 lock_identity 場景）
+            # tease_* / standee_* / 出卡 / testword：每次隨機
             seed = secrets.randbelow(2**31 - 1) or 1
 
     # 三連拍照規格去背;testword 那條(沒有 shot)由前端的勾選決定,
@@ -2304,7 +2305,10 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     negative = sdtags.negative_for(want_cut, clothed=False, extra_neg=extra_neg)
 
     pose_src = _resolve_ref_image(str(opts.get("pose_ref") or ""))
-    if pose_src is not None and shot and not comfy.is_tease_shot(shot):
+    # 只讓 tease／standee 吃 pose_ref；召喚三連拍／情緒半身表不鎖姿勢參考
+    if pose_src is not None and shot and not (
+        comfy.is_tease_shot(shot) or comfy.is_standee_shot(shot)
+    ):
         pose_src = None
     if pose_src is not None:
         gen_w, gen_h = _pose_gen_size(pose_src, gen_w or comfy.DEFAULT_WIDTH, gen_h or comfy.DEFAULT_HEIGHT)

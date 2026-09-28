@@ -73,6 +73,7 @@ DEFAULT_CLIP_SKIP = int(os.environ.get("COMFY_CLIP_SKIP", "2"))
 # 就是外圈的四分之一——沿用 0.72 等於「大頭照永遠去不了背」。
 # half_xi/nu/ai/le = 半身喜怒哀樂（聊天立繪依情緒切換；規格同 half）
 # tease_* = 感應調戲雙人場景（玩家 POV；不去背）
+# standee_* = 房間半身表情立繪（去背同 half；seed 每次隨機，見 is_identity_sheet_shot）
 _HALF_SPEC = {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72}
 _TEASE_SPEC = {"gen": (832, 1216), "out": (0, 0), "cutout": False, "border_min": 0.72}
 # 摸臀／摟腰／摸奶／揉奶／吸奶頭動作裁切：正方形（約立繪寬 0.8 的閃現層）
@@ -113,6 +114,17 @@ PORTRAIT_SHOTS = {
     "tease_cowgirl_more": dict(_TEASE_SPEC),   # 騎乘③ 插一半、龜頭在陰道內
     "tease_cowgirl_deep": dict(_TEASE_SPEC),   # 騎乘④ 整根頂到底、陰唇貼腹、陰道透視
     "tease_cowgirl_cum": dict(_TEASE_SPEC),    # 騎乘⑤ 高潮內射
+    # standee_* = 房間半身表情立繪（9 槽；規格同 half／去背）。
+    # key 一律小寫：main 會把 shot.lower() 再查表（前端 id 含 wantFill → standee_wantfill）。
+    "standee_slight": dict(_HALF_SPEC),
+    "standee_aroused": dict(_HALF_SPEC),
+    "standee_wantfill": dict(_HALF_SPEC),
+    "standee_climax": dict(_HALF_SPEC),
+    "standee_interfere": dict(_HALF_SPEC),
+    "standee_blank": dict(_HALF_SPEC),
+    "standee_beg": dict(_HALF_SPEC),
+    "standee_stun": dict(_HALF_SPEC),
+    "standee_spasm": dict(_HALF_SPEC),
 }
 TEASE_SHOTS = (
     "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in", "tease_thigh", "tease_butt", "tease_waist",
@@ -127,6 +139,19 @@ TEASE_SHOTS = (
 
 def is_tease_shot(shot: str) -> bool:
     return str(shot or "").lower() in TEASE_SHOTS
+
+
+def is_standee_shot(shot: str) -> bool:
+    """房間半身表情立繪 standee_*（9 槽）。"""
+    return str(shot or "").lower().startswith("standee_")
+
+
+def is_identity_sheet_shot(shot: str) -> bool:
+    """召喚三連拍／情緒半身表：固定人設 seed 鎖臉。tease_/standee_ 不在此列。"""
+    s = str(shot or "").lower()
+    if s in ("head", "half", "full"):
+        return True
+    return s.startswith("half_")
 
 
 def shot_wants_cutout(shot: str, fallback: bool = False) -> bool:
