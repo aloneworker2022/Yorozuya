@@ -89,6 +89,10 @@ PORTRAIT_SHOTS = {
     "tease_breast": dict(_ACTION_CROP_SPEC),   # 玩家摸奶（正方形動作圖）
     "tease_breast_knead": dict(_ACTION_CROP_SPEC),  # 玩家揉奶
     "tease_breast_suck": dict(_ACTION_CROP_SPEC),   # 玩家吸奶頭
+    "tease_nipple_lick": dict(_ACTION_CROP_SPEC),  # 玩家舔奶頭
+    "tease_labia": dict(_ACTION_CROP_SPEC),        # 玩家摸陰唇
+    "tease_labia_rub": dict(_ACTION_CROP_SPEC),    # 玩家揉陰唇
+    "tease_finger_in": dict(_ACTION_CROP_SPEC),    # 玩家手指插入
     "tease_thigh": dict(_TEASE_SPEC),    # 玩家摸大腿
     "tease_butt": dict(_ACTION_CROP_SPEC),   # 玩家摸臀（正方形動作圖）
     "tease_waist": dict(_ACTION_CROP_SPEC),  # 玩家摟腰（正方形動作圖）
@@ -111,7 +115,7 @@ PORTRAIT_SHOTS = {
     "tease_cowgirl_cum": dict(_TEASE_SPEC),    # 騎乘⑤ 高潮內射
 }
 TEASE_SHOTS = (
-    "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_thigh", "tease_butt", "tease_waist",
+    "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in", "tease_thigh", "tease_butt", "tease_waist",
     "tease_oral",
     "tease_oral_ready", "tease_oral_suck", "tease_oral_deep", "tease_oral_cum",
     "tease_doggy",

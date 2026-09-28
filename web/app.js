@@ -13,7 +13,7 @@ import {
   teaseShotAt, teaseStartStep, teaseAdvanceStep, teaseCumStep, teasePlayableSteps,
   teasePhaseOf, teasePhaseLabel, teaseBeatLine, teaseWilling,
   teasePlayAffDelta, TEASE_PLAY_CLIMAX_RATE,
-} from "./content/tease_shots.js?v=4";
+} from "./content/tease_shots.js?v=5";
 import * as ScriptMode from "./content/script_mode.js";
 import * as FramePack from "./content/frame_pack.js";
 import {
@@ -33,6 +33,22 @@ import {
   pickRuntimeSuckPack,
   buildSuckImgBody,
 } from "./content/suck_packs.js?v=1";
+import {
+  pickRuntimeLickPack,
+  buildLickImgBody,
+} from "./content/lick_packs.js?v=1";
+import {
+  pickRuntimeLabiaPack,
+  buildLabiaImgBody,
+} from "./content/labia_packs.js?v=1";
+import {
+  pickRuntimeLabiaRubPack,
+  buildLabiaRubImgBody,
+} from "./content/labia_rub_packs.js?v=1";
+import {
+  pickRuntimeFingerPack,
+  buildFingerImgBody,
+} from "./content/finger_packs.js?v=1";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
@@ -2617,7 +2633,7 @@ async function weaveShot(s, shot, onTick, opts = {}) {
       : (wantPortraitCut ? "plain solid color background, simple background" : ""))),
     // Grok 路也要勾去背；Comfy 路 shot 規格本身 cutout=true
     cutout: wantPortraitCut,
-    flat_bg: tease ? (shot === "tease_butt" || shot === "tease_waist" || shot === "tease_breast" || shot === "tease_breast_knead" || shot === "tease_breast_suck") : wantPortraitCut,
+    flat_bg: tease ? (shot === "tease_butt" || shot === "tease_waist" || shot === "tease_breast" || shot === "tease_breast_knead" || shot === "tease_breast_suck" || shot === "tease_nipple_lick" || shot === "tease_labia" || shot === "tease_labia_rub" || shot === "tease_finger_in") : wantPortraitCut,
     lock_identity: tease,
     retry: true,
     // 情緒半身可帶 half 當 ref 鎖臉
@@ -2880,10 +2896,18 @@ async function weaveOneTeaseShot(s, shot) {
     const cropPick = cropShot === "tease_breast" ? pickRuntimeBreastPack
       : cropShot === "tease_breast_knead" ? pickRuntimeKneadPack
       : cropShot === "tease_breast_suck" ? pickRuntimeSuckPack
+      : cropShot === "tease_nipple_lick" ? pickRuntimeLickPack
+      : cropShot === "tease_labia" ? pickRuntimeLabiaPack
+      : cropShot === "tease_labia_rub" ? pickRuntimeLabiaRubPack
+      : cropShot === "tease_finger_in" ? pickRuntimeFingerPack
       : null;
     const cropBuild = cropShot === "tease_breast" ? buildBreastImgBody
       : cropShot === "tease_breast_knead" ? buildKneadImgBody
       : cropShot === "tease_breast_suck" ? buildSuckImgBody
+      : cropShot === "tease_nipple_lick" ? buildLickImgBody
+      : cropShot === "tease_labia" ? buildLabiaImgBody
+      : cropShot === "tease_labia_rub" ? buildLabiaRubImgBody
+      : cropShot === "tease_finger_in" ? buildFingerImgBody
       : null;
     if (cropPick && cropBuild) {
       try {
@@ -7712,21 +7736,31 @@ function enterEmbeddedRoomCompanion(payload) {
     const home = document.getElementById("succubi-home");
     if (home) home.classList.remove("hidden");
   } catch { /* ignore */ }
+  const finishAdoptOk = () => {
+    try { localStorage.removeItem(ROOM_PENDING_KEY); } catch { /* ignore */ }
+    try { document.getElementById("talk-input")?.focus({ preventScroll: true }); } catch { /* ignore */ }
+    try { document.getElementById("main-room-stage")?.scrollIntoView({ block: "nearest" }); } catch { /* ignore */ }
+    renderAll?.();
+  };
   const adoptNow = () => {
     const api = window.RoomCompanion;
     if (!api?.adopt) return false;
-    let ok = false;
-    try { ok = !!api.adopt(payload); } catch (err) {
+    let result;
+    try { result = api.adopt(payload); } catch (err) {
       console.error("[RoomCompanion.adopt]", err);
       return false;
     }
-    if (ok) {
-      try { localStorage.removeItem(ROOM_PENDING_KEY); } catch { /* ignore */ }
-      try { document.getElementById("talk-input")?.focus({ preventScroll: true }); } catch { /* ignore */ }
-      try { document.getElementById("main-room-stage")?.scrollIntoView({ block: "nearest" }); } catch { /* ignore */ }
-      renderAll?.();
+    if (result && typeof result.then === "function") {
+      result.then((ok) => {
+        if (ok) finishAdoptOk();
+      }).catch((err) => console.error("[RoomCompanion.adopt]", err));
+      return true; // accepted (async in flight)
     }
-    return ok;
+    if (result) {
+      finishAdoptOk();
+      return true;
+    }
+    return false;
   };
   if (adoptNow()) return;
   // 模組尚未就緒：保留 pending，短輪詢 adopt
@@ -11230,7 +11264,7 @@ const SHOT_LABEL = {
   head: "大頭照", half: "半身", full: "全身",
   half_xi: "半身·喜", half_nu: "半身·怒", half_ai: "半身·哀", half_le: "半身·樂",
   half_xiu: "半身·害羞",
-  tease_breast: "調戲·摸奶", tease_breast_knead: "調戲·揉奶", tease_breast_suck: "調戲·吸奶頭", tease_butt: "調戲·摸臀", tease_waist: "調戲·摟腰",
+  tease_breast: "調戲·摸奶", tease_breast_knead: "調戲·揉奶", tease_breast_suck: "調戲·吸奶頭", tease_nipple_lick: "調戲·舔奶頭", tease_labia: "調戲·摸陰唇", tease_labia_rub: "調戲·揉陰唇", tease_finger_in: "調戲·手指插入", tease_butt: "調戲·摸臀", tease_waist: "調戲·摟腰",
   tease_oral_ready: "調戲·口交·頂嘴", tease_oral_suck: "調戲·口交·含住",
   tease_oral_deep: "調戲·口交·整根", tease_oral_cum: "調戲·口交·口內射",
   tease_doggy_ready: "調戲·背後·抓臀勃起", tease_doggy_half: "調戲·背後·龜頭進入",

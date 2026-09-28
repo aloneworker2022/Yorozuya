@@ -99,7 +99,7 @@ export function isTeaseShot(shot) {
 
 export function teaseFraming(shot) {
   const s = String(shot || "");
-  if (s === "tease_butt" || s === "tease_waist" || s === "tease_breast" || s === "tease_breast_knead" || s === "tease_breast_suck") return "lower";
+  if (s === "tease_butt" || s === "tease_waist" || s === "tease_breast" || s === "tease_breast_knead" || s === "tease_breast_suck" || s === "tease_nipple_lick" || s === "tease_labia" || s === "tease_labia_rub" || s === "tease_finger_in") return "lower";
   if (s.startsWith("tease_oral")) return "half";
   return "full";
 }
@@ -315,6 +315,38 @@ export function composeTeaseExtra(shot, stage, worn) {
       "simple background, white background",
       "breasts focus, nipple focus, close-up, head out of frame",
       "first-person POV, mouth sucking nipple, lips on nipple, tongue on nipple",
+      "NO face of girl, NO head of girl",
+    ].join(", ");
+  }
+  if (s === "tease_nipple_lick") {
+    return [
+      "simple background, white background",
+      "breasts focus, nipple focus, close-up, head out of frame",
+      "first-person POV, tongue licking nipple, licking nipple",
+      "NO face of girl, NO head of girl",
+    ].join(", ");
+  }
+  if (s === "tease_labia") {
+    return [
+      "simple background, white background",
+      "lower body, pussy focus, labia focus, head out of frame",
+      "first-person POV, one male finger touching labia",
+      "NO face of girl, NO head of girl",
+    ].join(", ");
+  }
+  if (s === "tease_labia_rub") {
+    return [
+      "simple background, white background",
+      "lower body, pussy focus, labia focus, head out of frame",
+      "first-person POV, male fingers rubbing labia, rubbing labia",
+      "NO face of girl, NO head of girl",
+    ].join(", ");
+  }
+  if (s === "tease_finger_in") {
+    return [
+      "simple background, white background",
+      "lower body, vaginal insertion focus, head out of frame",
+      "first-person POV, finger(s) inside vagina, fingering",
       "NO face of girl, NO head of girl",
     ].join(", ");
   }

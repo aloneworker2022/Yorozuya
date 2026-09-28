@@ -107,6 +107,31 @@ import {
   loadSuckDoc,
   generateSuckPackImage,
 } from "./suck_packs.js?v=1";
+import {
+  mountLickPackEditor,
+  pickRuntimeLickPack,
+  loadLickDoc,
+  generateLickPackImage,
+} from "./lick_packs.js?v=1";
+import {
+  mountLabiaPackEditor,
+  pickRuntimeLabiaPack,
+  loadLabiaDoc,
+  generateLabiaPackImage,
+} from "./labia_packs.js?v=1";
+import {
+  mountLabiaRubPackEditor,
+  pickRuntimeLabiaRubPack,
+  loadLabiaRubDoc,
+  generateLabiaRubPackImage,
+} from "./labia_rub_packs.js?v=1";
+import {
+  mountFingerPackEditor,
+  pickRuntimeFingerPack,
+  loadFingerDoc,
+  generateFingerPackImage,
+} from "./finger_packs.js?v=1";
+import { SUMMON_RITUAL_LINES, startSummonRitualStatus } from "./summon_ritual.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -513,7 +538,12 @@ const waistGenning = new Set();
 const breastGenning = new Set();
 const kneadGenning = new Set();
 const suckGenning = new Set();
+const lickGenning = new Set();
+const labiaGenning = new Set();
+const labiaRubGenning = new Set();
+const fingerGenning = new Set();
 let pregenning = false;
+let summoning = false;
 
 function stampPortraitUrl(url) {
   const s = String(url || "");
@@ -854,20 +884,150 @@ async function maybeGenSuckShot(who, actId) {
   }
 }
 
-/** 預產圖：半身＋各摸臀／摟腰／摸奶／揉奶／吸奶頭組（寫入 who.portraits，不寫 pack.json）。走 pack 模組 generate*。 */
-async function pregenGirlPortraits() {
-  if (!girl || sheIsOut()) return;
-  if (pregenning) return;
+
+async function maybeGenLickShot(who, actId) {
+  if (actId !== "nipple_lick" || !who?.id) return;
+  if (lickGenning.has(who.id)) return;
+  lickGenning.add(who.id);
+  try {
+    const pack = await pickRuntimeLickPack();
+    if (!pack) return;
+    who.portraits = who.portraits || {};
+    const cached = String(who.portraits.tease_nipple_lick_packs?.[pack.id] || "");
+    if (cached) {
+      showTeasePortrait(who, "tease_nipple_lick", cached, `${who.name}的舔奶頭圖`);
+      return;
+    }
+    const engine = await gameImgRoute();
+    const result = await generateLickPackImage(pack, who, engine, {
+      stage: who.stage || "stranger",
+      worn: wornOutfit(who),
+    });
+    if (result?.status === "done" && result.result) {
+      const stamped = stampPortraitUrl(result.result);
+      who.portraits.tease_nipple_lick_packs = who.portraits.tease_nipple_lick_packs || {};
+      who.portraits.tease_nipple_lick_packs[pack.id] = stamped;
+      showTeasePortrait(who, "tease_nipple_lick", stamped, `${who.name}的舔奶頭圖`);
+      persistRoom();
+    }
+  } catch (err) {
+    console.warn("[maybeGenLickShot]", err?.message || err);
+  } finally {
+    lickGenning.delete(who.id);
+  }
+}
+
+async function maybeGenLabiaShot(who, actId) {
+  if (actId !== "labia" || !who?.id) return;
+  if (labiaGenning.has(who.id)) return;
+  labiaGenning.add(who.id);
+  try {
+    const pack = await pickRuntimeLabiaPack();
+    if (!pack) return;
+    who.portraits = who.portraits || {};
+    const cached = String(who.portraits.tease_labia_packs?.[pack.id] || "");
+    if (cached) {
+      showTeasePortrait(who, "tease_labia", cached, `${who.name}的摸陰唇圖`);
+      return;
+    }
+    const engine = await gameImgRoute();
+    const result = await generateLabiaPackImage(pack, who, engine, {
+      stage: who.stage || "stranger",
+      worn: wornOutfit(who),
+    });
+    if (result?.status === "done" && result.result) {
+      const stamped = stampPortraitUrl(result.result);
+      who.portraits.tease_labia_packs = who.portraits.tease_labia_packs || {};
+      who.portraits.tease_labia_packs[pack.id] = stamped;
+      showTeasePortrait(who, "tease_labia", stamped, `${who.name}的摸陰唇圖`);
+      persistRoom();
+    }
+  } catch (err) {
+    console.warn("[maybeGenLabiaShot]", err?.message || err);
+  } finally {
+    labiaGenning.delete(who.id);
+  }
+}
+
+async function maybeGenLabiaRubShot(who, actId) {
+  if (actId !== "labia_rub" || !who?.id) return;
+  if (labiaRubGenning.has(who.id)) return;
+  labiaRubGenning.add(who.id);
+  try {
+    const pack = await pickRuntimeLabiaRubPack();
+    if (!pack) return;
+    who.portraits = who.portraits || {};
+    const cached = String(who.portraits.tease_labia_rub_packs?.[pack.id] || "");
+    if (cached) {
+      showTeasePortrait(who, "tease_labia_rub", cached, `${who.name}的揉陰唇圖`);
+      return;
+    }
+    const engine = await gameImgRoute();
+    const result = await generateLabiaRubPackImage(pack, who, engine, {
+      stage: who.stage || "stranger",
+      worn: wornOutfit(who),
+    });
+    if (result?.status === "done" && result.result) {
+      const stamped = stampPortraitUrl(result.result);
+      who.portraits.tease_labia_rub_packs = who.portraits.tease_labia_rub_packs || {};
+      who.portraits.tease_labia_rub_packs[pack.id] = stamped;
+      showTeasePortrait(who, "tease_labia_rub", stamped, `${who.name}的揉陰唇圖`);
+      persistRoom();
+    }
+  } catch (err) {
+    console.warn("[maybeGenLabiaRubShot]", err?.message || err);
+  } finally {
+    labiaRubGenning.delete(who.id);
+  }
+}
+
+async function maybeGenFingerShot(who, actId) {
+  if (actId !== "finger_in" || !who?.id) return;
+  if (fingerGenning.has(who.id)) return;
+  fingerGenning.add(who.id);
+  try {
+    const pack = await pickRuntimeFingerPack();
+    if (!pack) return;
+    who.portraits = who.portraits || {};
+    const cached = String(who.portraits.tease_finger_in_packs?.[pack.id] || "");
+    if (cached) {
+      showTeasePortrait(who, "tease_finger_in", cached, `${who.name}的手指插入圖`);
+      return;
+    }
+    const engine = await gameImgRoute();
+    const result = await generateFingerPackImage(pack, who, engine, {
+      stage: who.stage || "stranger",
+      worn: wornOutfit(who),
+    });
+    if (result?.status === "done" && result.result) {
+      const stamped = stampPortraitUrl(result.result);
+      who.portraits.tease_finger_in_packs = who.portraits.tease_finger_in_packs || {};
+      who.portraits.tease_finger_in_packs[pack.id] = stamped;
+      showTeasePortrait(who, "tease_finger_in", stamped, `${who.name}的手指插入圖`);
+      persistRoom();
+    }
+  } catch (err) {
+    console.warn("[maybeGenFingerShot]", err?.message || err);
+  } finally {
+    fingerGenning.delete(who.id);
+  }
+}
+
+/** 預產圖：半身＋各已存動作圖組（寫入 who.portraits）。UI 安靜；呼叫端負責儀式文案。 */
+async function pregenGirlPortraits(who = girl, opts = {}) {
+  if (!who || (who === girl && sheIsOut())) {
+    return { half: false, counts: {} };
+  }
+  if (pregenning) {
+    throw new Error("預產進行中");
+  }
   pregenning = true;
-  const who = girl;
-  const btn = $("btn-pregen");
-  const status = $("summon-status");
-  if (btn) btn.disabled = true;
-  let buttCount = 0;
-  let waistCount = 0;
-  let breastCount = 0;
-  let kneadCount = 0;
-  let suckCount = 0;
+  const force = opts.force !== false; // default force for summon path
+  const onStatus = typeof opts.onStatus === "function" ? opts.onStatus : null;
+  const counts = {
+    butt: 0, waist: 0, breast: 0, knead: 0, suck: 0,
+    lick: 0, labia: 0, labia_rub: 0, finger: 0,
+  };
   let halfOk = false;
   try {
     await ensureGirlComfyCkpt(who);
@@ -876,11 +1036,9 @@ async function pregenGirlPortraits() {
       throw new Error("此魅子尚未綁定 Comfy 模型");
     }
 
-    if (status) status.textContent = "預產圖：半身…";
     await ensureHalfPortrait(who, {
       required: true,
-      force: true,
-      onTick: (sec) => { if (status) status.textContent = `預產圖：半身… ${sec}s`; },
+      force: !!force,
     });
     halfOk = !!who.portraits?.half;
     if (!halfOk) throw new Error("半身立繪生圖失敗");
@@ -891,86 +1049,61 @@ async function pregenGirlPortraits() {
     who.portraits.tease_breast_packs = who.portraits.tease_breast_packs || {};
     who.portraits.tease_breast_knead_packs = who.portraits.tease_breast_knead_packs || {};
     who.portraits.tease_breast_suck_packs = who.portraits.tease_breast_suck_packs || {};
+    who.portraits.tease_nipple_lick_packs = who.portraits.tease_nipple_lick_packs || {};
+    who.portraits.tease_labia_packs = who.portraits.tease_labia_packs || {};
+    who.portraits.tease_labia_rub_packs = who.portraits.tease_labia_rub_packs || {};
+    who.portraits.tease_finger_in_packs = who.portraits.tease_finger_in_packs || {};
 
-    const buttDoc = await loadButtDoc();
-    const buttPacks = Array.isArray(buttDoc?.packs) ? buttDoc.packs : [];
-    const waistDoc = await loadWaistDoc();
-    const waistPacks = Array.isArray(waistDoc?.packs) ? waistDoc.packs : [];
-    const breastDoc = await loadBreastDoc();
-    const breastPacks = Array.isArray(breastDoc?.packs) ? breastDoc.packs : [];
-    const kneadDoc = await loadKneadDoc();
-    const kneadPacks = Array.isArray(kneadDoc?.packs) ? kneadDoc.packs : [];
-    const suckDoc = await loadSuckDoc();
-    const suckPacks = Array.isArray(suckDoc?.packs) ? suckDoc.packs : [];
+    const packJobs = [
+      { load: loadButtDoc, gen: generateButtPackImage, packsKey: "tease_butt_packs", shotKey: "tease_butt", countKey: "butt" },
+      { load: loadWaistDoc, gen: generateWaistPackImage, packsKey: "tease_waist_packs", shotKey: "tease_waist", countKey: "waist" },
+      { load: loadBreastDoc, gen: generateBreastPackImage, packsKey: "tease_breast_packs", shotKey: "tease_breast", countKey: "breast" },
+      { load: loadKneadDoc, gen: generateKneadPackImage, packsKey: "tease_breast_knead_packs", shotKey: "tease_breast_knead", countKey: "knead" },
+      { load: loadSuckDoc, gen: generateSuckPackImage, packsKey: "tease_breast_suck_packs", shotKey: "tease_breast_suck", countKey: "suck" },
+      { load: loadLickDoc, gen: generateLickPackImage, packsKey: "tease_nipple_lick_packs", shotKey: "tease_nipple_lick", countKey: "lick" },
+      { load: loadLabiaDoc, gen: generateLabiaPackImage, packsKey: "tease_labia_packs", shotKey: "tease_labia", countKey: "labia" },
+      { load: loadLabiaRubDoc, gen: generateLabiaRubPackImage, packsKey: "tease_labia_rub_packs", shotKey: "tease_labia_rub", countKey: "labia_rub" },
+      { load: loadFingerDoc, gen: generateFingerPackImage, packsKey: "tease_finger_in_packs", shotKey: "tease_finger_in", countKey: "finger" },
+    ];
 
-    async function runPackLoop(packs, label, generateFn, packsKey, shotKey, counterRef) {
-      for (let i = 0; i < packs.length; i++) {
-        const pack = packs[i];
+    for (const job of packJobs) {
+      let packs = [];
+      try {
+        const doc = await job.load();
+        packs = Array.isArray(doc?.packs) ? doc.packs : [];
+      } catch (err) {
+        console.warn("[pregenGirlPortraits] load", job.packsKey, err?.message || err);
+        packs = [];
+      }
+      if (!packs.length) continue;
+      for (const pack of packs) {
         if (!pack?.id) continue;
-        if (status) status.textContent = `預產圖：${label}工作流 ${i + 1}/${packs.length}…`;
-        const result = await generateFn(pack, who, engine, {
+        const result = await job.gen(pack, who, engine, {
           stage: who.stage || "stranger",
           worn: wornOutfit(who),
-          onTick: (sec) => {
-            if (status) status.textContent = `預產圖：${label}工作流 ${i + 1}/${packs.length}… ${sec}s`;
-          },
         });
         if (result?.status === "done" && result.result) {
           const stamped = stampPortraitUrl(result.result);
-          who.portraits[packsKey][pack.id] = stamped;
-          who.portraits[shotKey] = stamped;
-          counterRef.n += 1;
+          who.portraits[job.packsKey][pack.id] = stamped;
+          who.portraits[job.shotKey] = stamped;
+          counts[job.countKey] += 1;
           persistRoom();
         } else {
-          throw new Error(result?.error || `${label}圖組「${pack.name || pack.id}」生圖失敗`);
+          throw new Error(result?.error || `${job.shotKey}「${pack.name || pack.id}」生圖失敗`);
         }
       }
     }
 
-    const buttRef = { n: 0 };
-    const waistRef = { n: 0 };
-    const breastRef = { n: 0 };
-    const kneadRef = { n: 0 };
-    const suckRef = { n: 0 };
-
-    await runPackLoop(buttPacks, "摸臀", generateButtPackImage, "tease_butt_packs", "tease_butt", buttRef);
-    await runPackLoop(waistPacks, "摟腰", generateWaistPackImage, "tease_waist_packs", "tease_waist", waistRef);
-    await runPackLoop(breastPacks, "摸奶", generateBreastPackImage, "tease_breast_packs", "tease_breast", breastRef);
-    await runPackLoop(kneadPacks, "揉奶", generateKneadPackImage, "tease_breast_knead_packs", "tease_breast_knead", kneadRef);
-    await runPackLoop(suckPacks, "吸奶頭", generateSuckPackImage, "tease_breast_suck_packs", "tease_breast_suck", suckRef);
-
-    buttCount = buttRef.n;
-    waistCount = waistRef.n;
-    breastCount = breastRef.n;
-    kneadCount = kneadRef.n;
-    suckCount = suckRef.n;
-
-    if (!buttPacks.length && !waistPacks.length && !breastPacks.length && !kneadPacks.length && !suckPacks.length) {
-      if (status) status.textContent = "半身好了。尚未存圖組工作流——先開右下「摸臀圖」「摟腰圖」「摸奶圖」「揉奶圖」「吸奶頭圖」新增並儲存，再預產。";
-      return;
-    }
-
-    const bits = [];
-    if (halfOk) bits.push("半身");
-    bits.push(`摸臀工作流×${buttCount}`);
-    bits.push(`摟腰工作流×${waistCount}`);
-    bits.push(`摸奶工作流×${breastCount}`);
-    bits.push(`揉奶工作流×${kneadCount}`);
-    bits.push(`吸奶頭工作流×${suckCount}`);
-    if (status) status.textContent = `預產圖完成（${bits.join("＋")}）`;
+    if (onStatus) onStatus(`半身與動作圖已就緒`);
+    return { half: halfOk, counts };
   } catch (err) {
     const message = String(err?.message || err || "未知錯誤");
-    const restartHint = message === "Not Found" || message.includes("404")
-      ? "；請 pull 最新 grok-telephon 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）"
-      : "";
     console.warn("[pregenGirlPortraits]", message);
-    if (status) status.textContent = `預產圖失敗：${message}${restartHint}`;
+    throw err;
   } finally {
     pregenning = false;
-    if (btn) btn.disabled = false;
   }
 }
-
 
 function paintHalfPortrait(who = girl) {
   const img = $("portrait-img");
@@ -1838,7 +1971,6 @@ function renderCard() {
   if (!girl) {
     if (card) card.hidden = true;
     if ($("let-leave")) $("let-leave").hidden = true;
-    if ($("btn-pregen")) $("btn-pregen").hidden = true;
     if ($("summon-ckpt")) $("summon-ckpt").hidden = true;
     renderBodyPanel();
     renderDebug();
@@ -1867,7 +1999,6 @@ function renderCard() {
   {
     const out = sheIsOut();
     if ($("let-leave")) $("let-leave").hidden = out;
-    if ($("btn-pregen")) $("btn-pregen").hidden = out;
   }
   renderBodyPanel();
   renderDebug();
@@ -4080,6 +4211,10 @@ async function deliverUserTalk(text, opts = {}) {
         if (opts.actId === "breast") void maybeGenBreastShot(girl, opts.actId);
         if (opts.actId === "breast_knead") void maybeGenKneadShot(girl, opts.actId);
         if (opts.actId === "breast_suck") void maybeGenSuckShot(girl, opts.actId);
+        if (opts.actId === "nipple_lick") void maybeGenLickShot(girl, opts.actId);
+        if (opts.actId === "labia") void maybeGenLabiaShot(girl, opts.actId);
+        if (opts.actId === "labia_rub") void maybeGenLabiaRubShot(girl, opts.actId);
+        if (opts.actId === "finger_in") void maybeGenFingerShot(girl, opts.actId);
         // 情感：一般挑逗不加；接近高潮／失神門檻才小幅＋1，痙攣／射精＋2
         const nearClimax = stunBefore >= 50 || arousalBefore >= 22
           || (girl.bodyState?.arousal || 0) >= 22
@@ -4590,78 +4725,137 @@ function takePendingAdopt() {
   }
 }
 
+
+function ensureRoomRitualEl() {
+  let el = $("room-summon-ritual");
+  if (el) return el;
+  const stage = $("main-room-stage") || document.body;
+  el = document.createElement("div");
+  el.id = "room-summon-ritual";
+  el.className = "room-summon-ritual";
+  el.hidden = true;
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  stage.appendChild(el);
+  return el;
+}
+
+function setSummonTalkBusy(busy) {
+  const input = $("talk-input");
+  const send = $("talk-send");
+  const acts = $("talk-acts");
+  const stage = $("main-room-stage");
+  if (input) input.disabled = !!busy;
+  if (send) send.disabled = !!busy;
+  if (acts) acts.setAttribute("aria-disabled", busy ? "true" : "false");
+  if (stage) stage.setAttribute("aria-busy", busy ? "true" : "false");
+}
+
+function beginSummonRitualUI() {
+  const targets = [];
+  const status = $("summon-status");
+  if (status) targets.push(status);
+  const ritual = ensureRoomRitualEl();
+  if (ritual) {
+    ritual.hidden = false;
+    if (!targets.includes(ritual)) targets.push(ritual);
+  }
+  const stops = targets.map((el) => startSummonRitualStatus(el));
+  setSummonTalkBusy(true);
+  return () => {
+    for (const stop of stops) {
+      try { stop(); } catch { /* */ }
+    }
+    if (ritual) ritual.hidden = true;
+    setSummonTalkBusy(false);
+  };
+}
+
 /** 名冊付費召喚：把遊戲妹子放進房間（同 id） */
-function adoptRosterGirl(payload) {
+async function adoptRosterGirl(payload) {
   const rolled = payload?.girl;
   if (!rolled?.id) return false;
-  // Same-id room prior (live girl or saved session) is newer after play — merge durables
-  let prior = null;
-  if (girl?.id === rolled.id) prior = girl;
-  if (!prior) {
-    try {
-      const saved = loadRoomSave();
-      if (saved?.girl?.id === rolled.id) prior = saved.girl;
-    } catch { /* ignore */ }
-  }
-  let next = {
-    ...rolled,
-    fromRoster: true,
-    gameGirlId: rolled.gameGirlId || rolled.id,
-    chatEnter: rolled.chatEnter || "summon",
-  };
-  if (prior) {
-    next = mergeRoomGirlDurable(next, prior);
-    if (prior.chatEnter === "flee_back") next.chatEnter = "flee_back";
-  } else if (rolled.world) {
-    next.world = rolled.world;
-  }
-  girl = next;
-  if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
-  ensureBody(girl);
-  ensureFriends(girl);
-  ensurePlayerNotes(girl);
-  normalizeGirlTags(girl);
-  syncStage(girl);
-  player = ensurePlayer(player);
-  if (payload.playerName && !player.name) player.name = payload.playerName;
-  lines = [];
-  talkFor = "";
-  activityOpen = false;
-  workToken += 1;
-  typeJob += 1;
-  window.RoomActor?.setPresent(true);
-  armRoomVisit(girl);
-  clearRoomSave();
-  persistRoom();
-  if (sheetOpen()) hideSheet();
-  renderCard();
-  renderWorld();
-  renderDebug();
-  const status = $("summon-status");
-  if (status) {
-    status.textContent = `${girl.name}從名冊召喚進房間了。長按她說話。`;
-  }
-  // 名冊已帶 comfyCkpt 則沿用；缺綁且為 comfy 時補上
-  ensureGirlComfyCkpt(girl).then((ck) => {
-    if (!girl) return;
-    if (ck) {
-      persistRoom();
-      renderCard();
-      if (status && roomImgProvider === "comfy") {
-        status.textContent = `${girl.name}從名冊召喚進房間了 · 模型 ${shortCkptName(ck)}。長按她說話。`;
-      }
+  if (summoning) return false;
+  summoning = true;
+  let stopRitual = () => {};
+  try {
+    // Same-id room prior (live girl or saved session) is newer after play — merge durables
+    let prior = null;
+    if (girl?.id === rolled.id) prior = girl;
+    if (!prior) {
+      try {
+        const saved = loadRoomSave();
+        if (saved?.girl?.id === rolled.id) prior = saved.girl;
+      } catch { /* ignore */ }
     }
-  }).catch((err) => {
-    console.warn("[ensureGirlComfyCkpt]", err?.message || err);
-  });
-  ensureHalfPortrait(girl).catch((err) => {
-    console.warn("[ensureHalfPortrait]", err?.message || err);
-  });
-  if (isShipMode()) {
-    // 進房即開對話（底部輸入）
-    try { showSheet(); } catch { /* DOM not ready */ }
+    let next = {
+      ...rolled,
+      fromRoster: true,
+      gameGirlId: rolled.gameGirlId || rolled.id,
+      chatEnter: rolled.chatEnter || "summon",
+    };
+    if (prior) {
+      next = mergeRoomGirlDurable(next, prior);
+      if (prior.chatEnter === "flee_back") next.chatEnter = "flee_back";
+    } else if (rolled.world) {
+      next.world = rolled.world;
+    }
+    girl = next;
+    if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
+    ensureBody(girl);
+    ensureFriends(girl);
+    ensurePlayerNotes(girl);
+    normalizeGirlTags(girl);
+    syncStage(girl);
+    player = ensurePlayer(player);
+    if (payload.playerName && !player.name) player.name = payload.playerName;
+    lines = [];
+    talkFor = "";
+    activityOpen = false;
+    workToken += 1;
+    typeJob += 1;
+    window.RoomActor?.setPresent(true);
+    armRoomVisit(girl);
+    clearRoomSave();
+    persistRoom();
+    if (sheetOpen()) hideSheet();
+    renderCard();
+    renderWorld();
+    renderDebug();
+
+    stopRitual = beginSummonRitualUI();
+
+    try {
+      await ensureGirlComfyCkpt(girl);
+    } catch (err) {
+      console.warn("[ensureGirlComfyCkpt]", err?.message || err);
+    }
+
+    try {
+      await pregenGirlPortraits(girl, { force: true });
+    } catch (err) {
+      console.warn("[adoptRosterGirl pregen]", err?.message || err);
+    }
+
+    stopRitual();
+    stopRitual = () => {};
+    const finalLine = `「${girl.name}」已降臨。長按她說話。`;
+    if ($("summon-status")) $("summon-status").textContent = finalLine;
+    const ritualEl = $("room-summon-ritual");
+    if (ritualEl) {
+      ritualEl.hidden = true;
+      ritualEl.textContent = "";
+    }
+
+    if (isShipMode()) {
+      try { showSheet(); } catch { /* DOM not ready */ }
+    }
+    return true;
+  } finally {
+    try { stopRitual(); } catch { /* */ }
+    summoning = false;
+    setSummonTalkBusy(false);
   }
-  return true;
 }
 
 function isShipMode() {
@@ -4799,15 +4993,22 @@ async function drawGirl() {
     renderWorld();
     const ckptBit = rolled.comfyCkpt && roomImgProvider === "comfy"
       ? ` · 模型 ${shortCkptName(rolled.comfyCkpt)}` : "";
-    $("summon-status").textContent = `抽到了${rolled.name}${ckptBit}。半身立繪繪製中…長按房間裡的她跟她說話，或讓她離開。`;
-    // Fire-and-forget on summon: do not block the edit-screen draw button path.
-    ensureHalfPortrait(rolled).then(() => {
-      if (girl && girl.id === rolled.id && girl.portraits?.half) {
-        $("summon-status").textContent = `抽到了${rolled.name}${ckptBit}。半身立繪好了。長按房間裡的她跟她說話，或讓她離開。`;
+    const stopRitual = beginSummonRitualUI();
+    try {
+      await pregenGirlPortraits(rolled, { force: true });
+      if (girl && girl.id === rolled.id) {
+        $("summon-status").textContent = `「${rolled.name}」已降臨${ckptBit}。長按房間裡的她跟她說話，或讓她離開。`;
       }
-    }).catch((err) => {
-      console.warn("[ensureHalfPortrait]", err?.message || err);
-    });
+    } catch (err) {
+      console.warn("[draw-girl pregen]", err?.message || err);
+      if ($("summon-status")) {
+        $("summon-status").textContent = `抽到了${rolled.name}${ckptBit}。預產未完成：${err?.message || err}`;
+      }
+    } finally {
+      try { stopRitual(); } catch { /* */ }
+      const ritualEl = $("room-summon-ritual");
+      if (ritualEl) { ritualEl.hidden = true; ritualEl.textContent = ""; }
+    }
   } catch (err) {
     $("summon-status").textContent = err?.message || String(err);
   }
@@ -5836,7 +6037,7 @@ function bindBodyPanel() {
   applyShipChrome();
   const pending = takePendingAdopt();
   if (pending?.girl) {
-    adoptRosterGirl(pending);
+    void adoptRosterGirl(pending);
     return;
   }
   const saved = loadRoomSave();
@@ -5879,7 +6080,6 @@ const onId = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev,
 onId("draw-girl", "click", () => { drawGirl(); });
 startLifeLoop();
 onId("let-leave", "click", letHerLeave);
-onId("btn-pregen", "click", () => { void pregenGirlPortraits(); });
 onId("summon-back", "click", summonHerBack);
 onId("open-activity", "click", toggleActivity);
 onId("activity-work", "click", () => { startActivity("work"); });
@@ -6011,19 +6211,55 @@ if (document.documentElement.classList.contains("room-page")) {
   } catch (err) {
     console.warn("[suck-pack-editor]", err?.message || err);
   }
+  try {
+    mountLickPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[lick-pack-editor]", err?.message || err);
+  }
+  try {
+    mountLabiaPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[labia-pack-editor]", err?.message || err);
+  }
+  try {
+    mountLabiaRubPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[labia-rub-pack-editor]", err?.message || err);
+  }
+  try {
+    mountFingerPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[finger-pack-editor]", err?.message || err);
+  }
 }
 
 // 開「編輯」時收合浮動圖組面板（面板不依賴 room-editor，但避免重疊）
 $("edit-room")?.addEventListener("click", () => {
-  for (const id of ["butt-pack-editor", "waist-pack-editor", "breast-pack-editor", "knead-pack-editor", "suck-pack-editor"]) {
+  for (const id of [
+    "butt-pack-editor", "waist-pack-editor", "breast-pack-editor", "knead-pack-editor", "suck-pack-editor",
+    "lick-pack-editor", "labia-pack-editor", "labia-rub-pack-editor", "finger-pack-editor",
+  ]) {
     const el = $(id);
     if (el) el.hidden = true;
   }
-  $("btn-butt-packs")?.setAttribute("aria-expanded", "false");
-  $("btn-waist-packs")?.setAttribute("aria-expanded", "false");
-  $("btn-breast-packs")?.setAttribute("aria-expanded", "false");
-  $("btn-knead-packs")?.setAttribute("aria-expanded", "false");
-  $("btn-suck-packs")?.setAttribute("aria-expanded", "false");
+  for (const id of [
+    "btn-butt-packs", "btn-waist-packs", "btn-breast-packs", "btn-knead-packs", "btn-suck-packs",
+    "btn-lick-packs", "btn-labia-packs", "btn-labia-rub-packs", "btn-finger-packs",
+  ]) {
+    $(id)?.setAttribute("aria-expanded", "false");
+  }
 });
 
 bindRoomSceneOverlay();

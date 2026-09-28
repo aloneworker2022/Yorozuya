@@ -43,8 +43,8 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #summon-card{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px;padding:12px;background:#f5efe3;border:1px solid #d5c9b5}
 #summon-card[hidden]{display:none}
 .summon-card-actions{display:flex;flex-direction:row;gap:8px;flex:none;align-items:center;flex-wrap:wrap}
-#btn-pregen,#let-leave{flex:none}
-#btn-pregen[hidden],#let-leave[hidden]{display:none}
+#let-leave{flex:none}
+#let-leave[hidden]{display:none}
 .girl-world{width:min(100%,416px);margin:16px auto 0;padding:14px 16px;background:#f5efe3;border:1px solid #d5c9b5}
 .girl-world[hidden]{display:none}
 .girl-world p{font-size:12px;line-height:1.7;color:#897d6c;margin:0}
@@ -408,58 +408,106 @@ body.room-home #home-room-chrome { display: none !important; }
 .tease-pack-panel select{width:100%;font:inherit;color:inherit;background:#eee8dd;border:1px solid #cbbfaa;border-radius:4px;padding:.4em .55em}
 .tease-pack-panel textarea{resize:vertical;line-height:1.5;min-height:4em}
 .tease-pack-panel button{font:inherit;padding:8px 12px;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;min-height:40px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
-.bp-row,.wp-row,.br-row,.kn-row,.su-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
-.bp-grow,.wp-grow,.br-grow,.kn-grow,.su-grow{flex:1 1 10em;min-width:0}
-.bp-fix0,.wp-fix0,.br-fix0,.kn-fix0,.su-fix0{flex:0 1 7em}
+.bp-row,.wp-row,.br-row,.kn-row,.su-row,.lk-row,.lb-row,.lr-row,.fg-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
+.bp-grow,.wp-grow,.br-grow,.kn-grow,.su-grow,.lk-grow,.lb-grow,.lr-grow,.fg-grow{flex:1 1 10em;min-width:0}
+.bp-fix0,.wp-fix0,.br-fix0,.kn-fix0,.su-fix0,.lk-fix0,.lb-fix0,.lr-fix0,.fg-fix0{flex:0 1 7em}
 .tease-pack-panel button.bp-cy,
 .tease-pack-panel button.wp-cy,
 .tease-pack-panel button.br-cy,
 .tease-pack-panel button.kn-cy,
-.tease-pack-panel button.su-cy{background:#dce2cf;color:#48604a}
+.tease-pack-panel button.su-cy,
+.tease-pack-panel button.lk-cy,
+.tease-pack-panel button.lb-cy,
+.tease-pack-panel button.lr-cy,
+.tease-pack-panel button.fg-cy{background:#dce2cf;color:#48604a}
 .tease-pack-panel button.bp-del,
 .tease-pack-panel button.wp-del,
 .tease-pack-panel button.br-del,
 .tease-pack-panel button.kn-del,
-.tease-pack-panel button.su-del{color:#975e50}
+.tease-pack-panel button.su-del,
+.tease-pack-panel button.lk-del,
+.tease-pack-panel button.lb-del,
+.tease-pack-panel button.lr-del,
+.tease-pack-panel button.fg-del{color:#975e50}
 .tease-pack-panel button.bp-big,
 .tease-pack-panel button.wp-big,
 .tease-pack-panel button.br-big,
 .tease-pack-panel button.kn-big,
-.tease-pack-panel button.su-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
-.bp-ref-head,.wp-ref-head,.br-ref-head,.kn-ref-head,.su-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bp-mode-flag,.wp-mode-flag,.br-mode-flag,.kn-mode-flag,.su-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
-.bp-mode-flag.txt,.wp-mode-flag.txt,.br-mode-flag.txt,.kn-mode-flag.txt,.su-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
-.bp-mode-flag.img,.wp-mode-flag.img,.br-mode-flag.img,.kn-mode-flag.img,.su-mode-flag.img{background:#e8d5e4;color:#8a3d78}
-.bp-thumb,.wp-thumb,.br-thumb,.kn-thumb,.su-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
-.bp-status,.wp-status,.br-status,.kn-status,.su-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
-.bp-status.err,.wp-status.err,.br-status.err,.kn-status.err,.su-status.err{color:#975e50}
-.bp-art,.wp-art,.br-art,.kn-art,.su-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
-.bp-art img,.wp-art img,.br-art img,.kn-art img,.su-art img{max-width:100%;max-height:360px;display:block}
-.bp-art .mini,.wp-art .mini,.br-art .mini,.kn-art .mini,.su-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
-/* 摸臀／摟腰／摸奶／揉奶／吸奶頭圖編輯器只屬於獨立 test_room 頁，主站永不顯示。 */
+.tease-pack-panel button.su-big,
+.tease-pack-panel button.lk-big,
+.tease-pack-panel button.lb-big,
+.tease-pack-panel button.lr-big,
+.tease-pack-panel button.fg-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
+.bp-ref-head,.wp-ref-head,.br-ref-head,.kn-ref-head,.su-ref-head,.lk-ref-head,.lb-ref-head,.lr-ref-head,.fg-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bp-mode-flag,.wp-mode-flag,.br-mode-flag,.kn-mode-flag,.su-mode-flag,.lk-mode-flag,.lb-mode-flag,.lr-mode-flag,.fg-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
+.bp-mode-flag.txt,.wp-mode-flag.txt,.br-mode-flag.txt,.kn-mode-flag.txt,.su-mode-flag.txt,.lk-mode-flag.txt,.lb-mode-flag.txt,.lr-mode-flag.txt,.fg-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
+.bp-mode-flag.img,.wp-mode-flag.img,.br-mode-flag.img,.kn-mode-flag.img,.su-mode-flag.img,.lk-mode-flag.img,.lb-mode-flag.img,.lr-mode-flag.img,.fg-mode-flag.img{background:#e8d5e4;color:#8a3d78}
+.bp-thumb,.wp-thumb,.br-thumb,.kn-thumb,.su-thumb,.lk-thumb,.lb-thumb,.lr-thumb,.fg-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
+.bp-status,.wp-status,.br-status,.kn-status,.su-status,.lk-status,.lb-status,.lr-status,.fg-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
+.bp-status.err,.wp-status.err,.br-status.err,.kn-status.err,.su-status.err,.lk-status.err,.lb-status.err,.lr-status.err,.fg-status.err{color:#975e50}
+.bp-art,.wp-art,.br-art,.kn-art,.su-art,.lk-art,.lb-art,.lr-art,.fg-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
+.bp-art img,.wp-art img,.br-art img,.kn-art img,.su-art img,.lk-art img,.lb-art img,.lr-art img,.fg-art img{max-width:100%;max-height:360px;display:block}
+.bp-art .mini,.wp-art .mini,.br-art .mini,.kn-art .mini,.su-art .mini,.lk-art .mini,.lb-art .mini,.lr-art .mini,.fg-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
+/* 動作圖編輯器只屬於獨立 test_room 頁，主站永不顯示。 */
 body.room-home #btn-butt-packs,
 body.room-home #btn-waist-packs,
 body.room-home #btn-breast-packs,
 body.room-home #btn-knead-packs,
 body.room-home #btn-suck-packs,
+body.room-home #btn-lick-packs,
+body.room-home #btn-labia-packs,
+body.room-home #btn-labia-rub-packs,
+body.room-home #btn-finger-packs,
 body.room-home #butt-pack-editor,
 body.room-home #waist-pack-editor,
 body.room-home #breast-pack-editor,
 body.room-home #knead-pack-editor,
 body.room-home #suck-pack-editor,
+body.room-home #lick-pack-editor,
+body.room-home #labia-pack-editor,
+body.room-home #labia-rub-pack-editor,
+body.room-home #finger-pack-editor,
 html:not(.room-page) #btn-butt-packs,
 html:not(.room-page) #btn-waist-packs,
 html:not(.room-page) #btn-breast-packs,
 html:not(.room-page) #btn-knead-packs,
 html:not(.room-page) #btn-suck-packs,
+html:not(.room-page) #btn-lick-packs,
+html:not(.room-page) #btn-labia-packs,
+html:not(.room-page) #btn-labia-rub-packs,
+html:not(.room-page) #btn-finger-packs,
 html:not(.room-page) #butt-pack-editor,
 html:not(.room-page) #waist-pack-editor,
 html:not(.room-page) #breast-pack-editor,
 html:not(.room-page) #knead-pack-editor,
-html:not(.room-page) #suck-pack-editor {
+html:not(.room-page) #suck-pack-editor,
+html:not(.room-page) #lick-pack-editor,
+html:not(.room-page) #labia-pack-editor,
+html:not(.room-page) #labia-rub-pack-editor,
+html:not(.room-page) #finger-pack-editor {
   display: none !important;
 }
 
 /* 主站 index 不需要空的房間快捷列；test_room 的 room-page 保留完整 chrome。 */
 html:not(.room-page) #room-pack-chrome { display: none; }
 
+
+/* 召喚儀式狀態（主站房間／test_room） */
+.room-summon-ritual{
+  position:fixed;z-index:70;
+  left:50%;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 72px);
+  transform:translateX(-50%);
+  max-width:min(92vw,420px);
+  padding:.55em 1em;
+  background:rgba(32,28,40,.88);
+  color:#f3ebe0;
+  border:1px solid rgba(210,190,160,.35);
+  border-radius:4px;
+  font-size:14px;letter-spacing:.04em;
+  text-align:center;
+  pointer-events:none;
+  box-shadow:0 4px 18px rgba(0,0,0,.28);
+}
+.room-summon-ritual[hidden]{display:none}
+body.room-home .room-summon-ritual:not([hidden]){display:block}
+#main-room-stage[aria-busy="true"]{opacity:.92}

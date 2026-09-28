@@ -1,6 +1,6 @@
 /** 房間「吸奶頭」生圖預設組：多組命名存檔，執行時隨機抽一組；無組時不生圖（僅對話／身體）。 */
 
-import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=4";
+import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=5";
 
 const API = "/api/suck-packs";
 
@@ -497,6 +497,22 @@ export function mountSuckPackEditor(hooks = {}) {
     const btn3 = $("btn-knead-packs");
     if (el3 && !el3.hidden) el3.hidden = true;
     if (btn3) btn3.setAttribute("aria-expanded", "false");
+    const el4 = $("lick-pack-editor");
+    const btn4 = $("btn-lick-packs");
+    if (el4 && !el4.hidden) el4.hidden = true;
+    if (btn4) btn4.setAttribute("aria-expanded", "false");
+    const el5 = $("labia-pack-editor");
+    const btn5 = $("btn-labia-packs");
+    if (el5 && !el5.hidden) el5.hidden = true;
+    if (btn5) btn5.setAttribute("aria-expanded", "false");
+    const el6 = $("labia-rub-pack-editor");
+    const btn6 = $("btn-labia-rub-packs");
+    if (el6 && !el6.hidden) el6.hidden = true;
+    if (btn6) btn6.setAttribute("aria-expanded", "false");
+    const el7 = $("finger-pack-editor");
+    const btn7 = $("btn-finger-packs");
+    if (el7 && !el7.hidden) el7.hidden = true;
+    if (btn7) btn7.setAttribute("aria-expanded", "false");
   };
 
   const open = async () => {
