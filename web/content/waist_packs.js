@@ -298,6 +298,23 @@ async function waitImg(body, onTick, ms = 360000) {
 }
 
 /**
+ * 摟腰生圖（編輯器／預產／執行時共用）。
+ * comfy 時 buildWaistImgBody → resolveComfyCkpt 會丟「尚未綁定」；
+ * 不寫入 pack.url（呼叫端決定）。回傳 { status, result, error, body, … }。
+ */
+export async function generateWaistPackImage(pack, girl, eng, opts = {}) {
+  const body = buildWaistImgBody(pack, girl, eng, opts);
+  const r = await waitImg(body, opts.onTick);
+  return {
+    status: r.status,
+    result: r.result,
+    error: r.error,
+    body,
+    key: r.key,
+  };
+}
+
+/**
  * 掛載房間編輯器內的「摟腰圖」面板。
  * @param {{ getGirl: () => object|null, getEngine: () => Promise<object> }} hooks
  */
@@ -599,8 +616,10 @@ export function mountWaistPackEditor(hooks = {}) {
     setStatus("排隊中…");
     try {
       const eng = (await hooks.getEngine?.()) || { imgProvider: "comfy", imgStyle: "pixel" };
-      const body = buildWaistImgBody(p, g, eng, { stage: g.stage || "stranger" });
-      const r = await waitImg(body, (sec) => setStatus(`生成中… ${sec}s`));
+      const r = await generateWaistPackImage(p, g, eng, {
+        stage: g.stage || "stranger",
+        onTick: (sec) => setStatus(`生成中… ${sec}s`),
+      });
       if (r.status === "done" && r.result) {
         const url = String(r.result);
         p.url = url;

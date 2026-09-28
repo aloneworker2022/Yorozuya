@@ -80,15 +80,15 @@ import {
 import {
   mountButtPackEditor,
   pickRuntimeButtPack,
-  buildButtImgBody,
   loadButtDoc,
-} from "./butt_packs.js?v=3";
+  generateButtPackImage,
+} from "./butt_packs.js?v=4";
 import {
   mountWaistPackEditor,
   pickRuntimeWaistPack,
-  buildWaistImgBody,
   loadWaistDoc,
-} from "./waist_packs.js?v=2";
+  generateWaistPackImage,
+} from "./waist_packs.js?v=3";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -441,6 +441,34 @@ async function waitImage(body) {
   return { status: "error", error: "逾時" };
 }
 
+/** 與 pack waitImg／apiJson 相同：HTTP／網路錯誤直接 throw，不吞成 null。 */
+async function postImageStrict(body) {
+  const response = await fetch("/api/imggen", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(errorText(payload, response.status));
+  return payload;
+}
+
+/** 半身／預產用：網路錯誤會 throw（不像 waitImage 把失敗吞成逾時）。 */
+async function waitImageStrict(body, onTick, ms = 360000) {
+  let key = body.key;
+  let r = await postImageStrict({ ...body, retry: body.retry !== false });
+  if (r.key) key = r.key;
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (r.status === "done" || r.status === "error") return r;
+    if (onTick) onTick(Math.round((Date.now() - t0) / 1000));
+    await new Promise((x) => setTimeout(x, 1500));
+    r = await postImageStrict({ ...body, key, retry: false });
+    if (r.key) key = r.key;
+  }
+  return { status: "error", error: "逾時" };
+}
+
 function resetPortraitEntrance(img = $("portrait-img")) {
   if (!img) return;
   img.classList.remove("portrait-in");
@@ -488,7 +516,7 @@ function showTeasePortrait(who, shotKey, url, alt) {
   }
 }
 
-/** 摸臀：先用 per-girl 預產圖；缺才 live gen。有組→packs[id]，無組→tease_butt。 */
+/** 摸臀：先用 per-girl 預產圖；缺才 live gen（走 generateButtPackImage）。有組→packs[id]，無組→tease_butt。 */
 async function maybeGenButtShot(who, actId) {
   if (actId !== "butt" || !who?.id) return;
   if (buttGenning.has(who.id)) return;
@@ -505,11 +533,10 @@ async function maybeGenButtShot(who, actId) {
     }
     const engine = await gameImgRoute();
     await ensureGirlComfyCkpt(who);
-    const body = buildButtImgBody(pack, who, engine, {
+    const result = await generateButtPackImage(pack, who, engine, {
       stage: who.stage || "stranger",
       worn: wornOutfit(who),
     });
-    const result = await waitImage(body);
     if (result?.status === "done" && result.result) {
       const stamped = stampPortraitUrl(result.result);
       if (pack?.id) {
@@ -528,7 +555,7 @@ async function maybeGenButtShot(who, actId) {
   }
 }
 
-/** 摟腰：僅在有存檔圖組時；先用 per-girl 預產圖，缺才 live gen。 */
+/** 摟腰：僅在有存檔圖組時；先用 per-girl 預產圖，缺才 live gen（走 generateWaistPackImage）。 */
 async function maybeGenWaistShot(who, actId) {
   if (actId !== "waist" || !who?.id) return;
   if (waistGenning.has(who.id)) return;
@@ -544,11 +571,10 @@ async function maybeGenWaistShot(who, actId) {
     }
     const engine = await gameImgRoute();
     await ensureGirlComfyCkpt(who);
-    const body = buildWaistImgBody(pack, who, engine, {
+    const result = await generateWaistPackImage(pack, who, engine, {
       stage: who.stage || "stranger",
       worn: wornOutfit(who),
     });
-    const result = await waitImage(body);
     if (result?.status === "done" && result.result) {
       const stamped = stampPortraitUrl(result.result);
       who.portraits.tease_waist_packs = who.portraits.tease_waist_packs || {};
@@ -565,7 +591,7 @@ async function maybeGenWaistShot(who, actId) {
   }
 }
 
-/** 預產圖：半身＋各摸臀組＋各摟腰組（寫入 who.portraits，不寫 pack.json）。 */
+/** 預產圖：半身＋各摸臀組＋各摟腰組（寫入 who.portraits，不寫 pack.json）。走 pack 模組 generate*。 */
 async function pregenGirlPortraits() {
   if (!girl || sheIsOut()) return;
   if (pregenning) return;
@@ -579,19 +605,23 @@ async function pregenGirlPortraits() {
   let halfOk = false;
   try {
     await ensureGirlComfyCkpt(who);
-    if (status) status.textContent = "預產圖：半身…";
-    await ensureHalfPortrait(who);
-    const halfWaitStart = Date.now();
-    while (!who.portraits?.half && halfGenning.has(who.id) && Date.now() - halfWaitStart < 360000) {
-      await new Promise((r) => setTimeout(r, 800));
+    const engine = await gameImgRoute();
+    if (engine.imgProvider === "comfy" && !String(who.comfyCkpt || "").trim()) {
+      throw new Error("此魅子尚未綁定 Comfy 模型");
     }
+
+    if (status) status.textContent = "預產圖：半身…";
+    await ensureHalfPortrait(who, {
+      required: true,
+      onTick: (sec) => { if (status) status.textContent = `預產圖：半身… ${sec}s`; },
+    });
     halfOk = !!who.portraits?.half;
+    if (!halfOk) throw new Error("半身立繪生圖失敗");
 
     who.portraits = who.portraits || {};
     who.portraits.tease_butt_packs = who.portraits.tease_butt_packs || {};
     who.portraits.tease_waist_packs = who.portraits.tease_waist_packs || {};
 
-    const engine = await gameImgRoute();
     const buttDoc = await loadButtDoc();
     const buttPacks = Array.isArray(buttDoc?.packs) ? buttDoc.packs : [];
 
@@ -600,11 +630,11 @@ async function pregenGirlPortraits() {
         buttCount = 1;
       } else {
         if (status) status.textContent = "預產圖：摸臀（預設）…";
-        const body = buildButtImgBody(null, who, engine, {
+        const result = await generateButtPackImage(null, who, engine, {
           stage: who.stage || "stranger",
           worn: wornOutfit(who),
+          onTick: (sec) => { if (status) status.textContent = `預產圖：摸臀（預設）… ${sec}s`; },
         });
-        const result = await waitImage(body);
         if (result?.status === "done" && result.result) {
           who.portraits.tease_butt = stampPortraitUrl(result.result);
           buttCount = 1;
@@ -622,11 +652,13 @@ async function pregenGirlPortraits() {
           continue;
         }
         if (status) status.textContent = `預產圖：摸臀 ${i + 1}/${buttPacks.length}…`;
-        const body = buildButtImgBody(pack, who, engine, {
+        const result = await generateButtPackImage(pack, who, engine, {
           stage: who.stage || "stranger",
           worn: wornOutfit(who),
+          onTick: (sec) => {
+            if (status) status.textContent = `預產圖：摸臀 ${i + 1}/${buttPacks.length}… ${sec}s`;
+          },
         });
-        const result = await waitImage(body);
         if (result?.status === "done" && result.result) {
           const stamped = stampPortraitUrl(result.result);
           who.portraits.tease_butt_packs[pack.id] = stamped;
@@ -650,11 +682,13 @@ async function pregenGirlPortraits() {
         continue;
       }
       if (status) status.textContent = `預產圖：摟腰 ${i + 1}/${waistPacks.length}…`;
-      const body = buildWaistImgBody(pack, who, engine, {
+      const result = await generateWaistPackImage(pack, who, engine, {
         stage: who.stage || "stranger",
         worn: wornOutfit(who),
+        onTick: (sec) => {
+          if (status) status.textContent = `預產圖：摟腰 ${i + 1}/${waistPacks.length}… ${sec}s`;
+        },
       });
-      const result = await waitImage(body);
       if (result?.status === "done" && result.result) {
         const stamped = stampPortraitUrl(result.result);
         who.portraits.tease_waist_packs[pack.id] = stamped;
@@ -708,20 +742,50 @@ function paintHalfPortrait(who = girl) {
   reveal();
 }
 
-async function ensureHalfPortrait(who) {
-  if (!who?.id) return;
-  // 舊房間存檔可能沒綁 ckpt；生圖前補上（非 comfy 則 no-op）
-  try { await ensureGirlComfyCkpt(who); } catch { /* ignore */ }
-  if (who.portraits?.half) {
-    paintHalfPortrait(who);
+async function ensureHalfPortrait(who, opts = {}) {
+  if (!who?.id) {
+    if (opts.required) throw new Error("無魅子");
     return;
   }
-  if (halfGenning.has(who.id)) return;
+  // 舊房間存檔可能沒綁 ckpt；生圖前補上（非 comfy 則 no-op）
+  try {
+    await ensureGirlComfyCkpt(who);
+  } catch (err) {
+    if (opts.required) throw err;
+  }
+  if (who.portraits?.half) {
+    paintHalfPortrait(who);
+    return opts.required ? { ok: true } : undefined;
+  }
+  // 已有進行中的生圖：非 required 直接返回；required 則等結果
+  if (halfGenning.has(who.id)) {
+    if (!opts.required) return;
+    const t0 = Date.now();
+    while (halfGenning.has(who.id) && Date.now() - t0 < 360000) {
+      await new Promise((r) => setTimeout(r, 800));
+      if (who.portraits?.half) {
+        paintHalfPortrait(who);
+        return { ok: true };
+      }
+    }
+    if (who.portraits?.half) {
+      paintHalfPortrait(who);
+      return { ok: true };
+    }
+    throw new Error("半身立繪生圖逾時");
+  }
   halfGenning.add(who.id);
   try {
     const engine = await gameImgRoute();
     await ensureGirlComfyCkpt(who);
-    const result = await waitImage(portraitBody(who, engine));
+    if (opts.required && engine.imgProvider === "comfy" && !String(who.comfyCkpt || "").trim()) {
+      throw new Error("此魅子尚未綁定 Comfy 模型");
+    }
+    const waiter = opts.required ? waitImageStrict : waitImage;
+    const result = await waiter(
+      portraitBody(who, engine),
+      opts.required ? opts.onTick : undefined,
+    );
     if (result?.status === "done" && result.result) {
       const url = String(result.result);
       who.portraits = who.portraits || {};
@@ -732,10 +796,15 @@ async function ensureHalfPortrait(who) {
         paintHalfPortrait(who);
         persistRoom();
       }
-    } else if (result?.status === "error") {
-      console.warn("[ensureHalfPortrait]", result.error || "生圖失敗");
+      return opts.required ? { ok: true } : undefined;
+    }
+    const errMsg = result?.error || "半身立繪生圖失敗";
+    if (opts.required) throw new Error(errMsg);
+    if (result?.status === "error") {
+      console.warn("[ensureHalfPortrait]", errMsg);
     }
   } catch (err) {
+    if (opts.required) throw err;
     console.warn("[ensureHalfPortrait]", err?.message || err);
   } finally {
     halfGenning.delete(who.id);
