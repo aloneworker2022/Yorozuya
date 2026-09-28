@@ -2542,3 +2542,86 @@ body.card-mode.has-ct-figure #kanban-girl {
   min-height: 2.8em;
   padding: .45em .7em;
 }
+
+
+/* ===== ROOM-HOME：主畫面 上窄卡／中房／下輸入 ===== */
+body.room-home #page-quests {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: calc(0.6em + env(safe-area-inset-bottom));
+}
+body.room-home #home-card-strip {
+  flex: 0 0 auto;
+  max-height: 22vh;
+  min-height: 0;
+  position: relative;
+  z-index: 3;
+  overflow: hidden;
+}
+body.room-home #home-card-strip .q-scenes {
+  flex: none;
+  height: 22vh;
+  max-height: 22vh;
+  min-height: 0;
+}
+body.room-home #home-card-strip .pin-hdr {
+  margin: 0;
+  padding: 0.15em 0;
+  font-size: 0.78em;
+}
+body.room-home #home-card-strip .pin-carousel {
+  max-height: calc(22vh - 2.2em);
+}
+body.room-home #home-card-strip .pin-slot,
+body.room-home #home-card-strip .pin-card {
+  transform: scale(0.92);
+  transform-origin: top center;
+}
+/* 日誌／處理展開時：卡區拉高，房間讓位 */
+body.room-home #page-quests.on-proc #home-card-strip,
+body.room-home #page-quests.on-diary #home-card-strip,
+body.room-home #page-quests.on-line #home-card-strip {
+  max-height: none;
+  flex: 1 1 auto;
+}
+body.room-home #page-quests.on-proc #home-card-strip .q-scenes,
+body.room-home #page-quests.on-diary #home-card-strip .q-scenes,
+body.room-home #page-quests.on-line #home-card-strip .q-scenes {
+  height: 100%;
+  max-height: none;
+}
+body.room-home #page-quests.on-proc #main-room-stage,
+body.room-home #page-quests.on-diary #main-room-stage,
+body.room-home #page-quests.on-line #main-room-stage {
+  display: none;
+}
+body.room-home #main-room-stage {
+  flex: 1 1 auto;
+  min-height: 38vh;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 520px;
+}
+body.room-home #quest-input-row {
+  flex-shrink: 0;
+  margin-top: 0.25em;
+  position: relative; /* sticky 在窄 flex 內改相對，避免蓋房 */
+  bottom: auto;
+  z-index: 4;
+}
+/* 委託頁：看板娘退居背景，房間當主視覺 */
+body.room-home[data-tab="0"] #kanban {
+  opacity: 0.18;
+  filter: brightness(0.55);
+  pointer-events: none;
+}
+body.room-home[data-tab="0"] #kanban-girl {
+  transform: none;
+  animation: none;
+}
+/* 其他分頁：房間舞台本就在 page-quests 內會滑走；恢復看板可點 */
+body.room-home[data-tab="2"] #kanban {
+  opacity: 1;
+  filter: brightness(1);
+}

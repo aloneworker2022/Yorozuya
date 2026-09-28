@@ -1,18 +1,19 @@
 @font-face{font-family:RoomPixel;src:url('/fonts/fusion-pixel-12px-zh-hant.woff2') format('woff2');font-display:swap}
 *{box-sizing:border-box}
-body{margin:0;min-height:100svh;background:#eee8dd;color:#514c45;font-family:RoomPixel,system-ui,sans-serif;display:flex;flex-direction:column;justify-content:center}
+/* sandbox page only — do not paint main app body */
+html.room-page body{margin:0;min-height:100svh;background:#eee8dd;color:#514c45;font-family:RoomPixel,system-ui,sans-serif;display:flex;flex-direction:column;justify-content:center}
 html.sheet-open,html.sheet-open body{overflow:hidden;overscroll-behavior:none}
 body.sheet-open{position:fixed;left:0;right:0;width:100%}
-body.editing{justify-content:flex-start}
-a{color:inherit;text-decoration:none}
-.stage{width:min(100%,640px);margin:0 auto;padding:24px 20px 96px}
-.scene{display:flex;justify-content:center}
+html.room-page body.editing{justify-content:flex-start}
+html.room-page a{color:inherit;text-decoration:none}
+html.room-page .stage,.home-room-stage{width:min(100%,640px);margin:0 auto;padding:24px 20px 96px}
+html.room-page .scene,#main-room-stage .scene{display:flex;justify-content:center}
 #edit-room{position:fixed;z-index:5;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));min-width:72px}
 #room-editor{width:min(100%,560px);margin:28px auto 0}
 #room-editor[hidden]{display:none}
 .back{display:inline-block;padding:8px 0;font-size:12px;letter-spacing:1px}
-canvas{display:block;width:min(100%,416px);height:auto;image-rendering:pixelated;touch-action:none;user-select:none;cursor:grab}
-canvas.dragging{cursor:grabbing}
+#room,html.room-page canvas{display:block;width:min(100%,416px);height:auto;image-rendering:pixelated;touch-action:none;user-select:none;cursor:grab}
+#room.dragging,html.room-page canvas.dragging{cursor:grabbing}
 .tool-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:18px 0 0}
 .view-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
 .view-controls button{min-width:44px;padding:10px 12px}
@@ -31,7 +32,7 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #placed-items{display:flex;gap:8px;flex-wrap:wrap}#placed-items button{font-size:12px;padding:10px}
 #remove-item{color:#975e50}
 .actor-panel{margin:16px 0 0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #d5c9b5}.actor-panel strong{font-size:14px;font-weight:400}.actor-panel p{font-size:12px;line-height:1.6;color:#897d6c;margin:6px 0 0}.actor-panel button{font-size:12px;white-space:nowrap;padding:10px}
-.actor-panel{flex-wrap:wrap}.actor-actions{display:flex;gap:8px;flex-wrap:wrap}button:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.actor-panel{flex-wrap:wrap}.actor-actions{display:flex;gap:8px;flex-wrap:wrap}html.room-page button:disabled,#home-room-chrome button:disabled,#portrait-sheet button:disabled,#edit-room:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
 .actor-hint{font-size:12px;color:#657353;margin:4px 0 0}
 .summon-panel{margin:16px 0 0;padding:0 0 8px;border-bottom:1px solid #d5c9b5}
 .summon-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
@@ -99,10 +100,10 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #portrait-backdrop{width:100%;height:100%;appearance:none;-webkit-appearance:none}
 @media(min-width:600px){#furniture-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .actor-panel[hidden]{display:none}
-button{font:inherit;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;padding:12px 16px;min-height:44px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
-button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-visible,a:focus-visible{outline:2px solid #657353;outline-offset:4px}
+html.room-page button,#home-room-chrome button,#edit-room,#portrait-sheet button,#room-scene-overlay button,#main-room-stage button{font:inherit;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;padding:12px 16px;min-height:44px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
+html.room-page button[aria-pressed=true],#home-room-chrome button[aria-pressed=true],#edit-room[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}html.room-page button:focus-visible,html.room-page a:focus-visible,#home-room-chrome button:focus-visible,#portrait-sheet button:focus-visible{outline:2px solid #657353;outline-offset:4px}
 .note{font-size:12px;letter-spacing:1px;color:#93897b;margin:16px 0 0}
-@media(min-width:800px){canvas{width:416px}}
+@media(min-width:800px){#room,html.room-page canvas{width:416px}}
 
 .body-panel{margin:16px 0 0;padding:12px 0 8px;border-bottom:1px solid #d5c9b5}
 .body-panel[hidden]{display:none}
@@ -200,7 +201,16 @@ body.room-ship .actor-panel,
 body.room-ship .furniture-panel,
 body.room-ship .inventory,
 body.room-ship .tool-row,
-body.room-ship .gesture-hint {
+body.room-ship .gesture-hint,
+body.room-home #bond-debug,
+body.room-home #body-panel,
+body.room-home #romance-items,
+body.room-home .summon-panel,
+body.room-home .actor-panel,
+body.room-home .furniture-panel,
+body.room-home .inventory,
+body.room-home .tool-row,
+body.room-home .gesture-hint {
   display: none !important;
 }
 body.room-ship #edit-room {
@@ -257,3 +267,96 @@ body.room-ship .ship-back{
   box-shadow:2px 2px 0 #d6cbbb;border-radius:2px;text-decoration:none;
 }
 body.room-ship .stage{padding-top:max(48px,calc(env(safe-area-inset-top) + 36px))}
+
+
+/* ===== ROOM-HOME embed（嵌進 index 主畫面）===== */
+body.room-home #edit-room,
+body.room-home #ship-back,
+body.room-home #bond-debug,
+body.room-home #body-panel,
+body.room-home #romance-items,
+body.room-home .summon-panel,
+body.room-home .actor-panel,
+body.room-home .furniture-panel,
+body.room-home .inventory,
+body.room-home .tool-row,
+body.room-home .gesture-hint,
+body.room-home #room-editor {
+  display: none !important;
+}
+body.room-home #main-room-stage {
+  position: relative;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: auto;
+  z-index: 1;
+}
+body.room-home #main-room-stage .scene {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  min-height: 36vh;
+  padding: 4px 0 0;
+}
+body.room-home #main-room-stage #room {
+  width: min(100%, 360px);
+  max-height: min(52vh, 420px);
+}
+body.room-home #main-room-stage .girl-where,
+body.room-home #main-room-stage .girl-mood,
+body.room-home #main-room-stage .girl-friends,
+body.room-home #main-room-stage .girl-world {
+  width: min(100%, 360px);
+  margin: 2px auto 0;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.3;
+  max-height: 2.8em;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--panel, #1e1828) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line, #3a3348) 80%, transparent);
+  color: var(--text, #f4fbff);
+}
+body.room-home #portrait-sheet {
+  z-index: 70;
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: max(8px, env(safe-area-inset-top)) 8px 0;
+}
+body.room-home .talk {
+  width: min(100%, 440px);
+  margin: 0 auto;
+  height: 100%;
+  justify-content: flex-end;
+  padding-bottom: 0;
+}
+body.room-home #talk-panel {
+  order: 2;
+  margin-top: auto;
+  gap: 6px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+body.room-home #talk-box {
+  order: 1;
+  min-height: 4.8em;
+  max-height: 28svh;
+  overflow-y: auto;
+}
+body.room-home #talk-input-row { order: 2; }
+body.room-home #portrait-img {
+  height: min(58svh, 560px);
+  bottom: max(7.5em, calc(env(safe-area-inset-bottom) + 6.5em));
+}
+body.room-home .talk-acts {
+  bottom: max(4.2em, calc(env(safe-area-inset-bottom) + 3.6em));
+  z-index: 72;
+}
+body.room-home #room-scene-overlay { z-index: 75; }
+body.room-home #home-room-chrome { display: none !important; }

@@ -961,6 +961,7 @@ function initState(j, offline) {
   state.senseHour ??= { key: 0, count: 0 };
   ensureRoomSummonOffer();
   mergeRoomProgressSync();
+  try { bindRoomProgressLiveSync(); } catch { /* ignore */ }
   state.inventory ??= { bouquet: 0, ring: 0 };
   state.inventory.bouquet = state.inventory.bouquet | 0;
   state.inventory.ring = state.inventory.ring | 0;
@@ -7440,27 +7441,9 @@ function mergeRoomProgressSync() {
     if (!raw) return;
     const data = JSON.parse(raw);
     if (!data?.id) return;
-    const s = (state.succubi || []).find(x => x.id === data.id);
-    if (!s) return;
-    let changed = false;
-    if (typeof data.affection === "number" && data.affection !== s.affection) {
-      s.affection = data.affection;
-      changed = true;
-    }
-    if (data.stage && data.stage !== s.stage) {
-      s.stage = data.stage;
-      changed = true;
-    }
-    if (data.portraits && typeof data.portraits === "object") {
-      s.portraits = { ...(s.portraits || {}), ...data.portraits };
-      if (data.portraits.half || data.portraits.full) {
-        s.portrait = data.portraits.full || data.portraits.half || s.portrait;
-      }
-      changed = true;
-    }
-    if (changed) {
-      dirty = true;
-      log(`房間進度合併：${s.name}（感情 ${s.affection}・${stageLabel(s.stage)}）`);
+    if (applyRoomProgressData(data)) {
+      const s = (state.succubi || []).find(x => x.id === data.id);
+      if (s) log(`房間進度合併：${s.name}（感情 ${s.affection}・${stageLabel(s.stage)}）`);
     }
   } catch { /* ignore */ }
 }
@@ -7541,27 +7524,96 @@ function beginRoomCompanionSummon(girlId) {
   const next = refreshRoomSummonOffer();
   dirty = true;
   const roomGirl = buildRoomGirlFromSuccubus(s);
-  try {
-    localStorage.setItem(ROOM_PENDING_KEY, JSON.stringify({
-      girl: roomGirl,
-      playerName: state.playerProfile?.name || state.settings?.player || "",
-      paidCost: cost,
-      at: Date.now(),
-    }));
-  } catch (err) {
-    // 寫不進就退費並還原報價
-    state.gold += cost;
-    state.roomSummonOffer = { cost };
-    toast("無法開啟房間（本機儲存失敗）", "bad");
-    scheduleSave();
-    renderAll();
-    return;
-  }
+  const payload = {
+    girl: roomGirl,
+    playerName: state.playerProfile?.name || state.settings?.player || "",
+    paidCost: cost,
+    at: Date.now(),
+  };
   log(`房間召喚 ${s.name} −${cost} 金（下次報價 ${next.cost} 金）`);
   scheduleSave();
   toast(`${s.name} 進入房間（−${cost} 金）`, "good");
-  // 橋接：導向房間頁（完整嵌進 index 日後再做）
-  location.href = "/test_room?ship=1";
+  // 嵌進主畫面：同頁 adopt，不導向 /test_room
+  enterEmbeddedRoomCompanion(payload);
+}
+
+/** 把 pending 帶進嵌進的 RoomCompanion（同頁），開對話 */
+function enterEmbeddedRoomCompanion(payload) {
+  try { detailId = null; } catch { /* ignore */ }
+  try { switchTab(0); } catch { /* ignore */ }
+  // 關掉名冊詳情，回到委託／房間主畫面
+  try {
+    const detail = document.getElementById("succubus-detail");
+    if (detail) detail.classList.add("hidden");
+    const home = document.getElementById("succubi-home");
+    if (home) home.classList.remove("hidden");
+  } catch { /* ignore */ }
+  const adoptNow = () => {
+    const api = window.RoomCompanion;
+    if (!api?.adopt) return false;
+    const ok = api.adopt(payload);
+    if (ok) {
+      try { localStorage.removeItem(ROOM_PENDING_KEY); } catch { /* ignore */ }
+      try { document.getElementById("talk-input")?.focus({ preventScroll: true }); } catch { /* ignore */ }
+      try { document.getElementById("main-room-stage")?.scrollIntoView({ block: "nearest" }); } catch { /* ignore */ }
+      renderAll?.();
+    }
+    return !!ok;
+  };
+  if (adoptNow()) return;
+  // 模組尚未就緒：保留 pending，短輪詢 adopt
+  try {
+    localStorage.setItem(ROOM_PENDING_KEY, JSON.stringify(payload));
+  } catch { /* ignore */ }
+  let tries = 0;
+  const timer = setInterval(() => {
+    tries += 1;
+    if (adoptNow() || tries > 40) clearInterval(timer);
+  }, 50);
+}
+
+/** 房間進度即時合併進名冊（同 id）；也可吃 localStorage 橋） */
+function applyRoomProgressData(data) {
+  if (!data?.id || !state?.succubi) return false;
+  const s = state.succubi.find(x => x.id === data.id);
+  if (!s) return false;
+  let changed = false;
+  if (typeof data.affection === "number" && data.affection !== s.affection) {
+    s.affection = data.affection;
+    changed = true;
+  }
+  if (data.stage && data.stage !== s.stage) {
+    s.stage = data.stage;
+    changed = true;
+  }
+  if (data.portraits && typeof data.portraits === "object") {
+    s.portraits = { ...(s.portraits || {}), ...data.portraits };
+    if (data.portraits.half || data.portraits.full) {
+      s.portrait = data.portraits.full || data.portraits.half || s.portrait;
+    }
+    changed = true;
+  }
+  if (changed) {
+    dirty = true;
+    scheduleSave();
+  }
+  return changed;
+}
+
+function bindRoomProgressLiveSync() {
+  if (window.__yoroRoomProgressBound) return;
+  window.__yoroRoomProgressBound = true;
+  window.addEventListener("yoro-room-progress", (ev) => {
+    try { applyRoomProgressData(ev.detail); } catch { /* ignore */ }
+  });
+  // 關閉房間對話後再合併一次（雙保險）
+  window.addEventListener("yoro-room-sheet-close", () => {
+    try {
+      window.RoomCompanion?.sync?.();
+      mergeRoomProgressSync();
+      renderAll?.();
+    } catch { /* ignore */ }
+  });
 }
 
 /** 名冊「感應」：免費；每整點時段 6 次。接通後聊天框輸入「召喚」花 2 金召到店頭。 */

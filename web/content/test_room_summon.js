@@ -1158,17 +1158,17 @@ function friendPhysicalPromptLines(who = girl) {
 function renderCard() {
   const card = $("summon-card");
   if (!girl) {
-    card.hidden = true;
-    $("let-leave").hidden = true;
+    if (card) card.hidden = true;
+    if ($("let-leave")) $("let-leave").hidden = true;
     renderBodyPanel();
     renderDebug();
     return;
   }
-  card.hidden = false;
+  if (card) card.hidden = false;
   const region = placedRegion();
-  $("summon-name").textContent = titleOf(girl);
-  $("summon-meta").textContent = region && sheIsOut() ? `${lookLine(girl)} · 人在日本的${region.name}` : lookLine(girl);
-  $("let-leave").hidden = sheIsOut();
+  if ($("summon-name")) $("summon-name").textContent = titleOf(girl);
+  if ($("summon-meta")) $("summon-meta").textContent = region && sheIsOut() ? `${lookLine(girl)} · 人在日本的${region.name}` : lookLine(girl);
+  if ($("let-leave")) $("let-leave").hidden = sheIsOut();
   renderBodyPanel();
   renderDebug();
 }
@@ -1182,16 +1182,18 @@ function talkError(err) {
 }
 
 function sheetOpen() {
-  return !$("portrait-sheet").hidden;
+  const sheet = $("portrait-sheet");
+  return !!(sheet && !sheet.hidden);
 }
 
 function setTyping(on) {
-  $("talk-typing").hidden = !on;
+  const el = $("talk-typing");
+  if (el) el.hidden = !on;
 }
 
 function setTalkEnabled(on) {
-  $("talk-input").disabled = !on;
-  $("talk-send").disabled = !on || talkBusy;
+  if ($("talk-input")) $("talk-input").disabled = !on;
+  if ($("talk-send")) $("talk-send").disabled = !on || talkBusy;
   refreshTalkActs();
 }
 
@@ -3710,15 +3712,17 @@ function unlockSheetScroll() {
 }
 
 function showSheet() {
-  $("portrait-sheet").hidden = false;
+  const sheet = $("portrait-sheet");
+  if (!sheet) return;
+  sheet.hidden = false;
   lockSheetScroll();
   startIdleDecay();
   refreshTalkActs();
   if (!girl) {
     typeJob += 1;
     setTyping(false);
-    $("portrait-name").textContent = "還沒有人";
-    $("portrait-meta").textContent = "先按「抽妹子」。";
+    if ($("portrait-name")) $("portrait-name").textContent = "還沒有人";
+    if ($("portrait-meta")) $("portrait-meta").textContent = "先按「抽妹子」。";
     setTalkEnabled(false);
     paintHalfPortrait(null);
     return;
@@ -3780,14 +3784,18 @@ const ROOM_PENDING_KEY = "yoro_room_pending_adopt";
 
 function syncProgressToGame(who) {
   if (!who?.id || !(who.fromRoster || who.gameGirlId)) return;
+  const detail = {
+    id: who.gameGirlId || who.id,
+    affection: who.affection || 0,
+    stage: who.stage || "stranger",
+    portraits: who.portraits || {},
+    at: Date.now(),
+  };
   try {
-    localStorage.setItem(ROOM_PROGRESS_KEY, JSON.stringify({
-      id: who.gameGirlId || who.id,
-      affection: who.affection || 0,
-      stage: who.stage || "stranger",
-      portraits: who.portraits || {},
-      at: Date.now(),
-    }));
+    localStorage.setItem(ROOM_PROGRESS_KEY, JSON.stringify(detail));
+  } catch { /* ignore */ }
+  try {
+    window.dispatchEvent(new CustomEvent("yoro-room-progress", { detail }));
   } catch { /* ignore */ }
 }
 
@@ -3851,18 +3859,23 @@ function adoptRosterGirl(payload) {
 function isShipMode() {
   try {
     return new URLSearchParams(location.search).get("ship") === "1"
-      || document.body.classList.contains("room-ship");
+      || document.body.classList.contains("room-ship")
+      || document.body.classList.contains("room-home");
   } catch {
-    return document.body.classList.contains("room-ship");
+    return document.body.classList.contains("room-ship")
+      || document.body.classList.contains("room-home");
   }
 }
 
 function applyShipChrome() {
   if (!isShipMode()) return;
-  document.body.classList.add("room-ship");
-  document.documentElement.classList.add("room-ship");
-  const shipBack = $("ship-back");
-  if (shipBack) shipBack.hidden = false;
+  // 嵌進 index 用 room-home；獨立 /test_room?ship=1 用 room-ship
+  if (!document.body.classList.contains("room-home")) {
+    document.body.classList.add("room-ship");
+    document.documentElement.classList.add("room-ship");
+    const shipBack = $("ship-back");
+    if (shipBack) shipBack.hidden = false;
+  }
   // 隱藏沙盒／除錯：抽妹子、身體面板、戀愛道具除錯、bond-debug
   for (const id of [
     "bond-debug", "body-panel", "romance-items",
@@ -3913,6 +3926,11 @@ function hideSheet() {
   stopIdleDecay();
   persistRoom();
   refreshTalkActs();
+  try {
+    window.dispatchEvent(new CustomEvent("yoro-room-sheet-close", {
+      detail: girl ? { id: girl.gameGirlId || girl.id } : null,
+    }));
+  } catch { /* ignore */ }
 }
 
 function errorText(payload, status) {
@@ -4961,15 +4979,16 @@ function bindBodyPanel() {
   } else {
     window.RoomActor?.setPresent(!girl.world?.home);
   }
-  $("summon-status").textContent = `${girl.name}還在（狀態已保留）。長按她繼續聊，或讓她離開。`;
+  if ($("summon-status")) $("summon-status").textContent = `${girl.name}還在（狀態已保留）。長按她繼續聊，或讓她離開。`;
 })();
 
-$("draw-girl").addEventListener("click", () => { drawGirl(); });
-$("let-leave").addEventListener("click", letHerLeave);
-$("summon-back").addEventListener("click", summonHerBack);
-$("open-activity").addEventListener("click", toggleActivity);
-$("activity-work").addEventListener("click", () => { startActivity("work"); });
-$("activity-wander").addEventListener("click", () => { startActivity("wander"); });
+const onId = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
+onId("draw-girl", "click", () => { drawGirl(); });
+onId("let-leave", "click", letHerLeave);
+onId("summon-back", "click", summonHerBack);
+onId("open-activity", "click", toggleActivity);
+onId("activity-work", "click", () => { startActivity("work"); });
+onId("activity-wander", "click", () => { startActivity("wander"); });
 bindBodyPanel();
 const refillBtn = $("body-refill-semen");
 if (refillBtn) {
@@ -5013,7 +5032,7 @@ renderRomanceItems();
 renderCard();
 renderWorld();
 renderDebug();
-$("dbg-jump").addEventListener("change", () => {
+onId("dbg-jump", "change", () => {
   if (!girl) return;
   const value = $("dbg-jump").value;
   girl.stageLock = STAGE_NAME[value] ? value : "";
@@ -5033,15 +5052,15 @@ $("dbg-jump").addEventListener("change", () => {
   refreshTalkActs();
 });
 bindTalkActs();
-$("talk-input-row").addEventListener("submit", (event) => { sendTalk(event); });
-$("portrait-backdrop").addEventListener("click", () => {
+onId("talk-input-row", "submit", (event) => { sendTalk(event); });
+onId("portrait-backdrop", "click", () => {
   if (sceneOpen()) {
     closeRoomScene();
     return;
   }
   hideSheet();
 });
-$("portrait-sheet").addEventListener("click", (event) => {
+onId("portrait-sheet", "click", (event) => {
   if (sceneOpen()) return;
   if (event.target.closest(".talk")) return;
   hideSheet();
@@ -5067,6 +5086,8 @@ window.RoomCompanion = {
   sync: () => girl && syncProgressToGame(girl),
   isShip: isShipMode,
   current: () => girl,
+  show: showSheet,
+  hide: hideSheet,
 };
 window.addEventListener("pagehide", () => { if (girl) { rememberChat(); persistRoom(); } });
 window.addEventListener("visibilitychange", () => {
