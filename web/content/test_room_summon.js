@@ -95,6 +95,12 @@ let idleDecayTimer = 0;
 let lastIdleDecayAt = 0;
 let activityOpen = false;
 let workToken = 0;
+/** 房內發呆多久後自動離房找住處（毫秒） */
+const ROOM_DAZE_MS = 3 * 60 * 1000;
+/** 有住處後多久自動打工／亂逛一次（毫秒） */
+const WORLD_AUTO_MS = 60 * 60 * 1000;
+let lifeLoopTimer = 0;
+let autoLifeBusy = false;
 let lines = [];
 let talkFor = "";
 let talkBusy = false;
@@ -3245,6 +3251,7 @@ async function askGirl(extraUser, onToken) {
 }
 
 async function openTalk() {
+  bumpRoomDaze();
   if (!girl) return;
   setTalkEnabled(true);
   if (talkFor === girl.id && (lines.length || talkBusy)) {
@@ -3542,6 +3549,7 @@ async function deliverUserTalk(text, opts = {}) {
 
 
 async function sendTalk(event) {
+  bumpRoomDaze();
   event.preventDefault();
   if (!girl) return;
   const input = $("talk-input");
@@ -3552,6 +3560,7 @@ async function sendTalk(event) {
 }
 
 async function sendTalkAct(actId) {
+  bumpRoomDaze();
   if (!girl || talkBusy || talkFor !== girl.id) return;
   const act = TALK_ACTS.find((a) => a.id === actId);
   if (!act) return;
@@ -3977,6 +3986,7 @@ async function drawGirl() {
     const rolled = await makeGirl();
     girl = rolled;
     window.RoomActor?.setPresent(true);
+    bumpRoomDaze(rolled);
     lines = [];
     talkFor = "";
     clearRoomSave();
@@ -4111,6 +4121,7 @@ function summonHerBack() {
   talkFor = "";
   renderDebug();
   window.RoomActor?.setPresent(true);
+  bumpRoomDaze(girl);
   renderCard();
   renderWorld();
   persistRoom();
@@ -4124,6 +4135,9 @@ function pickRandomHome(choices = sampleHomes()) {
 function assignHome(who, home) {
   if (!who?.world || !home) return;
   who.world.home = { id: home.id, name: home.name };
+  who.world.homeSince = Date.now();
+  // 找到住處後再等一小時才開始自動打工／亂逛
+  who.world.lastAutoActivityAt = Date.now();
   if (!who.world.mood) setMood(who, "平靜");
 }
 
@@ -4718,6 +4732,70 @@ async function runStroll(who, region) {
     : `${where}${met}模型沒寫成，這段是先補的。${sexTail}`;
 }
 
+function bumpRoomDaze(who = girl) {
+  if (!who) return;
+  who.roomDazeAt = Date.now();
+}
+
+function startLifeLoop() {
+  if (lifeLoopTimer) return;
+  lifeLoopTimer = window.setInterval(() => { void tickLifeLoop(); }, 15000);
+  void tickLifeLoop();
+}
+
+/** 一小時一趟：亂逛，或打工（沒工作就先挑再上工）。 */
+async function runAutoHourlyActivity() {
+  if (!girl?.world?.home || !sheIsOut()) return;
+  const region = placedRegion();
+  if (!region) return;
+  const kind = Math.random() < 0.5 ? "work" : "wander";
+  if (kind === "wander") {
+    await runStroll(girl, region);
+    return;
+  }
+  if (!girl.world.job) {
+    await startActivity("work");
+    if (!girl?.world?.job || !sheIsOut()) return;
+  }
+  if (girl.world.activity && girl.world.activity !== "work") return;
+  await runShift(girl, placedRegion() || region);
+}
+
+async function tickLifeLoop() {
+  if (!girl || autoLifeBusy || pending || talkBusy) return;
+  // 房內：發呆滿 → 離房找住處
+  if (!sheIsOut()) {
+    if (!girl.roomDazeAt) bumpRoomDaze(girl);
+    const left = ROOM_DAZE_MS - (Date.now() - girl.roomDazeAt);
+    if (left > 0) return;
+    autoLifeBusy = true;
+    try {
+      const status = $("summon-status");
+      if (status) status.textContent = `${girl.name}發呆夠了，要去找住處…`;
+      await letHerLeave();
+    } finally {
+      autoLifeBusy = false;
+    }
+    return;
+  }
+  // 外面有住所：每小時隨機打工／亂逛
+  if (!girl.world?.home) return;
+  if (girl.world.activity === "work" && girl.world.shift?.pending) return;
+  if (girl.world.activity === "wander" && girl.world.stroll?.pending) return;
+  const last = girl.world.lastAutoActivityAt || girl.world.homeSince || girl.world.at || 0;
+  if (Date.now() - last < WORLD_AUTO_MS) return;
+  autoLifeBusy = true;
+  try {
+    girl.world.lastAutoActivityAt = Date.now();
+    persistRoom();
+    const status = $("summon-status");
+    if (status) status.textContent = `${girl.name}這小時要出門活動了…`;
+    await runAutoHourlyActivity();
+  } finally {
+    autoLifeBusy = false;
+  }
+}
+
 function toggleActivity() {
   if (!girl?.world?.home || !sheIsOut()) return;
   activityOpen = !activityOpen;
@@ -4980,10 +5058,13 @@ function bindBodyPanel() {
     window.RoomActor?.setPresent(!girl.world?.home);
   }
   if ($("summon-status")) $("summon-status").textContent = `${girl.name}還在（狀態已保留）。長按她繼續聊，或讓她離開。`;
+  if (!sheIsOut()) bumpRoomDaze(girl);
+  startLifeLoop();
 })();
 
 const onId = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
 onId("draw-girl", "click", () => { drawGirl(); });
+startLifeLoop();
 onId("let-leave", "click", letHerLeave);
 onId("summon-back", "click", summonHerBack);
 onId("open-activity", "click", toggleActivity);
