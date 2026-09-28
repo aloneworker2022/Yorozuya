@@ -81,7 +81,12 @@ import {
   mountButtPackEditor,
   pickRuntimeButtPack,
   buildButtImgBody,
-} from "./butt_packs.js?v=1";
+} from "./butt_packs.js?v=2";
+import {
+  mountWaistPackEditor,
+  pickRuntimeWaistPack,
+  buildWaistImgBody,
+} from "./waist_packs.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -376,6 +381,7 @@ function startPortraitEntrance(img) {
 
 
 const buttGenning = new Set();
+const waistGenning = new Set();
 
 /** 摸臀：有存檔圖組則隨機一組生圖，否則硬編碼 tease_butt；結果蓋上對話立繪。 */
 async function maybeGenButtShot(who, actId) {
@@ -412,6 +418,44 @@ async function maybeGenButtShot(who, actId) {
     console.warn("[maybeGenButtShot]", err?.message || err);
   } finally {
     buttGenning.delete(who.id);
+  }
+}
+
+/** 摟腰：僅在有存檔圖組時隨機一組生圖；無組 → 不生圖（僅對話／身體）。 */
+async function maybeGenWaistShot(who, actId) {
+  if (actId !== "waist" || !who?.id) return;
+  if (waistGenning.has(who.id)) return;
+  waistGenning.add(who.id);
+  try {
+    const pack = await pickRuntimeWaistPack();
+    if (!pack) return;
+    const engine = await gameImgRoute();
+    const body = buildWaistImgBody(pack, who, engine, {
+      stage: who.stage || "stranger",
+      worn: wornOutfit(who),
+    });
+    const result = await waitImage(body);
+    if (result?.status === "done" && result.result) {
+      const url = String(result.result);
+      who.portraits = who.portraits || {};
+      who.portraits.tease_waist = url.includes("?") ? url : `${url}?v=${Date.now()}`;
+      if (girl && girl.id === who.id && sheetOpen()) {
+        const img = $("portrait-img");
+        if (img) {
+          img.alt = `${who.name}的摟腰圖`;
+          img.src = who.portraits.tease_waist;
+          img.hidden = false;
+          img.classList.add("portrait-in");
+        }
+      }
+      persistRoom();
+    } else if (result?.status === "error") {
+      console.warn("[maybeGenWaistShot]", result.error || "生圖失敗");
+    }
+  } catch (err) {
+    console.warn("[maybeGenWaistShot]", err?.message || err);
+  } finally {
+    waistGenning.delete(who.id);
   }
 }
 
@@ -3458,6 +3502,7 @@ async function deliverUserTalk(text, opts = {}) {
         recordTeasePress(girl, opts.actId);
         noteActShock(girl, opts.actId);
         if (opts.actId === "butt") void maybeGenButtShot(girl, opts.actId);
+        if (opts.actId === "waist") void maybeGenWaistShot(girl, opts.actId);
         // 情感：一般挑逗不加；接近高潮／失神門檻才小幅＋1，痙攣／射精＋2
         const nearClimax = stunBefore >= 50 || arousalBefore >= 22
           || (girl.bodyState?.arousal || 0) >= 22
@@ -5256,6 +5301,24 @@ try {
 } catch (err) {
   console.warn("[butt-pack-editor]", err?.message || err);
 }
+try {
+  mountWaistPackEditor({
+    getGirl: () => girl,
+    getEngine: () => gameImgRoute(),
+  });
+} catch (err) {
+  console.warn("[waist-pack-editor]", err?.message || err);
+}
+
+// 開「編輯」時收合浮動圖組面板（面板不依賴 room-editor，但避免重疊）
+$("edit-room")?.addEventListener("click", () => {
+  for (const id of ["butt-pack-editor", "waist-pack-editor"]) {
+    const el = $(id);
+    if (el) el.hidden = true;
+  }
+  $("btn-butt-packs")?.setAttribute("aria-expanded", "false");
+  $("btn-waist-packs")?.setAttribute("aria-expanded", "false");
+});
 
 bindRoomSceneOverlay();
 window.RoomPortrait = { open: showSheet };

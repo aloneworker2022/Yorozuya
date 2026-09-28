@@ -13,14 +13,14 @@ import {
   teaseShotAt, teaseStartStep, teaseAdvanceStep, teaseCumStep, teasePlayableSteps,
   teasePhaseOf, teasePhaseLabel, teaseBeatLine, teaseWilling,
   teasePlayAffDelta, TEASE_PLAY_CLIMAX_RATE,
-} from "./content/tease_shots.js";
+} from "./content/tease_shots.js?v=2";
 import * as ScriptMode from "./content/script_mode.js";
 import * as FramePack from "./content/frame_pack.js";
 import {
   pickRuntimeButtPack,
   buildButtImgBody,
   getButtPacksCached,
-} from "./content/butt_packs.js?v=1";
+} from "./content/butt_packs.js?v=2";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
@@ -11086,7 +11086,7 @@ const SHOT_LABEL = {
   head: "大頭照", half: "半身", full: "全身",
   half_xi: "半身·喜", half_nu: "半身·怒", half_ai: "半身·哀", half_le: "半身·樂",
   half_xiu: "半身·害羞",
-  tease_breast: "調戲·摸乳", tease_butt: "調戲·摸臀",
+  tease_breast: "調戲·摸乳", tease_butt: "調戲·摸臀", tease_waist: "調戲·摟腰",
   tease_oral_ready: "調戲·口交·頂嘴", tease_oral_suck: "調戲·口交·含住",
   tease_oral_deep: "調戲·口交·整根", tease_oral_cum: "調戲·口交·口內射",
   tease_doggy_ready: "調戲·背後·抓臀勃起", tease_doggy_half: "調戲·背後·龜頭進入",

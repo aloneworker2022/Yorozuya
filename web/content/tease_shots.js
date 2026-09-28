@@ -100,7 +100,7 @@ export function isTeaseShot(shot) {
 export function teaseFraming(shot) {
   const s = String(shot || "");
   if (s === "tease_butt") return "lower";
-  if (s === "tease_breast" || s.startsWith("tease_oral")) return "half";
+  if (s === "tease_breast" || s === "tease_waist" || s.startsWith("tease_oral")) return "half";
   return "full";
 }
 
@@ -308,6 +308,15 @@ export function composeTeaseExtra(shot, stage, worn) {
       teaseExpr(stage),
       "first-person POV, one male hand, male hand on her buttocks",
       "NO both hands",
+    ].join(", ");
+  }
+  if (s === "tease_waist") {
+    return [
+      "simple background, half-body portrait",
+      "from side, waist focus, hips visible",
+      teaseExpr(stage),
+      "first-person POV, one male arm, male arm around her waist, embracing from the side or behind",
+      "NO both arms, NO both hands",
     ].join(", ");
   }
   if (s.startsWith("tease_oral_")) {

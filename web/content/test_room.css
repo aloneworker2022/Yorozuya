@@ -8,7 +8,9 @@ html.room-page body.editing{justify-content:flex-start}
 html.room-page a{color:inherit;text-decoration:none}
 html.room-page .stage{width:min(100%,640px);margin:0 auto;padding:24px 20px 96px}body.room-home .home-room-stage{width:100%;max-width:520px;margin:0 auto;padding:0 8px 0}
 html.room-page .scene,#main-room-stage .scene{display:flex;justify-content:center}
-#edit-room{position:fixed;z-index:5;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));min-width:72px}
+#room-pack-chrome{position:fixed;z-index:5;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:calc(100vw - 32px)}
+#room-pack-chrome #edit-room{position:static;min-width:72px}
+#room-pack-chrome button{min-width:72px}
 #room-editor{width:min(100%,560px);margin:28px auto 0}
 #room-editor[hidden]{display:none}
 .back{display:inline-block;padding:8px 0;font-size:12px;letter-spacing:1px}
@@ -32,7 +34,7 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #placed-items{display:flex;gap:8px;flex-wrap:wrap}#placed-items button{font-size:12px;padding:10px}
 #remove-item{color:#975e50}
 .actor-panel{margin:16px 0 0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #d5c9b5}.actor-panel strong{font-size:14px;font-weight:400}.actor-panel p{font-size:12px;line-height:1.6;color:#897d6c;margin:6px 0 0}.actor-panel button{font-size:12px;white-space:nowrap;padding:10px}
-.actor-panel{flex-wrap:wrap}.actor-actions{display:flex;gap:8px;flex-wrap:wrap}html.room-page button:disabled,#home-room-chrome button:disabled,#portrait-sheet button:disabled,#edit-room:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.actor-panel{flex-wrap:wrap}.actor-actions{display:flex;gap:8px;flex-wrap:wrap}html.room-page button:disabled,#home-room-chrome button:disabled,#room-pack-chrome button:disabled,#portrait-sheet button:disabled,#edit-room:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
 .actor-hint{font-size:12px;color:#657353;margin:4px 0 0}
 .summon-panel{margin:16px 0 0;padding:0 0 8px;border-bottom:1px solid #d5c9b5}
 .summon-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
@@ -100,8 +102,8 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #portrait-backdrop{width:100%;height:100%;appearance:none;-webkit-appearance:none}
 @media(min-width:600px){#furniture-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .actor-panel[hidden]{display:none}
-html.room-page button,#home-room-chrome button,#edit-room,#portrait-sheet button,#room-scene-overlay button,#main-room-stage button{font:inherit;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;padding:12px 16px;min-height:44px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
-html.room-page button[aria-pressed=true],#home-room-chrome button[aria-pressed=true],#edit-room[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}html.room-page button:focus-visible,html.room-page a:focus-visible,#home-room-chrome button:focus-visible,#portrait-sheet button:focus-visible{outline:2px solid #657353;outline-offset:4px}
+html.room-page button,#home-room-chrome button,#room-pack-chrome button,#edit-room,#portrait-sheet button,#room-scene-overlay button,#main-room-stage button{font:inherit;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;padding:12px 16px;min-height:44px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
+html.room-page button[aria-pressed=true],#home-room-chrome button[aria-pressed=true],#room-pack-chrome button[aria-pressed=true],#room-pack-chrome button[aria-expanded=true],#edit-room[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}html.room-page button:focus-visible,html.room-page a:focus-visible,#home-room-chrome button:focus-visible,#portrait-sheet button:focus-visible{outline:2px solid #657353;outline-offset:4px}
 .note{font-size:12px;letter-spacing:1px;color:#93897b;margin:16px 0 0}
 @media(min-width:800px){#room,html.room-page canvas{width:416px}}
 
@@ -213,10 +215,13 @@ body.room-home .tool-row,
 body.room-home .gesture-hint {
   display: none !important;
 }
+body.room-ship #room-pack-chrome {
+  opacity: .9;
+  transform: scale(.92);
+  transform-origin: bottom right;
+}
 body.room-ship #edit-room {
   opacity: .55;
-  transform: scale(.9);
-  transform-origin: bottom right;
 }
 /* 對話：輸入貼底；對話框在輸入上方；立繪中下 */
 body.room-ship #portrait-sheet {
@@ -365,31 +370,57 @@ body.room-home.sheet-open #quest-input-row {
 body.room-home #room-scene-overlay { z-index: 75; }
 body.room-home #home-room-chrome { display: none !important; }
 
-/* ===== 摸臀圖預設編輯器（房間編輯）===== */
-.butt-pack-entry{margin:16px 0 0;padding:0 0 12px;border-bottom:1px solid #d5c9b5}
-.butt-pack-entry .note{font-size:12px;color:#897d6c;line-height:1.6}
-.butt-pack-editor{margin-top:12px;padding:12px;background:#f5efe3;border:1px solid #d5c9b5}
-.butt-pack-editor[hidden]{display:none}
-.butt-pack-editor label{display:block;font-size:12px;color:#776c5b;margin:.45em 0 .2em}
-.butt-pack-editor textarea,
-.butt-pack-editor input[type=text],
-.butt-pack-editor input[type=number],
-.butt-pack-editor select{width:100%;font:inherit;color:inherit;background:#eee8dd;border:1px solid #cbbfaa;border-radius:4px;padding:.4em .55em}
-.butt-pack-editor textarea{resize:vertical;line-height:1.5;min-height:4em}
-.bp-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
-.bp-grow{flex:1 1 10em;min-width:0}
-.bp-fix0{flex:0 1 7em}
-.butt-pack-editor button{font:inherit;padding:8px 12px}
-.butt-pack-editor button.bp-cy{background:#dce2cf;color:#48604a}
-.butt-pack-editor button.bp-del{color:#975e50}
-.butt-pack-editor button.bp-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
-.bp-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bp-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
-.bp-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
-.bp-mode-flag.img{background:#e8d5e4;color:#8a3d78}
-.bp-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
-.bp-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
-.bp-status.err{color:#975e50}
-.bp-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
-.bp-art img{max-width:100%;max-height:360px;display:block}
-.bp-art .mini,.butt-pack-editor .mini{font-size:12px;color:#8a82a5}
+/* ===== 摸臀／摟腰圖：固定快捷列 + 浮動面板 ===== */
+.tease-pack-panel{
+  position:fixed;z-index:6;
+  right:max(16px,env(safe-area-inset-right));
+  bottom:calc(max(16px,env(safe-area-inset-bottom)) + 64px);
+  width:min(calc(100vw - 32px),420px);
+  max-height:min(70vh,640px);
+  overflow:auto;
+  padding:12px;
+  background:#f5efe3;
+  border:1px solid #d5c9b5;
+  box-shadow:2px 2px 0 #d6cbbb;
+  border-radius:2px;
+}
+.tease-pack-panel[hidden]{display:none}
+.tease-pack-panel-head{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding-bottom:8px;border-bottom:1px solid #d5c9b5}
+.tease-pack-panel-head strong{font-size:14px}
+.tease-pack-panel-head .mini{font-size:12px;color:#897d6c;line-height:1.5}
+.tease-pack-panel label{display:block;font-size:12px;color:#776c5b;margin:.45em 0 .2em}
+.tease-pack-panel textarea,
+.tease-pack-panel input[type=text],
+.tease-pack-panel input[type=number],
+.tease-pack-panel select{width:100%;font:inherit;color:inherit;background:#eee8dd;border:1px solid #cbbfaa;border-radius:4px;padding:.4em .55em}
+.tease-pack-panel textarea{resize:vertical;line-height:1.5;min-height:4em}
+.tease-pack-panel button{font:inherit;padding:8px 12px;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;min-height:40px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
+.bp-row,.wp-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
+.bp-grow,.wp-grow{flex:1 1 10em;min-width:0}
+.bp-fix0,.wp-fix0{flex:0 1 7em}
+.tease-pack-panel button.bp-cy,
+.tease-pack-panel button.wp-cy{background:#dce2cf;color:#48604a}
+.tease-pack-panel button.bp-del,
+.tease-pack-panel button.wp-del{color:#975e50}
+.tease-pack-panel button.bp-big,
+.tease-pack-panel button.wp-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
+.bp-ref-head,.wp-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bp-mode-flag,.wp-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
+.bp-mode-flag.txt,.wp-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
+.bp-mode-flag.img,.wp-mode-flag.img{background:#e8d5e4;color:#8a3d78}
+.bp-thumb,.wp-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
+.bp-status,.wp-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
+.bp-status.err,.wp-status.err{color:#975e50}
+.bp-art,.wp-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
+.bp-art img,.wp-art img{max-width:100%;max-height:360px;display:block}
+.bp-art .mini,.wp-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
+/* room-home：仍顯示摸臀／摟腰快捷（編輯鈕維持隱藏） */
+body.room-home #room-pack-chrome{display:flex}
+body.room-home #btn-butt-packs,
+body.room-home #btn-waist-packs{display:inline-flex}
+
+/* 主站 index：非房間模式隱藏快捷列；room-home／room-ship 仍顯示摸臀／摟腰 */
+html:not(.room-page) #room-pack-chrome{display:none}
+html:not(.room-page) body.room-home #room-pack-chrome,
+html:not(.room-page) body.room-ship #room-pack-chrome{display:flex}
+
