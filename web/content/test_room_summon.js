@@ -500,12 +500,77 @@ function stampPortraitUrl(url) {
   return s.includes("?") ? s : `${s}?v=${Date.now()}`;
 }
 
-/** 動作閃現層：左滑入 → 停 1.5s → 滑出；不永久蓋掉立繪。 */
+/** 動作閃現層：左滑入 → 停 1.5s → 右滑出；不永久蓋掉立繪。 */
 let actionFlashToken = 0;
 let actionFlashTimer = 0;
+let actionFlashLoadCancel = null;
+let actionFlashTransitionCancel = null;
 const ACTION_FLASH_ENTER_MS = 500;
 const ACTION_FLASH_HOLD_MS = 1500;
 const ACTION_FLASH_EXIT_MS = 550;
+
+function cancelActionFlashLoad() {
+  if (actionFlashLoadCancel) {
+    actionFlashLoadCancel();
+    actionFlashLoadCancel = null;
+  }
+}
+
+function cancelActionFlashTransition() {
+  if (actionFlashTransitionCancel) {
+    actionFlashTransitionCancel();
+    actionFlashTransitionCancel = null;
+  }
+}
+
+function waitForActionFlashImage(img, token, expectedSrc) {
+  return new Promise(resolve => {
+    let settled = false;
+    const isCurrent = () => token === actionFlashToken && sheetOpen() && img.src === expectedSrc;
+    const cleanup = () => {
+      img.removeEventListener("load", onLoad);
+      img.removeEventListener("error", onError);
+      if (actionFlashLoadCancel === cleanup) actionFlashLoadCancel = null;
+    };
+    const finish = ready => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(ready);
+    };
+    const decodeAndFinish = async () => {
+      if (!isCurrent()) {
+        finish(false);
+        return;
+      }
+      if (typeof img.decode === "function") {
+        try {
+          await img.decode();
+        } catch {
+          finish(false);
+          return;
+        }
+      }
+      finish(isCurrent() && img.complete && img.naturalWidth > 0);
+    };
+    const onLoad = () => {
+      if (!isCurrent()) {
+        finish(false);
+        return;
+      }
+      void decodeAndFinish();
+    };
+    const onError = () => finish(false);
+
+    img.addEventListener("load", onLoad);
+    img.addEventListener("error", onError);
+    actionFlashLoadCancel = cleanup;
+    if (img.complete) {
+      if (img.naturalWidth > 0) void decodeAndFinish();
+      else finish(false);
+    }
+  });
+}
 
 function clearActionFlash() {
   actionFlashToken += 1;
@@ -513,6 +578,8 @@ function clearActionFlash() {
     clearTimeout(actionFlashTimer);
     actionFlashTimer = 0;
   }
+  cancelActionFlashLoad();
+  cancelActionFlashTransition();
   const img = $("action-flash-img");
   if (!img) return;
   img.classList.remove("flash-in", "flash-out");
@@ -528,36 +595,48 @@ function showActionFlash(url, alt) {
     clearTimeout(actionFlashTimer);
     actionFlashTimer = 0;
   }
+  cancelActionFlashLoad();
+  cancelActionFlashTransition();
+
+  // Reset while hidden so a rapid re-press never swaps the visible frame.
+  img.classList.remove("flash-in", "flash-out");
+  img.hidden = true;
   img.alt = alt || "";
   img.src = url;
-  img.hidden = false;
-  img.classList.remove("flash-in", "flash-out");
-  void img.offsetWidth;
-  requestAnimationFrame(() => {
-    if (token !== actionFlashToken || !sheetOpen() || img.hidden) return;
-    img.classList.add("flash-in");
-    actionFlashTimer = setTimeout(() => {
-      if (token !== actionFlashToken) return;
-      img.classList.remove("flash-in");
-      img.classList.add("flash-out");
-      const finish = () => {
-        if (token !== actionFlashToken) return;
-        img.hidden = true;
-        img.classList.remove("flash-out");
-        actionFlashTimer = 0;
-      };
-      const onEnd = (ev) => {
-        if (ev && ev.target !== img) return;
-        if (ev?.propertyName && ev.propertyName !== "transform" && ev.propertyName !== "opacity") return;
-        img.removeEventListener("transitionend", onEnd);
-        finish();
-      };
-      img.addEventListener("transitionend", onEnd);
+  const expectedSrc = img.src;
+
+  waitForActionFlashImage(img, token, expectedSrc).then(ready => {
+    if (!ready || token !== actionFlashToken || !sheetOpen()) return;
+    img.hidden = false;
+    // Force the off-screen starting pose before beginning the enter transition.
+    void img.offsetWidth;
+    requestAnimationFrame(() => {
+      if (token !== actionFlashToken || !sheetOpen() || img.hidden || img.src !== expectedSrc) return;
+      img.classList.add("flash-in");
       actionFlashTimer = setTimeout(() => {
-        img.removeEventListener("transitionend", onEnd);
-        finish();
-      }, ACTION_FLASH_EXIT_MS);
-    }, ACTION_FLASH_ENTER_MS + ACTION_FLASH_HOLD_MS);
+        if (token !== actionFlashToken || img.src !== expectedSrc) return;
+        img.classList.remove("flash-in");
+        img.classList.add("flash-out");
+        const finish = () => {
+          if (token !== actionFlashToken) return;
+          cancelActionFlashTransition();
+          img.hidden = true;
+          img.classList.remove("flash-out");
+          actionFlashTimer = 0;
+        };
+        const onEnd = ev => {
+          if (ev && ev.target !== img) return;
+          if (ev?.propertyName && ev.propertyName !== "transform" && ev.propertyName !== "opacity") return;
+          finish();
+        };
+        const cancelTransition = () => img.removeEventListener("transitionend", onEnd);
+        actionFlashTransitionCancel = cancelTransition;
+        img.addEventListener("transitionend", onEnd);
+        actionFlashTimer = setTimeout(() => {
+          finish();
+        }, ACTION_FLASH_EXIT_MS);
+      }, ACTION_FLASH_ENTER_MS + ACTION_FLASH_HOLD_MS);
+    });
   });
 }
 

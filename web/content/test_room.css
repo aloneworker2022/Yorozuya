@@ -89,8 +89,8 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #action-flash-img{--portrait-w:min(96vw,560px);position:fixed;left:50%;bottom:max(0px,env(safe-area-inset-bottom));z-index:1;display:block;width:calc(0.8 * var(--portrait-w));height:calc(0.8 * var(--portrait-w));margin:0;object-fit:cover;object-position:center;background:none;filter:drop-shadow(0 14px 24px rgba(0,0,0,.5));pointer-events:none;transform:translateX(-50%) translateX(-55vw);opacity:0;transition:transform .5s cubic-bezier(.2,.85,.2,1),opacity .4s ease-out;will-change:transform,opacity}
 #action-flash-img[hidden]{display:none!important}
 #action-flash-img.flash-in{transform:translateX(-50%);opacity:1}
-#action-flash-img.flash-out{transform:translateX(-50%) translateX(-55vw);opacity:0}
-@media(prefers-reduced-motion:reduce){#action-flash-img{transition:none}#action-flash-img.flash-in{transform:translateX(-50%);opacity:1}#action-flash-img.flash-out{opacity:0}}
+#action-flash-img.flash-out{transform:translateX(-50%) translateX(55vw);opacity:0}
+@media(prefers-reduced-motion:reduce){#action-flash-img{transition:none}#action-flash-img.flash-in{transform:translateX(-50%);opacity:1}#action-flash-img.flash-out{transform:translateX(-50%) translateX(55vw);opacity:0}}
 #talk-box,#talk-input-row{border:2px solid #fff;position:relative;border-radius:10px}
 #talk-box{width:100%;box-sizing:border-box;background:rgba(10,16,40,.72);color:#f4fbff;padding:10px 14px 12px;min-height:6.8em;pointer-events:auto;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);font-family:RoomPixel,system-ui,sans-serif}
 #talk-nameline{display:flex;align-items:center;gap:.6em;margin-bottom:.45em}
