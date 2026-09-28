@@ -95,9 +95,7 @@ let idleDecayTimer = 0;
 let lastIdleDecayAt = 0;
 let activityOpen = false;
 let workToken = 0;
-/** 房內發呆多久後自動離房找住處（毫秒） */
-const ROOM_DAZE_MS = 3 * 60 * 1000;
-/** 有住處後多久自動打工／亂逛一次（毫秒） */
+/** 有住處後多久自動打工／亂逛一次（毫秒）。找住處改等「發呆產圖全部完成」。 */
 const WORLD_AUTO_MS = 60 * 60 * 1000;
 let lifeLoopTimer = 0;
 let autoLifeBusy = false;
@@ -3251,7 +3249,6 @@ async function askGirl(extraUser, onToken) {
 }
 
 async function openTalk() {
-  bumpRoomDaze();
   if (!girl) return;
   setTalkEnabled(true);
   if (talkFor === girl.id && (lines.length || talkBusy)) {
@@ -3549,7 +3546,6 @@ async function deliverUserTalk(text, opts = {}) {
 
 
 async function sendTalk(event) {
-  bumpRoomDaze();
   event.preventDefault();
   if (!girl) return;
   const input = $("talk-input");
@@ -3560,7 +3556,6 @@ async function sendTalk(event) {
 }
 
 async function sendTalkAct(actId) {
-  bumpRoomDaze();
   if (!girl || talkBusy || talkFor !== girl.id) return;
   const act = TALK_ACTS.find((a) => a.id === actId);
   if (!act) return;
@@ -3986,7 +3981,6 @@ async function drawGirl() {
     const rolled = await makeGirl();
     girl = rolled;
     window.RoomActor?.setPresent(true);
-    bumpRoomDaze(rolled);
     lines = [];
     talkFor = "";
     clearRoomSave();
@@ -4121,7 +4115,6 @@ function summonHerBack() {
   talkFor = "";
   renderDebug();
   window.RoomActor?.setPresent(true);
-  bumpRoomDaze(girl);
   renderCard();
   renderWorld();
   persistRoom();
@@ -4732,15 +4725,23 @@ async function runStroll(who, region) {
     : `${where}${met}模型沒寫成，這段是先補的。${sexTail}`;
 }
 
-function bumpRoomDaze(who = girl) {
-  if (!who) return;
-  who.roomDazeAt = Date.now();
-}
-
 function startLifeLoop() {
   if (lifeLoopTimer) return;
   lifeLoopTimer = window.setInterval(() => { void tickLifeLoop(); }, 15000);
   void tickLifeLoop();
+}
+
+/** 發呆（產圖）全部完成後：人在房內就離房找住處。 */
+async function onDaydreamImagesReady() {
+  if (!girl || sheIsOut() || pending || talkBusy || autoLifeBusy) return;
+  autoLifeBusy = true;
+  try {
+    const status = $("summon-status");
+    if (status) status.textContent = `${girl.name}發呆產圖完成，要去找住處…`;
+    await letHerLeave();
+  } finally {
+    autoLifeBusy = false;
+  }
 }
 
 /** 一小時一趟：亂逛，或打工（沒工作就先挑再上工）。 */
@@ -4763,23 +4764,8 @@ async function runAutoHourlyActivity() {
 
 async function tickLifeLoop() {
   if (!girl || autoLifeBusy || pending || talkBusy) return;
-  // 房內：發呆滿 → 離房找住處
-  if (!sheIsOut()) {
-    if (!girl.roomDazeAt) bumpRoomDaze(girl);
-    const left = ROOM_DAZE_MS - (Date.now() - girl.roomDazeAt);
-    if (left > 0) return;
-    autoLifeBusy = true;
-    try {
-      const status = $("summon-status");
-      if (status) status.textContent = `${girl.name}發呆夠了，要去找住處…`;
-      await letHerLeave();
-    } finally {
-      autoLifeBusy = false;
-    }
-    return;
-  }
-  // 外面有住所：每小時隨機打工／亂逛
-  if (!girl.world?.home) return;
+  // 只跑外面有住所的每小時活動；找住處改等發呆產圖完成事件
+  if (!sheIsOut() || !girl.world?.home) return;
   if (girl.world.activity === "work" && girl.world.shift?.pending) return;
   if (girl.world.activity === "wander" && girl.world.stroll?.pending) return;
   const last = girl.world.lastAutoActivityAt || girl.world.homeSince || girl.world.at || 0;
@@ -5058,7 +5044,6 @@ function bindBodyPanel() {
     window.RoomActor?.setPresent(!girl.world?.home);
   }
   if ($("summon-status")) $("summon-status").textContent = `${girl.name}還在（狀態已保留）。長按她繼續聊，或讓她離開。`;
-  if (!sheIsOut()) bumpRoomDaze(girl);
   startLifeLoop();
 })();
 
@@ -5169,7 +5154,9 @@ window.RoomCompanion = {
   current: () => girl,
   show: showSheet,
   hide: hideSheet,
+  onDaydreamComplete: () => { void onDaydreamImagesReady(); },
 };
+window.addEventListener("yoro-daydream-complete", () => { void onDaydreamImagesReady(); });
 window.addEventListener("pagehide", () => { if (girl) { rememberChat(); persistRoom(); } });
 window.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden" && girl) {

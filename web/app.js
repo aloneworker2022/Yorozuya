@@ -5121,6 +5121,13 @@ function buildDaydreamJobs(s) {
   }
   return jobs;
 }
+
+function notifyDaydreamComplete() {
+  try { window.__yoroDaydreamCompletedAt = Date.now(); } catch { /* */ }
+  try { window.dispatchEvent(new CustomEvent("yoro-daydream-complete")); } catch { /* */ }
+  try { window.RoomCompanion?.onDaydreamComplete?.(); } catch { /* */ }
+}
+
 async function runDaydreamJobs() {
   const token = ++daydreamLoop;
   try { await loadScriptPacks(); } catch { /* */ }
@@ -5177,6 +5184,7 @@ async function runDaydreamJobs() {
   dirty = true;
   try { saveNow(); } catch { /* */ }
   toast("發呆完成——已換上一套新圖", "good");
+  notifyDaydreamComplete();
   renderAll();
 }
 
@@ -5300,6 +5308,7 @@ async function pollDaydreamStatus(force = false) {
     }
     if (prevRun && !j.running && j.completed) {
       toast("發呆完成——已換上一套新圖", "good");
+      notifyDaydreamComplete();
       try { renderAll(); } catch { /* */ }
     } else if (prevDone !== j.done) {
       paintDaydreamBanner();
