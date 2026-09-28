@@ -14,11 +14,10 @@
   const camera = { scale: 1, x: 0, y: 0 };
   const pointers = new Map();
   const MIN_ZOOM = .6, MAX_ZOOM = 3;
-  /* room-home：畫布關在舞台內；房子預設 30%，可 pinch 放大 */
-  const HOME_HOUSE_SCALE = 0.3;
+  /* room-home 房子預設跟 test_room 一樣（scale 1）；畫布外框另調 */
   const isRoomHome = () => document.body.classList.contains('room-home');
-  const defaultHouseScale = () => (isRoomHome() ? HOME_HOUSE_SCALE : 1);
-  const minZoom = () => (isRoomHome() ? 0.25 : MIN_ZOOM);
+  const defaultHouseScale = () => 1;
+  const minZoom = () => MIN_ZOOM;
   function centerCamera(scale) {
     camera.scale = scale;
     camera.x = canvas.width * (1 - scale) / 2;
