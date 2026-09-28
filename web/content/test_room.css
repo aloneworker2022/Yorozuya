@@ -148,3 +148,112 @@ button[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}button:focus-v
 .room-scene-card > button{min-height:44px;padding:10px 18px;border:2px solid rgba(244,251,255,.45);border-radius:999px;background:rgba(22,48,92,.95);color:#ffe14a;font:inherit;font-size:.9em;letter-spacing:.06em;cursor:pointer;box-shadow:none}
 .room-scene-card > button:active{background:rgba(40,70,120,.95)}
 .talk-acts button[data-scene]{border-color:rgba(255,180,220,.55);color:#ffb8d9}
+
+/* ===== ROOM-SHIP：上卡／中房／下輸入 ===== */
+html.room-ship, body.room-ship {
+  justify-content: flex-start;
+  background: #e8e2d6;
+}
+body.room-ship .stage {
+  width: min(100%, 640px);
+  margin: 0 auto;
+  padding: max(8px, env(safe-area-inset-top)) 12px 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  box-sizing: border-box;
+}
+/* 頂部狀態卡：壓矮 */
+body.room-ship .girl-where,
+body.room-ship .girl-mood,
+body.room-ship .girl-friends,
+body.room-ship .girl-world {
+  width: min(100%, 416px);
+  margin: 4px auto 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  max-height: 3.2em;
+  overflow: hidden;
+}
+body.room-ship .girl-friends { max-height: 4.5em; }
+body.room-ship .girl-world strong { font-size: 14px; margin: 2px 0 0; }
+body.room-ship .girl-world p { font-size: 11px; line-height: 1.35; }
+/* 房間畫布：中下 */
+body.room-ship .scene {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 8px 0 max(12px, env(safe-area-inset-bottom));
+  min-height: 42svh;
+}
+body.room-ship canvas {
+  width: min(100%, 380px);
+}
+/* ship：藏除錯／沙盒 */
+body.room-ship #bond-debug,
+body.room-ship #body-panel,
+body.room-ship #romance-items,
+body.room-ship .summon-panel,
+body.room-ship .actor-panel,
+body.room-ship .furniture-panel,
+body.room-ship .inventory,
+body.room-ship .tool-row,
+body.room-ship .gesture-hint {
+  display: none !important;
+}
+body.room-ship #edit-room {
+  opacity: .55;
+  transform: scale(.9);
+  transform-origin: bottom right;
+}
+/* 對話：輸入貼底；對話框在輸入上方；立繪中下 */
+body.room-ship #portrait-sheet {
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: max(8px, env(safe-area-inset-top)) 8px 0;
+}
+body.room-ship .talk {
+  width: min(100%, 440px);
+  margin: 0 auto;
+  height: 100%;
+  justify-content: flex-end;
+  padding-bottom: 0;
+}
+body.room-ship #talk-panel {
+  order: 2;
+  margin-top: auto;
+  gap: 6px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+body.room-ship #talk-box {
+  order: 1;
+  min-height: 4.8em;
+  max-height: 28svh;
+  overflow-y: auto;
+}
+body.room-ship #talk-input-row {
+  order: 2;
+}
+body.room-ship #portrait-img {
+  height: min(58svh, 560px);
+  bottom: max(7.5em, calc(env(safe-area-inset-bottom) + 6.5em));
+}
+body.room-ship .talk-acts {
+  bottom: max(4.2em, calc(env(safe-area-inset-bottom) + 3.6em));
+  background: linear-gradient(180deg, rgba(10,16,40,0), rgba(10,16,40,.55) 40%);
+}
+
+/* ship 回主頁 */
+.ship-back{display:none}
+body.room-ship .ship-back{
+  display:inline-flex!important;
+  position:fixed;z-index:8;
+  top:max(10px,env(safe-area-inset-top));
+  left:max(12px,env(safe-area-inset-left));
+  padding:8px 12px;font-size:12px;letter-spacing:1px;
+  color:#60594d;background:#f6f1e7;border:1px solid #c8bba7;
+  box-shadow:2px 2px 0 #d6cbbb;border-radius:2px;text-decoration:none;
+}
+body.room-ship .stage{padding-top:max(48px,calc(env(safe-area-inset-top) + 36px))}

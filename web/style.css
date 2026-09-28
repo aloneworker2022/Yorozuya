@@ -2517,3 +2517,28 @@ body.card-mode.has-ct-figure #kanban-girl {
   width: 100%;
   display: flex; justify-content: center;
 }
+
+/* ===== ROOM-SHIP 對齊：卡區上移壓矮（約會桌殘留／測試用）===== */
+#card-table-view.layout-ship #ct-fore {
+  flex-direction: column;
+}
+#card-table-view.layout-ship .card-table-top { order: 0; }
+#card-table-view.layout-ship #ct-hand {
+  order: 1;
+  max-height: 18vh;
+  padding: .2em .1em .35em;
+  border-radius: 10px;
+  margin-bottom: .25em;
+}
+#card-table-view.layout-ship #ct-space { order: 2; flex: 1 1 auto; min-height: 30vh; }
+#card-table-view.layout-ship #ct-vn {
+  order: 3;
+  border-radius: 12px 12px 0 0;
+  min-height: 4em;
+}
+#card-table-view.layout-ship #ct-confirm { order: 4; }
+#card-table-view.layout-ship .ct-play-card,
+#card-table-view.layout-ship .ct-play-card.compact {
+  min-height: 2.8em;
+  padding: .45em .7em;
+}

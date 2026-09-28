@@ -3769,8 +3769,116 @@ function persistRoom() {
       savedAt: Date.now(),
     };
     localStorage.setItem(ROOM_SAVE_KEY, JSON.stringify(payload));
+    syncProgressToGame(girl);
   } catch {
     /* quota / private mode */
+  }
+}
+
+const ROOM_PROGRESS_KEY = "yoro_room_progress_sync";
+const ROOM_PENDING_KEY = "yoro_room_pending_adopt";
+
+function syncProgressToGame(who) {
+  if (!who?.id || !(who.fromRoster || who.gameGirlId)) return;
+  try {
+    localStorage.setItem(ROOM_PROGRESS_KEY, JSON.stringify({
+      id: who.gameGirlId || who.id,
+      affection: who.affection || 0,
+      stage: who.stage || "stranger",
+      portraits: who.portraits || {},
+      at: Date.now(),
+    }));
+  } catch { /* ignore */ }
+}
+
+function takePendingAdopt() {
+  try {
+    const raw = localStorage.getItem(ROOM_PENDING_KEY);
+    if (!raw) return null;
+    localStorage.removeItem(ROOM_PENDING_KEY);
+    const data = JSON.parse(raw);
+    if (!data?.girl?.id) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** 名冊付費召喚：把遊戲妹子放進房間（同 id） */
+function adoptRosterGirl(payload) {
+  const rolled = payload?.girl;
+  if (!rolled?.id) return false;
+  girl = {
+    ...rolled,
+    fromRoster: true,
+    gameGirlId: rolled.gameGirlId || rolled.id,
+    chatEnter: rolled.chatEnter || "summon",
+  };
+  if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
+  ensureBody(girl);
+  ensureFriends(girl);
+  ensurePlayerNotes(girl);
+  normalizeGirlTags(girl);
+  syncStage(girl);
+  player = ensurePlayer(player);
+  if (payload.playerName && !player.name) player.name = payload.playerName;
+  lines = [];
+  talkFor = "";
+  activityOpen = false;
+  workToken += 1;
+  typeJob += 1;
+  window.RoomActor?.setPresent(true);
+  clearRoomSave();
+  persistRoom();
+  if (sheetOpen()) hideSheet();
+  renderCard();
+  renderWorld();
+  renderDebug();
+  const status = $("summon-status");
+  if (status) {
+    status.textContent = `${girl.name}從名冊召喚進房間了。長按她說話。`;
+  }
+  ensureHalfPortrait(girl).catch((err) => {
+    console.warn("[ensureHalfPortrait]", err?.message || err);
+  });
+  if (isShipMode()) {
+    // 進房即開對話（底部輸入）
+    try { showSheet(); } catch { /* DOM not ready */ }
+  }
+  return true;
+}
+
+function isShipMode() {
+  try {
+    return new URLSearchParams(location.search).get("ship") === "1"
+      || document.body.classList.contains("room-ship");
+  } catch {
+    return document.body.classList.contains("room-ship");
+  }
+}
+
+function applyShipChrome() {
+  if (!isShipMode()) return;
+  document.body.classList.add("room-ship");
+  document.documentElement.classList.add("room-ship");
+  const shipBack = $("ship-back");
+  if (shipBack) shipBack.hidden = false;
+  // 隱藏沙盒／除錯：抽妹子、身體面板、戀愛道具除錯、bond-debug
+  for (const id of [
+    "bond-debug", "body-panel", "romance-items",
+  ]) {
+    const el = $(id);
+    if (el) el.hidden = true;
+  }
+  const editorSummon = document.querySelector(".summon-panel");
+  if (editorSummon) editorSummon.hidden = true;
+  const note = document.querySelector(".summon-panel .note");
+  if (note) note.hidden = true;
+  // 頂部狀態卡（緊湊）：用 girl-where / mood 當上卡帶
+  const back = document.querySelector("#room-editor .back");
+  if (back) {
+    back.textContent = "← 萬事屋";
+    back.setAttribute("href", "/");
   }
 }
 
@@ -4819,6 +4927,12 @@ function bindBodyPanel() {
 }
 
 (function restoreRoom() {
+  applyShipChrome();
+  const pending = takePendingAdopt();
+  if (pending?.girl) {
+    adoptRosterGirl(pending);
+    return;
+  }
   const saved = loadRoomSave();
   if (!saved?.girl) return;
   girl = saved.girl;
@@ -4948,3 +5062,16 @@ window.RoomScenes = {
   close: closeRoomScene,
   unlocked: () => highStunSceneUnlocked(girl),
 };
+window.RoomCompanion = {
+  adopt: adoptRosterGirl,
+  sync: () => girl && syncProgressToGame(girl),
+  isShip: isShipMode,
+  current: () => girl,
+};
+window.addEventListener("pagehide", () => { if (girl) { rememberChat(); persistRoom(); } });
+window.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && girl) {
+    rememberChat();
+    persistRoom();
+  }
+});

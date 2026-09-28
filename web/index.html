@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="萬事屋">
-<link rel="stylesheet" href="style.css?v=55">
+<link rel="stylesheet" href="style.css?v=56">
 </head>
 <body>
 
@@ -277,7 +277,7 @@
 </div>
 
 <!-- 約會桌全螢幕：立繪在底層；頂欄／旁白／章節選項浮在上層 -->
-<div id="card-table-view" class="hidden">
+<div id="card-table-view" class="hidden layout-ship">
   <div id="ct-portrait" aria-hidden="true">
     <img id="ct-portrait-img" class="hidden" alt="" draggable="false">
     <div id="ct-portrait-fallback" class="hidden"></div>
@@ -331,9 +331,9 @@
     <input id="chat-input" type="text" maxlength="300" placeholder="說點什麼…(Enter 送出)">
     <button id="chat-send">送出</button>
   </div>
-  <div id="sense-act-row" class="hidden">
-    <button type="button" id="sense-summon" class="cyan">召喚</button>
-    <button type="button" id="sense-date" class="cyan">約會</button>
+  <div id="sense-act-row" class="hidden" hidden aria-hidden="true">
+    <button type="button" id="sense-summon" class="cyan hidden" hidden>召喚</button>
+    <button type="button" id="sense-date" class="cyan hidden" hidden>約會</button>
     <div id="sense-date-confirm" class="hidden sense-date-confirm"></div>
   </div>
   <div id="tease-act-row" class="hidden">
@@ -412,6 +412,6 @@
   setTimeout(function () { sessionStorage.removeItem("healCount"); }, 10000);
 })();
 </script>
-<script type="module" src="app.js?v=60"></script>
+<script type="module" src="app.js?v=61"></script>
 </body>
 </html>

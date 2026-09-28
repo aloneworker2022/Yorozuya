@@ -696,6 +696,7 @@ function defaultState() {
     cardsLive: { packId: null, epoch: 0 },
     bubbleAff: { day: null, byGirl: {} }, // M2 氣泡情感日 cap { day, byGirl: { id: used } }
     senseHour: { key: 0, count: 0 }, // 感應時段額度 {key=floor(now/HOUR), count}
+    roomSummonOffer: null, // 房間召喚黏著報價 { cost: 2|3|4 }；用過才重擲
     playerProfile: {
       name: "", body: "", look: "", habit: "",
       prefs: [], quiz: {},
@@ -958,6 +959,8 @@ function initState(j, offline) {
     if (e && e.text == null) e.text = notebookText(e);
   }
   state.senseHour ??= { key: 0, count: 0 };
+  ensureRoomSummonOffer();
+  mergeRoomProgressSync();
   state.inventory ??= { bouquet: 0, ring: 0 };
   state.inventory.bouquet = state.inventory.bouquet | 0;
   state.inventory.ring = state.inventory.ring | 0;
@@ -5640,16 +5643,19 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
   if (s.ntr) { toast("她不在你身邊……", "bad"); return; }
   const fromSense = !!opts.fromSense;
 
-  // 感應接通：一律走即時 AI 聊天（type=sense）
-  if (fromSense) type = "sense";
+  // 舊感應路徑已退役
+  if (fromSense) {
+    toast("感應已改為房間陪伴——請用名冊「召喚」", "");
+    return;
+  }
 
   // M2/M3/M6：自由聊退役 → 日常聊改感應／店頭；深度互動只走約會
   if (!fromSense && freeChatRetired() && type === "chat") {
     if (isKanban(id)) {
-      toast("想說話就打她的名字叫過來；深度互動請到名冊約會", "");
+      toast("想說話就打她的名字叫過來；深度互動請到名冊「召喚」進房間", "");
       beginShopTalk(id);
     } else {
-      toast("不在店頭時用感應；深度互動請到名冊約會", "bad");
+      toast("不在店頭時用名冊「召喚」進房間", "bad");
     }
     return;
   }
@@ -5687,7 +5693,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
     s.typing = null;
   } else if (type === "talk") {
     if (!isKanban(id)) {
-      toast("她不在店頭，先召喚為看板娘（或不在時用感應）", "bad");
+      toast("她不在店頭——用名冊「召喚」進房間", "bad");
       return;
     }
     s.lastChatDay = today;
@@ -5698,7 +5704,7 @@ function enterChat(id, type = "chat", location = null, prepaid = false, opts = {
     // 聊天不花任何資源:淫紋只是「她想跟你說話」的燈,點開就是聊起來。
     if (!prepaid) {
       if (isSummonerTaken(s)) {
-        toast(`${s.name} 正被召喚走——試試「感應」`, "bad");
+        toast(`${s.name} 正被召喚走——可用名冊「召喚」進房間或窺視`, "bad");
         return;
       }
       if (s.typing) { toast(`${s.name} 正在回你……`, ""); return; }
@@ -7399,6 +7405,165 @@ function inferTeaseAccept(stage, flags, reply) {
   return ScriptMode.rollTrigger("tease", stage);
 }
 
+
+// ===== 房間陪伴召喚（取代感應／約會主路徑）=====
+const ROOM_PENDING_KEY = "yoro_room_pending_adopt";
+const ROOM_PROGRESS_KEY = "yoro_room_progress_sync";
+const ROOM_SAVE_KEY_MAIN = "yoro_test_room_session";
+
+function rollRoomSummonCost() {
+  return 2 + Math.floor(Math.random() * 3); // 2｜3｜4
+}
+
+function ensureRoomSummonOffer() {
+  const o = state.roomSummonOffer;
+  const c = o && (o.cost | 0);
+  if (![2, 3, 4].includes(c)) {
+    state.roomSummonOffer = { cost: rollRoomSummonCost() };
+  }
+  return state.roomSummonOffer;
+}
+
+function refreshRoomSummonOffer() {
+  state.roomSummonOffer = { cost: rollRoomSummonCost() };
+  return state.roomSummonOffer;
+}
+
+function roomSummonCost() {
+  return ensureRoomSummonOffer().cost;
+}
+
+/** 房間回寫的感情／階段合併進名冊（同 id） */
+function mergeRoomProgressSync() {
+  try {
+    const raw = localStorage.getItem(ROOM_PROGRESS_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data?.id) return;
+    const s = (state.succubi || []).find(x => x.id === data.id);
+    if (!s) return;
+    let changed = false;
+    if (typeof data.affection === "number" && data.affection !== s.affection) {
+      s.affection = data.affection;
+      changed = true;
+    }
+    if (data.stage && data.stage !== s.stage) {
+      s.stage = data.stage;
+      changed = true;
+    }
+    if (data.portraits && typeof data.portraits === "object") {
+      s.portraits = { ...(s.portraits || {}), ...data.portraits };
+      if (data.portraits.half || data.portraits.full) {
+        s.portrait = data.portraits.full || data.portraits.half || s.portrait;
+      }
+      changed = true;
+    }
+    if (changed) {
+      dirty = true;
+      log(`房間進度合併：${s.name}（感情 ${s.affection}・${stageLabel(s.stage)}）`);
+    }
+  } catch { /* ignore */ }
+}
+
+function mapGameStageToRoom(stage) {
+  const known = new Set([
+    "stranger", "acquaintance", "friend", "close_friend",
+    "girlfriend", "passionate", "lover",
+    "wife", "devoted_wife", "obedient_wife", "pathological_wife",
+  ]);
+  if (known.has(stage)) return stage;
+  // 舊主線四階 → 房間階梯
+  if (stage === "friend") return "friend";
+  return "stranger";
+}
+
+/** 把名冊妹子編成房間 session 用物件（同 id，進度可回寫） */
+function buildRoomGirlFromSuccubus(s) {
+  const portraits = (s.portraits && typeof s.portraits === "object")
+    ? { ...s.portraits }
+    : {};
+  return {
+    id: s.id,
+    gameGirlId: s.id,
+    fromRoster: true,
+    name: s.name,
+    rarity: s.rarity,
+    personality: s.personality,
+    speech: s.speech,
+    tone: s.tone,
+    quirk: s.quirk,
+    kink: s.kink,
+    job: s.job,
+    backstory: s.backstory,
+    tags: s.tags,
+    dna: s.dna,
+    comfyCkpt: s.comfyCkpt,
+    affection: typeof s.affection === "number" ? s.affection : 0,
+    stage: mapGameStageToRoom(s.stage || "stranger"),
+    ntr: s.ntr || null,
+    summoner: s.summoner || null,
+    portraits,
+    portrait: s.portrait || portraits.full || portraits.half || null,
+    crave: s.crave || { v: 10, at: Date.now() },
+    chatEnter: "summon",
+    body: s.body || null,
+    playerNotes: s.playerNotes || null,
+    friends: s.friends || null,
+    world: s.world || null,
+  };
+}
+
+/**
+ * 名冊「召喚」：付黏著價 2～4 金 → 帶進房間陪伴。
+ * 成功扣費後才重擲下一個報價。
+ */
+function beginRoomCompanionSummon(girlId) {
+  if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
+  if (isDaydreaming()) { toast("發呆中——這段時間在備圖，等跑完再召喚", ""); return; }
+  const s = state.succubi.find(x => x.id === girlId);
+  if (!s || s.ntr) { toast("她不在你身邊……", "bad"); return; }
+  if (Cards.sessionActive(state)) {
+    const rec = resumeOrRecoverCardSession({ forceUi: true });
+    toast(`先結束與 ${rec.girlName || "她"} 的牌局`, "bad");
+    return;
+  }
+  if (watchWith || chatWith) {
+    toast("先結束目前的對話", "bad");
+    return;
+  }
+  if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
+  const cost = roomSummonCost();
+  if (state.gold < cost) {
+    toast(`召喚進房間要 ${cost} 金（目前 ${state.gold}）`, "bad");
+    return;
+  }
+  state.gold -= cost;
+  const next = refreshRoomSummonOffer();
+  dirty = true;
+  const roomGirl = buildRoomGirlFromSuccubus(s);
+  try {
+    localStorage.setItem(ROOM_PENDING_KEY, JSON.stringify({
+      girl: roomGirl,
+      playerName: state.playerProfile?.name || state.settings?.player || "",
+      paidCost: cost,
+      at: Date.now(),
+    }));
+  } catch (err) {
+    // 寫不進就退費並還原報價
+    state.gold += cost;
+    state.roomSummonOffer = { cost };
+    toast("無法開啟房間（本機儲存失敗）", "bad");
+    scheduleSave();
+    renderAll();
+    return;
+  }
+  log(`房間召喚 ${s.name} −${cost} 金（下次報價 ${next.cost} 金）`);
+  scheduleSave();
+  toast(`${s.name} 進入房間（−${cost} 金）`, "good");
+  // 橋接：導向房間頁（完整嵌進 index 日後再做）
+  location.href = "/test_room?ship=1";
+}
+
 /** 名冊「感應」：免費；每整點時段 6 次。接通後聊天框輸入「召喚」花 2 金召到店頭。 */
 const SENSE_PER_HOUR = 6;
 /** 感應召喚失敗機率 1/4；失敗立刻結束這次感應。費用見 senseSummonCost()＝看板階梯費 */
@@ -7434,41 +7599,11 @@ function isSummonCommand(text) {
 }
 
 function beginSense(girlId) {
-  if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
-  if (isDaydreaming()) { toast("發呆中——這段時間在備圖，等跑完再感應", ""); return; }
-  const s = state.succubi.find(x => x.id === girlId);
-  if (!s || s.ntr) { toast("她不在你身邊……", "bad"); return; }
-  // 人就在店頭不用感應——發現欄打她的名字叫過來
-  if (isKanban(s.id)) {
-    toast(`${s.name} 就在店頭——打她的名字叫過來`, "");
-    return;
+  // 舊感應已退役：改用名冊「召喚」進房間
+  toast("感應已改為房間陪伴——請用名冊「召喚」", "");
+  if (girlId) {
+    // 不自動扣費；只提示。玩家需自行按召喚。
   }
-  if (Cards.sessionActive(state)) {
-    const rec = resumeOrRecoverCardSession({ forceUi: true });
-    toast(`先結束與 ${rec.girlName || "她"} 的牌局`, "bad");
-    return;
-  }
-  if (watchWith || chatWith) {
-    toast("先結束目前的對話", "bad");
-    return;
-  }
-  if (senseLeft() <= 0) {
-    toast(`這一小時的感應次數用完了（每小時 ${SENSE_PER_HOUR} 次）`, "bad");
-    return;
-  }
-  if (!consumeSenseChance()) {
-    toast(`這一小時的感應次數用完了（每小時 ${SENSE_PER_HOUR} 次）`, "bad");
-    return;
-  }
-  const taken = isSummonerTaken(s);
-  const left = senseLeft();
-  dirty = true;
-  scheduleSave();
-  log(`感應 ${s.name}${taken ? "（被召喚走）" : ""}（本時段剩 ${left}/${SENSE_PER_HOUR}）`);
-  toast(taken
-    ? `感應接通——${s.name}（只能召喚／約會）· 剩 ${left}/${SENSE_PER_HOUR}`
-    : `感應接通——${s.name}（只能召喚／約會）· 剩 ${left}/${SENSE_PER_HOUR}`, "good");
-  enterChat(s.id, "sense", null, true, { fromSense: true });
 }
 
 /** 發現欄打妹子名字（可加「過來」）＝叫店頭的她過來說話 */
@@ -7507,11 +7642,11 @@ function beginShopTalk(nameOrId, opts = {}) {
     ? (kanbanSuccubi().find(match) || state.succubi.find(match) || null)
     : (kanbanSuccubi()[0] || null);
   if (!s || s.ntr) {
-    toast(key ? "名冊裡沒有這個人" : "店頭沒人——先召喚看板娘，或不在時去名冊感應", "bad");
+    toast(key ? "名冊裡沒有這個人" : "店頭沒人——先召喚看板娘，或不在時去名冊「召喚」進房間", "bad");
     return;
   }
   if (!isKanban(s.id)) {
-    toast(`${s.name} 不在店頭。去名冊感應，或先召喚她為看板娘`, "bad");
+    toast(`${s.name} 不在店頭。去名冊「召喚」進房間，或先召喚她為看板娘`, "bad");
     return;
   }
   enterChat(s.id, "talk", null, true, { journalQuest: opts.journalQuest || null });
@@ -10232,7 +10367,7 @@ function summonKanban(id, opts = {}) {
   (state.kanbans ??= []).push({ id, until: Date.now() + kanbanHours() * HOUR });
   state.lastKanbanId = id;
   log(`召喚 ${s.name} 為看板娘`);
-  toast(`${s.name} 來到店頭——打她的名字叫過來；深度互動請到名冊約會`, "good");
+  toast(`${s.name} 來到店頭——打她的名字叫過來；深度互動請到名冊「召喚」進房間`, "good");
   syncPortraitCgCache(s);
   scheduleSave();
   renderAll();
@@ -13155,7 +13290,7 @@ function commitOnboard() {
   state.playerProfile.starterSpeechCardId = null;
   state.playerProfile.onboardDone = true;
   log(`創角完成：${name}`);
-  toast("歡迎來到萬事屋——委託賺金幣，到名冊約會", "good");
+  toast("歡迎來到萬事屋——委託賺金幣，到名冊「召喚」進房間陪伴", "good");
   scheduleSave();
   return true;
 }
@@ -13196,7 +13331,7 @@ function renderStarterModal() {
     panel.innerHTML = `
       <h2>歡迎來到魅魔萬事屋</h2>
       <p class="lead">在召喚任何人之前，先取個名字——她們會這樣叫你。</p>
-      <p class="lead">白天做委託賺金幣；想靠近她，就到名冊<strong>約會</strong>。</p>`;
+      <p class="lead">白天做委託賺金幣；想靠近她，就到名冊<strong>召喚</strong>進房間陪伴。</p>`;
     nav.innerHTML = `<span></span><button type="button" class="ob-next" id="ob-next">開始</button>`;
   } else {
     panel.innerHTML = `
@@ -13533,6 +13668,10 @@ function beginDateFlow(girlId) {
     beginTakenPhoneCall(girlId);
     return;
   }
+
+  // 約會玩家入口已退役：改用名冊房間召喚
+  toast("約會已改為房間陪伴——請用名冊「召喚」", "");
+  return;
 
   // ★ 分支 2：一般約會（一天一次；看板娘也可約；非看板從感應進）
   if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
@@ -16266,14 +16405,18 @@ function vnFace(s, mood = null) {
   }
 }
 
-/** 感應列：召喚／約會，或待確認公園 VN（付2金） */
+/** 感應列：已退役（永遠隱藏） */
 function paintSenseActRow() {
   const row = document.getElementById("sense-act-row");
   const confirm = document.getElementById("sense-date-confirm");
+  if (!row) return;
+  row.classList.add("hidden");
+  row.classList.remove("sense-confirming");
+  if (confirm) { confirm.classList.add("hidden"); confirm.innerHTML = ""; }
+  return;
+  const senseOn = false; // dead code below kept for reference until full delete
   const summonBtn = document.getElementById("sense-summon");
   const dateBtn = document.getElementById("sense-date");
-  if (!row) return;
-  const senseOn = chatSession?.type === "sense" && !!chatWith;
   if (!senseOn) {
     row.classList.add("hidden");
     row.classList.remove("sense-confirming");
@@ -16478,23 +16621,19 @@ function renderSuccubi() {
 function renderDetail(s, root) {
   const asleep = isAsleep();
   const takenAway = isSummonerTaken(s);
-  const left = senseLeft();
-  const showDate = canDateToday(s);
   const showPeek = canPeekTaken(s);
-  const dateBtnLabel = showPeek ? "窺視" : "約會";
   const pendingVenue = pendingDateFlow(s.id);
   const pendingFee = OFFICIAL_DATE_FEE;
-  const senseHint = takenAway
-    ? `被帶走中 · 免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只能「召喚」或「約會」 · 召喚費依店頭看板人數階梯（失敗結束感應）`
-    : `免費 · 本時段 ${left}/${SENSE_PER_HOUR} · 只能「召喚」或「約會」（召喚費：無看板 1 金，已有則 50／100／150…）`;
-  const dateHint = showPeek
-    ? "她正被帶走，可以窺視（1/5 接通，不佔約會次數）"
-    : "約會：接通後付 2 金去公園（edit_date VN）";
+  const roomCost = roomSummonCost();
+  const summonHint = takenAway
+    ? `付 ${roomCost} 金帶她進房間陪伴（被帶走中仍可嘗試；報價用過才重擲）`
+    : `付 ${roomCost} 金帶她進房間陪伴聊天（報價用過才重擲 2～4）`;
+  const peekHint = "她正被帶走，可以窺視（1/5 接通）";
   const kanbanHere = isKanban(s.id);
-  // 非看板：約會走感應；看板娘仍從詳情約會（否則沒入口）
-  const showDetailDate = kanbanHere && (showDate || showPeek);
+  // 約會入口已退役；僅保留被帶走時的窺視
+  const showDetailPeek = showPeek;
 
-  // 精簡詳情：肖像（長按獻祭）→ 名 → 天賦 → 時間表 → 感應／約會
+  // 精簡詳情：肖像（長按獻祭）→ 名 → 天賦 → 時間表 → 房間召喚
   root.className = `r-${s.rarity}`;
   root.innerHTML = `
     <div class="panel">
@@ -16523,17 +16662,9 @@ function renderDetail(s, root) {
       ${s.ntr
         ? `<div class="detail-actions" style="margin-top:.8em"><button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button></div>`
         : `<div class="detail-actions" style="margin-top:.8em">
-            ${kanbanHere ? "" : `<button class="cyan" id="act-sense" ${asleep || left <= 0 ? "disabled" : ""} title="${esc(senseHint)}">感應（${left}/${SENSE_PER_HOUR}）</button>`}
-            ${showDetailDate ? `<button class="cyan" id="act-date" title="${esc(dateHint)}">${esc(dateBtnLabel)}</button>` : ""}
-          </div>
-          ${pendingVenue && kanbanHere ? `
-          <div class="chooser date-venues">
-            <div class="dim small" style="width:100%;text-align:center;margin:.3em 0 .2em">
-              她接了（電話 −${dateFlow.phoneCost ?? 1} 金）。去公園約會 · 付 ${pendingFee} 金
-            </div>
-            <button type="button" class="cyan" id="act-date-go">去公園約會</button>
-            <button type="button" id="act-date-cancel">先不約了</button>
-          </div>` : ""}`}
+            <button class="cyan" id="act-room-summon" ${asleep ? "disabled" : ""} title="${esc(summonHint)}">召喚（${roomCost}金）</button>
+            ${showDetailPeek ? `<button class="cyan" id="act-peek" title="${esc(peekHint)}">窺視</button>` : ""}
+          </div>`}
     </div>`;
 
   root.querySelector("#detail-back").onclick = () => {
@@ -16568,11 +16699,9 @@ function renderDetail(s, root) {
     port.addEventListener("contextmenu", e => e.preventDefault());
   }
 
-  root.querySelector("#act-sense")?.addEventListener("click", () => beginSense(s.id));
+  root.querySelector("#act-room-summon")?.addEventListener("click", () => beginRoomCompanionSummon(s.id));
   root.querySelector("#act-ransom")?.addEventListener("click", () => ransom(s.id));
-  root.querySelector("#act-date")?.addEventListener("click", () => beginDateFlow(s.id));
-  root.querySelector("#act-date-go")?.addEventListener("click", () => confirmDateVenue(s.id));
-  root.querySelector("#act-date-cancel")?.addEventListener("click", () => declineDateVenue(s.id));
+  root.querySelector("#act-peek")?.addEventListener("click", () => beginTakenPhoneCall(s.id));
 }
 
 function renderKanban() {
@@ -16832,13 +16961,10 @@ on("chat-back", "click", () => {
 });
 on("chat-send", "click", () => { if (chatSession?.ended) exitChat(); else sendChatMsg(); });
 on("sense-summon", "click", () => {
-  const s = state.succubi.find(x => x.id === chatWith);
-  if (!s || chatSession?.type !== "sense") return;
-  void tryCastSummonInSenseChat(s);
+  toast("感應已改為房間陪伴——請用名冊「召喚」", "");
 });
 on("sense-date", "click", () => {
-  if (chatSession?.type !== "sense" || !chatWith) return;
-  beginDateFlow(chatWith);
+  toast("約會已改為房間陪伴——請用名冊「召喚」", "");
 });
 document.getElementById("sense-act-row")?.addEventListener("click", (e) => {
   const t = e.target;
