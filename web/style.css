@@ -2544,7 +2544,7 @@ body.card-mode.has-ct-figure #kanban-girl {
 }
 
 
-/* ===== ROOM-HOME：主畫面 上窄卡／中房／下輸入 ===== */
+/* ===== ROOM-HOME：主畫面 上卡／中下房／底輸入 ===== */
 body.room-home #page-quests {
   display: flex;
   flex-direction: column;
@@ -2553,29 +2553,30 @@ body.room-home #page-quests {
 }
 body.room-home #home-card-strip {
   flex: 0 0 auto;
-  max-height: 22vh;
+  max-height: 36vh;
   min-height: 0;
+  margin-top: 0.55em; /* 略往下，別貼死 HUD */
   position: relative;
   z-index: 3;
   overflow: hidden;
 }
 body.room-home #home-card-strip .q-scenes {
   flex: none;
-  height: 22vh;
-  max-height: 22vh;
+  height: 36vh;
+  max-height: 36vh;
   min-height: 0;
 }
 body.room-home #home-card-strip .pin-hdr {
   margin: 0;
-  padding: 0.15em 0;
-  font-size: 0.78em;
+  padding: 0.2em 0;
+  font-size: 0.85em;
 }
 body.room-home #home-card-strip .pin-carousel {
-  max-height: calc(22vh - 2.2em);
+  max-height: calc(36vh - 2.4em);
 }
 body.room-home #home-card-strip .pin-slot,
 body.room-home #home-card-strip .pin-card {
-  transform: scale(0.92);
+  transform: scale(1.06);
   transform-origin: top center;
 }
 /* 日誌／處理展開時：卡區拉高，房間讓位 */
@@ -2598,14 +2599,16 @@ body.room-home #page-quests.on-line #main-room-stage {
 }
 body.room-home #main-room-stage {
   flex: 1 1 auto;
-  min-height: 38vh;
+  min-height: 0;
   margin: 0 auto;
+  margin-top: auto; /* 空白擠在上方，房間貼近輸入框 */
   width: 100%;
   max-width: 520px;
+  padding-bottom: 2px;
 }
 body.room-home #quest-input-row {
   flex-shrink: 0;
-  margin-top: 0.25em;
+  margin-top: 0.15em;
   position: relative; /* sticky 在窄 flex 內改相對，避免蓋房 */
   bottom: auto;
   z-index: 4;

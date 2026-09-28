@@ -6,7 +6,7 @@ html.sheet-open,html.sheet-open body{overflow:hidden;overscroll-behavior:none}
 body.sheet-open{position:fixed;left:0;right:0;width:100%}
 html.room-page body.editing{justify-content:flex-start}
 html.room-page a{color:inherit;text-decoration:none}
-html.room-page .stage,.home-room-stage{width:min(100%,640px);margin:0 auto;padding:24px 20px 96px}
+html.room-page .stage{width:min(100%,640px);margin:0 auto;padding:24px 20px 96px}body.room-home .home-room-stage{width:100%;max-width:520px;margin:0 auto;padding:0 8px 0}
 html.room-page .scene,#main-room-stage .scene{display:flex;justify-content:center}
 #edit-room{position:fixed;z-index:5;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));min-width:72px}
 #room-editor{width:min(100%,560px);margin:28px auto 0}
@@ -297,17 +297,18 @@ body.room-home #main-room-stage {
   z-index: 1;
 }
 body.room-home #main-room-stage .scene {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   width: 100%;
-  min-height: 36vh;
-  padding: 4px 0 0;
+  min-height: 0;
+  padding: 0;
+  margin-top: auto;
 }
 body.room-home #main-room-stage #room {
-  width: min(100%, 360px);
-  max-height: min(52vh, 420px);
+  width: min(100%, 380px);
+  max-height: min(42vh, 380px);
 }
 body.room-home #main-room-stage .girl-where,
 body.room-home #main-room-stage .girl-mood,
