@@ -77,6 +77,11 @@ import {
   protestPromptBlock,
   blendProtestReply,
 } from "./invasion.js?v=2";
+import {
+  mountButtPackEditor,
+  pickRuntimeButtPack,
+  buildButtImgBody,
+} from "./butt_packs.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -367,6 +372,47 @@ function startPortraitEntrance(img) {
     if (!sheetOpen() || img.hidden) return;
     img.classList.add("portrait-in");
   });
+}
+
+
+const buttGenning = new Set();
+
+/** 摸臀：有存檔圖組則隨機一組生圖，否則硬編碼 tease_butt；結果蓋上對話立繪。 */
+async function maybeGenButtShot(who, actId) {
+  if (actId !== "butt" || !who?.id) return;
+  if (buttGenning.has(who.id)) return;
+  buttGenning.add(who.id);
+  try {
+    const pack = await pickRuntimeButtPack();
+    const engine = await gameImgRoute();
+    const body = buildButtImgBody(pack, who, engine, {
+      stage: who.stage || "stranger",
+      worn: wornOutfit(who),
+    });
+    const result = await waitImage(body);
+    if (result?.status === "done" && result.result) {
+      const url = String(result.result);
+      who.portraits = who.portraits || {};
+      who.portraits.tease_butt = url.includes("?") ? url : `${url}?v=${Date.now()}`;
+      // 對話進行中：暫時用摸臀圖覆蓋半身
+      if (girl && girl.id === who.id && sheetOpen()) {
+        const img = $("portrait-img");
+        if (img) {
+          img.alt = `${who.name}的摸臀圖`;
+          img.src = who.portraits.tease_butt;
+          img.hidden = false;
+          img.classList.add("portrait-in");
+        }
+      }
+      persistRoom();
+    } else if (result?.status === "error") {
+      console.warn("[maybeGenButtShot]", result.error || "生圖失敗");
+    }
+  } catch (err) {
+    console.warn("[maybeGenButtShot]", err?.message || err);
+  } finally {
+    buttGenning.delete(who.id);
+  }
 }
 
 function paintHalfPortrait(who = girl) {
@@ -3411,6 +3457,7 @@ async function deliverUserTalk(text, opts = {}) {
         applyAct(girl, opts.actId);
         recordTeasePress(girl, opts.actId);
         noteActShock(girl, opts.actId);
+        if (opts.actId === "butt") void maybeGenButtShot(girl, opts.actId);
         // 情感：一般挑逗不加；接近高潮／失神門檻才小幅＋1，痙攣／射精＋2
         const nearClimax = stunBefore >= 50 || arousalBefore >= 22
           || (girl.bodyState?.arousal || 0) >= 22
@@ -5199,6 +5246,16 @@ document.addEventListener("keydown", (event) => {
   }
   if (sheetOpen()) hideSheet();
 });
+
+
+try {
+  mountButtPackEditor({
+    getGirl: () => girl,
+    getEngine: () => gameImgRoute(),
+  });
+} catch (err) {
+  console.warn("[butt-pack-editor]", err?.message || err);
+}
 
 bindRoomSceneOverlay();
 window.RoomPortrait = { open: showSheet };

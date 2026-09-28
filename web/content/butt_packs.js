@@ -1,0 +1,598 @@
+/** 房間「摸臀」生圖預設組：多組命名存檔，執行時隨機抽一組；無組時退回硬編碼 tease_butt。 */
+
+import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=1";
+
+const API = "/api/butt-packs";
+
+export function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+export function clampDenoise(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0.55;
+  return Math.min(0.9, Math.max(0.35, Math.round(n * 100) / 100));
+}
+
+/** 與 tease_shots.composeTeaseExtra("tease_butt") 對齊的預設正向（不含表情／人設）。 */
+export function defaultButtPrompt(stage = "stranger") {
+  return composeTeaseExtra("tease_butt", stage, "") || [
+    "white background, simple background",
+    "lower body, below waist, from behind, ass focus",
+    "looking back",
+    "first-person POV, one male hand, male hand on her buttocks",
+    "NO both hands",
+  ].join(", ");
+}
+
+export function emptyButtPack(name = "摸臀圖組") {
+  return {
+    id: uid(),
+    name: String(name || "摸臀圖組").slice(0, 40),
+    poseDenoise: 0.55,
+    prompt: defaultButtPrompt(),
+    negative: "looking at viewer, text, watermark, ugly, extra fingers, both hands, two hands",
+    ref: "",
+    url: "",
+    updated: Date.now(),
+  };
+}
+
+export function normalizeButtPack(raw) {
+  const base = emptyButtPack();
+  const s = raw && typeof raw === "object" ? raw : {};
+  const slot = s.slot && typeof s.slot === "object" ? s.slot : null;
+  return {
+    id: String(s.id || base.id).slice(0, 24) || base.id,
+    name: String(s.name || base.name).slice(0, 40) || base.name,
+    poseDenoise: clampDenoise(s.poseDenoise ?? s.pose_denoise ?? base.poseDenoise),
+    prompt: String(s.prompt ?? slot?.prompt ?? base.prompt),
+    negative: String(s.negative ?? slot?.negative ?? base.negative),
+    ref: String(s.ref ?? slot?.ref ?? "").trim(),
+    url: String(s.url ?? slot?.url ?? "").trim(),
+    updated: Number(s.updated) || Date.now(),
+  };
+}
+
+export function normalizeButtDoc(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const packs = (Array.isArray(src.packs) ? src.packs : []).map(normalizeButtPack).filter((p) => p.id);
+  let activeId = String(src.activeId || "");
+  if (packs.length && !packs.some((p) => p.id === activeId)) activeId = packs[0].id;
+  if (!packs.length) activeId = "";
+  return { packs, activeId };
+}
+
+export function pickRandomButtPack(packs) {
+  const list = (Array.isArray(packs) ? packs : []).map(normalizeButtPack).filter((p) => p.id);
+  if (!list.length) return null;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+export function joinPromptParts(...parts) {
+  const seen = new Set();
+  const out = [];
+  for (const part of parts) {
+    for (const bit of String(part || "").split(",")) {
+      const s = bit.trim();
+      if (!s) continue;
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+  }
+  return out.join(", ");
+}
+
+function girlOwnCkpt(girl) {
+  return String(girl?.comfyCkpt || "").trim();
+}
+
+function wornOutfit(g) {
+  const look = g?.look || {};
+  const wardrobe = Array.isArray(look.wardrobe) ? look.wardrobe : [];
+  const erotic = Array.isArray(look.eroticOutfits) ? look.eroticOutfits : [];
+  const sleep = Array.isArray(look.sleepOutfits) ? look.sleepOutfits : [];
+  const pick = g?.outfitPick;
+  if (typeof pick === "string" && pick[0] === "e") {
+    const index = Number(pick.slice(1));
+    if (Number.isInteger(index) && erotic[index]) return String(erotic[index]);
+  }
+  if (typeof pick === "string" && pick[0] === "s") {
+    const index = Number(pick.slice(1));
+    if (Number.isInteger(index) && sleep[index]) return String(sleep[index]);
+  }
+  if (Number.isInteger(pick) && pick >= 0 && pick < wardrobe.length) return String(wardrobe[pick] || "");
+  return String(look.career_outfit || look.style || "");
+}
+
+export async function fetchButtBasePrompt(girl, eng = {}) {
+  if (!girl) throw new Error("先選魅子");
+  const comfy = (eng.imgProvider || "grok-img") === "comfy";
+  const body = {
+    key: `butt-base:${girl.id || "x"}:${Date.now().toString(36)}`,
+    provider: comfy ? "comfy" : "grok-img",
+    model: comfy ? (eng.imgModel || "grok-4.5") : (eng.imgModel || "grok-4.5"),
+    framing: teaseFraming("tease_butt"),
+    rating: "nsfw",
+    style: eng.imgStyle || "pixel",
+    character: girl,
+    outfit: wornOutfit(girl),
+    extra: "",
+    negative: "",
+    prompt: "",
+    cutout: false,
+    lock_identity: true,
+    scene_kind: "tease",
+    shot: "tease_butt",
+    ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: girlOwnCkpt(girl) || eng.comfyCkpt || "" } : {}),
+  };
+  const r = await fetch("/api/imggen/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  const tr = j.trace || {};
+  return {
+    positive: String(tr.comfy_prompt || "").trim(),
+    negative: String(tr.comfy_negative || "").trim(),
+    grokPrompt: String(tr.grok_prompt || "").trim(),
+    provider: tr.provider || body.provider,
+  };
+}
+
+/**
+ * 組摸臀生圖下單。有 pack → 用組內 prompt／ref／denoise；
+ * pack 為 null → 硬編碼 tease_butt（與主遊戲一致）。
+ */
+export function buildButtImgBody(pack, girl, eng = {}, opts = {}) {
+  if (!girl) throw new Error("先選魅子");
+  const comfy = (eng.imgProvider || "grok-img") === "comfy";
+  const stage = String(opts.stage || girl.stage || "stranger");
+  const worn = opts.worn != null ? opts.worn : wornOutfit(girl);
+  const p = pack ? normalizeButtPack(pack) : null;
+  const userPos = p
+    ? String(p.prompt || "").trim()
+    : composeTeaseExtra("tease_butt", stage, worn);
+  const userNeg = p ? String(p.negative || "").trim() : "";
+  const ref = p ? String(p.ref || "").trim() : "";
+  const denoise = p ? clampDenoise(p.poseDenoise) : 0.55;
+  return {
+    key: `room-butt:${girl.id || "x"}:${Date.now().toString(36)}`,
+    provider: comfy ? "comfy" : "grok-img",
+    model: eng.imgModel || "grok-4.5",
+    framing: teaseFraming("tease_butt"),
+    rating: "nsfw",
+    style: eng.imgStyle || "pixel",
+    character: girl,
+    outfit: worn,
+    // Comfy：使用者正向整份當 prompt（可先套入人設）；Grok：extra 疊動作
+    prompt: comfy ? userPos : "",
+    extra: comfy ? "" : userPos,
+    negative: userNeg,
+    visual_neg: userNeg,
+    cutout: false,
+    flat_bg: true,
+    lock_identity: true,
+    retry: true,
+    scene_kind: "tease",
+    shot: "tease_butt",
+    char_id: girl.id,
+    ...(ref ? { pose_ref: ref, pose_denoise: denoise } : {}),
+    ...(comfy ? {
+      comfy_url: eng.comfyUrl || "",
+      ckpt: girlOwnCkpt(girl) || eng.comfyCkpt || "",
+    } : {}),
+  };
+}
+
+export async function loadButtDoc() {
+  const r = await fetch(API + "?ts=" + Date.now(), { cache: "no-store" });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  return normalizeButtDoc(j);
+}
+
+export async function saveButtDoc(doc) {
+  const body = normalizeButtDoc(doc);
+  const r = await fetch(API, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  return body;
+}
+
+/** 執行時快取（房間／主遊戲共用）。 */
+let _cache = null;
+let _cacheAt = 0;
+
+export async function getButtPacksCached(force = false) {
+  const now = Date.now();
+  if (!force && _cache && now - _cacheAt < 15000) return _cache;
+  try {
+    _cache = await loadButtDoc();
+    _cacheAt = now;
+  } catch {
+    if (!_cache) _cache = { packs: [], activeId: "" };
+  }
+  return _cache;
+}
+
+export function invalidateButtCache() {
+  _cache = null;
+  _cacheAt = 0;
+}
+
+/** 隨機一組；無組回 null（呼叫端走硬編碼）。 */
+export async function pickRuntimeButtPack() {
+  const doc = await getButtPacksCached();
+  return pickRandomButtPack(doc.packs);
+}
+
+function $(id) {
+  return document.getElementById(id);
+}
+
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function apiJson(url, method, body) {
+  const r = await fetch(url, {
+    method: method || "GET",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  return j;
+}
+
+async function waitImg(body, onTick, ms = 360000) {
+  let key = body.key;
+  let r = await apiJson("/api/imggen", "POST", { ...body, retry: body.retry !== false });
+  if (r.key) key = r.key;
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (r.status === "done" || r.status === "error") return r;
+    if (onTick) onTick(Math.round((Date.now() - t0) / 1000));
+    await new Promise((x) => setTimeout(x, 1500));
+    r = await apiJson("/api/imggen", "POST", { ...body, key, retry: false });
+    if (r.key) key = r.key;
+  }
+  return { status: "error", error: "逾時" };
+}
+
+/**
+ * 掛載房間編輯器內的「摸臀圖」面板。
+ * @param {{ getGirl: () => object|null, getEngine: () => Promise<object> }} hooks
+ */
+export function mountButtPackEditor(hooks = {}) {
+  const openBtn = $("btn-butt-packs");
+  const panel = $("butt-pack-editor");
+  if (!openBtn || !panel || panel.dataset.bound) return;
+  panel.dataset.bound = "1";
+
+  let doc = { packs: [], activeId: "" };
+  let activeId = "";
+  let girls = [];
+  let girlId = "";
+
+  const setStatus = (msg, err = false) => {
+    const el = $("bp-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.classList.toggle("err", !!err);
+  };
+
+  const activePack = () => doc.packs.find((p) => p.id === activeId) || doc.packs[0] || null;
+
+  const renderPacks = () => {
+    const sel = $("bp-pack");
+    if (!sel) return;
+    if (!doc.packs.some((p) => p.id === activeId) && doc.packs[0]) activeId = doc.packs[0].id;
+    sel.innerHTML = doc.packs.length
+      ? doc.packs.map((p) =>
+        `<option value="${esc(p.id)}"${p.id === activeId ? " selected" : ""}>${esc(p.name)}</option>`).join("")
+      : `<option value="">（尚無圖組）</option>`;
+  };
+
+  const renderGirls = () => {
+    const sel = $("bp-girl");
+    if (!sel) return;
+    const live = hooks.getGirl?.();
+    if (live?.id && !girls.some((g) => g.id === live.id)) {
+      girls = [live, ...girls];
+    }
+    if (!girls.some((g) => g.id === girlId)) girlId = live?.id || girls[0]?.id || "";
+    sel.innerHTML = girls.length
+      ? girls.map((g) =>
+        `<option value="${esc(g.id)}"${g.id === girlId ? " selected" : ""}>${esc(g.name || g.id)}</option>`).join("")
+      : `<option value="">（無可用魅子）</option>`;
+  };
+
+  const currentGirl = () => {
+    const live = hooks.getGirl?.();
+    if (live?.id && live.id === girlId) return live;
+    return girls.find((g) => g.id === girlId) || live || girls[0] || null;
+  };
+
+  const renderForm = () => {
+    const p = activePack();
+    if (!p) {
+      if ($("bp-name")) $("bp-name").value = "";
+      if ($("bp-pos")) $("bp-pos").value = "";
+      if ($("bp-neg")) $("bp-neg").value = "";
+      if ($("bp-denoise")) $("bp-denoise").value = "0.55";
+      if ($("bp-ref-flag")) $("bp-ref-flag").textContent = "沒有參考圖 → 文生圖";
+      if ($("bp-art")) $("bp-art").innerHTML = `<span class="mini">尚無圖組</span>`;
+      updateRefFlag();
+      return;
+    }
+    if ($("bp-name")) $("bp-name").value = p.name || "";
+    if ($("bp-pos")) $("bp-pos").value = p.prompt || "";
+    if ($("bp-neg")) $("bp-neg").value = p.negative || "";
+    if ($("bp-denoise")) $("bp-denoise").value = String(p.poseDenoise ?? 0.55);
+    if ($("bp-art")) {
+      $("bp-art").innerHTML = p.url
+        ? `<img src="${esc(p.url)}" alt="butt">`
+        : `<span class="mini">尚未產生</span>`;
+    }
+    updateRefFlag();
+  };
+
+  const updateRefFlag = () => {
+    const p = activePack();
+    const ref = p?.ref || "";
+    const flag = $("bp-mode-flag");
+    const refFlag = $("bp-ref-flag");
+    const thumb = $("bp-ref-thumb");
+    if (flag) {
+      flag.textContent = ref ? "圖生圖（pose_ref）" : "文生圖";
+      flag.className = "bp-mode-flag " + (ref ? "img" : "txt");
+    }
+    if (refFlag) refFlag.textContent = ref ? ("已掛 " + ref) : "沒有參考圖 → 文生圖";
+    if (thumb) {
+      if (ref) {
+        thumb.hidden = false;
+        thumb.src = ref + (ref.includes("?") ? "&" : "?") + "t=" + Date.now();
+      } else {
+        thumb.hidden = true;
+        thumb.removeAttribute("src");
+      }
+    }
+  };
+
+  const collectForm = () => {
+    const p = activePack();
+    if (!p) return;
+    p.name = String($("bp-name")?.value || p.name || "摸臀圖組").slice(0, 40);
+    p.prompt = $("bp-pos")?.value || "";
+    p.negative = $("bp-neg")?.value || "";
+    p.poseDenoise = clampDenoise($("bp-denoise")?.value);
+    p.updated = Date.now();
+    doc.activeId = p.id;
+    activeId = p.id;
+  };
+
+  const load = async () => {
+    setStatus("讀取中…");
+    try {
+      doc = await loadButtDoc();
+      activeId = doc.activeId || doc.packs[0]?.id || "";
+      renderPacks();
+      renderForm();
+      setStatus(doc.packs.length ? `已載入 ${doc.packs.length} 組` : "尚無圖組，按「新增」開始");
+    } catch (e) {
+      setStatus("讀取失敗：" + e.message, true);
+    }
+  };
+
+  const loadGirls = async () => {
+    try {
+      const r = await fetch("/api/save", { cache: "no-store" });
+      const j = await r.json();
+      girls = (j?.data?.succubi || []).filter((g) => g && g.id && !g.taken);
+      renderGirls();
+    } catch {
+      girls = [];
+      renderGirls();
+    }
+  };
+
+  const open = async () => {
+    panel.hidden = false;
+    openBtn.setAttribute("aria-expanded", "true");
+    await Promise.all([load(), loadGirls()]);
+  };
+
+  const close = () => {
+    collectForm();
+    panel.hidden = true;
+    openBtn.setAttribute("aria-expanded", "false");
+  };
+
+  openBtn.addEventListener("click", () => {
+    if (panel.hidden) void open();
+    else close();
+  });
+
+  $("bp-close")?.addEventListener("click", () => close());
+
+  $("bp-pack")?.addEventListener("change", () => {
+    collectForm();
+    activeId = $("bp-pack").value;
+    doc.activeId = activeId;
+    renderForm();
+  });
+
+  $("bp-girl")?.addEventListener("change", () => {
+    girlId = $("bp-girl").value;
+  });
+
+  $("bp-new")?.addEventListener("click", () => {
+    collectForm();
+    const p = emptyButtPack("摸臀 " + (doc.packs.length + 1));
+    doc.packs.push(p);
+    activeId = p.id;
+    doc.activeId = p.id;
+    renderPacks();
+    renderForm();
+    setStatus("已新增（記得按儲存）");
+  });
+
+  $("bp-del")?.addEventListener("click", () => {
+    if (!doc.packs.length) return;
+    if (doc.packs.length <= 1) {
+      if (!confirm("刪掉最後一組？執行摸臀會退回硬編碼。")) return;
+    } else if (!confirm("刪除這一組？")) return;
+    collectForm();
+    doc.packs = doc.packs.filter((p) => p.id !== activeId);
+    activeId = doc.packs[0]?.id || "";
+    doc.activeId = activeId;
+    renderPacks();
+    renderForm();
+    setStatus("已刪除（記得按儲存）");
+  });
+
+  $("bp-save")?.addEventListener("click", async () => {
+    collectForm();
+    try {
+      doc = await saveButtDoc(doc);
+      invalidateButtCache();
+      activeId = doc.activeId || doc.packs[0]?.id || "";
+      renderPacks();
+      renderForm();
+      setStatus(`✓ 已寫入 butt_packs.json（${doc.packs.length} 組）`);
+    } catch (e) {
+      setStatus("儲存失敗：" + e.message, true);
+    }
+  });
+
+  $("bp-inject")?.addEventListener("click", async () => {
+    const g = currentGirl();
+    if (!g) {
+      setStatus("先選魅子或抽一隻進房", true);
+      return;
+    }
+    setStatus("套入人物 prompt…");
+    try {
+      const eng = (await hooks.getEngine?.()) || { imgProvider: "comfy", imgStyle: "pixel" };
+      const base = await fetchButtBasePrompt(g, eng);
+      const stage = g.stage || "stranger";
+      const action = defaultButtPrompt(stage);
+      // 套入：人設基礎＋摸臀動作；若欄位已有動作則只補人設到 sheet，不強制覆寫
+      const posEl = $("bp-pos");
+      const negEl = $("bp-neg");
+      if (posEl && !String(posEl.value || "").trim()) {
+        posEl.value = joinPromptParts(base.positive, action);
+      } else if (posEl && base.positive) {
+        // 已有內容：把人設基礎併在前面（去重）
+        posEl.value = joinPromptParts(base.positive, posEl.value);
+      }
+      if (negEl && !String(negEl.value || "").trim() && base.negative) {
+        negEl.value = base.negative;
+      } else if (negEl && base.negative) {
+        negEl.value = joinPromptParts(base.negative, negEl.value);
+      }
+      collectForm();
+      setStatus("✓ 已套入人物 prompt");
+    } catch (e) {
+      setStatus("套入失敗：" + e.message, true);
+    }
+  });
+
+  $("bp-ref-up")?.addEventListener("click", () => $("bp-ref-file")?.click());
+  $("bp-ref-file")?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    const p = activePack();
+    if (!file || !p) return;
+    setStatus("上傳參考圖…");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/api/pose-refs", { method: "POST", body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.detail || j.error || r.status);
+      p.ref = String(j.url || "").trim();
+      updateRefFlag();
+      setStatus("✓ 已掛參考圖");
+    } catch (err) {
+      setStatus("上傳失敗：" + err.message, true);
+    }
+  });
+
+  $("bp-ref-clear")?.addEventListener("click", () => {
+    const p = activePack();
+    if (!p) return;
+    p.ref = "";
+    updateRefFlag();
+    setStatus("已拿掉參考圖");
+  });
+
+  $("bp-ref-apply")?.addEventListener("click", () => {
+    const p = activePack();
+    if (!p) return;
+    const url = String($("bp-ref-url")?.value || "").trim();
+    if (!url) {
+      setStatus("先貼 URL", true);
+      return;
+    }
+    p.ref = url;
+    updateRefFlag();
+    setStatus("✓ 已套用 URL");
+  });
+
+  $("bp-gen")?.addEventListener("click", async () => {
+    collectForm();
+    const p = activePack();
+    const g = currentGirl();
+    if (!p) {
+      setStatus("先新增一組", true);
+      return;
+    }
+    if (!g) {
+      setStatus("先選魅子或抽一隻進房", true);
+      return;
+    }
+    const btn = $("bp-gen");
+    if (btn) btn.disabled = true;
+    if ($("bp-art")) $("bp-art").innerHTML = `<span class="mini">生成中…</span>`;
+    setStatus("排隊中…");
+    try {
+      const eng = (await hooks.getEngine?.()) || { imgProvider: "comfy", imgStyle: "pixel" };
+      const body = buildButtImgBody(p, g, eng, { stage: g.stage || "stranger" });
+      const r = await waitImg(body, (sec) => setStatus(`生成中… ${sec}s`));
+      if (r.status === "done" && r.result) {
+        const url = String(r.result);
+        p.url = url;
+        if ($("bp-art")) {
+          $("bp-art").innerHTML = `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}?t=${Date.now()}" alt="result"></a>`;
+        }
+        setStatus("✓ 測試生圖完成（記得按儲存）");
+      } else {
+        throw new Error(r.error || "生圖失敗");
+      }
+    } catch (e) {
+      if ($("bp-art")) $("bp-art").innerHTML = `<span class="mini">失敗</span>`;
+      setStatus(e.message, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  // 初始關閉
+  panel.hidden = true;
+  openBtn.setAttribute("aria-expanded", "false");
+}

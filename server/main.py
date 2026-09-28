@@ -4705,6 +4705,50 @@ def _script_packs_path():
     return WEB_DIR / "content" / "script_packs.json"
 
 
+def _butt_packs_path():
+    return WEB_DIR / "content" / "butt_packs.json"
+
+
+@app.get("/api/butt-packs")
+def get_butt_packs():
+    path = _butt_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/butt-packs")
+def put_butt_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _butt_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
 @app.get("/api/script-packs")
 def get_script_packs():
     path = _script_packs_path()

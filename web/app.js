@@ -16,6 +16,11 @@ import {
 } from "./content/tease_shots.js";
 import * as ScriptMode from "./content/script_mode.js";
 import * as FramePack from "./content/frame_pack.js";
+import {
+  pickRuntimeButtPack,
+  buildButtImgBody,
+  getButtPacksCached,
+} from "./content/butt_packs.js?v=1";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
@@ -34,6 +39,7 @@ fetch("content/summoners.json").then(r => r.ok ? r.json() : null).then(j => { SU
 function summonerById(id) { return SUMMONERS.find(x => x.id === id) || null; }
 
 let SCRIPT_PACKS = { packs: [], activeByKind: {} };
+try { getButtPacksCached(); } catch { /* ignore */ }
 let FRAME_PACKS = [];
 function loadFramePacks() {
   const apply = j => {
@@ -2806,6 +2812,56 @@ async function weaveOneTeaseShot(s, shot) {
   if (!s || !shot || !canWeaveNow() || !gameIsNsfw()) return "";
   const stage = s.stage || "stranger";
   const worn = outfitWorn(s);
+  // 摸臀：有存檔圖組則隨機一組（含 prompt／pose_ref／denoise）；否則硬編碼
+  if (String(shot) === "tease_butt") {
+    try {
+      const pack = await pickRuntimeButtPack();
+      if (pack) {
+        const eng = {
+          imgProvider: imgProvider(),
+          imgModel: state.settings?.model || "grok-4.5",
+          imgStyle: state.settings?.imgStyle || "pixel",
+          comfyUrl: state.settings?.comfyUrl || "",
+          comfyCkpt: "",
+        };
+        const body = buildButtImgBody(pack, s, eng, { stage, worn });
+        // 走與 weaveShot 相同的輪詢；覆寫 key／ckpt
+        const girlCkpt = imgProvider() === "comfy" ? await ensureGirlComfyCkpt(s) : "";
+        if (girlCkpt) body.ckpt = girlCkpt;
+        body.key = `portrait:${s.id}:${shot}:${Date.now().toString(36)}`;
+        body.char_id = s.id;
+        body.shot = shot;
+        let url = "";
+        lastWeaveError = "";
+        try {
+          let r = await imgGenPost(body);
+          if (!r) lastWeaveError = "伺服器沒回應(/api/imggen)";
+          let key = r?.key;
+          const deadline = Date.now() + 180000;
+          while (r && Date.now() < deadline) {
+            if (r.status === "done") { url = r.result || ""; break; }
+            if (r.status === "error") { lastWeaveError = r.error || "生圖失敗"; break; }
+            await new Promise(res => setTimeout(res, 1500));
+            r = await imgGenPost({ ...body, key, retry: false });
+            key = r?.key || key;
+          }
+          if (!url && !lastWeaveError) lastWeaveError = "等了 3 分鐘還沒好";
+        } catch (e) {
+          lastWeaveError = String(e?.message || e);
+        }
+        if (url) {
+          setShot(s, shot, url);
+          markExtraShot(s, shot);
+          s.teaseStage = stage;
+          dirty = true;
+          try { saveNow(); } catch { /* */ }
+        }
+        return url;
+      }
+    } catch (e) {
+      console.warn("[tease_butt pack]", e);
+    }
+  }
   const extra = composeTeaseExtra(shot, stage, worn);
   const halfRef = (s.portraits?.half || s.portraits?.full || "").split("?")[0] || "";
   const url = await weaveShot(s, shot, null, {

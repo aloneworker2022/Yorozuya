@@ -364,3 +364,32 @@ body.room-home.sheet-open #quest-input-row {
 }
 body.room-home #room-scene-overlay { z-index: 75; }
 body.room-home #home-room-chrome { display: none !important; }
+
+/* ===== 摸臀圖預設編輯器（房間編輯）===== */
+.butt-pack-entry{margin:16px 0 0;padding:0 0 12px;border-bottom:1px solid #d5c9b5}
+.butt-pack-entry .note{font-size:12px;color:#897d6c;line-height:1.6}
+.butt-pack-editor{margin-top:12px;padding:12px;background:#f5efe3;border:1px solid #d5c9b5}
+.butt-pack-editor[hidden]{display:none}
+.butt-pack-editor label{display:block;font-size:12px;color:#776c5b;margin:.45em 0 .2em}
+.butt-pack-editor textarea,
+.butt-pack-editor input[type=text],
+.butt-pack-editor input[type=number],
+.butt-pack-editor select{width:100%;font:inherit;color:inherit;background:#eee8dd;border:1px solid #cbbfaa;border-radius:4px;padding:.4em .55em}
+.butt-pack-editor textarea{resize:vertical;line-height:1.5;min-height:4em}
+.bp-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
+.bp-grow{flex:1 1 10em;min-width:0}
+.bp-fix0{flex:0 1 7em}
+.butt-pack-editor button{font:inherit;padding:8px 12px}
+.butt-pack-editor button.bp-cy{background:#dce2cf;color:#48604a}
+.butt-pack-editor button.bp-del{color:#975e50}
+.butt-pack-editor button.bp-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
+.bp-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bp-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
+.bp-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
+.bp-mode-flag.img{background:#e8d5e4;color:#8a3d78}
+.bp-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
+.bp-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
+.bp-status.err{color:#975e50}
+.bp-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
+.bp-art img{max-width:100%;max-height:360px;display:block}
+.bp-art .mini,.butt-pack-editor .mini{font-size:12px;color:#8a82a5}
