@@ -1015,7 +1015,8 @@ async function maybeGenFingerShot(who, actId) {
 
 /** 預產圖：半身＋各已存動作圖組（寫入 who.portraits）。UI 安靜；呼叫端負責儀式文案。 */
 async function pregenGirlPortraits(who = girl, opts = {}) {
-  if (!who || (who === girl && sheIsOut())) {
+  // During summon ritual the standee is intentionally absent; still allow pregen.
+  if (!who || (who === girl && sheIsOut() && !summoning && !pending)) {
     return { half: false, counts: {} };
   }
   if (pregenning) {
@@ -4800,6 +4801,7 @@ async function adoptRosterGirl(payload) {
     } else if (rolled.world) {
       next.world = rolled.world;
     }
+    // Prepare state, but keep the room empty until ritual + pregen finish.
     girl = next;
     if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
     ensureBody(girl);
@@ -4814,14 +4816,9 @@ async function adoptRosterGirl(payload) {
     activityOpen = false;
     workToken += 1;
     typeJob += 1;
-    window.RoomActor?.setPresent(true);
-    armRoomVisit(girl);
+    window.RoomActor?.setPresent(false);
     clearRoomSave();
-    persistRoom();
     if (sheetOpen()) hideSheet();
-    renderCard();
-    renderWorld();
-    renderDebug();
 
     stopRitual = beginSummonRitualUI();
 
@@ -4836,6 +4833,14 @@ async function adoptRosterGirl(payload) {
     } catch (err) {
       console.warn("[adoptRosterGirl pregen]", err?.message || err);
     }
+
+    // Ritual fully done → then she appears in the room.
+    window.RoomActor?.setPresent(true);
+    armRoomVisit(girl);
+    persistRoom();
+    renderCard();
+    renderWorld();
+    renderDebug();
 
     stopRitual();
     stopRitual = () => {};
@@ -5198,32 +5203,37 @@ async function drawGirl() {
   $("summon-status").textContent = "抽人設…";
   try {
     const rolled = await makeGirl();
+    // Prepare state, but keep the room empty until ritual + pregen finish.
     girl = rolled;
-    window.RoomActor?.setPresent(true);
+    window.RoomActor?.setPresent(false);
     lines = [];
     talkFor = "";
     clearRoomSave();
-    persistRoom();
     activityOpen = false;
     workToken += 1;
     typeJob += 1;
     if (sheetOpen()) hideSheet();
-    renderCard();
-    renderWorld();
     const ckptBit = rolled.comfyCkpt && roomImgProvider === "comfy"
       ? ` · 模型 ${shortCkptName(rolled.comfyCkpt)}` : "";
     const stopRitual = beginSummonRitualUI();
     try {
       await pregenGirlPortraits(rolled, { force: true });
-      if (girl && girl.id === rolled.id) {
-        $("summon-status").textContent = `「${rolled.name}」已降臨${ckptBit}。長按房間裡的她跟她說話，或讓她離開。`;
-      }
     } catch (err) {
       console.warn("[draw-girl pregen]", err?.message || err);
       if ($("summon-status")) {
         $("summon-status").textContent = `抽到了${rolled.name}${ckptBit}。預產未完成：${err?.message || err}`;
       }
     } finally {
+      // Ritual fully done → then she appears (even if pregen partially failed).
+      if (girl && girl.id === rolled.id) {
+        window.RoomActor?.setPresent(true);
+        persistRoom();
+        renderCard();
+        renderWorld();
+        if ($("summon-status") && !$("summon-status").textContent.includes("預產未完成")) {
+          $("summon-status").textContent = `「${rolled.name}」已降臨${ckptBit}。長按房間裡的她跟她說話，或讓她離開。`;
+        }
+      }
       try { stopRitual(); } catch { /* */ }
       const ritualEl = $("room-summon-ritual");
       if (ritualEl) { ritualEl.hidden = true; ritualEl.textContent = ""; }

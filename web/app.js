@@ -7727,8 +7727,8 @@ function beginRoomCompanionSummon(girlId) {
   };
   log(`房間召喚 ${s.name} −${cost} 金（下次報價 ${next.cost} 金）`);
   scheduleSave();
-  toast(`${s.name} 進入房間（−${cost} 金）`, "good");
-  // 嵌進主畫面：同頁 adopt，不導向 /test_room
+  toast(`正在召喚 ${s.name} 進房間（−${cost} 金）`, "good");
+  // 嵌進主畫面：同頁 adopt，不導向 /test_room（儀式結束後才出現）
   enterEmbeddedRoomCompanion(payload);
 }
 
