@@ -75,6 +75,8 @@ DEFAULT_CLIP_SKIP = int(os.environ.get("COMFY_CLIP_SKIP", "2"))
 # tease_* = 感應調戲雙人場景（玩家 POV；不去背）
 _HALF_SPEC = {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72}
 _TEASE_SPEC = {"gen": (832, 1216), "out": (0, 0), "cutout": False, "border_min": 0.72}
+# 摸臀／摟腰動作裁切：正方形（約立繪寬 0.8 的閃現層）
+_ACTION_CROP_SPEC = {"gen": (1024, 1024), "out": (0, 0), "cutout": False, "border_min": 0.72}
 PORTRAIT_SHOTS = {
     "head": {"gen": (1024, 1024), "out": (256, 256), "cutout": True, "border_min": 0.55},
     "half": dict(_HALF_SPEC),
@@ -86,7 +88,8 @@ PORTRAIT_SHOTS = {
     "full": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
     "tease_breast": dict(_TEASE_SPEC),   # 玩家摸乳
     "tease_thigh": dict(_TEASE_SPEC),    # 玩家摸大腿
-    "tease_butt": dict(_TEASE_SPEC),     # 玩家摸臀
+    "tease_butt": dict(_ACTION_CROP_SPEC),   # 玩家摸臀（正方形動作圖）
+    "tease_waist": dict(_ACTION_CROP_SPEC),  # 玩家摟腰（正方形動作圖）
     "tease_oral": dict(_TEASE_SPEC),     # 口交（舊單張；新圖走下面四連）
     "tease_oral_ready": dict(_TEASE_SPEC),  # 口交半身① 手壓頭、龜頭頂嘴
     "tease_oral_suck": dict(_TEASE_SPEC),   # 口交半身② 含住口交
@@ -106,7 +109,7 @@ PORTRAIT_SHOTS = {
     "tease_cowgirl_cum": dict(_TEASE_SPEC),    # 騎乘⑤ 高潮內射
 }
 TEASE_SHOTS = (
-    "tease_breast", "tease_thigh", "tease_butt",
+    "tease_breast", "tease_thigh", "tease_butt", "tease_waist",
     "tease_oral",
     "tease_oral_ready", "tease_oral_suck", "tease_oral_deep", "tease_oral_cum",
     "tease_doggy",

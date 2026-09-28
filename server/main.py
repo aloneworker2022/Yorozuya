@@ -2308,6 +2308,10 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     if pose_src is not None:
         gen_w, gen_h = _pose_gen_size(pose_src, gen_w or comfy.DEFAULT_WIDTH, gen_h or comfy.DEFAULT_HEIGHT)
         out_w, out_h = 0, 0
+        # 摸臀／摟腰動作圖固定正方形；勿被 pose 參考圖長寬比蓋成直圖
+        if shot in ("tease_butt", "tease_waist"):
+            sq = (comfy.PORTRAIT_SHOTS.get(shot) or {}).get("gen") or (1024, 1024)
+            gen_w, gen_h = int(sq[0]), int(sq[1])
     name, err = await comfy.generate(
         positive=prompt,
         negative=negative,

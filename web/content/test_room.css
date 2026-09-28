@@ -85,6 +85,12 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #portrait-img[hidden]{display:none!important}
 #portrait-img.portrait-in{transform:translateX(-50%);opacity:1}
 @media(prefers-reduced-motion:reduce){#portrait-img{transition:none;transform:translateX(-50%);opacity:1}#portrait-img.portrait-in{transform:translateX(-50%)}}
+/* 摸臀／摟腰動作閃現：正方形、約立繪寬 0.8、左滑入停 1.5s 後離開 */
+#action-flash-img{--portrait-w:min(96vw,560px);position:fixed;left:50%;bottom:max(0px,env(safe-area-inset-bottom));z-index:1;display:block;width:calc(0.8 * var(--portrait-w));height:calc(0.8 * var(--portrait-w));margin:0;object-fit:cover;object-position:center;background:none;filter:drop-shadow(0 14px 24px rgba(0,0,0,.5));pointer-events:none;transform:translateX(-50%) translateX(-55vw);opacity:0;transition:transform .5s cubic-bezier(.2,.85,.2,1),opacity .4s ease-out;will-change:transform,opacity}
+#action-flash-img[hidden]{display:none!important}
+#action-flash-img.flash-in{transform:translateX(-50%);opacity:1}
+#action-flash-img.flash-out{transform:translateX(-50%) translateX(-55vw);opacity:0}
+@media(prefers-reduced-motion:reduce){#action-flash-img{transition:none}#action-flash-img.flash-in{transform:translateX(-50%);opacity:1}#action-flash-img.flash-out{opacity:0}}
 #talk-box,#talk-input-row{border:2px solid #fff;position:relative;border-radius:10px}
 #talk-box{width:100%;box-sizing:border-box;background:rgba(10,16,40,.72);color:#f4fbff;padding:10px 14px 12px;min-height:6.8em;pointer-events:auto;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);font-family:RoomPixel,system-ui,sans-serif}
 #talk-nameline{display:flex;align-items:center;gap:.6em;margin-bottom:.45em}
@@ -256,6 +262,9 @@ body.room-ship #portrait-img {
   height: min(58svh, 560px);
   bottom: max(7.5em, calc(env(safe-area-inset-bottom) + 6.5em));
 }
+body.room-ship #action-flash-img {
+  bottom: max(7.5em, calc(env(safe-area-inset-bottom) + 6.5em));
+}
 body.room-ship .talk-acts {
   bottom: max(4.2em, calc(env(safe-area-inset-bottom) + 3.6em));
   background: linear-gradient(180deg, rgba(10,16,40,0), rgba(10,16,40,.55) 40%);
@@ -356,6 +365,9 @@ body.room-home #talk-input-row { order: 2; }
 body.room-home #portrait-img {
   height: min(58svh, 560px);
   /* 腳貼在互動鍵列上方 */
+  bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
+}
+body.room-home #action-flash-img {
   bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
 }
 body.room-home .talk-acts {

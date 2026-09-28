@@ -500,19 +500,74 @@ function stampPortraitUrl(url) {
   return s.includes("?") ? s : `${s}?v=${Date.now()}`;
 }
 
-/** 對話中蓋上摸臀／摟腰立繪（有預產圖時即時顯示）。 */
+/** 動作閃現層：左滑入 → 停 1.5s → 滑出；不永久蓋掉立繪。 */
+let actionFlashToken = 0;
+let actionFlashTimer = 0;
+const ACTION_FLASH_ENTER_MS = 500;
+const ACTION_FLASH_HOLD_MS = 1500;
+const ACTION_FLASH_EXIT_MS = 550;
+
+function clearActionFlash() {
+  actionFlashToken += 1;
+  if (actionFlashTimer) {
+    clearTimeout(actionFlashTimer);
+    actionFlashTimer = 0;
+  }
+  const img = $("action-flash-img");
+  if (!img) return;
+  img.classList.remove("flash-in", "flash-out");
+  img.hidden = true;
+}
+
+function showActionFlash(url, alt) {
+  if (!url || !sheetOpen()) return;
+  const img = $("action-flash-img");
+  if (!img) return;
+  const token = ++actionFlashToken;
+  if (actionFlashTimer) {
+    clearTimeout(actionFlashTimer);
+    actionFlashTimer = 0;
+  }
+  img.alt = alt || "";
+  img.src = url;
+  img.hidden = false;
+  img.classList.remove("flash-in", "flash-out");
+  void img.offsetWidth;
+  requestAnimationFrame(() => {
+    if (token !== actionFlashToken || !sheetOpen() || img.hidden) return;
+    img.classList.add("flash-in");
+    actionFlashTimer = setTimeout(() => {
+      if (token !== actionFlashToken) return;
+      img.classList.remove("flash-in");
+      img.classList.add("flash-out");
+      const finish = () => {
+        if (token !== actionFlashToken) return;
+        img.hidden = true;
+        img.classList.remove("flash-out");
+        actionFlashTimer = 0;
+      };
+      const onEnd = (ev) => {
+        if (ev && ev.target !== img) return;
+        if (ev?.propertyName && ev.propertyName !== "transform" && ev.propertyName !== "opacity") return;
+        img.removeEventListener("transitionend", onEnd);
+        finish();
+      };
+      img.addEventListener("transitionend", onEnd);
+      actionFlashTimer = setTimeout(() => {
+        img.removeEventListener("transitionend", onEnd);
+        finish();
+      }, ACTION_FLASH_EXIT_MS);
+    }, ACTION_FLASH_ENTER_MS + ACTION_FLASH_HOLD_MS);
+  });
+}
+
+/** 摸臀／摟腰：快取 URL，並以閃現層顯示（不永久替換 #portrait-img）。 */
 function showTeasePortrait(who, shotKey, url, alt) {
   if (!who || !url) return;
   who.portraits = who.portraits || {};
   who.portraits[shotKey] = url;
   if (girl && girl.id === who.id && sheetOpen()) {
-    const img = $("portrait-img");
-    if (img) {
-      img.alt = alt || "";
-      img.src = url;
-      img.hidden = false;
-      img.classList.add("portrait-in");
-    }
+    showActionFlash(url, alt);
   }
 }
 
@@ -4376,6 +4431,7 @@ function hideSheet() {
   lines = [];
   talkFor = "";
   resetPortraitEntrance();
+  clearActionFlash();
   $("portrait-sheet").hidden = true;
   unlockSheetScroll();
   stopIdleDecay();
