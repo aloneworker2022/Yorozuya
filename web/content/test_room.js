@@ -14,8 +14,7 @@
   const camera = { scale: 1, x: 0, y: 0 };
   const pointers = new Map();
   const MIN_ZOOM = .6, MAX_ZOOM = 3;
-  /* room-home：畫布 CSS 150%；房子預設 30%，可 pinch 放大 */
-  const HOME_CANVAS_Y = 1.5;
+  /* room-home：畫布關在舞台內；房子預設 30%，可 pinch 放大 */
   const HOME_HOUSE_SCALE = 0.3;
   const isRoomHome = () => document.body.classList.contains('room-home');
   const defaultHouseScale = () => (isRoomHome() ? HOME_HOUSE_SCALE : 1);

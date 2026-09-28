@@ -2692,7 +2692,7 @@ body.room-home #main-room-stage {
   flex-direction: column;
   align-items: center;
   justify-content: stretch;
-  overflow: visible; /* 畫布 Y 兩倍可往上超出舞台 */
+  overflow: hidden; /* 畫布關在舞台內，不衝出畫面 */
   pointer-events: none;
 }
 body.room-home #quest-input-row {

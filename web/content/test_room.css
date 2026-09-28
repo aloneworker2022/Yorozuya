@@ -291,21 +291,22 @@ body.room-home #main-room-stage {
 body.room-home #main-room-stage .scene {
   flex: 1 1 auto;
   display: flex;
-  align-items: flex-end; /* 貼舞台下緣；Y 變兩倍時往上長 */
+  align-items: flex-end; /* 貼舞台下緣 */
   justify-content: center;
   width: 100%;
   height: 100%;
   min-height: 0;
   padding: 0;
   margin: 0;
-  overflow: visible;
+  overflow: hidden; /* 畫布不得超出畫面 */
   pointer-events: none;
 }
 body.room-home #main-room-stage #room {
-  /* 畫布外框 Y＝舞台 150%；中間房子 camera 預設 30% 可放大 */
-  height: 150%;
+  /* 畫布外框＝舞台內 100%（不衝出螢幕）；中間房子 camera 預設 30% 可放大 */
+  height: 100%;
   width: auto;
-  max-width: none;
+  max-width: 100%;
+  max-height: 100%;
   aspect-ratio: 416 / 328;
   object-fit: contain;
   pointer-events: auto;
