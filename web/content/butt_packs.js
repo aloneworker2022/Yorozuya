@@ -212,11 +212,33 @@ export function buildButtImgBody(pack, girl, eng = {}, opts = {}) {
   };
 }
 
+const BUTT_LOAD_HINT = "讀不到摸臀圖組（/api/butt-packs）。請 pull 最新 grok-telephon 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）";
+const BUTT_SAVE_HINT = "伺服器未重啟，無法儲存摸臀圖組（PUT /api/butt-packs）。請 pull 最新 grok-telephon 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）";
+
 export async function loadButtDoc() {
-  const r = await fetch(API + "?ts=" + Date.now(), { cache: "no-store" });
+  let r;
+  try {
+    r = await fetch(API + "?ts=" + Date.now(), { cache: "no-store" });
+  } catch {
+    return loadButtDocStatic();
+  }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.detail || j.error || r.status);
-  return normalizeButtDoc(j);
+  if (r.ok) return normalizeButtDoc(j);
+  if (r.status !== 404) {
+    throw new Error(formatApiError("GET", API, j.detail || j.error || r.status));
+  }
+  return loadButtDocStatic();
+}
+
+async function loadButtDocStatic() {
+  try {
+    const r = await fetch("/content/butt_packs.json?ts=" + Date.now(), { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(formatApiError("GET", "/content/butt_packs.json", j.detail || j.error || r.status));
+    return normalizeButtDoc(j);
+  } catch {
+    throw new Error(BUTT_LOAD_HINT);
+  }
 }
 
 export async function saveButtDoc(doc) {
@@ -227,7 +249,10 @@ export async function saveButtDoc(doc) {
     body: JSON.stringify(body),
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  if (!r.ok) {
+    if (r.status === 404) throw new Error(BUTT_SAVE_HINT);
+    throw new Error(formatApiError("PUT", API, j.detail || j.error || r.status));
+  }
   return body;
 }
 
@@ -270,14 +295,19 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+function formatApiError(method, url, detail) {
+  return `${method || "GET"} ${url} → ${detail}`;
+}
+
 async function apiJson(url, method, body) {
+  const verb = method || "GET";
   const r = await fetch(url, {
-    method: method || "GET",
+    method: verb,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  if (!r.ok) throw new Error(formatApiError(verb, url, j.detail || j.error || r.status));
   return j;
 }
 

@@ -82,13 +82,13 @@ import {
   pickRuntimeButtPack,
   loadButtDoc,
   generateButtPackImage,
-} from "./butt_packs.js?v=4";
+} from "./butt_packs.js?v=5";
 import {
   mountWaistPackEditor,
   pickRuntimeWaistPack,
   loadWaistDoc,
   generateWaistPackImage,
-} from "./waist_packs.js?v=3";
+} from "./waist_packs.js?v=4";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -689,8 +689,12 @@ async function pregenGirlPortraits() {
     bits.push(`摟腰工作流×${waistCount}`);
     if (status) status.textContent = `預產圖完成（${bits.join("＋")}）`;
   } catch (err) {
-    console.warn("[pregenGirlPortraits]", err?.message || err);
-    if (status) status.textContent = `預產圖失敗：${err?.message || err}`;
+    const message = String(err?.message || err || "未知錯誤");
+    const restartHint = message === "Not Found" || message.includes("404")
+      ? "；請 pull 最新 grok-telephon 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）"
+      : "";
+    console.warn("[pregenGirlPortraits]", message);
+    if (status) status.textContent = `預產圖失敗：${message}${restartHint}`;
   } finally {
     pregenning = false;
     if (btn) btn.disabled = false;

@@ -20,7 +20,7 @@ import {
   pickRuntimeButtPack,
   buildButtImgBody,
   getButtPacksCached,
-} from "./content/butt_packs.js?v=4";
+} from "./content/butt_packs.js?v=5";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)

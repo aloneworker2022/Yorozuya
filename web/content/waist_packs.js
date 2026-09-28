@@ -213,11 +213,33 @@ export function buildWaistImgBody(pack, girl, eng = {}, opts = {}) {
   };
 }
 
+const WAIST_LOAD_HINT = "讀不到摟腰圖組（/api/waist-packs）。請 pull 最新 grok-telephon 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）";
+const WAIST_SAVE_HINT = "伺服器未重啟，無法儲存摟腰圖組（PUT /api/waist-packs）。請 pull 最新 grok-telephon 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）";
+
 export async function loadWaistDoc() {
-  const r = await fetch(API + "?ts=" + Date.now(), { cache: "no-store" });
+  let r;
+  try {
+    r = await fetch(API + "?ts=" + Date.now(), { cache: "no-store" });
+  } catch {
+    return loadWaistDocStatic();
+  }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.detail || j.error || r.status);
-  return normalizeWaistDoc(j);
+  if (r.ok) return normalizeWaistDoc(j);
+  if (r.status !== 404) {
+    throw new Error(formatApiError("GET", API, j.detail || j.error || r.status));
+  }
+  return loadWaistDocStatic();
+}
+
+async function loadWaistDocStatic() {
+  try {
+    const r = await fetch("/content/waist_packs.json?ts=" + Date.now(), { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(formatApiError("GET", "/content/waist_packs.json", j.detail || j.error || r.status));
+    return normalizeWaistDoc(j);
+  } catch {
+    throw new Error(WAIST_LOAD_HINT);
+  }
 }
 
 export async function saveWaistDoc(doc) {
@@ -228,7 +250,10 @@ export async function saveWaistDoc(doc) {
     body: JSON.stringify(body),
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  if (!r.ok) {
+    if (r.status === 404) throw new Error(WAIST_SAVE_HINT);
+    throw new Error(formatApiError("PUT", API, j.detail || j.error || r.status));
+  }
   return body;
 }
 
@@ -271,14 +296,19 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+function formatApiError(method, url, detail) {
+  return `${method || "GET"} ${url} → ${detail}`;
+}
+
 async function apiJson(url, method, body) {
+  const verb = method || "GET";
   const r = await fetch(url, {
-    method: method || "GET",
+    method: verb,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  if (!r.ok) throw new Error(formatApiError(verb, url, j.detail || j.error || r.status));
   return j;
 }
 
