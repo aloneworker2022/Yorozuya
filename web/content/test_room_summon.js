@@ -522,6 +522,16 @@ function renderWorld() {
   const panel = $("girl-world");
   const region = placedRegion();
   const out = sheIsOut();
+  // 主畫面 room-home：不掛單人住處／地點橫幅（多人時無意義）；沙盒 test_room 仍顯示
+  if (document.body.classList.contains("room-home")) {
+    if (panel) panel.hidden = true;
+    activityOpen = false;
+    const where = $("girl-where");
+    if (where) where.hidden = true;
+    renderMood();
+    renderFriends();
+    return;
+  }
   if (!girl || !region || !out) {
     panel.hidden = true;
     activityOpen = false;
