@@ -285,30 +285,28 @@ body.room-home #room-editor {
   display: none !important;
 }
 body.room-home #main-room-stage {
-  position: relative;
-  width: 100%;
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center; /* 別貼頂 */
-  pointer-events: auto;
+  /* size/position set in style.css as full-bleed backdrop */
+  pointer-events: none;
   z-index: 1;
 }
 body.room-home #main-room-stage .scene {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
+  height: 100%;
   min-height: 0;
   padding: 0;
-  margin-top: 0.6em;
+  margin: 0;
+  pointer-events: none;
 }
 body.room-home #main-room-stage #room {
-  width: min(100%, 380px);
-  max-height: min(42vh, 380px);
+  width: min(96vw, 560px);
+  max-height: min(92%, 720px);
+  height: auto;
+  pointer-events: auto; /* 長按人物 */
+  image-rendering: pixelated;
 }
 body.room-home #main-room-stage .girl-where,
 body.room-home #main-room-stage .girl-mood,
@@ -321,9 +319,12 @@ body.room-home #main-room-stage .girl-world {
   line-height: 1.3;
   max-height: 2.8em;
   overflow: hidden;
-  background: color-mix(in srgb, var(--panel, #1e1828) 78%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line, #3a3348) 80%, transparent);
+  background: color-mix(in srgb, var(--panel, #1e1828) 55%, transparent);
+  border: none;
   color: var(--text, #f4fbff);
+  pointer-events: auto;
+  z-index: 2;
+  position: relative;
 }
 body.room-home #portrait-sheet {
   z-index: 70;

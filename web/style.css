@@ -2675,23 +2675,28 @@ body.room-home #page-quests.on-diary #main-room-stage,
 body.room-home #page-quests.on-line #main-room-stage {
   display: flex;
   opacity: 1;
-  /* 房間永遠在後，可被看見 */
 }
+/* 房間＝背板：上過卡牌、下蓋輸入框 */
 body.room-home #main-room-stage {
-  flex: 1 1 auto;
-  min-height: 0;
-  margin: 0 auto;
-  margin-top: 1.2em; /* 房別貼太上 */
-  margin-bottom: 0.35em;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: 0;
   width: 100%;
-  max-width: 520px;
-  padding-bottom: 2px;
+  max-width: none;
+  padding: 0;
   z-index: 1;
-  justify-content: center; /* 在剩餘空間垂直置中偏下 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* 空白穿透；canvas 自己可點 */
 }
 body.room-home #quest-input-row {
   flex-shrink: 0;
-  margin-top: 0.15em;
+  margin-top: auto; /* 沒有 flex 房間時，輸入仍貼底 */
   position: relative;
   bottom: auto;
   z-index: 7;
