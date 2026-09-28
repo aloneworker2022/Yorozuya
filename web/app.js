@@ -732,7 +732,7 @@ function defaultState() {
     cardsLive: { packId: null, epoch: 0 },
     bubbleAff: { day: null, byGirl: {} }, // M2 氣泡情感日 cap { day, byGirl: { id: used } }
     senseHour: { key: 0, count: 0 }, // 感應時段額度 {key=floor(now/HOUR), count}
-    roomSummonOffer: null, // 房間召喚黏著報價 { cost: 2|3|4 }；用過才重擲
+    roomSummonOffer: null, // 房間召喚黏著報價 { cost: 3～30 }；用過才重擲
     playerProfile: {
       name: "", body: "", look: "", habit: "",
       prefs: [], quiz: {},
@@ -7576,13 +7576,13 @@ const ROOM_PROGRESS_KEY = "yoro_room_progress_sync";
 const ROOM_SAVE_KEY_MAIN = "yoro_test_room_session";
 
 function rollRoomSummonCost() {
-  return 2 + Math.floor(Math.random() * 3); // 2｜3｜4
+  return 3 + Math.floor(Math.random() * 28); // 3～30 含兩端
 }
 
 function ensureRoomSummonOffer() {
   const o = state.roomSummonOffer;
   const c = o && (o.cost | 0);
-  if (![2, 3, 4].includes(c)) {
+  if (!(c >= 3 && c <= 30)) {
     state.roomSummonOffer = { cost: rollRoomSummonCost() };
   }
   return state.roomSummonOffer;

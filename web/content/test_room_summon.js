@@ -1193,15 +1193,17 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
   }
 }
 
-/** 解析當前應顯示的半身立繪槽：挑逗／痙攣→失神路徑；否則依性奮。無對應圖則空字串。 */
+/** 解析當前應顯示的半身立繪槽：痙攣／失神→對應槽（對話也適用）；挑逗另走干擾／空白／求饒；否則依性奮。 */
 function resolveStandeeSlotForPaint(who, opts = {}) {
   if (!who) return "";
   const teasing = !!(opts.teasing || opts.actId);
   if (inSpasm(who)) return "spasm";
+  const stun = opts.stun != null ? opts.stun : effectiveStun(who, opts.actId || "");
+  const tier = stunTier(stun);
+  // 失神（≥75）：對話立繪也用 stun 槽，不只挑逗 flash
+  if (tier === "stun") return "stun";
   if (teasing) {
-    const stun = opts.stun != null ? opts.stun : effectiveStun(who, opts.actId || "");
-    const tier = stunTier(stun);
-    if (tier === "interfere" || tier === "blank" || tier === "beg" || tier === "stun") return tier;
+    if (tier === "interfere" || tier === "blank" || tier === "beg") return tier;
   }
   const ar = arousalStage(who?.bodyState?.arousal);
   if (ar === "slight" || ar === "aroused" || ar === "wantFill" || ar === "climax") return ar;
