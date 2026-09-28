@@ -81,11 +81,13 @@ import {
   mountButtPackEditor,
   pickRuntimeButtPack,
   buildButtImgBody,
+  loadButtDoc,
 } from "./butt_packs.js?v=3";
 import {
   mountWaistPackEditor,
   pickRuntimeWaistPack,
   buildWaistImgBody,
+  loadWaistDoc,
 } from "./waist_packs.js?v=2";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
@@ -462,14 +464,45 @@ function startPortraitEntrance(img) {
 
 const buttGenning = new Set();
 const waistGenning = new Set();
+let pregenning = false;
 
-/** 摸臀：有存檔圖組則隨機一組生圖，否則硬編碼 tease_butt；結果蓋上對話立繪。 */
+function stampPortraitUrl(url) {
+  const s = String(url || "");
+  if (!s) return "";
+  return s.includes("?") ? s : `${s}?v=${Date.now()}`;
+}
+
+/** 對話中蓋上摸臀／摟腰立繪（有預產圖時即時顯示）。 */
+function showTeasePortrait(who, shotKey, url, alt) {
+  if (!who || !url) return;
+  who.portraits = who.portraits || {};
+  who.portraits[shotKey] = url;
+  if (girl && girl.id === who.id && sheetOpen()) {
+    const img = $("portrait-img");
+    if (img) {
+      img.alt = alt || "";
+      img.src = url;
+      img.hidden = false;
+      img.classList.add("portrait-in");
+    }
+  }
+}
+
+/** 摸臀：先用 per-girl 預產圖；缺才 live gen。有組→packs[id]，無組→tease_butt。 */
 async function maybeGenButtShot(who, actId) {
   if (actId !== "butt" || !who?.id) return;
   if (buttGenning.has(who.id)) return;
   buttGenning.add(who.id);
   try {
     const pack = await pickRuntimeButtPack();
+    who.portraits = who.portraits || {};
+    const cached = pack
+      ? String(who.portraits.tease_butt_packs?.[pack.id] || "")
+      : String(who.portraits.tease_butt || "");
+    if (cached) {
+      showTeasePortrait(who, "tease_butt", cached, `${who.name}的摸臀圖`);
+      return;
+    }
     const engine = await gameImgRoute();
     await ensureGirlComfyCkpt(who);
     const body = buildButtImgBody(pack, who, engine, {
@@ -478,19 +511,12 @@ async function maybeGenButtShot(who, actId) {
     });
     const result = await waitImage(body);
     if (result?.status === "done" && result.result) {
-      const url = String(result.result);
-      who.portraits = who.portraits || {};
-      who.portraits.tease_butt = url.includes("?") ? url : `${url}?v=${Date.now()}`;
-      // 對話進行中：暫時用摸臀圖覆蓋半身
-      if (girl && girl.id === who.id && sheetOpen()) {
-        const img = $("portrait-img");
-        if (img) {
-          img.alt = `${who.name}的摸臀圖`;
-          img.src = who.portraits.tease_butt;
-          img.hidden = false;
-          img.classList.add("portrait-in");
-        }
+      const stamped = stampPortraitUrl(result.result);
+      if (pack?.id) {
+        who.portraits.tease_butt_packs = who.portraits.tease_butt_packs || {};
+        who.portraits.tease_butt_packs[pack.id] = stamped;
       }
+      showTeasePortrait(who, "tease_butt", stamped, `${who.name}的摸臀圖`);
       persistRoom();
     } else if (result?.status === "error") {
       console.warn("[maybeGenButtShot]", result.error || "生圖失敗");
@@ -502,7 +528,7 @@ async function maybeGenButtShot(who, actId) {
   }
 }
 
-/** 摟腰：僅在有存檔圖組時隨機一組生圖；無組 → 不生圖（僅對話／身體）。 */
+/** 摟腰：僅在有存檔圖組時；先用 per-girl 預產圖，缺才 live gen。 */
 async function maybeGenWaistShot(who, actId) {
   if (actId !== "waist" || !who?.id) return;
   if (waistGenning.has(who.id)) return;
@@ -510,6 +536,12 @@ async function maybeGenWaistShot(who, actId) {
   try {
     const pack = await pickRuntimeWaistPack();
     if (!pack) return;
+    who.portraits = who.portraits || {};
+    const cached = String(who.portraits.tease_waist_packs?.[pack.id] || "");
+    if (cached) {
+      showTeasePortrait(who, "tease_waist", cached, `${who.name}的摟腰圖`);
+      return;
+    }
     const engine = await gameImgRoute();
     await ensureGirlComfyCkpt(who);
     const body = buildWaistImgBody(pack, who, engine, {
@@ -518,18 +550,10 @@ async function maybeGenWaistShot(who, actId) {
     });
     const result = await waitImage(body);
     if (result?.status === "done" && result.result) {
-      const url = String(result.result);
-      who.portraits = who.portraits || {};
-      who.portraits.tease_waist = url.includes("?") ? url : `${url}?v=${Date.now()}`;
-      if (girl && girl.id === who.id && sheetOpen()) {
-        const img = $("portrait-img");
-        if (img) {
-          img.alt = `${who.name}的摟腰圖`;
-          img.src = who.portraits.tease_waist;
-          img.hidden = false;
-          img.classList.add("portrait-in");
-        }
-      }
+      const stamped = stampPortraitUrl(result.result);
+      who.portraits.tease_waist_packs = who.portraits.tease_waist_packs || {};
+      who.portraits.tease_waist_packs[pack.id] = stamped;
+      showTeasePortrait(who, "tease_waist", stamped, `${who.name}的摟腰圖`);
       persistRoom();
     } else if (result?.status === "error") {
       console.warn("[maybeGenWaistShot]", result.error || "生圖失敗");
@@ -538,6 +562,121 @@ async function maybeGenWaistShot(who, actId) {
     console.warn("[maybeGenWaistShot]", err?.message || err);
   } finally {
     waistGenning.delete(who.id);
+  }
+}
+
+/** 預產圖：半身＋各摸臀組＋各摟腰組（寫入 who.portraits，不寫 pack.json）。 */
+async function pregenGirlPortraits() {
+  if (!girl || sheIsOut()) return;
+  if (pregenning) return;
+  pregenning = true;
+  const who = girl;
+  const btn = $("btn-pregen");
+  const status = $("summon-status");
+  if (btn) btn.disabled = true;
+  let buttCount = 0;
+  let waistCount = 0;
+  let halfOk = false;
+  try {
+    await ensureGirlComfyCkpt(who);
+    if (status) status.textContent = "預產圖：半身…";
+    await ensureHalfPortrait(who);
+    const halfWaitStart = Date.now();
+    while (!who.portraits?.half && halfGenning.has(who.id) && Date.now() - halfWaitStart < 360000) {
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    halfOk = !!who.portraits?.half;
+
+    who.portraits = who.portraits || {};
+    who.portraits.tease_butt_packs = who.portraits.tease_butt_packs || {};
+    who.portraits.tease_waist_packs = who.portraits.tease_waist_packs || {};
+
+    const engine = await gameImgRoute();
+    const buttDoc = await loadButtDoc();
+    const buttPacks = Array.isArray(buttDoc?.packs) ? buttDoc.packs : [];
+
+    if (!buttPacks.length) {
+      if (who.portraits.tease_butt) {
+        buttCount = 1;
+      } else {
+        if (status) status.textContent = "預產圖：摸臀（預設）…";
+        const body = buildButtImgBody(null, who, engine, {
+          stage: who.stage || "stranger",
+          worn: wornOutfit(who),
+        });
+        const result = await waitImage(body);
+        if (result?.status === "done" && result.result) {
+          who.portraits.tease_butt = stampPortraitUrl(result.result);
+          buttCount = 1;
+          persistRoom();
+        } else {
+          throw new Error(result?.error || "摸臀預設生圖失敗");
+        }
+      }
+    } else {
+      for (let i = 0; i < buttPacks.length; i++) {
+        const pack = buttPacks[i];
+        if (!pack?.id) continue;
+        if (who.portraits.tease_butt_packs[pack.id]) {
+          buttCount += 1;
+          continue;
+        }
+        if (status) status.textContent = `預產圖：摸臀 ${i + 1}/${buttPacks.length}…`;
+        const body = buildButtImgBody(pack, who, engine, {
+          stage: who.stage || "stranger",
+          worn: wornOutfit(who),
+        });
+        const result = await waitImage(body);
+        if (result?.status === "done" && result.result) {
+          const stamped = stampPortraitUrl(result.result);
+          who.portraits.tease_butt_packs[pack.id] = stamped;
+          who.portraits.tease_butt = stamped;
+          buttCount += 1;
+          persistRoom();
+        } else {
+          throw new Error(result?.error || `摸臀圖組「${pack.name || pack.id}」生圖失敗`);
+        }
+      }
+    }
+
+    const waistDoc = await loadWaistDoc();
+    const waistPacks = Array.isArray(waistDoc?.packs) ? waistDoc.packs : [];
+    // 0 組 → 跳過（與 runtime 一致）
+    for (let i = 0; i < waistPacks.length; i++) {
+      const pack = waistPacks[i];
+      if (!pack?.id) continue;
+      if (who.portraits.tease_waist_packs[pack.id]) {
+        waistCount += 1;
+        continue;
+      }
+      if (status) status.textContent = `預產圖：摟腰 ${i + 1}/${waistPacks.length}…`;
+      const body = buildWaistImgBody(pack, who, engine, {
+        stage: who.stage || "stranger",
+        worn: wornOutfit(who),
+      });
+      const result = await waitImage(body);
+      if (result?.status === "done" && result.result) {
+        const stamped = stampPortraitUrl(result.result);
+        who.portraits.tease_waist_packs[pack.id] = stamped;
+        who.portraits.tease_waist = stamped;
+        waistCount += 1;
+        persistRoom();
+      } else {
+        throw new Error(result?.error || `摟腰圖組「${pack.name || pack.id}」生圖失敗`);
+      }
+    }
+
+    const bits = [];
+    if (halfOk) bits.push("半身");
+    bits.push(`摸臀×${buttCount}`);
+    if (waistPacks.length) bits.push(`摟腰×${waistCount}`);
+    if (status) status.textContent = `預產圖完成（${bits.join("＋")}）`;
+  } catch (err) {
+    console.warn("[pregenGirlPortraits]", err?.message || err);
+    if (status) status.textContent = `預產圖失敗：${err?.message || err}`;
+  } finally {
+    pregenning = false;
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -1371,6 +1510,7 @@ function renderCard() {
   if (!girl) {
     if (card) card.hidden = true;
     if ($("let-leave")) $("let-leave").hidden = true;
+    if ($("btn-pregen")) $("btn-pregen").hidden = true;
     if ($("summon-ckpt")) $("summon-ckpt").hidden = true;
     renderBodyPanel();
     renderDebug();
@@ -1396,7 +1536,11 @@ function renderCard() {
       ckptEl.textContent = show ? `生圖模型 · ${shortCkptName(girl.comfyCkpt)}` : "";
     }
   }
-  if ($("let-leave")) $("let-leave").hidden = sheIsOut();
+  {
+    const out = sheIsOut();
+    if ($("let-leave")) $("let-leave").hidden = out;
+    if ($("btn-pregen")) $("btn-pregen").hidden = out;
+  }
   renderBodyPanel();
   renderDebug();
 }
@@ -5325,6 +5469,7 @@ const onId = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev,
 onId("draw-girl", "click", () => { drawGirl(); });
 startLifeLoop();
 onId("let-leave", "click", letHerLeave);
+onId("btn-pregen", "click", () => { void pregenGirlPortraits(); });
 onId("summon-back", "click", summonHerBack);
 onId("open-activity", "click", toggleActivity);
 onId("activity-work", "click", () => { startActivity("work"); });

@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="萬事屋">
 <link rel="stylesheet" href="style.css?v=69">
-<link rel="stylesheet" href="content/test_room.css?v=78">
+<link rel="stylesheet" href="content/test_room.css?v=79">
 </head>
 <body class="room-home">
 
@@ -479,7 +479,10 @@
       <div class="summon-head"><div><strong>抽妹子</strong><p id="summon-status">抽出一個人。</p></div><button id="draw-girl" type="button">抽妹子</button></div>
       <div id="summon-card" hidden>
         <div><strong id="summon-name"></strong><p id="summon-meta"></p></div>
-        <button id="let-leave" type="button">讓她離開</button>
+        <div class="summon-card-actions">
+          <button id="btn-pregen" type="button">預產圖</button>
+          <button id="let-leave" type="button">讓她離開</button>
+        </div>
       </div>
       <p class="note">沙盒。</p>
     </section>
@@ -679,7 +682,7 @@
 <script src="content/room_furniture.js?v=4"></script>
 <script src="content/room_character.js?v=7"></script>
 <script src="content/test_room.js?v=20"></script>
-<script type="module" src="content/test_room_summon.js?v=97"></script>
+<script type="module" src="content/test_room_summon.js?v=98"></script>
 <script type="module" src="app.js?v=68"></script>
 </body>
 </html>
