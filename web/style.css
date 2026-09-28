@@ -2676,24 +2676,22 @@ body.room-home #page-quests.on-line #main-room-stage {
   display: flex;
   opacity: 1;
 }
-/* 房間背板：下框＝輸入框上緣；上緣拉到「執行中」卡組之上 */
+/* 房間背板（只調上下）：下框＝輸入上；上緣＝執行中之上 */
 body.room-home #main-room-stage {
   position: absolute;
   left: 0;
   right: 0;
-  /* 上：超過執行中卡（卡約從 12vh 起） */
-  top: 0.4em;
-  /* 下：貼在輸入列上方，不蓋住輸入框 */
-  bottom: calc(3.35em + env(safe-area-inset-bottom));
-  margin: 0 auto;
+  top: 0; /* 上緣：卡牌「執行中」上面 */
+  bottom: calc(3.35em + env(safe-area-inset-bottom)); /* 下框：輸入框上面 */
+  margin: 0;
   width: 100%;
-  max-width: 560px;
+  max-width: none; /* 不要用左右寬度限制來排版 */
   padding: 0;
   z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: stretch;
   pointer-events: none;
 }
 body.room-home #quest-input-row {

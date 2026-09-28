@@ -285,14 +285,13 @@ body.room-home #room-editor {
   display: none !important;
 }
 body.room-home #main-room-stage {
-  /* top/bottom 由 style.css：輸入框上～執行中上 */
   pointer-events: none;
   z-index: 1;
 }
 body.room-home #main-room-stage .scene {
   flex: 1 1 auto;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: center;
   width: 100%;
   height: 100%;
@@ -302,10 +301,10 @@ body.room-home #main-room-stage .scene {
   pointer-events: none;
 }
 body.room-home #main-room-stage #room {
-  /* 在背板框內盡量大、保持比例（下貼輸入上、上到執行中上） */
-  width: auto;
+  /* 以「高度」撐滿上下界，寬度跟比例走（不是左右撐滿） */
   height: 100%;
-  max-width: 100%;
+  width: auto;
+  max-width: min(100%, calc(100vh * 416 / 328));
   aspect-ratio: 416 / 328;
   object-fit: contain;
   pointer-events: auto;
