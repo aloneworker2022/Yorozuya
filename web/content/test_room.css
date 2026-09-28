@@ -302,10 +302,11 @@ body.room-home #main-room-stage .scene {
   pointer-events: none;
 }
 body.room-home #main-room-stage #room {
-  /* 填滿背板區：下貼輸入上、上到執行中上 */
-  width: min(100%, 520px);
+  /* 在背板框內盡量大、保持比例（下貼輸入上、上到執行中上） */
+  width: auto;
   height: 100%;
-  max-height: none;
+  max-width: 100%;
+  aspect-ratio: 416 / 328;
   object-fit: contain;
   pointer-events: auto;
   image-rendering: pixelated;
