@@ -292,19 +292,19 @@ body.room-home #main-room-stage {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start; /* 房往上 */
+  justify-content: center; /* 別貼頂 */
   pointer-events: auto;
   z-index: 1;
 }
 body.room-home #main-room-stage .scene {
   flex: 0 0 auto;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   width: 100%;
   min-height: 0;
   padding: 0;
-  margin-top: 0;
+  margin-top: 0.6em;
 }
 body.room-home #main-room-stage #room {
   width: min(100%, 380px);
