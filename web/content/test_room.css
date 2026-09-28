@@ -330,39 +330,48 @@ body.room-home #main-room-stage .girl-world {
   z-index: 2;
   position: relative;
 }
+/* 對話上／互動鍵下：勿抄 room-ship 把整塊 talk 貼底，否則跟 .talk-acts 擠成一团 */
 body.room-home #portrait-sheet {
   z-index: 70;
-  align-items: stretch;
-  justify-content: flex-end;
-  padding: max(8px, env(safe-area-inset-top)) 8px 0;
+  align-items: flex-start;
+  justify-content: center;
+  padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
 }
 body.room-home .talk {
   width: min(100%, 440px);
   margin: 0 auto;
-  height: 100%;
-  justify-content: flex-end;
+  height: auto;
+  justify-content: flex-start;
   padding-bottom: 0;
 }
 body.room-home #talk-panel {
-  order: 2;
-  margin-top: auto;
+  order: 0;
+  margin-top: 0;
   gap: 6px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  padding-bottom: 0;
+  width: 100%;
 }
 body.room-home #talk-box {
   order: 1;
   min-height: 4.8em;
-  max-height: 28svh;
+  max-height: min(32svh, 260px);
   overflow-y: auto;
 }
 body.room-home #talk-input-row { order: 2; }
 body.room-home #portrait-img {
   height: min(58svh, 560px);
-  bottom: max(7.5em, calc(env(safe-area-inset-bottom) + 6.5em));
+  /* 腳貼在互動鍵列上方 */
+  bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
 }
 body.room-home .talk-acts {
-  bottom: max(4.2em, calc(env(safe-area-inset-bottom) + 3.6em));
+  bottom: 0;
   z-index: 72;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+}
+/* 聊天時藏主畫面委託輸入，避免跟互動鍵搶底欄 */
+body.room-home.sheet-open #quest-input-row {
+  visibility: hidden;
+  pointer-events: none;
 }
 body.room-home #room-scene-overlay { z-index: 75; }
 body.room-home #home-room-chrome { display: none !important; }
