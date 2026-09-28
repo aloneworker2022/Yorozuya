@@ -100,6 +100,29 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #action-flash-img.flash-in{transform:translateX(-50%);opacity:1}
 #action-flash-img.flash-out{transform:translateX(-50%) translateX(55vw);opacity:0}
 @media(prefers-reduced-motion:reduce){#action-flash-img{transition:none}#action-flash-img.flash-in{transform:translateX(-50%);opacity:1}#action-flash-img.flash-out{transform:translateX(-50%) translateX(55vw);opacity:0}}
+
+/* 非正戲興奮洩精：中央提示，顯示約 1 秒 */
+#climax-tip,.climax-tip{
+  position:fixed;left:50%;top:42%;z-index:30;
+  transform:translate(-50%,-50%) scale(.92);
+  margin:0;padding:.55em 1.1em;
+  font-family:RoomPixel,system-ui,sans-serif;
+  font-size:clamp(22px,5.5vw,34px);letter-spacing:.12em;
+  color:#fff8f0;background:rgba(40,28,24,.78);
+  border:1px solid rgba(255,220,180,.35);border-radius:6px;
+  box-shadow:0 8px 28px rgba(0,0,0,.45);
+  pointer-events:none;opacity:0;
+  transition:opacity .22s ease-out,transform .22s ease-out;
+  will-change:opacity,transform;
+}
+#climax-tip[hidden],.climax-tip[hidden]{display:none!important}
+#climax-tip.tip-in,.climax-tip.tip-in{opacity:1;transform:translate(-50%,-50%) scale(1)}
+#climax-tip.tip-out,.climax-tip.tip-out{opacity:0;transform:translate(-50%,-50%) scale(.96)}
+@media(prefers-reduced-motion:reduce){
+  #climax-tip,.climax-tip{transition:none}
+  #climax-tip.tip-in,.climax-tip.tip-in{opacity:1}
+  #climax-tip.tip-out,.climax-tip.tip-out{opacity:0}
+}
 #talk-box,#talk-input-row{border:2px solid #fff;position:relative;border-radius:10px}
 #talk-box{width:100%;box-sizing:border-box;background:rgba(10,16,40,.72);color:#f4fbff;padding:10px 14px 12px;min-height:6.8em;pointer-events:auto;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);font-family:RoomPixel,system-ui,sans-serif}
 #talk-nameline{display:flex;align-items:center;gap:.6em;margin-bottom:.45em}

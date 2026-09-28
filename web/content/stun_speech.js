@@ -412,12 +412,14 @@ export function ensureStunFields(who) {
   b.afterglowReplies = Math.max(0, Math.round(Number(b.afterglowReplies) || 0));
   if (!["hers", "his", "both"].includes(b.afterglowKind)) b.afterglowKind = "";
   b.afterglowSource = b.afterglowSource === "friend" ? "friend" : "";
+  if (!["creampie", "external"].includes(b.afterglowEjac)) b.afterglowEjac = "";
   // 雙重門檻：時間與回覆數皆耗盡才清掉
   if (!(b.afterglowUntil && Date.now() < b.afterglowUntil) && !(b.afterglowReplies > 0)) {
     b.afterglowUntil = 0;
     b.afterglowReplies = 0;
     b.afterglowKind = "";
     b.afterglowSource = "";
+    b.afterglowEjac = "";
   }
   ensureMoanVoice(who);
   return b;
@@ -581,6 +583,14 @@ export function noteAfterglow(who, kind = "hers", opts = {}) {
   }
   if (opts?.source) b.afterglowSource = String(opts.source);
   else if (!prevActive) b.afterglowSource = "";
+  // ejac: "creampie" | "external" — 玩家射精途徑（內射 vs 外射／興奮洩精）
+  if (opts?.ejac === "creampie" || opts?.ejac === "external") {
+    b.afterglowEjac = opts.ejac;
+  } else if (!prevActive && (k === "his" || k === "both")) {
+    // 未標明時：有子宮精液視為內射，否則外射／興奮洩精
+    const semen = b.organs?.uterus?.semen || 0;
+    b.afterglowEjac = semen > 0 ? "creampie" : "external";
+  }
   return b;
 }
 
@@ -595,7 +605,41 @@ export function consumeAfterglowReply(who) {
     b.afterglowReplies = 0;
     b.afterglowKind = "";
     b.afterglowSource = "";
+    b.afterglowEjac = "";
   }
+}
+
+
+/** 陌生～親密好友：外射時可嘲／調侃。 */
+function isShallowRelStage(stage) {
+  const s = String(stage || "stranger");
+  return s === "stranger" || s === "acquaintance" || s === "friend" || s === "close_friend";
+}
+
+/** 餘韻射精途徑：explicit afterglowEjac，否則依子宮精液推斷。 */
+function resolveAfterglowEjac(b, semen = null) {
+  if (b?.afterglowEjac === "creampie" || b?.afterglowEjac === "external") return b.afterglowEjac;
+  const n = semen != null ? semen : (b?.organs?.uterus?.semen || 0);
+  return n > 0 ? "creampie" : "external";
+}
+
+/** 外射／興奮洩精時，把誤說的內射句改成外射承認（模板／LLM 雙保險）。 */
+export function scrubFalseCreampieLine(line, who = null) {
+  const s = String(line || "");
+  if (!s) return s;
+  const b = who ? ensureStunFields(who) : null;
+  if (b) {
+    const kind = b.afterglowKind || "";
+    if (kind !== "his" && kind !== "both") return s;
+    if (resolveAfterglowEjac(b) === "creampie") return s;
+  }
+  return s
+    .replace(/又?射進來了/g, "射精了")
+    .replace(/射進來/g, "射了")
+    .replace(/射進去/g, "射出來")
+    .replace(/中出了?/g, "射了")
+    .replace(/灌進(?:子宮|去|來)/g, "射了")
+    .replace(/裡面(?:好熱|燙|滿了|滿滿)/g, "外面…熱");
 }
 
 /** 餘韻模板：高潮碎片＋空白／短喘，依 kind 微調。 */
@@ -623,16 +667,31 @@ export function afterglowTemplate(who, actId = "") {
     for (let i = 0; i < n; i++) parts.push(pick(pool));
     return parts.join("").replace(/(…)+/g, "…").slice(0, 22);
   }
-  const hisBits = [
+  const hisCreampieBits = [
     "被射到…裡面…熱…", "裡面好熱…嗯…", "精液…還在…啊…",
     "滿、滿的…哈…", "射進來了…腿軟…", "裡面…燙…說不了…",
   ];
+  // 外射／興奮洩精：知道他射了，但不說射進來
+  const hisExternalBits = [
+    "啊…你剛剛…是不是射精了…", "你…哈…射了…？", "精…外面…嗯…",
+    "射、射了…腿軟…", "哈…你射了…", "外面…熱…說不了…",
+  ];
+  const hisExternalTeaseBits = [
+    "就這樣射了？…哈", "只是摸摸…就…？", "還沒進來…就射了？",
+    "這麼快…？嘻…", "射在外面…真沒用…", "啊…這麼快就…洩了？",
+  ];
+  const ejac = resolveAfterglowEjac(b, semen);
+  const shallow = isShallowRelStage(who?.stage);
+  let hisBits = ejac === "creampie" ? hisCreampieBits : hisExternalBits;
+  if (ejac !== "creampie" && shallow) {
+    hisBits = [...hisExternalTeaseBits, ...hisExternalBits];
+  }
   const hersBits = style.climaxBits || [];
   const bothBits = [...hersBits.slice(0, 4), ...hisBits.slice(0, 3)];
   let flavor = hersBits;
   if (kind === "his") flavor = hisBits;
   else if (kind === "both") {
-    flavor = (semen > 0 && Math.random() < 0.55) ? hisBits : bothBits;
+    flavor = (ejac === "creampie" && Math.random() < 0.55) ? hisBits : bothBits;
   }
 
   let pool = [
@@ -642,6 +701,10 @@ export function afterglowTemplate(who, actId = "") {
     ...(actBits.length ? actBits.slice(0, 2) : []),
   ];
   if (kind === "his" || kind === "both") pool = [...pool, ...hisBits];
+  // 外射時絕不用內射 ACT 碎片
+  if (ejac !== "creampie" && actId === "creampie") {
+    pool = pool.filter((s) => !(ACT_BITS.creampie || []).includes(s));
+  }
   pool = mixClimax(pool, style, 0.55);
   const n = 2 + Math.floor(Math.random() * 2);
   const parts = [];
@@ -669,13 +732,26 @@ export function afterglowPromptLines(who) {
   if (kind === "hers") {
     lines.push("剛自己去過：頭還空白、腿軟、呼吸亂；可夾「去了…」「還在顫…」碎片。");
   } else if (kind === "his") {
-    lines.push(semen > 0
-      ? "剛被他射過／裡面還熱：可夾「被射到…」「裡面好熱…」；仍是喘與空白，不是敘事。"
-      : "剛看他／感覺他射了：餘韻喘、腿軟；可夾「射了…」「好熱…」短碎片。");
+    const ejac = resolveAfterglowEjac(b, semen);
+    if (ejac === "creampie") {
+      lines.push("剛被他內射／裡面還熱：可夾「被射到…」「射進來了…」「裡面好熱…」；仍是喘與空白，不是敘事。");
+    } else {
+      lines.push("他剛射精，但是外射／興奮洩精——精液不在裡面。硬性：禁止說「射進來」「中出」「灌進子宮」「裡面滿了」等內射句。");
+      lines.push("最多承認他在外面射了，例如「啊 你剛剛是不是射精了」「你…」「射了…哈」。");
+      if (isShallowRelStage(who?.stage)) {
+        lines.push("關係尚淺（陌生／朋友）：可以嘲弄／調侃他太快或只是摸摸就射，短句即可。");
+      }
+    }
   } else {
-    lines.push(semen > 0
-      ? "兩人剛一起過：你剛去、他又射在裡面——餘韻＋裡面熱；短喘空白為主。"
-      : "兩人剛一起過：雙重餘韻；喘、空白、腿軟；不准長篇冷靜回話。");
+    const ejac = resolveAfterglowEjac(b, semen);
+    if (ejac === "creampie") {
+      lines.push("兩人剛一起過：你剛去、他又射在裡面——餘韻＋裡面熱；短喘空白為主。");
+    } else {
+      lines.push("兩人剛一起過：雙重餘韻；他若剛射是外射／興奮洩精——禁止說射進來／內射；喘、空白、腿軟；不准長篇冷靜回話。");
+      if (isShallowRelStage(who?.stage)) {
+        lines.push("關係尚淺：可短短嘲他外面射了／太快。");
+      }
+    }
   }
   return lines;
 }

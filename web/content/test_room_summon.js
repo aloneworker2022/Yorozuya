@@ -34,6 +34,7 @@ import {
   noteAfterglow,
   consumeAfterglowReply,
   afterglowPromptLines,
+  scrubFalseCreampieLine,
   stunTier,
   moanVoicePromptLines,
   SPASM_MS,
@@ -44,7 +45,7 @@ import {
   AFTERGLOW_FRIEND_CONT_REPLIES,
   AFTERGLOW_FRIEND_MARATHON_MS,
   AFTERGLOW_FRIEND_MARATHON_REPLIES,
-} from "./stun_speech.js?v=11";
+} from "./stun_speech.js?v=12";
 import {
   ensureTeaseFields,
   actLockState,
@@ -623,6 +624,57 @@ function waitForActionFlashImage(img, token, expectedSrc) {
   });
 }
 
+/** 非正戲興奮洩精：螢幕中央提示 1 秒（對齊動作閃圖 hold）。 */
+let climaxTipToken = 0;
+let climaxTipTimer = 0;
+const CLIMAX_TIP_HOLD_MS = 1000;
+
+function clearClimaxTip() {
+  climaxTipToken += 1;
+  if (climaxTipTimer) {
+    clearTimeout(climaxTipTimer);
+    climaxTipTimer = 0;
+  }
+  const el = $("climax-tip");
+  if (!el) return;
+  el.classList.remove("tip-in", "tip-out");
+  el.hidden = true;
+}
+
+function showClimaxTip(text = "射精了！") {
+  if (!sheetOpen()) return;
+  const el = $("climax-tip");
+  if (!el) return;
+  const token = ++climaxTipToken;
+  if (climaxTipTimer) {
+    clearTimeout(climaxTipTimer);
+    climaxTipTimer = 0;
+  }
+  el.textContent = text || "射精了！";
+  el.hidden = false;
+  el.classList.remove("tip-out");
+  void el.offsetWidth;
+  el.classList.add("tip-in");
+  climaxTipTimer = setTimeout(() => {
+    if (token !== climaxTipToken) return;
+    el.classList.remove("tip-in");
+    el.classList.add("tip-out");
+    climaxTipTimer = setTimeout(() => {
+      if (token !== climaxTipToken) return;
+      el.hidden = true;
+      el.classList.remove("tip-out");
+      climaxTipTimer = 0;
+    }, 280);
+  }, CLIMAX_TIP_HOLD_MS);
+}
+
+/** 房內正戲中：陰道／肛門塞著陰莖。 */
+function girlInPenisSex(who) {
+  const o = who?.bodyState?.organs;
+  if (!o) return false;
+  return o.vagina?.stuffed === "penis" || o.anus?.stuffed === "penis";
+}
+
 function clearActionFlash() {
   actionFlashToken += 1;
   if (actionFlashTimer) {
@@ -632,9 +684,11 @@ function clearActionFlash() {
   cancelActionFlashLoad();
   cancelActionFlashTransition();
   const img = $("action-flash-img");
-  if (!img) return;
-  img.classList.remove("flash-in", "flash-out");
-  img.hidden = true;
+  if (img) {
+    img.classList.remove("flash-in", "flash-out");
+    img.hidden = true;
+  }
+  clearClimaxTip();
 }
 
 function showActionFlash(url, alt) {
@@ -700,6 +754,7 @@ function showTeasePortrait(who, shotKey, url, alt) {
     showActionFlash(url, alt);
   }
 }
+
 
 /** 摸臀：先用 per-girl 預產圖；缺才 live gen（走 generateButtPackImage）。有組→packs[id]，無組→tease_butt。 */
 async function maybeGenButtShot(who, actId) {
@@ -4243,11 +4298,23 @@ async function deliverUserTalk(text, opts = {}) {
         if (climax.climaxed) {
           climaxLine = climax.line;
           bumpAffection(2, "射精");
-          noteAfterglow(girl, "his");
+          // 挑逗達標射精：預設外射／興奮洩精（未走內射命中不會灌子宮）
+          const inSex = girlInPenisSex(girl);
+          noteAfterglow(girl, "his", { ejac: "external" });
+          // 規則1：沒在正戲、只因興奮洩精 → 中央提示 1 秒
+          if (!inSex) showClimaxTip("射精了！");
         }
       } else {
         const hit = applyBodyFromUserText(girl, raw);
         if (hit && girl.bodyState?.lastPart) noteActShock(girl, girl.bodyState.lastPart);
+        // 玩家明文內射：餘韻走內射台詞；否則若只寫射精／射了則外射承認
+        if (hit && hit.id === "creampie") {
+          noteAfterglow(girl, "his", { ejac: "creampie" });
+        } else if (hit && /射精|射了|射出來|外射|繳械|洩了/.test(raw)
+          && !/內射|射進|灌進|中出|射在裡面/.test(raw)) {
+          noteAfterglow(girl, "his", { ejac: "external" });
+          if (!girlInPenisSex(girl)) showClimaxTip("射精了！");
+        }
         // 閒聊：侵犯值略降
         decayInvasion(girl);
       }
@@ -4353,6 +4420,8 @@ async function deliverUserTalk(text, opts = {}) {
       }
       if (girl.guard) girl.guard -= 1;
       tickStunAfterReply(girl);
+      // 先 scrub（依 afterglowEjac），再扣餘韻回覆數
+      line = scrubFalseCreampieLine(line, girl) || line;
       if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
       noteTalkExchange(girl);
       decayFriendSexFlag(girl);
