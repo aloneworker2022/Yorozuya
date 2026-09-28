@@ -5672,21 +5672,23 @@ document.addEventListener("keydown", (event) => {
 });
 
 
-try {
-  mountButtPackEditor({
-    getGirl: () => girl,
-    getEngine: () => gameImgRoute(),
-  });
-} catch (err) {
-  console.warn("[butt-pack-editor]", err?.message || err);
-}
-try {
-  mountWaistPackEditor({
-    getGirl: () => girl,
-    getEngine: () => gameImgRoute(),
-  });
-} catch (err) {
-  console.warn("[waist-pack-editor]", err?.message || err);
+if (document.documentElement.classList.contains("room-page")) {
+  try {
+    mountButtPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[butt-pack-editor]", err?.message || err);
+  }
+  try {
+    mountWaistPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[waist-pack-editor]", err?.message || err);
+  }
 }
 
 // 開「編輯」時收合浮動圖組面板（面板不依賴 room-editor，但避免重疊）

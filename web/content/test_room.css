@@ -427,13 +427,18 @@ body.room-home #home-room-chrome { display: none !important; }
 .bp-art,.wp-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
 .bp-art img,.wp-art img{max-width:100%;max-height:360px;display:block}
 .bp-art .mini,.wp-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
-/* room-home：仍顯示摸臀／摟腰快捷（編輯鈕維持隱藏） */
-body.room-home #room-pack-chrome{display:flex}
+/* 摸臀／摟腰圖編輯器只屬於獨立 test_room 頁，主站永不顯示。 */
 body.room-home #btn-butt-packs,
-body.room-home #btn-waist-packs{display:inline-flex}
+body.room-home #btn-waist-packs,
+body.room-home #butt-pack-editor,
+body.room-home #waist-pack-editor,
+html:not(.room-page) #btn-butt-packs,
+html:not(.room-page) #btn-waist-packs,
+html:not(.room-page) #butt-pack-editor,
+html:not(.room-page) #waist-pack-editor {
+  display: none !important;
+}
 
-/* 主站 index：非房間模式隱藏快捷列；room-home／room-ship 仍顯示摸臀／摟腰 */
-html:not(.room-page) #room-pack-chrome{display:none}
-html:not(.room-page) body.room-home #room-pack-chrome,
-html:not(.room-page) body.room-ship #room-pack-chrome{display:flex}
+/* 主站 index 不需要空的房間快捷列；test_room 的 room-page 保留完整 chrome。 */
+html:not(.room-page) #room-pack-chrome { display: none; }
 
