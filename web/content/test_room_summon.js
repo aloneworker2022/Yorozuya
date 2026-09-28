@@ -625,55 +625,38 @@ async function pregenGirlPortraits() {
     const buttDoc = await loadButtDoc();
     const buttPacks = Array.isArray(buttDoc?.packs) ? buttDoc.packs : [];
 
-    if (!buttPacks.length) {
-      if (who.portraits.tease_butt) {
-        buttCount = 1;
-      } else {
-        if (status) status.textContent = "預產圖：摸臀（預設）…";
-        const result = await generateButtPackImage(null, who, engine, {
-          stage: who.stage || "stranger",
-          worn: wornOutfit(who),
-          onTick: (sec) => { if (status) status.textContent = `預產圖：摸臀（預設）… ${sec}s`; },
-        });
-        if (result?.status === "done" && result.result) {
-          who.portraits.tease_butt = stampPortraitUrl(result.result);
-          buttCount = 1;
-          persistRoom();
-        } else {
-          throw new Error(result?.error || "摸臀預設生圖失敗");
-        }
+    for (let i = 0; i < buttPacks.length; i++) {
+      const pack = buttPacks[i];
+      if (!pack?.id) continue;
+      if (who.portraits.tease_butt_packs[pack.id]) {
+        buttCount += 1;
+        continue;
       }
-    } else {
-      for (let i = 0; i < buttPacks.length; i++) {
-        const pack = buttPacks[i];
-        if (!pack?.id) continue;
-        if (who.portraits.tease_butt_packs[pack.id]) {
-          buttCount += 1;
-          continue;
-        }
-        if (status) status.textContent = `預產圖：摸臀 ${i + 1}/${buttPacks.length}…`;
-        const result = await generateButtPackImage(pack, who, engine, {
-          stage: who.stage || "stranger",
-          worn: wornOutfit(who),
-          onTick: (sec) => {
-            if (status) status.textContent = `預產圖：摸臀 ${i + 1}/${buttPacks.length}… ${sec}s`;
-          },
-        });
-        if (result?.status === "done" && result.result) {
-          const stamped = stampPortraitUrl(result.result);
-          who.portraits.tease_butt_packs[pack.id] = stamped;
-          who.portraits.tease_butt = stamped;
-          buttCount += 1;
-          persistRoom();
-        } else {
-          throw new Error(result?.error || `摸臀圖組「${pack.name || pack.id}」生圖失敗`);
-        }
+      if (status) status.textContent = `預產圖：摸臀工作流 ${i + 1}/${buttPacks.length}…`;
+      const result = await generateButtPackImage(pack, who, engine, {
+        stage: who.stage || "stranger",
+        worn: wornOutfit(who),
+        onTick: (sec) => {
+          if (status) status.textContent = `預產圖：摸臀工作流 ${i + 1}/${buttPacks.length}… ${sec}s`;
+        },
+      });
+      if (result?.status === "done" && result.result) {
+        const stamped = stampPortraitUrl(result.result);
+        who.portraits.tease_butt_packs[pack.id] = stamped;
+        who.portraits.tease_butt = stamped;
+        buttCount += 1;
+        persistRoom();
+      } else {
+        throw new Error(result?.error || `摸臀圖組「${pack.name || pack.id}」生圖失敗`);
       }
     }
 
     const waistDoc = await loadWaistDoc();
     const waistPacks = Array.isArray(waistDoc?.packs) ? waistDoc.packs : [];
-    // 0 組 → 跳過（與 runtime 一致）
+    if (!buttPacks.length && !waistPacks.length) {
+      if (status) status.textContent = "半身好了。尚未存摸臀／摟腰圖組工作流——先開右下「摸臀圖」「摟腰圖」新增並儲存，再預產。";
+      return;
+    }
     for (let i = 0; i < waistPacks.length; i++) {
       const pack = waistPacks[i];
       if (!pack?.id) continue;
@@ -681,12 +664,12 @@ async function pregenGirlPortraits() {
         waistCount += 1;
         continue;
       }
-      if (status) status.textContent = `預產圖：摟腰 ${i + 1}/${waistPacks.length}…`;
+      if (status) status.textContent = `預產圖：摟腰工作流 ${i + 1}/${waistPacks.length}…`;
       const result = await generateWaistPackImage(pack, who, engine, {
         stage: who.stage || "stranger",
         worn: wornOutfit(who),
         onTick: (sec) => {
-          if (status) status.textContent = `預產圖：摟腰 ${i + 1}/${waistPacks.length}… ${sec}s`;
+          if (status) status.textContent = `預產圖：摟腰工作流 ${i + 1}/${waistPacks.length}… ${sec}s`;
         },
       });
       if (result?.status === "done" && result.result) {
@@ -702,8 +685,8 @@ async function pregenGirlPortraits() {
 
     const bits = [];
     if (halfOk) bits.push("半身");
-    bits.push(`摸臀×${buttCount}`);
-    if (waistPacks.length) bits.push(`摟腰×${waistCount}`);
+    bits.push(`摸臀工作流×${buttCount}`);
+    bits.push(`摟腰工作流×${waistCount}`);
     if (status) status.textContent = `預產圖完成（${bits.join("＋")}）`;
   } catch (err) {
     console.warn("[pregenGirlPortraits]", err?.message || err);
