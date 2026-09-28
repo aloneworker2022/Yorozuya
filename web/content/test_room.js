@@ -14,6 +14,15 @@
   const camera = { scale: 1, x: 0, y: 0 };
   const pointers = new Map();
   const MIN_ZOOM = .6, MAX_ZOOM = 3;
+  /* room-home：畫布 CSS 150%，房子預設 100%（= 1/1.5）仍可 pinch 縮放 */
+  const HOME_CANVAS_Y = 1.5;
+  const isRoomHome = () => document.body.classList.contains('room-home');
+  const defaultHouseScale = () => (isRoomHome() ? 1 / HOME_CANVAS_Y : 1);
+  function centerCamera(scale) {
+    camera.scale = scale;
+    camera.x = canvas.width * (1 - scale) / 2;
+    camera.y = canvas.height * (1 - scale) / 2;
+  }
   const origin = { x: 240, y: 132 };
   const wallHeight = 100;
   const catalog = window.RoomFurniture;
@@ -332,7 +341,10 @@
     view.clearRect(0, 0, canvas.width, canvas.height);
     view.imageSmoothingEnabled = false;
     view.drawImage(artwork, camera.x, camera.y, canvas.width * camera.scale, canvas.height * camera.scale);
-    zoomLabel.textContent = `${Math.round(camera.scale * 100)}%`;
+    if (zoomLabel) {
+      const base = defaultHouseScale();
+      zoomLabel.textContent = `${Math.round(camera.scale / base * 100)}%`;
+    }
   }
 
   function zoomAt(factor, from, to = from) {
@@ -446,7 +458,7 @@
     clearLong();
     press = null;
     canvas.classList.remove('dragging');
-    Object.assign(camera, { scale: 1, x: 0, y: 0 });
+    centerCamera(defaultHouseScale());
     draw();
   });
   editButton.addEventListener('click', () => setEditing(!editing));
@@ -458,6 +470,7 @@
   });
   buildCatalog();
   refresh();
+  centerCamera(defaultHouseScale());
   draw();
   const actorToggle=document.getElementById('actor-toggle');
   actorToggle.addEventListener('click',()=>{
