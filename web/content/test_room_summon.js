@@ -4125,7 +4125,6 @@ function clearShift() {
 }
 
 function sendHerOutAgain() {
-  const region = placedRegion();
   clearShift();
   activityOpen = false;
   clearRoomVisit(girl);
@@ -4135,7 +4134,7 @@ function sendHerOutAgain() {
   renderCard();
   renderWorld();
   persistRoom();
-  $("summon-status").textContent = `${girl.name}離開房間，回到日本的${region?.name || "某處"}。`;
+  // 回住處：安靜離場，不特別提示
 }
 
 function summonHerBack() {
@@ -4807,11 +4806,8 @@ async function tickLifeLoop() {
     try {
       clearRoomVisit(girl);
       if (girl.chatEnter !== "flee_back") girl.chatEnter = "summon";
-      const status = $("summon-status");
-      if (status) status.textContent = `${girl.name}時間到，回到住處`;
       ensureWorldHome(girl);
       sendHerOutAgain();
-      if (status) status.textContent = `${girl.name}時間到，回到住處`;
     } finally {
       autoLifeBusy = false;
     }
