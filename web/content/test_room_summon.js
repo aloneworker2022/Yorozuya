@@ -248,19 +248,98 @@ function wornOutfit(g) {
 
 const halfGenning = new Set();
 
+// 每位妹子自帶 comfyCkpt（與 app.js 同邏輯，房間模組自備，不 import app）
+let roomImgProvider = "";
+let roomComfyUrl = "";
+let comfyCkpts = [];
+let comfyBadCkpts = [];
+let comfyCkptRefreshAt = 0;
+
 async function gameImgRoute() {
   const response = await fetch("/api/save", { cache: "no-store" });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(errorText(data, response.status));
   const settings = data?.data?.settings || {};
   const comfy = String(settings.imgProvider || "").toLowerCase() === "comfy";
+  roomImgProvider = comfy ? "comfy" : "grok-img";
+  roomComfyUrl = String(settings.comfyUrl || "").trim();
   return {
-    imgProvider: comfy ? "comfy" : "grok-img",
+    imgProvider: roomImgProvider,
     imgModel: String(settings.model || "grok-4.5").trim() || "grok-4.5",
     imgStyle: String(settings.imgStyle || "pixel").trim() || "pixel",
-    comfyUrl: String(settings.comfyUrl || "").trim(),
+    comfyUrl: roomComfyUrl,
     comfyCkpt: String(settings.comfyCkpt || "").trim(),
   };
+}
+
+function usableComfyCkpts() {
+  const bad = new Set(comfyBadCkpts);
+  const u = comfyCkpts.filter((c) => c && !bad.has(c));
+  return u.length ? u : comfyCkpts.slice();
+}
+
+function pickRandomComfyCkpt(exclude = "") {
+  let pool = usableComfyCkpts();
+  if (exclude && pool.length > 1) pool = pool.filter((c) => c !== exclude);
+  if (!pool.length) return "";
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** 檔名太長時只顯示尾段 */
+function shortCkptName(name) {
+  if (!name) return "";
+  const base = String(name).split(/[/\\]/).pop() || name;
+  return base.length > 42 ? "…" + base.slice(-40) : base;
+}
+
+async function refreshComfyCkpts({ force = false } = {}) {
+  if (!force && comfyCkpts.length && Date.now() - comfyCkptRefreshAt < 60000) {
+    return true;
+  }
+  let u = roomComfyUrl;
+  if (!roomImgProvider) {
+    try {
+      await gameImgRoute();
+      u = roomComfyUrl;
+    } catch { /* ignore */ }
+  }
+  try {
+    const res = await fetch("/api/comfy/status" + (u ? "?url=" + encodeURIComponent(u) : ""));
+    const j = await res.json();
+    if (!j?.ok) return false;
+    comfyCkpts = j.checkpoints || [];
+    comfyBadCkpts = j.bad_checkpoints || [];
+    comfyCkptRefreshAt = Date.now();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 確保這位妹子有固定 Comfy checkpoint。
+ * - 非 comfy → 回 ""（不改 g.comfyCkpt）
+ * - 已有且非壞檔 → 沿用
+ * - 沒有／壞檔 → 從可用清單隨機綁定；若是當前房間妹子則 persistRoom
+ */
+async function ensureGirlComfyCkpt(g) {
+  if (!g) return "";
+  if (!roomImgProvider) {
+    try { await gameImgRoute(); } catch { return ""; }
+  }
+  if (roomImgProvider !== "comfy") return "";
+  await refreshComfyCkpts();
+  const cur = (g.comfyCkpt || "").trim();
+  const bad = cur && comfyBadCkpts.includes(cur);
+  if (cur && !bad) return cur;
+  const picked = pickRandomComfyCkpt(cur);
+  if (picked) {
+    g.comfyCkpt = picked;
+    if (girl && girl.id === g.id) {
+      try { persistRoom(); } catch { /* */ }
+    }
+  }
+  return g.comfyCkpt || "";
 }
 
 function halfExtra(g) {
@@ -392,6 +471,7 @@ async function maybeGenButtShot(who, actId) {
   try {
     const pack = await pickRuntimeButtPack();
     const engine = await gameImgRoute();
+    await ensureGirlComfyCkpt(who);
     const body = buildButtImgBody(pack, who, engine, {
       stage: who.stage || "stranger",
       worn: wornOutfit(who),
@@ -431,6 +511,7 @@ async function maybeGenWaistShot(who, actId) {
     const pack = await pickRuntimeWaistPack();
     if (!pack) return;
     const engine = await gameImgRoute();
+    await ensureGirlComfyCkpt(who);
     const body = buildWaistImgBody(pack, who, engine, {
       stage: who.stage || "stranger",
       worn: wornOutfit(who),
@@ -490,6 +571,8 @@ function paintHalfPortrait(who = girl) {
 
 async function ensureHalfPortrait(who) {
   if (!who?.id) return;
+  // 舊房間存檔可能沒綁 ckpt；生圖前補上（非 comfy 則 no-op）
+  try { await ensureGirlComfyCkpt(who); } catch { /* ignore */ }
   if (who.portraits?.half) {
     paintHalfPortrait(who);
     return;
@@ -498,6 +581,7 @@ async function ensureHalfPortrait(who) {
   halfGenning.add(who.id);
   try {
     const engine = await gameImgRoute();
+    await ensureGirlComfyCkpt(who);
     const result = await waitImage(portraitBody(who, engine));
     if (result?.status === "done" && result.result) {
       const url = String(result.result);
@@ -1287,6 +1371,7 @@ function renderCard() {
   if (!girl) {
     if (card) card.hidden = true;
     if ($("let-leave")) $("let-leave").hidden = true;
+    if ($("summon-ckpt")) $("summon-ckpt").hidden = true;
     renderBodyPanel();
     renderDebug();
     return;
@@ -1295,6 +1380,22 @@ function renderCard() {
   const region = placedRegion();
   if ($("summon-name")) $("summon-name").textContent = titleOf(girl);
   if ($("summon-meta")) $("summon-meta").textContent = region && sheIsOut() ? `${lookLine(girl)} · 人在日本的${region.name}` : lookLine(girl);
+  // Comfy 模式才顯示生圖模型；grok-img 不佔版面
+  {
+    const parent = $("summon-meta")?.parentElement;
+    let ckptEl = $("summon-ckpt");
+    if (!ckptEl && parent) {
+      ckptEl = document.createElement("p");
+      ckptEl.id = "summon-ckpt";
+      ckptEl.className = "small dim";
+      parent.appendChild(ckptEl);
+    }
+    if (ckptEl) {
+      const show = roomImgProvider === "comfy" && String(girl.comfyCkpt || "").trim();
+      ckptEl.hidden = !show;
+      ckptEl.textContent = show ? `生圖模型 · ${shortCkptName(girl.comfyCkpt)}` : "";
+    }
+  }
   if ($("let-leave")) $("let-leave").hidden = sheIsOut();
   renderBodyPanel();
   renderDebug();
@@ -3987,6 +4088,19 @@ function adoptRosterGirl(payload) {
   if (status) {
     status.textContent = `${girl.name}從名冊召喚進房間了。長按她說話。`;
   }
+  // 名冊已帶 comfyCkpt 則沿用；缺綁且為 comfy 時補上
+  ensureGirlComfyCkpt(girl).then((ck) => {
+    if (!girl) return;
+    if (ck) {
+      persistRoom();
+      renderCard();
+      if (status && roomImgProvider === "comfy") {
+        status.textContent = `${girl.name}從名冊召喚進房間了 · 模型 ${shortCkptName(ck)}。長按她說話。`;
+      }
+    }
+  }).catch((err) => {
+    console.warn("[ensureGirlComfyCkpt]", err?.message || err);
+  });
   ensureHalfPortrait(girl).catch((err) => {
     console.warn("[ensureHalfPortrait]", err?.message || err);
   });
@@ -4106,6 +4220,7 @@ async function makeGirl() {
   };
   ensureBody(out);
   ensurePlayerNotes(out);
+  await ensureGirlComfyCkpt(out);
   return out;
 }
 
@@ -4128,11 +4243,13 @@ async function drawGirl() {
     if (sheetOpen()) hideSheet();
     renderCard();
     renderWorld();
-    $("summon-status").textContent = `抽到了${rolled.name}。半身立繪繪製中…長按房間裡的她跟她說話，或讓她離開。`;
+    const ckptBit = rolled.comfyCkpt && roomImgProvider === "comfy"
+      ? ` · 模型 ${shortCkptName(rolled.comfyCkpt)}` : "";
+    $("summon-status").textContent = `抽到了${rolled.name}${ckptBit}。半身立繪繪製中…長按房間裡的她跟她說話，或讓她離開。`;
     // Fire-and-forget on summon: do not block the edit-screen draw button path.
     ensureHalfPortrait(rolled).then(() => {
       if (girl && girl.id === rolled.id && girl.portraits?.half) {
-        $("summon-status").textContent = `抽到了${rolled.name}。半身立繪好了。長按房間裡的她跟她說話，或讓她離開。`;
+        $("summon-status").textContent = `抽到了${rolled.name}${ckptBit}。半身立繪好了。長按房間裡的她跟她說話，或讓她離開。`;
       }
     }).catch((err) => {
       console.warn("[ensureHalfPortrait]", err?.message || err);
@@ -5197,6 +5314,10 @@ function bindBodyPanel() {
     window.RoomActor?.setPresent(!girl.world?.home);
   }
   if ($("summon-status")) $("summon-status").textContent = `${girl.name}還在（狀態已保留）。長按她繼續聊，或讓她離開。`;
+  // 舊房間存檔補綁 Comfy 模型（非 comfy / 已綁定則 no-op）
+  ensureGirlComfyCkpt(girl).then(() => {
+    if (girl) { try { persistRoom(); } catch { /* */ } renderCard(); }
+  }).catch(() => {});
   startLifeLoop();
 })();
 
