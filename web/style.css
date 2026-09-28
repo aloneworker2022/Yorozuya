@@ -2682,7 +2682,7 @@ body.room-home #main-room-stage {
   left: 0;
   right: 0;
   top: 0; /* 上緣：卡牌「執行中」上面 */
-  bottom: calc(3.35em + env(safe-area-inset-bottom)); /* 下框：輸入框上面 */
+  bottom: calc(6.7em + env(safe-area-inset-bottom)); /* 下毛點兩倍：輸入框上面留更長 */
   margin: 0;
   width: 100%;
   max-width: none; /* 不要用左右寬度限制來排版 */

@@ -291,7 +291,7 @@ body.room-home #main-room-stage {
 body.room-home #main-room-stage .scene {
   flex: 1 1 auto;
   display: flex;
-  align-items: center;
+  align-items: flex-end; /* 不要垂直置中浮中間；貼舞台下緣 */
   justify-content: center;
   width: 100%;
   height: 100%;
