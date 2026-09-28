@@ -150,6 +150,8 @@ function expLv(k) {
 function execCap() { return 1 + expLv("exec"); }
 function rosterCap() { return 1 + expLv("roster"); }
 function kanbanHours() { return 1 + expLv("kanban"); }
+/** 房間陪伴停留時長（對齊原看板 until = kanbanHours()*HOUR）；供 room 模組讀取 */
+window.yoroRoomVisitMs = () => kanbanHours() * HOUR;
 const QUEST_HOURS = 24;          // 期限統一 24 小時
 const JOURNAL_TTL = 30 * 24 * HOUR; // 一則日誌保存一個月
 const JOURNAL_CAP = 40;
@@ -7608,6 +7610,10 @@ function applyRoomProgressData(data) {
     if (data.portraits.half || data.portraits.full) {
       s.portrait = data.portraits.full || data.portraits.half || s.portrait;
     }
+    changed = true;
+  }
+  if (data.world && typeof data.world === "object") {
+    s.world = data.world;
     changed = true;
   }
   if (changed) {

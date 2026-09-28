@@ -99,6 +99,25 @@ let workToken = 0;
 const WORLD_AUTO_MS = 60 * 60 * 1000;
 let lifeLoopTimer = 0;
 let autoLifeBusy = false;
+
+/** 房內停留時長（對齊看板 kanbanHours*HOUR）；無 app 掛載時退回 1 小時。絕對 until，不因聊天重設。 */
+function roomVisitMs() {
+  return (typeof window.yoroRoomVisitMs === "function" ? window.yoroRoomVisitMs() : 60 * 60 * 1000);
+}
+
+/** 僅在「已有 world／住處」的進房路徑上啟動停留計時；首次現身等發呆產圖離房找房時不啟動。 */
+function armRoomVisit(who = girl) {
+  if (!who) return;
+  if (!who.world) {
+    who.roomVisitUntil = 0;
+    return;
+  }
+  who.roomVisitUntil = Date.now() + roomVisitMs();
+}
+
+function clearRoomVisit(who = girl) {
+  if (who) who.roomVisitUntil = 0;
+}
 let lines = [];
 let talkFor = "";
 let talkBusy = false;
@@ -525,9 +544,12 @@ function renderWorld() {
   const shiftText = sceneLine();
   $("world-shift").hidden = !shiftText;
   $("world-shift").textContent = shiftText;
-  $("world-actions").hidden = !home;
+  // 召喚鍵：有 world 在外即可召回（不必已有住處）；活動仍要有家
+  $("world-actions").hidden = false;
+  const openAct = $("open-activity");
+  if (openAct) openAct.hidden = !home;
   $("open-activity").setAttribute("aria-expanded", String(activityOpen));
-  $("activity-choices").hidden = !activityOpen;
+  $("activity-choices").hidden = !activityOpen || !home;
   $("activity-work").setAttribute("aria-pressed", String(activity === "work"));
   $("activity-wander").setAttribute("aria-pressed", String(activity === "wander"));
   renderWhere();
@@ -3793,6 +3815,7 @@ function syncProgressToGame(who) {
     affection: who.affection || 0,
     stage: who.stage || "stranger",
     portraits: who.portraits || {},
+    world: who.world || null,
     at: Date.now(),
   };
   try {
@@ -3820,12 +3843,22 @@ function takePendingAdopt() {
 function adoptRosterGirl(payload) {
   const rolled = payload?.girl;
   if (!rolled?.id) return false;
+  // 保留已有日本世界／住處（名冊物件或當前／存檔 session），避免再召喚後丟 world
+  let keepWorld = rolled.world || null;
+  if (!keepWorld && girl?.id === rolled.id && girl.world) keepWorld = girl.world;
+  if (!keepWorld) {
+    try {
+      const saved = loadRoomSave();
+      if (saved?.girl?.id === rolled.id && saved.girl.world) keepWorld = saved.girl.world;
+    } catch { /* ignore */ }
+  }
   girl = {
     ...rolled,
     fromRoster: true,
     gameGirlId: rolled.gameGirlId || rolled.id,
     chatEnter: rolled.chatEnter || "summon",
   };
+  if (keepWorld) girl.world = keepWorld;
   if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
   ensureBody(girl);
   ensureFriends(girl);
@@ -3840,6 +3873,7 @@ function adoptRosterGirl(payload) {
   workToken += 1;
   typeJob += 1;
   window.RoomActor?.setPresent(true);
+  armRoomVisit(girl);
   clearRoomSave();
   persistRoom();
   if (sheetOpen()) hideSheet();
@@ -4094,6 +4128,7 @@ function sendHerOutAgain() {
   const region = placedRegion();
   clearShift();
   activityOpen = false;
+  clearRoomVisit(girl);
   if (girl.chatEnter !== "flee_back") girl.chatEnter = "summon";
   window.RoomActor?.setPresent(false);
   if (sheetOpen()) hideSheet();
@@ -4104,7 +4139,8 @@ function sendHerOutAgain() {
 }
 
 function summonHerBack() {
-  if (!girl?.world?.home || !sheIsOut()) return;
+  // 有 world 且人在外即可召回；住處未定也允許（找房／ensure 仍只在離房／逃離時做）
+  if (!girl?.world || !sheIsOut()) return;
   clearShift();
   girl.world.justBack = true;
   if (girl.chatEnter !== "flee_back") girl.chatEnter = "summon";
@@ -4115,6 +4151,7 @@ function summonHerBack() {
   talkFor = "";
   renderDebug();
   window.RoomActor?.setPresent(true);
+  armRoomVisit(girl);
   renderCard();
   renderWorld();
   persistRoom();
@@ -4735,6 +4772,7 @@ async function onDaydreamImagesReady() {
   if (!girl || sheIsOut() || pending || talkBusy || autoLifeBusy) return;
   autoLifeBusy = true;
   try {
+    clearRoomVisit(girl);
     const status = $("summon-status");
     if (status) status.textContent = `${girl.name}發呆產圖完成，要去找住處…`;
     await letHerLeave();
@@ -4763,6 +4801,22 @@ async function runAutoHourlyActivity() {
 
 async function tickLifeLoop() {
   if (!girl || autoLifeBusy || pending || talkBusy) return;
+  // 房內停留到期 → 回住處（絕對計時；僅對已有 world 的召喚／進房啟動）
+  if (!sheIsOut() && girl.world && (girl.roomVisitUntil | 0) > 0 && Date.now() >= girl.roomVisitUntil) {
+    autoLifeBusy = true;
+    try {
+      clearRoomVisit(girl);
+      if (girl.chatEnter !== "flee_back") girl.chatEnter = "summon";
+      const status = $("summon-status");
+      if (status) status.textContent = `${girl.name}時間到，回到住處`;
+      ensureWorldHome(girl);
+      sendHerOutAgain();
+      if (status) status.textContent = `${girl.name}時間到，回到住處`;
+    } finally {
+      autoLifeBusy = false;
+    }
+    return;
+  }
   // 只跑外面有住所的每小時活動；找住處改等發呆產圖完成事件
   if (!sheIsOut() || !girl.world?.home) return;
   if (girl.world.activity === "work" && girl.world.shift?.pending) return;
@@ -4825,6 +4879,7 @@ async function startActivity(kind) {
 
 async function letHerLeave(opts = {}) {
   if (!girl || pending || sheIsOut()) return;
+  clearRoomVisit(girl);
   if (girl.world?.home) {
     sendHerOutAgain();
     return;
