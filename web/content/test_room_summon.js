@@ -81,12 +81,12 @@ import {
   mountButtPackEditor,
   pickRuntimeButtPack,
   buildButtImgBody,
-} from "./butt_packs.js?v=2";
+} from "./butt_packs.js?v=3";
 import {
   mountWaistPackEditor,
   pickRuntimeWaistPack,
   buildWaistImgBody,
-} from "./waist_packs.js?v=1";
+} from "./waist_packs.js?v=2";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -300,7 +300,8 @@ function portraitBody(g, engine) {
     char_id: g.id,
     ...(comfy ? {
       comfy_url: engine.comfyUrl || "",
-      ckpt: engine.comfyCkpt || "",
+      // 優先妹子自帶模型；全局 settings.comfyCkpt 已廢棄，僅作後備
+      ckpt: String(g.comfyCkpt || "").trim() || engine.comfyCkpt || "",
     } : {}),
   };
 }

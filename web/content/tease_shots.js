@@ -99,8 +99,8 @@ export function isTeaseShot(shot) {
 
 export function teaseFraming(shot) {
   const s = String(shot || "");
-  if (s === "tease_butt") return "lower";
-  if (s === "tease_breast" || s === "tease_waist" || s.startsWith("tease_oral")) return "half";
+  if (s === "tease_butt" || s === "tease_waist") return "lower";
+  if (s === "tease_breast" || s.startsWith("tease_oral")) return "half";
   return "full";
 }
 
@@ -301,21 +301,21 @@ export function composeTeaseExtra(shot, stage, worn) {
     ].join(", ");
   }
   if (s === "tease_butt") {
+    // 局部繪圖（下半身裁切）：不畫頭／表情／回頭
     return [
       "white background, simple background",
       "lower body, below waist, from behind, ass focus",
-      "looking back",
-      teaseExpr(stage),
       "first-person POV, one male hand, male hand on her buttocks",
       "NO both hands",
     ].join(", ");
   }
   if (s === "tease_waist") {
+    // 局部繪圖（腰／臀裁切）：頭出畫、無表情／半身立繪
     return [
-      "simple background, half-body portrait",
-      "from side, waist focus, hips visible",
-      teaseExpr(stage),
-      "first-person POV, one male arm, male arm around her waist, embracing from the side or behind",
+      "simple background",
+      "mid torso crop, lower torso, waist focus, hips visible, head out of frame",
+      "from side or behind",
+      "first-person POV, one male arm, male arm around her waist",
       "NO both arms, NO both hands",
     ].join(", ");
   }

@@ -1,6 +1,6 @@
 /** 房間「摸臀」生圖預設組：多組命名存檔，執行時隨機抽一組；無組時退回硬編碼 tease_butt。 */
 
-import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=2";
+import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=3";
 
 const API = "/api/butt-packs";
 
@@ -14,14 +14,21 @@ export function clampDenoise(v) {
   return Math.min(0.9, Math.max(0.35, Math.round(n * 100) / 100));
 }
 
-/** 與 tease_shots.composeTeaseExtra("tease_butt") 對齊的預設正向（不含表情／人設）。 */
+/** 動作／裁切 tags only（無頭／表情／人設；人設於生圖時由 character 合併）。 */
 export function defaultButtPrompt(stage = "stranger") {
   return composeTeaseExtra("tease_butt", stage, "") || [
     "white background, simple background",
     "lower body, below waist, from behind, ass focus",
-    "looking back",
     "first-person POV, one male hand, male hand on her buttocks",
     "NO both hands",
+  ].join(", ");
+}
+
+/** 局部繪圖負向：排除頭／臉／表情與常見瑕疵。 */
+export function defaultButtNegative() {
+  return [
+    "head, face, hair, eyes, smile, looking back, looking at viewer, portrait, upper body",
+    "text, watermark, ugly, extra fingers, both hands, two hands",
   ].join(", ");
 }
 
@@ -31,7 +38,7 @@ export function emptyButtPack(name = "摸臀圖組") {
     name: String(name || "摸臀圖組").slice(0, 40),
     poseDenoise: 0.55,
     prompt: defaultButtPrompt(),
-    negative: "looking at viewer, text, watermark, ugly, extra fingers, both hands, two hands",
+    negative: defaultButtNegative(),
     ref: "",
     url: "",
     updated: Date.now(),
@@ -89,6 +96,20 @@ function girlOwnCkpt(girl) {
   return String(girl?.comfyCkpt || "").trim();
 }
 
+function shortCkptName(path) {
+  const s = String(path || "").trim();
+  if (!s) return "";
+  const base = s.split(/[/\\]/).pop() || s;
+  return base.replace(/\.(safetensors|ckpt|pt|pth)$/i, "");
+}
+
+/** Comfy：優先妹子自帶模型，沒有才退全局；皆無則丟錯。 */
+function resolveComfyCkpt(girl, eng = {}) {
+  const ck = girlOwnCkpt(girl) || String(eng.comfyCkpt || "").trim();
+  if (!ck) throw new Error("此魅子尚未綁定 Comfy 模型（comfyCkpt）");
+  return ck;
+}
+
 function wornOutfit(g) {
   const look = g?.look || {};
   const wardrobe = Array.isArray(look.wardrobe) ? look.wardrobe : [];
@@ -126,7 +147,7 @@ export async function fetchButtBasePrompt(girl, eng = {}) {
     lock_identity: true,
     scene_kind: "tease",
     shot: "tease_butt",
-    ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: girlOwnCkpt(girl) || eng.comfyCkpt || "" } : {}),
+    ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: resolveComfyCkpt(girl, eng) } : {}),
   };
   const r = await fetch("/api/imggen/preview", {
     method: "POST",
@@ -145,8 +166,9 @@ export async function fetchButtBasePrompt(girl, eng = {}) {
 }
 
 /**
- * 組摸臀生圖下單。有 pack → 用組內 prompt／ref／denoise；
+ * 組摸臀生圖下單。有 pack → 用組內「動作」prompt／ref／denoise；
  * pack 為 null → 硬編碼 tease_butt（與主遊戲一致）。
+ * 契約：pack.prompt = 動作／裁切 only；執行時 character+outfit+extra(action)+girl ckpt。
  */
 export function buildButtImgBody(pack, girl, eng = {}, opts = {}) {
   if (!girl) throw new Error("先選魅子");
@@ -154,12 +176,13 @@ export function buildButtImgBody(pack, girl, eng = {}, opts = {}) {
   const stage = String(opts.stage || girl.stage || "stranger");
   const worn = opts.worn != null ? opts.worn : wornOutfit(girl);
   const p = pack ? normalizeButtPack(pack) : null;
-  const userPos = p
+  const action = p
     ? String(p.prompt || "").trim()
     : composeTeaseExtra("tease_butt", stage, worn);
-  const userNeg = p ? String(p.negative || "").trim() : "";
+  const userNeg = p ? String(p.negative || "").trim() : defaultButtNegative();
   const ref = p ? String(p.ref || "").trim() : "";
   const denoise = p ? clampDenoise(p.poseDenoise) : 0.55;
+  const ckpt = comfy ? resolveComfyCkpt(girl, eng) : "";
   return {
     key: `room-butt:${girl.id || "x"}:${Date.now().toString(36)}`,
     provider: comfy ? "comfy" : "grok-img",
@@ -169,9 +192,9 @@ export function buildButtImgBody(pack, girl, eng = {}, opts = {}) {
     style: eng.imgStyle || "pixel",
     character: girl,
     outfit: worn,
-    // Comfy：使用者正向整份當 prompt（可先套入人設）；Grok：extra 疊動作
-    prompt: comfy ? userPos : "",
-    extra: comfy ? "" : userPos,
+    // prompt 留空 → 伺服器以 lower-crop 人設 sheet + extra(動作) 合併
+    prompt: "",
+    extra: action,
     negative: userNeg,
     visual_neg: userNeg,
     cutout: false,
@@ -184,7 +207,7 @@ export function buildButtImgBody(pack, girl, eng = {}, opts = {}) {
     ...(ref ? { pose_ref: ref, pose_denoise: denoise } : {}),
     ...(comfy ? {
       comfy_url: eng.comfyUrl || "",
-      ckpt: girlOwnCkpt(girl) || eng.comfyCkpt || "",
+      ckpt,
     } : {}),
   };
 }
@@ -493,28 +516,23 @@ export function mountButtPackEditor(hooks = {}) {
       setStatus("先選魅子或抽一隻進房", true);
       return;
     }
-    setStatus("套入人物 prompt…");
     try {
-      const eng = (await hooks.getEngine?.()) || { imgProvider: "comfy", imgStyle: "pixel" };
-      const base = await fetchButtBasePrompt(g, eng);
       const stage = g.stage || "stranger";
       const action = defaultButtPrompt(stage);
-      // 套入：人設基礎＋摸臀動作；若欄位已有動作則只補人設到 sheet，不強制覆寫
       const posEl = $("bp-pos");
       const negEl = $("bp-neg");
-      if (posEl && !String(posEl.value || "").trim()) {
-        posEl.value = joinPromptParts(base.positive, action);
-      } else if (posEl && base.positive) {
-        // 已有內容：把人設基礎併在前面（去重）
-        posEl.value = joinPromptParts(base.positive, posEl.value);
-      }
-      if (negEl && !String(negEl.value || "").trim() && base.negative) {
-        negEl.value = base.negative;
-      } else if (negEl && base.negative) {
-        negEl.value = joinPromptParts(base.negative, negEl.value);
-      }
+      // 只填動作／裁切預設；人設與模型於生圖時由 live girl 帶入，不烤進組
+      if (posEl) posEl.value = action;
+      if (negEl && !String(negEl.value || "").trim()) negEl.value = defaultButtNegative();
       collectForm();
-      setStatus("✓ 已套入人物 prompt");
+      const worn = wornOutfit(g);
+      const ck = girlOwnCkpt(g);
+      const bits = [
+        g.name || g.id || "魅子",
+        ck ? `模型 ${shortCkptName(ck)}` : "模型（尚未綁定）",
+        worn ? `服裝 ${String(worn).slice(0, 28)}` : "",
+      ].filter(Boolean);
+      setStatus(`✓ 已填動作預設（無頭）。執行時會帶入：${bits.join(" · ")}`);
     } catch (e) {
       setStatus("套入失敗：" + e.message, true);
     }

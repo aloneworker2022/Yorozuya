@@ -13,14 +13,14 @@ import {
   teaseShotAt, teaseStartStep, teaseAdvanceStep, teaseCumStep, teasePlayableSteps,
   teasePhaseOf, teasePhaseLabel, teaseBeatLine, teaseWilling,
   teasePlayAffDelta, TEASE_PLAY_CLIMAX_RATE,
-} from "./content/tease_shots.js?v=2";
+} from "./content/tease_shots.js?v=3";
 import * as ScriptMode from "./content/script_mode.js";
 import * as FramePack from "./content/frame_pack.js";
 import {
   pickRuntimeButtPack,
   buildButtImgBody,
   getButtPacksCached,
-} from "./content/butt_packs.js?v=2";
+} from "./content/butt_packs.js?v=3";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
