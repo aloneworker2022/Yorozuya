@@ -7634,6 +7634,7 @@ function buildRoomGirlFromSuccubus(s) {
   const topicCool = (s.topicCool && typeof s.topicCool === "object" && !Array.isArray(s.topicCool))
     ? { ...s.topicCool }
     : null;
+  const look = (s.look && typeof s.look === "object") ? { ...s.look } : (s.look || null);
   return {
     id: s.id,
     gameGirlId: s.id,
@@ -7646,9 +7647,15 @@ function buildRoomGirlFromSuccubus(s) {
     quirk: s.quirk,
     kink: s.kink,
     job: s.job,
+    jobDesc: s.jobDesc || null,
     backstory: s.backstory,
     tags: s.tags,
     dna: s.dna,
+    look,
+    outfitPick: s.outfitPick ?? null,
+    libido: s.libido || null,
+    specialTraits: s.specialTraits || null,
+    moanVoice: s.moanVoice || null,
     comfyCkpt: s.comfyCkpt,
     affection: typeof s.affection === "number" ? s.affection : 0,
     stage: mapGameStageToRoom(s.stage || "stranger"),

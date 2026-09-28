@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content">
   <meta name="theme-color" content="#eee8dd">
   <title>我的房間 · Yorozuya</title>
-  <link rel="stylesheet" href="/content/test_room.css?v=84">
+  <link rel="stylesheet" href="/content/test_room.css?v=85">
   <script>
     (function () {
       try {
@@ -73,13 +73,24 @@
       <p class="gesture-hint">點家具選取，按「移動」後再點空地。拖曳只移動畫面。長按她說話。</p>
       <section class="summon-panel" aria-label="抽妹子">
         <div class="summon-head"><div><strong>抽妹子</strong><p id="summon-status">抽出一個人。她會出現在房間裡，長按她跟她說話。</p></div><button id="draw-girl" type="button">抽妹子</button></div>
+        <div class="summon-roster" aria-label="名冊生徒召喚">
+          <div class="summon-roster-head"><strong>名冊生徒</strong><span class="mini">從遊戲存檔名冊召喚進這間房（沙盒免費）</span></div>
+          <div class="summon-roster-row">
+            <select id="roster-girl-pick" aria-label="選擇名冊生徒">
+              <option value="">（讀取名冊…）</option>
+            </select>
+            <button id="summon-roster-girl" type="button">召喚進房</button>
+            <button id="reload-roster-girls" type="button" title="重新讀取名冊">↻</button>
+          </div>
+          <p id="roster-summon-hint" class="mini dim">讀取中…</p>
+        </div>
         <div id="summon-card" hidden>
           <div><strong id="summon-name"></strong><p id="summon-meta"></p></div>
           <div class="summon-card-actions">
             <button id="let-leave" type="button">讓她離開</button>
           </div>
         </div>
-        <p class="note">抽到或召喚時會自動預產半身與已存動作圖組（儀式中請稍候）。試抽不進遊戲名冊。重新整理就回到沒有這隻人的房間。</p>
+        <p class="note">抽到或從名冊召喚時會自動預產半身與已存動作圖組（儀式中請稍候）。試抽不進遊戲名冊；名冊召喚同 id 會回寫進度。重新整理會清掉試抽，名冊召喚可再召。</p>
       </section>
 
       <section id="body-panel" class="body-panel" hidden aria-label="身體狀態">
@@ -606,6 +617,6 @@
   <script src="/content/room_furniture.js?v=4"></script>
   <script src="/content/room_character.js?v=7"></script>
   <script src="/content/test_room.js?v=16"></script>
-  <script type="module" src="/content/test_room_summon.js?v=108"></script>
+  <script type="module" src="/content/test_room_summon.js?v=109"></script>
 </body>
 </html>

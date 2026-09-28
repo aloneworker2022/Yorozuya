@@ -4972,6 +4972,225 @@ async function makeGirl() {
   return out;
 }
 
+/** 主線階段 → 房間階梯（與 app.js mapGameStageToRoom 對齊） */
+function mapGameStageToRoom(stage) {
+  const known = new Set([
+    "stranger", "acquaintance", "friend", "close_friend",
+    "girlfriend", "passionate", "lover",
+    "wife", "devoted_wife", "obedient_wife", "pathological_wife",
+  ]);
+  if (known.has(stage)) return stage;
+  return "stranger";
+}
+
+/**
+ * 把存檔名冊 succubus 編成房間 session 物件（同 id，進度可回寫）。
+ * 對齊 app.js buildRoomGirlFromSuccubus，並補 look／outfitPick 供沙盒對話與動作圖。
+ */
+function buildRoomGirlFromSuccubus(s) {
+  if (!s?.id) return null;
+  const portraits = (s.portraits && typeof s.portraits === "object")
+    ? { ...s.portraits }
+    : {};
+  const bodyState = (s.bodyState && typeof s.bodyState === "object")
+    ? s.bodyState
+    : null;
+  const topicCool = (s.topicCool && typeof s.topicCool === "object" && !Array.isArray(s.topicCool))
+    ? { ...s.topicCool }
+    : null;
+  const look = (s.look && typeof s.look === "object") ? { ...s.look } : (s.look || null);
+  return {
+    id: s.id,
+    gameGirlId: s.id,
+    fromRoster: true,
+    name: s.name,
+    rarity: s.rarity,
+    personality: s.personality,
+    speech: s.speech,
+    tone: s.tone,
+    quirk: s.quirk,
+    kink: s.kink,
+    job: s.job,
+    jobDesc: s.jobDesc || null,
+    backstory: s.backstory,
+    tags: s.tags,
+    dna: s.dna,
+    look,
+    outfitPick: s.outfitPick ?? null,
+    libido: s.libido || null,
+    specialTraits: s.specialTraits || null,
+    moanVoice: s.moanVoice || null,
+    catchphrases: s.catchphrases || null,
+    reactions: s.reactions || null,
+    archetype: s.archetype || null,
+    comfyCkpt: s.comfyCkpt,
+    affection: typeof s.affection === "number" ? s.affection : 0,
+    stage: mapGameStageToRoom(s.stage || "stranger"),
+    stageLock: s.stageLock || "",
+    ntr: s.ntr || null,
+    summoner: s.summoner || null,
+    portraits,
+    portrait: s.portrait || portraits.full || portraits.half || null,
+    crave: s.crave || { v: 10, at: Date.now() },
+    chatEnter: s.chatEnter === "flee_back" ? "flee_back" : "summon",
+    body: s.body || null,
+    bodyState,
+    playerNotes: Array.isArray(s.playerNotes) ? s.playerNotes.slice() : (s.playerNotes || null),
+    friends: Array.isArray(s.friends) ? s.friends.slice() : (s.friends || null),
+    world: s.world || null,
+    playerName: s.playerName || "",
+    playerNick: s.playerNick || "",
+    playerPet: s.playerPet || "",
+    petProposeCount: Number.isFinite(Number(s.petProposeCount)) ? Number(s.petProposeCount) : 0,
+    petCoolUntil: Number.isFinite(Number(s.petCoolUntil)) ? Number(s.petCoolUntil) : 0,
+    nameWait: s.nameWait || "",
+    pendingPet: s.pendingPet || "",
+    wifeUpPending: s.wifeUpPending || "",
+    datingUpPending: s.datingUpPending || "",
+    topicCool,
+    noteChatTurns: Number.isFinite(Number(s.noteChatTurns)) ? Number(s.noteChatTurns) : 0,
+    noteLastAskAt: Number.isFinite(Number(s.noteLastAskAt)) ? Number(s.noteLastAskAt) : -999,
+    noteLastRecallAt: Number.isFinite(Number(s.noteLastRecallAt)) ? Number(s.noteLastRecallAt) : -999,
+    noteLastTriviaAt: Number.isFinite(Number(s.noteLastTriviaAt)) ? Number(s.noteLastTriviaAt) : -999,
+    loveTalkLastAt: Number.isFinite(Number(s.loveTalkLastAt)) ? Number(s.loveTalkLastAt) : -999,
+    petNudgeLastAt: Number.isFinite(Number(s.petNudgeLastAt)) ? Number(s.petNudgeLastAt) : -999,
+  };
+}
+
+/** 沙盒：快取的名冊列表（/api/save succubi） */
+let rosterGirlsCache = [];
+let rosterPlayerName = "";
+let rosterLoadBusy = false;
+
+function setRosterSummonHint(msg, isErr = false) {
+  const el = $("roster-summon-hint");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.classList.toggle("err", !!isErr);
+}
+
+function renderRosterGirlPicker() {
+  const sel = $("roster-girl-pick");
+  if (!sel) return;
+  const prev = sel.value;
+  const usable = rosterGirlsCache.filter((g) => g && g.id && !g.ntr && !g.taken);
+  sel.replaceChildren();
+  if (!usable.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "（名冊沒有可用生徒）";
+    sel.appendChild(opt);
+    setRosterSummonHint(rosterGirlsCache.length
+      ? "名冊裡的人都不可用（NTR／被帶走）。"
+      : "存檔名冊是空的——先去主遊戲召喚魅魔，或按「抽妹子」試抽。", !rosterGirlsCache.length);
+    const btn = $("summon-roster-girl");
+    if (btn) btn.disabled = true;
+    return;
+  }
+  for (const g of usable) {
+    const opt = document.createElement("option");
+    opt.value = String(g.id);
+    const stage = g.stage || "stranger";
+    opt.textContent = `${g.name || "？"}・${stage}${g.job ? `・${g.job}` : ""}`;
+    sel.appendChild(opt);
+  }
+  if (prev && usable.some((g) => g.id === prev)) sel.value = prev;
+  const btn = $("summon-roster-girl");
+  if (btn) btn.disabled = false;
+  setRosterSummonHint(`名冊 ${usable.length} 隻可召喚。選好後按「召喚進房」。`);
+}
+
+async function loadRosterGirlsForSummon({ quiet = false } = {}) {
+  const sel = $("roster-girl-pick");
+  if (!sel && !$("summon-roster-girl")) return; // 主畫面 room-home 可能無此 UI
+  if (rosterLoadBusy) return;
+  rosterLoadBusy = true;
+  if (!quiet) setRosterSummonHint("讀取名冊…");
+  try {
+    const response = await fetch("/api/save", { cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(errorText(data, response.status));
+    const save = data?.data || {};
+    rosterGirlsCache = Array.isArray(save.succubi) ? save.succubi.slice() : [];
+    rosterPlayerName = String(
+      save.playerProfile?.name || save.settings?.player || ""
+    ).trim();
+    renderRosterGirlPicker();
+  } catch (err) {
+    rosterGirlsCache = [];
+    renderRosterGirlPicker();
+    setRosterSummonHint(`讀名冊失敗：${err?.message || err}`, true);
+  } finally {
+    rosterLoadBusy = false;
+  }
+}
+
+/** 沙盒：把選定的名冊生徒 adopt 進房間（免費，走與主畫面相同的 adoptRosterGirl） */
+async function summonRosterGirlIntoRoom() {
+  if (summoning || pending) {
+    setRosterSummonHint("正在召喚／抽人中，請稍候。", true);
+    return;
+  }
+  const sel = $("roster-girl-pick");
+  const id = sel?.value || "";
+  if (!id) {
+    setRosterSummonHint("請先選一名冊生徒。", true);
+    return;
+  }
+  let raw = rosterGirlsCache.find((g) => g && g.id === id);
+  if (!raw) {
+    await loadRosterGirlsForSummon({ quiet: true });
+    raw = rosterGirlsCache.find((g) => g && g.id === id);
+  }
+  if (!raw || raw.ntr || raw.taken) {
+    setRosterSummonHint("這隻生徒現在不可召喚（不在名冊或已被帶走）。", true);
+    return;
+  }
+  const roomGirl = buildRoomGirlFromSuccubus(raw);
+  if (!roomGirl) {
+    setRosterSummonHint("無法編成房間人設。", true);
+    return;
+  }
+  const btn = $("summon-roster-girl");
+  if (btn) btn.disabled = true;
+  setRosterSummonHint(`正在召喚「${roomGirl.name}」進房…`);
+  if ($("summon-status")) $("summon-status").textContent = `正在召喚名冊生徒「${roomGirl.name}」…`;
+  try {
+    const ok = await adoptRosterGirl({
+      girl: roomGirl,
+      playerName: rosterPlayerName || roomGirl.playerName || "",
+      paidCost: 0,
+      at: Date.now(),
+      fromTestRoom: true,
+    });
+    if (ok) {
+      setRosterSummonHint(`「${roomGirl.name}」已進房。長按她說話，或測動作圖。`);
+    } else {
+      setRosterSummonHint("召喚未完成（可能正在進行另一場召喚）。", true);
+    }
+  } catch (err) {
+    console.warn("[summonRosterGirlIntoRoom]", err);
+    setRosterSummonHint(`召喚失敗：${err?.message || err}`, true);
+    if ($("summon-status")) $("summon-status").textContent = err?.message || String(err);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function bindRosterSummonUi() {
+  if (!document.documentElement.classList.contains("room-page")
+    && !document.body.classList.contains("room-home")) {
+    // 仍嘗試綁（index 也有 DOM）；無節點則 onId 空操作
+  }
+  onId("summon-roster-girl", "click", () => { void summonRosterGirlIntoRoom(); });
+  onId("reload-roster-girls", "click", () => { void loadRosterGirlsForSummon(); });
+  // 僅沙盒頁預載；room-home 面板隱藏，不必搶請求
+  if (document.documentElement.classList.contains("room-page")
+    && !document.body.classList.contains("room-home")) {
+    void loadRosterGirlsForSummon();
+  }
+}
+
 async function drawGirl() {
   if (pending) return;
   pending = true;
@@ -6078,6 +6297,7 @@ function bindBodyPanel() {
 
 const onId = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
 onId("draw-girl", "click", () => { drawGirl(); });
+bindRosterSummonUi();
 startLifeLoop();
 onId("let-leave", "click", letHerLeave);
 onId("summon-back", "click", summonHerBack);
@@ -6271,6 +6491,8 @@ window.RoomScenes = {
 };
 window.RoomCompanion = {
   adopt: adoptRosterGirl,
+  summonFromRoster: summonRosterGirlIntoRoom,
+  reloadRoster: loadRosterGirlsForSummon,
   sync: () => girl && syncProgressToGame(girl),
   isShip: isShipMode,
   current: () => girl,

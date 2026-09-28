@@ -75,6 +75,15 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #summon-name{font-size:16px;font-weight:400}
 #summon-meta{font-size:12px;color:#8b8071;line-height:1.6;margin:6px 0 0}
 .summon-panel .note{margin:12px 0 0;text-align:left;letter-spacing:0}
+.summon-roster{margin-top:14px;padding-top:12px;border-top:1px dashed #d5c9b5}
+.summon-roster-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.summon-roster-head strong{font-size:14px;font-weight:400}
+.summon-roster-head .mini{font-size:12px;color:#8a82a5}
+.summon-roster-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.summon-roster-row select{flex:1 1 160px;min-width:140px;max-width:100%;font:inherit;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;padding:10px 12px;min-height:44px;border-radius:2px}
+#roster-summon-hint{margin:8px 0 0;font-size:12px;color:#897d6c;min-height:1.2em}
+#roster-summon-hint.err{color:#975e50}
+#reload-roster-girls{min-width:44px;padding:10px 12px}
 #portrait-sheet{position:fixed;left:0;right:0;top:0;bottom:0;width:100%;height:100%;z-index:20;display:flex;align-items:flex-start;justify-content:center;padding:max(10px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom));pointer-events:none}
 #portrait-sheet[hidden]{display:none}
 #portrait-backdrop{position:absolute;inset:0;margin:0;padding:0;min-height:0;border:0;border-radius:0;box-shadow:none;background:transparent;cursor:pointer;pointer-events:auto}
