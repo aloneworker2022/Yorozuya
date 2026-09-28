@@ -1295,15 +1295,15 @@ function lifeNotes() {
   }
   if (world.pregnancy) {
     const dad = world.pregnancy.fatherName || "對方";
-    const n = breedingSuccessCount(who);
-    if (isWifeStage(who.stage)) {
+    const n = breedingSuccessCount(girl);
+    if (isWifeStage(girl.stage)) {
       const hist = n > 0 ? `（已安頓配種成功 ×${n}）` : "";
       notes.push(`她目前「配種成功（${dad}）」${hist}。若未打胎而生產，她留下，召喚者強制花 ${CHILD_SETTLE_GOLD} 金安頓小孩，次數＋1。`);
     } else {
       notes.push(`她目前「配種成功（${dad}）」。若未打胎、繼續打工／亂逛，可能生產並被父親帶走。`);
     }
-  } else if (isWifeStage(who.stage) && breedingSuccessCount(who) > 0) {
-    notes.push(`她已安頓小孩，標註「配種成功 ×${breedingSuccessCount(who)}」。`);
+  } else if (isWifeStage(girl.stage) && breedingSuccessCount(girl) > 0) {
+    notes.push(`她已安頓小孩，標註「配種成功 ×${breedingSuccessCount(girl)}」。`);
   }
   const memories = world.memories || [];
   if (!memories.length) return notes;
