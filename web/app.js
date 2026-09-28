@@ -7532,6 +7532,12 @@ function buildRoomGirlFromSuccubus(s) {
   const portraits = (s.portraits && typeof s.portraits === "object")
     ? { ...s.portraits }
     : {};
+  const bodyState = (s.bodyState && typeof s.bodyState === "object")
+    ? s.bodyState
+    : null;
+  const topicCool = (s.topicCool && typeof s.topicCool === "object" && !Array.isArray(s.topicCool))
+    ? { ...s.topicCool }
+    : null;
   return {
     id: s.id,
     gameGirlId: s.id,
@@ -7550,16 +7556,35 @@ function buildRoomGirlFromSuccubus(s) {
     comfyCkpt: s.comfyCkpt,
     affection: typeof s.affection === "number" ? s.affection : 0,
     stage: mapGameStageToRoom(s.stage || "stranger"),
+    stageLock: s.stageLock || "",
     ntr: s.ntr || null,
     summoner: s.summoner || null,
     portraits,
     portrait: s.portrait || portraits.full || portraits.half || null,
     crave: s.crave || { v: 10, at: Date.now() },
-    chatEnter: "summon",
+    // Default summon; adoptRosterGirl merges flee_back from room prior when same id
+    chatEnter: s.chatEnter === "flee_back" ? "flee_back" : "summon",
     body: s.body || null,
-    playerNotes: s.playerNotes || null,
-    friends: s.friends || null,
+    bodyState,
+    playerNotes: Array.isArray(s.playerNotes) ? s.playerNotes.slice() : (s.playerNotes || null),
+    friends: Array.isArray(s.friends) ? s.friends.slice() : (s.friends || null),
     world: s.world || null,
+    playerName: s.playerName || "",
+    playerNick: s.playerNick || "",
+    playerPet: s.playerPet || "",
+    petProposeCount: Number.isFinite(Number(s.petProposeCount)) ? Number(s.petProposeCount) : 0,
+    petCoolUntil: Number.isFinite(Number(s.petCoolUntil)) ? Number(s.petCoolUntil) : 0,
+    nameWait: s.nameWait || "",
+    pendingPet: s.pendingPet || "",
+    wifeUpPending: s.wifeUpPending || "",
+    datingUpPending: s.datingUpPending || "",
+    topicCool,
+    noteChatTurns: Number.isFinite(Number(s.noteChatTurns)) ? Number(s.noteChatTurns) : 0,
+    noteLastAskAt: Number.isFinite(Number(s.noteLastAskAt)) ? Number(s.noteLastAskAt) : -999,
+    noteLastRecallAt: Number.isFinite(Number(s.noteLastRecallAt)) ? Number(s.noteLastRecallAt) : -999,
+    noteLastTriviaAt: Number.isFinite(Number(s.noteLastTriviaAt)) ? Number(s.noteLastTriviaAt) : -999,
+    loveTalkLastAt: Number.isFinite(Number(s.loveTalkLastAt)) ? Number(s.loveTalkLastAt) : -999,
+    petNudgeLastAt: Number.isFinite(Number(s.petNudgeLastAt)) ? Number(s.petNudgeLastAt) : -999,
   };
 }
 
@@ -7653,23 +7678,70 @@ function applyRoomProgressData(data) {
   const s = state.succubi.find(x => x.id === data.id);
   if (!s) return false;
   let changed = false;
-  if (typeof data.affection === "number" && data.affection !== s.affection) {
-    s.affection = data.affection;
-    changed = true;
-  }
-  if (data.stage && data.stage !== s.stage) {
-    s.stage = data.stage;
-    changed = true;
-  }
+  const setScalar = (key, cast) => {
+    if (!Object.prototype.hasOwnProperty.call(data, key)) return;
+    if (data[key] === undefined) return;
+    const next = cast ? cast(data[key]) : data[key];
+    if (s[key] !== next) {
+      s[key] = next;
+      changed = true;
+    }
+  };
+  setScalar("affection", (v) => (typeof v === "number" ? v : Number(v) || 0));
+  setScalar("stage", (v) => (v ? String(v) : s.stage));
+  setScalar("stageLock", (v) => (v == null ? "" : String(v)));
+  setScalar("comfyCkpt", (v) => (v == null ? "" : String(v)));
+  setScalar("portrait");
+  setScalar("playerName", (v) => (v == null ? "" : String(v)));
+  setScalar("playerNick", (v) => (v == null ? "" : String(v)));
+  setScalar("playerPet", (v) => (v == null ? "" : String(v)));
+  setScalar("petProposeCount", (v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
+  setScalar("petCoolUntil", (v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
+  setScalar("nameWait", (v) => (v == null ? "" : String(v)));
+  setScalar("pendingPet", (v) => (v == null ? "" : String(v)));
+  setScalar("chatEnter", (v) => (v == null ? "" : String(v)));
+  setScalar("wifeUpPending", (v) => (v == null ? "" : String(v)));
+  setScalar("datingUpPending", (v) => (v == null ? "" : String(v)));
+  setScalar("noteChatTurns", (v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
+  setScalar("noteLastAskAt", (v) => (Number.isFinite(Number(v)) ? Number(v) : -999));
+  setScalar("noteLastRecallAt", (v) => (Number.isFinite(Number(v)) ? Number(v) : -999));
+  setScalar("noteLastTriviaAt", (v) => (Number.isFinite(Number(v)) ? Number(v) : -999));
+  setScalar("loveTalkLastAt", (v) => (Number.isFinite(Number(v)) ? Number(v) : -999));
+  setScalar("petNudgeLastAt", (v) => (Number.isFinite(Number(v)) ? Number(v) : -999));
+
   if (data.portraits && typeof data.portraits === "object") {
     s.portraits = { ...(s.portraits || {}), ...data.portraits };
-    if (data.portraits.half || data.portraits.full) {
-      s.portrait = data.portraits.full || data.portraits.half || s.portrait;
+    if (data.portraits.half || data.portraits.full || data.portrait) {
+      s.portrait = data.portrait || data.portraits.full || data.portraits.half || s.portrait;
     }
     changed = true;
+  } else if (data.portrait && data.portrait !== s.portrait) {
+    s.portrait = data.portrait;
+    changed = true;
   }
+  // world: room is newer after play — replace
   if (data.world && typeof data.world === "object") {
     s.world = data.world;
+    changed = true;
+  }
+  if (data.bodyState && typeof data.bodyState === "object") {
+    s.bodyState = data.bodyState;
+    changed = true;
+  }
+  if (data.body && typeof data.body === "object") {
+    s.body = data.body;
+    changed = true;
+  }
+  if (Array.isArray(data.friends)) {
+    s.friends = data.friends.slice();
+    changed = true;
+  }
+  if (Array.isArray(data.playerNotes)) {
+    s.playerNotes = data.playerNotes.slice();
+    changed = true;
+  }
+  if (data.topicCool && typeof data.topicCool === "object" && !Array.isArray(data.topicCool)) {
+    s.topicCool = { ...data.topicCool };
     changed = true;
   }
   if (changed) {

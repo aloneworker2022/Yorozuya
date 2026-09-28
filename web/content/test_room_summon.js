@@ -4340,16 +4340,88 @@ function persistRoom() {
 const ROOM_PROGRESS_KEY = "yoro_room_progress_sync";
 const ROOM_PENDING_KEY = "yoro_room_pending_adopt";
 
-function syncProgressToGame(who) {
-  if (!who?.id || !(who.fromRoster || who.gameGirlId)) return;
+/** Room↔roster durable fields (not ephemeral chatLines / topicHint / live lines). */
+const ROOM_DURABLE_SCALARS = [
+  "affection", "stage", "stageLock",
+  "portrait", "comfyCkpt",
+  "playerName", "playerNick", "playerPet",
+  "petProposeCount", "petCoolUntil", "nameWait", "pendingPet",
+  "chatEnter",
+  "wifeUpPending", "datingUpPending",
+  "noteChatTurns", "noteLastAskAt", "noteLastRecallAt", "noteLastTriviaAt",
+  "loveTalkLastAt", "petNudgeLastAt",
+];
+
+function roomDurableDefined(v) {
+  return v !== undefined;
+}
+
+/** Snapshot durable progress for roster write-back. */
+function pickRoomDurableProgress(who) {
+  if (!who) return null;
   const detail = {
     id: who.gameGirlId || who.id,
-    affection: who.affection || 0,
-    stage: who.stage || "stranger",
-    portraits: who.portraits || {},
-    world: who.world || null,
     at: Date.now(),
   };
+  for (const k of ROOM_DURABLE_SCALARS) {
+    if (roomDurableDefined(who[k])) detail[k] = who[k];
+  }
+  if (who.portraits && typeof who.portraits === "object") detail.portraits = who.portraits;
+  if (who.world && typeof who.world === "object") detail.world = who.world;
+  if (who.bodyState && typeof who.bodyState === "object") detail.bodyState = who.bodyState;
+  if (who.body && typeof who.body === "object") detail.body = who.body;
+  if (Array.isArray(who.friends)) detail.friends = who.friends;
+  if (Array.isArray(who.playerNotes)) detail.playerNotes = who.playerNotes;
+  if (who.topicCool && typeof who.topicCool === "object" && !Array.isArray(who.topicCool)) {
+    detail.topicCool = who.topicCool;
+  }
+  return detail;
+}
+
+/**
+ * Merge durable room session fields onto a roster-rolled girl.
+ * Prefer prior (room / saved session) when present — room is newer after play.
+ */
+function mergeRoomGirlDurable(base, prior) {
+  if (!base || typeof base !== "object") return base;
+  if (!prior || typeof prior !== "object") return base;
+  const out = { ...base };
+
+  for (const k of ROOM_DURABLE_SCALARS) {
+    if (!Object.prototype.hasOwnProperty.call(prior, k)) continue;
+    if (!roomDurableDefined(prior[k])) continue;
+    out[k] = prior[k];
+  }
+
+  // chatEnter: never let roster "summon" clobber flee_back from room prior
+  if (prior.chatEnter === "flee_back") out.chatEnter = "flee_back";
+  else if (prior.chatEnter) out.chatEnter = prior.chatEnter;
+
+  if (prior.portraits && typeof prior.portraits === "object") {
+    out.portraits = { ...(out.portraits || {}), ...prior.portraits };
+  }
+  if (prior.portrait) out.portrait = prior.portrait;
+
+  if (prior.world && typeof prior.world === "object") out.world = prior.world;
+  if (prior.bodyState && typeof prior.bodyState === "object") out.bodyState = prior.bodyState;
+  if (prior.body && typeof prior.body === "object") out.body = prior.body;
+  if (Array.isArray(prior.friends)) out.friends = prior.friends.slice();
+  if (Array.isArray(prior.playerNotes)) out.playerNotes = prior.playerNotes.slice();
+  if (prior.topicCool && typeof prior.topicCool === "object" && !Array.isArray(prior.topicCool)) {
+    out.topicCool = { ...prior.topicCool };
+  }
+  return out;
+}
+
+function syncProgressToGame(who) {
+  if (!who?.id || !(who.fromRoster || who.gameGirlId)) return;
+  const detail = pickRoomDurableProgress(who);
+  if (!detail?.id) return;
+  // Keep legacy defaults so older listeners still see affection/stage/portraits/world
+  if (detail.affection == null) detail.affection = who.affection || 0;
+  if (!detail.stage) detail.stage = who.stage || "stranger";
+  if (!detail.portraits) detail.portraits = who.portraits || {};
+  if (detail.world === undefined) detail.world = who.world || null;
   try {
     localStorage.setItem(ROOM_PROGRESS_KEY, JSON.stringify(detail));
   } catch { /* ignore */ }
@@ -4375,22 +4447,28 @@ function takePendingAdopt() {
 function adoptRosterGirl(payload) {
   const rolled = payload?.girl;
   if (!rolled?.id) return false;
-  // 保留已有日本世界／住處（名冊物件或當前／存檔 session），避免再召喚後丟 world
-  let keepWorld = rolled.world || null;
-  if (!keepWorld && girl?.id === rolled.id && girl.world) keepWorld = girl.world;
-  if (!keepWorld) {
+  // Same-id room prior (live girl or saved session) is newer after play — merge durables
+  let prior = null;
+  if (girl?.id === rolled.id) prior = girl;
+  if (!prior) {
     try {
       const saved = loadRoomSave();
-      if (saved?.girl?.id === rolled.id && saved.girl.world) keepWorld = saved.girl.world;
+      if (saved?.girl?.id === rolled.id) prior = saved.girl;
     } catch { /* ignore */ }
   }
-  girl = {
+  let next = {
     ...rolled,
     fromRoster: true,
     gameGirlId: rolled.gameGirlId || rolled.id,
     chatEnter: rolled.chatEnter || "summon",
   };
-  if (keepWorld) girl.world = keepWorld;
+  if (prior) {
+    next = mergeRoomGirlDurable(next, prior);
+    if (prior.chatEnter === "flee_back") next.chatEnter = "flee_back";
+  } else if (rolled.world) {
+    next.world = rolled.world;
+  }
+  girl = next;
   if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
   ensureBody(girl);
   ensureFriends(girl);
