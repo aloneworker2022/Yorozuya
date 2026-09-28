@@ -5110,6 +5110,59 @@ def put_finger_packs(body: dict):
     tmp.replace(path)
     return {"ok": True, "count": len(packs)}
 
+
+def _standee_packs_path():
+    return WEB_DIR / "content" / "standee_packs.json"
+
+
+@app.get("/api/standee-packs")
+def get_standee_packs():
+    """半身立繪表情 9 槽：{slots:{slight|aroused|wantFill|climax|interfere|blank|beg|stun|spasm}}"""
+    path = _standee_packs_path()
+    slot_ids = (
+        "slight", "aroused", "wantFill", "climax",
+        "interfere", "blank", "beg", "stun", "spasm",
+    )
+    empty = {sid: {} for sid in slot_ids}
+    if not path.is_file():
+        return {"slots": empty}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"slots": empty}
+    if not isinstance(data, dict):
+        return {"slots": empty}
+    raw = data.get("slots") if isinstance(data.get("slots"), dict) else {}
+    slots = {}
+    for sid in slot_ids:
+        s = raw.get(sid) if isinstance(raw.get(sid), dict) else {}
+        slots[sid] = s if isinstance(s, dict) else {}
+    return {"slots": slots}
+
+
+@app.put("/api/standee-packs")
+def put_standee_packs(body: dict):
+    if not isinstance(body.get("slots"), dict):
+        raise HTTPException(400, "需要 {slots:{...}}")
+    slot_ids = (
+        "slight", "aroused", "wantFill", "climax",
+        "interfere", "blank", "beg", "stun", "spasm",
+    )
+    raw = body["slots"]
+    slots = {}
+    for sid in slot_ids:
+        s = raw.get(sid) if isinstance(raw.get(sid), dict) else {}
+        slots[sid] = s if isinstance(s, dict) else {}
+    doc = {"slots": slots}
+    path = _standee_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    filled = sum(1 for s in slots.values() if str(s.get("prompt") or "").strip())
+    return {"ok": True, "count": filled}
+
+
 @app.get("/api/script-packs")
 def get_script_packs():
     path = _script_packs_path()

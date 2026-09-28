@@ -440,7 +440,7 @@ body.room-home #home-room-chrome { display: none !important; }
 .tease-pack-panel select{width:100%;font:inherit;color:inherit;background:#eee8dd;border:1px solid #cbbfaa;border-radius:4px;padding:.4em .55em}
 .tease-pack-panel textarea{resize:vertical;line-height:1.5;min-height:4em}
 .tease-pack-panel button{font:inherit;padding:8px 12px;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;min-height:40px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
-.bp-row,.wp-row,.br-row,.kn-row,.su-row,.lk-row,.lb-row,.lr-row,.fg-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
+.bp-row,.wp-row,.br-row,.kn-row,.su-row,.lk-row,.lb-row,.lr-row,.fg-row,.sd-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
 .bp-grow,.wp-grow,.br-grow,.kn-grow,.su-grow,.lk-grow,.lb-grow,.lr-grow,.fg-grow{flex:1 1 10em;min-width:0}
 .bp-fix0,.wp-fix0,.br-fix0,.kn-fix0,.su-fix0,.lk-fix0,.lb-fix0,.lr-fix0,.fg-fix0{flex:0 1 7em}
 .tease-pack-panel button.bp-cy,
@@ -451,7 +451,8 @@ body.room-home #home-room-chrome { display: none !important; }
 .tease-pack-panel button.lk-cy,
 .tease-pack-panel button.lb-cy,
 .tease-pack-panel button.lr-cy,
-.tease-pack-panel button.fg-cy{background:#dce2cf;color:#48604a}
+.tease-pack-panel button.fg-cy,
+.tease-pack-panel button.sd-cy{background:#dce2cf;color:#48604a}
 .tease-pack-panel button.bp-del,
 .tease-pack-panel button.wp-del,
 .tease-pack-panel button.br-del,
@@ -460,7 +461,8 @@ body.room-home #home-room-chrome { display: none !important; }
 .tease-pack-panel button.lk-del,
 .tease-pack-panel button.lb-del,
 .tease-pack-panel button.lr-del,
-.tease-pack-panel button.fg-del{color:#975e50}
+.tease-pack-panel button.fg-del,
+.tease-pack-panel button.sd-del{color:#975e50}
 .tease-pack-panel button.bp-big,
 .tease-pack-panel button.wp-big,
 .tease-pack-panel button.br-big,
@@ -469,7 +471,8 @@ body.room-home #home-room-chrome { display: none !important; }
 .tease-pack-panel button.lk-big,
 .tease-pack-panel button.lb-big,
 .tease-pack-panel button.lr-big,
-.tease-pack-panel button.fg-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
+.tease-pack-panel button.fg-big,
+.tease-pack-panel button.sd-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
 .bp-ref-head,.wp-ref-head,.br-ref-head,.kn-ref-head,.su-ref-head,.lk-ref-head,.lb-ref-head,.lr-ref-head,.fg-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .bp-mode-flag,.wp-mode-flag,.br-mode-flag,.kn-mode-flag,.su-mode-flag,.lk-mode-flag,.lb-mode-flag,.lr-mode-flag,.fg-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
 .bp-mode-flag.txt,.wp-mode-flag.txt,.br-mode-flag.txt,.kn-mode-flag.txt,.su-mode-flag.txt,.lk-mode-flag.txt,.lb-mode-flag.txt,.lr-mode-flag.txt,.fg-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
@@ -477,9 +480,9 @@ body.room-home #home-room-chrome { display: none !important; }
 .bp-thumb,.wp-thumb,.br-thumb,.kn-thumb,.su-thumb,.lk-thumb,.lb-thumb,.lr-thumb,.fg-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
 .bp-status,.wp-status,.br-status,.kn-status,.su-status,.lk-status,.lb-status,.lr-status,.fg-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
 .bp-status.err,.wp-status.err,.br-status.err,.kn-status.err,.su-status.err,.lk-status.err,.lb-status.err,.lr-status.err,.fg-status.err{color:#975e50}
-.bp-art,.wp-art,.br-art,.kn-art,.su-art,.lk-art,.lb-art,.lr-art,.fg-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
-.bp-art img,.wp-art img,.br-art img,.kn-art img,.su-art img,.lk-art img,.lb-art img,.lr-art img,.fg-art img{max-width:100%;max-height:360px;display:block}
-.bp-art .mini,.wp-art .mini,.br-art .mini,.kn-art .mini,.su-art .mini,.lk-art .mini,.lb-art .mini,.lr-art .mini,.fg-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
+.bp-art,.wp-art,.br-art,.kn-art,.su-art,.lk-art,.lb-art,.lr-art,.fg-art,.sd-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
+.bp-art img,.wp-art img,.br-art img,.kn-art img,.su-art img,.lk-art img,.lb-art img,.lr-art img,.fg-art img,.sd-art img{max-width:100%;max-height:360px;display:block}
+.bp-art .mini,.wp-art .mini,.br-art .mini,.kn-art .mini,.su-art .mini,.lk-art .mini,.lb-art .mini,.lr-art .mini,.fg-art .mini,.sd-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
 /* 動作圖編輯器只屬於獨立 test_room 頁，主站永不顯示。 */
 body.room-home #btn-butt-packs,
 body.room-home #btn-waist-packs,
@@ -490,6 +493,7 @@ body.room-home #btn-lick-packs,
 body.room-home #btn-labia-packs,
 body.room-home #btn-labia-rub-packs,
 body.room-home #btn-finger-packs,
+body.room-home #btn-standee-packs,
 body.room-home #butt-pack-editor,
 body.room-home #waist-pack-editor,
 body.room-home #breast-pack-editor,
@@ -499,6 +503,7 @@ body.room-home #lick-pack-editor,
 body.room-home #labia-pack-editor,
 body.room-home #labia-rub-pack-editor,
 body.room-home #finger-pack-editor,
+body.room-home #standee-pack-editor,
 html:not(.room-page) #btn-butt-packs,
 html:not(.room-page) #btn-waist-packs,
 html:not(.room-page) #btn-breast-packs,
@@ -508,6 +513,7 @@ html:not(.room-page) #btn-lick-packs,
 html:not(.room-page) #btn-labia-packs,
 html:not(.room-page) #btn-labia-rub-packs,
 html:not(.room-page) #btn-finger-packs,
+html:not(.room-page) #btn-standee-packs,
 html:not(.room-page) #butt-pack-editor,
 html:not(.room-page) #waist-pack-editor,
 html:not(.room-page) #breast-pack-editor,
@@ -516,7 +522,8 @@ html:not(.room-page) #suck-pack-editor,
 html:not(.room-page) #lick-pack-editor,
 html:not(.room-page) #labia-pack-editor,
 html:not(.room-page) #labia-rub-pack-editor,
-html:not(.room-page) #finger-pack-editor {
+html:not(.room-page) #finger-pack-editor,
+html:not(.room-page) #standee-pack-editor {
   display: none !important;
 }
 
@@ -543,3 +550,19 @@ html:not(.room-page) #room-pack-chrome { display: none; }
 .room-summon-ritual[hidden]{display:none}
 body.room-home .room-summon-ritual:not([hidden]){display:block}
 #main-room-stage[aria-busy="true"]{opacity:.92}
+
+/* 立繪 9 槽堆疊面板 */
+.standee-pack-panel{max-height:min(88vh,920px);overflow:auto}
+.sd-slots{display:flex;flex-direction:column;gap:14px;margin-top:8px}
+.sd-block{border:1px solid #d5c9b5;border-radius:6px;padding:10px 12px;background:#f3eee4}
+.sd-block-head{display:flex;flex-direction:column;gap:2px;margin:0 0 6px;padding-bottom:6px;border-bottom:1px solid #e0d6c6}
+.sd-block-head strong{font-size:13px}
+.sd-grow{flex:1;min-width:120px}
+.sd-form0{display:flex;flex-direction:column;gap:2px;min-width:100px}
+.sd-ref-head{display:flex;align-items:center;gap:8px;margin:.55em 0 .25em;font-size:12px;color:#776c5b}
+.sd-mode-flag{font-size:11px;padding:2px 6px;border-radius:3px;background:#e8e2d6}
+.sd-mode-flag.img{background:#dce2cf;color:#48604a}
+.sd-mode-flag.txt{color:#776c5b}
+.sd-thumb{max-width:120px;max-height:120px;margin:.35em 0;border:1px solid #cbbfaa;display:block}
+.sd-status{min-height:1.4em;margin:.5em 0;font-size:12px;color:#657353}
+.sd-status.err{color:#975e50}

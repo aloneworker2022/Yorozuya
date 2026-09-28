@@ -976,6 +976,14 @@ export function scrambleReply(text, stun, actId = "", who = null) {
   const s = clamp(stun, 0, 100);
   const tier = stunTier(s);
   const raw = String(text || "").trim();
+  // 普通閒聊（無挑逗 act）：僅失神／痙攣改寫；干擾／空白／求饒保持可讀
+  const teasing = !!String(actId || "").trim();
+  if (!teasing && tier !== "stun") {
+    let out = raw;
+    if (out.length > 80) out = out.slice(0, 72) + "…";
+    out = lightMoanSprinkle(out, who, s, false) || out;
+    return out || "……";
+  }
   if (tier === "calm") {
     let out = raw;
     if (out.length > 80) out = out.slice(0, 72) + "…";
@@ -984,14 +992,14 @@ export function scrambleReply(text, stun, actId = "", who = null) {
   }
   if (tier === "stun" || !raw) return stunTemplate(s, actId, who);
   if (tier === "blank") {
-    // LLM 回覆壓成空白碎片，或整段換成空白模板
+    // LLM 回覆壓成空白碎片，或整段換成空白模板（僅挑逗中）
     if (Math.random() < 0.6) return blankTemplate(actId, who);
     const scraps = splitClauses(stripCausal(raw)).map(keepScrap).filter(Boolean).slice(0, 2);
     if (!scraps.length) return blankTemplate(actId, who);
     return (scraps.join("") + (Math.random() < 0.5 ? "……" : "")).slice(0, 18);
   }
   if (tier === "beg") {
-    // 求饒模板為主，偶留一點原文碎片
+    // 求饒模板為主，偶留一點原文碎片（僅挑逗中）
     if (Math.random() < 0.7 || !raw) return begTemplate(actId, who);
     const scraps = splitClauses(stripCausal(raw)).map(keepScrap).filter(Boolean).slice(0, 1);
     const beg = pick(style.begBits);

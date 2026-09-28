@@ -513,6 +513,10 @@ export function mountLabiaRubPackEditor(hooks = {}) {
     const btn7 = $("btn-finger-packs");
     if (el7 && !el7.hidden) el7.hidden = true;
     if (btn7) btn7.setAttribute("aria-expanded", "false");
+    const el8 = $("standee-pack-editor");
+    const btn8 = $("btn-standee-packs");
+    if (el8 && !el8.hidden) el8.hidden = true;
+    if (btn8) btn8.setAttribute("aria-expanded", "false");
   };
 
   const open = async () => {

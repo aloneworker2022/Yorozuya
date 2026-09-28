@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content">
   <meta name="theme-color" content="#eee8dd">
   <title>我的房間 · Yorozuya</title>
-  <link rel="stylesheet" href="/content/test_room.css?v=86">
+  <link rel="stylesheet" href="/content/test_room.css?v=87">
   <script>
     (function () {
       try {
@@ -177,6 +177,7 @@
     <button id="btn-labia-packs" type="button" aria-expanded="false" aria-controls="labia-pack-editor">摸陰唇圖</button>
     <button id="btn-labia-rub-packs" type="button" aria-expanded="false" aria-controls="labia-rub-pack-editor">揉陰唇圖</button>
     <button id="btn-finger-packs" type="button" aria-expanded="false" aria-controls="finger-pack-editor">手指插入圖</button>
+    <button id="btn-standee-packs" type="button" aria-expanded="false" aria-controls="standee-pack-editor">立繪</button>
     <button id="edit-room" type="button" aria-pressed="false" aria-controls="room-editor">編輯</button>
   </nav>
   <div id="butt-pack-editor" class="tease-pack-panel" hidden aria-label="摸臀圖預設">
@@ -585,6 +586,17 @@
           <div class="fg-status" id="fg-status"></div>
           <div class="fg-art" id="fg-art"><span class="mini">尚未產生</span></div>
   </div>
+  <div id="standee-pack-editor" class="tease-pack-panel standee-pack-panel" hidden aria-label="半身立繪表情預設">
+    <div class="tease-pack-panel-head"><strong>立繪</strong><span class="mini">性奮 4 槽＋失神路徑 5 槽；無性奮用預設半身。聊天依性奮切換；挑逗中優先失神／痙攣立繪</span></div>
+    <div class="sd-row">
+      <span class="sd-grow"><label>測試魅子</label>
+        <select id="sd-girl"></select></span>
+      <button type="button" id="sd-save" class="sd-cy">儲存全部</button>
+      <button type="button" id="sd-close">收合</button>
+    </div>
+    <div id="sd-slots" class="sd-slots"></div>
+    <div class="sd-status" id="sd-status"></div>
+  </div>
   <div id="room-summon-ritual" class="room-summon-ritual" hidden role="status" aria-live="polite"></div>
   <div id="portrait-sheet" hidden>
     <button id="portrait-backdrop" type="button" aria-label="結束對話"></button>
@@ -618,6 +630,6 @@
   <script src="/content/room_furniture.js?v=4"></script>
   <script src="/content/room_character.js?v=7"></script>
   <script src="/content/test_room.js?v=16"></script>
-  <script type="module" src="/content/test_room_summon.js?v=110"></script>
+  <script type="module" src="/content/test_room_summon.js?v=111"></script>
 </body>
 </html>

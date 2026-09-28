@@ -45,7 +45,7 @@ import {
   AFTERGLOW_FRIEND_CONT_REPLIES,
   AFTERGLOW_FRIEND_MARATHON_MS,
   AFTERGLOW_FRIEND_MARATHON_REPLIES,
-} from "./stun_speech.js?v=12";
+} from "./stun_speech.js?v=13";
 import {
   ensureTeaseFields,
   actLockState,
@@ -132,6 +132,13 @@ import {
   loadFingerDoc,
   generateFingerPackImage,
 } from "./finger_packs.js?v=1";
+import {
+  mountStandeePackEditor,
+  loadStandeeDoc,
+  listFilledStandeeSlots,
+  generateStandeePackImage,
+  standeeUrlFor,
+} from "./standee_packs.js?v=1";
 import { SUMMON_RITUAL_LINES, startSummonRitualStatus } from "./summon_ritual.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
@@ -1082,7 +1089,7 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
   const onStatus = typeof opts.onStatus === "function" ? opts.onStatus : null;
   const counts = {
     butt: 0, waist: 0, breast: 0, knead: 0, suck: 0,
-    lick: 0, labia: 0, labia_rub: 0, finger: 0,
+    lick: 0, labia: 0, labia_rub: 0, finger: 0, standee: 0,
   };
   let halfOk = false;
   try {
@@ -1109,6 +1116,7 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
     who.portraits.tease_labia_packs = who.portraits.tease_labia_packs || {};
     who.portraits.tease_labia_rub_packs = who.portraits.tease_labia_rub_packs || {};
     who.portraits.tease_finger_in_packs = who.portraits.tease_finger_in_packs || {};
+    who.portraits.standee = who.portraits.standee || {};
 
     const packJobs = [
       { load: loadButtDoc, gen: generateButtPackImage, packsKey: "tease_butt_packs", shotKey: "tease_butt", countKey: "butt" },
@@ -1150,6 +1158,30 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
       }
     }
 
+    // 立繪 9 槽：僅預產已填正向 tags 的槽（skip empty）
+    let standeeSlots = [];
+    try {
+      const sdDoc = await loadStandeeDoc();
+      standeeSlots = listFilledStandeeSlots(sdDoc);
+    } catch (err) {
+      console.warn("[pregenGirlPortraits] load standee", err?.message || err);
+      standeeSlots = [];
+    }
+    for (const slot of standeeSlots) {
+      const result = await generateStandeePackImage(slot, who, engine, {
+        stage: who.stage || "stranger",
+        worn: wornOutfit(who),
+      });
+      if (result?.status === "done" && result.result) {
+        const stamped = stampPortraitUrl(result.result);
+        who.portraits.standee[slot.id] = stamped;
+        counts.standee += 1;
+        persistRoom();
+      } else {
+        throw new Error(result?.error || `standee「${slot.label || slot.id}」生圖失敗`);
+      }
+    }
+
     if (onStatus) onStatus(`半身與動作圖已就緒`);
     return { half: halfOk, counts };
   } catch (err) {
@@ -1161,17 +1193,39 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
   }
 }
 
-function paintHalfPortrait(who = girl) {
+/** 解析當前應顯示的半身立繪槽：挑逗／痙攣→失神路徑；否則依性奮。無對應圖則空字串。 */
+function resolveStandeeSlotForPaint(who, opts = {}) {
+  if (!who) return "";
+  const teasing = !!(opts.teasing || opts.actId);
+  if (inSpasm(who)) return "spasm";
+  if (teasing) {
+    const stun = opts.stun != null ? opts.stun : effectiveStun(who, opts.actId || "");
+    const tier = stunTier(stun);
+    if (tier === "interfere" || tier === "blank" || tier === "beg" || tier === "stun") return tier;
+  }
+  const ar = arousalStage(who?.bodyState?.arousal);
+  if (ar === "slight" || ar === "aroused" || ar === "wantFill" || ar === "climax") return ar;
+  return "";
+}
+
+function paintHalfPortrait(who = girl, opts = {}) {
   const img = $("portrait-img");
   if (!img) return;
-  const url = who?.portraits?.half || (who?.portrait && !who?.portraits?.full ? who.portrait : "") || "";
+  const slotId = resolveStandeeSlotForPaint(who, opts);
+  const standee = slotId ? standeeUrlFor(who, slotId) : "";
+  const url = standee
+    || who?.portraits?.half
+    || (who?.portrait && !who?.portraits?.full ? who.portrait : "")
+    || "";
   if (!url || !who) {
     resetPortraitEntrance(img);
     img.removeAttribute("src");
     img.alt = "";
     return;
   }
-  img.alt = `${who.name}的半身立繪`;
+  img.alt = standee && slotId
+    ? `${who.name}的立繪（${slotId}）`
+    : `${who.name}的半身立繪`;
   const prev = img.getAttribute("src") || "";
   const srcChanged = prev !== url;
   if (srcChanged) img.src = url;
@@ -4187,6 +4241,7 @@ async function openTalk() {
     lines.push({ role: "assistant", content: line });
     rememberChat();
     persistRoom();
+    try { paintHalfPortrait(girl); } catch { /* ignore */ }
     if (streamed) {
       setTyping(false);
       $("portrait-name").textContent = girl.name;
@@ -4398,8 +4453,8 @@ async function deliverUserTalk(text, opts = {}) {
       } else if (shouldSkipLlm(stun, girl)) {
         line = stunTemplate(stun, actId, girl) || "……嗯啊…";
         setTyping(false);
-      } else if (tier === "blank" || tier === "beg") {
-        // 50–64 空白／65–74 求饒：走模板，蓋過正常抗議（太失神罵不完整）
+      } else if (actId && (tier === "blank" || tier === "beg")) {
+        // 僅挑逗中：50–64 空白／65–74 求饒走模板；普通閒聊保持正常對話
         line = stunTemplate(stun, actId, girl) || (tier === "beg" ? "求、求你…慢一點…" : "……");
         setTyping(false);
       } else {
@@ -4429,6 +4484,9 @@ async function deliverUserTalk(text, opts = {}) {
       lines.push({ role: "assistant", content: line });
       rememberChat();
       persistRoom();
+      try {
+        paintHalfPortrait(girl, { teasing: !!actId, actId, stun });
+      } catch { /* ignore */ }
       if (streamed && stun < 25) {
         setTyping(false);
         $("portrait-name").textContent = girl.name;
@@ -6542,20 +6600,28 @@ if (document.documentElement.classList.contains("room-page")) {
   } catch (err) {
     console.warn("[finger-pack-editor]", err?.message || err);
   }
+  try {
+    mountStandeePackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[standee-pack-editor]", err?.message || err);
+  }
 }
 
 // 開「編輯」時收合浮動圖組面板（面板不依賴 room-editor，但避免重疊）
 $("edit-room")?.addEventListener("click", () => {
   for (const id of [
     "butt-pack-editor", "waist-pack-editor", "breast-pack-editor", "knead-pack-editor", "suck-pack-editor",
-    "lick-pack-editor", "labia-pack-editor", "labia-rub-pack-editor", "finger-pack-editor",
+    "lick-pack-editor", "labia-pack-editor", "labia-rub-pack-editor", "finger-pack-editor", "standee-pack-editor",
   ]) {
     const el = $(id);
     if (el) el.hidden = true;
   }
   for (const id of [
     "btn-butt-packs", "btn-waist-packs", "btn-breast-packs", "btn-knead-packs", "btn-suck-packs",
-    "btn-lick-packs", "btn-labia-packs", "btn-labia-rub-packs", "btn-finger-packs",
+    "btn-lick-packs", "btn-labia-packs", "btn-labia-rub-packs", "btn-finger-packs", "btn-standee-packs",
   ]) {
     $(id)?.setAttribute("aria-expanded", "false");
   }
