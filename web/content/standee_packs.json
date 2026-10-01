@@ -1,3 +1,94 @@
 {
-  "slots": {}
+  "slots": {
+    "slight": {
+      "id": "slight",
+      "label": "微微性奮",
+      "poseDenoise": 0.55,
+      "prompt": "half-body portrait, looking at viewer, plain solid color background, simple background, light blush, slightly aroused expression, soft eyes, subtle parted lips",
+      "negative": "text, watermark, logo, signature, ugly, deformed, extra limbs, extra fingers, bad anatomy, lowres, blurry, cropped head badly",
+      "ref": "",
+      "url": "/assets/testword/1790604478883_723c4f1e.png",
+      "updated": 1790604732762
+    },
+    "aroused": {
+      "id": "aroused",
+      "label": "性奮",
+      "poseDenoise": 0.55,
+      "prompt": "half-body portrait, looking at viewer, plain solid color background, simple background, flushed cheeks, aroused expression, heavy eyelids, breathing open mouth",
+      "negative": "text, watermark, logo, signature, ugly, deformed, extra limbs, extra fingers, bad anatomy, lowres, blurry, cropped head badly",
+      "ref": "",
+      "url": "/assets/testword/1790604496098_74752fcc.png",
+      "updated": 1790604732762
+    },
+    "wantFill": {
+      "id": "wantFill",
+      "label": "想被填滿",
+      "poseDenoise": 0.55,
+      "prompt": "half-body portrait, looking at viewer, plain solid color background, simple background, needy expression, pleading eyes, parted lips, flushed face, yearning look",
+      "negative": "text, watermark, logo, signature, ugly, deformed, extra limbs, extra fingers, bad anatomy, lowres, blurry, cropped head badly",
+      "ref": "",
+      "url": "/assets/testword/1790604504603_8d38a815.png",
+      "updated": 1790604732762
+    },
+    "climax": {
+      "id": "climax",
+      "label": "高潮接受中",
+      "poseDenoise": 0.55,
+      "prompt": "half-body portrait, looking at viewer, plain solid color background, simple background, climax face, rolling eyes, open mouth, intense blush, ecstasy expression",
+      "negative": "text, watermark, logo, signature, ugly, deformed, extra limbs, extra fingers, bad anatomy, lowres, blurry, cropped head badly",
+      "ref": "",
+      "url": "/assets/testword/1790604515375_b735a3cd.png",
+      "updated": 1790604732762
+    },
+    "interfere": {
+      "id": "interfere",
+      "label": "干擾",
+      "poseDenoise": 0.55,
+      "prompt": "half-body portrait, looking at viewer, plain solid color background, simple background, distracted expression, flustered, interrupted mid-speech, uneasy eyes",
+      "negative": "text, watermark, logo, signature, ugly, deformed, extra limbs, extra fingers, bad anatomy, lowres, blurry, cropped head badly",
+      "ref": "",
+      "url": "/assets/testword/1790604539558_abbb1a30.png",
+      "updated": 1790604732762
+    },
+    "blank": {
+      "id": "blank",
+      "label": "空白",
+      "poseDenoise": 0.55,
+      "prompt": "half-body portrait, looking at viewer, plain solid color background, simple background, vacant eyes, blank expression, dazed, empty stare, soft open mouth",
+      "negative": "text, watermark, logo, signature, ugly, deformed, extra limbs, extra fingers, bad anatomy, lowres, blurry, cropped head badly",
+      "ref": "",
+      "url": "/assets/testword/1790604551255_b8f06fb2.png",
+      "updated": 1790604732762
+    },
+    "beg": {
+      "id": "beg",
+      "label": "求饒",
+      "poseDenoise": 0.55,
+      "prompt": "half-body portrait, looking at viewer, plain solid color background, simple background, pleading expression, teary eyes, begging look, desperate face",
+      "negative": "text, watermark, logo, signature, ugly, deformed, extra limbs, extra fingers, bad anatomy, lowres, blurry, cropped head badly",
+      "ref": "",
+      "url": "/assets/testword/1790604559440_3b46587e.png",
+      "updated": 1790604732762
+    },
+    "stun": {
+      "id": "stun",
+      "label": "失神",
+      "poseDenoise": 0.55,
+      "prompt": "half-body portrait, looking at viewer, plain solid color background, simple background, ahegao, fucked-silly expression, lost eyes, climax face, rolling eyes, open mouth, intense blush, ecstasy expressiontongue out slightly, mind blank face",
+      "negative": "text, watermark, logo, signature, ugly, deformed, extra limbs, extra fingers, bad anatomy, lowres, blurry, cropped head badly",
+      "ref": "",
+      "url": "/assets/testword/1790604697031_a61b499b.png",
+      "updated": 1790604732762
+    },
+    "spasm": {
+      "id": "spasm",
+      "label": "痙攣",
+      "poseDenoise": 0.55,
+      "prompt": "half-body portrait, looking at viewer, plain solid color background, simple background, orgasm spasm face, trembling, teary eyes, gasping, convulsing expression,climax face, rolling eyes, open mouth, intense blush, ecstasy expression",
+      "negative": "text, watermark, logo, signature, ugly, deformed, extra limbs, extra fingers, bad anatomy, lowres, blurry, cropped head badly",
+      "ref": "",
+      "url": "/assets/testword/1790604671203_f5248b5e.png",
+      "updated": 1790604732762
+    }
+  }
 }

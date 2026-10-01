@@ -1,4 +1,15 @@
 {
-  "packs": [],
-  "activeId": ""
+  "packs": [
+    {
+      "id": "mula3pje496ood",
+      "name": "摸陰唇 1",
+      "poseDenoise": 0.55,
+      "prompt": "simple background, white background, lower body, pussy focus, labia focus, head out of frame, first-person POV, one male finger touching labia, NO face of girl, NO head of girl",
+      "negative": "head, face, hair, eyes, smile, looking at viewer, portrait, text, watermark, ugly, extra fingers",
+      "ref": "",
+      "url": "/assets/portraits/cd_mul2590z3any_tease_labia.png?v=1790601856",
+      "updated": 1790601873459
+    }
+  ],
+  "activeId": "mula3pje496ood"
 }

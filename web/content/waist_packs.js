@@ -518,6 +518,10 @@ export function mountWaistPackEditor(hooks = {}) {
     const btn8 = $("btn-standee-packs");
     if (el8 && !el8.hidden) el8.hidden = true;
     if (btn8) btn8.setAttribute("aria-expanded", "false");
+    const el9 = $("undress-pack-editor");
+    const btn9 = $("btn-undress-packs");
+    if (el9 && !el9.hidden) el9.hidden = true;
+    if (btn9) btn9.setAttribute("aria-expanded", "false");
   };
 
   const open = async () => {

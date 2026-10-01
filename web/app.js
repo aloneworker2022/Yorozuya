@@ -51,6 +51,7 @@ import {
 } from "./content/finger_packs.js?v=1";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
+import { lifeMemoryPromptLines } from "./content/life_memory.js?v=1";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
@@ -462,6 +463,21 @@ const MULT = { N: 1.0, R: 1.1, S: 1.2, SS: 1.35, SSR: 1.5 };
 const CHAT_GAP = { N: 3, R: 2, S: 1, SS: 1, SSR: 1 };  // 每 X 天至少聊 1 次
 const DATE_GAP = { SS: 5, SSR: 3 };                     // 每 X 天至少約 1 次
 const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 50], ["girlfriend", "女友", null], ["wife", "妻子", null]];
+// 名冊溫度計用房間十一階。一次只畫「現在這階 → 下一階」。
+const AFF_LADDER = [
+  ["stranger", "陌生", 0],
+  ["acquaintance", "普通", 15],
+  ["friend", "朋友", 35],
+  ["close_friend", "親密好友", 60],
+  ["girlfriend", "女友", 100],
+  ["passionate", "熱戀", 140],
+  ["lover", "愛人", 180],
+  ["wife", "妻子", 230],
+  ["devoted_wife", "貼心妻子", 280],
+  ["obedient_wife", "順從妻子", 330],
+  ["pathological_wife", "病態妻子", 380],
+];
+const AFF_LADDER_ZH = Object.fromEntries(AFF_LADDER.map((s) => [s[0], s[1]]));
 const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
 const DATE_COST = 5, DATE_LIMIT = 1, NTR_WINDOW = 7; // 聊天計費:每 2 則玩家訊息 1 金；約會每天 1 次
 // 約會地點池(30 個情境;每次隨機抽 5 個給玩家選)
@@ -1002,7 +1018,10 @@ function initState(j, offline) {
   state.inventory.bouquet = state.inventory.bouquet | 0;
   state.inventory.ring = state.inventory.ring | 0;
   state.daydream ??= { stamp: "", completed: false, running: false, label: "", done: 0, total: 0, girlId: "" };
-  // running 由伺服器發呆迴圈擁有；開網頁不再清掉，否則會把正在跑的預產圖當成死掉
+  // 發呆預產已取消。舊存檔若還標著 running，不能再拿來擋住召喚／聊天。
+  state.daydream.running = false;
+  state.daydream.label = "";
+  state.daydream.girlId = "";
   state.playerProfile = {
     name: "", body: "", look: "", habit: "",
     prefs: [], quiz: {},
@@ -1261,6 +1280,9 @@ document.addEventListener("visibilitychange", async () => {
       state.settings = { ...def.settings, ...state.settings };
       state.settings.rating = "nsfw";
     }
+    if (!isPhoneClient() && !dirty && state.roomMirror?.from === "phone") {
+      applyServerRoomMirror();
+    }
     document.getElementById("set-srv").textContent = "OK";
   } catch { }
   settleOffline();
@@ -1299,6 +1321,9 @@ async function saveNow(keepalive = false) {
       const j = await fetch("/api/save").then(x => x.json());
       version = j.version;
       state = j.data ?? defaultState();
+      if (!isPhoneClient() && state.roomMirror?.from === "phone") {
+        try { applyServerRoomMirror(); } catch { /* ignore */ }
+      }
       toast("存檔衝突:已載入伺服器上較新的進度", "bad");
       renderAll();
       return;
@@ -1798,8 +1823,14 @@ function settleOffline() {
 
 // ===== 商店與地牢 =====
 
+function rollVirilityOffer() {
+  return { id: uid(), kind: "virility", name: "壯陽藥", price: randInt(10, 30), sold: false };
+}
+
 function buildShopSpecials() {
   const specials = [];
+  // 壯陽藥：常駐。買了立刻喝，價格每次重抽，不會賣完。
+  specials.push(rollVirilityOffer());
   // 花束：名冊有朋友且情感≥230 → 今日進一束
   if ((state.succubi || []).some(s => !s.ntr && s.stage === "friend" && (s.affection || 0) >= 230)) {
     specials.push({ id: uid(), kind: "bouquet", name: "花束", price: randInt(20, 50), sold: false });
@@ -1811,14 +1842,27 @@ function buildShopSpecials() {
   return specials;
 }
 
+/** 今日貨架已建、但還沒壯陽藥（舊存檔）時補上一瓶。 */
+function ensureVirilityOnShelf(shop) {
+  if (!shop) return false;
+  if (!Array.isArray(shop.specials)) shop.specials = [];
+  if (shop.specials.some((it) => it && it.kind === "virility" && !it.sold)) return false;
+  shop.specials.push(rollVirilityOffer());
+  return true;
+}
+
 function ensureShop() {
   const today = dayNum();
   // 今日商店已建、但舊存檔尚無 specials → 補一次（當日只補空陣列／缺欄）
   if (state.shop && state.shop.day === today) {
+    let changed = false;
     if (!Array.isArray(state.shop.specials)) {
       state.shop.specials = buildShopSpecials();
-      scheduleSave();
+      changed = true;
+    } else if (ensureVirilityOnShelf(state.shop)) {
+      changed = true;
     }
+    if (changed) scheduleSave();
     return;
   }
   const n = 2 + expLv("offering");   // 每日進貨數 = 2 + 「商店祭品」擴充
@@ -2263,12 +2307,59 @@ async function severSummonerWithSacrifice(offerId, fromDetailId) {
 
 function dismiss(id) { return sacrificeSuccubus(id); }   // 相容舊呼叫
 
+/** 商店壯陽藥：補房間玩家精液。模組在就寫進行中的房間，否則改存檔。 */
+function grantRoomSemen(cc) {
+  const api = window.RoomCompanion;
+  if (typeof api?.grantSemen === "function") {
+    try {
+      const got = api.grantSemen(cc);
+      if (got && typeof got.cc === "number") return got;
+    } catch (err) {
+      console.warn("[grantRoomSemen]", err);
+    }
+  }
+  const add = Math.max(0, Math.round(Number(cc) || 0));
+  const max = 20;
+  try {
+    const raw = localStorage.getItem(ROOM_SAVE_KEY_MAIN);
+    if (!raw) return { cc: 0, before: max, after: max };
+    const data = JSON.parse(raw);
+    const p = data.player && typeof data.player === "object" ? data.player : {};
+    const before = Math.max(0, Math.min(max, Math.round(Number(p.semenCc) || 0)));
+    const after = Math.min(max, before + add);
+    p.semenCc = after;
+    data.player = p;
+    localStorage.setItem(ROOM_SAVE_KEY_MAIN, JSON.stringify(data));
+    return { cc: after - before, before, after };
+  } catch {
+    return { cc: 0, before: 0, after: 0 };
+  }
+}
+
 function buy(itemId) {
   const stock = state.shop?.stock || [];
   const specials = state.shop?.specials || [];
   const it = stock.find(i => i.id === itemId) || specials.find(i => i.id === itemId);
   if (!it || it.sold) return;
   if (state.gold < it.price) { toast("金幣不夠", "bad"); return; }
+  if (it.kind === "virility") {
+    const paid = it.price;
+    const rolled = randInt(6, 15);
+    state.gold -= paid;
+    const got = grantRoomSemen(rolled);
+    it.price = randInt(10, 30);
+    it.sold = false;
+    log(`服用壯陽藥 -${paid} 金，精液 +${got.cc}（現 ${got.after}cc，下次 ${it.price} 金）`);
+    toast(
+      got.cc > 0
+        ? `壯陽藥見效，精液 +${got.cc}（現 ${got.after}cc）`
+        : `精液已經滿了（${got.after}cc）`,
+      got.cc > 0 ? "good" : "",
+    );
+    scheduleSave();
+    renderAll();
+    return;
+  }
   state.gold -= it.price;
   it.sold = true;
   state.inventory ??= { bouquet: 0, ring: 0 };
@@ -5068,10 +5159,10 @@ async function refreshPortraitSet(s) {
   return true;
 }
 
-// ── 發呆時段：6:00／14:00／19:00／3:00 預產立繪、表情、做愛動畫、劇本圖 ──
+// ── 發呆預產已取消，不再排程、不再擋住召喚。已產好的圖仍可給打牌用。──
 let daydreamLoop = 0;
 function isDaydreaming() {
-  return !!(state?.daydream?.running);
+  return false;
 }
 /** 發呆只對名冊上還在的魅魔。空名冊＝沒對象，不進發呆、不佔時段。 */
 function daydreamGirls() {
@@ -5091,31 +5182,8 @@ function daydreamPlayerBusy() {
   return false;
 }
 function paintDaydreamBanner() {
-  const dd = state?.daydream;
-  const running = !!(dd && dd.running) && daydreamGirls().length > 0;
-  const hud = document.getElementById("hud-daydream");
-  if (hud) {
-    hud.classList.toggle("hidden", !running);
-    if (running) {
-      const bit = dd.label ? ` · ${dd.label}` : "";
-      const frac = dd.total ? ` ${dd.done}/${dd.total}` : "";
-      hud.textContent = `發呆中${frac}${bit}`;
-    }
-  }
-  const banner = document.getElementById("roster-daydream");
-  if (banner) {
-    banner.classList.toggle("hidden", !running);
-    if (running) {
-      const who = dd.girlId
-        ? (state.succubi.find(x => x.id === dd.girlId)?.name || "")
-        : "";
-      const bit = [who, dd.label].filter(Boolean).join(" · ");
-      const frac = dd.total ? `${dd.done}/${dd.total}` : "";
-      banner.textContent = bit
-        ? `發呆中 ${frac} · ${bit}`
-        : (frac ? `發呆中 ${frac}` : "發呆中");
-    }
-  }
+  document.getElementById("hud-daydream")?.classList.add("hidden");
+  document.getElementById("roster-daydream")?.classList.add("hidden");
 }
 function setDaydreamProgress(patch) {
   state.daydream = { ...(state.daydream || {}), ...patch };
@@ -5276,11 +5344,7 @@ function buildDaydreamJobs(s) {
   return jobs;
 }
 
-function notifyDaydreamComplete() {
-  try { window.__yoroDaydreamCompletedAt = Date.now(); } catch { /* */ }
-  try { window.dispatchEvent(new CustomEvent("yoro-daydream-complete")); } catch { /* */ }
-  try { window.RoomCompanion?.onDaydreamComplete?.(); } catch { /* */ }
-}
+function notifyDaydreamComplete() {}
 
 async function runDaydreamJobs() {
   const token = ++daydreamLoop;
@@ -5461,8 +5525,6 @@ async function pollDaydreamStatus(force = false) {
       try { renderAll(); } catch { /* */ }
     }
     if (prevRun && !j.running && j.completed) {
-      toast("發呆完成——已換上一套新圖", "good");
-      notifyDaydreamComplete();
       try { renderAll(); } catch { /* */ }
     } else if (prevDone !== j.done) {
       paintDaydreamBanner();
@@ -5470,46 +5532,11 @@ async function pollDaydreamStatus(force = false) {
   } catch { /* 下輪再問 */ }
   finally { daydreamPollBusy = false; }
 }
-function startDaydream({ force = false } = {}) {
-  if (!force) return !!state?.daydream?.running;
-  fetch("/api/daydream/force", { method: "POST" })
-    .then(r => r.json())
-    .then(j => {
-      if (j?.err) { toast(j.err, "bad"); return; }
-      state.daydream = {
-        ...(state.daydream || {}),
-        stamp: j.stamp || "",
-        slot: j.slot || "",
-        running: !!j.running,
-        completed: !!j.completed,
-        label: j.label || "",
-        done: j.done || 0,
-        total: j.total || 0,
-        girlId: j.girlId || "",
-      };
-      paintDaydreamBanner();
-      pollDaydreamStatus(true);
-    })
-    .catch(() => toast("發呆下單失敗", "bad"));
-  return true;
+function startDaydream() {
+  return false;
 }
-function tickDaydream() {
-  paintDaydreamBanner();
-  pollDaydreamStatus();
-}
-function consumeDaydreamForce() {
-  let raw;
-  try { raw = sessionStorage.getItem("yoro_daydream_force"); } catch { return; }
-  if (!raw) return;
-  try { sessionStorage.removeItem("yoro_daydream_force"); } catch { /* */ }
-  let payload;
-  try { payload = JSON.parse(raw); } catch { return; }
-  if (payload?.ts && Date.now() - payload.ts > 5 * 60 * 1000) {
-    toast("發呆測試旗標已過期——請在 testword 再按一次", "bad");
-    return;
-  }
-  startDaydream({ force: true });
-}
+function tickDaydream() {}
+function consumeDaydreamForce() {}
 
 // ===== 服裝:生涯服裝 + 個人喜好衣櫃 =====
 // 兩個維度(規格見 README「服裝」):
@@ -5689,7 +5716,37 @@ function guardTick(s) {
 
 function stageInfo(key) { return STAGES.find(s => s[0] === key); }
 function nextStage(s) { const i = STAGES.findIndex(x => x[0] === s.stage); return STAGES[i + 1] || null; }
-function stageLabel(key) { return stageInfo(key)[1]; }
+function stageLabel(key) {
+  return AFF_LADDER_ZH[key] || stageInfo(key)?.[1] || "陌生";
+}
+
+/** 名冊感情：橫向溫度計，只填目前這一段。感情為負則空管、偏冷。 */
+function affThermoHtml(s) {
+  const aff = Number(s?.affection) || 0;
+  const idx = Math.max(0, AFF_LADDER.findIndex((step) => step[0] === s?.stage));
+  const cur = AFF_LADDER[idx] || AFF_LADDER[0];
+  const next = AFF_LADDER[idx + 1] || null;
+  const cold = aff < 0;
+  let pct = 100;
+  if (next) {
+    const span = next[2] - cur[2];
+    pct = span > 0 ? ((aff - cur[2]) / span) * 100 : 0;
+    pct = Math.max(0, Math.min(100, pct));
+  }
+  if (cold) pct = 0;
+  const from = cur[1];
+  const to = next ? next[1] : "";
+  const label = to ? `${from} → ${to}` : from;
+  const title = cold ? `${label}（感情偏低）` : label;
+  const toHtml = to ? `<span>${esc(to)}</span>` : "<span></span>";
+  return `<div class="aff-thermo${cold ? " cold" : ""}" style="--fill:${pct}%" title="${esc(title)}" aria-label="${esc(title)}">
+    <div class="aff-thermo-names"><span>${esc(from)}</span>${toHtml}</div>
+    <div class="aff-thermo-row" aria-hidden="true">
+      <span class="aff-thermo-bulb"></span>
+      <span class="aff-thermo-track"><span class="aff-thermo-fill"></span></span>
+    </div>
+  </div>`;
+}
 
 /**
  * @param opts.skipBreak 打牌／NSFW 卡感情：只改數值與升階，不觸發「離開名冊／NTR」。
@@ -7597,16 +7654,111 @@ function roomSummonCost() {
   return ensureRoomSummonOffer().cost;
 }
 
-/** 房間回寫的感情／階段合併進名冊（同 id） */
-function mergeRoomProgressSync() {
+/** 手機網頁才是房間進度的來源。電腦只跟，不把本地房間蓋回去。 */
+function isPhoneClient() {
+  if (navigator.userAgentData && typeof navigator.userAgentData.mobile === "boolean") {
+    return navigator.userAgentData.mobile;
+  }
+  const ua = navigator.userAgent || "";
+  return /Android.+Mobile|iPhone|iPod|Windows Phone|Mobile/i.test(ua);
+}
+
+function cloneJson(v) {
+  try { return JSON.parse(JSON.stringify(v)); } catch { return v; }
+}
+
+function readLocalRoomBundle() {
+  let session = null;
+  let progress = null;
   try {
-    const raw = localStorage.getItem(ROOM_PROGRESS_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    if (!data?.id) return;
-    if (applyRoomProgressData(data)) {
-      const s = (state.succubi || []).find(x => x.id === data.id);
-      if (s) log(`房間進度合併：${s.name}（感情 ${s.affection}・${stageLabel(s.stage)}）`);
+    session = JSON.parse(localStorage.getItem(ROOM_SAVE_KEY_MAIN) || "null");
+    if (!session?.girl?.id) session = null;
+  } catch { session = null; }
+  try {
+    progress = JSON.parse(localStorage.getItem(ROOM_PROGRESS_KEY) || "null");
+    if (!progress?.id) progress = null;
+  } catch { progress = null; }
+  return {
+    session,
+    progress,
+    at: Math.max(session?.savedAt || 0, progress?.at || 0),
+  };
+}
+
+/** 把這一台（手機）的房間原樣寫進存檔，含人在不在房間、身體、住所。 */
+function publishPhoneRoom() {
+  if (!state || !isPhoneClient()) return false;
+  const session = readLocalRoomBundle().session;
+  let next;
+  if (!session?.girl?.id) {
+    next = {
+      from: "phone",
+      savedAt: state.roomMirror?.from === "phone" && !state.roomMirror?.girl ? (state.roomMirror.savedAt || Date.now()) : Date.now(),
+      girlId: "",
+      present: false,
+      girl: null,
+      player: null,
+    };
+  } else {
+    const girl = cloneJson(session.girl);
+    girl.chatLines = [];
+    girl.topicHint = "";
+    next = {
+      from: "phone",
+      savedAt: session.savedAt || Date.now(),
+      girlId: session.girl.gameGirlId || session.girl.id,
+      present: session.present === true,
+      player: session.player ? cloneJson(session.player) : null,
+      girl,
+    };
+  }
+  if (JSON.stringify(state.roomMirror || null) === JSON.stringify(next)) return false;
+  state.roomMirror = next;
+  return true;
+}
+
+/** 電腦改跟手機上傳的房間。不在房裡就請她離開畫面。 */
+function applyServerRoomMirror() {
+  const mirror = state?.roomMirror;
+  if (!mirror || mirror.from !== "phone") return false;
+  if (!mirror.girl?.id) {
+    try { window.RoomCompanion?.clear?.(); } catch { /* ignore */ }
+    return true;
+  }
+  const snapshot = {
+    girl: cloneJson(mirror.girl),
+    player: mirror.player ? cloneJson(mirror.player) : null,
+    present: mirror.present === true,
+    savedAt: mirror.savedAt || 0,
+    lines: [],
+  };
+  try { localStorage.setItem(ROOM_SAVE_KEY_MAIN, JSON.stringify(snapshot)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(ROOM_PROGRESS_KEY, JSON.stringify({
+      id: mirror.girlId || mirror.girl.id,
+      at: mirror.savedAt || 0,
+    }));
+  } catch { /* ignore */ }
+  try { window.RoomCompanion?.applyMirror?.(snapshot); } catch { /* ignore */ }
+  return true;
+}
+
+/**
+ * 手機：把本地房間（含離開）寫上存檔。
+ * 電腦：只套用手機上傳的那份，絕不用電腦本地房間蓋回去。
+ */
+function mergeRoomProgressSync() {
+  if (!state) return;
+  try {
+    if (!isPhoneClient()) {
+      if (state.roomMirror?.from === "phone") applyServerRoomMirror();
+      return;
+    }
+    const bundle = readLocalRoomBundle();
+    if (bundle.progress?.id) applyRoomProgressData(bundle.progress);
+    if (publishPhoneRoom()) {
+      dirty = true;
+      scheduleSave();
     }
   } catch { /* ignore */ }
 }
@@ -7621,6 +7773,20 @@ function mapGameStageToRoom(stage) {
   // 舊主線四階 → 房間階梯
   if (stage === "friend") return "friend";
   return "stranger";
+}
+
+/** 脫光才留下內褲是誰脫的。自己脫 → 順從；你脫的 → 被動。 */
+function roomUndressState(raw) {
+  const stage = Math.max(0, Math.min(3, raw?.stage | 0));
+  const shotRaw = String(raw?.shot || "");
+  const shot = stage >= 3 && (shotRaw === "undress_cover" || shotRaw === "undress_low" || shotRaw === "undress_stand")
+    ? shotRaw
+    : "";
+  const pantiesBy = stage >= 3 && (raw?.pantiesBy === "self" || raw?.pantiesBy === "help")
+    ? raw.pantiesBy
+    : "";
+  const sexStance = pantiesBy === "self" ? "順從" : pantiesBy === "help" ? "被動" : "";
+  return { stage, shot, pantiesBy, sexStance };
 }
 
 /** 把名冊妹子編成房間 session 用物件（同 id，進度可回寫） */
@@ -7667,6 +7833,8 @@ function buildRoomGirlFromSuccubus(s) {
     crave: s.crave || { v: 10, at: Date.now() },
     // Default summon; adoptRosterGirl merges flee_back from room prior when same id
     chatEnter: s.chatEnter === "flee_back" ? "flee_back" : "summon",
+    nude: !!s.nude,
+    undress: roomUndressState(s.undress),
     body: s.body || null,
     bodyState,
     playerNotes: Array.isArray(s.playerNotes) ? s.playerNotes.slice() : (s.playerNotes || null),
@@ -7697,9 +7865,9 @@ function buildRoomGirlFromSuccubus(s) {
  */
 function beginRoomCompanionSummon(girlId) {
   if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
-  if (isDaydreaming()) { toast("發呆中——這段時間在備圖，等跑完再召喚", ""); return; }
   const s = state.succubi.find(x => x.id === girlId);
   if (!s || s.ntr) { toast("她不在你身邊……", "bad"); return; }
+  if (rosterSummonBlocked(s)) { toast("她還在房間裡，離開以後才能再召喚", "bad"); return; }
   if (Cards.sessionActive(state)) {
     const rec = resumeOrRecoverCardSession({ forceUi: true });
     toast(`先結束與 ${rec.girlName || "她"} 的牌局`, "bad");
@@ -7728,6 +7896,8 @@ function beginRoomCompanionSummon(girlId) {
   log(`房間召喚 ${s.name} −${cost} 金（下次報價 ${next.cost} 金）`);
   scheduleSave();
   toast(`正在召喚 ${s.name} 進房間（−${cost} 金）`, "good");
+  roomSummoningId = s.id;
+  try { renderSuccubi(); } catch { /* ignore */ }
   // 嵌進主畫面：同頁 adopt，不導向 /test_room（儀式結束後才出現）
   enterEmbeddedRoomCompanion(payload);
 }
@@ -7743,11 +7913,19 @@ function enterEmbeddedRoomCompanion(payload) {
     const home = document.getElementById("succubi-home");
     if (home) home.classList.remove("hidden");
   } catch { /* ignore */ }
+  const endRoomSummoning = () => {
+    roomSummoningId = "";
+  };
   const finishAdoptOk = () => {
+    endRoomSummoning();
     try { localStorage.removeItem(ROOM_PENDING_KEY); } catch { /* ignore */ }
     try { document.getElementById("talk-input")?.focus({ preventScroll: true }); } catch { /* ignore */ }
     try { document.getElementById("main-room-stage")?.scrollIntoView({ block: "nearest" }); } catch { /* ignore */ }
     renderAll?.();
+  };
+  const finishAdoptFail = () => {
+    endRoomSummoning();
+    try { renderSuccubi(); } catch { /* ignore */ }
   };
   const adoptNow = () => {
     const api = window.RoomCompanion;
@@ -7760,7 +7938,11 @@ function enterEmbeddedRoomCompanion(payload) {
     if (result && typeof result.then === "function") {
       result.then((ok) => {
         if (ok) finishAdoptOk();
-      }).catch((err) => console.error("[RoomCompanion.adopt]", err));
+        else finishAdoptFail();
+      }).catch((err) => {
+        console.error("[RoomCompanion.adopt]", err);
+        finishAdoptFail();
+      });
       return true; // accepted (async in flight)
     }
     if (result) {
@@ -7780,6 +7962,7 @@ function enterEmbeddedRoomCompanion(payload) {
     if (adoptNow()) { clearInterval(timer); return; }
     if (tries > 40) {
       clearInterval(timer);
+      finishAdoptFail();
       toast("房間模組還沒就緒——請硬重新整理後再召喚", "bad");
     }
   }, 50);
@@ -7787,6 +7970,8 @@ function enterEmbeddedRoomCompanion(payload) {
 
 /** 房間進度即時合併進名冊（同 id）；也可吃 localStorage 橋） */
 function applyRoomProgressData(data) {
+  // 電腦的房間事件不能寫回名冊，否則人還在電腦房間裡會蓋掉手機已離開的狀態
+  if (!isPhoneClient()) return false;
   if (!data?.id || !state?.succubi) return false;
   const s = state.succubi.find(x => x.id === data.id);
   if (!s) return false;
@@ -7857,11 +8042,42 @@ function applyRoomProgressData(data) {
     s.topicCool = { ...data.topicCool };
     changed = true;
   }
-  if (changed) {
+  if (data.nude) {
+    s.nude = true;
+    changed = true;
+  }
+  if (data.undress && typeof data.undress === "object") {
+    s.undress = roomUndressState(data.undress);
+    changed = true;
+  }
+  const published = publishPhoneRoom();
+  if (changed || published) {
     dirty = true;
     scheduleSave();
   }
   return changed;
+}
+
+/** 正在把這名冊 id 帶進房間（儀式還沒結束、人尚未站定）。 */
+let roomSummoningId = "";
+
+function rosterRoomGirlId() {
+  try {
+    const cur = window.RoomCompanion?.current?.();
+    if (!cur) return "";
+    if (typeof window.RoomActor?.isPresent === "function" && !window.RoomActor.isPresent()) return "";
+    return String(cur.gameGirlId || cur.id || "");
+  } catch {
+    return "";
+  }
+}
+
+/** 她人在房間，或這次召喚還沒完成：名冊不顯示召喚。 */
+function rosterSummonBlocked(s) {
+  if (!s?.id) return false;
+  if (roomSummoningId && roomSummoningId === s.id) return true;
+  const occ = rosterRoomGirlId();
+  return !!occ && occ === s.id;
 }
 
 function bindRoomProgressLiveSync() {
@@ -7869,6 +8085,10 @@ function bindRoomProgressLiveSync() {
   window.__yoroRoomProgressBound = true;
   window.addEventListener("yoro-room-progress", (ev) => {
     try { applyRoomProgressData(ev.detail); } catch { /* ignore */ }
+  });
+  window.addEventListener("yoro-room-presence", () => {
+    if (!state) return;
+    try { renderSuccubi(); } catch { /* ignore */ }
   });
   // 關閉房間對話後再合併一次（雙保險）
   window.addEventListener("yoro-room-sheet-close", () => {
@@ -8808,10 +9028,8 @@ async function genTick(force = false) {
   lastGenAt = Date.now();
   genTickBusy = true;
   try {
-    if (isAsleep() && !isDaydreaming()) await genSacOrders();
-    if (isDaydreaming()) {
-      /* 發呆時段：不下聊天／氣泡／碎嘴，GPU 留給預產圖 */
-    } else if (state.settings.model) {
+    if (isAsleep()) await genSacOrders();
+    if (state.settings.model) {
       // 打牌即時反應最優先（玩家盯著牌桌）
       await genCardPlayOrder();
       // 口交／做愛：預設旁白已上，背景收她的台詞
@@ -9782,7 +10000,6 @@ async function sendChatMsg() {
   const text = input.value.trim();
   if (!text) return;
   if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
-  if (isDaydreaming()) { toast("發呆中——這段時間在備圖，等跑完再聊", ""); return; }
 
   input.value = "";
   s.history ??= [];
@@ -11404,7 +11621,6 @@ setInterval(() => {
   try { genTick(); } catch (e) { console.error("genTick 失敗:", e); }   // 代工生成:下單+收貨
   // 立繪 12 小時刷新（只重畫 full/half/head）
   try { tickPortraitRefresh(); } catch (e) { console.error("portraitRefresh 失敗:", e); }
-  try { tickDaydream(); } catch (e) { console.error("daydream 失敗:", e); }
   try { if (Date.now() - lastInboxAt > 5000) drainQuestInbox(); } catch (e) { console.error("發現 inbox 失敗:", e); }
 
   if (changed) { scheduleSave(); renderAll(); }
@@ -12341,14 +12557,74 @@ function lineRosterNames() {
   return lineRosterGirls().map(s => s.name).join("、") || "（無人）";
 }
 
-function buildLineGroupMsgs(girl) {
+function lineLiveGirl(s) {
+  try {
+    const cur = window.RoomCompanion?.current?.();
+    if (cur && s?.id && (cur.gameGirlId === s.id || cur.id === s.id)) return cur;
+  } catch { /* 房間模組還沒掛上 */ }
+  return null;
+}
+
+function lineInRoom(s) {
+  if (!lineLiveGirl(s)) return false;
+  try {
+    return typeof window.RoomActor?.isPresent === "function" && !!window.RoomActor.isPresent();
+  } catch {
+    return false;
+  }
+}
+
+/** 人在哪裡。離開房間先回住所；從住所再去打工或遊盪。LINE 不是地方。 */
+function lineWhereabouts(s) {
+  const live = lineLiveGirl(s);
+  const world = (live && live.world) || s?.world || null;
+  if (lineInRoom(s)) {
+    return { kind: "room", text: "你的人在召喚者的房間裡。" };
+  }
+  const home = world?.home?.name ? `「${world.home.name}」` : "";
+  // 只有這趟還在進行，人才在外面；做完／逛完就回到住所
+  if (world?.activity === "work" && world.shift?.pending) {
+    const job = world.job?.name ? `「${world.job.name}」` : "";
+    return {
+      kind: "work",
+      text: job
+        ? `你從住所出來，人在打工場所${job}。這趟做完會回到住所。`
+        : "你從住所出來，人在打工場所。這趟做完會回到住所。",
+    };
+  }
+  if (world?.activity === "wander" && world.stroll?.pending) {
+    const place = world.stroll.placeName ? `「${world.stroll.placeName}」` : "";
+    return {
+      kind: "wander",
+      text: place
+        ? `你從住所出來，人在遊盪的地點${place}。這趟逛完會回到住所。`
+        : "你從住所出來，人在外面遊盪。這趟逛完會回到住所。",
+    };
+  }
+  return {
+    kind: "home",
+    text: home
+      ? `你離開房間以後回到自己的住所${home}。人在住所，才看是要去打工，還是出去遊盪。`
+      : "你離開房間以後回到自己的住所。人在住所，才看是要去打工，還是出去遊盪。",
+  };
+}
+
+function buildLineGroupMsgs(girl, utterance = "") {
   const player = state.settings?.player || "召喚師";
   const others = lineRosterGirls().filter(x => x.id !== girl.id).map(x => x.name);
+  const where = lineWhereabouts(girl);
+  const memLines = lifeMemoryPromptLines(lineLiveGirl(girl) || girl, utterance, { here: "line" });
   const sys = buildSystemPrompt(buildCtx(girl)) + [
     "",
     "【名冊群 LINE】",
-    `・你是「${girl.name}」。你在「${ensureLineGroup().title}」這個群組裡，成員是召喚師「${player}」與名冊上的妹子：${lineRosterNames()}。`,
-    "・這是文字群組聊天（像 LINE），不是面對面、也不是電話。",
+    `・你是「${girl.name}」。這是名冊群的文字傳訊，成員是召喚師「${player}」與名冊上的妹子：${lineRosterNames()}。`,
+    `・${where.text}`,
+    "・LINE 只是傳訊軟體。你的身體不在 LINE 裡，也不在群組裡。不要把 LINE、群組、聊天室說成你所在的地方。",
+    "・這是用手機打字，不是面對面，也不是電話。",
+    where.kind === "room"
+      ? ""
+      : "・你現在沒有被召喚到他面前。上面若寫「被召喚過來了」，這次傳訊不要採用。",
+    ...memLines,
     "・你只看得到下方「你的閱讀窗」內的對話——那是你上次已讀／回覆之後到現在的片段，不是從頭全部。",
     "・閱讀窗標籤：`[你自己・…]`＝你先前在群裡傳過的話；`[群友・…]`＝其他妹子；`[召喚師・…]`＝玩家。不要搞混。",
     "・看到 `[你自己・…]` 就當成你已經說過，不要裝成第一次說、也不要否認那是你。",
@@ -12438,7 +12714,9 @@ async function lineGirlDecide(girl, playerMsgId) {
       await new Promise(r => setTimeout(r, 280 + Math.random() * 420));
       raw = canned;
     } else {
-      const msgs = buildLineGroupMsgs(girl);
+      const lg = ensureLineGroup();
+      const said = lg.messages.find(x => x.id === playerMsgId && x.kind === "player");
+      const msgs = buildLineGroupMsgs(girl, said?.text || "");
       raw = await llmJobRun(msgs, null, canned);
     }
   } catch (e) {
@@ -13009,7 +13287,10 @@ function renderShop() {
     for (const it of unsold) {
       const d = document.createElement("div");
       d.className = "shop-item" + (it.kind ? " special" : "");
-      const tag = it.kind === "bouquet" ? " · 告白用" : it.kind === "ring" ? " · 求婚用" : "";
+      const tag = it.kind === "bouquet" ? " · 告白用"
+        : it.kind === "ring" ? " · 求婚用"
+        : it.kind === "virility" ? " · 喝下回精"
+        : "";
       d.innerHTML = `
         <span class="sname">${esc(it.name)}${tag}</span>
         <span class="sprice">${it.price} 金</span>
@@ -16901,6 +17182,8 @@ function renderSuccubi() {
     const st = needStatus(s);
     const el = document.createElement("div");
     el.className = `scard r-${s.rarity}` + (s.ntr ? " ntr" : "");
+    const roomCost = roomSummonCost();
+    const asleep = isAsleep();
     el.innerHTML = `
       <div class="thumb">${girlPortrait(s, 2.5, "head")}</div>
       <div class="sinfo">
@@ -16909,10 +17192,15 @@ function renderSuccubi() {
           ${!s.ntr && s.summoner?.taken ? `<span class="stage-chip" style="color:var(--red)">→ 被召喚走</span>`
             : isKanban(s.id) ? `<span class="stage-chip" style="color:var(--gold)">★ 在店頭</span>` : ""}
           ${s.summoner && !s.ntr ? `<span class="stage-chip" style="color:var(--red)">⚠ ${esc(summonerById(s.summoner.id)?.name || "被纏上")}${s.summoner.ringUnlocked ? "・已解環" : ""}</span>` : ""}</div>
-        ${ScriptMode.affHeartsHtml(s.affection)}
+        ${affThermoHtml(s)}
       </div>
+      ${s.ntr || rosterSummonBlocked(s) ? "" : `<button type="button" class="roster-summon" ${asleep ? "disabled" : ""} title="付 ${roomCost} 金帶她進房間。人在房間時先收起，離開後才能再召。">召喚（${roomCost}金）</button>`}
       <div class="status-dot ${st}"></div>`;
     el.onclick = () => { detailId = s.id; dateChooser = false; severChooser = false; renderAll(); };
+    el.querySelector(".roster-summon")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      beginRoomCompanionSummon(s.id);
+    });
     roster.appendChild(el);
   }
   if (!state.succubi.length) roster.innerHTML = `<div class="empty">一個魅魔都沒有。桌上只有那本召喚之書。</div>`;
@@ -16945,19 +17233,15 @@ function renderDetail(s, root) {
     ? `付 ${roomCost} 金帶她進房間陪伴（被帶走中仍可嘗試；報價用過才重擲）`
     : `付 ${roomCost} 金帶她進房間陪伴聊天（報價用過才重擲 2～4）`;
   const peekHint = "她正被帶走，可以窺視（1/5 接通）";
-  const kanbanHere = isKanban(s.id);
   // 約會入口已退役；僅保留被帶走時的窺視
   const showDetailPeek = showPeek;
 
-  // 精簡詳情：肖像（長按獻祭）→ 名 → 天賦 → 時間表 → 房間召喚
+  // 詳情：名 → 召喚（人在房間時收起，離開後才再出現）→ 肖像。簡介與作息時段不再顯示。
+  const showRoomSummon = !s.ntr && !rosterSummonBlocked(s);
   root.className = `r-${s.rarity}`;
   root.innerHTML = `
     <div class="panel">
       <button class="back-btn" id="detail-back">‹ 名冊</button>
-      <div class="portrait detail-portrait" id="detail-portrait" title="長按獻祭">
-        ${girlPortrait(s, 6, "half")}
-        <div class="dim small" style="margin-top:.35em;opacity:.75">長按立繪可獻祭</div>
-      </div>
       <div class="aff-line">
         <b>${esc(s.name)}</b> <span class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</span>
         ・${s.ntr ? "被奪走" : stageLabel(s.stage)}
@@ -16967,20 +17251,21 @@ function renderDetail(s, root) {
             ? `<span class="stage-chip" style="color:var(--gold)">★ 在店頭</span>`
             : ""}
       </div>
-      <div class="aff-line">${ScriptMode.affHeartsHtml(s.affection)}</div>
-      ${s.backstory ? `<div class="aff-line dim small" style="max-width:32em;margin:0 auto">${esc(s.backstory)}</div>` : ""}
+      <div class="aff-line">${affThermoHtml(s)}</div>
       ${!s.ntr ? `<div class="aff-line dim small">天賦：${esc(giftLabel(s.gift))}</div>` : ""}
-      ${s.schedule ? `<div class="schedule">${SCHEDULE_SLOTS.map(k => {
-        const now = timeSlot() === k;
-        return `<div class="sch-row${now ? " now" : ""}"><span class="sch-t">${SLOT_LABEL[k]}</span><span>${esc(s.schedule[k] || "")}</span></div>`;
-      }).join("")}</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她在睡覺)</div>` : ""}
       ${s.ntr
-        ? `<div class="detail-actions" style="margin-top:.8em"><button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button></div>`
-        : `<div class="detail-actions" style="margin-top:.8em">
-            <button class="cyan" id="act-room-summon" ${asleep ? "disabled" : ""} title="${esc(summonHint)}">召喚（${roomCost}金）</button>
+        ? `<div class="detail-actions"><button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button></div>`
+        : (showRoomSummon || showDetailPeek)
+          ? `<div class="detail-actions">
+            ${showRoomSummon ? `<button class="cyan" id="act-room-summon" ${asleep ? "disabled" : ""} title="${esc(summonHint)}">召喚（${roomCost}金）</button>` : ""}
             ${showDetailPeek ? `<button class="cyan" id="act-peek" title="${esc(peekHint)}">窺視</button>` : ""}
-          </div>`}
+          </div>`
+          : ""}
+      <div class="portrait detail-portrait" id="detail-portrait" title="長按獻祭">
+        ${girlPortrait(s, 6, "half")}
+        <div class="dim small" style="margin-top:.35em;opacity:.75">長按立繪可獻祭</div>
+      </div>
     </div>`;
 
   root.querySelector("#detail-back").onclick = () => {
@@ -17099,6 +17384,7 @@ function renderSettings() {
   $("#set-rating").value = state.settings.rating || "nsfw";
   applyLlmProviderUi();
   $("#set-ver").textContent = version ? "v" + version : "(尚未寫入)";
+  paintSyncButton();
 
   $("#set-theme").innerHTML = THEMES.map(([k, label]) =>
     `<option value="${k}" ${(state.settings.theme || "aqua") === k ? "selected" : ""}>${label}</option>`).join("");
@@ -17200,7 +17486,10 @@ function switchTab(i) {
   tabButtons.forEach((b, j) => b.classList.toggle("active", j === i));
   document.body.dataset.tab = i;
   // 切到魅魔頁＝看向她
-  if (i === 2 && state) scheduleKanbanNotice("tab");
+  if (i === 2 && state) {
+    scheduleKanbanNotice("tab");
+    try { renderSuccubi(); } catch { /* ignore */ }
+  }
 }
 tabButtons.forEach(b => b.addEventListener("click", () => switchTab(+b.dataset.tab)));
 switchTab(0);
@@ -17444,6 +17733,116 @@ on("btn-llm-test", "click", async () => {
   }
 });
 
+let progressSyncing = false;
+
+function fillSaveDefaults(data) {
+  const next = data && typeof data === "object" ? data : defaultState();
+  const def = defaultState();
+  for (const k of Object.keys(def)) next[k] ??= def[k];
+  next.settings = { ...def.settings, ...(next.settings || {}) };
+  next.settings.rating = "nsfw";
+  return next;
+}
+
+async function putAuthoritativeSave() {
+  const r = await fetch("/api/save", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base_version: version, data: state }),
+  });
+  if (r.status === 409) return { conflict: true };
+  if (!r.ok) throw new Error("http " + r.status);
+  const j = await r.json();
+  dirty = false;
+  version = j.version;
+  cacheLocal();
+  return { version: j.version };
+}
+
+function phoneRoomNote(mirror, uploaded) {
+  const name = mirror?.girl?.name || "她";
+  if (!mirror?.girl?.id) {
+    return uploaded
+      ? "已上傳手機進度（房間裡目前沒有人）。電腦按「改跟手機」"
+      : "已改跟手機（房間裡沒有人）";
+  }
+  const where = mirror.present === true ? `${name}在房間裡` : `${name}已經離開房間`;
+  return uploaded
+    ? `已上傳手機進度。${where}。電腦按「改跟手機」`
+    : `已改跟手機。${where}`;
+}
+
+/** 手機整份覆蓋伺服器，妹子在不在房間一起帶上。 */
+async function uploadPhoneState() {
+  try { window.RoomCompanion?.flush?.(); } catch { /* 房間模組還沒起來 */ }
+  const bundle = readLocalRoomBundle();
+  if (bundle.progress?.id) applyRoomProgressData(bundle.progress);
+  publishPhoneRoom();
+  dirty = true;
+  const fetched = await fetchSave();
+  version = fetched.version || 0;
+  let put = await putAuthoritativeSave();
+  if (put.conflict) {
+    const again = await fetchSave();
+    version = again.version || 0;
+    publishPhoneRoom();
+    dirty = true;
+    put = await putAuthoritativeSave();
+    if (put.conflict) throw new Error("conflict");
+  }
+  return phoneRoomNote(state.roomMirror, true);
+}
+
+/** 電腦丟掉本地房間，改成手機上傳的那份。 */
+async function followPhoneState() {
+  const fetched = await fetchSave();
+  if (!fetched?.data || fetched.data.roomMirror?.from !== "phone") {
+    return "手機還沒上傳。請先在手機按「上傳手機進度」";
+  }
+  state = fillSaveDefaults(fetched.data);
+  version = fetched.version || 0;
+  dirty = false;
+  applyServerRoomMirror();
+  cacheLocal();
+  return phoneRoomNote(state.roomMirror, false);
+}
+
+async function syncProgressNow() {
+  if (progressSyncing || bootFailed || !state) return;
+  progressSyncing = true;
+  saveInFlight = true;
+  clearTimeout(saveTimer);
+  const btn = document.getElementById("btn-sync-progress");
+  if (btn) btn.disabled = true;
+  try {
+    const note = isPhoneClient() ? await uploadPhoneState() : await followPhoneState();
+    toast(note, note.startsWith("手機還沒上傳") ? "bad" : "good");
+    try { renderAll(); } catch { /* ignore */ }
+    const ver = document.getElementById("set-ver");
+    if (ver) ver.textContent = version ? "v" + version : "(尚未寫入)";
+    const srv = document.getElementById("set-srv");
+    if (srv) srv.textContent = "OK";
+  } catch (e) {
+    console.warn("[sync]", e);
+    toast("同步失敗，伺服器連不上", "bad");
+  } finally {
+    clearTimeout(saveTimer);
+    saveInFlight = false;
+    progressSyncing = false;
+    if (btn) btn.disabled = false;
+    if (dirty) scheduleSave();
+  }
+}
+
+function paintSyncButton() {
+  const btn = document.getElementById("btn-sync-progress");
+  if (!btn) return;
+  btn.textContent = isPhoneClient() ? "上傳手機進度" : "改跟手機";
+}
+paintSyncButton();
+
+on("btn-sync-progress", "click", () => { syncProgressNow(); });
+
 on("btn-export", "click", () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
@@ -17539,13 +17938,8 @@ window.DBG = {
     return { ok: true, id: q.id, text: q.text };
   },
   isAsleep: () => isAsleep(),
-  daydream: () => ({
-    slot: Daydream.currentSlot(),
-    stamp: Daydream.slotStamp(),
-    state: state.daydream,
-    running: isDaydreaming(),
-  }),
-  startDaydream: (force = true) => startDaydream({ force }),
+  daydream: () => ({ retired: true }),
+  startDaydream: () => ({ retired: true, err: "發呆已取消" }),
   cards: () => Cards.debugDump(),
   cardShop: () => { Cards.ensureCardShop(state); return state.cardShop; },
   cardInv: () => Cards.inventoryList(state),

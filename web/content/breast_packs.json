@@ -1,4 +1,15 @@
 {
-  "packs": [],
-  "activeId": ""
+  "packs": [
+    {
+      "id": "mul242ez8xj3nu",
+      "name": "摸奶 1",
+      "poseDenoise": 0.55,
+      "prompt": "simple background, white background, breasts focus, chest crop, upper torso, head out of frame, first-person POV, one male hand, male hand grabbing one breast, NO both hands, NO face, NO head",
+      "negative": "head, face, hair, eyes, smile, looking at viewer, portrait, text, watermark, ugly, extra fingers",
+      "ref": "",
+      "url": "",
+      "updated": 1790588432069
+    }
+  ],
+  "activeId": "mul242ez8xj3nu"
 }

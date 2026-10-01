@@ -23,6 +23,8 @@ export const CLIMAX_BY_ACT = {
   cervix_rub: 6,
   pull_out: 2,
   vagina: 3,
+  undress_help: 3,
+  undress_tell: 3,
 };
 
 function clamp(n, lo, hi) {
@@ -107,6 +109,15 @@ export function applyTeaseClimax(player, actId) {
     ? `（你射了——約 ${actual} cc。精液剩餘 ${p.semenCc} cc。）`
     : `（你想射，但幾乎沒有精液了。剩餘 ${p.semenCc} cc。）`;
   return { player: p, climaxed: true, spentCc: actual, line };
+}
+
+/** 立刻補精液，不超過上限。不改每小時自然回復的時鐘。 */
+export function grantSemen(player, cc) {
+  const p = ensurePlayer(player);
+  const before = p.semenCc;
+  const add = Math.max(0, Math.round(Number(cc) || 0));
+  p.semenCc = clamp(before + add, 0, SEMEN_MAX_CC);
+  return { player: p, before, after: p.semenCc, gained: p.semenCc - before };
 }
 
 /** 編輯「恢復精液」：補滿並可選清興奮。 */

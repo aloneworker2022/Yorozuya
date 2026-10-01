@@ -476,7 +476,7 @@ export function mountStandeePackEditor(hooks = {}) {
     for (const id of [
       "butt-pack-editor", "waist-pack-editor", "breast-pack-editor", "knead-pack-editor",
       "suck-pack-editor", "lick-pack-editor", "labia-pack-editor", "labia-rub-pack-editor",
-      "finger-pack-editor",
+      "finger-pack-editor", "undress-pack-editor",
     ]) {
       const el = $(id);
       if (el && !el.hidden) el.hidden = true;
@@ -484,7 +484,7 @@ export function mountStandeePackEditor(hooks = {}) {
     for (const id of [
       "btn-butt-packs", "btn-waist-packs", "btn-breast-packs", "btn-knead-packs",
       "btn-suck-packs", "btn-lick-packs", "btn-labia-packs", "btn-labia-rub-packs",
-      "btn-finger-packs",
+      "btn-finger-packs", "btn-undress-packs",
     ]) {
       const btn = $(id);
       if (btn) btn.setAttribute("aria-expanded", "false");

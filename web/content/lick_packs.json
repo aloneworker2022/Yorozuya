@@ -1,4 +1,15 @@
 {
-  "packs": [],
-  "activeId": ""
+  "packs": [
+    {
+      "id": "mula2jfgbhtq1s",
+      "name": "舔奶頭 1",
+      "poseDenoise": 0.55,
+      "prompt": "simple background, white background, breasts focus, nipple focus, close-up, head out of frame, first-person POV, tongue licking nipple, licking nipple, NO face of girl, NO head of girl",
+      "negative": "head, face, hair, eyes, smile, looking at viewer, portrait, text, watermark, ugly, extra fingers",
+      "ref": "",
+      "url": "",
+      "updated": 1790601787092
+    }
+  ],
+  "activeId": "mula2jfgbhtq1s"
 }

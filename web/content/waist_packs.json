@@ -1,4 +1,25 @@
 {
-  "packs": [],
-  "activeId": ""
+  "packs": [
+    {
+      "id": "mul02bwzphhlhj",
+      "name": "摟腰 1",
+      "poseDenoise": 0.55,
+      "prompt": "simple background, mid torso crop, lower torso, waist focus, hips visible, head out of frame, from side or behind, first-person POV, one male arm, male arm around her waist, NO both arms, NO both hands",
+      "negative": "head, face, hair, eyes, smile, looking back, looking at viewer, portrait, upper body, text, watermark, ugly, extra fingers, both arms, both hands, two hands",
+      "ref": "",
+      "url": "/assets/testword/1790585119495_03017c57.png",
+      "updated": 1790585164844
+    },
+    {
+      "id": "mul06bl80pc78u",
+      "name": "摟腰 2",
+      "poseDenoise": 0.55,
+      "prompt": "simple background, mid torso crop, lower torso, waist focus, hips visible, head out of frame, from side or behind, first-person POV, one male arm, male arm around her waist, ",
+      "negative": "head, face, hair, eyes, smile, looking back, looking at viewer, portrait, upper body, text, watermark, ugly, extra fingers, both arms, both hands, two hands",
+      "ref": "",
+      "url": "/assets/testword/1790585318332_1381452b.png",
+      "updated": 1790585340235
+    }
+  ],
+  "activeId": "mul06bl80pc78u"
 }

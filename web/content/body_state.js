@@ -108,6 +108,7 @@ export function ensureBody(who) {
   }
   const b = who.bodyState;
   b.arousal = clampBody(b.arousal);
+  b.climaxTease = Math.max(0, Math.min(6, Math.round(Number(b.climaxTease) || 0)));
   b.libido = clampBody(b.libido == null ? libidoSeedFromGirl(who) : b.libido);
   if ("shame" in b) delete b.shame;
   if (b.shock != null) b.shock = Math.max(0, Math.min(45, Math.round(Number(b.shock) || 0)));
@@ -140,6 +141,18 @@ export function arousalStage(n) {
   return "climax";
 }
 
+/** 已在高潮裡又被調戲才累加。剛跨進高潮的那一下不算，離開高潮就歸零。 */
+function bumpClimaxTease(b, beforeArousal) {
+  if (!b) return;
+  const before = arousalStage(beforeArousal);
+  const after = arousalStage(b.arousal);
+  if (after !== "climax" || before !== "climax") {
+    b.climaxTease = 0;
+    return;
+  }
+  b.climaxTease = Math.min(6, (b.climaxTease || 0) + 1);
+}
+
 export function libidoStage(n) {
   const a = Number(n) || 0;
   if (a <= 7) return "low";
@@ -159,7 +172,6 @@ export function organLines(who) {
   const bits = [];
   const stage = arousalStage(b.arousal);
   bits.push(`性奮階段：${AROUSAL_STAGE[stage]}`);
-  bits.push(`性欲底色：${LIBIDO_STAGE[libidoStage(b.libido)]}`);
   if (o.nipples.swell >= 2) bits.push("乳頭充血、硬挺，擦到衣服就會過電。");
   else if (o.nipples.swell >= 1) bits.push("乳頭微微腫、敏感。");
   if (o.nipples.wet) bits.push("乳尖是濕的。");
@@ -225,20 +237,19 @@ export function bodyPromptLines(who) {
   const b = ensureBody(who);
   if (!b) return [];
   const o = b.organs || {};
-  const lib = libidoStage(b.libido);
   const ar = arousalStage(b.arousal);
   const tone = [];
   const must = [];
 
-  // 總規則：身體狀態必須改寫語氣與用詞，不准當沒感覺。
+  // 總規則：身體狀態必須改寫語氣與用詞，不准當沒感覺。性欲不另開一條語氣。
   must.push("硬性規則：下面身體狀態必須改變你的語氣、斷句與用詞；不准平淡回話、不准假裝沒感覺、不准唸出數字或狀態名。");
   must.push("只准用說出口的話演出：喘息、吞嚥、躲閃、求繼續／求停、被碰到時的短叫。不要旁白、不要動作描述。");
 
-  if (lib === "peak" || ar === "climax") {
+  if (ar === "climax") {
     tone.push("【語氣・極限】呼吸亂、句子碎成半截；常被快感打斷；主動求摸／求插／求停都可以，但要用台詞，不要旁白。");
-  } else if (ar === "wantFill" || lib === "high") {
+  } else if (ar === "wantFill") {
     tone.push("【語氣・渴望】喘、黏、心不在焉；會把話題拐回身體；主動求填滿或求再碰，詞彙可以露骨。");
-  } else if (ar === "aroused" || lib === "mid") {
+  } else if (ar === "aroused") {
     tone.push("【語氣・性奮】帶黏與散漫，聲音發軟；偶爾露骨，但仍壓著一點；被碰到會漏出短喘。");
   } else if (ar === "slight") {
     tone.push("【語氣・微熱】比平常多曖昧與不好意思；身體感若有若無，碰到敏感處才明顯。");
@@ -405,24 +416,84 @@ export function applyOrganFromHit(who, hit, text = "") {
   return b;
 }
 
-/** 依使用者台詞輕觸更新身體＋性慾。回傳是否命中。 */
+/**
+ * 沒開聊天框、人還在房裡的一拍：性奮 −1。
+ * 聊天框開著不要呼叫。
+ */
+export function decayArousalOffChat(who) {
+  const b = ensureBody(who);
+  if (!b || (b.arousal || 0) <= 0) return b;
+  b.arousal = Math.max(0, (b.arousal || 0) - 1);
+  return b;
+}
+
+/** 主動離開：性奮直接歸 0。跑掉不走這條。 */
+export function zeroArousal(who) {
+  const b = who?.bodyState;
+  if (!b || typeof b !== "object") return null;
+  b.arousal = 0;
+  b.arousalCoolAt = 0;
+  return b;
+}
+
+/** 跑掉之後性奮慢慢退，每 2 分鐘 −1。 */
+export const AROUSAL_OUT_STEP_MS = 2 * 60 * 1000;
+
+export function startArousalCool(who, now = Date.now()) {
+  const b = ensureBody(who);
+  if (!b) return null;
+  b.arousalCoolAt = now;
+  return b;
+}
+
+export function clearArousalCool(who) {
+  const b = who?.bodyState;
+  if (b) b.arousalCoolAt = 0;
+  return b || null;
+}
+
+/** 依經過的真實時間扣性奮。人在外面才呼叫。 */
+export function decayArousalCool(who, now = Date.now()) {
+  const b = who?.bodyState;
+  if (!b) return null;
+  const at = Number(b.arousalCoolAt) || 0;
+  if (!at || (b.arousal || 0) <= 0) {
+    if ((b.arousal || 0) <= 0 && at) b.arousalCoolAt = 0;
+    return b;
+  }
+  const steps = Math.floor((now - at) / AROUSAL_OUT_STEP_MS);
+  if (steps <= 0) return b;
+  b.arousal = Math.max(0, (b.arousal || 0) - steps);
+  b.arousalCoolAt = at + steps * AROUSAL_OUT_STEP_MS;
+  if (b.arousal <= 0) b.arousalCoolAt = 0;
+  return b;
+}
+
+/** 離開後再進房：這趟累的開放度歸 0，下次進房重頭累。感情不動。 */
+export function resetOpenness(who) {
+  const b = who?.bodyState;
+  if (!b || typeof b !== "object") return null;
+  b.openness = 0;
+  return b;
+}
+
+/** 依使用者台詞輕觸更新身體。回傳是否命中。未命中不改性奮。 */
 export function applyBodyFromUserText(who, text) {
   const b = ensureBody(who);
   if (!b) return false;
   const hit = matchBodyHit(text);
   if (!hit) {
-    // 閒聊：性奮略降
-    b.arousal = clampBody(b.arousal - 1);
+    // 普通聊天的性奮只在每三句 −2（noteTalkExchange），這裡不另扣。
     b.lastPart = "";
     b.lastVerb = "";
     return false;
   }
+  const beforeArousal = b.arousal || 0;
   applyOrganFromHit(who, hit, text);
   b.arousal = clampBody(b.arousal + (hit.arousal || 0));
+  bumpClimaxTease(b, beforeArousal);
   b.lastPart = hit.id;
   b.lastVerb = actVerb(text);
-  // 高性欲底色：被碰到時更容易再往上衝
-  if (b.libido >= 16) b.arousal = clampBody(b.arousal + 2);
   return true;
 }
 
@@ -456,6 +527,7 @@ export function applyAct(who, actId) {
   if (!act || !who) return null;
   const b = ensureBody(who);
   if (!b) return null;
+  const beforeArousal = b.arousal || 0;
   const hit = { id: act.hitId, arousal: act.arousal || 0 };
   // finger_in／扣陰道台詞需含「指」才會塞入手指；吸／舔走 lick 動詞
   applyOrganFromHit(who, hit, act.text);
@@ -480,14 +552,9 @@ export function applyAct(who, actId) {
     o.clit.swell = Math.min(3, (o.clit.swell || 0) + 1);
   }
   b.arousal = clampBody(b.arousal + (hit.arousal || 0));
+  bumpClimaxTease(b, beforeArousal);
   b.lastPart = actId === "cervix_rub" ? "uterus" : hit.id;
   b.lastVerb = actVerb(act.text);
-  // 性欲加成只在陰部／胸，避免摟腰就衝滿
-  if (b.libido >= 16 && ["clit", "labia", "vagina", "breast", "nipple", "uterus"].includes(hit.id)) {
-    b.arousal = clampBody(b.arousal + 2);
-  } else if (b.libido >= 20 && ["butt"].includes(hit.id)) {
-    b.arousal = clampBody(b.arousal + 1);
-  }
   return { act, hit: true };
 }
 
@@ -519,7 +586,7 @@ export function snapshotBodyForUi(who) {
 export function applyUiSnapshot(who, snap) {
   const b = ensureBody(who);
   if (!b || !snap) return b;
-  b.libido = clampBody(snap.libido);
+  if (snap.libido != null) b.libido = clampBody(snap.libido);
   b.arousal = clampBody(snap.arousal);
   if ("shame" in b) delete b.shame;
   const o = b.organs;

@@ -1,4 +1,15 @@
 {
-  "packs": [],
-  "activeId": ""
+  "packs": [
+    {
+      "id": "mul025tjaxqgdl",
+      "name": "摸臀 1",
+      "poseDenoise": 0.55,
+      "prompt": "white background, simple background, lower body, below waist, from behind, ass focus, first-person POV, one male hand, male hand on her buttocks, NO both hands",
+      "negative": "head, face, hair, eyes, smile, looking back, looking at viewer, portrait, upper body, text, watermark, ugly, extra fingers, both hands, two hands",
+      "ref": "",
+      "url": "",
+      "updated": 1790584975496
+    }
+  ],
+  "activeId": "mul025tjaxqgdl"
 }

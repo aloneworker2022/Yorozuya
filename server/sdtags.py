@@ -942,6 +942,53 @@ AGE_NEGATIVE = "child, loli, chibi, baby face"
 FLAT_BG_TAGS = "simple background, white background, plain background"
 
 
+# 脫衣場面不留帽子、綁髮、頭飾。只拿掉綁法，顏色和長短留著。
+_TIED_HAIR_TAGS = {
+    "high ponytail", "low ponytail", "ponytail", "twintails",
+    "hair bun", "double bun", "messy bun", "single braid",
+    "braided hair", "braided sidelocks", "braid",
+}
+_HEADWEAR_TAGS = {
+    "hat", "cap", "nurse cap", "beret", "bonnet", "bandana",
+    "headband", "hairband", "hair ribbon", "ribbon", "hair ornament",
+    "hairpin", "hair clip", "scrunchie", "hair tie", "hair bow",
+    "tiara", "headdress", "maid headdress", "cat ears", "animal ears",
+    "headset", "headphones", "hair flower", "flower in hair",
+}
+_HAIR_LENGTH_TAGS = {"long hair", "very long hair", "short hair", "medium hair", "bob cut"}
+HEADWEAR_NEGATIVE = (
+    "hat, cap, nurse cap, beret, bonnet, bandana, headband, hairband, "
+    "hair ribbon, ribbon, hair ornament, hairpin, hair clip, scrunchie, hair tie, "
+    "tiara, headdress, cat ears, animal ears, headset, headphones, hair flower, "
+    "ponytail, twintails, hair bun, braid, braided hair"
+)
+
+
+def without_headwear(text: str) -> str:
+    """拿掉帽子、頭飾、綁髮。綁過的頭髮改成放下來。"""
+    kept: list[str] = []
+    seen: set[str] = set()
+    removed_tie = False
+    for raw in str(text or "").split(","):
+        tag = raw.strip()
+        key = tag.lower()
+        if not key or key in seen:
+            continue
+        if key in _TIED_HAIR_TAGS:
+            removed_tie = True
+            continue
+        if key in _HEADWEAR_TAGS:
+            continue
+        seen.add(key)
+        kept.append(tag)
+    if removed_tie and not (_HAIR_LENGTH_TAGS & seen):
+        kept.append("long hair")
+        seen.add("long hair")
+    if removed_tie and "hair down" not in seen:
+        kept.append("hair down")
+    return ", ".join(kept)
+
+
 def negative_for(flat_bg: bool = False, clothed: bool = False, extra_neg: str = "") -> str:
     """組 negative。預設只擋畫崩／魔物／幼態，不塞 nude／nipples。
 
@@ -1048,6 +1095,7 @@ def appearance_en_parts(
     clothed: bool = True,
     stage: str = "",
     crop: str = "",
+    garment: str = "",
 ) -> tuple[dict[str, str], list[str]]:
     """中文人設外貌 → 英文 tag 字典（給 Grok／任何讀句子的生圖路）。
 
@@ -1062,6 +1110,11 @@ def appearance_en_parts(
     level = clothing_level(stage, character=ch) if (stage or ch.get("stage")) else (
         "covered" if clothed else "exposed"
     )
+    garment = (garment or "").strip().lower()
+    if garment in ("underwear", "topoff", "cover"):
+        level = "shape"
+    elif garment in ("panties", "nude", "coverlow"):
+        level = "exposed"
     sp_seg, sp_over, sp_unknown = resolve_specials(ch)
     unknown += list(sp_unknown)
 
@@ -1095,7 +1148,7 @@ def appearance_en_parts(
     parts["labia_color"] = tr(LABIA_COLOR, "labia_color")
     parts["pubic_hair"] = tr(PUBIC_HAIR, "pubic_hair")
     parts["feature"] = tr(FEATURE, "feature")
-    parts["clothing_level"] = level
+    parts["clothing_level"] = garment if garment in ("underwear", "panties", "nude", "topoff", "cover", "coverlow") else level
 
     # 特殊屬性英文 tag（合併各段）
     sp_tags: list[str] = []
@@ -1119,12 +1172,25 @@ def appearance_en_parts(
             parts["specials"] = ", ".join(uniq)
 
     # 服裝：優先 character 上已解析的 worn；否則 career / style
-    worn = str(ch.get("_worn_outfit") or look.get("career_outfit") or look.get("style") or "").strip()
-    if worn:
-        otag = outfit_en(worn)
-        if worn and not otag:
-            unknown.append(f"outfit: {worn}")
-        parts["outfit"] = outfit_tags_for_level(otag or CLOTHES_FALLBACK, level)
+    if garment == "underwear":
+        parts["outfit"] = "bra, panties, underwear"
+    elif garment == "panties":
+        parts["outfit"] = "panties, topless, bare breasts, nipples"
+    elif garment == "nude":
+        parts["outfit"] = "nude, completely nude, bare breasts, nipples"
+    elif garment == "topoff":
+        parts["outfit"] = "shirt lift, bra, panties"
+    elif garment == "cover":
+        parts["outfit"] = "nude, completely nude, arm across breasts, hand covering breasts, hand covering crotch"
+    elif garment == "coverlow":
+        parts["outfit"] = "nude, completely nude, bare breasts, nipples, hand covering crotch"
+    else:
+        worn = str(ch.get("_worn_outfit") or look.get("career_outfit") or look.get("style") or "").strip()
+        if worn:
+            otag = outfit_en(worn)
+            if worn and not otag:
+                unknown.append(f"outfit: {worn}")
+            parts["outfit"] = outfit_tags_for_level(otag or CLOTHES_FALLBACK, level)
 
     h = look.get("height_cm")
     if h:
@@ -1144,7 +1210,19 @@ def appearance_en_parts(
             parts["specials"] = lower_sp
         else:
             parts.pop("specials", None)
-        if level == "exposed":
+        if garment == "panties":
+            parts["outfit"] = "panties"
+        elif garment == "underwear":
+            parts["outfit"] = "bra, panties"
+        elif garment == "nude":
+            parts["outfit"] = "nude"
+        elif garment == "topoff":
+            parts["outfit"] = "bra, panties"
+        elif garment == "cover":
+            parts["outfit"] = "hand covering crotch"
+        elif garment == "coverlow":
+            parts["outfit"] = "nude, hand covering crotch"
+        elif level == "exposed":
             parts["outfit"] = "nude"
         elif parts.get("outfit"):
             parts["outfit"] = filter_tag_chunk(parts["outfit"], _UPPER_OUTFIT_DROP)
@@ -1190,9 +1268,10 @@ def appearance_en_brief(
     *,
     stage: str = "",
     framing: str = "",
+    garment: str = "",
 ) -> tuple[str, list[str]]:
     """生圖用:一行 Danbooru tag,沒有中文、沒有英文句子。"""
-    parts, unknown = appearance_en_parts(character, stage=stage, crop=framing)
+    parts, unknown = appearance_en_parts(character, stage=stage, crop=framing, garment=garment)
     bits = [
         "1girl",
         HUMAN_TAGS,
@@ -1221,6 +1300,8 @@ def appearance_en_brief(
             parts.get("pubic_hair") or "",
         ]
     tag = flatten_tags(*bits)
+    if (garment or "").strip():
+        tag = without_headwear(tag)
     return tag or "1girl, adult", unknown
 
 
@@ -1323,6 +1404,7 @@ def build_prompt(
     scene: bool = False,
     stage: str = "",
     action_first: bool = False,
+    garment: str = "",
 ) -> tuple[str, list[str]]:
     """回 (positive prompt, 查不到對照的原文清單)。
 
@@ -1371,7 +1453,23 @@ def build_prompt(
         nsfw_act=nsfw_act and not keep_act,
         character=ch,
     )
-    keep_clothes = dressed and level == "covered" and not (nsfw_act and not keep_act)
+    garment = (garment or "").strip().lower()
+    if garment == "underwear":
+        # 外衣不進畫面。胸仍被胸罩蓋住，不要升到 exposed（那會寫全裸）。
+        level = "shape"
+    elif garment == "panties":
+        # 只剩內褲。上身裸才寫乳暈乳頭；衣服欄另外寫，不走 nude。
+        level = "exposed"
+    elif garment == "nude":
+        # 內褲也脫了。全裸才寫乳暈乳頭，不要把生涯服裝或內褲畫回去。
+        level = "exposed"
+    elif garment in ("topoff", "cover"):
+        # 拉衣或用手遮胸：不要寫乳頭，也不要套回生涯服裝。
+        level = "shape"
+    elif garment == "coverlow":
+        # 胸露著，只遮下體。
+        level = "exposed"
+    keep_clothes = dressed and not garment and level == "covered" and not (nsfw_act and not keep_act)
     # 雙人／做愛／NTR 只寫 1man 1girl。不要 1boy／2people（人數衝突、畫風跑掉）。
     multi = scene and is_multi_scene(extra)
     pov = is_pov_cam(extra)
@@ -1465,7 +1563,19 @@ def build_prompt(
             if skin and skin not in SKIN:
                 unknown.append(f"skin: {skin}")
 
-    if dressed:
+    if dressed and garment == "underwear":
+        bits.append("bra, panties, underwear")
+    elif dressed and garment == "panties":
+        bits.append("panties, topless, bare breasts, nipples")
+    elif dressed and garment == "nude":
+        bits.append("nude, completely nude, bare breasts, nipples")
+    elif dressed and garment == "topoff":
+        bits.append("shirt lift, bra, panties")
+    elif dressed and garment == "cover":
+        bits.append("nude, completely nude, arm across breasts, hand covering breasts, hand covering crotch")
+    elif dressed and garment == "coverlow":
+        bits.append("nude, completely nude, bare breasts, nipples, hand covering crotch")
+    elif dressed:
         # 沒有任何服裝 tag = 模型自由發揮 = 多半不穿。查不到對照就墊一件,
         # 寧可衣服普通,也不要因為池子改過一個字就整張變裸的。
         worn = (outfit or "").strip() or str(look.get("style") or "").strip()
@@ -1516,4 +1626,7 @@ def build_prompt(
             if t and t.lower() not in seen:
                 seen.add(t.lower())
                 out.append(t)
-    return ", ".join(out), unknown
+    prompt = ", ".join(out)
+    if garment:
+        prompt = without_headwear(prompt)
+    return prompt, unknown

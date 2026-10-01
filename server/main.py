@@ -81,10 +81,18 @@ _SHOT_FILE_SUFS = (
     "tease_doggy_ready", "tease_doggy_half", "tease_doggy_more", "tease_doggy_deep", "tease_doggy_cum",
     "tease_doggy",
     "half_xiu", "half_xi", "half_nu", "half_ai", "half_le",
-    "half", "full", "head",
+    "undress_stand", "undress_low", "undress_cover",
+    "undress_nude", "undress_slip", "undress_loose", "undress_sit", "half", "full", "head",
 )
 SHOT_LABEL_ZH = {
     "head": "大頭照", "half": "半身(聊天立繪)", "full": "全身(看板娘)",
+    "undress_sit": "脫衣·虛脫坐下",
+    "undress_loose": "脫衣·只穿內衣",
+    "undress_slip": "脫衣·只穿內褲",
+    "undress_nude": "脫衣·脫掉內褲",
+    "undress_cover": "脫衣·遮住胸和下體",
+    "undress_low": "脫衣·遮住下面",
+    "undress_stand": "脫衣·裸體立繪",
     "half_xi": "半身·喜", "half_nu": "半身·怒", "half_ai": "半身·哀",
     "half_le": "半身·樂", "half_xiu": "半身·害羞",
     "tease_breast": "調戲·摸奶", "tease_breast_knead": "調戲·揉奶", "tease_breast_suck": "調戲·吸奶頭", "tease_nipple_lick": "調戲·舔奶頭", "tease_labia": "調戲·摸陰唇", "tease_labia_rub": "調戲·揉陰唇", "tease_finger_in": "調戲·手指插入",
@@ -972,16 +980,16 @@ async def _run_grok_build(
     )
 
 
-def _character_visual_brief(ch: dict, framing: str = "") -> str:
+def _character_visual_brief(ch: dict, framing: str = "", garment: str = "") -> str:
     """生圖用 character sheet:一行 Danbooru tag,不塞中文、不塞英文句子。"""
     if not isinstance(ch, dict):
         return "1girl, adult"
     ch2 = dict(ch)
     worn = _outfit_of(ch2)
-    if worn:
+    if worn and not garment:
         ch2["_worn_outfit"] = worn
     en_brief, _unknown = sdtags.appearance_en_brief(
-        ch2, stage=str(ch.get("stage") or ""), framing=framing,
+        ch2, stage=str(ch.get("stage") or ""), framing=framing, garment=garment,
     )
     return en_brief
 
@@ -1031,6 +1039,7 @@ def _build_girl_image_prompt(
     ref_path: Path | None = None,
     pose_path: Path | None = None,
     scene_kind: str = "",
+    garment: str = "",
 ) -> str:
     """組給 Grok Build 的生圖指令。人物欄位以 character(完整 generateGirl 結果)為準。
 
@@ -1042,9 +1051,10 @@ def _build_girl_image_prompt(
     framing = (framing or "half").lower()
     rating = (rating or "sfw").lower()
     style = (style or "anime").lower()
+    garment = (garment or "").strip().lower()
     frame_map, style_map, rating_map = _FRAME_MAP, _STYLE_MAP, _RATING_MAP
     ch = _fill_manual_fields(character, name, personality, backstory)
-    brief = _character_visual_brief(ch, framing=framing)
+    brief = _character_visual_brief(ch, framing=framing, garment=garment)
 
     size_note = (
         "Output size MUST be exactly 256x256 pixels."
@@ -1130,7 +1140,13 @@ def _build_girl_image_prompt(
         nsfw_act=lewd_action and not keep_act,
         character=ch,
     )
-    if level == "covered" and not lewd_action:
+    if garment in ("underwear", "topoff", "cover"):
+        level = "shape"
+    elif garment in ("panties", "nude", "coverlow"):
+        level = "exposed"
+    if garment:
+        rating = "nsfw"
+    elif level == "covered" and not lewd_action:
         rating = "sfw"
     else:
         rating = "nsfw"
@@ -1249,19 +1265,65 @@ CRITICAL COMPOSITION RULES:
 Do NOT change her hair, eyes, body type, or outfit identity unless ACTION undresses her.
 """
         else:
+            if garment == "underwear":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "Outer clothes are already off: she wears only a bra and panties. "
+                    "Do not put a shirt, dress, skirt, jacket, or uniform back on. "
+                    "Keep her breasts covered by the bra."
+                )
+            elif garment == "panties":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "She wears only panties. No bra. Her breasts are bare. "
+                    "Do not put a shirt, dress, bra, or uniform back on. Do not remove the panties."
+                )
+            elif garment == "nude":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "She is completely nude. The panties are off. No bra, no panties, no underwear. "
+                    "Do not put any clothes back on."
+                )
+            elif garment == "topoff":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "She is pulling her shirt up. Bra and panties stay on. Breasts stay covered by the bra. "
+                    "Do not remove the bra or panties. Do not draw a second person's face or body."
+                )
+            elif garment == "cover":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "She is nude and standing. One arm covers her breasts, one hand covers her crotch. "
+                    "Do not draw clothes. Do not show nipples or genitals."
+                )
+            elif garment == "coverlow":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "She is nude and standing. Breasts are bare. One hand covers her crotch only. "
+                    "Do not cover her breasts. Do not draw clothes."
+                )
+            else:
+                look_lock = "same face, hair, outfit"
+                outfit_rule = "Do NOT change hair, eyes, body type, or outfit identity."
             extra_block = f"""
 === ACTION / SCENE TO DRAW (pose, camera, interaction — do NOT change identity) ===
 {extra.strip()}
 === END ACTION ===
 Draw the SAME woman from the CHARACTER SHEET{(' / reference image' if ref_path is not None else '')}.
 EDIT RULES (portrait template base):
-- Start from the reference portrait look (same face, hair, outfit).
+- Start from the reference portrait look ({look_lock}).
 - Apply ACTION: simple expression tags (happy/shy/angry/crying/etc.) and pose (standing/sitting/walking).
 - Keep looking at viewer UNLESS ACTION says looking away / looking at screen / scenery / special gaze.
 - Add male hands / first-person hands ONLY if ACTION mentions them.
 - Special gaze (chest/thighs/away) ONLY if ACTION mentions them.
 - Do NOT invent complex new camera blocking; light edit of the portrait is preferred.
-Do NOT change hair, eyes, body type, or outfit identity.
+{outfit_rule}
 """
 
     pose_block = ""
@@ -1757,6 +1819,7 @@ async def _run_grok_image(
             ref_path=id_local,
             pose_path=pose_local,
             scene_kind=scene_kind,
+            garment=comfy.undress_garment(shot_l),
         )
     text, err = await _run_grok_cli(
         prompt,
@@ -1867,7 +1930,7 @@ def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
         stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
         fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
         return IMG_TEST_DIR, "/assets/testword", fname
-    if shot in comfy.PORTRAIT_SHOTS and char_id:
+    if comfy.portrait_shot_spec(shot) is not None and char_id:
         PORTRAIT_DIR.mkdir(parents=True, exist_ok=True)
         return PORTRAIT_DIR, "/assets/portraits", f"{char_id}_{shot}.png"
     if char_id and (card_id or scene_kind in ("card", "watch", "scene")):
@@ -1886,6 +1949,9 @@ def _portrait_owner(stem: str) -> str:
     if "_card_" in s:
         return s.split("_card_", 1)[0]
     low = s.lower()
+    mark = low.rfind("_undress_")
+    if mark > 0:
+        return s[:mark]
     for suf in _SHOT_FILE_SUFS:
         tail = "_" + suf
         if low.endswith(tail):
@@ -2142,6 +2208,9 @@ def cutout_status():
 def _portrait_shot_from_stem(stem: str) -> str:
     """檔名 stem → shot 鍵。支援 half_xi 等（不可只 rsplit 最後一段，會變成 xi）。"""
     s = (stem or "").lower()
+    mark = s.rfind("_undress_")
+    if mark >= 0 and comfy.is_undress_shot(s[mark + 1:]):
+        return s[mark + 1:]
     for k in _SHOT_FILE_SUFS:
         if s.endswith("_" + k) or s == k:
             return k
@@ -2156,7 +2225,7 @@ async def cutout_run(body: CutIn):
         raise HTTPException(404, "找不到這張圖(只認 /assets/portraits/ 與 /assets/testword/)")
     shot_key = _portrait_shot_from_stem(p.stem)
     bmin = body.border_min or (
-        comfy.PORTRAIT_SHOTS.get(shot_key, {}).get("border_min")
+        (comfy.portrait_shot_spec(shot_key) or {}).get("border_min")
         or cutout.BORDER_MIN)
     changed, why = await asyncio.to_thread(
         cutout.cut_background, p,
@@ -2224,7 +2293,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         if fr == "head":
             fr = "half"
     want_flat = False if script_mode else (
-        bool(comfy.PORTRAIT_SHOTS.get(shot, {}).get("cutout")) or bool(opts.get("flat_bg"))
+        bool((comfy.portrait_shot_spec(shot) or {}).get("cutout")) or bool(opts.get("flat_bg"))
     )
     return sdtags.build_prompt(
         ch,
@@ -2246,6 +2315,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         extra=str(opts.get("extra") or ""),
         scene=scene,
         action_first=script_mode,
+        garment=comfy.undress_garment(shot),
     )
 
 
@@ -2253,7 +2323,7 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     """ComfyUI 生一張。落地規則見 `_dest_for_image`。"""
     out_dir, url_dir, fname = _dest_for_image(opts)
     shot = str(opts.get("shot") or "").lower()
-    if shot not in comfy.PORTRAIT_SHOTS:
+    if comfy.portrait_shot_spec(shot) is None:
         shot = ""
 
     extra_pos, extra_from_en = sdtags.split_pos_neg_tags(str(opts.get("extra") or ""))
@@ -2265,6 +2335,16 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
             str(opts.get("negative") or "").strip(),
         ) if x
     )
+    # 脫光的景不能在負向寫 nude／naked，否則衣服會被畫回去。
+    garment = comfy.undress_garment(shot)
+    if garment in ("nude", "cover", "coverlow"):
+        banned = {"nude", "naked", "completely naked", "completely nude", "topless", "bottomless"}
+        extra_neg = ", ".join(
+            t.strip() for t in extra_neg.split(",")
+            if t.strip() and t.strip().lower() not in banned
+        )
+    if garment:
+        extra_neg = ", ".join(x for x in (extra_neg, sdtags.HEADWEAR_NEGATIVE) if x)
 
     wf = opts.get("workflow") if isinstance(opts.get("workflow"), dict) else None
     # prompt 有值 = 使用者在 testword 改過的版本,原樣送出;留空才由人設現組
@@ -2286,7 +2366,7 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     # 三連拍／情緒半身表：尺寸照 plan-v4，seed 取人設雜湊（同 seed = 同一張臉）。
     # tease_*／standee_*／出卡：客戶端沒帶 seed 時每次隨機；否則重產幾乎同一張。
     # （pose_ref + 低 denoise 仍會偏相似，但主因是固定 identity seed。）
-    spec = comfy.PORTRAIT_SHOTS.get(shot) or {}
+    spec = comfy.portrait_shot_spec(shot) or {}
     gen_w, gen_h = spec.get("gen", (0, 0))
     out_w, out_h = spec.get("out", (0, 0))
     seed = int(opts.get("seed") or 0)
@@ -2305,9 +2385,9 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     negative = sdtags.negative_for(want_cut, clothed=False, extra_neg=extra_neg)
 
     pose_src = _resolve_ref_image(str(opts.get("pose_ref") or ""))
-    # 只讓 tease／standee 吃 pose_ref；召喚三連拍／情緒半身表不鎖姿勢參考
+    # 只讓 tease／standee／脫衣場面吃 pose_ref；召喚三連拍／情緒半身表不鎖姿勢參考
     if pose_src is not None and shot and not (
-        comfy.is_tease_shot(shot) or comfy.is_standee_shot(shot)
+        comfy.is_tease_shot(shot) or comfy.is_standee_shot(shot) or comfy.is_undress_shot(shot)
     ):
         pose_src = None
     if pose_src is not None:
@@ -2317,6 +2397,9 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
         if shot in ("tease_butt", "tease_waist", "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in"):
             sq = (comfy.PORTRAIT_SHOTS.get(shot) or {}).get("gen") or (1024, 1024)
             gen_w, gen_h = int(sq[0]), int(sq[1])
+        elif comfy.is_undress_shot(shot):
+            box = spec.get("gen") or (832, 1216)
+            gen_w, gen_h = int(box[0]), int(box[1])
     name, err = await comfy.generate(
         positive=prompt,
         negative=negative,
@@ -2932,10 +3015,11 @@ def _img_prompt_trace(t: ImgGenIn) -> dict:
     extra = extra_pos
     visual_neg = ", ".join(x for x in ((t.negative or "").strip(), extra_from_en) if x)
     framing = (t.framing or "half").lower()
+    garment = comfy.undress_garment(str(t.shot or ""))
     look_parts, unknown = sdtags.appearance_en_parts(
-        ch, stage=str(ch.get("stage") or ""), crop=framing,
+        ch, stage=str(ch.get("stage") or ""), crop=framing, garment=garment,
     )
-    brief = _character_visual_brief(ch, framing=framing)
+    brief = _character_visual_brief(ch, framing=framing, garment=garment)
     rating = (t.rating or "sfw").lower()
     style = (t.style or "anime").lower()
     layers: list[dict] = []
@@ -2959,7 +3043,7 @@ def _img_prompt_trace(t: ImgGenIn) -> dict:
                 continue
             layers.append({"id": f"look_{k}", "src": _LOOK_SRC_ZH.get(k, f"人設 look.{k}"), "text": tag})
     lv = look_parts.get("clothing_level") or sdtags.clothing_level(str(ch.get("stage") or ""), character=ch)
-    lv_zh = {"covered": "陌生／朋友·穿好只留罩杯", "shape": "女友·露胸型／乳溝", "erotic": "妻子·情色服裝（露膚／情趣，非全裸）", "exposed": "強制全裸含乳暈乳頭"}.get(lv, lv)
+    lv_zh = {"covered": "陌生／朋友·穿好只留罩杯", "shape": "女友·露胸型／乳溝", "erotic": "妻子·情色服裝（露膚／情趣，非全裸）", "exposed": "強制全裸含乳暈乳頭", "underwear": "脫衣·只穿內衣（胸罩與內褲）", "panties": "脫衣·只穿內褲（上身裸）", "nude": "脫衣·脫掉內褲（什麼都不穿）", "topoff": "脫衣·拉起上衣（胸罩與內褲還在）", "cover": "脫衣·裸體遮胸和下體", "coverlow": "脫衣·裸體只遮下面"}.get(lv, lv)
     layers.append({"id": "clothing_level", "src": "衣服多寡（關係階段）", "text": lv_zh})
     if extra:
         layers.append({"id": "extra", "src": "正向 extra（運鏡＋玩家動作）", "text": extra})
@@ -2986,6 +3070,7 @@ def _img_prompt_trace(t: ImgGenIn) -> dict:
         ref_path=_resolve_ref_image(t.ref or ""),
         pose_path=_resolve_ref_image(t.pose_ref or ""),
         scene_kind=str(t.scene_kind or ""),
+        garment=garment,
     )
     comfy_full, unk2 = _comfy_prompt_for({
         "character": ch, "framing": framing, "rating": rating,
@@ -3733,16 +3818,44 @@ async def _dd_tick_once() -> None:
     _dd_save(store)
 
 
-def _dd_force() -> dict:
-    data = _dd_read_save() or {}
-    store = _dd_load()
-    store = _dd_begin(store, data, force=True)
-    _dd_save(store)
+def _dd_retire() -> None:
+    """發呆已取消：還沒寫進存檔的圖合併一次，然後停掉佇列。不再開新的預產。"""
     try:
-        DAYDREAM_WAKE.set()
-    except Exception:
-        pass
-    return ddream.public_status(store)
+        store = _dd_load()
+    except Exception as e:
+        print(f"[發呆] 取消時讀不到狀態: {e}", flush=True)
+        return
+    flushed = False
+    if store.get("patches"):
+        try:
+            flushed = bool(_dd_flush_patches_to_save(store))
+        except Exception as e:
+            print(f"[發呆] 取消前寫入存檔失敗: {e}", flush=True)
+    was_running = bool(store.get("running") or store.get("queue") or store.get("force"))
+    store["running"] = False
+    store["force"] = False
+    store["queue"] = []
+    store["label"] = ""
+    store["girlId"] = ""
+    if flushed:
+        store["patches"] = {}
+    if was_running or flushed:
+        _dd_save(store)
+    if was_running:
+        print("[發呆] 已取消，停掉進行中的預產", flush=True)
+
+
+def _dd_force() -> dict:
+    return {
+        "ok": False,
+        "err": "發呆已取消",
+        "running": False,
+        "completed": False,
+        "done": 0,
+        "total": 0,
+        "label": "",
+        "girlId": "",
+    }
 
 
 @app.get("/api/daydream")
@@ -3757,27 +3870,13 @@ def daydream_status():
 
 @app.post("/api/daydream/force")
 def daydream_force():
-    """testword／除錯：立刻開一輪發呆，不開遊戲頁也會在伺服器跑。"""
+    """發呆預產已取消。保留路徑，避免舊頁面打到 404。"""
     return _dd_force()
 
 
 async def _daydream_loop():
-    """發呆編排：看時窗、丟 gen_tasks、把圖補回存檔合併層。"""
-    print("[發呆] 啟動 — 時窗 6:00／14:00／19:00／3:00，關網頁也照跑", flush=True)
-    while True:
-        try:
-            await _dd_tick_once()
-            store = _dd_load()
-            if store.get("running") and store.get("queue"):
-                continue
-            DAYDREAM_WAKE.clear()
-            try:
-                await asyncio.wait_for(DAYDREAM_WAKE.wait(), timeout=15)
-            except asyncio.TimeoutError:
-                pass
-        except Exception as e:
-            print(f"[發呆] 檢查發生例外(將續跑):{e}", flush=True)
-            await asyncio.sleep(5)
+    """發呆已取消，不再排程。"""
+    return
 
 
 _HEARTBEAT_SEC = 600            # 每 10 分鐘印一次「已執行檢查」心跳
@@ -3791,12 +3890,10 @@ def _world_beat(store, now: float, forced: bool = False) -> None:
         return
     _last_beat = now
     st = sim.world_stats(store)
-    dd = _dd_public()
     print(
         f"[世界時鐘] {time.strftime('%Y-%m-%d %H:%M:%S')} 已執行檢查 — "
         f"名冊={st['roster']} 召喚師關係={st['rels']} 召喚中={st['taken']} "
-        f"看板娘計時={st['kanbanTimers']} 委託計時={st['questTimers']} 待套用={st['pendingOutcomes']} "
-        f"發呆={dd.get('done', 0)}/{dd.get('total', 0) or '-'}{'跑' if dd.get('running') else ''}",
+        f"看板娘計時={st['kanbanTimers']} 委託計時={st['questTimers']} 待套用={st['pendingOutcomes']}",
         flush=True,
     )
 
@@ -3826,9 +3923,12 @@ async def _start_gen_worker():
               "(狀態也看得到:GET /api/cutout、設定頁按「測試 ComfyUI」、"
               "/testword 的「🩹 去背狀態」)", flush=True)
     print("[世界時鐘] 啟動 — 伺服器權威 runtime 上線,每 30 秒跑檢查、每 10 分鐘印心跳", flush=True)
+    try:
+        _dd_retire()
+    except Exception as e:
+        print(f"[發呆] 取消失敗(仍不啟動預產): {e}", flush=True)
     asyncio.create_task(_gen_worker())
     asyncio.create_task(_world_clock())
-    asyncio.create_task(_daydream_loop())
 
 
 # /editmale 編輯其他召喚師池: names、behaviors(行為卡)、actions(肢體行為)。
@@ -4887,6 +4987,50 @@ def put_knead_packs(body: dict):
         active = ""
     doc = {"packs": packs, "activeId": active}
     path = _knead_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _undress_packs_path():
+    return WEB_DIR / "content" / "undress_packs.json"
+
+
+@app.get("/api/undress-packs")
+def get_undress_packs():
+    path = _undress_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/undress-packs")
+def put_undress_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _undress_packs_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

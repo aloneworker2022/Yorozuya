@@ -1,4 +1,15 @@
 {
-  "packs": [],
-  "activeId": ""
+  "packs": [
+    {
+      "id": "mul24kipv9upuc",
+      "name": "揉奶 1",
+      "poseDenoise": 0.55,
+      "prompt": "simple background, white background, breasts focus, chest crop, upper torso, head out of frame, first-person POV, male hands kneading breasts, squeezing breasts, NO face, NO head",
+      "negative": "head, face, hair, eyes, smile, looking at viewer, portrait, text, watermark, ugly, extra fingers",
+      "ref": "",
+      "url": "/assets/portraits/cd_mukzbnw3f4m0_tease_breast_knead.png?v=1790588452",
+      "updated": 1790588454915
+    }
+  ],
+  "activeId": "mul24kipv9upuc"
 }

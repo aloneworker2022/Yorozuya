@@ -1,4 +1,15 @@
 {
-  "packs": [],
-  "activeId": ""
+  "packs": [
+    {
+      "id": "mul24zma9dlisd",
+      "name": "吸奶頭 1",
+      "poseDenoise": 0.55,
+      "prompt": "simple background, white background, breasts focus, nipple focus, close-up, head out of frame, first-person POV, mouth sucking nipple, lips on nipple, tongue on nipple, NO face of girl, NO head of girl",
+      "negative": "head, face, hair, eyes, smile, looking at viewer, portrait, text, watermark, ugly, extra fingers",
+      "ref": "",
+      "url": "",
+      "updated": 1790588462761
+    }
+  ],
+  "activeId": "mul24zma9dlisd"
 }

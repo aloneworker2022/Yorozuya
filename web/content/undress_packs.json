@@ -1,0 +1,89 @@
+{
+  "packs": [
+    {
+      "id": "undress_sit",
+      "name": "虛脫坐下",
+      "shot": "undress_sit",
+      "caption": "她虛脫地坐在地上，使不上力。",
+      "poseDenoise": 0.55,
+      "prompt": "full body, sitting on the floor, slumped, exhausted, knees bent loosely, one palm braced on the floor, limp shoulders, vacant dazed eyes, heavy blush, slightly open mouth, sweat, still dressed,orgasm spasm face, trembling, teary eyes, gasping, convulsing expression,climax face, rolling eyes, open mouth, intense blush, ecstasy expression",
+      "negative": "standing, walking, running, extra arms, extra legs, text, watermark",
+      "ref": "",
+      "url": "/assets/portraits/mukr0jbjdflnsa_undress_sit.png?v=1790742775",
+      "updated": 1790742790102
+    },
+    {
+      "id": "undress_loose",
+      "name": "只穿內衣",
+      "shot": "undress_loose",
+      "caption": "她坐在地上，外衣脫了，只剩胸罩和內褲。",
+      "poseDenoise": 0.55,
+      "prompt": "full body, sitting on the floor, slumped, exhausted, knees bent loosely, one palm braced on the floor, limp shoulders, vacant dazed eyes, heavy blush, slightly open mouth, sweat, bra, panties, underwear only, breasts covered by bra, no shirt, no dress, no skirt,orgasm spasm face, trembling, teary eyes, gasping, convulsing expression,climax face, rolling eyes, open mouth, intense blush, ecstasy expression",
+      "negative": "standing, walking, running, extra arms, extra legs, text, watermark, shirt, dress, skirt, jacket, coat, uniform, nude, completely naked, topless, bare breasts, nipples, bottomless",
+      "ref": "",
+      "url": "/assets/portraits/cd_munie88ddec1_undress_loose.png?v=1790742565",
+      "updated": 1790742581605
+    },
+    {
+      "id": "undress_slip",
+      "name": "只穿內褲",
+      "shot": "undress_slip",
+      "caption": "她坐在地上，胸罩也脫了，只剩內褲。",
+      "poseDenoise": 0.55,
+      "prompt": "full body, sitting on the floor, slumped, exhausted, knees bent loosely, one palm braced on the floor, limp shoulders, vacant dazed eyes, heavy blush, slightly open mouth, sweat, panties only, topless, bare breasts, nipples, no bra, no shirt, no dress, no skirt,orgasm spasm face, trembling, teary eyes, gasping, convulsing expression,climax face, rolling eyes, open mouth, intense blush, ecstasy expression",
+      "negative": "standing, walking, running, extra arms, extra legs, text, watermark, bra, shirt, dress, skirt, jacket, coat, uniform, completely naked, bottomless",
+      "ref": "",
+      "url": "/assets/portraits/mukr0jbjdflnsa_undress_slip.png?v=1790743471",
+      "updated": 1790743971681
+    },
+    {
+      "id": "undress_nude",
+      "name": "脫掉內褲",
+      "shot": "undress_nude",
+      "caption": "她坐在地上，內褲也脫了，身上什麼都沒穿。",
+      "poseDenoise": 0.55,
+      "prompt": "full body, sitting on the floor, slumped, exhausted, knees bent loosely, one palm braced on the floor, limp shoulders, vacant dazed eyes, heavy blush, slightly open mouth, sweat, nude, completely nude, no clothes, no panties, no bra, bare breasts, nipples,orgasm spasm face, trembling, teary eyes, gasping, convulsing expression,climax face, rolling eyes, open mouth, intense blush, ecstasy expression",
+      "negative": "standing, walking, running, extra arms, extra legs, text, watermark, bra, panties, underwear, lingerie, bikini, shirt, dress, skirt, jacket, coat, uniform, covered breasts",
+      "ref": "",
+      "url": "/assets/portraits/mukr0jbjdflnsa_undress_nude.png?v=1790743490",
+      "updated": 1790743519255
+    },
+    {
+      "id": "undress_cover",
+      "name": "遮住胸和下體",
+      "shot": "undress_cover",
+      "caption": "她全身站著，沒穿衣服，一手遮胸、一手遮下面。",
+      "poseDenoise": 0.55,
+      "prompt": "full body, standing,  arm across breasts, hand covering breasts, hand covering crotch, shy, nude, completely nude, no clothes, no panties, no bra, bare breasts, nipples",
+      "negative": "sitting, slumped, bra, panties, underwear, lingerie, bikini, shirt, dress, skirt, jacket, coat, uniform,look at the viewer ,look at viewer",
+      "ref": "",
+      "url": "/assets/portraits/mukr0jbjdflnsa_undress_cover.png?v=1790744346",
+      "updated": 1790744360962
+    },
+    {
+      "id": "undress_low",
+      "name": "遮住下面",
+      "shot": "undress_low",
+      "caption": "她全身站著，胸口露著，只拿手遮住下面。",
+      "poseDenoise": 0.55,
+      "prompt": "full body, standing, looking at viewer, hand covering crotch, arm at side, nude, completely nude, no clothes, no panties, no bra, bare breasts, nipples",
+      "negative": "sitting, slumped, arm across breasts, covering breasts, bra, panties, underwear, lingerie, bikini, shirt, dress, skirt, jacket, coat, uniform, covered breasts",
+      "ref": "",
+      "url": "/assets/portraits/mukr0jbjdflnsa_undress_low.png?v=1790742682",
+      "updated": 1790742713726
+    },
+    {
+      "id": "undress_stand",
+      "name": "裸體立繪",
+      "shot": "undress_stand",
+      "caption": "她全身站著，什麼都沒穿，也沒有遮。",
+      "poseDenoise": 0.55,
+      "prompt": "full body, standing, looking at viewer, arms at sides, nude, completely nude, no clothes, no panties, no bra, bare breasts, nipples",
+      "negative": "sitting, sitting on the floor, slumped, covering breasts, covering crotch, arm across breasts, hand covering crotch, bra, panties, underwear, lingerie, bikini, shirt, dress, skirt, jacket, coat, uniform, covered breasts",
+      "ref": "",
+      "url": "/assets/portraits/cd_munie88ddec1_undress_stand.png?v=1790742594",
+      "updated": 1790742605545
+    }
+  ],
+  "activeId": "undress_cover"
+}

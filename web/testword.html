@@ -486,7 +486,6 @@
     <button onclick="releaseTaken()">解除召喚走</button>
     <button onclick="watchScenario()">觀戰測試場景</button>
     <button class="cy" onclick="startRandomDate()">約會（隨機妹子）</button>
-    <button class="cy" onclick="forceDaydream()">強制發呆（預產圖）</button>
     <button class="del" onclick="wipeSave()">⚠ 重設存檔(急救)</button>
   </div>
   <div class="mini" style="margin-top:.5em">
@@ -496,7 +495,6 @@
     <b>妹子被召喚走</b>：隨機（或第一隻）未 NTR 妹子 → 綁召喚師 + <code>taken</code> + 補 3h 既往 act、下看板，並強制寫進 sim。回遊戲對她按「窺視」。
     <b>解除召喚走</b>：清掉所有 taken（仍保留纏身召喚師）。
     <b>約會（隨機妹子）</b>：從名冊隨機挑一隻未 NTR 的，清牌局／下看板，寫入快速約會旗標後跳回遊戲直接開桌（跳過電話費）。
-    <b>強制發呆（預產圖）</b>：伺服器立刻開跑發呆時段（<b>不必開著遊戲頁</b>），整套重產並蓋掉舊圖。名冊上方會顯示「發呆中」。
     「重設存檔」用於存檔損壞急救。此頁不吃 app.js,遊戲當掉時仍可用。
   </div>
   <div class="status" id="bd-status"></div>
@@ -1232,23 +1230,6 @@ async function startRandomDate() {
   });
   // 稍等 status 看得見再跳
   setTimeout(() => { location.href = "/"; }, 280);
-}
-
-/** 強制發呆：伺服器立刻開跑預產圖（不必開著遊戲頁）。 */
-async function forceDaydream() {
-  try {
-    const r = await fetch("/api/daydream/force", { method: "POST" });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      status("bd-status", "發呆下單失敗: " + (formatApiDetail(j.detail) || r.status), true);
-      return;
-    }
-    status("bd-status", j.running
-      ? `伺服器已開始發呆（${j.done || 0}/${j.total || 0}）——關網頁也會繼續跑`
-      : (j.total === 0 ? "名冊沒有魅魔，發呆沒對象" : "這一窗已經跑完"));
-  } catch (e) {
-    status("bd-status", "發呆下單失敗: " + e.message, true);
-  }
 }
 
 // ── 擴充等級 ──

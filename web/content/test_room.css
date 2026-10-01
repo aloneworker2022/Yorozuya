@@ -185,8 +185,33 @@ html.room-page button[aria-pressed=true],#home-room-chrome button[aria-pressed=t
 .room-scene-overlay{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));background:rgba(6,10,28,.82);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);pointer-events:auto}
 .room-scene-overlay[hidden]{display:none!important}
 .room-scene-card{width:min(100%,380px);box-sizing:border-box;padding:22px 20px 18px;border:2px solid rgba(244,251,255,.4);border-radius:14px;background:rgba(14,22,48,.94);color:#f4fbff;text-align:center;box-shadow:0 16px 40px rgba(0,0,0,.45)}
+.room-scene-card.has-figure{width:min(100%,440px);max-height:100%;overflow:auto;display:flex;flex-direction:column;align-items:center;background:rgba(14,22,48,.78)}
 .room-scene-title{margin:0 0 12px;font-size:1.15em;font-weight:400;letter-spacing:.18em;color:#ffe14a;text-shadow:1px 1px 0 #1a2748}
+.room-scene-choices{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%;margin:0 0 12px}
+.room-scene-choices[hidden]{display:none!important}
+#room-scene-overlay .room-scene-choices button{flex:1 1 auto;min-height:44px;padding:8px 12px;border:2px solid rgba(255,180,220,.55);border-radius:999px;background:rgba(22,48,92,.95);color:#ffb8d9;font:inherit;font-size:.86em;letter-spacing:.04em;cursor:pointer;box-shadow:none}
+#room-scene-overlay .room-scene-choices button[aria-pressed=true]{background:rgba(92,36,68,.95);color:#ffe14a;border-color:rgba(255,225,74,.75)}
+#room-scene-overlay .room-scene-choices button:disabled{opacity:.45;cursor:not-allowed}
+#room-scene-overlay .room-scene-choices button:active:not(:disabled){background:rgba(40,70,120,.95)}
+.room-scene-img{display:block;height:min(62svh,680px);width:auto;max-width:100%;margin:0 auto 10px;object-fit:contain;object-position:bottom center;background:none;filter:drop-shadow(0 16px 28px rgba(0,0,0,.55))}
+.room-scene-img[hidden]{display:none!important}
 .room-scene-body{margin:0 0 18px;font-size:.95em;line-height:1.7;color:rgba(244,251,255,.85);white-space:pre-wrap}
+.room-scene-card.has-figure .room-scene-body{margin-bottom:12px}
+@media (max-width:640px),(max-height:700px){
+  .room-scene-img{height:min(52svh,520px)}
+}
+/* 脫衣畫面：人在中間的框裡，框下是對話，再下面才是選項。 */
+.room-scene-card.undress-play{width:min(100%,420px);max-height:100%;overflow:auto;display:flex;flex-direction:column;align-items:center;background:rgba(8,12,28,.42)}
+.room-scene-card.undress-play .room-scene-title{order:0}
+.room-scene-card.undress-play .room-scene-img{order:1;width:min(72vw,260px);height:min(48svh,460px);margin:0 auto 12px;padding:10px 8px 0;box-sizing:border-box;border:3px solid rgba(244,251,255,.62);border-radius:4px;background:linear-gradient(180deg,rgba(36,48,88,.96),rgba(14,20,44,.96));box-shadow:0 0 0 7px rgba(10,14,32,.88),0 18px 30px rgba(0,0,0,.45);object-fit:contain;object-position:bottom center;filter:none}
+.room-scene-card.undress-play .room-scene-body{order:2;width:100%;min-height:5.2em;max-height:24svh;overflow:auto;box-sizing:border-box;margin:0 0 12px;padding:8px 12px 10px;text-align:left;border:2px solid rgba(244,251,255,.38);border-radius:10px;background:rgba(6,10,24,.92)}
+.room-scene-card.undress-play .undress-who{display:block;margin-bottom:4px;color:#ffe14a;letter-spacing:.12em;font-size:.82em}
+.room-scene-card.undress-play .undress-tx{display:block;white-space:pre-wrap}
+.room-scene-card.undress-play .room-scene-choices{order:3;margin:0 0 10px}
+.room-scene-card.undress-play > button{order:4}
+@media (max-width:640px),(max-height:700px){
+  .room-scene-card.undress-play .room-scene-img{width:min(64vw,220px);height:min(40svh,360px)}
+}
 .room-scene-card > button{min-height:44px;padding:10px 18px;border:2px solid rgba(244,251,255,.45);border-radius:999px;background:rgba(22,48,92,.95);color:#ffe14a;font:inherit;font-size:.9em;letter-spacing:.06em;cursor:pointer;box-shadow:none}
 .room-scene-card > button:active{background:rgba(40,70,120,.95)}
 .talk-acts button[data-scene]{border-color:rgba(255,180,220,.55);color:#ffb8d9}
@@ -440,9 +465,9 @@ body.room-home #home-room-chrome { display: none !important; }
 .tease-pack-panel select{width:100%;font:inherit;color:inherit;background:#eee8dd;border:1px solid #cbbfaa;border-radius:4px;padding:.4em .55em}
 .tease-pack-panel textarea{resize:vertical;line-height:1.5;min-height:4em}
 .tease-pack-panel button{font:inherit;padding:8px 12px;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;min-height:40px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
-.bp-row,.wp-row,.br-row,.kn-row,.su-row,.lk-row,.lb-row,.lr-row,.fg-row,.sd-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
-.bp-grow,.wp-grow,.br-grow,.kn-grow,.su-grow,.lk-grow,.lb-grow,.lr-grow,.fg-grow{flex:1 1 10em;min-width:0}
-.bp-fix0,.wp-fix0,.br-fix0,.kn-fix0,.su-fix0,.lk-fix0,.lb-fix0,.lr-fix0,.fg-fix0{flex:0 1 7em}
+.bp-row,.wp-row,.br-row,.kn-row,.su-row,.lk-row,.lb-row,.lr-row,.fg-row,.sd-row,.ud-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
+.bp-grow,.wp-grow,.br-grow,.kn-grow,.su-grow,.lk-grow,.lb-grow,.lr-grow,.fg-grow,.ud-grow{flex:1 1 10em;min-width:0}
+.bp-fix0,.wp-fix0,.br-fix0,.kn-fix0,.su-fix0,.lk-fix0,.lb-fix0,.lr-fix0,.fg-fix0,.ud-fix0{flex:0 1 7em}
 .tease-pack-panel button.bp-cy,
 .tease-pack-panel button.wp-cy,
 .tease-pack-panel button.br-cy,
@@ -452,7 +477,8 @@ body.room-home #home-room-chrome { display: none !important; }
 .tease-pack-panel button.lb-cy,
 .tease-pack-panel button.lr-cy,
 .tease-pack-panel button.fg-cy,
-.tease-pack-panel button.sd-cy{background:#dce2cf;color:#48604a}
+.tease-pack-panel button.sd-cy,
+.tease-pack-panel button.ud-cy{background:#dce2cf;color:#48604a}
 .tease-pack-panel button.bp-del,
 .tease-pack-panel button.wp-del,
 .tease-pack-panel button.br-del,
@@ -462,7 +488,8 @@ body.room-home #home-room-chrome { display: none !important; }
 .tease-pack-panel button.lb-del,
 .tease-pack-panel button.lr-del,
 .tease-pack-panel button.fg-del,
-.tease-pack-panel button.sd-del{color:#975e50}
+.tease-pack-panel button.sd-del,
+.tease-pack-panel button.ud-del{color:#975e50}
 .tease-pack-panel button.bp-big,
 .tease-pack-panel button.wp-big,
 .tease-pack-panel button.br-big,
@@ -472,17 +499,18 @@ body.room-home #home-room-chrome { display: none !important; }
 .tease-pack-panel button.lb-big,
 .tease-pack-panel button.lr-big,
 .tease-pack-panel button.fg-big,
-.tease-pack-panel button.sd-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
-.bp-ref-head,.wp-ref-head,.br-ref-head,.kn-ref-head,.su-ref-head,.lk-ref-head,.lb-ref-head,.lr-ref-head,.fg-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bp-mode-flag,.wp-mode-flag,.br-mode-flag,.kn-mode-flag,.su-mode-flag,.lk-mode-flag,.lb-mode-flag,.lr-mode-flag,.fg-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
-.bp-mode-flag.txt,.wp-mode-flag.txt,.br-mode-flag.txt,.kn-mode-flag.txt,.su-mode-flag.txt,.lk-mode-flag.txt,.lb-mode-flag.txt,.lr-mode-flag.txt,.fg-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
-.bp-mode-flag.img,.wp-mode-flag.img,.br-mode-flag.img,.kn-mode-flag.img,.su-mode-flag.img,.lk-mode-flag.img,.lb-mode-flag.img,.lr-mode-flag.img,.fg-mode-flag.img{background:#e8d5e4;color:#8a3d78}
-.bp-thumb,.wp-thumb,.br-thumb,.kn-thumb,.su-thumb,.lk-thumb,.lb-thumb,.lr-thumb,.fg-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
-.bp-status,.wp-status,.br-status,.kn-status,.su-status,.lk-status,.lb-status,.lr-status,.fg-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
-.bp-status.err,.wp-status.err,.br-status.err,.kn-status.err,.su-status.err,.lk-status.err,.lb-status.err,.lr-status.err,.fg-status.err{color:#975e50}
-.bp-art,.wp-art,.br-art,.kn-art,.su-art,.lk-art,.lb-art,.lr-art,.fg-art,.sd-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
-.bp-art img,.wp-art img,.br-art img,.kn-art img,.su-art img,.lk-art img,.lb-art img,.lr-art img,.fg-art img,.sd-art img{max-width:100%;max-height:360px;display:block}
-.bp-art .mini,.wp-art .mini,.br-art .mini,.kn-art .mini,.su-art .mini,.lk-art .mini,.lb-art .mini,.lr-art .mini,.fg-art .mini,.sd-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
+.tease-pack-panel button.sd-big,
+.tease-pack-panel button.ud-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
+.bp-ref-head,.wp-ref-head,.br-ref-head,.kn-ref-head,.su-ref-head,.lk-ref-head,.lb-ref-head,.lr-ref-head,.fg-ref-head,.ud-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bp-mode-flag,.wp-mode-flag,.br-mode-flag,.kn-mode-flag,.su-mode-flag,.lk-mode-flag,.lb-mode-flag,.lr-mode-flag,.fg-mode-flag,.ud-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
+.bp-mode-flag.txt,.wp-mode-flag.txt,.br-mode-flag.txt,.kn-mode-flag.txt,.su-mode-flag.txt,.lk-mode-flag.txt,.lb-mode-flag.txt,.lr-mode-flag.txt,.fg-mode-flag.txt,.ud-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
+.bp-mode-flag.img,.wp-mode-flag.img,.br-mode-flag.img,.kn-mode-flag.img,.su-mode-flag.img,.lk-mode-flag.img,.lb-mode-flag.img,.lr-mode-flag.img,.fg-mode-flag.img,.ud-mode-flag.img{background:#e8d5e4;color:#8a3d78}
+.bp-thumb,.wp-thumb,.br-thumb,.kn-thumb,.su-thumb,.lk-thumb,.lb-thumb,.lr-thumb,.fg-thumb,.ud-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
+.bp-status,.wp-status,.br-status,.kn-status,.su-status,.lk-status,.lb-status,.lr-status,.fg-status,.ud-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
+.bp-status.err,.wp-status.err,.br-status.err,.kn-status.err,.su-status.err,.lk-status.err,.lb-status.err,.lr-status.err,.fg-status.err,.ud-status.err{color:#975e50}
+.bp-art,.wp-art,.br-art,.kn-art,.su-art,.lk-art,.lb-art,.lr-art,.fg-art,.sd-art,.ud-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
+.bp-art img,.wp-art img,.br-art img,.kn-art img,.su-art img,.lk-art img,.lb-art img,.lr-art img,.fg-art img,.sd-art img,.ud-art img{max-width:100%;max-height:360px;display:block}
+.bp-art .mini,.wp-art .mini,.br-art .mini,.kn-art .mini,.su-art .mini,.lk-art .mini,.lb-art .mini,.lr-art .mini,.fg-art .mini,.sd-art .mini,.ud-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
 /* 動作圖編輯器只屬於獨立 test_room 頁，主站永不顯示。 */
 body.room-home #btn-butt-packs,
 body.room-home #btn-waist-packs,
@@ -494,6 +522,7 @@ body.room-home #btn-labia-packs,
 body.room-home #btn-labia-rub-packs,
 body.room-home #btn-finger-packs,
 body.room-home #btn-standee-packs,
+body.room-home #btn-undress-packs,
 body.room-home #butt-pack-editor,
 body.room-home #waist-pack-editor,
 body.room-home #breast-pack-editor,
@@ -504,6 +533,7 @@ body.room-home #labia-pack-editor,
 body.room-home #labia-rub-pack-editor,
 body.room-home #finger-pack-editor,
 body.room-home #standee-pack-editor,
+body.room-home #undress-pack-editor,
 html:not(.room-page) #btn-butt-packs,
 html:not(.room-page) #btn-waist-packs,
 html:not(.room-page) #btn-breast-packs,
@@ -514,6 +544,7 @@ html:not(.room-page) #btn-labia-packs,
 html:not(.room-page) #btn-labia-rub-packs,
 html:not(.room-page) #btn-finger-packs,
 html:not(.room-page) #btn-standee-packs,
+html:not(.room-page) #btn-undress-packs,
 html:not(.room-page) #butt-pack-editor,
 html:not(.room-page) #waist-pack-editor,
 html:not(.room-page) #breast-pack-editor,
@@ -523,7 +554,8 @@ html:not(.room-page) #lick-pack-editor,
 html:not(.room-page) #labia-pack-editor,
 html:not(.room-page) #labia-rub-pack-editor,
 html:not(.room-page) #finger-pack-editor,
-html:not(.room-page) #standee-pack-editor {
+html:not(.room-page) #standee-pack-editor,
+html:not(.room-page) #undress-pack-editor {
   display: none !important;
 }
 

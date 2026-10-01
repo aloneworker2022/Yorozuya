@@ -1,4 +1,15 @@
 {
-  "packs": [],
-  "activeId": ""
+  "packs": [
+    {
+      "id": "mula4iqbqrvs5j",
+      "name": "揉陰唇 1",
+      "poseDenoise": 0.55,
+      "prompt": "simple background, white background, lower body, pussy focus, labia focus, head out of frame, first-person POV, male fingers rubbing labia, rubbing labia, NO face of girl, NO head of girl",
+      "negative": "head, face, hair, eyes, smile, looking at viewer, portrait, text, watermark, ugly, extra fingers",
+      "ref": "",
+      "url": "",
+      "updated": 1790601877890
+    }
+  ],
+  "activeId": "mula4iqbqrvs5j"
 }

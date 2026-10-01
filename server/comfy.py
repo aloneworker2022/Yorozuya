@@ -87,6 +87,15 @@ PORTRAIT_SHOTS = {
     "half_le": dict(_HALF_SPEC),  # 樂
     "half_xiu": dict(_HALF_SPEC),  # 害羞
     "full": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
+    # 脫衣場面：全身、去背、不是 tease（不要玩家 POV）。
+    # 預設七景。自己脫上衣／幫忙脫上衣已取消。編輯器之後新增的 undress_* 走 portrait_shot_spec。
+    "undress_sit": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
+    "undress_loose": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
+    "undress_slip": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
+    "undress_nude": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
+    "undress_cover": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
+    "undress_low": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
+    "undress_stand": {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72},
     "tease_breast": dict(_ACTION_CROP_SPEC),   # 玩家摸奶（正方形動作圖）
     "tease_breast_knead": dict(_ACTION_CROP_SPEC),  # 玩家揉奶
     "tease_breast_suck": dict(_ACTION_CROP_SPEC),   # 玩家吸奶頭
@@ -146,17 +155,52 @@ def is_standee_shot(shot: str) -> bool:
     return str(shot or "").lower().startswith("standee_")
 
 
-def is_identity_sheet_shot(shot: str) -> bool:
-    """召喚三連拍／情緒半身表：固定人設 seed 鎖臉。tease_/standee_ 不在此列。"""
+def is_undress_shot(shot: str) -> bool:
+    """脫衣場面全身立繪。預設七景在表內；編輯器新增的 undress_* 也算。"""
     s = str(shot or "").lower()
-    if s in ("head", "half", "full"):
+    if not s.startswith("undress_") or not (8 < len(s) <= 40):
+        return False
+    return all(("a" <= c <= "z") or ("0" <= c <= "9") or c == "_" for c in s)
+
+
+def undress_garment(shot: str) -> str:
+    """這些景不穿生涯服裝。自己脫上衣／幫忙脫上衣已取消，不再回 topoff。"""
+    s = str(shot or "").lower()
+    if s == "undress_loose":
+        return "underwear"
+    if s == "undress_slip":
+        return "panties"
+    if s in ("undress_nude", "undress_stand"):
+        return "nude"
+    if s == "undress_cover":
+        return "cover"
+    if s == "undress_low":
+        return "coverlow"
+    return ""
+
+
+def portrait_shot_spec(shot: str):
+    """有登記用登記；其餘合法 undress_* 用虛脫坐下的全身去背規格。"""
+    s = str(shot or "").lower()
+    spec = PORTRAIT_SHOTS.get(s)
+    if spec is not None:
+        return spec
+    if is_undress_shot(s):
+        return {"gen": (832, 1216), "out": (0, 0), "cutout": True, "border_min": 0.72}
+    return None
+
+
+def is_identity_sheet_shot(shot: str) -> bool:
+    """召喚三連拍／情緒半身表／脫衣全身：固定人設 seed 鎖臉。tease_/standee_ 不在此列。"""
+    s = str(shot or "").lower()
+    if s in ("head", "half", "full") or is_undress_shot(s):
         return True
     return s.startswith("half_")
 
 
 def shot_wants_cutout(shot: str, fallback: bool = False) -> bool:
     """立繪 shot 看規格；沒登記的才吃前端 cutout 旗。"""
-    spec = PORTRAIT_SHOTS.get(str(shot or "").lower())
+    spec = portrait_shot_spec(shot)
     if spec is not None:
         return bool(spec.get("cutout"))
     return bool(fallback)

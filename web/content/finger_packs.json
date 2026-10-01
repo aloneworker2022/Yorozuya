@@ -1,4 +1,15 @@
 {
-  "packs": [],
-  "activeId": ""
+  "packs": [
+    {
+      "id": "mula67qzbd2c9g",
+      "name": "手指插入 1",
+      "poseDenoise": 0.55,
+      "prompt": "simple background, white background, lower body, vaginal insertion focus, head out of frame, first-person POV, finger(s) inside vagina, fingering, NO face of girl, NO head of girl",
+      "negative": "head, face, hair, eyes, smile, looking at viewer, portrait, text, watermark, ugly, extra fingers",
+      "ref": "",
+      "url": "",
+      "updated": 1790601957400
+    }
+  ],
+  "activeId": "mula67qzbd2c9g"
 }

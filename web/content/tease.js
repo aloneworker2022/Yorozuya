@@ -1,6 +1,6 @@
 /** 房間調情：開放度／性奮解鎖動作（取代按次階梯）。 */
 
-import { ensureBody, talkActById, TALK_ACTS } from "./body_state.js?v=9";
+import { ensureBody, talkActById, TALK_ACTS, arousalStage } from "./body_state.js?v=10";
 import {
   ensureOpenness,
   actOpennessLock,
@@ -68,8 +68,11 @@ export function actLockState(who, actId) {
     return { ok: false, locked: true, reason: "裡面是空的" };
   }
 
-  // 列在 ACT_UNLOCK 的走開放度／性奮；其餘預設開放
+  // 高潮以後其餘猥褻都開，方便繼續調戲推進失神。抽出仍要裡面有東西。
   if (ACT_UNLOCK[actId]) {
+    if (arousalStage(who?.bodyState?.arousal) === "climax") {
+      return { ok: true, locked: false, via: "climax" };
+    }
     return actOpennessLock(who, actId, affectionOf(who));
   }
   return { ok: true, locked: false };
@@ -129,8 +132,9 @@ export function availableActs(who, opts = {}) {
 }
 
 /**
- * 閒置衰減：性奮／器官腫濕／衝擊往基線。
- * 陰道塞著假陰莖(dildo)時幾乎不衰減（保持被填滿狀態）。
+ * 聊天框開著時的閒置：器官腫濕／衝擊往基線。
+ * 性奮不在這裡扣（開著不掉；沒聊天另走 decayArousalOffChat）。
+ * 陰道塞著假陰莖(dildo)時器官幾乎不衰減（保持被填滿狀態）。
  */
 export function decayBodyIdle(who) {
   const b = ensureTeaseFields(who);
@@ -142,7 +146,6 @@ export function decayBodyIdle(who) {
     if ((b.shock || 0) > 0) b.shock = Math.max(0, (b.shock || 0) - 1);
     return b;
   }
-  b.arousal = Math.max(0, (b.arousal || 0) - 1);
   if ((b.shock || 0) > 0) b.shock = Math.max(0, (b.shock || 0) - 3);
   const soft = (part, key, step = 1) => {
     if (!o[part]) return;

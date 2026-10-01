@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content">
   <meta name="theme-color" content="#eee8dd">
   <title>我的房間 · Yorozuya</title>
-  <link rel="stylesheet" href="/content/test_room.css?v=87">
+  <link rel="stylesheet" href="/content/test_room.css?v=90">
   <script>
     (function () {
       try {
@@ -94,10 +94,8 @@
       </section>
 
       <section id="body-panel" class="body-panel" hidden aria-label="身體狀態">
-        <div class="inventory-heading"><h2>身體狀態・性欲</h2><span id="body-summary">尚無對象</span></div>
+        <div class="inventory-heading"><h2>身體狀態</h2><span id="body-summary">尚無對象</span></div>
         <div class="body-grid">
-          <label>性欲 <output id="body-libido-val">0</output><span class="body-stage" id="body-libido-stage"></span>
-            <input id="body-libido" type="range" min="0" max="30" value="0"></label>
           <label>性奮 <output id="body-arousal-val">0</output><span class="body-stage" id="body-arousal-stage"></span>
             <input id="body-arousal" type="range" min="0" max="30" value="0"></label>
           <label>乳頭腫 <output id="body-nipple-swell-val">0</output>
@@ -178,6 +176,7 @@
     <button id="btn-labia-rub-packs" type="button" aria-expanded="false" aria-controls="labia-rub-pack-editor">揉陰唇圖</button>
     <button id="btn-finger-packs" type="button" aria-expanded="false" aria-controls="finger-pack-editor">手指插入圖</button>
     <button id="btn-standee-packs" type="button" aria-expanded="false" aria-controls="standee-pack-editor">立繪</button>
+    <button id="btn-undress-packs" type="button" aria-expanded="false" aria-controls="undress-pack-editor">脫衣圖</button>
     <button id="edit-room" type="button" aria-pressed="false" aria-controls="room-editor">編輯</button>
   </nav>
   <div id="butt-pack-editor" class="tease-pack-panel" hidden aria-label="摸臀圖預設">
@@ -597,6 +596,55 @@
     <div id="sd-slots" class="sd-slots"></div>
     <div class="sd-status" id="sd-status"></div>
   </div>
+  <div id="undress-pack-editor" class="tease-pack-panel" hidden aria-label="脫衣圖預設">
+    <div class="tease-pack-panel-head"><strong>脫衣圖</strong><span class="mini">玩家不選景。三階段用只穿內衣、只穿內褲、脫掉內褲；脫完後的立繪用遮住胸和下體、遮住下面、裸體立繪。先預設九景。</span></div>
+    <div class="ud-row">
+      <span class="ud-grow"><label>場景</label>
+        <select id="ud-pack"></select></span>
+      <button type="button" id="ud-new">新增</button>
+      <button type="button" id="ud-del" class="ud-del">刪除</button>
+      <button type="button" id="ud-save" class="ud-cy">儲存</button>
+      <button type="button" id="ud-close">收合</button>
+    </div>
+    <div class="ud-row">
+      <span class="ud-grow"><label>場景名</label>
+        <input id="ud-name" type="text" maxlength="40" placeholder="虛脫坐下"></span>
+      <span class="ud-grow"><label>測試魅子</label>
+        <select id="ud-girl"></select></span>
+    </div>
+    <label>旁白（玩家看到的一句）</label>
+    <input id="ud-caption" type="text" maxlength="80" placeholder="她虛脫地坐在地上，使不上力。">
+    <div class="ud-row">
+      <span class="ud-grow"><label>shot（檔名，同場景不要改）</label>
+        <input id="ud-shot" type="text" maxlength="40" placeholder="undress_sit"></span>
+      <button type="button" id="ud-inject" class="ud-cy">填入這一景的預設</button>
+      <span class="ud-fix0"><label>pose_denoise</label>
+        <input id="ud-denoise" type="number" min="0.35" max="0.9" step="0.05" value="0.55"></span>
+    </div>
+    <label>正向（英文 tags，全身，不要寫玩家的手）</label>
+    <textarea id="ud-pos" rows="4" placeholder="full body, sitting on the floor, still dressed…"></textarea>
+    <label>負向 negative</label>
+    <textarea id="ud-neg" rows="2" placeholder="standing, nude…"></textarea>
+    <div class="ud-ref-head">參考圖（圖生圖）
+      <span class="ud-mode-flag txt" id="ud-mode-flag">文生圖</span>
+    </div>
+    <div class="ud-row">
+      <input id="ud-ref-file" type="file" accept="image/*" hidden>
+      <button type="button" id="ud-ref-up">上傳參考圖</button>
+      <button type="button" id="ud-ref-clear" class="ud-del">拿掉</button>
+    </div>
+    <div class="ud-row">
+      <span class="ud-grow"><input id="ud-ref-url" type="text" placeholder="/assets/pose_refs/…"></span>
+      <button type="button" id="ud-ref-apply">套用 URL</button>
+    </div>
+    <div class="mini" id="ud-ref-flag">沒有參考圖 → 文生圖</div>
+    <img class="ud-thumb" id="ud-ref-thumb" alt="" hidden>
+    <div class="ud-row" style="margin-top:.5em">
+      <button type="button" id="ud-gen" class="ud-cy ud-big">✦ 測試生圖</button>
+    </div>
+    <div class="ud-status" id="ud-status"></div>
+    <div class="ud-art" id="ud-art"><span class="mini">尚未產生</span></div>
+  </div>
   <div id="room-summon-ritual" class="room-summon-ritual" hidden role="status" aria-live="polite"></div>
   <div id="portrait-sheet" hidden>
     <button id="portrait-backdrop" type="button" aria-label="結束對話"></button>
@@ -623,6 +671,8 @@
   <div id="room-scene-overlay" class="room-scene-overlay" hidden>
     <div class="room-scene-card" role="dialog" aria-modal="true" aria-labelledby="room-scene-title">
       <h2 id="room-scene-title" class="room-scene-title"></h2>
+      <div id="room-scene-choices" class="room-scene-choices" hidden></div>
+      <img id="room-scene-img" class="room-scene-img" alt="" hidden>
       <p id="room-scene-body" class="room-scene-body">場面建置中</p>
       <button id="room-scene-back" type="button">回到房間對話</button>
     </div>
@@ -630,6 +680,6 @@
   <script src="/content/room_furniture.js?v=4"></script>
   <script src="/content/room_character.js?v=7"></script>
   <script src="/content/test_room.js?v=16"></script>
-  <script type="module" src="/content/test_room_summon.js?v=112"></script>
+  <script type="module" src="/content/test_room_summon.js?v=133"></script>
 </body>
 </html>

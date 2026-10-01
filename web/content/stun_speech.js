@@ -1,7 +1,7 @@
 /** 房間聊天：程式化「失神」亂語（非只靠 prompt）。 */
 
-import { ensureBody, talkActById, arousalStage } from "./body_state.js?v=9";
-import { insertUnlocked } from "./tease.js?v=4";
+import { ensureBody, talkActById, arousalStage } from "./body_state.js?v=10";
+import { insertUnlocked } from "./tease.js?v=7";
 
 export const SHOCK_MAX = 45;
 
@@ -413,6 +413,8 @@ export function ensureStunFields(who) {
   if (!["hers", "his", "both"].includes(b.afterglowKind)) b.afterglowKind = "";
   b.afterglowSource = b.afterglowSource === "friend" ? "friend" : "";
   if (!["creampie", "external"].includes(b.afterglowEjac)) b.afterglowEjac = "";
+  b.ejacTalkLeft = Math.max(0, Math.round(Number(b.ejacTalkLeft) || 0));
+  b.ejacTalkBan = !!b.ejacTalkBan;
   // 雙重門檻：時間與回覆數皆耗盡才清掉
   if (!(b.afterglowUntil && Date.now() < b.afterglowUntil) && !(b.afterglowReplies > 0)) {
     b.afterglowUntil = 0;
@@ -462,17 +464,24 @@ export function tickStunAfterReply(who) {
 }
 
 /**
- * 失神分數 0–100。
- * arousal→最多約40；libido 加成／倍率；器官濕腫塞；shock 暫衝。
- * 軟頂改依開放度（取代 teaseStage）。
+ * 失神分數 0–100。性欲不參與。
+ * 性奮本身停在高潮：23→60，30→64，不到失神。
+ * 已經在高潮裡，每再調戲一次 +8；兩次到 76，進入失神。
+ * 器官、衝擊另加。未插入時這兩項受開放度軟頂；
+ * 性奮和高潮後的調戲超過軟頂就不會被壓回去。
  */
 export function calcStun(who) {
   const b = ensureStunFields(who);
   if (!b) return 0;
   decayShock(b);
   const o = b.organs || {};
-  const arousalPts = (clamp(b.arousal, 0, 30) / 30) * 34;
-  const libidoBoost = (clamp(b.libido, 0, 30) / 30) * 12;
+  const arousal = clamp(b.arousal, 0, 30);
+  const inClimax = arousalStage(b.arousal) === "climax";
+  if (!inClimax) b.climaxTease = 0;
+  const arousalPts = arousal <= 23
+    ? (arousal / 23) * 60
+    : 60 + ((arousal - 23) / 7) * 4;
+  const climaxPush = inClimax ? Math.min(6, b.climaxTease || 0) * 8 : 0;
   const open = Math.max(0, Math.min(100, Number(b.openness) || 0));
   // 開放度壓低週邊失神：0→0.35，55→約0.7，100→1.0
   const openScale = 0.35 + (open / 100) * 0.65;
@@ -489,13 +498,13 @@ export function calcStun(who) {
   if ((o.breasts?.swell || 0) >= 2) organ += 2;
   organ *= openScale;
 
-  const libMult = 0.85 + (clamp(b.libido, 0, 30) / 30) * 0.25;
   const shock = clamp(b.shock || 0, 0, SHOCK_MAX);
-  let score = (arousalPts + organ) * libMult + libidoBoost + shock;
-  // 未插入前軟頂：低開放度壓失神跳過 LLM
+  const raised = arousalPts + climaxPush;
+  let score = raised + organ + shock;
+  // 未插入：器官＋衝擊仍受開放度頂。高潮後繼續調戲可以頂過去。
   if (!o.vagina?.stuffed) {
     const softCap = open < 32 ? 38 : open < 55 ? 50 : open < 78 ? 64 : 80;
-    score = Math.min(score, softCap);
+    score = Math.min(score, Math.max(softCap, raised));
   }
   return clamp(score, 0, 100);
 }
@@ -591,7 +600,44 @@ export function noteAfterglow(who, kind = "hers", opts = {}) {
     const semen = b.organs?.uterus?.semen || 0;
     b.afterglowEjac = semen > 0 ? "creampie" : "external";
   }
+  // 他射精只准後面一兩句提到，之後禁再聊。她自己的餘韻不受這格影響。
+  if (k === "his" || k === "both" || opts?.ejac === "creampie" || opts?.ejac === "external") {
+    b.ejacTalkLeft = 2;
+    b.ejacTalkBan = false;
+  }
   return b;
+}
+
+/** 她每說完一句，射精話題的額度減一。用完就禁，直到這輪對話結束或他再射。 */
+export function consumeEjacTalk(who) {
+  const b = ensureStunFields(who);
+  if (!b || (b.ejacTalkLeft || 0) <= 0) return;
+  b.ejacTalkLeft -= 1;
+  if (b.ejacTalkLeft <= 0) {
+    b.ejacTalkLeft = 0;
+    b.ejacTalkBan = true;
+  }
+}
+
+/** 射精話題：還有額度才准提；用完後禁止再繞著那件事。 */
+export function ejacTalkPromptLines(who) {
+  const b = ensureStunFields(who);
+  if (!b) return [];
+  if ((b.ejacTalkLeft || 0) > 0) {
+    const ejac = b.afterglowEjac === "creampie" ? "creampie" : "external";
+    const where = ejac === "creampie"
+      ? "可以半句帶到被射在裡面，不要展開。"
+      : "可以半句承認他在外面射了。禁止說射進來、中出、灌進子宮。";
+    return [
+      `【他剛射精】只限接下來這一兩句可以提到他射精。一句帶過。${where}不要每句都說。`,
+    ];
+  }
+  if (b.ejacTalkBan) {
+    return [
+      "【射精已提過】不要再主動聊他射精、射了、精液、太快、洩了。他若先提，半句帶過就回到現在。",
+    ];
+  }
+  return [];
 }
 
 /** 每句助手回覆後消耗一次強制餘韻回覆數。 */
@@ -682,16 +728,17 @@ export function afterglowTemplate(who, actId = "") {
   ];
   const ejac = resolveAfterglowEjac(b, semen);
   const shallow = isShallowRelStage(who?.stage);
+  const allowEjac = (b.ejacTalkLeft || 0) > 0;
   let hisBits = ejac === "creampie" ? hisCreampieBits : hisExternalBits;
   if (ejac !== "creampie" && shallow) {
     hisBits = [...hisExternalTeaseBits, ...hisExternalBits];
   }
   const hersBits = style.climaxBits || [];
-  const bothBits = [...hersBits.slice(0, 4), ...hisBits.slice(0, 3)];
+  const bothBits = [...hersBits.slice(0, 4), ...(allowEjac ? hisBits.slice(0, 3) : [])];
   let flavor = hersBits;
-  if (kind === "his") flavor = hisBits;
+  if (kind === "his") flavor = allowEjac ? hisBits : (style.blankBits || hersBits);
   else if (kind === "both") {
-    flavor = (ejac === "creampie" && Math.random() < 0.55) ? hisBits : bothBits;
+    flavor = allowEjac && ejac === "creampie" && Math.random() < 0.55 ? hisBits : bothBits;
   }
 
   let pool = [
@@ -700,7 +747,7 @@ export function afterglowTemplate(who, actId = "") {
     ...style.moans.slice(0, 4),
     ...(actBits.length ? actBits.slice(0, 2) : []),
   ];
-  if (kind === "his" || kind === "both") pool = [...pool, ...hisBits];
+  if (allowEjac && (kind === "his" || kind === "both")) pool = [...pool, ...hisBits];
   // 外射時絕不用內射 ACT 碎片
   if (ejac !== "creampie" && actId === "creampie") {
     pool = pool.filter((s) => !(ACT_BITS.creampie || []).includes(s));
@@ -716,8 +763,6 @@ export function afterglowTemplate(who, actId = "") {
 export function afterglowPromptLines(who) {
   const b = ensureStunFields(who);
   if (!b || !inAfterglow(who)) return [];
-  const kind = b.afterglowKind || "hers";
-  const semen = b.organs?.uterus?.semen || 0;
   if (b.afterglowSource === "friend") {
     return [
       "【餘韻・外人】你剛與房間外的人有過身體關係，身體還軟、喘還沒完全平。",
@@ -726,32 +771,13 @@ export function afterglowPromptLines(who) {
     ];
   }
   const lines = [
-    "【餘韻】你剛高潮／剛被弄到洩身（或剛被他射過），這幾句必須餘韻、喘、空白、腿軟。",
+    "【餘韻】你剛去過，這幾句必須餘韻、喘、空白、腿軟。",
     "硬性：不准突然恢復冷靜長句；不准報狀態名（高潮／失神／餘韻等）；句子要短、斷、多省略。",
   ];
-  if (kind === "hers") {
-    lines.push("剛自己去過：頭還空白、腿軟、呼吸亂；可夾「去了…」「還在顫…」碎片。");
-  } else if (kind === "his") {
-    const ejac = resolveAfterglowEjac(b, semen);
-    if (ejac === "creampie") {
-      lines.push("剛被他內射／裡面還熱：可夾「被射到…」「射進來了…」「裡面好熱…」；仍是喘與空白，不是敘事。");
-    } else {
-      lines.push("他剛射精，但是外射／興奮洩精——精液不在裡面。硬性：禁止說「射進來」「中出」「灌進子宮」「裡面滿了」等內射句。");
-      lines.push("最多承認他在外面射了，例如「啊 你剛剛是不是射精了」「你…」「射了…哈」。");
-      if (isShallowRelStage(who?.stage)) {
-        lines.push("關係尚淺（陌生／朋友）：可以嘲弄／調侃他太快或只是摸摸就射，短句即可。");
-      }
-    }
+  if ((b.ejacTalkLeft || 0) > 0) {
+    lines.push("喘、空白、腿軟為主。他射精只准半句，不要展開。");
   } else {
-    const ejac = resolveAfterglowEjac(b, semen);
-    if (ejac === "creampie") {
-      lines.push("兩人剛一起過：你剛去、他又射在裡面——餘韻＋裡面熱；短喘空白為主。");
-    } else {
-      lines.push("兩人剛一起過：雙重餘韻；他若剛射是外射／興奮洩精——禁止說射進來／內射；喘、空白、腿軟；不准長篇冷靜回話。");
-      if (isShallowRelStage(who?.stage)) {
-        lines.push("關係尚淺：可短短嘲他外面射了／太快。");
-      }
-    }
+    lines.push("剛自己去過：頭還空白、腿軟、呼吸亂；可夾「去了…」「還在顫…」碎片。不要主動提他射精。");
   }
   return lines;
 }
@@ -792,7 +818,7 @@ export function spasmTemplate(who, actId = "") {
   return parts.join("").replace(/(…)+/g, "…").slice(0, 28);
 }
 
-/** 每完成一輪對話 +1；每 2–3 輪降性奮／衝擊。 */
+/** 每完成一輪對話 +1；滿三句且非痙攣：性奮 −2、衝擊 −8。 */
 export function noteTalkExchange(who) {
   const b = ensureStunFields(who);
   if (!b) return b;
