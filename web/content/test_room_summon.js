@@ -15,7 +15,7 @@ import {
   LIBIDO_STAGE,
   arousalStage,
   libidoStage,
-} from "./body_state.js?v=10";
+} from "./body_state.js?v=11";
 import {
   effectiveStun,
   calcStun,
@@ -37,6 +37,8 @@ import {
   scrubFalseCreampieLine,
   stunTier,
   moanVoicePromptLines,
+  speechMode,
+  speechMayBreak,
   SPASM_MS,
   SHOCK_MAX,
   AFTERGLOW_FRIEND_MS,
@@ -45,7 +47,7 @@ import {
   AFTERGLOW_FRIEND_CONT_REPLIES,
   AFTERGLOW_FRIEND_MARATHON_MS,
   AFTERGLOW_FRIEND_MARATHON_REPLIES,
-} from "./stun_speech.js?v=13";
+} from "./stun_speech.js?v=14";
 import {
   ensureTeaseFields,
   actLockState,
@@ -3766,11 +3768,16 @@ function openerBodyHint(opts = {}) {
   if (stun >= 50 || inSpasm(girl)) return "";
   const aro = girl.bodyState?.arousal || 0;
   const open = getOpenness(girl);
-  if (opts.forceBody || stun >= 25 || aro >= 18) {
-    return "身體狀態要滲進第一句（喘、腿軟、餘韻、還在發抖之類），不要裝完全平靜。";
+  // 只有身體真的被刺激中（插著東西／跳蛋）或剛高潮餘韻，第一句才帶喘；性奮高本身不算。
+  const sm = speechMode(girl, "");
+  if (sm.mode === "afterglow") {
+    return "你剛高潮過、身體還沒平復：第一句可以帶餘韻（短喘、還有點軟），不要裝完全平靜。";
   }
-  if (open >= 45 || aro >= 12) {
-    return "若身體／開放度偏高，語氣可微熱一點，但不要搶主軸。";
+  if (sm.mode === "stimulated" && sm.level >= 2) {
+    return `你身上現在${sm.reasons.join("、") || "還被刺激著"}：第一句要帶出來（短喘、斷句、聲音發抖），不要裝完全平靜。`;
+  }
+  if (opts.forceBody || stun >= 25 || aro >= 12 || open >= 45) {
+    return "就算身體偏熱、性奮高，也要正常打招呼：最多一點臉紅或心不在焉；禁止喘、禁止「嗯嗯啊啊」、禁止說腿軟。";
   }
   return "";
 }
@@ -4059,6 +4066,18 @@ function roomSight() {
   ].join("");
 }
 
+/** 本回合快捷動作（askGirl 期間有效），讓 prompt 知道她是否正被刺激。 */
+let promptActId = "";
+
+/** 身體＋發聲：依「現在是否被刺激／失神／痙攣／餘韻」而非性奮高低決定能否正常說話。 */
+function speechBodyPromptLines() {
+  const sm = speechMode(girl, promptActId);
+  return [
+    ...bodyPromptLines(girl, { mode: sm.mode, level: sm.level, actId: promptActId }),
+    ...moanVoicePromptLines(girl, promptActId),
+  ];
+}
+
 function talkSystem() {
   const look = girl.look || {};
   const lived = lifeNotes();
@@ -4085,8 +4104,7 @@ function talkSystem() {
     "不要旁白、不要動作、不要表情描寫、不要引號標題。",
     "依個性回話，不要無故結束對話。",
     "若對方正在摸／插你的身體：回覆必須立刻反應被碰到的部位（陰蒂／陰唇／陰道等），讓濕、腫、塞著的感覺進台詞。",
-    ...bodyPromptLines(girl),
-    ...moanVoicePromptLines(girl),
+    ...speechBodyPromptLines(),
     ...afterglowPromptLines(girl),
     ...friendPhysicalPromptLines(girl),
     guardLine(),
@@ -4455,7 +4473,7 @@ async function deliverUserTalk(text, opts = {}) {
       } else if (shouldSkipLlm(stun, girl)) {
         line = stunTemplate(stun, actId, girl) || "……嗯啊…";
         setTyping(false);
-      } else if (actId && (tier === "blank" || tier === "beg")) {
+      } else if (actId && (tier === "blank" || tier === "beg") && speechMayBreak(girl, actId)) {
         // 僅挑逗中：50–64 空白／65–74 求饒走模板；普通閒聊保持正常對話
         line = stunTemplate(stun, actId, girl) || (tier === "beg" ? "求、求你…慢一點…" : "……");
         setTyping(false);
@@ -4465,13 +4483,19 @@ async function deliverUserTalk(text, opts = {}) {
         // afterglowPromptLines 已在 talkSystem；若仍餘韻（僅時間門檻）再塞一層
         const agLines = inAfterglow(girl) ? afterglowPromptLines(girl).join("\n") : "";
         const extra = [protestExtra, agLines].filter(Boolean).join("\n") || null;
-        const reply = await askGirl(extra, streamOk ? (partial) => {
-          if (!partial || !sheetOpen()) return;
-          streamed = true;
-          setTyping(false);
-          $("portrait-name").textContent = girl.name;
-          $("portrait-meta").textContent = partial;
-        } : null);
+        promptActId = actId;
+        let reply = "";
+        try {
+          reply = await askGirl(extra, streamOk ? (partial) => {
+            if (!partial || !sheetOpen()) return;
+            streamed = true;
+            setTyping(false);
+            $("portrait-name").textContent = girl.name;
+            $("portrait-meta").textContent = partial;
+          } : null);
+        } finally {
+          promptActId = "";
+        }
         line = scrambleReply(reply || "……", stun, actId, girl) || "……";
         if (actId && invAdded > 1 && !inAfterglow(girl)) line = blendProtestReply(line, invAdded) || line;
       }

@@ -1,6 +1,6 @@
 /** 房間聊天：程式化「失神」亂語（非只靠 prompt）。 */
 
-import { ensureBody, talkActById, arousalStage } from "./body_state.js?v=9";
+import { ensureBody, talkActById, arousalStage, stimulationState } from "./body_state.js?v=11";
 import { insertUnlocked } from "./tease.js?v=4";
 
 export const SHOCK_MAX = 45;
@@ -340,17 +340,24 @@ export function ensureMoanVoice(who) {
 
 
 /** 日常 LLM：依 moanVoice 描述斷句／發熱時怎麼破句（不唸類型名）。 */
-export function moanVoicePromptLines(who) {
+export function moanVoicePromptLines(who, actId = "") {
   const b = ensureStunFields(who);
   if (!b) return [];
   const id = ensureMoanVoice(who);
   const ar = arousalStage(b.arousal);
-  const stun = calcStun(who);
-  const strong = ["aroused", "wantFill", "climax"].includes(ar) || stun >= 25;
+  const sm = speechMode(who, actId);
+  // 沒被刺激（只是性奮／性慾高）→ 不給任何喘／叫聲習慣，正常說話。
+  if (sm.mode === "composed") return [];
+  if (sm.mode === "stimulated" && sm.level <= 1) {
+    return ["【發聲習慣】只是被輕碰一下：最多一瞬短反應，其餘正常說完整句子，不要喘、不要叫。"];
+  }
+  const stun = sm.stun;
+  const strong = sm.mode !== "stimulated" || sm.level >= 3
+    || (sm.level >= 2 && (["aroused", "wantFill", "climax"].includes(ar) || stun >= 25));
   const hard = "硬性規則：不准唸出語氣類型名稱；只准用斷句與叫聲習慣演出。";
   const byId = {
     scream: strong
-      ? "一旦發熱或被打斷，容易拉長母音（啊啊、誒誒），句子不平穩，常被叫聲截斷。"
+      ? "被刺激時容易拉長母音（啊啊、誒誒），句子不平穩，常被叫聲截斷。"
       : "斷句略不穩；偶爾把母音拉長一點點，仍以日常話為主。",
     refuse: strong
       ? "習慣碎成「不要／不／要…」式推拒或口是心非，正常話裡會夾短拒。"
@@ -814,6 +821,34 @@ export function shouldSkipLlm(stun, who = null) {
   return clamp(stun, 0, 100) >= 75;
 }
 
+/**
+ * 說話模式：決定她能不能正常講話。性奮／性慾高低「本身」不會讓說話崩壞。
+ * - spasm：痙攣／過感中
+ * - afterglow：剛高潮的餘韻
+ * - stun：有效失神 ≥75
+ * - stimulated：身體正被刺激（手指／玩具／陰莖插著、跳蛋、本回合正被摸）；level 1 輕觸、2 性感帶／插著、3 強刺激
+ * - composed：以上皆無 → 盡力鎮定、正常完整句子
+ */
+export function speechMode(who, actId = "") {
+  const b = ensureStunFields(who);
+  if (!b) return { mode: "composed", level: 0, reasons: [], stun: 0, tier: "calm" };
+  const stun = effectiveStun(who, actId);
+  const tier = stunTier(stun);
+  const stim = stimulationState(who, actId);
+  const base = { level: stim.level, reasons: stim.reasons, stun, tier, inserted: stim.inserted };
+  if (inSpasm(who)) return { ...base, mode: "spasm", level: Math.max(3, stim.level) };
+  if (inAfterglow(who)) return { ...base, mode: "afterglow", level: Math.max(2, stim.level) };
+  if (tier === "stun") return { ...base, mode: "stun", level: Math.max(3, stim.level) };
+  if (stim.active) return { ...base, mode: "stimulated" };
+  return { ...base, mode: "composed", level: 0 };
+}
+
+/** 是否允許「嗯／啊」喘息與斷句（失神／痙攣／餘韻／正被刺激 level≥2）。 */
+export function speechMayBreak(who, actId = "") {
+  const sm = speechMode(who, actId);
+  return sm.mode !== "composed" && !(sm.mode === "stimulated" && sm.level <= 1);
+}
+
 function stripCausal(text) {
   return String(text || "")
     .replace(/(?:因為|所以|畢竟|也就是說|總之|簡單說|換句話說)[^。！？…\n]*/g, "")
@@ -933,10 +968,12 @@ export function stunTemplate(stun, actId = "", who = null) {
  * calm：僅在 aroused+ 或 stun≥25 時偶插短喘／斷句。
  * interfere：可稍強一點，仍保留原文可讀。
  */
-function lightMoanSprinkle(text, who, stun, interfere) {
+function lightMoanSprinkle(text, who, stun, interfere, actId = "") {
   if (!who || !text) return text;
   const b = ensureStunFields(who);
   if (!b) return text;
+  // 只有性奮高、身體沒被刺激 → 不插任何喘息（正常說話）。
+  if (!speechMayBreak(who, actId)) return text;
   const ar = arousalStage(b.arousal);
   const hot = ["aroused", "wantFill", "climax"].includes(ar) || stun >= 25;
   if (!hot) return text;
@@ -977,17 +1014,18 @@ export function scrambleReply(text, stun, actId = "", who = null) {
   const tier = stunTier(s);
   const raw = String(text || "").trim();
   // 普通閒聊（無挑逗 act）：僅失神／痙攣改寫；干擾／空白／求饒保持可讀
-  const teasing = !!String(actId || "").trim();
+  // 週邊輕觸（摟腰／摸臀等）不算會讓說話崩壞的刺激：同閒聊處理。
+  const teasing = !!String(actId || "").trim() && speechMayBreak(who, actId);
   if (!teasing && tier !== "stun") {
     let out = raw;
     if (out.length > 80) out = out.slice(0, 72) + "…";
-    out = lightMoanSprinkle(out, who, s, false) || out;
+    out = lightMoanSprinkle(out, who, s, false, actId) || out;
     return out || "……";
   }
   if (tier === "calm") {
     let out = raw;
     if (out.length > 80) out = out.slice(0, 72) + "…";
-    out = lightMoanSprinkle(out, who, s, false) || out;
+    out = lightMoanSprinkle(out, who, s, false, actId) || out;
     return out || "……";
   }
   if (tier === "stun" || !raw) return stunTemplate(s, actId, who);
@@ -1008,7 +1046,7 @@ export function scrambleReply(text, stun, actId = "", who = null) {
   if (tier === "interfere") {
     let out = insertBreaths(raw, who);
     if (out.length > 56) out = out.slice(0, 52) + "…";
-    out = lightMoanSprinkle(out, who, s, true) || out;
+    out = lightMoanSprinkle(out, who, s, true, actId) || out;
     return out || pick(style.moans);
   }
   return scrambleBroken(raw, actId, who);
