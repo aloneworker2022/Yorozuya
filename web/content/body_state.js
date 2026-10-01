@@ -171,6 +171,7 @@ export function organLines(who) {
   const o = b.organs;
   const bits = [];
   const stage = arousalStage(b.arousal);
+  const stimNow = stimulationState(who).active;
   bits.push(`性奮階段：${AROUSAL_STAGE[stage]}`);
   if (o.nipples.swell >= 2) bits.push("乳頭充血、硬挺，擦到衣服就會過電。");
   else if (o.nipples.swell >= 1) bits.push("乳頭微微腫、敏感。");
@@ -180,7 +181,8 @@ export function organLines(who) {
   else if (stage === "slight") bits.push("陰蒂頭探出一點；大陰唇還合著但縫變軟；陰道壁發熱。");
   else if (stage === "aroused") bits.push("陰唇充血分開、愛液滲出；陰蒂脹紅硬挺；陰道輕微開合。");
   else if (stage === "wantFill") bits.push("陰唇外翻、穴口又寬又軟、愛液沿腿流；子宮下沉、宮口在找東西含。");
-  else bits.push("子宮強力收縮、宮口一張一合；大腿抽搐、腿使不上力。");
+  else if (stimNow) bits.push("子宮強力收縮、宮口一張一合；大腿抽搐、腿使不上力。");
+  else bits.push("子宮發熱收緊、下腹一陣陣發燙，全身非常敏感（但現在沒人碰，你還撐得住）。");
   if ((o.vagina.wet || 0) >= 3) bits.push("陰道大量出水，腿間是濕的。");
   else if ((o.vagina.wet || 0) >= 2) bits.push("陰道在流水，愛液沿著腿根。");
   else if ((o.vagina.wet || 0) >= 1) bits.push("私處有濕意。");
@@ -233,28 +235,146 @@ export function opennessPromptLines(openness) {
   ];
 }
 
-export function bodyPromptLines(who) {
+/** 正在進行中的刺激（插入物）：精液殘留不算。 */
+const STIM_STUFFED = new Set(["fingers", "vibe", "dildo", "cucumber", "penis"]);
+/** 週邊輕觸：只允許一瞬短反應，不構成「說話崩壞」。 */
+const LIGHT_TOUCH_IDS = new Set(["waist", "butt", "thigh", "breast", "lips"]);
+/** 抽出類：一瞬空掉的短反應。 */
+const PULL_OUT_IDS = new Set(["fingers_out", "pull_out", "vibe_out", "dildo_out", "cucumber_out", "penis_out"]);
+/** 強刺激：震動／陰莖／深部動作。 */
+const INTENSE_IDS = new Set(["vibe_in", "penis_in", "creampie", "uterus", "cervix_rub", "vagina_finger", "finger_in"]);
+
+const TOUCH_ZH = {
+  waist: "腰", butt: "臀部", thigh: "大腿", breast: "胸部", lips: "嘴唇",
+  breast_knead: "胸部（用力揉）", breast_suck: "乳頭（被吸）", nipple: "乳頭", nipple_lick: "乳頭（被舔）",
+  labia: "陰唇", labia_rub: "陰唇（被揉）", clit: "陰蒂", vagina: "陰道", vagina_finger: "陰道（被手指扣弄）",
+  finger_in: "陰道（手指插入）", uterus: "子宮口", cervix_rub: "子宮口", anus: "後穴",
+  vibe_in: "陰道（放進跳蛋）", dildo_in: "陰道（放進假陰莖）", cucumber_in: "陰道（放進小黃瓜）",
+  penis_in: "陰道（陰莖插入）", creampie: "陰道（被射在裡面）",
+};
+
+/**
+ * 身體「現在」是否正被刺激（不是看性奮高低）。
+ * level 0＝沒有任何刺激；1＝週邊輕觸／抽出一瞬；2＝性感帶被碰或體內塞著東西；3＝強刺激（震動中、陰莖、深部扣弄）。
+ * actId：本回合的快捷動作（可省略；省略時看 lastPart＋shockRepliesLeft 判斷「剛被碰」）。
+ */
+export function stimulationState(who, actId = "") {
+  const b = ensureBody(who);
+  const out = { active: false, level: 0, reasons: [], touch: "", inserted: false };
+  if (!b) return out;
+  const o = b.organs || {};
+  const bump = (lv, why) => {
+    if (lv > out.level) out.level = lv;
+    if (why && !out.reasons.includes(why)) out.reasons.push(why);
+  };
+  const vs = String(o.vagina?.stuffed || "");
+  if (STIM_STUFFED.has(vs)) {
+    out.inserted = true;
+    const lv = vs === "vibe" || vs === "penis" ? 3 : 2;
+    bump(lv, vs === "vibe"
+      ? "跳蛋／按摩器塞在陰道裡震動"
+      : `陰道裡還插著${toyName(vs)}`);
+  }
+  const as = String(o.anus?.stuffed || "");
+  if (STIM_STUFFED.has(as)) {
+    out.inserted = true;
+    bump(as === "vibe" || as === "penis" ? 3 : 2, `後穴裡還插著${toyName(as)}`);
+  }
+  // 本回合／剛才的碰觸
+  const act = String(actId || "");
+  const recent = !!b.lastPart && (Number(b.shockRepliesLeft) || 0) > 0 && b.touchVerb !== false;
+  const touchId = act || (recent ? String(b.lastPart || "") : "");
+  if (touchId) {
+    out.touch = touchId;
+    const where = TOUCH_ZH[touchId] || "身體";
+    if (PULL_OUT_IDS.has(touchId)) bump(1, "剛被抽出來");
+    else if (LIGHT_TOUCH_IDS.has(touchId)) bump(1, `他正在碰你的${where}`);
+    else if (INTENSE_IDS.has(touchId)) bump(3, `他正在弄你的${where}`);
+    else bump(2, `他正在弄你的${where}`);
+  }
+  out.active = out.level > 0;
+  return out;
+}
+
+/**
+ * opts.mode：呼叫端（stun_speech.speechMode）算好的說話模式：
+ *   "composed"（沒被刺激、未失神／痙攣）｜"stimulated"｜"afterglow"｜"stun"｜"spasm"。
+ * opts.level：刺激等級 0–3；opts.actId：本回合動作。
+ * 省略時只看身體（插入物／剛被碰）＋痙攣／餘韻欄位自行判斷。
+ */
+export function bodyPromptLines(who, opts = {}) {
   const b = ensureBody(who);
   if (!b) return [];
   const o = b.organs || {};
   const ar = arousalStage(b.arousal);
+  const stim = stimulationState(who, opts.actId || "");
+  let mode = opts.mode || "";
+  if (!mode) {
+    const now = Date.now();
+    if (b.spasmUntil && now < b.spasmUntil) mode = "spasm";
+    else if ((b.afterglowUntil && now < b.afterglowUntil) || (b.afterglowReplies || 0) > 0) mode = "afterglow";
+    else mode = stim.active ? "stimulated" : "composed";
+  }
+  const level = opts.level != null ? Number(opts.level) || 0 : stim.level;
+  const breakdown = mode !== "composed" && !(mode === "stimulated" && level <= 1);
   const tone = [];
   const must = [];
 
-  // 總規則：身體狀態必須改寫語氣與用詞，不准當沒感覺。性欲不另開一條語氣。
-  must.push("硬性規則：下面身體狀態必須改變你的語氣、斷句與用詞；不准平淡回話、不准假裝沒感覺、不准唸出數字或狀態名。");
+  if (mode === "composed" || (mode === "stimulated" && level <= 1)) {
+    // 性欲不另開一條語氣。只有性奮高、但身體沒被刺激：盡力維持鎮定、正常講話。
+    must.push("【說話方式・硬性】你現在沒有失神、沒有痙攣，身上也沒有東西插著或在震動，也沒人正在弄你的私處。不管性奮／性慾多高，你都盡力保持鎮定，用正常、完整、通順的句子照個性回話。");
+    must.push("禁止：「嗯嗯」「啊啊」「哈啊」「咿」「唔嗯」這類呻吟／喘息狀聲詞；禁止說腿軟、站不穩、腦袋空白、說不出話、身體在抖；禁止斷成碎句、拉長母音、整句只剩省略號。");
+    must.push("身體狀態只當你心裡知道的事實：可以影響你在想什麼、想不想要、要不要承認，不准拿來改變說話能力。不要旁白、不要動作描述、不准唸出數字或狀態名。");
+    if (mode === "stimulated" && level <= 1) {
+      must.push(`他剛才只是輕碰（${stim.reasons.join("、") || "週邊"}）：可以對這一下有一個極短的反應（嚇一跳、害羞、推開、嗔一句），其餘照常講完整句子；不准連續喘或呻吟。`);
+    }
+    if (ar === "climax" || ar === "wantFill") {
+      tone.push("【語氣・性奮高但鎮定】心思常被身體拉走：可以有點心不在焉、話稍短、或看開放度與個性直白說想要／想靠近；頂多臉紅、呼吸比平常深一點，但一定是清楚完整的正常句子。");
+    } else if (ar === "aroused") {
+      tone.push("【語氣・微熱但鎮定】身體有點熱：最多微微臉紅、偶爾分心、語氣稍軟，曖昧可以多一點，仍是正常句子。");
+    } else if (ar === "slight") {
+      tone.push("【語氣・平常】比平常多一點曖昧或不好意思即可，正常說話。");
+    } else {
+      tone.push("【語氣・平靜】不要硬寫情色；除非對方主動碰，否則保持日常。");
+    }
+    tone.push(...opennessPromptLines(b.openness));
+    if ((o.vagina?.wet || 0) >= 2 || o.labia?.wet || (o.clit?.swell || 0) >= 2) {
+      tone.push("下面很濕／很敏感：你自己知道、會在意或害羞，被問到可以承認，但嘴上照常說話。");
+    }
+    if ((o.uterus?.semen || 0) >= 1) {
+      tone.push("子宮裡還有精液：你知道、可能害羞或在意，被問到可以承認；說話照常。");
+    }
+    if ((o.nipples?.swell || 0) >= 2 || (o.breasts?.swell || 0) >= 2) {
+      tone.push("胸口還發脹敏感：只是你心裡知道的事，說話照常。");
+    }
+    return [
+      "【你現在的身體狀態——不准提起任何數字或狀態名】",
+      ...must,
+      ...organLines(who),
+      ...tone,
+    ];
+  }
+
+  // 以下：身體真的處在異常狀態（被刺激中／插著東西／餘韻／失神／痙攣）→ 說話才會崩。
+  const why = stim.reasons.length
+    ? stim.reasons.join("、")
+    : mode === "afterglow" ? "剛高潮過、身體還沒平復"
+      : mode === "spasm" ? "身體在痙攣、停不下來"
+        : mode === "stun" ? "腦袋一片空白、快要失神"
+          : "身體正被強烈刺激";
+  must.push(`【說話方式】你想維持正常說話，但現在${why}，刺激讓你沒辦法完全保持鎮定。`);
+  must.push("硬性規則：下面身體狀態要改變你的語氣、斷句與用詞；不准假裝沒感覺、不准唸出數字或狀態名。");
   must.push("只准用說出口的話演出：喘息、吞嚥、躲閃、求繼續／求停、被碰到時的短叫。不要旁白、不要動作描述。");
 
-  if (ar === "climax") {
+  const strong = level >= 3 || mode === "afterglow" || mode === "stun" || mode === "spasm";
+  if (ar === "climax" || (strong && ar === "wantFill")) {
     tone.push("【語氣・極限】呼吸亂、句子碎成半截；常被快感打斷；主動求摸／求插／求停都可以，但要用台詞，不要旁白。");
-  } else if (ar === "wantFill") {
-    tone.push("【語氣・渴望】喘、黏、心不在焉；會把話題拐回身體；主動求填滿或求再碰，詞彙可以露骨。");
-  } else if (ar === "aroused") {
-    tone.push("【語氣・性奮】帶黏與散漫，聲音發軟；偶爾露骨，但仍壓著一點；被碰到會漏出短喘。");
-  } else if (ar === "slight") {
-    tone.push("【語氣・微熱】比平常多曖昧與不好意思；身體感若有若無，碰到敏感處才明顯。");
+  } else if (ar === "wantFill" || (strong && ar === "aroused")) {
+    tone.push("【語氣・渴望】喘、黏、心不在焉；句子常被短喘截斷；主動求填滿或求再碰，詞彙可以露骨。");
+  } else if (ar === "aroused" || strong) {
+    tone.push("【語氣・性奮】聲音發軟、偶爾斷句；被弄到時會漏出短喘，但還能說出大半句。");
   } else {
-    tone.push("【語氣・平靜】不要硬寫情色；除非對方主動碰，否則保持日常。一旦被碰，立刻讓狀態進台詞。");
+    tone.push("【語氣・剛被挑起】大致還能說完整句子，只是偶爾漏一聲短喘或聲音抖一下。");
   }
 
   // 接納／開放度：只透過台詞演，不准唸數字或標籤名
@@ -264,28 +384,30 @@ export function bodyPromptLines(who) {
   if ((o.clit?.swell || 0) >= 2 || o.clit?.wet) {
     tone.push("陰蒂又腫又敏：被提到或碰到時，聲音要尖一瞬、句子抖一下；會下意識夾腿或求輕一點／再用力。");
   } else if ((o.clit?.swell || 0) >= 1) {
-    tone.push("陰蒂已探頭發熱：談話中心思容易飄到那裡，被點到會輕喘。");
+    tone.push("陰蒂已探頭發熱：被點到會輕喘。");
   }
   if ((o.labia?.swell || 0) >= 2 || o.labia?.wet) {
-    tone.push("陰唇腫／濕：說話帶悶熱與滑膩感；被撫過會漏出難為情的短音，詞彙變軟。");
+    tone.push("陰唇腫／濕：被撫過會漏出難為情的短音，詞彙變軟。");
   } else if ((o.labia?.swell || 0) >= 1) {
     tone.push("陰唇微腫：下面發熱發軟，語氣比平常黏一點。");
   }
   if ((o.vagina?.wet || 0) >= 3) {
-    tone.push("陰道大量出水：幾乎無法專心；台詞要帶濕熱、腿軟、怕被發現的急促。");
+    tone.push(breakdown && strong
+      ? "陰道大量出水：幾乎無法專心；台詞要帶濕熱、腿軟、怕被發現的急促。"
+      : "陰道大量出水：很難專心，回答會慢半拍或突然喘一下。");
   } else if ((o.vagina?.wet || 0) >= 2) {
     tone.push("陰道在流水：意識被下面拉走，回答會慢半拍或突然喘一下。");
   } else if ((o.vagina?.wet || 0) >= 1) {
     tone.push("私處有濕意：語氣多一層不好意思，偶發軟。");
   }
-  if (o.vagina?.stuffed) {
+  if (STIM_STUFFED.has(String(o.vagina?.stuffed || ""))) {
     tone.push(`陰道裡還塞著${toyName(o.vagina.stuffed)}：每一句都要帶被撐開／異物／抽動感，不准假裝空的；被問到必須承認還在裡面。`);
   }
-  if (o.anus?.stuffed) {
+  if (STIM_STUFFED.has(String(o.anus?.stuffed || ""))) {
     tone.push(`後穴還塞著${toyName(o.anus.stuffed)}：站坐都彆扭，語氣緊、容易漏叫。`);
   }
   if ((o.uterus?.semen || 0) >= 2) {
-    tone.push("子宮裡精液很多：熱、沉、往外滲；語氣帶餘韻與羞、腿心發軟。");
+    tone.push("子宮裡精液很多：熱、沉、往外滲；語氣帶餘韻與羞。");
   } else if ((o.uterus?.semen || 0) >= 1) {
     tone.push("子宮裡有精液：餘溫還在，語氣帶一點慵懶與餘韻。");
   }
@@ -477,6 +599,9 @@ export function resetOpenness(who) {
   return b;
 }
 
+/** 台詞裡真的有「動手」的動詞才算正在碰她（避免「裡面」「下面」等閒聊字眼誤當成刺激）。 */
+const TOUCH_VERB_RE = /摸|揉|插|舔|吸|吮|扣|摳|捏|碰|弄|按|頂|塞|含|吻|親(?!愛|人|戚|切|自|近|眼)|抱|摟|撫|搓|撥|夾|幹|操|抽|射|拔|放進|伸進|震|蹭|磨|拍|咬|掰|撐開|進去|進入|取出/;
+
 /** 依使用者台詞輕觸更新身體。回傳是否命中。未命中不改性奮。 */
 export function applyBodyFromUserText(who, text) {
   const b = ensureBody(who);
@@ -486,6 +611,7 @@ export function applyBodyFromUserText(who, text) {
     // 普通聊天的性奮只在每三句 −2（noteTalkExchange），這裡不另扣。
     b.lastPart = "";
     b.lastVerb = "";
+    b.touchVerb = false;
     return false;
   }
   const beforeArousal = b.arousal || 0;
@@ -494,6 +620,7 @@ export function applyBodyFromUserText(who, text) {
   bumpClimaxTease(b, beforeArousal);
   b.lastPart = hit.id;
   b.lastVerb = actVerb(text);
+  b.touchVerb = TOUCH_VERB_RE.test(String(text || ""));
   return true;
 }
 
@@ -555,6 +682,7 @@ export function applyAct(who, actId) {
   bumpClimaxTease(b, beforeArousal);
   b.lastPart = actId === "cervix_rub" ? "uterus" : hit.id;
   b.lastVerb = actVerb(act.text);
+  b.touchVerb = true;
   return { act, hit: true };
 }
 

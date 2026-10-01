@@ -83,3 +83,9 @@
 4. 感情／階段在對話中／關閉時即時合併回名冊  
 
 > **實作備註（2026-09-28）：** 名冊召喚依賴 `content/test_room_summon.js` 成功掛上 `window.RoomCompanion`。該模組若語法錯誤無法載入，召喚會扣金但房間進不了人——改模組後務必 bump `index.html` 的 `?v=` 與 `sw.js` CACHE。
+
+> **實作備註（2026-10-02）說話崩壞規則：** 性奮高「本身」（含已到高潮階段）不再讓她嬌喘、說腿軟或斷句；她盡力鎮定、用正常完整句子（頂多臉紅、心不在焉、直白說想要）。只有 `stun_speech.speechMode()` 判為 **痙攣／餘韻／失神（有效失神≥75）／正被刺激**（`body_state.stimulationState()`：陰道／後穴插著手指・跳蛋・假陰莖・小黃瓜・陰莖，或本回合正被摸性感帶）時，prompt、`lightMoanSprinkle`、挑逗模板才會讓說話崩。摟腰／摸臀／大腿／輕摸胸／親嘴＝只允許一瞬短反應。閒聊台詞要有動手動詞（摸／插／揉…）才算「正在碰」（`bodyState.touchVerb`）。
+
+> **實作備註（2026-10-02）失神上限：** 沒有實際刺激（`stimulationState().level<2`，且非痙攣／餘韻）時，`calcStun` 上限 `UNSTIM_STUN_CAP=69`。高潮中繼續調戲（`climaxTease`）本身就是正被刺激，照常可推進失神；刺激中的失神值記在 `bodyState.stunCarry`，停手後每秒 −0.5、每句回覆 −8 退回上限。
+
+> **實作備註（2026-10-02）名冊 stage：** `s.stage` 只存主線四階（stranger／friend／girlfriend／wife），房間 11 細階存 `s.roomStage`；量條與階段標籤用 `displayStage()` 顯示細階。

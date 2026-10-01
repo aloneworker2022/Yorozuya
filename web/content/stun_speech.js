@@ -1,6 +1,6 @@
 /** 房間聊天：程式化「失神」亂語（非只靠 prompt）。 */
 
-import { ensureBody, talkActById, arousalStage } from "./body_state.js?v=10";
+import { ensureBody, talkActById, arousalStage, stimulationState } from "./body_state.js?v=16";
 import { insertUnlocked } from "./tease.js?v=7";
 
 export const SHOCK_MAX = 45;
@@ -340,17 +340,24 @@ export function ensureMoanVoice(who) {
 
 
 /** 日常 LLM：依 moanVoice 描述斷句／發熱時怎麼破句（不唸類型名）。 */
-export function moanVoicePromptLines(who) {
+export function moanVoicePromptLines(who, actId = "") {
   const b = ensureStunFields(who);
   if (!b) return [];
   const id = ensureMoanVoice(who);
   const ar = arousalStage(b.arousal);
-  const stun = calcStun(who);
-  const strong = ["aroused", "wantFill", "climax"].includes(ar) || stun >= 25;
+  const sm = speechMode(who, actId);
+  // 沒被刺激（只是性奮／性慾高）→ 不給任何喘／叫聲習慣，正常說話。
+  if (sm.mode === "composed") return [];
+  if (sm.mode === "stimulated" && sm.level <= 1) {
+    return ["【發聲習慣】只是被輕碰一下：最多一瞬短反應，其餘正常說完整句子，不要喘、不要叫。"];
+  }
+  const stun = sm.stun;
+  const strong = sm.mode !== "stimulated" || sm.level >= 3
+    || (sm.level >= 2 && (["aroused", "wantFill", "climax"].includes(ar) || stun >= 25));
   const hard = "硬性規則：不准唸出語氣類型名稱；只准用斷句與叫聲習慣演出。";
   const byId = {
     scream: strong
-      ? "一旦發熱或被打斷，容易拉長母音（啊啊、誒誒），句子不平穩，常被叫聲截斷。"
+      ? "被刺激時容易拉長母音（啊啊、誒誒），句子不平穩，常被叫聲截斷。"
       : "斷句略不穩；偶爾把母音拉長一點點，仍以日常話為主。",
     refuse: strong
       ? "習慣碎成「不要／不／要…」式推拒或口是心非，正常話裡會夾短拒。"
@@ -408,6 +415,8 @@ export function ensureStunFields(who) {
     b.spasmUntil = 0;
     b.overstim = false;
   }
+  b.stunCarry = clamp(b.stunCarry, 0, 100);
+  b.stunCarryAt = Number(b.stunCarryAt) || 0;
   b.afterglowUntil = Math.max(0, Number(b.afterglowUntil) || 0);
   b.afterglowReplies = Math.max(0, Math.round(Number(b.afterglowReplies) || 0));
   if (!["hers", "his", "both"].includes(b.afterglowKind)) b.afterglowKind = "";
@@ -454,6 +463,9 @@ export function noteActShock(who, actOrHitId) {
 export function tickStunAfterReply(who) {
   const b = ensureStunFields(who);
   if (!b) return;
+  // 刺激留下的失神殘量：每句回覆再退一截（沒被刺激時才會用到）
+  if (b.stunCarry > 0) b.stunCarry = clamp(decayedCarry(b) - STUN_CARRY_PER_REPLY, 0, 100);
+  b.stunCarryAt = Date.now();
   if (b.shockRepliesLeft > 0) {
     b.shockRepliesLeft -= 1;
     b.shock = clamp((b.shock || 0) - 16, 0, SHOCK_MAX);
@@ -464,13 +476,53 @@ export function tickStunAfterReply(who) {
 }
 
 /**
+ * 沒有實際刺激時的失神上限：低於失神(75)也低於痙攣門檻(70)，
+ * 性奮／開放度再高也不能單獨把她推進失神或一碰就痙攣。
+ */
+export const UNSTIM_STUN_CAP = 69;
+/** 刺激留下的失神殘量衰減：每秒 0.5、每句回覆再 −8。 */
+const STUN_CARRY_PER_SEC = 0.5;
+const STUN_CARRY_PER_REPLY = 8;
+
+function decayedCarry(b) {
+  const carry = Number(b?.stunCarry) || 0;
+  if (carry <= 0) return 0;
+  const at = Number(b.stunCarryAt) || 0;
+  const sec = at ? Math.max(0, (Date.now() - at) / 1000) : 0;
+  return Math.max(0, carry - sec * STUN_CARRY_PER_SEC);
+}
+
+/** 失神是否不受上限（正被性刺激 level≥2／痙攣／餘韻）。 */
+function stunUncapped(who, actId = "") {
+  if (inSpasm(who) || inAfterglow(who)) return true;
+  return stimulationState(who, actId).level >= 2;
+}
+
+/**
  * 失神分數 0–100。性欲不參與。
  * 性奮本身停在高潮：23→60，30→64，不到失神。
  * 已經在高潮裡，每再調戲一次 +8；兩次到 76，進入失神。
  * 器官、衝擊另加。未插入時這兩項受開放度軟頂；
  * 性奮和高潮後的調戲超過軟頂就不會被壓回去。
+ * 沒被實際刺激時：上限 UNSTIM_STUN_CAP，只允許「剛才刺激留下的殘量」照常退去（stunCarry），
+ * 性奮／開放度本身不能製造或維持失神（高潮中繼續調戲＝正被刺激，不受此限）。
  */
-export function calcStun(who) {
+export function calcStun(who, actId = "") {
+  const raw = calcStunRaw(who);
+  const b = ensureStunFields(who);
+  if (!b) return raw;
+  if (stunUncapped(who, actId)) {
+    // 記住刺激中的失神值，刺激停止後讓它自然退
+    b.stunCarry = clamp(Math.max(decayedCarry(b), raw), 0, 100);
+    b.stunCarryAt = Date.now();
+    return raw;
+  }
+  const ceiling = Math.max(UNSTIM_STUN_CAP, decayedCarry(b));
+  return clamp(Math.min(raw, ceiling), 0, 100);
+}
+
+/** 未套「沒刺激上限」的原始失神分數。 */
+function calcStunRaw(who) {
   const b = ensureStunFields(who);
   if (!b) return 0;
   decayShock(b);
@@ -520,7 +572,7 @@ export function stunFloorForAct(actId, who = null) {
 
 /** 含動作地板的有效失神值。 */
 export function effectiveStun(who, actId = "") {
-  return Math.max(calcStun(who), stunFloorForAct(actId, who));
+  return Math.max(calcStun(who, actId), stunFloorForAct(actId, who));
 }
 
 /**
@@ -840,6 +892,34 @@ export function shouldSkipLlm(stun, who = null) {
   return clamp(stun, 0, 100) >= 75;
 }
 
+/**
+ * 說話模式：決定她能不能正常講話。性奮／性慾高低「本身」不會讓說話崩壞。
+ * - spasm：痙攣／過感中
+ * - afterglow：剛高潮的餘韻
+ * - stun：有效失神 ≥75
+ * - stimulated：身體正被刺激（手指／玩具／陰莖插著、跳蛋、本回合正被摸）；level 1 輕觸、2 性感帶／插著、3 強刺激
+ * - composed：以上皆無 → 盡力鎮定、正常完整句子
+ */
+export function speechMode(who, actId = "") {
+  const b = ensureStunFields(who);
+  if (!b) return { mode: "composed", level: 0, reasons: [], stun: 0, tier: "calm" };
+  const stun = effectiveStun(who, actId);
+  const tier = stunTier(stun);
+  const stim = stimulationState(who, actId);
+  const base = { level: stim.level, reasons: stim.reasons, stun, tier, inserted: stim.inserted };
+  if (inSpasm(who)) return { ...base, mode: "spasm", level: Math.max(3, stim.level) };
+  if (inAfterglow(who)) return { ...base, mode: "afterglow", level: Math.max(2, stim.level) };
+  if (tier === "stun") return { ...base, mode: "stun", level: Math.max(3, stim.level) };
+  if (stim.active) return { ...base, mode: "stimulated" };
+  return { ...base, mode: "composed", level: 0 };
+}
+
+/** 是否允許「嗯／啊」喘息與斷句（失神／痙攣／餘韻／正被刺激 level≥2）。 */
+export function speechMayBreak(who, actId = "") {
+  const sm = speechMode(who, actId);
+  return sm.mode !== "composed" && !(sm.mode === "stimulated" && sm.level <= 1);
+}
+
 function stripCausal(text) {
   return String(text || "")
     .replace(/(?:因為|所以|畢竟|也就是說|總之|簡單說|換句話說)[^。！？…\n]*/g, "")
@@ -959,10 +1039,12 @@ export function stunTemplate(stun, actId = "", who = null) {
  * calm：僅在 aroused+ 或 stun≥25 時偶插短喘／斷句。
  * interfere：可稍強一點，仍保留原文可讀。
  */
-function lightMoanSprinkle(text, who, stun, interfere) {
+function lightMoanSprinkle(text, who, stun, interfere, actId = "") {
   if (!who || !text) return text;
   const b = ensureStunFields(who);
   if (!b) return text;
+  // 只有性奮高、身體沒被刺激 → 不插任何喘息（正常說話）。
+  if (!speechMayBreak(who, actId)) return text;
   const ar = arousalStage(b.arousal);
   const hot = ["aroused", "wantFill", "climax"].includes(ar) || stun >= 25;
   if (!hot) return text;
@@ -1003,17 +1085,18 @@ export function scrambleReply(text, stun, actId = "", who = null) {
   const tier = stunTier(s);
   const raw = String(text || "").trim();
   // 普通閒聊（無挑逗 act）：僅失神／痙攣改寫；干擾／空白／求饒保持可讀
-  const teasing = !!String(actId || "").trim();
+  // 週邊輕觸（摟腰／摸臀等）不算會讓說話崩壞的刺激：同閒聊處理。
+  const teasing = !!String(actId || "").trim() && speechMayBreak(who, actId);
   if (!teasing && tier !== "stun") {
     let out = raw;
     if (out.length > 80) out = out.slice(0, 72) + "…";
-    out = lightMoanSprinkle(out, who, s, false) || out;
+    out = lightMoanSprinkle(out, who, s, false, actId) || out;
     return out || "……";
   }
   if (tier === "calm") {
     let out = raw;
     if (out.length > 80) out = out.slice(0, 72) + "…";
-    out = lightMoanSprinkle(out, who, s, false) || out;
+    out = lightMoanSprinkle(out, who, s, false, actId) || out;
     return out || "……";
   }
   if (tier === "stun" || !raw) return stunTemplate(s, actId, who);
@@ -1034,7 +1117,7 @@ export function scrambleReply(text, stun, actId = "", who = null) {
   if (tier === "interfere") {
     let out = insertBreaths(raw, who);
     if (out.length > 56) out = out.slice(0, 52) + "…";
-    out = lightMoanSprinkle(out, who, s, true) || out;
+    out = lightMoanSprinkle(out, who, s, true, actId) || out;
     return out || pick(style.moans);
   }
   return scrambleBroken(raw, actId, who);
