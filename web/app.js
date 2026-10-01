@@ -462,6 +462,30 @@ const MULT = { N: 1.0, R: 1.1, S: 1.2, SS: 1.35, SSR: 1.5 };
 const CHAT_GAP = { N: 3, R: 2, S: 1, SS: 1, SSR: 1 };  // 每 X 天至少聊 1 次
 const DATE_GAP = { SS: 5, SSR: 3 };                     // 每 X 天至少約 1 次
 const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 50], ["girlfriend", "女友", null], ["wife", "妻子", null]];
+// 房間陪伴用 11 階梯（test_room_summon STAGE_LADDER），回寫名冊時一律折回主線四階；
+// 原階梯另存 s.roomStage。名冊 stage 若混進房間階梯（例：感情 15 的 "acquaintance"），
+// stageLabel() 會讀 undefined[1] 炸掉 → 名冊整段渲染中斷、召喚區塊空白。
+const ROOM_TO_GAME_STAGE = {
+  stranger: "stranger", acquaintance: "stranger",
+  friend: "friend", close_friend: "friend",
+  girlfriend: "girlfriend", passionate: "girlfriend", lover: "girlfriend",
+  wife: "wife", devoted_wife: "wife", obedient_wife: "wife", pathological_wife: "wife",
+};
+function gameStageOf(stage) {
+  const k = String(stage || "");
+  if (STAGES.some(x => x[0] === k)) return k;
+  return ROOM_TO_GAME_STAGE[k] || "stranger";
+}
+/** 名冊妹子 stage 正規化：房間階梯 → 主線四階（原值留在 roomStage）。回傳是否有改。 */
+function normalizeGirlStage(s) {
+  if (!s) return false;
+  const raw = s.stage;
+  const game = gameStageOf(raw);
+  if (raw === game) return false;
+  if (ROOM_TO_GAME_STAGE[raw]) s.roomStage = raw;
+  s.stage = game;
+  return true;
+}
 const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
 const DATE_COST = 5, DATE_LIMIT = 1, NTR_WINDOW = 7; // 聊天計費:每 2 則玩家訊息 1 金；約會每天 1 次
 // 約會地點池(30 個情境;每次隨機抽 5 個給玩家選)
@@ -951,6 +975,7 @@ function initState(j, offline) {
   delete state.slots;
   // 背景故事移轉:舊魅魔補發人生
   for (const s of state.succubi) {
+    normalizeGirlStage(s);   // 房間階梯 stage 誤寫進名冊 → 折回主線四階
     if (!s.backstory) Object.assign(s, makeBackstory());
     else if (!s.schedule) s.schedule = makeSchedule(s.job);   // 有故事沒作息 → 補作息
     pruneJournal(s);
@@ -1260,6 +1285,7 @@ document.addEventListener("visibilitychange", async () => {
       for (const k of Object.keys(def)) state[k] ??= def[k];
       state.settings = { ...def.settings, ...state.settings };
       state.settings.rating = "nsfw";
+      for (const g of state.succubi || []) normalizeGirlStage(g);
     }
     document.getElementById("set-srv").textContent = "OK";
   } catch { }
@@ -1299,6 +1325,7 @@ async function saveNow(keepalive = false) {
       const j = await fetch("/api/save").then(x => x.json());
       version = j.version;
       state = j.data ?? defaultState();
+      for (const g of state.succubi || []) normalizeGirlStage(g);
       toast("存檔衝突:已載入伺服器上較新的進度", "bad");
       renderAll();
       return;
@@ -5687,9 +5714,9 @@ function guardTick(s) {
   dirty = true;
 }
 
-function stageInfo(key) { return STAGES.find(s => s[0] === key); }
-function nextStage(s) { const i = STAGES.findIndex(x => x[0] === s.stage); return STAGES[i + 1] || null; }
-function stageLabel(key) { return stageInfo(key)[1]; }
+function stageInfo(key) { const k = gameStageOf(key); return STAGES.find(s => s[0] === k); }
+function nextStage(s) { const k = gameStageOf(s.stage); const i = STAGES.findIndex(x => x[0] === k); return STAGES[i + 1] || null; }
+function stageLabel(key) { return stageInfo(key)?.[1] || "陌生"; }
 
 /**
  * @param opts.skipBreak 打牌／NSFW 卡感情：只改數值與升階，不觸發「離開名冊／NTR」。
@@ -7658,7 +7685,9 @@ function buildRoomGirlFromSuccubus(s) {
     moanVoice: s.moanVoice || null,
     comfyCkpt: s.comfyCkpt,
     affection: typeof s.affection === "number" ? s.affection : 0,
-    stage: mapGameStageToRoom(s.stage || "stranger"),
+    stage: (s.roomStage && gameStageOf(s.roomStage) === gameStageOf(s.stage))
+      ? s.roomStage
+      : mapGameStageToRoom(s.stage || "stranger"),
     stageLock: s.stageLock || "",
     ntr: s.ntr || null,
     summoner: s.summoner || null,
@@ -7801,7 +7830,14 @@ function applyRoomProgressData(data) {
     }
   };
   setScalar("affection", (v) => (typeof v === "number" ? v : Number(v) || 0));
-  setScalar("stage", (v) => (v ? String(v) : s.stage));
+  // 房間回寫的是 11 階梯：名冊只收主線四階，原階梯存 roomStage（再召喚時還原）
+  if (Object.prototype.hasOwnProperty.call(data, "stage") && data.stage) {
+    const raw = String(data.stage);
+    const game = gameStageOf(raw);
+    if (s.stage !== game) { s.stage = game; changed = true; }
+    const room = ROOM_TO_GAME_STAGE[raw] ? raw : "";
+    if (room && s.roomStage !== room) { s.roomStage = room; changed = true; }
+  }
   setScalar("stageLock", (v) => (v == null ? "" : String(v)));
   setScalar("comfyCkpt", (v) => (v == null ? "" : String(v)));
   setScalar("portrait");
@@ -16898,6 +16934,8 @@ function renderSuccubi() {
 
   const roster = $("#roster"); roster.innerHTML = "";
   for (const s of state.succubi) {
+   // 單一妹子資料怪掉（舊存檔／房間回寫）也只壞她那張卡，不讓整個名冊與召喚區塊消失
+   try {
     const st = needStatus(s);
     const el = document.createElement("div");
     el.className = `scard r-${s.rarity}` + (s.ntr ? " ntr" : "");
@@ -16914,6 +16952,14 @@ function renderSuccubi() {
       <div class="status-dot ${st}"></div>`;
     el.onclick = () => { detailId = s.id; dateChooser = false; severChooser = false; renderAll(); };
     roster.appendChild(el);
+   } catch (err) {
+    console.error("[renderSuccubi] card", s?.id, s?.name, err);
+    const el = document.createElement("div");
+    el.className = "scard";
+    el.innerHTML = `<div class="sinfo"><div class="sname"><b>${esc(s?.name || "？")}</b><span class="stage-chip">資料異常</span></div></div>`;
+    el.onclick = () => { detailId = s?.id; renderAll(); };
+    roster.appendChild(el);
+   }
   }
   if (!state.succubi.length) roster.innerHTML = `<div class="empty">一個魅魔都沒有。桌上只有那本召喚之書。</div>`;
 
