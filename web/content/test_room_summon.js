@@ -5873,6 +5873,20 @@ async function makeGirl() {
   return out;
 }
 
+/** 房間細階 → 主線四階（與 app.js ROOM_TO_GAME_STAGE 對齊）。 */
+const ROOM_TO_GAME_STAGE = {
+  stranger: "stranger", acquaintance: "stranger",
+  friend: "friend", close_friend: "friend",
+  girlfriend: "girlfriend", passionate: "girlfriend", lover: "girlfriend",
+  wife: "wife", devoted_wife: "wife", obedient_wife: "wife", pathological_wife: "wife",
+};
+/** 名冊妹子進房用的細階：roomStage 與主線 stage 同一段才沿用，否則從主線 stage 起算。 */
+function rosterRoomStage(s) {
+  const game = ROOM_TO_GAME_STAGE[s?.stage] || "stranger";
+  const room = s?.roomStage;
+  return room && ROOM_TO_GAME_STAGE[room] === game ? room : (s?.stage || "stranger");
+}
+
 /** 主線階段 → 房間階梯（與 app.js mapGameStageToRoom 對齊） */
 function mapGameStageToRoom(stage) {
   const known = new Set([
@@ -5926,7 +5940,7 @@ function buildRoomGirlFromSuccubus(s) {
     archetype: s.archetype || null,
     comfyCkpt: s.comfyCkpt,
     affection: typeof s.affection === "number" ? s.affection : 0,
-    stage: mapGameStageToRoom(s.stage || "stranger"),
+    stage: mapGameStageToRoom(rosterRoomStage(s)),
     stageLock: s.stageLock || "",
     ntr: s.ntr || null,
     summoner: s.summoner || null,

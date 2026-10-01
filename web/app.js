@@ -478,6 +478,40 @@ const AFF_LADDER = [
   ["pathological_wife", "病態妻子", 380],
 ];
 const AFF_LADDER_ZH = Object.fromEntries(AFF_LADDER.map((s) => [s[0], s[1]]));
+// 名冊 s.stage 是主線四階（告白／求婚／贖回／升階都靠它）；房間 11 階梯另存 s.roomStage，
+// 量條與階段標籤用 displayStage() 顯示細階。房間回寫若把 "acquaintance"／"passionate" 等
+// 直接塞進 s.stage，nextStage() 找不到 → 當成 stranger 門檻 0，下次加感情就被降回陌生。
+const ROOM_TO_GAME_STAGE = {
+  stranger: "stranger", acquaintance: "stranger",
+  friend: "friend", close_friend: "friend",
+  girlfriend: "girlfriend", passionate: "girlfriend", lover: "girlfriend",
+  wife: "wife", devoted_wife: "wife", obedient_wife: "wife", pathological_wife: "wife",
+};
+function gameStageOf(stage) {
+  const k = String(stage || "");
+  if (STAGES.some(x => x[0] === k)) return k;
+  return ROOM_TO_GAME_STAGE[k] || "stranger";
+}
+/** 名冊妹子 stage 正規化：房間細階 → 主線四階（細階留在 roomStage）。回傳是否有改。 */
+function normalizeGirlStage(s) {
+  if (!s) return false;
+  const raw = s.stage;
+  const game = gameStageOf(raw);
+  if (s.roomStage && gameStageOf(s.roomStage) !== game && raw === game) {
+    delete s.roomStage;   // 主線已升／降階，舊細階過期
+    return true;
+  }
+  if (raw === game) return false;
+  if (ROOM_TO_GAME_STAGE[raw]) s.roomStage = raw;
+  s.stage = game;
+  return true;
+}
+/** 顯示用細階：roomStage 與主線同一段才用，否則用主線 stage。 */
+function displayStage(s) {
+  const game = gameStageOf(s?.stage);
+  const room = s?.roomStage;
+  return room && ROOM_TO_GAME_STAGE[room] && gameStageOf(room) === game ? room : game;
+}
 const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
 const DATE_COST = 5, DATE_LIMIT = 1, NTR_WINDOW = 7; // 聊天計費:每 2 則玩家訊息 1 金；約會每天 1 次
 // 約會地點池(30 個情境;每次隨機抽 5 個給玩家選)
@@ -967,6 +1001,7 @@ function initState(j, offline) {
   delete state.slots;
   // 背景故事移轉:舊魅魔補發人生
   for (const s of state.succubi) {
+    normalizeGirlStage(s);   // 房間細階誤寫進 s.stage → 折回主線四階（細階存 roomStage）
     if (!s.backstory) Object.assign(s, makeBackstory());
     else if (!s.schedule) s.schedule = makeSchedule(s.job);   // 有故事沒作息 → 補作息
     pruneJournal(s);
@@ -1279,6 +1314,7 @@ document.addEventListener("visibilitychange", async () => {
       for (const k of Object.keys(def)) state[k] ??= def[k];
       state.settings = { ...def.settings, ...state.settings };
       state.settings.rating = "nsfw";
+      for (const g of state.succubi || []) normalizeGirlStage(g);
     }
     if (!isPhoneClient() && !dirty && state.roomMirror?.from === "phone") {
       applyServerRoomMirror();
@@ -1321,6 +1357,7 @@ async function saveNow(keepalive = false) {
       const j = await fetch("/api/save").then(x => x.json());
       version = j.version;
       state = j.data ?? defaultState();
+      for (const g of state.succubi || []) normalizeGirlStage(g);
       if (!isPhoneClient() && state.roomMirror?.from === "phone") {
         try { applyServerRoomMirror(); } catch { /* ignore */ }
       }
@@ -5714,8 +5751,8 @@ function guardTick(s) {
   dirty = true;
 }
 
-function stageInfo(key) { return STAGES.find(s => s[0] === key); }
-function nextStage(s) { const i = STAGES.findIndex(x => x[0] === s.stage); return STAGES[i + 1] || null; }
+function stageInfo(key) { const k = gameStageOf(key); return STAGES.find(s => s[0] === k); }
+function nextStage(s) { const k = gameStageOf(s.stage); const i = STAGES.findIndex(x => x[0] === k); return STAGES[i + 1] || null; }
 function stageLabel(key) {
   return AFF_LADDER_ZH[key] || stageInfo(key)?.[1] || "陌生";
 }
@@ -5723,7 +5760,8 @@ function stageLabel(key) {
 /** 名冊感情：橫向溫度計，只填目前這一段。感情為負則空管、偏冷。 */
 function affThermoHtml(s) {
   const aff = Number(s?.affection) || 0;
-  const idx = Math.max(0, AFF_LADDER.findIndex((step) => step[0] === s?.stage));
+  const shown = displayStage(s);
+  const idx = Math.max(0, AFF_LADDER.findIndex((step) => step[0] === shown));
   const cur = AFF_LADDER[idx] || AFF_LADDER[0];
   const next = AFF_LADDER[idx + 1] || null;
   const cold = aff < 0;
@@ -7824,7 +7862,7 @@ function buildRoomGirlFromSuccubus(s) {
     moanVoice: s.moanVoice || null,
     comfyCkpt: s.comfyCkpt,
     affection: typeof s.affection === "number" ? s.affection : 0,
-    stage: mapGameStageToRoom(s.stage || "stranger"),
+    stage: mapGameStageToRoom(displayStage(s)),
     stageLock: s.stageLock || "",
     ntr: s.ntr || null,
     summoner: s.summoner || null,
@@ -7986,7 +8024,14 @@ function applyRoomProgressData(data) {
     }
   };
   setScalar("affection", (v) => (typeof v === "number" ? v : Number(v) || 0));
-  setScalar("stage", (v) => (v ? String(v) : s.stage));
+  // 房間回寫的是 11 細階：s.stage 只收主線四階，細階存 roomStage（量條顯示、再召喚還原）
+  if (Object.prototype.hasOwnProperty.call(data, "stage") && data.stage) {
+    const raw = String(data.stage);
+    const game = gameStageOf(raw);
+    if (s.stage !== game) { s.stage = game; changed = true; }
+    const room = ROOM_TO_GAME_STAGE[raw] ? raw : "";
+    if (room && s.roomStage !== room) { s.roomStage = room; changed = true; }
+  }
   setScalar("stageLock", (v) => (v == null ? "" : String(v)));
   setScalar("comfyCkpt", (v) => (v == null ? "" : String(v)));
   setScalar("portrait");
@@ -17179,6 +17224,8 @@ function renderSuccubi() {
 
   const roster = $("#roster"); roster.innerHTML = "";
   for (const s of state.succubi) {
+   // 單一妹子資料怪掉（舊存檔／房間回寫）只壞她那張卡，不拖垮整個名冊與召喚區塊
+   try {
     const st = needStatus(s);
     const el = document.createElement("div");
     el.className = `scard r-${s.rarity}` + (s.ntr ? " ntr" : "");
@@ -17188,7 +17235,7 @@ function renderSuccubi() {
       <div class="thumb">${girlPortrait(s, 2.5, "head")}</div>
       <div class="sinfo">
         <div class="sname"><b>${esc(s.name)}</b><span class="rbadge">${s.rarity}</span>
-          <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(s.stage)}</span>
+          <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(displayStage(s))}</span>
           ${!s.ntr && s.summoner?.taken ? `<span class="stage-chip" style="color:var(--red)">→ 被召喚走</span>`
             : isKanban(s.id) ? `<span class="stage-chip" style="color:var(--gold)">★ 在店頭</span>` : ""}
           ${s.summoner && !s.ntr ? `<span class="stage-chip" style="color:var(--red)">⚠ ${esc(summonerById(s.summoner.id)?.name || "被纏上")}${s.summoner.ringUnlocked ? "・已解環" : ""}</span>` : ""}</div>
@@ -17202,6 +17249,14 @@ function renderSuccubi() {
       beginRoomCompanionSummon(s.id);
     });
     roster.appendChild(el);
+   } catch (err) {
+    console.error("[renderSuccubi] card", s?.id, s?.name, err);
+    const el = document.createElement("div");
+    el.className = "scard";
+    el.innerHTML = `<div class="sinfo"><div class="sname"><b>${esc(s?.name || "？")}</b><span class="stage-chip">資料異常</span></div></div>`;
+    el.onclick = () => { detailId = s?.id; renderAll(); };
+    roster.appendChild(el);
+   }
   }
   if (!state.succubi.length) roster.innerHTML = `<div class="empty">一個魅魔都沒有。桌上只有那本召喚之書。</div>`;
 
@@ -17244,7 +17299,7 @@ function renderDetail(s, root) {
       <button class="back-btn" id="detail-back">‹ 名冊</button>
       <div class="aff-line">
         <b>${esc(s.name)}</b> <span class="rbadge">${"★".repeat(RARITIES.indexOf(s.rarity) + 1)} ${s.rarity}</span>
-        ・${s.ntr ? "被奪走" : stageLabel(s.stage)}
+        ・${s.ntr ? "被奪走" : stageLabel(displayStage(s))}
         ${s.ntr ? "" : takenAway
           ? `<span class="stage-chip" style="color:var(--red)">被召喚走</span>`
           : isKanban(s.id)
