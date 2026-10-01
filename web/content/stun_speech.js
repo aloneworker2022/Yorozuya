@@ -415,6 +415,8 @@ export function ensureStunFields(who) {
     b.spasmUntil = 0;
     b.overstim = false;
   }
+  b.stunCarry = clamp(b.stunCarry, 0, 100);
+  b.stunCarryAt = Number(b.stunCarryAt) || 0;
   b.afterglowUntil = Math.max(0, Number(b.afterglowUntil) || 0);
   b.afterglowReplies = Math.max(0, Math.round(Number(b.afterglowReplies) || 0));
   if (!["hers", "his", "both"].includes(b.afterglowKind)) b.afterglowKind = "";
@@ -459,6 +461,9 @@ export function noteActShock(who, actOrHitId) {
 export function tickStunAfterReply(who) {
   const b = ensureStunFields(who);
   if (!b) return;
+  // 刺激留下的失神殘量：每句回覆再退一截（沒被刺激時才會用到）
+  if (b.stunCarry > 0) b.stunCarry = clamp(decayedCarry(b) - STUN_CARRY_PER_REPLY, 0, 100);
+  b.stunCarryAt = Date.now();
   if (b.shockRepliesLeft > 0) {
     b.shockRepliesLeft -= 1;
     b.shock = clamp((b.shock || 0) - 16, 0, SHOCK_MAX);
@@ -469,11 +474,51 @@ export function tickStunAfterReply(who) {
 }
 
 /**
+ * 沒有實際刺激時的失神上限：低於失神(75)也低於痙攣門檻(70)，
+ * 性奮／開放度再高也不能單獨把她推進失神或一碰就痙攣。
+ */
+export const UNSTIM_STUN_CAP = 69;
+/** 刺激留下的失神殘量衰減：每秒 0.5、每句回覆再 −8。 */
+const STUN_CARRY_PER_SEC = 0.5;
+const STUN_CARRY_PER_REPLY = 8;
+
+function decayedCarry(b) {
+  const carry = Number(b?.stunCarry) || 0;
+  if (carry <= 0) return 0;
+  const at = Number(b.stunCarryAt) || 0;
+  const sec = at ? Math.max(0, (Date.now() - at) / 1000) : 0;
+  return Math.max(0, carry - sec * STUN_CARRY_PER_SEC);
+}
+
+/** 失神是否不受上限（正被性刺激 level≥2／痙攣／餘韻）。 */
+function stunUncapped(who, actId = "") {
+  if (inSpasm(who) || inAfterglow(who)) return true;
+  return stimulationState(who, actId).level >= 2;
+}
+
+/**
  * 失神分數 0–100。
  * arousal→最多約40；libido 加成／倍率；器官濕腫塞；shock 暫衝。
  * 軟頂改依開放度（取代 teaseStage）。
+ * 沒被實際刺激時：上限 UNSTIM_STUN_CAP，只允許「剛才刺激留下的殘量」照常退去（stunCarry），
+ * 性奮／開放度本身不能製造或維持失神。
  */
-export function calcStun(who) {
+export function calcStun(who, actId = "") {
+  const raw = calcStunRaw(who);
+  const b = ensureStunFields(who);
+  if (!b) return raw;
+  if (stunUncapped(who, actId)) {
+    // 記住刺激中的失神值，刺激停止後讓它自然退
+    b.stunCarry = clamp(Math.max(decayedCarry(b), raw), 0, 100);
+    b.stunCarryAt = Date.now();
+    return raw;
+  }
+  const ceiling = Math.max(UNSTIM_STUN_CAP, decayedCarry(b));
+  return clamp(Math.min(raw, ceiling), 0, 100);
+}
+
+/** 未套「沒刺激上限」的原始失神分數。 */
+function calcStunRaw(who) {
   const b = ensureStunFields(who);
   if (!b) return 0;
   decayShock(b);
@@ -518,7 +563,7 @@ export function stunFloorForAct(actId, who = null) {
 
 /** 含動作地板的有效失神值。 */
 export function effectiveStun(who, actId = "") {
-  return Math.max(calcStun(who), stunFloorForAct(actId, who));
+  return Math.max(calcStun(who, actId), stunFloorForAct(actId, who));
 }
 
 /**

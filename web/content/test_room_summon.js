@@ -47,7 +47,7 @@ import {
   AFTERGLOW_FRIEND_CONT_REPLIES,
   AFTERGLOW_FRIEND_MARATHON_MS,
   AFTERGLOW_FRIEND_MARATHON_REPLIES,
-} from "./stun_speech.js?v=14";
+} from "./stun_speech.js?v=15";
 import {
   ensureTeaseFields,
   actLockState,
@@ -1204,7 +1204,8 @@ function resolveStandeeSlotForPaint(who, opts = {}) {
   const tier = stunTier(stun);
   // 失神（≥75）：對話立繪也用 stun 槽，不只挑逗 flash
   if (tier === "stun") return "stun";
-  if (teasing) {
+  // 干擾／空白／求饒立繪只在真的被刺激（說話也會崩）時才用；摟腰等輕碰不換
+  if (teasing && speechMayBreak(who, opts.actId || "")) {
     if (tier === "interfere" || tier === "blank" || tier === "beg") return tier;
   }
   const ar = arousalStage(who?.bodyState?.arousal);
