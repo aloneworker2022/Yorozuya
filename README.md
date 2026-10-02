@@ -2,15 +2,17 @@
 
 Todo 積分驅動的魅魔召喚養成網頁遊戲。
 
+**★ 現行企劃書（先讀）：[docs/PLAN-2026-10.md](docs/PLAN-2026-10.md)** ——2026-10 起遊戲以房間系統為核心；召喚師、冷落 NTR、飢渴、主線每日衰減已退役。主分支 `grok-2026.10`。以下其他文件為歷史／細節參考。
+
 **房間與雙向陪伴改版交接（2026-09-23）：** [方向、完成狀態與接續工作](docs/ROOM-EVOLUTION-HANDOFF.md)。接手 `/test_room` 請先讀這份；下方牌制文件保留為既有主遊戲背景。
 
 - 白天:做現實委託賺金幣,聊天/約會養魅魔(**Ollama** 或 **Grok Build 無頭**)
 - 日誌連寫:連續每天寫滿 12 字領金幣,並同步到本機 **Memos**
 - 立繪／場景圖:需要時即時生成(Grok Build 或 ComfyUI)
 
-企劃書:[docs/plan-v5.md](docs/plan-v5.md)(關係演出規格另見 [docs/relationship-axes.md](docs/relationship-axes.md))
+舊企劃書（已過時）:[docs/plan-v5.md](docs/plan-v5.md)(關係演出規格另見 [docs/relationship-axes.md](docs/relationship-axes.md))
 
-**深度互動只走約會**(看板打牌已取消；電話 → 場地章節卡；氣泡／出卡短 AI 仍在):[docs/card-system.md](docs/card-system.md)
+牌制規格（已過時；主遊戲已轉房間，引擎保留）:[docs/card-system.md](docs/card-system.md)
 
 **教 AI／實作者從哪讀起:**[docs/AI-READING-ORDER.md](docs/AI-READING-ORDER.md)
 

@@ -1,5 +1,24 @@
 # AI／實作者建議閱讀順序
 
+> ★ **先讀 [`docs/PLAN-2026-10.md`](PLAN-2026-10.md)（2026-10-02 起的現行企劃書、唯一真相）。** 遊戲已轉為房間系統為核心；召喚師、冷落 NTR、飢渴、主線每日衰減已退役（旗標關閉）。
+> 下方 §0～§8 是**舊牌制時代**的閱讀順序，**已過時**，只在動到牌制引擎時參考；與 PLAN 衝突一律以 PLAN 為準。
+
+## 現行閱讀順序（2026-10）
+
+```
+1. docs/PLAN-2026-10.md                 ← 現況、退役旗標、11 階、揭露表、慣例、待問清單
+2. docs/ROOM-SHIP.md                    ← 房間上線規格與實作備註
+3. docs/ROOM-RELATIONSHIP-EFFECTS.md    ← 各關係階的聊天效應細節
+4. web/content/test_room_summon.js      ← 用搜尋：talkSystem / syncStage / REVEAL_AT / RoomCompanion
+5. web/app.js                           ← 用搜尋：normalizeGirlStage / applyRoomProgressData / buildRoomGirlFromSuccubus / *_ON 旗標
+6. 其餘舊文件（plan-v5、card-system、relationship-axes、ROOM-EVOLUTION-HANDOFF）只當歷史
+```
+
+---
+
+> 以下為舊版內容（已過時）。
+
+
 > **房間改版入口（2026-09-23）：** 接手 `/test_room`、房間布置或雙向陪伴，先讀 [房間與雙向陪伴改版交接企劃](ROOM-EVOLUTION-HANDOFF.md)。以下閱讀順序主要針對既有牌制；新版已確認事項與待驗證功能以交接書及使用者最新指示為準。
 
 > **你是誰：** 要把「互動牌制 v6」或相關功能寫進程式的人（含 AI coding agent）。  
