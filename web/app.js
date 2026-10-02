@@ -163,7 +163,8 @@ const HOUR = 3600 * 1000;
 // 只做開關／no-op，不刪大段程式；舊存檔欄位讀進來就清掉或忽略。
 const SUMMONER_ON = false;   // 召喚師纏身（纏上／召喚走／交配／懷孕娶走／窺視／破除／取消召喚師天賦）。伺服器 sim.py 同步關閉
 const NTR_ON = false;        // 主線「感情 < −10 → 陌生離開／熟人被奪走／贖回」
-const CRAVE_ON = false;      // 飢渴值（累積、prompt、UI）
+const CRAVE_ON = false;
+const NUDE_FLAG_ON = false;  // 「幫她脫時逃走→裸體旗」2026-10-03 撤掉（使用者之後重設計）：不設、不顯示、載入清掉      // 飢渴值（累積、prompt、UI）
 const MAIN_DECAY_ON = false; // 主線每日「沒聊天／沒約會 −3」與「妻子交辦逾期 −1」
 // ===== 擴充系統(8 軸)=====
 // 取得方式:①看板娘自帶(暫時,Phase 4)②獻祭掉落(永久,Phase 7)。
@@ -578,6 +579,7 @@ function retireGirlLegacy(s) {
   }
   if (!SUMMONER_ON && s.summoner) { s.summoner = null; changed = true; }
   if (!SUMMONER_ON && s.gift === "cleanse") { s.gift = pick(GIFT_KEYS) || "kanban"; changed = true; }
+  if (!NUDE_FLAG_ON && "nude" in s) { delete s.nude; changed = true; }
   return changed;
 }
 function repairGirl(s) {
@@ -7972,7 +7974,7 @@ function buildRoomGirlFromSuccubus(s) {
     ...(CRAVE_ON ? { crave: s.crave || { v: 10, at: Date.now() } } : {}),
     // Default summon; adoptRosterGirl merges flee_back from room prior when same id
     chatEnter: s.chatEnter === "flee_back" ? "flee_back" : "summon",
-    nude: !!s.nude,
+    ...(NUDE_FLAG_ON ? { nude: !!s.nude } : {}),
     undress: roomUndressState(s.undress),
     body: s.body || null,
     bodyState,
@@ -8192,8 +8194,11 @@ function applyRoomProgressData(data) {
     s.topicCool = { ...data.topicCool };
     changed = true;
   }
-  if (data.nude) {
+  if (NUDE_FLAG_ON && data.nude) {
     s.nude = true;
+    changed = true;
+  } else if (!NUDE_FLAG_ON && "nude" in s) {
+    delete s.nude;
     changed = true;
   }
   if (data.undress && typeof data.undress === "object") {

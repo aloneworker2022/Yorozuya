@@ -125,3 +125,34 @@ export function undressShyFallback(undressStage, stageKey, fallback = "……") 
   if (lv === 2) return "……不、不要看啦……";
   return fallback;
 }
+
+/** 穿衣按鈕：穿回去後的一句保底台詞（LLM 失敗／空回覆時用）。 */
+export const DRESSED_LINES = {
+  "傲嬌": "哼、哼！早該讓我穿回去了啦……笨蛋。",
+  "清純反差": "嗚……終、終於穿好了……剛才的事不准說出去喔……",
+  "高冷": "……總算。剛才的事，忘掉。",
+  "活潑開朗": "呼～得救了！剛、剛才真的超尷尬的啦……",
+  "天然呆": "啊，衣服……謝、謝謝你……我剛剛都沒注意到……",
+  "御姊": "咳……這樣好多了。剛才的事就當沒看到。",
+  "病嬌": "穿好了……剛才看到的，只能你一個人記得喔。",
+  "文靜溫柔": "謝、謝謝……這樣比較安心了……",
+};
+
+export function dressedReactionLine(prevStage, stageKey, personality = "") {
+  const i = stageIdx(stageKey);
+  if (i > PASSIONATE) return "好啦，穿回來了。你剛剛是不是看得很開心？";
+  if (i === PASSIONATE) return "嗯，穿好了～剛剛……其實也沒那麼害羞啦。";
+  return DRESSED_LINES[String(personality || "")] || DRESSED_LINES["文靜溫柔"];
+}
+
+/** 穿衣按鈕：給 LLM 的一句反應指示（旁白形式，接在 askGirl extra）。 */
+export function dressedReactionPrompt(prevStage, stageKey) {
+  const s = clampUndress(prevStage);
+  const i = stageIdx(stageKey);
+  const was = s >= 3 ? "全身赤裸" : s === 2 ? "只剩內褲" : "只穿著內衣褲";
+  let how;
+  if (i <= GF) how = "你剛才羞得要命，現在鬆一口氣、還有點害羞或尷尬，可以嘴硬、叫他忘掉剛才、或小聲道謝；語氣可以還帶一點結巴。";
+  else if (i === PASSIONATE) how = "你鬆了口氣但不太在意，可以撒嬌或小小抱怨。";
+  else how = "你很自在，穿回來只是順手，可以調侃他剛才看得很開心。";
+  return `（旁白：你剛把衣服穿回去了（剛才${was}），現在已經穿好。${how}依你的個性說一句話。不要呻吟、不要喘、不要旁白、不要描寫動作，只輸出台詞。）`;
+}

@@ -105,7 +105,9 @@ import {
   undressShyPromptLines,
   undressShyOpenerHint,
   undressShyFallback,
-} from "./undress_shy.js?v=1";
+  dressedReactionLine,
+  dressedReactionPrompt,
+} from "./undress_shy.js?v=2";
 import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines } from "./life_memory.js?v=1";
 import {
   mountButtPackEditor,
@@ -1448,6 +1450,12 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
   }
 }
 
+/** 「幫她脫時逃走→裸體旗」2026-10-03 撤掉（使用者之後重設計）：不設、不顯示、載入清掉。 */
+const NUDE_FLAG_ON = false;
+function stripRetiredNude(who) {
+  if (!NUDE_FLAG_ON && who && "nude" in who) delete who.nude;
+}
+
 const NUDE_STANDEE_SHOTS = new Set(["undress_cover", "undress_low", "undress_stand"]);
 
 function undressStage(who) {
@@ -1498,7 +1506,7 @@ function rollNudeStandee(who) {
   return u.shot;
 }
 
-/** 沒脫完：只有痙攣或失神（≥75）才換成該階段。脫完：失神時用沒有內褲那張，否則用這次聊天抽到的裸體立繪。 */
+/** 沒脫完：痙攣或失神（≥75）換成該階段（缺圖會補生）；清醒時有圖才用。脫完：失神時用沒有內褲那張，否則用這次聊天抽到的裸體立繪。 */
 function undressPortraitShot(who, opts = {}) {
   const stage = undressStage(who);
   if (stage < 1) return "";
@@ -1509,7 +1517,11 @@ function undressPortraitShot(who, opts = {}) {
     if (stage === 2) return "undress_slip";
     return "undress_nude";
   }
-  if (stage < 3) return "";
+  if (stage < 3) {
+    // 2026-10-03：清醒時也維持衣著一致——該階段圖（只穿內衣／只穿內褲）已生好才用，不另外生圖；沒有就退回一般半身
+    const partial = stage === 1 ? "undress_loose" : "undress_slip";
+    return who?.portraits?.[partial] ? partial : "";
+  }
   const shot = String(who?.undress?.shot || "");
   if (NUDE_STANDEE_SHOTS.has(shot)) return shot;
   return rollNudeStandee(who);
@@ -2534,7 +2546,7 @@ function renderCard() {
   if ($("summon-name")) $("summon-name").textContent = titleOf(girl);
   if ($("summon-meta")) {
     const place = region && sheIsOut() ? `${lookLine(girl)} · 人在日本的${region.name}` : lookLine(girl);
-    $("summon-meta").textContent = girl.nude ? `${place} · 裸體` : place;
+    $("summon-meta").textContent = NUDE_FLAG_ON && girl.nude ? `${place} · 裸體` : place;
   }
   // Comfy 模式才顯示生圖模型；grok-img 不佔版面
   {
@@ -5460,6 +5472,78 @@ function refreshTalkActs() {
     });
     row.append(btn);
   }
+  // 有脫（undress.stage>0）才出現「穿衣」：穿回去、立繪換回、害羞 prompt 自然停止
+  if (undressStage(girl) > 0) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.scene = "dress";
+    btn.textContent = "穿衣";
+    btn.disabled = !!talkBusy;
+    btn.title = "讓她把衣服穿回去";
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (btn.disabled) return;
+      void dressHer();
+    });
+    row.append(btn);
+  }
+}
+
+/** 「穿衣」：脫衣進度歸 0（同離房的 clearVisitUndress）、換回穿衣立繪、存檔，再說一句反應。 */
+async function dressHer() {
+  if (!girl || talkBusy || !sheetOpen() || talkFor !== girl.id) return;
+  const before = undressStage(girl);
+  if (before <= 0) return;
+  clearVisitUndress(girl);
+  persistRoom();
+  try { paintHalfPortrait(girl); } catch { /* ignore */ }
+  talkBusy = true;
+  refreshTalkActs();
+  const note = "（你讓她把衣服穿回去。）";
+  lines.push({ role: "user", content: note });
+  const canned = dressedReactionLine(before, girl.stage || "stranger", basePersonality(girl));
+  let line = "";
+  let streamed = false;
+  try {
+    const stun = effectiveStun(girl, "");
+    $("portrait-name").textContent = girl.name;
+    if (inSpasm(girl)) {
+      line = spasmTemplate(girl, "") || "……";
+    } else if (stunTier(stun) === "stun" || shouldSkipLlm(stun, girl)) {
+      line = stunTemplate(stun, "", girl) || "……";
+    } else {
+      setTyping(true);
+      const streamOk = stun < 25 && !inAfterglow(girl);
+      try {
+        const reply = await askGirl(dressedReactionPrompt(before, girl.stage || "stranger"), streamOk ? (partial) => {
+          if (!partial || !sheetOpen()) return;
+          streamed = true;
+          setTyping(false);
+          $("portrait-name").textContent = girl.name;
+          $("portrait-meta").textContent = partial;
+        } : null);
+        line = scrambleReply(String(reply || "").trim() || canned, stun, "", girl) || canned;
+      } catch {
+        line = canned;
+        streamed = false;
+      }
+    }
+    setTyping(false);
+    noteTalkExchange(girl);
+    lines.push({ role: "assistant", content: line });
+    rememberChat();
+    persistRoom();
+    if (streamed) $("portrait-meta").textContent = line;
+    else await typeLine(girl.name, line);
+  } catch (err) {
+    setTyping(false);
+    try { await typeLine(girl.name, canned); } catch { /* ignore */ }
+  } finally {
+    talkBusy = false;
+    if (sheetOpen()) setTalkEnabled(true);
+    refreshTalkActs();
+  }
 }
 
 function bindTalkActs() {
@@ -5715,7 +5799,7 @@ function pickRoomDurableProgress(who) {
   if (who.topicCool && typeof who.topicCool === "object" && !Array.isArray(who.topicCool)) {
     detail.topicCool = who.topicCool;
   }
-  if (who.nude) detail.nude = true;
+  if (NUDE_FLAG_ON && who.nude) detail.nude = true;
   if (who.undress && typeof who.undress === "object") {
     detail.undress = snapshotUndress(who.undress);
   }
@@ -5754,7 +5838,8 @@ function mergeRoomGirlDurable(base, prior) {
   if (prior.topicCool && typeof prior.topicCool === "object" && !Array.isArray(prior.topicCool)) {
     out.topicCool = { ...prior.topicCool };
   }
-  if (prior.nude) out.nude = true;
+  if (NUDE_FLAG_ON && prior.nude) out.nude = true;
+  stripRetiredNude(out);
   if (prior.undress && typeof prior.undress === "object") {
     out.undress = snapshotUndress(prior.undress);
   }
@@ -6128,7 +6213,7 @@ function buildRoomGirlFromSuccubus(s) {
     portraits,
     portrait: s.portrait || portraits.full || portraits.half || null,
     chatEnter: s.chatEnter === "flee_back" ? "flee_back" : "summon",
-    nude: !!s.nude,
+    ...(NUDE_FLAG_ON ? { nude: !!s.nude } : {}),
     undress: snapshotUndress(s.undress),
     body: s.body || null,
     bodyState,
@@ -6618,12 +6703,12 @@ function closeTalkForLeave() {
   }
 }
 
-/** 幫她脫時逃走：離開房間，並留下「裸體」狀態。效果以後再做。 */
+/** 幫她脫時逃走：離開房間（脫衣進度清 0）。「裸體」旗已撤掉（NUDE_FLAG_ON=false）。 */
 async function fleeRoomFromUndress() {
   if (!girl) return;
   const who = girl;
   const name = who.name;
-  who.nude = true;
+  if (NUDE_FLAG_ON) who.nude = true;
   who.chatEnter = "flee_back";
   clearVisitUndress(who);
   startArousalCool(who);
@@ -6633,7 +6718,7 @@ async function fleeRoomFromUndress() {
   syncArousalOffChatTimer();
   activityOpen = false;
 
-  const tail = `${name}掙開你逃離了房間，進入「裸體」。可再召喚回來。`;
+  const tail = `${name}掙開你逃離了房間。可再召喚回來。`;
   if (who.world?.home) {
     clearShift();
     renderCard();
@@ -6652,14 +6737,14 @@ async function fleeRoomFromUndress() {
     const homeName = who.world.home?.name || "某處";
     if ($("summon-status")) {
       $("summon-status").textContent = region
-        ? `${name}掙開你逃離了房間，進入「裸體」。人在日本的${region.name}，住在${homeName}。可再召喚回來。`
+        ? `${name}掙開你逃離了房間。人在日本的${region.name}，住在${homeName}。可再召喚回來。`
         : tail;
     }
     return;
   }
   await letHerLeave({ instantHome: true, keepArousal: true });
   if ($("summon-status")) {
-    $("summon-status").textContent = `${name}掙開你逃離了房間，進入「裸體」。人已回到日本。可再召喚回來。`;
+    $("summon-status").textContent = `${name}掙開你逃離了房間。人已回到日本。可再召喚回來。`;
   }
 }
 
@@ -7329,7 +7414,7 @@ function fillStuffedSelect(sel) {
 function formatBodySummary(snap) {
   if (!snap) return "";
   const preg = breedingLabel(girl) ? `・${breedingLabel(girl)}` : "";
-  const nude = girl?.nude ? "・裸體" : "";
+  const nude = NUDE_FLAG_ON && girl?.nude ? "・裸體" : "";
   return `${snap.arousalLabel}・開放${snap.openness ?? 0}・侵犯${snap.invasion ?? 0}・精液${SEMEN_ZH[snap.uterusSemen]}${preg}${nude}`;
 }
 
@@ -7453,6 +7538,7 @@ function bindBodyPanel() {
   if (!saved?.girl) return;
   girl = saved.girl;
   player = ensurePlayer(saved.player);
+  stripRetiredNude(girl);
   if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
   ensureBody(girl);
   ensureFriends(girl);
