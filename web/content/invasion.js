@@ -73,43 +73,160 @@ export function stageInvasionMult(stageKey) {
  * 半推半就（2026-10-03 使用者）：她自己被撩起來／性慾高時，侵犯增益打折。
  * 依興奮階段：none 1.0、slight 0.85、aroused 0.6、wantFill 0.35、climax 0.2；
  * 性慾階段再乘：high ×0.9、peak ×0.8（low/mid ×1）。
- * 關係下限（只對侵入性動作：區間下限 ≥35，即 labia 以上）：陌生 0.6、認識 0.5、朋友 0.4、好友 0.3；女友以上無下限。
- * willing（語氣改「半推半就」）＝最終倍率 ≤0.6，且不是陌生／認識被下限頂住的侵入性動作。
+ * 再乘個性倍率（PERSONALITY_RESIST＋stats 修正，夾在 0.75–1.3）。
+ * 關係下限（2026-10-03 第二版：胸部級也有）：見 BREAST_FLOOR／INVASIVE_FLOOR；女友以上無下限。
+ *   下限也乘個性倍率中 >1 的部分（高冷／清純等更硬），但 <1 的個性不會把下限壓低。
+ * 最終倍率上限 1.3。
+ * willing（語氣改「半推半就」）＝最終倍率 ≤ 個性門檻 willingAt，且：
+ *   陌生／認識：只有輕度動作（摟腰級）才可能 willing，且只取代 light 階（增益 ≤5）；胸部級以上一律真的抗拒。
+ *   朋友以上：取代 light／clear（增益 ≤12）。harsh／furious 永遠照舊。
  */
 export const AROUSAL_INVASION_MULT = { none: 1.0, slight: 0.85, aroused: 0.6, wantFill: 0.35, climax: 0.2 };
 export const LIBIDO_INVASION_MULT = { low: 1.0, mid: 1.0, high: 0.9, peak: 0.8 };
-export const INVASIVE_FLOOR = { stranger: 0.6, acquaintance: 0.5, friend: 0.4, close_friend: 0.3 };
+/** 胸部級動作（區間下限 22–34：摸奶、摸臀、揉奶、吸奶、舔奶頭）。 */
+export const BREAST_FLOOR = { stranger: 0.75, acquaintance: 0.65, friend: 0.45, close_friend: 0.3 };
+/** 侵入性動作（區間下限 ≥35：摸陰唇以上）。 */
+export const INVASIVE_FLOOR = { stranger: 0.9, acquaintance: 0.8, friend: 0.55, close_friend: 0.4 };
 export const WILLING_AT = 0.6;
+export const RESIST_MULT_MAX = 1.3;
+export const PERS_MULT_MIN = 0.75;
+const BREAST_LO = 22;
 const INVASIVE_LO = 35;
+const STAGE_KEYS = Object.keys(STAGE_INVASION_MULT);
+const GF_IDX = 4;
+const LOVER_IDX = 6;
 
-/** @returns {{ mult: number, raw: number, floored: boolean, willing: boolean }} */
-export function arousalInvasionMult(arousal = 0, libido = 0, { stage = "stranger", actId = "" } = {}) {
+/**
+ * 個性抗拒表（key＝girl_gen PERSONALITY_NAMES）。
+ * mult(stageIdx)：乘在興奮倍率上；willingAt：半推半就門檻（最終倍率 ≤ 才算）；
+ * token／protest：給 LLM 的個性語氣；tokenScraps：半推半就保底碎句。
+ */
+export const PERSONALITY_RESIST = {
+  "活潑開朗": {
+    mult: () => 0.85, willingAt: 0.7,
+    token: "活潑開朗：笑著拍他一下、「討厭啦～」「你很色欸！」，嘴上鬧、身體不躲。",
+    protest: "活潑開朗：直接大聲說不喜歡、會推他，但不陰沉。",
+    tokenScraps: ["討厭啦～你很色欸……", "欸欸、不要鬧啦……", "真是的……只有一下喔……"],
+  },
+  "天然呆": {
+    mult: () => 0.9, willingAt: 0.65,
+    token: "天然呆：迷糊地「欸？等、等一下……」「這樣好奇怪喔……」，慢半拍才害羞，沒有真的推開。",
+    protest: "天然呆：一臉困惑但明確說「不要這樣」，會往後縮。",
+    tokenScraps: ["欸？等、等一下啦……", "這樣……好奇怪喔……", "嗚……你在幹嘛啦……"],
+  },
+  "文靜溫柔": {
+    mult: () => 1.0, willingAt: 0.6,
+    token: "文靜溫柔：小聲、軟軟地拜託「不要啦……」，臉紅低頭，語氣溫柔不兇。",
+    protest: "文靜溫柔：輕聲但堅定地請他住手，不罵人。",
+    tokenScraps: ["不要啦……", "別在這裡啦……", "你、你真的很壞……"],
+  },
+  "御姊": {
+    mult: () => 0.9, willingAt: 0.65,
+    token: "御姊：從容地調侃「膽子不小嘛」「就這樣而已？」，像在縱容他，不慌。",
+    protest: "御姊：居高臨下地冷聲警告「手拿開，別讓我說第二次」。",
+    tokenScraps: ["膽子不小嘛……", "呵……就只敢這樣？", "真拿你沒辦法……"],
+  },
+  "傲嬌": {
+    mult: () => 1.0, willingAt: 0.6,
+    token: "傲嬌：嘴上要比平常更大聲——「哼！才、才不是想讓你碰！」「笨蛋！變態！」——但其實不推開、不離開，口是心非。",
+    protest: "傲嬌：大聲罵「笨蛋！變態！」，臉紅但是真的在拒絕。",
+    tokenScraps: ["哼！才、才不是想讓你碰的……", "笨蛋……變態……", "我、我只是懶得推開而已！"],
+  },
+  "高冷": {
+    mult: (i) => (i < GF_IDX ? 1.2 : 1.0), willingAt: 0.5,
+    token: "高冷：冷冷一句「……隨便你」「別得寸進尺」，聲音壓低、別開臉，沒有真的推開。",
+    protest: "高冷：極短、極冷地「手拿開。」「你找死？」，不需要大吼。",
+    tokenScraps: ["……隨便你。", "別得寸進尺。", "……就這一次。"],
+  },
+  "病嬌": {
+    mult: (i) => (i < GF_IDX ? 1.1 : 0.8), willingAt: 0.6,
+    token: "病嬌：甜甜地、有點危險地「只有你可以喔……」「不准對別人這樣」，半推是試探。",
+    protest: "病嬌：笑容消失、語氣陰冷地警告他，帶威脅感。",
+    tokenScraps: ["只有你可以喔……", "嗯……不准對別人這樣……", "壞人……要負責喔……"],
+  },
+  "清純反差": {
+    mult: (i) => (i < LOVER_IDX ? 1.15 : 0.9), willingAt: 0.5,
+    token: "清純反差：慌張又羞恥「不、不可以這樣……」，聲音發抖但沒有推開，像在跟自己掙扎。",
+    protest: "清純反差：嚇到、慌張地遮住自己、說「不可以！」，是真的害怕被碰。",
+    tokenScraps: ["不、不可以這樣……", "會、會被看到的……", "嗚……怎麼可以……"],
+  },
+};
+
+function persKeyOf(personality) {
+  const k = String(personality || "");
+  return k in PERSONALITY_RESIST ? k : "文靜溫柔";
+}
+
+/** 個性倍率（含 stats：害羞 ≥70 ×1.1、≤30 ×0.95；主動 ≥70 ×0.9、≤30 ×1.05），夾 0.75–1.3。 */
+export function personalityResistMult(personality, stats = null, stage = "stranger") {
+  const idx = Math.max(0, STAGE_KEYS.indexOf(String(stage || "stranger")));
+  let m = PERSONALITY_RESIST[persKeyOf(personality)].mult(idx);
+  const shy = Number(stats?.shyness);
+  const pro = Number(stats?.proactivity);
+  if (stats && Number.isFinite(shy)) { if (shy >= 70) m *= 1.1; else if (shy <= 30) m *= 0.95; }
+  if (stats && Number.isFinite(pro)) { if (pro >= 70) m *= 0.9; else if (pro <= 30) m *= 1.05; }
+  return Math.round(Math.max(PERS_MULT_MIN, Math.min(RESIST_MULT_MAX, m)) * 1000) / 1000;
+}
+
+/** 動作強度級：light（摟腰）、breast（胸部級）、invasive（陰唇以上）、none（不加侵犯）。 */
+export function actTier(actId) {
+  const range = INVASION_RANGES[actId];
+  if (!range || range[1] <= 0) return "none";
+  if (range[0] >= INVASIVE_LO) return "invasive";
+  if (range[0] >= BREAST_LO) return "breast";
+  return "light";
+}
+
+/**
+ * @returns {{ mult, raw, persMult, floor, floored, willing, tokenCap, personality }}
+ */
+export function arousalInvasionMult(arousal = 0, libido = 0, {
+  stage = "stranger", actId = "", personality = "", stats = null,
+} = {}) {
+  const st = String(stage || "stranger");
+  const persKey = persKeyOf(personality);
+  const persMult = personalityResistMult(persKey, stats, st);
   const raw = (AROUSAL_INVASION_MULT[arousalStage(arousal)] ?? 1)
     * (LIBIDO_INVASION_MULT[libidoStage(libido)] ?? 1);
-  const range = INVASION_RANGES[actId];
-  const invasive = !!range && range[0] >= INVASIVE_LO;
-  const floor = invasive ? (INVASIVE_FLOOR[String(stage || "stranger")] ?? 0) : 0;
-  const mult = Math.round(Math.max(raw, floor) * 1000) / 1000;
-  const floored = floor > raw;
-  const lowStage = stage === "stranger" || stage === "acquaintance" || !stage;
-  const willing = mult <= WILLING_AT && !(floored && lowStage);
-  return { mult, raw: Math.round(raw * 1000) / 1000, floored, willing };
+  const tier = actTier(actId);
+  const baseFloor = tier === "invasive" ? (INVASIVE_FLOOR[st] ?? 0)
+    : tier === "breast" ? (BREAST_FLOOR[st] ?? 0) : 0;
+  const floor = baseFloor * Math.max(1, persMult);
+  const scaled = raw * persMult;
+  const mult = Math.round(Math.min(RESIST_MULT_MAX, Math.max(scaled, floor)) * 1000) / 1000;
+  const floored = floor > scaled;
+  const lowStage = st === "stranger" || st === "acquaintance";
+  let willing = mult <= PERSONALITY_RESIST[persKey].willingAt;
+  if (lowStage && (tier === "breast" || tier === "invasive")) willing = false;
+  return {
+    mult,
+    raw: Math.round(raw * 1000) / 1000,
+    persMult,
+    floor: Math.round(floor * 1000) / 1000,
+    floored,
+    willing,
+    tokenCap: lowStage ? 5 : 12,
+    personality: persKey,
+  };
 }
 
 /**
  * round(rand(lo,hi) * stageMult * (1 - stun/150) * arousalMult)
+ * arousalMult＝max(興奮×性慾×個性, 關係下限×max(1,個性))，上限 1.3
  * mult 0 → add 0。arousal/libido 不給就讀 bodyState（應在 applyAct 之後呼叫）。
  * @returns {{ added: number, invasion: number, fled: boolean, arousalMult: number, willing: boolean }}
  */
-export function applyInvasionRoll(who, actId, { stage = "stranger", stun = 0, arousal = null, libido = null } = {}) {
+export function applyInvasionRoll(who, actId, {
+  stage = "stranger", stun = 0, arousal = null, libido = null, personality = "", stats = null,
+} = {}) {
   const b = ensureInvasion(who);
-  if (!b) return { added: 0, invasion: 0, fled: false, arousalMult: 1, willing: false };
+  if (!b) return { added: 0, invasion: 0, fled: false, arousalMult: 1, willing: false, tokenCap: 5, personality: "" };
   const am = arousalInvasionMult(
     arousal == null ? b.arousal : arousal,
     libido == null ? b.libido : libido,
-    { stage, actId },
+    { stage, actId, personality, stats: stats ?? who?.stats ?? null },
   );
-  const extra = { arousalMult: am.mult, willing: am.willing };
+  const extra = { arousalMult: am.mult, willing: am.willing, tokenCap: am.tokenCap, personality: am.personality };
   const range = INVASION_RANGES[actId];
   if (!range) return { added: 0, invasion: b.invasion || 0, fled: false, ...extra };
   const mult = stageInvasionMult(stage);
@@ -193,11 +310,29 @@ const TOKEN_TONE = {
 
 /**
  * 依「本回合」侵犯增益決定抗議語氣階（非總表）。
- * opts.willing（半推半就）：light／clear 改為 token；harsh／furious 不變（關係太低或動作太過仍會真的抗拒）。
+ * opts.willing（半推半就）：增益 ≤ tokenCap（陌生／認識 5、其餘 12）改為 token；harsh／furious 不變。
+ * opts.personality：附上該個性的語氣指引（token／抗議各一句）。
  */
-export function protestTone(gain, { willing = false } = {}) {
+export function protestTone(gain, { willing = false, tokenCap = 12, personality = "" } = {}) {
   const g = Math.max(0, Math.round(Number(gain) || 0));
-  if (willing && g > 1 && g <= 12) return { gain: g, ...TOKEN_TONE };
+  if (willing && g > 1 && g <= Math.min(12, Number(tokenCap) || 0)) {
+    const pr = personality ? PERSONALITY_RESIST[persKeyOf(personality)] : null;
+    return {
+      gain: g,
+      ...TOKEN_TONE,
+      promptLine: pr ? `${TOKEN_TONE.promptLine}個性語氣——${pr.token}` : TOKEN_TONE.promptLine,
+      scraps: pr ? pr.tokenScraps : TOKEN_TONE.scraps,
+    };
+  }
+  const t = protestToneBase(g);
+  if (personality && t.tier !== "none") {
+    const pr = PERSONALITY_RESIST[persKeyOf(personality)];
+    return { ...t, promptLine: `${t.promptLine}個性語氣——${pr.protest}` };
+  }
+  return t;
+}
+
+function protestToneBase(g) {
   if (g <= 1) {
     return {
       gain: g,
@@ -252,8 +387,8 @@ export function protestTone(gain, { willing = false } = {}) {
  * @param {number} gain 本回合 added
  * @param {{ invasion?: number, max?: number, willing?: boolean }} [opts]
  */
-export function protestPromptBlock(gain, { invasion = null, max = INVASION_MAX, willing = false } = {}) {
-  const p = protestTone(gain, { willing });
+export function protestPromptBlock(gain, { invasion = null, max = INVASION_MAX, willing = false, tokenCap = 12, personality = "" } = {}) {
+  const p = protestTone(gain, { willing, tokenCap, personality });
   if (p.tier === "none" || !p.promptLine) return "";
   const near =
     invasion != null && Number(invasion) >= max - 15
@@ -273,10 +408,10 @@ const PROTEST_CUE = /住手|放開|滾|過分|離|走|不准|別碰|不要碰|�
  * 後處理：高增益時確保回覆聽得出抗議（低增益幾乎不動）。
  * 痙攣／空白／求饒／失神路徑不應呼叫此函式。
  */
-const TOKEN_CUE = /不要|討厭|壞|別|才不|不行|笨蛋|色狼/;
+const TOKEN_CUE = /不要|討厭|壞|別|才不|不行|笨蛋|色狼|哼|變態|隨便|不可以|膽子/;
 
-export function blendProtestReply(text, gain, { willing = false } = {}) {
-  const p = protestTone(gain, { willing });
+export function blendProtestReply(text, gain, { willing = false, tokenCap = 12, personality = "" } = {}) {
+  const p = protestTone(gain, { willing, tokenCap, personality });
   const raw = String(text || "").trim();
   if (p.tier === "none") return raw || "……";
 

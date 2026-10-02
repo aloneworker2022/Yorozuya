@@ -87,7 +87,7 @@ import {
   protestTone,
   protestPromptBlock,
   blendProtestReply,
-} from "./invasion.js?v=4";
+} from "./invasion.js?v=5";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -4964,6 +4964,7 @@ async function deliverUserTalk(text, opts = {}) {
     // 侵犯值：動作後擲骰；滿值則逃離房間。保留本回合 added 供抗議語氣。
     let invAdded = 0;
     let invWilling = false;
+    let invToneOpts = { willing: false };
     let invTotal = getInvasion(girl);
     if (opts.actId && !opts.skipBody) {
       ensureInvasion(girl);
@@ -4972,12 +4973,16 @@ async function deliverUserTalk(text, opts = {}) {
         stun: effectiveStun(girl, opts.actId),
         // 半推半就：用動作「之前」她已有的興奮判斷（性慾讀 bodyState）
         arousal: actArousalBefore,
+        // 個性抗拒倍率＋語氣（基底個性＋害羞／主動 stats）
+        personality: basePersonality(girl),
+        stats: girl.stats || null,
       });
       invAdded = invRoll.added || 0;
       invWilling = !!invRoll.willing;
+      invToneOpts = { willing: invWilling, tokenCap: invRoll.tokenCap ?? 12, personality: invRoll.personality || "" };
       invTotal = invRoll.invasion;
       if (invRoll.added > 0) {
-        const pt = protestTone(invRoll.added, { willing: invWilling });
+        const pt = protestTone(invRoll.added, invToneOpts);
         const am = invRoll.arousalMult != null && invRoll.arousalMult < 1 ? `（興奮×${invRoll.arousalMult}）` : "";
         pushDebug(`侵犯 +${invRoll.added}${am} → ${invRoll.invasion}/${INVASION_MAX}${pt.tier !== "none" ? `・抗議${pt.label}` : ""}`);
         renderDebug();
@@ -4995,7 +5000,8 @@ async function deliverUserTalk(text, opts = {}) {
     }
 
     // 情緒餘溫：本回合的侵犯／挑逗／冒犯在 finally 記下（LLM 失敗也記），下一句起帶進 prompt
-    moodTurn = { invAdded, invWilling, turnMark };
+    // 只有語氣真的走「半推半就」（增益 ≤ tokenCap）才把情緒記成羞燥
+    moodTurn = { invAdded, invWilling: invWilling && invAdded <= (invToneOpts.tokenCap ?? 12), turnMark };
 
     if (!sheetOpen() || talkFor !== girl.id) return;
 
@@ -5026,7 +5032,7 @@ async function deliverUserTalk(text, opts = {}) {
         setTyping(false);
       } else {
         const streamOk = stun < 25 && !inSpasm(girl) && !inAfterglow(girl);
-        const protestExtra = actId ? protestPromptBlock(invAdded, { invasion: invTotal, willing: invWilling }) : "";
+        const protestExtra = actId ? protestPromptBlock(invAdded, { invasion: invTotal, ...invToneOpts }) : "";
         // afterglowPromptLines 已在 talkSystem；若仍餘韻（僅時間門檻）再塞一層
         const agLines = inAfterglow(girl) ? afterglowPromptLines(girl).join("\n") : "";
         const extra = [protestExtra, agLines].filter(Boolean).join("\n") || null;
@@ -5044,7 +5050,7 @@ async function deliverUserTalk(text, opts = {}) {
           promptActId = "";
         }
         line = scrambleReply(reply || moodFallbackLine(girl, "……"), stun, actId, girl) || "……";
-        if (actId && invAdded > 1 && !inAfterglow(girl)) line = blendProtestReply(line, invAdded, { willing: invWilling }) || line;
+        if (actId && invAdded > 1 && !inAfterglow(girl)) line = blendProtestReply(line, invAdded, invToneOpts) || line;
       }
       if (girl.guard) girl.guard -= 1;
       tickStunAfterReply(girl);
