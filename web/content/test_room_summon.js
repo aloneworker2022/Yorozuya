@@ -80,13 +80,14 @@ import {
   ensureInvasion,
   applyInvasionRoll,
   decayInvasion,
+  decayInvasionByTime,
   clearInvasion,
   getInvasion,
   INVASION_MAX,
   protestTone,
   protestPromptBlock,
   blendProtestReply,
-} from "./invasion.js?v=2";
+} from "./invasion.js?v=3";
 import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines } from "./life_memory.js?v=1";
 import {
   mountButtPackEditor,
@@ -4867,7 +4868,7 @@ async function deliverUserTalk(text, opts = {}) {
           noteAfterglow(girl, "his", { ejac: "external" });
           if (!girlInPenisSex(girl)) showClimaxTip("射精了！");
         }
-        // 閒聊：侵犯值略降
+        // 閒聊：每句回覆侵犯值略降 −1..2
         decayInvasion(girl);
       }
     }
@@ -5381,6 +5382,8 @@ function bindTalkActs() {
 
 function startIdleDecay() {
   stopIdleDecay();
+  // 開對話時先補算離線期間的侵犯時間衰減（每 20 分 −1..2，最多到 0）
+  if (girl) { try { decayInvasionByTime(girl); } catch { /* ignore */ } }
   idleDecayTimer = window.setInterval(() => {
     if (!girl || !sheetOpen()) return;
     if (talkBusy) return;
@@ -5391,7 +5394,8 @@ function startIdleDecay() {
     // 最近剛挑逗過則跳過一輪。性奮不在這條計時扣（開著聊天框不掉）。
     if (sinceTease < 5000) return;
     decayBodyIdle(girl);
-    decayInvasion(girl);
+    // 侵犯值：閒置不再每 5 秒扣；只照真實時間每滿 20 分 −1..2（時間戳存在 bodyState）
+    decayInvasionByTime(girl);
     player = ensurePlayer(decayPlayerIdle(player)); // ensurePlayer 也會按小時回補精液
     renderBodyPanel();
     refreshTalkActs();

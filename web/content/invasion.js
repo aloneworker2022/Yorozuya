@@ -3,6 +3,8 @@
 import { ensureBody } from "./body_state.js?v=9";
 
 export const INVASION_MAX = 100;
+/** 時間衰減：每滿 20 分鐘真實時間才 −1..2（2026-10-02 使用者：原本每 5 秒閒置扣太快）。 */
+export const INVASION_TIME_STEP_MS = 20 * 60 * 1000;
 
 /** 與 test_room_summon STAGE_LADDER key 對齊。 */
 export const STAGE_INVASION_MULT = {
@@ -52,6 +54,8 @@ export function ensureInvasion(who) {
   const b = ensureBody(who);
   if (!b) return null;
   b.invasion = clampInv(b.invasion);
+  const at = Number(b.invasionDecayAt);
+  b.invasionDecayAt = Number.isFinite(at) && at > 0 ? at : 0;
   return b;
 }
 
@@ -86,7 +90,10 @@ export function applyInvasionRoll(who, actId, { stage = "stranger", stun = 0 } =
   const base = randInclusive(lo, hi);
   const stunDamp = Math.max(0, 1 - (Math.max(0, Number(stun) || 0) / 150));
   const added = Math.round(base * mult * stunDamp);
-  b.invasion = clampInv((b.invasion || 0) + added);
+  const before = b.invasion || 0;
+  b.invasion = clampInv(before + added);
+  // 從 0 開始累積：時間衰減從現在起算（不拿舊時間戳一口氣扣）
+  if (before <= 0 && b.invasion > 0) b.invasionDecayAt = Date.now();
   return {
     added,
     invasion: b.invasion,
@@ -94,7 +101,7 @@ export function applyInvasionRoll(who, actId, { stage = "stranger", stun = 0 } =
   };
 }
 
-/** 閒聊／閒置輕微衰減：預設 −1..2。 */
+/** 每句閒聊回覆的輕微衰減：預設 −1..2（時間衰減另走 decayInvasionByTime）。 */
 export function decayInvasion(who, amount = null) {
   const b = ensureInvasion(who);
   if (!b) return 0;
@@ -102,6 +109,31 @@ export function decayInvasion(who, amount = null) {
     ? (1 + Math.floor(Math.random() * 2)) // 1 or 2
     : Math.max(0, Math.round(Number(amount) || 0));
   const before = b.invasion || 0;
+  b.invasion = clampInv(before - drop);
+  return before - b.invasion;
+}
+
+/**
+ * 時間衰減：以 bodyState.invasionDecayAt（隨 bodyState 存檔，重新整理／換裝置不會重置）計算，
+ * 每滿 INVASION_TIME_STEP_MS（20 分鐘）扣一次 −1..2；關掉很久就補 floor(經過/20分) 次，最多扣到 0。
+ * 侵犯為 0 時只把時鐘推到現在（下次累積從頭算 20 分鐘）。
+ * @returns {number} 實際扣掉的量
+ */
+export function decayInvasionByTime(who, now = Date.now(), rng = Math.random) {
+  const b = ensureInvasion(who);
+  if (!b) return 0;
+  const t = Number(now) || Date.now();
+  const at = Number(b.invasionDecayAt) || 0;
+  if ((b.invasion || 0) <= 0 || at <= 0 || at > t + 60 * 1000) {
+    b.invasionDecayAt = t;   // 沒有侵犯／沒有時鐘／時鐘在未來（換裝置時差）→ 從現在起算
+    return 0;
+  }
+  const steps = Math.floor((t - at) / INVASION_TIME_STEP_MS);
+  if (steps <= 0) return 0;
+  b.invasionDecayAt = at + steps * INVASION_TIME_STEP_MS;
+  const before = b.invasion || 0;
+  let drop = 0;
+  for (let i = 0; i < steps && drop < before; i++) drop += 1 + Math.floor(rng() * 2);
   b.invasion = clampInv(before - drop);
   return before - b.invasion;
 }
