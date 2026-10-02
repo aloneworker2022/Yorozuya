@@ -87,7 +87,19 @@ import {
   protestTone,
   protestPromptBlock,
   blendProtestReply,
-} from "./invasion.js?v=3";
+} from "./invasion.js?v=4";
+import {
+  getMoodCarry,
+  decayMoodByTime,
+  decayMoodPerLine,
+  noteMood,
+  noteMoodFromAct,
+  noteMoodFromMark,
+  moodCarryPromptLines,
+  moodOpenerHint,
+  moodFallbackLine,
+  MOOD_TYPES,
+} from "./emotion_carry.js?v=1";
 import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines } from "./life_memory.js?v=1";
 import {
   mountButtPackEditor,
@@ -4385,6 +4397,9 @@ function enterOpener(returning) {
   else if (reason === "reopen") line = reopenOpener();
   else line = firstOpener();
   consumeEnterReason(reason);
+  // 情緒餘溫：重新見面也不裝沒事（level ≥15）
+  const moodHint = moodOpenerHint(girl);
+  if (moodHint && line) line = `${line}（旁白補充：${moodHint}）`;
   const friendUp = consumeFriendUpBeat(girl);
   if (friendUp) {
     line = `${friendUp}${line ? ` ${line}` : ""}`;
@@ -4582,6 +4597,7 @@ function talkSystem(userText = "") {
     ...ejacTalkPromptLines(girl),
     ...friendPhysicalPromptLines(girl),
     guardLine(),
+    ...moodCarryPromptLines(girl, { stageKey: girl.stage || "stranger", invasion: getInvasion(girl) }),
     ...personalityStageLines(),
     ...kinkRevealLines(),
     ...stageTalk(),
@@ -4727,7 +4743,7 @@ async function openTalk() {
         $("portrait-name").textContent = girl.name;
         $("portrait-meta").textContent = partial;
       } : null);
-      line = scrambleReply(reply || "……嗯？", openerStun, "", girl) || "……嗯？";
+      line = scrambleReply(reply || moodFallbackLine(girl, "……嗯？"), openerStun, "", girl) || "……嗯？";
     }
     tickStunAfterReply(girl);
     // 痙攣期間不消耗餘韻回覆數，讓痙攣結束後仍鎖餘韻幾句
@@ -4753,6 +4769,29 @@ async function openTalk() {
   if (sheetOpen() && talkFor === girl.id) {
     setTalkEnabled(true);
   }
+}
+
+/** 回覆後記錄本回合情緒（挑逗→生氣／害羞／羞燥；閒聊判冒犯→生氣／受傷）。 */
+function noteTurnMood(actId, opts, { invAdded = 0, invWilling = false, turnMark = "平常" } = {}) {
+  if (!girl) return;
+  try {
+    let m = null;
+    if (actId && !opts.skipBody) {
+      const label = TALK_ACTS.find((a) => a.id === actId)?.label || "動手動腳";
+      m = noteMoodFromAct(girl, {
+        added: invAdded,
+        arousal: girl.bodyState?.arousal || 0,
+        willing: invWilling,
+        cause: `剛才對你「${label}」`,
+      });
+    } else if (!actId && turnMark === "冒犯") {
+      m = noteMoodFromMark(girl, "冒犯", girl.stage || "stranger");
+    } else return;
+    if (m) {
+      pushDebug(`情緒餘溫 ${MOOD_TYPES[m.type] || m.type} ${m.level}`);
+      renderDebug();
+    }
+  } catch { /* ignore */ }
 }
 
 async function deliverUserTalk(text, opts = {}) {
@@ -4793,6 +4832,7 @@ async function deliverUserTalk(text, opts = {}) {
   lines.push({ role: "user", content: raw });
   talkBusy = true;
   setTalkEnabled(true);
+  let moodTurn = null;
 
   try {
     // 先立刻顯示玩家台詞，避免等 LLM／判定時畫面上無反應
@@ -4807,10 +4847,13 @@ async function deliverUserTalk(text, opts = {}) {
 
     let climaxLine = "";
     let spasmNote = "";
+    let textBodyHit = false;
+    let actArousalBefore = null;
     if (!opts.skipBody) {
       if (opts.actId) {
         const stunBefore = calcStun(girl);
         const arousalBefore = girl.bodyState?.arousal || 0;
+        actArousalBefore = arousalBefore;
         const stageBefore = arousalStage(arousalBefore);
         applyAct(girl, opts.actId);
         recordTeasePress(girl, opts.actId);
@@ -4859,6 +4902,7 @@ async function deliverUserTalk(text, opts = {}) {
         }
       } else {
         const hit = applyBodyFromUserText(girl, raw);
+        textBodyHit = !!hit;
         if (hit && girl.bodyState?.lastPart) noteActShock(girl, girl.bodyState.lastPart);
         // 玩家明文內射：餘韻走內射台詞；否則若只寫射精／射了則外射承認
         if (hit && hit.id === "creampie") {
@@ -4877,10 +4921,24 @@ async function deliverUserTalk(text, opts = {}) {
     persistRoom();
 
     // 挑逗動作略過 judgeTurn（避免多等一次 LLM 卡住）
+    let turnMark = "平常";
+    decayMoodByTime(girl);
     if (!opts.actId) {
       const petHandled = handlePetNameAfterUser(girl, raw);
       const naming = takeCall(raw, "");
-      if (!naming && !petHandled) applyMark(await judgeTurn(raw));
+      if (!naming && !petHandled) {
+        turnMark = await judgeTurn(raw);
+        applyMark(turnMark);
+      }
+      // 情緒餘溫：每句閒聊衰減（接住／道歉較快、侵犯高較慢；冒犯本句不衰減；用文字摸她不算閒聊）
+      if (!textBodyHit) {
+        decayMoodPerLine(girl, {
+          stageKey: girl.stage || "stranger",
+          mark: turnMark,
+          text: raw,
+          invasion: getInvasion(girl),
+        });
+      }
     }
 
     // 升上朋友：極淡旁白（含本輪判定剛升階、或進房前遺留）
@@ -4905,18 +4963,23 @@ async function deliverUserTalk(text, opts = {}) {
 
     // 侵犯值：動作後擲骰；滿值則逃離房間。保留本回合 added 供抗議語氣。
     let invAdded = 0;
+    let invWilling = false;
     let invTotal = getInvasion(girl);
     if (opts.actId && !opts.skipBody) {
       ensureInvasion(girl);
       const invRoll = applyInvasionRoll(girl, opts.actId, {
         stage: girl.stage || "stranger",
         stun: effectiveStun(girl, opts.actId),
+        // 半推半就：用動作「之前」她已有的興奮判斷（性慾讀 bodyState）
+        arousal: actArousalBefore,
       });
       invAdded = invRoll.added || 0;
+      invWilling = !!invRoll.willing;
       invTotal = invRoll.invasion;
       if (invRoll.added > 0) {
-        const pt = protestTone(invRoll.added);
-        pushDebug(`侵犯 +${invRoll.added} → ${invRoll.invasion}/${INVASION_MAX}${pt.tier !== "none" ? `・抗議${pt.label}` : ""}`);
+        const pt = protestTone(invRoll.added, { willing: invWilling });
+        const am = invRoll.arousalMult != null && invRoll.arousalMult < 1 ? `（興奮×${invRoll.arousalMult}）` : "";
+        pushDebug(`侵犯 +${invRoll.added}${am} → ${invRoll.invasion}/${INVASION_MAX}${pt.tier !== "none" ? `・抗議${pt.label}` : ""}`);
         renderDebug();
       }
       persistRoom();
@@ -4930,6 +4993,9 @@ async function deliverUserTalk(text, opts = {}) {
         return;
       }
     }
+
+    // 情緒餘溫：本回合的侵犯／挑逗／冒犯在 finally 記下（LLM 失敗也記），下一句起帶進 prompt
+    moodTurn = { invAdded, invWilling, turnMark };
 
     if (!sheetOpen() || talkFor !== girl.id) return;
 
@@ -4960,7 +5026,7 @@ async function deliverUserTalk(text, opts = {}) {
         setTyping(false);
       } else {
         const streamOk = stun < 25 && !inSpasm(girl) && !inAfterglow(girl);
-        const protestExtra = actId ? protestPromptBlock(invAdded, { invasion: invTotal }) : "";
+        const protestExtra = actId ? protestPromptBlock(invAdded, { invasion: invTotal, willing: invWilling }) : "";
         // afterglowPromptLines 已在 talkSystem；若仍餘韻（僅時間門檻）再塞一層
         const agLines = inAfterglow(girl) ? afterglowPromptLines(girl).join("\n") : "";
         const extra = [protestExtra, agLines].filter(Boolean).join("\n") || null;
@@ -4977,8 +5043,8 @@ async function deliverUserTalk(text, opts = {}) {
         } finally {
           promptActId = "";
         }
-        line = scrambleReply(reply || "……", stun, actId, girl) || "……";
-        if (actId && invAdded > 1 && !inAfterglow(girl)) line = blendProtestReply(line, invAdded) || line;
+        line = scrambleReply(reply || moodFallbackLine(girl, "……"), stun, actId, girl) || "……";
+        if (actId && invAdded > 1 && !inAfterglow(girl)) line = blendProtestReply(line, invAdded, { willing: invWilling }) || line;
       }
       if (girl.guard) girl.guard -= 1;
       tickStunAfterReply(girl);
@@ -5011,6 +5077,10 @@ async function deliverUserTalk(text, opts = {}) {
     setTyping(false);
     try { await typeLine(girl.name, talkError(err)); } catch { /* ignore */ }
   } finally {
+    if (moodTurn) {
+      noteTurnMood(opts.actId || "", opts, moodTurn);
+      persistRoom();
+    }
     talkBusy = false;
     if (sheetOpen()) setTalkEnabled(true);
     refreshTalkActs();
@@ -5383,7 +5453,7 @@ function bindTalkActs() {
 function startIdleDecay() {
   stopIdleDecay();
   // 開對話時先補算離線期間的侵犯時間衰減（每 20 分 −1..2，最多到 0）
-  if (girl) { try { decayInvasionByTime(girl); } catch { /* ignore */ } }
+  if (girl) { try { decayInvasionByTime(girl); decayMoodByTime(girl); } catch { /* ignore */ } }
   idleDecayTimer = window.setInterval(() => {
     if (!girl || !sheetOpen()) return;
     if (talkBusy) return;
@@ -5396,6 +5466,7 @@ function startIdleDecay() {
     decayBodyIdle(girl);
     // 侵犯值：閒置不再每 5 秒扣；只照真實時間每滿 20 分 −1..2（時間戳存在 bodyState）
     decayInvasionByTime(girl);
+    decayMoodByTime(girl);
     player = ensurePlayer(decayPlayerIdle(player)); // ensurePlayer 也會按小時回補精液
     renderBodyPanel();
     refreshTalkActs();
@@ -6579,6 +6650,8 @@ async function fleeRoomFromInvasion() {
   who.chatEnter = "flee_back";
   clearVisitUndress(who);
   clearInvasion(who);
+  // 情緒餘溫：侵犯爆滿逃走＝最強的氣（−1/分鐘，約 1.5 小時才消；召回時開場也會帶著）
+  try { noteMood(who, { type: "angry", level: 100, cause: "動手動腳到你受不了逃走" }); } catch { /* ignore */ }
   startArousalCool(who);
   resetOpenness(who);
   // 先關對話／busy／scroll lock，再趕人——避免房間被鎖、找地點卡住
@@ -7641,6 +7714,7 @@ window.RoomCompanion = {
   current: () => girl,
   /** 除錯：目前房間對話的 system prompt（看個性逐步揭露用） */
   debugPrompt: (text = "") => (girl ? talkSystem(String(text || "")) : ""),
+  mood: () => (girl ? getMoodCarry(girl) : null),
   show: showSheet,
   hide: hideSheet,
   grantSemen(cc) {
