@@ -10773,6 +10773,7 @@ function processActSlot(s, at) {
 // 已纏上且未被召喚中 → 每「一小時」判定一次,TAKEN_CHANCE 機率他召喚她。
 //   召喚(看板型)持續 2~5 小時,約會(date 型)固定持續 1 小時;解召喚後隔一小時才會再判定。
 function checkSummonerDraws() {
+  if (!SUMMONER_ON) return false;   // 召喚師纏身已停用
   if (!SUMMONERS.length) return false;
   const now = Date.now();
   let changed = false;
@@ -10829,6 +10830,7 @@ function sampleN(arr, n) { const a = [...arr].sort(() => Math.random() - 0.5); r
 
 // taken 持續狀態:每小時生 3~5 個 act slot(離線補算);時效到她自己回來(不通知)。
 function processTakenActs() {
+  if (!SUMMONER_ON) return false;   // 召喚師纏身已停用
   const now = Date.now();
   let changed = false;
   for (const s of [...state.succubi]) {
@@ -10881,7 +10883,7 @@ async function simSync(force = false) {
       busy: (chatWith === s.id && !!chatSession) || watchWith === s.id,
     }));
     const seeds = {};
-    for (const s of state.succubi) if (s.summoner) seeds[s.id] = s.summoner;
+    if (SUMMONER_ON) for (const s of state.succubi) if (s.summoner) seeds[s.id] = s.summoner;
     // 權威時鐘計時清單:看板娘到期、執行中委託逾期、當前日序(跨日結算)——伺服器據此判定
     const kanbans = (state.kanbans || []).map(k => ({ id: k.id, until: k.until }));
     const quests = execQuests().map(q => ({ id: q.id, deadline: q.deadline }));
@@ -10908,6 +10910,8 @@ async function simSync(force = false) {
     const rels = resp.rels || {};
     let changed = false;
     for (const s of state.succubi) {
+      // 召喚師纏身已停用：鏡像一律清空，不顯示殘留的纏身／被召喚走
+      if (!SUMMONER_ON) { if (s.summoner) { s.summoner = null; changed = true; } continue; }
       // 觀戰/聊天中不覆蓋:避免直播途中被整包蓋掉(進場前 enterWatch 會 force sync 且尚未設 watchWith)
       if (watchWith === s.id || (chatWith === s.id && chatSession)) continue;
       let rel = rels[s.id] ?? null;
@@ -10942,7 +10946,10 @@ async function simSync(force = false) {
       if (JSON.stringify(s.summoner ?? null) !== JSON.stringify(rel)) { s.summoner = rel; changed = true; }
       if (dropKanbanIfAway(s)) changed = true;
     }
-    for (const o of resp.outcomes || []) { applySimOutcome(o); changed = true; }
+    for (const o of resp.outcomes || []) {
+      if (!SUMMONER_ON && (o.type === "entangled" || o.type === "married")) continue;
+      applySimOutcome(o); changed = true;
+    }
     lastSimSyncAt = Date.now();
     if (changed) { scheduleSave(); renderAll(); }
     return changed;
@@ -10955,6 +10962,7 @@ async function simSync(force = false) {
 
 // 觀戰直播:請伺服器現生一個 act slot(她此刻被召喚中),回傳 {rel, married}
 async function simLiveAct(s) {
+  if (!SUMMONER_ON) return null;
   try {
     const r = await fetch("/api/sim/live_act", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -10986,6 +10994,7 @@ function applySimOutcome(o) {
     return;
   }
   // 召喚師事件 ────────────────────────────────────
+  if (!SUMMONER_ON) return;   // 召喚師纏身已停用：纏上／娶走一律不套用（沒有人會被帶走）
   const s = state.succubi.find(x => x.id === o.id);
   if (o.type === "entangled") {
     if (o.resumed) {
@@ -14641,7 +14650,7 @@ function openDateTable(girlId, venueId, opts = {}) {
  *  - 池子還沒載入 → 用後備路人，絕不讓 NTR 線因此整段跳過
  */
 function ensureDateRivalSummoner(girl) {
-  if (!girl) return null;
+  if (!girl || !SUMMONER_ON) return null;   // 召喚師纏身已停用：絕不當場纏上
   if (girl.summoner?.id) {
     const su = summonerById(girl.summoner.id);
     return {
@@ -14759,7 +14768,7 @@ function playDateChapterCard(cardId, stage) {
 function jumpDateChapterFromTest(jump) {
   const sess = state.cardSession;
   if (!sess || sess.mode !== "date" || !jump) return false;
-  const track = jump.track === "ntr" ? "ntr" : "normal";
+  const track = (jump.track === "ntr" && SUMMONER_ON) ? "ntr" : "normal";   // 召喚師停用 → NTR 跳轉改正常線
   const stage = Number(jump.stage) || 1;
   let cardId = jump.cardId || "";
   if (cardId && !Cards.cardById(cardId)) cardId = "";
@@ -14864,6 +14873,7 @@ function beginDateNormalChapter(next) {
 function beginDateNtrStage1() {
   const sess = state.cardSession;
   if (!sess || sess.mode !== "date") return;
+  if (!SUMMONER_ON) { beginDateNormalChapter(2); return; }   // 召喚師纏身已停用
   const girl = girlForSession();
   if (!girl) {
     endDateSession("date_ntr_no_girl");
@@ -15136,7 +15146,7 @@ function applyNtrL6Outcome() {
     return;
   }
 
-  if (ending === "taken") {
+  if (ending === "taken" && SUMMONER_ON) {   // 召喚師停用：不會被帶走，一律走回歸
     ensureDateRivalSummoner(girl);
     // 從玩家看板撤下
     state.kanbans = (state.kanbans || []).filter((k) => k.id !== girl.id);
@@ -15302,6 +15312,8 @@ function afterDateChapterBeat() {
 
   // ── 正常 L1 之後：½ NTR／½ 正常 L2（一定會進其中一個，不再「直接散」）──
   if (stage === 1) {
+    // 召喚師纏身已停用：約會 NTR 岔路（其他召喚師現身／帶走）不再出現，L1 後一律正常第2章
+    if (!SUMMONER_ON) { beginDateNormalChapter(2); return; }
     const br = rollDateL1Branch();
     console.info("[dateNtr] L1 分歧", br);
     log(`約會分歧：${br.goNtr ? "→ NTR 岔路" : "→ 正常第2章"}（骰 ${br.roll.toFixed(3)} / 門檻 ${br.ntrP}${br.force ? " force=" + br.force : ""}）`);
@@ -18184,6 +18196,7 @@ window.DBG = {
   grantCard: (id, n = 1) => { Cards.invAdd(state, id, n); scheduleSave(); renderAll(); return Cards.invEntry(state, id); },
   // 測試:直接把她設成「被召喚中」並以玩家動作進窺視
   watch: (id, playerType = "chat", hours = 2) => {
+    if (!SUMMONER_ON) return "召喚師纏身已停用";
     const s = state.succubi.find(x => x.id === id);
     if (!s) return;
     s.summoner ??= makeSummonerRel(SUMMONERS[0]?.id);
@@ -18210,7 +18223,7 @@ window.DBG = {
   pumpActs: () => genTick(true),
   pumpChat: () => genTick(true),
   // 測試:設好召喚師關係(可指定 stage/resist)並強制一次交配
-  rel: (id, suId) => { const s = state.succubi.find(x => x.id === id); if (s) { s.summoner = makeSummonerRel(suId || SUMMONERS[0]?.id); scheduleSave(); renderAll(); } return s?.summoner; },
+  rel: (id, suId) => { if (!SUMMONER_ON) return null; const s = state.succubi.find(x => x.id === id); if (s) { s.summoner = makeSummonerRel(suId || SUMMONERS[0]?.id); scheduleSave(); renderAll(); } return s?.summoner; },
   mate: (id) => { const s = state.succubi.find(x => x.id === id); if (!s?.summoner) return null; const rm = doMating(s, Date.now()); scheduleSave(); renderAll(); return { removed: rm, sm: s.summoner }; },
   actSlot: (id) => { const s = state.succubi.find(x => x.id === id); if (!s?.summoner) return null; const rm = processActSlot(s, Date.now()); scheduleSave(); renderAll(); return { removed: rm, sm: s.summoner }; },
   // 測試:模擬一次委託操作的淫紋判定(看誰亮了紋、話寫好沒)

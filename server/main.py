@@ -3315,6 +3315,8 @@ async def sim_live_act(body: SimLive):
     """觀戰取 act:先把 taken 進度補算到 now(吐出依 actAt 節奏預生的 slot),
     若補算後仍無未讀且她還在召喚中,才現生 1 個 slot 當直播(避免跳過預生節奏、
     一進觀戰就無中生有)。"""
+    if not sim.SUMMONER_ENABLED:   # 召喚師纏身已停用:沒有召喚中的對象
+        return {"rel": None, "married": False}
     now_ms = int(body.now if body.now is not None else time.time() * 1000)
     async with SIM_LOCK:
         store = _sim_load()

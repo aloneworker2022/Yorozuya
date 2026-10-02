@@ -23,6 +23,11 @@ ROOT = Path(__file__).resolve().parent.parent
 CONTENT = ROOT / "web" / "content"
 HOUR = 3600 * 1000
 
+# ── 召喚師纏身總開關(2026-10 退役;對應 app.js SUMMONER_ON)──
+# False:不纏上、不召喚走、不交配、不懷孕娶走;既有關係在下一輪 tick 清空(mem 保留,日後重開可接續)。
+# 權威時鐘(看板娘到期/委託逾期/跨日)照跑。
+SUMMONER_ENABLED = False
+
 # ── 交配環常數(對應 app.js)──
 STAGE_RESIST = [40, 20, 10, 10, 5, 1]   # 各階段抵抗值(=交配機率分母 1/resist)
 STAGE_ADVANCE = [2, 3, 5, 5]            # ⓪~③ 交配 N 次推進
@@ -187,6 +192,8 @@ def do_mating(rel, now_ms):
 
 def process_act_slot(rel, now_ms, rating):
     """一個 act slot:NSFW 才擲交配(1/resist),中=交配(3則)、沒中=猥褻(1則);每 slot 抵抗 −1。"""
+    if not SUMMONER_ENABLED:
+        return False
     rel.setdefault("stage", 0)
     if rel.get("resist") is None:
         rel["resist"] = STAGE_RESIST[rel["stage"]]
@@ -204,6 +211,8 @@ def process_act_slot(rel, now_ms, rating):
 
 def _process_taken(store, gid, rel, now_ms):
     """taken 持續狀態:每小時生 3~5 個 act slot(離線補算);到期解召喚。回傳是否有變化。"""
+    if not SUMMONER_ENABLED:
+        return False
     tk = rel["taken"]
     if tk.get("until") is None:
         tk["until"] = now_ms + rand_int(2, 5) * HOUR
@@ -242,6 +251,8 @@ def _tick_girl(store, gid, now_ms):
     - 已纏上未被召喚:每 30 分一輪判定是否被召喚/約會(TAKEN_CHANCE);看板娘/NTR/busy 不判。
     - 看板娘在店頭 = 受保護:不能被帶走;若先前已被帶走則當場解除 taken。
     - 被召喚中:只生 act、等時效解召喚,不重判。"""
+    if not SUMMONER_ENABLED:
+        return False
     meta = store.get("roster", {}).get(gid, {})
     ntr = bool(meta.get("ntr"))
     kanban = bool(meta.get("kanban"))
@@ -311,6 +322,8 @@ def _tick_girl(store, gid, now_ms):
 
 def adopt_seeds(store, seeds):
     """伺服器尚未追蹤該魅魔(冷啟/資料遺失)時,採用手機送來的既有召喚師關係當種子。"""
+    if not SUMMONER_ENABLED:
+        return
     for gid, rel in (seeds or {}).items():
         if rel and gid not in store["rels"]:
             store["rels"][gid] = rel
@@ -390,6 +403,17 @@ def run_tick(store, now_ms):
     store.setdefault("takenWin", {})
     if _tick_clock(store, now_ms):
         changed = True
+    if not SUMMONER_ENABLED:
+        # 召喚師已停用:清掉所有現存關係/判定窗與未套用的纏上/娶走結局(沒有人會被帶走)
+        for b in ("rels", "judgeWin", "takenWin"):
+            if store.get(b):
+                store[b] = {}
+                changed = True
+        outs = store.get("outcomes") or []
+        kept = [o for o in outs if o.get("type") not in ("entangled", "married")]
+        if len(kept) != len(outs):
+            store["outcomes"] = kept
+            changed = True
     for gid in list(store.get("roster", {}).keys()):
         if _tick_girl(store, gid, now_ms):
             changed = True
