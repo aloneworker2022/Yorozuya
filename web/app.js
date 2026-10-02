@@ -159,6 +159,12 @@ let CARDS_LOAD = fetch("/api/cards?ts=" + Date.now())
 // ===== 常數 =====
 
 const HOUR = 3600 * 1000;
+// ===== 退役開關（2026-10：遊戲改以房間系統為主）=====
+// 只做開關／no-op，不刪大段程式；舊存檔欄位讀進來就清掉或忽略。
+const SUMMONER_ON = false;   // 召喚師纏身（纏上／召喚走／交配／懷孕娶走／窺視／破除／取消召喚師天賦）。伺服器 sim.py 同步關閉
+const NTR_ON = false;        // 主線「感情 < −10 → 陌生離開／熟人被奪走／贖回」
+const CRAVE_ON = false;      // 飢渴值（累積、prompt、UI）
+const MAIN_DECAY_ON = false; // 主線每日「沒聊天／沒約會 −3」與「妻子交辦逾期 −1」
 // ===== 擴充系統(8 軸)=====
 // 取得方式:①看板娘自帶(暫時,Phase 4)②獻祭掉落(永久,Phase 7)。
 // 目前可用 /testword 後門調整以供測試。第 7 軸「取消召喚師」是一次性效果、非等級。
@@ -172,7 +178,7 @@ const EXPANSIONS = {
   cheap:    "召喚減費",     // 第二位起的看板娘費用每級 -1 金,地板 2 金
 };
 // 天賦可能值:擴充軸 + 特殊「取消召喚師」(獻祭刷到就清掉所有召喚師)
-const GIFT_KEYS = [...Object.keys(EXPANSIONS), "cleanse"];
+const GIFT_KEYS = [...Object.keys(EXPANSIONS), ...(SUMMONER_ON ? ["cleanse"] : [])];
 function giftLabel(g) { return g === "cleanse" ? "取消所有召喚師" : (EXPANSIONS[g] || "?"); }
 function expLv(k) {
   let lv = (state.expansions && state.expansions[k]) || 0;
@@ -492,25 +498,92 @@ function gameStageOf(stage) {
   if (STAGES.some(x => x[0] === k)) return k;
   return ROOM_TO_GAME_STAGE[k] || "stranger";
 }
-/** 名冊妹子 stage 正規化：房間細階 → 主線四階（細階留在 roomStage）。回傳是否有改。 */
+// ── 關係階段：房間 11 階（s.roomStage）是唯一真相；s.stage 只是它折成的主線四階 ──
+// 規則與 content/test_room_summon.js 的 syncStage 一致：依感情自動升降，但不會自動跨進
+// 女友（停在親密好友）與妻子（停在愛人）；降階有 5 點緩衝。stageLock（房間除錯跳階）優先。
+const ROOM_STAGE_INDEX = Object.fromEntries(AFF_LADDER.map((x, i) => [x[0], i]));
+const ROOM_STAGE_AT = Object.fromEntries(AFF_LADDER.map((x) => [x[0], x[2]]));
+const ROOM_STAGE_HYSTERESIS = 5;
+const ROOM_DATING_STAGES = new Set(["girlfriend", "passionate", "lover"]);
+function roomStageByAffection(aff) {
+  let key = "stranger";
+  for (const step of AFF_LADDER) if (aff >= step[2]) key = step[0];
+  return key;
+}
+/** 依感情推房間細階（同房間 syncStage）。回傳是否有改。 */
+function roomSyncStage(s) {
+  if (!s) return false;
+  const before = s.roomStage;
+  if (s.stageLock && ROOM_TO_GAME_STAGE[s.stageLock]) {
+    s.roomStage = s.stageLock;
+    return before !== s.roomStage;
+  }
+  const aff = Number(s.affection) || 0;
+  let target = roomStageByAffection(aff);
+  const current = ROOM_TO_GAME_STAGE[s.roomStage] ? s.roomStage : "stranger";
+  const curIdx = ROOM_STAGE_INDEX[current] ?? 0;
+  const gfIdx = ROOM_STAGE_INDEX.girlfriend, wifeIdx = ROOM_STAGE_INDEX.wife;
+  const maxAuto = curIdx < gfIdx ? ROOM_STAGE_INDEX.close_friend
+    : curIdx < wifeIdx ? ROOM_STAGE_INDEX.lover : AFF_LADDER.length - 1;
+  if ((ROOM_STAGE_INDEX[target] ?? 0) > maxAuto) target = AFF_LADDER[maxAuto][0];
+  if ((ROOM_STAGE_INDEX[target] ?? 0) < curIdx && aff >= (ROOM_STAGE_AT[current] ?? 0) - ROOM_STAGE_HYSTERESIS) {
+    target = current;
+  }
+  if (target !== current) {
+    // 帶內軟升：交給房間演極淡銜接（與房間 syncStage 相同旗標）
+    if (current === "girlfriend" && target === "passionate") s.datingUpPending = "passionate";
+    else if ((current === "girlfriend" || current === "passionate") && target === "lover") s.datingUpPending = "lover";
+    if (current === "wife" && target === "devoted_wife") s.wifeUpPending = "devoted_wife";
+    else if ((current === "wife" || current === "devoted_wife") && target === "obedient_wife") s.wifeUpPending = "obedient_wife";
+    else if (["wife", "devoted_wife", "obedient_wife"].includes(current) && target === "pathological_wife") s.wifeUpPending = "pathological_wife";
+  }
+  s.roomStage = target;
+  return before !== s.roomStage;
+}
+/**
+ * 名冊妹子階段正規化：確保 s.roomStage 有值並依房間規則同步，s.stage = 折成的主線四階。
+ * 舊存檔：roomStage 缺／與主線不同段 → 以主線階（或誤寫進 s.stage 的細階）當起點；
+ * 主線靠告白／求婚成為女友／妻子但感情低於房間門檻者，補到 100／230（同房間告白／求婚），免得一載入就被降階。
+ * 回傳是否有改。
+ */
 function normalizeGirlStage(s) {
   if (!s) return false;
-  const raw = s.stage;
+  const beforeStage = s.stage, beforeRoom = s.roomStage, beforeAff = s.affection;
+  const raw = String(s.stage || "");
   const game = gameStageOf(raw);
-  if (s.roomStage && gameStageOf(s.roomStage) !== game && raw === game) {
-    delete s.roomStage;   // 主線已升／降階，舊細階過期
-    return true;
+  const roomOk = ROOM_TO_GAME_STAGE[s.roomStage] && (gameStageOf(s.roomStage) === game || raw === s.roomStage);
+  if (!roomOk) {
+    s.roomStage = ROOM_TO_GAME_STAGE[raw] ? raw : game;
+    const floor = ROOM_STAGE_AT[gameStageOf(s.roomStage) === "wife" ? "wife" : gameStageOf(s.roomStage) === "girlfriend" ? "girlfriend" : ""];
+    if (floor != null && (Number(s.affection) || 0) < floor) s.affection = floor;
   }
-  if (raw === game) return false;
-  if (ROOM_TO_GAME_STAGE[raw]) s.roomStage = raw;
-  s.stage = game;
-  return true;
+  if (typeof s.affection !== "number" || !Number.isFinite(s.affection)) s.affection = Number(s.affection) || 0;
+  roomSyncStage(s);
+  s.stage = gameStageOf(s.roomStage);
+  return s.stage !== beforeStage || s.roomStage !== beforeRoom || s.affection !== beforeAff;
 }
-/** 顯示用細階：roomStage 與主線同一段才用，否則用主線 stage。 */
+/** 顯示用細階＝房間 11 階。 */
 function displayStage(s) {
-  const game = gameStageOf(s?.stage);
-  const room = s?.roomStage;
-  return room && ROOM_TO_GAME_STAGE[room] && gameStageOf(room) === game ? room : game;
+  if (s && ROOM_TO_GAME_STAGE[s.roomStage]) return s.roomStage;
+  return gameStageOf(s?.stage);
+}
+/** 退役系統的舊存檔欄位：清掉，免得殘留 UI 或觸發結局。回傳是否有改。 */
+function retireGirlLegacy(s) {
+  if (!s) return false;
+  let changed = false;
+  if (!NTR_ON && s.ntr) {
+    s.ntr = null;   // 被奪走的人回到名冊（被奪時感情被設成 −10，拉回 0）
+    if ((Number(s.affection) || 0) < 0) s.affection = 0;
+    changed = true;
+  }
+  if (!SUMMONER_ON && s.summoner) { s.summoner = null; changed = true; }
+  if (!SUMMONER_ON && s.gift === "cleanse") { s.gift = pick(GIFT_KEYS) || "kanban"; changed = true; }
+  return changed;
+}
+function repairGirl(s) {
+  const a = retireGirlLegacy(s);
+  const b = normalizeGirlStage(s);
+  return a || b;
 }
 const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
 const DATE_COST = 5, DATE_LIMIT = 1, NTR_WINDOW = 7; // 聊天計費:每 2 則玩家訊息 1 金；約會每天 1 次
@@ -1001,7 +1074,7 @@ function initState(j, offline) {
   delete state.slots;
   // 背景故事移轉:舊魅魔補發人生
   for (const s of state.succubi) {
-    normalizeGirlStage(s);   // 房間細階誤寫進 s.stage → 折回主線四階（細階存 roomStage）
+    repairGirl(s);   // 房間 11 階為準＋退役系統舊欄位清掉
     if (!s.backstory) Object.assign(s, makeBackstory());
     else if (!s.schedule) s.schedule = makeSchedule(s.job);   // 有故事沒作息 → 補作息
     pruneJournal(s);
@@ -1122,12 +1195,12 @@ function initState(j, offline) {
     }
     if (s.summoner === undefined) s.summoner = null;
     if (s.nextDraw == null) { s.drawIvlH = randInt(2, 5); s.nextDraw = Date.now() + s.drawIvlH * HOUR; }
-    if (!s.gift || s.gift === "crest") s.gift = pick(GIFT_KEYS);
-    // 飢渴移轉:舊魅魔沒有這欄,不補的話 craveValue 會永遠停在 0
-    if (!s.crave) s.crave = { v: randInt(0, 25), at: Date.now() };
+    if (!s.gift || s.gift === "crest" || (!SUMMONER_ON && s.gift === "cleanse")) s.gift = pick(GIFT_KEYS);
+    // 飢渴移轉:舊魅魔沒有這欄,不補的話 craveValue 會永遠停在 0（飢渴已退役：不再補）
+    if (CRAVE_ON && !s.crave) s.crave = { v: randInt(0, 25), at: Date.now() };
     // 交配環系統移轉:舊 summoner.affection(0~240)→ stage/resist/matingCount/kinks
     const sm = s.summoner;
-    if (sm && sm.stage == null) {
+    if (SUMMONER_ON && sm && sm.stage == null) {
       sm.stage = affToStageIdx(sm.affection || 0);
       sm.resist = STAGE_RESIST[sm.stage];
       sm.matingCount = 0;
@@ -1314,7 +1387,7 @@ document.addEventListener("visibilitychange", async () => {
       for (const k of Object.keys(def)) state[k] ??= def[k];
       state.settings = { ...def.settings, ...state.settings };
       state.settings.rating = "nsfw";
-      for (const g of state.succubi || []) normalizeGirlStage(g);
+      for (const g of state.succubi || []) repairGirl(g);
     }
     if (!isPhoneClient() && !dirty && state.roomMirror?.from === "phone") {
       applyServerRoomMirror();
@@ -1357,7 +1430,7 @@ async function saveNow(keepalive = false) {
       const j = await fetch("/api/save").then(x => x.json());
       version = j.version;
       state = j.data ?? defaultState();
-      for (const g of state.succubi || []) normalizeGirlStage(g);
+      for (const g of state.succubi || []) repairGirl(g);
       if (!isPhoneClient() && state.roomMirror?.from === "phone") {
         try { applyServerRoomMirror(); } catch { /* ignore */ }
       }
@@ -2523,7 +2596,7 @@ function summonWithCount(n) {
     ntr: null,
     errand: null,                                     // 她盯著的那件委託 {qid,text,day,asked,late}
     guard: null,                                      // 防備狀態 {hits,cool}(只有陌生階段有)
-    crave: { v: randInt(0, 25), at: Date.now() },     // 飢渴 {v,at};懶算,見 craveValue
+    ...(CRAVE_ON ? { crave: { v: randInt(0, 25), at: Date.now() } } : {}),   // 飢渴（已退役）
     summoner: null,                                   // 被別的召喚師纏上時 = {id, affection, sinceDay}
     drawIvlH: randInt(2, 5),                           // 隱藏:抽召喚師的間隔(小時)
     nextDraw: Date.now() + randInt(2, 5) * HOUR,       // 下次抽取時間戳
@@ -5672,11 +5745,13 @@ const CRAVE_ON_CROSS = 15;   // 他越界調戲 → 跳升(陌生階段:她更�
 const CRAVE_AFTER_DATE = 40; // 約會後消掉的量
 
 function craveValue(s) {
+  if (!CRAVE_ON) return 0;   // 飢渴已退役：不累積、不進 prompt／UI
   if (!s.crave) return 0;
   const hrs = Math.max(0, (Date.now() - (s.crave.at || 0)) / HOUR);
   return Math.max(0, Math.min(100, (s.crave.v || 0) + hrs * CRAVE_RATE));
 }
 function craveSet(s, v) {
+  if (!CRAVE_ON) return;
   s.crave = { v: Math.max(0, Math.min(100, v)), at: Date.now() };
   dirty = true;
 }
@@ -5792,19 +5867,22 @@ function affThermoHtml(s) {
  */
 function applyAffection(s, base, opts = {}) {
   if (!s) return 0;
-  const d = Math.round(base * MULT[s.rarity] * 10) / 10;
-  s.affection = Math.round((s.affection + d) * 10) / 10;
-  // 升階：只自動 stranger→friend（門檻 50）。女友／妻子需告白／求婚，不在此自動升。
-  let ns = nextStage(s);
-  while (ns && ns[2] != null && s.affection >= ns[2]) {
-    s.stage = ns[0];
-    log(`${s.name} 與你的關係升級為【${ns[1]}】`);
-    toast(`${s.name} 成為你的${ns[1]}了!`, "good");
+  // 房間規則為準：整數加減、不乘稀有度；升降階走房間 11 階（花束／戒指前不會自動變女友／妻子）
+  const d = Math.round(Number(base) || 0);
+  if (!d) return 0;
+  const beforeShown = displayStage(s);
+  const beforeGame = gameStageOf(s.stage);
+  s.affection = Math.round(Number(s.affection) || 0) + d;
+  normalizeGirlStage(s);
+  const shown = displayStage(s);
+  if (shown !== beforeShown && (ROOM_STAGE_INDEX[shown] ?? 0) > (ROOM_STAGE_INDEX[beforeShown] ?? 0)) {
+    const zh = AFF_LADDER_ZH[shown] || stageLabel(shown);
+    log(`${s.name} 與你的關係升級為【${zh}】`);
+    toast(`${s.name} 成為你的${zh}了!`, "good");
     kanbanReact("stage");
-    // 關係變了：舊調戲圖過期；真的用到那張再重織，不要一次排 14 張卡回話
-    s.teaseStage = "";
-    ns = nextStage(s);
   }
+  // 主線段變了：舊調戲圖過期；真的用到那張再重織
+  if (gameStageOf(s.stage) !== beforeGame) s.teaseStage = "";
   if (!opts.skipBreak) checkBreak(s);
   if (chatWith === s.id) {
     paintAffHearts(s);
@@ -5818,6 +5896,7 @@ function applyAffection(s, base, opts = {}) {
  * 打牌中、或來源是牌局感情骰時，絕不可刪名冊（那是猥褻扣分，不是獻祭／流失）。
  */
 function checkBreak(s) {
+  if (!NTR_ON) return;   // 已退役：感情再低也不離開／不被奪走
   if (!s || s.affection > -10 || s.ntr) return;
   // 正在跟她打牌：鎖定名冊，最多只記 log
   if (state.cardSession?.girlId === s.id) {
@@ -5843,7 +5922,7 @@ function settleDays() {
   if (state.lastSettledDay >= today) return;
   for (let d = state.lastSettledDay + 1; d <= today; d++) {
     for (const s of [...state.succubi]) {
-      if (s.ntr) {
+      if (s.ntr && NTR_ON) {
         if (d >= s.ntr.deadlineDay) {
           dropGirlFromRoster(s);
           log(`${s.name} 沒能等到你。她的一切都被那個男人帶走了。`);
@@ -5851,14 +5930,14 @@ function settleDays() {
         }
         continue;
       }
-      let miss = (d - s.lastChatDay) > CHAT_GAP[s.rarity];
-      if (DATE_GAP[s.rarity] && (d - s.lastDateDay) > DATE_GAP[s.rarity]) miss = true;
+      let miss = MAIN_DECAY_ON && (d - s.lastChatDay) > CHAT_GAP[s.rarity];
+      if (MAIN_DECAY_ON && DATE_GAP[s.rarity] && (d - s.lastDateDay) > DATE_GAP[s.rarity]) miss = true;
       if (miss) {
         s.affection = Math.round((s.affection - 3) * 10) / 10;
         checkBreak(s);
       }
       // 妻子交代的事拖過一天還沒做:她不鬧,但真的失望(四階段唯一的懲罰,只扣一次)
-      if (s.stage === "wife" && s.errand && s.errand.asked && !s.errand.late && d > s.errand.day) {
+      if (MAIN_DECAY_ON && s.stage === "wife" && s.errand && s.errand.asked && !s.errand.late && d > s.errand.day) {
         s.errand.late = true;
         applyAffection(s, -1);
         log(`${s.name} 交代的「${s.errand.text}」一直沒做,她沒說什麼,但情感 -1`);
@@ -5871,6 +5950,7 @@ function settleDays() {
 }
 
 function needStatus(s) {
+  if (!NTR_ON && !MAIN_DECAY_ON) return "ok";   // 沒有扣分／離開機制了，不再提醒
   if (s.ntr) return "ntr";
   if (s.affection <= -7) return "danger";
   const today = dayNum();
@@ -7255,12 +7335,14 @@ const PROPOSE_DECLINE = [
 function canConfessGirl(s) {
   if (!s || s.ntr) return false;
   state.inventory ??= { bouquet: 0, ring: 0 };
-  return s.stage === "friend" && (s.affection || 0) >= 230 && (state.inventory.bouquet | 0) > 0;
+  // 同房間：親密好友＋感情≥100＋花束
+  return displayStage(s) === "close_friend" && (s.affection || 0) >= ROOM_STAGE_AT.girlfriend && (state.inventory.bouquet | 0) > 0;
 }
 function canProposeGirl(s) {
   if (!s || s.ntr) return false;
   state.inventory ??= { bouquet: 0, ring: 0 };
-  return s.stage === "girlfriend" && (state.inventory.ring | 0) > 0;
+  // 同房間：女友帶（女友／熱戀／愛人）＋戒指
+  return ROOM_DATING_STAGES.has(displayStage(s)) && (state.inventory.ring | 0) > 0;
 }
 
 /** 店頭 talk 時顯示告白或求婚鈕（互斥，同一槽）。 */
@@ -7295,7 +7377,7 @@ async function doConfess() {
   if (!s || chatSession?.type !== "talk" || chatSession.busy) return;
   state.inventory ??= { bouquet: 0, ring: 0 };
   if (!canConfessGirl(s)) {
-    toast("需要花束，且對方須為朋友且情感≥230", "bad");
+    toast("需要花束，且對方須為親密好友且情感≥100", "bad");
     refreshRomanceBtn();
     return;
   }
@@ -7312,10 +7394,12 @@ async function doConfess() {
   s.history.push({ role: "assistant", content: accept, t: Date.now() });
   s.history = s.history.slice(-200);
   await vnType(s.name, accept, "ai");
-  s.stage = "girlfriend";
-  s.affection = 0;
+  s.roomStage = "girlfriend";
+  s.stageLock = "";
+  if ((s.affection || 0) < ROOM_STAGE_AT.girlfriend) s.affection = ROOM_STAGE_AT.girlfriend;
+  normalizeGirlStage(s);
   s.teaseStage = "";
-  log(`${s.name} 接受告白 → 女友（情感歸零）`);
+  log(`${s.name} 接受告白 → 女友`);
   toast(`${s.name} 成為你的女友了！`, "good");
   kanbanReact("stage");
   paintAffHearts(s);
@@ -7332,7 +7416,7 @@ async function doPropose() {
   if (!s || chatSession?.type !== "talk" || chatSession.busy) return;
   state.inventory ??= { bouquet: 0, ring: 0 };
   if (!canProposeGirl(s)) {
-    toast("需要戒指，且對方須為女友", "bad");
+    toast("需要戒指，且對方須為女友（女友／熱戀／愛人）", "bad");
     refreshRomanceBtn();
     return;
   }
@@ -7357,7 +7441,11 @@ async function doPropose() {
     s.history.push({ role: "assistant", content: accept, t: Date.now() });
     s.history = s.history.slice(-200);
     await vnType(s.name, accept, "ai");
-    s.stage = "wife";
+    s.roomStage = "wife";
+    s.stageLock = "";
+    if ((s.affection || 0) < ROOM_STAGE_AT.wife) s.affection = ROOM_STAGE_AT.wife;
+    normalizeGirlStage(s);
+    s.wifeUpPending = "wife";
     s.teaseStage = "";
     log(`${s.name} 答應求婚 → 妻子${ringGone ? "（戒指已用）" : "（戒指還在）"}`);
     toast(`${s.name} 成為你的妻子了！結婚了！`, "good");
@@ -7868,7 +7956,8 @@ function buildRoomGirlFromSuccubus(s) {
     summoner: s.summoner || null,
     portraits,
     portrait: s.portrait || portraits.full || portraits.half || null,
-    crave: s.crave || { v: 10, at: Date.now() },
+    // 飢渴已退役：不再帶進房間
+    ...(CRAVE_ON ? { crave: s.crave || { v: 10, at: Date.now() } } : {}),
     // Default summon; adoptRosterGirl merges flee_back from room prior when same id
     chatEnter: s.chatEnter === "flee_back" ? "flee_back" : "summon",
     nude: !!s.nude,
@@ -7923,6 +8012,7 @@ function beginRoomCompanionSummon(girlId) {
   }
   state.gold -= cost;
   const next = refreshRoomSummonOffer();
+  touchInteractDay(s);   // 召進房間＝有互動
   dirty = true;
   const roomGirl = buildRoomGirlFromSuccubus(s);
   const payload = {
@@ -8025,14 +8115,17 @@ function applyRoomProgressData(data) {
   };
   setScalar("affection", (v) => (typeof v === "number" ? v : Number(v) || 0));
   // 房間回寫的是 11 細階：s.stage 只收主線四階，細階存 roomStage（量條顯示、再召喚還原）
+  setScalar("stageLock", (v) => (v == null ? "" : String(v)));
+  // 房間 11 階是唯一真相：直接收進 roomStage，s.stage 只是折成的主線四階（不再用主線規則重算）
   if (Object.prototype.hasOwnProperty.call(data, "stage") && data.stage) {
     const raw = String(data.stage);
-    const game = gameStageOf(raw);
+    const room = ROOM_TO_GAME_STAGE[raw] ? raw : gameStageOf(raw);
+    const game = gameStageOf(room);
+    if (s.roomStage !== room) { s.roomStage = room; changed = true; }
     if (s.stage !== game) { s.stage = game; changed = true; }
-    const room = ROOM_TO_GAME_STAGE[raw] ? raw : "";
-    if (room && s.roomStage !== room) { s.roomStage = room; changed = true; }
   }
-  setScalar("stageLock", (v) => (v == null ? "" : String(v)));
+  // 在房間陪她＝有聊天（舊的「沒聊天」判定若還有地方讀，也不會誤判）
+  if (s.lastChatDay !== dayNum()) { s.lastChatDay = dayNum(); changed = true; }
   setScalar("comfyCkpt", (v) => (v == null ? "" : String(v)));
   setScalar("portrait");
   setScalar("playerName", (v) => (v == null ? "" : String(v)));
@@ -9627,23 +9720,23 @@ function setWatchBtns(enabled) {
 
 // 階段內的前後期:取代舊版直接餵給她的好感數值(world.md 明寫她絕不知道任何數值)
 function stageProgress(s) {
-  const cur = stageInfo(s.stage)?.[2] ?? 0;
-  const ns = nextStage(s);
-  if (s.affection < 0) return "你們最近有點僵,你自己也說不上來為什麼。";
+  const aff = Number(s.affection) || 0;
+  if (aff < 0) return "你們最近有點僵,你自己也說不上來為什麼。";
+  const shown = displayStage(s);
+  const idx = ROOM_STAGE_INDEX[shown] ?? 0;
+  const cur = AFF_LADDER[idx] || AFF_LADDER[0];
+  const ns = AFF_LADDER[idx + 1] || null;
   if (!ns) return "你們早就穩定下來了,這樣的日子過得理所當然。";
-  // 女友／妻子門檻為 null：不靠數值自動升，要花束告白／戒指求婚
-  if (ns[2] == null) {
-    if (s.stage === "friend") {
-      if ((s.affection || 0) >= 230) return "你覺得可以送花告白了——不會自己變成女友。";
-      return "你們是朋友。再親近也要靠花束告白，不會自動升級。";
-    }
-    if (s.stage === "girlfriend") {
-      if ((s.affection || 0) >= 200) return "時機差不多了——求婚要靠戒指，不會自動變妻子。";
-      return "她是你的女友。求婚要戒指與感情，不會自動升級。";
-    }
+  // 女友／妻子不靠數值自動升：花束告白（親密好友＋感情≥100）／戒指求婚
+  if (shown === "close_friend") {
+    if (aff >= ROOM_STAGE_AT.girlfriend) return "你覺得可以送花告白了——不會自己變成女友。";
     return null;
   }
-  const p = (s.affection - cur) / Math.max(1, ns[2] - cur);
+  if (shown === "lover") {
+    if (aff >= 200) return "時機差不多了——求婚要靠戒指，不會自動變妻子。";
+    return "她是你的戀人。求婚要戒指與感情，不會自動升級。";
+  }
+  const p = (aff - cur[2]) / Math.max(1, ns[2] - cur[2]);
   if (p < 0.25) return "你們才剛走到這一步沒多久,你自己都還有點不習慣。";
   if (p > 0.75) return "你隱隱覺得你們之間又要變了,但還沒說破。";
   return null;
@@ -13835,7 +13928,7 @@ function formatCardDetailHtml(def, row) {
     if (eff.forceAnotherRound && !isErotic) bits.push("強制再一輪");
     if (Array.isArray(eff.setFlags) && eff.setFlags.length) bits.push("旗標：" + eff.setFlags.join("、"));
     if (eff.guardDelta) bits.push(`防備 ${eff.guardDelta > 0 ? "+" : ""}${eff.guardDelta}`);
-    if (eff.cravingDelta) bits.push(`飢渴 ${eff.cravingDelta > 0 ? "+" : ""}${eff.cravingDelta}`);
+    if (CRAVE_ON && eff.cravingDelta) bits.push(`飢渴 ${eff.cravingDelta > 0 ? "+" : ""}${eff.cravingDelta}`);
     if (eff.mentionErrand) bits.push("可提待辦");
   }
   if (bits.length) effLine = bits.join(" · ");
