@@ -107,7 +107,7 @@ import {
   undressShyFallback,
   dressedReactionLine,
   dressedReactionPrompt,
-} from "./undress_shy.js?v=2";
+} from "./undress_shy.js?v=3";
 import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines } from "./life_memory.js?v=1";
 import {
   mountButtPackEditor,
@@ -1488,6 +1488,30 @@ function clearVisitUndress(who = girl) {
   who.undress = snapshotUndress(null);
 }
 
+/** 失神（≥75）或痙攣中？ */
+function undressDazed(who) {
+  if (!who) return false;
+  ensureStunFields(who);
+  return inSpasm(who) || stunTier(effectiveStun(who, "")) === "stun";
+}
+
+const REDRESS_NOTE = "（她回過神來，慌忙把衣服穿回去了。）";
+
+/**
+ * 2026-10-03 使用者：半脫（stage 1–2）只存在於失神／痙攣中。回神後她自己穿回去（stage→0、換回穿衣立繪）；
+ * 全裸（stage 3）則維持到離房或按「穿衣」。脫衣畫面開著時不動。
+ * @returns {boolean} 這次有沒有穿回去
+ */
+function settleUndressAfterStun(who = girl) {
+  if (!who) return false;
+  const stage = undressStage(who);
+  if (stage < 1 || stage >= 3) return false;
+  if (who === girl && undressPlayOpen()) return false;
+  if (undressDazed(who)) return false;
+  clearVisitUndress(who);
+  return true;
+}
+
 /** 陌生～女友前：只遮胸與下體。女友～妻子前：遮胸或只遮下體。妻子起：不遮或只遮下體。 */
 function nudeStandeeChoices(stageKey) {
   const idx = STAGE_INDEX[stageKey] ?? 0;
@@ -1506,7 +1530,7 @@ function rollNudeStandee(who) {
   return u.shot;
 }
 
-/** 沒脫完：痙攣或失神（≥75）換成該階段（缺圖會補生）；清醒時有圖才用。脫完：失神時用沒有內褲那張，否則用這次聊天抽到的裸體立繪。 */
+/** 沒脫完：只有痙攣或失神（≥75）才換成該階段（清醒就會穿回去）。脫完：失神時用沒有內褲那張，否則用這次聊天抽到的裸體立繪。 */
 function undressPortraitShot(who, opts = {}) {
   const stage = undressStage(who);
   if (stage < 1) return "";
@@ -1517,11 +1541,8 @@ function undressPortraitShot(who, opts = {}) {
     if (stage === 2) return "undress_slip";
     return "undress_nude";
   }
-  if (stage < 3) {
-    // 2026-10-03：清醒時也維持衣著一致——該階段圖（只穿內衣／只穿內褲）已生好才用，不另外生圖；沒有就退回一般半身
-    const partial = stage === 1 ? "undress_loose" : "undress_slip";
-    return who?.portraits?.[partial] ? partial : "";
-  }
+  // 半脫只存在於失神／痙攣中：清醒時 settleUndressAfterStun 會讓她穿回去（stage→0）
+  if (stage < 3) return "";
   const shot = String(who?.undress?.shot || "");
   if (NUDE_STANDEE_SHOTS.has(shot)) return shot;
   return rollNudeStandee(who);
@@ -4744,6 +4765,8 @@ async function openTalk() {
   try {
     ensureStunFields(girl);
     ensureTeaseFields(girl);
+    // 關著對話時失神／痙攣已退：半脫的她已經穿回去（開場 prompt 照穿著寫）
+    if (settleUndressAfterStun(girl)) { try { paintHalfPortrait(girl); } catch { /* ignore */ } persistRoom(); }
     const openerStun = effectiveStun(girl, "");
     const opener = enterOpener(returning);
     let line = "";
@@ -4864,6 +4887,13 @@ async function deliverUserTalk(text, opts = {}) {
   try {
     // 先立刻顯示玩家台詞，避免等 LLM／判定時畫面上無反應
     await typeLine("你", raw);
+    // 失神／痙攣剛退（閒置 tick 還沒輪到）：半脫的她先穿回去，再回這句
+    if (settleUndressAfterStun(girl)) {
+      try { paintHalfPortrait(girl); } catch { /* ignore */ }
+      lines.push({ role: "assistant", content: REDRESS_NOTE });
+      await typeLine("旁白", REDRESS_NOTE);
+      persistRoom();
+    }
 
     // 互相認識：計數／拒絕／訂正／寫入（挑逗動作略過寫入）
     ensurePlayerNotes(girl);
@@ -5081,6 +5111,7 @@ async function deliverUserTalk(text, opts = {}) {
       }
       if (girl.guard) girl.guard -= 1;
       tickStunAfterReply(girl);
+      const redressedAfter = settleUndressAfterStun(girl);
       // 先 scrub（依 afterglowEjac），再扣餘韻回覆數
       line = scrubFalseCreampieLine(line, girl) || line;
       if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
@@ -5101,6 +5132,11 @@ async function deliverUserTalk(text, opts = {}) {
         $("portrait-meta").textContent = line;
       } else {
         await typeLine(girl.name, line);
+      }
+      if (redressedAfter && girl && sheetOpen()) {
+        lines.push({ role: "assistant", content: REDRESS_NOTE });
+        await typeLine("旁白", REDRESS_NOTE);
+        persistRoom();
       }
     } catch (err) {
       setTyping(false);
@@ -5558,7 +5594,11 @@ function bindTalkActs() {
 function startIdleDecay() {
   stopIdleDecay();
   // 開對話時先補算離線期間的侵犯時間衰減（每 20 分 −1..2，最多到 0）
-  if (girl) { try { decayInvasionByTime(girl); decayMoodByTime(girl); } catch { /* ignore */ } }
+  if (girl) {
+    try { decayInvasionByTime(girl); decayMoodByTime(girl); } catch { /* ignore */ }
+    // 關著對話期間失神／痙攣已退：半脫的她早就穿回去了（不另外旁白）
+    try { if (settleUndressAfterStun(girl)) { paintHalfPortrait(girl); persistRoom(); } } catch { /* ignore */ }
+  }
   idleDecayTimer = window.setInterval(() => {
     if (!girl || !sheetOpen()) return;
     if (talkBusy) return;
@@ -5573,10 +5613,15 @@ function startIdleDecay() {
     decayInvasionByTime(girl);
     decayMoodByTime(girl);
     player = ensurePlayer(decayPlayerIdle(player)); // ensurePlayer 也會按小時回補精液
+    const redressed = settleUndressAfterStun(girl);
     renderBodyPanel();
     refreshTalkActs();
-    if (undressStage(girl) > 0) {
+    if (undressStage(girl) > 0 || redressed) {
       try { paintHalfPortrait(girl); } catch { /* ignore */ }
+    }
+    if (redressed) {
+      lines.push({ role: "assistant", content: REDRESS_NOTE });
+      void typeLine("旁白", REDRESS_NOTE);
     }
     persistRoom();
   }, 5000);
@@ -7539,6 +7584,7 @@ function bindBodyPanel() {
   girl = saved.girl;
   player = ensurePlayer(saved.player);
   stripRetiredNude(girl);
+  try { settleUndressAfterStun(girl); } catch { /* ignore */ }
   if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
   ensureBody(girl);
   ensureFriends(girl);
