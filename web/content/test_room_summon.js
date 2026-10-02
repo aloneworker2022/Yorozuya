@@ -100,6 +100,12 @@ import {
   moodFallbackLine,
   MOOD_TYPES,
 } from "./emotion_carry.js?v=1";
+import {
+  undressOutfitText,
+  undressShyPromptLines,
+  undressShyOpenerHint,
+  undressShyFallback,
+} from "./undress_shy.js?v=1";
 import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines } from "./life_memory.js?v=1";
 import {
   mountButtPackEditor,
@@ -4400,6 +4406,8 @@ function enterOpener(returning) {
   // 情緒餘溫：重新見面也不裝沒事（level ≥15）
   const moodHint = moodOpenerHint(girl);
   if (moodHint && line) line = `${line}（旁白補充：${moodHint}）`;
+  const shyHint = undressShyOpenerHint(undressStage(girl), girl.stage || "stranger");
+  if (shyHint && line) line = `${line}（旁白補充：${shyHint}）`;
   const friendUp = consumeFriendUpBeat(girl);
   if (friendUp) {
     line = `${friendUp}${line ? ` ${line}` : ""}`;
@@ -4584,7 +4592,7 @@ function talkSystem(userText = "") {
     catchLine(),
     tasteLine(),
     chronoLine(),
-    `外表：${look.age != null ? `${look.age}歲，` : ""}${look.hair_color || ""}${look.hair || ""}，${look.eye_color || ""}眼。穿著${wornOutfit(girl) || "自己的衣服"}。`,
+    `外表：${look.age != null ? `${look.age}歲，` : ""}${look.hair_color || ""}${look.hair || ""}，${look.eye_color || ""}眼。${undressOutfitText(undressStage(girl), wornOutfit(girl) || "自己的衣服")}`,
     returnMood(),
     ...lived,
     "【房間聊天】",
@@ -4596,6 +4604,13 @@ function talkSystem(userText = "") {
     ...afterglowPromptLines(girl),
     ...ejacTalkPromptLines(girl),
     ...friendPhysicalPromptLines(girl),
+    // 被脫衣後：女友以前害羞結巴、熱戀微害羞、愛人起自在（只看 undress.stage）
+    ...undressShyPromptLines({
+      undressStage: undressStage(girl),
+      stageKey: girl.stage || "stranger",
+      personality: basePersonality(girl),
+      speechMode: speechMode(girl, promptActId).mode,
+    }),
     guardLine(),
     ...moodCarryPromptLines(girl, { stageKey: girl.stage || "stranger", invasion: getInvasion(girl) }),
     ...personalityStageLines(),
@@ -4743,7 +4758,7 @@ async function openTalk() {
         $("portrait-name").textContent = girl.name;
         $("portrait-meta").textContent = partial;
       } : null);
-      line = scrambleReply(reply || moodFallbackLine(girl, "……嗯？"), openerStun, "", girl) || "……嗯？";
+      line = scrambleReply(reply || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……嗯？")), openerStun, "", girl) || "……嗯？";
     }
     tickStunAfterReply(girl);
     // 痙攣期間不消耗餘韻回覆數，讓痙攣結束後仍鎖餘韻幾句
@@ -5049,7 +5064,7 @@ async function deliverUserTalk(text, opts = {}) {
         } finally {
           promptActId = "";
         }
-        line = scrambleReply(reply || moodFallbackLine(girl, "……"), stun, actId, girl) || "……";
+        line = scrambleReply(reply || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……")), stun, actId, girl) || "……";
         if (actId && invAdded > 1 && !inAfterglow(girl)) line = blendProtestReply(line, invAdded, invToneOpts) || line;
       }
       if (girl.guard) girl.guard -= 1;
