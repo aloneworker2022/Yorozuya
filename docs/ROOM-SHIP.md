@@ -89,3 +89,14 @@
 > **實作備註（2026-10-02）失神上限：** 沒有實際刺激（`stimulationState().level<2`，且非痙攣／餘韻）時，`calcStun` 上限 `UNSTIM_STUN_CAP=69`。高潮中繼續調戲（`climaxTease`）本身就是正被刺激，照常可推進失神；刺激中的失神值記在 `bodyState.stunCarry`，停手後每秒 −0.5、每句回覆 −8 退回上限。
 
 > **實作備註（2026-10-02）名冊 stage：** `s.stage` 只存主線四階（stranger／friend／girlfriend／wife），房間 11 細階存 `s.roomStage`；量條與階段標籤用 `displayStage()` 顯示細階。
+
+> **實作備註（2026-10-02）房間是關係唯一真相：** 感情／階段一律照房間 11 階規則（門檻 0/15/35/60/100/140/180/230/280/330/380、自動升降封頂在親密好友／愛人、降階緩衝 5、`stageLock` 優先），`s.roomStage` 是真相，`s.stage` 只是折成的主線四階。`app.js` 的 `normalizeGirlStage`／`roomSyncStage` 與房間 `syncStage` 同規則；`applyAffection` 改整數加減、不再乘稀有度倍率；告白＝親密好友＋感情≥100＋花束 → 女友（感情補到≥100，不再歸零）；求婚＝女友／熱戀／愛人＋戒指 → 妻子（感情補到≥230）。舊存檔：主線女友／妻子但感情低於 100／230 者載入時補到門檻。房間回寫直接寫 `roomStage`，並把 `lastChatDay` 設為今天（房間聊天＝有聊天）。
+> 退役（旗標關閉、程式保留）：`MAIN_DECAY_ON=false`（每日沒聊天／沒約會 −3、妻子交辦逾期 −1）、`NTR_ON=false`（感情 < −10 → 陌生離開／熟人被奪走／贖回；舊存檔的 `ntr` 清掉、感情拉回 0）、`CRAVE_ON=false`（飢渴不累積、不進 prompt／UI、不帶進房間）、`SUMMONER_ON=false`（召喚師纏上／召喚走／交配／懷孕娶走／窺視／破除獻祭／取消召喚師天賦 `cleanse`／約會 NTR 岔路與「被帶走」結局；舊存檔的 `summoner` 清成 null，`cleanse` 天賦重擲）。伺服器 `server/sim.py` 的 `SUMMONER_ENABLED=False`：不纏上、不判召喚、不交配，既有 `rels` 與未套用的 `entangled`／`married` 結局在下一輪 tick 清掉（`mem` 保留）；權威時鐘（看板娘到期／委託逾期／跨日）照跑。保留：性慾 `libido`、`bodyState.libido`、忠誠 `stats.loyalty`（日後 NTR 用）。
+
+> **實作備註（2026-10-02）個性帶進房間・逐步揭露：** 名冊妹子進房（`app.js` 與沙盒的 `buildRoomGirlFromSuccubus`）整份帶入 `archetype／catchphrases／reactions／stats（主動・害羞・忌妒・忠誠）／kinks／kinkMeta／chrono／likes／dislikes／hobbies／contrast`；沙盒生成的妹子本來就有整份。進 prompt 的部分由 `test_room_summon.js` 的 `REVEAL_AT` 依房間階決定，兩條路徑同一套：
+> - 陌生：個性底色、語氣、口頭禪、主動／害羞的表面舉止
+> - 普通：＋喜歡的東西
+> - 朋友／親密好友：＋討厭、興趣、怪癖（SFW）、當下心情的反應、作息
+> - 女友／熱戀：＋忌妒行為（女友前完全不寫）、完整心情反應表
+> - 愛人以上：＋性癖（`性癖標籤`＋`kinkRevealLines` 原強度分級）、性慾傾向（`libido` 名稱＋描述）、NSFW 怪癖；性癖口頭禪仍是順從妻子起
+> 生活旁白 prompt 的 `personaBlurb` 也是愛人以上才帶性癖。忠誠目前不進 prompt。除錯：`RoomCompanion.debugPrompt()` 回傳目前的對話 system prompt。
