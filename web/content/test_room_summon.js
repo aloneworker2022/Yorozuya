@@ -2711,12 +2711,15 @@ function kinkList(who = girl) {
 
 function personaBlurb(who = girl) {
   const base = basePersonality(who);
-  const kinks = kinkList(who);
+  // 性癖屬私密層：愛人以上才寫進 prompt（REVEAL_AT.intimate）
+  const kinks = revealed("intimate", who) ? kinkList(who) : [];
   if (!kinks.length) return base || "普通";
   return `${base}（性癖：${kinks.join("、")}）`;
 }
 
 function kinkRevealLines() {
+  // 愛人以下完全不提（不再寫「內部標籤＋壓住」——沒給的資料 AI 才不會漏）
+  if (!revealed("intimate")) return [];
   const kinks = kinkList();
   if (!kinks.length) return [];
   const idx = stageIdx();
@@ -2812,35 +2815,74 @@ function stageIdx(who = girl) {
   return STAGE_INDEX[who?.stage || "stranger"] ?? 0;
 }
 
+/**
+ * 個性逐步揭露（名冊妹子與沙盒妹子同一套）：資料整份都在 girl 上，這裡只決定「哪些進 prompt」。
+ *  stranger：個性底色、語氣、口頭禪、主動／害羞的表面舉止
+ *  acquaintance：＋喜歡的東西
+ *  friend／close_friend：＋討厭、興趣、怪癖（SFW）、當下心情的反應、作息
+ *  girlfriend／passionate：＋忌妒行為、完整心情反應表
+ *  lover 以上：＋性癖（強度沿用 kinkRevealLines 原分級）、性慾傾向、NSFW 怪癖
+ *  （性癖口頭禪仍是順從妻子起；忠誠 loyalty 有帶進來但目前不進 prompt，留給日後 NTR）
+ */
+const REVEAL_AT = {
+  likes: "acquaintance",
+  taste: "friend",
+  jealousy: "girlfriend",
+  intimate: "lover",
+};
+function revealed(level, who = girl) {
+  const need = STAGE_INDEX[REVEAL_AT[level]];
+  return need == null ? true : stageIdx(who) >= need;
+}
+/** 怪癖池有 NSFW 條目（persona_pools quirks nsfw:true）；字串上已無旗標，用關鍵字認。 */
+const NSFW_QUIRK_RE = /想要|敏感|情趣|癖|紓解|接吻|腿軟|自己摸|性|濕|高潮|胸|下面/;
+function revealedQuirk(who = girl, { talk = true } = {}) {
+  const q = String(who?.quirk || "").trim();
+  if (!q) return "";
+  if (NSFW_QUIRK_RE.test(q)) return revealed("intimate", who) ? q : "";
+  // 對話：朋友起才露；她自己的生活旁白（talk=false）SFW 怪癖照用
+  if (talk && !revealed("taste", who)) return "";
+  return q;
+}
+function libidoLine(who = girl) {
+  if (!revealed("intimate", who)) return "";
+  const lib = who?.libido;
+  if (!lib) return "";
+  if (typeof lib === "string") return `性慾傾向：${lib}。`;
+  if (!lib.name) return "";
+  return `性慾傾向：${lib.name}。${lib.desc || ""}`;
+}
+
 function mannerLine() {
   const stats = girl.stats;
   if (!stats) return "";
   const lead = stats.proactivity >= 60 ? "她會自己起話。" : stats.proactivity <= 40 ? "她多半等對方先說。" : "她會接話，但不搶著說。";
   const shy = stats.shyness >= 60 ? "她容易不好意思，話偏短。" : stats.shyness <= 40 ? "她說話直接，不太害羞。" : "她害羞程度普通。";
   let jealous = "";
-  if (stats.jealousy >= 60) {
-    const idx = stageIdx();
-    if (idx <= (STAGE_INDEX.friend ?? 2)) {
-      jealous = "忌妒心偏高，但你們還不熟，先不要演出來。";
-    } else if (idx === (STAGE_INDEX.close_friend ?? 3)) {
-      jealous = "忌妒心偏高，熟了會在乎他身邊有誰；用關心表現，不要用生分擋回去。";
-    } else {
-      jealous = "忌妒心偏高，會吃醋、會黏、會想確認他在不在乎你——用在乎表現，不要推開他。";
-    }
+  // 忌妒屬交往後才看得到的一面：女友以前完全不寫（REVEAL_AT.jealousy）
+  if (stats.jealousy >= 60 && revealed("jealousy")) {
+    jealous = "忌妒心偏高，會吃醋、會黏、會想確認他在不在乎你——用在乎表現，不要推開他。";
   }
   return `${lead}${shy}${jealous}`;
 }
 
 function reactionLine() {
+  if (!revealed("taste")) return "";
+  const r = (girl.reactions && typeof girl.reactions === "object") ? girl.reactions : null;
+  if (!r) return "";
   const key = { 愉快: "開心", 低落: "低落", 不悅: "生氣", 不安: "不安" }[girl.world?.mood];
-  const text = key && girl.reactions?.[key];
-  return text ? `她在這種心情時：${text}。` : "";
+  const now = key && r[key] ? `她在這種心情時：${r[key]}。` : "";
+  if (!revealed("jealousy")) return now;
+  // 交往後：整張心情反應表（更深的一面）
+  const all = Object.entries(r).filter(([, v]) => v).map(([k, v]) => `${k}時${v}`).join("；");
+  return `${now}${all ? `她各種心情的樣子：${all}。` : ""}`;
 }
 
 function tasteLine() {
-  const likes = namesOf(girl.likes);
-  const hates = namesOf(girl.dislikes);
-  const hobbies = namesOf(girl.hobbies);
+  const likes = revealed("likes") ? namesOf(girl.likes) : [];
+  const deeper = revealed("taste");
+  const hates = deeper ? namesOf(girl.dislikes) : [];
+  const hobbies = deeper ? namesOf(girl.hobbies) : [];
   const lines = [
     likes.length ? `她喜歡：${likes.join("、")}。` : "",
     hates.length ? `她討厭：${hates.join("、")}。` : "",
@@ -2851,6 +2893,7 @@ function tasteLine() {
 }
 
 function chronoLine() {
+  if (!revealed("taste")) return "";
   const chrono = girl.chrono;
   if (!chrono?.name) return "";
   const hour = japanNow().hour;
@@ -4508,9 +4551,10 @@ function talkSystem(userText = "") {
     roomSight(),
     "沒有過去不是沒有個性。語氣和脾氣照下面來,不要演成一張白紙。",
     `個性：${basePersonality()}。`,
-    kinkList().length ? `性癖標籤：${kinkList().join("、")}。（表現強度看下方揭示規則）` : "",
+    revealed("intimate") && kinkList().length ? `性癖標籤：${kinkList().join("、")}。（表現強度看下方揭示規則）` : "",
+    libidoLine(),
     toneLine(),
-    girl.quirk ? `但${girl.quirk}` : "",
+    revealedQuirk() ? `但${revealedQuirk()}` : "",
     mannerLine(),
     reactionLine(),
     catchLine(),
@@ -5890,7 +5934,6 @@ async function makeGirl() {
     summoner: null,
     portraits: {},
     portrait: null,
-    crave: { v: 10 + Math.floor(Math.random() * 20), at: Date.now() },
   };
   ensureBody(out);
   ensurePlayerNotes(out);
@@ -5960,9 +6003,18 @@ function buildRoomGirlFromSuccubus(s) {
     libido: s.libido || null,
     specialTraits: s.specialTraits || null,
     moanVoice: s.moanVoice || null,
-    catchphrases: s.catchphrases || null,
-    reactions: s.reactions || null,
+    // 個性：整份帶進房間（同 app.js）；進 prompt 的部分依關係階逐步揭露（REVEAL_AT）
+    catchphrases: Array.isArray(s.catchphrases) ? s.catchphrases.slice() : (s.catchphrases || null),
+    reactions: (s.reactions && typeof s.reactions === "object") ? { ...s.reactions } : null,
     archetype: s.archetype || null,
+    stats: (s.stats && typeof s.stats === "object") ? { ...s.stats } : null,
+    kinks: Array.isArray(s.kinks) ? s.kinks.slice() : null,
+    kinkMeta: Array.isArray(s.kinkMeta) ? JSON.parse(JSON.stringify(s.kinkMeta)) : null,
+    chrono: (s.chrono && typeof s.chrono === "object") ? { ...s.chrono } : null,
+    likes: Array.isArray(s.likes) ? s.likes.slice() : null,
+    dislikes: Array.isArray(s.dislikes) ? s.dislikes.slice() : null,
+    hobbies: Array.isArray(s.hobbies) ? s.hobbies.slice() : null,
+    contrast: s.contrast || "",
     comfyCkpt: s.comfyCkpt,
     affection: typeof s.affection === "number" ? s.affection : 0,
     stage: mapGameStageToRoom(rosterRoomStage(s)),
@@ -5971,7 +6023,6 @@ function buildRoomGirlFromSuccubus(s) {
     summoner: s.summoner || null,
     portraits,
     portrait: s.portrait || portraits.full || portraits.half || null,
-    crave: s.crave || { v: 10, at: Date.now() },
     chatEnter: s.chatEnter === "flee_back" ? "flee_back" : "summon",
     nude: !!s.nude,
     undress: snapshotUndress(s.undress),
@@ -6193,7 +6244,7 @@ function homePrompt(who, region, choices) {
     "只回一個數字，對應選項編號。不要解釋。",
     `她是${who.name}。個性：${personaBlurb(who)}。`,
     who.tone ? `語氣：${who.tone}` : "",
-    who.quirk || "",
+    revealedQuirk(who, { talk: false }),
     hereNow(who) || `人在日本的${region.name}。`,
     list,
   ].filter(Boolean).join("\n");
@@ -6236,7 +6287,7 @@ function jobPrompt(who, region, choices) {
     "只回一個數字，對應選項編號。不要解釋。",
     `她是${who.name}。個性：${personaBlurb(who)}。`,
     who.tone ? `語氣：${who.tone}` : "",
-    who.quirk || "",
+    revealedQuirk(who, { talk: false }),
     hereNow(who),
     `住在${who.world?.home?.name || "某處"}。`,
     list,
@@ -6600,7 +6651,7 @@ function shiftPrompt(who, region, rolled, know, opts = {}) {
     meeting,
     `個性：${personaBlurb(who)}。`,
     who.tone ? `語氣：${who.tone}` : "",
-    who.quirk || "",
+    revealedQuirk(who, { talk: false }),
     hereNow(who),
     `打工是${who.world.job.name}。`,
     whoLine,
@@ -6762,7 +6813,7 @@ function strollPrompt(who, region, rolled, know, opts = {}) {
       "不要標題，不要列選項，不要提到遊戲或抽籤。",
       `個性：${personaBlurb(who)}。`,
       who.tone ? `語氣：${who.tone}` : "",
-      who.quirk || "",
+      revealedQuirk(who, { talk: false }),
       `事情只沿著這個方向：${rolled.act.name}。細節自己編，但要發生在${place}。`,
     ].filter(Boolean).join("\n");
   }
@@ -6790,7 +6841,7 @@ function strollPrompt(who, region, rolled, know, opts = {}) {
     meeting,
     `個性：${personaBlurb(who)}。`,
     who.tone ? `語氣：${who.tone}` : "",
-    who.quirk || "",
+    revealedQuirk(who, { talk: false }),
     `人就在${place}。不要改到別的地方。`,
     whoLine,
     `互動只沿著這個方向：${rolled.act.name}。細節自己編，但兩邊都要出場。`,
@@ -7576,6 +7627,8 @@ window.RoomCompanion = {
   applyMirror: applyRoomMirror,
   isShip: isShipMode,
   current: () => girl,
+  /** 除錯：目前房間對話的 system prompt（看個性逐步揭露用） */
+  debugPrompt: (text = "") => (girl ? talkSystem(String(text || "")) : ""),
   show: showSheet,
   hide: hideSheet,
   grantSemen(cc) {
