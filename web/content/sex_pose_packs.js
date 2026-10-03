@@ -63,7 +63,7 @@ export const SEX_STEP_META = {
   });
 }
 /** 開場以外各步的預設版本（快取圖作廢用；開場見 SEX_POSE_PROMPT_REV）。 */
-export const SEX_STEP_PROMPT_REV = { tip: 1, join: 1, half: 1, full: 1, orgasm: 1, squirt: 1, cum: 1 };
+export const SEX_STEP_PROMPT_REV = { tip: 1, join: 1, half: 1, full: 2, orgasm: 1, squirt: 1, cum: 1 };
 
 /** 下一個啟用的步驟（最後一步回 ""）。 */
 export function nextSexStep(step) {
@@ -110,6 +110,20 @@ export const LEGACY_SEX_POSE_NEGATIVES = {
     "penis, testicles, detailed male face, realistic man, realistic male skin, male eyes, panties, bra, clothes, dressed, text, watermark, ugly, extra fingers, bad hands, extra legs",
     "male, 1boy, man, penis, testicles, shadow man, male hands, faceless male, pov hands, multiple girls, looking back, looking at viewer, looking over shoulder, face visible, panties, bra, clothes, dressed, text, watermark, ugly, extra fingers, bad hands, extra legs",
   ],
+};
+
+/** 各步舊版預設（載入時換成新預設；快取圖靠 SEX_STEP_PROMPT_REV 作廢）。full v1：沒寫男方骨盆貼住她。 */
+export const LEGACY_SEX_STEP_DEFAULTS = {
+  full: {
+    missionary: {
+      prompt: ["1man, 1girl, pov, first-person view, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, from above, front view, missionary, girl lying on back, on bed, white bed sheets, legs spread, spread legs, knees up, nude, completely nude, bare breasts, nipples, pussy, labia, pussy juice, shadow male hands, shadow male hands holding her thighs, hands on her thighs, sex, vaginal, deep penetration, penis fully inserted, entire penis inside, balls deep, labia pressed against male abdomen, dazed, trance, rolling eyes, unfocused eyes, empty eyes, slight ahegao, open mouth, drooling, saliva, heavy breathing, panting, trembling, twitching, convulsing, blush, sweat"],
+      negative: ["realistic man, male face, detailed male face, realistic male skin, male eyes, hairy male body, extra penis, multiple penises, multiple girls, panties, bra, clothes, dressed, underwear, lingerie, shirt, dress, skirt, jacket, coat, uniform, hoodie, covered breasts, text, watermark, ugly, extra fingers, bad hands, extra legs"],
+    },
+    doggy: {
+      prompt: ["1man, 1girl, pov, first-person view, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, from behind, doggystyle, girl lying face down, face down on bed, ass up, butt raised high, top-down bottom-up, arched back, facing away, face hidden, nude, completely nude, pussy, labia, anus, pussy juice, shadow male hands, shadow male hands gripping her ass, hands on her hips, grabbing buttocks, sex, vaginal, deep penetration, penis fully inserted, entire penis inside, balls deep, buttocks pressed against his hips, trembling, twitching, heavy breathing, sweat, on bed, white bed sheets"],
+      negative: ["realistic man, male face, detailed male face, realistic male skin, male eyes, hairy male body, extra penis, multiple penises, multiple girls, looking back, looking at viewer, looking over shoulder, face visible, panties, bra, clothes, dressed, underwear, lingerie, shirt, dress, skirt, jacket, coat, uniform, hoodie, covered breasts, text, watermark, ugly, extra fingers, bad hands, extra legs"],
+    },
+  },
 };
 
 export function canonTags(v) {
@@ -228,7 +242,10 @@ const SEX_BODY = {
   ],
 };
 const SEX_HALF_BEAT = "sex, vaginal, penis halfway inside, half inserted, glans inside, labia wrapped around penis, half of the penis still outside";
-const SEX_FULL_BEAT = "sex, vaginal, deep penetration, penis fully inserted, entire penis inside, balls deep";
+/** 全插入：整根進去 → 男方骨盆／胯下貼住她（看不到陰莖根部、兩人之間沒有縫）。 */
+const SEX_FULL_BEAT = "sex, vaginal, deep penetration, penis fully inserted, penis fully inside, balls deep, penis completely hidden inside pussy, no visible penis shaft";
+const SEX_FULL_PRESS = "groin pressed against her pussy, male pelvis touching her labia, hips pressed together, crotch to crotch, testicles against her";
+const SEX_FULL_PRESS_DOGGY = "his hips pressed against her ass, pelvis against her buttocks, groin pressed against her pussy, male pelvis touching her labia, hips pressed together, testicles against her";
 const SEX_IN_BEAT = "sex, vaginal, penis inside, deep penetration";
 const SEX_ORGASM_FACE = "female orgasm, head thrown back, tongue out, ahegao, rolling eyes, drooling, open mouth, convulsing, trembling, twitching, arched back, toes curling, heavy breathing, blush, sweat";
 const SEX_DOGGY_ORGASM = "female orgasm, head lifted, head tilted back, arched back, facing away, tongue out, drooling, convulsing, trembling, twitching, toes curling, heavy breathing, sweat";
@@ -276,7 +293,7 @@ export function defaultSexStepPrompt(pose, step) {
     : SEX_BODY.missionary;
   const beat = {
     half: [SEX_HALF_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_DAZED_FACE],
-    full: [SEX_FULL_BEAT, doggy ? "buttocks pressed against his hips" : "labia pressed against male abdomen", doggy ? SEX_DOGGY_SHAKE : SEX_DAZED_FACE],
+    full: [SEX_FULL_BEAT, doggy ? SEX_FULL_PRESS_DOGGY : SEX_FULL_PRESS, doggy ? SEX_DOGGY_SHAKE : SEX_DAZED_FACE],
     orgasm: [SEX_IN_BEAT, doggy ? SEX_DOGGY_ORGASM : SEX_ORGASM_FACE],
     squirt: [SEX_IN_BEAT, SEX_SQUIRT_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_ORGASM_FACE],
     cum: [SEX_IN_BEAT, SEX_CUM_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_ORGASM_FACE],
@@ -294,6 +311,7 @@ export function defaultSexStepNegative(pose, step) {
   const bits = [];
   if (st === "tip" || st === "join") bits.push(SEX_STEP_NO_INSERT);
   if (st === "half") bits.push("fully inserted, balls deep");
+  if (st === "full") bits.push("visible penis shaft, penis outside, half inserted, partially inserted, gap between bodies");
   if (st === "cum") bits.push("cum on face, facial, cum on body, bukkake");
   bits.push(SEX_STEP_NO_REAL_MAN);
   if (pose === "doggy") {
@@ -312,9 +330,11 @@ function emptyStepSlot(pose, step) {
 export function normalizeSexStepSlot(pose, step, raw) {
   const base = emptyStepSlot(pose, step);
   const s = raw && typeof raw === "object" ? raw : {};
+  const legacy = LEGACY_SEX_STEP_DEFAULTS[stepKey(step)]?.[pose] || {};
   return {
-    prompt: String(s.prompt ?? base.prompt),
-    negative: String(s.negative ?? base.negative),
+    // 舊版預設 → 換新預設；自訂原樣保留
+    prompt: migrateLegacy(s.prompt ?? base.prompt, legacy.prompt, base.prompt),
+    negative: migrateLegacy(s.negative ?? base.negative, legacy.negative, base.negative),
     ref: String(s.ref ?? "").trim(),
     url: String(s.url ?? "").trim(),
     poseDenoise: clampDenoise(s.poseDenoise ?? s.pose_denoise ?? base.poseDenoise),

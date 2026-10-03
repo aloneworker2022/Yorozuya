@@ -133,7 +133,7 @@ import {
   isSexStepResultUrl,
   normalizeSexPosePack,
   SEX_POSE_PROMPT_REV,
-} from "./sex_pose_packs.js?v=5";
+} from "./sex_pose_packs.js?v=6";
 import {
   getMoodCarry,
   decayMoodByTime,
