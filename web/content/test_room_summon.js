@@ -125,7 +125,9 @@ import {
   pickRuntimeSexPosePack,
   generateSexPosePackImage,
   mountSexPosePackEditor,
-} from "./sex_pose_packs.js?v=1";
+  isDefaultSexPosePack,
+  SEX_POSE_PROMPT_REV,
+} from "./sex_pose_packs.js?v=2";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -584,6 +586,18 @@ function ensureSexPoseUrl(who, pose) {
       const url = anyCached();
       return { url, pose, packId: "", generated: false, fallback: !!url };
     }
+    // 舊版預設（影子男／POV）產的快取：這組仍是預設 → 作廢重產；自訂組只補記版本
+    const revKey = `${packsKey}:${pack.id}`;
+    if (pool()[pack.id] && ((who.portraits.actionPromptRev || {})[revKey] | 0) < SEX_POSE_PROMPT_REV) {
+      if (isDefaultSexPosePack(pose, pack)) {
+        const next = { ...pool() };
+        delete next[pack.id];
+        who.portraits[packsKey] = next;
+        persistRoom();
+      } else {
+        stampActionRev(who, packsKey, pack.id);
+      }
+    }
     const cached = String(pool()[pack.id] || "");
     if (cached) return { url: cached, pose, packId: pack.id, generated: false, fallback: false };
     try {
@@ -593,6 +607,7 @@ function ensureSexPoseUrl(who, pose) {
       if (r?.status === "done" && r.result) {
         const stamped = stampPortraitUrl(r.result);
         who.portraits[packsKey] = { ...pool(), [pack.id]: stamped };
+        stampActionRev(who, packsKey, pack.id);
         persistRoom();
         return { url: stamped, pose, packId: pack.id, generated: true, fallback: false };
       }
@@ -1256,6 +1271,8 @@ const ACTION_PROMPT_REV = {
   tease_breast_knead_packs: 3, tease_breast_knead_nude_packs: 3,
   tease_breast_suck_packs: 3, tease_breast_suck_nude_packs: 3,
   tease_nipple_lick_packs: 3, tease_nipple_lick_nude_packs: 3,
+  // 做愛開場圖 rev 2：solo、失神痙攣、無影子男（2026-10-03）
+  sex_missionary_open_packs: SEX_POSE_PROMPT_REV, sex_doggy_open_packs: SEX_POSE_PROMPT_REV,
 };
 
 function stampActionRev(who, cacheKey, packId) {

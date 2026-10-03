@@ -1436,6 +1436,7 @@ def build_prompt(
     stage: str = "",
     action_first: bool = False,
     garment: str = "",
+    solo: bool = False,
 ) -> tuple[str, list[str]]:
     """回 (positive prompt, 查不到對照的原文清單)。
 
@@ -1502,9 +1503,12 @@ def build_prompt(
         level = "exposed"
     keep_clothes = dressed and not garment and level == "covered" and not (nsfw_act and not keep_act)
     # 雙人／做愛／NTR 只寫 1man 1girl。不要 1boy／2people（人數衝突、畫風跑掉）。
-    multi = scene and is_multi_scene(extra)
+    # solo=True（做愛開場圖）：場景構圖但只有她 → 不判雙人、不補 1man／third person。
+    multi = scene and not solo and is_multi_scene(extra)
     pov = is_pov_cam(extra)
-    if scene:
+    if scene and solo:
+        bits = [QUALITY_PREFIX, "1girl, solo", HUMAN_TAGS]
+    elif scene:
         if multi:
             bits: list[str] = [
                 QUALITY_PREFIX,

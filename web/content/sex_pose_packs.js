@@ -1,6 +1,7 @@
 /** 做愛開場圖組（2026-10-03，肏系統第一步）：她脫光後按「做愛」先顯示一張開場圖，依「最後一層（內褲）怎麼脫掉」：
- *   - 她自己脫（叫她脫）→ 傳教士：躺平、腿張開、自己用手指撥開陰唇（POV 從上往下）  shot sex_missionary_open
- *   - 你幫她脫（幫她脫）→ 後背：趴著／四肢著地、屁股翹高、回頭（POV 從後面）       shot sex_doggy_open
+ *   - 她自己脫（叫她脫）→ 傳教士：正面、躺平、腿張開、雙手撥開陰唇               shot sex_missionary_open
+ *   - 你幫她脫（幫她脫）→ 後背：臉趴床、屁股翹高、從後面看、不回頭（臉朝另一邊）   shot sex_doggy_open
+ * 這一步男人還沒上場：圖裡只有她（1girl, solo），失神痙攣臉；不寫 pov／男手／影子男（伺服器 solo，不自動補 1man）。
  * 兩組各自多組命名存檔（/api/sex-missionary-packs、/api/sex-doggy-packs），執行時隨機抽一組；
  * 伺服器檔名 {id}_sex_missionary_open.png／{id}_sex_doggy_open.png，garment=nude（不套服裝）。
  * 圖組 prompt 只寫姿勢／取景；人設（臉、髮、膚色、身材、性器）於生圖時由 character 合併。 */
@@ -28,8 +29,43 @@ export const SEX_POSES = {
   },
 };
 
-/** 影子男（同吸／舔奶頭）：只露出手時用。 */
-export const SEX_SHADOW_HANDS = "1man, pov, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, shadow male hands";
+/** 預設 prompt 版本：rev 2（2026-10-03）＝男人還沒上場 → 只有她一人（solo）、失神痙攣臉、無影子男。
+ * 房間快取圖記 portraits.actionPromptRev["<shot>_packs:<packId>"]；低於此版且該組仍是預設 → 作廢重產。 */
+export const SEX_POSE_PROMPT_REV = 2;
+
+/** rev 1 預設（POV＋影子男手）。存檔 prompt／negative 一字不差（忽略大小寫空白）等於這些 → 載入時換新預設。 */
+export const LEGACY_SEX_POSE_PROMPTS = {
+  missionary: [
+    "pov, from above, missionary position, girl lying on back, on bed, white bed sheets, legs spread, spread legs, knees up, m legs, spreading own pussy, spread pussy with fingers, fingers spreading labia, presenting pussy, pussy, labia, clitoris, pussy juice, blush, embarrassed, looking at viewer, full body, nsfw, explicit, NO penis, NO male body",
+  ],
+  doggy: [
+    "pov, from behind, doggystyle, doggy position, girl on all fours, on bed, white bed sheets, ass up, butt raised high, top-down bottom-up, arched back, looking back, looking at viewer over shoulder, blush, pussy, labia, pussy visible from behind, anus, presenting, wet pussy, 1man, pov, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, shadow male hands, shadow male hands on her hips, full body, nsfw, explicit, NO penis, NO detailed male face",
+  ],
+};
+export const LEGACY_SEX_POSE_NEGATIVES = {
+  missionary: [
+    "penis, testicles, male body, realistic man, panties, bra, clothes, dressed, text, watermark, ugly, extra fingers, bad hands, extra legs",
+  ],
+  doggy: [
+    "penis, testicles, detailed male face, realistic man, realistic male skin, male eyes, panties, bra, clothes, dressed, text, watermark, ugly, extra fingers, bad hands, extra legs",
+  ],
+};
+
+export function canonTags(v) {
+  return String(v || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).join(", ");
+}
+
+function migrateLegacy(v, legacyList, fresh) {
+  const c = canonTags(v);
+  return (legacyList || []).some((x) => canonTags(x) === c) ? String(fresh ?? "") : String(v ?? "");
+}
+
+/** 這組的 prompt 仍是（新或舊）預設 → 快取圖可依版本作廢。 */
+export function isDefaultSexPosePack(pose, pack) {
+  const c = canonTags(pack?.prompt);
+  if (c === canonTags(defaultSexPosePrompt(pose))) return true;
+  return (LEGACY_SEX_POSE_PROMPTS[pose] || []).some((x) => canonTags(x) === c);
+}
 
 /** 最後一層怎麼脫的 → 開場姿勢。pantiesBy：self → 傳教士；help → 後背；舊存檔沒記 → 傳教士。 */
 export function sexPoseFor(who) {
@@ -58,44 +94,48 @@ export function clampDenoise(v) {
   return Math.min(0.9, Math.max(0.35, Math.round(n * 100) / 100));
 }
 
-/** 姿勢／取景 tags only（人設於生圖時合併）。 */
+/** 失神痙攣（ahegao-lite）：兩個姿勢共用的表情／身體反應。 */
+const SEX_DAZED_FACE = "dazed, trance, rolling eyes, unfocused eyes, empty eyes, slight ahegao, open mouth, drooling, saliva, heavy breathing, panting, trembling, twitching, convulsing, blush, sweat";
+
+/** 姿勢／取景 tags only（人設於生圖時合併）。男人還沒上場：只有她一人，不寫 pov／男手／影子男。 */
 export function defaultSexPosePrompt(pose) {
   if (pose === "doggy") {
     return [
-      "pov, from behind, doggystyle, doggy position",
-      "girl on all fours, on bed, white bed sheets",
-      "ass up, butt raised high, top-down bottom-up, arched back",
-      "looking back, looking at viewer over shoulder, blush",
-      "pussy, labia, pussy visible from behind, anus, presenting, wet pussy",
-      SEX_SHADOW_HANDS,
-      "shadow male hands on her hips",
-      "full body, nsfw, explicit",
-      "NO penis, NO detailed male face",
+      "1girl, solo, nude",
+      "from behind, back view, viewed from behind",
+      "lying face down, face down on bed, face in pillow, prone, ass up, butt raised high, top-down bottom-up, hips raised, knees bent, arched back",
+      "facing away, face hidden, head turned away",
+      "pussy visible from behind, pussy, labia, anus, pussy juice",
+      "trembling, twitching, convulsing, heavy breathing, panting, drooling, dazed, blush, sweat",
+      "on bed, white bed sheets, full body, nsfw, explicit",
     ].join(", ");
   }
   return [
-    "pov, from above, missionary position",
-    "girl lying on back, on bed, white bed sheets",
+    "1girl, solo, nude",
+    "front view, from above",
+    "lying on back, on bed, white bed sheets",
     "legs spread, spread legs, knees up, m legs",
-    "spreading own pussy, spread pussy with fingers, fingers spreading labia, presenting pussy",
+    "spread pussy, both hands spreading labia, spreading own pussy with both hands, fingers on labia",
     "pussy, labia, clitoris, pussy juice",
-    "blush, embarrassed, looking at viewer",
+    SEX_DAZED_FACE,
     "full body, nsfw, explicit",
-    "NO penis, NO male body",
   ].join(", ");
 }
 
-/** 負向：擋衣物／陽具／寫實男人與常見瑕疵；不擋 nude／pussy／looking at viewer（伺服器另外剔 nude 類）。 */
+const SEX_NO_MALE_NEG = "male, 1boy, man, penis, testicles, shadow man, male hands, faceless male, pov hands, multiple girls";
+
+/** 負向：擋男人（還沒上場）／衣物／常見瑕疵；後背另擋回頭、看鏡頭。不擋 nude／pussy（伺服器另外剔 nude 類）。 */
 export function defaultSexPoseNegative(pose) {
   if (pose === "doggy") {
     return [
-      "penis, testicles, detailed male face, realistic man, realistic male skin, male eyes",
+      SEX_NO_MALE_NEG,
+      "looking back, looking at viewer, looking over shoulder, face visible",
       "panties, bra, clothes, dressed",
       "text, watermark, ugly, extra fingers, bad hands, extra legs",
     ].join(", ");
   }
   return [
-    "penis, testicles, male body, realistic man",
+    SEX_NO_MALE_NEG,
     "panties, bra, clothes, dressed",
     "text, watermark, ugly, extra fingers, bad hands, extra legs",
   ].join(", ");
@@ -122,8 +162,8 @@ export function normalizeSexPosePack(pose, raw) {
     id: String(s.id || base.id).slice(0, 24) || base.id,
     name: String(s.name || base.name).slice(0, 40) || base.name,
     poseDenoise: clampDenoise(s.poseDenoise ?? s.pose_denoise ?? base.poseDenoise),
-    prompt: String(s.prompt ?? base.prompt),
-    negative: String(s.negative ?? base.negative),
+    prompt: migrateLegacy(s.prompt ?? base.prompt, LEGACY_SEX_POSE_PROMPTS[pose], base.prompt),
+    negative: migrateLegacy(s.negative ?? base.negative, LEGACY_SEX_POSE_NEGATIVES[pose], base.negative),
     ref: String(s.ref ?? "").trim(),
     url: String(s.url ?? "").trim(),
     updated: Number(s.updated) || Date.now(),

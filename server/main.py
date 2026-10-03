@@ -1057,6 +1057,7 @@ def _build_girl_image_prompt(
     pose_path: Path | None = None,
     scene_kind: str = "",
     garment: str = "",
+    solo: bool = False,
 ) -> str:
     """組給 Grok Build 的生圖指令。人物欄位以 character(完整 generateGirl 結果)為準。
 
@@ -1084,6 +1085,10 @@ def _build_girl_image_prompt(
     # 雙人／做愛／NTR 才走兩人構圖。對話卡 visualEn 的 NO groping 不算。
     multi_scene = sdtags.is_multi_scene(extra)
     pov = sdtags.is_pov_cam(extra)
+    # 做愛開場圖：男人還沒上場 → 只有她；nsfw／doggy 字樣不轉雙人、不轉第一人稱。
+    if solo:
+        multi_scene = False
+        pov = False
 
     # 有姿勢參考 → image_edit 以那張為主構圖；立繪 ref 只鎖臉。
     # 沒有姿勢圖時：有立繪參考 → image_edit 鎖同一張臉；否則 image_gen + sheet
@@ -1109,6 +1114,15 @@ def _build_girl_image_prompt(
             "If ACTION says not yet inserted / glans entering / vaginal x-ray / cutaway / fully inserted / creampie, follow ACTION "
             "for that detail even if the pose image shows a different depth.\n"
             "Do NOT invent a different position or a third-person couple shot."
+        )
+    elif ref_path is not None and solo:
+        tool_note = (
+            f"You MUST use the image_edit tool with this reference image path:\n"
+            f"{ref_path}\n"
+            "This reference locks ONLY her face/hair/body identity.\n"
+            "This is a SOLO scene: only her (1girl, solo). NO man, NO male hands, NO second person.\n"
+            "Draw the full new pose and camera from ACTION — not the portrait's pose.\n"
+            "Do NOT generate a different woman."
         )
     elif ref_path is not None and multi_scene and pov:
         tool_note = (
@@ -1195,6 +1209,23 @@ Keep the large image as the portrait. The inset is a small extra panel only.
 CRITICAL: ACTION is the picture. Draw that camera, those hands, that pose, that act.
 Do NOT output a solo ID portrait looking at the viewer unless ACTION says so.
 CHARACTER SHEET is identity only (face, hair, body, clothes). Do not ignore ACTION.
+"""
+        elif solo:
+            solo_outfit = (
+                "She is completely nude. The panties are off. No bra, no panties, no underwear. "
+                "Do not put any clothes back on."
+                if garment == "nude" else "Keep her outfit as ACTION says."
+            )
+            extra_block = f"""
+=== ACTION / SCENE TO DRAW (SOLO — she is alone; the man has NOT joined yet) ===
+{extra.strip()}
+=== END ACTION ===
+CRITICAL COMPOSITION RULES:
+- Draw ONLY her (1girl, solo). NO man, NO male body, NO penis, NO male hands, NO shadow man, NO second person.
+- NOT a first-person POV with viewer hands. Use only the camera ACTION states (front view / from behind).
+- Follow ACTION's pose, camera, hands and expression exactly — a full new pose, not a light edit of the reference portrait.
+- Gaze follows ACTION: if ACTION says facing away / face hidden, she does NOT look back and does NOT look at the viewer.
+Do NOT change her hair, eyes, or body type. {solo_outfit}
 """
         elif multi_scene and pov:
             extra_block = f"""
@@ -1370,6 +1401,14 @@ File: {ref_path}
 Use this only for her face/hair/body. Composition MUST follow ACTION, not this portrait's pose.
 === END REFERENCE ===
 """
+        elif solo:
+            ref_block = f"""
+=== REFERENCE PORTRAIT (HER IDENTITY ONLY — not the final composition) ===
+File: {ref_path}
+Use this only for her face/hair/body match. Final image MUST be the ACTION pose (solo, she alone),
+not a copy of this portrait's pose or gaze.
+=== END REFERENCE ===
+"""
         elif multi_scene and pov:
             ref_block = f"""
 === REFERENCE PORTRAIT (HER IDENTITY ONLY — not the final composition) ===
@@ -1413,7 +1452,7 @@ Tags (identity — do not write Chinese, do not write sentences):
 {tool_note}
 {pose_block}{ref_block}{extra_block}{do_not}{rating_line}{size_note}
 No text overlay, no watermark.
-{"1man and 1girl both visible." if multi_scene else ""}
+{"1man and 1girl both visible." if multi_scene else ("Only her — 1girl, solo, no man in the picture." if solo else "")}
 """
 
 
@@ -1837,6 +1876,7 @@ async def _run_grok_image(
             pose_path=pose_local,
             scene_kind=scene_kind,
             garment=comfy.undress_garment(shot_l),
+            solo=comfy.is_solo_pose_shot(shot_l),
         )
     text, err = await _run_grok_cli(
         prompt,
@@ -2333,6 +2373,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         scene=scene,
         action_first=script_mode,
         garment=comfy.undress_garment(shot),
+        solo=comfy.is_solo_pose_shot(shot),
     )
 
 
@@ -3088,6 +3129,7 @@ def _img_prompt_trace(t: ImgGenIn) -> dict:
         pose_path=_resolve_ref_image(t.pose_ref or ""),
         scene_kind=str(t.scene_kind or ""),
         garment=garment,
+        solo=comfy.is_solo_pose_shot((t.shot or "").strip().lower()),
     )
     comfy_full, unk2 = _comfy_prompt_for({
         "character": ch, "framing": framing, "rating": rating,

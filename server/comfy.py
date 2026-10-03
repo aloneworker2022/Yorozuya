@@ -175,6 +175,11 @@ def is_tease_shot(shot: str) -> bool:
     return str(shot or "").lower() in TEASE_SHOTS
 
 
+def is_solo_pose_shot(shot: str) -> bool:
+    """做愛開場圖：男人還沒上場，圖裡只有她（1girl, solo）。不因 nsfw／doggy／from behind 自動補 1man。"""
+    return str(shot or "").lower() in SEX_POSE_SHOTS
+
+
 def is_standee_shot(shot: str) -> bool:
     """房間半身表情立繪 standee_*（9 槽）。"""
     return str(shot or "").lower().startswith("standee_")
