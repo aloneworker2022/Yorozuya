@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="zh-Hant" class="room-page" data-nude-action-packs="1" data-undress-chat="1">
+<html lang="zh-Hant" class="room-page" data-nude-action-packs="1" data-undress-chat="1" data-miss-you="1">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content">
   <meta name="theme-color" content="#eee8dd">
   <title>我的房間 · Yorozuya</title>
-  <link rel="stylesheet" href="/content/test_room.css?v=92">
+  <link rel="stylesheet" href="/content/test_room.css?v=93">
   <script>
     (function () {
       try {
@@ -51,6 +51,10 @@
         <dt>判定</dt><dd id="dbg-mark">—</dd>
         <dt>名字</dt><dd id="dbg-names">—</dd>
         <dt>心情</dt><dd id="dbg-mood">—</dd>
+        <dt>想念</dt><dd class="miss-dbg"><span id="dbg-miss">—</span>
+          <button type="button" id="dbg-miss-6h" title="把上次見面往前推 6 小時（下次開對話生效）">−6h</button>
+          <button type="button" id="dbg-miss-24h" title="把上次見面往前推 24 小時">−1天</button>
+          <button type="button" id="dbg-miss-clear" title="想念歸 0、從現在起算">清0</button></dd>
         <dt>設定</dt><dd><select id="dbg-jump" aria-label="直接跳到的關係">
           <option value="">照感情</option>
           <option value="stranger">陌生</option>
@@ -772,6 +776,6 @@
   <script src="/content/room_furniture.js?v=4"></script>
   <script src="/content/room_character.js?v=7"></script>
   <script src="/content/test_room.js?v=16"></script>
-  <script type="module" src="/content/test_room_summon.js?v=149"></script>
+  <script type="module" src="/content/test_room_summon.js?v=150"></script>
 </body>
 </html>

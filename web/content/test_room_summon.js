@@ -91,6 +91,19 @@ import {
   blendProtestReply,
 } from "./invasion.js?v=6";
 import {
+  ensureMiss,
+  getMiss,
+  noteMissSeen,
+  refreshMissOnEnter,
+  drainMissPerLine,
+  missReunionHappy,
+  takeMissBonus,
+  missOpenerHint,
+  missPromptLines,
+  missStageSpec,
+  formatGap,
+} from "./miss_you.js?v=1";
+import {
   getMoodCarry,
   decayMoodByTime,
   decayMoodPerLine,
@@ -265,6 +278,28 @@ function undressChatOn() {
   }
 }
 const UNDRESS_CHAT_ON = undressChatOn();
+
+/** 想念值（miss_you.js）試驗閘門：只有 test_room（<html data-miss-you="1">）開；主房間完全不動。 */
+function missYouOn() {
+  try {
+    if (typeof globalThis.YORO_MISS_YOU === "boolean") return globalThis.YORO_MISS_YOU;
+    return document.documentElement?.dataset?.missYou === "1";
+  } catch {
+    return false;
+  }
+}
+const MISS_YOU_ON = missYouOn();
+
+/** 回來／隔一陣子再開口：依離開多久累加想念（閘門關＝什麼都不做）。 */
+function refreshMissNow(who = girl) {
+  if (!MISS_YOU_ON || !who) return null;
+  const r = refreshMissOnEnter(who, { stageKey: who.stage || "stranger", personality: basePersonality(who) });
+  if (r.added > 0 && who === girl) {
+    pushDebug(`想念 +${r.added} → ${r.level}（隔了 ${formatGap(r.gapMs)}）`);
+    renderDebug();
+  }
+  return r;
+}
 /** 這一趟脫衣是不是用對話版面開的（開的當下決定，關掉前不變）。 */
 let undressChatMode = false;
 /** 進脫衣前對話框的那一句；中途「回到對話」時放回去。 */
@@ -4583,6 +4618,44 @@ function applyMark(mark) {
   renderDebug();
 }
 
+/** test_room 除錯：想念值一行（閘門關或沒這欄就不動）。 */
+function renderMissDebug() {
+  const el = $("dbg-miss");
+  if (!el) return;
+  if (!MISS_YOU_ON || !girl) {
+    el.textContent = "—";
+    return;
+  }
+  const m = ensureMiss(girl);
+  const cap = missStageSpec(girl.stage || "stranger").cap;
+  const ago = m.lastSeen ? formatGap(Date.now() - m.lastSeen) + "前" : "未起算";
+  const re = m.reunion ? `・重逢 ${m.reunion.level}（第 ${m.reunion.lines} 句）` : "";
+  el.textContent = `${m.level}/${cap}・上次 ${ago}${re}`;
+}
+
+function shiftMissLastSeen(hours) {
+  if (!MISS_YOU_ON || !girl) return null;
+  const m = ensureMiss(girl);
+  m.lastSeen = (m.lastSeen || Date.now()) - (Number(hours) || 0) * 3600000;
+  persistRoom();
+  renderMissDebug();
+  return m.lastSeen;
+}
+
+function bindMissDebug() {
+  onId("dbg-miss-6h", "click", () => shiftMissLastSeen(6));
+  onId("dbg-miss-24h", "click", () => shiftMissLastSeen(24));
+  onId("dbg-miss-clear", "click", () => {
+    if (!MISS_YOU_ON || !girl) return;
+    const m = ensureMiss(girl);
+    m.level = 0;
+    m.reunion = null;
+    m.lastSeen = Date.now();
+    persistRoom();
+    renderMissDebug();
+  });
+}
+
 function renderDebug() {
   const panel = $("bond-debug");
   if (!girl) {
@@ -4599,6 +4672,7 @@ function renderDebug() {
   $("dbg-mark").textContent = girl.lastMark ? `${girl.lastMark}　${openInv}` : openInv;
   $("dbg-names").textContent = `名字 ${girl.playerName || "—"}　綽號 ${girl.playerNick || "—"}　小名 ${girl.playerPet || "—"}`;
   $("dbg-mood").textContent = girl.world?.mood || "—";
+  renderMissDebug();
   const jump = $("dbg-jump");
   if (jump && jump.value !== (girl.stageLock || "")) jump.value = girl.stageLock || "";
   const log = $("dbg-log");
@@ -4783,6 +4857,9 @@ function enterOpener(returning) {
   // 情緒餘溫：重新見面也不裝沒事（level ≥15）
   const moodHint = moodOpenerHint(girl);
   if (moodHint && line) line = `${line}（旁白補充：${moodHint}）`;
+  // 想念：隔了一陣子才回來（只在 test_room 閘門開時）
+  const missHint = MISS_YOU_ON ? missOpenerHint(girl, { stageKey: girl.stage || "stranger", personality: basePersonality(girl) }) : "";
+  if (missHint && line) line = `${line}（旁白補充：${missHint}）`;
   const shyHint = undressShyOpenerHint(undressStage(girl), girl.stage || "stranger");
   if (shyHint && line) line = `${line}（旁白補充：${shyHint}）`;
   const friendUp = consumeFriendUpBeat(girl);
@@ -4990,6 +5067,7 @@ function talkSystem(userText = "") {
     }),
     guardLine(),
     ...moodCarryPromptLines(girl, { stageKey: girl.stage || "stranger", invasion: getInvasion(girl) }),
+    ...(MISS_YOU_ON ? missPromptLines(girl, { stageKey: girl.stage || "stranger", personality: basePersonality(girl) }) : []),
     ...personalityStageLines(),
     ...kinkRevealLines(),
     ...stageTalk(),
@@ -5112,6 +5190,7 @@ async function openTalk() {
     // 關著對話時失神／痙攣已退：半脫的她已經穿回去（開場 prompt 照穿著寫）
     if (settleUndressAfterStun(girl)) { try { paintHalfPortrait(girl); } catch { /* ignore */ } persistRoom(); }
     const openerStun = effectiveStun(girl, "");
+    refreshMissNow(girl);
     const opener = enterOpener(returning);
     let line = "";
     // 優先：痙攣 → 失神 → 餘韻 → LLM
@@ -5144,6 +5223,7 @@ async function openTalk() {
     if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
     if (!inSpasm(girl)) consumeEjacTalk(girl);
     noteTalkExchange(girl);
+    if (MISS_YOU_ON) noteMissSeen(girl);
     decayFriendSexFlag(girl);
     if (girl.nameWait === "pet" || girl.nameWait === "petPropose") takeCall("", line);
     lines.push({ role: "assistant", content: line });
@@ -5230,6 +5310,12 @@ async function deliverUserTalk(text, opts = {}) {
   // 侵犯值閒聊衰減：等判定完才知道這句她開不開心（開心 −8..10，否則 −1..2）
   const affBeforeLine = Number(girl.affection) || 0;
   let chatInvDecay = false;
+  // 想念：對話開著但隔了很久才開口，也算重逢——這句她先表現想念，下一句才算「回應重逢」並開始消
+  let missFresh = false;
+  if (!opts.actId) {
+    const mr = refreshMissNow(girl);
+    missFresh = !!(mr && mr.added > 0 && mr.reunion);
+  }
 
   try {
     // 先立刻顯示玩家台詞，避免等 LLM／判定時畫面上無反應
@@ -5339,8 +5425,14 @@ async function deliverUserTalk(text, opts = {}) {
         turnMark = await judgeTurn(raw);
         applyMark(turnMark);
       }
+      // 想念：重逢後第一句被接住 → 額外感情（一次）
+      if (MISS_YOU_ON && girl && !missFresh) {
+        const bonus = takeMissBonus(girl, turnMark);
+        if (bonus) bumpAffection(bonus, "想念被接住");
+      }
       if (chatInvDecay && girl) {
-        const happy = chatLineHappy({
+        const missHappy = MISS_YOU_ON && !missFresh && !textBodyHit && missReunionHappy(girl, turnMark);
+        const happy = missHappy || chatLineHappy({
           mark: turnMark,
           affBefore: affBeforeLine,
           affAfter: Number(girl.affection) || 0,
@@ -5367,6 +5459,15 @@ async function deliverUserTalk(text, opts = {}) {
           invasion: getInvasion(girl),
         });
       }
+    }
+    // 想念：跟她互動（閒聊或動作）就消掉一截，約 3 句歸零
+    if (MISS_YOU_ON && girl && !missFresh) {
+      const was = getMiss(girl);
+      const d = drainMissPerLine(girl);
+      noteMissSeen(girl);
+      if (d > 0) pushDebug(`想念 −${d} → ${was - d}`);
+      renderDebug();
+      persistRoom();
     }
 
     // 升上朋友：極淡旁白（含本輪判定剛升階、或進房前遺留）
@@ -6571,6 +6672,7 @@ function loadRoomSave() {
 function hideSheet() {
   // 先收 stub 場面，避免 overlay 懸在已關閉的對話上
   if (sceneOpen() || activeRoomScene) closeRoomScene();
+  if (MISS_YOU_ON && girl) noteMissSeen(girl);
   typeJob += 1;
   setTyping(false);
   talkBusy = false;
@@ -8149,6 +8251,7 @@ onId("dbg-jump", "change", () => {
   refreshTalkActs();
 });
 bindTalkActs();
+bindMissDebug();
 onId("talk-input-row", "submit", (event) => { sendTalk(event); });
 onId("portrait-backdrop", "click", () => {
   if (sceneOpen()) {
@@ -8317,6 +8420,12 @@ window.RoomScenes = {
 };
 window.RoomCompanion = {
   /** 動作圖裸體版除錯：on＝閘門；lastPick＝上一次選圖；pregen＝手動排補產。 */
+  /** 想念值除錯：on＝閘門；state＝bodyState.missYou；ago(h)＝把上次見面往前推 h 小時。 */
+  missYou: {
+    on: () => MISS_YOU_ON,
+    state: () => (girl ? JSON.parse(JSON.stringify(ensureMiss(girl))) : null),
+    ago: (h) => shiftMissLastSeen(h),
+  },
   /** 侵犯值除錯：上一句閒聊衰減。 */
   invasion: {
     lastChatDecay: () => lastChatInvDecay,

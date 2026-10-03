@@ -614,3 +614,5 @@ body.room-home .room-summon-ritual:not([hidden]){display:block}
 .tease-pack-panel .nude-variant-row .nv-tab:last-child{border-radius:0 4px 4px 0;border-left:0}
 .tease-pack-panel .nude-variant-row .nv-tab.on{background:#b5485d;border-color:#b5485d;color:#fff}
 .tease-pack-panel .nude-variant-hint{font-size:12px;color:#897d6c;line-height:1.5}
+/* 想念值除錯列（test_room data-miss-you） */
+.bond-debug .miss-dbg button{min-height:30px;padding:3px 8px;margin:2px 2px 0 0;font-size:.78em;box-shadow:none}
