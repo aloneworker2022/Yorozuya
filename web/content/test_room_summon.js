@@ -5321,11 +5321,13 @@ async function openTalk() {
 }
 
 /** 回覆後記錄本回合情緒（挑逗→生氣／害羞／羞燥；閒聊判冒犯→生氣／受傷）。 */
-function noteTurnMood(actId, opts, { invAdded = 0, invWilling = false, turnMark = "平常" } = {}) {
+function noteTurnMood(actId, opts, { invAdded = 0, invWilling = false, turnMark = "平常", stunZero = false } = {}) {
   if (!girl) return;
   try {
     let m = null;
     if (actId && !opts.skipBody) {
+      // 事後算帳（閘門開）：痙攣中或失神 ≥75 的動作不記任何情緒餘溫（回神結算時才記）
+      if (stunZero) return;
       const label = TALK_ACTS.find((a) => a.id === actId)?.label || "動手動腳";
       m = noteMoodFromAct(girl, {
         added: invAdded,
@@ -5576,10 +5578,11 @@ async function deliverUserTalk(text, opts = {}) {
     let invWilling = false;
     let invToneOpts = { willing: false };
     let invTotal = getInvasion(girl);
+    let stunZero = false;
     if (opts.actId && !opts.skipBody) {
       ensureInvasion(girl);
       // 事後算帳（閘門開）：痙攣中或失神 ≥75 → 侵犯值一點都不漲，整筆「清醒時本來會漲的量」記成欠帳，回神再結算
-      const stunZero = STUN_RECKONING_ON && undressDazed(girl);
+      stunZero = STUN_RECKONING_ON && undressDazed(girl);
       const invRoll = stunZero
         ? { added: 0, invasion: getInvasion(girl), fled: false, willing: false, tokenCap: 12, personality: basePersonality(girl), arousalMult: null }
         : applyInvasionRoll(girl, opts.actId, {
@@ -5620,7 +5623,8 @@ async function deliverUserTalk(text, opts = {}) {
 
     // 情緒餘溫：本回合的侵犯／挑逗／冒犯在 finally 記下（LLM 失敗也記），下一句起帶進 prompt
     // 只有語氣真的走「半推半就」（增益 ≤ tokenCap）才把情緒記成羞燥
-    moodTurn = { invAdded, invWilling: invWilling && invAdded <= (invToneOpts.tokenCap ?? 12), turnMark };
+    // 事後算帳（閘門開）：失神／痙攣中的動作不記情緒，情緒交給回神結算
+    moodTurn = { invAdded, invWilling: invWilling && invAdded <= (invToneOpts.tokenCap ?? 12), turnMark, stunZero };
 
     if (!sheetOpen() || talkFor !== girl.id) return;
 
