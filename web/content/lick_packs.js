@@ -1,6 +1,6 @@
 /** 房間「舔奶頭」生圖預設組：多組命名存檔，執行時隨機抽一組；無組時不生圖（僅對話／身體）。 */
 
-import { composeTeaseExtra, teaseFraming, NIPPLE_SHADOW_NEGATIVE } from "./tease_shots.js?v=6";
+import { composeTeaseExtra, teaseFraming, NIPPLE_SHADOW_NEGATIVE, canonTags, migrateLegacyText } from "./tease_shots.js?v=7";
 import { deriveNudePrompt, mountNudeVariantToggle, nudeActionNegative, nudeActionPrompt, nudeFields, nudeShot } from "./nude_action.js?v=1";
 
 const API = "/api/lick-packs";
@@ -29,13 +29,15 @@ export function defaultLickNegative() {
 export const LEGACY_LICK_PROMPT = "simple background, white background, breasts focus, nipple focus, close-up, head out of frame, first-person POV, tongue licking nipple, licking nipple, NO face of girl, NO head of girl";
 export const LEGACY_LICK_NEGATIVE = "head, face, hair, eyes, smile, looking at viewer, portrait, text, watermark, ugly, extra fingers";
 
-function canonTags(v) {
-  return String(v || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).join(", ");
-}
+/** 歷代舊預設：①無影子男（LEGACY_LICK_PROMPT）②影子男但 lower 取景時代的 girl head out of frame。 */
+export const LEGACY_LICK_PROMPTS = [
+  LEGACY_LICK_PROMPT,
+  "simple background, white background, breasts focus, nipple focus, close-up, girl head out of frame, 1man, pov, first-person view, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, only his head and mouth visible at her breast, tongue out, licking nipple, tongue on nipple, saliva, saliva trail, one breast out of clothes, clothes pulled down, exposed nipple, nsfw, NO face of girl, NO detailed male face",
+];
 
 /** 舊預設 → 新預設；使用者改過的原樣保留。 */
 export function migrateLickPrompt(v) {
-  return canonTags(v) === canonTags(LEGACY_LICK_PROMPT) ? defaultLickPrompt() : String(v ?? "");
+  return migrateLegacyText(v, LEGACY_LICK_PROMPTS, defaultLickPrompt());
 }
 
 export function migrateLickNegative(v) {

@@ -551,6 +551,9 @@ FRAMING = {
     "half": "upper body",
     "full": "full body",
     "lower": "lower body, below waist, head out of frame",
+    # 胸部動作特寫（摸奶／揉奶／吸奶頭／舔奶頭）：她的臉切在下巴外。
+    # 不寫 head out of frame——吸／舔奶頭的影子男頭要留在畫面裡。
+    "chest": "upper body, chest focus, breasts close-up, girl face out of frame, cropped at chin",
 }
 
 PART_FRAMING = {
@@ -1203,6 +1206,14 @@ def appearance_en_parts(
         except (TypeError, ValueError):
             pass
 
+    if (crop or "").lower() == "chest":
+        # 胸部特寫：拿掉臉／眼／髮（臉在畫面外），胸型／乳暈／乳頭留著
+        parts = drop_face_look(parts)
+        bust_sp = ", ".join(sp_seg.get("bust") or [])
+        if bust_sp:
+            parts["specials"] = bust_sp
+        else:
+            parts.pop("specials", None)
     if (crop or "").lower() == "lower":
         parts = drop_upper_look(parts)
         lower_sp = ", ".join(sp_seg.get("lower") or [])
@@ -1255,6 +1266,21 @@ _UPPER_OUTFIT_DROP = (
 )
 
 
+# 胸部特寫（chest）：臉在畫面外，只拿掉臉／眼／髮，胸留著
+FACE_LOOK_KEYS = (
+    "face", "eyes", "eye_color", "mouth",
+    "hair", "hair_color", "feature",
+)
+
+
+def drop_face_look(parts: dict[str, str]) -> dict[str, str]:
+    """從外貌字典拿掉臉、眼睛、頭髮（胸部特寫用）。"""
+    out = dict(parts)
+    for k in FACE_LOOK_KEYS:
+        out.pop(k, None)
+    return out
+
+
 def drop_upper_look(parts: dict[str, str]) -> dict[str, str]:
     """從外貌字典拿掉臉、眼睛、頭髮、胸部。"""
     out = dict(parts)
@@ -1300,7 +1326,7 @@ def appearance_en_brief(
             parts.get("pubic_hair") or "",
         ]
     tag = flatten_tags(*bits)
-    if (garment or "").strip():
+    if (garment or "").strip() or (framing or "").lower() == "chest":
         tag = without_headwear(tag)
     return tag or "1girl, adult", unknown
 
@@ -1506,6 +1532,7 @@ def build_prompt(
 
     # 取景先寫,模型才知道要畫哪一塊
     lower_shot = (framing or "").lower() == "lower"
+    chest_shot = (framing or "").lower() == "chest"
     if p in PART_FRAMING:
         bits.append(PART_FRAMING[p])
     else:
@@ -1515,7 +1542,7 @@ def build_prompt(
             fr = filter_tag_chunk(fr, ("head out of frame",))
         bits.append(fr)
 
-    if (not p or seg == "head") and not lower_shot:
+    if (not p or seg == "head") and not lower_shot and not chest_shot:
         # 臉分五軸(臉型/眼/嘴/髮型/髮色)+瞳色:只寫「大眼睛、長直髮」畫出來的臉
         # 每次都不一樣,細到這個程度才看得出是同一個人。
         bits += [tr(FACE, "face"), tr(EYES, "eyes"), tr(EYE_COLOR, "eye_color"),
@@ -1545,7 +1572,7 @@ def build_prompt(
             cleaned = bust_tags_for_level(t, level)
             if cleaned:
                 bits.append(cleaned)
-    if not p or seg == "lower":
+    if (not p or seg == "lower") and not chest_shot:
         bits += sp_seg["lower"]
     # 性器軸：下半素體、或 extra 已經在畫陰部時才寫，避免把頭／半身／摸臀拉去下體
     show_genitals = extra_has_key(extra, _GENITAL_KEYS) or (bool(p) and seg == "lower" and not dressed)
@@ -1582,7 +1609,9 @@ def build_prompt(
         tag = outfit_en(worn)
         if worn and not tag:
             unknown.append(f"outfit: {worn}")
-        if lower_shot:
+        # 胸部特寫沿用 lower 的穿衣寫法（不補 revealing／衣服拉開）：
+        # 摸奶／揉奶隔著衣服；吸／舔奶頭由圖組自己寫 clothes pulled down, exposed nipple
+        if lower_shot or chest_shot:
             if level == "exposed":
                 bits.append("nude")
             else:
@@ -1627,6 +1656,7 @@ def build_prompt(
                 seen.add(t.lower())
                 out.append(t)
     prompt = ", ".join(out)
-    if garment:
+    # 胸部特寫的臉在畫面外：帽子／髮飾會把鏡頭拉回頭部
+    if garment or chest_shot:
         prompt = without_headwear(prompt)
     return prompt, unknown

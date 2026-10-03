@@ -1,6 +1,6 @@
 /** 房間「揉奶」生圖預設組：多組命名存檔，執行時隨機抽一組；無組時不生圖（僅對話／身體）。 */
 
-import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=5";
+import { composeTeaseExtra, teaseFraming, canonTags, migrateLegacyText } from "./tease_shots.js?v=7";
 import { deriveNudePrompt, mountNudeVariantToggle, nudeActionNegative, nudeActionPrompt, nudeFields, nudeShot } from "./nude_action.js?v=1";
 
 const API = "/api/knead-packs";
@@ -17,12 +17,21 @@ export function clampDenoise(v) {
 
 /** 動作／裁切 tags only（無頭／表情／人設；人設於生圖時由 character 合併）。 */
 export function defaultKneadPrompt(stage = "stranger") {
-  return composeTeaseExtra("tease_breast_knead", stage, "") || [
-    "simple background, white background",
-    "breasts focus, chest crop, upper torso, head out of frame",
-    "first-person POV, male hands kneading breasts, squeezing breasts",
-    "NO face, NO head",
-  ].join(", ");
+  return composeTeaseExtra("tease_breast_knead", stage, "");
+}
+
+/** 2026-10-03 前的預設（lower 取景時代：chest crop, upper torso, head out of frame）。一字不差才自動換新。 */
+export const LEGACY_KNEAD_PROMPTS = [
+  "simple background, white background, breasts focus, chest crop, upper torso, head out of frame, first-person POV, male hands kneading breasts, squeezing breasts, NO face, NO head",
+];
+
+export function migrateKneadPrompt(v) {
+  return migrateLegacyText(v, LEGACY_KNEAD_PROMPTS, defaultKneadPrompt());
+}
+
+/** 這組的正向是不是（新）預設——判斷魅子身上的舊圖能不能自動作廢重產。 */
+export function isKneadDefaultPrompt(pack) {
+  return canonTags(pack?.prompt) === canonTags(defaultKneadPrompt());
 }
 
 /** 局部繪圖負向：排除頭／臉／表情與常見瑕疵。 */
@@ -54,7 +63,7 @@ export function normalizeKneadPack(raw) {
     id: String(s.id || base.id).slice(0, 24) || base.id,
     name: String(s.name || base.name).slice(0, 40) || base.name,
     poseDenoise: clampDenoise(s.poseDenoise ?? s.pose_denoise ?? base.poseDenoise),
-    prompt: String(s.prompt ?? slot?.prompt ?? base.prompt),
+    prompt: migrateKneadPrompt(String(s.prompt ?? slot?.prompt ?? base.prompt)),
     negative: String(s.negative ?? slot?.negative ?? base.negative),
     ref: String(s.ref ?? slot?.ref ?? "").trim(),
     url: String(s.url ?? slot?.url ?? "").trim(),

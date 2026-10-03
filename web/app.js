@@ -13,7 +13,7 @@ import {
   teaseShotAt, teaseStartStep, teaseAdvanceStep, teaseCumStep, teasePlayableSteps,
   teasePhaseOf, teasePhaseLabel, teaseBeatLine, teaseWilling,
   teasePlayAffDelta, TEASE_PLAY_CLIMAX_RATE,
-} from "./content/tease_shots.js?v=6";
+} from "./content/tease_shots.js?v=7";
 import * as ScriptMode from "./content/script_mode.js";
 import * as FramePack from "./content/frame_pack.js";
 import {
@@ -24,19 +24,19 @@ import {
 import {
   pickRuntimeBreastPack,
   buildBreastImgBody,
-} from "./content/breast_packs.js?v=2";
+} from "./content/breast_packs.js?v=3";
 import {
   pickRuntimeKneadPack,
   buildKneadImgBody,
-} from "./content/knead_packs.js?v=2";
+} from "./content/knead_packs.js?v=3";
 import {
   pickRuntimeSuckPack,
   buildSuckImgBody,
-} from "./content/suck_packs.js?v=3";
+} from "./content/suck_packs.js?v=4";
 import {
   pickRuntimeLickPack,
   buildLickImgBody,
-} from "./content/lick_packs.js?v=3";
+} from "./content/lick_packs.js?v=4";
 import {
   pickRuntimeLabiaPack,
   buildLabiaImgBody,

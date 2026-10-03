@@ -97,9 +97,30 @@ export function isTeaseShot(shot) {
   return String(shot || "").startsWith("tease_");
 }
 
+/** 胸部特寫取景的四組（含 _nude 裸體版）。 */
+export const CHEST_FRAMED_SHOTS = new Set([
+  "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick",
+  "tease_breast_nude", "tease_breast_knead_nude", "tease_breast_suck_nude", "tease_nipple_lick_nude",
+]);
+
+/** 胸部特寫：她的臉在畫面外、切在下巴；不寫 head out of frame（會連影子男的頭一起切掉）。 */
+export const BREAST_CHEST_FRAME = "chest focus, breasts close-up, girl face out of frame, cropped at chin";
+
+export function canonTags(v) {
+  return String(v || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).join(", ");
+}
+
+/** 存檔 prompt 一字不差（忽略大小寫空白）等於任一舊預設 → 換新預設；否則原樣。 */
+export function migrateLegacyText(v, legacyList, fresh) {
+  const c = canonTags(v);
+  return (legacyList || []).some((x) => canonTags(x) === c) ? String(fresh ?? "") : String(v ?? "");
+}
+
 export function teaseFraming(shot) {
   const s = String(shot || "");
-  if (s === "tease_butt" || s === "tease_waist" || s === "tease_breast" || s === "tease_breast_knead" || s === "tease_breast_suck" || s === "tease_nipple_lick" || s === "tease_labia" || s === "tease_labia_rub" || s === "tease_finger_in") return "lower";
+  // 胸部四組（摸奶／揉奶／吸奶頭／舔奶頭）＝胸部特寫 chest（伺服器 sdtags.FRAMING["chest"]）；其餘動作裁切仍 lower
+  if (CHEST_FRAMED_SHOTS.has(s)) return "chest";
+  if (s === "tease_butt" || s === "tease_waist" || s === "tease_labia" || s === "tease_labia_rub" || s === "tease_finger_in") return "lower";
   if (s.startsWith("tease_oral")) return "half";
   return "full";
 }
@@ -307,7 +328,7 @@ export function composeTeaseExtra(shot, stage, worn) {
     // 局部繪圖（胸裁切）：無頭／無表情；人設於生圖時由 character 合併
     return [
       "simple background, white background",
-      "breasts focus, chest crop, upper torso, head out of frame",
+      BREAST_CHEST_FRAME,
       "first-person POV, one male hand, male hand grabbing one breast",
       "NO both hands, NO face, NO head",
     ].join(", ");
@@ -315,7 +336,7 @@ export function composeTeaseExtra(shot, stage, worn) {
   if (s === "tease_breast_knead") {
     return [
       "simple background, white background",
-      "breasts focus, chest crop, upper torso, head out of frame",
+      BREAST_CHEST_FRAME,
       "first-person POV, male hands kneading breasts, squeezing breasts",
       "NO face, NO head",
     ].join(", ");
@@ -324,7 +345,7 @@ export function composeTeaseExtra(shot, stage, worn) {
     // 吸奶頭：玩家 POV＝黑色半透明影子男（只見頭／嘴貼在她胸前），嘴含住乳頭
     return [
       "simple background, white background",
-      "breasts focus, nipple focus, close-up, girl head out of frame",
+      BREAST_CHEST_FRAME + ", nipple focus",
       NIPPLE_SHADOW_MAN,
       "mouth sucking nipple, lips around nipple, nipple suck, breast sucking, saliva",
       NIPPLE_CLOTHED_EXPOSE,
@@ -335,7 +356,7 @@ export function composeTeaseExtra(shot, stage, worn) {
     // 舔奶頭：同上，伸出舌頭舔乳頭、帶口水
     return [
       "simple background, white background",
-      "breasts focus, nipple focus, close-up, girl head out of frame",
+      BREAST_CHEST_FRAME + ", nipple focus",
       NIPPLE_SHADOW_MAN,
       "tongue out, licking nipple, tongue on nipple, saliva, saliva trail",
       NIPPLE_CLOTHED_EXPOSE,

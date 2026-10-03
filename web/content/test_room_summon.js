@@ -126,13 +126,15 @@ import {
   pickRuntimeBreastPack,
   loadBreastDoc,
   generateBreastPackImage,
-} from "./breast_packs.js?v=2";
+  isBreastDefaultPrompt,
+} from "./breast_packs.js?v=3";
 import {
   mountKneadPackEditor,
   pickRuntimeKneadPack,
   loadKneadDoc,
   generateKneadPackImage,
-} from "./knead_packs.js?v=2";
+  isKneadDefaultPrompt,
+} from "./knead_packs.js?v=3";
 import {
   mountUndressPackEditor,
   listUndressScenes,
@@ -147,14 +149,14 @@ import {
   loadSuckDoc,
   generateSuckPackImage,
   isSuckDefaultPrompt,
-} from "./suck_packs.js?v=3";
+} from "./suck_packs.js?v=4";
 import {
   mountLickPackEditor,
   pickRuntimeLickPack,
   loadLickDoc,
   generateLickPackImage,
   isLickDefaultPrompt,
-} from "./lick_packs.js?v=3";
+} from "./lick_packs.js?v=4";
 import {
   mountLabiaPackEditor,
   pickRuntimeLabiaPack,
@@ -1012,8 +1014,8 @@ const NUDE_ACTION_PACKS_ON = nudeActionPacksOn();
 const ACTION_PACK_JOBS = {
   butt: { packsKey: "tease_butt_packs", shotKey: "tease_butt", label: "摸臀", load: () => loadButtDoc(), gen: (...a) => generateButtPackImage(...a) },
   waist: { packsKey: "tease_waist_packs", shotKey: "tease_waist", label: "摟腰", load: () => loadWaistDoc(), gen: (...a) => generateWaistPackImage(...a) },
-  breast: { packsKey: "tease_breast_packs", shotKey: "tease_breast", label: "摸奶", load: () => loadBreastDoc(), gen: (...a) => generateBreastPackImage(...a) },
-  breast_knead: { packsKey: "tease_breast_knead_packs", shotKey: "tease_breast_knead", label: "揉奶", load: () => loadKneadDoc(), gen: (...a) => generateKneadPackImage(...a) },
+  breast: { packsKey: "tease_breast_packs", shotKey: "tease_breast", label: "摸奶", load: () => loadBreastDoc(), gen: (...a) => generateBreastPackImage(...a), isDefault: (p) => isBreastDefaultPrompt(p) },
+  breast_knead: { packsKey: "tease_breast_knead_packs", shotKey: "tease_breast_knead", label: "揉奶", load: () => loadKneadDoc(), gen: (...a) => generateKneadPackImage(...a), isDefault: (p) => isKneadDefaultPrompt(p) },
   breast_suck: { packsKey: "tease_breast_suck_packs", shotKey: "tease_breast_suck", label: "吸奶頭", load: () => loadSuckDoc(), gen: (...a) => generateSuckPackImage(...a), isDefault: (p) => isSuckDefaultPrompt(p) },
   nipple_lick: { packsKey: "tease_nipple_lick_packs", shotKey: "tease_nipple_lick", label: "舔奶頭", load: () => loadLickDoc(), gen: (...a) => generateLickPackImage(...a), isDefault: (p) => isLickDefaultPrompt(p) },
   labia: { packsKey: "tease_labia_packs", shotKey: "tease_labia", label: "摸陰唇", load: () => loadLabiaDoc(), gen: (...a) => generateLabiaPackImage(...a) },
@@ -1029,9 +1031,12 @@ let lastActionPick = null;
  * 魅子身上沒蓋 rev 2 章的舊圖，若該組正向仍是預設（＝舊預設已自動換新），下次按到時作廢、照新 prompt 重產；
  * 使用者自己改過正向的組不動。只清快取網址，不刪伺服器檔（重產會覆寫同檔名）。
  */
+// rev 3（同日）：胸部四組（摸奶／揉奶／吸奶頭／舔奶頭）取景從 lower 改成胸部特寫 chest。
 const ACTION_PROMPT_REV = {
-  tease_breast_suck_packs: 2, tease_breast_suck_nude_packs: 2,
-  tease_nipple_lick_packs: 2, tease_nipple_lick_nude_packs: 2,
+  tease_breast_packs: 3, tease_breast_nude_packs: 3,
+  tease_breast_knead_packs: 3, tease_breast_knead_nude_packs: 3,
+  tease_breast_suck_packs: 3, tease_breast_suck_nude_packs: 3,
+  tease_nipple_lick_packs: 3, tease_nipple_lick_nude_packs: 3,
 };
 
 function stampActionRev(who, cacheKey, packId) {
@@ -1262,6 +1267,7 @@ async function maybeGenBreastShot(who, actId) {
     const pack = await pickRuntimeBreastPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    dropStaleActionCache(who, pack, ACTION_PACK_JOBS.breast);
     if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.breast)) return;
     const cached = String(who.portraits.tease_breast_packs?.[pack.id] || "");
     if (cached) {
@@ -1278,6 +1284,7 @@ async function maybeGenBreastShot(who, actId) {
       const stamped = stampPortraitUrl(result.result);
       who.portraits.tease_breast_packs = who.portraits.tease_breast_packs || {};
       who.portraits.tease_breast_packs[pack.id] = stamped;
+      stampActionRev(who, "tease_breast_packs", pack.id);
       showTeasePortrait(who, "tease_breast", stamped, `${who.name}的摸奶圖`);
       persistRoom();
     } else if (result?.status === "error") {
@@ -1299,6 +1306,7 @@ async function maybeGenKneadShot(who, actId) {
     const pack = await pickRuntimeKneadPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    dropStaleActionCache(who, pack, ACTION_PACK_JOBS.breast_knead);
     if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.breast_knead)) return;
     const cached = String(who.portraits.tease_breast_knead_packs?.[pack.id] || "");
     if (cached) {
@@ -1315,6 +1323,7 @@ async function maybeGenKneadShot(who, actId) {
       const stamped = stampPortraitUrl(result.result);
       who.portraits.tease_breast_knead_packs = who.portraits.tease_breast_knead_packs || {};
       who.portraits.tease_breast_knead_packs[pack.id] = stamped;
+      stampActionRev(who, "tease_breast_knead_packs", pack.id);
       showTeasePortrait(who, "tease_breast_knead", stamped, `${who.name}的揉奶圖`);
       persistRoom();
     } else if (result?.status === "error") {

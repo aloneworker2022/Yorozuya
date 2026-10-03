@@ -1007,6 +1007,7 @@ _FRAME_MAP = {
     "half": "upper body",
     "full": "full body",
     "lower": "lower body, below waist",
+    "chest": "chest close-up, breasts focus, her face out of frame, cropped at chin",
 }
 _STYLE_MAP = {
     "anime": "anime",
