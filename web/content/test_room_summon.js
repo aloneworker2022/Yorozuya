@@ -247,6 +247,30 @@ let undressPlay = null;
 let activeUndressShot = "";
 let undressView = 0;
 
+/**
+ * 脫衣畫面改用「對話」版面（2026-10-03，先只在 test_room：<html data-undress-chat="1">）：
+ * 不開 room-scene-overlay；留在對話框，藏掉上方輸入框，旁白／她的話打在對話框，
+ * 底部互動列換成「叫她脫／幫她脫」→「下一句」＋「回到對話」。流程、機率、立繪、存檔都不變。
+ * 主房間（index.html）沒這旗 → 照舊用浮層卡片。
+ */
+function undressChatOn() {
+  try {
+    if (typeof globalThis.YORO_UNDRESS_CHAT === "boolean") return globalThis.YORO_UNDRESS_CHAT;
+    return document.documentElement?.dataset?.undressChat === "1";
+  } catch {
+    return false;
+  }
+}
+const UNDRESS_CHAT_ON = undressChatOn();
+/** 這一趟脫衣是不是用對話版面開的（開的當下決定，關掉前不變）。 */
+let undressChatMode = false;
+/** 進脫衣前對話框的那一句；中途「回到對話」時放回去。 */
+let undressChatPrev = null;
+
+function undressChatActive() {
+  return undressChatMode && activeRoomScene === "undress-play" && !!undressPlay;
+}
+
 const ROOM_SCENE_STUBS = {
   undress: {
     title: "脫衣場面",
@@ -261,6 +285,8 @@ const ROOM_SCENE_STUBS = {
 const SCENE_UNLOCK_STUN = 50;
 
 function sceneOpen() {
+  // 對話版脫衣：沒有浮層，場面跟著對話框開關
+  if (undressChatActive()) return sheetOpen();
   return !!activeRoomScene && !$("room-scene-overlay")?.hidden;
 }
 
@@ -487,6 +513,18 @@ function closeRoomScene() {
   sceneCard()?.classList.remove("undress-play");
   hideSceneChoices();
   clearSceneFigure();
+  if (undressChatMode) {
+    undressChatMode = false;
+    typeJob += 1;
+    setTyping(false);
+    if (undressChatPrev) {
+      if ($("portrait-name")) $("portrait-name").textContent = undressChatPrev.name;
+      if ($("portrait-meta")) $("portrait-meta").textContent = undressChatPrev.meta;
+    }
+    undressChatPrev = null;
+    $("portrait-sheet")?.classList.remove("undress-chat");
+    $("talk-acts")?.classList.remove("undress-bar");
+  }
   if (wasPlay) talkBusy = false;
   // 回到房間對話：不呼叫 hideSheet，保留 affection／body／本輪對話
   if (sheetOpen() && girl) {
@@ -5477,6 +5515,7 @@ async function sendTalkAct(actId) {
 }
 
 function undressPlayOpen() {
+  if (undressChatActive()) return sheetOpen();
   return activeRoomScene === "undress-play" && !!undressPlay && !$("room-scene-overlay")?.hidden;
 }
 
@@ -5489,6 +5528,19 @@ function undressEntryUnlocked(who = girl) {
 }
 
 function setUndressDialogue(speaker, text) {
+  if (undressChatMode) {
+    // 對話版：打在對話框（名字＋內容），跟一般聊天同一個框
+    const line = String(text || "");
+    if (!line || line === "……") {
+      typeJob += 1;
+      if ($("portrait-name")) $("portrait-name").textContent = speaker || "";
+      if ($("portrait-meta")) $("portrait-meta").textContent = line || "……";
+      setTyping(line === "……" && !!undressPlay?.busy);
+      return;
+    }
+    void typeLine(speaker || "", line);
+    return;
+  }
   const body = $("room-scene-body");
   if (!body) return;
   body.replaceChildren();
@@ -5506,6 +5558,11 @@ function setUndressDialogue(speaker, text) {
 
 function paintUndressPlayFigure() {
   if (!girl || activeRoomScene !== "undress-play" || !undressPlay) return;
+  if (undressChatMode) {
+    // 對話版：用對話框原本的立繪（undressPortraitShot 優先，缺圖退半身／立繪槽）
+    try { paintHalfPortrait(girl); } catch { /* ignore */ }
+    return;
+  }
   const shot = undressPortraitShot(girl);
   const staged = shot ? String(girl.portraits?.[shot] || "") : "";
   const url = staged
@@ -5518,7 +5575,46 @@ function paintUndressPlayFigure() {
   sceneCard()?.classList.add("undress-play");
 }
 
+/** 對話版脫衣的底部按鈕列（取代互動列內容；保留精液／興奮提示）。 */
+function renderUndressChatBar() {
+  const row = $("talk-acts");
+  if (!row || !undressPlay) return;
+  row.hidden = !sheetOpen() || !girl;
+  row.classList.add("undress-bar");
+  player = ensurePlayer(player);
+  updatePlayerHint(ensurePlayerHint(row), player);
+  for (const btn of [...row.querySelectorAll("button")]) btn.remove();
+  const busy = !!undressPlay.busy;
+  const add = (id, label, onClick, extra = {}) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.undress = id;
+    btn.textContent = label;
+    btn.disabled = !!extra.disabled;
+    if (extra.title) btn.title = extra.title;
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (btn.disabled) return;
+      onClick();
+    });
+    row.append(btn);
+    return btn;
+  };
+  if (undressPlay.phase === "choose") {
+    add("tell", "叫她脫", () => void playUndress("tell"), { disabled: busy });
+    add("help", "幫她脫", () => void playUndress("help"), { disabled: busy });
+  } else {
+    add("next", "下一句", () => advanceUndressPlay(), { disabled: busy });
+  }
+  add("back", "回到對話", () => closeRoomScene(), { title: "離開脫衣，回到一般對話" });
+}
+
 function renderUndressPlayChoices() {
+  if (undressChatMode) {
+    renderUndressChatBar();
+    return;
+  }
   const box = $("room-scene-choices");
   if (!box || !undressPlay) return;
   box.replaceChildren();
@@ -5563,6 +5659,21 @@ function openUndressPlay() {
   undressView += 1;
   activeUndressShot = "";
   talkBusy = true;
+  undressChatMode = UNDRESS_CHAT_ON;
+  if (undressChatMode) {
+    // 對話版：留在對話框，藏輸入框，底部換脫衣按鈕
+    clearActionFlash();
+    undressChatPrev = {
+      name: $("portrait-name")?.textContent || "",
+      meta: $("portrait-meta")?.textContent || "",
+    };
+    $("portrait-sheet")?.classList.add("undress-chat");
+    setTalkEnabled(false);
+    setUndressDialogue("旁白", "（脫衣服——選「叫她脫」或「幫她脫」。）");
+    paintUndressPlayFigure();
+    renderUndressPlayChoices();
+    return;
+  }
   const overlay = $("room-scene-overlay");
   if (!overlay) return;
   sceneCard()?.classList.add("undress-play");
@@ -5727,6 +5838,11 @@ function updatePlayerHint(hint, p) {
 function refreshTalkActs() {
   const row = $("talk-acts");
   if (!row) return;
+  // 對話版脫衣：互動列改成脫衣按鈕
+  if (undressChatActive()) {
+    renderUndressChatBar();
+    return;
+  }
   // 專屬場面開啟時隱藏互動列（overlay 蓋住；關閉後再顯示）
   row.hidden = !sheetOpen() || !girl || sceneOpen();
   player = ensurePlayer(player);
@@ -5734,7 +5850,8 @@ function refreshTalkActs() {
   updatePlayerHint(hint, player);
 
   // 只渲染目前解鎖的按鈕（鎖住的不出現）
-  for (const btn of [...row.querySelectorAll("button[data-act],button[data-scene],button[data-romance]")]) btn.remove();
+  row.classList.remove("undress-bar");
+  for (const btn of [...row.querySelectorAll("button[data-act],button[data-scene],button[data-romance],button[data-undress]")]) btn.remove();
   if (!girl || !sheetOpen() || sceneOpen()) return;
   const acts = availableActs(girl, { canTease: canTease(player) });
   for (const act of acts) {
@@ -8159,6 +8276,11 @@ window.RoomScenes = {
 };
 window.RoomCompanion = {
   /** 動作圖裸體版除錯：on＝閘門；lastPick＝上一次選圖；pregen＝手動排補產。 */
+  /** 脫衣畫面除錯：chatOn＝對話版閘門；state＝目前模式／階段。 */
+  undress: {
+    chatOn: () => UNDRESS_CHAT_ON,
+    state: () => ({ chat: undressChatMode, scene: activeRoomScene, phase: undressPlay?.phase || "", busy: !!undressPlay?.busy, ending: undressPlay?.ending || "", stage: girl ? undressStage(girl) : 0 }),
+  },
   nudeAction: {
     on: () => NUDE_ACTION_PACKS_ON,
     lastPick: () => lastActionPick,
