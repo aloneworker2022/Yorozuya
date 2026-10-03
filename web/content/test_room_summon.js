@@ -117,7 +117,7 @@ import {
   reckoningFleeNote,
   reckoningMood,
   stunDebtActsText,
-} from "./stun_reckoning.js?v=1";
+} from "./stun_reckoning.js?v=2";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -5578,24 +5578,27 @@ async function deliverUserTalk(text, opts = {}) {
     let invTotal = getInvasion(girl);
     if (opts.actId && !opts.skipBody) {
       ensureInvasion(girl);
-      const invRoll = applyInvasionRoll(girl, opts.actId, {
-        stage: girl.stage || "stranger",
-        stun: effectiveStun(girl, opts.actId),
-        // 半推半就：用動作「之前」她已有的興奮判斷（性慾讀 bodyState）
-        arousal: actArousalBefore,
-        // 個性抗拒倍率＋語氣（基底個性＋害羞／主動 stats）
-        personality: basePersonality(girl),
-        stats: girl.stats || null,
-      });
+      // 事後算帳（閘門開）：痙攣中或失神 ≥75 → 侵犯值一點都不漲，整筆「清醒時本來會漲的量」記成欠帳，回神再結算
+      const stunZero = STUN_RECKONING_ON && undressDazed(girl);
+      const invRoll = stunZero
+        ? { added: 0, invasion: getInvasion(girl), fled: false, willing: false, tokenCap: 12, personality: basePersonality(girl), arousalMult: null }
+        : applyInvasionRoll(girl, opts.actId, {
+          stage: girl.stage || "stranger",
+          stun: effectiveStun(girl, opts.actId),
+          // 半推半就：用動作「之前」她已有的興奮判斷（性慾讀 bodyState）
+          arousal: actArousalBefore,
+          // 個性抗拒倍率＋語氣（基底個性＋害羞／主動 stats）
+          personality: basePersonality(girl),
+          stats: girl.stats || null,
+        });
       invAdded = invRoll.added || 0;
       invWilling = !!invRoll.willing;
       invToneOpts = { willing: invWilling, tokenCap: invRoll.tokenCap ?? 12, personality: invRoll.personality || "" };
       invTotal = invRoll.invasion;
-      // 事後算帳：失神／痙攣中，記下「清醒時本來會漲多少」減掉實際漲的
-      if (STUN_RECKONING_ON && !invRoll.fled && undressDazed(girl)) {
+      if (stunZero) {
         const normal = normalInvasionFor(opts.actId, { stage: girl.stage || "stranger", personality: basePersonality(girl), stats: girl.stats || null });
         const label = TALK_ACTS.find((a) => a.id === opts.actId)?.label || "動手動腳";
-        if (normal > 0) noteStunDebt(normal - (invRoll.added || 0), label);
+        if (normal > 0) noteStunDebt(normal, label);
       }
       if (invRoll.added > 0) {
         const pt = protestTone(invRoll.added, invToneOpts);

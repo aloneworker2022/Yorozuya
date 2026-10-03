@@ -1,6 +1,6 @@
 /**
- * 事後算帳（2026-10-03 使用者）：失神／痙攣中動手動腳、脫她衣服時，侵犯值照舊幾乎不漲（她神智不清），
- * 但偷偷記一筆「欠帳」＝這些動作在她清醒、沒被撩起來時本來會漲的侵犯值。
+ * 事後算帳（2026-10-03 使用者）：失神／痙攣中動手動腳、脫她衣服時，侵犯值完全不漲（閘門開時由房間端強制 0），
+ * 但偷偷記一筆「欠帳」＝這些動作在她清醒、沒被撩起來時本來會漲的侵犯值（整筆）。
  * 她回過神（失神／痙攣結束）時依關係階結算：
  *   陌生／認識／朋友：大部分補上（約 70～80%），補到 ≥100 會逃走（先說一句再逃）；
  *   好友／女友：補一點（約 20～30%），害羞地抱怨（結算不會逼她逃走，最多補到 99）；
@@ -16,8 +16,8 @@ import {
   arousalInvasionMult,
 } from "./invasion.js?v=6";
 
-/** 欠帳上限（防止失神中狂按累積到天文數字）。 */
-export const STUN_DEBT_MAX = 200;
+/** 欠帳上限（防止失神中狂按累積到天文數字）。2026-10-03 失神中侵犯改成完全不漲、整筆記帳 → 200 調到 300。 */
+export const STUN_DEBT_MAX = 300;
 /** 補上的侵犯 < 這個值就不另外說話（只清帳）。熱戀以上看欠帳本身。 */
 export const STUN_DEBT_MIN = 3;
 /** 各關係階：欠帳補上的比例。 */
@@ -119,7 +119,7 @@ export function normalUndressInvasion(mode, { stage = "stranger", personality = 
   return Math.round(randInclusive(range[0], range[1], rng) * mult * am.mult);
 }
 
-/** 記一筆欠帳。amount＝正常會漲的量 − 實際漲的量（≤0 不記，但動作名照記）。回傳實際記入量。 */
+/** 記一筆欠帳。amount＝正常會漲的量（失神中實際漲 0，所以是整筆；≤0 不記，但動作名照記）。回傳實際記入量。 */
 export function addStunDebt(who, amount, label = "", now = Date.now()) {
   const d = ensureStunDebt(who);
   if (!d) return 0;
