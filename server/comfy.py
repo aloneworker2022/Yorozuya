@@ -135,6 +135,15 @@ PORTRAIT_SHOTS = {
     "standee_stun": dict(_HALF_SPEC),
     "standee_spasm": dict(_HALF_SPEC),
 }
+# 動作圖組「裸體版」：她全裸（undress.stage=3）時用。同動作同正方形規格，
+# 檔名 {id}_tease_xxx_nude.png（不覆寫穿衣版）；undress_garment → nude（不套生涯服裝）。
+ACTION_NUDE_BASES = (
+    "tease_butt", "tease_waist", "tease_breast", "tease_breast_knead", "tease_breast_suck",
+    "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in",
+)
+NUDE_ACTION_SHOTS = tuple(f"{b}_nude" for b in ACTION_NUDE_BASES)
+for _s in NUDE_ACTION_SHOTS:
+    PORTRAIT_SHOTS[_s] = dict(_ACTION_CROP_SPEC)
 TEASE_SHOTS = (
     "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in", "tease_thigh", "tease_butt", "tease_waist",
     "tease_oral",
@@ -144,6 +153,13 @@ TEASE_SHOTS = (
     "tease_cowgirl",
     "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
 )
+TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS
+
+
+def is_action_crop_shot(shot: str) -> bool:
+    """摸臀／摟腰／摸奶…九個正方形動作圖（含 _nude 裸體版）。"""
+    s = str(shot or "").lower()
+    return s in ACTION_NUDE_BASES or s in NUDE_ACTION_SHOTS
 
 
 def is_tease_shot(shot: str) -> bool:
@@ -170,7 +186,7 @@ def undress_garment(shot: str) -> str:
         return "underwear"
     if s == "undress_slip":
         return "panties"
-    if s in ("undress_nude", "undress_stand"):
+    if s in ("undress_nude", "undress_stand") or s in NUDE_ACTION_SHOTS:
         return "nude"
     if s == "undress_cover":
         return "cover"

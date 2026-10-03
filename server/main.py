@@ -74,6 +74,10 @@ _POSE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 # 不去背的測試檔前綴(cutout 示範)。GC 不會刪。
 _ASSET_KEEP_PREFIXES = frozenset({"chk"})
 _SHOT_FILE_SUFS = (
+    # 動作圖裸體版（比穿衣版長，先比對）
+    "tease_breast_knead_nude", "tease_breast_suck_nude", "tease_nipple_lick_nude",
+    "tease_labia_rub_nude", "tease_finger_in_nude", "tease_breast_nude", "tease_labia_nude",
+    "tease_butt_nude", "tease_waist_nude",
     "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
     "tease_cowgirl", "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in", "tease_thigh", "tease_butt", "tease_waist",
     "tease_oral_ready", "tease_oral_suck", "tease_oral_deep", "tease_oral_cum",
@@ -98,6 +102,11 @@ SHOT_LABEL_ZH = {
     "tease_breast": "調戲·摸奶", "tease_breast_knead": "調戲·揉奶", "tease_breast_suck": "調戲·吸奶頭", "tease_nipple_lick": "調戲·舔奶頭", "tease_labia": "調戲·摸陰唇", "tease_labia_rub": "調戲·揉陰唇", "tease_finger_in": "調戲·手指插入",
     "tease_thigh": "調戲·摸大腿",
     "tease_butt": "調戲·摸臀",
+    "tease_butt_nude": "調戲·摸臀（裸）", "tease_waist_nude": "調戲·摟腰（裸）",
+    "tease_breast_nude": "調戲·摸奶（裸）", "tease_breast_knead_nude": "調戲·揉奶（裸）",
+    "tease_breast_suck_nude": "調戲·吸奶頭（裸）", "tease_nipple_lick_nude": "調戲·舔奶頭（裸）",
+    "tease_labia_nude": "調戲·摸陰唇（裸）", "tease_labia_rub_nude": "調戲·揉陰唇（裸）",
+    "tease_finger_in_nude": "調戲·手指插入（裸）",
     "tease_waist": "調戲·摟腰",
     "tease_oral": "調戲·口交",
     "tease_oral_ready": "調戲·口交·頂嘴",
@@ -2394,7 +2403,7 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
         gen_w, gen_h = _pose_gen_size(pose_src, gen_w or comfy.DEFAULT_WIDTH, gen_h or comfy.DEFAULT_HEIGHT)
         out_w, out_h = 0, 0
         # 動作裁切圖固定正方形；勿被 pose 參考圖長寬比蓋成直圖
-        if shot in ("tease_butt", "tease_waist", "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in"):
+        if comfy.is_action_crop_shot(shot):
             sq = (comfy.PORTRAIT_SHOTS.get(shot) or {}).get("gen") or (1024, 1024)
             gen_w, gen_h = int(sq[0]), int(sq[1])
         elif comfy.is_undress_shot(shot):

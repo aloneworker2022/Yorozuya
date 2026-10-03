@@ -114,25 +114,25 @@ import {
   pickRuntimeButtPack,
   loadButtDoc,
   generateButtPackImage,
-} from "./butt_packs.js?v=5";
+} from "./butt_packs.js?v=6";
 import {
   mountWaistPackEditor,
   pickRuntimeWaistPack,
   loadWaistDoc,
   generateWaistPackImage,
-} from "./waist_packs.js?v=4";
+} from "./waist_packs.js?v=5";
 import {
   mountBreastPackEditor,
   pickRuntimeBreastPack,
   loadBreastDoc,
   generateBreastPackImage,
-} from "./breast_packs.js?v=1";
+} from "./breast_packs.js?v=2";
 import {
   mountKneadPackEditor,
   pickRuntimeKneadPack,
   loadKneadDoc,
   generateKneadPackImage,
-} from "./knead_packs.js?v=1";
+} from "./knead_packs.js?v=2";
 import {
   mountUndressPackEditor,
   listUndressScenes,
@@ -146,31 +146,31 @@ import {
   pickRuntimeSuckPack,
   loadSuckDoc,
   generateSuckPackImage,
-} from "./suck_packs.js?v=1";
+} from "./suck_packs.js?v=2";
 import {
   mountLickPackEditor,
   pickRuntimeLickPack,
   loadLickDoc,
   generateLickPackImage,
-} from "./lick_packs.js?v=1";
+} from "./lick_packs.js?v=2";
 import {
   mountLabiaPackEditor,
   pickRuntimeLabiaPack,
   loadLabiaDoc,
   generateLabiaPackImage,
-} from "./labia_packs.js?v=1";
+} from "./labia_packs.js?v=2";
 import {
   mountLabiaRubPackEditor,
   pickRuntimeLabiaRubPack,
   loadLabiaRubDoc,
   generateLabiaRubPackImage,
-} from "./labia_rub_packs.js?v=1";
+} from "./labia_rub_packs.js?v=2";
 import {
   mountFingerPackEditor,
   pickRuntimeFingerPack,
   loadFingerDoc,
   generateFingerPackImage,
-} from "./finger_packs.js?v=1";
+} from "./finger_packs.js?v=2";
 import {
   mountStandeePackEditor,
   loadStandeeDoc,
@@ -179,6 +179,7 @@ import {
   standeeUrlFor,
 } from "./standee_packs.js?v=1";
 import { SUMMON_RITUAL_LINES, startSummonRitualStatus } from "./summon_ritual.js?v=1";
+import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_action.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow } from "./japan_clock.js";
@@ -1000,6 +1001,133 @@ function showTeasePortrait(who, shotKey, url, alt) {
   }
 }
 
+/**
+ * 動作圖「裸體版」：她全裸（undress.stage===3）時，九組動作圖改用 portraits.<shot>_nude_packs[packId]。
+ * 閘門 NUDE_ACTION_PACKS_ON：只有 test_room.html（<html data-nude-action-packs="1">）開；主房間 index.html 照舊穿衣版。
+ * 沒裸體版 → 退穿衣版快取＋背景補產裸體版；兩版都沒有 → 直接現產裸體版。
+ */
+const NUDE_ACTION_PACKS_ON = nudeActionPacksOn();
+const ACTION_PACK_JOBS = {
+  butt: { packsKey: "tease_butt_packs", shotKey: "tease_butt", label: "摸臀", load: () => loadButtDoc(), gen: (...a) => generateButtPackImage(...a) },
+  waist: { packsKey: "tease_waist_packs", shotKey: "tease_waist", label: "摟腰", load: () => loadWaistDoc(), gen: (...a) => generateWaistPackImage(...a) },
+  breast: { packsKey: "tease_breast_packs", shotKey: "tease_breast", label: "摸奶", load: () => loadBreastDoc(), gen: (...a) => generateBreastPackImage(...a) },
+  breast_knead: { packsKey: "tease_breast_knead_packs", shotKey: "tease_breast_knead", label: "揉奶", load: () => loadKneadDoc(), gen: (...a) => generateKneadPackImage(...a) },
+  breast_suck: { packsKey: "tease_breast_suck_packs", shotKey: "tease_breast_suck", label: "吸奶頭", load: () => loadSuckDoc(), gen: (...a) => generateSuckPackImage(...a) },
+  nipple_lick: { packsKey: "tease_nipple_lick_packs", shotKey: "tease_nipple_lick", label: "舔奶頭", load: () => loadLickDoc(), gen: (...a) => generateLickPackImage(...a) },
+  labia: { packsKey: "tease_labia_packs", shotKey: "tease_labia", label: "摸陰唇", load: () => loadLabiaDoc(), gen: (...a) => generateLabiaPackImage(...a) },
+  labia_rub: { packsKey: "tease_labia_rub_packs", shotKey: "tease_labia_rub", label: "揉陰唇", load: () => loadLabiaRubDoc(), gen: (...a) => generateLabiaRubPackImage(...a) },
+  finger_in: { packsKey: "tease_finger_in_packs", shotKey: "tease_finger_in", label: "手指插入", load: () => loadFingerDoc(), gen: (...a) => generateFingerPackImage(...a) },
+};
+/** 扣陰道／揉子宮口沒有自己的圖組：全裸時借「手指插入」裸體版（只在閘門開時）。 */
+const NUDE_ACTION_ALIAS = { vagina_finger: "finger_in", cervix_rub: "finger_in" };
+let lastActionPick = null;
+const nudeActionQueue = [];
+const nudeActionQueued = new Set();
+let nudeActionDraining = false;
+
+function wantNudeAction(who) {
+  return NUDE_ACTION_PACKS_ON && undressStage(who) === 3;
+}
+
+async function genNudeActionVariant(who, pack, job) {
+  const engine = await gameImgRoute();
+  await ensureGirlComfyCkpt(who);
+  const result = await job.gen(pack, who, engine, {
+    stage: who.stage || "stranger",
+    worn: wornOutfit(who),
+    nude: true,
+  });
+  if (result?.status === "done" && result.result) {
+    const stamped = stampPortraitUrl(result.result);
+    const nk = nudePacksKey(job.packsKey);
+    who.portraits = who.portraits || {};
+    who.portraits[nk] = who.portraits[nk] || {};
+    who.portraits[nk][pack.id] = stamped;
+    persistRoom();
+    return stamped;
+  }
+  if (result?.status === "error") console.warn("[nudeAction]", job.shotKey, result.error || "生圖失敗");
+  return "";
+}
+
+/** 背景補產裸體版（逐張、不重複；她離開就停）。 */
+function queueNudeActionGen(who, pack, job) {
+  if (!NUDE_ACTION_PACKS_ON || !who?.id || !pack?.id) return false;
+  const key = `${who.id}:${job.shotKey}:${pack.id}`;
+  if (nudeActionQueued.has(key)) return false;
+  if (who.portraits?.[nudePacksKey(job.packsKey)]?.[pack.id]) return false;
+  nudeActionQueued.add(key);
+  nudeActionQueue.push({ key, who, pack, job });
+  void drainNudeActionQueue();
+  return true;
+}
+
+async function drainNudeActionQueue() {
+  if (nudeActionDraining) return;
+  nudeActionDraining = true;
+  try {
+    while (nudeActionQueue.length) {
+      const item = nudeActionQueue.shift();
+      try {
+        if (!girl || girl.id !== item.who.id) continue;
+        if (item.who.portraits?.[nudePacksKey(item.job.packsKey)]?.[item.pack.id]) continue;
+        await genNudeActionVariant(item.who, item.pack, item.job);
+      } catch (err) {
+        console.warn("[nudeAction] queue", err?.message || err);
+      } finally {
+        nudeActionQueued.delete(item.key);
+      }
+    }
+  } finally {
+    nudeActionDraining = false;
+  }
+}
+
+/** 剛脫光：把每組缺的裸體版排進背景補產（預產的延遲版；不擋對話）。 */
+async function queueNudeActionPregen(who = girl) {
+  if (!NUDE_ACTION_PACKS_ON || !who?.id) return 0;
+  let n = 0;
+  for (const job of Object.values(ACTION_PACK_JOBS)) {
+    let packs = [];
+    try {
+      const doc = await job.load();
+      packs = Array.isArray(doc?.packs) ? doc.packs : [];
+    } catch {
+      packs = [];
+    }
+    for (const pack of packs) {
+      if (pack?.id && queueNudeActionGen(who, pack, job)) n += 1;
+    }
+  }
+  return n;
+}
+
+/**
+ * 全裸時的選圖。true＝已處理（顯示裸體版／現產裸體版）；false＝呼叫端照穿衣版流程。
+ * lastActionPick 給除錯／headless 驗證：{ shotKey, packId, nude, fallback, url }。
+ */
+async function nudeActionShot(who, pack, job) {
+  if (!pack?.id || !wantNudeAction(who)) {
+    lastActionPick = { shotKey: job.shotKey, packId: pack?.id || "", nude: false, fallback: false, wanted: false, url: "" };
+    return false;
+  }
+  const pick = pickActionPackUrl(who.portraits, job.packsKey, pack.id, true);
+  lastActionPick = { shotKey: job.shotKey, packId: pack.id, nude: pick.nude, fallback: pick.fallback, wanted: true, url: pick.url };
+  if (pick.nude) {
+    showTeasePortrait(who, job.shotKey, pick.url, `${who.name}的${job.label}圖（裸）`);
+    return true;
+  }
+  if (pick.clothed) {
+    queueNudeActionGen(who, pack, job);
+    return false;
+  }
+  const url = await genNudeActionVariant(who, pack, job);
+  if (!url) return false;
+  lastActionPick = { ...lastActionPick, nude: true, fallback: false, generated: true, url };
+  if (wantNudeAction(who)) showTeasePortrait(who, job.shotKey, url, `${who.name}的${job.label}圖（裸）`);
+  return true;
+}
+
 
 /** 摸臀：先用 per-girl 預產圖；缺才 live gen（走 generateButtPackImage）。有組→packs[id]，無組→tease_butt。 */
 async function maybeGenButtShot(who, actId) {
@@ -1009,6 +1137,7 @@ async function maybeGenButtShot(who, actId) {
   try {
     const pack = await pickRuntimeButtPack();
     who.portraits = who.portraits || {};
+    if (pack && await nudeActionShot(who, pack, ACTION_PACK_JOBS.butt)) return;
     const cached = pack
       ? String(who.portraits.tease_butt_packs?.[pack.id] || "")
       : String(who.portraits.tease_butt || "");
@@ -1049,6 +1178,7 @@ async function maybeGenWaistShot(who, actId) {
     const pack = await pickRuntimeWaistPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.waist)) return;
     const cached = String(who.portraits.tease_waist_packs?.[pack.id] || "");
     if (cached) {
       showTeasePortrait(who, "tease_waist", cached, `${who.name}的摟腰圖`);
@@ -1085,6 +1215,7 @@ async function maybeGenBreastShot(who, actId) {
     const pack = await pickRuntimeBreastPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.breast)) return;
     const cached = String(who.portraits.tease_breast_packs?.[pack.id] || "");
     if (cached) {
       showTeasePortrait(who, "tease_breast", cached, `${who.name}的摸奶圖`);
@@ -1121,6 +1252,7 @@ async function maybeGenKneadShot(who, actId) {
     const pack = await pickRuntimeKneadPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.breast_knead)) return;
     const cached = String(who.portraits.tease_breast_knead_packs?.[pack.id] || "");
     if (cached) {
       showTeasePortrait(who, "tease_breast_knead", cached, `${who.name}的揉奶圖`);
@@ -1157,6 +1289,7 @@ async function maybeGenSuckShot(who, actId) {
     const pack = await pickRuntimeSuckPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.breast_suck)) return;
     const cached = String(who.portraits.tease_breast_suck_packs?.[pack.id] || "");
     if (cached) {
       showTeasePortrait(who, "tease_breast_suck", cached, `${who.name}的吸奶頭圖`);
@@ -1193,6 +1326,7 @@ async function maybeGenLickShot(who, actId) {
     const pack = await pickRuntimeLickPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.nipple_lick)) return;
     const cached = String(who.portraits.tease_nipple_lick_packs?.[pack.id] || "");
     if (cached) {
       showTeasePortrait(who, "tease_nipple_lick", cached, `${who.name}的舔奶頭圖`);
@@ -1225,6 +1359,7 @@ async function maybeGenLabiaShot(who, actId) {
     const pack = await pickRuntimeLabiaPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.labia)) return;
     const cached = String(who.portraits.tease_labia_packs?.[pack.id] || "");
     if (cached) {
       showTeasePortrait(who, "tease_labia", cached, `${who.name}的摸陰唇圖`);
@@ -1257,6 +1392,7 @@ async function maybeGenLabiaRubShot(who, actId) {
     const pack = await pickRuntimeLabiaRubPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.labia_rub)) return;
     const cached = String(who.portraits.tease_labia_rub_packs?.[pack.id] || "");
     if (cached) {
       showTeasePortrait(who, "tease_labia_rub", cached, `${who.name}的揉陰唇圖`);
@@ -1289,6 +1425,7 @@ async function maybeGenFingerShot(who, actId) {
     const pack = await pickRuntimeFingerPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.finger_in)) return;
     const cached = String(who.portraits.tease_finger_in_packs?.[pack.id] || "");
     if (cached) {
       showTeasePortrait(who, "tease_finger_in", cached, `${who.name}的手指插入圖`);
@@ -4924,6 +5061,7 @@ async function deliverUserTalk(text, opts = {}) {
         if (opts.actId === "labia") void maybeGenLabiaShot(girl, opts.actId);
         if (opts.actId === "labia_rub") void maybeGenLabiaRubShot(girl, opts.actId);
         if (opts.actId === "finger_in") void maybeGenFingerShot(girl, opts.actId);
+        if (NUDE_ACTION_ALIAS[opts.actId] === "finger_in" && wantNudeAction(girl)) void maybeGenFingerShot(girl, "finger_in");
         // 情感：一般挑逗不加；接近高潮／失神門檻才小幅＋1，痙攣／射精＋2
         const nearClimax = stunBefore >= 50 || arousalBefore >= 22
           || (girl.bodyState?.arousal || 0) >= 22
@@ -5360,6 +5498,8 @@ async function playUndress(mode) {
         u.pantiesBy = help ? "help" : "self";
         u.sexStance = help ? "被動" : "順從";
         rollNudeStandee(girl);
+        // test_room：脫光就把動作圖裸體版排進背景補產
+        void queueNudeActionPregen(girl);
       }
     }
 
@@ -7838,6 +7978,13 @@ window.RoomScenes = {
   unlocked: () => highStunSceneUnlocked(girl),
 };
 window.RoomCompanion = {
+  /** 動作圖裸體版除錯：on＝閘門；lastPick＝上一次選圖；pregen＝手動排補產。 */
+  nudeAction: {
+    on: () => NUDE_ACTION_PACKS_ON,
+    lastPick: () => lastActionPick,
+    queued: () => [...nudeActionQueued],
+    pregen: () => queueNudeActionPregen(girl),
+  },
   adopt: adoptRosterGirl,
   summonFromRoster: summonRosterGirlIntoRoom,
   reloadRoster: loadRosterGirlsForSummon,

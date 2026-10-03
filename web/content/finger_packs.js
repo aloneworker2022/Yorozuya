@@ -1,6 +1,7 @@
 /** 房間「手指插入」生圖預設組：多組命名存檔，執行時隨機抽一組；無組時不生圖（僅對話／身體）。 */
 
 import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=5";
+import { deriveNudePrompt, mountNudeVariantToggle, nudeActionNegative, nudeActionPrompt, nudeFields, nudeShot } from "./nude_action.js?v=1";
 
 const API = "/api/finger-packs";
 
@@ -57,6 +58,8 @@ export function normalizeFingerPack(raw) {
     negative: String(s.negative ?? slot?.negative ?? base.negative),
     ref: String(s.ref ?? slot?.ref ?? "").trim(),
     url: String(s.url ?? slot?.url ?? "").trim(),
+    // 裸體版（undress 全裸時用）：留空＝由穿衣版自動轉換，見 nude_action.js
+    ...nudeFields(s),
     updated: Number(s.updated) || Date.now(),
   };
 }
@@ -176,22 +179,28 @@ export function buildFingerImgBody(pack, girl, eng = {}, opts = {}) {
   const stage = String(opts.stage || girl.stage || "stranger");
   const worn = opts.worn != null ? opts.worn : wornOutfit(girl);
   const p = pack ? normalizeFingerPack(pack) : null;
-  const action = p
+  // opts.nude：裸體版（同 pose／denoise；shot 加 _nude → 伺服器 garment=nude，不套服裝、不蓋穿衣版檔）
+  const nude = !!opts.nude;
+  const clothedAction = p
     ? String(p.prompt || "").trim()
     : composeTeaseExtra("tease_finger_in", stage, worn);
-  const userNeg = p ? String(p.negative || "").trim() : defaultFingerNegative();
-  const ref = p ? String(p.ref || "").trim() : "";
+  const action = nude
+    ? (p ? nudeActionPrompt(p, "tease_finger_in") : deriveNudePrompt(clothedAction, "tease_finger_in"))
+    : clothedAction;
+  const clothedNeg = p ? String(p.negative || "").trim() : defaultFingerNegative();
+  const userNeg = nude ? nudeActionNegative(p || { negative: clothedNeg }) : clothedNeg;
+  const ref = p ? String((nude && p.nudeRef) || p.ref || "").trim() : "";
   const denoise = p ? clampDenoise(p.poseDenoise) : 0.55;
   const ckpt = comfy ? resolveComfyCkpt(girl, eng) : "";
   return {
-    key: `room-finger:${girl.id || "x"}:${Date.now().toString(36)}`,
+    key: `room-finger${nude ? "-nude" : ""}:${girl.id || "x"}:${Date.now().toString(36)}`,
     provider: comfy ? "comfy" : "grok-img",
     model: eng.imgModel || "grok-4.5",
     framing: teaseFraming("tease_finger_in"),
     rating: "nsfw",
     style: eng.imgStyle || "pixel",
     character: girl,
-    outfit: worn,
+    outfit: nude ? "" : worn,
     // prompt 留空 → 伺服器以 lower-crop 人設 sheet + extra(動作) 合併
     prompt: "",
     extra: action,
@@ -202,7 +211,7 @@ export function buildFingerImgBody(pack, girl, eng = {}, opts = {}) {
     lock_identity: true,
     retry: true,
     scene_kind: "tease",
-    shot: "tease_finger_in",
+    shot: nude ? nudeShot("tease_finger_in") : "tease_finger_in",
     char_id: girl.id,
     ...(ref ? { pose_ref: ref, pose_denoise: denoise } : {}),
     ...(comfy ? {
@@ -357,6 +366,12 @@ export function mountFingerPackEditor(hooks = {}) {
   let activeId = "";
   let girls = [];
   let girlId = "";
+  // 穿衣版／裸體版切換（同一組、同 slot；裸體欄位見 nude_action.js）
+  const nudeTab = mountNudeVariantToggle(panel, "fg", "tease_finger_in", {
+    before: () => collectForm(),
+    after: () => renderForm(),
+  });
+  const isNudeTab = () => nudeTab.variant === "nude";
 
   const setStatus = (msg, err = false) => {
     const el = $("fg-status");
@@ -410,12 +425,14 @@ export function mountFingerPackEditor(hooks = {}) {
       return;
     }
     if ($("fg-name")) $("fg-name").value = p.name || "";
-    if ($("fg-pos")) $("fg-pos").value = p.prompt || "";
-    if ($("fg-neg")) $("fg-neg").value = p.negative || "";
+    if ($("fg-pos")) $("fg-pos").value = isNudeTab() ? (p.nudePrompt || "") : (p.prompt || "");
+    if ($("fg-neg")) $("fg-neg").value = isNudeTab() ? (p.nudeNegative || "") : (p.negative || "");
+    nudeTab.decorate(p);
     if ($("fg-denoise")) $("fg-denoise").value = String(p.poseDenoise ?? 0.55);
     if ($("fg-art")) {
-      $("fg-art").innerHTML = p.url
-        ? `<img src="${esc(p.url)}" alt="finger">`
+      const artUrl = isNudeTab() ? p.nudeUrl : p.url;
+      $("fg-art").innerHTML = artUrl
+        ? `<img src="${esc(artUrl)}" alt="finger">`
         : `<span class="mini">尚未產生</span>`;
     }
     updateRefFlag();
@@ -423,7 +440,7 @@ export function mountFingerPackEditor(hooks = {}) {
 
   const updateRefFlag = () => {
     const p = activePack();
-    const ref = p?.ref || "";
+    const ref = isNudeTab() ? (p?.nudeRef || p?.ref || "") : (p?.ref || "");
     const flag = $("fg-mode-flag");
     const refFlag = $("fg-ref-flag");
     const thumb = $("fg-ref-thumb");
@@ -431,7 +448,7 @@ export function mountFingerPackEditor(hooks = {}) {
       flag.textContent = ref ? "圖生圖（pose_ref）" : "文生圖";
       flag.className = "fg-mode-flag " + (ref ? "img" : "txt");
     }
-    if (refFlag) refFlag.textContent = ref ? ("已掛 " + ref) : "沒有參考圖 → 文生圖";
+    if (refFlag) refFlag.textContent = ref ? ((isNudeTab() && !p?.nudeRef ? "沿用穿衣版 " : "已掛 ") + ref) : "沒有參考圖 → 文生圖";
     if (thumb) {
       if (ref) {
         thumb.hidden = false;
@@ -447,8 +464,13 @@ export function mountFingerPackEditor(hooks = {}) {
     const p = activePack();
     if (!p) return;
     p.name = String($("fg-name")?.value || p.name || "手指插入圖組").slice(0, 40);
-    p.prompt = $("fg-pos")?.value || "";
-    p.negative = $("fg-neg")?.value || "";
+    if (isNudeTab()) {
+      p.nudePrompt = $("fg-pos")?.value || "";
+      p.nudeNegative = $("fg-neg")?.value || "";
+    } else {
+      p.prompt = $("fg-pos")?.value || "";
+      p.negative = $("fg-neg")?.value || "";
+    }
     p.poseDenoise = clampDenoise($("fg-denoise")?.value);
     p.updated = Date.now();
     doc.activeId = p.id;
@@ -605,8 +627,10 @@ export function mountFingerPackEditor(hooks = {}) {
       const posEl = $("fg-pos");
       const negEl = $("fg-neg");
       // 只填動作／裁切預設；人設與模型於生圖時由 live girl 帶入，不烤進組
-      if (posEl) posEl.value = action;
-      if (negEl && !String(negEl.value || "").trim()) negEl.value = defaultFingerNegative();
+      if (posEl) posEl.value = isNudeTab() ? deriveNudePrompt(action, "tease_finger_in") : action;
+      if (negEl && !String(negEl.value || "").trim()) {
+        negEl.value = isNudeTab() ? nudeActionNegative({ negative: defaultFingerNegative() }) : defaultFingerNegative();
+      }
       collectForm();
       const worn = wornOutfit(g);
       const ck = girlOwnCkpt(g);
@@ -634,7 +658,7 @@ export function mountFingerPackEditor(hooks = {}) {
       const r = await fetch("/api/pose-refs", { method: "POST", body: fd });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.detail || j.error || r.status);
-      p.ref = String(j.url || "").trim();
+      p[isNudeTab() ? "nudeRef" : "ref"] = String(j.url || "").trim();
       updateRefFlag();
       setStatus("✓ 已掛參考圖");
     } catch (err) {
@@ -645,7 +669,7 @@ export function mountFingerPackEditor(hooks = {}) {
   $("fg-ref-clear")?.addEventListener("click", () => {
     const p = activePack();
     if (!p) return;
-    p.ref = "";
+    p[isNudeTab() ? "nudeRef" : "ref"] = "";
     updateRefFlag();
     setStatus("已拿掉參考圖");
   });
@@ -658,7 +682,7 @@ export function mountFingerPackEditor(hooks = {}) {
       setStatus("先貼 URL", true);
       return;
     }
-    p.ref = url;
+    p[isNudeTab() ? "nudeRef" : "ref"] = url;
     updateRefFlag();
     setStatus("✓ 已套用 URL");
   });
@@ -682,12 +706,14 @@ export function mountFingerPackEditor(hooks = {}) {
     try {
       const eng = (await hooks.getEngine?.()) || { imgProvider: "comfy", imgStyle: "pixel" };
       const r = await generateFingerPackImage(p, g, eng, {
+        nude: isNudeTab(),
         stage: g.stage || "stranger",
         onTick: (sec) => setStatus(`生成中… ${sec}s`),
       });
       if (r.status === "done" && r.result) {
         const url = String(r.result);
-        p.url = url;
+        if (isNudeTab()) p.nudeUrl = url;
+        else p.url = url;
         if ($("fg-art")) {
           $("fg-art").innerHTML = `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}?t=${Date.now()}" alt="result"></a>`;
         }
