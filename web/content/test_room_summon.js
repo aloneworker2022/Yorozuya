@@ -120,7 +120,7 @@ import {
 } from "./stun_reckoning.js?v=2";
 import {
   SEX_POSES,
-  SEX_STEPS,
+  SEX_PREGEN_STEPS,
   SEX_STEP_META,
   SEX_STEP_PROMPT_REV,
   sexPoseFor,
@@ -133,7 +133,7 @@ import {
   isSexStepResultUrl,
   normalizeSexPosePack,
   SEX_POSE_PROMPT_REV,
-} from "./sex_pose_packs.js?v=4";
+} from "./sex_pose_packs.js?v=5";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -565,7 +565,7 @@ async function openUndressChoices(who) {
   if (!packs.length && bodyEl) bodyEl.textContent = "還沒有脫衣場景。";
 }
 
-/** 做愛三步圖（開場／局部／加入）：同一人同一姿勢同一步同時只產一張（背景預產與按做愛共用）。 */
+/** 做愛步驟圖（開場／加入／插一半／全插入／高潮／潮吹／內射）：同一人同一姿勢同一步同時只產一張（背景預產與按做愛共用）。 */
 const sexPoseJobs = new Map();
 let lastSexPosePick = null;
 /** 做愛場面目前在第幾步：{ pose, packId, step } */
@@ -658,14 +658,14 @@ function ensureSexPoseUrl(who, pose) {
   return ensureSexStepUrl(who, pose, "open");
 }
 
-/** 她剛脫光（最後一層）：背景依序先產對應姿勢的三步圖（開場 → 局部 → 加入，同一組；閘門開才產）。 */
+/** 她剛脫光（最後一層）：背景依序先產對應姿勢的前兩步（開場 → 玩家加入，同一組；閘門開才產）。之後每一步在看到前一步時才預產。 */
 function queueSexPosePregen(who = girl) {
   if (!SEX_POSES_ON || !who?.id || undressStage(who) < 3) return null;
   const pose = sexPoseFor(who);
   return (async () => {
     const first = await ensureSexStepUrl(who, pose, "open");
     const out = [first];
-    for (const st of SEX_STEPS.slice(1)) {
+    for (const st of SEX_PREGEN_STEPS.filter((x) => x !== "open")) {
       if (undressStage(who) < 3) break;
       out.push(await ensureSexStepUrl(who, pose, st, first?.packId || ""));
     }
@@ -720,7 +720,7 @@ async function showSexStep(who, step = "open") {
   sexStepView = { pose, step, packId: pick.packId || packId };
   if (pick.url) {
     paintSceneFigure(pick.url, `${who.name}的${c.label.replace("開場", "")}${meta.label}圖`);
-    const tail = meta.next ? `（按「下一步」看${SEX_STEP_META[meta.next].label}）` : "（做愛本體之後再做；目前到這一步。）";
+    const tail = meta.next ? `（按「下一步」看${SEX_STEP_META[meta.next].label}）` : "（這一輪到這裡結束；按「回到房間對話」離開。）";
     if (body) body.textContent = `${head}\n${tail}`;
   } else if (body) {
     body.textContent = `${head}\n${meta.label}圖產生失敗（看 test_room 上排「${pose === "doggy" ? "後背圖" : "傳教士圖"}」的「${meta.tab}」）。`;
@@ -1359,9 +1359,8 @@ const ACTION_PROMPT_REV = {
   tease_nipple_lick_packs: 3, tease_nipple_lick_nude_packs: 3,
   // 做愛開場圖 rev 3：solo、失神痙攣、無影子男、走脫光立繪管線（2026-10-03）
   sex_missionary_open_packs: SEX_POSE_PROMPT_REV, sex_doggy_open_packs: SEX_POSE_PROMPT_REV,
-  // 做愛局部／玩家加入（2026-10-03）
-  sex_missionary_tip_packs: SEX_STEP_PROMPT_REV.tip, sex_doggy_tip_packs: SEX_STEP_PROMPT_REV.tip,
-  sex_missionary_join_packs: SEX_STEP_PROMPT_REV.join, sex_doggy_join_packs: SEX_STEP_PROMPT_REV.join,
+  // 做愛開場以外各步（2026-10-03）：sex_<pose>_<step>_packs
+  ...Object.fromEntries(["missionary", "doggy"].flatMap((p) => Object.entries(SEX_STEP_PROMPT_REV).map(([st, rev]) => [`sex_${p}_${st}_packs`, rev]))),
 };
 
 function stampActionRev(who, cacheKey, packId) {

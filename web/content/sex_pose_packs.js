@@ -6,11 +6,11 @@
  * 伺服器檔名 {id}_sex_missionary_open.png／{id}_sex_doggy_open.png，garment=nude（不套服裝）。
  * 圖組 prompt 只寫姿勢／取景；人設（臉、髮、膚色、身材、性器）於生圖時由 character 合併。
  *
- * 2026-10-03 第二步：每個姿勢三格（同一組圖組、同一個編輯器的三個分頁），做愛場面按「下一步」依序切：
- *   ① open 開場（只有她；走脫光立繪 undress 管線）           {id}_sex_<pose>_open.png
- *   ② tip  局部（陰部特寫：龜頭頂在陰唇、還沒插入；正方形）    {id}_sex_<pose>_tip.png
- *   ③ join 玩家加入（POV＋黑色半透明影子男：傳教士抓大腿、後背抓臀；龜頭頂陰唇）{id}_sex_<pose>_join.png
- * ②③ 有男人 → 走 tease（雙人／POV）管線，但伺服器 garment=nude：不套服裝、負向擋衣物。存在同一組的 pack.tip／pack.join。 */
+ * 2026-10-03 第二步起：每個姿勢多步（同一組圖組、同一個編輯器的分頁），做愛場面按「下一步」依序切：
+ *   open 開場（只有她；走脫光立繪 undress 管線） → join 玩家加入（POV 影子男抓大腿／抓臀、龜頭頂陰唇）
+ *   → half 插一半 → full 全插入 → orgasm 她高潮 → squirt 潮吹 → cum 內射（預設 creampie）。
+ *   tip 局部（陰部特寫）程式保留但停用（SEX_STEP_DISABLED）。檔名 {id}_sex_<pose>_<step>.png。
+ * open 以外有男人 → 走 tease（雙人／POV）管線，但伺服器 garment=nude：不套服裝、負向擋衣物。存在同一組的 pack[step]。 */
 
 export const SEX_POSES = {
   missionary: {
@@ -35,15 +35,40 @@ export const SEX_POSES = {
   },
 };
 
-/** 做愛三步：open 開場 → tip 局部 → join 玩家加入。 */
-export const SEX_STEPS = ["open", "tip", "join"];
+/** 做愛步驟（全部，含停用的）：open 開場 → (tip 局部，停用) → join 玩家加入 → half 插一半 → full 全插入 → orgasm 她高潮 → squirt 潮吹 → cum 內射。 */
+export const SEX_STEPS = ["open", "tip", "join", "half", "full", "orgasm", "squirt", "cum"];
+/** 停用的步驟（程式保留；不進順序、編輯器分頁、預產）。② 局部 2026-10-03 使用者測完停用。 */
+export const SEX_STEP_DISABLED = new Set(["tip"]);
+/** 實際播放順序。 */
+export const SEX_ACTIVE_STEPS = SEX_STEPS.filter((s) => !SEX_STEP_DISABLED.has(s));
+/** 脫光那一拍背景預產哪幾步（其餘看到前一步時才預產下一步）。 */
+export const SEX_PREGEN_STEPS = ["open", "join"];
 export const SEX_STEP_META = {
-  open: { key: "open", label: "開場", tab: "① 開場", next: "tip", hint: "只有她（男人還沒上場）；走脫光立繪管線" },
-  tip: { key: "tip", label: "局部", tab: "② 局部", next: "join", hint: "陰部特寫：龜頭頂在陰唇、還沒插入；男人只露陰莖（影子男）" },
-  join: { key: "join", label: "玩家加入", tab: "③ 加入", next: "", hint: "POV＋黑色半透明影子男：傳教士抓大腿／後背抓臀，龜頭頂陰唇" },
+  open: { key: "open", label: "開場", short: "開場", hint: "只有她（男人還沒上場）；走脫光立繪管線" },
+  tip: { key: "tip", label: "局部", short: "局部", hint: "（停用）陰部特寫：龜頭頂在陰唇、還沒插入；男人只露陰莖（影子男）" },
+  join: { key: "join", label: "玩家加入", short: "加入", hint: "POV＋黑色半透明影子男：傳教士抓大腿／後背抓臀，龜頭頂陰唇" },
+  half: { key: "half", label: "插一半", short: "半插", hint: "陰莖插進一半（龜頭在裡面、還有一半在外面）" },
+  full: { key: "full", label: "全插入", short: "全插", hint: "整根插到底（深入）" },
+  orgasm: { key: "orgasm", label: "她高潮", short: "高潮", hint: "她高潮：頭往後仰、吐舌、阿嘿顏、痙攣（後背：抬頭後仰、仍不看鏡頭）" },
+  squirt: { key: "squirt", label: "潮吹", short: "潮吹", hint: "插著時潮吹（像尿一樣噴出來）" },
+  cum: { key: "cum", label: "內射", short: "內射", hint: "玩家射精：預設內射（creampie），精液從陰道溢出" },
 };
-/** ②③ 的預設版本（快取圖作廢用；開場見 SEX_POSE_PROMPT_REV）。 */
-export const SEX_STEP_PROMPT_REV = { tip: 1, join: 1 };
+// 依實際順序補 next／tab（① 開場 ② 加入 ③ 半插…）；停用的步驟也補 next（接到下一個啟用的），但不顯示
+{
+  const CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩";
+  SEX_ACTIVE_STEPS.forEach((st, i) => { SEX_STEP_META[st].tab = `${CIRCLED[i]} ${SEX_STEP_META[st].short}`; });
+  SEX_STEPS.forEach((st, i) => {
+    SEX_STEP_META[st].next = SEX_STEPS.slice(i + 1).find((x) => !SEX_STEP_DISABLED.has(x)) || "";
+    if (!SEX_STEP_META[st].tab) SEX_STEP_META[st].tab = `（停用）${SEX_STEP_META[st].short}`;
+  });
+}
+/** 開場以外各步的預設版本（快取圖作廢用；開場見 SEX_POSE_PROMPT_REV）。 */
+export const SEX_STEP_PROMPT_REV = { tip: 1, join: 1, half: 1, full: 1, orgasm: 1, squirt: 1, cum: 1 };
+
+/** 下一個啟用的步驟（最後一步回 ""）。 */
+export function nextSexStep(step) {
+  return SEX_STEP_META[step]?.next || "";
+}
 
 function stepKey(step) {
   return SEX_STEP_META[step] ? step : "open";
@@ -186,7 +211,32 @@ const SEX_STEP_NO_INSERT = "inserted, penetration, vaginal penetration, penis in
 const SEX_STEP_NO_REAL_MAN = "realistic man, male face, detailed male face, realistic male skin, male eyes, hairy male body, extra penis, multiple penises, multiple girls";
 const SEX_STEP_FLAWS = "text, watermark, ugly, extra fingers, bad hands, extra legs";
 
-/** ②③ 預設正向（只寫姿勢／取景／男方；人設與 nude 由伺服器 garment=nude 合併）。 */
+/** 各姿勢的身體／抓法（加入之後每一步共用）。 */
+const SEX_BODY = {
+  missionary: [
+    "from above, front view, missionary, girl lying on back, on bed, white bed sheets, legs spread, spread legs, knees up",
+    "nude, completely nude, bare breasts, nipples",
+    "pussy, labia, pussy juice",
+    "shadow male hands, shadow male hands holding her thighs, hands on her thighs",
+  ],
+  doggy: [
+    "from behind, doggystyle, girl lying face down, face down on bed, ass up, butt raised high, top-down bottom-up, arched back",
+    "facing away, face hidden",
+    "nude, completely nude",
+    "pussy, labia, anus, pussy juice",
+    "shadow male hands, shadow male hands gripping her ass, hands on her hips, grabbing buttocks",
+  ],
+};
+const SEX_HALF_BEAT = "sex, vaginal, penis halfway inside, half inserted, glans inside, labia wrapped around penis, half of the penis still outside";
+const SEX_FULL_BEAT = "sex, vaginal, deep penetration, penis fully inserted, entire penis inside, balls deep";
+const SEX_IN_BEAT = "sex, vaginal, penis inside, deep penetration";
+const SEX_ORGASM_FACE = "female orgasm, head thrown back, tongue out, ahegao, rolling eyes, drooling, open mouth, convulsing, trembling, twitching, arched back, toes curling, heavy breathing, blush, sweat";
+const SEX_DOGGY_ORGASM = "female orgasm, head lifted, head tilted back, arched back, facing away, tongue out, drooling, convulsing, trembling, twitching, toes curling, heavy breathing, sweat";
+const SEX_SQUIRT_BEAT = "squirting, female ejaculation, liquid spraying from pussy, pee-like spray, splashing, wet bed sheets";
+const SEX_CUM_BEAT = "cum inside, creampie, internal ejaculation, cum overflowing from pussy, cum dripping, excessive cum";
+const SEX_DOGGY_SHAKE = "trembling, twitching, heavy breathing, sweat";
+
+/** 開場以外各步的預設正向（只寫姿勢／取景／男方／這一拍；人設與 nude 由伺服器 garment=nude 合併）。 */
 export function defaultSexStepPrompt(pose, step) {
   const st = stepKey(step);
   if (st === "open") return defaultSexPosePrompt(pose);
@@ -208,33 +258,48 @@ export function defaultSexStepPrompt(pose, step) {
       SEX_TIP_BEAT,
     ]).join(", ");
   }
-  return (doggy ? [
-    SEX_SHADOW_MAN,
-    "from behind, doggystyle, girl lying face down, face down on bed, ass up, butt raised high, top-down bottom-up, arched back",
-    "facing away, face hidden",
-    "nude, completely nude",
-    "pussy, labia, anus, pussy juice",
-    "shadow male hands, shadow male hands gripping her ass, hands on her hips, grabbing buttocks",
-    SEX_TIP_BEAT, "penis against her pussy from behind",
-    "trembling, twitching, heavy breathing, sweat",
-    "on bed, white bed sheets",
-  ] : [
-    SEX_SHADOW_MAN,
-    "from above, front view, missionary, girl lying on back, on bed, white bed sheets, legs spread, spread legs, knees up",
-    "nude, completely nude, bare breasts, nipples",
-    "pussy, labia, pussy juice",
-    "shadow male hands, shadow male hands holding her thighs, hands on her thighs",
-    SEX_TIP_BEAT,
-    SEX_DAZED_FACE,
-  ]).join(", ");
+  if (st === "join") {
+    return (doggy ? [
+      SEX_SHADOW_MAN, ...SEX_BODY.doggy,
+      SEX_TIP_BEAT, "penis against her pussy from behind",
+      SEX_DOGGY_SHAKE,
+      "on bed, white bed sheets",
+    ] : [
+      SEX_SHADOW_MAN, ...SEX_BODY.missionary,
+      SEX_TIP_BEAT,
+      SEX_DAZED_FACE,
+    ]).join(", ");
+  }
+  const body = doggy
+    // 高潮：後背抬頭後仰（拿掉 face down on bed／face hidden）
+    ? (st === "orgasm" ? [SEX_BODY.doggy[0].replace("girl lying face down, face down on bed", "girl on stomach, chest on bed"), ...SEX_BODY.doggy.slice(2)] : SEX_BODY.doggy)
+    : SEX_BODY.missionary;
+  const beat = {
+    half: [SEX_HALF_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_DAZED_FACE],
+    full: [SEX_FULL_BEAT, doggy ? "buttocks pressed against his hips" : "labia pressed against male abdomen", doggy ? SEX_DOGGY_SHAKE : SEX_DAZED_FACE],
+    orgasm: [SEX_IN_BEAT, doggy ? SEX_DOGGY_ORGASM : SEX_ORGASM_FACE],
+    squirt: [SEX_IN_BEAT, SEX_SQUIRT_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_ORGASM_FACE],
+    cum: [SEX_IN_BEAT, SEX_CUM_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_ORGASM_FACE],
+  }[st] || [];
+  return [SEX_SHADOW_MAN, ...body, ...beat, doggy ? "on bed, white bed sheets" : ""].filter(Boolean).join(", ");
 }
 
-/** ②③ 預設負向：擋插入、擋寫實男人／男臉、擋衣物（不擋男人本身）；後背另擋回頭、看鏡頭；局部另擋她的臉。 */
+/**
+ * 開場以外各步的預設負向：擋寫實男人／男臉、多個女生、衣物（不擋男人本身）；後背另擋回頭／看鏡頭。
+ * 局部／加入（還沒插入）另擋插入；插一半擋整根插到底；內射擋射在外面。
+ */
 export function defaultSexStepNegative(pose, step) {
   const st = stepKey(step);
   if (st === "open") return defaultSexPoseNegative(pose);
-  const bits = [SEX_STEP_NO_INSERT, SEX_STEP_NO_REAL_MAN];
-  if (pose === "doggy") bits.push("looking back, looking at viewer, looking over shoulder, face visible");
+  const bits = [];
+  if (st === "tip" || st === "join") bits.push(SEX_STEP_NO_INSERT);
+  if (st === "half") bits.push("fully inserted, balls deep");
+  if (st === "cum") bits.push("cum on face, facial, cum on body, bukkake");
+  bits.push(SEX_STEP_NO_REAL_MAN);
+  if (pose === "doggy") {
+    // 高潮抬頭後仰：臉可能露一點，只擋回頭／看鏡頭
+    bits.push(st === "orgasm" ? "looking back, looking at viewer, looking over shoulder" : "looking back, looking at viewer, looking over shoulder, face visible");
+  }
   if (st === "tip") bits.push("girl face, upper body");
   bits.push(SEX_STEP_NO_CLOTHES, SEX_STEP_FLAWS);
   return bits.join(", ");
@@ -283,8 +348,7 @@ export function emptySexPosePack(pose, name = "") {
     negative: defaultSexPoseNegative(pose),
     ref: "",
     url: "",
-    tip: emptyStepSlot(pose, "tip"),
-    join: emptyStepSlot(pose, "join"),
+    ...Object.fromEntries(SEX_STEPS.slice(1).map((st) => [st, emptyStepSlot(pose, st)])),
     updated: Date.now(),
   };
 }
@@ -300,8 +364,8 @@ export function normalizeSexPosePack(pose, raw) {
     negative: migrateLegacy(s.negative ?? base.negative, LEGACY_SEX_POSE_NEGATIVES[pose], base.negative),
     ref: String(s.ref ?? "").trim(),
     url: String(s.url ?? "").trim(),
-    tip: normalizeSexStepSlot(pose, "tip", s.tip),
-    join: normalizeSexStepSlot(pose, "join", s.join),
+    // 每一步一格（缺的補預設；停用的 tip 也保留，免得存檔時丟掉自訂）
+    ...Object.fromEntries(SEX_STEPS.slice(1).map((st) => [st, normalizeSexStepSlot(pose, st, s[st])])),
     updated: Number(s.updated) || Date.now(),
   };
 }
@@ -615,7 +679,7 @@ export function mountSexPosePackEditor(pose, hooks = {}) {
     const box = P("steps");
     if (box) {
       if (!box.childElementCount) {
-        for (const st of SEX_STEPS) {
+        for (const st of SEX_ACTIVE_STEPS) {
           const b = document.createElement("button");
           b.type = "button";
           b.dataset.step = st;

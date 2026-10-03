@@ -618,5 +618,5 @@ body.room-home .room-summon-ritual:not([hidden]){display:block}
 .bond-debug .miss-dbg button{min-height:30px;padding:3px 8px;margin:2px 2px 0 0;font-size:.78em;box-shadow:none}
 /* 做愛三步分頁（傳教士圖／後背圖編輯器）：① 開場 ② 局部 ③ 加入 */
 .sx-steps{gap:6px;align-items:center}
-.sx-steps button{flex:1 1 0;min-height:36px;border-radius:999px}
+.sx-steps button{flex:1 1 22%;min-width:0;min-height:36px;padding:4px 6px;border-radius:999px;white-space:nowrap}
 .sx-steps button[aria-pressed=true]{background:#7a3558;color:#fff;border-color:#7a3558;font-weight:700}

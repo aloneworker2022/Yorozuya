@@ -158,8 +158,11 @@ for _s in SEX_POSE_SHOTS:
 # 做愛第二／三步（2026-10-03）：有男人 → 走 tease（雙人／POV）；garment=nude（不套服裝）。
 #   _tip  局部：陰部特寫、龜頭頂陰唇、還沒插入（正方形，同動作裁切）
 #   _join 玩家加入：POV＋黑色半透明影子男（傳教士抓大腿／後背抓臀）、龜頭頂陰唇（直圖）
+# 之後各步（同 _join 的 tease／nude 管線、直圖）：_half 插一半、_full 全插入、_orgasm 她高潮、_squirt 潮吹、_cum 內射。
+# （_tip 前端已停用，伺服器仍認得，舊圖組不會壞。）
+SEX_CHAIN_STEPS = ("join", "half", "full", "orgasm", "squirt", "cum")
 SEX_TIP_SHOTS = ("sex_missionary_tip", "sex_doggy_tip")
-SEX_JOIN_SHOTS = ("sex_missionary_join", "sex_doggy_join")
+SEX_JOIN_SHOTS = tuple(f"sex_{p}_{st}" for p in ("missionary", "doggy") for st in SEX_CHAIN_STEPS)
 for _s in SEX_TIP_SHOTS:
     PORTRAIT_SHOTS[_s] = dict(_ACTION_CROP_SPEC)
 for _s in SEX_JOIN_SHOTS:
