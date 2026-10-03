@@ -74,8 +74,9 @@ _POSE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 # 不去背的測試檔前綴(cutout 示範)。GC 不會刪。
 _ASSET_KEEP_PREFIXES = frozenset({"chk"})
 _SHOT_FILE_SUFS = (
-    # 做愛開場圖（傳教士／後背）
+    # 做愛三步（傳教士／後背）：開場／局部／玩家加入
     "sex_missionary_open", "sex_doggy_open",
+    "sex_missionary_tip", "sex_doggy_tip", "sex_missionary_join", "sex_doggy_join",
     # 扣陰道／揉子宮口 x-ray 剖面（不分穿衣／裸體，共用一張）
     "tease_vagina_finger", "tease_cervix_rub",
     # 動作圖裸體版（比穿衣版長，先比對）
@@ -113,6 +114,8 @@ SHOT_LABEL_ZH = {
     "tease_finger_in_nude": "調戲·手指插入（裸）",
     "tease_vagina_finger": "調戲·扣陰道（剖面）", "tease_cervix_rub": "調戲·揉子宮口（剖面）",
     "sex_missionary_open": "做愛·傳教士開場", "sex_doggy_open": "做愛·後背開場",
+    "sex_missionary_tip": "做愛·傳教士局部", "sex_doggy_tip": "做愛·後背局部",
+    "sex_missionary_join": "做愛·傳教士加入", "sex_doggy_join": "做愛·後背加入",
     "tease_waist": "調戲·摟腰",
     "tease_oral": "調戲·口交",
     "tease_oral_ready": "調戲·口交·頂嘴",

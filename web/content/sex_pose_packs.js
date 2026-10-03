@@ -4,7 +4,13 @@
  * 這一步男人還沒上場：圖裡只有她（1girl, solo），失神痙攣臉；不寫 pov／男手／影子男（伺服器 solo，不自動補 1man）。
  * 兩組各自多組命名存檔（/api/sex-missionary-packs、/api/sex-doggy-packs），執行時隨機抽一組；
  * 伺服器檔名 {id}_sex_missionary_open.png／{id}_sex_doggy_open.png，garment=nude（不套服裝）。
- * 圖組 prompt 只寫姿勢／取景；人設（臉、髮、膚色、身材、性器）於生圖時由 character 合併。 */
+ * 圖組 prompt 只寫姿勢／取景；人設（臉、髮、膚色、身材、性器）於生圖時由 character 合併。
+ *
+ * 2026-10-03 第二步：每個姿勢三格（同一組圖組、同一個編輯器的三個分頁），做愛場面按「下一步」依序切：
+ *   ① open 開場（只有她；走脫光立繪 undress 管線）           {id}_sex_<pose>_open.png
+ *   ② tip  局部（陰部特寫：龜頭頂在陰唇、還沒插入；正方形）    {id}_sex_<pose>_tip.png
+ *   ③ join 玩家加入（POV＋黑色半透明影子男：傳教士抓大腿、後背抓臀；龜頭頂陰唇）{id}_sex_<pose>_join.png
+ * ②③ 有男人 → 走 tease（雙人／POV）管線，但伺服器 garment=nude：不套服裝、負向擋衣物。存在同一組的 pack.tip／pack.join。 */
 
 export const SEX_POSES = {
   missionary: {
@@ -28,6 +34,30 @@ export const SEX_POSES = {
     hint: "你幫她脫掉內褲（幫她脫）",
   },
 };
+
+/** 做愛三步：open 開場 → tip 局部 → join 玩家加入。 */
+export const SEX_STEPS = ["open", "tip", "join"];
+export const SEX_STEP_META = {
+  open: { key: "open", label: "開場", tab: "① 開場", next: "tip", hint: "只有她（男人還沒上場）；走脫光立繪管線" },
+  tip: { key: "tip", label: "局部", tab: "② 局部", next: "join", hint: "陰部特寫：龜頭頂在陰唇、還沒插入；男人只露陰莖（影子男）" },
+  join: { key: "join", label: "玩家加入", tab: "③ 加入", next: "", hint: "POV＋黑色半透明影子男：傳教士抓大腿／後背抓臀，龜頭頂陰唇" },
+};
+/** ②③ 的預設版本（快取圖作廢用；開場見 SEX_POSE_PROMPT_REV）。 */
+export const SEX_STEP_PROMPT_REV = { tip: 1, join: 1 };
+
+function stepKey(step) {
+  return SEX_STEP_META[step] ? step : "open";
+}
+
+/** shot：sex_<pose>_open／_tip／_join。 */
+export function sexStepShot(pose, step = "open") {
+  const c = SEX_POSES[pose] || SEX_POSES.missionary;
+  return `sex_${c.key}_${stepKey(step)}`;
+}
+
+export function sexStepPacksKey(pose, step = "open") {
+  return `${sexStepShot(pose, step)}_packs`;
+}
 
 /** 預設 prompt 版本（房間快取圖記 portraits.actionPromptRev["<shot>_packs:<packId>"]；低於此版且該組仍是預設 → 作廢重產）。
  * rev 2（2026-10-03）：男人還沒上場 → 只有她（solo）、失神痙攣臉、無影子男。
@@ -148,6 +178,101 @@ export function defaultSexPoseNegative(pose) {
   ].join(", ");
 }
 
+/** ②③ 的男方：同吸／舔奶頭的影子男（玩家第一人稱、無臉、黑色半透明）。 */
+const SEX_SHADOW_MAN = "1man, 1girl, pov, first-person view, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette";
+const SEX_TIP_BEAT = "erect penis, penis tip, glans, glans pressing against labia, penis touching pussy, about to insert";
+const SEX_STEP_NO_CLOTHES = "panties, bra, clothes, dressed, underwear, lingerie, shirt, dress, skirt, jacket, coat, uniform, hoodie, covered breasts";
+const SEX_STEP_NO_INSERT = "inserted, penetration, vaginal penetration, penis inside";
+const SEX_STEP_NO_REAL_MAN = "realistic man, male face, detailed male face, realistic male skin, male eyes, hairy male body, extra penis, multiple penises, multiple girls";
+const SEX_STEP_FLAWS = "text, watermark, ugly, extra fingers, bad hands, extra legs";
+
+/** ②③ 預設正向（只寫姿勢／取景／男方；人設與 nude 由伺服器 garment=nude 合併）。 */
+export function defaultSexStepPrompt(pose, step) {
+  const st = stepKey(step);
+  if (st === "open") return defaultSexPosePrompt(pose);
+  const doggy = pose === "doggy";
+  if (st === "tip") {
+    return (doggy ? [
+      SEX_SHADOW_MAN, "only his penis visible",
+      "close-up, crotch close-up, pussy focus, from behind, rear view, ass focus",
+      "girl face down, ass up, butt raised",
+      "nude, completely nude",
+      "ass, pussy, labia, anus, pussy juice, wet pussy",
+      SEX_TIP_BEAT, "penis against her pussy from behind",
+    ] : [
+      SEX_SHADOW_MAN, "only his penis visible",
+      "close-up, crotch close-up, pussy focus, front view, from above",
+      "girl lying on back, legs spread, spread legs",
+      "nude, completely nude",
+      "pussy, labia, clitoris, pussy juice, wet pussy",
+      SEX_TIP_BEAT,
+    ]).join(", ");
+  }
+  return (doggy ? [
+    SEX_SHADOW_MAN,
+    "from behind, doggystyle, girl lying face down, face down on bed, ass up, butt raised high, top-down bottom-up, arched back",
+    "facing away, face hidden",
+    "nude, completely nude",
+    "pussy, labia, anus, pussy juice",
+    "shadow male hands, shadow male hands gripping her ass, hands on her hips, grabbing buttocks",
+    SEX_TIP_BEAT, "penis against her pussy from behind",
+    "trembling, twitching, heavy breathing, sweat",
+    "on bed, white bed sheets",
+  ] : [
+    SEX_SHADOW_MAN,
+    "from above, front view, missionary, girl lying on back, on bed, white bed sheets, legs spread, spread legs, knees up",
+    "nude, completely nude, bare breasts, nipples",
+    "pussy, labia, pussy juice",
+    "shadow male hands, shadow male hands holding her thighs, hands on her thighs",
+    SEX_TIP_BEAT,
+    SEX_DAZED_FACE,
+  ]).join(", ");
+}
+
+/** ②③ 預設負向：擋插入、擋寫實男人／男臉、擋衣物（不擋男人本身）；後背另擋回頭、看鏡頭；局部另擋她的臉。 */
+export function defaultSexStepNegative(pose, step) {
+  const st = stepKey(step);
+  if (st === "open") return defaultSexPoseNegative(pose);
+  const bits = [SEX_STEP_NO_INSERT, SEX_STEP_NO_REAL_MAN];
+  if (pose === "doggy") bits.push("looking back, looking at viewer, looking over shoulder, face visible");
+  if (st === "tip") bits.push("girl face, upper body");
+  bits.push(SEX_STEP_NO_CLOTHES, SEX_STEP_FLAWS);
+  return bits.join(", ");
+}
+
+function emptyStepSlot(pose, step) {
+  return { prompt: defaultSexStepPrompt(pose, step), negative: defaultSexStepNegative(pose, step), ref: "", url: "", poseDenoise: 0.55 };
+}
+
+export function normalizeSexStepSlot(pose, step, raw) {
+  const base = emptyStepSlot(pose, step);
+  const s = raw && typeof raw === "object" ? raw : {};
+  return {
+    prompt: String(s.prompt ?? base.prompt),
+    negative: String(s.negative ?? base.negative),
+    ref: String(s.ref ?? "").trim(),
+    url: String(s.url ?? "").trim(),
+    poseDenoise: clampDenoise(s.poseDenoise ?? s.pose_denoise ?? base.poseDenoise),
+  };
+}
+
+/** 這組的某一步（open＝組本身的欄位；tip／join＝pack.tip／pack.join）。 */
+export function sexStepSlot(pose, pack, step = "open") {
+  const st = stepKey(step);
+  if (st === "open") {
+    const p = normalizeSexPosePack(pose, pack);
+    return { prompt: p.prompt, negative: p.negative, ref: p.ref, url: p.url, poseDenoise: p.poseDenoise };
+  }
+  return normalizeSexStepSlot(pose, st, pack?.[st]);
+}
+
+/** 這一步仍是預設 prompt → 快取圖可依版本作廢。 */
+export function isDefaultSexStep(pose, step, pack) {
+  const st = stepKey(step);
+  if (st === "open") return isDefaultSexPosePack(pose, pack);
+  return canonTags(sexStepSlot(pose, pack, st).prompt) === canonTags(defaultSexStepPrompt(pose, st));
+}
+
 export function emptySexPosePack(pose, name = "") {
   const c = cfg(pose);
   return {
@@ -158,6 +283,8 @@ export function emptySexPosePack(pose, name = "") {
     negative: defaultSexPoseNegative(pose),
     ref: "",
     url: "",
+    tip: emptyStepSlot(pose, "tip"),
+    join: emptyStepSlot(pose, "join"),
     updated: Date.now(),
   };
 }
@@ -173,6 +300,8 @@ export function normalizeSexPosePack(pose, raw) {
     negative: migrateLegacy(s.negative ?? base.negative, LEGACY_SEX_POSE_NEGATIVES[pose], base.negative),
     ref: String(s.ref ?? "").trim(),
     url: String(s.url ?? "").trim(),
+    tip: normalizeSexStepSlot(pose, "tip", s.tip),
+    join: normalizeSexStepSlot(pose, "join", s.join),
     updated: Number(s.updated) || Date.now(),
   };
 }
@@ -269,9 +398,54 @@ export function buildSexPoseImgBody(pose, pack, girl, eng = {}, opts = {}) {
 
 /** 新伺服器把這兩個 shot 落到 /assets/portraits/{id}_sex_*_open.png；落到 testword＝伺服器沒重啟（不認得 shot → 不套 nude、會補 1man）。 */
 export function isSexPoseResultUrl(pose, url) {
-  const c = SEX_POSES[pose];
+  return isSexStepResultUrl(pose, "open", url);
+}
+
+/** 每一步都要落在 /assets/portraits/{id}_sex_<pose>_<step>.png；testword＝伺服器沒重啟。 */
+export function isSexStepResultUrl(pose, step, url) {
   const u = String(url || "");
-  return !!c && u.includes("/assets/portraits/") && u.includes(`_${c.shot}.png`);
+  return !!SEX_POSES[pose] && u.includes("/assets/portraits/") && u.includes(`_${sexStepShot(pose, step)}.png`);
+}
+
+/**
+ * 某一步的下單。open → buildSexPoseImgBody（脫光立繪管線、只有她）。
+ * tip／join → tease（雙人／POV）管線：scene_kind=tease＋lock_identity（允許 1man／pov），outfit 空、伺服器 garment=nude（不套服裝、負向擋衣物）；
+ * tip 取景 lower（下半身特寫、正方形），join 取景 full（直圖）。
+ */
+export function buildSexStepImgBody(pose, step, pack, girl, eng = {}, opts = {}) {
+  const st = stepKey(step);
+  if (st === "open") return buildSexPoseImgBody(pose, pack, girl, eng, opts);
+  if (!girl) throw new Error("先選魅子");
+  cfg(pose);
+  const shot = sexStepShot(pose, st);
+  const comfy = (eng.imgProvider || "grok-img") === "comfy";
+  const slot = pack ? sexStepSlot(pose, pack, st) : emptyStepSlot(pose, st);
+  const action = String(slot.prompt || "").trim() || defaultSexStepPrompt(pose, st);
+  const userNeg = String(slot.negative || "").trim();
+  const ref = String(slot.ref || "").trim();
+  return {
+    key: `room-${shot}:${girl.id || "x"}:${Date.now().toString(36)}`,
+    provider: comfy ? "comfy" : "grok-img",
+    model: eng.imgModel || "grok-4.5",
+    framing: st === "tip" ? "lower" : "full",
+    rating: "nsfw",
+    style: eng.imgStyle || "pixel",
+    character: girl,
+    outfit: "",
+    prompt: "",
+    extra: action,
+    negative: userNeg,
+    visual_neg: userNeg,
+    cutout: false,
+    flat_bg: false,
+    lock_identity: true,
+    retry: true,
+    scene_kind: "tease",
+    shot,
+    char_id: girl.id,
+    ...(ref ? { pose_ref: ref, pose_denoise: clampDenoise(slot.poseDenoise) } : {}),
+    ...(comfy ? { comfy_url: eng.comfyUrl || "", ckpt: resolveComfyCkpt(girl, eng) } : {}),
+  };
 }
 
 function formatApiError(method, url, detail) {
@@ -279,7 +453,7 @@ function formatApiError(method, url, detail) {
 }
 
 function restartHint(c, verb) {
-  if (verb === "GEN") return `伺服器未重啟：${c.label}圖沒有走脫光立繪管線（會穿衣服或多一個男人），這張不收。請 pull 最新 grok-2026.10 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）`;
+  if (verb === "GEN") return `伺服器未重啟：${c.label}這張沒有落到正確的圖檔（舊程式不認得這張圖，會穿衣服或多一個男人），這張不收。請 pull 最新 grok-2026.10 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）`;
   return `${verb === "PUT" ? "伺服器未重啟，無法儲存" : "讀不到"}${c.label}圖組（${verb} ${c.api}）。請 pull 最新 grok-2026.10 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）`;
 }
 
@@ -377,9 +551,14 @@ async function waitImg(body, onTick, ms = 360000) {
 
 /** 生圖（編輯器／背景預產／執行時共用）；不寫入 pack.url。 */
 export async function generateSexPosePackImage(pose, pack, girl, eng, opts = {}) {
-  const body = buildSexPoseImgBody(pose, pack, girl, eng, opts);
+  return generateSexStepImage(pose, "open", pack, girl, eng, opts);
+}
+
+/** 某一步生圖；結果不在 portraits/{id}_sex_<pose>_<step>.png（舊伺服器）→ 不收。 */
+export async function generateSexStepImage(pose, step, pack, girl, eng, opts = {}) {
+  const body = buildSexStepImgBody(pose, step, pack, girl, eng, opts);
   const r = await waitImg(body, opts.onTick);
-  if (r.status === "done" && r.result && !isSexPoseResultUrl(pose, r.result)) {
+  if (r.status === "done" && r.result && !isSexStepResultUrl(pose, step, r.result)) {
     // 舊伺服器：圖會穿衣服或多一個男人 → 不收這張
     return { status: "error", result: "", error: restartHint(cfg(pose), "GEN"), body, key: r.key, stale: String(r.result) };
   }
@@ -415,6 +594,7 @@ export function mountSexPosePackEditor(pose, hooks = {}) {
   let activeId = "";
   let girls = [];
   let girlId = "";
+  let step = "open";
 
   const setStatus = (msg, err = false) => {
     const el = P("status");
@@ -423,6 +603,36 @@ export function mountSexPosePackEditor(pose, hooks = {}) {
     el.classList.toggle("err", !!err);
   };
   const activePack = () => doc.packs.find((p) => p.id === activeId) || doc.packs[0] || null;
+  /** 目前分頁那一格：open＝組本身；tip／join＝pack.tip／pack.join。 */
+  const activeSlot = () => {
+    const p = activePack();
+    if (!p) return null;
+    if (step === "open") return p;
+    if (!p[step] || typeof p[step] !== "object") p[step] = normalizeSexStepSlot(pose, step, null);
+    return p[step];
+  };
+  const renderSteps = () => {
+    const box = P("steps");
+    if (box) {
+      if (!box.childElementCount) {
+        for (const st of SEX_STEPS) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.dataset.step = st;
+          b.textContent = SEX_STEP_META[st].tab;
+          b.addEventListener("click", () => {
+            if (st === step) return;
+            collectForm();
+            step = st;
+            renderForm();
+          });
+          box.append(b);
+        }
+      }
+      for (const b of box.querySelectorAll("button")) b.setAttribute("aria-pressed", b.dataset.step === step ? "true" : "false");
+    }
+    if (P("step-hint")) P("step-hint").textContent = `${SEX_STEP_META[step].tab}：${SEX_STEP_META[step].hint}；檔名 {id}_${sexStepShot(pose, step)}.png`;
+  };
 
   const renderPacks = () => {
     const sel = P("pack");
@@ -448,7 +658,7 @@ export function mountSexPosePackEditor(pose, hooks = {}) {
     return girls.find((g) => g.id === girlId) || live || girls[0] || null;
   };
   const updateRefFlag = () => {
-    const p = activePack();
+    const p = activeSlot();
     const ref = p?.ref || "";
     const flag = P("mode-flag");
     if (flag) {
@@ -468,27 +678,30 @@ export function mountSexPosePackEditor(pose, hooks = {}) {
     }
   };
   const renderForm = () => {
-    const p = activePack();
-    if (P("name")) P("name").value = p?.name || "";
+    const pk = activePack();
+    const p = activeSlot();
+    renderSteps();
+    if (P("name")) P("name").value = pk?.name || "";
     if (P("pos")) P("pos").value = p?.prompt || "";
     if (P("neg")) P("neg").value = p?.negative || "";
     if (P("denoise")) P("denoise").value = String(p?.poseDenoise ?? 0.55);
     if (P("art")) {
       P("art").innerHTML = !p ? `<span class="mini">尚無圖組</span>`
-        : p.url ? `<img src="${esc(p.url)}" alt="${esc(c.label)}">` : `<span class="mini">尚未產生</span>`;
+        : p.url ? `<img src="${esc(p.url)}" alt="${esc(c.label)}・${esc(SEX_STEP_META[step].label)}">` : `<span class="mini">尚未產生</span>`;
     }
     updateRefFlag();
   };
   const collectForm = () => {
-    const p = activePack();
-    if (!p) return;
-    p.name = String(P("name")?.value || p.name || c.packName).slice(0, 40);
+    const pk = activePack();
+    const p = activeSlot();
+    if (!pk || !p) return;
+    pk.name = String(P("name")?.value || pk.name || c.packName).slice(0, 40);
     p.prompt = P("pos")?.value || "";
     p.negative = P("neg")?.value || "";
     p.poseDenoise = clampDenoise(P("denoise")?.value);
-    p.updated = Date.now();
-    doc.activeId = p.id;
-    activeId = p.id;
+    pk.updated = Date.now();
+    doc.activeId = pk.id;
+    activeId = pk.id;
   };
   const load = async () => {
     setStatus("讀取中…");
@@ -591,22 +804,23 @@ export function mountSexPosePackEditor(pose, hooks = {}) {
   });
   P("inject")?.addEventListener("click", () => {
     const g = currentGirl();
-    if (P("pos")) P("pos").value = defaultSexPosePrompt(pose);
-    if (P("neg") && !String(P("neg").value || "").trim()) P("neg").value = defaultSexPoseNegative(pose);
+    if (P("pos")) P("pos").value = defaultSexStepPrompt(pose, step);
+    if (P("neg") && !String(P("neg").value || "").trim()) P("neg").value = defaultSexStepNegative(pose, step);
     collectForm();
     const ck = girlOwnCkpt(g);
     const bits = [
       g ? (g.name || g.id) : "（還沒選魅子）",
       ck ? `模型 ${shortCkptName(ck)}` : "模型（尚未綁定）",
       "全裸（garment=nude，不寫服裝）",
+      step === "open" ? "只有她（脫光立繪管線）" : "影子男（tease／POV 管線）",
     ];
-    setStatus(`✓ 已填姿勢預設。執行時會帶入：${bits.join(" · ")}`);
+    setStatus(`✓ 已填${SEX_STEP_META[step].label}預設。執行時會帶入：${bits.join(" · ")}`);
   });
   P("ref-up")?.addEventListener("click", () => P("ref-file")?.click());
   P("ref-file")?.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    const p = activePack();
+    const p = activeSlot();
     if (!file || !p) return;
     setStatus("上傳參考圖…");
     try {
@@ -623,14 +837,14 @@ export function mountSexPosePackEditor(pose, hooks = {}) {
     }
   });
   P("ref-clear")?.addEventListener("click", () => {
-    const p = activePack();
+    const p = activeSlot();
     if (!p) return;
     p.ref = "";
     updateRefFlag();
     setStatus("已拿掉參考圖");
   });
   P("ref-apply")?.addEventListener("click", () => {
-    const p = activePack();
+    const p = activeSlot();
     if (!p) return;
     const url = String(P("ref-url")?.value || "").trim();
     if (!url) {
@@ -644,8 +858,10 @@ export function mountSexPosePackEditor(pose, hooks = {}) {
   P("gen")?.addEventListener("click", async () => {
     collectForm();
     const p = activePack();
+    const slot = activeSlot();
+    const st = step;
     const g = currentGirl();
-    if (!p) { setStatus("先新增一組", true); return; }
+    if (!p || !slot) { setStatus("先新增一組", true); return; }
     if (!g) { setStatus("先選魅子或抽一隻進房", true); return; }
     const btn = P("gen");
     if (btn) btn.disabled = true;
@@ -653,10 +869,10 @@ export function mountSexPosePackEditor(pose, hooks = {}) {
     setStatus("排隊中…");
     try {
       const eng = (await hooks.getEngine?.()) || { imgProvider: "comfy", imgStyle: "pixel" };
-      const r = await generateSexPosePackImage(pose, p, g, eng, { onTick: (sec) => setStatus(`生成中… ${sec}s`) });
+      const r = await generateSexStepImage(pose, st, p, g, eng, { onTick: (sec) => setStatus(`生成中… ${sec}s`) });
       if (r.status === "done" && r.result) {
         const url = String(r.result);
-        p.url = url;
+        slot.url = url;
         if (P("art")) P("art").innerHTML = `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}?t=${Date.now()}" alt="result"></a>`;
         setStatus("✓ 測試生圖完成（記得按儲存）");
       } else {

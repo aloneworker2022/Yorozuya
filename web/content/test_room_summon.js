@@ -120,15 +120,20 @@ import {
 } from "./stun_reckoning.js?v=2";
 import {
   SEX_POSES,
+  SEX_STEPS,
+  SEX_STEP_META,
+  SEX_STEP_PROMPT_REV,
   sexPoseFor,
-  sexPosePacksKey,
+  sexStepPacksKey,
+  getSexPosePacksCached,
   pickRuntimeSexPosePack,
-  generateSexPosePackImage,
+  generateSexStepImage,
   mountSexPosePackEditor,
-  isDefaultSexPosePack,
-  isSexPoseResultUrl,
+  isDefaultSexStep,
+  isSexStepResultUrl,
+  normalizeSexPosePack,
   SEX_POSE_PROMPT_REV,
-} from "./sex_pose_packs.js?v=3";
+} from "./sex_pose_packs.js?v=4";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -560,45 +565,62 @@ async function openUndressChoices(who) {
   if (!packs.length && bodyEl) bodyEl.textContent = "還沒有脫衣場景。";
 }
 
-/** 做愛開場圖：同一人同一姿勢同時只產一張（背景預產與按做愛共用）。 */
+/** 做愛三步圖（開場／局部／加入）：同一人同一姿勢同一步同時只產一張（背景預產與按做愛共用）。 */
 const sexPoseJobs = new Map();
 let lastSexPosePick = null;
+/** 做愛場面目前在第幾步：{ pose, packId, step } */
+let sexStepView = null;
+
+function sexStepRev(step) {
+  return step === "open" ? SEX_POSE_PROMPT_REV : (SEX_STEP_PROMPT_REV[step] || 1);
+}
+
+/** 這一步用哪一組：有指定 packId（同一場用同一組）就找那組，否則隨機抽。 */
+async function pickSexStepPack(pose, packId) {
+  if (packId) {
+    try {
+      const doc = await getSexPosePacksCached(pose);
+      const hit = (doc?.packs || []).find((p) => p.id === packId);
+      if (hit) return normalizeSexPosePack(pose, hit);
+    } catch { /* fall through */ }
+  }
+  try {
+    return await pickRuntimeSexPosePack(pose);
+  } catch {
+    return null;
+  }
+}
 
 /**
- * 拿這個姿勢的開場圖：抽一組；這組有快取 → 用；沒有 → 現產並存 portraits.<shot>_packs[packId]。
- * 生圖失敗時退回這個姿勢任一組的快取。回傳 { url, pose, packId, generated, fallback }。
+ * 拿這個姿勢某一步的圖：這組有快取 → 用；沒有 → 現產並存 portraits.sex_<pose>_<step>_packs[packId]。
+ * 生圖失敗時退回這一步任一組的快取。回傳 { url, pose, step, packId, generated, fallback }。
  */
-function ensureSexPoseUrl(who, pose) {
-  if (!who?.id || !SEX_POSES[pose]) return Promise.resolve({ url: "", pose });
-  const lock = `${who.id}:${pose}`;
+function ensureSexStepUrl(who, pose, step = "open", packId = "") {
+  if (!who?.id || !SEX_POSES[pose] || !SEX_STEP_META[step]) return Promise.resolve({ url: "", pose, step });
+  const lock = `${who.id}:${pose}:${step}`;
   if (sexPoseJobs.has(lock)) return sexPoseJobs.get(lock);
   const job = (async () => {
-    const packsKey = sexPosePacksKey(pose);
+    const packsKey = sexStepPacksKey(pose, step);
     who.portraits = who.portraits || {};
     const pool = () => (who.portraits[packsKey] && typeof who.portraits[packsKey] === "object" ? who.portraits[packsKey] : {});
     // 舊伺服器（沒重啟）產的落在 testword：穿衣服／多一個男人 → 整批丟掉，不當快取也不當退路
-    const bad = Object.entries(pool()).filter(([, v]) => v && !isSexPoseResultUrl(pose, v));
+    const bad = Object.entries(pool()).filter(([, v]) => v && !isSexStepResultUrl(pose, step, v));
     if (bad.length) {
       const next = { ...pool() };
       for (const [k] of bad) delete next[k];
       who.portraits[packsKey] = next;
       persistRoom();
     }
-    const anyCached = () => Object.values(pool()).map((v) => String(v || "")).find((v) => v && isSexPoseResultUrl(pose, v)) || "";
-    let pack = null;
-    try {
-      pack = await pickRuntimeSexPosePack(pose);
-    } catch {
-      pack = null;
-    }
+    const anyCached = () => Object.values(pool()).map((v) => String(v || "")).find((v) => v && isSexStepResultUrl(pose, step, v)) || "";
+    const pack = await pickSexStepPack(pose, packId);
     if (!pack?.id) {
       const url = anyCached();
-      return { url, pose, packId: "", generated: false, fallback: !!url };
+      return { url, pose, step, packId: "", generated: false, fallback: !!url };
     }
-    // 舊版預設（影子男／POV）產的快取：這組仍是預設 → 作廢重產；自訂組只補記版本
+    // 舊版預設產的快取：這一步仍是預設 → 作廢重產；自訂只補記版本
     const revKey = `${packsKey}:${pack.id}`;
-    if (pool()[pack.id] && ((who.portraits.actionPromptRev || {})[revKey] | 0) < SEX_POSE_PROMPT_REV) {
-      if (isDefaultSexPosePack(pose, pack)) {
+    if (pool()[pack.id] && ((who.portraits.actionPromptRev || {})[revKey] | 0) < sexStepRev(step)) {
+      if (isDefaultSexStep(pose, step, pack)) {
         const next = { ...pool() };
         delete next[pack.id];
         who.portraits[packsKey] = next;
@@ -608,55 +630,110 @@ function ensureSexPoseUrl(who, pose) {
       }
     }
     const cached = String(pool()[pack.id] || "");
-    if (cached) return { url: cached, pose, packId: pack.id, generated: false, fallback: false };
+    if (cached) return { url: cached, pose, step, packId: pack.id, generated: false, fallback: false };
     try {
       const engine = await gameImgRoute();
       await ensureGirlComfyCkpt(who);
-      const r = await generateSexPosePackImage(pose, pack, who, engine, {});
+      const r = await generateSexStepImage(pose, step, pack, who, engine, {});
       if (r?.status === "done" && r.result) {
         const stamped = stampPortraitUrl(r.result);
         who.portraits[packsKey] = { ...pool(), [pack.id]: stamped };
         stampActionRev(who, packsKey, pack.id);
         persistRoom();
-        return { url: stamped, pose, packId: pack.id, generated: true, fallback: false };
+        return { url: stamped, pose, step, packId: pack.id, generated: true, fallback: false };
       }
-      console.warn("[sex-pose]", pose, r?.error || "生圖失敗", r?.stale || "");
+      console.warn("[sex-pose]", pose, step, r?.error || "生圖失敗", r?.stale || "");
     } catch (err) {
-      console.warn("[sex-pose]", pose, err?.message || err);
+      console.warn("[sex-pose]", pose, step, err?.message || err);
     }
     const url = anyCached();
-    return { url, pose, packId: pack.id, generated: false, fallback: !!url };
+    return { url, pose, step, packId: pack.id, generated: false, fallback: !!url };
   })();
   sexPoseJobs.set(lock, job);
   job.finally(() => sexPoseJobs.delete(lock));
   return job;
 }
 
-/** 她剛脫光（最後一層）：背景先產對應姿勢的開場圖（閘門開才產）。 */
-function queueSexPosePregen(who = girl) {
-  if (!SEX_POSES_ON || !who?.id || undressStage(who) < 3) return null;
-  return ensureSexPoseUrl(who, sexPoseFor(who));
+function ensureSexPoseUrl(who, pose) {
+  return ensureSexStepUrl(who, pose, "open");
 }
 
-/** 按「做愛」（全裸）：場面卡顯示對應姿勢的開場圖（快取或現產）。 */
-async function showSexPoseOpening(who) {
-  if (!who || undressStage(who) < 3) return;
+/** 她剛脫光（最後一層）：背景依序先產對應姿勢的三步圖（開場 → 局部 → 加入，同一組；閘門開才產）。 */
+function queueSexPosePregen(who = girl) {
+  if (!SEX_POSES_ON || !who?.id || undressStage(who) < 3) return null;
   const pose = sexPoseFor(who);
+  return (async () => {
+    const first = await ensureSexStepUrl(who, pose, "open");
+    const out = [first];
+    for (const st of SEX_STEPS.slice(1)) {
+      if (undressStage(who) < 3) break;
+      out.push(await ensureSexStepUrl(who, pose, st, first?.packId || ""));
+    }
+    return out;
+  })();
+}
+
+function sexByText(who) {
+  return who.undress?.pantiesBy === "self" ? "她自己脫掉內褲" : who.undress?.pantiesBy === "help" ? "你幫她脫掉內褲" : "（沒記到誰脫的，預設）";
+}
+
+/** 做愛場面「下一步」按鈕（場面卡選項列）；最後一步就收起。 */
+function renderSexNextButton(who) {
+  const box = $("room-scene-choices");
+  if (!box) return;
+  box.replaceChildren();
+  const nextStep = sexStepView ? SEX_STEP_META[sexStepView.step]?.next : "";
+  if (!nextStep) {
+    box.hidden = true;
+    return;
+  }
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.id = "sex-next-step";
+  btn.dataset.step = nextStep;
+  btn.textContent = `下一步：${SEX_STEP_META[nextStep].label}`;
+  btn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (btn.disabled) return;
+    btn.disabled = true;
+    void showSexStep(who, nextStep);
+  });
+  box.append(btn);
+  box.hidden = false;
+}
+
+/** 做愛場面顯示某一步的圖（快取或現產）；同一場用開場抽到的那組。 */
+async function showSexStep(who, step = "open") {
+  if (!who || undressStage(who) < 3) return;
+  const pose = step === "open" || !sexStepView ? sexPoseFor(who) : sexStepView.pose;
   const c = SEX_POSES[pose];
-  const by = who.undress?.pantiesBy === "self" ? "她自己脫掉內褲" : who.undress?.pantiesBy === "help" ? "你幫她脫掉內褲" : "（沒記到誰脫的，預設）";
+  const meta = SEX_STEP_META[step];
   const view = undressView;
   const body = $("room-scene-body");
-  const head = `${c.label}・${by}`;
-  if (body) body.textContent = `${head}\n開場圖準備中…`;
-  const pick = await ensureSexPoseUrl(who, pose);
+  const head = `${c.label.replace("開場", "")}・${meta.label}・${sexByText(who)}`;
+  if (body) body.textContent = `${head}\n${meta.label}圖準備中…`;
+  const packId = step === "open" ? "" : (sexStepView?.packId || "");
+  const pick = await ensureSexStepUrl(who, pose, step, packId);
   lastSexPosePick = { ...pick, by: who.undress?.pantiesBy || "", at: Date.now() };
   if (view !== undressView || activeRoomScene !== "sex" || !sceneOpen() || girl !== who) return;
+  sexStepView = { pose, step, packId: pick.packId || packId };
   if (pick.url) {
-    paintSceneFigure(pick.url, `${who.name}的${c.label}圖`);
-    if (body) body.textContent = `${head}\n（做愛場面之後再做；這一步只有開場圖。）`;
+    paintSceneFigure(pick.url, `${who.name}的${c.label.replace("開場", "")}${meta.label}圖`);
+    const tail = meta.next ? `（按「下一步」看${SEX_STEP_META[meta.next].label}）` : "（做愛本體之後再做；目前到這一步。）";
+    if (body) body.textContent = `${head}\n${tail}`;
   } else if (body) {
-    body.textContent = `${head}\n開場圖產生失敗（看 test_room 上排「${pose === "doggy" ? "後背圖" : "傳教士圖"}」）。`;
+    body.textContent = `${head}\n${meta.label}圖產生失敗（看 test_room 上排「${pose === "doggy" ? "後背圖" : "傳教士圖"}」的「${meta.tab}」）。`;
   }
+  renderSexNextButton(who);
+  // 下一張先在背景產（通常脫光時已預產）
+  if (meta.next) void ensureSexStepUrl(who, pose, meta.next, sexStepView.packId);
+}
+
+/** 按「做愛」（全裸）：從開場圖開始。 */
+async function showSexPoseOpening(who) {
+  sexStepView = null;
+  return showSexStep(who, "open");
 }
 
 function openRoomScene(kind) {
@@ -1282,6 +1359,9 @@ const ACTION_PROMPT_REV = {
   tease_nipple_lick_packs: 3, tease_nipple_lick_nude_packs: 3,
   // 做愛開場圖 rev 3：solo、失神痙攣、無影子男、走脫光立繪管線（2026-10-03）
   sex_missionary_open_packs: SEX_POSE_PROMPT_REV, sex_doggy_open_packs: SEX_POSE_PROMPT_REV,
+  // 做愛局部／玩家加入（2026-10-03）
+  sex_missionary_tip_packs: SEX_STEP_PROMPT_REV.tip, sex_doggy_tip_packs: SEX_STEP_PROMPT_REV.tip,
+  sex_missionary_join_packs: SEX_STEP_PROMPT_REV.join, sex_doggy_join_packs: SEX_STEP_PROMPT_REV.join,
 };
 
 function stampActionRev(who, cacheKey, packId) {
@@ -8782,6 +8862,13 @@ window.RoomCompanion = {
     pose: () => (girl ? sexPoseFor(girl) : ""),
     last: () => lastSexPosePick,
     pregen: () => queueSexPosePregen(girl),
+    /** 做愛場面目前那一步 { pose, step, packId }。 */
+    step: () => (sexStepView ? { ...sexStepView } : null),
+    /** 等同按「下一步」。 */
+    next: () => {
+      const nx = sexStepView ? SEX_STEP_META[sexStepView.step]?.next : "";
+      return nx && girl ? showSexStep(girl, nx) : null;
+    },
   },
   /** 侵犯值除錯：上一句閒聊衰減。 */
   invasion: {

@@ -155,6 +155,16 @@ for _s in XRAY_ACTION_SHOTS:
 SEX_POSE_SHOTS = ("sex_missionary_open", "sex_doggy_open")
 for _s in SEX_POSE_SHOTS:
     PORTRAIT_SHOTS[_s] = {"gen": (832, 1216), "out": (0, 0), "cutout": False, "border_min": 0.72}
+# 做愛第二／三步（2026-10-03）：有男人 → 走 tease（雙人／POV）；garment=nude（不套服裝）。
+#   _tip  局部：陰部特寫、龜頭頂陰唇、還沒插入（正方形，同動作裁切）
+#   _join 玩家加入：POV＋黑色半透明影子男（傳教士抓大腿／後背抓臀）、龜頭頂陰唇（直圖）
+SEX_TIP_SHOTS = ("sex_missionary_tip", "sex_doggy_tip")
+SEX_JOIN_SHOTS = ("sex_missionary_join", "sex_doggy_join")
+for _s in SEX_TIP_SHOTS:
+    PORTRAIT_SHOTS[_s] = dict(_ACTION_CROP_SPEC)
+for _s in SEX_JOIN_SHOTS:
+    PORTRAIT_SHOTS[_s] = dict(_TEASE_SPEC)
+SEX_STEP_SHOTS = SEX_TIP_SHOTS + SEX_JOIN_SHOTS
 TEASE_SHOTS = (
     "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in", "tease_thigh", "tease_butt", "tease_waist",
     "tease_oral",
@@ -164,13 +174,13 @@ TEASE_SHOTS = (
     "tease_cowgirl",
     "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
 )
-TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS + XRAY_ACTION_SHOTS
+TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS + XRAY_ACTION_SHOTS + SEX_STEP_SHOTS
 
 
 def is_action_crop_shot(shot: str) -> bool:
     """摸臀／摟腰／摸奶…九個正方形動作圖（含 _nude 裸體版）。"""
     s = str(shot or "").lower()
-    return s in ACTION_NUDE_BASES or s in NUDE_ACTION_SHOTS or s in XRAY_ACTION_SHOTS
+    return s in ACTION_NUDE_BASES or s in NUDE_ACTION_SHOTS or s in XRAY_ACTION_SHOTS or s in SEX_TIP_SHOTS
 
 
 def is_tease_shot(shot: str) -> bool:
@@ -207,7 +217,7 @@ def undress_garment(shot: str) -> str:
         return "underwear"
     if s == "undress_slip":
         return "panties"
-    if s in ("undress_nude", "undress_stand") or s in NUDE_ACTION_SHOTS or s in SEX_POSE_SHOTS:
+    if s in ("undress_nude", "undress_stand") or s in NUDE_ACTION_SHOTS or s in SEX_POSE_SHOTS or s in SEX_STEP_SHOTS:
         return "nude"
     if s == "undress_cover":
         return "cover"

@@ -8,7 +8,21 @@
       "negative": "male, 1boy, man, penis, testicles, shadow man, male hands, faceless male, pov hands, multiple girls, clothes, dressed, panties, bra, underwear, lingerie, shirt, dress, skirt, jacket, coat, uniform, hoodie, covered breasts, text, watermark, ugly, extra fingers, bad hands, extra legs",
       "ref": "",
       "url": "",
-      "updated": 1791000000000
+      "updated": 1791000000000,
+      "tip": {
+        "prompt": "1man, 1girl, pov, first-person view, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, only his penis visible, close-up, crotch close-up, pussy focus, front view, from above, girl lying on back, legs spread, spread legs, nude, completely nude, pussy, labia, clitoris, pussy juice, wet pussy, erect penis, penis tip, glans, glans pressing against labia, penis touching pussy, about to insert",
+        "negative": "inserted, penetration, vaginal penetration, penis inside, realistic man, male face, detailed male face, realistic male skin, male eyes, hairy male body, extra penis, multiple penises, multiple girls, girl face, upper body, panties, bra, clothes, dressed, underwear, lingerie, shirt, dress, skirt, jacket, coat, uniform, hoodie, covered breasts, text, watermark, ugly, extra fingers, bad hands, extra legs",
+        "ref": "",
+        "url": "",
+        "poseDenoise": 0.55
+      },
+      "join": {
+        "prompt": "1man, 1girl, pov, first-person view, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, from above, front view, missionary, girl lying on back, on bed, white bed sheets, legs spread, spread legs, knees up, nude, completely nude, bare breasts, nipples, pussy, labia, pussy juice, shadow male hands, shadow male hands holding her thighs, hands on her thighs, erect penis, penis tip, glans, glans pressing against labia, penis touching pussy, about to insert, dazed, trance, rolling eyes, unfocused eyes, empty eyes, slight ahegao, open mouth, drooling, saliva, heavy breathing, panting, trembling, twitching, convulsing, blush, sweat",
+        "negative": "inserted, penetration, vaginal penetration, penis inside, realistic man, male face, detailed male face, realistic male skin, male eyes, hairy male body, extra penis, multiple penises, multiple girls, panties, bra, clothes, dressed, underwear, lingerie, shirt, dress, skirt, jacket, coat, uniform, hoodie, covered breasts, text, watermark, ugly, extra fingers, bad hands, extra legs",
+        "ref": "",
+        "url": "",
+        "poseDenoise": 0.55
+      }
     }
   ],
   "activeId": "sxmdefault01"
