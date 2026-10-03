@@ -81,13 +81,15 @@ import {
   applyInvasionRoll,
   decayInvasion,
   decayInvasionByTime,
+  chatLineHappy,
+  chatInvasionDrop,
   clearInvasion,
   getInvasion,
   INVASION_MAX,
   protestTone,
   protestPromptBlock,
   blendProtestReply,
-} from "./invasion.js?v=5";
+} from "./invasion.js?v=6";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -180,13 +182,14 @@ import {
   pickRuntimeVaginaFingerPack,
   loadVaginaFingerDoc,
   generateVaginaFingerPackImage,
-} from "./vagina_finger_packs.js?v=1";
+  XRAY_ACTION_PACKS_ON,
+} from "./vagina_finger_packs.js?v=2";
 import {
   mountCervixRubPackEditor,
   pickRuntimeCervixRubPack,
   loadCervixRubDoc,
   generateCervixRubPackImage,
-} from "./cervix_rub_packs.js?v=1";
+} from "./cervix_rub_packs.js?v=2";
 import {
   mountStandeePackEditor,
   loadStandeeDoc,
@@ -1079,6 +1082,8 @@ const ACTION_PACK_JOBS = {
 /** 自己的圖都拿不到時（沒組／現產失敗）才借「手指插入」的快取圖（不為借圖再生圖）。 */
 const OWN_ACTION_BORROW = { vagina_finger: "finger_in", cervix_rub: "finger_in" };
 let lastActionPick = null;
+/** 除錯：上一句閒聊的侵犯衰減 { happy, dropped, mark }。 */
+let lastChatInvDecay = null;
 
 /**
  * 動作圖 prompt 版次。吸奶頭／舔奶頭 2026-10-03 改成「黑色半透明影子男」（rev 2）：
@@ -1704,7 +1709,7 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
       { load: loadFingerDoc, gen: generateFingerPackImage, packsKey: "tease_finger_in_packs", shotKey: "tease_finger_in", countKey: "finger" },
       { load: loadVaginaFingerDoc, gen: generateVaginaFingerPackImage, packsKey: "tease_vagina_finger_packs", shotKey: "tease_vagina_finger", countKey: "vagina_finger" },
       { load: loadCervixRubDoc, gen: generateCervixRubPackImage, packsKey: "tease_cervix_rub_packs", shotKey: "tease_cervix_rub", countKey: "cervix_rub" },
-    ];
+    ].filter((job) => XRAY_ACTION_PACKS_ON || (job.countKey !== "vagina_finger" && job.countKey !== "cervix_rub"));
 
     for (const job of packJobs) {
       let packs = [];
@@ -5222,6 +5227,9 @@ async function deliverUserTalk(text, opts = {}) {
   talkBusy = true;
   setTalkEnabled(true);
   let moodTurn = null;
+  // 侵犯值閒聊衰減：等判定完才知道這句她開不開心（開心 −8..10，否則 −1..2）
+  const affBeforeLine = Number(girl.affection) || 0;
+  let chatInvDecay = false;
 
   try {
     // 先立刻顯示玩家台詞，避免等 LLM／判定時畫面上無反應
@@ -5263,7 +5271,11 @@ async function deliverUserTalk(text, opts = {}) {
         if (opts.actId === "labia") void maybeGenLabiaShot(girl, opts.actId);
         if (opts.actId === "labia_rub") void maybeGenLabiaRubShot(girl, opts.actId);
         if (opts.actId === "finger_in") void maybeGenFingerShot(girl, opts.actId);
-        if (opts.actId === "vagina_finger" || opts.actId === "cervix_rub") void maybeGenOwnActionShot(girl, opts.actId);
+        if (opts.actId === "vagina_finger" || opts.actId === "cervix_rub") {
+          // x-ray 剖面圖組關著（XRAY_ACTION_PACKS_ON=false）→ 借插入手指的圖（全裸＋閘門開時借裸體版）
+          if (XRAY_ACTION_PACKS_ON) void maybeGenOwnActionShot(girl, opts.actId);
+          else void maybeGenFingerShot(girl, "finger_in");
+        }
         // 情感：一般挑逗不加；接近高潮／失神門檻才小幅＋1，痙攣／射精＋2
         const nearClimax = stunBefore >= 50 || arousalBefore >= 22
           || (girl.bodyState?.arousal || 0) >= 22
@@ -5309,8 +5321,8 @@ async function deliverUserTalk(text, opts = {}) {
           noteAfterglow(girl, "his", { ejac: "external" });
           if (!girlInPenisSex(girl)) showClimaxTip("射精了！");
         }
-        // 閒聊：每句回覆侵犯值略降 −1..2
-        decayInvasion(girl);
+        // 閒聊：每句回覆侵犯值下降（量在判定後決定：一般 −1..2、開心 −8..10）
+        chatInvDecay = true;
       }
     }
     renderBodyPanel();
@@ -5326,6 +5338,25 @@ async function deliverUserTalk(text, opts = {}) {
       if (!naming && !petHandled) {
         turnMark = await judgeTurn(raw);
         applyMark(turnMark);
+      }
+      if (chatInvDecay && girl) {
+        const happy = chatLineHappy({
+          mark: turnMark,
+          affBefore: affBeforeLine,
+          affAfter: Number(girl.affection) || 0,
+          worldMood: girl.world?.mood || "",
+          moodType: getMoodCarry(girl)?.type || "",
+          bodyHit: textBodyHit,
+        });
+        const invBefore = getInvasion(girl);
+        const dropped = decayInvasion(girl, chatInvasionDrop(happy));
+        if (happy && dropped > 0) {
+          pushDebug(`侵犯 −${dropped}（她開心）→ ${invBefore - dropped}/${INVASION_MAX}`);
+          renderDebug();
+        }
+        lastChatInvDecay = { happy, dropped, mark: turnMark };
+        try { renderBodyPanel(); renderDebug(); } catch { /* ignore */ }
+        persistRoom();
       }
       // 情緒餘溫：每句閒聊衰減（接住／道歉較快、侵犯高較慢；冒犯本句不衰減；用文字摸她不算閒聊）
       if (!textBodyHit) {
@@ -8214,7 +8245,17 @@ if (document.documentElement.classList.contains("room-page")) {
   } catch (err) {
     console.warn("[finger-pack-editor]", err?.message || err);
   }
-  try {
+  if (!XRAY_ACTION_PACKS_ON) {
+    // 剖面圖組關著：編輯器按鈕藏起來、不掛面板
+    for (const id of ["btn-vagina-finger-packs", "btn-cervix-rub-packs"]) {
+      const b = $(id);
+      if (b) b.hidden = true;
+    }
+    for (const id of ["vagina-finger-pack-editor", "cervix-rub-pack-editor"]) {
+      const el = $(id);
+      if (el) el.hidden = true;
+    }
+  } else try {
     mountVaginaFingerPackEditor({
       getGirl: () => girl,
       getEngine: () => gameImgRoute(),
@@ -8222,7 +8263,7 @@ if (document.documentElement.classList.contains("room-page")) {
   } catch (err) {
     console.warn("[vagina-finger-pack-editor]", err?.message || err);
   }
-  try {
+  if (XRAY_ACTION_PACKS_ON) try {
     mountCervixRubPackEditor({
       getGirl: () => girl,
       getEngine: () => gameImgRoute(),
@@ -8276,6 +8317,10 @@ window.RoomScenes = {
 };
 window.RoomCompanion = {
   /** 動作圖裸體版除錯：on＝閘門；lastPick＝上一次選圖；pregen＝手動排補產。 */
+  /** 侵犯值除錯：上一句閒聊衰減。 */
+  invasion: {
+    lastChatDecay: () => lastChatInvDecay,
+  },
   /** 脫衣畫面除錯：chatOn＝對話版閘門；state＝目前模式／階段。 */
   undress: {
     chatOn: () => UNDRESS_CHAT_ON,

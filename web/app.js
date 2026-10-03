@@ -50,8 +50,8 @@ import {
   buildFingerImgBody,
 } from "./content/finger_packs.js?v=2";
 // 扣陰道／揉子宮口 x-ray 剖面圖組（主遊戲沒有這兩個動作；只為重產／圖鑑同契約）
-import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody } from "./content/vagina_finger_packs.js?v=1";
-import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=1";
+import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACKS_ON } from "./content/vagina_finger_packs.js?v=2";
+import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=2";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=1";
@@ -3106,8 +3106,9 @@ async function weaveOneTeaseShot(s, shot) {
       : cropShot === "tease_labia" ? pickRuntimeLabiaPack
       : cropShot === "tease_labia_rub" ? pickRuntimeLabiaRubPack
       : cropShot === "tease_finger_in" ? pickRuntimeFingerPack
-      : cropShot === "tease_vagina_finger" ? pickRuntimeVaginaFingerPack
-      : cropShot === "tease_cervix_rub" ? pickRuntimeCervixRubPack
+      // x-ray 剖面圖組關著時不產（XRAY_ACTION_PACKS_ON=false）
+      : cropShot === "tease_vagina_finger" ? (XRAY_ACTION_PACKS_ON ? pickRuntimeVaginaFingerPack : null)
+      : cropShot === "tease_cervix_rub" ? (XRAY_ACTION_PACKS_ON ? pickRuntimeCervixRubPack : null)
       : null;
     const cropBuild = cropShot === "tease_breast" ? buildBreastImgBody
       : cropShot === "tease_breast_knead" ? buildKneadImgBody

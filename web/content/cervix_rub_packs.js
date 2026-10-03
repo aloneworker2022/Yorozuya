@@ -7,6 +7,8 @@ import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=8";
 export const CERVIX_RUB_SHOT = "tease_cervix_rub";
 /** x-ray 剖面＝穿衣／裸體同一張；房間 ACTION_PACK_JOBS 以 noNude 跳過裸體預產。 */
 export const SHARED_NUDE = true;
+/** 總開關在 vagina_finger_packs.js（兩組一起開關）。 */
+export { XRAY_ACTION_PACKS_ON } from "./vagina_finger_packs.js?v=2";
 
 const SHOT = "tease_cervix_rub";
 const API = "/api/cervix-rub-packs";

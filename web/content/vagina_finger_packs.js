@@ -7,6 +7,13 @@ import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=8";
 export const VAGINA_VAGINA_FINGER_SHOT = "tease_vagina_finger";
 /** x-ray 剖面＝穿衣／裸體同一張；房間 ACTION_PACK_JOBS 以 noNude 跳過裸體預產。 */
 export const SHARED_NUDE = true;
+/**
+ * 總開關（2026-10-03 使用者：x-ray 剖面太難，模型會畫成陰莖插進子宮）→ 關。
+ * 關著時：扣陰道／揉子宮口執行時借「插入手指」的圖（全裸借裸體版），不產這兩組（執行時、召喚預產都不產），
+ * test_room 編輯器按鈕藏起來；主遊戲 crop 也不產。程式、伺服器 shot／CRUD、json 都保留，改 true 就恢復。
+ * 揉子宮口那組沿用這一個開關（cervix_rub_packs.js 轉出）。
+ */
+export const XRAY_ACTION_PACKS_ON = false;
 
 const SHOT = "tease_vagina_finger";
 const API = "/api/vagina-finger-packs";
