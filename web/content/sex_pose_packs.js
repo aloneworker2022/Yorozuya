@@ -29,25 +29,31 @@ export const SEX_POSES = {
   },
 };
 
-/** 預設 prompt 版本：rev 2（2026-10-03）＝男人還沒上場 → 只有她一人（solo）、失神痙攣臉、無影子男。
- * 房間快取圖記 portraits.actionPromptRev["<shot>_packs:<packId>"]；低於此版且該組仍是預設 → 作廢重產。 */
-export const SEX_POSE_PROMPT_REV = 2;
+/** 預設 prompt 版本（房間快取圖記 portraits.actionPromptRev["<shot>_packs:<packId>"]；低於此版且該組仍是預設 → 作廢重產）。
+ * rev 2（2026-10-03）：男人還沒上場 → 只有她（solo）、失神痙攣臉、無影子男。
+ * rev 3（2026-10-03）：改走脫衣全身立繪那條管線（同 undress_nude：scene_kind=portrait、不帶 lock_identity、伺服器 solo＋garment=nude）；
+ *   prompt 拿掉 nsfw／explicit（伺服器依 rating 補），補 completely nude／bare breasts；負向多擋衣物。 */
+export const SEX_POSE_PROMPT_REV = 3;
 
-/** rev 1 預設（POV＋影子男手）。存檔 prompt／negative 一字不差（忽略大小寫空白）等於這些 → 載入時換新預設。 */
+/** 舊預設（rev 1：POV＋影子男手；rev 2：solo 但走 tease 管線）。存檔 prompt／negative 一字不差（忽略大小寫空白）等於這些 → 載入時換新預設。 */
 export const LEGACY_SEX_POSE_PROMPTS = {
   missionary: [
     "pov, from above, missionary position, girl lying on back, on bed, white bed sheets, legs spread, spread legs, knees up, m legs, spreading own pussy, spread pussy with fingers, fingers spreading labia, presenting pussy, pussy, labia, clitoris, pussy juice, blush, embarrassed, looking at viewer, full body, nsfw, explicit, NO penis, NO male body",
+    "1girl, solo, nude, front view, from above, lying on back, on bed, white bed sheets, legs spread, spread legs, knees up, m legs, spread pussy, both hands spreading labia, spreading own pussy with both hands, fingers on labia, pussy, labia, clitoris, pussy juice, dazed, trance, rolling eyes, unfocused eyes, empty eyes, slight ahegao, open mouth, drooling, saliva, heavy breathing, panting, trembling, twitching, convulsing, blush, sweat, full body, nsfw, explicit",
   ],
   doggy: [
     "pov, from behind, doggystyle, doggy position, girl on all fours, on bed, white bed sheets, ass up, butt raised high, top-down bottom-up, arched back, looking back, looking at viewer over shoulder, blush, pussy, labia, pussy visible from behind, anus, presenting, wet pussy, 1man, pov, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, shadow male hands, shadow male hands on her hips, full body, nsfw, explicit, NO penis, NO detailed male face",
+    "1girl, solo, nude, from behind, back view, viewed from behind, lying face down, face down on bed, face in pillow, prone, ass up, butt raised high, top-down bottom-up, hips raised, knees bent, arched back, facing away, face hidden, head turned away, pussy visible from behind, pussy, labia, anus, pussy juice, trembling, twitching, convulsing, heavy breathing, panting, drooling, dazed, blush, sweat, on bed, white bed sheets, full body, nsfw, explicit",
   ],
 };
 export const LEGACY_SEX_POSE_NEGATIVES = {
   missionary: [
     "penis, testicles, male body, realistic man, panties, bra, clothes, dressed, text, watermark, ugly, extra fingers, bad hands, extra legs",
+    "male, 1boy, man, penis, testicles, shadow man, male hands, faceless male, pov hands, multiple girls, panties, bra, clothes, dressed, text, watermark, ugly, extra fingers, bad hands, extra legs",
   ],
   doggy: [
     "penis, testicles, detailed male face, realistic man, realistic male skin, male eyes, panties, bra, clothes, dressed, text, watermark, ugly, extra fingers, bad hands, extra legs",
+    "male, 1boy, man, penis, testicles, shadow man, male hands, faceless male, pov hands, multiple girls, looking back, looking at viewer, looking over shoulder, face visible, panties, bra, clothes, dressed, text, watermark, ugly, extra fingers, bad hands, extra legs",
   ],
 };
 
@@ -97,32 +103,33 @@ export function clampDenoise(v) {
 /** 失神痙攣（ahegao-lite）：兩個姿勢共用的表情／身體反應。 */
 const SEX_DAZED_FACE = "dazed, trance, rolling eyes, unfocused eyes, empty eyes, slight ahegao, open mouth, drooling, saliva, heavy breathing, panting, trembling, twitching, convulsing, blush, sweat";
 
-/** 姿勢／取景 tags only（人設於生圖時合併）。男人還沒上場：只有她一人，不寫 pov／男手／影子男。 */
+/** 姿勢／取景 tags only（人設於生圖時合併）。男人還沒上場：只有她一人、全裸；不寫 pov／男手／影子男，也不寫 nsfw／explicit（伺服器依 rating 補，避免被當性行為場景）。 */
 export function defaultSexPosePrompt(pose) {
   if (pose === "doggy") {
     return [
-      "1girl, solo, nude",
+      "1girl, solo, nude, completely nude, bare breasts",
       "from behind, back view, viewed from behind",
       "lying face down, face down on bed, face in pillow, prone, ass up, butt raised high, top-down bottom-up, hips raised, knees bent, arched back",
       "facing away, face hidden, head turned away",
       "pussy visible from behind, pussy, labia, anus, pussy juice",
       "trembling, twitching, convulsing, heavy breathing, panting, drooling, dazed, blush, sweat",
-      "on bed, white bed sheets, full body, nsfw, explicit",
+      "on bed, white bed sheets, full body",
     ].join(", ");
   }
   return [
-    "1girl, solo, nude",
+    "1girl, solo, nude, completely nude, bare breasts, nipples",
     "front view, from above",
     "lying on back, on bed, white bed sheets",
     "legs spread, spread legs, knees up, m legs",
     "spread pussy, both hands spreading labia, spreading own pussy with both hands, fingers on labia",
     "pussy, labia, clitoris, pussy juice",
     SEX_DAZED_FACE,
-    "full body, nsfw, explicit",
+    "full body",
   ].join(", ");
 }
 
 const SEX_NO_MALE_NEG = "male, 1boy, man, penis, testicles, shadow man, male hands, faceless male, pov hands, multiple girls";
+const SEX_NO_CLOTHES_NEG = "clothes, dressed, panties, bra, underwear, lingerie, shirt, dress, skirt, jacket, coat, uniform, hoodie, covered breasts";
 
 /** 負向：擋男人（還沒上場）／衣物／常見瑕疵；後背另擋回頭、看鏡頭。不擋 nude／pussy（伺服器另外剔 nude 類）。 */
 export function defaultSexPoseNegative(pose) {
@@ -130,13 +137,13 @@ export function defaultSexPoseNegative(pose) {
     return [
       SEX_NO_MALE_NEG,
       "looking back, looking at viewer, looking over shoulder, face visible",
-      "panties, bra, clothes, dressed",
+      SEX_NO_CLOTHES_NEG,
       "text, watermark, ugly, extra fingers, bad hands, extra legs",
     ].join(", ");
   }
   return [
     SEX_NO_MALE_NEG,
-    "panties, bra, clothes, dressed",
+    SEX_NO_CLOTHES_NEG,
     "text, watermark, ugly, extra fingers, bad hands, extra legs",
   ].join(", ");
 }
@@ -202,9 +209,29 @@ function resolveComfyCkpt(girl, eng = {}) {
   return ck;
 }
 
+/** 同 undress_packs.js 的 wornOutfit：她現在那身衣服（伺服器 garment=nude 時不寫進 prompt，只為與脫光立繪同一份下單）。 */
+function wornOutfit(g) {
+  const look = g?.look || {};
+  const wardrobe = Array.isArray(look.wardrobe) ? look.wardrobe : [];
+  const erotic = Array.isArray(look.eroticOutfits) ? look.eroticOutfits : [];
+  const sleep = Array.isArray(look.sleepOutfits) ? look.sleepOutfits : [];
+  const pick = g?.outfitPick;
+  if (typeof pick === "string" && pick[0] === "e") {
+    const index = Number(pick.slice(1));
+    if (Number.isInteger(index) && erotic[index]) return String(erotic[index]);
+  }
+  if (typeof pick === "string" && pick[0] === "s") {
+    const index = Number(pick.slice(1));
+    if (Number.isInteger(index) && sleep[index]) return String(sleep[index]);
+  }
+  if (Number.isInteger(pick) && pick >= 0 && pick < wardrobe.length) return String(wardrobe[pick] || "");
+  return String(look.career_outfit || look.style || "");
+}
+
 /**
- * 組生圖下單。framing=full、shot=sex_*_open（伺服器 garment=nude：寫 nude／bare breasts、不套服裝、負向剔 nude 類）；
- * prompt 留空 → 伺服器以人設＋extra(姿勢) 合併。
+ * 組生圖下單。**與脫光立繪（undress_nude，buildUndressImgBody）同一條管線**：
+ * scene_kind=portrait、不帶 lock_identity（不當雙人場景）、framing=full、rating=nsfw、outfit＝她那身（伺服器 garment=nude 蓋掉）；
+ * 只差 shot（伺服器登記為脫衣全身立繪那一族、不去背）與 extra（姿勢＋失神痙攣）。prompt 留空 → 伺服器以人設＋extra 合併。
  */
 export function buildSexPoseImgBody(pose, pack, girl, eng = {}, opts = {}) {
   if (!girl) throw new Error("先選魅子");
@@ -215,7 +242,7 @@ export function buildSexPoseImgBody(pose, pack, girl, eng = {}, opts = {}) {
   const userNeg = p ? String(p.negative || "").trim() : defaultSexPoseNegative(pose);
   const ref = p ? String(p.ref || "").trim() : "";
   const denoise = p ? clampDenoise(p.poseDenoise) : 0.55;
-  void opts;
+  const worn = opts.worn != null ? String(opts.worn) : wornOutfit(girl);
   return {
     key: `room-${c.shot}:${girl.id || "x"}:${Date.now().toString(36)}`,
     provider: comfy ? "comfy" : "grok-img",
@@ -224,16 +251,15 @@ export function buildSexPoseImgBody(pose, pack, girl, eng = {}, opts = {}) {
     rating: "nsfw",
     style: eng.imgStyle || "pixel",
     character: girl,
-    outfit: "",
+    outfit: worn,
     prompt: "",
     extra: action,
     negative: userNeg,
     visual_neg: userNeg,
     cutout: false,
     flat_bg: false,
-    lock_identity: true,
     retry: true,
-    scene_kind: "tease",
+    scene_kind: "portrait",
     shot: c.shot,
     char_id: girl.id,
     ...(ref ? { pose_ref: ref, pose_denoise: denoise } : {}),
@@ -241,11 +267,19 @@ export function buildSexPoseImgBody(pose, pack, girl, eng = {}, opts = {}) {
   };
 }
 
+/** 新伺服器把這兩個 shot 落到 /assets/portraits/{id}_sex_*_open.png；落到 testword＝伺服器沒重啟（不認得 shot → 不套 nude、會補 1man）。 */
+export function isSexPoseResultUrl(pose, url) {
+  const c = SEX_POSES[pose];
+  const u = String(url || "");
+  return !!c && u.includes("/assets/portraits/") && u.includes(`_${c.shot}.png`);
+}
+
 function formatApiError(method, url, detail) {
   return `${method || "GET"} ${url} → ${detail}`;
 }
 
 function restartHint(c, verb) {
+  if (verb === "GEN") return `伺服器未重啟：${c.label}圖沒有走脫光立繪管線（會穿衣服或多一個男人），這張不收。請 pull 最新 grok-2026.10 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）`;
   return `${verb === "PUT" ? "伺服器未重啟，無法儲存" : "讀不到"}${c.label}圖組（${verb} ${c.api}）。請 pull 最新 grok-2026.10 並重啟 uvicorn（cd server && uvicorn main:app --host 0.0.0.0 --port 8000）`;
 }
 
@@ -345,6 +379,10 @@ async function waitImg(body, onTick, ms = 360000) {
 export async function generateSexPosePackImage(pose, pack, girl, eng, opts = {}) {
   const body = buildSexPoseImgBody(pose, pack, girl, eng, opts);
   const r = await waitImg(body, opts.onTick);
+  if (r.status === "done" && r.result && !isSexPoseResultUrl(pose, r.result)) {
+    // 舊伺服器：圖會穿衣服或多一個男人 → 不收這張
+    return { status: "error", result: "", error: restartHint(cfg(pose), "GEN"), body, key: r.key, stale: String(r.result) };
+  }
   return { status: r.status, result: r.result, error: r.error, body, key: r.key };
 }
 

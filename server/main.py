@@ -1835,6 +1835,7 @@ async def _run_grok_image(
     use_pose = bool(pose_ref) and (
         not shot_l
         or comfy.is_tease_shot(shot_l)
+        or comfy.is_solo_pose_shot(shot_l)
         or comfy.is_standee_shot(shot_l)
         or str(scene_kind or "").lower() == "sex_strip"
     )
@@ -2330,6 +2331,9 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
     scene = bool(opts.get("lock_identity")) and bool(str(opts.get("extra") or "").strip())
     if comfy.is_tease_shot(shot):
         scene = True
+    # 做愛開場圖＝脫衣全身立繪那一族：solo 立繪構圖（1girl, solo），就算舊前端帶 lock_identity 也不當雙人場景
+    if comfy.is_solo_pose_shot(shot):
+        scene = False
     if script_mode:
         scene = True
         extra = str(opts.get("extra") or "").strip()
@@ -2373,7 +2377,8 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         scene=scene,
         action_first=script_mode,
         garment=comfy.undress_garment(shot),
-        solo=comfy.is_solo_pose_shot(shot),
+        # 做愛開場圖：失神（翻白眼／失焦）、後背臉朝另一邊 → 不補立繪預設的 looking at viewer
+        auto_gaze=not comfy.is_solo_pose_shot(shot),
     )
 
 
@@ -2445,7 +2450,7 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     pose_src = _resolve_ref_image(str(opts.get("pose_ref") or ""))
     # 只讓 tease／standee／脫衣場面吃 pose_ref；召喚三連拍／情緒半身表不鎖姿勢參考
     if pose_src is not None and shot and not (
-        comfy.is_tease_shot(shot) or comfy.is_standee_shot(shot) or comfy.is_undress_shot(shot)
+        comfy.is_tease_shot(shot) or comfy.is_standee_shot(shot) or comfy.is_undress_family_shot(shot)
     ):
         pose_src = None
     if pose_src is not None:
@@ -2455,7 +2460,7 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
         if comfy.is_action_crop_shot(shot):
             sq = (comfy.PORTRAIT_SHOTS.get(shot) or {}).get("gen") or (1024, 1024)
             gen_w, gen_h = int(sq[0]), int(sq[1])
-        elif comfy.is_undress_shot(shot):
+        elif comfy.is_undress_family_shot(shot):
             box = spec.get("gen") or (832, 1216)
             gen_w, gen_h = int(box[0]), int(box[1])
     name, err = await comfy.generate(

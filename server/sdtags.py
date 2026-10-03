@@ -1436,7 +1436,7 @@ def build_prompt(
     stage: str = "",
     action_first: bool = False,
     garment: str = "",
-    solo: bool = False,
+    auto_gaze: bool = True,
 ) -> tuple[str, list[str]]:
     """回 (positive prompt, 查不到對照的原文清單)。
 
@@ -1503,12 +1503,9 @@ def build_prompt(
         level = "exposed"
     keep_clothes = dressed and not garment and level == "covered" and not (nsfw_act and not keep_act)
     # 雙人／做愛／NTR 只寫 1man 1girl。不要 1boy／2people（人數衝突、畫風跑掉）。
-    # solo=True（做愛開場圖）：場景構圖但只有她 → 不判雙人、不補 1man／third person。
-    multi = scene and not solo and is_multi_scene(extra)
+    multi = scene and is_multi_scene(extra)
     pov = is_pov_cam(extra)
-    if scene and solo:
-        bits = [QUALITY_PREFIX, "1girl, solo", HUMAN_TAGS]
-    elif scene:
+    if scene:
         if multi:
             bits: list[str] = [
                 QUALITY_PREFIX,
@@ -1563,7 +1560,8 @@ def build_prompt(
                  tr(HAIR_COLOR, "hair_color"), tr(HAIR, "hair"), tr(FEATURE, "feature")]
         bits += sp_seg["head"]
         # 純立繪對鏡；出卡場景由 extra 決定對視對象，不強制 looking at viewer
-        if not p and not scene:
+        # auto_gaze=False（做愛開場圖後背：臉朝另一邊）→ 不補 looking at viewer
+        if not p and not scene and auto_gaze:
             bits.append("looking at viewer")
     rating_l = (rating or "sfw").lower()
     # 乳暈／乳頭只在 exposed（強制裸）；erotic／女友留胸型但不寫乳頭。不要被 rating=sfw 蓋掉階段。

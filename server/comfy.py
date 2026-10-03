@@ -148,11 +148,13 @@ for _s in NUDE_ACTION_SHOTS:
 XRAY_ACTION_SHOTS = ("tease_vagina_finger", "tease_cervix_rub")
 for _s in XRAY_ACTION_SHOTS:
     PORTRAIT_SHOTS[_s] = dict(_ACTION_CROP_SPEC)
-# 做愛開場圖（2026-10-03，肏系統第一步）：她脫光後按「做愛」的第一張。直圖、不去背、POV；
-# 檔名 {id}_sex_missionary_open.png／{id}_sex_doggy_open.png；undress_garment → nude（不套生涯服裝）。
+# 做愛開場圖（2026-10-03，肏系統第一步）：她脫光後按「做愛」的第一張。男人還沒上場 → 只有她。
+# 走「脫衣全身立繪」那一族（同 undress_nude）：solo 立繪構圖、garment=nude、人設 seed、可吃 pose_ref；
+# **不是** tease（tease 會被當雙人場景補 1man／玩家 POV）。直圖 832×1216；有床當背景 → 不去背。
+# 檔名 {id}_sex_missionary_open.png／{id}_sex_doggy_open.png。
 SEX_POSE_SHOTS = ("sex_missionary_open", "sex_doggy_open")
 for _s in SEX_POSE_SHOTS:
-    PORTRAIT_SHOTS[_s] = dict(_TEASE_SPEC)
+    PORTRAIT_SHOTS[_s] = {"gen": (832, 1216), "out": (0, 0), "cutout": False, "border_min": 0.72}
 TEASE_SHOTS = (
     "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in", "tease_thigh", "tease_butt", "tease_waist",
     "tease_oral",
@@ -162,7 +164,7 @@ TEASE_SHOTS = (
     "tease_cowgirl",
     "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
 )
-TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS + XRAY_ACTION_SHOTS + SEX_POSE_SHOTS
+TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS + XRAY_ACTION_SHOTS
 
 
 def is_action_crop_shot(shot: str) -> bool:
@@ -178,6 +180,11 @@ def is_tease_shot(shot: str) -> bool:
 def is_solo_pose_shot(shot: str) -> bool:
     """做愛開場圖：男人還沒上場，圖裡只有她（1girl, solo）。不因 nsfw／doggy／from behind 自動補 1man。"""
     return str(shot or "").lower() in SEX_POSE_SHOTS
+
+
+def is_undress_family_shot(shot: str) -> bool:
+    """脫衣全身立繪那一族（undress_*＋做愛開場圖）：solo 立繪構圖、人設 seed、可吃 pose_ref。"""
+    return is_undress_shot(shot) or is_solo_pose_shot(shot)
 
 
 def is_standee_shot(shot: str) -> bool:
@@ -223,7 +230,7 @@ def portrait_shot_spec(shot: str):
 def is_identity_sheet_shot(shot: str) -> bool:
     """召喚三連拍／情緒半身表／脫衣全身：固定人設 seed 鎖臉。tease_/standee_ 不在此列。"""
     s = str(shot or "").lower()
-    if s in ("head", "half", "full") or is_undress_shot(s):
+    if s in ("head", "half", "full") or is_undress_family_shot(s):
         return True
     return s.startswith("half_")
 

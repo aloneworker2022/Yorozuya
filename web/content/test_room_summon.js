@@ -126,8 +126,9 @@ import {
   generateSexPosePackImage,
   mountSexPosePackEditor,
   isDefaultSexPosePack,
+  isSexPoseResultUrl,
   SEX_POSE_PROMPT_REV,
-} from "./sex_pose_packs.js?v=2";
+} from "./sex_pose_packs.js?v=3";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -575,7 +576,15 @@ function ensureSexPoseUrl(who, pose) {
     const packsKey = sexPosePacksKey(pose);
     who.portraits = who.portraits || {};
     const pool = () => (who.portraits[packsKey] && typeof who.portraits[packsKey] === "object" ? who.portraits[packsKey] : {});
-    const anyCached = () => Object.values(pool()).map((v) => String(v || "")).find(Boolean) || "";
+    // 舊伺服器（沒重啟）產的落在 testword：穿衣服／多一個男人 → 整批丟掉，不當快取也不當退路
+    const bad = Object.entries(pool()).filter(([, v]) => v && !isSexPoseResultUrl(pose, v));
+    if (bad.length) {
+      const next = { ...pool() };
+      for (const [k] of bad) delete next[k];
+      who.portraits[packsKey] = next;
+      persistRoom();
+    }
+    const anyCached = () => Object.values(pool()).map((v) => String(v || "")).find((v) => v && isSexPoseResultUrl(pose, v)) || "";
     let pack = null;
     try {
       pack = await pickRuntimeSexPosePack(pose);
@@ -611,7 +620,7 @@ function ensureSexPoseUrl(who, pose) {
         persistRoom();
         return { url: stamped, pose, packId: pack.id, generated: true, fallback: false };
       }
-      console.warn("[sex-pose]", pose, r?.error || "生圖失敗");
+      console.warn("[sex-pose]", pose, r?.error || "生圖失敗", r?.stale || "");
     } catch (err) {
       console.warn("[sex-pose]", pose, err?.message || err);
     }
@@ -1271,7 +1280,7 @@ const ACTION_PROMPT_REV = {
   tease_breast_knead_packs: 3, tease_breast_knead_nude_packs: 3,
   tease_breast_suck_packs: 3, tease_breast_suck_nude_packs: 3,
   tease_nipple_lick_packs: 3, tease_nipple_lick_nude_packs: 3,
-  // 做愛開場圖 rev 2：solo、失神痙攣、無影子男（2026-10-03）
+  // 做愛開場圖 rev 3：solo、失神痙攣、無影子男、走脫光立繪管線（2026-10-03）
   sex_missionary_open_packs: SEX_POSE_PROMPT_REV, sex_doggy_open_packs: SEX_POSE_PROMPT_REV,
 };
 
