@@ -104,6 +104,21 @@ import {
   formatGap,
 } from "./miss_you.js?v=1";
 import {
+  ensureStunDebt,
+  getStunDebt,
+  clearStunDebt,
+  addStunDebt,
+  normalInvasionFor,
+  normalUndressInvasion,
+  takeStunReckoning,
+  settleShare,
+  reckoningPrompt,
+  reckoningFallback,
+  reckoningFleeNote,
+  reckoningMood,
+  stunDebtActsText,
+} from "./stun_reckoning.js?v=1";
+import {
   getMoodCarry,
   decayMoodByTime,
   decayMoodPerLine,
@@ -289,6 +304,18 @@ function missYouOn() {
   }
 }
 const MISS_YOU_ON = missYouOn();
+
+/** 事後算帳試驗閘門（2026-10-03）：<html data-stun-reckoning="1">（目前只有 test_room.html）。 */
+function stunReckoningOn() {
+  try {
+    if (typeof globalThis.YORO_STUN_RECKONING === "boolean") return globalThis.YORO_STUN_RECKONING;
+    return document.documentElement?.dataset?.stunReckoning === "1";
+  } catch {
+    return false;
+  }
+}
+const STUN_RECKONING_ON = stunReckoningOn();
+let lastReckoning = null;
 
 /** 回來／隔一陣子再開口：依離開多久累加想念（閘門關＝什麼都不做）。 */
 function refreshMissNow(who = girl) {
@@ -4656,6 +4683,33 @@ function bindMissDebug() {
   });
 }
 
+/** test_room 除錯：事後算帳欠帳一行。 */
+function renderReckonDebug() {
+  const el = $("dbg-reckon");
+  if (!el) return;
+  if (!STUN_RECKONING_ON || !girl) {
+    el.textContent = "—";
+    return;
+  }
+  const d = ensureStunDebt(girl);
+  const pers = basePersonality(girl);
+  const share = settleShare(girl.stage || "stranger", pers);
+  const acts = stunDebtActsText(girl);
+  const now = d.amount > 0 || acts ? `欠 ${d.amount}${acts ? `（${acts}）` : ""}・回神補 ${Math.round(d.amount * share)}（${Math.round(share * 100)}%）` : `欠 0・比例 ${Math.round(share * 100)}%`;
+  const dazed = undressDazed(girl) ? "・失神中" : "";
+  const last = lastReckoning ? `・上次 ${lastReckoning.tone}${lastReckoning.add ? ` +${lastReckoning.add}` : ""}${lastReckoning.sweetDrop ? ` −${lastReckoning.sweetDrop}` : ""}` : "";
+  el.textContent = `${now}${dazed}${last}`;
+}
+
+function bindReckonDebug() {
+  onId("dbg-reckon-clear", "click", () => {
+    if (!STUN_RECKONING_ON || !girl) return;
+    clearStunDebt(girl);
+    persistRoom();
+    renderReckonDebug();
+  });
+}
+
 function renderDebug() {
   const panel = $("bond-debug");
   if (!girl) {
@@ -4673,6 +4727,7 @@ function renderDebug() {
   $("dbg-names").textContent = `名字 ${girl.playerName || "—"}　綽號 ${girl.playerNick || "—"}　小名 ${girl.playerPet || "—"}`;
   $("dbg-mood").textContent = girl.world?.mood || "—";
   renderMissDebug();
+  renderReckonDebug();
   const jump = $("dbg-jump");
   if (jump && jump.value !== (girl.stageLock || "")) jump.value = girl.stageLock || "";
   const log = $("dbg-log");
@@ -5188,7 +5243,27 @@ async function openTalk() {
     ensureStunFields(girl);
     ensureTeaseFields(girl);
     // 關著對話時失神／痙攣已退：半脫的她已經穿回去（開場 prompt 照穿著寫）
-    if (settleUndressAfterStun(girl)) { try { paintHalfPortrait(girl); } catch { /* ignore */ } persistRoom(); }
+    const redressedAtOpen = settleUndressAfterStun(girl);
+    if (redressedAtOpen) { try { paintHalfPortrait(girl); } catch { /* ignore */ } persistRoom(); }
+    // 事後算帳：關著對話時她回神了 → 這次開場就是她算帳的那句（補到滿就說完再逃）
+    if (stunReckoningPending(girl) && !undressDazed(girl)) {
+      setTyping(false);
+      const rk = await settleStunReckoning({ redressed: redressedAtOpen });
+      if (rk?.fled) {
+        talkBusy = false;
+        return;
+      }
+      if (rk?.spoke) {
+        noteTalkExchange(girl);
+        if (MISS_YOU_ON) noteMissSeen(girl);
+        persistRoom();
+        if (girl?.world) girl.world.justBack = false;
+        talkBusy = false;
+        if (sheetOpen() && talkFor === girl.id) setTalkEnabled(true);
+        return;
+      }
+      setTyping(true);
+    }
     const openerStun = effectiveStun(girl, "");
     refreshMissNow(girl);
     const opener = enterOpener(returning);
@@ -5321,11 +5396,17 @@ async function deliverUserTalk(text, opts = {}) {
     // 先立刻顯示玩家台詞，避免等 LLM／判定時畫面上無反應
     await typeLine("你", raw);
     // 失神／痙攣剛退（閒置 tick 還沒輪到）：半脫的她先穿回去，再回這句
-    if (settleUndressAfterStun(girl)) {
+    const redressedAtStart = settleUndressAfterStun(girl);
+    if (redressedAtStart) {
       try { paintHalfPortrait(girl); } catch { /* ignore */ }
       lines.push({ role: "assistant", content: REDRESS_NOTE });
       await typeLine("旁白", REDRESS_NOTE);
       persistRoom();
+    }
+    // 事後算帳：她已經回神但還沒結算（閒置計時器沒輪到）→ 先算帳再回這句
+    if (stunReckoningPending(girl) && !undressDazed(girl)) {
+      const rk = await settleStunReckoning({ redressed: redressedAtStart });
+      if (rk?.fled) return;
     }
 
     // 互相認識：計數／拒絕／訂正／寫入（挑逗動作略過寫入）
@@ -5510,6 +5591,12 @@ async function deliverUserTalk(text, opts = {}) {
       invWilling = !!invRoll.willing;
       invToneOpts = { willing: invWilling, tokenCap: invRoll.tokenCap ?? 12, personality: invRoll.personality || "" };
       invTotal = invRoll.invasion;
+      // 事後算帳：失神／痙攣中，記下「清醒時本來會漲多少」減掉實際漲的
+      if (STUN_RECKONING_ON && !invRoll.fled && undressDazed(girl)) {
+        const normal = normalInvasionFor(opts.actId, { stage: girl.stage || "stranger", personality: basePersonality(girl), stats: girl.stats || null });
+        const label = TALK_ACTS.find((a) => a.id === opts.actId)?.label || "動手動腳";
+        if (normal > 0) noteStunDebt(normal - (invRoll.added || 0), label);
+      }
       if (invRoll.added > 0) {
         const pt = protestTone(invRoll.added, invToneOpts);
         const am = invRoll.arousalMult != null && invRoll.arousalMult < 1 ? `（興奮×${invRoll.arousalMult}）` : "";
@@ -5609,6 +5696,11 @@ async function deliverUserTalk(text, opts = {}) {
         lines.push({ role: "assistant", content: REDRESS_NOTE });
         await typeLine("旁白", REDRESS_NOTE);
         persistRoom();
+      }
+      // 事後算帳：這句之後她回神了 → 穿衣旁白之後說一句（補到滿就說完再逃）
+      if (girl && stunReckoningPending(girl) && !undressDazed(girl)) {
+        const rk = await settleStunReckoning({ redressed: !!redressedAfter });
+        if (rk?.fled) return;
       }
     } catch (err) {
       setTyping(false);
@@ -5892,6 +5984,7 @@ async function playUndress(mode) {
     renderBodyPanel();
 
     const stageBefore = undressStage(girl);
+    const dazedForUndress = STUN_RECKONING_ON && undressDazed(girl);
     let outcome = "advance";
     if (help && Math.random() < 1 / 3) outcome = "flee";
     else if (!help && !(Math.random() < 1 / 3)) outcome = "ignore";
@@ -5901,6 +5994,11 @@ async function playUndress(mode) {
       const u = ensureUndress(girl);
       u.stage = Math.min(3, stageBefore + 1);
       stageAfter = u.stage;
+      // 事後算帳：失神中被脫（或被叫脫）衣服，清醒時本來會漲的侵犯記成欠帳
+      if (dazedForUndress && stageAfter > stageBefore) {
+        const normal = normalUndressInvasion(help ? "help" : "tell", { stage: girl.stage || "stranger", personality: basePersonality(girl), stats: girl.stats || null });
+        if (normal > 0) noteStunDebt(normal, help ? "脫她衣服" : "叫她脫衣服");
+      }
       if (stageAfter >= 3) {
         u.pantiesBy = help ? "help" : "self";
         u.sexStance = help ? "被動" : "順從";
@@ -6172,11 +6270,16 @@ function startIdleDecay() {
     if (undressStage(girl) > 0 || redressed) {
       try { paintHalfPortrait(girl); } catch { /* ignore */ }
     }
+    let redressTyping = null;
     if (redressed) {
       lines.push({ role: "assistant", content: REDRESS_NOTE });
-      void typeLine("旁白", REDRESS_NOTE);
+      redressTyping = typeLine("旁白", REDRESS_NOTE);
     }
     persistRoom();
+    // 事後算帳：失神／痙攣按時間退了 → 穿衣旁白打完再算帳說話
+    if (stunReckoningPending(girl) && !undressDazed(girl) && !undressPlayOpen()) {
+      void runIdleReckoning(redressTyping);
+    }
   }, 5000);
 }
 
@@ -7310,6 +7413,7 @@ async function fleeRoomFromUndress() {
   if (NUDE_FLAG_ON) who.nude = true;
   who.chatEnter = "flee_back";
   clearVisitUndress(who);
+  try { clearStunDebt(who); } catch { /* ignore */ }
   startArousalCool(who);
   resetOpenness(who);
   closeTalkForLeave();
@@ -7347,16 +7451,108 @@ async function fleeRoomFromUndress() {
   }
 }
 
+/** 失神／痙攣中記一筆欠帳（閘門關或她沒失神就不記）。 */
+function noteStunDebt(amount, label) {
+  if (!STUN_RECKONING_ON || !girl) return 0;
+  const added = addStunDebt(girl, amount, label);
+  pushDebug(`算帳 +${added}（${label}）→ 欠 ${getStunDebt(girl)}`);
+  renderDebug();
+  return added;
+}
+
+function stunReckoningPending(who = girl) {
+  if (!STUN_RECKONING_ON || !who) return false;
+  const d = ensureStunDebt(who);
+  return !!d && (d.amount > 0 || Object.keys(d.acts).length > 0);
+}
+
+/**
+ * 她回過神（失神／痙攣結束）：依關係階結算欠帳，說一句反應；補到 ≥100 → 說完再逃。
+ * 只在對話開著、沒失神、脫衣畫面沒開時才結算（否則欠帳留著等下次）。
+ * @returns {Promise<null | { fled: boolean, spoke: boolean, line: string, r: object }>}
+ */
+async function settleStunReckoning({ redressed = false } = {}) {
+  if (!stunReckoningPending()) return null;
+  if (!girl || undressDazed(girl) || undressPlayOpen()) return null;
+  if (!sheetOpen() || talkFor !== girl.id) return null;
+  const who = girl;
+  const pers = basePersonality(who);
+  const invBefore = getInvasion(who);
+  const r = takeStunReckoning(who, { stage: who.stage || "stranger", personality: pers, invasion: invBefore });
+  if (!r) return null;
+  const b = ensureInvasion(who);
+  if (r.add > 0) {
+    b.invasion = Math.max(0, Math.min(INVASION_MAX, r.invasionAfter));
+    if (invBefore <= 0 && b.invasion > 0) b.invasionDecayAt = Date.now();
+  } else if (r.sweetDrop > 0) {
+    decayInvasion(who, r.sweetDrop);
+  }
+  const pct = Math.round(r.share * 100);
+  if (r.kind === "sweet") pushDebug(`算帳 欠 ${r.debt}・熱戀以上不補${r.sweetDrop ? `，甜 侵犯 −${r.sweetDrop}` : ""} → ${getInvasion(who)}/${INVASION_MAX}`);
+  else pushDebug(`算帳 欠 ${r.debt}×${pct}% → 侵犯 +${r.add} → ${Math.min(INVASION_MAX, invBefore + r.add)}/${INVASION_MAX}${r.fled ? "・逃走" : ""}`);
+  const mood = reckoningMood(r);
+  if (mood) {
+    try { noteMood(who, { ...mood, cause: "趁你失神的時候對你動手動腳" }); } catch { /* ignore */ }
+  }
+  lastReckoning = { ...r, at: Date.now() };
+  persistRoom();
+  renderDebug();
+  if (r.tone === "none") return { fled: false, spoke: false, line: "", r };
+  const prompt = reckoningPrompt(r, { personality: pers, redressed });
+  setTyping(true);
+  $("portrait-name").textContent = who.name;
+  let line = "";
+  try {
+    line = cleanLine(await askGirl(prompt, null));
+  } catch { line = ""; }
+  setTyping(false);
+  if (!line || /^[\s…。.]*$/.test(line)) line = reckoningFallback(r, pers);
+  if (girl !== who) return { fled: false, spoke: false, line: "", r };
+  const recap = r.acts ? `（旁白：她回過神來，想起你趁她失神時對她：${r.acts}。）` : "（旁白：她回過神來，想起你趁她失神時動手動腳。）";
+  lines.push({ role: "user", content: recap });
+  lines.push({ role: "assistant", content: line });
+  rememberChat();
+  persistRoom();
+  await typeLine(who.name, line);
+  if (r.fled) {
+    const note = reckoningFleeNote(who.name);
+    lines.push({ role: "assistant", content: note });
+    await typeLine("旁白", note);
+    persistRoom();
+    await fleeRoomFromInvasion({ cause: "趁你失神的時候對你動手動腳，回神後受不了逃走" });
+    return { fled: true, spoke: true, line, r };
+  }
+  try { paintHalfPortrait(who); } catch { /* ignore */ }
+  return { fled: false, spoke: true, line, r };
+}
+
+/** 閒置計時器裡發現她回神：佔住對話跑結算（可先等穿衣旁白打完）。 */
+async function runIdleReckoning(waitFor = null) {
+  if (!girl || talkBusy) return;
+  talkBusy = true;
+  setTalkEnabled(true);
+  try {
+    if (waitFor) await waitFor;
+    await settleStunReckoning({ redressed: !!waitFor });
+  } catch (err) {
+    console.warn("[reckoning]", err?.message || err);
+  } finally {
+    talkBusy = false;
+    if (sheetOpen()) setTalkEnabled(true);
+  }
+}
+
 /** 侵犯值滿：清侵犯、關對話、趕出房間（需再召喚或再抽）。 */
-async function fleeRoomFromInvasion() {
+async function fleeRoomFromInvasion({ cause = "動手動腳到你受不了逃走" } = {}) {
   if (!girl) return;
   const who = girl;
   const name = who.name;
   who.chatEnter = "flee_back";
   clearVisitUndress(who);
   clearInvasion(who);
+  try { clearStunDebt(who); } catch { /* ignore */ }
   // 情緒餘溫：侵犯爆滿逃走＝最強的氣（−1/分鐘，約 1.5 小時才消；召回時開場也會帶著）
-  try { noteMood(who, { type: "angry", level: 100, cause: "動手動腳到你受不了逃走" }); } catch { /* ignore */ }
+  try { noteMood(who, { type: "angry", level: 100, cause }); } catch { /* ignore */ }
   startArousalCool(who);
   resetOpenness(who);
   // 先關對話／busy／scroll lock，再趕人——避免房間被鎖、找地點卡住
@@ -8252,6 +8448,7 @@ onId("dbg-jump", "change", () => {
 });
 bindTalkActs();
 bindMissDebug();
+bindReckonDebug();
 onId("talk-input-row", "submit", (event) => { sendTalk(event); });
 onId("portrait-backdrop", "click", () => {
   if (sceneOpen()) {
@@ -8425,6 +8622,14 @@ window.RoomCompanion = {
     on: () => MISS_YOU_ON,
     state: () => (girl ? JSON.parse(JSON.stringify(ensureMiss(girl))) : null),
     ago: (h) => shiftMissLastSeen(h),
+  },
+  /** 事後算帳除錯：on＝閘門；state＝bodyState.stunDebt；last＝上次結算；add(n,label)＝手動記帳；settle()＝立刻結算（她要清醒）。 */
+  reckoning: {
+    on: () => STUN_RECKONING_ON,
+    state: () => (girl ? JSON.parse(JSON.stringify(ensureStunDebt(girl))) : null),
+    last: () => lastReckoning,
+    add: (n, label = "測試") => noteStunDebt(n, label),
+    settle: () => settleStunReckoning(),
   },
   /** 侵犯值除錯：上一句閒聊衰減。 */
   invasion: {
