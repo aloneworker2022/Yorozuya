@@ -291,6 +291,16 @@ function cowgirlAct(shot) {
   }
 }
 
+/**
+ * 吸奶頭／舔奶頭的「男方」：玩家第一人稱，畫成無臉的黑色半透明影子（只露頭／嘴／舌頭在她胸前）。
+ * 裸體版自動轉換（nude_action.js）不會剔掉這段；負向不要寫 male／man／1boy（會把他擋掉），改擋寫實男臉。
+ */
+export const NIPPLE_SHADOW_MAN = "1man, pov, first-person view, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, only his head and mouth visible at her breast";
+/** 穿衣版：衣服拉下來露出一邊乳頭（含 clothes 字樣 → 裸體版轉換會整段剔掉）。nsfw 讓伺服器不再補 fully clothed。 */
+export const NIPPLE_CLOTHED_EXPOSE = "one breast out of clothes, clothes pulled down, exposed nipple, nsfw";
+/** 吸／舔奶頭的預設負向：擋她的臉、擋寫實男臉；不擋男人本身。 */
+export const NIPPLE_SHADOW_NEGATIVE = "girl face, girl eyes, looking at viewer, portrait, detailed male face, realistic man, realistic male skin, male eyes, text, watermark, ugly, extra fingers";
+
 export function composeTeaseExtra(shot, stage, worn) {
   const s = String(shot || "");
   if (s === "tease_breast") {
@@ -311,19 +321,25 @@ export function composeTeaseExtra(shot, stage, worn) {
     ].join(", ");
   }
   if (s === "tease_breast_suck") {
+    // 吸奶頭：玩家 POV＝黑色半透明影子男（只見頭／嘴貼在她胸前），嘴含住乳頭
     return [
       "simple background, white background",
-      "breasts focus, nipple focus, close-up, head out of frame",
-      "first-person POV, mouth sucking nipple, lips on nipple, tongue on nipple",
-      "NO face of girl, NO head of girl",
+      "breasts focus, nipple focus, close-up, girl head out of frame",
+      NIPPLE_SHADOW_MAN,
+      "mouth sucking nipple, lips around nipple, nipple suck, breast sucking, saliva",
+      NIPPLE_CLOTHED_EXPOSE,
+      "NO face of girl, NO detailed male face",
     ].join(", ");
   }
   if (s === "tease_nipple_lick") {
+    // 舔奶頭：同上，伸出舌頭舔乳頭、帶口水
     return [
       "simple background, white background",
-      "breasts focus, nipple focus, close-up, head out of frame",
-      "first-person POV, tongue licking nipple, licking nipple",
-      "NO face of girl, NO head of girl",
+      "breasts focus, nipple focus, close-up, girl head out of frame",
+      NIPPLE_SHADOW_MAN,
+      "tongue out, licking nipple, tongue on nipple, saliva, saliva trail",
+      NIPPLE_CLOTHED_EXPOSE,
+      "NO face of girl, NO detailed male face",
     ].join(", ");
   }
   if (s === "tease_labia") {

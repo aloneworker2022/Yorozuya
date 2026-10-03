@@ -146,13 +146,15 @@ import {
   pickRuntimeSuckPack,
   loadSuckDoc,
   generateSuckPackImage,
-} from "./suck_packs.js?v=2";
+  isSuckDefaultPrompt,
+} from "./suck_packs.js?v=3";
 import {
   mountLickPackEditor,
   pickRuntimeLickPack,
   loadLickDoc,
   generateLickPackImage,
-} from "./lick_packs.js?v=2";
+  isLickDefaultPrompt,
+} from "./lick_packs.js?v=3";
 import {
   mountLabiaPackEditor,
   pickRuntimeLabiaPack,
@@ -1012,8 +1014,8 @@ const ACTION_PACK_JOBS = {
   waist: { packsKey: "tease_waist_packs", shotKey: "tease_waist", label: "摟腰", load: () => loadWaistDoc(), gen: (...a) => generateWaistPackImage(...a) },
   breast: { packsKey: "tease_breast_packs", shotKey: "tease_breast", label: "摸奶", load: () => loadBreastDoc(), gen: (...a) => generateBreastPackImage(...a) },
   breast_knead: { packsKey: "tease_breast_knead_packs", shotKey: "tease_breast_knead", label: "揉奶", load: () => loadKneadDoc(), gen: (...a) => generateKneadPackImage(...a) },
-  breast_suck: { packsKey: "tease_breast_suck_packs", shotKey: "tease_breast_suck", label: "吸奶頭", load: () => loadSuckDoc(), gen: (...a) => generateSuckPackImage(...a) },
-  nipple_lick: { packsKey: "tease_nipple_lick_packs", shotKey: "tease_nipple_lick", label: "舔奶頭", load: () => loadLickDoc(), gen: (...a) => generateLickPackImage(...a) },
+  breast_suck: { packsKey: "tease_breast_suck_packs", shotKey: "tease_breast_suck", label: "吸奶頭", load: () => loadSuckDoc(), gen: (...a) => generateSuckPackImage(...a), isDefault: (p) => isSuckDefaultPrompt(p) },
+  nipple_lick: { packsKey: "tease_nipple_lick_packs", shotKey: "tease_nipple_lick", label: "舔奶頭", load: () => loadLickDoc(), gen: (...a) => generateLickPackImage(...a), isDefault: (p) => isLickDefaultPrompt(p) },
   labia: { packsKey: "tease_labia_packs", shotKey: "tease_labia", label: "摸陰唇", load: () => loadLabiaDoc(), gen: (...a) => generateLabiaPackImage(...a) },
   labia_rub: { packsKey: "tease_labia_rub_packs", shotKey: "tease_labia_rub", label: "揉陰唇", load: () => loadLabiaRubDoc(), gen: (...a) => generateLabiaRubPackImage(...a) },
   finger_in: { packsKey: "tease_finger_in_packs", shotKey: "tease_finger_in", label: "手指插入", load: () => loadFingerDoc(), gen: (...a) => generateFingerPackImage(...a) },
@@ -1021,6 +1023,48 @@ const ACTION_PACK_JOBS = {
 /** 扣陰道／揉子宮口沒有自己的圖組：全裸時借「手指插入」裸體版（只在閘門開時）。 */
 const NUDE_ACTION_ALIAS = { vagina_finger: "finger_in", cervix_rub: "finger_in" };
 let lastActionPick = null;
+
+/**
+ * 動作圖 prompt 版次。吸奶頭／舔奶頭 2026-10-03 改成「黑色半透明影子男」（rev 2）：
+ * 魅子身上沒蓋 rev 2 章的舊圖，若該組正向仍是預設（＝舊預設已自動換新），下次按到時作廢、照新 prompt 重產；
+ * 使用者自己改過正向的組不動。只清快取網址，不刪伺服器檔（重產會覆寫同檔名）。
+ */
+const ACTION_PROMPT_REV = {
+  tease_breast_suck_packs: 2, tease_breast_suck_nude_packs: 2,
+  tease_nipple_lick_packs: 2, tease_nipple_lick_nude_packs: 2,
+};
+
+function stampActionRev(who, cacheKey, packId) {
+  const want = ACTION_PROMPT_REV[cacheKey];
+  if (!want || !who || !packId) return;
+  who.portraits = who.portraits || {};
+  const revs = who.portraits.actionPromptRev && typeof who.portraits.actionPromptRev === "object"
+    ? who.portraits.actionPromptRev
+    : (who.portraits.actionPromptRev = {});
+  revs[`${cacheKey}:${packId}`] = want;
+}
+
+/** @returns {number} 作廢幾張 */
+function dropStaleActionCache(who, pack, job) {
+  if (!who?.portraits || !pack?.id || typeof job?.isDefault !== "function") return 0;
+  let dropped = 0;
+  const revs = who.portraits.actionPromptRev || {};
+  for (const key of [job.packsKey, nudePacksKey(job.packsKey)]) {
+    const want = ACTION_PROMPT_REV[key];
+    if (!want || !who.portraits[key]?.[pack.id]) continue;
+    if ((revs[`${key}:${pack.id}`] | 0) >= want) continue;
+    const isNude = key !== job.packsKey;
+    const stillDefault = job.isDefault(pack) && (!isNude || !String(pack.nudePrompt || "").trim());
+    if (stillDefault) {
+      delete who.portraits[key][pack.id];
+      dropped += 1;
+    } else {
+      stampActionRev(who, key, pack.id);
+    }
+  }
+  if (dropped) persistRoom();
+  return dropped;
+}
 const nudeActionQueue = [];
 const nudeActionQueued = new Set();
 let nudeActionDraining = false;
@@ -1043,6 +1087,7 @@ async function genNudeActionVariant(who, pack, job) {
     who.portraits = who.portraits || {};
     who.portraits[nk] = who.portraits[nk] || {};
     who.portraits[nk][pack.id] = stamped;
+    stampActionRev(who, nk, pack.id);
     persistRoom();
     return stamped;
   }
@@ -1096,7 +1141,9 @@ async function queueNudeActionPregen(who = girl) {
       packs = [];
     }
     for (const pack of packs) {
-      if (pack?.id && queueNudeActionGen(who, pack, job)) n += 1;
+      if (!pack?.id) continue;
+      dropStaleActionCache(who, pack, job);
+      if (queueNudeActionGen(who, pack, job)) n += 1;
     }
   }
   return n;
@@ -1289,6 +1336,7 @@ async function maybeGenSuckShot(who, actId) {
     const pack = await pickRuntimeSuckPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    dropStaleActionCache(who, pack, ACTION_PACK_JOBS.breast_suck);
     if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.breast_suck)) return;
     const cached = String(who.portraits.tease_breast_suck_packs?.[pack.id] || "");
     if (cached) {
@@ -1305,6 +1353,7 @@ async function maybeGenSuckShot(who, actId) {
       const stamped = stampPortraitUrl(result.result);
       who.portraits.tease_breast_suck_packs = who.portraits.tease_breast_suck_packs || {};
       who.portraits.tease_breast_suck_packs[pack.id] = stamped;
+      stampActionRev(who, "tease_breast_suck_packs", pack.id);
       showTeasePortrait(who, "tease_breast_suck", stamped, `${who.name}的吸奶頭圖`);
       persistRoom();
     } else if (result?.status === "error") {
@@ -1326,6 +1375,7 @@ async function maybeGenLickShot(who, actId) {
     const pack = await pickRuntimeLickPack();
     if (!pack) return;
     who.portraits = who.portraits || {};
+    dropStaleActionCache(who, pack, ACTION_PACK_JOBS.nipple_lick);
     if (await nudeActionShot(who, pack, ACTION_PACK_JOBS.nipple_lick)) return;
     const cached = String(who.portraits.tease_nipple_lick_packs?.[pack.id] || "");
     if (cached) {
@@ -1341,6 +1391,7 @@ async function maybeGenLickShot(who, actId) {
       const stamped = stampPortraitUrl(result.result);
       who.portraits.tease_nipple_lick_packs = who.portraits.tease_nipple_lick_packs || {};
       who.portraits.tease_nipple_lick_packs[pack.id] = stamped;
+      stampActionRev(who, "tease_nipple_lick_packs", pack.id);
       showTeasePortrait(who, "tease_nipple_lick", stamped, `${who.name}的舔奶頭圖`);
       persistRoom();
     }
@@ -1524,6 +1575,7 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
         if (result?.status === "done" && result.result) {
           const stamped = stampPortraitUrl(result.result);
           who.portraits[job.packsKey][pack.id] = stamped;
+          stampActionRev(who, job.packsKey, pack.id);
           who.portraits[job.shotKey] = stamped;
           counts[job.countKey] += 1;
           persistRoom();
@@ -7984,6 +8036,7 @@ window.RoomCompanion = {
     lastPick: () => lastActionPick,
     queued: () => [...nudeActionQueued],
     pregen: () => queueNudeActionPregen(girl),
+    promptRev: () => ({ ...(girl?.portraits?.actionPromptRev || {}) }),
   },
   adopt: adoptRosterGirl,
   summonFromRoster: summonRosterGirlIntoRoom,

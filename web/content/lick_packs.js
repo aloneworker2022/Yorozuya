@@ -1,6 +1,6 @@
 /** 房間「舔奶頭」生圖預設組：多組命名存檔，執行時隨機抽一組；無組時不生圖（僅對話／身體）。 */
 
-import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=5";
+import { composeTeaseExtra, teaseFraming, NIPPLE_SHADOW_NEGATIVE } from "./tease_shots.js?v=6";
 import { deriveNudePrompt, mountNudeVariantToggle, nudeActionNegative, nudeActionPrompt, nudeFields, nudeShot } from "./nude_action.js?v=1";
 
 const API = "/api/lick-packs";
@@ -17,20 +17,34 @@ export function clampDenoise(v) {
 
 /** 動作／裁切 tags only（無頭／表情／人設；人設於生圖時由 character 合併）。 */
 export function defaultLickPrompt(stage = "stranger") {
-  return composeTeaseExtra("tease_nipple_lick", stage, "") || [
-    "simple background, white background",
-    "breasts focus, nipple focus, close-up, head out of frame",
-    "first-person POV, tongue licking nipple, licking nipple",
-    "NO face of girl, NO head of girl"
-  ].join(", ");
+  return composeTeaseExtra("tease_nipple_lick", stage, "");
 }
 
-/** 局部繪圖負向：排除頭／臉／表情與常見瑕疵。 */
+/** 負向：擋她的臉與寫實男臉；不擋男人（他是黑色半透明影子，見 tease_shots NIPPLE_SHADOW_MAN）。 */
 export function defaultLickNegative() {
-  return [
-    "head, face, hair, eyes, smile, looking at viewer, portrait",
-    "text, watermark, ugly, extra fingers",
-  ].join(", ");
+  return NIPPLE_SHADOW_NEGATIVE;
+}
+
+/** 2026-10-03 前的預設（沒有影子男、負向擋掉所有 head/face）。存檔若一字不差等於它才自動換成新預設。 */
+export const LEGACY_LICK_PROMPT = "simple background, white background, breasts focus, nipple focus, close-up, head out of frame, first-person POV, tongue licking nipple, licking nipple, NO face of girl, NO head of girl";
+export const LEGACY_LICK_NEGATIVE = "head, face, hair, eyes, smile, looking at viewer, portrait, text, watermark, ugly, extra fingers";
+
+function canonTags(v) {
+  return String(v || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).join(", ");
+}
+
+/** 舊預設 → 新預設；使用者改過的原樣保留。 */
+export function migrateLickPrompt(v) {
+  return canonTags(v) === canonTags(LEGACY_LICK_PROMPT) ? defaultLickPrompt() : String(v ?? "");
+}
+
+export function migrateLickNegative(v) {
+  return canonTags(v) === canonTags(LEGACY_LICK_NEGATIVE) ? defaultLickNegative() : String(v ?? "");
+}
+
+/** 這組的正向是不是（新）預設——用來判斷魅子身上的舊圖能不能自動作廢重產。 */
+export function isLickDefaultPrompt(pack) {
+  return canonTags(pack?.prompt) === canonTags(defaultLickPrompt());
 }
 
 export function emptyLickPack(name = "舔奶頭圖組") {
@@ -54,8 +68,8 @@ export function normalizeLickPack(raw) {
     id: String(s.id || base.id).slice(0, 24) || base.id,
     name: String(s.name || base.name).slice(0, 40) || base.name,
     poseDenoise: clampDenoise(s.poseDenoise ?? s.pose_denoise ?? base.poseDenoise),
-    prompt: String(s.prompt ?? slot?.prompt ?? base.prompt),
-    negative: String(s.negative ?? slot?.negative ?? base.negative),
+    prompt: migrateLickPrompt(String(s.prompt ?? slot?.prompt ?? base.prompt)),
+    negative: migrateLickNegative(String(s.negative ?? slot?.negative ?? base.negative)),
     ref: String(s.ref ?? slot?.ref ?? "").trim(),
     url: String(s.url ?? slot?.url ?? "").trim(),
     // 裸體版（undress 全裸時用）：留空＝由穿衣版自動轉換，見 nude_action.js
