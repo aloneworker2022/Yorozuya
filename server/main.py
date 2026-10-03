@@ -74,6 +74,8 @@ _POSE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 # 不去背的測試檔前綴(cutout 示範)。GC 不會刪。
 _ASSET_KEEP_PREFIXES = frozenset({"chk"})
 _SHOT_FILE_SUFS = (
+    # 做愛開場圖（傳教士／後背）
+    "sex_missionary_open", "sex_doggy_open",
     # 扣陰道／揉子宮口 x-ray 剖面（不分穿衣／裸體，共用一張）
     "tease_vagina_finger", "tease_cervix_rub",
     # 動作圖裸體版（比穿衣版長，先比對）
@@ -110,6 +112,7 @@ SHOT_LABEL_ZH = {
     "tease_labia_nude": "調戲·摸陰唇（裸）", "tease_labia_rub_nude": "調戲·揉陰唇（裸）",
     "tease_finger_in_nude": "調戲·手指插入（裸）",
     "tease_vagina_finger": "調戲·扣陰道（剖面）", "tease_cervix_rub": "調戲·揉子宮口（剖面）",
+    "sex_missionary_open": "做愛·傳教士開場", "sex_doggy_open": "做愛·後背開場",
     "tease_waist": "調戲·摟腰",
     "tease_oral": "調戲·口交",
     "tease_oral_ready": "調戲·口交·頂嘴",
@@ -5362,6 +5365,65 @@ def put_cervix_rub_packs(body: dict):
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     tmp.replace(path)
     return {"ok": True, "count": len(packs)}
+
+
+# 做愛開場圖組（傳教士／後背，2026-10-03）：同其他圖組的 {packs, activeId} 契約
+
+
+def _pack_doc_read(path):
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+def _pack_doc_write(path, body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+@app.get("/api/sex-missionary-packs")
+def get_sex_missionary_packs():
+    return _pack_doc_read(WEB_DIR / "content" / "sex_missionary_packs.json")
+
+
+@app.put("/api/sex-missionary-packs")
+def put_sex_missionary_packs(body: dict):
+    return _pack_doc_write(WEB_DIR / "content" / "sex_missionary_packs.json", body)
+
+
+@app.get("/api/sex-doggy-packs")
+def get_sex_doggy_packs():
+    return _pack_doc_read(WEB_DIR / "content" / "sex_doggy_packs.json")
+
+
+@app.put("/api/sex-doggy-packs")
+def put_sex_doggy_packs(body: dict):
+    return _pack_doc_write(WEB_DIR / "content" / "sex_doggy_packs.json", body)
 
 
 def _standee_packs_path():

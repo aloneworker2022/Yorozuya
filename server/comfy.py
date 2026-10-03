@@ -148,6 +148,11 @@ for _s in NUDE_ACTION_SHOTS:
 XRAY_ACTION_SHOTS = ("tease_vagina_finger", "tease_cervix_rub")
 for _s in XRAY_ACTION_SHOTS:
     PORTRAIT_SHOTS[_s] = dict(_ACTION_CROP_SPEC)
+# 做愛開場圖（2026-10-03，肏系統第一步）：她脫光後按「做愛」的第一張。直圖、不去背、POV；
+# 檔名 {id}_sex_missionary_open.png／{id}_sex_doggy_open.png；undress_garment → nude（不套生涯服裝）。
+SEX_POSE_SHOTS = ("sex_missionary_open", "sex_doggy_open")
+for _s in SEX_POSE_SHOTS:
+    PORTRAIT_SHOTS[_s] = dict(_TEASE_SPEC)
 TEASE_SHOTS = (
     "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in", "tease_thigh", "tease_butt", "tease_waist",
     "tease_oral",
@@ -157,7 +162,7 @@ TEASE_SHOTS = (
     "tease_cowgirl",
     "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
 )
-TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS + XRAY_ACTION_SHOTS
+TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS + XRAY_ACTION_SHOTS + SEX_POSE_SHOTS
 
 
 def is_action_crop_shot(shot: str) -> bool:
@@ -190,7 +195,7 @@ def undress_garment(shot: str) -> str:
         return "underwear"
     if s == "undress_slip":
         return "panties"
-    if s in ("undress_nude", "undress_stand") or s in NUDE_ACTION_SHOTS:
+    if s in ("undress_nude", "undress_stand") or s in NUDE_ACTION_SHOTS or s in SEX_POSE_SHOTS:
         return "nude"
     if s == "undress_cover":
         return "cover"

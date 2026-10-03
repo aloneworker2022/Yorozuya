@@ -119,6 +119,14 @@ import {
   stunDebtActsText,
 } from "./stun_reckoning.js?v=2";
 import {
+  SEX_POSES,
+  sexPoseFor,
+  sexPosePacksKey,
+  pickRuntimeSexPosePack,
+  generateSexPosePackImage,
+  mountSexPosePackEditor,
+} from "./sex_pose_packs.js?v=1";
+import {
   getMoodCarry,
   decayMoodByTime,
   decayMoodPerLine,
@@ -315,6 +323,17 @@ function stunReckoningOn() {
   }
 }
 const STUN_RECKONING_ON = stunReckoningOn();
+
+/** 做愛開場圖試驗閘門（2026-10-03，肏系統第一步）：<html data-sex-poses="1">（目前只有 test_room.html）。 */
+function sexPosesOn() {
+  try {
+    if (typeof globalThis.YORO_SEX_POSES === "boolean") return globalThis.YORO_SEX_POSES;
+    return document.documentElement?.dataset?.sexPoses === "1";
+  } catch {
+    return false;
+  }
+}
+const SEX_POSES_ON = sexPosesOn();
 let lastReckoning = null;
 
 /** 回來／隔一陣子再開口：依離開多久累加想念（閘門關＝什麼都不做）。 */
@@ -538,6 +557,84 @@ async function openUndressChoices(who) {
   if (!packs.length && bodyEl) bodyEl.textContent = "還沒有脫衣場景。";
 }
 
+/** 做愛開場圖：同一人同一姿勢同時只產一張（背景預產與按做愛共用）。 */
+const sexPoseJobs = new Map();
+let lastSexPosePick = null;
+
+/**
+ * 拿這個姿勢的開場圖：抽一組；這組有快取 → 用；沒有 → 現產並存 portraits.<shot>_packs[packId]。
+ * 生圖失敗時退回這個姿勢任一組的快取。回傳 { url, pose, packId, generated, fallback }。
+ */
+function ensureSexPoseUrl(who, pose) {
+  if (!who?.id || !SEX_POSES[pose]) return Promise.resolve({ url: "", pose });
+  const lock = `${who.id}:${pose}`;
+  if (sexPoseJobs.has(lock)) return sexPoseJobs.get(lock);
+  const job = (async () => {
+    const packsKey = sexPosePacksKey(pose);
+    who.portraits = who.portraits || {};
+    const pool = () => (who.portraits[packsKey] && typeof who.portraits[packsKey] === "object" ? who.portraits[packsKey] : {});
+    const anyCached = () => Object.values(pool()).map((v) => String(v || "")).find(Boolean) || "";
+    let pack = null;
+    try {
+      pack = await pickRuntimeSexPosePack(pose);
+    } catch {
+      pack = null;
+    }
+    if (!pack?.id) {
+      const url = anyCached();
+      return { url, pose, packId: "", generated: false, fallback: !!url };
+    }
+    const cached = String(pool()[pack.id] || "");
+    if (cached) return { url: cached, pose, packId: pack.id, generated: false, fallback: false };
+    try {
+      const engine = await gameImgRoute();
+      await ensureGirlComfyCkpt(who);
+      const r = await generateSexPosePackImage(pose, pack, who, engine, {});
+      if (r?.status === "done" && r.result) {
+        const stamped = stampPortraitUrl(r.result);
+        who.portraits[packsKey] = { ...pool(), [pack.id]: stamped };
+        persistRoom();
+        return { url: stamped, pose, packId: pack.id, generated: true, fallback: false };
+      }
+      console.warn("[sex-pose]", pose, r?.error || "生圖失敗");
+    } catch (err) {
+      console.warn("[sex-pose]", pose, err?.message || err);
+    }
+    const url = anyCached();
+    return { url, pose, packId: pack.id, generated: false, fallback: !!url };
+  })();
+  sexPoseJobs.set(lock, job);
+  job.finally(() => sexPoseJobs.delete(lock));
+  return job;
+}
+
+/** 她剛脫光（最後一層）：背景先產對應姿勢的開場圖（閘門開才產）。 */
+function queueSexPosePregen(who = girl) {
+  if (!SEX_POSES_ON || !who?.id || undressStage(who) < 3) return null;
+  return ensureSexPoseUrl(who, sexPoseFor(who));
+}
+
+/** 按「做愛」（全裸）：場面卡顯示對應姿勢的開場圖（快取或現產）。 */
+async function showSexPoseOpening(who) {
+  if (!who || undressStage(who) < 3) return;
+  const pose = sexPoseFor(who);
+  const c = SEX_POSES[pose];
+  const by = who.undress?.pantiesBy === "self" ? "她自己脫掉內褲" : who.undress?.pantiesBy === "help" ? "你幫她脫掉內褲" : "（沒記到誰脫的，預設）";
+  const view = undressView;
+  const body = $("room-scene-body");
+  const head = `${c.label}・${by}`;
+  if (body) body.textContent = `${head}\n開場圖準備中…`;
+  const pick = await ensureSexPoseUrl(who, pose);
+  lastSexPosePick = { ...pick, by: who.undress?.pantiesBy || "", at: Date.now() };
+  if (view !== undressView || activeRoomScene !== "sex" || !sceneOpen() || girl !== who) return;
+  if (pick.url) {
+    paintSceneFigure(pick.url, `${who.name}的${c.label}圖`);
+    if (body) body.textContent = `${head}\n（做愛場面之後再做；這一步只有開場圖。）`;
+  } else if (body) {
+    body.textContent = `${head}\n開場圖產生失敗（看 test_room 上排「${pose === "doggy" ? "後背圖" : "傳教士圖"}」）。`;
+  }
+}
+
 function openRoomScene(kind) {
   const stub = ROOM_SCENE_STUBS[kind];
   const overlay = $("room-scene-overlay");
@@ -560,6 +657,7 @@ function openRoomScene(kind) {
   } else {
     hideSceneChoices();
     if (body) body.textContent = stub.body;
+    if (kind === "sex" && SEX_POSES_ON) void showSexPoseOpening(girl);
   }
   overlay.hidden = false;
   // 蓋住互動列，但不關 portrait-sheet，以免 wipe chat／affection／body
@@ -1870,7 +1968,7 @@ function undressStage(who) {
   return n >= 3 ? 3 : n;
 }
 
-/** 脫光才記內褲是誰脫的。自己脫 → 順從；你脫的 → 被動。做愛場面還沒用這旗。 */
+/** 脫光才記內褲是誰脫的。自己脫 → 順從；你脫的 → 被動。做愛開場圖（test_room 閘門 data-sex-poses）用這旗選姿勢：self 傳教士、help 後背。 */
 function snapshotUndress(raw) {
   const stage = Math.max(0, Math.min(3, raw?.stage | 0));
   const shotRaw = String(raw?.shot || "");
@@ -6012,6 +6110,8 @@ async function playUndress(mode) {
         rollNudeStandee(girl);
         // test_room：脫光就把動作圖裸體版排進背景補產
         void queueNudeActionPregen(girl);
+        // test_room：脫光就把做愛開場圖（依最後一層誰脫的）排進背景
+        void queueSexPosePregen(girl);
       }
     }
 
@@ -8570,6 +8670,16 @@ if (document.documentElement.classList.contains("room-page")) {
   } catch (err) {
     console.warn("[vagina-finger-pack-editor]", err?.message || err);
   }
+  for (const pose of ["missionary", "doggy"]) {
+    try {
+      mountSexPosePackEditor(pose, {
+        getGirl: () => girl,
+        getEngine: () => gameImgRoute(),
+      });
+    } catch (err) {
+      console.warn(`[sex-${pose}-pack-editor]`, err?.message || err);
+    }
+  }
   if (XRAY_ACTION_PACKS_ON) try {
     mountCervixRubPackEditor({
       getGirl: () => girl,
@@ -8602,6 +8712,7 @@ $("edit-room")?.addEventListener("click", () => {
     "butt-pack-editor", "waist-pack-editor", "breast-pack-editor", "knead-pack-editor", "suck-pack-editor",
     "lick-pack-editor", "labia-pack-editor", "labia-rub-pack-editor", "finger-pack-editor", "standee-pack-editor",
     "undress-pack-editor", "vagina-finger-pack-editor", "cervix-rub-pack-editor",
+    "sex-missionary-pack-editor", "sex-doggy-pack-editor",
   ]) {
     const el = $(id);
     if (el) el.hidden = true;
@@ -8610,6 +8721,7 @@ $("edit-room")?.addEventListener("click", () => {
     "btn-butt-packs", "btn-waist-packs", "btn-breast-packs", "btn-knead-packs", "btn-suck-packs",
     "btn-lick-packs", "btn-labia-packs", "btn-labia-rub-packs", "btn-finger-packs", "btn-standee-packs",
     "btn-undress-packs", "btn-vagina-finger-packs", "btn-cervix-rub-packs",
+    "btn-sex-missionary-packs", "btn-sex-doggy-packs",
   ]) {
     $(id)?.setAttribute("aria-expanded", "false");
   }
@@ -8637,6 +8749,13 @@ window.RoomCompanion = {
     last: () => lastReckoning,
     add: (n, label = "測試") => noteStunDebt(n, label),
     settle: () => settleStunReckoning(),
+  },
+  /** 做愛開場圖除錯：on＝閘門；pose()＝目前會用的姿勢；last()＝上次顯示；pregen()＝手動排背景產圖。 */
+  sexPose: {
+    on: () => SEX_POSES_ON,
+    pose: () => (girl ? sexPoseFor(girl) : ""),
+    last: () => lastSexPosePick,
+    pregen: () => queueSexPosePregen(girl),
   },
   /** 侵犯值除錯：上一句閒聊衰減。 */
   invasion: {
