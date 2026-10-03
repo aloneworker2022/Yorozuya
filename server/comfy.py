@@ -144,6 +144,10 @@ ACTION_NUDE_BASES = (
 NUDE_ACTION_SHOTS = tuple(f"{b}_nude" for b in ACTION_NUDE_BASES)
 for _s in NUDE_ACTION_SHOTS:
     PORTRAIT_SHOTS[_s] = dict(_ACTION_CROP_SPEC)
+# 扣陰道／揉子宮口：x-ray 剖面動作圖（正方形；剖面不分穿衣／裸體，沒有 _nude 版）
+XRAY_ACTION_SHOTS = ("tease_vagina_finger", "tease_cervix_rub")
+for _s in XRAY_ACTION_SHOTS:
+    PORTRAIT_SHOTS[_s] = dict(_ACTION_CROP_SPEC)
 TEASE_SHOTS = (
     "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in", "tease_thigh", "tease_butt", "tease_waist",
     "tease_oral",
@@ -153,13 +157,13 @@ TEASE_SHOTS = (
     "tease_cowgirl",
     "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
 )
-TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS
+TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS + XRAY_ACTION_SHOTS
 
 
 def is_action_crop_shot(shot: str) -> bool:
     """摸臀／摟腰／摸奶…九個正方形動作圖（含 _nude 裸體版）。"""
     s = str(shot or "").lower()
-    return s in ACTION_NUDE_BASES or s in NUDE_ACTION_SHOTS
+    return s in ACTION_NUDE_BASES or s in NUDE_ACTION_SHOTS or s in XRAY_ACTION_SHOTS
 
 
 def is_tease_shot(shot: str) -> bool:

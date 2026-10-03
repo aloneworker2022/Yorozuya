@@ -176,6 +176,18 @@ import {
   generateFingerPackImage,
 } from "./finger_packs.js?v=2";
 import {
+  mountVaginaFingerPackEditor,
+  pickRuntimeVaginaFingerPack,
+  loadVaginaFingerDoc,
+  generateVaginaFingerPackImage,
+} from "./vagina_finger_packs.js?v=1";
+import {
+  mountCervixRubPackEditor,
+  pickRuntimeCervixRubPack,
+  loadCervixRubDoc,
+  generateCervixRubPackImage,
+} from "./cervix_rub_packs.js?v=1";
+import {
   mountStandeePackEditor,
   loadStandeeDoc,
   listFilledStandeeSlots,
@@ -793,6 +805,7 @@ const lickGenning = new Set();
 const labiaGenning = new Set();
 const labiaRubGenning = new Set();
 const fingerGenning = new Set();
+const ownActionGenning = new Set();
 let pregenning = false;
 let summoning = false;
 
@@ -1021,9 +1034,12 @@ const ACTION_PACK_JOBS = {
   labia: { packsKey: "tease_labia_packs", shotKey: "tease_labia", label: "摸陰唇", load: () => loadLabiaDoc(), gen: (...a) => generateLabiaPackImage(...a) },
   labia_rub: { packsKey: "tease_labia_rub_packs", shotKey: "tease_labia_rub", label: "揉陰唇", load: () => loadLabiaRubDoc(), gen: (...a) => generateLabiaRubPackImage(...a) },
   finger_in: { packsKey: "tease_finger_in_packs", shotKey: "tease_finger_in", label: "手指插入", load: () => loadFingerDoc(), gen: (...a) => generateFingerPackImage(...a) },
+  // 扣陰道／揉子宮口（2026-10-03）：x-ray 子宮剖面圖，穿衣／裸體同一張 → noNude（不排裸體補產、不找 _nude 快取）
+  vagina_finger: { packsKey: "tease_vagina_finger_packs", shotKey: "tease_vagina_finger", label: "扣陰道", noNude: true, pick: () => pickRuntimeVaginaFingerPack(), load: () => loadVaginaFingerDoc(), gen: (...a) => generateVaginaFingerPackImage(...a) },
+  cervix_rub: { packsKey: "tease_cervix_rub_packs", shotKey: "tease_cervix_rub", label: "揉子宮口", noNude: true, pick: () => pickRuntimeCervixRubPack(), load: () => loadCervixRubDoc(), gen: (...a) => generateCervixRubPackImage(...a) },
 };
-/** 扣陰道／揉子宮口沒有自己的圖組：全裸時借「手指插入」裸體版（只在閘門開時）。 */
-const NUDE_ACTION_ALIAS = { vagina_finger: "finger_in", cervix_rub: "finger_in" };
+/** 自己的圖都拿不到時（沒組／現產失敗）才借「手指插入」的快取圖（不為借圖再生圖）。 */
+const OWN_ACTION_BORROW = { vagina_finger: "finger_in", cervix_rub: "finger_in" };
 let lastActionPick = null;
 
 /**
@@ -1138,6 +1154,7 @@ async function queueNudeActionPregen(who = girl) {
   if (!NUDE_ACTION_PACKS_ON || !who?.id) return 0;
   let n = 0;
   for (const job of Object.values(ACTION_PACK_JOBS)) {
+    if (job.noNude) continue;
     let packs = [];
     try {
       const doc = await job.load();
@@ -1510,6 +1527,88 @@ async function maybeGenFingerShot(who, actId) {
   }
 }
 
+/** 借圖：手指插入的快取（全裸＋閘門開時優先裸體版）；不生圖。 */
+async function borrowActionUrl(who, borrowAct) {
+  const job = ACTION_PACK_JOBS[borrowAct];
+  if (!job || !who?.portraits) return "";
+  const nude = !job.noNude && wantNudeAction(who);
+  let pack = null;
+  try {
+    pack = await pickRuntimeFingerPack();
+  } catch {
+    pack = null;
+  }
+  if (pack?.id) {
+    const pick = pickActionPackUrl(who.portraits, job.packsKey, pack.id, nude);
+    if (pick.url) return pick.url;
+  }
+  const pools = [nude ? who.portraits[nudePacksKey(job.packsKey)] : null, who.portraits[job.packsKey]];
+  for (const pool of pools) {
+    if (!pool || typeof pool !== "object") continue;
+    const url = Object.values(pool).map((v) => String(v || "")).find(Boolean);
+    if (url) return url;
+  }
+  return String(who.portraits[job.shotKey] || "");
+}
+
+/**
+ * 扣陰道／揉子宮口：用自己的 x-ray 剖面圖組。快取有 → 直接顯示；沒有 → 現產、存 portraits.<shot>_packs[packId]。
+ * 剖面圖穿衣／裸體同一張（不找 _nude）。沒組或現產失敗 → 才借手指插入的快取圖（lastActionPick.borrowed）。
+ */
+async function maybeGenOwnActionShot(who, actId) {
+  const job = ACTION_PACK_JOBS[actId];
+  if (!job?.noNude || !who?.id) return;
+  const lock = `${who.id}:${actId}`;
+  if (ownActionGenning.has(lock)) return;
+  ownActionGenning.add(lock);
+  let pack = null;
+  try {
+    who.portraits = who.portraits || {};
+    try {
+      pack = await job.pick();
+    } catch {
+      pack = null;
+    }
+    if (pack?.id) {
+      const cached = String(who.portraits[job.packsKey]?.[pack.id] || "");
+      if (cached) {
+        lastActionPick = { shotKey: job.shotKey, packId: pack.id, nude: false, fallback: false, wanted: false, borrowed: false, url: cached };
+        showTeasePortrait(who, job.shotKey, cached, `${who.name}的${job.label}圖`);
+        return;
+      }
+      const engine = await gameImgRoute();
+      await ensureGirlComfyCkpt(who);
+      const result = await job.gen(pack, who, engine, { stage: who.stage || "stranger", worn: wornOutfit(who) });
+      if (result?.status === "done" && result.result) {
+        const stamped = stampPortraitUrl(result.result);
+        who.portraits[job.packsKey] = who.portraits[job.packsKey] || {};
+        who.portraits[job.packsKey][pack.id] = stamped;
+        lastActionPick = { shotKey: job.shotKey, packId: pack.id, nude: false, fallback: false, wanted: false, borrowed: false, generated: true, url: stamped };
+        showTeasePortrait(who, job.shotKey, stamped, `${who.name}的${job.label}圖`);
+        persistRoom();
+        return;
+      }
+      console.warn("[maybeGenOwnActionShot]", job.shotKey, result?.error || "生圖失敗");
+    }
+  } catch (err) {
+    console.warn("[maybeGenOwnActionShot]", actId, err?.message || err);
+  } finally {
+    ownActionGenning.delete(lock);
+  }
+  // 退路：自己的圖拿不到才借手指插入快取
+  try {
+    const borrowAct = OWN_ACTION_BORROW[actId];
+    const url = await borrowActionUrl(who, borrowAct);
+    lastActionPick = { shotKey: job.shotKey, packId: pack?.id || "", nude: false, fallback: true, wanted: false, borrowed: !!url, borrowFrom: borrowAct, url };
+    if (url) {
+      const bj = ACTION_PACK_JOBS[borrowAct];
+      showTeasePortrait(who, bj.shotKey, url, `${who.name}的${bj.label}圖`);
+    }
+  } catch (err) {
+    console.warn("[maybeGenOwnActionShot] borrow", err?.message || err);
+  }
+}
+
 /** 預產圖：半身＋各已存動作圖組（寫入 who.portraits）。UI 安靜；呼叫端負責儀式文案。 */
 async function pregenGirlPortraits(who = girl, opts = {}) {
   // During summon ritual the standee is intentionally absent; still allow pregen.
@@ -1524,7 +1623,7 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
   const onStatus = typeof opts.onStatus === "function" ? opts.onStatus : null;
   const counts = {
     butt: 0, waist: 0, breast: 0, knead: 0, suck: 0,
-    lick: 0, labia: 0, labia_rub: 0, finger: 0, standee: 0,
+    lick: 0, labia: 0, labia_rub: 0, finger: 0, vagina_finger: 0, cervix_rub: 0, standee: 0,
   };
   let halfOk = false;
   try {
@@ -1551,6 +1650,8 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
     who.portraits.tease_labia_packs = who.portraits.tease_labia_packs || {};
     who.portraits.tease_labia_rub_packs = who.portraits.tease_labia_rub_packs || {};
     who.portraits.tease_finger_in_packs = who.portraits.tease_finger_in_packs || {};
+    who.portraits.tease_vagina_finger_packs = who.portraits.tease_vagina_finger_packs || {};
+    who.portraits.tease_cervix_rub_packs = who.portraits.tease_cervix_rub_packs || {};
     who.portraits.standee = who.portraits.standee || {};
 
     const packJobs = [
@@ -1563,6 +1664,8 @@ async function pregenGirlPortraits(who = girl, opts = {}) {
       { load: loadLabiaDoc, gen: generateLabiaPackImage, packsKey: "tease_labia_packs", shotKey: "tease_labia", countKey: "labia" },
       { load: loadLabiaRubDoc, gen: generateLabiaRubPackImage, packsKey: "tease_labia_rub_packs", shotKey: "tease_labia_rub", countKey: "labia_rub" },
       { load: loadFingerDoc, gen: generateFingerPackImage, packsKey: "tease_finger_in_packs", shotKey: "tease_finger_in", countKey: "finger" },
+      { load: loadVaginaFingerDoc, gen: generateVaginaFingerPackImage, packsKey: "tease_vagina_finger_packs", shotKey: "tease_vagina_finger", countKey: "vagina_finger" },
+      { load: loadCervixRubDoc, gen: generateCervixRubPackImage, packsKey: "tease_cervix_rub_packs", shotKey: "tease_cervix_rub", countKey: "cervix_rub" },
     ];
 
     for (const job of packJobs) {
@@ -5122,7 +5225,7 @@ async function deliverUserTalk(text, opts = {}) {
         if (opts.actId === "labia") void maybeGenLabiaShot(girl, opts.actId);
         if (opts.actId === "labia_rub") void maybeGenLabiaRubShot(girl, opts.actId);
         if (opts.actId === "finger_in") void maybeGenFingerShot(girl, opts.actId);
-        if (NUDE_ACTION_ALIAS[opts.actId] === "finger_in" && wantNudeAction(girl)) void maybeGenFingerShot(girl, "finger_in");
+        if (opts.actId === "vagina_finger" || opts.actId === "cervix_rub") void maybeGenOwnActionShot(girl, opts.actId);
         // 情感：一般挑逗不加；接近高潮／失神門檻才小幅＋1，痙攣／射精＋2
         const nearClimax = stunBefore >= 50 || arousalBefore >= 22
           || (girl.bodyState?.arousal || 0) >= 22
@@ -7995,6 +8098,22 @@ if (document.documentElement.classList.contains("room-page")) {
     console.warn("[finger-pack-editor]", err?.message || err);
   }
   try {
+    mountVaginaFingerPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[vagina-finger-pack-editor]", err?.message || err);
+  }
+  try {
+    mountCervixRubPackEditor({
+      getGirl: () => girl,
+      getEngine: () => gameImgRoute(),
+    });
+  } catch (err) {
+    console.warn("[cervix-rub-pack-editor]", err?.message || err);
+  }
+  try {
     mountStandeePackEditor({
       getGirl: () => girl,
       getEngine: () => gameImgRoute(),
@@ -8017,7 +8136,7 @@ $("edit-room")?.addEventListener("click", () => {
   for (const id of [
     "butt-pack-editor", "waist-pack-editor", "breast-pack-editor", "knead-pack-editor", "suck-pack-editor",
     "lick-pack-editor", "labia-pack-editor", "labia-rub-pack-editor", "finger-pack-editor", "standee-pack-editor",
-    "undress-pack-editor",
+    "undress-pack-editor", "vagina-finger-pack-editor", "cervix-rub-pack-editor",
   ]) {
     const el = $(id);
     if (el) el.hidden = true;
@@ -8025,7 +8144,7 @@ $("edit-room")?.addEventListener("click", () => {
   for (const id of [
     "btn-butt-packs", "btn-waist-packs", "btn-breast-packs", "btn-knead-packs", "btn-suck-packs",
     "btn-lick-packs", "btn-labia-packs", "btn-labia-rub-packs", "btn-finger-packs", "btn-standee-packs",
-    "btn-undress-packs",
+    "btn-undress-packs", "btn-vagina-finger-packs", "btn-cervix-rub-packs",
   ]) {
     $(id)?.setAttribute("aria-expanded", "false");
   }

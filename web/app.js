@@ -13,7 +13,7 @@ import {
   teaseShotAt, teaseStartStep, teaseAdvanceStep, teaseCumStep, teasePlayableSteps,
   teasePhaseOf, teasePhaseLabel, teaseBeatLine, teaseWilling,
   teasePlayAffDelta, TEASE_PLAY_CLIMAX_RATE,
-} from "./content/tease_shots.js?v=7";
+} from "./content/tease_shots.js?v=8";
 import * as ScriptMode from "./content/script_mode.js";
 import * as FramePack from "./content/frame_pack.js";
 import {
@@ -49,6 +49,9 @@ import {
   pickRuntimeFingerPack,
   buildFingerImgBody,
 } from "./content/finger_packs.js?v=2";
+// 扣陰道／揉子宮口 x-ray 剖面圖組（主遊戲沒有這兩個動作；只為重產／圖鑑同契約）
+import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody } from "./content/vagina_finger_packs.js?v=1";
+import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=1";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=1";
@@ -2836,7 +2839,7 @@ async function weaveShot(s, shot, onTick, opts = {}) {
       : (wantPortraitCut ? "plain solid color background, simple background" : ""))),
     // Grok 路也要勾去背；Comfy 路 shot 規格本身 cutout=true
     cutout: wantPortraitCut,
-    flat_bg: tease ? (shot === "tease_butt" || shot === "tease_waist" || shot === "tease_breast" || shot === "tease_breast_knead" || shot === "tease_breast_suck" || shot === "tease_nipple_lick" || shot === "tease_labia" || shot === "tease_labia_rub" || shot === "tease_finger_in") : wantPortraitCut,
+    flat_bg: tease ? (shot === "tease_butt" || shot === "tease_waist" || shot === "tease_breast" || shot === "tease_breast_knead" || shot === "tease_breast_suck" || shot === "tease_nipple_lick" || shot === "tease_labia" || shot === "tease_labia_rub" || shot === "tease_finger_in" || shot === "tease_vagina_finger" || shot === "tease_cervix_rub") : wantPortraitCut,
     lock_identity: tease,
     retry: true,
     // 情緒半身可帶 half 當 ref 鎖臉
@@ -3103,6 +3106,8 @@ async function weaveOneTeaseShot(s, shot) {
       : cropShot === "tease_labia" ? pickRuntimeLabiaPack
       : cropShot === "tease_labia_rub" ? pickRuntimeLabiaRubPack
       : cropShot === "tease_finger_in" ? pickRuntimeFingerPack
+      : cropShot === "tease_vagina_finger" ? pickRuntimeVaginaFingerPack
+      : cropShot === "tease_cervix_rub" ? pickRuntimeCervixRubPack
       : null;
     const cropBuild = cropShot === "tease_breast" ? buildBreastImgBody
       : cropShot === "tease_breast_knead" ? buildKneadImgBody
@@ -3111,6 +3116,8 @@ async function weaveOneTeaseShot(s, shot) {
       : cropShot === "tease_labia" ? buildLabiaImgBody
       : cropShot === "tease_labia_rub" ? buildLabiaRubImgBody
       : cropShot === "tease_finger_in" ? buildFingerImgBody
+      : cropShot === "tease_vagina_finger" ? buildVaginaFingerImgBody
+      : cropShot === "tease_cervix_rub" ? buildCervixRubImgBody
       : null;
     if (cropPick && cropBuild) {
       try {
@@ -11652,7 +11659,7 @@ const SHOT_LABEL = {
   head: "大頭照", half: "半身", full: "全身",
   half_xi: "半身·喜", half_nu: "半身·怒", half_ai: "半身·哀", half_le: "半身·樂",
   half_xiu: "半身·害羞",
-  tease_breast: "調戲·摸奶", tease_breast_knead: "調戲·揉奶", tease_breast_suck: "調戲·吸奶頭", tease_nipple_lick: "調戲·舔奶頭", tease_labia: "調戲·摸陰唇", tease_labia_rub: "調戲·揉陰唇", tease_finger_in: "調戲·手指插入", tease_butt: "調戲·摸臀", tease_waist: "調戲·摟腰",
+  tease_breast: "調戲·摸奶", tease_breast_knead: "調戲·揉奶", tease_breast_suck: "調戲·吸奶頭", tease_nipple_lick: "調戲·舔奶頭", tease_labia: "調戲·摸陰唇", tease_labia_rub: "調戲·揉陰唇", tease_finger_in: "調戲·手指插入", tease_vagina_finger: "調戲·扣陰道（剖面）", tease_cervix_rub: "調戲·揉子宮口（剖面）", tease_butt: "調戲·摸臀", tease_waist: "調戲·摟腰",
   tease_oral_ready: "調戲·口交·頂嘴", tease_oral_suck: "調戲·口交·含住",
   tease_oral_deep: "調戲·口交·整根", tease_oral_cum: "調戲·口交·口內射",
   tease_doggy_ready: "調戲·背後·抓臀勃起", tease_doggy_half: "調戲·背後·龜頭進入",

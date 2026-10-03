@@ -116,11 +116,19 @@ export function migrateLegacyText(v, legacyList, fresh) {
   return (legacyList || []).some((x) => canonTags(x) === c) ? String(fresh ?? "") : String(v ?? "");
 }
 
+/** x-ray 剖面取景的兩組（沒有 _nude 版）。 */
+export const XRAY_FRAMED_SHOTS = new Set(["tease_vagina_finger", "tease_cervix_rub"]);
+
+/** x-ray 剖面共用的取景／器官 tags。 */
+export const XRAY_CUTAWAY = "x-ray, cross-section, internal view, cutaway, lower body, pussy focus, vagina, uterus, cervix";
+
 export function teaseFraming(shot) {
   const s = String(shot || "");
   // 胸部四組（摸奶／揉奶／吸奶頭／舔奶頭）＝胸部特寫 chest（伺服器 sdtags.FRAMING["chest"]）；其餘動作裁切仍 lower
   if (CHEST_FRAMED_SHOTS.has(s)) return "chest";
   if (s === "tease_butt" || s === "tease_waist" || s === "tease_labia" || s === "tease_labia_rub" || s === "tease_finger_in") return "lower";
+  // 扣陰道／揉子宮口：下半身 x-ray 子宮剖面（伺服器 sdtags.FRAMING["xray"]，不寫服裝；穿衣／裸體共用一張）
+  if (XRAY_FRAMED_SHOTS.has(s)) return "xray";
   if (s.startsWith("tease_oral")) return "half";
   return "full";
 }
@@ -384,6 +392,28 @@ export function composeTeaseExtra(shot, stage, worn) {
       "simple background, white background",
       "lower body, vaginal insertion focus, head out of frame",
       "first-person POV, finger(s) inside vagina, fingering",
+      "NO face of girl, NO head of girl",
+    ].join(", ");
+  }
+  if (s === "tease_vagina_finger") {
+    // 扣陰道：一指在陰道內彎起、摳／磨陰道壁（剖面圖）
+    return [
+      "simple background, white background",
+      XRAY_CUTAWAY,
+      "1 finger inserted, one male finger inside vagina, fingering",
+      "finger curled against vaginal wall, rubbing vaginal wall, g-spot",
+      "pussy juice, nsfw",
+      "NO face of girl, NO head of girl",
+    ].join(", ");
+  }
+  if (s === "tease_cervix_rub") {
+    // 揉子宮口：一指深入、指尖頂在子宮頸上（剖面圖）
+    return [
+      "simple background, white background",
+      XRAY_CUTAWAY,
+      "1 finger inserted, one male finger deep inside vagina, fingering",
+      "fingertip pressing cervix, finger touching cervix",
+      "pussy juice, nsfw",
       "NO face of girl, NO head of girl",
     ].join(", ");
   }

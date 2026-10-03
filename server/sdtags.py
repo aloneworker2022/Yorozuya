@@ -554,6 +554,8 @@ FRAMING = {
     # 胸部動作特寫（摸奶／揉奶／吸奶頭／舔奶頭）：她的臉切在下巴外。
     # 不寫 head out of frame——吸／舔奶頭的影子男頭要留在畫面裡。
     "chest": "upper body, chest focus, breasts close-up, girl face out of frame, cropped at chin",
+    # 扣陰道／揉子宮口：下半身 x-ray 剖面（看得到陰道／子宮頸／子宮內部）。不寫衣服——剖面穿不穿都同一張。
+    "xray": "lower body, below waist, head out of frame, x-ray, cross-section, internal view",
 }
 
 PART_FRAMING = {
@@ -1214,7 +1216,7 @@ def appearance_en_parts(
             parts["specials"] = bust_sp
         else:
             parts.pop("specials", None)
-    if (crop or "").lower() == "lower":
+    if (crop or "").lower() in ("lower", "xray"):
         parts = drop_upper_look(parts)
         lower_sp = ", ".join(sp_seg.get("lower") or [])
         if lower_sp:
@@ -1237,6 +1239,9 @@ def appearance_en_parts(
             parts["outfit"] = "nude"
         elif parts.get("outfit"):
             parts["outfit"] = filter_tag_chunk(parts["outfit"], _UPPER_OUTFIT_DROP)
+        if (crop or "").lower() == "xray":
+            # x-ray 剖面：不寫衣服（穿不穿都同一張）
+            parts.pop("outfit", None)
 
     return parts, unknown
 
@@ -1318,7 +1323,7 @@ def appearance_en_brief(
         parts.get("outfit") or "",
     ]
     # 性器三軸只在腰部以下特寫進身份行,免得把頭／半身鏡頭拉到下體
-    if (framing or "").lower() == "lower":
+    if (framing or "").lower() in ("lower", "xray"):
         bits += [
             parts.get("labia_size") or "",
             parts.get("clitoris_size") or "",
@@ -1531,8 +1536,12 @@ def build_prompt(
     seg = p.rstrip("0") if p else ""
 
     # 取景先寫,模型才知道要畫哪一塊
-    lower_shot = (framing or "").lower() == "lower"
+    xray_shot = (framing or "").lower() == "xray"
+    # x-ray 剖面沿用 lower 的取捨（不寫臉／胸、寫下半身與性器），但完全不寫服裝
+    lower_shot = (framing or "").lower() == "lower" or xray_shot
     chest_shot = (framing or "").lower() == "chest"
+    if xray_shot:
+        dressed = False
     if p in PART_FRAMING:
         bits.append(PART_FRAMING[p])
     else:

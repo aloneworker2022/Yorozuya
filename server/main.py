@@ -74,6 +74,8 @@ _POSE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 # 不去背的測試檔前綴(cutout 示範)。GC 不會刪。
 _ASSET_KEEP_PREFIXES = frozenset({"chk"})
 _SHOT_FILE_SUFS = (
+    # 扣陰道／揉子宮口 x-ray 剖面（不分穿衣／裸體，共用一張）
+    "tease_vagina_finger", "tease_cervix_rub",
     # 動作圖裸體版（比穿衣版長，先比對）
     "tease_breast_knead_nude", "tease_breast_suck_nude", "tease_nipple_lick_nude",
     "tease_labia_rub_nude", "tease_finger_in_nude", "tease_breast_nude", "tease_labia_nude",
@@ -107,6 +109,7 @@ SHOT_LABEL_ZH = {
     "tease_breast_suck_nude": "調戲·吸奶頭（裸）", "tease_nipple_lick_nude": "調戲·舔奶頭（裸）",
     "tease_labia_nude": "調戲·摸陰唇（裸）", "tease_labia_rub_nude": "調戲·揉陰唇（裸）",
     "tease_finger_in_nude": "調戲·手指插入（裸）",
+    "tease_vagina_finger": "調戲·扣陰道（剖面）", "tease_cervix_rub": "調戲·揉子宮口（剖面）",
     "tease_waist": "調戲·摟腰",
     "tease_oral": "調戲·口交",
     "tease_oral_ready": "調戲·口交·頂嘴",
@@ -1008,6 +1011,7 @@ _FRAME_MAP = {
     "full": "full body",
     "lower": "lower body, below waist",
     "chest": "chest close-up, breasts focus, her face out of frame, cropped at chin",
+    "xray": "lower body, x-ray cross-section, internal view of vagina, cervix and uterus, no clothes drawn",
 }
 _STYLE_MAP = {
     "anime": "anime",
@@ -3044,7 +3048,7 @@ def _img_prompt_trace(t: ImgGenIn) -> dict:
         layers.append({"id": "personality", "src": "人設 personality", "text": "、".join(str(p) for p in pers[:6])})
     elif pers:
         layers.append({"id": "personality", "src": "人設 personality", "text": str(pers)})
-    genital_ok = (framing or "").lower() == "lower" or sdtags.extra_has_key(
+    genital_ok = (framing or "").lower() in ("lower", "xray") or sdtags.extra_has_key(
         extra, ("pussy", "labia", "clitoris", "vulva", "vagina")
     )
     for k, tag in look_parts.items():
@@ -5264,6 +5268,95 @@ def put_finger_packs(body: dict):
         active = ""
     doc = {"packs": packs, "activeId": active}
     path = _finger_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+# 扣陰道／揉子宮口：x-ray 剖面動作圖組（2026-10-03）
+
+def _vagina_finger_packs_path():
+    return WEB_DIR / "content" / "vagina_finger_packs.json"
+
+
+@app.get("/api/vagina-finger-packs")
+def get_vagina_finger_packs():
+    path = _vagina_finger_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/vagina-finger-packs")
+def put_vagina_finger_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _vagina_finger_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _cervix_rub_packs_path():
+    return WEB_DIR / "content" / "cervix_rub_packs.json"
+
+
+@app.get("/api/cervix-rub-packs")
+def get_cervix_rub_packs():
+    path = _cervix_rub_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/cervix-rub-packs")
+def put_cervix_rub_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _cervix_rub_packs_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
