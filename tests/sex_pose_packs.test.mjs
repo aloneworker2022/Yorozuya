@@ -122,4 +122,41 @@ t("⑦ 血精：預設＝內射＋混血粉紅精液；負向擋顏射與純白�
   assert.equal(M.SEX_STEP_PROMPT_REV.bloodcum, 1);
   assert.equal(M.SEX_STEP_META.bloodcum.label, "血精");
 });
+t("召喚預產整套：兩姿勢 × 每組 6 步（無潮吹）＋局部動圖缺幀；快取／版本跳過；抽插最多 6 組", () => {
+  assert.deepEqual(M.SEX_SUMMON_STEPS, ["open", "join", "thrust", "orgasm", "cum", "bloodcum"]);
+  assert.ok(!M.SEX_SUMMON_STEPS.includes("squirt"));
+  const packsByPose = { missionary: [{ id: "m1" }], doggy: [{ id: "d1" }, { id: "d2" }] };
+  let jobs = M.planSexSummonSet({ packsByPose });
+  assert.equal(jobs.filter((j) => j.kind === "step").length, 18);
+  assert.equal(jobs.filter((j) => j.kind === "anim").length, 2);
+  assert.equal(M.sexSummonImageCount(jobs), 18 + 8);
+  assert.deepEqual(jobs[0], { kind: "step", pose: "missionary", step: "open", packId: "m1" });
+  assert.equal(jobs[6].kind, "anim");
+  const P = (pose, step, slot) => `/assets/portraits/g_sex_${pose}_${step}${slot > 1 ? slot : ""}.png?v=1`;
+  const portraits = {
+    sex_missionary_open_packs: { m1: P("missionary", "open") },
+    sex_missionary_thrust_packs: { m1: P("missionary", "thrust") },
+    sex_missionary_cum_packs: { m1: "/assets/testword/x.png" },
+    sex_doggy_thrust_packs: { d1: P("doggy", "thrust"), d2: P("doggy", "thrust", 2) },
+    actionPromptRev: { "sex_missionary_open_packs:m1": 3 },
+  };
+  const sexAnim = { missionary: { urls: ["a", "", "c", "d"] }, doggy: { urls: ["a", "b", "c", "d"] } };
+  jobs = M.planSexSummonSet({ packsByPose, portraits, sexAnim });
+  const has = (pose, step, id) => jobs.some((j) => j.kind === "step" && j.pose === pose && j.step === step && j.packId === id);
+  assert.ok(!has("missionary", "open", "m1") && !has("missionary", "thrust", "m1"), "有快取 → 跳過");
+  assert.ok(has("missionary", "cum", "m1"), "testword（舊伺服器）不算快取");
+  assert.ok(!has("doggy", "thrust", "d2"), "抽插變體格 2 也算快取");
+  assert.deepEqual(jobs.find((j) => j.kind === "anim"), { kind: "anim", pose: "missionary", frames: [1] });
+  assert.ok(!jobs.some((j) => j.kind === "anim" && j.pose === "doggy"));
+  // 版本：開場 rev 3 已記 → 跳過；抽插 rev 1 未記 → 重排
+  const revOf = (st) => (st === "open" ? 3 : 1);
+  jobs = M.planSexSummonSet({ packsByPose, portraits, sexAnim, revOf });
+  assert.ok(!has("missionary", "open", "m1"));
+  assert.ok(jobs.some((j) => j.step === "thrust" && j.packId === "m1"));
+  // 抽插最多 6 組
+  const many = { missionary: Array.from({ length: 9 }, (_, i) => ({ id: `p${i}` })), doggy: [] };
+  jobs = M.planSexSummonSet({ packsByPose: many, anim: false });
+  assert.equal(jobs.length, 6 * 6);
+  assert.equal(M.planSexSummonSet({ packsByPose: {}, sexAnim }).length, 1, "沒組也補動圖");
+});
 console.log(`${pass} passed`);

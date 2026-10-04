@@ -614,6 +614,21 @@ html:not(.room-page) #room-pack-chrome { display: none; }
 .room-summon-ritual[hidden]{display:none}
 body.room-home .room-summon-ritual:not([hidden]){display:block}
 #main-room-stage[aria-busy="true"]{opacity:.92}
+.room-summon-progress{
+  position:fixed;z-index:70;
+  left:50%;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 30px);
+  transform:translateX(-50%);
+  max-width:min(92vw,420px);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  padding:.3em .8em;
+  background:rgba(32,28,40,.78);
+  color:#e9dcc8;
+  border-radius:4px;
+  font-size:12px;letter-spacing:.03em;
+  text-align:center;
+  pointer-events:none;
+}
+.room-summon-progress[hidden]{display:none}
 
 /* 立繪 9 槽堆疊面板 */
 .standee-pack-panel{max-height:min(88vh,920px);overflow:auto}

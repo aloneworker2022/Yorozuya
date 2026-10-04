@@ -137,7 +137,13 @@ import {
   SEX_POSE_PROMPT_REV,
   pickSexThrustSlot,
   sexThrustSlotOfUrl,
-} from "./sex_pose_packs.js?v=9";
+  SEX_SUMMON_POSES,
+  SEX_SUMMON_ANIM_FRAMES,
+  planSexSummonSet,
+  sexSummonImageCount,
+} from "./sex_pose_packs.js?v=10";
+import { buildSexAnimFrames, SEX_ANIM_SIZE } from "./sex_anim.js";
+import { packFrameUrl } from "./frame_pack.js";
 import {
   THRUST,
   newThrustSession,
@@ -710,6 +716,212 @@ function queueSexPosePregen(who = girl) {
   })();
 }
 
+/* ───────── 召喚預產整套做愛圖（2026-10-04；閘門同 data-sex-poses） ─────────
+ * 兩個姿勢 × 每組（開場／加入／抽插變體／她高潮／內射／血精；潮吹不產）＋ 舊系統局部動圖 sexAnim[pose] 4 幀。
+ * 一次一張依序排（不灌爆 ComfyUI）；已有快取的跳過；失敗只記 warn、不擋召喚。進度寫在 #room-summon-progress 與 summon-status。 */
+const sexSetJobs = new Map();
+
+function sexSetProgressEl() {
+  let el = $("room-summon-progress");
+  if (el) return el;
+  const stage = $("main-room-stage") || document.body;
+  el = document.createElement("div");
+  el.id = "room-summon-progress";
+  el.className = "room-summon-progress";
+  el.hidden = true;
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  stage.appendChild(el);
+  return el;
+}
+
+function paintSexSetProgress(text) {
+  const el = sexSetProgressEl();
+  if (!el) return;
+  el.textContent = text || "";
+  el.hidden = !text;
+}
+
+/** 幀包清單（/api/frame-packs → assets/frame_packs/index.json）；局部動畫與召喚預產共用。 */
+function loadFramePacksCached() {
+  if (!thrustFramesCache) {
+    thrustFramesCache = (async () => {
+      const read = async (url) => {
+        try {
+          const r = await fetch(url);
+          if (!r.ok) return [];
+          const j = await r.json();
+          return Array.isArray(j?.packs) ? j.packs : (Array.isArray(j) ? j : []);
+        } catch {
+          return [];
+        }
+      };
+      let packs = await read(`/api/frame-packs?ts=${Date.now()}`);
+      if (!packs.length) packs = await read(`/assets/frame_packs/index.json?ts=${Date.now()}`);
+      return packs.filter((p) => p && p.id);
+    })();
+  }
+  return thrustFramesCache;
+}
+
+/** 舊系統局部動圖的一幀（同 app.js daydreamSexPose：sex_strip、下半身、1216×832、同體位幀包當骨架）。 */
+async function generateSexAnimFrame(who, pose, index, engine, built, bone) {
+  const comfy = engine.imgProvider === "comfy";
+  const size = SEX_ANIM_SIZE || { width: 1216, height: 832 };
+  const frame = built.frames[index] || {};
+  const pos = frame.pos || "";
+  const neg = [built.neg, frame.extraNeg || ""].filter(Boolean).join(", ");
+  const body = {
+    key: `room-sexanim:${who.id}:${pose}:${index}:${Date.now().toString(36)}`,
+    provider: comfy ? "comfy" : "grok-img",
+    model: engine.imgModel || "grok-4.5",
+    framing: "lower",
+    rating: "nsfw",
+    style: engine.imgStyle || "anime",
+    character: who,
+    extra: pos,
+    prompt: pos,
+    negative: neg,
+    cutout: false,
+    flat_bg: false,
+    retry: true,
+    scene_kind: "sex_strip",
+    ...(bone ? { pose_ref: bone, pose_denoise: 0.70 } : {}),
+    ...(comfy ? {
+      comfy_url: engine.comfyUrl || "",
+      ckpt: String(who.comfyCkpt || "").trim() || engine.comfyCkpt || "",
+      width: size.width,
+      height: size.height,
+    } : {}),
+  };
+  const r = await waitImage(body);
+  return r?.status === "done" && r.result ? String(r.result) : "";
+}
+
+/** 她還缺哪些做愛圖（兩姿勢 × 每組 × 步驟 ＋ 局部動圖缺幀）。 */
+async function planSexSetFor(who) {
+  if (!SEX_POSES_ON || !who?.id) return [];
+  const packsByPose = {};
+  for (const pose of SEX_SUMMON_POSES) {
+    try {
+      const doc = await getSexPosePacksCached(pose);
+      packsByPose[pose] = (doc?.packs || []).map((p) => normalizeSexPosePack(pose, p)).filter((p) => p.id);
+    } catch (err) {
+      console.warn("[pregenSexSet] packs", pose, err?.message || err);
+      packsByPose[pose] = [];
+    }
+  }
+  who.portraits = who.portraits || {};
+  return planSexSummonSet({ packsByPose, portraits: who.portraits, sexAnim: who.sexAnim, revOf: sexStepRev });
+}
+
+/**
+ * 召喚時把整套做愛圖產好（缺的才產）。回傳 { planned, done, failed, skipped }。
+ * opts.onProgress(text)：每張開始前回報「做愛圖 i/N · 傳教士・內射」。
+ */
+function pregenSexSet(who, opts = {}) {
+  if (!SEX_POSES_ON || !who?.id) return Promise.resolve({ planned: 0, done: 0, failed: 0, skipped: true });
+  if (sexSetJobs.has(who.id)) return sexSetJobs.get(who.id);
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : paintSexSetProgress;
+  const job = (async () => {
+    const jobs = await planSexSetFor(who);
+    const total = sexSummonImageCount(jobs);
+    const out = { planned: total, done: 0, failed: 0, skipped: false };
+    if (!total) return out;
+    let n = 0;
+    let engine = null;
+    for (const j of jobs) {
+      const poseLabel = SEX_POSES[j.pose]?.label?.replace("開場", "") || j.pose;
+      if (j.kind === "step") {
+        n += 1;
+        onProgress(`做愛圖 ${n}/${total} · ${poseLabel}・${SEX_STEP_META[j.step]?.label || j.step}`);
+        try {
+          const r = await ensureSexStepUrl(who, j.pose, j.step, j.packId);
+          if (r?.generated || (r?.url && !r.fallback)) out.done += 1;
+          else out.failed += 1;
+        } catch (err) {
+          console.warn("[pregenSexSet]", j.pose, j.step, err?.message || err);
+          out.failed += 1;
+        }
+        continue;
+      }
+      // 局部動圖：缺的幀依序補
+      try {
+        if (!engine) engine = await gameImgRoute();
+        await ensureGirlComfyCkpt(who);
+      } catch (err) {
+        console.warn("[pregenSexSet] engine", err?.message || err);
+      }
+      const style = engine?.imgStyle || "anime";
+      const built = buildSexAnimFrames(j.pose, style, "mid", who.look || {}, who);
+      let bonePack = null;
+      try {
+        const packs = await loadFramePacksCached();
+        bonePack = packs.find((p) => p.pose === j.pose && packFrameUrl(p, 1)) || null;
+      } catch { /* 沒幀包就不帶骨架 */ }
+      for (const i of j.frames) {
+        n += 1;
+        onProgress(`做愛圖 ${n}/${total} · ${poseLabel}・局部動圖第 ${i + 1} 幀`);
+        let url = "";
+        try {
+          url = engine ? await generateSexAnimFrame(who, j.pose, i, engine, built, bonePack ? packFrameUrl(bonePack, i + 1) : "") : "";
+        } catch (err) {
+          console.warn("[pregenSexSet] anim", j.pose, i, err?.message || err);
+        }
+        if (!url) { out.failed += 1; continue; }
+        who.sexAnim = (who.sexAnim && typeof who.sexAnim === "object") ? who.sexAnim : {};
+        const prev = Array.isArray(who.sexAnim[j.pose]?.urls) ? who.sexAnim[j.pose].urls.slice() : [];
+        while (prev.length < SEX_SUMMON_ANIM_FRAMES) prev.push("");
+        prev[i] = url;
+        who.sexAnim[j.pose] = { urls: prev, at: Date.now() };
+        out.done += 1;
+        if (who === girl) persistRoom();
+      }
+    }
+    return out;
+  })();
+  sexSetJobs.set(who.id, job);
+  job.finally(() => sexSetJobs.delete(who.id));
+  return job;
+}
+
+/** 召喚收尾：跑整套做愛圖並把進度顯示在儀式下面；回傳結果（失敗不 throw）。 */
+async function pregenSexSetForSummon(who) {
+  if (!SEX_POSES_ON || !who?.id) return null;
+  try {
+    const res = await pregenSexSet(who, {
+      onProgress: (text) => {
+        paintSexSetProgress(text);
+        console.info("[pregenSexSet]", text);
+      },
+    });
+    if (res?.planned) {
+      console.info(`[pregenSexSet] ${who.name || who.id}: 產 ${res.done}/${res.planned}${res.failed ? `，失敗 ${res.failed}` : ""}`);
+    }
+    return res;
+  } catch (err) {
+    console.warn("[pregenSexSetForSummon]", err?.message || err);
+    return null;
+  } finally {
+    paintSexSetProgress("");
+  }
+}
+
+/** 獻祭召喚（app.js，另一頁物件）：用房間人設產整套，再把快取抄回她身上。 */
+async function pregenSexSetForGameGirl(s, onProgress) {
+  if (!SEX_POSES_ON || !s?.id) return null;
+  const roomGirl = buildRoomGirlFromSuccubus(s);
+  if (!roomGirl) return null;
+  const res = await pregenSexSet(roomGirl, { onProgress: typeof onProgress === "function" ? onProgress : paintSexSetProgress });
+  s.portraits = { ...(s.portraits || {}), ...(roomGirl.portraits || {}) };
+  if (roomGirl.sexAnim) s.sexAnim = { ...(s.sexAnim || {}), ...roomGirl.sexAnim };
+  return res;
+}
+window.RoomSexPregen = {
+  get enabled() { return SEX_POSES_ON; },
+  forGameGirl: pregenSexSetForGameGirl,
+};
+
 function sexByText(who) {
   return who.undress?.pantiesBy === "self" ? "她自己脫掉內褲" : who.undress?.pantiesBy === "help" ? "你幫她脫掉內褲" : "（沒記到誰脫的，預設）";
 }
@@ -909,24 +1121,7 @@ async function loadThrustFrames(pose, who = girl) {
       if (pick(rec?.urls).length >= 2) return { urls: pick(rec.urls).slice(0, 4), source: `sexAnim:${k}` };
     }
   }
-  if (!thrustFramesCache) {
-    thrustFramesCache = (async () => {
-      const read = async (url) => {
-        try {
-          const r = await fetch(url);
-          if (!r.ok) return [];
-          const j = await r.json();
-          return Array.isArray(j?.packs) ? j.packs : (Array.isArray(j) ? j : []);
-        } catch {
-          return [];
-        }
-      };
-      let packs = await read(`/api/frame-packs?ts=${Date.now()}`);
-      if (!packs.length) packs = await read(`/assets/frame_packs/index.json?ts=${Date.now()}`);
-      return packs.filter((p) => p && p.id);
-    })();
-  }
-  const packs = await thrustFramesCache;
+  const packs = await loadFramePacksCached();
   const urlsOf = (p) => [1, 2, 3, 4].map((i) => String(p?.frames?.[String(i)]?.url || "")).filter(Boolean);
   const same = packs.find((p) => p.pose === pose && urlsOf(p).length);
   if (same) return { urls: urlsOf(same), source: `幀包:${same.name || same.id}（${pose}）` };
@@ -7602,6 +7797,7 @@ function pickRoomDurableProgress(who) {
     if (roomDurableDefined(who[k])) detail[k] = who[k];
   }
   if (who.portraits && typeof who.portraits === "object") detail.portraits = who.portraits;
+  if (who.sexAnim && typeof who.sexAnim === "object") detail.sexAnim = who.sexAnim;
   if (who.world && typeof who.world === "object") detail.world = who.world;
   if (who.bodyState && typeof who.bodyState === "object") detail.bodyState = who.bodyState;
   if (who.body && typeof who.body === "object") detail.body = who.body;
@@ -7640,6 +7836,9 @@ function mergeRoomGirlDurable(base, prior) {
     out.portraits = { ...(out.portraits || {}), ...prior.portraits };
   }
   if (prior.portrait) out.portrait = prior.portrait;
+  if (prior.sexAnim && typeof prior.sexAnim === "object") {
+    out.sexAnim = { ...(out.sexAnim || {}), ...prior.sexAnim };
+  }
 
   if (prior.world && typeof prior.world === "object") out.world = prior.world;
   if (prior.bodyState && typeof prior.bodyState === "object") out.bodyState = prior.bodyState;
@@ -7796,6 +7995,8 @@ async function adoptRosterGirl(payload) {
     } catch (err) {
       console.warn("[adoptRosterGirl pregen]", err?.message || err);
     }
+    // 整套做愛圖（兩姿勢＋局部動圖；缺的才產，失敗不擋）
+    await pregenSexSetForSummon(girl);
 
     // Ritual fully done → then she appears in the room.
     window.RoomActor?.setPresent(true);
@@ -8024,6 +8225,8 @@ function buildRoomGirlFromSuccubus(s) {
     summoner: s.summoner || null,
     portraits,
     portrait: s.portrait || portraits.full || portraits.half || null,
+    // 舊系統局部動圖（召喚預產／作夢產的）：帶進房間，肏的局部動畫用
+    sexAnim: (s.sexAnim && typeof s.sexAnim === "object") ? JSON.parse(JSON.stringify(s.sexAnim)) : null,
     chatEnter: s.chatEnter === "flee_back" ? "flee_back" : "summon",
     ...(NUDE_FLAG_ON ? { nude: !!s.nude } : {}),
     undress: snapshotUndress(s.undress),
@@ -8212,6 +8415,10 @@ async function drawGirl() {
       if ($("summon-status")) {
         $("summon-status").textContent = `抽到了${rolled.name}${ckptBit}。預產未完成：${err?.message || err}`;
       }
+    }
+    try {
+      // 整套做愛圖（兩姿勢＋局部動圖；缺的才產，失敗不擋）
+      if (girl && girl.id === rolled.id) await pregenSexSetForSummon(rolled);
     } finally {
       // Ritual fully done → then she appears (even if pregen partially failed).
       if (girl && girl.id === rolled.id) {
@@ -8336,9 +8543,34 @@ function sendHerOutAgain(opts = {}) {
   // 回住處：安靜離場，不特別提示
 }
 
-function summonHerBack() {
+let summonBackBusy = false;
+async function summonHerBack() {
   // 有 world 且人在外即可召回；住處未定也允許（找房／ensure 仍只在離房／逃離時做）
-  if (!girl?.world || !sheIsOut()) return;
+  if (!girl?.world || !sheIsOut() || summonBackBusy) return;
+  // 再召喚也補齊整套做愛圖：缺圖才跑儀式＋進度（都有快取就立刻回來）
+  if (SEX_POSES_ON) {
+    const who = girl;
+    let missing = 0;
+    try {
+      missing = sexSummonImageCount(await planSexSetFor(who));
+    } catch { missing = 0; }
+    if (missing && girl === who && sheIsOut()) {
+      summonBackBusy = true;
+      const btn = $("summon-back");
+      if (btn) btn.disabled = true;
+      const stopRitual = beginSummonRitualUI();
+      try {
+        await pregenSexSetForSummon(who);
+      } finally {
+        try { stopRitual(); } catch { /* */ }
+        const ritualEl = $("room-summon-ritual");
+        if (ritualEl) { ritualEl.hidden = true; ritualEl.textContent = ""; }
+        if (btn) btn.disabled = false;
+        summonBackBusy = false;
+      }
+      if (girl !== who || !sheIsOut()) return;
+    }
+  }
   decayArousalCool(girl);
   clearArousalCool(girl);
   clearVisitUndress(girl);
@@ -9788,6 +10020,11 @@ window.RoomCompanion = {
     settle: () => settleStunReckoning(),
   },
   /** 做愛開場圖除錯：on＝閘門；pose()＝目前會用的姿勢；last()＝上次顯示；pregen()＝手動排背景產圖。 */
+  /** 召喚預產整套做愛圖：plan() 列缺的、run() 現在補齊（同召喚那條）。 */
+  sexSet: {
+    plan: () => (girl ? planSexSetFor(girl) : Promise.resolve([])),
+    run: () => (girl ? pregenSexSetForSummon(girl) : Promise.resolve(null)),
+  },
   sexPose: {
     on: () => SEX_POSES_ON,
     pose: () => (girl ? sexPoseFor(girl) : ""),

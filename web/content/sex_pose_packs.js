@@ -1026,3 +1026,56 @@ export function mountSexPosePackEditor(pose, hooks = {}) {
   panel.hidden = true;
   openBtn.setAttribute("aria-expanded", "false");
 }
+
+/* ───────── 召喚預產整套做愛圖（2026-10-04） ─────────
+ * 每條召喚路（抽新人、名冊／付費召喚、她離開後再召喚、獻祭召喚）都把兩個姿勢的整套做愛圖產好：
+ * 開場 → 加入 → 抽插（每組一個變體格）→ 她高潮 → 內射 → 血精（潮吹不產），外加舊系統局部動圖 sexAnim[pose]（4 幀）。
+ * 一次一張依序排（不灌爆 ComfyUI）、已有快取的跳過。這裡只算「缺哪些」，生圖在 test_room_summon.js。 */
+export const SEX_SUMMON_STEPS = ["open", "join", "thrust", "orgasm", "cum", "bloodcum"];
+export const SEX_SUMMON_POSES = ["missionary", "doggy"];
+/** 局部動圖幾幀（同舊系統 sex_anim.js SEX_ANIM_FRAMES）。 */
+export const SEX_SUMMON_ANIM_FRAMES = 4;
+
+/** 這一步這一組有可用快取嗎（網址落在正確檔名、版本不舊）。revOf(step) 回這一步現行版本（0＝不比版本）。 */
+export function sexStepCached(portraits, pose, step, packId, revOf = () => 0) {
+  const key = sexStepPacksKey(pose, step);
+  const pool = portraits && typeof portraits[key] === "object" && portraits[key] ? portraits[key] : {};
+  const url = String(pool[packId] || "");
+  if (!url || !isSexStepResultUrl(pose, step, url)) return false;
+  const need = Number(revOf(step)) || 0;
+  if (!need) return true;
+  return ((portraits?.actionPromptRev || {})[`${key}:${packId}`] | 0) >= need;
+}
+
+/**
+ * 召喚預產清單：只列缺的。
+ * packsByPose：{ missionary: [pack…], doggy: [pack…] }（每組都產全部步驟；抽插每組佔一格，最多 SEX_THRUST_VARIANTS 組）。
+ * sexAnim：她的 sexAnim（{ pose: { urls } }）；缺哪幾幀列哪幾幀（0-based）。
+ * 回傳 [{ kind: "step", pose, step, packId } | { kind: "anim", pose, frames: [i…] }]，順序＝姿勢 → 步驟 → 動圖。
+ */
+export function planSexSummonSet({ packsByPose = {}, portraits = {}, sexAnim = null, revOf = () => 0, poses = SEX_SUMMON_POSES, anim = true } = {}) {
+  const jobs = [];
+  for (const pose of poses) {
+    if (!SEX_POSES[pose]) continue;
+    const packs = (Array.isArray(packsByPose[pose]) ? packsByPose[pose] : [])
+      .filter((p) => p && p.id)
+      .slice(0, SEX_THRUST_VARIANTS);
+    for (const pack of packs) {
+      for (const step of SEX_SUMMON_STEPS) {
+        if (!sexStepCached(portraits, pose, step, pack.id, revOf)) jobs.push({ kind: "step", pose, step, packId: pack.id });
+      }
+    }
+    if (anim) {
+      const urls = Array.isArray(sexAnim?.[pose]?.urls) ? sexAnim[pose].urls : [];
+      const frames = [];
+      for (let i = 0; i < SEX_SUMMON_ANIM_FRAMES; i++) if (!String(urls[i] || "").trim()) frames.push(i);
+      if (frames.length) jobs.push({ kind: "anim", pose, frames });
+    }
+  }
+  return jobs;
+}
+
+/** 進度用：清單共幾張圖（動圖每幀算一張）。 */
+export function sexSummonImageCount(jobs) {
+  return (Array.isArray(jobs) ? jobs : []).reduce((n, j) => n + (j?.kind === "anim" ? (j.frames?.length || 0) : 1), 0);
+}

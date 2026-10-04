@@ -5732,7 +5732,22 @@ async function genSummonPortrait(ov, s) {
       </div>`;
   };
   paint(0);
-  await weavePortrait(s, paint);
+  const woven = await weavePortrait(s, paint);
+  // 獻祭召喚也產整套做愛圖（房間做愛閘門 data-sex-poses 開著才跑；缺的才產、失敗不擋）
+  if (woven && gameIsNsfw() && window.RoomSexPregen?.enabled) {
+    const sub = (text) => {
+      const p = ov.querySelector(".summon-result p");
+      if (p) p.textContent = `正在為她準備做愛圖……${text ? `（${text}）` : ""}`;
+    };
+    try {
+      sub("");
+      await window.RoomSexPregen.forGameGirl(s, sub);
+      dirty = true;
+      try { saveNow(); } catch { /* */ }
+    } catch (err) {
+      console.warn("[summon sex set]", err?.message || err);
+    }
+  }
   renderSummonCard(ov, s);   // 有圖顯示圖、沒圖退回今晚作夢,並露出「接受契約」
   renderAll();
 }
@@ -8176,6 +8191,15 @@ function applyRoomProgressData(data) {
   } else if (data.portrait && data.portrait !== s.portrait) {
     s.portrait = data.portrait;
     changed = true;
+  }
+  // 房間預產的局部動圖（召喚整套做愛圖）：每個姿勢有圖才收
+  if (data.sexAnim && typeof data.sexAnim === "object") {
+    for (const [pose, rec] of Object.entries(data.sexAnim)) {
+      if (!Array.isArray(rec?.urls) || !rec.urls.some(Boolean)) continue;
+      s.sexAnim ??= {};
+      s.sexAnim[pose] = { urls: rec.urls.slice(0, 4), at: rec.at || Date.now() };
+      changed = true;
+    }
   }
   // world: room is newer after play — replace
   if (data.world && typeof data.world === "object") {
