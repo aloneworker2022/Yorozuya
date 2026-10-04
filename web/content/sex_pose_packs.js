@@ -10,6 +10,8 @@
  *   open 開場（只有她；走脫光立繪 undress 管線） → join 玩家加入（POV 影子男抓大腿／抓臀、龜頭頂陰唇）
  *   → half 插一半 → full 全插入 → orgasm 她高潮 → squirt 潮吹 → cum 內射（預設 creampie）。
  *   tip 局部（陰部特寫）程式保留但停用（SEX_STEP_DISABLED）。檔名 {id}_sex_<pose>_<step>.png。
+ * 2026-10-04 肏互動：half／full 停用（程式保留），改成一格 thrust 抽插（加入之後按「肏」的主圖）；
+ *   高潮／潮吹／內射變成事件圖（sex_thrust.js 判定），不再是「下一步」順序。
  * open 以外有男人 → 走 tease（雙人／POV）管線，但伺服器 garment=nude：不套服裝、負向擋衣物。存在同一組的 pack[step]。 */
 
 export const SEX_POSES = {
@@ -35,20 +37,21 @@ export const SEX_POSES = {
   },
 };
 
-/** 做愛步驟（全部，含停用的）：open 開場 → (tip 局部，停用) → join 玩家加入 → half 插一半 → full 全插入 → orgasm 她高潮 → squirt 潮吹 → cum 內射。 */
-export const SEX_STEPS = ["open", "tip", "join", "half", "full", "orgasm", "squirt", "cum"];
-/** 停用的步驟（程式保留；不進順序、編輯器分頁、預產）。② 局部 2026-10-03 使用者測完停用。 */
-export const SEX_STEP_DISABLED = new Set(["tip"]);
+/** 做愛步驟（全部，含停用的）：open 開場 → (tip 局部，停用) → join 玩家加入 → (half／full 停用) → thrust 抽插 → orgasm 她高潮 → squirt 潮吹 → cum 內射。 */
+export const SEX_STEPS = ["open", "tip", "join", "half", "full", "thrust", "orgasm", "squirt", "cum"];
+/** 停用的步驟（程式保留；不進順序、編輯器分頁、預產）。② 局部 2026-10-03 使用者測完停用；插一半／全插入 2026-10-04 換成一格「抽插」。 */
+export const SEX_STEP_DISABLED = new Set(["tip", "half", "full"]);
 /** 實際播放順序。 */
 export const SEX_ACTIVE_STEPS = SEX_STEPS.filter((s) => !SEX_STEP_DISABLED.has(s));
 /** 脫光那一拍背景預產哪幾步（其餘看到前一步時才預產下一步）。 */
-export const SEX_PREGEN_STEPS = ["open", "join"];
+export const SEX_PREGEN_STEPS = ["open", "join", "thrust"];
 export const SEX_STEP_META = {
   open: { key: "open", label: "開場", short: "開場", hint: "只有她（男人還沒上場）；走脫光立繪管線" },
   tip: { key: "tip", label: "局部", short: "局部", hint: "（停用）陰部特寫：龜頭頂在陰唇、還沒插入；男人只露陰莖（影子男）" },
   join: { key: "join", label: "玩家加入", short: "加入", hint: "POV＋黑色半透明影子男：傳教士抓大腿／後背抓臀，龜頭頂陰唇" },
-  half: { key: "half", label: "插一半", short: "半插", hint: "陰莖插進一半（龜頭在裡面、還有一半在外面）" },
-  full: { key: "full", label: "全插入", short: "全插", hint: "整根插到底（深入）" },
+  half: { key: "half", label: "插一半", short: "半插", hint: "（停用）陰莖插進一半（龜頭在裡面、還有一半在外面）" },
+  full: { key: "full", label: "全插入", short: "全插", hint: "（停用）整根插到底（深入）" },
+  thrust: { key: "thrust", label: "抽插", short: "抽插", hint: "按「肏」時的主圖：陰莖在裡面進進出出、動態線、骨盆啪啪撞、流汗" },
   orgasm: { key: "orgasm", label: "她高潮", short: "高潮", hint: "她高潮：頭往後仰、吐舌、阿嘿顏、痙攣（後背：抬頭後仰、仍不看鏡頭）" },
   squirt: { key: "squirt", label: "潮吹", short: "潮吹", hint: "插著時潮吹（像尿一樣噴出來）" },
   cum: { key: "cum", label: "內射", short: "內射", hint: "玩家射精：預設內射（creampie），精液從陰道溢出" },
@@ -63,7 +66,7 @@ export const SEX_STEP_META = {
   });
 }
 /** 開場以外各步的預設版本（快取圖作廢用；開場見 SEX_POSE_PROMPT_REV）。 */
-export const SEX_STEP_PROMPT_REV = { tip: 1, join: 1, half: 1, full: 2, orgasm: 1, squirt: 1, cum: 1 };
+export const SEX_STEP_PROMPT_REV = { tip: 1, join: 1, half: 1, full: 2, thrust: 1, orgasm: 1, squirt: 1, cum: 1 };
 
 /** 下一個啟用的步驟（最後一步回 ""）。 */
 export function nextSexStep(step) {
@@ -247,6 +250,10 @@ const SEX_FULL_BEAT = "sex, vaginal, deep penetration, penis fully inserted, pen
 const SEX_FULL_PRESS = "groin pressed against her pussy, male pelvis touching her labia, hips pressed together, crotch to crotch, testicles against her";
 const SEX_FULL_PRESS_DOGGY = "his hips pressed against her ass, pelvis against her buttocks, groin pressed against her pussy, male pelvis touching her labia, hips pressed together, testicles against her";
 const SEX_IN_BEAT = "sex, vaginal, penis inside, deep penetration";
+/** 抽插（肏）：進進出出＋動態線＋骨盆撞擊聲感＋汗。 */
+const SEX_THRUST_BEAT = "sex, vaginal, penis inside, thrusting, penis thrusting in and out, rapid thrusting, motion lines, speed lines, pelvis slapping, hips slapping, skin slapping, impact lines, sweat, sweaty body, pussy juice splashing";
+const SEX_THRUST_MISSIONARY = "bouncing breasts, body shaking from thrusts";
+const SEX_THRUST_DOGGY = "his hips slapping against her ass, ass ripple, jiggling buttocks, body shaking from thrusts";
 const SEX_ORGASM_FACE = "female orgasm, head thrown back, tongue out, ahegao, rolling eyes, drooling, open mouth, convulsing, trembling, twitching, arched back, toes curling, heavy breathing, blush, sweat";
 const SEX_DOGGY_ORGASM = "female orgasm, head lifted, head tilted back, arched back, facing away, tongue out, drooling, convulsing, trembling, twitching, toes curling, heavy breathing, sweat";
 const SEX_SQUIRT_BEAT = "squirting, female ejaculation, liquid spraying from pussy, pee-like spray, splashing, wet bed sheets";
@@ -297,6 +304,7 @@ export function defaultSexStepPrompt(pose, step) {
     orgasm: [SEX_IN_BEAT, doggy ? SEX_DOGGY_ORGASM : SEX_ORGASM_FACE],
     squirt: [SEX_IN_BEAT, SEX_SQUIRT_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_ORGASM_FACE],
     cum: [SEX_IN_BEAT, SEX_CUM_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_ORGASM_FACE],
+    thrust: [SEX_THRUST_BEAT, doggy ? SEX_THRUST_DOGGY : SEX_THRUST_MISSIONARY, doggy ? SEX_DOGGY_SHAKE : SEX_DAZED_FACE],
   }[st] || [];
   return [SEX_SHADOW_MAN, ...body, ...beat, doggy ? "on bed, white bed sheets" : ""].filter(Boolean).join(", ");
 }
@@ -313,6 +321,7 @@ export function defaultSexStepNegative(pose, step) {
   if (st === "half") bits.push("fully inserted, balls deep");
   if (st === "full") bits.push("visible penis shaft, penis outside, half inserted, partially inserted, gap between bodies");
   if (st === "cum") bits.push("cum on face, facial, cum on body, bukkake");
+  if (st === "thrust") bits.push("penis outside, not inserted");
   bits.push(SEX_STEP_NO_REAL_MAN);
   if (pose === "doggy") {
     // 高潮抬頭後仰：臉可能露一點，只擋回頭／看鏡頭

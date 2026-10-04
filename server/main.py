@@ -78,6 +78,7 @@ _SHOT_FILE_SUFS = (
     "sex_missionary_open", "sex_doggy_open",
     "sex_missionary_tip", "sex_doggy_tip", "sex_missionary_join", "sex_doggy_join",
     "sex_missionary_half", "sex_doggy_half", "sex_missionary_full", "sex_doggy_full",
+    "sex_missionary_thrust", "sex_doggy_thrust",
     "sex_missionary_orgasm", "sex_doggy_orgasm", "sex_missionary_squirt", "sex_doggy_squirt",
     "sex_missionary_cum", "sex_doggy_cum",
     # 扣陰道／揉子宮口 x-ray 剖面（不分穿衣／裸體，共用一張）
@@ -121,6 +122,7 @@ SHOT_LABEL_ZH = {
     "sex_missionary_join": "做愛·傳教士加入", "sex_doggy_join": "做愛·後背加入",
     "sex_missionary_half": "做愛·傳教士插一半", "sex_doggy_half": "做愛·後背插一半",
     "sex_missionary_full": "做愛·傳教士全插入", "sex_doggy_full": "做愛·後背全插入",
+    "sex_missionary_thrust": "做愛·傳教士抽插", "sex_doggy_thrust": "做愛·後背抽插",
     "sex_missionary_orgasm": "做愛·傳教士高潮", "sex_doggy_orgasm": "做愛·後背高潮",
     "sex_missionary_squirt": "做愛·傳教士潮吹", "sex_doggy_squirt": "做愛·後背潮吹",
     "sex_missionary_cum": "做愛·傳教士內射", "sex_doggy_cum": "做愛·後背內射",

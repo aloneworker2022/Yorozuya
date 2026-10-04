@@ -223,6 +223,30 @@ html.room-page button[aria-pressed=true],#home-room-chrome button[aria-pressed=t
 #portrait-sheet .talk-acts.undress-bar button[data-undress]{min-width:5.5em;padding:10px 18px}
 #portrait-sheet .talk-acts.undress-bar button[data-undress=next]{min-width:8em;font-weight:700}
 #portrait-sheet .talk-acts.undress-bar button[data-undress=back]{min-width:0;padding:10px 12px;opacity:.8;font-size:.9em}
+/* 肏互動（對話版做愛，test_room data-sex-poses）：主圖＝做愛步驟圖；右側量條；局部動畫卡在下方中間 */
+#portrait-sheet .talk-acts.sex-bar button[data-sex=thrust]{min-width:7em;padding:12px 22px;font-size:1.05em;font-weight:800;letter-spacing:.3em;border-color:rgba(255,150,200,.7);color:#ffc2de;background:rgba(92,22,60,.94)}
+#portrait-sheet .talk-acts.sex-bar button[data-sex=thrust]:active{background:rgba(130,30,80,.96)}
+#portrait-sheet .talk-acts.sex-bar button[data-sex=next]{min-width:8em;font-weight:700}
+.sex-hud{position:fixed;right:max(6px,env(safe-area-inset-right));top:34svh;z-index:24;width:128px;padding:7px 8px 6px;box-sizing:border-box;border:1px solid rgba(244,251,255,.3);border-radius:10px;background:rgba(8,12,30,.72);color:#f4fbff;font-size:11px;line-height:1.2;pointer-events:none}
+.sex-hud[hidden]{display:none!important}
+.sex-hud .sx-g{display:grid;grid-template-columns:2.6em 1fr;grid-template-rows:auto auto;column-gap:4px;margin:0 0 5px}
+.sex-hud .sx-g b{grid-row:1/3;align-self:center;font-weight:700;color:#ffe14a;letter-spacing:.06em}
+.sex-hud .sx-g i{display:block;height:7px;border-radius:4px;background:rgba(244,251,255,.16);overflow:hidden}
+.sex-hud .sx-g s{display:block;height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,#ff7fb8,#ff3d8b);transition:width .25s ease-out;text-decoration:none}
+.sex-hud .sx-g[data-g=excite] s{background:linear-gradient(90deg,#7fd8ff,#3d8bff)}
+.sex-hud .sx-g[data-g=semen] s{background:linear-gradient(90deg,#f4f1d0,#e6d77a)}
+.sex-hud .sx-g em{font-style:normal;text-align:right;color:rgba(244,251,255,.82)}
+.sex-hud .sx-g.hot em{color:#ff8fbf;font-weight:700}
+.sex-hud .sx-g[data-g=semen].hot s{background:linear-gradient(90deg,#ff9a6b,#ff3b3b)}
+.sex-hud .sx-g[data-g=semen].hot em{color:#ff6b6b}
+.sex-hud .sx-warn{margin:2px 0 0;color:#ff7a7a;font-weight:700;font-size:10.5px;line-height:1.3}
+.sex-hud .sx-warn[hidden]{display:none}
+.thrust-anim{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));z-index:22;width:min(92vw,500px);transform:translateX(-50%);padding:5px;box-sizing:border-box;border:2px solid rgba(244,251,255,.4);border-radius:10px;background:rgba(6,10,24,.55);box-shadow:0 10px 26px rgba(0,0,0,.45);pointer-events:none;opacity:0;transition:opacity .12s ease-out}
+.thrust-anim.on{opacity:.94}
+.thrust-anim[hidden]{display:none!important}
+.thrust-anim img{display:block;width:100%;height:auto;max-height:30svh;object-fit:contain;border-radius:6px}
+@keyframes thrust-shake{0%,100%{translate:0 0}25%{translate:0 6px}50%{translate:0 -3px}75%{translate:0 4px}}
+#portrait-img.thrust-shake{animation:thrust-shake .4s ease-in-out}
 
 /* ===== ROOM-SHIP：上卡／中房／下輸入 ===== */
 html.room-ship, body.room-ship {

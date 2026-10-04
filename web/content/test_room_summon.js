@@ -133,7 +133,20 @@ import {
   isSexStepResultUrl,
   normalizeSexPosePack,
   SEX_POSE_PROMPT_REV,
-} from "./sex_pose_packs.js?v=6";
+} from "./sex_pose_packs.js?v=7";
+import {
+  THRUST,
+  newThrustSession,
+  applyThrust,
+  checkOrgasm,
+  semenDanger,
+  pickOtherImage,
+  animFramesFor,
+  typeDelayFor,
+  pantPlaceholder,
+  fallbackMoan,
+  ThrustReplyPump,
+} from "./sex_thrust.js?v=1";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -378,7 +391,7 @@ const SCENE_UNLOCK_STUN = 50;
 
 function sceneOpen() {
   // 對話版脫衣：沒有浮層，場面跟著對話框開關
-  if (undressChatActive()) return sheetOpen();
+  if (undressChatActive() || sexChatActive()) return sheetOpen();
   return !!activeRoomScene && !$("room-scene-overlay")?.hidden;
 }
 
@@ -736,6 +749,647 @@ async function showSexPoseOpening(who) {
   return showSexStep(who, "open");
 }
 
+/* ───────── 肏（抽插）互動：對話版做愛（2026-10-04，test_room 閘門 data-sex-poses） ─────────
+ * 按「做愛」不開浮層：留在對話框、藏輸入框，主圖＝做愛步驟圖（#portrait-img），她的話打在對話框，
+ * 底部按鈕：開場「下一步」→ 加入「肏」＋「回到對話」。數值／排程在 sex_thrust.js。
+ * 局部動畫沿用舊做愛系統：她的 sexAnim[pose] → 同體位幀包 → 任一幀包；第一下 1-2-3-4、之後 2-3-4。 */
+const SEX_THRUST_CHAT = true;
+let sexChat = null;
+let thrustFramesCache = null;
+
+function sexThrustOn() {
+  return SEX_POSES_ON && SEX_THRUST_CHAT;
+}
+
+function sexChatActive() {
+  return !!sexChat && activeRoomScene === "sex";
+}
+
+function sexPosePhrase(pose) {
+  return pose === "doggy" ? "你趴著翹起屁股，他從後面抓著你的屁股" : "你躺著張開腿，他抓著你的大腿從正面";
+}
+
+/** 抽插期的圖：這組的抽插／加入在前，其他組已產好的同體位抽插／加入圖也可以換。 */
+function sexThrustPool(who = girl) {
+  if (!sexChat || !who) return [];
+  const out = [];
+  for (const st of ["thrust", "join"]) {
+    const pool = who.portraits?.[sexStepPacksKey(sexChat.pose, st)] || {};
+    const mine = String(pool[sexChat.packId] || "");
+    if (mine && isSexStepResultUrl(sexChat.pose, st, mine)) out.push(mine);
+  }
+  for (const st of ["thrust", "join"]) {
+    const pool = who.portraits?.[sexStepPacksKey(sexChat.pose, st)] || {};
+    for (const v of Object.values(pool)) {
+      const u = String(v || "");
+      if (u && isSexStepResultUrl(sexChat.pose, st, u) && !out.includes(u)) out.push(u);
+    }
+  }
+  return out;
+}
+
+function paintSexChatImage() {
+  const img = $("portrait-img");
+  if (!img || !sexChat) return;
+  const url = sexChat.img || "";
+  if (!url) return;
+  img.alt = `${girl?.name || ""}的做愛圖（${sexChat.imgStep || ""}）`;
+  img.dataset.sexStep = sexChat.imgStep || "";
+  if ((img.getAttribute("src") || "") !== url) img.src = url;
+  img.hidden = false;
+  if (sheetOpen()) startPortraitEntrance(img);
+}
+
+function setSexChatImage(url, step) {
+  if (!sexChat || !url) return;
+  sexChat.img = url;
+  sexChat.imgStep = step;
+  paintSexChatImage();
+}
+
+function sexHudEl() {
+  let el = $("sex-hud");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "sex-hud";
+    el.className = "sex-hud";
+    el.setAttribute("role", "status");
+    el.innerHTML = '<div class="sx-g" data-g="passion"><b>激情</b><i><s></s></i><em></em></div>'
+      + '<div class="sx-g" data-g="excite"><b>興奮</b><i><s></s></i><em></em></div>'
+      + '<div class="sx-g" data-g="semen"><b>精液</b><i><s></s></i><em></em></div>'
+      + '<p class="sx-warn" hidden></p>';
+    ($("portrait-sheet") || document.body).append(el);
+  }
+  return el;
+}
+
+function renderSexHud() {
+  const el = sexHudEl();
+  const s = sexChat?.sess;
+  el.hidden = !sexChat || !s || sexChat.step === "open";
+  if (el.hidden) return;
+  const set = (g, pct, txt, hot = false) => {
+    const row = el.querySelector(`[data-g="${g}"]`);
+    if (!row) return;
+    row.querySelector("s").style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    row.querySelector("em").textContent = txt;
+    row.classList.toggle("hot", !!hot);
+  };
+  const lim = THRUST.PASSION_ORGASM_ABOVE;
+  set("passion", (s.passion / (lim + 1)) * 100, `${s.passion}/${lim}`, s.passion >= lim - 3);
+  set("excite", s.excite, `${s.excite}/${THRUST.EXCITE_CUM_AT}`, s.excite >= 80);
+  set("semen", (Math.max(0, s.semen) / THRUST.SEMEN_START_CC) * 100, `${s.semen}cc`, semenDanger(s));
+  const warn = el.querySelector(".sx-warn");
+  const danger = semenDanger(s);
+  warn.hidden = !danger && !s.ended;
+  warn.textContent = s.ended
+    ? "精液見底，這一輪結束。"
+    : danger ? `⚠ 精液 ${s.semen}cc：再射一次就見底，這一輪會結束` : "";
+}
+
+function thrustAnimEl() {
+  let box = $("thrust-anim");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "thrust-anim";
+    box.className = "thrust-anim";
+    box.hidden = true;
+    box.setAttribute("aria-hidden", "true");
+    const img = document.createElement("img");
+    img.id = "thrust-anim-img";
+    img.alt = "";
+    box.append(img);
+    ($("portrait-sheet") || document.body).append(box);
+  }
+  return box;
+}
+
+/** 舊做愛系統的局部動畫幀：sexAnim[pose] → 同體位幀包 → 任一幀包（兩張以上優先）。 */
+async function loadThrustFrames(pose, who = girl) {
+  const pick = (urls) => (Array.isArray(urls) ? urls : []).map((u) => String(u || "").trim()).filter(Boolean);
+  const own = who?.sexAnim?.[pose];
+  if (pick(own?.urls).length) return { urls: pick(own.urls).slice(0, 4), source: `sexAnim:${pose}` };
+  if (who?.sexAnim) {
+    for (const [k, rec] of Object.entries(who.sexAnim)) {
+      if (pick(rec?.urls).length >= 2) return { urls: pick(rec.urls).slice(0, 4), source: `sexAnim:${k}` };
+    }
+  }
+  if (!thrustFramesCache) {
+    thrustFramesCache = (async () => {
+      const read = async (url) => {
+        try {
+          const r = await fetch(url);
+          if (!r.ok) return [];
+          const j = await r.json();
+          return Array.isArray(j?.packs) ? j.packs : (Array.isArray(j) ? j : []);
+        } catch {
+          return [];
+        }
+      };
+      let packs = await read(`/api/frame-packs?ts=${Date.now()}`);
+      if (!packs.length) packs = await read(`/assets/frame_packs/index.json?ts=${Date.now()}`);
+      return packs.filter((p) => p && p.id);
+    })();
+  }
+  const packs = await thrustFramesCache;
+  const urlsOf = (p) => [1, 2, 3, 4].map((i) => String(p?.frames?.[String(i)]?.url || "")).filter(Boolean);
+  const same = packs.find((p) => p.pose === pose && urlsOf(p).length);
+  if (same) return { urls: urlsOf(same), source: `幀包:${same.name || same.id}（${pose}）` };
+  const any = packs.find((p) => urlsOf(p).length >= 2) || packs.find((p) => urlsOf(p).length);
+  if (any) return { urls: urlsOf(any), source: `幀包:${any.name || any.id}（借 ${any.pose || "?"}）` };
+  return { urls: [], source: "" };
+}
+
+function waitMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 播一輪局部動畫（第一下 1-2-3-4，之後 2-3-4）；播完留最後一幀一下再收（連按不閃）。 */
+async function playThrustAnim() {
+  if (!sexChat) return;
+  const box = thrustAnimEl();
+  const img = box.querySelector("img");
+  if (sexChat.lingerTimer) {
+    clearTimeout(sexChat.lingerTimer);
+    sexChat.lingerTimer = 0;
+  }
+  const fr = await loadThrustFrames(sexChat.pose);
+  if (!sexChat) return;
+  sexChat.animSource = fr.source || "（沒有幀）";
+  const { frames, holds } = animFramesFor(fr.urls, sexChat.firstRoundDone);
+  sexChat.lastAnim = frames.map((u) => u.split("/").pop()).join(" ");
+  if (!frames.length) {
+    // 沒幀包：主圖抖一下代替
+    $("portrait-img")?.classList.add("thrust-shake");
+    await waitMs(420);
+    $("portrait-img")?.classList.remove("thrust-shake");
+    sexChat && (sexChat.firstRoundDone = true);
+    return;
+  }
+  box.hidden = false;
+  box.setAttribute("aria-hidden", "false");
+  box.classList.add("on");
+  for (let i = 0; i < frames.length; i++) {
+    if (!sexChat) return;
+    await new Promise((resolve) => {
+      const done = () => resolve();
+      img.onload = done;
+      img.onerror = done;
+      img.src = frames[i];
+      if (img.complete && img.naturalWidth) queueMicrotask(done);
+      setTimeout(done, 600);
+    });
+    img.onload = null;
+    img.onerror = null;
+    await waitMs(holds[i] || 180);
+  }
+  if (!sexChat) return;
+  sexChat.firstRoundDone = true;
+  sexChat.lingerTimer = setTimeout(() => {
+    if (!sexChat) return;
+    sexChat.lingerTimer = 0;
+    if (sexChat.animBusy) return;
+    box.classList.remove("on");
+    box.hidden = true;
+    box.setAttribute("aria-hidden", "true");
+  }, 1500);
+}
+
+function hideThrustAnim() {
+  const box = $("thrust-anim");
+  if (!box) return;
+  box.classList.remove("on");
+  box.hidden = true;
+  box.setAttribute("aria-hidden", "true");
+  box.querySelector("img")?.removeAttribute("src");
+}
+
+/** 逐字貼她的話：呻吟字快、一般字慢。被別的打字取代就停。 */
+async function typeThrustLine(name, text) {
+  const job = ++typeJob;
+  const full = cleanLine(text) || "……";
+  const box = $("portrait-meta");
+  if ($("portrait-name")) $("portrait-name").textContent = name;
+  setTyping(false);
+  if (!box) return;
+  box.textContent = "";
+  const chars = Array.from(full);
+  for (let i = 1; i <= chars.length; i++) {
+    if (job !== typeJob || !sexChat) return;
+    box.textContent = chars.slice(0, i).join("");
+    await waitMs(typeDelayFor(chars[i - 1]));
+  }
+}
+
+function sexChatNarrate(text) {
+  typeJob += 1;
+  if ($("portrait-name")) $("portrait-name").textContent = "旁白";
+  if ($("portrait-meta")) $("portrait-meta").textContent = text;
+  setTyping(false);
+}
+
+/** 她這一下要說的話（事實＋要求）；照一般對話的系統 prompt（個性／關係階／稱呼規則，老公只有妻子以上）。 */
+function thrustFact() {
+  const s = sexChat.sess;
+  const news = sexChat.news.splice(0);
+  const bits = [`${sexPosePhrase(sexChat.pose)}，正一下一下肏著你（第 ${s.thrusts} 下），陰莖在你裡面進進出出。`];
+  if (news.includes("orgasm")) bits.push("你剛剛高潮了，還在潮吹、痙攣。");
+  if (news.includes("cum")) bits.push("他剛剛射在你裡面，很燙。");
+  if (!news.includes("orgasm") && s.passion >= THRUST.PASSION_ORGASM_ABOVE - 4) bits.push("你快要高潮了。");
+  return { text: bits.join(""), event: news.includes("orgasm") ? "orgasm" : news.includes("cum") ? "cum" : "" };
+}
+
+async function requestThrustReply(seq) {
+  if (!sexChat || !girl) return "";
+  const fact = thrustFact();
+  sexChat.aiState = `等 AI（第 ${seq} 下）`;
+  renderThrustDebug();
+  let reply = "";
+  try {
+    reply = await askGirl(`（旁白：${fact.text}只寫你此刻說出口的一句話，可以夾著喘息和呻吟，二十字以內；不要旁白、不要描述動作、不要引號。）`);
+  } catch (err) {
+    console.warn("[thrust reply]", err?.message || err);
+  }
+  if (!sexChat || !girl) return "";
+  let clean = String(reply || "").replace(/\s+/g, " ").trim();
+  sexChat.aiState = clean ? `AI 回來（第 ${seq} 下）` : `AI 失敗→本地（第 ${seq} 下）`;
+  if (!clean) clean = fallbackMoan(fact.event);
+  lines.push({ role: "user", content: "（他肏你。）" });
+  lines.push({ role: "assistant", content: clean });
+  if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
+  if (!inSpasm(girl)) consumeEjacTalk(girl);
+  tickStunAfterReply(girl);
+  noteTalkExchange(girl);
+  rememberChat();
+  return presentUndressReply(clean);
+}
+
+function newThrustPump() {
+  return new ThrustReplyPump({
+    now: () => Date.now(),
+    placeholder: () => {
+      if (!sexChat || !girl) return;
+      typeJob += 1;
+      if ($("portrait-name")) $("portrait-name").textContent = girl.name || "她";
+      if ($("portrait-meta")) $("portrait-meta").textContent = pantPlaceholder();
+      setTyping(true);
+    },
+    request: (seq) => requestThrustReply(seq),
+    type: async (text) => {
+      if (!sexChat || !girl) return;
+      sexChat.typing = true;
+      try {
+        await typeThrustLine(girl.name || "她", text);
+        sexChat && (sexChat.lastReply = String(text || ""));
+      } finally {
+        if (sexChat) sexChat.typing = false;
+      }
+    },
+    onDone: () => {
+      if (!sexChat) return;
+      sexChat.aiState = "閒";
+      persistRoom();
+      flushThrustDeferred("reply");
+    },
+  });
+}
+
+/** 事件圖排隊（高潮→潮吹、內射）：一張停 EVENT_HOLD_MS；最後一張留到下一下肏。 */
+function queueSexEvent(steps) {
+  if (!sexChat) return;
+  sexChat.eventQueue.push(...steps);
+  if (!sexChat.eventRunning) void runSexEvents();
+}
+
+async function runSexEvents() {
+  if (!sexChat) return;
+  sexChat.eventRunning = true;
+  try {
+    while (sexChat && sexChat.eventQueue.length) {
+      const st = sexChat.eventQueue.shift();
+      const r = await ensureSexStepUrl(girl, sexChat.pose, st, sexChat.packId);
+      if (!sexChat) return;
+      if (r?.url) setSexChatImage(r.url, st);
+      sexChat.eventsShown.push(st);
+      renderThrustDebug();
+      await waitMs(THRUST.EVENT_HOLD_MS);
+    }
+  } finally {
+    if (sexChat) {
+      sexChat.eventRunning = false;
+      sexChat.eventHold = true;
+      if (sexChat.sess.ended) finishSexChatRound();
+    }
+  }
+}
+
+/** 她那句打完（或等太久）：判高潮、做這幾下累積的換圖。 */
+function flushThrustDeferred(why = "") {
+  if (!sexChat) return;
+  if (sexChat.deferTimer) {
+    clearTimeout(sexChat.deferTimer);
+    sexChat.deferTimer = 0;
+  }
+  const s = sexChat.sess;
+  const o = checkOrgasm(s);
+  if (o) {
+    bumpAffection(o.affection, `她高潮（第 ${o.count} 次）`);
+    noteAfterglow(girl, "hers");
+    sexChat.news.push("orgasm");
+    lines.push({ role: "user", content: "（她高潮了，潮吹、全身痙攣。）" });
+    showClimaxTip(o.count > 1 ? `她又高潮了！（${o.count}）` : "她高潮了！");
+    pushDebug(`肏：激情 ${o.before}→${o.after}（高潮 ${o.count}）`);
+    queueSexEvent(["orgasm", "squirt"]);
+    sexChat.pendingSwitch = false;
+  } else if (sexChat.pendingSwitch && !sexChat.eventRunning) {
+    const pool = sexThrustPool();
+    const next = pickOtherImage(pool, sexChat.thrustImg);
+    if (next && next !== sexChat.thrustImg) {
+      sexChat.thrustImg = next;
+      sexChat.switches += 1;
+      if (!sexChat.eventHold) setSexChatImage(next, next.includes("_join") ? "join" : "thrust");
+    }
+    sexChat.pendingSwitch = false;
+  }
+  sexChat.lastFlush = why;
+  renderSexHud();
+  renderThrustDebug();
+  persistRoom();
+}
+
+function renderSexChatBar() {
+  const row = $("talk-acts");
+  if (!row || !sexChat) return;
+  row.hidden = !sheetOpen() || !girl;
+  row.classList.add("undress-bar", "sex-bar");
+  for (const btn of [...row.querySelectorAll("button")]) btn.remove();
+  const add = (id, label, onClick, extra = {}) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.undress = id;
+    btn.dataset.sex = id;
+    if (extra.id) btn.id = extra.id;
+    btn.textContent = label;
+    btn.disabled = !!extra.disabled;
+    if (extra.hidden) btn.hidden = true;
+    if (extra.title) btn.title = extra.title;
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (btn.disabled || btn.hidden) return;
+      onClick();
+    });
+    row.append(btn);
+    return btn;
+  };
+  if (sexChat.step === "open") {
+    add("next", `下一步：${SEX_STEP_META.join.label}`, () => void sexChatToJoin(), { id: "sex-next-step", disabled: !!sexChat.busy });
+  } else if (!sexChat.sess.ended) {
+    // 動畫播放中藏「肏」（保留位置不跳版）
+    const b = add("thrust", "肏", () => doThrust(), { id: "sex-thrust" });
+    b.style.visibility = sexChat.animBusy ? "hidden" : "";
+    b.setAttribute("aria-hidden", sexChat.animBusy ? "true" : "false");
+  }
+  add("back", "回到對話", () => closeRoomScene(), { title: "離開做愛，回到一般對話" });
+}
+
+function syncThrustButton() {
+  const b = $("sex-thrust");
+  if (!b || !sexChat) return;
+  b.style.visibility = sexChat.animBusy ? "hidden" : "";
+  b.setAttribute("aria-hidden", sexChat.animBusy ? "true" : "false");
+}
+
+/** 開場（只有她）→ 下一步加入。 */
+async function openSexChat(who) {
+  if (!who || undressStage(who) < 3 || !sheetOpen()) return;
+  const pose = sexPoseFor(who);
+  activeRoomScene = "sex";
+  undressView += 1;
+  talkBusy = true;
+  clearActionFlash();
+  const o = ensureBody(who)?.organs;
+  sexChat = {
+    pose,
+    packId: "",
+    step: "open",
+    sess: newThrustSession(),
+    img: "",
+    imgStep: "",
+    thrustImg: "",
+    seq: 0,
+    animBusy: false,
+    firstRoundDone: false,
+    busy: true,
+    news: [],
+    eventQueue: [],
+    eventRunning: false,
+    eventHold: false,
+    eventsShown: [],
+    pendingSwitch: false,
+    deferTimer: 0,
+    lingerTimer: 0,
+    switches: 0,
+    debtNoted: false,
+    aiState: "閒",
+    lastReply: "",
+    lastAnim: "",
+    animSource: "",
+    lastFlush: "",
+    typing: false,
+    prevStuffed: String(o?.vagina?.stuffed || ""),
+    prev: { name: $("portrait-name")?.textContent || "", meta: $("portrait-meta")?.textContent || "" },
+    pump: null,
+  };
+  sexChat.pump = newThrustPump();
+  const view = undressView;
+  $("portrait-sheet")?.classList.add("undress-chat", "sex-chat");
+  setTalkEnabled(false);
+  const c = SEX_POSES[pose];
+  sexChatNarrate(`（${c.label.replace("開場", "")}・開場・${sexByText(who)}。開場圖準備中…）`);
+  renderSexHud();
+  renderSexChatBar();
+  const pick = await ensureSexStepUrl(who, pose, "open");
+  lastSexPosePick = { ...pick, by: who.undress?.pantiesBy || "", at: Date.now() };
+  if (!sexChat || view !== undressView || girl !== who) return;
+  sexChat.packId = pick.packId || "";
+  sexChat.busy = false;
+  if (pick.url) setSexChatImage(pick.url, "open");
+  sexChatNarrate(pick.url
+    ? `（${c.label.replace("開場", "")}・開場・${sexByText(who)}。按「下一步」看${SEX_STEP_META.join.label}。）`
+    : `（開場圖產生失敗；看 test_room 上排「${pose === "doggy" ? "後背圖" : "傳教士圖"}」。仍可按下一步。）`);
+  renderSexChatBar();
+  renderThrustDebug();
+  // 加入／抽插先在背景產（通常脫光時已預產）
+  void ensureSexStepUrl(who, pose, "join", sexChat.packId).then(() => sexChat && ensureSexStepUrl(who, pose, "thrust", sexChat.packId));
+}
+
+async function sexChatToJoin() {
+  if (!sexChat || sexChat.step !== "open" || !girl) return;
+  const who = girl;
+  sexChat.busy = true;
+  renderSexChatBar();
+  const view = undressView;
+  const pick = await ensureSexStepUrl(who, sexChat.pose, "join", sexChat.packId);
+  if (!sexChat || view !== undressView || girl !== who) return;
+  sexChat.packId = sexChat.packId || pick.packId || "";
+  sexChat.step = "join";
+  sexChat.busy = false;
+  if (pick.url) {
+    setSexChatImage(pick.url, "join");
+    sexChat.thrustImg = pick.url;
+  }
+  // 塞著陰莖：她的對話 prompt 會寫「陰道內物體：陰莖」；離開時還原
+  const o = ensureBody(who)?.organs;
+  if (o?.vagina) o.vagina.stuffed = "penis";
+  sexChatNarrate(`（${SEX_POSES[sexChat.pose].label.replace("開場", "")}・${SEX_STEP_META.join.label}。按「肏」開始。）`);
+  renderSexHud();
+  renderSexChatBar();
+  renderThrustDebug();
+  // 抽插 → 高潮 → 潮吹 → 內射 依序在背景產（同一組）
+  void (async () => {
+    for (const st of ["thrust", "orgasm", "squirt", "cum"]) {
+      if (!sexChat || girl !== who) return;
+      await ensureSexStepUrl(who, sexChat.pose, st, sexChat.packId);
+    }
+  })();
+}
+
+/** 按一下「肏」。 */
+function doThrust() {
+  if (!sexChat || !girl || sexChat.step === "open" || sexChat.animBusy || sexChat.sess.ended) return null;
+  const who = girl;
+  const s = sexChat.sess;
+  const seq = ++sexChat.seq;
+  const r = applyThrust(s, { arousal: Number(who.bodyState?.arousal) || 0, stage: who.stage || "stranger" });
+  if (!r) return null;
+  bumpAffection(r.affection, "肏");
+  // 事後算帳：失神／痙攣中被肏 → 第一下記一筆（正常清醒會漲的量），之後只記次數
+  if (STUN_RECKONING_ON && undressDazed(who)) {
+    if (!sexChat.debtNoted) {
+      sexChat.debtNoted = true;
+      const normal = normalInvasionFor("cervix_rub", { stage: who.stage || "stranger", personality: basePersonality(who), stats: who.stats || null });
+      noteStunDebt(normal, "肏她");
+    } else {
+      addStunDebt(who, 0, "肏她");
+    }
+  }
+  // 上一個事件圖（高潮／潮吹／內射）留到這一下；回到抽插圖
+  const firstThrust = sexChat.step === "join";
+  if (firstThrust) sexChat.step = "thrust";
+  if (sexChat.eventHold && !sexChat.eventRunning) {
+    sexChat.eventHold = false;
+    if (sexChat.thrustImg) setSexChatImage(sexChat.thrustImg, sexChat.thrustImg.includes("_join") ? "join" : "thrust");
+  }
+  if (firstThrust) {
+    const tUrl = sexThrustPool().find((u) => u.includes("_thrust")) || "";
+    if (tUrl) {
+      sexChat.thrustImg = tUrl;
+      if (!sexChat.eventRunning) setSexChatImage(tUrl, "thrust");
+    } else {
+      // 抽插圖還沒好：先留加入圖，好了再換
+      void ensureSexStepUrl(who, sexChat.pose, "thrust", sexChat.packId).then((p) => {
+        if (!sexChat || !p?.url || sexChat.imgStep !== "join") return;
+        sexChat.thrustImg = p.url;
+        if (!sexChat.eventRunning && !sexChat.eventHold) setSexChatImage(p.url, "thrust");
+      });
+    }
+  } else if (r.switchRoll) {
+    sexChat.pendingSwitch = true;
+  }
+  if (r.ejac) {
+    player = ensurePlayer(player);
+    player.semenCc = Math.max(0, player.semenCc - THRUST.SEMEN_PER_EJAC_CC);
+    player.lastTeaseAt = Date.now();
+    const o = ensureBody(who)?.organs;
+    if (o?.uterus) o.uterus.semen = Math.min(3, (Number(o.uterus.semen) || 0) + 1);
+    noteAfterglow(who, "his", { ejac: "creampie" });
+    sexChat.news.push("cum");
+    lines.push({ role: "user", content: `（你射在她裡面了——這一場精液剩 ${s.semen} cc。）` });
+    pushDebug(`肏：射精（第 ${s.ejacs} 次）精液 ${r.semenBefore}→${s.semen}cc${s.ended ? "，見底結束" : ""}`);
+  }
+  renderSexHud();
+  renderThrustDebug();
+  // 動畫（藏肏）→ 播完再顯；射精事件圖在動畫後
+  sexChat.animBusy = true;
+  syncThrustButton();
+  void (async () => {
+    try {
+      await playThrustAnim();
+    } catch (err) {
+      console.warn("[thrust anim]", err?.message || err);
+    } finally {
+      if (sexChat) {
+        sexChat.animBusy = false;
+        if (r.ejac) {
+          showClimaxTip(s.ended ? "射在裡面了……（見底）" : "射在裡面了！");
+          queueSexEvent(["cum"]);
+        }
+        if (sexChat.sess.ended && !r.ejac) finishSexChatRound();
+        renderSexChatBar();
+      }
+    }
+  })();
+  // 她的話：跟動畫脫鉤；換圖／高潮等她那句打完（最多等 DEFER_MAX_MS）
+  if (!sexChat.deferTimer) sexChat.deferTimer = setTimeout(() => sexChat && flushThrustDeferred("timeout"), THRUST.DEFER_MAX_MS);
+  sexChat.pump.press(seq);
+  persistRoom();
+  return r;
+}
+
+function finishSexChatRound() {
+  if (!sexChat) return;
+  sexChat.pump?.close();
+  sexChatNarrate(`（你射乾了——這一場射了 ${sexChat.sess.ejacs} 次，她高潮 ${sexChat.sess.orgasms} 次。這一輪結束；按「回到對話」。）`);
+  renderSexHud();
+  renderSexChatBar();
+}
+
+/** 收掉對話版做愛（回到對話／關對話框都會走這裡）。 */
+function closeSexChat() {
+  if (!sexChat) return;
+  const sc = sexChat;
+  sexChat = null;
+  sc.pump?.close();
+  if (sc.deferTimer) clearTimeout(sc.deferTimer);
+  if (sc.lingerTimer) clearTimeout(sc.lingerTimer);
+  hideThrustAnim();
+  const hud = $("sex-hud");
+  if (hud) hud.hidden = true;
+  $("portrait-img")?.classList.remove("thrust-shake");
+  if ($("portrait-img")) delete $("portrait-img").dataset.sexStep;
+  if (girl) {
+    const o = ensureBody(girl)?.organs;
+    if (o?.vagina && o.vagina.stuffed === "penis") o.vagina.stuffed = sc.prevStuffed === "penis" ? "" : sc.prevStuffed;
+  }
+  typeJob += 1;
+  setTyping(false);
+  if (sc.lastReply && girl) {
+    if ($("portrait-name")) $("portrait-name").textContent = girl.name || "";
+    if ($("portrait-meta")) $("portrait-meta").textContent = sc.lastReply;
+  } else if (sc.prev) {
+    if ($("portrait-name")) $("portrait-name").textContent = sc.prev.name;
+    if ($("portrait-meta")) $("portrait-meta").textContent = sc.prev.meta;
+  }
+  $("portrait-sheet")?.classList.remove("undress-chat", "sex-chat");
+  $("talk-acts")?.classList.remove("undress-bar", "sex-bar");
+  talkBusy = false;
+  persistRoom();
+  try { paintHalfPortrait(girl); } catch { /* ignore */ }
+}
+
+/** test_room 除錯：肏一行。 */
+function renderThrustDebug() {
+  const el = $("dbg-thrust");
+  if (!el) return;
+  if (!sexChat) {
+    el.textContent = sexThrustOn() ? "（沒在做）" : "—";
+    return;
+  }
+  const s = sexChat.sess;
+  el.textContent = `${sexChat.pose}・${sexChat.step}・圖 ${sexChat.imgStep || "—"}｜第 ${s.thrusts} 下・激情 ${s.passion}・興奮 ${s.excite}・精液 ${s.semen}cc・高潮 ${s.orgasms}・射 ${s.ejacs}${s.ended ? "・結束" : ""}｜換圖 ${sexChat.switches}${sexChat.pendingSwitch ? "（待）" : ""}・AI ${sexChat.aiState}${sexChat.pump?.dropped ? `・丟 ${sexChat.pump.dropped}` : ""}｜動畫 ${sexChat.animSource || "—"}`;
+}
+
 function openRoomScene(kind) {
   const stub = ROOM_SCENE_STUBS[kind];
   const overlay = $("room-scene-overlay");
@@ -743,6 +1397,11 @@ function openRoomScene(kind) {
   // 做愛只在脫光後出現，不看失神。場面本體還沒做。
   if (kind === "sex") {
     if (undressStage(girl) < 3) return;
+    // 肏互動（test_room）：對話版，不開浮層
+    if (sexThrustOn()) {
+      void openSexChat(girl);
+      return;
+    }
   } else if (!highStunSceneUnlocked(girl)) return;
   activeRoomScene = kind;
   const title = $("room-scene-title");
@@ -770,7 +1429,9 @@ function closeRoomScene() {
   const overlay = $("room-scene-overlay");
   if (overlay) overlay.hidden = true;
   const wasPlay = activeRoomScene === "undress-play";
+  const wasSexChat = !!sexChat;
   activeRoomScene = "";
+  if (wasSexChat) closeSexChat();
   activeUndressShot = "";
   undressPlay = null;
   undressView += 1;
@@ -2309,6 +2970,11 @@ function resolveStandeeSlotForPaint(who, opts = {}) {
 function paintHalfPortrait(who = girl, opts = {}) {
   const img = $("portrait-img");
   if (!img) return;
+  // 對話版做愛：主圖是做愛步驟圖，別被立繪蓋掉
+  if (sexChatActive() && who === girl && sexChat.img) {
+    paintSexChatImage();
+    return;
+  }
   const liveShot = who ? undressPortraitShot(who, opts) : "";
   const liveUrl = liveShot ? String(who?.portraits?.[liveShot] || "") : "";
   if (liveShot && !liveUrl) void ensureUndressPortrait(who, liveShot);
@@ -4931,6 +5597,7 @@ function renderDebug() {
   $("dbg-mood").textContent = girl.world?.mood || "—";
   renderMissDebug();
   renderReckonDebug();
+  renderThrustDebug();
   const jump = $("dbg-jump");
   if (jump && jump.value !== (girl.stageLock || "")) jump.value = girl.stageLock || "";
   const log = $("dbg-log");
@@ -6285,6 +6952,10 @@ function refreshTalkActs() {
     renderUndressChatBar();
     return;
   }
+  if (sexChatActive()) {
+    renderSexChatBar();
+    return;
+  }
   // 專屬場面開啟時隱藏互動列（overlay 蓋住；關閉後再顯示）
   row.hidden = !sheetOpen() || !girl || sceneOpen();
   player = ensurePlayer(player);
@@ -6292,7 +6963,7 @@ function refreshTalkActs() {
   updatePlayerHint(hint, player);
 
   // 只渲染目前解鎖的按鈕（鎖住的不出現）
-  row.classList.remove("undress-bar");
+  row.classList.remove("undress-bar", "sex-bar");
   for (const btn of [...row.querySelectorAll("button[data-act],button[data-scene],button[data-romance],button[data-undress]")]) btn.remove();
   if (!girl || !sheetOpen() || sceneOpen()) return;
   const acts = availableActs(girl, { canTease: canTease(player) });
@@ -8840,6 +9511,30 @@ window.RoomScenes = {
   unlocked: () => highStunSceneUnlocked(girl),
 };
 window.RoomCompanion = {
+  /** 肏互動除錯：on＝閘門；state＝這一場；press＝按一下肏；set＝改數值（測試用）；frames＝動畫幀來源。 */
+  thrust: {
+    on: () => sexThrustOn(),
+    state: () => (sexChat ? {
+      pose: sexChat.pose, step: sexChat.step, packId: sexChat.packId, imgStep: sexChat.imgStep, img: sexChat.img,
+      thrustImg: sexChat.thrustImg, animBusy: sexChat.animBusy, firstRoundDone: sexChat.firstRoundDone,
+      sess: { ...sexChat.sess }, switches: sexChat.switches, pendingSwitch: sexChat.pendingSwitch,
+      eventsShown: [...sexChat.eventsShown], eventRunning: sexChat.eventRunning, aiState: sexChat.aiState,
+      started: [...(sexChat.pump?.started || [])], done: [...(sexChat.pump?.done || [])], dropped: sexChat.pump?.dropped || 0,
+      lastAnim: sexChat.lastAnim, animSource: sexChat.animSource, lastReply: sexChat.lastReply, lastFlush: sexChat.lastFlush,
+      stuffed: girl?.bodyState?.organs?.vagina?.stuffed || "",
+    } : null),
+    press: () => doThrust(),
+    set: (patch = {}) => {
+      if (!sexChat) return null;
+      Object.assign(sexChat.sess, patch);
+      renderSexHud();
+      renderThrustDebug();
+      return { ...sexChat.sess };
+    },
+    flush: () => flushThrustDeferred("debug"),
+    frames: (pose) => loadThrustFrames(pose || sexChat?.pose || "missionary"),
+    pool: () => sexThrustPool(),
+  },
   /** 動作圖裸體版除錯：on＝閘門；lastPick＝上一次選圖；pregen＝手動排補產。 */
   /** 想念值除錯：on＝閘門；state＝bodyState.missYou；ago(h)＝把上次見面往前推 h 小時。 */
   missYou: {

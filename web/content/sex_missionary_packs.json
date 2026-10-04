@@ -57,6 +57,13 @@
         "ref": "",
         "url": "",
         "poseDenoise": 0.55
+      },
+      "thrust": {
+        "prompt": "1man, 1girl, pov, first-person view, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, from above, front view, missionary, girl lying on back, on bed, white bed sheets, legs spread, spread legs, knees up, nude, completely nude, bare breasts, nipples, pussy, labia, pussy juice, shadow male hands, shadow male hands holding her thighs, hands on her thighs, sex, vaginal, penis inside, thrusting, penis thrusting in and out, rapid thrusting, motion lines, speed lines, pelvis slapping, hips slapping, skin slapping, impact lines, sweat, sweaty body, pussy juice splashing, bouncing breasts, body shaking from thrusts, dazed, trance, rolling eyes, unfocused eyes, empty eyes, slight ahegao, open mouth, drooling, saliva, heavy breathing, panting, trembling, twitching, convulsing, blush, sweat",
+        "negative": "penis outside, not inserted, realistic man, male face, detailed male face, realistic male skin, male eyes, hairy male body, extra penis, multiple penises, multiple girls, panties, bra, clothes, dressed, underwear, lingerie, shirt, dress, skirt, jacket, coat, uniform, hoodie, covered breasts, text, watermark, ugly, extra fingers, bad hands, extra legs",
+        "ref": "",
+        "url": "",
+        "poseDenoise": 0.55
       }
     }
   ],
