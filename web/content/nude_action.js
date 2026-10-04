@@ -6,7 +6,7 @@
  * 每位魅子的快取：portraits.<packsKey 去 _packs>_nude_packs[packId]，例如 tease_nipple_lick_nude_packs。
  * 伺服器 shot：<shot>_nude（例 tease_nipple_lick_nude）→ garment=nude，不套生涯服裝、不覆寫穿衣版檔案。
  *
- * 閘門：只有頁面標了 <html data-nude-action-packs="1">（目前僅 test_room.html）才啟用；主房間 index.html 不受影響。
+ * 閘門：頁面標了 <html data-nude-action-packs="1"> 才啟用（2026-10-04 起 test_room.html＋主房間 index.html 都標）。
  */
 
 /** 這 9 個動作 shot 有裸體版（伺服器 comfy.ACTION_NUDE_BASES 要同步）。 */
@@ -102,7 +102,7 @@ export function nudeActionNegative(pack) {
   return own || deriveNudeNegative(pack?.negative || "");
 }
 
-/** 只有 test_room（<html data-nude-action-packs="1">）開。 */
+/** <html data-nude-action-packs="1"> 才開（test_room＋主房間）。 */
 export function nudeActionPacksOn() {
   try {
     if (globalThis.YORO_NUDE_ACTION_PACKS === false) return false;

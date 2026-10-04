@@ -330,10 +330,10 @@ let activeUndressShot = "";
 let undressView = 0;
 
 /**
- * 脫衣畫面改用「對話」版面（2026-10-03，先只在 test_room：<html data-undress-chat="1">）：
+ * 脫衣畫面改用「對話」版面（2026-10-03；<html data-undress-chat="1">，2026-10-04 起 test_room＋主房間都開）：
  * 不開 room-scene-overlay；留在對話框，藏掉上方輸入框，旁白／她的話打在對話框，
  * 底部互動列換成「叫她脫／幫她脫」→「下一句」＋「回到對話」。流程、機率、立繪、存檔都不變。
- * 主房間（index.html）沒這旗 → 照舊用浮層卡片。
+ * 頁面沒這旗 → 照舊用浮層卡片。
  */
 function undressChatOn() {
   try {
@@ -345,7 +345,7 @@ function undressChatOn() {
 }
 const UNDRESS_CHAT_ON = undressChatOn();
 
-/** 想念值（miss_you.js）試驗閘門：只有 test_room（<html data-miss-you="1">）開；主房間完全不動。 */
+/** 想念值（miss_you.js）閘門：<html data-miss-you="1">（2026-10-04 起 test_room＋主房間 index.html 都開；拿掉屬性即關）。 */
 function missYouOn() {
   try {
     if (typeof globalThis.YORO_MISS_YOU === "boolean") return globalThis.YORO_MISS_YOU;
@@ -356,7 +356,7 @@ function missYouOn() {
 }
 const MISS_YOU_ON = missYouOn();
 
-/** 事後算帳試驗閘門（2026-10-03）：<html data-stun-reckoning="1">（目前只有 test_room.html）。 */
+/** 事後算帳閘門（2026-10-03）：<html data-stun-reckoning="1">（2026-10-04 起 test_room＋主房間都開）。 */
 function stunReckoningOn() {
   try {
     if (typeof globalThis.YORO_STUN_RECKONING === "boolean") return globalThis.YORO_STUN_RECKONING;
@@ -367,7 +367,7 @@ function stunReckoningOn() {
 }
 const STUN_RECKONING_ON = stunReckoningOn();
 
-/** 做愛開場圖試驗閘門（2026-10-03，肏系統第一步）：<html data-sex-poses="1">（目前只有 test_room.html）。 */
+/** 做愛閘門（2026-10-03，肏系統）：<html data-sex-poses="1">（2026-10-04 起 test_room＋主房間都開；圖組編輯器只在 test_room）。 */
 function sexPosesOn() {
   try {
     if (typeof globalThis.YORO_SEX_POSES === "boolean") return globalThis.YORO_SEX_POSES;

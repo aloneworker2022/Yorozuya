@@ -7993,6 +7993,8 @@ function buildRoomGirlFromSuccubus(s) {
     summoner: s.summoner || null,
     portraits,
     portrait: s.portrait || portraits.full || portraits.half || null,
+    // 舊系統局部動圖（召喚預產／作夢）：帶進房間給肏的局部動畫用
+    sexAnim: (s.sexAnim && typeof s.sexAnim === "object") ? JSON.parse(JSON.stringify(s.sexAnim)) : null,
     // 飢渴已退役：不再帶進房間
     ...(CRAVE_ON ? { crave: s.crave || { v: 10, at: Date.now() } } : {}),
     // Default summon; adoptRosterGirl merges flee_back from room prior when same id
