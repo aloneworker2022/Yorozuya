@@ -135,7 +135,9 @@ import {
   isSexStepResultUrl,
   normalizeSexPosePack,
   SEX_POSE_PROMPT_REV,
-} from "./sex_pose_packs.js?v=7";
+  pickSexThrustSlot,
+  sexThrustSlotOfUrl,
+} from "./sex_pose_packs.js?v=8";
 import {
   THRUST,
   newThrustSession,
@@ -149,7 +151,15 @@ import {
   pantPlaceholder,
   fallbackMoan,
   ThrustReplyPump,
-} from "./sex_thrust.js?v=2";
+  orgasmEventSteps,
+  flowPregenSteps,
+  openingDirective,
+  openingFallback,
+  openingBand,
+  OPENING_BAND_ZH,
+  scrubHusband,
+  withTimeout,
+} from "./sex_thrust.js?v=3";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -650,10 +660,19 @@ function ensureSexStepUrl(who, pose, step = "open", packId = "") {
     try {
       const engine = await gameImgRoute();
       await ensureGirlComfyCkpt(who);
-      const r = await generateSexStepImage(pose, step, pack, who, engine, {});
+      // ③ 抽插：每組一個變體格（各自一個檔），肏時在這幾張之間換；全滿就覆寫格 1、把佔格 1 的組拿掉
+      const tSlot = step === "thrust" ? pickSexThrustSlot(pose, pool(), pack.id) : { slot: 1, evict: [] };
+      let r = await generateSexStepImage(pose, step, pack, who, engine, step === "thrust" ? { thrustSlot: tSlot.slot } : {});
+      if (step === "thrust" && tSlot.slot > 1 && r?.stale) {
+        // 舊伺服器不認得 thrust2…：退回格 1
+        tSlot.evict = Object.entries(pool()).filter(([k, v]) => k !== pack.id && sexThrustSlotOfUrl(pose, v) === 1).map(([k]) => k);
+        r = await generateSexStepImage(pose, step, pack, who, engine, { thrustSlot: 1 });
+      }
       if (r?.status === "done" && r.result) {
         const stamped = stampPortraitUrl(r.result);
-        who.portraits[packsKey] = { ...pool(), [pack.id]: stamped };
+        const kept = { ...pool() };
+        for (const k of tSlot.evict || []) delete kept[k];
+        who.portraits[packsKey] = { ...kept, [pack.id]: stamped };
         stampActionRev(who, packsKey, pack.id);
         persistRoom();
         return { url: stamped, pose, step, packId: pack.id, generated: true, fallback: false };
@@ -754,7 +773,9 @@ async function showSexPoseOpening(who) {
 
 /* ───────── 肏（抽插）互動：對話版做愛（2026-10-04，test_room 閘門 data-sex-poses） ─────────
  * 按「做愛」不開浮層：留在對話框、藏輸入框，主圖＝做愛步驟圖（#portrait-img），她的話打在對話框，
- * 底部按鈕：開場「下一步」→ 加入「肏」＋「回到對話」。數值／排程在 sex_thrust.js。
+ * flow2（2026-10-04）：① 開場圖 → 她先說一句（看關係階／個性／體位）→「掏出陰莖」→ ② 加入 →「肏」。
+ * 第一下立刻換 ③ 抽插圖；之後 1/3 在抽插圖（多組變體）之間換；射精立刻換內射圖；她高潮換高潮圖、藏「肏」到她那句打完。
+ * 數值／排程在 sex_thrust.js。
  * 局部動畫沿用舊做愛系統：她的 sexAnim[pose] → 同體位幀包 → 任一幀包；第一下 1-2-3-4、之後 2-3-4。 */
 const SEX_THRUST_CHAT = true;
 let sexChat = null;
@@ -772,21 +793,19 @@ function sexPosePhrase(pose) {
   return pose === "doggy" ? "你趴著翹起屁股，他從後面抓著你的屁股" : "你躺著張開腿，他抓著你的大腿從正面";
 }
 
-/** 抽插期的圖：這組的抽插／加入在前，其他組已產好的同體位抽插／加入圖也可以換。 */
+/** 抽插期的圖（flow2：只有 ③ 抽插，加入不進池）：這組的在前，其他組產好的抽插變體也可以換；同一個檔只算一張。 */
 function sexThrustPool(who = girl) {
   if (!sexChat || !who) return [];
+  const pool = who.portraits?.[sexStepPacksKey(sexChat.pose, "thrust")] || {};
+  const list = [String(pool[sexChat.packId] || ""), ...Object.values(pool).map((v) => String(v || ""))];
   const out = [];
-  for (const st of ["thrust", "join"]) {
-    const pool = who.portraits?.[sexStepPacksKey(sexChat.pose, st)] || {};
-    const mine = String(pool[sexChat.packId] || "");
-    if (mine && isSexStepResultUrl(sexChat.pose, st, mine)) out.push(mine);
-  }
-  for (const st of ["thrust", "join"]) {
-    const pool = who.portraits?.[sexStepPacksKey(sexChat.pose, st)] || {};
-    for (const v of Object.values(pool)) {
-      const u = String(v || "");
-      if (u && isSexStepResultUrl(sexChat.pose, st, u) && !out.includes(u)) out.push(u);
-    }
+  const files = new Set();
+  for (const u of list) {
+    if (!u || !isSexStepResultUrl(sexChat.pose, "thrust", u)) continue;
+    const file = u.split("?")[0];
+    if (files.has(file)) continue;
+    files.add(file);
+    out.push(u);
   }
   return out;
 }
@@ -1006,7 +1025,7 @@ function thrustFact() {
   const s = sexChat.sess;
   const news = sexChat.news.splice(0);
   const bits = [`${sexPosePhrase(sexChat.pose)}，正一下一下肏著你（第 ${s.thrusts} 下），陰莖在你裡面進進出出。`];
-  if (news.includes("orgasm")) bits.push("你剛剛高潮了，還在潮吹、痙攣。");
+  if (news.includes("orgasm")) bits.push(THRUST.SQUIRT_IN_FLOW ? "你正在高潮，潮吹、全身痙攣。" : "你正在高潮，全身痙攣、裡面一陣陣夾緊他。");
   if (news.includes("cum")) bits.push("他剛剛射在你裡面，很燙。");
   if (!news.includes("orgasm") && s.passion >= THRUST.PASSION_ORGASM_ABOVE - 4) bits.push("你快要高潮了。");
   return { text: bits.join(""), event: news.includes("orgasm") ? "orgasm" : news.includes("cum") ? "cum" : "" };
@@ -1019,12 +1038,12 @@ async function requestThrustReply(seq) {
   renderThrustDebug();
   let reply = "";
   try {
-    reply = await askGirl(`（旁白：${fact.text}只寫你此刻說出口的一句話，可以夾著喘息和呻吟，二十字以內；不要旁白、不要描述動作、不要引號。）`);
+    reply = await withTimeout(askGirl(`（旁白：${fact.text}只寫你此刻說出口的一句話，可以夾著喘息和呻吟，二十字以內；不要旁白、不要描述動作、不要引號。）`), THRUST.REPLY_TIMEOUT_MS, "");
   } catch (err) {
     console.warn("[thrust reply]", err?.message || err);
   }
   if (!sexChat || !girl) return "";
-  let clean = String(reply || "").replace(/\s+/g, " ").trim();
+  let clean = scrubHusband(String(reply || "").replace(/\s+/g, " ").trim(), girl.stage || "stranger");
   sexChat.aiState = clean ? `AI 回來（第 ${seq} 下）` : `AI 失敗→本地（第 ${seq} 下）`;
   if (!clean) clean = fallbackMoan(fact.event);
   lines.push({ role: "user", content: "（他肏你。）" });
@@ -1058,42 +1077,19 @@ function newThrustPump() {
         if (sexChat) sexChat.typing = false;
       }
     },
-    onDone: () => {
+    onDone: (seq) => {
       if (!sexChat) return;
       sexChat.aiState = "閒";
       persistRoom();
+      if (sexChat.orgasmLock && sexChat.orgasmLock.seq === seq) {
+        // 高潮那句打完：停滿高潮圖時間就放回「肏」
+        sexChat.orgasmLock.lineDone = true;
+        maybeReleaseOrgasmLock();
+        return;
+      }
       flushThrustDeferred("reply");
     },
   });
-}
-
-/** 事件圖排隊（高潮→潮吹、內射）：一張停 EVENT_HOLD_MS；最後一張留到下一下肏。 */
-function queueSexEvent(steps) {
-  if (!sexChat) return;
-  sexChat.eventQueue.push(...steps);
-  if (!sexChat.eventRunning) void runSexEvents();
-}
-
-async function runSexEvents() {
-  if (!sexChat) return;
-  sexChat.eventRunning = true;
-  try {
-    while (sexChat && sexChat.eventQueue.length) {
-      const st = sexChat.eventQueue.shift();
-      const r = await ensureSexStepUrl(girl, sexChat.pose, st, sexChat.packId);
-      if (!sexChat) return;
-      if (r?.url) setSexChatImage(r.url, st);
-      sexChat.eventsShown.push(st);
-      renderThrustDebug();
-      await waitMs(THRUST.EVENT_HOLD_MS);
-    }
-  } finally {
-    if (sexChat) {
-      sexChat.eventRunning = false;
-      sexChat.eventHold = true;
-      if (sexChat.sess.ended) finishSexChatRound();
-    }
-  }
 }
 
 /** 她那句打完（或等太久）：判高潮、做這幾下累積的換圖。 */
@@ -1109,18 +1105,17 @@ function flushThrustDeferred(why = "") {
     bumpAffection(o.affection, `她高潮（第 ${o.count} 次）`);
     noteAfterglow(girl, "hers");
     sexChat.news.push("orgasm");
-    lines.push({ role: "user", content: "（她高潮了，潮吹、全身痙攣。）" });
+    lines.push({ role: "user", content: THRUST.SQUIRT_IN_FLOW ? "（她高潮了，潮吹、全身痙攣。）" : "（她高潮了，全身痙攣。）" });
     showClimaxTip(o.count > 1 ? `她又高潮了！（${o.count}）` : "她高潮了！");
     pushDebug(`肏：激情 ${o.before}→${o.after}（高潮 ${o.count}）`);
-    queueSexEvent(["orgasm", "squirt"]);
-    sexChat.pendingSwitch = false;
-  } else if (sexChat.pendingSwitch && !sexChat.eventRunning) {
+    startOrgasmLock(o);
+  } else if (sexChat.pendingSwitch) {
     const pool = sexThrustPool();
     const next = pickOtherImage(pool, sexChat.thrustImg);
     if (next && next !== sexChat.thrustImg) {
       sexChat.thrustImg = next;
       sexChat.switches += 1;
-      if (!sexChat.eventHold) setSexChatImage(next, next.includes("_join") ? "join" : "thrust");
+      if (!sexChat.eventHold) setSexChatImage(next, "thrust");
     }
     sexChat.pendingSwitch = false;
   }
@@ -1128,6 +1123,105 @@ function flushThrustDeferred(why = "") {
   renderSexHud();
   renderThrustDebug();
   persistRoom();
+}
+
+/** 開場那句：① 開場圖出來後她先開口（關係階態度＋個性口吻＋體位；AI 失敗／逾時用本地台詞）。 */
+async function requestSexOpening(who, pose) {
+  const stage = who.stage || "stranger";
+  const directive = openingDirective({ stage, pose, personality: basePersonality(who), dazed: !!undressDazed(who) });
+  let reply = "";
+  try {
+    reply = await withTimeout(askGirl(directive), THRUST.OPENING_TIMEOUT_MS, "");
+  } catch (err) {
+    console.warn("[sex opening]", err?.message || err);
+  }
+  let clean = scrubHusband(String(reply || "").replace(/\s+/g, " ").replace(/^[「『"]+|[」』"]+$/g, "").trim(), stage);
+  const source = clean ? "AI" : "本地";
+  if (!clean) clean = openingFallback(stage, pose);
+  return { text: clean, source, band: openingBand(stage) };
+}
+
+async function runSexOpening(who, view, linePromise) {
+  if (!sexChat || girl !== who) return;
+  sexChat.opening = "pending";
+  typeJob += 1;
+  if ($("portrait-name")) $("portrait-name").textContent = who.name || "她";
+  if ($("portrait-meta")) $("portrait-meta").textContent = "……";
+  setTyping(true);
+  renderSexChatBar();
+  const r = await linePromise;
+  if (!sexChat || view !== undressView || girl !== who) return;
+  const line = presentUndressReply(r.text);
+  sexChat.openingLine = line;
+  sexChat.openingSource = r.source;
+  sexChat.openingBand = r.band;
+  pushDebug(`肏：開場（${OPENING_BAND_ZH[r.band] || r.band}・${basePersonality(who)}・${r.source}）${line}`);
+  lines.push({ role: "user", content: `（你們要做愛了，${sexChat.pose === "doggy" ? "她趴著翹起屁股" : "她躺著張開腿"}。）` });
+  lines.push({ role: "assistant", content: line });
+  rememberChat();
+  sexChat.typing = true;
+  try {
+    await typeThrustLine(who.name || "她", line);
+  } finally {
+    if (sexChat) sexChat.typing = false;
+  }
+  if (!sexChat || view !== undressView || girl !== who) return;
+  sexChat.lastReply = line;
+  sexChat.opening = "done";
+  renderSexChatBar();
+  renderThrustDebug();
+  persistRoom();
+}
+
+/** 她高潮：換高潮圖、藏「肏」；她那句打完＋停滿 EVENT_HOLD_MS 才放回來。 */
+function startOrgasmLock(o) {
+  if (!sexChat) return;
+  const seq = ++sexChat.seq;
+  const now = Date.now();
+  sexChat.orgasmLock = { seq, until: now + THRUST.EVENT_HOLD_MS, lineDone: false, timer: 0, safety: 0, count: o.count };
+  sexChat.eventHold = true;
+  sexChat.pendingSwitch = false;
+  const steps = orgasmEventSteps();
+  void (async () => {
+    for (let i = 0; i < steps.length; i++) {
+      const r = await ensureSexStepUrl(girl, sexChat?.pose, steps[i], sexChat?.packId || "");
+      if (!sexChat || sexChat.orgasmLock?.seq !== seq) return;
+      if (r?.url) setSexChatImage(r.url, steps[i]);
+      sexChat.eventsShown.push(steps[i]);
+      renderThrustDebug();
+      if (i < steps.length - 1) await waitMs(THRUST.EVENT_HOLD_MS);
+    }
+  })();
+  sexChat.orgasmLock.safety = setTimeout(() => releaseOrgasmLock(seq, true), THRUST.ORGASM_LOCK_MAX_MS);
+  syncThrustButton();
+  // 她高潮那句一定要說（排掉舊的）
+  sexChat.pump.urgent(seq);
+}
+
+function maybeReleaseOrgasmLock() {
+  const lk = sexChat?.orgasmLock;
+  if (!lk || !lk.lineDone) return;
+  const left = lk.until - Date.now();
+  if (left > 0) {
+    if (!lk.timer) lk.timer = setTimeout(() => { if (sexChat?.orgasmLock === lk) { lk.timer = 0; maybeReleaseOrgasmLock(); } }, left + 10);
+    return;
+  }
+  releaseOrgasmLock(lk.seq);
+}
+
+function releaseOrgasmLock(seq, forced = false) {
+  const lk = sexChat?.orgasmLock;
+  if (!lk || lk.seq !== seq) return;
+  if (lk.timer) clearTimeout(lk.timer);
+  if (lk.safety) clearTimeout(lk.safety);
+  sexChat.orgasmLock = null;
+  if (forced) pushDebug("肏：高潮那句等太久，先放回「肏」");
+  renderSexChatBar();
+  renderThrustDebug();
+}
+
+function thrustBtnHidden() {
+  return !!(sexChat && (sexChat.animBusy || sexChat.orgasmLock));
 }
 
 function renderSexChatBar() {
@@ -1156,12 +1250,14 @@ function renderSexChatBar() {
     return btn;
   };
   if (sexChat.step === "open") {
-    add("next", `下一步：${SEX_STEP_META.join.label}`, () => void sexChatToJoin(), { id: "sex-next-step", disabled: !!sexChat.busy });
+    // 沒有「下一步」：她開場那句打完才出「掏出陰莖」
+    if (sexChat.opening === "done" && !sexChat.busy) add("draw", "掏出陰莖", () => void sexChatToJoin(), { id: "sex-draw" });
   } else if (!sexChat.sess.ended) {
-    // 動畫播放中藏「肏」（保留位置不跳版）
-    const b = add("thrust", "肏", () => doThrust(), { id: "sex-thrust" });
-    b.style.visibility = sexChat.animBusy ? "hidden" : "";
-    b.setAttribute("aria-hidden", sexChat.animBusy ? "true" : "false");
+    // 動畫播放中／她高潮中藏「肏」（保留位置不跳版）
+    const hide = thrustBtnHidden();
+    const b = add("thrust", "肏", () => doThrust(), { id: "sex-thrust", disabled: hide });
+    b.style.visibility = hide ? "hidden" : "";
+    b.setAttribute("aria-hidden", hide ? "true" : "false");
   }
   add("back", "回到對話", () => closeRoomScene(), { title: "離開做愛，回到一般對話" });
 }
@@ -1169,8 +1265,10 @@ function renderSexChatBar() {
 function syncThrustButton() {
   const b = $("sex-thrust");
   if (!b || !sexChat) return;
-  b.style.visibility = sexChat.animBusy ? "hidden" : "";
-  b.setAttribute("aria-hidden", sexChat.animBusy ? "true" : "false");
+  const hide = thrustBtnHidden();
+  b.disabled = hide;
+  b.style.visibility = hide ? "hidden" : "";
+  b.setAttribute("aria-hidden", hide ? "true" : "false");
 }
 
 /** 開場（只有她）→ 下一步加入。 */
@@ -1196,9 +1294,12 @@ async function openSexChat(who) {
     firstRoundDone: false,
     busy: true,
     news: [],
-    eventQueue: [],
-    eventRunning: false,
     eventHold: false,
+    orgasmLock: null,
+    opening: "",
+    openingLine: "",
+    openingSource: "",
+    openingBand: "",
     eventsShown: [],
     pendingSwitch: false,
     deferTimer: 0,
@@ -1223,17 +1324,17 @@ async function openSexChat(who) {
   sexChatNarrate(`（${c.label.replace("開場", "")}・開場・${sexByText(who)}。開場圖準備中…）`);
   renderSexHud();
   renderSexChatBar();
+  // 她的開場那句跟圖一起開始要（圖出來後才打字）
+  const linePromise = requestSexOpening(who, pose);
   const pick = await ensureSexStepUrl(who, pose, "open");
   lastSexPosePick = { ...pick, by: who.undress?.pantiesBy || "", at: Date.now() };
   if (!sexChat || view !== undressView || girl !== who) return;
   sexChat.packId = pick.packId || "";
   sexChat.busy = false;
   if (pick.url) setSexChatImage(pick.url, "open");
-  sexChatNarrate(pick.url
-    ? `（${c.label.replace("開場", "")}・開場・${sexByText(who)}。按「下一步」看${SEX_STEP_META.join.label}。）`
-    : `（開場圖產生失敗；看 test_room 上排「${pose === "doggy" ? "後背圖" : "傳教士圖"}」。仍可按下一步。）`);
-  renderSexChatBar();
+  else pushDebug(`肏：開場圖產生失敗（看上排「${pose === "doggy" ? "後背圖" : "傳教士圖"}」）`);
   renderThrustDebug();
+  void runSexOpening(who, view, linePromise);
   // 加入／抽插先在背景產（通常脫光時已預產）
   void ensureSexStepUrl(who, pose, "join", sexChat.packId).then(() => sexChat && ensureSexStepUrl(who, pose, "thrust", sexChat.packId));
 }
@@ -1258,13 +1359,14 @@ async function sexChatToJoin() {
   if (o?.vagina) o.vagina.stuffed = "penis";
   syncSexSemen();
   const dry = sexChat.sess.semen < THRUST.SEMEN_END_BELOW ? `精液已見底（${sexChat.sess.semen}cc），射一次這一輪就結束。` : "";
-  sexChatNarrate(`（${SEX_POSES[sexChat.pose].label.replace("開場", "")}・${SEX_STEP_META.join.label}。按「肏」開始。${dry}）`);
+  const where = sexChat.pose === "doggy" ? "抵在她翹起的屁股中間" : "抵在她張開的腿間";
+  sexChatNarrate(`（你掏出陰莖，${where}。按「肏」開始。${dry}）`);
   renderSexHud();
   renderSexChatBar();
   renderThrustDebug();
-  // 抽插 → 高潮 → 潮吹 → 內射 依序在背景產（同一組）
+  // 抽插 → 高潮 →（潮吹旗開才產）→ 內射 依序在背景產（同一組）
   void (async () => {
-    for (const st of ["thrust", "orgasm", "squirt", "cum"]) {
+    for (const st of flowPregenSteps()) {
       if (!sexChat || girl !== who) return;
       await ensureSexStepUrl(who, sexChat.pose, st, sexChat.packId);
     }
@@ -1273,7 +1375,7 @@ async function sexChatToJoin() {
 
 /** 按一下「肏」。 */
 function doThrust() {
-  if (!sexChat || !girl || sexChat.step === "open" || sexChat.animBusy || sexChat.sess.ended) return null;
+  if (!sexChat || !girl || sexChat.step === "open" || sexChat.animBusy || sexChat.orgasmLock || sexChat.sess.ended) return null;
   const who = girl;
   const s = sexChat.sess;
   const seq = ++sexChat.seq;
@@ -1291,24 +1393,25 @@ function doThrust() {
       addStunDebt(who, 0, "肏她");
     }
   }
-  // 上一個事件圖（高潮／潮吹／內射）留到這一下；回到抽插圖
+  // 上一張事件圖（高潮／內射）留到這一下；這一下回抽插圖
   const firstThrust = sexChat.step === "join";
   if (firstThrust) sexChat.step = "thrust";
-  if (sexChat.eventHold && !sexChat.eventRunning) {
+  if (sexChat.eventHold) {
     sexChat.eventHold = false;
-    if (sexChat.thrustImg) setSexChatImage(sexChat.thrustImg, sexChat.thrustImg.includes("_join") ? "join" : "thrust");
+    if (sexChat.thrustImg) setSexChatImage(sexChat.thrustImg, "thrust");
   }
   if (firstThrust) {
-    const tUrl = sexThrustPool().find((u) => u.includes("_thrust")) || "";
+    // 第一下立刻換 ③ 抽插圖（這組的優先）
+    const tUrl = sexThrustPool()[0] || "";
     if (tUrl) {
       sexChat.thrustImg = tUrl;
-      if (!sexChat.eventRunning) setSexChatImage(tUrl, "thrust");
+      setSexChatImage(tUrl, "thrust");
     } else {
       // 抽插圖還沒好：先留加入圖，好了再換
       void ensureSexStepUrl(who, sexChat.pose, "thrust", sexChat.packId).then((p) => {
-        if (!sexChat || !p?.url || sexChat.imgStep !== "join") return;
+        if (!sexChat || !p?.url) return;
         sexChat.thrustImg = p.url;
-        if (!sexChat.eventRunning && !sexChat.eventHold) setSexChatImage(p.url, "thrust");
+        if (sexChat.imgStep === "join" && !sexChat.eventHold) setSexChatImage(p.url, "thrust");
       });
     }
   } else if (r.switchRoll) {
@@ -1323,6 +1426,15 @@ function doThrust() {
     if (o?.uterus) o.uterus.semen = Math.min(3, (Number(o.uterus.semen) || 0) + 1);
     noteAfterglow(who, "his", { ejac: "creampie" });
     sexChat.news.push("cum");
+    // 射精 → 立刻換 ⑥ 內射圖（留到下一下肏）
+    sexChat.eventHold = true;
+    sexChat.pendingSwitch = false;
+    void ensureSexStepUrl(who, sexChat.pose, "cum", sexChat.packId).then((p) => {
+      if (!sexChat || !p?.url || !sexChat.eventHold || sexChat.orgasmLock) return;
+      setSexChatImage(p.url, "cum");
+      sexChat.eventsShown.push("cum");
+      renderThrustDebug();
+    });
     lines.push({ role: "user", content: `（你射在她裡面了——精液剩 ${s.semen} cc。）` });
     pushDebug(`肏：射精（第 ${s.ejacs} 次）精液 ${r.semenBefore}→${s.semen}cc${s.ended ? "，見底結束" : ""}`);
   }
@@ -1339,11 +1451,8 @@ function doThrust() {
     } finally {
       if (sexChat) {
         sexChat.animBusy = false;
-        if (r.ejac) {
-          showClimaxTip(s.ended ? "射在裡面了……（見底）" : "射在裡面了！");
-          queueSexEvent(["cum"]);
-        }
-        if (sexChat.sess.ended && !r.ejac) finishSexChatRound();
+        if (r.ejac) showClimaxTip(s.ended ? "射在裡面了……（見底）" : "射在裡面了！");
+        if (sexChat.sess.ended) finishSexChatRound();
         renderSexChatBar();
       }
     }
@@ -1371,6 +1480,8 @@ function closeSexChat() {
   sc.pump?.close();
   if (sc.deferTimer) clearTimeout(sc.deferTimer);
   if (sc.lingerTimer) clearTimeout(sc.lingerTimer);
+  if (sc.orgasmLock?.timer) clearTimeout(sc.orgasmLock.timer);
+  if (sc.orgasmLock?.safety) clearTimeout(sc.orgasmLock.safety);
   hideThrustAnim();
   const hud = $("sex-hud");
   if (hud) hud.hidden = true;
@@ -9536,12 +9647,15 @@ window.RoomCompanion = {
       pose: sexChat.pose, step: sexChat.step, packId: sexChat.packId, imgStep: sexChat.imgStep, img: sexChat.img,
       thrustImg: sexChat.thrustImg, animBusy: sexChat.animBusy, firstRoundDone: sexChat.firstRoundDone,
       sess: { ...sexChat.sess }, switches: sexChat.switches, pendingSwitch: sexChat.pendingSwitch,
-      eventsShown: [...sexChat.eventsShown], eventRunning: sexChat.eventRunning, aiState: sexChat.aiState,
+      eventsShown: [...sexChat.eventsShown], eventHold: sexChat.eventHold, orgasmLock: !!sexChat.orgasmLock, aiState: sexChat.aiState,
+      opening: sexChat.opening, openingLine: sexChat.openingLine, openingSource: sexChat.openingSource, openingBand: sexChat.openingBand,
       started: [...(sexChat.pump?.started || [])], done: [...(sexChat.pump?.done || [])], dropped: sexChat.pump?.dropped || 0,
       lastAnim: sexChat.lastAnim, animSource: sexChat.animSource, lastReply: sexChat.lastReply, lastFlush: sexChat.lastFlush,
       stuffed: girl?.bodyState?.organs?.vagina?.stuffed || "",
     } : null),
     press: () => doThrust(),
+    draw: () => sexChatToJoin(),
+    openingDirective: (stage, pose, personality) => openingDirective({ stage: stage || girl?.stage, pose: pose || sexChat?.pose || "missionary", personality: personality || basePersonality(girl) }),
     set: (patch = {}) => {
       if (!sexChat) return null;
       // 精液是玩家真正的值：改這裡就是改 player.semenCc

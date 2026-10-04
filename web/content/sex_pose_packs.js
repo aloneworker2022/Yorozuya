@@ -12,6 +12,7 @@
  *   tip 局部（陰部特寫）程式保留但停用（SEX_STEP_DISABLED）。檔名 {id}_sex_<pose>_<step>.png。
  * 2026-10-04 肏互動：half／full 停用（程式保留），改成一格 thrust 抽插（加入之後按「肏」的主圖）；
  *   高潮／潮吹／內射變成事件圖（sex_thrust.js 判定），不再是「下一步」順序。
+ *   flow2（2026-10-04）：抽插可多張（每組一個變體格 thrust／thrust2…6）；潮吹不進自動流程（THRUST.SQUIRT_IN_FLOW），分頁保留。
  * open 以外有男人 → 走 tease（雙人／POV）管線，但伺服器 garment=nude：不套服裝、負向擋衣物。存在同一組的 pack[step]。 */
 
 export const SEX_POSES = {
@@ -494,10 +495,49 @@ export function isSexPoseResultUrl(pose, url) {
   return isSexStepResultUrl(pose, "open", url);
 }
 
-/** 每一步都要落在 /assets/portraits/{id}_sex_<pose>_<step>.png；testword＝伺服器沒重啟。 */
+/**
+ * ③ 抽插可以有多張（2026-10-04 flow2）：每組圖佔一個「變體格」，各自一個檔，肏的時候在這幾張之間隨機換。
+ * 格 1＝{id}_sex_<pose>_thrust.png（原本那張），格 2..N＝{id}_sex_<pose>_thrust2.png…（伺服器要認得 → 要重啟）。
+ */
+export const SEX_THRUST_VARIANTS = 6;
+
+export function sexThrustVariantShot(pose, slot = 1) {
+  const n = Math.max(1, Math.min(SEX_THRUST_VARIANTS, Math.round(Number(slot) || 1)));
+  return n === 1 ? sexStepShot(pose, "thrust") : `${sexStepShot(pose, "thrust")}${n}`;
+}
+
+/** 從圖網址讀出它是第幾格（不是這個姿勢的抽插圖 → 0）。 */
+export function sexThrustSlotOfUrl(pose, url) {
+  if (!SEX_POSES[pose]) return 0;
+  const m = String(url || "").match(new RegExp(`_${sexStepShot(pose, "thrust")}([2-9])?\\.png`));
+  if (!m) return 0;
+  const n = m[1] ? Number(m[1]) : 1;
+  return n <= SEX_THRUST_VARIANTS ? n : 0;
+}
+
+/**
+ * 這一組要產抽插圖時用哪一格：自己已有 → 同格；否則最小的空格；全滿 → 格 1（覆寫，回傳 evict 讓呼叫端把佔那格的組從快取拿掉）。
+ * pool＝portraits.sex_<pose>_thrust_packs（{ packId: url }）。
+ */
+export function pickSexThrustSlot(pose, pool, packId) {
+  const used = new Map();
+  for (const [k, v] of Object.entries(pool || {})) {
+    if (k === packId) continue;
+    const n = sexThrustSlotOfUrl(pose, v);
+    if (n) used.set(n, [...(used.get(n) || []), k]);
+  }
+  const mine = sexThrustSlotOfUrl(pose, (pool || {})[packId]);
+  if (mine && !used.has(mine)) return { slot: mine, evict: [] };
+  for (let n = 1; n <= SEX_THRUST_VARIANTS; n++) if (!used.has(n)) return { slot: n, evict: [] };
+  return { slot: 1, evict: used.get(1) || [] };
+}
+
+/** 每一步都要落在 /assets/portraits/{id}_sex_<pose>_<step>.png（抽插可為 thrust2…）；testword＝伺服器沒重啟。 */
 export function isSexStepResultUrl(pose, step, url) {
   const u = String(url || "");
-  return !!SEX_POSES[pose] && u.includes("/assets/portraits/") && u.includes(`_${sexStepShot(pose, step)}.png`);
+  if (!SEX_POSES[pose] || !u.includes("/assets/portraits/")) return false;
+  if (stepKey(step) === "thrust") return sexThrustSlotOfUrl(pose, u) > 0;
+  return u.includes(`_${sexStepShot(pose, step)}.png`);
 }
 
 /**
@@ -510,7 +550,8 @@ export function buildSexStepImgBody(pose, step, pack, girl, eng = {}, opts = {})
   if (st === "open") return buildSexPoseImgBody(pose, pack, girl, eng, opts);
   if (!girl) throw new Error("先選魅子");
   cfg(pose);
-  const shot = sexStepShot(pose, st);
+  // 抽插的變體格（opts.thrustSlot ≥2 → sex_<pose>_thrust2…）
+  const shot = st === "thrust" && Number(opts.thrustSlot) > 1 ? sexThrustVariantShot(pose, opts.thrustSlot) : sexStepShot(pose, st);
   const comfy = (eng.imgProvider || "grok-img") === "comfy";
   const slot = pack ? sexStepSlot(pose, pack, st) : emptyStepSlot(pose, st);
   const action = String(slot.prompt || "").trim() || defaultSexStepPrompt(pose, st);

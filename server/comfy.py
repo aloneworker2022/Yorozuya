@@ -163,6 +163,9 @@ for _s in SEX_POSE_SHOTS:
 SEX_CHAIN_STEPS = ("join", "half", "full", "thrust", "orgasm", "squirt", "cum")
 SEX_TIP_SHOTS = ("sex_missionary_tip", "sex_doggy_tip")
 SEX_JOIN_SHOTS = tuple(f"sex_{p}_{st}" for p in ("missionary", "doggy") for st in SEX_CHAIN_STEPS)
+# ③ 抽插的變體格（2026-10-04 flow2）：每組圖一格，各自一個檔 {id}_sex_<pose>_thrust2..6.png，肏時隨機換。
+SEX_THRUST_VARIANT_SHOTS = tuple(f"sex_{p}_thrust{n}" for p in ("missionary", "doggy") for n in range(2, 7))
+SEX_JOIN_SHOTS = SEX_JOIN_SHOTS + SEX_THRUST_VARIANT_SHOTS
 for _s in SEX_TIP_SHOTS:
     PORTRAIT_SHOTS[_s] = dict(_ACTION_CROP_SPEC)
 for _s in SEX_JOIN_SHOTS:

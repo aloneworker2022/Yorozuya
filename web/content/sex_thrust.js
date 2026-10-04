@@ -2,13 +2,15 @@
  * 肏（抽插）互動的數值與排程（2026-10-04，test_room 閘門 data-sex-poses；純邏輯，房間 UI 在 test_room_summon.js）。
  *
  * 每按一下「肏」＝一次抽插：
- *   - 激情度（她）+1～2：拿到 2 的機率看性奮（arousal 0–100）與關係階；激情 >20 → 她高潮（④ 高潮圖 → ⑤ 潮吹圖），
+ *   - 激情度（她）+1～2：拿到 2 的機率看性奮（arousal 0–100）與關係階；激情 >20 → 她高潮（④ 高潮圖；潮吹旗 SQUIRT_IN_FLOW 預設關），
  *     感情 +10，激情只降一點（−3），之後更容易連續高潮。高潮判定在她那句話打完之後（不擋按鈕）。
  *   - 玩家興奮 +5～8：到 100 → 射精（⑥ 內射圖，預設 creampie），興奮歸零。
  *   - 精液＝玩家真正剩下的精液（player.semenCc，同一個值；2026-10-04 使用者決定，不再每場 18cc）：每射一次 −6cc（可到負）；
  *     <6 或下一次射完就 <1 → 危險提示；射完 <1 → 這一輪結束。進來時已經 <1：照樣可以進、量條紅字，射一次就結束。
  *   - 每下感情 +1。
- *   - 換圖：每下 1/3 機率在抽插期的圖（加入／抽插）之間換一張；高潮／潮吹／內射是事件圖。
+ *   - 換圖（flow2）：第一下立刻換抽插圖；之後每下 1/3 機率在抽插圖（多組／多變體）之間換；加入圖不進池。
+ *     射精 → 立刻換內射圖；她高潮 → 換高潮圖、藏「肏」到她那句打完＋停滿 EVENT_HOLD_MS；下一下回抽插圖。
+ *   - 開場：① 開場圖出來後她先說一句（openingDirective：關係階態度＋個性口吻＋體位），打完才出「掏出陰莖」→ ② 加入 →「肏」。
  *   - 局部動畫（舊做愛系統的四幀）：第一下播 1-2-3-4，之後每下播 2-3-4，播放中藏「肏」。
  * 她的台詞：每下都要一句，但跟動畫／數值脫鉤（ThrustReplyPump）：
  *   - 正在等 AI 時先顯示本地喘息（啊…嗯…）；AI 回來後逐字貼上（呻吟字 ~0.08s、一般字 ~0.12s）。
@@ -37,9 +39,135 @@ export const THRUST = {
   CHAIN_WINDOW_MS: 800,
   /** 她那句一直沒回來：最多等這麼久就先把換圖／高潮判定做掉（不讓 AI 卡住畫面）。 */
   DEFER_MAX_MS: 8000,
-  /** 事件圖（高潮、潮吹、內射）至少停留。 */
+  /** 高潮圖至少停留（她那句也要打完，「肏」才回來）。 */
   EVENT_HOLD_MS: 2400,
+  /** 高潮那句一直沒打完的保險：最多藏「肏」這麼久。 */
+  ORGASM_LOCK_MAX_MS: 25000,
+  /** 潮吹圖不進自動流程（2026-10-04 flow2；圖組／編輯器分頁保留）。改 true 就恢復「高潮 → 潮吹」。 */
+  SQUIRT_IN_FLOW: false,
+  /** AI 台詞最多等這麼久，逾時用本地台詞。 */
+  REPLY_TIMEOUT_MS: 15000,
+  /** 開場那句最多等這麼久。 */
+  OPENING_TIMEOUT_MS: 15000,
 };
+
+/** 她高潮時自動流程要顯示的圖（預設只有 ④ 高潮；潮吹旗開才接 ⑤ 潮吹）。 */
+export function orgasmEventSteps(squirt = THRUST.SQUIRT_IN_FLOW) {
+  return squirt ? ["orgasm", "squirt"] : ["orgasm"];
+}
+
+/** 進「肏」流程背景預產的步驟（加入之後）。 */
+export function flowPregenSteps(squirt = THRUST.SQUIRT_IN_FLOW) {
+  return ["thrust", "orgasm", ...(squirt ? ["squirt"] : []), "cum"];
+}
+
+/* ───────── 開場那句（她先開口；按「做愛」出 ① 開場圖後） ───────── */
+
+/** 關係階 → 開場態度：陌生／認識＝拒絕卻屈服；朋友／好友＝我們不是這種關係；女友／熱戀＝害羞；愛人＝有點想要；妻子以上＝求他。 */
+export function openingBand(stageKey) {
+  const k = String(stageKey || "stranger");
+  if (k === "stranger" || k === "acquaintance") return "resist";
+  if (k === "friend" || k === "close_friend") return "notthis";
+  if (k === "girlfriend" || k === "passionate") return "shy";
+  if (k === "lover") return "eager";
+  if (THRUST_STAGE_ORDER.indexOf(k) >= THRUST_STAGE_ORDER.indexOf("wife")) return "beg";
+  return "resist";
+}
+
+export const OPENING_BAND_ZH = { resist: "拒絕卻屈服", notthis: "我們不是這種關係", shy: "害羞", eager: "有點想要", beg: "求他" };
+
+const OPENING_BAND_RULE = {
+  resist: "你們還不熟，你嘴上拒絕、說不要、想推開他，可是身體已經軟了、只能乖乖照做（拒絕卻屈服）。",
+  notthis: "你們只是朋友，你害羞又慌亂，嘴上說「我們不是這種關係…」，卻沒有真的逃開。",
+  shy: "你是他的女朋友，很害羞、聲音很小、不敢看他，但願意給他。",
+  eager: "你是他的愛人，已經有點等不及了，帶著害羞主動催他、說想要。",
+  beg: "你是他的妻子，主動求他、撒嬌討要，直接說想要他進來。",
+};
+
+const OPENING_POSE_RULE = {
+  missionary: "你躺在床上，自己把腿張開、用手把自己掰開給他看。",
+  doggy: "你趴在床上、屁股翹高對著他。",
+};
+
+/** 個性 → 開場口吻（傲嬌／清純／高冷／病嬌／活潑／御姊／天然呆／文靜）。 */
+export const OPENING_STYLE = {
+  "傲嬌": "傲嬌：嘴硬、結巴帶兇（「才、才不是想要」「笨蛋、變態」），口是心非。",
+  "清純反差": "清純反差：外表清純、聲音很小很羞恥，說出口的話卻意外淫蕩。",
+  "高冷": "高冷：話很短、語氣冷淡克制，但聲音發抖、藏不住。",
+  "病嬌": "病嬌：黏膩、佔有慾，要他只看著你、只能肏你一個（「你是我的」）。",
+  "活潑開朗": "活潑開朗：直率、有精神，害羞也會笑著說出來。",
+  "御姊": "御姊：成熟從容、帶點挑逗和引導，像姊姊在教他。",
+  "天然呆": "天然呆：懵懵的、搞不太清楚狀況，說話迷糊又直白。",
+  "文靜溫柔": "文靜溫柔：輕聲細語、溫柔體貼，害羞地接納他。",
+};
+
+export function openingStyleFor(personality) {
+  const k = String(personality || "");
+  if (OPENING_STYLE[k]) return OPENING_STYLE[k];
+  const hit = k ? Object.keys(OPENING_STYLE).find((n) => k.includes(n) || n.includes(k)) : "";
+  return hit ? OPENING_STYLE[hit] : OPENING_STYLE["文靜溫柔"];
+}
+
+/** 開場那句的要求（接在一般對話 system prompt 之後；那邊已有個性家族／關係階／稱呼規則）。 */
+export function openingDirective({ stage = "stranger", pose = "missionary", personality = "", dazed = false } = {}) {
+  const band = openingBand(stage);
+  const wife = band === "beg";
+  return [
+    `（旁白：你已經全裸，你們要做愛了。${OPENING_POSE_RULE[pose] || OPENING_POSE_RULE.missionary}他還沒插進來。`,
+    `態度：${OPENING_BAND_RULE[band]}`,
+    `口吻：${openingStyleFor(personality)}`,
+    dazed ? "你還有點恍惚、說不太清楚。" : "",
+    "你主動先開口，說一句很色、很羞恥的話（可以提到自己的姿勢、身體，夾一點喘息），二十五字以內；",
+    wife ? "可以叫他老公。" : "不要叫他老公（還沒結婚）。",
+    "只寫你說出口的那句話；不要旁白、不要描述動作、不要引號。）",
+  ].filter(Boolean).join("");
+}
+
+const OPENING_FALLBACK = {
+  resist: {
+    missionary: ["不、不要看…腿、腿合不起來了…", "住手…為什麼我自己張開了…不要…", "不可以…可是…身體不聽話…"],
+    doggy: ["不要…這個姿勢好丟臉…屁股別、別看…", "放開…嗚…為什麼要翹起來…", "不行…不要從後面…可是動不了…"],
+  },
+  notthis: {
+    missionary: ["我、我們不是這種關係吧…可是腿…", "等一下…我們只是朋友啊…不要一直看那裡…", "這樣張開…好奇怪…我們不是這種關係…"],
+    doggy: ["我們不是這種關係…屁股翹這麼高好丟臉…", "朋友不會這樣的吧…你、你別看後面…", "嗚…我們不是這種關係…可是…"],
+  },
+  shy: {
+    missionary: ["那、那個…我張開了…你輕一點…", "好害羞…不要一直盯著看啦…", "給你看…只給你看喔…"],
+    doggy: ["這樣…翹起來好害羞…你輕一點…", "不要一直看屁股啦…好丟臉…", "從後面…我、我準備好了…"],
+  },
+  eager: {
+    missionary: ["快點嘛…我已經張開等你了…", "都濕成這樣了…你還不進來嗎…", "看…這裡在等你…快一點…"],
+    doggy: ["屁股都翹好了…快點進來嘛…", "不要只看…我等不及了…", "從後面…快、快點給我…"],
+  },
+  beg: {
+    missionary: ["老公…我張開了…快插進來…", "老公～求你了…裡面好空…快給我…", "老公，我想要…用力肏我…"],
+    doggy: ["老公…屁股翹好了…快從後面插進來…", "求你了老公…快點給我…", "老公～人家等好久了…快肏我…"],
+  },
+};
+
+/** AI 失敗時的開場本地台詞（看關係階＋體位；老公只有妻子以上）。 */
+export function openingFallback(stage = "stranger", pose = "missionary", rng = Math.random) {
+  const band = openingBand(stage);
+  const pool = (OPENING_FALLBACK[band] || OPENING_FALLBACK.resist)[pose === "doggy" ? "doggy" : "missionary"];
+  return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
+}
+
+/** 妻子以下的台詞不能叫老公（AI 偶爾會叫）：換成「你」。 */
+export function scrubHusband(text, stage = "stranger") {
+  const t = String(text || "");
+  if (openingBand(stage) === "beg") return t;
+  return t.replace(/老公/g, "你");
+}
+
+/** 給 promise 一個期限：逾時回 fallback（不丟錯）。 */
+export function withTimeout(promise, ms, fallback = "") {
+  let timer = 0;
+  return Promise.race([
+    Promise.resolve(promise).catch(() => fallback),
+    new Promise((resolve) => { timer = setTimeout(() => resolve(fallback), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
 
 /** 關係階 → 0..1（與 test_room_summon STAGE_LADDER 對齊）。 */
 export const THRUST_STAGE_ORDER = [
@@ -194,6 +322,7 @@ export class ThrustReplyPump {
     this.started = [];
     this.done = [];
     this.dropped = 0;
+    this.urgentSeq = 0;
     this.closed = false;
   }
 
@@ -206,6 +335,19 @@ export class ThrustReplyPump {
       return;
     }
     if (this.pendingSeq) this.dropped += 1;
+    this.pendingSeq = seq;
+  }
+
+  /** 一定要說的一句（她高潮）：舊的排隊丟掉；忙著就排在下一句、打完立刻接（不看 0.8 秒）。 */
+  urgent(seq) {
+    if (this.closed) return;
+    if (this.pendingSeq) this.dropped += 1;
+    this.urgentSeq = seq;
+    if (!this.busy) {
+      this.pendingSeq = 0;
+      this._run(seq);
+      return;
+    }
     this.pendingSeq = seq;
   }
 
@@ -233,11 +375,14 @@ export class ThrustReplyPump {
       this.done.push(seq);
       if (!this.closed) {
         try { this.d.onDone?.(seq); } catch { /* */ }
-        const next = this.pendingSeq;
-        this.pendingSeq = 0;
-        // 打完前 0.8 秒內有按 → 立刻接下一句；更早的那下算過期，丟掉（下次按再開）
-        if (next && this.lastFinishAt - this.lastPressAt <= THRUST.CHAIN_WINDOW_MS) this._run(next);
-        else if (next) this.dropped += 1;
+        // onDone 裡已經開了下一句（例如高潮那句）→ 排隊的留給那句打完再判
+        if (!this.busy && !this.closed) {
+          const next = this.pendingSeq;
+          this.pendingSeq = 0;
+          // 打完前 0.8 秒內有按（或是一定要說的那句）→ 立刻接下一句；更早的那下算過期，丟掉（下次按再開）
+          if (next && (next === this.urgentSeq || this.lastFinishAt - this.lastPressAt <= THRUST.CHAIN_WINDOW_MS)) this._run(next);
+          else if (next) this.dropped += 1;
+        }
       }
     }
   }

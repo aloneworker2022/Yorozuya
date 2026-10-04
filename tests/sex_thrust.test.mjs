@@ -116,6 +116,48 @@ await t("打字：呻吟／標點 0.08s、一般字 0.12s；喘息佔位", () =>
   assert.ok(T.fallbackMoan("orgasm").includes("去"));
 });
 
+await t("flow2 旗：潮吹不進自動流程（高潮只出 ④）；預產 抽插→高潮→內射", () => {
+  assert.equal(T.THRUST.SQUIRT_IN_FLOW, false);
+  assert.deepEqual(T.orgasmEventSteps(), ["orgasm"]);
+  assert.deepEqual(T.orgasmEventSteps(true), ["orgasm", "squirt"]);
+  assert.deepEqual(T.flowPregenSteps(), ["thrust", "orgasm", "cum"]);
+  assert.deepEqual(T.flowPregenSteps(true), ["thrust", "orgasm", "squirt", "cum"]);
+});
+await t("開場態度看關係階：陌生/認識＝拒絕卻屈服、朋友/好友＝不是這種關係、女友/熱戀＝害羞、愛人＝想要、妻子以上＝求", () => {
+  const m = { stranger: "resist", acquaintance: "resist", friend: "notthis", close_friend: "notthis", girlfriend: "shy", passionate: "shy",
+    lover: "eager", wife: "beg", devoted_wife: "beg", obedient_wife: "beg", pathological_wife: "beg", "": "resist", bogus: "resist" };
+  for (const [k, v] of Object.entries(m)) assert.equal(T.openingBand(k), v, k);
+});
+await t("開場要求：體位（傳教士自己張開、後背翹屁股）＋態度＋個性口吻；老公只有妻子以上", () => {
+  const a = T.openingDirective({ stage: "stranger", pose: "missionary", personality: "傲嬌" });
+  assert.ok(a.includes("張開") && a.includes("拒絕卻屈服") && a.includes("傲嬌") && a.includes("不要叫他老公"));
+  const b = T.openingDirective({ stage: "wife", pose: "doggy", personality: "病嬌" });
+  assert.ok(b.includes("翹高") && b.includes("求他") && b.includes("病嬌") && b.includes("可以叫他老公"));
+  assert.ok(T.openingDirective({ stage: "friend" }).includes("我們不是這種關係"));
+  assert.ok(T.openingDirective({ stage: "lover" }).includes("不要叫他老公"));
+  for (const p of ["傲嬌", "清純反差", "高冷", "病嬌", "活潑開朗", "御姊", "天然呆", "文靜溫柔"]) assert.ok(T.openingStyleFor(p).startsWith(p));
+  assert.ok(T.openingStyleFor("清純").startsWith("清純反差"));
+  assert.ok(T.openingStyleFor("").startsWith("文靜溫柔"));
+  assert.ok(T.openingDirective({ dazed: true }).includes("恍惚"));
+});
+await t("開場本地台詞：每階×體位都有；老公只出現在妻子以上；scrubHusband", () => {
+  const stages = ["stranger", "friend", "girlfriend", "lover", "wife"];
+  for (const st of stages) for (const pose of ["missionary", "doggy"]) for (const r of [0, 0.5, 0.99]) {
+    const line = T.openingFallback(st, pose, () => r);
+    assert.ok(line.length > 3);
+    assert.equal(line.includes("老公"), st === "wife", `${st} ${pose} ${line}`);
+  }
+  assert.ok(T.openingFallback("friend", "doggy", () => 0).includes("不是這種關係"));
+  assert.ok(T.openingFallback("stranger", "doggy", () => 0).includes("屁股"));
+  assert.equal(T.scrubHusband("老公快點", "girlfriend"), "你快點");
+  assert.equal(T.scrubHusband("老公快點", "obedient_wife"), "老公快點");
+});
+await t("withTimeout：逾時回 fallback、失敗回 fallback、成功回值", async () => {
+  assert.equal(await T.withTimeout(new Promise(() => {}), 20, "fb"), "fb");
+  assert.equal(await T.withTimeout(Promise.reject(new Error("x")), 50, "fb"), "fb");
+  assert.equal(await T.withTimeout(Promise.resolve("ok"), 50, "fb"), "ok");
+});
+
 function fakePump({ replyMs = 100, typeMs = 50 } = {}) {
   let now = 0;
   const timers = [];
@@ -172,5 +214,33 @@ await t("台詞幫浦：AI 失敗也會打字（交給 type 處理空字串）�
   const pump = new T.ThrustReplyPump({ now: () => now, request: async () => { throw new Error("x"); }, type: async (tx) => { typed.push(tx); } });
   pump.press(1); await new Promise((r) => setTimeout(r, 5));
   assert.deepEqual(typed, [""]); assert.equal(pump.busy, false);
+});
+await t("台詞幫浦 urgent（她高潮那句）：忙時排第一、打完立刻接（不看 0.8 秒）、舊排隊丟掉", async () => {
+  const f = fakePump({ replyMs: 1000, typeMs: 1000 });
+  f.pump.press(1);
+  await f.advance(100); f.pump.press(2);
+  await f.advance(100); f.pump.urgent(3); // 2 丟、3 排隊
+  await f.advance(2000); // t=2200：1 打完（隔最後一下 1.8s 也照接 3）
+  assert.deepEqual(f.pump.started, [1, 3]);
+  assert.equal(f.pump.dropped, 1);
+  await f.advance(2500);
+  assert.ok(f.log.includes("typed r3") && f.log.includes("done3"));
+  f.pump.urgent(4); // 閒著 → 馬上開
+  assert.deepEqual(f.pump.started, [1, 3, 4]);
+});
+await t("台詞幫浦：onDone 裡開了下一句 → 不會同時跑兩句（排隊的留給那句之後）", async () => {
+  let now = 0; const running = []; let maxRun = 0; const started = [];
+  let pumpRef;
+  const pump = new T.ThrustReplyPump({
+    now: () => now,
+    request: async (sq) => { running.push(sq); maxRun = Math.max(maxRun, running.length); await new Promise((r) => setTimeout(r, 5)); running.splice(running.indexOf(sq), 1); return `r${sq}`; },
+    type: async () => {},
+    onDone: (sq) => { started.push(sq); if (sq === 1) pumpRef.urgent(9); },
+  });
+  pumpRef = pump;
+  pump.press(1); pump.press(2);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(maxRun, 1);
+  assert.deepEqual(pump.started, [1, 9]);
 });
 console.log(`${pass} passed`);

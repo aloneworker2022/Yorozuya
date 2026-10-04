@@ -81,4 +81,29 @@ t("預設 JSON（web/content）每一步＝新預設", () => {
     }
   }
 });
+t("③ 抽插多張變體：格 1＝thrust、格 2..6＝thrust2..6；每組一格；全滿覆寫格 1", () => {
+  assert.equal(M.SEX_THRUST_VARIANTS, 6);
+  assert.equal(M.sexThrustVariantShot("doggy", 1), "sex_doggy_thrust");
+  assert.equal(M.sexThrustVariantShot("missionary", 3), "sex_missionary_thrust3");
+  assert.equal(M.sexThrustVariantShot("doggy", 99), "sex_doggy_thrust6");
+  const u = (n) => `/assets/portraits/g1_sex_doggy_thrust${n === 1 ? "" : n}.png?v=1`;
+  assert.equal(M.sexThrustSlotOfUrl("doggy", u(1)), 1);
+  assert.equal(M.sexThrustSlotOfUrl("doggy", u(4)), 4);
+  assert.equal(M.sexThrustSlotOfUrl("missionary", u(1)), 0);
+  assert.equal(M.sexThrustSlotOfUrl("doggy", "/assets/portraits/g1_sex_doggy_thrust9.png"), 0);
+  assert.ok(M.isSexStepResultUrl("doggy", "thrust", u(2)));
+  assert.ok(!M.isSexStepResultUrl("doggy", "thrust", "/assets/testword/123.png"));
+  assert.ok(M.isSexStepResultUrl("doggy", "join", "/assets/portraits/g1_sex_doggy_join.png"));
+  assert.ok(!M.isSexStepResultUrl("doggy", "join", u(2)));
+  assert.deepEqual(M.pickSexThrustSlot("doggy", {}, "a"), { slot: 1, evict: [] });
+  assert.deepEqual(M.pickSexThrustSlot("doggy", { a: u(1) }, "b"), { slot: 2, evict: [] });
+  assert.deepEqual(M.pickSexThrustSlot("doggy", { a: u(1), b: u(3) }, "b"), { slot: 3, evict: [] }, "自己的格不變");
+  assert.deepEqual(M.pickSexThrustSlot("doggy", { a: u(1), c: u(1) }, "c"), { slot: 2, evict: [] }, "跟別組撞格 → 換空格");
+  const full = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`p${n}`, u(n)]));
+  assert.deepEqual(M.pickSexThrustSlot("doggy", full, "new"), { slot: 1, evict: ["p1"] });
+  const g = { id: "g0", name: "x", stage: "lover", comfyCkpt: "a.safetensors" };
+  assert.equal(M.buildSexStepImgBody("doggy", "thrust", null, g, {}, { thrustSlot: 3 }).shot, "sex_doggy_thrust3");
+  assert.equal(M.buildSexStepImgBody("doggy", "thrust", null, g, {}, { thrustSlot: 1 }).shot, "sex_doggy_thrust");
+  assert.equal(M.buildSexStepImgBody("doggy", "cum", null, g, {}, { thrustSlot: 3 }).shot, "sex_doggy_cum");
+});
 console.log(`${pass} passed`);
