@@ -74,7 +74,9 @@ import {
   playerHint,
   refillSemen,
   grantSemen as grantPlayerSemen,
-} from "./player_state.js?v=8";
+  spendSemen,
+  SEMEN_MAX_CC,
+} from "./player_state.js?v=9";
 import { ensureOpenness, getOpenness } from "./openness.js?v=1";
 import {
   ensureInvasion,
@@ -140,13 +142,14 @@ import {
   applyThrust,
   checkOrgasm,
   semenDanger,
+  syncSemen,
   pickOtherImage,
   animFramesFor,
   typeDelayFor,
   pantPlaceholder,
   fallbackMoan,
   ThrustReplyPump,
-} from "./sex_thrust.js?v=1";
+} from "./sex_thrust.js?v=2";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -823,8 +826,16 @@ function sexHudEl() {
   return el;
 }
 
+/** 肏的精液＝玩家真正的精液（同一個值）：每次要用之前先同步。 */
+function syncSexSemen() {
+  if (!sexChat?.sess) return;
+  player = ensurePlayer(player);
+  syncSemen(sexChat.sess, player.semenCc);
+}
+
 function renderSexHud() {
   const el = sexHudEl();
+  syncSexSemen();
   const s = sexChat?.sess;
   el.hidden = !sexChat || !s || sexChat.step === "open";
   if (el.hidden) return;
@@ -838,13 +849,15 @@ function renderSexHud() {
   const lim = THRUST.PASSION_ORGASM_ABOVE;
   set("passion", (s.passion / (lim + 1)) * 100, `${s.passion}/${lim}`, s.passion >= lim - 3);
   set("excite", s.excite, `${s.excite}/${THRUST.EXCITE_CUM_AT}`, s.excite >= 80);
-  set("semen", (Math.max(0, s.semen) / THRUST.SEMEN_START_CC) * 100, `${s.semen}cc`, semenDanger(s));
+  set("semen", (Math.max(0, s.semen) / SEMEN_MAX_CC) * 100, `${s.semen}cc`, semenDanger(s));
   const warn = el.querySelector(".sx-warn");
   const danger = semenDanger(s);
   warn.hidden = !danger && !s.ended;
   warn.textContent = s.ended
     ? "精液見底，這一輪結束。"
-    : danger ? `⚠ 精液 ${s.semen}cc：再射一次就見底，這一輪會結束` : "";
+    : s.semen < THRUST.SEMEN_END_BELOW
+      ? `⚠ 精液已見底（${s.semen}cc）：射一次這一輪就結束`
+      : danger ? `⚠ 精液 ${s.semen}cc：再射一次就見底，這一輪會結束` : "";
 }
 
 function thrustAnimEl() {
@@ -1173,7 +1186,8 @@ async function openSexChat(who) {
     pose,
     packId: "",
     step: "open",
-    sess: newThrustSession(),
+    // 精液＝玩家真正剩下的（不是每場 18cc）
+    sess: newThrustSession({ semenCc: ensurePlayer(player).semenCc }),
     img: "",
     imgStep: "",
     thrustImg: "",
@@ -1242,7 +1256,9 @@ async function sexChatToJoin() {
   // 塞著陰莖：她的對話 prompt 會寫「陰道內物體：陰莖」；離開時還原
   const o = ensureBody(who)?.organs;
   if (o?.vagina) o.vagina.stuffed = "penis";
-  sexChatNarrate(`（${SEX_POSES[sexChat.pose].label.replace("開場", "")}・${SEX_STEP_META.join.label}。按「肏」開始。）`);
+  syncSexSemen();
+  const dry = sexChat.sess.semen < THRUST.SEMEN_END_BELOW ? `精液已見底（${sexChat.sess.semen}cc），射一次這一輪就結束。` : "";
+  sexChatNarrate(`（${SEX_POSES[sexChat.pose].label.replace("開場", "")}・${SEX_STEP_META.join.label}。按「肏」開始。${dry}）`);
   renderSexHud();
   renderSexChatBar();
   renderThrustDebug();
@@ -1261,6 +1277,7 @@ function doThrust() {
   const who = girl;
   const s = sexChat.sess;
   const seq = ++sexChat.seq;
+  syncSexSemen();
   const r = applyThrust(s, { arousal: Number(who.bodyState?.arousal) || 0, stage: who.stage || "stranger" });
   if (!r) return null;
   bumpAffection(r.affection, "肏");
@@ -1298,14 +1315,15 @@ function doThrust() {
     sexChat.pendingSwitch = true;
   }
   if (r.ejac) {
-    player = ensurePlayer(player);
-    player.semenCc = Math.max(0, player.semenCc - THRUST.SEMEN_PER_EJAC_CC);
-    player.lastTeaseAt = Date.now();
+    // 扣玩家真正的精液（可到負）；這一場的數字跟著它
+    player = spendSemen(player, THRUST.SEMEN_PER_EJAC_CC).player;
+    s.semen = player.semenCc;
+    if (s.semen < THRUST.SEMEN_END_BELOW) s.ended = true;
     const o = ensureBody(who)?.organs;
     if (o?.uterus) o.uterus.semen = Math.min(3, (Number(o.uterus.semen) || 0) + 1);
     noteAfterglow(who, "his", { ejac: "creampie" });
     sexChat.news.push("cum");
-    lines.push({ role: "user", content: `（你射在她裡面了——這一場精液剩 ${s.semen} cc。）` });
+    lines.push({ role: "user", content: `（你射在她裡面了——精液剩 ${s.semen} cc。）` });
     pushDebug(`肏：射精（第 ${s.ejacs} 次）精液 ${r.semenBefore}→${s.semen}cc${s.ended ? "，見底結束" : ""}`);
   }
   renderSexHud();
@@ -9526,6 +9544,12 @@ window.RoomCompanion = {
     press: () => doThrust(),
     set: (patch = {}) => {
       if (!sexChat) return null;
+      // 精液是玩家真正的值：改這裡就是改 player.semenCc
+      if (patch.semen !== undefined) {
+        player = ensurePlayer(player);
+        player.semenCc = Number(patch.semen) || 0;
+        persistRoom();
+      }
       Object.assign(sexChat.sess, patch);
       renderSexHud();
       renderThrustDebug();

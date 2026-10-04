@@ -1,6 +1,8 @@
 /** 房間玩家：興奮累積與精液存量（與妹子分開，寫進 room session）。 */
 
 export const SEMEN_MAX_CC = 20;
+/** 精液可以被肏（每射 −6cc）射到負數（2026-10-04 使用者：肏的精液池＝玩家真正剩下的精液）。下限只防壞值。 */
+export const SEMEN_FLOOR_CC = -60;
 export const SEMEN_MIN_TEASE_CC = 6;
 export const CLIMAX_MAX = 20;
 /** 精液回復：每小時 +1 cc（真實時間）。 */
@@ -46,7 +48,7 @@ function normalizePlayer(player) {
   const base = emptyPlayer();
   const p = player && typeof player === "object" ? { ...base, ...player } : base;
   p.climax = clamp(p.climax, 0, CLIMAX_MAX);
-  p.semenCc = clamp(p.semenCc, 0, SEMEN_MAX_CC);
+  p.semenCc = clamp(p.semenCc, SEMEN_FLOOR_CC, SEMEN_MAX_CC);
   p.lastTeaseAt = Number(p.lastTeaseAt) || 0;
   p.lastSemenAt = Number(p.lastSemenAt) || Date.now();
   const inv = p.inventory && typeof p.inventory === "object" ? p.inventory : {};
@@ -67,7 +69,7 @@ export function regenSemen(player, now = Date.now()) {
   const hours = elapsed / 3600000;
   const gain = Math.floor(hours * SEMEN_REGEN_CC_PER_HOUR);
   if (gain > 0) {
-    p.semenCc = clamp(p.semenCc + gain, 0, SEMEN_MAX_CC);
+    p.semenCc = clamp(p.semenCc + gain, SEMEN_FLOOR_CC, SEMEN_MAX_CC);
     p.lastSemenAt = last + gain * 3600000;
   }
   return p;
@@ -102,7 +104,7 @@ export function applyTeaseClimax(player, actId) {
   }
   const spent = 13 + Math.floor(Math.random() * 4); // 13–16
   const before = p.semenCc;
-  p.semenCc = clamp(p.semenCc - spent, 0, SEMEN_MAX_CC);
+  p.semenCc = clamp(p.semenCc - spent, Math.min(0, p.semenCc), SEMEN_MAX_CC);
   const actual = before - p.semenCc;
   p.climax = 0;
   const line = actual > 0
@@ -116,8 +118,17 @@ export function grantSemen(player, cc) {
   const p = ensurePlayer(player);
   const before = p.semenCc;
   const add = Math.max(0, Math.round(Number(cc) || 0));
-  p.semenCc = clamp(before + add, 0, SEMEN_MAX_CC);
+  p.semenCc = clamp(before + add, SEMEN_FLOOR_CC, SEMEN_MAX_CC);
   return { player: p, before, after: p.semenCc, gained: p.semenCc - before };
+}
+
+/** 肏射精：扣玩家真正的精液（可到負，不低於 SEMEN_FLOOR_CC）。 */
+export function spendSemen(player, cc) {
+  const p = ensurePlayer(player);
+  const before = p.semenCc;
+  p.semenCc = clamp(before - Math.max(0, Math.round(Number(cc) || 0)), SEMEN_FLOOR_CC, SEMEN_MAX_CC);
+  p.lastTeaseAt = Date.now();
+  return { player: p, before, after: p.semenCc };
 }
 
 /** 編輯「恢復精液」：補滿並可選清興奮。 */

@@ -7,10 +7,43 @@ let pass = 0;
 const t = async (n, f) => { await f(); pass++; console.log("ok -", n); };
 const seq = (...xs) => { let i = 0; return () => xs[i++ % xs.length]; };
 
-await t("開場數值：精液 18cc、激情／興奮 0", () => {
-  const s = T.newThrustSession();
-  assert.equal(s.semen, 18); assert.equal(s.passion, 0); assert.equal(s.excite, 0);
+const P = await import(`${dir}player_state.js`);
+await t("精液＝玩家真正的值（不是每場 18cc）；激情／興奮 0；沒給才退回 18", () => {
+  const s = T.newThrustSession({ semenCc: 9 });
+  assert.equal(s.semen, 9); assert.equal(s.passion, 0); assert.equal(s.excite, 0);
+  assert.equal(T.newThrustSession({ semenCc: 0 }).semen, 0);
+  assert.equal(T.newThrustSession({ semenCc: -4 }).semen, -4);
+  assert.equal(T.newThrustSession().semen, T.THRUST.SEMEN_FALLBACK_CC);
+  assert.equal(T.THRUST.SEMEN_START_CC, undefined, "固定 18cc 池拿掉了");
   assert.equal(T.THRUST.SEMEN_PER_EJAC_CC, 6);
+  assert.equal(T.syncSemen(s, 14).semen, 14);
+  assert.equal(T.syncSemen(s, "x").semen, 14);
+});
+await t("玩家精液可到負：spendSemen −6；ensurePlayer／回復不把負數拉回 0；回復照時間 +1/h", () => {
+  let p = P.ensurePlayer({ semenCc: 4, lastSemenAt: Date.now() });
+  const r = P.spendSemen(p, 6);
+  assert.equal(r.before, 4); assert.equal(r.after, -2);
+  p = P.ensurePlayer(r.player); assert.equal(p.semenCc, -2);
+  p = P.regenSemen({ ...p, lastSemenAt: Date.now() - 3 * 3600000 }); assert.equal(p.semenCc, 1);
+  assert.equal(P.ensurePlayer({ semenCc: -999 }).semenCc, P.SEMEN_FLOOR_CC);
+  assert.equal(P.canTease({ semenCc: -2, lastSemenAt: Date.now() }), false);
+  // 調戲射精照舊不會把正的扣到負
+  const c = P.applyTeaseClimax({ semenCc: 10, climax: 19, lastSemenAt: Date.now() }, "clit");
+  assert.equal(c.player.semenCc, 0);
+  assert.equal(P.grantSemen({ semenCc: -5, lastSemenAt: Date.now() }, 3).after, -2);
+});
+await t("真實精液 20 → 14 → 8 → 2（危險）→ −4 結束；7 不警告、6 警告、<1 進來也警告且射一次就結束", () => {
+  const s = T.newThrustSession({ semenCc: 20 });
+  const out = [];
+  for (let i = 0; i < 4; i++) { s.excite = 99; const r = T.applyThrust(s, { rng: () => 0.99 }); out.push([r.semenAfter, r.danger, r.ended]); }
+  assert.deepEqual(out, [[14, false, false], [8, false, false], [2, true, false], [-4, true, true]]);
+  assert.equal(T.semenDanger({ semen: 7 }), false);
+  assert.equal(T.semenDanger({ semen: 6 }), true);
+  const dry = T.newThrustSession({ semenCc: 0 });
+  assert.equal(T.semenDanger(dry), true); assert.equal(dry.ended, false, "見底也能進");
+  T.applyThrust(dry, { rng: () => 0.99 }); assert.equal(dry.ended, false, "沒射之前不結束");
+  dry.excite = 99; const r = T.applyThrust(dry, { rng: () => 0.99 });
+  assert.equal(r.semenAfter, -6); assert.equal(r.ended, true);
 });
 await t("一下：激情 +1～2、興奮 +5～8、感情 +1；機率看性奮與關係", () => {
   for (let k = 0; k < 200; k++) {
@@ -26,7 +59,7 @@ await t("一下：激情 +1～2、興奮 +5～8、感情 +1；機率看性奮與
   assert.equal(T.exciteGain(() => 0), 5); assert.equal(T.exciteGain(() => 0.9999), 8);
 });
 await t("興奮到 100 → 射精、歸零、精液 −6；18→12→6→0 第三次見底結束；危險提示", () => {
-  const s = T.newThrustSession();
+  const s = T.newThrustSession({ semenCc: 18 });
   const rng = seq(0.99, 0.99, 0.99); // 激情 1、興奮 8、不換圖
   const ejacs = [];
   let r;

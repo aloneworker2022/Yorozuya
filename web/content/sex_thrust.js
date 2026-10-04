@@ -5,7 +5,8 @@
  *   - 激情度（她）+1～2：拿到 2 的機率看性奮（arousal 0–100）與關係階；激情 >20 → 她高潮（④ 高潮圖 → ⑤ 潮吹圖），
  *     感情 +10，激情只降一點（−3），之後更容易連續高潮。高潮判定在她那句話打完之後（不擋按鈕）。
  *   - 玩家興奮 +5～8：到 100 → 射精（⑥ 內射圖，預設 creampie），興奮歸零。
- *   - 精液池：這一場從 18cc 開始，每射一次 −6cc（可到負）；<6 或下一次射完就見底 → 危險提示；<1 → 這次射完就結束。
+ *   - 精液＝玩家真正剩下的精液（player.semenCc，同一個值；2026-10-04 使用者決定，不再每場 18cc）：每射一次 −6cc（可到負）；
+ *     <6 或下一次射完就 <1 → 危險提示；射完 <1 → 這一輪結束。進來時已經 <1：照樣可以進、量條紅字，射一次就結束。
  *   - 每下感情 +1。
  *   - 換圖：每下 1/3 機率在抽插期的圖（加入／抽插）之間換一張；高潮／潮吹／內射是事件圖。
  *   - 局部動畫（舊做愛系統的四幀）：第一下播 1-2-3-4，之後每下播 2-3-4，播放中藏「肏」。
@@ -15,7 +16,8 @@
  */
 
 export const THRUST = {
-  SEMEN_START_CC: 18,
+  /** 只在呼叫端沒給玩家精液時用（舊呼叫的退路）；正常一律用 player.semenCc。 */
+  SEMEN_FALLBACK_CC: 18,
   SEMEN_PER_EJAC_CC: 6,
   SEMEN_WARN_BELOW: 6,
   SEMEN_END_BELOW: 1,
@@ -59,7 +61,7 @@ export function newThrustSession(opts = {}) {
     thrusts: 0,
     passion: 0,
     excite: 0,
-    semen: Number.isFinite(opts.semenCc) ? opts.semenCc : THRUST.SEMEN_START_CC,
+    semen: Number.isFinite(Number(opts.semenCc)) && opts.semenCc !== null && opts.semenCc !== undefined ? Number(opts.semenCc) : THRUST.SEMEN_FALLBACK_CC,
     orgasms: 0,
     ejacs: 0,
     ended: false,
@@ -85,6 +87,13 @@ export function exciteGain(rng = Math.random) {
 export function semenDanger(s) {
   if (!s) return false;
   return s.semen < THRUST.SEMEN_WARN_BELOW || s.semen - THRUST.SEMEN_PER_EJAC_CC < THRUST.SEMEN_END_BELOW;
+}
+
+/** 同步玩家真正的精液（每下之前；精液回復／恢復精液按鈕都算進來）。 */
+export function syncSemen(s, semenCc) {
+  if (!s || !Number.isFinite(Number(semenCc))) return s;
+  s.semen = Number(semenCc);
+  return s;
 }
 
 /**
