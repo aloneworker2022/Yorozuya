@@ -43,7 +43,7 @@ const BODY_HITS = [
   { re: /拔掉?假[陰陽][莖具]|取出假[陰陽][莖具]/, id: "dildo_out", arousal: 3 },
   { re: /拔掉?小黃瓜|取出小黃瓜/, id: "cucumber_out", arousal: 3 },
   { re: /(?:陰莖|肉棒|鸡巴).{0,4}(?:拔|抽)出|(?:拔|抽)出.{0,4}(?:陰莖|肉棒|鸡巴)/, id: "penis_out", arousal: 4 },
-  { re: /抽出手指|拔出手指|取出手指|把手指抽|手指抽[出離]|抽出來|抽出/, id: "fingers_out", arousal: 3 },
+  { re: /抽出手指|拔出手指|取出手指|把手指抽|手指抽[出離]/, id: "fingers_out", arousal: 3 },
   { re: /跳蛋|按摩器|震動棒/, id: "vibe_in", arousal: 8 },
   { re: /假陰莖|假陽具|按摩棒/, id: "dildo_in", arousal: 10 },
   { re: /小黃瓜/, id: "cucumber_in", arousal: 10 },
@@ -51,13 +51,14 @@ const BODY_HITS = [
   { re: /(?:陰莖|肉棒|鸡巴).{0,6}(?:插|進|入)|(?<!手指)插入|抽送|做愛|幹[她妳]/, id: "penis_in", arousal: 14 },
   { re: /子宮|宮口/, id: "uterus", arousal: 12 },
   { re: /陰蒂/, id: "clit", arousal: 11 },
-  { re: /陰唇|小穴|私處|下面/, id: "labia", arousal: 10 },
-  { re: /陰道|穴口|裡面/, id: "vagina", arousal: 12 },
+  // 「下面」「裡面」閒聊太常見（「你下面要做什麼」「裡面有位子」）：要有動手／看的字在前，或後面接濕／癢／敏感才算
+  { re: /陰唇|小穴|私處|(?:摸|揉|舔|插|弄|碰|看|扒|掰|蹭|磨|親)(?:一下)?(?:妳|你|她)?(?:的)?下面|(?:妳|你|她)(?:的)?下面(?:好|很|都|已經|是不是|有沒有)?(?:濕|水|癢|流|敏感)/, id: "labia", arousal: 10 },
+  { re: /陰道|穴口|(?:插|伸|塞|放|頂|扣|摳|舔)(?:進|到)?(?:妳|你|她)?(?:的)?裡面/, id: "vagina", arousal: 12 },
   { re: /屁眼|肛門|後穴/, id: "anus", arousal: 9 },
   { re: /乳頭|乳尖/, id: "nipple", arousal: 9 },
   { re: /乳房|胸部|奶子|揉胸/, id: "breast", arousal: 6 },
-  { re: /親|吻|嘴唇/, id: "lips", arousal: 4 },
-  { re: /腰|細腰|摸腰/, id: "waist", arousal: 3 },
+  { re: /(?<![母父雙相])親(?!愛|人|戚|切|自|近|眼|生|子|友|身|手|和)|吻|嘴唇/, id: "lips", arousal: 4 },
+  { re: /(?:摟|抱|摸|揉|捏|攬|環)(?:住|著)?(?:妳|你|她)?(?:的)?(?:小)?腰|細腰|腰好細|腰身|小蠻腰/, id: "waist", arousal: 3 },
   { re: /大腿|腿根|撫大腿/, id: "thigh", arousal: 5 },
   { re: /屁股|臀部|揉臀/, id: "butt", arousal: 6 },
 ];
@@ -600,7 +601,12 @@ export function resetOpenness(who) {
 }
 
 /** 台詞裡真的有「動手」的動詞才算正在碰她（避免「裡面」「下面」等閒聊字眼誤當成刺激）。 */
-const TOUCH_VERB_RE = /摸|揉|插|舔|吸|吮|扣|摳|捏|碰|弄|按|頂|塞|含|吻|親(?!愛|人|戚|切|自|近|眼)|抱|摟|撫|搓|撥|夾|幹|操|抽|射|拔|放進|伸進|震|蹭|磨|拍|咬|掰|撐開|進去|進入|取出/;
+export const TOUCH_VERB_RE = /摸|揉|插|舔|吸|吮|扣|摳|捏|碰|弄|按|頂|塞|含|吻|親(?!愛|人|戚|切|自|近|眼)|抱|摟|撫|搓|撥|夾|幹|操|抽|射|拔|放進|伸進|震|蹭|磨|拍|咬|掰|撐開|進去|進入|取出/;
+
+/** 台詞裡有沒有「動手」的動詞（言語調戲＝命中部位但沒有動手）。 */
+export function textHasTouchVerb(text) {
+  return TOUCH_VERB_RE.test(String(text || ""));
+}
 
 /** 依使用者台詞輕觸更新身體。回傳是否命中。未命中不改性奮。 */
 export function applyBodyFromUserText(who, text) {

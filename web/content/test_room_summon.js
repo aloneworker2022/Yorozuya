@@ -19,7 +19,8 @@ import {
   clearArousalCool,
   decayArousalCool,
   resetOpenness,
-} from "./body_state.js?v=16";
+} from "./body_state.js?v=17";
+import { classifyUserText, applyVerbalTease, verbalTeasePrompt } from "./verbal_tease.js?v=1";
 import {
   effectiveStun,
   calcStun,
@@ -6656,6 +6657,19 @@ async function deliverUserTalk(text, opts = {}) {
   ensureInvasion(girl);
   player = ensurePlayer(player);
 
+  // 言語調戲／打字動手（verbal_tease.js）：動手而且對得上一顆已解鎖的調戲鈕 → 當成按那顆鈕；
+  // 只提到部位沒動手、或那顆鈕還沒解鎖／現在不能調戲 → 言語調戲（性奮小加、上限＝剛好解鎖摸陰唇、侵犯微漲、不算刺激）
+  let verbalTease = null;
+  if (!opts.actId && !opts.skipBody) {
+    const cls = classifyUserText(raw);
+    if (cls.kind === "touch" && cls.actId && canTease(player) && actLockState(girl, cls.actId).ok) {
+      opts = { ...opts, actId: cls.actId, typedAct: true };
+      pushDebug(`打字動手 → 當成按「${TALK_ACTS.find((a) => a.id === cls.actId)?.label || cls.actId}」`);
+    } else if (cls.kind === "verbal" || (cls.kind === "touch" && cls.actId)) {
+      verbalTease = { hit: cls.hit, blocked: cls.kind === "touch" };
+    }
+  }
+
   if (opts.actId) {
     if (!canTease(player)) {
       const status = $("summon-status");
@@ -6770,6 +6784,16 @@ async function deliverUserTalk(text, opts = {}) {
           // 規則1：沒在正戲、只因興奮洩精 → 中央提示 1 秒
           if (!inSex) showClimaxTip("射精了！");
         }
+      } else if (verbalTease) {
+        const vt = applyVerbalTease(girl, verbalTease.hit, {
+          affection: Number(girl.affection) || 0,
+          stage: girl.stage || "stranger",
+          dazed: STUN_RECKONING_ON && undressDazed(girl),
+        });
+        verbalTease.res = vt;
+        textBodyHit = true;
+        pushDebug(`言語調戲（${verbalTease.hit.id}${verbalTease.blocked ? "・想動手但還沒解鎖" : ""}）性奮 +${vt.gain}（上限 ${vt.cap}）→ ${vt.arousal}・侵犯 +${vt.invAdded} → ${vt.invasion}/${INVASION_MAX}`);
+        renderDebug();
       } else {
         const hit = applyBodyFromUserText(girl, raw);
         textBodyHit = !!hit;
@@ -6913,6 +6937,15 @@ async function deliverUserTalk(text, opts = {}) {
       }
     }
 
+    if (verbalTease?.res?.fled) {
+      const fleeNote = `（旁白：侵犯感爆滿——${girl.name}推開你，慌忙逃離了房間。）`;
+      lines.push({ role: "assistant", content: fleeNote });
+      await typeLine("旁白", fleeNote);
+      persistRoom();
+      await fleeRoomFromInvasion();
+      return;
+    }
+
     // 情緒餘溫：本回合的侵犯／挑逗／冒犯在 finally 記下（LLM 失敗也記），下一句起帶進 prompt
     // 只有語氣真的走「半推半就」（增益 ≤ tokenCap）才把情緒記成羞燥
     // 事後算帳（閘門開）：失神／痙攣中的動作不記情緒，情緒交給回神結算
@@ -6950,7 +6983,8 @@ async function deliverUserTalk(text, opts = {}) {
         const protestExtra = actId ? protestPromptBlock(invAdded, { invasion: invTotal, ...invToneOpts }) : "";
         // afterglowPromptLines 已在 talkSystem；若仍餘韻（僅時間門檻）再塞一層
         const agLines = inAfterglow(girl) ? afterglowPromptLines(girl).join("\n") : "";
-        const extra = [protestExtra, agLines].filter(Boolean).join("\n") || null;
+        const verbalExtra = verbalTease ? verbalTeasePrompt(verbalTease.hit, { blocked: verbalTease.blocked }) : "";
+        const extra = [protestExtra, agLines, verbalExtra].filter(Boolean).join("\n") || null;
         promptActId = actId;
         let reply = "";
         try {
