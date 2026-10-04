@@ -7,6 +7,8 @@ export const SEMEN_MIN_TEASE_CC = 6;
 export const CLIMAX_MAX = 20;
 /** 精液回復：每小時 +1 cc（真實時間）。 */
 export const SEMEN_REGEN_CC_PER_HOUR = 1;
+/** 精液是負的（肏到透支）：每 5 小時才 +1 cc，回到 ≥0 後恢復每小時 +1（2026-10-04 使用者）。 */
+export const SEMEN_NEG_REGEN_HOURS = 5;
 
 /** 各動作對玩家興奮的貢獻（max=20，約 4–10 次可射） */
 export const CLIMAX_BY_ACT = {
@@ -61,16 +63,32 @@ function normalizePlayer(player) {
   return p;
 }
 
-/** 依真實時間補精液（1 cc / hour）。不呼叫 ensurePlayer，避免循環。 */
+/**
+ * 依真實時間補精液：負的時候每 5 小時 +1 cc，補到 0 之後每小時 +1 cc（上限 20）。不呼叫 ensurePlayer，避免循環。
+ * lastSemenAt 只往前推「用掉的整格時間」，零頭留到下次。
+ */
 export function regenSemen(player, now = Date.now()) {
   const p = normalizePlayer(player);
-  const last = Number(p.lastSemenAt) || now;
-  const elapsed = Math.max(0, now - last);
-  const hours = elapsed / 3600000;
-  const gain = Math.floor(hours * SEMEN_REGEN_CC_PER_HOUR);
-  if (gain > 0) {
-    p.semenCc = clamp(p.semenCc + gain, SEMEN_FLOOR_CC, SEMEN_MAX_CC);
-    p.lastSemenAt = last + gain * 3600000;
+  let t = Number(p.lastSemenAt) || now;
+  let cc = p.semenCc;
+  if (now <= t) return p;
+  const negMs = SEMEN_NEG_REGEN_HOURS * 3600000;
+  const posMs = 3600000 / SEMEN_REGEN_CC_PER_HOUR;
+  if (cc < 0) {
+    const n = Math.min(-cc, Math.floor((now - t) / negMs));
+    cc += n;
+    t += n * negMs;
+  }
+  if (cc >= 0) {
+    const n = Math.floor((now - t) / posMs);
+    if (n > 0) {
+      cc = Math.min(SEMEN_MAX_CC, cc + n);
+      t += n * posMs;
+    }
+  }
+  if (cc !== p.semenCc || t !== p.lastSemenAt) {
+    p.semenCc = clamp(cc, SEMEN_FLOOR_CC, SEMEN_MAX_CC);
+    p.lastSemenAt = t;
   }
   return p;
 }

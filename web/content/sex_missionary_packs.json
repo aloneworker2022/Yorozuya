@@ -64,6 +64,13 @@
         "ref": "",
         "url": "",
         "poseDenoise": 0.55
+      },
+      "bloodcum": {
+        "prompt": "1man, 1girl, pov, first-person view, faceless shadow man, black semi-transparent silhouette, translucent dark silhouette, from above, front view, missionary, girl lying on back, on bed, white bed sheets, legs spread, spread legs, knees up, nude, completely nude, bare breasts, nipples, pussy, labia, pussy juice, shadow male hands, shadow male hands holding her thighs, hands on her thighs, sex, vaginal, penis inside, deep penetration, cum inside, creampie, internal ejaculation, blood semen, bloody semen, cum mixed with blood, pinkish red cum, pink cum, red-tinged semen, bloody semen overflowing from pussy, pink cum dripping, dazed, trance, rolling eyes, unfocused eyes, empty eyes, slight ahegao, open mouth, drooling, saliva, heavy breathing, panting, trembling, twitching, convulsing, blush, sweat",
+        "negative": "cum on face, facial, cum on body, bukkake, pure white cum, gore, wound, injury, realistic man, male face, detailed male face, realistic male skin, male eyes, hairy male body, extra penis, multiple penises, multiple girls, panties, bra, clothes, dressed, underwear, lingerie, shirt, dress, skirt, jacket, coat, uniform, hoodie, covered breasts, text, watermark, ugly, extra fingers, bad hands, extra legs",
+        "ref": "",
+        "url": "",
+        "poseDenoise": 0.55
       }
     }
   ],

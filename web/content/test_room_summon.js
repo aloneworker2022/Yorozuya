@@ -76,7 +76,7 @@ import {
   grantSemen as grantPlayerSemen,
   spendSemen,
   SEMEN_MAX_CC,
-} from "./player_state.js?v=9";
+} from "./player_state.js?v=10";
 import { ensureOpenness, getOpenness } from "./openness.js?v=1";
 import {
   ensureInvasion,
@@ -137,7 +137,7 @@ import {
   SEX_POSE_PROMPT_REV,
   pickSexThrustSlot,
   sexThrustSlotOfUrl,
-} from "./sex_pose_packs.js?v=8";
+} from "./sex_pose_packs.js?v=9";
 import {
   THRUST,
   newThrustSession,
@@ -160,7 +160,8 @@ import {
   scrubHusband,
   withTimeout,
   stunMixLine,
-} from "./sex_thrust.js?v=4";
+  isBloodShot,
+} from "./sex_thrust.js?v=5";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -868,15 +869,16 @@ function renderSexHud() {
   };
   const lim = THRUST.PASSION_ORGASM_ABOVE;
   set("passion", (s.passion / (lim + 1)) * 100, `${s.passion}/${lim}`, s.passion >= lim - 3);
-  set("excite", s.excite, `${s.excite}/${THRUST.EXCITE_CUM_AT}`, s.excite >= 80);
+  set("excite", (s.excite / THRUST.EXCITE_CUM_AT) * 100, `${s.excite}/${THRUST.EXCITE_CUM_AT}`, s.excite >= THRUST.EXCITE_CUM_AT * 0.8);
   set("semen", (Math.max(0, s.semen) / SEMEN_MAX_CC) * 100, `${s.semen}cc`, semenDanger(s));
   const warn = el.querySelector(".sx-warn");
   const danger = semenDanger(s);
   warn.hidden = !danger && !s.ended;
   warn.textContent = s.ended
-    ? "精液見底，這一輪結束。"
+    ? (sexChat.bloodShots ? `射出血精了（${s.semen}cc），這一輪結束。` : "精液見底，這一輪結束。")
     : s.semen < THRUST.SEMEN_END_BELOW
       ? `⚠ 精液已見底（${s.semen}cc）：射一次這一輪就結束`
+      : isBloodShot(s.semen) ? `⚠ 精液 ${s.semen}cc：再射會射出血精，這一輪會結束`
       : danger ? `⚠ 精液 ${s.semen}cc：再射一次就見底，這一輪會結束` : "";
 }
 
@@ -1053,9 +1055,10 @@ function thrustFact() {
   const news = sexChat.news.splice(0);
   const bits = [`${sexPosePhrase(sexChat.pose)}，正一下一下肏著你（第 ${s.thrusts} 下），陰莖在你裡面進進出出。`];
   if (news.includes("orgasm")) bits.push(THRUST.SQUIRT_IN_FLOW ? "你正在高潮，潮吹、全身痙攣。" : "你正在高潮，全身痙攣、裡面一陣陣夾緊他。");
-  if (news.includes("cum")) bits.push("他剛剛射在你裡面，很燙。");
+  if (news.includes("bloodcum")) bits.push("他剛剛射在你裡面，可是射出來的是混著血的粉紅色精液（血精，他射過頭了），你嚇了一跳、很擔心他，但身體還在被肏的餘韻裡。");
+  else if (news.includes("cum")) bits.push("他剛剛射在你裡面，很燙。");
   if (!news.includes("orgasm") && s.passion >= THRUST.PASSION_ORGASM_ABOVE - 4) bits.push("你快要高潮了。");
-  return { text: bits.join(""), event: news.includes("orgasm") ? "orgasm" : news.includes("cum") ? "cum" : "" };
+  return { text: bits.join(""), event: news.includes("orgasm") ? "orgasm" : news.includes("bloodcum") ? "bloodcum" : news.includes("cum") ? "cum" : "" };
 }
 
 async function requestThrustReply(seq) {
@@ -1115,6 +1118,7 @@ function newThrustPump() {
         return;
       }
       flushThrustDeferred("reply");
+      if (sexChat?.finishAfterReply && !sexChat.pump.busy && !sexChat.pump.pendingSeq) finishSexChatRound();
     },
   });
 }
@@ -1405,6 +1409,7 @@ async function sexChatToJoin() {
   if (o?.vagina) o.vagina.stuffed = "penis";
   syncSexSemen();
   const dry = sexChat.sess.semen < THRUST.SEMEN_END_BELOW ? `精液已見底（${sexChat.sess.semen}cc），射一次這一輪就結束。` : "";
+  if (isBloodShot(sexChat.sess.semen)) prepBloodcum(who);
   const where = sexChat.pose === "doggy" ? "抵在她翹起的屁股中間" : "抵在她張開的腿間";
   sexChatNarrate(`（你掏出陰莖，${where}。按「肏」開始。${dry}）`);
   renderSexHud();
@@ -1471,19 +1476,39 @@ function doThrust() {
     const o = ensureBody(who)?.organs;
     if (o?.uterus) o.uterus.semen = Math.min(3, (Number(o.uterus.semen) || 0) + 1);
     noteAfterglow(who, "his", { ejac: "creampie" });
-    sexChat.news.push("cum");
-    // 射精 → 立刻換 ⑥ 內射圖（留到下一下肏）
+    sexChat.news.push(r.blood ? "bloodcum" : "cum");
+    if (r.blood) sexChat.bloodShots = (sexChat.bloodShots || 0) + 1;
+    // 射精 → 立刻換 ⑥ 內射圖（留到下一下肏）；血精 → ⑦ 血精圖（快取有就直接用，沒有先用內射圖、產好再換）
     sexChat.eventHold = true;
     sexChat.pendingSwitch = false;
-    void ensureSexStepUrl(who, sexChat.pose, "cum", sexChat.packId).then((p) => {
-      if (!sexChat || !p?.url || !sexChat.eventHold || sexChat.orgasmLock) return;
-      setSexChatImage(p.url, "cum");
-      sexChat.eventsShown.push("cum");
+    const ejacSeq = seq;
+    sexChat.ejacSeq = ejacSeq;
+    const showEvent = (p, st) => {
+      if (!sexChat || !p?.url || !sexChat.eventHold || sexChat.orgasmLock || sexChat.ejacSeq !== ejacSeq) return false;
+      setSexChatImage(p.url, st);
+      sexChat.eventsShown.push(st);
       renderThrustDebug();
-    });
-    lines.push({ role: "user", content: `（你射在她裡面了——精液剩 ${s.semen} cc。）` });
-    pushDebug(`肏：射精（第 ${s.ejacs} 次）精液 ${r.semenBefore}→${s.semen}cc${s.ended ? "，見底結束" : ""}`);
+      return true;
+    };
+    if (r.blood) {
+      const bloodJob = ensureSexStepUrl(who, sexChat.pose, "bloodcum", sexChat.packId);
+      void Promise.race([bloodJob, waitMs(300).then(() => null)]).then(async (quick) => {
+        if (quick?.url && showEvent(quick, "bloodcum")) return;
+        showEvent(await ensureSexStepUrl(who, sexChat?.pose, "cum", sexChat?.packId || ""), "cum");
+        const late = await bloodJob;
+        if (sexChat?.imgStep === "cum") showEvent(late, "bloodcum");
+      });
+      showClimaxTip("射出血精了……");
+    } else {
+      void ensureSexStepUrl(who, sexChat.pose, "cum", sexChat.packId).then((p) => showEvent(p, "cum"));
+    }
+    lines.push({ role: "user", content: r.blood
+      ? `（你射在她裡面了——可是精液不夠，射出來的是混著血的粉紅色血精。精液剩 ${s.semen} cc。）`
+      : `（你射在她裡面了——精液剩 ${s.semen} cc。）` });
+    pushDebug(`肏：${r.blood ? "血精" : "射精"}（第 ${s.ejacs} 次）精液 ${r.semenBefore}→${s.semen}cc${s.ended ? "，見底結束" : ""}`);
   }
+  // 下一射會是血精 → 背景先產血精圖（同一組；只要一次）
+  if (!s.ended && isBloodShot(s.semen)) prepBloodcum(who);
   renderSexHud();
   renderThrustDebug();
   // 動畫（藏肏）→ 播完再顯；射精事件圖在動畫後
@@ -1497,7 +1522,7 @@ function doThrust() {
     } finally {
       if (sexChat) {
         sexChat.animBusy = false;
-        if (r.ejac) showClimaxTip(s.ended ? "射在裡面了……（見底）" : "射在裡面了！");
+        if (r.ejac && !r.blood) showClimaxTip(s.ended ? "射在裡面了……（見底）" : "射在裡面了！");
         if (sexChat.sess.ended) finishSexChatRound();
         renderSexChatBar();
       }
@@ -1505,15 +1530,42 @@ function doThrust() {
   })();
   // 她的話：跟動畫脫鉤；換圖／高潮等她那句打完（最多等 DEFER_MAX_MS）
   if (!sexChat.deferTimer) sexChat.deferTimer = setTimeout(() => sexChat && flushThrustDeferred("timeout"), THRUST.DEFER_MAX_MS);
-  sexChat.pump.press(seq);
+  // 這一射結束這一輪（例如血精）→ 她對這一射的反應一定要說完（不被 0.8 秒規則丟掉），說完才出結束旁白
+  if (s.ended) sexChat.pump.urgent(seq);
+  else sexChat.pump.press(seq);
   persistRoom();
   return r;
 }
 
+function prepBloodcum(who = girl) {
+  if (!sexChat || sexChat.bloodPrepped || !who) return;
+  sexChat.bloodPrepped = true;
+  void ensureSexStepUrl(who, sexChat.pose, "bloodcum", sexChat.packId);
+}
+
+/** 這一輪結束：她對最後一射的那句先說完（最多等到那句打完），停一下再出結束旁白。 */
 function finishSexChatRound() {
-  if (!sexChat) return;
-  sexChat.pump?.close();
-  sexChatNarrate(`（你射乾了——這一場射了 ${sexChat.sess.ejacs} 次，她高潮 ${sexChat.sess.orgasms} 次。這一輪結束；按「回到對話」。）`);
+  if (!sexChat || sexChat.finished) return;
+  const pump = sexChat.pump;
+  if (pump && (pump.busy || pump.pendingSeq)) {
+    sexChat.finishAfterReply = true;
+    renderSexHud();
+    renderSexChatBar();
+    return;
+  }
+  sexChat.finished = true;
+  sexChat.finishAfterReply = false;
+  pump?.close();
+  const s = sexChat.sess;
+  const text = sexChat.bloodShots
+    ? `（你連血都射出來了——混著血的粉紅色精液從她裡面流出來。這一場射了 ${s.ejacs} 次，她高潮 ${s.orgasms} 次。精液 ${s.semen}cc：負的時候每 5 小時才補 1cc。這一輪結束；按「回到對話」。）`
+    : `（你射乾了——這一場射了 ${s.ejacs} 次，她高潮 ${s.orgasms} 次。這一輪結束；按「回到對話」。）`;
+  const delay = sexChat.lastReply ? 1500 : 0;
+  const sc = sexChat;
+  setTimeout(() => {
+    if (sexChat !== sc) return;
+    sexChatNarrate(text);
+  }, delay);
   renderSexHud();
   renderSexChatBar();
 }
@@ -9694,6 +9746,7 @@ window.RoomCompanion = {
       thrustImg: sexChat.thrustImg, animBusy: sexChat.animBusy, firstRoundDone: sexChat.firstRoundDone,
       sess: { ...sexChat.sess }, switches: sexChat.switches, pendingSwitch: sexChat.pendingSwitch,
       eventsShown: [...sexChat.eventsShown], eventHold: sexChat.eventHold, orgasmLock: !!sexChat.orgasmLock, aiState: sexChat.aiState,
+      bloodShots: sexChat.bloodShots || 0, finished: !!sexChat.finished,
       opening: sexChat.opening, openingLine: sexChat.openingLine, openingIntended: sexChat.openingIntended || "", openingDazed: sexChat.openingDazed || "", openingSource: sexChat.openingSource, openingBand: sexChat.openingBand,
       started: [...(sexChat.pump?.started || [])], done: [...(sexChat.pump?.done || [])], dropped: sexChat.pump?.dropped || 0,
       lastAnim: sexChat.lastAnim, animSource: sexChat.animSource, lastAnimHideMs: sexChat.lastAnimHideMs || 0, lastReply: sexChat.lastReply, lastFlush: sexChat.lastFlush,

@@ -24,7 +24,18 @@ await t("玩家精液可到負：spendSemen −6；ensurePlayer／回復不把�
   const r = P.spendSemen(p, 6);
   assert.equal(r.before, 4); assert.equal(r.after, -2);
   p = P.ensurePlayer(r.player); assert.equal(p.semenCc, -2);
-  p = P.regenSemen({ ...p, lastSemenAt: Date.now() - 3 * 3600000 }); assert.equal(p.semenCc, 1);
+  // 負的時候每 5 小時才 +1；回到 0 之後每小時 +1
+  const H = 3600000, now = Date.now();
+  assert.equal(P.SEMEN_NEG_REGEN_HOURS, 5);
+  assert.equal(P.regenSemen({ ...p, lastSemenAt: now - 3 * H }, now).semenCc, -2);
+  assert.equal(P.regenSemen({ ...p, lastSemenAt: now - 5 * H }, now).semenCc, -1);
+  assert.equal(P.regenSemen({ ...p, lastSemenAt: now - 10 * H }, now).semenCc, 0);
+  assert.equal(P.regenSemen({ ...p, lastSemenAt: now - 13 * H }, now).semenCc, 3, "10h 補到 0，再 3h +3");
+  const half = P.regenSemen({ semenCc: -4, lastSemenAt: now - 7 * H }, now);
+  assert.equal(half.semenCc, -3); assert.equal(now - half.lastSemenAt, 2 * H, "零頭留著");
+  assert.equal(P.regenSemen({ semenCc: 5, lastSemenAt: now - 3 * H }, now).semenCc, 8, "正的照每小時 +1");
+  assert.equal(P.regenSemen({ semenCc: 19, lastSemenAt: now - 10 * H }, now).semenCc, 20);
+  p = P.regenSemen({ ...p, lastSemenAt: now - 15 * H }, now); assert.equal(p.semenCc, 5);
   assert.equal(P.ensurePlayer({ semenCc: -999 }).semenCc, P.SEMEN_FLOOR_CC);
   assert.equal(P.canTease({ semenCc: -2, lastSemenAt: Date.now() }), false);
   // 調戲射精照舊不會把正的扣到負
@@ -58,7 +69,7 @@ await t("一下：激情 +1～2、興奮 +5～8、感情 +1；機率看性奮與
   assert.ok(T.passionTwoChance(100, "pathological_wife") <= 0.9 && T.passionTwoChance(0, "stranger") >= 0.1);
   assert.equal(T.exciteGain(() => 0), 5); assert.equal(T.exciteGain(() => 0.9999), 8);
 });
-await t("興奮到 100 → 射精、歸零、精液 −6；18→12→6→0 第三次見底結束；危險提示", () => {
+await t("興奮到 20 → 射精、歸零、精液 −6；18→12→6→0 第三次見底結束；危險提示", () => {
   const s = T.newThrustSession({ semenCc: 18 });
   const rng = seq(0.99, 0.99, 0.99); // 激情 1、興奮 8、不換圖
   const ejacs = [];
@@ -68,7 +79,9 @@ await t("興奮到 100 → 射精、歸零、精液 −6；18→12→6→0 第�
     if (r.ejac) ejacs.push({ at: s.thrusts, semen: r.semenAfter, danger: r.danger, ended: r.ended });
   }
   assert.deepEqual(ejacs.map((e) => e.semen), [12, 6, 0]);
-  assert.equal(ejacs[0].at, 13); // 8×13=104 ≥100
+  assert.equal(T.THRUST.EXCITE_CUM_AT, 20);
+  assert.equal(ejacs[0].at, 3); // 8×3=24 ≥20
+  assert.deepEqual(ejacs.map((e) => e.at), [3, 6, 9]);
   assert.deepEqual(ejacs.map((e) => e.danger), [false, true, true]);
   assert.deepEqual(ejacs.map((e) => e.ended), [false, false, true]);
   assert.equal(s.excite, 0);
@@ -181,6 +194,20 @@ await t("失神開場：大部分拆碎（weave）＋最後一小段聽得懂（
 await t("局部動畫：第 4 幀只留 0.4 秒；預載最多等 1.5 秒", () => {
   assert.equal(T.THRUST.ANIM_LINGER_MS, 400);
   assert.equal(T.THRUST.ANIM_PRELOAD_MAX_MS, 1500);
+});
+
+await t("血精：這一射讓精液變負（射前 <6）才算；20→14→8→2→−4 只有最後一射是血精；負的進來第一射就是", () => {
+  assert.equal(T.isBloodShot(6), false); assert.equal(T.isBloodShot(5), true); assert.equal(T.isBloodShot(0), true); assert.equal(T.isBloodShot(-3), true);
+  const s = T.newThrustSession({ semenCc: 20 });
+  const shots = [];
+  while (!s.ended) { s.excite = 19; const r = T.applyThrust(s, { rng: () => 0.99 }); if (r.ejac) shots.push([r.semenAfter, r.blood]); }
+  assert.deepEqual(shots, [[14, false], [8, false], [2, false], [-4, true]]);
+  const neg = T.newThrustSession({ semenCc: -3 }); neg.excite = 19;
+  const r = T.applyThrust(neg, { rng: () => 0.99 });
+  assert.equal(r.blood, true); assert.equal(r.semenAfter, -9); assert.equal(r.ended, true);
+  const nb = T.applyThrust(T.newThrustSession({ semenCc: 10 }), { rng: () => 0.99 });
+  assert.equal(nb.ejac, false); assert.equal(nb.blood, false);
+  assert.ok(T.fallbackMoan("bloodcum").includes("血"));
 });
 
 function fakePump({ replyMs = 100, typeMs = 50 } = {}) {

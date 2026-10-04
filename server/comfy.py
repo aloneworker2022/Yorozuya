@@ -160,7 +160,7 @@ for _s in SEX_POSE_SHOTS:
 #   _join 玩家加入：POV＋黑色半透明影子男（傳教士抓大腿／後背抓臀）、龜頭頂陰唇（直圖）
 # 之後各步（同 _join 的 tease／nude 管線、直圖）：_half 插一半、_full 全插入（兩者前端已停用）、_thrust 抽插（2026-10-04 肏）、_orgasm 她高潮、_squirt 潮吹、_cum 內射。
 # （_tip 前端已停用，伺服器仍認得，舊圖組不會壞。）
-SEX_CHAIN_STEPS = ("join", "half", "full", "thrust", "orgasm", "squirt", "cum")
+SEX_CHAIN_STEPS = ("join", "half", "full", "thrust", "orgasm", "squirt", "cum", "bloodcum")  # bloodcum＝血精（2026-10-04，精液透支時的內射）
 SEX_TIP_SHOTS = ("sex_missionary_tip", "sex_doggy_tip")
 SEX_JOIN_SHOTS = tuple(f"sex_{p}_{st}" for p in ("missionary", "doggy") for st in SEX_CHAIN_STEPS)
 # ③ 抽插的變體格（2026-10-04 flow2）：每組圖一格，各自一個檔 {id}_sex_<pose>_thrust2..6.png，肏時隨機換。

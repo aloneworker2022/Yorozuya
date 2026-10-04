@@ -38,8 +38,8 @@ export const SEX_POSES = {
   },
 };
 
-/** 做愛步驟（全部，含停用的）：open 開場 → (tip 局部，停用) → join 玩家加入 → (half／full 停用) → thrust 抽插 → orgasm 她高潮 → squirt 潮吹 → cum 內射。 */
-export const SEX_STEPS = ["open", "tip", "join", "half", "full", "thrust", "orgasm", "squirt", "cum"];
+/** 做愛步驟（全部，含停用的）：open 開場 → (tip 局部，停用) → join 玩家加入 → (half／full 停用) → thrust 抽插 → orgasm 她高潮 → squirt 潮吹 → cum 內射 → bloodcum 血精（精液透支時的內射）。 */
+export const SEX_STEPS = ["open", "tip", "join", "half", "full", "thrust", "orgasm", "squirt", "cum", "bloodcum"];
 /** 停用的步驟（程式保留；不進順序、編輯器分頁、預產）。② 局部 2026-10-03 使用者測完停用；插一半／全插入 2026-10-04 換成一格「抽插」。 */
 export const SEX_STEP_DISABLED = new Set(["tip", "half", "full"]);
 /** 實際播放順序。 */
@@ -56,6 +56,7 @@ export const SEX_STEP_META = {
   orgasm: { key: "orgasm", label: "她高潮", short: "高潮", hint: "她高潮：頭往後仰、吐舌、阿嘿顏、痙攣（後背：抬頭後仰、仍不看鏡頭）" },
   squirt: { key: "squirt", label: "潮吹", short: "潮吹", hint: "插著時潮吹（像尿一樣噴出來）" },
   cum: { key: "cum", label: "內射", short: "內射", hint: "玩家射精：預設內射（creampie），精液從陰道溢出" },
+  bloodcum: { key: "bloodcum", label: "血精", short: "血精", hint: "精液透支（這一射會讓精液變負）時的內射：混著血的粉紅色精液從陰道溢出；沒產就用內射圖" },
 };
 // 依實際順序補 next／tab（① 開場 ② 加入 ③ 半插…）；停用的步驟也補 next（接到下一個啟用的），但不顯示
 {
@@ -67,7 +68,7 @@ export const SEX_STEP_META = {
   });
 }
 /** 開場以外各步的預設版本（快取圖作廢用；開場見 SEX_POSE_PROMPT_REV）。 */
-export const SEX_STEP_PROMPT_REV = { tip: 1, join: 1, half: 1, full: 2, thrust: 1, orgasm: 1, squirt: 1, cum: 1 };
+export const SEX_STEP_PROMPT_REV = { tip: 1, join: 1, half: 1, full: 2, thrust: 1, orgasm: 1, squirt: 1, cum: 1, bloodcum: 1 };
 
 /** 下一個啟用的步驟（最後一步回 ""）。 */
 export function nextSexStep(step) {
@@ -260,6 +261,7 @@ const SEX_DOGGY_ORGASM = "female orgasm, head lifted, head tilted back, arched b
 const SEX_SQUIRT_BEAT = "squirting, female ejaculation, liquid spraying from pussy, pee-like spray, splashing, wet bed sheets";
 const SEX_CUM_BEAT = "cum inside, creampie, internal ejaculation, cum overflowing from pussy, cum dripping, excessive cum";
 const SEX_DOGGY_SHAKE = "trembling, twitching, heavy breathing, sweat";
+const SEX_BLOOD_CUM_BEAT = "cum inside, creampie, internal ejaculation, blood semen, bloody semen, cum mixed with blood, pinkish red cum, pink cum, red-tinged semen, bloody semen overflowing from pussy, pink cum dripping";
 
 /** 開場以外各步的預設正向（只寫姿勢／取景／男方／這一拍；人設與 nude 由伺服器 garment=nude 合併）。 */
 export function defaultSexStepPrompt(pose, step) {
@@ -305,6 +307,7 @@ export function defaultSexStepPrompt(pose, step) {
     orgasm: [SEX_IN_BEAT, doggy ? SEX_DOGGY_ORGASM : SEX_ORGASM_FACE],
     squirt: [SEX_IN_BEAT, SEX_SQUIRT_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_ORGASM_FACE],
     cum: [SEX_IN_BEAT, SEX_CUM_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_ORGASM_FACE],
+    bloodcum: [SEX_IN_BEAT, SEX_BLOOD_CUM_BEAT, doggy ? SEX_DOGGY_SHAKE : SEX_DAZED_FACE],
     thrust: [SEX_THRUST_BEAT, doggy ? SEX_THRUST_DOGGY : SEX_THRUST_MISSIONARY, doggy ? SEX_DOGGY_SHAKE : SEX_DAZED_FACE],
   }[st] || [];
   return [SEX_SHADOW_MAN, ...body, ...beat, doggy ? "on bed, white bed sheets" : ""].filter(Boolean).join(", ");
@@ -322,6 +325,7 @@ export function defaultSexStepNegative(pose, step) {
   if (st === "half") bits.push("fully inserted, balls deep");
   if (st === "full") bits.push("visible penis shaft, penis outside, half inserted, partially inserted, gap between bodies");
   if (st === "cum") bits.push("cum on face, facial, cum on body, bukkake");
+  if (st === "bloodcum") bits.push("cum on face, facial, cum on body, bukkake, pure white cum, gore, wound, injury");
   if (st === "thrust") bits.push("penis outside, not inserted");
   bits.push(SEX_STEP_NO_REAL_MAN);
   if (pose === "doggy") {

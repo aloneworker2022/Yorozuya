@@ -14,10 +14,10 @@ t("姿勢：自己脫→傳教士、你脫→後背、沒記→傳教士", () =>
   assert.equal(M.sexPoseFor({}), "missionary");
 });
 t("步驟：局部／半插／全插停用（程式保留），啟用＝開場→加入→抽插→高潮→潮吹→內射", () => {
-  assert.deepEqual(M.SEX_STEPS, ["open", "tip", "join", "half", "full", "thrust", "orgasm", "squirt", "cum"]);
+  assert.deepEqual(M.SEX_STEPS, ["open", "tip", "join", "half", "full", "thrust", "orgasm", "squirt", "cum", "bloodcum"]);
   assert.deepEqual([...M.SEX_STEP_DISABLED].sort(), ["full", "half", "tip"]);
-  assert.deepEqual(M.SEX_ACTIVE_STEPS, ["open", "join", "thrust", "orgasm", "squirt", "cum"]);
-  assert.deepEqual(M.SEX_ACTIVE_STEPS.map((s) => M.SEX_STEP_META[s].tab), ["① 開場", "② 加入", "③ 抽插", "④ 高潮", "⑤ 潮吹", "⑥ 內射"]);
+  assert.deepEqual(M.SEX_ACTIVE_STEPS, ["open", "join", "thrust", "orgasm", "squirt", "cum", "bloodcum"]);
+  assert.deepEqual(M.SEX_ACTIVE_STEPS.map((s) => M.SEX_STEP_META[s].tab), ["① 開場", "② 加入", "③ 抽插", "④ 高潮", "⑤ 潮吹", "⑥ 內射", "⑦ 血精"]);
   assert.equal(M.nextSexStep("open"), "join");
   assert.equal(M.nextSexStep("join"), "thrust");
   assert.equal(M.nextSexStep("tip"), "join");
@@ -105,5 +105,21 @@ t("③ 抽插多張變體：格 1＝thrust、格 2..6＝thrust2..6；每組一�
   assert.equal(M.buildSexStepImgBody("doggy", "thrust", null, g, {}, { thrustSlot: 3 }).shot, "sex_doggy_thrust3");
   assert.equal(M.buildSexStepImgBody("doggy", "thrust", null, g, {}, { thrustSlot: 1 }).shot, "sex_doggy_thrust");
   assert.equal(M.buildSexStepImgBody("doggy", "cum", null, g, {}, { thrustSlot: 3 }).shot, "sex_doggy_cum");
+});
+t("⑦ 血精：預設＝內射＋混血粉紅精液；負向擋顏射與純白精液、傷口；舊組自動補；shot sex_<pose>_bloodcum", () => {
+  for (const pose of ["missionary", "doggy"]) {
+    const p = M.defaultSexStepPrompt(pose, "bloodcum");
+    for (const k of ["creampie", "blood semen", "cum mixed with blood", "pinkish red cum", "bloody semen overflowing from pussy", "penis inside", "faceless shadow man"]) assert.ok(p.includes(k), `${pose} lacks ${k}`);
+    const n = neg(pose, "bloodcum");
+    for (const k of ["facial", "pure white cum", "gore", "wound", "male face"]) assert.ok(n.includes(k), `${pose} neg lacks ${k}`);
+    assert.ok(!n.includes("inserted") && !n.includes("blood semen"));
+    const pk = M.normalizeSexPosePack(pose, { id: "old", cum: { prompt: "x" } });
+    assert.equal(pk.bloodcum.prompt, p);
+    assert.equal(M.sexStepShot(pose, "bloodcum"), `sex_${pose}_bloodcum`);
+    assert.ok(M.isSexStepResultUrl(pose, "bloodcum", `/assets/portraits/g_sex_${pose}_bloodcum.png?v=1`));
+    assert.ok(!M.isSexStepResultUrl(pose, "cum", `/assets/portraits/g_sex_${pose}_bloodcum.png?v=1`));
+  }
+  assert.equal(M.SEX_STEP_PROMPT_REV.bloodcum, 1);
+  assert.equal(M.SEX_STEP_META.bloodcum.label, "血精");
 });
 console.log(`${pass} passed`);

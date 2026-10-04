@@ -82,6 +82,7 @@ _SHOT_FILE_SUFS = (
     *(f"sex_{_p}_thrust{_n}" for _p in ("missionary", "doggy") for _n in range(2, 7)),
     "sex_missionary_orgasm", "sex_doggy_orgasm", "sex_missionary_squirt", "sex_doggy_squirt",
     "sex_missionary_cum", "sex_doggy_cum",
+    "sex_missionary_bloodcum", "sex_doggy_bloodcum",
     # 扣陰道／揉子宮口 x-ray 剖面（不分穿衣／裸體，共用一張）
     "tease_vagina_finger", "tease_cervix_rub",
     # 動作圖裸體版（比穿衣版長，先比對）
@@ -124,6 +125,7 @@ SHOT_LABEL_ZH = {
     "sex_missionary_half": "做愛·傳教士插一半", "sex_doggy_half": "做愛·後背插一半",
     "sex_missionary_full": "做愛·傳教士全插入", "sex_doggy_full": "做愛·後背全插入",
     "sex_missionary_thrust": "做愛·傳教士抽插", "sex_doggy_thrust": "做愛·後背抽插",
+    "sex_missionary_bloodcum": "做愛·傳教士血精", "sex_doggy_bloodcum": "做愛·後背血精",
     **{f"sex_{_p}_thrust{_n}": f"做愛·{_z}抽插{_n}" for _p, _z in (("missionary", "傳教士"), ("doggy", "後背")) for _n in range(2, 7)},
     "sex_missionary_orgasm": "做愛·傳教士高潮", "sex_doggy_orgasm": "做愛·後背高潮",
     "sex_missionary_squirt": "做愛·傳教士潮吹", "sex_doggy_squirt": "做愛·後背潮吹",

@@ -4,7 +4,8 @@
  * 每按一下「肏」＝一次抽插：
  *   - 激情度（她）+1～2：拿到 2 的機率看性奮（arousal 0–100）與關係階；激情 >20 → 她高潮（④ 高潮圖；潮吹旗 SQUIRT_IN_FLOW 預設關），
  *     感情 +10，激情只降一點（−3），之後更容易連續高潮。高潮判定在她那句話打完之後（不擋按鈕）。
- *   - 玩家興奮 +5～8：到 100 → 射精（⑥ 內射圖，預設 creampie），興奮歸零。
+ *   - 玩家興奮 +5～8：到 20 → 射精（⑥ 內射圖，預設 creampie），興奮歸零。
+ *     這一射讓精液變負（射完 <0）→ 血精（⑦ 血精圖，沒產就用內射圖；旁白／她的反應跟著變）。
  *   - 精液＝玩家真正剩下的精液（player.semenCc，同一個值；2026-10-04 使用者決定，不再每場 18cc）：每射一次 −6cc（可到負）；
  *     <6 或下一次射完就 <1 → 危險提示；射完 <1 → 這一輪結束。進來時已經 <1：照樣可以進、量條紅字，射一次就結束。
  *   - 每下感情 +1。
@@ -25,7 +26,8 @@ export const THRUST = {
   SEMEN_END_BELOW: 1,
   EXCITE_MIN: 5,
   EXCITE_MAX: 8,
-  EXCITE_CUM_AT: 100,
+  /** 玩家興奮到這裡就射（2026-10-04 使用者：20，原本 100）；射完歸零重累積。每下 +5～8 → 3～4 下射一次。 */
+  EXCITE_CUM_AT: 20,
   PASSION_ORGASM_ABOVE: 20,
   PASSION_ORGASM_DROP: 3,
   AFF_PER_THRUST: 1,
@@ -297,17 +299,27 @@ export function applyThrust(s, { arousal = 0, stage = "stranger", rng = Math.ran
     s.semen -= THRUST.SEMEN_PER_EJAC_CC;
     if (s.semen < THRUST.SEMEN_END_BELOW) s.ended = true;
   }
+  const blood = ejac && isBloodShot(semenBefore);
   return {
     passionAdd,
     exciteAdd,
     affection: THRUST.AFF_PER_THRUST,
     ejac,
+    blood,
     semenBefore,
     semenAfter: s.semen,
     ended: s.ended,
     danger: semenDanger(s),
     switchRoll,
   };
+}
+
+/**
+ * 血精（2026-10-04 使用者）：這一射會讓精液變負（射前 < 6cc，射完 < 0）就射出混血的精液。
+ * 選這個（而不是「射前已經 ≤0」）：精液不夠一射就是在透支，正常一場的最後一射也看得到。
+ */
+export function isBloodShot(semenBefore) {
+  return Number(semenBefore) - THRUST.SEMEN_PER_EJAC_CC < 0;
 }
 
 /** 她那句打完時判：激情 >20 → 高潮（激情 −3，感情 +10）。 */
@@ -351,7 +363,9 @@ export function pantPlaceholder(rng = Math.random) {
 export function fallbackMoan(event = "", rng = Math.random) {
   const pool = event === "orgasm"
     ? ["啊啊…要、要去了…！", "不行…要去了…啊啊…！"]
-    : event === "cum"
+    : event === "bloodcum"
+      ? ["欸…這、這是血嗎…你、你沒事吧…", "粉、粉紅色的…你射出血了…不要緊嗎…"]
+      : event === "cum"
       ? ["好燙…裡面…都是…", "啊…射、射進來了…"]
       : ["啊…嗯…好深…", "嗯啊…慢、慢一點…", "哈啊…啊…", "啊…那裡…嗯…"];
   return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
