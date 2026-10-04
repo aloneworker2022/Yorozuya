@@ -159,7 +159,8 @@ import {
   OPENING_BAND_ZH,
   scrubHusband,
   withTimeout,
-} from "./sex_thrust.js?v=3";
+  stunMixLine,
+} from "./sex_thrust.js?v=4";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -936,7 +937,25 @@ function waitMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** 播一輪局部動畫（第一下 1-2-3-4，之後 2-3-4）；播完留最後一幀一下再收（連按不閃）。 */
+/** 幀圖預載（每幀 ~800KB，手機第一次載很慢：沒預載時第 4 幀實際出現得比計時晚，收起來就只剩一眨眼）。 */
+const thrustFramePreload = new Map();
+function preloadThrustFrames(urls) {
+  return Promise.all((urls || []).map((u) => {
+    if (!u) return Promise.resolve();
+    if (!thrustFramePreload.has(u)) {
+      const im = new Image();
+      const p = new Promise((resolve) => {
+        im.onload = () => (im.decode ? im.decode().catch(() => {}).then(resolve) : resolve());
+        im.onerror = () => resolve();
+      });
+      im.src = u;
+      thrustFramePreload.set(u, { im, p });
+    }
+    return thrustFramePreload.get(u).p;
+  }));
+}
+
+/** 播一輪局部動畫（第一下 1-2-3-4，之後 2-3-4）；第 4 幀一出現就算播完（「肏」回來），只留 0.4 秒（THRUST.ANIM_LINGER_MS）就收，這 0.4 秒內再按「肏」就直接接 2-3-4。 */
 async function playThrustAnim() {
   if (!sexChat) return;
   const box = thrustAnimEl();
@@ -958,33 +977,41 @@ async function playThrustAnim() {
     sexChat && (sexChat.firstRoundDone = true);
     return;
   }
+  // 先等幀圖載好（最多 1.5 秒），每一幀的停留從真的顯示出來才開始算
+  await Promise.race([preloadThrustFrames(frames), waitMs(THRUST.ANIM_PRELOAD_MAX_MS)]);
+  if (!sexChat) return;
   box.hidden = false;
   box.setAttribute("aria-hidden", "false");
   box.classList.add("on");
   for (let i = 0; i < frames.length; i++) {
     if (!sexChat) return;
     await new Promise((resolve) => {
-      const done = () => resolve();
+      let fired = false;
+      const done = () => { if (!fired) { fired = true; resolve(); } };
       img.onload = done;
       img.onerror = done;
       img.src = frames[i];
       if (img.complete && img.naturalWidth) queueMicrotask(done);
-      setTimeout(done, 600);
+      setTimeout(done, THRUST.ANIM_PRELOAD_MAX_MS);
     });
     img.onload = null;
     img.onerror = null;
-    await waitMs(holds[i] || 180);
+    // 最後一幀不另外停：一出現就算播完（「肏」回來），0.4 秒後收；這 0.4 秒內再按就接下一輪
+    if (i < frames.length - 1) await waitMs(holds[i] || 180);
   }
   if (!sexChat) return;
   sexChat.firstRoundDone = true;
+  sexChat.lingerAt = Date.now();
   sexChat.lingerTimer = setTimeout(() => {
     if (!sexChat) return;
     sexChat.lingerTimer = 0;
+    // 0.4 秒內又按了（下一輪已經在播）→ 不收
     if (sexChat.animBusy) return;
     box.classList.remove("on");
     box.hidden = true;
     box.setAttribute("aria-hidden", "true");
-  }, 1500);
+    sexChat.lastAnimHideMs = Date.now() - sexChat.lingerAt;
+  }, THRUST.ANIM_LINGER_MS);
 }
 
 function hideThrustAnim() {
@@ -1128,7 +1155,7 @@ function flushThrustDeferred(why = "") {
 /** 開場那句：① 開場圖出來後她先開口（關係階態度＋個性口吻＋體位；AI 失敗／逾時用本地台詞）。 */
 async function requestSexOpening(who, pose) {
   const stage = who.stage || "stranger";
-  const directive = openingDirective({ stage, pose, personality: basePersonality(who), dazed: !!undressDazed(who) });
+  const directive = openingDirective({ stage, pose, personality: basePersonality(who), dazed: sexDazeKind(who) });
   let reply = "";
   try {
     reply = await withTimeout(askGirl(directive), THRUST.OPENING_TIMEOUT_MS, "");
@@ -1141,6 +1168,20 @@ async function requestSexOpening(who, pose) {
   return { text: clean, source, band: openingBand(stage) };
 }
 
+/** 失神種類：痙攣 spasm／失神 stun／清醒 ""。 */
+function sexDazeKind(who) {
+  if (!who) return "";
+  ensureStunFields(who);
+  if (inSpasm(who)) return "spasm";
+  return stunTier(effectiveStun(who, "")) === "stun" ? "stun" : "";
+}
+
+/** 開場那句的呈現：失神／痙攣 → 大部分拆碎成呻吟（同其他失神台詞）＋最後一小段聽得懂；清醒照原句。 */
+function presentSexOpening(text) {
+  if (girl && undressDazed(girl)) return stunMixLine(text, weaveStunReply);
+  return String(text || "").trim() || "……";
+}
+
 async function runSexOpening(who, view, linePromise) {
   if (!sexChat || girl !== who) return;
   sexChat.opening = "pending";
@@ -1151,13 +1192,16 @@ async function runSexOpening(who, view, linePromise) {
   renderSexChatBar();
   const r = await linePromise;
   if (!sexChat || view !== undressView || girl !== who) return;
-  const line = presentUndressReply(r.text);
+  const line = presentSexOpening(r.text);
+  sexChat.openingIntended = r.text;
+  sexChat.openingDazed = sexDazeKind(who);
   sexChat.openingLine = line;
   sexChat.openingSource = r.source;
   sexChat.openingBand = r.band;
   pushDebug(`肏：開場（${OPENING_BAND_ZH[r.band] || r.band}・${basePersonality(who)}・${r.source}）${line}`);
   lines.push({ role: "user", content: `（你們要做愛了，${sexChat.pose === "doggy" ? "她趴著翹起屁股" : "她躺著張開腿"}。）` });
-  lines.push({ role: "assistant", content: line });
+  // 對話紀錄記她想說的那句（同其他失神台詞）
+  lines.push({ role: "assistant", content: r.text });
   rememberChat();
   sexChat.typing = true;
   try {
@@ -1324,6 +1368,8 @@ async function openSexChat(who) {
   sexChatNarrate(`（${c.label.replace("開場", "")}・開場・${sexByText(who)}。開場圖準備中…）`);
   renderSexHud();
   renderSexChatBar();
+  // 局部動畫幀先預載（第一下肏就不卡）
+  void loadThrustFrames(pose, who).then((fr) => preloadThrustFrames(fr.urls)).catch(() => {});
   // 她的開場那句跟圖一起開始要（圖出來後才打字）
   const linePromise = requestSexOpening(who, pose);
   const pick = await ensureSexStepUrl(who, pose, "open");
@@ -9648,9 +9694,9 @@ window.RoomCompanion = {
       thrustImg: sexChat.thrustImg, animBusy: sexChat.animBusy, firstRoundDone: sexChat.firstRoundDone,
       sess: { ...sexChat.sess }, switches: sexChat.switches, pendingSwitch: sexChat.pendingSwitch,
       eventsShown: [...sexChat.eventsShown], eventHold: sexChat.eventHold, orgasmLock: !!sexChat.orgasmLock, aiState: sexChat.aiState,
-      opening: sexChat.opening, openingLine: sexChat.openingLine, openingSource: sexChat.openingSource, openingBand: sexChat.openingBand,
+      opening: sexChat.opening, openingLine: sexChat.openingLine, openingIntended: sexChat.openingIntended || "", openingDazed: sexChat.openingDazed || "", openingSource: sexChat.openingSource, openingBand: sexChat.openingBand,
       started: [...(sexChat.pump?.started || [])], done: [...(sexChat.pump?.done || [])], dropped: sexChat.pump?.dropped || 0,
-      lastAnim: sexChat.lastAnim, animSource: sexChat.animSource, lastReply: sexChat.lastReply, lastFlush: sexChat.lastFlush,
+      lastAnim: sexChat.lastAnim, animSource: sexChat.animSource, lastAnimHideMs: sexChat.lastAnimHideMs || 0, lastReply: sexChat.lastReply, lastFlush: sexChat.lastFlush,
       stuffed: girl?.bodyState?.organs?.vagina?.stuffed || "",
     } : null),
     press: () => doThrust(),

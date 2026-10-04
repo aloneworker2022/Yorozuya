@@ -34,6 +34,10 @@ export const THRUST = {
   /** 舊做愛系統：首輪慢快快慢 1–4；連按只播 2–4。 */
   FIRST_HOLDS: [300, 180, 180, 300],
   CONTINUE_HOLDS: [180, 180, 300],
+  /** 第 4 幀一出現就算播完，只留 0.4 秒就收（2026-10-04 使用者；取代 holds 最後一格的 300ms）；這段時間內再按「肏」就直接接下一輪 2-3-4。 */
+  ANIM_LINGER_MS: 400,
+  /** 幀圖預載最多等這麼久；每幀也最多等這麼久才換下一幀（停留從真的顯示才算）。 */
+  ANIM_PRELOAD_MAX_MS: 1500,
   TYPE_MOAN_MS: 80,
   TYPE_WORD_MS: 120,
   CHAIN_WINDOW_MS: 800,
@@ -109,15 +113,15 @@ export function openingStyleFor(personality) {
 }
 
 /** 開場那句的要求（接在一般對話 system prompt 之後；那邊已有個性家族／關係階／稱呼規則）。 */
-export function openingDirective({ stage = "stranger", pose = "missionary", personality = "", dazed = false } = {}) {
+export function openingDirective({ stage = "stranger", pose = "missionary", personality = "", dazed = "" } = {}) {
   const band = openingBand(stage);
   const wife = band === "beg";
   return [
     `（旁白：你已經全裸，你們要做愛了。${OPENING_POSE_RULE[pose] || OPENING_POSE_RULE.missionary}他還沒插進來。`,
     `態度：${OPENING_BAND_RULE[band]}`,
     `口吻：${openingStyleFor(personality)}`,
-    dazed ? "你還有點恍惚、說不太清楚。" : "",
-    "你主動先開口，說一句很色、很羞恥的話（可以提到自己的姿勢、身體，夾一點喘息），二十五字以內；",
+    dazed ? dazedSpeechRule(dazed) : "",
+    dazed ? "你主動先開口，說一句很色、很羞恥的話，十五字以內；" : "你主動先開口，說一句很色、很羞恥的話（可以提到自己的姿勢、身體，夾一點喘息），二十五字以內；",
     wife ? "可以叫他老公。" : "不要叫他老公（還沒結婚）。",
     "只寫你說出口的那句話；不要旁白、不要描述動作、不要引號。）",
   ].filter(Boolean).join("");
@@ -151,6 +155,53 @@ export function openingFallback(stage = "stranger", pose = "missionary", rng = M
   const band = openingBand(stage);
   const pool = (OPENING_FALLBACK[band] || OPENING_FALLBACK.resist)[pose === "doggy" ? "doggy" : "missionary"];
   return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
+}
+
+/* ───────── 失神／痙攣中的開場那句（2026-10-04 使用者） ─────────
+ * 失神／痙攣時開場那句要像其他失神台詞一樣「大部分聽不懂」（字拆開黏進呻吟＝weaveStunReply），
+ * 但留一小段聽得懂的話（stunMixLine）。AI 那邊先告訴它她失神，只寫心裡想說的那一句、不要自己加呻吟。 */
+
+/** 給 AI 的失神規則（dazed："stun" 失神／"spasm" 痙攣／true）。 */
+export function dazedSpeechRule(dazed) {
+  const what = dazed === "spasm" ? "你還在高潮後的痙攣裡，身體一抽一抽的" : "你還在失神裡，意識模糊、腦袋一片空白";
+  return `${what}，幾乎說不出完整的話；心裡仍有一句想對他說的話——只寫那一句、要短，不要自己寫呻吟（呻吟之後另外加）。`;
+}
+
+const CJK = /[\u3400-\u9fff]/u;
+
+/**
+ * 從她想說的那句挑出「聽得懂的一小段」與「要拆碎的其餘」：
+ * clear＝最後一個 2～5 字的片語（都太長就取最後一段的最後 4 字）；garble＝其他字（照原順序、最多 10 字，給 weaveStunReply 拆）。
+ */
+export function stunOpeningParts(text) {
+  const t = String(text || "").trim();
+  const clauses = t.split(/[，,、…．。！？!?~～\s「」『』"（）()]+/u).map((c) => Array.from(c).filter((ch) => CJK.test(ch)).join("")).filter(Boolean);
+  if (!clauses.length) return { garble: "", clear: "" };
+  let k = -1;
+  for (let n = clauses.length - 1; n >= 0; n--) {
+    const len = Array.from(clauses[n]).length;
+    if (len >= 2 && len <= 5) { k = n; break; }
+  }
+  if (k < 0) k = clauses.length - 1;
+  const ck = Array.from(clauses[k]);
+  // 太長：聽得懂的取最後 4 字，前面併進要拆碎的
+  const clear = ck.length > 5 ? ck.slice(-4).join("") : clauses[k];
+  const head = ck.length > 5 ? ck.slice(0, -4).join("") : "";
+  const rest = [...clauses.slice(0, k), head, ...clauses.slice(k + 1)].join("");
+  const garble = Array.from(rest || clauses[k]).slice(0, 10).join("");
+  return { garble, clear };
+}
+
+/**
+ * 失神開場那句：大部分是拆碎的呻吟（weave＝test_room 的 weaveStunReply），最後留一小段聽得懂的（「…不要看…」）。
+ * weave(words) → 多行字串。
+ */
+export function stunMixLine(text, weave, rng = Math.random) {
+  const { garble, clear } = stunOpeningParts(text);
+  const broken = String(weave(garble || "嗯") || "").trim();
+  if (!clear) return broken;
+  const lead = ["哈…", "嗯…", "啊…", "…"][Math.min(3, Math.floor(rng() * 4))];
+  return `${broken}\n${lead}${clear}…`;
 }
 
 /** 妻子以下的台詞不能叫老公（AI 偶爾會叫）：換成「你」。 */

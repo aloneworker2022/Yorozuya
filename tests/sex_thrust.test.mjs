@@ -138,7 +138,10 @@ await t("開場要求：體位（傳教士自己張開、後背翹屁股）＋�
   for (const p of ["傲嬌", "清純反差", "高冷", "病嬌", "活潑開朗", "御姊", "天然呆", "文靜溫柔"]) assert.ok(T.openingStyleFor(p).startsWith(p));
   assert.ok(T.openingStyleFor("清純").startsWith("清純反差"));
   assert.ok(T.openingStyleFor("").startsWith("文靜溫柔"));
-  assert.ok(T.openingDirective({ dazed: true }).includes("恍惚"));
+  const dz = T.openingDirective({ dazed: "stun" });
+  assert.ok(dz.includes("失神") && dz.includes("只寫那一句") && dz.includes("十五字以內") && !dz.includes("夾一點喘息"));
+  assert.ok(T.openingDirective({ dazed: "spasm" }).includes("痙攣"));
+  assert.ok(!T.openingDirective({}).includes("失神"));
 });
 await t("開場本地台詞：每階×體位都有；老公只出現在妻子以上；scrubHusband", () => {
   const stages = ["stranger", "friend", "girlfriend", "lover", "wife"];
@@ -156,6 +159,28 @@ await t("withTimeout：逾時回 fallback、失敗回 fallback、成功回值", 
   assert.equal(await T.withTimeout(new Promise(() => {}), 20, "fb"), "fb");
   assert.equal(await T.withTimeout(Promise.reject(new Error("x")), 50, "fb"), "fb");
   assert.equal(await T.withTimeout(Promise.resolve("ok"), 50, "fb"), "ok");
+});
+
+await t("失神開場：大部分拆碎（weave）＋最後一小段聽得懂（2～5 字）", () => {
+  assert.deepEqual(T.stunOpeningParts("哼…才、才不是想要…屁股翹這麼高…都是你害的…笨蛋…"), { garble: "哼才才不是想要屁股翹", clear: "笨蛋" });
+  assert.deepEqual(T.stunOpeningParts("不要看，我還沒……回過神來"), { garble: "不要看我還沒", clear: "回過神來" });
+  assert.deepEqual(T.stunOpeningParts("住手為什麼我自己張開了不要"), { garble: "住手為什麼我自己張", clear: "開了不要" });
+  assert.deepEqual(T.stunOpeningParts(""), { garble: "", clear: "" });
+  const seen = [];
+  const weave = (w) => { seen.push(w); return Array.from(w).map((c) => `${c}喔…`).join(" ") + "\n痾…"; };
+  const out = T.stunMixLine("老公～求你了，快給我", weave, () => 0);
+  assert.deepEqual(seen, ["老公求你了"]);
+  assert.ok(out.endsWith("\n哈…快給我…"), out);
+  const lines = out.split("\n");
+  assert.ok(lines.length >= 2 && lines.slice(0, -1).join("").includes("喔"));
+  // 聽得懂的部分只佔一小段
+  const clearLen = Array.from("快給我").length, total = Array.from(out.replace(/\s/g, "")).length;
+  assert.ok(clearLen / total < 0.3, `${clearLen}/${total}`);
+  assert.equal(T.stunMixLine("", (w) => `痾…${w}`, () => 0), "痾…嗯");
+});
+await t("局部動畫：第 4 幀只留 0.4 秒；預載最多等 1.5 秒", () => {
+  assert.equal(T.THRUST.ANIM_LINGER_MS, 400);
+  assert.equal(T.THRUST.ANIM_PRELOAD_MAX_MS, 1500);
 });
 
 function fakePump({ replyMs = 100, typeMs = 50 } = {}) {
