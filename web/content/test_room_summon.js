@@ -10229,6 +10229,12 @@ window.RoomCompanion = {
   applyMirror: applyRoomMirror,
   isShip: isShipMode,
   current: () => girl,
+  /** 番茄鐘結算感情。走房間的升階／5 點緩衝，並寫回名冊。 */
+  addAffection(delta, reason = "") {
+    bumpAffection(delta, reason);
+    try { persistRoom(); } catch { /* ignore */ }
+    return girl ? { affection: girl.affection, stage: girl.stage } : null;
+  },
   /** 除錯：目前房間對話的 system prompt（看個性逐步揭露用） */
   debugPrompt: (text = "") => (girl ? talkSystem(String(text || "")) : ""),
   mood: () => (girl ? getMoodCarry(girl) : null),

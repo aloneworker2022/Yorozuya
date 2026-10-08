@@ -339,12 +339,19 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (web != null) web.onResume();
+        if (web != null) {
+            web.onResume();
+            // true = 剛從鎖屏或別的 App 回來。時間若已到，頁面會算未完成。
+            web.evaluateJavascript("window.__pomoBack&&window.__pomoBack(true)", null);
+        }
     }
 
     @Override
     protected void onPause() {
-        if (web != null) web.onPause();
+        if (web != null) {
+            web.evaluateJavascript("window.__pomoAway&&window.__pomoAway()", null);
+            web.onPause();
+        }
         CookieManager.getInstance().flush();
         super.onPause();
     }

@@ -1328,6 +1328,7 @@ function initState(j, offline) {
   settleDays();
   ensureShop();
   renderAll();
+  try { resumePomo(); } catch (e) { console.error(e); }
   applyBg();
   startBgRotation();
   // 重整後若 cardSession 還在：自動打開牌桌，避免「有牌局卻看不到、又不能換看板」
@@ -13331,13 +13332,31 @@ function attachPinSwipe(el, exec) {
   const sig = _pinAbort.signal;
   const track = $("#pin-track");
   const THRESH = 50;
+  const HOLD_MS = 650;
   let sx, sy, dragBase = 0, dragging = false;
+  let holdTimer = 0, held = false;
 
   // 跟手拖曳:以拖曳起點的軌道位置(dragBase+loopOff)為基準平移
   const follow = (dx) => { track.style.transform = `translateX(${-((dragBase + loopOff()) * 100 - (dx / el.offsetWidth) * 100)}%)`; };
   const startDrag = () => { _pinSnapTok++; dragBase = pinIdx; track.style.transition = "none"; };
+  const disarm = () => { if (holdTimer) clearTimeout(holdTimer); holdTimer = 0; };
+  // 長按這一張執行中的卡 → 番茄鐘。手指一滑就取消，避免跟左右換卡、上滑完成搶。
+  const armHold = () => {
+    disarm();
+    held = false;
+    holdTimer = setTimeout(() => {
+      holdTimer = 0;
+      held = true;
+      dragging = false;
+      const q = exec[dragBase];
+      setPinIdx(dragBase);
+      if (q) tryStartPomo(q);
+    }, HOLD_MS);
+  };
   // 放手:水平過門檻就往該方向一格(setPinIdx 會處理越界輪動),否則回正
   const release = (dx, dy) => {
+    if (held) { held = false; setPinIdx(dragBase); return; }
+    disarm();
     track.style.transition = PIN_EASE;
     if (Math.abs(dx) > Math.abs(dy)) {
       if (dx < -THRESH) setPinIdx(dragBase + 1);
@@ -13350,25 +13369,35 @@ function attachPinSwipe(el, exec) {
   };
 
   el.addEventListener("touchstart", e => {
-    sx = e.touches[0].clientX; sy = e.touches[0].clientY; dragging = true; startDrag();
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; dragging = true; startDrag(); armHold();
   }, { passive: true, signal: sig });
   el.addEventListener("touchmove", e => {
     if (!dragging) return;
     const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
+    if (Math.hypot(dx, dy) > 12) disarm();
     if (Math.abs(dx) > Math.abs(dy)) { follow(dx); if (e.cancelable) e.preventDefault(); }
   }, { passive: false, signal: sig });
   el.addEventListener("touchend", e => {
-    if (!dragging) return; dragging = false;
+    if (!dragging && !held) return;
+    dragging = false;
     release(e.changedTouches[0].clientX - sx, e.changedTouches[0].clientY - sy);
   }, { passive: true, signal: sig });
 
   let mdown = false, msx, msy;
-  el.addEventListener("mousedown", e => { mdown = true; msx = e.clientX; msy = e.clientY; startDrag(); }, { signal: sig });
-  window.addEventListener("mousemove", e => { if (mdown) follow(e.clientX - msx); }, { signal: sig });
+  el.addEventListener("mousedown", e => {
+    mdown = true; msx = e.clientX; msy = e.clientY; startDrag(); armHold();
+  }, { signal: sig });
+  window.addEventListener("mousemove", e => {
+    if (!mdown) return;
+    const dx = e.clientX - msx, dy = e.clientY - msy;
+    if (Math.hypot(dx, dy) > 12) disarm();
+    follow(dx);
+  }, { signal: sig });
   window.addEventListener("mouseup", e => {
     if (!mdown) return; mdown = false;
     release(e.clientX - msx, e.clientY - msy);
   }, { signal: sig });
+  el.addEventListener("contextmenu", e => e.preventDefault(), { signal: sig });
 }
 
 function flyPinCard(action) {
@@ -13380,6 +13409,404 @@ function flyPinCard(action) {
   card.style.opacity = "0";
   setTimeout(action, 260);
 }
+
+// ===== 番茄鐘：長按執行中的委託。房裡沒有她就不能開。 =====
+const POMO_WIFE = new Set(["wife", "devoted_wife", "obedient_wife", "pathological_wife"]);
+let pomoTick = 0;
+let pomoLastTick = 0;
+let pomoHold = 0;
+
+function roomCompanionNow() {
+  try {
+    const cur = window.RoomCompanion?.current?.();
+    if (!cur) return null;
+    if (typeof window.RoomActor?.isPresent === "function" && !window.RoomActor.isPresent()) return null;
+    return cur;
+  } catch {
+    return null;
+  }
+}
+
+function pomoWifeOk(stage) {
+  return POMO_WIFE.has(String(stage || ""));
+}
+
+function pomoCleanLine(raw, wife) {
+  let s = String(raw || "").replace(/^[0-9０-９.、．\s]+/, "").replace(/^["「『]|["」』]$/g, "").trim();
+  if (!wife) s = s.replace(/老公/g, "你");
+  return s.slice(0, 40);
+}
+
+function pomoSplitLines(text) {
+  let parts = String(text || "").split(/\n+/).map(s => s.trim()).filter(Boolean);
+  if (parts.length < 2 && parts[0]) {
+    const cut = parts[0].split(/[／/|｜]/).map(s => s.trim()).filter(Boolean);
+    if (cut.length >= 2) parts = cut;
+  }
+  return parts.slice(0, 2);
+}
+
+function pomoSetLandscape(on) {
+  try {
+    const b = window.YoroAndroid;
+    if (b && typeof b.setLandscape === "function") b.setLandscape(!!on);
+  } catch { /* 網頁沒有這座橋，維持直向 */ }
+}
+
+function applyPomoAff(girlId, delta, reason) {
+  try {
+    const cur = window.RoomCompanion?.current?.();
+    const id = cur && String(cur.gameGirlId || cur.id || "");
+    if (cur && id === String(girlId) && typeof window.RoomCompanion.addAffection === "function") {
+      window.RoomCompanion.addAffection(delta, reason);
+      return;
+    }
+  } catch { /* 房間沒接上就改名冊 */ }
+  const s = state?.succubi?.find(x => x.id === girlId);
+  if (!s) return;
+  s.affection = (Number(s.affection) || 0) + delta;
+  normalizeGirlStage(s);
+}
+
+function ensurePomo() {
+  let el = document.getElementById("pomo");
+  if (el) return el;
+  el = document.createElement("div");
+  el.id = "pomo";
+  el.hidden = true;
+  el.innerHTML = `
+    <div class="pomo-clock">
+      <div class="pomo-task"></div>
+      <div class="pomo-flaps" aria-hidden="true">
+        <div class="pomo-flap"><b>0</b></div>
+        <div class="pomo-flap"><b>0</b></div>
+        <span class="pomo-colon">:</span>
+        <div class="pomo-flap"><b>0</b></div>
+        <div class="pomo-flap"><b>0</b></div>
+      </div>
+    </div>
+    <div class="pomo-side">
+      <img class="pomo-girl" alt="">
+      <div class="pomo-name"></div>
+      <p class="pomo-hint">長按她</p>
+      <p class="pomo-line"></p>
+      <div class="pomo-acts">
+        <button type="button" class="yes" id="pomo-yes">完成</button>
+        <button type="button" class="no" id="pomo-no">打斷</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  const side = el.querySelector(".pomo-side");
+  let px = 0, py = 0, armed = false;
+  const clearHold = () => { if (pomoHold) clearTimeout(pomoHold); pomoHold = 0; armed = false; };
+  side.addEventListener("pointerdown", (e) => {
+    if (state?.pomodoro?.phase !== "run") return;
+    if (e.button != null && e.button !== 0) return;
+    armed = true;
+    px = e.clientX; py = e.clientY;
+    clearHold();
+    armed = true;
+    pomoHold = setTimeout(() => {
+      pomoHold = 0;
+      armed = false;
+      pomoAsk("interrupt");
+    }, 650);
+  });
+  side.addEventListener("pointermove", (e) => {
+    if (!armed) return;
+    if (Math.hypot(e.clientX - px, e.clientY - py) > 12) clearHold();
+  });
+  side.addEventListener("pointerup", clearHold);
+  side.addEventListener("pointercancel", clearHold);
+  side.addEventListener("contextmenu", (e) => e.preventDefault());
+  el.querySelector("#pomo-yes").addEventListener("click", () => {
+    const p = state?.pomodoro;
+    if (!p) return;
+    if (p.phase === "result") { pomoClose(); return; }
+    if (p.phase === "ask") pomoSettle("done");
+  });
+  el.querySelector("#pomo-no").addEventListener("click", () => {
+    const p = state?.pomodoro;
+    if (!p || p.phase !== "ask") return;
+    pomoSettle(p.ask === "done" ? "miss" : "break");
+  });
+  return el;
+}
+
+function pomoPaintClock() {
+  const p = state?.pomodoro;
+  const flaps = document.querySelectorAll("#pomo .pomo-flap");
+  if (!p || flaps.length < 4) return;
+  const ms = p.phase === "run"
+    ? Math.max(0, (p.endsAt || 0) - Date.now())
+    : Math.max(0, p.leftMs || 0);
+  const total = Math.ceil(ms / 1000);
+  const text = String(Math.min(99, Math.floor(total / 60))).padStart(2, "0")
+    + String(total % 60).padStart(2, "0");
+  flaps.forEach((flap, i) => {
+    const n = text[i];
+    if (flap.dataset.n === n) return;
+    flap.dataset.n = n;
+    const b = flap.querySelector("b");
+    if (b) b.textContent = n;
+    flap.classList.remove("is-flip");
+    void flap.offsetWidth;
+    flap.classList.add("is-flip");
+  });
+}
+
+function pomoPaint() {
+  const p = state?.pomodoro;
+  const el = document.getElementById("pomo");
+  if (!el || !p) return;
+  el.classList.toggle("is-ask", p.phase === "ask");
+  el.classList.toggle("is-result", p.phase === "result");
+  const task = el.querySelector(".pomo-task");
+  if (task) task.textContent = p.qtext || "";
+  const img = el.querySelector(".pomo-girl");
+  if (img) {
+    if (p.girlImg) { img.src = p.girlImg; img.hidden = false; }
+    else img.hidden = true;
+    img.alt = p.girlName || "";
+  }
+  const name = el.querySelector(".pomo-name");
+  if (name) name.textContent = p.girlName || "";
+  const hint = el.querySelector(".pomo-hint");
+  const line = el.querySelector(".pomo-line");
+  const acts = el.querySelector(".pomo-acts");
+  const yes = el.querySelector("#pomo-yes");
+  const no = el.querySelector("#pomo-no");
+  if (p.phase === "run") {
+    if (hint) hint.hidden = false;
+    if (line) { line.hidden = true; line.textContent = ""; }
+    if (acts) acts.hidden = true;
+  } else if (p.phase === "ask") {
+    if (hint) hint.hidden = true;
+    if (line) {
+      line.hidden = false;
+      line.textContent = p.ask === "interrupt" ? (p.lines?.interrupt || "痾，什麼？") : (p.lines?.done || "完成了嗎？");
+    }
+    if (acts) acts.hidden = false;
+    if (yes) yes.textContent = "完成";
+    if (no) {
+      no.hidden = false;
+      no.textContent = p.ask === "done" ? "未完成" : "打斷";
+    }
+  } else {
+    if (hint) hint.hidden = true;
+    if (line) {
+      line.hidden = false;
+      line.textContent = "時間到的時候你不在。這次算未完成。感情 −2，金錢 −5。";
+    }
+    if (acts) acts.hidden = false;
+    if (yes) yes.textContent = "知道了";
+    if (no) no.hidden = true;
+  }
+  pomoPaintClock();
+}
+
+function pomoArmTick() {
+  if (pomoTick) return;
+  pomoLastTick = Date.now();
+  pomoTick = setInterval(pomoTickOnce, 200);
+}
+
+function pomoStopTick() {
+  if (pomoTick) clearInterval(pomoTick);
+  pomoTick = 0;
+}
+
+function pomoTickOnce() {
+  const p = state?.pomodoro;
+  const now = Date.now();
+  const gap = now - (pomoLastTick || now);
+  pomoLastTick = now;
+  if (!p || p.phase !== "run") return;
+  if (p.endsAt && now >= p.endsAt) {
+    // 間隔很大 = 計時被凍住（鎖屏、切去別的 App）。人沒看著畫面就直接未完成。
+    if (document.hidden || gap > 4000) pomoSettle("miss");
+    else pomoAsk("done");
+    return;
+  }
+  pomoPaintClock();
+}
+
+function pomoShow() {
+  const el = ensurePomo();
+  el.hidden = false;
+  document.body.classList.add("pomo-on");
+  pomoSetLandscape(true);
+  pomoPaint();
+  if (state?.pomodoro?.phase === "run") pomoArmTick();
+  else pomoStopTick();
+}
+
+function pomoClose() {
+  pomoStopTick();
+  if (pomoHold) clearTimeout(pomoHold);
+  pomoHold = 0;
+  state.pomodoro = null;
+  const el = document.getElementById("pomo");
+  if (el) el.hidden = true;
+  document.body.classList.remove("pomo-on");
+  pomoSetLandscape(false);
+  scheduleSave();
+  try { renderHud(); } catch { /* ignore */ }
+}
+
+function pomoAsk(kind) {
+  const p = state?.pomodoro;
+  if (!p || p.phase !== "run") return;
+  p.leftMs = kind === "done" ? 0 : Math.max(0, (p.endsAt || 0) - Date.now());
+  p.endsAt = 0;
+  p.phase = "ask";
+  p.ask = kind === "interrupt" ? "interrupt" : "done";
+  scheduleSave();
+  pomoShow();
+}
+
+function pomoSettle(kind) {
+  const p = state?.pomodoro;
+  if (!p || p.phase === "result") return;
+  if (kind === "miss" && p.phase === "ask") return;
+  const girlId = p.girlId;
+  if (kind === "done") {
+    const q = state.quests.find(x => x.id === p.qid && x.lv === 2);
+    state.pomodoro = null;
+    pomoStopTick();
+    if (q) complete(q.id);
+    state.gold += 5;
+    applyPomoAff(girlId, 2, "番茄鐘完成");
+    log("番茄鐘完成　感情 +2　金錢 +5");
+    const el = document.getElementById("pomo");
+    if (el) el.hidden = true;
+    document.body.classList.remove("pomo-on");
+    pomoSetLandscape(false);
+    scheduleSave();
+    try { renderHud(); } catch { /* ignore */ }
+    toast("番茄鐘完成　感情 +2　金錢 +5", "good");
+    return;
+  }
+  if (kind === "break") {
+    state.gold -= 10;
+    applyPomoAff(girlId, -5, "番茄鐘打斷");
+    log("番茄鐘打斷　感情 −5　金錢 −10");
+    state.pomodoro = null;
+    pomoStopTick();
+    const el = document.getElementById("pomo");
+    if (el) el.hidden = true;
+    document.body.classList.remove("pomo-on");
+    pomoSetLandscape(false);
+    scheduleSave();
+    try { renderAll(); } catch { /* ignore */ }
+    toast("番茄鐘打斷　感情 −5　金錢 −10", "bad");
+    return;
+  }
+  state.gold -= 5;
+  applyPomoAff(girlId, -2, "番茄鐘未完成");
+  log("番茄鐘未完成　感情 −2　金錢 −5");
+  p.phase = "result";
+  p.ask = "";
+  p.leftMs = 0;
+  p.endsAt = 0;
+  scheduleSave();
+  pomoShow();
+}
+
+function resumePomo() {
+  const p = state?.pomodoro;
+  if (!p?.phase) return;
+  if (p.phase === "run" && p.endsAt && Date.now() >= p.endsAt) {
+    pomoSettle("miss");
+    return;
+  }
+  if (p.phase === "run" || p.phase === "ask" || p.phase === "result") pomoShow();
+}
+
+function tryStartPomo(q) {
+  if (!q || q.lv !== 2) return;
+  if (state.pomodoro?.phase) {
+    pomoShow();
+    return;
+  }
+  const girl = roomCompanionNow();
+  if (!girl) {
+    toast("她不在房間，現在不能用番茄鐘", "bad");
+    return;
+  }
+  const mins = 20 + Math.floor(Math.random() * 6);
+  const stage = String(girl.stage || "");
+  const startedAt = Date.now();
+  state.pomodoro = {
+    qid: q.id,
+    qtext: q.text || "",
+    girlId: String(girl.gameGirlId || girl.id || ""),
+    girlName: girl.name || "",
+    girlImg: girl.portraits?.half || girl.portraits?.half_xi || girl.portrait || "",
+    stage,
+    startedAt,
+    endsAt: startedAt + mins * 60 * 1000,
+    mins,
+    phase: "run",
+    ask: "",
+    leftMs: 0,
+    lines: { done: "完成了嗎？", interrupt: "痾，什麼？" },
+  };
+  log(`番茄鐘 ${mins} 分鐘「${q.text || ""}」`);
+  scheduleSave();
+  pomoShow();
+  void pomoPregen(startedAt);
+}
+
+async function pomoPregen(startedAt) {
+  const p0 = state?.pomodoro;
+  if (!p0 || p0.startedAt !== startedAt) return;
+  const wife = pomoWifeOk(p0.stage);
+  const who = state.succubi?.find(s => s.id === p0.girlId);
+  const personality = who?.personality || "";
+  const speech = who?.speech || "";
+  const messages = [
+    {
+      role: "system",
+      content: [
+        `你是${p0.girlName || "她"}，正在他旁邊陪他做一件要專心的事。`,
+        personality ? `個性：${personality}。` : "",
+        speech ? `說話方式：${speech}。` : "",
+        wife ? "你可以叫他老公。" : "禁止叫他老公。",
+        "只輸出台詞。不要寫動作、表情、引號或編號。",
+      ].filter(Boolean).join(""),
+    },
+    {
+      role: "user",
+      content: "寫兩行，各不超過 20 字。第一行：時間到了，問他這件事做完了沒，意思是「完成了嗎」。第二行：他突然戳你，你愣了一下，意思是「痾，什麼」。",
+    },
+  ];
+  let text = "";
+  try { text = await waitDaydreamText(`pomo:${p0.girlId}:${startedAt}`, messages); } catch { text = ""; }
+  const p = state?.pomodoro;
+  if (!p || p.startedAt !== startedAt) return;
+  const parts = pomoSplitLines(text);
+  const done = pomoCleanLine(parts[0], wife);
+  const interrupt = pomoCleanLine(parts[1], wife);
+  if (done) p.lines.done = done;
+  if (interrupt) p.lines.interrupt = interrupt;
+  if (done || interrupt) {
+    scheduleSave();
+    if (p.phase === "ask") pomoPaint();
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  const p = state?.pomodoro;
+  if (!p || p.phase !== "run") return;
+  if (p.endsAt && Date.now() >= p.endsAt) pomoSettle("miss");
+});
+window.__pomoAway = () => { /* 鎖屏當下先記。真正結算看回來時時間過了沒有。 */ };
+window.__pomoBack = (fromApp) => {
+  const p = state?.pomodoro;
+  if (fromApp && p?.phase === "run" && p.endsAt && Date.now() >= p.endsAt) pomoSettle("miss");
+  else if (p?.phase === "run") pomoPaint();
+};
 
 // --- 場景二:處理(發現/已承接) ---
 
@@ -18439,6 +18866,17 @@ function toast(msg, cls = "") {
 
 window.DBG = {
   dayNum: () => dayNum(),
+  /** 番茄鐘測試：DBG.pomo(5) 把剩下的時間改成 5 秒。沒在鐘裡就什麼都不做。 */
+  pomo(sec) {
+    const p = state?.pomodoro;
+    if (!p || p.phase !== "run") return "沒在番茄鐘";
+    const s = Math.max(1, Number(sec) || 5);
+    p.endsAt = Date.now() + s * 1000;
+    pomoLastTick = Date.now();
+    scheduleSave();
+    pomoPaintClock();
+    return `剩下 ${s} 秒`;
+  },
   state: () => state,
   goProc,
   renderAll,

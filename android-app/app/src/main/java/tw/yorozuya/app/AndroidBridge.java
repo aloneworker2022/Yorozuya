@@ -2,6 +2,7 @@ package tw.yorozuya.app;
 
 import android.app.Activity;
 import android.content.ContentResolver;
+import android.content.pm.ActivityInfo;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
@@ -90,6 +91,14 @@ final class AndroidBridge {
         activity.runOnUiThread(() -> {
             activity.startActivity(new Intent(activity, SetupActivity.class));
         });
+    }
+
+    /** 番茄鐘：手機橫過來。網頁自己不轉，只有 App 會聽。 */
+    @JavascriptInterface
+    public void setLandscape(boolean on) {
+        activity.runOnUiThread(() -> activity.setRequestedOrientation(on
+                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
     }
 
     @JavascriptInterface
