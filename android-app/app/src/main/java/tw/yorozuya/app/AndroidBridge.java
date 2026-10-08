@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -81,6 +82,14 @@ final class AndroidBridge {
         } else {
             v.vibrate(ms);
         }
+    }
+
+    /** 設定頁「更換伺服器」。發現小工具讀的就是這份網址。 */
+    @JavascriptInterface
+    public void changeServer() {
+        activity.runOnUiThread(() -> {
+            activity.startActivity(new Intent(activity, SetupActivity.class));
+        });
     }
 
     @JavascriptInterface

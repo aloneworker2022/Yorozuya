@@ -1039,6 +1039,10 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 }
 .setting-row input[type="text"] { width: 9em; text-align: right; }
 .setting-row input.wide { width: 13em; text-align: left; }
+.setting-row.model-row { align-items: flex-start; flex-wrap: wrap; }
+.model-fields { display: flex; flex-direction: column; gap: .35em; flex: 1 1 12em; min-width: 0; }
+.model-fields select,
+.model-fields input.wide { width: 100%; max-width: 100%; text-align: left; box-sizing: border-box; }
 .btn-row { display: flex; gap: .5em; margin-top: .8em; }
 #log-list div { padding: .25em 0; border-bottom: 1px solid var(--line); }
 
@@ -1105,7 +1109,12 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 .scard {
   display: flex; align-items: center; gap: .8em; cursor: pointer;
   padding: .6em .2em; border-bottom: 1px solid var(--line);
+  touch-action: pan-y;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
 }
+.scard.is-holding { background: color-mix(in srgb, var(--red) 16%, transparent); }
+.scard .thumb, .scard .thumb * { pointer-events: none; -webkit-user-drag: none; }
 .scard:last-child { border-bottom: none; }
 .scard .thumb { flex-shrink: 0; filter: drop-shadow(0 0 5px var(--rc)); }
 .scard .sinfo { flex: 1; min-width: 0; }
@@ -1140,54 +1149,30 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 }
 .scard .hearts { margin-top: .3em; display: flex; font-size: 1.05em; }
 #succubus-detail .hearts { justify-content: center; font-size: 1.35em; margin: .35em 0 .15em; }
-.aff-thermo { margin-top: .28em; min-width: 0; width: 100%; }
-.aff-thermo-names {
+.aff-num {
+  margin-top: .22em;
   display: flex;
-  justify-content: space-between;
-  gap: .4em;
-  font-size: .68em;
+  align-items: baseline;
+  gap: .28em;
+  min-width: 0;
+  font-size: .78em;
   line-height: 1.2;
   color: var(--dim);
-  letter-spacing: .03em;
+  font-variant-numeric: tabular-nums;
 }
-.aff-thermo-names span:last-child { text-align: right; }
-.aff-thermo-row { display: flex; align-items: center; margin-top: .18em; }
-.aff-thermo-bulb {
-  width: .72em;
-  height: .72em;
-  margin-right: -.28em;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: color-mix(in srgb, var(--cyan) 78%, var(--gold));
-  box-shadow: 0 0 6px color-mix(in srgb, var(--cyan) 45%, transparent);
-  position: relative;
-  z-index: 1;
+.aff-num b {
+  color: var(--cyan);
+  font-size: 1.2em;
+  font-weight: 700;
 }
-.aff-thermo-track {
-  position: relative;
-  flex: 1;
-  height: .42em;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, .45);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cyan) 32%, transparent);
-  overflow: hidden;
+.aff-num-goal { color: var(--dim); }
+.aff-num.cold b { color: var(--red); }
+#succubus-detail .aff-num {
+  justify-content: center;
+  margin: .2em auto .15em;
+  font-size: .95em;
 }
-.aff-thermo-fill {
-  display: block;
-  height: 100%;
-  width: var(--fill, 0%);
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--cyan), var(--gold) 58%, var(--pink));
-}
-.aff-thermo.cold .aff-thermo-bulb {
-  background: color-mix(in srgb, var(--red) 70%, transparent);
-  box-shadow: none;
-}
-.aff-thermo.cold .aff-thermo-fill { width: 0; }
-#succubus-detail .aff-thermo { margin: .15em auto .2em; max-width: 18em; }
-#succubus-detail .aff-thermo-names { font-size: .78em; }
-#succubus-detail .aff-thermo-track { height: .55em; }
-#succubus-detail .aff-thermo-bulb { width: .9em; height: .9em; }
+#succubus-detail .aff-num b { font-size: 1.45em; }
 #chat-hearts { flex-shrink: 0; }
 #chat-hearts.hidden { display: none; }
 .scard.ntr { filter: grayscale(1) brightness(.7); }
@@ -1203,6 +1188,7 @@ body.card-center .q-body { justify-content: center; text-align: center; }
   border-radius: 6px;
 }
 .scard .roster-summon:disabled { opacity: .35; cursor: default; }
+.roster-hint { margin: -.15em 0 .45em; }
 .status-dot { width: 8px; height: 8px; flex-shrink: 0; }
 .status-dot.ok { background: var(--cyan); }
 .status-dot.due { background: var(--gold); animation: pulse 1.5s infinite; }
@@ -1211,6 +1197,16 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 
 /* ===== 魅魔詳情 ===== */
 #succubus-detail .portrait { text-align: center; margin: .8em 0; }
+#succubus-detail .detail-portrait {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+#succubus-detail .detail-portrait img {
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
 #succubus-detail .portrait svg { filter: drop-shadow(0 0 18px var(--rc)); }
 /* 生成好的立繪(像素 256x256 sprite:pixelated 放大不糊、contain 不裁切人物) */
 .portrait-img {
@@ -1272,7 +1268,14 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 }
 .detail-actions button.cyan { background: rgba(111, 227, 225, .15); color: var(--cyan); }
 .detail-actions button.gold { background: rgba(255, 215, 95, .15); color: var(--gold); }
+.detail-actions button.danger { background: rgba(255, 95, 122, .2); color: var(--red); }
 .detail-actions button:disabled { opacity: .35; cursor: default; }
+.detail-actions #sac-ask:not([hidden]) {
+  display: flex; flex-wrap: wrap; gap: .4em; justify-content: center; align-items: center;
+  width: 100%;
+}
+.detail-actions #sac-ask[hidden] { display: none !important; }
+.detail-actions #sac-ask .sac-ask-text { width: 100%; font-size: .8em; text-align: center; }
 /* 行內小動作鈕(去背重試這類補救操作,不該長得像主要按鈕) */
 .link-btn {
   background: none; border: none; color: var(--cyan); font: inherit; font-size: .95em;
@@ -1612,7 +1615,8 @@ body.tease-play #chat-input-row { display: none; }
   background: rgba(255, 79, 216, .15); border: none; color: var(--pink);
   font: inherit; padding: .45em .9em; cursor: pointer;
 }
-#summon-counts button:disabled { opacity: .3; cursor: default; }
+#summon-counts button:disabled,
+#summon-counts button.is-blocked { opacity: .45; }
 #summon-overlay {
   position: fixed; inset: 0; z-index: 60;
   background: rgba(5, 2, 10, .85);

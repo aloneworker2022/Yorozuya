@@ -51,27 +51,35 @@ public class AddActivity extends Activity {
             input.requestFocus();
             return;
         }
+        final String base = Prefs.url(this);
+        if (base == null) {
+            Toast.makeText(this, "請先在魅魔萬事屋設定伺服器", Toast.LENGTH_SHORT).show();
+            Prefs.openMainApp(this);
+            return;
+        }
         sending = true;
         send.setEnabled(false);
-        final String base = Prefs.url(this);
         new Thread(new Runnable() {
             public void run() {
-                String err = null;
+                DiscoverClient.Result result = null;
                 try {
-                    err = DiscoverClient.post(base, text);
+                    result = DiscoverClient.post(base, text);
                 } catch (Exception e) {
-                    err = "連不上伺服器";
+                    result = new DiscoverClient.Result("連不上伺服器", 0);
                 }
-                final String fail = err;
+                final DiscoverClient.Result done = result;
                 runOnUiThread(new Runnable() {
                     public void run() {
                         sending = false;
                         send.setEnabled(true);
-                        if (fail == null) {
-                            Toast.makeText(AddActivity.this, "已送進發現", Toast.LENGTH_SHORT).show();
+                        if (done.error == null) {
+                            String msg = done.gold > 0
+                                    ? "已送進發現 +" + done.gold + " 金"
+                                    : "已送進發現";
+                            Toast.makeText(AddActivity.this, msg, Toast.LENGTH_SHORT).show();
                             finish();
                         } else {
-                            Toast.makeText(AddActivity.this, fail, Toast.LENGTH_SHORT).show();
+                            Toast.makeText(AddActivity.this, done.error, Toast.LENGTH_SHORT).show();
                             input.requestFocus();
                         }
                     }

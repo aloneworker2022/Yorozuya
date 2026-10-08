@@ -1,5 +1,7 @@
 package tw.yorozuya.discover;
 
+import org.json.JSONObject;
+
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -8,7 +10,13 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 final class DiscoverClient {
-    static String post(String baseUrl, String text) throws Exception {
+    static final class Result {
+        final String error;
+        final int gold;
+        Result(String error, int gold) { this.error = error; this.gold = gold; }
+    }
+
+    static Result post(String baseUrl, String text) throws Exception {
         String body = "{\"text\":\"" + json(text) + "\"}";
         URL url = new URL(baseUrl + "/api/quests/discover");
         HttpURLConnection c = (HttpURLConnection) url.openConnection();
@@ -26,9 +34,13 @@ final class DiscoverClient {
             int code = c.getResponseCode();
             InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
             String resp = read(in);
-            if (code >= 200 && code < 300) return null;
-            if (resp.contains("請輸入待辦")) return "請輸入待辦";
-            return "伺服器 " + code;
+            if (code >= 200 && code < 300) {
+                int gold = 0;
+                try { gold = new JSONObject(resp).optInt("gold", 0); } catch (Exception ignored) { }
+                return new Result(null, gold);
+            }
+            if (resp.contains("請輸入待辦")) return new Result("請輸入待辦", 0);
+            return new Result("伺服器 " + code, 0);
         } finally {
             c.disconnect();
         }

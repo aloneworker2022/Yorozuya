@@ -93,20 +93,73 @@ export const SUMMON_RITUAL_LINES = [
   "等待她踏過閾限",
 ];
 
-/** @param {HTMLElement|null} el */
-export function startSummonRitualStatus(el) {
+/** 儀式句跟進度方塊分開，輪播才不會把方塊清掉。 */
+function ensureRitualChrome(el) {
+  let line = el.querySelector(".room-summon-ritual-line");
+  let blocks = el.querySelector(".room-summon-blocks");
+  if (!line || !blocks) {
+    const prev = line?.textContent || "";
+    line = document.createElement("div");
+    line.className = "room-summon-ritual-line";
+    line.textContent = prev;
+    blocks = document.createElement("div");
+    blocks.className = "room-summon-blocks";
+    blocks.hidden = true;
+    blocks.setAttribute("aria-hidden", "true");
+    el.replaceChildren(line, blocks);
+  }
+  return { line, blocks };
+}
+
+/**
+ * @param {HTMLElement|null} el
+ * @param {(() => void)|null} [onPulse] 每 10 秒換句時叫一次（用來問 RP5 現在畫到哪）
+ */
+export function startSummonRitualStatus(el, onPulse) {
   if (!el || !SUMMON_RITUAL_LINES.length) {
     return () => {};
   }
+  const line = el.classList?.contains("room-summon-ritual")
+    ? ensureRitualChrome(el).line
+    : el;
   let idx = Math.floor(Math.random() * SUMMON_RITUAL_LINES.length);
   const paint = () => {
-    el.textContent = SUMMON_RITUAL_LINES[idx % SUMMON_RITUAL_LINES.length];
+    line.textContent = SUMMON_RITUAL_LINES[idx % SUMMON_RITUAL_LINES.length];
   };
   paint();
   const timer = setInterval(() => {
     idx = (idx + 1) % SUMMON_RITUAL_LINES.length;
     paint();
+    try { if (typeof onPulse === "function") onPulse(); } catch { /* */ }
   }, 10000);
   return () => clearInterval(timer);
+}
+
+/**
+ * 儀式提詞正下方的小方塊。done 格實心，下一格是正在做的，其餘是點。
+ * @param {HTMLElement|null} el
+ */
+export function paintRitualBlocks(el, done, total) {
+  if (!el?.classList?.contains("room-summon-ritual")) return;
+  const { blocks } = ensureRitualChrome(el);
+  const n = Math.max(0, Number(total) || 0);
+  const d = Math.max(0, Math.min(n, Number(done) || 0));
+  if (n <= 0) {
+    blocks.hidden = true;
+    blocks.replaceChildren();
+    return;
+  }
+  blocks.hidden = false;
+  while (blocks.childElementCount > n) blocks.lastElementChild.remove();
+  while (blocks.childElementCount < n) {
+    const cell = document.createElement("i");
+    blocks.appendChild(cell);
+  }
+  const now = d < n ? d : -1;
+  for (let i = 0; i < n; i++) {
+    const cls = i < d ? "on" : (i === now ? "now" : "");
+    const cell = blocks.children[i];
+    if (cell.className !== cls) cell.className = cls;
+  }
 }
 

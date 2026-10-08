@@ -1,5 +1,7 @@
 /** 房間／約會共用：執行期身體狀態（非靜態外貌）。從 testdate 精簡移植。 */
 
+import { expansionLevel } from "./player_state.js";
+
 export const BODY_MAX = 30;
 
 export const SEMEN_ZH = ["沒有", "少量", "中量", "大量"];
@@ -420,8 +422,14 @@ export function bodyPromptLines(who, opts = {}) {
   }
   if (b.lastPart === "clit") tone.push("對方剛才在弄陰蒂：回覆必須直接反應那裡的刺激，不要顧左右而言他。");
   if (b.lastPart === "labia") tone.push("對方剛才在撫陰唇：回覆要帶被分開／滑過的感覺。");
-  if (b.lastPart === "vagina" || b.lastPart === "finger_in") {
+  if ((b.lastPart === "vagina" || b.lastPart === "finger_in" || b.lastPart === "vagina_finger")
+    && String(o.vagina?.stuffed || "") === "fingers") {
+    tone.push("對方的手指還插在陰道裡，扣完也沒抽出去。每一句都要帶穴裡還含著手指；不准寫手指抽出、離開、拿出來。");
+  } else if (b.lastPart === "vagina" || b.lastPart === "finger_in") {
     tone.push("對方剛才在弄陰道／插入手指：回覆要帶被進入或穴口被攪的感覺。");
+  }
+  if ((b.lastPart === "uterus" || b.lastPart === "cervix_rub") && String(o.vagina?.stuffed || "") === "fingers") {
+    tone.push("指腹還抵在子宮口，手指沒有抽出。不准寫手指離開體內。");
   }
   if (b.lastPart === "fingers_out" || b.lastPart === "pull_out") {
     tone.push("對方剛抽出：穴裡突然空、收縮；語氣會漏出不甘或鬆一口氣。");
@@ -540,7 +548,7 @@ export function applyOrganFromHit(who, hit, text = "") {
 }
 
 /**
- * 沒開聊天框、人還在房裡的一拍：性奮 −1。
+ * 沒開聊天框、人還在房裡的一拍：性奮 −1。呼叫端每 30 秒一次。
  * 聊天框開著不要呼叫。
  */
 export function decayArousalOffChat(who) {
@@ -614,7 +622,7 @@ export function applyBodyFromUserText(who, text) {
   if (!b) return false;
   const hit = matchBodyHit(text);
   if (!hit) {
-    // 普通聊天的性奮只在每三句 −2（noteTalkExchange），這裡不另扣。
+    // 普通聊天的性奮只在每六句 −1（noteTalkExchange），這裡不另扣。
     b.lastPart = "";
     b.lastVerb = "";
     b.touchVerb = false;
@@ -622,7 +630,7 @@ export function applyBodyFromUserText(who, text) {
   }
   const beforeArousal = b.arousal || 0;
   applyOrganFromHit(who, hit, text);
-  b.arousal = clampBody(b.arousal + (hit.arousal || 0));
+  b.arousal = clampBody(b.arousal + (hit.arousal || 0) + expansionLevel("tease"));
   bumpClimaxTease(b, beforeArousal);
   b.lastPart = hit.id;
   b.lastVerb = actVerb(text);
@@ -684,7 +692,7 @@ export function applyAct(who, actId) {
     o.vagina.wet = Math.min(3, (o.vagina.wet || 0) + 1);
     o.clit.swell = Math.min(3, (o.clit.swell || 0) + 1);
   }
-  b.arousal = clampBody(b.arousal + (hit.arousal || 0));
+  b.arousal = clampBody(b.arousal + (hit.arousal || 0) + expansionLevel("tease"));
   bumpClimaxTease(b, beforeArousal);
   b.lastPart = actId === "cervix_rub" ? "uterus" : hit.id;
   b.lastVerb = actVerb(act.text);

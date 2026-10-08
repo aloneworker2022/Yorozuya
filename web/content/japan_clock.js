@@ -1,7 +1,8 @@
-/* 畫面和描述共用的日本時間。 */
-export function japanNow(date = new Date()) {
+/* 房間用台灣時間，人在日本用日本時間。差一小時，不要混用。 */
+
+function clockIn(timeZone, placeName, date = new Date()) {
   const fmt = new Intl.DateTimeFormat("zh-Hant", {
-    timeZone: "Asia/Tokyo",
+    timeZone,
     year: "numeric",
     month: "numeric",
     day: "numeric",
@@ -22,6 +23,14 @@ export function japanNow(date = new Date()) {
     month,
     dayPart,
     season,
-    line: `現在是日本時間${parts.year}年${label}，${season}季的${dayPart}。描述必須符合這個時間和季節，不要把${dayPart}寫成別的時段。`,
+    line: `現在是${placeName}時間${parts.year}年${label}，${season}季的${dayPart}。描述必須符合這個時間和季節，不要把${dayPart}寫成別的時段。`,
   };
+}
+
+export function japanNow(date = new Date()) {
+  return clockIn("Asia/Tokyo", "日本", date);
+}
+
+export function taiwanNow(date = new Date()) {
+  return clockIn("Asia/Taipei", "台灣", date);
 }

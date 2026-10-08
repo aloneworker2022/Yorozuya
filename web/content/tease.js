@@ -161,8 +161,6 @@ export function decayBodyIdle(who) {
   if (o.nipples?.wet && Math.random() < 0.45) o.nipples.wet = false;
   if (o.clit?.wet && Math.random() < 0.4) o.clit.wet = false;
   if (o.labia?.wet && Math.random() < 0.4) o.labia.wet = false;
-  if (stuffed === "fingers" && (b.arousal || 0) <= 4 && Math.random() < 0.15) {
-    o.vagina.stuffed = "";
-  }
+  // 手指留到玩家按「抽出」。性奮退了也不自己掉出來。
   return b;
 }

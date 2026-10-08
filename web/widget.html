@@ -119,7 +119,8 @@ f.addEventListener("submit", async (e) => {
       return;
     }
     q.value = "";
-    say("已送進發現", "ok");
+    const gold = Number(j.gold) || 0;
+    say(gold > 0 ? `已送進發現 +${gold} 金` : "已送進發現", "ok");
     try { navigator.vibrate?.(12); } catch {}
   } catch {
     say("連不上伺服器", "bad");

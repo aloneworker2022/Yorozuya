@@ -243,7 +243,7 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
   // 年紀會隨機漂,同一個人設每次看起來都不同歲數。範圍見 persona_pools 的
   // age(沒設就用 18~33:她們都是被從現實生活裡擄來的成年人)。
   const ageRange = F.age || {};
-  // 召喚時沒有職業,也就沒有生涯制服。平常穿個人衣櫃的第一套。
+  // 召喚時沒有職業,也就沒有生涯制服。衣櫃第一套留給之後進房抽；織形體的第一套由召喚端指定白 T。
   // wardrobe 仍依關係解鎖(朋友 1 / 女友 3 / 妻子 6 套)。
   const wardrobe = pickN(A.style, WARDROBE_SIZE);
   const eroticPool = (A.erotic_style || []).filter(x => allow(typeof x === "string" ? { nsfw: true } : x, rating));

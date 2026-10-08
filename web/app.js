@@ -5,6 +5,7 @@
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildDiaryCommentPrompt, buildNoticePrompt, buildCardPlayPrompt, buildCardVisualPosePrompt, parseCardVisualPose, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, WARDROBE_UNLOCK, EROTIC_UNLOCK, SLEEP_UNLOCK, POOLS } from "./content/girl_gen.js";
+import { SHOT_FALLBACK, pickPortraitUrl, schedulePortraitCutProbe, uncutPortraitSet } from "./content/portrait_pick.js?v=2";
 import * as Cards from "./content/card_engine.js";
 import {
   TEASE_LIVE_SHOTS, TEASE_SEQ, TEASE_KIND_ZH, isTeaseShot, teaseFraming, composeTeaseExtra, teaseNoRef,
@@ -54,11 +55,14 @@ import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACK
 import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=2";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
-import { lifeMemoryPromptLines } from "./content/life_memory.js?v=1";
+import { lifeMemoryPromptLines } from "./content/life_memory.js?v=3";
+import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
+import { rollSummonCost } from "./content/life_schedule.js?v=2";
+import { BASE_OUTFIT } from "./content/outfit_pick.js?v=1";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
-const APP_VER = "v7.87(2026-09-19)test_jspace高解析重畫";
+const APP_VER = "v8.0(2026-10-05)乾淨完整版";
 
 // 世界觀文件(內容模組件,可自由編輯):開機載入一次,注入每次對話。
 // 核心零解析——只把整份文字透傳給 PersonaBuilder。
@@ -177,14 +181,16 @@ const EXPANSIONS = {
   reward:   "完成金額",     // 完成 = randInt(1+lv, 3+lv)
   offering: "商店祭品",     // 每日進貨 = 2 + lv
   roster:   "名冊名額",     // 名額 = 1 + lv
-  kanban:   "看板娘時長",   // 小時 = 1 + lv
-  drop:     "獻祭掉落率",   // 影響獻祭掉落(Phase 7)
-  cheap:    "召喚減費",     // 第二位起的看板娘費用每級 -1 金,地板 2 金
+  drop:     "獻祭掉落率",   // 掉落分母每級 −5
+  semen:    "精液量",       // 精液上限 = 20 + lv cc
+  excite:   "興奮上限",     // 玩家興奮上限 = 20 + lv（調戲射精與肏都算）
+  tease:    "調戲能力",     // 每次動手性奮額外 +lv；高潮中推向失神每下 +4×lv
 };
 // 天賦可能值:擴充軸 + 特殊「取消召喚師」(獻祭刷到就清掉所有召喚師)
 const GIFT_KEYS = [...Object.keys(EXPANSIONS), ...(SUMMONER_ON ? ["cleanse"] : [])];
 function giftLabel(g) { return g === "cleanse" ? "取消所有召喚師" : (EXPANSIONS[g] || "?"); }
 function expLv(k) {
+  if (!state) return 0;
   let lv = (state.expansions && state.expansions[k]) || 0;
   // 在任看板娘自帶擴充暫時加到玩家身上(多看板娘可疊,每位 +1)
   if (typeof kanbanSuccubi === "function" && state) {
@@ -192,11 +198,13 @@ function expLv(k) {
   }
   return lv;
 }
+// 房間讀這份：精液上限、興奮上限、調戲加成。沙盒沒掛就當 0。
+window.YorozuyaGrowth = {
+  level(key) { return expLv(key); },
+};
 function execCap() { return 1 + expLv("exec"); }
 function rosterCap() { return 1 + expLv("roster"); }
-function kanbanHours() { return 1 + expLv("kanban"); }
-/** 房間陪伴停留時長（對齊原看板 until = kanbanHours()*HOUR）；供 room 模組讀取 */
-window.yoroRoomVisitMs = () => kanbanHours() * HOUR;
+function kanbanHours() { return 1; } // 時長擴充已退役。店頭若還在，固定 1 小時。
 const QUEST_HOURS = 24;          // 期限統一 24 小時
 const JOURNAL_TTL = 30 * 24 * HOUR; // 一則日誌保存一個月
 const JOURNAL_CAP = 40;
@@ -473,19 +481,19 @@ const MULT = { N: 1.0, R: 1.1, S: 1.2, SS: 1.35, SSR: 1.5 };
 const CHAT_GAP = { N: 3, R: 2, S: 1, SS: 1, SSR: 1 };  // 每 X 天至少聊 1 次
 const DATE_GAP = { SS: 5, SSR: 3 };                     // 每 X 天至少約 1 次
 const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 50], ["girlfriend", "女友", null], ["wife", "妻子", null]];
-// 名冊溫度計用房間十一階。一次只畫「現在這階 → 下一階」。
+// 名冊感情數字用房間十一階。顯示現在的分數，還沒到下一階就順便寫門檻。
 const AFF_LADDER = [
   ["stranger", "陌生", 0],
-  ["acquaintance", "普通", 15],
-  ["friend", "朋友", 35],
-  ["close_friend", "親密好友", 60],
-  ["girlfriend", "女友", 100],
-  ["passionate", "熱戀", 140],
-  ["lover", "愛人", 180],
-  ["wife", "妻子", 230],
-  ["devoted_wife", "貼心妻子", 280],
-  ["obedient_wife", "順從妻子", 330],
-  ["pathological_wife", "病態妻子", 380],
+  ["acquaintance", "普通", 30],
+  ["friend", "朋友", 70],
+  ["close_friend", "親密好友", 120],
+  ["girlfriend", "女友", 200],
+  ["passionate", "熱戀", 280],
+  ["lover", "愛人", 360],
+  ["wife", "妻子", 460],
+  ["devoted_wife", "貼心妻子", 560],
+  ["obedient_wife", "順從妻子", 660],
+  ["pathological_wife", "病態妻子", 760],
 ];
 const AFF_LADDER_ZH = Object.fromEntries(AFF_LADDER.map((s) => [s[0], s[1]]));
 // 名冊 s.stage 是主線四階（告白／求婚／贖回／升階都靠它）；房間 11 階梯另存 s.roomStage，
@@ -504,9 +512,33 @@ function gameStageOf(stage) {
 }
 // ── 關係階段：房間 11 階（s.roomStage）是唯一真相；s.stage 只是它折成的主線四階 ──
 // 規則與 content/test_room_summon.js 的 syncStage 一致：依感情自動升降，但不會自動跨進
-// 女友（停在親密好友）與妻子（停在愛人）；降階有 5 點緩衝。stageLock（房間除錯跳階）優先。
+// 女友（停在親密好友）與妻子（停在愛人）；降階有 5 點緩衝。已是妻子以上不會降到妻子以下。
+// stageLock（房間除錯跳階）優先。
 const ROOM_STAGE_INDEX = Object.fromEntries(AFF_LADDER.map((x, i) => [x[0], i]));
 const ROOM_STAGE_AT = Object.fromEntries(AFF_LADDER.map((x) => [x[0], x[2]]));
+/** 2026-10-07 門檻翻倍。舊檔感情乘 2 一次，affGen===2 的不再乘。 */
+const AFF_GEN = 2;
+function ladderStageKey(who) {
+  if (who.roomStage && Object.prototype.hasOwnProperty.call(ROOM_STAGE_AT, who.roomStage)) return who.roomStage;
+  if (who.stage && Object.prototype.hasOwnProperty.call(ROOM_STAGE_AT, who.stage)) return who.stage;
+  return "";
+}
+function migrateAffectionScale(who) {
+  if (!who || typeof who !== "object" || who.affGen === AFF_GEN) return false;
+  const cur = Number(who.affection);
+  who.affection = Number.isFinite(cur) ? Math.round(cur * 2) : 0;
+  who.affGen = AFF_GEN;
+  // 舊檔停在門檻下 5 點緩衝的下半，乘 2 後會掉出名。只把這一段抬回新緩衝線。
+  if (!who.stageLock) {
+    const key = ladderStageKey(who);
+    const gate = key ? (ROOM_STAGE_AT[key] || 0) : 0;
+    const hold = gate - ROOM_STAGE_HYSTERESIS;
+    if (gate > 0 && who.affection >= gate - ROOM_STAGE_HYSTERESIS * 2 && who.affection < hold) {
+      who.affection = hold;
+    }
+  }
+  return true;
+}
 const ROOM_STAGE_HYSTERESIS = 5;
 const ROOM_DATING_STAGES = new Set(["girlfriend", "passionate", "lover"]);
 function roomStageByAffection(aff) {
@@ -530,6 +562,8 @@ function roomSyncStage(s) {
   const maxAuto = curIdx < gfIdx ? ROOM_STAGE_INDEX.close_friend
     : curIdx < wifeIdx ? ROOM_STAGE_INDEX.lover : AFF_LADDER.length - 1;
   if ((ROOM_STAGE_INDEX[target] ?? 0) > maxAuto) target = AFF_LADDER[maxAuto][0];
+  // 妻子帶只降到妻子：上去之後不會掉回愛人／女友
+  if (curIdx >= wifeIdx && (ROOM_STAGE_INDEX[target] ?? 0) < wifeIdx) target = AFF_LADDER[wifeIdx][0];
   if ((ROOM_STAGE_INDEX[target] ?? 0) < curIdx && aff >= (ROOM_STAGE_AT[current] ?? 0) - ROOM_STAGE_HYSTERESIS) {
     target = current;
   }
@@ -547,7 +581,7 @@ function roomSyncStage(s) {
 /**
  * 名冊妹子階段正規化：確保 s.roomStage 有值並依房間規則同步，s.stage = 折成的主線四階。
  * 舊存檔：roomStage 缺／與主線不同段 → 以主線階（或誤寫進 s.stage 的細階）當起點；
- * 主線靠告白／求婚成為女友／妻子但感情低於房間門檻者，補到 100／230（同房間告白／求婚），免得一載入就被降階。
+ * 主線靠告白／求婚成為女友／妻子但感情低於房間門檻者，補到女友／妻子門檻（同房間告白／求婚），免得一載入就被降階。
  * 回傳是否有改。
  */
 function normalizeGirlStage(s) {
@@ -581,7 +615,7 @@ function retireGirlLegacy(s) {
     changed = true;
   }
   if (!SUMMONER_ON && s.summoner) { s.summoner = null; changed = true; }
-  if (!SUMMONER_ON && s.gift === "cleanse") { s.gift = pick(GIFT_KEYS) || "kanban"; changed = true; }
+  if (!GIFT_KEYS.includes(s.gift)) { s.gift = pick(GIFT_KEYS) || "roster"; changed = true; }
   if (!NUDE_FLAG_ON && "nude" in s) { delete s.nude; changed = true; }
   return changed;
 }
@@ -589,6 +623,15 @@ function repairGirl(s) {
   const a = retireGirlLegacy(s);
   const b = normalizeGirlStage(s);
   return a || b;
+}
+/** 淫紋、看板娘時長、召喚減費已退出。舊等級丟掉，不併到新軸。 */
+function retireExpansionAxes() {
+  if (!state?.expansions) return false;
+  let changed = false;
+  for (const k of ["crest", "kanban", "cheap"]) {
+    if (k in state.expansions) { delete state.expansions[k]; changed = true; }
+  }
+  return changed;
 }
 const RANSOM = { friend: 30, girlfriend: 90, wife: 180 };
 const DATE_COST = 5, DATE_LIMIT = 1, NTR_WINDOW = 7; // 聊天計費:每 2 則玩家訊息 1 金；約會每天 1 次
@@ -761,7 +804,7 @@ function stripRetiredGirlBits(s) {
   if (s.schedule) {
     if (!s.schedule.night || /織夢/.test(s.schedule.night)) s.schedule.night = "睡覺";
   }
-  if (s.gift === "crest") s.gift = pick(GIFT_KEYS) || "kanban";
+  if (!GIFT_KEYS.includes(s.gift)) s.gift = pick(GIFT_KEYS) || "roster";
 }
 
 function makeBackstory() {
@@ -825,6 +868,7 @@ let version = 0;
 let dirty = false;
 let saveTimer = null;
 let detailId = null;     // 魅魔詳情頁
+let rosterSacAsk = null; // 名冊長按：這隻的詳情要直接打開獻祭確認
 let dateChooser = false; // 詳情頁展開「去公園約會／付2金」確認列
 let dateFlow = null;     // 正式約會：{ girlId, phoneCost } 已接通，待確認付 2 金去公園 VN（edit_date）
 const OFFICIAL_DATE_FEE = 2; // 正式公園約會（edit_date / test_date VN）費用；與 Cards.venues 無關
@@ -860,7 +904,7 @@ function defaultState() {
     cardsLive: { packId: null, epoch: 0 },
     bubbleAff: { day: null, byGirl: {} }, // M2 氣泡情感日 cap { day, byGirl: { id: used } }
     senseHour: { key: 0, count: 0 }, // 感應時段額度 {key=floor(now/HOUR), count}
-    roomSummonOffer: null, // 房間召喚黏著報價 { cost: 3～30 }；用過才重擲
+    roomSummonOffer: null, // 房間召喚黏著報價 { cost: 3～5 }；用過才重擲
     playerProfile: {
       name: "", body: "", look: "", habit: "",
       prefs: [], quiz: {},
@@ -1005,6 +1049,42 @@ async function gcOrphanAssets({ silent = true } = {}) {
   }
 }
 
+function roomGirlIdOf(g) {
+  return g?.gameGirlId || g?.id || "";
+}
+
+/** 她離開名冊時，房間裡若還是她，一併清掉，避免獻祭後人還站在房裡。 */
+function forgetRoomGirl(id) {
+  if (!id || !state) return;
+  let live = null;
+  try { live = window.RoomCompanion?.current?.() || null; } catch { live = null; }
+  const liveId = roomGirlIdOf(live);
+  let storedId = "";
+  try {
+    const session = JSON.parse(localStorage.getItem(ROOM_SAVE_KEY_MAIN) || "null");
+    storedId = roomGirlIdOf(session?.girl);
+  } catch { /* 沒有房間存檔 */ }
+  const mirror = state.roomMirror;
+  const mirrorId = mirror?.girlId || roomGirlIdOf(mirror?.girl);
+  const roomIsHer = liveId === id || (!liveId && storedId === id);
+  if (roomIsHer) {
+    try { window.RoomCompanion?.clear?.(); } catch { /* 房間模組沒載 */ }
+    try { localStorage.removeItem(ROOM_SAVE_KEY_MAIN); } catch { /* */ }
+    try { localStorage.removeItem(ROOM_PROGRESS_KEY); } catch { /* */ }
+  }
+  if (mirror && mirrorId === id) {
+    state.roomMirror = {
+      from: mirror.from || "phone",
+      savedAt: Date.now(),
+      girlId: "",
+      present: false,
+      girl: null,
+      player: mirror.player || null,
+    };
+    dirty = true;
+  }
+}
+
 /** 從名冊拿掉一隻：關牌桌、刪立繪／出卡圖、清看板。各離場路徑共用。 */
 function dropGirlFromRoster(sOrId, extra = {}) {
   const id = typeof sOrId === "string" ? sOrId : sOrId?.id;
@@ -1020,6 +1100,7 @@ function dropGirlFromRoster(sOrId, extra = {}) {
   if (state.lastKanbanId === id) state.lastKanbanId = null;
   if (typeof detailId !== "undefined" && detailId === id) detailId = null;
   if (typeof stopDaydreamIfNoGirls === "function") stopDaydreamIfNoGirls();
+  forgetRoomGirl(id);
 }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function pick2(arr) { const a = [...arr]; const i = a.splice(Math.floor(Math.random() * a.length), 1)[0]; return [i, pick(a)]; }
@@ -1078,18 +1159,17 @@ function initState(j, offline) {
   state.expansions.roster = Math.max(state.expansions.roster || 0, legacySlots - 1);
   delete state.slots;
   // 背景故事移轉:舊魅魔補發人生
+  let migrated = false;
   for (const s of state.succubi) {
-    repairGirl(s);   // 房間 11 階為準＋退役系統舊欄位清掉
+    migrateAffectionScale(s);
+    if (repairGirl(s)) migrated = true;   // 房間 11 階為準＋退役系統舊欄位清掉
     if (!s.backstory) Object.assign(s, makeBackstory());
     else if (!s.schedule) s.schedule = makeSchedule(s.job);   // 有故事沒作息 → 補作息
     pruneJournal(s);
     stripRetiredGirlBits(s);
   }
-  // 淫紋擴充已退役：舊等級併進看板娘時長
-  if (state.expansions.crest) {
-    state.expansions.kanban = (state.expansions.kanban || 0) + (state.expansions.crest || 0);
-    delete state.expansions.crest;
-  }
+  if (retireExpansionAxes()) migrated = true;
+  if (migrated) scheduleSave();
   // 看板娘限時化移轉:舊的永久看板娘寬限一個時段,到期後改付費召喚
   if (state.kanbanId && !state.kanbanUntil) state.kanbanUntil = Date.now() + kanbanHours() * HOUR;
   // 多看板娘制移轉:單一 kanbanId/kanbanUntil → kanbans 陣列
@@ -1125,6 +1205,34 @@ function initState(j, offline) {
   }
   state.senseHour ??= { key: 0, count: 0 };
   ensureRoomSummonOffer();
+  migrateAffectionScale(state.roomMirror?.girl);
+  try {
+    const roomRaw = localStorage.getItem(ROOM_SAVE_KEY_MAIN);
+    if (roomRaw) {
+      const roomData = JSON.parse(roomRaw);
+      if (migrateAffectionScale(roomData?.girl)) {
+        localStorage.setItem(ROOM_SAVE_KEY_MAIN, JSON.stringify(roomData));
+      }
+    }
+    const progRaw = localStorage.getItem(ROOM_PROGRESS_KEY);
+    if (progRaw) {
+      const prog = JSON.parse(progRaw);
+      if (prog && typeof prog === "object" && prog.affGen !== AFF_GEN) {
+        if (typeof prog.affection === "number") {
+          const lifted = {
+            affection: prog.affection,
+            stage: prog.stage,
+            roomStage: prog.roomStage,
+            stageLock: prog.stageLock,
+          };
+          migrateAffectionScale(lifted);
+          prog.affection = lifted.affection;
+        }
+        prog.affGen = AFF_GEN;
+        localStorage.setItem(ROOM_PROGRESS_KEY, JSON.stringify(prog));
+      }
+    }
+  } catch { /* ignore */ }
   mergeRoomProgressSync();
   try { bindRoomProgressLiveSync(); } catch { /* ignore */ }
   state.inventory ??= { bouquet: 0, ring: 0 };
@@ -1200,7 +1308,7 @@ function initState(j, offline) {
     }
     if (s.summoner === undefined) s.summoner = null;
     if (s.nextDraw == null) { s.drawIvlH = randInt(2, 5); s.nextDraw = Date.now() + s.drawIvlH * HOUR; }
-    if (!s.gift || s.gift === "crest" || (!SUMMONER_ON && s.gift === "cleanse")) s.gift = pick(GIFT_KEYS);
+    if (!GIFT_KEYS.includes(s.gift)) s.gift = pick(GIFT_KEYS);
     // 飢渴移轉:舊魅魔沒有這欄,不補的話 craveValue 會永遠停在 0（飢渴已退役：不再補）
     if (CRAVE_ON && !s.crave) s.crave = { v: randInt(0, 25), at: Date.now() };
     // 交配環系統移轉:舊 summoner.affection(0~240)→ stage/resist/matingCount/kinks
@@ -1392,7 +1500,9 @@ document.addEventListener("visibilitychange", async () => {
       for (const k of Object.keys(def)) state[k] ??= def[k];
       state.settings = { ...def.settings, ...state.settings };
       state.settings.rating = "nsfw";
-      for (const g of state.succubi || []) repairGirl(g);
+      let migrated = retireExpansionAxes();
+      for (const g of state.succubi || []) if (repairGirl(g)) migrated = true;
+      if (migrated) scheduleSave();
     }
     if (!isPhoneClient() && !dirty && state.roomMirror?.from === "phone") {
       applyServerRoomMirror();
@@ -1435,7 +1545,9 @@ async function saveNow(keepalive = false) {
       const j = await fetch("/api/save").then(x => x.json());
       version = j.version;
       state = j.data ?? defaultState();
-      for (const g of state.succubi || []) repairGirl(g);
+      let migrated = retireExpansionAxes();
+      for (const g of state.succubi || []) if (repairGirl(g)) migrated = true;
+      if (migrated) scheduleSave();
       if (!isPhoneClient() && state.roomMirror?.from === "phone") {
         try { applyServerRoomMirror(); } catch { /* ignore */ }
       }
@@ -1578,12 +1690,23 @@ function addQuest(text, opts = {}) {
   }
   const q = { id: uid(), text, lv: 0 };
   state.quests.push(q);
-  // 發現獎勵:每日前 N 次 +0~2 金
+  // 發現獎勵:每日前 N 次 +0~2 金。小工具送出時伺服器已擲好，這裡照單入帳。
   const today = dayNum();
   if (state.discover?.day !== today) state.discover = { day: today, count: 0 };
-  if (state.discover.count < DISCOVER_BONUS_CAP) {
+  let g = 0;
+  let give = false;
+  const inboxRoll = opts.fromInbox && opts.counted && Number(opts.day) === today;
+  if (inboxRoll) {
+    if (state.discover.count < DISCOVER_BONUS_CAP) {
+      give = true;
+      g = Math.max(0, Math.min(2, Number(opts.gold) || 0));
+    }
+  } else if (state.discover.count < DISCOVER_BONUS_CAP) {
+    give = true;
+    g = randInt(0, 2);
+  }
+  if (give) {
     state.discover.count++;
-    const g = randInt(0, 2);
     if (g > 0) {
       state.gold += g;
       log(`發現「${text}」 +${g} 金`);
@@ -1606,15 +1729,16 @@ function addQuest(text, opts = {}) {
         if (chatWith || watchWith || sacrificeWith) return;
         beginShopTalk(gid, { journalQuest: q });
       }, 560);
-      return;
+      return g;
     }
     // M2：發現 → 氣泡 15%；舊路徑仍 crest
     if (cardSystemOn()) questBubbleRoll("discover", text);
     else crestRoll();
     scheduleSave(); renderAll();
-    return;
+    return g;
   }
   scheduleSave();
+  return g;
 }
 
 let inboxBusy = false;
@@ -1629,8 +1753,18 @@ async function drainQuestInbox() {
     const j = await r.json();
     const items = Array.isArray(j.items) ? j.items : [];
     if (!items.length) return;
-    for (const it of items) addQuest(it.text, { quiet: true });
-    toast(items.length === 1 ? `已加入發現：「${items[0].text}」` : `已加入發現 ${items.length} 件`, "good");
+    let gained = 0;
+    for (const it of items) {
+      gained += addQuest(it.text, {
+        quiet: true,
+        fromInbox: true,
+        gold: it.gold,
+        counted: it.counted,
+        day: it.day,
+      }) || 0;
+    }
+    const base = items.length === 1 ? `已加入發現：「${items[0].text}」` : `已加入發現 ${items.length} 件`;
+    toast(gained > 0 ? `${base} +${gained} 金` : base, "good");
     renderAll();
   } catch { /* 下輪再試 */ }
   finally { inboxBusy = false; }
@@ -1946,8 +2080,8 @@ function buildShopSpecials() {
   const specials = [];
   // 壯陽藥：常駐。買了立刻喝，價格每次重抽，不會賣完。
   specials.push(rollVirilityOffer());
-  // 花束：名冊有朋友且情感≥230 → 今日進一束
-  if ((state.succubi || []).some(s => !s.ntr && s.stage === "friend" && (s.affection || 0) >= 230)) {
+  // 花束：名冊有朋友段、感情已到女友門檻 → 今日進一束
+  if ((state.succubi || []).some(s => !s.ntr && s.stage === "friend" && (s.affection || 0) >= ROOM_STAGE_AT.girlfriend)) {
     specials.push({ id: uid(), kind: "bouquet", name: "花束", price: randInt(20, 50), sold: false });
   }
   // 戒指：名冊有女友 → 今日進一枚
@@ -2166,14 +2300,15 @@ async function genSacOrders() {
 
 // 魅魔獻祭:SAC_RITUAL=true 時讀取預織的 sacScript 播放 VN(開場 → 六句)→「完成獻祭」結算;
 // SAC_RITUAL=false(現行)確認後直接結算,不生成、不顯示任何文字,結果只走 log/toast。
-async function sacrificeSuccubus(id) {
+async function sacrificeSuccubus(id, opts = {}) {
   const s = state.succubi.find(x => x.id === id);
   if (!s || s.ntr) return;
   const block = sacrificeBlockReason(s);
   if (block) { toast(block, "bad"); return; }
   const price = dismissPriceToday();
   if (state.gold < price) { toast(`今日獻祭費 ${price} 金,你付不起`, "bad"); return; }
-  if (!confirm(`獻祭 ${s.name}?\n費用 ${price} 金。她將被獻給地獄惡魔,永遠消失。`)) return;
+  // 詳情頁已用畫面上的「確定獻祭」確認過。這裡的 confirm 只留給除錯直呼。
+  if (!opts.confirmed && !confirm(`獻祭 ${s.name}?\n費用 ${price} 金。她將被獻給地獄惡魔,永遠消失。`)) return;
   state.gold -= price;
 
   // 不演出:直接結算(移除她 + 天賦掉落判定),不進 chat-mode、不生成任何文字
@@ -2510,9 +2645,12 @@ function canSummon() {
 // 開始獻祭召喚:一位一位獻祭祭品,獻完再召喚
 function startSummonSacrifice() {
   if (state.gold < 0) { toast("負債中不可召喚", "bad"); return; }
-  if (state.succubi.length >= rosterCap()) { toast(`名冊名額已滿(${rosterCap()} 格)`, "bad"); return; }
+  if (state.succubi.length >= rosterCap()) {
+    toast(`名冊滿了（${rosterCap()} 格）。長按名冊裡的她，或打開後按「獻祭」，空出一格。`, "bad");
+    return;
+  }
   if (state.dungeon.length < 1) { toast("地牢裡沒有祭品", "bad"); return; }
-  sacSummon = { count: 0 };
+  sacSummon = { count: 0, spent: [] };
   document.body.classList.add("chat-mode");
   renderAll();
   sacrificeNextOffering();
@@ -2522,6 +2660,9 @@ function startSummonSacrifice() {
 async function sacrificeNextOffering() {
   if (!sacSummon) return;
   const off = state.dungeon.shift();
+  if (!off) { setSummonSacBtns(true); return; }
+  sacSummon.spent = sacSummon.spent || [];
+  sacSummon.spent.push(off);
   sacSummon.count++;
   renderChatView();   // 刷新標題「已獻 N 人」
   setSummonSacBtns(false);
@@ -2544,27 +2685,45 @@ async function sacrificeNextOffering() {
       `${off.name} 被拖上祭壇,魔法陣的光紋亮起,將他的血肉與魂魄一寸寸抽入召喚之書……祭壇上只剩一縷輕煙。`);
     vnDone();
   } catch (e) {
-    if (e.name === "AbortError") { exitSummonSacrifice(); return; }
+    if (e.name === "AbortError") {
+      // 收起＝退回祭品；按「召喚」才真的召。abort 進來時 sacSummon 可能已經清掉。
+      if (sacSummon) cancelSummonSacrifice();
+      return;
+    }
     vnShow("", "(儀式的細節模糊了……)", "sys");
+  } finally {
+    if (sacSummon) {
+      scheduleSave();
+      setSummonSacBtns(true);
+    }
   }
-  scheduleSave();
-  setSummonSacBtns(true);
 }
 
-// 獻祭完畢 → 依人數擲稀有度召喚
+// 獻祭完畢 → 依人數擲稀有度召喚。名冊滿了就把剛獻上的祭品退回，不要默默吃掉。
 function doSummonNow() {
-  const n = sacSummon.count;
-  sacSummon = null;
-  document.body.classList.remove("chat-mode");
-  summonWithCount(n);
-}
-function exitSummonSacrifice() {
-  chatAbort?.abort();
   const n = sacSummon?.count || 0;
+  const spent = sacSummon?.spent || [];
+  sacSummon = null;
+  chatAbort?.abort();
+  document.body.classList.remove("chat-mode");
+  if (summonWithCount(n)) return;
+  if (spent.length) {
+    state.dungeon.unshift(...spent.slice().reverse());
+    toast(`名冊滿了（${rosterCap()} 格），祭品退回地牢。長按名冊裡的她，或到詳情按「獻祭」，空出一格。`, "bad");
+    scheduleSave();
+  }
+  renderAll();
+}
+function cancelSummonSacrifice() {
+  chatAbort?.abort();
+  const spent = sacSummon?.spent || [];
   sacSummon = null;
   document.body.classList.remove("chat-mode");
-  if (n > 0) summonWithCount(n); else renderAll();
+  if (spent.length) state.dungeon.unshift(...spent.slice().reverse());
+  scheduleSave();
+  renderAll();
 }
+function exitSummonSacrifice() { doSummonNow(); }
 function setSummonSacBtns(enabled) {
   const more = document.getElementById("ssac-more");
   const done = document.getElementById("ssac-summon");
@@ -2577,7 +2736,7 @@ function setSummonSacBtns(enabled) {
 const LUCK_BY_COUNT = { 1: 0, 2: 18, 3: 35, 4: 55, 5: 75, 6: 92 };
 
 function summonWithCount(n) {
-  if (n < 1 || state.succubi.length >= rosterCap()) { renderAll(); return; }
+  if (n < 1 || state.succubi.length >= rosterCap()) { renderAll(); return false; }
   const today = dayNum();
   // 新制:原型骨幹+評級抽卡(persona_pools.json;nsfw 項目依分級門控);池子沒載到退回舊制
   let gen = null;
@@ -2592,6 +2751,7 @@ function summonWithCount(n) {
   const base = {
     id: uid(),
     affection: 0,
+    affGen: 2,
     stage: "stranger",
     portraitReady: false,
     summonedAt: Date.now(),
@@ -2621,6 +2781,9 @@ function summonWithCount(n) {
       ...makeBackstory(),
     };
   })();
+  // 獻祭召喚織出來的第一套固定是白 T 配三角褲。衣櫃第一套只是她自己的衣服，不拿來當這張。
+  s.outfitName = BASE_OUTFIT;
+  s.outfitPick = "base";
   // Comfy 模式:召喚當下就綁定她專屬的 checkpoint(有清單才抽;沒抓過則生圖前再補)
   if (imgProvider() === "comfy") {
     const pool = usableComfyCkpts();
@@ -2632,6 +2795,7 @@ function summonWithCount(n) {
   scheduleSave();
   showSummonOverlay(s, n);
   renderAll();
+  return true;
 }
 
 function showSummonOverlay(s, n) {
@@ -2661,6 +2825,7 @@ function renderSummonCard(ov, s) {
         : ""}
       <p class="small">${esc([].concat(s.personality || [], s.tone || []).filter(Boolean).join("・"))}</p>
       <p class="small dim">${s.job ? `她原本是……${esc(s.job)}` : "她沒有過去,也還沒有經歷。個性是與生俱來的。"}</p>
+      <p class="small dim sex-pregen-note"></p>
       ${s.comfyCkpt && imgProvider() === "comfy"
         ? `<p class="small dim">生圖模型 · ${esc(shortCkptName(s.comfyCkpt))}</p>` : ""}
       <button id="summon-close">接受契約</button>
@@ -2842,6 +3007,8 @@ async function weaveShot(s, shot, onTick, opts = {}) {
     flat_bg: tease ? (shot === "tease_butt" || shot === "tease_waist" || shot === "tease_breast" || shot === "tease_breast_knead" || shot === "tease_breast_suck" || shot === "tease_nipple_lick" || shot === "tease_labia" || shot === "tease_labia_rub" || shot === "tease_finger_in" || shot === "tease_vagina_finger" || shot === "tease_cervix_rub") : wantPortraitCut,
     lock_identity: tease,
     retry: true,
+    // 有指定身上這一套才寫。沒寫時留給伺服器（妻子沒挑過就用情趣裝第一套）。
+    outfit: (String(s?.outfitName || "").trim() || s?.outfitPick === "base") ? outfitWorn(s) : "",
     // 情緒半身可帶 half 當 ref 鎖臉
     ...(opts.ref && /^\/assets\/(portraits|testword)\//.test(String(opts.ref).split("?")[0])
       ? { ref: String(opts.ref).split("?")[0] }
@@ -2863,15 +3030,9 @@ async function weaveShot(s, shot, onTick, opts = {}) {
   try {
     let r = await imgGenPost(body);
     if (!r) lastWeaveError = "伺服器沒回應(/api/imggen)";
-    let key = r?.key;
-    const deadline = Date.now() + 180000;   // 最多等 3 分鐘
-    while (r && Date.now() < deadline) {
-      if (r.status === "done") { url = r.result || ""; break; }
-      if (r.status === "error") { lastWeaveError = r.error || "生圖失敗"; break; }
-      await new Promise(res => setTimeout(res, 1500));
-      r = await imgGenPost({ ...body, key, retry: false });
-      key = r?.key || key;
-    }
+    else r = await pollImgGen(r, body);
+    if (r?.status === "done") url = r.result || "";
+    else if (r?.status === "error") lastWeaveError = r.error || "生圖失敗";
     if (!url && !lastWeaveError) lastWeaveError = "等了 3 分鐘還沒好";
   } catch (e) {
     lastWeaveError = String(e?.message || e);
@@ -3070,15 +3231,9 @@ async function weaveOneTeaseShot(s, shot) {
         try {
           let r = await imgGenPost(body);
           if (!r) lastWeaveError = "伺服器沒回應(/api/imggen)";
-          let key = r?.key;
-          const deadline = Date.now() + 180000;
-          while (r && Date.now() < deadline) {
-            if (r.status === "done") { url = r.result || ""; break; }
-            if (r.status === "error") { lastWeaveError = r.error || "生圖失敗"; break; }
-            await new Promise(res => setTimeout(res, 1500));
-            r = await imgGenPost({ ...body, key, retry: false });
-            key = r?.key || key;
-          }
+          else r = await pollImgGen(r, body);
+          if (r?.status === "done") url = r.result || "";
+          else if (r?.status === "error") lastWeaveError = r.error || "生圖失敗";
           if (!url && !lastWeaveError) lastWeaveError = "等了 3 分鐘還沒好";
         } catch (e) {
           lastWeaveError = String(e?.message || e);
@@ -3142,15 +3297,9 @@ async function weaveOneTeaseShot(s, shot) {
         try {
           let r = await imgGenPost(body);
           if (!r) lastWeaveError = "伺服器沒回應(/api/imggen)";
-          let key = r?.key;
-          const deadline = Date.now() + 180000;
-          while (r && Date.now() < deadline) {
-            if (r.status === "done") { url = r.result || ""; break; }
-            if (r.status === "error") { lastWeaveError = r.error || "生圖失敗"; break; }
-            await new Promise(res => setTimeout(res, 1500));
-            r = await imgGenPost({ ...body, key, retry: false });
-            key = r?.key || key;
-          }
+          else r = await pollImgGen(r, body);
+          if (r?.status === "done") url = r.result || "";
+          else if (r?.status === "error") lastWeaveError = r.error || "生圖失敗";
           if (!url && !lastWeaveError) lastWeaveError = "等了 3 分鐘還沒好";
         } catch (e) {
           lastWeaveError = String(e?.message || e);
@@ -5193,18 +5342,9 @@ async function weaveCardSceneShot(s, sceneEn, key, play = null) {
       console.warn("[cardSceneArt] imgGenPost null（/api/imggen 連不上？）");
       return "";
     }
-    let k = r?.key || key;
-    const deadline = Date.now() + 180000;
-    while (r && Date.now() < deadline) {
-      if (r.status === "done") { url = r.result || ""; break; }
-      if (r.status === "error") {
-        console.warn("[cardSceneArt] imggen error:", r.error);
-        break;
-      }
-      await new Promise(res => setTimeout(res, 1500));
-      r = await imgGenPost({ ...body, key: k, retry: false });
-      k = r?.key || k;
-    }
+    r = await pollImgGen(r, body);
+    if (r?.status === "done") url = r.result || "";
+    else if (r?.status === "error") console.warn("[cardSceneArt] imggen error:", r.error);
   } catch (e) {
     console.warn("[cardSceneArt] weave exception", e);
   }
@@ -5376,15 +5516,8 @@ async function daydreamSexPose(s, poseId) {
     let url = "";
     try {
       let r = await imgGenPost(body);
-      let key = r?.key;
-      const deadline = Date.now() + 180000;
-      while (r && Date.now() < deadline) {
-        if (r.status === "done") { url = r.result || ""; break; }
-        if (r.status === "error") break;
-        await new Promise(res => setTimeout(res, 1500));
-        r = await imgGenPost({ ...body, key, retry: false });
-        key = r?.key || key;
-      }
+      r = await pollImgGen(r, body);
+      if (r?.status === "done") url = r.result || "";
     } catch { /* */ }
     urls.push(url || "");
   }
@@ -5686,7 +5819,10 @@ function sleepUnlocked(s) { return sleepAll(s).slice(0, SLEEP_UNLOCK[s?.stage] ?
 function wardrobeUnlocked(s) { return wardrobeAll(s).slice(0, wardrobeOpen(s)); }
 // 她現在身上穿的。-1 / 沒挑 = 生涯服裝；e0 色情裝；s0 睡衣
 function outfitWorn(s) {
+  const named = String(s?.outfitName || "").trim();
+  if (named) return named;
   const pick = s?.outfitPick;
+  if (pick === "base") return BASE_OUTFIT;
   if (typeof pick === "string" && pick[0] === "e") {
     const i = Number(pick.slice(1));
     const list = eroticUnlocked(s);
@@ -5733,14 +5869,16 @@ async function genSummonPortrait(ov, s) {
   };
   paint(0);
   const woven = await weavePortrait(s, paint);
-  // 獻祭召喚也產整套做愛圖（房間做愛閘門 data-sex-poses 開著才跑；缺的才產、失敗不擋）
+  // 先讓她立約。做愛圖缺了才在背景補，不要把「接受契約」卡住（一整套要很久）。
+  renderSummonCard(ov, s);
+  renderAll();
   if (woven && gameIsNsfw() && window.RoomSexPregen?.enabled) {
     const sub = (text) => {
-      const p = ov.querySelector(".summon-result p");
-      if (p) p.textContent = `正在為她準備做愛圖……${text ? `（${text}）` : ""}`;
+      if (!ov || ov.classList.contains("hidden")) return;
+      const p = ov.querySelector(".sex-pregen-note");
+      if (p) p.textContent = text ? `做愛圖在背景補…${text}` : "";
     };
     try {
-      sub("");
       await window.RoomSexPregen.forGameGirl(s, sub);
       dirty = true;
       try { saveNow(); } catch { /* */ }
@@ -5748,8 +5886,6 @@ async function genSummonPortrait(ov, s) {
       console.warn("[summon sex set]", err?.message || err);
     }
   }
-  renderSummonCard(ov, s);   // 有圖顯示圖、沒圖退回今晚作夢,並露出「接受契約」
-  renderAll();
 }
 
 // ===== 情感、需求、NTR =====
@@ -5857,33 +5993,16 @@ function stageLabel(key) {
   return AFF_LADDER_ZH[key] || stageInfo(key)?.[1] || "陌生";
 }
 
-/** 名冊感情：橫向溫度計，只填目前這一段。感情為負則空管、偏冷。 */
+/** 名冊感情：直接寫數字。還沒到下一階就寫成「現在／門檻」。負分標冷。 */
 function affThermoHtml(s) {
-  const aff = Number(s?.affection) || 0;
+  const aff = Math.round(Number(s?.affection) || 0);
   const shown = displayStage(s);
   const idx = Math.max(0, AFF_LADDER.findIndex((step) => step[0] === shown));
-  const cur = AFF_LADDER[idx] || AFF_LADDER[0];
   const next = AFF_LADDER[idx + 1] || null;
   const cold = aff < 0;
-  let pct = 100;
-  if (next) {
-    const span = next[2] - cur[2];
-    pct = span > 0 ? ((aff - cur[2]) / span) * 100 : 0;
-    pct = Math.max(0, Math.min(100, pct));
-  }
-  if (cold) pct = 0;
-  const from = cur[1];
-  const to = next ? next[1] : "";
-  const label = to ? `${from} → ${to}` : from;
-  const title = cold ? `${label}（感情偏低）` : label;
-  const toHtml = to ? `<span>${esc(to)}</span>` : "<span></span>";
-  return `<div class="aff-thermo${cold ? " cold" : ""}" style="--fill:${pct}%" title="${esc(title)}" aria-label="${esc(title)}">
-    <div class="aff-thermo-names"><span>${esc(from)}</span>${toHtml}</div>
-    <div class="aff-thermo-row" aria-hidden="true">
-      <span class="aff-thermo-bulb"></span>
-      <span class="aff-thermo-track"><span class="aff-thermo-fill"></span></span>
-    </div>
-  </div>`;
+  const goal = next && aff < next[2] ? `/${next[2]}` : "";
+  const label = `感情 ${aff}${goal}`;
+  return `<div class="aff-num${cold ? " cold" : ""}" title="${esc(label)}" aria-label="${esc(label)}"><span>感情</span> <b>${aff}</b>${goal ? `<span class="aff-num-goal">${goal}</span>` : ""}</div>`;
 }
 
 /**
@@ -6766,15 +6885,8 @@ async function scriptGenImage(s, slot, spec, pose, slotIndex, extra = {}) {
   });
   try {
     let r = await imgGenPost(body);
-    let key = r?.key;
-    const deadline = Date.now() + 180000;
-    while (r && Date.now() < deadline) {
-      if (r.status === "done") return r.result || "";
-      if (r.status === "error") break;
-      await new Promise(res => setTimeout(res, 1500));
-      r = await imgGenPost({ ...body, key, retry: false });
-      key = r?.key || key;
-    }
+    r = await pollImgGen(r, body);
+    if (r?.status === "done") return r.result || "";
   } catch { /* */ }
   return "";
 }
@@ -7360,7 +7472,7 @@ const PROPOSE_DECLINE = [
 function canConfessGirl(s) {
   if (!s || s.ntr) return false;
   state.inventory ??= { bouquet: 0, ring: 0 };
-  // 同房間：親密好友＋感情≥100＋花束
+  // 同房間：親密好友＋感情≥女友門檻＋花束
   return displayStage(s) === "close_friend" && (s.affection || 0) >= ROOM_STAGE_AT.girlfriend && (state.inventory.bouquet | 0) > 0;
 }
 function canProposeGirl(s) {
@@ -7402,7 +7514,7 @@ async function doConfess() {
   if (!s || chatSession?.type !== "talk" || chatSession.busy) return;
   state.inventory ??= { bouquet: 0, ring: 0 };
   if (!canConfessGirl(s)) {
-    toast("需要花束，且對方須為親密好友且情感≥100", "bad");
+    toast(`需要花束，且對方須為親密好友且情感≥${ROOM_STAGE_AT.girlfriend}`, "bad");
     refreshRomanceBtn();
     return;
   }
@@ -7454,7 +7566,7 @@ async function doPropose() {
     state.inventory.ring = Math.max(0, (state.inventory.ring | 0) - 1);
     ringGone = true;
   }
-  const chance = Math.min(1, (s.affection || 0) / 200);
+  const chance = Math.min(1, (s.affection || 0) / (ROOM_STAGE_AT.girlfriend * 2));
   const ok = Math.random() < chance;
   const line = pick(PROPOSE_LINES);
   s.history ??= [];
@@ -7784,13 +7896,13 @@ const ROOM_PROGRESS_KEY = "yoro_room_progress_sync";
 const ROOM_SAVE_KEY_MAIN = "yoro_test_room_session";
 
 function rollRoomSummonCost() {
-  return 3 + Math.floor(Math.random() * 28); // 3～30 含兩端
+  return rollSummonCost(); // 3～5
 }
 
 function ensureRoomSummonOffer() {
   const o = state.roomSummonOffer;
   const c = o && (o.cost | 0);
-  if (!(c >= 3 && c <= 30)) {
+  if (!(c >= 3 && c <= 5)) {
     state.roomSummonOffer = { cost: rollRoomSummonCost() };
   }
   return state.roomSummonOffer;
@@ -7987,6 +8099,7 @@ function buildRoomGirlFromSuccubus(s) {
     contrast: s.contrast || "",
     comfyCkpt: s.comfyCkpt,
     affection: typeof s.affection === "number" ? s.affection : 0,
+    affGen: AFF_GEN,
     stage: mapGameStageToRoom(displayStage(s)),
     stageLock: s.stageLock || "",
     ntr: s.ntr || null,
@@ -8026,7 +8139,7 @@ function buildRoomGirlFromSuccubus(s) {
 }
 
 /**
- * 名冊「召喚」：付黏著價 2～4 金 → 帶進房間陪伴。
+ * 名冊「召喚」：付黏著價 3～5 金 → 帶進房間陪伴。
  * 成功扣費後才重擲下一個報價。
  */
 function beginRoomCompanionSummon(girlId) {
@@ -8153,6 +8266,7 @@ function applyRoomProgressData(data) {
     }
   };
   setScalar("affection", (v) => (typeof v === "number" ? v : Number(v) || 0));
+  setScalar("affGen", (v) => (Number(v) === AFF_GEN ? AFF_GEN : s.affGen));
   // 房間回寫的是 11 細階：s.stage 只收主線四階，細階存 roomStage（量條顯示、再召喚還原）
   setScalar("stageLock", (v) => (v == null ? "" : String(v)));
   // 房間 11 階是唯一真相：直接收進 roomStage，s.stage 只是折成的主線四階（不再用主線規則重算）
@@ -8278,6 +8392,23 @@ function bindRoomProgressLiveSync() {
   window.addEventListener("yoro-room-presence", () => {
     if (!state) return;
     try { renderSuccubi(); } catch { /* ignore */ }
+  });
+  window.addEventListener("yoro-life-agent", (ev) => {
+    const girls = ev.detail?.girls || {};
+    if (!state?.succubi) return;
+    for (const s of state.succubi) {
+      const row = girls[s.id];
+      if (!row) continue;
+      s.world = s.world && typeof s.world === "object" ? s.world : {};
+      if (row.home?.id) s.world.home = { id: row.home.id, name: row.home.name };
+      if (row.regionId) s.world.regionId = row.regionId;
+      if (row.job?.name) s.world.job = { id: row.job.id || "", name: row.job.name };
+      s.world.agenda = row.agenda || null;
+      s.world.activity = row.activity || null;
+      s.world.shift = row.shift || null;
+      s.world.stroll = row.stroll || null;
+      s.world.browse = row.browse || null;
+    }
   });
   // 關閉房間對話後再合併一次（雙保險）
   window.addEventListener("yoro-room-sheet-close", () => {
@@ -8828,18 +8959,9 @@ async function weavePhoneWatchSceneArt(girl, su, lines) {
   try {
     let r = await imgGenPost(body);
     if (!r) return;
-    let k = r?.key || key;
-    const deadline = Date.now() + 180000;
-    while (r && Date.now() < deadline) {
-      if (r.status === "done") { url = r.result || ""; break; }
-      if (r.status === "error") {
-        console.warn("[phoneWatch] imggen error", r.error);
-        break;
-      }
-      await new Promise(res => setTimeout(res, 1500));
-      r = await imgGenPost({ ...body, key: k, retry: false });
-      k = r?.key || k;
-    }
+    r = await pollImgGen(r, body);
+    if (r?.status === "done") url = r.result || "";
+    else if (r?.status === "error") console.warn("[phoneWatch] imggen error", r.error);
   } catch (e) {
     console.warn("[phoneWatch] weave exception", e);
   }
@@ -9008,6 +9130,25 @@ async function imgGenPost(body) {
     if (!r.ok) return null;
     return await r.json();
   } catch { return null; }
+}
+
+/** 生圖輪詢。切到背景也繼續問；逾時只算畫面在前景的時間，鎖屏不會把還沒好的圖判死。 */
+async function pollImgGen(first, body, ms = 180000) {
+  let r = first;
+  let key = r?.key || body.key;
+  let spent = 0;
+  let last = Date.now();
+  const wall0 = last;
+  while (r && spent < ms && Date.now() - wall0 < 7200000) {
+    if (r.status === "done" || r.status === "error") return r;
+    await new Promise((res) => setTimeout(res, 1500));
+    const now = Date.now();
+    if (document.visibilityState === "visible") spent += Math.min(5000, Math.max(0, now - last));
+    last = now;
+    r = await imgGenPost({ ...body, key, retry: false });
+    if (r?.key) key = r.key;
+  }
+  return r;
 }
 
 // 她的下一句聊天:最優先(失敗計次退避;連敗 3 次改用罐頭台詞保底,見 crestFallback)
@@ -9778,13 +9919,13 @@ function stageProgress(s) {
   const cur = AFF_LADDER[idx] || AFF_LADDER[0];
   const ns = AFF_LADDER[idx + 1] || null;
   if (!ns) return "你們早就穩定下來了,這樣的日子過得理所當然。";
-  // 女友／妻子不靠數值自動升：花束告白（親密好友＋感情≥100）／戒指求婚
+  // 女友／妻子不靠數值自動升：花束告白（親密好友＋感情到女友門檻）／戒指求婚
   if (shown === "close_friend") {
     if (aff >= ROOM_STAGE_AT.girlfriend) return "你覺得可以送花告白了——不會自己變成女友。";
     return null;
   }
   if (shown === "lover") {
-    if (aff >= 200) return "時機差不多了——求婚要靠戒指，不會自動變妻子。";
+    if (aff >= ROOM_STAGE_AT.wife) return "時機差不多了——求婚要靠戒指，不會自動變妻子。";
     return "她是你的戀人。求婚要戒指與感情，不會自動升級。";
   }
   const p = (aff - cur[2]) / Math.max(1, ns[2] - cur[2]);
@@ -10517,7 +10658,7 @@ function ransom(id) {
 // ===== 看板娘 =====
 
 // 限時多看板娘:必須付費召喚、到期自動解除、無自動遞補。
-// 費用:第 1 位 1 金;第 n 位(n≥2)= 50×(n-1) − 召喚減費等級,地板 2 金。
+// 費用:第 1 位 1 金;第 n 位(n≥2)= 50×(n-1),地板 2 金。召喚減費已退役。
 /** 付費看板時段是否仍在（不管她身上有沒有 taken 旗標） */
 function hasKanbanSlot(id) {
   const now = Date.now();
@@ -10559,7 +10700,7 @@ function dropKanbanIfAway(s) {
 function kanbanCost() {
   const n = kanbanSuccubi().length;
   if (n === 0) return 1;
-  return Math.max(2, 50 * n - expLv("cheap"));
+  return Math.max(2, 50 * n);
 }
 // ⚠ 召喚師模擬的權威實作已搬到 server/sim.py(非看板纏上=每小時一輪 1/10、召喚=每 30 分判定)。
 // 以下客戶端版與常數僅供 DBG 測試殘留,不再參與正式流程(正式一律由 simSync 取伺服器狀態)。
@@ -11653,27 +11794,24 @@ function girlSVG(fill, scale = 6) {
   return `<svg viewBox="0 0 16 22" width="${16 * scale}" height="${22 * scale}" shape-rendering="crispEdges">${px.map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`).join("")}</svg>`;
 }
 
-// 立繪 fallback：
+// 立繪 fallback（portrait_pick.js）：
 //   head 大頭照 → 名冊縮圖、聊天頭像
 //   half 半身   → 詳細頁／聊天立繪（可退 half_xi）
 //   half_xi/nu/ai/le → 喜怒哀樂
 //   full 全身   → 看板娘
-const SHOT_FALLBACK = {
-  head: ["head", "half", "half_xi", "full"],
-  half: ["half", "half_xi", "full", "head"],
-  half_xi: ["half_xi", "half", "half_le", "full"],
-  half_nu: ["half_nu", "half", "half_xi", "full"],
-  half_ai: ["half_ai", "half", "half_xi", "full"],
-  half_le: ["half_le", "half", "half_xi", "full"],
-  half_xiu: ["half_xiu", "half", "half_xi", "full"],
-  full: ["full", "half", "half_xi", "head"],
-};
-
-// 想要的那張還沒生好就退而求其次,而不是掉回剪影——有圖總比沒圖好
+// 想要的那張還沒生好、或是白底沒去背，就退而求其次——有圖總比沒圖好
 function girlShot(s, kind = "half") {
-  const p = s?.portraits;
-  if (p) for (const k of SHOT_FALLBACK[kind] || SHOT_FALLBACK.half) if (p[k]) return p[k];
-  return s?.portrait || "";   // 舊存檔只有單張
+  const url = pickPortraitUrl(s?.portraits, kind, {
+    portrait: s?.portrait || "",
+    uncut: uncutPortraitSet(),
+  });
+  if (url) {
+    schedulePortraitCutProbe(url, () => {
+      try { renderAll(); } catch { /* ignore */ }
+      try { window.RoomCompanion?.repaintPortrait?.(); } catch { /* ignore */ }
+    });
+  }
+  return url;
 }
 
 /** 聊天立繪：依情緒鍵 xi/nu/ai/le 取半身 */
@@ -12772,22 +12910,21 @@ function lineInRoom(s) {
   }
 }
 
-/** 人在哪裡。離開房間先回住所；從住所再去打工或遊盪。LINE 不是地方。 */
+/** 人在哪裡。離開玩家房間就回日本住所；打工、溜達、上網都在日本，沒有被召喚。LINE 不是地方。 */
 function lineWhereabouts(s) {
   const live = lineLiveGirl(s);
   const world = (live && live.world) || s?.world || null;
   if (lineInRoom(s)) {
-    return { kind: "room", text: "你的人在召喚者的房間裡。" };
+    return { kind: "room", text: "你的人在召喚者的房間裡。時間以台灣為準。" };
   }
   const home = world?.home?.name ? `「${world.home.name}」` : "";
-  // 只有這趟還在進行，人才在外面；做完／逛完就回到住所
   if (world?.activity === "work" && world.shift?.pending) {
     const job = world.job?.name ? `「${world.job.name}」` : "";
     return {
       kind: "work",
       text: job
-        ? `你從住所出來，人在打工場所${job}。這趟做完會回到住所。`
-        : "你從住所出來，人在打工場所。這趟做完會回到住所。",
+        ? `你從住所出來，人在日本的打工場所${job}。這趟要四小時，做完會回到住所。時間以日本為準。`
+        : "你從住所出來，人在日本的打工場所。這趟要四小時，做完會回到住所。時間以日本為準。",
     };
   }
   if (world?.activity === "wander" && world.stroll?.pending) {
@@ -12795,15 +12932,23 @@ function lineWhereabouts(s) {
     return {
       kind: "wander",
       text: place
-        ? `你從住所出來，人在遊盪的地點${place}。這趟逛完會回到住所。`
-        : "你從住所出來，人在外面遊盪。這趟逛完會回到住所。",
+        ? `你從住所出來，人在日本遊盪的地點${place}。逛完會回到住所。時間以日本為準。`
+        : "你從住所出來，人在日本外面溜達。逛完會回到住所。時間以日本為準。",
+    };
+  }
+  if (world?.activity === "browse") {
+    return {
+      kind: "home",
+      text: home
+        ? `你人在日本自己的住所${home}上網。沒有被召喚到他的房間。時間以日本為準。`
+        : "你人在日本自己的住所上網。沒有被召喚到他的房間。時間以日本為準。",
     };
   }
   return {
     kind: "home",
     text: home
-      ? `你離開房間以後回到自己的住所${home}。人在住所，才看是要去打工，還是出去遊盪。`
-      : "你離開房間以後回到自己的住所。人在住所，才看是要去打工，還是出去遊盪。",
+      ? `你離開房間以後回到自己的住所${home}。人在日本的住所，才去打工、溜達，或留在住所上網。時間以日本為準。`
+      : "你離開房間以後回到自己的住所。人在日本的住所，才去打工、溜達，或留在住所上網。時間以日本為準。",
   };
 }
 
@@ -12817,6 +12962,7 @@ function buildLineGroupMsgs(girl, utterance = "") {
     "【名冊群 LINE】",
     `・你是「${girl.name}」。這是名冊群的文字傳訊，成員是召喚師「${player}」與名冊上的妹子：${lineRosterNames()}。`,
     `・${where.text}`,
+    `・${(where.kind === "room" ? taiwanNow() : japanNow()).line}`,
     "・LINE 只是傳訊軟體。你的身體不在 LINE 裡，也不在群組裡。不要把 LINE、群組、聊天室說成你所在的地方。",
     "・這是用手機打字，不是面對面，也不是電話。",
     where.kind === "room"
@@ -13799,19 +13945,29 @@ function renderCardDeckPanel() {
   });
 }
 
-/** 長按／短按（觸控＋滑鼠）；移動超過門檻取消長按 */
-function attachLongPress(el, { onTap, onLong, ms = 450 } = {}) {
+/** 長按／短按（觸控＋滑鼠）；移動超過門檻取消長按。onStart／onCancel 可做按住的畫面回饋。 */
+function attachLongPress(el, { onTap, onLong, onStart, onCancel, ms = 450 } = {}) {
   if (!el) return;
-  let timer = null, sx = 0, sy = 0, longFired = false;
+  let timer = null, sx = 0, sy = 0, longFired = false, holding = false;
+  const stopHold = () => {
+    if (!holding) return;
+    holding = false;
+    onCancel?.();
+  };
   const clear = () => {
     if (timer) { clearTimeout(timer); timer = null; }
+    stopHold();
   };
   const start = (x, y) => {
     sx = x; sy = y; longFired = false;
-    clear();
+    if (timer) { clearTimeout(timer); timer = null; }
+    stopHold();
+    holding = true;
+    onStart?.();
     timer = setTimeout(() => {
       timer = null;
       longFired = true;
+      holding = false;
       try { if (navigator.vibrate) navigator.vibrate(12); } catch (_) { /* */ }
       onLong?.();
     }, ms);
@@ -17122,9 +17278,11 @@ function renderPlayerAttrs() {
     ["執行中格數", `${execCap()} 格`],
     ["完成金額", `${1 + expLv("reward")}~${3 + expLv("reward")} 金`],
     ["商店祭品", `每日 ${2 + expLv("offering")} 人`],
+    ["精液上限", `${20 + expLv("semen")} cc`],
+    ["興奮上限", `${20 + expLv("excite")}`],
+    ["調戲", `性奮額外 +${expLv("tease")}・失神每下 +${8 + expLv("tease") * 4}`],
   ];
-  // 看板娘時長刻意不顯示——玩家無法得知她何時解除,需自行察看
-  const lvs = Object.keys(EXPANSIONS).filter(k => k !== "kanban").map(k => `${EXPANSIONS[k]} Lv${expLv(k)}`).join("、");
+  const lvs = Object.keys(EXPANSIONS).map(k => `${EXPANSIONS[k]} Lv${expLv(k)}`).join("、");
   el.innerHTML =
     derived.map(([a, b]) => `<div class="setting-row"><label>${a}</label><span>${b}</span></div>`).join("") +
     `<div class="setting-row"><label>擴充等級</label><span class="dim" style="text-align:right">${lvs}</span></div>`;
@@ -17255,6 +17413,10 @@ function renderChatView() {
   const ssacCtl = $("#ssac-controls");
   const teaseRow = $("#tease-act-row");
   const senseRow = $("#sense-act-row");
+  const back = document.getElementById("chat-back");
+  if (back) {
+    back.textContent = sacSummon ? "‹ 結束獻祭" : sacrificeWith ? "‹ 中止儀式" : "‹ 結束對話";
+  }
   // 召喚獻祭最優先
   if (sacSummon) {
     chatV.classList.remove("hidden");
@@ -17399,11 +17561,43 @@ function renderSuccubi() {
       </div>
       ${s.ntr || rosterSummonBlocked(s) ? "" : `<button type="button" class="roster-summon" ${asleep ? "disabled" : ""} title="付 ${roomCost} 金帶她進房間。人在房間時先收起，離開後才能再召。">召喚（${roomCost}金）</button>`}
       <div class="status-dot ${st}"></div>`;
-    el.onclick = () => { detailId = s.id; dateChooser = false; severChooser = false; renderAll(); };
+    if (!s.ntr) el.title = "點一下打開。長按獻祭。";
+    // 長按只做記號。等手指放開、那一下 click 過去之後才打開確認，避免鬆手點到「確定獻祭」。
+    let armed = false;
+    let opening = false;
+    const openHer = (sacrifice) => {
+      detailId = s.id;
+      dateChooser = false;
+      severChooser = false;
+      rosterSacAsk = sacrifice ? s.id : null;
+      renderAll();
+    };
     el.querySelector(".roster-summon")?.addEventListener("click", (ev) => {
       ev.stopPropagation();
+      if (armed || opening) return;
       beginRoomCompanionSummon(s.id);
     });
+    const openSacrifice = () => {
+      if (opening) return;
+      armed = false;
+      opening = true;
+      el.classList.remove("is-holding");
+      setTimeout(() => openHer(true), 50);
+    };
+    el.addEventListener("pointerup", () => { if (armed) openSacrifice(); });
+    el.addEventListener("click", (ev) => {
+      if (armed) { openSacrifice(); return; }
+      if (opening || ev.target.closest(".roster-summon")) return;
+      openHer(false);
+    });
+    if (!s.ntr) {
+      attachLongPress(el, {
+        ms: 650,
+        onStart: () => el.classList.add("is-holding"),
+        onCancel: () => { if (!armed) el.classList.remove("is-holding"); },
+        onLong: () => { armed = true; },
+      });
+    }
     roster.appendChild(el);
    } catch (err) {
     console.error("[renderSuccubi] card", s?.id, s?.name, err);
@@ -17422,13 +17616,15 @@ function renderSuccubi() {
   const counts = $("#summon-counts");
   const full = state.succubi.length >= rosterCap();
   hint.textContent = state.gold < 0 ? "負債中不可召喚"
-    : full ? `名冊名額已滿(${rosterCap()} 格)——靠擴充增加名額`
+    : full ? `名冊滿了（${state.succubi.length}/${rosterCap()}）。長按她，或打開後按「獻祭」，才能再召喚。`
+    : state.dungeon.length < 1 ? "地牢裡沒有祭品。先到商店買。"
     : `地牢裡有 ${state.dungeon.length} 名祭品(獻越多、稀有度越高)`;
   counts.innerHTML = "";
   const b = document.createElement("button");
   b.id = "start-summon";
   b.textContent = "開始獻祭召喚";
-  b.disabled = !canSummon();
+  // 不要 disabled：滿員時按下去要說原因，不然看起來像壞掉。
+  b.classList.toggle("is-blocked", !canSummon());
   b.onclick = () => startSummonSacrifice();
   counts.appendChild(b);
 }
@@ -17442,7 +17638,7 @@ function renderDetail(s, root) {
   const roomCost = roomSummonCost();
   const summonHint = takenAway
     ? `付 ${roomCost} 金帶她進房間陪伴（被帶走中仍可嘗試；報價用過才重擲）`
-    : `付 ${roomCost} 金帶她進房間陪伴聊天（報價用過才重擲 2～4）`;
+    : `付 ${roomCost} 金帶她進房間陪伴聊天（報價用過才重擲 3～5）`;
   const peekHint = "她正被帶走，可以窺視（1/5 接通）";
   // 約會入口已退役；僅保留被帶走時的窺視
   const showDetailPeek = showPeek;
@@ -17465,17 +17661,21 @@ function renderDetail(s, root) {
       <div class="aff-line">${affThermoHtml(s)}</div>
       ${!s.ntr ? `<div class="aff-line dim small">天賦：${esc(giftLabel(s.gift))}</div>` : ""}
       ${asleep ? `<div class="aff-line dim small">(睡眠時段——她在睡覺)</div>` : ""}
-      ${s.ntr
-        ? `<div class="detail-actions"><button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button></div>`
-        : (showRoomSummon || showDetailPeek)
-          ? `<div class="detail-actions">
-            ${showRoomSummon ? `<button class="cyan" id="act-room-summon" ${asleep ? "disabled" : ""} title="${esc(summonHint)}">召喚（${roomCost}金）</button>` : ""}
+      <div class="detail-actions">
+        ${s.ntr
+          ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
+          : `${showRoomSummon ? `<button class="cyan" id="act-room-summon" ${asleep ? "disabled" : ""} title="${esc(summonHint)}">召喚（${roomCost}金）</button>` : ""}
             ${showDetailPeek ? `<button class="cyan" id="act-peek" title="${esc(peekHint)}">窺視</button>` : ""}
-          </div>`
-          : ""}
-      <div class="portrait detail-portrait" id="detail-portrait" title="長按獻祭">
+            <button type="button" class="danger" id="act-sacrifice" title="獻給地獄惡魔，她會永遠消失">獻祭（${dismissPriceToday()}金）</button>
+            <div id="sac-ask" hidden>
+              <span class="sac-ask-text">獻祭「${esc(s.name)}」？費用 ${dismissPriceToday()} 金，她會永遠消失。</span>
+              <button type="button" class="danger" id="act-sacrifice-yes">確定獻祭</button>
+              <button type="button" id="act-sacrifice-no">取消</button>
+            </div>`}
+      </div>
+      <div class="portrait detail-portrait" id="detail-portrait" title="長按或按獻祭">
         ${girlPortrait(s, 6, "half")}
-        <div class="dim small" style="margin-top:.35em;opacity:.75">長按立繪可獻祭</div>
+        <div class="dim small" style="margin-top:.35em;opacity:.75">長按立繪，或按上方「獻祭」</div>
       </div>
     </div>`;
 
@@ -17486,28 +17686,67 @@ function renderDetail(s, root) {
     renderAll();
   };
 
-  // 長按立繪 → 獻祭
+  // 長按立繪、或按「獻祭」→ 畫面上再確認一次。不在計時器裡叫系統 confirm（手機會直接吃掉）。
+  const showSacAsk = () => {
+    if (!canSacrifice(s)) { toast(sacrificeBlockReason(s) || "現在不能獻祭", "bad"); return; }
+    const price = dismissPriceToday();
+    if (state.gold < price) { toast(`今日獻祭費 ${price} 金,你付不起`, "bad"); return; }
+    root.querySelectorAll(".detail-actions > button").forEach(el => { el.hidden = true; });
+    const box = root.querySelector("#sac-ask");
+    if (box) box.hidden = false;
+    // 長按鬆手會補一個 click。確認鈕先鎖一下，避免直接獻祭。
+    for (const btn of [root.querySelector("#act-sacrifice-yes"), root.querySelector("#act-sacrifice-no")]) {
+      if (!btn) continue;
+      btn.disabled = true;
+      setTimeout(() => { if (btn.isConnected) btn.disabled = false; }, 400);
+    }
+  };
+  if (rosterSacAsk === s.id) {
+    rosterSacAsk = null;
+    showSacAsk();
+  }
+  const hideSacAsk = () => {
+    root.querySelectorAll(".detail-actions > button").forEach(el => { el.hidden = false; });
+    const box = root.querySelector("#sac-ask");
+    if (box) box.hidden = true;
+  };
+  root.querySelector("#act-sacrifice")?.addEventListener("click", showSacAsk);
+  root.querySelector("#act-sacrifice-no")?.addEventListener("click", hideSacAsk);
+  root.querySelector("#act-sacrifice-yes")?.addEventListener("click", (ev) => {
+    if (ev.currentTarget.disabled) return;
+    sacrificeSuccubus(s.id, { confirmed: true });
+  });
   const port = root.querySelector("#detail-portrait");
   if (port && !s.ntr) {
     let holdT = null;
     const clearHold = () => { if (holdT) { clearTimeout(holdT); holdT = null; } };
     const startHold = (e) => {
+      if (e.button != null && e.button !== 0) return;
       e.preventDefault?.();
+      const pid = e.pointerId;
+      const x0 = e.clientX;
+      const y0 = e.clientY;
       clearHold();
       holdT = setTimeout(() => {
         holdT = null;
-        if (!canSacrifice(s)) {
-          toast(sacrificeBlockReason(s) || "現在不能獻祭", "bad");
-          return;
-        }
-        if (!confirm(`長按確認：獻祭「${s.name}」？\n費用 ${dismissPriceToday()} 金，她會永遠消失。`)) return;
-        sacrificeSuccubus(s.id);
+        showSacAsk();
       }, 650);
+      const move = (ev) => {
+        if (ev.pointerId !== pid) return;
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 14) clearHold();
+      };
+      const up = (ev) => {
+        if (ev.pointerId !== pid) return;
+        clearHold();
+        port.removeEventListener("pointermove", move);
+        port.removeEventListener("pointerup", up);
+        port.removeEventListener("pointercancel", up);
+      };
+      port.addEventListener("pointermove", move);
+      port.addEventListener("pointerup", up);
+      port.addEventListener("pointercancel", up);
     };
-    port.addEventListener("pointerdown", startHold);
-    port.addEventListener("pointerup", clearHold);
-    port.addEventListener("pointerleave", clearHold);
-    port.addEventListener("pointercancel", clearHold);
+    port.addEventListener("pointerdown", startHold, { passive: false });
     port.addEventListener("contextmenu", e => e.preventDefault());
   }
 
@@ -17560,6 +17799,36 @@ function renderKanban() {
   }
 }
 
+let llmModelNames = [];
+
+function paintModelPick() {
+  const sel = $("#set-model-pick");
+  if (!sel) return;
+  const cur = ($("#set-model")?.value || state?.settings?.model || "").trim();
+  const names = llmModelNames.filter(Boolean);
+  const shown = cur && !names.includes(cur) ? [cur, ...names] : names;
+  const opts = [`<option value="">（留空＝罐頭）</option>`];
+  for (const name of shown) opts.push(`<option value="${esc(name)}">${esc(name)}</option>`);
+  sel.innerHTML = opts.join("");
+  sel.value = cur || "";
+}
+
+async function refreshLlmModels() {
+  if (!state?.settings) return llmModelNames;
+  const provider = llmProvider();
+  const endpoint = state.settings.ollamaUrl || "http://localhost:11434";
+  try {
+    const q = new URLSearchParams({ provider, endpoint });
+    const res = await fetch(`/api/llm/tags?${q}`);
+    if (!res.ok) throw new Error("fail");
+    const j = await res.json();
+    const names = (j.models || []).map(m => m.name || m.model).filter(Boolean);
+    if (names.length) llmModelNames = names;
+  } catch { /* 連不上就留上次的清單，手打仍然可用 */ }
+  paintModelPick();
+  return llmModelNames;
+}
+
 function applyLlmProviderUi() {
   const p = llmProvider();
   const ollamaRow = $("#row-ollama-url");
@@ -17592,6 +17861,7 @@ function renderSettings() {
   const csa = $("#set-card-scene-art");
   if (csa) csa.checked = state.settings.features?.cardSceneArt !== false;
   $("#set-model").value = state.settings.model || "";
+  paintModelPick();
   $("#set-rating").value = state.settings.rating || "nsfw";
   applyLlmProviderUi();
   $("#set-ver").textContent = version ? "v" + version : "(尚未寫入)";
@@ -17655,6 +17925,15 @@ function renderSettings() {
 
   $("#set-appver").textContent = APP_VER;
   {
+    const du = $("#set-discover-url");
+    if (du) du.textContent = location.origin;
+    const cs = $("#btn-change-server");
+    if (cs) {
+      const bridge = window.YoroAndroid;
+      cs.classList.toggle("hidden", !(bridge && typeof bridge.changeServer === "function"));
+    }
+  }
+  {
     const nbs = $("#set-nb-streak");
     if (nbs) {
       const c = notebookStreakCount();
@@ -17696,6 +17975,7 @@ function switchTab(i) {
   if (tr) tr.style.transform = `translateX(-${i * 25}%)`;
   tabButtons.forEach((b, j) => b.classList.toggle("active", j === i));
   document.body.dataset.tab = i;
+  if (i === 3 && state) refreshLlmModels();
   // 切到魅魔頁＝看向她
   if (i === 2 && state) {
     scheduleKanbanNotice("tab");
@@ -17725,6 +18005,9 @@ on("diary-back", "click", () => {
   else leaveDiary();
 });
 
+on("btn-change-server", "click", () => {
+  try { window.YoroAndroid?.changeServer?.(); } catch { /* 瀏覽器沒有這支 */ }
+});
 on("set-player", "change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
 on("set-sleep-start", "change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
 on("set-sleep-end", "change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); renderAll(); });
@@ -17772,6 +18055,7 @@ on("card-table-back", "click", () => leaveCardTableUi());
 on("card-table-close", "click", () => leaveCardTableUi());
 
 on("chat-back", "click", () => {
+  if (sacSummon) { cancelSummonSacrifice(); return; }   // 祭品退回地牢，不召喚
   if (sacrificeWith) { exitSacrifice(); return; }   // 儀式中途離開=中止(她未結算、存活)
   if (watchWith) exitWatch(); else exitChat();
 });
@@ -17843,8 +18127,13 @@ on("set-llm-provider", "change", e => {
   }
   applyLlmProviderUi();
   scheduleSave();
+  refreshLlmModels();
 });
-on("set-ollama", "change", e => { state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434"; scheduleSave(); });
+on("set-ollama", "change", e => {
+  state.settings.ollamaUrl = e.target.value.trim() || "http://localhost:11434";
+  scheduleSave();
+  refreshLlmModels();
+});
 on("set-comfy", "change", e => { state.settings.comfyUrl = e.target.value.trim(); scheduleSave(); });
 on("btn-asset-gc", "click", async () => {
   const el = $("#asset-gc-result");
@@ -17906,7 +18195,18 @@ on("btn-comfy-test", "click", async () => {
       + (cut ? (cut.available ? " · 去背可用" : " · ⚠ 沒裝 Pillow,立繪不會去背") : "");
   } catch (e) { r.textContent = "失敗:" + e.message; }
 });
-on("set-model", "change", e => { state.settings.model = e.target.value.trim(); scheduleSave(); });
+on("set-model-pick", "change", e => {
+  const v = e.target.value.trim();
+  state.settings.model = v;
+  const mi = $("#set-model");
+  if (mi) mi.value = v;
+  scheduleSave();
+});
+on("set-model", "change", e => {
+  state.settings.model = e.target.value.trim();
+  paintModelPick();
+  scheduleSave();
+});
 on("set-rating", "change", () => { state.settings.rating = "nsfw"; scheduleSave(); });
 on("btn-memos-test", "click", async () => {
   const r = $("#memos-test-result");
@@ -17928,8 +18228,9 @@ on("btn-llm-test", "click", async () => {
       throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
     }
     const j = await res.json();
-    const names = (j.models || []).map(m => m.name);
-    const dl = $("#model-list"); if (dl) dl.innerHTML = names.map(n => `<option value="${esc(n)}">`).join("");
+    const names = (j.models || []).map(m => m.name || m.model).filter(Boolean);
+    if (names.length) llmModelNames = names;
+    paintModelPick();
     if (provider === "grok-build") {
       r.textContent = names.length
         ? `Grok Build OK,${names.length} 個模型(無頭·訂單)`

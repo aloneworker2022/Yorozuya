@@ -107,6 +107,42 @@
           "index": 4
         }
       }
+    },
+    {
+      "id": "c401c440a0",
+      "name": "4",
+      "pose": "missionary",
+      "created": 1791102533.6481004,
+      "frames": {
+        "1": {
+          "url": "/assets/frame_packs/c401c440a0/1.png",
+          "width": 1216,
+          "height": 1088,
+          "bytes": 1029773,
+          "index": 1
+        },
+        "2": {
+          "url": "/assets/frame_packs/c401c440a0/2.png",
+          "width": 1216,
+          "height": 1088,
+          "bytes": 1032201,
+          "index": 2
+        },
+        "3": {
+          "url": "/assets/frame_packs/c401c440a0/3.png",
+          "width": 1216,
+          "height": 1088,
+          "bytes": 1108737,
+          "index": 3
+        },
+        "4": {
+          "url": "/assets/frame_packs/c401c440a0/4.png",
+          "width": 1216,
+          "height": 1088,
+          "bytes": 1177132,
+          "index": 4
+        }
+      }
     }
   ]
 }

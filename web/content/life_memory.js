@@ -2,7 +2,10 @@
  * 新經歷進馬上（10）。滿了才把最舊推進中（30），中滿了才推進長（1000）。
  * 不把馬上直接丟進長，也不每句從長記憶隨機換掉中記憶。
  * 聯想鍵只由地點、人、工作、心情這些欄位組，不讓模型自寫。
+ * 寫進對話時帶發生當時的日本時間，不要一律說成剛發生。
  */
+
+import { japanNow } from "./japan_clock.js?v=2";
 
 const IMMEDIATE_CAP = 10;
 const MID_CAP = 30;
@@ -14,7 +17,7 @@ const LONG_PICK = 5;
 const BORED_PICK = 3;
 const DEDUPE_MS = 1500;
 
-const KINDS = new Set(["home", "work", "stroll", "birth", "life"]);
+const KINDS = new Set(["home", "work", "stroll", "browse", "birth", "life"]);
 const RECALL_RE = /想想|想一想|還記得|記不記得|記得嗎|有印象/;
 const BORED_RE = /好無聊|無聊死|好閒|好悶|沒事做|在發呆/;
 
@@ -84,6 +87,7 @@ function inferKind(raw) {
   if (raw.breeding || /生產了/.test(String(raw.event || raw.text || ""))) return "birth";
   if (raw.job) return "work";
   if (raw.kind === "home") return "home";
+  if (raw.kind === "browse") return "browse";
   return "life";
 }
 
@@ -97,6 +101,7 @@ function normalizeItem(raw) {
   if (kind === "home") addKey(keys, "住所");
   if (kind === "work") addKey(keys, "打工");
   if (kind === "stroll") addKey(keys, "遊盪");
+  if (kind === "browse") addKey(keys, "上網");
   if (kind === "birth") addKey(keys, "生產");
   if (Array.isArray(raw.keys)) raw.keys.forEach((key) => addKey(keys, key));
   addKey(keys, raw.placeName || raw.place);
@@ -217,6 +222,22 @@ function pickMid(mid, utterance) {
   return picked;
 }
 
+function memoryStamp(item) {
+  const at = Number(item?.at);
+  if (!Number.isFinite(at) || at < 1e11) return "";
+  try {
+    const jp = japanNow(new Date(at));
+    return `日本時間${jp.label}（${jp.dayPart}）`;
+  } catch {
+    return "";
+  }
+}
+
+function memoryLine(item, lead) {
+  const when = memoryStamp(item);
+  return when ? `・${lead}（${when}）：${item.text}` : `・${lead}：${item.text}`;
+}
+
 function boredHits(long) {
   const uniq = [];
   for (const item of long || []) {
@@ -247,24 +268,24 @@ export function lifeMemoryPromptLines(who, utterance, opts = {}) {
     const hits = searchByKeys(mind.long, text, LONG_PICK);
     const recentHit = searchByKeys(imm, text, 1).length || searchByKeys(mind.mid, text, 1).length;
     if (hits.length) {
-      recall.push("他要你回想。只可以用下面這些，對不上的就說想不起來，不要編。");
-      hits.forEach((item) => recall.push(`・想起：${item.text}`));
+      recall.push("他要你回想。只可以用下面這些，對不上的就說想不起來，不要編。時間是發生當時的日本時間。");
+      hits.forEach((item) => recall.push(memoryLine(item, "想起")));
     } else if (!recentHit) {
       recall.push("他叫你想想，但更早的事裡沒有對上的。就說想不起來，不要編。");
     }
   } else if (BORED_RE.test(text) && mind.long.length) {
     const hits = boredHits(mind.long);
     if (hits.length) {
-      recall.push("你這時有點閒，可以輕輕提起下面其中一件，不要一次講完，也不要編沒列的。");
-      hits.forEach((item) => recall.push(`・想起：${item.text}`));
+      recall.push("你這時有點閒，可以輕輕提起下面其中一件，不要一次講完，也不要編沒列的。時間是發生當時的日本時間。");
+      hits.forEach((item) => recall.push(memoryLine(item, "想起")));
     }
   }
   if (!imm.length && !mid.length && !recall.length) return [];
-  if (here === "room") lines.push("人現在在房間，下面是記得的日本生活，不是現在站的地方。");
+  if (here === "room") lines.push("人現在在房間。下面是記得的日本生活，不是現在站的地方。");
   if (imm.length || mid.length) {
-    lines.push("【現在記憶】跟這句話有關才提，不要每句都報。沒有列在這裡的事不要編成已經發生。");
-    imm.forEach((item) => lines.push(`・剛發生：${item.text}`));
-    mid.forEach((item) => lines.push(`・稍早：${item.text}`));
+    lines.push("【記得的事】跟這句話有關才提，不要每句都報。沒有列在這裡的事不要編成已經發生。時間是發生當時的日本時間，不要把那個時段說成現在。");
+    imm.forEach((item) => lines.push(memoryLine(item, "記得")));
+    mid.forEach((item) => lines.push(memoryLine(item, "記得")));
   }
   lines.push(...recall);
   return lines;

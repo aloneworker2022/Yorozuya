@@ -43,6 +43,31 @@ await t("玩家精液可到負：spendSemen −6；ensurePlayer／回復不把�
   assert.equal(c.player.semenCc, 0);
   assert.equal(P.grantSemen({ semenCc: -5, lastSemenAt: Date.now() }, 3).after, -2);
 });
+await t("精液量／興奮上限擴充：沒掛成長時仍是 20；掛上才加", () => {
+  assert.equal(P.semenMaxCc(), 20);
+  assert.equal(P.climaxMax(), 20);
+  assert.equal(T.exciteCumAt(), 20);
+  globalThis.YorozuyaGrowth = { level: (k) => (k === "semen" ? 3 : k === "excite" ? 2 : 0) };
+  try {
+    assert.equal(P.semenMaxCc(), 23);
+    assert.equal(P.climaxMax(), 22);
+    assert.equal(T.exciteCumAt(), 22);
+    const now = Date.now();
+    assert.equal(P.regenSemen({ semenCc: 20, lastSemenAt: now - 5 * 3600000 }, now).semenCc, 23);
+    const held = P.applyTeaseClimax({ semenCc: 20, climax: 20, lastSemenAt: now }, "waist");
+    assert.equal(held.climaxed, false);
+    assert.equal(held.player.climax, 21);
+    const s = T.newThrustSession({ semenCc: 20 });
+    s.excite = 16;
+    const r = T.applyThrust(s, { rng: () => 0 }); // 興奮 +5 → 21，上限 22，這下不射
+    assert.equal(r.ejac, false);
+    assert.equal(s.excite, 21);
+  } finally {
+    delete globalThis.YorozuyaGrowth;
+  }
+  assert.equal(P.semenMaxCc(), 20);
+  assert.equal(T.exciteCumAt(), 20);
+});
 await t("真實精液 20 → 14 → 8 → 2（危險）→ −4 結束；7 不警告、6 警告、<1 進來也警告且射一次就結束", () => {
   const s = T.newThrustSession({ semenCc: 20 });
   const out = [];

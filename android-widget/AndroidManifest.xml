@@ -1,11 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="tw.yorozuya.discover"
-    android:versionCode="3"
-    android:versionName="1.2">
+    android:versionCode="6"
+    android:versionName="1.5">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="tw.yorozuya.app.READ_SERVER" />
+    <permission
+        android:name="tw.yorozuya.app.READ_SERVER"
+        android:protectionLevel="signature" />
+
+    <queries>
+        <package android:name="tw.yorozuya.app" />
+    </queries>
 
     <application
         android:allowBackup="true"

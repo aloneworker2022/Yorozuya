@@ -12,8 +12,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="萬事屋">
-<link rel="stylesheet" href="style.css?v=72">
-<link rel="stylesheet" href="content/test_room.css?v=97">
+<link rel="stylesheet" href="style.css?v=76">
+<link rel="stylesheet" href="content/test_room.css?v=98">
 </head>
 <body class="room-home">
 
@@ -174,6 +174,7 @@
       <div id="succubi-home">
         <div class="panel" id="roster-panel">
           <h2>魅魔名冊</h2>
+          <p class="dim small roster-hint">點一下打開。長按她獻祭。</p>
           <div id="roster"></div>
         </div>
         <div class="panel sub center-note" id="summon-block">
@@ -230,7 +231,12 @@
         </div>
         <div class="setting-row" id="row-ollama-url"><label>端點</label><input id="set-ollama" type="text" class="wide" placeholder="http://&lt;主機&gt;:11434"></div>
         <div class="setting-row hidden" id="row-grok-hint"><label>引擎</label><span class="dim small">伺服器跑 <code>grok -p</code> 無頭(需 <code>grok login</code>),streaming-json end 即完成</span></div>
-        <div class="setting-row"><label>模型</label><input id="set-model" type="text" class="wide" list="model-list" placeholder="(留空 = 罐頭模式)"><datalist id="model-list"></datalist></div>
+        <div class="setting-row model-row"><label>模型</label>
+          <span class="model-fields">
+            <select id="set-model-pick" class="wide"><option value="">（載入已安裝的模型…）</option></select>
+            <input id="set-model" type="text" class="wide" placeholder="或手打模型名（留空＝罐頭）" autocomplete="off">
+          </span>
+        </div>
         <div class="setting-row"><label>內容分級</label><select id="set-rating"><option value="nsfw">NSFW（全域固定）</option></select></div>
         <div class="btn-row"><button id="btn-llm-test">測試連線</button><span id="llm-test-result" class="dim small"></span></div>
         <div class="setting-row"><label>生圖</label>
@@ -278,8 +284,17 @@
         <div class="btn-row"><button id="btn-memos-test" type="button">測試 Memos</button><span id="memos-test-result" class="dim small"></span></div>
       </div>
       <div class="panel sub">
+        <h2>發現</h2>
+        <div class="dim small">桌面「發現」跟魅魔萬事屋用下面這個網址。每天前 10 次輸入，隨機 +0～2 金，跟這裡打待辦一樣。</div>
+        <div class="setting-row"><label>網址</label><span id="set-discover-url" class="dim" style="word-break:break-all;text-align:right">—</span></div>
+        <div class="setting-row"><label>小工具</label><a href="/widget">打開發現頁</a></div>
+        <div class="setting-row"><label>安裝包</label><a href="/discover.apk">下載發現</a></div>
+        <div class="btn-row"><button id="btn-change-server" type="button" class="hidden">更換伺服器</button></div>
+      </div>
+      <div class="panel sub">
         <h2>版本</h2>
         <div class="setting-row"><label>遊戲版本</label><span id="set-appver" class="dim">—</span></div>
+        <div class="setting-row"><label>手機 App</label><a href="/download">下載乾淨完整版</a></div>
         <div class="setting-row"><label>約會卡組</label><span id="set-cardpack" class="dim">—</span></div>
         <div class="btn-row">
           <button id="btn-force-update">⟳ 強制更新(清快取重載,存檔不受影響)</button>
@@ -603,8 +618,8 @@
 </div>
 <script src="content/room_furniture.js?v=4"></script>
 <script src="content/room_character.js?v=7"></script>
-<script src="content/test_room.js?v=20"></script>
-<script type="module" src="content/test_room_summon.js?v=167"></script>
-<script type="module" src="app.js?v=94"></script>
+<script src="content/test_room.js?v=21"></script>
+<script type="module" src="content/test_room_summon.js?v=188"></script>
+<script type="module" src="app.js?v=112"></script>
 </body>
 </html>

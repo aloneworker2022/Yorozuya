@@ -145,10 +145,11 @@
     drawActor();
   }
 
+  let actorConcealed = false;
   function drawActor() {
     if(!scenePixels)return;
     const output=new ImageData(new Uint8ClampedArray(scenePixels.data),canvas.width,canvas.height);
-    if(!actor.present){ctx.putImageData(output,0,0);renderView();return;}
+    if(!actor.present || actorConcealed){ctx.putImageData(output,0,0);renderView();return;}
     const {u,v}=actor.position(),f=actor.frame(),[px,py]=project(u,v);
     const ox=Math.round(px-f.anchor.x),oy=Math.round(py-f.anchor.y);
     function blend(x,y,color,alpha,depth){
@@ -187,7 +188,7 @@
     return u + v + (frame.depth ? frame.depth[sy * frame.width + sx] : Math.max(0, frame.anchor.y - sy) / 32);
   }
   function hitActor(point) {
-    if(!actor.present)return false;
+    if(!actor.present || actorConcealed)return false;
     const p = worldPoint(point);
     const {u, v} = actor.position(), f = actor.frame(), [x, y] = project(u, v);
     const sx = Math.floor(p.x - x + f.anchor.x), sy = Math.floor(p.y - y + f.anchor.y);
@@ -481,13 +482,24 @@
     wandering=true;actorToggle.setAttribute('aria-pressed','false');actorToggle.textContent='暫停動作';
     setPlacing(false);
   }
+  function syncActorPanel(){
+    const panel=document.querySelector('.actor-panel');
+    if(panel) panel.hidden=!actor.present || actorConcealed;
+  }
   function setActorPresent(on){
     actor.setPresent(on);
-    document.querySelector('.actor-panel').hidden=!on;
+    if(on) actorConcealed=false;
+    syncActorPanel();
     if(on){wandering=true;actorToggle.setAttribute('aria-pressed','false');actorToggle.textContent='暫停動作';}
     refreshActorControls();draw();
   }
-  window.RoomActor={setPresent:setActorPresent,isPresent:()=>actor.present};
+  function concealActor(on){
+    actorConcealed=!!on;
+    syncActorPanel();
+    refreshActorControls();
+    draw();
+  }
+  window.RoomActor={setPresent:setActorPresent,isPresent:()=>actor.present,conceal:concealActor};
   window.RoomView={
     furniture(){
       const counts=new Map();
@@ -516,7 +528,7 @@
     if(document.hidden||!sceneVisible){previous=now;return;}
     if(now-previous<50)return;
     const dt=previous?Math.min((now-previous)/1000,.1):0;previous=now;
-    actor.update(dt,!actor.present||!wandering||placing||pointers.size>0);
+    actor.update(dt,!actor.present||actorConcealed||!wandering||placing||pointers.size>0);
     refreshActorControls();
     if(actor.present)drawActor();
   }

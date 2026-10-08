@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>test_bodyM · 會動的立繪</title>
+  <link rel="stylesheet" href="/style.css?v=75">
+  <style>
+    html, body { height: auto !important; overflow: auto !important; }
+    body { margin: 0; padding: 16px 16px calc(76px + env(safe-area-inset-bottom)); }
+    body.playing { overflow: hidden !important; }
+    main { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 1.25rem; margin: 0 0 .2em; }
+    h2 { font-size: 1rem; margin: 1.2em 0 .4em; }
+    .dim { opacity: .7; font-size: .85rem; }
+    .row { display: flex; flex-wrap: wrap; gap: .5em; align-items: center; }
+    button, .filebtn { font: inherit; padding: .35em .7em; cursor: pointer; }
+    label.emo { border: 1px solid var(--line); padding: .25em .6em; }
+    label.emo.on { outline: 2px solid var(--cyan); }
+    .card, .frame {
+      border: 1px solid var(--line); background: var(--panel);
+      padding: .7em; margin: .5em 0;
+    }
+    .params { display: grid; grid-template-columns: 7em 1fr; gap: .15em .6em; font-size: .9rem; }
+    .params b { font-weight: 600; }
+    textarea, input[type="number"], input[type="text"], select {
+      font: inherit; width: 100%; box-sizing: border-box; color: inherit;
+      background: var(--bg); border: 1px solid var(--line); padding: .35em;
+    }
+    textarea { min-height: 7em; }
+    .shot {
+      width: 100%; max-width: 640px;
+      height: min(70vh, 760px); min-height: 420px;
+      object-fit: contain; object-position: center center;
+      background: #0003; display: block; margin: 0 auto;
+    }
+    .shot.empty {
+      height: min(42vh, 360px); min-height: 240px;
+      display: flex; align-items: center; justify-content: center;
+      text-align: center; padding: .6em;
+    }
+    .shot.sm { width: 112px; height: 148px; min-height: 0; max-width: none; margin: 0; }
+    .status { min-height: 1.3em; }
+    .status.err { color: var(--red); }
+    .frame-top { display: flex; justify-content: space-between; gap: .6em; align-items: baseline; }
+    button.gen { font-weight: 650; }
+    .player {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 100;
+      margin: 0; padding: .45em .7em calc(.45em + env(safe-area-inset-bottom));
+      border: none; border-top: 1px solid var(--line);
+      background: rgba(18, 12, 34, .94);
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .stage-wrap { display: none; width: 100%; }
+    .player.playing {
+      top: 0;
+      padding-top: calc(.4em + env(safe-area-inset-top));
+      background: rgba(8, 6, 16, .97);
+    }
+    .player.playing .stage-wrap {
+      display: flex; flex: 1 1 auto; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 0;
+    }
+    #stage {
+      width: min(92vw, 720px);
+      height: min(78vh, 920px);
+      object-fit: contain; object-position: center center;
+    }
+    #stage[hidden] { display: none !important; }
+    .player .row { justify-content: center; width: 100%; }
+    .player .secs { display: flex; align-items: center; gap: .35em; }
+    .player .secs input { width: 4.2em; }
+    #btn-play[aria-pressed="true"] { outline: 2px solid var(--cyan); }
+    #play-label { margin: .35em 0 0; text-align: center; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>test_bodyM</h1>
+  <p class="dim">會動的立繪不是影片。幀由上往下排，播放照這個順序 1 → 2 → 3。每一幀先按「生圖」看這張大圖像不像。底下「自動產生」把還沒畫的一次畫完；「播放」才把已經畫好的幀放大到畫面中央輪播，「停止」就縮回只剩按鈕。</p>
+  <p id="status" class="status"></p>
+
+  <div class="row">
+    <label>生圖 <select id="provider">
+      <option value="comfy">comfy</option>
+      <option value="grok-img">grok-img</option>
+    </select></label>
+    <label style="flex:1">Comfy 位址 <input id="comfy-url" type="text" placeholder="留空＝伺服器預設"></label>
+  </div>
+
+  <h2>1. 抽妹子</h2>
+  <button id="btn-draw" type="button">抽妹子</button>
+  <div id="girl" class="card dim">還沒抽。</div>
+
+  <h2>2. 喜怒哀樂</h2>
+  <div id="emotions" class="row"></div>
+
+  <h2>3. 圖片幀</h2>
+  <p class="dim">按「新增圖片幀」就往下加一列。每一列先按「生圖」，看這張像不像再往下。正向、負向會自己填，跟 testword 立繪的喜怒哀樂同一套（人設、表情、現在穿的衣服）。你改過的字不會被蓋掉。有參考圖時，nosidens 是圖生圖的 denoise。</p>
+  <div id="frames"></div>
+  <button id="btn-add" type="button">新增圖片幀</button>
+</main>
+<div class="player" id="player">
+  <div class="stage-wrap">
+    <img id="stage" alt="" hidden>
+    <p id="play-label" class="dim" hidden></p>
+  </div>
+  <div class="row">
+    <button id="btn-auto" type="button">自動產生</button>
+    <button id="btn-play" type="button">播放</button>
+    <button id="btn-stop" type="button">停止</button>
+    <label class="secs">切換秒數 <input id="seconds" type="number" min="0.1" step="0.1" value="1"></label>
+  </div>
+</div>
+<script type="module" src="/content/test_bodyM.js?v=5"></script>
+</body>
+</html>

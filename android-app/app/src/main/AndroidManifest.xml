@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <permission
+        android:name="tw.yorozuya.app.READ_SERVER"
+        android:protectionLevel="signature" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -35,5 +39,11 @@
             android:label="@string/setup_title"
             android:screenOrientation="portrait"
             android:windowSoftInputMode="stateVisible|adjustResize" />
+
+        <provider
+            android:name=".ServerUrlProvider"
+            android:authorities="tw.yorozuya.app.server"
+            android:exported="true"
+            android:permission="tw.yorozuya.app.READ_SERVER" />
     </application>
 </manifest>

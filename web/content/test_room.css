@@ -613,6 +613,32 @@ html:not(.room-page) #room-pack-chrome { display: none; }
 }
 .room-summon-ritual[hidden]{display:none}
 body.room-home .room-summon-ritual:not([hidden]){display:block}
+.room-summon-ritual-line{line-height:1.45}
+.room-summon-blocks{
+  display:flex;flex-wrap:wrap;justify-content:center;align-items:center;
+  gap:5px 4px;margin-top:.7em;line-height:0;
+}
+.room-summon-blocks[hidden]{display:none !important}
+.room-summon-blocks i{
+  width:8px;height:8px;flex:0 0 auto;
+  display:inline-flex;align-items:center;justify-content:center;
+}
+.room-summon-blocks i::after{
+  content:"";width:3px;height:3px;border-radius:50%;
+  background:rgba(243,235,224,.42);
+}
+.room-summon-blocks i.on::after,
+.room-summon-blocks i.now::after{
+  width:8px;height:8px;border-radius:1px;background:#f3ebe0;
+}
+.room-summon-blocks i.now::after{
+  background:rgba(243,235,224,.55);
+  animation:ritual-block-pulse 1.1s ease-in-out infinite;
+}
+@keyframes ritual-block-pulse{50%{opacity:.28}}
+@media (prefers-reduced-motion:reduce){
+  .room-summon-blocks i.now::after{animation:none;opacity:1}
+}
 #main-room-stage[aria-busy="true"]{opacity:.92}
 .room-summon-progress{
   position:fixed;z-index:70;

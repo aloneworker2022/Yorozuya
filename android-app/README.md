@@ -6,7 +6,9 @@
 > 沒有把 `web/` 打包進 APK：前端用 `/api/*`、`/assets/*` 這類以伺服器為根的路徑，
 > 打包成本地檔案會全部斷掉；而且伺服器一更新（git pull），App 下次開就是新版，不用重裝。
 
-與 `android-widget/`（套件 `tw.yorozuya.discover`，桌面「發現」小工具）是**兩個獨立 App**，可同時安裝；
+與 `android-widget/`（套件 `tw.yorozuya.discover`，桌面「發現」小工具）可同時安裝。
+小工具不自己存網址，送出時向本 App 的 `content://tw.yorozuya.app.server/url` 讀目前的伺服器
+（同一把 debug 簽名才讀得到）。本 App 還沒設定網址時，小工具會打開魅魔萬事屋。
 本 App 套件名 `tw.yorozuya.app`。debug 版沿用 `android-widget/debug.keystore` 簽名，
 所以在任何機器 build 的 debug APK 都能直接覆蓋安裝。
 
@@ -82,8 +84,9 @@ yes | sdkmanager --licenses
 sdkmanager "platforms;android-34" "build-tools;34.0.0"
 ```
 
-> Raspberry Pi / aarch64：Google 的 build-tools（aapt2）只有 x86_64 版，Gradle build 不方便；
-> 在 x86_64 電腦 build 好再把 APK 拷過去即可（`android-widget/build.sh` 那套 Debian aapt 流程是給小工具用的）。
+> Raspberry Pi / aarch64：Google 的 build-tools（aapt2）只有 x86_64，Gradle 不方便。
+> 在這台機器上用 `./build-apk.sh`（Debian aapt + d8，跟 `android-widget/build.sh` 同一套）。
+> 產物複製到 `web/yorozuya.apk`，手機開 `/download` 下載。
 
 ## 5. 檔案
 

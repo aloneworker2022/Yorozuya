@@ -30,9 +30,13 @@ from pydantic import BaseModel
 import comfy
 import cutout
 import daydream as ddream
+import discover_bonus
+import jp_news
+import life_agent
 import memos
 import sdtags
 import sim
+import summon_queue
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "game.db"
@@ -222,6 +226,18 @@ def db() -> sqlite3.Connection:
         conn.execute("ALTER TABLE gen_tasks ADD COLUMN prio INTEGER NOT NULL DEFAULT 0")
     except sqlite3.OperationalError:
         pass
+    # 召喚預產清單：手機一次交完整份，RP5 照 gen_tasks 跑，手機關了也繼續。
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS summon_queue (
+            id       TEXT PRIMARY KEY,
+            girl_id  TEXT NOT NULL,
+            mode     TEXT NOT NULL DEFAULT '',
+            items    TEXT NOT NULL,
+            acked    INTEGER NOT NULL DEFAULT 0,
+            created  REAL NOT NULL,
+            updated  REAL NOT NULL
+        )"""
+    )
     # 召喚師交配環模擬(伺服器權威運算,獨立於手機存檔 blob)。單列 JSON。
     conn.execute(
         """CREATE TABLE IF NOT EXISTS sim (
@@ -237,6 +253,14 @@ def db() -> sqlite3.Connection:
             updated_at REAL NOT NULL
         )"""
     )
+    # 她在日本的生活。網頁整本存檔蓋上來時，這張表仍是正在走的行程。
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS life_agent (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            data       TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )"""
+    )
     # 發現小工具 inbox:手機 widget 丟待辦,遊戲開著時再收進發現池(避免跟存檔互蓋)
     conn.execute(
         """CREATE TABLE IF NOT EXISTS quest_inbox (
@@ -245,6 +269,16 @@ def db() -> sqlite3.Connection:
             created REAL NOT NULL
         )"""
     )
+    # 舊庫補欄：這次發現佔的金、有沒有佔每日名額、擲獎時的遊戲日
+    for stmt in (
+        "ALTER TABLE quest_inbox ADD COLUMN gold INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE quest_inbox ADD COLUMN counted INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE quest_inbox ADD COLUMN day INTEGER NOT NULL DEFAULT 0",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
     return conn
 
 
@@ -255,6 +289,12 @@ class SavePut(BaseModel):
 
 class QuestDiscoverIn(BaseModel):
     text: str
+
+
+@app.get("/api/jp-news")
+async def jp_news_search(q: str = ""):
+    """她在日本住所上網時用。只搜日本新聞標題，不抓內文、不接受網址。"""
+    return await jp_news.search_jp_news(q)
 
 
 @app.get("/api/health")
@@ -301,6 +341,7 @@ def get_save():
     data = json.loads(row[1])
     if isinstance(data, dict):
         ddream.apply_patches(data, _dd_load())
+        _life_overlay(data)
     return {"version": row[0], "data": data, "updated_at": row[2]}
 
 
@@ -314,31 +355,64 @@ def _clean_quest_text(raw: str) -> str:
     return text
 
 
+def _discover_snapshot(conn):
+    """存檔裡的發現計數與睡眠結束時刻。沒存檔就用預設 06:00。"""
+    row = conn.execute("SELECT data FROM save WHERE id = 1").fetchone()
+    discover, sleep_end = None, "06:00"
+    if row:
+        try:
+            data = json.loads(row[0])
+        except (TypeError, ValueError):
+            data = None
+        if isinstance(data, dict):
+            discover = data.get("discover") if isinstance(data.get("discover"), dict) else None
+            settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+            end = settings.get("sleepEnd")
+            if isinstance(end, str) and ":" in end:
+                sleep_end = end
+    return discover, sleep_end
+
+
 @app.post("/api/quests/discover")
 def post_discover_quest(body: QuestDiscoverIn):
-    """發現小工具:把待辦丟進 inbox,遊戲端收進發現池。"""
+    """發現小工具:把待辦丟進 inbox。每天前 10 次跟遊戲內一樣隨機 +0～2 金。"""
     text = _clean_quest_text(body.text)
     if not text:
         raise HTTPException(status_code=400, detail="請輸入待辦")
+    now_ms = time.time() * 1000
     with db() as conn:
+        discover, sleep_end = _discover_snapshot(conn)
+        day = discover_bonus.game_day(now_ms, sleep_end)
+        pending_counted = conn.execute(
+            "SELECT COUNT(*) FROM quest_inbox WHERE counted = 1 AND day = ?",
+            (day,),
+        ).fetchone()[0]
+        gold, counted, day = discover_bonus.next_bonus(
+            discover, pending_counted, now_ms, sleep_end,
+        )
         conn.execute(
-            "INSERT INTO quest_inbox (text, created) VALUES (?, ?)",
-            (text, time.time()),
+            "INSERT INTO quest_inbox (text, created, gold, counted, day) VALUES (?, ?, ?, ?, ?)",
+            (text, time.time(), gold, counted, day),
         )
         pending = conn.execute("SELECT COUNT(*) FROM quest_inbox").fetchone()[0]
-    return {"ok": True, "text": text, "pending": pending}
+    return {"ok": True, "text": text, "pending": pending, "gold": gold}
 
 
 @app.post("/api/quests/inbox/drain")
 def drain_quest_inbox():
-    """遊戲端收走 inbox。一次拿走並清空,避免重複入池。"""
+    """遊戲端收走 inbox。一次拿走並清空,避免重複入池。gold 是送出時已擲好的。"""
     with db() as conn:
         rows = conn.execute(
-            "SELECT id, text FROM quest_inbox ORDER BY id"
+            "SELECT id, text, gold, counted, day FROM quest_inbox ORDER BY id"
         ).fetchall()
         if rows:
             conn.execute("DELETE FROM quest_inbox")
-    return {"items": [{"id": r[0], "text": r[1]} for r in rows]}
+    return {
+        "items": [
+            {"id": r[0], "text": r[1], "gold": r[2], "counted": r[3], "day": r[4]}
+            for r in rows
+        ]
+    }
 
 
 @app.put("/api/save")
@@ -353,6 +427,7 @@ def put_save(body: SavePut):
             )
         data = body.data if isinstance(body.data, dict) else {}
         ddream.apply_patches(data, _dd_load())
+        _life_absorb(data)
         new_version = current + 1
         conn.execute(
             "INSERT INTO save (id, version, data, updated_at) VALUES (1, ?, ?, ?) "
@@ -1075,6 +1150,7 @@ def _build_girl_image_prompt(
     scene_kind: str = "",
     garment: str = "",
     solo: bool = False,
+    vary_line: str = "",
 ) -> str:
     """組給 Grok Build 的生圖指令。人物欄位以 character(完整 generateGirl 結果)為準。
 
@@ -1460,6 +1536,7 @@ describes a different angle (side seat, walking beside, looking at window, etc.)
 """
 
     tool_name = "image_edit" if (pose_path is not None or ref_path is not None) else "image_gen"
+    vary_block = f"\n{vary_line.strip()}\n" if str(vary_line or "").strip() else ""
     return f"""Generate ONE image. Use {tool_name}. Save to:
 {out_path}
 
@@ -1467,7 +1544,7 @@ Tags (identity — do not write Chinese, do not write sentences):
 {brief}, {frame_map.get(framing, frame_map["half"])}, {style_map.get(style, style_map["anime"])}
 
 {tool_note}
-{pose_block}{ref_block}{extra_block}{do_not}{rating_line}{size_note}
+{pose_block}{ref_block}{extra_block}{do_not}{vary_block}{rating_line}{size_note}
 No text overlay, no watermark.
 {"1man and 1girl both visible." if multi_scene else ("Only her — 1girl, solo, no man in the picture." if solo else "")}
 """
@@ -1555,12 +1632,18 @@ def _outfit_of(ch: dict) -> str:
 
     例外：妻子／女友且未指定 outfitPick 時，若有 eroticOutfits，預設穿第一套
     情色裝（lace／lingerie 名進 prompt），不再強制生涯制服或全裸。
+    outfitName 有字、或 outfitPick 為 base，優先於上面兩條（獻祭第一套是白 T）。
     """
     look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
     wardrobe = look.get("wardrobe") if isinstance(look.get("wardrobe"), list) else []
+    named = str(ch.get("outfitName") or "").strip()
+    if named:
+        return named
     pick = ch.get("outfitPick")
     if isinstance(pick, bool):
         pick = None   # True/False 不是索引
+    if pick == "base":
+        return "白色 T 恤配三角褲"
     if isinstance(pick, str):
         kind = pick[:1]
         try:
@@ -1585,6 +1668,47 @@ def _outfit_of(ch: dict) -> str:
             if first:
                 return first
     return str(look.get("career_outfit") or look.get("style") or "")
+
+
+# 召喚重畫：同一個人（髮色、眼睛、身材、衣服規則不變），但不要每次都是同一張。
+_VARY_LOOKS = (
+    "different micro-expression, slight head tilt",
+    "different expression, eyes looking a little aside",
+    "soft different smile, hair strands shifted",
+    "slightly different blush, chin a little lower",
+    "calmer expression, slightly different lighting on the face",
+    "mildly annoyed expression",
+    "sleepy eyes, slightly different hair arrangement",
+    "small surprised expression",
+)
+
+
+def _apply_image_vary(opts: dict) -> dict:
+    """vary=1：換 seed、補一點表情差異；有姿勢參考時把 denoise 推高一點，避免照抄上一張。"""
+    if not isinstance(opts, dict) or not opts.get("vary"):
+        return opts
+    out = dict(opts)
+    seed = int(out.get("seed") or 0) or (secrets.randbelow(2**31 - 1) or 1)
+    out["seed"] = seed
+    bit = _VARY_LOOKS[seed % len(_VARY_LOOKS)]
+    extra = str(out.get("extra") or "").strip()
+    if bit not in extra:
+        out["extra"] = ", ".join(x for x in (extra, bit) if x)
+    prompt = str(out.get("prompt") or "").strip()
+    if prompt and bit not in prompt:
+        out["prompt"] = prompt + ", " + bit
+    denoise = float(out.get("pose_denoise") or 0)
+    if denoise > 0:
+        out["pose_denoise"] = min(0.82, denoise + 0.12 + (seed % 7) * 0.015)
+    out["_vary_line"] = (
+        "VARIATION: draw a new picture of the same woman, not a copy of an earlier result. "
+        "Keep her hair color, eye color, body type, outfit rules, and the required pose or action. "
+        "Keep the requested framing and crop. Leave a flat solid-color margin around her; "
+        "do not zoom in, do not widen the shot, and do not change the background. "
+        f"Change expression and small details only: {bit}. "
+        "Do not repeat the same face angle and the same expression."
+    )
+    return out
 
 
 def _identity_anchor(ch: dict) -> dict:
@@ -1736,13 +1860,14 @@ def _sex_strip_camera(pos: str) -> str:
 
 def _wrap_sex_strip_prompt(
     body: str, *, out_path: Path, style: str = "anime", extra_neg: str = "",
-    pose_path: Path | None = None,
+    pose_path: Path | None = None, vary_line: str = "",
 ) -> str:
     """做愛局部單幀。口交的人設臉／髮已由 _merge_oral_identity 疊進 body。"""
     style_txt = _STYLE_MAP.get((style or "anime").lower(), _STYLE_MAP["anime"])
     pos, from_en = sdtags.split_pos_neg_tags(body)
     neg = ", ".join(x for x in (from_en, extra_neg) if x)
     do_not = f"\nDo NOT draw: {neg}\n" if neg else ""
+    vary_block = f"\n{vary_line.strip()}\n" if str(vary_line or "").strip() else ""
     if pose_path is not None:
         return f"""Generate ONE image. Use image_edit. Save to:
 {out_path}
@@ -1760,7 +1885,7 @@ Draw this (tags, not Chinese, not sentences):
 {pos}
 
 Style: {style_txt}
-High resolution.{do_not}
+High resolution.{do_not}{vary_block}
 """
     cam = _sex_strip_camera(pos)
     return f"""Generate ONE image. Use image_gen. Save to:
@@ -1777,7 +1902,7 @@ Draw this (tags, not Chinese, not sentences):
 {pos}
 
 Style: {style_txt}
-High resolution.{do_not}
+High resolution.{do_not}{vary_block}
 """
 
 
@@ -1829,6 +1954,7 @@ async def _run_grok_image(
     shot: str = "",
     card_id: str = "",
     scene_kind: str = "",
+    vary_line: str = "",
 ) -> tuple[str, str | None]:
     """Grok Build + image_gen。成功回 (url_path, None)。
     part 給值(head0/bust0/lower0 或 head/bust/lower)= 只畫那一段;留空 = 舊行為的整張圖。
@@ -1881,7 +2007,7 @@ async def _run_grok_image(
         _, extra_neg = sdtags.split_pos_neg_tags(extra_use)
         prompt = _wrap_sex_strip_prompt(
             body, out_path=target, style=style, extra_neg=extra_neg,
-            pose_path=pose_local,
+            pose_path=pose_local, vary_line=vary_line,
         )
     else:
         # 出卡場景：可帶半身立繪 ref 鎖同一張臉；tease 可再帶姿勢圖鎖構圖
@@ -1895,6 +2021,7 @@ async def _run_grok_image(
             scene_kind=scene_kind,
             garment=comfy.undress_garment(shot_l),
             solo=comfy.is_solo_pose_shot(shot_l),
+            vary_line=vary_line,
         )
     text, err = await _run_grok_cli(
         prompt,
@@ -1931,9 +2058,11 @@ async def _run_grok_image(
     if found and found.is_file() and found.stat().st_size > 0:
         if do_cutout and cutout.AVAILABLE:
             try:
+                spec = comfy.portrait_shot_spec(shot_l) if shot_l else None
+                border_min = float((spec or {}).get("border_min") or cutout.BORDER_MIN)
                 changed, why = await asyncio.to_thread(
                     cutout.cut_background, found,
-                    cutout.TOLERANCE, float(cutout.BORDER_MIN), cutout.DILATE)
+                    cutout.TOLERANCE, border_min, cutout.DILATE)
                 _note_cut(found.name, changed, why)
             except Exception as e:
                 _note_cut(found.name, False, f"cutout err:{e}")
@@ -2401,6 +2530,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
 
 async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     """ComfyUI 生一張。落地規則見 `_dest_for_image`。"""
+    opts = _apply_image_vary(opts)
     out_dir, url_dir, fname = _dest_for_image(opts)
     shot = str(opts.get("shot") or "").lower()
     if comfy.portrait_shot_spec(shot) is None:
@@ -2824,6 +2954,7 @@ class ImgGenIn(BaseModel):
     steps: int = 0
     cfg: float = 0
     seed: int = 0               # 0 = 隨機；有 shot 時 0→人設 seed。發呆刷新會傳新 seed 覆寫同檔
+    vary: bool = False          # 召喚重畫：換 seed、表情微差，不要每次同一張
     # 出卡場景：lock_identity + extra 鎖人設 tags；seed 每次隨機（不可固定，否則每張同圖）
     lock_identity: bool = False
     comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
@@ -2895,6 +3026,12 @@ def imggen_submit(t: ImgGenIn):
     兩條路的產物存在同一個資料夾、同一套命名,相簿不必分開處理。
     """
     key = (t.key or "").strip() or f"img:{int(time.time() * 1000)}:{uuid.uuid4().hex[:8]}"
+    character = t.character if isinstance(t.character, dict) else None
+    outfit = (t.outfit or "").strip()
+    # Grok 那條不讀 outfit 欄，只看人設。有指定衣服就寫進這次任務的副本。
+    if outfit and isinstance(character, dict) and str(character.get("outfitName") or "").strip() != outfit:
+        character = dict(character)
+        character["outfitName"] = outfit
     part = (t.part or "").lower()
     ep = _gen_endpoint_for(t.provider, "")
     # ref：分段第二輪、或出卡半身立繪鎖臉（portraits / testword）
@@ -2926,7 +3063,7 @@ def imggen_submit(t: ImgGenIn):
         "framing": (t.framing or "half").lower(),
         "rating": (t.rating or "sfw").lower(),
         "style": (t.style or "anime").lower(),
-        "character": t.character if isinstance(t.character, dict) else None,
+        "character": character,
         "name": t.name or "",
         "personality": t.personality or "",
         "backstory": t.backstory or "",
@@ -2967,6 +3104,7 @@ def imggen_submit(t: ImgGenIn):
             "steps": int(t.steps or 0),
             "cfg": float(t.cfg or 0),
             "seed": seed_in,
+        "vary": bool(t.vary),
             "comfy_url": (t.comfy_url or "").strip(),
             "workflow": t.workflow if isinstance(t.workflow, dict) else None,
         })
@@ -2980,6 +3118,192 @@ def imggen_submit(t: ImgGenIn):
         retry=t.retry,
     )
     return gen_submit(body)
+
+
+class SummonQueueItemIn(BaseModel):
+    slot: dict = {}
+    body: dict = {}
+
+
+class SummonQueueIn(BaseModel):
+    girlId: str
+    mode: str = ""
+    items: list[SummonQueueItemIn] = []
+
+
+def _summon_queue_row(conn, qid: str):
+    return conn.execute(
+        "SELECT id, girl_id, mode, items, acked, created, updated FROM summon_queue WHERE id = ?",
+        (qid,),
+    ).fetchone()
+
+
+def _summon_queue_refresh(conn, row) -> dict:
+    try:
+        items = json.loads(row[3] or "[]")
+    except Exception:
+        items = []
+    if not isinstance(items, list):
+        items = []
+    changed = False
+    refreshed = []
+    for raw in items:
+        item = raw if isinstance(raw, dict) else {}
+        status = str(item.get("status") or "")
+        if item.get("key") and status not in ("done", "error"):
+            task = conn.execute(
+                "SELECT status, result, error FROM gen_tasks WHERE key = ?",
+                (item["key"],),
+            ).fetchone()
+            merged = summon_queue.merge_task(item, task)
+            if merged.get("status") != item.get("status") or merged.get("result") != item.get("result") or merged.get("error") != item.get("error"):
+                changed = True
+            item = merged
+        refreshed.append(item)
+    if changed:
+        conn.execute(
+            "UPDATE summon_queue SET items = ?, updated = ? WHERE id = ?",
+            (json.dumps(refreshed, ensure_ascii=False), time.time(), row[0]),
+        )
+    summary = summon_queue.summarize(refreshed)
+    return {
+        "id": row[0],
+        "girlId": row[1],
+        "mode": row[2] or "",
+        "acked": bool(row[4]),
+        **summary,
+        "items": [summon_queue.public_item(it) for it in refreshed],
+    }
+
+
+def _summon_queue_supersede(conn, girl_id: str) -> None:
+    """同一人又交一份新清單：還沒開始的舊單取消，避免兩份同時搶 GPU。"""
+    rows = conn.execute(
+        "SELECT id, items FROM summon_queue WHERE girl_id = ? AND acked = 0",
+        (girl_id,),
+    ).fetchall()
+    now = time.time()
+    for qid, raw in rows:
+        try:
+            items = json.loads(raw or "[]")
+        except Exception:
+            items = []
+        if not isinstance(items, list):
+            items = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            key = str(it.get("key") or "")
+            if not key or it.get("status") in ("done", "error"):
+                continue
+            conn.execute(
+                "UPDATE gen_tasks SET status='error', error=?, updated=? WHERE key=? AND status='pending'",
+                ("被新的召喚清單取代", now, key),
+            )
+            it["status"] = "error"
+            it["error"] = "被新的召喚清單取代"
+        conn.execute(
+            "UPDATE summon_queue SET items = ?, acked = 1, updated = ? WHERE id = ?",
+            (json.dumps(items, ensure_ascii=False), now, qid),
+        )
+
+
+@app.post("/api/summon-queue")
+def summon_queue_submit(body: SummonQueueIn):
+    """一次收下召喚要畫的全部圖，放進 gen_tasks。手機不必留著。"""
+    girl_id = (body.girlId or "").strip()
+    if not girl_id or len(girl_id) > 80:
+        raise HTTPException(status_code=400, detail="缺少魅子 id")
+    incoming = list(body.items or [])
+    if len(incoming) > 240:
+        raise HTTPException(status_code=400, detail="清單太長")
+    mode = (body.mode or "").strip()[:24]
+    items = []
+    for index, spec in enumerate(incoming):
+        slot = spec.slot if isinstance(spec.slot, dict) else {}
+        raw = dict(spec.body or {})
+        raw["vary"] = True
+        try:
+            seed = int(raw.get("seed") or 0)
+        except (TypeError, ValueError):
+            seed = 0
+        if seed <= 0:
+            raw["seed"] = secrets.randbelow(2**31 - 1) or 1
+        else:
+            raw["seed"] = seed
+        # 同一毫秒組出來的 key 會撞，gen_tasks 會把後面幾張吃成同一單。
+        base_key = str(raw.get("key") or "").strip()
+        uniq = uuid.uuid4().hex[:8]
+        key = f"{base_key}:{index}:{uniq}" if base_key else f"summon:{girl_id}:{index}:{uniq}"
+        raw["key"] = key
+        raw["retry"] = True
+        status, result, error = "pending", None, None
+        try:
+            submitted = imggen_submit(ImgGenIn(**raw))
+            status = submitted.get("status") or "pending"
+            result = submitted.get("result")
+            error = submitted.get("error")
+            key = submitted.get("key") or key
+        except Exception as ex:
+            status, error = "error", f"{type(ex).__name__}: {ex}"
+            print(f"[summon-queue] {girl_id} #{index} {error}", flush=True)
+        items.append({
+            "key": key,
+            "slot": slot,
+            "status": status,
+            "result": result,
+            "error": error,
+        })
+    qid = uuid.uuid4().hex[:16]
+    now = time.time()
+    with db() as conn:
+        _summon_queue_supersede(conn, girl_id)
+        conn.execute(
+            "INSERT INTO summon_queue (id, girl_id, mode, items, acked, created, updated) VALUES (?, ?, ?, ?, 0, ?, ?)",
+            (qid, girl_id, mode, json.dumps(items, ensure_ascii=False), now, now),
+        )
+        row = _summon_queue_row(conn, qid)
+        payload = _summon_queue_refresh(conn, row)
+    print(f"[summon-queue] {girl_id} {qid} {payload['total']} 張", flush=True)
+    return payload
+
+
+@app.get("/api/summon-queue")
+def summon_queue_latest(girl: str = ""):
+    """這個人還沒收下的那份清單（手機重新打開時用）。沒有就空。"""
+    girl_id = (girl or "").strip()
+    if not girl_id:
+        return {"id": "", "girlId": "", "mode": "", "acked": False, **summon_queue.summarize([]), "items": []}
+    with db() as conn:
+        row = conn.execute(
+            "SELECT id, girl_id, mode, items, acked, created, updated FROM summon_queue "
+            "WHERE girl_id = ? AND acked = 0 ORDER BY created DESC LIMIT 1",
+            (girl_id,),
+        ).fetchone()
+        if not row:
+            return {"id": "", "girlId": girl_id, "mode": "", "acked": False, **summon_queue.summarize([]), "items": []}
+        return _summon_queue_refresh(conn, row)
+
+
+@app.get("/api/summon-queue/{qid}")
+def summon_queue_status(qid: str):
+    with db() as conn:
+        row = _summon_queue_row(conn, qid)
+        if not row:
+            raise HTTPException(status_code=404, detail="清單不存在")
+        return _summon_queue_refresh(conn, row)
+
+
+@app.post("/api/summon-queue/{qid}/ack")
+def summon_queue_ack(qid: str):
+    with db() as conn:
+        cur = conn.execute(
+            "UPDATE summon_queue SET acked = 1, updated = ? WHERE id = ?",
+            (time.time(), qid),
+        )
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="清單不存在")
+    return {"ok": True}
 
 
 @app.get("/api/imggen/list")
@@ -3254,6 +3578,7 @@ async def _gen_worker():
                     url, err = await _run_comfy_image(opts)
                     text = url or ""
                 elif endpoint == "grok-img":
+                    opts = _apply_image_vary(opts)
                     # 立繪去背看 shot 規格；調戲場景不去背
                     shot_g = str(opts.get("shot") or "").lower()
                     want_cut = comfy.shot_wants_cutout(shot_g, bool(opts.get("cutout")))
@@ -3287,6 +3612,7 @@ async def _gen_worker():
                         shot=str(opts.get("shot") or ""),
                         card_id=str(opts.get("card_id") or ""),
                         scene_kind=str(opts.get("scene_kind") or ""),
+                        vary_line=str(opts.get("_vary_line") or ""),
                     )
                     text = url or ""
                 elif endpoint in ("grok-build", "grok", "xai"):
@@ -3981,6 +4307,254 @@ def _world_beat(store, now: float, forced: bool = False) -> None:
     )
 
 
+_LIFE_LOCK = threading.Lock()
+
+
+def _life_read() -> dict:
+    with db() as conn:
+        row = conn.execute("SELECT data FROM life_agent WHERE id = 1").fetchone()
+    if not row:
+        return life_agent.new_store()
+    try:
+        data = json.loads(row[0])
+    except Exception:
+        data = None
+    if not isinstance(data, dict):
+        return life_agent.new_store()
+    data.setdefault("girls", {})
+    return data
+
+
+def _life_write(store: dict) -> None:
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO life_agent (id, data, updated_at) VALUES (1, ?, ?) "
+            "ON CONFLICT (id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+            (json.dumps(store, ensure_ascii=False), time.time()),
+        )
+
+
+def _life_mutate(fn):
+    with _LIFE_LOCK:
+        store = _life_read()
+        fn(store)
+        _life_write(store)
+        return store
+
+
+def _life_overlay(data: dict) -> None:
+    if not isinstance(data, dict):
+        return
+    now_ms = int(time.time() * 1000)
+
+    def apply(store):
+        life_agent.absorb(store, data, now_ms)
+        life_agent.overlay(data, store, now_ms)
+
+    try:
+        _life_mutate(apply)
+    except Exception as e:
+        print(f"[生活] 蓋不進這次存檔：{e}", flush=True)
+
+
+def _life_absorb(data: dict) -> None:
+    _life_overlay(data)
+
+
+async def _life_say(data: dict, system: str, user: str) -> str:
+    settings = _dd_settings(data or {})
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+    try:
+        if settings["llm_provider"] == "grok-build":
+            text, _err = await _run_grok_build(settings["model"] or "grok-4.5", messages, None)
+            return (text or "").strip()
+        acc: list[str] = []
+        body = _ollama_chat_body(settings["model"], messages, {"temperature": 0.8})
+        await _stream_ollama_chat(settings["ollama_url"], body, lambda piece: acc.append(piece))
+        return _strip_thinking("".join(acc)).strip()
+    except Exception as e:
+        print(f"[生活] 模型沒回：{e}", flush=True)
+        return ""
+
+
+def _life_clock(action: dict) -> str:
+    line = str(action.get("clock") or "").strip()
+    return f"{line}\n" if line else ""
+
+
+def _life_span(action: dict) -> str:
+    started = int(action.get("startedAt") or 0)
+    ended = int(action.get("until") or 0)
+    if started <= 10**11 or ended <= 10**11:
+        return ""
+    a = life_agent.japan_clock(started)["label"]
+    b = life_agent.japan_clock(ended)["label"]
+    return f"這一件是日本時間{a}到{b}。"
+
+
+def _life_choice_prompt(action: dict) -> tuple[str, str]:
+    hobbies = "、".join(action.get("hobbies") or []) or "沒有特別寫"
+    return (
+        "你替她決定接下來做什麼。只能回這三個詞其中一個：打工、溜達、上網。不要解釋。",
+        f"{_life_clock(action)}"
+        f"她是{action.get('name') or '她'}。人在日本的住所{action.get('homeName') or '自己的房間'}，不在召喚者那裡。"
+        f"興趣：{hobbies}。心情：{action.get('mood') or '平靜'}。"
+        "接下來做的事要符合現在這個時段。",
+    )
+
+
+async def _life_once() -> None:
+    data = _dd_read_save() or {}
+    now_ms = int(time.time() * 1000)
+
+    def prep(store):
+        life_agent.absorb(store, data, now_ms)
+
+    store = _life_mutate(prep)
+    plans = life_agent.plan_tick(store, now_ms)
+    if not plans:
+        return
+    action = plans[0]
+    gid = action["id"]
+    if action["op"] == "choose":
+        system, user = _life_choice_prompt(action)
+        kind = life_agent.parse_choice(await _life_say(data, system, user))
+        now2 = int(time.time() * 1000)
+
+        def commit(fresh):
+            life_agent.absorb(fresh, _dd_read_save() or data, now2)
+            if life_agent.apply_choice(fresh, gid, kind, now2):
+                rec = fresh["girls"][gid]
+                label = {"work": "打工", "stroll": "溜達", "browse": "上網"}.get(rec["agenda"]["kind"], "做事")
+                print(f"[生活] {rec.get('name') or '她'} 自己選了{label}", flush=True)
+
+        _life_mutate(commit)
+        return
+
+    kind = action.get("kind") or "work"
+    home = action.get("homeName") or "住所"
+    keys: list[str] = []
+    if kind == "browse":
+        hobbies = "、".join(action.get("hobbies") or []) or "沒有特別寫"
+        word = life_agent.clip_keyword(await _life_say(
+            data,
+            "你替她決定網上要搜的一個詞。只回一個短詞，優先日文。不要句子，不要解釋。",
+            f"{_life_clock(action)}{_life_span(action)}"
+            f"她是{action.get('name') or '她'}。興趣：{hobbies}。心情：{action.get('mood') or '平靜'}。",
+        ))
+        if not word and action.get("hobbies"):
+            word = life_agent.clip_keyword(action["hobbies"][0])
+        word = word or "天気"
+        try:
+            news = await jp_news.search_jp_news(word, limit=2)
+            items = news.get("items") or []
+        except Exception:
+            items = []
+        bits = []
+        for item in items[:2]:
+            title = str(item.get("title") or "").strip()
+            if not title:
+                continue
+            source = str(item.get("source") or "").strip()
+            bits.append(f"{title}（{source}）" if source else title)
+        seen = f"看到{'、'.join(bits)}。" if bits else "沒有載入到新聞。"
+        text = f"在住所{home}上網，搜了「{word}」。{seen}"
+        keys = ["上網", word, bits[0] if bits else ""]
+    elif kind == "work":
+        def take_job(fresh):
+            life_agent.absorb(fresh, data, int(time.time() * 1000))
+            rec = fresh["girls"].get(gid)
+            if rec is not None:
+                life_agent.ensure_job(rec)
+
+        store = _life_mutate(take_job)
+        job_name = ((store.get("girls") or {}).get(gid) or {}).get("job", {}).get("name") or "打工"
+        spoken = await _life_say(
+            data,
+            "你只寫她剛結束的打工。用「我」，2到4句。不要寫召喚者的房間。",
+            f"{_life_clock(action)}{_life_span(action)}"
+            f"人在日本，打工是「{job_name}」。這四小時剛做完，回到住所{home}。描述必須落在這段時間，不要寫成別的時段。",
+        )
+        text = spoken or f"我在{job_name}做完這四小時的班，回到住所{home}。"
+        keys = ["打工", job_name]
+    else:
+        spoken = await _life_say(
+            data,
+            "你只寫她剛結束的溜達。用「我」，2到4句。不要寫召喚者的房間。",
+            f"{_life_clock(action)}{_life_span(action)}"
+            f"人在日本，從住所{home}出去走，剛走完。描述必須落在這段時間，不要寫成別的時段。",
+        )
+        text = spoken or f"我從住所{home}出去走了一段，又回去了。"
+        keys = ["遊盪", home]
+    system, user = _life_choice_prompt(action)
+    user = f"她剛做完這一件。{user}"
+    next_kind = life_agent.parse_choice(await _life_say(data, system, user))
+    finished_until = int(action["until"])
+    now2 = int(time.time() * 1000)
+
+    def commit_resolve(fresh):
+        life_agent.absorb(fresh, _dd_read_save() or data, now2)
+        if life_agent.apply_resolve(fresh, gid, finished_until, text, kind, now2, next_kind, extra_keys=keys):
+            name = (fresh["girls"].get(gid) or {}).get("name") or "她"
+            print(f"[生活] {name} 這趟結束：{text[:60]}", flush=True)
+
+    _life_mutate(commit_resolve)
+
+
+async def _life_loop():
+    """她在日本的生活。網頁開不開都走。一次只寫一件已經到期的事。"""
+    await asyncio.sleep(8)
+    while True:
+        try:
+            await _life_once()
+        except Exception as e:
+            print(f"[生活] 這一輪沒走完：{e}", flush=True)
+        await asyncio.sleep(20)
+
+
+@app.get("/api/life")
+def life_public():
+    """網頁來讀她現在在日本做什麼。不在這裡把欠的班補完。"""
+    data = _dd_read_save() or {}
+    now_ms = int(time.time() * 1000)
+
+    def prep(store):
+        life_agent.absorb(store, data, now_ms)
+
+    store = _life_mutate(prep)
+    return life_agent.public_snapshot(store, now_ms)
+
+
+@app.post("/api/life/choose")
+def life_choose(body: dict):
+    """沙盒手動指定這一趟。人在房間裡不算。"""
+    gid = str((body or {}).get("id") or "")
+    kind = str((body or {}).get("kind") or "")
+    if kind == "wander":
+        kind = "stroll"
+    if not gid or kind not in life_agent.KINDS:
+        raise HTTPException(status_code=400, detail="要指定她，以及打工、溜達或上網")
+    data = _dd_read_save() or {}
+    now_ms = int(time.time() * 1000)
+    ok = {"done": False}
+
+    def commit(store):
+        life_agent.absorb(store, data, now_ms)
+        rec = (store.get("girls") or {}).get(gid)
+        if not rec or rec.get("phase") != "japan":
+            return
+        rec["agenda"] = None
+        ok["done"] = life_agent.apply_choice(store, gid, kind, now_ms)
+
+    store = _life_mutate(commit)
+    if not ok["done"]:
+        raise HTTPException(status_code=409, detail="她現在不在日本，排不了這一趟")
+    return life_agent.public_snapshot(store, now_ms)
+
+
 async def _world_clock():
     """世界時鐘:伺服器權威 runtime。每 30 秒把召喚師模擬 + 計時判定(看板娘到期/委託逾期/跨日)
     補算到真實時間(關螢幕、離線也照跑),並每 10 分鐘輸出一次心跳日誌。"""
@@ -4006,12 +4580,14 @@ async def _start_gen_worker():
               "(狀態也看得到:GET /api/cutout、設定頁按「測試 ComfyUI」、"
               "/testword 的「🩹 去背狀態」)", flush=True)
     print("[世界時鐘] 啟動 — 伺服器權威 runtime 上線,每 30 秒跑檢查、每 10 分鐘印心跳", flush=True)
+    print("[生活] 她人在日本的時候由這台照真實時間走，網頁只看", flush=True)
     try:
         _dd_retire()
     except Exception as e:
         print(f"[發呆] 取消失敗(仍不啟動預產): {e}", flush=True)
     asyncio.create_task(_gen_worker())
     asyncio.create_task(_world_clock())
+    asyncio.create_task(_life_loop())
 
 
 # /editmale 編輯其他召喚師池: names、behaviors(行為卡)、actions(肢體行為)。
@@ -4863,6 +5439,12 @@ def test_room():
     return FileResponse(WEB_DIR / "test_room.html")
 
 
+@app.get("/test_bodyM")
+def test_body_m():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_bodyM" / "index.html")
+
+
 @app.put("/api/edit_date")
 def put_edit_date(body: dict):
     if not isinstance(body, dict):
@@ -5586,6 +6168,26 @@ def widget():
     return FileResponse(WEB_DIR / "widget.html")
 
 
+@app.get("/download")
+def download_app_page():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "download.html")
+
+
+@app.get("/yorozuya.apk")
+def yorozuya_apk():
+    from fastapi.responses import FileResponse
+    path = WEB_DIR / "yorozuya.apk"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="還沒有 APK")
+    return FileResponse(
+        path,
+        media_type="application/vnd.android.package-archive",
+        filename="yorozuya.apk",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/discover.apk")
 def discover_apk():
     from fastapi.responses import FileResponse
@@ -5596,6 +6198,7 @@ def discover_apk():
         path,
         media_type="application/vnd.android.package-archive",
         filename="discover.apk",
+        headers={"Cache-Control": "no-store"},
     )
 
 

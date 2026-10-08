@@ -18,6 +18,8 @@
  *   - 只留最新一下的請求（舊的丟掉）；一句打完時，0.8 秒內有按過「肏」就立刻開下一句。
  */
 
+import { expansionLevel } from "./player_state.js";
+
 export const THRUST = {
   /** 只在呼叫端沒給玩家精液時用（舊呼叫的退路）；正常一律用 player.semenCc。 */
   SEMEN_FALLBACK_CC: 18,
@@ -259,6 +261,11 @@ export function passionGain(arousal, stageKey, rng = Math.random) {
   return rng() < passionTwoChance(arousal, stageKey) ? 2 : 1;
 }
 
+/** 肏的時候玩家興奮到這裡就射。基礎 20，加上「興奮上限」擴充。 */
+export function exciteCumAt() {
+  return THRUST.EXCITE_CUM_AT + expansionLevel("excite");
+}
+
 export function exciteGain(rng = Math.random) {
   const span = THRUST.EXCITE_MAX - THRUST.EXCITE_MIN + 1;
   return THRUST.EXCITE_MIN + Math.min(span - 1, Math.floor(rng() * span));
@@ -288,11 +295,12 @@ export function applyThrust(s, { arousal = 0, stage = "stranger", rng = Math.ran
   const exciteAdd = exciteGain(rng);
   s.thrusts += 1;
   s.passion += passionAdd;
-  s.excite = Math.min(THRUST.EXCITE_CUM_AT, s.excite + exciteAdd);
+  const cumAt = exciteCumAt();
+  s.excite = Math.min(cumAt, s.excite + exciteAdd);
   const switchRoll = rng() < THRUST.SWITCH_CHANCE;
   const semenBefore = s.semen;
   let ejac = false;
-  if (s.excite >= THRUST.EXCITE_CUM_AT) {
+  if (s.excite >= cumAt) {
     ejac = true;
     s.excite = 0;
     s.ejacs += 1;

@@ -252,24 +252,26 @@ export function applyInvasionRoll(who, actId, {
   };
 }
 
-/** 開心的一句（2026-10-03 使用者）：侵犯值改降 8..10（一般閒聊仍 −1..2）。 */
+/** 每一句閒聊都降。一般 −1..2；她開心 −8..10。 */
 export const INVASION_HAPPY_DROP = [8, 10];
 export const INVASION_CHAT_DROP = [1, 2];
 
 /**
- * 這句閒聊她算不算「開心／被哄到」：
- *   - judge 判定「接住」（感情 +1 的那一種），或
- *   - 這句前後感情有上升（任何來源：接住、小名被接受、升階劇情…），或
+ * 這句閒聊她算不算「開心／被哄到」（侵犯走 −8..10，不是一般 −1..2）：
+ *   - judge 判定「接住」（感情 +5 的那一種），或
+ *   - 這句前後感情有上升，但不是「喜歡」「有趣」那兩筆小加分，或
  *   - 她今天的生活心情是「愉快」，而且這句沒冒犯、身上沒有生氣／受傷的情緒餘溫。
- * 用文字摸她（身體命中）或這句被判冒犯 → 一律不算。
+ * 「喜歡」「有趣」會加感情，但不算這檔。用文字摸她（身體命中）或這句被判冒犯 → 一律不算。
  * @param {{ mark?: string, affBefore?: number, affAfter?: number, worldMood?: string, moodType?: string, bodyHit?: boolean }} o
  */
 export function chatLineHappy({ mark = "平常", affBefore = 0, affAfter = 0, worldMood = "", moodType = "", bodyHit = false } = {}) {
   if (bodyHit) return false;
   if (mark === "冒犯") return false;
+  const pleasantDay = worldMood === "愉快" && moodType !== "angry" && moodType !== "hurt";
+  if (mark === "喜歡" || mark === "有趣") return pleasantDay;
   if (mark === "接住") return true;
   if ((Number(affAfter) || 0) > (Number(affBefore) || 0)) return true;
-  if (worldMood === "愉快" && moodType !== "angry" && moodType !== "hurt") return true;
+  if (pleasantDay) return true;
   return false;
 }
 
@@ -279,12 +281,12 @@ export function chatInvasionDrop(happy, rng = Math.random) {
   return lo + Math.floor(rng() * (hi - lo + 1));
 }
 
-/** 每句閒聊回覆的輕微衰減：預設 −1..2（時間衰減另走 decayInvasionByTime）。開心那句由呼叫端傳 chatInvasionDrop(true)。 */
+/** 每句閒聊都扣。沒傳量時用一般句 −1..2。開心那句由呼叫端傳 chatInvasionDrop(true)。 */
 export function decayInvasion(who, amount = null) {
   const b = ensureInvasion(who);
   if (!b) return 0;
   const drop = amount == null
-    ? (1 + Math.floor(Math.random() * 2)) // 1 or 2
+    ? chatInvasionDrop(false)
     : Math.max(0, Math.round(Number(amount) || 0));
   const before = b.invasion || 0;
   b.invasion = clampInv(before - drop);

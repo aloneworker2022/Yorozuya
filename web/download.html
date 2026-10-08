@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#16101f">
+  <title>下載魅魔萬事屋</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #16101f;
+      color: #f2e9ff;
+      font: 16px/1.55 "PingFang TC", "Noto Sans CJK TC", sans-serif;
+    }
+    main {
+      max-width: 28rem;
+      margin: 0 auto;
+      padding: 2.2rem 1.25rem 3rem;
+    }
+    h1 { font-size: 1.55rem; font-weight: 700; margin: 0 0 .35rem; }
+    .ver { color: #a99bbd; font-size: .9rem; margin: 0 0 1.25rem; }
+    p { margin: 0 0 .9rem; }
+    a.dl {
+      display: block;
+      margin: 1.2rem 0 1.4rem;
+      padding: .95rem 1rem;
+      text-align: center;
+      text-decoration: none;
+      color: #fff;
+      background: #c2428f;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+    a.dl:active { filter: brightness(1.1); }
+    ol { margin: 0 0 1.2rem; padding-left: 1.2rem; }
+    li { margin: .35rem 0; }
+    code, .url {
+      font-family: ui-monospace, monospace;
+      font-size: .92rem;
+      word-break: break-all;
+    }
+    .url {
+      display: block;
+      margin-top: .35rem;
+      padding: .7rem .8rem;
+      background: #241a33;
+      border-radius: 8px;
+    }
+    .note { color: #a99bbd; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>魅魔萬事屋</h1>
+    <p class="ver">8.0 · 乾淨完整版 · 2026-10-05</p>
+    <p>這是目前這台伺服器上的手機 App。舊的、手機會自己把她在日本的生活算一遍再上傳的那層已經切掉。人在日本的行程只由伺服器走，App 只看結果。</p>
+    <a class="dl" href="/yorozuya.apk">下載 Android 安裝包</a>
+    <ol>
+      <li>下載後打開檔案。若系統擋住，到設定允許安裝不明來源。</li>
+      <li>裝好打開「魅魔萬事屋」。</li>
+      <li>第一次會問伺服器網址。把下面這行貼進去。</li>
+    </ol>
+    <p>伺服器網址<code class="url" id="origin">（開這個頁面的網址）</code></p>
+    <p class="note">遊戲、存檔、聊天都在伺服器上，這個安裝包只是全螢幕外殼。換內容不用重裝，重新整理就行。iPhone 沒有這包，用瀏覽器打開同一個網址即可。</p>
+  </main>
+  <script>
+    document.getElementById("origin").textContent = location.origin;
+  </script>
+</body>
+</html>

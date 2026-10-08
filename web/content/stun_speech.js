@@ -1,6 +1,7 @@
 /** 房間聊天：程式化「失神」亂語（非只靠 prompt）。 */
 
 import { ensureBody, talkActById, arousalStage, stimulationState } from "./body_state.js?v=16";
+import { expansionLevel } from "./player_state.js";
 import { insertUnlocked } from "./tease.js?v=7";
 
 export const SHOCK_MAX = 45;
@@ -533,7 +534,8 @@ function calcStunRaw(who) {
   const arousalPts = arousal <= 23
     ? (arousal / 23) * 60
     : 60 + ((arousal - 23) / 7) * 4;
-  const climaxPush = inClimax ? Math.min(6, b.climaxTease || 0) * 8 : 0;
+  // 調戲能力：高潮中每再調戲一下的失神推力 = 8 + 4×等級（0 級仍是兩下進失神）
+  const climaxPush = inClimax ? Math.min(6, b.climaxTease || 0) * (8 + expansionLevel("tease") * 4) : 0;
   const open = Math.max(0, Math.min(100, Number(b.openness) || 0));
   // 開放度壓低週邊失神：0→0.35，55→約0.7，100→1.0
   const openScale = 0.35 + (open / 100) * 0.65;
@@ -870,13 +872,16 @@ export function spasmTemplate(who, actId = "") {
   return parts.join("").replace(/(…)+/g, "…").slice(0, 28);
 }
 
-/** 每完成一輪對話 +1；滿三句且非痙攣：性奮 −2、衝擊 −8。 */
+/** 每完成一輪對話 +1。非痙攣：滿六句性奮 −1，滿三句衝擊 −8。 */
 export function noteTalkExchange(who) {
   const b = ensureStunFields(who);
   if (!b) return b;
   b.talkExchangeCount = (b.talkExchangeCount || 0) + 1;
-  if (b.talkExchangeCount % 3 === 0 && !inSpasm(who)) {
-    b.arousal = clamp((b.arousal || 0) - 2, 0, 30);
+  if (inSpasm(who)) return b;
+  if (b.talkExchangeCount % 6 === 0) {
+    b.arousal = clamp((b.arousal || 0) - 1, 0, 30);
+  }
+  if (b.talkExchangeCount % 3 === 0) {
     b.shock = clamp((b.shock || 0) - 8, 0, SHOCK_MAX);
   }
   return b;

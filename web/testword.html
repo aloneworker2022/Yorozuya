@@ -725,7 +725,7 @@ function twRi(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
 // 與 app.js ensureShop 對齊的祭品池（此頁不載 app.js）
 const TW_SACRIFICE_POOL = ["迷路的冒險者", "落魄的商人", "自願的信徒", "酒館的醉漢", "負債的賭徒", "失戀的詩人", "貪婪的盜賊", "無名的流浪者", "可疑的煉金術士", "逃兵"];
 const TW_MERCHANT_LINES = ["今天的貨色不錯吧?", "都是自願的,大概。", "早買早享受,晚了就沒了。", "便宜貨也有便宜貨的用法。", "別問來歷。問了也不便宜。"];
-const TW_GIFT_KEYS = ["roster", "exec", "reward", "offering", "duration", "drop", "discount"];
+const TW_GIFT_KEYS = ["roster", "exec", "reward", "offering", "drop", "semen", "excite", "tease"];
 
 async function addGold(n) {
   if (!ensure()) return;
@@ -1235,7 +1235,7 @@ async function startRandomDate() {
 // ── 擴充等級 ──
 const EXP_AXES = {
   exec: "執行中格數", reward: "完成金額", offering: "商店祭品", roster: "名冊名額",
-  kanban: "看板娘時長", drop: "獻祭掉落率", cheap: "召喚減費",
+  drop: "獻祭掉落率", semen: "精液量", excite: "興奮上限", tease: "調戲能力",
 };
 function renderExpRows() {
   const el = document.getElementById("exp-rows");
