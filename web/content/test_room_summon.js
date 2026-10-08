@@ -315,6 +315,8 @@ import { HOMES, sampleHomes } from "./japan_homes.js";
 const $ = (id) => document.getElementById(id);
 
 let girl = null;
+/** 房間剪影（room_doll.js）讀她的外觀：身高／體型／罩杯／髮型＋身上那套（裙子）＋脫到第幾階。test_room.js 每秒問一次。 */
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl) } : null);
 let player = emptyPlayer();
 let pending = false;
 let idleDecayTimer = 0;

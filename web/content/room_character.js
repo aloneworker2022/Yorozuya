@@ -1,6 +1,12 @@
-/* Temporary pixel silhouette and grid-based wandering. No AI or game save access. */
+/* Room silhouette + grid-based wandering. No AI or game save access.
+   Her figure comes from RoomDoll (room_doll.js): a per-girl procedural silhouette built from
+   girl.look (height, build, cup, hair, skirt). Frames are generated lazily in a Web Worker
+   (main-thread fallback, one frame per idle slice) and cached per look; until they are ready
+   the legacy block silhouette below is shown. */
 (() => {
   'use strict';
+  // Legacy block silhouette: only a placeholder while her doll frames are being generated.
+  const LEGACY_ALPHA=204;
   function sprite(step, mirrored) {
     const canvas=document.createElement('canvas');canvas.width=64;canvas.height=124;
     const ctx=canvas.getContext('2d');
@@ -19,7 +25,7 @@
     rect(35,83,6,31-stride);rect(34,113-stride,9,5);
     // Apply opacity once, so overlaps do not produce darker patches.
     const data=ctx.getImageData(0,0,64,124);
-    for(let i=3;i<data.data.length;i+=4)if(data.data[i])data.data[i]=158;
+    for(let i=3;i<data.data.length;i+=4)if(data.data[i])data.data[i]=LEGACY_ALPHA;
     return {width:64,height:124,anchor:{x:32,y:118},pixels:data.data};
   }
   const frames=[false,true].map(mirrored=>[0,1,2,3].map(step=>sprite(step,mirrored)));
@@ -57,7 +63,7 @@
     box(.33,.33,.34,.29,73,18);box(.3,.3,.4,.2,68,23);
     for(const u of [.19,.72]){box(u,.4,.09,.13,45,18);box(u,.43,.1,.29,41,6);}
     const pixels=ctx.getImageData(0,0,width,height).data;
-    for(let i=3;i<pixels.length;i+=4)if(pixels[i])pixels[i]=158;
+    for(let i=3;i<pixels.length;i+=4)if(pixels[i])pixels[i]=LEGACY_ALPHA;
     return {width,height,anchor,pixels,depth};
   }
   const seated=new Map();
@@ -66,8 +72,90 @@
     if(!seated.has(key))seated.set(key,seatedSprite(facing,height));
     return seated.get(key);
   }
+
+  // ------------------------------------------------------------------ doll frames
+  const Doll=window.RoomDoll||null;
+  const CACHE_LOOKS=2;                 // keep the current girl + the previous one
+  const sets=new Map();                // dollKey -> {key,doll,idle,walk:{f,fm,b,bm},sit:Map}
+  const queue=[];                      // pending jobs, front = next
+  let busy=null,worker=null,jobId=0,workerFailed=false;
+  const perf={frames:0,ms:0,last:0};
+  function makeWorker(){
+    if(!Doll||typeof Worker==='undefined'||typeof Blob==='undefined')return null;
+    try{
+      const src=`const RoomDoll=(${Doll.factorySource})();
+self.onmessage=e=>{const j=e.data,t0=performance.now();
+  try{const f=RoomDoll.render(j.doll,j.pose,j.frame,j.yaw,j.opts||{});
+    self.postMessage({id:j.id,ms:performance.now()-t0,f},[f.pixels.buffer,f.depth.buffer]);}
+  catch(err){self.postMessage({id:j.id,error:String(err&&err.message||err)});}};`;
+      const url=URL.createObjectURL(new Blob([src],{type:'text/javascript'}));
+      const w=new Worker(url);
+      w.onmessage=e=>finish(e.data);
+      w.onerror=()=>{workerFailed=true;worker=null;if(busy){queue.unshift(busy.job);busy=null;}pump();};
+      return w;
+    }catch{return null;}
+  }
+  function storeFrame(job,f){
+    const set=sets.get(job.key);if(!set)return;
+    if(job.pose==='idle')set.idle=f;
+    else if(job.pose==='walk'){const dir=job.yaw>90?'b':'f';set.walk[dir][job.frame]=f;set.walk[dir+'m'][job.frame]=Doll.mirror(f);}
+    else if(job.pose==='sit')set.sit.set(job.sitKey,f);
+  }
+  function finish(msg){
+    const cur=busy;busy=null;
+    if(cur&&msg&&msg.id===cur.id){
+      if(msg.f){perf.frames++;perf.ms+=msg.ms;perf.last=msg.ms;storeFrame(cur.job,msg.f);}
+    }
+    pump();
+  }
+  const later=typeof requestIdleCallback==='function'?fn=>requestIdleCallback(fn,{timeout:120}):fn=>setTimeout(fn,16);
+  function pump(){
+    if(busy||!queue.length||!Doll)return;
+    const job=queue.shift();
+    if(!sets.has(job.key)){pump();return;}
+    if(!worker&&!workerFailed)worker=makeWorker();
+    const id=++jobId;busy={id,job};
+    if(worker){
+      worker.postMessage({id,doll:job.doll,pose:job.pose,frame:job.frame,yaw:job.yaw,opts:job.opts});
+    }else{
+      // No worker: one frame per idle slice on the main thread.
+      later(()=>{
+        const t0=performance.now();let f=null;
+        try{f=Doll.render(job.doll,job.pose,job.frame,job.yaw,job.opts||{});}catch{}
+        finish({id,ms:performance.now()-t0,f});
+      });
+    }
+  }
+  function enqueue(job,urgent=false){
+    const same=j=>j.key===job.key&&j.pose===job.pose&&j.frame===job.frame&&j.yaw===job.yaw&&j.sitKey===job.sitKey;
+    if(busy&&same(busy.job))return;
+    const at=queue.findIndex(same);
+    if(at>=0){if(!urgent)return;queue.splice(at,1);}
+    if(urgent)queue.unshift(job);else queue.push(job);
+    pump();
+  }
+  function useLook(spec){
+    if(!Doll)return null;
+    const doll=Doll.lookToDoll(spec?.look||null,{outfit:spec?.outfit,undressStage:spec?.undressStage});
+    const key=Doll.dollKey(doll);
+    if(sets.has(key)){const set=sets.get(key);sets.delete(key);sets.set(key,set);return set;}
+    const set={key,doll,idle:null,walk:{f:[],fm:[],b:[],bm:[]},sit:new Map()};
+    sets.set(key,set);
+    while(sets.size>CACHE_LOOKS)sets.delete(sets.keys().next().value);
+    for(let i=queue.length-1;i>=0;i--)if(!sets.has(queue[i].key))queue.splice(i,1);
+    enqueue({key,doll,pose:'idle',frame:0,yaw:0});
+    for(const yaw of [45,135])for(let i=0;i<Doll.WALK_FRAMES;i++)enqueue({key,doll,pose:'walk',frame:i,yaw});
+    return set;
+  }
+  function sitFrame(set,facing,height,urgent){
+    if(!set)return null;
+    const sitKey=`${facing}:${height}`,f=set.sit.get(sitKey);
+    if(!f)enqueue({key:set.key,doll:set.doll,pose:'sit',frame:0,yaw:Doll.SEAT_YAW[facing]??-45,opts:{seat:height},sitKey},urgent);
+    return f||null;
+  }
   function create({cols,rows,blocked,getSeats=()=>[],random=Math.random}) {
-    const state={u:2.5,v:3.5,moving:false,mirrored:false,step:0,mode:'idle',furnitureId:null,facing:'left',seatHeight:35};
+    const state={u:2.5,v:3.5,moving:false,mirrored:false,back:false,step:0,mode:'idle',furnitureId:null,facing:'left',seatHeight:35};
+    let look=null;   // this girl's doll frame set (null until setLook)
     let route=[],next=null,wait=1.8,elapsed=0,seat=null,sitTime=0,sitCooldown=0,present=false;
     const valid=(u,v)=>u>=0&&v>=0&&u<cols&&v<rows&&!blocked(u,v);
     if(!valid(Math.floor(state.u),Math.floor(state.v))){
@@ -109,6 +197,7 @@
       const choice=choices[0];seat={id:choice.item.id,name:choice.item.name,anchor:choice.anchor,exit:choice.exit};
       route=alignRoute(choice.path);next=null;
       state.furnitureId=seat.id;state.facing=seat.anchor.facing;state.seatHeight=seat.anchor.height;state.mode='approaching';state.moving=false;
+      sitFrame(look,state.facing,state.seatHeight,true);   // generate the seated pose while she walks over
       return {ok:true,message:`她正走到${seat.name}旁，靠近後就會坐下。`};
     }
     function standUp() {
@@ -134,7 +223,22 @@
       position(){return state.mode==='sitting'&&seat?{u:seat.anchor.u,v:seat.anchor.v}:{u:state.u,v:state.v};},
       isFurnitureLocked(id){return present&&!!seat&&seat.id===id;},
       occupies(u,v){return present&&((Math.floor(state.u)===u&&Math.floor(state.v)===v)||!!(next&&next.u===u&&next.v===v)||!!(seat&&seat.exit.u===u&&seat.exit.v===v));},
-      frame(){return state.mode==='sitting'?seatedFrame(state.facing,state.seatHeight):frames[state.mirrored?1:0][state.moving?state.step:0];},
+      /** spec: {look, outfit, undressStage}; null/without look = defaults (勻稱有致・D・長直・161). */
+      setLook(spec){look=useLook(spec);return look?look.key:null;},
+      lookKey(){return look?look.key:null;},
+      dollStats(){return {...perf,queued:queue.length,busy:!!busy,worker:!!worker,ready:!!(look&&look.idle),
+        walkReady:look?look.walk.f.filter(Boolean).length+look.walk.b.filter(Boolean).length:0};},
+      frame(){
+        if(state.mode==='sitting')return sitFrame(look,state.facing,state.seatHeight,true)||seatedFrame(state.facing,state.seatHeight);
+        if(state.moving&&look){
+          // 3/4 front (yaw 45) and 3/4 back (yaw 135); the other two directions are mirrors.
+          const walk=look.walk,mir=!state.mirrored,list=state.back?(mir?walk.bm:walk.b):(mir?walk.fm:walk.f);
+          const f=list[state.step%Doll.WALK_FRAMES];
+          if(f)return f;
+        }
+        if(look&&look.idle)return look.idle;
+        return frames[state.mirrored?1:0][state.moving?state.step%4:0];
+      },
       update(dt,paused=false){
         if(!present||paused){state.moving=false;return;}
         sitCooldown=Math.max(0,sitCooldown-dt);
@@ -159,12 +263,12 @@
           }
         }
         const du=next.u+.5-state.u,dv=next.v+.5-state.v,distance=Math.hypot(du,dv),travel=Math.min(distance,dt*.8);
-        state.moving=true;state.mirrored=du-dv>0;
+        state.moving=true;state.mirrored=du-dv>0;state.back=du+dv<0;
         if(distance>0){state.u+=du/distance*travel;state.v+=dv/distance*travel;}
-        elapsed+=dt;state.step=Math.floor(elapsed*7)%4;
+        elapsed+=dt;state.step=Math.floor(elapsed*14)%8;   // 8-frame walk at 14 fps (one cycle = 0.571 s)
         if(distance<=travel){state.u=next.u+.5;state.v=next.v+.5;next=null;}
       }
     };
   }
-  window.RoomCharacter={create};
+  window.RoomCharacter={create,useLook,doll:Doll};
 })();

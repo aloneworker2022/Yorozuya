@@ -187,14 +187,21 @@
   function actorDepthAt(sx, sy, u, v, frame) {
     return u + v + (frame.depth ? frame.depth[sy * frame.width + sx] : Math.max(0, frame.anchor.y - sy) / 32);
   }
+  const HIT_PAD = 5;   // px (sprite space) around her silhouette that still counts as touching her
   function hitActor(point) {
     if(!actor.present || actorConcealed)return false;
     const p = worldPoint(point);
     const {u, v} = actor.position(), f = actor.frame(), [x, y] = project(u, v);
     const sx = Math.floor(p.x - x + f.anchor.x), sy = Math.floor(p.y - y + f.anchor.y);
-    if (sx < 0 || sy < 0 || sx >= f.width || sy >= f.height) return false;
-    if (f.pixels[(sy * f.width + sx) * 4 + 3] <= 20) return false;
-    const hers = actorDepthAt(sx, sy, u, v, f);
+    // The doll is slimmer than the old block figure: accept presses within a few pixels of her.
+    const opaque = (x, y) => x >= 0 && y >= 0 && x < f.width && y < f.height && f.pixels[(y * f.width + x) * 4 + 3] > 20;
+    let hx = -1, hy = -1;
+    for (let r = 0; r <= HIT_PAD && hx < 0; r++)
+      for (let dy = -r; dy <= r && hx < 0; dy++)
+        for (let dx = -r; dx <= r; dx++)
+          if (Math.max(Math.abs(dx), Math.abs(dy)) === r && opaque(sx + dx, sy + dy)) { hx = sx + dx; hy = sy + dy; break; }
+    if (hx < 0) return false;
+    const hers = actorDepthAt(hx, hy, u, v, f);
     const item = hitItem(point);
     if (!item) return true;
     const frame = frameOf(item), [ix, iy] = project(item.u, item.v);
@@ -486,7 +493,18 @@
     const panel=document.querySelector('.actor-panel');
     if(panel) panel.hidden=!actor.present || actorConcealed;
   }
+  // Her doll look comes from the summon module (window.RoomLookProvider → {look,outfit,undressStage}).
+  let lookCheckedAt=0;
+  function syncActorLook(force){
+    const now=performance.now();
+    if(!force&&now-lookCheckedAt<1000)return;
+    lookCheckedAt=now;
+    let spec=null;
+    try{spec=typeof window.RoomLookProvider==='function'?window.RoomLookProvider():null;}catch{spec=null;}
+    if(spec||!actor.lookKey())actor.setLook(spec);
+  }
   function setActorPresent(on){
+    if(on)syncActorLook(true);
     actor.setPresent(on);
     if(on) actorConcealed=false;
     syncActorPanel();
@@ -499,7 +517,8 @@
     refreshActorControls();
     draw();
   }
-  window.RoomActor={setPresent:setActorPresent,isPresent:()=>actor.present,conceal:concealActor};
+  window.RoomActor={setPresent:setActorPresent,isPresent:()=>actor.present,conceal:concealActor,
+    syncLook:()=>syncActorLook(true),dollStats:()=>actor.dollStats()};
   window.RoomView={
     furniture(){
       const counts=new Map();
@@ -528,6 +547,7 @@
     if(document.hidden||!sceneVisible){previous=now;return;}
     if(now-previous<50)return;
     const dt=previous?Math.min((now-previous)/1000,.1):0;previous=now;
+    if(actor.present)syncActorLook(false);
     actor.update(dt,!actor.present||actorConcealed||!wandering||placing||pointers.size>0);
     refreshActorControls();
     if(actor.present)drawActor();
