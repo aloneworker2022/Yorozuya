@@ -2787,12 +2787,23 @@ body.room-home[data-tab="2"] #kanban {
   filter: brightness(1);
 }
 
-/* ===== 番茄鐘：直向是正常上下排；App 把手機轉橫之後，鐘在左、她在右 ===== */
+/* ===== 番茄鐘：翻頁鐘。App 會把手機轉橫（鐘佔滿、她縮在右邊）；網頁維持直向（鐘在上、她在下） ===== */
+@font-face {
+  font-family: "Pomo Pixel";
+  src: url("fonts/fusion-pixel-12px-zh-hant.woff2") format("woff2");
+  font-display: swap;
+}
 body.pomo-on { overflow: hidden; }
+body.pomo-on #toasts { z-index: 80; } /* 鐘蓋著整個畫面，提示要浮在它上面 */
 #pomo {
+  --pomo-tile-top: #2b2242;
+  --pomo-tile-bot: #211a34;
+  --pomo-digit: #f6eeff;
+  --pomo-side-w: clamp(140px, 22vw, 230px);
   position: fixed; inset: 0; z-index: 70;
   display: flex; flex-direction: column;
   background: var(--bg, #141021);
+  background-image: radial-gradient(ellipse at 50% 40%, var(--glow, #251440) 0%, var(--bg, #141021) 72%);
   color: var(--text);
   padding:
     max(16px, env(safe-area-inset-top))
@@ -2805,52 +2816,125 @@ body.pomo-on { overflow: hidden; }
 }
 #pomo[hidden] { display: none; }
 .pomo-clock {
-  flex: 1; min-height: 0;
+  flex: 1; min-width: 0; min-height: 0;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  gap: .6rem;
+  gap: .9rem;
 }
 .pomo-task {
-  max-width: 18em; text-align: center;
+  max-width: 100%;
+  padding: 0 .5rem;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  text-align: center;
   color: var(--dim); font-size: .95rem; line-height: 1.4;
 }
+.pomo-face { display: flex; flex-direction: column; align-items: stretch; gap: .9rem; }
 .pomo-flaps {
-  display: flex; align-items: center; gap: .18em;
-  font-size: clamp(4.2rem, 18vw, 7.6rem);
+  display: flex; align-items: center; justify-content: center;
+  gap: .07em;
+  /* 直向：寬度決定字級（4 格＋冒號約 3.9em） */
+  font-size: min(19vw, 30vh, 8rem);
+  font-family: "Pomo Pixel", "Cubic 11", "Fusion Pixel", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
+.pomo-pair { display: flex; gap: .06em; }
 .pomo-flap {
   position: relative;
-  width: .78em; height: 1.18em;
-  background: linear-gradient(#2a2140, #120c1c);
-  border-radius: .12em;
-  box-shadow: inset 0 -1px 0 rgba(255,255,255,.08), 0 8px 18px rgba(0,0,0,.35);
+  width: .8em; height: 1.2em;
+  perspective: 3.2em;
+  /* 像素風：硬邊黑框＋往下一階的影子，不用柔焦陰影 */
+  border-radius: .05em;
+  box-shadow:
+    0 0 0 .025em #07040c,
+    0 .06em 0 .025em rgba(0,0,0,.45);
+}
+.pomo-flap .fh {
+  position: absolute; left: 0; right: 0;
+  height: 50%;
   overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
-.pomo-flap b {
-  position: absolute; inset: 0;
+.pomo-flap .ft, .pomo-flap .lt {
+  top: 0;
+  border-radius: .05em .05em 0 0;
+  background: linear-gradient(var(--pomo-tile-top), color-mix(in srgb, var(--pomo-tile-top) 80%, #000));
+}
+.pomo-flap .fb, .pomo-flap .lb {
+  bottom: 0;
+  border-radius: 0 0 .05em .05em;
+  background: linear-gradient(var(--pomo-tile-bot), color-mix(in srgb, var(--pomo-tile-bot) 70%, #000));
+}
+.pomo-flap .fh b {
+  position: absolute; left: 0; right: 0;
+  height: 200%;
   display: flex; align-items: center; justify-content: center;
-  font-weight: 700; color: var(--text);
+  font-weight: 400;
+  color: var(--pomo-digit);
+  text-shadow: 0 0 .06em color-mix(in srgb, var(--pink, #ff4fd8) 55%, transparent);
+  -webkit-font-smoothing: none;
 }
+.pomo-flap .ft b, .pomo-flap .lt b { top: 0; }
+.pomo-flap .fb b, .pomo-flap .lb b { bottom: 0; }
+.pomo-flap .lt { z-index: 2; transform-origin: 50% 100%; }
+.pomo-flap .lb { z-index: 2; transform-origin: 50% 0; transform: rotateX(90deg); }
+/* 中間的鉸鍊縫＋兩邊的小卡榫 */
 .pomo-flap::after {
   content: "";
-  position: absolute; left: 0; right: 0; top: 50%;
-  height: 1px; background: rgba(0,0,0,.55);
+  position: absolute; left: 0; right: 0; top: calc(50% - .015em);
+  height: .03em;
+  background: #07040c;
+  z-index: 3;
 }
-.pomo-flap.is-flip b { animation: pomo-flip .42s ease; }
-@keyframes pomo-flip {
-  0% { transform: rotateX(0); }
-  45% { transform: rotateX(-90deg); }
-  55% { transform: rotateX(90deg); }
-  100% { transform: rotateX(0); }
+.pomo-flap::before {
+  content: "";
+  position: absolute; top: calc(50% - .05em);
+  left: -.035em; right: -.035em;
+  height: .1em;
+  background:
+    linear-gradient(var(--pink, #ff4fd8), var(--pink, #ff4fd8)) left / .05em 100% no-repeat,
+    linear-gradient(var(--pink, #ff4fd8), var(--pink, #ff4fd8)) right / .05em 100% no-repeat;
+  opacity: .55;
+  z-index: 4;
+}
+.pomo-flap.is-flip .lt { animation: pomo-fold-top .26s ease-in forwards; }
+.pomo-flap.is-flip .lb { animation: pomo-fold-bot .26s .26s ease-out forwards; }
+@keyframes pomo-fold-top {
+  0% { transform: rotateX(0); filter: brightness(1); }
+  100% { transform: rotateX(-90deg); filter: brightness(.55); }
+}
+@keyframes pomo-fold-bot {
+  0% { transform: rotateX(90deg); filter: brightness(1.35); }
+  100% { transform: rotateX(0); filter: brightness(1); }
 }
 .pomo-colon {
-  width: .28em; text-align: center;
-  color: var(--pink); font-size: .72em;
+  display: flex; flex-direction: column; justify-content: center;
+  gap: .22em;
+  width: .3em; height: 1.2em;
+  align-items: center;
   animation: pomo-blink 1s steps(1) infinite;
 }
+.pomo-colon i {
+  display: block;
+  width: .11em; height: .11em;
+  background: var(--pink, #ff4fd8);
+  box-shadow: 0 0 .08em color-mix(in srgb, var(--pink, #ff4fd8) 70%, transparent);
+}
 @keyframes pomo-blink { 50% { opacity: .25; } }
+#pomo:not(.is-run) .pomo-colon { animation: none; }
+/* 進度：細細一條像素條，走完＝時間到 */
+.pomo-bar {
+  height: 8px;
+  border: 2px solid color-mix(in srgb, var(--pink, #ff4fd8) 45%, #07040c);
+  background: rgba(0,0,0,.35);
+  overflow: hidden;
+}
+.pomo-bar i {
+  display: block; height: 100%; width: 0;
+  background: repeating-linear-gradient(90deg, var(--pink, #ff4fd8) 0 6px, transparent 6px 8px);
+  transition: width .4s steps(4);
+}
 .pomo-side {
   display: flex; flex-direction: column;
   align-items: center; justify-content: flex-end;
@@ -2865,7 +2949,7 @@ body.pomo-on { overflow: hidden; }
   pointer-events: none;
 }
 .pomo-name { color: var(--dim); font-size: .85rem; }
-.pomo-hint { margin: 0; color: var(--dim); font-size: .8rem; }
+.pomo-hint { margin: 0; color: var(--dim); font-size: .75rem; opacity: .7; }
 .pomo-line {
   margin: .2rem 0 0;
   text-align: center;
@@ -2873,6 +2957,8 @@ body.pomo-on { overflow: hidden; }
   max-width: 16em;
 }
 .pomo-acts { display: flex; gap: .7rem; margin-top: .35rem; }
+/* .pomo-acts 有 display:flex，會蓋掉 [hidden]：以前計時中也露出「完成／打斷」兩顆按不動的鈕 */
+#pomo [hidden] { display: none !important; }
 .pomo-acts button {
   font: inherit; font-size: 1.05rem;
   min-width: 6.6rem; min-height: 48px;
@@ -2891,15 +2977,26 @@ body.pomo-on { overflow: hidden; }
   justify-content: center;
   min-height: 0;
   z-index: 1;
+  background: rgba(0,0,0,.35);
 }
 @media (orientation: landscape) {
-  #pomo { flex-direction: row; align-items: stretch; }
-  .pomo-clock { flex: 1.4; }
+  #pomo { flex-direction: row; align-items: stretch; gap: 12px; }
+  .pomo-clock { gap: .6rem; }
+  /* 橫向：鐘吃掉她以外的整個寬度，高度最多 56vh */
+  .pomo-flaps {
+    font-size: min(
+      calc((100vw - var(--pomo-side-w) - env(safe-area-inset-left) - env(safe-area-inset-right) - 64px) / 4.05),
+      56vh
+    );
+  }
+  .pomo-face { gap: min(.9rem, 3vh); }
   .pomo-side {
-    flex: 0 0 38%;
+    flex: 0 0 var(--pomo-side-w);
     min-height: 0;
     justify-content: center;
+    opacity: .92;
   }
-  .pomo-girl { width: min(34vh, 280px); max-height: 70vh; }
-  .pomo-flaps { font-size: clamp(4rem, 14vh, 8rem); }
+  .pomo-girl { width: 100%; max-height: 66vh; }
+  #pomo.is-ask .pomo-girl,
+  #pomo.is-result .pomo-girl { width: auto; max-height: 44vh; }
 }

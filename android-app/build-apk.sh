@@ -28,8 +28,8 @@ old = '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
 new = (
     '<manifest xmlns:android="http://schemas.android.com/apk/res/android"\n'
     '    package="tw.yorozuya.app"\n'
-    '    android:versionCode="10"\n'
-    '    android:versionName="8.0">'
+    '    android:versionCode="11"\n'
+    '    android:versionName="8.1">'
 )
 if old not in text:
     raise SystemExit("manifest root not found")

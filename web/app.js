@@ -13415,6 +13415,7 @@ const POMO_WIFE = new Set(["wife", "devoted_wife", "obedient_wife", "pathologica
 let pomoTick = 0;
 let pomoLastTick = 0;
 let pomoHold = 0;
+const POMO_FLIP_MS = 560; // 跟 style.css 的翻頁動畫總長一致（上葉 .26s ＋ 下葉 .26s ＋ 一點餘裕）
 
 function roomCompanionNow() {
   try {
@@ -13446,11 +13447,21 @@ function pomoSplitLines(text) {
   return parts.slice(0, 2);
 }
 
+// App（WebView 殼）才會轉橫向；網頁沒有 YoroAndroid 這座橋，維持直向。
+// 舊版殼（versionCode ≤ 10）的橋上沒有 setLandscape：以前這裡靜靜什麼都不做，
+// 看起來就是「App 不會轉」。現在提醒一次要重裝。
+let pomoOldAppWarned = false;
 function pomoSetLandscape(on) {
+  let b = null;
+  try { b = window.YoroAndroid || null; } catch { b = null; }
+  if (!b) return;
   try {
-    const b = window.YoroAndroid;
-    if (b && typeof b.setLandscape === "function") b.setLandscape(!!on);
-  } catch { /* 網頁沒有這座橋，維持直向 */ }
+    if (typeof b.setLandscape === "function") { b.setLandscape(!!on); return; }
+  } catch (e) { console.warn("[番茄鐘] setLandscape 失敗", e); }
+  if (on && !pomoOldAppWarned) {
+    pomoOldAppWarned = true;
+    try { toast("App 是舊版，番茄鐘轉不了橫向。到 設定 → 發現 → 安裝包（或開 /download）重裝新版。", "bad"); } catch { /* ignore */ }
+  }
 }
 
 function applyPomoAff(girlId, delta, reason) {
@@ -13474,15 +13485,18 @@ function ensurePomo() {
   el = document.createElement("div");
   el.id = "pomo";
   el.hidden = true;
+  // 翻頁鐘：每格四片——上半（新）、下半（舊）、往下翻的上葉（舊）、翻下來的下葉（新）。
+  const flap = `<div class="pomo-flap"><span class="fh ft"><b>0</b></span><span class="fh fb"><b>0</b></span><span class="fh lt"><b>0</b></span><span class="fh lb"><b>0</b></span></div>`;
   el.innerHTML = `
     <div class="pomo-clock">
       <div class="pomo-task"></div>
-      <div class="pomo-flaps" aria-hidden="true">
-        <div class="pomo-flap"><b>0</b></div>
-        <div class="pomo-flap"><b>0</b></div>
-        <span class="pomo-colon">:</span>
-        <div class="pomo-flap"><b>0</b></div>
-        <div class="pomo-flap"><b>0</b></div>
+      <div class="pomo-face">
+        <div class="pomo-flaps" aria-hidden="true">
+          <div class="pomo-pair">${flap}${flap}</div>
+          <span class="pomo-colon"><i></i><i></i></span>
+          <div class="pomo-pair">${flap}${flap}</div>
+        </div>
+        <div class="pomo-bar"><i></i></div>
       </div>
     </div>
     <div class="pomo-side">
@@ -13543,22 +13557,43 @@ function pomoPaintClock() {
   const total = Math.ceil(ms / 1000);
   const text = String(Math.min(99, Math.floor(total / 60))).padStart(2, "0")
     + String(total % 60).padStart(2, "0");
-  flaps.forEach((flap, i) => {
-    const n = text[i];
-    if (flap.dataset.n === n) return;
-    flap.dataset.n = n;
-    const b = flap.querySelector("b");
-    if (b) b.textContent = n;
+  const bar = document.querySelector("#pomo .pomo-bar i");
+  if (bar) {
+    const full = Math.max(1, (Number(p.mins) || 25) * 60 * 1000);
+    bar.style.width = `${Math.round(Math.min(1, Math.max(0, 1 - ms / full)) * 1000) / 10}%`;
+  }
+  const quiet = document.hidden || document.getElementById("pomo")?.hidden;
+  flaps.forEach((flap, i) => pomoFlipTo(flap, text[i], quiet));
+}
+
+/** 一格翻到 n。第一次（或看不見時）直接換字不翻。 */
+function pomoFlipTo(flap, n, quiet) {
+  const old = flap.dataset.n;
+  if (old === n) return;
+  flap.dataset.n = n;
+  const put = (cls, v) => { const b = flap.querySelector(`.${cls} b`); if (b) b.textContent = v; };
+  if (flap._pomoT) { clearTimeout(flap._pomoT); flap._pomoT = 0; }
+  flap.classList.remove("is-flip");
+  if (old == null || quiet) {
+    put("ft", n); put("fb", n); put("lt", n); put("lb", n);
+    return;
+  }
+  // 翻之前：後面露出新的上半、舊的下半；上葉是舊字往下翻，下葉是新字翻下來蓋住舊的下半。
+  put("ft", n); put("fb", old); put("lt", old); put("lb", n);
+  void flap.offsetWidth;
+  flap.classList.add("is-flip");
+  flap._pomoT = setTimeout(() => {
+    flap._pomoT = 0;
+    put("fb", n); put("lt", n);
     flap.classList.remove("is-flip");
-    void flap.offsetWidth;
-    flap.classList.add("is-flip");
-  });
+  }, POMO_FLIP_MS);
 }
 
 function pomoPaint() {
   const p = state?.pomodoro;
   const el = document.getElementById("pomo");
   if (!el || !p) return;
+  el.classList.toggle("is-run", p.phase === "run");
   el.classList.toggle("is-ask", p.phase === "ask");
   el.classList.toggle("is-result", p.phase === "result");
   const task = el.querySelector(".pomo-task");
@@ -13715,7 +13750,8 @@ function pomoSettle(kind) {
 
 function resumePomo() {
   const p = state?.pomodoro;
-  if (!p?.phase) return;
+  // 沒有鐘在跑：確保 App 回直向（例如橫著的時候整頁重新整理過）。
+  if (!p?.phase) { pomoSetLandscape(false); return; }
   if (p.phase === "run" && p.endsAt && Date.now() >= p.endsAt) {
     pomoSettle("miss");
     return;

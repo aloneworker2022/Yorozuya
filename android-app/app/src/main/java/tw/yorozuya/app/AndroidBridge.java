@@ -13,6 +13,10 @@ import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.MediaStore;
 import android.util.Base64;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 
@@ -23,6 +27,7 @@ import java.io.OutputStream;
 /**
  * 給網頁用的小橋接（window.YoroAndroid）：
  * - vibrate(ms)：WebView 本身不支援 navigator.vibrate，這裡補上
+ * - setLandscape(on)：番茄鐘翻頁鐘轉橫向／轉回直向；appVersion()：殼的 versionCode
  * - saveFile(name, mime, base64)：WebView 不會處理 &lt;a download href="blob:..."&gt;，
  *   遊戲「匯出存檔」靠這個存到手機的「下載」資料夾
  * 只會注入到使用者設定的伺服器（同源）頁面。
@@ -93,12 +98,51 @@ final class AndroidBridge {
         });
     }
 
-    /** 番茄鐘：手機橫過來。網頁自己不轉，只有 App 會聽。 */
+    /** 殼的版本號（versionCode）。網頁拿來判斷 App 是不是舊版、要不要提醒重裝。 */
+    @JavascriptInterface
+    public int appVersion() {
+        try {
+            return activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0).versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * 番茄鐘：手機橫過來（翻頁鐘），結束再轉回直向。網頁自己不轉，只有 App 會聽。
+     * 橫向時順便把狀態列／導覽列收起來，讓鐘佔滿整個畫面；滑一下邊緣會暫時叫出來。
+     */
     @JavascriptInterface
     public void setLandscape(boolean on) {
-        activity.runOnUiThread(() -> activity.setRequestedOrientation(on
-                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
+        activity.runOnUiThread(() -> {
+            activity.setRequestedOrientation(on
+                    ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+            setImmersive(on);
+        });
+    }
+
+    @SuppressWarnings("deprecation")
+    private void setImmersive(boolean on) {
+        Window w = activity.getWindow();
+        if (w == null) return;
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController c = w.getInsetsController();
+            if (c == null) return;
+            if (on) {
+                c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                c.hide(WindowInsets.Type.systemBars());
+            } else {
+                c.show(WindowInsets.Type.systemBars());
+            }
+        } else {
+            View d = w.getDecorView();
+            d.setSystemUiVisibility(on
+                    ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    : View.SYSTEM_UI_FLAG_VISIBLE);
+        }
     }
 
     @JavascriptInterface

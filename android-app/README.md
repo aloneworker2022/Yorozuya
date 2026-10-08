@@ -51,6 +51,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000   # 一定要 0.0.0.0，127.0.0.1 �
 | 返回鍵 | `canGoBack()` 就 `goBack()`，否則跳「離開 / 重新整理 / 更換伺服器」 |
 | 外部連結 | 非同源網址交給系統瀏覽器；同源留在 App 內 |
 | 直式 / 全螢幕 | 鎖直式、無 ActionBar、狀態列/導覽列用遊戲底色 `#16101f`、文字縮放固定 100% |
+| 番茄鐘橫向 | `YoroAndroid.setLandscape(true/false)`：轉 `SENSOR_LANDSCAPE`＋收起狀態列／導覽列，結束轉回直式。網頁偵測不到這個方法（舊殼）會提示重裝 |
 | debug 除錯 | debug 版開了 `setWebContentsDebuggingEnabled`，USB 接電腦用 `chrome://inspect` |
 
 ### 已知限制
@@ -97,7 +98,7 @@ android-app/
 ├── app/src/main/java/tw/yorozuya/app/
 │   ├── MainActivity.java                  # WebView、錯誤頁、檔案選擇、下載、返回鍵
 │   ├── SetupActivity.java                 # 輸入 / 測試 / 儲存伺服器網址
-│   ├── AndroidBridge.java                 # window.YoroAndroid：saveFile / vibrate / toast + 注入 JS
+│   ├── AndroidBridge.java                 # window.YoroAndroid：saveFile / vibrate / toast / setLandscape / appVersion + 注入 JS
 │   ├── ServerUrl.java                     # 網址正規化、同源判斷（純 Java）
 │   ├── Mime.java                          # 檔案選擇器 MIME（純 Java）
 │   └── Prefs.java
