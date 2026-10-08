@@ -116,6 +116,27 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
   will-change:opacity,transform;
 }
 #climax-tip[hidden],.climax-tip[hidden]{display:none!important}
+/* 身體警告紅卡（2026-10-08）：精液 <6「身體快不行了」／0 以下不能做愛。浮在房間對話框（70～75）與提示（90）上面；點一下收 */
+.body-warn-card{
+  position:fixed;left:50%;top:30%;z-index:96;
+  transform:translate(-50%,-50%) scale(.94);
+  box-sizing:border-box;min-width:min(72vw,300px);max-width:88vw;
+  margin:0;padding:.7em 1.2em .65em;text-align:center;
+  font-family:RoomPixel,system-ui,sans-serif;-webkit-font-smoothing:none;
+  color:#fff3f3;background:rgba(200,18,42,.74);
+  border:2px solid rgba(255,150,160,.8);border-radius:6px;
+  box-shadow:0 0 0 2px rgba(70,0,14,.45),0 10px 30px rgba(0,0,0,.45);
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+  opacity:0;pointer-events:auto;cursor:pointer;
+  transition:opacity .22s ease-out,transform .22s ease-out;
+}
+.body-warn-card[hidden]{display:none!important}
+.body-warn-card.in{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.body-warn-card b{display:block;font-weight:400;font-size:clamp(22px,6vw,32px);letter-spacing:.14em;line-height:1.3;text-shadow:2px 2px 0 rgba(70,0,14,.85)}
+.body-warn-card.long b{font-size:clamp(18px,5vw,26px);letter-spacing:.08em}
+.body-warn-card small{display:block;margin-top:.4em;font-size:13px;letter-spacing:.04em;opacity:.92}
+.body-warn-card small[hidden]{display:none}
+@media(prefers-reduced-motion:reduce){.body-warn-card{transition:none}}
 #climax-tip.tip-in,.climax-tip.tip-in{opacity:1;transform:translate(-50%,-50%) scale(1)}
 #climax-tip.tip-out,.climax-tip.tip-out{opacity:0;transform:translate(-50%,-50%) scale(.96)}
 @media(prefers-reduced-motion:reduce){

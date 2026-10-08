@@ -320,4 +320,32 @@ await t("台詞幫浦：onDone 裡開了下一句 → 不會同時跑兩句（�
   assert.equal(maxRun, 1);
   assert.deepEqual(pump.started, [1, 9]);
 });
+await t("開始做愛的門檻（2026-10-08）：精液 ≥1 可以；0 或負的不行，理由寫現值", () => {
+  assert.equal(T.canStartSex(1), true);
+  assert.equal(T.canStartSex(20), true);
+  assert.equal(T.canStartSex(0), false);
+  assert.equal(T.canStartSex(-3), false);
+  assert.equal(T.canStartSex("x"), false);
+  assert.equal(T.sexBlockReason(1), "");
+  assert.equal(T.sexBlockReason(0), "精液不足，身體撐不住了（目前 0cc）");
+  assert.equal(T.sexBlockReason(-3), "精液不足，身體撐不住了（目前 -3cc）");
+});
+await t("紅卡「身體快不行了」：精液 <6 才跳", () => {
+  assert.equal(T.semenLow(4), true);
+  assert.equal(T.semenLow(5), true);
+  assert.equal(T.semenLow(6), false);
+  assert.equal(T.semenLow(20), false);
+  assert.equal(T.semenLow(-1), true);
+});
+await t("一輪照舊：1cc 進來射一次 → −5，這一輪結束；最低就是 −5（腎虧 < −7 走正常玩法到不了）", () => {
+  const s = T.newThrustSession({ semenCc: 1 });
+  let r = null;
+  for (let i = 0; i < 10 && !s.ended; i++) r = T.applyThrust(s, { rng: () => 0.99 });
+  assert.equal(s.ended, true);
+  assert.equal(s.semen, -5);
+  assert.equal(r.blood, true);
+  assert.equal(T.canStartSex(s.semen), false, "射完是負的，下一輪不能開始");
+  // 最壞情況：能開始的最小值 1 再射一次 −6
+  assert.equal(1 - T.THRUST.SEMEN_PER_EJAC_CC, -5);
+});
 console.log(`${pass} passed`);

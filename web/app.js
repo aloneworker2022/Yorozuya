@@ -3,6 +3,7 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 import { savedOccupant, blocksSummon, roomFullText } from "./content/room_occupancy.js?v=1"; // 一間房一次一位
+import { canStartSex, sexBlockReason } from "./content/sex_thrust.js?v=7"; // 精液 0 以下不能做愛
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildDiaryCommentPrompt, buildNoticePrompt, buildCardPlayPrompt, buildCardVisualPosePrompt, parseCardVisualPose, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, WARDROBE_UNLOCK, EROTIC_UNLOCK, SLEEP_UNLOCK, POOLS } from "./content/girl_gen.js";
@@ -213,6 +214,17 @@ window.YorozuyaWallet = {
 };
 
 /** 腎虧：精液量掉到 −7 以下，自動花 60～140 金看醫生（精液量已由房間拉回 −1）。金幣不夠就變負債，不擋。 */
+/** 玩家精液（房間那份，含時間回復）。房間模組沒載就看本機房間存檔；都沒有當滿的。 */
+function roomSemenCc() {
+  try {
+    const v = window.RoomCompanion?.semen?.get?.();
+    if (Number.isFinite(Number(v))) return Number(v);
+  } catch { /* fall through */ }
+  const p = readLocalRoomBundle().session?.player;
+  const n = Number(p?.semenCc);
+  return Number.isFinite(n) ? n : 20;
+}
+
 function chargeDoctorBill(bill) {
   const fee = Math.max(0, Math.round(Number(bill?.fee) || 0));
   if (!fee) return;
@@ -10484,6 +10496,14 @@ async function sendChatMsg() {
       teaseAct = "continue";
     } else if (!cur) {
       teasePack = resolveTeasePack(text);
+      // 2026-10-08：玩家精液 0 或負的不能開始做愛（店頭聊的做愛腳本也一樣）；不擲檢定，這句當一般聊天
+      if (teasePack && isSexTease(teasePack.kind)) {
+        const cc = roomSemenCc();
+        if (!canStartSex(cc)) {
+          toast(sexBlockReason(cc), "bad");
+          teasePack = null;
+        }
+      }
       if (teasePack) {
         if (rollTeaseStart(s, teasePack)) teaseForced = teasePack.kind;
         else teaseDenied = true;

@@ -7,7 +7,10 @@
  *   - 玩家興奮 +5～8：到 20 → 射精（⑥ 內射圖，預設 creampie），興奮歸零。
  *     這一射讓精液變負（射完 <0）→ 血精（⑦ 血精圖，沒產就用內射圖；旁白／她的反應跟著變）。
  *   - 精液＝玩家真正剩下的精液（player.semenCc，同一個值；2026-10-04 使用者決定，不再每場 18cc）：每射一次 −6cc（可到負）；
- *     <6 或下一次射完就 <1 → 危險提示；射完 <1 → 這一輪結束。進來時已經 <1：照樣可以進、量條紅字，射一次就結束。
+ *     <6 或下一次射完就 <1 → 危險提示；射完 <1 → 這一輪結束。
+ *     開始做愛（2026-10-08 使用者決定，取代 10-04「進來時已經 <1：照樣可以進」）：精液還是正的（≥1cc）才能開始；
+ *     0 或負的不能做（canStartSex／sexBlockReason）。這一輪裡面照舊：射完 <1 就結束。
+ *     <6 →「身體快不行了」紅卡（semenLow；進做愛、每次射完還 <6、打開房間對話時）。
  *   - 每下感情 +1。
  *   - 換圖（flow2）：第一下立刻換抽插圖；之後每下 1/3 機率在抽插圖（多組／多變體）之間換；加入圖不進池。
  *     射精 → 立刻換內射圖；她高潮 → 換高潮圖、藏「肏」到她那句打完＋停滿 EVENT_HOLD_MS；下一下回抽插圖。
@@ -269,6 +272,24 @@ export function exciteCumAt() {
 export function exciteGain(rng = Math.random) {
   const span = THRUST.EXCITE_MAX - THRUST.EXCITE_MIN + 1;
   return THRUST.EXCITE_MIN + Math.min(span - 1, Math.floor(rng() * span));
+}
+
+/** 開始做愛的門檻（2026-10-08 使用者）：精液還是正的才能做；0 或負的不能。 */
+export function canStartSex(semenCc) {
+  const n = Number(semenCc);
+  return Number.isFinite(n) && n > 0;
+}
+
+/** 不能做愛時給玩家看的理由；能做回空字串。 */
+export function sexBlockReason(semenCc) {
+  if (canStartSex(semenCc)) return "";
+  return `精液不足，身體撐不住了（目前 ${Math.round(Number(semenCc) || 0)}cc）`;
+}
+
+/** 精液 <6 →「身體快不行了」紅卡（2026-10-08 使用者）。 */
+export function semenLow(semenCc) {
+  const n = Number(semenCc);
+  return Number.isFinite(n) && n < THRUST.SEMEN_WARN_BELOW;
 }
 
 /** 下一次射完會不會見底（或已經 <6）→ 危險提示。 */

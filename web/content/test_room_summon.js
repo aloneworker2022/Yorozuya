@@ -179,7 +179,10 @@ import {
   stunMixLine,
   isBloodShot,
   exciteCumAt,
-} from "./sex_thrust.js?v=6";
+  canStartSex,
+  sexBlockReason,
+  semenLow,
+} from "./sex_thrust.js?v=7";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -1974,6 +1977,7 @@ function syncThrustButton() {
 /** 開場（只有她）→ 下一步加入。 */
 async function openSexChat(who) {
   if (!who || undressStage(who) < 3 || !sheetOpen()) return;
+  if (sexStartBlocked()) return;
   const pose = sexPoseFor(who);
   activeRoomScene = "sex";
   undressView += 1;
@@ -2017,6 +2021,8 @@ async function openSexChat(who) {
     pump: null,
   };
   sexChat.pump = newThrustPump();
+  // 精液 <6：一進來就跳「身體快不行了」
+  warnIfSemenLow();
   const view = undressView;
   $("portrait-sheet")?.classList.add("undress-chat", "sex-chat");
   setTalkEnabled(false);
@@ -2125,6 +2131,8 @@ function doThrust() {
     // 掉到 −7 以下＝腎虧：自動送醫、精液量回到 −1（settleKidney）
     spendPlayerSemen(THRUST.SEMEN_PER_EJAC_CC, "sex");
     s.semen = player.semenCc;
+    // 射完還 <6：「身體快不行了」（每射一次最多一張）
+    warnIfSemenLow();
     if (s.semen < THRUST.SEMEN_END_BELOW) s.ended = true;
     const o = ensureBody(who)?.organs;
     if (o?.uterus) o.uterus.semen = Math.min(3, (Number(o.uterus.semen) || 0) + 1);
@@ -2277,6 +2285,8 @@ function openRoomScene(kind) {
   // 做愛只在脫光後出現，不看失神。場面本體還沒做。
   if (kind === "sex") {
     if (undressStage(girl) < 3) return;
+    // 2026-10-08：精液 0 或負的不能開始做愛（這一輪裡面照舊）
+    if (sexStartBlocked()) return;
     // 肏互動（test_room）：對話版，不開浮層
     if (sexThrustOn()) {
       void openSexChat(girl);
@@ -2787,6 +2797,81 @@ function clearClimaxTip() {
   if (!el) return;
   el.classList.remove("tip-in", "tip-out");
   el.hidden = true;
+}
+
+/**
+ * 身體警告紅卡（2026-10-08 使用者）：精液 <6「身體快不行了」；0 以下不能做愛也用它說原因。
+ * 半透明紅底、像素字，浮在房間對話框／做愛畫面上面；幾秒後自己淡掉，點一下就收。
+ */
+let bodyWarnTimer = 0;
+let bodyWarnToken = 0;
+const BODY_WARN_HOLD_MS = 3200;
+function bodyWarnEl() {
+  let el = $("body-warn-card");
+  if (el) return el;
+  el = document.createElement("div");
+  el.id = "body-warn-card";
+  el.className = "body-warn-card";
+  el.hidden = true;
+  el.setAttribute("role", "alert");
+  el.innerHTML = "<b></b><small></small>";
+  const dismiss = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    hideBodyWarn(true);
+  };
+  el.addEventListener("click", dismiss);
+  el.addEventListener("pointerdown", (event) => event.stopPropagation());
+  document.body.appendChild(el);
+  return el;
+}
+
+function hideBodyWarn(now = false) {
+  const el = $("body-warn-card");
+  if (!el || el.hidden) return;
+  const token = ++bodyWarnToken;
+  if (bodyWarnTimer) { clearTimeout(bodyWarnTimer); bodyWarnTimer = 0; }
+  el.classList.remove("in");
+  bodyWarnTimer = setTimeout(() => {
+    if (token !== bodyWarnToken) return;
+    el.hidden = true;
+    bodyWarnTimer = 0;
+  }, now ? 160 : 300);
+}
+
+function showBodyWarn(title = "身體快不行了", sub = "") {
+  const el = bodyWarnEl();
+  el.querySelector("b").textContent = title;
+  el.classList.toggle("long", String(title || "").length > 8);
+  const small = el.querySelector("small");
+  small.textContent = sub || "";
+  small.hidden = !sub;
+  const token = ++bodyWarnToken;
+  if (bodyWarnTimer) { clearTimeout(bodyWarnTimer); bodyWarnTimer = 0; }
+  el.hidden = false;
+  void el.offsetWidth;
+  el.classList.add("in");
+  bodyWarnTimer = setTimeout(() => {
+    if (token !== bodyWarnToken) return;
+    hideBodyWarn();
+  }, BODY_WARN_HOLD_MS);
+  try { pushDebug(`紅卡：${title}${sub ? `（${sub}）` : ""}`); } catch { /* */ }
+}
+
+/** 精液 <6 →「身體快不行了」。回傳有沒有跳。 */
+function warnIfSemenLow() {
+  const cc = ensurePlayer(player).semenCc;
+  if (!semenLow(cc)) return false;
+  showBodyWarn("身體快不行了", `精液 ${cc}cc`);
+  return true;
+}
+
+/** 開始做愛的門檻：精液 0 或負的 → 紅卡說原因，擋下來。回傳是否被擋。 */
+function sexStartBlocked() {
+  const cc = ensurePlayer(player).semenCc;
+  if (canStartSex(cc)) return false;
+  showBodyWarn("精液不足，身體撐不住了", `目前 ${cc}cc・回到 1cc 以上才能做愛（負的時候每 5 小時 +1cc）`);
+  return true;
 }
 
 function showClimaxTip(text = "射精了！") {
@@ -8062,6 +8147,17 @@ function refreshTalkActs() {
     btn.textContent = "做愛";
     btn.disabled = !!talkBusy;
     btn.title = "場面還沒做";
+    // 精液 0 或負的：鈕變灰，點了跳紅卡說原因（不直接 disabled，手機看不到 title）
+    const dryCc = ensurePlayer(player).semenCc;
+    if (!canStartSex(dryCc)) {
+      btn.classList.add("is-dry", "is-locked");
+      btn.setAttribute("aria-disabled", "true");
+      btn.title = sexBlockReason(dryCc);
+      const lock = document.createElement("span");
+      lock.className = "act-lock";
+      lock.textContent = `精液 ${dryCc}cc`;
+      btn.append(lock);
+    }
     btn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -8313,11 +8409,14 @@ function showSheet() {
   }
   const sheet = $("portrait-sheet");
   if (!sheet) return;
+  const wasHidden = sheet.hidden;
   sheet.hidden = false;
   lockSheetScroll();
   stopArousalOffChat();
   startIdleDecay();
   refreshTalkActs();
+  // 打開房間對話時精液 <6：跳一次「身體快不行了」
+  if (wasHidden && girl && girlInRoom()) warnIfSemenLow();
   if (!girl) {
     typeJob += 1;
     setTyping(false);
@@ -10372,6 +10471,11 @@ window.RoomCompanion = {
     spend: (cc = THRUST.SEMEN_PER_EJAC_CC) => spendPlayerSemen(cc, "debug"),
   },
   kidneyCheck: (source = "load") => (girl ? settleKidney(source) : null),
+  /** 能不能開始做愛 { ok, semen, reason }（2026-10-08：精液 >0 才行）。 */
+  sexGate: () => {
+    const cc = ensurePlayer(player).semenCc;
+    return { ok: canStartSex(cc), semen: cc, reason: sexBlockReason(cc) };
+  },
   grantSemen(cc) {
     const result = grantPlayerSemen(player, cc);
     player = result.player;
