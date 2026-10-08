@@ -91,8 +91,9 @@
     const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
     function makeShape() {
       const prims = [];
-      const sh = { prims, off: [0, 0, 0] };
-      const push = (p) => { p.off = sh.off.slice(); prims.push(p); };
+      // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
+      const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; prims.push(p); };
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -111,6 +112,11 @@
       return sh;
     }
     function primDist(p, x, y, z) {
+      const fz = z;
+      if (p.xf) {
+        const R = p.xf.R, t = p.xf.t, dx = x - t[0], dy = y - t[1], dz = z - t[2];
+        x = R[0] * dx + R[3] * dy + R[6] * dz; y = R[1] * dx + R[4] * dy + R[7] * dz; z = R[2] * dx + R[5] * dy + R[8] * dz;
+      }
       x -= p.off[0]; y -= p.off[1]; z -= p.off[2];
       let d;
       if (p.k === 0) {
@@ -138,7 +144,29 @@
         if (cl.cut !== null) c = Math.max(c, cl.cut - z);
         if (c > d) d = c;
       }
+      if (p.floor && -fz > d) d = -fz;
       return d;
+    }
+    // rigid transforms {R(row-major 3×3), t}
+    function rotX(deg) { const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return [1, 0, 0, 0, c, -s, 0, s, c]; }
+    function rotY(deg) { const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return [c, 0, s, 0, 1, 0, -s, 0, c]; }
+    function mulR(A, B) {
+      const o = new Array(9);
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) o[i * 3 + j] = A[i * 3] * B[j] + A[i * 3 + 1] * B[3 + j] + A[i * 3 + 2] * B[6 + j];
+      return o;
+    }
+    const mulV = (R, v) => [R[0] * v[0] + R[1] * v[1] + R[2] * v[2], R[3] * v[0] + R[4] * v[1] + R[5] * v[2], R[6] * v[0] + R[7] * v[1] + R[8] * v[2]];
+    function compose(A, B) { const bt = mulV(A.R, B.t); return { R: mulR(A.R, B.R), t: [bt[0] + A.t[0], bt[1] + A.t[1], bt[2] + A.t[2]] }; }
+    function about(R, pivot) { const rp = mulV(R, pivot); return { R, t: [pivot[0] - rp[0], pivot[1] - rp[1], pivot[2] - rp[2]] }; }
+    /** 兩節骨 IK：從 A 到 B，長度 l1／l2，膝／肘往 pole 方向彎。 */
+    function ik(A, B, l1, l2, pole) {
+      const D = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], d = hypot3(D[0], D[1], D[2]) || 1e-6, u = D.map(v => v / d);
+      if (d >= l1 + l2 - 1e-3) return A.map((a, i) => a + u[i] * d * l1 / (l1 + l2));
+      const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+      const pu = pole[0] * u[0] + pole[1] * u[1] + pole[2] * u[2];
+      let v = [pole[0] - pu * u[0], pole[1] - pu * u[1], pole[2] - pu * u[2]];
+      const n = hypot3(v[0], v[1], v[2]) || 1; v = v.map(x => x / n);
+      return A.map((x, i) => x + a * u[i] + h * v[i]);
     }
     function bodyDist(sh, x, y, z) {
       let best = 1e3;
@@ -352,6 +380,21 @@
     }
 
     // ------------------------------------------------------------ poses
+    /** 畫布：std＝站／坐；tall＝手舉高（伸懶腰）；wide＝躺在地上（橫跨兩格）。 */
+    const CANVAS = {
+      std: { w: W, h: H_CANVAS, ax: ANCHOR.x, ay: ANCHOR.y, tMax: 40, tMin: -45 },
+      tall: { w: W, h: 166, ax: ANCHOR.x, ay: 152, tMax: 40, tMin: -45 },
+      wide: { w: 128, h: 100, ax: 64, ay: 70, tMax: 95, tMin: -95 },
+    };
+    /** frames：小循環格數；fps：循環速度（每秒幾格）；canvas：見上。 */
+    const POSES = {
+      idle: { frames: 1, fps: 0 }, walk: { frames: WALK_FRAMES, fps: WALK_FPS }, sit: { frames: 2, fps: .7 },
+      hug_knees: { frames: 2, fps: .7 }, crouch: { frames: 2, fps: .6 }, stretch: { frames: 3, fps: 1.6, canvas: 'tall', pingpong: true },
+      wall_lean: { frames: 2, fps: .6 }, sway: { frames: 4, fps: 3.2 }, restless: { frames: 4, fps: 2.2 },
+      stare: { frames: 2, fps: .9 }, twirl: { frames: 3, fps: 2.4 },
+      lie_phone: { frames: 2, fps: .5, canvas: 'wide' }, prone_kick: { frames: 4, fps: 3, canvas: 'wide' },
+      sleep_curl: { frames: 2, fps: .35, canvas: 'wide' }, sit_curl: { frames: 2, fps: .45 },
+    };
     function build(doll, pose, frame, yaw, opts = {}) {
       const P = proportions(doll), sh = makeShape(), b = P.b;
       const hip_x = 5.1 * F(b, 'hip') * (1 + .3 * (F(b, 'thigh') - 1));
@@ -360,6 +403,10 @@
       const waist_out = 5.9 * F(b, 'waist');
       const bo = bustOuter(P, doll), arm_clear = () => bo * .8 + .5;
       const front = Math.cos(yaw * Math.PI / 180) > -.2;
+      const Lt = P.hipz - P.knee, Ls = P.knee - P.ankle;
+      const shj = (s, tor, dy = -.4) => [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) + dy, tor.S - 2.6];
+      const phone = (c) => sh.ell(BODY, c, [3.0, .85, 4.6]);
+      const NF = (POSES[pose] && POSES[pose].frames) || 1, f = ((frame % NF) + NF) % NF;
       if (pose === 'idle') {
         const cp = 1, w = 1, o = [w * .9 * cp, 0, -.3 * cp];
         sh.off = o;
@@ -416,8 +463,9 @@
       }
       if (pose === 'sit') {
         const seat = opts.seat ?? 35, hipz = seat + 3.8;
-        const Lt = P.hipz - P.knee, Ls = P.knee - P.ankle, hip_y = -5.5;
-        const tor = torso(sh, P, doll, hip_y, hipz - P.hipz, -.02);
+        const hip_y = -5.5;
+        const br = frame % 2 ? .4 : 0;   // frame 1：吸氣（活動「正坐」的呼吸循環）
+        const tor = torso(sh, P, doll, hip_y, hipz - P.hipz + br * .25, -.02, [0, 0, br * .5, 0]);
         const kz = P.ankle + Ls, ky = hip_y + Math.sqrt(Math.max(1, Lt * Lt - (hipz - kz) ** 2));
         for (const s of [-1, 1]) {
           leg(sh, P, s, [s * hip_x, hip_y, hipz], [s * kx(), ky, kz], [s * 3.0, ky - 1.0, P.ankle], [s * .15, .98, 0]);
@@ -431,13 +479,206 @@
         hair(sh, P, doll, tor);
         return { sh, P };
       }
+      // -------------------------------------------------- activity poses（房間活動；小循環動作）
+      const standLegs = (shift = 0, bend = 0, tip = 0) => {   // 兩腳站；bend>0 右腳（+1）微彎，<0 左腳
+        for (const s of [-1, 1]) {
+          const k = (s === 1 ? Math.max(0, bend) : Math.max(0, -bend));
+          leg(sh, P, s, [s * hip_x + shift, 0, P.hipz + tip - .9 * k], [s * kx() + shift + s * .2 * k, .4 + 1.8 * k, P.knee + tip - .4 * k],
+            [s * 3.0 + shift * .4, -.2 + .6 * k, P.ankle + tip + .9 * k], [s * .3, .95 - .5 * (tip > .5 ? 1 : 0), tip > .5 ? -.7 : -.25 * k]);
+        }
+      };
+      if (pose === 'hug_knees') {             // 坐地抱膝（呼吸）
+        const br = f ? .45 : 0, dz = 2.6 - P.C, hz = P.hipz + dz;
+        const tor = torso(sh, P, doll, -1.5, dz + br * .3, .08, [0, 0, br * .5, 0]);
+        let knees = {};
+        for (const s of [-1, 1]) {
+          const hip = [s * hip_x, -1.5, hz], ankle = [s * 3.6, 15, P.ankle];
+          const knee = ik(hip, ankle, Lt, Ls, [s * .15, .2, 1]);
+          knees[s] = knee;
+          leg(sh, P, s, hip, knee, ankle, [s * .2, .98, 0]);
+        }
+        for (const s of [-1, 1]) {
+          const k = knees[s];
+          arm(sh, P, shj(s, tor), [s * Math.max(hip_out + 1.2, Math.abs(k[0]) + 6), k[1] - 1.5, k[2] - 5], [s * 1.4, k[1] + 4.2, k[2] - 9.5]);
+        }
+        if (doll.skirt) sh.ell(BODY, [0, 2, hz + 1.5], [9.2 * F(b, 'hip') * 1.1, 8, 3]);
+        hair(sh, P, doll, tor);
+        return { sh, P };
+      }
+      if (pose === 'crouch') {                 // 蹲角落背對（輕輕前後晃）
+        const dz = 17 - P.C, hz = P.hipz + dz, lean = f ? .3 : .26;
+        const tor = torso(sh, P, doll, f ? .4 : 0, dz, lean);
+        const knees = {};
+        for (const s of [-1, 1]) {
+          const hip = [s * hip_x, 0, hz], ankle = [s * 4.2, 3.5, P.ankle];
+          knees[s] = ik(hip, ankle, Lt, Ls, [s * .25, 1, .35]);
+          leg(sh, P, s, hip, knees[s], ankle, [s * .2, .98, 0]);
+        }
+        for (const s of [-1, 1]) {
+          const k = knees[s];
+          arm(sh, P, shj(s, tor), [s * (hip_out + 1.5), k[1] - 6, k[2] + 6], [s * 2.2, k[1] + 2.5, k[2] + 2]);
+        }
+        if (doll.skirt) sh.ell(BODY, [0, 1, hz], [9.2 * F(b, 'hip') * 1.15, 9, 4]);
+        hair(sh, P, doll, tor);
+        return { sh, P };
+      }
+      if (pose === 'stretch') {                // 伸懶腰（踮腳、手往上延伸）
+        const k = [0, .6, 1][f], tip = 1.7 * k;
+        const tor = torso(sh, P, doll, 0, tip, -.03 * k);
+        skirt(sh, P, doll, tor);
+        standLegs(0, 0, tip);
+        for (const s of [-1, 1]) arm(sh, P, shj(s, tor), [s * (9.4 - .6 * k), .2, tor.S + 10 + 4 * k], [s * (7.2 + 1.8 * k), .8, tor.S + 24 + 6 * k]);
+        hair(sh, P, doll, tor);
+        return { sh, P };
+      }
+      if (pose === 'wall_lean') {              // 靠牆站、雙手抱胸、一腳踩牆（呼吸）
+        const br = f ? .4 : 0;
+        const tor = torso(sh, P, doll, -1.2, br * .25, -.04, [0, 0, br * .5, 0]);
+        skirt(sh, P, doll, tor);
+        leg(sh, P, -1, [-hip_x, -1.2, P.hipz], [-kx(), -.8, P.knee], [-3.2, -1.4, P.ankle], [-.3, .95, 0]);
+        const hip = [hip_x, -1.2, P.hipz - .6], ankle = [3.8, -6.8, P.knee * .5];
+        leg(sh, P, 1, hip, ik(hip, ankle, Lt, Ls, [.2, 1, 0]), ankle, [.1, -.25, -.96]);
+        const wz = Math.min(tor.zW + 3.5, tor.zB - tor.cupr * .86 - 1.2);
+        for (const s of [-1, 1]) arm(sh, P, shj(s, tor), [s * (waist_out + 2.6), tor.yl(tor.zW) + 3.6, wz - 2],
+          [-s * (waist_out - .8), tor.yl(tor.zW) + 6.4 + (s > 0 ? .9 : 0), wz]);
+        hair(sh, P, doll, tor);
+        return { sh, P };
+      }
+      if (pose === 'sway' || pose === 'restless') {   // 哼歌晃身體／坐立不安（重心左右換）
+        const ph = 2 * Math.PI * f / NF, sn = Math.sin(ph), cs = Math.cos(ph);
+        const ang = (pose === 'sway' ? 6 : 3) * sn, shift = (pose === 'sway' ? -1.0 : -.8) * sn;
+        sh.xf = compose({ R: rotY(0), t: [shift, 0, 0] }, about(rotY(ang), [0, 0, P.hipz]));
+        const tor = torso(sh, P, doll, 0, 0, pose === 'restless' ? .04 : 0);
+        skirt(sh, P, doll, tor, -2 * sn);
+        if (pose === 'sway') {
+          for (const s of [-1, 1]) {
+            const sw = s * sn;
+            arm(sh, P, shj(s, tor), [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 2.2, arm_clear()), -1 + 2.5 * sw, tor.zW + 1 + 1.5 * cs * s],
+              [s * (hip_out + 2.4), 2.5 + 4 * sw, tor.C + 1 + 2 * Math.max(0, sw)]);
+          }
+        } else {
+          // 一手抱著另一隻手臂、腳尖內八
+          arm(sh, P, shj(1, tor), [Math.max(waist_out + 2.8 * F(b, 'arm') + 1.4, arm_clear()), -.8, tor.zW - 1], [hip_out + 1.4, .8, tor.C]);
+          arm(sh, P, shj(-1, tor), [-(waist_out + 1.6), Math.max(3.2, bo * .55), tor.zW + 1], [waist_out + 2.2, Math.max(4, bo * .5), tor.zW - 4]);
+        }
+        hair(sh, P, doll, tor, -3 * sn);
+        sh.xf = null;
+        const bend = sn > .3 ? 1 : sn < -.3 ? -1 : 0;
+        if (pose === 'sway') standLegs(shift, bend * .8);
+        else for (const s of [-1, 1]) {
+          const kb = (s === 1 ? Math.max(0, bend) : Math.max(0, -bend)) * .7;
+          leg(sh, P, s, [s * hip_x + shift, 0, P.hipz - .8 * kb], [s * (kx() - 1.6) + shift, .8 + 1.6 * kb, P.knee - .3 * kb],
+            [s * 3.4 + shift * .4, .2 + .5 * kb, P.ankle + .8 * kb], [-s * .25, .96, -.2 * kb]);
+        }
+        return { sh, P };
+      }
+      if (pose === 'stare') {                  // 走到畫面前盯著你：手背在後、身體前傾、踮一下
+        const tip = f ? .9 : 0;
+        const tor = torso(sh, P, doll, 0, tip, .07);
+        skirt(sh, P, doll, tor);
+        for (const s of [-1, 1]) arm(sh, P, shj(s, tor), [s * (waist_out + 2.4), -4.2, tor.zW + .5], [s * 1.9, -6.6, tor.C + 4.5], false);
+        for (const s of [-1, 1]) leg(sh, P, s, [s * hip_x, 0, P.hipz + tip], [s * (kx() - .5), .6, P.knee + tip], [s * 2.6, .2, P.ankle + tip],
+          [s * .15, .98 - .4 * (tip ? 1 : 0), tip ? -.45 : 0]);
+        if (front) definition(sh, P, tor);
+        hair(sh, P, doll, tor);
+        return { sh, P };
+      }
+      if (pose === 'twirl') {                  // 撥頭髮／捲髮尾（無聊、害羞）：一手叉腰、一手在耳邊繞
+        const w = 1, o = [.9, 0, -.3], th = 2 * Math.PI * f / NF;
+        sh.off = o;
+        const tor = torso(sh, P, doll);
+        skirt(sh, P, doll, tor);
+        const sj = shj(w, tor, 0);
+        const wrist = [w * (waist_out + (hip_out - waist_out) * .45 + 1.6), .3, tor.zW - .22 * tor.T];
+        arm(sh, P, sj, [w * Math.max(waist_out + 2.8 * F(b, 'arm') + 6.2, hip_out + 2.2), -1.8, tor.zW + 2.5], wrist, false);
+        sh.ell(BODY, [wrist[0] - w * .6, wrist[1], wrist[2] - .6], [1.8, 1.6, 2.1]);
+        const r = [-(7.8 + .9 * Math.cos(th)), 2.6 + .9 * Math.sin(th), tor.zc - 4 + 1.1 * Math.sin(th)];
+        arm(sh, P, shj(-1, tor, 0), [-(Math.max(waist_out + 5, bo * .9) + 3.5), 3.5, tor.S - 7], r);
+        sh.off = [0, 0, 0];
+        for (const s of [-1, 1]) {
+          if (s === w) leg(sh, P, s, [s * hip_x + .9, 0, P.hipz + .2], [s * kx() + .5, .4, P.knee], [s * 3.0 + .3, -.2, P.ankle], [s * .3, .95, 0]);
+          else leg(sh, P, s, [s * hip_x + .9, 0, P.hipz - .9], [s * kx() + 1.6, 2.2, P.knee - .4], [s * 3.5 + .4, .6, P.ankle + .9], [s * .35, .9, -.25]);
+        }
+        sh.off = o;
+        if (front) definition(sh, P, tor);
+        hair(sh, P, doll, tor, 2);
+        sh.off = [0, 0, 0];
+        return { sh, P };
+      }
+      if (pose === 'lie_phone') {              // 仰躺滑手機：一腳屈膝、雙手舉著手機
+        sh.xf = { R: rotX(90), t: [0, P.H * .45, 7.2] }; sh.floor = true;
+        const tor = torso(sh, P, doll, 0, 0, 0, [0, 0, f ? .35 : 0, 0]);
+        skirt(sh, P, doll, tor);
+        leg(sh, P, -1, [-hip_x, 0, P.hipz], [-kx(), .4, P.knee], [-3.2, -.2, P.ankle], [-.4, .9, 0]);
+        const hip = [hip_x, 0, P.hipz], ankle = [3.8 + (f ? .5 : 0), -3.6, P.knee * .62];
+        leg(sh, P, 1, hip, ik(hip, ankle, Lt, Ls, [.15, 1, 0]), ankle, [.2, -.1, -.98]);
+        const lift = f ? .6 : 0;
+        for (const s of [-1, 1]) arm(sh, P, shj(s, tor), [s * (waist_out + 3.6), -3.2, tor.S - 10], [s * 2.8, 9 + lift, tor.S + 1]);
+        phone([0, 11.6 + lift, tor.S + 4.6]);
+        hair(sh, P, doll, tor);
+        sh.xf = null; sh.floor = false;
+        return { sh, P };
+      }
+      if (pose === 'prone_kick') {             // 趴地撐手肘、小腿交互晃
+        const lower = { R: rotX(-90), t: [0, -P.H * .5, 5.6] };
+        const upper = compose(lower, about(rotX(36), [0, 0, P.hipz]));
+        sh.floor = true;
+        sh.xf = upper;
+        const tor = torso(sh, P, doll);
+        for (const s of [-1, 1]) arm(sh, P, shj(s, tor), [s * (waist_out + 2.8), 10, tor.S - 18], [s * 2.6, 5, tor.S + 1.5]);
+        hair(sh, P, doll, tor);
+        sh.xf = lower;
+        skirt(sh, P, doll, tor);
+        const ph = 2 * Math.PI * f / NF;
+        for (const s of [-1, 1]) {
+          const al = (62 + 30 * Math.sin(ph) * s) * Math.PI / 180;
+          const knee = [s * kx(), .4, P.knee], ankle = [s * 3.0, .4 - Ls * Math.sin(al), P.knee - Ls * Math.cos(al)];
+          leg(sh, P, s, [s * hip_x, 0, P.hipz], knee, ankle, [0, -Math.sin(al), -Math.cos(al)]);
+        }
+        sh.xf = null; sh.floor = false;
+        return { sh, P };
+      }
+      if (pose === 'sleep_curl') {             // 側躺蜷著睡（呼吸起伏）
+        const br = f ? .45 : 0;
+        sh.xf = { R: rotY(-90), t: [P.H * .56, 0, Math.max(hip_out - 1, 8.3 * F(b, 'sh') + 1.2)] }; sh.floor = true;
+        const tor = torso(sh, P, doll, 0, br * .2, .14, [0, 0, br * .6, 0]);
+        for (const s of [-1, 1]) {
+          const fw = s > 0 ? 2.5 : 0, a75 = 75 * Math.PI / 180;
+          const hip = [s * hip_x * .85, 0, P.hipz];
+          const knee = [s * kx() * .8, Lt * Math.sin(a75) + fw, P.hipz - Lt * Math.cos(a75)];
+          const ankle = [s * 2.6, knee[1] - Ls * .55, knee[2] - Ls * .83];
+          leg(sh, P, s, hip, knee, ankle, [0, -.25, -.97]);
+          arm(sh, P, shj(s, tor), [s * (waist_out + 1) * .8, 8 + fw, tor.zW + 4], [s * 1.6, 11 + fw * .4, tor.S + 2]);
+        }
+        if (doll.skirt) sh.ell(BODY, [0, 4, P.hipz - 4], [9.2 * F(b, 'hip') * 1.05, 9, 7]);
+        hair(sh, P, doll, tor);
+        sh.xf = null; sh.floor = false;
+        return { sh, P };
+      }
+      if (pose === 'sit_curl') {               // 蜷在椅子上滑手機：腳收上椅面、膝蓋往兩側
+        const seat = opts.seat ?? 35, hipz = seat + 3.8, hip_y = -5.5, lift = f ? 1.4 : 0;
+        const tor = torso(sh, P, doll, hip_y, hipz - P.hipz, f ? .11 : .06);   // 滑手機：低頭湊近一點又抬起
+        const knees = {};
+        for (const s of [-1, 1]) {
+          const hip = [s * hip_x, hip_y, hipz], ankle = [s * 4.2, hip_y + 9, seat + P.ankle];
+          knees[s] = ik(hip, ankle, Lt, Ls, [s * .35, .7, .9]);
+          leg(sh, P, s, hip, knees[s], ankle, [s * .25, .97, 0]);
+        }
+        const kz = (knees[1][2] + knees[-1][2]) / 2, ky = (knees[1][1] + knees[-1][1]) / 2;
+        for (const s of [-1, 1]) arm(sh, P, shj(s, tor), [s * (Math.abs(knees[s][0]) - 1.5), ky - 2, kz - 3], [s * 2.6, ky + 3, kz + 6 + lift]);
+        phone([0, ky + 4.2, kz + 9.5 + lift]);
+        if (doll.skirt) sh.ell(BODY, [0, hip_y + 3, hipz + 2], [9.2 * F(b, 'hip') * 1.1, 8, 3.2]);
+        hair(sh, P, doll, tor);
+        return { sh, P };
+      }
       throw new Error('unknown pose ' + pose);
     }
 
     // ------------------------------------------------------------ render
     /** 回傳 {width,height,anchor,pixels:Uint8ClampedArray,depth:Float32Array(-Infinity=空)}。 */
     function render(doll, pose = 'idle', frame = 0, yaw = 0, opts = {}) {
-      const width = W, height = H_CANVAS, ax = ANCHOR.x, ay = ANCHOR.y;
+      const cv = CANVAS[(POSES[pose] && POSES[pose].canvas) || 'std'];
+      const width = cv.w, height = cv.h, ax = cv.ax, ay = cv.ay;
       const { sh, P } = build(doll, pose, frame, yaw, opts);
       const prims = sh.prims, np = prims.length;
       // world-space bounding spheres (primitive offsets folded in)
@@ -445,7 +686,9 @@
       let mnx = 1e9, mny = 1e9, mnz = 1e9, mxx = -1e9, mxy = -1e9, mxz = -1e9;
       for (let i = 0; i < np; i++) {
         const p = prims[i];
-        bcx[i] = p.bc[0] + p.off[0]; bcy[i] = p.bc[1] + p.off[1]; bcz[i] = p.bc[2] + p.off[2]; brr[i] = p.br; pm[i] = p.mat;
+        let q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
+        if (p.xf) { const w = mulV(p.xf.R, q); q = [w[0] + p.xf.t[0], w[1] + p.xf.t[1], w[2] + p.xf.t[2]]; }
+        bcx[i] = q[0]; bcy[i] = q[1]; bcz[i] = q[2]; brr[i] = p.br; pm[i] = p.mat;
         mnx = Math.min(mnx, bcx[i] - brr[i]); mxx = Math.max(mxx, bcx[i] + brr[i]);
         mny = Math.min(mny, bcy[i] - brr[i]); mxy = Math.max(mxy, bcy[i] + brr[i]);
         mnz = Math.min(mnz, bcz[i] - brr[i]); mxz = Math.max(mxz, bcz[i] + brr[i]);
@@ -468,10 +711,10 @@
           const disc = bq * bq - 4 * dd * cq;
           if (disc < 0) continue;
           const sq = Math.sqrt(disc);
-          let t = Math.min(40, (-bq + sq) / (2 * dd));
-          const tEnd = Math.max(-45, (-bq - sq) / (2 * dd));
+          let t = Math.min(cv.tMax, (-bq + sq) / (2 * dd));
+          const tEnd = Math.max(cv.tMin, (-bq - sq) / (2 * dd));
           const idx = py * width + px;
-          for (let it = 0; it < 160 && t >= tEnd; it++) {
+          for (let it = 0; it < 220 && t >= tEnd; it++) {
             const X = (sx * c - 2 * t * s) / gw, Y = (sx * s + 2 * t * c) / gw, Z = t - sy;
             dist[0] = dist[1] = dist[2] = 1e3;
             for (let i = 0; i < np; i++) {
@@ -543,7 +786,7 @@
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
     return { W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
-      BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW,
+      BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       lookToDoll, dollKey, hairStyle, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
   }
   const api = factory();

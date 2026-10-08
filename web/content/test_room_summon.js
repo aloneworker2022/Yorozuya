@@ -317,6 +317,111 @@ const $ = (id) => document.getElementById(id);
 let girl = null;
 /** 房間剪影（room_doll.js）讀她的外觀：身高／體型／罩杯／髮型＋身上那套（裙子）＋脫到第幾階。test_room.js 每秒問一次。 */
 window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl) } : null);
+
+// ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
+// 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
+// （跟房間存檔走：重新整理還在，手機為主、電腦跟著鏡像）。
+const roomActs = () => window.RoomActivity || null;
+function roomActMem(who = girl) {
+  const A = roomActs();
+  if (!A || !who) return null;
+  who.roomActivity = A.ensureMem(who.roomActivity);
+  return who.roomActivity;
+}
+window.RoomActivityContext = () => {
+  if (!girl) return null;
+  const A = roomActs(), mem = roomActMem();
+  const mood = getMoodCarry(girl);
+  return {
+    hour: taiwanNow().hour,
+    chrono: girl.chrono?.name || "",
+    mood: mood ? { type: mood.type, level: mood.level } : null,
+    miss: MISS_YOU_ON ? getMiss(girl) : 0,
+    stage: girl.stage || "stranger",
+    hobbies: Array.isArray(girl.hobbies) ? girl.hobbies : [],
+    arousal: girl.bodyState?.arousal || 0,
+    history: A && mem ? A.historyIds(mem) : [],
+    bias: mem?.bias || null,
+    // 番茄鐘開著：安靜一點（不跳舞、不湊到前面）
+    calm: (() => { const el = document.getElementById("pomo"); return !!el && !el.hidden; })(),
+    now: Date.now(),
+  };
+};
+let roomActSavedAt = 0;
+window.RoomActivitySink = (evt) => {
+  const A = roomActs(), mem = roomActMem();
+  if (!A || !mem || !evt?.id) return;
+  if (evt.type === "start") A.noteStart(mem, { id: evt.id, at: evt.at, dur: evt.dur });
+  else if (evt.type === "hold" && mem.cur?.id === evt.id) mem.cur.since = evt.at;
+  else return;
+  if (mem.bias && !A.biasStrength(mem.bias)) mem.bias = null;
+  // 活動 1～3 分鐘才換一次；開始時順手存檔（最多 20 秒一次）
+  if (evt.type === "start" && Date.now() - roomActSavedAt > 20000) {
+    roomActSavedAt = Date.now();
+    persistRoom();
+  }
+};
+let roomActTalkStart = null;
+/** 打開對話：記下她正在做的事（prompt 用），算打斷後果（有冷卻），定住她的姿勢。 */
+function activityChatOpen() {
+  const A = roomActs(), mem = roomActMem();
+  if (!A || !mem || !girlInRoom()) return;
+  const now = Date.now();
+  const live = window.RoomActor?.activity?.() || null;
+  window.RoomActor?.hold?.(true);
+  roomActTalkStart = { aff: girl.affection || 0, arousal: girl.bodyState?.arousal || 0 };
+  // 只有她已經「在做」（不是正走過去）才算被打斷
+  if (!live || live.phase !== "hold" || mem.cur?.id !== live.id) {
+    mem.talk = null;
+    return;
+  }
+  const prev = mem.history[0] || null;
+  const hit = A.interrupt(mem, { now, chrono: girl.chrono?.name || "", hour: taiwanNow().hour });
+  mem.talk = { id: mem.cur.id, since: mem.cur.since, at: now, prevId: prev?.id || "", prevAt: prev?.at || 0, wake: !!hit.wake };
+  if (hit.mood) noteMood(girl, { ...hit.mood, now });
+  if (hit.affection) bumpAffection(hit.affection, "她正無聊，你來找她");
+  if (hit.mood || hit.affection || hit.wake) {
+    pushDebug(`活動被打斷：${A.BY_ID[mem.cur.id].name}→${hit.reason}${hit.mood ? `（${hit.mood.type} ${hit.mood.level}）` : ""}`);
+  }
+}
+/** 關掉對話：依這次聊得怎樣（感情變化、情緒餘溫、興奮）偏向下一件事；睡覺被叫醒的話先起來。 */
+function activityChatClose() {
+  const A = roomActs(), mem = roomActMem();
+  window.RoomActor?.hold?.(false);
+  // 只有真的打開過（activityChatOpen 記了起點）才算一場聊天
+  if (!A || !mem || !roomActTalkStart) return;
+  const now = Date.now();
+  const start = roomActTalkStart;
+  roomActTalkStart = null;
+  const arousal = girl.bodyState?.arousal || 0;
+  const bias = A.chatBias({
+    affDelta: (girl.affection || 0) - start.aff,
+    mood: getMoodCarry(girl, now),
+    arousal,
+    arousalDelta: arousal - start.arousal,
+    now,
+  });
+  const woke = !!mem.talk?.wake;
+  mem.closeAt = now;
+  mem.talk = null;
+  if (bias) {
+    mem.bias = bias;
+    pushDebug(`聊完偏向：${bias.kind} ${bias.strength.toFixed(2)}`);
+  }
+  if (bias || woke) window.RoomActor?.replan?.();
+}
+/** talkSystem：她剛才在房間裡做什麼（第一句要接上）＋稍早做過的事。 */
+function activityPromptLines() {
+  const A = roomActs(), mem = girl?.roomActivity;
+  if (!A || !mem || !girlInRoom()) return [];
+  return A.promptLines({
+    talk: mem.talk || null,
+    mem,
+    now: Date.now(),
+    opening: lines.length === 0,
+    wakeReact: girl.chrono?.wake_react || "",
+  });
+}
 let player = emptyPlayer();
 let pending = false;
 let idleDecayTimer = 0;
@@ -6596,6 +6701,10 @@ function enterOpener(returning) {
   // 想念：隔了一陣子才回來（只在 test_room 閘門開時）
   const missHint = MISS_YOU_ON ? missOpenerHint(girl, { stageKey: girl.stage || "stranger", personality: basePersonality(girl) }) : "";
   if (missHint && line) line = `${line}（旁白補充：${missHint}）`;
+  // 房間活動：她剛才在做的事／被叫醒
+  const actTalk = girl?.roomActivity?.talk;
+  const actHint = actTalk && roomActs() ? roomActs().openerHint(actTalk, girl.chrono?.wake_react || "") : "";
+  if (actHint && line) line = `${line}（旁白補充：${actHint}）`;
   const shyHint = undressShyOpenerHint(undressStage(girl), girl.stage || "stranger");
   if (shyHint && line) line = `${line}（旁白補充：${shyHint}）`;
   const friendUp = consumeFriendUpBeat(girl);
@@ -6760,6 +6869,7 @@ function talkSystem(userText = "") {
       ? `你是${girl.name}。你是魅魔。被召喚來之前沒有更早的過去。離開之後在日本發生的事是真的，但人現在不在那裡。`
       : `你是${girl.name}。你是魅魔,一個沒有過去、沒有經歷的魔女。`,
     roomSight(),
+    ...activityPromptLines(),
     sheIsOut() ? japanNow().line : taiwanNow().line,
     stayClockLine(),
     sheIsOut()
@@ -8419,6 +8529,7 @@ function showSheet() {
   refreshTalkActs();
   // 打開房間對話時精液 <6：跳一次「身體快不行了」
   if (wasHidden && girl && girlInRoom()) warnIfSemenLow();
+  if (wasHidden && girl) activityChatOpen();
   if (!girl) {
     typeJob += 1;
     setTyping(false);
@@ -8932,6 +9043,7 @@ function hideSheet() {
   unlockSheetScroll();
   stopIdleDecay();
   syncArousalOffChatTimer();
+  activityChatClose();
   persistRoom();
   refreshTalkActs();
   try {

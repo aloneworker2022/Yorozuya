@@ -42,7 +42,11 @@
       seats:f.seats.map(seat=>({...seat,u:item.u+seat.u,v:item.v+seat.v}))};
   }).filter(item=>item.seats.length),blocked:(u,v)=>items.some(item=>{
     const f=frameOf(item);return u>=item.u&&u<item.u+f.cols&&v>=item.v&&v<item.v+f.rows;
-  })});
+  }),
+  // Activity context (time/chrono/mood/missYou/stage/hobbies/history/post-chat bias) and the
+  // activity log come from the summon module; without it she still picks activities on defaults.
+  getContext:()=>typeof window.RoomActivityContext==='function'?window.RoomActivityContext():null,
+  onActivity:evt=>{if(typeof window.RoomActivitySink==='function')window.RoomActivitySink(evt);}});
   let scenePixels=null,sceneDepth=null,wandering=true,sceneVisible=true;
 
   // Scanline fills and integer lines keep the artwork pixel crisp.
@@ -162,7 +166,63 @@
       const i=(y*f.width+x)*4,alpha=f.pixels[i+3]/255;
       if(alpha)blend(ox+x,oy+y,f.pixels.subarray(i,i+3),alpha,u+v+(f.depth?f.depth[y*f.width+x]:Math.max(0,f.anchor.y-y)/32));
     }
+    drawBubble(output,f,ox,oy);
     ctx.putImageData(output,0,0);renderView();
+  }
+
+  // ------------------------------------------------------------------ activity bubble
+  // Small pixel icon in a speech bubble over her head (2× pixels so it reads on a phone).
+  // '#' = ink, 'o' = second colour.
+  const ICONS={
+    zzz:{ink:[86,98,150],px:['....####','......#.','.....#..','###.####','..#.....','.#......','###.....']},
+    phone:{ink:[58,54,74],alt:[150,200,235],px:['#####','#ooo#','#ooo#','#ooo#','#ooo#','#####']},
+    note:{ink:[120,78,160],px:['...##..','...#.#.','...#..#','...#...','.###...','####...','.##....']},
+    anger:{ink:[214,58,58],px:['.##.##.','#.#.#.#','##...##','.......','##...##','#.#.#.#','.##.##.']},
+    heart:{ink:[226,86,124],px:['.##.##.','#######','#######','.#####.','..###..','...#...']},
+    dots:{ink:[104,92,104],px:['#.#.#']},
+    sweat:{ink:[86,150,214],alt:[200,228,250],px:['..#..','.###.','#o###','#####','.###.']},
+    tilde:{ink:[214,140,48],px:['.##....','#..#..#','....##.']},
+  };
+  // Bubble anchor: above her head (top of the hair — also right when she lies down), never below her topmost pixel.
+  function frameHead(f){
+    if(f.head)return f.head;
+    const hairA=window.RoomDoll?window.RoomDoll.HAIR_A:220;
+    let top=-1,hairTop=-1,hx=0,hn=0;
+    for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++){
+      const al=f.pixels[(y*f.width+x)*4+3];
+      if(al>20&&top<0)top=y;
+      if(al===hairA&&(hairTop<0||y<hairTop+6)){if(hairTop<0)hairTop=y;hx+=x;hn++;}
+    }
+    f.head=hn?{top:Math.min(top,hairTop),x:hx/hn}:{top:Math.max(0,top),x:f.anchor.x};
+    return f.head;
+  }
+  function drawBubble(output,f,ox,oy){
+    const b=typeof actor.bubble==='function'?actor.bubble():null;
+    if(!b||!ICONS[b.icon])return;
+    const icon=ICONS[b.icon],S=2,gw=icon.px[0].length*S,gh=icon.px.length*S,pad=3;
+    const bw=gw+pad*2,bh=Math.max(gh,8)+pad*2;
+    const head=frameHead(f),bob=Math.round(Math.sin(b.t*2.2));
+    let bx=Math.round(ox+head.x+5),by=Math.round(oy+head.top-bh-6+bob);
+    bx=Math.max(1,Math.min(canvas.width-bw-1,bx));by=Math.max(1,by);
+    const a=b.alpha;
+    function put(x,y,c,al){
+      if(x<0||y<0||x>=canvas.width||y>=canvas.height)return;
+      const i=(y*canvas.width+x)*4;for(let k=0;k<3;k++)output.data[i+k]=Math.round(c[k]*al+output.data[i+k]*(1-al));
+    }
+    const fill=[255,250,242],edge=[96,78,88];
+    for(let y=0;y<bh;y++)for(let x=0;x<bw;x++){
+      const corner=(x===0||x===bw-1)&&(y===0||y===bh-1);if(corner)continue;
+      const border=x===0||y===0||x===bw-1||y===bh-1||((x===1||x===bw-2)&&(y===1||y===bh-2));
+      const inner=(x===1||x===bw-2)&&(y===1||y===bh-2);
+      put(bx+x,by+y,border&&!inner?edge:fill,(border&&!inner?.75:.86)*a);
+    }
+    // tail toward her head
+    for(let k=0;k<3;k++){for(let x=0;x<3-k;x++)put(bx+2+x,by+bh+k,fill,.86*a);put(bx+1,by+bh+k,edge,.75*a);put(bx+2+(3-k),by+bh+k,edge,.75*a);}
+    const gx=bx+pad+Math.floor((bw-pad*2-gw)/2),gy=by+pad+Math.floor((bh-pad*2-gh)/2);
+    icon.px.forEach((row,ry)=>[...row].forEach((ch,rx)=>{
+      if(ch==='.')return;const c=ch==='o'?icon.alt:icon.ink;
+      for(let dy=0;dy<S;dy++)for(let dx=0;dx<S;dx++)put(gx+rx*S+dx,gy+ry*S+dy,c,.95*a);
+    }));
   }
 
   function canPlace(pos) {
@@ -257,8 +317,12 @@
     sitButton.title=item&&!frameOf(item).seats.length?'這件家具不是座位。':'';
     sitButton.textContent=item?'坐這裡':'找位置坐';
     document.getElementById('actor-stand').disabled=actor.state.mode!=='sitting';
-    const descriptions={idle:'她正在休息，稍後會找座位休息。',walking:'她正在房間裡走動。',approaching:'她正走到座位旁。',sitting:'她正坐著休息。',leaving:'她正起身離開座位。'};
-    const text=descriptions[actor.state.mode]+(!wandering?'（已暫停）':'');
+    const descriptions={idle:'她正想著接下來要做什麼。',walking:'她正在房間裡走動。',approaching:'她正走到座位旁。',sitting:'她正坐著休息。',leaving:'她正起身離開座位。',activity:'她正在做自己的事。'};
+    const a=typeof actor.activity==='function'?actor.activity():null;
+    let text=descriptions[actor.state.mode]||'';
+    if(a&&(actor.state.mode==='activity'||actor.state.mode==='sitting'))text=`她正在：${a.name}。`;
+    else if(a&&(actor.state.mode==='walking'||actor.state.mode==='approaching'))text=`她要去：${a.name}。`;
+    text+=(!wandering?'（已暫停）':'');
     const label=document.getElementById('actor-status');
     if(label.textContent!==text)label.textContent=text;
   }
@@ -518,7 +582,10 @@
     draw();
   }
   window.RoomActor={setPresent:setActorPresent,isPresent:()=>actor.present,conceal:concealActor,
-    syncLook:()=>syncActorLook(true),dollStats:()=>actor.dollStats()};
+    syncLook:()=>syncActorLook(true),dollStats:()=>actor.dollStats(),
+    // Activities: what she is doing; hold the pose while the chat is open; re-pick after a chat.
+    activity:()=>actor.activity(),hold:on=>actor.hold(on),replan:()=>actor.replan(),
+    startActivity:id=>{const ok=actor.startActivity(id);if(ok)resumeActor();return ok;}};
   window.RoomView={
     furniture(){
       const counts=new Map();
