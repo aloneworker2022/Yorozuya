@@ -2799,7 +2799,6 @@ body.pomo-on #toasts { z-index: 80; } /* 鐘蓋著整個畫面，提示要浮在
   --pomo-tile-top: #2b2242;
   --pomo-tile-bot: #211a34;
   --pomo-digit: #f6eeff;
-  --pomo-side-w: clamp(140px, 22vw, 230px);
   position: fixed; inset: 0; z-index: 70;
   display: flex; flex-direction: column;
   background: var(--bg, #141021);
@@ -2935,68 +2934,187 @@ body.pomo-on #toasts { z-index: 80; } /* 鐘蓋著整個畫面，提示要浮在
   background: repeating-linear-gradient(90deg, var(--pink, #ff4fd8) 0 6px, transparent 6px 8px);
   transition: width .4s steps(4);
 }
-.pomo-side {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: flex-end;
-  gap: .35rem;
-  min-height: 28vh;
+/* ---- 她：計時中站在旁邊、腳貼螢幕底；長按／時間到就滑到正中間（跟房間聊天同一套擺法） ---- */
+#pomo { --pomo-ease: cubic-bezier(.2,.85,.2,1); }
+.pomo-girl {
+  position: absolute; z-index: 2;
+  left: 50%; bottom: 0;
+  /* 直向（網頁）：她在鐘下面，佔下半個畫面 */
+  height: min(56svh, 620px);
+  width: auto; max-width: min(96vw, 560px);
+  object-fit: contain; object-position: bottom center;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 14px 24px rgba(0,0,0,.5));
+  transition:
+    left .55s var(--pomo-ease),
+    bottom .55s var(--pomo-ease),
+    height .55s var(--pomo-ease),
+    max-width .55s var(--pomo-ease),
+    transform .2s ease-out,
+    filter .2s ease-out;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-user-drag: none;
+}
+.pomo-girl.is-pressing {
+  transform: translateX(-50%) scale(1.02);
+  filter: drop-shadow(0 14px 24px rgba(0,0,0,.5)) brightness(1.12);
+}
+/* 名牌＋「長按她」疊在她身上，不把她往上推 */
+.pomo-tag {
+  position: absolute; z-index: 3;
+  left: 50%; bottom: max(10px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex; align-items: baseline; gap: .6em;
+  padding: .3em .9em;
+  border-radius: 999px;
+  border: 1px solid rgba(244,251,255,.25);
+  background: rgba(10,16,40,.62);
+  font-family: RoomPixel, "Pomo Pixel", system-ui, sans-serif;
+  white-space: nowrap;
+  pointer-events: auto;
   touch-action: manipulation;
 }
-.pomo-girl {
-  width: min(42vw, 220px);
-  max-height: 32vh;
-  object-fit: contain;
-  pointer-events: none;
+.pomo-name { color: #ffe14a; font-size: .85rem; letter-spacing: .15em; text-shadow: 1px 1px 0 #1a2748; }
+.pomo-name:empty { display: none; }
+.pomo-hint { margin: 0; color: rgba(244,251,255,.6); font-size: .72rem; }
+/* 直向：鐘只用她上面那一段 */
+.pomo-clock { padding-bottom: min(56svh, 620px); }
+
+/* ---- 提問（長按＝痾，什麼？／時間到＝完成了嗎？／結果）：照房間聊天的樣子 ---- */
+.pomo-scrim {
+  position: absolute; inset: 0; z-index: 1;
+  background: rgba(6,8,20,.55);
+  opacity: 0; pointer-events: none;
+  transition: opacity .35s ease-out;
 }
-.pomo-name { color: var(--dim); font-size: .85rem; }
-.pomo-hint { margin: 0; color: var(--dim); font-size: .75rem; opacity: .7; }
+#pomo.is-ask .pomo-scrim,
+#pomo.is-result .pomo-scrim { opacity: 1; pointer-events: auto; }
+#pomo .pomo-clock { transition: opacity .35s ease-out; }
+#pomo.is-ask .pomo-clock,
+#pomo.is-result .pomo-clock { opacity: .22; }
+#pomo.is-ask .pomo-tag,
+#pomo.is-result .pomo-tag { display: none; }
+/* 直向提問：她在正中、腳貼在按鈕列上面（同 body.room-home #portrait-img） */
+#pomo.is-ask .pomo-girl,
+#pomo.is-result .pomo-girl {
+  left: 50%;
+  bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
+  height: min(60svh, 560px);
+}
+/* 對話框＝房間 #talk-box 的樣子：深藍半透明、白框、黃名字、像素字 */
+.pomo-talk {
+  position: absolute; z-index: 3;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  width: min(calc(100% - 16px), 440px);
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  min-height: 4.8em;
+  padding: 10px 14px 12px;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  background: rgba(10,16,40,.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: #f4fbff;
+  font-family: RoomPixel, "Pomo Pixel", system-ui, sans-serif;
+  text-shadow: none;
+  animation: pomo-talk-in .32s .18s var(--pomo-ease) both;
+}
+#pomo:not(.is-ask):not(.is-result) .pomo-talk { display: none; }
+.pomo-talk-name {
+  margin-bottom: .45em;
+  font-size: .85em; letter-spacing: .15em;
+  color: #ffe14a;
+  text-shadow: 1px 1px 0 #1a2748;
+}
 .pomo-line {
-  margin: .2rem 0 0;
-  text-align: center;
-  font-size: 1.15rem;
-  max-width: 16em;
+  margin: 0;
+  font-size: 1em; line-height: 1.65;
+  white-space: pre-wrap; word-break: break-word;
+  text-align: left;
+  -webkit-font-smoothing: none;
 }
-.pomo-acts { display: flex; gap: .7rem; margin-top: .35rem; }
+@keyframes pomo-talk-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+/* 按鈕列＝房間 .talk-acts 的樣子：底部漸層、藍底黃字膠囊鈕 */
+.pomo-acts {
+  position: absolute; z-index: 4;
+  left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: center; align-items: center;
+  gap: 10px;
+  padding: 8px 10px max(10px, env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(10,16,40,0), rgba(10,16,40,.72) 28%);
+  animation: pomo-acts-in .3s .22s ease-out both;
+}
 /* .pomo-acts 有 display:flex，會蓋掉 [hidden]：以前計時中也露出「完成／打斷」兩顆按不動的鈕 */
 #pomo [hidden] { display: none !important; }
 .pomo-acts button {
-  font: inherit; font-size: 1.05rem;
-  min-width: 6.6rem; min-height: 48px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(0,0,0,.28);
-  color: var(--text);
+  flex: 0 0 auto;
+  min-height: 44px; min-width: 5.5em;
+  padding: 10px 18px;
+  margin: 0;
+  border: 2px solid rgba(244,251,255,.35);
+  border-radius: 999px;
+  background: rgba(22,48,92,.92);
+  color: #ffe14a;
+  box-shadow: none;
+  font: inherit; font-family: RoomPixel, "Pomo Pixel", system-ui, sans-serif;
+  font-size: .95em; letter-spacing: .04em;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.pomo-acts .yes { border-color: var(--cyan); color: var(--cyan); }
-.pomo-acts .no { border-color: var(--red); color: var(--red); }
-#pomo.is-ask .pomo-clock,
-#pomo.is-result .pomo-clock { opacity: .28; }
-#pomo.is-ask .pomo-side,
-#pomo.is-result .pomo-side {
-  position: absolute; inset: 0;
-  justify-content: center;
-  min-height: 0;
-  z-index: 1;
-  background: rgba(0,0,0,.35);
+.pomo-acts button:active { background: rgba(40,70,120,.95); }
+.pomo-acts .yes { font-weight: 700; }
+.pomo-acts .no { border-color: rgba(255,180,220,.55); color: #ffb8d9; }
+.pomo-acts .back { min-width: 0; padding: 10px 12px; opacity: .8; font-size: .85em; color: #f4fbff; }
+@keyframes pomo-acts-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
+@media (prefers-reduced-motion: reduce) {
+  .pomo-girl, .pomo-scrim, #pomo .pomo-clock { transition: none; }
+  .pomo-talk, .pomo-acts { animation: none; }
+}
+
 @media (orientation: landscape) {
-  #pomo { flex-direction: row; align-items: stretch; gap: 12px; }
-  .pomo-clock { gap: .6rem; }
-  /* 橫向：鐘吃掉她以外的整個寬度，高度最多 56vh */
+  /* 橫向：鐘在左邊，她站在右邊那一欄、幾乎整個高度、腳貼底 */
+  #pomo { --pomo-side-w: min(36vw, 68vh); }
+  .pomo-clock {
+    gap: .6rem;
+    padding-bottom: 0;
+    padding-right: var(--pomo-side-w);
+  }
   .pomo-flaps {
     font-size: min(
-      calc((100vw - var(--pomo-side-w) - env(safe-area-inset-left) - env(safe-area-inset-right) - 64px) / 4.05),
+      calc((100vw - var(--pomo-side-w) - env(safe-area-inset-left) - env(safe-area-inset-right) - 48px) / 4.05),
       56vh
     );
   }
   .pomo-face { gap: min(.9rem, 3vh); }
-  .pomo-side {
-    flex: 0 0 var(--pomo-side-w);
-    min-height: 0;
-    justify-content: center;
-    opacity: .92;
+  .pomo-girl {
+    left: calc(100% - env(safe-area-inset-right) - var(--pomo-side-w) / 2);
+    height: 96vh;
+    max-width: calc(var(--pomo-side-w) + 32px);
   }
-  .pomo-girl { width: 100%; max-height: 66vh; }
+  .pomo-tag { left: calc(100% - env(safe-area-inset-right) - var(--pomo-side-w) / 2); }
+  /* 橫向提問：她滑到正中間，頭頂留給對話框，腳貼底，按鈕疊在她下半身的漸層上（同房間） */
   #pomo.is-ask .pomo-girl,
-  #pomo.is-result .pomo-girl { width: auto; max-height: 44vh; }
+  #pomo.is-result .pomo-girl {
+    left: 50%;
+    bottom: 0;
+    height: calc(100vh - 4.4em - env(safe-area-inset-top));
+    max-width: 60vw;
+  }
+  /* 橫向高度不夠：對話框縮成一行（名字在左、台詞在右），把高度讓給她 */
+  .pomo-talk {
+    width: min(72vw, 560px); min-height: 0;
+    display: flex; align-items: baseline; gap: .9em;
+    padding: 6px 14px 7px;
+  }
+  .pomo-talk-name { flex: 0 0 auto; margin-bottom: 0; }
+  .pomo-line { flex: 1 1 auto; min-width: 0; line-height: 1.5; }
 }

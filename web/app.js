@@ -13499,40 +13499,65 @@ function ensurePomo() {
         <div class="pomo-bar"><i></i></div>
       </div>
     </div>
-    <div class="pomo-side">
-      <img class="pomo-girl" alt="">
-      <div class="pomo-name"></div>
-      <p class="pomo-hint">長按她</p>
+    <div class="pomo-scrim"></div>
+    <img class="pomo-girl" alt="" draggable="false">
+    <div class="pomo-tag"><span class="pomo-name"></span><span class="pomo-hint">長按她</span></div>
+    <div class="pomo-talk" role="dialog" aria-live="polite">
+      <div class="pomo-talk-name"></div>
       <p class="pomo-line"></p>
-      <div class="pomo-acts">
-        <button type="button" class="yes" id="pomo-yes">完成</button>
-        <button type="button" class="no" id="pomo-no">打斷</button>
-      </div>
+    </div>
+    <div class="pomo-acts">
+      <button type="button" class="yes" id="pomo-yes">完成</button>
+      <button type="button" class="no" id="pomo-no">打斷</button>
+      <button type="button" class="back" id="pomo-back">繼續</button>
     </div>`;
   document.body.appendChild(el);
-  const side = el.querySelector(".pomo-side");
-  let px = 0, py = 0, armed = false;
-  const clearHold = () => { if (pomoHold) clearTimeout(pomoHold); pomoHold = 0; armed = false; };
-  side.addEventListener("pointerdown", (e) => {
-    if (state?.pomodoro?.phase !== "run") return;
-    if (e.button != null && e.button !== 0) return;
-    armed = true;
-    px = e.clientX; py = e.clientY;
-    clearHold();
-    armed = true;
-    pomoHold = setTimeout(() => {
-      pomoHold = 0;
-      armed = false;
-      pomoAsk("interrupt");
-    }, 650);
-  });
-  side.addEventListener("pointermove", (e) => {
-    if (!armed) return;
-    if (Math.hypot(e.clientX - px, e.clientY - py) > 12) clearHold();
-  });
-  side.addEventListener("pointerup", clearHold);
-  side.addEventListener("pointercancel", clearHold);
-  side.addEventListener("contextmenu", (e) => e.preventDefault());
+  // 計時中：她站在旁邊（橫向在右邊、直向在下面），腳貼螢幕底。長按她（或名牌）＝打斷提問，
+  // 這時她滑到正中間，跟房間聊天一樣：對話框在上、她在中間、按鈕在下。
+  const girlImg = el.querySelector(".pomo-girl");
+  const targets = [girlImg, el.querySelector(".pomo-tag")];
+  let px = 0, py = 0, armed = false, swallowClick = false;
+  // 長按觸發後，同一隻手指放開產生的 click 吃掉；新的一次按下才算數。
+  el.addEventListener("pointerdown", () => { swallowClick = false; }, true);
+  el.addEventListener("click", (e) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+  const clearHold = () => {
+    if (pomoHold) clearTimeout(pomoHold);
+    pomoHold = 0; armed = false;
+    girlImg.classList.remove("is-pressing");
+  };
+  for (const t of targets) {
+    t.addEventListener("pointerdown", (e) => {
+      if (state?.pomodoro?.phase !== "run") return;
+      if (e.button != null && e.button !== 0) return;
+      px = e.clientX; py = e.clientY;
+      clearHold();
+      armed = true;
+      girlImg.classList.add("is-pressing");
+      pomoHold = setTimeout(() => {
+        pomoHold = 0;
+        armed = false;
+        girlImg.classList.remove("is-pressing");
+        swallowClick = true; // 放手時那一下 click 會落在剛出現的背景上，別把它當成「繼續」
+        pomoAsk("interrupt");
+      }, 650);
+    });
+    t.addEventListener("pointermove", (e) => {
+      if (!armed) return;
+      if (Math.hypot(e.clientX - px, e.clientY - py) > 12) clearHold();
+    });
+    t.addEventListener("pointerup", clearHold);
+    t.addEventListener("pointercancel", clearHold);
+    t.addEventListener("pointerleave", clearHold);
+    t.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+  // 長按打斷的提問可以不選：點背景或「繼續」＝她回到旁邊，鐘照原本的到點時間繼續走。
+  el.querySelector(".pomo-scrim").addEventListener("click", () => pomoResume());
+  el.querySelector("#pomo-back").addEventListener("click", () => pomoResume());
   el.querySelector("#pomo-yes").addEventListener("click", () => {
     const p = state?.pomodoro;
     if (!p) return;
@@ -13542,7 +13567,8 @@ function ensurePomo() {
   el.querySelector("#pomo-no").addEventListener("click", () => {
     const p = state?.pomodoro;
     if (!p || p.phase !== "ask") return;
-    pomoSettle(p.ask === "done" ? "miss" : "break");
+    // 時間到按「未完成」：以前送 "miss"，被 pomoSettle 的「提問中不自動算未完成」擋掉，按了沒反應。
+    pomoSettle(p.ask === "done" ? "missChosen" : "break");
   });
   return el;
 }
@@ -13606,6 +13632,10 @@ function pomoPaint() {
   }
   const name = el.querySelector(".pomo-name");
   if (name) name.textContent = p.girlName || "";
+  const talkName = el.querySelector(".pomo-talk-name");
+  if (talkName) talkName.textContent = p.phase === "result" ? "旁白" : (p.girlName || "她");
+  const back = el.querySelector("#pomo-back");
+  if (back) back.hidden = !(p.phase === "ask" && p.ask === "interrupt");
   const hint = el.querySelector(".pomo-hint");
   const line = el.querySelector(".pomo-line");
   const acts = el.querySelector(".pomo-acts");
@@ -13693,6 +13723,7 @@ function pomoAsk(kind) {
   const p = state?.pomodoro;
   if (!p || p.phase !== "run") return;
   p.leftMs = kind === "done" ? 0 : Math.max(0, (p.endsAt || 0) - Date.now());
+  p.askAt = Date.now();
   p.endsAt = 0;
   p.phase = "ask";
   p.ask = kind === "interrupt" ? "interrupt" : "done";
@@ -13737,6 +13768,22 @@ function pomoSettle(kind) {
     toast("番茄鐘打斷　感情 −5　金錢 −10", "bad");
     return;
   }
+  if (kind === "missChosen") {
+    // 時間到、她問「完成了嗎？」，你自己按「未完成」：扣同樣的 −2／−5，直接收起來。
+    state.gold -= 5;
+    applyPomoAff(girlId, -2, "番茄鐘未完成");
+    log("番茄鐘未完成　感情 −2　金錢 −5");
+    state.pomodoro = null;
+    pomoStopTick();
+    const el = document.getElementById("pomo");
+    if (el) el.hidden = true;
+    document.body.classList.remove("pomo-on");
+    pomoSetLandscape(false);
+    scheduleSave();
+    try { renderHud(); } catch { /* ignore */ }
+    toast("番茄鐘未完成　感情 −2　金錢 −5", "bad");
+    return;
+  }
   state.gold -= 5;
   applyPomoAff(girlId, -2, "番茄鐘未完成");
   log("番茄鐘未完成　感情 −2　金錢 −5");
@@ -13745,6 +13792,22 @@ function pomoSettle(kind) {
   p.leftMs = 0;
   p.endsAt = 0;
   scheduleSave();
+  pomoShow();
+}
+
+/** 長按打斷的提問不選，回去繼續：鐘照原本的到點時間走（提問那段時間不暫停）。 */
+function pomoResume() {
+  const p = state?.pomodoro;
+  if (!p || p.phase !== "ask" || p.ask !== "interrupt") return;
+  const now = Date.now();
+  const left = Math.max(0, Number(p.leftMs) || 0) - (p.askAt ? Math.max(0, now - p.askAt) : 0);
+  p.phase = "run";
+  p.ask = "";
+  p.leftMs = 0;
+  p.askAt = 0;
+  p.endsAt = now + Math.max(0, left);
+  scheduleSave();
+  if (left <= 0) { pomoAsk("done"); return; }
   pomoShow();
 }
 
