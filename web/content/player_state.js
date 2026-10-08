@@ -31,6 +31,34 @@ export function semenMaxCc() {
 export function climaxMax() {
   return CLIMAX_MAX + expansionLevel("excite");
 }
+/**
+ * 腎虧（2026-10-08 使用者）：精液量掉到 −7 以下（嚴格 < −7；精液量是整數，所以是 −8 起）
+ * → 自動花 60～140 金看醫生，精液量回到 −1。金幣不夠就變負的（負債）。
+ */
+export const KIDNEY_BELOW_CC = -7;
+export const KIDNEY_RESET_CC = -1;
+export const DOCTOR_FEE_MIN = 60;
+export const DOCTOR_FEE_MAX = 140;
+
+/** 看醫生的錢：60～140 金（含兩端）。 */
+export function rollDoctorFee(rng = Math.random) {
+  const r = Math.min(0.999999, Math.max(0, Number(rng()) || 0));
+  return DOCTOR_FEE_MIN + Math.floor(r * (DOCTOR_FEE_MAX - DOCTOR_FEE_MIN + 1));
+}
+
+/**
+ * 精液量往下掉之後檢查腎虧。沒腎虧原樣回；腎虧就把精液量拉回 −1，回傳要付的醫藥費。
+ * 只動精液量，不碰金幣（金幣是主遊戲的 state.gold，由呼叫端扣）。
+ * @returns {{ player, triggered: boolean, fee: number, before: number }}
+ */
+export function kidneyCheck(player, rng = Math.random) {
+  const p = ensurePlayer(player);
+  const before = p.semenCc;
+  if (!(before < KIDNEY_BELOW_CC)) return { player: p, triggered: false, fee: 0, before };
+  p.semenCc = KIDNEY_RESET_CC;
+  return { player: p, triggered: true, fee: rollDoctorFee(rng), before };
+}
+
 /** 精液回復：每小時 +1 cc（真實時間）。 */
 export const SEMEN_REGEN_CC_PER_HOUR = 1;
 /** 精液是負的（肏到透支）：每 5 小時才 +1 cc，回到 ≥0 後恢復每小時 +1（2026-10-04 使用者）。 */

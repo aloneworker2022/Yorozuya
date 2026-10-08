@@ -203,6 +203,39 @@ function expLv(k) {
 window.YorozuyaGrowth = {
   level(key) { return expLv(key); },
 };
+// 房間腎虧送醫：醫藥費從這裡扣主遊戲金幣（可扣到負）。存檔還沒好就回 false，房間會先記帳。
+window.YorozuyaWallet = {
+  payDoctor(bill) {
+    if (!state || bootFailed) return false;
+    chargeDoctorBill(bill);
+    return true;
+  },
+};
+
+/** 腎虧：精液量掉到 −7 以下，自動花 60～140 金看醫生（精液量已由房間拉回 −1）。金幣不夠就變負債，不擋。 */
+function chargeDoctorBill(bill) {
+  const fee = Math.max(0, Math.round(Number(bill?.fee) || 0));
+  if (!fee) return;
+  const after = Number.isFinite(Number(bill?.after)) ? Number(bill.after) : -1;
+  state.gold -= fee;
+  dirty = true;
+  log(`腎虧：精液量掉到 ${bill?.before ?? "?"}cc，被送去看醫生 −${fee} 金（精液量回到 ${after}）`);
+  scheduleSave();
+  try { renderHud(); } catch { /* ignore */ }
+  toast(`腎虧了…被送去看醫生，花了 ${fee} 金。精液量回到 ${after}。`, "bad shenkui");
+}
+
+/** 沙盒或存檔還沒載好時記下的醫藥費：主遊戲載入後補扣，每筆一次。 */
+function claimDoctorBills() {
+  if (!state || bootFailed) return;
+  let rows = [];
+  try {
+    rows = JSON.parse(localStorage.getItem("yoro_doctor_bills") || "[]");
+    localStorage.removeItem("yoro_doctor_bills");
+  } catch { rows = []; }
+  if (!Array.isArray(rows)) return;
+  for (const b of rows) chargeDoctorBill(b);
+}
 function execCap() { return 1 + expLv("exec"); }
 function rosterCap() { return 1 + expLv("roster"); }
 function kanbanHours() { return 1; } // 時長擴充已退役。店頭若還在，固定 1 小時。
@@ -1472,6 +1505,12 @@ async function load() {
   if (!bootFailed) {
     drainQuestInbox();
     try { claimRoomRefunds(); } catch { /* ignore */ }
+    try { claimDoctorBills(); } catch { /* ignore */ }
+    // 舊存檔精液量已經在 −7 以下：只在房間的主人那台（手機，或沒有手機房間時的這台）檢查一次。
+    // 跟著手機鏡像的電腦不檢查，免得同一筆被兩台各收一次。
+    try {
+      if (isPhoneClient() || state.roomMirror?.from !== "phone") window.RoomCompanion?.kidneyCheck?.("load");
+    } catch { /* ignore */ }
   }
 }
 
@@ -8471,6 +8510,11 @@ function bindRoomProgressLiveSync() {
   window.addEventListener("yoro-room-presence", () => {
     if (!state) return;
     try { renderSuccubi(); } catch { /* ignore */ }
+  });
+  // 沙盒腎虧記的醫藥費
+  window.addEventListener("yoro-doctor-bill", () => {
+    if (!state || bootFailed) return;
+    try { claimDoctorBills(); } catch { /* ignore */ }
   });
   // 房間開機時把付過錢、但房裡已有人的召喚退回來
   window.addEventListener("yoro-room-refund", () => {

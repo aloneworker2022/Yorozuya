@@ -1804,6 +1804,8 @@ body.tease-play #chat-input-row { display: none; }
 }
 .toast.bad { color: var(--red); }
 .toast.good { color: var(--cyan); }
+/* 腎虧送醫：常在房間聊天／做愛時跳出來，要浮在房間對話框（z 70～75）上面 */
+#toasts:has(.toast.shenkui) { z-index: 90; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 @keyframes toast-out { to { opacity: 0; } }
 

@@ -84,7 +84,8 @@ import {
   grantSemen as grantPlayerSemen,
   spendSemen,
   semenMaxCc,
-} from "./player_state.js?v=11";
+  kidneyCheck,
+} from "./player_state.js?v=12";
 import { ensureOpenness, getOpenness } from "./openness.js?v=1";
 import { occupantOf, savedOccupant, blocksSummon, roomFullText as roomFullLine } from "./room_occupancy.js?v=1";
 import {
@@ -2121,7 +2122,8 @@ function doThrust() {
   }
   if (r.ejac) {
     // 扣玩家真正的精液（可到負）；這一場的數字跟著它
-    player = spendSemen(player, THRUST.SEMEN_PER_EJAC_CC).player;
+    // 掉到 −7 以下＝腎虧：自動送醫、精液量回到 −1（settleKidney）
+    spendPlayerSemen(THRUST.SEMEN_PER_EJAC_CC, "sex");
     s.semen = player.semenCc;
     if (s.semen < THRUST.SEMEN_END_BELOW) s.ended = true;
     const o = ensureBody(who)?.organs;
@@ -7361,6 +7363,7 @@ async function deliverUserTalk(text, opts = {}) {
         }
         const climax = applyTeaseClimax(player, opts.actId);
         player = climax.player;
+        settleKidney("tease");
         if (climax.climaxed) {
           climaxLine = climax.line;
           bumpAffection(2, "射精");
@@ -7889,6 +7892,7 @@ async function playUndress(mode) {
 
     const climax = applyTeaseClimax(player, help ? "undress_help" : "undress_tell");
     player = climax.player;
+    settleKidney("tease");
     if (climax.climaxed && girl) {
       if (climax.line) lines.push({ role: "user", content: climax.line });
       bumpAffection(2, "射精");
@@ -8360,6 +8364,47 @@ function endTalkSession() {
   if (girl.chatEnter !== "flee_back" && girl.chatEnter !== "summon") {
     girl.chatEnter = "reopen";
   }
+}
+
+const DOCTOR_BILL_KEY = "yoro_doctor_bills";
+/**
+ * 腎虧：精液量往下掉之後一律走這裡。掉到 −7 以下就自動送醫——精液量拉回 −1，
+ * 醫藥費（60～140 金）交給主遊戲扣 state.gold（可扣到負）。只有真的扣精液的這一台會觸發；
+ * 精液量拉回 −1 跟著房間存檔走，別台讀到的已經是 −1，不會再收一次。
+ */
+function settleKidney(source = "") {
+  const r = kidneyCheck(player);
+  player = r.player;
+  if (!r.triggered) return null;
+  const bill = { fee: r.fee, before: r.before, after: player.semenCc, at: Date.now(), source };
+  let paid = false;
+  try { paid = window.YorozuyaWallet?.payDoctor?.(bill) === true; } catch { paid = false; }
+  if (!paid) {
+    // 主遊戲沒載（沙盒 test_room）或存檔還沒好：記帳，名冊那邊載入後補扣
+    try {
+      const rows = JSON.parse(localStorage.getItem(DOCTOR_BILL_KEY) || "[]");
+      const list = Array.isArray(rows) ? rows : [];
+      list.push(bill);
+      localStorage.setItem(DOCTOR_BILL_KEY, JSON.stringify(list));
+    } catch { /* ignore */ }
+    try { window.dispatchEvent(new CustomEvent("yoro-doctor-bill")); } catch { /* ignore */ }
+  }
+  try { pushDebug(`腎虧：精液 ${r.before}cc → ${player.semenCc}cc，看醫生 ${r.fee} 金（${source || "?"}）`); } catch { /* */ }
+  const status = $("summon-status");
+  if (status) status.textContent = `腎虧了…被送去看醫生，花了 ${r.fee} 金。精液量回到 ${player.semenCc}。`;
+  try { persistRoom(); } catch { /* ignore */ }
+  try {
+    const row = $("talk-acts");
+    if (row) updatePlayerHint(ensurePlayerHint(row), player);
+  } catch { /* ignore */ }
+  return bill;
+}
+
+/** 扣玩家精液（肏射精）＋腎虧檢查。回傳扣完（或送醫後）的精液量。 */
+function spendPlayerSemen(cc, source = "sex") {
+  player = spendSemen(player, cc).player;
+  settleKidney(source);
+  return player.semenCc;
 }
 
 function persistRoom(opts = {}) {
@@ -10312,6 +10357,21 @@ window.RoomCompanion = {
   repaintPortrait() {
     try { paintHalfPortrait(girl); } catch { /* ignore */ }
   },
+  /**
+   * 精液量：get＝現值；force(v)＝直接設（除錯，不觸發）；spend(cc)＝走真正扣精液那條（含腎虧）；
+   * kidneyCheck()＝現在檢查一次（主遊戲載入時，只在房間的主人那台呼叫）。
+   */
+  semen: {
+    get: () => ensurePlayer(player).semenCc,
+    force(v) {
+      player = ensurePlayer(player);
+      player.semenCc = Math.round(Number(v) || 0);
+      try { persistRoom(); } catch { /* ignore */ }
+      return player.semenCc;
+    },
+    spend: (cc = THRUST.SEMEN_PER_EJAC_CC) => spendPlayerSemen(cc, "debug"),
+  },
+  kidneyCheck: (source = "load") => (girl ? settleKidney(source) : null),
   grantSemen(cc) {
     const result = grantPlayerSemen(player, cc);
     player = result.player;
