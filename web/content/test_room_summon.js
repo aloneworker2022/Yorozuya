@@ -86,6 +86,7 @@ import {
   semenMaxCc,
 } from "./player_state.js?v=11";
 import { ensureOpenness, getOpenness } from "./openness.js?v=1";
+import { occupantOf, savedOccupant, blocksSummon, roomFullText as roomFullLine } from "./room_occupancy.js?v=1";
 import {
   ensureInvasion,
   applyInvasionRoll,
@@ -8209,6 +8210,42 @@ function girlInRoom() {
   return !sheIsOut();
 }
 
+/**
+ * 一間房一次只住一位魅魔。
+ * 「有人」＝她人在房裡，或這趟召喚／召回還沒站定（儀式、繪圖清單還在跑）。
+ * 她回住處、在日本過日子（sheIsOut）不算有人。
+ * 回傳 { id, name, arriving }；空房回 null。
+ */
+function roomOccupant() {
+  return occupantOf(girl, { present: girlInRoom(), busy: summoning || summonBackBusy || pending });
+}
+
+/** 房裡有人時給玩家看的一句話。 */
+function roomFullText(occ) {
+  return occ ? `${roomFullLine(occ)}。` : "";
+}
+
+/** 上一次 adopt 被拒的原因（給名冊退款／提示用）。 */
+let lastAdoptRefusal = null;
+
+const ROOM_REFUND_KEY = "yoro_room_refunds";
+/** 開機時才發現房裡有人、付過錢的 pending 召喚：記一筆退款，名冊那邊載入後退回金幣。 */
+function refundRefusedAdopt(payload, occ) {
+  const cost = Math.max(0, Number(payload?.paidCost) || 0);
+  if (!cost || payload?.fromTestRoom) return;
+  try {
+    const list = JSON.parse(localStorage.getItem(ROOM_REFUND_KEY) || "[]");
+    const rows = Array.isArray(list) ? list : [];
+    const at = Number(payload.at) || Date.now();
+    const gid = String(payload.girl?.gameGirlId || payload.girl?.id || "");
+    if (!rows.some((r) => r && r.at === at && r.girlId === gid)) {
+      rows.push({ girlId: gid, name: payload.girl?.name || "", cost, at, occupant: occ?.name || "" });
+    }
+    localStorage.setItem(ROOM_REFUND_KEY, JSON.stringify(rows));
+  } catch { /* ignore */ }
+  try { window.dispatchEvent(new CustomEvent("yoro-room-refund")); } catch { /* ignore */ }
+}
+
 function stopArousalOffChat() {
   if (arousalOffChatTimer) {
     clearInterval(arousalOffChatTimer);
@@ -8563,8 +8600,20 @@ function beginSummonRitualUI() {
 /** 名冊付費召喚：把遊戲妹子放進房間（同 id） */
 async function adoptRosterGirl(payload) {
   const rolled = payload?.girl;
+  lastAdoptRefusal = null;
   if (!rolled?.id) return false;
-  if (summoning) return false;
+  const rolledId = String(rolled.gameGirlId || rolled.id);
+  // 一間房一次一位：別人在房裡（或正在降臨）就不讓新的人進來。同一位人在房裡＝續這趟。
+  const occ = roomOccupant();
+  if (blocksSummon(occ, rolledId)) {
+    lastAdoptRefusal = { reason: "occupied", occupant: occ, text: roomFullText(occ) };
+    if ($("summon-status")) $("summon-status").textContent = roomFullText(occ);
+    return false;
+  }
+  if (summoning) {
+    lastAdoptRefusal = { reason: "busy", text: "正在召喚中，請稍候。" };
+    return false;
+  }
   summoning = true;
   let stopRitual = () => {};
   try {
@@ -8967,6 +9016,11 @@ async function summonRosterGirlIntoRoom() {
     setRosterSummonHint("正在召喚／抽人中，請稍候。", true);
     return;
   }
+  const occ0 = roomOccupant();
+  if (occ0) {
+    setRosterSummonHint(`${roomFullText(occ0)}（先按「讓她離開」）`, true);
+    return;
+  }
   const sel = $("roster-girl-pick");
   const id = sel?.value || "";
   if (!id) {
@@ -9002,7 +9056,7 @@ async function summonRosterGirlIntoRoom() {
     if (ok) {
       setRosterSummonHint(`「${roomGirl.name}」已進房。長按她說話，或測動作圖。`);
     } else {
-      setRosterSummonHint("召喚未完成（可能正在進行另一場召喚）。", true);
+      setRosterSummonHint(lastAdoptRefusal?.text || "召喚未完成（可能正在進行另一場召喚）。", true);
     }
   } catch (err) {
     console.warn("[summonRosterGirlIntoRoom]", err);
@@ -9029,6 +9083,11 @@ function bindRosterSummonUi() {
 
 async function drawGirl() {
   if (pending) return;
+  const occ = roomOccupant();
+  if (occ) {
+    if ($("summon-status")) $("summon-status").textContent = `${roomFullText(occ)}（先按「讓她離開」）`;
+    return;
+  }
   pending = true;
   $("draw-girl").disabled = true;
   $("summon-status").textContent = "抽人設…";
@@ -9803,10 +9862,16 @@ function bindBodyPanel() {
 
 (function restoreRoom() {
   applyShipChrome();
-  const pending = takePendingAdopt();
-  if (pending?.girl) {
-    void adoptRosterGirl(pending);
-    return;
+  const pendingAdopt = takePendingAdopt();
+  if (pendingAdopt?.girl) {
+    // 一間房一次一位：存檔裡別人還在房裡（或正在降臨），這張付過錢的召喚不進房，記退款，照常還原原本那位。
+    const occ0 = savedOccupant(loadRoomSave());
+    const pid = String(pendingAdopt.girl.gameGirlId || pendingAdopt.girl.id);
+    if (!blocksSummon(occ0, pid)) {
+      void adoptRosterGirl(pendingAdopt);
+      return;
+    }
+    refundRefusedAdopt(pendingAdopt, occ0);
   }
   const saved = loadRoomSave();
   if (!saved?.girl) return;
@@ -10202,6 +10267,10 @@ window.RoomCompanion = {
     promptRev: () => ({ ...(girl?.portraits?.actionPromptRev || {}) }),
   },
   adopt: adoptRosterGirl,
+  /** 一間房一次一位：{ id, name, arriving } 或 null（空房／她在外面）。 */
+  occupant: roomOccupant,
+  /** 上一次 adopt 被拒的原因 { reason, occupant?, text }。 */
+  lastRefusal: () => lastAdoptRefusal,
   summonFromRoster: summonRosterGirlIntoRoom,
   reloadRoster: loadRosterGirlsForSummon,
   sync: () => girl && syncProgressToGame(girl),

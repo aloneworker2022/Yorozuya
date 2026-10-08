@@ -1188,6 +1188,11 @@ body.card-center .q-body { justify-content: center; text-align: center; }
   border-radius: 6px;
 }
 .scard .roster-summon:disabled { opacity: .35; cursor: default; }
+/* 一間房一次一位：房裡有別人時，召喚鈕變灰、點了只跳提示 */
+.scard .roster-summon.is-full { background: rgba(255, 255, 255, .06); color: var(--dim); cursor: not-allowed; }
+.detail-actions button.is-full { filter: grayscale(1); opacity: .45; cursor: not-allowed; }
+.detail-actions .room-full-note { width: 100%; font-size: .78em; text-align: center; color: var(--gold); }
+.roster-hint.room-full { color: var(--gold); }
 .roster-hint { margin: -.15em 0 .45em; }
 .status-dot { width: 8px; height: 8px; flex-shrink: 0; }
 .status-dot.ok { background: var(--cyan); }

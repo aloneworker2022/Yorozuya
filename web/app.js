@@ -2,6 +2,7 @@
 // M0:委託狀態機 + 金幣 + 違約結算 + 伺服器存檔
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
+import { savedOccupant, blocksSummon, roomFullText } from "./content/room_occupancy.js?v=1"; // 一間房一次一位
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildDiaryCommentPrompt, buildNoticePrompt, buildCardPlayPrompt, buildCardVisualPosePrompt, parseCardVisualPose, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, WARDROBE_UNLOCK, EROTIC_UNLOCK, SLEEP_UNLOCK, POOLS } from "./content/girl_gen.js";
@@ -1468,7 +1469,10 @@ async function load() {
     try { version = j.version; state = defaultState(); renderAll(); applyBg(); } catch { }
     toast("⚠ 存檔載入失敗,已用臨時全新狀態開啟(未覆蓋舊檔)。可開 /testword 按「重設存檔」急救。", "bad");
   }
-  if (!bootFailed) drainQuestInbox();
+  if (!bootFailed) {
+    drainQuestInbox();
+    try { claimRoomRefunds(); } catch { /* ignore */ }
+  }
 }
 
 // ---- 前端版本偵測:git pull 後手機回前景自動載入新版 ----
@@ -8148,6 +8152,9 @@ function beginRoomCompanionSummon(girlId) {
   const s = state.succubi.find(x => x.id === girlId);
   if (!s || s.ntr) { toast("她不在你身邊……", "bad"); return; }
   if (rosterSummonBlocked(s)) { toast("她還在房間裡，離開以後才能再召喚", "bad"); return; }
+  // 一間房一次一位：扣錢之前先看房裡有沒有別人
+  const occ = roomFullFor(s);
+  if (occ) { toast(roomFullText(occ), "bad"); return; }
   if (Cards.sessionActive(state)) {
     const rec = resumeOrRecoverCardSession({ forceUi: true });
     toast(`先結束與 ${rec.girlName || "她"} 的牌局`, "bad");
@@ -8208,21 +8215,33 @@ function enterEmbeddedRoomCompanion(payload) {
     endRoomSummoning();
     try { renderSuccubi(); } catch { /* ignore */ }
   };
+  // 房間拒收（房裡有人／正在召喚）：錢已經扣了，原數退回，不吃玩家的金幣。
+  const refuseAdopt = (err) => {
+    try { localStorage.removeItem(ROOM_PENDING_KEY); } catch { /* ignore */ }
+    const gid = payload.girl?.gameGirlId || payload.girl?.id || "";
+    // 出錯但她其實已經站在房裡了：算成功，不退
+    if (err && rosterRoomGirlId() === gid) { finishAdoptOk(); return; }
+    finishAdoptFail();
+    let why = "";
+    try { why = window.RoomCompanion?.lastRefusal?.()?.text || ""; } catch { /* ignore */ }
+    refundRoomSummon(gid, payload.girl?.name, payload.paidCost, why.replace(/。$/, ""));
+  };
   const adoptNow = () => {
     const api = window.RoomCompanion;
     if (!api?.adopt) return false;
     let result;
     try { result = api.adopt(payload); } catch (err) {
       console.error("[RoomCompanion.adopt]", err);
-      return false;
+      refuseAdopt(err);
+      return true; // handled
     }
     if (result && typeof result.then === "function") {
       result.then((ok) => {
         if (ok) finishAdoptOk();
-        else finishAdoptFail();
+        else refuseAdopt(null);
       }).catch((err) => {
         console.error("[RoomCompanion.adopt]", err);
-        finishAdoptFail();
+        refuseAdopt(err);
       });
       return true; // accepted (async in flight)
     }
@@ -8230,7 +8249,8 @@ function enterEmbeddedRoomCompanion(payload) {
       finishAdoptOk();
       return true;
     }
-    return false;
+    refuseAdopt(null);
+    return true; // handled (refused + refunded)
   };
   if (adoptNow()) return;
   // 模組尚未就緒：保留 pending，短輪詢 adopt
@@ -8376,12 +8396,70 @@ function rosterRoomGirlId() {
   }
 }
 
+/**
+ * 一間房一次只住一位魅魔。回傳現在佔著房間的那位 { id, name, arriving }，空房回 null。
+ * 有人＝她人在房裡，或這趟召喚還沒站定；她回住處／在日本過日子不算。
+ */
+function roomOccupant() {
+  const nameOf = (id, fallback) => state?.succubi?.find(x => x.id === id)?.name || fallback || "她";
+  if (roomSummoningId) return { id: roomSummoningId, name: nameOf(roomSummoningId), arriving: true };
+  const api = window.RoomCompanion;
+  if (typeof api?.occupant === "function") {
+    try {
+      const o = api.occupant();
+      return o?.id ? { id: String(o.id), name: nameOf(String(o.id), o.name), arriving: !!o.arriving } : null;
+    } catch { /* fall through */ }
+  }
+  const id = rosterRoomGirlId();
+  if (id) return { id, name: nameOf(id), arriving: false };
+  if (!api) {
+    // 房間模組還沒載好：看本機房間存檔
+    const o = savedOccupant(readLocalRoomBundle().session);
+    if (o?.id) return { ...o, name: nameOf(o.id, o.name) };
+  }
+  return null;
+}
+
+/** 房裡是別人（或有人正在降臨）：這位不能召喚進房。 */
+function roomFullFor(s) {
+  const occ = roomOccupant();
+  if (!s?.id) return null;
+  return blocksSummon(occ, s.id) ? occ : null;
+}
+
 /** 她人在房間，或這次召喚還沒完成：名冊不顯示召喚。 */
 function rosterSummonBlocked(s) {
   if (!s?.id) return false;
   if (roomSummoningId && roomSummoningId === s.id) return true;
-  const occ = rosterRoomGirlId();
-  return !!occ && occ === s.id;
+  const occ = roomOccupant();
+  return !!occ && occ.id === s.id;
+}
+
+/** 付了錢卻沒能進房（房裡有人／模組拒收）：原數退回。 */
+function refundRoomSummon(girlId, name, cost, why) {
+  const c = Math.max(0, Number(cost) || 0);
+  if (!state || !c) return;
+  state.gold += c;
+  dirty = true;
+  log(`房間召喚 ${name || "她"} 沒進房，退回 ${c} 金${why ? `（${why}）` : ""}`);
+  scheduleSave();
+  toast(`${why || "召喚沒成功"}——退回 ${c} 金`, "bad");
+}
+
+/** 房間模組開機時發現房裡有人而退回的 pending 召喚（存在 localStorage）。 */
+function claimRoomRefunds() {
+  if (!state) return;
+  let rows = [];
+  try {
+    rows = JSON.parse(localStorage.getItem("yoro_room_refunds") || "[]");
+    localStorage.removeItem("yoro_room_refunds");
+  } catch { rows = []; }
+  if (!Array.isArray(rows)) return;
+  for (const r of rows) {
+    if (!r?.cost) continue;
+    refundRoomSummon(r.girlId, r.name, r.cost, r.occupant ? `房裡已經有${r.occupant}了` : "房裡已經有人了");
+  }
+  if (rows.length) { try { renderAll?.(); } catch { /* ignore */ } }
 }
 
 function bindRoomProgressLiveSync() {
@@ -8393,6 +8471,11 @@ function bindRoomProgressLiveSync() {
   window.addEventListener("yoro-room-presence", () => {
     if (!state) return;
     try { renderSuccubi(); } catch { /* ignore */ }
+  });
+  // 房間開機時把付過錢、但房裡已有人的召喚退回來
+  window.addEventListener("yoro-room-refund", () => {
+    if (!state || bootFailed) return;
+    try { claimRoomRefunds(); } catch { /* ignore */ }
   });
   window.addEventListener("yoro-life-agent", (ev) => {
     const girls = ev.detail?.girls || {};
@@ -18127,6 +18210,17 @@ function renderSuccubi() {
   detail.classList.add("hidden");
 
   const roster = $("#roster"); roster.innerHTML = "";
+  // 一間房一次一位：房裡有人時，名冊上方說清楚為什麼別人的召喚是灰的
+  try {
+    const hint = document.querySelector(".roster-hint");
+    const occ = roomOccupant();
+    if (hint) {
+      hint.textContent = occ
+        ? `點一下打開。長按她獻祭。${roomFullText(occ)}。`
+        : "點一下打開。長按她獻祭。";
+      hint.classList.toggle("room-full", !!occ);
+    }
+  } catch { /* ignore */ }
   for (const s of state.succubi) {
    // 單一妹子資料怪掉（舊存檔／房間回寫）只壞她那張卡，不拖垮整個名冊與召喚區塊
    try {
@@ -18135,6 +18229,10 @@ function renderSuccubi() {
     el.className = `scard r-${s.rarity}` + (s.ntr ? " ntr" : "");
     const roomCost = roomSummonCost();
     const asleep = isAsleep();
+    const full = s.ntr ? null : roomFullFor(s);
+    const summonBtn = full
+      ? `<button type="button" class="roster-summon is-full" aria-disabled="true" title="${esc(roomFullText(full))}">房裡有人</button>`
+      : `<button type="button" class="roster-summon" ${asleep ? "disabled" : ""} title="付 ${roomCost} 金帶她進房間。人在房間時先收起，離開後才能再召。">召喚（${roomCost}金）</button>`;
     el.innerHTML = `
       <div class="thumb">${girlPortrait(s, 2.5, "head")}</div>
       <div class="sinfo">
@@ -18145,7 +18243,7 @@ function renderSuccubi() {
           ${s.summoner && !s.ntr ? `<span class="stage-chip" style="color:var(--red)">⚠ ${esc(summonerById(s.summoner.id)?.name || "被纏上")}${s.summoner.ringUnlocked ? "・已解環" : ""}</span>` : ""}</div>
         ${affThermoHtml(s)}
       </div>
-      ${s.ntr || rosterSummonBlocked(s) ? "" : `<button type="button" class="roster-summon" ${asleep ? "disabled" : ""} title="付 ${roomCost} 金帶她進房間。人在房間時先收起，離開後才能再召。">召喚（${roomCost}金）</button>`}
+      ${s.ntr || rosterSummonBlocked(s) ? "" : summonBtn}
       <div class="status-dot ${st}"></div>`;
     if (!s.ntr) el.title = "點一下打開。長按獻祭。";
     // 長按只做記號。等手指放開、那一下 click 過去之後才打開確認，避免鬆手點到「確定獻祭」。
@@ -18231,6 +18329,7 @@ function renderDetail(s, root) {
 
   // 詳情：名 → 召喚（人在房間時收起，離開後才再出現）→ 肖像。簡介與作息時段不再顯示。
   const showRoomSummon = !s.ntr && !rosterSummonBlocked(s);
+  const roomFull = showRoomSummon ? roomFullFor(s) : null;
   root.className = `r-${s.rarity}`;
   root.innerHTML = `
     <div class="panel">
@@ -18250,7 +18349,10 @@ function renderDetail(s, root) {
       <div class="detail-actions">
         ${s.ntr
           ? `<button class="gold" id="act-ransom">贖回 ${RANSOM[s.stage]} 金</button>`
-          : `${showRoomSummon ? `<button class="cyan" id="act-room-summon" ${asleep ? "disabled" : ""} title="${esc(summonHint)}">召喚（${roomCost}金）</button>` : ""}
+          : `${showRoomSummon ? (roomFull
+              ? `<button class="cyan is-full" id="act-room-summon" aria-disabled="true" title="${esc(roomFullText(roomFull))}">召喚（${roomCost}金）</button>
+                 <div class="room-full-note">${esc(roomFullText(roomFull))}。</div>`
+              : `<button class="cyan" id="act-room-summon" ${asleep ? "disabled" : ""} title="${esc(summonHint)}">召喚（${roomCost}金）</button>`) : ""}
             ${showDetailPeek ? `<button class="cyan" id="act-peek" title="${esc(peekHint)}">窺視</button>` : ""}
             <button type="button" class="danger" id="act-sacrifice" title="獻給地獄惡魔，她會永遠消失">獻祭（${dismissPriceToday()}金）</button>
             <div id="sac-ask" hidden>
