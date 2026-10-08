@@ -13460,9 +13460,64 @@ function pomoSetLandscape(on) {
   } catch (e) { console.warn("[番茄鐘] setLandscape 失敗", e); }
   if (on && !pomoOldAppWarned) {
     pomoOldAppWarned = true;
-    try { toast("App 是舊版，番茄鐘轉不了橫向。到 設定 → 發現 → 安裝包（或開 /download）重裝新版。", "bad"); } catch { /* ignore */ }
+    try { toast("App 是舊版，番茄鐘轉不了橫向，螢幕也可能自己休眠。到 設定 → 發現 → 安裝包（或開 /download）重裝新版。", "bad"); } catch { /* ignore */ }
   }
 }
+
+// 番茄鐘開著（倒數、時間到／長按的提問、結果）螢幕不要自己休眠：鎖屏或切走，時間到就算未完成。
+// App 8.2 起有原生 setKeepScreenOn（視窗旗標）；另外能用 Screen Wake Lock 就也要一個
+// （網頁、或舊殼但頁面是 https 時有效；http 區網網址瀏覽器不給，那時只能靠原生）。
+let pomoWakeWanted = false;
+let pomoWakeLock = null;
+let pomoWakePending = false;
+function pomoWakeLockOk() {
+  try { return !!(window.isSecureContext && navigator.wakeLock && typeof navigator.wakeLock.request === "function"); }
+  catch { return false; }
+}
+async function pomoRequestWakeLock() {
+  if (!pomoWakeWanted || pomoWakeLock || pomoWakePending) return;
+  if (document.visibilityState !== "visible" || !pomoWakeLockOk()) return;
+  pomoWakePending = true;
+  try {
+    const lock = await navigator.wakeLock.request("screen");
+    if (!pomoWakeWanted) { lock.release().catch(() => {}); return; }
+    pomoWakeLock = lock;
+    lock.addEventListener("release", () => { if (pomoWakeLock === lock) pomoWakeLock = null; });
+  } catch (e) {
+    console.warn("[番茄鐘] wake lock 要不到", e);
+  } finally {
+    pomoWakePending = false;
+  }
+}
+function pomoKeepAwake(on) {
+  pomoWakeWanted = !!on;
+  let b = null;
+  try { b = window.YoroAndroid || null; } catch { b = null; }
+  let native = false;
+  if (b) {
+    try {
+      if (typeof b.setKeepScreenOn === "function") { b.setKeepScreenOn(!!on); native = true; }
+    } catch (e) { console.warn("[番茄鐘] setKeepScreenOn 失敗", e); }
+  }
+  if (on) {
+    void pomoRequestWakeLock();
+    // App 8.1 以前沒有這個方法、頁面又拿不到 wake lock：提醒一次重裝（跟轉橫向那則共用，只跳一次）。
+    if (b && !native && !pomoWakeLockOk() && !pomoOldAppWarned) {
+      pomoOldAppWarned = true;
+      try { toast("App 是舊版，番茄鐘開著時螢幕會自己休眠（休眠算未完成）。到 設定 → 發現 → 安裝包（或開 /download）重裝新版。", "bad"); } catch { /* ignore */ }
+    }
+  } else if (pomoWakeLock) {
+    const lock = pomoWakeLock;
+    pomoWakeLock = null;
+    lock.release().catch(() => {});
+  }
+}
+// 切走再回來，瀏覽器會自己放掉 wake lock：鐘還開著就再要一次。
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && pomoWakeWanted) void pomoRequestWakeLock();
+});
+// 整頁離開（重新整理、換頁）：放掉。重新載入後鐘還在跑，resumePomo 會再要。
+window.addEventListener("pagehide", () => { if (pomoWakeWanted) pomoKeepAwake(false); });
 
 function applyPomoAff(girlId, delta, reason) {
   try {
@@ -13701,6 +13756,7 @@ function pomoShow() {
   el.hidden = false;
   document.body.classList.add("pomo-on");
   pomoSetLandscape(true);
+  pomoKeepAwake(true);
   pomoPaint();
   if (state?.pomodoro?.phase === "run") pomoArmTick();
   else pomoStopTick();
@@ -13715,6 +13771,7 @@ function pomoClose() {
   if (el) el.hidden = true;
   document.body.classList.remove("pomo-on");
   pomoSetLandscape(false);
+  pomoKeepAwake(false);
   scheduleSave();
   try { renderHud(); } catch { /* ignore */ }
 }
@@ -13748,6 +13805,7 @@ function pomoSettle(kind) {
     if (el) el.hidden = true;
     document.body.classList.remove("pomo-on");
     pomoSetLandscape(false);
+    pomoKeepAwake(false);
     scheduleSave();
     try { renderHud(); } catch { /* ignore */ }
     toast("番茄鐘完成　感情 +2　金錢 +5", "good");
@@ -13763,6 +13821,7 @@ function pomoSettle(kind) {
     if (el) el.hidden = true;
     document.body.classList.remove("pomo-on");
     pomoSetLandscape(false);
+    pomoKeepAwake(false);
     scheduleSave();
     try { renderAll(); } catch { /* ignore */ }
     toast("番茄鐘打斷　感情 −5　金錢 −10", "bad");
@@ -13779,6 +13838,7 @@ function pomoSettle(kind) {
     if (el) el.hidden = true;
     document.body.classList.remove("pomo-on");
     pomoSetLandscape(false);
+    pomoKeepAwake(false);
     scheduleSave();
     try { renderHud(); } catch { /* ignore */ }
     toast("番茄鐘未完成　感情 −2　金錢 −5", "bad");
@@ -13814,7 +13874,7 @@ function pomoResume() {
 function resumePomo() {
   const p = state?.pomodoro;
   // 沒有鐘在跑：確保 App 回直向（例如橫著的時候整頁重新整理過）。
-  if (!p?.phase) { pomoSetLandscape(false); return; }
+  if (!p?.phase) { pomoSetLandscape(false); pomoKeepAwake(false); return; }
   if (p.phase === "run" && p.endsAt && Date.now() >= p.endsAt) {
     pomoSettle("miss");
     return;

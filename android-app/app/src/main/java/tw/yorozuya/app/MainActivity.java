@@ -16,6 +16,7 @@ import android.os.Environment;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
 import android.webkit.RenderProcessGoneDetail;
@@ -130,6 +131,8 @@ public class MainActivity extends Activity {
         @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
             mainFrameError = false;
+            // 換頁／重新整理：先放掉番茄鐘的「螢幕不休眠」，新頁面若鐘還在跑會自己再要一次。
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
 
         @Override

@@ -15,6 +15,7 @@ import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowManager;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.JavascriptInterface;
@@ -27,7 +28,8 @@ import java.io.OutputStream;
 /**
  * 給網頁用的小橋接（window.YoroAndroid）：
  * - vibrate(ms)：WebView 本身不支援 navigator.vibrate，這裡補上
- * - setLandscape(on)：番茄鐘翻頁鐘轉橫向／轉回直向；appVersion()：殼的 versionCode
+ * - setLandscape(on)：番茄鐘翻頁鐘轉橫向／轉回直向；setKeepScreenOn(on)：番茄鐘開著時螢幕不休眠；
+ *   appVersion()：殼的 versionCode
  * - saveFile(name, mime, base64)：WebView 不會處理 &lt;a download href="blob:..."&gt;，
  *   遊戲「匯出存檔」靠這個存到手機的「下載」資料夾
  * 只會注入到使用者設定的伺服器（同源）頁面。
@@ -119,6 +121,20 @@ final class AndroidBridge {
                     ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
             setImmersive(on);
+        });
+    }
+
+    /**
+     * 番茄鐘：開著的時候螢幕不要自己休眠（鎖屏／切走會算未完成）。
+     * 只是視窗旗標，不用權限；App 切到背景就自然失效，關掉番茄鐘或換頁就清掉。
+     */
+    @JavascriptInterface
+    public void setKeepScreenOn(boolean on) {
+        activity.runOnUiThread(() -> {
+            Window w = activity.getWindow();
+            if (w == null) return;
+            if (on) w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         });
     }
 
