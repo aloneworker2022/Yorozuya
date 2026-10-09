@@ -22,13 +22,13 @@ export const SCP_NEXT_CHANCE = 1 / 3;
 export const SCP_GAP_MS = 2 * 24 * HOUR_MS;
 export const SCP_GAP_SPREAD_MS = 2 * 24 * HOUR_MS;
 /* 色情變態奇遇（2026-10-10）：30 件、每件 5 步，她只是看見。第一次 1/10、下一步 1/3（再乘性慾、飢渴、心情），
- * 兩步之間隔 1 天＋0～1 天亂數。每一步飢渴 +ERO_HUNGER[步]×LIBIDO_HUNGER[等級]（四捨五入）。 */
+ * 兩步之間隔 1 天＋0～1 天亂數。每一步飢渴（2026-10-10 加大）+ERO_HUNGER[步]×LIBIDO_HUNGER[等級]（四捨五入）。 */
 export const ERO_STAGES = 5;
 export const ERO_FIRST_CHANCE = 1 / 10;
 export const ERO_NEXT_CHANCE = 1 / 3;
 export const ERO_GAP_MS = 24 * HOUR_MS;
 export const ERO_GAP_SPREAD_MS = 24 * HOUR_MS;
-export const ERO_HUNGER = [3, 4, 5, 6, 8];
+export const ERO_HUNGER = [10, 14, 18, 22, 25];
 export const LIBIDO_HUNGER = { N: 0.8, R: 1.0, S: 1.1, SS: 1.2, SSR: 1.3 };
 const STROLL_SHORT_MS = 30 * 60 * 1000;
 

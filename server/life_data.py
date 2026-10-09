@@ -366,7 +366,7 @@ SCP_EVENTS = [
 # places：會在哪幾種溜達地點碰到（STROLL_PLACES 的 id）。
 ERO_FIRST_CHANCE = 1 / 10
 ERO_NEXT_CHANCE = 1 / 3
-ERO_HUNGER = (3, 4, 5, 6, 8)   # 每一步讓她的性飢渴 +多少（再乘性慾等級倍率）
+ERO_HUNGER = (10, 14, 18, 22, 25)   # 每一步讓她的性飢渴 +多少（再乘性慾等級倍率）
 EROTIC_EVENTS = [
     {"id": "nude-walk", "title": "深夜裸體散步的情侶", "places": ["park", "river"], "stages": [
         "遠處一對成年情侶並肩散步，女方的大衣下面好像什麼都沒穿。",
