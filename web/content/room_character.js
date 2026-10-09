@@ -350,7 +350,7 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
       const t=animT-(act.holdAt||0);
       // Subtle: on start for 6 s, then 5 s every 20 s (zzz floats the whole time she sleeps).
       let a=0;
-      if(sleepy)a=1;
+      if(sleepy||act.spec.sticky)a=1;   // zzz / 求你（hunger_beg）一直浮著
       else if(t<6)a=Math.min(1,t/.3,(6-t)/.4);
       else{const c=(t-6)%20;if(c>15)a=Math.min(1,(c-15)/.3,(20-c)/.4);}
       return a>0?{icon:act.spec.icon,alpha:Math.max(0,Math.min(1,a)),t}:null;

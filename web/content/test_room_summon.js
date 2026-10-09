@@ -60,7 +60,7 @@ import {
   occupancyMoanLine,
   occupancyPromptLine,
   occupancyLabel,
-} from "./stun_speech.js?v=21";
+} from "./stun_speech.js?v=22";
 import {
   pickPortraitUrl,
   portraitPathKey,
@@ -317,6 +317,24 @@ import { rollStayHours, visitDue } from "./life_schedule.js?v=2";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.js?v=1";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
+import {
+  hungerOn,
+  ensureHunger,
+  tickHunger,
+  peekHunger,
+  relieveHunger,
+  setHunger,
+  noteBeg,
+  begActive,
+  closeBeg,
+  temperOnOpen,
+  hungerArousalBonus,
+  activityHunger,
+  hungerPromptLines,
+  hungerOpenerHint,
+  hungerLabel,
+  hungerTier,
+} from "./hunger.js?v=1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -338,7 +356,7 @@ window.RoomActivityContext = () => {
   if (!girl) return null;
   const A = roomActs(), mem = roomActMem();
   const mood = getMoodCarry(girl);
-  return {
+  const ctx = {
     hour: taiwanNow().hour,
     chrono: girl.chrono?.name || "",
     mood: mood ? { type: mood.type, level: mood.level } : null,
@@ -352,14 +370,21 @@ window.RoomActivityContext = () => {
     calm: (() => { const el = document.getElementById("pomo"); return !!el && !el.hidden; })(),
     now: Date.now(),
   };
+  // 性飢渴（hunger.js）：夾腿扭／坐立不安／偷看；妻子很高 → 走過來求（冷卻在 hunger.js）
+  if (HUNGER_ON) Object.assign(ctx, activityHunger(girl, { stageKey: girl.stage || "stranger", now: ctx.now, calm: ctx.calm }));
+  return ctx;
 };
 let roomActSavedAt = 0;
 window.RoomActivitySink = (evt) => {
   const A = roomActs(), mem = roomActMem();
   if (!A || !mem || !evt?.id) return;
-  if (evt.type === "start") A.noteStart(mem, { id: evt.id, at: evt.at, dur: evt.dur });
-  else if (evt.type === "hold" && mem.cur?.id === evt.id) mem.cur.since = evt.at;
-  else return;
+  if (evt.type === "start") {
+    A.noteStart(mem, { id: evt.id, at: evt.at, dur: evt.dur });
+    if (evt.id === "hunger_beg" && HUNGER_ON) hungerBegStarted();
+  } else if (evt.type === "hold" && mem.cur?.id === evt.id) {
+    mem.cur.since = evt.at;
+    if (evt.id === "hunger_beg" && HUNGER_ON && girl) showHungerNote(`${girl.name || "她"}走到你面前，扭扭捏捏地看著你…`, "長按她，聽聽她想說什麼");
+  } else return;
   if (mem.bias && !A.biasStrength(mem.bias)) mem.bias = null;
   // 活動 1～3 分鐘才換一次；開始時順手存檔（最多 20 秒一次）
   if (evt.type === "start" && Date.now() - roomActSavedAt > 20000) {
@@ -368,6 +393,116 @@ window.RoomActivitySink = (evt) => {
   }
 };
 let roomActTalkStart = null;
+
+// ---------------------------------------------------------------- 性飢渴（hunger.js，2026-10-09）
+/** 性飢渴閘門：<html data-hunger="1">（test_room＋主房間都開；拿掉屬性即關）。跟退役的 CRAVE_ON／舊 crave 欄位無關。 */
+const HUNGER_ON = hungerOn();
+/** 妻子：她開始走過來 → 記冷卻＋開「求」的窗口；走到面前（hold）才跳一張不擋路的粉紅小卡（點掉或 5 秒自己收）。 */
+function hungerBegStarted() {
+  if (!girl) return;
+  noteBeg(girl);
+  pushDebug("性飢渴：她走過來求你了");
+  persistRoom();
+  renderDebug();
+}
+let hungerNoteTimer = 0;
+function showHungerNote(title, sub = "") {
+  let el = $("hunger-note");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "hunger-note";
+    el.className = "hunger-note";
+    el.hidden = true;
+    el.setAttribute("role", "status");
+    el.innerHTML = "<b></b><small></small>";
+    el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); hideHungerNote(); });
+    el.addEventListener("pointerdown", (e) => e.stopPropagation());
+    document.body.appendChild(el);
+  }
+  el.querySelector("b").textContent = title;
+  const small = el.querySelector("small");
+  small.textContent = sub;
+  small.hidden = !sub;
+  el.hidden = false;
+  void el.offsetWidth;
+  el.classList.add("in");
+  if (hungerNoteTimer) clearTimeout(hungerNoteTimer);
+  hungerNoteTimer = setTimeout(() => { el.classList.remove("in"); setTimeout(() => { if (!el.classList.contains("in")) el.hidden = true; }, 260); }, 5000);
+}
+/** 被滿足：orgasm 大降、creampie 中降、touch 小降。 */
+function hungerRelief(kind) {
+  if (!HUNGER_ON || !girl) return;
+  const r = relieveHunger(girl, kind, Date.now(), girl.stage || "stranger");
+  if (r && r.drop > 0 && kind !== "touch") pushDebug(`性飢渴 ${Math.round(r.before)}→${Math.round(r.after)}（${kind === "orgasm" ? "高潮" : "內射"}）`);
+}
+/** 打開聊天：算時間、女友起欲求不滿的小脾氣（有冷卻）、妻子來求的那次標成被看到了。 */
+function hideHungerNote() {
+  const el = $("hunger-note");
+  if (!el) return;
+  el.classList.remove("in");
+  el.hidden = true;
+}
+function hungerChatOpen() {
+  hideHungerNote();
+  if (!HUNGER_ON || !girl) return;
+  const now = Date.now(), stageKey = girl.stage || "stranger";
+  const lv = tickHunger(girl, now, stageKey);
+  const h = ensureHunger(girl, now);
+  if (h?.beg && begActive(girl, now)) {
+    h.beg.seen = true;
+    pushDebug("性飢渴：她來求你，你理她了");
+  }
+  const mood = temperOnOpen(girl, { stageKey, now });
+  if (mood) {
+    noteMood(girl, { ...mood, now });
+    pushDebug(`性飢渴 ${Math.round(lv)}：欲求不滿（angry ${mood.level}）`);
+  }
+}
+function hungerChatClose() {
+  if (!HUNGER_ON || !girl) return;
+  if (girl.bodyState?.hunger?.beg?.seen) closeBeg(girl);
+}
+function renderHungerDebug() {
+  const el = $("dbg-hunger");
+  if (!el) return;
+  if (!HUNGER_ON || !girl) { el.textContent = "—"; return; }
+  ensureBody(girl);
+  ensureHunger(girl);
+  el.textContent = hungerLabel(girl, Date.now(), girl.stage || "stranger");
+}
+function bindHungerDebug() {
+  const set = (v) => {
+    if (!HUNGER_ON || !girl) return;
+    ensureBody(girl);
+    setHunger(girl, v);
+    persistRoom();
+    renderDebug();
+  };
+  onId("dbg-hunger-0", "click", () => set(0));
+  onId("dbg-hunger-50", "click", () => set(50));
+  onId("dbg-hunger-75", "click", () => set(75));
+  onId("dbg-hunger-95", "click", () => set(95));
+  onId("dbg-hunger-12h", "click", () => {
+    if (!HUNGER_ON || !girl) return;
+    ensureBody(girl);
+    const h = ensureHunger(girl);
+    tickHunger(girl, Date.now(), girl.stage || "stranger");
+    h.at -= 12 * 3600e3;
+    h.satedUntil = 0;
+    tickHunger(girl, Date.now(), girl.stage || "stranger");
+    persistRoom();
+    renderDebug();
+  });
+  // 立刻讓她走過來求（不看關係階、不看冷卻；測試用）
+  onId("dbg-hunger-beg", "click", () => {
+    if (!HUNGER_ON || !girl) return;
+    ensureBody(girl);
+    if (peekHunger(girl) < 85) setHunger(girl, 95);
+    const ok = window.RoomActor?.startActivity?.("hunger_beg");
+    pushDebug(ok ? "除錯：叫她走過來求" : "除錯：她現在走不過去（不在房間／坐著）");
+    renderDebug();
+  });
+}
 /** 打開對話：記下她正在做的事（prompt 用），算打斷後果（有冷卻），定住她的姿勢。 */
 function activityChatOpen() {
   const A = roomActs(), mem = roomActMem();
@@ -376,6 +511,7 @@ function activityChatOpen() {
   const live = window.RoomActor?.activity?.() || null;
   window.RoomActor?.hold?.(true);
   roomActTalkStart = { aff: girl.affection || 0, arousal: girl.bodyState?.arousal || 0 };
+  hungerChatOpen();
   // 只有她已經「在做」（不是正走過去）才算被打斷
   if (!live || live.phase !== "hold" || mem.cur?.id !== live.id) {
     mem.talk = null;
@@ -408,6 +544,7 @@ function activityChatClose() {
     now,
   });
   const woke = !!mem.talk?.wake;
+  hungerChatClose();
   mem.closeAt = now;
   mem.talk = null;
   if (bias) {
@@ -1903,6 +2040,7 @@ function flushThrustDeferred(why = "") {
   if (o) {
     bumpAffection(o.affection, `她高潮（第 ${o.count} 次）`);
     noteAfterglow(girl, "hers");
+    hungerRelief("orgasm");
     sexChat.news.push("orgasm");
     lines.push({ role: "user", content: THRUST.SQUIRT_IN_FLOW ? "（她高潮了，潮吹、全身痙攣。）" : "（她高潮了，全身痙攣。）" });
     showClimaxTip(o.count > 1 ? `她又高潮了！（${o.count}）` : "她高潮了！");
@@ -2250,6 +2388,7 @@ function doThrust() {
     const o = ensureBody(who)?.organs;
     if (o?.uterus) o.uterus.semen = Math.min(3, (Number(o.uterus.semen) || 0) + 1);
     noteAfterglow(who, "his", { ejac: "creampie" });
+    hungerRelief("creampie");
     sexChat.news.push(r.blood ? "bloodcum" : "cum");
     if (r.blood) sexChat.bloodShots = (sexChat.bloodShots || 0) + 1;
     // 射精 → 立刻換 ⑥ 內射圖（留到下一下肏）；血精 → ⑦ 血精圖（快取有就直接用，沒有先用內射圖、產好再換）
@@ -6527,6 +6666,7 @@ function renderDebug() {
     } catch { occEl.textContent = "—"; }
   }
   renderMissDebug();
+  renderHungerDebug();
   renderReckonDebug();
   renderThrustDebug();
   const jump = $("dbg-jump");
@@ -6726,6 +6866,9 @@ function enterOpener(returning) {
   const actTalk = girl?.roomActivity?.talk;
   const actHint = actTalk && roomActs() ? roomActs().openerHint(actTalk, girl.chrono?.wake_react || "") : "";
   if (actHint && line) line = `${line}（旁白補充：${actHint}）`;
+  // 性飢渴：女友起不耐煩／妻子色色暗示或來求
+  const hungerHint = HUNGER_ON && girl ? hungerOpenerHint(girl, { stageKey: girl.stage || "stranger" }) : "";
+  if (hungerHint && line) line = `${line}（旁白補充：${hungerHint}）`;
   const shyHint = undressShyOpenerHint(undressStage(girl), girl.stage || "stranger");
   if (shyHint && line) line = `${line}（旁白補充：${shyHint}）`;
   const friendUp = consumeFriendUpBeat(girl);
@@ -6929,6 +7072,7 @@ function talkSystem(userText = "") {
     guardLine(),
     ...moodCarryPromptLines(girl, { stageKey: girl.stage || "stranger", invasion: getInvasion(girl) }),
     ...(MISS_YOU_ON ? missPromptLines(girl, { stageKey: girl.stage || "stranger", personality: basePersonality(girl) }) : []),
+    ...(HUNGER_ON ? hungerPromptLines(girl, { stageKey: girl.stage || "stranger", opening: lines.length === 0 }) : []),
     ...personalityStageLines(),
     ...kinkRevealLines(),
     ...stageTalk(),
@@ -7541,6 +7685,12 @@ async function deliverUserTalk(text, opts = {}) {
         applyAct(girl, opts.actId);
         recordTeasePress(girl, opts.actId);
         noteActShock(girl, opts.actId);
+        if (HUNGER_ON) {
+          // 朋友起：飢渴時被碰，性奮多漲一點；每次動手飢渴小降
+          const hb = hungerArousalBonus(girl, Date.now(), girl.stage || "stranger");
+          if (hb && girl.bodyState) girl.bodyState.arousal = clampBody((girl.bodyState.arousal || 0) + hb);
+          hungerRelief("touch");
+        }
         if (opts.actId === "butt") void maybeGenButtShot(girl, opts.actId);
         if (opts.actId === "waist") void maybeGenWaistShot(girl, opts.actId);
         if (opts.actId === "breast") void maybeGenBreastShot(girl, opts.actId);
@@ -7574,6 +7724,7 @@ async function deliverUserTalk(text, opts = {}) {
           noteAfterglow(girl, "hers");
           herClimaxNow = true;
         }
+        if (spasm.enteredSpasm || herClimaxNow) hungerRelief("orgasm");
         const stunAfter = effectiveStun(girl, opts.actId);
         // 首次因 stun≥75 進入 skip-LLM（非痙攣路徑也標她高潮餘韻）
         if (stunBefore < 75 && stunAfter >= 75) {
@@ -10274,6 +10425,7 @@ onId("dbg-jump", "change", () => {
 });
 bindTalkActs();
 bindMissDebug();
+bindHungerDebug();
 bindReckonDebug();
 onId("talk-input-row", "submit", (event) => { sendTalk(event); });
 onId("portrait-backdrop", "click", () => {
@@ -10489,6 +10641,14 @@ window.RoomCompanion = {
     pool: () => sexThrustPool(),
   },
   /** 動作圖裸體版除錯：on＝閘門；lastPick＝上一次選圖；pregen＝手動排補產。 */
+  /** 性飢渴除錯：on＝閘門；state＝bodyState.hunger＋現在值；set(v)；lines(opening)＝這句 prompt 會帶的幾行。 */
+  hunger: {
+    on: () => HUNGER_ON,
+    state: () => (girl ? { ...JSON.parse(JSON.stringify(ensureHunger(girl) || {})), now: peekHunger(girl), tier: hungerTier(peekHunger(girl)), label: hungerLabel(girl) } : null),
+    set: (v) => { if (!girl) return null; ensureBody(girl); const r = setHunger(girl, v); persistRoom(); renderDebug(); return r; },
+    lines: (opening = false) => (girl ? hungerPromptLines(girl, { stageKey: girl.stage || "stranger", opening }) : []),
+    beg: () => { if (!girl) return false; ensureBody(girl); if (peekHunger(girl) < 85) setHunger(girl, 95); return !!window.RoomActor?.startActivity?.("hunger_beg"); },
+  },
   /** 想念值除錯：on＝閘門；state＝bodyState.missYou；ago(h)＝把上次見面往前推 h 小時。 */
   missYou: {
     on: () => MISS_YOU_ON,

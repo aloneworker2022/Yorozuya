@@ -11,7 +11,8 @@ import {
   occupancyMoanLine as occMoanLine,
   occupancyPromptLine,
   occupancyLabel,
-} from "./mind_occupancy.js?v=1";
+} from "./mind_occupancy.js?v=2";
+import { hungerOn, hungerOccupancyPts } from "./hunger.js?v=1";
 
 export { occupancyPromptLine, occupancyLabel, OCC_BANDS };
 
@@ -1010,6 +1011,9 @@ export function occupancySources(who, actId = "", opts = {}) {
   if (P[vs] && ["vibe", "penis", "dildo", "cucumber", "fingers"].includes(vs)) list.push({ id: vs, pts: P[vs] });
   const as = String(o.anus?.stuffed || "");
   if (P[as] && ["vibe", "penis", "dildo", "cucumber", "fingers"].includes(as)) list.push({ id: "anal", pts: Math.round(P[as] / 2) });
+  // 性飢渴很高（朋友起）：腦袋被佔一點（閘門 data-hunger；opts.hunger 給測試用）
+  const hp = opts.hunger != null ? Number(opts.hunger) || 0 : hungerOn() ? hungerOccupancyPts(who, opts.now || Date.now()) : 0;
+  if (hp > 0) list.push({ id: "hunger", pts: hp });
   return list;
 }
 

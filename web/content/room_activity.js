@@ -50,6 +50,13 @@
     { id: 'twirl', name: '無聊地捲著頭髮', pose: 'twirl', place: 'floor', spot: 'any', facing: 'out', dur: [50, 120],
       icon: 'dots', kind: 'idle', relax: 0, w: .9,
       doing: '無聊地捲著頭髮', react: '正無聊，被理很高興' },
+    // 性飢渴（hunger.js，2026-10-09）：只在飢渴時出現
+    { id: 'squirm', name: '夾著腿扭來扭去', pose: 'restless', place: 'floor', spot: 'any', facing: 'out', dur: [50, 110],
+      icon: 'sweat', kind: 'mood', relax: 0, w: 0, moodOnly: true,
+      doing: '夾著腿站著扭來扭去、一直換重心', react: '身體燥熱、坐立難安，被叫到嚇一跳，裝作沒事' },
+    { id: 'hunger_beg', name: '走到你面前扭扭捏捏地求你', pose: 'restless', place: 'floor', spot: 'front', facing: 'front', dur: [100, 180],
+      icon: 'heart', kind: 'mood', relax: 0, w: 0, moodOnly: true, sticky: true,
+      doing: '特地走到他面前，扭扭捏捏地一直看著他、等他碰自己', react: '是特地過來求他的，第一句就撒嬌地求他抱你、跟你做' },
     { id: 'chair_sit', name: '端正地坐在椅子上', pose: 'sit', place: 'seat', seat: ['chair'], dur: [80, 180],
       icon: null, kind: 'idle', relax: 0, w: 1,
       doing: '端正地坐在椅子上', react: '坐著沒事做，被叫到馬上看過來' },
@@ -61,6 +68,7 @@
   const HISTORY_MAX = 8;
   const BIAS_TAU_MS = 8 * 60 * 1000;          // 聊完的偏向：e 倍衰減時間
   const BIAS_MIN = .08;
+  const HUNGER_ACT_AT = 40;                   // 性飢渴 ≥40 才開始影響活動
   const GLAD_COOLDOWN_MS = 20 * 60 * 1000;    // 打斷她無聊 → 感情 +1，每 20 分鐘最多一次
   const ANNOY_COOLDOWN_MS = 10 * 60 * 1000;   // 打斷專心的事 → 小小不爽，每 10 分鐘最多一次
   const REOPEN_GRACE_MS = 60 * 1000;          // 關掉對話 1 分鐘內再打開：不算打斷
@@ -103,7 +111,8 @@
   }
 
   /**
-   * ctx：{hour, chrono, mood:{type,level}, miss, stage, hobbies[], arousal, history:[id…新→舊], bias, now, seats:['chair'…], calm}
+   * ctx：{hour, chrono, mood:{type,level}, miss, stage, hobbies[], arousal, history:[id…新→舊], bias, now, seats:['chair'…], calm,
+   *       hunger 0–100（性飢渴，hunger.js）, hungerBeg（妻子、很高、冷卻過了 → 走過來求）}
    * 回傳每個活動的權重（Map id → w）。
    */
   function weights(ctx = {}) {
@@ -115,6 +124,7 @@
     const ml = mood ? mood.level : 0, mt = mood ? mood.type : '';
     const miss = clamp(Number(ctx.miss) || 0, 0, 100);
     const arousal = clamp(Number(ctx.arousal) || 0, 0, 100);
+    const hunger = clamp(Number(ctx.hunger) || 0, 0, 100);
     const hobbies = (ctx.hobbies || []).join('、');
     const hist = ctx.history || [];
     const seats = new Set(ctx.seats || []);
@@ -139,6 +149,17 @@
       if (mt === 'angry' || mt === 'hurt') { if (a.kind === 'fun' || a.id === 'stare') w *= Math.max(.1, 1 - ml / 50); if (a.id === 'hug_knees' && mt === 'hurt') w *= 2; }
       if (mt === 'flustered') { if (a.id === 'twirl') w += ml / 18; if (a.id === 'hug_knees') w *= 1.6; }
       if (mt === 'aroused' && a.id === 'stare') w += ml / 40;
+      // 性飢渴：夾腿扭、前面坐立不安偷瞄、盯著你、捲頭髮、抱膝夾腿；不太睡得著。所有關係階都有（陌生只有這些）
+      if (hunger >= HUNGER_ACT_AT) {
+        const k = (hunger - HUNGER_ACT_AT) / (100 - HUNGER_ACT_AT);   // 0～1
+        if (a.id === 'squirm') w += .25 + 2.4 * k;
+        if (a.id === 'restless') w += 2 * k;
+        if (a.id === 'stare') w += .5 * k;
+        if (a.id === 'twirl') w *= 1 + .8 * k;
+        if (a.id === 'hug_knees') w *= 1 + k;
+        if (a.kind === 'sleep') w *= 1 - .6 * k;
+      }
+      if (a.id === 'hunger_beg') w = ctx.hungerBeg && !ctx.calm ? 40 : 0;
       // 想念：高 → 走到前面盯著你、不想躺遠遠的
       if (a.id === 'stare') w += Math.max(0, miss - 30) / 16;
       if ((a.lie || a.kind === 'sleep') && miss > 40) w *= 1 - (miss - 40) / 100;
@@ -153,7 +174,7 @@
         if (bk === 'flustered') { if (a.id === 'twirl') w += 2 * bs; else if (a.id === 'hug_knees') w *= 1 + 2 * bs; }
       }
       // 番茄鐘開著：安靜一點
-      if (ctx.calm && (a.lively || a.id === 'restless' || a.id === 'stare')) w *= .25;
+      if (ctx.calm && (a.lively || a.id === 'restless' || a.id === 'stare' || a.id === 'squirm')) w *= .25;
       // 最近做過的：不連續重複
       if (hist[0] === a.id) w = 0;
       else if (hist[1] === a.id) w *= .35;
@@ -294,7 +315,7 @@
     return `她剛才正${act.doing}；${act.react}`;
   }
 
-  const api = { ACTIVITIES, BY_ID, STAGES, HISTORY_MAX, BIAS_TAU_MS, GLAD_COOLDOWN_MS, ANNOY_COOLDOWN_MS, REOPEN_GRACE_MS, MIN_ENGAGED_MS, WAKE_ANNOY,
+  const api = { ACTIVITIES, BY_ID, STAGES, HISTORY_MAX, HUNGER_ACT_AT, BIAS_TAU_MS, GLAD_COOLDOWN_MS, ANNOY_COOLDOWN_MS, REOPEN_GRACE_MS, MIN_ENGAGED_MS, WAKE_ANNOY,
     sleepiness, liveliness, partOfDay, biasStrength, weights, pick, duration, ensureMem, noteStart, historyIds,
     interrupt, chatBias, promptLines, openerHint, ago };
   if (typeof module === 'object' && module && module.exports) module.exports = api;

@@ -4,7 +4,7 @@
  *
  * 來源（各自一種呻吟味道）：spasm 痙攣、overstim 痙攣中還被弄、climax 高潮、stun 失神、
  * nipple 乳頭腫、clit 陰蒂腫、nipple_ring 乳環（掛鉤，尚無道具）、vibe／penis／dildo／cucumber／fingers 陰道塞著、
- * anal 後穴塞著、semen_out 子宮精液流出（一次性事件）。
+ * anal 後穴塞著、semen_out 子宮精液流出（一次性事件）、hunger 性飢渴很高（hunger.js，朋友起 6～14，2026-10-09）。
  *
  * 疊加：最大的來源全算，其餘依「剩下的空間」打折加上：score = max + Σ其他 × (100 − max)/100。
  *   例：跳蛋 45 ＋ 乳頭腫 15 → 45 + 15×0.55 ≈ 53。
@@ -53,6 +53,7 @@ const SOURCE_MOANS = {
   fingers: ["嗯", "啊", "嗯嗯", "唔嗯"],
   anal: ["唔", "嗯", "咿"],
   semen_out: ["啊～", "喔～", "呀～"],
+  hunger: ["哈…", "嗯…", "唔…", "嗯"],
 };
 
 /** 精液流出：一次性驚呼（整段塞一次）。 */
@@ -419,7 +420,7 @@ export function occupancyPromptLine(occ) {
 const SRC_ZH = {
   spasm: "痙攣", overstim: "過感", climax: "高潮", stun: "失神", nipple: "乳頭腫", clit: "陰蒂腫",
   nipple_ring: "乳環", vibe: "跳蛋", penis: "陰莖", dildo: "假陰莖", cucumber: "小黃瓜", fingers: "手指",
-  anal: "後穴", semen_out: "精液流出",
+  anal: "後穴", semen_out: "精液流出", hunger: "飢渴",
 };
 export function occupancyLabel(occ) {
   if (!occ) return "—";

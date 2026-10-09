@@ -25,8 +25,11 @@ const LIE = ["lie_phone", "prone_kick", "sleep"];
 const sum = (f, ids) => ids.reduce((s, id) => s + f[id], 0);
 
 t("8～10 個地上活動＋2 個椅子活動；欄位齊全、時長 1～3 分鐘左右", () => {
-  const floor = A.ACTIVITIES.filter(a => a.place === "floor"), seat = A.ACTIVITIES.filter(a => a.place === "seat");
+  // 性飢渴的兩個（squirm／hunger_beg，hunger.js 2026-10-09）只在飢渴時出現，不算在一般活動裡
+  const HUNGER_ONLY = ["squirm", "hunger_beg"];
+  const floor = A.ACTIVITIES.filter(a => a.place === "floor" && !HUNGER_ONLY.includes(a.id)), seat = A.ACTIVITIES.filter(a => a.place === "seat");
   assert.ok(floor.length >= 8 && floor.length <= 11, String(floor.length));
+  for (const id of HUNGER_ONLY) assert.ok(A.BY_ID[id] && A.BY_ID[id].moodOnly && A.BY_ID[id].w === 0, id);
   assert.equal(seat.length, 2);
   for (const a of A.ACTIVITIES) {
     assert.ok(D.POSES[a.pose], `${a.id} pose ${a.pose}`);

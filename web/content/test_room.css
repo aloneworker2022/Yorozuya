@@ -137,6 +137,24 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 .body-warn-card small{display:block;margin-top:.4em;font-size:13px;letter-spacing:.04em;opacity:.92}
 .body-warn-card small[hidden]{display:none}
 @media(prefers-reduced-motion:reduce){.body-warn-card{transition:none}}
+/* 性飢渴（2026-10-09）：妻子走過來求你時的粉紅小卡。不擋房間（頂部、小、5 秒自己收、點一下收） */
+.hunger-note{
+  position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);z-index:94;
+  transform:translate(-50%,-6px);box-sizing:border-box;max-width:86vw;
+  margin:0;padding:.5em 1em .45em;text-align:center;
+  font-family:RoomPixel,system-ui,sans-serif;-webkit-font-smoothing:none;
+  color:#fff4f8;background:rgba(214,72,128,.62);
+  border:2px solid rgba(255,190,214,.7);border-radius:6px;
+  box-shadow:0 6px 18px rgba(0,0,0,.3);
+  opacity:0;pointer-events:auto;cursor:pointer;
+  transition:opacity .25s ease-out,transform .25s ease-out;
+}
+.hunger-note[hidden]{display:none!important}
+.hunger-note.in{opacity:1;transform:translate(-50%,0)}
+.hunger-note b{display:block;font-weight:400;font-size:15px;letter-spacing:.04em;line-height:1.35;text-shadow:1px 1px 0 rgba(90,10,40,.7)}
+.hunger-note small{display:block;margin-top:.2em;font-size:12px;opacity:.9}
+.hunger-note small[hidden]{display:none}
+@media(prefers-reduced-motion:reduce){.hunger-note{transition:none}}
 #climax-tip.tip-in,.climax-tip.tip-in{opacity:1;transform:translate(-50%,-50%) scale(1)}
 #climax-tip.tip-out,.climax-tip.tip-out{opacity:0;transform:translate(-50%,-50%) scale(.96)}
 @media(prefers-reduced-motion:reduce){
