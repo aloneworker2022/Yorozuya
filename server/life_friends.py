@@ -20,7 +20,7 @@ NEVER_BACK = ("flirt", "physical", "fwb")
 
 ROLE_EASE = {"同事": 1.0, "顧客": 0.6, "路人": 0.45}
 # 往下一階的基準機率（再乘 ROLE_EASE；越線的兩步再乘 cross_mult）
-STEP_BASE = {"seen": 0.5, "known": 0.5, "friend": 0.3, "flirt": 0.3, "physical": 0.3}
+STEP_BASE = {"seen": 0.5, "known": 0.6, "friend": 0.4, "flirt": 0.4, "physical": 0.4}
 FWB_AFTER_SEX = 3            # 肉體至少做過 3 次才可能變炮友
 SEX_BASE = {"physical": 0.35, "fwb": 0.55}   # 已經肉體／炮友：再碰到時又做一次的機率（再乘 cross_mult）
 

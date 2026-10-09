@@ -212,7 +212,7 @@ import {
   dressedReactionPrompt,
 } from "./undress_shy.js?v=3";
 import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines, affairDisclosure } from "./life_memory.js?v=5";
-import { friendRows, applyLifeTraces, recentAffair, FRIEND_STAGES, FRIEND_STAGE_ZH } from "./life_friends.js?v=1";
+import { friendRows, applyLifeTraces, recentAffair, FRIEND_STAGES, FRIEND_STAGE_ZH } from "./life_friends.js?v=2";
 import {
   mountButtPackEditor,
   pickRuntimeButtPack,
