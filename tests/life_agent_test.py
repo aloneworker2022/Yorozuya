@@ -47,8 +47,9 @@ def main():
 
     assert la.duration_ms("work", lambda: 0.9) == la.WORK_MS
     assert la.duration_ms("browse", lambda: 0.1) == la.BROWSE_MS
-    assert la.duration_ms("browse", lambda: 0.9) == 90 * 60 * 1000
-    assert la.duration_ms("idle", lambda: 0.99) == 3 * la.HOUR_MS
+    assert la.duration_ms("browse", lambda: 0.9) == 30 * 60 * 1000
+    assert la.duration_ms("idle", lambda: 0.99) == 30 * 60 * 1000
+    assert la.duration_ms("tidy", lambda: 0.99) == la.HOUR_MS
     assert la.duration_ms("stroll", lambda: 0.1) == la.STROLL_SHORT_MS
     assert la.duration_ms("stroll", lambda: 0.9) == la.HOUR_MS
     assert la.parse_choice("我想上網看新聞") == "browse"

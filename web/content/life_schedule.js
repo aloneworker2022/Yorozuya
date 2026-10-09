@@ -2,14 +2,14 @@
 
 export const HOUR_MS = 60 * 60 * 1000;
 export const WORK_MS = 4 * HOUR_MS;
-export const BROWSE_MS = 30 * 60 * 1000; // 最短；在家上網 30／60／90 分抽一個
+export const BROWSE_MS = 30 * 60 * 1000; // 在家上網固定 30 分
 /* 跟 server/life_agent.py、life_data.py 同一套（2026-10-09 加在家的事）。改一邊要改另一邊。 */
 export const OUTSIDE_KINDS = ["work", "stroll", "browse", "sleep", "idle", "tidy", "meal"];
 export const HOME_KINDS = ["browse", "idle", "tidy", "meal"];
 export const OUTSIDE_KIND_ZH = { work: "打工", stroll: "溜達", browse: "上網", sleep: "睡覺", idle: "發呆", tidy: "整理房間", meal: "吃飯" };
-export const HOME_DURATIONS_MIN = { idle: [30, 60, 90, 120, 180], browse: [30, 60, 90], tidy: [30, 60] };
+export const HOME_DURATIONS_MIN = { idle: [30], browse: [30], tidy: [30, 60] };
 export const MEAL_TIMES = { 早起型: [6, 12, 18], 夜貓子: [12, 18.5, 0.5], 愛睡午覺: [8, 12, 19], 淺眠易怒: [7.5, 12, 19], 隨和好睡: [8.5, 12.5, 19], "": [8, 12, 19] };
-export const MEAL_MIN = [30, 30, 60];
+export const MEAL_MIN = [30, 30, 30];
 /* 選擇權重：醒著時在家的事佔大半；溜達一天最多 3 次；打工第一班 4.5、第二班 0.15（偶爾兩班）。 */
 export const LIFE_WEIGHTS = { stroll: 1.5, browse: 2.0, idle: 2.4, tidy: 0.9, workFirst: 4.5, workSecond: 0.15, strollPerDay: 3 };
 /* 在家每件把心情往平靜壓的量。 */
@@ -32,7 +32,7 @@ export function rollSummonCost(random = Math.random) {
   return 3 + Math.floor(Number(random()) * 3);
 }
 
-/** 打工固定 4 小時；在家的事照 HOME_DURATIONS_MIN 抽；吃飯 30 分；溜達 30 分鐘或 1 小時。 */
+/** 打工固定 4 小時；發呆／在家上網／吃飯固定 30 分；整理房間 30 或 60 分；溜達 30 分鐘或 1 小時。 */
 export function agendaDurationMs(kind, random = Math.random) {
   if (kind === "work") return WORK_MS;
   if (kind === "meal") return 30 * 60 * 1000;

@@ -25,11 +25,12 @@ t("召喚價是 3～5", () => {
   assert.equal(S.rollSummonCost(() => 0.999), 5);
 });
 
-t("打工 4 小時、在家上網 30～90 分、發呆 30～180 分、吃飯 30 分、溜達 30 或 60 分鐘", () => {
+t("打工 4 小時、發呆／在家上網／吃飯固定 30 分、整理 30 或 60 分、溜達 30 或 60 分鐘", () => {
   assert.equal(S.agendaDurationMs("work", () => 0.9), 4 * S.HOUR_MS);
   assert.equal(S.agendaDurationMs("browse", () => 0.1), 30 * 60 * 1000);
-  assert.equal(S.agendaDurationMs("browse", () => 0.9), 90 * 60 * 1000);
-  assert.equal(S.agendaDurationMs("idle", () => 0.99), 3 * S.HOUR_MS);
+  assert.equal(S.agendaDurationMs("browse", () => 0.9), 30 * 60 * 1000);
+  assert.equal(S.agendaDurationMs("idle", () => 0.99), 30 * 60 * 1000);
+  assert.equal(S.agendaDurationMs("tidy", () => 0.99), S.HOUR_MS);
   assert.equal(S.agendaDurationMs("meal", () => 0.5), 30 * 60 * 1000);
   assert.equal(S.agendaDurationMs("stroll", () => 0.1), 30 * 60 * 1000);
   assert.equal(S.agendaDurationMs("stroll", () => 0.6), S.HOUR_MS);

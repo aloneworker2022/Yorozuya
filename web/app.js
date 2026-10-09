@@ -59,7 +59,7 @@ import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=3";
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost, paintLifeRow } from "./content/life_schedule.js?v=4";
+import { rollSummonCost, paintLifeRow } from "./content/life_schedule.js?v=5";
 import { BASE_OUTFIT } from "./content/outfit_pick.js?v=1";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
