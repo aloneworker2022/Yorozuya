@@ -309,6 +309,8 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
         # 心情：人在房裡（或剛從房裡出來）時手機是真相；人在日本時 RP5 是真相，不吃手機的舊值。
         if rec.get("phase") != "japan":
             _take_phone_mood(rec, world, now_ms)
+        elif rec.get("mood") not in ("", "平靜") and not _ms(rec.get("moodAt")):
+            rec["moodAt"] = now_ms  # 舊紀錄只有字：從現在開始淡
         if home:
             rec["homeId"] = str(home.get("id") or "")
             rec["homeName"] = str(home.get("name") or "")

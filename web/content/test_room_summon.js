@@ -5109,6 +5109,8 @@ function renderMood() {
     world.exhaustedUntil = 0;
     if (world.mood === "虛脫") world.mood = "平靜";
   }
+  // 舊存檔只有心情字、沒有時間：從現在開始淡（不然永遠卡著）
+  if (world?.mood && world.mood !== "平靜" && !(Number(world.moodAt) > 1e11)) world.moodAt = Date.now();
   const now = world ? outsideMoodNow(world) : null;
   const mood = world?.mood ? now.name : "";
   const breed = breedingLabel(girl);
