@@ -4395,111 +4395,89 @@ def _life_span(action: dict) -> str:
     return f"這一件是日本時間{a}到{b}。"
 
 
-def _life_choice_prompt(action: dict) -> tuple[str, str]:
+async def _life_write_event(data: dict, action: dict) -> str:
+    """模型把抽到的事寫成 2～4 句。不合格只重寫一次（一次結算最多兩次模型）；再不行回空字串，交給範本。"""
+    system, user = life_agent.event_prompt(action)
+    reply = await _life_say(data, system, user)
+    text = life_agent.accept_text(action, reply)
+    if text:
+        return text
+    messages_user = f"{user}\n\n上一則：{reply[:300]}\n{life_agent.RETRY_ASK}" if reply else user
+    return life_agent.accept_text(action, await _life_say(data, system, messages_user))
+
+
+async def _life_browse(data: dict, action: dict) -> tuple[str, list]:
+    home = action.get("homeName") or "住所"
     hobbies = "、".join(action.get("hobbies") or []) or "沒有特別寫"
-    return (
-        "你替她決定接下來做什麼。只能回這三個詞其中一個：打工、溜達、上網。不要解釋。",
-        f"{_life_clock(action)}"
-        f"她是{action.get('name') or '她'}。人在日本的住所{action.get('homeName') or '自己的房間'}，不在召喚者那裡。"
-        f"興趣：{hobbies}。心情：{action.get('mood') or '平靜'}。"
-        "接下來做的事要符合現在這個時段。",
-    )
+    word = life_agent.clip_keyword(await _life_say(
+        data,
+        "你替她決定網上要搜的一個詞。只回一個短詞，優先日文。不要句子，不要解釋。",
+        f"{_life_clock(action)}{_life_span(action)}"
+        f"她是{action.get('name') or '她'}。興趣：{hobbies}。心情：{action.get('mood') or '平靜'}。",
+    ))
+    if not word and action.get("hobbies"):
+        word = life_agent.clip_keyword(action["hobbies"][0])
+    word = word or "天気"
+    try:
+        news = await jp_news.search_jp_news(word, limit=2)
+        items = news.get("items") or []
+    except Exception:
+        items = []
+    bits = []
+    for item in items[:2]:
+        title = str(item.get("title") or "").strip()
+        if not title:
+            continue
+        source = str(item.get("source") or "").strip()
+        bits.append(f"{title}（{source}）" if source else title)
+    # 沒抓到新聞就只寫搜了什麼，不寫「沒有載入到新聞」，免得她在聊天裡講出這句
+    seen = f"看到{'、'.join(bits)}。" if bits else "隨便滑了一陣，沒看到什麼特別的。"
+    return f"在住所{home}上網，搜了「{word}」。{seen}", ["上網", word, bits[0] if bits else ""]
 
 
 async def _life_once() -> None:
+    """一輪：不用模型的事全部做完（排下一件、沒做夢的睡醒），再最多結算一件要寫字的（最久沒結算的先）。"""
     data = _dd_read_save() or {}
     now_ms = int(time.time() * 1000)
+    box = {"action": None, "logs": []}
 
     def prep(store):
         life_agent.absorb(store, data, now_ms)
+        box["logs"] = life_agent.quick_step(store, now_ms)
+        gid = life_agent.next_due(store, now_ms)
+        box["action"] = life_agent.prepare_resolve(store, gid, now_ms) if gid else None
 
-    store = _life_mutate(prep)
-    plans = life_agent.plan_tick(store, now_ms)
-    if not plans:
+    _life_mutate(prep)
+    for line in box["logs"]:
+        print(f"[生活] {line}", flush=True)
+    action = box["action"]
+    if not action:
         return
-    action = plans[0]
     gid = action["id"]
-    if action["op"] == "choose":
-        system, user = _life_choice_prompt(action)
-        kind = life_agent.parse_choice(await _life_say(data, system, user))
-        now2 = int(time.time() * 1000)
-
-        def commit(fresh):
-            life_agent.absorb(fresh, _dd_read_save() or data, now2)
-            if life_agent.apply_choice(fresh, gid, kind, now2):
-                rec = fresh["girls"][gid]
-                label = {"work": "打工", "stroll": "溜達", "browse": "上網"}.get(rec["agenda"]["kind"], "做事")
-                print(f"[生活] {rec.get('name') or '她'} 自己選了{label}", flush=True)
-
-        _life_mutate(commit)
-        return
-
-    kind = action.get("kind") or "work"
-    home = action.get("homeName") or "住所"
+    ev = action.get("event") or {}
+    action["span"] = _life_span(action)
     keys: list[str] = []
-    if kind == "browse":
-        hobbies = "、".join(action.get("hobbies") or []) or "沒有特別寫"
-        word = life_agent.clip_keyword(await _life_say(
-            data,
-            "你替她決定網上要搜的一個詞。只回一個短詞，優先日文。不要句子，不要解釋。",
-            f"{_life_clock(action)}{_life_span(action)}"
-            f"她是{action.get('name') or '她'}。興趣：{hobbies}。心情：{action.get('mood') or '平靜'}。",
-        ))
-        if not word and action.get("hobbies"):
-            word = life_agent.clip_keyword(action["hobbies"][0])
-        word = word or "天気"
-        try:
-            news = await jp_news.search_jp_news(word, limit=2)
-            items = news.get("items") or []
-        except Exception:
-            items = []
-        bits = []
-        for item in items[:2]:
-            title = str(item.get("title") or "").strip()
-            if not title:
-                continue
-            source = str(item.get("source") or "").strip()
-            bits.append(f"{title}（{source}）" if source else title)
-        seen = f"看到{'、'.join(bits)}。" if bits else "沒有載入到新聞。"
-        text = f"在住所{home}上網，搜了「{word}」。{seen}"
-        keys = ["上網", word, bits[0] if bits else ""]
-    elif kind == "work":
-        def take_job(fresh):
-            life_agent.absorb(fresh, data, int(time.time() * 1000))
-            rec = fresh["girls"].get(gid)
-            if rec is not None:
-                life_agent.ensure_job(rec)
-
-        store = _life_mutate(take_job)
-        job_name = ((store.get("girls") or {}).get(gid) or {}).get("job", {}).get("name") or "打工"
-        spoken = await _life_say(
-            data,
-            "你只寫她剛結束的打工。用「我」，2到4句。不要寫召喚者的房間。",
-            f"{_life_clock(action)}{_life_span(action)}"
-            f"人在日本，打工是「{job_name}」。這四小時剛做完，回到住所{home}。描述必須落在這段時間，不要寫成別的時段。",
-        )
-        text = spoken or f"我在{job_name}做完這四小時的班，回到住所{home}。"
-        keys = ["打工", job_name]
-    else:
-        spoken = await _life_say(
-            data,
-            "你只寫她剛結束的溜達。用「我」，2到4句。不要寫召喚者的房間。",
-            f"{_life_clock(action)}{_life_span(action)}"
-            f"人在日本，從住所{home}出去走，剛走完。描述必須落在這段時間，不要寫成別的時段。",
-        )
-        text = spoken or f"我從住所{home}出去走了一段，又回去了。"
-        keys = ["遊盪", home]
-    system, user = _life_choice_prompt(action)
-    user = f"她剛做完這一件。{user}"
-    next_kind = life_agent.parse_choice(await _life_say(data, system, user))
+    text = ""
+    if action["kind"] == "browse":
+        text, keys = await _life_browse(data, action)
+    elif life_agent.needs_llm(ev):
+        text = await _life_write_event(data, action)
+        if not text:
+            print(f"[生活] {action.get('name') or '她'} 模型沒寫成，用範本", flush=True)
     finished_until = int(action["until"])
     now2 = int(time.time() * 1000)
 
     def commit_resolve(fresh):
         life_agent.absorb(fresh, _dd_read_save() or data, now2)
-        if life_agent.apply_resolve(fresh, gid, finished_until, text, kind, now2, next_kind, extra_keys=keys):
-            name = (fresh["girls"].get(gid) or {}).get("name") or "她"
-            print(f"[生活] {name} 這趟結束：{text[:60]}", flush=True)
+        if life_agent.settle(fresh, gid, finished_until, text, now2, keys=keys):
+            rec = fresh["girls"].get(gid) or {}
+            last = rec.get("last") or {}
+            nxt = (rec.get("agenda") or {}).get("kind") or ""
+            print(
+                f"[生活] {rec.get('name') or '她'} {life_agent.KIND_ZH.get(action['kind'], '')}結束："
+                f"{(last.get('text') or '')[:60]}｜心情 {last.get('moodBefore')}→{last.get('moodAfter')}｜下一件 {life_agent.KIND_ZH.get(nxt, nxt)}",
+                flush=True,
+            )
 
     _life_mutate(commit_resolve)
 
@@ -4536,7 +4514,7 @@ def life_choose(body: dict):
     if kind == "wander":
         kind = "stroll"
     if not gid or kind not in life_agent.KINDS:
-        raise HTTPException(status_code=400, detail="要指定她，以及打工、溜達或上網")
+        raise HTTPException(status_code=400, detail="要指定她，以及打工、溜達、上網或睡覺")
     data = _dd_read_save() or {}
     now_ms = int(time.time() * 1000)
     ok = {"done": False}

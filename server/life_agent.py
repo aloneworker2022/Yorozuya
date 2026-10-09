@@ -3,14 +3,22 @@
 手機關著也算。一個時段結束就寫下那一件，下一件從當下起算。
 不把關掉的那幾個小時壓成一次補完。
 離開房間不是直接去打工。選到打工才是四小時。
+
+2026-10-09：下一件由程式擲骰（日本時間＋作息＋心情＋最近做過什麼），不再叫模型選。
+睡覺是第四種活動。打工 24 小時內最多兩班、不會在睡覺時段開班；不賺錢（抵房租生活費）。
+心情是雙向的：打工／溜達／SCP 的遭遇改心情，心情也改下一趟遭遇的權重。心情隨時間淡回平靜。
+模型只把抽到的事寫成 2～4 句；寫不出來用範本。碰到的人記在 met（交友之後重做，這裡不交朋友）。
 """
 
 from __future__ import annotations
 
+import math
 import random
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+
+import life_data as D
 
 _TOKYO = ZoneInfo("Asia/Tokyo")
 _WEEKDAYS = "一二三四五六日"
@@ -19,7 +27,11 @@ HOUR_MS = 60 * 60 * 1000
 WORK_MS = 4 * HOUR_MS
 BROWSE_MS = 30 * 60 * 1000
 STROLL_SHORT_MS = 30 * 60 * 1000
+SLEEP_MIN_MS = 20 * 60 * 1000
+SLEEP_CAP_MS = 11 * HOUR_MS
 TEXT_CAP = 180
+MET_CAP = 30
+MEMORY_CAP = 40
 
 REGIONS = [
     {"id": "hokkaido", "name": "北海道"},
@@ -57,26 +69,10 @@ HOMES = [
     {"id": "phone-rings", "name": "電話有時自己會響的房子"},
 ]
 
-JOBS = [
-    {"id": "konbini", "name": "便利商店的晚班"},
-    {"id": "cashier", "name": "超市收銀"},
-    {"id": "cafe-kitchen", "name": "咖啡店內場"},
-    {"id": "izakaya", "name": "居酒屋端盤子"},
-    {"id": "bookstore", "name": "書店整理書架"},
-    {"id": "ramen", "name": "拉麵店洗碗"},
-    {"id": "flyers", "name": "車站前發傳單"},
-    {"id": "drugstore", "name": "藥妝店補貨"},
-    {"id": "ryokan", "name": "溫泉旅館的房務"},
-    {"id": "shrine", "name": "神社授與所"},
-    {"id": "aquarium", "name": "水族館餵食"},
-    {"id": "florist", "name": "花店包花"},
-    {"id": "cinema", "name": "電影院賣票"},
-    {"id": "cemetery", "name": "靈園的管理員助手"},
-    {"id": "radio", "name": "午夜電台的接線"},
-    {"id": "warehouse", "name": "倉庫夜班"},
-]
+JOBS = D.JOBS  # 24 份；舊存檔的 16 份 id 都還在
 
-KINDS = ("work", "stroll", "browse")
+KINDS = ("work", "stroll", "browse", "sleep")
+KIND_ZH = {"work": "打工", "stroll": "溜達", "browse": "上網", "sleep": "睡覺"}
 
 
 def new_store() -> dict:
@@ -89,6 +85,8 @@ def duration_ms(kind: str, rnd=None) -> int:
         return WORK_MS
     if kind == "browse":
         return BROWSE_MS
+    if kind == "sleep":
+        return HOUR_MS
     return STROLL_SHORT_MS if float(roll()) < 0.5 else HOUR_MS
 
 
@@ -186,32 +184,58 @@ def _blank(gid: str) -> dict:
         "job": None,
         "hobbies": [],
         "mood": "",
+        "moodLevel": 0,
+        "moodAt": 0,
+        "moodWhy": "",
+        "chrono": "",
+        "archetype": "",
+        "tone": "",
+        "groundId": "",
+        "groundName": "",
+        "spots": {},
         "agenda": None,
+        "history": [],
+        "workLog": [],
+        "scpSteps": {},
+        "met": [],
+        "last": None,
         "memories": [],
         "notedHome": False,
         "note": "",
     }
 
 
-def _remember(rec: dict, kind: str, text: str, now_ms: int, keys: list | None = None) -> None:
+MEMORY_KINDS = ("home", "work", "stroll", "browse", "sleep", "life")
+
+
+def _remember(rec: dict, kind: str, text: str, now_ms: int, keys: list | None = None, extra: dict | None = None) -> dict | None:
+    extra = extra or {}
     item = {
         "id": f"la{now_ms}{len(rec.get('memories') or [])}",
         "at": now_ms,
-        "kind": kind if kind in ("home", "work", "stroll", "browse", "life") else "life",
+        "kind": kind if kind in MEMORY_KINDS else "life",
         "text": clip_text(text),
-        "keys": [str(k) for k in (keys or []) if k][:8],
-        "place": rec.get("homeName") or "",
-        "job": (rec.get("job") or {}).get("name") or "",
-        "person": "",
+        "keys": [],
+        "place": str(extra.get("place") or rec.get("homeName") or ""),
+        "job": (rec.get("job") or {}).get("name") or "" if kind == "work" else str(extra.get("job") or ""),
+        "person": str(extra.get("person") or ""),
         "mood": rec.get("mood") or "",
     }
+    for key in ("personRole", "personGender", "personId", "moodBefore", "moodAfter", "tone", "act", "scp", "scpStep"):
+        if extra.get(key) not in (None, ""):
+            item[key] = extra[key]
+    for k in (keys or []):
+        k = str(k or "").strip()
+        if k and len(k) <= 24 and k not in item["keys"] and len(item["keys"]) < 8:
+            item["keys"].append(k)
     if not item["text"]:
-        return
+        return None
     rec.setdefault("memories", [])
     if any(isinstance(x, dict) and x.get("text") == item["text"] for x in rec["memories"][-6:]):
-        return
+        return None
     rec["memories"].append(item)
-    rec["memories"] = rec["memories"][-40:]
+    rec["memories"] = rec["memories"][-MEMORY_CAP:]
+    return item
 
 
 def _give_home(rec: dict, rnd) -> None:
@@ -272,7 +296,19 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
             store["girls"][gid] = rec
         rec["name"] = str(girl.get("name") or rec.get("name") or "她")
         rec["hobbies"] = _hobby_names(girl)
-        rec["mood"] = str(world.get("mood") or "")
+        chrono = girl.get("chrono") if isinstance(girl.get("chrono"), dict) else {}
+        rec["chrono"] = str(chrono.get("name") or rec.get("chrono") or "")
+        rec["archetype"] = str(girl.get("archetype") or rec.get("archetype") or "")
+        rec["tone"] = str(girl.get("tone") or rec.get("tone") or "")[:80]
+        ground = world.get("ground") if isinstance(world.get("ground"), dict) else None
+        if ground and ground.get("id"):
+            rec["groundId"] = str(ground.get("id") or "")
+            rec["groundName"] = str(ground.get("name") or "")
+            spots = ground.get("spots") if isinstance(ground.get("spots"), dict) else {}
+            rec["spots"] = {str(k): str(v) for k, v in spots.items() if v}
+        # 心情：人在房裡（或剛從房裡出來）時手機是真相；人在日本時 RP5 是真相，不吃手機的舊值。
+        if rec.get("phase") != "japan":
+            _take_phone_mood(rec, world, now_ms)
         if home:
             rec["homeId"] = str(home.get("id") or "")
             rec["homeName"] = str(home.get("name") or "")
@@ -299,6 +335,261 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
             rec["phase"] = "japan"
 
 
+# ───────────────────────── 心情 ─────────────────────────
+# level 0～100。隨時間淡回平靜（惰性計算），低於 MOOD_CLEAR 就是平靜。手機 life_schedule.js 的 outsideMoodNow 跟這裡同一套。
+MOOD_CLEAR = 12
+MOOD_DECAY_PER_HOUR = {"愉快": 5, "不悅": 5, "低落": 4, "不安": 5, "虛脫": 15}
+MOOD_DEFAULT_LEVEL = 40  # 舊存檔只有字、沒有強度
+
+
+def _num(value, default=0.0) -> float:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return default
+    return n if math.isfinite(n) else default
+
+
+def mood_now(rec: dict, now_ms: int) -> tuple[str, int]:
+    name = str(rec.get("mood") or "平靜")
+    if name not in D.MOODS or name == "平靜":
+        return "平靜", 0
+    level = _num(rec.get("moodLevel"), 0) or MOOD_DEFAULT_LEVEL
+    at = _ms(rec.get("moodAt")) or now_ms
+    hours = max(0.0, (now_ms - at) / HOUR_MS)
+    level = level - hours * MOOD_DECAY_PER_HOUR.get(name, 5)
+    if level < MOOD_CLEAR:
+        return "平靜", 0
+    return name, int(round(min(100, level)))
+
+
+def _write_mood(rec: dict, name: str, level: float, why: str, now_ms: int) -> None:
+    if name == "平靜" or level < MOOD_CLEAR:
+        rec["mood"], rec["moodLevel"], rec["moodWhy"] = "平靜", 0, ""
+    else:
+        rec["mood"], rec["moodLevel"] = name, int(round(min(100, level)))
+        rec["moodWhy"] = clip_text(why, 40)
+    rec["moodAt"] = now_ms
+
+
+def apply_mood(rec: dict, name: str, level: float, why: str, now_ms: int) -> tuple[str, int]:
+    """把一件事的結果疊到現在的心情上。平靜＝把現在的心情往下壓。"""
+    cur, cl = mood_now(rec, now_ms)
+    why_now = rec.get("moodWhy") or ""
+    level = max(0.0, float(level))
+    if name not in D.MOODS:
+        name = "平靜"
+    if name == "平靜":
+        _write_mood(rec, cur, cl - level, why_now, now_ms)
+    elif cur == name:
+        _write_mood(rec, name, max(cl, level) + 0.4 * min(cl, level), why or why_now, now_ms)
+    elif cur == "平靜" or level >= cl * 0.7:
+        _write_mood(rec, name, level, why, now_ms)
+    else:
+        _write_mood(rec, cur, cl - level * 0.3, why_now, now_ms)
+    return mood_now(rec, now_ms)
+
+
+def _take_phone_mood(rec: dict, world: dict, now_ms: int) -> None:
+    name = str(world.get("mood") or "")
+    if name not in D.MOODS:
+        rec["mood"], rec["moodLevel"], rec["moodAt"], rec["moodWhy"] = "平靜", 0, now_ms, ""
+        return
+    rec["mood"] = name
+    rec["moodLevel"] = int(_num(world.get("moodLevel"), 0)) or (0 if name == "平靜" else MOOD_DEFAULT_LEVEL)
+    rec["moodAt"] = _ms(world.get("moodAt")) or now_ms
+    rec["moodWhy"] = str(world.get("moodWhy") or "")[:40]
+
+
+def _mood_mult(table: dict, mood: str, level: int, key: str) -> float:
+    """心情越強，倍率越接近表上的數字；level 60 以上用滿。"""
+    m = (table.get(mood) or {}).get(key, 1.0)
+    k = min(1.0, max(0.0, level / 60))
+    return 1.0 + (m - 1.0) * k
+
+
+# ───────────────────────── 作息 ─────────────────────────
+# 日本時間的睡覺時段（小時，可跨午夜）。愛睡午覺多一段 13～15 點午覺。
+SLEEP_WINDOWS = {
+    "早起型": [(21.5, 5.5)],
+    "夜貓子": [(3.5, 11.5)],
+    "愛睡午覺": [(0.5, 7.5), (13.0, 15.0)],
+    "淺眠易怒": [(1.0, 7.0)],
+    "隨和好睡": [(23.5, 8.0)],
+    "": [(0.5, 7.5)],
+}
+BED_EARLY_MS = 30 * 60 * 1000   # 離睡覺時段 30 分內就直接去睡
+WORK_LEAD_MS = 3 * HOUR_MS      # 離睡覺不到 3 小時不開四小時的班（最多吃掉 1 小時睡眠）
+STROLL_LONG_LEAD_MS = HOUR_MS
+WORK_PER_DAY = 2                # 24 小時內最多兩班
+
+
+def _tokyo(now_ms: int) -> datetime:
+    return datetime.fromtimestamp(int(now_ms) / 1000, _TOKYO)
+
+
+def jst_hour(now_ms: int) -> float:
+    dt = _tokyo(now_ms)
+    return dt.hour + dt.minute / 60
+
+
+def _at_hour(dt: datetime, hour: float) -> datetime:
+    h = int(hour) % 24
+    m = int(round((hour - int(hour)) * 60))
+    return dt.replace(hour=h, minute=m, second=0, microsecond=0)
+
+
+def _inside(h: float, s: float, e: float) -> bool:
+    return s <= h < e if s < e else (h >= s or h < e)
+
+
+def sleep_info(chrono: str, now_ms: int) -> dict:
+    wins = SLEEP_WINDOWS.get(chrono) or SLEEP_WINDOWS[""]
+    dt = _tokyo(now_ms)
+    h = dt.hour + dt.minute / 60 + dt.second / 3600
+    wake = None
+    nap = False
+    nxt = None
+    for i, (s, e) in enumerate(wins):
+        if _inside(h, s, e):
+            end = _at_hour(dt, e)
+            if end <= dt:
+                end += timedelta(days=1)
+            if wake is None or end > wake:
+                wake, nap = end, i > 0
+        start = _at_hour(dt, s)
+        if start <= dt:
+            start += timedelta(days=1)
+        if nxt is None or start < nxt:
+            nxt = start
+    return {
+        "asleep": wake is not None,
+        "wakeAt": int(wake.timestamp() * 1000) if wake else 0,
+        "nextSleepAt": int(nxt.timestamp() * 1000) if nxt else 0,
+        "nap": nap,
+    }
+
+
+def liveliness(chrono: str, h: float) -> float:
+    if chrono == "夜貓子":
+        return 1.6 if (h >= 20 or h < 3) else 0.6 if h < 14 else 1.0
+    if chrono == "早起型":
+        return 1.6 if 5.5 <= h < 11 else 0.5 if h >= 19 else 1.0
+    return 0.6 if (h < 6 or h >= 23) else 1.0
+
+
+def job_fit(job: dict | None, h: float) -> float:
+    band = (job or {}).get("band") or _job_band((job or {}).get("id"))
+    if band == "night":
+        return 1.6 if (h >= 17 or h < 2) else 0.3
+    if band == "day":
+        return 1.4 if 8 <= h < 19 else 0.25
+    return 0.5 if 1 <= h < 6 else 1.0
+
+
+def _job_band(job_id) -> str:
+    for job in D.JOBS:
+        if job["id"] == job_id:
+            return job["band"]
+    return "any"
+
+
+def _job_tone(job_id) -> str:
+    for job in D.JOBS:
+        if job["id"] == job_id:
+            return job["tone"]
+    return "normal"
+
+
+def shifts_in_day(rec: dict, now_ms: int) -> int:
+    return sum(1 for t in (rec.get("workLog") or []) if 0 <= now_ms - _ms(t) < 24 * HOUR_MS)
+
+
+MOOD_CHOICE = {
+    "愉快": {"stroll": 1.5, "browse": 0.9},
+    "不悅": {"stroll": 1.3, "work": 0.85},
+    "低落": {"browse": 1.6, "stroll": 0.75, "work": 0.8},
+    "不安": {"browse": 1.8, "stroll": 0.6},
+    "虛脫": {"browse": 2.0, "stroll": 0.4, "work": 0.25},
+}
+OUTDOOR_RE = re.compile(r"散步|攝影|拍照|旅行|運動|跑步|登山|釣|逛|美食|咖啡|購物|花|貓|狗")
+INDOOR_RE = re.compile(r"遊戲|電玩|動漫|漫畫|網|追劇|小說|閱讀|書|音樂|天文|占卜")
+
+
+def choice_weights(rec: dict, now_ms: int) -> dict:
+    """醒著時三件事的權重。睡覺不在這裡：到點就去睡（pick_next）。"""
+    h = jst_hour(now_ms)
+    mood, level = mood_now(rec, now_ms)
+    info = sleep_info(rec.get("chrono") or "", now_ms)
+    to_sleep = info["nextSleepAt"] - now_ms
+    hist = [k for k in (rec.get("history") or []) if k in KINDS]
+    last = hist[-1] if hist else ""
+    w = {"work": 0.0, "stroll": 2.0, "browse": 1.5}
+    shifts = shifts_in_day(rec, now_ms)
+    if to_sleep >= WORK_LEAD_MS and last != "work" and shifts < WORK_PER_DAY:
+        w["work"] = (3.0 if shifts == 0 else 0.5) * job_fit(_job_of(rec), h)
+    w["stroll"] *= liveliness(rec.get("chrono") or "", h)
+    if h < 5 or h >= 23:
+        w["stroll"] *= 0.7
+        w["browse"] *= 1.3
+    for kind in ("stroll", "browse"):
+        if last == kind:
+            w[kind] *= 0.4
+            if len(hist) >= 2 and hist[-2] == kind:
+                w[kind] *= 0.5
+    for kind in w:
+        w[kind] *= _mood_mult(MOOD_CHOICE, mood, level, kind)
+    hobbies = "、".join(rec.get("hobbies") or [])
+    if OUTDOOR_RE.search(hobbies):
+        w["stroll"] *= 1.15
+    if INDOOR_RE.search(hobbies):
+        w["browse"] *= 1.15
+    return {k: round(v, 4) for k, v in w.items()}
+
+
+def _job_of(rec: dict) -> dict | None:
+    job = rec.get("job") if isinstance(rec.get("job"), dict) else None
+    if job and job.get("name"):
+        return {"id": job.get("id") or "", "name": job["name"], "band": _job_band(job.get("id"))}
+    return None
+
+
+def _pick_weighted(weights: dict, rnd) -> str:
+    total = sum(v for v in weights.values() if v > 0)
+    if total <= 0:
+        return ""
+    roll = float(rnd()) * total
+    for key, v in weights.items():
+        if v <= 0:
+            continue
+        roll -= v
+        if roll < 0:
+            return key
+    return [k for k, v in weights.items() if v > 0][-1]
+
+
+def pick_next(rec: dict, now_ms: int, rnd=None) -> tuple[str, int]:
+    """下一件做什麼、做多久。取代手機上沒人呼叫的 nextAgendaKind。"""
+    roll = rnd if rnd is not None else random.random
+    chrono = rec.get("chrono") or ""
+    info = sleep_info(chrono, now_ms)
+    if info["asleep"] and info["wakeAt"] - now_ms >= SLEEP_MIN_MS:
+        return "sleep", min(SLEEP_CAP_MS, info["wakeAt"] - now_ms)
+    to_sleep = info["nextSleepAt"] - now_ms
+    if to_sleep <= BED_EARLY_MS:
+        wake = sleep_info(chrono, info["nextSleepAt"] + 60 * 1000)["wakeAt"]
+        if wake - now_ms >= SLEEP_MIN_MS:
+            return "sleep", min(SLEEP_CAP_MS, wake - now_ms)
+    kind = _pick_weighted(choice_weights(rec, now_ms), roll) or "browse"
+    if kind == "work":
+        return kind, WORK_MS
+    if kind == "browse":
+        return kind, BROWSE_MS
+    if to_sleep < STROLL_LONG_LEAD_MS:
+        return kind, STROLL_SHORT_MS
+    return kind, STROLL_SHORT_MS if float(roll()) < 0.5 else HOUR_MS
+
+
 def needs_choice(rec: dict) -> bool:
     if rec.get("phase") != "japan" or not rec.get("homeId"):
         return False
@@ -314,83 +605,539 @@ def is_due(rec: dict, now_ms: int) -> bool:
     return bool(until) and now_ms >= until
 
 
-def plan_tick(store: dict, now_ms: int) -> list[dict]:
-    """這一輪只處理一個人。處理完才排下一件，不把欠的班一次補完。"""
-    clock = japan_clock(now_ms)["line"]
-    for gid, rec in (store.get("girls") or {}).items():
-        if is_due(rec, now_ms):
-            agenda = rec["agenda"]
-            return [{
-                "op": "resolve",
-                "id": gid,
-                "until": _ms(agenda.get("until")),
-                "startedAt": _ms(agenda.get("startedAt")),
-                "kind": agenda.get("kind") or "work",
-                "name": rec.get("name") or "她",
-                "homeName": rec.get("homeName") or "",
-                "regionName": rec.get("regionName") or "",
-                "job": (rec.get("job") or {}).get("name") or "",
-                "hobbies": list(rec.get("hobbies") or []),
-                "mood": rec.get("mood") or "",
-                "clock": clock,
-            }]
-        if needs_choice(rec):
-            return [{
-                "op": "choose",
-                "id": gid,
-                "name": rec.get("name") or "她",
-                "homeName": rec.get("homeName") or "",
-                "regionName": rec.get("regionName") or "",
-                "hobbies": list(rec.get("hobbies") or []),
-                "mood": rec.get("mood") or "",
-                "clock": clock,
-            }]
-    return []
-
-
-def arm(rec: dict, kind: str, now_ms: int, rnd=None) -> dict:
+def arm(rec: dict, kind: str, now_ms: int, rnd=None, ms: int | None = None) -> dict:
     kind = kind if kind in KINDS else "stroll"
-    ms = duration_ms(kind, rnd)
-    rec["agenda"] = {"kind": kind, "until": now_ms + ms, "startedAt": now_ms}
-    labels = {"work": "打工", "stroll": "溜達", "browse": "上網"}
-    hours = ms / HOUR_MS
-    span = "四小時" if kind == "work" else ("一小時" if ms >= HOUR_MS else "三十分鐘")
-    rec["note"] = f"{rec.get('name') or '她'}在決定之後去{labels[kind]}，這趟{span}。"
+    if ms is None:
+        if kind == "sleep":
+            info = sleep_info(rec.get("chrono") or "", now_ms)
+            ms = min(SLEEP_CAP_MS, info["wakeAt"] - now_ms) if info["asleep"] and info["wakeAt"] - now_ms >= SLEEP_MIN_MS else HOUR_MS
+        else:
+            ms = duration_ms(kind, rnd)
+    rec["agenda"] = {"kind": kind, "until": now_ms + int(ms), "startedAt": now_ms}
+    if kind == "work":
+        ensure_job(rec, rnd)
+        log = [t for t in (rec.get("workLog") or []) if now_ms - _ms(t) < 48 * HOUR_MS]
+        log.append(now_ms)
+        rec["workLog"] = log[-6:]
+    mins = int(round(ms / 60000))
+    span = f"{mins // 60}小時{mins % 60}分" if mins >= 60 and mins % 60 else (f"{mins // 60}小時" if mins >= 60 else f"{mins}分鐘")
+    rec["note"] = f"{rec.get('name') or '她'}去{KIND_ZH[kind]}，這趟{span}。"
     return rec["agenda"]
 
 
 def apply_choice(store: dict, gid: str, kind: str, now_ms: int, rnd=None) -> bool:
+    """kind 空白＝照規則擲（pick_next）；有給＝沙盒手動指定。"""
     rec = (store.get("girls") or {}).get(gid)
     if not rec or rec.get("phase") != "japan" or not needs_choice(rec):
         return False
-    if not kind:
-        kind = KINDS[int(float((rnd or random.random)()) * len(KINDS)) % len(KINDS)]
-    arm(rec, kind, now_ms, rnd)
+    if kind in KINDS:
+        arm(rec, kind, now_ms, rnd)
+    else:
+        nk, ms = pick_next(rec, now_ms, rnd)
+        arm(rec, nk, now_ms, rnd, ms)
     return True
 
 
 def ensure_job(rec: dict, rnd=None) -> dict:
+    """第一次打工才抽。普通 3：少見 2：詭異 1，再依作息偏夜班或白天班。之後固定同一份。"""
     if (rec.get("job") or {}).get("name"):
         return rec["job"]
     roll = rnd if rnd is not None else random.random
-    job = JOBS[int(float(roll()) * len(JOBS)) % len(JOBS)]
+    chrono = rec.get("chrono") or ""
+    weights = {}
+    for job in D.JOBS:
+        w = D.JOB_TONE_WEIGHT[job["tone"]]
+        if chrono == "夜貓子":
+            w *= 2.0 if job["band"] == "night" else 0.6 if job["band"] == "day" else 1.0
+        elif chrono == "早起型":
+            w *= 2.0 if job["band"] == "day" else 0.3 if job["band"] == "night" else 1.0
+        weights[job["id"]] = w
+    jid = _pick_weighted(weights, roll) or D.JOBS[0]["id"]
+    job = next(j for j in D.JOBS if j["id"] == jid)
     rec["job"] = {"id": job["id"], "name": job["name"]}
     return rec["job"]
 
 
-def apply_resolve(store: dict, gid: str, finished_until: int, text: str, kind: str, now_ms: int, next_kind: str, rnd=None, extra_keys=None) -> bool:
+# ───────────────────────── 遭遇 ─────────────────────────
+# 心情 → 遭遇的倍率（level 60 以上用滿）。反過來遭遇的結果在 _outcome 改心情。
+MOOD_EMOTION = {
+    "愉快": {"joy": 1.5, "delight": 1.5, "anger": 0.7, "sorrow": 0.7},
+    "不悅": {"anger": 1.8, "joy": 0.7, "delight": 0.8},
+    "低落": {"sorrow": 1.8, "delight": 0.7, "joy": 0.8},
+    "不安": {"sorrow": 1.3, "anger": 1.2, "delight": 0.8},
+    "虛脫": {"anger": 1.3, "sorrow": 1.2},
+}
+MOOD_ACT = {
+    "愉快": {"chat": 1.6, "help": 1.4, "contact": 1.5, "greet": 1.5, "argue": 0.5, "blame": 0.6},
+    "不悅": {"argue": 2.0, "blame": 1.5, "help": 0.6, "chat": 0.7},
+    "低落": {"quiet": 2.0, "blame": 1.4, "chat": 0.6, "contact": 0.6},
+    "不安": {"quiet": 1.5, "glance": 1.3, "stare": 1.5, "follow": 1.4},
+    "虛脫": {"blame": 1.6, "quiet": 1.4, "help": 1.2},
+}
+MOOD_TONE = {  # 日常：奇遇：詭異（基準 3：2：1）
+    "愉快": {"daily": 1.0, "wonder": 1.75, "horror": 0.5},
+    "不悅": {"daily": 1.0, "wonder": 0.75, "horror": 1.5},
+    "低落": {"daily": 1.0, "wonder": 0.6, "horror": 2.0},
+    "不安": {"daily": 0.85, "wonder": 0.5, "horror": 2.5},
+    "虛脫": {"daily": 1.15, "wonder": 0.5, "horror": 1.5},
+}
+MOOD_SCP = {"不安": 2.0, "低落": 1.5, "虛脫": 1.3, "愉快": 0.6}
+MOOD_PERSON = {"愉快": 1.2, "低落": 0.7, "不安": 0.7, "虛脫": 0.8}
+PERSON_BASE = 0.5
+REVISIT = {"同事": 0.55, "顧客": 0.15, "路人": 0.12}
+SCP_FIRST_CAP = 0.2
+SCP_NEXT_CAP = 0.6
+SCP_GAP_MS = 6 * HOUR_MS  # 同一件異常兩步之間至少隔 6 小時（不會一晚走完三步）
+
+
+def _pick(items: list, rnd):
+    return items[int(float(rnd()) * len(items)) % len(items)]
+
+
+def _pick_by(items: list, table: dict, mood: str, level: int, rnd, base_key: str = "") -> dict:
+    weights = {}
+    for item in items:
+        base = float(item.get(base_key) or 1) if base_key else 1.0
+        weights[item["id"]] = base * _mood_mult(table, mood, level, item["id"])
+    pid = _pick_weighted(weights, rnd)
+    return next(i for i in items if i["id"] == pid)
+
+
+def scp_chance(started: bool, mood: str, level: int, eerie: bool = False, night: bool = False) -> float:
+    base = D.SCP_NEXT_CHANCE if started else D.SCP_FIRST_CHANCE
+    mult = 1.0 + (MOOD_SCP.get(mood, 1.0) - 1.0) * min(1.0, level / 60)
+    if eerie:
+        mult *= 1.5
+    if night:
+        mult *= 1.3
+    return min(SCP_NEXT_CAP if started else SCP_FIRST_CAP, base * mult)
+
+
+def roll_scp(rec: dict, where: str, mood: str, level: int, rnd, eerie: bool = False, night: bool = False, now_ms: int = 0) -> dict | None:
+    """where = work（打工場所）或 stroll（綁在她落腳的真實地點）。已經開始的那件優先，再遇到就進下一步。"""
+    if now_ms and 0 <= now_ms - _ms(rec.get("scpAt")) < SCP_GAP_MS:
+        return None
+    steps = rec.get("scpSteps") or {}
+    if where == "work":
+        pool = [e for e in D.SCP_EVENTS if e.get("work")]
+    else:
+        gid = rec.get("groundId") or ""
+        pool = [e for e in D.SCP_EVENTS if gid and gid in (e.get("grounds") or [])]
+    open_ = [(e, int(steps.get(e["id"]) or 0)) for e in pool if int(steps.get(e["id"]) or 0) < len(e["stages"])]
+    started = [x for x in open_ if x[1] > 0]
+    use = started or open_
+    if not use:
+        return None
+    if not float(rnd()) < scp_chance(bool(started), mood, level, eerie, night):
+        return None
+    event, step = _pick(use, rnd)
+    return {"id": event["id"], "code": event["code"], "title": event["title"], "step": step,
+            "of": len(event["stages"]), "stage": event["stages"][step], "prior": event["stages"][:step]}
+
+
+def _new_name(gender: str, rnd) -> str:
+    return _pick(D.SURNAMES, rnd) + _pick(D.GIVEN_M if gender == "male" else D.GIVEN_F, rnd)
+
+
+def meet_person(rec: dict, role: str, where: str, know: bool, now_ms: int, rnd) -> dict:
+    """碰到一個人：同一個地方的同身份，可能是之前碰過的（同事最常）。只記見過幾次，不交朋友。"""
+    pool = [m for m in (rec.get("met") or []) if m.get("role") == role and m.get("where") == where]
+    if pool and float(rnd()) < REVISIT.get(role, 0.12):
+        old = _pick(pool, rnd)
+        return {"id": old["id"], "name": old["name"], "gender": old.get("gender") or "", "role": role,
+                "where": where, "named": bool(old.get("named") or know), "revisit": True,
+                "count": int(old.get("count") or 1) + 1}
+    gender = "male" if float(rnd()) < 0.5 else "female"
+    return {"id": f"p{now_ms % 10**9}{int(float(rnd()) * 1000)}", "name": _new_name(gender, rnd), "gender": gender,
+            "role": role, "where": where, "named": bool(know), "revisit": False, "count": 1}
+
+
+def person_label(p: dict | None) -> str:
+    if not p:
+        return ""
+    return p["name"] if p.get("named") else f"一位{p.get('role') or '路人'}"
+
+
+def roll_event(rec: dict, kind: str, now_ms: int, rnd=None) -> dict:
+    """結算時擲這一趟發生什麼。結果存在 agenda.event，模型重試也用同一份。"""
+    roll = rnd if rnd is not None else random.random
+    mood, level = mood_now(rec, now_ms)
+    h = jst_hour(now_ms)
+    night = h >= 20 or h < 5
+    ev = {"kind": kind, "moodBefore": mood, "moodBeforeLevel": level}
+    if kind == "work":
+        job = ensure_job(rec, roll)
+        ev["job"] = job["name"]
+        eerie = _job_tone(job.get("id")) == "eerie"
+        scp = roll_scp(rec, "work", mood, level, roll, eerie=eerie, now_ms=now_ms)
+        role = _pick(D.SHIFT_ROLES, roll)["name"]
+        emotion = _pick_by(D.EMOTIONS, MOOD_EMOTION, mood, level, roll)
+        act = _pick_by(D.SHIFT_ACTS, MOOD_ACT, mood, level, roll)
+        if scp:
+            ev["scp"] = scp
+            act = {"id": "scp", "name": scp["title"], "know": False}
+        ev["person"] = meet_person(rec, role, job["name"], act.get("know", False), now_ms, roll)
+        ev["emotion"] = emotion["name"]
+        ev["act"] = act["name"]
+        ev["actId"] = act["id"]
+        ev["fatigue"] = shifts_in_day(rec, now_ms) >= 2 and float(roll()) < 0.4
+    elif kind == "stroll":
+        place = _pick(D.STROLL_PLACES, roll)
+        spot = (rec.get("spots") or {}).get(place["id"]) or place["name"]
+        ev["place"] = spot
+        scp = roll_scp(rec, "stroll", mood, level, roll, night=night, now_ms=now_ms)
+        tone_w = {t["id"]: t["weight"] * _mood_mult(MOOD_TONE, mood, level, t["id"]) * (1.5 if night and t["id"] == "horror" else 1.0)
+                  for t in D.STROLL_TONES}
+        tone = _pick_weighted(tone_w, roll)
+        p_person = PERSON_BASE * _mood_mult({mood: {"p": MOOD_PERSON.get(mood, 1.0)}}, mood, level, "p")
+        has_person = float(roll()) < p_person
+        if scp:
+            ev["scp"] = scp
+            ev["tone"] = "scp"
+            ev["toneName"] = f"{scp['code']} {scp['step'] + 1}/{scp['of']}"
+            ev["act"] = scp["title"]
+            ev["actId"] = "scp"
+            has_person = False
+        else:
+            ev["tone"] = tone
+            ev["toneName"] = next(t["name"] for t in D.STROLL_TONES if t["id"] == tone)
+            acts = D.STROLL_PERSON[tone] if has_person else D.STROLL_SOLO[tone]
+            act = _pick_by(acts, MOOD_ACT, mood, level, roll)
+            ev["act"] = act["name"]
+            ev["actId"] = act["id"]
+            if has_person:
+                ev["emotion"] = _pick_by(D.EMOTIONS, MOOD_EMOTION, mood, level, roll)["name"]
+                ev["person"] = meet_person(rec, "路人", spot, act.get("know", False), now_ms, roll)
+    elif kind == "sleep":
+        agenda = rec.get("agenda") or {}
+        ev["nap"] = 0 < _ms(agenda.get("until")) - _ms(agenda.get("startedAt")) < 3 * HOUR_MS
+        ev["nightmare"] = mood == "不安" and level >= 35 and float(roll()) < 0.45
+        ev["poor"] = (not ev["nightmare"]) and rec.get("chrono") == "淺眠易怒" and float(roll()) < 0.25
+    ev["outcome"] = _outcome(ev, rec, roll)
+    return ev
+
+
+def _outcome(ev: dict, rec: dict, rnd) -> dict:
+    """這一趟讓心情變成什麼。回 {mood, level, why}；平靜＝把現在的心情壓下去多少。"""
+    kind = ev.get("kind")
+    if kind == "sleep":
+        if ev.get("nightmare"):
+            return {"mood": "不安", "level": 40, "why": "做了惡夢"}
+        if ev.get("poor"):
+            return {"mood": "不悅", "level": 25, "why": "睡不好、被吵醒好幾次"}
+        calm = 15 if ev.get("nap") else 35
+        if rec.get("chrono") == "隨和好睡":
+            calm += 15
+        return {"mood": "平靜", "level": calm, "why": "睡過一覺"}
+    if kind == "browse":
+        return {"mood": "平靜", "level": 8, "why": "在住所上網放空"}
+    where = ev.get("place") or ev.get("job") or ""
+    scp = ev.get("scp")
+    if scp:
+        return {"mood": "不安", "level": 40 + 15 * int(scp.get("step") or 0), "why": f"在{where}撞見說不清的怪事"}
+    tone = ev.get("tone")
+    if tone == "horror":
+        return {"mood": "不安", "level": 35 + int(float(rnd()) * 16), "why": f"在{where}碰到詭異的事"}
+    emotion = ev.get("emotion") or ""
+    act = ev.get("actId") or ""
+    who = person_label(ev.get("person")) if ev.get("person") else ""
+    if emotion == "怒":
+        out = {"mood": "不悅", "level": 30, "why": f"{who}對她發脾氣"}
+    elif emotion == "哀":
+        out = {"mood": "低落", "level": 28, "why": f"{who}很消沉，被感染"}
+    elif emotion in ("喜", "樂"):
+        out = {"mood": "愉快", "level": 28, "why": f"跟{who}處得開心"}
+    elif tone == "wonder":
+        out = {"mood": "愉快", "level": 35, "why": f"在{where}碰上巧事"}
+    else:
+        out = {"mood": "平靜", "level": 10, "why": f"在{where}散心" if kind == "stroll" else "做完一班"}
+    if tone == "wonder" and out["mood"] != "愉快" and out["mood"] != "不悅":
+        out = {"mood": "愉快", "level": 32, "why": f"在{where}碰上巧事"}
+    if act == "blame":
+        bad = "不悅" if ev.get("moodBefore") == "不悅" or emotion == "怒" else "低落"
+        out = {"mood": bad, "level": 40, "why": f"被{who}責怪"}
+    elif act == "argue":
+        out = {"mood": "不悅", "level": 42, "why": f"跟{who}起了爭執"}
+    elif act in ("help", "chat", "contact", "favor", "greet", "return") and out["mood"] == "愉快":
+        out["level"] += 10
+    elif act in ("glance", "quiet", "yield", "pass", "together") and out["mood"] != "平靜":
+        out["level"] = int(out["level"] * 0.5)
+    elif act == "lost":
+        out = {"mood": "不悅", "level": 15, "why": f"在{where}迷路"}
+    return out
+
+
+# ───────────────────────── 寫成文字 ─────────────────────────
+SCP_RULE = "她不認識編號，不要讓她說出編號。不要寫收容程序，不要寫血腥或傷害過程。"
+
+
+def scp_brief(scp: dict) -> str:
+    prior = "\n".join(f"{i + 1}. {line}" for i, line in enumerate(scp.get("prior") or []))
+    return "\n".join([
+        f"這是同一件怪事的第 {scp['step'] + 1}/{scp['of']} 步，要比上一次更可怕。",
+        f"這一步只寫：{scp['stage']}",
+        f"她已經歷過：\n{prior}\n接著寫，不要重頭，不要跳到更後面。" if prior else "這是第一次。只寫這一點不對勁，不要把後面的恐怖一次寫完。",
+        SCP_RULE,
+    ])
+
+
+def needs_llm(ev: dict) -> bool:
+    if ev.get("kind") == "sleep":
+        return bool(ev.get("nightmare"))
+    return ev.get("kind") in ("work", "stroll")
+
+
+def event_prompt(action: dict) -> tuple[str, str]:
+    ev = action.get("event") or {}
+    kind = ev.get("kind")
+    name = action.get("name") or "她"
+    p = ev.get("person")
+    persona = "、".join(x for x in [action.get("archetype") or "", action.get("tone") or ""] if x)
+    common = [
+        action.get("clock") or "",
+        action.get("span") or "",
+        f"人在日本{action.get('groundName') or action.get('regionName') or ''}，住所是{action.get('homeName') or '自己的房間'}。不在召喚者那裡，不要寫召喚者的房間。",
+        f"個性：{persona}。" if persona else "",
+        f"出門前的心情是{ev.get('moodBefore') or '平靜'}。",
+        f"寫完時她的感覺要接近「{(ev.get('outcome') or {}).get('mood') or '平靜'}」，但不要直接說出這兩個字。",
+        "不要標題，不要列選項，不要提到遊戲或抽籤。",
+    ]
+    if kind == "sleep":
+        return ("你只寫她剛醒來時還記得的夢。",
+                "\n".join([f"你是{name}。用「我」寫剛做的惡夢，2到3句。停在醒來時的害怕。不要血腥。"] + common))
+    if p:
+        system = "你只寫她和對方的互動。沒有對方的反應就不算寫完。"
+        g = "男性" if p.get("gender") == "male" else "女性"
+        if p.get("named"):
+            meet = f"對方叫{p['name']}（{g}），她知道對方的名字，可以寫出來。"
+        else:
+            meet = f"對方是{g}，她不知道對方的名字。不要替對方取名字。"
+        if p.get("revisit"):
+            meet += f"這是第{p.get('count') or 2}次在這裡碰到對方，她認得出來。"
+        who_line = f"對方是{p.get('role')}，情緒是{ev.get('emotion') or '平靜'}。情緒要出現在對方對我的反應裡，不要單獨標註。"
+        body = [
+            "必須是兩個人的來回：我先說或先做，對方一定要有動作或回話，我再接一句。",
+            meet, who_line,
+            f"互動只沿著這個方向：{ev.get('act')}。細節自己編，但兩邊都要出場。",
+        ]
+    else:
+        system = "你只寫她一個人在那個地方的經過。不要硬加一個認識的人。"
+        body = [f"事情只沿著這個方向：{ev.get('act')}。細節自己編。"]
+    if kind == "work":
+        lead = f"你是{name}。用「我」寫剛結束的打工裡發生的事，2到4句。打工是「{ev.get('job')}」。"
+    else:
+        lead = f"你是{name}。用「我」寫在{ev.get('place')}溜達時發生的事，2到4句。人就在{ev.get('place')}，不要改到別的地方。這不是打工。"
+    scp = ev.get("scp")
+    if scp:
+        body.insert(0, scp_brief(scp))
+    elif kind == "stroll":
+        body.insert(0, D.STROLL_TONE_RULE.get(ev.get("tone") or "daily", ""))
+    return system, "\n".join(x for x in [lead] + common + body if x)
+
+
+_PERSON_RE = re.compile(r"他|她|對方|同事|顧客|客人|路人|那人|那個人|大叔|阿姨|先生|小姐")
+
+
+def accept_text(action: dict, raw: str) -> str:
+    text = "\n".join(line for line in str(raw or "").splitlines() if not re.match(r"\s*(名字|標題)[:：]", line))
+    text = clip_text(text)
+    ev = action.get("event") or {}
+    if len(text) < 8 or "我" not in text:
+        return ""
+    p = ev.get("person")
+    if p and not (_PERSON_RE.search(text) or (p.get("named") and p.get("name") in text)):
+        return ""
+    return text
+
+
+RETRY_ASK = "上一則不符合。用「我」重寫，2到4句，照上面的方向；有對方的話對方一定要回話或有動作。"
+
+
+EMOTION_LOOK = {"喜": "很高興", "怒": "在生氣", "哀": "很消沉", "樂": "心情很好"}
+
+
+def fallback_text(action: dict) -> str:
+    ev = action.get("event") or {}
+    kind = ev.get("kind")
+    p = ev.get("person")
+    who = person_label(p)
+    look = EMOTION_LOOK.get(ev.get("emotion") or "", "沒什麼表情")
+    if kind == "sleep":
+        return "我睡得很不安穩，夢裡一直有東西在門外。醒來的時候心還在跳。" if ev.get("nightmare") else "我睡了一覺。"
+    if kind == "browse":
+        return "我在住所上網，隨便滑了一陣。"
+    if ev.get("scp"):
+        where = ev.get("job") or ev.get("place") or "那裡"
+        return f"我在{where}看見{ev['scp']['title']}，有什麼地方不對勁。我沒有再靠近。"
+    if kind == "work":
+        if p:
+            return f"我在{ev.get('job')}碰到{who}，對方{look}。這一班跟對方{ev.get('act')}，我回了幾句，對方也有反應。"
+        return f"我在{ev.get('job')}做完這一班。"
+    tail = "心裡發毛，沒有再靠近。" if ev.get("tone") == "horror" else "事情巧得有點過分。" if ev.get("tone") == "wonder" else "待了一會兒就繼續走。"
+    if p:
+        return f"我在{ev.get('place')}碰到{who}，對方{look}。我們{ev.get('act')}，我回了幾句，對方也有反應。{tail}"
+    return f"我在{ev.get('place')}{ev.get('act')}，{tail}"
+
+
+# ───────────────────────── 排程與結算 ─────────────────────────
+def quick_step(store: dict, now_ms: int, rnd=None) -> list[str]:
+    """不用模型的事一次做完：替每個空檔的人排下一件、睡醒但沒做夢的人直接結算。"""
+    logs = []
+    for gid, rec in (store.get("girls") or {}).items():
+        if needs_choice(rec):
+            nk, ms = pick_next(rec, now_ms, rnd)
+            arm(rec, nk, now_ms, rnd, ms)
+            logs.append(f"{rec.get('name') or '她'} 排了{KIND_ZH[nk]}（{int(ms / 60000)} 分）")
+            continue
+        if is_due(rec, now_ms) and (rec["agenda"].get("kind") == "sleep"):
+            agenda = rec["agenda"]
+            if not isinstance(agenda.get("event"), dict):
+                agenda["event"] = roll_event(rec, "sleep", now_ms, rnd)
+            if not needs_llm(agenda["event"]):
+                settle(store, gid, _ms(agenda.get("until")), "", now_ms, rnd)
+                logs.append(f"{rec.get('name') or '她'} 睡醒了，心情{rec.get('mood') or '平靜'}")
+    return logs
+
+
+def next_due(store: dict, now_ms: int) -> str:
+    """最久沒結算的那位先（避免一直卡同一位、別人排隊）。"""
+    best, best_until = "", 0
+    for gid, rec in (store.get("girls") or {}).items():
+        if is_due(rec, now_ms):
+            until = _ms(rec["agenda"].get("until"))
+            if not best or until < best_until:
+                best, best_until = gid, until
+    return best
+
+
+def prepare_resolve(store: dict, gid: str, now_ms: int, rnd=None) -> dict | None:
+    rec = (store.get("girls") or {}).get(gid)
+    if not rec or not is_due(rec, now_ms):
+        return None
+    agenda = rec["agenda"]
+    kind = agenda.get("kind") or "work"
+    if not isinstance(agenda.get("event"), dict):
+        agenda["event"] = roll_event(rec, kind, now_ms, rnd)
+    return {
+        "op": "resolve",
+        "id": gid,
+        "until": _ms(agenda.get("until")),
+        "startedAt": _ms(agenda.get("startedAt")),
+        "kind": kind,
+        "event": agenda["event"],
+        "name": rec.get("name") or "她",
+        "archetype": rec.get("archetype") or "",
+        "tone": rec.get("tone") or "",
+        "homeName": rec.get("homeName") or "",
+        "regionName": rec.get("regionName") or "",
+        "groundName": rec.get("groundName") or "",
+        "job": (rec.get("job") or {}).get("name") or "",
+        "hobbies": list(rec.get("hobbies") or []),
+        "mood": mood_now(rec, now_ms)[0],
+        "clock": japan_clock(min(now_ms, _ms(agenda.get("until")) or now_ms))["line"],
+    }
+
+
+def plan_tick(store: dict, now_ms: int) -> list[dict]:
+    """相容舊呼叫：先做不用模型的事，再回最多一件要寫字的結算。"""
+    quick_step(store, now_ms)
+    gid = next_due(store, now_ms)
+    action = prepare_resolve(store, gid, now_ms) if gid else None
+    return [action] if action else []
+
+
+def _note_met(rec: dict, p: dict, ev: dict, at: int) -> None:
+    met = [m for m in (rec.get("met") or []) if isinstance(m, dict)]
+    row = next((m for m in met if m.get("id") == p["id"]), None)
+    if row is None:
+        row = {"id": p["id"], "name": p["name"], "gender": p.get("gender") or "", "role": p.get("role") or "",
+               "where": p.get("where") or "", "named": bool(p.get("named")), "firstAt": at, "count": 0}
+        met.append(row)
+    row["count"] = int(row.get("count") or 0) + 1
+    row["named"] = bool(row.get("named") or p.get("named"))
+    row["lastAt"] = at
+    row["lastAct"] = ev.get("act") or ""
+    row["lastEmotion"] = ev.get("emotion") or ""
+    if len(met) > MET_CAP:
+        # 先丟只見過一次、不知道名字的；還是太多才丟最舊的
+        met.sort(key=lambda m: (bool(m.get("named")) or int(m.get("count") or 0) > 1, _ms(m.get("lastAt"))))
+        met = met[len(met) - MET_CAP:]
+        met.sort(key=lambda m: _ms(m.get("firstAt")))
+    rec["met"] = met
+
+
+def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, rnd=None, keys=None, next_kind: str = "") -> bool:
+    """寫下這一趟、改心情、記碰到的人和 SCP 進度，再排下一件（從現在起算，不補欠的）。"""
     rec = (store.get("girls") or {}).get(gid)
     if not rec or rec.get("phase") != "japan":
         return False
     agenda = rec.get("agenda") if isinstance(rec.get("agenda"), dict) else None
     if not agenda or _ms(agenda.get("until")) != int(finished_until):
         return False
-    _remember(rec, "browse" if kind == "browse" else ("stroll" if kind == "stroll" else "work"), text, now_ms, extra_keys)
     roll = rnd if rnd is not None else random.random
-    if next_kind not in KINDS:
-        next_kind = KINDS[int(float(roll()) * len(KINDS)) % len(KINDS)]
-    arm(rec, next_kind, now_ms, roll)
+    kind = agenda.get("kind") if agenda.get("kind") in KINDS else "work"
+    ev = agenda.get("event") if isinstance(agenda.get("event"), dict) else roll_event(rec, kind, now_ms, roll)
+    at = min(now_ms, int(finished_until))
+    before = mood_now(rec, at)
+    out = ev.get("outcome") or {}
+    after = apply_mood(rec, out.get("mood") or "平靜", out.get("level") or 0, out.get("why") or "", at)
+    if kind == "sleep" and before[0] == "虛脫" and after[0] == "虛脫" and not ev.get("nightmare"):
+        after = apply_mood(rec, "平靜", 100, "", at)
+    if ev.get("fatigue"):
+        after = apply_mood(rec, "虛脫", 40, "一天上了兩班，累垮了", at)
+    p = ev.get("person")
+    if p:
+        _note_met(rec, p, ev, at)
+    scp = ev.get("scp")
+    if scp:
+        rec.setdefault("scpSteps", {})[scp["id"]] = int(scp["step"]) + 1
+        rec["scpAt"] = at
+    extra = {
+        "place": ev.get("place") or (rec.get("homeName") if kind in ("browse", "sleep") else "") or "",
+        "person": person_label(p),
+        "personRole": (p or {}).get("role") or "",
+        "personGender": (p or {}).get("gender") or "",
+        "personId": (p or {}).get("id") or "",
+        "moodBefore": before[0],
+        "moodAfter": after[0],
+        "tone": ev.get("toneName") or "",
+        "act": ev.get("act") or "",
+        "scp": (scp or {}).get("code") or "",
+        "scpStep": (int(scp["step"]) + 1) if scp else "",
+    }
+    if kind == "work":
+        mem_keys = ["打工", ev.get("job") or "", person_label(p) if p and p.get("named") else (p or {}).get("role", "")]
+    elif kind == "stroll":
+        mem_keys = ["遊盪", ev.get("place") or "", ev.get("toneName") or "", person_label(p) if p and p.get("named") else ""]
+    elif kind == "sleep":
+        mem_keys = ["睡覺", "惡夢" if ev.get("nightmare") else "沒睡好"]
+    else:
+        mem_keys = ["上網"]
+    mem_keys += list(keys or [])
+    if after[0] != "平靜":
+        mem_keys.append(after[0])
+    body = text or (fallback_text({"event": ev}) if (kind != "sleep" or ev.get("nightmare") or ev.get("poor")) else "")
+    if kind == "sleep" and ev.get("poor") and not text:
+        body = "我半夜被聲音吵醒好幾次，起床氣還在。"
+    item = _remember(rec, kind, body, at, mem_keys, extra) if body else None
+    rec["last"] = {"kind": kind, "at": at, "text": (item or {}).get("text") or body or "", "place": extra["place"],
+                   "person": extra["person"], "tone": extra["tone"], "scp": extra["scp"],
+                   "moodBefore": before[0], "moodAfter": after[0]}
+    hist = [k for k in (rec.get("history") or []) if k in KINDS]
+    hist.append(kind)
+    rec["history"] = hist[-6:]
+    rec["agenda"] = None
+    if next_kind in KINDS:
+        arm(rec, next_kind, now_ms, roll)
+    else:
+        nk, ms = pick_next(rec, now_ms, roll)
+        arm(rec, nk, now_ms, roll, ms)
     return True
+
+
+def apply_resolve(store: dict, gid: str, finished_until: int, text: str, kind: str, now_ms: int, next_kind: str = "", rnd=None, extra_keys=None) -> bool:
+    """舊介面：照 settle 走。next_kind 只給測試或沙盒用；空白就照規則擲。"""
+    return settle(store, gid, finished_until, text, now_ms, rnd, extra_keys, next_kind)
 
 
 def _push_mind(world: dict, item: dict) -> None:
@@ -418,7 +1165,7 @@ def view_of(rec: dict) -> dict:
     kind = agenda.get("kind") if agenda else ""
     until = _ms(agenda.get("until")) if agenda else 0
     activity = ""
-    shift = stroll = browse = None
+    shift = stroll = browse = sleep = None
     if kind == "work" and until:
         activity = "work"
         shift = {"pending": True, "until": until}
@@ -428,6 +1175,10 @@ def view_of(rec: dict) -> dict:
     elif kind == "browse" and until:
         activity = "browse"
         browse = {"pending": True, "until": until, "placeName": rec.get("homeName") or ""}
+    elif kind == "sleep" and until:
+        activity = "sleep"
+        sleep = {"pending": True, "until": until, "placeName": rec.get("homeName") or ""}
+    public_agenda = {"kind": kind, "until": until, "startedAt": _ms(agenda.get("startedAt"))} if until else None
     return {
         "id": rec.get("id") or "",
         "name": rec.get("name") or "",
@@ -436,11 +1187,20 @@ def view_of(rec: dict) -> dict:
         "regionId": rec.get("regionId") or "",
         "home": {"id": rec.get("homeId") or "", "name": rec.get("homeName") or ""} if rec.get("homeId") else None,
         "job": rec.get("job"),
-        "agenda": agenda if until else None,
+        "agenda": public_agenda,
         "activity": activity,
         "shift": shift,
         "stroll": stroll,
         "browse": browse,
+        "sleep": sleep,
+        # 心情原值＋時間；手機用同一套衰減自己算（life_schedule.js outsideMoodNow）
+        "mood": rec.get("mood") or "平靜",
+        "moodLevel": int(rec.get("moodLevel") or 0),
+        "moodAt": _ms(rec.get("moodAt")),
+        "moodWhy": rec.get("moodWhy") or "",
+        "met": [dict(m) for m in (rec.get("met") or []) if isinstance(m, dict)],
+        "last": rec.get("last") if isinstance(rec.get("last"), dict) else None,
+        "scpSteps": dict(rec.get("scpSteps") or {}),
         "memories": list(rec.get("memories") or []),
         "note": rec.get("note") or "",
     }
@@ -480,6 +1240,19 @@ def _paint_world(girl: dict, row: dict) -> None:
     world["shift"] = row.get("shift")
     world["stroll"] = row.get("stroll")
     world["browse"] = row.get("browse")
+    world["sleep"] = row.get("sleep")
+    if row.get("phase") == "japan":
+        # 人在日本時 RP5 是心情的真相；人在房裡時手機是（不蓋）
+        world["mood"] = row.get("mood") or "平靜"
+        world["moodLevel"] = int(row.get("moodLevel") or 0)
+        world["moodAt"] = int(row.get("moodAt") or 0)
+        world["moodWhy"] = row.get("moodWhy") or ""
+    if row.get("met"):
+        world["met"] = row["met"]
+    if row.get("last"):
+        world["lastOutside"] = row["last"]
+    if row.get("scpSteps"):
+        world["scpSteps"] = row["scpSteps"]
     world.pop("settlingHome", None)
     for item in row.get("memories") or []:
         if isinstance(item, dict) and item.get("id") and item.get("text"):

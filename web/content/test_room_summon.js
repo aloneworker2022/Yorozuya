@@ -315,7 +315,7 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { rollStayHours, visitDue } from "./life_schedule.js?v=2";
+import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow } from "./life_schedule.js?v=3";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.js?v=1";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
@@ -377,6 +377,13 @@ function roomActMem(who = girl) {
   who.roomActivity = A.ensureMem(who.roomActivity);
   return who.roomActivity;
 }
+/** 沒有房間裡的情緒餘溫時，用她從日本帶回來的心情：不悅→生氣、低落→委屈（強度打六折），房間活動會跟著偏（蹲角落、背對）。 */
+function outsideMoodForRoom(who) {
+  if (!who?.world?.mood) return null;
+  const now = outsideMoodNow(who.world);
+  const type = { 不悅: "angry", 低落: "hurt" }[now.name];
+  return type ? { type, level: Math.round(now.level * 0.6) } : null;
+}
 window.RoomActivityContext = () => {
   if (!girl) return null;
   const A = roomActs(), mem = roomActMem();
@@ -384,7 +391,7 @@ window.RoomActivityContext = () => {
   const ctx = {
     hour: taiwanNow().hour,
     chrono: girl.chrono?.name || "",
-    mood: mood ? { type: mood.type, level: mood.level } : null,
+    mood: mood ? { type: mood.type, level: mood.level } : outsideMoodForRoom(girl),
     miss: MISS_YOU_ON ? getMiss(girl) : 0,
     stage: girl.stage || "stranger",
     hobbies: Array.isArray(girl.hobbies) ? girl.hobbies : [],
@@ -4900,6 +4907,11 @@ function titleOf(g) {
 function activityLine() {
   const activity = girl?.world?.activity;
   const job = girl?.world?.job;
+  if (activity === "sleep") {
+    const until = Number(girl.world.sleep?.until);
+    const wake = until > 1e11 ? japanNow(new Date(until)).label.split(" ").pop() : "";
+    return `她在${girl.world.home?.name || "住所"}睡覺${wake ? `，日本時間 ${wake} 醒` : ""}。`;
+  }
   if (activity === "browse") {
     const home = girl.world.home?.name || "住所";
     const title = girl.world.browse?.title;
@@ -4922,7 +4934,36 @@ function activityLine() {
   return "";
 }
 
+/** 沙盒面板：上一件、碰過的人、SCP 進度（RP5 結算後帶回來的）。 */
+function outsideSummaryLines() {
+  const w = girl?.world;
+  if (!w) return [];
+  const out = [];
+  const last = w.lastOutside;
+  if (last?.text) {
+    const when = Number(last.at) > 1e11 ? japanNow(new Date(last.at)).label.split(" ").pop() : "";
+    const kind = { work: "打工", stroll: "溜達", browse: "上網", sleep: "睡覺" }[last.kind] || "";
+    const moodShift = last.moodBefore && last.moodAfter && last.moodBefore !== last.moodAfter ? `　心情 ${last.moodBefore}→${last.moodAfter}` : "";
+    out.push(`上一件（${when} ${kind}${last.tone ? `・${last.tone}` : ""}）：${last.text}${moodShift}`);
+  }
+  const met = Array.isArray(w.met) ? w.met : [];
+  if (met.length) {
+    const named = met.filter((m) => m.named).sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0)).slice(0, 4)
+      .map((m) => `${m.name}（${m.role}×${m.count}）`);
+    out.push(`碰過 ${met.length} 人${named.length ? `，知道名字：${named.join("、")}` : ""}`);
+  }
+  const steps = w.scpSteps && typeof w.scpSteps === "object" ? Object.entries(w.scpSteps) : [];
+  if (steps.length) out.push(`怪事：${steps.map(([id, n]) => `SCP-${id} ${n}/3`).join("、")}`);
+  return out;
+}
+
 function sceneLine() {
+  const base = sceneLineBase();
+  const extra = outsideSummaryLines();
+  return [base, ...extra].filter(Boolean).join("\n");
+}
+
+function sceneLineBase() {
   const activity = girl?.world?.activity;
   if (activity === "browse") {
     const browsed = girl.world.browse;
@@ -5041,6 +5082,8 @@ function renderWorld() {
   $("activity-choices").hidden = !activityOpen || !home;
   $("activity-work").setAttribute("aria-pressed", String(activity === "work"));
   $("activity-wander").setAttribute("aria-pressed", String(activity === "wander"));
+  $("activity-browse")?.setAttribute("aria-pressed", String(activity === "browse"));
+  $("activity-sleep")?.setAttribute("aria-pressed", String(activity === "sleep"));
   renderWhere();
   renderMood();
   renderFriends();
@@ -5066,11 +5109,14 @@ function renderMood() {
     world.exhaustedUntil = 0;
     if (world.mood === "虛脫") world.mood = "平靜";
   }
-  const mood = world?.mood;
+  const now = world ? outsideMoodNow(world) : null;
+  const mood = world?.mood ? now.name : "";
   const breed = breedingLabel(girl);
   const preg = breed ? `・${breed}` : "";
   const line = $("girl-mood");
-  const text = mood ? `心情 ${mood}${preg}` : (breed || "");
+  const why = now?.why && mood !== "平靜" ? `（${now.why}）` : "";
+  const strength = now?.level && mood !== "平靜" ? ` ${now.level}` : "";
+  const text = mood ? `心情 ${mood}${strength}${why}${preg}` : (breed || "");
   line.hidden = !text;
   line.textContent = text;
 }
@@ -5410,11 +5456,30 @@ function lifeNotes(userText = "") {
 }
 
 function returnMood() {
-  const mood = girl.world?.mood;
-  if (!mood) return "";
+  if (!girl.world?.mood) return "";
+  // 她在日本帶回來的心情（RP5 依遭遇改、隨時間淡回平靜）
+  const now = outsideMoodNow(girl.world);
+  const mood = now.name;
   const how = MOODS[mood] || MOODS.平靜;
-  if (!girl.world.justBack) return `你現在的心情是${mood}。${how}不要每句報心情。`;
-  return `你剛被召喚到這間房間，不是回到自己的家。你現在的心情是${mood}。${how}沒有特別的事就不要報日本那邊。不要每句報心情。`;
+  const feel = mood === "平靜" ? "心情是平靜" : `心情${moodStrengthWord(now.level)}${mood}`;
+  const why = now.why && mood !== "平靜" ? `（因為在日本${now.why}；他問起才說，不要主動報經過）` : "";
+  if (!girl.world.justBack) return `你現在${feel}${why}。${how}不要每句報心情。`;
+  return `你剛被召喚到這間房間，不是回到自己的家。你現在${feel}${why}。${how}沒有特別的事就不要報日本那邊。不要每句報心情。`;
+}
+
+/** 召回第一句要帶出她在日本帶回來的心情（只看得出口氣，不報經過）。 */
+function summonMoodHint() {
+  if (!girl?.world?.mood) return "";
+  const now = outsideMoodNow(girl.world);
+  if (now.name === "平靜") return "";
+  const tone = {
+    愉快: "口氣比平常輕快，嘴上抱怨也帶笑",
+    不悅: "口氣帶火氣、比較衝",
+    低落: "沒什麼精神、話少",
+    不安: "有點驚魂未定、心不在焉",
+    虛脫: "累到腿軟、說話有氣無力",
+  }[now.name] || "";
+  return `她帶著${moodStrengthWord(now.level)}${now.name}的心情被叫回來：第一句${tone}。不用解釋原因。`;
 }
 
 function namesOf(list) {
@@ -7203,7 +7268,7 @@ function summonOpener() {
   const body = openerBodyHint();
   const stage = girl.stage || "stranger";
   const idx = STAGE_INDEX[stage] ?? 0;
-  const base = "你剛被再次召喚進這房間（不是自己走回來）。可用「又把我叫回來？」這類反應。禁止報日本流水帳。";
+  const base = `你剛被再次召喚進這房間（不是自己走回來）。可用「又把我叫回來？」這類反應。禁止報日本流水帳。${summonMoodHint()}`;
   if (idx <= (STAGE_INDEX.acquaintance ?? 1)) {
     return `（旁白：${base}陌生／低關係：不悅、冷淡、懶得理，一兩句。${body}只輸出台詞。）`;
   }
@@ -10324,35 +10389,8 @@ async function fleeRoomFromInvasion({ cause = "動手動腳到你受不了逃走
 
 
 function paintLifeWorld(world, row) {
-  if (!world || !row) return;
-  if (row.home?.id) world.home = { id: row.home.id, name: row.home.name };
-  if (row.regionId) world.regionId = row.regionId;
-  if (row.job?.name) world.job = { id: row.job.id || "", name: row.job.name };
-  world.agenda = row.agenda || null;
-  world.activity = row.activity || null;
-  world.shift = row.shift || null;
-  world.stroll = row.stroll || null;
-  world.browse = row.browse || null;
-  if (!world.mind || typeof world.mind !== "object" || Array.isArray(world.mind)) {
-    world.mind = { immediate: [], mid: [], long: [], seeded: true };
-  }
-  const mind = world.mind;
-  if (!Array.isArray(mind.immediate)) mind.immediate = [];
-  if (!Array.isArray(mind.mid)) mind.mid = [];
-  if (!Array.isArray(mind.long)) mind.long = [];
-  const seen = new Set();
-  for (const tier of [mind.immediate, mind.mid, mind.long]) {
-    for (const item of tier) if (item?.id) seen.add(item.id);
-  }
-  for (const item of row.memories || []) {
-    if (!item?.id || !item.text || seen.has(item.id)) continue;
-    mind.immediate.push(item);
-    seen.add(item.id);
-    while (mind.immediate.length > 10) mind.mid.push(mind.immediate.shift());
-    while (mind.mid.length > 30) mind.long.push(mind.mid.shift());
-    while (mind.long.length > 1000) mind.long.shift();
-  }
-  mind.seeded = true;
+  // 跟 app.js 名冊合併共用同一份（life_schedule.js paintLifeRow）：行程、心情、記憶、碰過的人、上一件
+  paintLifeRow(world, row);
 }
 
 function applyLifeSnap(snap) {
@@ -10483,9 +10521,9 @@ function toggleActivity() {
 
 async function startActivity(kind) {
   if (!girl?.world?.home || !sheIsOut()) return;
-  if (kind !== "work" && kind !== "wander") return;
+  const mapped = { work: "work", wander: "stroll", browse: "browse", sleep: "sleep" }[kind];
+  if (!mapped) return;
   activityOpen = false;
-  const mapped = kind === "wander" ? "stroll" : "work";
   const status = $("summon-status");
   try {
     const resp = await fetch("/api/life/choose", {
@@ -10790,6 +10828,8 @@ onId("summon-back", "click", summonHerBack);
 onId("open-activity", "click", toggleActivity);
 onId("activity-work", "click", () => { startActivity("work"); });
 onId("activity-wander", "click", () => { startActivity("wander"); });
+onId("activity-browse", "click", () => { startActivity("browse"); });
+onId("activity-sleep", "click", () => { startActivity("sleep"); });
 bindBodyPanel();
 const refillBtn = $("body-refill-semen");
 if (refillBtn) {

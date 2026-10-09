@@ -59,7 +59,7 @@ import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=3";
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost } from "./content/life_schedule.js?v=2";
+import { rollSummonCost, paintLifeRow } from "./content/life_schedule.js?v=3";
 import { BASE_OUTFIT } from "./content/outfit_pick.js?v=1";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
@@ -8540,14 +8540,8 @@ function bindRoomProgressLiveSync() {
       const row = girls[s.id];
       if (!row) continue;
       s.world = s.world && typeof s.world === "object" ? s.world : {};
-      if (row.home?.id) s.world.home = { id: row.home.id, name: row.home.name };
-      if (row.regionId) s.world.regionId = row.regionId;
-      if (row.job?.name) s.world.job = { id: row.job.id || "", name: row.job.name };
-      s.world.agenda = row.agenda || null;
-      s.world.activity = row.activity || null;
-      s.world.shift = row.shift || null;
-      s.world.stroll = row.stroll || null;
-      s.world.browse = row.browse || null;
+      // 跟房間同一份：行程＋心情（她在日本時）＋記憶＋碰過的人＋上一件，名冊／LINE 不用等下一次讀存檔
+      paintLifeRow(s.world, row);
     }
   });
   // 關閉房間對話後再合併一次（雙保險）
@@ -13082,6 +13076,12 @@ function lineWhereabouts(s) {
       text: place
         ? `你從住所出來，人在日本遊盪的地點${place}。逛完會回到住所。時間以日本為準。`
         : "你從住所出來，人在日本外面溜達。逛完會回到住所。時間以日本為準。",
+    };
+  }
+  if (world?.activity === "sleep") {
+    return {
+      kind: "home",
+      text: `你在日本自己的住所${home}睡覺，被訊息吵醒，迷迷糊糊地回。時間以日本為準。`,
     };
   }
   if (world?.activity === "browse") {
