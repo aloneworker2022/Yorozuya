@@ -57,9 +57,9 @@ import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACK
 import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=2";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
-import { lifeMemoryPromptLines } from "./content/life_memory.js?v=4";
+import { lifeMemoryPromptLines } from "./content/life_memory.js?v=5";
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost, paintLifeRow, applyLifeHunger } from "./content/life_schedule.js?v=7";
+import { rollSummonCost, paintLifeRow, applyLifeHunger } from "./content/life_schedule.js?v=8";
 import { BASE_OUTFIT } from "./content/outfit_pick.js?v=1";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
@@ -8397,6 +8397,16 @@ function applyRoomProgressData(data) {
   if (data.bodyState && typeof data.bodyState === "object") {
     s.bodyState = data.bodyState;
     changed = true;
+  }
+  // 忠誠：外面做愛會慢慢掉（交友線，life_schedule.js applyLifeLoyalty）；只收這兩個欄位，其他 stats 照名冊
+  if (data.stats && typeof data.stats === "object" && Number.isFinite(Number(data.stats.loyalty))) {
+    s.stats = s.stats && typeof s.stats === "object" ? s.stats : {};
+    const taken = Number(data.stats.lifeLoyaltyTaken) || 0;
+    if (taken >= (Number(s.stats.lifeLoyaltyTaken) || 0)) {
+      s.stats.loyalty = Number(data.stats.loyalty);
+      s.stats.lifeLoyaltyTaken = taken;
+      changed = true;
+    }
   }
   if (data.body && typeof data.body === "object") {
     s.body = data.body;

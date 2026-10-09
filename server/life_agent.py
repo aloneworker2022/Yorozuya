@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import life_data as D
+import life_friends as LF
 
 _TOKYO = ZoneInfo("Asia/Tokyo")
 _WEEKDAYS = "一二三四五六日"
@@ -202,6 +203,14 @@ def _blank(gid: str) -> dict:
         "workLog": [],
         "scpSteps": {},
         "met": [],
+        "anonSex": 0,
+        "hungerRelief": 0,
+        "hungerReliefTaken": 0,
+        "loyaltyLoss": 0,
+        "traceSeq": 0,
+        "traces": [],
+        "lastAffair": None,
+        "nakedKeys": [],
         "last": None,
         "memories": [],
         "notedHome": False,
@@ -225,7 +234,7 @@ def _remember(rec: dict, kind: str, text: str, now_ms: int, keys: list | None = 
         "person": str(extra.get("person") or ""),
         "mood": rec.get("mood") or "",
     }
-    for key in ("personRole", "personGender", "personId", "moodBefore", "moodAfter", "tone", "act", "scp", "scpStep", "ero", "eroStep", "private"):
+    for key in ("personRole", "personGender", "personId", "moodBefore", "moodAfter", "tone", "act", "scp", "scpStep", "ero", "eroStep", "private", "bond", "bondFrom", "naked"):
         if extra.get(key) not in (None, ""):
             item[key] = extra[key]
     for k in (keys or []):
@@ -306,11 +315,20 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
         rec["tone"] = str(girl.get("tone") or rec.get("tone") or "")[:80]
         lib = girl.get("libido") if isinstance(girl.get("libido"), dict) else {}
         rec["libido"] = str(lib.get("grade") or rec.get("libido") or "R").upper()
-        body = girl.get("bodyState") if isinstance(girl.get("bodyState"), dict) else {}
+        # 人在房裡那位：房間鏡像比名冊新（身體、關係、忠誠都看它）
+        mine = mirror_girl if (mirror_girl and _mirror_id(mirror) == gid) else None
+        src = mine if (mine and present) else girl
+        body = src.get("bodyState") if isinstance(src.get("bodyState"), dict) else {}
+        if not body and src is not girl and isinstance(girl.get("bodyState"), dict):
+            body = girl["bodyState"]
         hung = body.get("hunger") if isinstance(body.get("hunger"), dict) else None
         if hung:
-            rec["hungerSeen"] = float(hung.get("level") or 0)
-            rec["hungerTaken"] = int(hung.get("lifeTaken") or 0)
+            _take_phone_hunger(rec, hung)
+        rec["stage"] = str(src.get("stage") or girl.get("roomStage") or girl.get("stage") or rec.get("stage") or "stranger")
+        stats = src.get("stats") if isinstance(src.get("stats"), dict) else (girl.get("stats") if isinstance(girl.get("stats"), dict) else {})
+        if stats.get("loyalty") is not None:
+            rec["loyaltySeen"] = _num(stats.get("loyalty"), 60)
+            rec["loyaltyTaken"] = int(_num(stats.get("lifeLoyaltyTaken"), 0))
         ground = world.get("ground") if isinstance(world.get("ground"), dict) else None
         if ground and ground.get("id"):
             rec["groundId"] = str(ground.get("id") or "")
@@ -330,6 +348,7 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
         job = world.get("job") if isinstance(world.get("job"), dict) else None
         if job and job.get("name") and not (rec.get("job") or {}).get("name"):
             rec["job"] = {"id": str(job.get("id") or ""), "name": str(job["name"])}
+        naked_key = _naked_key(world, mine)
         stay_open = gid == present_id and visit_until > now_ms
         no_deadline_yet = gid == present_id and visit_until == 0 and rec.get("phase") != "japan"
         if stay_open or no_deadline_yet:
@@ -342,6 +361,11 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
         just_left = gid == present_id or (known and rec.get("phase") == "room") or not known
         if just_left and rec.get("phase") != "japan":
             _enter_japan(rec, now_ms, roll)
+            # 手機沒送出就關掉、停留到期由 RP5 帶走：房間鏡像裡還是全裸，也算
+            if not naked_key and gid == present_id and _undress_stage(mirror_girl) >= 3:
+                naked_key = f"v{visit_until or now_ms}"
+        if naked_key and rec.get("phase") == "japan":
+            start_naked(rec, naked_key, now_ms, roll)
         elif rec.get("phase") != "japan" or not rec.get("homeId"):
             _enter_japan(rec, now_ms, roll)
         else:
@@ -351,7 +375,7 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
 # ───────────────────────── 心情 ─────────────────────────
 # level 0～100。隨時間淡回平靜（惰性計算），低於 MOOD_CLEAR 就是平靜。手機 life_schedule.js 的 outsideMoodNow 跟這裡同一套。
 MOOD_CLEAR = 12
-MOOD_DECAY_PER_HOUR = {"愉快": 5, "不悅": 5, "低落": 4, "不安": 5, "虛脫": 15, "臉紅心跳": 6}
+MOOD_DECAY_PER_HOUR = {"愉快": 5, "不悅": 5, "低落": 4, "不安": 5, "虛脫": 15, "臉紅心跳": 6, "心虛": 4}
 MOOD_DEFAULT_LEVEL = 40  # 舊存檔只有字、沒有強度
 
 
@@ -818,18 +842,62 @@ def libido_grade(rec: dict) -> str:
     return g if g in LIBIDO_ERO else "R"
 
 
-def hunger_estimate(rec: dict) -> float:
-    """手機上次存的飢渴＋還沒被手機收走的。只拿來算機率，不是真相（真相在手機 bodyState.hunger）。"""
-    seen = float(rec.get("hungerSeen") or 0)
-    pending = max(0, int(rec.get("hungerGiven") or 0) - int(rec.get("hungerTaken") or 0))
-    return max(0.0, min(100.0, seen + pending))
+# 飢渴：真相在手機 bodyState.hunger。RP5 留一份同步副本 hungerEst {level, at}（手機 hunger.js 同一套漲法），
+# 只拿來算機率。手機每存一次比較新的值就整個換掉；RP5 自己給的（奇遇 +、外面做愛 −）先寫進副本，
+# 再累計到 hungerGiven／hungerRelief，手機用 lifeTaken／lifeReliefTaken 記收過多少，差額才動真值（不會重複算）。
+HUNGER_RATE = {"N": 1.2, "R": 1.8, "S": 2.5, "SS": 3.3, "SSR": 4.2}
+HUNGER_STAGE_MULT = {"reserved": 1, "friend": 1.35, "dating": 1.5, "wife": 1.6}
 
 
-def ero_chance(rec: dict, started: bool, mood: str, level: int, night: bool = False) -> float:
+def _take_phone_hunger(rec: dict, hung: dict) -> None:
+    at = _ms(hung.get("at"))
+    rec["hungerSeen"] = float(hung.get("level") or 0)
+    rec["hungerTaken"] = int(hung.get("lifeTaken") or 0)
+    rec["hungerReliefTaken"] = int(hung.get("lifeReliefTaken") or 0)
+    rec["hungerSated"] = _ms(hung.get("satedUntil"))
+    if at and at >= _ms(rec.get("hungerSyncAt")):
+        pending = (int(rec.get("hungerGiven") or 0) - rec["hungerTaken"]) - (int(rec.get("hungerRelief") or 0) - rec["hungerReliefTaken"])
+        rec["hungerEst"] = {"level": max(0.0, min(100.0, rec["hungerSeen"] + pending)), "at": at}
+        rec["hungerSyncAt"] = at
+
+
+def hunger_estimate(rec: dict, now_ms: int = 0) -> float:
+    """現在大概多飢渴（0～100）。只拿來算機率，不是真相。"""
+    est = rec.get("hungerEst") if isinstance(rec.get("hungerEst"), dict) else None
+    if not est or not now_ms:
+        seen = float(rec.get("hungerSeen") or 0)
+        pending = (int(rec.get("hungerGiven") or 0) - int(rec.get("hungerTaken") or 0)) - \
+                  (int(rec.get("hungerRelief") or 0) - int(rec.get("hungerReliefTaken") or 0))
+        if not est:
+            return max(0.0, min(100.0, seen + pending))
+        return max(0.0, min(100.0, float(est.get("level") or 0)))
+    rate = HUNGER_RATE.get(libido_grade(rec), 1.8) * HUNGER_STAGE_MULT[LF.stage_band(rec.get("stage"))]
+    start = max(_ms(est.get("at")), _ms(rec.get("hungerSated")))
+    hours = max(0.0, (now_ms - start) / HOUR_MS)
+    return max(0.0, min(100.0, float(est.get("level") or 0) + rate * hours))
+
+
+def hunger_shift(rec: dict, delta: int, now_ms: int) -> None:
+    """RP5 讓飢渴變了（+ 奇遇／− 外面做愛）：寫進副本並累計給手機收。"""
+    lvl = hunger_estimate(rec, now_ms)
+    rec["hungerEst"] = {"level": max(0.0, min(100.0, lvl + delta)), "at": now_ms}
+    if delta > 0:
+        rec["hungerGiven"] = int(rec.get("hungerGiven") or 0) + int(delta)
+    elif delta < 0:
+        rec["hungerRelief"] = int(rec.get("hungerRelief") or 0) - int(delta)
+
+
+def loyalty_now(rec: dict) -> float:
+    seen = _num(rec.get("loyaltySeen"), 60) if rec.get("loyaltySeen") is not None else 60.0
+    pending = max(0, int(rec.get("loyaltyLoss") or 0) - int(rec.get("loyaltyTaken") or 0))
+    return max(0.0, min(100.0, seen - pending))
+
+
+def ero_chance(rec: dict, started: bool, mood: str, level: int, night: bool = False, now_ms: int = 0) -> float:
     base = D.ERO_NEXT_CHANCE if started else D.ERO_FIRST_CHANCE
     mult = 1.0 + (MOOD_ERO.get(mood, 1.0) - 1.0) * min(1.0, level / 60)
     mult *= LIBIDO_ERO[libido_grade(rec)]
-    mult *= 0.7 + hunger_estimate(rec) / 100   # 飢渴 0 → ×0.7、100 → ×1.7
+    mult *= 0.7 + hunger_estimate(rec, now_ms) / 100   # 飢渴 0 → ×0.7、100 → ×1.7
     if night:
         mult *= 1.3
     return min(ERO_NEXT_CAP if started else ERO_FIRST_CAP, base * mult)
@@ -845,7 +913,7 @@ def roll_ero(rec: dict, mood: str, level: int, rnd, night: bool = False, now_ms:
     use = started or open_
     if not use:
         return None
-    if not float(rnd()) < ero_chance(rec, bool(started), mood, level, night):
+    if not float(rnd()) < ero_chance(rec, bool(started), mood, level, night, now_ms):
         return None
     event, step = _pick(use, rnd)
     hunger = int(round(D.ERO_HUNGER[min(step, len(D.ERO_HUNGER) - 1)] * LIBIDO_HUNGER[libido_grade(rec)]))
@@ -862,13 +930,54 @@ def meet_person(rec: dict, role: str, where: str, know: bool, now_ms: int, rnd) 
     """碰到一個人：同一個地方的同身份，可能是之前碰過的（同事最常）。只記見過幾次，不交朋友。"""
     pool = [m for m in (rec.get("met") or []) if m.get("role") == role and m.get("where") == where]
     if pool and float(rnd()) < REVISIT.get(role, 0.12):
-        old = _pick(pool, rnd)
+        # 越熟的人越常碰到（交友線：每多一階權重 +1）
+        total = sum(1 + LF.rank(LF.stage_of(m)) for m in pool)
+        r = float(rnd()) * total
+        old = pool[-1]
+        for m in pool:
+            r -= 1 + LF.rank(LF.stage_of(m))
+            if r < 0:
+                old = m
+                break
         return {"id": old["id"], "name": old["name"], "gender": old.get("gender") or "", "role": role,
                 "where": where, "named": bool(old.get("named") or know), "revisit": True,
-                "count": int(old.get("count") or 1) + 1}
+                "count": int(old.get("count") or 1) + 1, "stage": LF.stage_of(old), "intent": old.get("intent") or ""}
     gender = "male" if float(rnd()) < 0.5 else "female"
     return {"id": f"p{now_ms % 10**9}{int(float(rnd()) * 1000)}", "name": _new_name(gender, rnd), "gender": gender,
-            "role": role, "where": where, "named": bool(know), "revisit": False, "count": 1}
+            "role": role, "where": where, "named": bool(know), "revisit": False, "count": 1,
+            "stage": "known" if know else "seen", "intent": ""}
+
+
+def friend_ctx(rec: dict, now_ms: int) -> dict:
+    mood, _lvl = mood_now(rec, now_ms)
+    return {"stage": rec.get("stage") or "stranger", "loyalty": loyalty_now(rec), "hunger": hunger_estimate(rec, now_ms),
+            "mood": mood, "archetype": rec.get("archetype") or ""}
+
+
+def _roll_bond(rec: dict, ev: dict, act: dict, now_ms: int, rnd) -> None:
+    """交友線：碰到的人往前（或朋友往回）走一步。結果放 ev["bond"]，settle 才寫進 met。"""
+    p = ev.get("person")
+    if not p:
+        return
+    know = bool(act.get("know"))
+    if not p.get("revisit"):
+        if know:
+            ev["bond"] = {"from": "seen", "to": "known", "sex": False, "regress": False, "intent": LF.pick_intent(rnd)}
+        return
+    row = next((m for m in rec.get("met") or [] if isinstance(m, dict) and m.get("id") == p["id"]), None) or dict(p)
+    step = LF.advance(row, friend_ctx(rec, now_ms), now_ms, rnd, act.get("id") or "", know)
+    if step["to"] == step["from"] and not step["sex"]:
+        return
+    if step["to"] == "known" and not row.get("intent"):
+        step["intent"] = LF.pick_intent(rnd)
+    else:
+        step["intent"] = row.get("intent") or ""
+    if LF.rank(step["to"]) >= LF.rank("known"):
+        p["named"] = True
+    p["stage"] = step["to"]
+    ev["bond"] = step
+    if step["sex"] or step["to"] == "flirt":
+        ev["emotion"] = "樂"
 
 
 def person_label(p: dict | None) -> str:
@@ -896,6 +1005,8 @@ def roll_event(rec: dict, kind: str, now_ms: int, rnd=None) -> dict:
             ev["scp"] = scp
             act = {"id": "scp", "name": scp["title"], "know": False}
         ev["person"] = meet_person(rec, role, job["name"], act.get("know", False), now_ms, roll)
+        if not scp:
+            _roll_bond(rec, ev, act, now_ms, roll)
         ev["emotion"] = emotion["name"]
         ev["act"] = act["name"]
         ev["actId"] = act["id"]
@@ -939,6 +1050,7 @@ def roll_event(rec: dict, kind: str, now_ms: int, rnd=None) -> dict:
             if has_person:
                 ev["emotion"] = _pick_by(D.EMOTIONS, MOOD_EMOTION, mood, level, roll)["name"]
                 ev["person"] = meet_person(rec, "路人", spot, act.get("know", False), now_ms, roll)
+                _roll_bond(rec, ev, act, now_ms, roll)
     elif kind == "browse":
         ev["firstToday"] = int((rec.get("homeDay") or {}).get("browse") or 0) == 0
     elif kind == "meal":
@@ -980,6 +1092,26 @@ def _outcome(ev: dict, rec: dict, rnd) -> dict:
     ero = ev.get("ero")
     if ero:
         return {"mood": "臉紅心跳", "level": 25 + 8 * int(ero.get("step") or 0), "why": f"在{where}撞見讓人臉紅的事"}
+    naked = ev.get("naked")
+    if naked:
+        n = int(naked.get("count") or 1)
+        if n >= 8:
+            return {"mood": "虛脫", "level": min(90, 40 + 3 * n), "why": "回住所的路上被做到腿軟"}
+        if LF.stage_band(rec.get("stage")) in ("dating", "wife"):
+            return {"mood": "心虛", "level": 45, "why": "光著身子回去的路上跟人做了"}
+        return {"mood": "臉紅心跳", "level": 40, "why": "光著身子回去的路上跟人做了"}
+    bond = ev.get("bond")
+    if bond:
+        who = person_label(ev.get("person"))
+        dating = LF.stage_band(rec.get("stage")) in ("dating", "wife")
+        if bond.get("regress"):
+            return {"mood": "低落", "level": 20, "why": f"跟{who}疏遠了"}
+        if bond.get("sex"):
+            return {"mood": "心虛", "level": 45, "why": f"跟{who}上床了"} if dating else {"mood": "臉紅心跳", "level": 40, "why": f"跟{who}上床了"}
+        if bond.get("to") == "flirt":
+            return {"mood": "心虛", "level": 35, "why": f"跟{who}越線了"} if dating else {"mood": "臉紅心跳", "level": 35, "why": f"跟{who}有點曖昧"}
+        if bond.get("to") == "friend":
+            return {"mood": "愉快", "level": 25, "why": f"跟{who}變成朋友"}
     tone = ev.get("tone")
     if tone == "horror":
         return {"mood": "不安", "level": 35 + int(float(rnd()) * 16), "why": f"在{where}碰到詭異的事"}
@@ -1070,6 +1202,23 @@ def event_prompt(action: dict) -> tuple[str, str]:
         f"寫完時她的感覺要接近「{(ev.get('outcome') or {}).get('mood') or '平靜'}」，但不要直接說出這兩個字。",
         "不要標題，不要列選項，不要提到遊戲或抽籤。",
     ]
+    naked = ev.get("naked")
+    if naked:
+        g = "男性" if (p or {}).get("gender") != "female" else "女性"
+        partner = (f"對方是{p['name']}（{g}，{LF.STAGE_ZH.get(naked.get('fromStage') or '', '')}），你認識他。" if naked.get("known")
+                   else f"對方是路上碰到的陌生{g}，你不知道對方的名字，不要替對方取名字。" if naked.get("result") == "anon"
+                   else f"對方是路上碰到的陌生{g}，做完互相留了名字：{p['name']}。")
+        body = [
+            f"你剛從召喚者的房間被送回日本，身上一絲不掛。回住所的路上（{ev.get('place')}）你沒有直接回去。",
+            partner,
+            f"你們接連做了{naked['count']}次。" + ("做到最後你腿軟、幾乎站不起來。" if naked["count"] >= 8 else ""),
+            LF.CONSENT_RULE,
+            "你是自己跟著走的，或半推半就地答應；被看見光著身子時的羞恥和興奮都可以寫。",
+        ]
+        if LF.stage_band(action.get("stage")) in ("dating", "wife"):
+            body.append(LF.GUILT_RULE)
+        lead = f"你是{name}。用「我」寫剛剛回住所路上發生的事，2到4句。"
+        return ("你只寫她和對方之間發生的事，對方要有動作或話。", "\n".join(x for x in [lead] + common + body if x))
     if kind == "sleep":
         return ("你只寫她剛醒來時還記得的夢。",
                 "\n".join([f"你是{name}。用「我」寫剛做的惡夢，2到3句。停在醒來時的害怕。不要血腥。"] + common))
@@ -1103,6 +1252,9 @@ def event_prompt(action: dict) -> tuple[str, str]:
         system = "你只寫她自己一個人路過、看見的經過。她只是旁觀。"
     elif kind == "stroll":
         body.insert(0, D.STROLL_TONE_RULE.get(ev.get("tone") or "daily", ""))
+    bond = ev.get("bond")
+    if bond and p:
+        body += LF.bond_lines(bond, person_label(p), bond.get("intent") or "", LF.stage_band(action.get("stage")))
     return system, "\n".join(x for x in [lead] + common + body if x)
 
 
@@ -1120,8 +1272,12 @@ def accept_text(action: dict, raw: str) -> str:
         return ""
     if ev.get("ero") and ERO_BAN_RE.search(text):
         return ""  # 碰到禁區字眼就重寫／用範本
+    if (ev.get("naked") or (ev.get("bond") or {}).get("sex") or (ev.get("bond") or {}).get("to") == "flirt") and CONSENT_BAN.search(text):
+        return ""  # 一定要是她自己願意／半推半就
     return text
 
+
+CONSENT_BAN = re.compile(LF.CONSENT_BAN_RE)
 
 RETRY_ASK = "上一則不符合。用「我」重寫，2到4句，照上面的方向；有對方的話對方一定要回話或有動作。"
 
@@ -1150,6 +1306,13 @@ def fallback_text(action: dict) -> str:
         return f"我在{where}看見{scp['title']}，有什麼地方不對勁。我沒有再靠近。"
     if ev.get("ero"):
         return ero_fallback(ev)
+    if ev.get("naked"):
+        return naked_fallback(ev)
+    bond = ev.get("bond")
+    if bond and p:
+        line = bond_fallback(ev, who)
+        if line:
+            return line
     if kind == "work":
         if p:
             return f"我在{ev.get('job')}碰到{who}，對方{look}。這一班跟對方{ev.get('act')}，我回了幾句，對方也有反應。"
@@ -1158,6 +1321,37 @@ def fallback_text(action: dict) -> str:
     if p:
         return f"我在{ev.get('place')}碰到{who}，對方{look}。我們{ev.get('act')}，我回了幾句，對方也有反應。{tail}"
     return f"我在{ev.get('place')}{ev.get('act')}，{tail}"
+
+
+def naked_fallback(ev: dict) -> str:
+    n = ev["naked"]
+    p = ev.get("person") or {}
+    where = ev.get("place") or "回去的路上"
+    who = p.get("name") if n.get("known") else "一個陌生人"
+    tail = "最後腿軟得要扶著牆才走得回去。" if int(n.get("count") or 1) >= 8 else "回到住所時臉還是燙的。"
+    named = f"分開前他跟我說了名字，{p.get('name')}。" if (not n.get("known") and n.get("result") != "anon") else ""
+    return f"我光著身子回到日本，在{where}被{who}看見了。他問我要不要跟他走，我半推半就地點了頭，我們接連做了{n.get('count')}次。{named}{tail}"
+
+
+def bond_fallback(ev: dict, who: str) -> str:
+    b = ev["bond"]
+    place = ev.get("job") or ev.get("place") or "那裡"
+    if b.get("regress"):
+        return f"我在{place}又碰到{who}，好久沒聯絡，聊起來有點生疏。對方也只是客氣地笑了笑。"
+    if b.get("sex") and b.get("from") in ("physical", "fwb"):
+        return f"我在{place}又碰到{who}。對方一個眼神我就懂了，我沒有拒絕，後來我們又去了沒人的地方。"
+    to = b.get("to")
+    if to == "known":
+        return f"我在{place}又碰到{who}，這次互相報了名字。對方笑著說下次見，我也點點頭。"
+    if to == "friend":
+        return f"我在{place}跟{who}聊得很開心，交換了聯絡方式。對方說改天約出來，我答應了。"
+    if to == "flirt":
+        return f"我在{place}跟{who}待到很晚，對方牽起我的手，我沒有抽開。分開前他靠過來親了我一下。"
+    if to == "physical":
+        return f"我在{place}跟{who}待到最後，對方問要不要去他那裡，我猶豫了一下還是點頭。那一晚我們越過了最後那條線。"
+    if to == "fwb":
+        return f"我在{place}又碰到{who}，做完之後我們說好以後想要就約。我沒有覺得哪裡不對。"
+    return ""
 
 
 def ero_fallback(ev: dict) -> str:
@@ -1299,6 +1493,7 @@ def prepare_resolve(store: dict, gid: str, now_ms: int, rnd=None) -> dict | None
         "job": (rec.get("job") or {}).get("name") or "",
         "hobbies": list(rec.get("hobbies") or []),
         "mood": mood_now(rec, now_ms)[0],
+        "stage": rec.get("stage") or "stranger",
         "clock": japan_clock(min(now_ms, _ms(agenda.get("until")) or now_ms))["line"],
     }
 
@@ -1331,6 +1526,128 @@ def _note_met(rec: dict, p: dict, ev: dict, at: int) -> None:
     rec["met"] = met
 
 
+def _affair(rec: dict, name: str, kind: str, rounds: int, at: int, relief: int | None = None, loyalty: int | None = None) -> None:
+    """外面做愛的後果：飢渴降、忠誠慢慢掉、下次進房間身上還有痕跡（手機收）。"""
+    hunger_shift(rec, -int(relief if relief is not None else LF.SEX_HUNGER_RELIEF), at)
+    rec["loyaltyLoss"] = int(rec.get("loyaltyLoss") or 0) + int(loyalty if loyalty is not None else LF.LOYALTY_PER_SEX)
+    rec["traceSeq"] = int(rec.get("traceSeq") or 0) + 1
+    trace = {"seq": rec["traceSeq"], "at": at, "rounds": int(rounds), "name": name, "kind": kind}
+    rec["traces"] = ([t for t in rec.get("traces") or [] if isinstance(t, dict)] + [trace])[-5:]
+    rec["lastAffair"] = trace
+
+
+def _settle_naked(rec: dict, ev: dict, at: int, rnd) -> None:
+    n = ev["naked"]
+    count = int(n.get("count") or 1)
+    p = ev.get("person") or {}
+    if n.get("result") == "anon":
+        rec["anonSex"] = int(rec.get("anonSex") or 0) + 1
+        name = ""
+    else:
+        row = next((m for m in rec.get("met") or [] if m.get("id") == p.get("id")), None)
+        name = p.get("name") or ""
+        if row is not None:
+            row["named"] = True
+            row["stage"] = n["result"] if LF.rank(n["result"]) > LF.rank(LF.stage_of(row)) else LF.stage_of(row)
+            row["intent"] = row.get("intent") or "lust"
+            row["sexCount"] = int(row.get("sexCount") or 0) + count
+            row["lastSexAt"] = at
+            row["stageAt"] = at
+    _affair(rec, name, "naked", count, at, LF.naked_relief(count), LF.naked_loyalty(count))
+
+
+def _undress_stage(girl: dict | None) -> int:
+    u = (girl or {}).get("undress") if isinstance((girl or {}).get("undress"), dict) else {}
+    try:
+        return int(u.get("stage") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _naked_key(world: dict, mirror_girl: dict | None) -> str:
+    """手機離房時全裸會在 world.leftNaked 打旗 {key, at}；名冊或房間鏡像哪邊有都算。"""
+    for w in (world, (mirror_girl or {}).get("world")):
+        flag = (w or {}).get("leftNaked") if isinstance(w, dict) else None
+        if isinstance(flag, dict) and flag.get("key"):
+            return str(flag["key"])[:40]
+    return ""
+
+
+def start_naked(rec: dict, key: str, now_ms: int, rnd, force: bool = False, count: int = 0) -> dict | None:
+    """光著身子離開房間：70% 不會直接回住所。RP5 決定（手機關掉也照走），排成一趟「溜達」由模型寫。"""
+    keys = [k for k in rec.get("nakedKeys") or [] if isinstance(k, str)]
+    if key in keys and not force:
+        return None
+    rec["nakedKeys"] = (keys + [key])[-6:]
+    if not force and float(rnd()) >= LF.NAKED_CHANCE:
+        return None
+    n = int(count) if count else LF.naked_count(hunger_estimate(rec, now_ms), libido_grade(rec), rnd)
+    n = max(1, min(LF.NAKED_MAX, n))
+    met = [m for m in rec.get("met") or [] if isinstance(m, dict)]
+    partner = LF.naked_pick(met, rnd)
+    result = LF.naked_result(partner, n)
+    place = _pick(D.STROLL_PLACES, rnd)
+    spot = (rec.get("spots") or {}).get(place["id"]) or place["name"]
+    if partner is None:
+        gender = "male" if float(rnd()) < 0.85 else "female"
+        p = {"id": f"p{now_ms % 10**9}{int(float(rnd()) * 1000)}", "name": _new_name(gender, rnd), "gender": gender,
+             "role": "路人", "where": spot, "named": result != "anon", "revisit": False, "count": 1,
+             "stage": result, "intent": "lust"}
+    else:
+        p = {"id": partner["id"], "name": partner["name"], "gender": partner.get("gender") or "", "role": partner.get("role") or "路人",
+             "where": partner.get("where") or spot, "named": True, "revisit": True,
+             "count": int(partner.get("count") or 1) + 1, "stage": result, "intent": partner.get("intent") or ""}
+    mood, level = mood_now(rec, now_ms)
+    ev = {"kind": "stroll", "moodBefore": mood, "moodBeforeLevel": level, "place": spot,
+          "tone": "naked", "toneName": "光著身子回去的路上", "act": f"回住所路上跟人做了{n}次", "actId": "naked",
+          "person": p, "emotion": "樂",
+          "naked": {"count": n, "result": result, "known": partner is not None,
+                    "fromStage": LF.stage_of(partner) if partner else ""}}
+    ev["outcome"] = _outcome(ev, rec, rnd)
+    ms = min(3 * HOUR_MS, 30 * 60 * 1000 + n * 10 * 60 * 1000)
+    rec["agenda"] = {"kind": "stroll", "startedAt": now_ms, "until": now_ms + ms, "event": ev}
+    return ev
+
+
+def force_meet(rec: dict, pid: str, now_ms: int, rnd=None) -> dict | None:
+    """test_room：馬上再碰到這個人一次（照規則擲一步），一分鐘內結算。"""
+    roll = rnd if rnd is not None else random.random
+    row = next((m for m in rec.get("met") or [] if isinstance(m, dict) and m.get("id") == pid), None)
+    if row is None or rec.get("phase") != "japan":
+        return None
+    role = row.get("role") or "路人"
+    kind = "work" if role in ("同事", "顧客") else "stroll"
+    mood, level = mood_now(rec, now_ms)
+    p = {"id": row["id"], "name": row["name"], "gender": row.get("gender") or "", "role": role, "where": row.get("where") or "",
+         "named": bool(row.get("named")), "revisit": True, "count": int(row.get("count") or 1) + 1,
+         "stage": LF.stage_of(row), "intent": row.get("intent") or ""}
+    ev = {"kind": kind, "moodBefore": mood, "moodBeforeLevel": level, "person": p, "emotion": "樂",
+          "act": "聊了一陣子", "actId": "chat"}
+    if kind == "work":
+        ev["job"] = (ensure_job(rec, roll) or {}).get("name") or row.get("where") or ""
+    else:
+        ev["place"] = row.get("where") or "街上"
+        ev["tone"], ev["toneName"] = "daily", "日常"
+    _roll_bond(rec, ev, {"id": "chat", "know": False}, now_ms, roll)
+    ev["outcome"] = _outcome(ev, rec, roll)
+    rec["agenda"] = {"kind": kind, "startedAt": now_ms - 60 * 1000, "until": now_ms + 5 * 1000, "event": ev}
+    return ev
+
+
+def set_friend_stage(rec: dict, pid: str, stage: str, now_ms: int, rnd=None) -> bool:
+    """test_room：直接改某人的階（曖昧以上也可以往回改，只給除錯用）。"""
+    roll = rnd if rnd is not None else random.random
+    row = next((m for m in rec.get("met") or [] if isinstance(m, dict) and m.get("id") == pid), None)
+    if row is None or stage not in LF.STAGES:
+        return False
+    row["stage"] = stage
+    if LF.rank(stage) >= LF.rank("known"):
+        row["named"] = True
+        row["intent"] = row.get("intent") or LF.pick_intent(roll)
+    row["stageAt"] = now_ms
+    return True
+
+
 def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, rnd=None, keys=None, next_kind: str = "") -> bool:
     """寫下這一趟、改心情、記碰到的人和 SCP 進度，再排下一件（從現在起算，不補欠的）。"""
     rec = (store.get("girls") or {}).get(gid)
@@ -1351,8 +1668,18 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
     if ev.get("fatigue"):
         after = apply_mood(rec, "虛脫", 40, "一天上了兩班，累垮了", at)
     p = ev.get("person")
-    if p:
+    naked = ev.get("naked")
+    if p and not (naked and naked.get("result") == "anon"):
         _note_met(rec, p, ev, at)
+    bond = ev.get("bond")
+    if p and bond:
+        row = next((m for m in rec.get("met") or [] if m.get("id") == p["id"]), None)
+        if row is not None:
+            LF.apply_step(row, bond, at, roll)
+            if bond.get("sex"):
+                _affair(rec, row.get("name") or "", "fwb_again" if bond.get("from") == "fwb" else bond.get("to") or "physical", 1, at)
+    if naked:
+        _settle_naked(rec, ev, at, roll)
     scp = ev.get("scp")
     if scp:
         rec.setdefault("scpSteps", {})[scp["id"]] = int(scp["step"]) + 1
@@ -1364,7 +1691,7 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
         rec["eroAt"] = at
         rec["eroNextAt"] = at + ERO_GAP_MS + int(float(roll()) * ERO_GAP_SPREAD_MS)
         # 飢渴的真相在手機：這裡只累計「給了多少」，手機用 bodyState.hunger.lifeTaken 記收過多少，差額才加（不會重複加）
-        rec["hungerGiven"] = int(rec.get("hungerGiven") or 0) + int(ero.get("hunger") or 0)
+        hunger_shift(rec, int(ero.get("hunger") or 0), at)
     extra = {
         "place": ev.get("place") or (rec.get("homeName") if kind in HOME_KINDS or kind == "sleep" else "") or "",
         "person": person_label(p),
@@ -1379,10 +1706,17 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
         "scpStep": (int(scp["step"]) + 1) if scp else "",
         "ero": (ero or {}).get("title") or "",
         "eroStep": (int(ero["step"]) + 1) if ero else "",
-        "private": "ero" if ero else "",
+        "private": "ero" if ero else ("affair" if naked or (bond and (bond.get("sex") or bond.get("to") == "flirt")) else ""),
+        "bond": (bond or {}).get("to") or ("physical" if naked else ""),
+        "bondFrom": (bond or {}).get("from") or "",
+        "naked": int(naked.get("count") or 0) if naked else "",
     }
+    if naked and naked.get("result") == "anon":
+        extra["person"] = "陌生人"
     if kind == "work":
         mem_keys = ["打工", ev.get("job") or "", person_label(p) if p and p.get("named") else (p or {}).get("role", "")]
+    elif naked:
+        mem_keys = ["回住所路上", ev.get("place") or "", "陌生人" if naked.get("result") == "anon" else (p or {}).get("name", ""), "做愛"]
     elif kind == "stroll" and ero:
         mem_keys = ["遊盪", ev.get("place") or "", "色情奇遇", ero["title"]]
     elif kind == "stroll":
@@ -1408,6 +1742,7 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
     rec["last"] = {"kind": kind, "at": at, "text": shown, "place": extra["place"],
                    "person": extra["person"], "tone": extra["tone"], "scp": extra["scp"], "scpStep": extra["scpStep"], "ero": extra["ero"], "eroStep": extra["eroStep"],
                    "hunger": int((ero or {}).get("hunger") or 0),
+                   "bond": extra["bond"], "naked": extra["naked"],
                    "moodBefore": before[0], "moodAfter": after[0]}
     hist = [k for k in (rec.get("history") or []) if k in KINDS]
     hist.append(kind)
@@ -1493,6 +1828,11 @@ def view_of(rec: dict) -> dict:
         "scpSteps": dict(rec.get("scpSteps") or {}),
         "eroSteps": dict(rec.get("eroSteps") or {}),
         "hungerGiven": int(rec.get("hungerGiven") or 0),
+        "hungerRelief": int(rec.get("hungerRelief") or 0),
+        "loyaltyLoss": int(rec.get("loyaltyLoss") or 0),
+        "traces": [dict(t) for t in rec.get("traces") or [] if isinstance(t, dict)],
+        "lastAffair": rec.get("lastAffair") if isinstance(rec.get("lastAffair"), dict) else None,
+        "anonSex": int(rec.get("anonSex") or 0),
         "memories": list(rec.get("memories") or []),
         "note": rec.get("note") or "",
     }
@@ -1550,6 +1890,16 @@ def _paint_world(girl: dict, row: dict) -> None:
         world["eroSteps"] = row["eroSteps"]
     if row.get("hungerGiven"):
         world["lifeHungerGiven"] = max(int(world.get("lifeHungerGiven") or 0), int(row["hungerGiven"]))
+    if row.get("hungerRelief"):
+        world["lifeHungerRelief"] = max(int(world.get("lifeHungerRelief") or 0), int(row["hungerRelief"]))
+    if row.get("loyaltyLoss"):
+        world["lifeLoyaltyLoss"] = max(int(world.get("lifeLoyaltyLoss") or 0), int(row["loyaltyLoss"]))
+    if row.get("traces"):
+        world["lifeTraces"] = row["traces"]
+    if row.get("lastAffair"):
+        world["lastAffair"] = row["lastAffair"]
+    if row.get("anonSex"):
+        world["anonSex"] = row["anonSex"]
     world.pop("settlingHome", None)
     for item in row.get("memories") or []:
         if isinstance(item, dict) and item.get("id") and item.get("text"):

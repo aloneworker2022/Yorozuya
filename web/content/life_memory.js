@@ -120,6 +120,10 @@ function normalizeItem(raw) {
     job: String(raw.job || "").trim(),
     person: String(raw.personName || raw.person || "").trim(),
     mood: String(raw.emotionName || raw.mood || "").trim(),
+    ...(raw.private ? { private: String(raw.private) } : {}),
+    ...(raw.eroStep ? { eroStep: Number(raw.eroStep) || 1 } : {}),
+    ...(raw.bond ? { bond: String(raw.bond) } : {}),
+    ...(raw.naked ? { naked: Number(raw.naked) || 0 } : {}),
   };
 }
 
@@ -247,9 +251,24 @@ export function eroDisclosure(stageKey, step) {
   return "可以半開玩笑地講給他聽、帶點挑逗，不講露骨細節";
 }
 
+/**
+ * 交友線越線（RP5 記憶 private: "affair"：曖昧、外面做愛、光著身子回去的路上）。2026-10-10。
+ * 陌生／認識：不主動提，他問起近況或身體才老實說一點（不遮掩、不講細節）；朋友：可以偶爾自然帶到；
+ * 女友起：秘密，不提，被問就閃、短答、心虛；妻子：更守，被逼問也只漏一點。
+ */
+export function affairDisclosure(stageKey) {
+  const band = stageBand(stageKey || "stranger");
+  if (band === "reserved") return "不要主動提；他問起你最近怎樣或身體時，可以老實說一點，不用遮掩，不講細節";
+  if (band === "friend") return "可以偶爾自然帶到一句、臉紅帶過，被問時坦白，不講露骨細節";
+  if (band === "dating") return "這是對他的秘密：不要提、不要暗示；被問就閃避、短答或轉移話題，心虛但不承認";
+  return "這是對他的秘密：絕對不提；被明確逼問也只漏一點點，不交代經過";
+}
+
 function memoryLine(item, lead, stageKey) {
   const when = memoryStamp(item);
-  const rule = item?.private === "ero" ? `（只是路過看見、沒有參與；${eroDisclosure(stageKey, item.eroStep)}）` : "";
+  const rule = item?.private === "ero"
+    ? `（只是路過看見、沒有參與；${eroDisclosure(stageKey, item.eroStep)}）`
+    : item?.private === "affair" ? `（${affairDisclosure(stageKey)}）` : "";
   return when ? `・${lead}（${when}）：${item.text}${rule}` : `・${lead}：${item.text}${rule}`;
 }
 
@@ -292,7 +311,9 @@ export function lifeMemoryPromptLines(who, utterance, opts = {}) {
     }
   } else if (BORED_RE.test(text) && mind.long.length) {
     // 閒聊主動提起的：色情奇遇只有妻子才會自己講
-    const hits = boredHits(wifeBand ? mind.long : mind.long.filter((item) => item?.private !== "ero"));
+    // 越線的事（affair）只有朋友帶會自己提；陌生／認識等他問，女友起是秘密
+    const affairOk = stageBand(stageKey) === "friend";
+    const hits = boredHits(mind.long.filter((item) => (wifeBand || item?.private !== "ero") && (affairOk || item?.private !== "affair")));
     if (hits.length) {
       recall.push("你這時有點閒，可以輕輕提起下面其中一件，不要一次講完，也不要編沒列的。時間是發生當時的日本時間。");
       hits.forEach((item) => recall.push(memoryLine(item, "想起", stageKey)));

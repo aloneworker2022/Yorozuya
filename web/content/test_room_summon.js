@@ -211,7 +211,8 @@ import {
   dressedReactionLine,
   dressedReactionPrompt,
 } from "./undress_shy.js?v=3";
-import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines } from "./life_memory.js?v=4";
+import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines, affairDisclosure } from "./life_memory.js?v=5";
+import { friendRows, applyLifeTraces, recentAffair, FRIEND_STAGES, FRIEND_STAGE_ZH } from "./life_friends.js?v=1";
 import {
   mountButtPackEditor,
   pickRuntimeButtPack,
@@ -315,7 +316,7 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=7";
+import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=8";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.js?v=1";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
@@ -381,7 +382,7 @@ function roomActMem(who = girl) {
 function outsideMoodForRoom(who) {
   if (!who?.world?.mood) return null;
   const now = outsideMoodNow(who.world);
-  const type = { 不悅: "angry", 低落: "hurt", 臉紅心跳: "flustered" }[now.name];
+  const type = { 不悅: "angry", 低落: "hurt", 臉紅心跳: "flustered", 心虛: "flustered" }[now.name];
   return type ? { type, level: Math.round(now.level * 0.6) } : null;
 }
 window.RoomActivityContext = () => {
@@ -1833,6 +1834,11 @@ function finishSummonArrival(who, mode) {
     clearVisitUndress(who);
     clearShift();
     who.world.justBack = true;
+    // 外面做愛留下的痕跡（交友線）：子宮精液、陰唇濕；每場算一次器官開發
+    try {
+      const t = applyLifeTraces(who);
+      if (t.fresh && Date.now() - (Number(t.fresh.at) || 0) < 3 * 3600e3) noteAfterglow(who, "his", { source: "friend" });
+    } catch { /* */ }
     if (who.chatEnter !== "flee_back") who.chatEnter = "summon";
     who.chatLines = [];
     who.topicHint = "";
@@ -5105,6 +5111,7 @@ const MOODS = {
   不安: "心情不安。人在房間裡，害怕還沒退。不要描寫血腥。",
   虛脫: "身體虛脫、腿軟站不穩。話短、喘，不要裝成精力充沛。",
   臉紅心跳: "剛看到讓人臉紅的事，心還在跳、身體有點熱。容易害羞、眼神飄，不要突然變得很正經。",
+  心虛: "心裡有點虧欠他、心虛。眼神會閃、話題被碰到會轉開，但表面裝作沒事。",
 };
 
 function setMood(who, name) {
@@ -5221,18 +5228,78 @@ function ensureFriends(who) {
   return who.world.friends;
 }
 
+const IS_TEST_ROOM = typeof location !== "undefined" && /test_room\.html$/.test(location.pathname || "");
+/** 交友線名單（2026-10-10）：RP5 的 met（見過～炮友）。test_room 另有除錯鍵；舊 world.friends 仍列在後面。 */
 function renderFriends() {
   const friends = ensureFriends(girl);
+  const rows = friendRows(girl).filter((r) => r.stage !== "seen" || IS_TEST_ROOM);
   const panel = $("girl-friends");
-  panel.hidden = friends.length === 0;
-  $("friend-heading").textContent = `朋友 ${friends.length}/${FRIEND_LIMIT}`;
+  if (!panel) return;
+  panel.hidden = friends.length === 0 && rows.length === 0;
+  const named = rows.filter((r) => r.stage !== "seen").length;
+  const anon = Number(girl?.world?.anonSex) || 0;
+  $("friend-heading").textContent = `外面的人 ${named}${anon ? ` · 陌生人 ${anon} 次` : ""}`;
   const list = $("friend-list");
   list.replaceChildren();
-  for (const friend of friends) {
+  for (const r of rows) {
     const item = document.createElement("li");
-    item.textContent = `${friend.name} · ${friend.role} · ${bondLabel(friend.bond)}`;
+    const bits = [r.name, r.role, r.stageZh];
+    if (IS_TEST_ROOM && r.intentZh) bits.push(r.intentZh);
+    if (r.sexCount) bits.push(`做過 ${r.sexCount} 次`);
+    item.append(document.createTextNode(bits.filter(Boolean).join(" · ")));
+    if (IS_TEST_ROOM && sheIsOut()) {
+      const meet = document.createElement("button");
+      meet.type = "button";
+      meet.textContent = "再碰到";
+      meet.addEventListener("click", () => friendDebug("meet", { personId: r.id }));
+      const sel = document.createElement("select");
+      for (const st of FRIEND_STAGES) {
+        const o = document.createElement("option");
+        o.value = st;
+        o.textContent = FRIEND_STAGE_ZH[st];
+        if (st === r.stage) o.selected = true;
+        sel.append(o);
+      }
+      sel.addEventListener("change", () => friendDebug("stage", { personId: r.id, stage: sel.value }));
+      item.append(" ", meet, " ", sel);
+    }
     list.append(item);
   }
+  for (const friend of friends) {
+    const item = document.createElement("li");
+    item.textContent = `${friend.name} · ${friend.role} · ${bondLabel(friend.bond)}（舊）`;
+    list.append(item);
+  }
+  if (IS_TEST_ROOM && girl && sheIsOut()) {
+    const item = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "光著身子離房那一趟（除錯）";
+    btn.addEventListener("click", () => {
+      const n = Number(prompt("連續幾次（1～15，空白＝照規則擲）", "") || 0);
+      friendDebug("naked", { count: Number.isFinite(n) ? n : 0 });
+    });
+    item.append(btn);
+    list.append(item);
+  }
+}
+
+async function friendDebug(op, extra = {}) {
+  if (!girl) return;
+  const status = $("summon-status");
+  try {
+    const resp = await fetch("/api/life/friend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: girl.gameGirlId || girl.id, op, ...extra }),
+    });
+    if (!resp.ok) throw new Error(String(resp.status));
+    await pullLifeAgent();
+    if (status) status.textContent = op === "meet" ? "排好了：一分鐘內再碰到。" : op === "naked" ? "排好了：回住所路上那一趟。" : "改好了。";
+  } catch (err) {
+    if (status) status.textContent = `交友除錯沒成功（${err?.message || err}）。她要人在日本。`;
+  }
+  renderFriends();
 }
 
 function decayFriendSexFlag(who = girl) {
@@ -5248,15 +5315,17 @@ function decayFriendSexFlag(who = girl) {
 /** 房間聊天：外人肉體／炮友／有孕——依對召喚者關係分透露 vs 隱瞞。 */
 function friendPhysicalPromptLines(who = girl) {
   if (!who?.world) return [];
-  const fs = who.world.friendSex;
+  // 交友線（2026-10-10）：RP5 的 lastAffair 剛發生（痕跡新鮮期內）就當「剛發生」；舊 world.friendSex 仍相容
+  const fs = who.world.friendSex || recentAffair(who);
   const preg = who.world.pregnancy;
   const friends = ensureFriends(who);
-  const hasBond = friends.some((f) => f.bond === "physical" || f.bond === "fwb");
+  const metBond = friendRows(who).filter((r) => r.stage === "physical" || r.stage === "fwb");
+  const hasBond = friends.some((f) => f.bond === "physical" || f.bond === "fwb") || metBond.length > 0;
   const family = PERSONALITY_FAMILY[basePersonality(who)] || "溫柔";
   const stage = who.stage || "stranger";
   const dating = DATING_OR_WIFE_STAGES.has(stage);
   const lines = [];
-  const recent = fs && ((Number(fs.chatLeft) || 0) > 0 || (inAfterglow(who) && who.bodyState?.afterglowSource === "friend"));
+  const recent = fs && (fs.at || (Number(fs.chatLeft) || 0) > 0 || (inAfterglow(who) && who.bodyState?.afterglowSource === "friend"));
 
   if (preg) {
     const dad = preg.fatherName || "對方";
@@ -5274,7 +5343,9 @@ function friendPhysicalPromptLines(who = girl) {
   if (recent) {
     const name = fs.name || "對方";
     // 事實欄只給模型；是否說出口由下方關係規則決定
-    if (fs.kind === "fwb_again") {
+    if (fs.naked) {
+      lines.push(`【剛發生・事實・勿主動照念】上次你光著身子離開這裡，回住所的路上跟${name}做了。是你自己願意／半推半就的。`);
+    } else if (fs.kind === "fwb_again") {
       lines.push(`【剛發生・事實・勿主動照念】你剛又和炮友${name}做過。`);
     } else if (fs.kind === "fwb") {
       lines.push(`【剛發生・事實・勿主動照念】你剛和${name}成了炮友（又有身體關係）。`);
@@ -5309,9 +5380,12 @@ function friendPhysicalPromptLines(who = girl) {
       } else {
         lines.push("個性偏溫柔：被逼問時聲音變小、眼神躲，頂多含糊認一點「有點事…」就打住。");
       }
+    } else if (stage === "stranger" || stage === "acquaintance") {
+      // 陌生／普通：跟「陌生～普通・禁止」一致——不主動提外面男人；他問起近況／身體才老實說一點（不藏）
+      lines.push("【對召喚者仍是陌生／普通・口吻】不要主動提這件事。他問起你最近做什麼、或發現你身體不對勁時，可以老實說一點、不用遮掩，但不要長篇黃腔細節。");
     } else {
-      // 陌生／朋友（含親密好友以前）：較可能透露
-      lines.push("【對召喚者仍是陌生／朋友・口吻】你可以較自然地把這件事露一點出來——閒聊提起、臉紅帶過、或被問日常活動時順便說到，但不要每句都講、也不要長篇黃腔細節。");
+      // 朋友／親密好友：較可能透露
+      lines.push("【對召喚者是朋友・口吻】你可以較自然地把這件事露一點出來——閒聊提起、臉紅帶過、或被問日常活動時順便說到，但不要每句都講、也不要長篇黃腔細節。");
       if (family === "冷淡") {
         lines.push("個性偏冷淡：透露得短、像陳述事實，仍帶一點彆扭。");
       } else if (family === "佔有") {
@@ -5333,8 +5407,10 @@ function friendPhysicalPromptLines(who = girl) {
       } else if (onlyPhys) {
         lines.push("【肉體背景・口吻】仍偏心虛／易閃，破綻可比炮友稍多，但仍不要主動說破。");
       }
+    } else if (stage === "stranger" || stage === "acquaintance") {
+      lines.push("【背景・陌生／普通】你在外面和某些人已有肉體關係或炮友。不要主動提；被問起才較坦白，不要細說過程。");
     } else {
-      lines.push("【背景・陌生／朋友】你在外面和某些朋友已有肉體關係或炮友。日常可偶爾自然提到或被問時較坦白，仍不要每句提、不要主動細說過程。");
+      lines.push("【背景・朋友】你在外面和某些人已有肉體關係或炮友。日常可偶爾自然提到或被問時較坦白，仍不要每句提、不要主動細說過程。");
     }
   }
   return lines;
@@ -5473,13 +5549,16 @@ function returnMood() {
   const mood = now.name;
   const how = MOODS[mood] || MOODS.平靜;
   const feel = mood === "平靜" ? "心情是平靜" : `心情${moodStrengthWord(now.level)}${mood}`;
-  const why = now.why && mood !== "平靜" ? `（因為在日本${now.why}；${eroWhyRule(mood)}）` : "";
+  const why = now.why && mood !== "平靜" ? `（因為在日本${now.why}；${eroWhyRule(mood, now.why)}）` : "";
   if (!girl.world.justBack) return `你現在${feel}${why}。${how}不要每句報心情。`;
   return `你剛被召喚到這間房間，不是回到自己的家。你現在${feel}${why}。${how}沒有特別的事就不要報日本那邊。不要每句報心情。`;
 }
 
 /** 臉紅心跳（看到色情變態奇遇）的原因要不要講：陌生／認識打死不說，朋友被問才含糊，女友可以暗示，妻子可以俏皮地講。 */
-function eroWhyRule(mood) {
+const AFFAIR_WHY_RE = /上床|越線|曖昧|做了|腿軟/;
+function eroWhyRule(mood, why = "") {
+  // 交友線越線（2026-10-10）：心虛、或臉紅心跳但原因是跟人越線 → 照關係階藏或說
+  if (mood === "心虛" || AFFAIR_WHY_RE.test(String(why || ""))) return affairDisclosure(girl?.stage || "stranger");
   if (mood !== "臉紅心跳") return "他問起才說，不要主動報經過";
   const band = hungerBand(girl?.stage || "stranger");
   return {
@@ -5502,6 +5581,7 @@ function summonMoodHint() {
     不安: "有點驚魂未定、心不在焉",
     虛脫: "累到腿軟、說話有氣無力",
     臉紅心跳: "臉有點紅、眼神閃躲，說話比平常快",
+    心虛: "有點不敢看他、刻意裝得跟平常一樣",
   }[now.name] || "";
   return `她帶著${moodStrengthWord(now.level)}${now.name}的心情被叫回來：第一句${tone}。不用解釋原因。`;
 }
@@ -10143,6 +10223,7 @@ function clearShift() {
 }
 
 function sendHerOutAgain(opts = {}) {
+  markLeftNaked(girl);
   clearShift();
   activityOpen = false;
   dropVisitPics();
@@ -10564,8 +10645,21 @@ async function startActivity(kind) {
   }
 }
 
+/**
+ * 全裸離開房間（2026-10-10 交友線 B）：在 world.leftNaked 打旗，RP5 收到後決定路上會不會出事（70%）。
+ * 只看脫衣進度 3（全脫）；脫一半不算。key 用這趟的停留期限，RP5 自己帶走（手機關著）時也用同一個 key，不會算兩次。
+ */
+function markLeftNaked(who) {
+  if (!who || undressStage(who) < 3) return null;
+  const until = Number(who.roomVisitUntil);
+  const flag = { key: until > 1e11 ? `v${until}` : `n${Date.now()}`, at: Date.now() };
+  if (who.world) who.world.leftNaked = flag;
+  return flag;
+}
+
 async function letHerLeave(opts = {}) {
   if (!girl || pending || sheIsOut()) return;
+  const nakedFlag = markLeftNaked(girl);
   clearVisitUndress(girl);
   if (!opts.keepArousal) zeroArousal(girl);
   resetOpenness(girl);
@@ -10586,6 +10680,7 @@ async function letHerLeave(opts = {}) {
   const choices = sampleHomes();
   const fallback = pickRandomHome(choices);
   who.world = { regionId: region.id, ground, at: Date.now(), home: null };
+  if (nakedFlag) who.world.leftNaked = nakedFlag;
   // 先掛暫定住所：召喚／活動鍵立刻可用，不卡找地點
   assignHome(who, fallback);
   who.world.settlingHome = !opts.instantHome;

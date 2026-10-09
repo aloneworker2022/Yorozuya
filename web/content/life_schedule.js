@@ -57,9 +57,9 @@ export function agendaDurationMs(kind, random = Math.random) {
  * 以前這裡的 nextAgendaKind 沒人呼叫，2026-10-09 拿掉，避免兩邊規則不一樣。 */
 
 /* 她在日本帶回來的心情：強度 0～100，隨時間淡回平靜。跟 server/life_agent.py mood_now 同一套數字。 */
-export const OUTSIDE_MOODS = ["平靜", "愉快", "不悅", "低落", "不安", "虛脫", "臉紅心跳"];
+export const OUTSIDE_MOODS = ["平靜", "愉快", "不悅", "低落", "不安", "虛脫", "臉紅心跳", "心虛"];
 export const MOOD_CLEAR = 12;
-export const MOOD_DECAY_PER_HOUR = { 愉快: 5, 不悅: 5, 低落: 4, 不安: 5, 虛脫: 15, 臉紅心跳: 6 };
+export const MOOD_DECAY_PER_HOUR = { 愉快: 5, 不悅: 5, 低落: 4, 不安: 5, 虛脫: 15, 臉紅心跳: 6, 心虛: 4 };
 const MOOD_DEFAULT_LEVEL = 40;
 
 /** 現在的心情（惰性衰減，不寫回）。舊存檔只有字、沒有強度：當 40、從現在起算。 */
@@ -107,6 +107,12 @@ export function paintLifeRow(world, row) {
   if (row.eroSteps && typeof row.eroSteps === "object" && Object.keys(row.eroSteps).length) world.eroSteps = row.eroSteps;
   // 色情奇遇給的飢渴：RP5 只累計「給了多少」，真的加進 bodyState 在 applyLifeHunger（手機是真相）
   if (Number(row.hungerGiven) > 0) world.lifeHungerGiven = Math.max(Number(world.lifeHungerGiven) || 0, Math.floor(Number(row.hungerGiven)));
+  // 交友線（2026-10-10）：外面做愛讓飢渴降、忠誠掉、身上留痕跡——一樣只累計，手機收差額
+  if (Number(row.hungerRelief) > 0) world.lifeHungerRelief = Math.max(Number(world.lifeHungerRelief) || 0, Math.floor(Number(row.hungerRelief)));
+  if (Number(row.loyaltyLoss) > 0) world.lifeLoyaltyLoss = Math.max(Number(world.lifeLoyaltyLoss) || 0, Math.floor(Number(row.loyaltyLoss)));
+  if (Array.isArray(row.traces) && row.traces.length) world.lifeTraces = row.traces;
+  if (row.lastAffair && typeof row.lastAffair === "object") world.lastAffair = row.lastAffair;
+  if (Number(row.anonSex) > 0) world.anonSex = Math.floor(Number(row.anonSex));
   if (!world.mind || typeof world.mind !== "object" || Array.isArray(world.mind)) {
     world.mind = { immediate: [], mid: [], long: [], seeded: true };
   }
@@ -136,17 +142,35 @@ export function paintLifeRow(world, row) {
  */
 export function applyLifeHunger(who, now = Date.now()) {
   const given = Math.floor(Number(who?.world?.lifeHungerGiven) || 0);
-  if (!given || !who?.bodyState || typeof who.bodyState !== "object") return 0;
+  const relief = Math.floor(Number(who?.world?.lifeHungerRelief) || 0);
+  applyLifeLoyalty(who);
+  if ((!given && !relief) || !who?.bodyState || typeof who.bodyState !== "object") return 0;
   const h = ensureHunger(who, now);
   if (!h) return 0;
   const taken = Math.floor(Number(h.lifeTaken) || 0);
-  if (given <= taken) return 0;
-  const add = given - taken;
+  const reliefTaken = Math.floor(Number(h.lifeReliefTaken) || 0);
+  const add = Math.max(0, given - taken);
+  const cut = Math.max(0, relief - reliefTaken);
+  if (!add && !cut) return 0;
   const stageKey = who.roomStage || who.stage || "stranger";
   const before = tickHunger(who, now, stageKey);
-  h.level = Math.round(Math.min(100, before + add) * 10) / 10;
-  h.lifeTaken = given;
-  return add;
+  h.level = Math.round(Math.max(0, Math.min(100, before + add - cut)) * 10) / 10;
+  if (add) h.lifeTaken = given;
+  if (cut) h.lifeReliefTaken = relief;
+  return add - cut;
+}
+
+/** 外面做愛讓忠誠慢慢掉（RP5 累計 lifeLoyaltyLoss；stats.lifeLoyaltyTaken 記收過多少，差額才扣）。 */
+export function applyLifeLoyalty(who) {
+  const loss = Math.floor(Number(who?.world?.lifeLoyaltyLoss) || 0);
+  if (!loss || !who?.stats || typeof who.stats !== "object") return 0;
+  const taken = Math.floor(Number(who.stats.lifeLoyaltyTaken) || 0);
+  if (loss <= taken) return 0;
+  const cut = loss - taken;
+  const cur = Number(who.stats.loyalty);
+  who.stats.loyalty = Math.max(0, Math.round((Number.isFinite(cur) ? cur : 60) - cut));
+  who.stats.lifeLoyaltyTaken = loss;
+  return cut;
 }
 
 /** 停留到期。不用 `| 0`，毫秒時間戳會被砍成負數，人就永遠不走。 */

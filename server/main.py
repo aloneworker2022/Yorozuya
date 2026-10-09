@@ -4540,6 +4540,38 @@ def life_choose(body: dict):
     return life_agent.public_snapshot(store, now_ms)
 
 
+@app.post("/api/life/friend")
+def life_friend(body: dict):
+    """test_room 交友線除錯：op = meet（馬上再碰到這個人）／stage（改階）／naked（光著身子離房的那一趟）。"""
+    body = body or {}
+    gid = str(body.get("id") or "")
+    op = str(body.get("op") or "")
+    pid = str(body.get("personId") or "")
+    if not gid or op not in ("meet", "stage", "naked"):
+        raise HTTPException(status_code=400, detail="要指定她和 op（meet／stage／naked）")
+    data = _dd_read_save() or {}
+    now_ms = int(time.time() * 1000)
+    ok = {"done": False}
+
+    def commit(store):
+        life_agent.absorb(store, data, now_ms)
+        rec = (store.get("girls") or {}).get(gid)
+        if not rec or rec.get("phase") != "japan":
+            return
+        if op == "meet":
+            ok["done"] = life_agent.force_meet(rec, pid, now_ms) is not None
+        elif op == "stage":
+            ok["done"] = life_agent.set_friend_stage(rec, pid, str(body.get("stage") or ""), now_ms)
+        else:
+            count = int(body.get("count") or 0)
+            ok["done"] = life_agent.start_naked(rec, f"dbg{now_ms}", now_ms, random.random, force=True, count=count) is not None
+
+    store = _life_mutate(commit)
+    if not ok["done"]:
+        raise HTTPException(status_code=409, detail="她現在不在日本，或找不到這個人")
+    return life_agent.public_snapshot(store, now_ms)
+
+
 async def _world_clock():
     """世界時鐘:伺服器權威 runtime。每 30 秒把召喚師模擬 + 計時判定(看板娘到期/委託逾期/跨日)
     補算到真實時間(關螢幕、離線也照跑),並每 10 分鐘輸出一次心跳日誌。"""
