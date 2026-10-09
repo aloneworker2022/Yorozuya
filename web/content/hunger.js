@@ -38,6 +38,14 @@ export const BEG_AT = 85;
 export const BEG_COOLDOWN_MS = 4 * 3600e3;
 /** 走過來求之後多久內打開聊天，第一句還是在求。 */
 export const BEG_WINDOW_MS = 15 * 60e3;
+/**
+ * 妻子起：飢渴到頂點（≥ PEAK_AT）時開始做愛（她來求、或自己按做愛都算）→「榨乾場」（2026-10-09 Al）：
+ * 中途不能停，要做到她飢渴歸 0；玩家精液不看「<1 結束／≤0 不能開始」，可以一路射到負的；
+ * 她滿足時精液 < −7（腎虧門檻）→ 射血、送醫（腎虧只結算一次）。
+ */
+export const PEAK_AT = 95;
+/** 榨乾場裡她每高潮一次降這麼多（一般高潮 −40；這裡 −25 → 從 100 要高潮 4 次）。內射不降（她要的是高潮）。 */
+export const MARATHON_ORGASM_DROP = 25;
 /** 腦袋佔有度（朋友起）：≥ OCC_AT 才有，OCC_MIN～OCC_MAX。 */
 export const OCC_AT = 70;
 export const OCC_MIN = 6;
@@ -181,6 +189,46 @@ export function begActive(who, now = Date.now()) {
 export function closeBeg(who) {
   const h = body(who)?.hunger;
   if (h) h.beg = null;
+}
+
+// ------------------------------------------------------------ 妻子：飢渴頂點的榨乾場
+/** 到頂點了嗎（只看值）。 */
+export const isPeak = (level) => (Number(level) || 0) >= PEAK_AT;
+/** 這次開始做愛會不會是榨乾場：妻子以上＋飢渴 ≥ PEAK_AT（不看滿足期：值本身就說明她沒被滿足）。 */
+export function marathonEligible(who, { stageKey = who?.stage, now = Date.now() } = {}) {
+  if (!who || !atLeast(stageKey, "wife")) return false;
+  return isPeak(peekHunger(who, now, stageKey));
+}
+/** 開始榨乾場：回傳場次物件（放在做愛 session 上，不進存檔；重新整理＝這場結束）。 */
+export function startMarathon(who, { stageKey = who?.stage, now = Date.now() } = {}) {
+  const level = tickHunger(who, now, stageKey);
+  return { active: true, done: false, startLevel: level, level, orgasms: 0, at: now, finale: null };
+}
+/** 還鎖著嗎（不能停／不能離開）。 */
+export function marathonLocked(m) {
+  return !!m && !!m.active && !m.done;
+}
+/** 照現在的值還要她高潮幾次。 */
+export function marathonOrgasmsLeft(level) {
+  return Math.max(0, Math.ceil((Number(level) || 0) / MARATHON_ORGASM_DROP));
+}
+/** 榨乾場裡她高潮一次：飢渴 −MARATHON_ORGASM_DROP（進滿足期、清掉「求」）；歸 0 → done（解鎖）。 */
+export function marathonOrgasm(who, m, { stageKey = who?.stage, now = Date.now() } = {}) {
+  if (!marathonLocked(m)) return null;
+  const h = ensureHunger(who, now);
+  if (!h) return null;
+  const before = tickHunger(who, now, stageKey);
+  h.level = r1(Math.max(0, before - MARATHON_ORGASM_DROP));
+  h.satedUntil = Math.max(h.satedUntil || 0, now + HUNGER_SATED_MS.orgasm);
+  h.beg = null;
+  h.last = { kind: "orgasm", at: now, drop: r1(before - h.level) };
+  m.orgasms += 1;
+  m.level = h.level;
+  if (h.level <= 0) {
+    m.done = true;
+    m.active = false;
+  }
+  return { before, after: h.level, drop: r1(before - h.level), done: m.done, left: marathonOrgasmsLeft(h.level) };
 }
 
 // ------------------------------------------------------------ 女友起：欲求不滿脾氣

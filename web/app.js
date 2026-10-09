@@ -3,7 +3,7 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 import { savedOccupant, blocksSummon, roomFullText } from "./content/room_occupancy.js?v=1"; // 一間房一次一位
-import { canStartSex, sexBlockReason } from "./content/sex_thrust.js?v=7"; // 精液 0 以下不能做愛
+import { canStartSex, sexBlockReason } from "./content/sex_thrust.js?v=8"; // 精液 0 以下不能做愛
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildDiaryCommentPrompt, buildNoticePrompt, buildCardPlayPrompt, buildCardVisualPosePrompt, parseCardVisualPose, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
 import { loadPools, generateGirl, WARDROBE_UNLOCK, EROTIC_UNLOCK, SLEEP_UNLOCK, POOLS } from "./content/girl_gen.js";

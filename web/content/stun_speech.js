@@ -12,7 +12,7 @@ import {
   occupancyPromptLine,
   occupancyLabel,
 } from "./mind_occupancy.js?v=2";
-import { hungerOn, hungerOccupancyPts } from "./hunger.js?v=1";
+import { hungerOn, hungerOccupancyPts } from "./hunger.js?v=2";
 import { organDevOn, devOccupancyMult } from "./organ_dev.js?v=1";
 
 export { occupancyPromptLine, occupancyLabel, OCC_BANDS };

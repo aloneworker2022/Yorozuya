@@ -179,4 +179,39 @@ t("活動：妻子可以求 → 幾乎一定走過來求（愛心泡泡一直浮
   assert.equal(A.interrupt(mem, { now: T0 + 60e3 }).mood, null);
 });
 
+t("妻子頂點（PEAK_AT 95）＝榨乾場資格；女友以下、或 <95 都不是；求（BEG_AT 85）≠頂點", () => {
+  assert.equal(H.PEAK_AT, 95);
+  assert.ok(H.PEAK_AT > H.BEG_AT);
+  assert.equal(H.marathonEligible(girl("wife", "S", 95), { now: T0 }), true);
+  assert.equal(H.marathonEligible(girl("pathological_wife", "S", 100), { now: T0 }), true);
+  assert.equal(H.marathonEligible(girl("wife", "S", 90), { now: T0 }), false, "85～94 來求 → 一般做愛（可以停）");
+  assert.equal(H.marathonEligible(girl("lover", "S", 100), { now: T0 }), false);
+  assert.equal(H.marathonEligible(null), false);
+  assert.equal(H.isPeak(95), true); assert.equal(H.isPeak(94.9), false);
+});
+
+t("榨乾場：每次她高潮 −25，歸 0 才解鎖；從 100 要 4 次；解鎖後再呼叫沒有作用", () => {
+  const g = girl("wife", "SSR", 100);
+  const m = H.startMarathon(g, { now: T0 });
+  assert.equal(m.startLevel, 100);
+  assert.equal(H.marathonLocked(m), true);
+  assert.equal(H.marathonOrgasmsLeft(100), 4);
+  const seen = [];
+  for (let i = 1; i <= 4; i++) {
+    const r = H.marathonOrgasm(g, m, { now: T0 + i * MIN });
+    seen.push(r.after);
+    if (i < 4) assert.equal(H.marathonLocked(m), true, `第 ${i} 次還鎖著`);
+  }
+  assert.deepEqual(seen, [75, 50, 25, 0]);
+  assert.equal(m.done, true); assert.equal(H.marathonLocked(m), false); assert.equal(m.orgasms, 4);
+  assert.equal(H.marathonOrgasm(g, m, { now: T0 + 9 * MIN }), null);
+  // 進滿足期、求的窗口清掉、不會馬上又求
+  assert.ok(g.bodyState.hunger.satedUntil > T0 + 60 * MIN);
+  assert.equal(g.bodyState.hunger.beg, null);
+  assert.equal(H.canBeg(g, { now: T0 + 30 * MIN }), false);
+  // 96 → 4 次（96/25 無條件進位）
+  assert.equal(H.marathonOrgasmsLeft(96), 4);
+  assert.equal(H.marathonOrgasmsLeft(0), 0);
+});
+
 console.log(`\n${pass} passed`);

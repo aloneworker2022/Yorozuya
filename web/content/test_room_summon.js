@@ -60,7 +60,7 @@ import {
   occupancyMoanLine,
   occupancyPromptLine,
   occupancyLabel,
-} from "./stun_speech.js?v=23";
+} from "./stun_speech.js?v=24";
 import {
   pickPortraitUrl,
   portraitPathKey,
@@ -188,7 +188,9 @@ import {
   canStartSex,
   sexBlockReason,
   semenLow,
-} from "./sex_thrust.js?v=7";
+  canStartSexAt,
+  marathonFinale,
+} from "./sex_thrust.js?v=8";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -334,7 +336,15 @@ import {
   hungerOpenerHint,
   hungerLabel,
   hungerTier,
-} from "./hunger.js?v=1";
+  BEG_AT,
+  PEAK_AT,
+  marathonEligible,
+  startMarathon,
+  marathonOrgasm,
+  marathonLocked,
+  marathonOrgasmsLeft,
+  stageBand as hungerBand,
+} from "./hunger.js?v=2";
 import {
   organDevOn,
   ensureOrganDev,
@@ -398,7 +408,8 @@ window.RoomActivitySink = (evt) => {
     if (evt.id === "hunger_beg" && HUNGER_ON) hungerBegStarted();
   } else if (evt.type === "hold" && mem.cur?.id === evt.id) {
     mem.cur.since = evt.at;
-    if (evt.id === "hunger_beg" && HUNGER_ON && girl) showHungerNote(`${girl.name || "她"}走到你面前，扭扭捏捏地看著你…`, "長按她，聽聽她想說什麼");
+    // 2026-10-09 Al：不跳粉紅小卡，直接打開對話框（她開口求、下面只有「做愛／拒絕」）
+    if (evt.id === "hunger_beg" && HUNGER_ON && girl) maybeOpenBegDialog();
   } else return;
   if (mem.bias && !A.biasStrength(mem.bias)) mem.bias = null;
   // 活動 1～3 分鐘才換一次；開始時順手存檔（最多 20 秒一次）
@@ -472,7 +483,7 @@ function bindOrganDevDebug() {
 // ---------------------------------------------------------------- 性飢渴（hunger.js，2026-10-09）
 /** 性飢渴閘門：<html data-hunger="1">（test_room＋主房間都開；拿掉屬性即關）。跟退役的 CRAVE_ON／舊 crave 欄位無關。 */
 const HUNGER_ON = hungerOn();
-/** 妻子：她開始走過來 → 記冷卻＋開「求」的窗口；走到面前（hold）才跳一張不擋路的粉紅小卡（點掉或 5 秒自己收）。 */
+/** 妻子：她開始走過來 → 記冷卻＋開「求」的窗口；走到面前（hold）直接打開求的對話框（maybeOpenBegDialog；粉紅小卡 2026-10-09 拿掉）。 */
 function hungerBegStarted() {
   if (!girl) return;
   noteBeg(girl);
@@ -480,30 +491,246 @@ function hungerBegStarted() {
   persistRoom();
   renderDebug();
 }
-let hungerNoteTimer = 0;
-function showHungerNote(title, sub = "") {
-  let el = $("hunger-note");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "hunger-note";
-    el.className = "hunger-note";
-    el.hidden = true;
-    el.setAttribute("role", "status");
-    el.innerHTML = "<b></b><small></small>";
-    el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); hideHungerNote(); });
-    el.addEventListener("pointerdown", (e) => e.stopPropagation());
-    document.body.appendChild(el);
-  }
-  el.querySelector("b").textContent = title;
-  const small = el.querySelector("small");
-  small.textContent = sub;
-  small.hidden = !sub;
-  el.hidden = false;
-  void el.offsetWidth;
-  el.classList.add("in");
-  if (hungerNoteTimer) clearTimeout(hungerNoteTimer);
-  hungerNoteTimer = setTimeout(() => { el.classList.remove("in"); setTimeout(() => { if (!el.classList.contains("in")) el.hidden = true; }, 260); }, 5000);
+// ---------------------------------------------------------------- 妻子來求：直接打開對話框（2026-10-09 Al）
+/**
+ * 她走到你面前（hunger_beg 的 hold）→ 直接開對話框：立繪置中、她第一句就求你做愛（AI，失敗用本地句）、
+ * 底下只有「做愛」「拒絕」兩個鈕（沒有輸入框，選了才回到一般對話）。
+ * 現在開不了（對話已開、番茄鐘、別的畫面、App 在背景…）→ 她照樣站在前面；15 分鐘內長按她，一樣進這個對話框。
+ * 做愛：照一般「做愛」那條路（沒脫光就她自己迫不及待脫光）；精液 ≤0 照樣擋（紅卡）——飢渴頂點（PEAK_AT）例外，進榨乾場。
+ * 拒絕：她用一句話反應（失落／賭氣），之後照常聊天。沒有數值懲罰。
+ */
+let begDialog = null;   // { phase: "opening" | "choose" | "busy", at }
+const BEG_LINES_PEAK = [
+  "老公…我、我真的忍不住了…現在就要你，好不好…",
+  "嗚…老公…身體好熱…抱我、跟我做…拜託…",
+];
+const BEG_LINES = [
+  "老公…人家想要了…陪我做好不好？",
+  "那個…老公…可以抱我嗎？我想要你…",
+];
+const BEG_REFUSE_LINES = [
+  "…哼，好嘛…那你等一下要補償我喔…",
+  "嗚…真的不要嗎…好吧…",
+];
+function begPending(who = girl) {
+  const g = who?.bodyState?.hunger?.beg;
+  return !!g && !g.seen && begActive(who);
 }
+function begDialogActive() {
+  return !!begDialog && sheetOpen();
+}
+/** 她走到面前了：能開就直接開對話框。 */
+function maybeOpenBegDialog() {
+  if (!girl || !HUNGER_ON || begDialog || sheetOpen()) return false;
+  if (!girlInRoom() || girl.errand === "clothes" || talkBusy || pending || summoning) return false;
+  if (document.visibilityState === "hidden") return false;
+  const pomo = $("pomo");
+  if (pomo && !pomo.hidden) return false;
+  const editor = $("room-editor");
+  if (editor && !editor.hidden) return false;
+  const room = $("room");
+  if (room && !room.getClientRects().length) return false;
+  if (sceneOpen() || activeRoomScene) return false;
+  if (!begPending(girl)) return false;
+  pushDebug("性飢渴：她走到你面前 → 直接打開對話框");
+  showSheet();
+  return true;
+}
+function begFallbackLine() {
+  const peak = HUNGER_ON && girl && peekHunger(girl, Date.now(), girl.stage || "stranger") >= PEAK_AT;
+  const pool = peak ? BEG_LINES_PEAK : BEG_LINES;
+  const line = pool[Math.floor(Math.random() * pool.length)];
+  return girl && hungerBand(girl.stage || "stranger") === "wife" ? line : line.replace(/老公/g, "那個");
+}
+/** 對話框開了：她第一句求你。 */
+async function openBegDialog() {
+  if (!girl || !begDialog) return;
+  const who = girl;
+  if (talkFor !== who.id || !lines.length) {
+    who.sessionEnded = false;
+    talkFor = who.id;
+    lines = [];
+    who.chatLines = [];
+    who.topicHint = "";
+  }
+  begDialog.phase = "opening";
+  talkBusy = true;
+  $("portrait-sheet")?.classList.add("beg-chat");
+  setTalkEnabled(false);
+  $("portrait-name").textContent = who.name;
+  $("portrait-meta").textContent = "";
+  setTyping(true);
+  const peak = peekHunger(who, Date.now(), who.stage || "stranger") >= PEAK_AT;
+  let line = "";
+  try {
+    ensureStunFields(who);
+    const occ = takeOccupancy(who, "");
+    if (occ.score >= 95) {
+      line = occupancyMoanLine(occ, who) || "……嗯啊…";
+    } else {
+      const ask = [
+        `（你忍不住了，自己走到他面前來——就是來求他跟你做愛的${peak ? "，身體已經渴到極點" : ""}。只寫你開口的第一句：直接、撒嬌又難耐地求他現在跟你做愛，一兩句，不要先聊別的，不要旁白。）`,
+        occupancyPromptLine(occ),
+      ].filter(Boolean).join("\n");
+      let reply = "";
+      try {
+        reply = await withTimeout(askGirl(ask), THRUST.OPENING_TIMEOUT_MS, "");
+      } catch (err) {
+        console.warn("[beg opening]", err?.message || err);
+      }
+      const clean = scrubHusband(cleanLine(reply), who.stage || "stranger");
+      line = presentOccupied(who, clean || begFallbackLine(), "", occ) || begFallbackLine();
+    }
+  } catch (err) {
+    console.warn("[beg]", err?.message || err);
+    line = begFallbackLine();
+  }
+  if (girl !== who || !begDialog) return;
+  noteTalkExchange(who);
+  if (MISS_YOU_ON) noteMissSeen(who);
+  who.freshMeet = false;
+  lines.push({ role: "user", content: "（她自己走到你面前，扭扭捏捏地看著你。）" });
+  lines.push({ role: "assistant", content: line });
+  rememberChat();
+  persistRoom();
+  setTyping(false);
+  await typeLine(who.name, line);
+  if (girl !== who || !begDialog) return;
+  begDialog.phase = "choose";
+  talkBusy = false;
+  refreshTalkActs();
+}
+function endBegDialog() {
+  begDialog = null;
+  $("portrait-sheet")?.classList.remove("beg-chat");
+  $("talk-acts")?.classList.remove("undress-bar", "beg-bar");
+}
+function renderBegBar() {
+  const row = $("talk-acts");
+  if (!row || !begDialog) return;
+  row.hidden = !sheetOpen() || !girl;
+  row.classList.add("undress-bar", "beg-bar");
+  for (const btn of [...row.querySelectorAll("button")]) btn.remove();
+  const choose = begDialog.phase === "choose";
+  const add = (id, label, onClick) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.undress = id;
+    btn.dataset.beg = id;
+    btn.textContent = label;
+    btn.disabled = !choose;
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (btn.disabled) return;
+      onClick();
+    });
+    row.append(btn);
+    return btn;
+  };
+  const sex = add("sex", "做愛", () => void begAccept());
+  // 精液 ≤0（而且不是飢渴頂點）：鈕變灰、點了跳紅卡說原因（同一般「做愛」鈕）
+  const cc = ensurePlayer(player).semenCc;
+  if (!canStartSexAt(cc, { peak: sexPeakNow() })) {
+    sex.classList.add("is-dry", "is-locked");
+    sex.setAttribute("aria-disabled", "true");
+    sex.title = sexBlockReason(cc);
+    const lock = document.createElement("span");
+    lock.className = "act-lock";
+    lock.textContent = `精液 ${cc}cc`;
+    sex.append(lock);
+  }
+  add("refuse", "拒絕", () => void begRefuse());
+}
+/** 沒脫光就答應：她自己迫不及待脫光（記成她自己脫的 → 傳教士）。 */
+function begStripForSex(who = girl) {
+  if (!who || undressStage(who) >= 3) return false;
+  const u = ensureUndress(who);
+  u.stage = 3;
+  u.pantiesBy = "self";
+  u.sexStance = "順從";
+  rollNudeStandee(who);
+  void queueNudeActionPregen(who);
+  void queueSexPosePregen(who);
+  lines.push({ role: "user", content: "（她迫不及待地自己把衣服全脫了。）" });
+  pushDebug("性飢渴：答應她 → 她自己脫光");
+  persistRoom();
+  try { paintHalfPortrait(who); } catch { /* ignore */ }
+  return true;
+}
+async function begAccept() {
+  if (!girl || !begDialog || begDialog.phase !== "choose") return;
+  // 一般：精液 ≤0 跳紅卡擋下（留在選擇）；飢渴頂點例外（榨乾場）
+  if (sexStartBlocked()) return;
+  const who = girl;
+  lines.push({ role: "user", content: "（你答應了她。）" });
+  closeBeg(who);
+  endBegDialog();
+  begStripForSex(who);
+  talkBusy = false;
+  refreshTalkActs();
+  openRoomScene("sex");
+  // 做愛場面沒開起來（閘門關等）→ 回到一般對話
+  if (!sexChat && !activeRoomScene) setTalkEnabled(true);
+}
+async function begRefuse() {
+  if (!girl || !begDialog || begDialog.phase !== "choose") return;
+  const who = girl;
+  begDialog.phase = "busy";
+  talkBusy = true;
+  renderBegBar();
+  lines.push({ role: "user", content: "（你拒絕了她，現在不想做。）" });
+  $("portrait-name").textContent = who.name;
+  setTyping(true);
+  let line = "";
+  try {
+    const occ = takeOccupancy(who, "");
+    if (occ.score >= 95) line = occupancyMoanLine(occ, who) || "……嗚…";
+    else {
+      const ask = [
+        "（他拒絕了你的求歡。用一兩句話反應：失落、委屈或賭氣，但還是黏著他；不要再一直求，不要旁白。）",
+        occupancyPromptLine(occ),
+      ].filter(Boolean).join("\n");
+      let reply = "";
+      try {
+        reply = await withTimeout(askGirl(ask), THRUST.OPENING_TIMEOUT_MS, "");
+      } catch (err) {
+        console.warn("[beg refuse]", err?.message || err);
+      }
+      const fb = BEG_REFUSE_LINES[Math.floor(Math.random() * BEG_REFUSE_LINES.length)];
+      const clean = scrubHusband(cleanLine(reply), who.stage || "stranger");
+      line = presentOccupied(who, clean || fb, "", occ) || fb;
+    }
+  } catch {
+    line = BEG_REFUSE_LINES[0];
+  }
+  if (girl !== who) return;
+  closeBeg(who);
+  pushDebug("性飢渴：你拒絕了她");
+  noteTalkExchange(who);
+  lines.push({ role: "assistant", content: line });
+  rememberChat();
+  persistRoom();
+  setTyping(false);
+  endBegDialog();
+  await typeLine(who.name, line);
+  talkBusy = false;
+  if (sheetOpen() && girl === who) setTalkEnabled(true);
+}
+
+// ---------------------------------------------------------------- 榨乾場（妻子飢渴頂點做愛，2026-10-09 Al）
+/** 現在開始做愛會不會是榨乾場（妻子以上＋飢渴 ≥ PEAK_AT）。 */
+function sexPeakNow(who = girl) {
+  return !!(HUNGER_ON && who && marathonEligible(who, { stageKey: who.stage || "stranger" }));
+}
+/** 榨乾場鎖著（她還沒滿足）：不能回到對話、不能關對話框。 */
+function sexMarathonLocked() {
+  return !!(sexChat && marathonLocked(sexChat.marathon));
+}
+function nagMarathonLocked() {
+  showClimaxTip("她緊緊纏著你，不讓你停下來…");
+}
+
 /** 被滿足：orgasm 大降、creampie 中降、touch 小降。 */
 function hungerRelief(kind) {
   if (!HUNGER_ON || !girl) return;
@@ -557,6 +784,8 @@ function bindHungerDebug() {
   onId("dbg-hunger-50", "click", () => set(50));
   onId("dbg-hunger-75", "click", () => set(75));
   onId("dbg-hunger-95", "click", () => set(95));
+  // 頂點（妻子以上做愛＝榨乾場）
+  onId("dbg-hunger-peak", "click", () => set(100));
   onId("dbg-hunger-12h", "click", () => {
     if (!HUNGER_ON || !girl) return;
     ensureBody(girl);
@@ -572,9 +801,13 @@ function bindHungerDebug() {
   onId("dbg-hunger-beg", "click", () => {
     if (!HUNGER_ON || !girl) return;
     ensureBody(girl);
-    if (peekHunger(girl) < 85) setHunger(girl, 95);
+    if (peekHunger(girl) < BEG_AT) setHunger(girl, 95);
     const ok = window.RoomActor?.startActivity?.("hunger_beg");
-    pushDebug(ok ? "除錯：叫她走過來求" : "除錯：她現在走不過去（不在房間／坐著）");
+    pushDebug(ok ? "除錯：叫她走過來求（走到面前就打開對話框）" : "除錯：她走不過去 → 直接打開求的對話框");
+    if (!ok) {
+      noteBeg(girl);
+      if (!maybeOpenBegDialog()) pushDebug("除錯：現在開不了對話框（對話已開／不在房間）");
+    }
     renderDebug();
   });
 }
@@ -1837,6 +2070,7 @@ function sexHudEl() {
     el.innerHTML = '<div class="sx-g" data-g="passion"><b>激情</b><i><s></s></i><em></em></div>'
       + '<div class="sx-g" data-g="excite"><b>興奮</b><i><s></s></i><em></em></div>'
       + '<div class="sx-g" data-g="semen"><b>精液</b><i><s></s></i><em></em></div>'
+      + '<div class="sx-g" data-g="hunger" hidden><b>飢渴</b><i><s></s></i><em></em></div>'
       + '<p class="sx-warn" hidden></p>';
     ($("portrait-sheet") || document.body).append(el);
   }
@@ -1868,7 +2102,23 @@ function renderSexHud() {
   const cumAt = exciteCumAt();
   set("excite", (s.excite / cumAt) * 100, `${s.excite}/${cumAt}`, s.excite >= cumAt * 0.8);
   set("semen", (Math.max(0, s.semen) / semenMaxCc()) * 100, `${s.semen}cc`, semenDanger(s));
+  // 榨乾場：多一條她的飢渴（歸 0 才放你走）
+  const m = sexChat.marathon;
+  const hRow = el.querySelector('[data-g="hunger"]');
+  if (hRow) hRow.hidden = !m;
+  if (m) {
+    const lv = Math.max(0, Math.round(Number(m.level) || 0));
+    set("hunger", lv, `${lv}`, marathonLocked(m));
+  }
   const warn = el.querySelector(".sx-warn");
+  if (m) {
+    const locked = marathonLocked(m);
+    warn.hidden = false;
+    warn.textContent = locked
+      ? `她還沒滿足——停不下來（大概還要高潮 ${marathonOrgasmsLeft(m.level)} 次）${s.semen < THRUST.SEMEN_END_BELOW ? `・精液 ${s.semen}cc` : ""}`
+      : m.finale?.blood ? `她滿足了。你射出血來了（射到 ${m.finale.semen}cc）` : "她終於滿足了。";
+    return;
+  }
   const danger = semenDanger(s);
   warn.hidden = !danger && !s.ended;
   warn.textContent = s.ended
@@ -2038,6 +2288,16 @@ function thrustFact() {
   if (news.includes("bloodcum")) bits.push("他剛剛射在你裡面，可是射出來的是混著血的粉紅色精液（血精，他射過頭了），你嚇了一跳、很擔心他，但身體還在被肏的餘韻裡。");
   else if (news.includes("cum")) bits.push("他剛剛射在你裡面，很燙。");
   if (!news.includes("orgasm") && s.passion >= THRUST.PASSION_ORGASM_ABOVE - 4) bits.push("你快要高潮了。");
+  // 榨乾場：貪得無厭的妻子
+  const m = sexChat.marathon;
+  if (m) {
+    if (news.includes("sated")) bits.push("你終於被餵飽了：整個人軟掉、滿足地喘著，黏在他身上撒嬌。");
+    else {
+      bits.push("你是飢渴到極點的妻子，怎麼要都不夠：不准他停、不准他拔出來，一直討要更多。");
+      if (news.includes("orgasm")) bits.push("可是高潮了還不夠，你還要。");
+      if (s.semen < THRUST.SEMEN_END_BELOW) bits.push("他已經被你榨到快虛脫了，你還是不放過他。");
+    }
+  }
   return { text: bits.join(""), event: news.includes("orgasm") ? "orgasm" : news.includes("bloodcum") ? "bloodcum" : news.includes("cum") ? "cum" : "" };
 }
 
@@ -2115,7 +2375,15 @@ function flushThrustDeferred(why = "") {
   if (o) {
     bumpAffection(o.affection, `她高潮（第 ${o.count} 次）`);
     noteAfterglow(girl, "hers");
-    hungerRelief("orgasm");
+    if (marathonLocked(sexChat.marathon)) {
+      // 榨乾場：每次高潮 −MARATHON_ORGASM_DROP；歸 0 才結束（這一輪在她那句打完、高潮圖停滿後收）
+      const mr = marathonOrgasm(girl, sexChat.marathon, { stageKey: girl.stage || "stranger" });
+      if (mr) pushDebug(`榨乾場：飢渴 ${Math.round(mr.before)}→${Math.round(mr.after)}（她高潮 ${sexChat.marathon.orgasms}）${mr.done ? "，滿足了" : `，還要約 ${mr.left} 次`}`);
+      if (mr?.done) {
+        s.ended = true;
+        sexChat.news.push("sated");
+      }
+    } else hungerRelief("orgasm");
     organDevOrgasm();
     sexChat.news.push("orgasm");
     lines.push({ role: "user", content: THRUST.SQUIRT_IN_FLOW ? "（她高潮了，潮吹、全身痙攣。）" : "（她高潮了，全身痙攣。）" });
@@ -2141,7 +2409,9 @@ function flushThrustDeferred(why = "") {
 /** 開場那句：① 開場圖出來後她先開口（關係階態度＋個性口吻＋體位；AI 失敗／逾時用本地台詞）。 */
 async function requestSexOpening(who, pose) {
   const stage = who.stage || "stranger";
-  const directive = openingDirective({ stage, pose, personality: basePersonality(who), dazed: sexDazeKind(who) });
+  let directive = openingDirective({ stage, pose, personality: basePersonality(who), dazed: sexDazeKind(who) });
+  // 榨乾場：今天要做到她滿足為止
+  if (sexChat?.marathon) directive += "\n（你已經飢渴到極點：今天要做到你被餵飽為止，不准他停。說得急切、貪婪。）";
   let reply = "";
   try {
     reply = await withTimeout(askGirl(directive), THRUST.OPENING_TIMEOUT_MS, "");
@@ -2246,6 +2516,8 @@ function releaseOrgasmLock(seq, forced = false) {
   if (lk.safety) clearTimeout(lk.safety);
   sexChat.orgasmLock = null;
   if (forced) pushDebug("肏：高潮那句等太久，先放回「肏」");
+  // 這一下讓這一輪結束（榨乾場她滿足了）→ 收尾
+  if (sexChat.sess.ended) finishSexChatRound();
   renderSexChatBar();
   renderThrustDebug();
 }
@@ -2289,7 +2561,8 @@ function renderSexChatBar() {
     b.style.visibility = hide ? "hidden" : "";
     b.setAttribute("aria-hidden", hide ? "true" : "false");
   }
-  add("back", "回到對話", () => closeRoomScene(), { title: "離開做愛，回到一般對話" });
+  // 榨乾場：她滿足（飢渴歸 0）之前沒有「回到對話」
+  if (!sexMarathonLocked()) add("back", "回到對話", () => closeRoomScene(), { title: "離開做愛，回到一般對話" });
 }
 
 function syncThrustButton() {
@@ -2306,17 +2579,20 @@ async function openSexChat(who) {
   if (!who || undressStage(who) < 3 || !sheetOpen()) return;
   if (sexStartBlocked()) return;
   const pose = sexPoseFor(who);
+  // 妻子飢渴頂點 → 榨乾場（停不下來，做到她飢渴歸 0）
+  const marathon = sexPeakNow(who) ? startMarathon(who, { stageKey: who.stage || "stranger" }) : null;
   activeRoomScene = "sex";
   undressView += 1;
   talkBusy = true;
   clearActionFlash();
   const o = ensureBody(who)?.organs;
   sexChat = {
+    marathon,
     pose,
     packId: "",
     step: "open",
     // 精液＝玩家真正剩下的（不是每場 18cc）
-    sess: newThrustSession({ semenCc: ensurePlayer(player).semenCc }),
+    sess: newThrustSession({ semenCc: ensurePlayer(player).semenCc, marathon: !!marathon }),
     img: "",
     imgStep: "",
     thrustImg: "",
@@ -2348,6 +2624,10 @@ async function openSexChat(who) {
     pump: null,
   };
   sexChat.pump = newThrustPump();
+  if (marathon) {
+    pushDebug(`榨乾場開始：飢渴 ${Math.round(marathon.startLevel)}（≥${PEAK_AT}），要做到歸 0；精液 ${sexChat.sess.semen}cc`);
+    showBodyWarn("她不會讓你停下來的", "飢渴到頂點：做到她滿足為止");
+  } else
   // 精液 <6：一進來就跳「身體快不行了」
   warnIfSemenLow();
   const view = undressView;
@@ -2393,7 +2673,9 @@ async function sexChatToJoin() {
   const o = ensureBody(who)?.organs;
   if (o?.vagina) o.vagina.stuffed = "penis";
   syncSexSemen();
-  const dry = sexChat.sess.semen < THRUST.SEMEN_END_BELOW ? `精液已見底（${sexChat.sess.semen}cc），射一次這一輪就結束。` : "";
+  const dry = sexChat.marathon
+    ? "她飢渴到頂點——不做到她滿足，這一輪停不下來。"
+    : sexChat.sess.semen < THRUST.SEMEN_END_BELOW ? `精液已見底（${sexChat.sess.semen}cc），射一次這一輪就結束。` : "";
   if (isBloodShot(sexChat.sess.semen)) prepBloodcum(who);
   const where = sexChat.pose === "doggy" ? "抵在她翹起的屁股中間" : "抵在她張開的腿間";
   sexChatNarrate(`（你掏出陰莖，${where}。按「肏」開始。${dry}）`);
@@ -2457,15 +2739,18 @@ function doThrust() {
   if (r.ejac) {
     // 扣玩家真正的精液（可到負）；這一場的數字跟著它
     // 掉到 −7 以下＝腎虧：自動送醫、精液量回到 −1（settleKidney）
-    spendPlayerSemen(THRUST.SEMEN_PER_EJAC_CC, "sex");
+    // 榨乾場：腎虧等她滿足才結算（finishSexChatRound → marathonFinale），這裡只扣
+    if (s.marathon) player = spendSemen(player, THRUST.SEMEN_PER_EJAC_CC).player;
+    else spendPlayerSemen(THRUST.SEMEN_PER_EJAC_CC, "sex");
     s.semen = player.semenCc;
     // 射完還 <6：「身體快不行了」（每射一次最多一張）
-    warnIfSemenLow();
-    if (s.semen < THRUST.SEMEN_END_BELOW) s.ended = true;
+    if (!s.marathon) warnIfSemenLow();
+    if (s.semen < THRUST.SEMEN_END_BELOW && !s.marathon) s.ended = true;
     const o = ensureBody(who)?.organs;
     if (o?.uterus) o.uterus.semen = Math.min(3, (Number(o.uterus.semen) || 0) + 1);
     noteAfterglow(who, "his", { ejac: "creampie" });
-    hungerRelief("creampie");
+    // 榨乾場：內射不降（她要的是高潮）
+    if (!s.marathon) hungerRelief("creampie");
     sexChat.news.push(r.blood ? "bloodcum" : "cum");
     if (r.blood) sexChat.bloodShots = (sexChat.bloodShots || 0) + 1;
     // 射精 → 立刻換 ⑥ 內射圖（留到下一下肏）；血精 → ⑦ 血精圖（快取有就直接用，沒有先用內射圖、產好再換）
@@ -2547,6 +2832,12 @@ function finishSexChatRound() {
   sexChat.finishAfterReply = false;
   pump?.close();
   const s = sexChat.sess;
+  if (sexChat.marathon) {
+    finishMarathon();
+    renderSexHud();
+    renderSexChatBar();
+    return;
+  }
   const text = sexChat.bloodShots
     ? `（你連血都射出來了——混著血的粉紅色精液從她裡面流出來。這一場射了 ${s.ejacs} 次，她高潮 ${s.orgasms} 次。精液 ${s.semen}cc：負的時候每 5 小時才補 1cc。這一輪結束；按「回到對話」。）`
     : `（你射乾了——這一場射了 ${s.ejacs} 次，她高潮 ${s.orgasms} 次。這一輪結束；按「回到對話」。）`;
@@ -2560,11 +2851,50 @@ function finishSexChatRound() {
   renderSexChatBar();
 }
 
+/**
+ * 榨乾場收尾（她飢渴歸 0）：精液 < −7 → 射血（⑦ 血精圖，沒有就旁白）＋腎虧送醫（只結算一次）；否則一般餘韻。
+ */
+function finishMarathon() {
+  const sc = sexChat;
+  if (!sc?.marathon) return;
+  const s = sc.sess;
+  player = ensurePlayer(player);
+  const fin = marathonFinale(sc.marathon, player.semenCc);
+  const tally = `這一場射了 ${s.ejacs} 次，她高潮 ${s.orgasms} 次`;
+  let text = "";
+  if (fin.blood) {
+    // 射血那一下
+    void ensureSexStepUrl(girl, sc.pose, "bloodcum", sc.packId).then((p) => {
+      if (sexChat === sc && p?.url) setSexChatImage(p.url, "bloodcum");
+    });
+    showClimaxTip("射血了……");
+    const bill = fin.first ? settleKidney("marathon") : null;
+    s.semen = player.semenCc;
+    text = `（她終於滿足了，軟軟地癱在你身上……你最後射出來的全是血，眼前一黑——腎虧，被送去看醫生${bill ? `，花了 ${bill.fee} 金` : ""}。${tally}。精液回到 ${player.semenCc}cc。按「回到對話」。）`;
+    if (bill) showBodyWarn("腎虧，送醫", `醫藥費 ${bill.fee} 金・精液回到 ${player.semenCc}cc`);
+    pushDebug(`榨乾場結束：射血＋腎虧${bill ? `（${bill.fee} 金）` : "（已結算過）"}`);
+  } else {
+    text = `（她終於滿足了，滿足地窩在你懷裡喘著。${tally}。精液 ${s.semen}cc。按「回到對話」。）`;
+    pushDebug(`榨乾場結束：她滿足了，精液 ${s.semen}cc（沒到腎虧）`);
+  }
+  persistRoom();
+  const delay = sc.lastReply ? 1500 : 0;
+  setTimeout(() => {
+    if (sexChat !== sc) return;
+    sexChatNarrate(text);
+  }, delay);
+}
+
 /** 收掉對話版做愛（回到對話／關對話框都會走這裡）。 */
 function closeSexChat() {
   if (!sexChat) return;
   const sc = sexChat;
   sexChat = null;
+  // 榨乾場被系統中斷（她被叫走等）：精液該結算的照樣結算（腎虧一次）
+  if (sc.marathon && !sc.marathon.finale) {
+    const fin = marathonFinale(sc.marathon, ensurePlayer(player).semenCc);
+    if (fin?.first && fin.kidney) settleKidney("marathon-cut");
+  }
   sc.pump?.close();
   if (sc.deferTimer) clearTimeout(sc.deferTimer);
   if (sc.lingerTimer) clearTimeout(sc.lingerTimer);
@@ -3198,7 +3528,8 @@ function warnIfSemenLow() {
 /** 開始做愛的門檻：精液 0 或負的 → 紅卡說原因，擋下來。回傳是否被擋。 */
 function sexStartBlocked() {
   const cc = ensurePlayer(player).semenCc;
-  if (canStartSex(cc)) return false;
+  // 妻子飢渴頂點 → 榨乾場，不看精液（2026-10-09 Al）
+  if (canStartSexAt(cc, { peak: sexPeakNow() })) return false;
   showBodyWarn("精液不足，身體撐不住了", `目前 ${cc}cc・回到 1cc 以上才能做愛（負的時候每 5 小時 +1cc）`);
   return true;
 }
@@ -8442,6 +8773,12 @@ function refreshTalkActs() {
     renderSexChatBar();
     return;
   }
+  // 妻子來求：只有「做愛／拒絕」
+  if (begDialogActive()) {
+    renderBegBar();
+    return;
+  }
+  row.classList.remove("beg-bar");
   // 專屬場面開啟時隱藏互動列（overlay 蓋住；關閉後再顯示）
   row.hidden = !sheetOpen() || !girl || sceneOpen();
   player = ensurePlayer(player);
@@ -8508,7 +8845,8 @@ function refreshTalkActs() {
     btn.title = "場面還沒做";
     // 精液 0 或負的：鈕變灰，點了跳紅卡說原因（不直接 disabled，手機看不到 title）
     const dryCc = ensurePlayer(player).semenCc;
-    if (!canStartSex(dryCc)) {
+    // 妻子飢渴頂點：不看精液（榨乾場）
+    if (!canStartSexAt(dryCc, { peak: sexPeakNow() })) {
       btn.classList.add("is-dry", "is-locked");
       btn.setAttribute("aria-disabled", "true");
       btn.title = sexBlockReason(dryCc);
@@ -8776,6 +9114,8 @@ function showSheet() {
   refreshTalkActs();
   // 打開房間對話時精液 <6：跳一次「身體快不行了」
   if (wasHidden && girl && girlInRoom()) warnIfSemenLow();
+  // 她來求（還沒理她）：這次打開就是求的對話框（activityChatOpen 會把「求」標成看過，先記下來）
+  const begNow = !!(wasHidden && girl && HUNGER_ON && !begDialog && begPending(girl));
   if (wasHidden && girl) activityChatOpen();
   if (!girl) {
     typeJob += 1;
@@ -8789,6 +9129,11 @@ function showSheet() {
   if (undressStage(girl) >= 3) rollNudeStandee(girl);
   paintHalfPortrait(girl);
   restoreInsertView(girl);
+  if (begNow) {
+    begDialog = { phase: "opening", at: Date.now() };
+    void openBegDialog();
+    return;
+  }
   openTalk();
 }
 
@@ -9275,6 +9620,8 @@ function loadRoomSave() {
 }
 
 function hideSheet() {
+  // 求的對話框：關掉＝不理她（求的窗口照 hungerChatClose 收）
+  if (begDialog) endBegDialog();
   // 先收 stub 場面，避免 overlay 懸在已關閉的對話上
   if (sceneOpen() || activeRoomScene) closeRoomScene();
   if (MISS_YOU_ON && girl) noteMissSeen(girl);
@@ -10512,6 +10859,7 @@ bindOrganDevDebug();
 bindReckonDebug();
 onId("talk-input-row", "submit", (event) => { sendTalk(event); });
 onId("portrait-backdrop", "click", () => {
+  if (sexMarathonLocked()) { nagMarathonLocked(); return; }
   if (sceneOpen()) {
     closeRoomScene();
     return;
@@ -10519,12 +10867,14 @@ onId("portrait-backdrop", "click", () => {
   hideSheet();
 });
 onId("portrait-sheet", "click", (event) => {
+  if (sexMarathonLocked()) return;
   if (sceneOpen()) return;
   if (event.target.closest(".talk")) return;
   hideSheet();
 });
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (sexMarathonLocked()) { nagMarathonLocked(); return; }
   if (sceneOpen()) {
     closeRoomScene();
     return;
@@ -10730,7 +11080,15 @@ window.RoomCompanion = {
     state: () => (girl ? { ...JSON.parse(JSON.stringify(ensureHunger(girl) || {})), now: peekHunger(girl), tier: hungerTier(peekHunger(girl)), label: hungerLabel(girl) } : null),
     set: (v) => { if (!girl) return null; ensureBody(girl); const r = setHunger(girl, v); persistRoom(); renderDebug(); return r; },
     lines: (opening = false) => (girl ? hungerPromptLines(girl, { stageKey: girl.stage || "stranger", opening }) : []),
-    beg: () => { if (!girl) return false; ensureBody(girl); if (peekHunger(girl) < 85) setHunger(girl, 95); return !!window.RoomActor?.startActivity?.("hunger_beg"); },
+    beg: () => { if (!girl) return false; ensureBody(girl); if (peekHunger(girl) < BEG_AT) setHunger(girl, 95); return !!window.RoomActor?.startActivity?.("hunger_beg"); },
+    /** 直接打開求的對話框（不等她走過來）。 */
+    begNow: () => { if (!girl) return false; ensureBody(girl); if (peekHunger(girl) < BEG_AT) setHunger(girl, 95); noteBeg(girl); return maybeOpenBegDialog(); },
+    begDialog: () => (begDialog ? { ...begDialog } : null),
+    accept: () => begAccept(),
+    refuse: () => begRefuse(),
+    peak: () => { if (!girl) return null; ensureBody(girl); const r = setHunger(girl, 100); persistRoom(); renderDebug(); return r; },
+    peakNow: () => sexPeakNow(),
+    marathon: () => (sexChat?.marathon ? { ...sexChat.marathon, locked: marathonLocked(sexChat.marathon) } : null),
   },
   /** 器官開發度除錯：on＝閘門；state＝bodyState.organDev＋外觀；add(organ,n)；lines()＝prompt 會帶的幾行。 */
   organDev: {

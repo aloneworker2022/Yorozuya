@@ -16,12 +16,14 @@
  *     射精 → 立刻換內射圖；她高潮 → 換高潮圖、藏「肏」到她那句打完＋停滿 EVENT_HOLD_MS；下一下回抽插圖。
  *   - 開場：① 開場圖出來後她先說一句（openingDirective：關係階態度＋個性口吻＋體位），打完才出「掏出陰莖」→ ② 加入 →「肏」。
  *   - 局部動畫（舊做愛系統的四幀）：第一下播 1-2-3-4，之後每下播 2-3-4，播放中藏「肏」。
+ * 榨乾場（2026-10-09 Al）：妻子飢渴 ≥95 開始做愛 → session.marathon：精液見底不結束、可一路射到負的，
+ *   要做到她飢渴歸 0（hunger.js marathonOrgasm）才結束；結束時 marathonFinale 判射血＋腎虧（只結算一次）。
  * 她的台詞：每下都要一句，但跟動畫／數值脫鉤（ThrustReplyPump）：
  *   - 正在等 AI 時先顯示本地喘息（啊…嗯…）；AI 回來後逐字貼上（呻吟字 ~0.08s、一般字 ~0.12s）。
  *   - 只留最新一下的請求（舊的丟掉）；一句打完時，0.8 秒內有按過「肏」就立刻開下一句。
  */
 
-import { expansionLevel } from "./player_state.js";
+import { expansionLevel, KIDNEY_BELOW_CC } from "./player_state.js";
 
 export const THRUST = {
   /** 只在呼叫端沒給玩家精液時用（舊呼叫的退路）；正常一律用 player.semenCc。 */
@@ -251,6 +253,8 @@ export function newThrustSession(opts = {}) {
     orgasms: 0,
     ejacs: 0,
     ended: false,
+    // 榨乾場（妻子飢渴頂點）：精液見底不結束（applyThrust）
+    marathon: !!opts.marathon,
     startedAt: Number(opts.now) || Date.now(),
   };
 }
@@ -284,6 +288,24 @@ export function canStartSex(semenCc) {
 export function sexBlockReason(semenCc) {
   if (canStartSex(semenCc)) return "";
   return `精液不足，身體撐不住了（目前 ${Math.round(Number(semenCc) || 0)}cc）`;
+}
+
+/** 開始做愛：一般看精液；妻子飢渴頂點（榨乾場，peak）不看精液（2026-10-09 Al）。 */
+export function canStartSexAt(semenCc, { peak = false } = {}) {
+  return !!peak || canStartSex(semenCc);
+}
+
+/**
+ * 榨乾場結束（她飢渴歸 0）時結算一次：精液 < −7（腎虧門檻）→ 射血＋該送醫（kidney）。
+ * 第二次呼叫回同一個結果、first=false（呼叫端只在 first 時送醫，不會收兩次錢）。
+ */
+export function marathonFinale(m, semenCc, now = Date.now()) {
+  if (!m) return null;
+  if (m.finale) return { ...m.finale, first: false };
+  const n = Number(semenCc) || 0;
+  const blood = n < KIDNEY_BELOW_CC;
+  m.finale = { blood, kidney: blood, semen: n, at: now };
+  return { ...m.finale, first: true };
 }
 
 /** 精液 <6 →「身體快不行了」紅卡（2026-10-08 使用者）。 */
@@ -326,7 +348,8 @@ export function applyThrust(s, { arousal = 0, stage = "stranger", rng = Math.ran
     s.excite = 0;
     s.ejacs += 1;
     s.semen -= THRUST.SEMEN_PER_EJAC_CC;
-    if (s.semen < THRUST.SEMEN_END_BELOW) s.ended = true;
+    // 榨乾場（s.marathon）：精液見底也不結束，要做到她滿足（hunger.js marathonOrgasm）
+    if (s.semen < THRUST.SEMEN_END_BELOW && !s.marathon) s.ended = true;
   }
   const blood = ejac && isBloodShot(semenBefore);
   return {
