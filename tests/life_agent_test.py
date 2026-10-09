@@ -130,6 +130,7 @@ def main():
     merge_tests()
     home_tests()
     mirror_tests()
+    ero_tests()
     print("ok - life agent schedule/mood/encounters/home")
 
 
@@ -256,7 +257,7 @@ def mood_tests():
     assert la._outcome({"kind": "work", "emotion": "喜", "actId": "blame", "person": {"name": "x", "role": "顧客"}}, rec, Seq(0))["mood"] == "低落"
     assert la._outcome({"kind": "stroll", "tone": "wonder", "actId": "lucky", "place": "淺草寺"}, rec, Seq(0))["mood"] == "愉快"
     assert la._outcome({"kind": "stroll", "tone": "horror", "actId": "wrong", "place": "淺草寺"}, rec, Seq(0))["mood"] == "不安"
-    assert la._outcome({"kind": "stroll", "scp": {"step": 2}, "place": "淺草寺"}, rec, Seq(0)) == {"mood": "不安", "level": 70, "why": "在淺草寺撞見說不清的怪事"}
+    assert la._outcome({"kind": "stroll", "scp": {"step": 2}, "place": "淺草寺"}, rec, Seq(0)) == {"mood": "不安", "level": 60, "why": "在淺草寺撞見說不清的怪事"}
     assert la._outcome({"kind": "sleep", "nightmare": True}, rec, Seq(0))["mood"] == "不安"
     assert la._outcome({"kind": "sleep"}, rec, Seq(0))["mood"] == "平靜"
     # 睡醒：低落被壓下去、寫不寫記憶看有沒有做夢
@@ -279,7 +280,8 @@ def tone_share(mood, level, n=4000):
     import random as _r
     rng = _r.Random(7)
     store, rec = japan_rec("", mood, level, jst(2026, 10, 7, 14))
-    rec["groundId"] = ""  # 不讓 SCP 干擾
+    rec["groundId"] = ""  # 不讓 SCP／色情奇遇干擾
+    rec["scpNextAt"] = rec["eroNextAt"] = jst(2030, 1, 1, 0)
     counts = {"daily": 0, "wonder": 0, "horror": 0}
     for _ in range(n):
         ev = la.roll_event(rec, "stroll", jst(2026, 10, 7, 14), rng.random)
@@ -294,40 +296,55 @@ def encounter_tests():
     scared = tone_share("不安", 70)
     assert happy["wonder"] > calm["wonder"] + 0.1 and happy["horror"] < calm["horror"]
     assert scared["horror"] > calm["horror"] * 2 and scared["wonder"] < calm["wonder"]
-    # SCP：第一次 1/15，開始後 1/2；心情不安放大、愉快縮小；有上限
-    assert abs(la.scp_chance(False, "平靜", 0) - 1 / 40) < 1e-9
-    assert abs(la.scp_chance(True, "平靜", 0) - 1 / 8) < 1e-9
+    # SCP：第一次 1/12，開始後 1/3；心情不安放大、愉快縮小；有上限
+    assert abs(la.scp_chance(False, "平靜", 0) - 1 / 12) < 1e-9
+    assert abs(la.scp_chance(True, "平靜", 0) - 1 / 3) < 1e-9
     assert la.scp_chance(False, "不安", 60) > la.scp_chance(False, "平靜", 0) * 1.9
-    assert la.scp_chance(False, "愉快", 60) < 1 / 40
+    assert la.scp_chance(False, "愉快", 60) < 1 / 12
     assert la.scp_chance(True, "不安", 100, eerie=True, night=True) == la.SCP_NEXT_CAP
-    # 綁地點：淺草只會碰到 SCP-173；三步走完就不會再出
+    # 31 件、每件五步；綁地點的只在那裡，generic 誰都會碰到
+    assert len(la.D.SCP_EVENTS) == 31 and all(len(e["stages"]) == 5 for e in la.D.SCP_EVENTS)
+    assert len({e["id"] for e in la.D.SCP_EVENTS}) == 31
+    assert sum(1 for e in la.D.SCP_EVENTS if e.get("generic")) >= 8
+    # 淺草：173 在第一個，開始後一直是它，五步走完換別件
     store, rec = japan_rec("", "平靜", 0, jst(2026, 10, 7, 14))
-    seen = []
-    for i in range(3):
+    for i in range(5):
         scp = la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0))
-        assert scp and scp["code"] == "SCP-173" and scp["step"] == i
-        seen.append(scp["stage"])
+        assert scp and scp["code"] == "SCP-173" and scp["step"] == i and scp["of"] == 5
         rec["scpSteps"][scp["id"]] = scp["step"] + 1
-    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0)) is None
+    nxt = la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0))
+    assert nxt and nxt["code"] != "SCP-173" and nxt["step"] == 0
     rec["groundId"] = "kanazawa"
-    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0)) is None
+    rec["scpSteps"] = {"173": 5}
+    pool = {la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, x / 50))["id"] for x in range(50)}
+    allowed = {e["id"] for e in la.D.SCP_EVENTS if e.get("generic") or "kanazawa" in (e.get("grounds") or [])}
+    assert pool <= allowed and "005" in pool and "173" not in pool
     assert la.roll_scp(rec, "work", "平靜", 0, Seq(0.0, 0.0))["code"] != "SCP-173"  # 173 走完了，其他 work 的
+    # 舊存檔只走到三步的：繼續第四步
+    rec["scpSteps"] = {"106": 3}
+    rec["groundId"] = "kamakura"
+    s4 = la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0))
+    assert s4["id"] == "106" and s4["step"] == 3 and "收尾" not in la.scp_brief(s4)
+    s4["step"] = 4
+    assert "最後一步" in la.scp_brief(s4)
     # 開始後再遇到 1/2 進下一步
     store, rec = japan_rec("", "平靜", 0, jst(2026, 10, 7, 14))
     rec["scpSteps"] = {"173": 1}
-    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.12, 0.0))["step"] == 1
-    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.13, 0.0)) is None
-    # 兩步之間至少 10 天
+    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.33, 0.0))["step"] == 1
+    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.34, 0.0)) is None
+    # 兩步之間至少 2 天（舊紀錄只有 scpAt）；有 scpNextAt 照它
     t1 = jst(2026, 10, 7, 14)
     rec["scpAt"] = t1
-    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0), now_ms=t1 + 9 * 24 * la.HOUR_MS) is None
-    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0), now_ms=t1 + 11 * 24 * la.HOUR_MS)["step"] == 1
+    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0), now_ms=t1 + 47 * la.HOUR_MS) is None
+    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0), now_ms=t1 + 49 * la.HOUR_MS)["step"] == 1
+    rec["scpNextAt"] = t1 + 80 * la.HOUR_MS
+    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0), now_ms=t1 + 79 * la.HOUR_MS) is None
     # 打工一定碰到人；人記進 met，同事會再碰到
     store, rec = japan_rec("", "平靜", 0, jst(2026, 10, 7, 10), job={"id": "ramen", "name": "拉麵店洗碗"})
     import random as _r
     rng = _r.Random(3)
     t = jst(2026, 10, 7, 10)
-    for i in range(12):
+    for i in range(20):
         la.arm(rec, "work", t, rng.random)
         until = rec["agenda"]["until"]
         a = la.prepare_resolve(store, "a", until, rng.random)
@@ -412,6 +429,82 @@ def merge_tests():
     assert d2["succubi"][0]["world"]["mood"] == "低落"
 
 
+def ero_tests():
+    E = la.D.EROTIC_EVENTS
+    assert len(E) == 30 and len({e["id"] for e in E}) == 30 and all(len(e["stages"]) == 5 for e in E)
+    places = {p["id"] for p in la.D.STROLL_PLACES}
+    assert all(e["places"] and set(e["places"]) <= places for e in E)
+    # 底線：表裡不准出現禁區字眼（動物只准「狗狗人」「貓耳」這種人扮的）
+    ban = la.ERO_BAN_RE
+    for e in E:
+        for line in [e["title"]] + e["stages"]:
+            assert not ban.search(line), (e["id"], line)
+    # 機率：性慾高、飢渴高 → 高；不安 → 低；有上限
+    store, rec = japan_rec("", "平靜", 0, jst(2026, 10, 7, 14))
+    rec["libido"], rec["hungerSeen"] = "R", 30
+    base = la.ero_chance(rec, False, "平靜", 0)
+    assert abs(base - 0.1 * 0.8 * 1.0) < 1e-9
+    rec["libido"], rec["hungerSeen"] = "SSR", 90
+    assert la.ero_chance(rec, False, "平靜", 0) == la.ERO_FIRST_CAP > base * 2.4
+    assert la.ero_chance(rec, False, "不安", 60) < la.ero_chance(rec, False, "平靜", 0) * 0.5
+    assert la.ero_chance(rec, True, "臉紅心跳", 100, night=True) == la.ERO_NEXT_CAP
+    # 還沒收走的飢渴也算進去
+    rec["hungerSeen"], rec["hungerGiven"], rec["hungerTaken"] = 10, 30, 10
+    assert la.hunger_estimate(rec) == 30
+    # 溜達擲到：地點跟著這件事、五步、每步加飢渴、心情臉紅心跳、記憶標 private
+    store, rec = japan_rec("", "平靜", 0, jst(2026, 10, 7, 21))
+    rec["scpNextAt"] = jst(2030, 1, 1, 0)
+    rec["libido"] = "SS"
+    t = jst(2026, 10, 7, 21)
+    total = 0
+    for i in range(5):
+        rec["agenda"] = None
+        la.arm(rec, "stroll", t, Seq(0.9), 30 * 60000)
+        until = rec["agenda"]["until"]
+        rec["agenda"]["event"] = None
+        ev = None
+        for tries in range(200):  # 擲到為止
+            ev = la.roll_event(rec, "stroll", until, Seq(0.0))
+            if ev.get("ero"):
+                break
+        assert ev and ev["ero"]["step"] == i, (i, ev)
+        ero_id = ev["ero"]["id"]
+        ev_place_ids = la.D.EROTIC_EVENTS[[e["id"] for e in la.D.EROTIC_EVENTS].index(ero_id)]["places"]
+        names = {(rec.get("spots") or {}).get(pid) or next(p["name"] for p in la.D.STROLL_PLACES if p["id"] == pid) for pid in ev_place_ids}
+        assert ev["place"] in names
+        assert ev["outcome"]["mood"] == "臉紅心跳"
+        assert ev["ero"]["hunger"] == round(la.D.ERO_HUNGER[i] * 1.2)
+        total += ev["ero"]["hunger"]
+        rec["agenda"]["event"] = ev
+        a = la.prepare_resolve(store, "a", until, Seq(0.5))
+        sysm, user = la.event_prompt(a)
+        assert "旁觀" in sysm and "成年" in user and "嚴禁" in user and ("最後一步" in user) == (i == 4)
+        fb = la.fallback_text(a)
+        assert fb and "我" in fb and not la.ERO_BAN_RE.search(fb)
+        assert la.accept_text(a, "我看見一個學生在公園……") == ""   # 禁區字眼不收
+        assert la.settle(store, "a", until, "", until, Seq(0.5))
+        mem = rec["memories"][-1]
+        assert mem["private"] == "ero" and mem["eroStep"] == i + 1 and "色情奇遇" in mem["keys"]
+        assert rec["hungerGiven"] == total
+        assert rec["eroNextAt"] >= until + la.ERO_GAP_MS
+        t = rec["eroNextAt"] + 60000
+        rec["mood"], rec["moodLevel"] = "平靜", 0
+    assert rec["eroSteps"][ero_id] == 5
+    view = la.view_of(rec)
+    assert view["hungerGiven"] == total and view["eroSteps"][ero_id] == 5
+    # 寫回存檔：world.lifeHungerGiven 只會變大
+    girl = {"world": {"lifeHungerGiven": 999}}
+    la._paint_world(girl, view)
+    assert girl["world"]["lifeHungerGiven"] == 999
+    # 讀手機的性慾、飢渴、收過多少
+    store2 = la.new_store()
+    data = {"succubi": [{"id": "z", "name": "z", "libido": {"grade": "ssr"}, "bodyState": {"hunger": {"level": 42, "lifeTaken": 7}},
+                         "world": {"home": {"id": "h", "name": "h"}}}], "roomMirror": {"present": False}}
+    la.absorb(store2, data, jst(2026, 10, 7, 21))
+    r2 = store2["girls"]["z"]
+    assert r2["libido"] == "SSR" and r2["hungerSeen"] == 42 and r2["hungerTaken"] == 7
+
+
 def mirror_tests():
     """web/content/life_schedule.js 要跟伺服器同一套數字。"""
     import json as _j
@@ -422,9 +515,21 @@ def mirror_tests():
         return m.group(1)
     assert _j.loads(grab("OUTSIDE_KINDS")) == list(la.KINDS)
     assert _j.loads(grab("HOME_KINDS")) == list(la.HOME_KINDS)
-    assert grab("SCP_FIRST_CHANCE") == "1 / 40" and abs(la.D.SCP_FIRST_CHANCE - 1 / 40) < 1e-12
-    assert grab("SCP_NEXT_CHANCE") == "1 / 8" and abs(la.D.SCP_NEXT_CHANCE - 1 / 8) < 1e-12
-    assert grab("SCP_GAP_MS") == "10 * 24 * HOUR_MS" and la.SCP_GAP_MS == 10 * 24 * la.HOUR_MS
+    assert grab("SCP_FIRST_CHANCE") == "1 / 12" and abs(la.D.SCP_FIRST_CHANCE - 1 / 12) < 1e-12
+    assert grab("SCP_NEXT_CHANCE") == "1 / 3" and abs(la.D.SCP_NEXT_CHANCE - 1 / 3) < 1e-12
+    assert grab("SCP_GAP_MS") == "2 * 24 * HOUR_MS" and la.SCP_GAP_MS == 2 * 24 * la.HOUR_MS
+    assert grab("SCP_GAP_SPREAD_MS") == "2 * 24 * HOUR_MS" and la.SCP_GAP_SPREAD_MS == 2 * 24 * la.HOUR_MS
+    assert int(grab("SCP_STAGES")) == 5 and int(grab("ERO_STAGES")) == 5
+    assert grab("ERO_FIRST_CHANCE") == "1 / 10" and abs(la.D.ERO_FIRST_CHANCE - 1 / 10) < 1e-12
+    assert grab("ERO_NEXT_CHANCE") == "1 / 3" and abs(la.D.ERO_NEXT_CHANCE - 1 / 3) < 1e-12
+    assert grab("ERO_GAP_MS") == "24 * HOUR_MS" and la.ERO_GAP_MS == 24 * la.HOUR_MS
+    assert grab("ERO_GAP_SPREAD_MS") == "24 * HOUR_MS" and la.ERO_GAP_SPREAD_MS == 24 * la.HOUR_MS
+    assert _j.loads(grab("ERO_HUNGER")) == list(la.D.ERO_HUNGER)
+    assert _j.loads(grab("OUTSIDE_MOODS")) == list(la.D.MOODS)
+    for k, v in la.LIBIDO_HUNGER.items():
+        assert f"{k}: {v}" in grab("LIBIDO_HUNGER"), k
+    for k, v in la.MOOD_DECAY_PER_HOUR.items():
+        assert f"{k}: {v}" in grab("MOOD_DECAY_PER_HOUR"), k
     for k, v in la.D.HOME_DURATIONS_MIN.items():
         assert f"{k}: {_j.dumps(v)}" in grab("HOME_DURATIONS_MIN"), k
     w = grab("LIFE_WEIGHTS")

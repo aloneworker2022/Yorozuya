@@ -82,4 +82,55 @@ t("停留到期看完整時間戳，砍成 32 位元的負數不算到期", () =
   assert.equal(S.visitDue(0, now), false);
 });
 
+t("色情奇遇的飢渴：只加差額、合併幾次都只加一次、沒有 bodyState 先不收", () => {
+  const now = 1791086400000;
+  const who = { stage: "friend", world: {}, bodyState: { hunger: { level: 20, at: now, satedUntil: now + S.HOUR_MS } } };
+  S.paintLifeRow(who.world, { eroSteps: { "nude-walk": 2 }, hungerGiven: 7 });
+  assert.deepEqual(who.world.eroSteps, { "nude-walk": 2 });
+  assert.equal(S.applyLifeHunger(who, now), 7);
+  assert.equal(who.bodyState.hunger.level, 27);
+  assert.equal(who.bodyState.hunger.lifeTaken, 7);
+  S.paintLifeRow(who.world, { hungerGiven: 7 });
+  assert.equal(S.applyLifeHunger(who, now), 0);
+  assert.equal(who.bodyState.hunger.level, 27);
+  S.paintLifeRow(who.world, { hungerGiven: 3 });   // 舊資料不會倒退
+  assert.equal(who.world.lifeHungerGiven, 7);
+  S.paintLifeRow(who.world, { hungerGiven: 12 });
+  assert.equal(S.applyLifeHunger(who, now), 5);
+  assert.equal(who.bodyState.hunger.level, 32);
+  who.bodyState.hunger.level = 98;
+  S.paintLifeRow(who.world, { hungerGiven: 20 });
+  S.applyLifeHunger(who, now);
+  assert.equal(who.bodyState.hunger.level, 100);
+  const bare = { world: { lifeHungerGiven: 9 } };
+  assert.equal(S.applyLifeHunger(bare, now), 0);
+  assert.equal(bare.world.lifeHungerGiven, 9);
+});
+
+t("臉紅心跳會淡掉；SCP 五步、色情奇遇五步", () => {
+  assert.ok(S.OUTSIDE_MOODS.includes("臉紅心跳"));
+  const now = 1791086400000;
+  const m = S.outsideMoodNow({ mood: "臉紅心跳", moodLevel: 40, moodAt: now - 2 * S.HOUR_MS }, now);
+  assert.equal(m.name, "臉紅心跳");
+  assert.equal(m.level, 28);
+  assert.equal(S.SCP_STAGES, 5);
+  assert.equal(S.ERO_STAGES, 5);
+});
+
+const M = await import(`${dir}life_memory.js`);
+t("色情奇遇記憶：陌生打死不提、朋友被問才含糊、女友後期暗示、妻子俏皮地講；閒聊不主動提（妻子除外）", () => {
+  assert.match(M.eroDisclosure("stranger", 5), /打死不提/);
+  assert.match(M.eroDisclosure("close_friend", 5), /被追問才/);
+  assert.match(M.eroDisclosure("girlfriend", 1), /不要主動提/);
+  assert.match(M.eroDisclosure("lover", 4), /暗示/);
+  assert.match(M.eroDisclosure("wife", 1), /半開玩笑/);
+  const item = { id: "e1", at: 1791086400000, kind: "stroll", text: "我在公園看見裸體散步的情侶。", keys: ["色情奇遇"], private: "ero", eroStep: 2 };
+  const who = { stage: "stranger", world: { mind: { immediate: [item], mid: [], long: [], seeded: true } } };
+  const lines = M.lifeMemoryPromptLines(who, "你今天去哪", { here: "room" }).join("\n");
+  assert.match(lines, /沒有參與；這件很害羞，打死不提/);
+  const bored = { stage: "friend", world: { mind: { immediate: [], mid: [], long: [item], seeded: true } } };
+  const b = M.lifeMemoryPromptLines(bored, "好無聊", { here: "room" }).join("\n");
+  assert.doesNotMatch(b, /裸體/);
+});
+
 console.log(`${pass} passed`);

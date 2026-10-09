@@ -211,7 +211,7 @@ import {
   dressedReactionLine,
   dressedReactionPrompt,
 } from "./undress_shy.js?v=3";
-import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines } from "./life_memory.js?v=3";
+import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines } from "./life_memory.js?v=4";
 import {
   mountButtPackEditor,
   pickRuntimeButtPack,
@@ -315,7 +315,7 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH } from "./life_schedule.js?v=5";
+import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=6";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.js?v=1";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
@@ -381,7 +381,7 @@ function roomActMem(who = girl) {
 function outsideMoodForRoom(who) {
   if (!who?.world?.mood) return null;
   const now = outsideMoodNow(who.world);
-  const type = { 不悅: "angry", 低落: "hurt" }[now.name];
+  const type = { 不悅: "angry", 低落: "hurt", 臉紅心跳: "flustered" }[now.name];
   return type ? { type, level: Math.round(now.level * 0.6) } : null;
 }
 window.RoomActivityContext = () => {
@@ -4958,7 +4958,9 @@ function outsideSummaryLines() {
     out.push(`碰過 ${met.length} 人${named.length ? `，知道名字：${named.join("、")}` : ""}`);
   }
   const steps = w.scpSteps && typeof w.scpSteps === "object" ? Object.entries(w.scpSteps) : [];
-  if (steps.length) out.push(`怪事：${steps.map(([id, n]) => `SCP-${id} ${n}/3`).join("、")}`);
+  if (steps.length) out.push(`怪事：${steps.map(([id, n]) => `SCP-${id} ${n}/${SCP_STAGES}`).join("、")}`);
+  const ero = w.eroSteps && typeof w.eroSteps === "object" ? Object.entries(w.eroSteps) : [];
+  if (ero.length) out.push(`色情奇遇：${ero.map(([id, n]) => `${id} ${n}/${ERO_STAGES}`).join("、")}${Number(w.lifeHungerGiven) ? `（累計飢渴 +${w.lifeHungerGiven}）` : ""}`);
   return out;
 }
 
@@ -5102,6 +5104,7 @@ const MOODS = {
   低落: "心情低落。話少，不要突然變開朗。",
   不安: "心情不安。人在房間裡，害怕還沒退。不要描寫血腥。",
   虛脫: "身體虛脫、腿軟站不穩。話短、喘，不要裝成精力充沛。",
+  臉紅心跳: "剛看到讓人臉紅的事，心還在跳、身體有點熱。容易害羞、眼神飄，不要突然變得很正經。",
 };
 
 function setMood(who, name) {
@@ -5470,9 +5473,21 @@ function returnMood() {
   const mood = now.name;
   const how = MOODS[mood] || MOODS.平靜;
   const feel = mood === "平靜" ? "心情是平靜" : `心情${moodStrengthWord(now.level)}${mood}`;
-  const why = now.why && mood !== "平靜" ? `（因為在日本${now.why}；他問起才說，不要主動報經過）` : "";
+  const why = now.why && mood !== "平靜" ? `（因為在日本${now.why}；${eroWhyRule(mood)}）` : "";
   if (!girl.world.justBack) return `你現在${feel}${why}。${how}不要每句報心情。`;
   return `你剛被召喚到這間房間，不是回到自己的家。你現在${feel}${why}。${how}沒有特別的事就不要報日本那邊。不要每句報心情。`;
+}
+
+/** 臉紅心跳（看到色情變態奇遇）的原因要不要講：陌生／認識打死不說，朋友被問才含糊，女友可以暗示，妻子可以俏皮地講。 */
+function eroWhyRule(mood) {
+  if (mood !== "臉紅心跳") return "他問起才說，不要主動報經過";
+  const band = hungerBand(girl?.stage || "stranger");
+  return {
+    reserved: "這件很害羞，打死不提；被問也裝沒事、轉開話題",
+    friend: "不要主動提；被追問才紅著臉含糊帶過，不講細節",
+    dating: "可以害羞地暗示看到讓人臉紅的事，他追問才多說一點，不講露骨細節",
+    wife: "可以半開玩笑地講給他聽、帶點挑逗，不講露骨細節",
+  }[band] || "他問起才說，不要主動報經過";
 }
 
 /** 召回第一句要帶出她在日本帶回來的心情（只看得出口氣，不報經過）。 */
@@ -5486,6 +5501,7 @@ function summonMoodHint() {
     低落: "沒什麼精神、話少",
     不安: "有點驚魂未定、心不在焉",
     虛脫: "累到腿軟、說話有氣無力",
+    臉紅心跳: "臉有點紅、眼神閃躲，說話比平常快",
   }[now.name] || "";
   return `她帶著${moodStrengthWord(now.level)}${now.name}的心情被叫回來：第一句${tone}。不用解釋原因。`;
 }
@@ -10399,6 +10415,8 @@ async function fleeRoomFromInvasion({ cause = "動手動腳到你受不了逃走
 function paintLifeWorld(world, row) {
   // 跟 app.js 名冊合併共用同一份（life_schedule.js paintLifeRow）：行程、心情、記憶、碰過的人、上一件
   paintLifeRow(world, row);
+  // 色情奇遇帶回來的飢渴（只加差額，見 applyLifeHunger）
+  return girl && world === girl.world ? applyLifeHunger(girl) : 0;
 }
 
 function applyLifeSnap(snap) {
@@ -10430,9 +10448,9 @@ function applyLifeSnap(snap) {
   };
   const beforeAgenda = JSON.stringify(girl.world.agenda || null);
   const beforeMem = tailId(girl.world);
-  paintLifeWorld(girl.world, row);
+  const hungerAdded = paintLifeWorld(girl.world, row);
   const afterMem = tailId(girl.world);
-  if (JSON.stringify(girl.world.agenda || null) !== beforeAgenda || afterMem !== beforeMem) {
+  if (hungerAdded || JSON.stringify(girl.world.agenda || null) !== beforeAgenda || afterMem !== beforeMem) {
     try { renderWorld(); } catch { /* ignore */ }
     persistRoom({ quiet: true });
   }

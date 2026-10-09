@@ -6,6 +6,7 @@
  */
 
 import { japanNow } from "./japan_clock.js?v=2";
+import { stageBand } from "./hunger.js?v=2";
 
 const IMMEDIATE_CAP = 10;
 const MID_CAP = 30;
@@ -233,9 +234,23 @@ function memoryStamp(item) {
   }
 }
 
-function memoryLine(item, lead) {
+/**
+ * 色情變態奇遇（RP5 記憶 private: "ero"）：她只是看見。講不講看關係階和第幾步。
+ * 陌生／認識：打死不提；朋友：不主動，被追問才含糊；女友：前兩步不主動、之後可以害羞地暗示；妻子：可以俏皮地講。
+ */
+export function eroDisclosure(stageKey, step) {
+  const band = stageBand(stageKey || "stranger");
+  const n = Number(step) || 1;
+  if (band === "reserved") return "這件很害羞，打死不提，被問也裝沒事、轉開話題";
+  if (band === "friend") return "不要主動提，被追問才紅著臉含糊帶過，不講細節";
+  if (band === "dating") return n <= 2 ? "不要主動提，被追問才害羞地含糊說一點" : "可以害羞地暗示看到讓人臉紅的事，他追問才多說，不講露骨細節";
+  return "可以半開玩笑地講給他聽、帶點挑逗，不講露骨細節";
+}
+
+function memoryLine(item, lead, stageKey) {
   const when = memoryStamp(item);
-  return when ? `・${lead}（${when}）：${item.text}` : `・${lead}：${item.text}`;
+  const rule = item?.private === "ero" ? `（只是路過看見、沒有參與；${eroDisclosure(stageKey, item.eroStep)}）` : "";
+  return when ? `・${lead}（${when}）：${item.text}${rule}` : `・${lead}：${item.text}${rule}`;
 }
 
 function boredHits(long) {
@@ -256,6 +271,8 @@ function boredHits(long) {
 
 export function lifeMemoryPromptLines(who, utterance, opts = {}) {
   const here = opts.here === "line" ? "line" : "room";
+  const stageKey = who?.roomStage || who?.stage || "stranger";
+  const wifeBand = stageBand(stageKey) === "wife";
   const mind = ensureMind(who);
   if (!mind) return [];
   const text = String(utterance || "");
@@ -269,23 +286,24 @@ export function lifeMemoryPromptLines(who, utterance, opts = {}) {
     const recentHit = searchByKeys(imm, text, 1).length || searchByKeys(mind.mid, text, 1).length;
     if (hits.length) {
       recall.push("他要你回想。只可以用下面這些，對不上的就說想不起來，不要編。時間是發生當時的日本時間。");
-      hits.forEach((item) => recall.push(memoryLine(item, "想起")));
+      hits.forEach((item) => recall.push(memoryLine(item, "想起", stageKey)));
     } else if (!recentHit) {
       recall.push("他叫你想想，但更早的事裡沒有對上的。就說想不起來，不要編。");
     }
   } else if (BORED_RE.test(text) && mind.long.length) {
-    const hits = boredHits(mind.long);
+    // 閒聊主動提起的：色情奇遇只有妻子才會自己講
+    const hits = boredHits(wifeBand ? mind.long : mind.long.filter((item) => item?.private !== "ero"));
     if (hits.length) {
       recall.push("你這時有點閒，可以輕輕提起下面其中一件，不要一次講完，也不要編沒列的。時間是發生當時的日本時間。");
-      hits.forEach((item) => recall.push(memoryLine(item, "想起")));
+      hits.forEach((item) => recall.push(memoryLine(item, "想起", stageKey)));
     }
   }
   if (!imm.length && !mid.length && !recall.length) return [];
   if (here === "room") lines.push("人現在在房間。下面是記得的日本生活，不是現在站的地方。");
   if (imm.length || mid.length) {
     lines.push("【記得的事】跟這句話有關才提，不要每句都報。沒有列在這裡的事不要編成已經發生。時間是發生當時的日本時間，不要把那個時段說成現在。");
-    imm.forEach((item) => lines.push(memoryLine(item, "記得")));
-    mid.forEach((item) => lines.push(memoryLine(item, "記得")));
+    imm.forEach((item) => lines.push(memoryLine(item, "記得", stageKey)));
+    mid.forEach((item) => lines.push(memoryLine(item, "記得", stageKey)));
   }
   lines.push(...recall);
   return lines;

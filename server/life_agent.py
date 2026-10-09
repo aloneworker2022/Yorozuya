@@ -225,7 +225,7 @@ def _remember(rec: dict, kind: str, text: str, now_ms: int, keys: list | None = 
         "person": str(extra.get("person") or ""),
         "mood": rec.get("mood") or "",
     }
-    for key in ("personRole", "personGender", "personId", "moodBefore", "moodAfter", "tone", "act", "scp", "scpStep"):
+    for key in ("personRole", "personGender", "personId", "moodBefore", "moodAfter", "tone", "act", "scp", "scpStep", "ero", "eroStep", "private"):
         if extra.get(key) not in (None, ""):
             item[key] = extra[key]
     for k in (keys or []):
@@ -304,6 +304,13 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
         rec["chrono"] = str(chrono.get("name") or rec.get("chrono") or "")
         rec["archetype"] = str(girl.get("archetype") or rec.get("archetype") or "")
         rec["tone"] = str(girl.get("tone") or rec.get("tone") or "")[:80]
+        lib = girl.get("libido") if isinstance(girl.get("libido"), dict) else {}
+        rec["libido"] = str(lib.get("grade") or rec.get("libido") or "R").upper()
+        body = girl.get("bodyState") if isinstance(girl.get("bodyState"), dict) else {}
+        hung = body.get("hunger") if isinstance(body.get("hunger"), dict) else None
+        if hung:
+            rec["hungerSeen"] = float(hung.get("level") or 0)
+            rec["hungerTaken"] = int(hung.get("lifeTaken") or 0)
         ground = world.get("ground") if isinstance(world.get("ground"), dict) else None
         if ground and ground.get("id"):
             rec["groundId"] = str(ground.get("id") or "")
@@ -344,7 +351,7 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
 # ───────────────────────── 心情 ─────────────────────────
 # level 0～100。隨時間淡回平靜（惰性計算），低於 MOOD_CLEAR 就是平靜。手機 life_schedule.js 的 outsideMoodNow 跟這裡同一套。
 MOOD_CLEAR = 12
-MOOD_DECAY_PER_HOUR = {"愉快": 5, "不悅": 5, "低落": 4, "不安": 5, "虛脫": 15}
+MOOD_DECAY_PER_HOUR = {"愉快": 5, "不悅": 5, "低落": 4, "不安": 5, "虛脫": 15, "臉紅心跳": 6}
 MOOD_DEFAULT_LEVEL = 40  # 舊存檔只有字、沒有強度
 
 
@@ -520,6 +527,7 @@ MOOD_CHOICE = {
     "低落": {"idle": 1.6, "browse": 1.2, "stroll": 0.7, "work": 0.8, "tidy": 0.6},
     "不安": {"browse": 1.5, "idle": 1.3, "stroll": 0.5},
     "虛脫": {"idle": 2.0, "browse": 1.3, "stroll": 0.4, "work": 0.25, "tidy": 0.3},
+    "臉紅心跳": {"stroll": 1.2, "idle": 1.2},
 }
 OUTDOOR_RE = re.compile(r"散步|攝影|拍照|旅行|運動|跑步|登山|釣|逛|美食|咖啡|購物|花|貓|狗")
 INDOOR_RE = re.compile(r"遊戲|電玩|動漫|漫畫|網|追劇|小說|閱讀|書|音樂|天文|占卜")
@@ -717,6 +725,7 @@ MOOD_EMOTION = {
     "低落": {"sorrow": 1.8, "delight": 0.7, "joy": 0.8},
     "不安": {"sorrow": 1.3, "anger": 1.2, "delight": 0.8},
     "虛脫": {"anger": 1.3, "sorrow": 1.2},
+    "臉紅心跳": {"joy": 1.2, "delight": 1.2},
 }
 MOOD_ACT = {
     "愉快": {"chat": 1.6, "help": 1.4, "contact": 1.5, "greet": 1.5, "argue": 0.5, "blame": 0.6},
@@ -733,12 +742,21 @@ MOOD_TONE = {  # 日常：奇遇：詭異（基準 3：2：1）
     "虛脫": {"daily": 1.15, "wonder": 0.5, "horror": 1.5},
 }
 MOOD_SCP = {"不安": 2.0, "低落": 1.5, "虛脫": 1.3, "愉快": 0.6}
+MOOD_ERO = {"不安": 0.4, "低落": 0.7, "虛脫": 0.5, "不悅": 0.8, "愉快": 1.2, "臉紅心跳": 1.4}
+LIBIDO_ERO = {"N": 0.6, "R": 0.8, "S": 1.0, "SS": 1.25, "SSR": 1.5}      # 看到的機率
+LIBIDO_HUNGER = {"N": 0.8, "R": 1.0, "S": 1.1, "SS": 1.2, "SSR": 1.3}    # 漲多少飢渴
+ERO_FIRST_CAP = 0.2
+ERO_NEXT_CAP = 0.5
+ERO_GAP_MS = 24 * HOUR_MS          # 同一人兩步之間至少一天，再加 0～1 天亂數
+ERO_GAP_SPREAD_MS = 24 * HOUR_MS
 MOOD_PERSON = {"愉快": 1.2, "低落": 0.7, "不安": 0.7, "虛脫": 0.8}
 PERSON_BASE = 0.5
 REVISIT = {"同事": 0.55, "顧客": 0.15, "路人": 0.12}
-SCP_FIRST_CAP = 0.06
-SCP_NEXT_CAP = 0.25
-SCP_GAP_MS = 10 * 24 * HOUR_MS  # 兩步之間至少隔 10 天（2026-10-09 使用者：一步要幾週，不要三天走完）
+SCP_FIRST_CAP = 0.25
+SCP_NEXT_CAP = 0.6
+# 兩步之間至少隔 2 天，再加 0～2 天亂數（2026-10-10 使用者嫌太少：一週大概看到幾步）。舊的 10 天紀錄照新規則算。
+SCP_GAP_MS = 2 * 24 * HOUR_MS
+SCP_GAP_SPREAD_MS = 2 * 24 * HOUR_MS
 
 
 def _pick(items: list, rnd):
@@ -766,14 +784,14 @@ def scp_chance(started: bool, mood: str, level: int, eerie: bool = False, night:
 
 def roll_scp(rec: dict, where: str, mood: str, level: int, rnd, eerie: bool = False, night: bool = False, now_ms: int = 0) -> dict | None:
     """where = work（打工場所）或 stroll（綁在她落腳的真實地點）。已經開始的那件優先，再遇到就進下一步。"""
-    if now_ms and 0 <= now_ms - _ms(rec.get("scpAt")) < SCP_GAP_MS:
+    if now_ms and now_ms < _gate(rec, "scp"):
         return None
     steps = rec.get("scpSteps") or {}
     if where == "work":
         pool = [e for e in D.SCP_EVENTS if e.get("work")]
     else:
         gid = rec.get("groundId") or ""
-        pool = [e for e in D.SCP_EVENTS if gid and gid in (e.get("grounds") or [])]
+        pool = [e for e in D.SCP_EVENTS if e.get("generic") or (gid and gid in (e.get("grounds") or []))]
     open_ = [(e, int(steps.get(e["id"]) or 0)) for e in pool if int(steps.get(e["id"]) or 0) < len(e["stages"])]
     started = [x for x in open_ if x[1] > 0]
     use = started or open_
@@ -782,8 +800,58 @@ def roll_scp(rec: dict, where: str, mood: str, level: int, rnd, eerie: bool = Fa
     if not float(rnd()) < scp_chance(bool(started), mood, level, eerie, night):
         return None
     event, step = _pick(use, rnd)
-    return {"id": event["id"], "code": event["code"], "title": event["title"], "step": step,
+    return {"id": event["id"], "code": event["code"], "title": event["title"], "step": step, "feel": event.get("feel") or "horror",
             "of": len(event["stages"]), "stage": event["stages"][step], "prior": event["stages"][:step]}
+
+
+def _gate(rec: dict, key: str) -> int:
+    """下一步最早什麼時候可以發生。有 <key>NextAt 用它；舊紀錄只有 <key>At 就用最短間隔。"""
+    nxt = _ms(rec.get(f"{key}NextAt"))
+    if nxt:
+        return nxt
+    at = _ms(rec.get(f"{key}At"))
+    return at + (SCP_GAP_MS if key == "scp" else ERO_GAP_MS) if at else 0
+
+
+def libido_grade(rec: dict) -> str:
+    g = str(rec.get("libido") or "R").upper()
+    return g if g in LIBIDO_ERO else "R"
+
+
+def hunger_estimate(rec: dict) -> float:
+    """手機上次存的飢渴＋還沒被手機收走的。只拿來算機率，不是真相（真相在手機 bodyState.hunger）。"""
+    seen = float(rec.get("hungerSeen") or 0)
+    pending = max(0, int(rec.get("hungerGiven") or 0) - int(rec.get("hungerTaken") or 0))
+    return max(0.0, min(100.0, seen + pending))
+
+
+def ero_chance(rec: dict, started: bool, mood: str, level: int, night: bool = False) -> float:
+    base = D.ERO_NEXT_CHANCE if started else D.ERO_FIRST_CHANCE
+    mult = 1.0 + (MOOD_ERO.get(mood, 1.0) - 1.0) * min(1.0, level / 60)
+    mult *= LIBIDO_ERO[libido_grade(rec)]
+    mult *= 0.7 + hunger_estimate(rec) / 100   # 飢渴 0 → ×0.7、100 → ×1.7
+    if night:
+        mult *= 1.3
+    return min(ERO_NEXT_CAP if started else ERO_FIRST_CAP, base * mult)
+
+
+def roll_ero(rec: dict, mood: str, level: int, rnd, night: bool = False, now_ms: int = 0) -> dict | None:
+    """色情變態奇遇：已經開始的那件優先，再碰到就進下一步。她只是看見。"""
+    if now_ms and now_ms < _gate(rec, "ero"):
+        return None
+    steps = rec.get("eroSteps") or {}
+    open_ = [(e, int(steps.get(e["id"]) or 0)) for e in D.EROTIC_EVENTS if int(steps.get(e["id"]) or 0) < len(e["stages"])]
+    started = [x for x in open_ if x[1] > 0]
+    use = started or open_
+    if not use:
+        return None
+    if not float(rnd()) < ero_chance(rec, bool(started), mood, level, night):
+        return None
+    event, step = _pick(use, rnd)
+    hunger = int(round(D.ERO_HUNGER[min(step, len(D.ERO_HUNGER) - 1)] * LIBIDO_HUNGER[libido_grade(rec)]))
+    return {"id": event["id"], "title": event["title"], "step": step, "of": len(event["stages"]),
+            "stage": event["stages"][step], "prior": event["stages"][:step], "places": list(event.get("places") or []),
+            "hunger": hunger}
 
 
 def _new_name(gender: str, rnd) -> str:
@@ -842,12 +910,24 @@ def roll_event(rec: dict, kind: str, now_ms: int, rnd=None) -> dict:
         tone = _pick_weighted(tone_w, roll)
         p_person = PERSON_BASE * _mood_mult({mood: {"p": MOOD_PERSON.get(mood, 1.0)}}, mood, level, "p")
         has_person = float(roll()) < p_person
+        ero = None if scp else roll_ero(rec, mood, level, roll, night=night, now_ms=now_ms)
         if scp:
             ev["scp"] = scp
             ev["tone"] = "scp"
             ev["toneName"] = f"{scp['code']} {scp['step'] + 1}/{scp['of']}"
             ev["act"] = scp["title"]
             ev["actId"] = "scp"
+            has_person = False
+        elif ero:
+            # 地點跟著這件事走（只會在它寫的那幾種地方）
+            pid = place["id"] if place["id"] in ero["places"] or not ero["places"] else _pick(ero["places"], roll)
+            pl = next((x for x in D.STROLL_PLACES if x["id"] == pid), place)
+            ev["place"] = (rec.get("spots") or {}).get(pl["id"]) or pl["name"]
+            ev["ero"] = ero
+            ev["tone"] = "erotic"
+            ev["toneName"] = f"色情變態奇遇 {ero['step'] + 1}/{ero['of']}"
+            ev["act"] = ero["title"]
+            ev["actId"] = "ero"
             has_person = False
         else:
             ev["tone"] = tone
@@ -892,7 +972,14 @@ def _outcome(ev: dict, rec: dict, rnd) -> dict:
     where = ev.get("place") or ev.get("job") or ""
     scp = ev.get("scp")
     if scp:
-        return {"mood": "不安", "level": 40 + 15 * int(scp.get("step") or 0), "why": f"在{where}撞見說不清的怪事"}
+        step = int(scp.get("step") or 0)
+        if scp.get("feel") == "wonder":
+            return {"mood": "愉快", "level": 28 + 5 * step, "why": f"在{where}碰上說不清的奇妙事"}
+        level = (40, 50, 60, 70, 50)[min(step, 4)]  # 第 5 步收尾，餘悸比第 4 步小
+        return {"mood": "不安", "level": level, "why": f"在{where}撞見說不清的怪事"}
+    ero = ev.get("ero")
+    if ero:
+        return {"mood": "臉紅心跳", "level": 25 + 8 * int(ero.get("step") or 0), "why": f"在{where}撞見讓人臉紅的事"}
     tone = ev.get("tone")
     if tone == "horror":
         return {"mood": "不安", "level": 35 + int(float(rnd()) * 16), "why": f"在{where}碰到詭異的事"}
@@ -932,11 +1019,34 @@ SCP_RULE = "她不認識編號，不要讓她說出編號。不要寫收容程�
 def scp_brief(scp: dict) -> str:
     prior = "\n".join(f"{i + 1}. {line}" for i, line in enumerate(scp.get("prior") or []))
     return "\n".join([
-        f"這是同一件怪事的第 {scp['step'] + 1}/{scp['of']} 步，要比上一次更可怕。",
+        f"這是同一件怪事的第 {scp['step'] + 1}/{scp['of']} 步，" + (
+            "這是最後一步：事情收尾、離開她的生活，但留下一個小小的痕跡。" if scp["step"] + 1 >= scp["of"]
+            else ("要比上一次更奇妙。" if scp.get("feel") == "wonder" else "要比上一次更可怕。")),
         f"這一步只寫：{scp['stage']}",
-        f"她已經歷過：\n{prior}\n接著寫，不要重頭，不要跳到更後面。" if prior else "這是第一次。只寫這一點不對勁，不要把後面的恐怖一次寫完。",
+        f"她已經歷過：\n{prior}\n接著寫，不要重頭，不要跳到更後面。" if prior else ("這是第一次。只寫這一點奇妙的地方，不要把後面的事一次寫完。" if scp.get("feel") == "wonder" else "這是第一次。只寫這一點不對勁，不要把後面的恐怖一次寫完。"),
         SCP_RULE,
     ])
+
+
+ERO_RULE = ("這是色情變態奇遇：你只是路過看見，從頭到尾是旁觀者。沒有人碰你、找你加入、對你說話或做任何事，你也沒有參與。"
+            "場面裡的人全都是明確的成年人，彼此同意、玩得很投入。可以撩人、寫出看到的姿態和聲音，但不要露骨描寫性器官或過程。"
+            "嚴禁：動物或人獸、未成年或孩子氣的設定（不要寫學生、制服、少女少年、年紀小）、非自願或強迫、亂倫、排泄。"
+            "寫你看到時的反應：害羞、心跳、移不開眼睛或趕快走開，身體有點熱。")
+
+
+def ero_brief(ero: dict) -> str:
+    prior = "\n".join(f"{i + 1}. {line}" for i, line in enumerate(ero.get("prior") or []))
+    last = ero["step"] + 1 >= ero["of"]
+    return "\n".join([
+        f"這是同一件事的第 {ero['step'] + 1}/{ero['of']} 步（{ero['title']}）。" + (
+            "這是最後一步：事情告一段落，只在她心裡留下痕跡。" if last else ("要比上一次更大膽一點。" if ero["step"] else "")),
+        f"這一步看到的：{ero['stage']}（表裡的「她」可能是場面裡的人，也可能是你自己；你一律用「我」寫自己）",
+        f"之前看過：\n{prior}\n接著寫，不要重頭，不要跳到更後面。" if prior else "這是第一次看到，只寫這一眼，不要把後面的事一次寫完。",
+        ERO_RULE,
+    ])
+
+
+ERO_BAN_RE = re.compile(r"學生|制服|校服|少女|少年|女孩|男孩|小孩|孩子|幼|未成年|強迫|強暴|強姦|迷姦|非自願|亂倫|哥哥|妹妹|姐姐|弟弟|爸爸|媽媽|排泄|尿|屎|糞|動物|人獸|獸交|獸姦|野獸|一隻狗|一條狗|小狗|大狗|母狗|公狗|野狗|家犬|一隻貓|小貓|野貓|馬匹")
 
 
 def needs_llm(ev: dict) -> bool:
@@ -988,6 +1098,9 @@ def event_prompt(action: dict) -> tuple[str, str]:
     scp = ev.get("scp")
     if scp:
         body.insert(0, scp_brief(scp))
+    elif ev.get("ero"):
+        body = [ero_brief(ev["ero"])]
+        system = "你只寫她自己一個人路過、看見的經過。她只是旁觀。"
     elif kind == "stroll":
         body.insert(0, D.STROLL_TONE_RULE.get(ev.get("tone") or "daily", ""))
     return system, "\n".join(x for x in [lead] + common + body if x)
@@ -1005,6 +1118,8 @@ def accept_text(action: dict, raw: str) -> str:
     p = ev.get("person")
     if p and not (_PERSON_RE.search(text) or (p.get("named") and p.get("name") in text)):
         return ""
+    if ev.get("ero") and ERO_BAN_RE.search(text):
+        return ""  # 碰到禁區字眼就重寫／用範本
     return text
 
 
@@ -1026,7 +1141,15 @@ def fallback_text(action: dict) -> str:
         return home_line(ev, action.get("ms") or 0)
     if ev.get("scp"):
         where = ev.get("job") or ev.get("place") or "那裡"
-        return f"我在{where}看見{ev['scp']['title']}，有什麼地方不對勁。我沒有再靠近。"
+        scp = ev["scp"]
+        step = int(scp.get("step") or 0)
+        if step + 1 >= int(scp.get("of") or 5):
+            return f"我在{where}想起{scp['title']}的事。它好像結束了，可是總覺得留下了什麼。"
+        if scp.get("feel") == "wonder":
+            return f"我在{where}碰上{scp['title']}，奇妙得說不出話。我看了好一會兒才走。"
+        return f"我在{where}看見{scp['title']}，有什麼地方不對勁。我沒有再靠近。"
+    if ev.get("ero"):
+        return ero_fallback(ev)
     if kind == "work":
         if p:
             return f"我在{ev.get('job')}碰到{who}，對方{look}。這一班跟對方{ev.get('act')}，我回了幾句，對方也有反應。"
@@ -1035,6 +1158,18 @@ def fallback_text(action: dict) -> str:
     if p:
         return f"我在{ev.get('place')}碰到{who}，對方{look}。我們{ev.get('act')}，我回了幾句，對方也有反應。{tail}"
     return f"我在{ev.get('place')}{ev.get('act')}，{tail}"
+
+
+def ero_fallback(ev: dict) -> str:
+    ero = ev["ero"]
+    place, title = ev.get("place") or "那裡", ero["title"]
+    return [
+        f"我在{place}溜達時，好像看到了{title}……我假裝沒看見，快步走開，心跳卻停不下來。",
+        f"我在{place}又碰到{title}，這次看得比上次清楚。我躲在一邊偷看了一下，臉燙得要命。",
+        f"在{place}，{title}這次完全沒在遮。我站在遠處移不開眼睛，腿有點軟。",
+        f"{place}的{title}越來越大膽，旁邊還多了圍觀的人。我縮在角落不敢出聲，心臟快跳出來了。",
+        f"我又經過{place}，想起{title}的事。好像告一段落了，可是那個畫面一直留在我腦子裡。",
+    ][min(int(ero.get("step") or 0), 4)]
 
 
 # ───────────────────────── 在家 ─────────────────────────
@@ -1222,6 +1357,14 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
     if scp:
         rec.setdefault("scpSteps", {})[scp["id"]] = int(scp["step"]) + 1
         rec["scpAt"] = at
+        rec["scpNextAt"] = at + SCP_GAP_MS + int(float(roll()) * SCP_GAP_SPREAD_MS)
+    ero = ev.get("ero")
+    if ero:
+        rec.setdefault("eroSteps", {})[ero["id"]] = int(ero["step"]) + 1
+        rec["eroAt"] = at
+        rec["eroNextAt"] = at + ERO_GAP_MS + int(float(roll()) * ERO_GAP_SPREAD_MS)
+        # 飢渴的真相在手機：這裡只累計「給了多少」，手機用 bodyState.hunger.lifeTaken 記收過多少，差額才加（不會重複加）
+        rec["hungerGiven"] = int(rec.get("hungerGiven") or 0) + int(ero.get("hunger") or 0)
     extra = {
         "place": ev.get("place") or (rec.get("homeName") if kind in HOME_KINDS or kind == "sleep" else "") or "",
         "person": person_label(p),
@@ -1234,9 +1377,14 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
         "act": ev.get("act") or "",
         "scp": (scp or {}).get("code") or "",
         "scpStep": (int(scp["step"]) + 1) if scp else "",
+        "ero": (ero or {}).get("title") or "",
+        "eroStep": (int(ero["step"]) + 1) if ero else "",
+        "private": "ero" if ero else "",
     }
     if kind == "work":
         mem_keys = ["打工", ev.get("job") or "", person_label(p) if p and p.get("named") else (p or {}).get("role", "")]
+    elif kind == "stroll" and ero:
+        mem_keys = ["遊盪", ev.get("place") or "", "色情奇遇", ero["title"]]
     elif kind == "stroll":
         mem_keys = ["遊盪", ev.get("place") or "", ev.get("toneName") or "", person_label(p) if p and p.get("named") else ""]
     elif kind == "sleep":
@@ -1258,7 +1406,8 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
     item = _remember(rec, kind, body, at, mem_keys, extra) if body else None
     shown = (item or {}).get("text") or body or (home_line(ev, span) if kind in HOME_KINDS else "")
     rec["last"] = {"kind": kind, "at": at, "text": shown, "place": extra["place"],
-                   "person": extra["person"], "tone": extra["tone"], "scp": extra["scp"],
+                   "person": extra["person"], "tone": extra["tone"], "scp": extra["scp"], "scpStep": extra["scpStep"], "ero": extra["ero"], "eroStep": extra["eroStep"],
+                   "hunger": int((ero or {}).get("hunger") or 0),
                    "moodBefore": before[0], "moodAfter": after[0]}
     hist = [k for k in (rec.get("history") or []) if k in KINDS]
     hist.append(kind)
@@ -1342,6 +1491,8 @@ def view_of(rec: dict) -> dict:
         "met": [dict(m) for m in (rec.get("met") or []) if isinstance(m, dict)],
         "last": rec.get("last") if isinstance(rec.get("last"), dict) else None,
         "scpSteps": dict(rec.get("scpSteps") or {}),
+        "eroSteps": dict(rec.get("eroSteps") or {}),
+        "hungerGiven": int(rec.get("hungerGiven") or 0),
         "memories": list(rec.get("memories") or []),
         "note": rec.get("note") or "",
     }
@@ -1395,6 +1546,10 @@ def _paint_world(girl: dict, row: dict) -> None:
         world["lastOutside"] = row["last"]
     if row.get("scpSteps"):
         world["scpSteps"] = row["scpSteps"]
+    if row.get("eroSteps"):
+        world["eroSteps"] = row["eroSteps"]
+    if row.get("hungerGiven"):
+        world["lifeHungerGiven"] = max(int(world.get("lifeHungerGiven") or 0), int(row["hungerGiven"]))
     world.pop("settlingHome", None)
     for item in row.get("memories") or []:
         if isinstance(item, dict) and item.get("id") and item.get("text"):

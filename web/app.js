@@ -57,9 +57,9 @@ import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACK
 import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=2";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
-import { lifeMemoryPromptLines } from "./content/life_memory.js?v=3";
+import { lifeMemoryPromptLines } from "./content/life_memory.js?v=4";
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost, paintLifeRow } from "./content/life_schedule.js?v=5";
+import { rollSummonCost, paintLifeRow, applyLifeHunger } from "./content/life_schedule.js?v=6";
 import { BASE_OUTFIT } from "./content/outfit_pick.js?v=1";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
@@ -8542,6 +8542,7 @@ function bindRoomProgressLiveSync() {
       s.world = s.world && typeof s.world === "object" ? s.world : {};
       // 跟房間同一份：行程＋心情（她在日本時）＋記憶＋碰過的人＋上一件，名冊／LINE 不用等下一次讀存檔
       paintLifeRow(s.world, row);
+      applyLifeHunger(s);  // 色情奇遇帶回來的飢渴：只加差額（hunger.lifeTaken）
     }
   });
   // 關閉房間對話後再合併一次（雙保險）

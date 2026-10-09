@@ -1,4 +1,5 @@
 /* 房間停留與日本作息的時長。真實時間，不跟看板娘時長。 */
+import { ensureHunger, tickHunger } from "./hunger.js?v=2";
 
 export const HOUR_MS = 60 * 60 * 1000;
 export const WORK_MS = 4 * HOUR_MS;
@@ -14,10 +15,21 @@ export const MEAL_MIN = [30, 30, 30];
 export const LIFE_WEIGHTS = { stroll: 1.5, browse: 2.0, idle: 2.4, tidy: 0.9, workFirst: 4.5, workSecond: 0.15, strollPerDay: 3 };
 /* 在家每件把心情往平靜壓的量。 */
 export const HOME_CALM = { browse: 6, idle: 10, tidy: 14, meal: 8 };
-/* SCP：第一次 1/40、下一步 1/8，同一人兩步之間至少 10 天（大約幾週一步）。 */
-export const SCP_FIRST_CHANCE = 1 / 40;
-export const SCP_NEXT_CHANCE = 1 / 8;
-export const SCP_GAP_MS = 10 * 24 * HOUR_MS;
+/* SCP（2026-10-10）：31 件、每件 5 步；第一次 1/12、下一步 1/3，兩步之間隔 2 天＋0～2 天亂數。 */
+export const SCP_STAGES = 5;
+export const SCP_FIRST_CHANCE = 1 / 12;
+export const SCP_NEXT_CHANCE = 1 / 3;
+export const SCP_GAP_MS = 2 * 24 * HOUR_MS;
+export const SCP_GAP_SPREAD_MS = 2 * 24 * HOUR_MS;
+/* 色情變態奇遇（2026-10-10）：30 件、每件 5 步，她只是看見。第一次 1/10、下一步 1/3（再乘性慾、飢渴、心情），
+ * 兩步之間隔 1 天＋0～1 天亂數。每一步飢渴 +ERO_HUNGER[步]×LIBIDO_HUNGER[等級]（四捨五入）。 */
+export const ERO_STAGES = 5;
+export const ERO_FIRST_CHANCE = 1 / 10;
+export const ERO_NEXT_CHANCE = 1 / 3;
+export const ERO_GAP_MS = 24 * HOUR_MS;
+export const ERO_GAP_SPREAD_MS = 24 * HOUR_MS;
+export const ERO_HUNGER = [3, 4, 5, 6, 8];
+export const LIBIDO_HUNGER = { N: 0.8, R: 1.0, S: 1.1, SS: 1.2, SSR: 1.3 };
 const STROLL_SHORT_MS = 30 * 60 * 1000;
 
 /** 非妻子 2、3 或 4 小時；妻子帶 8～16 小時。 */
@@ -45,9 +57,9 @@ export function agendaDurationMs(kind, random = Math.random) {
  * 以前這裡的 nextAgendaKind 沒人呼叫，2026-10-09 拿掉，避免兩邊規則不一樣。 */
 
 /* 她在日本帶回來的心情：強度 0～100，隨時間淡回平靜。跟 server/life_agent.py mood_now 同一套數字。 */
-export const OUTSIDE_MOODS = ["平靜", "愉快", "不悅", "低落", "不安", "虛脫"];
+export const OUTSIDE_MOODS = ["平靜", "愉快", "不悅", "低落", "不安", "虛脫", "臉紅心跳"];
 export const MOOD_CLEAR = 12;
-export const MOOD_DECAY_PER_HOUR = { 愉快: 5, 不悅: 5, 低落: 4, 不安: 5, 虛脫: 15 };
+export const MOOD_DECAY_PER_HOUR = { 愉快: 5, 不悅: 5, 低落: 4, 不安: 5, 虛脫: 15, 臉紅心跳: 6 };
 const MOOD_DEFAULT_LEVEL = 40;
 
 /** 現在的心情（惰性衰減，不寫回）。舊存檔只有字、沒有強度：當 40、從現在起算。 */
@@ -92,6 +104,9 @@ export function paintLifeRow(world, row) {
   if (Array.isArray(row.met) && row.met.length) world.met = row.met;
   if (row.last && typeof row.last === "object") world.lastOutside = row.last;
   if (row.scpSteps && typeof row.scpSteps === "object" && Object.keys(row.scpSteps).length) world.scpSteps = row.scpSteps;
+  if (row.eroSteps && typeof row.eroSteps === "object" && Object.keys(row.eroSteps).length) world.eroSteps = row.eroSteps;
+  // 色情奇遇給的飢渴：RP5 只累計「給了多少」，真的加進 bodyState 在 applyLifeHunger（手機是真相）
+  if (Number(row.hungerGiven) > 0) world.lifeHungerGiven = Math.max(Number(world.lifeHungerGiven) || 0, Math.floor(Number(row.hungerGiven)));
   if (!world.mind || typeof world.mind !== "object" || Array.isArray(world.mind)) {
     world.mind = { immediate: [], mid: [], long: [], seeded: true };
   }
@@ -112,6 +127,26 @@ export function paintLifeRow(world, row) {
     while (mind.long.length > 1000) mind.long.shift();
   }
   mind.seeded = true;
+}
+
+/**
+ * 把 RP5 給的飢渴收進 bodyState.hunger。收過多少記在 hunger.lifeTaken（跟 hunger 一起走房間存檔／名冊回寫），
+ * 只加差額，所以同一份資料合併幾次都只加一次。沒有 bodyState（舊名冊）就先不收，等有了再收。
+ * 回傳這次加了多少。
+ */
+export function applyLifeHunger(who, now = Date.now()) {
+  const given = Math.floor(Number(who?.world?.lifeHungerGiven) || 0);
+  if (!given || !who?.bodyState || typeof who.bodyState !== "object") return 0;
+  const h = ensureHunger(who, now);
+  if (!h) return 0;
+  const taken = Math.floor(Number(h.lifeTaken) || 0);
+  if (given <= taken) return 0;
+  const add = given - taken;
+  const stageKey = who.roomStage || who.stage || "stranger";
+  const before = tickHunger(who, now, stageKey);
+  h.level = Math.round(Math.min(100, before + add) * 10) / 10;
+  h.lifeTaken = given;
+  return add;
 }
 
 /** 停留到期。不用 `| 0`，毫秒時間戳會被砍成負數，人就永遠不走。 */
