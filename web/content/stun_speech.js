@@ -3,6 +3,17 @@
 import { ensureBody, talkActById, arousalStage, stimulationState } from "./body_state.js?v=16";
 import { expansionLevel } from "./player_state.js";
 import { insertUnlocked } from "./tease.js?v=7";
+import {
+  OCC_PTS,
+  OCC_BANDS,
+  combineOccupancy,
+  applyOccupancy,
+  occupancyMoanLine as occMoanLine,
+  occupancyPromptLine,
+  occupancyLabel,
+} from "./mind_occupancy.js?v=1";
+
+export { occupancyPromptLine, occupancyLabel, OCC_BANDS };
 
 export const SHOCK_MAX = 45;
 
@@ -425,6 +436,10 @@ export function ensureStunFields(who) {
   if (!["creampie", "external"].includes(b.afterglowEjac)) b.afterglowEjac = "";
   b.ejacTalkLeft = Math.max(0, Math.round(Number(b.ejacTalkLeft) || 0));
   b.ejacTalkBan = !!b.ejacTalkBan;
+  // 腦袋佔有度：子宮精液流出（一次性事件）的記帳
+  b.semenOutLast = Math.max(0, Math.min(3, Math.round(Number(b.semenOutLast) || 0)));
+  b.semenOutAt = Math.max(0, Number(b.semenOutAt) || 0);
+  b.semenOutLeft = Math.max(0, Math.min(3, Math.round(Number(b.semenOutLeft) || 0)));
   // 雙重門檻：時間與回覆數皆耗盡才清掉
   if (!(b.afterglowUntil && Date.now() < b.afterglowUntil) && !(b.afterglowReplies > 0)) {
     b.afterglowUntil = 0;
@@ -837,7 +852,7 @@ export function afterglowPromptLines(who) {
 }
 
 /**
- * 高失神後繼續挑逗 → 痙攣；痙攣中再挑逗 → 過感痛苦。
+ * 高失神後繼續挑逗 → 痙攣；痙攣中再挑逗 → 過感（更崩、更長的呻吟；不再喊痛）。
  */
 export function applyTeaseSpasm(who, actId = "", stunBefore = null) {
   const b = ensureStunFields(who);
@@ -859,17 +874,13 @@ export function applyTeaseSpasm(who, actId = "", stunBefore = null) {
   return { enteredSpasm, enteredPain, mode };
 }
 
+/**
+ * 痙攣／過感的本地台詞（LLM 失敗或講不出話時）。過感不再喊痛（painBits 保留資料、不再用），
+ * 改成更碎、更長的呻吟（腦袋佔有度）。
+ */
 export function spasmTemplate(who, actId = "") {
   ensureStunFields(who);
-  const style = voicePools(who);
-  let pool = inOverstim(who)
-    ? [...style.painBits, ...style.stunBits.slice(0, 3)]
-    : [...style.spasmBits, ...(ACT_BITS[actId] || []), ...style.moans];
-  pool = mixClimax(pool, style, 0.3);
-  const n = 2 + Math.floor(Math.random() * 2);
-  const parts = [];
-  for (let i = 0; i < n; i++) parts.push(pick(pool));
-  return parts.join("").replace(/(…)+/g, "…").slice(0, 28);
+  return occMoanLine(peekOccupancy(who, actId), { voice: ensureMoanVoice(who) });
 }
 
 /** 每完成一輪對話 +1。非痙攣：滿六句性奮 −1，滿三句衝擊 −8。 */
@@ -887,14 +898,170 @@ export function noteTalkExchange(who) {
   return b;
 }
 
-export function shouldSkipLlm(stun, who = null) {
-  if (who && inSpasm(who)) return true;
-  // 餘韻強制回覆數尚餘：優先走模板（與 blank/beg 同層偏好）
-  if (who && inAfterglow(who)) {
-    const b = ensureStunFields(who);
-    if (b && (b.afterglowReplies || 0) > 0) return true;
+/**
+ * 要不要跳過 LLM：腦袋佔有度 ≥95（講不出話）才跳；痙攣／失神仍問 LLM 拿「她想說的那句」，再依佔有度吃掉。
+ * 餘韻強制回覆數尚餘、且佔有度未到 65 → 走餘韻模板（同舊行為）。
+ */
+export function shouldSkipLlm(stun, who = null, actId = "") {
+  if (who) {
+    const occ = peekOccupancy(who, actId);
+    if (occ.score >= OCC_BANDS.mute) return true;
+    if (occ.score < OCC_BANDS.eaten && !inSpasm(who) && inAfterglow(who)) {
+      const b = ensureStunFields(who);
+      if (b && (b.afterglowReplies || 0) > 0) return true;
+    }
+    return false;
   }
   return clamp(stun, 0, 100) >= 75;
+}
+
+/* ───────────── 腦袋佔有度（mind occupancy）───────────── */
+
+/** 陰道裡塞著會「堵住」精液的東西。 */
+const SEMEN_PLUGS = new Set(["penis", "dildo", "cucumber", "vibe", "fingers"]);
+/** 精液還在、又過了這麼久：可能再流一次（35% 機率）。 */
+export const SEMEN_OUT_REDRIP_MS = 8 * 60 * 1000;
+const SEMEN_OUT_REDRIP_P = 0.35;
+
+/** 失神分數 → 佔有度：25→10、50→35、75→70、100→90。沒被刺激（說話不會崩）時最多 20。 */
+export function stunToOccupancy(stun, mayBreak = true) {
+  const s = clamp(stun, 0, 100);
+  if (s < 25) return 0;
+  let p;
+  if (s < 50) p = 10 + (s - 25);
+  else if (s < 75) p = 35 + (s - 50) * 1.4;
+  else p = 70 + (s - 75) * 0.8;
+  if (!mayBreak) p = Math.min(p, 20);
+  return Math.round(p);
+}
+
+/** 精液流出狀態（不改資料）："fresh"（這句會流出來）｜"fade"（餘波）｜""。 */
+function semenOutPeek(b, now = Date.now()) {
+  const o = b?.organs || {};
+  const semen = o.uterus?.semen || 0;
+  if (semen <= 0) return "";
+  const plugged = SEMEN_PLUGS.has(String(o.vagina?.stuffed || ""));
+  if (!plugged && semen > (b.semenOutLast || 0)) return "fresh";
+  if ((b.semenOutLeft || 0) > 0) return "fade";
+  return "";
+}
+
+/** 同上但會記帳（每句回覆呼叫一次）。 */
+function semenOutTake(b, rng = Math.random, now = Date.now()) {
+  const o = b?.organs || {};
+  const semen = o.uterus?.semen || 0;
+  if (semen <= 0) {
+    b.semenOutLast = 0;
+    b.semenOutLeft = 0;
+    return "";
+  }
+  const plugged = SEMEN_PLUGS.has(String(o.vagina?.stuffed || ""));
+  let fire = false;
+  if (!plugged) {
+    if (semen > (b.semenOutLast || 0)) fire = true;
+    else if (b.semenOutAt && now - b.semenOutAt >= SEMEN_OUT_REDRIP_MS && rng() < SEMEN_OUT_REDRIP_P) fire = true;
+  }
+  if (fire) {
+    b.semenOutLast = semen;
+    b.semenOutAt = now;
+    b.semenOutLeft = 1;
+    return "fresh";
+  }
+  if ((b.semenOutLeft || 0) > 0) {
+    b.semenOutLeft -= 1;
+    return "fade";
+  }
+  if (semen < (b.semenOutLast || 0)) b.semenOutLast = semen;
+  return "";
+}
+
+/**
+ * 佔有度來源清單（不含精液事件）。opts：
+ *   climaxNow 這一下剛高潮；inSex 正在肏（陰莖在裡面）；clothed 穿著衣服（乳環會被擦到，預設 true）。
+ */
+export function occupancySources(who, actId = "", opts = {}) {
+  const b = ensureStunFields(who);
+  if (!b) return [];
+  const o = b.organs || {};
+  const P = OCC_PTS;
+  const list = [];
+  const stim = stimulationState(who, actId);
+  if (inSpasm(who)) {
+    if (inOverstim(who)) list.push({ id: "overstim", pts: P.overstim });
+    else list.push({ id: "spasm", pts: stim.level >= 2 ? P.spasmTouched : P.spasm });
+  } else {
+    const pts = stunToOccupancy(effectiveStun(who, actId), speechMayBreak(who, actId));
+    if (pts) list.push({ id: "stun", pts });
+  }
+  if (opts.climaxNow) list.push({ id: "climax", pts: P.climaxNow });
+  else if (arousalStage(b.arousal) === "climax" && stim.level >= 2) {
+    list.push({ id: "climax", pts: Math.min(P.climaxTeasedMax, P.climaxTeased + P.climaxTeaseStep * (b.climaxTease || 0)) });
+  }
+  const nip = P.nipple[clamp(o.nipples?.swell, 0, 3)] || 0;
+  if (nip) list.push({ id: "nipple", pts: nip });
+  const cl = P.clit[clamp(o.clit?.swell, 0, 3)] || 0;
+  if (cl) list.push({ id: "clit", pts: cl });
+  // 乳環：道具系統還沒做；bodyState.nippleRing 為真時生效（衣服擦到再加）
+  if (b.nippleRing) {
+    list.push({ id: "nipple_ring", pts: P.nippleRing + (opts.clothed === false ? 0 : P.nippleRingRub) });
+  }
+  let vs = String(o.vagina?.stuffed || "");
+  if (opts.inSex) vs = "penis";
+  if (P[vs] && ["vibe", "penis", "dildo", "cucumber", "fingers"].includes(vs)) list.push({ id: vs, pts: P[vs] });
+  const as = String(o.anus?.stuffed || "");
+  if (P[as] && ["vibe", "penis", "dildo", "cucumber", "fingers"].includes(as)) list.push({ id: "anal", pts: Math.round(P[as] / 2) });
+  return list;
+}
+
+function withSemen(list, ev) {
+  if (ev === "fresh") return [...list, { id: "semen_out", pts: OCC_PTS.semenOut }];
+  if (ev === "fade") return [...list, { id: "semen_out", pts: OCC_PTS.semenOutFade }];
+  return list;
+}
+
+/** 看現在的佔有度（不記帳；除錯／判斷用）。opts.cap：上限（例：自己脫衣回覆 30）。 */
+export function peekOccupancy(who, actId = "", opts = {}) {
+  const b = ensureStunFields(who);
+  if (!b) return { ...combineOccupancy([]), semenOut: "" };
+  const ev = semenOutPeek(b);
+  const occ = combineOccupancy(withSemen(occupancySources(who, actId, opts), ev), { cap: opts.cap });
+  return { ...occ, semenOut: ev };
+}
+
+/** 這一句要用的佔有度（會消耗精液流出事件）。每句回覆呼叫一次。 */
+export function takeOccupancy(who, actId = "", opts = {}) {
+  const b = ensureStunFields(who);
+  if (!b) return { ...combineOccupancy([]), semenOut: "" };
+  const ev = semenOutTake(b, opts.rng || Math.random);
+  const occ = combineOccupancy(withSemen(occupancySources(who, actId, opts), ev), { cap: opts.cap });
+  return { ...occ, semenOut: ev };
+}
+
+/** 講不出話（≥95）時的一串呻吟（依她的語氣）。 */
+export function occupancyMoanLine(occ, who = null, opts = {}) {
+  return occMoanLine(occ, { voice: who ? ensureMoanVoice(who) : "scream", rng: opts.rng });
+}
+
+/**
+ * 她想說的話 → 實際說出口的話。
+ * ≥95 全是呻吟；痙攣或 ≥65 吃掉大半；餘韻（未到 65）沿用餘韻改寫；10–64 依佔有度切；<10 照舊（輕點綴）。
+ */
+export function presentOccupied(who, text, actId = "", occ = null, opts = {}) {
+  const o = occ || peekOccupancy(who, actId, opts);
+  const voice = ensureMoanVoice(who);
+  const rng = opts.rng || Math.random;
+  const raw = String(text || "").trim();
+  if (o.score >= OCC_BANDS.mute) return occMoanLine(o, { voice, rng });
+  if (o.score >= OCC_BANDS.eaten || (who && inSpasm(who))) {
+    return applyOccupancy(raw, o, { voice, rng, semenOutEvent: o.semenOut });
+  }
+  if (who && inAfterglow(who) && o.cap == null && !o.semenOut) {
+    return scrambleReply(raw, effectiveStun(who, actId), actId, who);
+  }
+  if (o.score >= OCC_BANDS.light || o.semenOut) {
+    return applyOccupancy(raw, o, { voice, rng, semenOutEvent: o.semenOut });
+  }
+  return scrambleReply(raw, effectiveStun(who, actId), actId, who);
 }
 
 /**
@@ -1137,7 +1304,8 @@ export function stunSnapshot(who, actId = "") {
     stun: score,
     base: calcStun(who),
     tier: stunTier(score),
-    skipLlm: shouldSkipLlm(score, who),
+    skipLlm: shouldSkipLlm(score, who, actId),
+    occupancy: peekOccupancy(who, actId),
     shock: b?.shock || 0,
     mode,
     spasmUntil: b?.spasmUntil || 0,

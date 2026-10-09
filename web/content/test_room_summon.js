@@ -54,7 +54,13 @@ import {
   AFTERGLOW_FRIEND_CONT_REPLIES,
   AFTERGLOW_FRIEND_MARATHON_MS,
   AFTERGLOW_FRIEND_MARATHON_REPLIES,
-} from "./stun_speech.js?v=20";
+  peekOccupancy,
+  takeOccupancy,
+  presentOccupied,
+  occupancyMoanLine,
+  occupancyPromptLine,
+  occupancyLabel,
+} from "./stun_speech.js?v=21";
 import {
   pickPortraitUrl,
   portraitPathKey,
@@ -1830,7 +1836,7 @@ async function requestThrustReply(seq) {
   renderThrustDebug();
   let reply = "";
   try {
-    reply = await withTimeout(askGirl(`（旁白：${fact.text}只寫你此刻說出口的一句話，可以夾著喘息和呻吟，二十字以內；不要旁白、不要描述動作、不要引號。）`), THRUST.REPLY_TIMEOUT_MS, "");
+    reply = await withTimeout(askGirl(`（旁白：${fact.text}只寫你此刻心裡想說出口的一句話，二十字以內；不要自己寫呻吟或喘息（聲音另外配上），不要旁白、不要描述動作、不要引號。）`), THRUST.REPLY_TIMEOUT_MS, "");
   } catch (err) {
     console.warn("[thrust reply]", err?.message || err);
   }
@@ -1845,7 +1851,7 @@ async function requestThrustReply(seq) {
   tickStunAfterReply(girl);
   noteTalkExchange(girl);
   rememberChat();
-  return presentUndressReply(clean);
+  return presentUndressReply(clean, { inSex: true, climaxNow: fact.event === "orgasm" });
 }
 
 function newThrustPump() {
@@ -4123,17 +4129,25 @@ function weaveStunReply(words) {
   return lines.join("\n");
 }
 
-function presentUndressReply(clean) {
-  const stun = effectiveStun(girl, "");
-  if (inSpasm(girl) || stunTier(stun) === "stun") return weaveStunReply(intendedUndressWords(clean));
-  return String(clean || "").trim() || "……";
+/**
+ * 脫衣／肏的她那句：保留她想說的話，依腦袋佔有度塞呻吟（≥95 才整句講不出來）。
+ * opts.cap：上限（她自己脫衣的回覆壓在 30：好好講話、只夾一點呻吟）；opts.inSex／climaxNow 給肏用。
+ */
+function presentUndressReply(clean, opts = {}) {
+  if (!girl) return String(clean || "").trim() || "……";
+  const occ = takeOccupancy(girl, "", opts);
+  const text = String(clean || "").trim();
+  return presentOccupied(girl, text, "", occ) || text || "……";
 }
 
-async function undressGirlLine(fact) {
+async function undressGirlLine(fact, opts = {}) {
   try {
-    const reply = await askGirl(
-      `（旁白：${fact}。你現在幾乎說不清楚，心裡仍有一句想說的話。只寫那一句，不要呻吟、不要旁白、不要描述動作。）`,
-    );
+    // 叫她脫（她自己動手）：她還能好好講話（佔有度壓 30），只寫一句正常的話
+    const f = String(fact || "").replace(/[。．]+$/, "");
+    const ask = opts.self
+      ? `（旁白：${f}。身體還熱、腦袋有點暈，但你還能說話。說一句你此刻想說的話（害羞、嘴硬、撒嬌都看個性），一句、二十字內；不要呻吟、不要旁白、不要描述動作。）`
+      : `（旁白：${f}。你現在幾乎說不清楚，心裡仍有一句想說的話。只寫那一句，不要呻吟、不要旁白、不要描述動作。）`;
+    const reply = await askGirl(ask);
     const clean = String(reply || "").replace(/\s+/g, " ").trim();
     return clean || "不要……";
   } catch (err) {
@@ -6505,6 +6519,13 @@ function renderDebug() {
   $("dbg-mark").textContent = girl.lastMark ? `${girl.lastMark}　${openInv}` : openInv;
   $("dbg-names").textContent = `名字 ${girl.playerName || "—"}　綽號 ${girl.playerNick || "—"}　小名 ${girl.playerPet || "—"}`;
   $("dbg-mood").textContent = girl.world?.mood || "—";
+  const occEl = $("dbg-occ");
+  if (occEl) {
+    try {
+      const occ = peekOccupancy(girl, "", sexChatActive() ? { inSex: true } : {});
+      occEl.textContent = `${occupancyLabel(occ)}${occ.semenOut ? `・精液${occ.semenOut === "fresh" ? "待流" : "餘波"}` : ""}`;
+    } catch { occEl.textContent = "—"; }
+  }
   renderMissDebug();
   renderReckonDebug();
   renderThrustDebug();
@@ -7054,30 +7075,28 @@ async function openTalk() {
     refreshMissNow(girl);
     const opener = enterOpener(returning);
     let line = "";
-    // 優先：痙攣 → 失神 → 餘韻 → LLM
-    if (inSpasm(girl)) {
-      line = spasmTemplate(girl, "");
+    // 腦袋佔有度：≥95 講不出話；痙攣／失神仍問 LLM（她想說的那句），再依佔有度吃掉；餘韻（未到 65）走餘韻模板
+    const openerOcc = takeOccupancy(girl, "");
+    if (openerOcc.score >= 10) pushDebug(`佔有度 ${occupancyLabel(openerOcc)}`);
+    if (openerOcc.score >= 95) {
+      line = occupancyMoanLine(openerOcc, girl) || "……嗯啊…";
       setTyping(false);
-    } else if (stunTier(openerStun) === "stun") {
-      line = stunTemplate(openerStun, "", girl) || "……嗯啊…";
-      setTyping(false);
-    } else if (inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
+    } else if (openerOcc.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
       line = afterglowTemplate(girl, "") || "……哈…";
-      setTyping(false);
-    } else if (shouldSkipLlm(openerStun, girl)) {
-      line = stunTemplate(openerStun, "", girl);
       setTyping(false);
     } else {
       // afterglowPromptLines 已進 talkSystem；此處仍用 opener 當開場提示
-      const streamOk = openerStun < 25 && !inAfterglow(girl);
-      const reply = await askGirl(opener, streamOk ? (partial) => {
+      const streamOk = openerStun < 25 && openerOcc.score < 10 && !openerOcc.semenOut && !inAfterglow(girl);
+      const occHint = occupancyPromptLine(openerOcc);
+      const openerAsk = occHint ? [opener, occHint].filter(Boolean).join("\n") : opener;
+      const reply = await askGirl(openerAsk, streamOk ? (partial) => {
         if (!partial || !sheetOpen()) return;
         streamed = true;
         setTyping(false);
         $("portrait-name").textContent = girl.name;
         $("portrait-meta").textContent = partial;
       } : null);
-      line = scrambleReply(reply || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……嗯？")), openerStun, "", girl) || "……嗯？";
+      line = presentOccupied(girl, reply || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……嗯？")), "", openerOcc) || "……嗯？";
     }
     tickStunAfterReply(girl);
     // 痙攣期間不消耗餘韻回覆數，讓痙攣結束後仍鎖餘韻幾句
@@ -7510,6 +7529,7 @@ async function deliverUserTalk(text, opts = {}) {
 
     let climaxLine = "";
     let spasmNote = "";
+    let herClimaxNow = false;
     let textBodyHit = false;
     let actArousalBefore = null;
     if (!opts.skipBody) {
@@ -7547,11 +7567,12 @@ async function deliverUserTalk(text, opts = {}) {
           bumpAffection(2, "痙攣");
           noteAfterglow(girl, "hers");
         } else if (spasm.enteredPain) {
-          spasmNote = "（過感——碰一下就痛得縮起來。）";
+          spasmNote = "（過感——一碰全身就一陣陣抽搐，叫聲停不下來。）";
         }
         const stageAfter = arousalStage(girl.bodyState?.arousal || 0);
         if (stageBefore !== "climax" && stageAfter === "climax") {
           noteAfterglow(girl, "hers");
+          herClimaxNow = true;
         }
         const stunAfter = effectiveStun(girl, opts.actId);
         // 首次因 stun≥75 進入 skip-LLM（非痙攣路徑也標她高潮餘韻）
@@ -7746,31 +7767,23 @@ async function deliverUserTalk(text, opts = {}) {
     let streamed = false;
     let line = "";
     try {
-      const tier = stunTier(stun);
-      // 優先：痙攣／過感 → 失神 → 餘韻 → 空白／求饒 → 抗議 → 正常
-      if (inSpasm(girl)) {
-        line = spasmTemplate(girl, actId) || "……嗯啊…";
+      // 腦袋佔有度（0–100）：≥95 講不出話（本地呻吟）；其餘一律問 LLM 拿「她想說的那句」，再依佔有度吃掉。
+      // 餘韻強制回覆數尚餘且佔有度未到 65 → 餘韻模板（同舊行為）。
+      const occ = takeOccupancy(girl, actId, { climaxNow: herClimaxNow });
+      if (occ.score >= 10) { pushDebug(`佔有度 ${occupancyLabel(occ)}`); renderDebug(); }
+      if (occ.score >= 95) {
+        line = occupancyMoanLine(occ, girl) || "……嗯啊…";
         setTyping(false);
-      } else if (tier === "stun") {
-        line = stunTemplate(stun, actId, girl) || "……嗯啊…";
-        setTyping(false);
-      } else if (inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
+      } else if (occ.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
         line = afterglowTemplate(girl, actId) || "……哈…腿…軟…";
         setTyping(false);
-      } else if (shouldSkipLlm(stun, girl)) {
-        line = stunTemplate(stun, actId, girl) || "……嗯啊…";
-        setTyping(false);
-      } else if (actId && (tier === "blank" || tier === "beg") && speechMayBreak(girl, actId)) {
-        // 僅挑逗中：50–64 空白／65–74 求饒走模板；普通閒聊保持正常對話
-        line = stunTemplate(stun, actId, girl) || (tier === "beg" ? "求、求你…慢一點…" : "……");
-        setTyping(false);
       } else {
-        const streamOk = stun < 25 && !inSpasm(girl) && !inAfterglow(girl);
+        const streamOk = stun < 25 && occ.score < 10 && !occ.semenOut && !inSpasm(girl) && !inAfterglow(girl);
         const protestExtra = actId ? protestPromptBlock(invAdded, { invasion: invTotal, ...invToneOpts }) : "";
         // afterglowPromptLines 已在 talkSystem；若仍餘韻（僅時間門檻）再塞一層
         const agLines = inAfterglow(girl) ? afterglowPromptLines(girl).join("\n") : "";
         const verbalExtra = verbalTease ? verbalTeasePrompt(verbalTease.hit, { blocked: verbalTease.blocked }) : "";
-        const extra = [protestExtra, agLines, verbalExtra].filter(Boolean).join("\n") || null;
+        const extra = [protestExtra, agLines, verbalExtra, occupancyPromptLine(occ)].filter(Boolean).join("\n") || null;
         promptActId = actId;
         let reply = "";
         try {
@@ -7784,8 +7797,8 @@ async function deliverUserTalk(text, opts = {}) {
         } finally {
           promptActId = "";
         }
-        line = scrambleReply(reply || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……")), stun, actId, girl) || "……";
-        if (actId && invAdded > 1 && !inAfterglow(girl)) line = blendProtestReply(line, invAdded, invToneOpts) || line;
+        line = presentOccupied(girl, reply || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……")), actId, occ) || "……";
+        if (actId && invAdded > 1 && !inAfterglow(girl) && occ.score < 65) line = blendProtestReply(line, invAdded, invToneOpts) || line;
       }
       if (girl.guard) girl.guard -= 1;
       tickStunAfterReply(girl);
@@ -8130,10 +8143,11 @@ async function playUndress(mode) {
     ensureSummonUndressSet(girl);
     const [note, reply] = await Promise.all([
       narrateUndress(beat),
-      undressGirlLine(beat.text),
+      undressGirlLine(beat.text, { self: !help }),
     ]);
     if (!girl) return;
-    const shownReply = presentUndressReply(reply);
+    // 叫她脫＝她自己脫：佔有度壓 30（好好講話＋一點呻吟）；幫她脫照實際佔有度
+    const shownReply = presentUndressReply(reply, help ? {} : { cap: 30 });
     lines.push({ role: "user", content: note });
     lines.push({ role: "assistant", content: reply });
     if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
@@ -8328,22 +8342,22 @@ async function dressHer() {
   try {
     const stun = effectiveStun(girl, "");
     $("portrait-name").textContent = girl.name;
-    if (inSpasm(girl)) {
-      line = spasmTemplate(girl, "") || "……";
-    } else if (stunTier(stun) === "stun" || shouldSkipLlm(stun, girl)) {
-      line = stunTemplate(stun, "", girl) || "……";
+    const occ = takeOccupancy(girl, "");
+    if (occ.score >= 95) {
+      line = occupancyMoanLine(occ, girl) || "……";
     } else {
       setTyping(true);
-      const streamOk = stun < 25 && !inAfterglow(girl);
+      const streamOk = stun < 25 && occ.score < 10 && !occ.semenOut && !inAfterglow(girl);
+      const occHint = occupancyPromptLine(occ);
       try {
-        const reply = await askGirl(dressedReactionPrompt(before, girl.stage || "stranger"), streamOk ? (partial) => {
+        const reply = await askGirl([dressedReactionPrompt(before, girl.stage || "stranger"), occHint].filter(Boolean).join("\n"), streamOk ? (partial) => {
           if (!partial || !sheetOpen()) return;
           streamed = true;
           setTyping(false);
           $("portrait-name").textContent = girl.name;
           $("portrait-meta").textContent = partial;
         } : null);
-        line = scrambleReply(String(reply || "").trim() || canned, stun, "", girl) || canned;
+        line = presentOccupied(girl, String(reply || "").trim() || canned, "", occ) || canned;
       } catch {
         line = canned;
         streamed = false;
