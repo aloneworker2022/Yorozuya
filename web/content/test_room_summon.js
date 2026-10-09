@@ -315,7 +315,7 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow } from "./life_schedule.js?v=3";
+import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH } from "./life_schedule.js?v=4";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.js?v=1";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
@@ -4912,6 +4912,11 @@ function activityLine() {
     const wake = until > 1e11 ? japanNow(new Date(until)).label.split(" ").pop() : "";
     return `她在${girl.world.home?.name || "住所"}睡覺${wake ? `，日本時間 ${wake} 醒` : ""}。`;
   }
+  if (["idle", "tidy", "meal"].includes(activity)) {
+    const home = girl.world.home?.name || "住所";
+    const what = { idle: "發呆", tidy: "整理房間", meal: `吃${girl.world.homeAct?.meal || "飯"}` }[activity];
+    return `她在${home}${what}。`;
+  }
   if (activity === "browse") {
     const home = girl.world.home?.name || "住所";
     const title = girl.world.browse?.title;
@@ -4942,7 +4947,7 @@ function outsideSummaryLines() {
   const last = w.lastOutside;
   if (last?.text) {
     const when = Number(last.at) > 1e11 ? japanNow(new Date(last.at)).label.split(" ").pop() : "";
-    const kind = { work: "打工", stroll: "溜達", browse: "上網", sleep: "睡覺" }[last.kind] || "";
+    const kind = OUTSIDE_KIND_ZH[last.kind] || "";
     const moodShift = last.moodBefore && last.moodAfter && last.moodBefore !== last.moodAfter ? `　心情 ${last.moodBefore}→${last.moodAfter}` : "";
     out.push(`上一件（${when} ${kind}${last.tone ? `・${last.tone}` : ""}）：${last.text}${moodShift}`);
   }
@@ -5084,6 +5089,7 @@ function renderWorld() {
   $("activity-wander").setAttribute("aria-pressed", String(activity === "wander"));
   $("activity-browse")?.setAttribute("aria-pressed", String(activity === "browse"));
   $("activity-sleep")?.setAttribute("aria-pressed", String(activity === "sleep"));
+  for (const k of ["idle", "tidy", "meal"]) $(`activity-${k}`)?.setAttribute("aria-pressed", String(activity === k));
   renderWhere();
   renderMood();
   renderFriends();
@@ -10523,7 +10529,7 @@ function toggleActivity() {
 
 async function startActivity(kind) {
   if (!girl?.world?.home || !sheIsOut()) return;
-  const mapped = { work: "work", wander: "stroll", browse: "browse", sleep: "sleep" }[kind];
+  const mapped = { work: "work", wander: "stroll", browse: "browse", sleep: "sleep", idle: "idle", tidy: "tidy", meal: "meal" }[kind];
   if (!mapped) return;
   activityOpen = false;
   const status = $("summon-status");
@@ -10832,6 +10838,9 @@ onId("activity-work", "click", () => { startActivity("work"); });
 onId("activity-wander", "click", () => { startActivity("wander"); });
 onId("activity-browse", "click", () => { startActivity("browse"); });
 onId("activity-sleep", "click", () => { startActivity("sleep"); });
+onId("activity-idle", "click", () => { startActivity("idle"); });
+onId("activity-tidy", "click", () => { startActivity("tidy"); });
+onId("activity-meal", "click", () => { startActivity("meal"); });
 bindBodyPanel();
 const refillBtn = $("body-refill-semen");
 if (refillBtn) {

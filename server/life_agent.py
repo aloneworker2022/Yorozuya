@@ -71,8 +71,9 @@ HOMES = [
 
 JOBS = D.JOBS  # 24 份；舊存檔的 16 份 id 都還在
 
-KINDS = ("work", "stroll", "browse", "sleep")
-KIND_ZH = {"work": "打工", "stroll": "溜達", "browse": "上網", "sleep": "睡覺"}
+KINDS = ("work", "stroll", "browse", "sleep", "idle", "tidy", "meal")
+HOME_KINDS = ("browse", "idle", "tidy", "meal")  # 在住所做的事：平平淡淡、不寫各自的記憶（一天一行）
+KIND_ZH = {"work": "打工", "stroll": "溜達", "browse": "上網", "sleep": "睡覺", "idle": "發呆", "tidy": "整理房間", "meal": "吃飯"}
 
 
 def new_store() -> dict:
@@ -83,10 +84,13 @@ def duration_ms(kind: str, rnd=None) -> int:
     roll = rnd if rnd is not None else random.random
     if kind == "work":
         return WORK_MS
-    if kind == "browse":
-        return BROWSE_MS
     if kind == "sleep":
         return HOUR_MS
+    if kind == "meal":
+        return 30 * 60 * 1000
+    if kind in D.HOME_DURATIONS_MIN:
+        opts = D.HOME_DURATIONS_MIN[kind]
+        return opts[int(float(roll()) * len(opts)) % len(opts)] * 60 * 1000
     return STROLL_SHORT_MS if float(roll()) < 0.5 else HOUR_MS
 
 
@@ -423,7 +427,10 @@ SLEEP_WINDOWS = {
 BED_EARLY_MS = 30 * 60 * 1000   # 離睡覺時段 30 分內就直接去睡
 WORK_LEAD_MS = 3 * HOUR_MS      # 離睡覺不到 3 小時不開四小時的班（最多吃掉 1 小時睡眠）
 STROLL_LONG_LEAD_MS = HOUR_MS
-WORK_PER_DAY = 2                # 24 小時內最多兩班
+WORK_PER_DAY = 2                # 24 小時內最多兩班（第二班權重很低，大多一天一班）
+STROLL_PER_DAY = 3              # 24 小時內最多溜達三次
+MEAL_GAP_MS = int(2.5 * HOUR_MS)
+TIDY_GAP_MS = 20 * HOUR_MS
 
 
 def _tokyo(now_ms: int) -> datetime:
@@ -508,37 +515,51 @@ def shifts_in_day(rec: dict, now_ms: int) -> int:
 
 
 MOOD_CHOICE = {
-    "愉快": {"stroll": 1.5, "browse": 0.9},
-    "不悅": {"stroll": 1.3, "work": 0.85},
-    "低落": {"browse": 1.6, "stroll": 0.75, "work": 0.8},
-    "不安": {"browse": 1.8, "stroll": 0.6},
-    "虛脫": {"browse": 2.0, "stroll": 0.4, "work": 0.25},
+    "愉快": {"stroll": 1.5, "tidy": 1.3, "idle": 0.8},
+    "不悅": {"stroll": 1.2, "tidy": 1.4, "work": 0.85},
+    "低落": {"idle": 1.6, "browse": 1.2, "stroll": 0.7, "work": 0.8, "tidy": 0.6},
+    "不安": {"browse": 1.5, "idle": 1.3, "stroll": 0.5},
+    "虛脫": {"idle": 2.0, "browse": 1.3, "stroll": 0.4, "work": 0.25, "tidy": 0.3},
 }
 OUTDOOR_RE = re.compile(r"散步|攝影|拍照|旅行|運動|跑步|登山|釣|逛|美食|咖啡|購物|花|貓|狗")
 INDOOR_RE = re.compile(r"遊戲|電玩|動漫|漫畫|網|追劇|小說|閱讀|書|音樂|天文|占卜")
+BASE_WEIGHTS = {"work": 0.0, "stroll": 1.5, "browse": 2.0, "idle": 2.4, "tidy": 0.9}
+WORK_FIRST, WORK_SECOND = 4.5, 0.15
+
+
+def _count_in(log, now_ms: int, span_ms: int) -> int:
+    return sum(1 for t in (log or []) if 0 <= now_ms - _ms(t) < span_ms)
 
 
 def choice_weights(rec: dict, now_ms: int) -> dict:
-    """醒著時三件事的權重。睡覺不在這裡：到點就去睡（pick_next）。"""
+    """醒著時的權重。睡覺、吃飯不在這裡：到點就去（pick_next）。在家的事佔大部分。"""
     h = jst_hour(now_ms)
     mood, level = mood_now(rec, now_ms)
     info = sleep_info(rec.get("chrono") or "", now_ms)
     to_sleep = info["nextSleepAt"] - now_ms
     hist = [k for k in (rec.get("history") or []) if k in KINDS]
     last = hist[-1] if hist else ""
-    w = {"work": 0.0, "stroll": 2.0, "browse": 1.5}
+    w = dict(BASE_WEIGHTS)
     shifts = shifts_in_day(rec, now_ms)
     if to_sleep >= WORK_LEAD_MS and last != "work" and shifts < WORK_PER_DAY:
-        w["work"] = (3.0 if shifts == 0 else 0.5) * job_fit(_job_of(rec), h)
+        w["work"] = (WORK_FIRST if shifts == 0 else WORK_SECOND) * job_fit(_job_of(rec), h)
     w["stroll"] *= liveliness(rec.get("chrono") or "", h)
+    strolls = _count_in(rec.get("strollLog"), now_ms, 24 * HOUR_MS)
+    w["stroll"] *= 0.0 if strolls >= STROLL_PER_DAY else 0.35 if strolls == 2 else 0.7 if strolls == 1 else 1.0
+    if 0 <= now_ms - _ms(rec.get("tidyAt")) < TIDY_GAP_MS:
+        w["tidy"] *= 0.1
     if h < 5 or h >= 23:
         w["stroll"] *= 0.7
         w["browse"] *= 1.3
-    for kind in ("stroll", "browse"):
+        w["idle"] *= 1.2
+        w["tidy"] *= 0.3
+    for kind in ("stroll", "browse", "tidy"):
         if last == kind:
             w[kind] *= 0.4
             if len(hist) >= 2 and hist[-2] == kind:
                 w[kind] *= 0.5
+    if last == "idle":
+        w["idle"] *= 0.6
     for kind in w:
         w[kind] *= _mood_mult(MOOD_CHOICE, mood, level, kind)
     hobbies = "、".join(rec.get("hobbies") or [])
@@ -547,6 +568,18 @@ def choice_weights(rec: dict, now_ms: int) -> dict:
     if INDOOR_RE.search(hobbies):
         w["browse"] *= 1.15
     return {k: round(v, 4) for k, v in w.items()}
+
+
+def meal_due(rec: dict, now_ms: int) -> int:
+    """現在在哪一餐的時段、而且 2.5 小時內沒吃過 → 回 0／1／2；不是 → -1。"""
+    if 0 <= now_ms - _ms(rec.get("lastMealAt")) < MEAL_GAP_MS:
+        return -1
+    h = jst_hour(now_ms)
+    times = D.MEAL_TIMES.get(rec.get("chrono") or "") or D.MEAL_TIMES[""]
+    for i, t in enumerate(times):
+        if _inside(h, (t - 0.5) % 24, (t + 1.5) % 24):
+            return i
+    return -1
 
 
 def _job_of(rec: dict) -> dict | None:
@@ -582,11 +615,16 @@ def pick_next(rec: dict, now_ms: int, rnd=None) -> tuple[str, int]:
         wake = sleep_info(chrono, info["nextSleepAt"] + 60 * 1000)["wakeAt"]
         if wake - now_ms >= SLEEP_MIN_MS:
             return "sleep", min(SLEEP_CAP_MS, wake - now_ms)
-    kind = _pick_weighted(choice_weights(rec, now_ms), roll) or "browse"
+    slot = meal_due(rec, now_ms)
+    if slot >= 0:
+        return "meal", D.MEAL_MIN[slot] * 60 * 1000
+    kind = _pick_weighted(choice_weights(rec, now_ms), roll) or "idle"
     if kind == "work":
         return kind, WORK_MS
-    if kind == "browse":
-        return kind, BROWSE_MS
+    if kind in D.HOME_DURATIONS_MIN:
+        ms = duration_ms(kind, roll)
+        # 不要拖過睡覺時間
+        return kind, max(30 * 60 * 1000, min(ms, to_sleep)) if to_sleep > 0 else ms
     if to_sleep < STROLL_LONG_LEAD_MS:
         return kind, STROLL_SHORT_MS
     return kind, STROLL_SHORT_MS if float(roll()) < 0.5 else HOUR_MS
@@ -616,6 +654,17 @@ def arm(rec: dict, kind: str, now_ms: int, rnd=None, ms: int | None = None) -> d
         else:
             ms = duration_ms(kind, rnd)
     rec["agenda"] = {"kind": kind, "until": now_ms + int(ms), "startedAt": now_ms}
+    if kind == "meal":
+        slot = meal_due(rec, now_ms)
+        names = D.MEAL_NAMES_BY_CHRONO.get(rec.get("chrono") or "") or D.MEAL_NAMES
+        rec["agenda"]["meal"] = names[slot] if slot >= 0 else D.NIGHT_SNACK
+        rec["lastMealAt"] = now_ms
+    elif kind == "stroll":
+        rec["strollLog"] = ([t for t in (rec.get("strollLog") or []) if now_ms - _ms(t) < 48 * HOUR_MS] + [now_ms])[-8:]
+    elif kind == "tidy":
+        rec["tidyAt"] = now_ms
+    elif kind == "sleep" and ms >= 3 * HOUR_MS:
+        write_home_day(rec, now_ms)
     if kind == "work":
         ensure_job(rec, rnd)
         log = [t for t in (rec.get("workLog") or []) if now_ms - _ms(t) < 48 * HOUR_MS]
@@ -687,9 +736,9 @@ MOOD_SCP = {"不安": 2.0, "低落": 1.5, "虛脫": 1.3, "愉快": 0.6}
 MOOD_PERSON = {"愉快": 1.2, "低落": 0.7, "不安": 0.7, "虛脫": 0.8}
 PERSON_BASE = 0.5
 REVISIT = {"同事": 0.55, "顧客": 0.15, "路人": 0.12}
-SCP_FIRST_CAP = 0.2
-SCP_NEXT_CAP = 0.6
-SCP_GAP_MS = 6 * HOUR_MS  # 同一件異常兩步之間至少隔 6 小時（不會一晚走完三步）
+SCP_FIRST_CAP = 0.06
+SCP_NEXT_CAP = 0.25
+SCP_GAP_MS = 10 * 24 * HOUR_MS  # 兩步之間至少隔 10 天（2026-10-09 使用者：一步要幾週，不要三天走完）
 
 
 def _pick(items: list, rnd):
@@ -810,6 +859,10 @@ def roll_event(rec: dict, kind: str, now_ms: int, rnd=None) -> dict:
             if has_person:
                 ev["emotion"] = _pick_by(D.EMOTIONS, MOOD_EMOTION, mood, level, roll)["name"]
                 ev["person"] = meet_person(rec, "路人", spot, act.get("know", False), now_ms, roll)
+    elif kind == "browse":
+        ev["firstToday"] = int((rec.get("homeDay") or {}).get("browse") or 0) == 0
+    elif kind == "meal":
+        ev["meal"] = (rec.get("agenda") or {}).get("meal") or "一餐"
     elif kind == "sleep":
         agenda = rec.get("agenda") or {}
         ev["nap"] = 0 < _ms(agenda.get("until")) - _ms(agenda.get("startedAt")) < 3 * HOUR_MS
@@ -831,8 +884,11 @@ def _outcome(ev: dict, rec: dict, rnd) -> dict:
         if rec.get("chrono") == "隨和好睡":
             calm += 15
         return {"mood": "平靜", "level": calm, "why": "睡過一覺"}
-    if kind == "browse":
-        return {"mood": "平靜", "level": 8, "why": "在住所上網放空"}
+    if kind in HOME_KINDS:
+        calm = {"browse": 6, "idle": 10, "tidy": 14, "meal": 8}[kind]
+        if kind == "meal" and ev.get("moodBefore") == "虛脫":
+            calm = 20
+        return {"mood": "平靜", "level": calm, "why": "在住所待著"}
     where = ev.get("place") or ev.get("job") or ""
     scp = ev.get("scp")
     if scp:
@@ -966,8 +1022,8 @@ def fallback_text(action: dict) -> str:
     look = EMOTION_LOOK.get(ev.get("emotion") or "", "沒什麼表情")
     if kind == "sleep":
         return "我睡得很不安穩，夢裡一直有東西在門外。醒來的時候心還在跳。" if ev.get("nightmare") else "我睡了一覺。"
-    if kind == "browse":
-        return "我在住所上網，隨便滑了一陣。"
+    if kind in HOME_KINDS:
+        return home_line(ev, action.get("ms") or 0)
     if ev.get("scp"):
         where = ev.get("job") or ev.get("place") or "那裡"
         return f"我在{where}看見{ev['scp']['title']}，有什麼地方不對勁。我沒有再靠近。"
@@ -981,6 +1037,72 @@ def fallback_text(action: dict) -> str:
     return f"我在{ev.get('place')}{ev.get('act')}，{tail}"
 
 
+# ───────────────────────── 在家 ─────────────────────────
+def _span_zh(ms: int) -> str:
+    mins = max(0, int(round(ms / 60000 / 30)) * 30)
+    if mins < 60:
+        return "半小時"
+    h, half = divmod(mins, 60)
+    num = "一兩三四五六七八九十"[h - 1] if 1 <= h <= 10 else str(h)
+    return f"{num}個半小時" if half else f"{num}個小時"
+
+
+def home_line(ev: dict, ms: int) -> str:
+    """面板上「上一件」用的一句（不進記憶）。"""
+    kind = ev.get("kind")
+    if kind == "idle":
+        return f"在住所發呆了{_span_zh(ms)}。"
+    if kind == "tidy":
+        return "把住所整理了一下。"
+    if kind == "meal":
+        return f"在住所吃了{ev.get('meal') or '一餐'}。"
+    return "在住所上網，隨便滑了一陣。"
+
+
+def _note_home(rec: dict, kind: str, ev: dict, span: int, keys) -> None:
+    day = rec.get("homeDay") if isinstance(rec.get("homeDay"), dict) else {}
+    day.setdefault("since", _ms((rec.get("agenda") or {}).get("startedAt")))
+    if kind == "idle":
+        day["idleMs"] = int(day.get("idleMs") or 0) + max(0, span)
+    elif kind == "tidy":
+        day["tidy"] = int(day.get("tidy") or 0) + 1
+    elif kind == "meal":
+        day["meals"] = (list(day.get("meals") or []) + [ev.get("meal") or "一餐"])[-4:]
+    elif kind == "browse":
+        day["browse"] = int(day.get("browse") or 0) + 1
+        title = str((list(keys or []) + ["", "", ""])[2] or "")
+        if title and title not in (day.get("titles") or []):
+            day["titles"] = (list(day.get("titles") or []) + [title])[-3:]
+    rec["homeDay"] = day
+
+
+MOOD_TAIL = {"平靜": "日子很平。", "愉快": "心情還不錯。", "低落": "一直提不起勁。", "不安": "總覺得靜不下來。", "不悅": "有點悶。", "虛脫": "累得什麼都不想做。"}
+
+
+def write_home_day(rec: dict, now_ms: int) -> dict | None:
+    """要睡了：把今天在家的事併成一行記憶（範本、不叫模型），再清空。"""
+    day = rec.get("homeDay") if isinstance(rec.get("homeDay"), dict) else {}
+    rec["homeDay"] = {}
+    bits = []
+    if int(day.get("idleMs") or 0) >= 30 * 60 * 1000:
+        bits.append(f"發呆了{_span_zh(int(day['idleMs']))}")
+    if day.get("tidy"):
+        bits.append("整理了房間")
+    meals = day.get("meals") or []
+    if meals:
+        bits.append(f"吃了{'、'.join(meals)}")
+    if day.get("titles"):
+        bits.append(f"上網看到「{day['titles'][-1][:40]}」")
+    elif day.get("browse"):
+        bits.append("上網滑了一陣")
+    if not bits:
+        return None
+    home = rec.get("homeName") or ""
+    mood = mood_now(rec, now_ms)[0]
+    text = f"今天在住所{home}：{'、'.join(bits)}。{MOOD_TAIL.get(mood, '')}"
+    return _remember(rec, "home", text, now_ms, ["住所", "在家", home], {"place": home, "moodBefore": mood, "moodAfter": mood})
+
+
 # ───────────────────────── 排程與結算 ─────────────────────────
 def quick_step(store: dict, now_ms: int, rnd=None) -> list[str]:
     """不用模型的事一次做完：替每個空檔的人排下一件、睡醒但沒做夢的人直接結算。"""
@@ -990,6 +1112,12 @@ def quick_step(store: dict, now_ms: int, rnd=None) -> list[str]:
             nk, ms = pick_next(rec, now_ms, rnd)
             arm(rec, nk, now_ms, rnd, ms)
             logs.append(f"{rec.get('name') or '她'} 排了{KIND_ZH[nk]}（{int(ms / 60000)} 分）")
+            continue
+        if is_due(rec, now_ms) and rec["agenda"].get("kind") in ("idle", "tidy", "meal"):
+            agenda = rec["agenda"]
+            kind = agenda["kind"]
+            settle(store, gid, _ms(agenda.get("until")), "", now_ms, rnd)
+            logs.append(f"{rec.get('name') or '她'} 在家{KIND_ZH[kind]}完")
             continue
         if is_due(rec, now_ms) and (rec["agenda"].get("kind") == "sleep"):
             agenda = rec["agenda"]
@@ -1095,7 +1223,7 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
         rec.setdefault("scpSteps", {})[scp["id"]] = int(scp["step"]) + 1
         rec["scpAt"] = at
     extra = {
-        "place": ev.get("place") or (rec.get("homeName") if kind in ("browse", "sleep") else "") or "",
+        "place": ev.get("place") or (rec.get("homeName") if kind in HOME_KINDS or kind == "sleep" else "") or "",
         "person": person_label(p),
         "personRole": (p or {}).get("role") or "",
         "personGender": (p or {}).get("gender") or "",
@@ -1113,21 +1241,28 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
         mem_keys = ["遊盪", ev.get("place") or "", ev.get("toneName") or "", person_label(p) if p and p.get("named") else ""]
     elif kind == "sleep":
         mem_keys = ["睡覺", "惡夢" if ev.get("nightmare") else "沒睡好"]
-    else:
+    elif kind == "browse":
         mem_keys = ["上網"]
+    else:
+        mem_keys = ["住所", KIND_ZH[kind]]
+    span = int(finished_until) - _ms(agenda.get("startedAt"))
+    if kind in HOME_KINDS:
+        _note_home(rec, kind, ev, span, keys)
     mem_keys += list(keys or [])
     if after[0] != "平靜":
         mem_keys.append(after[0])
-    body = text or (fallback_text({"event": ev}) if (kind != "sleep" or ev.get("nightmare") or ev.get("poor")) else "")
+    # 在家的事不各寫一筆記憶（只有一天第一次上網看新聞寫），晚上睡前併成一行（write_home_day）
+    body = text or (fallback_text({"event": ev}) if kind in ("work", "stroll") or ev.get("nightmare") or ev.get("poor") else "")
     if kind == "sleep" and ev.get("poor") and not text:
         body = "我半夜被聲音吵醒好幾次，起床氣還在。"
     item = _remember(rec, kind, body, at, mem_keys, extra) if body else None
-    rec["last"] = {"kind": kind, "at": at, "text": (item or {}).get("text") or body or "", "place": extra["place"],
+    shown = (item or {}).get("text") or body or (home_line(ev, span) if kind in HOME_KINDS else "")
+    rec["last"] = {"kind": kind, "at": at, "text": shown, "place": extra["place"],
                    "person": extra["person"], "tone": extra["tone"], "scp": extra["scp"],
                    "moodBefore": before[0], "moodAfter": after[0]}
     hist = [k for k in (rec.get("history") or []) if k in KINDS]
     hist.append(kind)
-    rec["history"] = hist[-6:]
+    rec["history"] = hist[-8:]
     rec["agenda"] = None
     if next_kind in KINDS:
         arm(rec, next_kind, now_ms, roll)
@@ -1167,7 +1302,7 @@ def view_of(rec: dict) -> dict:
     kind = agenda.get("kind") if agenda else ""
     until = _ms(agenda.get("until")) if agenda else 0
     activity = ""
-    shift = stroll = browse = sleep = None
+    shift = stroll = browse = sleep = home_act = None
     if kind == "work" and until:
         activity = "work"
         shift = {"pending": True, "until": until}
@@ -1180,6 +1315,9 @@ def view_of(rec: dict) -> dict:
     elif kind == "sleep" and until:
         activity = "sleep"
         sleep = {"pending": True, "until": until, "placeName": rec.get("homeName") or ""}
+    elif kind in ("idle", "tidy", "meal") and until:
+        activity = kind
+        home_act = {"pending": True, "until": until, "kind": kind, "meal": agenda.get("meal") or "", "placeName": rec.get("homeName") or ""}
     public_agenda = {"kind": kind, "until": until, "startedAt": _ms(agenda.get("startedAt"))} if until else None
     return {
         "id": rec.get("id") or "",
@@ -1195,6 +1333,7 @@ def view_of(rec: dict) -> dict:
         "stroll": stroll,
         "browse": browse,
         "sleep": sleep,
+        "homeAct": home_act,
         # 心情原值＋時間；手機用同一套衰減自己算（life_schedule.js outsideMoodNow）
         "mood": rec.get("mood") or "平靜",
         "moodLevel": int(rec.get("moodLevel") or 0),
@@ -1243,6 +1382,7 @@ def _paint_world(girl: dict, row: dict) -> None:
     world["stroll"] = row.get("stroll")
     world["browse"] = row.get("browse")
     world["sleep"] = row.get("sleep")
+    world["homeAct"] = row.get("homeAct")
     if row.get("phase") == "japan":
         # 人在日本時 RP5 是心情的真相；人在房裡時手機是（不蓋）
         world["mood"] = row.get("mood") or "平靜"

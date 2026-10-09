@@ -12,6 +12,7 @@ import hashlib
 import io
 import json
 import os
+import random
 import re
 import secrets
 import shutil
@@ -4409,14 +4410,19 @@ async def _life_write_event(data: dict, action: dict) -> str:
 async def _life_browse(data: dict, action: dict) -> tuple[str, list]:
     home = action.get("homeName") or "住所"
     hobbies = "、".join(action.get("hobbies") or []) or "沒有特別寫"
-    word = life_agent.clip_keyword(await _life_say(
-        data,
-        "你替她決定網上要搜的一個詞。只回一個短詞，優先日文。不要句子，不要解釋。",
-        f"{_life_clock(action)}{_life_span(action)}"
-        f"她是{action.get('name') or '她'}。興趣：{hobbies}。心情：{action.get('mood') or '平靜'}。",
-    ))
-    if not word and action.get("hobbies"):
-        word = life_agent.clip_keyword(action["hobbies"][0])
+    first = bool((action.get("event") or {}).get("firstToday"))
+    word = ""
+    if first:
+        # 一天只有第一次上網叫模型挑搜尋詞、寫成一筆記憶；之後的從興趣／常見詞抽，只併進睡前那一行
+        word = life_agent.clip_keyword(await _life_say(
+            data,
+            "你替她決定網上要搜的一個詞。只回一個短詞，優先日文。不要句子，不要解釋。",
+            f"{_life_clock(action)}{_life_span(action)}"
+            f"她是{action.get('name') or '她'}。興趣：{hobbies}。心情：{action.get('mood') or '平靜'}。",
+        ))
+    if not word:
+        pool = list(action.get("hobbies") or []) + list(life_agent.D.BROWSE_WORDS)
+        word = life_agent.clip_keyword(random.choice(pool)) if pool else ""
     word = word or "天気"
     try:
         news = await jp_news.search_jp_news(word, limit=2)
@@ -4432,7 +4438,8 @@ async def _life_browse(data: dict, action: dict) -> tuple[str, list]:
         bits.append(f"{title}（{source}）" if source else title)
     # 沒抓到新聞就只寫搜了什麼，不寫「沒有載入到新聞」，免得她在聊天裡講出這句
     seen = f"看到{'、'.join(bits)}。" if bits else "隨便滑了一陣，沒看到什麼特別的。"
-    return f"在住所{home}上網，搜了「{word}」。{seen}", ["上網", word, bits[0] if bits else ""]
+    text = f"在住所{home}上網，搜了「{word}」。{seen}" if first else ""
+    return text, ["上網", word, bits[0] if bits else ""]
 
 
 async def _life_once() -> None:

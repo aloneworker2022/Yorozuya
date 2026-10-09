@@ -46,7 +46,9 @@ def main():
     assert la.japan_clock(int(morning.timestamp() * 1000))["dayPart"] == "早晨"
 
     assert la.duration_ms("work", lambda: 0.9) == la.WORK_MS
-    assert la.duration_ms("browse", lambda: 0.9) == la.BROWSE_MS
+    assert la.duration_ms("browse", lambda: 0.1) == la.BROWSE_MS
+    assert la.duration_ms("browse", lambda: 0.9) == 90 * 60 * 1000
+    assert la.duration_ms("idle", lambda: 0.99) == 3 * la.HOUR_MS
     assert la.duration_ms("stroll", lambda: 0.1) == la.STROLL_SHORT_MS
     assert la.duration_ms("stroll", lambda: 0.9) == la.HOUR_MS
     assert la.parse_choice("我想上網看新聞") == "browse"
@@ -125,7 +127,9 @@ def main():
     encounter_tests()
     text_tests()
     merge_tests()
-    print("ok - life agent schedule/mood/encounters")
+    home_tests()
+    mirror_tests()
+    print("ok - life agent schedule/mood/encounters/home")
 
 
 def jst(y, mo, d, h, mi=0):
@@ -267,7 +271,7 @@ def mood_tests():
     calm = la.choice_weights(rec, t0)
     rec.update({"mood": "不安", "moodLevel": 70, "moodAt": t0})
     scared = la.choice_weights(rec, t0)
-    assert scared["browse"] > calm["browse"] * 1.6 and scared["stroll"] < calm["stroll"] * 0.7
+    assert scared["browse"] > calm["browse"] * 1.4 and scared["stroll"] < calm["stroll"] * 0.6
 
 
 def tone_share(mood, level, n=4000):
@@ -290,10 +294,10 @@ def encounter_tests():
     assert happy["wonder"] > calm["wonder"] + 0.1 and happy["horror"] < calm["horror"]
     assert scared["horror"] > calm["horror"] * 2 and scared["wonder"] < calm["wonder"]
     # SCP：第一次 1/15，開始後 1/2；心情不安放大、愉快縮小；有上限
-    assert abs(la.scp_chance(False, "平靜", 0) - 1 / 15) < 1e-9
-    assert abs(la.scp_chance(True, "平靜", 0) - 0.5) < 1e-9
+    assert abs(la.scp_chance(False, "平靜", 0) - 1 / 40) < 1e-9
+    assert abs(la.scp_chance(True, "平靜", 0) - 1 / 8) < 1e-9
     assert la.scp_chance(False, "不安", 60) > la.scp_chance(False, "平靜", 0) * 1.9
-    assert la.scp_chance(False, "愉快", 60) < 1 / 15
+    assert la.scp_chance(False, "愉快", 60) < 1 / 40
     assert la.scp_chance(True, "不安", 100, eerie=True, night=True) == la.SCP_NEXT_CAP
     # 綁地點：淺草只會碰到 SCP-173；三步走完就不會再出
     store, rec = japan_rec("", "平靜", 0, jst(2026, 10, 7, 14))
@@ -310,8 +314,13 @@ def encounter_tests():
     # 開始後再遇到 1/2 進下一步
     store, rec = japan_rec("", "平靜", 0, jst(2026, 10, 7, 14))
     rec["scpSteps"] = {"173": 1}
-    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.49, 0.0))["step"] == 1
-    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.51, 0.0)) is None
+    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.12, 0.0))["step"] == 1
+    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.13, 0.0)) is None
+    # 兩步之間至少 10 天
+    t1 = jst(2026, 10, 7, 14)
+    rec["scpAt"] = t1
+    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0), now_ms=t1 + 9 * 24 * la.HOUR_MS) is None
+    assert la.roll_scp(rec, "stroll", "平靜", 0, Seq(0.0, 0.0), now_ms=t1 + 11 * 24 * la.HOUR_MS)["step"] == 1
     # 打工一定碰到人；人記進 met，同事會再碰到
     store, rec = japan_rec("", "平靜", 0, jst(2026, 10, 7, 10), job={"id": "ramen", "name": "拉麵店洗碗"})
     import random as _r
@@ -400,6 +409,96 @@ def merge_tests():
     d2["succubi"][0]["world"]["mood"] = "低落"
     la.overlay(d2, store2, t0)
     assert d2["succubi"][0]["world"]["mood"] == "低落"
+
+
+def mirror_tests():
+    """web/content/life_schedule.js 要跟伺服器同一套數字。"""
+    import json as _j
+    import re as _re
+    js = (Path(__file__).resolve().parents[1] / "web/content/life_schedule.js").read_text()
+    def grab(name):
+        m = _re.search(rf"export const {name} = (.+?);", js)
+        return m.group(1)
+    assert _j.loads(grab("OUTSIDE_KINDS")) == list(la.KINDS)
+    assert _j.loads(grab("HOME_KINDS")) == list(la.HOME_KINDS)
+    assert grab("SCP_FIRST_CHANCE") == "1 / 40" and abs(la.D.SCP_FIRST_CHANCE - 1 / 40) < 1e-12
+    assert grab("SCP_NEXT_CHANCE") == "1 / 8" and abs(la.D.SCP_NEXT_CHANCE - 1 / 8) < 1e-12
+    assert grab("SCP_GAP_MS") == "10 * 24 * HOUR_MS" and la.SCP_GAP_MS == 10 * 24 * la.HOUR_MS
+    for k, v in la.D.HOME_DURATIONS_MIN.items():
+        assert f"{k}: {_j.dumps(v)}" in grab("HOME_DURATIONS_MIN"), k
+    w = grab("LIFE_WEIGHTS")
+    for k in ("stroll", "browse", "idle", "tidy"):
+        assert f"{k}: {la.BASE_WEIGHTS[k]}" in w, k
+    assert f"workFirst: {la.WORK_FIRST}" in w and f"workSecond: {la.WORK_SECOND}" in w and f"strollPerDay: {la.STROLL_PER_DAY}" in w
+    assert _j.loads(grab("MEAL_MIN")) == list(la.D.MEAL_MIN)
+
+
+def home_tests():
+    # 吃飯：早起型 12:10 在午餐時段 → 去吃；吃過 2.5 小時內不再吃
+    store, rec = japan_rec("早起型", at=jst(2026, 10, 7, 12, 10))
+    assert la.meal_due(rec, jst(2026, 10, 7, 12, 10)) == 1
+    kind, ms = la.pick_next(rec, jst(2026, 10, 7, 12, 10), Seq(0.5))
+    assert kind == "meal" and ms == 30 * 60 * 1000
+    la.arm(rec, kind, jst(2026, 10, 7, 12, 10), Seq(0.5), ms)
+    assert rec["agenda"]["meal"] == "午餐"
+    assert la.meal_due(rec, jst(2026, 10, 7, 13)) == -1
+    assert la.meal_due(rec, jst(2026, 10, 7, 15)) == -1  # 不在時段
+    # 夜貓子的晚飯在半夜 00:30
+    store, rec = japan_rec("夜貓子", at=jst(2026, 10, 7, 0, 40))
+    assert la.meal_due(rec, jst(2026, 10, 8, 0, 40)) == 2
+    # 溜達一天最多三次
+    store, rec = japan_rec("", at=jst(2026, 10, 7, 15))
+    t = jst(2026, 10, 7, 15)
+    rec["strollLog"] = [t - la.HOUR_MS, t - 2 * la.HOUR_MS, t - 3 * la.HOUR_MS]
+    assert la.choice_weights(rec, t)["stroll"] == 0
+    # 在家的事：不各寫記憶，平靜往下壓；睡前併成一行
+    store, rec = japan_rec("", "低落", 50, jst(2026, 10, 7, 15))
+    n = len(rec["memories"])
+    for kind, mins, at in (("idle", 120, jst(2026, 10, 7, 15)), ("tidy", 30, jst(2026, 10, 7, 17))):
+        la.arm(rec, kind, at, Seq(0.5), mins * 60000)
+        la.quick_step(store, at + mins * 60000, Seq(0.5))
+    assert len(rec["memories"]) == n
+    assert rec["moodLevel"] < 50 - 8 - 10  # 衰減＋發呆壓 10＋整理壓 14
+    assert rec["last"]["text"] == "把住所整理了一下。"
+    rec["agenda"] = None
+    la.arm(rec, "meal", jst(2026, 10, 7, 19, 10), Seq(0.5))
+    la.quick_step(store, rec["agenda"]["until"], Seq(0.5))
+    rec["agenda"] = None
+    la.arm(rec, "sleep", jst(2026, 10, 8, 0, 30))
+    mem = rec["memories"][-1]
+    assert mem["kind"] == "home" and "發呆了兩個小時" in mem["text"] and "整理了房間" in mem["text"] and "晚餐" in mem["text"], mem["text"]
+    assert rec["homeDay"] == {}
+    # 上網：一天第一次才算 firstToday（main 才叫模型、寫記憶）
+    store, rec = japan_rec("", at=jst(2026, 10, 7, 10))
+    la.arm(rec, "browse", jst(2026, 10, 7, 10), Seq(0.1))
+    a = la.prepare_resolve(store, "a", rec["agenda"]["until"], Seq(0.5))
+    assert a["event"]["firstToday"] is True
+    assert la.settle(store, "a", a["until"], "在住所上網，搜了「猫」。看到X。", a["until"], Seq(0.5), keys=["上網", "猫", "X"], next_kind="browse")
+    a2 = la.prepare_resolve(store, "a", rec["agenda"]["until"], Seq(0.5))
+    assert a2["event"]["firstToday"] is False
+    n = len(rec["memories"])
+    assert la.settle(store, "a", a2["until"], "", a2["until"], Seq(0.5), keys=["上網", "天気", "台風"])
+    assert len(rec["memories"]) == n and "台風" in rec["homeDay"]["titles"]
+    # 一個月：打工大多一天一班、溜達 1～3、在家佔醒著的大半
+    import random as _r
+    rng = _r.Random(42)
+    store, rec = japan_rec("", at=jst(2026, 10, 1, 9))
+    hours = {k: 0.0 for k in la.KINDS}
+    t = jst(2026, 10, 1, 9)
+    end = t + 30 * 24 * la.HOUR_MS
+    while t < end:
+        la.quick_step(store, t, rng.random)
+        gid = la.next_due(store, t)
+        if gid:
+            a = la.prepare_resolve(store, gid, t, rng.random)
+            la.settle(store, gid, a["until"], "", t, rng.random)
+        hours[rec["agenda"]["kind"]] += 5 / 60
+        t += 5 * 60 * 1000
+    awake = sum(v for k, v in hours.items() if k != "sleep")
+    home = sum(hours[k] for k in la.HOME_KINDS)
+    assert home / awake > 0.5, hours
+    assert 3.5 <= hours["work"] / 30 <= 6.0, hours  # 平均 1～1.5 班
+    assert hours["stroll"] / 30 <= 2.5, hours
 
 
 if __name__ == "__main__":

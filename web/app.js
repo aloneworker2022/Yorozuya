@@ -59,7 +59,7 @@ import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=3";
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost, paintLifeRow } from "./content/life_schedule.js?v=3";
+import { rollSummonCost, paintLifeRow } from "./content/life_schedule.js?v=4";
 import { BASE_OUTFIT } from "./content/outfit_pick.js?v=1";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
@@ -13082,6 +13082,13 @@ function lineWhereabouts(s) {
     return {
       kind: "home",
       text: `你在日本自己的住所${home}睡覺，被訊息吵醒，迷迷糊糊地回。時間以日本為準。`,
+    };
+  }
+  if (["idle", "tidy", "meal"].includes(world?.activity)) {
+    const what = { idle: "發呆", tidy: "整理房間", meal: `吃${world.homeAct?.meal || "飯"}` }[world.activity];
+    return {
+      kind: "home",
+      text: `你人在日本自己的住所${home}${what}，閒閒的。沒有被召喚到他的房間。時間以日本為準。`,
     };
   }
   if (world?.activity === "browse") {
