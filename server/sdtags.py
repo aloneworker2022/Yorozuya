@@ -100,6 +100,19 @@ AREOLA = {
     "淺褐帶點雀斑感的自然乳暈": "brown areolae",
     "紅潤充血色、敏感看起來偏腫的乳暈": "puffy areolae",
     "近乎黑色的深色乳暈、對比強烈": "dark areolae, large areolae",
+    # 器官開發度（web/content/organ_dev.js AREOLA_TEXT，2026-10-09）：大小 × 粉／咖啡／黑。新妹子一律粉色起算，被玩才變深
+    "小巧、被玩成咖啡色的乳暈": "small areolae, brown areolae",
+    "小巧、被玩到發黑的乳暈": "small areolae, dark areolae",
+    "中等大小、被玩成咖啡色的乳暈": "brown areolae",
+    "中等大小、被玩到發黑的乳暈": "dark areolae",
+    "偏大、被玩成咖啡色的乳暈": "large areolae, brown areolae",
+    "偏大、被玩到發黑的乳暈": "large areolae, dark areolae",
+    "幾乎佔滿半邊乳房的粉色大乳暈": "huge areolae, pink areolae",
+    "幾乎佔滿半邊乳房的咖啡色大乳暈": "huge areolae, brown areolae",
+    "幾乎佔滿半邊乳房、發黑的大乳暈": "huge areolae, dark areolae",
+    "粉嫩微腫、看起來很敏感的乳暈": "puffy areolae, pink areolae",
+    "咖啡色微腫、看起來很敏感的乳暈": "puffy areolae, brown areolae",
+    "發黑微腫、看起來很敏感的乳暈": "puffy areolae, dark areolae",
 }
 
 NIPPLE = {
@@ -108,6 +121,18 @@ NIPPLE = {
     "明顯挺立的粉嫩乳尖": "pink nipples, erect nipples",
     "較大、深粉或褐、看起來充血敏感的乳頭": "large nipples, puffy nipples",
     "粗長、深色、非常明顯的乳頭": "long nipples, dark nipples",
+    # 器官開發度（web/content/organ_dev.js NIPPLE_TEXT，2026-10-09）：形狀 × 粉／咖啡／黑
+    "小巧內收的咖啡色乳頭": "inverted nipples, small nipples, brown nipples",
+    "小巧內收、顏色發黑的乳頭": "inverted nipples, small nipples, dark nipples",
+    "咖啡色、微微凸起的乳頭": "brown nipples",
+    "發黑、微微凸起的乳頭": "dark nipples",
+    "明顯挺立的咖啡色乳尖": "brown nipples, erect nipples",
+    "明顯挺立的發黑乳尖": "dark nipples, erect nipples",
+    "較大、粉嫩、看起來充血敏感的乳頭": "large nipples, puffy nipples, pink nipples",
+    "較大、咖啡色、看起來充血敏感的乳頭": "large nipples, puffy nipples, brown nipples",
+    "較大、發黑、看起來充血敏感的乳頭": "large nipples, puffy nipples, dark nipples",
+    "粗長、粉嫩、非常明顯的乳頭": "long nipples, pink nipples",
+    "粗長、咖啡色、非常明顯的乳頭": "long nipples, brown nipples",
 }
 
 # 性器軸(NSFW;persona_pools appearance.labia_size / clitoris_size / labia_color / pubic_hair)

@@ -6,6 +6,8 @@
 // 梯子只有 N / R / S / SS / SSR(舊池子的 SR、普通/史詩 會在讀取時翻過來)。
 // ============================================================
 
+import { applyDevLook } from "./organ_dev.js?v=1";
+
 export let POOLS = null;
 
 export const GRADE_ORDER = ["N", "R", "S", "SS", "SSR"];
@@ -280,6 +282,8 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
     sleepOutfits,
     feature: txt(feature),
   };
+  // 器官開發度（2026-10-09 使用者）：新召喚一律粉色起算（乳暈／乳頭／陰唇），抽到的原字串留在 look.devBase，大小／形狀照舊
+  applyDevLook(look, { nipples: 0, labia: 0 });
   const traits = rollTraits(F.special_traits, luck, rating);
 
   // 總評 = 計分軸純平均。髮色／特徵仍抽進 look,但不進分(鑑別度低、只會把 SSR 稀釋掉)。

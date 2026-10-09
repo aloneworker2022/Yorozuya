@@ -1,6 +1,7 @@
 /** 房間／約會共用：執行期身體狀態（非靜態外貌）。從 testdate 精簡移植。 */
 
 import { expansionLevel } from "./player_state.js";
+import { ensureOrganDev } from "./organ_dev.js?v=1";
 
 export const BODY_MAX = 30;
 
@@ -132,6 +133,8 @@ export function ensureBody(who) {
   };
   o.anus = { stuffed: String(o.anus?.stuffed || "") };
   o.uterus = { semen: clampBody(o.uterus?.semen, 3) };
+  // 器官開發度（organ_dev.js，2026-10-09）：場數／顏色／高潮次數；外觀顏色跟著開發度（新舊妹子都從粉色起算）
+  ensureOrganDev(who);
   return b;
 }
 

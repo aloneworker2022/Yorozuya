@@ -13,6 +13,7 @@ import {
   occupancyLabel,
 } from "./mind_occupancy.js?v=2";
 import { hungerOn, hungerOccupancyPts } from "./hunger.js?v=1";
+import { organDevOn, devOccupancyMult } from "./organ_dev.js?v=1";
 
 export { occupancyPromptLine, occupancyLabel, OCC_BANDS };
 
@@ -998,9 +999,12 @@ export function occupancySources(who, actId = "", opts = {}) {
   else if (arousalStage(b.arousal) === "climax" && stim.level >= 2) {
     list.push({ id: "climax", pts: Math.min(P.climaxTeasedMax, P.climaxTeased + P.climaxTeaseStep * (b.climaxTease || 0)) });
   }
-  const nip = P.nipple[clamp(o.nipples?.swell, 0, 3)] || 0;
+  // 器官開發度（organ_dev.js）：越敏感，腫起來時腦袋被佔得越多（每級 ×0.2；opts.organDev 給測試用）
+  const devOn = opts.organDev != null ? !!opts.organDev : organDevOn();
+  const devMul = (src) => (devOn ? devOccupancyMult(who, src) : 1);
+  const nip = Math.round((P.nipple[clamp(o.nipples?.swell, 0, 3)] || 0) * devMul("nipple"));
   if (nip) list.push({ id: "nipple", pts: nip });
-  const cl = P.clit[clamp(o.clit?.swell, 0, 3)] || 0;
+  const cl = Math.round((P.clit[clamp(o.clit?.swell, 0, 3)] || 0) * devMul("clit"));
   if (cl) list.push({ id: "clit", pts: cl });
   // 乳環：道具系統還沒做；bodyState.nippleRing 為真時生效（衣服擦到再加）
   if (b.nippleRing) {

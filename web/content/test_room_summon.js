@@ -1,5 +1,5 @@
 /* 試煉房抽妹子：人設跟 /testword 同一套。抽到後背景補半身立繪。不寫遊戲名冊。 */
-import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=2";
+import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=3";
 import {
   ensureBody,
   clampBody,
@@ -19,7 +19,7 @@ import {
   clearArousalCool,
   decayArousalCool,
   resetOpenness,
-} from "./body_state.js?v=19";
+} from "./body_state.js?v=20";
 import { classifyUserText, applyVerbalTease, verbalTeasePrompt } from "./verbal_tease.js?v=1";
 import {
   effectiveStun,
@@ -60,7 +60,7 @@ import {
   occupancyMoanLine,
   occupancyPromptLine,
   occupancyLabel,
-} from "./stun_speech.js?v=22";
+} from "./stun_speech.js?v=23";
 import {
   pickPortraitUrl,
   portraitPathKey,
@@ -335,6 +335,21 @@ import {
   hungerLabel,
   hungerTier,
 } from "./hunger.js?v=1";
+import {
+  organDevOn,
+  ensureOrganDev,
+  noteTouch as devNoteTouch,
+  noteTouchPart as devNoteTouchPart,
+  noteOrgasm as devNoteOrgasm,
+  addSessions as devAddSessions,
+  resetOrganDev,
+  devArousalBonus,
+  devPassionChance,
+  organDevPromptLines,
+  organDevLabel,
+  COLOR_ZH as DEV_COLOR_ZH,
+  ORGAN_ZH as DEV_ORGAN_ZH,
+} from "./organ_dev.js?v=1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -393,6 +408,66 @@ window.RoomActivitySink = (evt) => {
   }
 };
 let roomActTalkStart = null;
+
+// ---------------------------------------------------------------- 器官開發度（organ_dev.js，2026-10-09）
+/** 閘門：<html data-organ-dev="1">。一場（離上次碰她 >30 分鐘才算新的一場）每個器官最多 +1；做愛另記「被肏」。 */
+const ORGAN_DEV_ON = organDevOn();
+function organDevLevelUps(ups) {
+  for (const u of ups || []) {
+    pushDebug(`開發度：${DEV_ORGAN_ZH[u.organ] || u.organ}變成${DEV_COLOR_ZH[u.to]}了（外觀已改，之後的圖會跟著變）`);
+  }
+}
+/** 碰到某部位（快捷動作 hitId／台詞命中 id）：記這一場＋依敏感度多漲性奮。 */
+function organDevTouch(partId) {
+  if (!ORGAN_DEV_ON || !girl || !partId) return;
+  const r = devNoteTouchPart(girl, partId);
+  if (!r) return;
+  const bonus = devArousalBonus(girl, partId);
+  if (bonus && girl.bodyState) girl.bodyState.arousal = clampBody((girl.bodyState.arousal || 0) + bonus);
+  if (r.counted.length) pushDebug(`開發度 +1 場：${r.counted.map((k) => DEV_ORGAN_ZH[k] || k).join("、")}${bonus ? `（敏感 → 性奮多 +${bonus}）` : ""}`);
+  organDevLevelUps(r.levelUps);
+}
+/** 她高潮一次（做愛／調戲）。 */
+function organDevOrgasm() {
+  if (!ORGAN_DEV_ON || !girl) return;
+  devNoteOrgasm(girl);
+}
+/** 做愛每一下：記「被肏」這一場（同一場只 +1）；陰道越敏感越容易多 +1 激情。 */
+function organDevThrust(sess) {
+  if (!ORGAN_DEV_ON || !girl) return;
+  const r = devNoteTouch(girl, ["vagina", "labia", "sex"]);
+  if (r?.counted.length) pushDebug(`開發度 +1 場：${r.counted.map((k) => DEV_ORGAN_ZH[k] || k).join("、")}`);
+  organDevLevelUps(r?.levelUps);
+  const p = devPassionChance(girl);
+  if (sess && p > 0 && Math.random() < p) sess.passion += 1;
+}
+function renderOrganDevDebug() {
+  const el = $("dbg-organ-dev");
+  if (!el) return;
+  if (!ORGAN_DEV_ON || !girl) { el.textContent = "—"; return; }
+  ensureBody(girl);
+  el.textContent = organDevLabel(girl);
+}
+function bindOrganDevDebug() {
+  const add = (organ, n) => {
+    if (!ORGAN_DEV_ON || !girl) return;
+    ensureBody(girl);
+    organDevLevelUps(devAddSessions(girl, organ, n));
+    persistRoom();
+    renderDebug();
+  };
+  for (const organ of ["nipples", "clit", "vagina", "sex"]) {
+    for (const n of [1, 20, 100]) onId(`dbg-dev-${organ}-${n}`, "click", () => add(organ, n));
+  }
+  onId("dbg-dev-reset", "click", () => {
+    if (!ORGAN_DEV_ON || !girl) return;
+    ensureBody(girl);
+    resetOrganDev(girl);
+    pushDebug("除錯：開發度歸零（顏色回粉色）");
+    persistRoom();
+    renderDebug();
+  });
+}
 
 // ---------------------------------------------------------------- 性飢渴（hunger.js，2026-10-09）
 /** 性飢渴閘門：<html data-hunger="1">（test_room＋主房間都開；拿掉屬性即關）。跟退役的 CRAVE_ON／舊 crave 欄位無關。 */
@@ -2041,6 +2116,7 @@ function flushThrustDeferred(why = "") {
     bumpAffection(o.affection, `她高潮（第 ${o.count} 次）`);
     noteAfterglow(girl, "hers");
     hungerRelief("orgasm");
+    organDevOrgasm();
     sexChat.news.push("orgasm");
     lines.push({ role: "user", content: THRUST.SQUIRT_IN_FLOW ? "（她高潮了，潮吹、全身痙攣。）" : "（她高潮了，全身痙攣。）" });
     showClimaxTip(o.count > 1 ? `她又高潮了！（${o.count}）` : "她高潮了！");
@@ -2342,6 +2418,7 @@ function doThrust() {
   syncSexSemen();
   const r = applyThrust(s, { arousal: Number(who.bodyState?.arousal) || 0, stage: who.stage || "stranger" });
   if (!r) return null;
+  organDevThrust(s);
   bumpAffection(r.affection, "肏");
   // 事後算帳：失神／痙攣中被肏 → 第一下記一筆（正常清醒會漲的量），之後只記次數
   if (STUN_RECKONING_ON && undressDazed(who)) {
@@ -6667,6 +6744,7 @@ function renderDebug() {
   }
   renderMissDebug();
   renderHungerDebug();
+  renderOrganDevDebug();
   renderReckonDebug();
   renderThrustDebug();
   const jump = $("dbg-jump");
@@ -7073,6 +7151,7 @@ function talkSystem(userText = "") {
     ...moodCarryPromptLines(girl, { stageKey: girl.stage || "stranger", invasion: getInvasion(girl) }),
     ...(MISS_YOU_ON ? missPromptLines(girl, { stageKey: girl.stage || "stranger", personality: basePersonality(girl) }) : []),
     ...(HUNGER_ON ? hungerPromptLines(girl, { stageKey: girl.stage || "stranger", opening: lines.length === 0 }) : []),
+    ...(ORGAN_DEV_ON ? organDevPromptLines(girl, { stageKey: girl.stage || "stranger" }) : []),
     ...personalityStageLines(),
     ...kinkRevealLines(),
     ...stageTalk(),
@@ -7691,6 +7770,7 @@ async function deliverUserTalk(text, opts = {}) {
           if (hb && girl.bodyState) girl.bodyState.arousal = clampBody((girl.bodyState.arousal || 0) + hb);
           hungerRelief("touch");
         }
+        organDevTouch(TALK_ACTS.find((a) => a.id === opts.actId)?.hitId);
         if (opts.actId === "butt") void maybeGenButtShot(girl, opts.actId);
         if (opts.actId === "waist") void maybeGenWaistShot(girl, opts.actId);
         if (opts.actId === "breast") void maybeGenBreastShot(girl, opts.actId);
@@ -7724,7 +7804,7 @@ async function deliverUserTalk(text, opts = {}) {
           noteAfterglow(girl, "hers");
           herClimaxNow = true;
         }
-        if (spasm.enteredSpasm || herClimaxNow) hungerRelief("orgasm");
+        if (spasm.enteredSpasm || herClimaxNow) { hungerRelief("orgasm"); organDevOrgasm(); }
         const stunAfter = effectiveStun(girl, opts.actId);
         // 首次因 stun≥75 進入 skip-LLM（非痙攣路徑也標她高潮餘韻）
         if (stunBefore < 75 && stunAfter >= 75) {
@@ -7755,6 +7835,8 @@ async function deliverUserTalk(text, opts = {}) {
       } else {
         const hit = applyBodyFromUserText(girl, raw);
         textBodyHit = !!hit;
+        // 器官開發度：真的動手（有動手動詞）或插入／內射才算
+        if (hit && girl.bodyState?.lastPart && (girl.bodyState.touchVerb || ["penis_in", "creampie"].includes(girl.bodyState.lastPart))) organDevTouch(girl.bodyState.lastPart);
         if (hit && girl.bodyState?.lastPart) noteActShock(girl, girl.bodyState.lastPart);
         // 玩家明文內射：餘韻走內射台詞；否則若只寫射精／射了則外射承認
         if (hit && hit.id === "creampie") {
@@ -10426,6 +10508,7 @@ onId("dbg-jump", "change", () => {
 bindTalkActs();
 bindMissDebug();
 bindHungerDebug();
+bindOrganDevDebug();
 bindReckonDebug();
 onId("talk-input-row", "submit", (event) => { sendTalk(event); });
 onId("portrait-backdrop", "click", () => {
@@ -10648,6 +10731,15 @@ window.RoomCompanion = {
     set: (v) => { if (!girl) return null; ensureBody(girl); const r = setHunger(girl, v); persistRoom(); renderDebug(); return r; },
     lines: (opening = false) => (girl ? hungerPromptLines(girl, { stageKey: girl.stage || "stranger", opening }) : []),
     beg: () => { if (!girl) return false; ensureBody(girl); if (peekHunger(girl) < 85) setHunger(girl, 95); return !!window.RoomActor?.startActivity?.("hunger_beg"); },
+  },
+  /** 器官開發度除錯：on＝閘門；state＝bodyState.organDev＋外觀；add(organ,n)；lines()＝prompt 會帶的幾行。 */
+  organDev: {
+    on: () => ORGAN_DEV_ON,
+    state: () => (girl ? { ...JSON.parse(JSON.stringify(ensureOrganDev(girl) || {})), look: { areola: girl.look?.areola, nipple: girl.look?.nipple, labia_color: girl.look?.labia_color, devBase: girl.look?.devBase }, label: organDevLabel(girl) } : null),
+    add: (organ, n = 1) => { if (!girl) return null; ensureBody(girl); const r = devAddSessions(girl, organ, n); persistRoom(); renderDebug(); return r; },
+    touch: (partId) => { organDevTouch(partId); renderDebug(); return girl ? ensureOrganDev(girl) : null; },
+    reset: () => { if (!girl) return null; resetOrganDev(girl); persistRoom(); renderDebug(); return ensureOrganDev(girl); },
+    lines: () => (girl ? organDevPromptLines(girl, { stageKey: girl.stage || "stranger" }) : []),
   },
   /** 想念值除錯：on＝閘門；state＝bodyState.missYou；ago(h)＝把上次見面往前推 h 小時。 */
   missYou: {
