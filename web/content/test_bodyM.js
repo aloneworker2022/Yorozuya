@@ -299,6 +299,7 @@ async function drawGirl() {
   };
   await bindModel(girl);
   state.girl = girl;
+  window.__bodyMGirl = girl;   // 第 4 段「偷看體位 → 圖生圖」可以選這位
   paintGirl();
   await fillPrompts();
   if (!$("status").classList.contains("err")) {

@@ -4696,6 +4696,39 @@ def life_escort(body: dict):
     return life_agent.public_snapshot(store, now_ms)
 
 
+@app.post("/api/bodym/assemble")
+def bodym_assemble(body: dict):
+    """test_bodyM「偷看體位 → 圖生圖」：把畫好的幀（/assets/testword|pose_refs|… 的圖）照每幀毫秒數組成動圖。
+    body：{urls:[…], ms:[…]（或 ms 單一數字）, fmt:"gif"|"webp", name}。回 {url}，存在 assets/testword/。"""
+    from PIL import Image
+
+    body = body or {}
+    urls = [str(u) for u in (body.get("urls") or []) if u][:120]
+    if len(urls) < 2:
+        raise HTTPException(status_code=400, detail="至少要兩幀")
+    ms_in = body.get("ms")
+    ms = [int(m) for m in ms_in] if isinstance(ms_in, list) else [int(ms_in or 100)] * len(urls)
+    ms = [max(20, min(2000, m)) for m in (ms + [ms[-1] if ms else 100] * len(urls))[: len(urls)]]
+    frames = []
+    for u in urls:
+        p = _resolve_ref_image(u)
+        if p is None:
+            raise HTTPException(status_code=404, detail=f"找不到幀：{u}")
+        frames.append(Image.open(p).convert("RGB"))
+    w, h = frames[0].size
+    frames = [f if f.size == (w, h) else f.resize((w, h), Image.LANCZOS) for f in frames]
+    fmt = "webp" if str(body.get("fmt") or "").lower() == "webp" else "gif"
+    tag = re.sub(r"[^A-Za-z0-9_-]", "", str(body.get("name") or ""))[:40] or "peek"
+    out = IMG_TEST_DIR / f"bodym_{tag}_{int(time.time() * 1000)}.{fmt}"
+    IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+    if fmt == "webp":
+        frames[0].save(out, save_all=True, append_images=frames[1:], duration=ms, loop=0, quality=88, method=4)
+    else:
+        pal = [f.quantize(colors=255, method=Image.Quantize.MEDIANCUT) for f in frames]
+        pal[0].save(out, save_all=True, append_images=pal[1:], duration=ms, loop=0, disposal=2)
+    return {"url": f"/assets/testword/{out.name}", "frames": len(frames), "fmt": fmt}
+
+
 # 接客偷看的 AI 台詞：每位客人＋體位一份，記在記憶體（重開偷看沿用、句子用完再往後接）。
 _PEEK_LINES: dict[str, dict] = {}
 

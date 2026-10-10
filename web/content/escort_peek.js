@@ -146,6 +146,31 @@ export function drawClient(g, pose, a, K = 1) {
 }
 
 // ---------------------------------------------------------------- 場景
+/**
+ * test_bodyM 用：偷看體位的靜態幀（門全開、只留房間內：牆、燈、床、客人、她）。
+ * opts：{ doll, pose('doggy'…), man, frames:[幀號]（預設全部）, scale(預設 4) }。回 [{ canvas, frame, ms }]。
+ * 區域：床上那一段 176×136 邏輯像素 ×scale（×4 ＝ 704×544，都是 8 的倍數，給 Comfy 圖生圖；人物佔滿畫面）。
+ */
+export async function peekStills(opts = {}) {
+  const D = window.RoomDoll, pose = POSE_ID[opts.pose] ? opts.pose : "doggy", dpose = POSE_ID[pose];
+  const man = MAN_BUILDS[opts.man] ? opts.man : "average", K = Math.max(1, opts.scale | 0 || 4);
+  const doll = opts.doll || D.lookToDoll(opts.look || null);
+  const all = await dollFrames(doll, dpose);
+  const idx = Array.isArray(opts.frames) && opts.frames.length ? opts.frames : all.map((_, i) => i);
+  const X0 = DX0 + 2, W = 176, H = 136, Y0 = BED + 22 - H;
+  const out = [];
+  for (const fi of idx) {
+    const big = document.createElement("canvas"); big.width = LW; big.height = LH;
+    const g = big.getContext("2d");
+    drawScene(g, { pose, open: 1 / OPEN, frames: all, fi, anchor: { ...D.sexAnchor(doll, dpose, fi), man } });
+    const c = document.createElement("canvas"); c.width = W * K; c.height = H * K;
+    const cg = c.getContext("2d"); cg.imageSmoothingEnabled = false;
+    cg.drawImage(big, X0, Y0, W, H, 0, 0, W * K, H * K);
+    out.push({ canvas: c, frame: fi, ms: Math.round(D.SEX_FRAME_MS[fi] * MAN_BUILDS[man].tempo) });
+  }
+  return out;
+}
+
 function drawScene(g, st) {
   g.fillStyle = "#16121e"; g.fillRect(0, 0, LW, LH);
   g.fillStyle = "#1a1624"; for (let x = 0; x < LW; x += 10) g.fillRect(x, 0, 1, 360);

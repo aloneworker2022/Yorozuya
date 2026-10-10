@@ -100,6 +100,27 @@
   <p class="dim">按「新增圖片幀」就往下加一列。每一列先按「生圖」，看這張像不像再往下。正向、負向會自己填，跟 testword 立繪的喜怒哀樂同一套（人設、表情、現在穿的衣服）。你改過的字不會被蓋掉。有參考圖時，nosidens 是圖生圖的 denoise。</p>
   <div id="frames"></div>
   <button id="btn-add" type="button">新增圖片幀</button>
+
+  <h2>4. 偷看體位 → 圖生圖</h2>
+  <p class="dim">拿接客偷看的體位動畫當來源幀（她的身材從名冊／測試身材／上面抽到的妹子；客人體型），每幀圖生圖（denoise 預設 0.3、每幀同一個 seed），再組回 GIF／WebP。</p>
+  <div class="row">
+    <label>體位 <select id="pk-pose"></select></label>
+    <label>她 <select id="pk-who"></select></label>
+    <label>客人 <select id="pk-man"></select></label>
+    <label>每幾格取一格 <input id="pk-step" type="number" min="1" max="6" value="4" style="width:4em"></label>
+    <label>denoise <input id="pk-denoise" type="number" min="0.25" max="0.9" step="0.05" value="0.3" style="width:5em"></label>
+    <label>seed <input id="pk-seed" type="number" placeholder="空＝隨機（之後固定）" style="width:9em"></label>
+    <label>格式 <select id="pk-fmt"><option value="gif">GIF</option><option value="webp">WebP</option></select></label>
+  </div>
+  <div class="row">
+    <button id="pk-src" type="button">產生來源幀</button>
+    <button id="pk-run" type="button">圖生圖全部</button>
+    <button id="pk-asm" type="button">組動圖</button>
+  </div>
+  <p id="pk-status" class="status"></p>
+  <div id="pk-strip" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+  <div id="pk-result"></div>
+  <style>.pk-cell{width:150px}.pk-cell canvas,.pk-cell img{width:150px;height:auto;display:block;image-rendering:pixelated}.pk-cell img{image-rendering:auto;margin-top:2px}</style>
 </main>
 <div class="player" id="player">
   <div class="stage-wrap">
@@ -113,6 +134,8 @@
     <label class="secs">切換秒數 <input id="seconds" type="number" min="0.1" step="0.1" value="1"></label>
   </div>
 </div>
-<script type="module" src="/content/test_bodyM.js?v=5"></script>
+<script src="/content/room_doll.js?v=6"></script>
+<script type="module" src="/content/test_bodyM.js?v=6"></script>
+<script type="module" src="/content/test_bodyM_peek.js?v=2"></script>
 </body>
 </html>
