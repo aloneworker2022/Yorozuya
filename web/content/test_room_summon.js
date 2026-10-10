@@ -324,13 +324,14 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=9";
+import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=10";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.js?v=1";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
 import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood } from "./escort.js?v=1";
 import { openPeek } from "./escort_peek.js?v=1";
+import * as Preg from "./pregnancy.js?v=1";
 import { moanVoiceId } from "./stun_speech.js?v=24";
 import {
   hungerOn,
@@ -379,7 +380,7 @@ const $ = (id) => document.getElementById(id);
 
 let girl = null;
 /** 房間剪影（room_doll.js）讀她的外觀：身高／體型／罩杯／髮型＋身上那套（裙子）＋脫到第幾階。test_room.js 每秒問一次。 */
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl) } : null);
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl) } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -1207,7 +1208,7 @@ async function escortApi(body) {
 }
 function debugPeek(pose, noticed = false) {
   if (!girl) return;
-  openPeek({ who: girl, doll: window.RoomDoll?.lookToDoll(girl.look || null), pose, noticed, cost: 0,
+  openPeek({ who: girl, doll: window.RoomDoll?.lookToDoll(girl.look || null, { belly: Preg.bellyOf(girl) }), pose, noticed, cost: 0,
     voice: moanVoiceId(girl) || "", family: familyOfGirl(girl),
     onClose: (st) => { if (st.opened && noticed) pushDebug("偷看：被她發現了（除錯）"); } });
 }
@@ -1234,6 +1235,124 @@ function bindEscortDebug() {
   for (const p of ESCORT_POSES) onId(`dbg-peek-${p}`, "click", () => debugPeek(p, false));
   onId("dbg-peek-noticed", "click", () => debugPeek(ESCORT_POSES[Math.floor(Math.random() * 4)], true));
   renderEscortDebug();
+}
+
+// ---------------------------------------------------------------- 懷孕（pregnancy.js，2026-10-10 Al）
+let pregSymptomAt = 0;
+/** 這次打開對話框，她先開口講懷孕（女友以上還沒說過）或孕吐（女友以下，偶爾）。 */
+function pregOpenerDue(who) {
+  if (!who || !Preg.pregOf(who)) return false;
+  if (Preg.shouldTell(who)) return true;
+  return Preg.band(Preg.stageKeyOf(who)) === "low" && Preg.dayOf(Preg.pregOf(who)) >= 1 && Date.now() - pregSymptomAt > 3 * 3600e3 && Math.random() < 0.4;
+}
+async function openPregOpener() {
+  const who = girl;
+  if (!who) return;
+  const tell = Preg.shouldTell(who);
+  const line = tell ? Preg.tellLine(who) : Preg.symptomLine();
+  if (tell) Preg.pregOf(who).told = true; else pregSymptomAt = Date.now();
+  pushDebug(`懷孕：${tell ? "她跟你說了" : "孕吐症狀"}`);
+  talkBusy = true;
+  setTalkEnabled(false);
+  $("portrait-name").textContent = who.name;
+  lines.push({ role: "user", content: tell ? "（她走到你面前，有話要說。）" : "（她看起來不太舒服。）" });
+  lines.push({ role: "assistant", content: line });
+  persistRoom();
+  await typeLine(who.name, line);
+  if (girl !== who) return;
+  talkBusy = false;
+  setTalkEnabled(true);
+  refreshTalkActs();
+}
+/** 打胎藥：30～60 金；會變負（或已負債）就不能買。主遊戲扣 YorozuyaWallet，沙盒扣 localStorage。 */
+function pregMedState() {
+  if (!girl || !Preg.known(girl)) return null;
+  const cost = Preg.medCost(girl);
+  return { cost, ...Preg.canBuyMed(walletGold(), cost) };
+}
+function walletSpend(n, why) {
+  const w = window.YorozuyaWallet;
+  if (w?.spend) return w.spend(n, why);
+  const g = walletGold();
+  if (g - n < 0) return false;
+  setSandboxGold(g - n);
+  return true;
+}
+async function giveMedicine() {
+  const st = pregMedState();
+  if (!st) return;
+  if (!st.ok) { showClimaxTip(st.why); return; }
+  if (!walletSpend(st.cost, `${girl.name}的打胎藥`)) { showClimaxTip("金幣不夠"); return; }
+  const who = girl;
+  const p = Preg.endPregnancy(who, "med");
+  pushDebug(`懷孕：吃了打胎藥（−${st.cost} 金，父親 ${p?.father?.name || "?"}）`);
+  lines.push({ role: "user", content: "（你把打胎藥交給她，她吃下去了。）" });
+  persistRoom();
+  try { window.dispatchEvent(new CustomEvent("yoro-preg-end", { detail: { id: who.gameGirlId || who.id, why: "med", from: "room" } })); } catch { /* */ }
+  talkBusy = true; refreshTalkActs();
+  await typeLine(who.name, "……嗯。謝謝你。");
+  talkBusy = false; refreshTalkActs();
+  try { window.RoomCharacter?.refreshLook?.(); } catch { /* */ }
+}
+/** 主遊戲那邊結束了（生了／離開）：房裡這份也清。 */
+window.addEventListener("yoro-preg-end", (ev) => {
+  const d = ev.detail || {};
+  if (d.from === "room" || !girl || (girl.gameGirlId || girl.id) !== d.id) return;
+  if (Preg.pregOf(girl)) Preg.endPregnancy(girl, d.why === "birth" ? "birth" : d.why);
+  persistRoom({ quiet: true });
+});
+function pregTickRoom() {
+  if (!girl) return;
+  Preg.migrateOld(girl);
+  if (Preg.adoptServer(girl)) { pushDebug(`懷孕：RP5 受孕（父親 ${Preg.pregOf(girl)?.father?.name}）`); persistRoom({ quiet: true }); }
+}
+if (typeof window !== "undefined") setInterval(() => { try { pregTickRoom(); } catch { /* */ } }, 20000);
+function renderPregDebug() {
+  const el = $("dbg-preg");
+  if (!el) return;
+  const p = girl && Preg.pregOf(girl);
+  el.textContent = !girl ? "—" : p
+    ? `懷孕第 ${(Preg.dayOf(p)).toFixed(1)} 天・父親 ${p.father?.name}・肚子 ${Preg.bellyOf(girl).toFixed(2)}・${p.told ? "說了" : "沒說"}・會：${Preg.outcome(girl) || "—"}・藥 ${Preg.medCost(girl)} 金`
+    : `沒有懷孕・排卵期 ${Preg.fertile(girl.gameGirlId || girl.id) ? "是" : "否"}・生過 ${(girl.bodyState?.children || []).length}`;
+}
+function pregDebugShift(days) {
+  const p = girl && Preg.pregOf(girl);
+  if (!p) return;
+  p.at -= days * Preg.DAY_MS;
+  pushDebug(`懷孕：往後推 ${days} 天 → 第 ${Preg.dayOf(p).toFixed(1)} 天`);
+  persistRoom();
+  try { window.RoomCharacter?.refreshLook?.(); } catch { /* */ }
+  renderDebug();
+}
+function pregDebugBirthOrLeave() {
+  if (!girl || !Preg.pregOf(girl)) return;
+  const what = Preg.band(Preg.stageKeyOf(girl)) === "wife" ? "birth" : "leave";
+  pregDebugShift(Preg.PREG_DAYS);
+  if (window.YorozuyaWallet?.gold) { try { window.dispatchEvent(new CustomEvent("yoro-preg-check")); } catch { /* */ } return; }
+  // 沙盒：只示範（不真的從名冊移除）
+  const p = Preg.endPregnancy(girl, what === "birth" ? "birth" : "leave");
+  if (what === "birth") { setSandboxGold(walletGold() - Preg.CHILD_FEE); pushDebug(Preg.birthText(girl.name, p.father?.name, Preg.CHILD_FEE)); }
+  else pushDebug(`（沙盒）${Preg.leaveText(girl.name, girl.stage)}`);
+  persistRoom();
+  renderDebug();
+}
+function bindPregDebug() {
+  const fathers = { client: { name: "不知名的客人", role: "客人" }, friend: { name: "佐藤健", role: "同事" }, stranger: { name: "路上的陌生男人", role: "路人" } };
+  for (const [k, f] of Object.entries(fathers)) onId(`dbg-preg-${k}`, "click", () => {
+    if (!girl) return;
+    if (Preg.pregOf(girl)) Preg.endPregnancy(girl, "debug");
+    Preg.conceive(girl, { father: f, source: "debug" });
+    pushDebug(`懷孕（除錯）：父親 ${f.name}`);
+    persistRoom();
+    try { window.RoomCharacter?.refreshLook?.(); } catch { /* */ }
+    renderDebug();
+  });
+  onId("dbg-preg-1d", "click", () => pregDebugShift(1));
+  onId("dbg-preg-3d", "click", () => pregDebugShift(3));
+  onId("dbg-preg-birth", "click", () => pregDebugBirthOrLeave());
+  onId("dbg-preg-med", "click", () => void giveMedicine());
+  onId("dbg-preg-tell", "click", () => { if (girl && Preg.pregOf(girl)) { Preg.pregOf(girl).told = false; if (sheetOpen()) hideSheet(); showSheet(); } });
+  renderPregDebug();
 }
 function bindHungerDebug() {
   const set = (v) => {
@@ -5654,7 +5773,8 @@ function breedingSuccessCount(who = girl) {
 }
 
 function breedingLabel(who = girl) {
-  const preg = who?.world?.pregnancy;
+  const pp = Preg.pregOf(who);
+  const preg = pp ? { fatherName: pp.father?.name } : null;
   const n = breedingSuccessCount(who);
   const wife = isWifeStage(who?.stage);
   if (preg) {
@@ -5785,7 +5905,7 @@ function friendPhysicalPromptLines(who = girl) {
   if (!who?.world) return [];
   // 交友線（2026-10-10）：RP5 的 lastAffair 剛發生（痕跡新鮮期內）就當「剛發生」；舊 world.friendSex 仍相容
   const fs = who.world.friendSex || recentAffair(who);
-  const preg = who.world.pregnancy;
+  const preg = null;   // 懷孕改走 pregnancy.js（Preg.promptLines，2026-10-10）
   const friends = ensureFriends(who);
   const metBond = friendRows(who).filter((r) => r.stage === "physical" || r.stage === "fwb");
   const hasBond = friends.some((f) => f.bond === "physical" || f.bond === "fwb") || metBond.length > 0;
@@ -5994,7 +6114,7 @@ function lifeNotes(userText = "") {
   if (friends.length) {
     notes.push(`朋友：${friends.map((friend) => `${friend.name}（${friend.role}・${bondLabel(friend.bond)}）`).join("、")}。`);
   }
-  if (world.pregnancy) {
+  if (false && world.pregnancy) {
     const dad = world.pregnancy.fatherName || "對方";
     const n = breedingSuccessCount(girl);
     if (isWifeStage(girl.stage)) {
@@ -7628,7 +7748,7 @@ function renderDebug() {
     return;
   }
   panel.hidden = false;
-  try { renderEscortDebug(); } catch { /* */ }
+  try { renderEscortDebug(); renderPregDebug(); } catch { /* */ }
   $("dbg-stage").textContent = STAGE_NAME[girl.stage || "stranger"] || "陌生";
   $("dbg-aff").textContent = String(girl.affection || 0);
   ensureOpenness(girl);
@@ -8043,6 +8163,7 @@ function talkSystem(userText = "") {
     ...afterglowPromptLines(girl),
     ...ejacTalkPromptLines(girl),
     ...friendPhysicalPromptLines(girl),
+    ...Preg.promptLines(girl),
     // 被脫衣後：女友以前害羞結巴、熱戀微害羞、愛人起自在（只看 undress.stage）
     ...undressShyPromptLines({
       undressStage: undressStage(girl),
@@ -9400,6 +9521,18 @@ function refreshTalkActs() {
     });
     row.append(btn);
   }
+  // 懷孕（你知道了）：打胎藥 30～60 金，負債／不夠就灰
+  const med = !talkBusy && girlInRoom() ? pregMedState() : null;
+  if (med) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.romance = "preg-med";
+    btn.textContent = `打胎藥（${med.cost}金）`;
+    btn.title = med.ok ? "給她吃藥，結束這次懷孕" : med.why;
+    if (!med.ok) btn.classList.add("is-locked");
+    btn.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void giveMedicine(); });
+    row.append(btn);
+  }
   // 負債 1～50：拜託老婆幫忙還債（她決定）
   if (!talkBusy && canAskEscort()) {
     const btn = document.createElement("button");
@@ -9736,6 +9869,11 @@ function showSheet() {
   if (undressStage(girl) >= 3) rollNudeStandee(girl);
   paintHalfPortrait(girl);
   restoreInsertView(girl);
+  if (wasHidden && girlInRoom() && !begNow && !escortDialog && pregOpenerDue(girl)) {
+    if (talkFor !== girl.id) { talkFor = girl.id; lines = []; }
+    void openPregOpener();
+    return;
+  }
   if (escortDialog && wasHidden) {
     if (talkFor !== girl.id) { talkFor = girl.id; lines = []; }
     void openEscortDialog();
@@ -11472,6 +11610,7 @@ bindMissDebug();
 bindHungerDebug();
 bindTalkDebug();
 bindEscortDebug();
+bindPregDebug();
 bindOrganDevDebug();
 bindReckonDebug();
 onId("talk-input-row", "submit", (event) => { sendTalk(event); });

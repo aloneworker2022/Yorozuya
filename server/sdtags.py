@@ -1036,6 +1036,18 @@ def negative_for(flat_bg: bool = False, clothed: bool = False, extra_neg: str = 
     return ", ".join(b for b in bits if b)
 
 
+# 懷孕肚子（web/content/pregnancy.js bellyStage：0 沒有、1 第 3 天起微凸、2 明顯、3 臨盆）
+PREGNANT_BELLY = {1: "pregnant, slightly swollen belly", 2: "pregnant, round belly", 3: "pregnant, big belly, ready to give birth"}
+
+
+def pregnant_belly_en(ch: dict | None) -> str:
+    try:
+        n = int((ch or {}).get("pregnantBelly") or 0)
+    except (TypeError, ValueError):
+        return ""
+    return PREGNANT_BELLY.get(max(0, min(3, n)), "")
+
+
 def _look(ch: dict) -> dict:
     look = ch.get("look")
     return look if isinstance(look, dict) else {}
@@ -1170,6 +1182,9 @@ def appearance_en_parts(
     parts["hair"] = tr(HAIR, "hair")
     parts["hair_color"] = tr(HAIR_COLOR, "hair_color")
     parts["build"] = tr(BUILD, "build")
+    belly = pregnant_belly_en(ch)
+    if belly:
+        parts["build"] = ", ".join(x for x in (parts["build"], belly) if x)
     bust = "" if "bust" in sp_over else compose_bust_en(look, unknown)
     parts["bust"] = bust_tags_for_level(bust, level)
     if level == "exposed":
@@ -1601,6 +1616,7 @@ def build_prompt(
             bits += [tr(AREOLA, "areola"), tr(NIPPLE, "nipple")]
     if not p or seg in ("bust", "lower"):
         bits += [tr(BUILD, "build")]
+        bits += [x for x in [pregnant_belly_en(ch)] if x]
     if (p and seg == "lower") or (not p and lower_shot):
         h = look.get("height_cm")
         if h:

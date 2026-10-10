@@ -115,6 +115,8 @@ export function paintLifeRow(world, row) {
   if (Number(row.anonSex) > 0) world.anonSex = Math.floor(Number(row.anonSex));
   // 接客還債（2026-10-10）：付了多少（只會變大，手機 state.escortTaken 收差額）、上一班、正在接的那班
   if (row.escort && typeof row.escort === "object") world.escort = row.escort;
+  // 懷孕（2026-10-10）：RP5 受孕 → 手機用 key 收一次（pregnancy.js adoptServer）
+  if (row.pregnancy && typeof row.pregnancy === "object") world.pregnancyRp5 = row.pregnancy;
   if (!world.mind || typeof world.mind !== "object" || Array.isArray(world.mind)) {
     world.mind = { immediate: [], mid: [], long: [], seeded: true };
   }

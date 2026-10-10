@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 import life_data as D
 import life_friends as LF
 import escort as ES
+import pregnancy as PG
 
 _TOKYO = ZoneInfo("Asia/Tokyo")
 _WEEKDAYS = "一二三四五六日"
@@ -322,6 +323,7 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
         body = src.get("bodyState") if isinstance(src.get("bodyState"), dict) else {}
         if not body and src is not girl and isinstance(girl.get("bodyState"), dict):
             body = girl["bodyState"]
+        PG.absorb_phone(rec, body)
         od = body.get("organDev") if isinstance(body.get("organDev"), dict) else {}
         if isinstance(od.get("counts"), dict):
             rec["fuckedSeen"] = int(_num(od["counts"].get("sex"), 0))
@@ -1538,8 +1540,12 @@ def _note_met(rec: dict, p: dict, ev: dict, at: int) -> None:
     rec["met"] = met
 
 
-def _affair(rec: dict, name: str, kind: str, rounds: int, at: int, relief: int | None = None, loyalty: int | None = None) -> None:
-    """外面做愛的後果：飢渴降、忠誠慢慢掉、下次進房間身上還有痕跡（手機收）。"""
+def _affair(rec: dict, name: str, kind: str, rounds: int, at: int, relief: int | None = None, loyalty: int | None = None,
+            fathers: list | None = None, rnd=None) -> None:
+    """外面做愛的後果：飢渴降、忠誠慢慢掉、下次進房間身上還有痕跡（手機收）；被內射可能懷孕（pregnancy.py）。"""
+    if fathers is None:
+        fathers = [{"name": name or "不知名的男人", "role": ""}] * max(1, int(rounds or 1))
+    PG.roll(rec, str(rec.get("id") or rec.get("name") or ""), fathers, at, hunger_estimate(rec, at), kind, rnd)
     hunger_shift(rec, -int(relief if relief is not None else LF.SEX_HUNGER_RELIEF), at)
     rec["loyaltyLoss"] = int(rec.get("loyaltyLoss") or 0) + int(loyalty if loyalty is not None else LF.LOYALTY_PER_SEX)
     rec["traceSeq"] = int(rec.get("traceSeq") or 0) + 1
@@ -1647,9 +1653,9 @@ def settle_escort(rec: dict, now_ms: int, rnd=None) -> dict | None:
             p = {"id": f"c{at % 10**9}{i}{int(float(roll()) * 1000)}", "name": _new_name("male", roll), "gender": "male",
                  "role": "客人", "where": "工作室", "named": False}
         _note_met(rec, p, {"act": "接客", "emotion": ""}, at)
-        met_names.append(p["name"] if p["named"] else "")
+        met_names.append({"id": p["id"], "name": p["name"] if p["named"] else "不知名的客人", "role": "客人"})
     prev_affair = rec.get("lastAffair")
-    _affair(rec, "", "escort", n, at, ES.HUNGER_RELIEF_PER_CLIENT * n, ES.LOYALTY_PER_CLIENT * n)
+    _affair(rec, "", "escort", n, at, ES.HUNGER_RELIEF_PER_CLIENT * n, ES.LOYALTY_PER_CLIENT * n, fathers=met_names, rnd=roll)
     rec["lastAffair"] = prev_affair   # 接客不是越線：痕跡照留，但不算「外面偷吃」的餘韻
     feel = ES.FEEL.get(ES.family(rec), "wronged")
     mood, lvl = ES.FEEL_MOOD[feel]
@@ -1945,6 +1951,7 @@ def view_of(rec: dict) -> dict:
         "lastAffair": rec.get("lastAffair") if isinstance(rec.get("lastAffair"), dict) else None,
         "anonSex": int(rec.get("anonSex") or 0),
         "escort": escort_view(rec),
+        "pregnancy": rec.get("pregnancy") or None,
         "memories": list(rec.get("memories") or []),
         "note": rec.get("note") or "",
     }
@@ -2028,6 +2035,8 @@ def _paint_world(girl: dict, row: dict) -> None:
         world["anonSex"] = row["anonSex"]
     if row.get("escort"):
         world["escort"] = row["escort"]
+    if row.get("pregnancy"):
+        world["pregnancyRp5"] = row["pregnancy"]
     world.pop("settlingHome", None)
     for item in row.get("memories") or []:
         if isinstance(item, dict) and item.get("id") and item.get("text"):

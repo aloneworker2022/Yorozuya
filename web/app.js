@@ -60,8 +60,9 @@ import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=7";
 import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient } from "./content/escort.js?v=1"; // 接客還債
 import { openPeek } from "./content/escort_peek.js?v=1";
+import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=9";
+import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=10";
 import { STAGE_ZH, familyStageLine, basePersonalityOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
@@ -212,6 +213,17 @@ window.YorozuyaGrowth = {
 // 房間腎虧送醫：醫藥費從這裡扣主遊戲金幣（可扣到負）。存檔還沒好就回 false，房間會先記帳。
 window.YorozuyaWallet = {
   gold() { return state && !bootFailed ? Number(state.gold) || 0 : NaN; },
+  /** 房間買東西（打胎藥）：會變負就不扣、回 false。 */
+  spend(n, why = "") {
+    if (!state || bootFailed) return false;
+    const c = Math.round(Number(n) || 0);
+    if (c <= 0 || state.gold - c < 0) return false;
+    state.gold -= c;
+    log(`${why || "花費"} −${c} 金`);
+    dirty = true; scheduleSave();
+    try { renderHud(); } catch { /* */ }
+    return true;
+  },
   payDoctor(bill) {
     if (!state || bootFailed) return false;
     chargeDoctorBill(bill);
@@ -8595,6 +8607,7 @@ function escortSettle() {
     }
   }
   if (changed) { dirty = true; scheduleSave(); try { renderHud(); } catch { /* */ } }
+  try { pregSettle(); } catch (err) { console.warn("[preg]", err?.message || err); }
   // 收工回來：手機（房間的主人）才帶她回房；房裡有別人就等（12 小時內）
   if (!(isPhoneClient() || state.roomMirror?.from !== "phone")) return;
   for (const s of state.succubi) {
@@ -8609,6 +8622,45 @@ function escortSettle() {
   }
   try { if (document.querySelector("#roster")) renderSuccubi(); } catch { /* */ }
 }
+/** 懷孕：收 RP5 受孕、搬舊孕、肚子 tag、到期離開／生產（妻子扣 380 金，可以欠債）。 */
+function pregSettle(now = Date.now()) {
+  if (!state || bootFailed || !Array.isArray(state.succubi)) return;
+  let changed = false;
+  for (const s of [...state.succubi]) {
+    if (s.ntr) continue;
+    if (Preg.migrateOld(s, now)) { changed = true; log(`${s.name}的懷孕改用新規則（從今天算第 1 天）`); }
+    if (Preg.adoptServer(s)) changed = true;
+    const bs = Preg.bellyStage(s, now);
+    if ((Number(s.pregnantBelly) || 0) !== bs) { s.pregnantBelly = bs; changed = true; }
+    const what = Preg.outcome(s, now);
+    if (!what) continue;
+    const p = Preg.pregOf(s), dad = p?.father?.name || "";
+    if (what === "birth") {
+      Preg.endPregnancy(s, "birth");
+      s.pregnantBelly = 0;
+      state.gold -= Preg.CHILD_FEE;
+      const msg = Preg.birthText(s.name, dad, Preg.CHILD_FEE);
+      log(msg + (state.gold < 0 ? `（負債 ${debtOf(state.gold)} 金）` : ""));
+      toast(msg, state.gold < 0 ? "bad" : "");
+      try { window.dispatchEvent(new CustomEvent("yoro-preg-end", { detail: { id: s.id, why: "birth" } })); } catch { /* */ }
+    } else {
+      const msg = Preg.leaveText(s.name, Preg.stageKeyOf(s));
+      log(`${msg}（孩子的爸爸是${dad || "不知名的男人"}）`);
+      toast(msg, "bad");
+      try { window.dispatchEvent(new CustomEvent("yoro-preg-end", { detail: { id: s.id, why: "leave" } })); } catch { /* */ }
+      dropGirlFromRoster(s);
+    }
+    changed = true;
+  }
+  if (changed) { dirty = true; scheduleSave(); try { renderHud(); renderSuccubi(); } catch { /* */ } }
+}
+window.addEventListener("yoro-preg-check", () => { try { pregSettle(); } catch { /* */ } });
+window.addEventListener("yoro-preg-end", (ev) => {
+  const d = ev.detail || {};
+  if (d.from !== "room" || !state?.succubi) return;
+  const s = state.succubi.find((x) => x.id === d.id);
+  if (s && Preg.pregOf(s)) { Preg.endPregnancy(s, d.why); s.pregnantBelly = 0; dirty = true; scheduleSave(); }
+});
 let escortPollAt = 0;
 async function escortPoll() {
   if (!state || bootFailed || document.visibilityState === "hidden") return;
@@ -8638,7 +8690,7 @@ function escortPeek(s) {
   const seq = Number(s.world?.escort?.active?.seq) || 0;
   let paid = false;
   openPeek({
-    who: s, doll: window.RoomDoll?.lookToDoll(s.look || null), pose, noticed, cost,
+    who: s, doll: window.RoomDoll?.lookToDoll(s.look || null, { belly: Preg.bellyOf(s) }), pose, noticed, cost,
     voice: s.bodyState?.moanVoice || "", family: "",
     onOpen: () => {
       if (paid) return true;

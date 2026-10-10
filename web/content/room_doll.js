@@ -75,15 +75,18 @@
       const build = L && BUILDS[String(L.build || '').trim()] ? String(L.build).trim() : DEFAULT.build;
       const letter = String(L?.cup || '').trim().charAt(0).toUpperCase();
       const stage = Number(opts.undressStage) || 0;
-      return {
+      const belly = Math.round(clamp(Number(opts.belly) || 0, 0, 1) * 5) / 5;   // 懷孕肚子 0～1（5 段，快取用）
+      const out = {
         height_cm: Number.isFinite(hc) && hc > 0 ? Math.max(140, Math.min(185, hc)) : DEFAULT.height_cm,
         build,
         cup: CUP_R[letter] ? letter : (L ? 'D' : DEFAULT.cup),
         hair: L ? hairStyle(L.hair) : DEFAULT.hair,
         skirt: stage >= 2 ? '' : skirtOf(opts.outfit),
       };
+      if (belly > 0) out.belly = belly;
+      return out;
     }
-    function dollKey(d) { return [d.height_cm, d.build, d.cup, d.hair, d.skirt || '-'].join('|'); }
+    function dollKey(d) { return [d.height_cm, d.build, d.cup, d.hair, d.skirt || '-'].concat(d.belly ? [d.belly] : []).join('|'); }
     function bparams(name) { return Object.assign({}, BASE, BUILDS[name] || {}); }
 
     // ------------------------------------------------------------ SDF primitives
@@ -252,6 +255,10 @@
       const zP = C + .2 * T;
       sh.ell(BODY, [0, yl(zP) - .2, zP], [9.0 * F(b, 'hip'), 5.3 * F(b, 'hip') ** .6, .24 * T]);
       sh.ell(BODY, [0, yl(C + 3) - .3, C + 3.5], [5.0 * F(b, 'hip'), 3.8, 4.2]);
+      if (doll.belly > 0) {   // 懷孕（2026-10-10）：第 3 天起肚子往前圓起來，第 10 天最大
+        const e = doll.belly, pz = zW - .3 * T - 1.2 * e;
+        sh.ell(BODY, [0, yl(pz) + 1.4 + 6.2 * e, pz], [(5.6 + 2.6 * e) * F(b, 'waist') ** .5, 3.2 + 5.6 * e, 5.4 + 3.4 * e]);
+      }
       if (b.belly) { const bz = zW - .32 * T; sh.ell(BODY, [0, yl(bz) + 1.6 + 1.2 * b.belly, bz], [5.4 * F(b, 'waist'), 3.6 + .6 * b.belly, 5.0]); }
       for (const s of [-1, 1]) {
         const bb = F(b, 'butt'), lift = 1.2 * b.muscle;
