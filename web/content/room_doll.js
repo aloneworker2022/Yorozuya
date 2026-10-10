@@ -415,6 +415,7 @@
     /** 抽送深度（1＝頂到底、0＝退到最外）；每格停留毫秒。照 mockups/peek/half4.py。 */
     const SEX_THRUST = [1, .8, .6, .42, .26, .13, .04, 0, .45, .9];
     const SEX_FRAME_MS = [150, 110, 110, 110, 110, 110, 110, 90, 60, 60];
+    const SEX_BOUNCE_GAIN = 7;   // 被撞時乳搖幅度（× CUP_BOUNCE）
     const SEX_POSES = ['sex_missionary', 'sex_cowgirl', 'sex_doggy', 'sex_kiss'];
     /** 偷看的床：床面高度（模型單位，z）。客人剪影跟著這些世界座標畫（escort_peek.js）。 */
     const PEEK_BED_Z = 0;
@@ -441,8 +442,10 @@
           if (c === 5 && tm >= acc) { out[fi] = y; acc += SEX_FRAME_MS[fi] / 1000; fi = Math.min(n - 1, fi + 1); }
         }
       }
+      // 2026-10-10：原本 ×1.6（D 罩杯只晃 1～2 px，實機看不出來）→ ×5，×7，上限是罩杯半徑的 1.1
       const peak = Math.max(...out.map(Math.abs)) || 1, cb = (CUP_BOUNCE[doll.cup] ?? .35) * gain;
-      const res = out.map(o => o / peak * cb * 1.6);
+      const cap = cupRadius(P, doll) * 1.1;
+      const res = out.map(o => Math.max(-cap, Math.min(cap, o / peak * cb * SEX_BOUNCE_GAIN)));
       sexBounceCache.set(key, res);
       return res;
     }
@@ -759,7 +762,9 @@
       const xf = { R, t: [H[0] - rp[0], H[1] - rp[1], H[2] - rp[2]] };
       sh.xf = xf;
       const bv = sexBounce(P, doll, axis, amp)[f] * (opts.bounceScale ?? 1);
-      const bnc = axis === 'z' ? [0, 0, bv, Math.max(-.08, Math.min(.08, -bv * .03))] : [0, 0, bv * .8, Math.max(-.08, Math.min(.08, -bv * .03))];
+      // 乳房跟著被撞的方向甩（局部 z＝沿身體上下），同時往外甩一點、被壓扁／拉長
+      const sq = Math.max(-.14, Math.min(.14, -bv * .045));
+      const bnc = axis === 'z' ? [0, Math.abs(bv) * .25, bv, sq] : [0, Math.abs(bv) * .35, bv, sq];
       const tor = torso(sh, P, doll, 0, 0, lean, bnc, true);
       // 腿：世界座標的腳踝 → IK → 局部
       for (const s of [-1, 1]) {
