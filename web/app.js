@@ -57,9 +57,12 @@ import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACK
 import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=2";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
-import { lifeMemoryPromptLines } from "./content/life_memory.js?v=5";
+import { lifeMemoryPromptLines } from "./content/life_memory.js?v=6";
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost, paintLifeRow, applyLifeHunger } from "./content/life_schedule.js?v=8";
+import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=8";
+import { STAGE_ZH, familyStageLine, basePersonalityOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
+import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
+import { peekHunger } from "./content/hunger.js?v=3";
 import { BASE_OUTFIT } from "./content/outfit_pick.js?v=1";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
@@ -8175,6 +8178,7 @@ function buildRoomGirlFromSuccubus(s) {
     playerNotes: Array.isArray(s.playerNotes) ? s.playerNotes.slice() : (s.playerNotes || null),
     friends: Array.isArray(s.friends) ? s.friends.slice() : (s.friends || null),
     world: s.world || null,
+    lineEvents: Array.isArray(s.lineEvents) ? s.lineEvents.slice(-10) : [],
     playerName: s.playerName || "",
     playerNick: s.playerNick || "",
     playerPet: s.playerPet || "",
@@ -12381,6 +12385,7 @@ function goLine() {
   syncSideTabs();
   ensureLineGroup();
   renderQuests();
+  lineSyncFeed();
 }
 function leaveDiary() {
   lineOpen = false;
@@ -12928,6 +12933,7 @@ function ensureLineGroup() {
   g.title = g.title || "名冊群";
   g.messages ??= [];
   g.cursors ??= {};
+  g.affinity ??= {};   // 魅魔之間合不合（line_social.js；RP5 讀同一份）
   return g;
 }
 
@@ -13118,7 +13124,60 @@ function lineWhereabouts(s) {
   };
 }
 
-function buildLineGroupMsgs(girl, utterance = "") {
+/** LINE 用房間 11 階＋個性家族口氣＋稱呼＋長度＋心情／飢渴（2026-10-10）。 */
+function lineVoiceLines(girl) {
+  const live = lineLiveGirl(girl) || girl;
+  const stage = girl.roomStage || girl.stage || "stranger";
+  const player = state.settings?.player || "召喚師";
+  const base = basePersonalityOf(girl);
+  const cap = replyCap(stage);
+  const out = [
+    "【LINE 口氣（優先於上面的四階規則）】",
+    `・你跟他的關係：${STAGE_ZH[stage] || "陌生"}。`,
+    `・${familyStageLine(base, stage)}`,
+    `・${addressRule(stage, girl.playerPet, player)}`,
+  ];
+  if (girl.tone) out.push(`・你的語氣：${String(girl.tone).slice(0, 60)}`);
+  const cps = Array.isArray(girl.catchphrases) ? girl.catchphrases.filter(Boolean).slice(0, 3) : [];
+  if (cps.length) out.push(`・口頭禪（偶爾用，不要每句）：${cps.join("、")}`);
+  out.push(cap.lines > 1
+    ? `・回 1～${cap.lines} 則短訊（每則一行、${cap.chars} 字內），像連發 LINE。也可以只回一則。`
+    : `・只回一則很短的訊息（${cap.chars} 字內）。`);
+  try {
+    const mood = outsideMoodNow(live.world || {});
+    if (mood?.name && mood.name !== "平靜") out.push(`・你現在心情${moodStrengthWord(mood.level)}${mood.name}${mood.why ? `（因為${mood.why}）` : ""}，打字會帶到一點。`);
+  } catch { /* */ }
+  const hunger = (() => { try { return peekHunger(live, Date.now(), stage); } catch { return 0; } })();
+  if (hunger >= 70 && isWifeStage(stage)) out.push("・你現在身體很想要他。群裡大家都看得到，只能含蓄暗示（例如問他什麼時候召喚你），不要明講性。");
+  else if (hunger >= 70 && isDatingPlus(stage)) out.push("・你有點想他想得心癢，可以撒嬌，但群裡不要講性。");
+  if (isWifeStage(stage) && hunger >= 60 && Array.isArray(girl.kinks) && girl.kinks.length) {
+    out.push(`・你的性癖（${girl.kinks.slice(0, 2).join("、")}）只能在字裡行間帶一點點味道，不能明講。`);
+  }
+  out.push("・群裡全名冊都看得到：在外面遇到的色色的事、跟別人越線的事一律不講，被問就含糊帶過。");
+  return out;
+}
+
+/** 這一輪要做什麼＋跟群友合不合。 */
+function lineSocialLines(girl, plan) {
+  const lg = ensureLineGroup();
+  const out = [];
+  const others = lineRosterGirls().filter((x) => x.id !== girl.id);
+  if (others.length) {
+    out.push(`・你跟群友合不合：${others.map((o) => `${o.name}（${affinityWord(getAffinity(lg, girl, o))}）`).join("、")}。不合的口氣比較衝，合的會互相附和。`);
+  }
+  const jealousy = Number(girl.stats?.jealousy) || 0;
+  if (jealousy >= 60 && isDatingPlus(girl.roomStage || girl.stage)) out.push("・你很會吃醋：他在群裡對別人好，你會酸一下、宣示主權。");
+  if (plan && plan.act !== "reply") {
+    const tgt = state.succubi.find((x) => x.id === plan.target);
+    const ask = ACT_ASK[plan.act];
+    if (tgt && ask) out.push(`・這一輪：${ask(tgt.name)}這一輪不能只已讀。`);
+  } else {
+    out.push("・你可以回他、接群友的話，或選擇不說話只已讀。");
+  }
+  return out;
+}
+
+function buildLineGroupMsgs(girl, utterance = "", plan = null) {
   const player = state.settings?.player || "召喚師";
   const others = lineRosterGirls().filter(x => x.id !== girl.id).map(x => x.name);
   const where = lineWhereabouts(girl);
@@ -13138,19 +13197,26 @@ function buildLineGroupMsgs(girl, utterance = "") {
     "・你只看得到下方「你的閱讀窗」內的對話——那是你上次已讀／回覆之後到現在的片段，不是從頭全部。",
     "・閱讀窗標籤：`[你自己・…]`＝你先前在群裡傳過的話；`[群友・…]`＝其他妹子；`[召喚師・…]`＝玩家。不要搞混。",
     "・看到 `[你自己・…]` 就當成你已經說過，不要裝成第一次說、也不要否認那是你。",
-    "・你可以回「一句很短的台詞」（口語、像傳訊），或選擇不說話只已讀。",
+    ...lineVoiceLines(girl),
+    ...lineSocialLines(girl, plan),
     "・若只已讀、不發言：只輸出 #已讀 （或 #略過），不要加其他字。",
-    "・若要回覆：只寫你現在要新傳的那一句，不要重複貼上 `[你自己・…]` 裡已有的句子，不要寫動作／表情／旁白，也不要加 #、不要冒充群友或召喚師。",
-    "・不要一次回很多句。",
+    "・若要回覆：只寫你現在要新傳的話，不要重複貼上 `[你自己・…]` 裡已有的句子，不要寫動作／表情／旁白，也不要加 #、不要冒充群友或召喚師。",
     others.length ? `・群裡還有：${others.join("、")}（窗內若出現 [群友・名字] 就是她們說的）。` : "",
   ].filter(Boolean).join("\n");
   return [
     { role: "system", content: sys },
-    { role: "user", content: `【你的閱讀窗】（[你自己・${girl.name}] 是你先前的發言）\n${lineTranscriptForPrompt(girl.id)}\n\n以「${girl.name}」身分回一句新訊息，或輸出 #已讀。` },
+    { role: "user", content: `【你的閱讀窗】（[你自己・${girl.name}] 是你先前的發言）\n${lineTranscriptForPrompt(girl.id)}\n\n以「${girl.name}」身分傳新訊息${plan && plan.act !== "reply" ? "（照上面這一輪要做的事）" : "，或輸出 #已讀"}。` },
   ];
 }
 
-function pickLineCanned(g) {
+const LINE_ACT_CANNED = {
+  needle: ["……幹嘛只回她。", "喔～她真好命呢。", "哼，偏心。"],
+  claim: ["他是我老公喔。", "別忘了他是誰的人。", "老公～也回我嘛。"],
+  agree: ["對啊對啊！", "我也這麼覺得。", "+1"],
+  tease: ["又在講這個。", "妳很吵欸。", "……是喔。"],
+};
+function pickLineCanned(g, plan = null) {
+  if (plan && LINE_ACT_CANNED[plan.act]) return pick(LINE_ACT_CANNED[plan.act]);
   // 離線可測：約 40% 只已讀
   if (Math.random() < 0.4) return "#已讀";
   const name = noticeArchName(g);
@@ -13204,20 +13270,27 @@ function markLineRead(playerMsgId, girlId) {
   if (!m.reads.includes(girlId)) m.reads.push(girlId);
 }
 
-function appendLineGirlMsg(girl, text) {
+function appendLineGirlMsg(girl, text, meta = null) {
   const lg = ensureLineGroup();
-  lg.messages.push({
+  const m = {
     id: lineMsgId(),
     t: Date.now(),
     kind: "girl",
     girlId: girl.id,
     name: girl.name,
     text,
-  });
+    ...(meta ? { meta } : {}),
+  };
+  lg.messages.push(m);
+  return m;
 }
 
-async function lineGirlDecide(girl, playerMsgId) {
-  const canned = pickLineCanned(girl);
+function lineGirlsById() {
+  return Object.fromEntries(lineRosterGirls().map((g) => [g.id, g]));
+}
+
+async function lineGirlDecide(girl, playerMsgId, plan = null) {
+  const canned = pickLineCanned(girl, plan);
   let raw;
   try {
     if (!state.settings?.model) {
@@ -13226,17 +13299,29 @@ async function lineGirlDecide(girl, playerMsgId) {
     } else {
       const lg = ensureLineGroup();
       const said = lg.messages.find(x => x.id === playerMsgId && x.kind === "player");
-      const msgs = buildLineGroupMsgs(girl, said?.text || "");
+      const msgs = buildLineGroupMsgs(girl, said?.text || "", plan);
       raw = await llmJobRun(msgs, null, canned);
     }
   } catch (e) {
     raw = canned;
   }
-  const parsed = parseLineReply(raw);
+  const stage = girl.roomStage || girl.stage || "stranger";
+  let parsed = clipReply(raw, stage);
+  // 秘密不進群：模型漏出來就換成範本句
+  if (!parsed.readOnly && parsed.lines.some(secretLeak)) parsed = clipReply(pickLineCanned(girl, plan), stage);
+  if (parsed.readOnly && plan && plan.act !== "reply") parsed = clipReply(pickLineCanned(girl, plan), stage);
   if (parsed.readOnly) {
     markLineRead(playerMsgId, girl.id);
   } else {
-    appendLineGirlMsg(girl, parsed.text);
+    const lg = ensureLineGroup();
+    const byId = lineGirlsById();
+    for (const line of parsed.lines) {
+      const text = scrubHusband(line, stage, girl.playerPet);
+      const meta = { act: plan?.act || "reply", target: plan?.target || "" };
+      if (meta.act === "reply" && isDatingPlus(stage) && FLIRT_RE.test(text)) meta.at = "player";
+      const m = appendLineGirlMsg(girl, text, meta);
+      applyMsgEffects(lg, m, byId);
+    }
   }
   advanceLineCursor(girl.id, playerMsgId);
   dirty = true;
@@ -13257,11 +13342,21 @@ async function processLineWave(playerMsgId) {
   }
   lineBusy = true;
   lineTypingIds = [];
+  const lg = ensureLineGroup();
+  const byId = lineGirlsById();
+  const said = lg.messages.find((x) => x.id === playerMsgId && x.kind === "player");
+  // 玩家這句特地回誰 → 其他人可能酸她（line_social.js warmTarget／planTurn）
+  const warmId = said ? warmTarget(lg.messages, said, girls) : "";
+  if (said && warmId) { said.meta = { ...(said.meta || {}), warm: warmId }; }
+  if (said) applyMsgEffects(lg, said, byId);
   try {
     for (const g of order) {
       lineTypingIds = [g.id];
       if (lineOpen) paintLineMessages();
-      await lineGirlDecide(g, playerMsgId);
+      const pi = lg.messages.findIndex((x) => x.id === playerMsgId);
+      const lastOther = lg.messages.slice(pi + 1).reverse().find((x) => x.kind === "girl" && x.girlId !== g.id) || null;
+      const plan = planTurn(g, { lg, warmId, girlsById: byId, lastOther });
+      await lineGirlDecide(g, playerMsgId, plan);
       lineTypingIds = [];
       if (lineOpen) paintLineMessages();
     }
@@ -13277,6 +13372,38 @@ async function processLineWave(playerMsgId) {
     }
   }
 }
+
+// ── RP5 主動發文：伺服器寫在自己的 LINE 紀錄，手機合併（id 去重）。GET /api/save 也會先蓋上。──
+let _lineFeedBusy = false;
+async function lineSyncFeed() {
+  if (!state || _lineFeedBusy) return 0;
+  _lineFeedBusy = true;
+  try {
+    const lg = ensureLineGroup();
+    const since = lg.messages.reduce((mx, m) => (m.src === "rp5" ? Math.max(mx, Number(m.t) || 0) : mx), 0);
+    const r = await fetch(`/api/line/feed?since=${Math.max(0, since - 60e3)}`);
+    if (!r.ok) return 0;
+    const j = await r.json();
+    const added = mergeFeed(lg.messages, j?.messages || []);
+    lineApplyPending();
+    if (added.length) {
+      dirty = true;
+      scheduleSave();
+      if (lineOpen) paintLineMessages();
+    }
+    return added.length;
+  } catch { return 0; } finally { _lineFeedBusy = false; }
+}
+/** 還沒算過效果的訊息（RP5 寫的、存檔蓋上來的）補算一次：合不合、帶進房間的事件。 */
+function lineApplyPending() {
+  const lg = ensureLineGroup();
+  const byId = lineGirlsById();
+  let n = 0;
+  for (const m of lg.messages) if (!m.fx && m.src === "rp5") { applyMsgEffects(lg, m, byId); n++; }
+  return n;
+}
+setInterval(() => { if (document.visibilityState === "visible") lineSyncFeed(); }, 60e3);
+setTimeout(() => lineSyncFeed(), 4000);
 
 function sendLinePlayerMsg() {
   if (!state || lineBusy) return;

@@ -296,12 +296,16 @@ export function lifeMemoryPromptLines(who, utterance, opts = {}) {
   if (!mind) return [];
   const text = String(utterance || "");
   const recalling = RECALL_RE.test(text);
-  const imm = mind.immediate.filter((item) => item?.text);
-  const mid = pickMid(mind.mid.filter((item) => item?.text), text);
+  // LINE 群全名冊都看得到：私事（色情奇遇、越線）整筆不給，只留一句含糊帶過（2026-10-10）
+  const line = here === "line";
+  const open = (item) => item?.text && !(line && item?.private);
+  const hidden = line && [...mind.immediate, ...mind.mid].some((item) => item?.private);
+  const imm = mind.immediate.filter(open);
+  const mid = pickMid(mind.mid.filter(open), text);
   const lines = [];
   const recall = [];
   if (recalling) {
-    const hits = searchByKeys(mind.long, text, LONG_PICK);
+    const hits = searchByKeys(line ? mind.long.filter(open) : mind.long, text, LONG_PICK);
     const recentHit = searchByKeys(imm, text, 1).length || searchByKeys(mind.mid, text, 1).length;
     if (hits.length) {
       recall.push("他要你回想。只可以用下面這些，對不上的就說想不起來，不要編。時間是發生當時的日本時間。");
@@ -313,12 +317,13 @@ export function lifeMemoryPromptLines(who, utterance, opts = {}) {
     // 閒聊主動提起的：色情奇遇只有妻子才會自己講
     // 越線的事（affair）只有朋友帶會自己提；陌生／認識等他問，女友起是秘密
     const affairOk = stageBand(stageKey) === "friend";
-    const hits = boredHits(mind.long.filter((item) => (wifeBand || item?.private !== "ero") && (affairOk || item?.private !== "affair")));
+    const hits = boredHits(mind.long.filter((item) => (wifeBand || item?.private !== "ero") && (affairOk || item?.private !== "affair") && open(item)));
     if (hits.length) {
       recall.push("你這時有點閒，可以輕輕提起下面其中一件，不要一次講完，也不要編沒列的。時間是發生當時的日本時間。");
       hits.forEach((item) => recall.push(memoryLine(item, "想起", stageKey)));
     }
   }
+  if (hidden) recall.push("這是全名冊都看得到的群組。最近有些私事（在外面看到的色色的事、跟別人越線的事）絕對不在群裡講；被問到就含糊帶過、轉開話題。");
   if (!imm.length && !mid.length && !recall.length) return [];
   if (here === "room") lines.push("人現在在房間。下面是記得的日本生活，不是現在站的地方。");
   if (imm.length || mid.length) {

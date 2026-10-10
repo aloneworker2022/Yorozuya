@@ -34,6 +34,7 @@ import daydream as ddream
 import discover_bonus
 import jp_news
 import life_agent
+import line_group
 import memos
 import sdtags
 import sim
@@ -262,6 +263,14 @@ def db() -> sqlite3.Connection:
             updated_at REAL NOT NULL
         )"""
     )
+    # 名冊群 LINE：RP5 主動發文的紀錄（手機合併，id 去重）
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS line_group (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            data       TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )"""
+    )
     # 發現小工具 inbox:手機 widget 丟待辦,遊戲開著時再收進發現池(避免跟存檔互蓋)
     conn.execute(
         """CREATE TABLE IF NOT EXISTS quest_inbox (
@@ -343,6 +352,10 @@ def get_save():
     if isinstance(data, dict):
         ddream.apply_patches(data, _dd_load())
         _life_overlay(data)
+        try:
+            line_group.merge_into_save(data, _line_read())
+        except Exception as e:
+            print(f"[LINE] 蓋不進這次存檔：{e}", flush=True)
     return {"version": row[0], "data": data, "updated_at": row[2]}
 
 
@@ -4500,6 +4513,81 @@ async def _life_loop():
         await asyncio.sleep(20)
 
 
+# ───────────── 名冊群 LINE：主動發文（server/line_group.py）─────────────
+_LINE_LOCK = threading.Lock()
+
+
+def _line_read() -> dict:
+    with db() as conn:
+        row = conn.execute("SELECT data FROM line_group WHERE id = 1").fetchone()
+    try:
+        data = json.loads(row[0]) if row else None
+    except Exception:
+        data = None
+    return data if isinstance(data, dict) else line_group.new_store()
+
+
+def _line_mutate(fn):
+    with _LINE_LOCK:
+        store = _line_read()
+        fn(store)
+        with db() as conn:
+            conn.execute(
+                "INSERT INTO line_group (id, data, updated_at) VALUES (1, ?, ?) "
+                "ON CONFLICT (id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+                (json.dumps(store, ensure_ascii=False), time.time()),
+            )
+        return store
+
+
+async def _line_once() -> None:
+    """一輪最多寫一則（一次模型）。模型沒回、漏秘密就用範本句。"""
+    data = _dd_read_save() or {}
+    life = _life_read()
+    now_ms = int(time.time() * 1000)
+    box = {"job": None}
+
+    def plan(store):
+        box["job"] = line_group.step(store, data, life, now_ms)
+
+    store = _line_mutate(plan)
+    job = box["job"]
+    if not job:
+        return
+    girl = line_group.roster(data).get(job["gid"])
+    if not girl:
+        return
+    lines: list[str] = []
+    if str((data.get("settings") or {}).get("model") or "").strip():
+        msgs = line_group.build_prompt(job, data, store, life, now_ms)
+        lines = line_group.accept(await _life_say(data, msgs[0]["content"], msgs[1]["content"]), girl)
+    if not lines:
+        lines = line_group.canned(job, girl, store=store)
+    now2 = int(time.time() * 1000)
+
+    def write(store2):
+        line_group.commit(store2, job, girl, lines, data, life, now2)
+
+    _line_mutate(write)
+    print(f"[LINE] {girl.get('name')}（{'主動' if job['kind'] == 'post' else job.get('act')}）：{' / '.join(lines)[:80]}", flush=True)
+
+
+async def _line_loop():
+    await asyncio.sleep(15)
+    while True:
+        try:
+            await _line_once()
+        except Exception as e:
+            print(f"[LINE] 這一輪沒走完：{e}", flush=True)
+        await asyncio.sleep(45)
+
+
+@app.get("/api/line/feed")
+def line_feed(since: float = 0):
+    """手機合併 RP5 寫的群訊息（id 去重）。"""
+    return {"now": int(time.time() * 1000), "messages": line_group.feed_since(_line_read(), since)}
+
+
 @app.get("/api/life")
 def life_public():
     """網頁來讀她現在在日本做什麼。不在這裡把欠的班補完。"""
@@ -4605,6 +4693,7 @@ async def _start_gen_worker():
     asyncio.create_task(_gen_worker())
     asyncio.create_task(_world_clock())
     asyncio.create_task(_life_loop())
+    asyncio.create_task(_line_loop())
 
 
 # /editmale 編輯其他召喚師池: names、behaviors(行為卡)、actions(肢體行為)。
