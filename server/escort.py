@@ -74,6 +74,18 @@ def limit_ok(rec: dict, now_ms: int) -> bool:
     return not (end and now_ms - end < REST_MS)
 
 
+# 客人體型（2026-10-10）：用客人 id 決定（FNV-1a 32 位），常客永遠同一個身材。手機 escort.js clientBuild 同一套算法。
+CLIENT_BUILDS = ["average", "slim", "muscular", "fat", "tall", "short", "old"]
+
+
+def client_build(cid: str) -> str:
+    h = 0x811C9DC5
+    for byte in str(cid or "").encode("utf-8"):
+        h ^= byte
+        h = (h * 0x01000193) & 0xFFFFFFFF
+    return CLIENT_BUILDS[h % len(CLIENT_BUILDS)]
+
+
 def family(rec: dict) -> str:
     return PERSONALITY_FAMILY.get(str(rec.get("archetype") or ""), "溫柔")
 

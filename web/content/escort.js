@@ -156,3 +156,20 @@ export function currentClient(s, now = Date.now()) {
   const n = Math.max(1, Number(a.clients) || 1);
   return Math.min(n, Math.floor(((now - Number(a.startedAt)) / span) * n) + 1);
 }
+
+/** 客人體型（2026-10-10）：用客人 id 決定（FNV-1a 32 位），常客永遠同一個身材。server/escort.py client_build 同一套。 */
+export const CLIENT_BUILDS = ["average", "slim", "muscular", "fat", "tall", "short", "old"];
+export function clientBuild(id) {
+  let h = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(String(id ?? ""))) { h ^= byte; h = Math.imul(h, 0x01000193) >>> 0; }
+  return CLIENT_BUILDS[h % CLIENT_BUILDS.length];
+}
+/** 正在接的那位客人（RP5 開班時排好的 guests）；沒有就用班次＋第幾位當種子。 */
+export function currentGuest(s, now = Date.now()) {
+  const k = currentClient(s, now);
+  if (!k) return null;
+  const a = s.world.escort.active, g = Array.isArray(a.guests) ? a.guests[k - 1] : null;
+  if (g && g.id) return { id: g.id, build: CLIENT_BUILDS.includes(g.build) ? g.build : clientBuild(g.id), named: !!g.named };
+  const id = `s${a.seq || 0}-${k}`;
+  return { id, build: clientBuild(id), named: false };
+}

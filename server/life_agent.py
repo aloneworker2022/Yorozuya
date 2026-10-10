@@ -1527,6 +1527,8 @@ def _note_met(rec: dict, p: dict, ev: dict, at: int) -> None:
         row = {"id": p["id"], "name": p["name"], "gender": p.get("gender") or "", "role": p.get("role") or "",
                "where": p.get("where") or "", "named": bool(p.get("named")), "firstAt": at, "count": 0}
         met.append(row)
+    if p.get("build") and not row.get("build"):
+        row["build"] = p["build"]
     row["count"] = int(row.get("count") or 0) + 1
     row["named"] = bool(row.get("named") or p.get("named"))
     row["lastAt"] = at
@@ -1599,6 +1601,7 @@ def start_escort(rec: dict, debt: int, now_ms: int, rnd=None, key: str = "", for
     if not plan["clients"]:
         return None
     rec["escortSeq"] = int(rec.get("escortSeq") or 0) + 1
+    plan["guests"] = _pick_guests(rec, plan["clients"], now_ms, roll)   # 開班就決定是誰（偷看時畫得出他的身材）
     rec["escortStarts"] = ([int(t) for t in rec.get("escortStarts") or [] if now_ms - int(t) < 2 * ES.DAY_MS] + [now_ms])[-6:]
     rec["agenda"] = {"kind": "escort", "startedAt": now_ms, "until": now_ms + plan["ms"],
                      "event": {"escort": dict(plan, seq=rec["escortSeq"])}}
@@ -1642,16 +1645,12 @@ def settle_escort(rec: dict, now_ms: int, rnd=None) -> dict | None:
     rec["escortLastEnd"] = at
     rec["escortLast"] = {"seq": int(plan.get("seq") or rec.get("escortSeq") or 0), "end": at, "clients": n, "paid": paid,
                          "pays": list(plan.get("pays") or [])}
-    # 客人：隨機陌生人（20% 是之前的常客），記進 met（身份「客人」，見過；常客知道名字）
+    # 客人：開班時排好的（舊存檔沒有就現在擲），記進 met（身份「客人」，見過；常客知道名字）
     met_names = []
-    regulars = [m for m in rec.get("met") or [] if isinstance(m, dict) and m.get("role") == "客人"]
-    for i in range(n):
-        if regulars and float(roll()) < ES.REGULAR_CHANCE:
-            row = regulars[int(float(roll()) * len(regulars)) % len(regulars)]
-            p = {"id": row["id"], "name": row["name"], "gender": "male", "role": "客人", "where": "工作室", "named": True}
-        else:
-            p = {"id": f"c{at % 10**9}{i}{int(float(roll()) * 1000)}", "name": _new_name("male", roll), "gender": "male",
-                 "role": "客人", "where": "工作室", "named": False}
+    guests = [g for g in plan.get("guests") or [] if isinstance(g, dict) and g.get("id")][:n]
+    if len(guests) < n:
+        guests += _pick_guests(rec, n - len(guests), at, roll)
+    for p in guests:
         _note_met(rec, p, {"act": "接客", "emotion": ""}, at)
         met_names.append({"id": p["id"], "name": p["name"] if p["named"] else "不知名的客人", "role": "客人"})
     prev_affair = rec.get("lastAffair")
@@ -1667,6 +1666,22 @@ def settle_escort(rec: dict, now_ms: int, rnd=None) -> dict | None:
     rec["agenda"] = None
     arm(rec, "idle", now_ms, roll, 30 * 60 * 1000)
     return rec["escortLast"]
+
+
+def _pick_guests(rec: dict, n: int, at: int, roll) -> list[dict]:
+    """這班的客人：隨機陌生人（20% 是之前的常客）。體型照 id 決定（常客不變）。"""
+    regulars = [m for m in rec.get("met") or [] if isinstance(m, dict) and m.get("role") == "客人"]
+    out = []
+    for i in range(int(n)):
+        if regulars and float(roll()) < ES.REGULAR_CHANCE:
+            row = regulars[int(float(roll()) * len(regulars)) % len(regulars)]
+            p = {"id": row["id"], "name": row["name"], "gender": "male", "role": "客人", "where": "工作室", "named": True}
+        else:
+            p = {"id": f"c{at % 10**9}{i}{int(float(roll()) * 1000)}", "name": _new_name("male", roll), "gender": "male",
+                 "role": "客人", "where": "工作室", "named": False}
+        p["build"] = ES.client_build(p["id"])
+        out.append(p)
+    return out
 
 
 def _undress_stage(girl: dict | None) -> int:
@@ -1968,7 +1983,9 @@ def escort_view(rec: dict) -> dict | None:
             "lastClients": int(last.get("clients") or 0), "lastPaid": int(last.get("paid") or 0),
             "starts": [int(t) for t in rec.get("escortStarts") or []],
             "active": {"seq": int(cur.get("seq") or 0), "clients": int(cur.get("clients") or 0), "startedAt": _ms(ag.get("startedAt")),
-                       "until": _ms(ag.get("until"))} if cur else None}
+                       "until": _ms(ag.get("until")),
+                       "guests": [{"id": g.get("id"), "build": g.get("build") or ES.client_build(g.get("id")), "named": bool(g.get("named"))}
+                                  for g in cur.get("guests") or [] if isinstance(g, dict)]} if cur else None}
 
 
 def overlay(data: dict, store: dict, now_ms: int) -> None:

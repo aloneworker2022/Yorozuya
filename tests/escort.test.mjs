@@ -110,4 +110,13 @@ t("人偶：四種側面體位都畫得出來、她身材照自己的 look、抽
   assert.ok(D.sexAnchor(d, "sex_missionary", 0).hip[1] < D.sexAnchor(d, "sex_missionary", 7).hip[1]);
   assert.ok(D.sexAnchor(d, "sex_cowgirl", 0).hip[2] < D.sexAnchor(d, "sex_cowgirl", 7).hip[2]);
 });
+t("客人體型：同 id 永遠同體型、跟 server 同一套 hash；七種都會出現；currentGuest 讀 RP5 排好的", () => {
+  // 跟 tests/escort_test.py 的同一組
+  assert.deepEqual(["c12345", "c999001", "客人A", "s3-2"].map(E.clientBuild), ["average", "muscular", "fat", "muscular"]);
+  assert.equal(E.clientBuild("c777"), E.clientBuild("c777"));
+  assert.equal(new Set(Array.from({ length: 200 }, (_, i) => E.clientBuild(`c${i}`))).size, E.CLIENT_BUILDS.length);
+  const now = 1_000_000;
+  const s = { world: { escort: { active: { seq: 3, clients: 2, startedAt: now - 10, until: now + 1000, guests: [{ id: "c1", build: "fat" }, { id: "c2", build: "slim" }] } } } };
+  if (E.workingNow(s, now)) assert.equal(E.currentGuest(s, now).build, "fat");
+});
 console.log(`\n${pass} passed`);

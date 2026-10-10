@@ -59,74 +59,90 @@ async function dollFrames(doll, pose) {
 }
 
 // ---------------------------------------------------------------- 客人（藍色剪影，世界座標：y 往右、z 往上，床面 z＝0）
-let limb = function (g, a, b, w) {
-  g.lineWidth = w; g.lineCap = "round";
-  g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
-}
-let headAt = function (g, p, r = 6) { g.beginPath(); g.arc(p[0], p[1], r, 0, Math.PI * 2); g.fill(); }
 /** a＝RoomDoll.sexAnchor（她骨盆＋抽送深度 p）。退出距離是 2.5 倍、猛地頂回。 */
 /** 畫在她前面的部分：背向坐姿時他的手掌包住她的胸（手壓著，乳房被擠扁）。 */
 export function drawClientFront(g, pose, a, K = 1) {
   if (pose !== "reverse" || !a.chest) return;
   const hx = HIPX[pose], P = (y, z) => [hx + y * K, BED - z * K];
   g.save(); g.strokeStyle = BLUE; g.fillStyle = BLUE; g.globalAlpha = .92; g.lineCap = "round";
-  const c = a.chest, r = (a.cupr || 3.5) * .95, sq = .6 * (a.j - .5);
+  const c = a.chest, r = (a.cupr || 3.5) * .95, sq = .6 * (a.j - .5), M = manBuild(a.man);
   const sh = P(c[1] + 15, c[2] + 6), hand = P(c[1] - r * .2, c[2] + sq);
-  g.lineWidth = 4.5 * K; g.beginPath(); g.moveTo(...sh); g.lineTo(...hand); g.stroke();          // 前臂從她腋下伸過來
+  g.lineWidth = 4.5 * K * M.lm; g.beginPath(); g.moveTo(...sh); g.lineTo(...hand); g.stroke();          // 前臂從她腋下伸過來
   g.beginPath(); g.ellipse(hand[0], hand[1], (r * .9 + 1.4) * K, (r * .75 + 1) * K, -.25, 0, 7); g.fill();   // 手掌罩住
   g.restore();
 }
+/**
+ * 客人體型（2026-10-10）：h＝身高（軀幹＋頭離骨盆多高）、w＝軀幹粗、lm＝四肢粗、belly＝肚子（0～1，往前凸、會壓到她）、
+ * stoop＝駝背（肩往前、頭往前下）、tempo＝節奏倍率（重的慢）、depth＝退出幅度（重的深）。id 怎麼對到體型見 escort.js clientBuild。
+ */
+export const MAN_BUILDS = {
+  average: { h: 1, w: 1, lm: 1, belly: 0, stoop: 0, tempo: 1, depth: 1 },
+  slim: { h: 1.02, w: .74, lm: .78, belly: 0, stoop: 0, tempo: .82, depth: .85 },
+  muscular: { h: 1.04, w: 1.3, lm: 1.3, belly: 0, stoop: 0, chest: 1, tempo: .95, depth: 1.1 },
+  fat: { h: .97, w: 1.35, lm: 1.2, belly: 1, stoop: 0, tempo: 1.3, depth: 1.2 },
+  tall: { h: 1.18, w: 1, lm: 1, belly: 0, stoop: 0, tempo: 1.05, depth: 1.05 },
+  short: { h: .84, w: .95, lm: .92, belly: .15, stoop: 0, tempo: .92, depth: .9 },
+  old: { h: .94, w: 1, lm: .88, belly: .45, stoop: 1, tempo: 1.35, depth: .8 },
+};
+export function manBuild(name) { return MAN_BUILDS[name] || MAN_BUILDS.average; }
 export function drawClient(g, pose, a, K = 1) {
   const hx = HIPX[pose] || HIPX.cowgirl;
   const P = (y, z) => [hx + y * K, BED - z * K];
-  const lw = g.lineWidth;
-  const limb0 = limb; limb = (gg, a1, b1, w) => limb0(gg, a1, b1, w * K);
-  const head0 = headAt; headAt = (gg, p1, r = 6) => head0(gg, p1, r * K);
-  const out = 9 * (1 - a.p);   // 退出量 0～9（×2.2 畫在骨盆上：退很多、頂回很猛）
+  const lw = g.lineWidth, M = manBuild(a.man);
+  const limb = (gg, a1, b1, w) => { gg.lineWidth = w * K; gg.lineCap = "round"; gg.beginPath(); gg.moveTo(...a1); gg.lineTo(...b1); gg.stroke(); };
+  const headAt = (gg, p1, r = 6) => { gg.beginPath(); gg.arc(p1[0], p1[1], r * K, 0, Math.PI * 2); gg.fill(); };
+  const out = 9 * (1 - a.p) * M.depth;   // 退出量（重的退得深）
   g.strokeStyle = BLUE; g.fillStyle = BLUE;
   const [hy, hz] = [a.hip[1], a.hip[2]];
-  // v2：他慢慢退（髖往後、上身微後仰）、猛地頂（髖往前、上身前傾壓過去）；手跟著她的骨盆走
   const lean = 5 * (a.p - .5);
+  // 從骨盆 pel 往上長一個軀幹：dir＝上身方向（y,z 單位），toward＝她在哪一邊（−1＝左）。回傳肩、頭位置。
+  const body = (pel, dy, dz, toward) => {
+    const L = 29 * M.h, n = Math.hypot(dy, dz) || 1;
+    let sh = [pel[0] + dy / n * L, pel[1] + dz / n * L];
+    if (M.stoop) sh = [sh[0] + toward * 4.5 * M.stoop, sh[1] - 2.5 * M.stoop];
+    const mid = [(pel[0] + sh[0]) / 2, (pel[1] + sh[1]) / 2];
+    limb(g, P(...pel), P(...sh), 11 * M.w);
+    if (M.chest) limb(g, P(sh[0] - dy / n * 6, sh[1] - dz / n * 6), P(...sh), 13.5 * M.w);   // 胸肩厚
+    if (M.belly) {   // 肚子往她那邊凸（壓在她屁股／肚子上）
+      const bc = P(mid[0] - dy / n * 5 + toward * (2 + 4 * M.belly), mid[1] - dz / n * 5);
+      g.beginPath(); g.ellipse(bc[0], bc[1], (5 + 4.5 * M.belly) * K, (6 + 3 * M.belly) * K, 0, 0, 7); g.fill();
+    }
+    const hd = [sh[0] + dy / n * 3 + toward * (1.5 + 3.5 * M.stoop), sh[1] + dz / n * 9 - 2 * M.stoop];
+    headAt(g, P(...hd), 6.5 * (.9 + .1 * M.h));
+    return { sh, hd };
+  };
+  const bellyPush = 3.5 * M.belly;   // 肚子大 → 骨盆離她遠一點（肚子先碰到）
   if (pose === "missionary") {
-    const pel = [hy + 8 + out * 1.4, 9 + .8 * a.p];         // 下腹貼在她骨盆前（門縫內看得到）
-    const sh = [pel[0] + 12 - lean, 38];
-    limb(g, P(...pel), P(...sh), 11);                        // 軀幹：跪直、頂進時往她壓
-    headAt(g, P(sh[0] + 3, 48), 6.5);
-    limb(g, P(sh[0] - 1, 34), P(hy + 14, 22 + 1.5 * a.j), 4.5);   // 手抓她大腿
-    limb(g, P(...pel), P(pel[0] + 4, 2), 8);                 // 跪著的大腿
-    limb(g, P(pel[0] + 4, 2), P(pel[0] + 22, 1.5), 5.5);
-    limb(g, P(pel[0] - 4, 10), P(...pel), 6);
+    const pel = [hy + 8 + bellyPush * .6 + out * 1.4, 9 + .8 * a.p];
+    const { sh } = body(pel, 12 - lean, 29, -1);
+    limb(g, P(sh[0] - 1, sh[1] - 4), P(hy + 14, 22 + 1.5 * a.j), 4.5 * M.lm);   // 手抓她大腿（手臂伸得到就好）
+    limb(g, P(...pel), P(pel[0] + 4, 2), 8 * M.lm);
+    limb(g, P(pel[0] + 4, 2), P(pel[0] + 22 * M.h, 1.5), 5.5 * M.lm);
   } else if (pose === "cowgirl") {
-    const up = 1.6 * a.p;                                    // 她坐到底那一下他往上頂
-    headAt(g, P(-38, 7), 6.5);
-    limb(g, P(-31, 6), P(5, 6 + up), 11);                    // 腰在她屁股正下方
-    limb(g, P(5, 5 + up), P(40, 3), 7);
-    limb(g, P(-26, 9), P(hy - 2, Math.max(14, hz + 8)), 4.5); // 手扶她的腰
+    const up = 1.6 * a.p * M.depth, L = 36 * M.h;
+    headAt(g, P(-L - 2, 7), 6.5);
+    limb(g, P(-L + 5, 6), P(5, 6 + up), 11 * M.w);
+    if (M.belly) { g.beginPath(); const bc = P(-8, 9 + 4 * M.belly); g.ellipse(bc[0], bc[1], (8 + 5 * M.belly) * K, (3 + 4 * M.belly) * K, 0, 0, 7); g.fill(); }
+    limb(g, P(5, 5 + up), P(5 + 35 * M.h, 3), 7 * M.lm);
+    limb(g, P(-L + 10, 9), P(hy - 2, Math.max(14, hz + 8)), 4.5 * M.lm);
   } else if (pose === "doggy") {
-    const pel = [hy + 7 + out * 1.1, hz + 1];                // 整個循環都貼著她屁股、留在門縫內
-    const sh = [pel[0] + 7 - lean * 1.2, pel[1] + 27];
-    limb(g, P(...pel), P(...sh), 11);
-    headAt(g, P(sh[0] + 3, sh[1] + 10), 6.5);
-    limb(g, P(sh[0] - 1, sh[1] - 5), P(hy + 3, hz + 4), 4.5);   // 雙手抓她臀部
-    limb(g, P(...pel), P(pel[0] + 2, 2.5), 8);
-    limb(g, P(pel[0] + 2, 2.5), P(pel[0] + 19, 1.5), 5.5);
-    limb(g, P(pel[0] - 5, pel[1]), P(...pel), 6);
+    const pel = [hy + 7 + bellyPush * .5 + out * 1.1, hz + 1 - (1 - M.h) * 4];   // 矮的跪低一點、高的骨盆會比她高 → 微蹲
+    const { sh } = body(pel, 7 - lean * 1.2, 27, -1);
+    limb(g, P(sh[0] - 1, sh[1] - 5), P(hy + 3, hz + 4), 4.5 * M.lm);   // 雙手抓她臀部
+    limb(g, P(...pel), P(pel[0] + 2, 2.5), 8 * M.lm);
+    limb(g, P(pel[0] + 2, 2.5), P(pel[0] + 19, 1.5), 5.5 * M.lm);
   } else if (pose === "reverse") {
-    // 他坐著靠在她背後：軀幹在她後面、頭從她肩後探出；手臂繞到前面（手掌在 drawClientFront 畫在她身上）
     const bob = .6 * (a.j - .5);
-    limb(g, P(14, 11), P(13 + bob, 40), 11);
-    headAt(g, P(10 + bob, 50), 6.5);
-    limb(g, P(13, 9), P(-22, 3), 7);                         // 大腿往前，她坐在上面
-    limb(g, P(-22, 3), P(-24, 0), 6);
+    body([14 + bellyPush * .4, 11], -1 + bob, 29, -1);
+    limb(g, P(13, 9), P(-22, 3), 7 * M.lm);
+    limb(g, P(-22, 3), P(-24, 0), 6 * M.lm);
   } else {
-    // v3 深吻：他的上身跟她一起前後磨、頭往她那邊側著貼過去
     const f = a.fwd || 0, rock = 1.4 * f;
-    limb(g, P(17 + rock * .5, 12), P(16 + rock, 39), 11);
-    headAt(g, P(12 + rock * 1.2, 48 - .6 * f), 6.5);
-    limb(g, P(16, 9), P(-22, 3), 7);
-    limb(g, P(15 + rock, 34), P(hy + 4, 27), 4.5);           // 手摟她的腰
+    const { sh } = body([17 + bellyPush * .4 + rock * .5, 12], -1 + rock * .5, 27, -1);
+    limb(g, P(16, 9), P(-22, 3), 7 * M.lm);
+    limb(g, P(sh[0] - 1, sh[1] - 5), P(hy + 4, 27), 4.5 * M.lm);
   }
-  limb = limb0; headAt = head0; g.lineWidth = lw;
+  g.lineWidth = lw;
 }
 
 // ---------------------------------------------------------------- 場景
@@ -185,7 +201,7 @@ const CSS = `
 .peek-close{position:absolute;top:8px;right:8px;background:none;border:0;color:#998;font-size:22px}`;
 
 /**
- * 打開偷看。opts：{ who, doll, pose('missionary'…), noticed, cost, voice, family, onClose(state) }。
+ * 打開偷看。opts：{ who, doll, pose('missionary'…), man（客人體型，見 MAN_BUILDS）, noticed, cost, voice, family, onClose(state) }。
  * 回傳 { close() , state }（state.opened：真的開過門；state.lines：冒過的字幕，測試用）。
  */
 export function openPeek(opts = {}) {
@@ -204,6 +220,8 @@ export function openPeek(opts = {}) {
   const status = ov.querySelector(".peek-status"), hint = ov.querySelector(".peek-hint");
   const bubC = ov.querySelector(".peek-bub.c"), bubW = ov.querySelector(".peek-bub.w");
   const st = { pose, open: 0, target: 0, frames: null, fi: 0, anchor: null, opened: false, closed: false, lines: [], side: "client" };
+  const man = MAN_BUILDS[opts.man] ? opts.man : "average", tempo = MAN_BUILDS[man].tempo;   // 客人體型：重的慢、瘦的快
+  ov.dataset.man = man;
   const D = window.RoomDoll, dpose = POSE_ID[pose], doll = opts.doll || D.lookToDoll(opts.who?.look || null);
   hint.textContent = opts.cost ? `點門偷看（−${opts.cost} 金）` : "點門偷看";
   status.textContent = "";
@@ -233,17 +251,17 @@ export function openPeek(opts = {}) {
     }
     if (st.frames && Number.isInteger(st.hold)) {   // 檢查用：停在某一格
       st.fi = st.hold % st.frames.length;
-      st.anchor = { ...D.sexAnchor(doll, dpose, st.fi) };
+      st.anchor = { ...D.sexAnchor(doll, dpose, st.fi), man };
     } else if (st.frames) {
       acc += dt;
-      while (acc >= D.SEX_FRAME_MS[st.fi]) { acc -= D.SEX_FRAME_MS[st.fi]; st.fi = (st.fi + 1) % st.frames.length; }
-      st.anchor = { ...D.sexAnchor(doll, dpose, st.fi) };
+      while (acc >= D.SEX_FRAME_MS[st.fi] * tempo) { acc -= D.SEX_FRAME_MS[st.fi] * tempo; st.fi = (st.fi + 1) % st.frames.length; }
+      st.anchor = { ...D.sexAnchor(doll, dpose, st.fi), man };
     }
     if (st.open >= 0.98 && st.frames && !st.closed && now >= talkAt) { say(); talkAt = now + nextGapMs(); }
     drawScene(g, st);
     raf = requestAnimationFrame(tick);
   };
-  const framesReady = dollFrames(doll, dpose).then((fr) => { st.frames = fr; st.anchor = D.sexAnchor(doll, dpose, 0); }).catch((err) => { console.warn("[peek]", err); });
+  const framesReady = dollFrames(doll, dpose).then((fr) => { st.frames = fr; st.anchor = { ...D.sexAnchor(doll, dpose, 0), man }; }).catch((err) => { console.warn("[peek]", err); });
   const openDoor = () => {
     if (opts.onOpen && opts.onOpen() === false) return;
     st.opened = true; st.target = 1; talkAt = performance.now() + 900;

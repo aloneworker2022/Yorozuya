@@ -149,4 +149,6 @@ if __name__ == "__main__":
     flag_tests()
     pick_tests()
     mirror_tests()
+    assert [ES.client_build(i) for i in ["c12345", "c999001", "客人A", "s3-2"]] == ["average", "muscular", "fat", "muscular"]
+    assert len({ES.client_build(f"c{i}") for i in range(200)}) == len(ES.CLIENT_BUILDS)
     print("escort ok")

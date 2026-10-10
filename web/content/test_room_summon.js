@@ -329,8 +329,8 @@ import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.j
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
 import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
-  ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood } from "./escort.js?v=2";
-import { openPeek } from "./escort_peek.js?v=2";
+  ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=3";
+import { openPeek } from "./escort_peek.js?v=3";
 import * as Preg from "./pregnancy.js?v=1";
 import { moanVoiceId } from "./stun_speech.js?v=24";
 import {
@@ -1208,7 +1208,7 @@ async function escortApi(body) {
 }
 function debugPeek(pose, noticed = false) {
   if (!girl) return;
-  openPeek({ who: girl, doll: window.RoomDoll?.lookToDoll(girl.look || null, { belly: Preg.bellyOf(girl) }), pose, noticed, cost: 0,
+  openPeek({ who: girl, doll: window.RoomDoll?.lookToDoll(girl.look || null, { belly: Preg.bellyOf(girl) }), pose, noticed, cost: 0, man: ESCORT_BUILDS[Math.floor(Math.random() * ESCORT_BUILDS.length)],
     voice: moanVoiceId(girl) || "", family: familyOfGirl(girl),
     onClose: (st) => { if (st.opened && noticed) pushDebug("偷看：被她發現了（除錯）"); } });
 }
