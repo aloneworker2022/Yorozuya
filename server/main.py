@@ -4464,6 +4464,9 @@ async def _life_once() -> None:
     def prep(store):
         life_agent.absorb(store, data, now_ms)
         box["logs"] = life_agent.quick_step(store, now_ms)
+        started = life_agent.auto_escort(store, data, now_ms)
+        if started:
+            box["logs"].append(f"接客還債開班：{(started.get('event') or {}).get('escort', {}).get('clients')} 位客人")
         gid = life_agent.next_due(store, now_ms)
         box["action"] = life_agent.prepare_resolve(store, gid, now_ms) if gid else None
 
@@ -4657,6 +4660,38 @@ def life_friend(body: dict):
     store = _life_mutate(commit)
     if not ok["done"]:
         raise HTTPException(status_code=409, detail="她現在不在日本，或找不到這個人")
+    return life_agent.public_snapshot(store, now_ms)
+
+
+@app.post("/api/life/escort")
+def life_escort(body: dict):
+    """test_room 接客除錯：op = start（馬上開一班，不看上限；debt 指定要還多少、clients 指定幾位）／end（現在收工結算）。"""
+    body = body or {}
+    gid = str(body.get("id") or "")
+    op = str(body.get("op") or "")
+    if not gid or op not in ("start", "end"):
+        raise HTTPException(status_code=400, detail="要指定她和 op（start／end）")
+    data = _dd_read_save() or {}
+    now_ms = int(time.time() * 1000)
+    ok = {"done": False}
+
+    def commit(store):
+        life_agent.absorb(store, data, now_ms)
+        rec = (store.get("girls") or {}).get(gid)
+        if not rec or rec.get("phase") != "japan":
+            return
+        if op == "start":
+            debt = int(body.get("debt") or 0) or max(1, life_agent.ES.est_debt(data, store))
+            ok["done"] = life_agent.start_escort(rec, debt, now_ms, random.random, force=True, clients=int(body.get("clients") or 0)) is not None
+        else:
+            ag = rec.get("agenda") or {}
+            if ag.get("kind") == "escort":
+                ag["until"] = now_ms
+                ok["done"] = life_agent.settle_escort(rec, now_ms) is not None
+
+    store = _life_mutate(commit)
+    if not ok["done"]:
+        raise HTTPException(status_code=409, detail="她現在不在日本，或沒有在接客")
     return life_agent.public_snapshot(store, now_ms)
 
 

@@ -57,9 +57,11 @@ import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACK
 import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=2";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
-import { lifeMemoryPromptLines } from "./content/life_memory.js?v=6";
+import { lifeMemoryPromptLines } from "./content/life_memory.js?v=7";
+import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient } from "./content/escort.js?v=1"; // 接客還債
+import { openPeek } from "./content/escort_peek.js?v=1";
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=8";
+import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=9";
 import { STAGE_ZH, familyStageLine, basePersonalityOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
@@ -209,6 +211,7 @@ window.YorozuyaGrowth = {
 };
 // 房間腎虧送醫：醫藥費從這裡扣主遊戲金幣（可扣到負）。存檔還沒好就回 false，房間會先記帳。
 window.YorozuyaWallet = {
+  gold() { return state && !bootFailed ? Number(state.gold) || 0 : NaN; },
   payDoctor(bill) {
     if (!state || bootFailed) return false;
     chargeDoctorBill(bill);
@@ -8178,6 +8181,10 @@ function buildRoomGirlFromSuccubus(s) {
     playerNotes: Array.isArray(s.playerNotes) ? s.playerNotes.slice() : (s.playerNotes || null),
     friends: Array.isArray(s.friends) ? s.friends.slice() : (s.friends || null),
     world: s.world || null,
+    escortBackSeq: Number(s.escortBackSeq) || 0,
+    escortReturnPending: s.escortReturnPending || null,
+    escortNoticedSeq: Number(s.escortNoticedSeq) || 0,
+    escortMine: s.escortMine || null,
     lineEvents: Array.isArray(s.lineEvents) ? s.lineEvents.slice(-10) : [],
     playerName: s.playerName || "",
     playerNick: s.playerNick || "",
@@ -8202,10 +8209,12 @@ function buildRoomGirlFromSuccubus(s) {
  * 名冊「召喚」：付黏著價 3～5 金 → 帶進房間陪伴。
  * 成功扣費後才重擲下一個報價。
  */
-function beginRoomCompanionSummon(girlId) {
-  if (isAsleep()) { toast("睡眠時段——她在睡覺", "bad"); return; }
+function beginRoomCompanionSummon(girlId, opts = {}) {
+  const free = !!opts.escortReturn;   // 接客收工自己回來：不收召喚費、負債也照回
+  if (isAsleep() && !free) { toast("睡眠時段——她在睡覺", "bad"); return; }
   const s = state.succubi.find(x => x.id === girlId);
   if (!s || s.ntr) { toast("她不在你身邊……", "bad"); return; }
+  if (!free && workingNow(s)) { toast(`${s.name}正在工作（接客還債），收工會自己回來`, "bad"); return; }
   if (rosterSummonBlocked(s)) { toast("她還在房間裡，離開以後才能再召喚", "bad"); return; }
   // 一間房一次一位：扣錢之前先看房裡有沒有別人
   const occ = roomFullFor(s);
@@ -8219,14 +8228,14 @@ function beginRoomCompanionSummon(girlId) {
     toast("先結束目前的對話", "bad");
     return;
   }
-  if (state.gold < 0) { toast("負債中,先去做委託還債吧", "bad"); return; }
-  const cost = roomSummonCost();
+  if (state.gold < 0 && !free) { toast("負債中,先去做委託還債吧", "bad"); return; }
+  const cost = free ? 0 : roomSummonCost();
   if (state.gold < cost) {
     toast(`召喚進房間要 ${cost} 金（目前 ${state.gold}）`, "bad");
     return;
   }
   state.gold -= cost;
-  const next = refreshRoomSummonOffer();
+  const next = free ? ensureRoomSummonOffer() : refreshRoomSummonOffer();
   touchInteractDay(s);   // 召進房間＝有互動
   dirty = true;
   const roomGirl = buildRoomGirlFromSuccubus(s);
@@ -8236,9 +8245,9 @@ function beginRoomCompanionSummon(girlId) {
     paidCost: cost,
     at: Date.now(),
   };
-  log(`房間召喚 ${s.name} −${cost} 金（下次報價 ${next.cost} 金）`);
+  log(free ? `${s.name}接客收工，自己回到房間` : `房間召喚 ${s.name} −${cost} 金（下次報價 ${next.cost} 金）`);
   scheduleSave();
-  toast(`正在召喚 ${s.name} 進房間（−${cost} 金）`, "good");
+  toast(free ? `${s.name}收工回來了` : `正在召喚 ${s.name} 進房間（−${cost} 金）`, "good");
   roomSummoningId = s.id;
   try { renderSuccubi(); } catch { /* ignore */ }
   // 嵌進主畫面：同頁 adopt，不導向 /test_room（儀式結束後才出現）
@@ -8558,6 +8567,7 @@ function bindRoomProgressLiveSync() {
       paintLifeRow(s.world, row);
       applyLifeHunger(s);  // 色情奇遇帶回來的飢渴：只加差額（hunger.lifeTaken）
     }
+    try { escortSettle(); } catch (err) { console.warn("[escort]", err?.message || err); }
   });
   // 關閉房間對話後再合併一次（雙保險）
   window.addEventListener("yoro-room-sheet-close", () => {
@@ -8566,6 +8576,85 @@ function bindRoomProgressLiveSync() {
       mergeRoomProgressSync();
       renderAll?.();
     } catch { /* ignore */ }
+  });
+}
+
+
+// ===== 接客還債（2026-10-10 Al；規則 content/escort.js，RP5 server/escort.py） =====
+/** 收 RP5 付的錢（只收差額，state.escortTaken 記收過多少）＋收工的老婆自己回房間。 */
+function escortSettle() {
+  if (!state || bootFailed || !Array.isArray(state.succubi)) return;
+  let changed = false;
+  for (const s of state.succubi) {
+    const add = collectPaid(state, s);
+    if (add > 0) {
+      changed = true;
+      const msg = repayToast(s.name, add, state.gold);
+      log(`接客還債：${msg}`);
+      toast(msg, state.gold < 0 ? "" : "good");
+    }
+  }
+  if (changed) { dirty = true; scheduleSave(); try { renderHud(); } catch { /* */ } }
+  // 收工回來：手機（房間的主人）才帶她回房；房裡有別人就等（12 小時內）
+  if (!(isPhoneClient() || state.roomMirror?.from !== "phone")) return;
+  for (const s of state.succubi) {
+    const due = returnDue(s);
+    if (!due) continue;
+    if (roomOccupant() || roomSummoningId || watchWith || chatWith) break;
+    s.escortBackSeq = due.seq;
+    s.escortReturnPending = { seq: due.seq, clients: due.clients, noticed: Number(s.escortNoticedSeq) === due.seq };
+    dirty = true;
+    beginRoomCompanionSummon(s.id, { escortReturn: true });
+    break;
+  }
+  try { if (document.querySelector("#roster")) renderSuccubi(); } catch { /* */ }
+}
+let escortPollAt = 0;
+async function escortPoll() {
+  if (!state || bootFailed || document.visibilityState === "hidden") return;
+  if (Date.now() - escortPollAt < 55000) return;
+  escortPollAt = Date.now();
+  try {
+    const r = await fetch("/api/life");
+    if (!r.ok) return;
+    const snap = await r.json();
+    for (const s of state.succubi || []) {
+      const row = snap?.girls?.[s.id];
+      if (!row) continue;
+      s.world = s.world && typeof s.world === "object" ? s.world : {};
+      paintLifeRow(s.world, row);
+    }
+    escortSettle();
+  } catch { /* RP5 沒開 */ }
+}
+setInterval(() => { void escortPoll(); }, 15000);
+
+/** 名冊「去看她」：10～25 金（加到負債上），點門才扣；8% 被她發現（回來時害羞或生氣）。 */
+function escortPeek(s) {
+  if (!workingNow(s)) { toast(`${s.name}現在沒在接客`, "bad"); return; }
+  const cost = peekCost();
+  const noticed = peekNoticed();
+  const pose = pickPose();
+  const seq = Number(s.world?.escort?.active?.seq) || 0;
+  let paid = false;
+  openPeek({
+    who: s, doll: window.RoomDoll?.lookToDoll(s.look || null), pose, noticed, cost,
+    voice: s.bodyState?.moanVoice || "", family: "",
+    onOpen: () => {
+      if (paid) return true;
+      paid = true;
+      state.gold -= cost;
+      dirty = true;
+      log(`偷看${s.name}接客（${ESCORT_POSE_ZH[pose]}）−${cost} 金${noticed ? "・被她發現了" : ""}`);
+      if (noticed && seq) s.escortNoticedSeq = seq;
+      scheduleSave();
+      try { renderHud(); } catch { /* */ }
+      return true;
+    },
+    onClose: () => {
+      if (paid) toast(noticed ? `……${s.name}好像發現你在偷看了（−${cost} 金，負債 ${debtOf(state.gold)}）` : `偷看花了 ${cost} 金${state.gold < 0 ? `，負債 ${debtOf(state.gold)} 金` : ""}`, noticed ? "bad" : "");
+      try { renderSuccubi(); } catch { /* */ }
+    },
   });
 }
 
@@ -13077,6 +13166,10 @@ function lineWhereabouts(s) {
     return { kind: "room", text: "你的人在召喚者的房間裡。時間以台灣為準。" };
   }
   const home = world?.home?.name ? `「${world.home.name}」` : "";
+  if (world?.activity === "escort") {
+    // 接客還債：群裡只說在工作，絕對不講細節（2026-10-10）
+    return { kind: "work", text: "你人在日本，正在工作（為了幫他還債去接客——這件事絕對不在群裡講，只說在忙、在工作）。時間以日本為準。" };
+  }
   if (world?.activity === "work" && world.shift?.pending) {
     const job = world.job?.name ? `「${world.job.name}」` : "";
     return {
@@ -18456,10 +18549,11 @@ function renderSuccubi() {
           <span class="stage-chip">${s.ntr ? "被奪走" : stageLabel(displayStage(s))}</span>
           ${!s.ntr && s.summoner?.taken ? `<span class="stage-chip" style="color:var(--red)">→ 被召喚走</span>`
             : isKanban(s.id) ? `<span class="stage-chip" style="color:var(--gold)">★ 在店頭</span>` : ""}
+          ${!s.ntr && workingNow(s) ? `<span class="stage-chip escort-chip" style="color:#e88ab4">接客中・第 ${currentClient(s)} 位客人</span>` : ""}
           ${s.summoner && !s.ntr ? `<span class="stage-chip" style="color:var(--red)">⚠ ${esc(summonerById(s.summoner.id)?.name || "被纏上")}${s.summoner.ringUnlocked ? "・已解環" : ""}</span>` : ""}</div>
         ${affThermoHtml(s)}
       </div>
-      ${s.ntr || rosterSummonBlocked(s) ? "" : summonBtn}
+      ${s.ntr || rosterSummonBlocked(s) ? "" : workingNow(s) ? `<button type="button" class="roster-summon roster-peek" title="偷看她接客：10～25 金，加到負債上">去看她</button>` : summonBtn}
       <div class="status-dot ${st}"></div>`;
     if (!s.ntr) el.title = "點一下打開。長按獻祭。";
     // 長按只做記號。等手指放開、那一下 click 過去之後才打開確認，避免鬆手點到「確定獻祭」。
@@ -18475,6 +18569,7 @@ function renderSuccubi() {
     el.querySelector(".roster-summon")?.addEventListener("click", (ev) => {
       ev.stopPropagation();
       if (armed || opening) return;
+      if (ev.currentTarget.classList.contains("roster-peek")) { escortPeek(s); return; }
       beginRoomCompanionSummon(s.id);
     });
     const openSacrifice = () => {

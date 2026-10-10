@@ -211,7 +211,7 @@ import {
   dressedReactionLine,
   dressedReactionPrompt,
 } from "./undress_shy.js?v=3";
-import { PERSONALITY_FAMILY, familyStageLine } from "./girl_voice.js?v=1";
+import { PERSONALITY_FAMILY, familyStageLine, familyOf } from "./girl_voice.js?v=1";
 import { lineEventPromptLines } from "./line_social.js?v=1";
 import {
   TRIGGERS as TALK_TRIGGERS, TRIGGER_ZH as TALK_TRIGGER_ZH, talkEligible, ensureTalkState, talkGate, tickTalk, freshMemory, freshLineEvent,
@@ -219,7 +219,7 @@ import {
   noteOpened as talkNoteOpened, noteReplied as talkNoteReplied, noteClosed as talkNoteClosed, noteIgnored as talkNoteIgnored, waitExpired as talkWaitExpired,
   talkLabel, TALK_KNOBS,
 } from "./proactive_talk.js?v=1";
-import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines, affairDisclosure } from "./life_memory.js?v=6";
+import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines, affairDisclosure } from "./life_memory.js?v=7";
 import { friendRows, applyLifeTraces, recentAffair, FRIEND_STAGES, FRIEND_STAGE_ZH } from "./life_friends.js?v=2";
 import {
   mountButtPackEditor,
@@ -324,10 +324,14 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=8";
+import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=9";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.js?v=1";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
+import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
+  ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood } from "./escort.js?v=1";
+import { openPeek } from "./escort_peek.js?v=1";
+import { moanVoiceId } from "./stun_speech.js?v=24";
 import {
   hungerOn,
   ensureHunger,
@@ -1038,6 +1042,198 @@ function bindTalkDebug() {
     pushDebug(ok ? `除錯：叫她走過來聊（${TALK_TRIGGER_ZH[t]}）` : "除錯：她不在房間");
   });
   onId("dbg-talk-now", "click", () => { const st = talkState(); if (!st) return; st.leftMs = 0; st.closedAt = 0; proactiveTalkTick(); renderTalkDebug(); });
+}
+
+// ---------------------------------------------------------------- 接客還債（escort.js，2026-10-10 Al）
+/**
+ * 只有老婆（妻子以上）。負債 > 50：人在房裡的老婆自己走到你面前說一句、然後出門（不能阻止）；
+ * 負債 1～50：互動列多「拜託她幫忙還債」，她決定。出門＝world.escortGo 旗＋送她走，RP5 開班（手機關著也照走）。
+ * 金幣：主遊戲（app.js YorozuyaWallet）；test_room 沙盒用 localStorage yoro_sandbox_gold。
+ */
+let escortDialog = null;   // {mode:'auto'|'ask', phase:'opening'|'choose', line}
+const SANDBOX_GOLD_KEY = "yoro_sandbox_gold";
+function walletGold() {
+  const w = window.YorozuyaWallet;
+  if (w?.gold) { const g = w.gold(); if (Number.isFinite(Number(g))) return Number(g); }
+  return Number(localStorage.getItem(SANDBOX_GOLD_KEY) || 0) || 0;
+}
+function setSandboxGold(v) { localStorage.setItem(SANDBOX_GOLD_KEY, String(Math.round(v))); renderEscortDebug(); }
+function escortDialogActive() { return !!escortDialog && sheetOpen(); }
+function escortBusy() {
+  const b = talkBusyFlags();
+  return b.notInRoom || b.hidden || b.talkBusy || b.scene || b.sex || b.undress || b.editor || b.summoning || b.errand || !!begDialog;
+}
+function escortTick() {
+  if (!girl || escortDialog || !girlInRoom() || !canEscort(girl)) return;
+  if (!autoDue(walletGold()) || !limitOk(escortLog(girl), Date.now()).ok) return;
+  if (escortBusy()) return;
+  startEscortDialog("auto");
+}
+if (typeof window !== "undefined") {
+  setInterval(() => { try { escortTick(); } catch (err) { console.warn("[escort tick]", err?.message || err); } }, 15000);
+}
+/** 她走到你面前要出門：auto（負債 >50）／ask（你拜託、她答應了）。 */
+function startEscortDialog(mode) {
+  if (!girl) return false;
+  escortDialog = { mode, phase: "opening", line: "" };
+  pushDebug(`接客還債：${girl.name}${mode === "auto" ? "決定去接客還債（負債 " + debtOf(walletGold()) + "）" : "答應幫你還債"}`);
+  if (sheetOpen()) void openEscortDialog();
+  else showSheet();
+  return true;
+}
+async function openEscortDialog() {
+  const who = girl;
+  if (!who || !escortDialog) return;
+  escortDialog.phase = "opening";
+  talkBusy = true;
+  setTalkEnabled(false);
+  $("portrait-sheet")?.classList.add("beg-chat");
+  refreshTalkActs();
+  $("portrait-name").textContent = who.name;
+  setTyping(true);
+  const feel = { wronged: "有點委屈但心甘情願", resigned: "認命、淡淡的", willing: "很乾脆、甚至有點得意", aroused: "害羞又有點期待" }[feelOf(who)];
+  const ask = escortDialog.mode === "ask"
+    ? `（他拜託你幫忙還債，你答應了：要去接客。只寫你答應他、準備出門的一句話，口氣${feel}；是你自己願意為他做的，不要怪他，不要講細節，不要旁白。）`
+    : `（家裡欠的債太多了，你自己決定去接客幫他還債，現在走到他面前要出門。只寫你跟他說的一句話，口氣${feel}；是你自己願意為他做的，不要怪他，不要講細節，不要旁白。）`;
+  let line = "";
+  try {
+    const reply = await withTimeout(askGirl(ask), 12000, "");
+    line = scrubHusband(cleanLine(reply), who.stage || "stranger", who.playerPet || "").slice(0, 80);
+  } catch { /* 用本地句 */ }
+  if (!line) line = escortDialog.mode === "ask" ? askLine(who, true) : leaveLine(who);
+  if (girl !== who || !escortDialog) return;
+  escortDialog.line = line;
+  lines.push({ role: "assistant", content: line });
+  setTyping(false);
+  await typeLine(who.name, line);
+  if (girl !== who || !escortDialog) return;
+  escortDialog.phase = "choose";
+  talkBusy = false;
+  refreshTalkActs();
+}
+const HUG_LINES = ["……嗯。等我回來。", "抱一下就夠了……我出門了。", "傻瓜……我很快就回來。", "嗯……我會想你的。"];
+function renderEscortBar() {
+  const row = $("talk-acts");
+  if (!row || !escortDialog) return;
+  row.hidden = !sheetOpen() || !girl;
+  row.classList.add("undress-bar", "beg-bar");
+  for (const btn of [...row.querySelectorAll("button")]) btn.remove();
+  const choose = escortDialog.phase === "choose";
+  const add = (id, label, fn) => {
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.dataset.undress = id; btn.dataset.escort = id; btn.textContent = label; btn.disabled = !choose;
+    btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); if (!btn.disabled) fn(); });
+    row.append(btn);
+  };
+  if (!escortDialog.hugged) add("hug", "抱抱她", () => void escortHug());
+  add("go", "目送她出門", () => escortLeave());
+}
+async function escortHug() {
+  if (!girl || !escortDialog || escortDialog.phase !== "choose") return;
+  escortDialog.hugged = true;
+  escortDialog.phase = "opening";
+  refreshTalkActs();
+  lines.push({ role: "user", content: "（你抱了抱她。）" });
+  await typeLine(girl.name, HUG_LINES[Math.floor(Math.random() * HUG_LINES.length)]);
+  if (!escortDialog) return;
+  escortDialog.phase = "choose";
+  refreshTalkActs();
+}
+/** 出門：打旗給 RP5（同一個 key 只開一班），走一般「送她走」那條（回日本、清停留）。 */
+function escortLeave(who = girl) {
+  if (!who) return;
+  const now = Date.now();
+  who.world = who.world && typeof who.world === "object" ? who.world : {};
+  who.world.escortGo = { key: `g${now}`, at: now, debt: debtOf(walletGold()), mode: escortDialog?.mode || "auto" };
+  who.escortMine = who.escortMine && typeof who.escortMine === "object" ? who.escortMine : {};
+  who.escortMine.starts = [...(who.escortMine.starts || []).filter((t) => now - t < 48 * 3600e3), now].slice(-6);
+  escortDialog = null;
+  $("portrait-sheet")?.classList.remove("beg-chat");
+  $("talk-acts")?.classList.remove("undress-bar", "beg-bar");
+  pushDebug(`接客還債：${who.name} 出門了（world.escortGo ${who.world.escortGo.key}）`);
+  const status = $("summon-status");
+  sendHerOutAgain();
+  if (status) status.textContent = `${who.name}出門去接客還債了。手機關著也會照常工作，做完會回到房間。`;
+  try { window.dispatchEvent(new CustomEvent("yoro-escort-go", { detail: { id: who.gameGirlId || who.id } })); } catch { /* */ }
+}
+/** 互動列「拜託她幫忙還債」：負債 1～50、老婆、沒在冷卻。 */
+function canAskEscort() {
+  return !!girl && girlInRoom() && canEscort(girl) && askable(walletGold()) && !escortDialog
+    && Date.now() >= (Number(girl.escortMine?.askCoolUntil) || 0);
+}
+async function askEscort() {
+  if (!canAskEscort() || talkBusy) return;
+  const who = girl;
+  lines.push({ role: "user", content: "（你拜託她幫忙去接客還債。）" });
+  const lim = limitOk(escortLog(who), Date.now());
+  const mood = getMoodCarry(who);
+  const p = askChanceFor(who, mood, HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0);
+  const yes = lim.ok && Math.random() < p;
+  pushDebug(`接客還債：拜託她（答應機率 ${Math.round(p * 100)}%${lim.ok ? "" : "・今天已經不能再去"}）→ ${yes ? "答應" : "拒絕"}`);
+  if (yes) { startEscortDialog("ask"); return; }
+  who.escortMine = who.escortMine && typeof who.escortMine === "object" ? who.escortMine : {};
+  if (lim.ok) who.escortMine.askCoolUntil = Date.now() + ASK_COOL_MS;
+  const line = lim.ok ? askLine(who, false) : "今天……已經沒力氣了，讓我休息一下好不好？";
+  lines.push({ role: "assistant", content: line });
+  persistRoom();
+  talkBusy = true;
+  refreshTalkActs();
+  await typeLine(who.name, line);
+  talkBusy = false;
+  refreshTalkActs();
+}
+/** 回到房間時（召回或除錯）：接客的情緒餘溫＋被發現偷看。 */
+function escortArrivalMood(who, info) {
+  if (!who || !info) return;
+  const m = info.noticed ? noticedMood(who) : escortReturnMood(who, info.clients);
+  if (m) { noteMood(who, { ...m, now: Date.now() }); pushDebug(`接客還債：回來的心情 ${m.type} ${m.level}（${m.cause}）`); }
+}
+function renderEscortDebug() {
+  const el = $("dbg-escort");
+  if (!el) return;
+  const g = walletGold();
+  const e = girl?.world?.escort;
+  const act = e?.active;
+  el.textContent = girl
+    ? `金幣 ${g}（負債 ${debtOf(g)}）・${canEscort(girl) ? "老婆" : "不是老婆（不會去）"}・${act ? `接客中 ${act.clients} 位，到 ${new Date(act.until).toLocaleTimeString()}` : "沒在接客"}・RP5 累計付 ${e?.paid || 0}・上一班 ${e?.lastClients || 0} 位 ${e?.lastPaid || 0} 金`
+    : "—";
+}
+async function escortApi(body) {
+  const resp = await fetch("/api/life/escort", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!resp.ok) { pushDebug(`接客除錯失敗：${(await resp.json().catch(() => ({})))?.detail || resp.status}`); return null; }
+  const snap = await resp.json();
+  try { applyLifeSnap(snap); } catch { /* */ }
+  return snap;
+}
+function debugPeek(pose, noticed = false) {
+  if (!girl) return;
+  openPeek({ who: girl, doll: window.RoomDoll?.lookToDoll(girl.look || null), pose, noticed, cost: 0,
+    voice: moanVoiceId(girl) || "", family: familyOfGirl(girl),
+    onClose: (st) => { if (st.opened && noticed) pushDebug("偷看：被她發現了（除錯）"); } });
+}
+function familyOfGirl(who) { try { return familyOf(who); } catch { return ""; } }
+function bindEscortDebug() {
+  onId("dbg-escort-gold-80", "click", () => setSandboxGold(-80));
+  onId("dbg-escort-gold-30", "click", () => setSandboxGold(-30));
+  onId("dbg-escort-gold-0", "click", () => setSandboxGold(0));
+  onId("dbg-escort-auto", "click", () => { if (girl && girlInRoom()) startEscortDialog("auto"); else pushDebug("除錯：她不在房間"); });
+  onId("dbg-escort-ask", "click", () => void askEscort());
+  onId("dbg-escort-start", "click", async () => { if (!girl) return; await escortApi({ id: girl.gameGirlId || girl.id, op: "start", debt: debtOf(walletGold()) || 80 }); renderEscortDebug(); });
+  onId("dbg-escort-end", "click", async () => {
+    if (!girl) return;
+    const snap = await escortApi({ id: girl.gameGirlId || girl.id, op: "end" });
+    const e = snap?.girls?.[girl.gameGirlId || girl.id]?.escort;
+    if (e && !window.YorozuyaWallet?.gold) {
+      const taken = Number(localStorage.getItem("yoro_sandbox_escort_taken") || 0);
+      if (e.paid > taken) { setSandboxGold(walletGold() + (e.paid - taken)); localStorage.setItem("yoro_sandbox_escort_taken", String(e.paid)); pushDebug(`${girl.name}還了 ${e.paid - taken} 金，剩餘負債 ${debtOf(walletGold())} 金`); }
+    }
+    renderEscortDebug();
+  });
+  onId("dbg-escort-back", "click", () => { if (girl) escortArrivalMood(girl, { clients: girl.world?.escort?.lastClients || 2, noticed: false }); renderDebug(); });
+  onId("dbg-escort-noticed", "click", () => { if (girl) escortArrivalMood(girl, { noticed: true }); renderDebug(); });
+  for (const p of ESCORT_POSES) onId(`dbg-peek-${p}`, "click", () => debugPeek(p, false));
+  onId("dbg-peek-noticed", "click", () => debugPeek(ESCORT_POSES[Math.floor(Math.random() * 4)], true));
+  renderEscortDebug();
 }
 function bindHungerDebug() {
   const set = (v) => {
@@ -2108,6 +2304,19 @@ function finishSummonArrival(who, mode) {
     resetOpenness(who);
   }
   window.RoomActor?.setPresent(true);
+  // 接客收工回來（2026-10-10）：痕跡（同一套 lifeTraces，只收一次）＋依個性的心情／被發現偷看
+  try {
+    const e = who.world?.escort;
+    const seq = Math.floor(Number(e?.lastSeq) || 0);
+    const pend = who.escortReturnPending;
+    if (pend || (seq && seq > Math.floor(Number(who.escortBackSeq) || 0) && Date.now() - (Number(e.lastEnd) || 0) < 12 * 3600e3)) {
+      applyLifeTraces(who);
+      escortArrivalMood(who, { clients: pend?.clients || e?.lastClients || 1, noticed: !!pend?.noticed || (seq && who.escortNoticedSeq === seq) });
+      who.escortBackSeq = Math.max(seq, Math.floor(Number(who.escortBackSeq) || 0));
+      who.escortReturnPending = null;
+      if (who.world) who.world.escortGo = null;
+    }
+  } catch (err) { console.warn("[escort back]", err?.message || err); }
   if (mode === "back" || mode === "arrive") {
     try { armRoomVisit(who); } catch { /* */ }
   }
@@ -7419,6 +7628,7 @@ function renderDebug() {
     return;
   }
   panel.hidden = false;
+  try { renderEscortDebug(); } catch { /* */ }
   $("dbg-stage").textContent = STAGE_NAME[girl.stage || "stranger"] || "陌生";
   $("dbg-aff").textContent = String(girl.affection || 0);
   ensureOpenness(girl);
@@ -9158,6 +9368,11 @@ function refreshTalkActs() {
     renderBegBar();
     return;
   }
+  // 老婆要出門接客還債：只有「抱抱她／目送她出門」
+  if (escortDialogActive()) {
+    renderEscortBar();
+    return;
+  }
   row.classList.remove("beg-bar");
   // 專屬場面開啟時隱藏互動列（overlay 蓋住；關閉後再顯示）
   row.hidden = !sheetOpen() || !girl || sceneOpen();
@@ -9183,6 +9398,16 @@ function refreshTalkActs() {
       if (btn.disabled) return;
       sendTalkAct(act.id);
     });
+    row.append(btn);
+  }
+  // 負債 1～50：拜託老婆幫忙還債（她決定）
+  if (!talkBusy && canAskEscort()) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.romance = "escort";
+    btn.textContent = "拜託她幫忙還債";
+    btn.title = `負債 ${debtOf(walletGold())} 金：拜託她去接客幫你還（她會自己決定）`;
+    btn.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void askEscort(); });
     row.append(btn);
   }
   // 告白／求婚（互斥；條件不符則不顯示）
@@ -9511,6 +9736,11 @@ function showSheet() {
   if (undressStage(girl) >= 3) rollNudeStandee(girl);
   paintHalfPortrait(girl);
   restoreInsertView(girl);
+  if (escortDialog && wasHidden) {
+    if (talkFor !== girl.id) { talkFor = girl.id; lines = []; }
+    void openEscortDialog();
+    return;
+  }
   if (begNow) {
     begDialog = { phase: "opening", at: Date.now() };
     void openBegDialog();
@@ -10002,6 +10232,8 @@ function loadRoomSave() {
 }
 
 function hideSheet() {
+  // 老婆要出門接客：關掉對話框＝目送她出門（不能阻止）
+  if (escortDialog && girl) { const who = girl; escortDialog.phase = "done"; setTimeout(() => { if (girl === who && girlInRoom()) escortLeave(who); }, 0); }
   // 求的對話框：關掉＝不理她（求的窗口照 hungerChatClose 收）
   if (begDialog) endBegDialog();
   if (!$("portrait-sheet")?.hidden) proactiveTalkClosed();
@@ -10462,6 +10694,10 @@ let summonBackBusy = false;
 async function summonHerBack() {
   // 有 world 且人在外即可召回；住處未定也允許（找房／ensure 仍只在離房／逃離時做）
   if (!girl?.world || !sheIsOut() || summonBackBusy) return;
+  if (workingNow(girl)) {
+    if ($("summon-status")) $("summon-status").textContent = `${girl.name}正在工作（接客還債），收工會自己回來。`;
+    return;
+  }
   const who = girl;
   summonBackBusy = true;
   const btn = $("summon-back");
@@ -11235,6 +11471,7 @@ bindTalkActs();
 bindMissDebug();
 bindHungerDebug();
 bindTalkDebug();
+bindEscortDebug();
 bindOrganDevDebug();
 bindReckonDebug();
 onId("talk-input-row", "submit", (event) => { sendTalk(event); });

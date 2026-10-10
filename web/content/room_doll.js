@@ -149,6 +149,7 @@
     }
     // rigid transforms {R(row-major 3×3), t}
     function rotX(deg) { const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return [1, 0, 0, 0, c, -s, 0, s, c]; }
+    function rotZ(deg) { const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return [c, -s, 0, s, c, 0, 0, 0, 1]; }
     function rotY(deg) { const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return [c, 0, s, 0, 1, 0, -s, 0, c]; }
     function mulR(A, B) {
       const o = new Array(9);
@@ -229,12 +230,16 @@
     }
     function cupRadius(P, doll) { const b = P.b; return (CUP_R[doll.cup] || 3.1) * b.bust ** .7 * b.frame ** .5; }
     function bustOuter(P, doll) { const b = P.b, r = cupRadius(P, doll); return (3.2 + r * .3) * F(b, 'chest') ** .5 + r * .95; }
-    function torso(sh, P, doll, dy = 0, dz = 0, lean = 0, bounce = [0, 0, 0, 0]) {
-      const b = P.b, zc = P.zc + dz, S = P.S + dz, C = P.C + dz, T = P.T;
-      const yl = (z) => dy + (z - C) * lean;
-      const hs = b.head, soft = b.soft;
+    function headPart(sh, P, yl, zc) {
+      const hs = P.b.head, soft = P.b.soft;
       sh.ell(BODY, [0, yl(zc) + .3, zc], [6.9 * hs, 7.2 * hs, P.head_h / 2]);
       sh.ell(BODY, [0, yl(zc) + 2.2, zc - 6.0 * hs], [(4.6 + .8 * soft) * hs, 4.6 * hs, 3.6 * hs]);
+    }
+    function torso(sh, P, doll, dy = 0, dz = 0, lean = 0, bounce = [0, 0, 0, 0], noHead = false) {
+      const b = P.b, zc = P.zc + dz, S = P.S + dz, C = P.C + dz, T = P.T;
+      const yl = (z) => dy + (z - C) * lean;
+      const soft = b.soft;
+      if (!noHead) headPart(sh, P, yl, zc);
       const neck_r = 2.7 * b.frame * (1 + .12 * soft + .06 * b.muscle);
       sh.cone(BODY, [0, yl(S) - .4, S - 1], [0, yl(zc) - .6, P.chin + dz + 2], neck_r, neck_r * .85);
       const wS = F(b, 'sh');
@@ -383,6 +388,8 @@
     /** 畫布：std＝站／坐；tall＝手舉高（伸懶腰）；wide＝躺在地上（橫跨兩格）。 */
     const CANVAS = {
       std: { w: W, h: H_CANVAS, ax: ANCHOR.x, ay: ANCHOR.y, tMax: 40, tMin: -45 },
+      // 側面正交：螢幕 x＝世界 +y（往右）、螢幕 y＝−z；scale＝每模型單位幾像素
+      peek: { w: 260, h: 166, ax: 120, ay: 152, side: true, scale: 1.28 },
       tall: { w: W, h: 166, ax: ANCHOR.x, ay: 152, tMax: 40, tMin: -45 },
       wide: { w: 128, h: 100, ax: 64, ay: 70, tMax: 95, tMin: -95 },
     };
@@ -394,7 +401,44 @@
       stare: { frames: 2, fps: .9 }, twirl: { frames: 3, fps: 2.4 },
       lie_phone: { frames: 2, fps: .5, canvas: 'wide' }, prone_kick: { frames: 4, fps: 3, canvas: 'wide' },
       sleep_curl: { frames: 2, fps: .35, canvas: 'wide' }, sit_curl: { frames: 2, fps: .45 },
+      // 接客偷看（2026-10-10）：側面正交投影、10 格一個抽送循環（慢慢退出→猛地頂進）
+      sex_missionary: { frames: 10, fps: 9, canvas: 'peek' }, sex_cowgirl: { frames: 10, fps: 9, canvas: 'peek' },
+      sex_doggy: { frames: 10, fps: 9, canvas: 'peek' }, sex_kiss: { frames: 10, fps: 7, canvas: 'peek' },
     };
+    /** 抽送深度（1＝頂到底、0＝退到最外）；每格停留毫秒。照 mockups/peek/half4.py。 */
+    const SEX_THRUST = [1, .8, .6, .42, .26, .13, .04, 0, .45, .9];
+    const SEX_FRAME_MS = [150, 110, 110, 110, 110, 110, 110, 90, 60, 60];
+    const SEX_POSES = ['sex_missionary', 'sex_cowgirl', 'sex_doggy', 'sex_kiss'];
+    /** 偷看的床：床面高度（模型單位，z）。客人剪影跟著這些世界座標畫（escort_peek.js）。 */
+    const PEEK_BED_Z = 0;
+    function mulT(R, v) { return [R[0] * v[0] + R[3] * v[1] + R[6] * v[2], R[1] * v[0] + R[4] * v[1] + R[7] * v[2], R[2] * v[0] + R[5] * v[1] + R[8] * v[2]]; }
+    function toLocal(xf, w) { return mulT(xf.R, [w[0] - xf.t[0], w[1] - xf.t[1], w[2] - xf.t[2]]); }
+    function toWorld(xf, l) { const v = mulV(xf.R, l); return [v[0] + xf.t[0], v[1] + xf.t[1], v[2] + xf.t[2]]; }
+    /** 抽送時她身體被撞的位移 → 乳房阻尼彈簧（同一套 SPRING／CUP_BOUNCE）。回傳 10 格的 [bx,by,bz,sq]（局部座標）。 */
+    const sexBounceCache = new Map();
+    function sexBounce(P, doll, axis, amp) {
+      const kind = BUILD_SPRING[doll.build] || 'normal', key = `${doll.build}|${doll.cup}|${axis}|${amp}`;
+      if (sexBounceCache.has(key)) return sexBounceCache.get(key);
+      const [f0, zeta, gain] = SPRING[kind], w = 2 * Math.PI * f0, n = SEX_THRUST.length;
+      const total = SEX_FRAME_MS.reduce((a, b) => a + b, 0) / 1000, steps = 200, dt = total / steps;
+      const pos = (tm) => {   // 身體位移（跟著格的時間內插）
+        let acc = 0; for (let i = 0; i < n; i++) { const d = SEX_FRAME_MS[i] / 1000; if (tm < acc + d) { const f = (tm - acc) / d; return amp * (SEX_THRUST[i] ** 3 * (1 - f) + SEX_THRUST[(i + 1) % n] ** 3 * f); } acc += d; }
+        return amp * SEX_THRUST[0] ** 3;
+      };
+      let y = 0, v = 0; const out = new Array(n).fill(0);
+      for (let c = 0; c < 6; c++) {
+        let acc = 0, fi = 0;
+        for (let k = 0; k < steps; k++) {
+          const tm = k * dt, a = (pos(tm + dt) - 2 * pos(tm) + pos(Math.max(0, tm - dt))) / (dt * dt);
+          for (let j = 0; j < 8; j++) { v += (-w * w * y - 2 * zeta * w * v - a) * dt / 8; y += v * dt / 8; }
+          if (c === 5 && tm >= acc) { out[fi] = y; acc += SEX_FRAME_MS[fi] / 1000; fi = Math.min(n - 1, fi + 1); }
+        }
+      }
+      const peak = Math.max(...out.map(Math.abs)) || 1, cb = (CUP_BOUNCE[doll.cup] ?? .35) * gain;
+      const res = out.map(o => o / peak * cb * 1.6);
+      sexBounceCache.set(key, res);
+      return res;
+    }
     function build(doll, pose, frame, yaw, opts = {}) {
       const P = proportions(doll), sh = makeShape(), b = P.b;
       const hip_x = 5.1 * F(b, 'hip') * (1 + .3 * (F(b, 'thigh') - 1));
@@ -671,7 +715,80 @@
         hair(sh, P, doll, tor);
         return { sh, P };
       }
+      if (SEX_POSES.includes(pose)) return buildSex(doll, pose, f, opts);
       throw new Error('unknown pose ' + pose);
+    }
+
+    // -------------------------------------------------- 接客偷看的四種體位（側面；世界 +y＝往右＝客人那邊，床面 z＝0）
+    const DOGGY_R = [-1, 0, 0, 0, 0, -1, 0, -1, 0];   // 局部「上」→ 世界 −y（頭朝左）、局部「前」→ 世界 −z（胸口朝床）
+    function buildSex(doll, pose, f, opts = {}) {
+      const P = proportions(doll), sh = makeShape(), b = P.b;
+      const p = SEX_THRUST[f], j = p ** 3;
+      const hip_x = 5.1 * F(b, 'hip') * (1 + .3 * (F(b, 'thigh') - 1));
+      const Lt = P.hipz - P.knee, Ls = P.knee - P.ankle, Lu = P.H * .16, Lf = P.H * .14;
+      let R, H, lean = 0, ankles, pole, wrists, apole, headR = null, axis = 'z', amp = 2.4;
+      if (pose === 'sex_missionary') {          // 仰躺、頭在左（枕頭），雙腿抬起張開，他從右邊頂
+        R = rotX(78); H = [0, -3.4 * j, 6.5];
+        ankles = (s) => [s * 7, H[1] + 21 + (s > 0 ? 2 : 0), 33]; pole = (s) => [s * .3, -.5, 1];   // 膝彎、小腿靠在他肩上
+        wrists = (s) => [s * 6, H[1] + 6, 22 + s * 2]; apole = (s) => [s * .5, -.4, .6];
+        headR = rotX(-24); axis = 'y'; amp = 3.4;
+      } else if (pose === 'sex_cowgirl') {      // 跨坐在他腰上、面向左（他的頭），上下起伏
+        R = rotZ(180); H = [0, 4, 11 + 16 * (1 - p)]; lean = .12;
+        ankles = (s) => [s * 8.5, H[1] + 13, 1.6]; pole = (s) => [s * .3, -1, .1];
+        wrists = (s) => [s * 5.5, -12, Math.max(9, H[2] + 4)]; apole = (s) => [s * .6, .3, -.2];
+        headR = rotX(14); amp = 16;
+      } else if (pose === 'sex_doggy') {        // 跪趴、頭在左、屁股翹向右邊的他；臉朝前（枕頭）
+        R = mulR(DOGGY_R, rotX(16)); H = [0, 8 - 3 * j, Lt + 1.5];
+        ankles = (s) => [s * 4.2, H[1] + 17, 1.3]; pole = (s) => [s * .2, -1, -.6];
+        wrists = null; apole = (s) => [s * .5, .5, 0];
+        headR = rotX(50); axis = 'y'; amp = 3;   // 臉朝前（枕頭那邊），稍微抬頭
+      } else {                                   // sex_kiss：坐在他腿上面對面（他在右），雙腿環著他、親著他
+        R = rotX(0); H = [0, -4 - 2.5 * j, 15 + 7 * (1 - p)]; lean = .2;
+        ankles = (s) => [s * 8.5, 17, 9]; pole = (s) => [s * .8, .3, .6];
+        wrists = (s) => [s * 3.5, 14.5, 41]; apole = (s) => [s * 1, -.2, -.4];
+        headR = rotX(-8); amp = 7;
+      }
+      const pivot = [0, 0, P.hipz], rp = mulV(R, pivot);
+      const xf = { R, t: [H[0] - rp[0], H[1] - rp[1], H[2] - rp[2]] };
+      sh.xf = xf;
+      const bv = sexBounce(P, doll, axis, amp)[f] * (opts.bounceScale ?? 1);
+      const bnc = axis === 'z' ? [0, 0, bv, Math.max(-.08, Math.min(.08, -bv * .03))] : [0, 0, bv * .8, Math.max(-.08, Math.min(.08, -bv * .03))];
+      const tor = torso(sh, P, doll, 0, 0, lean, bnc, true);
+      // 腿：世界座標的腳踝 → IK → 局部
+      for (const s of [-1, 1]) {
+        const hipL = [s * hip_x, 0, P.hipz], hipW = toWorld(xf, hipL), ankW = ankles(s);
+        const kneeW = ik(hipW, ankW, Lt, Ls, pole(s));
+        const toeW = pose === 'sex_doggy' || pose === 'sex_cowgirl' ? [0, .3, -.95] : pose === 'sex_kiss' ? [0, -.3, -.9] : [0, .6, .8];
+        leg(sh, P, s, hipL, toLocal(xf, kneeW), toLocal(xf, ankW), mulT(R, toeW));
+      }
+      // 手
+      for (const s of [-1, 1]) {
+        const sj = [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) - .4, tor.S - 2.6], sjW = toWorld(xf, sj);
+        const wW = wrists ? wrists(s) : [s * 6, sjW[1] - 3, 1.2];
+        const eW = ik(sjW, wW, Lu, Lf, apole(s));
+        arm(sh, P, sj, toLocal(xf, eW), toLocal(xf, wW));
+      }
+      // 頭（可以轉向他）＋頭髮
+      const neck = [0, tor.yl(tor.S), tor.S + 1.5];
+      sh.xf = headR ? compose(xf, about(headR, neck)) : xf;
+      headPart(sh, P, tor.yl, tor.zc);
+      hair(sh, P, doll, tor, (pose === 'sex_cowgirl' ? 3 : 2) * (p - .5));
+      sh.xf = null;
+      return { sh, P, xf, H };
+    }
+    /** 檢查用：這個體位 10 格的乳房位移（局部單位）。 */
+    function sexBounceOf(doll, pose) {
+      const P = proportions(doll), cfg = { sex_missionary: ['y', 3.4], sex_cowgirl: ['z', 16], sex_doggy: ['y', 3], sex_kiss: ['z', 7] }[pose];
+      return sexBounce(P, doll, cfg[0], cfg[1]).slice();
+    }
+    /** 給偷看畫客人用：這一格她的骨盆世界座標（床面 z＝0）。 */
+    function sexAnchor(doll, pose, frame) {
+      const P = proportions(doll), b = P.b, p = SEX_THRUST[((frame % 10) + 10) % 10], j = p ** 3;
+      const Lt = P.hipz - P.knee;
+      if (pose === 'sex_missionary') return { hip: [0, -3.4 * j, 6.5], p, H: P.H };
+      if (pose === 'sex_cowgirl') return { hip: [0, 4, 11 + 16 * (1 - p)], p, H: P.H };
+      if (pose === 'sex_doggy') return { hip: [0, 8 - 3 * j, Lt + 1.5], p, H: P.H, butt: 6.5 * F(b, 'butt') };
+      return { hip: [0, -4 - 2.5 * j, 15 + 7 * (1 - p)], p, H: P.H };
     }
 
     // ------------------------------------------------------------ render
@@ -680,6 +797,7 @@
       const cv = CANVAS[(POSES[pose] && POSES[pose].canvas) || 'std'];
       const width = cv.w, height = cv.h, ax = cv.ax, ay = cv.ay;
       const { sh, P } = build(doll, pose, frame, yaw, opts);
+      if (cv.side) return renderSide(sh, P, cv);
       const prims = sh.prims, np = prims.length;
       // world-space bounding spheres (primitive offsets folded in)
       const bcx = new Float64Array(np), bcy = new Float64Array(np), bcz = new Float64Array(np), brr = new Float64Array(np), pm = new Uint8Array(np);
@@ -775,6 +893,49 @@
       }
       return { width, height, anchor: { x: ax, y: ay }, pixels, depth };
     }
+    /** 側面正交投影（接客偷看）：視線沿 −x，螢幕 x＝ax＋y·scale、螢幕 y＝ay−z·scale。深度＝x（越大越近）。 */
+    function renderSide(sh, P, cv) {
+      const width = cv.w, height = cv.h, ax = cv.ax, ay = cv.ay, k = cv.scale;
+      const prims = sh.prims, np = prims.length;
+      const wb = prims.map(p => { let q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]]; if (p.xf) { const w = mulV(p.xf.R, q); q = [w[0] + p.xf.t[0], w[1] + p.xf.t[1], w[2] + p.xf.t[2]]; } return q; });
+      let xmax = -1e9, xmin = 1e9;
+      for (let i = 0; i < np; i++) { xmax = Math.max(xmax, wb[i][0] + prims[i].br); xmin = Math.min(xmin, wb[i][0] - prims[i].br); }
+      const n = width * height, hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9);
+      const dist = [0, 0, 0];
+      for (let py = 0; py < height; py++) {
+        const Z = (ay - py - .5) / k;
+        for (let px = 0; px < width; px++) {
+          const Y = (px + .5 - ax) / k;
+          const cand = [];
+          for (let i = 0; i < np; i++) { const r = prims[i].br, dy = Y - wb[i][1], dz = Z - wb[i][2]; if (dy * dy + dz * dz < r * r) cand.push(i); }
+          if (!cand.length) continue;
+          const idx = py * width + px;
+          let X = xmax;
+          for (let it = 0; it < 160 && X >= xmin; it++) {
+            dist[0] = dist[1] = dist[2] = 1e3;
+            for (const i of cand) { const m = prims[i].mat, d = primDist(prims[i], X, Y, Z); if (d < dist[m]) dist[m] = d; }
+            const d = Math.min(dist[0], dist[1], dist[2]);
+            if (d < .05) { hit[idx] = 1; tt[idx] = X; let mm = dist[1] < dist[0] + .15 ? 2 : 1; if (dist[2] < .05 && dist[1] > .05) mm = 3; mat[idx] = mm; break; }
+            X -= Math.max(d, .08) * .9;
+          }
+        }
+      }
+      const pixels = new Uint8ClampedArray(n * 4), depth = new Float32Array(n).fill(-Infinity);
+      const set = (i, rgb, a) => { pixels[i * 4] = rgb[0]; pixels[i * 4 + 1] = rgb[1]; pixels[i * 4 + 2] = rgb[2]; pixels[i * 4 + 3] = a; };
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        const i = y * width + x;
+        if (!hit[i]) continue;
+        if (mat[i] === 2) { const up = y > 0 && hit[i - width] && mat[i - width] === 2; set(i, up ? HAIR_RGB : HAIR_HI_RGB, HAIR_A); }
+        else if (mat[i] === 3) set(i, MARK_RGB, BODY_A);
+        else {
+          let near = false;
+          for (const j of [i - width, i + width, i - 1, i + 1]) if (j >= 0 && j < n && hit[j] && tt[j] > tt[i] + 3.5) { near = true; break; }
+          set(i, near ? LINE_RGB : BODY_RGB, BODY_A);
+        }
+        depth[i] = tt[i];
+      }
+      return { width, height, anchor: { x: ax, y: ay }, pixels, depth, scale: k };
+    }
     function mirror(f) {
       const { width, height } = f, pixels = new Uint8ClampedArray(f.pixels.length), depth = new Float32Array(f.depth.length);
       for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
@@ -787,6 +948,7 @@
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
     return { W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
+      SEX_THRUST, SEX_FRAME_MS, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf,
       lookToDoll, dollKey, hairStyle, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
   }
   const api = factory();

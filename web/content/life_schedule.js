@@ -113,6 +113,8 @@ export function paintLifeRow(world, row) {
   if (Array.isArray(row.traces) && row.traces.length) world.lifeTraces = row.traces;
   if (row.lastAffair && typeof row.lastAffair === "object") world.lastAffair = row.lastAffair;
   if (Number(row.anonSex) > 0) world.anonSex = Math.floor(Number(row.anonSex));
+  // 接客還債（2026-10-10）：付了多少（只會變大，手機 state.escortTaken 收差額）、上一班、正在接的那班
+  if (row.escort && typeof row.escort === "object") world.escort = row.escort;
   if (!world.mind || typeof world.mind !== "object" || Array.isArray(world.mind)) {
     world.mind = { immediate: [], mid: [], long: [], seeded: true };
   }

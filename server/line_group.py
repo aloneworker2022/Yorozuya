@@ -273,7 +273,7 @@ CANNED_REACT = {
 }
 # 冷淡家族接話：短、冷（不會「哈哈哈」）
 CANNED_REACT_COLD = {"agree": ["嗯。", "……還行。"], "chat": ["……然後？", "……是喔。", "嗯。"], "tease": ["……吵。", "又來了。"]}
-ACT_ZH = {"work": "打工", "stroll": "溜達", "browse": "上網", "sleep": "睡覺", "idle": "發呆", "tidy": "整理房間", "meal": "吃飯"}
+ACT_ZH = {"escort": "打工", "work": "打工", "stroll": "溜達", "browse": "上網", "sleep": "睡覺", "idle": "發呆", "tidy": "整理房間", "meal": "吃飯"}
 
 
 def canned(job: dict, girl: dict, rnd=random.random, store: dict | None = None) -> list[str]:
@@ -330,6 +330,8 @@ def gate(rec: dict | None, now_ms: int) -> str:
     until = int((agenda or {}).get("until") or 0)
     if kind in ("sleep", "work") and until > now_ms:
         return kind
+    if kind == "escort" and until > now_ms:
+        return "work"   # 接客中：群裡不發（被問就只說在打工）
     return ""
 
 

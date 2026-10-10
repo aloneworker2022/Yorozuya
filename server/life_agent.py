@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 
 import life_data as D
 import life_friends as LF
+import escort as ES
 
 _TOKYO = ZoneInfo("Asia/Tokyo")
 _WEEKDAYS = "一二三四五六日"
@@ -321,6 +322,9 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
         body = src.get("bodyState") if isinstance(src.get("bodyState"), dict) else {}
         if not body and src is not girl and isinstance(girl.get("bodyState"), dict):
             body = girl["bodyState"]
+        od = body.get("organDev") if isinstance(body.get("organDev"), dict) else {}
+        if isinstance(od.get("counts"), dict):
+            rec["fuckedSeen"] = int(_num(od["counts"].get("sex"), 0))
         hung = body.get("hunger") if isinstance(body.get("hunger"), dict) else None
         if hung:
             _take_phone_hunger(rec, hung)
@@ -370,6 +374,10 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
             _enter_japan(rec, now_ms, roll)
         else:
             rec["phase"] = "japan"
+        # 接客還債：手機帶她出門時打的旗（world.escortGo {key, at, debt}），同一個 key 只開一班
+        go = _escort_flag(world, mine)
+        if go and rec.get("phase") == "japan":
+            start_escort(rec, int(_num(go.get("debt"), 0)), now_ms, roll, key=str(go["key"]))
 
 
 # ───────────────────────── 心情 ─────────────────────────
@@ -1442,6 +1450,10 @@ def quick_step(store: dict, now_ms: int, rnd=None) -> list[str]:
             arm(rec, nk, now_ms, rnd, ms)
             logs.append(f"{rec.get('name') or '她'} 排了{KIND_ZH[nk]}（{int(ms / 60000)} 分）")
             continue
+        if is_due(rec, now_ms) and rec["agenda"].get("kind") == "escort":
+            last = settle_escort(rec, now_ms, rnd)
+            logs.append(f"{rec.get('name') or '她'} 接客收工：{(last or {}).get('clients')} 位、{(last or {}).get('paid')} 金")
+            continue
         if is_due(rec, now_ms) and rec["agenda"].get("kind") in ("idle", "tidy", "meal"):
             agenda = rec["agenda"]
             kind = agenda["kind"]
@@ -1556,6 +1568,101 @@ def _settle_naked(rec: dict, ev: dict, at: int, rnd) -> None:
     _affair(rec, name, "naked", count, at, LF.naked_relief(count), LF.naked_loyalty(count))
 
 
+def _escort_flag(world: dict, mirror_girl: dict | None) -> dict | None:
+    for w in (world, (mirror_girl or {}).get("world")):
+        flag = (w or {}).get("escortGo") if isinstance(w, dict) else None
+        if isinstance(flag, dict) and flag.get("key"):
+            return flag
+    return None
+
+
+# ───────────────────────── 接客還債（escort.py；2026-10-10） ─────────────────────────
+def start_escort(rec: dict, debt: int, now_ms: int, rnd=None, key: str = "", force: bool = False, clients: int = 0) -> dict | None:
+    """開一班接客。key：手機的旗（只開一次）；force：test_room 除錯（不看上限）。"""
+    roll = rnd if rnd is not None else random.random
+    if key:
+        keys = [k for k in rec.get("escortKeys") or [] if isinstance(k, str)]
+        if key in keys:
+            return None
+        rec["escortKeys"] = (keys + [key])[-8:]
+    if (rec.get("agenda") or {}).get("kind") == "escort":
+        return None
+    if not force and not ES.limit_ok(rec, now_ms):
+        return None
+    plan = ES.plan_shift(rec, max(0, int(debt)), now_ms, roll, clients)
+    if not plan["clients"]:
+        return None
+    rec["escortSeq"] = int(rec.get("escortSeq") or 0) + 1
+    rec["escortStarts"] = ([int(t) for t in rec.get("escortStarts") or [] if now_ms - int(t) < 2 * ES.DAY_MS] + [now_ms])[-6:]
+    rec["agenda"] = {"kind": "escort", "startedAt": now_ms, "until": now_ms + plan["ms"],
+                     "event": {"escort": dict(plan, seq=rec["escortSeq"])}}
+    rec["note"] = f"{rec.get('name') or '她'}去接客還債（{plan['clients']} 位客人）。"
+    return rec["agenda"]
+
+
+def auto_escort(store: dict, data: dict, now_ms: int, rnd=None) -> dict | None:
+    """負債 > 50、老婆在日本：RP5 自己讓她去（在家的事直接打斷；睡覺、打工、溜達等它結束）。"""
+    debt = ES.est_debt(data, store)
+    if debt <= ES.AUTO_DEBT:
+        return None
+    rec = ES.pick_wife(store)
+    if not rec or not ES.limit_ok(rec, now_ms):
+        return None
+    kind = (rec.get("agenda") or {}).get("kind")
+    if kind and kind not in HOME_KINDS:
+        return None
+    return start_escort(rec, debt, now_ms, rnd)
+
+
+ESCORT_MEMO = {
+    "wronged": "為了幫他還債，我去接客了，接了{n}位客人，賺了{paid}金。身體很累，心裡有點委屈，但這是我自己決定的。",
+    "resigned": "去接客還債，{n}位客人，{paid}金。做完就回來了，沒什麼好說的。",
+    "willing": "今天去接客幫他還債，{n}位客人、{paid}金，還算順利，回去要他誇我。",
+    "aroused": "去接客還債，{n}位客人、{paid}金……做到後來身體自己熱起來了，有點不好意思。",
+}
+
+
+def settle_escort(rec: dict, now_ms: int, rnd=None) -> dict | None:
+    """收工：錢記進 escortPaid（手機收差額）、飢渴降、忠誠掉、痕跡、客人記進 met、心情、記憶（private: escort）。"""
+    roll = rnd if rnd is not None else random.random
+    agenda = rec.get("agenda") if isinstance(rec.get("agenda"), dict) else None
+    if not agenda or agenda.get("kind") != "escort":
+        return None
+    plan = (agenda.get("event") or {}).get("escort") or {}
+    at = min(now_ms, _ms(agenda.get("until")) or now_ms)
+    n = int(plan.get("clients") or 1)
+    paid = int(plan.get("paid") or 0)
+    rec["escortPaid"] = int(rec.get("escortPaid") or 0) + paid
+    rec["escortLastEnd"] = at
+    rec["escortLast"] = {"seq": int(plan.get("seq") or rec.get("escortSeq") or 0), "end": at, "clients": n, "paid": paid,
+                         "pays": list(plan.get("pays") or [])}
+    # 客人：隨機陌生人（20% 是之前的常客），記進 met（身份「客人」，見過；常客知道名字）
+    met_names = []
+    regulars = [m for m in rec.get("met") or [] if isinstance(m, dict) and m.get("role") == "客人"]
+    for i in range(n):
+        if regulars and float(roll()) < ES.REGULAR_CHANCE:
+            row = regulars[int(float(roll()) * len(regulars)) % len(regulars)]
+            p = {"id": row["id"], "name": row["name"], "gender": "male", "role": "客人", "where": "工作室", "named": True}
+        else:
+            p = {"id": f"c{at % 10**9}{i}{int(float(roll()) * 1000)}", "name": _new_name("male", roll), "gender": "male",
+                 "role": "客人", "where": "工作室", "named": False}
+        _note_met(rec, p, {"act": "接客", "emotion": ""}, at)
+        met_names.append(p["name"] if p["named"] else "")
+    prev_affair = rec.get("lastAffair")
+    _affair(rec, "", "escort", n, at, ES.HUNGER_RELIEF_PER_CLIENT * n, ES.LOYALTY_PER_CLIENT * n)
+    rec["lastAffair"] = prev_affair   # 接客不是越線：痕跡照留，但不算「外面偷吃」的餘韻
+    feel = ES.FEEL.get(ES.family(rec), "wronged")
+    mood, lvl = ES.FEEL_MOOD[feel]
+    before = mood_now(rec, at)
+    after = apply_mood(rec, mood, lvl + 4 * n, f"去接客還債（{n} 位客人）", at)
+    text = ESCORT_MEMO[feel].format(n=n, paid=paid)
+    _remember(rec, "work", text, at, ["接客", "還債", "工作室"], {"place": "工作室", "private": "escort", "moodBefore": before[0], "moodAfter": after[0]})
+    rec["last"] = {"kind": "escort", "at": at, "text": text, "place": "工作室", "person": "", "moodBefore": before[0], "moodAfter": after[0]}
+    rec["agenda"] = None
+    arm(rec, "idle", now_ms, roll, 30 * 60 * 1000)
+    return rec["escortLast"]
+
+
 def _undress_stage(girl: dict | None) -> int:
     u = (girl or {}).get("undress") if isinstance((girl or {}).get("undress"), dict) else {}
     try:
@@ -1656,6 +1763,8 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
     agenda = rec.get("agenda") if isinstance(rec.get("agenda"), dict) else None
     if not agenda or _ms(agenda.get("until")) != int(finished_until):
         return False
+    if agenda.get("kind") == "escort":
+        return settle_escort(rec, now_ms, rnd) is not None
     roll = rnd if rnd is not None else random.random
     kind = agenda.get("kind") if agenda.get("kind") in KINDS else "work"
     ev = agenda.get("event") if isinstance(agenda.get("event"), dict) else roll_event(rec, kind, now_ms, roll)
@@ -1799,6 +1908,8 @@ def view_of(rec: dict) -> dict:
     elif kind == "sleep" and until:
         activity = "sleep"
         sleep = {"pending": True, "until": until, "placeName": rec.get("homeName") or ""}
+    elif kind == "escort" and until:
+        activity = "escort"
     elif kind in ("idle", "tidy", "meal") and until:
         activity = kind
         home_act = {"pending": True, "until": until, "kind": kind, "meal": agenda.get("meal") or "", "placeName": rec.get("homeName") or ""}
@@ -1833,9 +1944,24 @@ def view_of(rec: dict) -> dict:
         "traces": [dict(t) for t in rec.get("traces") or [] if isinstance(t, dict)],
         "lastAffair": rec.get("lastAffair") if isinstance(rec.get("lastAffair"), dict) else None,
         "anonSex": int(rec.get("anonSex") or 0),
+        "escort": escort_view(rec),
         "memories": list(rec.get("memories") or []),
         "note": rec.get("note") or "",
     }
+
+
+def escort_view(rec: dict) -> dict | None:
+    if not rec.get("escortSeq"):
+        return None
+    last = rec.get("escortLast") if isinstance(rec.get("escortLast"), dict) else {}
+    ag = rec.get("agenda") if isinstance(rec.get("agenda"), dict) else {}
+    cur = (ag.get("event") or {}).get("escort") if ag.get("kind") == "escort" else None
+    return {"paid": int(rec.get("escortPaid") or 0), "seq": int(rec.get("escortSeq") or 0),
+            "lastSeq": int(last.get("seq") or 0), "lastEnd": int(last.get("end") or 0),
+            "lastClients": int(last.get("clients") or 0), "lastPaid": int(last.get("paid") or 0),
+            "starts": [int(t) for t in rec.get("escortStarts") or []],
+            "active": {"seq": int(cur.get("seq") or 0), "clients": int(cur.get("clients") or 0), "startedAt": _ms(ag.get("startedAt")),
+                       "until": _ms(ag.get("until"))} if cur else None}
 
 
 def overlay(data: dict, store: dict, now_ms: int) -> None:
@@ -1900,6 +2026,8 @@ def _paint_world(girl: dict, row: dict) -> None:
         world["lastAffair"] = row["lastAffair"]
     if row.get("anonSex"):
         world["anonSex"] = row["anonSex"]
+    if row.get("escort"):
+        world["escort"] = row["escort"]
     world.pop("settlingHome", None)
     for item in row.get("memories") or []:
         if isinstance(item, dict) and item.get("id") and item.get("text"):

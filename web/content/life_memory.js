@@ -264,9 +264,18 @@ export function affairDisclosure(stageKey) {
   return "這是對他的秘密：絕對不提；被明確逼問也只漏一點點，不交代經過";
 }
 
+/** 接客還債（private: "escort"）：只有老婆會去；他知道是為了幫他還債。越親越願意講。 */
+export function escortDisclosure(stageKey) {
+  const k = String(stageKey || "");
+  if (k === "obedient_wife" || k === "pathological_wife") return "他知道你是為了幫他還債去接客；他問的話可以把那時的感受講給他聽，帶點撒嬌或依戀，不講露骨細節";
+  if (k === "devoted_wife") return "他知道你是為了幫他還債去接客；可以跟他說累、說委屈或說還好，他追問才多講一點，不講露骨細節";
+  return "他知道你是為了幫他還債去接客；不主動細講，被問才簡短說一點感受，不講露骨細節";
+}
+
 function memoryLine(item, lead, stageKey) {
   const when = memoryStamp(item);
-  const rule = item?.private === "ero"
+  const rule = item?.private === "escort" ? `（${escortDisclosure(stageKey)}）`
+    : item?.private === "ero"
     ? `（只是路過看見、沒有參與；${eroDisclosure(stageKey, item.eroStep)}）`
     : item?.private === "affair" ? `（${affairDisclosure(stageKey)}）` : "";
   return when ? `・${lead}（${when}）：${item.text}${rule}` : `・${lead}：${item.text}${rule}`;
@@ -323,7 +332,7 @@ export function lifeMemoryPromptLines(who, utterance, opts = {}) {
       hits.forEach((item) => recall.push(memoryLine(item, "想起", stageKey)));
     }
   }
-  if (hidden) recall.push("這是全名冊都看得到的群組。最近有些私事（在外面看到的色色的事、跟別人越線的事）絕對不在群裡講；被問到就含糊帶過、轉開話題。");
+  if (hidden) recall.push("這是全名冊都看得到的群組。最近有些私事（在外面看到的色色的事、跟別人越線的事、去接客還債的事）絕對不在群裡講；接客的事只說在工作；被問到就含糊帶過、轉開話題。");
   if (!imm.length && !mid.length && !recall.length) return [];
   if (here === "room") lines.push("人現在在房間。下面是記得的日本生活，不是現在站的地方。");
   if (imm.length || mid.length) {
