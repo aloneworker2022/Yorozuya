@@ -57,7 +57,7 @@ export function pickFrames(msList, step) {
 async function makeStills() {
   const g = who();
   if (!g?.look) { status("先選一位（上面抽、測試身材或名冊）。", true); return; }
-  const step = Math.max(1, Number($("pk-step").value) || 4);
+  const step = Math.max(1, Number($("pk-step").value) || 2);
   const D = window.RoomDoll, pose = $("pk-pose").value, man = $("pk-man").value;
   const picks = pickFrames(D.SEX_FRAME_MS.map((m) => Math.round(m * MAN_BUILDS[man].tempo)), step);
   status("畫來源幀…");
