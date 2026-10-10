@@ -330,6 +330,7 @@ import {
   noteBeg,
   begActive,
   closeBeg,
+  peakBegging,
   temperOnOpen,
   hungerArousalBonus,
   activityHunger,
@@ -345,7 +346,7 @@ import {
   marathonLocked,
   marathonOrgasmsLeft,
   stageBand as hungerBand,
-} from "./hunger.js?v=2";
+} from "./hunger.js?v=3";
 import {
   organDevOn,
   ensureOrganDev,
@@ -521,11 +522,113 @@ const BEG_REFUSE_LINES = [
   "嗚…真的不要嗎…好吧…",
 ];
 function begPending(who = girl) {
+  if (who === girl && peakBegNow()) return true;   // 頂點：一直求（不看窗口、看過沒）
   const g = who?.bodyState?.hunger?.beg;
   return !!g && !g.seen && begActive(who);
 }
 function begDialogActive() {
   return !!begDialog && sheetOpen();
+}
+// ---- 頂點求歡（2026-10-10 Al）：妻子以上＋飢渴 ≥ PEAK_AT → 不能拒絕、玩家做什麼都變成她問要不要做，直到開始做愛
+/** 現在是頂點求歡嗎（她在房間、還沒開始做愛）。 */
+function peakBegNow() {
+  if (!HUNGER_ON || !girl || sexChat || !girlInRoom()) return false;
+  return peakBegging(girl, { stageKey: girl.stage || "stranger" });
+}
+const PEAK_NAG_LINES = [
+  "老公…別管那個了…先跟我做嘛…要不要做？",
+  "不要…人家現在只想要你…做好不好？",
+  "嗚…老公…拜託…現在就做…好不好嘛…",
+  "我真的受不了了…老公…跟我做，好不好？",
+];
+function peakNagFallback() {
+  const line = PEAK_NAG_LINES[Math.floor(Math.random() * PEAK_NAG_LINES.length)];
+  return girl && hungerBand(girl.stage || "stranger") === "wife" ? line : line.replace(/老公/g, "那個");
+}
+/** 關掉求的對話框（背景／Esc／關閉）被擋：頂點時回 true（她纏著你、繼續求）。 */
+function peakBlockClose() {
+  if (!begDialog || !peakBegNow()) return false;
+  showClimaxTip("她拉住你，不讓你走…");
+  return true;
+}
+/**
+ * 玩家做了別的事（打字、按互動、房間按鈕、番茄鐘…）→ 變成她問要不要做。
+ * userText：記進對話的那句（打字原文或「（你想…）」）。回傳 true＝攔下了。
+ */
+function peakIntercept(reason = "", userText = "") {
+  if (!peakBegNow()) return false;
+  pushDebug(`頂點求歡：攔下「${reason || "動作"}」→ 她只問要不要做`);
+  if (!sheetOpen()) {
+    showSheet();   // begPending 為真 → 直接開求的對話框
+    return true;
+  }
+  if (begDialog && begDialog.phase !== "choose") return true;   // 她正在說
+  void peakBegReply(userText || `（你想${reason || "做別的事"}。）`);
+  return true;
+}
+/** 頂點：她回一句（只求你做愛），下面只有「做愛」。 */
+async function peakBegReply(userLine) {
+  if (!girl) return;
+  const who = girl;
+  if (!begDialog) {
+    begDialog = { phase: "busy", at: Date.now() };
+    if (talkFor !== who.id) { talkFor = who.id; lines = []; who.chatLines = []; who.sessionEnded = false; }
+  }
+  begDialog.phase = "busy";
+  talkBusy = true;
+  setTalkEnabled(false);
+  refreshTalkActs();
+  lines.push({ role: "user", content: userLine });
+  $("portrait-name").textContent = who.name;
+  setTyping(true);
+  let line = "";
+  try {
+    const ask = "（【最優先】你的身體已經渴到極點，腦袋裡只剩做愛。不管他剛才說什麼、做什麼，都不要回應那件事本身、不要聊別的、不要答應別的："
+      + "只用一兩句撒嬌又難耐地求他、問他「要不要做」「現在跟我做好不好」。不要旁白。）";
+    let reply = "";
+    try {
+      reply = await withTimeout(askGirl(ask), THRUST.OPENING_TIMEOUT_MS, "");
+    } catch (err) {
+      console.warn("[peak beg]", err?.message || err);
+    }
+    line = scrubHusband(cleanLine(reply), who.stage || "stranger") || peakNagFallback();
+  } catch {
+    line = peakNagFallback();
+  }
+  if (girl !== who || !begDialog) return;
+  lines.push({ role: "assistant", content: line });
+  rememberChat();
+  persistRoom();
+  setTyping(false);
+  await typeLine(who.name, line);
+  if (girl !== who || !begDialog) return;
+  begDialog.phase = "choose";
+  talkBusy = false;
+  setTalkEnabled(true);
+  refreshTalkActs();
+}
+/** 越過 95：馬上讓她來求（不等冷卻、不等下一個活動）；對話開著就直接轉成求的對話框。 */
+function peakBegTick() {
+  if (!peakBegNow() || document.visibilityState === "hidden") return;
+  if (sheetOpen()) {
+    if (begDialog || talkBusy || sceneOpen() || activeRoomScene || undressChatActive()) return;
+    pushDebug("頂點求歡：對話中越過頂點 → 轉成求的對話框");
+    begDialog = { phase: "opening", at: Date.now() };
+    void openBegDialog();
+    return;
+  }
+  const h = girl.bodyState?.hunger;
+  if (!h?.beg || !begActive(girl)) {
+    noteBeg(girl);
+    persistRoom();
+    const ok = window.RoomActor?.startActivity?.("hunger_beg");
+    if (ok) return;
+  }
+  maybeOpenBegDialog();
+}
+if (typeof window !== "undefined") {
+  setInterval(() => { try { peakBegTick(); } catch (err) { console.warn("[peak tick]", err?.message || err); } }, 15000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(() => { try { peakBegTick(); } catch { /* ignore */ } }, 800); });
 }
 /** 她走到面前了：能開就直接開對話框。 */
 function maybeOpenBegDialog() {
@@ -563,7 +666,8 @@ async function openBegDialog() {
   }
   begDialog.phase = "opening";
   talkBusy = true;
-  $("portrait-sheet")?.classList.add("beg-chat");
+  // 頂點：輸入框留著（打什麼她都只回求你）；一般：沒有輸入框
+  $("portrait-sheet")?.classList.toggle("beg-chat", !peakBegNow());
   setTalkEnabled(false);
   $("portrait-name").textContent = who.name;
   $("portrait-meta").textContent = "";
@@ -606,6 +710,7 @@ async function openBegDialog() {
   if (girl !== who || !begDialog) return;
   begDialog.phase = "choose";
   talkBusy = false;
+  if (peakBegNow()) setTalkEnabled(true);
   refreshTalkActs();
 }
 function endBegDialog() {
@@ -648,7 +753,8 @@ function renderBegBar() {
     lock.textContent = `精液 ${cc}cc`;
     sex.append(lock);
   }
-  add("refuse", "拒絕", () => void begRefuse());
+  // 頂點：不能拒絕（只有「做愛」）
+  if (!peakBegNow()) add("refuse", "拒絕", () => void begRefuse());
 }
 /** 沒脫光就答應：她自己迫不及待脫光（記成她自己脫的 → 傳教士）。 */
 function begStripForSex(who = girl) {
@@ -683,6 +789,7 @@ async function begAccept() {
 }
 async function begRefuse() {
   if (!girl || !begDialog || begDialog.phase !== "choose") return;
+  if (peakBegNow()) { peakIntercept("拒絕"); return; }
   const who = girl;
   begDialog.phase = "busy";
   talkBusy = true;
@@ -8166,6 +8273,13 @@ async function deliverUserTalk(text, opts = {}) {
   const raw = String(text || "").trim();
   if (!girl || !raw) return;
   if (girl.errand === "clothes") return;
+  // 頂點求歡：說什麼、按什麼都變成她問要不要做
+  if (peakBegNow()) {
+    if (talkBusy && !(begDialog && begDialog.phase === "choose")) return;
+    const act = opts.actId ? TALK_ACTS.find((a) => a.id === opts.actId) : null;
+    peakIntercept(act ? act.label || act.id : "說話", act ? `（你想${act.label || "碰她"}。）` : raw);
+    return;
+  }
   if (isFarewell(raw)) {
     girl.lastMark = "結束對話";
     pushDebug("結束對話");
@@ -11024,6 +11138,7 @@ bindReckonDebug();
 onId("talk-input-row", "submit", (event) => { sendTalk(event); });
 onId("portrait-backdrop", "click", () => {
   if (sexMarathonLocked()) { nagMarathonLocked(); return; }
+  if (peakBlockClose()) return;
   if (sceneOpen()) {
     closeRoomScene();
     return;
@@ -11032,6 +11147,7 @@ onId("portrait-backdrop", "click", () => {
 });
 onId("portrait-sheet", "click", (event) => {
   if (sexMarathonLocked()) return;
+  if (begDialog && peakBegNow() && !event.target.closest(".talk")) { peakBlockClose(); return; }
   if (sceneOpen()) return;
   if (event.target.closest(".talk")) return;
   hideSheet();
@@ -11039,6 +11155,7 @@ onId("portrait-sheet", "click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (sexMarathonLocked()) { nagMarathonLocked(); return; }
+  if (peakBlockClose()) return;
   if (sceneOpen()) {
     closeRoomScene();
     return;
@@ -11202,7 +11319,24 @@ window.RoomScenes = {
   close: closeRoomScene,
   unlocked: () => highStunSceneUnlocked(girl),
 };
+// 頂點求歡：攔房間裡的其他按鈕（互動列上不是「做愛」的、送她走、抽妹子、召喚、手動活動…）；離開 App／設定／名冊不攔
+const PEAK_INTERCEPT_SEL = "#talk-acts button:not([data-beg]), #let-leave, #draw-girl, #summon-roster-girl, #summon-back, #open-activity, [id^='activity-'], #edit-room";
+document.addEventListener("click", (event) => {
+  const btn = event.target?.closest?.(PEAK_INTERCEPT_SEL);
+  if (!btn || !peakBegNow()) return;
+  if (undressChatActive() || sceneOpen()) return;   // 脫衣對話／場面裡的鈕照舊（脫完會進做愛）
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  peakIntercept((btn.textContent || "").trim().slice(0, 12) || btn.id || "按鈕");
+}, true);
+
 window.RoomCompanion = {
+  /** 頂點求歡（app.js 的番茄鐘等用）：peaking＝現在是不是；intercept＝攔下（回 true＝不要繼續）。 */
+  peakBeg: {
+    active: () => peakBegNow(),
+    intercept: (reason = "") => peakIntercept(reason),
+    tick: () => peakBegTick(),
+  },
   /** 肏互動除錯：on＝閘門；state＝這一場；press＝按一下肏；set＝改數值（測試用）；frames＝動畫幀來源。 */
   thrust: {
     on: () => sexThrustOn(),

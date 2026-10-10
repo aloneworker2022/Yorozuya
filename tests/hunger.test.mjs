@@ -110,7 +110,10 @@ t("妻子：很高才走過來求，冷卻 4 小時、高潮後不求、番茄�
   H.noteBeg(w, T0);
   assert.equal(H.begActive(w, T0 + 10 * MIN), true);
   assert.equal(H.begActive(w, T0 + 16 * MIN), false);
+  // 冷卻看的是頂點以下（≥95 不看冷卻，見下一條）
+  H.setHunger(w, 88, T0 + 3 * HR);
   assert.equal(H.canBeg(w, { now: T0 + 3 * HR }), false);
+  H.setHunger(w, 88, T0 + 4 * HR);
   assert.equal(H.canBeg(w, { now: T0 + 4 * HR }), true);
   // 求的時候不擺臉色；第一句就求
   assert.equal(H.temperOnOpen(w, { now: T0 + MIN }), null);
@@ -119,9 +122,32 @@ t("妻子：很高才走過來求，冷卻 4 小時、高潮後不求、番茄�
   assert.match(H.hungerOpenerHint(w, { now: T0 + MIN }), /求歡/);
   H.relieveHunger(w, "orgasm", T0 + 2 * MIN);
   assert.equal(H.begActive(w, T0 + 3 * MIN), false);
-  H.setHunger(w, 95, T0 + 5 * HR);
+  H.setHunger(w, 86, T0 + 5 * HR);
   w.bodyState.hunger.satedUntil = T0 + 6 * HR;
   assert.equal(H.canBeg(w, { now: T0 + 5.5 * HR }), false);
+});
+
+t("妻子頂點（≥95）：不能拒絕、不看冷卻／滿足期／番茄鐘，一直求；妻子以下不算", () => {
+  assert.equal(H.peakBegging(girl("lover", "S", 100), { now: T0 }), false);
+  assert.equal(H.peakBegging(girl("wife", "S", 94), { now: T0 }), false);
+  const w = girl("wife", "S", 96);
+  assert.equal(H.peakBegging(w, { now: T0 }), true);
+  assert.equal(H.begRefusable(w, { now: T0 }), false);
+  assert.equal(H.begRefusable(girl("wife", "S", 90), { now: T0 }), true);
+  // 剛求過（4 小時冷卻內）照樣求；番茄鐘開著也求
+  H.noteBeg(w, T0);
+  assert.equal(H.canBeg(w, { now: T0 + MIN }), true);
+  assert.equal(H.canBeg(w, { now: T0 + MIN, calm: true }), true);
+  // 滿足期內但值還在頂點（沒被滿足）→ 還是求
+  w.bodyState.hunger.satedUntil = T0 + 3 * HR;
+  assert.equal(H.canBeg(w, { now: T0 + 2 * MIN }), true);
+  // 活動權重：頂點就算番茄鐘的 calm 也照 hungerBeg（room_activity 自己擋 calm → 交給頁面的 peakBegTick）
+  assert.equal(H.activityHunger(w, { now: T0 + 2 * MIN, calm: true }).hungerBeg, true);
+  // 榨乾場做完歸 0 → 不再頂點
+  const m = H.startMarathon(w, { now: T0 + 3 * MIN });
+  for (let i = 0; i < 4; i++) H.marathonOrgasm(w, m, { now: T0 + (4 + i) * MIN });
+  assert.equal(H.peakBegging(w, { now: T0 + 10 * MIN }), false);
+  assert.equal(H.canBeg(w, { now: T0 + 10 * MIN }), false);
 });
 
 t("佔有度：朋友起、≥70 才有 6～14；陌生沒有；接進 stun_speech 來源", () => {

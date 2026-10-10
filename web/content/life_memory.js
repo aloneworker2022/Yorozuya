@@ -6,7 +6,7 @@
  */
 
 import { japanNow } from "./japan_clock.js?v=2";
-import { stageBand } from "./hunger.js?v=2";
+import { stageBand } from "./hunger.js?v=3";
 
 const IMMEDIATE_CAP = 10;
 const MID_CAP = 30;

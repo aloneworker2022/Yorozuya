@@ -14053,6 +14053,13 @@ function tryStartPomo(q) {
     pomoShow();
     return;
   }
+  // 妻子飢渴頂點（2026-10-10 Al）：番茄鐘開不了，變成她求你做愛
+  try {
+    if (window.RoomCompanion?.peakBeg?.active?.()) {
+      window.RoomCompanion.peakBeg.intercept("開番茄鐘");
+      return;
+    }
+  } catch { /* 房間沒接上 */ }
   const girl = roomCompanionNow();
   if (!girl) {
     toast("她不在房間，現在不能用番茄鐘", "bad");

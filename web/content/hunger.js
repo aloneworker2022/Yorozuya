@@ -166,11 +166,26 @@ export function setHunger(who, level, now = Date.now()) {
 // ------------------------------------------------------------ 妻子：主動來求
 /** 現在可以走過來求嗎（不寫入）。calm＝番茄鐘開著。 */
 export function canBeg(who, { stageKey = who?.stage, now = Date.now(), calm = false } = {}) {
-  if (calm || !atLeast(stageKey, "wife")) return false;
+  if (!atLeast(stageKey, "wife")) return false;
+  // 頂點（≥ PEAK_AT，2026-10-10 Al）：不看冷卻／滿足期／番茄鐘，她一直求
+  if (peakBegging(who, { stageKey, now })) return true;
+  if (calm) return false;
   const h = body(who)?.hunger;
   if (h && now < (Number(h.satedUntil) || 0)) return false;
   if (peekHunger(who, now, stageKey) < BEG_AT) return false;
   return !h || now - (Number(h.begAt) || 0) >= BEG_COOLDOWN_MS;
+}
+/**
+ * 頂點求歡（2026-10-10 Al）：妻子以上＋飢渴 ≥ PEAK_AT → 不能拒絕；玩家做什麼都變成她問要不要做，直到開始做愛。
+ * 只看值（不看冷卻、滿足期）。
+ */
+export function peakBegging(who, { stageKey = who?.stage, now = Date.now() } = {}) {
+  if (!who || !atLeast(stageKey, "wife")) return false;
+  return peekHunger(who, now, stageKey) >= PEAK_AT;
+}
+/** 求的對話框能不能拒絕／關掉（頂點不行）。 */
+export function begRefusable(who, opts = {}) {
+  return !peakBegging(who, opts);
 }
 /** 她走過來了：記冷卻＋開一個「求」的窗口。 */
 export function noteBeg(who, now = Date.now()) {

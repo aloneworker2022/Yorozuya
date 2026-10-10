@@ -1,5 +1,5 @@
 /* 房間停留與日本作息的時長。真實時間，不跟看板娘時長。 */
-import { ensureHunger, tickHunger } from "./hunger.js?v=2";
+import { ensureHunger, tickHunger } from "./hunger.js?v=3";
 
 export const HOUR_MS = 60 * 60 * 1000;
 export const WORK_MS = 4 * HOUR_MS;
