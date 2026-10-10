@@ -213,6 +213,12 @@ import {
 } from "./undress_shy.js?v=3";
 import { PERSONALITY_FAMILY, familyStageLine } from "./girl_voice.js?v=1";
 import { lineEventPromptLines } from "./line_social.js?v=1";
+import {
+  TRIGGERS as TALK_TRIGGERS, TRIGGER_ZH as TALK_TRIGGER_ZH, talkEligible, ensureTalkState, talkGate, tickTalk, freshMemory, freshLineEvent,
+  pickTrigger as pickTalkTrigger, triggerWeights as talkTriggerWeights, openerAsk as talkOpenerAsk, fallbackOpener as talkFallbackOpener,
+  noteOpened as talkNoteOpened, noteReplied as talkNoteReplied, noteClosed as talkNoteClosed, noteIgnored as talkNoteIgnored, waitExpired as talkWaitExpired,
+  talkLabel, TALK_KNOBS,
+} from "./proactive_talk.js?v=1";
 import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines, affairDisclosure } from "./life_memory.js?v=6";
 import { friendRows, applyLifeTraces, recentAffair, FRIEND_STAGES, FRIEND_STAGE_ZH } from "./life_friends.js?v=2";
 import {
@@ -421,6 +427,7 @@ window.RoomActivitySink = (evt) => {
     mem.cur.since = evt.at;
     // 2026-10-09 Al：不跳粉紅小卡，直接打開對話框（她開口求、下面只有「做愛／拒絕」）
     if (evt.id === "hunger_beg" && HUNGER_ON && girl) maybeOpenBegDialog();
+    if (evt.id === "approach_talk" && girl) maybeOpenProactiveTalk();
   } else return;
   if (mem.bias && !A.biasStrength(mem.bias)) mem.bias = null;
   // 活動 1～3 分鐘才換一次；開始時順手存檔（最多 20 秒一次）
@@ -888,6 +895,149 @@ function renderHungerDebug() {
   ensureBody(girl);
   ensureHunger(girl);
   el.textContent = hungerLabel(girl, Date.now(), girl.stage || "stranger");
+}
+// ---------------------------------------------------------------- 主動找你聊天（proactive_talk.js，2026-10-10 Al）
+/**
+ * 女友以上：她在房間（用她在房的時間計時）沒事時，自己走到你面前（approach_talk）→ 直接打開對話框、她先開口。
+ * 求歡（hunger_beg／頂點）優先；番茄鐘、場面、脫衣、編輯房間、App 在背景、對話開著都不來。
+ * 開不了就站在前面等 10 分鐘，這段時間長按她＝同一個開場。被晾（等到走掉、或打開後一句都沒回就關）連續 2 次 → 小小委屈（有冷卻，不動感情）。
+ */
+let talkOpenNow = null;   // 這次打開對話是她主動來的：{trigger, detail}
+let talkTickAt = 0;
+function talkState(who = girl) { return who ? ensureTalkState(who) : null; }
+function talkBusyFlags() {
+  const pomo = $("pomo"), editor = $("room-editor"), room = $("room");
+  const live = window.RoomActor?.activity?.() || null;
+  return {
+    notInRoom: !girlInRoom(), hidden: document.visibilityState === "hidden", roomHidden: !!room && !room.getClientRects().length,
+    sheetOpen: sheetOpen(), talkBusy: !!talkBusy || !!pending, pomodoro: !!pomo && !pomo.hidden, scene: sceneOpen() || !!activeRoomScene,
+    sex: !!sexChat, undress: undressChatActive(), editor: !!editor && !editor.hidden, summoning: !!summoning, errand: girl?.errand === "clothes",
+    asleep: live?.kind === "sleep",
+  };
+}
+function talkBegFlags() {
+  if (!HUNGER_ON || !girl) return {};
+  return { pending: begPending(girl), peak: peakBegNow(), canBeg: !!activityHunger(girl, { stageKey: girl.stage || "stranger" }).hungerBeg };
+}
+function talkContext(who = girl) {
+  const mem = roomActMem();
+  const h0 = mem?.history?.[0];
+  const st = talkState(who);
+  return {
+    stage: who.stage || "stranger",
+    miss: MISS_YOU_ON ? getMiss(who) : 0,
+    mood: getMoodCarry(who),
+    outside: who.world ? outsideMoodNow(who.world) : null,
+    memory: freshMemory(who),
+    lineEvent: freshLineEvent(who),
+    wokeAgoMs: h0?.id === "sleep" && mem?.cur?.id !== "sleep" ? Date.now() - (Number(h0.end) || 0) : Infinity,
+    usedMemoryId: st?.usedMemoryId || "",
+    usedLineT: st?.usedLineT || 0,
+  };
+}
+function talkDetail(trigger, ctx) {
+  const d = {};
+  if (trigger === "memory" && ctx.memory) d.memoryText = ctx.memory.text;
+  if (trigger === "line" && ctx.lineEvent) { d.lineText = ctx.lineEvent.text; d.lineKind = ctx.lineEvent.kind; d.withName = ctx.lineEvent.sour ? ctx.lineEvent.withName : ""; }
+  if ((trigger === "share" || trigger === "vent") && ctx.outside?.why) d.outsideWhy = ctx.outside.why;
+  if (trigger === "vent" && ctx.mood?.cause) d.moodCause = ctx.mood.cause;
+  return d;
+}
+/** 叫她走過來（force：除錯，不看閘門）。 */
+function startProactiveTalk(trigger = "", { force = false } = {}) {
+  if (!girl || !girlInRoom()) return false;
+  const st = talkState();
+  if (!force) {
+    const g = talkGate({ stage: girl.stage || "stranger", busy: talkBusyFlags(), beg: talkBegFlags(), state: st });
+    if (!g.ok) return false;
+  }
+  const ctx = talkContext();
+  const trig = TALK_TRIGGERS.includes(trigger) ? trigger : pickTalkTrigger(ctx);
+  st.pending = { trigger: trig, at: Date.now(), detail: talkDetail(trig, ctx) };
+  st.lastTrigger = trig;
+  if (trig === "memory" && ctx.memory) st.usedMemoryId = ctx.memory.id;
+  if (trig === "line" && ctx.lineEvent) st.usedLineT = ctx.lineEvent.t;
+  pushDebug(`主動聊天：她想跟你說話（${TALK_TRIGGER_ZH[trig]}）`);
+  persistRoom();
+  const ok = window.RoomActor?.startActivity?.("approach_talk");
+  if (!ok) maybeOpenProactiveTalk();
+  renderTalkDebug();
+  return true;
+}
+function proactiveTalkTick() {
+  if (!girl) return;
+  const now = Date.now();
+  const dt = talkTickAt ? now - talkTickAt : 0;
+  talkTickAt = now;
+  const stage = girl.stage || "stranger";
+  if (!talkEligible(stage)) return;
+  const st = talkState();
+  const busy = talkBusyFlags();
+  if (st.pending) {
+    if (talkWaitExpired(st, now) && !busy.sheetOpen) {
+      const trig = st.pending.trigger;
+      st.pending = null;
+      st.leftMs = TALK_KNOBS.CHAT_COOLDOWN_MS;
+      const m = talkNoteIgnored(st, stage, now);
+      if (m) { noteMood(girl, { ...m, now }); pushDebug(`主動聊天：等你很久都沒理（${TALK_TRIGGER_ZH[trig]}）→ 委屈 ${m.level}`); }
+      else pushDebug("主動聊天：等你很久都沒理，她走開了");
+      if (window.RoomActor?.activity?.()?.id === "approach_talk") window.RoomActor?.replan?.();
+      persistRoom();
+    } else if (!busy.sheetOpen) maybeOpenProactiveTalk();
+    renderTalkDebug();
+    return;
+  }
+  if (!busy.notInRoom && !busy.hidden) tickTalk(st, dt);
+  startProactiveTalk();
+  renderTalkDebug();
+}
+if (typeof window !== "undefined") {
+  setInterval(() => { try { proactiveTalkTick(); } catch (err) { console.warn("[talk tick]", err?.message || err); } }, 20000);
+}
+function proactiveTalkPending(who = girl) { return !!who && !!talkState(who)?.pending; }
+/** 她走到面前了：能開就直接開對話框。 */
+function maybeOpenProactiveTalk() {
+  if (!girl || !proactiveTalkPending()) return false;
+  const b = talkBusyFlags();
+  if (b.notInRoom || b.hidden || b.roomHidden || b.sheetOpen || b.talkBusy || b.pomodoro || b.scene || b.sex || b.undress || b.editor || b.summoning || b.errand) return false;
+  const beg = talkBegFlags();
+  if (beg.pending || beg.peak) return false;
+  pushDebug("主動聊天：她走到你面前 → 直接打開對話框");
+  showSheet();
+  return true;
+}
+/** showSheet 打開時：她是來找你聊的 → 記成「這次她先開口」。 */
+function takeProactiveOpen() {
+  const st = talkState();
+  if (!st?.pending) return null;
+  const p = talkNoteOpened(st);
+  talkOpenNow = p ? { trigger: p.trigger, detail: p.detail || {} } : null;
+  return talkOpenNow;
+}
+function proactiveOpenerAsk(who, open) {
+  return talkOpenerAsk(open.trigger, { stage: who.stage || "stranger", pet: who.playerPet || "", playerName: who.playerName || "", detail: open.detail });
+}
+function proactiveTalkClosed() {
+  if (!girl || !talkEligible(girl.stage || "stranger")) return;
+  const st = talkState();
+  const m = talkNoteClosed(st, girl.stage || "stranger", girl.stats?.proactivity);
+  if (m) { noteMood(girl, { ...m, now: Date.now() }); pushDebug(`主動聊天：她來找你、你一句都沒回就關掉 → 委屈 ${m.level}`); }
+  talkOpenNow = null;
+}
+function renderTalkDebug() {
+  const el = $("dbg-talk");
+  if (!el) return;
+  el.textContent = girl ? talkLabel(talkState(), girl.stage || "stranger") : "—";
+}
+function bindTalkDebug() {
+  for (const t of TALK_TRIGGERS) onId(`dbg-talk-${t}`, "click", () => {
+    if (!girl) return;
+    const st = talkState();
+    st.pending = null;
+    const ok = startProactiveTalk(t, { force: true });
+    pushDebug(ok ? `除錯：叫她走過來聊（${TALK_TRIGGER_ZH[t]}）` : "除錯：她不在房間");
+  });
+  onId("dbg-talk-now", "click", () => { const st = talkState(); if (!st) return; st.leftMs = 0; st.closedAt = 0; proactiveTalkTick(); renderTalkDebug(); });
 }
 function bindHungerDebug() {
   const set = (v) => {
@@ -7286,6 +7436,7 @@ function renderDebug() {
   }
   renderMissDebug();
   renderHungerDebug();
+  renderTalkDebug();
   renderOrganDevDebug();
   renderReckonDebug();
   renderThrustDebug();
@@ -7838,7 +7989,15 @@ async function openTalk() {
     }
     const openerStun = effectiveStun(girl, "");
     refreshMissNow(girl);
-    const opener = enterOpener(returning);
+    let opener = enterOpener(returning);
+    // 她主動走過來找你聊：開場換成她的來意（其他旁白補充照帶）
+    const proOpen = talkOpenNow;
+    if (proOpen) {
+      const ask = proactiveOpenerAsk(girl, proOpen);
+      const extra = (opener.match(/（旁白補充：[^）]*）/g) || []).filter((x) => !/走到他面前來求|求他/.test(x)).join("");
+      opener = `${ask}${extra}`;
+      lines.push({ role: "user", content: "（她自己走到你面前，看起來有話想跟你說。）" });
+    }
     let line = "";
     // 腦袋佔有度：≥95 講不出話；痙攣／失神仍問 LLM（她想說的那句），再依佔有度吃掉；餘韻（未到 65）走餘韻模板
     const openerOcc = takeOccupancy(girl, "");
@@ -7861,7 +8020,9 @@ async function openTalk() {
         $("portrait-name").textContent = girl.name;
         $("portrait-meta").textContent = partial;
       } : null);
-      line = presentOccupied(girl, reply || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……嗯？")), "", openerOcc) || "……嗯？";
+      const proFb = proOpen ? talkFallbackOpener(proOpen.trigger, girl.stage || "stranger") : "";
+      const proReply = proOpen && reply ? scrubHusband(cleanLine(reply), girl.stage || "stranger", girl.playerPet || "") : reply;
+      line = presentOccupied(girl, proReply || proFb || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……嗯？")), "", openerOcc) || proFb || "……嗯？";
     }
     tickStunAfterReply(girl);
     // 痙攣期間不消耗餘韻回覆數，讓痙攣結束後仍鎖餘韻幾句
@@ -8205,6 +8366,7 @@ async function maybeHandleClothesAsk(raw) {
 }
 
 async function deliverUserTalk(text, opts = {}) {
+  if (girl) talkNoteReplied(talkState());
   const raw = String(text || "").trim();
   if (!girl || !raw) return;
   if (girl.errand === "clothes") return;
@@ -9334,6 +9496,8 @@ function showSheet() {
   if (wasHidden && girl && girlInRoom()) warnIfSemenLow();
   // 她來求（還沒理她）：這次打開就是求的對話框（activityChatOpen 會把「求」標成看過，先記下來）
   const begNow = !!(wasHidden && girl && HUNGER_ON && !begDialog && begPending(girl));
+  // 她主動來找你聊（求歡優先）：這次她先開口
+  if (wasHidden && girl && !begNow) takeProactiveOpen();
   if (wasHidden && girl) activityChatOpen();
   if (!girl) {
     typeJob += 1;
@@ -9840,6 +10004,7 @@ function loadRoomSave() {
 function hideSheet() {
   // 求的對話框：關掉＝不理她（求的窗口照 hungerChatClose 收）
   if (begDialog) endBegDialog();
+  if (!$("portrait-sheet")?.hidden) proactiveTalkClosed();
   // 先收 stub 場面，避免 overlay 懸在已關閉的對話上
   if (sceneOpen() || activeRoomScene) closeRoomScene();
   if (MISS_YOU_ON && girl) noteMissSeen(girl);
@@ -11069,6 +11234,7 @@ onId("dbg-jump", "change", () => {
 bindTalkActs();
 bindMissDebug();
 bindHungerDebug();
+bindTalkDebug();
 bindOrganDevDebug();
 bindReckonDebug();
 onId("talk-input-row", "submit", (event) => { sendTalk(event); });
@@ -11267,6 +11433,15 @@ document.addEventListener("click", (event) => {
 }, true);
 
 window.RoomCompanion = {
+  /** 主動聊天除錯：state＝girl.proactiveTalk；force(trigger)；tick()；ask(trigger)＝開場 prompt；weights()。 */
+  talk: {
+    state: () => (girl ? JSON.parse(JSON.stringify(talkState())) : null),
+    force: (trigger = "") => { if (!girl) return false; talkState().pending = null; return startProactiveTalk(trigger, { force: true }); },
+    tick: () => proactiveTalkTick(),
+    ask: (trigger = "bored") => (girl ? proactiveOpenerAsk(girl, { trigger, detail: talkDetail(trigger, talkContext()) }) : ""),
+    weights: () => (girl ? talkTriggerWeights(talkContext()) : null),
+    label: () => (girl ? talkLabel(talkState(), girl.stage || "stranger") : ""),
+  },
   /** 頂點求歡（app.js 的番茄鐘等用）：peaking＝現在是不是；intercept＝攔下（回 true＝不要繼續）。 */
   peakBeg: {
     active: () => peakBegNow(),

@@ -26,7 +26,7 @@ const sum = (f, ids) => ids.reduce((s, id) => s + f[id], 0);
 
 t("8～10 個地上活動＋2 個椅子活動；欄位齊全、時長 1～3 分鐘左右", () => {
   // 性飢渴的兩個（squirm／hunger_beg，hunger.js 2026-10-09）只在飢渴時出現，不算在一般活動裡
-  const HUNGER_ONLY = ["squirm", "hunger_beg"];
+  const HUNGER_ONLY = ["squirm", "hunger_beg", "approach_talk"];   // approach_talk：主動聊天（proactive_talk.js）直接叫出來
   const floor = A.ACTIVITIES.filter(a => a.place === "floor" && !HUNGER_ONLY.includes(a.id)), seat = A.ACTIVITIES.filter(a => a.place === "seat");
   assert.ok(floor.length >= 8 && floor.length <= 11, String(floor.length));
   for (const id of HUNGER_ONLY) assert.ok(A.BY_ID[id] && A.BY_ID[id].moodOnly && A.BY_ID[id].w === 0, id);
@@ -34,7 +34,7 @@ t("8～10 個地上活動＋2 個椅子活動；欄位齊全、時長 1～3 分�
   for (const a of A.ACTIVITIES) {
     assert.ok(D.POSES[a.pose], `${a.id} pose ${a.pose}`);
     assert.ok(a.doing && a.react && a.name, a.id);
-    assert.ok(a.dur[0] >= 40 && a.dur[1] <= 300 && a.dur[0] < a.dur[1], a.id);
+    assert.ok(a.dur[0] >= 40 && a.dur[1] <= (a.wait ? 660 : 300) && a.dur[0] < a.dur[1], a.id);   // wait：站在前面等你（最多約 10 分鐘）
     if (a.place === "seat") assert.ok(a.seat.includes("chair"));
   }
   // 沒有椅子就不會選椅子活動（資料驅動：以後加床／沙發只要加一筆）

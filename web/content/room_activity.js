@@ -3,7 +3,7 @@
    這個檔案是純資料＋純函式（不碰 DOM、不碰存檔），給 room_character.js（執行活動）、
    test_room_summon.js（聊天 prompt／打斷後果／聊完的偏向）、node 測試共用。
    以後玩家買了床／沙發／書桌，只要在 ACTIVITIES 加一筆 place:'seat', seat:['bed'] 之類即可。
-   不做（Al：之後再說）：用聊天叫她做事；她主動走過來找你聊天。 */
+   不做（Al：之後再說）：用聊天叫她做事。主動走過來找你聊天見 proactive_talk.js（approach_talk）。 */
 (function (root) {
   'use strict';
   const STAGES = ['stranger', 'acquaintance', 'friend', 'close_friend', 'girlfriend', 'passionate',
@@ -57,6 +57,10 @@
     { id: 'hunger_beg', name: '走到你面前扭扭捏捏地求你', pose: 'restless', place: 'floor', spot: 'front', facing: 'front', dur: [100, 180],
       icon: 'heart', kind: 'mood', relax: 0, w: 0, moodOnly: true, sticky: true,
       doing: '特地走到他面前，扭扭捏捏地一直看著他、等他碰自己', react: '是特地過來求他的，第一句就撒嬌地求他抱你、跟你做' },
+    // 主動找你聊天（proactive_talk.js，2026-10-10）：只由 test_room_summon 直接叫出來（權重 0）
+    { id: 'approach_talk', name: '走到你面前想跟你說話', pose: 'stare', place: 'floor', spot: 'front', facing: 'front', dur: [600, 660],
+      icon: 'talk', kind: 'mood', relax: 0, w: 0, moodOnly: true, sticky: true, wait: true,
+      doing: '特地走到他面前，看著他、想跟他說話', react: '是自己走過來找他聊天的，第一句由你先開口' },
     { id: 'chair_sit', name: '端正地坐在椅子上', pose: 'sit', place: 'seat', seat: ['chair'], dur: [80, 180],
       icon: null, kind: 'idle', relax: 0, w: 1,
       doing: '端正地坐在椅子上', react: '坐著沒事做，被叫到馬上看過來' },
@@ -160,6 +164,7 @@
         if (a.kind === 'sleep') w *= 1 - .6 * k;
       }
       if (a.id === 'hunger_beg') w = ctx.hungerBeg && !ctx.calm ? 40 : 0;
+      if (a.id === 'approach_talk') w = 0;
       // 想念：高 → 走到前面盯著你、不想躺遠遠的
       if (a.id === 'stare') w += Math.max(0, miss - 30) / 16;
       if ((a.lie || a.kind === 'sleep') && miss > 40) w *= 1 - (miss - 40) / 100;
