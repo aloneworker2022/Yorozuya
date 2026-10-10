@@ -1680,6 +1680,7 @@ def _pick_guests(rec: dict, n: int, at: int, roll) -> list[dict]:
             p = {"id": f"c{at % 10**9}{i}{int(float(roll()) * 1000)}", "name": _new_name("male", roll), "gender": "male",
                  "role": "客人", "where": "工作室", "named": False}
         p["build"] = ES.client_build(p["id"])
+        p.update(ES.client_pose(p["id"], int(rec.get("escortSeq") or 0), i))
         out.append(p)
     return out
 
@@ -1984,7 +1985,9 @@ def escort_view(rec: dict) -> dict | None:
             "starts": [int(t) for t in rec.get("escortStarts") or []],
             "active": {"seq": int(cur.get("seq") or 0), "clients": int(cur.get("clients") or 0), "startedAt": _ms(ag.get("startedAt")),
                        "until": _ms(ag.get("until")),
-                       "guests": [{"id": g.get("id"), "build": g.get("build") or ES.client_build(g.get("id")), "named": bool(g.get("named"))}
+                       "guests": [{"id": g.get("id"), "build": g.get("build") or ES.client_build(g.get("id")), "named": bool(g.get("named")),
+                                   "name": g.get("name") if g.get("named") else "", "pose": g.get("pose") or "", "pose2": g.get("pose2") or "",
+                                   "switchAt": float(g.get("switchAt") or 0)}
                                   for g in cur.get("guests") or [] if isinstance(g, dict)]} if cur else None}
 
 

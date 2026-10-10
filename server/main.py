@@ -34,6 +34,7 @@ import daydream as ddream
 import discover_bonus
 import jp_news
 import life_agent
+import escort_lines
 import line_group
 import memos
 import sdtags
@@ -4693,6 +4694,42 @@ def life_escort(body: dict):
     if not ok["done"]:
         raise HTTPException(status_code=409, detail="她現在不在日本，或沒有在接客")
     return life_agent.public_snapshot(store, now_ms)
+
+
+# 接客偷看的 AI 台詞：每位客人＋體位一份，記在記憶體（重開偷看沿用、句子用完再往後接）。
+_PEEK_LINES: dict[str, dict] = {}
+
+
+@app.post("/api/escort/peek-lines")
+async def escort_peek_lines(body: dict):
+    """body：{id, guest, pose, build, name, regular, family, voice, stage, more}。回 {lines:[{side,text}], cached}。
+    模型 40 秒沒回、寫不好 → lines 空（手機用本地句庫）。"""
+    body = body or {}
+    key = f"{body.get('id') or ''}|{body.get('guest') or ''}|{body.get('pose') or ''}"
+    now = time.time()
+    for k in [k for k, v in _PEEK_LINES.items() if now - v["at"] > 6 * 3600]:
+        _PEEK_LINES.pop(k, None)
+    row = _PEEK_LINES.get(key)
+    if row and row["lines"] and not body.get("more"):
+        return {"lines": row["lines"], "cached": True}
+    info = dict(body)
+    if row:
+        info["have"] = [f"{'客' if l['side'] == 'client' else '她'}：{l['text']}" for l in row["lines"][-10:]]
+    system, user = escort_lines.prompt(info)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=40)
+    except asyncio.TimeoutError:
+        reply = ""
+    lines = escort_lines.parse(reply)
+    if not lines:
+        return {"lines": row["lines"] if row else [], "cached": bool(row), "failed": True}
+    row = row or {"lines": [], "at": now}
+    row["lines"] = (row["lines"] + lines)[-64:]
+    row["at"] = now
+    _PEEK_LINES[key] = row
+    if len(_PEEK_LINES) > 200:
+        _PEEK_LINES.pop(next(iter(_PEEK_LINES)))
+    return {"lines": row["lines"], "cached": False}
 
 
 async def _world_clock():

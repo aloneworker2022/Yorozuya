@@ -3,7 +3,7 @@
  * 她（房間同一套人偶 RoomDoll，自己的身材／髮型／罩杯／乳搖，側面體位）＋藍色剪影客人（大半被門擋住，只露腰／手）。
  * 「她沒發現你……」；門開著時每 2～4 秒冒一句字幕（客人藍字粗話／她呻吟），點門關上。
  * 不扣錢、不決定發現與否：這些由呼叫端（app.js）先算好傳進來。 */
-import { peekLine, nextGapMs } from "./escort_voices.js?v=2";
+import { peekLine, nextGapMs, flavorWife } from "./escort_voices.js?v=3";
 
 const LW = 195, LH = 422;                    // 邏輯像素（畫面 ×2 放大）
 const DX0 = 8, DX1 = 187, DY0 = 112, DY1 = 340;
@@ -201,7 +201,7 @@ const CSS = `
 .peek-close{position:absolute;top:8px;right:8px;background:none;border:0;color:#998;font-size:22px}`;
 
 /**
- * 打開偷看。opts：{ who, doll, pose('missionary'…), man（客人體型，見 MAN_BUILDS）, noticed, cost, voice, family, onClose(state) }。
+ * 打開偷看。opts：{ who, doll, pose('missionary'…), man（客人體型，見 MAN_BUILDS）, lines（(more)=>Promise<[{side,text}]>，AI 台詞；失敗回 []）, noticed, cost, voice, family, onClose(state) }。
  * 回傳 { close() , state }（state.opened：真的開過門；state.lines：冒過的字幕，測試用）。
  */
 export function openPeek(opts = {}) {
@@ -227,10 +227,29 @@ export function openPeek(opts = {}) {
   status.textContent = "";
   let raf = 0, last = performance.now(), acc = 0, talkAt = 0;
   const recent = { client: [], wife: [] };
+  const ai = { lines: [], used: new Set(), busy: false, moreTried: 0 };
+  const aiFetch = (more = false) => {
+    if (!opts.lines || ai.busy || (more && ai.moreTried >= 3)) return;
+    ai.busy = true; if (more) ai.moreTried++;
+    Promise.resolve(opts.lines(more)).then((ls) => { if (Array.isArray(ls) && ls.length) ai.lines = ls; })
+      .catch(() => {}).finally(() => { ai.busy = false; });
+  };
+  aiFetch(false);
   const say = () => {
     const side = st.side;
     st.side = side === "client" ? "wife" : "client";
-    const l = peekLine(side, pose, { voice: opts.voice || "", family: opts.family || "", recent: recent[side] });
+    // AI 台詞（opts.lines：getLines(more) → Promise<[{side,text}]>）先用；沒有／用完就本地句庫
+    let l = null;
+    const q = ai.lines.filter((x) => x.side === side && !ai.used.has(x.text));
+    if (q.length) {
+      ai.used.add(q[0].text);
+      l = { key: q[0].text, text: side === "wife" ? flavorWife(q[0].text, { voice: opts.voice || "", family: opts.family || "" }) : q[0].text };
+      if (q.length <= 2) aiFetch(true);
+    } else {
+      if (ai.lines.length) aiFetch(true);
+      l = peekLine(side, pose, { voice: opts.voice || "", family: opts.family || "", recent: recent[side] });
+    }
+    st.ai = (st.ai || 0) + (q.length ? 1 : 0);
     recent[side] = [...recent[side], l.key].slice(-6);
     st.lines.push({ side, text: l.text });
     const el = side === "client" ? bubC : bubW;

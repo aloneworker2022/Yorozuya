@@ -49,5 +49,13 @@ export function peekLine(side, pose, { voice = "", family = "", recent = [], rnd
   if (tails && rnd() < 0.3) text = text.replace(/[…！]*$/, "") + tails[Math.floor(rnd() * tails.length)];
   return { key: base, text };
 }
+/** AI 寫的她的句子也過一層呻吟語氣（機率低一點，AI 本來就照語氣寫）。 */
+export function flavorWife(text, { voice = "", family = "", rnd = Math.random } = {}) {
+  let t = String(text || "");
+  if (VOICE_WRAP[voice] && rnd() < 0.2) t = VOICE_WRAP[voice](t);
+  const tails = FAMILY_TAIL[family];
+  if (tails && rnd() < 0.15) t = t.replace(/[…！]*$/, "") + tails[Math.floor(rnd() * tails.length)];
+  return t;
+}
 /** 下一句隔多久：2～4 秒。 */
 export function nextGapMs(rnd = Math.random) { return 2000 + Math.floor(rnd() * 2000); }

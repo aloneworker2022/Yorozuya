@@ -157,19 +157,45 @@ export function currentClient(s, now = Date.now()) {
   return Math.min(n, Math.floor(((now - Number(a.startedAt)) / span) * n) + 1);
 }
 
-/** 客人體型（2026-10-10）：用客人 id 決定（FNV-1a 32 位），常客永遠同一個身材。server/escort.py client_build 同一套。 */
-export const CLIENT_BUILDS = ["average", "slim", "muscular", "fat", "tall", "short", "old"];
-export function clientBuild(id) {
+/** FNV-1a 32 位（跟 server/escort.py fnv 同一套）。 */
+export function fnv(text) {
   let h = 0x811c9dc5;
-  for (const byte of new TextEncoder().encode(String(id ?? ""))) { h ^= byte; h = Math.imul(h, 0x01000193) >>> 0; }
-  return CLIENT_BUILDS[h % CLIENT_BUILDS.length];
+  for (const byte of new TextEncoder().encode(String(text ?? ""))) { h ^= byte; h = Math.imul(h, 0x01000193) >>> 0; }
+  return h;
 }
-/** 正在接的那位客人（RP5 開班時排好的 guests）；沒有就用班次＋第幾位當種子。 */
+/** 客人體型（2026-10-10）：用客人 id 決定，常客永遠同一個身材。server/escort.py client_build 同一套。 */
+export const CLIENT_BUILDS = ["average", "slim", "muscular", "fat", "tall", "short", "old"];
+export function clientBuild(id) { return CLIENT_BUILDS[fnv(id) % CLIENT_BUILDS.length]; }
+/** 每位客人一個體位（客人 id＋班次＋第幾位），15% 在他那段的 35～65% 處換一次。server client_pose 同一套。 */
+export const PEEK_POSES = ["missionary", "cowgirl", "doggy", "kiss", "reverse"];
+export function clientPose(id, seq, idx) {
+  const h = fnv(`${id}|${seq | 0}|${idx | 0}|pose`), i = h % PEEK_POSES.length;
+  const out = { pose: PEEK_POSES[i], pose2: "", switchAt: 0 };
+  const sw = fnv(`${id}|${seq | 0}|${idx | 0}|switch`);
+  if (sw % 100 < 15) {
+    out.pose2 = PEEK_POSES[(i + 1 + Math.floor(sw / 100) % (PEEK_POSES.length - 1)) % PEEK_POSES.length];
+    out.switchAt = Math.round((0.35 + (Math.floor(sw / 10000) % 31) / 100) * 100) / 100;
+  }
+  return out;
+}
+/** 正在接的那位客人（RP5 開班時排好的 guests）＋他那段的起訖時間；沒有就用班次＋第幾位當種子。 */
 export function currentGuest(s, now = Date.now()) {
   const k = currentClient(s, now);
   if (!k) return null;
-  const a = s.world.escort.active, g = Array.isArray(a.guests) ? a.guests[k - 1] : null;
-  if (g && g.id) return { id: g.id, build: CLIENT_BUILDS.includes(g.build) ? g.build : clientBuild(g.id), named: !!g.named };
-  const id = `s${a.seq || 0}-${k}`;
-  return { id, build: clientBuild(id), named: false };
+  const a = s.world.escort.active, n = Math.max(1, Number(a.clients) || 1);
+  const span = Math.max(1, Number(a.until) - Number(a.startedAt));
+  const segStart = Number(a.startedAt) + span * (k - 1) / n, segEnd = Number(a.startedAt) + span * k / n;
+  const g = Array.isArray(a.guests) ? a.guests[k - 1] : null;
+  const id = g?.id || `s${a.seq || 0}-${k}`;
+  const p = g && PEEK_POSES.includes(g.pose) ? { pose: g.pose, pose2: PEEK_POSES.includes(g.pose2) ? g.pose2 : "", switchAt: Number(g.switchAt) || 0 }
+    : clientPose(id, a.seq, k - 1);
+  return { id, k, segStart, segEnd, ...p, build: CLIENT_BUILDS.includes(g?.build) ? g.build : clientBuild(id),
+    named: !!g?.named, name: g?.named ? String(g.name || "") : "" };
+}
+/** 這位客人現在是哪個體位（中途換的話過了 switchAt 就是 pose2）。 */
+export function guestPoseAt(g, now = Date.now()) {
+  if (!g) return "";
+  if (!g.pose2) return g.pose;
+  const f = (now - g.segStart) / Math.max(1, g.segEnd - g.segStart);
+  return f >= g.switchAt ? g.pose2 : g.pose;
 }

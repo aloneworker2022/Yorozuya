@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import * as E from "../web/content/escort.js";
 import { CLIENT_LINES, WIFE_LINES, poolFor, peekLine, nextGapMs } from "../web/content/escort_voices.js";
+import * as V from "../web/content/escort_voices.js";
 
 const D = createRequire(import.meta.url)(fileURLToPath(new URL("../web/content/room_doll.js", import.meta.url)));
 let pass = 0;
@@ -118,5 +119,22 @@ t("客人體型：同 id 永遠同體型、跟 server 同一套 hash；七種都
   const now = 1_000_000;
   const s = { world: { escort: { active: { seq: 3, clients: 2, startedAt: now - 10, until: now + 1000, guests: [{ id: "c1", build: "fat" }, { id: "c2", build: "slim" }] } } } };
   if (E.workingNow(s, now)) assert.equal(E.currentGuest(s, now).build, "fat");
+});
+t("客人體位：跟 server 同一套、同客人不變；~15% 中途換一次；guestPoseAt 過 switchAt 才換", () => {
+  const want = [{"pose": "kiss", "pose2": "", "switchAt": 0.0}, {"pose": "reverse", "pose2": "", "switchAt": 0.0}, {"pose": "doggy", "pose2": "", "switchAt": 0.0}, {"pose": "missionary", "pose2": "reverse", "switchAt": 0.58}, {"pose": "reverse", "pose2": "", "switchAt": 0.0}, {"pose": "doggy", "pose2": "", "switchAt": 0.0}, {"pose": "missionary", "pose2": "", "switchAt": 0.0}, {"pose": "cowgirl", "pose2": "", "switchAt": 0.0}];
+  assert.deepEqual(Array.from({ length: 8 }, (_, i) => E.clientPose(`c${i}`, 3, i % 3)), want);
+  const sw = Array.from({ length: 1000 }, (_, i) => E.clientPose(`c${i}`, 1, 0)).filter((p) => p.pose2);
+  assert.ok(sw.length > 100 && sw.length < 200, String(sw.length));
+  assert.ok(sw.every((p) => p.pose2 !== p.pose && p.switchAt >= .35 && p.switchAt <= .65));
+  const g = { pose: "doggy", pose2: "kiss", switchAt: .5, segStart: 0, segEnd: 1000 };
+  assert.equal(E.guestPoseAt(g, 400), "doggy"); assert.equal(E.guestPoseAt(g, 600), "kiss");
+  assert.equal(E.guestPoseAt({ ...g, pose2: "" }, 900), "doggy");
+  const now = 1_000_000;
+  const s = { world: { escort: { active: { seq: 2, clients: 2, startedAt: now - 10, until: now + 1000, guests: [{ id: "c1", build: "fat", pose: "reverse" }] } } } };
+  if (E.workingNow(s, now)) { const cg = E.currentGuest(s, now); assert.equal(cg.pose, "reverse"); assert.equal(E.currentGuest(s, now + 1).pose, "reverse"); }
+});
+t("AI 台詞的她：flavorWife 不改空字串、會回字串", () => {
+  assert.equal(typeof V.flavorWife("嗯…", { voice: "gasp", rnd: () => 0 }), "string");
+  assert.equal(V.flavorWife("", {}), "");
 });
 console.log(`\n${pass} passed`);

@@ -78,12 +78,32 @@ def limit_ok(rec: dict, now_ms: int) -> bool:
 CLIENT_BUILDS = ["average", "slim", "muscular", "fat", "tall", "short", "old"]
 
 
-def client_build(cid: str) -> str:
+def fnv(text: str) -> int:
     h = 0x811C9DC5
-    for byte in str(cid or "").encode("utf-8"):
+    for byte in str(text or "").encode("utf-8"):
         h ^= byte
         h = (h * 0x01000193) & 0xFFFFFFFF
-    return CLIENT_BUILDS[h % len(CLIENT_BUILDS)]
+    return h
+
+
+def client_build(cid: str) -> str:
+    return CLIENT_BUILDS[fnv(cid) % len(CLIENT_BUILDS)]
+
+
+# 每位客人一個體位（照客人 id＋班次＋第幾位決定），整位客人不變；15% 中途換一次（在他那段時間的 35～65% 處）。手機 escort.js clientPose 同一套。
+PEEK_POSES = ["missionary", "cowgirl", "doggy", "kiss", "reverse"]
+SWITCH_PCT = 15
+
+
+def client_pose(cid: str, seq: int, idx: int) -> dict:
+    h = fnv(f"{cid}|{int(seq)}|{int(idx)}|pose")
+    i = h % len(PEEK_POSES)
+    out = {"pose": PEEK_POSES[i], "pose2": "", "switchAt": 0.0}
+    sw = fnv(f"{cid}|{int(seq)}|{int(idx)}|switch")
+    if sw % 100 < SWITCH_PCT:
+        out["pose2"] = PEEK_POSES[(i + 1 + (sw // 100) % (len(PEEK_POSES) - 1)) % len(PEEK_POSES)]
+        out["switchAt"] = round(0.35 + ((sw // 10000) % 31) / 100, 2)
+    return out
 
 
 def family(rec: dict) -> str:

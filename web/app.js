@@ -58,12 +58,12 @@ import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervi
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=7";
-import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient, currentGuest } from "./content/escort.js?v=3"; // 接客還債
-import { openPeek } from "./content/escort_peek.js?v=3";
+import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient, currentGuest, guestPoseAt } from "./content/escort.js?v=4"; // 接客還債
+import { openPeek } from "./content/escort_peek.js?v=4";
 import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
 import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=10";
-import { STAGE_ZH, familyStageLine, basePersonalityOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
+import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
 import { BASE_OUTFIT } from "./content/outfit_pick.js?v=1";
@@ -8681,18 +8681,41 @@ async function escortPoll() {
 }
 setInterval(() => { void escortPoll(); }, 15000);
 
+/** 偷看的 AI 台詞：每位客人＋體位在手機也記一份（重開直接用、用完才叫伺服器往後接）。逾時 30 秒 → []（用本地句庫）。 */
+const peekLineCache = new Map();
+async function peekAiLines(s, guest, pose, { family, voice }, more = false) {
+  const key = `${s.id}|${guest?.id || ""}|${pose}`;
+  const have = peekLineCache.get(key);
+  if (have && !more) return have;
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 30000);
+  try {
+    const r = await fetch("/api/escort/peek-lines", {
+      method: "POST", headers: { "Content-Type": "application/json" }, signal: ctl.signal,
+      body: JSON.stringify({ id: s.id, guest: guest?.id || "", pose, build: guest?.build || "average", name: guest?.name || "",
+        regular: !!guest?.named, family, voice, stage: s.stage || "", more }),
+    });
+    const j = r.ok ? await r.json() : null;
+    const lines = Array.isArray(j?.lines) ? j.lines.filter((l) => l && (l.side === "client" || l.side === "wife") && typeof l.text === "string") : [];
+    if (lines.length) peekLineCache.set(key, lines);
+    return lines.length ? lines : (have || []);
+  } catch { return have || []; } finally { clearTimeout(timer); }
+}
+
 /** 名冊「去看她」：10～25 金（加到負債上），點門才扣；8% 被她發現（回來時害羞或生氣）。 */
 function escortPeek(s) {
   if (!workingNow(s)) { toast(`${s.name}現在沒在接客`, "bad"); return; }
   const cost = peekCost();
   const noticed = peekNoticed();
-  const pose = pickPose();
+  // 體位跟著客人走（RP5 開班排好）：同一位客人重開偷看還是同一個體位；少數客人中途換一次
+  const guest = currentGuest(s);
+  const pose = guestPoseAt(guest) || pickPose();
   const seq = Number(s.world?.escort?.active?.seq) || 0;
+  const family = familyOf(s), voice = s.bodyState?.moanVoice || "";
   let paid = false;
   openPeek({
     who: s, doll: window.RoomDoll?.lookToDoll(s.look || null, { belly: Preg.bellyOf(s) }), pose, noticed, cost,
-    man: currentGuest(s)?.build || "average",
-    voice: s.bodyState?.moanVoice || "", family: "",
+    man: guest?.build || "average", voice, family,
+    lines: (more) => peekAiLines(s, guest, pose, { family, voice }, more),
     onOpen: () => {
       if (paid) return true;
       paid = true;

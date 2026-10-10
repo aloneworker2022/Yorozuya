@@ -1,3 +1,4 @@
+import json
 """python tests/escort_test.py — 接客還債（RP5：開班門檻、只有老婆、上限、付款帳本、收工結算）。"""
 import re
 import sys
@@ -151,4 +152,12 @@ if __name__ == "__main__":
     mirror_tests()
     assert [ES.client_build(i) for i in ["c12345", "c999001", "客人A", "s3-2"]] == ["average", "muscular", "fat", "muscular"]
     assert len({ES.client_build(f"c{i}") for i in range(200)}) == len(ES.CLIENT_BUILDS)
+    assert [ES.client_pose(f"c{i}", 3, i % 3) for i in range(8)] == json.loads('[{"pose": "kiss", "pose2": "", "switchAt": 0.0}, {"pose": "reverse", "pose2": "", "switchAt": 0.0}, {"pose": "doggy", "pose2": "", "switchAt": 0.0}, {"pose": "missionary", "pose2": "reverse", "switchAt": 0.58}, {"pose": "reverse", "pose2": "", "switchAt": 0.0}, {"pose": "doggy", "pose2": "", "switchAt": 0.0}, {"pose": "missionary", "pose2": "", "switchAt": 0.0}, {"pose": "cowgirl", "pose2": "", "switchAt": 0.0}]')
+    import escort_lines as EL
+    sysm, user = EL.prompt({"pose": "doggy", "build": "fat", "voice": "beggy", "stage": "wife", "family": "溫柔", "name": "田中", "regular": True})
+    assert "老漢推車" in user and "大肚子" in user and "常客田中" in user and "未成年" in sysm
+    good = "客：夾得好緊\n她：慢一點…\n客：再來\n她：嗯…好深…\n客：叫大聲點\n她：會壞掉的…\n她：救命\n客：" + "長" * 30
+    ls = EL.parse(good)
+    assert len(ls) == 6 and ls[0] == {"side": "client", "text": "夾得好緊"} and all("救命" not in l["text"] for l in ls)
+    assert EL.parse("客：一句\n她：一句") == []
     print("escort ok")
