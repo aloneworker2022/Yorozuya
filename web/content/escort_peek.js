@@ -3,16 +3,16 @@
  * 她（房間同一套人偶 RoomDoll，自己的身材／髮型／罩杯／乳搖，側面體位）＋藍色剪影客人（大半被門擋住，只露腰／手）。
  * 「她沒發現你……」；門開著時每 2～4 秒冒一句字幕（客人藍字粗話／她呻吟），點門關上。
  * 不扣錢、不決定發現與否：這些由呼叫端（app.js）先算好傳進來。 */
-import { peekLine, nextGapMs } from "./escort_voices.js?v=1";
+import { peekLine, nextGapMs } from "./escort_voices.js?v=2";
 
 const LW = 195, LH = 422;                    // 邏輯像素（畫面 ×2 放大）
 const DX0 = 8, DX1 = 187, DY0 = 112, DY1 = 340;
 const BED = 298;                              // 床面（世界 z＝0）的邏輯 y
 /** 她骨盆（世界 y＝0）的邏輯 x：每個體位擺得讓她大半在門縫裡、客人大半在門後。 */
-const HIPX = { missionary: DX0 + 70, cowgirl: DX0 + 68, doggy: DX0 + 68, kiss: DX0 + 66 };
+const HIPX = { missionary: DX0 + 70, cowgirl: DX0 + 68, doggy: DX0 + 68, kiss: DX0 + 66, reverse: DX0 + 64 };
 const OPEN = 0.6;                            // 門半開：門縫佔門框寬度
 const BLUE = "rgba(46,82,170,0.95)";
-const POSE_ID = { missionary: "sex_missionary", cowgirl: "sex_cowgirl", doggy: "sex_doggy", kiss: "sex_kiss" };
+const POSE_ID = { missionary: "sex_missionary", cowgirl: "sex_cowgirl", doggy: "sex_doggy", kiss: "sex_kiss", reverse: "sex_reverse" };
 
 let worker = null, jobSeq = 0;
 const waiters = new Map();
@@ -65,6 +65,17 @@ let limb = function (g, a, b, w) {
 }
 let headAt = function (g, p, r = 6) { g.beginPath(); g.arc(p[0], p[1], r, 0, Math.PI * 2); g.fill(); }
 /** a＝RoomDoll.sexAnchor（她骨盆＋抽送深度 p）。退出距離是 2.5 倍、猛地頂回。 */
+/** 畫在她前面的部分：背向坐姿時他的手掌包住她的胸（手壓著，乳房被擠扁）。 */
+export function drawClientFront(g, pose, a, K = 1) {
+  if (pose !== "reverse" || !a.chest) return;
+  const hx = HIPX[pose], P = (y, z) => [hx + y * K, BED - z * K];
+  g.save(); g.strokeStyle = BLUE; g.fillStyle = BLUE; g.globalAlpha = .92; g.lineCap = "round";
+  const c = a.chest, r = (a.cupr || 3.5) * .95, sq = .6 * (a.j - .5);
+  const sh = P(c[1] + 15, c[2] + 6), hand = P(c[1] - r * .2, c[2] + sq);
+  g.lineWidth = 4.5 * K; g.beginPath(); g.moveTo(...sh); g.lineTo(...hand); g.stroke();          // 前臂從她腋下伸過來
+  g.beginPath(); g.ellipse(hand[0], hand[1], (r * .9 + 1.4) * K, (r * .75 + 1) * K, -.25, 0, 7); g.fill();   // 手掌罩住
+  g.restore();
+}
 export function drawClient(g, pose, a, K = 1) {
   const hx = HIPX[pose] || HIPX.cowgirl;
   const P = (y, z) => [hx + y * K, BED - z * K];
@@ -74,32 +85,46 @@ export function drawClient(g, pose, a, K = 1) {
   const out = 9 * (1 - a.p);   // 退出量 0～9（×2.2 畫在骨盆上：退很多、頂回很猛）
   g.strokeStyle = BLUE; g.fillStyle = BLUE;
   const [hy, hz] = [a.hip[1], a.hip[2]];
+  // v2：他慢慢退（髖往後、上身微後仰）、猛地頂（髖往前、上身前傾壓過去）；手跟著她的骨盆走
+  const lean = 5 * (a.p - .5);
   if (pose === "missionary") {
-    const pel = [hy + 8 + out * 1.4, 9];                     // 下腹一直貼在她骨盆前（門縫內看得到）
-    limb(g, P(...pel), P(pel[0] + 12, 38), 11);            // 軀幹往後仰一點，她的小腿靠在他肩上
-    headAt(g, P(pel[0] + 15, 48), 6.5);
-    limb(g, P(pel[0] + 11, 34), P(hy + 14, 22), 4.5);      // 手抓她大腿
-    limb(g, P(...pel), P(pel[0] + 4, 2), 8);               // 跪著的大腿
+    const pel = [hy + 8 + out * 1.4, 9 + .8 * a.p];         // 下腹貼在她骨盆前（門縫內看得到）
+    const sh = [pel[0] + 12 - lean, 38];
+    limb(g, P(...pel), P(...sh), 11);                        // 軀幹：跪直、頂進時往她壓
+    headAt(g, P(sh[0] + 3, 48), 6.5);
+    limb(g, P(sh[0] - 1, 34), P(hy + 14, 22 + 1.5 * a.j), 4.5);   // 手抓她大腿
+    limb(g, P(...pel), P(pel[0] + 4, 2), 8);                 // 跪著的大腿
     limb(g, P(pel[0] + 4, 2), P(pel[0] + 22, 1.5), 5.5);
-    limb(g, P(pel[0] - 4, 10), P(...pel), 6);              // 下腹貼著她
+    limb(g, P(pel[0] - 4, 10), P(...pel), 6);
   } else if (pose === "cowgirl") {
+    const up = 1.6 * a.p;                                    // 她坐到底那一下他往上頂
     headAt(g, P(-38, 7), 6.5);
-    limb(g, P(-31, 6), P(5, 6), 11);                         // 腰在她屁股正下方
-    limb(g, P(5, 5), P(40, 3), 7);
-    limb(g, P(-26, 9), P(-8, Math.max(14, hz + 10)), 4.5); // 手扶她的腰
+    limb(g, P(-31, 6), P(5, 6 + up), 11);                    // 腰在她屁股正下方
+    limb(g, P(5, 5 + up), P(40, 3), 7);
+    limb(g, P(-26, 9), P(hy - 2, Math.max(14, hz + 8)), 4.5); // 手扶她的腰
   } else if (pose === "doggy") {
     const pel = [hy + 7 + out * 1.1, hz + 1];                // 整個循環都貼著她屁股、留在門縫內
-    limb(g, P(...pel), P(pel[0] + 7, pel[1] + 27), 11);
-    headAt(g, P(pel[0] + 10, pel[1] + 37), 6.5);
-    limb(g, P(pel[0] + 6, pel[1] + 22), P(hy + 3, hz + 4), 4.5);   // 雙手抓她臀部
+    const sh = [pel[0] + 7 - lean * 1.2, pel[1] + 27];
+    limb(g, P(...pel), P(...sh), 11);
+    headAt(g, P(sh[0] + 3, sh[1] + 10), 6.5);
+    limb(g, P(sh[0] - 1, sh[1] - 5), P(hy + 3, hz + 4), 4.5);   // 雙手抓她臀部
     limb(g, P(...pel), P(pel[0] + 2, 2.5), 8);
     limb(g, P(pel[0] + 2, 2.5), P(pel[0] + 19, 1.5), 5.5);
     limb(g, P(pel[0] - 5, pel[1]), P(...pel), 6);
+  } else if (pose === "reverse") {
+    // 他坐著靠在她背後：軀幹在她後面、頭從她肩後探出；手臂繞到前面（手掌在 drawClientFront 畫在她身上）
+    const bob = .6 * (a.j - .5);
+    limb(g, P(14, 11), P(13 + bob, 40), 11);
+    headAt(g, P(10 + bob, 50), 6.5);
+    limb(g, P(13, 9), P(-22, 3), 7);                         // 大腿往前，她坐在上面
+    limb(g, P(-22, 3), P(-24, 0), 6);
   } else {
-    limb(g, P(17, 12), P(16, 39), 11);                       // 他坐在右邊，跟她分開兩個形
-    headAt(g, P(12.5, 48), 6.5);                             // 頭往她那邊湊：嘴貼著她
+    // v3 深吻：他的上身跟她一起前後磨、頭往她那邊側著貼過去
+    const f = a.fwd || 0, rock = 1.4 * f;
+    limb(g, P(17 + rock * .5, 12), P(16 + rock, 39), 11);
+    headAt(g, P(12 + rock * 1.2, 48 - .6 * f), 6.5);
     limb(g, P(16, 9), P(-22, 3), 7);
-    limb(g, P(15, 34), P(1, 27), 4.5);                       // 手摟她的腰
+    limb(g, P(15 + rock, 34), P(hy + 4, 27), 4.5);           // 手摟她的腰
   }
   limb = limb0; headAt = head0; g.lineWidth = lw;
 }
@@ -126,6 +151,7 @@ function drawScene(g, st) {
     const cvp = window.RoomDoll.CANVAS.peek;
     if (st.anchor) drawClient(g, st.pose, st.anchor, cvp.scale);
     if (f) g.drawImage(f, (HIPX[st.pose] || HIPX.cowgirl) - cvp.ax, BED - cvp.ay);
+    if (st.anchor) drawClientFront(g, st.pose, st.anchor, cvp.scale);
     g.restore();
     g.fillStyle = `rgba(230,170,90,${0.27 * st.open})`;               // 門縫透出的光
     g.beginPath(); g.moveTo(DX0, DY1); g.lineTo(DX0 + gap, DY1); g.lineTo(DX0 + gap + 22 * st.open, LH); g.lineTo(DX0 - 18 * st.open, LH); g.fill();

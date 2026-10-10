@@ -329,8 +329,8 @@ import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.j
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
 import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
-  ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood } from "./escort.js?v=1";
-import { openPeek } from "./escort_peek.js?v=1";
+  ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood } from "./escort.js?v=2";
+import { openPeek } from "./escort_peek.js?v=2";
 import * as Preg from "./pregnancy.js?v=1";
 import { moanVoiceId } from "./stun_speech.js?v=24";
 import {

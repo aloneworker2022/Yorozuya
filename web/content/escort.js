@@ -21,8 +21,8 @@ export const PEEK_MAX = 25;
 export const NOTICE_CHANCE = 0.08;
 export const RETURN_WINDOW_MS = 12 * 3600e3;  // 收工後這麼久內打開 App，才自動回房間
 export const LIBIDO_PAY = { N: 0, R: 2, S: 4, SS: 7, SSR: 10 };
-export const POSES = ["missionary", "cowgirl", "doggy", "kiss"];
-export const POSE_ZH = { missionary: "傳教士", cowgirl: "騎乘", doggy: "老漢推車", kiss: "面對面擁吻" };
+export const POSES = ["missionary", "cowgirl", "doggy", "kiss", "reverse"];
+export const POSE_ZH = { missionary: "傳教士", cowgirl: "騎乘", doggy: "老漢推車", kiss: "面對面擁吻", reverse: "背向坐姿" };
 
 export function stageKeyOf(who) { return who?.roomStage || who?.stage || "stranger"; }
 export function canEscort(who) { return !!who && !who.ntr && isWifeStage(stageKeyOf(who)); }

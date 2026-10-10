@@ -78,7 +78,7 @@ t("回來的心情看個性；被發現偷看：害羞或生氣", () => {
 t("偷看價錢 10～25、被發現約 8%、四種體位", () => {
   assert.equal(E.peekCost(0), 10); assert.equal(E.peekCost(0.9999), 25);
   assert.ok(E.peekNoticed(0.05)); assert.ok(!E.peekNoticed(0.09));
-  assert.deepEqual(new Set([0, .3, .6, .9].map(E.pickPose)), new Set(E.POSES));
+  assert.deepEqual(new Set([0, .21, .41, .61, .81].map(E.pickPose)), new Set(E.POSES));
 });
 t("字幕句庫：每個體位兩邊都 20 句以上、不重複、沒有強迫字眼", () => {
   for (const pose of E.POSES) for (const side of ["client", "wife"]) {

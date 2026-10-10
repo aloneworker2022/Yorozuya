@@ -58,8 +58,8 @@ import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervi
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=7";
-import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient } from "./content/escort.js?v=1"; // 接客還債
-import { openPeek } from "./content/escort_peek.js?v=1";
+import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient } from "./content/escort.js?v=2"; // 接客還債
+import { openPeek } from "./content/escort_peek.js?v=2";
 import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
 import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=10";
