@@ -58,7 +58,7 @@ import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervi
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=7";
-import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient, currentGuest, guestPoseAt } from "./content/escort.js?v=4"; // 接客還債
+import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient, currentGuest, guestPoseAt } from "./content/escort.js?v=5"; // 接客還債
 import { openPeek } from "./content/escort_peek.js?v=5";
 import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
@@ -952,6 +952,7 @@ function defaultState() {
       cursors: {},  // girlId → { lastPlayerMsgId }
     },
     discover: null, // {day, count} 每日發現獎勵計數
+    discoverClosed: [], // RP5 發現列已完成或推掉的 id（dq…），合併時不再加回
     expansions: {}, // 擴充等級(8 軸,見 EXPANSIONS);名額/格數等由此推導
     dismiss: null,  // {day, price} 今日遣散費
     succubi: [],  // 見 summon()
@@ -1750,31 +1751,46 @@ function errandReward(qid) {
   }
 }
 
+function discoverQuestId(rowId) {
+  return "dq" + rowId;
+}
+
+function closeDiscover(id) {
+  if (!id || !String(id).startsWith("dq")) return;
+  if (!Array.isArray(state.discoverClosed)) state.discoverClosed = [];
+  if (!state.discoverClosed.includes(id)) state.discoverClosed.push(id);
+}
+
 function addQuest(text, opts = {}) {
   text = String(text || "").trim();
-  if (!text) return;
+  if (!text) return 0;
   if (text.length > 80) text = text.slice(0, 80).trim();
   const quiet = !!opts.quiet;
-  if (!quiet) {
+  const id = opts.id || uid();
+  if ((state.quests || []).some(q => q.id === id)) return 0;
+  if (opts.id && (state.discoverClosed || []).includes(opts.id)) return 0;
+  if (!quiet && !opts.fromServer) {
     const talkCmd = parseTalkCommand(text);
     if (talkCmd.cmd) {
       beginShopTalk(talkCmd.id || talkCmd.name);
-      return;
+      return 0;
     }
   }
-  const q = { id: uid(), text, lv: 0 };
+  const q = { id, text, lv: 0 };
   state.quests.push(q);
-  // 發現獎勵:每日前 N 次 +0~2 金。小工具送出時伺服器已擲好，這裡照單入帳。
+  // 發現獎勵：RP5 已收下的用伺服器擲好的金。沒有 fromServer 的才在這裡擲。
   const today = dayNum();
   if (state.discover?.day !== today) state.discover = { day: today, count: 0 };
   let g = 0;
   let give = false;
-  const inboxRoll = opts.fromInbox && opts.counted && Number(opts.day) === today;
-  if (inboxRoll) {
-    if (state.discover.count < DISCOVER_BONUS_CAP) {
-      give = true;
-      g = Math.max(0, Math.min(2, Number(opts.gold) || 0));
-    }
+  if (opts.fromServer) {
+    g = Math.max(0, Math.min(2, Number(opts.gold) || 0));
+    if (opts.counted && Number(opts.day) === today) state.discover.count++;
+    if (g > 0) {
+      state.gold += g;
+      log(`發現「${text}」 +${g} 金`);
+      if (!quiet) toast(`發現委託!+${g} 金`, "good");
+    } else if (!quiet) toast("已加入發現池", "");
   } else if (state.discover.count < DISCOVER_BONUS_CAP) {
     give = true;
     g = randInt(0, 2);
@@ -1786,7 +1802,7 @@ function addQuest(text, opts = {}) {
       log(`發現「${text}」 +${g} 金`);
       if (!quiet) toast(`發現委託!+${g} 金`, "good");
     } else if (!quiet) toast("已加入發現池", "");
-  } else if (!quiet) toast("已加入發現池", "");
+  } else if (!opts.fromServer && !quiet) toast("已加入發現池", "");
   if (!quiet) {
     const asker = maybeJournalAsk(q);
     if (asker) {
@@ -1822,22 +1838,30 @@ async function drainQuestInbox() {
   inboxBusy = true;
   lastInboxAt = Date.now();
   try {
-    const r = await fetch("/api/quests/inbox/drain", { method: "POST", cache: "no-store" });
+    const r = await fetch("/api/quests/discover", { cache: "no-store" });
     if (!r.ok) return;
     const j = await r.json();
     const items = Array.isArray(j.items) ? j.items : [];
-    if (!items.length) return;
     let gained = 0;
+    const added = [];
     for (const it of items) {
-      gained += addQuest(it.text, {
+      if (it == null || it.id == null) continue;
+      const before = state.quests.length;
+      const g = addQuest(it.text, {
+        id: discoverQuestId(it.id),
         quiet: true,
-        fromInbox: true,
+        fromServer: true,
         gold: it.gold,
         counted: it.counted,
         day: it.day,
       }) || 0;
+      if (state.quests.length > before) {
+        gained += g;
+        added.push(it.text);
+      }
     }
-    const base = items.length === 1 ? `已加入發現：「${items[0].text}」` : `已加入發現 ${items.length} 件`;
+    if (!added.length) return;
+    const base = added.length === 1 ? `已加入發現：「${added[0]}」` : `已加入發現 ${added.length} 件`;
     toast(gained > 0 ? `${base} +${gained} 金` : base, "good");
     renderAll();
   } catch { /* 下輪再試 */ }
@@ -2070,6 +2094,7 @@ function complete(id) {
   const g = rollReward();
   state.gold += g;
   const qText = q.text;
+  closeDiscover(id);
   state.quests = state.quests.filter(x => x.id !== id);
   log(`${q.lv === 1 ? "直接完成" : "完成"}「${qText}」 +${g} 金`);
   toast(g >= 19 ? `大豐收!委託完成 +${g} 金!!` : `委託完成!+${g} 金`, "good");
@@ -2103,6 +2128,7 @@ function drop(id) {
     log(`推掉已承接的「${q.text}」 -${pen} 金`);
     toast(`推掉承接的委託,信用受損 -${pen} 金`, "bad");
   }
+  closeDiscover(id);
   state.quests = state.quests.filter(x => x.id !== id);
   // 委託沒了,盯著它的 pin 一併失效(下次生成台詞時重挑)
   for (const s of state.succubi) if (s.errand?.qid === id) s.errand = null;
@@ -8598,11 +8624,12 @@ function escortSettle() {
   if (!state || bootFailed || !Array.isArray(state.succubi)) return;
   let changed = false;
   for (const s of state.succubi) {
+    const owing = (Number(state.gold) || 0) < 0;
     const add = collectPaid(state, s);
     if (add > 0) {
       changed = true;
-      const msg = repayToast(s.name, add, state.gold);
-      log(`接客還債：${msg}`);
+      const msg = repayToast(s.name, add, state.gold, owing);
+      log(`接客：${msg}`);
       toast(msg, state.gold < 0 ? "" : "good");
     }
   }
@@ -19069,8 +19096,50 @@ function on(id, ev, fn) {
   if (el) el.addEventListener(ev, fn);
 }
 
-on("quest-add", "click", () => { const i = $("#quest-input"); if (i) { addQuest(i.value); i.value = ""; } });
-on("quest-input", "keydown", e => { if (e.key === "Enter") { addQuest(e.target.value); e.target.value = ""; } });
+async function submitQuestInput(input) {
+  const text = String(input?.value || "").trim();
+  if (!text || input.dataset.sending === "1") return;
+  const talkCmd = parseTalkCommand(text);
+  if (talkCmd.cmd) {
+    input.value = "";
+    beginShopTalk(talkCmd.id || talkCmd.name);
+    return;
+  }
+  input.dataset.sending = "1";
+  try {
+    const r = await fetch("/api/quests/discover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const detail = typeof j.detail === "string" ? j.detail : "送不出去";
+      toast(detail, "bad");
+      return;
+    }
+    input.value = "";
+    const before = state.quests.length;
+    addQuest(j.text || text, {
+      id: discoverQuestId(j.id),
+      fromServer: true,
+      gold: j.gold,
+      counted: j.counted,
+      day: j.day,
+    });
+    if (state.quests.length === before) renderAll();
+  } catch {
+    toast("連不上伺服器", "bad");
+  } finally {
+    delete input.dataset.sending;
+    input.focus();
+  }
+}
+on("quest-add", "click", () => { const i = $("#quest-input"); if (i) submitQuestInput(i); });
+on("quest-input", "keydown", e => {
+  if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+  submitQuestInput(e.target);
+});
 on("hud-need", "click", () => switchTab(2));
 on("q-back", "click", () => goExec());
 on("diary-tab", "click", () => toggleDiary());

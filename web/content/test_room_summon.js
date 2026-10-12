@@ -19,7 +19,8 @@ import {
   clearArousalCool,
   decayArousalCool,
   resetOpenness,
-} from "./body_state.js?v=20";
+  clearVaginaFingers,
+} from "./body_state.js?v=21";
 import { classifyUserText, applyVerbalTease, verbalTeasePrompt } from "./verbal_tease.js?v=1";
 import {
   effectiveStun,
@@ -60,7 +61,7 @@ import {
   occupancyMoanLine,
   occupancyPromptLine,
   occupancyLabel,
-} from "./stun_speech.js?v=24";
+} from "./stun_speech.js?v=25";
 import {
   pickPortraitUrl,
   portraitPathKey,
@@ -329,10 +330,10 @@ import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.j
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
 import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
-  ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=4";
+  ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
 import { openPeek } from "./escort_peek.js?v=5";
 import * as Preg from "./pregnancy.js?v=1";
-import { moanVoiceId } from "./stun_speech.js?v=24";
+import { moanVoiceId } from "./stun_speech.js?v=25";
 import {
   hungerOn,
   ensureHunger,
@@ -721,6 +722,7 @@ async function openBegDialog() {
   persistRoom();
   setTyping(false);
   await typeLine(who.name, line);
+  renderBodyPanel();
   if (girl !== who || !begDialog) return;
   begDialog.phase = "choose";
   talkBusy = false;
@@ -774,6 +776,7 @@ function renderBegBar() {
 function begStripForSex(who = girl) {
   if (!who || undressStage(who) >= 3) return false;
   const u = ensureUndress(who);
+  clearVaginaFingers(who);
   u.stage = 3;
   u.pantiesBy = "self";
   u.sexStance = "順從";
@@ -1048,7 +1051,7 @@ function bindTalkDebug() {
 // ---------------------------------------------------------------- 接客還債（escort.js，2026-10-10 Al）
 /**
  * 只有老婆（妻子以上）。負債 > 50：人在房裡的老婆自己走到你面前說一句、然後出門（不能阻止）；
- * 負債 1～50：互動列多「拜託她幫忙還債」，她決定。出門＝world.escortGo 旗＋送她走，RP5 開班（手機關著也照走）。
+ * 負債 ≤ 50（含沒欠債）：互動列可以請她去（有負債寫還債，沒欠債寫繼續接客），她決定。出門＝world.escortGo 旗＋送她走，RP5 開班（手機關著也照走）。
  * 金幣：主遊戲（app.js YorozuyaWallet）；test_room 沙盒用 localStorage yoro_sandbox_gold。
  */
 let escortDialog = null;   // {mode:'auto'|'ask', phase:'opening'|'choose', line}
@@ -1093,9 +1096,12 @@ async function openEscortDialog() {
   $("portrait-name").textContent = who.name;
   setTyping(true);
   const feel = { wronged: "有點委屈但心甘情願", resigned: "認命、淡淡的", willing: "很乾脆、甚至有點得意", aroused: "害羞又有點期待" }[feelOf(who)];
-  const ask = escortDialog.mode === "ask"
-    ? `（他拜託你幫忙還債，你答應了：要去接客。只寫你答應他、準備出門的一句話，口氣${feel}；是你自己願意為他做的，不要怪他，不要講細節，不要旁白。）`
-    : `（家裡欠的債太多了，你自己決定去接客幫他還債，現在走到他面前要出門。只寫你跟他說的一句話，口氣${feel}；是你自己願意為他做的，不要怪他，不要講細節，不要旁白。）`;
+  const owing = debtOf(walletGold()) > 0;
+  const ask = escortDialog.mode !== "ask"
+    ? `（家裡欠的債太多了，你自己決定去接客幫他還債，現在走到他面前要出門。只寫你跟他說的一句話，口氣${feel}；是你自己願意為他做的，不要怪他，不要講細節，不要旁白。）`
+    : owing
+      ? `（他拜託你幫忙還債，你答應了：要去接客。只寫你答應他、準備出門的一句話，口氣${feel}；是你自己願意為他做的，不要怪他，不要講細節，不要旁白。）`
+      : `（他請你再去接客，你答應了。只寫你答應他、準備出門的一句話，口氣${feel}；是你自己願意為他做的，不要怪他，不要講細節，不要旁白。）`;
   let line = "";
   try {
     const reply = await withTimeout(askGirl(ask), 12000, "");
@@ -1157,7 +1163,7 @@ function escortLeave(who = girl) {
   if (status) status.textContent = `${who.name}出門去接客還債了。手機關著也會照常工作，做完會回到房間。`;
   try { window.dispatchEvent(new CustomEvent("yoro-escort-go", { detail: { id: who.gameGirlId || who.id } })); } catch { /* */ }
 }
-/** 互動列「拜託她幫忙還債」：負債 1～50、老婆、沒在冷卻。 */
+/** 互動列：負債 ≤ 50（含沒欠債）、老婆、沒在冷卻，可以請她去接客。 */
 function canAskEscort() {
   return !!girl && girlInRoom() && canEscort(girl) && askable(walletGold()) && !escortDialog
     && Date.now() >= (Number(girl.escortMine?.askCoolUntil) || 0);
@@ -1165,7 +1171,8 @@ function canAskEscort() {
 async function askEscort() {
   if (!canAskEscort() || talkBusy) return;
   const who = girl;
-  lines.push({ role: "user", content: "（你拜託她幫忙去接客還債。）" });
+  const owing = debtOf(walletGold()) > 0;
+  lines.push({ role: "user", content: owing ? "（你拜託她幫忙去接客還債。）" : "（你請她再去接客。）" });
   const lim = limitOk(escortLog(who), Date.now());
   const mood = getMoodCarry(who);
   const p = askChanceFor(who, mood, HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0);
@@ -2421,6 +2428,7 @@ function finishSummonArrival(who, mode) {
     talkFor = "";
     try { renderDebug(); } catch { /* */ }
     resetOpenness(who);
+    clearVaginaFingers(who);
   }
   window.RoomActor?.setPresent(true);
   // 接客收工回來（2026-10-10）：痕跡（同一套 lifeTraces，只收一次）＋依個性的心情／被發現偷看
@@ -2923,7 +2931,9 @@ async function requestThrustReply(seq) {
   tickStunAfterReply(girl);
   noteTalkExchange(girl);
   rememberChat();
-  return presentUndressReply(clean, { inSex: true, climaxNow: fact.event === "orgasm" });
+  const shown = presentUndressReply(clean, { inSex: true, climaxNow: fact.event === "orgasm" });
+  renderBodyPanel();
+  return shown;
 }
 
 function newThrustPump() {
@@ -3186,6 +3196,7 @@ async function openSexChat(who) {
   talkBusy = true;
   clearActionFlash();
   const o = ensureBody(who)?.organs;
+  clearVaginaFingers(who);
   sexChat = {
     marathon,
     pose,
@@ -3507,7 +3518,10 @@ function closeSexChat() {
   if ($("portrait-img")) delete $("portrait-img").dataset.sexStep;
   if (girl) {
     const o = ensureBody(girl)?.organs;
-    if (o?.vagina && o.vagina.stuffed === "penis") o.vagina.stuffed = sc.prevStuffed === "penis" ? "" : sc.prevStuffed;
+    if (o?.vagina && o.vagina.stuffed === "penis") {
+      const back = sc.prevStuffed === "penis" || sc.prevStuffed === "fingers" ? "" : sc.prevStuffed;
+      o.vagina.stuffed = back;
+    }
   }
   typeJob += 1;
   setTyping(false);
@@ -8378,6 +8392,7 @@ async function openTalk() {
     await typeLine(girl.name, talkError(err));
   }
   if (girl?.world) girl.world.justBack = false;
+  renderBodyPanel();
   talkBusy = false;
   if (sheetOpen() && talkFor === girl.id) {
     setTalkEnabled(true);
@@ -9124,6 +9139,7 @@ async function deliverUserTalk(text, opts = {}) {
     talkBusy = false;
     if (sheetOpen()) setTalkEnabled(true);
     refreshTalkActs();
+    renderBodyPanel();
   }
 }
 
@@ -9281,6 +9297,7 @@ function renderUndressPlayChoices() {
 
 function openUndressPlay() {
   if (!girl || !sheetOpen() || !undressEntryUnlocked(girl)) return;
+  clearVaginaFingers(girl);
   undressPlay = { phase: "choose", reply: "", ending: "", busy: false };
   activeRoomScene = "undress-play";
   undressView += 1;
@@ -9396,6 +9413,7 @@ async function playUndress(mode) {
     let stageAfter = stageBefore;
     if (outcome === "advance") {
       const u = ensureUndress(girl);
+      clearVaginaFingers(girl);
       u.stage = Math.min(3, stageBefore + 1);
       stageAfter = u.stage;
       // 事後算帳：失神中被脫（或被叫脫）衣服，清醒時本來會漲的侵犯記成欠帳
@@ -9431,6 +9449,7 @@ async function playUndress(mode) {
     noteTalkExchange(girl);
     rememberChat();
     persistRoom();
+    renderBodyPanel();
     if (!undressPlay || !undressPlayOpen()) return;
 
     undressPlay.reply = shownReply;
@@ -9533,13 +9552,16 @@ function refreshTalkActs() {
     btn.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void giveMedicine(); });
     row.append(btn);
   }
-  // 負債 1～50：拜託老婆幫忙還債（她決定）
+  // 負債 ≤ 50（含沒欠債）：請老婆去接客（她決定）。負債超過 50 她自己去，不顯示。
   if (!talkBusy && canAskEscort()) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.dataset.romance = "escort";
-    btn.textContent = "拜託她幫忙還債";
-    btn.title = `負債 ${debtOf(walletGold())} 金：拜託她去接客幫你還（她會自己決定）`;
+    const owing = debtOf(walletGold());
+    btn.textContent = owing > 0 ? "拜託她幫忙還債" : "請她繼續接客";
+    btn.title = owing > 0
+      ? `負債 ${owing} 金：拜託她去接一輪（4 位，她會自己決定）`
+      : "請她再去接一輪（4 位，她會自己決定）";
     btn.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void askEscort(); });
     row.append(btn);
   }
@@ -9686,6 +9708,7 @@ async function dressHer() {
     talkBusy = false;
     if (sheetOpen()) setTalkEnabled(true);
     refreshTalkActs();
+    renderBodyPanel();
   }
 }
 
@@ -9915,6 +9938,7 @@ function endTalkSession() {
     girl.bodyState.ejacTalkLeft = 0;
     girl.bodyState.ejacTalkBan = false;
   }
+  clearVaginaFingers(girl);
   if (girl.chatEnter !== "flee_back" && girl.chatEnter !== "summon") {
     girl.chatEnter = "reopen";
   }
@@ -10004,6 +10028,7 @@ function applyRoomMirror(snapshot) {
     if (girl.bodyState?.arousalCoolAt) decayArousalCool(girl);
     else if ((girl.bodyState?.arousal || 0) > 0) zeroArousal(girl);
     if ((girl.bodyState?.openness || 0) > 0) resetOpenness(girl);
+    clearVaginaFingers(girl);
   }
   persistRoom({ savedAt, quiet: true });
   try {
@@ -10244,7 +10269,10 @@ async function adoptRosterGirl(payload) {
     migrateAffectionScale(girl);
     if (!girl.portraits || typeof girl.portraits !== "object") girl.portraits = {};
     ensureBody(girl);
-    if (!continuingVisit) resetOpenness(girl);
+    if (!continuingVisit) {
+      resetOpenness(girl);
+      clearVaginaFingers(girl);
+    }
     ensureFriends(girl);
     ensurePlayerNotes(girl);
     normalizeGirlTags(girl);
@@ -10817,6 +10845,7 @@ function sendHerOutAgain(opts = {}) {
   if (girl.chatEnter !== "flee_back") girl.chatEnter = "summon";
   if (!opts.keepArousal) zeroArousal(girl);
   resetOpenness(girl);
+  clearVaginaFingers(girl);
   window.RoomActor?.setPresent(false);
   rememberHomeReturn(girl);
   if (girl.world) girl.world.settlingHome = false;
@@ -10905,6 +10934,7 @@ async function fleeRoomFromUndress() {
   try { clearStunDebt(who); } catch { /* ignore */ }
   startArousalCool(who);
   resetOpenness(who);
+  clearVaginaFingers(who);
   closeTalkForLeave();
   window.RoomActor?.setPresent(false);
   dropVisitPics();
@@ -11045,6 +11075,7 @@ async function fleeRoomFromInvasion({ cause = "動手動腳到你受不了逃走
   try { noteMood(who, { type: "angry", level: 100, cause }); } catch { /* ignore */ }
   startArousalCool(who);
   resetOpenness(who);
+  clearVaginaFingers(who);
   // 先關對話／busy／scroll lock，再趕人——避免房間被鎖、找地點卡住
   closeTalkForLeave();
   window.RoomActor?.setPresent(false);
@@ -11515,6 +11546,7 @@ function bindBodyPanel() {
     if (girl.bodyState?.arousalCoolAt) decayArousalCool(girl);
     else if ((girl.bodyState?.arousal || 0) > 0) zeroArousal(girl);
     if ((girl.bodyState?.openness || 0) > 0) resetOpenness(girl);
+    clearVaginaFingers(girl);
     try { persistRoom(); } catch { /* ignore */ }
   }
   syncArousalOffChatTimer();

@@ -3,7 +3,7 @@
  * 每幀上傳成姿勢參考（/api/pose-refs）→ /api/imggen 圖生圖（denoise 預設 0.3、每幀同一個 seed，臉和畫風才連得起來）
  * → /api/bodym/assemble 組回 GIF／WebP。 */
 import { peekStills, MAN_BUILDS } from "./escort_peek.js?v=5";
-import { POSE_ZH } from "./escort.js?v=4";
+import { POSE_ZH } from "./escort.js?v=5";
 
 const $ = (id) => document.getElementById(id);
 const POSES = ["missionary", "cowgirl", "doggy", "kiss", "reverse"];

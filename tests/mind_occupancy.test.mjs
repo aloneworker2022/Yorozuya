@@ -176,27 +176,41 @@ t("自己脫衣：痙攣中 cap 30 → 好好講話（原句都在）", () => {
   }
 });
 
-t("精液流出：拔出後第一句 fresh、下一句 fade、再來沒了；塞著不流", () => {
+t("精液流出：拔出後第一句 fresh、下一句 fade、再來沒了；塞著不流；流出子宮精液減一階", () => {
   const g = girl();
   g.bodyState.organs.uterus.semen = 2;
   g.bodyState.organs.vagina.stuffed = "penis";
   assert.equal(S.takeOccupancy(g).semenOut, "");
+  assert.equal(g.bodyState.organs.uterus.semen, 2);
   g.bodyState.organs.vagina.stuffed = "semen";
   assert.equal(S.peekOccupancy(g).semenOut, "fresh");
+  assert.equal(g.bodyState.organs.uterus.semen, 2);
   assert.equal(S.takeOccupancy(g).semenOut, "fresh");
+  assert.equal(g.bodyState.organs.uterus.semen, 1);
   assert.equal(S.takeOccupancy(g).semenOut, "fade");
+  assert.equal(g.bodyState.organs.uterus.semen, 1);
   assert.equal(S.takeOccupancy(g).semenOut, "");
   // 又被內射（量變多）→ 再流一次
   g.bodyState.organs.uterus.semen = 3;
   assert.equal(S.takeOccupancy(g).semenOut, "fresh");
+  assert.equal(g.bodyState.organs.uterus.semen, 2);
   // 過 8 分鐘可能再流（rng 0 → 一定）
   g.bodyState.semenOutAt = Date.now() - S.SEMEN_OUT_REDRIP_MS - 1000;
   g.bodyState.semenOutLeft = 0;
   assert.equal(S.takeOccupancy(g, "", { rng: () => 0 }).semenOut, "fresh");
+  assert.equal(g.bodyState.organs.uterus.semen, 1);
+  assert.equal(S.takeOccupancy(g).semenOut, "fade");
   // 精液清空 → 歸零
   g.bodyState.organs.uterus.semen = 0;
   assert.equal(S.takeOccupancy(g).semenOut, "");
   assert.equal(g.bodyState.semenOutLast, 0);
+  // 最後一階流出：減到沒有，下一句仍是餘波
+  g.bodyState.organs.uterus.semen = 1;
+  g.bodyState.semenOutLast = 0;
+  assert.equal(S.takeOccupancy(g).semenOut, "fresh");
+  assert.equal(g.bodyState.organs.uterus.semen, 0);
+  assert.equal(S.takeOccupancy(g).semenOut, "fade");
+  assert.equal(S.takeOccupancy(g).semenOut, "");
 });
 
 t("失神 → 佔有度換算（沒被刺激最多 20）", () => {

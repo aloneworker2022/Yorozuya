@@ -561,6 +561,14 @@ export function decayArousalOffChat(who) {
   return b;
 }
 
+/** 手指還插在陰道裡才拿出來。跳蛋、假陰莖、陰莖、精液不動。 */
+export function clearVaginaFingers(who) {
+  const vagina = who?.bodyState?.organs?.vagina;
+  if (!vagina || vagina.stuffed !== "fingers") return false;
+  vagina.stuffed = "";
+  return true;
+}
+
 /** 主動離開：性奮直接歸 0。跑掉不走這條。 */
 export function zeroArousal(who) {
   const b = who?.bodyState;

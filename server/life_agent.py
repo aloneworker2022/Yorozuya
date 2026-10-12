@@ -1602,10 +1602,14 @@ def start_escort(rec: dict, debt: int, now_ms: int, rnd=None, key: str = "", for
         return None
     rec["escortSeq"] = int(rec.get("escortSeq") or 0) + 1
     plan["guests"] = _pick_guests(rec, plan["clients"], now_ms, roll)   # 開班就決定是誰（偷看時畫得出他的身材）
+    for g, span in zip(plan["guests"], plan.get("spans") or []):
+        g["ms"] = int(span)
     rec["escortStarts"] = ([int(t) for t in rec.get("escortStarts") or [] if now_ms - int(t) < 2 * ES.DAY_MS] + [now_ms])[-6:]
     rec["agenda"] = {"kind": "escort", "startedAt": now_ms, "until": now_ms + plan["ms"],
                      "event": {"escort": dict(plan, seq=rec["escortSeq"])}}
-    rec["note"] = f"{rec.get('name') or '她'}去接客還債（{plan['clients']} 位客人）。"
+    name = rec.get("name") or "她"
+    rec["note"] = (f"{name}去接客還債（{plan['clients']} 位客人）。" if int(plan.get("debt") or 0) > 0
+                   else f"{name}去接客（{plan['clients']} 位客人）。")
     return rec["agenda"]
 
 
@@ -1628,6 +1632,13 @@ ESCORT_MEMO = {
     "resigned": "去接客還債，{n}位客人，{paid}金。做完就回來了，沒什麼好說的。",
     "willing": "今天去接客幫他還債，{n}位客人、{paid}金，還算順利，回去要他誇我。",
     "aroused": "去接客還債，{n}位客人、{paid}金……做到後來身體自己熱起來了，有點不好意思。",
+}
+# 沒欠債、是他開口請的（不是自己去還債）
+ESCORT_KEEP = {
+    "wronged": "他請我再去接客，我答應了，接了{n}位客人，賺了{paid}金。身體很累，有點委屈，但這是我自己答應的。",
+    "resigned": "他請我再去接客，{n}位客人，{paid}金。做完就回來了。",
+    "willing": "他請我再去接客，{n}位客人、{paid}金，還算順利，回去要他誇我。",
+    "aroused": "他請我再去接客，{n}位客人、{paid}金……做到後來身體自己熱起來了，有點不好意思。",
 }
 
 
@@ -1659,9 +1670,12 @@ def settle_escort(rec: dict, now_ms: int, rnd=None) -> dict | None:
     feel = ES.FEEL.get(ES.family(rec), "wronged")
     mood, lvl = ES.FEEL_MOOD[feel]
     before = mood_now(rec, at)
-    after = apply_mood(rec, mood, lvl + 4 * n, f"去接客還債（{n} 位客人）", at)
-    text = ESCORT_MEMO[feel].format(n=n, paid=paid)
-    _remember(rec, "work", text, at, ["接客", "還債", "工作室"], {"place": "工作室", "private": "escort", "moodBefore": before[0], "moodAfter": after[0]})
+    owing = int(plan.get("debt") or 0) > 0
+    cause = f"去接客還債（{n} 位客人）" if owing else f"他請我去接客（{n} 位客人）"
+    after = apply_mood(rec, mood, lvl + 4 * n, cause, at)
+    text = (ESCORT_MEMO if owing else ESCORT_KEEP)[feel].format(n=n, paid=paid)
+    tags = ["接客", "還債", "工作室"] if owing else ["接客", "工作室"]
+    _remember(rec, "work", text, at, tags, {"place": "工作室", "private": "escort", "moodBefore": before[0], "moodAfter": after[0]})
     rec["last"] = {"kind": "escort", "at": at, "text": text, "place": "工作室", "person": "", "moodBefore": before[0], "moodAfter": after[0]}
     rec["agenda"] = None
     arm(rec, "idle", now_ms, roll, 30 * 60 * 1000)
@@ -1987,7 +2001,7 @@ def escort_view(rec: dict) -> dict | None:
                        "until": _ms(ag.get("until")),
                        "guests": [{"id": g.get("id"), "build": g.get("build") or ES.client_build(g.get("id")), "named": bool(g.get("named")),
                                    "name": g.get("name") if g.get("named") else "", "pose": g.get("pose") or "", "pose2": g.get("pose2") or "",
-                                   "switchAt": float(g.get("switchAt") or 0)}
+                                   "switchAt": float(g.get("switchAt") or 0), "ms": int(g.get("ms") or 0)}
                                   for g in cur.get("guests") or [] if isinstance(g, dict)]} if cur else None}
 
 

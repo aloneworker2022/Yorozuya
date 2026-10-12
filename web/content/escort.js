@@ -1,14 +1,14 @@
 /* 接客還債（2026-10-10 Al）：純規則，手機與 node 測試共用；RP5 那邊數字在 server/escort.py（tests 會比對）。
  * 負債＝state.gold < 0。只有妻子以上（妻子／貼心／順從／病態）會為了你去接客；沒有老婆就只擋召喚。
- * 負債 > 50：老婆自己去（一班 2～4 小時、1～4 位客人、每位 15～40 金，錢直接拿去還債，還清就收工）。
- * 負債 1～50：她不會自己去；房間聊天多一顆「拜託她幫忙還債」，她看個性／心情／關係／忠誠決定。
- * 一天（24 小時內）最多 2 班，兩班之間至少在你房間休息 4 小時。偷看 10～25 金（加到負債上），8% 被她發現。 */
+ * 負債 > 50：老婆自己去。一輪固定 4 位客人，每位 30～60 分鐘（總長加總，2～4 小時），每位 15～40 金。開了就做完。
+ * 負債 ≤ 50（含沒欠債）：她不自己去；房間聊天可以請她去（有負債寫還債，沒欠債寫繼續接客），她看個性／心情／關係／忠誠決定。
+ * 24 小時內最多 2 輪，兩輪之間至少休息 4 小時。偷看 10～25 金（加到負債上），8% 被她發現。 */
 import { familyOf, stageIndexOf, STAGE_IDX, isWifeStage } from "./girl_voice.js?v=1";
 
 export const AUTO_DEBT = 50;            // 負債超過這個（嚴格 >）老婆自己去
-export const SHIFT_MIN_MS = 2 * 3600e3;
-export const SHIFT_MAX_MS = 4 * 3600e3;
-export const CLIENTS_MIN = 1;
+export const CLIENT_MIN_MS = 30 * 60e3;  // 每位客人 30～60 分鐘，一輪總長是加總
+export const CLIENT_MAX_MS = 60 * 60e3;
+export const CLIENTS_PER_SHIFT = 4;      // 一輪做滿這幾位才休息
 export const CLIENTS_MAX = 4;
 export const PAY_MIN = 15;
 export const PAY_MAX = 40;
@@ -28,7 +28,8 @@ export function stageKeyOf(who) { return who?.roomStage || who?.stage || "strang
 export function canEscort(who) { return !!who && !who.ntr && isWifeStage(stageKeyOf(who)); }
 export function debtOf(gold) { const g = Number(gold); return Number.isFinite(g) && g < 0 ? Math.round(-g) : 0; }
 export function autoDue(gold) { return debtOf(gold) > AUTO_DEBT; }
-export function askable(gold) { const d = debtOf(gold); return d > 0 && d <= AUTO_DEBT; }
+/** 負債 ≤ 50，含沒欠債：她不自己去，玩家可以請。 */
+export function askable(gold) { return debtOf(gold) <= AUTO_DEBT; }
 
 /** 好幾個老婆：人在房裡的優先，其次階段高、忠誠高。 */
 export function pickWife(girls, roomId = "") {
@@ -111,9 +112,11 @@ export function collectPaid(state, s) {
   state.gold = (Number(state.gold) || 0) + (paid - taken);
   return paid - taken;
 }
-export function repayToast(name, amount, gold) {
+/** owing：這筆錢進來之前是不是還欠著。沒欠債時她是被請來接客，不說「還債」。 */
+export function repayToast(name, amount, gold, owing = true) {
   const left = debtOf(gold);
-  return left > 0 ? `${name}還了 ${amount} 金，剩餘負債 ${left} 金` : `${name}還了 ${amount} 金，債還清了`;
+  if (left > 0) return `${name}還了 ${amount} 金，剩餘負債 ${left} 金`;
+  return owing ? `${name}還了 ${amount} 金，債還清了` : `${name}接客賺了 ${amount} 金`;
 }
 
 /** 偷看：價格、會不會被發現、抽體位。 */
@@ -148,13 +151,46 @@ export function escortLog(who) {
   const starts = [...new Set([...(e.starts || []), ...(mine.starts || [])].map(Number).filter(Boolean))];
   return { starts, lastEnd: Number(e.lastEnd) || 0 };
 }
-/** 名冊卡：「接客中・第 N 位客人」——照這班時間平均分給每位客人。 */
+/** 這輪每位客人自己的時長。舊存檔沒有 ms 就回 null，改把整輪平均分。 */
+export function guestSpans(active) {
+  const guests = Array.isArray(active?.guests) ? active.guests : [];
+  const spans = guests.map((g) => Math.floor(Number(g?.ms) || 0));
+  if (!spans.length || spans.some((ms) => ms <= 0)) return null;
+  return spans;
+}
+/** 名冊卡：「接客中・第 N 位客人」。有每位的時長就照加總走，否則平均分。 */
 export function currentClient(s, now = Date.now()) {
   const a = s?.world?.escort?.active;
   if (!a || !workingNow(s, now)) return 0;
-  const span = Math.max(1, Number(a.until) - Number(a.startedAt));
   const n = Math.max(1, Number(a.clients) || 1);
+  const spans = guestSpans(a);
+  if (spans) {
+    let acc = 0;
+    const elapsed = now - Number(a.startedAt);
+    const m = Math.min(n, spans.length);
+    for (let i = 0; i < m; i++) {
+      acc += spans[i];
+      if (elapsed < acc) return i + 1;
+    }
+    return m;
+  }
+  const span = Math.max(1, Number(a.until) - Number(a.startedAt));
   return Math.min(n, Math.floor(((now - Number(a.startedAt)) / span) * n) + 1);
+}
+/** 第 k 位客人（1 起算）在這一輪裡的起訖。 */
+export function guestWindow(active, k) {
+  const n = Math.max(1, Number(active?.clients) || 1);
+  const spans = guestSpans(active);
+  if (spans && spans.length >= k) {
+    const before = spans.slice(0, k - 1).reduce((sum, ms) => sum + ms, 0);
+    const segStart = Number(active.startedAt) + before;
+    return { segStart, segEnd: segStart + spans[k - 1] };
+  }
+  const span = Math.max(1, Number(active?.until) - Number(active?.startedAt));
+  return {
+    segStart: Number(active?.startedAt) + span * (k - 1) / n,
+    segEnd: Number(active?.startedAt) + span * k / n,
+  };
 }
 
 /** FNV-1a 32 位（跟 server/escort.py fnv 同一套）。 */
@@ -182,9 +218,8 @@ export function clientPose(id, seq, idx) {
 export function currentGuest(s, now = Date.now()) {
   const k = currentClient(s, now);
   if (!k) return null;
-  const a = s.world.escort.active, n = Math.max(1, Number(a.clients) || 1);
-  const span = Math.max(1, Number(a.until) - Number(a.startedAt));
-  const segStart = Number(a.startedAt) + span * (k - 1) / n, segEnd = Number(a.startedAt) + span * k / n;
+  const a = s.world.escort.active;
+  const { segStart, segEnd } = guestWindow(a, k);
   const g = Array.isArray(a.guests) ? a.guests[k - 1] : null;
   const id = g?.id || `s${a.seq || 0}-${k}`;
   const p = g && PEEK_POSES.includes(g.pose) ? { pose: g.pose, pose2: PEEK_POSES.includes(g.pose2) ? g.pose2 : "", switchAt: Number(g.switchAt) || 0 }

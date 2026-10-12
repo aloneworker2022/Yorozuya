@@ -272,7 +272,7 @@ def db() -> sqlite3.Connection:
             updated_at REAL NOT NULL
         )"""
     )
-    # 發現小工具 inbox:手機 widget 丟待辦,遊戲開著時再收進發現池(避免跟存檔互蓋)
+    # 發現待辦留在 RP5。前端只讀來合併，不負責把字寫進這張表。
     conn.execute(
         """CREATE TABLE IF NOT EXISTS quest_inbox (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,11 +280,13 @@ def db() -> sqlite3.Connection:
             created REAL NOT NULL
         )"""
     )
-    # 舊庫補欄：這次發現佔的金、有沒有佔每日名額、擲獎時的遊戲日
+    # 舊庫補欄：這次發現佔的金、有沒有佔每日名額、擲獎時的遊戲日。
+    # handed：舊版前端 drain 用，標過仍留列，不刪。
     for stmt in (
         "ALTER TABLE quest_inbox ADD COLUMN gold INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE quest_inbox ADD COLUMN counted INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE quest_inbox ADD COLUMN day INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE quest_inbox ADD COLUMN handed INTEGER NOT NULL DEFAULT 0",
     ):
         try:
             conn.execute(stmt)
@@ -388,46 +390,69 @@ def _discover_snapshot(conn):
     return discover, sleep_end
 
 
+def _discover_row(r):
+    return {"id": r[0], "text": r[1], "created": r[2], "gold": r[3], "counted": r[4], "day": r[5]}
+
+
+@app.get("/api/quests/discover")
+def list_discover_quests():
+    """RP5 上的發現待辦。前端用 id 合併，這支不刪列。"""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, text, created, gold, counted, day FROM quest_inbox ORDER BY id"
+        ).fetchall()
+    return {"items": [_discover_row(r) for r in rows]}
+
+
 @app.post("/api/quests/discover")
 def post_discover_quest(body: QuestDiscoverIn):
-    """發現小工具:把待辦丟進 inbox。每天前 10 次跟遊戲內一樣隨機 +0～2 金。"""
+    """發現輸入直接寫進 RP5。每天前 10 次隨機 +0～2 金，名額只算這張表。"""
     text = _clean_quest_text(body.text)
     if not text:
         raise HTTPException(status_code=400, detail="請輸入待辦")
     now_ms = time.time() * 1000
     with db() as conn:
-        discover, sleep_end = _discover_snapshot(conn)
+        _discover, sleep_end = _discover_snapshot(conn)
         day = discover_bonus.game_day(now_ms, sleep_end)
-        pending_counted = conn.execute(
+        used = conn.execute(
             "SELECT COUNT(*) FROM quest_inbox WHERE counted = 1 AND day = ?",
             (day,),
         ).fetchone()[0]
         gold, counted, day = discover_bonus.next_bonus(
-            discover, pending_counted, now_ms, sleep_end,
+            {"day": day, "count": used}, 0, now_ms, sleep_end,
         )
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO quest_inbox (text, created, gold, counted, day) VALUES (?, ?, ?, ?, ?)",
             (text, time.time(), gold, counted, day),
         )
+        new_id = cur.lastrowid
         pending = conn.execute("SELECT COUNT(*) FROM quest_inbox").fetchone()[0]
-    return {"ok": True, "text": text, "pending": pending, "gold": gold}
+        created = conn.execute(
+            "SELECT created FROM quest_inbox WHERE id = ?", (new_id,)
+        ).fetchone()[0]
+    return {
+        "ok": True,
+        "id": new_id,
+        "text": text,
+        "created": created,
+        "pending": pending,
+        "gold": gold,
+        "counted": counted,
+        "day": day,
+    }
 
 
 @app.post("/api/quests/inbox/drain")
 def drain_quest_inbox():
-    """遊戲端收走 inbox。一次拿走並清空,避免重複入池。gold 是送出時已擲好的。"""
+    """舊前端用。交出尚未標記的列並標成 handed，不刪。新前端改讀 GET /api/quests/discover。"""
     with db() as conn:
         rows = conn.execute(
-            "SELECT id, text, gold, counted, day FROM quest_inbox ORDER BY id"
+            "SELECT id, text, created, gold, counted, day FROM quest_inbox "
+            "WHERE handed = 0 ORDER BY id"
         ).fetchall()
         if rows:
-            conn.execute("DELETE FROM quest_inbox")
-    return {
-        "items": [
-            {"id": r[0], "text": r[1], "gold": r[2], "counted": r[3], "day": r[4]}
-            for r in rows
-        ]
-    }
+            conn.execute("UPDATE quest_inbox SET handed = 1 WHERE handed = 0")
+    return {"items": [_discover_row(r) for r in rows]}
 
 
 @app.put("/api/save")

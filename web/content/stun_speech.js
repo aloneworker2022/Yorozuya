@@ -941,30 +941,29 @@ export function stunToOccupancy(stun, mayBreak = true) {
 function semenOutPeek(b, now = Date.now()) {
   const o = b?.organs || {};
   const semen = o.uterus?.semen || 0;
-  if (semen <= 0) return "";
   const plugged = SEMEN_PLUGS.has(String(o.vagina?.stuffed || ""));
-  if (!plugged && semen > (b.semenOutLast || 0)) return "fresh";
+  if (semen > 0 && !plugged && semen > (b.semenOutLast || 0)) return "fresh";
   if ((b.semenOutLeft || 0) > 0) return "fade";
   return "";
 }
 
-/** 同上但會記帳（每句回覆呼叫一次）。 */
+/**
+ * 同上但會記帳（每句回覆呼叫一次）。
+ * 這句真的流出（fresh，含 8 分鐘後再流）時子宮精液減一階；餘波不減。減到 0 就停。
+ */
 function semenOutTake(b, rng = Math.random, now = Date.now()) {
   const o = b?.organs || {};
-  const semen = o.uterus?.semen || 0;
-  if (semen <= 0) {
-    b.semenOutLast = 0;
-    b.semenOutLeft = 0;
-    return "";
-  }
+  const semen = Math.max(0, Math.round(Number(o.uterus?.semen) || 0));
   const plugged = SEMEN_PLUGS.has(String(o.vagina?.stuffed || ""));
   let fire = false;
-  if (!plugged) {
+  if (semen > 0 && !plugged) {
     if (semen > (b.semenOutLast || 0)) fire = true;
     else if (b.semenOutAt && now - b.semenOutAt >= SEMEN_OUT_REDRIP_MS && rng() < SEMEN_OUT_REDRIP_P) fire = true;
   }
   if (fire) {
-    b.semenOutLast = semen;
+    const left = semen - 1;
+    if (o.uterus) o.uterus.semen = left;
+    b.semenOutLast = left;
     b.semenOutAt = now;
     b.semenOutLeft = 1;
     return "fresh";
@@ -972,6 +971,10 @@ function semenOutTake(b, rng = Math.random, now = Date.now()) {
   if ((b.semenOutLeft || 0) > 0) {
     b.semenOutLeft -= 1;
     return "fade";
+  }
+  if (semen <= 0) {
+    b.semenOutLast = 0;
+    return "";
   }
   if (semen < (b.semenOutLast || 0)) b.semenOutLast = semen;
   return "";

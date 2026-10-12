@@ -12,10 +12,12 @@ const t = (name, fn) => { fn(); pass += 1; console.log("ok -", name); };
 const seq = (...v) => { let i = 0; return () => v[Math.min(i++, v.length - 1)]; };
 const wife = (stage = "wife", archetype = "文靜溫柔", extra = {}) => ({ id: "a", name: "悠梨", roomStage: stage, archetype, stats: { loyalty: 70 }, world: {}, ...extra });
 
-t("負債門檻：>50 自己去、1～50 可以拜託", () => {
+t("負債門檻：>50 自己去、≤50 可以請（沒欠債也可以）", () => {
   assert.equal(E.autoDue(-50), false); assert.equal(E.autoDue(-51), true);
-  assert.equal(E.askable(-50), true); assert.equal(E.askable(-1), true); assert.equal(E.askable(0), false); assert.equal(E.askable(-51), false);
+  assert.equal(E.askable(-50), true); assert.equal(E.askable(-1), true);
+  assert.equal(E.askable(0), true); assert.equal(E.askable(20), true); assert.equal(E.askable(-51), false);
   assert.equal(E.debtOf(12), 0); assert.equal(E.debtOf(-12.4), 12);
+  assert.equal(E.CLIENTS_PER_SHIFT, 4);
 });
 t("只有妻子以上會去；被奪走的不去", () => {
   for (const st of ["wife", "devoted_wife", "obedient_wife", "pathological_wife"]) assert.ok(E.canEscort(wife(st)), st);
@@ -53,6 +55,7 @@ t("收錢只收差額（RP5 escortPaid 只會變大、state.escortTaken 記收�
   assert.equal(E.collectPaid(state, s), 30); assert.equal(state.gold, -40);
   assert.equal(E.repayToast("悠梨", 30, -40), "悠梨還了 30 金，剩餘負債 40 金");
   assert.equal(E.repayToast("悠梨", 30, 5), "悠梨還了 30 金，債還清了");
+  assert.equal(E.repayToast("悠梨", 30, 40, false), "悠梨接客賺了 30 金");
 });
 t("收工回房：同一班只回一次、還在接客不回、太久不回", () => {
   const now = 1_800_000_000_000;
@@ -68,6 +71,22 @@ t("名冊：接客中・第 N 位客人", () => {
   s.world.escort = { active: { clients: 4, startedAt: now - 3600e3, until: now + 3 * 3600e3 } };
   assert.equal(E.currentClient(s, now), 2);
   assert.ok(E.workingNow(s, now));
+});
+t("每位客人自己的時間，不是整輪均分", () => {
+  const now = 1_800_000_000_000, M = 60e3;
+  const spans = [30 * M, 60 * M, 30 * M, 60 * M];
+  const started = now - 40 * M;
+  const total = spans.reduce((a, b) => a + b, 0);
+  const s = wife();
+  s.world.agenda = { kind: "escort", until: started + total };
+  s.world.escort = { active: { clients: 4, startedAt: started, until: started + total,
+    guests: spans.map((ms, i) => ({ id: "c" + i, ms, build: "average" })) } };
+  assert.equal(E.currentClient(s, now), 2);
+  const g = E.currentGuest(s, now);
+  assert.equal(g.segStart, started + 30 * M);
+  assert.equal(g.segEnd, started + 90 * M);
+  assert.equal(E.currentClient(s, started + 20 * M), 1);
+  assert.equal(E.currentClient(s, started + 100 * M), 3);
 });
 t("回來的心情看個性；被發現偷看：害羞或生氣", () => {
   assert.equal(E.returnMood(wife("wife", "文靜溫柔"), 2).type, "hurt");

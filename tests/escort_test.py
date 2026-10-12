@@ -53,12 +53,17 @@ def threshold_tests():
 
 def plan_tests():
     rec = {"libido": "SSR", "fuckedSeen": 60}
-    p = ES.plan_shift(rec, 10_000, NOW, Seq(0.99), 4)
+    p = ES.plan_shift(rec, 10_000, NOW, Seq(0.99))
     assert p["clients"] == 4 and all(ES.PAY_MIN <= x <= ES.PAY_MAX for x in p["pays"]), p
-    assert ES.SHIFT_MIN_MS <= p["ms"] <= ES.SHIFT_MAX_MS
-    # 錢夠還清就收工：欠 20，第一位就付 ≥15……第二位補到
-    p = ES.plan_shift({"libido": "N"}, 20, NOW, Seq(0.0), 4)
-    assert p["paid"] >= 20 and p["clients"] == 2 and p["ms"] >= H, p
+    assert len(p["spans"]) == 4 and all(ES.CLIENT_MIN_MS <= s <= ES.CLIENT_MAX_MS for s in p["spans"]), p
+    assert p["ms"] == sum(p["spans"]) and p["ms"] <= 4 * ES.CLIENT_MAX_MS
+    # 欠 20 也做滿 4 位，不提早收工。Seq(0) 每位 15 金、30 分鐘。
+    p = ES.plan_shift({"libido": "N"}, 20, NOW, Seq(0.0))
+    assert p["clients"] == 4 and p["paid"] == 60 and p["debt"] == 20, p
+    assert p["spans"] == [ES.CLIENT_MIN_MS] * 4 and p["ms"] == 4 * ES.CLIENT_MIN_MS
+    # 除錯可以少於 4 位
+    p = ES.plan_shift({"libido": "N"}, 20, NOW, Seq(0.0), 2)
+    assert p["clients"] == 2 and p["ms"] == 2 * ES.CLIENT_MIN_MS
     assert ES.client_pay("N", 0, 0.0) == 15 and ES.client_pay("SSR", 999, 0.999) == 40
 
 
@@ -68,6 +73,9 @@ def ledger_tests():
     rec = store["girls"]["a"]
     la.start_escort(rec, 120, NOW, Seq(0.0), clients=2)
     assert rec["agenda"]["kind"] == "escort"
+    ev = rec["agenda"]["event"]["escort"]
+    assert ev["clients"] == 2 and [g["ms"] for g in ev["guests"]] == ev["spans"]
+    assert rec["agenda"]["until"] - rec["agenda"]["startedAt"] == sum(ev["spans"])
     until = rec["agenda"]["until"]
     la.quick_step(store, until + 1000, Seq(0.5))
     paid = rec["escortPaid"]
@@ -135,9 +143,10 @@ def pick_tests():
 
 def mirror_tests():
     js = (Path(__file__).resolve().parents[1] / "web/content/escort.js").read_text(encoding="utf8")
-    for name in ("AUTO_DEBT", "PAY_MIN", "PAY_MAX", "CLIENTS_MIN", "CLIENTS_MAX", "SHIFTS_PER_DAY"):
+    for name in ("AUTO_DEBT", "PAY_MIN", "PAY_MAX", "CLIENTS_PER_SHIFT", "CLIENTS_MAX", "SHIFTS_PER_DAY"):
         assert re.search(rf"export const {name} = {getattr(ES, name)};", js), name
-    assert "SHIFT_MIN_MS = 2 * 3600e3" in js and "REST_MS = 4 * 3600e3" in js
+    assert "CLIENT_MIN_MS = 30 * 60e3" in js and "CLIENT_MAX_MS = 60 * 60e3" in js
+    assert "REST_MS = 4 * 3600e3" in js
     for k, v in ES.LIBIDO_PAY.items():
         assert f"{k}: {v}" in js, k
 

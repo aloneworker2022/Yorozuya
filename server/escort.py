@@ -4,6 +4,7 @@
 手機用 state.escortTaken[id] 記收過多少、差額才加進 gold（web/content/escort.js collectPaid），所以不會重複還。
 RP5 估負債時：gold（存檔裡）＋還沒被手機收走的錢。
 只有妻子以上會去；負債 > 50 她在日本時 RP5 自己開班（人在房裡由手機帶她出門，打 world.escortGo 旗）。
+負債 ≤ 50（含沒欠債）不自己去，玩家可以請她繼續接。一輪固定 4 位，每位 30～60 分鐘，開了就做完。
 數字跟 web/content/escort.js 同一套（tests/escort_test.py 比對）。
 """
 
@@ -13,9 +14,9 @@ import random
 
 AUTO_DEBT = 50
 HOUR_MS = 3600 * 1000
-SHIFT_MIN_MS = 2 * HOUR_MS
-SHIFT_MAX_MS = 4 * HOUR_MS
-CLIENTS_MIN = 1
+CLIENT_MIN_MS = 30 * 60 * 1000   # 每位客人 30～60 分鐘，一輪總長是加總
+CLIENT_MAX_MS = HOUR_MS
+CLIENTS_PER_SHIFT = 4            # 一輪做滿這幾位才休息；除錯可以少於這個
 CLIENTS_MAX = 4
 PAY_MIN = 15
 PAY_MAX = 40
@@ -110,24 +111,23 @@ def family(rec: dict) -> str:
     return PERSONALITY_FAMILY.get(str(rec.get("archetype") or ""), "溫柔")
 
 
+def client_span(r: float) -> int:
+    """一位客人佔 30～60 分鐘。r 為 0～1。"""
+    return CLIENT_MIN_MS + int(float(r) * (CLIENT_MAX_MS - CLIENT_MIN_MS))
+
+
 def plan_shift(rec: dict, debt: int, now_ms: int, rnd=None, clients: int = 0) -> dict:
-    """排一班：先擲幾位客人和時長，錢夠還清就提早收工（時長照比例縮，最短 1 小時）。"""
+    """排一輪：固定 4 位（除錯可指定更少），每位自己擲 30～60 分鐘，總長是加總。開了就做完，不因還清提早收工。"""
     roll = rnd if rnd is not None else random.random
-    n = int(clients) if clients else CLIENTS_MIN + int(float(roll()) * (CLIENTS_MAX - CLIENTS_MIN + 1))
-    n = max(CLIENTS_MIN, min(CLIENTS_MAX, n))
-    ms = SHIFT_MIN_MS + int(float(roll()) * (SHIFT_MAX_MS - SHIFT_MIN_MS))
+    n = int(clients) if int(clients or 0) > 0 else CLIENTS_PER_SHIFT
+    n = max(1, min(CLIENTS_MAX, n))
     grade = str(rec.get("libido") or "R").upper()
     fucked = int(rec.get("fuckedSeen") or 0)
-    pays, total = [], 0
+    pays, spans = [], []
     for _ in range(n):
-        if debt > 0 and total >= debt:
-            break
-        p = client_pay(grade, fucked, float(roll()))
-        pays.append(p)
-        total += p
-    if len(pays) < n:
-        ms = max(HOUR_MS, int(ms * len(pays) / n))
-    return {"clients": len(pays), "pays": pays, "paid": total, "ms": ms, "debt": int(debt)}
+        pays.append(client_pay(grade, fucked, float(roll())))
+        spans.append(client_span(float(roll())))
+    return {"clients": n, "pays": pays, "spans": spans, "paid": sum(pays), "ms": sum(spans), "debt": int(debt)}
 
 
 def eligible(rec: dict) -> bool:
