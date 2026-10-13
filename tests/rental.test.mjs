@@ -121,7 +121,7 @@ t("誠實度：溫柔忠誠高＝誠實；反差忠誠低又內射＝說謊；�
 t("影響：去休息忠誠 −1；在場再 −1、溫柔感情 −5、反差 +3 且是興奮不是羞恥；門外較輕；沒開車只有忠誠", () => {
   const date = (presence) => ({ hotel: { presence, result: { level: "sex", cums: 2, creampies: 1 } } });
   const a = R.effectsOf(wife(), date("in"), () => 0);
-  assert.equal(a.loyalty, -2); assert.equal(a.affection, -5); assert.equal(a.mood.type, "ashamed"); assert.equal(a.hunger, -30);
+  assert.equal(a.loyalty, -2); assert.equal(a.affection, -5); assert.equal(a.mood.type, "flustered"); assert.equal(a.hunger, -30);
   const b = R.effectsOf(wife("wife", "清純反差"), date("in"), () => 0);
   assert.equal(b.affection, 3); assert.equal(b.mood.type, "aroused");
   const c = R.effectsOf(wife(), date("door"), () => 0);
@@ -157,6 +157,55 @@ t("時鐘：真實 2 分＝1 小時；暫停不算；行程表含延長與旅館
   assert.equal(w.seg.key, "cinema"); assert.equal(R.clockText(w.hour), "16:00"); assert.equal(w.done, false);
   assert.equal(R.where(d, 6 * R.GAME_HOUR_MS).done, true);
   assert.equal(R.clockText(13.5), "13:30");
+});
+
+t("時間軸：每點客人＋她各一則、延長是決定點；沒被邀就結束；去休息要決定後才有旅館段", () => {
+  const base = { startedAt: 0, startHour: 13, pausedMs: 0, pauseAt: 0, client: client("clingy"),
+    spots: [{ key: "cafe", h: 1, extAsk: true }, { key: "cinema", h: 2 }, { key: "dinner", h: 2 }], invite: { yes: false, stay: "rest" } };
+  const tl = R.timeline(base);
+  assert.deepEqual(tl.filter((e) => e.kind === "cs").map((e) => e.i), [0, 1, 2]);
+  assert.equal(tl.filter((e) => e.kind === "ws").length, 3);
+  assert.ok(tl.find((e) => e.id === "ext:0").decide);
+  assert.deepEqual(tl.slice(-2).map((e) => e.kind), ["bye", "end"]);
+  const yes = { ...base, invite: { yes: true, stay: "stay" } };
+  assert.equal(R.timeline(yes).at(-1).kind, "invite");
+  // 到了延長點：停住、不會跑過頭
+  const d = JSON.parse(JSON.stringify(yes));
+  const now = 5 * R.GAME_HOUR_MS;
+  const ev = R.dueDecision(d, now);
+  assert.equal(ev.id, "ext:0");
+  R.pauseAtDecision(d, ev);
+  assert.ok(Math.abs(R.elapsedHours(d, now) - 0.8) < 1e-9);
+  R.decide(d, "ext:0", true, now);
+  assert.equal(d.ext, 1); assert.equal(d.spots[0].extOk, true); assert.equal(d.pauseAt, 0);
+  assert.ok(Math.abs(R.elapsedHours(d, now) - 0.8) < 1e-9);
+  // 去休息：決定開車＋在場
+  d.startedAt -= 10 * R.GAME_HOUR_MS;
+  assert.equal(R.dueDecision(d, now).id, "invite");
+  R.pauseAtDecision(d, R.dueDecision(d, now));
+  R.decide(d, "invite", { drive: true, paidRoom: true, presence: "in" }, now);
+  assert.deepEqual([d.hotel.drive, d.hotel.paidRoom, d.hotel.presence, d.hotel.stay], [true, true, "in", "stay"]);
+  const t2 = R.timeline(d);
+  assert.ok(!t2.some((e) => e.kind === "wh"), "在場就不傳 LINE");
+  assert.equal(t2.at(-1).kind, "end");
+  assert.equal(R.schedule(d).total, 1 + 1 + 2 + 2 + 10);
+  // 沒開車＝在家等；住宿可快轉
+  const e = JSON.parse(JSON.stringify(yes));
+  R.decide(e, "invite", { drive: false, presence: "in" }, 0);
+  assert.equal(e.hotel.presence, "away"); assert.equal(e.hotel.paidRoom, false);
+  e.startedAt = -(6 * R.GAME_HOUR_MS);
+  assert.equal(R.fastForward(e, 0), true);
+  assert.ok(Math.abs(R.elapsedHours(e, 0) - 14.9) < 1e-6);
+});
+
+t("回家聊天的 prompt：在場＝不用說謊；沒開車＋說謊＝說只是休息；48 小時後不帶", () => {
+  const now = 1e12, last = { endAt: now - 3600e3, clientName: "佐藤健太", persona: "showoff", spots: [{ key: "cafe", item: "拿鐵", act: "牽手" }],
+    hotel: { level: "sex", cums: 2, creampies: 1, stay: "rest" }, presence: "away", honesty: "lie", bragged: "她叫得很好聽喔" };
+  const lines = R.promptLines({ rentalMine: { last } }, now).join("\n");
+  assert.match(lines, /客人不知道他是你老公/); assert.match(lines, /射在裡面/); assert.match(lines, /只是去休息/); assert.match(lines, /叫得很好聽/);
+  assert.match(R.promptLines({ rentalMine: { last: { ...last, presence: "in" } } }, now).join(""), /全程在房間裡看著/);
+  assert.equal(R.promptLines({ rentalMine: { last } }, now + 50 * 3600e3).length, 0);
+  assert.match(R.promptLines({ rentalMine: { last: { ...last, hotel: null } } }, now).join(""), /沒有去別的地方/);
 });
 
 console.log(`rental: ${pass} passed`);

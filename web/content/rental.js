@@ -234,11 +234,11 @@ export function effectsOf(who, date, r0) {
   if (h.presence === "in") {
     out.loyalty -= 1; out.affection += PRESENT_AFF[fam] ?? -3;
     out.mood = fam === "反差" ? { type: "aroused", level: 40 + Math.floor(r() * 31), cause: "被你看著跟客人做" }
-      : { type: "ashamed", level: 40 + Math.floor(r() * 31), cause: "在你面前被客人碰" };
+      : { type: "flustered", level: 40 + Math.floor(r() * 31), cause: "在你面前被客人碰" };
   } else if (h.presence === "door") {
     out.affection += DOOR_AFF[fam] ?? -2;
     out.mood = fam === "反差" ? { type: "aroused", level: 20 + Math.floor(r() * 21), cause: "知道你在門外聽" }
-      : { type: "ashamed", level: 20 + Math.floor(r() * 21), cause: "知道你在門外" };
+      : { type: "flustered", level: 20 + Math.floor(r() * 21), cause: "知道你在門外" };
   }
   return out;
 }
@@ -296,4 +296,92 @@ export function where(date, now = Date.now()) {
 export function clockText(hour) {
   const h = Math.floor(hour) % 24, m = Math.floor((hour % 1) * 60);
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * 時間軸（遊戲小時）：什麼時候客人／她傳訊、哪裡要停下來讓玩家決定。跟著 schedule 走（延長、旅館會把後面往後推）。
+ * kind：plan（客人報行程）／cs（客人在第 i 點）／ws（她在第 i 點）／ext（延長要求，決定）／invite（去休息通知，決定）／
+ *       bye（沒去休息，結束）／wh（她在旅館傳訊）／hd（客人說結束）／end（整場結束）。
+ */
+export function timeline(date) {
+  const { segs } = schedule(date), out = [{ id: "plan", kind: "plan", at: 0.05 }];
+  const spots = segs.filter((s) => s.kind === "spot");
+  for (const s of spots) {
+    const len = s.to - s.from, sp = date.spots[s.i];
+    out.push({ id: `cs:${s.i}`, kind: "cs", i: s.i, at: s.from + 0.35 * len });
+    out.push({ id: `ws:${s.i}`, kind: "ws", i: s.i, at: s.from + 0.6 * len });
+    if (sp.extAsk) out.push({ id: `ext:${s.i}`, kind: "ext", i: s.i, at: s.from + sp.h - 0.2, decide: true });
+  }
+  const T = spots.length ? spots[spots.length - 1].to : 0;
+  if (!date.invite?.yes) { out.push({ id: "bye", kind: "bye", at: T }, { id: "end", kind: "end", at: T + 0.01 }); return out; }
+  out.push({ id: "invite", kind: "invite", at: T, decide: true });
+  const hotel = segs.find((s) => s.kind === "hotel");
+  if (hotel) {
+    if (date.hotel?.presence !== "in") out.push({ id: "wh", kind: "wh", at: hotel.from + 0.3 * (hotel.to - hotel.from) });
+    out.push({ id: "hd", kind: "hd", at: hotel.to - 0.05 }, { id: "end", kind: "end", at: hotel.to });
+  }
+  return out;
+}
+/** 已經到時間、還沒決定的那個決定點（ext／invite）。 */
+export function dueDecision(date, now = Date.now()) {
+  const e = elapsedHours(date, now), d = date?.decide || {};
+  return timeline(date).find((ev) => ev.decide && ev.at <= e + 1e-9 && d[ev.id] === undefined) || null;
+}
+/** 停在決定點：從應該停下來的那一刻開始算暫停（關掉 App 再打開也不會跑過頭）。 */
+export function pauseAtDecision(date, ev) {
+  if (!date || !ev || date.pauseAt) return;
+  date.pauseAt = Number(date.startedAt) + (Number(date.pausedMs) || 0) + ev.at * GAME_HOUR_MS;
+}
+export function resume(date, now = Date.now()) {
+  if (!date?.pauseAt) return;
+  date.pausedMs = (Number(date.pausedMs) || 0) + Math.max(0, now - date.pauseAt);
+  date.pauseAt = 0;
+}
+/** 玩家做決定。ext：true／false；invite：{ drive, paidRoom, presence }（沒開車 presence 一定是 away）。 */
+export function decide(date, id, value, now = Date.now()) {
+  date.decide = date.decide || {};
+  date.decide[id] = value;
+  if (id.startsWith("ext:")) {
+    const i = Number(id.slice(4));
+    if (value) { date.spots[i].extOk = true; date.ext = (Number(date.ext) || 0) + 1; } else date.extRefused = (Number(date.extRefused) || 0) + 1;
+  }
+  if (id === "invite") {
+    const drive = !!value?.drive;
+    date.hotel = { stay: date.invite.stay, drive, paidRoom: drive && !!value?.paidRoom, presence: drive ? (value?.presence === "in" ? "in" : "door") : "away", result: null };
+  }
+  resume(date, now);
+}
+/** 快轉（只有沒開車、在家等住宿一晚時）：直接跳到旅館結束前一點點。中途的訊息照樣會出現，但你沒有即時看到。 */
+export function fastForward(date, now = Date.now()) {
+  const hotel = schedule(date).segs.find((s) => s.kind === "hotel");
+  if (!hotel || date.hotel?.presence !== "away") return false;
+  const e = elapsedHours(date, now), target = hotel.to - 0.1;
+  if (e >= target) return false;
+  date.startedAt = Number(date.startedAt) - (target - e) * GAME_HOUR_MS;
+  date.skipped = true;
+  return true;
+}
+
+/** 回家聊天的 prompt（她知道的真相＋玩家可能知道什麼＋該怎麼講）。48 小時內才帶。 */
+export function promptLines(who, now = Date.now()) {
+  const last = who?.rentalMine?.last;
+  if (!last || now - Number(last.endAt || 0) > 48 * 3600e3) return [];
+  const out = [];
+  const spots = (last.spots || []).map((s) => `${SPOTS[s.key]?.zh || s.key}（${s.item}${s.act ? `、${s.act}` : ""}）`).join(" → ");
+  out.push(`你${now - last.endAt < 3 * 3600e3 ? "剛剛" : "前不久"}去當日租女友，客人是${last.clientName}（${PERSONAS[last.persona]?.zh || ""}）。客人不知道他是你老公，以為他只是經紀人。行程：${spots}。`);
+  if (last.hotel) {
+    const where = last.hotel.stay === "stay" ? "住了一晚" : "休息";
+    out.push(`之後跟客人去旅館${where}。實際上：${hotelText(last.hotel)}。`);
+    if (last.presence === "in") out.push("他（你老公）全程在房間裡看著，他都知道，不用說謊；談的是你的感受。");
+    else if (last.presence === "door") out.push(`他開車送你們去、在門外等，聽得到聲音但看不到。${tellRule(last)}`);
+    else out.push(`他沒有跟去，只從客人的 LINE 知道你們去休息。${tellRule(last)}`);
+    if (last.bragged) out.push(`客人在 LINE 跟他炫耀過：「${last.bragged}」。他可能拿這個問你。`);
+  } else out.push("約會結束就回來了，沒有去別的地方。");
+  out.push("不要主動講露骨細節；可以自己透露一點，他問了再看情況說。");
+  return out;
+}
+function tellRule(last) {
+  if (last.honesty === "honest") return "他問起就照實說，可以帶情緒。";
+  if (last.honesty === "downplay") return `他問起就講得比實際輕：說「${toldVersion(last.hotel, "downplay")}」；被追問細節會心虛，可能露餡。`;
+  return `他問起就說「${toldVersion(last.hotel, "lie")}」；他拿出證據逼問才慢慢承認。`;
 }

@@ -244,6 +244,7 @@ const CSS = `
 .peek-bub.on{opacity:1;transform:none}
 .peek-bub.c{background:rgba(20,30,70,.82);color:#8fb2ff;border:1px solid #3f62c0}
 .peek-bub.w{background:rgba(60,20,40,.82);color:#ffb0cf;border:1px solid #c0608c}
+.peek-ov.door .peek-bub{opacity:0;filter:blur(.4px)}.peek-ov.door .peek-bub.on{opacity:.78}
 .peek-close{position:absolute;top:8px;right:8px;background:none;border:0;color:#998;font-size:22px}`;
 
 /**
@@ -258,7 +259,7 @@ export function openPeek(opts = {}) {
   const ov = document.createElement("div");
   ov.className = "peek-ov"; ov.id = "peek-overlay"; ov.dataset.pose = pose;
   ov.innerHTML = `<div class="peek-box"><canvas width="${LW}" height="${LH}"></canvas>
-    <div class="peek-t peek-title">工作室・接客中</div><div class="peek-t peek-status"></div><div class="peek-t peek-hint"></div>
+    <div class="peek-t peek-title">${opts.title || "工作室・接客中"}</div><div class="peek-t peek-status"></div><div class="peek-t peek-hint"></div>
     <div class="peek-bub c"></div><div class="peek-bub w"></div><button class="peek-close" type="button" aria-label="離開">×</button></div>`;
   document.body.append(ov);
   const cv = ov.querySelector("canvas"), g = cv.getContext("2d");
@@ -266,11 +267,16 @@ export function openPeek(opts = {}) {
   const status = ov.querySelector(".peek-status"), hint = ov.querySelector(".peek-hint");
   const bubC = ov.querySelector(".peek-bub.c"), bubW = ov.querySelector(".peek-bub.w");
   const st = { pose, open: 0, target: 0, frames: null, fi: 0, anchor: null, opened: false, closed: false, lines: [], side: "client" };
+  // 日租女友（2026-10-13）：mode＝"room"（跟進旅館房間：一開始就看得到整間、沒有門可以點）／"door"（在門外：門關著、只聽得到）
+  const mode = opts.mode === "room" || opts.mode === "door" ? opts.mode : "peek";
+  ov.classList.toggle("door", mode === "door");
+  if (mode === "room") { st.open = st.target = 1 / OPEN; st.opened = true; }
+  if (mode === "door") st.opened = true;
   const man = MAN_BUILDS[opts.man] ? opts.man : "average", tempo = MAN_BUILDS[man].tempo;   // 客人體型：重的慢、瘦的快
   ov.dataset.man = man;
   const D = window.RoomDoll, dpose = POSE_ID[pose], doll = opts.doll || D.lookToDoll(opts.who?.look || null);
-  hint.textContent = opts.cost ? `點門偷看（−${opts.cost} 金）` : "點門偷看";
-  status.textContent = "";
+  hint.textContent = mode === "room" ? (opts.hint || "") : mode === "door" ? (opts.hint || "門後傳來聲音……") : opts.cost ? `點門偷看（−${opts.cost} 金）` : "點門偷看";
+  status.textContent = mode === "peek" ? "" : (opts.status || "");
   let raf = 0, last = performance.now(), acc = 0, talkAt = 0;
   const recent = { client: [], wife: [] };
   const ai = { lines: [], used: new Set(), busy: false, moreTried: 0 };
@@ -322,7 +328,7 @@ export function openPeek(opts = {}) {
       while (acc >= D.SEX_FRAME_MS[st.fi] * tempo) { acc -= D.SEX_FRAME_MS[st.fi] * tempo; st.fi = (st.fi + 1) % st.frames.length; }
       st.anchor = { ...D.sexAnchor(doll, dpose, st.fi), man };
     }
-    if (st.open >= 0.98 && st.frames && !st.closed && now >= talkAt) { say(); talkAt = now + nextGapMs(); }
+    if ((st.open >= 0.98 || mode === "door") && (st.frames || mode === "door") && !st.closed && now >= talkAt) { say(); talkAt = now + nextGapMs(); }
     drawScene(g, st);
     raf = requestAnimationFrame(tick);
   };
@@ -341,12 +347,14 @@ export function openPeek(opts = {}) {
   };
   const closeDoor = () => { st.closed = true; st.target = 0; hint.textContent = ""; bubC.classList.remove("on"); bubW.classList.remove("on"); if (st.open === 0) finish(); };
   cv.addEventListener("click", (ev) => {
+    if (mode !== "peek") return;
     const r = cv.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * LW, y = (ev.clientY - r.top) / r.height * LH;
     const onDoor = x >= DX0 - 6 && x <= DX1 + 6 && y >= DY0 - 30 && y <= DY1 + 10;
     if (!onDoor || st.closed) return;
     if (!st.opened) openDoor(); else closeDoor();
   });
-  ov.querySelector(".peek-close").addEventListener("click", () => (st.opened ? closeDoor() : finish()));
+  ov.querySelector(".peek-close").addEventListener("click", () => (mode !== "peek" ? finish() : st.opened ? closeDoor() : finish()));
+  if (mode !== "peek") talkAt = performance.now() + 900;
   raf = requestAnimationFrame(tick);
   return { state: st, ready: framesReady, open: openDoor, close: closeDoor, say };
 }

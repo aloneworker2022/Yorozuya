@@ -59,7 +59,7 @@ import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=7";
 import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient, currentGuest, guestPoseAt } from "./content/escort.js?v=5"; // 接客還債
-import { openPeek } from "./content/escort_peek.js?v=6";
+import { openPeek } from "./content/escort_peek.js?v=7";
 import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
 import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=10";
@@ -220,6 +220,18 @@ window.YorozuyaWallet = {
     if (c <= 0 || state.gold - c < 0) return false;
     state.gold -= c;
     log(`${why || "花費"} −${c} 金`);
+    dirty = true; scheduleSave();
+    try { renderHud(); } catch { /* */ }
+    return true;
+  },
+  /** 日租女友（2026-10-13）：收入（正）或房錢（負）。房錢可以讓金幣變負（跟育兒費一樣）。 */
+  earn(n, why = "") {
+    if (!state || bootFailed) return false;
+    const c = Math.round(Number(n) || 0);
+    if (!c) return true;
+    state.gold += c;
+    log(`${why || (c > 0 ? "收入" : "花費")} ${c > 0 ? "+" : "−"}${Math.abs(c)} 金`);
+    if (c > 0) toast(`${why || "收入"} +${c} 金`, "good");
     dirty = true; scheduleSave();
     try { renderHud(); } catch { /* */ }
     return true;
