@@ -314,7 +314,17 @@
       const hip_r = 9.2 * F(b, 'hip'), rb = hip_r * (doll.skirt === 'short' ? 1.2 : 1.32), h = (top - hem) / 2;
       sh.capped(BODY, [sway * .3, tor.yl(C) - .6, hem + h], h, rb, 6.2 * F(b, 'waist'), .78, 0);
     }
-    function hair(sh, P, doll, tor, sway = 0) {
+    /** 從 [0,0,−1] 轉到 g 的旋轉（Rodrigues），髮尾照重力垂用。 */
+    function gravRot(g) {
+      const n = hypot3(g[0], g[1], g[2]) || 1, b = [g[0] / n, g[1] / n, g[2] / n], c = -b[2];
+      if (c < -.999) return [1, 0, 0, 0, -1, 0, 0, 0, -1];
+      const v = [b[1], -b[0], 0], k = 1 / (1 + c);   // v＝[0,0,−1]×b
+      return [1 - k * v[1] * v[1], k * v[0] * v[1], v[1], k * v[0] * v[1], 1 - k * v[0] * v[0], -v[0], -v[1], v[0], 1 - k * (v[0] * v[0] + v[1] * v[1])];
+    }
+    /** 2026-10-13：grav＝頭部局部座標裡的「下」。站著是 [0,0,−1]（不動）；躺／趴時馬尾、雙馬尾、麻花辮從根部照重力垂，不再跟著頭轉成一根棍子。 */
+    function hair(sh, P, doll, tor, sway = 0, grav = null) {
+      const Rg = grav ? gravRot(grav) : null;
+      const bend = (pts, root = pts[0]) => !Rg ? pts : pts.map(p => { const d = mulV(Rg, [p[0] - root[0], p[1] - root[1], p[2] - root[2]]); return [root[0] + d[0], root[1] + d[1], root[2] + d[2]]; });
       const zc = tor.zc, S = tor.S, yl = tor.yl, y0 = yl(zc), style = doll.hair, hh = P.head_h / 2, T = P.T;
       const bottoms = { short: zc - 4.5, bob: zc - 9.6, bun: zc - 5.5, buns: zc - 5.5, pony_hi: zc - 5.5, pony_lo: zc - 7 };
       const bottom = style in bottoms ? bottoms[style] : null;
@@ -343,22 +353,23 @@
       }
       if (style === 'pony_hi') {
         sh.ell(HAIR, [0, y0 - 8.2, zc + 2.4], [2.7, 2.6, 2.6]);
-        sh.chain(HAIR, [[0, y0 - 9.6, zc + 3.0], [sway * .3, y0 - 12.6, zc + .5], [sway * .7, y0 - 12.6, zc - 7], [sway, yl(S) - 10.0, S - 9]], [2.6, 3.1, 2.4, 1.0]);
+        sh.chain(HAIR, bend([[0, y0 - 9.6, zc + 3.0], [sway * .3, y0 - 12.6, zc + .5], [sway * .7, y0 - 12.6, zc - 7], [sway, yl(S) - 10.0, S - 9]]), [2.6, 3.1, 2.4, 1.0]);
       }
       if (style === 'pony_lo') {
         sh.ell(HAIR, [0, y0 - 7.4, zc - 5.0], [2.3, 2.1, 2.1]);
-        sh.chain(HAIR, [[0, y0 - 8.4, zc - 5.6], [sway * .5, yl(S) - 7.6, S - 6], [sway, yl(S) - 7.2, S - 17]], [2.4, 2.6, 1.1]);
+        sh.chain(HAIR, bend([[0, y0 - 8.4, zc - 5.6], [sway * .5, yl(S) - 7.6, S - 6], [sway, yl(S) - 7.2, S - 17]]), [2.4, 2.6, 1.1]);
       }
       if (style === 'twin') for (const s of [-1, 1]) {
         sh.ell(HAIR, [s * 6.4, y0 - 2.4, zc + 4.4], [2.1, 2.0, 2.1]);
-        sh.chain(HAIR, [[s * 8.2, y0 - 2.6, zc + 4.2], [s * 11.2, y0 - 2.6, zc - .5], [s * 12.4 + sway * .4, y0 - 2.6, zc - 11],
-          [s * 12.0 + sway * .8, y0 - 2.4, S - 14], [s * 10.8 + sway, yl(S) - 2.2, S - 24]], [2.0, 2.5, 2.1, 1.6, .7]);
+        sh.chain(HAIR, bend([[s * 8.2, y0 - 2.6, zc + 4.2], [s * 11.2, y0 - 2.6, zc - .5], [s * 12.4 + sway * .4, y0 - 2.6, zc - 11],
+          [s * 12.0 + sway * .8, y0 - 2.4, S - 14], [s * 10.8 + sway, yl(S) - 2.2, S - 24]]), [2.0, 2.5, 2.1, 1.6, .7]);
       }
       if (style === 'bun') sh.ell(HAIR, [0, y0 - 5.2, zc + hh - .6], [4.0, 3.8, 3.6]);
       if (style === 'buns') for (const s of [-1, 1]) sh.ell(HAIR, [s * 6.0, y0 - 1.8, zc + hh + 1.8], [3.1, 2.9, 3.0]);
       if (style === 'braid') {
         const pts = [[-6.0, y0 - 1.5, zc - 4.5], [-6.8, yl(S) + 2.0, S + 1], [-6.2, yl(S) + 4.6, S - 5]];
         for (let i = 0; i < 6; i++) pts.push([-5.6 + i * .15, yl(S - 7 - i * 2.4) + 5.4 + i * .1, S - 7 - i * 2.4]);
+        if (Rg) pts.splice(0, pts.length, ...bend(pts));
         pts.forEach((p, i) => { const r = 2.3 - i * .1 + (i % 2 ? .35 : 0); sh.ell(HAIR, p, [r, r * .9, i > 1 ? 1.7 : 2.4]); });
         sh.chain(HAIR, pts.slice(0, 3), [2.4, 2.2, 2.0]);
         const tail = pts[pts.length - 1];
@@ -837,6 +848,7 @@
       const pivot = [0, 0, P.hipz], rp = mulV(R, pivot);
       const xf = { R, t: [H[0] - rp[0], H[1] - rp[1], H[2] - rp[2]] };
       sh.xf = xf;
+      sh.floor = true;   // 床面以下切掉（腳尖、垂下來的髮尾不會穿到床下）
       const n = SEX_THRUST.length, fi = ((f % n) + n) % n;
       const bv = sexBounce(P, doll, g.axis, g.amp)[fi] * (opts.bounceScale ?? 1) * (g.grope ? .3 : 1);
       // v3：重力跟著身體方向走——把世界「下」換到她的局部座標；站姿（局部 −z）是 0。四肢著地時就往床（局部前方）垂。
@@ -880,7 +892,8 @@
       // 2026-10-13：仰躺（傳教士）長髮也收短——不然整束沿身體斜斜垂到床下面，像一根棍子
       const hdoll = (pose === 'sex_doggy' || pose === 'sex_missionary') && (doll.hair === 'long' || doll.hair === 'waist') ? { ...doll, hair: 'medium' } : doll;
       const lagU = HER_U[(fi - 1 + n) % n];
-      hair(sh, P, hdoll, tor, (pose === 'sex_cowgirl' ? 3.4 : 2.4) * (lagU - .5) + (g.sway ? 1.2 * g.sway : 0));
+      const Rh = g.headR ? mulR(R, g.headR) : R;
+      hair(sh, P, hdoll, tor, (pose === 'sex_cowgirl' ? 3.4 : 2.4) * (lagU - .5) + (g.sway ? 1.2 * g.sway : 0), mulT(Rh, [0, 0, -1]));
       sh.xf = null;
       return { sh, P, xf, H };
     }
