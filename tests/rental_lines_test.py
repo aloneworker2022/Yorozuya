@@ -27,8 +27,9 @@ def _():
     s, u = RL.prompt({**BASE, "side": "client", "kind": "spot", "spot": {"place": "咖啡店", "item": "拿鐵", "act": ""}})
     assert "經紀人" in s and "不知道他們是夫妻" in s and "炫耀" in s
     assert "沒有任何親近的動作" in u and "咖啡店" in u
-    s2, u2 = RL.prompt({**BASE, "side": "client", "kind": "spot", "spot": {"place": "電影院", "item": "恐怖片", "act": "牽手", "gift": True}})
-    assert "「牽手」" in u2 and "買了東西" in u2
+    s2, u2 = RL.prompt({**BASE, "side": "client", "kind": "spot", "spot": {"place": "電影院", "item": "恐怖片", "gift": True,
+        "beats": [{"t": "共用爆米花", "ok": True, "lv": 1}, {"t": "電影院黑暗中接吻", "ok": False, "lv": 5}]}})
+    assert "她接受了：共用爆米花" in u2 and "她閃開了：電影院黑暗中接吻" in u2 and "買了東西" in u2
 
 
 @t("她：照誠實度；旅館裡回得很短；回覆帶老公剛傳的話")

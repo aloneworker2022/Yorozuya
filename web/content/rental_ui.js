@@ -3,8 +3,8 @@
  * api：{ who(), inRoom(), say(who, ask, fallback) → Promise<string>, typeLine(name, text), goOut(who), comeBack(who),
  *        gold(), earn(n, why), hunger(who), mood(who), applyEffects(who, eff), persist(), debug(msg), peek(opts), ai?(kind, ctx) → Promise<string> }
  * 她的約會存在 who.rentalMine.active（關掉 App 再開照時間接著走；決定點會停住）。 */
-import * as R from "./rental.js?v=3";
-import * as L from "./rental_lines.js?v=3";
+import * as R from "./rental.js?v=4";
+import * as L from "./rental_lines.js?v=4";
 import { familyOf } from "./girl_voice.js?v=1";
 
 const BUILD_ZH = { average: "普通", slim: "瘦", muscular: "壯", fat: "胖", tall: "高", short: "矮", old: "中年" };
@@ -147,7 +147,8 @@ export function createRental(api) {
   }
   function emit(who, date, ev) {
     const fam = famOf(who), lvl = date.hotel?.result ? R.honesty(who, date.hotel.result).level : date.honesty;
-    if (ev.kind === "cs") void line(date, "client", "spot", { i: ev.i }, L.clientSpotLine(date, ev.i)).then((t) => { push(date, "client", "them", t, ev.at); render(); api.persist(); });
+    if (ev.kind === "cr") push(date, "client", "them", L.clientRefusedLine(date, ev.i, ev.j), ev.at);
+    else if (ev.kind === "cs") void line(date, "client", "spot", { i: ev.i }, L.clientSpotLine(date, ev.i)).then((t) => { push(date, "client", "them", t, ev.at); render(); api.persist(); });
     else if (ev.kind === "ws") void line(date, "wife", "spot", { i: ev.i, level: lvl }, L.wifeSpotLine(date, ev.i, { level: lvl, family: fam })).then((t) => { push(date, "wife", "them", t, ev.at); render(); api.persist(); });
     else if (ev.kind === "bye") push(date, "client", "them", L.clientByeLine(date));
     else if (ev.kind === "wh") push(date, "wife", "them", L.wifeHotelLine(date, lvl));

@@ -60,13 +60,13 @@ t("行程：客人依個性挑 1、她依喜好挑 1、再隨機 1，三個都�
   assert.ok(R.SPOT_KEYS.includes(R.herSpot({}, ["cafe"], () => .99)));
 });
 
-t("邀請機率：A×B、手腕俐落補一點、熟客 ×2、夾 0.05～0.90", () => {
+t("邀請機率：0.2＋曖昧/300＋A×B、手腕俐落補一點、熟客 ×2、夾 0.05～0.90", () => {
   const her = R.herFactor({ loyalty: 60, hunger: 0, kinks: [], family: "溫柔" });
   assert.equal(her, -0.05);
-  assert.equal(R.inviteChance({ heat: 40, her, client: client("gentleman", 3) }), 0.3);
-  assert.equal(R.inviteChance({ heat: 40, her, client: client("gentleman", 5) }), 0.56);          // −0.05 但手腕 5：+0.16 +0.10
-  assert.equal(R.inviteChance({ heat: 40, her, client: client("gentleman", 3, { regular: true }) }), 0.6);
-  assert.equal(R.inviteChance({ heat: 200, her: .5, client: client("dominant", 5, { regular: true }) }), 0.9);
+  assert.equal(R.inviteChance({ heat: 40, her, client: client("gentleman", 3) }), 0.23);
+  assert.equal(R.inviteChance({ heat: 40, her, client: client("gentleman", 5) }), 0.49);          // −0.05 但手腕 5：+0.16 +0.10
+  assert.equal(R.inviteChance({ heat: 40, her, client: client("gentleman", 3, { regular: true }) }), 0.47);
+  assert.equal(R.inviteChance({ heat: 300, her: .5, client: client("dominant", 5, { regular: true }) }), 0.9);
   assert.equal(R.inviteChance({ heat: 0, her: -.6, client: client("gentleman", 1) }), 0.05);
   const hot = R.herFactor({ loyalty: 20, hunger: 90, kinks: ["NTR 癖好", "人妻風味"], family: "反差" });
   assert.equal(Math.round(hot * 100) / 100, 0.65);
@@ -208,6 +208,22 @@ t("回家聊天的 prompt：在場＝不用說謊；沒開車＋說謊＝說只�
   assert.match(R.promptLines({ rentalMine: { last: { ...last, presence: "in" } } }, now).join(""), /全程在房間裡看著/);
   assert.equal(R.promptLines({ rentalMine: { last } }, now + 50 * 3600e3).length, 0);
   assert.match(R.promptLines({ rentalMine: { last: { ...last, hotel: null } } }, now).join(""), /沒有去別的地方/);
+});
+
+t("約會互動：每站 2～3 件、由淺到深；強勢客人＋反差老婆常走到摸胸，紳士＋忠誠溫柔老婆多停在牽手餵食；被拒客人抱怨、評價扣分", () => {
+  const top = (arch, loy, persona, skill) => { let deep = 0; for (let k = 0; k < 400; k++) {
+    const d = R.rollDate({ who: wife("wife", arch, { stats: { loyalty: loy } }), client: client(persona, skill) }, lcg(k + 31));
+    for (const sp of d.spots) { assert.ok(sp.beats.length >= 1 && sp.beats.length <= 3); for (let j = 1; j < sp.beats.length; j++) assert.ok(sp.beats[j].lv >= sp.beats[j - 1].lv); }
+    if (d.spots.some((sp) => sp.beats.some((b) => b.ok && b.lv >= 6))) deep++; } return deep / 400; };
+  const hot = top("清純反差", 30, "dominant", 5), cold = top("文靜溫柔", 85, "gentleman", 2);
+  assert.ok(hot > 0.5 && cold < 0.05, `hot ${hot} cold ${cold}`);
+  assert.equal(R.beatCap(0, "gentleman"), 1); assert.equal(R.beatCap(100, "dominant", true), 6);
+  assert.ok(R.acceptChance(6, {}) < R.acceptChance(1, {}));
+  for (const k of R.SPOT_KEYS) assert.ok(R.BEATS[k].every((b) => b.lv >= 1 && b.lv <= 6 && b.c && b.w && b.t), k);
+  const d = { client: client(), spots: [{ key: "cafe", beats: [{ lv: 1, ok: true }, { lv: 3, ok: false }, { lv: 3, ok: false }] }], ext: 0 };
+  assert.equal(R.stars(wife(), d), 2);
+  const tl = R.timeline({ ...d, startedAt: 0, spots: [{ key: "cafe", h: 1, beats: d.spots[0].beats }], invite: { yes: false } });
+  assert.equal(tl.filter((e) => e.kind === "cr").length, 2);
 });
 
 console.log(`rental: ${pass} passed`);

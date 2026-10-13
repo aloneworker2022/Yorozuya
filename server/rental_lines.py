@@ -33,9 +33,14 @@ def _ctx(info: dict) -> str:
     ]
     if s:
         truth = f"這一站的真相：在{s.get('place')}，{s.get('item') or ''}"
-        if s.get("act"):
-            truth += f"；發生了「{s['act']}」"
-        else:
+        beats = [b for b in s.get("beats") or [] if isinstance(b, dict) and b.get("t")]
+        ok = [str(b["t"]) for b in beats if b.get("ok")]
+        no = [str(b["t"]) for b in beats if not b.get("ok")]
+        if ok:
+            truth += f"；她接受了：{'、'.join(ok)}"
+        if no:
+            truth += f"；他想做但她閃開了：{'、'.join(no)}"
+        if not beats:
             truth += "；沒有任何親近的動作"
         if s.get("gift"):
             truth += "；他買了東西送她"
@@ -59,10 +64,11 @@ def prompt(info: dict) -> tuple[str, str]:
             "不知道他們是夫妻。你扮演客人，傳訊息給經紀人。"
             f"客人的說話方式：{PERSONA_RULE.get(str(c.get('persona') or ''), '自然')}"
             "只寫一則訊息，口語、繁體中文、40 字以內，不要旁白、不要引號、不要加名字前綴。"
-            "一定照「真相」寫：真相沒有的親近動作、禮物、喝醉都不准編。成年人、自願；不寫強迫或未成年。"
+            "一定照「真相」寫：真相沒有的親近動作、禮物、喝醉都不准編；她閃開的就是沒做到。成年人、自願；不寫強迫或未成年。"
         )
         if kind == "spot":
-            task = "寫他在這一站傳給經紀人的訊息（報告她在做什麼、他的感想）。一定要講出現在在哪裡（地點名稱），經紀人事先不知道行程。"
+            task = ("寫他在這一站傳給經紀人的訊息（報告她在做什麼、他的感想；她接受的親密動作可以得意地講，她閃開的會失望或抱怨）。"
+                    "一定要講出現在在哪裡（地點名稱），經紀人事先不知道行程。")
         elif phase == "hotel":
             task = f"經紀人剛傳來：「{info.get('text') or ''}」。他們正在旅館裡，他很忙：回得很短、敷衍，或得意地炫耀一句。"
         else:

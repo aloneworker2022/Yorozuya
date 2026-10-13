@@ -1,6 +1,6 @@
 /* 日租女友 LINE 句庫（2026-10-13）：AI 失敗時用，句子都吃「真相」變數（地點、點的東西、發生的事），不寫空話。
  * 客人把玩家當經紀人（不知道你們是夫妻）；她傳給老公的訊息照誠實度：誠實／輕描淡寫／說謊。 */
-import { SPOTS, PERSONAS } from "./rental.js?v=3";
+import { SPOTS, PERSONAS } from "./rental.js?v=4";
 
 const pick = (arr, r = Math.random) => arr[Math.floor(r() * arr.length) % arr.length];
 /** 同一場不重複同一個句型：date.used 記用過的範本。 */
@@ -19,7 +19,7 @@ const SPOT_DO = {
   amusement: { her: "她一直想玩{item}", me: "剛玩了{item}" }, shopping: { her: "她在看{item}", me: "在看{item}" },
   cinema: { her: "看的是{item}", me: "看的是{item}" }, dinner: { her: "她點了{item}", me: "我點了{item}" },
   karaoke: { her: "她唱了{item}", me: "唱了{item}" }, izakaya: { her: "她喝了{item}", me: "喝了一點{item}" },
-  nightview: { her: "我們在{item}", me: "在{item}看夜景" },
+  nightview: { her: "我們在{item}", me: "{item}的夜景好美" },
 };
 const doOf = (key, who, item) => fill((SPOT_DO[key] || SPOT_DO.cafe)[who], { item });
 
@@ -56,11 +56,26 @@ const WIFE_SPOT = {
 const TAIL = { 冷淡: ["。", ""], 溫柔: ["……想你。", "，等我回家。"], 熱絡: ["！", "～"], 佔有: ["。你乖乖在家等我。", "。只想你。"], 反差: ["……", "♡"] };
 export function wifeSpotLine(date, i, { level = "honest", family = "溫柔" } = {}, r) {
   const s = date.spots[i], sp = SPOTS[s.key];
-  const actTold = s.act && level === "honest" ? `剛剛${s.act === "被他摟著腰" ? "被他摟了一下腰" : s.act === "餵他吃一口" ? "餵他吃了一口" : s.act === "挽著他的手" ? "挽了他的手" : s.act === "靠在他肩上" ? "靠了一下他的肩" : "牽了手"}。` : "";
+  const actTold = (s.actW || s.act) && level === "honest" ? `剛剛${s.actW || s.act}。` : "";
   const pool = actTold ? WIFE_SPOT.honestAct : WIFE_SPOT[level] || WIFE_SPOT.honest;
   const body = fill(pickFresh(date, pool, r), { place: sp.zh, item: s.item, meDo: doOf(s.key, "me", s.item), actTold }).replace(/[。！～]+$/, "");
   const tail = pick(TAIL[family] || [""], r);
   return body + (tail && /^[。！～…，]/.test(tail) ? tail : `。${tail}`);
+}
+
+/** 她閃開了（客人 → 經紀人，不高興）。b：那件互動。 */
+const REFUSED = {
+  gentleman: ["在{place}想{try}，她好像不太願意，我就不勉強了。", "剛剛想{try}，被婉拒了，是我太急了。"],
+  clingy: ["嗚嗚，我想{try}，她躲開了……", "她不讓我{try}……好難過"],
+  showoff: ["嘖，想{try}，她居然閃開，你家這個很難搞欸", "{try}都不給，裝什麼清純"],
+  dominant: ["想{try}，她不肯。你沒教好？", "她閃開了。不太爽。"],
+  otaku: ["我、我想{try}……被拒絕了……", "是、是不是我太噁心了……她不讓我{try}……"],
+};
+export function clientRefusedLine(date, i, j, r) {
+  const s = date.spots[i], b = (s.beats || [])[j];
+  if (!b) return "";
+  const tryText = b.c.replace(/了/g, "").replace(/^她/, "讓她");
+  return fill(pickFresh(date, REFUSED[date.client.persona] || REFUSED.gentleman, r), { place: SPOTS[s.key].zh, try: tryText });
 }
 
 /** 延長要求（客人 → 經紀人）。 */
