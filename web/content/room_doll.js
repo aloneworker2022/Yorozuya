@@ -877,7 +877,8 @@
       sh.xf = g.headR ? compose(xf, about(g.headR, neck)) : xf;
       headPart(sh, P, tor.yl, tor.zc);
       // v6：四肢著地時長髮收短（塞到耳後／垂到肩為止），不擋住胸
-      const hdoll = pose === 'sex_doggy' && (doll.hair === 'long' || doll.hair === 'waist') ? { ...doll, hair: 'medium' } : doll;
+      // 2026-10-13：仰躺（傳教士）長髮也收短——不然整束沿身體斜斜垂到床下面，像一根棍子
+      const hdoll = (pose === 'sex_doggy' || pose === 'sex_missionary') && (doll.hair === 'long' || doll.hair === 'waist') ? { ...doll, hair: 'medium' } : doll;
       const lagU = HER_U[(fi - 1 + n) % n];
       hair(sh, P, hdoll, tor, (pose === 'sex_cowgirl' ? 3.4 : 2.4) * (lagU - .5) + (g.sway ? 1.2 * g.sway : 0));
       sh.xf = null;
@@ -990,7 +991,7 @@
     }
     /** 客人一格（側面、跟她同一個畫布）：{width,height,anchor,pixels,depth}；depth 跟她的一樣（世界 x，越大越近）。 */
     function renderMan(doll, pose, frame, M = {}) {
-      return renderSide(buildMan(doll, pose, frame, M), null, CANVAS.peek, { body: MAN_RGB, line: MAN_LINE_RGB, a: MAN_A, hair: MAN_HAIR_RGB });
+      return renderSide(buildMan(doll, pose, frame, M), null, CANVAS.peek, MAN_PAL);
     }
 
     // ------------------------------------------------------------ render
@@ -1097,9 +1098,8 @@
       return { width, height, anchor: { x: ax, y: ay }, pixels, depth };
     }
     /** 側面正交投影（接客偷看）：視線沿 −x，螢幕 x＝ax＋y·scale、螢幕 y＝ay−z·scale。深度＝x（越大越近）。 */
-    function renderSide(sh, P, cv, pal = null) {
-      const bodyRGB = pal ? pal.body : BODY_RGB, lineRGB = pal ? pal.line : LINE_RGB, bodyA = pal ? pal.a : BODY_A;
-      const hairRGB = pal?.hair || HAIR_RGB, hairHi = pal?.hair || HAIR_HI_RGB;
+    function renderSide(sh, P, cv, pal = SIDE_PAL) {
+      const bodyRGB = pal.body, lineRGB = pal.line, bodyA = pal.a, hairRGB = pal.hair, hairHi = pal.hairHi, bustRGB = pal.bust;
       const width = cv.w, height = cv.h, ax = cv.ax, ay = cv.ay, k = cv.scale;
       const prims = sh.prims, np = prims.length;
       const wb = prims.map(p => { let q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]]; if (p.xf) { const w = mulV(p.xf.R, q); q = [w[0] + p.xf.t[0], w[1] + p.xf.t[1], w[2] + p.xf.t[2]]; } return q; });
@@ -1126,7 +1126,7 @@
           }
         }
       }
-      const pixels = new Uint8ClampedArray(n * 4), depth = new Float32Array(n).fill(-Infinity);
+      const pixels = new Uint8ClampedArray(n * 4), depth = new Float32Array(n).fill(-Infinity), tone = new Uint8Array(n);   // tone：0＝不是明暗格、1 暗／2 中／3 亮
       const set = (i, rgb, a) => { pixels[i * 4] = rgb[0]; pixels[i * 4 + 1] = rgb[1]; pixels[i * 4 + 2] = rgb[2]; pixels[i * 4 + 3] = a; };
       for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
         const i = y * width + x;
@@ -1136,11 +1136,38 @@
         else {
           let near = false;
           for (const j of [i - width, i + width, i - 1, i + 1]) if (j >= 0 && j < n && hit[j] && tt[j] > tt[i] + 3.5) { near = true; break; }
-          set(i, near ? lineRGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : bodyRGB, bodyA);
+          if (near) set(i, lineRGB, bodyA);
+          else if (bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH)) set(i, bustRGB, bodyA);
+          else { tone[i] = sideTone(hit, mat, tt, i, x, y, width, height, k); pixels[i * 4 + 3] = bodyA; }
         }
         depth[i] = tt[i];
       }
+      // 去雜點：一格跟上下左右（有明暗的）都不同階、而且鄰居多數同一階 → 併過去
+      const tn = tone.slice(), TONES = [null, pal.lo, pal.body, pal.hi];
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        const i = y * width + x; if (!tone[i]) continue;
+        const cnt = [0, 0, 0, 0]; let m = 0;
+        for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, y > 0 ? i - width : -1, y < height - 1 ? i + width : -1]) if (j >= 0 && tone[j]) { cnt[tone[j]]++; m++; }
+        if (m >= 3 && !cnt[tone[i]]) tn[i] = cnt.indexOf(Math.max(...cnt));
+      }
+      for (let i = 0; i < n; i++) if (tn[i]) { const c = TONES[tn[i]]; pixels[i * 4] = c[0]; pixels[i * 4 + 1] = c[1]; pixels[i * 4 + 2] = c[2]; }
       return { width, height, anchor: { x: ax, y: ay }, pixels, depth, scale: k };
+    }
+    // 2026-10-13：偷看側面的她改亮一點＋三階明暗（燈在左上前方），黑影疊黑影看不出形體
+    const SIDE_PAL = { body: [96, 80, 112], hi: [130, 110, 148], lo: [64, 52, 78], line: [40, 30, 52], hair: [34, 26, 46], hairHi: [64, 52, 82],
+      bust: [178, 152, 192], a: BODY_A };
+    const MAN_PAL = { body: [52, 86, 178], hi: [86, 124, 216], lo: [34, 58, 132], line: [22, 36, 96], hair: [26, 44, 108], hairHi: [26, 44, 108],
+      bust: [52, 86, 178], a: 240 };
+    const LIGHT = (() => { const v = [.55, -.55, .65], n = Math.hypot(...v); return v.map(c => c / n); })();
+    /** 側面一格的明暗：用深度圖（世界 x）估法線，跟燈的方向做 Lambert，切成亮／中／暗三階。 */
+    function sideTone(hit, mat, tt, i, x, y, w, h, k) {
+      const d = (j) => (j >= 0 && hit[j] && mat[j] === 1 && Math.abs(tt[j] - tt[i]) < 2.5 ? tt[j] : null);
+      const l = x > 0 ? d(i - 1) : null, r = x < w - 1 ? d(i + 1) : null, u = y > 0 ? d(i - w) : null, dn = y < h - 1 ? d(i + w) : null;
+      const gy = l !== null && r !== null ? (r - l) / 2 : l !== null ? tt[i] - l : r !== null ? r - tt[i] : 0;
+      const gz = u !== null && dn !== null ? (u - dn) / 2 : u !== null ? u - tt[i] : dn !== null ? tt[i] - dn : 0;
+      const nx = 1, ny = -gy * k, nz = -gz * k, nn = Math.hypot(nx, ny, nz);
+      const lam = (nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]) / nn;
+      return lam > .8 ? 3 : lam < .3 ? 1 : 2;
     }
     /** 乳房邊緣：這格是乳房，旁邊是身體（比它遠 ≥ thr）或外面 → 描線。 */
     function bustEdge(bust, hit, tt, i, x, y, w, h, thr) {
@@ -1166,7 +1193,7 @@
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
     return { W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
-      SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB,
+      SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
   }
   const api = factory();

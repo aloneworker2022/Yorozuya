@@ -142,7 +142,7 @@ t("乳房弧線：正面看得到下緣那條線（黑影疊黑影也讀得出�
   for (const yaw of [0, 45]) assert.ok(count("E", yaw) >= 8, `E yaw ${yaw}: ${count("E", yaw)}`);
   assert.ok(count("H", 0) > count("A", 0));
   const side = D.render(D.lookToDoll({ ...base, cup: "E" }), "sex_doggy", 0, 0);
-  let n = 0; for (let i = 0; i < side.pixels.length; i += 4) if (side.pixels[i] === D.BUST_RGB[0] && side.pixels[i + 3]) n++;
+  let n = 0; for (let i = 0; i < side.pixels.length; i += 4) if (side.pixels[i] === D.SIDE_PAL.bust[0] && side.pixels[i + 1] === D.SIDE_PAL.bust[1] && side.pixels[i + 3]) n++;
   assert.ok(n >= 4, `偷看側面也描：${n}`);
 });
 
@@ -163,6 +163,14 @@ t("客人跟著抽送動：傳教士頂到底和退出來那格骨盆位置不�
   const d = D.lookToDoll(base), M = { h: 1, w: 1, lm: 1 };
   const f0 = D.renderMan(d, "sex_missionary", 0, M), f3 = D.renderMan(d, "sex_missionary", 3, M);
   assert.notEqual(hash(f0), hash(f3));
+});
+
+t("偷看側面有三階明暗（她和客人都有），不是一整片同色", () => {
+  const d = D.lookToDoll({ ...base, cup: "E" });
+  const tones = (f, pal) => { const seen = new Set(); for (let i = 0; i < f.pixels.length; i += 4) if (f.pixels[i + 3]) seen.add(String(Array.from(f.pixels.subarray(i, i + 3))));
+    return [pal.lo, pal.body, pal.hi].filter(c => seen.has(String(c))).length; };
+  assert.equal(tones(D.render(d, "sex_cowgirl", 0, 0), D.SIDE_PAL), 3);
+  assert.equal(tones(D.renderMan(d, "sex_doggy", 0, { h: 1, w: 1, lm: 1 }), D.MAN_PAL), 3);
 });
 
 console.log(`room_doll: ${pass} passed`);
