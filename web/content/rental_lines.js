@@ -1,6 +1,6 @@
 /* 日租女友 LINE 句庫（2026-10-13）：AI 失敗時用，句子都吃「真相」變數（地點、點的東西、發生的事），不寫空話。
  * 客人把玩家當經紀人（不知道你們是夫妻）；她傳給老公的訊息照誠實度：誠實／輕描淡寫／說謊。 */
-import { SPOTS, PERSONAS } from "./rental.js?v=2";
+import { SPOTS, PERSONAS } from "./rental.js?v=3";
 
 const pick = (arr, r = Math.random) => arr[Math.floor(r() * arr.length) % arr.length];
 /** 同一場不重複同一個句型：date.used 記用過的範本。 */
@@ -23,31 +23,18 @@ const SPOT_DO = {
 };
 const doOf = (key, who, item) => fill((SPOT_DO[key] || SPOT_DO.cafe)[who], { item });
 
-/** 開場：客人跟經紀人報行程（他的兩個＋她挑的那個）。 */
-export function clientPlanLine(date, r) {
-  const names = date.spots.map((s) => SPOTS[s.key].zh);
-  const hers = date.spots.find((s) => s.by === "her");
-  const tail = hers ? `${SPOTS[hers.key].zh}是她說想去的。` : "";
-  const p = date.client.persona;
-  const head = {
-    gentleman: "您好，今天麻煩您了。行程這樣安排：", clingy: "經紀人～今天的行程我排好了！", showoff: "跟你說一下今天怎麼玩：",
-    dominant: "行程我定了：", otaku: "那、那個……今天想這樣走：",
-  }[p] || "今天的行程：";
-  return `${head}${names.join(" → ")}。${tail}`;
-}
-
 /** 客人在每個點傳給經紀人的話（真相：spot.item / act / gift / drunk）。 */
 const CLIENT_SPOT = {
   gentleman: ["我們到{place}了。{herDo}，看起來很喜歡。", "謝謝您安排，{place}很愉快。", "{place}這邊人不多，她放鬆了一些。",
-    "{place}這邊很順利，{act}，她有點害羞。", "剛剛在{place}，{act}，她沒有拒絕，我很開心。", "{act}了，她的手很暖。"],
+    "{place}這邊很順利，{act}，她有點害羞。", "剛剛在{place}，{act}，她沒有拒絕，我很開心。", "在{place}{act}了，她的手很暖。"],
   clingy: ["{place}到了！{herDo}欸，好可愛～", "可以多待一下嗎，{place}好好玩", "她在{place}一直笑，好想一直看",
-    "我們{act}了喔！好開心", "{place}好擠，所以{act}～", "剛剛{act}！我要記住今天"],
+    "在{place}我們{act}了喔！好開心", "{place}好擠，所以{act}～", "{place}這邊剛剛{act}！我要記住今天"],
   showoff: ["在{place}，{herDo}，旁邊的人都在看她，羨慕死了吧", "{place}這邊大家一直回頭看我們", "{place}，店員都在偷看她",
-    "跟你講，剛剛{act}，她身材真的很好", "在{place}{act}，路人眼睛都直了", "{act}的時候她胸部貼過來，你家這個真的讚"],
-  dominant: ["{place}。{herDo}。", "下一站照排，別打電話來。", "{place}，她很乖。",
-    "剛剛{act}，她沒拒絕。", "{act}。她臉紅了。", "在{place}{act}，她挺習慣的嘛。"],
+    "跟你講，剛剛在{place}{act}，她身材真的很好", "在{place}{act}，路人眼睛都直了", "在{place}{act}的時候她胸部貼過來，你家這個真的讚"],
+  dominant: ["{place}。{herDo}。", "{place}。下一站照排，別打電話來。", "{place}，她很乖。",
+    "{place}。剛剛{act}，她沒拒絕。", "{place}，{act}。她臉紅了。", "在{place}{act}，她挺習慣的嘛。"],
   otaku: ["到、到{place}了……{herDo}", "{place}，她笑了，好好看……", "她在{place}跟我說話了……好緊張",
-    "剛剛……{act}了……我心臟快停了", "在{place}……{act}……這是真的嗎……", "{act}了……我、我手都在抖"],
+    "在{place}……剛剛{act}了……我心臟快停了", "在{place}……{act}……這是真的嗎……", "{place}……{act}了……我、我手都在抖"],
 };
 const ACT_TEXT = { 牽手: "牽了她的手", "挽著他的手": "她挽著我的手", "餵他吃一口": "她餵我吃了一口", "被他摟著腰": "我摟了她的腰", "靠在他肩上": "她靠在我肩上" };
 export function clientSpotLine(date, i, r) {

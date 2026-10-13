@@ -46,12 +46,14 @@ t("客人：3 位、5 種個性、手腕 1～5、體型照 id 固定；有熟客
   assert.ok(hits > 70 && hits < 130, `熟客出現 ${hits}/200`);
 });
 
-t("行程：客人依個性挑 2、她依喜好挑 1，白天→晚上排；她喜歡海就挑水族館", () => {
+t("行程：客人依個性挑 1、她依喜好挑 1、再隨機 1，三個都不一樣，白天→晚上排", () => {
   const sp = R.planSpots(wife(), client("dominant"), lcg(1));
   assert.equal(sp.length, 3);
-  assert.deepEqual(sp.filter((s) => s.by === "client").map((s) => s.key).sort(), ["izakaya", "nightview"]);
+  assert.deepEqual(sp.map((s) => s.by).sort(), ["client", "her", "random"]);
+  assert.ok(["izakaya", "nightview"].includes(sp.find((s) => s.by === "client").key));
+  assert.equal(new Set(sp.map((s) => s.key)).size, 3);
   const hers = sp.find((s) => s.by === "her").key;
-  assert.ok(["cafe", "aquarium", "karaoke"].includes(hers), hers);   // 手沖咖啡／看海／唱歌
+  assert.ok(["cafe", "aquarium", "karaoke", "nightview"].includes(hers), hers);   // 手沖咖啡／看海／唱歌
   const order = sp.map((s) => R.SPOTS[s.key].order);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
   assert.equal(R.herSpot({ likes: ["老電影"] }, [], () => 0), "cinema");

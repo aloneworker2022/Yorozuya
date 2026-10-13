@@ -107,12 +107,17 @@ export function herSpot(who, taken = [], r0) {
   const pool = hit.length ? hit : SPOT_KEYS.filter((k) => !taken.includes(k));
   return pick(pool, r);
 }
-/** 行程：客人依個性挑 2 個、她挑 1 個，照白天→晚上排。回傳 [{key, by}]。 */
+/**
+ * 行程（2026-10-13 改）：客人依個性挑 1 個、她依喜好挑 1 個、再隨機 1 個，照白天→晚上排。回傳 [{key, by}]（by：client／her／random）。
+ * 玩家事先不知道行程：到了那一站，客人在 LINE 傳訊息才知道。
+ */
 export function planSpots(who, client, r0) {
   const r = rnd(r0), pref = PERSONAS[client?.persona]?.spots || ["cafe", "dinner"];
-  const mine = pref.slice();
-  const hers = herSpot(who, mine, r);
-  const list = [...mine.map((k) => ({ key: k, by: "client" })), { key: hers, by: "her" }];
+  const his = pick(pref, r);
+  const hers = herSpot(who, [his], r);
+  const rest = SPOT_KEYS.filter((k) => k !== his && k !== hers);
+  const extra = pick(rest, r);
+  const list = [{ key: his, by: "client" }, { key: hers, by: "her" }, { key: extra, by: "random" }];
   return list.sort((a, b) => SPOTS[a.key].order - SPOTS[b.key].order);
 }
 
@@ -300,11 +305,11 @@ export function clockText(hour) {
 
 /**
  * 時間軸（遊戲小時）：什麼時候客人／她傳訊、哪裡要停下來讓玩家決定。跟著 schedule 走（延長、旅館會把後面往後推）。
- * kind：plan（客人報行程）／cs（客人在第 i 點）／ws（她在第 i 點）／ext（延長要求，決定）／invite（去休息通知，決定）／
+ * kind：cs（客人在第 i 點；玩家這時才知道去了哪）／ws（她在第 i 點）／ext（延長要求，決定）／invite（去休息通知，決定）／
  *       bye（沒去休息，結束）／wh（她在旅館傳訊）／hd（客人說結束）／end（整場結束）。
  */
 export function timeline(date) {
-  const { segs } = schedule(date), out = [{ id: "plan", kind: "plan", at: 0.05 }];
+  const { segs } = schedule(date), out = [];
   const spots = segs.filter((s) => s.kind === "spot");
   for (const s of spots) {
     const len = s.to - s.from, sp = date.spots[s.i];

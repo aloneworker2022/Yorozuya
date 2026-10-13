@@ -3,15 +3,15 @@
  * api：{ who(), inRoom(), say(who, ask, fallback) → Promise<string>, typeLine(name, text), goOut(who), comeBack(who),
  *        gold(), earn(n, why), hunger(who), mood(who), applyEffects(who, eff), persist(), debug(msg), peek(opts), ai?(kind, ctx) → Promise<string> }
  * 她的約會存在 who.rentalMine.active（關掉 App 再開照時間接著走；決定點會停住）。 */
-import * as R from "./rental.js?v=2";
-import * as L from "./rental_lines.js?v=2";
+import * as R from "./rental.js?v=3";
+import * as L from "./rental_lines.js?v=3";
 import { familyOf } from "./girl_voice.js?v=1";
 
 const BUILD_ZH = { average: "普通", slim: "瘦", muscular: "壯", fat: "胖", tall: "高", short: "矮", old: "中年" };
 const POSE_FOR = { kiss: "kiss", oral: "kiss", sex: ["missionary", "doggy", "cowgirl", "reverse"] };
 const CSS = `
 .rgf-ov{position:fixed;inset:0;z-index:8600;background:#e9edf2;display:flex;flex-direction:column;font:15px/1.45 system-ui,-apple-system,"Noto Sans TC",sans-serif;color:#1d2330}
-.rgf-ov[hidden]{display:none}
+.rgf-ov[hidden],.rgf-ov [hidden]{display:none!important}
 .rgf-ov button{font:inherit;box-shadow:none;text-shadow:none;image-rendering:auto;min-height:0;letter-spacing:0;transform:none;cursor:pointer}
 .rgf-ov button::before,.rgf-ov button::after{content:none}
 .rgf-hd{background:#06c755;color:#fff;padding:10px 14px 8px;display:flex;align-items:center;gap:10px}
@@ -19,10 +19,13 @@ const CSS = `
 .rgf-hd button{background:none!important;border:0!important;outline:0;box-shadow:none!important;color:#fff;font-size:24px;line-height:1;padding:2px 6px;width:auto}
 .rgf-clock{background:#05a647;color:#eafff1;padding:4px 14px;font-size:13px;display:flex;gap:10px;align-items:center}
 .rgf-clock .bar{flex:1;height:5px;background:#0b8a3d;border-radius:3px;overflow:hidden}.rgf-clock .bar i{display:block;height:100%;background:#bff5d3}
-.rgf-tabs{display:flex;background:#fff;border-bottom:1px solid #d5dbe3}
-.rgf-tabs button{flex:1;border:0!important;border-radius:0!important;background:none!important;padding:9px 4px;font-size:14px;color:#6b7383;position:relative}
-.rgf-tabs button.on{color:#06c755;font-weight:700;box-shadow:inset 0 -3px 0 #06c755}
-.rgf-tabs .dot{position:absolute;top:6px;margin-left:4px;background:#ff3b30;color:#fff;border-radius:9px;font-size:11px;padding:0 5px}
+.rgf-list{flex:1;overflow-y:auto;background:#fff}
+.rgf-row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px!important;border:0!important;border-bottom:1px solid #eef1f4!important;border-radius:0!important;background:#fff!important;text-align:left;color:#1d2330}
+.rgf-av{flex:none;width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;color:#fff}
+.rgf-row .mid{flex:1;min-width:0}.rgf-row .nm{font-weight:700;font-size:15px}.rgf-row .pv{color:#7a8291;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rgf-row .rt{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:11px;color:#9aa1ad}
+.rgf-row .ub{background:#06c755;color:#fff;border-radius:10px;padding:0 6px;font-size:11px;min-width:18px;text-align:center}
+.rgf-back{font-size:26px!important}
 .rgf-msgs{flex:1;overflow-y:auto;padding:12px 12px 4px;display:flex;flex-direction:column;gap:8px}
 .rgf-m{max-width:78%;padding:7px 11px;border-radius:16px;background:#fff;align-self:flex-start;box-shadow:0 1px 1px rgba(0,0,0,.06);word-break:break-word}
 .rgf-m.me{align-self:flex-end;background:#8de07f}
@@ -52,7 +55,7 @@ const CSS = `
 
 export function createRental(api) {
   if (!document.getElementById("rgf-css")) { const s = document.createElement("style"); s.id = "rgf-css"; s.textContent = CSS; document.head.append(s); }
-  let ov = null, tab = "wife", timer = 0, scene = null;
+  let ov = null, tab = "wife", view = "list", timer = 0, scene = null;   // view：list（聊天列表）／chat（點進某個人）
   const mineOf = (who) => { who.rentalMine = who.rentalMine && typeof who.rentalMine === "object" ? who.rentalMine : {}; return who.rentalMine; };
   const active = (who = api.who()) => who?.rentalMine?.active || null;
   const famOf = (who) => { try { return familyOf(who); } catch { return "溫柔"; } };
@@ -100,12 +103,10 @@ export function createRental(api) {
       const b = document.createElement("button");
       b.type = "button"; b.className = "rgf-card"; b.dataset.client = c.id;
       const star = "★".repeat(c.skill) + "☆".repeat(5 - c.skill);
-      const want = (R.PERSONAS[c.persona]?.spots || []).map((k) => R.SPOTS[k].zh).join("、");
-      b.innerHTML = `<div class="nm"></div><span class="tg"></span><span class="tg"></span><span class="tg"></span>${c.regular ? '<span class="tg reg">熟客・收入雙倍</span>' : ""}<q></q>`;
+      b.innerHTML = `<div class="nm"></div><span class="tg"></span><span class="tg"></span><span class="tg"></span>${c.regular ? '<span class="tg reg">熟客・收入雙倍</span>' : ""}`;
       b.querySelector(".nm").textContent = `${c.name}　${c.age} 歲`;
       const tg = b.querySelectorAll(".tg");
       tg[0].textContent = L.PERSONA_ZH[c.persona]; tg[1].textContent = `手腕 ${star}`; tg[2].textContent = `體型 ${BUILD_ZH[c.build] || ""}`;
-      b.querySelector("q").textContent = `想去：${want}`;
       b.addEventListener("click", () => start(who, c));
       list.append(b);
     }
@@ -123,17 +124,20 @@ export function createRental(api) {
     api.debug(`日租女友：客人 ${client.name}（${L.PERSONA_ZH[client.persona]}・手腕 ${client.skill}${client.regular ? "・熟客" : ""}），行程 ${date.spots.map((s) => R.SPOTS[s.key].zh).join("→")}，邀請 ${Math.round(date.invite.p * 100)}% ${date.invite.yes ? "成功" : "沒成功"}`);
     api.goOut(who);
     api.persist();
-    tab = "client";
+    view = "list";
     openPanel();
     tick();
   }
 
   // ------------------------------------------------------------ 約會中：LINE 面板
-  function push(date, side, from, text) {
+  /** at：這則訊息「該發生」的遊戲時間（AI 晚回來也照這個時間插進去，順序不會亂）；沒給就是現在。 */
+  function push(date, side, from, text, at = null) {
     if (!text) return;
-    const e = R.elapsedHours(date);
-    date.chat[side].push({ from, text, at: Math.round(e * 100) / 100 });
-    if (from === "them" && !(ov && ov.dataset.tab === side)) date.unread[side] = (date.unread[side] || 0) + 1;
+    const t = Math.round((at ?? R.elapsedHours(date)) * 100) / 100, list = date.chat[side];
+    let k = list.length;
+    while (k > 0 && list[k - 1].at > t) k--;
+    list.splice(k, 0, { from, text, at: t });
+    if (from === "them" && !(ov && ov.dataset.open === side)) date.unread[side] = (date.unread[side] || 0) + 1;
   }
   async function line(date, side, kind, ctx, fallback) {
     if (api.ai) {
@@ -143,9 +147,8 @@ export function createRental(api) {
   }
   function emit(who, date, ev) {
     const fam = famOf(who), lvl = date.hotel?.result ? R.honesty(who, date.hotel.result).level : date.honesty;
-    if (ev.kind === "plan") push(date, "client", "them", L.clientPlanLine(date));
-    else if (ev.kind === "cs") void line(date, "client", "spot", { i: ev.i }, L.clientSpotLine(date, ev.i)).then((t) => { push(date, "client", "them", t); render(); api.persist(); });
-    else if (ev.kind === "ws") void line(date, "wife", "spot", { i: ev.i, level: lvl }, L.wifeSpotLine(date, ev.i, { level: lvl, family: fam })).then((t) => { push(date, "wife", "them", t); render(); api.persist(); });
+    if (ev.kind === "cs") void line(date, "client", "spot", { i: ev.i }, L.clientSpotLine(date, ev.i)).then((t) => { push(date, "client", "them", t, ev.at); render(); api.persist(); });
+    else if (ev.kind === "ws") void line(date, "wife", "spot", { i: ev.i, level: lvl }, L.wifeSpotLine(date, ev.i, { level: lvl, family: fam })).then((t) => { push(date, "wife", "them", t, ev.at); render(); api.persist(); });
     else if (ev.kind === "bye") push(date, "client", "them", L.clientByeLine(date));
     else if (ev.kind === "wh") push(date, "wife", "them", L.wifeHotelLine(date, lvl));
     else if (ev.kind === "hd") {
@@ -173,7 +176,7 @@ export function createRental(api) {
   function askDecision(who, date, ev) {
     if (!ov || ov.dataset.kind !== "date") openPanel();
     if (ov.querySelector(".rgf-modal")) return;
-    tab = "client"; render();
+    tab = "client"; view = "chat"; render();
     const m = document.createElement("div");
     m.className = "rgf-modal";
     const sheet = document.createElement("div");
@@ -230,19 +233,30 @@ export function createRental(api) {
       status: h.presence === "in" ? `${date.client.name}不知道你是她老公` : "", hint: h.presence === "in" ? "" : "門後傳來聲音……",
       onClose: () => { scene = null; render(); } });
   }
+  /** 約會行程玩家事先不知道：客人或她在那一站傳了訊息才算「知道」。 */
+  const knownSpot = (date, i) => !!(date.seen?.[`cs:${i}`] || date.seen?.[`ws:${i}`]);
+  function placeText(date, seg) {
+    if (date.pauseAt) return "（等你回覆）";
+    if (seg?.kind === "hotel") return `旅館・${date.hotel.stay === "stay" ? "住宿" : "休息"}`;
+    return seg && knownSpot(date, seg.i) ? R.SPOTS[seg.key].zh : "約會中";
+  }
   function openPanel() {
     const who = api.who(), date = active(who);
     if (!who || !date) return;
-    const el = shell(`日租中・${date.client.name}`);
+    const el = shell("LINE");
     el.dataset.kind = "date";
     el.insertAdjacentHTML("beforeend", `<div class="rgf-clock"><span class="t"></span><span class="w"></span><span class="bar"><i></i></span></div>
-      <div class="rgf-tabs"><button type="button" data-tab="wife"></button><button type="button" data-tab="client"></button></div>
-      <div class="rgf-msgs"></div><div class="rgf-act" hidden></div>
-      <form class="rgf-in"><input placeholder="輸入訊息" maxlength="120"><button type="submit">傳送</button></form>`);
-    el.querySelectorAll(".rgf-tabs button").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; render(); }));
+      <div class="rgf-list"></div><div class="rgf-msgs" hidden></div><div class="rgf-act" hidden></div>
+      <form class="rgf-in" hidden><input placeholder="輸入訊息" maxlength="120"><button type="submit">傳送</button></form>`);
+    const hd = el.querySelector(".rgf-hd");
+    const back = document.createElement("button");
+    back.type = "button"; back.className = "rgf-back"; back.textContent = "‹"; back.setAttribute("aria-label", "回聊天列表");
+    back.addEventListener("click", () => { view = "list"; render(); });
+    hd.prepend(back);
     el.querySelector(".rgf-in").addEventListener("submit", (e) => { e.preventDefault(); const i = el.querySelector(".rgf-in input"); const t = i.value.trim(); if (t) { i.value = ""; void send(t); } });
     render();
   }
+  const nameOf = (who, date, side) => (side === "wife" ? who.name : `(客戶) ${date.client.name}`);
   async function send(text) {
     const who = api.who(), date = active(who);
     if (!date) return;
@@ -260,25 +274,48 @@ export function createRental(api) {
   function render() {
     const who = api.who(), date = active(who);
     if (!ov || ov.dataset.kind !== "date" || !date) return;
-    ov.dataset.tab = tab;
-    date.unread[tab] = 0;
+    const inChat = view === "chat";
+    ov.dataset.open = inChat ? tab : "";
+    if (inChat) date.unread[tab] = 0;
     const w = R.where(date), seg = w.seg;
+    ov.querySelector(".rgf-hd b").textContent = inChat ? nameOf(who, date, tab) : "LINE";
+    ov.querySelector(".rgf-back").hidden = !inChat;
     ov.querySelector(".rgf-clock .t").textContent = R.clockText(w.hour);
-    ov.querySelector(".rgf-clock .w").textContent = date.pauseAt ? "（暫停）" : seg?.kind === "hotel" ? `旅館・${date.hotel.stay === "stay" ? "住宿" : "休息"}` : seg ? R.SPOTS[seg.key].zh : "";
+    ov.querySelector(".rgf-clock .w").textContent = placeText(date, seg);
     ov.querySelector(".rgf-clock .bar i").style.width = `${Math.min(100, (w.e / Math.max(1, w.total)) * 100)}%`;
-    const [tw, tc] = ov.querySelectorAll(".rgf-tabs button");
-    tw.classList.toggle("on", tab === "wife"); tc.classList.toggle("on", tab === "client");
-    tw.innerHTML = `💕 ${who.name}${date.unread.wife ? `<span class="dot">${date.unread.wife}</span>` : ""}`;
-    tc.innerHTML = `👤 ${date.client.name}（經紀人）${date.unread.client ? `<span class="dot">${date.unread.client}</span>` : ""}`;
-    const box = ov.querySelector(".rgf-msgs"), key = `${tab}|${date.chat[tab].length}`;
-    if (box.dataset.key !== key) {
-      box.dataset.key = key; box.textContent = "";
-      if (!date.chat[tab].length) box.innerHTML = `<div class="rgf-sys">${tab === "client" ? "客人以為你是她的經紀人" : "她正在約會中"}</div>`;
-      for (const m of date.chat[tab]) {
-        const d = document.createElement("div"); d.className = `rgf-m${m.from === "me" ? " me" : ""}`;
-        d.textContent = m.text; const s = document.createElement("small"); s.textContent = R.clockText((date.startHour || 13) + m.at); d.append(s); box.append(d);
+    const list = ov.querySelector(".rgf-list"), box = ov.querySelector(".rgf-msgs");
+    list.hidden = inChat; box.hidden = !inChat; ov.querySelector(".rgf-in").hidden = !inChat;
+    if (!inChat) {
+      // 聊天列表：頭像＋名字＋最後一則＋時間＋未讀
+      const key = ["wife", "client"].map((sd) => `${date.chat[sd].length}:${date.unread[sd] || 0}`).join("|");
+      if (list.dataset.key !== key) {
+        list.dataset.key = key; list.textContent = "";
+        for (const sd of ["wife", "client"]) {
+          const last = date.chat[sd].at(-1), row = document.createElement("button");
+          row.type = "button"; row.className = "rgf-row"; row.dataset.side = sd;
+          row.innerHTML = `<span class="rgf-av"></span><span class="mid"><div class="nm"></div><div class="pv"></div></span><span class="rt"><span class="tm"></span></span>`;
+          const av = row.querySelector(".rgf-av");
+          av.textContent = (sd === "wife" ? who.name : date.client.name).slice(0, 1);
+          av.style.background = sd === "wife" ? "#ff7aa8" : "#5b7fd6";
+          row.querySelector(".nm").textContent = nameOf(who, date, sd);
+          row.querySelector(".pv").textContent = last ? `${last.from === "me" ? "你：" : ""}${last.text}` : sd === "wife" ? "她正在約會中" : "客人以為你是她的經紀人";
+          row.querySelector(".tm").textContent = last ? R.clockText((date.startHour || 13) + last.at) : "";
+          if (date.unread[sd]) { const u = document.createElement("span"); u.className = "ub"; u.textContent = date.unread[sd]; row.querySelector(".rt").append(u); }
+          row.addEventListener("click", () => { tab = sd; view = "chat"; render(); });
+          list.append(row);
+        }
       }
-      box.scrollTop = box.scrollHeight;
+    } else {
+      const key = `${tab}|${date.chat[tab].length}`;
+      if (box.dataset.key !== key) {
+        box.dataset.key = key; box.textContent = "";
+        if (!date.chat[tab].length) box.innerHTML = `<div class="rgf-sys">${tab === "client" ? "客人以為你是她的經紀人" : "她正在約會中"}</div>`;
+        for (const m of date.chat[tab]) {
+          const d = document.createElement("div"); d.className = `rgf-m${m.from === "me" ? " me" : ""}`;
+          d.textContent = m.text; const sm = document.createElement("small"); sm.textContent = R.clockText((date.startHour || 13) + m.at); d.append(sm); box.append(d);
+        }
+        box.scrollTop = box.scrollHeight;
+      }
     }
     const act = ov.querySelector(".rgf-act"), h = date.hotel;
     act.textContent = "";
@@ -346,7 +383,7 @@ export function createRental(api) {
       chip.addEventListener("click", () => openPanel()); document.body.append(chip);
     }
     const w = R.where(date), seg = w.seg, unread = (date.unread?.wife || 0) + (date.unread?.client || 0);
-    const place = seg?.kind === "hotel" ? "旅館" : seg ? R.SPOTS[seg.key].zh : "";
+    const place = seg?.kind === "hotel" ? "旅館" : seg && knownSpot(date, seg.i) ? R.SPOTS[seg.key].zh : "約會中";
     chip.innerHTML = `💕 ${who.name}日租中・${place} ${R.clockText(w.hour)}${date.pauseAt ? "・等你回覆" : ""}${unread ? `<span class="dot">${unread}</span>` : ""}`;
     chip.hidden = !!ov;
   }
