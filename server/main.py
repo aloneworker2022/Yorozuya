@@ -35,6 +35,7 @@ import discover_bonus
 import jp_news
 import life_agent
 import escort_lines
+import rental_lines
 import line_group
 import memos
 import sdtags
@@ -4788,6 +4789,21 @@ async def escort_peek_lines(body: dict):
     if len(_PEEK_LINES) > 200:
         _PEEK_LINES.pop(next(iter(_PEEK_LINES)))
     return {"lines": row["lines"], "cached": False}
+
+
+@app.post("/api/rental/line")
+async def rental_line(body: dict):
+    """日租女友 LINE（2026-10-13）：一次寫一則。body 見 server/rental_lines.py（side／kind／girl／client／spot／plan／hotel／recent／text…）。
+    回 {text}；模型 20 秒沒回或寫壞 → text 空（手機用句庫）。"""
+    body = body or {}
+    if str(body.get("side") or "") not in ("client", "wife"):
+        raise HTTPException(status_code=400, detail="side 要是 client 或 wife")
+    system, user = rental_lines.prompt(body)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+    except asyncio.TimeoutError:
+        reply = ""
+    return {"text": rental_lines.parse(reply)}
 
 
 async def _world_clock():

@@ -1,6 +1,6 @@
 /* 日租女友 LINE 句庫（2026-10-13）：AI 失敗時用，句子都吃「真相」變數（地點、點的東西、發生的事），不寫空話。
  * 客人把玩家當經紀人（不知道你們是夫妻）；她傳給老公的訊息照誠實度：誠實／輕描淡寫／說謊。 */
-import { SPOTS, PERSONAS, hotelText } from "./rental.js?v=1";
+import { SPOTS, PERSONAS } from "./rental.js?v=2";
 
 const pick = (arr, r = Math.random) => arr[Math.floor(r() * arr.length) % arr.length];
 /** 同一場不重複同一個句型：date.used 記用過的範本。 */
@@ -125,7 +125,7 @@ export function clientHotelDone(date) {
 export function wifeHotelLine(date, level) {
   const h = date.hotel?.result;
   if (!h) return "";
-  if (level === "honest") return `……我們去休息了。${hotelText(h)}。對不起，回家再跟你說。`;
+  if (level === "honest") return "……我們去休息了。對不起，回家我會全部告訴你。";
   if (level === "downplay") return "去休息了一下，沒什麼，等等就回家。";
   return "他累了想休息一下，我陪他坐著而已，等等回家。";
 }

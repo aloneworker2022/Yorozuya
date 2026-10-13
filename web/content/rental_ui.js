@@ -3,8 +3,8 @@
  * api：{ who(), inRoom(), say(who, ask, fallback) → Promise<string>, typeLine(name, text), goOut(who), comeBack(who),
  *        gold(), earn(n, why), hunger(who), mood(who), applyEffects(who, eff), persist(), debug(msg), peek(opts), ai?(kind, ctx) → Promise<string> }
  * 她的約會存在 who.rentalMine.active（關掉 App 再開照時間接著走；決定點會停住）。 */
-import * as R from "./rental.js?v=1";
-import * as L from "./rental_lines.js?v=1";
+import * as R from "./rental.js?v=2";
+import * as L from "./rental_lines.js?v=2";
 import { familyOf } from "./girl_voice.js?v=1";
 
 const BUILD_ZH = { average: "普通", slim: "瘦", muscular: "壯", fat: "胖", tall: "高", short: "矮", old: "中年" };
@@ -137,7 +137,7 @@ export function createRental(api) {
   }
   async function line(date, side, kind, ctx, fallback) {
     if (api.ai) {
-      try { const t = await Promise.race([api.ai(kind, { ...ctx, date, side }), new Promise((r) => setTimeout(() => r(""), 15000))]); if (t) return t; } catch { /* 句庫 */ }
+      try { const t = await Promise.race([api.ai(kind, { ...ctx, date, side }), new Promise((r) => setTimeout(() => r(""), 22000))]); if (t) return t; } catch { /* 句庫 */ }
     }
     return fallback;
   }

@@ -385,3 +385,18 @@ function tellRule(last) {
   if (last.honesty === "downplay") return `他問起就講得比實際輕：說「${toldVersion(last.hotel, "downplay")}」；被追問細節會心虛，可能露餡。`;
   return `他問起就說「${toldVersion(last.hotel, "lie")}」；他拿出證據逼問才慢慢承認。`;
 }
+
+/** 給伺服器 /api/rental/line 的資料（真相＋最近的訊息）。side：client／wife；kind：spot／reply；ctx：{ i, level, text, phase }。 */
+export function aiPayload(who, date, side, kind, ctx = {}) {
+  const s = Number.isInteger(ctx.i) ? date.spots[ctx.i] : null;
+  const recent = (date.chat?.[side] || []).slice(-6).map((m) => `${m.from === "me" ? (side === "client" ? "經紀人" : "老公") : side === "client" ? "客人" : "她"}：${m.text}`);
+  return {
+    side, kind, phase: ctx.phase || "date", text: String(ctx.text || "").slice(0, 120), honesty: ctx.level || date.honesty || "honest",
+    girl: { name: who?.name || "", stage: stageKeyOf(who), family: familyOf(who), archetype: who?.archetype || "" },
+    client: { name: date.client.name, age: date.client.age, persona: PERSONAS[date.client.persona]?.zh || "", regular: !!date.client.regular },
+    plan: date.spots.map((x) => SPOTS[x.key].zh),
+    spot: s ? { place: SPOTS[s.key].zh, item: s.item, act: s.act || "", gift: !!s.gift, drunk: !!s.drunk } : null,
+    hotel: date.hotel?.result ? `${date.hotel.stay === "stay" ? "住宿一晚" : "休息"}；${hotelText(date.hotel.result)}` : "",
+    recent,
+  };
+}

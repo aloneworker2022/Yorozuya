@@ -333,8 +333,8 @@ import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, 
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
 import { openPeek } from "./escort_peek.js?v=7";
 import * as Preg from "./pregnancy.js?v=1";
-import { createRental } from "./rental_ui.js?v=1";
-import { promptLines as rentalPromptLines } from "./rental.js?v=1";
+import { createRental } from "./rental_ui.js?v=2";
+import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload } from "./rental.js?v=2";
 import { moanVoiceId } from "./stun_speech.js?v=25";
 import {
   hungerOn,
@@ -1135,6 +1135,15 @@ const rental = createRental({
   applyEffects: rentalApply,
   persist: () => persistRoom(),
   debug: (m) => pushDebug(m),
+  // AI 寫 LINE（server/rental_lines.py）；伺服器沒有／失敗回空字串 → rental_ui 用句庫
+  ai: async (kind, ctx) => {
+    if (!girl || !ctx?.date) return "";
+    const resp = await fetch("/api/rental/line", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(rentalAiPayload(girl, ctx.date, ctx.side, kind, ctx)) });
+    if (!resp.ok) return "";
+    const t = String((await resp.json().catch(() => ({})))?.text || "").trim();
+    return ctx.side === "wife" ? scrubHusband(t, girl.stage || "stranger", girl.playerPet || "") : t;
+  },
   peek: (opts) => openPeek({ ...opts, doll: window.RoomDoll?.lookToDoll(opts.who?.look || null, { belly: Preg.bellyOf(opts.who) }),
     voice: moanVoiceId(opts.who) || "", family: familyOfGirl(opts.who) }),
 });
