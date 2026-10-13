@@ -21,38 +21,59 @@ function dollWorker() {
   if (!D || typeof Worker === "undefined") return null;
   if (worker) return worker;
   try {
-    const src = `const RoomDoll=(${D.factorySource})();onmessage=(e)=>{const j=e.data;try{const f=RoomDoll.render(j.doll,j.pose,j.frame,0,{});postMessage({id:j.id,w:f.width,h:f.height,px:f.pixels},[f.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err&&err.message||err)});}};`;
+    const src = `const RoomDoll=(${D.factorySource})();onmessage=(e)=>{const j=e.data;try{const f=RoomDoll.render(j.doll,j.pose,j.frame,0,{});const m=j.man?RoomDoll.renderMan(j.doll,j.pose,j.frame,j.man):null;const tr=[f.pixels.buffer,f.depth.buffer];if(m)tr.push(m.pixels.buffer,m.depth.buffer);postMessage({id:j.id,w:f.width,h:f.height,px:f.pixels,dp:f.depth,mpx:m&&m.pixels,mdp:m&&m.depth},tr);}catch(err){postMessage({id:j.id,err:String(err&&err.message||err)});}};`;
     worker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
     worker.onmessage = (e) => { const w = waiters.get(e.data.id); if (w) { waiters.delete(e.data.id); w(e.data); } };
   } catch { worker = null; }
   return worker;
 }
 /** 產一格：Worker 優先，沒有就主執行緒（測試／舊瀏覽器）。 */
-function renderFrame(doll, pose, frame) {
+function renderFrame(doll, pose, frame, man = null) {
   const w = dollWorker();
   if (!w) {
-    const f = window.RoomDoll.render(doll, pose, frame, 0, {});
-    return Promise.resolve({ w: f.width, h: f.height, px: f.pixels });
+    const D = window.RoomDoll, f = D.render(doll, pose, frame, 0, {}), m = man ? D.renderMan(doll, pose, frame, man) : null;
+    return Promise.resolve({ w: f.width, h: f.height, px: f.pixels, dp: f.depth, mpx: m?.pixels, mdp: m?.depth });
   }
   const id = ++jobSeq;
-  return new Promise((res) => { waiters.set(id, res); w.postMessage({ id, doll, pose, frame }); });
+  return new Promise((res) => { waiters.set(id, res); w.postMessage({ id, doll, pose, frame, man }); });
 }
-/** 她的人偶幀 → canvas（不透明度拉到 95%）。 */
-async function dollFrames(doll, pose) {
+/** 她＋客人（同一套 3D 人偶、同一個側面畫布）照深度合成一格：靠鏡頭的蓋住後面的（他靠近這邊的手會在她身上）。 */
+export function composeFrame(r) {
+  const W = r.w, Hh = r.h, n = W * Hh, px = new Uint8ClampedArray(n * 4), own = new Uint8Array(n), dp = new Float32Array(n).fill(-Infinity);
+  const her = r.px, him = r.mpx;
+  for (let i = 0; i < n; i++) {
+    const hA = her[i * 4 + 3], mA = him ? him[i * 4 + 3] : 0;
+    if (!hA && !mA) continue;
+    const useHim = mA && (!hA || r.mdp[i] > r.dp[i]);
+    const src = useHim ? him : her;
+    px.set(src.subarray(i * 4, i * 4 + 3), i * 4); px[i * 4 + 3] = useHim ? 246 : 242;
+    own[i] = useHim ? 2 : 1; dp[i] = useHim ? r.mdp[i] : r.dp[i];
+  }
+  // 輪廓：燈在左上 → 朝燈那邊（左、上）描暖光，背光那邊（右、下）描暗一點的冷邊；整圈連續、不再斷斷續續。
+  // 兩人交界：靠鏡頭那個人的邊描一條，才分得出誰在前面。
+  const RIM = { 1: [[206, 156, 118], [118, 92, 126]], 2: [[132, 168, 240], [70, 104, 196]] };
+  const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= Hh ? -1 : y * W + x);
+  const edge = (i, j) => j < 0 || !own[j] || (own[j] !== own[i] && dp[i] > dp[j] + .5);
+  const paint = [];
+  for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x; if (!own[i]) continue;
+    const lit = edge(i, at(x - 1, y)) || edge(i, at(x, y - 1)), dark = edge(i, at(x + 1, y)) || edge(i, at(x, y + 1));
+    if (lit || dark) paint.push([i, RIM[own[i]][lit ? 0 : 1]]);
+  }
+  for (const [i, c] of paint) px.set(c, i * 4);
+  return { px, own, dp };
+}
+/** 她（＋客人）的人偶幀 → canvas。man：客人體型參數（MAN_BUILDS 的值）；沒有就只畫她（舊的 2D 客人另外畫）。 */
+async function dollFrames(doll, pose, man = null) {
   const D = window.RoomDoll, n = D.POSES[pose].frames, out = [];
   for (let i = 0; i < n; i++) {
-    const r = await renderFrame(doll, pose, i);
+    const r = await renderFrame(doll, pose, i, man);
     if (r.err) throw new Error(r.err);
-    const px = new Uint8ClampedArray(r.px);
-    for (let k = 3; k < px.length; k += 4) if (px[k]) px[k] = 242;
-    // 燈在左上：朝燈那一側的輪廓描一圈暖光（腰線、胸型讀得出來）
-    const W = r.w, Hh = r.h, a = (x, y) => (x < 0 || y < 0 || x >= W || y >= Hh ? 0 : px[(y * W + x) * 4 + 3]);
-    const rim = [];
-    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) if (a(x, y) && (!a(x - 1, y) || !a(x, y - 1) || !a(x + 1, y) && !a(x, y + 1))) rim.push((y * W + x) * 4);
-    for (const i of rim) { px[i] = 196; px[i + 1] = 146; px[i + 2] = 112; }
+    const { px } = composeFrame(r);
     const c = document.createElement("canvas");
     c.width = r.w; c.height = r.h;
     c.getContext("2d").putImageData(new ImageData(px, r.w, r.h), 0, 0);
+    c.withMan = !!man;
     out.push(c);
   }
   return out;
@@ -155,7 +176,7 @@ export async function peekStills(opts = {}) {
   const D = window.RoomDoll, pose = POSE_ID[opts.pose] ? opts.pose : "doggy", dpose = POSE_ID[pose];
   const man = MAN_BUILDS[opts.man] ? opts.man : "average", K = Math.max(1, opts.scale | 0 || 4);
   const doll = opts.doll || D.lookToDoll(opts.look || null);
-  const all = await dollFrames(doll, dpose);
+  const all = await dollFrames(doll, dpose, MAN_BUILDS[man]);
   const idx = Array.isArray(opts.frames) && opts.frames.length ? opts.frames : all.map((_, i) => i);
   const X0 = DX0 + 2, W = 176, H = 136, Y0 = BED + 22 - H;
   const out = [];
@@ -189,10 +210,10 @@ function drawScene(g, st) {
     g.fillRect(DX0, BED - 18, 5, 38);                                   // 床頭板
     g.fillStyle = "#dcc8be"; g.fillRect(DX0 + 6, BED - 5, 14, 5);       // 枕頭
     const f = st.frames?.[st.fi];
-    const cvp = window.RoomDoll.CANVAS.peek;
-    if (st.anchor) drawClient(g, st.pose, st.anchor, cvp.scale);
+    const cvp = window.RoomDoll.CANVAS.peek, old2d = st.anchor && !f?.withMan;   // 新版客人已經畫在人偶幀裡
+    if (old2d) drawClient(g, st.pose, st.anchor, cvp.scale);
     if (f) g.drawImage(f, (HIPX[st.pose] || HIPX.cowgirl) - cvp.ax, BED - cvp.ay);
-    if (st.anchor) drawClientFront(g, st.pose, st.anchor, cvp.scale);
+    if (old2d) drawClientFront(g, st.pose, st.anchor, cvp.scale);
     g.restore();
     g.fillStyle = `rgba(230,170,90,${0.27 * st.open})`;               // 門縫透出的光
     g.beginPath(); g.moveTo(DX0, DY1); g.lineTo(DX0 + gap, DY1); g.lineTo(DX0 + gap + 22 * st.open, LH); g.lineTo(DX0 - 18 * st.open, LH); g.fill();
@@ -305,7 +326,7 @@ export function openPeek(opts = {}) {
     drawScene(g, st);
     raf = requestAnimationFrame(tick);
   };
-  const framesReady = dollFrames(doll, dpose).then((fr) => { st.frames = fr; st.anchor = { ...D.sexAnchor(doll, dpose, 0), man }; }).catch((err) => { console.warn("[peek]", err); });
+  const framesReady = dollFrames(doll, dpose, MAN_BUILDS[man]).then((fr) => { st.frames = fr; st.anchor = { ...D.sexAnchor(doll, dpose, 0), man }; }).catch((err) => { console.warn("[peek]", err); });
   const openDoor = () => {
     if (opts.onOpen && opts.onOpen() === false) return;
     st.opened = true; st.target = 1; talkAt = performance.now() + 900;

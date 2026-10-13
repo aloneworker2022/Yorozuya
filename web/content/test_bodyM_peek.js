@@ -2,7 +2,7 @@
  * 拿接客偷看的體位動畫（5 種體位、她的身材從名冊／測試身材／上面抽到的妹子、客人體型）當來源幀，
  * 每幀上傳成姿勢參考（/api/pose-refs）→ /api/imggen 圖生圖（denoise 預設 0.3、每幀同一個 seed，臉和畫風才連得起來）
  * → /api/bodym/assemble 組回 GIF／WebP。 */
-import { peekStills, MAN_BUILDS } from "./escort_peek.js?v=5";
+import { peekStills, MAN_BUILDS } from "./escort_peek.js?v=6";
 import { POSE_ZH } from "./escort.js?v=5";
 
 const $ = (id) => document.getElementById(id);

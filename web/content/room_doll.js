@@ -9,6 +9,8 @@
     const W = 64, H_CANVAS = 140, ANCHOR = { x: 32, y: 126 };
     const BODY_RGB = [51, 45, 64], HAIR_RGB = [31, 24, 42], HAIR_HI_RGB = [78, 66, 98];
     const LINE_RGB = [30, 24, 40], MARK_RGB = [33, 27, 45];
+    // 2026-10-13：乳房弧線（疊在身體前面時描一條淺色線，不然黑影疊黑影看不出胸型）
+    const BUST_RGB = [134, 112, 152], BUST_DEPTH = 1.0;
     const BODY_A = 204, HAIR_A = 220;
     const GIRTH = 1.1;
     const CUP_R = { A: 2.3, B: 3.1, C: 3.8, D: 4.5, E: 5.15, F: 5.7, G: 6.1, H: 6.55, I: 7.0 };
@@ -96,7 +98,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; prims.push(p); };
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; prims.push(p); };
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -266,6 +268,7 @@
       }
       const r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
+      sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
       for (const s of [-1, 1]) {
         const root = [s * (2.6 + r * .22) * cs + bx * .3, yl(zA) + 2.6 * cs + r * .12 + by * .3, zA + bz * .3];
         const cx = s * (3.2 + r * .3) * cs + bx, cy = yl(zB) + 3.3 * cs + r * .5 + by;
@@ -290,6 +293,7 @@
           sh.ell(BODY, [cx, cy - r * .1 - r * sy * .3, zB], [r * .95 * (1 + sy * .35), r * .86 * (1 - sy), r * .86 * (1 - sq)]);
         }
       }
+      sh.bust = false;
       return { zc, S, C, T, zW, zB, cupr: r, yl };
     }
     function definition(sh, P, tor, xoff = 0) {
@@ -822,7 +826,10 @@
         toe: 'shin', axis: 'y', amp: 4, sway: roll, fwd };
     }
     function buildSex(doll, pose, f, opts = {}) {
-      const P = proportions(doll), sh = makeShape(), b = P.b;
+      const P = proportions(doll), sh = makeShape();
+      // 2026-10-13：側面畫布只有 1.28 px／單位，前臂、小腿只剩 2 px 像棍子 → 偷看裡四肢加粗一點（房間人偶不動）
+      P.b = { ...P.b, arm: P.b.arm * 1.18, calf: P.b.calf * 1.1 };
+      const b = P.b;
       const g = sexRig(P, pose, f);
       const Lt = P.hipz - P.knee, Ls = P.knee - P.ankle, Lu = P.H * .16, Lf = P.H * .14;
       const hip_x = 5.1 * F(b, 'hip') * (1 + .3 * (F(b, 'thigh') - 1));
@@ -893,6 +900,99 @@
         H: P.H, butt: 6.5 * F(P.b, 'butt'), hipW: 5.1 * F(P.b, 'hip') };
     }
 
+    // -------------------------------------------------- 客人（2026-10-13）：跟她同一套 SDF＋側面投影畫的男人，取代 2D 圓柱棍子
+    // M＝客人體型（escort_peek.js MAN_BUILDS：h 身高、w 軀幹粗、lm 四肢粗、belly 肚子、stoop 駝背、chest 胸肌、depth 退出幅度）。
+    // 世界座標跟她一樣：+y＝往右（床尾）、z＝上、床面 z＝0、x＝側面視線方向（越大越靠鏡頭）。
+    const MAN_RGB = [52, 86, 178], MAN_LINE_RGB = [24, 40, 100], MAN_HAIR_RGB = [26, 44, 108], MAN_A = 240;
+    const norm2 = (v) => { const n = Math.hypot(v[0], v[1]) || 1; return [v[0] / n, v[1] / n]; };
+    function manRig(doll, pose, frame, M) {
+      const a = sexAnchor(doll, pose, frame), h = M.h || 1, hy = a.hip[1], hz = a.hip[2];
+      const out = 9 * (1 - a.p) * (M.depth || 1), lean = 5 * (a.p - .5), bp = 3.5 * (M.belly || 0);
+      const S = (x, y, z) => [x, y, z];
+      if (pose === 'sex_missionary') {
+        // 跪坐在她兩腿間：膝往前張開、墊在她屁股下，小腿往後收；上身直、雙手抓她大腿，頭往下看她
+        const y0 = hy + 8 + bp * .6;
+        return { pel: [y0 + out * 1.4, 9 + .8 * a.p], up: [3 - lean * .6, 30], front: [-1, 0], headR: rotX(-16),
+          knee: (s) => S(s * 13, y0 - 12, 3), ankle: (s) => S(s * 9, y0 + 7, 2), toe: [0, 1, -.15],
+          wrist: (s) => S(s * 9.5, hy + 13, 22 + 1.5 * a.j), epole: (s) => [s * .7, .6, -.5] };
+      }
+      if (pose === 'sex_doggy') {
+        // 直跪在她後面：大腿直、小腿平貼床往後；雙手抓她兩邊屁股，頭低下來看
+        const y0 = hy + 7 + bp * .5;
+        return { pel: [y0 + out * 1.1, hz + 1 - (1 - h) * 4], up: [3 - lean * 1.2, 30], front: [-1, 0], headR: rotX(-22),
+          knee: (s) => S(s * 7.5, y0 + 3, 3), ankle: (s) => S(s * 7, y0 + 3 + 24 * h, 2), toe: [0, 1, -.1],
+          wrist: (s) => S(s * (a.hipW + 3), hy + 3, hz + 4), epole: (s) => [s * .9, .5, -.3] };
+      }
+      if (pose === 'sex_cowgirl') {
+        // 仰躺（頭朝枕頭 −y）：她坐上來時骨盆被壓、她起來時往上頂一點；雙手扶她腰，頭抬起來看
+        return { pel: [5, 6.5 + 1.6 * a.p * (M.depth || 1)], up: [-1, .06], front: [0, 1], headR: rotX(-26),
+          knee: (s) => S(s * 8, 5 + 24 * h, 6.5), ankle: (s) => S(s * 7.5, 5 + 47 * h, 2.5), toe: [0, .25, 1],
+          wrist: (s) => S(s * (a.hipW + 3.5), hy - 1, Math.max(14, hz + 1)), epole: (s) => [s * 1, .1, -1] };
+      }
+      if (pose === 'sex_reverse') {
+        // 坐著、腿往前伸在她腿下；她背貼他胸口坐在腿上，他雙手從後面繞過來抓她的胸
+        const y0 = 14 + bp * .4, bob = .6 * (a.j - .5), c = a.chest || [0, hy - 4, hz + 20];
+        return { pel: [y0, 8], up: [-.6 + bob, 29], front: [-1, 0], headR: mulR(rotY(10), rotX(-14)),
+          knee: (s) => S(s * 8.5, y0 - 24 * h, 7), ankle: (s) => S(s * 8, y0 - 47 * h, 2), toe: [0, -.25, 1],
+          wrist: (s) => S(s * 5.6, c[1] + 1.5, c[2] - 1), epole: (s) => [s * 1, .4, -.5], palm: 1.25 };
+      }
+      // sex_kiss：坐著、腿往前；她面對面坐在腿上、腳繞到他背後。他雙手抱她的背，頭往另一側歪著吻
+      const rock = 1.4 * (a.fwd || 0), y0 = 17 + bp * .4 + rock * .5;
+      return { pel: [y0, 9], up: [-1 + rock * .5, 27], front: [-1, 0], headR: mulR(rotY(16), rotX(-10)),
+        knee: (s) => S(s * 9, y0 - 22 * h, 7.5), ankle: (s) => S(s * 8, y0 - 46 * h, 2), toe: [0, -.2, 1],
+        wrist: (s) => S(s * 7.5, hy - 5, 31), epole: (s) => [s * 1, .3, -.5] };
+    }
+    function buildMan(doll, pose, frame, M) {
+      const g = manRig(doll, pose, frame, M), sh = makeShape();
+      const h = M.h || 1, w = M.w || 1, lm = M.lm || 1, belly = M.belly || 0, stoop = M.stoop || 0, wd = 1 + (w - 1) * .8;
+      const u = norm2(g.up), f0 = norm2(g.front), fd = f0[0] * u[0] + f0[1] * u[1], f = norm2([f0[0] - fd * u[0], f0[1] - fd * u[1]]);
+      // 軀幹局部：原點＝骨盆、+z＝上身方向、+y＝胸口朝向
+      const xf = { R: [1, 0, 0, 0, f[0], u[0], 0, f[1], u[1]], t: [0, g.pel[0], g.pel[1]] };
+      const TL = 34 * h;
+      sh.xf = xf;
+      sh.ell(BODY, [0, -.5, 2], [8.6 * w, 5.8 * wd, 6.5]);                               // 骨盆
+      for (const s of [-1, 1]) sh.ell(BODY, [s * 4.3 * w, -3.2, .5], [5.0 * w, 4.6 * wd, 5.6]);   // 屁股
+      sh.ell(BODY, [0, 0, 12], [7.4 * w, 5.2 * wd, 9.5]);                                 // 腰腹
+      sh.ell(BODY, [0, .3 + 1.2 * stoop, 23.5], [10.2 * w, 6.4 * wd + (M.chest ? 1.2 : 0), 9.8]);   // 胸廓
+      if (M.chest) for (const s of [-1, 1]) sh.ell(BODY, [s * 4.6 * w, 5.4 * wd, 25.5], [5.2 * w, 2.6, 4.2]);   // 胸肌
+      if (belly) sh.ell(BODY, [0, 3.5 + 5 * belly, 10.5], [(7 + 2 * belly) * w, 4 + 5 * belly, 8 + 2 * belly]);   // 肚子
+      const shY = -.5 + 2.6 * stoop, shZ = TL - 1.5 - 1.5 * stoop;
+      sh.cone(BODY, [-10.6 * w, shY, shZ], [10.6 * w, shY, shZ], 3.9 * w ** .5, 3.9 * w ** .5);   // 肩
+      for (const s of [-1, 1]) sh.cone(BODY, [s * 4.2 * w, shY - .6, shZ + .4], [0, shY + .2, TL + 3], 3.4, 3.2);   // 斜方肌
+      const neckB = [0, shY + .3, TL], neckT = [0, shY + 1 + 2.2 * stoop, TL + 6 - 1.2 * stoop];
+      sh.cone(BODY, neckB, neckT, 3.5 * w ** .3, 3.1);
+      sh.xf = compose(xf, about(g.headR || [1, 0, 0, 0, 1, 0, 0, 0, 1], neckT));
+      sh.ell(BODY, [0, neckT[1] + .9, neckT[2] + 7.2], [5.8, 6.6, 7.9]);                  // 頭
+      sh.ell(BODY, [0, neckT[1] + 3.4, neckT[2] + 2.6], [4.3, 4.0, 3.2]);                 // 下巴
+      sh.ell(HAIR, [0, neckT[1] - .3, neckT[2] + 9.2], [6.3, 7.0, 6.4], { y0: neckT[1] + 1, zc: neckT[2] + 7.2, bang: 4.2, bottom: neckT[2] + 4.5, cut: null });   // 短髮
+      sh.xf = null;
+      const W = (l) => toWorld(xf, l);
+      const Lt = 27 * h, Ls = 25 * h, Lu = 19 * h, Lf = 17 * h;
+      for (const s of [-1, 1]) {
+        const hip = W([s * 5.2 * w, 0, 0]), knee = g.knee(s), ank = g.ankle(s);
+        const mid = hip.map((v, i) => v + (knee[i] - v) * .45);
+        sh.cone(BODY, hip, mid, 5.7 * lm, 4.9 * lm);
+        sh.cone(BODY, mid, knee, 4.9 * lm, 3.5 * lm);
+        const calf = knee.map((v, i) => v + (ank[i] - v) * .3);
+        sh.cone(BODY, knee, calf, 3.4 * lm, 3.9 * lm);
+        sh.cone(BODY, calf, ank, 3.9 * lm, 2.0 * lm ** .5);
+        const t = g.toe, fl = 8 * h;
+        sh.cone(BODY, ank, [ank[0] + t[0] * fl, ank[1] + t[1] * fl, ank[2] + t[2] * fl], 2.2, 1.5);
+        const shj = W([s * 10.2 * w, shY, shZ - .5]), wr = g.wrist(s);
+        const el = ik(shj, wr, Lu, Lf, g.epole(s));
+        sh.cone(BODY, shj, el, 3.5 * lm, 2.6 * lm);
+        sh.cone(BODY, el, wr, 2.7 * lm, 1.9 * lm);
+        let d = [wr[0] - el[0], wr[1] - el[1], wr[2] - el[2]]; const n = hypot3(...d) || 1; d = d.map(v => v / n);
+        const pl = g.palm || 1, tip = wr.map((v, i) => v + d[i] * 5 * pl);
+        sh.cone(BODY, wr, tip, 2.3 * pl, 1.8 * pl);                                       // 手掌
+      }
+      return sh;
+    }
+    /** 客人一格（側面、跟她同一個畫布）：{width,height,anchor,pixels,depth}；depth 跟她的一樣（世界 x，越大越近）。 */
+    function renderMan(doll, pose, frame, M = {}) {
+      return renderSide(buildMan(doll, pose, frame, M), null, CANVAS.peek, { body: MAN_RGB, line: MAN_LINE_RGB, a: MAN_A, hair: MAN_HAIR_RGB });
+    }
+
     // ------------------------------------------------------------ render
     /** 回傳 {width,height,anchor,pixels:Uint8ClampedArray,depth:Float32Array(-Infinity=空)}。 */
     function render(doll, pose = 'idle', frame = 0, yaw = 0, opts = {}) {
@@ -902,13 +1002,13 @@
       if (cv.side) return renderSide(sh, P, cv);
       const prims = sh.prims, np = prims.length;
       // world-space bounding spheres (primitive offsets folded in)
-      const bcx = new Float64Array(np), bcy = new Float64Array(np), bcz = new Float64Array(np), brr = new Float64Array(np), pm = new Uint8Array(np);
+      const bcx = new Float64Array(np), bcy = new Float64Array(np), bcz = new Float64Array(np), brr = new Float64Array(np), pm = new Uint8Array(np), pb = new Uint8Array(np);
       let mnx = 1e9, mny = 1e9, mnz = 1e9, mxx = -1e9, mxy = -1e9, mxz = -1e9;
       for (let i = 0; i < np; i++) {
         const p = prims[i];
         let q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
         if (p.xf) { const w = mulV(p.xf.R, q); q = [w[0] + p.xf.t[0], w[1] + p.xf.t[1], w[2] + p.xf.t[2]]; }
-        bcx[i] = q[0]; bcy[i] = q[1]; bcz[i] = q[2]; brr[i] = p.br; pm[i] = p.mat;
+        bcx[i] = q[0]; bcy[i] = q[1]; bcz[i] = q[2]; brr[i] = p.br; pm[i] = p.mat; pb[i] = p.bust ? 1 : 0;
         mnx = Math.min(mnx, bcx[i] - brr[i]); mxx = Math.max(mxx, bcx[i] + brr[i]);
         mny = Math.min(mny, bcy[i] - brr[i]); mxy = Math.max(mxy, bcy[i] + brr[i]);
         mnz = Math.min(mnz, bcz[i] - brr[i]); mxz = Math.max(mxz, bcz[i] + brr[i]);
@@ -918,7 +1018,7 @@
       const th = yaw * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), gw = GIRTH;
       const dX = -2 * s / gw, dY = 2 * c / gw, dZ = 1, dd = dX * dX + dY * dY + dZ * dZ;
       const n = width * height;
-      const hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9);
+      const hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n);
       const STEP = .8 / Math.sqrt(5);
       const dist = [0, 0, 0];
       for (let py = 0; py < height; py++) {
@@ -937,18 +1037,19 @@
           for (let it = 0; it < 220 && t >= tEnd; it++) {
             const X = (sx * c - 2 * t * s) / gw, Y = (sx * s + 2 * t * c) / gw, Z = t - sy;
             dist[0] = dist[1] = dist[2] = 1e3;
+            let bb = 0;
             for (let i = 0; i < np; i++) {
               const m = pm[i], lb = hypot3(X - bcx[i], Y - bcy[i], Z - bcz[i]) - brr[i];
               if (lb >= dist[m]) continue;
               const d = primDist(prims[i], X, Y, Z);
-              if (d < dist[m]) dist[m] = d;
+              if (d < dist[m]) { dist[m] = d; if (m === 0) bb = pb[i]; }
             }
             const d = Math.min(dist[0], dist[1], dist[2]);
             if (d < .05) {
               hit[idx] = 1; tt[idx] = t;
               let mm = dist[1] < dist[0] + .15 ? 2 : 1;
               if (dist[2] < .05 && dist[1] > .05) mm = 3;
-              mat[idx] = mm;
+              mat[idx] = mm; bust[idx] = mm === 1 ? bb : 0;
               break;
             }
             t -= Math.max(d, .08) * STEP;
@@ -982,7 +1083,7 @@
             const j = ny * width + nx;
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
-          set(i, near ? LINE_RGB : BODY_RGB, BODY_A);
+          set(i, near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
         }
         if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32;
       }
@@ -996,13 +1097,15 @@
       return { width, height, anchor: { x: ax, y: ay }, pixels, depth };
     }
     /** 側面正交投影（接客偷看）：視線沿 −x，螢幕 x＝ax＋y·scale、螢幕 y＝ay−z·scale。深度＝x（越大越近）。 */
-    function renderSide(sh, P, cv) {
+    function renderSide(sh, P, cv, pal = null) {
+      const bodyRGB = pal ? pal.body : BODY_RGB, lineRGB = pal ? pal.line : LINE_RGB, bodyA = pal ? pal.a : BODY_A;
+      const hairRGB = pal?.hair || HAIR_RGB, hairHi = pal?.hair || HAIR_HI_RGB;
       const width = cv.w, height = cv.h, ax = cv.ax, ay = cv.ay, k = cv.scale;
       const prims = sh.prims, np = prims.length;
       const wb = prims.map(p => { let q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]]; if (p.xf) { const w = mulV(p.xf.R, q); q = [w[0] + p.xf.t[0], w[1] + p.xf.t[1], w[2] + p.xf.t[2]]; } return q; });
       let xmax = -1e9, xmin = 1e9;
       for (let i = 0; i < np; i++) { xmax = Math.max(xmax, wb[i][0] + prims[i].br); xmin = Math.min(xmin, wb[i][0] - prims[i].br); }
-      const n = width * height, hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9);
+      const n = width * height, hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n);
       const dist = [0, 0, 0];
       for (let py = 0; py < height; py++) {
         const Z = (ay - py - .5) / k;
@@ -1015,9 +1118,10 @@
           let X = xmax;
           for (let it = 0; it < 160 && X >= xmin; it++) {
             dist[0] = dist[1] = dist[2] = 1e3;
-            for (const i of cand) { const m = prims[i].mat, d = primDist(prims[i], X, Y, Z); if (d < dist[m]) dist[m] = d; }
+            let bb = 0;
+            for (const i of cand) { const m = prims[i].mat, d = primDist(prims[i], X, Y, Z); if (d < dist[m]) { dist[m] = d; if (m === 0) bb = prims[i].bust ? 1 : 0; } }
             const d = Math.min(dist[0], dist[1], dist[2]);
-            if (d < .05) { hit[idx] = 1; tt[idx] = X; let mm = dist[1] < dist[0] + .15 ? 2 : 1; if (dist[2] < .05 && dist[1] > .05) mm = 3; mat[idx] = mm; break; }
+            if (d < .05) { hit[idx] = 1; tt[idx] = X; let mm = dist[1] < dist[0] + .15 ? 2 : 1; if (dist[2] < .05 && dist[1] > .05) mm = 3; mat[idx] = mm; bust[idx] = mm === 1 ? bb : 0; break; }
             X -= Math.max(d, .08) * .9;
           }
         }
@@ -1027,16 +1131,28 @@
       for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
         const i = y * width + x;
         if (!hit[i]) continue;
-        if (mat[i] === 2) { const up = y > 0 && hit[i - width] && mat[i - width] === 2; set(i, up ? HAIR_RGB : HAIR_HI_RGB, HAIR_A); }
+        if (mat[i] === 2) { const up = y > 0 && hit[i - width] && mat[i - width] === 2; set(i, up ? hairRGB : hairHi, HAIR_A); }
         else if (mat[i] === 3) set(i, MARK_RGB, BODY_A);
         else {
           let near = false;
           for (const j of [i - width, i + width, i - 1, i + 1]) if (j >= 0 && j < n && hit[j] && tt[j] > tt[i] + 3.5) { near = true; break; }
-          set(i, near ? LINE_RGB : BODY_RGB, BODY_A);
+          set(i, near ? lineRGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : bodyRGB, bodyA);
         }
         depth[i] = tt[i];
       }
       return { width, height, anchor: { x: ax, y: ay }, pixels, depth, scale: k };
+    }
+    /** 乳房邊緣：這格是乳房，旁邊是身體（比它遠 ≥ thr）或外面 → 描線。 */
+    function bustEdge(bust, hit, tt, i, x, y, w, h, thr) {
+      if (!bust[i]) return false;
+      // 上緣（往胸口接上去那邊）不描，只描下緣弧線和外側，不然正面看像穿了胸罩
+      for (const [nx, ny, up] of [[x, y - 1, 1], [x, y + 1, 0], [x - 1, y, 0], [x + 1, y, 0]]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) return true;
+        const j = ny * w + nx;
+        if (!hit[j]) return true;
+        if (!up && !bust[j] && tt[j] < tt[i] - thr) return true;
+      }
+      return false;
     }
     function mirror(f) {
       const { width, height } = f, pixels = new Uint8ClampedArray(f.pixels.length), depth = new Float32Array(f.depth.length);
@@ -1050,7 +1166,7 @@
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
     return { W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
-      SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf,
+      SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB,
       lookToDoll, dollKey, hairStyle, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
   }
   const api = factory();
