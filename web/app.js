@@ -13175,6 +13175,7 @@ function clearLineToLastPlayer() {
     if (!msgs.length) { toast("沒有訊息可清", ""); return; }
     lg.messages = [];
     lg.cursors = {};
+    lg.clearedAt = Date.now();
   } else if (lastPi === 0) {
     toast("已經只剩上一則了", "");
     return;
@@ -13182,6 +13183,8 @@ function clearLineToLastPlayer() {
     const kept = msgs.slice(lastPi);
     const keepIds = new Set(kept.map(m => m.id));
     lg.messages = kept;
+    // 2026-10-14：記下清到哪裡。RP5 寫的訊息另外存在伺服器，不記的話下次同步（/api/line/feed、讀存檔）又被加回來。
+    lg.clearedAt = Math.max(Number(lg.clearedAt) || 0, Number(kept[0].t) || 0);
     const anchor = kept[0].id;
     const cursors = lg.cursors || {};
     for (const gid of Object.keys(cursors)) {
@@ -13589,10 +13592,11 @@ async function lineSyncFeed() {
   try {
     const lg = ensureLineGroup();
     const since = lg.messages.reduce((mx, m) => (m.src === "rp5" ? Math.max(mx, Number(m.t) || 0) : mx), 0);
-    const r = await fetch(`/api/line/feed?since=${Math.max(0, since - 60e3)}`);
+    const cleared = Number(lg.clearedAt) || 0;
+    const r = await fetch(`/api/line/feed?since=${Math.max(0, since - 60e3, cleared - 1)}`);
     if (!r.ok) return 0;
     const j = await r.json();
-    const added = mergeFeed(lg.messages, j?.messages || []);
+    const added = mergeFeed(lg.messages, (j?.messages || []).filter((m) => (Number(m?.t) || 0) >= cleared));
     lineApplyPending();
     if (added.length) {
       dirty = true;
