@@ -210,20 +210,45 @@ t("回家聊天的 prompt：在場＝不用說謊；沒開車＋說謊＝說只�
   assert.match(R.promptLines({ rentalMine: { last: { ...last, hotel: null } } }, now).join(""), /沒有去別的地方/);
 });
 
-t("約會互動：每站 2～3 件、由淺到深；強勢客人＋反差老婆常走到摸胸，紳士＋忠誠溫柔老婆多停在牽手餵食；被拒客人抱怨、評價扣分", () => {
+t("約會場景制：每站 3 個場景、每個場景試 2 個（由淺到深、被拒就停）；強勢客人＋反差老婆常走到摸胸，紳士＋忠誠溫柔老婆多停在牽手餵食；被拒客人抱怨、評價扣分", () => {
   const top = (arch, loy, persona, skill) => { let deep = 0; for (let k = 0; k < 400; k++) {
     const d = R.rollDate({ who: wife("wife", arch, { stats: { loyalty: loy } }), client: client(persona, skill) }, lcg(k + 31));
-    for (const sp of d.spots) { assert.ok(sp.beats.length >= 1 && sp.beats.length <= 3); for (let j = 1; j < sp.beats.length; j++) assert.ok(sp.beats[j].lv >= sp.beats[j - 1].lv); }
+    for (const sp of d.spots.filter((x) => !x.cancelled)) {
+      assert.equal(sp.scenes.length, 3); assert.ok(sp.beats.length <= 6);
+      for (const sc of sp.scenes) { const bs = sp.beats.filter((b) => b.scene === sc.zh); assert.ok(bs.length <= 2); if (bs.length === 2) assert.ok(bs[1].lv >= bs[0].lv && bs[0].ok); }
+    }
     if (d.spots.some((sp) => sp.beats.some((b) => b.ok && b.lv >= 6))) deep++; } return deep / 400; };
   const hot = top("清純反差", 30, "dominant", 5), cold = top("文靜溫柔", 85, "gentleman", 2);
   assert.ok(hot > 0.5 && cold < 0.05, `hot ${hot} cold ${cold}`);
   assert.equal(R.beatCap(0, "gentleman"), 1); assert.equal(R.beatCap(100, "dominant", true), 6);
   assert.ok(R.acceptChance(6, {}) < R.acceptChance(1, {}));
   for (const k of R.SPOT_KEYS) assert.ok(R.BEATS[k].every((b) => b.lv >= 1 && b.lv <= 6 && b.c && b.w && b.t), k);
+  for (const k of R.SPOT_KEYS) { assert.equal(R.SCENES[k].length, 4); for (const sc of R.SCENES[k]) assert.equal(sc.acts.filter((a) => !a.invite).length, 6, `${k} ${sc.zh}`); }
+  assert.ok(R.SCENES.izakaya.at(-1).acts.some((a) => a.invite) && R.SCENES.nightview.at(-1).acts.some((a) => a.invite));
+  assert.deepEqual(R.voices("拉她的手摸他下面"), { c: "拉她的手摸我下面", w: "他拉我的手摸他下面", t: "他拉她的手摸他下面" });
+  assert.equal(R.rollScenes("cafe", {}, () => 0.1).beats.filter((b) => /聊天/.test(b.t)).length, 0);   // 聊天不報
   const d = { client: client(), spots: [{ key: "cafe", beats: [{ lv: 1, ok: true }, { lv: 3, ok: false }, { lv: 3, ok: false }] }], ext: 0 };
   assert.equal(R.stars(wife(), d), 2);
   const tl = R.timeline({ ...d, startedAt: 0, spots: [{ key: "cafe", h: 1, beats: d.spots[0].beats }], invite: { yes: false } });
   assert.equal(tl.filter((e) => e.kind === "cr").length, 2);
+});
+
+t("中途提議去休息（居酒屋門口／夜景停車場）：成功就取消後面行程、旅館接在那一站後；被拒客人抱怨、照走", () => {
+  let mid = 0, midNo = 0;
+  for (let k = 0; k < 600; k++) {
+    const d = R.rollDate({ who: wife("wife", "清純反差", { stats: { loyalty: 30 } }), client: client("dominant", 5) }, lcg(k + 77));
+    const iz = d.spots.findIndex((x) => x.key === "izakaya" || x.key === "nightview");
+    if (iz < 0 || iz === d.spots.length - 1) continue;
+    assert.equal(d.invite.i, iz);
+    if (d.invite.yes) {
+      mid++;
+      assert.ok(d.spots.slice(iz + 1).every((x) => x.cancelled)); assert.equal(d.invite.mid, true);
+      const tl = R.timeline({ ...d, startedAt: 0 });
+      assert.equal(tl.find((e) => e.kind === "invite").at, R.schedule(d).segs.find((g) => g.i === iz).to);
+      assert.ok(!tl.some((e) => e.i > iz));
+    } else { midNo++; assert.ok(R.timeline({ ...d, startedAt: 0 }).some((e) => e.kind === "ino")); }
+  }
+  assert.ok(mid > 20, `mid ${mid} / no ${midNo}`);
 });
 
 console.log(`rental: ${pass} passed`);

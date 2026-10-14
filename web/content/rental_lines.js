@@ -1,6 +1,6 @@
 /* 日租女友 LINE 句庫（2026-10-13）：AI 失敗時用，句子都吃「真相」變數（地點、點的東西、發生的事），不寫空話。
  * 客人把玩家當經紀人（不知道你們是夫妻）；她傳給老公的訊息照誠實度：誠實／輕描淡寫／說謊。 */
-import { SPOTS, PERSONAS } from "./rental.js?v=4";
+import { SPOTS, PERSONAS } from "./rental.js?v=5";
 
 const pick = (arr, r = Math.random) => arr[Math.floor(r() * arr.length) % arr.length];
 /** 同一場不重複同一個句型：date.used 記用過的範本。 */
@@ -30,7 +30,7 @@ const CLIENT_SPOT = {
   clingy: ["{place}到了！{herDo}欸，好可愛～", "可以多待一下嗎，{place}好好玩", "她在{place}一直笑，好想一直看",
     "在{place}我們{act}了喔！好開心", "{place}好擠，所以{act}～", "{place}這邊剛剛{act}！我要記住今天"],
   showoff: ["在{place}，{herDo}，旁邊的人都在看她，羨慕死了吧", "{place}這邊大家一直回頭看我們", "{place}，店員都在偷看她",
-    "跟你講，剛剛在{place}{act}，她身材真的很好", "在{place}{act}，路人眼睛都直了", "在{place}{act}的時候她胸部貼過來，你家這個真的讚"],
+    "跟你講，剛剛在{place}{act}，她身材真的很好", "在{place}{act}，路人眼睛都直了", "在{place}{act}，你家這個真的讚"],
   dominant: ["{place}。{herDo}。", "{place}。下一站照排，別打電話來。", "{place}，她很乖。",
     "{place}。剛剛{act}，她沒拒絕。", "{place}，{act}。她臉紅了。", "在{place}{act}，她挺習慣的嘛。"],
   otaku: ["到、到{place}了……{herDo}", "{place}，她笑了，好好看……", "她在{place}跟我說話了……好緊張",
@@ -100,6 +100,14 @@ export function clientInviteLine(date) {
     showoff: `她答應跟我${where}了，你家這個真的很上道。`, dominant: `我們${where}。`,
     otaku: `那、那個……我們要${where}了……她、她應該是答應了……`,
   }[date.client.persona] || `我們要${where}。`;
+}
+/** 中途在居酒屋門口／夜景停車場提議去休息，她不肯（客人 → 經紀人）。 */
+export function clientInviteNoLine(date, i) {
+  const place = SPOTS[date.spots[i]?.key]?.zh || "";
+  return {
+    gentleman: `在${place}問她要不要休息一下，她婉拒了。沒關係，我們繼續。`, clingy: `我問她要不要去休息……她說不要……嗚`,
+    showoff: `在${place}約她去休息，居然不肯，裝什麼`, dominant: `她不肯去休息。繼續下一站。`, otaku: `我、我鼓起勇氣問了……她說不要……`,
+  }[date.client.persona] || "她不肯去休息。";
 }
 /** 沒被邀（或沒成功）：約會結束。 */
 export function clientByeLine(date, st) {

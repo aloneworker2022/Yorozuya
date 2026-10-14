@@ -43,67 +43,130 @@ export const SPOTS = {
 };
 export const SPOT_KEYS = Object.keys(SPOTS);
 /**
- * 約會互動（2026-10-13）：每一站 2～3 件，客人照升溫慢慢往上試，她接受或閃開。玩家只能從 LINE 知道。
- * lv：1 牽手類／2 摟腰餵食／3 曖昧（偷看、摸腿、貼坐）／4 抱、親臉／5 接吻／6 摸胸、她摸他下面（使用者定的上限）。
- * c＝客人講（我…）、w＝她講（被他…／我…）、t＝真相（給 AI 和回家聊天）。
+ * 約會場景制（2026-10-14，使用者定）：每個地點 4 個場景、每個場景 6 個動作；一站走 3 個場景、每個場景試 2 個動作（由低到高，她閃開就停）。
+ * lv：0 聊天（照樣發生、不在 LINE 報告）／1 牽手類／2 摟腰餵食／3 曖昧（偷看、摸腿、貼身）／4 抱、親臉、親脖子／5 接吻／6 摸胸、她摸他下面（上限）。
+ * 動作只寫一句第三人稱（他＝客人、她＝妻子），客人說法（c）、她的說法（w）、真相（t）由程式轉出來。
+ * 居酒屋「門口」、夜景「停車場」有「提議去休息」：成功就直接去旅館、剩下的行程取消（確）。
  */
-const B = (lv, c, w, t) => ({ lv, c, w, t });
-export const BEATS = {
-  cafe: [B(1, "跟她用兩根吸管喝同一杯", "跟他用兩根吸管喝同一杯", "兩人用兩根吸管喝同一杯"), B(2, "餵她吃了一口蛋糕", "被他餵了一口蛋糕", "他餵她吃蛋糕"),
-    B(3, "桌子底下用腳碰她的腳", "桌子底下被他用腳碰", "他在桌下用腳碰她的腳"), B(3, "一直偷看她的胸口", "被他一直盯著胸口看", "他一直偷看她的胸口")],
-  aquarium: [B(1, "在暗暗的地方牽了她的手", "在暗的地方被他牽手", "在暗處牽手"), B(2, "在水母區從後面摟住她的腰", "在水母區被他從後面摟腰", "他在水母區從後面摟她的腰"),
-    B(3, "跟她臉貼臉拍了情侶照", "跟他臉貼臉拍了照", "臉貼臉拍情侶照"), B(4, "在海底隧道親了她的臉", "在隧道被他親了臉", "他在海底隧道親她的臉"),
-    B(5, "在海底隧道跟她接吻", "在隧道跟他接吻", "在海底隧道接吻")],
-  amusement: [B(1, "坐雲霄飛車她一直抓著我的手", "坐雲霄飛車一直抓著他的手", "雲霄飛車上她抓著他的手"), B(3, "跟她同騎一匹旋轉木馬，貼得很緊", "跟他同騎一匹木馬", "同騎一匹旋轉木馬、身體貼著"),
-    B(4, "在鬼屋裡趁機把她抱緊", "在鬼屋被他抱緊", "鬼屋裡他趁機抱緊她"), B(5, "在摩天輪最高的地方跟她接吻", "在摩天輪上跟他接吻", "摩天輪頂端接吻"),
-    B(6, "在摩天輪裡摸了她的胸", "在摩天輪裡被他摸胸", "摩天輪車廂裡他隔著衣服摸她的胸")],
-  shopping: [B(1, "她挽著我的手，店員都當我們是情侶", "挽著他的手逛街", "她挽著他的手被當成情侶"), B(2, "買項鍊送她，親手幫她戴上", "他送我項鍊、幫我戴上", "他送她項鍊、親手幫她戴上碰到脖子"),
-    B(3, "在試衣間外偷看她換衣服", "換衣服時被他偷看", "他在試衣間外偷看她換衣服"), B(4, "在試衣間裡抱住她", "在試衣間被他抱住", "他擠進試衣間抱住她"),
-    B(6, "在試衣間裡摸了她的胸", "在試衣間被他摸胸", "試衣間裡他摸她的胸")],
-  cinema: [B(1, "跟她一起吃爆米花，一直碰到手", "跟他一起吃爆米花", "共用爆米花、碰到手"), B(2, "看到可怕的地方她抱住我", "看到可怕的地方抱住他", "她嚇到抱住他"),
-    B(3, "手一直放在她大腿上", "手被他放在大腿上", "他把手放在她大腿上"), B(5, "趁黑跟她接吻", "在黑暗裡跟他接吻", "電影院黑暗中接吻"),
-    B(6, "隔著衣服揉了她的胸", "被他隔著衣服揉胸", "電影院裡他隔著衣服揉她的胸"), B(6, "拉她的手來摸我下面", "被他拉手去摸他下面", "她的手被拉去隔著褲子摸他下面")],
-  dinner: [B(2, "跟她互相餵東西吃", "跟他互相餵東西", "互相餵食"), B(3, "跟她喝了交杯酒", "跟他喝了交杯酒", "喝交杯酒"),
-    B(3, "桌子底下摸了她的腿", "桌下被他摸腿", "他在桌下摸她的腿"), B(3, "一直盯著她的胸口", "被他一直盯著胸口", "他一直盯她胸口")],
-  karaoke: [B(1, "跟她情侶對唱", "跟他對唱情歌", "情侶對唱"), B(2, "在包廂裡貼著她坐、摟著她", "在包廂被他摟著", "包廂裡貼著坐、他摟她"),
-    B(4, "唱到一半親了她的臉", "唱到一半被他親臉", "他唱到一半親她的臉"), B(5, "在包廂裡跟她擁吻", "在包廂跟他擁吻", "包廂裡擁吻"),
-    B(6, "在包廂裡摸了她的胸", "在包廂被他摸胸", "包廂裡他摸她的胸"), B(6, "她在包廂裡摸了我下面", "在包廂摸了他下面", "她在包廂裡隔著褲子摸他下面")],
-  izakaya: [B(1, "一直幫她倒酒", "被他一直勸酒", "他一直勸她喝"), B(2, "她喝醉了靠在我身上", "喝醉靠在他身上", "她喝醉靠在他身上"),
-    B(3, "跟她喝交杯，順便摸她大腿", "跟他喝交杯、被摸大腿", "交杯時他摸她大腿"), B(5, "在角落的座位跟她接吻", "在角落跟他接吻", "居酒屋角落接吻")],
-  nightview: [B(1, "牽著她的手看夜景", "牽手看夜景", "牽手看夜景"), B(4, "從後面抱住她", "被他從後面抱住", "他從後面抱住她"),
-    B(5, "跟她接吻", "跟他接吻", "看夜景時接吻"), B(6, "抱著她的時候摸了她的胸", "抱著時被他摸胸", "他從後面抱著摸她的胸"),
-    B(6, "她偷偷摸了我下面", "偷偷摸了他下面", "她隔著褲子摸他下面")],
+const INVITE = "INVITE";
+const SC = (zh, ...acts) => ({ zh, acts: acts.map((a) => (a === INVITE ? { invite: true, lv: 9, p: "提議去休息" } : { lv: a[0], p: a[1] })) });
+export const SCENES = {
+  cafe: [
+    SC("點餐櫃台", [0, "跟她聊天"], [1, "幫她決定點什麼"], [1, "排隊時牽她的手"], [2, "從後面摟著她的腰看菜單"], [3, "貼在她背後"], [3, "偷看她的領口"]),
+    SC("座位", [0, "跟她聊天"], [1, "跟她用兩根吸管喝同一杯"], [2, "餵她吃蛋糕"], [3, "在桌下用腳碰她的腳"], [3, "在桌下摸她的大腿"], [4, "坐到她旁邊親她的臉"]),
+    SC("窗邊沙發", [0, "並肩坐著跟她聊天"], [1, "牽她的手"], [2, "讓她靠在肩上"], [2, "摟她的腰"], [3, "把手放在她大腿內側"], [5, "跟她接吻"]),
+    SC("廁所走廊", [1, "在走廊等她出來"], [3, "擋住她的去路"], [4, "把她抱進懷裡"], [5, "跟她接吻"], [6, "摸她的胸"], [6, "拉她的手摸他下面"]),
+  ],
+  aquarium: [
+    SC("入口售票處", [0, "跟她聊天"], [1, "幫她買票"], [1, "牽她的手進場"], [1, "跟她拍入場照"], [2, "摟她的腰"], [3, "偷看她的胸口"]),
+    SC("大魚缸前", [0, "跟她聊魚"], [1, "跟她靠著玻璃拍照"], [2, "從後面摟她的腰"], [3, "跟她臉貼臉自拍"], [4, "親她的臉"], [5, "跟她接吻"]),
+    SC("暗道", [1, "在暗處牽她的手"], [4, "從後面抱住她"], [4, "親她的脖子"], [5, "跟她接吻"], [6, "隔著衣服摸她的胸"], [6, "她隔著褲子摸他下面"]),
+    SC("廁所附近", [1, "在廁所外等她"], [1, "牽她的手"], [4, "把她壓在牆邊抱住"], [5, "跟她接吻"], [6, "摸她的胸"], [6, "她隔著褲子摸他下面"]),
+  ],
+  amusement: [
+    SC("雲霄飛車", [0, "排隊時跟她聊天"], [1, "排隊時牽她的手"], [2, "她嚇得抓緊他"], [2, "摟她的腰"], [4, "下來後抱住她安慰"], [4, "親她的臉"]),
+    SC("鬼屋", [1, "牽她的手"], [2, "她躲進他懷裡"], [3, "趁黑摸她的大腿"], [4, "從後面抱緊她"], [5, "跟她接吻"], [6, "摸她的胸"]),
+    SC("旋轉木馬", [0, "跟她聊天"], [2, "從後面摟她的腰"], [3, "跟她同騎一匹馬"], [3, "緊貼在她背後"], [3, "偷看她的裙底"], [4, "親她的臉"]),
+    SC("摩天輪", [1, "跟她並肩坐"], [1, "牽她的手"], [4, "抱住她"], [5, "在頂端跟她接吻"], [6, "摸她的胸"], [6, "她隔著褲子摸他下面"]),
+  ],
+  shopping: [
+    SC("服飾店", [0, "跟她聊天"], [1, "她挽著他的手被當成情侶"], [1, "幫她挑衣服"], [2, "摟她的腰"], [3, "偷看她試穿"], [4, "親她的臉"]),
+    SC("試衣間", [1, "在試衣間外等她"], [3, "幫她拉背後的拉鍊"], [3, "偷看她換衣服"], [4, "擠進試衣間抱住她"], [5, "在試衣間跟她接吻"], [6, "在試衣間摸她的胸"]),
+    SC("飾品店", [0, "跟她聊天"], [1, "送她一條項鍊"], [2, "親手幫她戴項鍊"], [2, "從後面摟著她照鏡子"], [4, "親她的臉"], [4, "親她的脖子"]),
+    SC("樓梯間", [1, "牽她的手"], [3, "站在她後面貼著她"], [3, "偷看她的裙底"], [4, "在樓梯間抱住她"], [5, "在樓梯間跟她接吻"], [6, "在樓梯間摸她的胸"]),
+  ],
+  cinema: [
+    SC("販賣部", [0, "跟她聊要看什麼"], [1, "幫她買爆米花"], [1, "排隊時牽她的手"], [1, "跟她拍電影海報照"], [2, "摟她的腰"], [3, "偷看她的胸口"]),
+    SC("座位（開演前）", [0, "跟她聊天"], [1, "跟她共用爆米花碰到手"], [2, "餵她吃爆米花"], [2, "讓她靠在肩上"], [3, "把手放在她大腿上"], [4, "親她的臉"]),
+    SC("座位（黑暗中）", [1, "牽她的手"], [2, "看到可怕的地方她抱住他"], [3, "摸她的大腿內側"], [5, "跟她接吻"], [6, "隔著衣服揉她的胸"], [6, "拉她的手摸他下面"]),
+    SC("散場走廊", [0, "跟她聊電影"], [1, "牽她的手"], [2, "摟她的腰"], [4, "在角落抱住她"], [5, "跟她接吻"], [6, "摸她的胸"]),
+  ],
+  dinner: [
+    SC("入座", [0, "跟她聊天"], [1, "幫她拉椅子"], [1, "幫她點菜"], [2, "摟著她的腰帶位"], [3, "坐到她旁邊"], [3, "偷看她的胸口"]),
+    SC("用餐", [0, "跟她聊天"], [2, "跟她互相餵食"], [2, "幫她擦嘴角"], [3, "跟她喝交杯酒"], [3, "在桌下摸她的腿"], [4, "親她的臉"]),
+    SC("甜點時間", [1, "牽她的手"], [2, "餵她吃甜點"], [2, "親她的手背"], [3, "把手放在她大腿內側"], [5, "跟她接吻"], [6, "在桌下拉她的手摸他下面"]),
+    SC("廁所／出口", [1, "在廁所外等她"], [1, "牽她的手"], [4, "把她壓在牆邊抱住"], [5, "跟她接吻"], [6, "摸她的胸"], [6, "她隔著褲子摸他下面"]),
+  ],
+  karaoke: [
+    SC("櫃台", [0, "跟她聊天"], [1, "跟她選包廂"], [1, "牽她的手"], [2, "摟著她的腰走進去"], [3, "偷看她的胸口"], [4, "在電梯裡抱住她"]),
+    SC("包廂沙發", [0, "跟她點歌"], [2, "摟她的腰"], [2, "餵她吃零食"], [2, "讓她靠在肩上"], [3, "貼著她坐"], [3, "摸她的大腿"]),
+    SC("唱歌時", [1, "跟她情侶對唱"], [4, "從後面抱住她一起唱"], [4, "唱到一半親她的臉"], [5, "跟她擁吻"], [6, "摸她的胸"], [6, "她隔著褲子摸他下面"]),
+    SC("廁所／走廊", [1, "在走廊等她"], [1, "牽她的手"], [4, "抱住她"], [5, "跟她接吻"], [6, "摸她的胸"], [6, "她隔著褲子摸他下面"]),
+  ],
+  izakaya: [
+    SC("吧台", [0, "跟她聊天"], [1, "跟她乾杯"], [1, "一直勸她喝"], [2, "摟她的腰"], [3, "坐得離她很近"], [3, "把手放在她大腿上"]),
+    SC("榻榻米包廂", [1, "跟她並肩坐"], [2, "她喝醉了靠在他身上"], [3, "跟她喝交杯"], [3, "摸她的大腿"], [5, "跟她接吻"], [6, "摸她的胸"]),
+    SC("角落座位", [0, "跟她聊天"], [1, "牽她的手"], [2, "餵她吃串燒"], [4, "親她的臉"], [5, "跟她擁吻"], [6, "她隔著褲子摸他下面"]),
+    SC("門口", [2, "扶著她走"], [2, "摟她的腰"], [4, "抱住她"], [4, "親她的脖子"], [5, "跟她接吻"], [6, "摸她的胸"], INVITE),
+  ],
+  nightview: [
+    SC("展望台入口", [0, "跟她聊天"], [1, "牽她的手"], [1, "幫她買飲料"], [2, "摟她的腰"], [3, "偷看她的胸口"], [4, "親她的臉"]),
+    SC("欄杆邊", [0, "跟她看夜景聊天"], [1, "牽她的手"], [4, "從後面抱住她"], [4, "親她的脖子"], [5, "跟她接吻"], [6, "抱著她摸她的胸"]),
+    SC("長椅", [1, "跟她並肩坐"], [2, "讓她靠在肩上"], [3, "把手放在她大腿上"], [5, "跟她擁吻"], [6, "摸她的胸"], [6, "她隔著褲子摸他下面"]),
+    SC("停車場", [1, "牽她的手"], [2, "摟她的腰"], [4, "靠著車抱住她"], [4, "親她的脖子"], [5, "跟她接吻"], [6, "摸她的胸"], INVITE),
+  ],
 };
+/** 一句第三人稱 → 客人說法（我…）、她的說法（他…我…）、真相（他…她…）。 */
+export function voices(p) {
+  const s = String(p), herFirst = s.startsWith("她");
+  return {
+    c: s.replace(/他/g, "我"),
+    w: herFirst ? s.replace(/她/g, "我") : `他${s.replace(/她/g, "我")}`,
+    t: herFirst ? s : `他${s}`,
+  };
+}
+/** 舊名字留著（測試、存檔）：每個地點所有非聊天的動作。 */
+export const BEATS = Object.fromEntries(Object.entries(SCENES).map(([k, list]) => [k, list.flatMap((sc) => sc.acts.filter((a) => a.lv >= 1 && a.lv <= 6).map((a) => ({ lv: a.lv, ...voices(a.p) })))]));
 /** 客人敢試到幾級：升溫越高越敢；強勢／炫耀快、紳士慢；她喝醉 +1。 */
 export const PUSH = { gentleman: -1, clingy: 0, showoff: 1, dominant: 1, otaku: 0 };
 export function beatCap(heat, persona, drunk = false) { return clamp(2 + Math.floor(heat / 20) + (PUSH[persona] || 0) + (drunk ? 1 : 0), 1, 6); }
-/** 她接受的機率：級數越高越難；A（她）、B（客人手腕）、升溫、喝醉加成。 */
+/** 她接受的機率：級數越高越難；A（她）、B（客人手腕）、升溫、喝醉加成。聊天一定接受。 */
 export function acceptChance(lv, { her = 0, client = null, heat = 0, drunk = false } = {}) {
-  return clamp(0.85 - 0.12 * (lv - 1) + her + clientFactor(client) + heat / 300 + (drunk ? 0.15 : 0), 0.05, 0.95);
+  if (lv <= 0) return 1;
+  return clamp(0.85 - 0.12 * (lv - 1) + her + clientFactor(client) + Math.min(0.2, heat / 500) + (drunk ? 0.15 : 0), 0.05, 0.95);
 }
-/** 一站的互動：2～3 件、級數由低到高（客人一步步試）。回 [{...beat, ok}]，同時回升溫。 */
-export function rollBeats(key, { her = 0, client = null, heat = 0, drunk = false } = {}, r0) {
-  const r = rnd(r0), pool = (BEATS[key] || []).slice(), out = [];
-  let h = heat;
-  const n = 2 + (r() < 0.5 ? 1 : 0);
-  for (let k = 0; k < n && pool.length; k++) {
-    const cap = beatCap(h, client?.persona, drunk);
-    let can = pool.filter((b) => b.lv <= cap);
-    if (!can.length && k === 0) { const m = Math.min(...pool.map((b) => b.lv)); can = pool.filter((b) => b.lv === m); }   // 每站至少試一件最輕的
-    if (!can.length) break;
-    const lo = Math.min(...can.map((b) => b.lv)), hi = Math.max(...can.map((b) => b.lv));
-    const want = k === n - 1 ? hi : lo + Math.floor(r() * (hi - lo + 1));   // 最後一件試最大膽的
-    const choices = can.filter((b) => b.lv === want);
-    const b = pick(choices.length ? choices : can, r);
-    pool.splice(pool.indexOf(b), 1);
-    const ok = r() < acceptChance(b.lv, { her, client, heat: h, drunk });
-    h += ok ? b.lv * 3 + 2 : 1;
-    out.push({ ...b, ok });
-    if (!ok && b.lv >= 4) break;   // 被拒絕一次大的，這站就不再試了
+/** 一站要走的 3 個場景（照順序；有「提議去休息」的出口場景一定走）。 */
+export function pickScenes(key, r0) {
+  const r = rnd(r0), list = SCENES[key] || [];
+  if (list.length <= 3) return list.map((_, i) => i);
+  const must = list.map((sc, i) => (sc.acts.some((a) => a.invite) ? i : -1)).filter((i) => i >= 0);
+  const free = list.map((_, i) => i).filter((i) => !must.includes(i));
+  while (free.length + must.length > 3) free.splice(Math.floor(r() * free.length), 1);
+  return [...free, ...must].sort((a, b) => a - b);
+}
+/**
+ * 一站的互動：3 個場景、每個場景試 2 個動作（由低到高；她閃開就換下一個場景）。
+ * 回 { scenes:[{zh, invite}], beats:[{scene, lv, c, w, t, ok}]（不含聊天）, heat, inviteScene（走到有提議的場景）}。
+ */
+export function rollScenes(key, { her = 0, client = null, heat = 0, drunk = false, wall = 7 } = {}, r0) {
+  const r = rnd(r0), out = [], scenes = [];
+  let h = heat, inviteScene = false, w = wall;   // wall：她拒絕過的最低等級（4 級以上）；客人學乖，這天不再試這級以上
+  for (const si of pickScenes(key, r)) {
+    const sc = SCENES[key][si];
+    scenes.push({ zh: sc.zh, invite: sc.acts.some((a) => a.invite) });
+    if (sc.acts.some((a) => a.invite)) inviteScene = true;
+    const pool = sc.acts.filter((a) => !a.invite);
+    const cap = Math.min(beatCap(h, client?.persona, drunk), w - 1);
+    let can = pool.filter((a) => a.lv <= cap);
+    if (!can.length) { const m = Math.min(...pool.map((a) => a.lv)); can = pool.filter((a) => a.lv === m); }
+    // 試 2 個：先挑一個較輕的，再挑一個這個場景敢試的最大膽的
+    const sorted = can.slice().sort((a, b) => a.lv - b.lv);
+    const first = sorted[Math.floor(r() * Math.max(1, sorted.length - 1))];
+    const rest = sorted.filter((a) => a !== first);
+    const hiLv = rest.length ? Math.max(...rest.map((a) => a.lv)) : -1;
+    const tops = rest.filter((a) => a.lv === hiLv);
+    const tries = [first, tops.length ? tops[Math.floor(r() * tops.length)] : null].filter(Boolean).sort((a, b) => a.lv - b.lv);
+    for (const a of tries) {
+      const ok = r() < acceptChance(a.lv, { her, client, heat: h, drunk });
+      h += a.lv <= 0 ? 1 : ok ? a.lv * 2 + 1 : 1;   // 一天 9 個場景：升溫比舊的一站 2～3 件慢（×3＋2 → ×2＋1）
+      if (a.lv >= 1) out.push({ scene: sc.zh, lv: a.lv, ...voices(a.p), ok });
+      if (!ok) { if (a.lv >= 4) w = Math.min(w, a.lv); break; }   // 她閃開：這個場景就不再試；4 級以上被拒，這天不再試這級以上
+    }
   }
-  out.sort((a, b) => a.lv - b.lv);
-  return { beats: out, heat: h };
+  return { scenes, beats: out, heat: h, inviteScene, wall: w };
 }
+/** 舊介面（測試用）：一站的互動。 */
+export function rollBeats(key, opts = {}, r0) { const x = rollScenes(key, opts, r0); return { beats: x.beats, heat: x.heat }; }
 
 const pick = (arr, r) => arr[Math.floor(r() * arr.length) % arr.length];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -212,22 +275,29 @@ export function rollDate(ctx = {}, r0) {
   const family = familyOf(who), loyalty = who?.stats?.loyalty ?? 60;
   const her = herFactor({ loyalty, hunger: ctx.hunger || 0, kinks: who.kinks || [], family, mood: ctx.mood || null });
   const per = PERSONAS[client.persona] || PERSONAS.gentleman;
-  let heat = 0;
-  const spots = planSpots(who, client, r).map((s, i, arr) => {
-    const sp = SPOTS[s.key], drunk = s.key === "izakaya" && r() < 0.5;
+  let heat = 0, inv = null, wall = 7;
+  const plan = planSpots(who, client, r), spots = [];
+  for (let i = 0; i < plan.length; i++) {
+    const s = plan[i], sp = SPOTS[s.key], drunk = s.key === "izakaya" && r() < 0.5;
     heat += sp.heat;
-    const rb = rollBeats(s.key, { her, client, heat, drunk }, r);
-    heat = rb.heat;
-    const top = rb.beats.filter((b) => b.ok).at(-1) || null;   // 這站最親密、她接受的那件（句庫用）
-    return { key: s.key, by: s.by, h: sp.h, item: pick(sp.items, r), beats: rb.beats, act: top?.c || "", actW: top?.w || "",
-      gift: s.key === "shopping" && rb.beats.some((b) => b.ok && /項鍊/.test(b.t)), drunk, extAsk: i < arr.length - 1 && r() < per.ext };
-  });
-  const p = inviteChance({ heat, her, client });
-  const yes = r() < p;
-  const stay = yes && r() < (client.regular ? 0.5 : 0.3) ? "stay" : "rest";
-  const total = spots.reduce((s, x) => s + x.h, 0);
-  return { v: 2, client: { ...client }, spots, heat, her,
-    invite: { p, yes, stay, style: client.persona === "gentleman" ? "ask" : client.persona === "otaku" ? "assume" : "normal" },
+    const rs = rollScenes(s.key, { her, client, heat, drunk, wall }, r);
+    heat = rs.heat; wall = rs.wall;
+    const top = rs.beats.filter((b) => b.ok).at(-1) || null;   // 這站最親密、她接受的那件（句庫用）
+    spots.push({ key: s.key, by: s.by, h: sp.h, item: pick(sp.items, r), scenes: rs.scenes, beats: rs.beats, act: top?.c || "", actW: top?.w || "",
+      gift: s.key === "shopping" && rs.beats.some((b) => b.ok && /項鍊/.test(b.t)), drunk, extAsk: i < plan.length - 1 && r() < per.ext });
+    // 走到居酒屋門口／夜景停車場：客人就在這裡提議去休息（成功＝直接去旅館、後面的行程取消）
+    if (rs.inviteScene && !inv) {
+      const p = inviteChance({ heat, her, client });
+      inv = { p, yes: r() < p, i };
+      if (inv.yes) { for (let k = i + 1; k < plan.length; k++) spots.push({ key: plan[k].key, by: plan[k].by, h: SPOTS[plan[k].key].h, cancelled: true, beats: [], scenes: [] }); break; }
+    }
+  }
+  if (!inv) { const p = inviteChance({ heat, her, client }); inv = { p, yes: r() < p, i: spots.length - 1 }; }   // 沒走到出口場景：最後一站結束時提
+  if (inv.yes) spots[inv.i].extAsk = false;   // 要去休息的那一站不會再要求延長
+  const stay = inv.yes && r() < (client.regular ? 0.5 : 0.3) ? "stay" : "rest";
+  const live = spots.filter((x) => !x.cancelled), total = live.reduce((t, x) => t + x.h, 0);
+  return { v: 3, client: { ...client }, spots, heat, her,
+    invite: { p: inv.p, yes: inv.yes, i: inv.i, mid: inv.i < spots.length - 1, stay, style: client.persona === "gentleman" ? "ask" : client.persona === "otaku" ? "assume" : "normal" },
     startedAt: Number(ctx.now) || Date.now(), startHour: clamp(21 - total, 10, 15),
     ext: 0, extRefused: 0, pausedMs: 0, pauseAt: 0, phase: "date", hotel: null };
 }
@@ -324,7 +394,7 @@ export function stars(who, date, mood = null) {
 /** 結算：收入（基本＋延長＋小費＋司機，夾 2～10，熟客 ×2）− 房錢。r 決定會不會變熟客。 */
 export function settle(who, date, mood = null, r0) {
   const r = rnd(r0), st = stars(who, date, mood);
-  const base = (date?.spots || []).reduce((s, x) => s + SPOTS[x.key].pay, 0);
+  const base = (date?.spots || []).filter((x) => !x.cancelled).reduce((s, x) => s + SPOTS[x.key].pay, 0);
   const ext = (Number(date?.ext) || 0) * EXT_PAY;
   const tip = (st >= 5 ? 2 : st >= 4 ? 1 : 0) + (st >= 4 ? PERSONAS[date?.client?.persona]?.tip || 0 : 0);
   const driver = date?.hotel?.drive ? DRIVER_TIP : 0;
@@ -346,6 +416,7 @@ export function schedule(date) {
   const segs = [];
   let t = 0;
   (date?.spots || []).forEach((s, i) => {
+    if (s.cancelled) return;   // 提議去休息成功、取消的行程
     const h = s.h + (s.extOk ? 1 : 0);
     segs.push({ kind: "spot", i, key: s.key, from: t, to: t + h });
     t += h;
@@ -376,18 +447,22 @@ export function clockText(hour) {
 export function timeline(date) {
   const { segs } = schedule(date), out = [];
   const spots = segs.filter((s) => s.kind === "spot");
+  let gripes = 0;   // 客人抱怨一場最多 3 則（被拒還是照樣扣評價）
   for (const s of spots) {
     const len = s.to - s.from, sp = date.spots[s.i];
     // 互動一件一件發生；她閃開的那件，客人馬上傳訊息抱怨（句庫）。整站的報告（AI）在快離開時傳。
     const bs = sp.beats || [];
-    bs.forEach((b, j) => { if (!b.ok) out.push({ id: `cr:${s.i}:${j}`, kind: "cr", i: s.i, j, at: s.from + ((j + 1) / (bs.length + 1)) * 0.85 * len }); });
+    bs.forEach((b, j) => { if (!b.ok && gripes < 3) { gripes++; out.push({ id: `cr:${s.i}:${j}`, kind: "cr", i: s.i, j, at: s.from + ((j + 1) / (bs.length + 1)) * 0.85 * len }); } });
     out.push({ id: `ws:${s.i}`, kind: "ws", i: s.i, at: s.from + 0.55 * len });
     out.push({ id: `cs:${s.i}`, kind: "cs", i: s.i, at: s.from + 0.8 * len });
     if (sp.extAsk) out.push({ id: `ext:${s.i}`, kind: "ext", i: s.i, at: s.from + sp.h - 0.2, decide: true });
+    // 中途提議被拒（居酒屋門口／夜景停車場）：客人抱怨一句，約會照走
+    if (!date.invite?.yes && Number.isInteger(date.invite?.i) && date.invite.i === s.i && s.i < spots.at(-1)?.i) out.push({ id: `ino:${s.i}`, kind: "ino", i: s.i, at: s.to - 0.1 });
   }
   const T = spots.length ? spots[spots.length - 1].to : 0;
   if (!date.invite?.yes) { out.push({ id: "bye", kind: "bye", at: T }, { id: "end", kind: "end", at: T + 0.01 }); return out; }
-  out.push({ id: "invite", kind: "invite", at: T, decide: true });
+  const iv = spots.find((s) => s.i === date.invite.i) || spots[spots.length - 1];
+  out.push({ id: "invite", kind: "invite", at: iv ? iv.to : T, decide: true });
   const hotel = segs.find((s) => s.kind === "hotel");
   if (hotel) {
     if (date.hotel?.presence !== "in") out.push({ id: "wh", kind: "wh", at: hotel.from + 0.3 * (hotel.to - hotel.from) });
@@ -440,8 +515,8 @@ export function promptLines(who, now = Date.now()) {
   const last = who?.rentalMine?.last;
   if (!last || now - Number(last.endAt || 0) > 48 * 3600e3) return [];
   const out = [];
-  const spots = (last.spots || []).map((s) => {
-    const bs = (s.beats || []).map((b) => `${b.t}${b.ok ? "" : "（你閃開了）"}`);
+  const spots = (last.spots || []).filter((s) => !s.cancelled).map((s) => {
+    const bs = (s.beats || []).map((b) => `${b.scene ? b.scene + "：" : ""}${b.t}${b.ok ? "" : "（你閃開了）"}`);
     return `${SPOTS[s.key]?.zh || s.key}（${[s.item, ...bs].join("、")}）`;
   }).join(" → ");
   out.push(`你${now - last.endAt < 3 * 3600e3 ? "剛剛" : "前不久"}去當日租女友，客人是${last.clientName}（${PERSONAS[last.persona]?.zh || ""}）。客人不知道他是你老公，以為他只是經紀人。行程：${spots}。`);
@@ -470,9 +545,9 @@ export function aiPayload(who, date, side, kind, ctx = {}) {
     side, kind, phase: ctx.phase || "date", text: String(ctx.text || "").slice(0, 120), honesty: ctx.level || date.honesty || "honest",
     girl: { name: who?.name || "", stage: stageKeyOf(who), family: familyOf(who), archetype: who?.archetype || "" },
     client: { name: date.client.name, age: date.client.age, persona: PERSONAS[date.client.persona]?.zh || "", regular: !!date.client.regular },
-    plan: date.spots.map((x) => SPOTS[x.key].zh),
+    plan: date.spots.filter((x) => !x.cancelled).map((x) => SPOTS[x.key].zh),
     spot: s ? { place: SPOTS[s.key].zh, item: s.item, gift: !!s.gift, drunk: !!s.drunk,
-      beats: (s.beats || []).map((b) => ({ t: b.t, ok: !!b.ok, lv: b.lv })) } : null,
+      beats: (s.beats || []).map((b) => ({ t: `${b.scene ? b.scene + "：" : ""}${b.t}`, ok: !!b.ok, lv: b.lv })) } : null,
     hotel: date.hotel?.result ? `${date.hotel.stay === "stay" ? "住宿一晚" : "休息"}；${hotelText(date.hotel.result)}` : "",
     recent,
   };
