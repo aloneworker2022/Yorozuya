@@ -4,7 +4,7 @@
  *        gold(), earn(n, why), hunger(who), mood(who), applyEffects(who, eff), persist(), debug(msg), peek(opts), ai?(kind, ctx) → Promise<string> }
  * 她的約會存在 who.rentalMine.active（關掉 App 再開照時間接著走；決定點會停住）。 */
 import * as R from "./rental.js?v=7";
-import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=7";
+import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=8";
 import * as L from "./rental_lines.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 
