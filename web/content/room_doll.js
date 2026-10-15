@@ -495,10 +495,11 @@
     /** 抽送深度（1＝頂到底、0＝退到最外）；每格停留毫秒。照 mockups/peek/half4.py。 */
     // v3（2026-10-10）：節奏改自然——一輪 5 下、每下 6 格，約 2 下／秒（380～680ms 一下），深淺快慢不一：
     // 一下深慢 → 兩三下快淺（小衝刺）→ 再一下最深最慢。每下用餘弦（不再「啪」一下），頂進比退出略快（55%：45%）。
-    const SEX_STROKES = [[640, 1], [470, .78], [400, .66], [420, .72], [680, 1.06]];
+    // 2026-10-15：使用者：不要忽快忽慢 → 每一下同樣快、同樣深（退出／頂進各半）
+    const SEX_STROKES = [[520, 1], [520, 1], [520, 1], [520, 1], [520, 1]];
     const SEX_THRUST = [], SEX_FRAME_MS = [], SEX_DEPTH = [];
     for (const [ms, d] of SEX_STROKES) for (let k = 0; k < 6; k++) {
-      const t = k / 6, s = t < .45 ? t / .45 * .5 : .5 + (t - .45) / .55 * .5;   // 退 45%、頂回 55%
+      const t = k / 6, s = t;   // 退出、頂回各半（等速）
       SEX_THRUST.push(+(d * (.5 + .5 * Math.cos(2 * Math.PI * s))).toFixed(3));
       SEX_FRAME_MS.push(Math.round(ms / 6)); SEX_DEPTH.push(d);
     }
