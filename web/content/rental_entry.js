@@ -5,7 +5,8 @@
  *   motel  汽車旅館：車庫（鐵捲門拉一半、你的車停著）、日光燈、樓梯上去就是房門。
  * 畫面跟偷看同一套尺寸（195×422 邏輯像素、放大顯示）。不決定結果，只回報玩家選了什麼。
  * openEntry({ venue, room, stayZh, clientName, onChoose(presence 'in'|'door') }) → { close() }。 */
-import { paintRyokan } from "./rental_entry_paint.js?v=1";
+import { paintRyokan } from "./rental_entry_paint.js?v=2";
+import { paintJapaneseRoom } from "./rental_room_paint.js?v=1";
 const LW = 195, LH = 422;
 
 const CSS = `
@@ -197,3 +198,31 @@ export function openEntry(opts = {}) {
   btn(V.wait || "在外面等", "聽得到，看不到", false, "door");
   return { close, el: ov };
 }
+
+/** 進去之後看到的房間（2026-10-15：先做日式主臥室；其他兩種還沒有 → 回傳 null，呼叫端照舊）。
+ * openRoom({ venue, room, night, clientName, onContinue }) → { close() } | null。 */
+const ROOMS = { ryokan: paintJapaneseRoom };
+export function hasRoom(venue) { return !!ROOMS[venue]; }
+export function openRoom(opts = {}) {
+  const paint = ROOMS[opts.venue];
+  if (!paint) return null;
+  if (!document.getElementById("rent-entry-css")) {
+    const st = document.createElement("style"); st.id = "rent-entry-css"; st.textContent = CSS; document.head.append(st);
+  }
+  const ov = document.createElement("div");
+  ov.className = "rent-entry"; ov.id = "rent-room"; ov.dataset.venue = opts.venue;
+  ov.innerHTML = `<div class="box"><canvas width="${LW}" height="${LH}"></canvas><div class="t ti"></div><div class="t st"></div><div class="ch"></div></div>`;
+  document.body.append(ov);
+  ov.querySelector(".ti").textContent = opts.room || "";
+  ov.querySelector(".st").textContent = `${opts.clientName || "客人"}和她已經在房間裡了。`;
+  const g = ov.querySelector("canvas").getContext("2d");
+  paint(g, { night: !!opts.night });   // 靜態：畫一次
+  const b = document.createElement("button"); b.type = "button"; b.className = "main"; b.textContent = "繼續";
+  let closed = false;
+  const close = () => { if (closed) return; closed = true; ov.remove(); };
+  b.addEventListener("click", () => { close(); opts.onContinue?.(); });
+  ov.querySelector(".ch").append(b);
+  return { close, el: ov };
+}
+/** 檢查用：畫房間到 canvas。 */
+export function drawRoom(g, venue, night = false) { ROOMS[venue]?.(g, { night }); }

@@ -178,7 +178,7 @@ function ryokanShoji(px, t) {
     // 人影：她（左、略低，頭往他那邊靠）、他（右、高，身體往她傾）
     const her = silhouette(x, y, 106 + 1.2 * sway, 158, .95, 3.5 + 1.5 * sway, 1);   // 她：長髮、頭往他那邊靠
     const him = silhouette(x, y, 136 - 1.0 * sway2, 144, 1.12, -4 - 2 * sway2);
-    const shade = Math.max(her * .48, him * .56);
+    const shade = SHOW_SILHOUETTES ? Math.max(her * .48, him * .56) : 0;
     glow *= 1 - shade;
     c = mul([250, 214, 160], glow * fiber);
     c = mix(c, [110, 70, 48], shade * .35);
@@ -190,6 +190,8 @@ function ryokanShoji(px, t) {
   return breathe;
 }
 
+/** 紙後人影：2026-10-15 使用者「人影先不用」→ 關掉（程式留著）。 */
+const SHOW_SILHOUETTES = false;
 let cacheStatic = null;
 /** 畫一格日式拉門玄關。room＝房名（例「桜の間」）。 */
 export function paintRyokan(g, t = 0, room = "桜の間") {
@@ -201,3 +203,6 @@ export function paintRyokan(g, t = 0, room = "桜の間") {
   g.fillStyle = "#5a3c26"; g.fillRect(83, 64, 30, 12); g.fillStyle = "#7a5436"; g.fillRect(83, 64, 30, 1);
   g.fillStyle = "#f2dcb4"; g.font = "8px sans-serif"; g.textAlign = "center"; g.fillText(room, 98, 73);
 }
+
+/** 給其他場景共用（日式房間等）。 */
+export const paintKit = { hash, vnoise, fbm, mix, mul, add, clamp01, smooth, put, LW, LH };
