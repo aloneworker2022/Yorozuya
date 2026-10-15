@@ -319,7 +319,7 @@
         if (hang > .05) {
           // v5 高斯垂吊：胸口根部最寬（＝乳房寬），沿重力方向平滑收窄，到乳頭微尖。寬度(t)＝Rb·exp(−k t²)。
           // 罩杯越大、肉越軟 → 垂得越長；甩動（bx／bz）只移動尖端，根部固定在胸口（鐘擺）。
-          const h = hang, Rb = r * .95, L = r * (1.55 + .6 * b.soft) * (.55 + .45 * h) + 1, k = 1.1, N = 6;
+          const h = hang, Rb = r * 1.0, L = r * (1.15 + .4 * b.soft) * (.55 + .45 * h) + .6, k = .8, N = 6;   // 2026-10-15：短一點、飽滿的水滴形（原本細長像圓錐）
           // v6：根部往上移到靠肩那端（站姿乳根 zA＝S−.16T 附近），跟其他姿勢的附著點一致
           const zR = S - .2 * T - r * .12;
           // v7：根部釘在胸口不動；甩動沿垂吊軸越往尖端越大 disp(t)＝t^1.5，尖端再多晚一點（混上一格的位移）→ 甩成弧、像鞭梢
@@ -507,7 +507,7 @@
     const HER_J = SEX_THRUST.map((p, i, a) => { const prev = a[(i - 1 + a.length) % a.length]; return .55 * p + .45 * prev + (i % 6 === 1 ? .16 * SEX_DEPTH[i] : 0); });
     /** 上半身（肩、頭）再晚一格：衝擊從骨盆一路傳到頭。 */
     const HER_U = HER_J.map((_, i, a) => a[(i - 1 + a.length) % a.length]);
-    const SEX_BOUNCE_GAIN = 7;   // 被撞時乳搖幅度（× CUP_BOUNCE）
+    const SEX_BOUNCE_GAIN = 3.2;   // 2026-10-15：7 太大（使用者：乳房晃動不對），跳得像脫離身體   // 被撞時乳搖幅度（× CUP_BOUNCE）
     const SEX_POSES = ['sex_missionary', 'sex_cowgirl', 'sex_doggy', 'sex_kiss', 'sex_reverse'];
     /** 偷看的床：床面高度（模型單位，z）。客人剪影跟著這些世界座標畫（escort_peek.js）。 */
     const PEEK_BED_Z = 0;
@@ -544,7 +544,7 @@
       const [f0, zeta, gain] = SPRING[kind], out = springTrace(amp, f0, zeta);
       // 2026-10-10：原本 ×1.6（D 罩杯只晃 1～2 px，實機看不出來）→ ×5，×7，上限是罩杯半徑的 1.1
       const peak = Math.max(...out.map(Math.abs)) || 1, cb = (CUP_BOUNCE[doll.cup] ?? .35) * gain;
-      const cap = cupRadius(P, doll) * 1.1;
+      const cap = cupRadius(P, doll) * .55;
       const res = out.map(o => Math.max(-cap, Math.min(cap, o / peak * cb * SEX_BOUNCE_GAIN)));
       sexBounceCache.set(key, res);
       return res;
@@ -919,17 +919,18 @@
       sh.xf = xf;
       sh.floor = true;   // 床面以下切掉（腳尖、垂下來的髮尾不會穿到床下）
       const n = SEX_THRUST.length, fi = ((f % n) + n) % n;
-      const bv = sexBounce(P, doll, g.axis, g.amp)[fi] * (opts.bounceScale ?? 1) * (g.grope ? .3 : 1);
+      // 2026-10-15 修正：HER_J 變大＝她往世界 −axis 移動（被撞往枕頭／往下坐），彈簧位移要反號才是「慢半拍跟著」，原本是搶在身體前面
+      const bv = -sexBounce(P, doll, g.axis, g.amp)[fi] * (opts.bounceScale ?? 1) * (g.grope ? .3 : 1);
       // v3：重力跟著身體方向走——把世界「下」換到她的局部座標；站姿（局部 −z）是 0。四肢著地時就往床（局部前方）垂。
       const r0 = cupRadius(P, doll), gl = mulT(R, [0, 0, -1]), sagK = r0 * (.42 + .12 * b.soft) * Math.min(1.3, r0 / 3.4);
       // 甩動方向＝她被撞的世界方向（傳教士／老漢推車：前後擺 → 鐘擺；騎乘：上下），也換到局部
       const ax = mulT(R, g.axis === 'z' ? [0, 0, 1] : [0, 1, 0]);
-      const sq = Math.max(-.14, Math.min(.14, -bv * .045 * Math.abs(ax[2])));
+      const sq = Math.max(-.07, Math.min(.07, -bv * .03 * Math.abs(ax[2])));
       const bnc = [ax[0] * bv + sagK * gl[0], ax[1] * bv + sagK * gl[1] + Math.abs(bv) * .15, ax[2] * bv + sagK * (gl[2] + 1), sq,
         g.grope ? .3 + .08 * g.j : 0, Math.max(0, gl[1])];
       {   // 垂吊用的純甩動（不含站姿下垂補償）：這一格＋上一格（尖端的額外延遲）。×1.5：尖端是最大位移處
-        const bvp = sexBounce(P, doll, g.axis, g.amp)[(fi - 1 + n) % n] * (opts.bounceScale ?? 1) * (g.grope ? .3 : 1);
-        bnc[6] = [ax[0] * bv * 1.5, ax[2] * bv * 1.5, ax[0] * bvp * 1.5, ax[2] * bvp * 1.5];
+        const bvp = -sexBounce(P, doll, g.axis, g.amp)[(fi - 1 + n) % n] * (opts.bounceScale ?? 1) * (g.grope ? .3 : 1);
+        bnc[6] = [ax[0] * bv * .9, ax[2] * bv * .9, ax[0] * bvp * .9, ax[2] * bvp * .9];
       }
       if (pose === 'sex_kiss') {
         // v4：面對面坐姿不吃「抽送方向」的彈簧。上身直立 → 自然往下垂（站姿形）；跟著她骨盆畫圈／上身搖，晚一格甩：
@@ -942,9 +943,9 @@
       // 肉體撞擊（2026-10-15）：頂到底那一格臀肉被壓扁、往撞的方向推，之後用較快的彈簧晃回來（大腿根晚一格）
       let jig = null;
       if (pose !== 'sex_kiss') {
-        const tr = springTrace(g.amp, 4.6, .2), pk = Math.max(...tr.map(Math.abs)) || 1, A = 3.0 * F(b, 'butt') * (1 + .6 * b.soft);
-        const jv = tr[fi] / pk, jv1 = tr[(fi - 1 + n) % n] / pk, k6 = fi % 6, imp = k6 === 0 ? SEX_DEPTH[fi] : k6 === 1 ? .45 * SEX_DEPTH[fi] : 0;
-        jig = { d: [ax[0] * jv * A, ax[1] * jv * A, ax[2] * jv * A], sq: Math.max(-.15, Math.min(.42, .38 * imp + .1 * jv)),
+        const tr = springTrace(g.amp, 4.6, .2), pk = Math.max(...tr.map(Math.abs)) || 1, A = 1.3 * F(b, 'butt') * (1 + .5 * b.soft);
+        const jv = -tr[fi] / pk, jv1 = -tr[(fi - 1 + n) % n] / pk, k6 = fi % 6, imp = k6 === 0 ? SEX_DEPTH[fi] : k6 === 1 ? .45 * SEX_DEPTH[fi] : 0;
+        jig = { d: [ax[0] * jv * A, ax[1] * jv * A, ax[2] * jv * A], sq: Math.max(-.08, Math.min(.2, .16 * imp + .05 * jv)),
           thigh: [ax[0] * jv1 * A * .7, ax[1] * jv1 * A * .7, ax[2] * jv1 * A * .7] };
       }
       const tor = torso(sh, P, doll, 0, 0, g.lean, bnc, true, jig);
