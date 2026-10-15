@@ -162,11 +162,11 @@ function sample(x, y, P) {
     const bs = breastSample(u, v, B);
     take(2, k ? "bustR" : "bustL", { d: bs.d, nx: bs.nx * sg, ny: bs.ny });
   }
-  // 3 畫面右手：上臂貼身、前臂橫在胸下托著
-  const shR = [sway(0.19) + 0.09 * F.sh, 0.195], fold = B.cy + B.r * (1.02 + 0.5 * B.sag) + 0.012, elR = [sway(0.34) + 0.108 * F.sh, Math.max(0.345, fold - 0.01)], wrR = [B.cx[0] - B.r * 0.3, fold];   // 前臂在乳房下緣摺線下面托著
-  take(3, "arm", capsule(x, y, shR[0], shR[1], elR[0], elR[1], 0.024 * F.arm, 0.018 * F.arm));
-  take(3, "arm", capsule(x, y, elR[0], elR[1], wrR[0], wrR[1], 0.018 * F.arm, 0.014));
-  take(3, "hand", ellipse(x, y, wrR[0] - 0.012, wrR[1] - 0.004, 0.024, 0.014));
+  // 畫面右手：也垂在身側（2026-10-15 使用者給的罩杯比例表：手放下來，胸型才看得清楚）
+  const shR = [sway(0.19) + 0.09 * F.sh, 0.195], elR = [sway(0.35) + 0.104 * F.sh + 0.004, 0.35], wrR = [sway(0.5) + 0.112 * F.hip, 0.5];
+  take(1, "arm", capsule(x, y, shR[0], shR[1], elR[0], elR[1], 0.024 * F.arm, 0.018 * F.arm));
+  take(1, "arm", capsule(x, y, elR[0], elR[1], wrR[0], wrR[1], 0.018 * F.arm, 0.013));
+  take(1, "hand", ellipse(x, y, wrR[0] - 0.004, wrR[1] + 0.022, 0.016, 0.026));
   // 4 前髮：頭頂髮殼（挖掉臉）、鬢角、長髮兩束到胸前、麻花辮
   const capS = ellipse(x, y, hx, 0.056, 0.064, 0.068), face = ellipse(x, y, hx, 0.088, 0.041, 0.054);
   if (capS.d <= 0 && !(face.d <= 0 && y > 0.046)) take(4, "hair", capS);
@@ -191,7 +191,8 @@ export function girlParams(look = {}, doll = null) {
   const hc = HAIR_RGB[String(look.hair_color || "").trim()] || HAIR_RGB.深棕;
   const ph = String(look.pubic_hair || ""), pubic = /剃光|沒有/.test(ph) ? 0 : /稀疏/.test(ph) ? 1 : /濃密/.test(ph) ? 3 : 2;
   const soft = /微肉|軟肉|豐滿|漫畫/.test(String(look.build || doll?.build || "")) ? 0.25 : 0;
-  return { F, bust: 0.027 + ci * 0.0062, sag: clamp(ci / 8 * 0.85 + soft, 0, 1), hair, hairLen, hairRGB: hc, pubic, heightCm: Number(doll?.height_cm || look.height_cm) || 160 };
+  return { F, bust: 0.019 + ci * 0.0042 + ci * ci * 0.00008, sag: clamp(ci / 8 * 0.75 + soft, 0, 1),   // 照使用者的罩杯比例表：A～B 幾乎平、I～J 兩邊加起來剛好身體寬
+    hair, hairLen, hairRGB: hc, pubic, heightCm: Number(doll?.height_cm || look.height_cm) || 160 };
 }
 
 /** 畫她。opts：{ x, footY, h（身高像素）, look, doll, light:[r,g,b] 乘數（房間燈色） } */
@@ -236,7 +237,7 @@ export function drawGirl(g, opts = {}) {
       } else {
         c = lam > 0.7 ? SKIN.hi : lam > 0.36 ? SKIN.mid : lam > 0.05 ? SKIN.lo : SKIN.deep;
         if (s.nx > 0.86 && !s.part.startsWith("bust")) c = SKIN.rim;   // 背光邊一圈亮
-        if (lam > 0.9 && (s.part.startsWith("bust") || s.part.startsWith("leg") || (s.part === "torso" && y > 0.45))) c = SKIN.spec;   // 亮面高光
+        if ((s.part.startsWith("bust") && lam > 0.9) || ((s.part.startsWith("leg") || (s.part === "torso" && y > 0.45)) && lam > 0.965)) c = SKIN.spec;   // 亮面高光（大腿、臀只留一小點）
         if (s.part === "torso") {
           for (const [k, sg] of [[0, -1], [1, 1]]) {   // 胸下摺線的陰影：順著畫出來的下緣，往下推一點還在胸裡面的位置
             const u = (x - B.cx[k]) * sg, v = y - B.cy;
@@ -249,10 +250,11 @@ export function drawGirl(g, opts = {}) {
           if (Math.abs(x - mx) < 0.003 && y > 0.53 && y < 0.552) c = SKIN.deep;
           if (y > 0.18 && y < 0.19 && Math.abs(Math.abs(x - mx) - 0.03) < 0.018) c = SKIN.lo;   // 鎖骨
         }
-        if (s.part.startsWith("bust") && B.squeeze > 0) {   // 乳溝：中線兩側一條深色、上端短短往外岔開
-          const mx = sway(B.cy), du = Math.abs(x - mx), v = y - B.cy;
-          if (du < 0.004 && v > -B.r * 0.55 && v < B.r * (0.75 + 0.4 * B.sag)) c = SKIN.deep;
-          else if (du < 0.008 && v > -B.r * 0.3 && v < B.r * 0.6) c = SKIN.lo;
+        if (s.part.startsWith("bust") && B.squeeze > 0) {   // 乳溝（Y 字）：下面一條直線、上端往兩邊岔開
+          const mx = sway(B.cy), du = Math.abs(x - mx), v = y - B.cy, top = -B.r * 0.15;
+          if (du < 0.0035 && v > top && v < B.r * (0.75 + 0.4 * B.sag)) c = SKIN.line;
+          else if (v <= top && v > top - B.r * 0.55 && Math.abs(du - (top - v) * 0.75) < 0.003) c = SKIN.lo;   // Y 的兩叉
+          else if (du < 0.008 && v > top && v < B.r * 0.6) c = SKIN.lo;
         }
         if (s.part.startsWith("bust")) {   // 乳暈（每邊胸的中下、往外一點）
           const k = s.part === "bustL" ? 0 : 1, ax = B.cx[k] + (k ? 1 : -1) * B.r * (0.2 + 0.06 * B.sag), ay = B.cy + B.r * (0.38 + 0.36 * B.sag);
