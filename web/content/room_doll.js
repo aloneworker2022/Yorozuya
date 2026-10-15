@@ -107,6 +107,12 @@
         push({ k: 1, mat, a, ba, L2, ra, rb, clip: clip || null,
           bc: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], br: Math.sqrt(L2) / 2 + Math.max(ra, rb) });
       };
+      // 2026-10-15：側臉輪廓——(y,z) 多邊形沿 x 擠出 ±hw、邊角圓 rr（偷看的側臉用，照使用者手稿）
+      sh.prism = (mat, poly, hw, rr = .6) => {
+        let cy = 0, cz = 0; for (const q of poly) { cy += q[0] / poly.length; cz += q[1] / poly.length; }
+        let br = 0; for (const q of poly) br = Math.max(br, Math.hypot(q[0] - cy, q[1] - cz));
+        push({ k: 3, mat, poly, hw, rr, clip: null, bc: [0, cy, cz], br: Math.hypot(br, hw) + rr });
+      };
       sh.chain = (mat, pts, radii) => { for (let i = 0; i < pts.length - 1; i++) sh.cone(mat, pts[i], pts[i + 1], radii[i], radii[i + 1]); };
       sh.capped = (mat, c, h, rBottom, rTop, ysq, ycen) => {
         const rr = Math.max(rBottom, rTop) * Math.max(1, ysq);
@@ -133,6 +139,18 @@
         const a = p.a, ba = p.ba, px = x - a[0], py = y - a[1], pz = z - a[2];
         const t = clamp((px * ba[0] + py * ba[1] + pz * ba[2]) / p.L2, 0, 1);
         d = hypot3(px - ba[0] * t, py - ba[1] * t, pz - ba[2] * t) - (p.ra + (p.rb - p.ra) * t);
+      } else if (p.k === 3) {
+        const v = p.poly, N = v.length;
+        let dd = (y - v[0][0]) ** 2 + (z - v[0][1]) ** 2, sg = 1;
+        for (let a = 0, b = N - 1; a < N; b = a++) {
+          const ey = v[b][0] - v[a][0], ez = v[b][1] - v[a][1], wy = y - v[a][0], wz = z - v[a][1];
+          const t = clamp((wy * ey + wz * ez) / (ey * ey + ez * ez || 1e-9), 0, 1), by = wy - ey * t, bz = wz - ez * t;
+          dd = Math.min(dd, by * by + bz * bz);
+          const c1 = z >= v[a][1], c2 = z < v[b][1], c3 = ey * wz > ez * wy;
+          if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) sg = -sg;
+        }
+        const d2 = sg * Math.sqrt(dd), dx = Math.abs(x) - p.hw;
+        d = Math.hypot(Math.max(d2, 0), Math.max(dx, 0)) + Math.min(Math.max(d2, dx), 0) - p.rr;
       } else {
         const c = p.c, yy = (y - c[1] - p.ycen) / p.ysq;
         const qx = Math.sqrt((x - c[0]) ** 2 + yy * yy), qy = z - c[2];
@@ -240,17 +258,21 @@
       sh.ell(BODY, [0, yl(zc) + .3, zc], [6.9 * hs, 7.2 * hs, P.head_h / 2]);
       sh.ell(BODY, [0, yl(zc) + 2.2, zc - 6.0 * hs], [(4.6 + .8 * soft) * hs, 4.6 * hs, 3.6 * hs]);
     }
-    /** 側面臉（偷看，2026-10-15）：只有輪廓——眉骨、鼻樑／鼻尖、嘴唇、下巴尖；不畫眼睛、嘴等細節（使用者）。
-     * ex：{ mouth 0～1 張嘴（下唇、下巴往下） }。座標同 headPart（頭的局部，+y＝臉朝向）。 */
-    function sideFace(sh, P, yl, zc, ex = {}) {
-      const hs = P.b.head, y0 = yl(zc) + .3, fy = y0 + 7.2 * hs;   // fy≈臉正面
-      const mouth = ex.mouth ?? 0;
-      sh.ell(BODY, [0, fy - .9, zc + 1.6 * hs], [4.6 * hs, 1.5, 1.1]);                           // 眉骨
-      sh.cone(BODY, [0, fy - .6, zc + .4 * hs], [0, fy + 1.3, zc - 2.6 * hs], .9, .75);        // 鼻樑→鼻尖
-      sh.ell(BODY, [0, fy + .9, zc - 2.9 * hs], [1.3, 1.0, .8]);                                // 鼻頭
-      sh.ell(BODY, [0, fy - .3, zc - 4.4 * hs], [2.2, 1.0, .75]);                               // 上唇
-      sh.ell(BODY, [0, fy - .6, zc - (5.6 + 1.2 * mouth) * hs], [2.0, .9, .7]);                // 下唇（張嘴往下）
-      sh.ell(BODY, [0, fy - 1.4, zc - (7.6 + .8 * mouth) * hs], [3.0, 1.6, 1.5]);              // 下巴尖
+    /** 側面頭（偷看，2026-10-15 v3，照使用者手稿）：只有輪廓、不畫五官。
+     * 頭骨（橢圓）＋臉的側面輪廓（多邊形擠出）：額頭→眉→鼻樑凹→尖鼻子往前突→鼻下往內凹→上唇；
+     * 下顎另一塊多邊形，繞耳下的轉軸張開，兩塊中間的缺口＝張開的嘴；下巴往下掉、下顎線斜回耳下。
+     * 輪廓座標：(y 往臉前方, z 往上)，相對 (y0, zc)，以頭高 20 為準縮放。ex：{ mouth 0～1 }。 */
+    const FACE_UP = [[0, 3.4], [6.5, 3.4], [7.0, 1.4], [6.5, -.4], [6.9, -1.6], [9.3, -3.9], [7.7, -4.3], [6.8, -4.6], [7.2, -5.6], [6.5, -6.1], [2.6, -6.0], [0, -4.2]];
+    const FACE_JAW = [[2.6, -6.0], [6.3, -6.2], [6.8, -7.0], [6.1, -7.9], [6.5, -9.0], [5.4, -10.0], [1.6, -8.4], [-.6, -4.8]];
+    const FACE_HINGE = [.4, -3.8];
+    function sideHead(sh, P, yl, zc, ex = {}) {
+      const hs = P.b.head, hh = P.head_h / 2, k = hh / 10, y0 = yl(zc) + .3, mouth = ex.mouth ?? .5;
+      sh.ell(BODY, [0, y0 - .6, zc + 1.8], [6.9 * hs, 7.0 * hs, hh - 1.6]);                     // 頭骨（後腦）
+      const th = -(4 + 26 * mouth) * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th);
+      const at = (q) => [y0 + q[0] * k, zc + q[1] * k];
+      const rot = (q) => { const dy = q[0] - FACE_HINGE[0], dz = q[1] - FACE_HINGE[1]; return [FACE_HINGE[0] + dy * c - dz * sn, FACE_HINGE[1] + dy * sn + dz * c]; };
+      sh.prism(BODY, FACE_UP.map(at), 4.6 * hs, .7);
+      sh.prism(BODY, FACE_JAW.map(q => at(rot(q))), 3.9 * hs, .7);
     }
     function torso(sh, P, doll, dy = 0, dz = 0, lean = 0, bounce = [0, 0, 0, 0], noHead = false) {
       const b = P.b, zc = P.zc + dz, S = P.S + dz, C = P.C + dz, T = P.T;
@@ -868,7 +890,7 @@
         const wr = g.wrists, an = g.ankles;
         if (typeof wr === 'function') g.wrists = (sd) => { const w = wr(sd); return [w[0] + .6 * sd * slow, w[1] - 1.4 * (lag - .5), w[2] + .9 * Math.sin(ph * 2 + sd)]; };
         if (pose === 'sex_missionary') g.ankles = (sd) => { const a = an(sd); return [a[0] + 1.3 * sd * slow, a[1] + 1.6 * (lag - .5), a[2] + 1.4 * g.j]; };
-        g.face = { mouth: Math.min(1, .2 + .9 * g.j) };
+        g.face = { mouth: Math.min(1, .35 + .65 * g.j) };
       }
       const Lt = P.hipz - P.knee, Ls = P.knee - P.ankle, Lu = P.H * .16, Lf = P.H * .14;
       const hip_x = 5.1 * F(b, 'hip') * (1 + .3 * (F(b, 'thigh') - 1));
@@ -915,8 +937,7 @@
       // 頭（照姿勢轉）＋頭髮：髮尾再比上半身晚一格（follow-through）
       const neck = [0, tor.yl(tor.S), tor.S + 1.5];
       sh.xf = g.headR ? compose(xf, about(g.headR, neck)) : xf;
-      headPart(sh, P, tor.yl, tor.zc);
-      sideFace(sh, P, tor.yl, tor.zc, g.face);
+      sideHead(sh, P, tor.yl, tor.zc, g.face);
       // v6：四肢著地時長髮收短（塞到耳後／垂到肩為止），不擋住胸
       // 2026-10-13：仰躺（傳教士）長髮也收短——不然整束沿身體斜斜垂到床下面，像一根棍子
       const hdoll = (pose === 'sex_doggy' || pose === 'sex_missionary') && (doll.hair === 'long' || doll.hair === 'waist') ? { ...doll, hair: 'medium' } : doll;
