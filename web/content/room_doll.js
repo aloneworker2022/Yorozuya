@@ -276,7 +276,7 @@
       sh.prism(BODY, FACE_JAW.map(q => at(rot(q))), 4.6 * hs, .7);
       sh.flat = false;
     }
-    function torso(sh, P, doll, dy = 0, dz = 0, lean = 0, bounce = [0, 0, 0, 0], noHead = false) {
+    function torso(sh, P, doll, dy = 0, dz = 0, lean = 0, bounce = [0, 0, 0, 0], noHead = false, jig = null) {
       const b = P.b, zc = P.zc + dz, S = P.S + dz, C = P.C + dz, T = P.T;
       const yl = (z) => dy + (z - C) * lean;
       const soft = b.soft;
@@ -299,8 +299,16 @@
       }
       if (b.belly) { const bz = zW - .32 * T; sh.ell(BODY, [0, yl(bz) + 1.6 + 1.2 * b.belly, bz], [5.4 * F(b, 'waist'), 3.6 + .6 * b.belly, 5.0]); }
       for (const s of [-1, 1]) {
-        const bb = F(b, 'butt'), lift = 1.2 * b.muscle;
-        sh.ell(BODY, [s * 3.7 * F(b, 'hip'), yl(C + .09 * T) - 2.7 - .4 * (bb - 1), C + .09 * T + lift], [4.5 * bb, 4.2 * bb, 4.6 * bb]);
+        const bb = F(b, 'butt'), lift = 1.2 * b.muscle, q = jig ? jig.sq : 0;
+        // jig（偷看，2026-10-15）：被撞時臀肉往撞的方向推、前後壓扁、上下左右鼓出，再彈回來晃
+        const [jx, jy, jz] = jig ? jig.d : [0, 0, 0];
+        sh.ell(BODY, [s * 3.7 * F(b, 'hip') + jx, yl(C + .09 * T) - 2.7 - .4 * (bb - 1) + jy, C + .09 * T + lift + jz],
+          [4.5 * bb * (1 + .45 * q), 4.2 * bb * (1 - q), 4.6 * bb * (1 + .35 * q)]);
+      }
+      if (jig && jig.thigh) for (const s of [-1, 1]) {
+        const q = jig.sq;   // 大腿根的肉跟著晃（晚一點、小一點）
+        const [tx, ty, tz] = jig.thigh;
+        sh.ell(BODY, [s * 4.6 * F(b, 'hip') + tx, yl(C - 2) - 1.2 + ty, C - 2.5 + tz], [3.9 * F(b, 'thigh'), 3.9 * F(b, 'thigh') * (1 - .6 * q), 3.6]);
       }
       const r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
@@ -495,7 +503,7 @@
       SEX_FRAME_MS.push(Math.round(ms / 6)); SEX_DEPTH.push(d);
     }
     /** 她被撞的位移比他晚一格才到；撞完多彈一點（跟這一下的深度成正比）。 */
-    const HER_J = SEX_THRUST.map((p, i, a) => { const prev = a[(i - 1 + a.length) % a.length]; return .55 * p + .45 * prev + (i % 6 === 1 ? .08 * SEX_DEPTH[i] : 0); });
+    const HER_J = SEX_THRUST.map((p, i, a) => { const prev = a[(i - 1 + a.length) % a.length]; return .55 * p + .45 * prev + (i % 6 === 1 ? .16 * SEX_DEPTH[i] : 0); });
     /** 上半身（肩、頭）再晚一格：衝擊從骨盆一路傳到頭。 */
     const HER_U = HER_J.map((_, i, a) => a[(i - 1 + a.length) % a.length]);
     const SEX_BOUNCE_GAIN = 7;   // 被撞時乳搖幅度（× CUP_BOUNCE）
@@ -506,11 +514,12 @@
     function toLocal(xf, w) { return mulT(xf.R, [w[0] - xf.t[0], w[1] - xf.t[1], w[2] - xf.t[2]]); }
     function toWorld(xf, l) { const v = mulV(xf.R, l); return [v[0] + xf.t[0], v[1] + xf.t[1], v[2] + xf.t[2]]; }
     /** 抽送時她身體被撞的位移 → 乳房阻尼彈簧（同一套 SPRING／CUP_BOUNCE）。回傳 10 格的 [bx,by,bz,sq]（局部座標）。 */
-    const sexBounceCache = new Map();
-    function sexBounce(P, doll, axis, amp) {
-      const kind = BUILD_SPRING[doll.build] || 'normal', key = `${doll.build}|${doll.cup}|${axis}|${amp}`;
-      if (sexBounceCache.has(key)) return sexBounceCache.get(key);
-      const [f0, zeta, gain] = SPRING[kind], w = 2 * Math.PI * f0, n = SEX_THRUST.length;
+    const sexBounceCache = new Map(), traceCache = new Map();
+    /** 身體被撞的位移（amp×HER_J）推一個阻尼彈簧 f0（Hz）／zeta，跑 6 輪取最後一輪：每格的彈簧位移（原始單位）。 */
+    function springTrace(amp, f0, zeta) {
+      const key = `${amp}|${f0}|${zeta}`;
+      if (traceCache.has(key)) return traceCache.get(key);
+      const w = 2 * Math.PI * f0, n = SEX_THRUST.length;
       const total = SEX_FRAME_MS.reduce((a, b) => a + b, 0) / 1000, steps = 200, dt = total / steps;
       const pos = (tm) => {   // 身體位移（跟著格的時間內插）
         let acc = 0; for (let i = 0; i < n; i++) { const d = SEX_FRAME_MS[i] / 1000; if (tm < acc + d) { const f = (tm - acc) / d; return amp * (HER_J[i] * (1 - f) + HER_J[(i + 1) % n] * f); } acc += d; }
@@ -525,6 +534,13 @@
           if (c === 5 && tm >= acc) { out[fi] = y; acc += SEX_FRAME_MS[fi] / 1000; fi = Math.min(n - 1, fi + 1); }
         }
       }
+      traceCache.set(key, out);
+      return out;
+    }
+    function sexBounce(P, doll, axis, amp) {
+      const kind = BUILD_SPRING[doll.build] || 'normal', key = `${doll.build}|${doll.cup}|${axis}|${amp}`;
+      if (sexBounceCache.has(key)) return sexBounceCache.get(key);
+      const [f0, zeta, gain] = SPRING[kind], out = springTrace(amp, f0, zeta);
       // 2026-10-10：原本 ×1.6（D 罩杯只晃 1～2 px，實機看不出來）→ ×5，×7，上限是罩杯半徑的 1.1
       const peak = Math.max(...out.map(Math.abs)) || 1, cb = (CUP_BOUNCE[doll.cup] ?? .35) * gain;
       const cap = cupRadius(P, doll) * 1.1;
@@ -922,7 +938,15 @@
         const press = Math.max(0, g.fwd) * .22 * Math.min(1.4, r0 / 3.4);
         bnc[0] = -.5 * kb * lagR; bnc[1] = -.45 * kb * lagF - press * r0 * .4; bnc[2] = -.2 * kb * Math.abs(lagF); bnc[3] = -press * .4; bnc[4] = press; bnc[5] = 0;
       }
-      const tor = torso(sh, P, doll, 0, 0, g.lean, bnc, true);
+      // 肉體撞擊（2026-10-15）：頂到底那一格臀肉被壓扁、往撞的方向推，之後用較快的彈簧晃回來（大腿根晚一格）
+      let jig = null;
+      if (pose !== 'sex_kiss') {
+        const tr = springTrace(g.amp, 4.6, .2), pk = Math.max(...tr.map(Math.abs)) || 1, A = 3.0 * F(b, 'butt') * (1 + .6 * b.soft);
+        const jv = tr[fi] / pk, jv1 = tr[(fi - 1 + n) % n] / pk, k6 = fi % 6, imp = k6 === 0 ? SEX_DEPTH[fi] : k6 === 1 ? .45 * SEX_DEPTH[fi] : 0;
+        jig = { d: [ax[0] * jv * A, ax[1] * jv * A, ax[2] * jv * A], sq: Math.max(-.15, Math.min(.42, .38 * imp + .1 * jv)),
+          thigh: [ax[0] * jv1 * A * .7, ax[1] * jv1 * A * .7, ax[2] * jv1 * A * .7] };
+      }
+      const tor = torso(sh, P, doll, 0, 0, g.lean, bnc, true, jig);
       for (const s of [-1, 1]) {
         const hipL = [s * hip_x, 0, P.hipz], hipW = toWorld(xf, hipL), ankW = g.ankles(s);
         const kneeW = g.knees ? g.knees(s) : ik(hipW, ankW, Lt, Ls, g.pole(s));
@@ -1016,8 +1040,9 @@
       const xf = { R: [1, 0, 0, 0, f[0], u[0], 0, f[1], u[1]], t: [0, g.pel[0], g.pel[1]] };
       const TL = 34 * h;
       sh.xf = xf;
-      sh.ell(BODY, [0, -.5, 2], [8.6 * w, 5.8 * wd, 6.5]);                               // 骨盆
-      for (const s of [-1, 1]) sh.ell(BODY, [s * 4.3 * w, -3.2, .5], [5.0 * w, 4.6 * wd, 5.6]);   // 屁股
+      // 2026-10-15：骨盆／屁股左右收窄，她的臀肉在接觸點才露在他前面（撞擊時的壓扁、彈晃看得到）
+      sh.ell(BODY, [0, -.5, 2], [6.8 * w, 5.8 * wd, 6.5]);                               // 骨盆
+      for (const s of [-1, 1]) sh.ell(BODY, [s * 3.4 * w, -3.2, .5], [4.2 * w, 4.6 * wd, 5.6]);   // 屁股
       sh.ell(BODY, [0, 0, 12], [7.4 * w, 5.2 * wd, 9.5]);                                 // 腰腹
       sh.ell(BODY, [0, .3 + 1.2 * stoop, 23.5], [10.2 * w, 6.4 * wd + (M.chest ? 1.2 : 0), 9.8]);   // 胸廓
       if (M.chest) for (const s of [-1, 1]) sh.ell(BODY, [s * 4.6 * w, 5.4 * wd, 25.5], [5.2 * w, 2.6, 4.2]);   // 胸肌
@@ -1035,9 +1060,10 @@
       const W = (l) => toWorld(xf, l);
       const Lt = 27 * h, Ls = 25 * h, Lu = 19 * h, Lf = 17 * h;
       for (const s of [-1, 1]) {
-        const hip = W([s * 5.2 * w, 0, 0]), knee = g.knee(s), ank = g.ankle(s);
+        // 2026-10-15：大腿根往內收（4.0）、上端細一點，不然從側面整片蓋住她被撞的臀部
+        const hip = W([s * 4.0 * w, 0, 0]), knee = g.knee(s), ank = g.ankle(s);
         const mid = hip.map((v, i) => v + (knee[i] - v) * .45);
-        sh.cone(BODY, hip, mid, 5.7 * lm, 4.9 * lm);
+        sh.cone(BODY, hip, mid, 5.0 * lm, 4.9 * lm);
         sh.cone(BODY, mid, knee, 4.9 * lm, 3.5 * lm);
         const calf = knee.map((v, i) => v + (ank[i] - v) * .3);
         sh.cone(BODY, knee, calf, 3.4 * lm, 3.9 * lm);
@@ -1204,7 +1230,7 @@
           if (flat[i] && !near) { tone[i] = 2; pixels[i * 4 + 3] = bodyA; }
           else if (near) set(i, lineRGB, bodyA);
           else if (bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH)) set(i, bustRGB, bodyA);
-          else { tone[i] = sideTone(hit, mat, tt, i, x, y, width, height, k); pixels[i * 4 + 3] = bodyA; }
+          else { tone[i] = pal.flat ? 2 : sideTone(hit, mat, tt, i, x, y, width, height, k); pixels[i * 4 + 3] = bodyA; }
         }
         depth[i] = tt[i];
       }
@@ -1222,7 +1248,7 @@
     // 2026-10-13：偷看側面的她改亮一點＋三階明暗（燈在左上前方），黑影疊黑影看不出形體
     // 2026-10-15：紫灰影子 → 暖燈下的膚色（使用者：太假）
     const SIDE_PAL = { body: [170, 118, 108], hi: [212, 158, 138], lo: [116, 76, 80], line: [70, 40, 48], hair: [38, 26, 34], hairHi: [76, 54, 62],
-      bust: [226, 176, 156], a: 236 };
+      bust: [226, 176, 156], a: 236, flat: true };   // flat：身體也平塗（使用者），只留前後重疊的分界線和乳房弧線
     const MAN_PAL = { body: [52, 86, 178], hi: [86, 124, 216], lo: [34, 58, 132], line: [22, 36, 96], hair: [26, 44, 108], hairHi: [26, 44, 108],
       bust: [52, 86, 178], a: 240 };
     const LIGHT = (() => { const v = [.55, -.55, .65], n = Math.hypot(...v); return v.map(c => c / n); })();
@@ -1258,7 +1284,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };

@@ -44,7 +44,8 @@ export function composeFrame(r) {
   for (let i = 0; i < n; i++) {
     const hA = her[i * 4 + 3], mA = him ? him[i * 4 + 3] : 0;
     if (!hA && !mA) continue;
-    const useHim = mA && (!hA || r.mdp[i] > r.dp[i]);
+    // 2026-10-15：兩人貼在一起、深度差不多時讓她在前面（臀肉被撞的壓扁／彈晃才看得到）；他的手、靠鏡頭的腿差很多，照樣蓋在前面
+    const useHim = mA && (!hA || r.mdp[i] > r.dp[i] + 1.6);
     const src = useHim ? him : her;
     px.set(src.subarray(i * 4, i * 4 + 3), i * 4); px[i * 4 + 3] = useHim ? 246 : 242;
     own[i] = useHim ? 2 : 1; dp[i] = useHim ? r.mdp[i] : r.dp[i];
@@ -183,7 +184,7 @@ export async function peekStills(opts = {}) {
   for (const fi of idx) {
     const big = document.createElement("canvas"); big.width = LW; big.height = LH;
     const g = big.getContext("2d");
-    drawScene(g, { pose, open: 1 / OPEN, frames: all, fi, anchor: { ...D.sexAnchor(doll, dpose, fi), man } });
+    drawScene(g, { pose, open: 1 / OPEN, frames: all, fi, anchor: { ...D.sexAnchor(doll, dpose, fi), man }, fx: !!opts.fx });   // fx：撞擊線（圖生圖來源預設不畫）
     const c = document.createElement("canvas"); c.width = W * K; c.height = H * K;
     const cg = c.getContext("2d"); cg.imageSmoothingEnabled = false;
     cg.drawImage(big, X0, Y0, W, H, 0, 0, W * K, H * K);
@@ -192,6 +193,22 @@ export async function peekStills(opts = {}) {
   return out;
 }
 
+/** 肉體撞擊（2026-10-15）：頂到底那一格在兩人接觸點閃幾條短白線，下一格淡一點。peekStills（圖生圖來源）不畫。 */
+const IMPACT_AT = { missionary: [6, 4], doggy: [7, 0], cowgirl: [2, -3], reverse: [5, -3] };   // 接觸點：相對她骨盆的 (y, z)
+function drawImpact(g, st, k) {
+  const at = IMPACT_AT[st.pose], k6 = st.fi % 6;
+  if (!at || k6 > 1) return;
+  const depth = window.RoomDoll.SEX_DEPTH?.[st.fi] ?? 1, a = (k6 === 0 ? .9 : .4) * Math.min(1, depth);
+  const cx = (HIPX[st.pose] || HIPX.cowgirl) + (st.anchor.hip[1] + at[0]) * k, cy = BED - (st.anchor.hip[2] + at[1]) * k;
+  g.strokeStyle = `rgba(255,236,214,${a})`; g.lineWidth = 1;
+  // 線往撞擊方向的兩側濺開：前後撞（傳教士／後背／背向）→ 上下兩撮；上下撞（騎乘）→ 左右兩撮
+  const base = st.pose === "cowgirl" ? [0, Math.PI] : [-Math.PI / 2, Math.PI / 2];
+  const r0 = 5 + 2 * (1 - k6), r1 = r0 + 3 + 2 * depth;
+  for (const b0 of base) for (const ang of [-.45, 0, .45]) {
+    const dx = Math.cos(b0 + ang), dy = Math.sin(b0 + ang);
+    g.beginPath(); g.moveTo(Math.round(cx + dx * r0) + .5, Math.round(cy + dy * r0) + .5); g.lineTo(Math.round(cx + dx * r1) + .5, Math.round(cy + dy * r1) + .5); g.stroke();
+  }
+}
 function drawScene(g, st) {
   g.fillStyle = "#16121e"; g.fillRect(0, 0, LW, LH);
   g.fillStyle = "#1a1624"; for (let x = 0; x < LW; x += 10) g.fillRect(x, 0, 1, 360);
@@ -214,6 +231,7 @@ function drawScene(g, st) {
     if (old2d) drawClient(g, st.pose, st.anchor, cvp.scale);
     if (f) g.drawImage(f, (HIPX[st.pose] || HIPX.cowgirl) - cvp.ax, BED - cvp.ay);
     if (old2d) drawClientFront(g, st.pose, st.anchor, cvp.scale);
+    if (st.fx && f && st.anchor) drawImpact(g, st, cvp.scale);
     g.restore();
     g.fillStyle = `rgba(230,170,90,${0.27 * st.open})`;               // 門縫透出的光
     g.beginPath(); g.moveTo(DX0, DY1); g.lineTo(DX0 + gap, DY1); g.lineTo(DX0 + gap + 22 * st.open, LH); g.lineTo(DX0 - 18 * st.open, LH); g.fill();
@@ -266,7 +284,7 @@ export function openPeek(opts = {}) {
   g.imageSmoothingEnabled = false;
   const status = ov.querySelector(".peek-status"), hint = ov.querySelector(".peek-hint");
   const bubC = ov.querySelector(".peek-bub.c"), bubW = ov.querySelector(".peek-bub.w");
-  const st = { pose, open: 0, target: 0, frames: null, fi: 0, anchor: null, opened: false, closed: false, lines: [], side: "client" };
+  const st = { pose, open: 0, target: 0, frames: null, fi: 0, anchor: null, opened: false, closed: false, lines: [], side: "client", fx: true };
   // 日租女友（2026-10-13）：mode＝"room"（跟進旅館房間：一開始就看得到整間、沒有門可以點）／"door"（在門外：門關著、只聽得到）
   const mode = opts.mode === "room" || opts.mode === "door" ? opts.mode : "peek";
   ov.classList.toggle("door", mode === "door");

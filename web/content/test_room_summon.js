@@ -331,7 +331,7 @@ import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
 import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
-import { openPeek } from "./escort_peek.js?v=7";
+import { openPeek } from "./escort_peek.js?v=8";
 import * as Preg from "./pregnancy.js?v=1";
 import { createRental } from "./rental_ui.js?v=8";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload } from "./rental.js?v=6";
