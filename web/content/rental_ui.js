@@ -4,7 +4,7 @@
  *        gold(), earn(n, why), hunger(who), mood(who), applyEffects(who, eff), persist(), debug(msg), peek(opts), ai?(kind, ctx) → Promise<string> }
  * 她的約會存在 who.rentalMine.active（關掉 App 再開照時間接著走；決定點會停住）。 */
 import * as R from "./rental.js?v=7";
-import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=6";
+import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=7";
 import * as L from "./rental_lines.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 
@@ -219,7 +219,8 @@ export function createRental(api) {
       if (date.hotel.presence === "in" && hasRoom(v?.venue)) {
         // 2026-10-15：進去先看到房間（目前只有日式主臥室）；白天／晚上照約會時鐘
         const h = R.where(date).hour % 24;
-        openRoom({ venue: v.venue, room: v.room, night: h >= 18 || h < 6, clientName: date.client.name, onContinue: () => openScene(who, date) });
+        openRoom({ venue: v.venue, room: v.room, night: h >= 18 || h < 6, clientName: date.client.name, look: who.look || {}, doll: window.RoomDoll?.lookToDoll(who.look || null) || null,
+          onContinue: () => openScene(who, date) });
       } else if (date.hotel.presence !== "away") openScene(who, date);
     };
     // 2026-10-15：開車送到了 → 直接站在旅館玄關（日式拉門／旅館房門／汽車旅館車庫），在玄關決定進不進去。

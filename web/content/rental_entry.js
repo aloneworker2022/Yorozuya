@@ -6,9 +6,10 @@
  * 畫面跟偷看同一套尺寸（195×422 邏輯像素、放大顯示）。不決定結果，只回報玩家選了什麼。
  * openEntry({ venue, room, stayZh, clientName, onChoose(presence 'in'|'door') }) → { close() }。 */
 import { paintRyokan } from "./rental_entry_paint.js?v=2";
-import { paintJapaneseRoom } from "./rental_room_paint.js?v=2";
-import { paintBathroom } from "./rental_bath_paint.js?v=1";
-import { hotelDoorScene, hotelBedScene, hotelBathScene, motelGarageScene, motelBedScene, motelBathScene } from "./rental_scenes_hm.js?v=1";
+import { paintJapaneseRoom, projectJapaneseRoom } from "./rental_room_paint.js?v=3";
+import { drawGirl } from "./rental_girl_pixel.js?v=1";
+import { paintBathroom } from "./rental_bath_paint.js?v=2";
+import { hotelDoorScene, hotelBedScene, hotelBathScene, motelGarageScene, motelBedScene, motelBathScene } from "./rental_scenes_hm.js?v=2";
 const LW = 195, LH = 422;
 
 const CSS = `
@@ -207,12 +208,14 @@ export function openEntry(opts = {}) {
 
 /** 進去之後看到的房間（2026-10-15：先做溫泉旅館；其他兩種還沒有 → 回傳 null，呼叫端照舊）。
  * 一間可以有好幾個場景，左右箭頭切換（主臥室 > 浴室、浴室 < 主臥室）。
- * openRoom({ venue, room, night, clientName, onContinue }) → { close(), go(i) } | null。 */
-const draw = (make) => (g) => g.drawImage(make(), 0, 0);
+ * openRoom({ venue, room, night, clientName, look, doll, onContinue }) → { close(), go(i) } | null。look／doll 有給才畫她。 */
+// paint(g, {night}) 畫背景，回傳「世界 → 畫面」的投影（放人物用）；girl：她站的位置（公尺）＋房間燈色（乘在她身上）
+const draw = (make) => (g) => { const c = make(); g.drawImage(c, 0, 0); return c.project; };
 const ROOMS = {
-  ryokan: [{ key: "bed", zh: "主臥室", paint: paintJapaneseRoom }, { key: "bath", zh: "浴室", paint: paintBathroom }],
-  hotel: [{ key: "bed", zh: "主臥室", paint: draw(hotelBedScene) }, { key: "bath", zh: "浴室", paint: draw(hotelBathScene) }],
-  motel: [{ key: "bed", zh: "主臥室", paint: draw(motelBedScene) }, { key: "bath", zh: "浴室", paint: draw(motelBathScene) }],
+  ryokan: [{ key: "bed", zh: "主臥室", paint: (g, o) => { paintJapaneseRoom(g, o); return projectJapaneseRoom; }, girl: { x: 0.32, z: 1.45, light: [1, 1, 1], lightNight: [1, 0.82, 0.68] } },
+    { key: "bath", zh: "浴室", paint: paintBathroom }],
+  hotel: [{ key: "bed", zh: "主臥室", paint: draw(hotelBedScene), girl: { x: 0.62, z: 1.78, light: [0.92, 0.78, 0.9] } }, { key: "bath", zh: "浴室", paint: draw(hotelBathScene) }],
+  motel: [{ key: "bed", zh: "主臥室", paint: draw(motelBedScene), girl: { x: 1.0, z: 2.3, light: [1, 0.82, 0.86] } }, { key: "bath", zh: "浴室", paint: draw(motelBathScene) }],
 };
 export function hasRoom(venue) { return !!ROOMS[venue]; }
 export function openRoom(opts = {}) {
@@ -232,8 +235,14 @@ export function openRoom(opts = {}) {
   const go = (i) => {
     cur = Math.max(0, Math.min(scenes.length - 1, i));
     const sc = scenes[cur];
-    if (!cache[cur]) { const c = document.createElement("canvas"); c.width = LW; c.height = LH; sc.paint(c.getContext("2d"), { night: !!opts.night }); cache[cur] = c; }
-    g.drawImage(cache[cur], 0, 0);
+    if (!cache[cur]) { const c = document.createElement("canvas"); c.width = LW; c.height = LH; const proj = sc.paint(c.getContext("2d"), { night: !!opts.night }); cache[cur] = { c, proj }; }
+    g.drawImage(cache[cur].c, 0, 0);
+    // 她（點陣圖）：站在這間的固定位置；身高照她的 cm、透視算像素
+    const gl = sc.girl, pr = cache[cur].proj;
+    if (gl && pr && (opts.look || opts.doll)) {
+      const hm = (Number(opts.doll?.height_cm || opts.look?.height_cm) || 160) / 100, foot = pr(gl.x, 0, gl.z), head = pr(gl.x, hm, gl.z);
+      drawGirl(g, { x: foot[0], footY: foot[1], h: foot[1] - head[1], look: opts.look || {}, doll: opts.doll || null, light: opts.night && gl.lightNight ? gl.lightNight : gl.light });
+    }
     ov.dataset.scene = sc.key;
     ov.querySelector(".ti").textContent = `${opts.venue === "ryokan" ? opts.room || "" : `${opts.room || ""} 號房`}・${sc.zh}`;
     st.textContent = cur === 0 ? `${opts.clientName || "客人"}和她已經在房間裡了。` : "";

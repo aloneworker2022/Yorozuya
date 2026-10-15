@@ -1,6 +1,6 @@
 /* 旅館（hotel）／汽車旅館（motel）的玄關、主臥室、浴室（2026-10-15；使用者：照溫泉旅館的做法做另外兩種）。
  * 都用 rental_scene.js 的逐像素光線追蹤。每個 export 回傳一張畫好的 canvas（靜態），玄關另外有 anim(g, t, P) 疊動畫。 */
-import { render, project, lightAt, tiles, marble, damask, tufted, woodGrain, tint, fbm, hash, mix, mul, add, smooth, clamp01 } from "./rental_scene.js?v=1";
+import { render, project, lightAt, tiles, marble, damask, tufted, woodGrain, tint, fbm, hash, mix, mul, add, smooth, clamp01 } from "./rental_scene.js?v=2";
 
 const B = (k, x0, x1, y0, y1, z0, z1, extra = {}) => ({ k, x0, x1, y0, y1, z0, z1, ...extra });
 const inR = (p, x0, x1, y0, y1) => p[0] > x0 && p[0] < x1 && p[1] > y0 && p[1] < y1;

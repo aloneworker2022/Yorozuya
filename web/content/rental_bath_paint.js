@@ -4,7 +4,7 @@
  * 右上天花板間接燈的暖光。世界座標（公尺）：x −1.6～1.6、y 0～2.4、正面牆 z＝2.6。
  * paintBathroom(ctx, { night }) → 畫一張（靜態）。 */
 import { paintKit as K } from "./rental_entry_paint.js?v=2";
-import { roomKit as RK } from "./rental_room_paint.js?v=2";
+import { roomKit as RK } from "./rental_room_paint.js?v=3";
 const { hash, fbm, mix, mul, add, clamp01, smooth, put, LW, LH } = K;
 const { hitBox, hitEll, woodGrain, tint } = RK;
 

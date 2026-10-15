@@ -3,7 +3,7 @@
  *          shade(kind, p, n, d) → [r,g,b] | {c, mirror:0～1} | null（看穿，換下一個交點） }
  * 房間的面 kind：floor／ceil／back／left／right。鏡子：shade 回 {c, mirror}，再追一次反射（只彈一次）。 */
 import { paintKit as K } from "./rental_entry_paint.js?v=2";
-import { roomKit as RK } from "./rental_room_paint.js?v=2";
+import { roomKit as RK } from "./rental_room_paint.js?v=3";
 export const { hash, vnoise, fbm, mix, mul, add, clamp01, smooth, put, LW, LH } = K;
 export const { hitBox, hitEll, woodGrain, tint } = RK;
 
@@ -59,6 +59,7 @@ export function render(S) {
   for (let sy = 0; sy < LH; sy++) for (let sx = 0; sx < LW; sx++) put(px, (sy * LW + sx) * 4, sx, sy, trace(S, S.cam, dirOf(S, sx, sy)));
   c.getContext("2d").putImageData(img, 0, 0);
   if (S.post) S.post(c.getContext("2d"), (x, y, z) => project(S, x, y, z));
+  c.project = (x, y, z) => project(S, x, y, z);   // 之後把人物放進場景用
   return c;
 }
 /** 世界座標 → 畫面座標（疊 2D 線條／文字／動畫用）。 */

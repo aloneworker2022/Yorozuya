@@ -6,7 +6,7 @@
 import { paintKit as K } from "./rental_entry_paint.js?v=2";
 const { hash, fbm, mix, mul, add, clamp01, smooth, put, LW, LH } = K;
 
-const CAM = [1.15, 1.5, -0.95], VP = [97.5, 200], F = 158, YAW = -19 * Math.PI / 180;   // 站在門口外一點、往左轉 19°、鏡頭拉近：整間房（床、壁畫、拉門、湖景）塞滿直式畫面   // 站在門口偏右、往左轉 15°：床和左牆壁畫進畫面
+const CAM = [1.15, 1.5, -0.95], VP = [97.5, 200], F = 158, YAW = -19 * Math.PI / 180;   // 站在門口外一點、往左轉 19°、鏡頭拉近：整間房（床、壁畫、拉門、湖景）塞滿直式畫面
 const ROOM = { x0: -2.2, x1: 2.2, h: 2.5, zb: 3.6 };
 // 正面牆的分區（x 公尺）：拉門 −2.2～0.55｜落地門 0.55～1.35｜素牆 1.35～2.2；欄間 y 2.12～2.4
 const WALL = { shoji1: 0.55, door1: 1.35, ranma0: 2.12, ranma1: 2.4, top: 2.08 };
@@ -243,3 +243,10 @@ export function paintJapaneseRoom(g, opts = {}) {
 
 /** 給浴室等其他房間共用的射線／材質工具。 */
 export const roomKit = { hitBox, hitEll, woodGrain, tint };
+
+/** 世界座標 → 畫面座標（把人物放進日式主臥室用）。 */
+export function projectJapaneseRoom(x, y, z) {
+  const v = [x - CAM[0], y - CAM[1], z - CAM[2]], cy = Math.cos(YAW), sn = Math.sin(YAW);
+  const q0 = v[0] * cy - v[2] * sn, q2 = v[0] * sn + v[2] * cy;
+  return [VP[0] + F * q0 / q2, VP[1] - F * v[1] / q2];
+}
