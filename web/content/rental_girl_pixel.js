@@ -55,14 +55,17 @@ function catmull(pts, n = 10) {
   return out;
 }
 function breastOutline(S, sag) {
+  // 2026-10-15 v4（使用者：下面飽滿像裝了水的袋子、往外擴）：上面窄、順著胸口接上去；最寬的地方在下半部而且往外推；
+  // 底部一道又圓又沉的弧（重量往下、往外墜）。
   return catmull([
-    [0.05 * S, -1.02 * S - 0.12 * sag * S],               // 上緣根部（往上斜進胸口、偏腋下那側）
-    [-0.58 * S, -0.34 * S],                               // 乳溝側上
-    [-0.66 * S, 0.42 * S + 0.25 * sag * S],               // 乳溝側下
-    [0.0 * S, 0.98 * S + 0.5 * sag * S],                  // 最低點
-    [0.72 * S + 0.08 * sag * S, 0.62 * S + 0.38 * sag * S], // 外下
-    [0.98 * S + 0.14 * sag * S, -0.02 * S + 0.18 * sag * S], // 外側最寬
-    [0.58 * S, -0.92 * S],                                // 腋下接點
+    [0.15 * S, -1.08 * S - 0.1 * sag * S],                   // 上緣根部（窄，順著胸口長出來）
+    [-0.34 * S, -0.42 * S],                                  // 乳溝側上（上半部收窄）
+    [-0.66 * S, 0.42 * S + 0.12 * sag * S],                  // 乳溝側下
+    [-0.42 * S, 0.94 * S + 0.3 * sag * S],                   // 內下的弧
+    [0.22 * S, 1.1 * S + 0.42 * sag * S],                    // 最低點（沉）
+    [0.92 * S + 0.1 * sag * S, 0.88 * S + 0.32 * sag * S],   // 外下（往外墜）
+    [1.2 * S + 0.14 * sag * S, 0.36 * S + 0.18 * sag * S],   // 外側最寬（在下半部、往外擴）
+    [0.74 * S, -0.5 * S],                                    // 往腋下收
   ]);
 }
 function inPoly(u, v, poly) {
@@ -84,13 +87,14 @@ function breastSample(u, v, B) {
   }
   const inside = inPoly(u, v, poly), d = inside ? -best : best, S = B.r;
   const gl = Math.hypot(gx, gy) || 1, ex = inside ? -gx / gl : gx / gl, ey = inside ? -gy / gl : gy / gl;   // 往輪廓外的方向
-  const core = [0.12 * S, 0.32 * S + 0.3 * B.sag * S], k = clamp(best / (0.55 * S), 0, 1);
+  const core = [0.32 * S, 0.42 * S + 0.3 * B.sag * S], k = clamp(best / (0.55 * S), 0, 1);   // 最飽滿的點在下半部、偏外
   let nx = 0.55 * (u - core[0]) / (1.05 * S) + 0.45 * ex * (1 - k), ny = 0.55 * (v - core[1]) / (1.05 * S) + 0.45 * ey * (1 - k);
   // 被擠的那側：貼著中線的面轉向中線（變暗），擠得越多越明顯
   if (B.squeeze > 0) { const near = clamp(1 - (u + B.mid) / (0.35 * S), 0, 1) * clamp(B.squeeze / (0.25 * S), 0, 1); nx = lerp(nx, -0.85, near * 0.7); }
   // 上半部平緩地接進胸口：越往上，明暗越像胸口（幾乎正對前面、微微朝上）
-  const w = clamp(-v / (0.85 * S), 0, 1) * 0.8;
-  nx *= 1 - w; ny = lerp(ny, -0.22, w);
+  // 用跟胸口一樣的明暗（胸口在這裡的橫向朝向≈(到中線的距離)/胸廓半寬），上緣才看不出邊界
+  const w = clamp((0.15 * S - v) / (1.0 * S), 0, 1);
+  nx = lerp(nx, clamp((B.mid + u) / 0.085, -1, 1), w); ny = lerp(ny, 0, w);
   return { d, nx, ny };
 }
 /** 姿勢：重心在畫面右腳（s＝1）。sway(y)：身體中線的左右偏移——髖往右推、肩往左回，三道彎。 */
@@ -237,7 +241,7 @@ export function drawGirl(g, opts = {}) {
       } else {
         c = lam > 0.7 ? SKIN.hi : lam > 0.36 ? SKIN.mid : lam > 0.05 ? SKIN.lo : SKIN.deep;
         if (s.nx > 0.86 && !s.part.startsWith("bust")) c = SKIN.rim;   // 背光邊一圈亮
-        if (s.part.startsWith("bust") && lam > 0.9) c = SKIN.spec;   // 亮面高光只留在胸上（腿上的會變成一塊一塊的白斑）
+        if (s.part.startsWith("bust") && lam > 0.88 && y > B.cy) c = SKIN.spec;   // 高光只在胸的下半部鼓起來的地方（上半部有高光會看起來尖）
         if (s.part === "torso") {
           for (const [k, sg] of [[0, -1], [1, 1]]) {   // 胸下摺線的陰影：順著畫出來的下緣，往下推一點還在胸裡面的位置
             const u = (x - B.cx[k]) * sg, v = y - B.cy;
@@ -257,7 +261,7 @@ export function drawGirl(g, opts = {}) {
           else if (du < 0.008 && v > top && v < B.r * 0.6) c = SKIN.lo;
         }
         if (s.part.startsWith("bust")) {   // 乳暈（每邊胸的中下、往外一點）
-          const k = s.part === "bustL" ? 0 : 1, ax = B.cx[k] + (k ? 1 : -1) * B.r * (0.2 + 0.06 * B.sag), ay = B.cy + B.r * (0.38 + 0.36 * B.sag);
+          const k = s.part === "bustL" ? 0 : 1, ax = B.cx[k] + (k ? 1 : -1) * B.r * (0.4 + 0.06 * B.sag), ay = B.cy + B.r * (0.5 + 0.36 * B.sag);   // 乳頭朝外
           const d = Math.hypot(x - ax, y - ay);
           if (d < Math.max(0.006, B.r * 0.22)) c = d < Math.max(0.003, B.r * 0.08) ? [206, 110, 120] : [232, 150, 150];
         }
