@@ -133,16 +133,17 @@ t("影響：去休息忠誠 −1；在場再 −1、溫柔感情 −5、反差 +
   assert.deepEqual(R.effectsOf(wife(), { hotel: null }), { loyalty: 0, affection: 0, mood: null, hunger: 0, creampies: 0 });
 });
 
-t("結算：一般 2～10 金、熟客 ×2；房錢休息 2／住宿 5 從收入扣；4 星以上可能變熟客", () => {
+t("結算：一般 2～10 金＋女友感、熟客 ×2；房錢休息 2／住宿 5 從收入扣；4 星以上可能變熟客", () => {
   const spots = [{ key: "cafe", act: "" }, { key: "dinner", act: "" }, { key: "nightview", act: "" }];
   const s0 = R.settle(wife(), { client: client(), spots, ext: 0 }, null, () => .99);
   assert.deepEqual([s0.stars, s0.base, s0.income, s0.net, s0.becomeRegular], [3, 4, 4, 4, false]);
   const hot = { client: client("gentleman"), spots: spots.map((s) => ({ ...s, act: "牽手" })), ext: 2,
     hotel: { drive: true, paidRoom: true, stay: "stay", result: { level: "sex", cums: 2, creampies: 0 } } };
   const s1 = R.settle(wife("wife", "活潑開朗"), hot, null, () => 0);
-  assert.equal(s1.stars, 5); assert.equal(s1.income, 10); assert.equal(s1.roomFee, 5); assert.equal(s1.net, 5); assert.equal(s1.becomeRegular, true);
+  // 女友感：熱絡 +2、延長 2 次 +2 → 4 分 → 1 顆（+1 金，算在 10 之外）
+  assert.equal(s1.gfe, 1); assert.equal(s1.stars, 5); assert.equal(s1.income, 11); assert.equal(s1.roomFee, 5); assert.equal(s1.net, 6); assert.equal(s1.becomeRegular, true);
   const s2 = R.settle(wife("wife", "活潑開朗"), { ...hot, client: client("gentleman", 3, { regular: true }) }, null, () => .99);
-  assert.equal(s2.income, 20);
+  assert.equal(s2.income, 22);
   const s3 = R.settle(wife(), { client: client(), spots: [{ key: "cafe" }], ext: 0, extRefused: 3 }, { type: "angry", level: 50 });
   assert.equal(s3.stars, 1); assert.equal(s3.income, 2);
 });
@@ -249,6 +250,52 @@ t("中途提議去休息（居酒屋門口／夜景停車場）：成功就取�
     } else { midNo++; assert.ok(R.timeline({ ...d, startedAt: 0 }).some((e) => e.kind === "ino")); }
   }
   assert.ok(mid > 20, `mid ${mid} / no ${midNo}`);
+});
+
+t("女友感：接受的親密互動越多越高（接吻 2 分、摸胸只 0.5）、最多 5 顆", () => {
+  const sp = (beats) => ({ client: client(), spots: [{ key: "cafe", beats }], ext: 0 });
+  assert.equal(R.gfeScore(wife(), sp([])), 0);
+  assert.equal(R.gfeScore(wife(), sp([{ lv: 5, ok: true }, { lv: 5, ok: true }, { lv: 1, ok: true }])), 1);
+  assert.equal(R.gfeScore(wife(), sp([{ lv: 6, ok: true }, { lv: 6, ok: true }])), 0);
+  assert.equal(R.gfeScore(wife(), sp(Array.from({ length: 20 }, () => ({ lv: 5, ok: true })))), 5);
+  assert.equal(R.gfeScore(wife(), sp([{ lv: 5, ok: false }])), 0);
+});
+
+t("LINE 影響（一點點）：鼓勵她接受度 +0.04／次（上限 0.12）、鼓勵客人 +0.03／次＋升溫、勸阻相反；鼓勵客人評價 +0.5", () => {
+  const d = R.planDate({ who: wife(), client: client("gentleman") }, lcg(5));
+  assert.equal(R.applyIntent(d, "wife", "encourage"), true);
+  assert.equal(R.applyIntent(d, "wife", "none"), false);
+  for (let i = 0; i < 5; i++) R.applyIntent(d, "wife", "encourage");
+  assert.deepEqual(R.influenceOf(d), { her: 0.12, boost: 0 });
+  R.applyIntent(d, "client", "encourage");
+  assert.equal(d.cheered, true); assert.equal(d.heat, 3);
+  assert.ok(Math.abs(R.influenceOf(d).boost - 0.03) < 1e-9);
+  R.applyIntent(d, "client", "restrain"); R.applyIntent(d, "client", "restrain");
+  assert.ok(Math.abs(R.influenceOf(d).boost + 0.03) < 1e-9);
+  assert.equal(R.intentByWords("不要怕，放開一點沒關係"), "encourage");
+  assert.equal(R.intentByWords("別太過分喔"), "restrain");
+  assert.equal(R.intentByWords("你們到哪了"), "none");
+  const base = { client: client(), spots: [{ key: "cafe", beats: [] }], ext: 0 };
+  assert.equal(R.stars(wife(), { ...base, cheered: true }) - R.stars(wife(), base), 1);   // 3.5 四捨五入成 4
+});
+
+t("到了才擲：骨架沒有互動；推到某個時間只擲到那裡；鼓勵過她，後面的場景比較容易接受", () => {
+  const d = R.planDate({ who: wife(), client: client("clingy", 3) }, lcg(9));
+  assert.ok(d.spots.every((s) => s.beats.length === 0 && s.scenes.length === 3 && s.scenes.every((x) => !x.done)));
+  assert.equal(d.invite.resolved, false);
+  R.advance(d, 0.01, lcg(1));
+  assert.equal(d.spots[0].scenes.filter((x) => x.done).length, 1);
+  assert.ok(!d.spots[1].started);
+  assert.ok(!R.timeline(d).some((e) => e.kind === "bye" || e.kind === "invite"), "邀請還沒擲就不排結束");
+  R.advance(d, 99, lcg(2));
+  assert.equal(d.invite.resolved, true);
+  const rate = (enc) => { let ok = 0, n = 0; for (let k = 0; k < 300; k++) {
+    const x = R.planDate({ who: wife("wife", "文靜溫柔", { stats: { loyalty: 80 } }), client: client("gentleman", 2) }, lcg(k + 400));
+    for (let i = 0; i < enc; i++) R.applyIntent(x, "wife", "encourage");
+    R.advance(x, 99, lcg(k + 900));
+    for (const s of x.spots) for (const b of s.beats) { n++; if (b.ok) ok++; } } return ok / n; };
+  const plain = rate(0), cheered = rate(3);
+  assert.ok(cheered > plain + 0.03 && cheered < plain + 0.2, `plain ${plain} cheered ${cheered}`);
 });
 
 console.log(`rental: ${pass} passed`);

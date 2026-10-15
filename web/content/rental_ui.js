@@ -3,8 +3,8 @@
  * api：{ who(), inRoom(), say(who, ask, fallback) → Promise<string>, typeLine(name, text), goOut(who), comeBack(who),
  *        gold(), earn(n, why), hunger(who), mood(who), applyEffects(who, eff), persist(), debug(msg), peek(opts), ai?(kind, ctx) → Promise<string> }
  * 她的約會存在 who.rentalMine.active（關掉 App 再開照時間接著走；決定點會停住）。 */
-import * as R from "./rental.js?v=5";
-import * as L from "./rental_lines.js?v=5";
+import * as R from "./rental.js?v=6";
+import * as L from "./rental_lines.js?v=6";
 import { familyOf } from "./girl_voice.js?v=1";
 
 const BUILD_ZH = { average: "普通", slim: "瘦", muscular: "壯", fat: "胖", tall: "高", short: "矮", old: "中年" };
@@ -117,11 +117,11 @@ export function createRental(api) {
   function start(who, client) {
     if (active(who)) return;
     const mine = mineOf(who), now = Date.now();
-    const date = R.rollDate({ who, client, hunger: api.hunger(who), mood: api.mood(who), now });
+    const date = R.planDate({ who, client, hunger: api.hunger(who), mood: api.mood(who), now });   // 骨架；場景互動到了才擲
     date.chat = { wife: [], client: [] }; date.seen = {}; date.unread = { wife: 0, client: 0 }; date.honesty = R.honesty(who).level;
     mine.active = date; mine.offer = null;
     mine.starts = [...(mine.starts || []).filter((t) => now - t < 2 * R.DAY_MS), now].slice(-6);
-    api.debug(`日租女友：客人 ${client.name}（${L.PERSONA_ZH[client.persona]}・手腕 ${client.skill}${client.regular ? "・熟客" : ""}），行程 ${date.spots.map((s) => R.SPOTS[s.key].zh).join("→")}，邀請 ${Math.round(date.invite.p * 100)}% ${date.invite.yes ? "成功" : "沒成功"}`);
+    api.debug(`日租女友：客人 ${client.name}（${L.PERSONA_ZH[client.persona]}・手腕 ${client.skill}${client.regular ? "・熟客" : ""}），行程 ${date.spots.map((s) => R.SPOTS[s.key].zh).join("→")}`);
     api.goOut(who);
     api.persist();
     view = "list";
@@ -163,7 +163,12 @@ export function createRental(api) {
     const who = api.who(), date = active(who);
     clearTimeout(timer);
     if (!who || !date) { renderChip(); return; }
-    const now = Date.now(), dec = R.dueDecision(date, now);
+    const now = Date.now();
+    if (R.advance(date, R.elapsedHours(date, now))) {   // 到了的場景擲互動、到了就擲邀請（把 LINE 的鼓勵／勸阻算進去）
+      if (date.invite.resolved && !date._inviteLogged) { date._inviteLogged = 1; api.debug(`日租女友：邀請去休息 ${Math.round(date.invite.p * 100)}% → ${date.invite.yes ? "答應" : "沒答應"}${date.invite.mid ? "（中途，後面行程取消）" : ""}`); }
+      api.persist();
+    }
+    const dec = R.dueDecision(date, now);
     if (dec) { R.pauseAtDecision(date, dec); askDecision(who, date, dec); }
     const e = R.elapsedHours(date, now);
     for (const ev of R.timeline(date)) {
@@ -259,12 +264,22 @@ export function createRental(api) {
     render();
   }
   const nameOf = (who, date, side) => (side === "wife" ? who.name : `(客戶) ${date.client.name}`);
+  async function classify(side, text) {
+    if (api.intent) {
+      try { const t = await Promise.race([api.intent(side, text), new Promise((r) => setTimeout(() => r(""), 8000))]); if (["encourage", "restrain", "none"].includes(t)) return t; } catch { /* 關鍵字 */ }
+    }
+    return R.intentByWords(text);
+  }
   async function send(text) {
     const who = api.who(), date = active(who);
     if (!date) return;
     const side = tab, phase = R.where(date).seg?.kind === "hotel" ? "hotel" : "date";
     push(date, side, "me", text);
     render(); api.persist();
+    // 你這句是鼓勵／勸阻／普通？（AI 判斷，失敗用關鍵字）→ 一點點影響後面的場景
+    void classify(side, text).then((intent) => {
+      if (active(who) === date && R.applyIntent(date, side, intent)) { api.debug(`日租女友：你對${side === "wife" ? "她" : "客人"}${intent === "encourage" ? "鼓勵" : "勸阻"}（${JSON.stringify(date.influence)}）`); api.persist(); }
+    });
     // 回得快慢：她在旅館很慢或不回；客人在做的時候沒空
     const busy = phase === "hotel";
     if (busy && Math.random() < 0.4) return;
@@ -364,6 +379,7 @@ export function createRental(api) {
     if (bill.ext) row("延長", `+${bill.ext}`);
     if (bill.tip) row("小費", `+${bill.tip}`);
     if (bill.driver) row("司機", `+${bill.driver}`);
+    row("女友感", `${"★".repeat(bill.gfe)}${"☆".repeat(5 - bill.gfe)} +${bill.gfe}`);
     if (date.client.regular) row("熟客", "×2");
     row("收入", `+${bill.income} 金`, "tot");
     if (bill.roomFee) row("房錢（已付）", `−${bill.roomFee} 金`);

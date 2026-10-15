@@ -333,8 +333,8 @@ import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, 
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
 import { openPeek } from "./escort_peek.js?v=7";
 import * as Preg from "./pregnancy.js?v=1";
-import { createRental } from "./rental_ui.js?v=7";
-import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload } from "./rental.js?v=5";
+import { createRental } from "./rental_ui.js?v=8";
+import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload } from "./rental.js?v=6";
 import { moanVoiceId } from "./stun_speech.js?v=25";
 import {
   hungerOn,
@@ -1135,6 +1135,12 @@ const rental = createRental({
   applyEffects: rentalApply,
   persist: () => persistRoom(),
   debug: (m) => pushDebug(m),
+  // 你在 LINE 說的是鼓勵／勸阻／普通（server/rental_lines.py intent）；失敗回空 → 關鍵字
+  intent: async (side, text) => {
+    const resp = await fetch("/api/rental/intent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ side, text: String(text || "").slice(0, 120) }) });
+    if (!resp.ok) return "";
+    return String((await resp.json().catch(() => ({})))?.intent || "");
+  },
   // AI 寫 LINE（server/rental_lines.py）；伺服器沒有／失敗回空字串 → rental_ui 用句庫
   ai: async (kind, ctx) => {
     if (!girl || !ctx?.date) return "";
@@ -1325,7 +1331,7 @@ function renderRentalDebug() {
   const el = $("dbg-rental");
   if (!el || !girl) return;
   const m = girl.rentalMine || {}, d = m.active;
-  el.textContent = d ? `約會中：${d.client.name}・邀請 ${Math.round(d.invite.p * 100)}% ${d.invite.yes ? "成功" : "沒成功"}・${d.hotel?.presence || "—"}`
+  el.textContent = d ? `約會中：${d.client.name}・升溫 ${d.heat}・影響 她${d.influence?.wife || 0}／客${d.influence?.client || 0}・邀請 ${d.invite.resolved ? `${Math.round(d.invite.p * 100)}% ${d.invite.yes ? "成功" : "沒成功"}` : "還沒到"}・${d.hotel?.presence || "—"}`
     : `今天 ${(m.starts || []).filter((t) => Date.now() - t < 864e5).length} 場・熟客 ${(m.regulars || []).length}・上一場 ${m.last ? `${m.last.clientName} ${m.last.stars}★ ${m.last.honesty}` : "—"}`;
 }
 function bindRentalDebug() {
@@ -1333,7 +1339,7 @@ function bindRentalDebug() {
   onId("dbg-rental-ask", "click", () => { if (!girl) return; rm().starts = []; rm().askCoolUntil = 0; if (!sheetOpen()) showSheet(); void rental.ask(); });
   onId("dbg-rental-pick", "click", () => { if (!girl) return; rm().starts = []; rm().askCoolUntil = 0; rental.openPicker(); });
   onId("dbg-rental-hour", "click", () => { const d = girl?.rentalMine?.active; if (!d) return; d.startedAt -= 2 * 60e3; if (d.pauseAt) d.pauseAt -= 2 * 60e3; persistRoom(); rental.tick(); });
-  onId("dbg-rental-invite", "click", () => { const d = girl?.rentalMine?.active; if (!d || d.hotel) return; d.invite.yes = true; persistRoom(); pushDebug("日租除錯：邀請改成成功"); renderRentalDebug(); });
+  onId("dbg-rental-invite", "click", () => { const d = girl?.rentalMine?.active; if (!d || d.hotel) return; d.forceInvite = true; persistRoom(); pushDebug("日租除錯：這場的邀請會成功"); renderRentalDebug(); });
   onId("dbg-rental-end", "click", () => { if (girl?.rentalMine?.active) rental._finish(girl); renderRentalDebug(); });
   onId("dbg-rental-reset", "click", () => { if (!girl) return; rm().starts = []; rm().askCoolUntil = 0; persistRoom(); renderRentalDebug(); refreshTalkActs(); });
   setInterval(() => { try { renderRentalDebug(); } catch { /* */ } }, 2000);

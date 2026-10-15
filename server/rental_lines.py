@@ -107,3 +107,22 @@ def parse(reply: str) -> str:
             return ""
         return t
     return ""
+
+
+# ── 玩家在 LINE 說的話是鼓勵／勸阻／普通（2026-10-15）：一點點影響後面的場景 ──
+INTENT_WORD = {"鼓勵": "encourage", "勸阻": "restrain", "普通": "none"}
+
+
+def intent_prompt(side: str, text: str) -> tuple[str, str]:
+    who = "她（玩家的妻子，正在當日租女友陪客人約會）" if side == "wife" else "客人（以為玩家只是她的經紀人）"
+    system = ("你是分類器。判斷玩家傳給對方的一句 LINE 是在「鼓勵」對方在約會裡更放開、更親密、更大膽，"
+              "還是「勸阻」對方保守一點、別太過分，或只是「普通」聊天。只回一個詞：鼓勵／勸阻／普通。")
+    return system, f"對方：{who}\n玩家說：「{str(text or '')[:120]}」"
+
+
+def parse_intent(reply: str) -> str:
+    t = str(reply or "")
+    for word, key in INTENT_WORD.items():
+        if word in t:
+            return key
+    return ""

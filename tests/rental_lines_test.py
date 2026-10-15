@@ -52,4 +52,12 @@ def _():
     assert RL.parse("") == ""
 
 
+@t("意圖分類：提示詞帶對象與原句；解析鼓勵／勸阻／普通，看不懂回空")
+def _():
+    s, u = RL.intent_prompt("wife", "放開一點沒關係")
+    assert "鼓勵／勸阻／普通" in s and "妻子" in u and "放開一點沒關係" in u
+    assert RL.parse_intent("鼓勵") == "encourage" and RL.parse_intent("答：勸阻") == "restrain"
+    assert RL.parse_intent("普通。") == "none" and RL.parse_intent("不知道") == ""
+
+
 print(f"rental_lines: {PASS} passed")

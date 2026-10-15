@@ -4806,6 +4806,18 @@ async def rental_line(body: dict):
     return {"text": rental_lines.parse(reply)}
 
 
+@app.post("/api/rental/intent")
+async def rental_intent(body: dict):
+    """日租女友：玩家這句 LINE 是鼓勵／勸阻／普通。回 {intent: encourage|restrain|none|""}（空＝模型沒回，手機用關鍵字）。"""
+    body = body or {}
+    system, user = rental_lines.intent_prompt(str(body.get("side") or ""), str(body.get("text") or ""))
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=8)
+    except asyncio.TimeoutError:
+        reply = ""
+    return {"intent": rental_lines.parse_intent(reply)}
+
+
 async def _world_clock():
     """世界時鐘:伺服器權威 runtime。每 30 秒把召喚師模擬 + 計時判定(看板娘到期/委託逾期/跨日)
     補算到真實時間(關螢幕、離線也照跑),並每 10 分鐘輸出一次心跳日誌。"""

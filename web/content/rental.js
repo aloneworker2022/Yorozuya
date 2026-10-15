@@ -121,9 +121,9 @@ export const BEATS = Object.fromEntries(Object.entries(SCENES).map(([k, list]) =
 export const PUSH = { gentleman: -1, clingy: 0, showoff: 1, dominant: 1, otaku: 0 };
 export function beatCap(heat, persona, drunk = false) { return clamp(2 + Math.floor(heat / 20) + (PUSH[persona] || 0) + (drunk ? 1 : 0), 1, 6); }
 /** 她接受的機率：級數越高越難；A（她）、B（客人手腕）、升溫、喝醉加成。聊天一定接受。 */
-export function acceptChance(lv, { her = 0, client = null, heat = 0, drunk = false } = {}) {
+export function acceptChance(lv, { her = 0, client = null, heat = 0, drunk = false, boost = 0 } = {}) {
   if (lv <= 0) return 1;
-  return clamp(0.85 - 0.12 * (lv - 1) + her + clientFactor(client) + Math.min(0.2, heat / 500) + (drunk ? 0.15 : 0), 0.05, 0.95);
+  return clamp(0.85 - 0.12 * (lv - 1) + her + clientFactor(client) + Math.min(0.2, heat / 500) + (drunk ? 0.15 : 0) + boost, 0.05, 0.95);
 }
 /** 一站要走的 3 個場景（照順序；有「提議去休息」的出口場景一定走）。 */
 export function pickScenes(key, r0) {
@@ -134,34 +134,41 @@ export function pickScenes(key, r0) {
   while (free.length + must.length > 3) free.splice(Math.floor(r() * free.length), 1);
   return [...free, ...must].sort((a, b) => a - b);
 }
+/** 一個場景：試 2 個動作（先挑一個較輕的，再挑這個場景敢試的最大膽的；她閃開就停）。回 { beats, heat, wall }。 */
+export function rollScene(key, si, { her = 0, client = null, heat = 0, drunk = false, wall = 7, boost = 0 } = {}, r0) {
+  const r = rnd(r0), sc = SCENES[key][si], out = [];
+  let h = heat, w = wall;
+  const pool = sc.acts.filter((a) => !a.invite);
+  const cap = Math.min(beatCap(h, client?.persona, drunk), w - 1);
+  let can = pool.filter((a) => a.lv <= cap);
+  if (!can.length) { const m = Math.min(...pool.map((a) => a.lv)); can = pool.filter((a) => a.lv === m); }
+  const sorted = can.slice().sort((a, b) => a.lv - b.lv);
+  const first = sorted[Math.floor(r() * Math.max(1, sorted.length - 1))];
+  const rest = sorted.filter((a) => a !== first);
+  const hiLv = rest.length ? Math.max(...rest.map((a) => a.lv)) : -1;
+  const tops = rest.filter((a) => a.lv === hiLv);
+  const tries = [first, tops.length ? tops[Math.floor(r() * tops.length)] : null].filter(Boolean).sort((a, b) => a.lv - b.lv);
+  for (const a of tries) {
+    const ok = r() < acceptChance(a.lv, { her, client, heat: h, drunk, boost });
+    h += a.lv <= 0 ? 1 : ok ? a.lv * 2 + 1 : 1;   // 一天 9 個場景：升溫比舊的一站 2～3 件慢（×3＋2 → ×2＋1）
+    if (a.lv >= 1) out.push({ scene: sc.zh, lv: a.lv, ...voices(a.p), ok });
+    if (!ok) { if (a.lv >= 4) w = Math.min(w, a.lv); break; }   // 她閃開：這個場景就不再試；4 級以上被拒，這天不再試這級以上
+  }
+  return { beats: out, heat: h, wall: w };
+}
 /**
- * 一站的互動：3 個場景、每個場景試 2 個動作（由低到高；她閃開就換下一個場景）。
- * 回 { scenes:[{zh, invite}], beats:[{scene, lv, c, w, t, ok}]（不含聊天）, heat, inviteScene（走到有提議的場景）}。
+ * 一站的互動（測試／模擬用，一次擲完）：3 個場景、每個場景試 2 個動作。
+ * 回 { scenes:[{zh, invite}], beats:[{scene, lv, c, w, t, ok}]（不含聊天）, heat, inviteScene, wall }。
  */
 export function rollScenes(key, { her = 0, client = null, heat = 0, drunk = false, wall = 7 } = {}, r0) {
   const r = rnd(r0), out = [], scenes = [];
-  let h = heat, inviteScene = false, w = wall;   // wall：她拒絕過的最低等級（4 級以上）；客人學乖，這天不再試這級以上
+  let h = heat, w = wall, inviteScene = false;
   for (const si of pickScenes(key, r)) {
     const sc = SCENES[key][si];
     scenes.push({ zh: sc.zh, invite: sc.acts.some((a) => a.invite) });
     if (sc.acts.some((a) => a.invite)) inviteScene = true;
-    const pool = sc.acts.filter((a) => !a.invite);
-    const cap = Math.min(beatCap(h, client?.persona, drunk), w - 1);
-    let can = pool.filter((a) => a.lv <= cap);
-    if (!can.length) { const m = Math.min(...pool.map((a) => a.lv)); can = pool.filter((a) => a.lv === m); }
-    // 試 2 個：先挑一個較輕的，再挑一個這個場景敢試的最大膽的
-    const sorted = can.slice().sort((a, b) => a.lv - b.lv);
-    const first = sorted[Math.floor(r() * Math.max(1, sorted.length - 1))];
-    const rest = sorted.filter((a) => a !== first);
-    const hiLv = rest.length ? Math.max(...rest.map((a) => a.lv)) : -1;
-    const tops = rest.filter((a) => a.lv === hiLv);
-    const tries = [first, tops.length ? tops[Math.floor(r() * tops.length)] : null].filter(Boolean).sort((a, b) => a.lv - b.lv);
-    for (const a of tries) {
-      const ok = r() < acceptChance(a.lv, { her, client, heat: h, drunk });
-      h += a.lv <= 0 ? 1 : ok ? a.lv * 2 + 1 : 1;   // 一天 9 個場景：升溫比舊的一站 2～3 件慢（×3＋2 → ×2＋1）
-      if (a.lv >= 1) out.push({ scene: sc.zh, lv: a.lv, ...voices(a.p), ok });
-      if (!ok) { if (a.lv >= 4) w = Math.min(w, a.lv); break; }   // 她閃開：這個場景就不再試；4 級以上被拒，這天不再試這級以上
-    }
+    const x = rollScene(key, si, { her, client, heat: h, drunk, wall: w }, r);
+    out.push(...x.beats); h = x.heat; w = x.wall;
   }
   return { scenes, beats: out, heat: h, inviteScene, wall: w };
 }
@@ -271,35 +278,104 @@ export function inviteChance({ heat = 0, her = 0, client = null } = {}) {
  * 延長要求擲在每個點（最後一點除外），玩家同意才真的加時數。
  */
 export function rollDate(ctx = {}, r0) {
+  const date = planDate(ctx, r0);
+  advance(date, Infinity, r0);   // 測試／模擬：一次擲完。真正約會用 planDate＋每秒 advance（LINE 鼓勵才影響得到後面）
+  return date;
+}
+/**
+ * 約會骨架（2026-10-15）：行程、每站要走的 3 個場景、她點什麼、要不要延長先排好；
+ * 場景裡的互動、去休息的邀請「到了才擲」（advance），擲的時候把玩家在 LINE 的鼓勵／勸阻算進去。擲完就存起來，大家讀同一份。
+ */
+export function planDate(ctx = {}, r0) {
   const r = rnd(r0), who = ctx.who || {}, client = ctx.client || {};
   const family = familyOf(who), loyalty = who?.stats?.loyalty ?? 60;
   const her = herFactor({ loyalty, hunger: ctx.hunger || 0, kinks: who.kinks || [], family, mood: ctx.mood || null });
   const per = PERSONAS[client.persona] || PERSONAS.gentleman;
-  let heat = 0, inv = null, wall = 7;
-  const plan = planSpots(who, client, r), spots = [];
-  for (let i = 0; i < plan.length; i++) {
-    const s = plan[i], sp = SPOTS[s.key], drunk = s.key === "izakaya" && r() < 0.5;
-    heat += sp.heat;
-    const rs = rollScenes(s.key, { her, client, heat, drunk, wall }, r);
-    heat = rs.heat; wall = rs.wall;
-    const top = rs.beats.filter((b) => b.ok).at(-1) || null;   // 這站最親密、她接受的那件（句庫用）
-    spots.push({ key: s.key, by: s.by, h: sp.h, item: pick(sp.items, r), scenes: rs.scenes, beats: rs.beats, act: top?.c || "", actW: top?.w || "",
-      gift: s.key === "shopping" && rs.beats.some((b) => b.ok && /項鍊/.test(b.t)), drunk, extAsk: i < plan.length - 1 && r() < per.ext });
-    // 走到居酒屋門口／夜景停車場：客人就在這裡提議去休息（成功＝直接去旅館、後面的行程取消）
-    if (rs.inviteScene && !inv) {
-      const p = inviteChance({ heat, her, client });
-      inv = { p, yes: r() < p, i };
-      if (inv.yes) { for (let k = i + 1; k < plan.length; k++) spots.push({ key: plan[k].key, by: plan[k].by, h: SPOTS[plan[k].key].h, cancelled: true, beats: [], scenes: [] }); break; }
-    }
-  }
-  if (!inv) { const p = inviteChance({ heat, her, client }); inv = { p, yes: r() < p, i: spots.length - 1 }; }   // 沒走到出口場景：最後一站結束時提
-  if (inv.yes) spots[inv.i].extAsk = false;   // 要去休息的那一站不會再要求延長
-  const stay = inv.yes && r() < (client.regular ? 0.5 : 0.3) ? "stay" : "rest";
-  const live = spots.filter((x) => !x.cancelled), total = live.reduce((t, x) => t + x.h, 0);
-  return { v: 3, client: { ...client }, spots, heat, her,
-    invite: { p: inv.p, yes: inv.yes, i: inv.i, mid: inv.i < spots.length - 1, stay, style: client.persona === "gentleman" ? "ask" : client.persona === "otaku" ? "assume" : "normal" },
+  const plan = planSpots(who, client, r);
+  const spots = plan.map((s, i) => {
+    const sp = SPOTS[s.key];
+    return { key: s.key, by: s.by, h: sp.h, item: pick(sp.items, r), drunk: s.key === "izakaya" && r() < 0.5,
+      scenes: pickScenes(s.key, r).map((si) => ({ si, zh: SCENES[s.key][si].zh, invite: SCENES[s.key][si].acts.some((a) => a.invite), done: false })),
+      beats: [], act: "", actW: "", gift: false, extAsk: i < plan.length - 1 && r() < per.ext };
+  });
+  const total = spots.reduce((t, x) => t + x.h, 0);
+  return { v: 4, client: { ...client }, spots, heat: 0, wall: 7, her, family,
+    influence: { wife: 0, client: 0 }, cheered: false,
+    invite: { p: 0, yes: false, i: null, mid: false, resolved: false, stay: "rest", style: client.persona === "gentleman" ? "ask" : client.persona === "otaku" ? "assume" : "normal" },
     startedAt: Number(ctx.now) || Date.now(), startHour: clamp(21 - total, 10, 15),
     ext: 0, extRefused: 0, pausedMs: 0, pauseAt: 0, phase: "date", hotel: null };
+}
+/** 玩家在 LINE 的影響（一點點）：鼓勵她 每次 +0.04 接受度（最多 ±0.12）；鼓勵客人 每次 +0.03（最多 ±0.09）。 */
+export function influenceOf(date) {
+  const inf = date?.influence || {};
+  return { her: clamp(0.04 * (Number(inf.wife) || 0), -0.12, 0.12), boost: clamp(0.03 * (Number(inf.client) || 0), -0.09, 0.09) };
+}
+/**
+ * 往前推到遊戲時間 e（小時）：到了的站加曖昧、到了的場景擲互動、到了出口場景或最後一站結束擲邀請。
+ * 回 true＝有新東西（要存檔）。
+ */
+export function advance(date, e = Infinity, r0) {
+  const r = rnd(r0);
+  if (!date || date.v < 4) return false;
+  let changed = false;
+  for (let guard = 0; guard < 40; guard++) {
+    let moved = false;
+    for (const seg of schedule(date).segs) {
+      if (seg.kind !== "spot") continue;
+      const sp = date.spots[seg.i], len = seg.to - seg.from;
+      if (!sp.started && e >= seg.from) { sp.started = true; date.heat += SPOTS[sp.key].heat; moved = true; }
+      if (!sp.started) continue;
+      sp.scenes.forEach((sc, k) => {
+        if (sc.done || e < seg.from + (k / sp.scenes.length) * len) return;
+        const inf = influenceOf(date);
+        const x = rollScene(sp.key, sc.si, { her: date.her + inf.her, client: date.client, heat: date.heat, drunk: sp.drunk, wall: date.wall, boost: inf.boost }, r);
+        sc.done = true; sp.beats.push(...x.beats); date.heat = x.heat; date.wall = x.wall;
+        const top = sp.beats.filter((b) => b.ok).at(-1) || null;
+        sp.act = top?.c || ""; sp.actW = top?.w || "";
+        sp.gift = sp.key === "shopping" && sp.beats.some((b) => b.ok && /項鍊/.test(b.t));
+        moved = true;
+      });
+      // 邀請：走到出口場景那一站結束前，或最後一站結束前（還沒擲過才擲）
+      const lastLive = schedule(date).segs.filter((g) => g.kind === "spot").at(-1);
+      const exit = sp.scenes.some((x) => x.invite) && sp.scenes.every((x) => x.done);
+      if (!date.invite.resolved && sp.scenes.every((x) => x.done) && (exit || seg.i === lastLive?.i) && e >= seg.to - 0.05) {
+        const inf = influenceOf(date);
+        const p = inviteChance({ heat: date.heat, her: date.her + inf.her, client: date.client });
+        const yes = !!date.forceInvite || r() < Math.min(0.9, p + inf.boost);   // forceInvite：test_room 除錯「邀請成功」
+        Object.assign(date.invite, { p, yes, i: seg.i, resolved: true, stay: yes && r() < (date.client.regular ? 0.5 : 0.3) ? "stay" : "rest" });
+        if (yes) {
+          sp.extAsk = false;
+          date.spots.forEach((x, k) => { if (k > seg.i) x.cancelled = true; });
+          date.invite.mid = date.spots.some((x) => x.cancelled);
+        }
+        moved = true;
+        break;
+      }
+    }
+    if (!moved) break;
+    changed = true;
+  }
+  return changed;
+}
+/** 玩家在 LINE 說的話：鼓勵（+1）／勸阻（−1）／普通（0）。鼓勵客人第一次評價 +0.5（他覺得經紀人很上道）。 */
+export function applyIntent(date, side, intent) {
+  const d = intent === "encourage" ? 1 : intent === "restrain" ? -1 : 0;
+  if (!date || !d) return false;
+  date.influence = date.influence || { wife: 0, client: 0 };
+  const k = side === "wife" ? "wife" : "client";
+  date.influence[k] = clamp((Number(date.influence[k]) || 0) + d, -3, 3);
+  if (k === "client") date.heat = Math.max(0, (Number(date.heat) || 0) + 3 * d);
+  if (k === "client" && d > 0) date.cheered = true;
+  return true;
+}
+/** 沒有 AI 時的判斷：鼓勵／勸阻／普通（「不要怕」「別害羞」算鼓勵）。 */
+const ENCOURAGE_RE = /不要怕|別怕|不用怕|別害羞|不要害羞|放開|放輕鬆|大膽|沒關係|盡量|主動|加油|放心|享受|多.{0,3}一點|可以的|去吧|衝|上啊|隨便他|讓他/;
+const RESTRAIN_RE = /不要|別|不准|不可以|小心|保守|拒絕|太過|注意|收斂|規矩|夠了|停/;
+export function intentByWords(text) {
+  const t = String(text || "");
+  if (ENCOURAGE_RE.test(t)) return "encourage";
+  if (RESTRAIN_RE.test(t)) return "restrain";
+  return "none";
 }
 
 /**
@@ -387,22 +463,36 @@ export function stars(who, date, mood = null) {
   if ((date?.spots || []).some((x) => x.act)) s += 0.5;
   if (beats.some((b) => b.ok && b.lv >= 5)) s += 0.5;
   s -= Math.min(1.5, 0.5 * beats.filter((b) => !b.ok).length);   // 她閃開，客人不高興
+  if (date?.cheered) s += 0.5;   // 經紀人在 LINE 鼓勵過他：覺得很上道
   if (date?.hotel?.result) s += 1;
   s -= 0.5 * (Number(date?.extRefused) || 0);
   return clamp(Math.round(s), 1, 5);
 }
-/** 結算：收入（基本＋延長＋小費＋司機，夾 2～10，熟客 ×2）− 房錢。r 決定會不會變熟客。 */
+/**
+ * 女友感（2026-10-15，0～5）：她接受的「像女友」的互動（牽手、摟腰、餵食 1 分；曖昧、抱、親臉 1.5 分；接吻 2 分；摸胸那級只算 0.5）、
+ * 熱絡個性 +2、每答應延長一次 +1；每 5 分算 1 顆。每顆 +1 金，算在 2～10 之外，熟客一樣 ×2。
+ */
+export const GFE_PTS = { 1: 1, 2: 1, 3: 1.5, 4: 1.5, 5: 2, 6: 0.5 };
+export function gfeScore(who, date) {
+  let pts = 0;
+  for (const sp of date?.spots || []) for (const b of sp.beats || []) if (b.ok) pts += GFE_PTS[b.lv] || 0;
+  if (familyOf(who) === "熱絡") pts += 2;
+  pts += Number(date?.ext) || 0;
+  return clamp(Math.round(pts / 5), 0, 5);
+}
+/** 結算：收入（基本＋延長＋小費＋司機，夾 2～10）＋女友感，熟客 ×2 − 房錢。r 決定會不會變熟客。 */
 export function settle(who, date, mood = null, r0) {
   const r = rnd(r0), st = stars(who, date, mood);
   const base = (date?.spots || []).filter((x) => !x.cancelled).reduce((s, x) => s + SPOTS[x.key].pay, 0);
   const ext = (Number(date?.ext) || 0) * EXT_PAY;
   const tip = (st >= 5 ? 2 : st >= 4 ? 1 : 0) + (st >= 4 ? PERSONAS[date?.client?.persona]?.tip || 0 : 0);
   const driver = date?.hotel?.drive ? DRIVER_TIP : 0;
-  const raw = clamp(base + ext + tip + driver, INCOME_MIN, INCOME_MAX);
+  const gfe = gfeScore(who, date);
+  const raw = clamp(base + ext + tip + driver, INCOME_MIN, INCOME_MAX) + gfe;
   const income = date?.client?.regular ? raw * 2 : raw;
   const roomFee = date?.hotel?.paidRoom ? ROOM_FEE[date.hotel.stay] || 0 : 0;
   const regular = !date?.client?.regular && (st >= 5 ? r() < 0.7 : st >= 4 ? r() < 0.4 : false);
-  return { stars: st, base, ext, tip, driver, income, roomFee, net: income - roomFee, becomeRegular: regular || !!date?.client?.regular };
+  return { stars: st, base, ext, tip, driver, gfe, income, roomFee, net: income - roomFee, becomeRegular: regular || !!date?.client?.regular };
 }
 
 /** 約會時鐘：扣掉暫停（客人要求跳選擇時）。回傳經過的遊戲小時。 */
@@ -457,9 +547,10 @@ export function timeline(date) {
     out.push({ id: `cs:${s.i}`, kind: "cs", i: s.i, at: s.from + 0.8 * len });
     if (sp.extAsk) out.push({ id: `ext:${s.i}`, kind: "ext", i: s.i, at: s.from + sp.h - 0.2, decide: true });
     // 中途提議被拒（居酒屋門口／夜景停車場）：客人抱怨一句，約會照走
-    if (!date.invite?.yes && Number.isInteger(date.invite?.i) && date.invite.i === s.i && s.i < spots.at(-1)?.i) out.push({ id: `ino:${s.i}`, kind: "ino", i: s.i, at: s.to - 0.1 });
+    if (!date.invite?.yes && Number.isInteger(date.invite?.i) && date.invite.i === s.i && s.i < spots.at(-1)?.i) out.push({ id: `ino:${s.i}`, kind: "ino", i: s.i, at: s.to - 0.04 });
   }
   const T = spots.length ? spots[spots.length - 1].to : 0;
+  if (date.invite && date.invite.resolved === false) return out;   // 邀請還沒擲（到了才擲）
   if (!date.invite?.yes) { out.push({ id: "bye", kind: "bye", at: T }, { id: "end", kind: "end", at: T + 0.01 }); return out; }
   const iv = spots.find((s) => s.i === date.invite.i) || spots[spots.length - 1];
   out.push({ id: "invite", kind: "invite", at: iv ? iv.to : T, decide: true });
