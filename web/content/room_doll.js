@@ -367,9 +367,12 @@
     }
     /** 2026-10-13：grav＝頭部局部座標裡的「下」。站著是 [0,0,−1]（不動）；躺／趴時馬尾、雙馬尾、麻花辮從根部照重力垂，不再跟著頭轉成一根棍子。 */
     /** side＝側面（偷看）：鬢髮與兩側髮束收到臉頰後面（耳朵前後），不然從側面看整張臉被頭髮蓋住（2026-10-15）。 */
-    function hair(sh, P, doll, tor, sway = 0, grav = null, side = false) {
+    function hair(sh, P, doll, tor, sway = 0, grav = null, side = false, swing = null) {
       const Rg = grav ? gravRot(grav) : null;
       const bend = (pts, root = pts[0]) => !Rg ? pts : pts.map(p => { const d = mulV(Rg, [p[0] - root[0], p[1] - root[1], p[2] - root[2]]); return [root[0] + d[0], root[1] + d[1], root[2] + d[2]]; });
+      // swing（頭的局部座標向量）：髮根不動、越往髮尾甩越多；sw(p, w) 把點 p 照權重 w（0～1）推過去
+      const SW = swing || [0, 0, 0], sw = (p, w) => [p[0] + SW[0] * w, p[1] + SW[1] * w, p[2] + SW[2] * w];
+      const swc = (pts, ws) => pts.map((p, i) => sw(p, ws[i]));
       const zc = tor.zc, S = tor.S, yl = tor.yl, y0 = yl(zc), style = doll.hair, hh = P.head_h / 2, T = P.T;
       const bottoms = { short: zc - 4.5, bob: zc - 9.6, bun: zc - 5.5, buns: zc - 5.5, pony_hi: zc - 5.5, pony_lo: zc - 7 };
       const bottom = style in bottoms ? bottoms[style] : null;
@@ -377,7 +380,7 @@
       sh.ell(HAIR, [0, y0 - .6, zc + .9], [8.0, 8.3, hh + 1.1], cap);
       const fy = side ? -3.4 : 0;   // 側面：髮束往後挪，露出臉
       for (const s of [-1, 1]) sh.cone(HAIR, [s * 5.6, y0 + 3.6 + fy, zc + 3.5], [s * 6.5, y0 + 4.0 + fy * 1.1, zc - 2.0], side ? 1.5 : 1.9, side ? .9 : 1.1);
-      if (style === 'bob') sh.ell(HAIR, [0, y0 - 1.2, zc - 4.2], [9.0, 8.4, 5.2], { y0, zc, bang: 2.4, bottom, cut: zc - 10.0 });
+      if (style === 'bob') sh.ell(HAIR, sw([0, y0 - 1.2, zc - 4.2], .18), [9.0, 8.4, 5.2], { y0, zc, bang: 2.4, bottom, cut: zc - 10.0 });
       if (style === 'medium' || style === 'long' || style === 'waist') {
         const end = { medium: S - 3.5, long: S - .5 * T, waist: S - .78 * T }[style];
         const n = Math.max(3, Math.trunc((zc - end) / 2.2));
@@ -385,37 +388,39 @@
           const t = i / n, z = zc + 1 - (zc + 1 - end) * t;
           const w = 8.0 - 1.4 * t + (style === 'medium' && t > .7 ? 1.2 : 0);
           const yb = yl(z) - (4.6 + 2.6 * Math.min(1, t * 1.6));
-          sh.ell(HAIR, [sway * t * t, yb, z], [w, 2.4 + (1 - t) * 2.2, 2.6]);
+          sh.ell(HAIR, sw([sway * t * t, yb, z], t ** 1.6), [w, 2.4 + (1 - t) * 2.2, 2.6]);
         }
         const lockEnd = { medium: S - 1.0, long: S - .38 * T, waist: S - .62 * T }[style];
         const flare = style === 'medium' ? 2.2 : .8;
         const rr = style === 'medium' ? [1.9, 2.0, 1.0] : [2.0, 2.1, 1.9, 1.0];
         for (const s of [-1, 1]) {
           const pts = [[s * 6.2, y0 + 1.8 + fy, zc + 1], [s * (7.4 + flare * .5), y0 + 1.6 + fy, zc - 7]];
-          if (style !== 'medium') pts.push([s * 7.6 + sway * .2, yl(S) + 2.8 + fy * .7, S - 2]);
-          pts.push([s * (6.9 + flare) + sway * .3, yl(lockEnd) + 3.4 + fy * .5, lockEnd]);
-          sh.chain(HAIR, pts, rr);
+          // 側面：垂到胸前的兩束收到肩膀後面（不然從側面看蓋住胸口）
+          if (style !== 'medium') pts.push([s * 7.6 + sway * .2, yl(S) + 2.8 + fy * (side ? 1.8 : .7), S - 2]);
+          pts.push([s * (6.9 + flare) + sway * .3, yl(lockEnd) + 3.4 + fy * (side ? 2.2 : .5), lockEnd]);
+          sh.chain(HAIR, swc(pts, pts.length === 3 ? [0, .3, 1] : [0, .25, .6, 1]), rr);
         }
       }
       if (style === 'pony_hi') {
         sh.ell(HAIR, [0, y0 - 8.2, zc + 2.4], [2.7, 2.6, 2.6]);
-        sh.chain(HAIR, bend([[0, y0 - 9.6, zc + 3.0], [sway * .3, y0 - 12.6, zc + .5], [sway * .7, y0 - 12.6, zc - 7], [sway, yl(S) - 10.0, S - 9]]), [2.6, 3.1, 2.4, 1.0]);
+        sh.chain(HAIR, swc(bend([[0, y0 - 9.6, zc + 3.0], [sway * .3, y0 - 12.6, zc + .5], [sway * .7, y0 - 12.6, zc - 7], [sway, yl(S) - 10.0, S - 9]]), [0, .2, .6, 1]), [2.6, 3.1, 2.4, 1.0]);
       }
       if (style === 'pony_lo') {
         sh.ell(HAIR, [0, y0 - 7.4, zc - 5.0], [2.3, 2.1, 2.1]);
-        sh.chain(HAIR, bend([[0, y0 - 8.4, zc - 5.6], [sway * .5, yl(S) - 7.6, S - 6], [sway, yl(S) - 7.2, S - 17]]), [2.4, 2.6, 1.1]);
+        sh.chain(HAIR, swc(bend([[0, y0 - 8.4, zc - 5.6], [sway * .5, yl(S) - 7.6, S - 6], [sway, yl(S) - 7.2, S - 17]]), [0, .45, 1]), [2.4, 2.6, 1.1]);
       }
       if (style === 'twin') for (const s of [-1, 1]) {
         sh.ell(HAIR, [s * 6.4, y0 - 2.4, zc + 4.4], [2.1, 2.0, 2.1]);
-        sh.chain(HAIR, bend([[s * 8.2, y0 - 2.6, zc + 4.2], [s * 11.2, y0 - 2.6, zc - .5], [s * 12.4 + sway * .4, y0 - 2.6, zc - 11],
-          [s * 12.0 + sway * .8, y0 - 2.4, S - 14], [s * 10.8 + sway, yl(S) - 2.2, S - 24]]), [2.0, 2.5, 2.1, 1.6, .7]);
+        sh.chain(HAIR, swc(bend([[s * 8.2, y0 - 2.6, zc + 4.2], [s * 11.2, y0 - 2.6, zc - .5], [s * 12.4 + sway * .4, y0 - 2.6, zc - 11],
+          [s * 12.0 + sway * .8, y0 - 2.4, S - 14], [s * 10.8 + sway, yl(S) - 2.2, S - 24]]), [0, .12, .4, .72, 1]), [2.0, 2.5, 2.1, 1.6, .7]);
       }
-      if (style === 'bun') sh.ell(HAIR, [0, y0 - 5.2, zc + hh - .6], [4.0, 3.8, 3.6]);
-      if (style === 'buns') for (const s of [-1, 1]) sh.ell(HAIR, [s * 6.0, y0 - 1.8, zc + hh + 1.8], [3.1, 2.9, 3.0]);
+      if (style === 'bun') sh.ell(HAIR, sw([0, y0 - 5.2, zc + hh - .6], .08), [4.0, 3.8, 3.6]);
+      if (style === 'buns') for (const s of [-1, 1]) sh.ell(HAIR, sw([s * 6.0, y0 - 1.8, zc + hh + 1.8], .08), [3.1, 2.9, 3.0]);
       if (style === 'braid') {
         const pts = [[-6.0, y0 - 1.5, zc - 4.5], [-6.8, yl(S) + 2.0, S + 1], [-6.2, yl(S) + 4.6, S - 5]];
         for (let i = 0; i < 6; i++) pts.push([-5.6 + i * .15, yl(S - 7 - i * 2.4) + 5.4 + i * .1, S - 7 - i * 2.4]);
         if (Rg) pts.splice(0, pts.length, ...bend(pts));
+        pts.splice(0, pts.length, ...pts.map((p, i) => sw(p, (i / (pts.length - 1)) ** 1.4)));
         pts.forEach((p, i) => { const r = 2.3 - i * .1 + (i % 2 ? .35 : 0); sh.ell(HAIR, p, [r, r * .9, i > 1 ? 1.7 : 2.4]); });
         sh.chain(HAIR, pts.slice(0, 3), [2.4, 2.2, 2.0]);
         const tail = pts[pts.length - 1];
@@ -520,11 +525,17 @@
     function springTrace(amp, f0, zeta) {
       const key = `${amp}|${f0}|${zeta}`;
       if (traceCache.has(key)) return traceCache.get(key);
+      const out = springSignal(HER_J.map(v => amp * v), f0, zeta);
+      traceCache.set(key, out);
+      return out;
+    }
+    /** 一般版：sig＝每格的位置（循環），回傳每格的彈簧相對位移（同座標；慢半拍跟著的那一邊是 −方向，呼叫端自己決定怎麼用）。 */
+    function springSignal(sig, f0, zeta) {
       const w = 2 * Math.PI * f0, n = SEX_THRUST.length;
       const total = SEX_FRAME_MS.reduce((a, b) => a + b, 0) / 1000, steps = 200, dt = total / steps;
-      const pos = (tm) => {   // 身體位移（跟著格的時間內插）
-        let acc = 0; for (let i = 0; i < n; i++) { const d = SEX_FRAME_MS[i] / 1000; if (tm < acc + d) { const f = (tm - acc) / d; return amp * (HER_J[i] * (1 - f) + HER_J[(i + 1) % n] * f); } acc += d; }
-        return amp * HER_J[0];
+      const pos = (tm) => {   // 位置（跟著格的時間內插）
+        let acc = 0; for (let i = 0; i < n; i++) { const d = SEX_FRAME_MS[i] / 1000; if (tm < acc + d) { const f = (tm - acc) / d; return sig[i] * (1 - f) + sig[(i + 1) % n] * f; } acc += d; }
+        return sig[0];
       };
       let y = 0, v = 0; const out = new Array(n).fill(0);
       for (let c = 0; c < 6; c++) {
@@ -535,7 +546,17 @@
           if (c === 5 && tm >= acc) { out[fi] = y; acc += SEX_FRAME_MS[fi] / 1000; fi = Math.min(n - 1, fi + 1); }
         }
       }
-      traceCache.set(key, out);
+      return out;
+    }
+    /** 頭髮甩動（2026-10-15）：頭在世界（側面畫面）的前後 y／上下 z 每格位置 → 彈簧（2.2Hz、阻尼 0.28）→ 每格頭髮的世界位移。 */
+    const hairCache = new Map();
+    function hairSwing(doll, pose) {
+      const key = dollKey(doll) + '|' + pose;
+      if (hairCache.has(key)) return hairCache.get(key);
+      const n = SEX_THRUST.length, hy = [], hz = [];
+      for (let f = 0; f < n; f++) { const h = sexAnchor(doll, pose, f).head; hy.push(h[1]); hz.push(h[2]); }
+      const out = [springSignal(hy, 2.2, .28), springSignal(hz, 2.2, .28)];
+      hairCache.set(key, out);
       return out;
     }
     function sexBounce(P, doll, axis, amp) {
@@ -969,9 +990,13 @@
       // v6：四肢著地時長髮收短（塞到耳後／垂到肩為止），不擋住胸
       // 2026-10-13：仰躺（傳教士）長髮也收短——不然整束沿身體斜斜垂到床下面，像一根棍子
       const hdoll = (pose === 'sex_doggy' || pose === 'sex_missionary') && (doll.hair === 'long' || doll.hair === 'waist') ? { ...doll, hair: 'medium' } : doll;
-      const lagU = HER_U[(fi - 1 + n) % n];
       const Rh = g.headR ? mulR(R, g.headR) : R;
-      hair(sh, P, hdoll, tor, (pose === 'sex_cowgirl' ? 3.4 : 2.4) * (lagU - .5) + (g.sway ? 1.2 * g.sway : 0), mulT(Rh, [0, 0, -1]), true);
+      // 2026-10-15：原本 sway 只加在左右（x），側面看不到 → 頭髮黏在頭上。改成頭在畫面上的前後／上下位置推彈簧，
+      // 慢半拍甩、甩過頭再回來；世界位移換到頭的局部座標，髮尾最大。
+      const [hsy, hsz] = hairSwing(doll, pose), HG = 1.5, cl = (v) => Math.max(-6.5, Math.min(6.5, v));
+      const swing = mulT(Rh, [0, cl(hsy[fi] * HG), cl(hsz[fi] * HG)]);   // 輸入是世界座標 → 彈簧位移就是落後方向，不反號
+      swing[1] = Math.min(swing[1], 1.2);   // 頭髮從後腦垂下：往臉／胸那邊只能甩一點，不然蓋住胸口
+      hair(sh, P, hdoll, tor, g.sway ? 1.2 * g.sway : 0, mulT(Rh, [0, 0, -1]), true, swing);
       sh.xf = null;
       return { sh, P, xf, H };
     }
