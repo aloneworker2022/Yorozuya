@@ -7,7 +7,7 @@
  * openEntry({ venue, room, stayZh, clientName, onChoose(presence 'in'|'door') }) → { close() }。 */
 import { paintRyokan } from "./rental_entry_paint.js?v=2";
 import { paintJapaneseRoom, projectJapaneseRoom } from "./rental_room_paint.js?v=3";
-import { drawGirl } from "./rental_girl_pixel.js?v=2";
+import { drawGirl } from "./rental_girl_pixel.js?v=3";
 import { paintBathroom } from "./rental_bath_paint.js?v=2";
 import { hotelDoorScene, hotelBedScene, hotelBathScene, motelGarageScene, motelBedScene, motelBathScene } from "./rental_scenes_hm.js?v=2";
 const LW = 195, LH = 422;
