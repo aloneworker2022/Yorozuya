@@ -6,19 +6,22 @@
  * 畫面跟偷看同一套尺寸（195×422 邏輯像素、放大顯示）。不決定結果，只回報玩家選了什麼。
  * openEntry({ venue, room, stayZh, clientName, onChoose(presence 'in'|'door') }) → { close() }。 */
 import { paintRyokan } from "./rental_entry_paint.js?v=2";
-import { paintJapaneseRoom } from "./rental_room_paint.js?v=1";
+import { paintJapaneseRoom } from "./rental_room_paint.js?v=2";
+import { paintBathroom } from "./rental_bath_paint.js?v=1";
 const LW = 195, LH = 422;
 
 const CSS = `
 .rent-entry{position:fixed;inset:0;z-index:9000;background:#120e16;display:flex;align-items:center;justify-content:center;touch-action:manipulation}
 .rent-entry .box{position:relative;height:100%;max-height:100dvh;aspect-ratio:195/422;max-width:100vw}
 .rent-entry canvas{width:100%;height:100%;image-rendering:pixelated;display:block}
-.rent-entry .t{position:absolute;left:0;right:0;text-align:center;font:600 15px/1.35 "Fusion Pixel",system-ui,sans-serif;pointer-events:none;text-shadow:0 1px 0 #000;padding:0 14px}
+.rent-entry .t{position:absolute;left:0;right:0;text-align:center;font:600 15px/1.35 "Fusion Pixel",system-ui,sans-serif;pointer-events:none;text-shadow:0 1px 0 #000,0 0 4px #000,0 0 8px rgba(0,0,0,.8);padding:0 14px}
 .rent-entry .ti{top:4.5%;color:#e8b4cf}.rent-entry .st{top:10%;color:#e6c79a;font-size:13px}
 .rent-entry .ch{position:absolute;left:7%;right:7%;bottom:3.5%;display:flex;flex-direction:column;gap:8px}
 .rent-entry .ch button{display:flex;flex-direction:column;align-items:center;gap:1px;padding:9px 10px;border-radius:10px;border:1px solid #6a4a5c;background:rgba(28,18,30,.9);color:#f2dbe6;font:600 15px/1.3 system-ui,sans-serif;cursor:pointer;box-shadow:none;text-shadow:none}
 .rent-entry .ch button.main{background:rgba(120,40,78,.92);border-color:#d0709c}
-.rent-entry .ch small{font-weight:400;font-size:12px;color:#d8b9c8}`;
+.rent-entry .ch small{font-weight:400;font-size:12px;color:#d8b9c8}
+.rent-entry .nav{position:absolute;top:44%;width:42px;height:64px;border:0;border-radius:10px;background:rgba(20,12,22,.45);color:#f2dbe6;font:400 44px/1 system-ui,sans-serif;cursor:pointer;box-shadow:none;text-shadow:0 1px 2px #000;padding:0}
+.rent-entry .nav.l{left:2%}.rent-entry .nav.r{right:2%}.rent-entry .nav[hidden]{display:none}`;
 
 const R = (g, c, x, y, w, h) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
 
@@ -199,30 +202,44 @@ export function openEntry(opts = {}) {
   return { close, el: ov };
 }
 
-/** 進去之後看到的房間（2026-10-15：先做日式主臥室；其他兩種還沒有 → 回傳 null，呼叫端照舊）。
- * openRoom({ venue, room, night, clientName, onContinue }) → { close() } | null。 */
-const ROOMS = { ryokan: paintJapaneseRoom };
+/** 進去之後看到的房間（2026-10-15：先做溫泉旅館；其他兩種還沒有 → 回傳 null，呼叫端照舊）。
+ * 一間可以有好幾個場景，左右箭頭切換（主臥室 > 浴室、浴室 < 主臥室）。
+ * openRoom({ venue, room, night, clientName, onContinue }) → { close(), go(i) } | null。 */
+const ROOMS = { ryokan: [{ key: "bed", zh: "主臥室", paint: paintJapaneseRoom }, { key: "bath", zh: "浴室", paint: paintBathroom }] };
 export function hasRoom(venue) { return !!ROOMS[venue]; }
 export function openRoom(opts = {}) {
-  const paint = ROOMS[opts.venue];
-  if (!paint) return null;
+  const scenes = ROOMS[opts.venue];
+  if (!scenes) return null;
   if (!document.getElementById("rent-entry-css")) {
     const st = document.createElement("style"); st.id = "rent-entry-css"; st.textContent = CSS; document.head.append(st);
   }
   const ov = document.createElement("div");
   ov.className = "rent-entry"; ov.id = "rent-room"; ov.dataset.venue = opts.venue;
-  ov.innerHTML = `<div class="box"><canvas width="${LW}" height="${LH}"></canvas><div class="t ti"></div><div class="t st"></div><div class="ch"></div></div>`;
+  ov.innerHTML = `<div class="box"><canvas width="${LW}" height="${LH}"></canvas><div class="t ti"></div><div class="t st"></div>
+    <button type="button" class="nav l" aria-label="上一個">‹</button><button type="button" class="nav r" aria-label="下一個">›</button><div class="ch"></div></div>`;
   document.body.append(ov);
-  ov.querySelector(".ti").textContent = opts.room || "";
-  ov.querySelector(".st").textContent = `${opts.clientName || "客人"}和她已經在房間裡了。`;
-  const g = ov.querySelector("canvas").getContext("2d");
-  paint(g, { night: !!opts.night });   // 靜態：畫一次
+  const st = ov.querySelector(".st"), g = ov.querySelector("canvas").getContext("2d"), L = ov.querySelector(".nav.l"), Rt = ov.querySelector(".nav.r");
+  const cache = [];   // 每個場景畫一次就存起來（逐像素一張要 0.2～0.4 秒）
+  let cur = 0;
+  const go = (i) => {
+    cur = Math.max(0, Math.min(scenes.length - 1, i));
+    const sc = scenes[cur];
+    if (!cache[cur]) { const c = document.createElement("canvas"); c.width = LW; c.height = LH; sc.paint(c.getContext("2d"), { night: !!opts.night }); cache[cur] = c; }
+    g.drawImage(cache[cur], 0, 0);
+    ov.dataset.scene = sc.key;
+    ov.querySelector(".ti").textContent = `${opts.room || ""}・${sc.zh}`;
+    st.textContent = cur === 0 ? `${opts.clientName || "客人"}和她已經在房間裡了。` : "";
+    L.hidden = cur === 0; Rt.hidden = cur === scenes.length - 1;
+  };
+  L.addEventListener("click", () => go(cur - 1));
+  Rt.addEventListener("click", () => go(cur + 1));
+  go(0);
   const b = document.createElement("button"); b.type = "button"; b.className = "main"; b.textContent = "繼續";
   let closed = false;
   const close = () => { if (closed) return; closed = true; ov.remove(); };
   b.addEventListener("click", () => { close(); opts.onContinue?.(); });
   ov.querySelector(".ch").append(b);
-  return { close, el: ov };
+  return { close, go, el: ov };
 }
-/** 檢查用：畫房間到 canvas。 */
-export function drawRoom(g, venue, night = false) { ROOMS[venue]?.(g, { night }); }
+/** 檢查用：畫房間到 canvas（i＝第幾個場景）。 */
+export function drawRoom(g, venue, night = false, i = 0) { ROOMS[venue]?.[i]?.paint(g, { night }); }

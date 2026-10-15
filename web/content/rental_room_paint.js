@@ -240,3 +240,6 @@ export function paintJapaneseRoom(g, opts = {}) {
   }
   g.putImageData(img, 0, 0);
 }
+
+/** 給浴室等其他房間共用的射線／材質工具。 */
+export const roomKit = { hitBox, hitEll, woodGrain, tint };
