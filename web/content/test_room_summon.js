@@ -1158,7 +1158,7 @@ window.RoomRental = rental;
 // ---------------------------------------------------------------- 接客還債（escort.js，2026-10-10 Al）
 /**
  * 只有老婆（妻子以上）。負債 > 50：人在房裡的老婆自己走到你面前說一句、然後出門（不能阻止）；
- * 負債 ≤ 50（含沒欠債）：互動列可以請她去（有負債寫還債，沒欠債寫繼續接客），她決定。出門＝world.escortGo 旗＋送她走，RP5 開班（手機關著也照走）。
+ * 負債 ≤ 50（含沒欠債）：她不去、互動列沒有按鈕（拜託流程只留給 test_room 除錯列）。出門＝world.escortGo 旗＋送她走，RP5 開班（手機關著也照走）。
  * 金幣：主遊戲（app.js YorozuyaWallet）；test_room 沙盒用 localStorage yoro_sandbox_gold。
  */
 let escortDialog = null;   // {mode:'auto'|'ask', phase:'opening'|'choose', line}
@@ -1270,7 +1270,7 @@ function escortLeave(who = girl) {
   if (status) status.textContent = `${who.name}出門去接客還債了。手機關著也會照常工作，做完會回到房間。`;
   try { window.dispatchEvent(new CustomEvent("yoro-escort-go", { detail: { id: who.gameGirlId || who.id } })); } catch { /* */ }
 }
-/** 互動列：負債 ≤ 50（含沒欠債）、老婆、沒在冷卻，可以請她去接客。 */
+/** 除錯列用：負債 ≤ 50（含沒欠債）、老婆、沒在冷卻，可以請她去接客（正式互動列沒有按鈕）。 */
 function canAskEscort() {
   return !!girl && girlInRoom() && canEscort(girl) && askable(walletGold()) && !escortDialog
     && Date.now() >= (Number(girl.escortMine?.askCoolUntil) || 0);
@@ -9677,19 +9677,7 @@ function refreshTalkActs() {
     btn.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void giveMedicine(); });
     row.append(btn);
   }
-  // 負債 ≤ 50（含沒欠債）：請老婆去接客（她決定）。負債超過 50 她自己去，不顯示。
-  if (!talkBusy && canAskEscort()) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.dataset.romance = "escort";
-    const owing = debtOf(walletGold());
-    btn.textContent = owing > 0 ? "拜託她幫忙還債" : "請她繼續接客";
-    btn.title = owing > 0
-      ? `負債 ${owing} 金：拜託她去接一輪（4 位，她會自己決定）`
-      : "請她再去接一輪（4 位，她會自己決定）";
-    btn.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void askEscort(); });
-    row.append(btn);
-  }
+  // 接客沒有按鈕：只有負債超過 50 她才自己去（autoDue）。
   // 妻子以上：請她去當日租女友（她決定；一天一場）
   if (!talkBusy && rental.canAsk()) {
     const btn = document.createElement("button");
