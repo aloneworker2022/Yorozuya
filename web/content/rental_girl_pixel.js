@@ -108,7 +108,7 @@ function torsoHalf(y, F) {
 function bustGeo(P) {
   if (P._bust) return P._bust;
   // 2026-10-15：靠近中線（使用者：太外擴）。dx＝胸中心到中線的距離。
-  const r = P.bust, sag = P.sag, cy = 0.248 + r * (0.5 + 0.4 * sag), dx = (0.006 + r * 0.5) * P.F.chest;
+  const r = P.bust, sag = P.sag, cy = 0.248 + r * (0.5 + 0.4 * sag), dx = (0.01 + r * 0.56) * P.F.chest;
   // 擠壓：輪廓越過中線的部分壓平在中線上（兩邊在乳溝貼在一起成一條直線），被擠掉的量往上推、乳溝上方鼓起來
   let squeeze = 0;
   const poly = breastOutline(r, sag).map(([u, v]) => {
@@ -136,11 +136,11 @@ function sample(x, y, P) {
   if (hair === "bun") take(0, "hairB", ellipse(x, y, hx, -0.01, 0.034, 0.028));
   if (hair === "buns") for (const s of [-1, 1]) take(0, "hairB", ellipse(x, y, hx + s * 0.048, -0.002, 0.024, 0.022));
   // 1 身體
+  take(1, "neck", capsule(x, y, hx, 0.125, sway(0.16), 0.165, 0.016, 0.019));   // 脖子先放，頭蓋在上面（不然脖子會畫到下巴上）
   take(1, "head", ellipse(x, y, hx, 0.072, 0.05, 0.066));
-  take(1, "neck", capsule(x, y, hx, 0.12, sway(0.16), 0.162, 0.016, 0.019));
   const hw = torsoHalf(y, F), cx = sway(y);
   if (hw > 0) take(1, "torso", { d: Math.abs(x - cx) - hw, nx: clamp((x - cx) / hw, -1, 1), ny: 0 });
-  for (const s of [-1, 1]) take(1, "torso", capsule(x, y, sway(0.16) + s * 0.024, 0.156, sway(0.19) + s * 0.086 * F.sh, 0.192, 0.018, 0.024));   // 斜肩
+  for (const s of [-1, 1]) take(1, "torso", capsule(x, y, sway(0.17) + s * 0.03, 0.172, sway(0.19) + s * 0.086 * F.sh, 0.194, 0.012, 0.022));   // 斜肩（從脖子根部往下斜，不在脖子旁邊鼓一團）
   // 腿：右腳（s＝1）是重心腳、直；左腳膝蓋往內、腳往外一點
   for (const s of [-1, 1]) {
     const hipX = sway(0.52) + s * 0.05 * F.hip, kx = s > 0 ? sway(0.73) + 0.03 : sway(0.73) - 0.012, ax = s > 0 ? sway(0.95) + 0.026 : sway(0.95) - 0.05;
@@ -191,7 +191,7 @@ export function girlParams(look = {}, doll = null) {
   const hc = HAIR_RGB[String(look.hair_color || "").trim()] || HAIR_RGB.深棕;
   const ph = String(look.pubic_hair || ""), pubic = /剃光|沒有/.test(ph) ? 0 : /稀疏/.test(ph) ? 1 : /濃密/.test(ph) ? 3 : 2;
   const soft = /微肉|軟肉|豐滿|漫畫/.test(String(look.build || doll?.build || "")) ? 0.25 : 0;
-  return { F, bust: 0.019 + ci * 0.0042 + ci * ci * 0.00008, sag: clamp(ci / 8 * 0.75 + soft, 0, 1),   // 照使用者的罩杯比例表：A～B 幾乎平、I～J 兩邊加起來剛好身體寬
+  return { F, bust: 0.027 + ci * 0.0058, /* 2026-10-15：回到 v3 的大小（使用者：本來還對）；先以 C 罩杯為基本型 */ sag: clamp(ci / 8 * 0.75 + soft, 0, 1),   // 照使用者的罩杯比例表：A～B 幾乎平、I～J 兩邊加起來剛好身體寬
     hair, hairLen, hairRGB: hc, pubic, heightCm: Number(doll?.height_cm || look.height_cm) || 160 };
 }
 
@@ -237,7 +237,7 @@ export function drawGirl(g, opts = {}) {
       } else {
         c = lam > 0.7 ? SKIN.hi : lam > 0.36 ? SKIN.mid : lam > 0.05 ? SKIN.lo : SKIN.deep;
         if (s.nx > 0.86 && !s.part.startsWith("bust")) c = SKIN.rim;   // 背光邊一圈亮
-        if ((s.part.startsWith("bust") && lam > 0.9) || ((s.part.startsWith("leg") || (s.part === "torso" && y > 0.45)) && lam > 0.965)) c = SKIN.spec;   // 亮面高光（大腿、臀只留一小點）
+        if (s.part.startsWith("bust") && lam > 0.9) c = SKIN.spec;   // 亮面高光只留在胸上（腿上的會變成一塊一塊的白斑）
         if (s.part === "torso") {
           for (const [k, sg] of [[0, -1], [1, 1]]) {   // 胸下摺線的陰影：順著畫出來的下緣，往下推一點還在胸裡面的位置
             const u = (x - B.cx[k]) * sg, v = y - B.cy;
