@@ -126,9 +126,9 @@ t("人偶：四種側面體位都畫得出來、她身材照自己的 look、抽
     assert.notDeepEqual(Buffer.from(a.pixels), Buffer.from(D.render(slim, pose, 0, 0).pixels), `${pose} 身材沒差`);
     assert.equal(D.POSES[pose].frames, D.SEX_THRUST.length);
   }
-  // 抽送：頂到底（p=1）她被撞得比退出時更往枕頭那邊
-  assert.ok(D.sexAnchor(d, "sex_missionary", 0).hip[1] < D.sexAnchor(d, "sex_missionary", 7).hip[1]);
-  assert.ok(D.sexAnchor(d, "sex_cowgirl", 0).hip[2] < D.sexAnchor(d, "sex_cowgirl", 7).hip[2]);
+  // 抽送：頂到底（第 0 格 p=1）她被撞得比退到最外（第 3 格 p=0）更往枕頭那邊（2026-10-15 等速後改比第 3 格）
+  assert.ok(D.sexAnchor(d, "sex_missionary", 0).hip[1] < D.sexAnchor(d, "sex_missionary", 3).hip[1]);
+  assert.ok(D.sexAnchor(d, "sex_cowgirl", 0).hip[2] < D.sexAnchor(d, "sex_cowgirl", 3).hip[2]);
 });
 t("客人體型：同 id 永遠同體型、跟 server 同一套 hash；七種都會出現；currentGuest 讀 RP5 排好的", () => {
   // 跟 tests/escort_test.py 的同一組

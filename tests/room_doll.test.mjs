@@ -165,11 +165,11 @@ t("客人跟著抽送動：傳教士頂到底和退出來那格骨盆位置不�
   assert.notEqual(hash(f0), hash(f3));
 });
 
-t("偷看側面有三階明暗（她和客人都有），不是一整片同色", () => {
+t("偷看側面：她平塗（2026-10-15 使用者）、客人仍有三階明暗", () => {
   const d = D.lookToDoll({ ...base, cup: "E" });
   const tones = (f, pal) => { const seen = new Set(); for (let i = 0; i < f.pixels.length; i += 4) if (f.pixels[i + 3]) seen.add(String(Array.from(f.pixels.subarray(i, i + 3))));
     return [pal.lo, pal.body, pal.hi].filter(c => seen.has(String(c))).length; };
-  assert.equal(tones(D.render(d, "sex_cowgirl", 0, 0), D.SIDE_PAL), 3);
+  assert.equal(tones(D.render(d, "sex_cowgirl", 0, 0), D.SIDE_PAL), 1);
   assert.equal(tones(D.renderMan(d, "sex_doggy", 0, { h: 1, w: 1, lm: 1 }), D.MAN_PAL), 3);
 });
 
