@@ -240,22 +240,17 @@
       sh.ell(BODY, [0, yl(zc) + .3, zc], [6.9 * hs, 7.2 * hs, P.head_h / 2]);
       sh.ell(BODY, [0, yl(zc) + 2.2, zc - 6.0 * hs], [(4.6 + .8 * soft) * hs, 4.6 * hs, 3.6 * hs]);
     }
-    /** 側面臉（偷看，2026-10-15）：鼻樑／鼻尖、嘴唇、下巴尖、眉骨＋眼睛、嘴（MARK）。
-     * ex：{ eye 0＝閉／1＝睜, mouth 0～1 張嘴 }。座標同 headPart（頭的局部，+y＝臉朝向）。 */
+    /** 側面臉（偷看，2026-10-15）：只有輪廓——眉骨、鼻樑／鼻尖、嘴唇、下巴尖；不畫眼睛、嘴等細節（使用者）。
+     * ex：{ mouth 0～1 張嘴（下唇、下巴往下） }。座標同 headPart（頭的局部，+y＝臉朝向）。 */
     function sideFace(sh, P, yl, zc, ex = {}) {
       const hs = P.b.head, y0 = yl(zc) + .3, fy = y0 + 7.2 * hs;   // fy≈臉正面
-      const eye = ex.eye ?? .5, mouth = ex.mouth ?? 0;
+      const mouth = ex.mouth ?? 0;
       sh.ell(BODY, [0, fy - .9, zc + 1.6 * hs], [4.6 * hs, 1.5, 1.1]);                           // 眉骨
       sh.cone(BODY, [0, fy - .6, zc + .4 * hs], [0, fy + 1.3, zc - 2.6 * hs], .9, .75);        // 鼻樑→鼻尖
       sh.ell(BODY, [0, fy + .9, zc - 2.9 * hs], [1.3, 1.0, .8]);                                // 鼻頭
       sh.ell(BODY, [0, fy - .3, zc - 4.4 * hs], [2.2, 1.0, .75]);                               // 上唇
       sh.ell(BODY, [0, fy - .6, zc - (5.6 + 1.2 * mouth) * hs], [2.0, .9, .7]);                // 下唇（張嘴往下）
       sh.ell(BODY, [0, fy - 1.4, zc - (7.6 + .8 * mouth) * hs], [3.0, 1.6, 1.5]);              // 下巴尖
-      for (const s of [-1, 1]) {
-        // 眼睛：睜開是一小塊，閉著（被弄到瞇眼）是一條往下彎的線
-        sh.ell(MARK, [s * 3.4 * hs, fy - 1.6, zc - .2 * hs], [1.0, 1.0, .35 + .55 * eye]);
-        sh.ell(MARK, [s * 1.2, fy - .2, zc - 5.0 * hs - .6 * mouth], [1.2, .7, .15 + .75 * mouth]);   // 嘴縫／張開的嘴
-      }
     }
     function torso(sh, P, doll, dy = 0, dz = 0, lean = 0, bounce = [0, 0, 0, 0], noHead = false) {
       const b = P.b, zc = P.zc + dz, S = P.S + dz, C = P.C + dz, T = P.T;
@@ -873,7 +868,7 @@
         const wr = g.wrists, an = g.ankles;
         if (typeof wr === 'function') g.wrists = (sd) => { const w = wr(sd); return [w[0] + .6 * sd * slow, w[1] - 1.4 * (lag - .5), w[2] + .9 * Math.sin(ph * 2 + sd)]; };
         if (pose === 'sex_missionary') g.ankles = (sd) => { const a = an(sd); return [a[0] + 1.3 * sd * slow, a[1] + 1.6 * (lag - .5), a[2] + 1.4 * g.j]; };
-        g.face = { eye: Math.max(0, 1 - 1.4 * g.j), mouth: Math.min(1, .2 + .9 * g.j) };
+        g.face = { mouth: Math.min(1, .2 + .9 * g.j) };
       }
       const Lt = P.hipz - P.knee, Ls = P.knee - P.ankle, Lu = P.H * .16, Lf = P.H * .14;
       const hip_x = 5.1 * F(b, 'hip') * (1 + .3 * (F(b, 'thigh') - 1));
@@ -1179,7 +1174,7 @@
         const i = y * width + x;
         if (!hit[i]) continue;
         if (mat[i] === 2) { const up = y > 0 && hit[i - width] && mat[i - width] === 2; set(i, up ? hairRGB : hairHi, HAIR_A); }
-        else if (mat[i] === 3) set(i, pal.mark || MARK_RGB, bodyA);
+        else if (mat[i] === 3) set(i, MARK_RGB, BODY_A);
         else {
           let near = false;
           for (const j of [i - width, i + width, i - 1, i + 1]) if (j >= 0 && j < n && hit[j] && tt[j] > tt[i] + 3.5) { near = true; break; }
@@ -1203,7 +1198,7 @@
     // 2026-10-13：偷看側面的她改亮一點＋三階明暗（燈在左上前方），黑影疊黑影看不出形體
     // 2026-10-15：紫灰影子 → 暖燈下的膚色（使用者：太假）
     const SIDE_PAL = { body: [170, 118, 108], hi: [212, 158, 138], lo: [116, 76, 80], line: [70, 40, 48], hair: [38, 26, 34], hairHi: [76, 54, 62],
-      bust: [226, 176, 156], mark: [58, 30, 40], a: 236 };
+      bust: [226, 176, 156], a: 236 };
     const MAN_PAL = { body: [52, 86, 178], hi: [86, 124, 216], lo: [34, 58, 132], line: [22, 36, 96], hair: [26, 44, 108], hairHi: [26, 44, 108],
       bust: [52, 86, 178], a: 240 };
     const LIGHT = (() => { const v = [.55, -.55, .65], n = Math.hypot(...v); return v.map(c => c / n); })();
