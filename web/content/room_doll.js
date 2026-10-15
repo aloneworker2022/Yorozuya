@@ -98,7 +98,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; prims.push(p); };
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.flat = !!sh.flat; prims.push(p); };
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -267,12 +267,14 @@
     const FACE_HINGE = [.4, -3.8];
     function sideHead(sh, P, yl, zc, ex = {}) {
       const hs = P.b.head, hh = P.head_h / 2, k = hh / 10, y0 = yl(zc) + .3, mouth = ex.mouth ?? .5;
+      sh.flat = true;   // 整顆頭不打光、塗同一色：臉跟下巴之間不會出現接縫（使用者：臉應該是平的）
       sh.ell(BODY, [0, y0 - .6, zc + 1.8], [6.9 * hs, 7.0 * hs, hh - 1.6]);                     // 頭骨（後腦）
       const th = -(4 + 26 * mouth) * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th);
       const at = (q) => [y0 + q[0] * k, zc + q[1] * k];
       const rot = (q) => { const dy = q[0] - FACE_HINGE[0], dz = q[1] - FACE_HINGE[1]; return [FACE_HINGE[0] + dy * c - dz * sn, FACE_HINGE[1] + dy * sn + dz * c]; };
       sh.prism(BODY, FACE_UP.map(at), 4.6 * hs, .7);
-      sh.prism(BODY, FACE_JAW.map(q => at(rot(q))), 3.9 * hs, .7);
+      sh.prism(BODY, FACE_JAW.map(q => at(rot(q))), 4.6 * hs, .7);
+      sh.flat = false;
     }
     function torso(sh, P, doll, dy = 0, dz = 0, lean = 0, bounce = [0, 0, 0, 0], noHead = false) {
       const b = P.b, zc = P.zc + dz, S = P.S + dz, C = P.C + dz, T = P.T;
@@ -1168,7 +1170,7 @@
       const wb = prims.map(p => { let q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]]; if (p.xf) { const w = mulV(p.xf.R, q); q = [w[0] + p.xf.t[0], w[1] + p.xf.t[1], w[2] + p.xf.t[2]]; } return q; });
       let xmax = -1e9, xmin = 1e9;
       for (let i = 0; i < np; i++) { xmax = Math.max(xmax, wb[i][0] + prims[i].br); xmin = Math.min(xmin, wb[i][0] - prims[i].br); }
-      const n = width * height, hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n);
+      const n = width * height, hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n), flat = new Uint8Array(n);
       const dist = [0, 0, 0];
       for (let py = 0; py < height; py++) {
         const Z = (ay - py - .5) / k;
@@ -1181,10 +1183,10 @@
           let X = xmax;
           for (let it = 0; it < 160 && X >= xmin; it++) {
             dist[0] = dist[1] = dist[2] = 1e3;
-            let bb = 0;
-            for (const i of cand) { const m = prims[i].mat, d = primDist(prims[i], X, Y, Z); if (d < dist[m]) { dist[m] = d; if (m === 0) bb = prims[i].bust ? 1 : 0; } }
+            let bb = 0, fl = 0;
+            for (const i of cand) { const m = prims[i].mat, d = primDist(prims[i], X, Y, Z); if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = prims[i].bust ? 1 : 0; fl = prims[i].flat ? 1 : 0; } } }
             const d = Math.min(dist[0], dist[1], dist[2]);
-            if (d < .05) { hit[idx] = 1; tt[idx] = X; let mm = dist[1] < dist[0] + .15 ? 2 : 1; if (dist[2] < .05 && dist[1] > .05) mm = 3; mat[idx] = mm; bust[idx] = mm === 1 ? bb : 0; break; }
+            if (d < .05) { hit[idx] = 1; tt[idx] = X; let mm = dist[1] < dist[0] + .15 ? 2 : 1; if (dist[2] < .05 && dist[1] > .05) mm = 3; mat[idx] = mm; bust[idx] = mm === 1 ? bb : 0; flat[idx] = mm === 1 ? fl : 0; break; }
             X -= Math.max(d, .08) * .9;
           }
         }
@@ -1198,8 +1200,9 @@
         else if (mat[i] === 3) set(i, MARK_RGB, BODY_A);
         else {
           let near = false;
-          for (const j of [i - width, i + width, i - 1, i + 1]) if (j >= 0 && j < n && hit[j] && tt[j] > tt[i] + 3.5) { near = true; break; }
-          if (near) set(i, lineRGB, bodyA);
+          for (const j of [i - width, i + width, i - 1, i + 1]) if (j >= 0 && j < n && hit[j] && tt[j] > tt[i] + 3.5 && !(flat[i] && flat[j])) { near = true; break; }
+          if (flat[i] && !near) { tone[i] = 2; pixels[i * 4 + 3] = bodyA; }
+          else if (near) set(i, lineRGB, bodyA);
           else if (bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH)) set(i, bustRGB, bodyA);
           else { tone[i] = sideTone(hit, mat, tt, i, x, y, width, height, k); pixels[i * 4 + 3] = bodyA; }
         }
