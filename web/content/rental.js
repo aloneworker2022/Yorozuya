@@ -643,3 +643,22 @@ export function aiPayload(who, date, side, kind, ctx = {}) {
     recent,
   };
 }
+
+// ------------------------------------------------------------ 旅館玄關（2026-10-15）
+/** 開車送到旅館後，玩家直接站在玄關，自己決定進不進去。三種玄關：日式拉門（溫泉旅館）、旅館房門、汽車旅館（車庫＋樓梯）。 */
+export const VENUES = {
+  ryokan: { zh: "溫泉旅館", enter: "拉開拉門進去", wait: "在拉門外等" },
+  hotel: { zh: "旅館", enter: "刷卡推門進去", wait: "在門外等" },
+  motel: { zh: "汽車旅館", enter: "走上樓梯進去", wait: "在樓下車庫等" },
+};
+/** 權重：休息多是旅館／汽車旅館，住宿一晚溫泉旅館比較多。 */
+const VENUE_W = { rest: { hotel: 45, motel: 45, ryokan: 10 }, stay: { ryokan: 40, hotel: 35, motel: 25 } };
+/** 這次約會去哪一種（同一場約會固定；照開始時間＋客人決定，不另存）。回傳 { key, room }（room＝房號）。 */
+export function venueOf(date) {
+  const h = fnv(`${date?.startedAt || 0}|${date?.client?.id || date?.client?.name || ""}|venue`);
+  const w = VENUE_W[date?.hotel?.stay || date?.invite?.stay] || VENUE_W.rest, tot = Object.values(w).reduce((a, b) => a + b, 0);
+  let x = h % tot, key = "hotel";
+  for (const [k, v] of Object.entries(w)) { if (x < v) { key = k; break; } x -= v; }
+  const room = key === "ryokan" ? ["松", "竹", "梅", "桜", "楓"][(h >>> 8) % 5] + "の間" : String(201 + ((h >>> 8) % 4) * 100 + ((h >>> 12) % 9));
+  return { key, room };
+}

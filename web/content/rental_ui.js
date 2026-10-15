@@ -3,8 +3,9 @@
  * api：{ who(), inRoom(), say(who, ask, fallback) → Promise<string>, typeLine(name, text), goOut(who), comeBack(who),
  *        gold(), earn(n, why), hunger(who), mood(who), applyEffects(who, eff), persist(), debug(msg), peek(opts), ai?(kind, ctx) → Promise<string> }
  * 她的約會存在 who.rentalMine.active（關掉 App 再開照時間接著走；決定點會停住）。 */
-import * as R from "./rental.js?v=6";
-import * as L from "./rental_lines.js?v=6";
+import * as R from "./rental.js?v=7";
+import { openEntry } from "./rental_entry.js?v=1";
+import * as L from "./rental_lines.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 
 const BUILD_ZH = { average: "普通", slim: "瘦", muscular: "壯", fat: "胖", tall: "高", short: "矮", old: "中年" };
@@ -217,10 +218,14 @@ export function createRental(api) {
       done();
       if (date.hotel.presence !== "away") openScene(who, date);
     };
+    // 2026-10-15：開車送到了 → 直接站在旅館玄關（日式拉門／旅館房門／汽車旅館車庫），在玄關決定進不進去。
+    // 時鐘在玄關時還停著（decide 之後才走）。
     const step2 = (paid) => {
-      sheet.innerHTML = `<h3>到了旅館</h3><p>你要跟進房間，還是在門外等？</p>`;
-      btn("跟進房間", "看得到全部；她會在你面前……", () => choose({ drive: true, paidRoom: paid, presence: "in" }), true);
-      btn("在門外等", "聽得到，看不到", () => choose({ drive: true, paidRoom: paid, presence: "door" }));
+      m.style.display = "none";   // 先藏著（不拿掉：計時器看到沒有決定框會再開一個），選完 done() 才移除
+      const v = R.venueOf(date);
+      api.debug(`日租女友：到了旅館玄關（${R.VENUES[v.key].zh}・${v.room}）`);
+      openEntry({ venue: v.key, room: v.room, venues: R.VENUES, stayZh: stay === "stay" ? "住宿一晚" : "休息", clientName: date.client.name,
+        onChoose: (presence) => choose({ drive: true, paidRoom: paid, presence }) });
     };
     const step1 = () => {
       sheet.innerHTML = `<h3>開車送他們？</h3><p>${stay === "stay" ? "住宿一晚" : "休息 3 小時"}</p>`;

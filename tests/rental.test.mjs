@@ -298,4 +298,17 @@ t("到了才擲：骨架沒有互動；推到某個時間只擲到那裡；鼓�
   assert.ok(cheered > plain + 0.03 && cheered < plain + 0.2, `plain ${plain} cheered ${cheered}`);
 });
 
+t("旅館玄關：三種、同一場約會固定、休息多旅館／汽車旅館、住宿溫泉旅館比較多", () => {
+  const d = { startedAt: 123456, client: client(), invite: { stay: "rest" } };
+  assert.deepEqual(R.venueOf(d), R.venueOf({ ...d }));
+  assert.ok(R.VENUES[R.venueOf(d).key]);
+  const cnt = (stay) => { const c = { ryokan: 0, hotel: 0, motel: 0 };
+    for (let i = 0; i < 2000; i++) c[R.venueOf({ startedAt: i * 7919, client: { id: `c${i}` }, invite: { stay } }).key]++; return c; };
+  const rest = cnt("rest"), stay = cnt("stay");
+  assert.ok(rest.ryokan < 300 && rest.hotel > 700 && rest.motel > 700, JSON.stringify(rest));
+  assert.ok(stay.ryokan > 650, JSON.stringify(stay));
+  const ry = Array.from({ length: 50 }, (_, i) => R.venueOf({ startedAt: i, client: { id: "x" }, invite: { stay: "stay" } })).find((v) => v.key === "ryokan");
+  assert.match(ry.room, /の間$/);
+});
+
 console.log(`rental: ${pass} passed`);
