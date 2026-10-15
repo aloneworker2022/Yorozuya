@@ -333,9 +333,9 @@ import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, 
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
 import { openPeek } from "./escort_peek.js?v=8";
 import * as Preg from "./pregnancy.js?v=1";
-import { createRental } from "./rental_ui.js?v=13";
+import { createRental } from "./rental_ui.js?v=14";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
-import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=5";
+import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=6";
 import { moanVoiceId } from "./stun_speech.js?v=25";
 import {
   hungerOn,
@@ -1342,6 +1342,8 @@ function bindRentalDebug() {
   onId("dbg-rental-hour", "click", () => { const d = girl?.rentalMine?.active; if (!d) return; d.startedAt -= 2 * 60e3; if (d.pauseAt) d.pauseAt -= 2 * 60e3; persistRoom(); rental.tick(); });
   onId("dbg-rental-invite", "click", () => { const d = girl?.rentalMine?.active; if (!d || d.hotel) return; d.forceInvite = true; persistRoom(); pushDebug("日租除錯：這場的邀請會成功"); renderRentalDebug(); });
   onId("dbg-rental-end", "click", () => { if (girl?.rentalMine?.active) rental._finish(girl); renderRentalDebug(); });
+  for (const v of ["hotel", "motel"]) onId(`dbg-room-${v}`, "click", () => openRentalRoom({ venue: v, room: "305", night: true, clientName: "佐藤",
+    onContinue: () => pushDebug(`日租除錯：房間（${v}）按了繼續`) }));
   for (const night of [false, true]) onId(`dbg-room-ryokan${night ? "-n" : ""}`, "click", () => openRentalRoom({ venue: "ryokan", room: "桜の間", night, clientName: "佐藤",
     onContinue: () => pushDebug("日租除錯：房間（日式）按了繼續") }));
   for (const v of ["ryokan", "hotel", "motel"]) onId(`dbg-entry-${v}`, "click", () => {   // 只看畫面：選了什麼只記在除錯紀錄

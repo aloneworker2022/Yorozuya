@@ -8,6 +8,7 @@
 import { paintRyokan } from "./rental_entry_paint.js?v=2";
 import { paintJapaneseRoom } from "./rental_room_paint.js?v=2";
 import { paintBathroom } from "./rental_bath_paint.js?v=1";
+import { hotelDoorScene, hotelBedScene, hotelBathScene, motelGarageScene, motelBedScene, motelBathScene } from "./rental_scenes_hm.js?v=1";
 const LW = 195, LH = 422;
 
 const CSS = `
@@ -158,13 +159,15 @@ function drawMotel(g, t, room) {
   R(g, "#9c3346", 132, 334, 10, 4); R(g, "#7a2234", 140, 336, 2, 4); R(g, "#9c3346", 146, 337, 9, 3);
 }
 
-// 2026-10-15：日式拉門改用逐像素繪製（rental_entry_paint.js）；舊的方塊版 drawRyokan 留著備用
-const DRAW = { ryokan: paintRyokan, hotel: drawHotel, motel: drawMotel };
+// 2026-10-15：三種玄關都改用逐像素繪製（日式拉門 rental_entry_paint.js；旅館／汽車旅館 rental_scenes_hm.js）；舊的方塊版 drawRyokan／drawHotel／drawMotel 留著備用。
+// 旅館／汽車旅館：靜態部分畫一次存起來（同房號共用），每格只疊會動的（紅燈、綠燈、門縫光、日光燈閃）。
+const painted = (make) => { const cache = new Map(); return (g, t, room) => { let s = cache.get(room); if (!s) { s = make(room); cache.set(room, s); } g.drawImage(s.canvas, 0, 0); s.anim?.(g, t); }; };
+const DRAW = { ryokan: paintRyokan, hotel: painted(hotelDoorScene), motel: painted(motelGarageScene) };
 const FPS_MS = { ryokan: 100 };   // 逐像素的每格比較重：每 100ms 才重畫一次（燈光呼吸、人影很慢，看不出差）
 const STATUS = {
   ryokan: "拉門後面亮著燈。兩雙鞋擺在你腳邊。",
   hotel: "門剛關上，房號燈亮著「使用中」。",
-  motel: "鐵捲門拉下一半。樓梯上去就是房間。",
+  motel: "車停進車庫了。樓梯上去就是房間。",
 };
 
 /** 檢查用：畫一格到 canvas（不開畫面）。 */
@@ -205,7 +208,12 @@ export function openEntry(opts = {}) {
 /** 進去之後看到的房間（2026-10-15：先做溫泉旅館；其他兩種還沒有 → 回傳 null，呼叫端照舊）。
  * 一間可以有好幾個場景，左右箭頭切換（主臥室 > 浴室、浴室 < 主臥室）。
  * openRoom({ venue, room, night, clientName, onContinue }) → { close(), go(i) } | null。 */
-const ROOMS = { ryokan: [{ key: "bed", zh: "主臥室", paint: paintJapaneseRoom }, { key: "bath", zh: "浴室", paint: paintBathroom }] };
+const draw = (make) => (g) => g.drawImage(make(), 0, 0);
+const ROOMS = {
+  ryokan: [{ key: "bed", zh: "主臥室", paint: paintJapaneseRoom }, { key: "bath", zh: "浴室", paint: paintBathroom }],
+  hotel: [{ key: "bed", zh: "主臥室", paint: draw(hotelBedScene) }, { key: "bath", zh: "浴室", paint: draw(hotelBathScene) }],
+  motel: [{ key: "bed", zh: "主臥室", paint: draw(motelBedScene) }, { key: "bath", zh: "浴室", paint: draw(motelBathScene) }],
+};
 export function hasRoom(venue) { return !!ROOMS[venue]; }
 export function openRoom(opts = {}) {
   const scenes = ROOMS[opts.venue];
@@ -227,7 +235,7 @@ export function openRoom(opts = {}) {
     if (!cache[cur]) { const c = document.createElement("canvas"); c.width = LW; c.height = LH; sc.paint(c.getContext("2d"), { night: !!opts.night }); cache[cur] = c; }
     g.drawImage(cache[cur], 0, 0);
     ov.dataset.scene = sc.key;
-    ov.querySelector(".ti").textContent = `${opts.room || ""}・${sc.zh}`;
+    ov.querySelector(".ti").textContent = `${opts.venue === "ryokan" ? opts.room || "" : `${opts.room || ""} 號房`}・${sc.zh}`;
     st.textContent = cur === 0 ? `${opts.clientName || "客人"}和她已經在房間裡了。` : "";
     L.hidden = cur === 0; Rt.hidden = cur === scenes.length - 1;
   };
