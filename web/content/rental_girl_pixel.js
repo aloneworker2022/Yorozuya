@@ -86,6 +86,8 @@ function breastSample(u, v, B) {
   const gl = Math.hypot(gx, gy) || 1, ex = inside ? -gx / gl : gx / gl, ey = inside ? -gy / gl : gy / gl;   // 往輪廓外的方向
   const core = [0.12 * S, 0.32 * S + 0.3 * B.sag * S], k = clamp(best / (0.55 * S), 0, 1);
   let nx = 0.55 * (u - core[0]) / (1.05 * S) + 0.45 * ex * (1 - k), ny = 0.55 * (v - core[1]) / (1.05 * S) + 0.45 * ey * (1 - k);
+  // 被擠的那側：貼著中線的面轉向中線（變暗），擠得越多越明顯
+  if (B.squeeze > 0) { const near = clamp(1 - (u + B.mid) / (0.35 * S), 0, 1) * clamp(B.squeeze / (0.25 * S), 0, 1); nx = lerp(nx, -0.85, near * 0.7); }
   // 上半部平緩地接進胸口：越往上，明暗越像胸口（幾乎正對前面、微微朝上）
   const w = clamp(-v / (0.85 * S), 0, 1) * 0.8;
   nx *= 1 - w; ny = lerp(ny, -0.22, w);
@@ -105,8 +107,17 @@ function torsoHalf(y, F) {
 /** 胸的中心與半徑（兩邊）。 */
 function bustGeo(P) {
   if (P._bust) return P._bust;
-  const r = P.bust, sag = P.sag, cy = 0.248 + r * (0.5 + 0.4 * sag), dx = (0.02 + r * 0.78) * P.F.chest;
-  return (P._bust = { r, sag, cy, cx: [sway(cy) - dx, sway(cy) + dx], poly: breastOutline(r, sag) });
+  // 2026-10-15：靠近中線（使用者：太外擴）。dx＝胸中心到中線的距離。
+  const r = P.bust, sag = P.sag, cy = 0.248 + r * (0.5 + 0.4 * sag), dx = (0.006 + r * 0.5) * P.F.chest;
+  // 擠壓：輪廓越過中線的部分壓平在中線上（兩邊在乳溝貼在一起成一條直線），被擠掉的量往上推、乳溝上方鼓起來
+  let squeeze = 0;
+  const poly = breastOutline(r, sag).map(([u, v]) => {
+    const over = -dx - u;
+    if (over <= 0) return [u, v];
+    squeeze = Math.max(squeeze, over);
+    return [-dx, v - over * 0.45];
+  });
+  return (P._bust = { r, sag, cy, mid: dx, squeeze, cx: [sway(cy) - dx, sway(cy) + dx], poly });
 }
 
 /** 這個像素是什麼：{ layer, part, nx, ny }。layer：0 後髮、1 身體、2 胸、3 前面的手臂、4 前髮。 */
@@ -237,6 +248,11 @@ export function drawGirl(g, opts = {}) {
           if (P.pubic && y > 0.505 && y < 0.545 && Math.abs(x - mx) < 0.007 * (P.pubic + 1) * (1 - (y - 0.505) / 0.045)) c = hairLo;
           if (Math.abs(x - mx) < 0.003 && y > 0.53 && y < 0.552) c = SKIN.deep;
           if (y > 0.18 && y < 0.19 && Math.abs(Math.abs(x - mx) - 0.03) < 0.018) c = SKIN.lo;   // 鎖骨
+        }
+        if (s.part.startsWith("bust") && B.squeeze > 0) {   // 乳溝：中線兩側一條深色、上端短短往外岔開
+          const mx = sway(B.cy), du = Math.abs(x - mx), v = y - B.cy;
+          if (du < 0.004 && v > -B.r * 0.55 && v < B.r * (0.75 + 0.4 * B.sag)) c = SKIN.deep;
+          else if (du < 0.008 && v > -B.r * 0.3 && v < B.r * 0.6) c = SKIN.lo;
         }
         if (s.part.startsWith("bust")) {   // 乳暈（每邊胸的中下、往外一點）
           const k = s.part === "bustL" ? 0 : 1, ax = B.cx[k] + (k ? 1 : -1) * B.r * (0.2 + 0.06 * B.sag), ay = B.cy + B.r * (0.38 + 0.36 * B.sag);
