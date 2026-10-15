@@ -5,6 +5,7 @@
  *   motel  汽車旅館：車庫（鐵捲門拉一半、你的車停著）、日光燈、樓梯上去就是房門。
  * 畫面跟偷看同一套尺寸（195×422 邏輯像素、放大顯示）。不決定結果，只回報玩家選了什麼。
  * openEntry({ venue, room, stayZh, clientName, onChoose(presence 'in'|'door') }) → { close() }。 */
+import { paintRyokan } from "./rental_entry_paint.js?v=1";
 const LW = 195, LH = 422;
 
 const CSS = `
@@ -153,7 +154,9 @@ function drawMotel(g, t, room) {
   R(g, "#9c3346", 132, 334, 10, 4); R(g, "#7a2234", 140, 336, 2, 4); R(g, "#9c3346", 146, 337, 9, 3);
 }
 
-const DRAW = { ryokan: drawRyokan, hotel: drawHotel, motel: drawMotel };
+// 2026-10-15：日式拉門改用逐像素繪製（rental_entry_paint.js）；舊的方塊版 drawRyokan 留著備用
+const DRAW = { ryokan: paintRyokan, hotel: drawHotel, motel: drawMotel };
+const FPS_MS = { ryokan: 100 };   // 逐像素的每格比較重：每 100ms 才重畫一次（燈光呼吸、人影很慢，看不出差）
 const STATUS = {
   ryokan: "拉門後面亮著燈。兩雙鞋擺在你腳邊。",
   hotel: "門剛關上，房號燈亮著「使用中」。",
@@ -179,7 +182,8 @@ export function openEntry(opts = {}) {
   const g = ov.querySelector("canvas").getContext("2d");
   g.imageSmoothingEnabled = false;
   let raf = 0, closed = false;
-  const tick = (now) => { if (closed) return; DRAW[venue](g, now, room); raf = requestAnimationFrame(tick); };
+  let lastDraw = -1e9;
+  const tick = (now) => { if (closed) return; if (now - lastDraw >= (FPS_MS[venue] || 0)) { lastDraw = now; DRAW[venue](g, now, room); } raf = requestAnimationFrame(tick); };
   raf = requestAnimationFrame(tick);
   const close = () => { if (closed) return; closed = true; cancelAnimationFrame(raf); ov.remove(); };
   const ch = ov.querySelector(".ch");
