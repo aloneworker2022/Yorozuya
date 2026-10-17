@@ -10,7 +10,8 @@ import { paintJapaneseRoom, projectJapaneseRoom } from "./rental_room_paint.js?v
 import { drawGirl } from "./rental_girl_pixel.js?v=7";
 import { paintBathroom } from "./rental_bath_paint.js?v=2";
 import { hotelDoorScene, hotelBedScene, hotelBathScene, motelGarageScene, motelBedScene, motelBathScene } from "./rental_scenes_hm.js?v=2";
-import { stateAt as sessionState, drawCouple, openTalk, LOC_ZH, POSE_ZH } from "./rental_session.js?v=1";
+import { stateAt as sessionState, openTalk, LOC_ZH, POSE_ZH } from "./rental_session.js?v=2";
+import { makeCouple } from "./rental_couple.js?v=1";
 const LW = 195, LH = 422;
 
 const CSS = `
@@ -236,6 +237,7 @@ export function openRoom(opts = {}) {
   // 2026-10-17：有 session（rental_session.js）＝房間裡的流程：兩人畫在他們現在的地點，點人物開面板；沒有 session 照舊畫她站著。
   const S = opts.session || null;
   let hit = null, talk = null, lastAct = -2;
+  const couples = new Map();   // 「地點_姿勢」→ 即時點陣動畫（rental_couple.js；她用自己的身材／罩杯／髮型）
   const frame = (now = performance.now()) => {
     const sc = scenes[cur];
     g.drawImage(cache[cur].c, 0, 0);
@@ -245,7 +247,11 @@ export function openRoom(opts = {}) {
       if (stt.i !== lastAct) { lastAct = stt.i; talk?.close(); talk = null; opts.onStep?.(stt); }
       if (stt.done) { st.textContent = "他們已經退房離開了。"; b.textContent = "離開"; return; }
       if (stt.act.loc === sc.key) {
-        hit = drawCouple(g, opts.venue, stt.act, now);
+        const key = `${stt.act.loc}_${stt.act.pose}`;
+        let cp = couples.get(key);
+        if (!cp) { cp = makeCouple({ venue: opts.venue, scene: stt.act.loc, pose: stt.act.pose, doll: opts.doll || {}, bg: cache[cur].c }); couples.set(key, cp); }
+        const fr = cp.frame(now);
+        if (fr) { g.drawImage(fr.canvas, 0, 0); hit = fr.box; }
         st.textContent = `${LOC_ZH[stt.act.loc]}・${POSE_ZH[stt.act.pose]}（點他們）`;
       } else st.textContent = sc.key === "bed" ? "床上沒有人……浴室那邊有聲音。" : "浴室沒有人……房間那邊有聲音。";
       return;
@@ -272,7 +278,7 @@ export function openRoom(opts = {}) {
   const b = document.createElement("button"); b.type = "button"; b.className = "main"; b.textContent = S ? "離開房間" : "繼續";
   go(0);
   let closed = false, raf = 0, last = 0;
-  const loop = (now) => { if (closed) return; if (now - last >= 80) { last = now; frame(now); } raf = requestAnimationFrame(loop); };
+  const loop = (now) => { if (closed) return; if (now - last >= 30) { last = now; frame(now); } raf = requestAnimationFrame(loop); };
   if (S) raf = requestAnimationFrame(loop);
   const cv = ov.querySelector("canvas");
   cv.addEventListener("click", (e) => {
@@ -281,9 +287,9 @@ export function openRoom(opts = {}) {
     if (x < hit.x0 - 4 || x > hit.x1 + 4 || y < hit.y0 - 4 || y > hit.y1 + 4) return;
     const stt = sessionState(S, Date.now());
     if (stt.done) return;
-    talk = openTalk(ov.querySelector(".box"), { venue: opts.venue, act: stt.act, step: stt.i + 1, cums: stt.cums, girl: opts.girl || {}, client: opts.client || {}, girlName: opts.girl?.name, clientName: opts.clientName });
+    talk = openTalk(ov.querySelector(".box"), { venue: opts.venue, act: stt.act, step: stt.i + 1, cums: stt.cums, girl: opts.girl || {}, client: opts.client || {}, voice: opts.voice || "", box: hit });
     const oc = talk.close; talk.close = () => { oc(); talk = null; };
-    talk.el.querySelector(".hd button").addEventListener("click", () => { talk = null; });
+    talk.el.addEventListener("click", () => { talk = null; });
   });
   const close = () => { if (closed) return; closed = true; cancelAnimationFrame(raf); ov.remove(); };
   b.addEventListener("click", () => { close(); (S ? opts.onLeave || opts.onContinue : opts.onContinue)?.(); });
