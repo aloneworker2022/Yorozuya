@@ -333,9 +333,11 @@ import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, 
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
 import { openPeek } from "./escort_peek.js?v=8";
 import * as Preg from "./pregnancy.js?v=1";
-import { createRental } from "./rental_ui.js?v=21";
+import { createRental } from "./rental_ui.js?v=22";
+import { planSession as planRentalSession } from "./rental_session.js?v=1";
+import { generateVenue as genRentalVenue } from "./rental_scene_gen.js?v=1";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
-import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=13";
+import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=14";
 import { moanVoiceId } from "./stun_speech.js?v=25";
 import {
   hungerOn,
@@ -1349,6 +1351,29 @@ function bindRentalDebug() {
   for (const v of ["ryokan", "hotel", "motel"]) onId(`dbg-entry-${v}`, "click", () => {   // 只看畫面：選了什麼只記在除錯紀錄
     openRentalEntry({ venue: v, room: v === "ryokan" ? "桜の間" : "305", venues: RENTAL_VENUES, stayZh: "休息", clientName: "佐藤",
       onChoose: (p) => pushDebug(`日租除錯：玄關（${v}）選了${p === "in" ? "進去" : "在外面等"}`) });
+  });
+  // 2026-10-17：房間流程（rental_session.js）除錯：不用跑約會，直接進房看流程；點人物 → AI 圖＋即時對話
+  for (const v of ["ryokan", "hotel", "motel"]) onId(`dbg-flow-${v}`, "click", () => {
+    const s = planRentalSession();
+    pushDebug(`房間流程（${v}）：${s.acts.map((a) => `${a.loc}/${a.pose}`).join(" → ")}・內射 ${s.acts.filter((a) => a.cum).length} 次`);
+    openRentalRoom({ venue: v, room: v === "ryokan" ? "桜の間" : "305", night: true, clientName: "佐藤", look: girl?.look || {}, doll: window.RoomDoll?.lookToDoll(girl?.look || null) || null,
+      session: s, girl: { name: girl?.name || "她", stage: girl?.roomStage || girl?.stage || "wife", family: familyOfGirl(girl), archetype: girl?.archetype || "" },
+      client: { name: "佐藤", build: ["average", "fat", "muscular", "old"][Math.floor(Math.random() * 4)], persona: "強勢" },
+      onStep: (st) => { if (!st.done) pushDebug(`房間流程：第 ${st.i + 1} 段 ${st.act.loc}/${st.act.pose}${st.act.cum ? "（內射）" : ""}`); else pushDebug("房間流程：退房了"); },
+      onLeave: () => pushDebug(`房間流程（${v}）：離開`) });
+  });
+  let rsBusy = false;
+  for (const v of ["ryokan", "hotel", "motel"]) onId(`dbg-rsgen-${v}`, "click", async () => {
+    if (rsBusy) { pushDebug("旅館圖：上一個房型還在生"); return; }
+    rsBusy = true;
+    const out = $("dbg-rsgen"), provider = $("dbg-rsgen-provider")?.value || "comfy";
+    try {
+      const items = await genRentalVenue(v, { provider, girl: girl ? { look: girl.look || {}, name: girl.name || "" } : null,
+        onProgress: (txt, list) => { if (out) out.textContent = `${v}：${txt}\n${list.map((x) => `${x.key}#${x.slot + 1} ${x.state}`).join("　")}`; } });
+      const ok = items.filter((x) => x.url).length;
+      pushDebug(`旅館圖（${v}）：好了 ${ok}／${items.length}`);
+      if (out) out.insertAdjacentHTML("beforeend", "<br>" + items.filter((x) => x.url).map((x) => `<img src="${x.url}" style="height:72px;margin:2px" title="${x.key}#${x.slot + 1}">`).join(""));
+    } finally { rsBusy = false; }
   });
   onId("dbg-rental-reset", "click", () => { if (!girl) return; rm().starts = []; rm().askCoolUntil = 0; persistRoom(); renderRentalDebug(); refreshTalkActs(); });
   setInterval(() => { try { renderRentalDebug(); } catch { /* */ } }, 2000);

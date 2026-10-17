@@ -4,7 +4,8 @@
  *        gold(), earn(n, why), hunger(who), mood(who), applyEffects(who, eff), persist(), debug(msg), peek(opts), ai?(kind, ctx) → Promise<string> }
  * 她的約會存在 who.rentalMine.active（關掉 App 再開照時間接著走；決定點會停住）。 */
 import * as R from "./rental.js?v=7";
-import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=13";
+import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=14";
+import { planSession, sessionResult } from "./rental_session.js?v=1";
 import * as L from "./rental_lines.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 
@@ -217,10 +218,14 @@ export function createRental(api) {
       push(date, "client", "me", v.drive ? "我開車送你們。" : "……知道了。");
       done();
       if (date.hotel.presence === "in" && hasRoom(v?.venue)) {
-        // 2026-10-15：進去先看到房間（目前只有日式主臥室）；白天／晚上照約會時鐘
-        const h = R.where(date).hour % 24;
-        openRoom({ venue: v.venue, room: v.room, night: h >= 18 || h < 6, clientName: date.client.name, look: who.look || {}, doll: window.RoomDoll?.lookToDoll(who.look || null) || null,
-          onContinue: () => openScene(who, date) });
+        // 2026-10-17：跟進房間 → 房間裡的流程（rental_session.js）：先接吻，再隨機地點＋姿勢、每段 10 分鐘都內射、1/3 退房。
+        // 整場先擲好；結果直接當這場旅館的真相（回家結算的飢渴／子宮精液／懷孕都照它）。
+        date.hotel.venue = v.venue; date.hotel.room = v.room;
+        date.hotel.session = planSession();
+        date.hotel.result = sessionResult(date.hotel.session);
+        api.debug(`日租女友：房間流程 ${date.hotel.session.acts.map((a) => `${a.loc}/${a.pose}`).join(" → ")}`);
+        api.persist();
+        openSessionRoom(who, date);
       } else if (date.hotel.presence !== "away") openScene(who, date);
     };
     // 2026-10-15：開車送到了 → 直接站在旅館玄關（日式拉門／旅館房門／汽車旅館車庫），在玄關決定進不進去。
@@ -240,9 +245,17 @@ export function createRental(api) {
     btn("開車送他們去", `司機 +${R.DRIVER_TIP} 金；可以跟進去或在門外等`, step1, true);
     btn("不送，在家等", "他們自己去；你不知道是哪間旅館", () => choose({ drive: false }));
   }
+  function openSessionRoom(who, date) {
+    const h = date.hotel, hr = R.where(date).hour % 24, p = R.aiPayload(who, date, "wife", "reply");
+    openRoom({ venue: h.venue, room: h.room, night: hr >= 18 || hr < 6, clientName: date.client.name, look: who.look || {}, doll: window.RoomDoll?.lookToDoll(who.look || null) || null,
+      session: h.session, girl: p.girl, client: { ...p.client, build: date.client.build },
+      onStep: (stt) => { if (!stt.done && stt.act) api.debug(`日租女友：房間第 ${stt.i + 1} 段 ${stt.act.loc}/${stt.act.pose}${stt.act.cum ? "（內射）" : ""}`); },
+      onLeave: () => render() });
+  }
   function openScene(who, date) {
     const h = date.hotel;
     if (!h?.result || h.presence === "away") return;
+    if (h.session && h.presence === "in" && hasRoom(h.venue)) { openSessionRoom(who, date); return; }
     const lv = h.result.level, pool = POSE_FOR[lv], pose = Array.isArray(pool) ? pool[Math.floor(Math.random() * pool.length)] : pool;
     const stayZh = h.stay === "stay" ? "住宿" : "休息";
     scene = api.peek({ who, mode: h.presence === "in" ? "room" : "door", pose, man: date.client.build,

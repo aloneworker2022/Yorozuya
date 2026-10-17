@@ -36,6 +36,7 @@ import jp_news
 import life_agent
 import escort_lines
 import rental_lines
+import rental_scene
 import line_group
 import memos
 import sdtags
@@ -4816,6 +4817,54 @@ async def rental_intent(body: dict):
     except asyncio.TimeoutError:
         reply = ""
     return {"intent": rental_lines.parse_intent(reply)}
+
+
+@app.post("/api/rental/scene-talk")
+async def rental_scene_talk(body: dict):
+    """日租女友・旅館房間（2026-10-17）：玩家點了她和客人 → 即時寫一段對話（每次重寫、不快取）。
+    body：{venue, loc, pose, step, cums, girl:{name,stage,family,archetype}, client:{name,build,persona,regular}}。
+    回 {lines:[{side,text}], ai: bool}；模型 20 秒沒回或寫壞 → 固定句庫（ai=false）。"""
+    body = body or {}
+    loc, pose = str(body.get("loc") or ""), str(body.get("pose") or "")
+    if not rental_scene.slot_key(loc, pose):
+        raise HTTPException(status_code=400, detail="loc／pose 不對")
+    system, user = rental_scene.prompt(body)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+    except Exception:
+        reply = ""
+    lines = rental_scene.parse(reply)
+    if lines:
+        return {"lines": lines, "ai": True}
+    return {"lines": rental_scene.fallback(loc, pose), "ai": False}
+
+
+@app.get("/api/rental/scene-images")
+def rental_scene_images():
+    """test_room 生好的旅館圖：{venue: {slot_key: [url, url]}}。"""
+    return {"images": rental_scene.load_manifest(ASSETS_DIR), "slots": list(rental_scene.SLOTS), "venues": list(rental_scene.VENUES)}
+
+
+@app.post("/api/rental/scene-images")
+def rental_scene_image_put(body: dict):
+    """把一張生好的圖（/assets/testword/… 或 pose_refs）搬到 assets/rental_scenes/ 並登記到 manifest（testword 會被 GC）。
+    body：{venue, key, slot(0|1), url}。"""
+    body = body or {}
+    venue, key = str(body.get("venue") or ""), str(body.get("key") or "")
+    if venue not in rental_scene.VENUES or key not in rental_scene.SLOTS:
+        raise HTTPException(status_code=400, detail="venue／key 不對")
+    src = _asset_path(str(body.get("url") or ""))
+    if src is None:
+        raise HTTPException(status_code=404, detail="找不到圖")
+    slot = max(0, min(rental_scene.SLOTS_PER - 1, int(body.get("slot") or 0)))
+    out_dir = ASSETS_DIR / "rental_scenes"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    name = f"{venue}_{key}_{slot}_{int(time.time() * 1000)}{src.suffix.lower() or '.png'}"
+    shutil.copyfile(src, out_dir / name)
+    data = rental_scene.load_manifest(ASSETS_DIR)
+    rental_scene.put_image(data, venue, key, slot, f"/assets/rental_scenes/{name}")
+    rental_scene.save_manifest(ASSETS_DIR, data)
+    return {"url": f"/assets/rental_scenes/{name}", "images": data}
 
 
 async def _world_clock():

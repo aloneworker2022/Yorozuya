@@ -10,6 +10,7 @@ import { paintJapaneseRoom, projectJapaneseRoom } from "./rental_room_paint.js?v
 import { drawGirl } from "./rental_girl_pixel.js?v=7";
 import { paintBathroom } from "./rental_bath_paint.js?v=2";
 import { hotelDoorScene, hotelBedScene, hotelBathScene, motelGarageScene, motelBedScene, motelBathScene } from "./rental_scenes_hm.js?v=2";
+import { stateAt as sessionState, drawCouple, openTalk, LOC_ZH, POSE_ZH } from "./rental_session.js?v=1";
 const LW = 195, LH = 422;
 
 const CSS = `
@@ -232,29 +233,60 @@ export function openRoom(opts = {}) {
   const st = ov.querySelector(".st"), g = ov.querySelector("canvas").getContext("2d"), L = ov.querySelector(".nav.l"), Rt = ov.querySelector(".nav.r");
   const cache = [];   // 每個場景畫一次就存起來（逐像素一張要 0.2～0.4 秒）
   let cur = 0;
-  const go = (i) => {
-    cur = Math.max(0, Math.min(scenes.length - 1, i));
+  // 2026-10-17：有 session（rental_session.js）＝房間裡的流程：兩人畫在他們現在的地點，點人物開面板；沒有 session 照舊畫她站著。
+  const S = opts.session || null;
+  let hit = null, talk = null, lastAct = -2;
+  const frame = (now = performance.now()) => {
     const sc = scenes[cur];
-    if (!cache[cur]) { const c = document.createElement("canvas"); c.width = LW; c.height = LH; const proj = sc.paint(c.getContext("2d"), { night: !!opts.night }); cache[cur] = { c, proj }; }
     g.drawImage(cache[cur].c, 0, 0);
-    // 她（點陣圖）：站在這間的固定位置；身高照她的 cm、透視算像素
+    hit = null;
+    if (S) {
+      const stt = sessionState(S, Date.now());
+      if (stt.i !== lastAct) { lastAct = stt.i; talk?.close(); talk = null; opts.onStep?.(stt); }
+      if (stt.done) { st.textContent = "他們已經退房離開了。"; b.textContent = "離開"; return; }
+      if (stt.act.loc === sc.key) {
+        hit = drawCouple(g, opts.venue, stt.act, now);
+        st.textContent = `${LOC_ZH[stt.act.loc]}・${POSE_ZH[stt.act.pose]}（點他們）`;
+      } else st.textContent = sc.key === "bed" ? "床上沒有人……浴室那邊有聲音。" : "浴室沒有人……房間那邊有聲音。";
+      return;
+    }
     const gl = sc.girl, pr = cache[cur].proj;
     if (gl && pr && (opts.look || opts.doll)) {
       const hm = (Number(opts.doll?.height_cm || opts.look?.height_cm) || 160) / 100, foot = pr(gl.x, 0, gl.z), head = pr(gl.x, hm, gl.z);
       drawGirl(g, { x: foot[0], footY: foot[1], h: foot[1] - head[1], look: opts.look || {}, doll: opts.doll || null, light: opts.night && gl.lightNight ? gl.lightNight : gl.light });
     }
+  };
+  const go = (i) => {
+    cur = Math.max(0, Math.min(scenes.length - 1, i));
+    const sc = scenes[cur];
+    if (!cache[cur]) { const c = document.createElement("canvas"); c.width = LW; c.height = LH; const proj = sc.paint(c.getContext("2d"), { night: !!opts.night }); cache[cur] = { c, proj }; }
     ov.dataset.scene = sc.key;
     ov.querySelector(".ti").textContent = `${opts.venue === "ryokan" ? opts.room || "" : `${opts.room || ""} 號房`}・${sc.zh}`;
     st.textContent = cur === 0 ? `${opts.clientName || "客人"}和她已經在房間裡了。` : "";
     L.hidden = cur === 0; Rt.hidden = cur === scenes.length - 1;
+    talk?.close(); talk = null;
+    frame();
   };
   L.addEventListener("click", () => go(cur - 1));
   Rt.addEventListener("click", () => go(cur + 1));
+  const b = document.createElement("button"); b.type = "button"; b.className = "main"; b.textContent = S ? "離開房間" : "繼續";
   go(0);
-  const b = document.createElement("button"); b.type = "button"; b.className = "main"; b.textContent = "繼續";
-  let closed = false;
-  const close = () => { if (closed) return; closed = true; ov.remove(); };
-  b.addEventListener("click", () => { close(); opts.onContinue?.(); });
+  let closed = false, raf = 0, last = 0;
+  const loop = (now) => { if (closed) return; if (now - last >= 80) { last = now; frame(now); } raf = requestAnimationFrame(loop); };
+  if (S) raf = requestAnimationFrame(loop);
+  const cv = ov.querySelector("canvas");
+  cv.addEventListener("click", (e) => {
+    if (!S || !hit || talk) return;
+    const r = cv.getBoundingClientRect(), x = ((e.clientX - r.left) / r.width) * LW, y = ((e.clientY - r.top) / r.height) * LH;
+    if (x < hit.x0 - 4 || x > hit.x1 + 4 || y < hit.y0 - 4 || y > hit.y1 + 4) return;
+    const stt = sessionState(S, Date.now());
+    if (stt.done) return;
+    talk = openTalk(ov.querySelector(".box"), { venue: opts.venue, act: stt.act, step: stt.i + 1, cums: stt.cums, girl: opts.girl || {}, client: opts.client || {}, girlName: opts.girl?.name, clientName: opts.clientName });
+    const oc = talk.close; talk.close = () => { oc(); talk = null; };
+    talk.el.querySelector(".hd button").addEventListener("click", () => { talk = null; });
+  });
+  const close = () => { if (closed) return; closed = true; cancelAnimationFrame(raf); ov.remove(); };
+  b.addEventListener("click", () => { close(); (S ? opts.onLeave || opts.onContinue : opts.onContinue)?.(); });
   ov.querySelector(".ch").append(b);
   return { close, go, el: ov };
 }

@@ -106,7 +106,15 @@
           <button type="button" id="dbg-room-ryokan" title="只看日式主臥室（白天）">房間:日式</button>
           <button type="button" id="dbg-room-ryokan-n" title="只看日式主臥室（晚上）">房間:日式夜</button>
           <button type="button" id="dbg-room-hotel" title="只看旅館房間（主臥室＋浴室）">房間:旅館</button>
-          <button type="button" id="dbg-room-motel" title="只看汽車旅館房間（主臥室＋浴室）">房間:汽旅</button></dd>
+          <button type="button" id="dbg-room-motel" title="只看汽車旅館房間（主臥室＋浴室）">房間:汽旅</button><br>
+          <button type="button" id="dbg-flow-ryokan" title="房間流程：先接吻，再隨機地點＋姿勢（每段遊戲 10 分＝真實 20 秒）；切主臥室／浴室找人、點人物">流程:日式</button>
+          <button type="button" id="dbg-flow-hotel" title="房間流程（旅館）">流程:旅館</button>
+          <button type="button" id="dbg-flow-motel" title="房間流程（汽車旅館）">流程:汽旅</button><br>
+          <label>生圖 <select id="dbg-rsgen-provider"><option value="comfy">comfy</option><option value="grok-img">grok-img</option></select></label>
+          <button type="button" id="dbg-rsgen-ryokan" title="溫泉旅館：5 個地點姿勢 × 2 張（點陣場景當圖生圖底圖）">旅館圖:日式</button>
+          <button type="button" id="dbg-rsgen-hotel" title="旅館：5 個地點姿勢 × 2 張">旅館圖:旅館</button>
+          <button type="button" id="dbg-rsgen-motel" title="汽車旅館：5 個地點姿勢 × 2 張">旅館圖:汽旅</button>
+          <div id="dbg-rsgen" style="font-size:12px;white-space:pre-wrap"></div></dd>
         <dt>懷孕</dt><dd class="miss-dbg preg-dbg"><span id="dbg-preg">—</span>
           <button type="button" id="dbg-preg-client" title="強制受孕：父親＝接客的客人">受孕・客人</button>
           <button type="button" id="dbg-preg-friend" title="強制受孕：父親＝外面的肉體關係（同事）">受孕・同事</button>
@@ -944,6 +952,6 @@
   <script src="/content/room_activity.js?v=3"></script>
   <script src="/content/room_character.js?v=11"></script>
   <script src="/content/test_room.js?v=20"></script>
-  <script type="module" src="/content/test_room_summon.js?v=242"></script>
+  <script type="module" src="/content/test_room_summon.js?v=243"></script>
 </body>
 </html>
