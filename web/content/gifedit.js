@@ -1,5 +1,5 @@
 /** gifedit：接客偷看 30 幀 → 每張可圖生圖（Comfy），底下可播。不寫進遊戲。 */
-import { peekStills, MAN_BUILDS } from "./escort_peek.js?v=5";
+import { peekStills, MAN_BUILDS } from "./escort_peek.js?v=8";
 import { POSE_ZH } from "./escort.js?v=5";
 
 const $ = (id) => document.getElementById(id);

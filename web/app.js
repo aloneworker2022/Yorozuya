@@ -59,7 +59,7 @@ import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=7";
 import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient, currentGuest, guestPoseAt } from "./content/escort.js?v=5"; // 接客還債
-import { openPeek } from "./content/escort_peek.js?v=5";
+import { openPeek } from "./content/escort_peek.js?v=8";
 import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
 import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=10";
@@ -220,6 +220,18 @@ window.YorozuyaWallet = {
     if (c <= 0 || state.gold - c < 0) return false;
     state.gold -= c;
     log(`${why || "花費"} −${c} 金`);
+    dirty = true; scheduleSave();
+    try { renderHud(); } catch { /* */ }
+    return true;
+  },
+  /** 日租女友（2026-10-13）：收入（正）或房錢（負）。房錢可以讓金幣變負（跟育兒費一樣）。 */
+  earn(n, why = "") {
+    if (!state || bootFailed) return false;
+    const c = Math.round(Number(n) || 0);
+    if (!c) return true;
+    state.gold += c;
+    log(`${why || (c > 0 ? "收入" : "花費")} ${c > 0 ? "+" : "−"}${Math.abs(c)} 金`);
+    if (c > 0) toast(`${why || "收入"} +${c} 金`, "good");
     dirty = true; scheduleSave();
     try { renderHud(); } catch { /* */ }
     return true;
@@ -13163,6 +13175,7 @@ function clearLineToLastPlayer() {
     if (!msgs.length) { toast("沒有訊息可清", ""); return; }
     lg.messages = [];
     lg.cursors = {};
+    lg.clearedAt = Date.now();
   } else if (lastPi === 0) {
     toast("已經只剩上一則了", "");
     return;
@@ -13170,6 +13183,8 @@ function clearLineToLastPlayer() {
     const kept = msgs.slice(lastPi);
     const keepIds = new Set(kept.map(m => m.id));
     lg.messages = kept;
+    // 2026-10-14：記下清到哪裡。RP5 寫的訊息另外存在伺服器，不記的話下次同步（/api/line/feed、讀存檔）又被加回來。
+    lg.clearedAt = Math.max(Number(lg.clearedAt) || 0, Number(kept[0].t) || 0);
     const anchor = kept[0].id;
     const cursors = lg.cursors || {};
     for (const gid of Object.keys(cursors)) {
@@ -13577,10 +13592,11 @@ async function lineSyncFeed() {
   try {
     const lg = ensureLineGroup();
     const since = lg.messages.reduce((mx, m) => (m.src === "rp5" ? Math.max(mx, Number(m.t) || 0) : mx), 0);
-    const r = await fetch(`/api/line/feed?since=${Math.max(0, since - 60e3)}`);
+    const cleared = Number(lg.clearedAt) || 0;
+    const r = await fetch(`/api/line/feed?since=${Math.max(0, since - 60e3, cleared - 1)}`);
     if (!r.ok) return 0;
     const j = await r.json();
-    const added = mergeFeed(lg.messages, j?.messages || []);
+    const added = mergeFeed(lg.messages, (j?.messages || []).filter((m) => (Number(m?.t) || 0) >= cleared));
     lineApplyPending();
     if (added.length) {
       dirty = true;
