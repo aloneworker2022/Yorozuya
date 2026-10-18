@@ -12,6 +12,17 @@ export const MAX_ACTS = 12;
 export const POSES = { bed: ["missionary", "doggy"], bath: ["soak", "standing"] };
 export const POSE_ZH = { kiss: "接吻", undress: "邊親邊脫", missionary: "正面", doggy: "背後", soak: "泡澡", standing: "站著從後面" };
 export const LOC_ZH = { bed: "床鋪", bath: "浴室" };
+// 2026-10-18 Al：做愛姿勢（接吻／邊親邊脫以外）多兩種結尾圖：她高潮、他內射；key＝「姿勢~變體」
+export const VARIANTS = ["orgasm", "cum"];
+export const VARIANT_ZH = { orgasm: "她高潮", cum: "內射" };
+export const ACT_SLOT_KEYS = ["bed_missionary", "bed_doggy", "bath_soak", "bath_standing"];
+export const VARIANT_KEYS = ACT_SLOT_KEYS.flatMap((k) => VARIANTS.map((v) => `${k}~${v}`));
+/** 這一段的結尾：剩 35%～15% 她高潮、最後 15% 他射；接吻／邊親邊脫沒有。 */
+export function phaseOf(stt) {
+  if (!stt?.act || stt.done || !ACT_SLOT_KEYS.includes(`${stt.act.loc}_${stt.act.pose}`)) return "";
+  const f = stt.left / ACTION_MS;
+  return f <= 0.15 ? "cum" : f <= 0.35 ? "orgasm" : "";
+}
 export const SLOT_KEYS = ["bed_kiss", "bed_undress", "bed_missionary", "bed_doggy", "bath_soak", "bath_standing"];
 
 /** 擲一整場：第一個一定是床上接吻；之後每個動作都不跟上一個一樣。 */
@@ -93,7 +104,7 @@ export function openTalk(box, ctx) {
   const el = document.createElement("div");
   el.className = "rs-talk";
   el.innerHTML = `<div class="ttl"></div><div class="peek-bub c"></div><div class="peek-bub w"></div><button type="button" class="x" aria-label="回到房間">×</button>`;
-  el.querySelector(".ttl").textContent = `${LOC_ZH[ctx.act.loc]}・${POSE_ZH[ctx.act.pose]}`;
+  el.querySelector(".ttl").textContent = `${LOC_ZH[ctx.act.loc]}・${POSE_ZH[ctx.act.pose]}${ctx.phase ? `・${VARIANT_ZH[ctx.phase]}` : ""}`;
   const bubC = el.querySelector(".peek-bub.c"), bubW = el.querySelector(".peek-bub.w");
   const state = { closed: false, lines: [], said: [], pic: "" };
   let timer = 0, busy = false;
@@ -115,7 +126,9 @@ export function openTalk(box, ctx) {
   place();
   void loadImages().then((m) => {
     if (state.closed) return;
-    const urls = pickUrls(m, ctx.venue, slotKey(ctx.act), ctx.owners || []);
+    // 結尾：先找這個變體的圖，沒有退回這個姿勢的
+    const vUrls = ctx.phase ? pickUrls(m, ctx.venue, `${slotKey(ctx.act)}~${ctx.phase}`, ctx.owners || []) : [];
+    const urls = vUrls.length ? vUrls : pickUrls(m, ctx.venue, slotKey(ctx.act), ctx.owners || []);
     if (!urls.length) return;
     const url = urls[Math.floor(Math.random() * urls.length)];
     const show = (node) => { if (state.closed) return; state.pic = url; el.classList.add("pic"); el.prepend(node); place(); };
@@ -125,7 +138,7 @@ export function openTalk(box, ctx) {
   const more = async () => {
     if (busy) return; busy = true;
     try {
-      const j = await fetchTalk({ venue: ctx.venue, loc: ctx.act.loc, pose: ctx.act.pose, step: ctx.step, cums: ctx.cums, girl: ctx.girl, client: ctx.client });
+      const j = await fetchTalk({ venue: ctx.venue, loc: ctx.act.loc, pose: ctx.act.pose, phase: ctx.phase || "", step: ctx.step, cums: ctx.cums, girl: ctx.girl, client: ctx.client });
       state.lines.push(...j.lines); state.ai = j.ai;
     } finally { busy = false; }
   };

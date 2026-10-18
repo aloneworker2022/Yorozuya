@@ -1,7 +1,7 @@
 /* test_room 上排快捷「日式房間／汽車旅館／旅館」（2026-10-17 Al）：一個房型一顆按鈕；按下去把這個房型的 5 個地點姿勢（床鋪接吻／正面／背後、浴室泡澡／站著）
  * 各生 2 張（不同 seed）。2026-10-18：純文生圖，跟她自己的圖同一條路（遊戲設定、她的模型、character＋lock_identity）；
  * 姿勢／地點／房型／平視側面／客人外觀全寫在 prompt，不送底圖（圖生圖會把她身材拉歪）；好了搬到 assets/rental_scenes/ 登記 manifest（/api/rental/scene-images），遊戲點人物時從這裡挑。 */
-import { SLOT_KEYS, LOC_ZH, POSE_ZH, loadImages, ownersOf } from "./rental_session.js?v=6";
+import { SLOT_KEYS, VARIANT_KEYS, VARIANT_ZH, LOC_ZH, POSE_ZH, loadImages, ownersOf } from "./rental_session.js?v=7";
 import { rollClients } from "./rental.js?v=7";
 
 // 2026-10-18：鏡頭一律「站在旁邊平視看」：側面、與人物同高。之前躺／趴／泡澡的姿勢被模型畫成俯視（底圖是整間房的高角度＋小人）。
@@ -82,20 +82,30 @@ export async function gameEngine() {
   };
 }
 /** /api/imggen 的 body：character＝她整份人設＋lock_identity（伺服器用她存的 look 長相錨點），男方＝客人 tag。 */
+// 2026-10-18 Al：結尾兩種（跟這一段內射結束一致）
+const VARIANT_EN = {
+  orgasm: "female orgasm, she is climaxing, trembling, arched back, ahegao, rolling eyes, tongue out, heavy blush, sweat, toes curling, he keeps thrusting",
+  cum: "male ejaculation, cum inside, creampie, he is ejaculating inside her, cum overflow, cum dripping from pussy, deep penetration, she shivers",
+};
+// 浴室兩個人都要在：男的全身入鏡
+const BATH_PAIR_EN = "two people, a man and a woman together, 1girl, 1boy, couple, hetero, the man is clearly visible with his full body in the bath, wide-angle shot from the doorway showing both of them";
+const BATH_PAIR_NEG = "solo, solo focus, 1girl only, male pov, faceless male, close-up";
 // 2026-10-18 Al：接吻可以穿衣服、邊親邊脫是脫到一半；其餘每一段兩個人都全裸（男的也是）
 const NUDE_EN = "both fully nude, completely naked, she is completely naked, he is completely naked, nude man, nude woman";
 const NUDE_NEG = "clothes, clothed, dressed, shirt, pants, underwear, bra, panties, towel, swimsuit, clothed male";
 // 浴室：第三人稱站在浴室門口往裡看（不是 pov）
-const BATH_CAM_EN = "third person view from the bathroom doorway looking in, wide shot, from doorway, full bodies in the tub visible, eye level";
-const BATH_NEG = "pov, first-person view, from his pov, close-up, cropped body";
+const BATH_CAM_EN = "third person view from the bathroom doorway looking in, wide-angle shot, from doorway, both full bodies in the tub visible, eye level";
+const BATH_NEG = "pov, first-person view, from his pov, cropped body";
 export function sceneBody(venue, key, girl, client, eng, n = 0, o = {}) {
   if (!girl?.id) throw new Error("先選魅子");
   const comfy = eng.imgProvider === "comfy";
   const ckpt = String(girl.comfyCkpt || "").trim() || eng.comfyCkpt;
   if (comfy && !ckpt) throw new Error("此魅子尚未綁定 Comfy 模型（comfyCkpt）");
-  const bath = key.startsWith("bath_"), nude = key !== "bed_kiss" && key !== "bed_undress";
-  const extra = `${QUALITY_EN}, ${PAIR_EN}, ${POSE_EN[key]}${nude ? `, ${NUDE_EN}` : ""}, the man: ${clientTags(client)}, third person, ${bath ? BATH_CAM_EN : CAM_EN}, ${BG_EN[venue]?.[key.split("_")[0]] || ""}, detailed background`;
-  const neg = `${PAIR_NEG}, ${CLEAR_NEG}, ${NEG_EN}${nude ? `, ${NUDE_NEG}` : ""}${bath ? `, ${BATH_NEG}` : ""}`;
+  const [base, variant] = key.split("~");
+  const bath = base.startsWith("bath_"), nude = base !== "bed_kiss" && base !== "bed_undress";
+  // 浴室：人數／男方入鏡寫在最前面，門口鏡頭放後面（免得只剩她一個）
+  const extra = `${QUALITY_EN}, ${bath ? BATH_PAIR_EN : PAIR_EN}, ${POSE_EN[base]}${variant ? `, ${VARIANT_EN[variant]}` : ""}${nude ? `, ${NUDE_EN}` : ""}, the man: ${clientTags(client)}, third person, ${bath ? BATH_CAM_EN : CAM_EN}, ${BG_EN[venue]?.[base.split("_")[0]] || ""}, detailed background`;
+  const neg = `${PAIR_NEG}, ${CLEAR_NEG}, ${NEG_EN}${nude ? `, ${NUDE_NEG}` : ""}${bath ? `, ${BATH_NEG}, ${BATH_PAIR_NEG}` : ""}`;
   return {
     key: `rental-scene:${venue}:${key}:${girl.id}:${Date.now().toString(36)}${n}`,
     provider: comfy ? "comfy" : "grok-img",
@@ -118,14 +128,15 @@ async function putScene(venue, it, url, owners) {
 /** 生一個房型的圖（2026-10-18 Al：純文生圖一張畫完——兩個人＋房型背景都寫在 prompt，原圖直接顯示）。
  *  opts：{ girl, client, keys?, perSlot?（預設 2，每張不同 seed）, owners, onProgress }。 */
 export async function generateVenue(venue, opts = {}) {
-  const keys = opts.keys?.length ? opts.keys : SLOT_KEYS, per = opts.perSlot || 2;
-  const items = keys.flatMap((key) => Array.from({ length: per }, (_, slot) => ({ key, slot, state: "等待" })));
+  // 姿勢圖每格 2 張（不同 seed）；結尾變體（高潮／內射）每格 1 張（一個房型 8 格，2 張要多生 16 張太久）
+  const keys = opts.keys?.length ? opts.keys : [...SLOT_KEYS, ...VARIANT_KEYS], per = opts.perSlot || 2;
+  const items = keys.flatMap((key) => Array.from({ length: key.includes("~") ? 1 : per }, (_, slot) => ({ key, slot, state: "等待" })));
   const say = (txt) => opts.onProgress?.(txt, items);
   const eng = await gameEngine();
   let n = 0;
   for (const it of items) {
     n++;
-    const [loc, pose] = it.key.split("_"), label = `${LOC_ZH[loc]}・${POSE_ZH[pose]} #${it.slot + 1}`;
+    const [kb, kv] = it.key.split("~"), [loc, pose] = kb.split("_"), label = `${LOC_ZH[loc]}・${POSE_ZH[pose]}${kv ? `・${VARIANT_ZH[kv]}` : ""} #${it.slot + 1}`;
     try {
       const seed = Math.floor(Math.random() * 2 ** 31) || 1;
       const body = sceneBody(venue, it.key, opts.girl, opts.client || {}, eng, n, { seed });
@@ -169,11 +180,11 @@ export function bindPanel(api = {}) {
   const show = async (items = null) => {
     $("rs-title").textContent = `旅館房間圖・${VZH[venue]}`;
     const m = await loadImages(true), g = api.girl?.(), c = curClient(), owners = ownersOf(g?.id, c?.id);
-    grid.replaceChildren(...SLOT_KEYS.flatMap((key) => [0, 1].map((slot) => {
-      const d = document.createElement("div"), [loc, pose] = key.split("_"), it = items?.find((x) => x.key === key && x.slot === slot), url = (owners.length ? ((m?.[venue] || {})["@" + owners[0]] || {})[key] || [] : (m?.[venue] || {})[key] || [])[slot];
+    grid.replaceChildren(...[...SLOT_KEYS, ...VARIANT_KEYS].flatMap((key) => (key.includes("~") ? [0] : [0, 1]).map((slot) => {
+      const [kb, kv] = key.split("~"), d = document.createElement("div"), [loc, pose] = kb.split("_"), it = items?.find((x) => x.key === key && x.slot === slot), url = (owners.length ? ((m?.[venue] || {})["@" + owners[0]] || {})[key] || [] : (m?.[venue] || {})[key] || [])[slot];
       d.style.cssText = "font-size:12px;text-align:center";
       d.innerHTML = url ? `<img src="${url}" style="width:100%;max-height:160px;object-fit:contain;background:#000;border-radius:6px">` : `<div style="height:60px;background:#222;border-radius:6px;color:#999;display:flex;align-items:center;justify-content:center">${it?.state || "還沒有"}</div>`;
-      d.append(`${LOC_ZH[loc]}・${POSE_ZH[pose]} #${slot + 1}${it?.error ? `（${it.error}）` : ""}`);
+      d.append(`${LOC_ZH[loc]}・${POSE_ZH[pose]}${kv ? `・${VARIANT_ZH[kv]}` : ""} #${slot + 1}${it?.error ? `（${it.error}）` : ""}`);
       return d;
     })));
   };
@@ -216,7 +227,8 @@ export async function ensureSessionImages(venue, session, girl, client, doll = n
   bgJobs.add(lock);
   try {
     const m = await loadImages(true), have = ((m?.[venue] || {})["@" + owners[0]]) || {};
-    const keys = [...new Set(session.acts.map((a) => `${a.loc}_${a.pose}`))].filter((k) => SLOT_KEYS.includes(k) && !(have[k] || []).some(Boolean));
+    const acts = [...new Set(session.acts.map((a) => `${a.loc}_${a.pose}`))];
+    const keys = [...acts, ...acts.flatMap((k) => VARIANT_KEYS.filter((v) => v.startsWith(`${k}~`)))].filter((k) => (SLOT_KEYS.includes(k) || VARIANT_KEYS.includes(k)) && !(have[k] || []).some(Boolean));
     if (!keys.length) return [];
     const items = await generateVenue(venue, { girl, client, keys, perSlot: 1, owners: [owners[0]] });
     debug?.(`旅館房間圖（背景，${client.name || client.id}）：好了 ${items.filter((x) => x.url).length}／${items.length}`);

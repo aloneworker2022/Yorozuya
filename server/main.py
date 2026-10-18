@@ -4822,7 +4822,7 @@ async def rental_intent(body: dict):
 @app.post("/api/rental/scene-talk")
 async def rental_scene_talk(body: dict):
     """日租女友・旅館房間（2026-10-17）：玩家點了她和客人 → 即時寫一段對話（每次重寫、不快取）。
-    body：{venue, loc, pose, step, cums, girl:{name,stage,family,archetype}, client:{name,build,persona,regular}}。
+    body：{venue, loc, pose, phase?（"orgasm"|"cum"：快結束時）, step, cums, girl:{name,stage,family,archetype}, client:{name,build,persona,regular}}。
     回 {lines:[{side,text}], ai: bool}；模型 20 秒沒回或寫壞 → 固定句庫（ai=false）。"""
     body = body or {}
     loc, pose = str(body.get("loc") or ""), str(body.get("pose") or "")
@@ -4836,7 +4836,7 @@ async def rental_scene_talk(body: dict):
     lines = rental_scene.parse(reply)
     if lines:
         return {"lines": lines, "ai": True}
-    return {"lines": rental_scene.fallback(loc, pose), "ai": False}
+    return {"lines": rental_scene.fallback(loc, pose, str(body.get("phase") or "")), "ai": False}
 
 
 @app.get("/api/rental/scene-images")
@@ -4851,7 +4851,7 @@ def rental_scene_image_put(body: dict):
     body：{venue, key, slot(0|1), url, owners?:["她id|客人id", "她id|*"]}（有 owners → 只登記到這個她／客人；沒有 → 通用）。"""
     body = body or {}
     venue, key = str(body.get("venue") or ""), str(body.get("key") or "")
-    if venue not in rental_scene.VENUES or key not in rental_scene.SLOTS:
+    if venue not in rental_scene.VENUES or not rental_scene.allowed_key(key):
         raise HTTPException(status_code=400, detail="venue／key 不對")
     src = _asset_path(str(body.get("url") or ""))
     if src is None:

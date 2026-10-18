@@ -24,6 +24,21 @@ SLOTS = {   # key → (地點, 姿勢說明)
     "bath_standing": ("浴室", "站著從後面（她彎腰扶著浴缸邊、他站在後面）"),
 }
 SLOTS_PER = 2
+# 2026-10-18 Al：每個做愛姿勢（接吻／邊親邊脫以外）多兩種結尾圖：她高潮、他內射。圖的 key＝「姿勢~變體」。
+VARIANTS = {"orgasm": "她高潮了（全身發抖、弓起背、失神）", "cum": "他射在她裡面（內射、精液滿出來）"}
+ACT_KEYS = [k for k in SLOTS if k not in ("bed_kiss", "bed_undress")]
+PHASE_FALLBACK = {
+    "orgasm": [("client", "你在抖耶。"), ("wife", "不、不行了……要去了……"), ("client", "去吧，我看著。"), ("wife", "啊……腦袋一片白……"),
+               ("client", "夾得好緊。"), ("wife", "……還、還在抖……")],
+    "cum": [("client", "要射了，全部射在裡面。"), ("wife", "嗯……裡面……"), ("client", "好多……"), ("wife", "好燙……流出來了……"),
+            ("client", "還在跳。"), ("wife", "……都給我了呢。")],
+}
+
+
+def allowed_key(key: str) -> bool:
+    """圖的 key：SLOTS，或 ACT_KEYS 的「~orgasm／~cum」變體。"""
+    base, _, var = str(key or "").partition("~")
+    return base in SLOTS and (not var or (var in VARIANTS and base in ACT_KEYS))
 BUILD_ZH = escort_lines.BUILD_ZH
 FALLBACK = {
     "bed_kiss": [("client", "終於只剩我們兩個了。"), ("wife", "……你、你靠太近了啦。"), ("client", "今天一整天都想這樣。"), ("wife", "嗯……親輕一點。"),
@@ -64,6 +79,9 @@ def prompt(info: dict) -> tuple[str, str]:
     lines = [f"地點：{venue}的{where}。", f"現在：{pose}。",
              f"她：{girl.get('name') or '她'}，玩家的{stage}，個性家族「{girl.get('family') or '溫柔'}」{('、' + str(girl.get('archetype'))) if girl.get('archetype') else ''}。偶爾會想到老公但不會說出來。",
              f"客人：{client.get('name') or '客人'}，{build}{('，個性' + str(client.get('persona'))) if client.get('persona') else ''}{'，是常客' if client.get('regular') else ''}。"]
+    phase = str(info.get("phase") or "")
+    if phase in VARIANTS and key in ACT_KEYS:
+        lines.append(f"這一段快結束了：{VARIANTS[phase]}。台詞全部寫這一刻" + ("，她在高潮。" if phase == "orgasm" else "，他正在射進她裡面、她感覺到。"))
     if info.get("step"):
         lines.append(f"這是今天在房間裡的第 {int(info.get('step') or 0)} 段。")
     if info.get("cums"):
@@ -88,8 +106,10 @@ def parse(reply: str) -> list[dict]:
     return out if len(out) >= 4 and {l["side"] for l in out} == {"client", "wife"} else []
 
 
-def fallback(loc: str, pose: str) -> list[dict]:
+def fallback(loc: str, pose: str, phase: str = "") -> list[dict]:
     key = slot_key(loc, pose) or "bed_kiss"
+    if phase in PHASE_FALLBACK and key in ACT_KEYS:
+        return [{"side": s, "text": t} for s, t in PHASE_FALLBACK[phase]]
     return [{"side": s, "text": t} for s, t in FALLBACK[key]]
 
 
