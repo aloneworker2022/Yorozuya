@@ -143,9 +143,9 @@ export async function loadPrompts(force = false) {
   promptAt = Date.now();
   return promptCache;
 }
-/** 這格現在用的模板：存過的（空欄退回預設）＋img2img 設定。 */
-export function templateFor(prompts, venue, key) {
-  const d = defaultTemplate(venue, key), t = prompts?.[venue]?.[key];
+/** 這一張圖（格＋第幾張）現在用的模板：這張自己存的（空欄退回預設）→ 預設。 */
+export function templateFor(prompts, venue, key, slot = 0) {
+  const d = defaultTemplate(venue, key), t = prompts?.[venue]?.[`${key}#${slot}`];
   if (!t) return d;
   return { pos: String(t.pos || "").trim() || d.pos, neg: String(t.neg || "").trim() || d.neg, img2img: { ...d.img2img, ...(t.img2img || {}) }, saved: true };
 }
@@ -201,7 +201,7 @@ export async function generateVenue(venue, opts = {}) {
     const [kb, kv] = it.key.split("~"), [loc, pose] = kb.split("_"), label = `${LOC_ZH[loc]}・${POSE_ZH[pose]}${kv ? `・${VARIANT_ZH[kv]}` : ""} #${it.slot + 1}`;
     try {
       const seed = Math.floor(Math.random() * 2 ** 31) || 1;
-      const body = sceneBody(venue, it.key, opts.girl, opts.client || {}, eng, n, { seed, tpl: templateFor(prompts, venue, it.key) });
+      const body = sceneBody(venue, it.key, opts.girl, opts.client || {}, eng, n, { seed, tpl: templateFor(prompts, venue, it.key, it.slot) });
       it.state = "生圖中"; say(`${n}/${items.length} ${label}：生圖（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、seed ${seed}${body.pose_ref ? `、圖生圖 ${body.pose_denoise}` : ""}）`);
       const res = await waitImg(body, (s) => say(`${n}/${items.length} ${label}：生圖 ${s} 秒`));
       if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
@@ -277,21 +277,23 @@ export function bindPanel(api = {}) {
   $("rs-run")?.addEventListener("click", () => void run());
   // ---- 提示詞編輯器（每個房型×每格；存伺服器、全域）
   const pk = $("rs-p-key"), pPos = $("rs-p-pos"), pNeg = $("rs-p-neg"), pI2 = $("rs-p-i2"), pRef = $("rs-p-ref"), pDn = $("rs-p-dn"), pDnV = $("rs-p-dn-v"), pSt = $("rs-p-status"), pPrev = $("rs-p-preview");
-  const allKeys = [...SLOT_KEYS, ...VARIANT_KEYS];
-  const keyZh = (k) => { const [b, v] = k.split("~"), [l, p] = b.split("_"); return `${LOC_ZH[l]}・${POSE_ZH[p]}${v ? `・${VARIANT_ZH[v]}` : ""}`; };
+  // 每一張圖各一組：「格#張」（姿勢 2 張、結尾 1 張）
+  const allKeys = [...SLOT_KEYS, ...VARIANT_KEYS].flatMap((k) => (k.includes("~") ? [0] : [0, 1]).map((i) => `${k}#${i}`));
+  const keyZh = (ik) => { const [k, i] = ik.split("#"), [b, v] = k.split("~"), [l, p] = b.split("_"); return `${LOC_ZH[l]}・${POSE_ZH[p]}${v ? `・${VARIANT_ZH[v]}` : ""} #${+i + 1}`; };
+  const pkKey = () => pk.value.split("#")[0], pkSlot = () => +(pk.value.split("#")[1] || 0);
   if (pk && !pk.options.length) pk.innerHTML = allKeys.map((k) => `<option value="${k}">${keyZh(k)}</option>`).join("");
   let pRefUrl = "";
   const preview = () => {
     if (!pPrev || !pk) return;
-    const f = fillTemplate({ pos: pPos.value, neg: pNeg.value }, pk.value, api.girl?.() || null, curClient() || {});
+    const f = fillTemplate({ pos: pPos.value, neg: pNeg.value }, pkKey(), api.girl?.() || null, curClient() || {});
     pPrev.textContent = `代入（目前的她＋選的客人）：\n＋ ${f.pos}\n－ ${f.neg}`;
   };
   const loadEditor = async () => {
     if (!pk) return;
-    const t = templateFor(await loadPrompts(true), venue, pk.value);
+    const t = templateFor(await loadPrompts(true), venue, pkKey(), pkSlot());
     pPos.value = t.pos; pNeg.value = t.neg; pI2.checked = !!t.img2img.on; pRefUrl = t.img2img.ref || ""; pDn.value = String(t.img2img.denoise || 0.6);
     pDnV.textContent = Number(pDn.value).toFixed(2); pRef.textContent = pRefUrl ? pRefUrl.split("/").pop() : "（沒有參考圖）";
-    pSt.textContent = `${VZH[venue]}・${keyZh(pk.value)}：${t.saved ? "用存過的模板" : "預設"}`; preview();
+    pSt.textContent = `${VZH[venue]}・${keyZh(pk.value)}：${t.saved ? "用這張自己存的模板" : "預設"}`; preview();
   };
   const savePrompt = async (tpl) => {
     const r = await fetch("/api/rental/scene-prompts", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ venue, key: pk.value, tpl }) });

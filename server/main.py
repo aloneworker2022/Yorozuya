@@ -4853,11 +4853,11 @@ def rental_scene_prompts():
 
 @app.put("/api/rental/scene-prompts")
 def rental_scene_prompt_put(body: dict):
-    """存一格模板：body {venue, key, tpl:{pos, neg, img2img}|null}（null＝刪掉、回到預設）。"""
+    """存一張圖的模板：body {venue, key:"格#張", tpl:{pos, neg, img2img}|null}（null＝刪掉、回到預設）。"""
     body = body or {}
     venue, key = str(body.get("venue") or ""), str(body.get("key") or "")
-    if venue not in rental_scene.VENUES or not rental_scene.allowed_key(key):
-        raise HTTPException(status_code=400, detail="venue／key 不對")
+    if venue not in rental_scene.VENUES or not rental_scene.image_key_ok(key):
+        raise HTTPException(status_code=400, detail="venue／key 不對（要「格#張」）")
     data = rental_scene.load_prompts(ASSETS_DIR)
     tpl = rental_scene.clean_prompt(body.get("tpl"))
     row = data.setdefault(venue, {})
@@ -4865,11 +4865,7 @@ def rental_scene_prompt_put(body: dict):
         row[key] = tpl
     else:
         row.pop(key, None)
-    p = rental_scene.prompts_path(ASSETS_DIR)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
-    tmp.replace(p)
+    rental_scene.save_prompts(ASSETS_DIR, data)
     return {"prompts": data}
 
 

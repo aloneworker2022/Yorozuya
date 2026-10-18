@@ -148,13 +148,49 @@ def prompts_path(assets: Path) -> Path:
     return assets / "rental_scenes" / "prompts.json"
 
 
+def image_key_ok(k: str) -> bool:
+    """每一張圖一組模板：「格#第幾張」（姿勢 #0／#1；結尾變體只有 #0）。"""
+    key, _, idx = str(k or "").partition("#")
+    if not allowed_key(key) or not idx.isdigit():
+        return False
+    return int(idx) < (1 if "~" in key else SLOTS_PER)
+
+
+def migrate_prompts(data: dict) -> tuple[dict, bool]:
+    """2026-10-18：舊版一格一組（沒有 #）→ 拆給這格的每一張（#0、#1；變體只有 #0）；已有自己那張的不蓋。"""
+    changed = False
+    for venue, row in list(data.items()):
+        if not isinstance(row, dict):
+            continue
+        for k in [k for k in row if "#" not in k]:
+            t = row.pop(k)
+            changed = True
+            if not allowed_key(k):
+                continue
+            for i in range(1 if "~" in k else SLOTS_PER):
+                row.setdefault(f"{k}#{i}", t)
+    return data, changed
+
+
 def load_prompts(assets: Path) -> dict:
-    """設計師在 test_room 存的提示詞模板：{venue: {key: {pos, neg, img2img:{on, ref, denoise}}}}（全域，不分她）。"""
+    """設計師在 test_room 存的提示詞模板：{venue: {"格#張": {pos, neg, img2img:{on, ref, denoise}}}}（每一張各一組、全域不分她）。"""
     try:
         data = json.loads(prompts_path(assets).read_text("utf-8"))
-        return data if isinstance(data, dict) else {}
+        data = data if isinstance(data, dict) else {}
     except Exception:
         return {}
+    data, changed = migrate_prompts(data)
+    if changed:
+        save_prompts(assets, data)
+    return data
+
+
+def save_prompts(assets: Path, data: dict) -> None:
+    p = prompts_path(assets)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
+    tmp.replace(p)
 
 
 def clean_prompt(t) -> dict | None:
