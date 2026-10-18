@@ -207,7 +207,7 @@ export function makeCouple({ venue, scene, pose, doll, bg }) {
     if (kind === "bed") {
       const M = mapLayer(manSprite(cv, MAN.bed(pose, a)), map.idx, MAN_RIM);
       layers.push(...(pose === "doggy" ? [G, M] : [M, G]));
-      if (pose === "kiss") layers.push(mapLayer(manSprite(cv, MAN.kissArm(a)), map.idx, MAN_RIM));
+      if (pose === "kiss" || pose === "undress") layers.push(mapLayer(manSprite(cv, MAN.kissArm(a)), map.idx, MAN_RIM));
     } else if (kind === "soak") {
       layers.push(mapLayer(manSprite(cv, MAN.soak(f)), map.idx, MAN_RIM), G, mapLayer(manSprite(cv, MAN.soakArm(f)), map.idx, MAN_RIM));
     } else layers.push(G, mapLayer(manSprite(cv, MAN.stand(a)), map.idx, MAN_RIM));

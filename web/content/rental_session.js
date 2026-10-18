@@ -1,5 +1,5 @@
 /* 日租女友・旅館房間裡的流程（2026-10-17 Al）。
- * 進房先在床上接吻 → 隨機地點（床鋪／浴室）＋那個地點的隨機姿勢；每個動作遊戲時間 10 分鐘、每次都內射；
+ * 進房先在床上接吻 → 邊親邊脫 → 隨機地點（床鋪／浴室）＋那個地點的隨機姿勢；每個動作遊戲時間 10 分鐘、每次都內射；
  * 每做完一個動作 1/3 結束（退房），否則換地點＋姿勢。整場在開始時就擲好（跟 rental.js 一樣「真相先擲」）。
  * 不會自己跳出來：玩家在 openRoom 裡左右切換主臥室／浴室找人，兩人畫在場景裡；點人物才開面板（AI 圖＋即時對話）。
  * 純規則（planSession／stateAt／sessionResult）可在 node 測；drawCouple／openTalk 要瀏覽器。 */
@@ -10,14 +10,15 @@ export const ACTION_MS = (GAME_HOUR_MS / 60) * ACTION_GAME_MIN;   // 真實 20 �
 export const END_CHANCE = 1 / 3;
 export const MAX_ACTS = 12;
 export const POSES = { bed: ["missionary", "doggy"], bath: ["soak", "standing"] };
-export const POSE_ZH = { kiss: "接吻", missionary: "正面", doggy: "背後", soak: "泡澡", standing: "站著從後面" };
+export const POSE_ZH = { kiss: "接吻", undress: "邊親邊脫", missionary: "正面", doggy: "背後", soak: "泡澡", standing: "站著從後面" };
 export const LOC_ZH = { bed: "床鋪", bath: "浴室" };
-export const SLOT_KEYS = ["bed_kiss", "bed_missionary", "bed_doggy", "bath_soak", "bath_standing"];
+export const SLOT_KEYS = ["bed_kiss", "bed_undress", "bed_missionary", "bed_doggy", "bath_soak", "bath_standing"];
 
 /** 擲一整場：第一個一定是床上接吻；之後每個動作都不跟上一個一樣。 */
 export function planSession(r = Math.random, startAt = Date.now()) {
-  const acts = [{ loc: "bed", pose: "kiss" }];
-  for (let n = 0; n < MAX_ACTS - 1; n++) {
+  // 2026-10-18 Al：接吻 → 邊親邊脫 → 才開始做
+  const acts = [{ loc: "bed", pose: "kiss" }, { loc: "bed", pose: "undress" }];
+  for (let n = 0; n < MAX_ACTS - 2; n++) {
     const prev = acts[acts.length - 1];
     let loc, pose, guard = 0;
     do {

@@ -10,8 +10,8 @@ import { paintJapaneseRoom, projectJapaneseRoom } from "./rental_room_paint.js?v
 import { drawGirl } from "./rental_girl_pixel.js?v=7";
 import { paintBathroom } from "./rental_bath_paint.js?v=2";
 import { hotelDoorScene, hotelBedScene, hotelBathScene, motelGarageScene, motelBedScene, motelBathScene } from "./rental_scenes_hm.js?v=2";
-import { stateAt as sessionState, openTalk, LOC_ZH, POSE_ZH } from "./rental_session.js?v=5";
-import { makeCouple } from "./rental_couple.js?v=1";
+import { stateAt as sessionState, openTalk, LOC_ZH, POSE_ZH } from "./rental_session.js?v=6";
+import { makeCouple } from "./rental_couple.js?v=2";
 const LW = 195, LH = 422;
 
 const CSS = `

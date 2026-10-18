@@ -17,6 +17,7 @@ import escort_lines
 VENUES = {"ryokan": "溫泉旅館（日式和室、榻榻米、木造浴池）", "hotel": "旅館（雙人床、大理石浴缸）", "motel": "汽車旅館（霓虹燈、按摩浴缸）"}
 SLOTS = {   # key → (地點, 姿勢說明)
     "bed_kiss": ("床鋪", "坐在床邊面對面擁吻、還沒脫完衣服"),
+    "bed_undress": ("床鋪", "在床邊一邊接吻一邊幫對方脫衣服（衣服脫到一半）"),
     "bed_missionary": ("床鋪", "傳教士（她仰躺在床上、他在上面）"),
     "bed_doggy": ("床鋪", "老漢推車（她在床上跪趴、他從後面）"),
     "bath_soak": ("浴室", "兩人一起泡在浴池裡，她坐在他腿上往後靠"),
@@ -27,6 +28,8 @@ BUILD_ZH = escort_lines.BUILD_ZH
 FALLBACK = {
     "bed_kiss": [("client", "終於只剩我們兩個了。"), ("wife", "……你、你靠太近了啦。"), ("client", "今天一整天都想這樣。"), ("wife", "嗯……親輕一點。"),
                  ("client", "你的臉好紅。"), ("wife", "不要一直看嘛……")],
+    "bed_undress": [("client", "幫我解開扣子。"), ("wife", "……手、手在抖啦。"), ("client", "換我脫你的。"), ("wife", "不要一直看……"),
+                    ("client", "好想快點看到全部。"), ("wife", "嗯……你也脫掉嘛。")],
     "bed_missionary": [("client", "看著我。"), ("wife", "不、不要盯著看……"), ("client", "你好緊……"), ("wife", "慢、慢一點……"),
                        ("client", "要射了，射在裡面喔。"), ("wife", "……嗯、裡面……")],
     "bed_doggy": [("client", "屁股再翹高一點。"), ("wife", "這樣……好丟臉……"), ("client", "從後面看好色。"), ("wife", "太、太深了……"),
@@ -56,7 +59,7 @@ def prompt(info: dict) -> tuple[str, str]:
         "客人不知道玩家是她老公，以為玩家只是經紀人。雙方都是成年人、她已經答應了，可以害羞、撒嬌、喘、粗口，"
         "但絕對不要寫強迫、不同意、暴力、未成年或救命／報警類台詞。只寫台詞，不寫旁白。"
         "格式：每行一句，開頭「客：」或「她：」，客／她輪流，共 8 行。客人每句 ≤ 18 字，她每句 ≤ 20 字。繁體中文。"
-        + ("這一段結束時他射在她裡面，最後兩行要寫到。" if key != "bed_kiss" else "現在只是接吻愛撫，還沒有做。")
+        + ("這一段結束時他射在她裡面，最後兩行要寫到。" if key not in ("bed_kiss", "bed_undress") else ("現在一邊接吻一邊互相脫衣服，還沒有做。" if key == "bed_undress" else "現在只是接吻愛撫，還沒有做。"))
     )
     lines = [f"地點：{venue}的{where}。", f"現在：{pose}。",
              f"她：{girl.get('name') or '她'}，玩家的{stage}，個性家族「{girl.get('family') or '溫柔'}」{('、' + str(girl.get('archetype'))) if girl.get('archetype') else ''}。偶爾會想到老公但不會說出來。",

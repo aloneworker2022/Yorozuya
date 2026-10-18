@@ -1,7 +1,7 @@
 /* test_room 上排快捷「日式房間／汽車旅館／旅館」（2026-10-17 Al）：一個房型一顆按鈕；按下去把這個房型的 5 個地點姿勢（床鋪接吻／正面／背後、浴室泡澡／站著）
  * 各生 2 張（不同 seed）。2026-10-18：純文生圖，跟她自己的圖同一條路（遊戲設定、她的模型、character＋lock_identity）；
  * 姿勢／地點／房型／平視側面／客人外觀全寫在 prompt，不送底圖（圖生圖會把她身材拉歪）；好了搬到 assets/rental_scenes/ 登記 manifest（/api/rental/scene-images），遊戲點人物時從這裡挑。 */
-import { SLOT_KEYS, LOC_ZH, POSE_ZH, loadImages, ownersOf } from "./rental_session.js?v=5";
+import { SLOT_KEYS, LOC_ZH, POSE_ZH, loadImages, ownersOf } from "./rental_session.js?v=6";
 import { rollClients } from "./rental.js?v=7";
 
 // 2026-10-18：鏡頭一律「站在旁邊平視看」：側面、與人物同高。之前躺／趴／泡澡的姿勢被模型畫成俯視（底圖是整間房的高角度＋小人）。
@@ -16,6 +16,7 @@ const BG_EN = {
 };
 const POSE_EN = {
   bed_kiss: "sitting on bed edge, face to face, kissing, embracing, partially clothed, side view of both bodies",
+  bed_undress: "sitting on bed edge, kissing while undressing each other, partially undressed, removing clothes, open shirt, pulling down her clothes, bra visible, unbuttoning his shirt, side view of both bodies",
   bed_missionary: "sex, missionary, she lies on her back on the bed seen from the side, her legs raised, he kneels between her legs, both bodies in profile, nude, creampie",
   bed_doggy: "sex, doggystyle, from behind, she is on all fours on the bed facing left, he kneels behind her holding her hips, both bodies in profile, hanging breasts, nude, creampie",
   bath_soak: "bathing together, sitting in bathtub, girl sitting on his lap leaning back against his chest, water up to chest, wet, steam, both in profile, nude",
@@ -81,13 +82,20 @@ export async function gameEngine() {
   };
 }
 /** /api/imggen 的 body：character＝她整份人設＋lock_identity（伺服器用她存的 look 長相錨點），男方＝客人 tag。 */
+// 2026-10-18 Al：接吻可以穿衣服、邊親邊脫是脫到一半；其餘每一段兩個人都全裸（男的也是）
+const NUDE_EN = "both fully nude, completely naked, she is completely naked, he is completely naked, nude man, nude woman";
+const NUDE_NEG = "clothes, clothed, dressed, shirt, pants, underwear, bra, panties, towel, swimsuit, clothed male";
+// 浴室：第三人稱站在浴室門口往裡看（不是 pov）
+const BATH_CAM_EN = "third person view from the bathroom doorway looking in, wide shot, from doorway, full bodies in the tub visible, eye level";
+const BATH_NEG = "pov, first-person view, from his pov, close-up, cropped body";
 export function sceneBody(venue, key, girl, client, eng, n = 0, o = {}) {
   if (!girl?.id) throw new Error("先選魅子");
   const comfy = eng.imgProvider === "comfy";
   const ckpt = String(girl.comfyCkpt || "").trim() || eng.comfyCkpt;
   if (comfy && !ckpt) throw new Error("此魅子尚未綁定 Comfy 模型（comfyCkpt）");
-  const extra = `${QUALITY_EN}, ${PAIR_EN}, ${POSE_EN[key]}, the man: ${clientTags(client)}, third person, ${CAM_EN}, ${BG_EN[venue]?.[key.split("_")[0]] || ""}, detailed background`;
-  const neg = `${PAIR_NEG}, ${CLEAR_NEG}, ${NEG_EN}`;
+  const bath = key.startsWith("bath_"), nude = key !== "bed_kiss" && key !== "bed_undress";
+  const extra = `${QUALITY_EN}, ${PAIR_EN}, ${POSE_EN[key]}${nude ? `, ${NUDE_EN}` : ""}, the man: ${clientTags(client)}, third person, ${bath ? BATH_CAM_EN : CAM_EN}, ${BG_EN[venue]?.[key.split("_")[0]] || ""}, detailed background`;
+  const neg = `${PAIR_NEG}, ${CLEAR_NEG}, ${NEG_EN}${nude ? `, ${NUDE_NEG}` : ""}${bath ? `, ${BATH_NEG}` : ""}`;
   return {
     key: `rental-scene:${venue}:${key}:${girl.id}:${Date.now().toString(36)}${n}`,
     provider: comfy ? "comfy" : "grok-img",
