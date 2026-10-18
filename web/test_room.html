@@ -268,6 +268,18 @@
     <div class="bp-row"><span class="bp-grow"><label>客人</label><select id="rs-client"></select></span><button type="button" id="rs-reroll">換一批客人</button></div>
     <div class="bp-row">
       <button type="button" id="rs-run" class="bp-cy">開始生圖</button><button type="button" id="rs-close">收合</button></div>
+    <details id="rs-prompt-editor"><summary>提示詞（這個房型、每一格；存在伺服器、全域）</summary>
+      <div class="bp-row"><span class="bp-grow"><label>格</label><select id="rs-p-key"></select></span></div>
+      <div class="mini">佔位符：{girl} {girl_body} {girl_outfit} {man} {man_body} {auto_neg}（生圖時自動代入她／客人的資料）</div>
+      <label class="mini">正向</label><textarea id="rs-p-pos" rows="6" style="width:100%"></textarea>
+      <label class="mini">負向</label><textarea id="rs-p-neg" rows="4" style="width:100%"></textarea>
+      <div class="bp-row"><label class="mini"><input type="checkbox" id="rs-p-i2"> 圖生圖（預設關）</label>
+        <input type="file" id="rs-p-file" accept="image/*" style="max-width:9em"><span id="rs-p-ref" class="mini"></span></div>
+      <div class="bp-row"><span class="bp-grow"><label class="mini">denoise <b id="rs-p-dn-v">0.60</b></label><input type="range" id="rs-p-dn" min="0.3" max="0.95" step="0.05" value="0.6" style="width:100%"></span></div>
+      <div class="bp-row"><button type="button" id="rs-p-save" class="bp-cy">存這格</button><button type="button" id="rs-p-reset">回預設</button></div>
+      <div id="rs-p-status" class="mini"></div>
+      <pre id="rs-p-preview" class="mini" style="white-space:pre-wrap;max-height:160px;overflow:auto"></pre>
+    </details>
     <div id="rs-status" class="mini" style="white-space:pre-wrap"></div>
     <div id="rs-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px"></div>
   </div>
@@ -958,6 +970,6 @@
   <script src="/content/room_activity.js?v=3"></script>
   <script src="/content/room_character.js?v=11"></script>
   <script src="/content/test_room.js?v=20"></script>
-  <script type="module" src="/content/test_room_summon.js?v=253"></script>
+  <script type="module" src="/content/test_room_summon.js?v=254"></script>
 </body>
 </html>

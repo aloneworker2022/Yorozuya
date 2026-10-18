@@ -4845,6 +4845,34 @@ def rental_scene_images():
     return {"images": rental_scene.load_manifest(ASSETS_DIR), "slots": list(rental_scene.SLOTS), "venues": list(rental_scene.VENUES)}
 
 
+@app.get("/api/rental/scene-prompts")
+def rental_scene_prompts():
+    """旅館場景圖的提示詞模板（test_room 編輯器存的）。"""
+    return {"prompts": rental_scene.load_prompts(ASSETS_DIR)}
+
+
+@app.put("/api/rental/scene-prompts")
+def rental_scene_prompt_put(body: dict):
+    """存一格模板：body {venue, key, tpl:{pos, neg, img2img}|null}（null＝刪掉、回到預設）。"""
+    body = body or {}
+    venue, key = str(body.get("venue") or ""), str(body.get("key") or "")
+    if venue not in rental_scene.VENUES or not rental_scene.allowed_key(key):
+        raise HTTPException(status_code=400, detail="venue／key 不對")
+    data = rental_scene.load_prompts(ASSETS_DIR)
+    tpl = rental_scene.clean_prompt(body.get("tpl"))
+    row = data.setdefault(venue, {})
+    if tpl:
+        row[key] = tpl
+    else:
+        row.pop(key, None)
+    p = rental_scene.prompts_path(ASSETS_DIR)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
+    tmp.replace(p)
+    return {"prompts": data}
+
+
 @app.post("/api/rental/scene-images")
 def rental_scene_image_put(body: dict):
     """把一張生好的圖（/assets/testword/… 或 pose_refs）搬到 assets/rental_scenes/ 並登記到 manifest（testword 會被 GC）。

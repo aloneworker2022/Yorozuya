@@ -333,9 +333,9 @@ import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, 
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
 import { openPeek } from "./escort_peek.js?v=8";
 import * as Preg from "./pregnancy.js?v=1";
-import { createRental } from "./rental_ui.js?v=31";
+import { createRental } from "./rental_ui.js?v=32";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=7";
-import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=11";
+import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=12";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
 import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=20";
 import { moanVoiceId } from "./stun_speech.js?v=25";

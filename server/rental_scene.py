@@ -144,6 +144,36 @@ def owner_key(owner: str) -> str:
     return "@" + o if OWNER.match(o) else ""
 
 
+def prompts_path(assets: Path) -> Path:
+    return assets / "rental_scenes" / "prompts.json"
+
+
+def load_prompts(assets: Path) -> dict:
+    """設計師在 test_room 存的提示詞模板：{venue: {key: {pos, neg, img2img:{on, ref, denoise}}}}（全域，不分她）。"""
+    try:
+        data = json.loads(prompts_path(assets).read_text("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def clean_prompt(t) -> dict | None:
+    """一格模板：pos／neg 字串（≤4000 字），img2img {on, ref（/assets/pose_refs/…）, denoise 0.3–0.95}。空的 → None（＝用預設）。"""
+    if not isinstance(t, dict):
+        return None
+    pos, neg = str(t.get("pos") or "")[:4000], str(t.get("neg") or "")[:4000]
+    i2 = t.get("img2img") if isinstance(t.get("img2img"), dict) else {}
+    ref = str(i2.get("ref") or "")
+    if not ref.startswith("/assets/pose_refs/"):
+        ref = ""
+    try:
+        dn = max(0.3, min(0.95, float(i2.get("denoise") or 0.6)))
+    except (TypeError, ValueError):
+        dn = 0.6
+    out = {"pos": pos, "neg": neg, "img2img": {"on": bool(i2.get("on")) and bool(ref), "ref": ref, "denoise": dn}}
+    return out if (pos.strip() or neg.strip() or ref) else None
+
+
 def put_image(data: dict, venue: str, key: str, slot: int, url: str, owner: str = "") -> dict:
     v = data.setdefault(venue, {})
     ok = owner_key(owner)

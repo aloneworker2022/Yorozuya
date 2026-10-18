@@ -46,28 +46,6 @@ const PAIR_NEG = "2girls, multiple girls, extra person, clone, duplicate";
 // 2026-10-18 Al：人物要清楚
 const QUALITY_EN = "masterpiece, best quality, detailed, sharp focus, clear face, detailed body";
 const CLEAR_NEG = "blurry, lowres, jpeg artifacts, low detail";
-/** 客人資料 → 男方外觀 tag（rental.js 的 CLIENT_BUILDS／PERSONAS／age）。 */
-export const CLIENT_BUILD_EN = {
-  average: "average build man",
-  slim: "thin skinny man, slender",
-  muscular: "muscular man, broad shoulders, toned body",
-  fat: "fat man, chubby, big belly",
-  tall: "very tall man, long limbs",
-  short: "short man, shorter than her",
-  old: "old man, middle-aged, receding hairline, wrinkles",
-};
-export const CLIENT_PERSONA_EN = {
-  gentleman: "neat short hair, clean-shaven, gentle smile",
-  clingy: "eager clingy expression, hugging her tightly",
-  showoff: "stylish hair, confident smirk, flashy",
-  dominant: "stern face, dominant, gripping her firmly",
-  otaku: "otaku, glasses, messy hair, shy nervous expression, pale skin",
-};
-export function clientTags(c = {}) {
-  const age = Number(c.age) || 0;
-  const ageEn = age >= 50 ? "man in his 50s" : age >= 40 ? "man in his 40s" : age >= 30 ? "man in his 30s" : age ? "young man in his 20s" : "adult man";
-  return [ageEn, CLIENT_BUILD_EN[c.build] || CLIENT_BUILD_EN.average, CLIENT_PERSONA_EN[c.persona] || ""].filter(Boolean).join(", ");
-}
 /** 跟她自己的圖同一條路（test_room_summon 的 gameImgRoute ＋ sex_pose_packs 的 buildSexStepImgBody）：遊戲設定的生圖器／模型／畫風，她綁的 Comfy 模型。 */
 export async function gameEngine() {
   const r = await fetch("/api/save", { cache: "no-store" });
@@ -96,30 +74,114 @@ const NUDE_NEG = "clothes, clothed, dressed, shirt, pants, underwear, bra, panti
 // 浴室：第三人稱站在浴室門口往裡看（不是 pov）
 const BATH_CAM_EN = "third person view from the bathroom doorway looking in, wide-angle shot, from doorway, both full bodies in the tub visible, eye level";
 const BATH_NEG = "pov, first-person view, from his pov, cropped body";
+// ---------------------------------------------------------------- 2026-10-18 Al：提示詞模板（test_room 可改、存伺服器 assets/rental_scenes/prompts.json，全域）
+// 佔位符每次生圖自動代入她／客人的資料：{girl} {girl_body} {girl_outfit} {man} {man_body} {auto_neg}
+// 身材分開寫：「the woman: …; the man: …」，每個形容詞都掛在 woman／man 上，不留光禿禿的 fat／slim（之前嬌小她＋胖宅男 → 畫成胖女瘦男）。
+const GIRL_BUILD_EN = {
+  "勻稱有致": "slender", "骨感清瘦": "skinny slender", "纖細苗條": "slim slender", "嬌小玲瓏": "petite",
+  "肉感微肉": "plump", "微肉圓潤": "plump chubby", "結實緊緻": "toned", "運動健美": "athletic",
+  "高挑纖長": "tall slender long-legged", "豐滿火辣": "curvy voluptuous", "軟肉感有腰": "soft plump narrow-waisted",
+  "細腰寬臀": "narrow-waisted wide-hipped", "凹凸有致的沙漏身材": "hourglass-figured", "極端腰臀比的漫畫比例": "hourglass-figured",
+};
+const CUP_EN = { A: "flat chest", B: "small breasts", C: "medium breasts", D: "large breasts", E: "huge breasts", F: "huge breasts" };
+function girlInfo(girl) {
+  const look = girl?.look || {}, b = String(look.build || ""), h = Number(look.height_cm) || 0;
+  let build = GIRL_BUILD_EN[b] || Object.entries(GIRL_BUILD_EN).find(([k]) => b && (b.includes(k) || k.includes(b)))?.[1] || "slender";
+  if (h && h <= 154 && !build.includes("petite")) build = `petite ${build}`;
+  if (h >= 170 && !build.includes("tall")) build = `tall ${build}`;
+  const cupL = String(look.cup || "").trim().charAt(0).toUpperCase(), cup = CUP_EN[cupL] || (cupL >= "G" && cupL <= "Z" ? "gigantic breasts" : "");
+  const slim = /petite|slim|slender|skinny/.test(build) && !/plump|chubby/.test(build), plump = /plump|chubby|voluptuous/.test(build);
+  return { body: `${build} woman${cup ? ` with ${cup}` : ""}${h && h <= 154 ? ", short woman" : ""}`, slim, plump, short: h && h <= 154 };
+}
+const MAN_BUILD_EN = {
+  average: "average build man", slim: "thin skinny man", muscular: "muscular man with broad shoulders",
+  fat: "fat obese man with a big round belly", tall: "very tall man", short: "short man", old: "old middle-aged man with a receding hairline",
+};
+const MAN_PERSONA_EN = {
+  gentleman: "gentle man with neat short hair, clean-shaven man", clingy: "eager clingy man hugging her tightly", showoff: "flashy man with stylish hair and a confident smirk",
+  dominant: "stern dominant man gripping her firmly", otaku: "otaku man with glasses and messy hair, shy nervous pale man",
+};
+function manInfo(c = {}) {
+  const age = Number(c.age) || 0;
+  const ageEn = age >= 50 ? "man in his 50s" : age >= 40 ? "man in his 40s" : age >= 30 ? "man in his 30s" : age ? "young man in his 20s" : "adult man";
+  return { desc: [ageEn, MAN_PERSONA_EN[c.persona] || ""].filter(Boolean).join(", "), body: MAN_BUILD_EN[c.build] || MAN_BUILD_EN.average, build: c.build || "average" };
+}
+/** 依兩個人的資料推出的負面詞（她瘦 → 擋 fat woman；他胖 → 擋 thin man…）。 */
+function autoNeg(gi, mi) {
+  const n = [];
+  if (gi.slim) n.push("fat woman", "chubby woman", "plump woman", "obese woman");
+  if (gi.plump) n.push("skinny woman");
+  if (gi.short) n.push("tall woman");
+  if (mi.build === "fat") n.push("thin man", "skinny man", "slim man", "muscular man");
+  if (mi.build === "slim") n.push("fat man", "obese man");
+  if (mi.build === "muscular") n.push("fat man", "skinny man");
+  if (mi.build === "old") n.push("young man");
+  return n.join(", ");
+}
+/** 預設模板（含佔位符）。編輯器「回預設」＝這個。 */
+export function defaultTemplate(venue, key) {
+  const [base, variant] = key.split("~");
+  const bath = base.startsWith("bath_"), nude = base !== "bed_kiss" && base !== "bed_undress";
+  const pos = [QUALITY_EN, bath ? BATH_PAIR_EN : PAIR_EN, POSE_EN[base], variant ? VARIANT_EN[variant] : "", nude ? NUDE_EN : "",
+    "the woman: {girl}, {girl_body}, {girl_outfit}", "the man: {man_body}, {man}",
+    "third person", bath ? BATH_CAM_EN : CAM_EN, BG_EN[venue]?.[base.split("_")[0]] || "", "detailed background"].filter(Boolean).join(", ");
+  const neg = [PAIR_NEG, CLEAR_NEG, NEG_EN, nude ? NUDE_NEG : "", bath ? `${BATH_NEG}, ${BATH_PAIR_NEG}` : "", "{auto_neg}"].filter(Boolean).join(", ");
+  return { pos, neg, img2img: { on: false, ref: "", denoise: 0.6 } };
+}
+/** 代入佔位符。stage：接吻穿著、邊親邊脫脫一半、其餘全裸。 */
+export function fillTemplate(tpl, key, girl, client) {
+  const base = key.split("~")[0], gi = girlInfo(girl), mi = manInfo(client);
+  const outfit = base === "bed_kiss" ? "the woman wearing her own outfit" : base === "bed_undress" ? "the woman's outfit half removed" : "the woman completely naked";
+  const map = { girl: "1 woman", girl_body: gi.body, girl_outfit: outfit, man: mi.desc, man_body: mi.body, auto_neg: autoNeg(gi, mi) };
+  const sub = (t) => String(t || "").replace(/\{(\w+)\}/g, (m, k) => (k in map ? map[k] : m)).replace(/(,\s*)+,/g, ",").replace(/^[,\s]+|[,\s]+$/g, "");
+  return { pos: sub(tpl.pos), neg: sub(tpl.neg) };
+}
+let promptCache = null, promptAt = 0;
+export async function loadPrompts(force = false) {
+  if (!force && promptCache && Date.now() - promptAt < 30e3) return promptCache;
+  try { const r = await fetch("/api/rental/scene-prompts", { cache: "no-store" }); promptCache = r.ok ? (await r.json()).prompts || {} : {}; } catch { promptCache = promptCache || {}; }
+  promptAt = Date.now();
+  return promptCache;
+}
+/** 這格現在用的模板：存過的（空欄退回預設）＋img2img 設定。 */
+export function templateFor(prompts, venue, key) {
+  const d = defaultTemplate(venue, key), t = prompts?.[venue]?.[key];
+  if (!t) return d;
+  return { pos: String(t.pos || "").trim() || d.pos, neg: String(t.neg || "").trim() || d.neg, img2img: { ...d.img2img, ...(t.img2img || {}) }, saved: true };
+}
+/** /api/imggen 的 body：character＝她整份人設＋lock_identity（伺服器用她存的 look 長相錨點）；extra／negative＝模板代入後。
+ *  o：{ seed, tpl }（tpl 沒給＝預設）。img2img 只在模板勾了才帶（預設純文生圖）。 */
 export function sceneBody(venue, key, girl, client, eng, n = 0, o = {}) {
   if (!girl?.id) throw new Error("先選魅子");
   const comfy = eng.imgProvider === "comfy";
   const ckpt = String(girl.comfyCkpt || "").trim() || eng.comfyCkpt;
   if (comfy && !ckpt) throw new Error("此魅子尚未綁定 Comfy 模型（comfyCkpt）");
-  const [base, variant] = key.split("~");
-  const bath = base.startsWith("bath_"), nude = base !== "bed_kiss" && base !== "bed_undress";
-  // 浴室：人數／男方入鏡寫在最前面，門口鏡頭放後面（免得只剩她一個）
-  const extra = `${QUALITY_EN}, ${bath ? BATH_PAIR_EN : PAIR_EN}, ${POSE_EN[base]}${variant ? `, ${VARIANT_EN[variant]}` : ""}${nude ? `, ${NUDE_EN}` : ""}, the man: ${clientTags(client)}, third person, ${bath ? BATH_CAM_EN : CAM_EN}, ${BG_EN[venue]?.[base.split("_")[0]] || ""}, detailed background`;
-  const neg = `${PAIR_NEG}, ${CLEAR_NEG}, ${NEG_EN}${nude ? `, ${NUDE_NEG}` : ""}${bath ? `, ${BATH_NEG}, ${BATH_PAIR_NEG}` : ""}`;
+  const tpl = o.tpl || defaultTemplate(venue, key), f = fillTemplate(tpl, key, girl, client);
+  const base = key.split("~")[0], clothed = base === "bed_kiss" || base === "bed_undress";
+  const i2 = tpl.img2img?.on && tpl.img2img.ref ? { pose_ref: tpl.img2img.ref, pose_denoise: Math.min(0.95, Math.max(0.3, Number(tpl.img2img.denoise) || 0.6)) } : {};
   return {
     key: `rental-scene:${venue}:${key}:${girl.id}:${Date.now().toString(36)}${n}`,
     provider: comfy ? "comfy" : "grok-img",
     model: eng.imgModel, style: eng.imgStyle,
     framing: "full", rating: "nsfw",
-    character: girl, outfit: "", prompt: "", extra,
-    negative: neg, visual_neg: neg,
+    character: girl, outfit: clothed ? wornOutfit(girl) : "", prompt: "", extra: f.pos,
+    negative: f.neg, visual_neg: f.neg,
     cutout: false, flat_bg: false, lock_identity: true, retry: true,
     scene_kind: "script", char_id: girl.id,
-        ...(o.seed ? { seed: o.seed } : {}),
+    ...(o.seed ? { seed: o.seed } : {}),
+    ...i2,
     ...(comfy ? { comfy_url: eng.comfyUrl, ckpt } : {}),
   };
 }
-
+/** 她現在那身（同 sex_pose_packs.wornOutfit）；伺服器把中文衣服轉成 tag。 */
+function wornOutfit(g) {
+  const look = g?.look || {}, pick = g?.outfitPick;
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  if (typeof pick === "string" && pick[0] === "e" && arr(look.eroticOutfits)[+pick.slice(1)]) return String(look.eroticOutfits[+pick.slice(1)]);
+  if (typeof pick === "string" && pick[0] === "s" && arr(look.sleepOutfits)[+pick.slice(1)]) return String(look.sleepOutfits[+pick.slice(1)]);
+  if (Number.isInteger(pick) && arr(look.wardrobe)[pick]) return String(look.wardrobe[pick]);
+  return String(look.career_outfit || look.style || "");
+}
 async function putScene(venue, it, url, owners) {
   const put = await fetch("/api/rental/scene-images", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ venue, key: it.key, slot: it.slot, url, owners: owners || [] }) });
   if (!put.ok) throw new Error(`登記失敗 ${put.status}`);
@@ -132,15 +194,15 @@ export async function generateVenue(venue, opts = {}) {
   const keys = opts.keys?.length ? opts.keys : [...SLOT_KEYS, ...VARIANT_KEYS], per = opts.perSlot || 2;
   const items = keys.flatMap((key) => Array.from({ length: key.includes("~") ? 1 : per }, (_, slot) => ({ key, slot, state: "等待" })));
   const say = (txt) => opts.onProgress?.(txt, items);
-  const eng = await gameEngine();
+  const eng = await gameEngine(), prompts = await loadPrompts(true);
   let n = 0;
   for (const it of items) {
     n++;
     const [kb, kv] = it.key.split("~"), [loc, pose] = kb.split("_"), label = `${LOC_ZH[loc]}・${POSE_ZH[pose]}${kv ? `・${VARIANT_ZH[kv]}` : ""} #${it.slot + 1}`;
     try {
       const seed = Math.floor(Math.random() * 2 ** 31) || 1;
-      const body = sceneBody(venue, it.key, opts.girl, opts.client || {}, eng, n, { seed });
-      it.state = "生圖中"; say(`${n}/${items.length} ${label}：生圖（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、seed ${seed}）`);
+      const body = sceneBody(venue, it.key, opts.girl, opts.client || {}, eng, n, { seed, tpl: templateFor(prompts, venue, it.key) });
+      it.state = "生圖中"; say(`${n}/${items.length} ${label}：生圖（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、seed ${seed}${body.pose_ref ? `、圖生圖 ${body.pose_denoise}` : ""}）`);
       const res = await waitImg(body, (s) => say(`${n}/${items.length} ${label}：生圖 ${s} 秒`));
       if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
       const up = String(res.result).split("|")[0];
@@ -207,12 +269,53 @@ export function bindPanel(api = {}) {
     if (!panel.hidden && venue === v && !busy) { close(); return; }
     document.querySelectorAll(".tease-pack-panel").forEach((el) => { if (el !== panel) el.hidden = true; });
     document.querySelectorAll("#room-pack-chrome button[aria-controls]").forEach((x) => x.setAttribute("aria-expanded", x === b ? "true" : "false"));
-    venue = v; panel.hidden = false; fillClients(); status.textContent = busy ? `${VZH[busy]}生圖中……` : "";
+    venue = v; panel.hidden = false; fillClients(); void loadEditor(); status.textContent = busy ? `${VZH[busy]}生圖中……` : "";
     void show();
   });
   // 點別的快捷按鈕時收起
   document.querySelectorAll("#room-pack-chrome button[aria-controls]").forEach((b) => { if (!btns.includes(b) && b.id !== "edit-room") b.addEventListener("click", () => { if (!panel.hidden) close(); }); });
   $("rs-run")?.addEventListener("click", () => void run());
+  // ---- 提示詞編輯器（每個房型×每格；存伺服器、全域）
+  const pk = $("rs-p-key"), pPos = $("rs-p-pos"), pNeg = $("rs-p-neg"), pI2 = $("rs-p-i2"), pRef = $("rs-p-ref"), pDn = $("rs-p-dn"), pDnV = $("rs-p-dn-v"), pSt = $("rs-p-status"), pPrev = $("rs-p-preview");
+  const allKeys = [...SLOT_KEYS, ...VARIANT_KEYS];
+  const keyZh = (k) => { const [b, v] = k.split("~"), [l, p] = b.split("_"); return `${LOC_ZH[l]}・${POSE_ZH[p]}${v ? `・${VARIANT_ZH[v]}` : ""}`; };
+  if (pk && !pk.options.length) pk.innerHTML = allKeys.map((k) => `<option value="${k}">${keyZh(k)}</option>`).join("");
+  let pRefUrl = "";
+  const preview = () => {
+    if (!pPrev || !pk) return;
+    const f = fillTemplate({ pos: pPos.value, neg: pNeg.value }, pk.value, api.girl?.() || null, curClient() || {});
+    pPrev.textContent = `代入（目前的她＋選的客人）：\n＋ ${f.pos}\n－ ${f.neg}`;
+  };
+  const loadEditor = async () => {
+    if (!pk) return;
+    const t = templateFor(await loadPrompts(true), venue, pk.value);
+    pPos.value = t.pos; pNeg.value = t.neg; pI2.checked = !!t.img2img.on; pRefUrl = t.img2img.ref || ""; pDn.value = String(t.img2img.denoise || 0.6);
+    pDnV.textContent = Number(pDn.value).toFixed(2); pRef.textContent = pRefUrl ? pRefUrl.split("/").pop() : "（沒有參考圖）";
+    pSt.textContent = `${VZH[venue]}・${keyZh(pk.value)}：${t.saved ? "用存過的模板" : "預設"}`; preview();
+  };
+  const savePrompt = async (tpl) => {
+    const r = await fetch("/api/rental/scene-prompts", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ venue, key: pk.value, tpl }) });
+    if (!r.ok) throw new Error(`存檔失敗 ${r.status}（伺服器要重啟？）`);
+    await loadPrompts(true);
+  };
+  pk?.addEventListener("change", () => void loadEditor());
+  pPos?.addEventListener("input", preview); pNeg?.addEventListener("input", preview);
+  pDn?.addEventListener("input", () => { pDnV.textContent = Number(pDn.value).toFixed(2); });
+  $("rs-p-file")?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const fd = new FormData(); fd.append("file", file, file.name);
+    const r = await fetch("/api/pose-refs", { method: "POST", body: fd });
+    if (!r.ok) { pSt.textContent = `上傳失敗 ${r.status}`; return; }
+    pRefUrl = (await r.json()).url; pRef.textContent = pRefUrl.split("/").pop(); pI2.checked = true;
+  });
+  $("rs-p-save")?.addEventListener("click", async () => {
+    try { await savePrompt({ pos: pPos.value, neg: pNeg.value, img2img: { on: pI2.checked && !!pRefUrl, ref: pRefUrl, denoise: Number(pDn.value) || 0.6 } }); pSt.textContent = `已存：${VZH[venue]}・${keyZh(pk.value)}（test_room 和遊戲生圖都用這個）`; }
+    catch (e) { pSt.textContent = String(e?.message || e); }
+  });
+  $("rs-p-reset")?.addEventListener("click", async () => {
+    try { await savePrompt(null); await loadEditor(); pSt.textContent = `已回預設：${keyZh(pk.value)}`; } catch (e) { pSt.textContent = String(e?.message || e); }
+  });
+  sel?.addEventListener("change", preview);
   $("rs-close")?.addEventListener("click", close);
   return { client: curClient };
 }
