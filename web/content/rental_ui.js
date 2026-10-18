@@ -4,8 +4,9 @@
  *        gold(), earn(n, why), hunger(who), mood(who), applyEffects(who, eff), persist(), debug(msg), peek(opts), ai?(kind, ctx) → Promise<string> }
  * 她的約會存在 who.rentalMine.active（關掉 App 再開照時間接著走；決定點會停住）。 */
 import * as R from "./rental.js?v=7";
-import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=15";
-import { planSession, sessionResult } from "./rental_session.js?v=2";
+import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=16";
+import { planSession, sessionResult, ownersOf } from "./rental_session.js?v=3";
+import { ensureSessionImages } from "./rental_scene_gen.js?v=4";
 import * as L from "./rental_lines.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 
@@ -246,9 +247,12 @@ export function createRental(api) {
     btn("不送，在家等", "他們自己去；你不知道是哪間旅館", () => choose({ drive: false }));
   }
   function openSessionRoom(who, date) {
+    void ensureSessionImages(date.hotel.venue, date.hotel.session, who, date.client, window.RoomDoll?.lookToDoll(who.look || null) || null, api.debug);
     const h = date.hotel, hr = R.where(date).hour % 24, p = R.aiPayload(who, date, "wife", "reply");
     openRoom({ venue: h.venue, room: h.room, night: hr >= 18 || hr < 6, clientName: date.client.name, look: who.look || {}, doll: window.RoomDoll?.lookToDoll(who.look || null) || null,
-      session: h.session, girl: p.girl, client: { ...p.client, build: date.client.build },
+      session: h.session, girl: p.girl, client: { ...p.client, build: date.client.build, age: date.client.age },
+      // 2026-10-17 Al：點人物的圖要是這個她＋這個客人（長相對得上）；還沒有就背景生這一場用到的
+      owners: ownersOf(who.id, date.client.id),
       onStep: (stt) => { if (!stt.done && stt.act) api.debug(`日租女友：房間第 ${stt.i + 1} 段 ${stt.act.loc}/${stt.act.pose}${stt.act.cum ? "（內射）" : ""}`); },
       onLeave: () => render() });
   }

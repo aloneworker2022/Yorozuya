@@ -112,16 +112,36 @@ def save_manifest(assets: Path, data: dict) -> None:
     tmp.replace(p)
 
 
-def put_image(data: dict, venue: str, key: str, slot: int, url: str) -> dict:
-    row = data.setdefault(venue, {}).setdefault(key, [])
+OWNER = re.compile(r"^[A-Za-z0-9_\-]{1,64}\|[A-Za-z0-9_\-*]{1,64}$")
+
+
+def owner_key(owner: str) -> str:
+    """「她 id|客人 id」（客人 * ＝這個她、任何客人）→ manifest 裡的 "@她|客"；不合格回空字串（＝通用圖）。"""
+    o = str(owner or "").strip()
+    return "@" + o if OWNER.match(o) else ""
+
+
+def put_image(data: dict, venue: str, key: str, slot: int, url: str, owner: str = "") -> dict:
+    v = data.setdefault(venue, {})
+    ok = owner_key(owner)
+    if ok:
+        v = v.setdefault(ok, {})
+    row = v.setdefault(key, [])
     while len(row) < SLOTS_PER:
         row.append("")
     row[max(0, min(SLOTS_PER - 1, int(slot)))] = url
     return data
 
 
-def pick(data: dict, venue: str, key: str, r=random.random) -> str:
-    urls = [u for u in ((data.get(venue) or {}).get(key) or []) if u]
+def pick(data: dict, venue: str, key: str, r=random.random, owners=()) -> str:
+    v = data.get(venue) or {}
+    urls = []
+    for o in owners or ():
+        urls = [u for u in (((v.get(owner_key(o)) or {}) if owner_key(o) else {}).get(key) or []) if u]
+        if urls:
+            break
+    if not urls:
+        urls = [u for u in (v.get(key) or []) if u]
     return urls[int(r() * len(urls))] if urls else ""
 
 

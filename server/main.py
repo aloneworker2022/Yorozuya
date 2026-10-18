@@ -4848,7 +4848,7 @@ def rental_scene_images():
 @app.post("/api/rental/scene-images")
 def rental_scene_image_put(body: dict):
     """把一張生好的圖（/assets/testword/… 或 pose_refs）搬到 assets/rental_scenes/ 並登記到 manifest（testword 會被 GC）。
-    body：{venue, key, slot(0|1), url}。"""
+    body：{venue, key, slot(0|1), url, owners?:["她id|客人id", "她id|*"]}（有 owners → 只登記到這個她／客人；沒有 → 通用）。"""
     body = body or {}
     venue, key = str(body.get("venue") or ""), str(body.get("key") or "")
     if venue not in rental_scene.VENUES or key not in rental_scene.SLOTS:
@@ -4859,10 +4859,13 @@ def rental_scene_image_put(body: dict):
     slot = max(0, min(rental_scene.SLOTS_PER - 1, int(body.get("slot") or 0)))
     out_dir = ASSETS_DIR / "rental_scenes"
     out_dir.mkdir(parents=True, exist_ok=True)
-    name = f"{venue}_{key}_{slot}_{int(time.time() * 1000)}{src.suffix.lower() or '.png'}"
+    owners = [o for o in (body.get("owners") or [body.get("owner") or ""]) if rental_scene.owner_key(str(o))][:2]
+    tag = re.sub(r"[^A-Za-z0-9_-]", "-", str(owners[0]))[:40] + "_" if owners else ""
+    name = f"{venue}_{key}_{slot}_{tag}{int(time.time() * 1000)}{src.suffix.lower() or '.png'}"
     shutil.copyfile(src, out_dir / name)
     data = rental_scene.load_manifest(ASSETS_DIR)
-    rental_scene.put_image(data, venue, key, slot, f"/assets/rental_scenes/{name}")
+    for o in owners or [""]:
+        rental_scene.put_image(data, venue, key, slot, f"/assets/rental_scenes/{name}", owner=str(o))
     rental_scene.save_manifest(ASSETS_DIR, data)
     return {"url": f"/assets/rental_scenes/{name}", "images": data}
 

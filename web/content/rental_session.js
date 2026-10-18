@@ -67,6 +67,17 @@ export async function loadImages(force = false) {
   manifestAt = Date.now();
   return manifest;
 }
+/** 這段的圖：先找「這個她＋這個客人」→「這個她（任何客人）」→ 通用（2026-10-17 Al：長相要對得上）。owners＝["她id|客人id", "她id|*"]。 */
+export function ownersOf(girlId, clientId) {
+  const ok = (x) => /^[A-Za-z0-9_-]{1,64}$/.test(String(x || ""));
+  if (!ok(girlId)) return [];
+  return [...(ok(clientId) ? [`${girlId}|${clientId}`] : []), `${girlId}|*`];
+}
+export function pickUrls(m, venue, key, owners = []) {
+  const v = m?.[venue] || {};
+  for (const o of owners) { const u = ((v["@" + o] || {})[key] || []).filter(Boolean); if (u.length) return u; }
+  return (v[key] || []).filter(Boolean);
+}
 export async function fetchTalk(payload) {
   try {
     const r = await fetch("/api/rental/scene-talk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -103,7 +114,7 @@ export function openTalk(box, ctx) {
   place();
   void loadImages().then((m) => {
     if (state.closed) return;
-    const urls = ((m?.[ctx.venue] || {})[slotKey(ctx.act)] || []).filter(Boolean);
+    const urls = pickUrls(m, ctx.venue, slotKey(ctx.act), ctx.owners || []);
     if (!urls.length) return;
     const img = new Image(); img.alt = ""; state.pic = img.src = urls[Math.floor(Math.random() * urls.length)];
     el.classList.add("pic"); el.prepend(img); place();
