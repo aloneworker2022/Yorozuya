@@ -53,7 +53,7 @@ const CSS = `
 .rs-talk{position:absolute;inset:0;z-index:3;touch-action:manipulation}
 .rs-talk.pic{background:#000}
 .rs-talk:not(.pic) .ttl{display:none}
-.rs-talk img,.rs-talk canvas.rs-comp{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.rs-talk img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .rs-talk .peek-bub{position:absolute;max-width:46%;padding:3px 7px;border-radius:7px;font:600 13px/1.3 system-ui,sans-serif;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .25s,transform .25s;white-space:normal}
 .rs-talk .peek-bub.on{opacity:1;transform:none}
 .rs-talk .peek-bub.c{background:rgba(20,30,70,.82);color:#8fb2ff;border:1px solid #3f62c0}
@@ -77,40 +77,6 @@ export function pickUrls(m, venue, key, owners = []) {
   const v = m?.[venue] || {};
   for (const o of owners) { const u = ((v["@" + o] || {})[key] || []).filter(Boolean); if (u.length) return u; }
   return (v[key] || []).filter(Boolean);
-}
-/** 2026-10-18 Al：點人物的圖＝遊戲自己的房間（當下那張點陣場景）＋AI 畫的兩個人（去背透明 PNG），顯示時合成。
- *  兩個人放在點陣情侶的框（rental_couple 用房間投影放在床面／浴缸上的那個框）：底對齊、置中、縮進框裡；泡澡在下半身疊水。
- *  room：195×422 房間 canvas；box：{x0,y0,x1,y1}（同座標）；回 canvas（4 倍），圖不是去背的（舊版整張圖）→ null。 */
-export async function composeScene(room, url, box, key, venue, K = 4) {
-  const im = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = url; });
-  const t = document.createElement("canvas"); t.width = t.height = 4;
-  const tg = t.getContext("2d", { willReadFrequently: true }); tg.drawImage(im, 0, 0, 2, 2, 0, 0, 2, 2);
-  if (tg.getImageData(0, 0, 1, 1).data[3] > 200) return null;   // 角落不透明＝舊版合成好的整張圖
-  const W = room.width, H = room.height, out = document.createElement("canvas"); out.width = W * K; out.height = H * K;
-  const g = out.getContext("2d");
-  g.imageSmoothingEnabled = false; g.drawImage(room, 0, 0, W * K, H * K);
-  const bw = (box.x1 - box.x0 + 1) * K, bh = (box.y1 - box.y0 + 1) * K;
-  const k = Math.min(bh / im.height, (bw * 1.15) / im.width), dw = im.width * k, dh = im.height * k;
-  const cx = ((box.x0 + box.x1 + 1) / 2) * K, by = (box.y1 + 1) * K, dx = cx - dw / 2, dy = by - dh;
-  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
-  g.save(); g.fillStyle = "rgba(0,0,0,0.3)"; g.filter = `blur(${2 * K}px)`;
-  g.beginPath(); g.ellipse(cx, by - K, dw * 0.45, Math.max(2 * K, dh * 0.04), 0, 0, Math.PI * 2); g.fill(); g.restore();
-  g.drawImage(im, dx, dy, dw, dh);
-  if (key === "bath_soak") {
-    const wy = by - dh * 0.42, col = venue === "hotel" ? [70, 150, 235] : venue === "motel" ? [90, 160, 200] : [120, 175, 190];
-    const gr = g.createLinearGradient(0, wy, 0, by);
-    gr.addColorStop(0, `rgba(${col},0.55)`); gr.addColorStop(1, `rgba(${col.map((x) => Math.round(x * 0.6))},0.85)`);
-    g.fillStyle = gr; g.fillRect(dx - dw * 0.06, wy, dw * 1.12, by - wy);
-    g.strokeStyle = "rgba(255,255,255,0.6)"; g.lineWidth = K * 0.75;
-    g.beginPath(); for (let x = dx - dw * 0.06; x <= dx + dw * 1.06; x += K * 1.5) g.lineTo(x, wy + Math.sin(x / (K * 3)) * K * 0.6); g.stroke();
-  }
-  return out;
-}
-/** 點陣情侶一整圈的聯集框（合成時用；比單格穩）。 */
-export function unionBox(frames) {
-  let b = null;
-  for (const f of frames || []) { const x = f?.box; if (!x) continue; b = b ? { x0: Math.min(b.x0, x.x0), y0: Math.min(b.y0, x.y0), x1: Math.max(b.x1, x.x1), y1: Math.max(b.y1, x.y1) } : { ...x }; }
-  return b;
 }
 export async function fetchTalk(payload) {
   try {
@@ -153,9 +119,7 @@ export function openTalk(box, ctx) {
     const url = urls[Math.floor(Math.random() * urls.length)];
     const show = (node) => { if (state.closed) return; state.pic = url; el.classList.add("pic"); el.prepend(node); place(); };
     const asImg = () => { const img = new Image(); img.alt = ""; img.src = url; show(img); };
-    if (ctx.room && ctx.place) {
-      composeScene(ctx.room, url, ctx.place, slotKey(ctx.act), ctx.venue).then((c) => { if (!c) return asImg(); c.className = "rs-comp"; show(c); }).catch(asImg);
-    } else asImg();
+    asImg();
   });
   const more = async () => {
     if (busy) return; busy = true;

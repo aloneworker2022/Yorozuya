@@ -1,23 +1,25 @@
 /* test_room 上排快捷「日式房間／汽車旅館／旅館」（2026-10-17 Al）：一個房型一顆按鈕；按下去把這個房型的 5 個地點姿勢（床鋪接吻／正面／背後、浴室泡澡／站著）
  * 各生 2 張（不同 seed）。2026-10-18：純文生圖，跟她自己的圖同一條路（遊戲設定、她的模型、character＋lock_identity）；
  * 姿勢／地點／房型／平視側面／客人外觀全寫在 prompt，不送底圖（圖生圖會把她身材拉歪）；好了搬到 assets/rental_scenes/ 登記 manifest（/api/rental/scene-images），遊戲點人物時從這裡挑。 */
-import { SLOT_KEYS, LOC_ZH, POSE_ZH, loadImages, ownersOf, composeScene, unionBox } from "./rental_session.js?v=4";
+import { SLOT_KEYS, LOC_ZH, POSE_ZH, loadImages, ownersOf } from "./rental_session.js?v=5";
 import { rollClients } from "./rental.js?v=7";
-import { drawRoom } from "./rental_entry.js?v=17";
-import { makeCouple } from "./rental_couple.js?v=1";
 
 // 2026-10-18：鏡頭一律「站在旁邊平視看」：側面、與人物同高。之前躺／趴／泡澡的姿勢被模型畫成俯視（底圖是整間房的高角度＋小人）。
 const CAM_EN = "side view, from side, profile, eye level shot, camera at waist height, horizontal view, standing observer beside them, full body in frame";
 const NEG_EN = "from above, top-down view, overhead view, high angle, bird's-eye view, aerial view, pov, first-person view, from below, ceiling view";
 // 人物單獨畫在白底上（之後去背）；家具只留碰到的那一點（床緣／浴缸邊），合成時背景補上
-const FLAT_EN = "simple background, white background, plain background, no scenery, no furniture";
-const FLAT_NEG = "scenery, room, detailed background, furniture, bed frame, wall, floor";
+/** 2026-10-18 Al：背景直接寫進 prompt（一張圖畫完，不去背不合成）。 */
+const BG_EN = {
+  ryokan: { bed: "japanese tatami room, futon bedding on tatami floor, shoji sliding doors, paper andon lamp, ryokan interior", bath: "japanese-style bathroom, wooden hinoki onsen bathtub, stone tiles, steam, ryokan bath" },
+  motel: { bed: "motel room, motel bed, cheap neon-lit interior", bath: "motel bathroom, jacuzzi bathtub, tiled walls" },
+  hotel: { bed: "hotel room, large hotel bed with white sheets, hotel interior", bath: "hotel bathroom, bathtub, marble tiles" },
+};
 const POSE_EN = {
-  bed_kiss: "sitting side by side, face to face, kissing, embracing, partially clothed, side view of both bodies, feet on the floor",
-  bed_missionary: "sex, missionary, she lies on her back seen from the side, her legs raised, he kneels between her legs, both bodies in profile, nude, creampie",
-  bed_doggy: "sex, doggystyle, from behind, she is on all fours facing left, he kneels behind her holding her hips, both bodies in profile, hanging breasts, nude, creampie",
-  bath_soak: "bathing together, sitting, girl sitting on his lap leaning back against his chest, wet skin, both in profile, nude",
-  bath_standing: "sex, standing sex, from behind, she bends forward 90 degrees with hands resting on an invisible ledge, standing on tiptoe, he stands behind her holding her hips, both full bodies in profile, wet, nude, creampie",
+  bed_kiss: "sitting on bed edge, face to face, kissing, embracing, partially clothed, side view of both bodies",
+  bed_missionary: "sex, missionary, she lies on her back on the bed seen from the side, her legs raised, he kneels between her legs, both bodies in profile, nude, creampie",
+  bed_doggy: "sex, doggystyle, from behind, she is on all fours on the bed facing left, he kneels behind her holding her hips, both bodies in profile, hanging breasts, nude, creampie",
+  bath_soak: "bathing together, sitting in bathtub, girl sitting on his lap leaning back against his chest, water up to chest, wet, steam, both in profile, nude",
+  bath_standing: "sex, standing sex, from behind, she bends forward 90 degrees with hands gripping the bathtub edge, standing on tiptoe, he stands behind her holding her hips, both full bodies in profile, wet, nude, creampie",
 };
 async function postImg(body) {
   const r = await fetch("/api/imggen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -84,8 +86,8 @@ export function sceneBody(venue, key, girl, client, eng, n = 0, o = {}) {
   const comfy = eng.imgProvider === "comfy";
   const ckpt = String(girl.comfyCkpt || "").trim() || eng.comfyCkpt;
   if (comfy && !ckpt) throw new Error("此魅子尚未綁定 Comfy 模型（comfyCkpt）");
-  const extra = `${QUALITY_EN}, ${PAIR_EN}, ${POSE_EN[key]}, the man: ${clientTags(client)}, third person, ${CAM_EN}, ${FLAT_EN}`;
-  const neg = `${PAIR_NEG}, ${CLEAR_NEG}, ${NEG_EN}, ${FLAT_NEG}`;
+  const extra = `${QUALITY_EN}, ${PAIR_EN}, ${POSE_EN[key]}, the man: ${clientTags(client)}, third person, ${CAM_EN}, ${BG_EN[venue]?.[key.split("_")[0]] || ""}, detailed background`;
+  const neg = `${PAIR_NEG}, ${CLEAR_NEG}, ${NEG_EN}`;
   return {
     key: `rental-scene:${venue}:${key}:${girl.id}:${Date.now().toString(36)}${n}`,
     provider: comfy ? "comfy" : "grok-img",
@@ -105,55 +107,7 @@ async function putScene(venue, it, url, owners) {
   if (!put.ok) throw new Error(`登記失敗 ${put.status}`);
   return (await put.json()).url;
 }
-const loadImg = (src) => new Promise((ok, bad) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => bad(new Error(`讀不到圖 ${src}`)); im.src = src; });
-/** 去背保底：伺服器 cutout 沒動它（四邊不是平背景）→ 從四邊往內漫延吃掉跟角落顏色接近的連通區。 */
-function floodCut(g, w, h, tol = 40) {
-  const d = g.getImageData(0, 0, w, h), a = d.data;
-  const corner = [0, w - 1, (h - 1) * w, h * w - 1].map((i) => [a[i * 4], a[i * 4 + 1], a[i * 4 + 2]]);
-  const ref = [0, 1, 2].map((k) => corner.map((c) => c[k]).sort((x, y) => x - y)[2]);
-  const seen = new Uint8Array(w * h), q = [];
-  const near = (i) => Math.abs(a[i * 4] - ref[0]) < tol && Math.abs(a[i * 4 + 1] - ref[1]) < tol && Math.abs(a[i * 4 + 2] - ref[2]) < tol;
-  for (let x = 0; x < w; x++) q.push(x, (h - 1) * w + x);
-  for (let y = 0; y < h; y++) q.push(y * w, y * w + w - 1);
-  while (q.length) {
-    const i = q.pop();
-    if (seen[i] || !near(i)) continue;
-    seen[i] = 1; a[i * 4 + 3] = 0;
-    const x = i % w;
-    if (x > 0) q.push(i - 1); if (x < w - 1) q.push(i + 1); if (i >= w) q.push(i - w); if (i < w * (h - 1)) q.push(i + w);
-  }
-  g.putImageData(d, 0, 0);
-}
-/** 去背後的兩個人 → canvas＋不透明的框。 */
-async function cutoutCanvas(url) {
-  const im = await loadImg(url);
-  const c = document.createElement("canvas"); c.width = im.width; c.height = im.height;
-  const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(im, 0, 0);
-  let d = g.getImageData(0, 0, c.width, c.height).data, clear = 0;
-  for (let i = 3; i < d.length; i += 4 * 97) if (d[i] < 20) clear++;
-  if (clear < 20) { floodCut(g, c.width, c.height); d = g.getImageData(0, 0, c.width, c.height).data; c.cutBy = "flood"; } else c.cutBy = "server";
-  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
-  for (let y = 0; y < c.height; y += 2) for (let x = 0; x < c.width; x += 2) if (d[(y * c.width + x) * 4 + 3] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  if (x1 < 0) throw new Error("去背後沒有人");
-  c.box = { x0, y0, x1: x1 + 1, y1: y1 + 1 };
-  return c;
-}
-/** 去背的兩個人裁到框（存這張透明 PNG；合成在顯示時做，房間永遠是遊戲裡當下那張）。 */
-function cropFig(fig) {
-  const b = fig.box, c = document.createElement("canvas"); c.width = b.x1 - b.x0; c.height = b.y1 - b.y0;
-  c.getContext("2d").drawImage(fig, b.x0, b.y0, c.width, c.height, 0, 0, c.width, c.height);
-  return c;
-}
-async function uploadCanvas(c, name) {
-  const blob = await new Promise((r) => c.toBlob(r, "image/png"));
-  const fd = new FormData(); fd.append("file", blob, name);
-  const r = await fetch("/api/pose-refs", { method: "POST", body: fd });
-  if (!r.ok) throw new Error(`上傳去背圖失敗 ${r.status}`);
-  return (await r.json()).url;
-}
-/** 生一個房型的圖（2026-10-18 Al：AI 只畫兩個人，背景＝遊戲自己的點陣房間）：
- *  ① 兩個人純文生圖、白底 ② /api/cutout 去背（摳不掉 → 前端漫延去背）③ 裁到人物框、存透明 PNG。
- *  合成在顯示時做（rental_session.composeScene：房間照常畫，兩個人放在點陣情侶的投影框——床面／浴缸——上，泡澡疊水）。
+/** 生一個房型的圖（2026-10-18 Al：純文生圖一張畫完——兩個人＋房型背景都寫在 prompt，原圖直接顯示）。
  *  opts：{ girl, client, keys?, perSlot?（預設 2，每張不同 seed）, owners, onProgress }。 */
 export async function generateVenue(venue, opts = {}) {
   const keys = opts.keys?.length ? opts.keys : SLOT_KEYS, per = opts.perSlot || 2;
@@ -167,15 +121,10 @@ export async function generateVenue(venue, opts = {}) {
     try {
       const seed = Math.floor(Math.random() * 2 ** 31) || 1;
       const body = sceneBody(venue, it.key, opts.girl, opts.client || {}, eng, n, { seed });
-      it.state = "生圖中"; say(`${n}/${items.length} ${label}：生人物（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、seed ${seed}）`);
-      const res = await waitImg(body, (s) => say(`${n}/${items.length} ${label}：生人物 ${s} 秒`));
+      it.state = "生圖中"; say(`${n}/${items.length} ${label}：生圖（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、seed ${seed}）`);
+      const res = await waitImg(body, (s) => say(`${n}/${items.length} ${label}：生圖 ${s} 秒`));
       if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
-      const raw = String(res.result).split("|")[0];
-      it.state = "去背"; say(`${n}/${items.length} ${label}：去背`);
-      const cut = await fetch("/api/cutout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: raw }) }).then((r) => r.json()).catch(() => ({}));
-      const fig = await cutoutCanvas(cut?.url || raw);
-      say(`${n}/${items.length} ${label}：存檔（去背：${fig.cutBy === "server" ? "伺服器 cutout" : "漫延保底"}）`);
-      const up = await uploadCanvas(cropFig(fig), `rental_${venue}_${it.key}.png`);
+      const up = String(res.result).split("|")[0];
       it.url = await putScene(venue, it, up, opts.owners); it.state = "好了";
     } catch (e) { it.state = "失敗"; it.error = String(e?.message || e); }
     say(`${n}/${items.length} ${label}：${it.state}${it.error ? `（${it.error}）` : ""}`);
@@ -184,20 +133,6 @@ export async function generateVenue(venue, opts = {}) {
   return items;
 }
 
-/** test_room 預覽：跟遊戲同一個合成（點陣房間＋點陣情侶的框＋去背的兩個人）。 */
-const roomCache = new Map();
-async function previewComp(venue, key, url, api) {
-  const [loc, pose] = key.split("_"), girl = api.girl?.() || null, doll = girl ? window.RoomDoll?.lookToDoll(girl.look || null) || null : null;
-  const ck = `${venue}_${key}`;
-  let r = roomCache.get(ck);
-  if (!r) {
-    const room = document.createElement("canvas"); room.width = 195; room.height = 422;
-    drawRoom(room.getContext("2d"), venue, true, loc === "bed" ? 0 : 1);
-    const box = unionBox(makeCouple({ venue, scene: loc, pose, doll: doll || {}, bg: room }).buildAll());
-    r = { room, box }; roomCache.set(ck, r);
-  }
-  return r.box ? composeScene(r.room, url, r.box, key, venue) : null;
-}
 const VZH = { ryokan: "日式房間（溫泉旅館）", motel: "汽車旅館", hotel: "旅館" };
 /** 綁上排快捷的三顆按鈕＋面板。api：{ girl()（現在的她）, debug(msg) }。按房型按鈕＝打開面板並開始生這個房型的 10 張。 */
 export function bindPanel(api = {}) {
@@ -229,7 +164,6 @@ export function bindPanel(api = {}) {
     grid.replaceChildren(...SLOT_KEYS.flatMap((key) => [0, 1].map((slot) => {
       const d = document.createElement("div"), [loc, pose] = key.split("_"), it = items?.find((x) => x.key === key && x.slot === slot), url = (owners.length ? ((m?.[venue] || {})["@" + owners[0]] || {})[key] || [] : (m?.[venue] || {})[key] || [])[slot];
       d.style.cssText = "font-size:12px;text-align:center";
-      if (url) void previewComp(venue, key, url, api).then((c) => { if (!c) return; c.style.cssText = "width:100%;max-height:220px;object-fit:contain;background:#000;border-radius:6px"; d.querySelector("img")?.replaceWith(c); }).catch(() => {});
       d.innerHTML = url ? `<img src="${url}" style="width:100%;max-height:160px;object-fit:contain;background:#000;border-radius:6px">` : `<div style="height:60px;background:#222;border-radius:6px;color:#999;display:flex;align-items:center;justify-content:center">${it?.state || "還沒有"}</div>`;
       d.append(`${LOC_ZH[loc]}・${POSE_ZH[pose]} #${slot + 1}${it?.error ? `（${it.error}）` : ""}`);
       return d;
