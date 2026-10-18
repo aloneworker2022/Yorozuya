@@ -10,7 +10,7 @@ import { paintJapaneseRoom, projectJapaneseRoom } from "./rental_room_paint.js?v
 import { drawGirl } from "./rental_girl_pixel.js?v=7";
 import { paintBathroom } from "./rental_bath_paint.js?v=2";
 import { hotelDoorScene, hotelBedScene, hotelBathScene, motelGarageScene, motelBedScene, motelBathScene } from "./rental_scenes_hm.js?v=2";
-import { stateAt as sessionState, openTalk, LOC_ZH, POSE_ZH } from "./rental_session.js?v=3";
+import { stateAt as sessionState, openTalk, unionBox, LOC_ZH, POSE_ZH } from "./rental_session.js?v=4";
 import { makeCouple } from "./rental_couple.js?v=1";
 const LW = 195, LH = 422;
 
@@ -287,7 +287,9 @@ export function openRoom(opts = {}) {
     if (x < hit.x0 - 4 || x > hit.x1 + 4 || y < hit.y0 - 4 || y > hit.y1 + 4) return;
     const stt = sessionState(S, Date.now());
     if (stt.done) return;
-    talk = openTalk(ov.querySelector(".box"), { venue: opts.venue, act: stt.act, step: stt.i + 1, cums: stt.cums, girl: opts.girl || {}, client: opts.client || {}, voice: opts.voice || "", owners: opts.owners || [], box: hit });
+    talk = openTalk(ov.querySelector(".box"), { venue: opts.venue, act: stt.act, step: stt.i + 1, cums: stt.cums, girl: opts.girl || {}, client: opts.client || {}, voice: opts.voice || "", owners: opts.owners || [], box: hit,
+      // 2026-10-18：AI 兩個人合成到當下這張房間（沒畫人的那張），放在點陣情侶一整圈的框
+      room: cache[cur].c, place: unionBox(couples.get(`${stt.act.loc}_${stt.act.pose}`)?.buildAll()) || hit });
     const oc = talk.close; talk.close = () => { oc(); talk = null; };
     talk.el.addEventListener("click", () => { talk = null; });
   });

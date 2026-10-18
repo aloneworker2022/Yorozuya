@@ -1948,28 +1948,6 @@ High resolution.{do_not}{vary_block}
 """
 
 
-def _wrap_backdrop_prompt(body: str, *, out_path: Path, style: str = "anime") -> str:
-    """旅館房間背景（2026-10-18 rental）：空房間、沒有人，之後把兩個人合成上去。"""
-    style_txt = _STYLE_MAP.get((style or "anime").lower(), _STYLE_MAP["anime"])
-    pos, neg = sdtags.split_pos_neg_tags(body)
-    do_not = f"\nDo NOT draw: {neg}\n" if neg else ""
-    return f"""Generate ONE image. Use image_gen. Save to:
-{out_path}
-
-You MUST use the image_gen tool (do NOT draw with Python/code).
-Use aspect_ratio "3:4".
-
-An empty interior background for a visual novel scene. NO people, no characters, no animals.
-Camera at eye level, looking straight at the furniture from the side. No text, no watermarks.
-
-Draw this (tags, not Chinese, not sentences):
-{pos}
-
-Style: {style_txt}
-High resolution.{do_not}
-"""
-
-
 def _stage_ref_in_work(src: Path | None, work: Path, stem: str) -> Path | None:
     """把參考圖拷進 grok 工作目錄,沙箱比較找得到。"""
     if src is None or not src.is_file() or src.stat().st_size <= 0:
@@ -2063,11 +2041,6 @@ async def _run_grok_image(
             name=name, personality=personality, backstory=backstory, extra=extra_use,
         )
         prompt = _wrap_part_prompt(body, out_path=target, ref_path=id_local)
-    elif str(scene_kind or "").lower() == "backdrop":
-        body = prompt_body.strip() or extra_use
-        if not body:
-            return "", "背景圖要有 prompt"
-        prompt = _wrap_backdrop_prompt(body, out_path=target, style=style)
     elif str(scene_kind or "").lower() == "sex_strip":
         body = prompt_body.strip() or extra_use
         if not body:
@@ -2198,7 +2171,7 @@ def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
     scene_kind = str(opts.get("scene_kind") or "").strip().lower()
     part = str(opts.get("part") or "").lower()
     # 劇本／sex_strip 優先：就算誤帶 portrait shot 也不進 portraits/
-    if scene_kind in ("script", "sex_strip", "backdrop"):
+    if scene_kind in ("script", "sex_strip"):
         IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
         stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
         fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
@@ -2629,10 +2602,6 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     # prompt 有值 = 使用者在 testword 改過的版本,原樣送出;留空才由人設現組
     prompt = str(opts.get("prompt") or "").strip()
     sex_strip = str(opts.get("scene_kind") or "").lower() == "sex_strip"
-    backdrop = str(opts.get("scene_kind") or "").lower() == "backdrop"
-    if backdrop and prompt:
-        prompt, pneg = sdtags.split_pos_neg_tags(prompt)
-        extra_neg = ", ".join(x for x in (extra_neg, pneg) if x)
     if not prompt and wf is None:
         if sex_strip:
             prompt = str(opts.get("extra") or "").strip()
@@ -3121,8 +3090,7 @@ def imggen_submit(t: ImgGenIn):
     )
     shot_in = (t.shot or "").strip().lower()
     sex_strip = (t.scene_kind or "").strip().lower() == "sex_strip"
-    script_kind = (t.scene_kind or "").strip().lower() in ("script", "backdrop")
-    backdrop_kind = (t.scene_kind or "").strip().lower() == "backdrop"
+    script_kind = (t.scene_kind or "").strip().lower() == "script"
     # 劇本／sex_strip 絕不能當 portrait shot（否則落到 portraits/ 變立繪路徑）
     if script_kind or sex_strip:
         shot_in = ""
@@ -3157,7 +3125,7 @@ def imggen_submit(t: ImgGenIn):
         "flat_bg": False if script_kind else bool(t.flat_bg or portrait_cut),
         # Comfy：prompt 有值才原樣送；出卡應留空，讓 _comfy_prompt_for 用人設 + extra
         # Grok：整張圖不吃前端 prompt（只在分段 part、或做愛局部橫幅時吃）
-        "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip or backdrop_kind) else "",
+        "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip) else "",
     }
     if ep == "comfy-img":
         # 出卡場景：下單時就寫入隨機 seed，避免 worker 用舊邏輯／固定人設 seed 出同圖
@@ -4875,26 +4843,6 @@ async def rental_scene_talk(body: dict):
 def rental_scene_images():
     """test_room 生好的旅館圖：{venue: {slot_key: [url, url]}}。"""
     return {"images": rental_scene.load_manifest(ASSETS_DIR), "slots": list(rental_scene.SLOTS), "venues": list(rental_scene.VENUES)}
-
-
-@app.post("/api/rental/backdrops")
-def rental_backdrop_put(body: dict):
-    """旅館房間背景（沒有人）：body {venue, loc:"bed"|"bath", url}。搬到 assets/rental_scenes/，記在 manifest["_bg"][venue][loc]。"""
-    body = body or {}
-    venue, loc = str(body.get("venue") or ""), str(body.get("loc") or "")
-    if venue not in rental_scene.VENUES or loc not in ("bed", "bath"):
-        raise HTTPException(status_code=400, detail="venue／loc 不對")
-    src = _asset_path(str(body.get("url") or ""))
-    if src is None:
-        raise HTTPException(status_code=404, detail="找不到圖")
-    out_dir = ASSETS_DIR / "rental_scenes"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    name = f"bg_{venue}_{loc}_{int(time.time() * 1000)}{src.suffix.lower() or '.png'}"
-    shutil.copyfile(src, out_dir / name)
-    data = rental_scene.load_manifest(ASSETS_DIR)
-    data.setdefault("_bg", {}).setdefault(venue, {})[loc] = f"/assets/rental_scenes/{name}"
-    rental_scene.save_manifest(ASSETS_DIR, data)
-    return {"url": f"/assets/rental_scenes/{name}", "images": data}
 
 
 @app.post("/api/rental/scene-images")
