@@ -265,8 +265,12 @@
   </nav>
   <div id="rental-scene-editor" class="tease-pack-panel" hidden aria-label="旅館房間圖">
     <div class="tease-pack-panel-head"><strong id="rs-title">旅館房間圖</strong><span class="mini">日租女友跟進房間、點人物時出的圖：每個地點姿勢 2 張，點陣場景當圖生圖底圖；跟她自己的圖同一條生圖路（遊戲設定＋她的模型＋她的長相），男方照選的客人</span></div>
-    <div class="bp-row"><span class="bp-grow"><label>客人</label><select id="rs-client"></select></span><button type="button" id="rs-reroll">換一批客人</button>
-      <button type="button" id="rs-run" class="bp-cy">重新生圖</button><button type="button" id="rs-close">收合</button></div>
+    <div class="bp-row"><span class="bp-grow"><label>客人</label><select id="rs-client"></select></span><button type="button" id="rs-reroll">換一批客人</button></div>
+    <div class="bp-row"><span class="bp-grow"><label>denoise <b id="rs-denoise-v">0.70</b></label><input type="range" id="rs-denoise" min="0.3" max="0.95" step="0.05" value="0.7" style="width:100%"></span>
+      <select id="rs-mode" aria-label="靜圖／動圖"><option value="still">靜圖</option><option value="gif">動圖</option></select>
+      <label class="mini">動圖格數 <input type="number" id="rs-frames" min="2" max="12" value="6" style="width:3.2em"></label></div>
+    <div class="bp-row">
+      <button type="button" id="rs-run" class="bp-cy">開始生圖</button><button type="button" id="rs-close">收合</button></div>
     <div id="rs-status" class="mini" style="white-space:pre-wrap"></div>
     <div id="rs-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px"></div>
   </div>
@@ -957,6 +961,6 @@
   <script src="/content/room_activity.js?v=3"></script>
   <script src="/content/room_character.js?v=11"></script>
   <script src="/content/test_room.js?v=20"></script>
-  <script type="module" src="/content/test_room_summon.js?v=246"></script>
+  <script type="module" src="/content/test_room_summon.js?v=247"></script>
 </body>
 </html>

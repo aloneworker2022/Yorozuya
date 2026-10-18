@@ -18,24 +18,26 @@ const POSE_EN = {
   bath_soak: "bathing together, sitting in bathtub, girl sitting on his lap leaning back against his chest, water up to chest, wet, steam, both in profile, nude",
   bath_standing: "sex, standing sex, from behind, she bends forward 90 degrees with hands gripping the bathtub edge, standing on tiptoe, he stands behind her holding her hips, both full bodies in profile, wet, nude, creampie",
 };
-/** 畫一張底圖（點陣房間＋兩個人，第 f 格），放大 UP 倍、最近鄰。 */
+/** 畫一張底圖（點陣房間＋兩個人，第 f 格）。2026-10-18：裁得更緊（人物撐滿）、先最近鄰放 2 倍再平滑放大到約 1024 高，
+ *  模型不會照抄點陣的格子／糊邊。回 canvas（.ms＝這一格的毫秒數）。 */
 export function baseCanvas(venue, key, doll = null, f = 0) {
   const [loc, pose] = key.split("_");
   const bg = document.createElement("canvas"); bg.width = LW; bg.height = LH;
   drawRoom(bg.getContext("2d"), venue, true, loc === "bed" ? 0 : 1);
   const cp = makeCouple({ venue, scene: loc, pose, doll: doll || {}, bg });
-  const fr = cp.buildAll()[f % 30];
-  // 2026-10-18：不送整個房間（相機在 1.5m 高往下看，人只佔一小塊 → 模型讀成俯視）。
-  // 只裁兩個人周圍、3:4 直式（四周留 45%），人物撐滿畫面、看得出是側面平視。
+  const fr = cp.buildAll()[((f % 30) + 30) % 30];
   const b = fr?.box || { x0: 0, y0: 0, x1: LW - 1, y1: LH - 1 };
-  let w = (b.x1 - b.x0 + 1) * 1.9, h = (b.y1 - b.y0 + 1) * 1.9;
+  let w = (b.x1 - b.x0 + 1) * 1.4, h = (b.y1 - b.y0 + 1) * 1.4;
   if (w / h > 3 / 4) h = w * 4 / 3; else w = h * 3 / 4;
   w = Math.min(LW, w); h = Math.min(LH, h);
   const cx = (b.x0 + b.x1 + 1) / 2, cy = (b.y0 + b.y1 + 1) / 2;
   const sx = Math.max(0, Math.min(LW - w, cx - w / 2)), sy = Math.max(0, Math.min(LH - h, cy - h / 2));
-  const K = Math.max(1, Math.round(1024 / h));
-  const big = document.createElement("canvas"); big.width = Math.round(w * K); big.height = Math.round(h * K);
-  const g = big.getContext("2d"); g.imageSmoothingEnabled = false; g.drawImage(fr?.canvas || bg, sx, sy, w, h, 0, 0, big.width, big.height);
+  const mid = document.createElement("canvas"); mid.width = Math.round(w * 2); mid.height = Math.round(h * 2);
+  const gm = mid.getContext("2d"); gm.imageSmoothingEnabled = false; gm.drawImage(fr?.canvas || bg, sx, sy, w, h, 0, 0, mid.width, mid.height);
+  const H = 1024, W = Math.round(H * w / h);
+  const big = document.createElement("canvas"); big.width = W; big.height = H;
+  const g = big.getContext("2d"); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high"; g.drawImage(mid, 0, 0, W, H);
+  big.ms = fr?.ms || 100;
   return big;
 }
 async function uploadPose(canvas) {
@@ -66,6 +68,12 @@ async function waitImg(body, onTick, ms = 600000) {
 // 2026-10-17 Al：一張圖兩個她 → 人數寫死、負面擋多一個人。
 const PAIR_EN = "1girl, 1boy, hetero, couple";
 const PAIR_NEG = "2girls, multiple girls, extra person, clone, duplicate";
+// 2026-10-18 Al：人物要清楚
+const QUALITY_EN = "masterpiece, best quality, detailed, sharp focus, clear face, detailed body";
+const CLEAR_NEG = "blurry, lowres, jpeg artifacts, low detail";
+export const DENOISE_DEFAULT = 0.7;
+/** 靜圖：每個姿勢 2 張用動畫裡兩個不同的關鍵格（0、15）；動圖：一圈平均取 N 格。 */
+export const KEY_FRAMES = [0, 15];
 /** 客人資料 → 男方外觀 tag（rental.js 的 CLIENT_BUILDS／PERSONAS／age）。 */
 export const CLIENT_BUILD_EN = {
   average: "average build man",
@@ -102,13 +110,14 @@ export async function gameEngine() {
   };
 }
 /** /api/imggen 的 body：character＝她整份人設＋lock_identity（伺服器用她存的 look 長相錨點），男方＝客人 tag。 */
-export function sceneBody(venue, key, girl, client, eng, poseUrl, n = 0) {
+export function sceneBody(venue, key, girl, client, eng, poseUrl, n = 0, o = {}) {
   if (!girl?.id) throw new Error("先選魅子");
   const comfy = eng.imgProvider === "comfy";
   const ckpt = String(girl.comfyCkpt || "").trim() || eng.comfyCkpt;
   if (comfy && !ckpt) throw new Error("此魅子尚未綁定 Comfy 模型（comfyCkpt）");
-  const extra = `${PAIR_EN}, ${POSE_EN[key]}, the man: ${clientTags(client)}, third person, ${CAM_EN}, ${VENUE_EN[venue]}, detailed background`;
-  const neg = `${PAIR_NEG}, ${NEG_EN}`;
+  const extra = `${QUALITY_EN}, ${PAIR_EN}, ${POSE_EN[key]}, the man: ${clientTags(client)}, third person, ${CAM_EN}, ${VENUE_EN[venue]}, detailed background`;
+  const neg = `${PAIR_NEG}, ${CLEAR_NEG}, ${NEG_EN}`;
+  const dn = Math.min(0.95, Math.max(0.3, Number(o.denoise) || DENOISE_DEFAULT));
   return {
     key: `rental-scene:${venue}:${key}:${girl.id}:${Date.now().toString(36)}${n}`,
     provider: comfy ? "comfy" : "grok-img",
@@ -118,33 +127,54 @@ export function sceneBody(venue, key, girl, client, eng, poseUrl, n = 0) {
     negative: neg, visual_neg: neg,
     cutout: false, flat_bg: false, lock_identity: true, retry: true,
     scene_kind: "script", char_id: girl.id,
-    pose_ref: poseUrl, pose_denoise: 0.55,
+    pose_ref: poseUrl, pose_denoise: dn,
+    ...(o.seed ? { seed: o.seed } : {}),
     ...(comfy ? { comfy_url: eng.comfyUrl, ckpt } : {}),
   };
 }
 
-/** 生一個房型的圖。opts：{ girl（她整份人設）, client（客人 {id,age,build,persona}）, doll, keys?（只生這幾個地點姿勢）, perSlot?（每個幾張，預設 2）,
- *  owners（登記給哪個她／客人）, onProgress(text, items) }。回 [{key, slot, url|error}]。 */
+async function putScene(venue, it, url, owners) {
+  const put = await fetch("/api/rental/scene-images", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ venue, key: it.key, slot: it.slot, url, owners: owners || [] }) });
+  if (!put.ok) throw new Error(`登記失敗 ${put.status}`);
+  return (await put.json()).url;
+}
+/** 生一個房型的圖。opts：{ girl, client, doll, keys?, perSlot?（預設 2）, owners, denoise（0.3–0.95，預設 0.7）,
+ *  mode："still"（每格一張靜圖，底圖＝不同關鍵格）|"gif"（每個姿勢一張動圖：N 格同 seed 圖生圖 → /api/bodym/assemble）, frames（動圖幾格，預設 6）, onProgress }。 */
 export async function generateVenue(venue, opts = {}) {
-  const keys = opts.keys?.length ? opts.keys : SLOT_KEYS, per = opts.perSlot || 2;
+  const gif = opts.mode === "gif", keys = opts.keys?.length ? opts.keys : SLOT_KEYS, per = gif ? 1 : opts.perSlot || 2;
+  const nF = Math.max(2, Math.min(12, Number(opts.frames) || 6));
   const items = keys.flatMap((key) => Array.from({ length: per }, (_, slot) => ({ key, slot, state: "等待" })));
   const say = (txt) => opts.onProgress?.(txt, items);
   const eng = await gameEngine();
   let n = 0;
   for (const it of items) {
     n++;
-    const [loc, pose] = it.key.split("_"), label = `${LOC_ZH[loc]}・${POSE_ZH[pose]} #${it.slot + 1}`;
+    const [loc, pose] = it.key.split("_"), label = `${LOC_ZH[loc]}・${POSE_ZH[pose]} #${it.slot + 1}${gif ? "（動圖）" : ""}`;
     try {
-      it.state = "畫底圖"; say(`${n}/${items.length} ${label}：上傳底圖`);
-      const poseUrl = await uploadPose(baseCanvas(venue, it.key, opts.doll, it.slot * 3));
-      const body = sceneBody(venue, it.key, opts.girl, opts.client || {}, eng, poseUrl, n);
-      it.state = "生圖中"; say(`${n}/${items.length} ${label}：生圖中（${body.provider}${body.ckpt ? " " + body.ckpt : ""}）`);
-      const res = await waitImg(body, (s) => say(`${n}/${items.length} ${label}：生圖中 ${s} 秒`));
-      if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
-      const url = String(res.result).split("|")[0];
-      const put = await fetch("/api/rental/scene-images", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ venue, key: it.key, slot: it.slot, url, owners: opts.owners || [] }) });
-      if (!put.ok) throw new Error(`登記失敗 ${put.status}`);
-      it.url = (await put.json()).url; it.state = "好了";
+      const frames = gif ? Array.from({ length: nF }, (_, i) => Math.round((i * 30) / nF)) : [KEY_FRAMES[it.slot % KEY_FRAMES.length]];
+      const seed = Math.floor(Math.random() * 2 ** 31) || 1, urls = [], ms = [];
+      for (let i = 0; i < frames.length; i++) {
+        const tag = gif ? ` 第 ${i + 1}/${frames.length} 格` : "";
+        it.state = "畫底圖"; say(`${n}/${items.length} ${label}${tag}：上傳底圖`);
+        const base = baseCanvas(venue, it.key, opts.doll, frames[i]);
+        const poseUrl = await uploadPose(base);
+        const body = sceneBody(venue, it.key, opts.girl, opts.client || {}, eng, poseUrl, `${n}_${i}`, { denoise: opts.denoise, seed: gif ? seed : 0 });
+        it.state = "生圖中"; say(`${n}/${items.length} ${label}${tag}：生圖中（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、denoise ${body.pose_denoise}）`);
+        const res = await waitImg(body, (s) => say(`${n}/${items.length} ${label}${tag}：生圖中 ${s} 秒`));
+        if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
+        urls.push(String(res.result).split("|")[0]);
+        // 動畫一圈 30 格；取 N 格 → 每格停 30/N 格那麼久
+        ms.push(Math.round((base.ms || 100) * 30 / frames.length));
+      }
+      let url = urls[0];
+      if (gif) {
+        it.state = "組動圖"; say(`${n}/${items.length} ${label}：組動圖`);
+        const r = await fetch("/api/bodym/assemble", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls, ms, fmt: "gif", name: `rental_${venue}_${it.key}` }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.url) throw new Error(j.detail || `組動圖失敗 ${r.status}`);
+        url = j.url;
+      }
+      it.url = await putScene(venue, it, url, opts.owners); it.state = "好了";
     } catch (e) { it.state = "失敗"; it.error = String(e?.message || e); }
     say(`${n}/${items.length} ${label}：${it.state}${it.error ? `（${it.error}）` : ""}`);
   }
@@ -177,6 +207,8 @@ export function bindPanel(api = {}) {
   };
   const curClient = () => { const list = fillClients(); return list.find((c) => c.id === sel?.value) || list[0]; };
   $("rs-reroll")?.addEventListener("click", () => fillClients(true));
+  const dn = $("rs-denoise"), dnv = $("rs-denoise-v");
+  if (dn) { dn.value = String(DENOISE_DEFAULT); dn.addEventListener("input", () => { if (dnv) dnv.textContent = Number(dn.value).toFixed(2); }); if (dnv) dnv.textContent = DENOISE_DEFAULT.toFixed(2); }
   const show = async (items = null) => {
     $("rs-title").textContent = `旅館房間圖・${VZH[venue]}`;
     const m = await loadImages(true), g = api.girl?.(), c = curClient(), owners = ownersOf(g?.id, c?.id);
@@ -196,6 +228,7 @@ export function bindPanel(api = {}) {
     try {
       // 登記給「這個她＋這個客人」和「這個她（任何客人）」：遊戲裡同一個客人優先，換客人時至少臉是她
       const items = await generateVenue(v, { girl, client, doll, owners: ownersOf(girl?.id, client?.id),
+        denoise: Number($("rs-denoise")?.value) || DENOISE_DEFAULT, mode: $("rs-mode")?.value === "gif" ? "gif" : "still", frames: Number($("rs-frames")?.value) || 6,
         onProgress: (txt, list) => { if (venue === v) { status.textContent = txt; void show(list); } } });
       const ok = items.filter((x) => x.url).length;
       api.debug?.(`旅館房間圖（${VZH[v]}）：好了 ${ok}／${items.length}`);
@@ -209,7 +242,6 @@ export function bindPanel(api = {}) {
     document.querySelectorAll("#room-pack-chrome button[aria-controls]").forEach((x) => x.setAttribute("aria-expanded", x === b ? "true" : "false"));
     venue = v; panel.hidden = false; fillClients(); status.textContent = busy ? `${VZH[busy]}生圖中……` : "";
     void show();
-    if (!busy) void run();
   });
   // 點別的快捷按鈕時收起
   document.querySelectorAll("#room-pack-chrome button[aria-controls]").forEach((b) => { if (!btns.includes(b) && b.id !== "edit-room") b.addEventListener("click", () => { if (!panel.hidden) close(); }); });
