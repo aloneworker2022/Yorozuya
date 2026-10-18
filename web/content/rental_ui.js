@@ -6,7 +6,7 @@
 import * as R from "./rental.js?v=7";
 import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=16";
 import { planSession, sessionResult, ownersOf } from "./rental_session.js?v=3";
-import { ensureSessionImages } from "./rental_scene_gen.js?v=6";
+import { ensureSessionImages } from "./rental_scene_gen.js?v=7";
 import * as L from "./rental_lines.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 
