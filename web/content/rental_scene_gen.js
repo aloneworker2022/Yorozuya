@@ -7,19 +7,16 @@ import { makeCouple } from "./rental_couple.js?v=1";
 
 const LW = 195, LH = 422, UP = 4;
 const VENUE_EN = { ryokan: "japanese ryokan room, tatami, wooden onsen bath", hotel: "love hotel room, double bed, marble bathtub", motel: "motel room, neon lights, jacuzzi bathtub" };
-const VENUE_ZH = { ryokan: "溫泉旅館的和室", hotel: "旅館房間", motel: "汽車旅館房間" };
+// 2026-10-18：鏡頭一律「站在旁邊平視看」：側面、與人物同高。之前躺／趴／泡澡的姿勢被模型畫成俯視（底圖是整間房的高角度＋小人）。
+const CAM_EN = "side view, from side, profile, eye level shot, camera at waist height, horizontal view, standing observer beside them, full body in frame";
+const NEG_EN = "from above, top-down view, overhead view, high angle, bird's-eye view, aerial view, pov, first-person view, from below, ceiling view";
 const POSE_EN = {
-  bed_kiss: "1girl, 1boy, hetero, sitting on bed, kissing, embracing, partially clothed",
-  bed_missionary: "1girl, 1boy, hetero, sex, missionary, lying on back on bed, legs up, nude, creampie",
-  bed_doggy: "1girl, 1boy, hetero, sex, doggystyle, from behind, all fours on bed, hanging breasts, nude, creampie",
-  bath_soak: "1girl, 1boy, hetero, bathing together, sitting in bathtub, girl sitting on lap, leaning back, wet, steam, partially submerged, nude",
-  bath_standing: "1girl, 1boy, hetero, sex, standing sex, from behind, bent over, hands on bathtub edge, wet, nude, creampie",
+  bed_kiss: "1girl, 1boy, hetero, sitting on bed edge, face to face, kissing, embracing, partially clothed, side view of both bodies",
+  bed_missionary: "1girl, 1boy, hetero, sex, missionary, she lies on her back on the bed seen from the side, her legs raised, he kneels between her legs, both bodies in profile, nude, creampie",
+  bed_doggy: "1girl, 1boy, hetero, sex, doggystyle, from behind, she is on all fours on the bed facing left, he kneels behind her holding her hips, both bodies in profile, hanging breasts, nude, creampie",
+  bath_soak: "1girl, 1boy, hetero, bathing together, sitting in bathtub, girl sitting on his lap leaning back against his chest, water up to chest, wet, steam, both in profile, nude",
+  bath_standing: "1girl, 1boy, hetero, sex, standing sex, from behind, she bends forward 90 degrees with hands gripping the bathtub edge, standing on tiptoe, he stands behind her holding her hips, both full bodies in profile, wet, nude, creampie",
 };
-const POSE_ZH_LONG = {
-  bed_kiss: "成年男女坐在床邊面對面擁吻", bed_missionary: "成年男女在床上傳教士體位做愛（她仰躺），最後內射", bed_doggy: "成年男女在床上後背位做愛（她跪趴、他從後面），乳房下垂晃動，最後內射",
-  bath_soak: "成年男女一起泡在浴池裡，她坐在他腿上往後靠，水面以下看不清楚", bath_standing: "成年男女在浴室站著從後面做愛，她彎腰扶著浴缸邊，最後內射",
-};
-
 /** 畫一張底圖（點陣房間＋兩個人，第 f 格），放大 UP 倍、最近鄰。 */
 export function baseCanvas(venue, key, doll = null, f = 0) {
   const [loc, pose] = key.split("_");
@@ -27,8 +24,17 @@ export function baseCanvas(venue, key, doll = null, f = 0) {
   drawRoom(bg.getContext("2d"), venue, true, loc === "bed" ? 0 : 1);
   const cp = makeCouple({ venue, scene: loc, pose, doll: doll || {}, bg });
   const fr = cp.buildAll()[f % 30];
-  const big = document.createElement("canvas"); big.width = LW * UP; big.height = LH * UP;
-  const g = big.getContext("2d"); g.imageSmoothingEnabled = false; g.drawImage(fr?.canvas || bg, 0, 0, big.width, big.height);
+  // 2026-10-18：不送整個房間（相機在 1.5m 高往下看，人只佔一小塊 → 模型讀成俯視）。
+  // 只裁兩個人周圍、3:4 直式（四周留 45%），人物撐滿畫面、看得出是側面平視。
+  const b = fr?.box || { x0: 0, y0: 0, x1: LW - 1, y1: LH - 1 };
+  let w = (b.x1 - b.x0 + 1) * 1.9, h = (b.y1 - b.y0 + 1) * 1.9;
+  if (w / h > 3 / 4) h = w * 4 / 3; else w = h * 3 / 4;
+  w = Math.min(LW, w); h = Math.min(LH, h);
+  const cx = (b.x0 + b.x1 + 1) / 2, cy = (b.y0 + b.y1 + 1) / 2;
+  const sx = Math.max(0, Math.min(LW - w, cx - w / 2)), sy = Math.max(0, Math.min(LH - h, cy - h / 2));
+  const K = Math.max(1, Math.round(1024 / h));
+  const big = document.createElement("canvas"); big.width = Math.round(w * K); big.height = Math.round(h * K);
+  const g = big.getContext("2d"); g.imageSmoothingEnabled = false; g.drawImage(fr?.canvas || bg, sx, sy, w, h, 0, 0, big.width, big.height);
   return big;
 }
 async function uploadPose(canvas) {
@@ -70,12 +76,14 @@ export async function generateVenue(venue, opts = {}) {
       const poseUrl = await uploadPose(baseCanvas(venue, it.key, opts.doll, it.slot * 3));
       const look = opts.girl?.look || {};
       const hair = [look.hair_color, look.hair_style].filter(Boolean).join("");
+      const hairEn = look.hair_color || look.hair_style ? `, adult woman (${[look.hair_color, look.hair_style].filter(Boolean).join(" ")} hair)` : ", adult woman";
       const prompt = provider === "comfy"
-        ? `masterpiece, best quality, anime, ${POSE_EN[it.key]}, ${VENUE_EN[venue]}, adult woman, adult man, detailed background`
-        : `${VENUE_ZH[venue]}，${POSE_ZH_LONG[it.key]}。兩人都是成年人。照參考圖的構圖與位置（參考圖是點陣草圖，藍色人形是男人）。${hair ? `她的頭髮：${hair}。` : ""}動漫風。`;
+        ? `masterpiece, best quality, anime, ${CAM_EN}, ${POSE_EN[it.key]}, ${VENUE_EN[venue]}${hairEn}, adult man, detailed background`
+        // grok-img（sex_strip 包裝要英文 tag；NO xxx 會被拆進 Do NOT draw）
+        : `${CAM_EN}, ${POSE_EN[it.key]}, ${VENUE_EN[venue]}${hairEn}, adult man, the blue silhouette in the sketch is the man, keep the sketch's side-on eye-level camera, ${NEG_EN.split(", ").map((x) => `NO ${x}`).join(", ")}`;
       it.state = "生圖中"; say(`${n}/${items.length} ${label}：生圖中`);
       const key = `rental-scene:${venue}:${it.key}:${it.slot}:${Date.now()}`;
-      const res = await waitImg({ key, provider, rating: "nsfw", style: "anime", scene_kind: "sex_strip", prompt, pose_ref: poseUrl, pose_denoise: 0.62, vary: true,
+      const res = await waitImg({ key, provider, rating: "nsfw", style: "anime", scene_kind: "sex_strip", prompt, pose_ref: poseUrl, pose_denoise: 0.55, negative: NEG_EN, vary: true,
         character: opts.girl?.character || null, name: opts.girl?.name || "", comfy_url: opts.comfyUrl || "" }, (s) => say(`${n}/${items.length} ${label}：生圖中 ${s} 秒`));
       if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
       const url = String(res.result).split("|")[0];
