@@ -194,7 +194,9 @@ async function putScene(venue, it, url, owners) {
 export async function generateVenue(venue, opts = {}) {
   // 姿勢圖每格 2 張（不同 seed）；結尾變體（高潮／內射）每格 1 張（一個房型 8 格，2 張要多生 16 張太久）
   const keys = opts.keys?.length ? opts.keys : [...SLOT_KEYS, ...VARIANT_KEYS], per = opts.perSlot || 2;
-  const items = keys.flatMap((key) => Array.from({ length: key.includes("~") ? 1 : per }, (_, slot) => ({ key, slot, state: "等待" })));
+  // opts.only＝[{key, slot}]：只生這幾張（test_room 每張自己的「產生」）
+  const items = opts.only?.length ? opts.only.map((x) => ({ key: x.key, slot: x.slot | 0, state: "等待" }))
+    : keys.flatMap((key) => Array.from({ length: key.includes("~") ? 1 : per }, (_, slot) => ({ key, slot, state: "等待" })));
   const say = (txt) => opts.onProgress?.(txt, items);
   const eng = await gameEngine(), prompts = await loadPrompts(true);
   let n = 0;
@@ -203,7 +205,7 @@ export async function generateVenue(venue, opts = {}) {
     const [kb, kv] = it.key.split("~"), [loc, pose] = kb.split("_"), label = `${LOC_ZH[loc]}・${POSE_ZH[pose]}${kv ? `・${VARIANT_ZH[kv]}` : ""} #${it.slot + 1}`;
     try {
       const seed = Math.floor(Math.random() * 2 ** 31) || 1;
-      const body = sceneBody(venue, it.key, opts.girl, opts.client || {}, eng, n, { seed, tpl: templateFor(prompts, venue, it.key, it.slot) });
+      const body = sceneBody(venue, it.key, opts.girl, opts.client || {}, eng, n, { seed, tpl: opts.tpl?.[`${it.key}#${it.slot}`] || templateFor(prompts, venue, it.key, it.slot) });
       it.state = "生圖中"; say(`${n}/${items.length} ${label}：生圖（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、seed ${seed}${body.pose_ref ? `、圖生圖 ${body.pose_denoise}` : ""}）`);
       const res = await waitImg(body, (s) => say(`${n}/${items.length} ${label}：生圖 ${s} 秒`));
       if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
@@ -218,6 +220,8 @@ export async function generateVenue(venue, opts = {}) {
 
 const VZH = { ryokan: "日式房間（溫泉旅館）", motel: "汽車旅館", hotel: "旅館" };
 /** 綁上排快捷的三顆按鈕＋面板。api：{ girl()（現在的她）, debug(msg) }。按房型按鈕＝打開面板並開始生這個房型的 10 張。 */
+/** test_room 旅館房間圖面板（2026-10-19 Al：每一張圖一張卡）：縮圖＋自己的正／負向＋圖生圖（參考圖、denoise）＋「產生」「存」「回預設」＋代入預覽。
+ *  卡片照地點姿勢分組、可收合（手機好用）。「全部生成」保留。 */
 export function bindPanel(api = {}) {
   const $ = (id) => document.getElementById(id);
   const panel = $("rental-scene-editor");
@@ -240,30 +244,100 @@ export function bindPanel(api = {}) {
     return list;
   };
   const curClient = () => { const list = fillClients(); return list.find((c) => c.id === sel?.value) || list[0]; };
-  $("rs-reroll")?.addEventListener("click", () => fillClients(true));
-  const show = async (items = null) => {
+  const keyZh = (key, slot) => { const [b, v] = key.split("~"), [l, p] = b.split("_"); return `${LOC_ZH[l]}・${POSE_ZH[p]}${v ? `・${VARIANT_ZH[v]}` : ""} #${slot + 1}`; };
+  const cards = new Map();   // "key#slot" → { el, refresh(url), read(), setBusy }
+  const urlOf = (m, key, slot) => {
+    const g = api.girl?.(), owners = ownersOf(g?.id, curClient()?.id), v = m?.[venue] || {};
+    return ((owners.length ? (v["@" + owners[0]] || {})[key] : v[key]) || [])[slot] || "";
+  };
+  const thumb = (url, txt = "還沒有") => url ? `<img src="${url}" alt="" style="width:100%;max-height:320px;object-fit:contain;background:#000;border-radius:6px">`
+    : `<div style="height:70px;background:#222;border-radius:6px;color:#999;display:flex;align-items:center;justify-content:center">${txt}</div>`;
+  const savePrompt = async (ik, tpl) => {
+    const r = await fetch("/api/rental/scene-prompts", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ venue, key: ik, tpl }) });
+    if (!r.ok) throw new Error(`存檔失敗 ${r.status}（伺服器要重啟？）`);
+    await loadPrompts(true);
+  };
+  const genOne = async (key, slot, tpl, card) => {
+    if (busy) { card.say(`${VZH[busy]}還在生，等它好了再按。`); return; }
+    const girl = api.girl?.() || null, client = curClient(), v = venue;
+    busy = v; card.say("生圖中……");
+    try {
+      const items = await generateVenue(v, { girl, client, owners: ownersOf(girl?.id, client?.id), only: [{ key, slot }], tpl: { [`${key}#${slot}`]: tpl },
+        onProgress: (txt) => card.say(txt.replace(/^\d+\/\d+ /, "")) });
+      const it = items[0];
+      card.say(it?.url ? "好了（遊戲裡這個她＋這個客人會用這張）" : `失敗：${it?.error || "沒有結果"}`);
+      if (it?.url && venue === v) card.setThumb(it.url);
+    } finally { busy = ""; }
+  };
+  /** 一張圖的卡。 */
+  const makeCard = (key, slot, t, url) => {
+    const ik = `${key}#${slot}`, el = document.createElement("details");
+    el.className = "rs-card"; el.style.cssText = "border:1px solid #333;border-radius:8px;padding:6px;margin:4px 0;background:#141418;color:#ddd";
+    el.innerHTML = `<summary style="cursor:pointer;font-size:13px"><span class="nm"></span> <span class="tag mini" style="color:#8a8"></span></summary>
+      <div class="th" style="margin:6px 0"></div>
+      <label class="mini">正向</label><textarea class="pos" rows="5" style="width:100%;font-size:12px"></textarea>
+      <label class="mini">負向</label><textarea class="neg" rows="3" style="width:100%;font-size:12px"></textarea>
+      <div class="bp-row" style="flex-wrap:wrap;gap:6px"><label class="mini"><input type="checkbox" class="i2"> 圖生圖（預設關）</label>
+        <input type="file" class="file" accept="image/*" style="max-width:10em"><span class="ref mini"></span></div>
+      <div class="bp-row"><span class="bp-grow"><label class="mini">denoise <b class="dnv"></b></label><input type="range" class="dn" min="0.3" max="0.95" step="0.05" style="width:100%"></span></div>
+      <div class="bp-row" style="flex-wrap:wrap;gap:6px"><button type="button" class="gen bp-cy">產生</button><button type="button" class="save">存</button><button type="button" class="reset mini">回預設</button></div>
+      <div class="st mini" style="white-space:pre-wrap"></div>
+      <details class="pv"><summary class="mini">代入預覽（目前的她＋選的客人）</summary><pre class="mini" style="white-space:pre-wrap;max-height:180px;overflow:auto"></pre></details>`;
+    const q = (c) => el.querySelector(c);
+    q(".nm").textContent = keyZh(key, slot);
+    let ref = "";
+    const fill = (tt) => {
+      q(".pos").value = tt.pos; q(".neg").value = tt.neg; q(".i2").checked = !!tt.img2img?.on; ref = tt.img2img?.ref || "";
+      q(".dn").value = String(tt.img2img?.denoise || 0.6); q(".dnv").textContent = Number(q(".dn").value).toFixed(2);
+      q(".ref").textContent = ref ? ref.split("/").pop() : "（沒有參考圖）"; q(".tag").textContent = tt.saved ? "已存" : "預設";
+    };
+    const read = () => ({ pos: q(".pos").value, neg: q(".neg").value, img2img: { on: q(".i2").checked && !!ref, ref, denoise: Number(q(".dn").value) || 0.6 } });
+    const preview = () => { const f = fillTemplate(read(), key, api.girl?.() || null, curClient() || {}); q(".pv pre").textContent = `＋ ${f.pos}\n－ ${f.neg}`; };
+    const card = { el, say: (x) => { q(".st").textContent = x; }, setThumb: (u) => { q(".th").innerHTML = thumb(u); }, preview };
+    fill(t); card.setThumb(url); preview();
+    q(".pos").addEventListener("input", preview); q(".neg").addEventListener("input", preview);
+    q(".dn").addEventListener("input", () => { q(".dnv").textContent = Number(q(".dn").value).toFixed(2); });
+    q(".file").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0]; if (!file) return;
+      const fd = new FormData(); fd.append("file", file, file.name);
+      const r = await fetch("/api/pose-refs", { method: "POST", body: fd });
+      if (!r.ok) { card.say(`上傳失敗 ${r.status}`); return; }
+      ref = (await r.json()).url; q(".ref").textContent = ref.split("/").pop(); q(".i2").checked = true; card.say("參考圖上傳好了（記得按「存」）");
+    });
+    q(".gen").addEventListener("click", () => void genOne(key, slot, read(), card));
+    q(".save").addEventListener("click", async () => {
+      try { await savePrompt(ik, read()); q(".tag").textContent = "已存"; card.say("已存（test_room 和遊戲生這張都用這組）"); } catch (e) { card.say(String(e?.message || e)); }
+    });
+    q(".reset").addEventListener("click", async () => {
+      try { await savePrompt(ik, null); fill(templateFor(await loadPrompts(true), venue, key, slot)); preview(); card.say("已回預設"); } catch (e) { card.say(String(e?.message || e)); }
+    });
+    cards.set(ik, card);
+    return el;
+  };
+  /** 畫整個房型：照地點姿勢分組（接吻／邊親邊脫／各做愛姿勢含高潮、內射）。 */
+  const show = async () => {
     $("rs-title").textContent = `旅館房間圖・${VZH[venue]}`;
-    const m = await loadImages(true), g = api.girl?.(), c = curClient(), owners = ownersOf(g?.id, c?.id);
-    grid.replaceChildren(...[...SLOT_KEYS, ...VARIANT_KEYS].flatMap((key) => (key.includes("~") ? [0] : [0, 1]).map((slot) => {
-      const [kb, kv] = key.split("~"), d = document.createElement("div"), [loc, pose] = kb.split("_"), it = items?.find((x) => x.key === key && x.slot === slot), url = (owners.length ? ((m?.[venue] || {})["@" + owners[0]] || {})[key] || [] : (m?.[venue] || {})[key] || [])[slot];
-      d.style.cssText = "font-size:12px;text-align:center";
-      d.innerHTML = url ? `<img src="${url}" style="width:100%;max-height:160px;object-fit:contain;background:#000;border-radius:6px">` : `<div style="height:60px;background:#222;border-radius:6px;color:#999;display:flex;align-items:center;justify-content:center">${it?.state || "還沒有"}</div>`;
-      d.append(`${LOC_ZH[loc]}・${POSE_ZH[pose]}${kv ? `・${VARIANT_ZH[kv]}` : ""} #${slot + 1}${it?.error ? `（${it.error}）` : ""}`);
-      return d;
-    })));
+    const [m, prompts] = await Promise.all([loadImages(true), loadPrompts(true)]);
+    cards.clear();
+    grid.replaceChildren(...SLOT_KEYS.map((base) => {
+      const [l, p] = base.split("_"), grp = document.createElement("details");
+      grp.style.cssText = "margin:6px 0"; grp.innerHTML = `<summary style="cursor:pointer;font-weight:600">${LOC_ZH[l]}・${POSE_ZH[p]}</summary>`;
+      const list = [[base, 0], [base, 1], ...VARIANT_KEYS.filter((v) => v.startsWith(`${base}~`)).map((v) => [v, 0])];
+      for (const [key, slot] of list) grp.append(makeCard(key, slot, templateFor(prompts, venue, key, slot), urlOf(m, key, slot)));
+      return grp;
+    }));
   };
   const close = () => { panel.hidden = true; btns.forEach((b) => b.setAttribute("aria-expanded", "false")); };
-  const run = async () => {
+  const runAll = async () => {
     if (busy) { status.textContent = `${VZH[busy]}還在生，等它好了再按。`; return; }
     busy = venue;
     const v = venue, girl = api.girl?.() || null, client = curClient();
     try {
-      // 登記給「這個她＋這個客人」和「這個她（任何客人）」：遊戲裡同一個客人優先，換客人時至少臉是她
       const items = await generateVenue(v, { girl, client, owners: ownersOf(girl?.id, client?.id),
-        onProgress: (txt, list) => { if (venue === v) { status.textContent = txt; void show(list); } } });
+        onProgress: (txt, list) => { if (venue !== v) return; status.textContent = txt; for (const it of list) if (it.url) cards.get(`${it.key}#${it.slot}`)?.setThumb(it.url); } });
       const ok = items.filter((x) => x.url).length;
       api.debug?.(`旅館房間圖（${VZH[v]}）：好了 ${ok}／${items.length}`);
-      if (venue === v) { status.textContent = `好了 ${ok}／${items.length}`; void show(items); }
+      if (venue === v) status.textContent = `好了 ${ok}／${items.length}`;
     } finally { busy = ""; }
   };
   for (const b of btns) b.addEventListener("click", () => {
@@ -271,55 +345,14 @@ export function bindPanel(api = {}) {
     if (!panel.hidden && venue === v && !busy) { close(); return; }
     document.querySelectorAll(".tease-pack-panel").forEach((el) => { if (el !== panel) el.hidden = true; });
     document.querySelectorAll("#room-pack-chrome button[aria-controls]").forEach((x) => x.setAttribute("aria-expanded", x === b ? "true" : "false"));
-    venue = v; panel.hidden = false; fillClients(); void loadEditor(); status.textContent = busy ? `${VZH[busy]}生圖中……` : "";
+    venue = v; panel.hidden = false; fillClients(); status.textContent = busy ? `${VZH[busy]}生圖中……` : "";
     void show();
   });
   // 點別的快捷按鈕時收起
   document.querySelectorAll("#room-pack-chrome button[aria-controls]").forEach((b) => { if (!btns.includes(b) && b.id !== "edit-room") b.addEventListener("click", () => { if (!panel.hidden) close(); }); });
-  $("rs-run")?.addEventListener("click", () => void run());
-  // ---- 提示詞編輯器（每個房型×每格；存伺服器、全域）
-  const pk = $("rs-p-key"), pPos = $("rs-p-pos"), pNeg = $("rs-p-neg"), pI2 = $("rs-p-i2"), pRef = $("rs-p-ref"), pDn = $("rs-p-dn"), pDnV = $("rs-p-dn-v"), pSt = $("rs-p-status"), pPrev = $("rs-p-preview");
-  // 每一張圖各一組：「格#張」（姿勢 2 張、結尾 1 張）
-  const allKeys = [...SLOT_KEYS, ...VARIANT_KEYS].flatMap((k) => (k.includes("~") ? [0] : [0, 1]).map((i) => `${k}#${i}`));
-  const keyZh = (ik) => { const [k, i] = ik.split("#"), [b, v] = k.split("~"), [l, p] = b.split("_"); return `${LOC_ZH[l]}・${POSE_ZH[p]}${v ? `・${VARIANT_ZH[v]}` : ""} #${+i + 1}`; };
-  const pkKey = () => pk.value.split("#")[0], pkSlot = () => +(pk.value.split("#")[1] || 0);
-  if (pk && !pk.options.length) pk.innerHTML = allKeys.map((k) => `<option value="${k}">${keyZh(k)}</option>`).join("");
-  let pRefUrl = "";
-  const preview = () => {
-    if (!pPrev || !pk) return;
-    const f = fillTemplate({ pos: pPos.value, neg: pNeg.value }, pkKey(), api.girl?.() || null, curClient() || {});
-    pPrev.textContent = `代入（目前的她＋選的客人）：\n＋ ${f.pos}\n－ ${f.neg}`;
-  };
-  const loadEditor = async () => {
-    if (!pk) return;
-    const t = templateFor(await loadPrompts(true), venue, pkKey(), pkSlot());
-    pPos.value = t.pos; pNeg.value = t.neg; pI2.checked = !!t.img2img.on; pRefUrl = t.img2img.ref || ""; pDn.value = String(t.img2img.denoise || 0.6);
-    pDnV.textContent = Number(pDn.value).toFixed(2); pRef.textContent = pRefUrl ? pRefUrl.split("/").pop() : "（沒有參考圖）";
-    pSt.textContent = `${VZH[venue]}・${keyZh(pk.value)}：${t.saved ? "用這張自己存的模板" : "預設"}`; preview();
-  };
-  const savePrompt = async (tpl) => {
-    const r = await fetch("/api/rental/scene-prompts", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ venue, key: pk.value, tpl }) });
-    if (!r.ok) throw new Error(`存檔失敗 ${r.status}（伺服器要重啟？）`);
-    await loadPrompts(true);
-  };
-  pk?.addEventListener("change", () => void loadEditor());
-  pPos?.addEventListener("input", preview); pNeg?.addEventListener("input", preview);
-  pDn?.addEventListener("input", () => { pDnV.textContent = Number(pDn.value).toFixed(2); });
-  $("rs-p-file")?.addEventListener("change", async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    const fd = new FormData(); fd.append("file", file, file.name);
-    const r = await fetch("/api/pose-refs", { method: "POST", body: fd });
-    if (!r.ok) { pSt.textContent = `上傳失敗 ${r.status}`; return; }
-    pRefUrl = (await r.json()).url; pRef.textContent = pRefUrl.split("/").pop(); pI2.checked = true;
-  });
-  $("rs-p-save")?.addEventListener("click", async () => {
-    try { await savePrompt({ pos: pPos.value, neg: pNeg.value, img2img: { on: pI2.checked && !!pRefUrl, ref: pRefUrl, denoise: Number(pDn.value) || 0.6 } }); pSt.textContent = `已存：${VZH[venue]}・${keyZh(pk.value)}（test_room 和遊戲生圖都用這個）`; }
-    catch (e) { pSt.textContent = String(e?.message || e); }
-  });
-  $("rs-p-reset")?.addEventListener("click", async () => {
-    try { await savePrompt(null); await loadEditor(); pSt.textContent = `已回預設：${keyZh(pk.value)}`; } catch (e) { pSt.textContent = String(e?.message || e); }
-  });
-  sel?.addEventListener("change", preview);
+  $("rs-reroll")?.addEventListener("click", () => { fillClients(true); void show(); });
+  sel?.addEventListener("change", () => void show());   // 換客人：縮圖換成這個客人的、預覽重算
+  $("rs-run")?.addEventListener("click", () => void runAll());
   $("rs-close")?.addEventListener("click", close);
   return { client: curClient };
 }
