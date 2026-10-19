@@ -4,9 +4,9 @@
  *        gold(), earn(n, why), hunger(who), mood(who), applyEffects(who, eff), persist(), debug(msg), peek(opts), ai?(kind, ctx) → Promise<string> }
  * 她的約會存在 who.rentalMine.active（關掉 App 再開照時間接著走；決定點會停住）。 */
 import * as R from "./rental.js?v=7";
-import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=20";
-import { planSession, sessionResult, ownersOf } from "./rental_session.js?v=7";
-import { ensureSessionImages } from "./rental_scene_gen.js?v=13";
+import { openEntry, openRoom, hasRoom } from "./rental_entry.js?v=21";
+import { planSession, sessionResult, ownersOf } from "./rental_session.js?v=8";
+import { openDrive, getRunner } from "./rental_flow.js?v=1";
 import * as L from "./rental_lines.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 
@@ -235,8 +235,11 @@ export function createRental(api) {
       m.style.display = "none";   // 先藏著（不拿掉：計時器看到沒有決定框會再開一個），選完 done() 才移除
       const v = R.venueOf(date);
       api.debug(`日租女友：到了旅館玄關（${R.VENUES[v.key].zh}・${v.room}）`);
-      openEntry({ venue: v.key, room: v.room, venues: R.VENUES, stayZh: stay === "stay" ? "住宿一晚" : "休息", clientName: date.client.name,
-        onChoose: (presence) => choose({ drive: true, paidRoom: paid, presence, venue: v.key, room: v.room }) });
+      // 2026-10-19 Al：開車路上先放旁白（打字機）＋即時生接吻的圖；兩個都好了才到玄關
+      const p0 = R.aiPayload(who, date, "wife", "reply");
+      void openDrive({ venue: v.key, venueZh: R.VENUES[v.key]?.zh, girl: who, client: date.client, girlInfo: p0.girl, clientInfo: { ...p0.client, build: date.client.build },
+        owners: ownersOf(who.id, date.client.id), debug: api.debug }).then(() => openEntry({ venue: v.key, room: v.room, venues: R.VENUES, stayZh: stay === "stay" ? "住宿一晚" : "休息", clientName: date.client.name,
+        onChoose: (presence) => choose({ drive: true, paidRoom: paid, presence, venue: v.key, room: v.room }) }));
     };
     const step1 = () => {
       sheet.innerHTML = `<h3>開車送他們？</h3><p>${stay === "stay" ? "住宿一晚" : "休息 3 小時"}</p>`;
@@ -247,10 +250,13 @@ export function createRental(api) {
     btn("不送，在家等", "他們自己去；你不知道是哪間旅館", () => choose({ drive: false }));
   }
   function openSessionRoom(who, date) {
-    void ensureSessionImages(date.hotel.venue, date.hotel.session, who, date.client, window.RoomDoll?.lookToDoll(who.look || null) || null, api.debug);
     const h = date.hotel, hr = R.where(date).hour % 24, p = R.aiPayload(who, date, "wife", "reply");
+    // 2026-10-19 Al：節奏跟著生成走（rental_flow.getRunner）：這段開始生對話 → 生下一段的圖 → 好了才擲要不要換
+    const runner = getRunner(h.session, { venue: h.venue, girl: who, client: date.client, owners: ownersOf(who.id, date.client.id),
+      talkBase: { girl: p.girl, client: { ...p.client, build: date.client.build, age: date.client.age } }, debug: api.debug,
+      onScene: () => api.persist(), onDone: () => { api.debug("日租女友：退房了"); api.persist(); } });
     openRoom({ venue: h.venue, room: h.room, night: hr >= 18 || hr < 6, clientName: date.client.name, look: who.look || {}, doll: window.RoomDoll?.lookToDoll(who.look || null) || null,
-      session: h.session, girl: p.girl, client: { ...p.client, build: date.client.build, age: date.client.age },
+      session: h.session, runner, girl: p.girl, client: { ...p.client, build: date.client.build, age: date.client.age },
       // 2026-10-17 Al：點人物的圖要是這個她＋這個客人（長相對得上）；還沒有就背景生這一場用到的
       owners: ownersOf(who.id, date.client.id),
       onStep: (stt) => { if (!stt.done && stt.act) api.debug(`日租女友：房間第 ${stt.i + 1} 段 ${stt.act.loc}/${stt.act.pose}${stt.act.cum ? "（內射）" : ""}`); },

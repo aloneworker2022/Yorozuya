@@ -1,7 +1,7 @@
 /* test_room 上排快捷「日式房間／汽車旅館／旅館」（2026-10-17 Al）：一個房型一顆按鈕；按下去把這個房型的 5 個地點姿勢（床鋪接吻／正面／背後、浴室泡澡／站著）
  * 各生 2 張（不同 seed）。2026-10-18：純文生圖，跟她自己的圖同一條路（遊戲設定、她的模型、character＋lock_identity）；
  * 姿勢／地點／房型／平視側面／客人外觀全寫在 prompt，不送底圖（圖生圖會把她身材拉歪）；好了搬到 assets/rental_scenes/ 登記 manifest（/api/rental/scene-images），遊戲點人物時從這裡挑。 */
-import { SLOT_KEYS, VARIANT_KEYS, VARIANT_ZH, LOC_ZH, POSE_ZH, loadImages, ownersOf } from "./rental_session.js?v=7";
+import { SLOT_KEYS, VARIANT_KEYS, VARIANT_ZH, LOC_ZH, POSE_ZH, loadImages, ownersOf } from "./rental_session.js?v=8";
 import { rollClients } from "./rental.js?v=7";
 
 // 2026-10-18：鏡頭一律「站在旁邊平視看」：側面、與人物同高。之前躺／趴／泡澡的姿勢被模型畫成俯視（底圖是整間房的高角度＋小人）。

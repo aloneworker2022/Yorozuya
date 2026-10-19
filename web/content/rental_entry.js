@@ -10,7 +10,7 @@ import { paintJapaneseRoom, projectJapaneseRoom } from "./rental_room_paint.js?v
 import { drawGirl } from "./rental_girl_pixel.js?v=7";
 import { paintBathroom } from "./rental_bath_paint.js?v=2";
 import { hotelDoorScene, hotelBedScene, hotelBathScene, motelGarageScene, motelBedScene, motelBathScene } from "./rental_scenes_hm.js?v=2";
-import { stateAt as sessionState, openTalk, phaseOf, LOC_ZH, POSE_ZH } from "./rental_session.js?v=7";
+import { stateAt as sessionState, openTalk, phaseOf, LOC_ZH, POSE_ZH } from "./rental_session.js?v=8";
 import { makeCouple } from "./rental_couple.js?v=2";
 const LW = 195, LH = 422;
 
@@ -243,7 +243,7 @@ export function openRoom(opts = {}) {
     g.drawImage(cache[cur].c, 0, 0);
     hit = null;
     if (S) {
-      const stt = sessionState(S, Date.now());
+      const stt = opts.runner ? opts.runner.state() : sessionState(S, Date.now());
       if (stt.i !== lastAct) { lastAct = stt.i; talk?.close(); talk = null; opts.onStep?.(stt); }
       if (stt.done) { st.textContent = "他們已經退房離開了。"; b.textContent = "離開"; return; }
       if (stt.act.loc === sc.key) {
@@ -285,9 +285,11 @@ export function openRoom(opts = {}) {
     if (!S || !hit || talk) return;
     const r = cv.getBoundingClientRect(), x = ((e.clientX - r.left) / r.width) * LW, y = ((e.clientY - r.top) / r.height) * LH;
     if (x < hit.x0 - 4 || x > hit.x1 + 4 || y < hit.y0 - 4 || y > hit.y1 + 4) return;
-    const stt = sessionState(S, Date.now());
+    const stt = opts.runner ? opts.runner.state() : sessionState(S, Date.now());
     if (stt.done) return;
-    talk = openTalk(ov.querySelector(".box"), { venue: opts.venue, act: stt.act, step: stt.i + 1, cums: stt.cums, girl: opts.girl || {}, client: opts.client || {}, voice: opts.voice || "", owners: opts.owners || [], box: hit, phase: phaseOf(stt) });
+    talk = openTalk(ov.querySelector(".box"), { venue: opts.venue, act: stt.act, step: stt.i + 1, cums: stt.cums, girl: opts.girl || {}, client: opts.client || {}, voice: opts.voice || "", owners: opts.owners || [], box: hit, phase: stt.phase ?? phaseOf(stt),
+      // 2026-10-19：流程版——這一段開始時就在生的對話，先拿來用
+      lines: opts.runner ? opts.runner.talkLines(stt.i) : null });
     const oc = talk.close; talk.close = () => { oc(); talk = null; };
     talk.el.addEventListener("click", () => { talk = null; });
   });

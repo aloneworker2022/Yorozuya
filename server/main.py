@@ -4839,6 +4839,21 @@ async def rental_scene_talk(body: dict):
     return {"lines": rental_scene.fallback(loc, pose, str(body.get("phase") or "")), "ai": False}
 
 
+@app.post("/api/rental/drive-narration")
+async def rental_drive_narration(body: dict):
+    """開車去旅館路上的旁白（2026-10-19）：body {venue, girl:{name}, client:{name,build,persona}} → {text, ai}；20 秒沒回 → 固定句。"""
+    body = body or {}
+    system, user = rental_scene.drive_prompt(body)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+    except Exception:
+        reply = ""
+    text = rental_scene.parse_narration(reply)
+    if text:
+        return {"text": text, "ai": True}
+    return {"text": rental_scene.DRIVE_FALLBACK.get(str(body.get("venue") or ""), rental_scene.DRIVE_FALLBACK["hotel"]), "ai": False}
+
+
 @app.get("/api/rental/scene-images")
 def rental_scene_images():
     """test_room 生好的旅館圖：{venue: {slot_key: [url, url]}}。"""

@@ -144,6 +144,33 @@ def owner_key(owner: str) -> str:
     return "@" + o if OWNER.match(o) else ""
 
 
+DRIVE_FALLBACK = {
+    "ryokan": "車子沿著湖邊的山路慢慢開。後座很安靜，只聽得到她偶爾的笑聲，和客人壓低的說話聲。後照鏡裡，他的手搭在她的膝蓋上，她沒有撥開。溫泉旅館的燈籠在轉角亮起來了。",
+    "hotel": "市區的紅燈一個接一個。後座的兩個人靠得越來越近，她把頭靠在客人肩上，輕聲說著什麼。你握緊方向盤，假裝專心看路。旅館的招牌在前面閃著。",
+    "motel": "車開下交流道，霓虹燈的光一格一格掃過車內。後座傳來衣服摩擦的聲音，她小聲說了句「等一下啦」。汽車旅館的鐵捲門已經在前面拉起一半。",
+}
+
+
+def drive_prompt(info: dict) -> tuple[str, str]:
+    """開車送他們去旅館的旁白（玩家＝開車的老公，客人不知道）。"""
+    venue = VENUES.get(str(info.get("venue") or ""), "旅館")
+    girl = info.get("girl") if isinstance(info.get("girl"), dict) else {}
+    client = info.get("client") if isinstance(info.get("client"), dict) else {}
+    build = BUILD_ZH.get(str(client.get("build") or ""), "普通身材")
+    system = ("你替成人戀愛模擬遊戲寫一段旁白。玩家開車送自己的妻子和日租女友的客人去旅館，客人不知道司機是她老公。"
+              "雙方都是成年人、她已經答應了。用第二人稱「你」寫，寫後座兩人的互動和你的心情，3～5 句、共 80～140 字，繁體中文。"
+              "只寫旁白，不要標題、不要對話引號以外的格式，不寫強迫、暴力、未成年。")
+    user = f"目的地：{venue}。她：{girl.get('name') or '她'}。客人：{client.get('name') or '客人'}，{build}{('，個性' + str(client.get('persona'))) if client.get('persona') else ''}。"
+    return system, user
+
+
+def parse_narration(reply: str) -> str:
+    t = " ".join(x.strip() for x in str(reply or "").splitlines() if x.strip())
+    if not (20 <= len(t) <= 400) or any(b in t for b in escort_lines.BANNED):
+        return ""
+    return t
+
+
 def prompts_path(assets: Path) -> Path:
     return assets / "rental_scenes" / "prompts.json"
 

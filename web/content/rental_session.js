@@ -106,7 +106,7 @@ export function openTalk(box, ctx) {
   el.innerHTML = `<div class="ttl"></div><div class="peek-bub c"></div><div class="peek-bub w"></div><button type="button" class="x" aria-label="回到房間">×</button>`;
   el.querySelector(".ttl").textContent = `${LOC_ZH[ctx.act.loc]}・${POSE_ZH[ctx.act.pose]}${ctx.phase ? `・${VARIANT_ZH[ctx.phase]}` : ""}`;
   const bubC = el.querySelector(".peek-bub.c"), bubW = el.querySelector(".peek-bub.w");
-  const state = { closed: false, lines: [], said: [], pic: "" };
+  const state = { closed: false, lines: Array.isArray(ctx.lines) ? ctx.lines.slice() : [], said: [], pic: "" };
   let timer = 0, busy = false;
   const close = () => { state.closed = true; clearTimeout(timer); el.remove(); };
   el.addEventListener("click", close);

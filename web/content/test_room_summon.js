@@ -333,11 +333,12 @@ import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, 
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
 import { openPeek } from "./escort_peek.js?v=8";
 import * as Preg from "./pregnancy.js?v=1";
-import { createRental } from "./rental_ui.js?v=33";
-import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=7";
-import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=13";
+import { createRental } from "./rental_ui.js?v=34";
+import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
+import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=1";
+import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=14";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
-import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=20";
+import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
 import { moanVoiceId } from "./stun_speech.js?v=25";
 import {
   hungerOn,
@@ -1359,11 +1360,18 @@ function bindRentalDebug() {
     const s = planRentalSession();
     const c = rentalScenePanel?.client?.() || { id: "", name: "佐藤", age: 35, build: "average", persona: "dominant" };
     pushDebug(`房間流程（${v}）：${s.acts.map((a) => `${a.loc}/${a.pose}`).join(" → ")}・內射 ${s.acts.filter((a) => a.cum).length} 次`);
-    openRentalRoom({ venue: v, room: v === "ryokan" ? "桜の間" : "305", night: true, clientName: c.name, look: girl?.look || {}, doll: window.RoomDoll?.lookToDoll(girl?.look || null) || null,
+    // 2026-10-19：跟遊戲一樣——開車旁白＋生第一張 → 進房後跟著生成換段
+    const gInfo = { name: girl?.name || "她", stage: girl?.roomStage || girl?.stage || "wife", family: familyOfGirl(girl), archetype: girl?.archetype || "" };
+    const cInfo = { name: c.name, age: c.age, build: c.build, persona: RENTAL_PERSONA_ZH[c.persona] || c.persona };
+    const owners = rentalOwnersOf(girl?.id, c.id);
+    void openRentalDrive({ venue: v, venueZh: RENTAL_VENUES[v]?.zh, girl, client: c, girlInfo: gInfo, clientInfo: cInfo, owners, debug: pushDebug }).then(() => {
+    const runner = getRentalRunner(s, { venue: v, girl, client: c, owners, talkBase: { girl: gInfo, client: cInfo }, debug: pushDebug, onDone: () => pushDebug("房間流程：退房了") });
+    openRentalRoom({ runner, venue: v, room: v === "ryokan" ? "桜の間" : "305", night: true, clientName: c.name, look: girl?.look || {}, doll: window.RoomDoll?.lookToDoll(girl?.look || null) || null,
       session: s, owners: rentalOwnersOf(girl?.id, c.id), voice: (girl && moanVoiceId(girl)) || "", girl: { name: girl?.name || "她", stage: girl?.roomStage || girl?.stage || "wife", family: familyOfGirl(girl), archetype: girl?.archetype || "" },
       client: { name: c.name, age: c.age, build: c.build, persona: RENTAL_PERSONA_ZH[c.persona] || c.persona },
       onStep: (st) => { if (!st.done) pushDebug(`房間流程：第 ${st.i + 1} 段 ${st.act.loc}/${st.act.pose}${st.act.cum ? "（內射）" : ""}`); else pushDebug("房間流程：退房了"); },
-      onLeave: () => pushDebug(`房間流程（${v}）：離開`) });
+      onLeave: () => { runner.stop(); pushDebug(`房間流程（${v}）：離開`); } });
+    });
   });
   // 2026-10-17：旅館房間圖改放在上排快捷（日式房間／汽車旅館／旅館），面板在 rental_scene_gen.js
   rentalScenePanel = bindRentalScenePanel({ girl: () => girl, client: () => girl?.rentalMine?.active?.client || null, debug: pushDebug });
