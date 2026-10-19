@@ -15,7 +15,8 @@ const BG_EN = {
   hotel: { bed: "hotel room, large hotel bed with white sheets, hotel interior", bath: "hotel bathroom, bathtub, marble tiles" },
 };
 const POSE_EN = {
-  bed_kiss: "sitting on bed edge, face to face, kissing, embracing, partially clothed, side view of both bodies",
+  // 2026-10-19 Al：第一張＝兩個人坐在床上抱著親（穿著衣服）
+  bed_kiss: "a man and a woman sitting together on the bed, embracing, hugging each other, kissing passionately, arms around each other, both clothed, side view, eye level",
   bed_undress: "sitting on bed edge, kissing while undressing each other, partially undressed, removing clothes, open shirt, pulling down her clothes, bra visible, unbuttoning his shirt, side view of both bodies",
   bed_missionary: "sex, missionary, she lies on her back on the bed seen from the side, her legs raised, he kneels between her legs, both bodies in profile, nude, creampie",
   bed_doggy: "sex, doggystyle, from behind, she is on all fours on the bed facing left, he kneels behind her holding her hips, both bodies in profile, hanging breasts, nude, creampie",
@@ -119,13 +120,14 @@ function autoNeg(gi, mi) {
   return n.join(", ");
 }
 /** 預設模板（含佔位符）。編輯器「回預設」＝這個。 */
+const KISS_NEG = "standing, lying, lying down, sex, penetration, nude, solo";
 export function defaultTemplate(venue, key) {
   const [base, variant] = key.split("~");
   const bath = base.startsWith("bath_"), nude = base !== "bed_kiss" && base !== "bed_undress";
   const pos = [QUALITY_EN, bath ? BATH_PAIR_EN : PAIR_EN, POSE_EN[base], variant ? VARIANT_EN[variant] : "", nude ? NUDE_EN : "",
     "the woman: {girl}, {girl_body}, {girl_outfit}", "the man: {man_body}, {man}",
     "third person", bath ? BATH_CAM_EN : CAM_EN, BG_EN[venue]?.[base.split("_")[0]] || "", "detailed background"].filter(Boolean).join(", ");
-  const neg = [PAIR_NEG, CLEAR_NEG, NEG_EN, nude ? NUDE_NEG : "", bath ? `${BATH_NEG}, ${BATH_PAIR_NEG}` : "", "{auto_neg}"].filter(Boolean).join(", ");
+  const neg = [PAIR_NEG, CLEAR_NEG, NEG_EN, nude ? NUDE_NEG : "", base === "bed_kiss" ? KISS_NEG : "", bath ? `${BATH_NEG}, ${BATH_PAIR_NEG}` : "", "{auto_neg}"].filter(Boolean).join(", ");
   return { pos, neg, img2img: { on: false, ref: "", denoise: 0.6 } };
 }
 /** 代入佔位符。stage：接吻穿著、邊親邊脫脫一半、其餘全裸。 */
