@@ -15,6 +15,21 @@ export const DEFAULT_HEAD = {
   cheek: 1,      // 顴骨
   brow: 1,       // 眉弓
   faceLen: 1,    // 臉長（眉線以下整體縮放）
+  noseAngle: 20, // 鼻樑角度（度，鼻樑和臉正面垂直線的夾角：小＝貼臉、大＝挺出來）
+  noseBridge: 1, // 鼻樑高
+  noseUp: 0,     // 鼻頭上翹（-1 鷹勾 … 1 上翹）
+  // 女性特徵
+  eyeSize: 1,    // 眼睛大小
+  lips: 1,       // 嘴唇厚
+  chinPoint: 0,  // 下巴尖（0 方 … 1 尖）
+  cheekFat: 0,   // 臉頰肉（蘋果肌）
+  forehead: 0,   // 額頭圓（填平眉弓上方、額頭往前鼓）
+};
+
+/** 「女性化」滑桿的兩端：0＝預設素體（偏男），1＝女性。中間線性內插，拉完各滑桿還能再微調。 */
+export const FEM_TARGET = {
+  craniumW: 0.97, jawW: 0.8, faceLen: 0.94, chinLen: 0.9, noseLen: 0.86, socket: 0.65, cheek: 0.85, brow: 0.45,
+  noseAngle: 24, noseBridge: 0.8, noseUp: 0.45, eyeSize: 1.15, lips: 1.35, chinPoint: 0.7, cheekFat: 0.7, forehead: 0.8,
 };
 
 /* 臉的部件是照「眉 0、鼻底 -0.95、下巴 -1.75」畫的，再把眉線以下往上壓（FACE_K）成正常頭身：
@@ -42,7 +57,10 @@ const smax = (a, b, k) => -smin(-a, -b, k);
 export function headSDF(P = DEFAULT_HEAD) {
   const cw = 0.8 * P.craniumW, side = cw * 0.9, jw = P.jawW;
   const chinY = -1.75 - (P.chinLen - 1) * 0.45;
-  const noseTipY = -0.2 - 0.66 * P.noseLen, noseTipZ = 0.86 + 0.24 * P.noseLen;
+  // 鼻子：鼻根 B 往下斜 noseAngle 度、長 L 到鼻頭
+  const na = (P.noseAngle * Math.PI) / 180, L = 0.7 * P.noseLen, bZ = 0.86 + 0.05 * (P.noseBridge - 1);
+  const noseTipY = -0.2 - L * Math.cos(na) + 0.05 * P.noseUp, noseTipZ = bZ + L * Math.sin(na) - 0.02 * Math.abs(P.noseUp);
+  const es = P.eyeSize, lp = P.lips, cp = P.chinPoint;
   const jawY = -1.25 + (chinY + 1.75) * 0.5;
   const mouthY = -0.95 + (chinY + 0.95) * 0.35;
   const sock = 0.17 * P.socket, k = FACE_K * P.faceLen;
@@ -55,25 +73,28 @@ export function headSDF(P = DEFAULT_HEAD) {
     // 臉：面具＋下顎塊＋下巴＋下顎線＋下顎枝
     let face = sdEllipsoid(x, y, z, 0, -0.62, 0.22, 0.6, 0.92, 0.7);
     face = smin(face, sdEllipsoid(x, y, z, 0, (jawY + chinY) * 0.5 + 0.05, 0.05, 0.5 * jw, 0.5, 0.6), 0.2);
-    face = smin(face, sdEllipsoid(x, y, z, 0, chinY + 0.14, 0.6, 0.24, 0.2, 0.2), 0.15);
-    face = smin(face, sdRoundCone(ax, y, z, 0.52 * jw, jawY, -0.2, 0.16, chinY + 0.1, 0.58, 0.1, 0.11), 0.15);
+    face = smin(face, sdEllipsoid(x, y, z, 0, chinY + 0.14 + 0.03 * cp, 0.6 + 0.03 * cp, 0.24 * (1 - 0.4 * cp), 0.2, 0.2 * (1 - 0.2 * cp)), 0.15);
+    face = smin(face, sdRoundCone(ax, y, z, 0.52 * jw, jawY, -0.2, 0.16 * (1 - 0.55 * cp), chinY + 0.1, 0.58, 0.1, 0.11 * (1 - 0.3 * cp)), 0.15);
     face = smin(face, sdRoundCone(ax, y, z, 0.52 * jw, jawY, -0.2, 0.6 * P.craniumW, -0.35, -0.22, 0.1, 0.14), 0.15);
     d = smin(d, face, 0.25);
     // 顴骨、眉弓
     d = smin(d, sdEllipsoid(ax, y, z, 0.47, -0.45, 0.55, 0.2 * P.cheek, 0.14 * P.cheek, 0.2 * P.cheek), 0.12);
     d = smin(d, sdRoundCone(ax, y, z, 0, 0.0, 0.9, 0.5, 0.0, 0.72, 0.1 * P.brow, 0.08 * P.brow), 0.1);
+    // 女性：臉頰肉（顴骨下、嘴角外側的軟肉）、圓額頭
+    if (P.cheekFat > 0.01) d = smin(d, sdEllipsoid(ax, y, z, 0.36, -0.78, 0.5, 0.22 * P.cheekFat, 0.2 * P.cheekFat, 0.2 * P.cheekFat), 0.2 * P.cheekFat);
+    if (P.forehead > 0.01) d = smin(d, sdEllipsoid(x, y, z, 0, 0.32, 0.5 + 0.06 * P.forehead, 0.56, 0.45, 0.42), 0.3 * P.forehead);
     // 耳朵（貼在側平面上）
     d = smin(d, sdEllipsoid(ax, y, z, side + 0.04, -0.4, -0.18, 0.07, 0.28, 0.17), 0.05);
     // 鼻子：鼻樑到鼻頭的錐＋鼻翼
-    d = smin(d, sdRoundCone(x, y, z, 0, -0.2, 0.86, 0, noseTipY, noseTipZ, 0.07, 0.1), 0.06);
-    d = smin(d, sdEllipsoid(ax, y, z, 0.1, noseTipY - 0.04, noseTipZ - 0.13, 0.08, 0.07, 0.08), 0.06);
+    d = smin(d, sdRoundCone(x, y, z, 0, -0.2, bZ, 0, noseTipY, noseTipZ, 0.07 * (0.6 + 0.4 * P.noseBridge), 0.1 * (0.9 + 0.1 * P.noseLen)), 0.06);
+    d = smin(d, sdEllipsoid(ax, y, z, 0.1 * (0.85 + 0.15 * P.noseLen), noseTipY - 0.04, noseTipZ - 0.13, 0.08, 0.07, 0.08), 0.06);
     // 嘴唇（上下兩片）＋嘴縫
-    d = smin(d, sdEllipsoid(x, y, z, 0, mouthY + 0.06, 0.8, 0.2, 0.06, 0.07), 0.06);
-    d = smin(d, sdEllipsoid(x, y, z, 0, mouthY - 0.07, 0.78, 0.17, 0.06, 0.07), 0.06);
+    d = smin(d, sdEllipsoid(x, y, z, 0, mouthY + 0.05 + 0.01 * lp, 0.78 + 0.02 * lp, 0.2, 0.06 * lp, 0.07 * lp), 0.06);
+    d = smin(d, sdEllipsoid(x, y, z, 0, mouthY - 0.06 - 0.015 * lp, 0.76 + 0.02 * lp, 0.17, 0.065 * lp, 0.07 * lp), 0.06);
     d = smax(d, -sdEllipsoid(x, y, z, 0, mouthY, 0.88, 0.19, 0.012, 0.1), 0.01);
     // 眼窩挖掉、眼球放進去
-    d = smax(d, -sdEllipsoid(ax, y, z, 0.3, -0.3, 0.75 + sock, 0.19, 0.14, sock + 0.01), 0.08);
-    d = Math.min(d, len3(ax - 0.3, y + 0.32, z - 0.7) - 0.155);
+    d = smax(d, -sdEllipsoid(ax, y, z, 0.3, -0.3, 0.75 + sock, 0.19 * es, 0.14 * es, sock + 0.01), 0.08);
+    d = Math.min(d, len3(ax - 0.3, y + 0.32, z - 0.7 + 0.02 * (es - 1)) - 0.155 * es);
     return d;
   };
   const f = (x, y, z) => raw(x, warp(y), z) * Math.min(1, k);

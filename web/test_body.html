@@ -10,27 +10,38 @@
 *{margin:0;padding:0;box-sizing:border-box;}
 body{ background:var(--paper); color:var(--ink); font-family:system-ui,"Noto Sans TC",sans-serif;
   font-size:14px; padding:12px 16px 40px; }
-.wrap{max-width:820px;margin:0 auto;}
+.wrap{max-width:1200px;margin:0 auto;}
 header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line);
   padding-bottom:8px;margin-bottom:10px;}
 header h1{font-size:17px;}
 header .sub{color:var(--dim);font-size:12px;}
 header a{margin-left:auto;color:var(--accent);text-decoration:none;font-size:12px;}
-#stage{position:relative;width:100%;height:min(68vh,620px);min-height:360px;border:1px solid var(--line);
+/* 手機：模型黏在上面、滑桿在下面捲；寬螢幕：模型左、滑桿右，邊拉邊看 */
+.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;}
+.view-col{position:sticky;top:0;z-index:2;background:var(--paper);padding:4px 0 6px;}
+#stage{position:relative;width:100%;height:44vh;min-height:260px;border:1px solid var(--line);
   border-radius:6px;background:#fff;overflow:hidden;touch-action:none;}
+@media (min-width:860px){
+  .layout{grid-template-columns:minmax(0,1fr) 360px;align-items:start;}
+  .view-col{top:12px;}
+  #stage{height:calc(100vh - 130px);}
+  .ctrl-col{max-height:calc(100vh - 24px);overflow:auto;position:sticky;top:12px;padding-right:4px;}
+}
 #stage canvas{display:block;width:100%;height:100%;}
 #busy{position:absolute;right:8px;top:6px;font-size:11px;color:var(--dim);}
-.cap{color:var(--dim);font-size:11px;text-align:center;margin:6px 0 10px;}
-.views{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.cap{color:var(--dim);font-size:11px;text-align:center;margin:4px 0 6px;}
+.views{display:flex;flex-wrap:wrap;gap:6px;}
 .views button,.toggles label{font:inherit;font-size:12px;padding:5px 10px;border:1px solid var(--line);
   background:#fff;border-radius:4px;cursor:pointer;color:var(--ink);}
 .views button.on{border-color:var(--accent);color:var(--accent);}
 .panel{background:#fff;border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin-bottom:10px;}
 .panel h2{font-size:13px;margin-bottom:8px;color:var(--accent);}
-.row{display:flex;align-items:center;gap:10px;margin:7px 0;}
-.row label{flex:0 0 78px;font-size:12px;color:var(--dim);}
+.panel h3{font-size:12px;margin:10px 0 2px;color:var(--dim);font-weight:600;}
+.row{display:flex;align-items:center;gap:10px;margin:6px 0;}
+.row label{flex:0 0 72px;font-size:12px;color:var(--dim);}
 .row input{flex:1;min-width:0;accent-color:var(--accent);}
 .row .v{flex:0 0 40px;text-align:right;font-size:12px;}
+.row.fem label{color:var(--accent);font-weight:600;}
 .toggles{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
 .toggles input{margin-right:4px;vertical-align:-1px;}
 ol{padding-left:1.3em;line-height:1.7;font-size:13px;}
@@ -51,16 +62,44 @@ ol b{color:var(--accent);}
   <a href="/">← 回萬事屋</a>
 </header>
 
-<div id="stage"><span id="busy"></span></div>
-<div class="cap">拖曳旋轉 · 雙指縮放 · 紅線是結構線（中線、眉／眼／鼻底／嘴、側面圓）</div>
+<div class="layout">
+<div class="view-col">
+  <div id="stage"><span id="busy"></span></div>
+  <div class="cap">拖曳旋轉 · 雙指縮放 · 紅線是結構線（中線、眉／眼／鼻底／嘴、側面圓）</div>
+  <div class="views" id="views">
+    <button data-v="front">正面</button>
+    <button data-v="q34" class="on">3/4 側</button>
+    <button data-v="side">正側面</button>
+    <button data-v="top">俯視</button>
+    <button data-v="low">仰視</button>
+    <button data-v="back">背面</button>
+  </div>
+</div>
 
-<div class="views" id="views">
-  <button data-v="front">正面</button>
-  <button data-v="q34" class="on">3/4 側</button>
-  <button data-v="side">正側面</button>
-  <button data-v="top">俯視</button>
-  <button data-v="low">仰視</button>
-  <button data-v="back">背面</button>
+<div class="ctrl-col">
+<div class="panel">
+  <h2>◆ 臉</h2>
+  <div class="row fem"><label>女性化</label><input id="fem" type="range" min="0" max="100" value="0"><span class="v" id="fem-v"></span></div>
+  <h3>女性特徵</h3>
+  <div class="row"><label>眼睛大小</label><input data-p="eyeSize" type="range" min="80" max="135" value="100"><span class="v"></span></div>
+  <div class="row"><label>嘴唇厚</label><input data-p="lips" type="range" min="60" max="170" value="100"><span class="v"></span></div>
+  <div class="row"><label>下巴尖</label><input data-p="chinPoint" type="range" min="0" max="100" value="0"><span class="v"></span></div>
+  <div class="row"><label>臉頰肉</label><input data-p="cheekFat" type="range" min="0" max="100" value="0"><span class="v"></span></div>
+  <div class="row"><label>額頭圓</label><input data-p="forehead" type="range" min="0" max="100" value="0"><span class="v"></span></div>
+  <h3>鼻子</h3>
+  <div class="row"><label>鼻樑角度</label><input data-p="noseAngle" data-div="1" data-unit="°" type="range" min="5" max="45" value="20"><span class="v"></span></div>
+  <div class="row"><label>鼻樑高</label><input data-p="noseBridge" type="range" min="40" max="160" value="100"><span class="v"></span></div>
+  <div class="row"><label>鼻頭上翹</label><input data-p="noseUp" type="range" min="-100" max="100" value="0"><span class="v"></span></div>
+  <div class="row"><label>鼻長</label><input data-p="noseLen" type="range" min="70" max="130" value="100"><span class="v"></span></div>
+  <h3>骨架比例</h3>
+  <div class="row"><label>顱骨寬</label><input data-p="craniumW" type="range" min="80" max="120" value="100"><span class="v"></span></div>
+  <div class="row"><label>下顎寬</label><input data-p="jawW" type="range" min="70" max="130" value="100"><span class="v"></span></div>
+  <div class="row"><label>臉長</label><input data-p="faceLen" type="range" min="85" max="115" value="100"><span class="v"></span></div>
+  <div class="row"><label>下巴長</label><input data-p="chinLen" type="range" min="70" max="130" value="100"><span class="v"></span></div>
+  <div class="row"><label>眼窩深</label><input data-p="socket" type="range" min="40" max="160" value="100"><span class="v"></span></div>
+  <div class="row"><label>顴骨</label><input data-p="cheek" type="range" min="50" max="150" value="100"><span class="v"></span></div>
+  <div class="row"><label>眉弓</label><input data-p="brow" type="range" min="40" max="150" value="100"><span class="v"></span></div>
+  <div class="toggles"><label id="reset">回預設</label></div>
 </div>
 
 <div class="panel">
@@ -93,34 +132,24 @@ ol b{color:var(--accent);}
 </div>
 
 <div class="panel">
-  <h2>◆ 比例</h2>
-  <div class="row"><label>顱骨寬</label><input data-p="craniumW" type="range" min="80" max="120" value="100"><span class="v"></span></div>
-  <div class="row"><label>下顎寬</label><input data-p="jawW" type="range" min="70" max="130" value="100"><span class="v"></span></div>
-  <div class="row"><label>臉長</label><input data-p="faceLen" type="range" min="85" max="115" value="100"><span class="v"></span></div>
-  <div class="row"><label>下巴長</label><input data-p="chinLen" type="range" min="70" max="130" value="100"><span class="v"></span></div>
-  <div class="row"><label>鼻長</label><input data-p="noseLen" type="range" min="70" max="130" value="100"><span class="v"></span></div>
-  <div class="row"><label>眼窩深</label><input data-p="socket" type="range" min="40" max="160" value="100"><span class="v"></span></div>
-  <div class="row"><label>顴骨</label><input data-p="cheek" type="range" min="50" max="150" value="100"><span class="v"></span></div>
-  <div class="row"><label>眉弓</label><input data-p="brow" type="range" min="40" max="150" value="100"><span class="v"></span></div>
-  <div class="toggles"><label id="reset">回預設</label></div>
-</div>
-
-<div class="panel">
   <h2>◆ 這顆頭怎麼搭的</h2>
   <ol>
     <li><b>顱骨是球，兩側切平。</b>Loomis：側平面上的圓＝耳朵前上方，耳朵貼在這個平面上。</li>
     <li><b>臉分三等份。</b>髮際→眉、眉→鼻底、鼻底→下巴大約一樣長；眼睛在整顆頭高度的一半。</li>
     <li><b>臉是掛在球前面的面具。</b>下顎從耳下的下顎角斜到下巴，下巴是一小塊方的。</li>
     <li><b>眼窩是挖進去的，眼球是放進去的。</b>眉弓壓在上面、顴骨撐在下面，所以光從上來時眼窩是暗的。</li>
+    <li><b>女性化</b>：眉弓變平、額頭變圓、下顎變窄、下巴變尖、眼睛大、嘴唇厚、鼻子小而上翹、臉頰有肉、脖子變細。拉完還能一個一個微調。</li>
     <li><b>切面頭</b>＝少量大平面（Asaro 頭），練明暗分面；<b>平滑灰模</b>看整體量感。</li>
   </ol>
+</div>
+</div>
 </div>
 </div>
 
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { DEFAULT_HEAD, buildHeadGeometry, constructionLines } from "/content/body3d/head.js?v=1";
+import { DEFAULT_HEAD, FEM_TARGET, buildHeadGeometry, constructionLines } from "/content/body3d/head.js?v=2";
 
 const $ = (id) => document.getElementById(id);
 const stage = $("stage");
@@ -229,13 +258,19 @@ $("wire").addEventListener("change", applyMaterial);
 for (const id of ["lightAz", "lightEl"]) $(id).addEventListener("input", applyLight);
 for (const id of ["pitch", "yaw", "roll"]) $(id).addEventListener("input", applyPose);
 const sliders = [...document.querySelectorAll("input[data-p]")];
-const showP = (s) => { s.nextElementSibling.textContent = (+s.value / 100).toFixed(2); };
-for (const s of sliders) s.addEventListener("input", () => { P[s.dataset.p] = +s.value / 100; showP(s); rebuildSoon(); });
-$("reset").addEventListener("click", () => {
-  Object.assign(P, DEFAULT_HEAD);
-  for (const s of sliders) { s.value = String(Math.round(P[s.dataset.p] * 100)); showP(s); }
-  rebuild();
-});
+const div = (s) => +(s.dataset.div || 100);
+const showP = (s) => { s.nextElementSibling.textContent = s.dataset.unit ? s.value + s.dataset.unit : (+s.value / div(s)).toFixed(2); };
+const syncSliders = () => { for (const s of sliders) { s.value = String(Math.round(P[s.dataset.p] * div(s))); showP(s); } };
+for (const s of sliders) s.addEventListener("input", () => { P[s.dataset.p] = +s.value / div(s); showP(s); rebuildSoon(); });
+// 女性化：把有女性目標值的滑桿從預設內插到目標；脖子也跟著變細
+const setFem = (f) => {
+  for (const k in FEM_TARGET) P[k] = DEFAULT_HEAD[k] + (FEM_TARGET[k] - DEFAULT_HEAD[k]) * f;
+  neck.scale.set(1 - 0.18 * f, 1, 1 - 0.18 * f);
+  $("fem-v").textContent = Math.round(f * 100) + "%";
+  syncSliders(); rebuildSoon();
+};
+$("fem").addEventListener("input", () => setFem(+$("fem").value / 100));
+$("reset").addEventListener("click", () => { Object.assign(P, DEFAULT_HEAD); $("fem").value = "0"; setFem(0); });
 
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
@@ -243,7 +278,7 @@ function resize() {
 }
 new ResizeObserver(resize).observe(stage);
 
-sliders.forEach(showP);
+sliders.forEach(showP); $("fem-v").textContent = "0%";
 $("detail-v").textContent = state.detail;
 resize(); applyLight(); applyPose(); applyMaterial(); setView("q34"); rebuild();
 renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
