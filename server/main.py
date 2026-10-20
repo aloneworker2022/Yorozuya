@@ -5800,6 +5800,12 @@ def test_body_m():
     return FileResponse(WEB_DIR / "test_bodyM" / "index.html")
 
 
+@app.get("/test_body")
+def test_body():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_body.html")
+
+
 @app.put("/api/edit_date")
 def put_edit_date(body: dict):
     if not isinstance(body, dict):
