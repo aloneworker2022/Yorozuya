@@ -81,7 +81,20 @@ export function rollCouple() {
   const [h] = rollClients([], Date.now()), hair = pk(OW_HAIR), outfit = pk(OW_OUTFIT), id = `c${Date.now().toString(36)}`;
   const wife = { id: `${id}w`, name: pk(OW_NAMES), gender: "female", age: 25 + Math.floor(Math.random() * 14), personality: pk(OW_PERSONA),
     look: { hair: hair[0], hair_en: hair[1], build: pk(OW_BUILD), cup: pk(OW_CUP), height_cm: 152 + Math.floor(Math.random() * 18), style: outfit[0], outfit_en: outfit[1] } };
-  return { id, at: Date.now(), husband: { ...h, id: `${id}h` }, wife };
+  const c = { id, at: Date.now(), husband: { ...h, id: `${id}h` }, wife };
+  ensureSwapMeta(c); return c;
+}
+
+// ---- 2026-10-21 換妻選人用：丈夫類型（紳士型／老手型／炫耀型）、妻子類型（害羞人妻／老手／不太情願）、價錢 20–50 金。
+// 存在人身上（伺服器 couple 只留 id/husband/wife/at）：husband.swapType、husband.swapPrice、wife.swapType。舊資料沒有就補。
+export const H_TYPES = ["紳士型", "老手型", "炫耀型"], W_TYPES = ["害羞人妻", "老手", "不太情願"];
+export function ensureSwapMeta(c) {
+  if (!c?.husband || !c?.wife) return false;
+  let ch = false; const h = c.husband, w = c.wife;
+  if (!H_TYPES.includes(h.swapType)) { h.swapType = h.persona === "gentleman" ? "紳士型" : h.persona === "showoff" ? "炫耀型" : (h.skill || 0) >= 4 ? "老手型" : pk(H_TYPES); ch = true; }
+  if (!W_TYPES.includes(w.swapType)) { w.swapType = /害羞|內向/.test(w.personality || "") ? "害羞人妻" : /大膽|主導|悶騷/.test(w.personality || "") ? "老手" : pk(W_TYPES); ch = true; }
+  if (!(h.swapPrice >= 20 && h.swapPrice <= 50)) { h.swapPrice = 20 + Math.floor(Math.random() * 31); ch = true; }
+  return ch;
 }
 
 // ---- 2026-10-21 Al：對方夫妻各綁一個畫圖模型（兩人不同）。清單＝遊戲幫魅子綁 comfyCkpt 的同一個來源：
@@ -206,12 +219,12 @@ async function cutoutOf(url, say) {
   say?.("改用瀏覽器綠幕去背……");
   return { cut_data: await browserChroma(url), how: "瀏覽器綠幕去背" };
 }
-const api = {
+export const api = {
   state: async () => { const r = await fetch("/api/swap/cafe", { cache: "no-store" }); if (!r.ok) throw new Error(`讀不到換妻資料 ${r.status}（伺服器要重啟？）`); return r.json(); },
   put: async (path, body, method = "PUT") => { const r = await fetch(`/api/swap/cafe/${path}`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!r.ok) throw new Error(`存檔失敗 ${r.status}（伺服器要重啟？）`); return r.json(); },
 };
 
-const BZH = { average: "普通", slim: "瘦", muscular: "壯", fat: "胖", tall: "高", short: "矮", old: "老" };
+export const BZH = { average: "普通", slim: "瘦", muscular: "壯", fat: "胖", tall: "高", short: "矮", old: "老" };
 const PZH = { gentleman: "紳士", clingy: "黏人", showoff: "炫耀", dominant: "強勢", otaku: "宅男" };
 /** 綁上排「咖啡廳」＋面板。ctx：{ girl()（現在的測試魅子）, debug(msg) }。 */
 export function bindSwapCafePanel(ctx = {}) {
