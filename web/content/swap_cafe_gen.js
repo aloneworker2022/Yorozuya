@@ -5,6 +5,7 @@
  * 生圖：綠幕半身（2026-10-21 Al：白底去背會啃到身體）→ /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上（底部對齊，像 VN）＋原圖。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
 import { rollClients } from "./rental.js?v=7";
+import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=1";
 
 // 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張
 export const SWAP_SCENES = {
@@ -321,5 +322,34 @@ export function bindSwapCafePanel(ctx = {}) {
   $("sc-reroll")?.addEventListener("click", async () => { const c = rollCouple(); ckptNote = rollCkpts(c, await usableCkpts(true)) || ckptNote; try { S = await api.put("couple", { couple: c }); } catch (e) { $("sc-status").textContent = String(e?.message || e); } void show(); });
   $("sc-couple")?.addEventListener("change", async (e) => { const c = S.couples[e.target.value]; if (!c) return; try { S = await api.put("couple", { couple: c }); } catch { S.current = c.id; } void show(); });
   $("sc-close")?.addEventListener("click", close);
-  return { show };
+  // ---- VN 舞台預覽（2026-10-21）：只畫這段互動有參與的人，從左邊滑進來
+  const stageEl = $("sc-stage");
+  let stage = null, stageAct = "player-wife", stageEx = "normal";
+  const stageChar = (c) => {
+    const img = (S.images[ownerOf(c)] || {})[`${c}~${stageEx}`];
+    const name = c === "wife" ? (ctx.girl?.()?.name || "妻子") : c === "husband" ? couple()?.husband?.name || "對方丈夫" : couple()?.wife?.name || "對方妻子";
+    return { id: c, url: img?.cut || "", label: name, kind: c === "husband" ? "male" : "female" };
+  };
+  const playStage = (replay = false) => {
+    if (!stageEl) return;
+    stage = stage || createStage(stageEl, { backdrop });
+    stage.setBackdrop(backdrop);
+    const who = SWAP_INTERACTIONS[stageAct].who.map(stageChar);
+    if (replay) { stage.clear(); setTimeout(() => stage.show(who), 420); } else stage.show(who);
+  };
+  const acts = $("sc-stage-acts");
+  if (acts) {
+    acts.innerHTML = Object.entries(SWAP_INTERACTIONS).map(([k, v]) => `<button type="button" data-act="${k}">${v.zh}</button>`).join("") +
+      Object.entries(EXPRS).map(([k, v]) => `<button type="button" data-ex="${k}">${v}</button>`).join("") + `<button type="button" data-replay="1">重播</button>`;
+    acts.addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.act) { stageAct = b.dataset.act; playStage(); }
+      else if (b.dataset.ex) { stageEx = b.dataset.ex; playStage(); }
+      else playStage(true);
+      acts.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.act === stageAct || x.dataset.ex === stageEx ? "true" : "false"));
+    });
+  }
+  sceneSel?.addEventListener("change", () => stage?.setBackdrop(backdrop));
+  bgSel?.addEventListener("change", () => stage?.setBackdrop(backdrop));
+  return { show, playStage };
 }
