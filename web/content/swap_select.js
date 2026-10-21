@@ -5,7 +5,7 @@ import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 import { createStage } from "./swap_stage.js?v=4";
-import { runBarIntro } from "./swap_bar.js?v=1";
+import { runBarIntro, runBarChat } from "./swap_bar.js?v=2";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;
@@ -216,7 +216,7 @@ export function openSwapBar(ctx = {}, c, S = {}) {
       <form class="in" style="display:none;gap:8px;margin-top:8px"><input maxlength="120" style="flex:1;min-width:0;border:1px solid #555;background:#221c27;color:#fff;border-radius:18px;padding:8px 12px;font-size:15px"><button type="submit" style="border:0;background:#c0508a;color:#fff;border-radius:18px;padding:0 14px;font-size:14px;box-shadow:none">說</button></form>
     </div>`;
   document.body.append(ov);
-  const st = createStage(ov.querySelector(".st"), { backdrop: pickBackdrop("bar"), height: 64, bottom: 104 });
+  const st = createStage(ov.querySelector(".st"), { backdrop: pickBackdrop("bar"), height: 60, bottom: 150 });
   const dlg = ov.querySelector(".dlg"), nm = dlg.querySelector(".nm"), tx = dlg.querySelector(".tx"), nx = dlg.querySelector(".nx"), form = dlg.querySelector(".in"), inp = form.querySelector("input");
   let closed = false;
   const close = () => { closed = true; ov.remove(); };
@@ -238,12 +238,10 @@ export function openSwapBar(ctx = {}, c, S = {}) {
       form.onsubmit = (e) => { e.preventDefault(); form.style.display = "none"; res(inp.value); };
     }),
   };
-  const intro = ctx.runIntro === false ? Promise.resolve() : runBarIntro({ ctx, c, S, ui });
-  intro.then(() => {
+  const intro = ctx.runIntro === false ? Promise.resolve([]) : runBarIntro({ ctx, c, S, ui });
+  intro.then((log) => {
     if (closed) return;
-    // 自由聊天（還沒有提議卡／AI 回話）：先放輸入框
-    nm.textContent = "自由聊天"; tx.textContent = "（之後這裡可以跟大家自由聊天；提議還沒做）"; nx.hidden = true; form.style.display = "flex"; inp.placeholder = "跟大家聊點什麼…"; inp.value = "";
-    form.onsubmit = (e) => { e.preventDefault(); const v = inp.value.trim(); if (!v) return; inp.value = ""; ctx.debug?.(`換妻・酒吧（自由聊天，還沒接 AI）：${v}`); tx.textContent = `你：${v}\n（自由聊天還沒接上）`; };
+    runBarChat({ ctx, c, S, ui, log: log || [], isClosed: () => closed, el: { dlg, nm, tx, nx, form, inp, stageEl: ov.querySelector(".st") } });
   }).catch(() => {});
   return { el: ov, stage: st, close };
 }
