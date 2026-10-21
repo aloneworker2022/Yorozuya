@@ -337,7 +337,8 @@ import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
 import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=8";
-import { openSwapStart } from "./swap_select.js?v=4";
+import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=5";
+import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=16";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
 import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
@@ -1379,12 +1380,6 @@ function bindRentalDebug() {
   rentalScenePanel = bindRentalScenePanel({ girl: () => girl, client: () => girl?.rentalMine?.active?.client || null, debug: pushDebug });
   // 2026-10-21 換妻 step 1：咖啡廳半身立繪（上排「咖啡廳」，面板在 swap_cafe_gen.js）
   bindSwapCafePanel({ girl: () => girl, debug: pushDebug });
-  document.getElementById("btn-swap-start")?.addEventListener("click", () => openSwapStart({
-    girl: () => girl, debug: pushDebug,
-    say: async (who, ask, fallback) => { try { const r = await withTimeout(askGirl(ask), 12000, ""); return scrubHusband(cleanLine(r), who.stage || "stranger", who.playerPet || "").slice(0, 120) || fallback; } catch { return fallback; } },
-    mood: (who) => getMoodCarry(who),
-    hunger: (who) => (HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0),
-  }));
   onId("dbg-rental-reset", "click", () => { if (!girl) return; rm().starts = []; rm().askCoolUntil = 0; persistRoom(); renderRentalDebug(); refreshTalkActs(); });
   setInterval(() => { try { renderRentalDebug(); } catch { /* */ } }, 2000);
 }
@@ -8846,6 +8841,28 @@ async function runClothesErrand(next) {
   try { renderCard(); } catch { /* */ }
 }
 
+// 換妻（2026-10-21）：聊天裡提「換妻／交換伴侶…」、她是妻子階段 → 擲答應（swapAskChance）、AI 回（動作）台詞；答應才開夫妻名冊。
+async function maybeHandleSwapAsk(raw) {
+  if (!isSwapAsk(raw) || !girl || !swapCanAsk(girl) || girl.errand) return false;
+  if (sexChatActive() || activeRoomScene || undressPlay) return false;
+  const who = girl;
+  lines.push({ role: "user", content: raw });
+  talkBusy = true; setTalkEnabled(true);
+  let d = null;
+  try {
+    await typeLine("你", raw);
+    d = swapDecide(who, { mood: getMoodCarry(who), hunger: HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0 });
+    pushDebug(`換妻：問${who.name}（答應機率 ${Math.round(d.p * 100)}%）→ ${d.yes ? "答應" : "拒絕"}`);
+    let line = "";
+    try { line = scrubHusband(cleanLine(await withTimeout(askGirl(d.ask), 12000, "")), who.stage || "stranger", who.playerPet || ""); } catch { /* 句庫 */ }
+    line = swapActLine(line, d.act) || d.fallback;
+    lines.push({ role: "assistant", content: line });
+    await typeLine(who.name, line);
+  } finally { talkBusy = false; setTalkEnabled(true); }
+  if (d?.yes) setTimeout(() => openSwapSelect({ girl: () => who, debug: pushDebug }), 1500);   // 讓她那句先看清楚
+  return true;
+}
+
 async function maybeHandleClothesAsk(raw) {
   if (!isChangeClothesAsk(raw) || !canAskClothes(girl)) return false;
   if (sexChatActive() || activeRoomScene || undressPlay) return false;
@@ -8900,6 +8917,7 @@ async function deliverUserTalk(text, opts = {}) {
     return;
   }
   if (talkBusy || talkFor !== girl.id) return;
+  if (!opts.actId && await maybeHandleSwapAsk(raw)) return;
   if (!opts.actId && await maybeHandleClothesAsk(raw)) return;
 
   ensureBody(girl);
