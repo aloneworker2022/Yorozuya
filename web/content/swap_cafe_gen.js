@@ -6,7 +6,16 @@
 import { gameEngine } from "./rental_scene_gen.js?v=16";
 import { rollClients } from "./rental.js?v=7";
 
-const BACKDROP = "/assets/swap/cafe.jpg";
+// 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張
+export const SWAP_SCENES = {
+  cafe: { zh: "咖啡廳", bgs: ["/assets/swap/cafe.jpg"] },
+  bar: { zh: "酒吧", bgs: ["/assets/swap/bar1.jpg", "/assets/swap/bar2.jpg", "/assets/swap/bar3.jpg"] },
+};
+/** 這個場景的背景：i 有給（0 起）就用那張，沒給就隨機一張。 */
+export function pickBackdrop(scene = "cafe", i = -1) {
+  const bgs = (SWAP_SCENES[scene] || SWAP_SCENES.cafe).bgs;
+  return bgs[i >= 0 && i < bgs.length ? i : Math.floor(Math.random() * bgs.length)];
+}
 const CHARS = { wife: "妻子（你老婆）", husband: "對方丈夫", other: "對方妻子" };
 const EXPRS = { normal: "一般", shy: "害羞" };
 const EXPR_EN = { normal: "gentle smile, calm relaxed expression", shy: "shy, blushing, red cheeks, embarrassed, flustered, looking slightly away, bashful smile" };
@@ -208,6 +217,14 @@ export function bindSwapCafePanel(ctx = {}) {
   const $ = (id) => document.getElementById(id), panel = $("swap-cafe-editor"), btn = $("btn-swap-cafe");
   if (!panel || !btn) return null;
   let S = { couples: {}, current: "", prompts: {}, images: {} }, ch = "wife", busy = false;
+  // 預覽背景：場景（咖啡廳／酒吧）＋第幾張（-1＝隨機，抽一次固定到換場景）
+  let scene = "cafe", bgPick = -1, backdrop = pickBackdrop("cafe");
+  const sceneSel = $("sc-scene"), bgSel = $("sc-bg");
+  const fillBg = () => { if (!bgSel) return; const n = SWAP_SCENES[scene].bgs.length; bgSel.innerHTML = `<option value="-1">隨機</option>` + Array.from({ length: n }, (_, i) => `<option value="${i}">${SWAP_SCENES[scene].zh} ${i + 1}</option>`).join(""); bgSel.value = String(bgPick); };
+  if (sceneSel) sceneSel.innerHTML = Object.entries(SWAP_SCENES).map(([k, v]) => `<option value="${k}">${v.zh}</option>`).join("");
+  fillBg();
+  sceneSel?.addEventListener("change", () => { scene = sceneSel.value; bgPick = -1; backdrop = pickBackdrop(scene); fillBg(); void show(); });
+  bgSel?.addEventListener("change", () => { bgPick = Number(bgSel.value); backdrop = pickBackdrop(scene, bgPick); void show(); });
   const couple = () => S.couples[S.current] || null;
   const ownerOf = (c) => (c === "wife" ? ctx.girl?.()?.id || "" : couple()?.id || "");
   const info = () => {
@@ -230,7 +247,7 @@ export function bindSwapCafePanel(ctx = {}) {
   let ckpts = [], ckptNote = "";
   const saveCouple = async (c) => { try { S = await api.put("couple", { couple: c }); } catch (e) { $("sc-status").textContent = String(e?.message || e); } info(); };
   const preview = (img) => !img ? `<div style="height:90px;background:#222;border-radius:6px;color:#999;display:flex;align-items:center;justify-content:center">還沒有</div>`
-    : `<div style="display:flex;gap:6px;align-items:flex-end"><div style="position:relative;flex:2;aspect-ratio:2/3;background:url(${BACKDROP}) center/cover;border-radius:6px;overflow:hidden">
+    : `<div style="display:flex;gap:6px;align-items:flex-end"><div style="position:relative;flex:2;aspect-ratio:2/3;background:url(${backdrop}) center/cover;border-radius:6px;overflow:hidden">
         <img src="${img.cut}" alt="" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:82%;max-width:100%;object-fit:contain"></div>
         <div style="flex:1"><div class="mini">原圖</div><img src="${img.raw}" alt="" style="width:100%;border-radius:6px;background:#fff"></div></div>`;
   const makeCard = (c, ex) => {
