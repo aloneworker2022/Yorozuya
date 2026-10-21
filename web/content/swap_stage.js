@@ -4,8 +4,7 @@
  * 用法：const st = createStage(el, { backdrop }); st.setBackdrop(url); st.show([{ id, url, label }]); */
 const SLOTS = { 1: [50], 2: [28, 72], 3: [18, 50, 82] };
 const IN_MS = 620, OUT_MS = 380, STAGGER = 140;
-/** 沒有立繪時：不畫人形，只放一張名字卡（中性圓角框＋灰色小字「尚未產生立繪」）。 */
-const EMPTY_TXT = "尚未產生立繪";
+/** 沒有立繪時：不畫人形，只放一張名字卡（只有名字）。 */
 export function createStage(el, opts = {}) {
   el.style.position = el.style.position || "relative";
   el.style.overflow = "hidden";
@@ -18,8 +17,8 @@ export function createStage(el, opts = {}) {
   function fill(node, c) {
     node.dataset.url = c.url || "";
     node.innerHTML = c.url
-      ? `<img alt="" src="${esc(c.url)}" style="height:100%;width:auto;object-fit:contain;filter:drop-shadow(0 4px 8px rgba(0,0,0,.45))">${c.label ? `<span style="position:absolute;bottom:6px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:1px 8px;border-radius:9px">${esc(c.label)}</span>` : ""}`
-      : `<div style="margin-bottom:18%;min-width:110px;padding:12px 16px;background:rgba(255,255,255,.92);border:1px solid #d5dbe3;border-radius:12px;text-align:center;color:#1d2330;box-shadow:0 2px 8px rgba(0,0,0,.25)"><div style="font-weight:700;font-size:15px">${esc(c.label || "")}</div><div style="font-size:11px;color:#8a92a0;margin-top:2px">${EMPTY_TXT}</div></div>`;
+      ? `<img alt="" src="${esc(c.url)}" style="height:100%;width:auto;object-fit:contain;object-position:bottom;filter:drop-shadow(0 4px 8px rgba(0,0,0,.45))">${c.label ? `<span style="position:absolute;bottom:6px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:1px 8px;border-radius:9px">${esc(c.label)}</span>` : ""}`
+      : `<div style="margin-bottom:18%;min-width:110px;padding:12px 16px;background:rgba(255,255,255,.92);border:1px solid #d5dbe3;border-radius:12px;text-align:center;color:#1d2330;box-shadow:0 2px 8px rgba(0,0,0,.25)"><div style="font-weight:700;font-size:15px">${esc(c.label || "")}</div></div>`;
   }
   function make(c) {
     const node = document.createElement("div");
@@ -35,12 +34,14 @@ export function createStage(el, opts = {}) {
       o.node.style.transition = `opacity ${OUT_MS}ms ease, transform ${OUT_MS}ms ease`; o.node.style.opacity = "0"; o.node.style.transform = "translateX(-30%)";
       const n = o.node; setTimeout(() => n.remove(), OUT_MS + 30); on.delete(id);
     }
+    const cap = Math.round(el.clientWidth * ({ 1: 0.9, 2: 0.52, 3: 0.4 }[list.length] || 0.4));   // 人多就收窄，不要疊成一團
     let k = 0;
     list.forEach((c, i) => {
       let o = on.get(c.id);
-      if (o) { if ((c.url || "") !== o.node.dataset.url) fill(o.node, c); place(o.node, xs[i], IN_MS, 0, "cubic-bezier(.22,.8,.3,1)"); return; }
+      if (o) { if ((c.url || "") !== o.node.dataset.url) fill(o.node, c); o.node.querySelector("img")?.style.setProperty("max-width", cap + "px"); place(o.node, xs[i], IN_MS, 0, "cubic-bezier(.22,.8,.3,1)"); return; }
       const node = make(c); o = { node }; on.set(c.id, o);
       node.style.left = "-40%"; void node.offsetWidth;   // 從左邊外面進來
+      node.querySelector("img")?.style.setProperty("max-width", cap + "px");
       place(node, xs[i], IN_MS, (k++) * STAGGER, "cubic-bezier(.22,.8,.3,1)");
     });
     return new Promise((r) => setTimeout(r, IN_MS + k * STAGGER + 40));

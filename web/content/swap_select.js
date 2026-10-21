@@ -1,10 +1,10 @@
 /* 2026-10-21 換妻 step：「開始換妻」→ 選一對夫妻（樣式跟日租選客人一樣）→ 確認 → 存成目前的換妻場次，顯示「下一步：問妻子」。
  * 名冊＝伺服器存的對方夫妻（/api/swap/cafe 的 couples，當熟客一直留著），不足 4 對就新抽（各自不同的 Comfy 模型）。
  * 2026-10-21 改順序：先問妻子（openSwapStart，照日租「拜託她」），她答應才開名冊。還沒做：扣錢、場景。場次先存在 localStorage（SESSION_KEY），不用重啟伺服器。 */
-import { api, BZH, pickBackdrop, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=8";
+import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=9";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { createStage } from "./swap_stage.js?v=2";
+import { createStage } from "./swap_stage.js?v=3";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;
@@ -94,7 +94,7 @@ export function openSwapSelect(ctx = {}) {
       const sess = { coupleId: c.id, price: h.swapPrice, at: Date.now(), phase: "bar", wifeId: ctx.girl?.()?.id || "", wifeAgreed: true };
       localStorage.setItem(SESSION_KEY, JSON.stringify(sess));
       ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ 酒吧`);
-      ov.remove(); openSwapBar(ctx, c, S);
+      ov.remove(); void openSwapDrive(ctx, c, S).then((S2) => openSwapBar(ctx, c, S2));
     });
   };
   body.innerHTML = `<div class="swp-next">讀取名冊中…</div>`;
@@ -169,6 +169,35 @@ export function openSwapStart(ctx = {}) {
     }
   })();
   return ov;
+}
+
+// ------------------------------------------------------------ 開車去約會：黑畫面＋生 6 張立繪（2026-10-21）
+/** 老婆／對方丈夫／對方妻子 × 一般／害羞。已經存過的那張就不重生（沒有的才生）；失敗就跳過（酒吧用名字卡）。
+ * ctx.genPortrait 可以換掉生圖（測試用）。回最新的 S。 */
+export async function openSwapDrive(ctx = {}, c, S = {}) {
+  const ov = document.createElement("div"); ov.id = "swp-drive";
+  ov.style.cssText = "position:fixed;inset:0;z-index:8800;background:#000;color:#eee;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font:600 17px system-ui,sans-serif";
+  ov.innerHTML = `<div>正在驅車前往約會場地<span class="d" style="display:inline-block;width:1.6em;text-align:left"></span></div><div class="n" style="font:400 13px system-ui,sans-serif;color:#888"></div>`;
+  document.body.append(ov);
+  let k = 0; const dots = setInterval(() => { ov.querySelector(".d").textContent = ".".repeat(k++ % 4); }, 400);
+  const wife = ctx.girl?.() || null, gen = ctx.genPortrait || genPortrait;
+  const jobs = [];
+  for (const ch of ["wife", "husband", "other"]) for (const ex of ["normal", "shy"]) {
+    const owner = ch === "wife" ? wife?.id : c.id;
+    if (!owner) continue;
+    if ((S.images?.[owner] || {})[`${ch}~${ex}`]?.cut) continue;   // 已經有了：沿用
+    jobs.push([ch, ex, owner]);
+  }
+  let done = 0, fail = 0;
+  const n = ov.querySelector(".n"), tick = () => { n.textContent = jobs.length ? `${done}/${jobs.length}${fail ? `（失敗 ${fail}）` : ""}` : ""; };
+  tick();
+  for (const [ch, ex] of jobs) {   // 一張一張來（Comfy 排隊一樣是一張一張）
+    try { const imgs = await gen(ch, ex, wife, c, S, () => {}); if (imgs) S = { ...S, images: imgs }; }
+    catch (e) { fail++; ctx.debug?.(`換妻：立繪 ${ch}・${ex} 失敗：${e?.message || e}`); }
+    done++; tick();
+  }
+  clearInterval(dots); ov.remove();
+  return S;
 }
 
 // ------------------------------------------------------------ 第一個場景：酒吧（2026-10-21；還沒有對話／提議）

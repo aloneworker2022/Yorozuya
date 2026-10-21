@@ -5,7 +5,7 @@
  * 生圖：綠幕半身（2026-10-21 Al：白底去背會啃到身體）→ /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上（底部對齊，像 VN）＋原圖。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
 import { rollClients } from "./rental.js?v=7";
-import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=2";
+import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=3";
 
 // 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張
 export const SWAP_SCENES = {
@@ -219,6 +219,21 @@ async function cutoutOf(url, say) {
   say?.("改用瀏覽器綠幕去背……");
   return { cut_data: await browserChroma(url), how: "瀏覽器綠幕去背" };
 }
+/** 2026-10-21 換妻選完夫妻用：生一張半身立繪（跟面板「產生」同一套：模板→cafeBody（各自的模型／長相鎖）→綠幕→chroma 去背→存）。
+ * ch：wife｜husband｜other；ex：normal｜shy；wife＝玩家老婆（魅子資料）；S＝/api/swap/cafe 的狀態。回新的 images。 */
+export async function genPortrait(ch, ex, wife, couple, S, say = () => {}) {
+  const owner = ch === "wife" ? wife?.id || "" : couple?.id || "";
+  if (!owner) throw new Error("沒有 owner");
+  const eng = await gameEngine(), seed = Math.floor(Math.random() * 2 ** 31) || 1;
+  const t = templateFor(S?.prompts, ch, ex), tpl = { ...t, img2img: { ...(t.img2img || {}), on: !!(t.img2img?.on && t.img2img?.ref) } };
+  const body = cafeBody(ch, ex, wife || null, couple, eng, tpl, seed);
+  const res = await waitImg(body, (sec) => say(`${sec} 秒`));
+  if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
+  const raw = String(res.result).split("|")[0], cut = await cutoutOf(raw, say);
+  const j = await api.put("image", { owner, key: `${ch}~${ex}`, raw, ...cut }, "POST");
+  return j.images;
+}
+
 export const api = {
   state: async () => { const r = await fetch("/api/swap/cafe", { cache: "no-store" }); if (!r.ok) throw new Error(`讀不到換妻資料 ${r.status}（伺服器要重啟？）`); return r.json(); },
   put: async (path, body, method = "PUT") => { const r = await fetch(`/api/swap/cafe/${path}`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!r.ok) throw new Error(`存檔失敗 ${r.status}（伺服器要重啟？）`); return r.json(); },
