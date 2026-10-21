@@ -337,7 +337,7 @@ import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
 import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=9";
-import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=6";
+import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=7";
 import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=16";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
@@ -8859,7 +8859,19 @@ async function maybeHandleSwapAsk(raw) {
     lines.push({ role: "assistant", content: line });
     await typeLine(who.name, line);
   } finally { talkBusy = false; setTalkEnabled(true); }
-  if (d?.yes) setTimeout(() => openSwapSelect({ girl: () => who, debug: pushDebug }), 1500);   // 讓她那句先看清楚
+  if (d?.yes) setTimeout(() => openSwapSelect({
+    girl: () => who, debug: pushDebug,
+    mood: (w) => getMoodCarry(w),
+    hunger: (w) => (HUNGER_ON ? peekHunger(w, Date.now(), w.stage || "stranger") : 0),
+    // 老婆：用她自己的聊天人設
+    say: async (w, ask, fallback) => { try { const r = await withTimeout(askGirl(ask), 12000, ""); return scrubHusband(cleanLine(r), w.stage || "stranger", w.playerPet || "").slice(0, 120) || fallback; } catch { return fallback; } },
+    // 對方夫妻（NPC）：單純 system＋user
+    chat: async (system, user) => {
+      const route = await gameChatRoute(), msgs = [{ role: "system", content: system }, { role: "user", content: user }];
+      const run = route.provider === "ollama" ? askOllama(route, msgs) : askGrok(route, msgs, `swapbar:${Date.now().toString(36)}`);
+      return cleanLine(await withTimeout(run, 12000, "")).slice(0, 160);
+    },
+  }), 1500);   // 讓她那句先看清楚
   return true;
 }
 

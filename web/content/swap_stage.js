@@ -23,7 +23,7 @@ export function createStage(el, opts = {}) {
   function make(c) {
     const node = document.createElement("div");
     node.className = "swap-stage-char"; node.dataset.id = c.id;
-    node.style.cssText = `position:absolute;bottom:0;left:-40%;height:${opts.height || 82}%;transform:translateX(-50%);opacity:1;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-end`;
+    node.style.cssText = `position:absolute;bottom:${opts.bottom || 0}px;left:-40%;height:${opts.height || 82}%;transform:translateX(-50%);opacity:1;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-end`;
     fill(node, c); el.append(node); return node;
   }
   /** 換成這一段的參與者（左→右的順序）。回傳動畫結束的 Promise。 */
