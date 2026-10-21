@@ -74,6 +74,28 @@ export function rollCouple() {
   return { id, at: Date.now(), husband: { ...h, id: `${id}h` }, wife };
 }
 
+// ---- 2026-10-21 Al：對方夫妻各綁一個畫圖模型（兩人不同）。清單＝遊戲幫魅子綁 comfyCkpt 的同一個來源：
+// /api/comfy/status 的 checkpoints 扣掉 bad_checkpoints（test_room_summon.usableComfyCkpts／pickRandomComfyCkpt）。
+let ckptList = null, ckptAt = 0;
+export async function usableCkpts(force = false) {
+  if (!force && ckptList && Date.now() - ckptAt < 60e3) return ckptList;
+  try {
+    const eng = await gameEngine(), r = await fetch("/api/comfy/status" + (eng.comfyUrl ? "?url=" + encodeURIComponent(eng.comfyUrl) : ""));
+    const j = await r.json(); if (!j?.ok) return ckptList || [];
+    const bad = new Set(j.bad_checkpoints || []), all = (j.checkpoints || []).filter(Boolean), ok = all.filter((c) => !bad.has(c));
+    ckptList = ok.length ? ok : all; ckptAt = Date.now();
+  } catch { /* 沒連到 Comfy：沿用舊清單 */ }
+  return ckptList || [];
+}
+const pickCk = (list, not = "") => { const pool = list.length > 1 ? list.filter((c) => c !== not) : list; return pool.length ? pool[Math.floor(Math.random() * pool.length)] : ""; };
+/** 幫這對補／重抽模型：who＝"husband"|"wife"|"both"；只有一個模型時兩人共用（回 note）。 */
+export function rollCkpts(c, list, who = "both") {
+  if (!c || !list.length) return "";
+  if (who !== "wife") c.husband.ckpt = pickCk(list, c.wife?.ckpt);
+  if (who !== "husband") c.wife.ckpt = pickCk(list, c.husband?.ckpt);
+  return list.length < 2 ? "只有一個可用的 Comfy 模型，兩人共用" : "";
+}
+
 // ---- 模板
 export function defaultTemplate(ch, ex) {
   const who = ch === "husband" ? "1boy, male focus, the man: {man}, {man_body}, wearing {man_outfit}" : "1girl, the woman: {girl}, {girl_body}, wearing {girl_outfit}";
@@ -97,8 +119,9 @@ export function fillTemplate(tpl, ch, ex, wife, couple) {
 /** /api/imggen 的 body。妻子＝她自己（character＋lock_identity＋她的模型，同 portraitBody）；對方妻子＝NPC 檔案當 character；丈夫＝prompt 原樣送。 */
 export function cafeBody(ch, ex, wife, couple, eng, tpl, seed) {
   const comfy = eng.imgProvider === "comfy", f = fillTemplate(tpl, ch, ex, wife, couple);
-  const ckpt = (ch === "wife" ? String(wife?.comfyCkpt || "").trim() : "") || eng.comfyCkpt || String(wife?.comfyCkpt || "").trim();
-  if (comfy && !ckpt) throw new Error("沒有 Comfy 模型（魅子 comfyCkpt／設定 comfyCkpt）");
+  // 妻子＝她自己綁的模型；對方夫妻＝各自檔案裡的 ckpt（換一對時抽的），不再退回全域設定
+  const ckpt = ch === "wife" ? String(wife?.comfyCkpt || "").trim() || eng.comfyCkpt : String((ch === "husband" ? couple?.husband : couple?.wife)?.ckpt || "").trim();
+  if (comfy && !ckpt) throw new Error(ch === "wife" ? "此魅子尚未綁定 Comfy 模型（comfyCkpt）" : "這個人還沒有畫圖模型（在上面的下拉選一個，或按「換一對」）");
   if (ch === "wife" && !wife?.id) throw new Error("先選魅子");
   const i2 = tpl.img2img?.on && tpl.img2img.ref ? { pose_ref: tpl.img2img.ref, pose_denoise: Math.min(0.95, Math.max(0.3, Number(tpl.img2img.denoise) || 0.6)) } : {};
   const who = ch === "wife" ? { character: wife, outfit: wornOutfit(wife), extra: f.pos, prompt: "", lock_identity: true, char_id: wife.id }
@@ -196,7 +219,16 @@ export function bindSwapCafePanel(ctx = {}) {
     const sel = $("sc-couple");
     sel.innerHTML = Object.values(S.couples).sort((a, b) => (b.at || 0) - (a.at || 0)).map((x) => `<option value="${x.id}">${x.husband.name} ＆ ${x.wife.name}（${x.id}）</option>`).join("") || `<option value="">（還沒有）</option>`;
     sel.value = S.current || "";
+    const box = $("sc-ckpts"); if (!box) return;
+    if (!c) { box.innerHTML = ""; return; }
+    const opts = (cur) => [cur && !ckpts.includes(cur) ? cur : "", ...ckpts].filter((x, i, a) => x && a.indexOf(x) === i).map((x) => `<option${x === cur ? " selected" : ""}>${x}</option>`).join("") || `<option value="">（沒有 Comfy 模型清單）</option>`;
+    box.innerHTML = ["husband", "wife"].map((w) => `<div class="bp-row" style="gap:6px;flex-wrap:wrap"><span class="mini" style="min-width:4.5em">${w === "husband" ? c.husband.name : c.wife.name}模型</span>
+      <select data-w="${w}" style="max-width:15em;font-size:12px">${opts(c[w].ckpt || "")}</select><button type="button" class="mini" data-roll="${w}">重抽</button></div>`).join("") + (ckptNote ? `<div class="mini" style="color:#e9a">${ckptNote}</div>` : "");
+    box.querySelectorAll("select").forEach((el) => el.addEventListener("change", async () => { c[el.dataset.w].ckpt = el.value; await saveCouple(c); }));
+    box.querySelectorAll("button[data-roll]").forEach((b) => b.addEventListener("click", async () => { ckptNote = rollCkpts(c, ckpts, b.dataset.roll); await saveCouple(c); }));
   };
+  let ckpts = [], ckptNote = "";
+  const saveCouple = async (c) => { try { S = await api.put("couple", { couple: c }); } catch (e) { $("sc-status").textContent = String(e?.message || e); } info(); };
   const preview = (img) => !img ? `<div style="height:90px;background:#222;border-radius:6px;color:#999;display:flex;align-items:center;justify-content:center">還沒有</div>`
     : `<div style="display:flex;gap:6px;align-items:flex-end"><div style="position:relative;flex:2;aspect-ratio:2/3;background:url(${BACKDROP}) center/cover;border-radius:6px;overflow:hidden">
         <img src="${img.cut}" alt="" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:82%;max-width:100%;object-fit:contain"></div>
@@ -248,7 +280,14 @@ export function bindSwapCafePanel(ctx = {}) {
   };
   const show = async () => {
     try { S = await api.state(); $("sc-status").textContent = ""; } catch (e) { $("sc-status").textContent = String(e?.message || e); }
-    if (!couple()) { try { S = await api.put("couple", { couple: rollCouple() }); } catch { /* 伺服器沒重啟：先用本機的 */ const c = rollCouple(); S.couples[c.id] = c; S.current = c.id; } }
+    ckpts = await usableCkpts();
+    ckptNote = ckpts.length ? (ckpts.length < 2 ? "只有一個可用的 Comfy 模型，兩人共用" : "") : "抓不到 Comfy 模型清單（生圖器不是 Comfy、或 Comfy 沒開），對方夫妻沒有綁模型";
+    if (!couple()) { const c = rollCouple(); rollCkpts(c, ckpts); try { S = await api.put("couple", { couple: c }); } catch { /* 伺服器沒重啟：先用本機的 */ S.couples[c.id] = c; S.current = c.id; } }
+    // 舊的對方夫妻沒有模型：補抽並存起來
+    for (const c of Object.values(S.couples)) if (ckpts.length && (!c.husband?.ckpt || !c.wife?.ckpt)) {
+      if (!c.husband.ckpt && !c.wife.ckpt) rollCkpts(c, ckpts); else rollCkpts(c, ckpts, c.husband.ckpt ? "wife" : "husband");
+      try { const keep = S.current; S = await api.put("couple", { couple: c }); if (keep !== c.id) S = await api.put("couple", { couple: S.couples[keep] }); } catch { /* */ }
+    }
     info();
     document.querySelectorAll("#sc-chars button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.ch === ch ? "true" : "false"));
     $("sc-grid").replaceChildren(...Object.keys(EXPRS).map((ex) => makeCard(ch, ex)));
@@ -262,7 +301,7 @@ export function bindSwapCafePanel(ctx = {}) {
   });
   document.querySelectorAll("#room-pack-chrome button[aria-controls]").forEach((b) => { if (b !== btn && b.id !== "edit-room") b.addEventListener("click", () => { if (!panel.hidden) close(); }); });
   document.querySelectorAll("#sc-chars button").forEach((b) => b.addEventListener("click", () => { ch = b.dataset.ch; void show(); }));
-  $("sc-reroll")?.addEventListener("click", async () => { try { S = await api.put("couple", { couple: rollCouple() }); } catch (e) { $("sc-status").textContent = String(e?.message || e); } void show(); });
+  $("sc-reroll")?.addEventListener("click", async () => { const c = rollCouple(); ckptNote = rollCkpts(c, await usableCkpts(true)) || ckptNote; try { S = await api.put("couple", { couple: c }); } catch (e) { $("sc-status").textContent = String(e?.message || e); } void show(); });
   $("sc-couple")?.addEventListener("change", async (e) => { const c = S.couples[e.target.value]; if (!c) return; try { S = await api.put("couple", { couple: c }); } catch { S.current = c.id; } void show(); });
   $("sc-close")?.addEventListener("click", close);
   return { show };
