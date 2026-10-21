@@ -4,16 +4,8 @@
  * 用法：const st = createStage(el, { backdrop }); st.setBackdrop(url); st.show([{ id, url, label }]); */
 const SLOTS = { 1: [50], 2: [28, 72], 3: [18, 50, 82] };
 const IN_MS = 620, OUT_MS = 380, STAGGER = 140;
-/** 沒有立繪時的黑影（半身，女／男）。 */
-export function silhouetteUrl(kind = "female") {
-  const f = kind !== "male";
-  const body = f
-    ? `<ellipse cx="100" cy="62" rx="34" ry="40"/><path d="M58 70 Q50 120 62 150 L138 150 Q150 120 142 70 Z"/><rect x="88" y="96" width="24" height="26"/>
-       <path d="M40 300 Q36 190 62 150 Q100 132 138 150 Q164 190 160 300 Z"/><ellipse cx="82" cy="188" rx="20" ry="16"/><ellipse cx="118" cy="188" rx="20" ry="16"/>`
-    : `<ellipse cx="100" cy="64" rx="32" ry="38"/><rect x="86" y="96" width="28" height="28"/><path d="M26 300 Q24 168 60 146 Q100 132 140 146 Q176 168 174 300 Z"/>`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><g fill="#16161c" stroke="#55556a" stroke-width="2">${body}</g></svg>`;
-  return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
-}
+/** 沒有立繪時：不畫人形，只放一張名字卡（中性圓角框＋灰色小字「尚未產生立繪」）。 */
+const EMPTY_TXT = "尚未產生立繪";
 export function createStage(el, opts = {}) {
   el.style.position = el.style.position || "relative";
   el.style.overflow = "hidden";
@@ -22,12 +14,18 @@ export function createStage(el, opts = {}) {
   const setBackdrop = (url) => { el.style.backgroundImage = url ? `url(${url})` : ""; };
   setBackdrop(opts.backdrop);
   const place = (node, x, ms, delay, ease) => { node.style.transition = `left ${ms}ms ${ease} ${delay}ms, opacity ${ms}ms ease ${delay}ms, transform ${ms}ms ${ease} ${delay}ms`; node.style.left = `${x}%`; };
+  const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
+  function fill(node, c) {
+    node.dataset.url = c.url || "";
+    node.innerHTML = c.url
+      ? `<img alt="" src="${esc(c.url)}" style="height:100%;width:auto;object-fit:contain;filter:drop-shadow(0 4px 8px rgba(0,0,0,.45))">${c.label ? `<span style="position:absolute;bottom:6px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:1px 8px;border-radius:9px">${esc(c.label)}</span>` : ""}`
+      : `<div style="margin-bottom:18%;min-width:110px;padding:12px 16px;background:rgba(255,255,255,.92);border:1px solid #d5dbe3;border-radius:12px;text-align:center;color:#1d2330;box-shadow:0 2px 8px rgba(0,0,0,.25)"><div style="font-weight:700;font-size:15px">${esc(c.label || "")}</div><div style="font-size:11px;color:#8a92a0;margin-top:2px">${EMPTY_TXT}</div></div>`;
+  }
   function make(c) {
     const node = document.createElement("div");
     node.className = "swap-stage-char"; node.dataset.id = c.id;
     node.style.cssText = `position:absolute;bottom:0;left:-40%;height:${opts.height || 82}%;transform:translateX(-50%);opacity:1;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-end`;
-    node.innerHTML = `<img alt="" style="height:100%;width:auto;object-fit:contain;filter:drop-shadow(0 4px 8px rgba(0,0,0,.45))">${c.label ? `<span style="position:absolute;bottom:6px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:1px 8px;border-radius:9px">${c.label}</span>` : ""}`;
-    el.append(node); return node;
+    fill(node, c); el.append(node); return node;
   }
   /** 換成這一段的參與者（左→右的順序）。回傳動畫結束的 Promise。 */
   function show(list = []) {
@@ -40,9 +38,8 @@ export function createStage(el, opts = {}) {
     let k = 0;
     list.forEach((c, i) => {
       let o = on.get(c.id);
-      const img = () => o.node.querySelector("img");
-      if (o) { if (c.url && img().getAttribute("src") !== c.url) img().src = c.url; place(o.node, xs[i], IN_MS, 0, "cubic-bezier(.22,.8,.3,1)"); return; }
-      const node = make(c); o = { node }; on.set(c.id, o); img().src = c.url || silhouetteUrl(c.kind);
+      if (o) { if ((c.url || "") !== o.node.dataset.url) fill(o.node, c); place(o.node, xs[i], IN_MS, 0, "cubic-bezier(.22,.8,.3,1)"); return; }
+      const node = make(c); o = { node }; on.set(c.id, o);
       node.style.left = "-40%"; void node.offsetWidth;   // 從左邊外面進來
       place(node, xs[i], IN_MS, (k++) * STAGGER, "cubic-bezier(.22,.8,.3,1)");
     });

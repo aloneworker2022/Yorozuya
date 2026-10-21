@@ -5,7 +5,7 @@
  * 生圖：綠幕半身（2026-10-21 Al：白底去背會啃到身體）→ /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上（底部對齊，像 VN）＋原圖。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
 import { rollClients } from "./rental.js?v=7";
-import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=1";
+import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=2";
 
 // 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張
 export const SWAP_SCENES = {
@@ -260,7 +260,7 @@ export function bindSwapCafePanel(ctx = {}) {
   };
   let ckpts = [], ckptNote = "";
   const saveCouple = async (c) => { try { S = await api.put("couple", { couple: c }); } catch (e) { $("sc-status").textContent = String(e?.message || e); } info(); };
-  const preview = (img) => !img ? `<div style="height:90px;background:#222;border-radius:6px;color:#999;display:flex;align-items:center;justify-content:center">還沒有</div>`
+  const preview = (img) => !img ? `<div style="height:90px;background:#f3f5f8;border:1px solid #d5dbe3;border-radius:10px;color:#9aa1ad;font-size:12px;display:flex;align-items:center;justify-content:center">尚未產生立繪</div>`
     : `<div style="display:flex;gap:6px;align-items:flex-end"><div style="position:relative;flex:2;aspect-ratio:2/3;background:url(${backdrop}) center/cover;border-radius:6px;overflow:hidden">
         <img src="${img.cut}" alt="" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:82%;max-width:100%;object-fit:contain"></div>
         <div style="flex:1"><div class="mini">原圖</div><img src="${img.raw}" alt="" style="width:100%;border-radius:6px;background:#fff"></div></div>`;

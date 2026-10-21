@@ -1,8 +1,7 @@
 /* 2026-10-21 換妻 step：「開始換妻」→ 選一對夫妻（樣式跟日租選客人一樣）→ 確認 → 存成目前的換妻場次，顯示「下一步：問妻子」。
  * 名冊＝伺服器存的對方夫妻（/api/swap/cafe 的 couples，當熟客一直留著），不足 4 對就新抽（各自不同的 Comfy 模型）。
  * 還沒做：問妻子、扣錢、場景。場次先存在 localStorage（SESSION_KEY），不用重啟伺服器。 */
-import { api, BZH, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=6";
-import { silhouetteUrl } from "./swap_stage.js?v=1";
+import { api, BZH, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=7";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;
@@ -20,6 +19,8 @@ const CSS = `
 .swp-card:active{border-color:#06c755}
 .swp-top{display:flex;align-items:center;gap:8px}.swp-top .pr{margin-left:auto;font-weight:700;color:#c07a00;white-space:nowrap}
 .swp-faces{display:flex;gap:4px;flex:none}.swp-faces img{width:44px;height:56px;object-fit:cover;object-position:top;border-radius:8px;background:#dfe5ec}
+.swp-empty{display:flex;align-items:center;justify-content:center;text-align:center;background:#f3f5f8;border:1px solid #d5dbe3;border-radius:8px;color:#9aa1ad;font-size:10px;line-height:1.2;padding:2px;box-sizing:border-box}
+.swp-faces .swp-empty{width:44px;height:56px}.swp-big .swp-empty{width:100%;max-width:170px;aspect-ratio:3/4;margin:0 auto;border-radius:12px;font-size:13px}
 .swp-nm{font-weight:700;font-size:15px}
 .swp-p{margin-top:6px;font-size:13px}.swp-p b{font-weight:600}
 .tg{display:inline-block;font-size:12px;background:#eef2f6;border-radius:8px;padding:1px 7px;margin:4px 4px 0 0}.tg.h{background:#e3efff;color:#1d4f9a}.tg.w{background:#f6e6ff;color:#7a2a9a}
@@ -30,7 +31,9 @@ const CSS = `
 .swp-act button.pri{background:#06c755!important;border-color:#06c755!important;color:#fff}
 .swp-next{margin:auto;text-align:center;color:#4b5363;padding:24px}.swp-next b{display:block;font-size:20px;color:#1d2330;margin-bottom:8px}`;
 
-const face = (S, c, who) => (S.images?.[c.id] || {})[`${who}~normal`]?.cut || silhouetteUrl(who === "husband" ? "male" : "female");
+const faceUrl = (S, c, who) => (S.images?.[c.id] || {})[`${who}~normal`]?.cut || "";
+/** 有立繪就放圖；沒有就是中性圓角空框＋灰色小字（不畫人形）。 */
+const face = (S, c, who) => { const u = faceUrl(S, c, who); return u ? `<img alt="" src="${esc(u)}">` : `<span class="swp-empty">尚未產生立繪</span>`; };
 const hLooks = (h) => `體型${BZH[h.build] || h.build || "普通"}`;
 const wLooks = (w) => [w.look?.hair, w.look?.build, w.look?.cup && `${w.look.cup}罩杯`, w.look?.height_cm && `${w.look.height_cm}cm`, w.look?.style].filter(Boolean).join("・");
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
@@ -65,7 +68,7 @@ export function openSwapSelect(ctx = {}) {
     for (const c of cs) {
       const h = c.husband, w = c.wife, b = document.createElement("button");
       b.type = "button"; b.className = "swp-card"; b.dataset.couple = c.id;
-      b.innerHTML = `<div class="swp-top"><span class="swp-faces"><img alt="" src="${esc(face(S, c, "husband"))}"><img alt="" src="${esc(face(S, c, "other"))}"></span>
+      b.innerHTML = `<div class="swp-top"><span class="swp-faces">${face(S, c, "husband")}${face(S, c, "other")}</span>
         <span class="swp-nm">${esc(h.name)} ＆ ${esc(w.name)}</span><span class="pr">${h.swapPrice} 金</span></div>
         <div class="swp-p"><b>丈夫</b> ${esc(h.age)} 歲 <span class="tg h">${esc(h.swapType)}</span><q>${esc(hLooks(h))}</q></div>
         <div class="swp-p"><b>妻子</b> ${esc(w.age)} 歲 <span class="tg w">${esc(w.swapType)}</span><q>${esc(wLooks(w))}・${esc(w.personality)}</q></div>`;
@@ -77,7 +80,7 @@ export function openSwapSelect(ctx = {}) {
   const confirm = (c) => {
     const h = c.husband, w = c.wife;
     title(`${h.name} ＆ ${w.name}`);
-    body.innerHTML = `<div class="swp-pick"><div class="swp-big"><figure><img alt="" src="${esc(face(S, c, "husband"))}"><figcaption>${esc(h.name)}</figcaption></figure><figure><img alt="" src="${esc(face(S, c, "other"))}"><figcaption>${esc(w.name)}</figcaption></figure></div>
+    body.innerHTML = `<div class="swp-pick"><div class="swp-big"><figure>${face(S, c, "husband")}<figcaption>${esc(h.name)}</figcaption></figure><figure>${face(S, c, "other")}<figcaption>${esc(w.name)}</figcaption></figure></div>
       <div class="swp-card" style="cursor:default"><div class="swp-p"><b>丈夫・${esc(h.name)}</b> ${esc(h.age)} 歲 <span class="tg h">${esc(h.swapType)}</span><q>${esc(hLooks(h))}${h.ckpt ? `・模型 ${esc(h.ckpt)}` : ""}</q></div>
       <div class="swp-p"><b>妻子・${esc(w.name)}</b> ${esc(w.age)} 歲 <span class="tg w">${esc(w.swapType)}</span><q>${esc(wLooks(w))}・${esc(w.personality)}${w.ckpt ? `・模型 ${esc(w.ckpt)}` : ""}</q></div>
       <div class="swp-p"><b>費用</b> ${h.swapPrice} 金（還不會扣）</div></div></div>
