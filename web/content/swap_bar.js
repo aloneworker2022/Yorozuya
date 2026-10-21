@@ -3,7 +3,7 @@
  * → 4 玩家老婆自我介紹（緊張程度看她的數值）→ 5 對方丈夫點酒、丟第一個話題 → 自由聊天輸入框（還沒有提議卡）。
  * NPC 句子＝live AI（ctx.chat(system, user)），格式「（動作）台詞」，失敗用句庫。老婆用 ctx.say（她自己的聊天人設）。
  * 舞台照互動規則：誰在跟誰講就畫誰（玩家不畫）。 */
-import { actLine } from "./swap_select.js?v=7";
+import { actLine } from "./swap_select.js?v=8";
 
 const H_FLAVOR = {
   紳士型: "彬彬有禮、體貼、說話客氣溫和，會照顧大家的感受",
