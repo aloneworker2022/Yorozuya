@@ -10,6 +10,7 @@
 import asyncio
 import hashlib
 import io
+import base64
 import json
 import os
 import random
@@ -4907,6 +4908,98 @@ def rental_scene_image_put(body: dict):
         rental_scene.put_image(data, venue, key, slot, f"/assets/rental_scenes/{name}", owner=str(o))
     rental_scene.save_manifest(ASSETS_DIR, data)
     return {"url": f"/assets/rental_scenes/{name}", "images": data}
+
+
+# ---- 2026-10-21 換妻：咖啡廳半身立繪（test_room）----
+_SWAP_DIR = ASSETS_DIR / "swap_cafe"
+_SWAP_STATE = _SWAP_DIR / "state.json"
+_SWAP_KEY = re.compile(r"^(wife|husband|other)~(normal|shy)$")
+_SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
+
+
+def _swap_load() -> dict:
+    try:
+        d = json.loads(_SWAP_STATE.read_text(encoding="utf-8"))
+        if isinstance(d, dict):
+            return {"couples": d.get("couples") or {}, "current": d.get("current") or "", "prompts": d.get("prompts") or {}, "images": d.get("images") or {}}
+    except Exception:
+        pass
+    return {"couples": {}, "current": "", "prompts": {}, "images": {}}
+
+
+def _swap_save(d: dict) -> None:
+    _SWAP_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = _SWAP_STATE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(_SWAP_STATE)
+
+
+@app.get("/api/swap/cafe")
+def swap_cafe_state():
+    """換妻咖啡廳：對方夫妻檔案、每張圖的提示詞模板、已生的圖（raw＋去背）。"""
+    return _swap_load()
+
+
+@app.put("/api/swap/cafe/couple")
+def swap_cafe_couple(body: dict):
+    """存一對對方夫妻：body {couple:{id, husband, wife}}，並設為目前這對。"""
+    c = (body or {}).get("couple")
+    if not isinstance(c, dict) or not _SWAP_OWNER.match(str(c.get("id") or "")):
+        raise HTTPException(status_code=400, detail="couple.id 不對")
+    d = _swap_load()
+    d["couples"][str(c["id"])] = {k: c.get(k) for k in ("id", "husband", "wife", "at")}
+    d["current"] = str(c["id"])
+    _swap_save(d)
+    return d
+
+
+@app.put("/api/swap/cafe/prompt")
+def swap_cafe_prompt(body: dict):
+    """存一張圖的模板：body {key:"角色~表情", tpl:{pos,neg,img2img}|null}（null＝回預設）。"""
+    body = body or {}
+    key = str(body.get("key") or "")
+    if not _SWAP_KEY.match(key):
+        raise HTTPException(status_code=400, detail="key 不對（wife|husband|other ~ normal|shy）")
+    d = _swap_load()
+    tpl = rental_scene.clean_prompt(body.get("tpl"))
+    if tpl:
+        d["prompts"][key] = tpl
+    else:
+        d["prompts"].pop(key, None)
+    _swap_save(d)
+    return d
+
+
+def _swap_copy(url: str, data_b64: str, name: str) -> str:
+    _SWAP_DIR.mkdir(parents=True, exist_ok=True)
+    if data_b64:
+        raw = base64.b64decode(data_b64.split(",", 1)[-1])
+        if len(raw) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="圖太大")
+        (_SWAP_DIR / f"{name}.png").write_bytes(raw)
+        return f"/assets/swap_cafe/{name}.png"
+    src = _asset_path(url)
+    if src is None:
+        raise HTTPException(status_code=404, detail="找不到圖")
+    out = f"{name}{src.suffix.lower() or '.png'}"
+    shutil.copyfile(src, _SWAP_DIR / out)
+    return f"/assets/swap_cafe/{out}"
+
+
+@app.post("/api/swap/cafe/image")
+def swap_cafe_image(body: dict):
+    """登記一張半身立繪：body {owner（她 id 或 couple id）, key, raw（url）, cut（url）| cut_data（dataURL PNG，瀏覽器去背）}。"""
+    body = body or {}
+    owner, key = str(body.get("owner") or ""), str(body.get("key") or "")
+    if not _SWAP_OWNER.match(owner) or not _SWAP_KEY.match(key):
+        raise HTTPException(status_code=400, detail="owner／key 不對")
+    stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}"
+    raw = _swap_copy(str(body.get("raw") or ""), "", stem + "_raw") if body.get("raw") else ""
+    cut = _swap_copy(str(body.get("cut") or ""), str(body.get("cut_data") or ""), stem + "_cut") if (body.get("cut") or body.get("cut_data")) else ""
+    d = _swap_load()
+    d["images"].setdefault(owner, {})[key] = {"raw": raw, "cut": cut or raw, "at": int(time.time())}
+    _swap_save(d)
+    return {"raw": raw, "cut": cut or raw, "images": d["images"]}
 
 
 async def _world_clock():

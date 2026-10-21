@@ -261,8 +261,18 @@
     <button id="btn-rs-ryokan" type="button" aria-expanded="false" aria-controls="rental-scene-editor" data-venue="ryokan" title="溫泉旅館：床鋪接吻／正面／背後、浴室泡澡／站著，各生 2 張">日式房間</button>
     <button id="btn-rs-motel" type="button" aria-expanded="false" aria-controls="rental-scene-editor" data-venue="motel" title="汽車旅館：5 個地點姿勢 × 2 張">汽車旅館</button>
     <button id="btn-rs-hotel" type="button" aria-expanded="false" aria-controls="rental-scene-editor" data-venue="hotel" title="旅館：5 個地點姿勢 × 2 張">旅館</button>
+    <button id="btn-swap-cafe" type="button" aria-expanded="false" aria-controls="swap-cafe-editor" title="換妻：咖啡廳半身立繪（妻子／對方丈夫／對方妻子 × 一般／害羞）">咖啡廳</button>
     <button id="edit-room" type="button" aria-pressed="false" aria-controls="room-editor">編輯</button>
   </nav>
+  <div id="swap-cafe-editor" class="tease-pack-panel" hidden aria-label="換妻咖啡廳立繪">
+    <div class="tease-pack-panel-head"><strong>換妻・咖啡廳立繪</strong><span class="mini">半身立繪（腰以上、面向你、約會穿搭），白底生完去背，疊在咖啡廳背景上預覽；妻子＝現在的測試魅子（她自己的模型＋長相鎖），對方夫妻存在伺服器</span></div>
+    <div class="bp-row" id="sc-chars" style="flex-wrap:wrap;gap:6px"><button type="button" data-ch="wife">妻子</button><button type="button" data-ch="husband">對方丈夫</button><button type="button" data-ch="other">對方妻子</button></div>
+    <div class="bp-row"><span class="bp-grow"><label>對方夫妻</label><select id="sc-couple"></select></span><button type="button" id="sc-reroll">換一對</button><button type="button" id="sc-close">收合</button></div>
+    <pre id="sc-info" class="mini" style="white-space:pre-wrap;margin:4px 0"></pre>
+    <div id="sc-status" class="mini" style="white-space:pre-wrap;color:#e99"></div>
+    <div class="mini">佔位符 {girl} {girl_body} {girl_outfit} {man} {man_body} {man_outfit} {expr} {auto_neg} 生圖時自動代入</div>
+    <div id="sc-grid"></div>
+  </div>
   <div id="rental-scene-editor" class="tease-pack-panel" hidden aria-label="旅館房間圖">
     <div class="tease-pack-panel-head"><strong id="rs-title">旅館房間圖</strong><span class="mini">日租女友跟進房間、點人物時出的圖：每個地點姿勢 2 張（純文生圖一張畫完：兩個人＋房型背景，各自不同 seed）；跟她自己的圖同一條生圖路（遊戲設定＋她的模型＋她的長相），男方照選的客人</span></div>
     <div class="bp-row"><span class="bp-grow"><label>客人</label><select id="rs-client"></select></span><button type="button" id="rs-reroll">換一批客人</button></div>
@@ -959,6 +969,6 @@
   <script src="/content/room_activity.js?v=3"></script>
   <script src="/content/room_character.js?v=11"></script>
   <script src="/content/test_room.js?v=20"></script>
-  <script type="module" src="/content/test_room_summon.js?v=258"></script>
+  <script type="module" src="/content/test_room_summon.js?v=259"></script>
 </body>
 </html>

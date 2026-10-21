@@ -336,6 +336,7 @@ import * as Preg from "./pregnancy.js?v=1";
 import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
+import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=1";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=16";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
 import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
@@ -1375,6 +1376,8 @@ function bindRentalDebug() {
   });
   // 2026-10-17：旅館房間圖改放在上排快捷（日式房間／汽車旅館／旅館），面板在 rental_scene_gen.js
   rentalScenePanel = bindRentalScenePanel({ girl: () => girl, client: () => girl?.rentalMine?.active?.client || null, debug: pushDebug });
+  // 2026-10-21 換妻 step 1：咖啡廳半身立繪（上排「咖啡廳」，面板在 swap_cafe_gen.js）
+  bindSwapCafePanel({ girl: () => girl, debug: pushDebug });
   onId("dbg-rental-reset", "click", () => { if (!girl) return; rm().starts = []; rm().askCoolUntil = 0; persistRoom(); renderRentalDebug(); refreshTalkActs(); });
   setInterval(() => { try { renderRentalDebug(); } catch { /* */ } }, 2000);
 }
