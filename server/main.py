@@ -2136,6 +2136,7 @@ class CutIn(BaseModel):
     tol: int = 0                              # 0 = cutout.TOLERANCE
     border_min: float = 0                     # 0 = 依檔名猜構圖(head 放寬),猜不到用預設
     dilate: int = -1                          # -1 = cutout.DILATE
+    mode: str = ""                            # "chroma" = 綠幕色鍵（換妻咖啡廳立繪）；空 = 原本的白底去背
 
 
 def _asset_path(url: str) -> Path | None:
@@ -2470,6 +2471,13 @@ async def cutout_run(body: CutIn):
     p = _asset_path(body.url)
     if p is None:
         raise HTTPException(404, "找不到這張圖(只認 /assets/portraits/ 與 /assets/testword/)")
+    if body.mode == "chroma":
+        changed, why, out = await asyncio.to_thread(cutout.chroma_key, p)
+        _note_cut(out.name, changed, why)
+        base = body.url.split("?")[0]
+        if out != p:
+            base = base.rsplit("/", 1)[0] + "/" + out.name
+        return {"changed": changed, "why": why, "url": f"{base}?v={int(time.time())}"}
     shot_key = _portrait_shot_from_stem(p.stem)
     bmin = body.border_min or (
         (comfy.portrait_shot_spec(shot_key) or {}).get("border_min")

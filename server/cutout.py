@@ -192,3 +192,85 @@ def cut_background(
     # 去背後大片透明區壓縮率很好,多花的編碼時間換得到明顯的檔案縮減。
     out.save(path, "PNG", optimize=True)
     return True, f"去背完成(摳掉 {cov:.0%},外框 {border:.0%})"
+
+
+# ---- 2026-10-21 綠幕去背（換妻咖啡廳立繪）----
+# 白底去背會啃到白衣服／白皮膚，改成純綠背景用色鍵摳：
+# 綠度 gd = G − max(R, B)。gd ≥ CHROMA_HI 全透明、≤ CHROMA_LO 不動、中間半透明（軟邊）。
+# 只摳「從四邊連過來」的綠區；角色身上被包住的綠色不動，除非那一塊很大又很純（手臂與身體之間露出的背景）。
+# 邊緣像素去溢色：G 壓到 max(R, B)，不會留一圈綠邊。
+CHROMA_LO = 16
+CHROMA_HI = 44
+CHROMA_ENCLOSED_MIN = 0.002   # 被包住的綠區至少佔全圖這個比例、而且平均綠度夠高才當背景
+CHROMA_ENCLOSED_GD = 70
+
+
+def chroma_key(path: Path, lo: int = CHROMA_LO, hi: int = CHROMA_HI) -> tuple[bool, str, Path]:
+    """綠幕去背。回 (changed, why, 輸出路徑)；非 PNG 另存成同名 .png。"""
+    if not AVAILABLE:
+        return False, "沒裝 Pillow", path
+    im = Image.open(path).convert("RGBA")
+    W, H = im.size
+    px = im.load()
+    N = W * H
+    gd = bytearray(N)
+    for y in range(H):
+        row = y * W
+        for x in range(W):
+            r, g, b, _a = px[x, y]
+            d = g - (r if r > b else b)
+            gd[row + x] = 0 if d < 0 else (255 if d > 255 else d)
+    bg = bytearray(N)   # 1 = 背景（從邊連過來的綠）
+    q = deque()
+    for x in range(W):
+        q.append(x); q.append((H - 1) * W + x)
+    for y in range(H):
+        q.append(y * W); q.append(y * W + W - 1)
+    while q:
+        k = q.pop()
+        if bg[k] or gd[k] <= lo:
+            continue
+        bg[k] = 1
+        x = k % W
+        if x > 0: q.append(k - 1)
+        if x < W - 1: q.append(k + 1)
+        if k >= W: q.append(k - W)
+        if k < N - W: q.append(k + W)
+    # 被包住的大塊純綠（手臂和身體之間）也是背景
+    seen = bytearray(N)
+    for s in range(N):
+        if bg[s] or seen[s] or gd[s] < hi:
+            continue
+        comp, tot = [], 0
+        q.append(s); seen[s] = 1
+        while q:
+            k = q.pop(); comp.append(k); tot += gd[k]
+            x = k % W
+            for n in ((k - 1) if x > 0 else -1, (k + 1) if x < W - 1 else -1, k - W, k + W):
+                if 0 <= n < N and not seen[n] and not bg[n] and gd[n] > lo:
+                    seen[n] = 1; q.append(n)
+        if len(comp) >= N * CHROMA_ENCLOSED_MIN and tot / len(comp) >= CHROMA_ENCLOSED_GD:
+            for k in comp:
+                bg[k] = 1
+    changed = 0
+    span = max(1, hi - lo)
+    for k in range(N):
+        x, y = k % W, k // W
+        if bg[k]:
+            a = 255 - min(255, (gd[k] - lo) * 255 // span)
+        else:
+            a = 255
+            edge = (x > 0 and bg[k - 1]) or (x < W - 1 and bg[k + 1]) or (k >= W and bg[k - W]) or (k < N - W and bg[k + W])
+            if not edge:
+                continue
+        r, g, b, a0 = px[x, y]
+        m = r if r > b else b
+        if g > m:   # 去溢色
+            g = m
+        px[x, y] = (r, g, b, min(a, a0))
+        changed += 1
+    if not changed:
+        return False, "沒有綠色背景", path
+    out = path if path.suffix.lower() == ".png" else path.with_suffix(".png")
+    im.save(out)
+    return True, f"綠幕去背 {sum(bg)} px", out

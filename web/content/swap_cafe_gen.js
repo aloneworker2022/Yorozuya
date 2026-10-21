@@ -2,7 +2,7 @@
  * 三個角色：妻子（＝現在的測試魅子，跟她自己的立繪同一條路：她的模型＋lock_identity）、對方丈夫（日租客人產生器 rollClients）、
  * 對方妻子（簡單的 NPC 檔案，長得像魅子資料：look.hair／build／cup／outfit、personality）。對方夫妻存在伺服器（/api/swap/cafe），可重抽。
  * 每個角色 × 表情（一般／害羞）＝一張卡：縮圖、自己的正／負向（預設＋佔位符）、圖生圖（預設關）＋denoise、產生／存／回預設。
- * 生圖：白底半身 → 伺服器去背（cutout）→ 沒去掉再打 /api/cutout → 再不行瀏覽器自己摳白底；預覽＝去背圖疊在咖啡廳背景上（底部對齊，像 VN）＋原圖。 */
+ * 生圖：綠幕半身（2026-10-21 Al：白底去背會啃到身體）→ /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上（底部對齊，像 VN）＋原圖。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
 import { rollClients } from "./rental.js?v=7";
 
@@ -12,8 +12,10 @@ const EXPRS = { normal: "一般", shy: "害羞" };
 const EXPR_EN = { normal: "gentle smile, calm relaxed expression", shy: "shy, blushing, red cheeks, embarrassed, flustered, looking slightly away, bashful smile" };
 const QUALITY_EN = "masterpiece, best quality, detailed, sharp focus, clear face";
 const PORTRAIT_EN = "solo, half-body portrait, upper body, cowboy shot from the waist up, facing viewer, looking at viewer, on a casual date at a cafe";
-const WHITE_EN = "plain white background, simple background, white background, no background scenery";
-const WHITE_NEG = "background scenery, cafe interior, furniture, table, detailed background, gradient background, shadow on background";
+// 綠幕：要換深綠（使用者說的 dark green，例 #1f5f2f）只改這一行的字（例 "solid dark green background"）；色鍵看「綠比紅藍多多少」，深綠也摳得掉。
+const GREEN_BG = "solid green background";
+const BG_EN = `simple background, ${GREEN_BG}, green screen, chroma key green background, no background scenery`;
+const BG_NEG = "white background, gradient background, green clothes, green hair, green eyes, background scenery, cafe interior, furniture, table, detailed background, shadow on background";
 const BASE_NEG = "full body, legs, feet, lower body, multiple people, extra person, clone, blurry, lowres, jpeg artifacts, nude, nsfw, nipples";
 
 // ---- 身材 → 英文（同 rental_scene_gen 的對照，這裡各自一份，不動那支檔）
@@ -75,8 +77,8 @@ export function rollCouple() {
 // ---- 模板
 export function defaultTemplate(ch, ex) {
   const who = ch === "husband" ? "1boy, male focus, the man: {man}, {man_body}, wearing {man_outfit}" : "1girl, the woman: {girl}, {girl_body}, wearing {girl_outfit}";
-  const pos = [QUALITY_EN, PORTRAIT_EN, who, "{expr}", WHITE_EN].join(", ");
-  const neg = [BASE_NEG, WHITE_NEG, ch === "husband" ? "1girl, woman, female, breasts" : "1boy, man, male, 2girls", "{auto_neg}"].join(", ");
+  const pos = [QUALITY_EN, PORTRAIT_EN, who, "{expr}", BG_EN].join(", ");
+  const neg = [BASE_NEG, BG_NEG, ch === "husband" ? "1girl, woman, female, breasts" : "1boy, man, male, 2girls", "{auto_neg}"].join(", ");
   return { pos, neg, img2img: { on: false, ref: "", denoise: 0.6 } };
 }
 export function templateFor(prompts, ch, ex) {
@@ -104,7 +106,7 @@ export function cafeBody(ch, ex, wife, couple, eng, tpl, seed) {
     : { prompt: f.pos, extra: "", lock_identity: false };
   return {
     key: `swap-cafe:${ch}:${ex}:${Date.now().toString(36)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,
-    framing: "half", rating: "sfw", negative: f.neg, visual_neg: f.neg, cutout: true, flat_bg: true, retry: true, seed,
+    framing: "half", rating: "sfw", negative: f.neg, visual_neg: f.neg, cutout: false, flat_bg: false, retry: true, seed,   // 不走伺服器白底去背（flat_bg 會塞 white background）；生完自己綠幕色鍵
     ...who, ...i2, ...(comfy ? { comfy_url: eng.comfyUrl, ckpt } : {}),
   };
 }
@@ -122,7 +124,7 @@ async function waitImg(body, onTick, ms = 600000) {
   }
   return { status: "error", error: "逾時" };
 }
-// ---- 去背：伺服器 → /api/cutout → 瀏覽器摳白底
+// ---- 去背：綠幕色鍵（伺服器 /api/cutout mode=chroma → 瀏覽器同一套）
 const loadImg = (url) => new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => no(new Error("圖載不到")); im.src = url; });
 async function isCut(url) {
   const im = await loadImg(url), c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
@@ -130,28 +132,46 @@ async function isCut(url) {
   const pts = [[2, 2], [W - 3, 2], [2, H >> 1], [W - 3, H >> 1], [W >> 1, 2]];
   return pts.filter(([x, y]) => g.getImageData(x, y, 1, 1).data[3] < 40).length >= 3;
 }
-/** 從四邊往內 flood fill 近白、低彩度的像素 → 透明；邊緣 1px 羽化。回 dataURL。 */
-export async function browserCutout(url) {
-  const im = await loadImg(url), c = document.createElement("canvas"), W = (c.width = im.naturalWidth), H = (c.height = im.naturalHeight);
-  const g = c.getContext("2d"); g.drawImage(im, 0, 0); const d = g.getImageData(0, 0, W, H), p = d.data;
-  const bgLike = (i) => { const r = p[i], gg = p[i + 1], b = p[i + 2]; return Math.min(r, gg, b) > 225 && Math.max(r, gg, b) - Math.min(r, gg, b) < 22; };
-  const seen = new Uint8Array(W * H), st = [];
+// 同 server/cutout.py chroma_key：綠度 gd＝G−max(R,B)；LO 以下不動、HI 以上全透明、中間軟邊
+export const CHROMA = { lo: 16, hi: 44, enclosedMin: 0.002, enclosedGd: 70 };
+/** 綠幕色鍵：只摳從四邊連過來的綠（角色身上的綠不動，除非是被包住的大塊純綠背景），邊緣去溢色。輸入 url 或 ImageData；回 dataURL（或 {data}）。 */
+export function chromaKeyData(d) {
+  const { lo, hi } = CHROMA, W = d.width, H = d.height, p = d.data, N = W * H, gd = new Uint8Array(N), bg = new Uint8Array(N);
+  for (let k = 0; k < N; k++) { const i = k * 4, m = Math.max(p[i], p[i + 2]), v = p[i + 1] - m; gd[k] = v < 0 ? 0 : v > 255 ? 255 : v; }
+  const st = [];
   for (let x = 0; x < W; x++) st.push(x, (H - 1) * W + x); for (let y = 0; y < H; y++) st.push(y * W, y * W + W - 1);
-  while (st.length) { const k = st.pop(); if (seen[k] || !bgLike(k * 4)) continue; seen[k] = 1; const x = k % W, y = (k / W) | 0;
-    if (x > 0) st.push(k - 1); if (x < W - 1) st.push(k + 1); if (y > 0) st.push(k - W); if (y < H - 1) st.push(k + W); }
-  for (let k = 0; k < W * H; k++) if (seen[k]) p[k * 4 + 3] = 0;
-    else { const x = k % W, y = (k / W) | 0; if ((x > 0 && seen[k - 1]) || (x < W - 1 && seen[k + 1]) || (y > 0 && seen[k - W]) || (y < H - 1 && seen[k + W])) p[k * 4 + 3] = 140; }
-  g.putImageData(d, 0, 0); return c.toDataURL("image/png");
+  while (st.length) { const k = st.pop(); if (bg[k] || gd[k] <= lo) continue; bg[k] = 1; const x = k % W;
+    if (x > 0) st.push(k - 1); if (x < W - 1) st.push(k + 1); if (k >= W) st.push(k - W); if (k < N - W) st.push(k + W); }
+  const seen = new Uint8Array(N);
+  for (let s = 0; s < N; s++) {
+    if (bg[s] || seen[s] || gd[s] < hi) continue;
+    const comp = []; let tot = 0; st.push(s); seen[s] = 1;
+    while (st.length) { const k = st.pop(); comp.push(k); tot += gd[k]; const x = k % W;
+      for (const n of [x > 0 ? k - 1 : -1, x < W - 1 ? k + 1 : -1, k - W, k + W]) if (n >= 0 && n < N && !seen[n] && !bg[n] && gd[n] > lo) { seen[n] = 1; st.push(n); } }
+    if (comp.length >= N * CHROMA.enclosedMin && tot / comp.length >= CHROMA.enclosedGd) for (const k of comp) bg[k] = 1;
+  }
+  const span = Math.max(1, hi - lo);
+  for (let k = 0; k < N; k++) {
+    const x = k % W; let a = 255;
+    if (bg[k]) a = 255 - Math.min(255, Math.floor((gd[k] - lo) * 255 / span));
+    else if (!((x > 0 && bg[k - 1]) || (x < W - 1 && bg[k + 1]) || (k >= W && bg[k - W]) || (k < N - W && bg[k + W]))) continue;
+    const i = k * 4, m = Math.max(p[i], p[i + 2]); if (p[i + 1] > m) p[i + 1] = m; p[i + 3] = Math.min(a, p[i + 3]);
+  }
+  return d;
+}
+export async function browserChroma(url) {
+  const im = await loadImg(url), c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+  const g = c.getContext("2d"); g.drawImage(im, 0, 0); g.putImageData(chromaKeyData(g.getImageData(0, 0, c.width, c.height)), 0, 0);
+  return c.toDataURL("image/png");
 }
 async function cutoutOf(url, say) {
-  try { if (await isCut(url)) return { cut: url, how: "伺服器去背" }; } catch { /* */ }
   try {
-    say?.("伺服器沒去掉 → /api/cutout 重摳……");
-    const r = await fetch("/api/cutout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
-    if (r.ok) { const j = await r.json(); if (j.changed && await isCut(j.url)) return { cut: j.url, how: "/api/cutout" }; }
+    say?.("綠幕去背（伺服器）……");
+    const r = await fetch("/api/cutout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, mode: "chroma" }) });
+    if (r.ok) { const j = await r.json(); if (j.changed && await isCut(j.url)) return { cut: j.url, how: "伺服器綠幕去背" }; }
   } catch { /* */ }
-  say?.("改用瀏覽器摳白底……");
-  return { cut_data: await browserCutout(url), how: "瀏覽器去背" };
+  say?.("改用瀏覽器綠幕去背……");
+  return { cut_data: await browserChroma(url), how: "瀏覽器綠幕去背" };
 }
 const api = {
   state: async () => { const r = await fetch("/api/swap/cafe", { cache: "no-store" }); if (!r.ok) throw new Error(`讀不到換妻資料 ${r.status}（伺服器要重啟？）`); return r.json(); },
