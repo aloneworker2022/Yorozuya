@@ -260,7 +260,7 @@ export function bindSwapCafePanel(ctx = {}) {
   };
   let ckpts = [], ckptNote = "";
   const saveCouple = async (c) => { try { S = await api.put("couple", { couple: c }); } catch (e) { $("sc-status").textContent = String(e?.message || e); } info(); };
-  const preview = (img) => !img ? `<div style="height:90px;background:#f3f5f8;border:1px solid #d5dbe3;border-radius:10px;color:#9aa1ad;font-size:12px;display:flex;align-items:center;justify-content:center">尚未產生立繪</div>`
+  const preview = (img) => !img ? ``
     : `<div style="display:flex;gap:6px;align-items:flex-end"><div style="position:relative;flex:2;aspect-ratio:2/3;background:url(${backdrop}) center/cover;border-radius:6px;overflow:hidden">
         <img src="${img.cut}" alt="" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:82%;max-width:100%;object-fit:contain"></div>
         <div style="flex:1"><div class="mini">原圖</div><img src="${img.raw}" alt="" style="width:100%;border-radius:6px;background:#fff"></div></div>`;
