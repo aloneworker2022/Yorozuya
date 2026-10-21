@@ -1,7 +1,9 @@
 /* 2026-10-21 換妻 step：「開始換妻」→ 選一對夫妻（樣式跟日租選客人一樣）→ 確認 → 存成目前的換妻場次，顯示「下一步：問妻子」。
  * 名冊＝伺服器存的對方夫妻（/api/swap/cafe 的 couples，當熟客一直留著），不足 4 對就新抽（各自不同的 Comfy 模型）。
- * 還沒做：問妻子、扣錢、場景。場次先存在 localStorage（SESSION_KEY），不用重啟伺服器。 */
+ * 2026-10-21 改順序：先問妻子（openSwapStart，照日租「拜託她」），她答應才開名冊。還沒做：扣錢、場景。場次先存在 localStorage（SESSION_KEY），不用重啟伺服器。 */
 import { api, BZH, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=8";
+import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
+import { familyOf } from "./girl_voice.js?v=1";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;
@@ -90,15 +92,84 @@ export function openSwapSelect(ctx = {}) {
       <div class="swp-act"><button type="button" class="back">返回</button><button type="button" class="pri go">選這對</button></div>`;
     body.querySelector(".back").addEventListener("click", roster);
     body.querySelector(".go").addEventListener("click", () => {
-      const sess = { coupleId: c.id, price: h.swapPrice, at: Date.now(), phase: "ask_wife", wifeId: ctx.girl?.()?.id || "" };
+      const sess = { coupleId: c.id, price: h.swapPrice, at: Date.now(), phase: "depart", wifeId: ctx.girl?.()?.id || "", wifeAgreed: true };
       localStorage.setItem(SESSION_KEY, JSON.stringify(sess));
-      ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ 下一步問妻子`);
+      ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ 下一步出發約會`);
       title("換妻");
-      body.innerHTML = `<div class="swp-next"><b>下一步：問妻子</b>已選 ${esc(h.name)} ＆ ${esc(w.name)}・${h.swapPrice} 金<br><small>（問妻子／扣錢／場景還沒做）</small></div><div class="swp-act"><button type="button" class="back">回名冊</button></div>`;
+      body.innerHTML = `<div class="swp-next"><b>下一步：出發約會</b>已選 ${esc(h.name)} ＆ ${esc(w.name)}・${h.swapPrice} 金<br><small>（扣錢／場景還沒做）</small></div><div class="swp-act"><button type="button" class="back">回名冊</button></div>`;
       body.querySelector(".back").addEventListener("click", roster);
     });
   };
   body.innerHTML = `<div class="swp-next">讀取名冊中…</div>`;
   loadRoster().then((s) => { S = s; roster(); }).catch((e) => { body.innerHTML = `<div class="swp-next">${esc(e?.message || e)}</div>`; });
+  return ov;
+}
+
+// ------------------------------------------------------------ 先問妻子（照日租 rental_ui.ask）
+/** 答應機率：日租的 askChanceFor（妻子階段 0.5／貼心 0.7／順從 0.85／病態 0.6＋家族＋(忠誠−60)/200−生氣受傷），
+ * 換妻比日租更難開口 −0.15（你也要跟別的女人）；感情 +(感情−60)/300；飢渴 ≥85 +0.15、≥60 +0.08。夾在 5%–90%。 */
+export function swapAskChance(who, { mood = null, hunger = 0 } = {}) {
+  let p = askChanceFor(who, mood);
+  if (!p) return 0;
+  p -= 0.15;
+  p += ((Number(who?.stats?.affection ?? 60) || 0) - 60) / 300;
+  if (hunger >= 85) p += 0.15; else if (hunger >= 60) p += 0.08;
+  return Math.max(0.05, Math.min(0.9, Math.round(p * 100) / 100));
+}
+const ACT_NO = { 冷淡: "（別過頭，雙手抱胸）", 溫柔: "（低下頭，手指絞著衣角）", 熱絡: "（嘟起嘴，用力搖頭）", 佔有: "（一把抓住你的手臂）", 反差: "（臉一下子紅透，猛搖頭）" };
+const NO = { 冷淡: "不要。這種事你自己想就好。", 溫柔: "……我不想跟別的男人那樣，可以不要嗎？", 熱絡: "欸～不要啦，我只想跟你約會！", 佔有: "你想跟別的女人？想都別想。", 反差: "不、不行啦……太丟臉了……" };
+const ACT_OK = { 冷淡: "（沉默了一下，輕輕點頭）", 溫柔: "（臉紅著小聲答應）", 熱絡: "（眼睛一亮，拍拍你的肩）", 佔有: "（瞇起眼睛盯著你）", 反差: "（耳根發紅，聲音越來越小）" };
+const OK = { 冷淡: "……好吧，就一次。", 溫柔: "好……如果你想的話，我陪你去。", 熱絡: "好啊～聽起來好刺激！", 佔有: "可以。但你要是太投入，回家有你好看的。", 反差: "嗯……我、我去就是了……" };
+/** AI 回的句子整理成「（動作）台詞」；沒有動作就補一個。 */
+export function actLine(text, act) {
+  let t = String(text || "").replace(/^["「『]+|["」』]+$/g, "").replace(/\(/g, "（").replace(/\)/g, "）").trim();
+  if (!t) return "";
+  if (!/^（[^）]{1,30}）/.test(t)) t = act + t;
+  return t.slice(0, 120);
+}
+const SPEAK = "老婆……我想找另一對夫妻，四個人一起約會、交換伴侶，你願意嗎？";
+
+/** 「開始換妻」：確認有妻子 → 問她 → 答應才開名冊（openSwapSelect）。
+ * ctx：{ girl(), say?(who, ask, fallback) → Promise<string>, mood?(who), hunger?(who), debug?(msg) } */
+export function openSwapStart(ctx = {}) {
+  if (!document.getElementById("swp-css")) { const st = document.createElement("style"); st.id = "swp-css"; st.textContent = CSS; document.head.append(st); }
+  document.getElementById("swp-ov")?.remove();
+  const ov = document.createElement("div"); ov.className = "swp-ov"; ov.id = "swp-ov";
+  ov.innerHTML = `<div class="swp-hd"><b>換妻・先問老婆</b><button type="button" aria-label="關閉">×</button></div><div class="swp-body" style="flex:1;display:flex;flex-direction:column;min-height:0"></div>`;
+  ov.querySelector(".swp-hd button").addEventListener("click", () => ov.remove());
+  document.body.append(ov);
+  const body = ov.querySelector(".swp-body"), who = ctx.girl?.();
+  const end = (msg) => { body.innerHTML = `<div class="swp-next">${msg}</div><div class="swp-act"><button type="button" class="back">關閉</button></div>`; body.querySelector(".back").addEventListener("click", () => ov.remove()); };
+  if (!who) return end("<b>沒有老婆</b>先在房間裡選一位魅子。"), ov;
+  if (!canRental(who)) return end(`<b>${esc(who.name)}還不是你的老婆</b>（要妻子階段以上才能換妻；現在：${esc(stageKeyOf(who))}）`), ov;
+  const fam = (() => { try { return familyOf(who); } catch { return "溫柔"; } })();
+  const mood = ctx.mood?.(who) || null, hunger = Number(ctx.hunger?.(who)) || 0;
+  const p = swapAskChance(who, { mood, hunger }), yes = Math.random() < p;
+  ctx.debug?.(`換妻：問${who.name}（答應機率 ${Math.round(p * 100)}%）→ ${yes ? "答應" : "拒絕"}`);
+  body.innerHTML = `<div class="swp-pick"><div class="swp-big swp-wf" hidden></div>
+    <div class="swp-card swp-me" style="cursor:default;background:#8de07f!important;align-self:flex-end;width:auto;max-width:85%"><div class="swp-p" style="margin:0">${esc(SPEAK)}</div></div>
+    <div class="swp-card swp-her" style="cursor:default"><div class="swp-nm">${esc(who.name)}</div><div class="swp-p swp-line" style="min-height:2.6em;color:#8a92a0">（想了一下）……</div></div>
+    <div class="swp-p swp-odds" style="color:#8a92a0;font-size:12px">答應機率 ${Math.round(p * 100)}%（忠誠 ${who.stats?.loyalty ?? 60}・感情 ${who.stats?.affection ?? 60}・飢渴 ${Math.round(hunger)}・${esc(fam)}）</div></div>
+    <div class="swp-act" hidden></div>`;
+  api.state().then((S) => { const u = (S.images?.[who.id] || {})["wife~" + (yes ? "shy" : "normal")]?.cut || (S.images?.[who.id] || {})["wife~normal"]?.cut; if (u) { const f = body.querySelector(".swp-wf"); f.innerHTML = `<figure><img alt="" src="${esc(u)}"></figure>`; f.hidden = false; } }).catch(() => {});
+  const fallback = (yes ? ACT_OK : ACT_NO)[fam] + (yes ? OK : NO)[fam];
+  const ask = yes
+    ? "（你老公問你：要不要跟另一對夫妻四個人一起約會、交換伴侶——你陪對方的丈夫，他陪對方的妻子。你答應了，但心情複雜。用「（動作）台詞」的格式只寫一句：括號裡是你的動作神情，後面是你對他說的話。）"
+    : "（你老公問你：要不要跟另一對夫妻四個人一起約會、交換伴侶——你陪對方的丈夫，他陪對方的妻子。你拒絕了。用「（動作）台詞」的格式只寫一句：括號裡是你的動作神情，後面是你拒絕他的話。）";
+  (async () => {
+    let line = "";
+    try { line = actLine(ctx.say ? await ctx.say(who, ask, fallback) : fallback, (yes ? ACT_OK : ACT_NO)[fam]); } catch { /* 用句庫 */ }
+    line = line || fallback;
+    const el = body.querySelector(".swp-line"); el.style.color = "#1d2330"; el.textContent = "";
+    for (const ch of line) { el.textContent += ch; await new Promise((r) => setTimeout(r, 38)); }
+    const act = body.querySelector(".swp-act"); act.hidden = false;
+    if (yes) {
+      act.innerHTML = `<button type="button" class="pri go">她答應了，去找夫妻</button>`;
+      act.querySelector(".go").addEventListener("click", () => { ov.remove(); openSwapSelect(ctx); });
+    } else {
+      act.innerHTML = `<button type="button" class="back">她拒絕了（結束）</button>`;
+      act.querySelector(".back").addEventListener("click", () => ov.remove());
+    }
+  })();
   return ov;
 }
