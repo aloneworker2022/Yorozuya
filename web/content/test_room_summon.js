@@ -337,7 +337,7 @@ import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
 import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=11";
-import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=10";
+import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=11";
 import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=16";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
@@ -8841,6 +8841,8 @@ async function runClothesErrand(next) {
   try { renderCard(); } catch { /* */ }
 }
 
+// 換妻酒吧 NPC 的 AI key：同一毫秒兩個 NPC 一起問時 key 不能一樣（不然拿到別人的回覆）
+let swapBarSeq = 0;
 // 換妻（2026-10-21）：聊天裡提「換妻／交換伴侶…」、她是妻子階段 → 擲答應（swapAskChance）、AI 回（動作）台詞；答應才開夫妻名冊。
 async function maybeHandleSwapAsk(raw) {
   if (!isSwapAsk(raw) || !girl || !swapCanAsk(girl) || girl.errand) return false;
@@ -8868,7 +8870,7 @@ async function maybeHandleSwapAsk(raw) {
     // 對方夫妻（NPC）：單純 system＋user
     chat: async (system, user) => {
       const route = await gameChatRoute(), msgs = [{ role: "system", content: system }, { role: "user", content: user }];
-      const run = route.provider === "ollama" ? askOllama(route, msgs) : askGrok(route, msgs, `swapbar:${Date.now().toString(36)}`);
+      const run = route.provider === "ollama" ? askOllama(route, msgs) : askGrok(route, msgs, `swapbar:${Date.now().toString(36)}:${(++swapBarSeq).toString(36)}${Math.random().toString(36).slice(2, 7)}`);
       return cleanLine(await withTimeout(run, 12000, "")).slice(0, 160);
     },
   }), 1500);   // 讓她那句先看清楚

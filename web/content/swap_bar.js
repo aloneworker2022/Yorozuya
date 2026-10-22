@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=10";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=11";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=11";
 
@@ -253,19 +253,37 @@ export function openBar(ctx = {}, c, S = {}) {
     nx.textContent = ""; speaking = false;
     void top;
   };
-  const line = async (k, text, opt) => { log.push(`${name[k]}：${text}`); await say(name[k], text, opt); };
+  const line = async (k, text, opt = {}) => {
+    dbg(`訊息 target=${opt.to || "-"} speaker=${k} label=${name[k]}`);
+    log.push(`${name[k]}：${text}`); await say(name[k], text, opt);
+  };
   const ask = (ph) => new Promise((res) => { nm.textContent = "你"; tx.textContent = ""; form.hidden = false; inp.placeholder = ph; inp.value = ""; inp.focus(); form.onsubmit = (e) => { e.preventDefault(); form.hidden = true; const v = inp.value; inp.value = ""; inp.blur(); form.onsubmit = null; res(v); }; });
 
   // ---- AI
-  const persona = (k) => k === "husband" ? `你是${h.name}，${h.age}歲，${w.name}的丈夫，個性：${H_FLAVOR[hType]}。`
-    : `你是${w.name}，${w.age}歲，${h.name}的妻子，${w.look?.build || ""}${w.look?.cup ? `、${w.look.cup}罩杯` : ""}，個性：${W_FLAVOR[wType]}。`;
-  const RULE = () => `場合：酒吧裡的換妻約會（另一對是矮胖的宅男丈夫＝玩家，和他的妻子${wn}）。只寫一句「（動作）台詞」格式，繁體中文口語，60 字內，不要旁白、不要替別人說話。`;
+  // 給 AI 的紀錄：log 裡的「你」＝玩家；換成「玩家」免得 AI 以為那是它自己說的話（2026-10-22 修）
+  const histFor = () => log.slice(-10).map((l) => l.replace(/^你(?=[（：])/, "玩家").replace(/^（你/, "（玩家")).join("\n");
+  const OTHER_NAMES = () => ["玩家", "你", "宅男", ...Object.values(name)];
+  /** 模型有時一次寫好幾個人的台詞：只留這個人自己的第一句（拿掉自己的名字前綴；遇到別人的「名字：」就切掉）。 */
+  const oneSpeaker = (t, k) => {
+    let x = String(t || "").replace(/\r/g, "");
+    const me = name[k], others = OTHER_NAMES().filter((n) => n && n !== me);
+    x = x.split("\n").map((l) => l.trim()).filter(Boolean).find((l) => !others.some((n) => new RegExp(`^[「『]?${n}[（(]?[^：:]{0,12}[：:]`).test(l))) || "";
+    x = x.replace(new RegExp(`^[「『]?${me}[（(]?[^：:]{0,12}[：:]\\s*`), "");
+    for (const n of others) { const m = x.search(new RegExp(`[。！？…）」\\s]${n}[：:]`)); if (m > 0) x = x.slice(0, m + 1); }
+    return x.trim();
+  };
+  // 2026-10-22 修：AI 身分講清楚（你是誰、你丈夫／妻子是誰、玩家是誰），只准替自己說一句
+  const persona = (k) => k === "husband"
+    ? `你是${h.name}（男，${h.age}歲），你的妻子是${w.name}。個性：${H_FLAVOR[hType]}。`
+    : `你是${w.name}（女，${w.age}歲），你的丈夫是${h.name}。${w.look?.build || ""}${w.look?.cup ? `、${w.look.cup}罩杯` : ""}，個性：${W_FLAVOR[wType]}。`;
+  const RULE = () => `場合：酒吧裡的換妻約會。另一對夫妻：玩家（矮胖的宅男，另一位丈夫）和他的妻子${wn}。對話紀錄裡「玩家」就是那位宅男丈夫，不是你。`
+    + `你只能以自己的身分說話：只寫你自己的一句，「（動作）台詞」格式，繁體中文口語，60 字內；不要寫名字前綴、不要旁白、不要替任何其他人說話或寫別人的台詞。`;
   const say1 = async (k, task, fb) => {
-    const hist = log.slice(-10).join("\n"), dz = `你現在${DRUNK_ZH[dlv(k)]}（醉度 ${Math.round(sess.drunk[k])}）。`;
+    const hist = histFor(), dz = `你現在${DRUNK_ZH[dlv(k)]}（醉度 ${Math.round(sess.drunk[k])}）。`;
     let t = "";
     if (k === "wife") { if (wife && ctx.say) try { t = await ctx.say(wife, `（換妻約會在酒吧。${dz}最近的對話：\n${hist}\n${task}用「（動作）台詞」格式只寫一句。）`, ""); } catch { /* */ } }
     else if (ctx.chat) try { t = await ctx.chat(persona(k) + dz + RULE(), `最近的對話：\n${hist}\n\n${task}`); } catch { /* */ }
-    return actLine(t, fb.match(/^（[^）]*）/)?.[0] || "（笑了笑）") || fb;
+    return actLine(oneSpeaker(t, k), fb.match(/^（[^）]*）/)?.[0] || "（笑了笑）") || fb;
   };
 
   // ---- 佇列：跟你有關的一次只做一件（說話／卡牌／NPC 找你）
@@ -319,8 +337,9 @@ export function openBar(ctx = {}, c, S = {}) {
       const second = Math.random() < CHAT.secondP ? ({ wife: "husband", other: "husband", husband: "other" }[tgt]) : "";
       await show(second && !isAway(second) ? [second, tgt] : [tgt]);
       await say("你", v);
-      await line(tgt, await say1(tgt, `玩家${target === "all" ? "對大家說" : "對你說"}：「${v}」。回他一句。`, pick(FB.chat[tgt])));
-      if (second && !isAway(second)) await line(second, await say1(second, `接著${name[tgt]}剛才那句，插一句話。`, pick(FB.chat[second])));
+      dbg(`訊息 target=${tgt}（chip=${target}${target === "all" ? "，從字面猜" : ""}） speaker=player label=你`);
+      await line(tgt, await say1(tgt, `玩家${target === "all" ? "對大家說" : `對你（${name[tgt]}）說`}：「${v}」。以${name[tgt]}的身分回玩家一句。`, pick(FB.chat[tgt])), { to: "player" });
+      if (second && !isAway(second)) await line(second, await say1(second, `接著${name[tgt]}剛才那句，以${name[second]}的身分插一句話。`, pick(FB.chat[second])), { to: "player" });
       save();
     });
   });
@@ -371,7 +390,7 @@ export function openBar(ctx = {}, c, S = {}) {
       prog(cardX.bold * CARD_FX.okProg, cardX.zh);
     } else { for (const k of tgts) bumpAff(k, CARD_FX.noAff, `${cardX.zh}被拒`); prog(CARD_FX.noProg, `${cardX.zh}被拒`); }
     const speaker = t === "all" ? "husband" : t;
-    await line(speaker, await say1(speaker, `玩家剛才「${cardX.zh}」${t === "all" ? "（對大家）" : "（對你）"}。你${ok ? "接受了" : "拒絕了"}，回一句。`, ok ? FB.accept[speaker] : FB.refuse[speaker]));
+    await line(speaker, await say1(speaker, `玩家剛才「${cardX.zh}」${t === "all" ? "（對大家）" : `（對你，${name[speaker]}）`}。你${ok ? "接受了" : "拒絕了"}，以${name[speaker]}的身分回一句。`, ok ? FB.accept[speaker] : FB.refuse[speaker]), { to: "player" });
     renderNb(); save();
   };
 
@@ -410,7 +429,7 @@ export function openBar(ctx = {}, c, S = {}) {
         const task = type === "chat" ? "你主動找玩家聊一句（問他問題或開玩笑）。" : `你對玩家做了「${act.zh}」，一邊做一邊說一句。`;
         const ln = await say1(k, task, pick(FB[type][k]));
         status[k] = type === "chat" ? "跟你聊天" : `→ 你：${act.zh}`; renderNb();
-        await line(k, ln);
+        await line(k, ln, { to: "player" });
         if (type === "touch" || type === "lewd") await respond(k, act);
       });
       return;
@@ -420,7 +439,7 @@ export function openBar(ctx = {}, c, S = {}) {
     if (type === "silence") lines = [pick(SILENCE).replace("{a}", name[k]).replace("{b}", name[tgt])];
     else {
       const l1 = await say1(k, type === "chat" ? `你小聲跟${name[tgt]}聊一句。` : `你對${name[tgt]}做了「${act.zh}」，小聲說一句。`, pick(FB[type === "chat" ? "chat" : type][k]));
-      lines = [`${name[k]}：${l1}`];
+      lines = [`${name[k]}：${l1}`]; dbg(`訊息 target=${tgt} speaker=${k} label=${name[k]}（NPC↔NPC，名字列）`);
       let okP = 0.7;
       if (tgt === "wife" && k === "husband") okP = WIFE_ACCEPT.base + sess.open * WIFE_ACCEPT.open + sess.nerves * WIFE_ACCEPT.nerves + (seated("husband", "wife") ? WIFE_ACCEPT.seat : 0);
       okP = 1 - (1 - clamp(okP, 0.05, 0.95)) * (DRUNK.pushCut[dlv(tgt)] || 1);
@@ -448,7 +467,7 @@ export function openBar(ctx = {}, c, S = {}) {
       prog(fx.progress, r); bumpAff(k, fx.actor, r); if (k !== "wife") bumpAff("wife", fx.wife, `看你${r}`);
       log.push(`（你${r}）`);
       const fb = { 迎合: "（眼睛一亮，靠得更近了）……你也不討厭嘛。", 推開: "（愣了一下，尷尬地縮回手）……抱歉。", 裝沒事: "（看你沒反應，笑了笑）" }[r];
-      await line(k, await say1(k, `玩家對你剛才的「${act.zh}」的反應是：${r}。回一句。`, fb));
+      await line(k, await say1(k, `玩家對你剛才的「${act.zh}」的反應是：${r}。回一句。`, fb), { to: "player" });
       save(); res();
     };
   });
