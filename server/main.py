@@ -2583,6 +2583,48 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
     )
 
 
+_PAIR_Q_PONY = "score_9, score_8_up, score_7_up, source_anime"
+_PAIR_Q_ILL = "masterpiece, best quality, amazing quality, very aesthetic, absurdres"
+
+
+def _pair_tags(*chunks) -> list[str]:
+    """逗號 tag 串去重（保留順序），去掉 not／no 開頭的否定詞（SD 讀不懂）。"""
+    seen: set[str] = set()
+    out: list[str] = []
+    for ch in chunks:
+        items = ch if isinstance(ch, list) else str(ch or "").split(",")
+        for t in items:
+            t = str(t).strip()
+            if not t or re.match(r"(?i)^(not|no)\s", t) or t.lower() in seen:
+                continue
+            seen.add(t.lower())
+            out.append(t)
+    return out
+
+
+def _pair_prompts(opts: dict) -> tuple[str, str]:
+    """2026-10-23 換妻雙人圖預設 prompt（Al 核可的結構）：共同段 BREAK 他 BREAK 她。
+    品質 tag 看模型名（pony 一套、其他 Illustrious／NoobAI 一套，不混）；她的長相從人設翻（身材、髮色髮型、瞳色、1 個特徵、膚色）；
+    不寫 not／no、不寫自然語句、不加畫風／配色。負向＝前端給的原樣（去重）。"""
+    pr = opts.get("pair") if isinstance(opts.get("pair"), dict) else {}
+    ch = opts.get("character") if isinstance(opts.get("character"), dict) else {}
+    look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
+    q = _PAIR_Q_PONY if "pony" in str(opts.get("ckpt") or "").lower() else _PAIR_Q_ILL
+    tr = lambda table, k: table.get(str(look.get(k) or "").strip(), "")
+    skin = sdtags.SKIN.get(_identity_anchor(ch)["skin"], "") if ch else ""
+    her_cl = str(pr.get("herClothes") or "").strip()
+    if not her_cl and pr.get("dressed"):
+        worn = str(opts.get("outfit") or "").strip() or _outfit_of(ch)
+        her_cl = sdtags.outfit_en(worn) or "casual clothes"
+    shared = _pair_tags(q, "1boy, 1girl, hetero", str(pr.get("framing") or ""), "from side", pr.get("shared") or [], "simple background, green background, chroma key")
+    male = _pair_tags("1boy", pr.get("male") or [])
+    female = _pair_tags("1girl, adult", tr(sdtags.BUILD, "build"), tr(sdtags.HAIR_COLOR, "hair_color"), tr(sdtags.HAIR, "hair"), tr(sdtags.EYE_COLOR, "eye_color"),
+                        tr(sdtags.FEATURE, "feature"), skin, pr.get("herPose") or [], pr.get("expr") or [], her_cl, pr.get("body") or [])
+    pos = "\nBREAK\n".join(", ".join(x) for x in (shared, male, female))
+    neg = ", ".join(_pair_tags(str(opts.get("negative") or "")))
+    return pos, neg
+
+
 def _lead_merge(lead: str, prompt: str) -> str:
     """換妻雙人圖：lead 壓在最前面；2026-10-22 Al：人數寫成有空格的「1 man／1 girl」，伺服器自己加的 1man／1girl 也跟著換（只有帶 lead 的雙人圖）。"""
     lead = (lead or "").strip()
@@ -2632,6 +2674,9 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     # prompt 有值 = 使用者在 testword 改過的版本,原樣送出;留空才由人設現組
     prompt = str(opts.get("prompt") or "").strip()
     sex_strip = str(opts.get("scene_kind") or "").lower() == "sex_strip"
+    pair_neg = None
+    if not prompt and wf is None and isinstance(opts.get("pair"), dict):
+        prompt, pair_neg = _pair_prompts(opts)
     if not prompt and wf is None:
         if sex_strip:
             prompt = str(opts.get("extra") or "").strip()
@@ -2671,6 +2716,8 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     if raw_prompt:
         # 換妻雙人圖「用這些設定重生」：正負向都原樣（使用者在測試台改的就是最後送出去的）
         negative = str(opts.get("negative") or "").strip()
+    elif pair_neg is not None:
+        negative = pair_neg
 
     pose_src = _resolve_ref_image(str(opts.get("pose_ref") or ""))
     # 只讓 tease／standee／脫衣場面吃 pose_ref；召喚三連拍／情緒半身表不鎖姿勢參考
@@ -3017,6 +3064,7 @@ class ImgGenIn(BaseModel):
     key: str | None = None
     model: str = "grok-4.5"
     framing: str = "half"       # half | full(part 有值時忽略)
+    pair: dict | None = None    # 2026-10-23 換妻雙人圖：每段的 tag（_pair_prompts 組成 BREAK 三段），key 要 swap-pair: 開頭
     raw_prompt: bool = False    # 2026-10-22 換妻雙人圖（key 開頭 swap-pair:）：prompt／negative 原樣送，伺服器一個字都不加
     lead: str = ""              # 2026-10-22 換妻雙人圖：放在整段 prompt 最前面（例 (1girl, 1boy:1.3)），只有 Comfy 那條用
     rating: str = "sfw"         # sfw | nsfw
@@ -3201,6 +3249,7 @@ def _imggen_opts(t: ImgGenIn) -> tuple[str, str, dict]:
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip) else "",
         "lead": (t.lead or "").strip()[:400],
         "raw_prompt": bool(t.raw_prompt) and key.startswith("swap-pair:"),
+        "pair": t.pair if (isinstance(t.pair, dict) and key.startswith("swap-pair:")) else None,
     }
     if ep == "comfy-img":
         # 出卡場景：下單時就寫入隨機 seed，避免 worker 用舊邏輯／固定人設 seed 出同圖
@@ -5131,6 +5180,10 @@ def swap_pair_preview(t: ImgGenIn):
         raise HTTPException(status_code=400, detail="只給換妻雙人圖用")
     _, _, opts = _imggen_opts(t)
     opts = _apply_image_vary(opts)
+    if isinstance(opts.get("pair"), dict):
+        prompt, negative = _pair_prompts(opts)
+        return {"positive": prompt, "negative": negative, "steps": comfy.DEFAULT_STEPS, "cfg": comfy.DEFAULT_CFG,
+                "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER, "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT}
     extra_pos, extra_from_en = sdtags.split_pos_neg_tags(str(opts.get("extra") or ""))
     opts["extra"] = extra_pos
     extra_neg = ", ".join(x for x in (extra_from_en, str(opts.get("visual_neg") or "").strip(), str(opts.get("negative") or "").strip()) if x)

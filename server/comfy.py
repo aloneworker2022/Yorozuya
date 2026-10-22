@@ -23,6 +23,7 @@ import asyncio
 import json
 import os
 import random
+import re
 import time
 from pathlib import Path
 
@@ -462,6 +463,28 @@ async def resolve_ckpt(want: str = "", base: str = "") -> tuple[str, str | None,
 # workflow。之後要換模型、加 LoRA、加色彩量化,改這一個函式就好,worker 不看內容。
 
 
+
+def expand_break(wf: dict, nid: str) -> None:
+    """2026-10-23：CLIPTextEncode 不認 BREAK。字裡有 BREAK 就切段、每段各自編碼，用 ConditioningConcat 串起來；
+    最後那個節點還是叫 nid（KSampler 照舊接 [nid, 0]）。沒有 BREAK 就不動。"""
+    node = wf.get(nid) or {}
+    if node.get("class_type") != "CLIPTextEncode":
+        return
+    text, clip = str(node["inputs"].get("text") or ""), node["inputs"].get("clip")
+    chunks = [c.strip(" ,\n\t") for c in re.split(r"\bBREAK\b", text)]
+    chunks = [c for c in chunks if c]
+    if len(chunks) <= 1:
+        if "BREAK" in text:
+            node["inputs"]["text"] = chunks[0] if chunks else ""
+        return
+    for i, c in enumerate(chunks):
+        wf[f"{nid}_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": c, "clip": clip}}
+    prev = [f"{nid}_0", 0]
+    for i in range(1, len(chunks)):
+        cid = nid if i == len(chunks) - 1 else f"{nid}_cat{i}"
+        wf[cid] = {"class_type": "ConditioningConcat", "inputs": {"conditioning_to": prev, "conditioning_from": [f"{nid}_{i}", 0]}}
+        prev = [cid, 0]
+
 def build_workflow(
     *,
     ckpt: str,
@@ -548,6 +571,8 @@ def build_workflow(
         "class_type": "SaveImage",
         "inputs": {"filename_prefix": filename_prefix, "images": src},
     }
+    expand_break(wf, "2")
+    expand_break(wf, "3")
     return wf
 
 
@@ -698,6 +723,8 @@ def build_img2img_workflow(
         "class_type": "SaveImage",
         "inputs": {"filename_prefix": filename_prefix, "images": src},
     }
+    expand_break(wf, "2")
+    expand_break(wf, "3")
     return wf
 
 
