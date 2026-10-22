@@ -236,6 +236,10 @@ def chroma_key(path: Path, lo: int = CHROMA_LO, hi: int = CHROMA_HI) -> tuple[bo
         if x < W - 1: q.append(k + 1)
         if k >= W: q.append(k - W)
         if k < N - W: q.append(k + W)
+    # 2026-10-23 量綠幕：四邊像素有幾成是綠的（gd > lo）——模型沒畫綠底時這個會很低，去背就沒效果
+    edge_n = 2 * W + 2 * max(0, H - 2)
+    edge_g = sum(1 for x in range(W) for k in (x, (H - 1) * W + x) if gd[k] > lo) + sum(1 for y in range(1, H - 1) for k in (y * W, y * W + W - 1) if gd[k] > lo)
+    border_green = edge_g / edge_n if edge_n else 0.0
     # 被包住的大塊純綠（手臂和身體之間）也是背景
     seen = bytearray(N)
     for s in range(N):
@@ -269,8 +273,13 @@ def chroma_key(path: Path, lo: int = CHROMA_LO, hi: int = CHROMA_HI) -> tuple[bo
             g = m
         px[x, y] = (r, g, b, min(a, a0))
         changed += 1
+    removed = sum(bg) / N if N else 0.0
+    LAST_CHROMA.clear(); LAST_CHROMA.update({"border_green": round(border_green, 4), "removed": round(removed, 4)})
     if not changed:
-        return False, "沒有綠色背景", path
+        return False, f"沒有綠色背景（四邊綠 {border_green:.0%}）", path
     out = path if path.suffix.lower() == ".png" else path.with_suffix(".png")
     im.save(out)
-    return True, f"綠幕去背 {sum(bg)} px", out
+    return True, f"綠幕去背 {sum(bg)} px（四邊綠 {border_green:.0%}、摳掉 {removed:.0%}）", out
+
+
+LAST_CHROMA: dict = {}   # 最近一次 chroma_key 量到的 {border_green, removed}（/api/cutout 回給前端顯示）

@@ -5,7 +5,7 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
-import { api, wornOutfit, waitImg, cutoutOf } from "./swap_cafe_gen.js?v=19";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA } from "./swap_cafe_gen.js?v=20";
 
 // 2026-10-23 Al 核可：雙人圖預設 prompt 全部改結構（只有雙人圖）。前端給「每段要什麼 tag」（pair 物件），伺服器組成
 //   [品質], 1boy, 1girl, hetero, <取景>, from side, <動作≤5>, simple background, green background, chroma key
@@ -54,6 +54,8 @@ const MAN_CL = { gentleman: "black suit, necktie", clingy: "polo shirt", showoff
 const MAN_HAIRY = new Set(["fat", "old", "muscular"]);
 const CUP_TAG = { A: "flat chest", B: "small breasts", C: "medium breasts", D: "large breasts", E: "huge breasts", F: "huge breasts" };
 const NEG_BASE = "pov, first-person view, male pov, faceless male, solo, 2girls, multiple girls, 2boys, worst quality, low quality, lowres, bad anatomy, bad hands, extra fingers, extra limbs, watermark, text, green clothes, green hair, green eyes, background scenery";
+// 2026-10-23 綠幕沒效果：補回背景負向（半身再擋床；寬景要躺／坐，不擋 bed，改擋白床單）
+const BG_NEG = "white background, gradient background, detailed background, scenery, room, floor, shadow, grey background";
 const dedupe = (...xs) => { const seen = new Set(); return xs.join(", ").split(",").map((t) => t.trim()).filter((t) => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase())); };
 
 /** 這對（她＋這對夫妻）的 owner：只留伺服器允許的字、最長 80。 */
@@ -68,7 +70,7 @@ export function pairPrompt(slot, wife, couple) {
   const cupL = String(wife?.look?.cup || "").trim().charAt(0).toUpperCase(), cup = CUP_TAG[cupL] || (cupL >= "G" && cupL <= "Z" ? "gigantic breasts" : "");
   const herCl = nude ? "nude" : a.clothes === "partial" ? a.herCl || "clothes pull" : "";   // dressed＝伺服器翻她的生涯服裝
   const body = dedupe(cup, a.body || "");
-  const neg = dedupe(NEG_BASE, frame === 1 ? "penetration, sex" : "", a.clothes === "dressed" ? "nude, nipples" : "");
+  const neg = dedupe(NEG_BASE, BG_NEG, a.framing === "half" ? "bed" : "white sheets", frame === 1 ? "penetration, sex" : "", a.clothes === "dressed" ? "nude, nipples" : "");
   return {
     framing: FRAME_EN[a.framing], shared: dedupe(fr?.act || a.act), male, herPose: dedupe(a.her || ""), expr: dedupe(fr?.expr || a.expr || ""),
     herClothes: herCl, dressed: a.clothes === "dressed", body, neg,
@@ -90,6 +92,44 @@ export function pairBody(slot, wife, couple, eng, seed) {
 }
 export const missingPairs = (S, wife, couple) => { const have = S?.images?.[pairOwner(wife, couple)] || {}; return PAIR_SLOTS.filter((k) => !have[`pair~${k}`]?.cut); };
 /** 生一格（綠幕→色鍵→存，seed 一起存，第 2 格拿第 1 格的 seed）；seed 不給＝隨機。回新的 images。 */
+// ---- 去背（雙人圖專用：量四邊綠的比例，存進紀錄給測試台看）
+const loadImg2 = (url) => new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => no(new Error("圖載不到")); im.src = url; });
+/** 瀏覽器色鍵＋量：四邊像素有幾成是綠的（G−max(R,B) > 16）、摳掉幾成。 */
+async function browserCutMeasured(url) {
+  const im = await loadImg2(url), c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+  const g = c.getContext("2d"); g.drawImage(im, 0, 0); const d = g.getImageData(0, 0, c.width, c.height), W = c.width, H = c.height, p = d.data;
+  const gd = (k) => p[k * 4 + 1] - Math.max(p[k * 4], p[k * 4 + 2]); let eg = 0, en = 0;
+  for (let x = 0; x < W; x++) for (const k of [x, (H - 1) * W + x]) { en++; if (gd(k) > CHROMA.lo) eg++; }
+  for (let y = 1; y < H - 1; y++) for (const k of [y * W, y * W + W - 1]) { en++; if (gd(k) > CHROMA.lo) eg++; }
+  chromaKeyData(d); let rm = 0; for (let k = 0; k < W * H; k++) if (p[k * 4 + 3] < 128) rm++;
+  g.putImageData(d, 0, 0);
+  return { data: c.toDataURL("image/png"), border_green: en ? eg / en : 0, removed: rm / (W * H) };
+}
+const cutOk = (bgreen, removed) => bgreen >= 0.5 && removed >= 0.05;
+/** 伺服器色鍵 → 不行就瀏覽器；回 {cut|cut_data, how, cutinfo:{ok, how, border_green, removed, why}}。 */
+export async function cutPair(url, say = () => {}) {
+  try {
+    say("綠幕去背（伺服器）……");
+    const r = await fetch("/api/cutout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, mode: "chroma" }) });
+    if (r.ok) { const j = await r.json();
+      if (j.changed && cutOk(j.border_green ?? 1, j.removed ?? 1)) return { cut: j.url, how: "伺服器綠幕去背", cutinfo: { ok: true, how: "伺服器綠幕去背", border_green: j.border_green, removed: j.removed, why: j.why } };
+      say(`伺服器去背沒效果（${j.why || ""}），改用瀏覽器……`); }
+  } catch { /* */ }
+  const b = await browserCutMeasured(url), ok = cutOk(b.border_green, b.removed);
+  return { cut_data: b.data, how: "瀏覽器綠幕去背", cutinfo: { ok, how: "瀏覽器綠幕去背", border_green: b.border_green, removed: b.removed, why: ok ? "" : "四邊綠太少：模型沒畫綠底" } };
+}
+/** 重新去背（不重生）：伺服器拿已存原圖重摳；沒效果就瀏覽器摳完傳上去。回新的 images。 */
+export async function recutPair(owner, slot, raw, say = () => {}) {
+  const post = (b) => fetch("/api/swap/cafe/recut", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ owner, key: `pair~${slot}`, ...b }) })
+    .then(async (r) => { if (!r.ok) throw new Error(`重新去背失敗 ${r.status}（伺服器要重啟？）`); return r.json(); });
+  say("重新去背（伺服器）……");
+  const j = await post({});
+  if (j.changed && cutOk(j.border_green ?? 0, j.removed ?? 0)) return { images: j.images, ok: true, border_green: j.border_green };
+  say("伺服器沒摳到，改用瀏覽器……");
+  const b = await browserCutMeasured(raw), ok = cutOk(b.border_green, b.removed);
+  const k = await post({ cut_data: b.data, cutinfo: { ok, how: "瀏覽器綠幕去背", border_green: b.border_green, removed: b.removed, why: ok ? "" : "四邊綠太少：模型沒畫綠底" } });
+  return { images: k.images, ok, border_green: b.border_green };
+}
 export async function genPair(slot, wife, couple, say = () => {}, seed = 0, edit = null) {
   const eng = await gameEngine(), t0 = Date.now(); seed = Number(edit?.seed) || seed || Math.floor(Math.random() * 2 ** 31) || 1;
   let body = pairBody(slot, wife, couple, eng, seed);
@@ -102,9 +142,9 @@ export async function genPair(slot, wife, couple, say = () => {}, seed = 0, edit
   say(`生圖（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、seed ${seed}${body.raw_prompt ? "、自訂 prompt" : ""}${body.pose_ref ? `、圖生圖 ${body.pose_denoise}` : ""}）`);
   const res = await waitImg(body, (s) => say(`生圖 ${s} 秒`));
   if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
-  const raw = String(res.result).split("|")[0], cut = await cutoutOf(raw, say);
-  const j = await api.put("image", { owner: pairOwner(wife, couple), key: `pair~${slot}`, raw, seed, sec: Math.round((Date.now() - t0) / 1000), ...cut }, "POST");
-  return { images: j.images, sec: Math.round((Date.now() - t0) / 1000), how: cut.how, seed };
+  const raw = String(res.result).split("|")[0], { cutinfo, how, ...cut } = await cutPair(raw, say);
+  const j = await api.put("image", { owner: pairOwner(wife, couple), key: `pair~${slot}`, raw, seed, sec: Math.round((Date.now() - t0) / 1000), cutinfo, ...cut }, "POST");
+  return { images: j.images, sec: Math.round((Date.now() - t0) / 1000), how: `${how}${cutinfo.ok ? "" : "（失敗）"}・四邊綠 ${Math.round((cutinfo.border_green || 0) * 100)}%`, seed };
 }
 /** 預設 prompt（伺服器照生圖同一條路組好的最終正負向，不生圖）。 */
 export async function previewPair(slot, wife, couple) {
@@ -177,7 +217,7 @@ export function bindPairBox(ctx) {
     if (!g.positive) return `<div class="mini" style="color:#a88">（這張是舊版生的，沒有存實際 prompt；重生才會有）${g.sec ? `・${g.sec} 秒` : ""}${im.seed ? `・seed ${im.seed}` : ""}</div>`;
     const ref = g.pose_ref ? `<span style="display:flex;gap:4px;align-items:center"><img src="${esc(g.pose_ref)}" alt="" style="width:36px;height:54px;object-fit:cover;border-radius:3px">${esc(g.pose_ref.split("/").pop())}</span>` : `<span>none</span>`;
     const rows = [["checkpoint", g.ckpt || "（沒指定：伺服器自己挑）"], ["seed", g.seed], ["steps", g.steps], ["cfg", g.cfg], ["sampler", `${g.sampler || ""}${g.scheduler ? " / " + g.scheduler : ""}${g.clip_skip ? `（clip skip ${g.clip_skip}）` : ""}`],
-      ["size", g.width && g.height ? `${g.width}×${g.height}` : ""], ["denoise", g.denoise == null ? "—（沒有用圖生圖）" : g.denoise], ["prompt", g.raw ? "自訂（原樣送出）" : "預設（伺服器組）"],
+      ["size", g.width && g.height ? `${g.width}×${g.height}` : ""], ["denoise", g.denoise == null ? "—（沒有用圖生圖）" : g.denoise], ["prompt", g.raw ? "自訂（原樣送出）" : "預設（伺服器組）"], ["去背", im.cutinfo ? `${im.cutinfo.ok ? "成功" : "失敗"}　綠色比例 ${im.cutinfo.border_green == null ? "?" : Math.round(im.cutinfo.border_green * 100) + "%"}${im.cutinfo.removed == null ? "" : `（摳掉 ${Math.round(im.cutinfo.removed * 100)}%）`}・${im.cutinfo.how || ""}${im.cutinfo.why ? "・" + im.cutinfo.why : ""}` : "（舊紀錄沒量）"],
       ["time", `${g.sec ? g.sec + " 秒" : "?"}${g.at ? `（${new Date(g.at * 1000).toLocaleString()}）` : ""}`]];
     return `<div class="mini" style="display:grid;grid-template-columns:auto 1fr;gap:0 6px;margin-top:4px">${rows.map(([k, v]) => `<span style="color:#888">${k}</span><span style="word-break:break-all">${esc(v)}</span>`).join("")}<span style="color:#888">ref</span>${ref}</div>`
       + box(`上次送出的正向（${g.positive.length} 字）`, g.positive) + box(`上次送出的負向（${(g.negative || "").length} 字）`, g.negative || "");
@@ -248,7 +288,13 @@ export function bindPairBox(ctx) {
   const paint = (k) => {
     const c = cells[k], im = imgs()[`pair~${k}`];
     c.querySelector(".pic").innerHTML = im ? `<img src="${im.cut}" alt="${esc(labelOf(k))}" style="position:absolute;left:0;bottom:0;width:100%;height:100%;object-fit:contain">` : `<span class="mini" style="position:absolute;inset:auto 0 45% 0;text-align:center;color:#999">還沒有</span>`;
-    c.querySelector(".links").innerHTML = im?.raw ? `<a href="${im.raw}" target="_blank" rel="noopener">原圖</a>` : "";
+    c.querySelector(".links").innerHTML = im?.raw ? `<a href="${im.raw}" target="_blank" rel="noopener">原圖</a> <button type="button" class="mini recut">重新去背</button>` : "";
+    c.querySelector(".recut")?.addEventListener("click", async () => {
+      if (busy) { setMsg(k, "還有在生，等一下"); return; }
+      busy = true;
+      try { const r = await recutPair(owner(), k, im.raw, (x) => setMsg(k, x)); ctx.setImages(r.images); paint(k); setMsg(k, `重新去背${r.ok ? "成功" : "失敗"}・綠色比例 ${Math.round((r.border_green || 0) * 100)}%`); }
+      catch (e) { setMsg(k, String(e?.message || e)); } finally { busy = false; }
+    });
     c.querySelector(".info").innerHTML = info(im);
   };
   const readEdit = (k) => {

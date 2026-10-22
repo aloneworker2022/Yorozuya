@@ -2481,7 +2481,7 @@ async def cutout_run(body: CutIn):
         base = body.url.split("?")[0]
         if out != p:
             base = base.rsplit("/", 1)[0] + "/" + out.name
-        return {"changed": changed, "why": why, "url": f"{base}?v={int(time.time())}"}
+        return {"changed": changed, "why": why, "url": f"{base}?v={int(time.time())}", **cutout.LAST_CHROMA}
     shot_key = _portrait_shot_from_stem(p.stem)
     bmin = body.border_min or (
         (comfy.portrait_shot_spec(shot_key) or {}).get("border_min")
@@ -2585,6 +2585,9 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
 
 _PAIR_Q_PONY = "score_9, score_8_up, score_7_up, source_anime"
 _PAIR_Q_ILL = "masterpiece, best quality, amazing quality, very aesthetic, absurdres"
+# 2026-10-23 綠幕加強：共同段加權；BREAK 每段各自編碼，綠底只寫在第一段會被稀釋 → 他／她兩段開頭（人數 tag 後）再寫一次
+_PAIR_BG = "(green background:1.3), (simple background:1.2), green screen, chroma key"
+_PAIR_BG_REPEAT = "(green background:1.2)"
 
 
 def _pair_tags(*chunks) -> list[str]:
@@ -2616,9 +2619,9 @@ def _pair_prompts(opts: dict) -> tuple[str, str]:
     if not her_cl and pr.get("dressed"):
         worn = str(opts.get("outfit") or "").strip() or _outfit_of(ch)
         her_cl = sdtags.outfit_en(worn) or "casual clothes"
-    shared = _pair_tags(q, "1boy, 1girl, hetero", str(pr.get("framing") or ""), "from side", pr.get("shared") or [], "simple background, green background, chroma key")
-    male = _pair_tags("1boy", pr.get("male") or [])
-    female = _pair_tags("1girl, adult", tr(sdtags.BUILD, "build"), tr(sdtags.HAIR_COLOR, "hair_color"), tr(sdtags.HAIR, "hair"), tr(sdtags.EYE_COLOR, "eye_color"),
+    shared = _pair_tags(q, "1boy, 1girl, hetero", str(pr.get("framing") or ""), "from side", pr.get("shared") or [], _PAIR_BG)
+    male = _pair_tags("1boy", _PAIR_BG_REPEAT, pr.get("male") or [])
+    female = _pair_tags("1girl, adult", _PAIR_BG_REPEAT, tr(sdtags.BUILD, "build"), tr(sdtags.HAIR_COLOR, "hair_color"), tr(sdtags.HAIR, "hair"), tr(sdtags.EYE_COLOR, "eye_color"),
                         tr(sdtags.FEATURE, "feature"), skin, pr.get("herPose") or [], pr.get("expr") or [], her_cl, pr.get("body") or [])
     pos = "\nBREAK\n".join(", ".join(x) for x in (shared, male, female))
     neg = ", ".join(_pair_tags(str(opts.get("negative") or "")))
@@ -2757,7 +2760,7 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     if err:
         return "", err
     # 2026-10-22 換妻雙人圖：把實際送 ComfyUI 的 prompt／參數存一份在圖旁邊（<圖>.json），/api/swap/cafe/image 登記時帶進紀錄
-    if str(opts.get("lead") or "").strip():
+    if str(opts.get("lead") or "").strip() or opts.get("pair") or raw_prompt:
         try:
             meta = {
                 "positive": prompt, "negative": negative, "ckpt": str(opts.get("ckpt") or ""), "seed": seed,
@@ -5101,6 +5104,54 @@ def _swap_copy(url: str, data_b64: str, name: str) -> str:
     return f"/assets/swap_cafe/{out}"
 
 
+def _cutinfo_clean(c) -> dict | None:
+    """去背結果（前端／伺服器量的）：{ok, how, border_green 0–1, removed 0–1, why}。"""
+    if not isinstance(c, dict):
+        return None
+    out: dict = {"ok": bool(c.get("ok")), "how": str(c.get("how") or "")[:40], "why": str(c.get("why") or "")[:200]}
+    for k in ("border_green", "removed"):
+        try:
+            out[k] = max(0.0, min(1.0, float(c.get(k))))
+        except (TypeError, ValueError):
+            out[k] = None
+    return out
+
+
+@app.post("/api/swap/cafe/recut")
+async def swap_cafe_recut(body: dict):
+    """雙人圖「重新去背」：拿已存的原圖重跑綠幕色鍵（不重生），換掉 cut。body {owner, key, cut_data?（瀏覽器去背的 PNG dataURL）, cutinfo?}。
+    沒給 cut_data → 伺服器色鍵；回 {changed, why, border_green, removed, images}。"""
+    body = body or {}
+    owner, key = str(body.get("owner") or ""), str(body.get("key") or "")
+    if not _SWAP_OWNER.match(owner) or not _PAIR_KEY.match(key):
+        raise HTTPException(status_code=400, detail="owner／key 不對")
+    d = _swap_load()
+    rec = (d["images"].get(owner) or {}).get(key)
+    if not isinstance(rec, dict) or not str(rec.get("raw") or "").startswith("/assets/swap_cafe/"):
+        raise HTTPException(status_code=404, detail="這張還沒有原圖")
+    src = _SWAP_DIR / Path(str(rec["raw"]).split("?")[0]).name
+    if not src.is_file():
+        raise HTTPException(status_code=404, detail="原圖檔不見了")
+    stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}_cut"
+    if body.get("cut_data"):
+        url = _swap_copy("", str(body["cut_data"]), stem)
+        info = _cutinfo_clean(body.get("cutinfo")) or {"ok": True, "how": "瀏覽器綠幕去背"}
+        changed, why = True, info.get("why") or "瀏覽器綠幕去背"
+    else:
+        tmp = _SWAP_DIR / f"{stem}{src.suffix.lower() or '.png'}"
+        shutil.copyfile(src, tmp)
+        changed, why, out = await asyncio.to_thread(cutout.chroma_key, tmp)
+        if out != tmp:
+            tmp.unlink(missing_ok=True)
+        url = f"/assets/swap_cafe/{out.name}"
+        info = {"ok": bool(changed) and (cutout.LAST_CHROMA.get("border_green") or 0) >= 0.5, "how": "伺服器綠幕去背", "why": why, **cutout.LAST_CHROMA}
+    d = _swap_load()
+    r2 = d["images"].setdefault(owner, {}).setdefault(key, rec)
+    r2["cut"], r2["cutinfo"] = url, info
+    _swap_save(d)
+    return {"changed": changed, "why": why, **{k: info.get(k) for k in ("border_green", "removed")}, "images": d["images"]}
+
+
 @app.post("/api/swap/cafe/image")
 def swap_cafe_image(body: dict):
     """登記一張半身立繪：body {owner（她 id 或 couple id）, key, raw（url）, cut（url）| cut_data（dataURL PNG，瀏覽器去背）}。"""
@@ -5121,6 +5172,9 @@ def swap_cafe_image(body: dict):
             rec["gen"] = json.loads(side.read_text(encoding="utf-8"))
     except Exception:
         pass
+    ci = _cutinfo_clean(body.get("cutinfo"))
+    if ci:
+        rec["cutinfo"] = ci
     try:
         if float(body.get("sec") or 0) > 0:
             rec.setdefault("gen", {})["sec"] = float(body["sec"])
