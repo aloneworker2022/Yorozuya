@@ -2616,6 +2616,10 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
             prompt = str(opts.get("extra") or "").strip()
         else:
             prompt, _ = _comfy_prompt_for(opts)
+            # 換妻雙人圖：人數／第三人稱 tags 要壓在最前面（模型對開頭權重最高），不然常畫成 POV、男人不見
+            lead = str(opts.get("lead") or "").strip()
+            if lead and prompt:
+                prompt = f"{lead}, {prompt}"
     if not prompt and wf is None:
         return "", "ComfyUI 生圖要有 prompt 或整份 workflow"
     if sex_strip and prompt:
@@ -2972,6 +2976,7 @@ class ImgGenIn(BaseModel):
     key: str | None = None
     model: str = "grok-4.5"
     framing: str = "half"       # half | full(part 有值時忽略)
+    lead: str = ""              # 2026-10-22 換妻雙人圖：放在整段 prompt 最前面（例 (1girl, 1boy:1.3)），只有 Comfy 那條用
     rating: str = "sfw"         # sfw | nsfw
     style: str = "anime"        # anime | realistic | pixel
     character: dict | None = None  # 完整人設(優先)
@@ -3135,6 +3140,7 @@ def imggen_submit(t: ImgGenIn):
         # Comfy：prompt 有值才原樣送；出卡應留空，讓 _comfy_prompt_for 用人設 + extra
         # Grok：整張圖不吃前端 prompt（只在分段 part、或做愛局部橫幅時吃）
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip) else "",
+        "lead": (t.lead or "").strip()[:400],
     }
     if ep == "comfy-img":
         # 出卡場景：下單時就寫入隨機 seed，避免 worker 用舊邏輯／固定人設 seed 出同圖
