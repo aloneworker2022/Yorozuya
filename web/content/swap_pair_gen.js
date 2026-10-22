@@ -5,7 +5,7 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
-import { api, BG_EN, girlInfo, manInfo, wornOutfit, waitImg, cutoutOf } from "./swap_cafe_gen.js?v=16";
+import { api, BG_EN, girlInfo, manInfo, wornOutfit, waitImg, cutoutOf } from "./swap_cafe_gen.js?v=17";
 
 // framing：half＝upper body（能半身的都半身）；wide＝要看到下半身的動作，一律同一種「full＋cowboy/wide shot」取景，彼此一致。
 export const PAIR_ACTS = [
@@ -57,7 +57,8 @@ const NSFW_EXPR = "blushing, aroused, heavy breathing, sweat";
 const MAN_CLOTHES = { dressed: "", partial: "", nude: "nude man, naked man" };
 const HER_CLOTHES = { dressed: "", partial: "", nude: "nude, completely nude, bare breasts, nipples" };
 // 2026-10-22 RP5 試：很多張變第一人稱 POV、男人沒畫出來 → 人數／第三人稱放最前面加權（伺服器 lead 欄接在整段 prompt 最前），負向擋 POV
-export const PAIR_LEAD = "(1girl, 1boy:1.3), (a man and a woman:1.2), (third-person view:1.2), man visible, full view of the man";
+// 2026-10-22 Al：人數寫「1 boy, 1 girl」（有空格、不加權），男人稱「1 man」，不要 a man and a woman／man and woman
+export const PAIR_LEAD = "1 boy, 1 girl, (third-person view:1.2), man visible, full view of the man";
 const BOTH_FACES = "both faces visible";   // 舔陰唇他的臉埋著，不寫
 const POV_NEG = "pov, first-person view, pov hands, pov crotch, disembodied penis, faceless male, bald faceless man, male out of frame, cropped man, solo, solo focus, 1girl solo";
 const PAIR_NEG = "multiple girls, 2girls, extra person, three people, 2boys, extra man, clone, extra arms, extra hands, extra fingers, bad hands, fused bodies, merged bodies, bad anatomy, deformed, mutated limbs, missing limbs, blurry, lowres, jpeg artifacts, text, watermark";
@@ -75,7 +76,7 @@ export function pairPrompt(slot, wife, couple) {
   // 她的衣服 tag 由伺服器用 outfit 欄翻（中文穿搭名不要塞進 extra）
   const herLook = [gi.body, a.clothes === "partial" ? "clothes partially removed" : a.clothes === "nude" ? HER_CLOTHES.nude : ""].filter(Boolean).join(", ");
   const lead = [PAIR_LEAD, a.key === "cunni" ? "" : BOTH_FACES].filter(Boolean).join(", ");
-  const pos = ["1man, 1girl, couple, man and woman, hetero", a.act, fr?.act || "", FRAME_EN[a.framing], `the man: ${manLook}`, `the woman: ${herLook}`, fr?.expr || EXPR_EN[a.key] || NSFW_EXPR, BG_EN].filter(Boolean).join(", ");
+  const pos = ["1 man, 1 girl, couple, hetero", a.act, fr?.act || "", FRAME_EN[a.framing], `1 man: ${manLook}`, `the woman: ${herLook}`, fr?.expr || EXPR_EN[a.key] || NSFW_EXPR, BG_EN].filter(Boolean).join(", ");
   const neg = [POV_NEG, PAIR_NEG, PAIR_BG_NEG, a.framing === "half" ? HALF_BG_NEG : "", a.rating === "sfw" ? "nude, nsfw, nipples, penis" : "", a.clothes === "nude" ? "fully clothed" : "", fr?.neg || "",
     mi.build === "fat" ? "thin man, muscular man" : mi.build === "slim" ? "fat man" : mi.build === "old" ? "young man" : "", gi.slim ? "fat woman, chubby woman" : ""].filter(Boolean).join(", ");
   return { lead, pos, neg };
@@ -109,7 +110,7 @@ export async function genPair(slot, wife, couple, say = () => {}, seed = 0) {
   const res = await waitImg(body, (s) => say(`生圖 ${s} 秒`));
   if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
   const raw = String(res.result).split("|")[0], cut = await cutoutOf(raw, say);
-  const j = await api.put("image", { owner: pairOwner(wife, couple), key: `pair~${slot}`, raw, seed, ...cut }, "POST");
+  const j = await api.put("image", { owner: pairOwner(wife, couple), key: `pair~${slot}`, raw, seed, sec: Math.round((Date.now() - t0) / 1000), ...cut }, "POST");
   return { images: j.images, sec: Math.round((Date.now() - t0) / 1000), how: cut.how, seed };
 }
 /** 跑一串格子（依序）時的 seed：第 1 格新抽（這一輪記住），第 2 格用這輪的第 1 格、沒有就用已存的第 1 格。 */
@@ -159,24 +160,32 @@ export function bindPairBox(ctx) {
   let busy = false;
   const say = (x) => { if (st) st.textContent = x; };
   const imgs = () => ctx.state()?.images?.[pairOwner(ctx.girl(), ctx.couple())] || {};
-  const cellImg = (im, alt, cls = "") => im ? `<img class="${cls}" src="${im.cut}" alt="${alt}" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:100%;max-width:100%;object-fit:contain">` : "";
+  // 2026-10-22 Al：每張／每格各自一格（交配第 1、2 格分開，不輪播），底下列實際送 ComfyUI 的正負向＋參數
+  const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const box = (title, text) => `<details style="margin:2px 0"><summary class="mini" style="cursor:pointer">${title}</summary><pre class="mini" style="white-space:pre-wrap;word-break:break-word;max-height:12em;overflow:auto;margin:2px 0;padding:4px;background:#0c0c10;border-radius:4px;user-select:text">${esc(text)}</pre></details>`;
+  const info = (im) => {
+    if (!im) return "";
+    const g = im.gen || {};
+    if (!g.positive) return `<div class="mini" style="color:#a88">（這張是舊版生的，沒有存實際 prompt；按「重生」才會有）${g.sec ? `・${g.sec} 秒` : ""}${im.seed ? `・seed ${im.seed}` : ""}</div>`;
+    const ref = g.pose_ref ? `<div class="mini" style="display:flex;gap:4px;align-items:center"><img src="${esc(g.pose_ref)}" alt="" style="width:36px;height:54px;object-fit:cover;border-radius:3px">${esc(g.pose_ref.split("/").pop())}</div>` : `<span class="mini">none</span>`;
+    const rows = [["checkpoint", g.ckpt || "（沒指定：伺服器自己挑）"], ["seed", g.seed], ["steps", g.steps], ["cfg", g.cfg], ["sampler", `${g.sampler || ""}${g.scheduler ? " / " + g.scheduler : ""}${g.clip_skip ? `（clip skip ${g.clip_skip}）` : ""}`],
+      ["size", g.width && g.height ? `${g.width}×${g.height}` : ""], ["denoise", g.denoise == null ? "—（沒有用圖生圖）" : g.denoise], ["time", `${g.sec ? g.sec + " 秒" : "?"}${g.at ? `（${new Date(g.at * 1000).toLocaleString()}）` : ""}`]];
+    return `<div class="mini" style="display:grid;grid-template-columns:auto 1fr;gap:0 6px;margin-top:2px">${rows.map(([k, v]) => `<span style="color:#888">${k}</span><span style="word-break:break-all">${esc(v)}</span>`).join("")}<span style="color:#888">ref</span>${ref}</div>`
+      + box(`正向（${g.positive.length} 字）`, g.positive) + box(`負向（${(g.negative || "").length} 字）`, g.negative || "");
+  };
   const render = (msg = {}) => {
     const have = imgs();
-    grid.innerHTML = PAIR_ACTS.map((a) => {
-      const two = !!PAIR_FRAMES[a.key], slots = two ? [`${a.key}~1`, `${a.key}~2`] : [a.key], ims = slots.map((k) => have[`pair~${k}`]);
-      const pic = two ? cellImg(ims[0], `${a.zh} 1`, "pf1") + cellImg(ims[1], `${a.zh} 2`, "pf2") : cellImg(ims[0], a.zh);
-      const btns = slots.map((k, i) => `${ims[i]?.raw ? `<a class="mini" href="${ims[i].raw}" target="_blank" rel="noopener">原圖${two ? i + 1 : ""}</a> ` : ""}<button type="button" class="mini" data-regen="${k}">${ims[i] ? "重生" : "產生"}${two ? ` ${i + 1}` : ""}</button>`).join(" ")
-        + (two ? ` <button type="button" class="mini" data-regen="${slots.join(",")}">重生兩張</button>` : "");
-      return `<div data-k="${a.key}" style="border:1px solid #333;border-radius:8px;padding:4px;background:#141418">
-        <div class="mini" style="display:flex;justify-content:space-between;gap:4px"><b>${a.zh}${two ? "（輪播 1→2）" : ""}</b><span>${a.scene === "ktv" ? "KTV" : "飯店"}</span></div>
-        <div style="position:relative;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:url(${ctx.backdrop(a.scene)}) center/cover">${ims.some(Boolean) ? pic : `<span class="mini" style="position:absolute;inset:auto 0 40% 0;text-align:center;color:#999">還沒有</span>`}</div>
+    grid.innerHTML = PAIR_SLOTS.map((k) => {
+      const { act, frame } = slotOf(k), a = ACT[act], im = have[`pair~${k}`], label = a.zh + (frame ? ` 第${frame}格${frame === 1 ? "（還沒插入）" : "（插到底）"}` : "");
+      const pic = im ? `<img src="${im.cut}" alt="${esc(label)}" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:100%;max-width:100%;object-fit:contain">` : `<span class="mini" style="position:absolute;inset:auto 0 40% 0;text-align:center;color:#999">還沒有</span>`;
+      const btns = `${im?.raw ? `<a class="mini" href="${im.raw}" target="_blank" rel="noopener">原圖</a> ` : ""}<button type="button" class="mini" data-regen="${k}">${im ? "重生" : "產生"}</button>`
+        + (frame === 1 ? ` <button type="button" class="mini" data-regen="${act}~1,${act}~2">重生兩張（同 seed）</button>` : "");
+      return `<div data-k="${k}" style="border:1px solid #333;border-radius:8px;padding:4px;background:#141418;min-width:0">
+        <div class="mini" style="display:flex;justify-content:space-between;gap:4px"><b>${esc(label)}</b><span>${a.scene === "ktv" ? "KTV" : "飯店"}</span></div>
+        <div style="position:relative;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:url(${ctx.backdrop(a.scene)}) center/cover">${pic}</div>
         ${btns}
-        <div class="mini" style="white-space:pre-wrap;color:#aaa">${slots.map((k) => msg[k] || "").filter(Boolean).join("\n")}</div></div>`; }).join("");
-    tick();
+        <div class="mini" style="white-space:pre-wrap;color:#aaa">${esc(msg[k] || "")}</div>${info(im)}</div>`; }).join("");
   };
-  const tick = () => applyPairFrame(grid, frame2);
-  let frame2 = false;
-  startPairLoop((f2) => { frame2 = f2; tick(); });
   const note = {};
   const run = async (keys) => {
     if (busy) { say("還有在生，等它好了再按。"); return; }

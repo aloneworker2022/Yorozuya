@@ -2619,7 +2619,17 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
             # 換妻雙人圖：人數／第三人稱 tags 要壓在最前面（模型對開頭權重最高），不然常畫成 POV、男人不見
             lead = str(opts.get("lead") or "").strip()
             if lead and prompt:
-                prompt = f"{lead}, {prompt}"
+                # 2026-10-22 Al：雙人圖人數寫成有空格的「1 man／1 girl」，伺服器自己加的 1man／1girl 也跟著換（只有帶 lead 的雙人圖）
+                swap_n = {"1man": "1 man", "1girl": "1 girl", "1boy": "1 boy"}
+                seen_t: set[str] = set()
+                toks: list[str] = []
+                for tk in f"{lead}, {prompt}".split(","):
+                    tk = tk.strip()
+                    tk = swap_n.get(tk.lower(), tk)
+                    if tk and tk.lower() not in seen_t:
+                        seen_t.add(tk.lower())
+                        toks.append(tk)
+                prompt = ", ".join(toks)
     if not prompt and wf is None:
         return "", "ComfyUI 生圖要有 prompt 或整份 workflow"
     if sex_strip and prompt:
@@ -2684,6 +2694,21 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     )
     if err:
         return "", err
+    # 2026-10-22 換妻雙人圖：把實際送 ComfyUI 的 prompt／參數存一份在圖旁邊（<圖>.json），/api/swap/cafe/image 登記時帶進紀錄
+    if str(opts.get("lead") or "").strip():
+        try:
+            meta = {
+                "positive": prompt, "negative": negative, "ckpt": str(opts.get("ckpt") or ""), "seed": seed,
+                "steps": int(opts.get("steps") or comfy.DEFAULT_STEPS), "cfg": float(opts.get("cfg") or comfy.DEFAULT_CFG),
+                "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER, "clip_skip": comfy.DEFAULT_CLIP_SKIP,
+                "width": gen_w or int(opts.get("width") or comfy.DEFAULT_WIDTH), "height": gen_h or int(opts.get("height") or comfy.DEFAULT_HEIGHT),
+                "denoise": float(opts.get("pose_denoise") or 0) if pose_src is not None else None,
+                "pose_ref": str(opts.get("pose_ref") or "") if pose_src is not None else "",
+                "at": int(time.time()),
+            }
+            (out_dir / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
     # 立繪要疊在遊戲畫面上,背景得摳掉。摳不乾淨時 cut_background 會原圖不動
     # ——寧可留著背景,也不要交出一張被啃過的破圖。
     if want_cut:
@@ -5013,6 +5038,19 @@ def swap_cafe_image(body: dict):
     cut = _swap_copy(str(body.get("cut") or ""), str(body.get("cut_data") or ""), stem + "_cut") if (body.get("cut") or body.get("cut_data")) else ""
     d = _swap_load()
     rec = {"raw": raw, "cut": cut or raw, "at": int(time.time())}
+    # 雙人圖：生圖時存在原圖旁邊的實際 prompt／參數（<原圖>.json）帶進來；前端給的生圖秒數也存
+    try:
+        src = _asset_path(str(body.get("raw") or "").split("?")[0]) if body.get("raw") else None
+        side = src.with_name(src.name + ".json") if src is not None else None
+        if side is not None and side.is_file():
+            rec["gen"] = json.loads(side.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    try:
+        if float(body.get("sec") or 0) > 0:
+            rec.setdefault("gen", {})["sec"] = float(body["sec"])
+    except (TypeError, ValueError):
+        pass
     try:
         if int(body.get("seed") or 0) > 0:
             rec["seed"] = int(body["seed"])   # 雙人兩格：第 2 格沿用第 1 格的 seed
