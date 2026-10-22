@@ -12,7 +12,7 @@ import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=11";
 
 // ============================================================ 調整用的表
-export const CD = { min: 3, max: 8, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]] };   // 秒；半速；醉了 CD 變短（×）
+export const CD = { min: 10, max: 25, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]] };   // 秒（2026-10-22 改 10–25）；半速；醉了 CD 變短（×），但不會短於 min
 export const SCENE_CAP = { bar: 1, ktv: 2, hotel: 3 };   // 碰觸／調情的最高等級
 export const ACTS = {
   touch: [{ zh: "碰手", lv: 1 }, { zh: "搭肩", lv: 1 }, { zh: "摟腰", lv: 1 }, { zh: "摸大腿", lv: 1 }, { zh: "揉胸", lv: 2 }, { zh: "手伸進裙底", lv: 3 }],
@@ -497,7 +497,7 @@ export function openBar(ctx = {}, c, S = {}) {
         if (isAway(k)) continue;
         const fast = (CD.fastAt.find(([lv]) => sess.drunk[k] >= lv) || [0, 1])[1];
         cd[k].t += dt * slow;
-        if (cd[k].t >= cd[k].len * fast) { cd[k].t = 0; cd[k].len = rnd(CD.min, CD.max); void npcAct(k); }
+        if (cd[k].t >= Math.max(CD.min, cd[k].len * fast)) { cd[k].t = 0; cd[k].len = rnd(CD.min, CD.max); void npcAct(k); }
       }
     }
     renderNb();
