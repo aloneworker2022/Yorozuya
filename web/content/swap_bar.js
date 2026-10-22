@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=12";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=13";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=11";
 
@@ -16,10 +16,56 @@ export const CD = { min: 10, max: 25, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]]
 /** 2026-10-22 對方丈夫（他的目標就是換妻）：主動帶氣氛、最常找玩家的老婆。只改他，其他人照 TYPE_W／TARGET。 */
 export const HUSBAND = {
   cd: [10, 20],                                       // 他的 CD（秒）比別人短一點（仍在 10–25 內）
-  target: { wife: 0.65, player: 0.15, other: 0.1, all: 0.1 },   // all＝對大家開話題／敬酒（大家喝一杯）
-  typeW: { silence: { base: 0.8, p: -0.01, d: 0 }, chat: { base: 6, p: 0, d: 0 }, touch: { base: 1, p: 0.06, d: 0.03 }, lewd: { base: 0, p: 0.03, d: 0.025 } },
+  // 對象／種類權重 2026-10-22 v3 移到 ROLES.husband（依階段）
   aim: "你是今晚主動的東道主，目標是跟對方的妻子拉近距離、促成換妻：會帶氣氛、開話題、敬酒勸酒、找機會稱讚和親近她；進度低時調皮但有分寸，不要下流。",
 };
+/** 2026-10-22 v3：有目的的 NPC 行為。階段（依進度）→ 每個人的主要行為；對象照角色目的加權；同一種類不連續兩次。 */
+export const PHASES = [{ key: "icebreak", zh: "破冰", from: 0 }, { key: "warm", zh: "熱絡", from: 30 }, { key: "flirt", zh: "曖昧", from: 60 }];
+export const phaseOf = (progress) => [...PHASES].reverse().find((p) => progress >= p.from) || PHASES[0];
+/** 誰 → 誰 可以做哪些種類（換妻是男→女；兩個老婆之間只聊天，絕不碰觸／色）。all＝對方丈夫帶氣氛。 */
+export const PAIR_ALLOW = {
+  husband: { wife: ["chat", "touch", "lewd", "silence"], player: ["chat", "silence"], other: ["chat"], all: ["chat"] },
+  other: { player: ["chat", "touch", "lewd", "silence"], wife: ["chat"], husband: ["chat"] },
+  wife: { husband: ["chat", "touch", "lewd", "silence"], other: ["chat"], player: ["chat", "touch"] },
+};
+export const FEMALE = new Set(["wife", "other"]);
+/** 每個角色每個階段：target（對象權重）、type（種類權重；碰觸／色另外 ×(1＋醉度/100)）。 */
+export const ROLES = {
+  husband: {   // 主線：追玩家的老婆；帶氣氛；偶爾推自己老婆去陪玩家
+    icebreak: { target: { wife: 0.55, all: 0.3, player: 0.1, other: 0.05 }, type: { chat: 6, silence: 0.5, touch: 0.6 } },
+    warm: { target: { wife: 0.65, all: 0.15, player: 0.1, other: 0.1 }, type: { chat: 4, touch: 4, lewd: 0.5, silence: 0.3 } },
+    flirt: { target: { wife: 0.7, all: 0.1, player: 0.1, other: 0.1 }, type: { chat: 2, touch: 4, lewd: 3, silence: 0.2 } },
+  },
+  other: {     // 另一條主線：勾引玩家；安撫玩家的老婆（只聊天）
+    icebreak: { target: { player: 0.55, wife: 0.4, husband: 0.05 }, type: { chat: 6, silence: 1, touch: 0.6 } },
+    warm: { target: { player: 0.65, wife: 0.3, husband: 0.05 }, type: { chat: 3, touch: 4, lewd: 0.5, silence: 0.3 } },
+    flirt: { target: { player: 0.7, wife: 0.25, husband: 0.05 }, type: { chat: 2, touch: 3, lewd: 3, silence: 0.2 } },
+  },
+  wife: {      // 玩家的老婆：多半被動；醉了／進度高才會回應對方丈夫
+    icebreak: { init: 0.25, target: { other: 0.6, player: 0.3, husband: 0.1 }, type: { chat: 5, silence: 2, touch: 0.3 } },
+    warm: { init: 0.4, target: { other: 0.4, husband: 0.35, player: 0.25 }, type: { chat: 5, touch: 1, silence: 1 } },
+    flirt: { init: 0.55, target: { husband: 0.5, other: 0.3, player: 0.2 }, type: { chat: 4, touch: 2, lewd: 0.5, silence: 0.5 } },
+  },
+};
+export const WIFE_LEWD_DRUNK = 60;   // 老婆自己主動的色：醉度 ≥60 才可能
+export const WIFE_INIT_DRUNK = 200;  // 老婆主動機率＋醉度/200
+const wpick = (opts) => { const tot = opts.reduce((s, [, v]) => s + v, 0); if (tot <= 0) return ""; let r = Math.random() * tot; for (const [k, v] of opts) { if ((r -= v) < 0) return k; } return opts[opts.length - 1][0]; };
+/** 純函式（模擬也用這個）：回 { target, type } 或 null（老婆這輪不主動）。st：{ progress, drunk:{}, last:{}, away(k), seated(a,b) }。 */
+export function chooseAction(k, st) {
+  const ph = phaseOf(st.progress || 0).key, role = ROLES[k]?.[ph]; if (!role) return null;
+  const dr = st.drunk?.[k] || 0;
+  if (role.init != null && Math.random() >= role.init + dr / WIFE_INIT_DRUNK) return null;
+  const tOpts = Object.entries(role.target).filter(([x]) => x === "player" || x === "all" || !st.away?.(x)).map(([x, v]) => [x, v * (x !== "all" && st.seated?.(k, x) ? TARGET.seatBoost : 1)]);
+  const target = wpick(tOpts); if (!target) return null;
+  const allow = PAIR_ALLOW[k]?.[target] || ["chat"];
+  const types = Object.entries(role.type).filter(([t]) => allow.includes(t))
+    .filter(([t]) => !(FEMALE.has(k) && FEMALE.has(target) && t !== "chat"))   // 兩個老婆：只聊天
+    .filter(([t]) => !(k === "wife" && t === "lewd" && dr < WIFE_LEWD_DRUNK))
+    .filter(([t]) => !(k === "wife" && target === "husband" && ph === "icebreak" && (t === "touch" || t === "lewd")))   // 破冰時老婆不會主動碰對方丈夫
+    .map(([t, v]) => [t, (t === "touch" || t === "lewd" ? v * (1 + dr / 100) : v) * (st.last?.[k] === t ? 0 : 1)]);
+  const type = wpick(types) || (allow.includes("chat") ? "chat" : allow[0]);
+  return { target, type };
+}
 export const SCENE_CAP = { bar: 1, ktv: 2, hotel: 3 };   // 碰觸／調情的最高等級
 export const ACTS = {
   touch: [{ zh: "碰手", lv: 1 }, { zh: "搭肩", lv: 1 }, { zh: "摟腰", lv: 1 }, { zh: "摸大腿", lv: 1 }, { zh: "揉胸", lv: 2 }, { zh: "手伸進裙底", lv: 3 }],
@@ -403,24 +449,20 @@ export function openBar(ctx = {}, c, S = {}) {
   };
 
   // ---- NPC 自己的互動（CD 滿）
-  const typeOf = (k) => {
-    const pr = sess.progress, dr = sess.drunk[k], ws = Object.entries(k === "husband" ? HUSBAND.typeW : TYPE_W).map(([t, x]) => [t, Math.max(0, x.base + pr * x.p + dr * x.d)]);
-    let r = Math.random() * ws.reduce((s, [, v]) => s + v, 0);
-    for (const [t, v] of ws) { if ((r -= v) < 0) return t; } return "chat";
-  };
-  const actOf = (type) => pick(ACTS[type].filter((a) => a.lv <= SCENE_CAP[scene]));
   const seated = (a, b) => { const pair = [a, b].sort().join("-"); return sess.seat === "cross" ? ["husband-wife", "other-player"].includes(pair) : sess.seat && [sess.seat.split("-").sort().join("-")].includes(pair); };
-  const targetOf = (k) => {
-    if (k === "husband") {   // 對方丈夫：照 HUSBAND.target（坐在一起的照樣 ×seatBoost；不在場的拿掉）
-      const opts = Object.entries(HUSBAND.target).filter(([x]) => x === "player" || x === "all" || !isAway(x)).map(([x, v]) => [x, v * (x !== "all" && seated(k, x) ? TARGET.seatBoost : 1)]);
-      let r = Math.random() * opts.reduce((s, [, v]) => s + v, 0);
-      for (const [x, v] of opts) { if ((r -= v) < 0) return x; } return "wife";
-    }
-    const opts = [["player", TARGET.player * (seated(k, "player") ? TARGET.seatBoost : 1)]];
-    const others = NPCS.filter((x) => x !== k && !isAway(x));
-    for (const x of others) opts.push([x, ((1 - TARGET.player) / Math.max(1, others.length)) * (seated(k, x) ? TARGET.seatBoost : 1)]);
-    let r = Math.random() * opts.reduce((s, [, v]) => s + v, 0);
-    for (const [x, v] of opts) { if ((r -= v) < 0) return x; } return "player";
+  /** 碰觸／調情的動作：場景上限內；兩個女的之間永遠沒有（回 null＝改聊天）。 */
+  const actOf = (type, k, tgt) => { if (FEMALE.has(k) && FEMALE.has(tgt)) return null; const a = ACTS[type].filter((x) => x.lv <= SCENE_CAP[scene]); return a.length ? pick(a) : null; };
+  const lastType = {};
+  /** NPC↔NPC 聊天的題目（依誰對誰；兩個老婆只聊天：老手安撫新手）。 */
+  const chatTask = (k, tgt) => {
+    const nv = sess.nerves >= 0.6 ? "很緊張" : sess.nerves >= 0.3 ? "有點緊張" : "還算放得開", wd = DRUNK_ZH[dlv("wife")];
+    if (k === "husband" && tgt === "wife") return `你湊過去跟${wn}（玩家的妻子）搭話：稱讚她、逗她笑或勸她喝一口，調皮但有分寸。`;
+    if (k === "husband" && tgt === "other") return `你小聲推你老婆${w.name}去陪那位宅男丈夫（玩家），例如「老婆，去陪陪他啊」。`;
+    if (k === "other" && tgt === "wife") return `你是有經驗的人妻，小聲安撫第一次來、${nv}的${wn}（玩家的妻子）：問她是不是第一次、緊不緊張、結婚多久，聊聊彼此的老公，暗示「放輕鬆，很好玩的」。只聊天，不要碰她。`;
+    if (k === "other" && tgt === "husband") return `你小聲跟你老公${h.name}說一句（例如偷偷評論那位宅男丈夫）。`;
+    if (k === "wife" && tgt === "other") return `你小聲跟${w.name}（對方的妻子，看起來很有經驗）聊一句：害羞緊張地回答她或問她（例如你們常這樣嗎）。你現在${nv}、${wd}，越醉越放得開。只聊天。`;
+    if (k === "wife" && tgt === "husband") return `你回應${h.name}（對方的丈夫）的搭話，${nv}，${wd}；醉度越高越願意跟他多聊。`;
+    return `你小聲跟${name[tgt]}聊一句。`;
   };
   const npcAct = async (k, force) => {
     if (closed || isAway(k)) return;
@@ -429,8 +471,12 @@ export function openBar(ctx = {}, c, S = {}) {
       if (r < DRUNK.wastedSleep) { absent[k] = { why: "睡著了", until: Infinity }; dbg(`${name[k]} 醉倒睡著了`); status[k] = ""; checkEnd(); return; }
       if (r < DRUNK.wastedSleep + DRUNK.wastedVomit) { absent[k] = { why: "去廁所吐了", until: Date.now() + DRUNK.vomitSec * 1000 }; dbg(`${name[k]} 去廁所吐了`); return; }
     }
-    const type = force?.type || typeOf(k);
-    let tgt = force?.target || targetOf(k);
+    let ch = force?.type ? { target: force.target, type: force.type } : chooseAction(k, { progress: sess.progress, drunk: sess.drunk, last: lastType, away: isAway, seated });
+    if (!ch) return;   // 老婆這輪不主動
+    let { type } = ch, tgt = ch.target;
+    if (FEMALE.has(k) && FEMALE.has(tgt) && type !== "chat") type = "chat";   // 保險：兩個老婆之間只聊天
+    lastType[k] = type;
+    dbg(`${name[k]}（${phaseOf(sess.progress).zh}）→ ${tgt === "all" ? "大家" : name[tgt]}：${type}`);
     if (tgt === "all") {   // 對方丈夫帶氣氛：對大家開話題／敬酒，大家各喝一杯
       if (qn && !force) tgt = "wife";
       else {
@@ -445,9 +491,11 @@ export function openBar(ctx = {}, c, S = {}) {
         return;
       }
     }
-    if (tgt === "player" && qn && !force) tgt = NPCS.find((x) => x !== k && !isAway(x)) || "";
+    if (tgt === "player" && qn && !force) return;   // 你那邊正忙：這輪先不找你（不要亂改對象）
     if (!tgt) return;
-    const act = type === "touch" || type === "lewd" ? (force?.act ? { zh: force.act } : actOf(type)) : null;
+    if ((type === "touch" || type === "lewd") && !(PAIR_ALLOW[k]?.[tgt] || []).includes(type)) type = "chat";
+    const act = type === "touch" || type === "lewd" ? (force?.act ? { zh: force.act } : actOf(type, k, tgt)) : null;
+    if ((type === "touch" || type === "lewd") && !act) type = "chat";
     if (tgt === "player") {
       await queue(async () => {
         busyUI();
@@ -465,7 +513,7 @@ export function openBar(ctx = {}, c, S = {}) {
     let lines = [];
     if (type === "silence") lines = [pick(SILENCE).replace("{a}", name[k]).replace("{b}", name[tgt])];
     else {
-      const l1 = await say1(k, type === "chat" ? (k === "husband" && tgt === "wife" ? `你湊過去跟${name[tgt]}（玩家的妻子）搭話：稱讚她、逗她笑或勸她喝一口，調皮但有分寸。` : `你小聲跟${name[tgt]}聊一句。`) : `你對${name[tgt]}做了「${act.zh}」，小聲說一句。`, pick(FB[type === "chat" ? "chat" : type][k]));
+      const l1 = await say1(k, type === "chat" ? chatTask(k, tgt) : `你對${name[tgt]}做了「${act.zh}」，小聲說一句。`, pick(FB[type === "chat" ? "chat" : type][k]));
       lines = [`${name[k]}：${l1}`]; dbg(`訊息 target=${tgt} speaker=${k} label=${name[k]}（NPC↔NPC，名字列）`);
       let okP = 0.7;
       if (tgt === "wife" && k === "husband") okP = WIFE_ACCEPT.base + sess.open * WIFE_ACCEPT.open + sess.nerves * WIFE_ACCEPT.nerves + (seated("husband", "wife") ? WIFE_ACCEPT.seat : 0);
