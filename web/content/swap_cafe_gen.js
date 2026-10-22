@@ -6,6 +6,7 @@
 import { gameEngine } from "./rental_scene_gen.js?v=16";
 import { rollClients } from "./rental.js?v=7";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
+import { bindPairBox } from "./swap_pair_gen.js?v=1";
 
 // 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張
 export const SWAP_SCENES = {
@@ -27,8 +28,8 @@ const EXPR_EN = { normal: "gentle smile, calm relaxed expression", shy: "shy, bl
 const QUALITY_EN = "masterpiece, best quality, detailed, sharp focus, clear face";
 const PORTRAIT_EN = "solo, half-body portrait, upper body, cowboy shot from the waist up, facing viewer, looking at viewer, on a casual date at a cafe";
 // 綠幕：要換深綠（使用者說的 dark green，例 #1f5f2f）只改這一行的字（例 "solid dark green background"）；色鍵看「綠比紅藍多多少」，深綠也摳得掉。
-const GREEN_BG = "solid green background";
-const BG_EN = `simple background, ${GREEN_BG}, green screen, chroma key green background, no background scenery`;
+export const GREEN_BG = "solid green background";
+export const BG_EN = `simple background, ${GREEN_BG}, green screen, chroma key green background, no background scenery`;
 const BG_NEG = "white background, gradient background, green clothes, green hair, green eyes, background scenery, cafe interior, furniture, table, detailed background, shadow on background";
 const BASE_NEG = "full body, legs, feet, lower body, multiple people, extra person, clone, blurry, lowres, jpeg artifacts, nude, nsfw, nipples";
 
@@ -39,7 +40,7 @@ const GIRL_BUILD_EN = {
   "細腰寬臀": "narrow-waisted wide-hipped", "凹凸有致的沙漏身材": "hourglass-figured", "極端腰臀比的漫畫比例": "hourglass-figured",
 };
 const CUP_EN = { A: "flat chest", B: "small breasts", C: "medium breasts", D: "large breasts", E: "huge breasts", F: "huge breasts" };
-function girlInfo(g) {
+export function girlInfo(g) {
   const look = g?.look || {}, b = String(look.build || ""), h = Number(look.height_cm) || 0;
   let build = GIRL_BUILD_EN[b] || Object.entries(GIRL_BUILD_EN).find(([k]) => b && (b.includes(k) || k.includes(b)))?.[1] || "slender";
   if (h && h <= 154 && !build.includes("petite")) build = `petite ${build}`;
@@ -55,7 +56,7 @@ const MAN_PERSONA_EN = {
   dominant: "stern confident man with sharp eyes", otaku: "otaku man with glasses and messy hair, nervous pale man",
 };
 const MAN_OUTFIT_EN = { gentleman: "neat shirt and blazer", clingy: "casual polo shirt", showoff: "designer jacket and gold necklace", dominant: "dark suit, open collar", otaku: "checkered shirt over an anime t-shirt" };
-function manInfo(c = {}) {
+export function manInfo(c = {}) {
   const a = Number(c.age) || 0;
   const age = a >= 50 ? "man in his 50s" : a >= 40 ? "man in his 40s" : a >= 30 ? "man in his 30s" : a ? "young man in his 20s" : "adult man";
   return { desc: [age, MAN_PERSONA_EN[c.persona] || ""].filter(Boolean).join(", "), body: MAN_BUILD_EN[c.build] || MAN_BUILD_EN.average, outfit: MAN_OUTFIT_EN[c.persona] || "casual date outfit", build: c.build || "average" };
@@ -67,7 +68,7 @@ function autoNeg(ch, gi, mi) {
   return n.join(", ");
 }
 /** 她現在那身（同 rental_scene_gen.wornOutfit）。 */
-function wornOutfit(g) {
+export function wornOutfit(g) {
   const look = g?.look || {}, pick = g?.outfitPick, arr = (x) => (Array.isArray(x) ? x : []);
   if (Number.isInteger(pick) && arr(look.wardrobe)[pick]) return String(look.wardrobe[pick]);
   return String(look.career_outfit || look.style || "");
@@ -166,7 +167,7 @@ async function postImg(body) {
   if (!r.ok) throw new Error(j?.detail ? String(j.detail) : `生圖 ${r.status}`);
   return j;
 }
-async function waitImg(body, onTick, ms = 600000) {
+export async function waitImg(body, onTick, ms = 600000) {
   let j = await postImg({ ...body, retry: true }); const t0 = Date.now();
   while (Date.now() - t0 < ms) {
     if (j.status === "done" || j.status === "error") return j;
@@ -214,7 +215,7 @@ export async function browserChroma(url) {
   const g = c.getContext("2d"); g.drawImage(im, 0, 0); g.putImageData(chromaKeyData(g.getImageData(0, 0, c.width, c.height)), 0, 0);
   return c.toDataURL("image/png");
 }
-async function cutoutOf(url, say) {
+export async function cutoutOf(url, say) {
   try {
     say?.("綠幕去背（伺服器）……");
     const r = await fetch("/api/cutout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, mode: "chroma" }) });
@@ -328,7 +329,7 @@ export function bindSwapCafePanel(ctx = {}) {
     });
     return el;
   };
-  const show = async () => {
+  let show = async () => {
     try { S = await api.state(); $("sc-status").textContent = ""; } catch (e) { $("sc-status").textContent = String(e?.message || e); }
     ckpts = await usableCkpts();
     ckptNote = ckpts.length ? (ckpts.length < 2 ? "只有一個可用的 Comfy 模型，兩人共用" : "") : "抓不到 Comfy 模型清單（生圖器不是 Comfy、或 Comfy 沒開），對方夫妻沒有綁模型";
@@ -381,6 +382,10 @@ export function bindSwapCafePanel(ctx = {}) {
       acts.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.act === stageAct || x.dataset.ex === stageEx ? "true" : "false"));
     });
   }
+  // 2026-10-22 雙人互動圖（你老婆＋對方丈夫 × 8 動作）測試區塊：在 swap_pair_gen.js
+  const pairBox = bindPairBox({ girl: () => ctx.girl?.() || null, couple, state: () => S, setImages: (im) => { S.images = im; }, backdrop: (sc) => pickBackdrop(sc, 0) });
+  const show0 = show;
+  show = async () => { await show0(); pairBox?.render(); };
   sceneSel?.addEventListener("change", () => stage?.setBackdrop(backdrop));
   bgSel?.addEventListener("change", () => stage?.setBackdrop(backdrop));
   return { show, playStage };

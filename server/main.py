@@ -4921,7 +4921,8 @@ def rental_scene_image_put(body: dict):
 # ---- 2026-10-21 換妻：咖啡廳半身立繪（test_room）----
 _SWAP_DIR = ASSETS_DIR / "swap_cafe"
 _SWAP_STATE = _SWAP_DIR / "state.json"
-_SWAP_KEY = re.compile(r"^(wife|husband|other)~(normal|shy)$")
+# 2026-10-22 加雙人互動圖 pair~<動作>（owner＝她 id.couple id）
+_SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy)|pair~(chat|kiss|grope|fellatio|cunni|missionary|behind|seated))$")
 _SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 
 
