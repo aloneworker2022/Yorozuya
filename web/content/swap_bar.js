@@ -7,12 +7,19 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=11";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=12";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=11";
 
 // ============================================================ 調整用的表
 export const CD = { min: 10, max: 25, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]] };   // 秒（2026-10-22 改 10–25）；半速；醉了 CD 變短（×），但不會短於 min
+/** 2026-10-22 對方丈夫（他的目標就是換妻）：主動帶氣氛、最常找玩家的老婆。只改他，其他人照 TYPE_W／TARGET。 */
+export const HUSBAND = {
+  cd: [10, 20],                                       // 他的 CD（秒）比別人短一點（仍在 10–25 內）
+  target: { wife: 0.65, player: 0.15, other: 0.1, all: 0.1 },   // all＝對大家開話題／敬酒（大家喝一杯）
+  typeW: { silence: { base: 0.8, p: -0.01, d: 0 }, chat: { base: 6, p: 0, d: 0 }, touch: { base: 1, p: 0.06, d: 0.03 }, lewd: { base: 0, p: 0.03, d: 0.025 } },
+  aim: "你是今晚主動的東道主，目標是跟對方的妻子拉近距離、促成換妻：會帶氣氛、開話題、敬酒勸酒、找機會稱讚和親近她；進度低時調皮但有分寸，不要下流。",
+};
 export const SCENE_CAP = { bar: 1, ktv: 2, hotel: 3 };   // 碰觸／調情的最高等級
 export const ACTS = {
   touch: [{ zh: "碰手", lv: 1 }, { zh: "搭肩", lv: 1 }, { zh: "摟腰", lv: 1 }, { zh: "摸大腿", lv: 1 }, { zh: "揉胸", lv: 2 }, { zh: "手伸進裙底", lv: 3 }],
@@ -274,7 +281,7 @@ export function openBar(ctx = {}, c, S = {}) {
   };
   // 2026-10-22 修：AI 身分講清楚（你是誰、你丈夫／妻子是誰、玩家是誰），只准替自己說一句
   const persona = (k) => k === "husband"
-    ? `你是${h.name}（男，${h.age}歲），你的妻子是${w.name}。個性：${H_FLAVOR[hType]}。`
+    ? `你是${h.name}（男，${h.age}歲），你的妻子是${w.name}。個性：${H_FLAVOR[hType]}。${HUSBAND.aim}`
     : `你是${w.name}（女，${w.age}歲），你的丈夫是${h.name}。${w.look?.build || ""}${w.look?.cup ? `、${w.look.cup}罩杯` : ""}，個性：${W_FLAVOR[wType]}。`;
   const RULE = () => `場合：酒吧裡的換妻約會。另一對夫妻：玩家（矮胖的宅男，另一位丈夫）和他的妻子${wn}。對話紀錄裡「玩家」就是那位宅男丈夫，不是你。`
     + `你只能以自己的身分說話：只寫你自己的一句，「（動作）台詞」格式，繁體中文口語，60 字內；不要寫名字前綴、不要旁白、不要替任何其他人說話或寫別人的台詞。`;
@@ -295,7 +302,8 @@ export function openBar(ctx = {}, c, S = {}) {
   let tapSel = "";
   const nbHtml = ["player", ...NPCS].map((k) => `<button type="button" class="p" data-k="${k}"><span class="l1"><canvas></canvas><span>${esc(k === "player" ? "你" : name[k])}</span></span>${k === "player" ? "" : `<span class="cd"><i></i></span>`}<span class="s"></span></button>`).join("");
   nb.innerHTML = nbHtml;
-  const cd = {}; for (const k of NPCS) cd[k] = { t: 0, len: rnd(CD.min, CD.max) };
+  const cdRange = (k) => (k === "husband" ? HUSBAND.cd : [CD.min, CD.max]);
+  const cd = {}; for (const k of NPCS) cd[k] = { t: 0, len: rnd(...cdRange(k)) };
   const renderNb = () => {
     for (const el of nb.querySelectorAll(".p")) {
       const k = el.dataset.k; cupIcon(el.querySelector("canvas"), sess.drunk[k]);
@@ -396,13 +404,18 @@ export function openBar(ctx = {}, c, S = {}) {
 
   // ---- NPC 自己的互動（CD 滿）
   const typeOf = (k) => {
-    const pr = sess.progress, dr = sess.drunk[k], ws = Object.entries(TYPE_W).map(([t, x]) => [t, Math.max(0, x.base + pr * x.p + dr * x.d)]);
+    const pr = sess.progress, dr = sess.drunk[k], ws = Object.entries(k === "husband" ? HUSBAND.typeW : TYPE_W).map(([t, x]) => [t, Math.max(0, x.base + pr * x.p + dr * x.d)]);
     let r = Math.random() * ws.reduce((s, [, v]) => s + v, 0);
     for (const [t, v] of ws) { if ((r -= v) < 0) return t; } return "chat";
   };
   const actOf = (type) => pick(ACTS[type].filter((a) => a.lv <= SCENE_CAP[scene]));
   const seated = (a, b) => { const pair = [a, b].sort().join("-"); return sess.seat === "cross" ? ["husband-wife", "other-player"].includes(pair) : sess.seat && [sess.seat.split("-").sort().join("-")].includes(pair); };
   const targetOf = (k) => {
+    if (k === "husband") {   // 對方丈夫：照 HUSBAND.target（坐在一起的照樣 ×seatBoost；不在場的拿掉）
+      const opts = Object.entries(HUSBAND.target).filter(([x]) => x === "player" || x === "all" || !isAway(x)).map(([x, v]) => [x, v * (x !== "all" && seated(k, x) ? TARGET.seatBoost : 1)]);
+      let r = Math.random() * opts.reduce((s, [, v]) => s + v, 0);
+      for (const [x, v] of opts) { if ((r -= v) < 0) return x; } return "wife";
+    }
     const opts = [["player", TARGET.player * (seated(k, "player") ? TARGET.seatBoost : 1)]];
     const others = NPCS.filter((x) => x !== k && !isAway(x));
     for (const x of others) opts.push([x, ((1 - TARGET.player) / Math.max(1, others.length)) * (seated(k, x) ? TARGET.seatBoost : 1)]);
@@ -418,6 +431,20 @@ export function openBar(ctx = {}, c, S = {}) {
     }
     const type = force?.type || typeOf(k);
     let tgt = force?.target || targetOf(k);
+    if (tgt === "all") {   // 對方丈夫帶氣氛：對大家開話題／敬酒，大家各喝一杯
+      if (qn && !force) tgt = "wife";
+      else {
+        await queue(async () => {
+          busyUI(); await show([k]);
+          const ln = await say1(k, "你帶氣氛：對大家（玩家、他的妻子、你的妻子）開一個輕鬆的話題，或舉杯敬大家、勸大家多喝一點。", pick(["（舉起酒杯）來來來，為今晚認識大家乾一杯！", "（拍拍手）光喝酒太無聊了，我們來聊聊各自是怎麼追到老婆的？", "（替大家倒滿）別客氣，今晚我請，喝！"]));
+          status[k] = "帶氣氛：敬大家"; renderNb();
+          await line(k, ln, { to: "all" });
+          for (const x of ["player", ...NPCS]) if (!isAway(x)) drink(x);
+          prog(NPC_PROG.chat, "對方丈夫帶氣氛"); save();
+        });
+        return;
+      }
+    }
     if (tgt === "player" && qn && !force) tgt = NPCS.find((x) => x !== k && !isAway(x)) || "";
     if (!tgt) return;
     const act = type === "touch" || type === "lewd" ? (force?.act ? { zh: force.act } : actOf(type)) : null;
@@ -438,7 +465,7 @@ export function openBar(ctx = {}, c, S = {}) {
     let lines = [];
     if (type === "silence") lines = [pick(SILENCE).replace("{a}", name[k]).replace("{b}", name[tgt])];
     else {
-      const l1 = await say1(k, type === "chat" ? `你小聲跟${name[tgt]}聊一句。` : `你對${name[tgt]}做了「${act.zh}」，小聲說一句。`, pick(FB[type === "chat" ? "chat" : type][k]));
+      const l1 = await say1(k, type === "chat" ? (k === "husband" && tgt === "wife" ? `你湊過去跟${name[tgt]}（玩家的妻子）搭話：稱讚她、逗她笑或勸她喝一口，調皮但有分寸。` : `你小聲跟${name[tgt]}聊一句。`) : `你對${name[tgt]}做了「${act.zh}」，小聲說一句。`, pick(FB[type === "chat" ? "chat" : type][k]));
       lines = [`${name[k]}：${l1}`]; dbg(`訊息 target=${tgt} speaker=${k} label=${name[k]}（NPC↔NPC，名字列）`);
       let okP = 0.7;
       if (tgt === "wife" && k === "husband") okP = WIFE_ACCEPT.base + sess.open * WIFE_ACCEPT.open + sess.nerves * WIFE_ACCEPT.nerves + (seated("husband", "wife") ? WIFE_ACCEPT.seat : 0);
@@ -497,7 +524,7 @@ export function openBar(ctx = {}, c, S = {}) {
         if (isAway(k)) continue;
         const fast = (CD.fastAt.find(([lv]) => sess.drunk[k] >= lv) || [0, 1])[1];
         cd[k].t += dt * slow;
-        if (cd[k].t >= Math.max(CD.min, cd[k].len * fast)) { cd[k].t = 0; cd[k].len = rnd(CD.min, CD.max); void npcAct(k); }
+        if (cd[k].t >= Math.max(CD.min, cd[k].len * fast)) { cd[k].t = 0; cd[k].len = rnd(...cdRange(k)); void npcAct(k); }
       }
     }
     renderNb();
