@@ -5,29 +5,29 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
-import { api, wornOutfit, waitImg, chromaKeyData, CHROMA } from "./swap_cafe_gen.js?v=20";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA } from "./swap_cafe_gen.js?v=21";
 
 // 2026-10-23 Al 核可：雙人圖預設 prompt 全部改結構（只有雙人圖）。前端給「每段要什麼 tag」（pair 物件），伺服器組成
-//   [品質], 1boy, 1girl, hetero, <取景>, from side, <動作≤5>, simple background, green background, chroma key
+//   [品質], 1boy, 1girl, hetero, <取景>, [from side（只有 side:true 的動作；聊天／接吻不加，會畫成背對背）], <動作>, (green background:1.3), (simple background:1.2), green screen, chroma key
 //   BREAK 1boy, <他：年紀、髮、臉、身材、鬍子、體毛、膚色、衣服、他的姿勢>
 //   BREAK 1girl, adult, <她：身材、髮色＋髮型、瞳色、特徵、膚色（伺服器從人設翻）>, <她的姿勢>, <表情>, <衣服>, <露點 tags>
 // 品質 tag 伺服器看模型名（pony→score_9…；其他→masterpiece…）；負向＝這裡給的原樣（去重）。BREAK 由 comfy.py 分段編碼再 ConditioningConcat。
 // framing：half＝upper body；wide＝wide shot, full body（口交／舔／交配）。clothes：dressed｜partial｜nude。
 export const PAIR_ACTS = [
   { key: "chat", zh: "聊天", scene: "ktv", framing: "half", rating: "sfw", clothes: "dressed",
-    act: "sitting, side-by-side, conversation, smile, holding cup", his: "sitting", her: "sitting, holding cup", expr: "smile, blush" },
+    act: "facing another, looking at another, eye contact, sitting, conversation, smile, holding cup", his: "facing another, leaning forward, hand on another's shoulder", her: "facing another, looking at another, smile, blush", expr: "smile, blush", neg: "back-to-back, looking away" },
   { key: "kiss", zh: "接吻", scene: "ktv", framing: "half", rating: "sfw", clothes: "dressed",
-    act: "kiss, face to face, embrace, closed eyes", his: "hand on another's cheek", her: "hand on another's chest", expr: "closed eyes, blush" },
-  { key: "grope", zh: "摸胸部", scene: "ktv", framing: "half", rating: "nsfw", clothes: "dressed",
+    act: "kiss, face to face, facing another, embrace, closed eyes", neg: "back-to-back, looking away", his: "hand on another's cheek", her: "hand on another's chest", expr: "closed eyes, blush" },
+  { key: "grope", zh: "摸胸部", scene: "ktv", framing: "half", rating: "nsfw", clothes: "dressed", side: true,
     act: "grabbing another's breast, from behind, groping, blush", his: "standing behind, hands on another's breasts", her: "standing", expr: "blush, embarrassed, open mouth", body: "breasts" },
-  { key: "fellatio", zh: "口交", scene: "ktv", framing: "wide", rating: "nsfw", clothes: "partial",
+  { key: "fellatio", zh: "口交", scene: "ktv", framing: "wide", rating: "nsfw", clothes: "partial", side: true,
     act: "fellatio, kneeling, penis, hand on another's head", his: "standing, hand on another's head", her: "kneeling, looking up", expr: "blush", hisCl: "pants down, penis", herCl: "open shirt", body: "penis" },
-  { key: "cunni", zh: "舔陰唇", scene: "ktv", framing: "wide", rating: "nsfw", clothes: "partial",
+  { key: "cunni", zh: "舔陰唇", scene: "ktv", framing: "wide", rating: "nsfw", clothes: "partial", side: true,
     act: "cunnilingus, spread legs, sitting, head between thighs", his: "kneeling, head between thighs", her: "sitting, spread legs, head back", expr: "blush, open mouth", herCl: "skirt lift, panties aside", body: "pussy" },
   // 三個交配動作各兩格（同 seed）：第 1 格還沒插入、第 2 格插到底猛撞
-  { key: "missionary", zh: "傳教士體位", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", his: "on top, kneeling", her: "lying, on back, spread legs", body: "nipples, pussy" },
-  { key: "behind", zh: "背後", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", his: "kneeling, hands on another's hips", her: "all fours, looking back", body: "nipples, pussy" },
-  { key: "seated", zh: "面對面坐著擁吻交配", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", his: "sitting", her: "straddling, arms around neck", body: "nipples, pussy" },
+  { key: "missionary", zh: "傳教士體位", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "on top, kneeling", her: "lying, on back, spread legs", body: "nipples, pussy" },
+  { key: "behind", zh: "背後", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "kneeling, hands on another's hips", her: "all fours, looking back", body: "nipples, pussy" },
+  { key: "seated", zh: "面對面坐著擁吻交配", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "sitting", her: "straddling, arms around neck", body: "nipples, pussy" },
 ];
 export const PAIR_KEYS = PAIR_ACTS.map((a) => a.key);
 // 2026-10-22 Al：第 1 格停 2 秒、第 2 格停 0.8 秒（第 2 格被撞得晃：SLAM_HITS 下、每下 SLAM_PX 位移）
@@ -70,9 +70,9 @@ export function pairPrompt(slot, wife, couple) {
   const cupL = String(wife?.look?.cup || "").trim().charAt(0).toUpperCase(), cup = CUP_TAG[cupL] || (cupL >= "G" && cupL <= "Z" ? "gigantic breasts" : "");
   const herCl = nude ? "nude" : a.clothes === "partial" ? a.herCl || "clothes pull" : "";   // dressed＝伺服器翻她的生涯服裝
   const body = dedupe(cup, a.body || "");
-  const neg = dedupe(NEG_BASE, BG_NEG, a.framing === "half" ? "bed" : "white sheets", frame === 1 ? "penetration, sex" : "", a.clothes === "dressed" ? "nude, nipples" : "");
+  const neg = dedupe(NEG_BASE, BG_NEG, a.framing === "half" ? "bed" : "white sheets", a.neg || "", frame === 1 ? "penetration, sex" : "", a.clothes === "dressed" ? "nude, nipples" : "");
   return {
-    framing: FRAME_EN[a.framing], shared: dedupe(fr?.act || a.act), male, herPose: dedupe(a.her || ""), expr: dedupe(fr?.expr || a.expr || ""),
+    framing: FRAME_EN[a.framing], fromSide: !!a.side, shared: dedupe(fr?.act || a.act), male, herPose: dedupe(a.her || ""), expr: dedupe(fr?.expr || a.expr || ""),
     herClothes: herCl, dressed: a.clothes === "dressed", body, neg,
   };
 }
@@ -97,13 +97,9 @@ const loadImg2 = (url) => new Promise((ok, no) => { const im = new Image(); im.o
 /** 瀏覽器色鍵＋量：四邊像素有幾成是綠的（G−max(R,B) > 16）、摳掉幾成。 */
 async function browserCutMeasured(url) {
   const im = await loadImg2(url), c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
-  const g = c.getContext("2d"); g.drawImage(im, 0, 0); const d = g.getImageData(0, 0, c.width, c.height), W = c.width, H = c.height, p = d.data;
-  const gd = (k) => p[k * 4 + 1] - Math.max(p[k * 4], p[k * 4 + 2]); let eg = 0, en = 0;
-  for (let x = 0; x < W; x++) for (const k of [x, (H - 1) * W + x]) { en++; if (gd(k) > CHROMA.lo) eg++; }
-  for (let y = 1; y < H - 1; y++) for (const k of [y * W, y * W + W - 1]) { en++; if (gd(k) > CHROMA.lo) eg++; }
-  chromaKeyData(d); let rm = 0; for (let k = 0; k < W * H; k++) if (p[k * 4 + 3] < 128) rm++;
+  const g = c.getContext("2d"); g.drawImage(im, 0, 0); const d = chromaKeyData(g.getImageData(0, 0, c.width, c.height));
   g.putImageData(d, 0, 0);
-  return { data: c.toDataURL("image/png"), border_green: en ? eg / en : 0, removed: rm / (W * H) };
+  return { data: c.toDataURL("image/png"), border_green: d.chroma.border_green, removed: d.chroma.removed };
 }
 const cutOk = (bgreen, removed) => bgreen >= 0.5 && removed >= 0.05;
 /** 伺服器色鍵 → 不行就瀏覽器；回 {cut|cut_data, how, cutinfo:{ok, how, border_green, removed, why}}。 */

@@ -194,41 +194,74 @@ def cut_background(
     return True, f"去背完成(摳掉 {cov:.0%},外框 {border:.0%})"
 
 
-# ---- 2026-10-21 綠幕去背（換妻咖啡廳立繪）----
-# 白底去背會啃到白衣服／白皮膚，改成純綠背景用色鍵摳：
-# 綠度 gd = G − max(R, B)。gd ≥ CHROMA_HI 全透明、≤ CHROMA_LO 不動、中間半透明（軟邊）。
-# 只摳「從四邊連過來」的綠區；角色身上被包住的綠色不動，除非那一塊很大又很純（手臂與身體之間露出的背景）。
-# 邊緣像素去溢色：G 壓到 max(R, B)，不會留一圈綠邊。
+# ---- 2026-10-21 綠幕去背（換妻咖啡廳立繪）／2026-10-23 改成「取樣背景色＋HSV 色相」色鍵 ----
+# 舊版用綠度 G−max(R,B) 做 16–44 的軟邊：模型畫的綠常常不純（偏暗、偏灰、偏藍綠、漸層、雜訊），
+# 綠度落在軟邊區間 → 整片背景變成半透明的綠紗。新版：
+#  (a) 四邊像素取中位數當背景色，以它的色相為準（不是假設 #00ff00）
+#  (b) HSV：色相在背景色相 ±CH_HUE_CORE° 內、飽和度夠 → 全透明；只有色相 ±CH_HUE_SOFT° 或飽和度略低的才給軟邊
+#  (c) 從四邊 flood fill 連通的背景色；另外整張找被包住的大塊明顯綠（手臂與身體之間）
+#  (d) 留下來的邊緣像素去溢色：G 壓到 max(R, B)
+#  (e) 收尾：alpha < CH_VEIL 的背景色像素一律全透明（不留綠紗）
+CH_HUE_CORE = 28      # 度
+CH_HUE_SOFT = 40      # 度
+CH_S_MIN = 30         # 0–255；核心飽和度下限 = clamp(背景 S × 0.45, CH_S_MIN, 60)
+CH_V_MIN = 26         # 太暗的不當背景（黑髮、陰影）
+CH_VEIL = 102         # 40% alpha
+CHROMA_ENCLOSED_MIN = 0.002   # 被包住的綠區至少佔全圖這個比例才當背景
+# 舊常數保留給呼叫端（lo／hi 參數不再使用）
 CHROMA_LO = 16
 CHROMA_HI = 44
-CHROMA_ENCLOSED_MIN = 0.002   # 被包住的綠區至少佔全圖這個比例、而且平均綠度夠高才當背景
 CHROMA_ENCLOSED_GD = 70
 
 
+def _border_keys(W: int, H: int) -> list[int]:
+    ks = [x for x in range(W)] + [(H - 1) * W + x for x in range(W)]
+    ks += [y * W for y in range(1, H - 1)] + [y * W + W - 1 for y in range(1, H - 1)]
+    return ks
+
+
 def chroma_key(path: Path, lo: int = CHROMA_LO, hi: int = CHROMA_HI) -> tuple[bool, str, Path]:
-    """綠幕去背。回 (changed, why, 輸出路徑)；非 PNG 另存成同名 .png。"""
+    """綠幕去背。回 (changed, why, 輸出路徑)；非 PNG 另存成同名 .png。量到的比例放 LAST_CHROMA。"""
+    import colorsys
     if not AVAILABLE:
         return False, "沒裝 Pillow", path
     im = Image.open(path).convert("RGBA")
     W, H = im.size
-    px = im.load()
     N = W * H
-    gd = bytearray(N)
-    for y in range(H):
-        row = y * W
-        for x in range(W):
-            r, g, b, _a = px[x, y]
-            d = g - (r if r > b else b)
-            gd[row + x] = 0 if d < 0 else (255 if d > 255 else d)
-    bg = bytearray(N)   # 1 = 背景（從邊連過來的綠）
-    q = deque()
-    for x in range(W):
-        q.append(x); q.append((H - 1) * W + x)
-    for y in range(H):
-        q.append(y * W); q.append(y * W + W - 1)
+    hb, sb, vb = (b.tobytes() for b in im.convert("RGB").convert("HSV").split())
+    px = im.load()
+    border = _border_keys(W, H)
+    # (a) 背景色：四邊中位數
+    rgb = [px[k % W, k // W] for k in border]
+    med = [sorted(c[i] for c in rgb)[len(rgb) // 2] for i in range(3)]
+    h0, s0, v0 = colorsys.rgb_to_hsv(*(c / 255 for c in med))
+    hue_ok = 60 / 360 <= h0 <= 190 / 360 and s0 >= 0.12
+    bh = round((h0 if hue_ok else 1 / 3) * 255)
+    s_core = int(max(CH_S_MIN, min(60, s0 * 255 * 0.45)))
+    s_soft = int(s_core * 0.6)
+    hc, hs = CH_HUE_CORE * 255 // 360, CH_HUE_SOFT * 255 // 360
+    # 每點：0 不是背景色、1 軟邊、2 核心；soft 的 alpha 另算
+    cls = bytearray(N)
+    alpha = bytearray(b"\xff") * N
+    for k in range(N):
+        if vb[k] < CH_V_MIN or sb[k] < s_soft:
+            continue
+        d = abs(hb[k] - bh); d = 256 - d if d > 128 else d
+        if d > hs:
+            continue
+        if d <= hc and sb[k] >= s_core:
+            cls[k] = 2; alpha[k] = 0
+        else:
+            fh = 0.0 if d <= hc else (d - hc) / max(1, hs - hc)
+            fs = 0.0 if sb[k] >= s_core else (s_core - sb[k]) / max(1, s_core - s_soft)
+            cls[k] = 1; alpha[k] = min(255, int(255 * max(fh, fs)))
+    border_green = sum(1 for k in border if cls[k]) / len(border) if border else 0.0
+    # (c) flood fill
+    bg = bytearray(N)
+    q = deque(k for k in border if cls[k])
     while q:
         k = q.pop()
-        if bg[k] or gd[k] <= lo:
+        if bg[k] or not cls[k]:
             continue
         bg[k] = 1
         x = k % W
@@ -236,50 +269,51 @@ def chroma_key(path: Path, lo: int = CHROMA_LO, hi: int = CHROMA_HI) -> tuple[bo
         if x < W - 1: q.append(k + 1)
         if k >= W: q.append(k - W)
         if k < N - W: q.append(k + W)
-    # 2026-10-23 量綠幕：四邊像素有幾成是綠的（gd > lo）——模型沒畫綠底時這個會很低，去背就沒效果
-    edge_n = 2 * W + 2 * max(0, H - 2)
-    edge_g = sum(1 for x in range(W) for k in (x, (H - 1) * W + x) if gd[k] > lo) + sum(1 for y in range(1, H - 1) for k in (y * W, y * W + W - 1) if gd[k] > lo)
-    border_green = edge_g / edge_n if edge_n else 0.0
-    # 被包住的大塊純綠（手臂和身體之間）也是背景
     seen = bytearray(N)
     for s in range(N):
-        if bg[s] or seen[s] or gd[s] < hi:
+        if bg[s] or seen[s] or cls[s] != 2:
             continue
-        comp, tot = [], 0
-        q.append(s); seen[s] = 1
+        comp = []; q.append(s); seen[s] = 1
         while q:
-            k = q.pop(); comp.append(k); tot += gd[k]
+            k = q.pop(); comp.append(k)
             x = k % W
             for n in ((k - 1) if x > 0 else -1, (k + 1) if x < W - 1 else -1, k - W, k + W):
-                if 0 <= n < N and not seen[n] and not bg[n] and gd[n] > lo:
+                if 0 <= n < N and not seen[n] and not bg[n] and cls[n]:
                     seen[n] = 1; q.append(n)
-        if len(comp) >= N * CHROMA_ENCLOSED_MIN and tot / len(comp) >= CHROMA_ENCLOSED_GD:
+        if len(comp) >= N * CHROMA_ENCLOSED_MIN and sum(1 for k in comp if cls[k] == 2) >= 0.7 * len(comp):
             for k in comp:
                 bg[k] = 1
-    changed = 0
-    span = max(1, hi - lo)
+    changed = removed = 0
     for k in range(N):
         x, y = k % W, k // W
         if bg[k]:
-            a = 255 - min(255, (gd[k] - lo) * 255 // span)
+            a = alpha[k]
+            if a < CH_VEIL:          # (e) 不留綠紗
+                a = 0
         else:
-            a = 255
             edge = (x > 0 and bg[k - 1]) or (x < W - 1 and bg[k + 1]) or (k >= W and bg[k - W]) or (k < N - W and bg[k + W])
             if not edge:
                 continue
+            a = 255
         r, g, b, a0 = px[x, y]
         m = r if r > b else b
-        if g > m:   # 去溢色
+        if g > m:                    # (d) 去溢色
             g = m
-        px[x, y] = (r, g, b, min(a, a0))
+        a = min(a, a0)
+        px[x, y] = (r, g, b, a)
         changed += 1
-    removed = sum(bg) / N if N else 0.0
-    LAST_CHROMA.clear(); LAST_CHROMA.update({"border_green": round(border_green, 4), "removed": round(removed, 4)})
-    if not changed:
-        return False, f"沒有綠色背景（四邊綠 {border_green:.0%}）", path
+        if a == 0:
+            removed += 1
+    removed_r = removed / N if N else 0.0
+    LAST_CHROMA.clear()
+    LAST_CHROMA.update({"border_green": round(border_green, 4), "removed": round(removed_r, 4),
+                        "bg_rgb": med, "bg_hue": round(h0 * 360), "bg_ok": hue_ok})
+    tag = f"背景色 #{med[0]:02x}{med[1]:02x}{med[2]:02x} 色相 {round(h0 * 360)}°、四邊綠 {border_green:.0%}"
+    if not removed:
+        return False, f"沒有綠色背景（{tag}）", path
     out = path if path.suffix.lower() == ".png" else path.with_suffix(".png")
     im.save(out)
-    return True, f"綠幕去背 {sum(bg)} px（四邊綠 {border_green:.0%}、摳掉 {removed:.0%}）", out
+    return True, f"綠幕去背（{tag}、摳掉 {removed_r:.0%}）", out
 
 
-LAST_CHROMA: dict = {}   # 最近一次 chroma_key 量到的 {border_green, removed}（/api/cutout 回給前端顯示）
+LAST_CHROMA: dict = {}   # 最近一次 chroma_key 量到的 {border_green, removed, bg_rgb, bg_hue, bg_ok}（/api/cutout 回給前端顯示）

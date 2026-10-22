@@ -2476,7 +2476,15 @@ async def cutout_run(body: CutIn):
     if p is None:
         raise HTTPException(404, "找不到這張圖(只認 /assets/portraits/ 與 /assets/testword/)")
     if body.mode == "chroma":
-        changed, why, out = await asyncio.to_thread(cutout.chroma_key, p)
+        # 2026-10-23 不再就地覆寫原圖（以前原圖被摳過、「原圖」連結與重新去背拿到的都是已摳的）：另存 <stem>_ck.png
+        ck = p.with_name(f"{p.stem}_ck.png")
+        if p.stem.endswith("_ck"):
+            ck = p
+        else:
+            shutil.copyfile(p, ck)
+        changed, why, out = await asyncio.to_thread(cutout.chroma_key, ck)
+        if not changed and ck != p:
+            ck.unlink(missing_ok=True); out = p
         _note_cut(out.name, changed, why)
         base = body.url.split("?")[0]
         if out != p:
@@ -2619,7 +2627,7 @@ def _pair_prompts(opts: dict) -> tuple[str, str]:
     if not her_cl and pr.get("dressed"):
         worn = str(opts.get("outfit") or "").strip() or _outfit_of(ch)
         her_cl = sdtags.outfit_en(worn) or "casual clothes"
-    shared = _pair_tags(q, "1boy, 1girl, hetero", str(pr.get("framing") or ""), "from side", pr.get("shared") or [], _PAIR_BG)
+    shared = _pair_tags(q, "1boy, 1girl, hetero", str(pr.get("framing") or ""), "from side" if pr.get("fromSide", True) else "", pr.get("shared") or [], _PAIR_BG)
     male = _pair_tags("1boy", _PAIR_BG_REPEAT, pr.get("male") or [])
     female = _pair_tags("1girl, adult", _PAIR_BG_REPEAT, tr(sdtags.BUILD, "build"), tr(sdtags.HAIR_COLOR, "hair_color"), tr(sdtags.HAIR, "hair"), tr(sdtags.EYE_COLOR, "eye_color"),
                         tr(sdtags.FEATURE, "feature"), skin, pr.get("herPose") or [], pr.get("expr") or [], her_cl, pr.get("body") or [])

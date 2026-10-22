@@ -6,7 +6,7 @@
 import { gameEngine } from "./rental_scene_gen.js?v=16";
 import { rollClients } from "./rental.js?v=7";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
-import { bindPairBox } from "./swap_pair_gen.js?v=7";
+import { bindPairBox } from "./swap_pair_gen.js?v=8";
 
 // 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張
 export const SWAP_SCENES = {
@@ -183,31 +183,45 @@ async function isCut(url) {
   const pts = [[2, 2], [W - 3, 2], [2, H >> 1], [W - 3, H >> 1], [W >> 1, 2]];
   return pts.filter(([x, y]) => g.getImageData(x, y, 1, 1).data[3] < 40).length >= 3;
 }
-// 同 server/cutout.py chroma_key：綠度 gd＝G−max(R,B)；LO 以下不動、HI 以上全透明、中間軟邊
-export const CHROMA = { lo: 16, hi: 44, enclosedMin: 0.002, enclosedGd: 70 };
-/** 綠幕色鍵：只摳從四邊連過來的綠（角色身上的綠不動，除非是被包住的大塊純綠背景），邊緣去溢色。輸入 url 或 ImageData；回 dataURL（或 {data}）。 */
+// 同 server/cutout.py chroma_key（2026-10-23 版）：四邊中位數取背景色 → HSV 色相 ±hueCore° 且飽和度夠＝全透明，
+// ±hueSoft° 或飽和度略低＝軟邊；從四邊 flood fill＋被包住的大塊核心綠；邊緣去溢色；alpha < veil 的背景色像素直接全透明（不留綠紗）
+export const CHROMA = { hueCore: 28, hueSoft: 40, sMin: 30, vMin: 26, veil: 102, enclosedMin: 0.002, lo: 16 };
+const hsv8 = (r, g, b) => { const mx = Math.max(r, g, b), mn = Math.min(r, g, b), c = mx - mn; let h = 0;
+  if (c) h = mx === r ? ((g - b) / c + 6) % 6 : mx === g ? (b - r) / c + 2 : (r - g) / c + 4;
+  return [Math.round(h / 6 * 255), mx ? Math.round(c * 255 / mx) : 0, mx]; };
+/** 綠幕色鍵（就地改 ImageData）；回 d，量到的比例放 d.chroma = {border_green, removed, bg_rgb, bg_hue, bg_ok}。 */
 export function chromaKeyData(d) {
-  const { lo, hi } = CHROMA, W = d.width, H = d.height, p = d.data, N = W * H, gd = new Uint8Array(N), bg = new Uint8Array(N);
-  for (let k = 0; k < N; k++) { const i = k * 4, m = Math.max(p[i], p[i + 2]), v = p[i + 1] - m; gd[k] = v < 0 ? 0 : v > 255 ? 255 : v; }
-  const st = [];
-  for (let x = 0; x < W; x++) st.push(x, (H - 1) * W + x); for (let y = 0; y < H; y++) st.push(y * W, y * W + W - 1);
-  while (st.length) { const k = st.pop(); if (bg[k] || gd[k] <= lo) continue; bg[k] = 1; const x = k % W;
+  const C = CHROMA, W = d.width, H = d.height, p = d.data, N = W * H;
+  const border = []; for (let x = 0; x < W; x++) border.push(x, (H - 1) * W + x); for (let y = 1; y < H - 1; y++) border.push(y * W, y * W + W - 1);
+  const med = [0, 1, 2].map((i) => { const a = border.map((k) => p[k * 4 + i]).sort((x, y) => x - y); return a[a.length >> 1]; });
+  const [h0, s0] = hsv8(...med), hueDeg = Math.round(h0 / 255 * 360), ok = hueDeg >= 60 && hueDeg <= 190 && s0 >= 0.12 * 255;
+  const bh = ok ? h0 : 85, sCore = Math.max(C.sMin, Math.min(60, Math.floor(s0 * 0.45))), sSoft = Math.floor(sCore * 0.6);
+  const hc = Math.floor(C.hueCore * 255 / 360), hs = Math.floor(C.hueSoft * 255 / 360);
+  const cls = new Uint8Array(N), al = new Uint8Array(N).fill(255);
+  for (let k = 0; k < N; k++) { const i = k * 4, [h, s, v] = hsv8(p[i], p[i + 1], p[i + 2]);
+    if (v < C.vMin || s < sSoft) continue; let dd = Math.abs(h - bh); if (dd > 128) dd = 256 - dd; if (dd > hs) continue;
+    if (dd <= hc && s >= sCore) { cls[k] = 2; al[k] = 0; }
+    else { const fh = dd <= hc ? 0 : (dd - hc) / Math.max(1, hs - hc), fs = s >= sCore ? 0 : (sCore - s) / Math.max(1, sCore - sSoft); cls[k] = 1; al[k] = Math.min(255, Math.floor(255 * Math.max(fh, fs))); } }
+  const bgr = border.filter((k) => cls[k]).length / (border.length || 1);
+  const bg = new Uint8Array(N), st = border.filter((k) => cls[k]);
+  while (st.length) { const k = st.pop(); if (bg[k] || !cls[k]) continue; bg[k] = 1; const x = k % W;
     if (x > 0) st.push(k - 1); if (x < W - 1) st.push(k + 1); if (k >= W) st.push(k - W); if (k < N - W) st.push(k + W); }
   const seen = new Uint8Array(N);
   for (let s = 0; s < N; s++) {
-    if (bg[s] || seen[s] || gd[s] < hi) continue;
-    const comp = []; let tot = 0; st.push(s); seen[s] = 1;
-    while (st.length) { const k = st.pop(); comp.push(k); tot += gd[k]; const x = k % W;
-      for (const n of [x > 0 ? k - 1 : -1, x < W - 1 ? k + 1 : -1, k - W, k + W]) if (n >= 0 && n < N && !seen[n] && !bg[n] && gd[n] > lo) { seen[n] = 1; st.push(n); } }
-    if (comp.length >= N * CHROMA.enclosedMin && tot / comp.length >= CHROMA.enclosedGd) for (const k of comp) bg[k] = 1;
+    if (bg[s] || seen[s] || cls[s] !== 2) continue;
+    const comp = []; let core = 0; st.push(s); seen[s] = 1;
+    while (st.length) { const k = st.pop(); comp.push(k); if (cls[k] === 2) core++; const x = k % W;
+      for (const n of [x > 0 ? k - 1 : -1, x < W - 1 ? k + 1 : -1, k - W, k + W]) if (n >= 0 && n < N && !seen[n] && !bg[n] && cls[n]) { seen[n] = 1; st.push(n); } }
+    if (comp.length >= N * C.enclosedMin && core >= 0.7 * comp.length) for (const k of comp) bg[k] = 1;
   }
-  const span = Math.max(1, hi - lo);
+  let removed = 0;
   for (let k = 0; k < N; k++) {
     const x = k % W; let a = 255;
-    if (bg[k]) a = 255 - Math.min(255, Math.floor((gd[k] - lo) * 255 / span));
+    if (bg[k]) { a = al[k]; if (a < C.veil) a = 0; }
     else if (!((x > 0 && bg[k - 1]) || (x < W - 1 && bg[k + 1]) || (k >= W && bg[k - W]) || (k < N - W && bg[k + W]))) continue;
-    const i = k * 4, m = Math.max(p[i], p[i + 2]); if (p[i + 1] > m) p[i + 1] = m; p[i + 3] = Math.min(a, p[i + 3]);
+    const i = k * 4, m = Math.max(p[i], p[i + 2]); if (p[i + 1] > m) p[i + 1] = m; p[i + 3] = Math.min(a, p[i + 3]); if (!p[i + 3]) removed++;
   }
+  d.chroma = { border_green: bgr, removed: removed / N, bg_rgb: med, bg_hue: hueDeg, bg_ok: ok };
   return d;
 }
 export async function browserChroma(url) {
