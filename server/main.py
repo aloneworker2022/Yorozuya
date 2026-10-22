@@ -5065,7 +5065,7 @@ def rental_scene_image_put(body: dict):
 _SWAP_DIR = ASSETS_DIR / "swap_cafe"
 _SWAP_STATE = _SWAP_DIR / "state.json"
 # 2026-10-22 加雙人互動圖 pair~<動作>（owner＝她 id.couple id）
-_SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy)|pair~(chat|kiss|grope|fellatio|cunni)|pair~(missionary|behind|seated)~(1|2))$")   # 交配三個動作兩格（輪播）
+_SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy)|pair~(chat|kiss|grope|fellatio|cunni)|pair~(missionary|normal|behind|seated)~(1|2))$")   # 交配三個動作兩格（輪播）
 _SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 
 
@@ -5225,7 +5225,7 @@ def swap_cafe_image(body: dict):
 
 
 # ---- 2026-10-22 換妻雙人圖測試台：每張圖自己的設定（正負向原文、seed／steps／cfg、起始圖＋denoise）＋預設 prompt 預覽 ----
-_PAIR_KEY = re.compile(r"^pair~(chat|kiss|grope|fellatio|cunni|(missionary|behind|seated)~(1|2))$")
+_PAIR_KEY = re.compile(r"^pair~(chat|kiss|grope|fellatio|cunni|(missionary|normal|behind|seated)~(1|2))$")
 _PAIR_REF_PREFIX = ("/assets/swap_cafe/", "/assets/pose_refs/", "/assets/portraits/")
 
 
