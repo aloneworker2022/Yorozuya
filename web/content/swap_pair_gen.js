@@ -5,7 +5,7 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
-import { api, BG_EN, girlInfo, manInfo, wornOutfit, waitImg, cutoutOf } from "./swap_cafe_gen.js?v=17";
+import { api, BG_EN, girlInfo, manInfo, wornOutfit, waitImg, cutoutOf } from "./swap_cafe_gen.js?v=18";
 
 // framing：half＝upper body（能半身的都半身）；wide＝要看到下半身的動作，一律同一種「full＋cowboy/wide shot」取景，彼此一致。
 export const PAIR_ACTS = [
@@ -103,15 +103,33 @@ export function pairBody(slot, wife, couple, eng, seed) {
 }
 export const missingPairs = (S, wife, couple) => { const have = S?.images?.[pairOwner(wife, couple)] || {}; return PAIR_SLOTS.filter((k) => !have[`pair~${k}`]?.cut); };
 /** 生一格（綠幕→色鍵→存，seed 一起存，第 2 格拿第 1 格的 seed）；seed 不給＝隨機。回新的 images。 */
-export async function genPair(slot, wife, couple, say = () => {}, seed = 0) {
-  const eng = await gameEngine(), t0 = Date.now(); seed = seed || Math.floor(Math.random() * 2 ** 31) || 1;
-  const body = pairBody(slot, wife, couple, eng, seed);
-  say(`生圖（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、seed ${seed}）`);
+export async function genPair(slot, wife, couple, say = () => {}, seed = 0, edit = null) {
+  const eng = await gameEngine(), t0 = Date.now(); seed = Number(edit?.seed) || seed || Math.floor(Math.random() * 2 ** 31) || 1;
+  let body = pairBody(slot, wife, couple, eng, seed);
+  // 2026-10-22 測試台「用這些設定重生」：正負向原文（伺服器 raw_prompt＝一個字都不加）、steps／cfg、起始圖＋denoise
+  if (edit && String(edit.pos || "").trim()) {
+    body = { ...body, prompt: String(edit.pos).trim(), negative: String(edit.neg || "").trim(), visual_neg: "", lead: "", extra: "", raw_prompt: true,
+      ...(Number(edit.steps) > 0 ? { steps: Number(edit.steps) } : {}), ...(Number(edit.cfg) > 0 ? { cfg: Number(edit.cfg) } : {}),
+      ...(edit.ref ? { pose_ref: edit.ref, pose_denoise: Math.min(1, Math.max(0.05, Number(edit.denoise) || 0.6)) } : {}) };
+  }
+  say(`生圖（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、seed ${seed}${body.raw_prompt ? "、自訂 prompt" : ""}${body.pose_ref ? `、圖生圖 ${body.pose_denoise}` : ""}）`);
   const res = await waitImg(body, (s) => say(`生圖 ${s} 秒`));
   if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
   const raw = String(res.result).split("|")[0], cut = await cutoutOf(raw, say);
   const j = await api.put("image", { owner: pairOwner(wife, couple), key: `pair~${slot}`, raw, seed, sec: Math.round((Date.now() - t0) / 1000), ...cut }, "POST");
   return { images: j.images, sec: Math.round((Date.now() - t0) / 1000), how: cut.how, seed };
+}
+/** 預設 prompt（伺服器照生圖同一條路組好的最終正負向，不生圖）。 */
+export async function previewPair(slot, wife, couple) {
+  const eng = await gameEngine(), body = pairBody(slot, wife, couple, eng, 1);
+  const r = await fetch("/api/swap/pair/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`預設 prompt 拿不到 ${r.status}（伺服器要重啟？）`);
+  return r.json();
+}
+export async function saveEdit(owner, slot, edit) {
+  const r = await fetch("/api/swap/cafe/edit", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ owner, key: `pair~${slot}`, edit }) });
+  if (!r.ok) throw new Error(`設定存不了 ${r.status}（伺服器要重啟？）`);
+  return r.json();
 }
 /** 跑一串格子（依序）時的 seed：第 1 格新抽（這一輪記住），第 2 格用這輪的第 1 格、沒有就用已存的第 1 格。 */
 export function seedFor(slot, have, runSeeds) {
@@ -153,59 +171,126 @@ export function applyPairFrame(root, frame2) {
   });
 }
 
-/** test_room 咖啡廳面板裡的「雙人互動圖」區塊。ctx：{ girl(), couple(), state(), setImages(images), backdrop(scene) }。 */
+/** test_room 咖啡廳面板裡的「雙人互動圖」區塊（2026-10-22：一張一列、每張可改正負向／seed／steps／cfg／起始圖＋denoise）。
+ * ctx：{ girl(), couple(), state(), setImages(images), setEdits(edits), backdrop(scene) }。 */
 export function bindPairBox(ctx) {
   const $ = (id) => document.getElementById(id), grid = $("sc-pair-grid"), st = $("sc-pair-status");
   if (!grid) return null;
-  let busy = false;
+  let busy = false, cells = {}, builtFor = "";
   const say = (x) => { if (st) st.textContent = x; };
-  const imgs = () => ctx.state()?.images?.[pairOwner(ctx.girl(), ctx.couple())] || {};
-  // 2026-10-22 Al：每張／每格各自一格（交配第 1、2 格分開，不輪播），底下列實際送 ComfyUI 的正負向＋參數
+  const owner = () => pairOwner(ctx.girl(), ctx.couple());
+  const imgs = () => ctx.state()?.images?.[owner()] || {};
+  const edits = () => ctx.state()?.edits?.[owner()] || {};
   const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const box = (title, text) => `<details style="margin:2px 0"><summary class="mini" style="cursor:pointer">${title}</summary><pre class="mini" style="white-space:pre-wrap;word-break:break-word;max-height:12em;overflow:auto;margin:2px 0;padding:4px;background:#0c0c10;border-radius:4px;user-select:text">${esc(text)}</pre></details>`;
+  const box = (title, text) => `<details style="margin:2px 0"><summary class="mini" style="cursor:pointer">${title}</summary><pre class="mini" style="white-space:pre-wrap;word-break:break-word;max-height:14em;overflow:auto;margin:2px 0;padding:4px;background:#0c0c10;border-radius:4px;user-select:text">${esc(text)}</pre></details>`;
+  const labelOf = (k) => { const { act, frame } = slotOf(k); return ACT[act].zh + (frame ? ` 第${frame}格${frame === 1 ? "（還沒插入）" : "（插到底）"}` : ""); };
   const info = (im) => {
     if (!im) return "";
     const g = im.gen || {};
-    if (!g.positive) return `<div class="mini" style="color:#a88">（這張是舊版生的，沒有存實際 prompt；按「重生」才會有）${g.sec ? `・${g.sec} 秒` : ""}${im.seed ? `・seed ${im.seed}` : ""}</div>`;
-    const ref = g.pose_ref ? `<div class="mini" style="display:flex;gap:4px;align-items:center"><img src="${esc(g.pose_ref)}" alt="" style="width:36px;height:54px;object-fit:cover;border-radius:3px">${esc(g.pose_ref.split("/").pop())}</div>` : `<span class="mini">none</span>`;
+    if (!g.positive) return `<div class="mini" style="color:#a88">（這張是舊版生的，沒有存實際 prompt；重生才會有）${g.sec ? `・${g.sec} 秒` : ""}${im.seed ? `・seed ${im.seed}` : ""}</div>`;
+    const ref = g.pose_ref ? `<span style="display:flex;gap:4px;align-items:center"><img src="${esc(g.pose_ref)}" alt="" style="width:36px;height:54px;object-fit:cover;border-radius:3px">${esc(g.pose_ref.split("/").pop())}</span>` : `<span>none</span>`;
     const rows = [["checkpoint", g.ckpt || "（沒指定：伺服器自己挑）"], ["seed", g.seed], ["steps", g.steps], ["cfg", g.cfg], ["sampler", `${g.sampler || ""}${g.scheduler ? " / " + g.scheduler : ""}${g.clip_skip ? `（clip skip ${g.clip_skip}）` : ""}`],
-      ["size", g.width && g.height ? `${g.width}×${g.height}` : ""], ["denoise", g.denoise == null ? "—（沒有用圖生圖）" : g.denoise], ["time", `${g.sec ? g.sec + " 秒" : "?"}${g.at ? `（${new Date(g.at * 1000).toLocaleString()}）` : ""}`]];
-    return `<div class="mini" style="display:grid;grid-template-columns:auto 1fr;gap:0 6px;margin-top:2px">${rows.map(([k, v]) => `<span style="color:#888">${k}</span><span style="word-break:break-all">${esc(v)}</span>`).join("")}<span style="color:#888">ref</span>${ref}</div>`
-      + box(`正向（${g.positive.length} 字）`, g.positive) + box(`負向（${(g.negative || "").length} 字）`, g.negative || "");
+      ["size", g.width && g.height ? `${g.width}×${g.height}` : ""], ["denoise", g.denoise == null ? "—（沒有用圖生圖）" : g.denoise], ["prompt", g.raw ? "自訂（原樣送出）" : "預設（伺服器組）"],
+      ["time", `${g.sec ? g.sec + " 秒" : "?"}${g.at ? `（${new Date(g.at * 1000).toLocaleString()}）` : ""}`]];
+    return `<div class="mini" style="display:grid;grid-template-columns:auto 1fr;gap:0 6px;margin-top:4px">${rows.map(([k, v]) => `<span style="color:#888">${k}</span><span style="word-break:break-all">${esc(v)}</span>`).join("")}<span style="color:#888">ref</span>${ref}</div>`
+      + box(`上次送出的正向（${g.positive.length} 字）`, g.positive) + box(`上次送出的負向（${(g.negative || "").length} 字）`, g.negative || "");
   };
-  const render = (msg = {}) => {
-    const have = imgs();
-    grid.innerHTML = PAIR_SLOTS.map((k) => {
-      const { act, frame } = slotOf(k), a = ACT[act], im = have[`pair~${k}`], label = a.zh + (frame ? ` 第${frame}格${frame === 1 ? "（還沒插入）" : "（插到底）"}` : "");
-      const pic = im ? `<img src="${im.cut}" alt="${esc(label)}" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:100%;max-width:100%;object-fit:contain">` : `<span class="mini" style="position:absolute;inset:auto 0 40% 0;text-align:center;color:#999">還沒有</span>`;
-      const btns = `${im?.raw ? `<a class="mini" href="${im.raw}" target="_blank" rel="noopener">原圖</a> ` : ""}<button type="button" class="mini" data-regen="${k}">${im ? "重生" : "產生"}</button>`
-        + (frame === 1 ? ` <button type="button" class="mini" data-regen="${act}~1,${act}~2">重生兩張（同 seed）</button>` : "");
-      return `<div data-k="${k}" style="border:1px solid #333;border-radius:8px;padding:4px;background:#141418;min-width:0">
-        <div class="mini" style="display:flex;justify-content:space-between;gap:4px"><b>${esc(label)}</b><span>${a.scene === "ktv" ? "KTV" : "飯店"}</span></div>
-        <div style="position:relative;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:url(${ctx.backdrop(a.scene)}) center/cover">${pic}</div>
-        ${btns}
-        <div class="mini" style="white-space:pre-wrap;color:#aaa">${esc(msg[k] || "")}</div>${info(im)}</div>`; }).join("");
+  // 起始圖選項：沒有／同動作另一格／這對的其他雙人圖／她的半身立繪／上傳
+  const refOptions = (k) => {
+    const { act, frame } = slotOf(k), have = imgs(), w = ctx.girl(), out = [["", "none（不用圖生圖）"]];
+    if (frame) { const o = `${act}~${frame === 1 ? 2 : 1}`; if (have[`pair~${o}`]?.raw) out.push([have[`pair~${o}`].raw, `同動作的${labelOf(o)}`]); }
+    for (const s2 of PAIR_SLOTS) if (s2 !== k && have[`pair~${s2}`]?.raw && !out.some(([u]) => u === have[`pair~${s2}`].raw)) out.push([have[`pair~${s2}`].raw, `雙人圖：${labelOf(s2)}`]);
+    const solo = ctx.state()?.images?.[w?.id || ""] || {};
+    for (const [kk, zh] of [["wife~normal", "一般"], ["wife~shy", "害羞"]]) if (solo[kk]?.raw) out.push([solo[kk].raw, `她的換妻半身立繪（${zh}）`]);
+    for (const [kk, zh] of [["half", "半身"], ["full", "全身"]]) { const u = String(w?.portraits?.[kk] || "").split("?")[0]; if (u.startsWith("/assets/portraits/")) out.push([u, `她的遊戲立繪（${zh}）`]); }
+    return out;
   };
-  const note = {};
-  const run = async (keys) => {
+  const build = () => {
+    cells = {}; builtFor = owner();
+    grid.replaceChildren(...PAIR_SLOTS.map((k) => {
+      const { act, frame } = slotOf(k), a = ACT[act], el = document.createElement("div");
+      el.dataset.k = k; el.style.cssText = "border:1px solid #333;border-radius:8px;padding:6px;background:#141418;min-width:0";
+      el.innerHTML = `<div class="mini" style="display:flex;justify-content:space-between;gap:4px"><b style="font-size:14px">${esc(labelOf(k))}</b><span>${a.scene === "ktv" ? "KTV" : "飯店"}</span></div>
+        <div class="pic" style="position:relative;width:100%;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:url(${ctx.backdrop(a.scene)}) center/cover"></div>
+        <div class="links mini" style="margin:2px 0"></div><div class="msg mini" style="white-space:pre-wrap;color:#aaa"></div><div class="info"></div>
+        <details class="ed" style="margin-top:4px" open><summary style="cursor:pointer;font-size:13px">設定（改完按「用這些設定重生」）</summary>
+          <label class="mini">正向（原樣送出，伺服器不加字）</label><textarea class="pos" rows="8" style="width:100%;font-size:12px;box-sizing:border-box"></textarea>
+          <label class="mini">負向（原樣送出）</label><textarea class="neg" rows="5" style="width:100%;font-size:12px;box-sizing:border-box"></textarea>
+          <label class="mini">起始圖（圖生圖）</label><div style="display:flex;gap:6px;align-items:center"><select class="ref" style="flex:1;min-width:0;font-size:12px"></select><img class="refth" alt="" style="width:40px;height:60px;object-fit:cover;border-radius:3px;display:none"></div>
+          <div class="mini" style="margin:2px 0">或上傳：<input type="file" class="file" accept="image/*" style="max-width:14em"></div>
+          <div style="display:flex;gap:6px;align-items:center"><label class="mini">denoise</label><input type="range" class="dn" min="0.05" max="1" step="0.05" style="flex:1"><input type="number" class="dnn" min="0.05" max="1" step="0.05" style="width:4.5em"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px"><label class="mini">seed <input type="number" class="seed" min="0" style="width:8.5em" placeholder="空＝隨機"></label><button type="button" class="mini rnd">🎲</button>
+            <label class="mini">steps <input type="number" class="steps" min="1" max="150" style="width:4em"></label><label class="mini">cfg <input type="number" class="cfg" min="1" max="30" step="0.5" style="width:4em"></label></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px"><button type="button" class="go bp-cy">用這些設定重生</button><button type="button" class="reset mini">還原預設 prompt</button>${frame === 1 ? `<button type="button" class="both mini">兩格都重生（同 seed）</button>` : ""}</div>
+        </details>`;
+      const q = (c) => el.querySelector(c);
+      const syncDn = (v) => { const x = Math.min(1, Math.max(0.05, Number(v) || 0.6)); q(".dn").value = String(x); q(".dnn").value = x.toFixed(2); };
+      q(".dn").addEventListener("input", () => syncDn(q(".dn").value)); q(".dnn").addEventListener("change", () => syncDn(q(".dnn").value));
+      q(".rnd").addEventListener("click", () => { q(".seed").value = String(Math.floor(Math.random() * 2 ** 31) || 1); });
+      q(".ref").addEventListener("change", () => refThumb(k));
+      q(".file").addEventListener("change", async (e) => {
+        const file = e.target.files?.[0]; if (!file) return; const fd = new FormData(); fd.append("file", file, file.name);
+        try { const r = await fetch("/api/pose-refs", { method: "POST", body: fd }); if (!r.ok) throw new Error(`上傳失敗 ${r.status}`); const u = (await r.json()).url;
+          const o = document.createElement("option"); o.value = u; o.textContent = `上傳：${u.split("/").pop()}`; q(".ref").appendChild(o); q(".ref").value = u; refThumb(k); setMsg(k, "上傳好了"); } catch (er) { setMsg(k, String(er?.message || er)); }
+      });
+      q(".go").addEventListener("click", () => void run([k]));
+      q(".both")?.addEventListener("click", () => void run([`${act}~1`, `${act}~2`], true));
+      q(".reset").addEventListener("click", async () => {
+        try { setMsg(k, "拿預設 prompt……"); const d = await saveEdit(owner(), k, null); ctx.setEdits(d.edits || {}); const p = await previewPair(k, ctx.girl(), ctx.couple());
+          q(".pos").value = p.positive; q(".neg").value = p.negative; setMsg(k, "已還原成預設 prompt（seed／steps／cfg／起始圖沒動）"); } catch (er) { setMsg(k, String(er?.message || er)); }
+      });
+      cells[k] = el; return el;
+    }));
+    for (const k of PAIR_SLOTS) fill(k);
+  };
+  const setMsg = (k, x) => { const c = cells[k]; if (c) c.querySelector(".msg").textContent = x || ""; };
+  const refThumb = (k) => { const c = cells[k], u = c.querySelector(".ref").value, th = c.querySelector(".refth"); th.style.display = u ? "" : "none"; if (u) th.src = u; };
+  /** 把這格的設定填進表單：存過的設定 → 上次實際送出的 → 伺服器組的預設。 */
+  const fill = (k) => {
+    const c = cells[k], q = (x) => c.querySelector(x), e = edits()[`pair~${k}`], g = imgs()[`pair~${k}`]?.gen || {};
+    const opts = refOptions(k), ref = e?.ref || g.pose_ref || "";
+    if (ref && !opts.some(([u]) => u === ref)) opts.push([ref, `之前用的：${ref.split("/").pop()}`]);
+    q(".ref").innerHTML = opts.map(([u, t]) => `<option value="${esc(u)}">${esc(t)}</option>`).join(""); q(".ref").value = ref; refThumb(k);
+    const dn = e?.denoise ?? g.denoise ?? 0.6; q(".dn").value = String(dn); q(".dnn").value = Number(dn).toFixed(2);
+    q(".seed").value = e?.seed ? String(e.seed) : ""; q(".steps").value = String(e?.steps || g.steps || ""); q(".cfg").value = String(e?.cfg || g.cfg || "");
+    q(".pos").value = e?.pos || g.positive || ""; q(".neg").value = e?.neg || g.negative || "";
+    if (!q(".pos").value) previewPair(k, ctx.girl(), ctx.couple()).then((p) => { if (!q(".pos").value) { q(".pos").value = p.positive; q(".neg").value = p.negative; }
+      if (!q(".steps").value) q(".steps").value = String(p.steps); if (!q(".cfg").value) q(".cfg").value = String(p.cfg); }).catch((er) => setMsg(k, String(er?.message || er)));
+    paint(k);
+  };
+  const paint = (k) => {
+    const c = cells[k], im = imgs()[`pair~${k}`];
+    c.querySelector(".pic").innerHTML = im ? `<img src="${im.cut}" alt="${esc(labelOf(k))}" style="position:absolute;left:0;bottom:0;width:100%;height:100%;object-fit:contain">` : `<span class="mini" style="position:absolute;inset:auto 0 45% 0;text-align:center;color:#999">還沒有</span>`;
+    c.querySelector(".links").innerHTML = im?.raw ? `<a href="${im.raw}" target="_blank" rel="noopener">原圖</a>` : "";
+    c.querySelector(".info").innerHTML = info(im);
+  };
+  const readEdit = (k) => {
+    const c = cells[k], q = (x) => c.querySelector(x), num = (x) => (String(q(x).value).trim() === "" ? null : Number(q(x).value));
+    return { pos: q(".pos").value, neg: q(".neg").value, ref: q(".ref").value, denoise: Number(q(".dnn").value) || 0.6, seed: num(".seed"), steps: num(".steps"), cfg: num(".cfg") };
+  };
+  const render = () => { if (!ctx.girl()?.id || !ctx.couple()) { grid.innerHTML = `<div class="mini">先選測試魅子、抽一對對方夫妻</div>`; builtFor = ""; return; } if (builtFor !== owner()) build(); else for (const k of PAIR_SLOTS) paint(k); };
+  // useForm：從表單（按鈕）＝存設定＋原樣送；批次「產生缺的」＝有存過設定就用存的，沒有就走預設組法
+  const run = async (keys, sameSeed = false, useForm = true) => {
     if (busy) { say("還有在生，等它好了再按。"); return; }
     const w = ctx.girl(), c = ctx.couple(); if (!w?.id) { say("先選測試魅子"); return; } if (!c) { say("先抽一對對方夫妻"); return; }
-    if (!keys.length) { say(`${PAIR_SLOTS.length} 格都有了（要重來就按個別的「重生」）`); return; }
+    if (!keys.length) { say(`${PAIR_SLOTS.length} 格都有了（要重來就在那一格按「用這些設定重生」）`); return; }
     busy = true; const runSeeds = {};
     try {
       for (let i = 0; i < keys.length; i++) {
-        const k = keys[i], { act, frame } = slotOf(k), zh = ACT[act].zh + (frame ? ` 第${frame}格` : "");
+        const k = keys[i], { act, frame } = slotOf(k);
         try {
-          const r = await genPair(k, w, c, (x) => { note[k] = x; say(`${i + 1}/${keys.length}「${zh}」${x}`); render(note); }, seedFor(k, imgs(), runSeeds));
+          let edit = useForm && cells[k] ? readEdit(k) : edits()[`pair~${k}`] || null;
+          if (frame === 2 && (sameSeed || !edit?.seed) && runSeeds[act]) edit = { ...(edit || {}), seed: runSeeds[act] };
+          if (useForm && cells[k]) { const d = await saveEdit(owner(), k, edit); ctx.setEdits(d.edits || {}); }
+          const r = await genPair(k, w, c, (x) => { setMsg(k, x); say(`${i + 1}/${keys.length}「${labelOf(k)}」${x}`); }, seedFor(k, imgs(), runSeeds), edit);
           if (frame === 1) runSeeds[act] = r.seed;
-          ctx.setImages(r.images); note[k] = `好了 ${r.sec} 秒、seed ${r.seed}（${r.how}）`;
-        } catch (e) { note[k] = `失敗：${e?.message || e}`; }
-        render(note);
+          ctx.setImages(r.images); setMsg(k, `好了 ${r.sec} 秒、seed ${r.seed}（${r.how}）`); paint(k);
+        } catch (e) { setMsg(k, `失敗：${e?.message || e}`); }
       }
       say(`完成 ${keys.length} 格`);
+      for (const k of PAIR_SLOTS) { const sel = cells[k]?.querySelector(".ref"); if (sel) { const v = sel.value; const opts = refOptions(k); if (v && !opts.some(([u]) => u === v)) opts.push([v, `上傳：${v.split("/").pop()}`]); sel.innerHTML = opts.map(([u, t]) => `<option value="${esc(u)}">${esc(t)}</option>`).join(""); sel.value = v; } }
     } finally { busy = false; }
   };
-  $("sc-pair-all")?.addEventListener("click", () => void run(missingPairs(ctx.state(), ctx.girl(), ctx.couple())));
-  grid.addEventListener("click", (e) => { const b = e.target.closest("button[data-regen]"); if (b) void run(b.dataset.regen.split(",")); });
+  $("sc-pair-all")?.addEventListener("click", () => void run(missingPairs(ctx.state(), ctx.girl(), ctx.couple()), false, false));
   return { render };
 }

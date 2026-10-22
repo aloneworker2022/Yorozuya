@@ -612,12 +612,15 @@ def build_img2img_workflow(
     seed: int = 0,
     denoise: float = DEFAULT_POSE_DENOISE,
     filename_prefix: str = "yorozuya/img",
+    denoise_range: tuple[float, float] | None = None,
 ) -> dict:
-    """img2img：姿勢參考圖當 latent 起點，denoise < 1 才留得住機位／體位。"""
+    """img2img：姿勢參考圖當 latent 起點，denoise < 1 才留得住機位／體位。
+    denoise_range 給值（換妻雙人圖測試台）＝照那個範圍夾，不用預設的 0.25–0.90。"""
     d = float(denoise)
     if d <= 0:
         d = DEFAULT_POSE_DENOISE
-    d = min(0.90, max(0.25, d))
+    lo, hi = denoise_range or (0.25, 0.90)
+    d = min(hi, max(lo, d))
     wf: dict = {
         "1": {
             "class_type": "CheckpointLoaderSimple",
@@ -798,6 +801,7 @@ async def generate(
     base: str = "",
     pose_image: Path | None = None,
     denoise: float = 0.0,
+    denoise_range: tuple[float, float] | None = None,
 ) -> tuple[str, str | None]:
     """生一張圖並存到 save_to。回 (檔名, None) 或 ("", 錯誤訊息)。
 
@@ -834,7 +838,7 @@ async def generate(
                         out_width=out_width, out_height=out_height,
                         steps=steps, cfg=cfg, seed=seed,
                         sampler=sampler, scheduler=scheduler, clip_skip=clip_skip,
-                        denoise=denoise,
+                        denoise=denoise, denoise_range=denoise_range,
                         filename_prefix="yorozuya/" + save_to.stem,
                     )
                 else:

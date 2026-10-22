@@ -1659,6 +1659,10 @@ def _resolve_ref_image(ref: str) -> Path | None:
         if u.startswith(prefix):
             p = base / name
             return p if p.is_file() and p.stat().st_size > 0 else None
+    if u.startswith("/assets/swap_cafe/"):
+        # 換妻圖庫（只有明確寫這個前綴才找；只取 basename）
+        p = _SWAP_DIR / name
+        return p if Path(name).suffix.lower() in _POSE_EXTS and p.is_file() and p.stat().st_size > 0 else None
     for base, _ in hinted:
         p = base / name
         if p.is_file() and p.stat().st_size > 0:
@@ -2579,6 +2583,23 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
     )
 
 
+def _lead_merge(lead: str, prompt: str) -> str:
+    """換妻雙人圖：lead 壓在最前面；2026-10-22 Al：人數寫成有空格的「1 man／1 girl」，伺服器自己加的 1man／1girl 也跟著換（只有帶 lead 的雙人圖）。"""
+    lead = (lead or "").strip()
+    if not lead or not prompt:
+        return prompt
+    swap_n = {"1man": "1 man", "1girl": "1 girl", "1boy": "1 boy"}
+    seen_t: set[str] = set()
+    toks: list[str] = []
+    for tk in f"{lead}, {prompt}".split(","):
+        tk = tk.strip()
+        tk = swap_n.get(tk.lower(), tk)
+        if tk and tk.lower() not in seen_t:
+            seen_t.add(tk.lower())
+            toks.append(tk)
+    return ", ".join(toks)
+
+
 async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     """ComfyUI 生一張。落地規則見 `_dest_for_image`。"""
     opts = _apply_image_vary(opts)
@@ -2617,19 +2638,7 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
         else:
             prompt, _ = _comfy_prompt_for(opts)
             # 換妻雙人圖：人數／第三人稱 tags 要壓在最前面（模型對開頭權重最高），不然常畫成 POV、男人不見
-            lead = str(opts.get("lead") or "").strip()
-            if lead and prompt:
-                # 2026-10-22 Al：雙人圖人數寫成有空格的「1 man／1 girl」，伺服器自己加的 1man／1girl 也跟著換（只有帶 lead 的雙人圖）
-                swap_n = {"1man": "1 man", "1girl": "1 girl", "1boy": "1 boy"}
-                seen_t: set[str] = set()
-                toks: list[str] = []
-                for tk in f"{lead}, {prompt}".split(","):
-                    tk = tk.strip()
-                    tk = swap_n.get(tk.lower(), tk)
-                    if tk and tk.lower() not in seen_t:
-                        seen_t.add(tk.lower())
-                        toks.append(tk)
-                prompt = ", ".join(toks)
+            prompt = _lead_merge(str(opts.get("lead") or ""), prompt)
     if not prompt and wf is None:
         return "", "ComfyUI 生圖要有 prompt 或整份 workflow"
     if sex_strip and prompt:
@@ -2658,6 +2667,10 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     want_cut = bool(spec.get("cutout")) if shot else bool(opts.get("cutout"))
     # 畫崩／魔物／幼態 + 卡面 visualNeg／從 visualEn 拆出的 NO xxx。不塞 nude 預設詞。
     negative = sdtags.negative_for(want_cut, clothed=False, extra_neg=extra_neg)
+    raw_prompt = bool(opts.get("raw_prompt"))
+    if raw_prompt:
+        # 換妻雙人圖「用這些設定重生」：正負向都原樣（使用者在測試台改的就是最後送出去的）
+        negative = str(opts.get("negative") or "").strip()
 
     pose_src = _resolve_ref_image(str(opts.get("pose_ref") or ""))
     # 只讓 tease／standee／脫衣場面吃 pose_ref；召喚三連拍／情緒半身表不鎖姿勢參考
@@ -2691,6 +2704,8 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
         base=str(opts.get("comfy_url") or ""),
         pose_image=pose_src,
         denoise=float(opts.get("pose_denoise") or 0),
+        # 雙人圖測試台：denoise 0.05–1.0 照使用者給的，不夾到 0.25–0.90
+        denoise_range=(0.05, 1.0) if raw_prompt else None,
     )
     if err:
         return "", err
@@ -2705,6 +2720,7 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
                 "denoise": float(opts.get("pose_denoise") or 0) if pose_src is not None else None,
                 "pose_ref": str(opts.get("pose_ref") or "") if pose_src is not None else "",
                 "at": int(time.time()),
+                "raw": raw_prompt,
             }
             (out_dir / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
         except Exception:
@@ -3001,6 +3017,7 @@ class ImgGenIn(BaseModel):
     key: str | None = None
     model: str = "grok-4.5"
     framing: str = "half"       # half | full(part 有值時忽略)
+    raw_prompt: bool = False    # 2026-10-22 換妻雙人圖（key 開頭 swap-pair:）：prompt／negative 原樣送，伺服器一個字都不加
     lead: str = ""              # 2026-10-22 換妻雙人圖：放在整段 prompt 最前面（例 (1girl, 1boy:1.3)），只有 Comfy 那條用
     rating: str = "sfw"         # sfw | nsfw
     style: str = "anime"        # anime | realistic | pixel
@@ -3106,6 +3123,21 @@ def imggen_submit(t: ImgGenIn):
     provider=grok-img → 雲端 Grok Build;provider=comfy → Windows 本機 ComfyUI。
     兩條路的產物存在同一個資料夾、同一套命名,相簿不必分開處理。
     """
+    key, ep, opts = _imggen_opts(t)
+    body = GenIn(
+        key=key,
+        endpoint=ep,
+        provider=ep,
+        model=t.model or "grok-4.5",
+        messages=[],  # 參數在 options
+        options=opts,
+        retry=t.retry,
+    )
+    return gen_submit(body)
+
+
+def _imggen_opts(t: ImgGenIn) -> tuple[str, str, dict]:
+    """imggen_submit 的參數整理（2026-10-22 拆出來，換妻雙人圖的 prompt 預覽也用同一份）。"""
     key = (t.key or "").strip() or f"img:{int(time.time() * 1000)}:{uuid.uuid4().hex[:8]}"
     character = t.character if isinstance(t.character, dict) else None
     outfit = (t.outfit or "").strip()
@@ -3126,6 +3158,8 @@ def imggen_submit(t: ImgGenIn):
         or pose_in.startswith("/assets/testword/")
         or pose_in.startswith("/assets/portraits/")
         or pose_in.startswith("/assets/frame_packs/")
+        # 換妻雙人圖：起始圖可以是換妻圖庫（雙人圖／她的半身立繪）
+        or (pose_in.startswith("/assets/swap_cafe/") and key.startswith("swap-pair:"))
     )
     shot_in = (t.shot or "").strip().lower()
     sex_strip = (t.scene_kind or "").strip().lower() == "sex_strip"
@@ -3166,6 +3200,7 @@ def imggen_submit(t: ImgGenIn):
         # Grok：整張圖不吃前端 prompt（只在分段 part、或做愛局部橫幅時吃）
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip) else "",
         "lead": (t.lead or "").strip()[:400],
+        "raw_prompt": bool(t.raw_prompt) and key.startswith("swap-pair:"),
     }
     if ep == "comfy-img":
         # 出卡場景：下單時就寫入隨機 seed，避免 worker 用舊邏輯／固定人設 seed 出同圖
@@ -3190,16 +3225,7 @@ def imggen_submit(t: ImgGenIn):
             "comfy_url": (t.comfy_url or "").strip(),
             "workflow": t.workflow if isinstance(t.workflow, dict) else None,
         })
-    body = GenIn(
-        key=key,
-        endpoint=ep,
-        provider=ep,
-        model=t.model or "grok-4.5",
-        messages=[],  # 參數在 options
-        options=opts,
-        retry=t.retry,
-    )
-    return gen_submit(body)
+    return key, ep, opts
 
 
 class SummonQueueItemIn(BaseModel):
@@ -4961,10 +4987,10 @@ def _swap_load() -> dict:
     try:
         d = json.loads(_SWAP_STATE.read_text(encoding="utf-8"))
         if isinstance(d, dict):
-            return {"couples": d.get("couples") or {}, "current": d.get("current") or "", "prompts": d.get("prompts") or {}, "images": d.get("images") or {}}
+            return {"couples": d.get("couples") or {}, "current": d.get("current") or "", "prompts": d.get("prompts") or {}, "images": d.get("images") or {}, "edits": d.get("edits") or {}}
     except Exception:
         pass
-    return {"couples": {}, "current": "", "prompts": {}, "images": {}}
+    return {"couples": {}, "current": "", "prompts": {}, "images": {}, "edits": {}}
 
 
 def _swap_save(d: dict) -> None:
@@ -5059,6 +5085,60 @@ def swap_cafe_image(body: dict):
     d["images"].setdefault(owner, {})[key] = rec
     _swap_save(d)
     return {"raw": raw, "cut": cut or raw, "images": d["images"]}
+
+
+# ---- 2026-10-22 換妻雙人圖測試台：每張圖自己的設定（正負向原文、seed／steps／cfg、起始圖＋denoise）＋預設 prompt 預覽 ----
+_PAIR_KEY = re.compile(r"^pair~(chat|kiss|grope|fellatio|cunni|(missionary|behind|seated)~(1|2))$")
+_PAIR_REF_PREFIX = ("/assets/swap_cafe/", "/assets/pose_refs/", "/assets/portraits/")
+
+
+def _pair_edit_clean(e) -> dict | None:
+    if not isinstance(e, dict):
+        return None
+    out: dict = {"pos": str(e.get("pos") or "")[:8000], "neg": str(e.get("neg") or "")[:8000]}
+    ref = str(e.get("ref") or "").split("?")[0]
+    out["ref"] = ref if ref.startswith(_PAIR_REF_PREFIX) and ".." not in ref else ""
+    for k, lo, hi, cast in (("denoise", 0.05, 1.0, float), ("cfg", 1.0, 30.0, float), ("steps", 1, 150, int), ("seed", 0, 2**31 - 1, int)):
+        try:
+            v = e.get(k)
+            out[k] = None if v in (None, "") else max(lo, min(hi, cast(v)))
+        except (TypeError, ValueError):
+            out[k] = None
+    return out if (out["pos"].strip() or out["neg"].strip()) else None
+
+
+@app.put("/api/swap/cafe/edit")
+def swap_cafe_edit(body: dict):
+    """存一張雙人圖的測試台設定：body {owner, key:"pair~…", edit:{pos,neg,ref,denoise,seed,steps,cfg}|null（null＝回預設）}。"""
+    body = body or {}
+    owner, key = str(body.get("owner") or ""), str(body.get("key") or "")
+    if not _SWAP_OWNER.match(owner) or not _PAIR_KEY.match(key):
+        raise HTTPException(status_code=400, detail="owner／key 不對")
+    d = _swap_load()
+    e = _pair_edit_clean(body.get("edit"))
+    if e:
+        d["edits"].setdefault(owner, {})[key] = e
+    else:
+        d["edits"].get(owner, {}).pop(key, None)
+    _swap_save(d)
+    return d
+
+
+@app.post("/api/swap/pair/preview")
+def swap_pair_preview(t: ImgGenIn):
+    """雙人圖的預設 prompt：照生圖同一條路組（人設 tags＋lead＋伺服器加的＋預設負向），不生圖。key 要 swap-pair: 開頭。"""
+    if not str(t.key or "").startswith("swap-pair:"):
+        raise HTTPException(status_code=400, detail="只給換妻雙人圖用")
+    _, _, opts = _imggen_opts(t)
+    opts = _apply_image_vary(opts)
+    extra_pos, extra_from_en = sdtags.split_pos_neg_tags(str(opts.get("extra") or ""))
+    opts["extra"] = extra_pos
+    extra_neg = ", ".join(x for x in (extra_from_en, str(opts.get("visual_neg") or "").strip(), str(opts.get("negative") or "").strip()) if x)
+    prompt, _ = _comfy_prompt_for(opts)
+    prompt = _lead_merge(str(opts.get("lead") or ""), prompt)
+    negative = sdtags.negative_for(bool(opts.get("cutout")), clothed=False, extra_neg=extra_neg)
+    return {"positive": prompt, "negative": negative, "steps": comfy.DEFAULT_STEPS, "cfg": comfy.DEFAULT_CFG,
+            "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER, "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT}
 
 
 async def _world_clock():
