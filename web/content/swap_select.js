@@ -1,11 +1,10 @@
 /* 2026-10-21 換妻 step：「開始換妻」→ 選一對夫妻（樣式跟日租選客人一樣）→ 確認 → 存成目前的換妻場次，顯示「下一步：問妻子」。
  * 名冊＝伺服器存的對方夫妻（/api/swap/cafe 的 couples，當熟客一直留著），不足 4 對就新抽（各自不同的 Comfy 模型）。
  * 2026-10-21 改順序：先問妻子（openSwapStart，照日租「拜託她」），她答應才開名冊。還沒做：扣錢、場景。場次先存在 localStorage（SESSION_KEY），不用重啟伺服器。 */
-import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=10";
+import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=11";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { createStage } from "./swap_stage.js?v=4";
-import { runBarIntro, runBarChat } from "./swap_bar.js?v=2";
+import { openBar } from "./swap_bar.js?v=3";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;
@@ -203,48 +202,8 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
 
 // ------------------------------------------------------------ 第一個場景：酒吧（2026-10-21；還沒有對話／提議）
 /** 全螢幕酒吧背景（bar1–3 隨機）＋VN 舞台：對方丈夫、對方妻子、你老婆（沒立繪＝名字卡）。玩家第一人稱不畫。 */
-export function openSwapBar(ctx = {}, c, S = {}) {
-  document.getElementById("swp-bar")?.remove();
-  const ov = document.createElement("div"); ov.id = "swp-bar";
-  ov.style.cssText = "position:fixed;inset:0;z-index:8700;background:#000;font-family:system-ui,-apple-system,'Noto Sans TC',sans-serif";
-  ov.innerHTML = `<div class="st" style="position:absolute;inset:0"></div>
-    <div style="position:absolute;top:calc(10px + env(safe-area-inset-top));left:0;right:0;text-align:center;color:#fff;font-weight:600;font-size:15px;text-shadow:0 1px 3px #000">酒吧</div>
-    <button type="button" class="x" style="position:absolute;top:calc(8px + env(safe-area-inset-top));left:10px;border:0;border-radius:16px;background:rgba(0,0,0,.55);color:#fff;font:600 14px system-ui,sans-serif;padding:6px 14px;box-shadow:none;z-index:2">‹ 離開</button>
-    <div class="dlg" hidden style="position:absolute;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:3;background:rgba(18,14,22,.88);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:10px 14px 12px;color:#f3eef5;min-height:92px">
-      <div class="nm" style="font-weight:700;color:#f2b8d2;font-size:14px;margin-bottom:4px"></div><div class="tx" style="font-size:15px;line-height:1.5;white-space:pre-wrap"></div>
-      <div class="nx" hidden style="position:absolute;right:12px;bottom:6px;font-size:12px;color:#bbb">▼ 點一下繼續</div>
-      <form class="in" style="display:none;gap:8px;margin-top:8px"><input maxlength="120" style="flex:1;min-width:0;border:1px solid #555;background:#221c27;color:#fff;border-radius:18px;padding:8px 12px;font-size:15px"><button type="submit" style="border:0;background:#c0508a;color:#fff;border-radius:18px;padding:0 14px;font-size:14px;box-shadow:none">說</button></form>
-    </div>`;
-  document.body.append(ov);
-  const st = createStage(ov.querySelector(".st"), { backdrop: pickBackdrop("bar"), height: 60, bottom: 150 });
-  const dlg = ov.querySelector(".dlg"), nm = dlg.querySelector(".nm"), tx = dlg.querySelector(".tx"), nx = dlg.querySelector(".nx"), form = dlg.querySelector(".in"), inp = form.querySelector("input");
-  let closed = false;
-  const close = () => { closed = true; ov.remove(); };
-  ov.querySelector(".x").addEventListener("click", close);
-  const ui = {
-    show: (list) => (closed ? Promise.reject(new Error("closed")) : st.show(list)),
-    say: async (name, text) => {
-      if (closed) throw new Error("closed");
-      dlg.hidden = false; form.style.display = "none"; nx.hidden = true; nm.textContent = name; tx.textContent = "";
-      let skip = false; const sk = () => { skip = true; }; dlg.addEventListener("click", sk, { once: true });
-      for (const ch of String(text)) { if (closed) throw new Error("closed"); if (!skip) await new Promise((r) => setTimeout(r, 40)); tx.textContent += ch; }
-      dlg.removeEventListener("click", sk);
-      nx.hidden = false;
-      await new Promise((r) => dlg.addEventListener("click", r, { once: true }));
-      nx.hidden = true;
-    },
-    ask: (ph) => new Promise((res) => {
-      dlg.hidden = false; nm.textContent = "你"; tx.textContent = ""; nx.hidden = true; form.style.display = "flex"; inp.placeholder = ph; inp.value = ""; inp.focus();
-      form.onsubmit = (e) => { e.preventDefault(); form.style.display = "none"; res(inp.value); };
-    }),
-  };
-  const intro = ctx.runIntro === false ? Promise.resolve([]) : runBarIntro({ ctx, c, S, ui });
-  intro.then((log) => {
-    if (closed) return;
-    runBarChat({ ctx, c, S, ui, log: log || [], isClosed: () => closed, el: { dlg, nm, tx, nx, form, inp, stageEl: ov.querySelector(".st") } });
-  }).catch(() => {});
-  return { el: ov, stage: st, close };
-}
+/** 酒吧（2026-10-22 v2）：版面／CD／卡牌／醉度都在 swap_bar.js。 */
+export function openSwapBar(ctx = {}, c, S = {}) { return openBar(ctx, c, S); }
 
 /** 聊天觸發（2026-10-21）：玩家打字提換妻。 */
 export const SWAP_ASK_RE = /換妻|交換伴侶|交換夫妻|交換老婆|換老婆|夫妻交換|互換老婆/;

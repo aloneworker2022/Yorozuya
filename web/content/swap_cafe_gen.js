@@ -5,7 +5,7 @@
  * 生圖：綠幕半身（2026-10-21 Al：白底去背會啃到身體）→ /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上（底部對齊，像 VN）＋原圖。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
 import { rollClients } from "./rental.js?v=7";
-import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=4";
+import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
 
 // 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張
 export const SWAP_SCENES = {
