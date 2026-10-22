@@ -2613,6 +2613,33 @@ def _pair_tags(*chunks) -> list[str]:
     return out
 
 
+def _pair_her_identity(ch: dict, clothes: str, body) -> list[str]:
+    """2026-10-23 雙人圖 1girl 段的長相：跟單人立繪同一份來源（sdtags.appearance_en_parts＋_identity_anchor 的年齡／膚色、特殊屬性）。
+    年齡、臉型、眼型、瞳色、嘴、髮色、髮型、特徵、特殊屬性、胸（罩杯＋胸型，依穿衣程度）、身材（含孕肚）、身高、膚色。
+    全裸／半脫才加私密部位：乳暈、乳頭、陰毛、陰唇色（各取第一個 tag，最多 4 個；陰唇只有畫到 pussy 的動作）。"""
+    if not ch:
+        return []
+    anchor = _identity_anchor(ch)
+    exposed = clothes in ("nude", "partial")
+    parts, _unk = sdtags.appearance_en_parts(ch, stage="stranger" if not exposed else "", garment="nude" if exposed else "", clothed=not exposed)
+    if not parts.get("bust"):
+        # 舊／簡寫存檔只有字母（"D"）：跟單人立繪的 girlInfo 同一張表，不另外發明
+        cl = str((ch.get("look") or {}).get("cup") or "").strip()[:1].upper()
+        parts["bust"] = {"A": "flat chest", "B": "small breasts", "C": "medium breasts", "D": "large breasts", "E": "huge breasts", "F": "huge breasts"}.get(cl) or ("gigantic breasts" if "G" <= cl <= "Z" else "")
+    sp_over = sdtags.resolve_specials(ch)[1]
+    skin = "" if "skin" in sp_over else sdtags.SKIN.get(anchor["skin"], "")
+    out = [sdtags.age_tags(anchor["age"])] + [parts.get(k, "") for k in
+           ("face", "eyes", "eye_color", "mouth", "hair_color", "hair", "feature", "specials", "bust", "build", "height")] + [skin]
+    if exposed:
+        bt = ",".join(body) if isinstance(body, list) else str(body or "")
+        keys = ["areola", "nipple", "pubic_hair"] + (["labia_color"] if "pussy" in bt else [])
+        if clothes == "partial":
+            keys = [k for k in keys if (k in ("areola", "nipple") and ("nipple" in bt or "breast" in bt)) or (k in ("pubic_hair", "labia_color") and "pussy" in bt)]
+        out += [str(parts.get(k) or "").split(",")[0].strip() for k in keys]
+    seen: set[str] = set()
+    return [t for t in (x.strip() for x in ",".join(out).split(",")) if t and not (t.lower() in seen or seen.add(t.lower()))]
+
+
 def _pair_prompts(opts: dict) -> tuple[str, str]:
     """2026-10-23 換妻雙人圖預設 prompt（Al 核可的結構）：共同段 BREAK 他 BREAK 她。
     品質 tag 看模型名（pony 一套、其他 Illustrious／NoobAI 一套，不混）；她的長相從人設翻（身材、髮色髮型、瞳色、1 個特徵、膚色）；
@@ -2622,15 +2649,14 @@ def _pair_prompts(opts: dict) -> tuple[str, str]:
     look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
     q = _PAIR_Q_PONY if "pony" in str(opts.get("ckpt") or "").lower() else _PAIR_Q_ILL
     tr = lambda table, k: table.get(str(look.get(k) or "").strip(), "")
-    skin = sdtags.SKIN.get(_identity_anchor(ch)["skin"], "") if ch else ""
     her_cl = str(pr.get("herClothes") or "").strip()
     if not her_cl and pr.get("dressed"):
         worn = str(opts.get("outfit") or "").strip() or _outfit_of(ch)
         her_cl = sdtags.outfit_en(worn) or "casual clothes"
     shared = _pair_tags(q, "1boy, 1girl, hetero", str(pr.get("framing") or ""), "from side" if pr.get("fromSide", True) else "", pr.get("shared") or [], _PAIR_BG)
     male = _pair_tags("1boy", _PAIR_BG_REPEAT, pr.get("male") or [])
-    female = _pair_tags("1girl, adult", _PAIR_BG_REPEAT, tr(sdtags.BUILD, "build"), tr(sdtags.HAIR_COLOR, "hair_color"), tr(sdtags.HAIR, "hair"), tr(sdtags.EYE_COLOR, "eye_color"),
-                        tr(sdtags.FEATURE, "feature"), skin, pr.get("herPose") or [], pr.get("expr") or [], her_cl, pr.get("body") or [])
+    female = _pair_tags("1girl, adult", _PAIR_BG_REPEAT, _pair_her_identity(ch, str(pr.get("clothes") or ("dressed" if pr.get("dressed") else "nude")), pr.get("body") or []),
+                        pr.get("herPose") or [], pr.get("expr") or [], her_cl, pr.get("body") or [])
     pos = "\nBREAK\n".join(", ".join(x) for x in (shared, male, female))
     neg = ", ".join(_pair_tags(str(opts.get("negative") or "")))
     return pos, neg

@@ -5,7 +5,7 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
-import { api, wornOutfit, waitImg, chromaKeyData, CHROMA } from "./swap_cafe_gen.js?v=21";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA } from "./swap_cafe_gen.js?v=22";
 
 // 2026-10-23 Al 核可：雙人圖預設 prompt 全部改結構（只有雙人圖）。前端給「每段要什麼 tag」（pair 物件），伺服器組成
 //   [品質], 1boy, 1girl, hetero, <取景>, [from side（只有 side:true 的動作；聊天／接吻不加，會畫成背對背）], <動作>, (green background:1.3), (simple background:1.2), green screen, chroma key
@@ -52,7 +52,6 @@ const MAN_LOOK = { gentleman: "short hair, black hair, clean-shaven", clingy: "s
 const MAN_BODY = { average: "", slim: "skinny", muscular: "muscular male", fat: "fat man, belly", tall: "tall male", short: "short", old: "old man, receding hairline" };
 const MAN_CL = { gentleman: "black suit, necktie", clingy: "polo shirt", showoff: "leather jacket, gold necklace", dominant: "black suit, open collar", otaku: "plaid shirt" };
 const MAN_HAIRY = new Set(["fat", "old", "muscular"]);
-const CUP_TAG = { A: "flat chest", B: "small breasts", C: "medium breasts", D: "large breasts", E: "huge breasts", F: "huge breasts" };
 const NEG_BASE = "pov, first-person view, male pov, faceless male, solo, 2girls, multiple girls, 2boys, worst quality, low quality, lowres, bad anatomy, bad hands, extra fingers, extra limbs, watermark, text, green clothes, green hair, green eyes, background scenery";
 // 2026-10-23 綠幕沒效果：補回背景負向（半身再擋床；寬景要躺／坐，不擋 bed，改擋白床單）
 const BG_NEG = "white background, gradient background, detailed background, scenery, room, floor, shadow, grey background";
@@ -67,13 +66,12 @@ export function pairPrompt(slot, wife, couple) {
   const h = couple?.husband || {}, nude = a.clothes === "nude";
   const male = dedupe(MAN_AGE(Number(h.age) || 0), MAN_LOOK[h.persona] || "short hair", MAN_BODY[h.build] || "", nude && MAN_HAIRY.has(h.build) ? "chest hair" : "", "tanned male",
     nude ? "nude" : a.clothes === "partial" ? [MAN_CL[h.persona] || "dress shirt", a.hisCl || ""].filter(Boolean).join(", ") : MAN_CL[h.persona] || "dress shirt", a.his || "");
-  const cupL = String(wife?.look?.cup || "").trim().charAt(0).toUpperCase(), cup = CUP_TAG[cupL] || (cupL >= "G" && cupL <= "Z" ? "gigantic breasts" : "");
   const herCl = nude ? "nude" : a.clothes === "partial" ? a.herCl || "clothes pull" : "";   // dressed＝伺服器翻她的生涯服裝
-  const body = dedupe(cup, a.body || "");
+  const body = dedupe(a.body || "");   // 2026-10-23 胸／私密部位改由伺服器從她的人設翻（跟單人立繪同一份表），這裡只給動作要露的部位
   const neg = dedupe(NEG_BASE, BG_NEG, a.framing === "half" ? "bed" : "white sheets", a.neg || "", frame === 1 ? "penetration, sex" : "", a.clothes === "dressed" ? "nude, nipples" : "");
   return {
     framing: FRAME_EN[a.framing], fromSide: !!a.side, shared: dedupe(fr?.act || a.act), male, herPose: dedupe(a.her || ""), expr: dedupe(fr?.expr || a.expr || ""),
-    herClothes: herCl, dressed: a.clothes === "dressed", body, neg,
+    herClothes: herCl, dressed: a.clothes === "dressed", clothes: a.clothes, body, neg,
   };
 }
 /** /api/imggen body：她當 character（伺服器從她的人設翻長相 tags）、她的模型；pair＝每段的 tag。 */

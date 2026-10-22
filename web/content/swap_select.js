@@ -1,10 +1,10 @@
 /* 2026-10-21 換妻 step：「開始換妻」→ 選一對夫妻（樣式跟日租選客人一樣）→ 確認 → 存成目前的換妻場次，顯示「下一步：問妻子」。
  * 名冊＝伺服器存的對方夫妻（/api/swap/cafe 的 couples，當熟客一直留著），不足 4 對就新抽（各自不同的 Comfy 模型）。
  * 2026-10-21 改順序：先問妻子（openSwapStart，照日租「拜託她」），她答應才開名冊。還沒做：扣錢、場景。場次先存在 localStorage（SESSION_KEY），不用重啟伺服器。 */
-import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=21";
+import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=22";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=17";
+import { openBar } from "./swap_bar.js?v=18";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;
