@@ -6,7 +6,7 @@
 import { gameEngine } from "./rental_scene_gen.js?v=16";
 import { rollClients } from "./rental.js?v=7";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
-import { bindPairBox } from "./swap_pair_gen.js?v=1";
+import { bindPairBox } from "./swap_pair_gen.js?v=2";
 
 // 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張
 export const SWAP_SCENES = {

@@ -4922,7 +4922,7 @@ def rental_scene_image_put(body: dict):
 _SWAP_DIR = ASSETS_DIR / "swap_cafe"
 _SWAP_STATE = _SWAP_DIR / "state.json"
 # 2026-10-22 加雙人互動圖 pair~<動作>（owner＝她 id.couple id）
-_SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy)|pair~(chat|kiss|grope|fellatio|cunni|missionary|behind|seated))$")
+_SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy)|pair~(chat|kiss|grope|fellatio|cunni)|pair~(missionary|behind|seated)~(1|2))$")   # 交配三個動作兩格（輪播）
 _SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 
 
@@ -5006,7 +5006,13 @@ def swap_cafe_image(body: dict):
     raw = _swap_copy(str(body.get("raw") or ""), "", stem + "_raw") if body.get("raw") else ""
     cut = _swap_copy(str(body.get("cut") or ""), str(body.get("cut_data") or ""), stem + "_cut") if (body.get("cut") or body.get("cut_data")) else ""
     d = _swap_load()
-    d["images"].setdefault(owner, {})[key] = {"raw": raw, "cut": cut or raw, "at": int(time.time())}
+    rec = {"raw": raw, "cut": cut or raw, "at": int(time.time())}
+    try:
+        if int(body.get("seed") or 0) > 0:
+            rec["seed"] = int(body["seed"])   # 雙人兩格：第 2 格沿用第 1 格的 seed
+    except (TypeError, ValueError):
+        pass
+    d["images"].setdefault(owner, {})[key] = rec
     _swap_save(d)
     return {"raw": raw, "cut": cut or raw, "images": d["images"]}
 

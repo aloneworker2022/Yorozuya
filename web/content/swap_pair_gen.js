@@ -3,9 +3,9 @@
  * 長相：她的臉／髮／胸／身材 tags 由伺服器從她的人設組（跟她的單人立繪同一套）；對方丈夫用他單人立繪同一組描述（manInfo）寫進 extra。
  * 模型：用她自己綁的 comfyCkpt（沒綁才退全域）。理由：長相鎖只鎖得住她（伺服器用她的人設＋她的模型組 tag），男方只有文字描述，換哪個模型都一樣；
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
- * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>；已有的不重生（missingPairs）。 */
+ * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=16";
-import { api, BG_EN, girlInfo, manInfo, wornOutfit, waitImg, cutoutOf } from "./swap_cafe_gen.js?v=14";
+import { api, BG_EN, girlInfo, manInfo, wornOutfit, waitImg, cutoutOf } from "./swap_cafe_gen.js?v=15";
 
 // framing：half＝upper body（能半身的都半身）；wide＝要看到下半身的動作，一律同一種「full＋cowboy/wide shot」取景，彼此一致。
 export const PAIR_ACTS = [
@@ -19,14 +19,36 @@ export const PAIR_ACTS = [
     act: "fellatio, oral, she kneels in front of him, penis in mouth, he is standing, his hand on her head, his pants pulled down, she looks up at him, from side" },
   { key: "cunni", zh: "舔陰唇", scene: "ktv", framing: "wide", rating: "nsfw", clothes: "partial",
     act: "cunnilingus, she sits leaning back with legs spread, he kneels between her thighs and licks her pussy, skirt lifted, panties pulled aside, pussy, labia, she bites her finger, head tilted back, from side" },
-  { key: "missionary", zh: "正面", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude",
-    act: "sex, vaginal, missionary, she lies on her back with legs spread, he is on top between her legs, penis, penetration, her arms around his neck, from side" },
+  // 2026-10-22 三個交配動作各兩格，輪播 1→2→1…：同 seed、同姿勢／取景，只換 frames 的動作＋表情 tags
+  { key: "missionary", zh: "傳教士體位", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude",
+    act: "missionary position, missionary, sex, vaginal, she lies on her back with legs spread, he kneels between her legs leaning over her, from side" },
   { key: "behind", zh: "背後", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude",
-    act: "sex from behind, doggy style, vaginal, she is on all fours, he kneels behind her holding her hips, penis, penetration, she looks back over her shoulder, from side" },
+    act: "sex from behind, doggy style, vaginal, she is on all fours, he kneels behind her holding her hips, she looks back over her shoulder, from side" },
   { key: "seated", zh: "面對面坐著擁吻交配", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude",
-    act: "sex, vaginal, sitting, face to face, straddling, she sits on his lap facing him, upright straddle, arms around his neck, kissing, embrace, penis, penetration, from side" },
+    act: "sex, vaginal, sitting, face to face, straddling, upright straddle, she sits on his lap facing him, arms around his neck, embrace, from side" },
 ];
 export const PAIR_KEYS = PAIR_ACTS.map((a) => a.key);
+/** 兩格輪播：每格停多久（1→2→1 一輪＝2×）。 */
+export const FRAME_MS = 1000;
+const INSERT_NEG = "penetration, inserted, insertion, penis inside, motion lines";
+// 每格的動作＋表情（接在 act 後面）。第 1 格：還沒插入、龜頭抵著；第 2 格：整根插到底、猛撞
+export const PAIR_FRAMES = {
+  missionary: [
+    { act: "about to penetrate, penis tip touching her pussy, tip pressed against her entrance, not inserted yet, anticipation", expr: "blushing, nervous, aroused, heavy breathing, looking down at his penis", neg: INSERT_NEG },
+    { act: "penetration, penis fully inserted, deep penetration, hilted, thrusting hard, slamming, pounding, motion lines, impact lines, trembling", expr: "tongue out, open mouth, pained expression, overwhelmed, tears, rolling eyes, drooling, sweat, ahegao", neg: "" },
+  ],
+  behind: [
+    { act: "about to penetrate, penis tip touching her pussy from behind, tip pressed against her entrance, not inserted yet, anticipation", expr: "blushing, nervous, aroused, heavy breathing", neg: INSERT_NEG },
+    { act: "penetration, penis fully inserted, deep penetration, hilted, thrusting hard, slamming, pounding, ass ripple, motion lines, impact lines, trembling", expr: "tongue out, open mouth, pained expression, overwhelmed, tears, rolling eyes, drooling, sweat, ahegao", neg: "" },
+  ],
+  seated: [
+    { act: "kissing, she is lowering herself onto him, about to penetrate, penis tip touching her pussy, tip pressed against her entrance, not inserted yet, anticipation", expr: "blushing, nervous, aroused, heavy breathing", neg: INSERT_NEG },
+    { act: "penetration, penis fully inserted, deep penetration, hilted, he thrusts up hard, slamming, bouncing, motion lines, impact lines, trembling", expr: "tongue out, open mouth, pained expression, overwhelmed, tears, rolling eyes, drooling, sweat, ahegao", neg: "kissing" },
+  ],
+};
+/** 要生的格子：一般動作一格（pair~chat），交配動作兩格（pair~missionary~1／~2）。共 5＋3×2＝11。 */
+export const PAIR_SLOTS = PAIR_ACTS.flatMap((a) => (PAIR_FRAMES[a.key] ? [`${a.key}~1`, `${a.key}~2`] : [a.key]));
+const slotOf = (slot) => { const [act, f] = String(slot).split("~"); return { act, frame: f ? Number(f) : 0 }; };
 const ACT = Object.fromEntries(PAIR_ACTS.map((a) => [a.key, a]));
 const FRAME_EN = { half: "upper body, waist up", wide: "cowboy shot, wide shot, both bodies in frame" };
 const EXPR_EN = { chat: "shy smile, light blush", kiss: "blushing, eyes closed", grope: "blushing, embarrassed, open mouth" };
@@ -40,14 +62,15 @@ const HALF_BG_NEG = "bed, sofa, furniture";   // 寬景（坐著／躺著）要�
 /** 這對（她＋這對夫妻）的 owner：只留伺服器允許的字、最長 80。 */
 export const pairOwner = (wife, couple) => `${wife?.id || ""}.${couple?.id || ""}`.replace(/[^A-Za-z0-9_.:-]/g, "-").slice(0, 80);
 /** 組正／負向（extra 會接在伺服器組好的她的身份 tags 後面）。 */
-export function pairPrompt(actKey, wife, couple) {
+export function pairPrompt(slot, wife, couple) {
+  const { act: actKey, frame } = slotOf(slot), fr = frame ? PAIR_FRAMES[actKey]?.[frame - 1] : null;
   const a = ACT[actKey]; if (!a) throw new Error(`沒有這個動作 ${actKey}`);
   const gi = girlInfo(wife), mi = manInfo(couple?.husband || {});
   const manLook = [mi.desc, mi.body, a.clothes === "dressed" ? `wearing ${mi.outfit}` : a.clothes === "partial" ? `${mi.outfit}, clothes partially removed` : MAN_CLOTHES.nude].filter(Boolean).join(", ");
   // 她的衣服 tag 由伺服器用 outfit 欄翻（中文穿搭名不要塞進 extra）
   const herLook = [gi.body, a.clothes === "partial" ? "clothes partially removed" : a.clothes === "nude" ? HER_CLOTHES.nude : ""].filter(Boolean).join(", ");
-  const pos = ["1man, 1girl, couple, man and woman, hetero", a.act, FRAME_EN[a.framing], `the man: ${manLook}`, `the woman: ${herLook}`, EXPR_EN[a.key] || NSFW_EXPR, BG_EN].join(", ");
-  const neg = [PAIR_NEG, PAIR_BG_NEG, a.framing === "half" ? HALF_BG_NEG : "", a.rating === "sfw" ? "nude, nsfw, nipples, penis" : "", a.clothes === "nude" ? "fully clothed" : "",
+  const pos = ["1man, 1girl, couple, man and woman, hetero", a.act, fr?.act || "", FRAME_EN[a.framing], `the man: ${manLook}`, `the woman: ${herLook}`, fr?.expr || EXPR_EN[a.key] || NSFW_EXPR, BG_EN].filter(Boolean).join(", ");
+  const neg = [PAIR_NEG, PAIR_BG_NEG, a.framing === "half" ? HALF_BG_NEG : "", a.rating === "sfw" ? "nude, nsfw, nipples, penis" : "", a.clothes === "nude" ? "fully clothed" : "", fr?.neg || "",
     mi.build === "fat" ? "thin man, muscular man" : mi.build === "slim" ? "fat man" : mi.build === "old" ? "young man" : "", gi.slim ? "fat woman, chubby woman" : ""].filter(Boolean).join(", ");
   return { pos, neg };
 }
@@ -58,28 +81,36 @@ function herFor(a, wife) {
   return { ...wife, stage: "wife", ...(a.clothes === "nude" ? { _force_exposed: true } : {}) };
 }
 /** /api/imggen body：她當 character（lock_identity，伺服器出卡場景模式：不寫 solo／不對鏡、寫 1man 1girl）、她的模型。 */
-export function pairBody(actKey, wife, couple, eng, seed) {
+export function pairBody(slot, wife, couple, eng, seed) {
+  const actKey = slotOf(slot).act;
   if (!wife?.id) throw new Error("先選測試魅子"); if (!couple?.husband) throw new Error("先抽一對對方夫妻");
-  const a = ACT[actKey], comfy = eng.imgProvider === "comfy", f = pairPrompt(actKey, wife, couple);
+  const a = ACT[actKey], comfy = eng.imgProvider === "comfy", f = pairPrompt(slot, wife, couple);
   const ckpt = String(wife.comfyCkpt || "").trim() || eng.comfyCkpt || "";
   if (comfy && !ckpt) throw new Error("此魅子尚未綁定 Comfy 模型（comfyCkpt），全域也沒設");
   return {
-    key: `swap-pair:${actKey}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,
+    key: `swap-pair:${String(slot).replace("~", "-")}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,
     framing: a.framing === "half" ? "half" : "full", rating: a.rating, negative: f.neg, visual_neg: f.neg, cutout: false, flat_bg: false, retry: true, seed,
     character: herFor(a, wife), outfit: a.clothes === "dressed" ? wornOutfit(wife) : "", extra: f.pos, prompt: "", lock_identity: true, char_id: wife.id,
     ...(comfy ? { comfy_url: eng.comfyUrl, ckpt } : {}),
   };
 }
-export const missingPairs = (S, wife, couple) => { const have = S?.images?.[pairOwner(wife, couple)] || {}; return PAIR_KEYS.filter((k) => !have[`pair~${k}`]?.cut); };
-/** 生一張（綠幕→色鍵→存）；回新的 images。 */
-export async function genPair(actKey, wife, couple, say = () => {}) {
-  const eng = await gameEngine(), seed = Math.floor(Math.random() * 2 ** 31) || 1, body = pairBody(actKey, wife, couple, eng, seed), t0 = Date.now();
+export const missingPairs = (S, wife, couple) => { const have = S?.images?.[pairOwner(wife, couple)] || {}; return PAIR_SLOTS.filter((k) => !have[`pair~${k}`]?.cut); };
+/** 生一格（綠幕→色鍵→存，seed 一起存，第 2 格拿第 1 格的 seed）；seed 不給＝隨機。回新的 images。 */
+export async function genPair(slot, wife, couple, say = () => {}, seed = 0) {
+  const eng = await gameEngine(), t0 = Date.now(); seed = seed || Math.floor(Math.random() * 2 ** 31) || 1;
+  const body = pairBody(slot, wife, couple, eng, seed);
   say(`生圖（${body.provider}${body.ckpt ? " " + body.ckpt : ""}、seed ${seed}）`);
   const res = await waitImg(body, (s) => say(`生圖 ${s} 秒`));
   if (res.status !== "done" || !res.result) throw new Error(res.error || "沒有結果");
   const raw = String(res.result).split("|")[0], cut = await cutoutOf(raw, say);
-  const j = await api.put("image", { owner: pairOwner(wife, couple), key: `pair~${actKey}`, raw, ...cut }, "POST");
-  return { images: j.images, sec: Math.round((Date.now() - t0) / 1000), how: cut.how };
+  const j = await api.put("image", { owner: pairOwner(wife, couple), key: `pair~${slot}`, raw, seed, ...cut }, "POST");
+  return { images: j.images, sec: Math.round((Date.now() - t0) / 1000), how: cut.how, seed };
+}
+/** 跑一串格子（依序）時的 seed：第 1 格新抽（這一輪記住），第 2 格用這輪的第 1 格、沒有就用已存的第 1 格。 */
+export function seedFor(slot, have, runSeeds) {
+  const { act, frame } = slotOf(slot);
+  if (frame === 2) return runSeeds[act] || Number(have?.[`pair~${act}~1`]?.seed) || 0;
+  return 0;
 }
 
 /** test_room 咖啡廳面板裡的「雙人互動圖」區塊。ctx：{ girl(), couple(), state(), setImages(images), backdrop(scene) }。 */
@@ -89,34 +120,49 @@ export function bindPairBox(ctx) {
   let busy = false;
   const say = (x) => { if (st) st.textContent = x; };
   const imgs = () => ctx.state()?.images?.[pairOwner(ctx.girl(), ctx.couple())] || {};
+  const cellImg = (im, alt, cls = "") => im ? `<img class="${cls}" src="${im.cut}" alt="${alt}" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:100%;max-width:100%;object-fit:contain">` : "";
   const render = (msg = {}) => {
     const have = imgs();
-    grid.innerHTML = PAIR_ACTS.map((a) => { const im = have[`pair~${a.key}`];
+    grid.innerHTML = PAIR_ACTS.map((a) => {
+      const two = !!PAIR_FRAMES[a.key], slots = two ? [`${a.key}~1`, `${a.key}~2`] : [a.key], ims = slots.map((k) => have[`pair~${k}`]);
+      const pic = two ? cellImg(ims[0], `${a.zh} 1`, "pf1") + cellImg(ims[1], `${a.zh} 2`, "pf2") : cellImg(ims[0], a.zh);
+      const btns = slots.map((k, i) => `${ims[i]?.raw ? `<a class="mini" href="${ims[i].raw}" target="_blank" rel="noopener">原圖${two ? i + 1 : ""}</a> ` : ""}<button type="button" class="mini" data-regen="${k}">${ims[i] ? "重生" : "產生"}${two ? ` ${i + 1}` : ""}</button>`).join(" ")
+        + (two ? ` <button type="button" class="mini" data-regen="${slots.join(",")}">重生兩張</button>` : "");
       return `<div data-k="${a.key}" style="border:1px solid #333;border-radius:8px;padding:4px;background:#141418">
-        <div class="mini" style="display:flex;justify-content:space-between;gap:4px"><b>${a.zh}</b><span>${a.scene === "ktv" ? "KTV" : "飯店"}</span></div>
-        <div style="position:relative;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:url(${ctx.backdrop(a.scene)}) center/cover">${im ? `<img src="${im.cut}" alt="${a.zh}" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:100%;max-width:100%;object-fit:contain">` : `<span class="mini" style="position:absolute;inset:auto 0 40% 0;text-align:center;color:#999">還沒有</span>`}</div>
-        ${im?.raw ? `<a class="mini" href="${im.raw}" target="_blank" rel="noopener">原圖</a> ` : ""}<button type="button" class="mini" data-regen="${a.key}">${im ? "重生" : "產生"}</button>
-        <div class="mini" style="white-space:pre-wrap;color:#aaa">${msg[a.key] || ""}</div></div>`; }).join("");
+        <div class="mini" style="display:flex;justify-content:space-between;gap:4px"><b>${a.zh}${two ? "（輪播 1→2）" : ""}</b><span>${a.scene === "ktv" ? "KTV" : "飯店"}</span></div>
+        <div style="position:relative;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:url(${ctx.backdrop(a.scene)}) center/cover">${ims.some(Boolean) ? pic : `<span class="mini" style="position:absolute;inset:auto 0 40% 0;text-align:center;color:#999">還沒有</span>`}</div>
+        ${btns}
+        <div class="mini" style="white-space:pre-wrap;color:#aaa">${slots.map((k) => msg[k] || "").filter(Boolean).join("\n")}</div></div>`; }).join("");
+    tick();
   };
+  // 輪播：兩格都在才切；只有一格就一直顯示那格
+  let flip = false;
+  const tick = () => grid.querySelectorAll("[data-k]").forEach((cell) => {
+    const a = cell.querySelector(".pf1"), b = cell.querySelector(".pf2"); if (!a && !b) return;
+    const show2 = a && b ? flip : !!b && !a;
+    if (a) a.style.visibility = show2 ? "hidden" : "visible"; if (b) b.style.visibility = show2 ? "visible" : "hidden";
+  });
+  setInterval(() => { flip = !flip; tick(); }, FRAME_MS);
   const note = {};
   const run = async (keys) => {
     if (busy) { say("還有在生，等它好了再按。"); return; }
     const w = ctx.girl(), c = ctx.couple(); if (!w?.id) { say("先選測試魅子"); return; } if (!c) { say("先抽一對對方夫妻"); return; }
-    if (!keys.length) { say("8 張都有了（要重來就按個別的「重生」）"); return; }
-    busy = true;
+    if (!keys.length) { say(`${PAIR_SLOTS.length} 格都有了（要重來就按個別的「重生」）`); return; }
+    busy = true; const runSeeds = {};
     try {
       for (let i = 0; i < keys.length; i++) {
-        const k = keys[i], zh = ACT[k].zh;
+        const k = keys[i], { act, frame } = slotOf(k), zh = ACT[act].zh + (frame ? ` 第${frame}格` : "");
         try {
-          const r = await genPair(k, w, c, (x) => { note[k] = x; say(`${i + 1}/${keys.length}「${zh}」${x}`); render(note); });
-          ctx.setImages(r.images); note[k] = `好了 ${r.sec} 秒（${r.how}）`;
+          const r = await genPair(k, w, c, (x) => { note[k] = x; say(`${i + 1}/${keys.length}「${zh}」${x}`); render(note); }, seedFor(k, imgs(), runSeeds));
+          if (frame === 1) runSeeds[act] = r.seed;
+          ctx.setImages(r.images); note[k] = `好了 ${r.sec} 秒、seed ${r.seed}（${r.how}）`;
         } catch (e) { note[k] = `失敗：${e?.message || e}`; }
         render(note);
       }
-      say(`完成 ${keys.length} 張`);
+      say(`完成 ${keys.length} 格`);
     } finally { busy = false; }
   };
   $("sc-pair-all")?.addEventListener("click", () => void run(missingPairs(ctx.state(), ctx.girl(), ctx.couple())));
-  grid.addEventListener("click", (e) => { const b = e.target.closest("button[data-regen]"); if (b) void run([b.dataset.regen]); });
+  grid.addEventListener("click", (e) => { const b = e.target.closest("button[data-regen]"); if (b) void run(b.dataset.regen.split(",")); });
   return { render };
 }
