@@ -11,6 +11,7 @@ import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
 export const SWAP_SCENES = {
   cafe: { zh: "咖啡廳", bgs: ["/assets/swap/cafe.jpg"] },
   bar: { zh: "酒吧", bgs: ["/assets/swap/bar1.jpg", "/assets/swap/bar2.jpg", "/assets/swap/bar3.jpg"] },
+  hotel: { zh: "飯店房間", bgs: [1,2,3,4,5,6].map(n => `/assets/swap/hotel${n}.jpg`) },   // 2026-10-22 飯店 6 張（場景本身還沒做）
 };
 /** 這個場景的背景：i 有給（0 起）就用那張，沒給就隨機一張。 */
 export function pickBackdrop(scene = "cafe", i = -1) {
