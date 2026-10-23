@@ -20,14 +20,15 @@ export const sceneBase = (scene) => {
  * sex：飯店房間＝正常體位（missionary），浴室＝背後（doggy）。 */
 export const TEASE_CARDS = [
   { id: "t_waist", act: "waist", zh: "摟她的腰", bold: 1, icon: "hand", acc: 10, drunk: 0 },
+  { id: "t_kiss", act: "kiss", zh: "接吻", bold: 2, icon: "lips", acc: 15, drunk: 0, noImg: true, okAcc: 5 },
   { id: "t_butt", act: "butt", zh: "摸她的屁股", bold: 2, icon: "hand", acc: 20, drunk: 0 },
   { id: "t_breast", act: "breast", zh: "摸她的胸部", bold: 2, icon: "hand", acc: 25, drunk: 20 },
   { id: "t_knead", act: "breast_knead", zh: "揉她的胸部", bold: 3, icon: "hand", acc: 35, drunk: 30 },
-  { id: "t_suck", act: "breast_suck", zh: "吸她的奶頭", bold: 3, icon: "lips", acc: 45, drunk: 30 },
-  { id: "t_lick", act: "nipple_lick", zh: "舔她的奶頭", bold: 3, icon: "lips", acc: 45, drunk: 30 },
+  { id: "t_suck", act: "breast_suck", zh: "吸她的奶頭", bold: 3, icon: "lips", acc: 45, drunk: 30, okAcc: 5 },
+  { id: "t_lick", act: "nipple_lick", zh: "舔她的奶頭", bold: 3, icon: "lips", acc: 45, drunk: 30, okAcc: 5 },
   { id: "t_labia", act: "labia", zh: "摸她的陰唇", bold: 4, icon: "hand", acc: 50, drunk: 45 },
   { id: "t_labia_rub", act: "labia_rub", zh: "揉她的陰唇", bold: 4, icon: "hand", acc: 55, drunk: 45 },
-  { id: "t_oral", act: "oral", zh: "讓她幫你口交", bold: 4, icon: "lips", acc: 60, drunk: 45 },
+  { id: "t_oral", act: "oral", zh: "讓她幫你口交", bold: 4, icon: "lips", acc: 60, drunk: 45, okAcc: 5 },
   { id: "t_finger_in", act: "finger_in", zh: "手指插進去", bold: 4, icon: "hand", acc: 65, drunk: 60 },
   { id: "t_vagina_finger", act: "vagina_finger", zh: "扣她的陰道", bold: 5, icon: "hand", acc: 70, drunk: 60 },
   { id: "t_cervix", act: "cervix_rub", zh: "揉她的子宮口", bold: 5, icon: "hand", acc: 80, drunk: 60, scenes: ["hotel_room", "hotel_bath"] },
@@ -82,7 +83,8 @@ export function teaseChance(baseP, { accept = 0, drunk = 0 } = {}) {
 /** 結算：回 { dAcc, dProg }（不改 sess）。 */
 export function teaseResult(card, ok) {
   const b = clamp(card.bold, 1, 5);
-  return ok ? { dAcc: TEASE_FX.okAcc[b], dProg: b * TEASE_FX.okProg } : { dAcc: -TEASE_FX.noAcc[b], dProg: 0 };
+  const gain = Number.isFinite(card.okAcc) ? card.okAcc : TEASE_FX.okAcc[b];
+  return ok ? { dAcc: gain, dProg: b * TEASE_FX.okProg } : { dAcc: -TEASE_FX.noAcc[b], dProg: 0 };
 }
 
 /** 做愛姿勢：房間正常體位、浴室背後。 */
@@ -96,7 +98,7 @@ export const sexKey = (pose, step) => `sex~${pose}~${step}`;
 export function pregenKeys(scene) {
   const out = [];
   for (const c of TEASE_CARDS) {
-    if (!sceneOk(c, scene)) continue;
+    if (!sceneOk(c, scene) || c.noImg) continue;   // 接吻等純文字卡：不預產圖
     if (c.act === "sex") { const pose = sexPoseFor(scene); for (const s of ["open", "join", "thrust"]) out.push({ kind: "sex", pose, step: s, key: sexKey(pose, s) }); }
     else { const nude = teaseNude(c.act, scene); out.push({ kind: "tease", act: c.act, nude, key: teaseKey(c.act, nude) }); }
   }

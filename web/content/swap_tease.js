@@ -3,7 +3,7 @@
  * 結果存在換妻伺服器狀態 images[couple.id]["tease~<動作>(~nude)" | "sex~<姿勢>~<步驟>"]，之後直接用、不重生。 */
 import { api } from "./swap_cafe_gen.js?v=26";
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { teaseGirlOf, teaseKey, sexKey, teaseNude, sexPoseFor, pregenKeys } from "./swap_tease_rules.js?v=1";
+import { teaseGirlOf, teaseKey, sexKey, teaseNude, sexPoseFor, pregenKeys } from "./swap_tease_rules.js?v=3";
 import { pickRuntimeWaistPack, generateWaistPackImage } from "./waist_packs.js?v=6";
 import { pickRuntimeButtPack, generateButtPackImage } from "./butt_packs.js?v=7";
 import { pickRuntimeBreastPack, generateBreastPackImage, buildBreastImgBody } from "./breast_packs.js?v=4";
@@ -69,6 +69,7 @@ export function genTeaseImage(c, job, { eng = null, debug = () => {} } = {}) {
 /** 卡牌 → 要的圖（場景決定穿衣／裸體、做愛姿勢）。做愛回 3 步。 */
 export function jobsForAct(act, scene) {
   if (act === "sex") { const pose = sexPoseFor(scene); return ["open", "join", "thrust"].map((step) => ({ kind: "sex", pose, step, key: sexKey(pose, step) })); }
+  if (!TEASE_JOBS[act]) return [];   // 接吻等：純文字，不生圖
   const nude = teaseNude(act, scene); return [{ kind: "tease", act, nude, key: teaseKey(act, nude) }];
 }
 /** 預產（開車黑畫面）：場景那一整組缺的，一張一張生。onTick(done, total, fail)。回最新 S。 */

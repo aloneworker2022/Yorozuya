@@ -4,7 +4,7 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=26";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=23";
+import { openBar } from "./swap_bar.js?v=24";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor } from "./swap_flow_rules.js?v=1";
 
 export const SESSION_KEY = "yorozuya.swap.session";
@@ -202,7 +202,7 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   const dest = FLOW_ZH[scene] || "約會場地";
   const ttl = ov.querySelector(".ttl"); if (ttl) ttl.textContent = `正在驅車前往${dest}`;
   if (scene === "ktv" || String(scene).startsWith("hotel")) {
-    const { pregenTease } = await import("./swap_tease.js?v=1");
+    const { pregenTease } = await import("./swap_tease.js?v=2");
     S = await pregenTease(c, scene, S, { debug: (m) => ctx.debug?.(m), onTick: (d, t, f) => { n.textContent = t ? `準備動作 ${d}/${t}${f ? `（失敗 ${f}）` : ""}` : ""; } }).catch((e) => { ctx.debug?.(`換妻：動作預產失敗 ${e?.message || e}`); return S; });
   }
   if ((scene === "ktv" || String(scene).startsWith("hotel")) && wife) {

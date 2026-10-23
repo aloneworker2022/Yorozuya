@@ -11,8 +11,8 @@ import { actLine, SESSION_KEY } from "./swap_select.js?v=29";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=26";
 import { pairOwner, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=12";
-import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees } from "./swap_tease_rules.js?v=2";
-import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=1";
+import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees } from "./swap_tease_rules.js?v=3";
+import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=2";
 import { ROUNDS, ensureWifeAccept, gateCheck, ensureSceneRounds, bumpRound, parkShouldAdvance, barShouldPropose, ktvCanHotel, END_FB, backdropOf } from "./swap_flow_rules.js?v=1";
 
 // ============================================================ 調整用的表
@@ -564,6 +564,7 @@ export function openBar(ctx = {}, c, S = {}) {
   const showPov = async (cardX) => {
     const tok = ++pvTok; clearTimeout(pvT);
     const jobs = jobsForAct(cardX.act, scene);
+    if (!jobs.length) return;   // 純文字卡（接吻）：只靠她那句，不開 POV
     if (cardX.act !== "sex") { await pvShow(jobs[0], cardX.zh, tok); return; }
     const ZH = { open: "張開腿", join: "插入", thrust: "抽插" };
     for (const j of jobs) { if (tok !== pvTok) return; await pvShow(j, `${cardX.zh}・${ZH[j.step]}`, tok); await sleep(2000); }
