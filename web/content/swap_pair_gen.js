@@ -5,7 +5,7 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { api, wornOutfit, waitImg, chromaKeyData, CHROMA } from "./swap_cafe_gen.js?v=24";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA } from "./swap_cafe_gen.js?v=25";
 
 // 2026-10-23 Al 核可：雙人圖預設 prompt 全部改結構（只有雙人圖）。前端給「每段要什麼 tag」（pair 物件），伺服器組成
 //   [品質], 1boy, 1girl, hetero, <取景>, [from side（只有 side:true 的動作；聊天／接吻不加，會畫成背對背）], <動作>, (green background:1.3), (simple background:1.2), green screen, chroma key
@@ -32,19 +32,21 @@ export const PAIR_ACTS = [
   { key: "seated", zh: "面對面坐著擁吻交配", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "sitting", her: "straddling, arms around neck", body: "nipples, pussy" },
 ];
 export const PAIR_KEYS = PAIR_ACTS.map((a) => a.key);
-// 2026-10-22 Al：第 1 格停 2 秒、第 2 格停 0.8 秒（第 2 格被撞得晃：SLAM_HITS 下、每下 SLAM_PX 位移）
-export const FRAME1_MS = 2000, FRAME2_MS = 800, SLAM_HITS = 3, SLAM_PX = 6;
+// 2026-10-23 Al：第 1 格停 2 秒、第 2 格（插入）停 0.6 秒；第 2 格出現時「大力震一下」：一下大位移＋放大、SLAM_MS 內回穩（不連續抖）
+export const FRAME1_MS = 2000, FRAME2_MS = 600, SLAM_MS = 200, SLAM_PX = 18;
+// 第 2 格共用：男方用力撞（shared 段／1boy 段各加，tag 不寫句子）
+const F2_SLAM = "hard thrust, (thrusting:1.2), hip slam, forceful sex, motion lines, sweat";
 const F2_EXPR = "tongue out, ahegao, tears, rolling eyes";
 export const PAIR_FRAMES = {
   // 2026-10-23 第 1 格改成龜頭剛進去（淺插），負向擋整根插入
   missionary: [{ act: "missionary, lying, on back, spread legs, penis, sex, vaginal, tip insertion, shallow penetration, glans, partially inserted", expr: "blush, nervous", zh: "龜頭剛進去", neg: "deep penetration, full insertion, imminent penetration, penis over pussy, not inserted" },
-    { act: "missionary, sex, vaginal, deep penetration, motion lines", expr: F2_EXPR }],
+    { act: `missionary, sex, vaginal, deep penetration, ${F2_SLAM}`, his: "thrusting, hips forward, grabbing another's legs", expr: F2_EXPR }],
   normal: [{ act: "sex, vaginal, kneeling, upright, leg grab, holding another's thighs, spread legs, on back, tip insertion, shallow penetration, glans, partially inserted", expr: "blush, nervous", zh: "龜頭剛進去", neg: "deep penetration, full insertion, lying on another, on top, missionary" },
-    { act: "sex, vaginal, kneeling, upright, leg grab, holding another's thighs, spread legs, on back, deep penetration, full insertion, hard thrust, motion lines", expr: F2_EXPR + ", pained expression, open mouth", neg: "lying on another, missionary, tip insertion" }],
+    { act: `sex, vaginal, kneeling, upright, leg grab, holding another's thighs, spread legs, on back, deep penetration, full insertion, ${F2_SLAM}`, his: "thrusting, hips forward, grabbing another's thighs", expr: F2_EXPR + ", pained expression, open mouth", neg: "lying on another, missionary, tip insertion" }],
   behind: [{ act: "doggystyle, all fours, penis, imminent penetration, looking back", expr: "blush, nervous" },
-    { act: "doggystyle, sex from behind, vaginal, deep penetration, motion lines", expr: F2_EXPR }],
+    { act: `doggystyle, sex from behind, vaginal, deep penetration, ${F2_SLAM}`, his: "thrusting, hips forward, grabbing another's hips", expr: F2_EXPR }],
   seated: [{ act: "straddling, upright straddle, sitting on lap, imminent penetration, kiss", expr: "blush, nervous, kiss" },
-    { act: "straddling, sex, vaginal, deep penetration, motion lines", expr: F2_EXPR }],
+    { act: `straddling, sex, vaginal, deep penetration, ${F2_SLAM}`, his: "thrusting, hips up, grabbing another's hips", expr: F2_EXPR }],
 };
 /** 要生的格子：一般動作一格（pair~chat），交配動作兩格（pair~missionary~1／~2）。共 5＋4×2＝13。 */
 export const PAIR_SLOTS = PAIR_ACTS.flatMap((a) => (PAIR_FRAMES[a.key] ? [`${a.key}~1`, `${a.key}~2`] : [a.key]));
@@ -70,7 +72,7 @@ export function pairPrompt(slot, wife, couple) {
   const a = ACT[actKey]; if (!a) throw new Error(`沒有這個動作 ${actKey}`);
   const h = couple?.husband || {}, nude = a.clothes === "nude";
   const male = dedupe(MAN_AGE(Number(h.age) || 0), MAN_LOOK[h.persona] || "short hair", MAN_BODY[h.build] || "", nude && MAN_HAIRY.has(h.build) ? "chest hair" : "", "tanned male",
-    nude ? "nude" : a.clothes === "partial" ? [MAN_CL[h.persona] || "dress shirt", a.hisCl || ""].filter(Boolean).join(", ") : MAN_CL[h.persona] || "dress shirt", a.his || "");
+    nude ? "nude" : a.clothes === "partial" ? [MAN_CL[h.persona] || "dress shirt", a.hisCl || ""].filter(Boolean).join(", ") : MAN_CL[h.persona] || "dress shirt", a.his || "", fr?.his || "");
   const herCl = nude ? "nude" : a.clothes === "partial" ? a.herCl || "clothes pull" : "";   // dressed＝伺服器翻她的生涯服裝
   const body = dedupe(a.body || "");   // 2026-10-23 胸／私密部位改由伺服器從她的人設翻（跟單人立繪同一份表），這裡只給動作要露的部位
   const neg = dedupe(NEG_BASE, BG_NEG, a.framing === "half" ? "bed" : "white sheets", a.neg || "", fr?.neg ?? (frame === 1 ? "penetration, sex" : ""), a.clothes === "dressed" ? "nude, nipples" : "");
@@ -168,15 +170,11 @@ export function seedFor(slot, have, runSeeds) {
 let slamCss = false;
 function ensureSlamCss() {
   if (slamCss || typeof document === "undefined") return; slamCss = true;
-  const n = SLAM_HITS, px = SLAM_PX, k = [];
-  for (let i = 0; i < n; i++) {   // 每下：瞬間撞歪（位移＋小旋轉）→ 彈回
-    const t0 = (i / n) * 100, t1 = t0 + 100 / n * 0.18, t2 = t0 + 100 / n * 0.55, sx = i % 2 ? -1 : 1;
-    k.push(`${t0.toFixed(1)}%{transform:translateX(-50%) translate(0,0) rotate(0)}`,
-      `${t1.toFixed(1)}%{transform:translateX(-50%) translate(${sx * px}px,${px}px) rotate(${sx * 1.2}deg)}`,
-      `${t2.toFixed(1)}%{transform:translateX(-50%) translate(${-sx * px / 3}px,${-px / 3}px) rotate(${-sx * 0.4}deg)}`);
-  }
-  k.push("100%{transform:translateX(-50%) translate(0,0) rotate(0)}");
-  const st = document.createElement("style"); st.textContent = `@keyframes swpSlam{${k.join("")}} .swp-slam{animation:swpSlam ${FRAME2_MS}ms linear 1}`;
+  // 一下重撞：0→12% 猛推（下沉＋放大）→ 35% 小反彈 → 100% 回穩；只跑一次
+  const px = SLAM_PX, T = (x, y, sc) => `transform:translateX(-50%) translate(${x}px,${y}px) scale(${sc})`;
+  const st = document.createElement("style");
+  st.textContent = `@keyframes swpSlam{0%{${T(0, 0, 1)}}12%{${T(px * 0.35, px, 1.07)}}35%{${T(-px * 0.12, -px * 0.25, 0.985)}}60%{${T(0, px * 0.08, 1.01)}}100%{${T(0, 0, 1)}}}`
+    + ` .swp-slam{animation:swpSlam ${SLAM_MS}ms cubic-bezier(.2,.9,.3,1) 1;transform-origin:50% 100%}`;
   document.head.appendChild(st);
 }
 /** 一直跑：第 1 格 FRAME1_MS → 第 2 格 FRAME2_MS → …；每次切換呼叫 cb(isFrame2)。回 stop()。 */
@@ -232,8 +230,8 @@ export function bindPairBox(ctx) {
     return out;
   };
   const build = () => {
-    cells = {}; builtFor = owner();
-    grid.replaceChildren(...PAIR_SLOTS.map((k) => {
+    cells = {}; builtFor = owner(); stopLoops();
+    grid.replaceChildren(...PAIR_SLOTS.flatMap((k) => {
       const { act, frame } = slotOf(k), a = ACT[act], el = document.createElement("div");
       el.dataset.k = k; el.style.cssText = "border:1px solid #333;border-radius:8px;padding:6px;background:#141418;min-width:0";
       el.innerHTML = `<div class="mini" style="display:flex;justify-content:space-between;gap:4px"><b style="font-size:14px">${esc(labelOf(k))}</b><span>${a.scene === "ktv" ? "KTV" : "飯店"}</span></div>
@@ -265,9 +263,33 @@ export function bindPairBox(ctx) {
         try { setMsg(k, "拿預設 prompt……"); const d = await saveEdit(owner(), k, null); ctx.setEdits(d.edits || {}); const p = await previewPair(k, ctx.girl(), ctx.couple());
           q(".pos").value = p.positive; q(".neg").value = p.negative; setMsg(k, "已還原成預設 prompt（seed／steps／cfg／起始圖沒動）"); } catch (er) { setMsg(k, String(er?.message || er)); }
       });
-      cells[k] = el; return el;
+      cells[k] = el;
+      return frame === 2 ? [el, loopCard(act)] : [el];
     }));
     for (const k of PAIR_SLOTS) fill(k);
+  };
+  // 2026-10-23 輪播預覽：跟遊戲同一個 startPairLoop／applyPairFrame，飯店背景＋兩格去背圖疊上去
+  const loops = {};
+  const stopLoops = () => { for (const a of Object.keys(loops)) { loops[a].stop?.(); delete loops[a]; } };
+  const loopCard = (act) => {
+    const el = document.createElement("div");
+    el.style.cssText = "border:1px solid #446;border-radius:8px;padding:6px;background:#121620;min-width:0";
+    el.innerHTML = `<div class="mini" style="display:flex;justify-content:space-between;gap:4px"><b style="font-size:14px">${esc(ACT[act].zh)} 輪播預覽</b><span>${FRAME1_MS / 1000}s ／ ${FRAME2_MS / 1000}s＋撞</span></div>
+      <div class="lp" style="position:relative;width:100%;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:url(${ctx.backdrop("hotel")}) center/cover"><div class="cell" style="position:absolute;inset:0"></div></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:4px"><button type="button" class="play bp-cy">▶ 播放</button><span class="lmsg mini" style="color:#aaa"></span></div>`;
+    const btn = el.querySelector(".play"), cell = el.querySelector(".cell"), msg = el.querySelector(".lmsg");
+    const stop = () => { loops[act]?.stop?.(); delete loops[act]; btn.textContent = "▶ 播放"; msg.textContent = ""; };
+    btn.addEventListener("click", () => {
+      if (loops[act]) { stop(); return; }
+      const have = imgs(), u1 = have[`pair~${act}~1`]?.cut, u2 = have[`pair~${act}~2`]?.cut;
+      if (!u1 || !u2) { msg.textContent = "兩格都生好（去背）才能播"; return; }
+      const st = "position:absolute;left:50%;bottom:0;height:100%;width:100%;object-fit:contain;transform:translateX(-50%)";
+      cell.innerHTML = `<img class="pf1" alt="" src="${esc(u1)}" style="${st}"><img class="pf2" alt="" src="${esc(u2)}" style="${st};visibility:hidden">`;
+      let n = 0;
+      const s0 = startPairLoop((f2) => { applyPairFrame(cell.parentElement, f2); if (f2) msg.textContent = `撞 ${++n}`; });
+      loops[act] = { stop: () => { s0(); cell.innerHTML = ""; } }; btn.textContent = "■ 停止";
+    });
+    return el;
   };
   const setMsg = (k, x) => { const c = cells[k]; if (c) c.querySelector(".msg").textContent = x || ""; };
   const refThumb = (k) => { const c = cells[k], u = c.querySelector(".ref").value, th = c.querySelector(".refth"); th.style.display = u ? "" : "none"; if (u) th.src = u; };
