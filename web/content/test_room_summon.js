@@ -337,7 +337,9 @@ import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
 import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=26";
-import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=27";
+import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=28";
+import { loadRoster as swapLoadRoster, openSwapDrive } from "./swap_select.js?v=28";
+import { openBar as openSwapScene } from "./swap_bar.js?v=22";
 import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=17";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
@@ -8844,7 +8846,13 @@ async function maybeHandleSwapAsk(raw) {
     lines.push({ role: "assistant", content: line });
     await typeLine(who.name, line);
   } finally { talkBusy = false; setTalkEnabled(true); }
-  if (d?.yes) setTimeout(() => openSwapSelect({
+  if (d?.yes) setTimeout(() => openSwapSelect(swapCtxOf(who)), 1500);   // 讓她那句先看清楚
+  return true;
+}
+
+/** 換妻場景共用 ctx（老婆＝who）。 */
+function swapCtxOf(who) {
+  return {
     girl: () => who, debug: pushDebug,
     mood: (w) => getMoodCarry(w),
     hunger: (w) => (HUNGER_ON ? peekHunger(w, Date.now(), w.stage || "stranger") : 0),
@@ -8856,9 +8864,21 @@ async function maybeHandleSwapAsk(raw) {
       const run = route.provider === "ollama" ? askOllama(route, msgs) : askGrok(route, msgs, `swapbar:${Date.now().toString(36)}:${(++swapBarSeq).toString(36)}${Math.random().toString(36).slice(2, 7)}`);
       return cleanLine(await withTimeout(run, 12000, "")).slice(0, 160);
     },
-  }), 1500);   // 讓她那句先看清楚
-  return true;
+  };
 }
+/** 測試：直接跳 KTV／飯店房間／飯店浴室（開車黑畫面預產那一組，再進場；含接受度／醉度滑桿）。 */
+async function openSwapTestScene(scene) {
+  if (!girl) { pushDebug("換妻測試：先選一位魅子"); return; }
+  try {
+    const S = await swapLoadRoster(), c = S.couples[S.current] || Object.values(S.couples)[0];
+    if (!c) { pushDebug("換妻測試：還沒有對方夫妻"); return; }
+    const together = scene === "ktv" || !!document.getElementById("sc-together")?.checked;
+    const ctx = { ...swapCtxOf(girl), scene, together, test: true, expose: true };
+    const S2 = await openSwapDrive(ctx, c, S);
+    openSwapScene(ctx, c, S2);
+  } catch (e) { pushDebug(`換妻測試失敗：${e?.message || e}`); }
+}
+document.addEventListener("click", (e) => { const b = e.target?.closest?.("[data-swt]"); if (b) void openSwapTestScene(b.dataset.swt); });
 
 async function maybeHandleClothesAsk(raw) {
   if (!isChangeClothesAsk(raw) || !canAskClothes(girl)) return false;

@@ -4,7 +4,7 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=26";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=21";
+import { openBar } from "./swap_bar.js?v=22";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;
@@ -195,6 +195,12 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
     try { const imgs = await gen(ch, ex, wife, c, S, () => {}); if (imgs) S = { ...S, images: imgs }; }
     catch (e) { fail++; ctx.debug?.(`換妻：立繪 ${ch}・${ex} 失敗：${e?.message || e}`); }
     done++; tick();
+  }
+  // 要去 KTV／飯店：黑畫面時把那一組動作圖先生好（缺的才生；沒生到的進場後現產）
+  const scene = ctx.scene || "bar";
+  if (scene !== "bar") {
+    const { pregenTease } = await import("./swap_tease.js?v=1");
+    S = await pregenTease(c, scene, S, { debug: (m) => ctx.debug?.(m), onTick: (d, t, f) => { n.textContent = t ? `準備場景 ${d}/${t}${f ? `（失敗 ${f}）` : ""}` : ""; } }).catch((e) => { ctx.debug?.(`換妻：預產失敗 ${e?.message || e}`); return S; });
   }
   clearInterval(dots); ov.remove();
   return S;
