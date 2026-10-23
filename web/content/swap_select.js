@@ -4,7 +4,7 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=27";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=25";
+import { openBar } from "./swap_bar.js?v=26";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor } from "./swap_flow_rules.js?v=1";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=1";
 
@@ -248,7 +248,7 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   // 依場景預產：KTV／飯店的動作圖＋你老婆×對方丈夫雙人圖（缺的才生）
   const scene = ctx.scene || "park";
   const dest = FLOW_ZH[scene] || "約會場地";
-  const ttl = ov.querySelector(".ttl"); if (ttl) ttl.textContent = `正在驅車前往${dest}`;
+  const ttl = ov.querySelector(".ttl"); if (ttl) ttl.textContent = ctx.walk ? `正在移動到${dest}` : `正在驅車前往${dest}`;   // 飯店房間↔浴室：用走的
   if (scene === "ktv" || String(scene).startsWith("hotel")) {
     const { pregenTease } = await import("./swap_tease.js?v=3");
     S = await pregenTease(c, scene, S, { debug: (m) => ctx.debug?.(m), onTick: (d, t, f) => { n.textContent = t ? `準備動作 ${d}/${t}${f ? `（失敗 ${f}）` : ""}` : ""; } }).catch((e) => { ctx.debug?.(`換妻：動作預產失敗 ${e?.message || e}`); return S; });
@@ -275,15 +275,16 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
 
 /** 整段約會：公園 → 酒吧 →（配對）→ KTV → 飯店。每一場結束靠 openBar 的 onEnd。 */
 export async function playSwapDate(ctx = {}, c, S = {}, startScene = "park") {
-  let scene = startScene || "park";
+  let scene = startScene || "park", walk = false;
   while (scene) {
     const together = ctx.together ?? (scene === "park" || scene === "bar" || scene === "ktv");
-    S = await openSwapDrive({ ...ctx, scene }, c, S);
+    S = await openSwapDrive({ ...ctx, scene, walk: !!walk }, c, S);
     const result = await new Promise((resolve) => {
       openBar({ ...ctx, scene, together, onEnd: resolve }, c, S);
     });
     if (result?.S?.images) S = { ...S, images: result.S.images };
     if (result?.kind === "advance" && result.next) {
+      walk = String(scene).startsWith("hotel") && String(result.next).startsWith("hotel");
       scene = result.next;
       ctx.debug?.(`換妻：前進 → ${FLOW_ZH[scene] || scene}`);
       continue;
