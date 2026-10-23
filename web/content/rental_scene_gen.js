@@ -3,6 +3,7 @@
  * 姿勢／地點／房型／平視側面／客人外觀全寫在 prompt，不送底圖（圖生圖會把她身材拉歪）；好了搬到 assets/rental_scenes/ 登記 manifest（/api/rental/scene-images），遊戲點人物時從這裡挑。 */
 import { SLOT_KEYS, VARIANT_KEYS, VARIANT_ZH, LOC_ZH, POSE_ZH, loadImages, ownersOf } from "./rental_session.js?v=8";
 import { rollClients } from "./rental.js?v=7";
+import { wornOutfitOf } from "./outfit_pick.js?v=2";
 
 // 2026-10-18：鏡頭一律「站在旁邊平視看」：側面、與人物同高。之前躺／趴／泡澡的姿勢被模型畫成俯視（底圖是整間房的高角度＋小人）。
 const CAM_EN = "side view, from side, profile, eye level shot, camera at waist height, horizontal view, standing observer beside them, full body in frame";
@@ -177,12 +178,7 @@ export function sceneBody(venue, key, girl, client, eng, n = 0, o = {}) {
 }
 /** 她現在那身（同 sex_pose_packs.wornOutfit）；伺服器把中文衣服轉成 tag。 */
 function wornOutfit(g) {
-  const look = g?.look || {}, pick = g?.outfitPick;
-  const arr = (x) => (Array.isArray(x) ? x : []);
-  if (typeof pick === "string" && pick[0] === "e" && arr(look.eroticOutfits)[+pick.slice(1)]) return String(look.eroticOutfits[+pick.slice(1)]);
-  if (typeof pick === "string" && pick[0] === "s" && arr(look.sleepOutfits)[+pick.slice(1)]) return String(look.sleepOutfits[+pick.slice(1)]);
-  if (Number.isInteger(pick) && arr(look.wardrobe)[pick]) return String(look.wardrobe[pick]);
-  return String(look.career_outfit || look.style || "");
+  return wornOutfitOf(g);
 }
 async function putScene(venue, it, url, owners) {
   const put = await fetch("/api/rental/scene-images", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ venue, key: it.key, slot: it.slot, url, owners: owners || [] }) });

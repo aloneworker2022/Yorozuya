@@ -3,10 +3,11 @@
  * 對方妻子（簡單的 NPC 檔案，長得像魅子資料：look.hair／build／cup／outfit、personality）。對方夫妻存在伺服器（/api/swap/cafe），可重抽。
  * 每個角色 × 表情（一般／害羞）＝一張卡：縮圖、自己的正／負向（預設＋佔位符）、圖生圖（預設關）＋denoise、產生／存／回預設。
  * 生圖：綠幕半身（2026-10-21 Al：白底去背會啃到身體）→ /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上（底部對齊，像 VN）＋原圖。 */
-import { gameEngine } from "./rental_scene_gen.js?v=16";
+import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { rollClients } from "./rental.js?v=7";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
 import { bindPairBox } from "./swap_pair_gen.js?v=10";
+import { wornOutfitOf } from "./outfit_pick.js?v=2";
 
 // 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張
 export const SWAP_SCENES = {
@@ -69,9 +70,7 @@ function autoNeg(ch, gi, mi) {
 }
 /** 她現在那身（同 rental_scene_gen.wornOutfit）。 */
 export function wornOutfit(g) {
-  const look = g?.look || {}, pick = g?.outfitPick, arr = (x) => (Array.isArray(x) ? x : []);
-  if (Number.isInteger(pick) && arr(look.wardrobe)[pick]) return String(look.wardrobe[pick]);
-  return String(look.career_outfit || look.style || "");
+  return wornOutfitOf(g);
 }
 
 // ---- 對方妻子：簡單的 NPC 檔案（魅子資料的形狀：look.{hair, build, cup, height_cm, style}＋personality）

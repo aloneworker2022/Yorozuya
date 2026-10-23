@@ -1,5 +1,5 @@
 /* 試煉房抽妹子：人設跟 /testword 同一套。抽到後背景補半身立繪。不寫遊戲名冊。 */
-import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=3";
+import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=4";
 import {
   ensureBody,
   clampBody,
@@ -159,7 +159,7 @@ import {
   SEX_SUMMON_ANIM_FRAMES,
   planSexSummonSet,
   sexSummonImageCount,
-} from "./sex_pose_packs.js?v=10";
+} from "./sex_pose_packs.js?v=11";
 import { buildSexAnimFrames, SEX_ANIM_SIZE } from "./sex_anim.js";
 import { packFrameUrl } from "./frame_pack.js";
 import {
@@ -228,14 +228,14 @@ import {
   loadButtDoc,
   generateButtPackImage,
   buildButtImgBody,
-} from "./butt_packs.js?v=6";
+} from "./butt_packs.js?v=7";
 import {
   mountWaistPackEditor,
   pickRuntimeWaistPack,
   loadWaistDoc,
   generateWaistPackImage,
   buildWaistImgBody,
-} from "./waist_packs.js?v=5";
+} from "./waist_packs.js?v=6";
 import {
   mountBreastPackEditor,
   pickRuntimeBreastPack,
@@ -243,7 +243,7 @@ import {
   generateBreastPackImage,
   buildBreastImgBody,
   isBreastDefaultPrompt,
-} from "./breast_packs.js?v=3";
+} from "./breast_packs.js?v=4";
 import {
   mountKneadPackEditor,
   pickRuntimeKneadPack,
@@ -251,7 +251,7 @@ import {
   generateKneadPackImage,
   buildKneadImgBody,
   isKneadDefaultPrompt,
-} from "./knead_packs.js?v=3";
+} from "./knead_packs.js?v=4";
 import {
   mountUndressPackEditor,
   listUndressScenes,
@@ -259,7 +259,7 @@ import {
   presetByShot,
   SUMMON_UNDRESS_SHOTS,
   DROPPED_UNDRESS_SHOTS,
-} from "./undress_packs.js?v=7";
+} from "./undress_packs.js?v=8";
 import {
   mountSuckPackEditor,
   pickRuntimeSuckPack,
@@ -267,7 +267,7 @@ import {
   generateSuckPackImage,
   buildSuckImgBody,
   isSuckDefaultPrompt,
-} from "./suck_packs.js?v=4";
+} from "./suck_packs.js?v=5";
 import {
   mountLickPackEditor,
   pickRuntimeLickPack,
@@ -275,28 +275,28 @@ import {
   generateLickPackImage,
   buildLickImgBody,
   isLickDefaultPrompt,
-} from "./lick_packs.js?v=4";
+} from "./lick_packs.js?v=5";
 import {
   mountLabiaPackEditor,
   pickRuntimeLabiaPack,
   loadLabiaDoc,
   generateLabiaPackImage,
   buildLabiaImgBody,
-} from "./labia_packs.js?v=2";
+} from "./labia_packs.js?v=3";
 import {
   mountLabiaRubPackEditor,
   pickRuntimeLabiaRubPack,
   loadLabiaRubDoc,
   generateLabiaRubPackImage,
   buildLabiaRubImgBody,
-} from "./labia_rub_packs.js?v=2";
+} from "./labia_rub_packs.js?v=3";
 import {
   mountFingerPackEditor,
   pickRuntimeFingerPack,
   loadFingerDoc,
   generateFingerPackImage,
   buildFingerImgBody,
-} from "./finger_packs.js?v=2";
+} from "./finger_packs.js?v=3";
 import {
   mountVaginaFingerPackEditor,
   pickRuntimeVaginaFingerPack,
@@ -304,14 +304,14 @@ import {
   generateVaginaFingerPackImage,
   buildVaginaFingerImgBody,
   XRAY_ACTION_PACKS_ON,
-} from "./vagina_finger_packs.js?v=2";
+} from "./vagina_finger_packs.js?v=3";
 import {
   mountCervixRubPackEditor,
   pickRuntimeCervixRubPack,
   loadCervixRubDoc,
   generateCervixRubPackImage,
   buildCervixRubImgBody,
-} from "./cervix_rub_packs.js?v=2";
+} from "./cervix_rub_packs.js?v=3";
 import {
   mountStandeePackEditor,
   loadStandeeDoc,
@@ -319,14 +319,14 @@ import {
   generateStandeePackImage,
   buildStandeeImgBody,
   standeeUrlFor,
-} from "./standee_packs.js?v=1";
+} from "./standee_packs.js?v=2";
 import { SUMMON_RITUAL_LINES, startSummonRitualStatus, paintRitualBlocks } from "./summon_ritual.js?v=4";
 import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_action.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
 import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=10";
-import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.js?v=1";
+import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit, wornOutfitOf } from "./outfit_pick.js?v=2";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
 import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
@@ -336,10 +336,10 @@ import * as Preg from "./pregnancy.js?v=1";
 import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
-import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=23";
+import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=24";
 import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=25";
 import { canRental as swapCanAsk } from "./rental.js?v=7";
-import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=16";
+import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=17";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
 import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
 import { moanVoiceId } from "./stun_speech.js?v=25";
@@ -3826,24 +3826,7 @@ async function gameChatRoute() {
 }
 
 function wornOutfit(g) {
-  const named = String(g?.outfitName || "").trim();
-  if (named) return named;
-  const look = g?.look || {};
-  const wardrobe = Array.isArray(look.wardrobe) ? look.wardrobe : [];
-  const erotic = Array.isArray(look.eroticOutfits) ? look.eroticOutfits : [];
-  const sleep = Array.isArray(look.sleepOutfits) ? look.sleepOutfits : [];
-  const pick = g?.outfitPick;
-  if (pick === "base") return BASE_OUTFIT;
-  if (typeof pick === "string" && pick[0] === "e") {
-    const index = Number(pick.slice(1));
-    if (Number.isInteger(index) && erotic[index]) return String(erotic[index]);
-  }
-  if (typeof pick === "string" && pick[0] === "s") {
-    const index = Number(pick.slice(1));
-    if (Number.isInteger(index) && sleep[index]) return String(sleep[index]);
-  }
-  if (Number.isInteger(pick) && pick >= 0 && pick < wardrobe.length) return String(wardrobe[pick] || "");
-  return String(look.career_outfit || look.style || "");
+  return wornOutfitOf(g);
 }
 
 /** 進房當下選一套，並記住名字。中途過晚上 6 點不重選。 */
@@ -10723,6 +10706,7 @@ function buildRoomGirlFromSuccubus(s) {
     dna: s.dna,
     look,
     outfitPick: s.outfitPick ?? null,
+    outfitName: s.outfitName || null,
     libido: s.libido || null,
     specialTraits: s.specialTraits || null,
     moanVoice: s.moanVoice || null,

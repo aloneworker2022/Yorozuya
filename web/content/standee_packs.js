@@ -1,4 +1,5 @@
 /** 房間半身立繪表情組：9 固定槽（性奮 4 + 失神路徑 5），單一 JSON／單一「立繪」編輯面板。 */
+import { wornOutfitOf } from "./outfit_pick.js?v=2";
 
 const API = "/api/standee-packs";
 
@@ -117,21 +118,7 @@ function resolveComfyCkpt(girl, eng = {}) {
 }
 
 function wornOutfit(g) {
-  const look = g?.look || {};
-  const wardrobe = Array.isArray(look.wardrobe) ? look.wardrobe : [];
-  const erotic = Array.isArray(look.eroticOutfits) ? look.eroticOutfits : [];
-  const sleep = Array.isArray(look.sleepOutfits) ? look.sleepOutfits : [];
-  const pick = g?.outfitPick;
-  if (typeof pick === "string" && pick[0] === "e") {
-    const index = Number(pick.slice(1));
-    if (Number.isInteger(index) && erotic[index]) return String(erotic[index]);
-  }
-  if (typeof pick === "string" && pick[0] === "s") {
-    const index = Number(pick.slice(1));
-    if (Number.isInteger(index) && sleep[index]) return String(sleep[index]);
-  }
-  if (Number.isInteger(pick) && pick >= 0 && pick < wardrobe.length) return String(wardrobe[pick] || "");
-  return String(look.career_outfit || look.style || "");
+  return wornOutfitOf(g);
 }
 
 function halfRating(g) {

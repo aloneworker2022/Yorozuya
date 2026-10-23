@@ -9,7 +9,7 @@
  * 數字都在下面的表裡。 */
 import { actLine, SESSION_KEY } from "./swap_select.js?v=25";
 import { createStage } from "./swap_stage.js?v=5";
-import { pickBackdrop } from "./swap_cafe_gen.js?v=23";
+import { pickBackdrop } from "./swap_cafe_gen.js?v=24";
 
 // ============================================================ 調整用的表
 export const CD = { min: 10, max: 25, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]] };   // 秒（2026-10-22 改 10–25）；半速；醉了 CD 變短（×），但不會短於 min

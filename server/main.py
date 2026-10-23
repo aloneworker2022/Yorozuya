@@ -1670,6 +1670,24 @@ def _resolve_ref_image(ref: str) -> Path | None:
     return None
 
 
+def _has_owned(look: dict) -> bool:
+    """look.owned 有＝新制（只穿擁有的）；沒有＝舊存檔，全部視為擁有。"""
+    return isinstance(look.get("owned"), dict)
+
+
+def _owns_outfit(look: dict, kind: str, i: int) -> bool:
+    if not _has_owned(look):
+        return True
+    key = {"e": "erotic", "s": "sleep"}.get(kind, "wardrobe")
+    lst = look["owned"].get(key)
+    if not isinstance(lst, list):
+        return False
+    try:
+        return int(i) in {int(x) for x in lst}
+    except (TypeError, ValueError):
+        return False
+
+
 def _outfit_of(ch: dict) -> str:
     """這張圖她穿什麼。
 
@@ -1680,6 +1698,7 @@ def _outfit_of(ch: dict) -> str:
     例外：妻子／女友且未指定 outfitPick 時，若有 eroticOutfits，預設穿第一套
     情色裝（lace／lingerie 名進 prompt），不再強制生涯制服或全裸。
     outfitName 有字、或 outfitPick 為 base，優先於上面兩條（獻祭第一套是白 T）。
+    look.owned（新召喚）在時只穿擁有的那幾套；挑到沒擁有的→生涯服裝→白 T。
     """
     look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
     wardrobe = look.get("wardrobe") if isinstance(look.get("wardrobe"), list) else []
@@ -1700,9 +1719,9 @@ def _outfit_of(ch: dict) -> str:
         extras = look.get("eroticOutfits") if kind == "e" else (
             look.get("sleepOutfits") if kind == "s" else None
         )
-        if isinstance(extras, list) and 0 <= i < len(extras):
+        if isinstance(extras, list) and 0 <= i < len(extras) and _owns_outfit(look, kind, i):
             return str(extras[i] or "")
-    if isinstance(pick, int) and 0 <= pick < len(wardrobe):
+    if isinstance(pick, int) and 0 <= pick < len(wardrobe) and _owns_outfit(look, "w", pick):
         return str(wardrobe[pick] or "")
     # 妻子／女友無明確挑裝：優先情色衣櫃第一套
     stage = str(ch.get("stage") or "").strip().lower()
@@ -1710,11 +1729,17 @@ def _outfit_of(ch: dict) -> str:
         stage = str(ch["relationship"].get("stage") or "").strip().lower()
     if stage in ("wife", "girlfriend"):
         erotic = look.get("eroticOutfits")
-        if isinstance(erotic, list) and erotic:
-            first = str(erotic[0] or "").strip()
-            if first:
-                return first
-    return str(look.get("career_outfit") or look.get("style") or "")
+        if isinstance(erotic, list):
+            for i, item in enumerate(erotic):
+                first = str(item or "").strip()
+                if first and _owns_outfit(look, "e", i):
+                    return first
+    career = str(look.get("career_outfit") or "").strip()
+    if career:
+        return career
+    if _has_owned(look):
+        return "白色 T 恤配三角褲"   # 新制：沒擁有的不穿，style 是衣櫃第一套（品味）不算
+    return str(look.get("style") or "")
 
 
 # 召喚重畫：同一個人（髮色、眼睛、身材、衣服規則不變），但不要每次都是同一張。

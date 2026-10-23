@@ -5,7 +5,7 @@
  *      換之前：做愛的段落先「她高潮」（下一張圖好了之後）→ 決定換時「內射」停 CUM_MS → 下一段。
  *   段落順序照 rental_session.planSession（接吻 → 邊親邊脫 → 隨機姿勢、每段內射、做完 1/3 退房）。每一段＝遊戲時間 10 分鐘。
  *   已經有的圖（這個她＋這個客人）直接用，不重生。 */
-import { generateVenue } from "./rental_scene_gen.js?v=16";
+import { generateVenue } from "./rental_scene_gen.js?v=17";
 import { loadImages, pickUrls, fetchTalk, slotKey, ACT_SLOT_KEYS, LOC_ZH, POSE_ZH, ACTION_GAME_MIN } from "./rental_session.js?v=8";
 
 export const GEN_TIMEOUT_MS = 240e3;   // 一張圖最多等 4 分鐘，之後當沒有圖照走

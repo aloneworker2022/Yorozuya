@@ -280,6 +280,8 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
     wardrobe,
     eroticOutfits,
     sleepOutfits,
+    // 上面三份是她天生的品味（藏著）；衣櫃裡真的有的只有 owned（索引）。新召喚全空＝只有白 T 加三角褲。
+    owned: { wardrobe: [], erotic: [], sleep: [] },
     feature: txt(feature),
   };
   // 器官開發度（2026-10-09 使用者）：新召喚一律粉色起算（乳暈／乳頭／陰唇），抽到的原字串留在 look.devBase，大小／形狀照舊

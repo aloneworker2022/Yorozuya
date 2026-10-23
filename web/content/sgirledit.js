@@ -1,5 +1,5 @@
 /** sgirledit：選模型 → 抽一位 → 改樣貌／衣服 → 裸體半身 → 裸體全身。 */
-import { setPools, generateGirl } from "./girl_gen.js?v=3";
+import { setPools, generateGirl } from "./girl_gen.js?v=4";
 
 const $ = (id) => document.getElementById(id);
 const KEEP = "sgirledit-girl";
