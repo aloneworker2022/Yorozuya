@@ -4,7 +4,8 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=26";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=22";
+import { openBar } from "./swap_bar.js?v=23";
+import { SCENE_ZH as FLOW_ZH, pairSlotsFor } from "./swap_flow_rules.js?v=1";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;
@@ -91,10 +92,10 @@ export function openSwapSelect(ctx = {}) {
       <div class="swp-act"><button type="button" class="back">返回</button><button type="button" class="pri go">選這對</button></div>`;
     body.querySelector(".back").addEventListener("click", roster);
     body.querySelector(".go").addEventListener("click", () => {
-      const sess = { coupleId: c.id, price: h.swapPrice, at: Date.now(), phase: "bar", wifeId: ctx.girl?.()?.id || "", wifeAgreed: true };
+      const sess = { coupleId: c.id, price: h.swapPrice, at: Date.now(), phase: "park", wifeId: ctx.girl?.()?.id || "", wifeAgreed: true, rounds: 0 };
       localStorage.setItem(SESSION_KEY, JSON.stringify(sess));
-      ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ 酒吧`);
-      ov.remove(); void openSwapDrive(ctx, c, S).then((S2) => openSwapBar(ctx, c, S2));
+      ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ 公園`);
+      ov.remove(); void playSwapDate(ctx, c, S);
     });
   };
   body.innerHTML = `<div class="swp-next">讀取名冊中…</div>`;
@@ -177,7 +178,7 @@ export function openSwapStart(ctx = {}) {
 export async function openSwapDrive(ctx = {}, c, S = {}) {
   const ov = document.createElement("div"); ov.id = "swp-drive";
   ov.style.cssText = "position:fixed;inset:0;z-index:8800;background:#000;color:#eee;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font:600 17px system-ui,sans-serif";
-  ov.innerHTML = `<div>正在驅車前往約會場地<span class="d" style="display:inline-block;width:1.6em;text-align:left"></span></div><div class="n" style="font:400 13px system-ui,sans-serif;color:#888"></div>`;
+  ov.innerHTML = `<div><span class="ttl">正在驅車前往約會場地</span><span class="d" style="display:inline-block;width:1.6em;text-align:left"></span></div><div class="n" style="font:400 13px system-ui,sans-serif;color:#888"></div>`;
   document.body.append(ov);
   let k = 0; const dots = setInterval(() => { ov.querySelector(".d").textContent = ".".repeat(k++ % 4); }, 400);
   const wife = ctx.girl?.() || null, gen = ctx.genPortrait || genPortrait;
@@ -196,13 +197,53 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
     catch (e) { fail++; ctx.debug?.(`換妻：立繪 ${ch}・${ex} 失敗：${e?.message || e}`); }
     done++; tick();
   }
-  // 要去 KTV／飯店：黑畫面時把那一組動作圖先生好（缺的才生；沒生到的進場後現產）
-  const scene = ctx.scene || "bar";
-  if (scene !== "bar") {
+  // 依場景預產：KTV／飯店的動作圖＋你老婆×對方丈夫雙人圖（缺的才生）
+  const scene = ctx.scene || "park";
+  const dest = FLOW_ZH[scene] || "約會場地";
+  const ttl = ov.querySelector(".ttl"); if (ttl) ttl.textContent = `正在驅車前往${dest}`;
+  if (scene === "ktv" || String(scene).startsWith("hotel")) {
     const { pregenTease } = await import("./swap_tease.js?v=1");
-    S = await pregenTease(c, scene, S, { debug: (m) => ctx.debug?.(m), onTick: (d, t, f) => { n.textContent = t ? `準備場景 ${d}/${t}${f ? `（失敗 ${f}）` : ""}` : ""; } }).catch((e) => { ctx.debug?.(`換妻：預產失敗 ${e?.message || e}`); return S; });
+    S = await pregenTease(c, scene, S, { debug: (m) => ctx.debug?.(m), onTick: (d, t, f) => { n.textContent = t ? `準備動作 ${d}/${t}${f ? `（失敗 ${f}）` : ""}` : ""; } }).catch((e) => { ctx.debug?.(`換妻：動作預產失敗 ${e?.message || e}`); return S; });
+  }
+  if ((scene === "ktv" || String(scene).startsWith("hotel")) && wife) {
+    try {
+      const pair = await import("./swap_pair_gen.js?v=12");
+      const slots = pairSlotsFor(scene, pair.PAIR_ACTS, pair.PAIR_FRAMES);
+      const have = S.images?.[pair.pairOwner(wife, c)] || {};
+      const miss = slots.filter((k) => !have[`pair~${k}`]?.cut);
+      let d = 0, f = 0;
+      for (const slot of miss) {
+        n.textContent = `準備雙人圖 ${++d}/${miss.length}${f ? `（失敗 ${f}）` : ""}`;
+        try {
+          const imgs = await pair.genPair(slot, wife, c, (m) => ctx.debug?.(`換妻：雙人 ${slot} ${m}`));
+          if (imgs) S = { ...S, images: imgs };
+        } catch (e) { f++; ctx.debug?.(`換妻：雙人圖 ${slot} 失敗：${e?.message || e}`); }
+      }
+    } catch (e) { ctx.debug?.(`換妻：雙人預產失敗 ${e?.message || e}`); }
   }
   clearInterval(dots); ov.remove();
+  return S;
+}
+
+/** 整段約會：公園 → 酒吧 →（配對）→ KTV → 飯店。每一場結束靠 openBar 的 onEnd。 */
+export async function playSwapDate(ctx = {}, c, S = {}, startScene = "park") {
+  let scene = startScene || "park";
+  while (scene) {
+    const together = ctx.together ?? (scene === "park" || scene === "bar" || scene === "ktv");
+    S = await openSwapDrive({ ...ctx, scene }, c, S);
+    const result = await new Promise((resolve) => {
+      openBar({ ...ctx, scene, together, onEnd: resolve }, c, S);
+    });
+    if (result?.S?.images) S = { ...S, images: result.S.images };
+    if (result?.kind === "advance" && result.next) {
+      scene = result.next;
+      ctx.debug?.(`換妻：前進 → ${FLOW_ZH[scene] || scene}`);
+      continue;
+    }
+    // leave / end：回到平常遊戲
+    ctx.debug?.(`換妻：約會結束（${result?.kind || "?"} ${result?.title || result?.who || ""}）`);
+    break;
+  }
   return S;
 }
 

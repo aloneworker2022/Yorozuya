@@ -337,9 +337,9 @@ import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
 import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=26";
-import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=28";
-import { loadRoster as swapLoadRoster, openSwapDrive } from "./swap_select.js?v=28";
-import { openBar as openSwapScene } from "./swap_bar.js?v=22";
+import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=29";
+import { loadRoster as swapLoadRoster, openSwapDrive, playSwapDate } from "./swap_select.js?v=29";
+import { openBar as openSwapScene } from "./swap_bar.js?v=23";
 import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=17";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
@@ -8872,10 +8872,10 @@ async function openSwapTestScene(scene) {
   try {
     const S = await swapLoadRoster(), c = S.couples[S.current] || Object.values(S.couples)[0];
     if (!c) { pushDebug("換妻測試：還沒有對方夫妻"); return; }
-    const together = scene === "ktv" || !!document.getElementById("sc-together")?.checked;
+    const together = scene === "park" || scene === "bar" || scene === "ktv" || !!document.getElementById("sc-together")?.checked;
+    // 一律走 playSwapDate：從該場開始，前進（含飯店房間↔浴室）才接得上；公園＝整段從頭
     const ctx = { ...swapCtxOf(girl), scene, together, test: true, expose: true };
-    const S2 = await openSwapDrive(ctx, c, S);
-    openSwapScene(ctx, c, S2);
+    await playSwapDate(ctx, c, S, scene);
   } catch (e) { pushDebug(`換妻測試失敗：${e?.message || e}`); }
 }
 document.addEventListener("click", (e) => { const b = e.target?.closest?.("[data-swt]"); if (b) void openSwapTestScene(b.dataset.swt); });

@@ -6,9 +6,15 @@
 
 /** 場景：bar（酒吧，沒有動作卡）／ktv／hotel_room／hotel_bath。 */
 export const TEASE_SCENES = ["ktv", "hotel_room", "hotel_bath"];
-export const SCENE_ZH = { bar: "酒吧", ktv: "KTV 包廂", hotel_room: "飯店房間", hotel_bath: "飯店浴室" };
-/** 場景 → SCENE_CAP 用的大類（碰觸／調情上限）。 */
-export const sceneBase = (scene) => (String(scene || "").startsWith("hotel") ? "hotel" : scene === "ktv" ? "ktv" : "bar");
+export const SCENE_ZH = { park: "夜晚公園", bar: "酒吧", ktv: "KTV 包廂", hotel_room: "飯店房間", hotel_bath: "飯店浴室" };
+/** 場景 → SCENE_CAP 用的大類（碰觸／調情上限）。公園跟酒吧一樣只有輕碰。 */
+export const sceneBase = (scene) => {
+  const s = String(scene || "");
+  if (s.startsWith("hotel")) return "hotel";
+  if (s === "ktv") return "ktv";
+  if (s === "park") return "park";
+  return "bar";
+};
 
 /** act＝圖的種類（tease~<act>）；acc／drunk＝門檻；scenes＝null 任何場景（KTV／飯店），否則限定。
  * sex：飯店房間＝正常體位（missionary），浴室＝背後（doggy）。 */
@@ -58,10 +64,12 @@ export function ensureAccept(sess) {
 
 export const sceneOk = (card, scene) => TEASE_SCENES.includes(scene) && (!card.scenes || card.scenes.includes(scene));
 /** 這張卡現在能不能抽：場景、接受度、她的醉度。回 { ok, why }。 */
-export function teaseGate(card, { accept = 0, drunk = 0, scene = "bar" } = {}) {
+export function teaseGate(card, { accept = 0, drunk = 0, scene = "bar", wifeAccept = null } = {}) {
   if (!sceneOk(card, scene)) return { ok: false, why: "場景不對" };
   if (accept < card.acc) return { ok: false, why: `接受度 ${card.acc}` };
   if (drunk < card.drunk) return { ok: false, why: `醉度 ${card.drunk}` };
+  // 做愛：兩邊都要 ≥ 70（wifeAccept 有傳才查；酒吧／舊呼叫不傳就跳過）
+  if (card.act === "sex" && wifeAccept != null && wifeAccept < 70) return { ok: false, why: `老婆接受度 70` };
   return { ok: true, why: "" };
 }
 export const unlockedTease = (st) => TEASE_CARDS.filter((c) => teaseGate(c, st).ok);
