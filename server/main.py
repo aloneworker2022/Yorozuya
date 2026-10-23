@@ -1649,6 +1649,12 @@ def _resolve_ref_image(ref: str) -> Path | None:
     name = Path(u).name
     if not name or name in (".", "..") or "/" in name or "\\" in name:
         return None
+    # 綠幕立繪 _ck.png（透明）當參考圖時改用原圖（綠底），img2img 不吃 alpha
+    if u.startswith("/assets/portraits/") and name.lower().endswith("_ck.png"):
+        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+            raw = PORTRAIT_DIR / (name[:-7] + ext)
+            if raw.is_file() and raw.stat().st_size > 0:
+                return raw
     hinted = (
         (POSE_REF_DIR, "/assets/pose_refs/"),
         (PORTRAIT_DIR, "/assets/portraits/"),
@@ -2061,7 +2067,11 @@ async def _run_grok_image(
     staged = {p.resolve() for p in (id_local, pose_local) if p is not None}
     # 去背：extra 補平背景提示
     extra_use = (extra or "").strip()
-    if do_cutout and "simple background" not in extra_use.lower():
+    green = do_cutout and comfy.is_green_portrait_shot(shot_l) and str(scene_kind or "").lower() != "script"
+    if green:
+        extra_use = (extra_use + ", solid flat pure green (#00FF00) chroma-key background, green screen, "
+                     "no scenery, no floor, no shadow").strip(", ")
+    elif do_cutout and "simple background" not in extra_use.lower():
         extra_use = (extra_use + ", plain solid color background, simple background, no scenery").strip(", ")
     if part in IMG_PARTS:
         # prompt_body 有值 = 使用者在 testword 改過的版本,原樣送出(只補存檔路徑/參考圖)
@@ -2128,7 +2138,11 @@ async def _run_grok_image(
     except Exception:
         pass
     if found and found.is_file() and found.stat().st_size > 0:
-        if do_cutout and cutout.AVAILABLE:
+        if green and cutout.AVAILABLE:
+            ck = await _green_key_portrait(found)
+            if ck is not None:
+                fname = ck.name
+        elif do_cutout and cutout.AVAILABLE:
             try:
                 spec = comfy.portrait_shot_spec(shot_l) if shot_l else None
                 border_min = float((spec or {}).get("border_min") or cutout.BORDER_MIN)
@@ -2142,6 +2156,27 @@ async def _run_grok_image(
         return f"{url_dir}/{fname}{ver}", None
     msg = err or (text[:300] if text else "未產生圖片檔")
     return "", f"生圖失敗:{msg}"
+
+
+async def _green_key_portrait(raw: Path) -> Path | None:
+    """主程式立繪綠幕去背：原圖不動，複製成 <stem>_ck.png 再色鍵。
+    成功＝有摳掉、而且四邊綠 ≥ 50%（同換妻 /api/swap 重新去背的判準）→ 回 _ck 路徑；否則刪 _ck、回 None（交原圖）。"""
+    ck = raw.with_name(f"{raw.stem}_ck.png")
+    try:
+        ck.unlink(missing_ok=True)   # 舊的 _ck 是上一張圖的，不能留
+        if not cutout.AVAILABLE:
+            _note_cut(raw.name, False, "沒裝 Pillow（綠幕）")
+            return None
+        shutil.copyfile(raw, ck)
+        changed, why, out = await asyncio.to_thread(cutout.chroma_key, ck)
+        ok = bool(changed) and (cutout.LAST_CHROMA.get("border_green") or 0) >= 0.5
+        _note_cut(raw.name, ok, why if ok else f"綠幕沒摳成、交原圖：{why}")
+        if ok:
+            return out
+    except Exception as e:
+        _note_cut(raw.name, False, f"綠幕 err:{e}")
+    ck.unlink(missing_ok=True)
+    return None
 
 
 # ---- 去背紀錄:摳不掉的原因要看得見 ----
@@ -2223,6 +2258,8 @@ def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
 def _portrait_owner(stem: str) -> str:
     """檔名 stem → 角色 id。{id}_half / {id}_card_{cardId}。"""
     s = str(stem or "")
+    if s.lower().endswith("_ck"):
+        s = s[:-3]   # 綠幕去背另存的 <stem>_ck.png
     if "_card_" in s:
         return s.split("_card_", 1)[0]
     low = s.lower()
@@ -2595,6 +2632,8 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         # 要去背的那幾張,prompt 先要一塊平背景(見 cutout.py)。
         # 三連拍照規格走;testword 那條由勾選決定。劇本永不 flat_bg。
         flat_bg=want_flat,
+        # 主程式三張立繪：綠幕（同換妻雙人圖），劇本不走
+        green_bg=want_flat and not script_mode and comfy.is_green_portrait_shot(shot),
         part=part,
         framing=fr,
         rating=str(opts.get("rating") or "sfw"),
@@ -2773,7 +2812,9 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     # 想在測試台上看去背效果不必先跑一次召喚。
     want_cut = bool(spec.get("cutout")) if shot else bool(opts.get("cutout"))
     # 畫崩／魔物／幼態 + 卡面 visualNeg／從 visualEn 拆出的 NO xxx。不塞 nude 預設詞。
-    negative = sdtags.negative_for(want_cut, clothed=False, extra_neg=extra_neg)
+    green = bool(shot) and want_cut and comfy.is_green_portrait_shot(shot) \
+        and str(opts.get("scene_kind") or "").strip().lower() != "script"
+    negative = sdtags.negative_for(want_cut, clothed=False, extra_neg=extra_neg, green_bg=green)
     raw_prompt = bool(opts.get("raw_prompt"))
     if raw_prompt:
         # 換妻雙人圖「用這些設定重生」：正負向都原樣（使用者在測試台改的就是最後送出去的）
@@ -2836,7 +2877,12 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
             pass
     # 立繪要疊在遊戲畫面上,背景得摳掉。摳不乾淨時 cut_background 會原圖不動
     # ——寧可留著背景,也不要交出一張被啃過的破圖。
-    if want_cut:
+    if want_cut and green:
+        # 綠幕：原圖留著，摳好的另存 _ck.png；摳不成就交原圖
+        ck = await _green_key_portrait(out_dir / fname)
+        if ck is not None:
+            name = ck.name
+    elif want_cut:
         changed, why = await asyncio.to_thread(
             cutout.cut_background, out_dir / fname,
             cutout.TOLERANCE, float(spec.get("border_min") or cutout.BORDER_MIN))
@@ -4148,9 +4194,9 @@ async def _dd_run_portraits(girl: dict, cfg: dict, key: str, on_label) -> dict:
     refresh_seed = secrets.randbelow(2**31 - 1) or 1
     for shot in ("full", "half", "head"):
         await on_label(f"立繪 · {shot}")
-        extra = "plain solid color background, simple background"
+        extra = ""   # 背景交給 prompt builder（三張立繪是綠幕）
         if shot == "half":
-            extra = "half-body portrait, looking at viewer, " + extra
+            extra = "half-body portrait, looking at viewer"
         url = await _dd_image(_dd_img_base(
             girl, cfg, f"{key}:{shot}",
             shot=shot,

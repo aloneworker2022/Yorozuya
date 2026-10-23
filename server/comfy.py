@@ -252,6 +252,16 @@ def is_identity_sheet_shot(shot: str) -> bool:
     return s.startswith("half_")
 
 
+# 2026-10-23 主程式三張立繪（大頭／半身含喜怒哀樂害羞／全身）改綠幕：prompt 要綠底，
+# 生完 cutout.chroma_key 另存 <stem>_ck.png 給前端；原圖留著。房間 standee／脫衣／動作圖不在此列。
+GREEN_PORTRAIT_SHOTS = frozenset(
+    ("head", "half", "full", "half_xi", "half_nu", "half_ai", "half_le", "half_xiu"))
+
+
+def is_green_portrait_shot(shot: str) -> bool:
+    return str(shot or "").lower() in GREEN_PORTRAIT_SHOTS
+
+
 def shot_wants_cutout(shot: str, fallback: bool = False) -> bool:
     """立繪 shot 看規格；沒登記的才吃前端 cutout 旗。"""
     spec = portrait_shot_spec(shot)
