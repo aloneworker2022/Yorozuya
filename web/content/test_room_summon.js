@@ -337,8 +337,8 @@ import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
 import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=27";
-import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=31";
-import { loadRoster as swapLoadRoster, openSwapDrive, playSwapDate } from "./swap_select.js?v=31";
+import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=32";
+import { openSwapDrive, playSwapDate } from "./swap_select.js?v=32";
 import { openBar as openSwapScene } from "./swap_bar.js?v=25";
 import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=17";
@@ -8866,17 +8866,11 @@ function swapCtxOf(who) {
     },
   };
 }
-/** 測試：直接跳 KTV／飯店房間／飯店浴室（開車黑畫面預產那一組，再進場；含接受度／醉度滑桿）。 */
+/** 測試主流程／捷徑：都先開「選對方夫妻」（現場抽候選，不延用咖啡廳換一對名冊）；選完才開車生立繪再進場。 */
 async function openSwapTestScene(scene) {
   if (!girl) { pushDebug("換妻測試：先選一位魅子"); return; }
-  try {
-    const S = await swapLoadRoster(), c = S.couples[S.current] || Object.values(S.couples)[0];
-    if (!c) { pushDebug("換妻測試：還沒有對方夫妻"); return; }
-    const together = scene === "park" || scene === "bar" || scene === "ktv" || !!document.getElementById("sc-together")?.checked;
-    // 一律走 playSwapDate：從該場開始，前進（含飯店房間↔浴室）才接得上；公園＝整段從頭
-    const ctx = { ...swapCtxOf(girl), scene, together, test: true, expose: true };
-    await playSwapDate(ctx, c, S, scene);
-  } catch (e) { pushDebug(`換妻測試失敗：${e?.message || e}`); }
+  const together = scene === "park" || scene === "bar" || scene === "ktv" || !!document.getElementById("sc-together")?.checked;
+  openSwapSelect({ ...swapCtxOf(girl), startScene: scene, together, test: true, expose: true });
 }
 document.addEventListener("click", (e) => { const b = e.target?.closest?.("[data-swt]"); if (b) void openSwapTestScene(b.dataset.swt); });
 

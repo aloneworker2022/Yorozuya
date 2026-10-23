@@ -1,14 +1,15 @@
-/* 2026-10-21 換妻 step：「開始換妻」→ 選一對夫妻（樣式跟日租選客人一樣）→ 確認 → 存成目前的換妻場次，顯示「下一步：問妻子」。
- * 名冊＝伺服器存的對方夫妻（/api/swap/cafe 的 couples，當熟客一直留著），不足 4 對就新抽（各自不同的 Comfy 模型）。
- * 2026-10-21 改順序：先問妻子（openSwapStart，照日租「拜託她」），她答應才開名冊。還沒做：扣錢、場景。場次先存在 localStorage（SESSION_KEY），不用重啟伺服器。 */
+/* 2026-10-21 換妻 step：先問妻子 → 選對方夫妻 → 確認 → 開車生立繪 → 約會。
+ * 2026-10-23：候選夫妻＝進選單時用 generateGirl＋husband_gen 現場抽（swap_candidates），只存 localStorage 當日清單；
+ * 不延用咖啡廳「換一對」／/api/swap/cafe 測試名冊。選中後才 put 那一對並在 drive 黑畫面生 一般／害羞立繪。 */
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=27";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 import { openBar } from "./swap_bar.js?v=25";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor } from "./swap_flow_rules.js?v=1";
+import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=1";
 
 export const SESSION_KEY = "yorozuya.swap.session";
-const ROSTER_MIN = 4;
+const ROSTER_MIN = 4;   // 僅 loadRoster（咖啡廳測試工具）用
 export function swapSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch { return null; } }
 const CSS = `
 .swp-ov{position:fixed;inset:0;z-index:8600;background:#e9edf2;display:flex;flex-direction:column;font:15px/1.45 system-ui,-apple-system,"Noto Sans TC",sans-serif;color:#1d2330}
@@ -48,7 +49,7 @@ const wLooks = (w) => {
 };
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
 
-/** 讀名冊；舊夫妻補類型／價錢／模型，不足 ROSTER_MIN 對就新抽並存（不動面板原本選的那對）。 */
+/** 咖啡廳測試面板用：讀／補 /api/swap/cafe 名冊。正式選夫妻請用 loadCandidates，不要叫這個。 */
 export async function loadRoster() {
   let S = await api.state();
   const keep = S.current, ck = await usableCkpts();
@@ -63,6 +64,18 @@ export async function loadRoster() {
   return S;
 }
 
+/** 正式流程：今日候選（localStorage，不碰咖啡廳名冊）。 */
+export async function loadGameCandidates({ force = false } = {}) {
+  return loadCandidates({
+    force,
+    min: CANDIDATES_MIN,
+    store: localStorage,
+    rollCouple,
+    rollCkpts,
+    usableCkpts,
+  });
+}
+
 export function openSwapSelect(ctx = {}) {
   if (!document.getElementById("swp-css")) { const s = document.createElement("style"); s.id = "swp-css"; s.textContent = CSS; document.head.append(s); }
   document.getElementById("swp-ov")?.remove();
@@ -71,43 +84,70 @@ export function openSwapSelect(ctx = {}) {
   ov.querySelector(".swp-hd button").addEventListener("click", () => ov.remove());
   document.body.append(ov);
   const title = (t) => { ov.querySelector(".swp-hd b").textContent = t; }, body = ov.querySelector(".swp-body");
-  let S = null;
-  const roster = () => {
+  let pack = { day: "", candidates: [] };
+  const persW = (w) => Array.isArray(w?.personality) ? w.personality.join("、") : String(w?.personality || "");
+  const showList = () => {
     title("換妻・今天的夫妻（選一對）");
     const list = document.createElement("div"); list.className = "swp-pick";
-    const cs = Object.values(S.couples).sort((a, b) => (b.at || 0) - (a.at || 0));
-    for (const c of cs) {
+    // 候選卡＝純文字資訊（不預先生立繪）
+    for (const c of pack.candidates) {
       const h = c.husband, w = c.wife, b = document.createElement("button");
       b.type = "button"; b.className = "swp-card"; b.dataset.couple = c.id;
       b.innerHTML = `<div class="swp-top"><span class="swp-nm">${esc(h.name)} ＆ ${esc(w.name)}</span><span class="pr">${h.swapPrice} 金</span></div>
-        <div class="swp-p">丈夫 ${esc(h.age)} 歲・妻子 ${esc(w.age)} 歲</div>`;
+        <div class="swp-p">丈夫 ${esc(h.age)} 歲・妻子 ${esc(w.age)} 歲</div>
+        <div><span class="tg h">${esc(h.swapType || "")}</span><span class="tg w">${esc(w.swapType || "")}</span></div>
+        <div class="swp-p"><b>他</b> ${esc(hLooks(h))}${h.personality ? `・${esc(h.personality)}` : ""}</div>
+        <div class="swp-p"><b>她</b> ${esc(wLooks(w))}${persW(w) ? `・${esc(persW(w))}` : ""}</div>`;
       b.addEventListener("click", () => confirm(c));
       list.append(b);
     }
     body.replaceChildren(list);
-  };
-  const big = (S, c) => {
-    const f = [["husband", c.husband.name], ["other", c.wife.name]].filter(([k]) => faceUrl(S, c, k)).map(([k, n]) => `<figure>${face(S, c, k)}<figcaption>${esc(n)}</figcaption></figure>`).join("");
-    return f ? `<div class="swp-big">${f}</div>` : "";
+    const act = document.createElement("div"); act.className = "swp-act";
+    act.innerHTML = `<button type="button" class="reroll">換一批</button><button type="button" class="back">關閉</button>`;
+    act.querySelector(".back").addEventListener("click", () => ov.remove());
+    act.querySelector(".reroll").addEventListener("click", () => { void reload(true); });
+    body.append(act);
   };
   const confirm = (c) => {
     const h = c.husband, w = c.wife;
     title(`${h.name} ＆ ${w.name}`);
     body.innerHTML = `<div class="swp-pick"><div class="swp-card" style="cursor:default">
-      <div class="swp-p"><b>丈夫・${esc(h.name)}</b> ${esc(h.age)} 歲</div>
-      <div class="swp-p"><b>妻子・${esc(w.name)}</b> ${esc(w.age)} 歲</div>
-      <div class="swp-p"><b>費用</b> ${h.swapPrice} 金</div></div></div>
+      <div class="swp-p"><b>丈夫・${esc(h.name)}</b> ${esc(h.age)} 歲・${esc(h.swapType || "")}</div>
+      <div class="swp-p">${esc(hLooks(h))}${h.personality ? `・${esc(h.personality)}` : ""}</div>
+      <div class="swp-p"><b>妻子・${esc(w.name)}</b> ${esc(w.age)} 歲・${esc(w.swapType || "")}</div>
+      <div class="swp-p">${esc(wLooks(w))}${persW(w) ? `・${esc(persW(w))}` : ""}</div>
+      <div class="swp-p"><b>費用</b> ${h.swapPrice} 金</div>
+      <div class="swp-p" style="color:#8a92a0;font-size:12px">選了之後才會產生立繪，然後開車去約會。</div></div></div>
       <div class="swp-act"><button type="button" class="back">返回</button><button type="button" class="pri go">選這對</button></div>`;
-    body.querySelector(".back").addEventListener("click", roster);
-    body.querySelector(".go").addEventListener("click", () => {
-      const sess = { coupleId: c.id, price: h.swapPrice, at: Date.now(), phase: "park", wifeId: ctx.girl?.()?.id || "", wifeAgreed: true, rounds: 0 };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(sess));
-      ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ 公園`);
-      ov.remove(); void playSwapDate(ctx, c, S);
-    });
+    body.querySelector(".back").addEventListener("click", showList);
+    body.querySelector(".go").addEventListener("click", () => { void pick(c); });
   };
-  body.innerHTML = `<div class="swp-next">讀取名冊中…</div>`;
-  loadRoster().then((s) => { S = s; roster(); }).catch((e) => { body.innerHTML = `<div class="swp-next">${esc(e?.message || e)}</div>`; });
+  const pick = async (c) => {
+    const h = c.husband, w = c.wife;
+    const startScene = ctx.startScene || "park";
+    body.innerHTML = `<div class="swp-next">準備出發…</div>`;
+    // 只把「選中的這對」寫進伺服器（立繪／圖登記用）；候選批次本身不進咖啡廳測試名冊
+    let S = { couples: { [c.id]: c }, current: c.id, prompts: {}, images: {} };
+    try {
+      const st = await api.state();
+      S = { ...st, couples: { ...(st.couples || {}), [c.id]: c }, current: c.id };
+      S = await api.put("couple", { couple: c });
+    } catch (e) { ctx.debug?.(`換妻：暫存選中夫妻失敗（仍繼續）：${e?.message || e}`); }
+    const sess = { coupleId: c.id, price: h.swapPrice, at: Date.now(), phase: startScene, wifeId: ctx.girl?.()?.id || "", wifeAgreed: true, rounds: 0 };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(sess));
+    ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ ${FLOW_ZH[startScene] || startScene}（先開車生立繪）`);
+    ov.remove();
+    await playSwapDate(ctx, c, S, startScene);
+  };
+  const reload = async (force) => {
+    body.innerHTML = `<div class="swp-next">${force ? "重抽候選夫妻…" : "抽今天的夫妻…"}</div>`;
+    try {
+      pack = await loadGameCandidates({ force: !!force });
+      ctx.debug?.(`換妻：候選 ${pack.candidates.length} 對（${pack.reused ? "沿用今日" : "新抽"}・${pack.day}）`);
+      showList();
+    } catch (e) { body.innerHTML = `<div class="swp-next">${esc(e?.message || e)}</div>`; }
+  };
+  void reload(false);
   return ov;
 }
 
