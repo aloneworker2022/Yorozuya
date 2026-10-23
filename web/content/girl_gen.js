@@ -32,8 +32,9 @@ function normGrade(g) {
 
 export async function loadPools() {
   try {
-    POOLS = await fetch("content/persona_pools.json?ts=" + Date.now()).then(r => r.ok ? r.json() : null);
-  } catch { POOLS = null; }
+    const next = await fetch("content/persona_pools.json?ts=" + Date.now()).then(r => r.ok ? r.json() : null);
+    if (next) POOLS = next;   // 失敗時保留已注入／已載入的池（node 測試用 setPools）
+  } catch { /* 保留既有 POOLS */ }
   return POOLS;
 }
 export function setPools(p) { POOLS = p; }   // 測試/Node 注入用

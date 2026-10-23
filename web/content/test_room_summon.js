@@ -1,5 +1,5 @@
 /* 試煉房抽妹子：人設跟 /testword 同一套。抽到後背景補半身立繪。不寫遊戲名冊。 */
-import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=4";
+import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=5";
 import {
   ensureBody,
   clampBody,
@@ -336,10 +336,10 @@ import * as Preg from "./pregnancy.js?v=1";
 import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
-import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=26";
-import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=30";
-import { loadRoster as swapLoadRoster, openSwapDrive, playSwapDate } from "./swap_select.js?v=30";
-import { openBar as openSwapScene } from "./swap_bar.js?v=24";
+import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=27";
+import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=31";
+import { loadRoster as swapLoadRoster, openSwapDrive, playSwapDate } from "./swap_select.js?v=31";
+import { openBar as openSwapScene } from "./swap_bar.js?v=25";
 import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=17";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";

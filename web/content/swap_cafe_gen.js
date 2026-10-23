@@ -1,13 +1,14 @@
 /* 2026-10-21 換妻 step 1：咖啡廳半身立繪產生器（test_room 上排「咖啡廳」）。
- * 三個角色：妻子（＝現在的測試魅子，跟她自己的立繪同一條路：她的模型＋lock_identity）、對方丈夫（日租客人產生器 rollClients）、
- * 對方妻子（簡單的 NPC 檔案，長得像魅子資料：look.hair／build／cup／outfit、personality）。對方夫妻存在伺服器（/api/swap/cafe），可重抽。
+ * 三個角色：妻子（＝測試魅子，模型＋lock_identity）、對方丈夫（husband_gen 完整軸）、
+ * 對方妻子（generateGirl 全套＋role=other_wife，不進玩家名冊）。對方夫妻存在伺服器（/api/swap/cafe），可重抽。
  * 每個角色 × 表情（一般／害羞）＝一張卡：縮圖、自己的正／負向（預設＋佔位符）、圖生圖（預設關）＋denoise、產生／存／回預設。
- * 生圖：綠幕半身（2026-10-21 Al：白底去背會啃到身體）→ /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上（底部對齊，像 VN）＋原圖。 */
+ * 生圖：綠幕半身 → /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { rollClients } from "./rental.js?v=7";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
-import { bindPairBox } from "./swap_pair_gen.js?v=12";
+import { bindPairBox } from "./swap_pair_gen.js?v=13";
 import { wornOutfitOf } from "./outfit_pick.js?v=2";
+import { loadPools, generateGirl, POOLS as _poolsRef } from "./girl_gen.js?v=5";
+import { rollHusband, enrichHusband, husbandLookEn } from "./husband_gen.js?v=1";
 
 // 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張
 export const SWAP_SCENES = {
@@ -58,9 +59,15 @@ const MAN_PERSONA_EN = {
 };
 const MAN_OUTFIT_EN = { gentleman: "neat shirt and blazer", clingy: "casual polo shirt", showoff: "designer jacket and gold necklace", dominant: "dark suit, open collar", otaku: "checkered shirt over an anime t-shirt" };
 export function manInfo(c = {}) {
-  const a = Number(c.age) || 0;
+  const a = Number(c.age) || Number(c.look?.age) || 0;
   const age = a >= 50 ? "man in his 50s" : a >= 40 ? "man in his 40s" : a >= 30 ? "man in his 30s" : a ? "young man in his 20s" : "adult man";
-  return { desc: [age, MAN_PERSONA_EN[c.persona] || ""].filter(Boolean).join(", "), body: MAN_BUILD_EN[c.build] || MAN_BUILD_EN.average, outfit: MAN_OUTFIT_EN[c.persona] || "casual date outfit", build: c.build || "average" };
+  const lookEn = husbandLookEn(c);
+  const desc = lookEn
+    ? [age, lookEn].filter(Boolean).join(", ")
+    : [age, MAN_PERSONA_EN[c.persona] || ""].filter(Boolean).join(", ");
+  const body = c.look?.build_en || MAN_BUILD_EN[c.build] || MAN_BUILD_EN.average;
+  const outfit = c.look?.outfit_en || MAN_OUTFIT_EN[c.persona] || "casual date outfit";
+  return { desc, body, outfit, build: c.build || c.look?.build || "average" };
 }
 function autoNeg(ch, gi, mi) {
   const n = [];
@@ -73,20 +80,98 @@ export function wornOutfit(g) {
   return wornOutfitOf(g);
 }
 
-// ---- 對方妻子：簡單的 NPC 檔案（魅子資料的形狀：look.{hair, build, cup, height_cm, style}＋personality）
-const OW_HAIR = [["黑色鮑伯短髮", "short black bob hair"], ["栗色長捲髮", "long wavy chestnut hair"], ["茶色低馬尾", "brown low ponytail"], ["黑長直髮", "long straight black hair"], ["蜜棕色中長髮", "medium-length honey brown hair"], ["盤髮", "dark hair in an elegant updo"]];
-const OW_BUILD = ["勻稱有致", "纖細苗條", "嬌小玲瓏", "肉感微肉", "豐滿火辣", "細腰寬臀"];
-const OW_CUP = ["B", "C", "C", "D", "D", "E", "F"];
-const OW_OUTFIT = [["白色針織衫配長裙", "white knit sweater and long skirt"], ["米色洋裝", "beige sundress"], ["黑色貼身毛衣", "tight black sweater"], ["淺藍襯衫配開襟外套", "light blue blouse with a cardigan"], ["碎花連身裙", "floral print dress"], ["酒紅色V領上衣", "burgundy v-neck top"]];
-const OW_PERSONA = ["溫柔體貼", "害羞內向", "開朗健談", "強勢主導", "悶騷", "好奇大膽"];
-const OW_NAMES = ["美咲", "由香", "千夏", "真理子", "彩花", "瞳", "麻衣", "裕子"];
+// ---- 對方妻子＝generateGirl 全套（role=other_wife，不進玩家名冊）；對方丈夫＝husband_gen
 const pk = (a) => a[Math.floor(Math.random() * a.length)];
-export function rollCouple() {
-  const [h] = rollClients([], Date.now()), hair = pk(OW_HAIR), outfit = pk(OW_OUTFIT), id = `c${Date.now().toString(36)}`;
-  const wife = { id: `${id}w`, name: pk(OW_NAMES), gender: "female", age: 25 + Math.floor(Math.random() * 14), personality: pk(OW_PERSONA),
-    look: { hair: hair[0], hair_en: hair[1], build: pk(OW_BUILD), cup: pk(OW_CUP), height_cm: 152 + Math.floor(Math.random() * 18), style: outfit[0], outfit_en: outfit[1] } };
-  const c = { id, at: Date.now(), husband: { ...h, id: `${id}h` }, wife };
-  ensureSwapMeta(c); return c;
+const persText = (w) => Array.isArray(w?.personality) ? w.personality.join("") : String(w?.personality || "");
+
+/** 對方妻子 swapType：從個性／害羞度對應。 */
+export function mapWifeSwapType(w) {
+  const p = persText(w) + String(w?.archetype || "");
+  const shy = Number(w?.stats?.shyness ?? 50);
+  if (/害羞|文靜|高冷|內向/.test(p) || shy >= 62) return "害羞人妻";
+  if (/傲嬌|病嬌|御姊|清純反差|悶騷|大膽|強勢|痴女|淫亂|開放/.test(p) || shy <= 35) return "老手";
+  if (shy >= 48) return "不太情願";
+  return pk(W_TYPES);
+}
+
+/** 把 generateGirl 結果標成對方妻子：年齡 24–38、1–2 套已擁有約會裝、ckpt 雙寫。 */
+export function finalizeOtherWife(g, { id, name, marriedTo = "", ckpt = "" } = {}) {
+  if (!g) return null;
+  const age = 24 + Math.floor(Math.random() * 15); // 24–38
+  const w = { ...g, id: id || g.id, name: name || g.name, gender: "female", role: "other_wife", stage: "wife", marriedTo, age };
+  w.look = { ...(g.look || {}) };
+  w.look.age = age;
+  const ward = Array.isArray(w.look.wardrobe) ? w.look.wardrobe : [];
+  if (ward.length) {
+    const n = 1 + Math.floor(Math.random() * Math.min(2, ward.length));
+    const idx = [];
+    while (idx.length < n) { const i = Math.floor(Math.random() * ward.length); if (!idx.includes(i)) idx.push(i); }
+    w.look.owned = { wardrobe: idx, erotic: [], sleep: [] };
+    w.outfitPick = idx[0];
+    w.look.style = ward[idx[0]];
+    w.look.outfit_en = w.look.outfit_en || ward[idx[0]];
+  } else {
+    w.look.owned = w.look.owned || { wardrobe: [], erotic: [], sleep: [] };
+  }
+  w.swapType = mapWifeSwapType(w);
+  if (ckpt) { w.ckpt = ckpt; w.comfyCkpt = ckpt; }
+  else if (w.ckpt && !w.comfyCkpt) w.comfyCkpt = w.ckpt;
+  else if (w.comfyCkpt && !w.ckpt) w.ckpt = w.comfyCkpt;
+  w.backstory = `${w.name}是別人的妻子，今晚跟丈夫一起來換妻約會。`;
+  return w;
+}
+
+export function needsWifeEnrich(w) {
+  return !w || w.role !== "other_wife" || !w.look?.face || !w.look?.eyes;
+}
+export function needsHusbandEnrich(h) {
+  return !h || !(h.look?.hair_en || h.look?.face_en);
+}
+
+/** 舊薄夫妻升級：保留 id／name／ckpt（與 swapType／swapPrice）。 */
+export async function enrichCouple(c) {
+  if (!c?.husband || !c?.wife) return false;
+  if (!_poolsRef) await loadPools();
+  let ch = false;
+  if (needsWifeEnrich(c.wife)) {
+    const keep = { id: c.wife.id, name: c.wife.name, ckpt: c.wife.ckpt || c.wife.comfyCkpt || "", swapType: c.wife.swapType };
+    const raw = generateGirl({ usedNames: keep.name ? [keep.name] : [] });
+    if (raw) {
+      const w = finalizeOtherWife(raw, { id: keep.id, name: keep.name, marriedTo: c.husband.id, ckpt: keep.ckpt });
+      if (W_TYPES.includes(keep.swapType)) w.swapType = keep.swapType;
+      c.wife = w; ch = true;
+    }
+  } else {
+    if (c.wife.role !== "other_wife") { c.wife.role = "other_wife"; ch = true; }
+    if (c.wife.ckpt && !c.wife.comfyCkpt) { c.wife.comfyCkpt = c.wife.ckpt; ch = true; }
+    if (c.wife.comfyCkpt && !c.wife.ckpt) { c.wife.ckpt = c.wife.comfyCkpt; ch = true; }
+    if (!c.wife.marriedTo) { c.wife.marriedTo = c.husband.id; ch = true; }
+  }
+  if (needsHusbandEnrich(c.husband)) {
+    const keepCk = c.husband.ckpt || c.husband.comfyCkpt || "";
+    c.husband = enrichHusband({ ...c.husband, id: c.husband.id || `${c.id}h` });
+    if (keepCk) { c.husband.ckpt = keepCk; c.husband.comfyCkpt = keepCk; }
+    ch = true;
+  } else {
+    if (c.husband.ckpt && !c.husband.comfyCkpt) { c.husband.comfyCkpt = c.husband.ckpt; ch = true; }
+    if (c.husband.comfyCkpt && !c.husband.ckpt) { c.husband.ckpt = c.husband.comfyCkpt; ch = true; }
+  }
+  if (ensureSwapMeta(c)) ch = true;
+  return ch;
+}
+
+/** 新抽一對對方夫妻（async：要先載人設池）。 */
+export async function rollCouple(opts = {}) {
+  if (!_poolsRef) await loadPools();
+  const id = `c${Date.now().toString(36)}${Math.floor(Math.random() * 1e3).toString(36)}`;
+  const husband = rollHusband({ id: `${id}h` });
+  const raw = generateGirl({ usedNames: opts.usedNames || [] });
+  if (!raw) throw new Error("人設池還沒載入，無法抽對方妻子");
+  const wife = finalizeOtherWife(raw, { id: `${id}w`, marriedTo: husband.id });
+  husband.marriedTo = wife.id;
+  const c = { id, at: Date.now(), husband, wife };
+  ensureSwapMeta(c);
+  return c;
 }
 
 // ---- 2026-10-21 換妻選人用：丈夫類型（紳士型／老手型／炫耀型）、妻子類型（害羞人妻／老手／不太情願）、價錢 20–50 金。
@@ -96,7 +181,7 @@ export function ensureSwapMeta(c) {
   if (!c?.husband || !c?.wife) return false;
   let ch = false; const h = c.husband, w = c.wife;
   if (!H_TYPES.includes(h.swapType)) { h.swapType = h.persona === "gentleman" ? "紳士型" : h.persona === "showoff" ? "炫耀型" : (h.skill || 0) >= 4 ? "老手型" : pk(H_TYPES); ch = true; }
-  if (!W_TYPES.includes(w.swapType)) { w.swapType = /害羞|內向/.test(w.personality || "") ? "害羞人妻" : /大膽|主導|悶騷/.test(w.personality || "") ? "老手" : pk(W_TYPES); ch = true; }
+  if (!W_TYPES.includes(w.swapType)) { w.swapType = mapWifeSwapType(w); ch = true; }
   if (!(h.swapPrice >= 20 && h.swapPrice <= 50)) { h.swapPrice = 20 + Math.floor(Math.random() * 31); ch = true; }
   return ch;
 }
@@ -118,8 +203,8 @@ const pickCk = (list, not = "") => { const pool = list.length > 1 ? list.filter(
 /** 幫這對補／重抽模型：who＝"husband"|"wife"|"both"；只有一個模型時兩人共用（回 note）。 */
 export function rollCkpts(c, list, who = "both") {
   if (!c || !list.length) return "";
-  if (who !== "wife") c.husband.ckpt = pickCk(list, c.wife?.ckpt);
-  if (who !== "husband") c.wife.ckpt = pickCk(list, c.husband?.ckpt);
+  if (who !== "wife") { c.husband.ckpt = pickCk(list, c.wife?.ckpt || c.wife?.comfyCkpt); c.husband.comfyCkpt = c.husband.ckpt; }
+  if (who !== "husband") { c.wife.ckpt = pickCk(list, c.husband?.ckpt || c.husband?.comfyCkpt); c.wife.comfyCkpt = c.wife.ckpt; }
   return list.length < 2 ? "只有一個可用的 Comfy 模型，兩人共用" : "";
 }
 
@@ -137,22 +222,28 @@ export function templateFor(prompts, ch, ex) {
 }
 export function fillTemplate(tpl, ch, ex, wife, couple) {
   const g = ch === "other" ? couple?.wife : wife, c = couple?.husband || {}, gi = girlInfo(g), mi = manInfo(c);
-  const girlDesc = ch === "other" ? ["1 woman", g?.look?.hair_en, g?.age ? `${g.age} years old` : ""].filter(Boolean).join(", ") : "1 woman";
-  const outfit = ch === "other" ? (g?.look?.outfit_en || "casual date outfit") : (wornOutfit(g) || "her own casual date outfit");
+  const age = g?.look?.age || g?.age;
+  const girlDesc = ch === "other"
+    ? ["1 woman", g?.look?.hair_en || g?.look?.hair, g?.look?.hair_color_en || g?.look?.hair_color, age ? `${age} years old` : ""].filter(Boolean).join(", ")
+    : "1 woman";
+  const outfit = ch === "other"
+    ? (wornOutfit(g) || g?.look?.style || g?.look?.outfit_en || "casual date outfit")
+    : (wornOutfit(g) || "her own casual date outfit");
   const map = { girl: girlDesc, girl_body: gi.body, girl_outfit: outfit, man: mi.desc, man_body: mi.body, man_outfit: mi.outfit, expr: EXPR_EN[ex], auto_neg: autoNeg(ch, gi, mi) };
   const sub = (t) => String(t || "").replace(/\{(\w+)\}/g, (m, k) => (k in map ? map[k] : m)).replace(/(,\s*)+,/g, ",").replace(/^[,\s]+|[,\s]+$/g, "");
   return { pos: sub(tpl.pos), neg: sub(tpl.neg) };
 }
-/** /api/imggen 的 body。妻子＝她自己（character＋lock_identity＋她的模型，同 portraitBody）；對方妻子＝NPC 檔案當 character；丈夫＝prompt 原樣送。 */
+/** /api/imggen 的 body。妻子／對方妻子＝character＋lock_identity＋各自模型；丈夫＝prompt（manInfo 完整 look）。 */
 export function cafeBody(ch, ex, wife, couple, eng, tpl, seed) {
   const comfy = eng.imgProvider === "comfy", f = fillTemplate(tpl, ch, ex, wife, couple);
   // 妻子＝她自己綁的模型；對方夫妻＝各自檔案裡的 ckpt（換一對時抽的），不再退回全域設定
-  const ckpt = ch === "wife" ? String(wife?.comfyCkpt || "").trim() || eng.comfyCkpt : String((ch === "husband" ? couple?.husband : couple?.wife)?.ckpt || "").trim();
+  const other = ch === "husband" ? couple?.husband : couple?.wife;
+  const ckpt = ch === "wife" ? String(wife?.comfyCkpt || "").trim() || eng.comfyCkpt : String(other?.ckpt || other?.comfyCkpt || "").trim();
   if (comfy && !ckpt) throw new Error(ch === "wife" ? "此魅子尚未綁定 Comfy 模型（comfyCkpt）" : "這個人還沒有畫圖模型（在上面的下拉選一個，或按「換一對」）");
   if (ch === "wife" && !wife?.id) throw new Error("先選魅子");
   const i2 = tpl.img2img?.on && tpl.img2img.ref ? { pose_ref: tpl.img2img.ref, pose_denoise: Math.min(0.95, Math.max(0.3, Number(tpl.img2img.denoise) || 0.6)) } : {};
   const who = ch === "wife" ? { character: wife, outfit: wornOutfit(wife), extra: f.pos, prompt: "", lock_identity: true, char_id: wife.id }
-    : ch === "other" ? { character: couple.wife, outfit: couple.wife?.look?.outfit_en || "", extra: f.pos, prompt: "", lock_identity: false }
+    : ch === "other" ? { character: couple.wife, outfit: wornOutfit(couple.wife) || couple.wife?.look?.style || couple.wife?.look?.outfit_en || "", extra: f.pos, prompt: "", lock_identity: true, char_id: couple.wife.id }
     : { prompt: f.pos, extra: "", lock_identity: false };
   return {
     key: `swap-cafe:${ch}:${ex}:${Date.now().toString(36)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,
@@ -346,11 +437,15 @@ export function bindSwapCafePanel(ctx = {}) {
     try { S = await api.state(); $("sc-status").textContent = ""; } catch (e) { $("sc-status").textContent = String(e?.message || e); }
     ckpts = await usableCkpts();
     ckptNote = ckpts.length ? (ckpts.length < 2 ? "只有一個可用的 Comfy 模型，兩人共用" : "") : "抓不到 Comfy 模型清單（生圖器不是 Comfy、或 Comfy 沒開），對方夫妻沒有綁模型";
-    if (!couple()) { const c = rollCouple(); rollCkpts(c, ckpts); try { S = await api.put("couple", { couple: c }); } catch { /* 伺服器沒重啟：先用本機的 */ S.couples[c.id] = c; S.current = c.id; } }
-    // 舊的對方夫妻沒有模型：補抽並存起來
-    for (const c of Object.values(S.couples)) if (ckpts.length && (!c.husband?.ckpt || !c.wife?.ckpt)) {
-      if (!c.husband.ckpt && !c.wife.ckpt) rollCkpts(c, ckpts); else rollCkpts(c, ckpts, c.husband.ckpt ? "wife" : "husband");
-      try { const keep = S.current; S = await api.put("couple", { couple: c }); if (keep !== c.id) S = await api.put("couple", { couple: S.couples[keep] }); } catch { /* */ }
+    if (!couple()) { const c = await rollCouple(); rollCkpts(c, ckpts); try { S = await api.put("couple", { couple: c }); } catch { /* 伺服器沒重啟：先用本機的 */ S.couples[c.id] = c; S.current = c.id; } }
+    // 舊薄夫妻升級＋缺模型補抽
+    for (const c of Object.values(S.couples)) {
+      let dirty = await enrichCouple(c);
+      if (ckpts.length && (!c.husband?.ckpt || !c.wife?.ckpt)) {
+        if (!c.husband.ckpt && !c.wife.ckpt) rollCkpts(c, ckpts); else rollCkpts(c, ckpts, c.husband.ckpt ? "wife" : "husband");
+        dirty = true;
+      }
+      if (dirty) try { const keep = S.current; S = await api.put("couple", { couple: c }); if (keep !== c.id && S.couples[keep]) S = await api.put("couple", { couple: S.couples[keep] }); } catch { /* */ }
     }
     info();
     document.querySelectorAll("#sc-chars button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.ch === ch ? "true" : "false"));
@@ -365,7 +460,7 @@ export function bindSwapCafePanel(ctx = {}) {
   });
   document.querySelectorAll("#room-pack-chrome button[aria-controls]").forEach((b) => { if (b !== btn && b.id !== "edit-room") b.addEventListener("click", () => { if (!panel.hidden) close(); }); });
   document.querySelectorAll("#sc-chars button").forEach((b) => b.addEventListener("click", () => { ch = b.dataset.ch; void show(); }));
-  $("sc-reroll")?.addEventListener("click", async () => { const c = rollCouple(); ckptNote = rollCkpts(c, await usableCkpts(true)) || ckptNote; try { S = await api.put("couple", { couple: c }); } catch (e) { $("sc-status").textContent = String(e?.message || e); } void show(); });
+  $("sc-reroll")?.addEventListener("click", async () => { const c = await rollCouple(); ckptNote = rollCkpts(c, await usableCkpts(true)) || ckptNote; try { S = await api.put("couple", { couple: c }); } catch (e) { $("sc-status").textContent = String(e?.message || e); } void show(); });
   $("sc-couple")?.addEventListener("change", async (e) => { const c = S.couples[e.target.value]; if (!c) return; try { S = await api.put("couple", { couple: c }); } catch { S.current = c.id; } void show(); });
   $("sc-close")?.addEventListener("click", close);
   // ---- VN 舞台預覽（2026-10-21）：只畫這段互動有參與的人，從左邊滑進來

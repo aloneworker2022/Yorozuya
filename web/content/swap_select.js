@@ -1,10 +1,10 @@
 /* 2026-10-21 換妻 step：「開始換妻」→ 選一對夫妻（樣式跟日租選客人一樣）→ 確認 → 存成目前的換妻場次，顯示「下一步：問妻子」。
  * 名冊＝伺服器存的對方夫妻（/api/swap/cafe 的 couples，當熟客一直留著），不足 4 對就新抽（各自不同的 Comfy 模型）。
  * 2026-10-21 改順序：先問妻子（openSwapStart，照日租「拜託她」），她答應才開名冊。還沒做：扣錢、場景。場次先存在 localStorage（SESSION_KEY），不用重啟伺服器。 */
-import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta } from "./swap_cafe_gen.js?v=26";
+import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=27";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=24";
+import { openBar } from "./swap_bar.js?v=25";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor } from "./swap_flow_rules.js?v=1";
 
 export const SESSION_KEY = "yorozuya.swap.session";
@@ -37,8 +37,15 @@ const CSS = `
 const faceUrl = (S, c, who) => (S.images?.[c.id] || {})[`${who}~normal`]?.cut || "";
 /** 有立繪就放圖；沒有就什麼都不放（版面收起來）。 */
 const face = (S, c, who) => { const u = faceUrl(S, c, who); return u ? `<img alt="" src="${esc(u)}">` : ""; };
-const hLooks = (h) => `體型${BZH[h.build] || h.build || "普通"}`;
-const wLooks = (w) => [w.look?.hair, w.look?.build, w.look?.cup && `${w.look.cup}罩杯`, w.look?.height_cm && `${w.look.height_cm}cm`, w.look?.style].filter(Boolean).join("・");
+const hLooks = (h) => {
+  const b = h.look?.build_zh || BZH[h.build] || h.build || "普通";
+  const ht = h.height_cm || h.look?.height_cm;
+  return [h.look?.hair || h.look?.hair_color, `體型${b}`, ht && `${ht}cm`].filter(Boolean).join("・");
+};
+const wLooks = (w) => {
+  const cup = w.look?.cup, cupS = cup ? (/罩杯/.test(cup) ? cup : `${cup}罩杯`) : "";
+  return [w.look?.hair_color || w.look?.hair, w.look?.build, cupS, w.look?.height_cm && `${w.look.height_cm}cm`, w.look?.style].filter(Boolean).join("・");
+};
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
 
 /** 讀名冊；舊夫妻補類型／價錢／模型，不足 ROSTER_MIN 對就新抽並存（不動面板原本選的那對）。 */
@@ -47,10 +54,11 @@ export async function loadRoster() {
   const keep = S.current, ck = await usableCkpts();
   const save = async (c) => { S = await api.put("couple", { couple: c }); };
   for (const c of Object.values(S.couples)) {
-    const a = ensureSwapMeta(c), b = ck.length && (!c.husband?.ckpt || !c.wife?.ckpt) ? (rollCkpts(c, ck), true) : false;
-    if (a || b) await save(c);
+    const a = await enrichCouple(c);
+    const b = ck.length && (!c.husband?.ckpt || !c.wife?.ckpt) ? (rollCkpts(c, ck), true) : false;
+    if (a || b || ensureSwapMeta(c)) await save(c);
   }
-  while (Object.keys(S.couples).length < ROSTER_MIN) { const c = rollCouple(); rollCkpts(c, ck); await save(c); await new Promise((r) => setTimeout(r, 3)); }
+  while (Object.keys(S.couples).length < ROSTER_MIN) { const c = await rollCouple(); rollCkpts(c, ck); await save(c); await new Promise((r) => setTimeout(r, 3)); }
   if (keep && S.current !== keep && S.couples[keep]) await save(S.couples[keep]);
   return S;
 }
@@ -202,12 +210,12 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   const dest = FLOW_ZH[scene] || "約會場地";
   const ttl = ov.querySelector(".ttl"); if (ttl) ttl.textContent = `正在驅車前往${dest}`;
   if (scene === "ktv" || String(scene).startsWith("hotel")) {
-    const { pregenTease } = await import("./swap_tease.js?v=2");
+    const { pregenTease } = await import("./swap_tease.js?v=3");
     S = await pregenTease(c, scene, S, { debug: (m) => ctx.debug?.(m), onTick: (d, t, f) => { n.textContent = t ? `準備動作 ${d}/${t}${f ? `（失敗 ${f}）` : ""}` : ""; } }).catch((e) => { ctx.debug?.(`換妻：動作預產失敗 ${e?.message || e}`); return S; });
   }
   if ((scene === "ktv" || String(scene).startsWith("hotel")) && wife) {
     try {
-      const pair = await import("./swap_pair_gen.js?v=12");
+      const pair = await import("./swap_pair_gen.js?v=13");
       const slots = pairSlotsFor(scene, pair.PAIR_ACTS, pair.PAIR_FRAMES);
       const have = S.images?.[pair.pairOwner(wife, c)] || {};
       const miss = slots.filter((k) => !have[`pair~${k}`]?.cut);

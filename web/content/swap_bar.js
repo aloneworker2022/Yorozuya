@@ -7,12 +7,13 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=29";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=31";
 import { createStage } from "./swap_stage.js?v=5";
-import { pickBackdrop } from "./swap_cafe_gen.js?v=26";
-import { pairOwner, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=12";
-import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees } from "./swap_tease_rules.js?v=3";
-import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=2";
+import { pickBackdrop } from "./swap_cafe_gen.js?v=27";
+import { pairOwner, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=13";
+import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees } from "./swap_tease_rules.js?v=4";
+import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=1";
+import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=3";
 import { ROUNDS, ensureWifeAccept, gateCheck, ensureSceneRounds, bumpRound, parkShouldAdvance, barShouldPropose, ktvCanHotel, END_FB, backdropOf } from "./swap_flow_rules.js?v=1";
 
 // ============================================================ 調整用的表
@@ -97,27 +98,14 @@ export const WIFE_ACCEPT = { base: 0.3, open: 1, nerves: -0.4, seat: 0.15 };   /
 export const ACCEPT = { bold: [0, 0.95, 0.8, 0.6, 0.4, 0.25], perAff: 0.02, perProg: 0.004, playerDrunk: 0.1, wifeNerves: -0.3, wifeOpen: 0.5, min: 0.05, max: 0.97 };
 export const BOLD_GATE = { 4: 35, 5: 60 };   // 大膽度 → 需要的進度
 export const CARD_FX = { okProg: 2, okAff: 1, noAff: -1, noProg: -1 };   // 成功：進度＋大膽度×okProg
-/** 酒吧牌組。who：other／husband／wife／all。fx：drink（誰喝、strong）、aff、nerves、open、seat、cross、random。 */
-export const DECK_BAR = [
-  { id: "o_toast", who: "other", zh: "敬她一杯", bold: 1, icon: "cup", fx: { drink: ["player", "other"] } },
-  { id: "o_praise", who: "other", zh: "稱讚她今天很漂亮", bold: 1, icon: "heart" },
-  { id: "o_strong", who: "other", zh: "幫她點一杯烈酒", bold: 2, icon: "bottle", fx: { drink: ["other"], strong: true } },
-  { id: "o_sit", who: "other", zh: "坐到她旁邊", bold: 2, icon: "seat", fx: { seat: "player-other" } },
-  { id: "o_hand", who: "other", zh: "偷偷碰她的手", bold: 3, icon: "hand" },
-  { id: "o_whisper", who: "other", zh: "說悄悄話", bold: 3, icon: "lips" },
-  { id: "o_thigh", who: "other", zh: "手放在她大腿上", bold: 4, icon: "hand" },
-  { id: "h_cheers", who: "husband", zh: "乾一杯", bold: 1, icon: "cup", fx: { drink: ["player", "husband"] } },
-  { id: "h_work", who: "husband", zh: "聊工作", bold: 1, icon: "chat" },
-  { id: "h_praise", who: "husband", zh: "稱讚他老婆", bold: 2, icon: "heart", fx: { aff: { husband: 2 } } },
-  { id: "h_cross", who: "husband", zh: "提議男女交叉坐", bold: 3, icon: "seat", fx: { seat: "cross" } },
-  { id: "w_hand", who: "wife", zh: "牽她的手安撫她", bold: 1, icon: "hand", fx: { nerves: -0.15 } },
-  { id: "w_open", who: "wife", zh: "鼓勵她放開一點", bold: 2, icon: "star", fx: { open: 0.15 } },
-  { id: "w_seat", who: "wife", zh: "讓她坐到對方丈夫旁邊", bold: 4, icon: "seat", fx: { seat: "wife-husband" } },
-  { id: "a_round", who: "all", zh: "再點一輪酒", bold: 1, icon: "bottle", fx: { drink: ["player", "wife", "husband", "other"] } },
-  { id: "a_truth", who: "all", zh: "玩真心話大冒險", bold: 3, icon: "star", fx: { random: true } },
-  { id: "a_cross", who: "all", zh: "喝交杯酒", bold: 4, icon: "cup", fx: { drink: ["player", "wife", "husband", "other"], cross: true } },
-];
-const RECKLESS = { o_toast: "硬要她一口乾掉", o_praise: "說她身材比你老婆好", o_sit: "直接擠到她身邊", o_hand: "抓住她的手不放", h_cheers: "跟他拚酒", h_work: "吹噓自己的工作", w_hand: "當眾親老婆一口", a_round: "點一整瓶烈酒" };
+/** 牌組本體在 swap_deck_rules.js；這裡再 export 給舊呼叫。 */
+export { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard };
+const RECKLESS = {
+  o_toast: "硬要她一口乾掉", o_praise: "說她身材比你老婆好", o_sit: "直接擠到她身邊", o_hand: "抓住她的手不放",
+  h_cheers: "跟他拚酒", h_work: "吹噓自己的工作", w_hand: "當眾親老婆一口", a_round: "點一整瓶烈酒",
+  p_o_praise: "說她身材比你老婆好", p_o_sit: "直接擠到她身邊", p_o_hand: "抓住她的手不放",
+  k_o_hand: "抓住她的手不放", k_o_thigh: "直接摸上她大腿", hr_o_hold: "把她整個人抱上床", hb_o_press: "把她用力壓在牆上",
+};
 
 // ============================================================ 句庫（AI 失敗時）
 export const H_FLAVOR = { 紳士型: "彬彬有禮、體貼、說話客氣溫和，會照顧大家的感受", 老手型: "經驗豐富、從容自在、帶點曖昧的玩笑，很會帶氣氛", 炫耀型: "愛炫耀自己的工作、收入、老婆的身材，有點自來熟" };
@@ -353,9 +341,20 @@ export function openBar(ctx = {}, c, S = {}) {
     return x.trim();
   };
   // 2026-10-22 修：AI 身分講清楚（你是誰、你丈夫／妻子是誰、玩家是誰），只准替自己說一句
-  const persona = (k) => k === "husband"
-    ? `你是${h.name}（男，${h.age}歲），你的妻子是${w.name}。個性：${H_FLAVOR[hType]}。${HUSBAND.aim}`
-    : `你是${w.name}（女，${w.age}歲），你的丈夫是${h.name}。${w.look?.build || ""}${w.look?.cup ? `、${w.look.cup}罩杯` : ""}，個性：${W_FLAVOR[wType]}。`;
+  const persona = (k) => {
+    if (k === "husband") {
+      const likes = (h.likes || []).slice(0, 3).join("、") || "喝酒聊天";
+      const hobbies = (h.hobbies || []).slice(0, 2).join("、");
+      const pers = h.personality || H_FLAVOR[hType] || "";
+      const buildZh = h.look?.build_zh || "";
+      const ht = h.height_cm || h.look?.height_cm;
+      return `你是${h.name}（男，${h.age}歲${buildZh ? `，${buildZh}` : ""}${ht ? `、身高${ht}cm` : ""}），你的妻子是${w.name}。個性：${pers}（換妻類型：${hType}）。喜好：${likes}${hobbies ? `；興趣：${hobbies}` : ""}。${HUSBAND.aim}`;
+    }
+    const pers = Array.isArray(w.personality) ? w.personality.join("、") : (w.personality || W_FLAVOR[wType] || "");
+    const cup = w.look?.cup || "";
+    const cupS = cup ? (/罩杯/.test(cup) ? cup : `${cup}罩杯`) : "";
+    return `你是${w.name}（女，${w.age || w.look?.age || "?"}歲），你的丈夫是${h.name}。${w.look?.build || ""}${cupS ? `、${cupS}` : ""}，個性：${pers || W_FLAVOR[wType]}（換妻類型：${wType}）。`;
+  };
   const RULE = () => `場合：${SZ}裡的換妻約會。另一對夫妻：玩家（矮胖的宅男，另一位丈夫）和他的妻子${wn}。對話紀錄裡「玩家」就是那位宅男丈夫，不是你。`
     + `你只能以自己的身分說話：只寫你自己的一句，「（動作）台詞」格式，繁體中文口語，60 字內；不要寫名字前綴、不要旁白、不要替任何其他人說話或寫別人的台詞。`;
   const say1 = async (k, task, fb) => {
@@ -486,19 +485,20 @@ export function openBar(ctx = {}, c, S = {}) {
     }
   };
 
-  const deck = DECK_BAR;
+  const deck = deckFor(scene);
   let handCards = [];
   const HAND_N = teaseOn ? 4 : 3;
   const gateSt = () => ({ accept: sess.accept, drunk: sess.drunk.other, scene, wifeAccept: sess.wifeAccept });
-  const allowed = (cd_) => (cd_.tease ? teaseGate(cd_, gateSt()).ok && !isAway("other") : !BOLD_GATE[cd_.bold] || sess.progress >= BOLD_GATE[cd_.bold]);
+  const allowed = (cd_) => handCardOk(cd_, scene) && (cd_.tease ? teaseGate(cd_, gateSt()).ok && !isAway("other") : !BOLD_GATE[cd_.bold] || sess.progress >= BOLD_GATE[cd_.bold]);
   const draw = () => {
     const ids = new Set(handCards.filter(Boolean).map((x) => x.id));
     if (teaseOn && Math.random() < TEASE_FX.handTease) {   // 動作卡：只從已解鎖的抽
-      const tp = unlockedTease(gateSt()).filter((x) => !ids.has(x.id));
+      const tp = unlockedTease(gateSt()).filter((x) => !ids.has(x.id) && handCardOk(x, scene));
       if (tp.length && !isAway("other")) return { ...pick(tp) };
     }
     const pool = deck.filter((x) => allowed(x) && !ids.has(x.id));
-    let card = { ...pick(pool.length ? pool : deck) };
+    const fallback = deck.filter((x) => handCardOk(x, scene));
+    let card = { ...pick(pool.length ? pool : (fallback.length ? fallback : deck)) };
     if (sess.drunk.player >= DRUNK.lv.drunk && RECKLESS[card.id] && Math.random() < DRUNK.reckless) card = { ...card, zh: RECKLESS[card.id], bold: Math.min(5, card.bold + 1), reckless: true };
     return card;
   };
@@ -819,7 +819,7 @@ export function openBar(ctx = {}, c, S = {}) {
       : "（飯店：右側顯示動作圖；做愛要兩邊接受度 ≥ 70）";
     idleUI(); save();
   }).catch(() => {});
-  const api = { el: ov, stage, sess, close, finish, force: (k, o) => npcAct(k, o || {}), drink, render: renderNb, scene, together, play: (id) => { const cx = [...TEASE_CARDS, ...DECK_BAR].find((x) => x.id === id); return cx ? queue(() => playCard({ ...cx })) : null; }, get hand() { return handCards; }, get busy() { return qn; } };
+  const api = { el: ov, stage, sess, close, finish, force: (k, o) => npcAct(k, o || {}), drink, render: renderNb, scene, together, play: (id) => { const cx = [...TEASE_CARDS, ...DECK_PARK, ...DECK_BAR, ...DECK_KTV, ...DECK_HOTEL_ROOM, ...DECK_HOTEL_BATH].find((x) => x.id === id); return cx ? queue(() => playCard({ ...cx })) : null; }, get hand() { return handCards; }, get busy() { return qn; } };
   if (ctx.expose) window.__swapBar = api;
   return api;
 }

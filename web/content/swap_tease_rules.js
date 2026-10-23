@@ -136,21 +136,26 @@ const PICK = {
   pubic_hair: ["稀疏細軟的陰毛", "適中自然的陰毛", "濃密茂盛的陰毛", "完全剃光、沒有陰毛"],
 };
 function hashOf(s) { let h = 2166136261; for (const ch of String(s)) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
-/** 同一位對方妻子永遠同一份（用她 id 雜湊挑）。已經有的欄位不蓋。 */
+/** 同一位對方妻子永遠同一份（用她 id 雜湊挑）。已有完整 generateGirl 欄位時不發明。 */
 export function roomLookOf(w = {}) {
-  const L = w.look || {}, out = { ...L }, h0 = hashOf(w.id || w.name || "x");
+  const L = w.look || {}, out = { ...L };
+  const real = !!(L.face && L.eyes && (L.hair_color || L.hair));
+  const cup = String(L.cup || "").trim();
+  if (cup && !/罩杯/.test(cup)) out.cup = CUP_MAP[cup[0].toUpperCase()] || cup;
+  out.age = out.age || w.age || L.age || "";
+  if (real) return out;   // 真欄位齊了：不再雜湊發明
+  const h0 = hashOf(w.id || w.name || "x");
   const hm = HAIR_MAP[L.hair];
   if (hm) { out.hair = hm[0]; out.hair_color = out.hair_color || hm[1]; }
-  const cup = String(L.cup || "").trim();
-  if (cup && !/罩杯/.test(cup)) out.cup = CUP_MAP[cup[0].toUpperCase()] || "D 罩杯、勻稱漂亮";
   let i = 0;
   for (const [k, opts] of Object.entries(PICK)) { if (!out[k]) out[k] = opts[((h0 >>> (i % 24)) + i) % opts.length]; i += 3; }
-  out.age = out.age || w.age || "";
   out.swapLook = 1;
   return out;
 }
-/** 給 *_packs 生圖用的「魅子」：她自己的 ckpt（couple 存在 ckpt）、房間 look、衣服用英文那套。 */
+/** 給 *_packs 生圖用的「魅子」：她自己的 ckpt、房間 look、衣服＝擁有的約會裝。 */
 export function teaseGirlOf(c) {
   const w = c?.wife || {};
-  return { ...w, gender: "female", stage: "lover", comfyCkpt: w.comfyCkpt || w.ckpt || "", look: roomLookOf(w), outfitName: w.look?.outfit_en || w.look?.style || "" };
+  const look = roomLookOf(w);
+  const outfit = w.outfitName || look.style || look.outfit_en || w.look?.style || "";
+  return { ...w, gender: "female", stage: "lover", role: w.role || "other_wife", comfyCkpt: w.comfyCkpt || w.ckpt || "", look, outfitName: outfit, outfitPick: w.outfitPick };
 }

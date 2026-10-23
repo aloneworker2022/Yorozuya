@@ -5,7 +5,8 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { api, wornOutfit, waitImg, chromaKeyData, CHROMA } from "./swap_cafe_gen.js?v=26";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=27";
+import { husbandLookEn } from "./husband_gen.js?v=1";
 
 // 2026-10-23 Al 核可：雙人圖預設 prompt 全部改結構（只有雙人圖）。前端給「每段要什麼 tag」（pair 物件），伺服器組成
 //   [品質], 1boy, 1girl, hetero, <取景>, [from side（只有 side:true 的動作；聊天／接吻不加，會畫成背對背）], <動作>, (green background:1.3), (simple background:1.2), green screen, chroma key
@@ -67,9 +68,13 @@ export const pairOwner = (wife, couple) => `${wife?.id || ""}.${couple?.id || ""
 export function pairPrompt(slot, wife, couple) {
   const { act: actKey, frame } = slotOf(slot), fr = frame ? PAIR_FRAMES[actKey]?.[frame - 1] : null;
   const a = ACT[actKey]; if (!a) throw new Error(`沒有這個動作 ${actKey}`);
-  const h = couple?.husband || {}, nude = a.clothes === "nude";
-  const male = dedupe(MAN_AGE(Number(h.age) || 0), MAN_LOOK[h.persona] || "short hair", MAN_BODY[h.build] || "", nude && MAN_HAIRY.has(h.build) ? "chest hair" : "", "tanned male",
-    nude ? "nude" : a.clothes === "partial" ? [MAN_CL[h.persona] || "dress shirt", a.hisCl || ""].filter(Boolean).join(", ") : MAN_CL[h.persona] || "dress shirt", a.his || "", fr?.his || "");
+  const h = couple?.husband || {}, nude = a.clothes === "nude", mi = manInfo(h), lookEn = husbandLookEn(h);
+  const maleBase = lookEn || [MAN_LOOK[h.persona] || "short hair", MAN_BODY[h.build] || ""].filter(Boolean).join(", ");
+  const maleCl = nude ? "nude" : a.clothes === "partial"
+    ? [h.look?.outfit_en || MAN_CL[h.persona] || "dress shirt", a.hisCl || ""].filter(Boolean).join(", ")
+    : (h.look?.outfit_en || MAN_CL[h.persona] || mi.outfit || "dress shirt");
+  const male = dedupe(MAN_AGE(Number(h.age) || Number(h.look?.age) || 0), maleBase, nude && MAN_HAIRY.has(h.build) ? "chest hair" : "", "tanned male",
+    maleCl, a.his || "", fr?.his || "");
   const herCl = nude ? "nude" : a.clothes === "partial" ? a.herCl || "clothes pull" : "";   // dressed＝伺服器翻她的生涯服裝
   const body = dedupe(a.body || "");   // 2026-10-23 胸／私密部位改由伺服器從她的人設翻（跟單人立繪同一份表），這裡只給動作要露的部位
   const neg = dedupe(NEG_BASE, BG_NEG, a.framing === "half" ? "bed" : "white sheets", a.neg || "", fr?.neg ?? (frame === 1 ? "penetration, sex" : ""), a.clothes === "dressed" ? "nude, nipples" : "");
