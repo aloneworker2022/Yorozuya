@@ -5,7 +5,7 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { api, wornOutfit, waitImg, chromaKeyData, CHROMA } from "./swap_cafe_gen.js?v=25";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA } from "./swap_cafe_gen.js?v=26";
 
 // 2026-10-23 Al 核可：雙人圖預設 prompt 全部改結構（只有雙人圖）。前端給「每段要什麼 tag」（pair 物件），伺服器組成
 //   [品質], 1boy, 1girl, hetero, <取景>, [from side（只有 side:true 的動作；聊天／接吻不加，會畫成背對背）], <動作>, (green background:1.3), (simple background:1.2), green screen, chroma key
@@ -25,8 +25,7 @@ export const PAIR_ACTS = [
   { key: "cunni", zh: "舔陰唇", scene: "ktv", framing: "wide", rating: "nsfw", clothes: "partial", side: true,
     act: "cunnilingus, spread legs, sitting, head between thighs", his: "kneeling, head between thighs", her: "sitting, spread legs, head back", expr: "blush, open mouth", herCl: "skirt lift, panties aside", body: "pussy" },
   // 三個交配動作各兩格（同 seed）：第 1 格還沒插入、第 2 格插到底猛撞
-  { key: "missionary", zh: "傳教士體位", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "on top, kneeling", her: "lying, on back, spread legs", body: "nipples, pussy" },
-  // 2026-10-23 正常體位：跟傳教士分開——他跪直不壓上去、雙手抓她張開的大腿
+  // 2026-10-23 正常體位：他跪直不壓上去、雙手抓她張開的大腿
   { key: "normal", zh: "正常體位", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "kneeling, upright, holding another's legs, leg grab", her: "lying, on back, spread legs, legs up", body: "nipples, pussy" },
   { key: "behind", zh: "背後", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "kneeling, hands on another's hips", her: "all fours, looking back", body: "nipples, pussy" },
   { key: "seated", zh: "面對面坐著擁吻交配", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "sitting", her: "straddling, arms around neck", body: "nipples, pussy" },
@@ -39,8 +38,6 @@ const F2_SLAM = "hard thrust, (thrusting:1.2), hip slam, forceful sex, motion li
 const F2_EXPR = "tongue out, ahegao, tears, rolling eyes";
 export const PAIR_FRAMES = {
   // 2026-10-23 第 1 格改成龜頭剛進去（淺插），負向擋整根插入
-  missionary: [{ act: "missionary, lying, on back, spread legs, penis, sex, vaginal, tip insertion, shallow penetration, glans, partially inserted", expr: "blush, nervous", zh: "龜頭剛進去", neg: "deep penetration, full insertion, imminent penetration, penis over pussy, not inserted" },
-    { act: `missionary, sex, vaginal, deep penetration, ${F2_SLAM}`, his: "thrusting, hips forward, grabbing another's legs", expr: F2_EXPR }],
   normal: [{ act: "sex, vaginal, kneeling, upright, leg grab, holding another's thighs, spread legs, on back, tip insertion, shallow penetration, glans, partially inserted", expr: "blush, nervous", zh: "龜頭剛進去", neg: "deep penetration, full insertion, lying on another, on top, missionary" },
     { act: `sex, vaginal, kneeling, upright, leg grab, holding another's thighs, spread legs, on back, deep penetration, full insertion, ${F2_SLAM}`, his: "thrusting, hips forward, grabbing another's thighs", expr: F2_EXPR + ", pained expression, open mouth", neg: "lying on another, missionary, tip insertion" }],
   behind: [{ act: "doggystyle, all fours, penis, imminent penetration, looking back", expr: "blush, nervous" },
@@ -48,7 +45,7 @@ export const PAIR_FRAMES = {
   seated: [{ act: "straddling, upright straddle, sitting on lap, imminent penetration, kiss", expr: "blush, nervous, kiss" },
     { act: `straddling, sex, vaginal, deep penetration, ${F2_SLAM}`, his: "thrusting, hips up, grabbing another's hips", expr: F2_EXPR }],
 };
-/** 要生的格子：一般動作一格（pair~chat），交配動作兩格（pair~missionary~1／~2）。共 5＋4×2＝13。 */
+/** 要生的格子：一般動作一格（pair~chat），交配動作兩格（pair~normal~1／~2）。共 5＋3×2＝11。（2026-10-23 傳教士刪了：容易出錯） */
 export const PAIR_SLOTS = PAIR_ACTS.flatMap((a) => (PAIR_FRAMES[a.key] ? [`${a.key}~1`, `${a.key}~2`] : [a.key]));
 const slotOf = (slot) => { const [act, f] = String(slot).split("~"); return { act, frame: f ? Number(f) : 0 }; };
 const ACT = Object.fromEntries(PAIR_ACTS.map((a) => [a.key, a]));
