@@ -5,7 +5,7 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=28";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=29";
 import { dateOutfitOf, withDateOutfit } from "./swap_outfit.js?v=1";
 import { husbandLookEn } from "./husband_gen.js?v=1";
 
@@ -45,7 +45,7 @@ export const pairCut = (have, slot) => {
 };
 export const PAIR_KEYS = PAIR_ACTS.map((a) => a.key);
 // 2026-10-23 Al：第 1 格停 2 秒、第 2 格（插入）停 0.6 秒；第 2 格出現時「大力震一下」：一下大位移＋放大、SLAM_MS 內回穩（不連續抖）
-export const FRAME1_MS = 2000, FRAME2_MS = 600, SLAM_MS = 200, SLAM_PX = 18;
+export const FRAME1_MS = 2000, FRAME2_MS = 600, SLAM_MS = 200, SLAM_PX = 3.5, SLAM_SCALE = 1.015;   // 2026-10-24：小而有力（原 18px 太遠）
 // 第 2 格共用：男方用力撞（shared 段／1boy 段各加，tag 不寫句子）
 const F2_SLAM = "hard thrust, (thrusting:1.2), hip slam, forceful sex, motion lines, sweat";
 const F2_EXPR = "tongue out, ahegao, tears, rolling eyes";
@@ -185,10 +185,11 @@ export function seedFor(slot, have, runSeeds) {
 let slamCss = false;
 function ensureSlamCss() {
   if (slamCss || typeof document === "undefined") return; slamCss = true;
-  // 一下重撞：0→12% 猛推（下沉＋放大）→ 35% 小反彈 → 100% 回穩；只跑一次
-  const px = SLAM_PX, T = (x, y, sc) => `transform:translateX(-50%) translate(${x}px,${y}px) scale(${sc})`;
+  // 一下重撞（2026-10-24 改小）：0→30%（~60ms）猛壓 SLAM_PX＋微放大 → 兩下小餘震 → 200ms 回穩。
+  // 用獨立的 translate／scale 屬性，不碰元素原本的 transform（場景圖是 inset:0、test 格是 translateX(-50%)；以前寫死 translateX(-50%) 會讓場景圖整張跑半個寬）
+  const px = SLAM_PX, sc = SLAM_SCALE, T = (x, y, k) => `translate:${x}px ${y}px;scale:${k}`;
   const st = document.createElement("style");
-  st.textContent = `@keyframes swpSlam{0%{${T(0, 0, 1)}}12%{${T(px * 0.35, px, 1.07)}}35%{${T(-px * 0.12, -px * 0.25, 0.985)}}60%{${T(0, px * 0.08, 1.01)}}100%{${T(0, 0, 1)}}}`
+  st.textContent = `@keyframes swpSlam{0%{${T(0, 0, 1)}}30%{${T(px * 0.3, px, sc)}}50%{${T(-px * 0.2, -px * 0.4, 1 - (sc - 1) * 0.3)}}70%{${T(px * 0.1, px * 0.25, 1 + (sc - 1) * 0.3)}}85%{${T(0, -px * 0.1, 1)}}100%{${T(0, 0, 1)}}}`
     + ` .swp-slam{animation:swpSlam ${SLAM_MS}ms cubic-bezier(.2,.9,.3,1) 1;transform-origin:50% 100%}`;
   document.head.appendChild(st);
 }
