@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=36";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=37";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=28";
 import { pairOwner, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=14";
@@ -223,7 +223,10 @@ const CSS = `
 #swp-bar .nb .p.busy{background:rgba(255,190,80,.22)}#swp-bar .nb .p.busy .cd i{background:#888}
 #swp-bar .nb .s{font-size:10px;color:#d8c8d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px}
 #swp-bar .pv,#swp-bar .pr{position:absolute;z-index:2;top:40%;bottom:74px;border-radius:12px;overflow:hidden;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18)}
-#swp-bar .pv{right:6px;width:52%}#swp-bar .pr{left:6px;width:42%;bottom:auto;aspect-ratio:3/4;max-height:calc(60% - 80px)}
+#swp-bar .pv{right:6px;width:52%}
+/* 2026-10-24 對方丈夫×你老婆：遠景——縮小、左側中間偏上、無框無底，微糊＋降飽和＋暗一點＋柔影，不蓋右邊自己那組 */
+#swp-bar .pr{z-index:1;left:4%;top:24%;bottom:auto;width:24%;max-width:200px;aspect-ratio:3/4;background:none;border:0;border-radius:0;overflow:visible;pointer-events:none;opacity:.9;filter:blur(.7px) saturate(.72) brightness(.82) drop-shadow(0 6px 10px rgba(0,0,0,.45))}
+#swp-bar .pr .prl{bottom:-18px;font-size:10px;padding:1px 4px;background:none;color:rgba(242,214,230,.8);text-shadow:0 1px 2px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #swp-bar .pv img,#swp-bar .pr img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #swp-bar .pv .pvl,#swp-bar .pr .prl{position:absolute;left:0;right:0;bottom:0;font-size:11px;padding:3px 6px;background:rgba(0,0,0,.55);color:#f2d6e6;text-align:center}
 #swp-bar .pv .pvw{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#ccc}
