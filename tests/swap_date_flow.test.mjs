@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href;
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
-const F = await import(dir + "swap_flow_rules.js?v=3");
+const F = await import(dir + "swap_flow_rules.js?v=4");
 const O = await import(dir + "swap_outfit.js?v=1");
 let pass = 0; const t = (n, fn) => { fn(); pass++; console.log("ok -", n); };
 const yes = () => 0, no = () => 0.999;
@@ -80,6 +80,18 @@ t("外出服：老婆有外出服 → 用她的；內衣排除", () => {
   const g = { id: "g2", look: { wardrobe: ["黑色蕾絲內衣", "碎花洋裝"], owned: { wardrobe: [0, 1] } } };
   assert.equal(O.dateOutfitOf(g, "wife"), "碎花洋裝");
   assert.equal(O.isOutingOutfit("粉紅睡衣"), false);
+});
+t("旗號會雙向變：想走✓ 之後重擲也會變回還想待（就算一直被慫恿、喝醉、待很久）", () => {
+  const s = { rounds: 50, drunk: { wife: 90, husband: 90, other: 90 }, wifeAccept: 100, accept: 100 }; F.ensureMove(s);
+  for (let i = 0; i < 10; i++) F.urgeMove(s, "all", "bar", yes);
+  assert.ok(F.allAgree(s));
+  for (const k of F.NPCS) assert.ok(F.moveP(s, k, "bar") <= F.MOVE.pMax && F.MOVE.pMax < 0.9);
+  assert.equal(F.rollMove(s, "wife", "bar", () => 0.8), false);   // true → false
+  assert.equal(F.rollMove(s, "wife", "bar", () => 0.01), true);   // false → true
+  // 隨機長跑：同一個人兩個方向都會發生
+  let flipsDown = 0, flipsUp = 0, r = 7; const rng = () => ((r = (r * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 200; i++) { const o = s.move.other, n = F.rollMove(s, "other", "bar", rng); if (o && !n) flipsDown++; if (!o && n) flipsUp++; }
+  assert.ok(flipsDown > 5 && flipsUp > 5, `down ${flipsDown} up ${flipsUp}`);
 });
 t("每個人都能提議換地方：自己想走才會開口；旅館不會", () => {
   const s = {}; F.ensureMove(s);

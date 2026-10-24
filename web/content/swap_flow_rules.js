@@ -73,9 +73,10 @@ export const MOVE = {
   perAccept: 0.003,                   // 接受度每點（對方妻子／你老婆）
   perDrunk: 0.003,                    // 醉度每點（第 2 段才算）
   husband: { 1: 0.15, 2: 0.3 },       // 對方丈夫本來就想往下走
-  urgeOne: 0.3, urgeAll: 0.15, urgeCap: 0.6, urgeDecay: 0.05,   // 慫恿加成；每次重擲衰退
+  urgeOne: 0.3, urgeAll: 0.15, urgeCap: 0.4, urgeDecay: 0.12,   // 慫恿加成；每次重擲衰退
   rerollSec: [8, 16],                 // 每個人多久重擲一次
-  proposeP: 0.35,                     // 自己想走時，CD 輪到他有這個機率開口提議大家換地方
+  proposeP: 0.35,
+  pMin: 0.05, pMax: 0.75,             // 2026-10-24：上限 0.75＝就算再想走，每次重擲也至少 25% 會變回「還想待」（以前上限 0.95＋慫恿疊到 0.6，旗號幾乎黏住）                     // 自己想走時，CD 輪到他有這個機率開口提議大家換地方
 };
 /** 舊 session 補欄位。 */
 export function ensureMove(sess) {
@@ -97,7 +98,7 @@ export function moveP(sess, k, scene) {
   if (k === "other") p += otherAccept(sess) * MOVE.perAccept;
   if (k === "wife") p += (Number(sess.wifeAccept) || 0) * MOVE.perAccept - (Number(sess.nerves) || 0) * 0.1;
   if (st === 2) p += drunk * MOVE.perDrunk;
-  return clamp(p, 0.02, 0.95);
+  return clamp(p, MOVE.pMin, MOVE.pMax);
 }
 /** 重擲一個人的旗號（慫恿會衰退一點）。回新的旗號。 */
 export function rollMove(sess, k, scene, rng = Math.random) {
