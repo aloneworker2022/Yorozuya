@@ -157,6 +157,7 @@ t("換妻＝同意色色：配對了才免門檻", () => {
     assert.equal(P.pairCut({ "pair~chat~1": { cut: "u", at: 1 } }, "chat~1"), "");
     assert.equal(P.pairCut({ "pair~chat~1": { cut: "u", at: P.PAIR_SINCE + 5 } }, "chat~1"), "u");
     assert.match(bar, /pairLocked\(tgt\)/); assert.match(bar, /ejacTick\(dt\)/); assert.match(bar, /ctx\.debugSliders/);
+    assert.match(bar, /\$\("\.st"\)\.prepend\(\$\("\.pr"\)\)/); assert.match(bar, /\.pr\{z-index:0;left:4%;top:34%;bottom:auto;width:46%;max-width:420px/);
   });
 }
 console.log(`\n${pass} passed`);
