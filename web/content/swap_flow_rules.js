@@ -75,6 +75,7 @@ export const MOVE = {
   husband: { 1: 0.15, 2: 0.3 },       // 對方丈夫本來就想往下走
   urgeOne: 0.3, urgeAll: 0.15, urgeCap: 0.6, urgeDecay: 0.05,   // 慫恿加成；每次重擲衰退
   rerollSec: [8, 16],                 // 每個人多久重擲一次
+  proposeP: 0.35,                     // 自己想走時，CD 輪到他有這個機率開口提議大家換地方
 };
 /** 舊 session 補欄位。 */
 export function ensureMove(sess) {
@@ -117,6 +118,14 @@ export function urgeMove(sess, who, scene, rng = Math.random) {
   }
   return out;
 }
+/** NPC 自己提議換地方：要自己旗號是「想走」、不在旅館。成立就幫其他兩位慫恿（＝全體 +0.15 重擲）。 */
+export function npcProposeMove(sess, k, scene, rng = Math.random) {
+  ensureMove(sess);
+  if (stageOf(scene) >= 3 || !sess.move[k] || allAgree(sess)) return false;
+  return rng() < MOVE.proposeP;
+}
+/** 換妻＝同意色色：對方妻子跟你、或你老婆跟對方丈夫，配成對後就不再用接受度／醉度擋性卡（場景仍決定能做到哪）。 */
+export const consentFree = (sess, k) => (k === "other" ? otherSwapped(sess) : k === "wife" ? wifeSwapped(sess) : false);
 /** 全員都同意換地方。 */
 export function allAgree(sess) {
   ensureMove(sess);
@@ -136,7 +145,7 @@ export const SWAP = {
   perAccept: 0.005,       // 接受度每點
   perDrunk: 0.004,        // 醉度每點
   wifeNerves: -0.25,      // 你老婆的緊張
-  husbandSwapP: 0.25,     // 第 2 段，對方丈夫每次行動提議換妻的機率（還有人沒換時）
+  husbandSwapP: 0.6,      // 第 2 段，對方丈夫每次行動提議換妻的機率（還有人沒換時）——他很主動（2026-10-24 0.25→0.6）
   husbandHotelP: 0.2,     // 第 2 段，有人換了之後他提議去旅館的機率
 };
 /** sess.pairs：wife＝"player"|"husband"（你老婆跟誰）；other＝"husband"|"player"（對方妻子跟誰）。 */

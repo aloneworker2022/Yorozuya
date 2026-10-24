@@ -7,14 +7,14 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=34";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=35";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=28";
 import { pairOwner, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=14";
 import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees } from "./swap_tease_rules.js?v=5";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=2";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=4";
-import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere } from "./swap_flow_rules.js?v=2";
+import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, npcProposeMove, consentFree } from "./swap_flow_rules.js?v=3";
 
 // ============================================================ 調整用的表
 export const CD = { min: 10, max: 25, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]] };   // 秒（2026-10-22 改 10–25）；半速；醉了 CD 變短（×），但不會短於 min
@@ -54,7 +54,8 @@ export const ROLES = {
 };
 export const BAR_VOMIT_DRUNK = 0.06;    // 酒吧：醉了（≥60 未爛醉）每次行動去吐的機率
 export const HUSBAND_TOILET_P = 0.12;   // 酒吧：換了伴的對方丈夫每次行動帶你老婆去廁所的機率
-export const PROPOSE_GAP_MS = 40000;    // 對方丈夫兩次提議之間至少隔多久
+export const PROPOSE_GAP_MS = 18000;    // 對方丈夫兩次提議之間至少隔多久（2026-10-24：他很主動，40→18 秒）
+export const NPC_INTER_MS = 10000;      // NPC 發起／NPC↔NPC 的互動長度（互動中不跑 CD、不能被別人打斷）
 export const WIFE_LEWD_DRUNK = 60;   // 老婆自己主動的色：醉度 ≥60 才可能
 export const WIFE_INIT_DRUNK = 200;  // 老婆主動機率＋醉度/200
 const wpick = (opts) => { const tot = opts.reduce((s, [, v]) => s + v, 0); if (tot <= 0) return ""; let r = Math.random() * tot; for (const [k, v] of opts) { if ((r -= v) < 0) return k; } return opts[opts.length - 1][0]; };
@@ -219,6 +220,7 @@ const CSS = `
 #swp-bar .nb .l1 canvas{width:12px;height:14px;image-rendering:pixelated;flex:none}
 #swp-bar .nb .cd{height:3px;background:#3a2a40;border-radius:2px;overflow:hidden}#swp-bar .nb .cd i{display:block;height:100%;width:0;background:#ff9ac8}
 #swp-bar .nb .p.g-green{border-color:#4fd37a;box-shadow:inset 0 2px 0 #4fd37a}#swp-bar .nb .p.g-blue{border-color:#5aa0ff;box-shadow:inset 0 2px 0 #5aa0ff}#swp-bar .nb .p.gap{margin-left:10px}#swp-bar .nb .f{font-size:10px;font-weight:700}#swp-bar .nb .f.y{color:#7dffa0}#swp-bar .nb .f.n{color:#a99}
+#swp-bar .nb .p.busy{background:rgba(255,190,80,.22)}#swp-bar .nb .p.busy .cd i{background:#888}
 #swp-bar .nb .s{font-size:10px;color:#d8c8d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px}
 #swp-bar .pv,#swp-bar .pr{position:absolute;z-index:2;top:40%;bottom:74px;border-radius:12px;overflow:hidden;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18)}
 #swp-bar .pv{right:6px;width:52%}#swp-bar .pr{left:6px;width:42%;bottom:auto;aspect-ratio:3/4;max-height:calc(60% - 80px)}
@@ -309,6 +311,14 @@ export function openBar(ctx = {}, c, S = {}) {
   const dlv = (k) => drunkLv(sess.drunk[k]);
   const absent = {};   // id → { why, until }
   const isAway = (k) => absent[k] && (absent[k].until > Date.now());
+  // ---- 2026-10-24 互動中：CD 滿 → 找人互動；互動期間兩邊都不跑 CD、不能被別人打斷；結束才重新開始 CD。
+  // busy[k] = { with, until }；跟玩家的互動 until=Infinity，對話結束才 release。
+  const busy = {};
+  const isBusy = (k) => !!busy[k] && busy[k].until > Date.now();
+  const engage = (ks, until = Infinity) => { const set = ks.filter((x) => x && x !== "all"); for (const x of set) if (x !== "player") busy[x] = { with: set.filter((y) => y !== x), until }; };
+  const release = (ks) => { for (const x of ks) if (busy[x]) { delete busy[x]; if (cd[x]) { cd[x].t = 0; cd[x].len = rnd(...cdRange(x)); } } };
+  /** 玩家跟 ks 互動：全程鎖住、結束才放開（對方才開始 CD）。 */
+  const withPlayer = async (ks, fn) => { const set = ks.filter((x) => x && x !== "all" && x !== "player"); engage([...set, "player"]); try { return await fn(); } finally { release(set); renderNb(); } };
 
   // ---- 立繪
   const img = (owner, key, ex) => (S.images?.[owner] || {})[`${key}~${ex}`]?.cut || (S.images?.[owner] || {})[`${key}~normal`]?.cut || "";
@@ -401,7 +411,9 @@ export function openBar(ctx = {}, c, S = {}) {
       const k = el.dataset.k; cupIcon(el.querySelector("canvas"), sess.drunk[k]);
       const i = el.querySelector(".cd i"); if (i) i.style.width = `${Math.round(clamp(cd[k].t / cd[k].len, 0, 1) * 100)}%`;
       const dz = { sober: "", tipsy: "微醺", drunk: "醉了", wasted: "爛醉" }[dlv(k)];
-      el.querySelector(".s").textContent = (isAway(k) ? absent[k].why : status[k]) || dz || (k === "player" ? (watch ? "只能看" : `她 ${sess.accept}／妻 ${sess.wifeAccept}・${pairZh()}`) : "");
+      el.classList.toggle("busy", isBusy(k));
+      const bz = isBusy(k) ? `互動中・${busy[k].with.map((y) => (y === "player" ? "你" : name[y])).join("、") || "…"}` : "";
+      el.querySelector(".s").textContent = (isAway(k) ? absent[k].why : bz || status[k]) || dz || (k === "player" ? (watch ? "只能看" : `她 ${sess.accept}／妻 ${sess.wifeAccept}・${pairZh()}`) : "");
       el.classList.toggle("sel", tapSel === k);
     }
   };
@@ -431,7 +443,8 @@ export function openBar(ctx = {}, c, S = {}) {
     const v = inp.value.trim(); if (!v) return; inp.value = ""; inp.blur();
     const tgt = target === "all" ? inferTarget(v, name) : target;
     if (isAway(tgt)) { tx.textContent = `${name[tgt]}${absent[tgt].why}`; return; }
-    void queue(async () => {
+    if (isBusy(tgt) && !busy[tgt].with.includes("player")) { tx.textContent = `（${name[tgt]}正在跟${busy[tgt].with.map((y) => name[y] || "你").join("、")}互動，等一下）`; return; }
+    void queue(() => withPlayer([tgt], async () => {
       busyUI();
       log.push(`你（對${target === "all" ? "大家" : name[tgt]}）：${v}`);
       bumpAff(tgt, RUDE_RE.test(v) ? CHAT.affRude : NICE_RE.test(v) ? CHAT.affNice : CHAT.affChat, "聊天"); prog(CHAT.progChat, "聊天");
@@ -442,7 +455,7 @@ export function openBar(ctx = {}, c, S = {}) {
       await line(tgt, await say1(tgt, `玩家${target === "all" ? "對大家說" : `對你（${name[tgt]}）說`}：「${v}」。以${name[tgt]}的身分回玩家一句。`, pick(FB.chat[tgt])), { to: "player" });
       if (second && !isAway(second)) await line(second, await say1(second, `接著${name[tgt]}剛才那句，以${name[second]}的身分插一句話。`, pick(FB.chat[second])), { to: "player" });
       afterPlayerTurn("聊天");
-    });
+    }));
   });
 
   // ---- 卡牌
@@ -540,16 +553,17 @@ export function openBar(ctx = {}, c, S = {}) {
   let handCards = [];
   const HAND_N = teaseOn ? 4 : 3;
   const gateSt = () => ({ accept: sess.accept, drunk: sess.drunk.other, scene: where(), wifeAccept: sess.wifeAccept });
+  const teasePool = () => (consentFree(sess, "other") ? TEASE_CARDS.slice() : unlockedTease(gateSt()));   // 換了＝全部解鎖（場景再篩）
   const otherHere = () => toiletOn || !isAway("other");   // 廁所裡她「不在座位」但在你身邊
   const whereOk = (cd_) => teaseWhere(cd_, { where: where(), paired: paired(), drunk: sess.drunk.other, mode });
-  const allowed = (cd_) => (toiletOn ? !!cd_.tease : handCardOk(cd_, scene)) && (cd_.tease ? teaseGate(cd_, gateSt()).ok && whereOk(cd_) && otherHere() : !BOLD_GATE[cd_.bold] || sess.progress >= BOLD_GATE[cd_.bold]);
+  const allowed = (cd_) => (toiletOn ? !!cd_.tease : handCardOk(cd_, scene)) && (cd_.tease ? (consentFree(sess, "other") || teaseGate(cd_, gateSt()).ok) && whereOk(cd_) && otherHere() : !BOLD_GATE[cd_.bold] || sess.progress >= BOLD_GATE[cd_.bold]);
   const draw = () => {
     const ids = new Set(handCards.filter(Boolean).map((x) => x.id));
     if (teaseOn && Math.random() < TEASE_FX.handTease) {   // 動作卡：只從已解鎖的抽
-      const tp = unlockedTease(gateSt()).filter((x) => !ids.has(x.id) && handCardOk(x, scene) && whereOk(x));
+      const tp = teasePool().filter((x) => !ids.has(x.id) && handCardOk(x, scene) && whereOk(x));
       if (tp.length && otherHere()) return { ...pick(tp) };
     }
-    if (toiletOn) { const tp = unlockedTease(gateSt()).filter((x) => whereOk(x)); if (tp.length) return { ...pick(tp) }; }
+    if (toiletOn) { const tp = teasePool().filter((x) => whereOk(x)); if (tp.length) return { ...pick(tp) }; }
     const pool = deck.filter((x) => allowed(x) && !ids.has(x.id));
     const fallback = deck.filter((x) => handCardOk(x, scene));
     let card = { ...pick(pool.length ? pool : (fallback.length ? fallback : deck)) };
@@ -562,7 +576,9 @@ export function openBar(ctx = {}, c, S = {}) {
     hand.replaceChildren(...handCards.map((cardX, i) => {
       const cv = document.createElement("canvas"); drawCard(cv, cardX); cv.title = `${cardX.zh}（${WHO_ZH[cardX.who]}・大膽 ${cardX.bold}）`;
       if (cardX.who !== "all" && isAway(cardX.who)) cv.classList.add("off");
-      cv.addEventListener("click", () => { if (!chatting || qn) return; handCards[i] = draw(); void queue(() => playCard(cardX)); });
+      cv.addEventListener("click", () => { if (!chatting || qn) return; handCards[i] = draw(); const tk = cardX.tease ? "other" : cardX.who === "all" ? "" : cardX.who;
+        if (tk && isBusy(tk) && !busy[tk].with.includes("player")) { tx.textContent = `（${name[tk]}正在跟別人互動，等一下）`; return; }
+        void queue(() => withPlayer(tk ? [tk] : [], () => playCard(cardX))); });
       return cv;
     }));
   };
@@ -628,8 +644,9 @@ export function openBar(ctx = {}, c, S = {}) {
   };
   const playTease = async (cardX) => {
     busyUI();
-    if (!teaseGate(cardX, gateSt()).ok || !whereOk(cardX)) { renderHand(); return; }
-    const st = gateSt(), p = teaseChance(acceptP("other", cardX.bold), st), wasted = st.drunk >= TEASE_FX.wasted, ok = wasted || Math.random() < p;
+    const free = consentFree(sess, "other");   // 換了＝同意色色：不看接受度／醉度，只看場景
+    if ((!free && !teaseGate(cardX, gateSt()).ok) || !whereOk(cardX)) { renderHand(); return; }
+    const st = gateSt(), p = free ? 1 : teaseChance(acceptP("other", cardX.bold), st), wasted = st.drunk >= TEASE_FX.wasted, ok = free || wasted || Math.random() < p;
     dbg(`動作「${cardX.zh}」→ ${name.other}（接受 ${st.accept}、醉度 ${Math.round(st.drunk)}${wasted ? "、爛醉＝必成功" : ""}；成功率 ${Math.round(p * 100)}%）→ ${ok ? "成功" : "被拒"}`);
     log.push(`（你對${name.other}：${cardX.zh}）`);
     await show(["other"]);
@@ -666,7 +683,7 @@ export function openBar(ctx = {}, c, S = {}) {
     if (base === "hotel") return wifeSwapped(sess) || watch ? (scene === "hotel_bath" ? "behind" : "normal") : "";
     const sw = wifeSwapped(sess), pg = sess.progress + sess.drunk.wife * 0.3 + sess.open * 30;
     if (base === "bar") return sw || sess.drunk.wife >= DRUNK.lv.drunk ? (pg >= 40 || sw ? "kiss" : "chat") : "";
-    if (base === "ktv") return !sw ? (pg >= 30 ? "chat" : "") : pg >= 90 ? "normal" : pg >= 75 ? "fellatio" : pg >= 55 ? "grope" : pg >= 35 ? "kiss" : "chat";
+    if (base === "ktv") return !sw ? (pg >= 30 ? "chat" : "") : pg >= 50 ? "normal" : pg >= 35 ? "fellatio" : pg >= 20 ? "grope" : "kiss";   // 換了＝同意：包廂直接往下
     return "";
   };
   let prKey = "";
@@ -753,7 +770,16 @@ export function openBar(ctx = {}, c, S = {}) {
       if (!speaking) tx.textContent = `（${h.name}牽著${wn}往廁所走去……）`;
       dbg(`${h.name} 帶 ${wn} 去廁所`); renderNb(); return;
     }
-    let ch = force?.type ? { target: force.target, type: force.type } : chooseAction(k, { progress: sess.progress, drunk: sess.drunk, last: lastType, away: isAway, seated });
+    // 2026-10-24：每個人都能提議換地方（自己想走時）
+    if (!force && !qn && npcProposeMove(sess, k, scene)) {
+      void queue(async () => {
+        busyUI(); await show([k]);
+        await line(k, await say1(k, "你想換個地方了，向大家提議離開這裡去下一個地方。一句。", k === "husband" ? "（伸個懶腰）這裡差不多了吧？我們換個地方！" : "（拉拉衣角，小聲）……要不要換個地方？"), { to: "all" });
+        urgeMove(sess, "all", scene); sess.move[k] = true; renderNb(); save(); checkReady();
+      });
+      return;
+    }
+    let ch = force?.type ? { target: force.target, type: force.type } : chooseAction(k, { progress: sess.progress, drunk: sess.drunk, last: lastType, away: (x) => isAway(x) || isBusy(x), seated });
     if (!ch) return;   // 老婆這輪不主動
     let { type } = ch, tgt = ch.target;
     if (FEMALE.has(k) && FEMALE.has(tgt) && type !== "chat") type = "chat";   // 保險：兩個老婆之間只聊天
@@ -775,11 +801,12 @@ export function openBar(ctx = {}, c, S = {}) {
     }
     if (tgt === "player" && qn && !force) return;   // 你那邊正忙：這輪先不找你（不要亂改對象）
     if (!tgt) return;
+    if (tgt !== "player" && isBusy(tgt) && !force) return;   // 對方正在互動：不能打斷
     if ((type === "touch" || type === "lewd") && !(PAIR_ALLOW[k]?.[tgt] || []).includes(type)) type = "chat";
     const act = type === "touch" || type === "lewd" ? (force?.act ? { zh: force.act } : actOf(type, k, tgt)) : null;
     if ((type === "touch" || type === "lewd") && !act) type = "chat";
     if (tgt === "player") {
-      await queue(async () => {
+      await queue(() => withPlayer([k], async () => {
         busyUI();
         await show([k]);
         if (type === "silence") { const t = pick(SILENCE).replace("{a}", name[k]).replace("{b}", "你"); log.push(t); await say("", t); return; }
@@ -788,17 +815,20 @@ export function openBar(ctx = {}, c, S = {}) {
         status[k] = type === "chat" ? "跟你聊天" : `→ 你：${act.zh}`; renderNb();
         await line(k, ln, { to: "player" });
         if (type === "touch" || type === "lewd") await respond(k, act);
-      });
+      }));
       return;
     }
-    // NPC ↔ NPC：只寫在名字列，點名字看
+    // NPC ↔ NPC：只寫在名字列，點名字看。兩人鎖 10 秒（含等 AI 的時間），結束才開始 CD
+    const t0 = Date.now();
+    engage([k, tgt], t0 + NPC_INTER_MS + 30000);   // 保險：AI 卡住也會自己放開
     let lines = [];
     if (type === "silence") lines = [pick(SILENCE).replace("{a}", name[k]).replace("{b}", name[tgt])];
     else {
       const l1 = await say1(k, type === "chat" ? chatTask(k, tgt) : `你對${name[tgt]}做了「${act.zh}」，小聲說一句。`, pick(FB[type === "chat" ? "chat" : type][k]));
       lines = [`${name[k]}：${l1}`]; dbg(`訊息 target=${tgt} speaker=${k} label=${name[k]}（NPC↔NPC，名字列）`);
       let okP = 0.7;
-      if (tgt === "wife" && k === "husband") okP = WIFE_ACCEPT.base + sess.open * WIFE_ACCEPT.open + sess.nerves * WIFE_ACCEPT.nerves + (seated("husband", "wife") ? WIFE_ACCEPT.seat : 0);
+      if (tgt === "wife" && k === "husband" && consentFree(sess, "wife")) okP = 1;   // 換了＝同意
+      else if (tgt === "wife" && k === "husband") okP = WIFE_ACCEPT.base + sess.open * WIFE_ACCEPT.open + sess.nerves * WIFE_ACCEPT.nerves + (seated("husband", "wife") ? WIFE_ACCEPT.seat : 0);
       okP = 1 - (1 - clamp(okP, 0.05, 0.95)) * (DRUNK.pushCut[dlv(tgt)] || 1);
       const ok = type === "chat" || Math.random() < okP;
       if (act) lines.push(ok ? `（${name[tgt]}沒有推開）` : `（${name[tgt]}推開了${k === "husband" ? "他" : "她"}的手）`);
@@ -811,6 +841,7 @@ export function openBar(ctx = {}, c, S = {}) {
     const label = type === "silence" ? "沉默" : type === "chat" ? "聊天" : act.zh;
     status[k] = `→ ${tgt === "wife" ? "老婆" : WHO_ZH[tgt]}：${label}`; status[tgt] = `← ${k === "wife" ? "老婆" : WHO_ZH[k]}：${label}`;
     inter[k] = inter[tgt] = { a: k, b: tgt, lines, at: Date.now() };
+    { const until = Math.max(Date.now() + 1500, t0 + NPC_INTER_MS); for (const x of [k, tgt]) if (busy[x]) busy[x].until = until; }
     for (const l of lines) log.push(l);
     dbg(`${name[k]} → ${name[tgt]}：${label}`);
     renderNb(); save();
@@ -859,10 +890,11 @@ export function openBar(ctx = {}, c, S = {}) {
     if (chatting) {
       const slow = speaking || typing() ? CD.slow : 1;
       for (const k of NPCS) {
-        if (isAway(k)) continue;
+        if (busy[k] && !isBusy(k)) release([k]);   // NPC↔NPC 10 秒到了：放開，CD 從 0 開始
+        if (isAway(k) || isBusy(k)) continue;      // 互動中不跑 CD
         const fast = (CD.fastAt.find(([lv]) => sess.drunk[k] >= lv) || [0, 1])[1];
         cd[k].t += dt * slow;
-        if (cd[k].t >= Math.max(CD.min, cd[k].len * fast)) { cd[k].t = 0; cd[k].len = rnd(...cdRange(k)); void npcAct(k); }
+        if (cd[k].t >= Math.max(CD.min, cd[k].len * fast)) { cd[k].t = 0; cd[k].len = rnd(...cdRange(k)); engage([k], Date.now() + 2000); void npcAct(k).finally(() => { if (busy[k] && busy[k].until !== Infinity && !busy[k].with.length) release([k]); }); }
       }
     }
     renderNb();

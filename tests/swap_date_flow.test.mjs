@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href;
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
-const F = await import(dir + "swap_flow_rules.js?v=2");
+const F = await import(dir + "swap_flow_rules.js?v=3");
 const O = await import(dir + "swap_outfit.js?v=1");
 let pass = 0; const t = (n, fn) => { fn(); pass++; console.log("ok -", n); };
 const yes = () => 0, no = () => 0.999;
@@ -81,4 +81,43 @@ t("外出服：老婆有外出服 → 用她的；內衣排除", () => {
   assert.equal(O.dateOutfitOf(g, "wife"), "碎花洋裝");
   assert.equal(O.isOutingOutfit("粉紅睡衣"), false);
 });
+t("每個人都能提議換地方：自己想走才會開口；旅館不會", () => {
+  const s = {}; F.ensureMove(s);
+  assert.equal(F.npcProposeMove(s, "wife", "park", yes), false);
+  s.move.wife = true;
+  assert.equal(F.npcProposeMove(s, "wife", "park", yes), true);
+  assert.equal(F.npcProposeMove(s, "wife", "park", no), false);
+  assert.equal(F.npcProposeMove(s, "wife", "hotel_room", yes), false);
+});
+t("對方丈夫很主動：第 2 段還沒換完時提議換妻機率 ≥ 0.5", () => {
+  assert.ok(F.SWAP.husbandSwapP >= 0.5);
+  const s = {}; F.ensurePairs(s);
+  assert.equal(F.husbandIntent(s, "bar", () => 0.4), "swap");
+});
+t("換妻＝同意色色：配對了才免門檻", () => {
+  const s = {}; F.ensurePairs(s);
+  assert.equal(F.consentFree(s, "other"), false); assert.equal(F.consentFree(s, "wife"), false);
+  s.pairs.other = "player"; assert.equal(F.consentFree(s, "other"), true); assert.equal(F.consentFree(s, "wife"), false);
+  s.pairs.wife = "husband"; assert.equal(F.consentFree(s, "wife"), true);
+});
+{
+  const { readFileSync } = await import("node:fs");
+  const sel = readFileSync(new URL("../web/content/swap_select.js", import.meta.url), "utf8");
+  const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
+  t("立繪 bug：genPair 的回傳要取 .images，不能整包塞進 S.images", () => {
+    assert.match(sel, /r\?\.images/);
+    assert.doesNotMatch(sel, /const imgs = await pair\.genPair/);
+  });
+  t("互動模型：互動中不跑 CD、不能被打斷、NPC 互動 10 秒、跟玩家對話結束才放開", () => {
+    assert.match(bar, /NPC_INTER_MS = 10000/);
+    assert.match(bar, /if \(isAway\(k\) \|\| isBusy\(k\)\) continue/);
+    assert.match(bar, /isBusy\(tgt\) && !force\) return/);
+    assert.match(bar, /withPlayer\(\[k\]/);
+    assert.match(bar, /finally \{ release\(set\)/);
+  });
+  t("性卡：換了就跳過接受度門檻（只看場景）", () => {
+    assert.match(bar, /ok = free \|\|/);
+    assert.match(bar, /consentFree\(sess, "wife"\)\) okP = 1/);
+  });
+}
 console.log(`\n${pass} passed`);

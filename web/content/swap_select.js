@@ -4,9 +4,9 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=28";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=27";
+import { openBar } from "./swap_bar.js?v=28";
 import { dateOutfitOf } from "./swap_outfit.js?v=1";
-import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=2";
+import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=3";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=1";
 
 export const SESSION_KEY = "yorozuya.swap.session";
@@ -271,8 +271,9 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
       for (const slot of miss) {
         n.textContent = `準備雙人圖 ${++d}/${miss.length}${f ? `（失敗 ${f}）` : ""}`;
         try {
-          const imgs = await pair.genPair(slot, wife, c, (m) => ctx.debug?.(`換妻：雙人 ${slot} ${m}`));
-          if (imgs) S = { ...S, images: imgs };
+          // genPair 回 { images, sec, how, seed }——以前把整包當 images 塞進 S，立繪全部不見（2026-10-24 修）
+          const r = await pair.genPair(slot, wife, c, (m) => ctx.debug?.(`換妻：雙人 ${slot} ${m}`));
+          if (r?.images && typeof r.images === "object") S = { ...S, images: r.images };
         } catch (e) { f++; ctx.debug?.(`換妻：雙人圖 ${slot} 失敗：${e?.message || e}`); }
       }
     } catch (e) { ctx.debug?.(`換妻：雙人預產失敗 ${e?.message || e}`); }
