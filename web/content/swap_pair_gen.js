@@ -192,7 +192,12 @@ export function applyPairFrame(root, frame2) {
   ensureSlamCss();
   const cells = new Set([...root.querySelectorAll(".pf1, .pf2")].map((im) => im.parentElement));
   cells.forEach((cell) => {
-    const a = cell.querySelector(".pf1"), b = cell.querySelector(".pf2");
+    // 2026-10-24：沒 src 或跟第 1 格同圖＝只有一張 → 不切、不晃
+    const has = (im) => !!im && !!im.getAttribute("src");
+    let a = cell.querySelector(".pf1"), b = cell.querySelector(".pf2");
+    if (has(a) && has(b) && a.getAttribute("src") === b.getAttribute("src")) { b.style.visibility = "hidden"; b.classList.remove("swp-slam"); b = null; }
+    if (b && !has(b)) { b.style.visibility = "hidden"; b.classList.remove("swp-slam"); b = null; }
+    if (a && !has(a)) { a.style.visibility = "hidden"; a = null; }
     const show2 = a && b ? frame2 : !!b && !a;
     if (a) a.style.visibility = show2 ? "hidden" : "visible";
     if (b) { b.style.visibility = show2 ? "visible" : "hidden"; b.classList.remove("swp-slam"); if (show2 && a) { void b.offsetWidth; b.classList.add("swp-slam"); } }
