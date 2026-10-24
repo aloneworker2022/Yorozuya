@@ -110,6 +110,15 @@
           <button type="button" id="dbg-flow-ryokan" title="房間流程：先接吻，再隨機地點＋姿勢（每段遊戲 10 分＝真實 20 秒）；切主臥室／浴室找人、點人物">流程:日式</button>
           <button type="button" id="dbg-flow-hotel" title="房間流程（旅館）">流程:旅館</button>
           <button type="button" id="dbg-flow-motel" title="房間流程（汽車旅館）">流程:汽旅</button><br></dd>
+        <dt>換妻</dt><dd class="miss-dbg swap-dbg"><span class="mini">都先抽候選夫妻→選完才生立繪→進場</span>
+          <button type="button" data-swt="park" title="主流程：從公園整段">公園</button>
+          <button type="button" data-swt="bar" title="第 2 段：酒吧（沒換伴、微醺、旗號重擲／提議中）">酒吧</button>
+          <button type="button" data-swt="ktv" title="第 2 段：KTV 包廂（沒換伴、微醺）">KTV</button>
+          <button type="button" data-swt="hotel_room" title="第 3 段：旅館房間（配對看下面）">旅館房間</button>
+          <button type="button" data-swt="hotel_bath" title="第 3 段：旅館浴室（配對看下面）">旅館浴室</button><br>
+          <span class="mini">旅館配對：</span><label class="mini"><input type="radio" name="sc-hpair" value="play" checked> 你跟對方妻子</label>
+          <label class="mini"><input type="radio" name="sc-hpair" value="watch"> 只有老婆被換（你只看）</label>
+          <label class="mini"><input type="checkbox" id="sc-together"> 同房（看得到老婆×對方丈夫）</label></dd>
         <dt>懷孕</dt><dd class="miss-dbg preg-dbg"><span id="dbg-preg">—</span>
           <button type="button" id="dbg-preg-client" title="強制受孕：父親＝接客的客人">受孕・客人</button>
           <button type="button" id="dbg-preg-friend" title="強制受孕：父親＝外面的肉體關係（同事）">受孕・同事</button>
@@ -269,7 +278,6 @@
     <div class="bp-row" id="sc-chars" style="flex-wrap:wrap;gap:6px"><button type="button" data-ch="wife">妻子</button><button type="button" data-ch="husband">對方丈夫</button><button type="button" data-ch="other">對方妻子</button></div>
     <div class="bp-row"><span class="bp-grow"><label>場景</label><select id="sc-scene"></select></span><span class="bp-grow"><label>背景</label><select id="sc-bg"></select></span></div>
     <div class="bp-row"><span class="bp-grow"><label>對方夫妻</label><select id="sc-couple"></select></span><button type="button" id="sc-reroll">換一對</button><button type="button" id="sc-close">收合</button></div>
-    <div class="bp-row" style="flex-wrap:wrap;gap:6px"><span class="mini">主流程（先抽候選夫妻→選完才生立繪→從公園整段）：</span><button type="button" data-swt="park">從公園開始</button><span class="mini">捷徑（一樣先抽候選夫妻）：</span><button type="button" data-swt="bar">從酒吧開始</button><button type="button" data-swt="ktv">從KTV開始</button><button type="button" data-swt="hotel_room">從旅館開始</button><button type="button" data-swt="hotel_bath">旅館浴室</button><span class="mini">旅館配對：</span><label class="mini"><input type="radio" name="sc-hpair" value="play" checked> 你跟對方妻子</label><label class="mini"><input type="radio" name="sc-hpair" value="watch"> 只有老婆被換（你只看）</label><label class="mini"><input type="checkbox" id="sc-together"> 同房（看得到老婆×對方丈夫）</label></div>
     <pre id="sc-info" class="mini" style="white-space:pre-wrap;margin:4px 0"></pre>
     <div id="sc-ckpts"></div>
     <div id="sc-status" class="mini" style="white-space:pre-wrap;color:#e99"></div>
@@ -981,6 +989,6 @@
   <script src="/content/room_activity.js?v=3"></script>
   <script src="/content/room_character.js?v=11"></script>
   <script src="/content/test_room.js?v=20"></script>
-  <script type="module" src="/content/test_room_summon.js?v=303"></script>
+  <script type="module" src="/content/test_room_summon.js?v=304"></script>
 </body>
 </html>
