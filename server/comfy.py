@@ -23,6 +23,7 @@ import asyncio
 import json
 import os
 import random
+import re
 import time
 from pathlib import Path
 
@@ -251,6 +252,16 @@ def is_identity_sheet_shot(shot: str) -> bool:
     return s.startswith("half_")
 
 
+# 2026-10-23 主程式三張立繪（大頭／半身含喜怒哀樂害羞／全身）改綠幕：prompt 要綠底，
+# 生完 cutout.chroma_key 另存 <stem>_ck.png 給前端；原圖留著。房間 standee／脫衣／動作圖不在此列。
+GREEN_PORTRAIT_SHOTS = frozenset(
+    ("head", "half", "full", "half_xi", "half_nu", "half_ai", "half_le", "half_xiu"))
+
+
+def is_green_portrait_shot(shot: str) -> bool:
+    return str(shot or "").lower() in GREEN_PORTRAIT_SHOTS
+
+
 def shot_wants_cutout(shot: str, fallback: bool = False) -> bool:
     """立繪 shot 看規格；沒登記的才吃前端 cutout 旗。"""
     spec = portrait_shot_spec(shot)
@@ -462,6 +473,28 @@ async def resolve_ckpt(want: str = "", base: str = "") -> tuple[str, str | None,
 # workflow。之後要換模型、加 LoRA、加色彩量化,改這一個函式就好,worker 不看內容。
 
 
+
+def expand_break(wf: dict, nid: str) -> None:
+    """2026-10-23：CLIPTextEncode 不認 BREAK。字裡有 BREAK 就切段、每段各自編碼，用 ConditioningConcat 串起來；
+    最後那個節點還是叫 nid（KSampler 照舊接 [nid, 0]）。沒有 BREAK 就不動。"""
+    node = wf.get(nid) or {}
+    if node.get("class_type") != "CLIPTextEncode":
+        return
+    text, clip = str(node["inputs"].get("text") or ""), node["inputs"].get("clip")
+    chunks = [c.strip(" ,\n\t") for c in re.split(r"\bBREAK\b", text)]
+    chunks = [c for c in chunks if c]
+    if len(chunks) <= 1:
+        if "BREAK" in text:
+            node["inputs"]["text"] = chunks[0] if chunks else ""
+        return
+    for i, c in enumerate(chunks):
+        wf[f"{nid}_{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": c, "clip": clip}}
+    prev = [f"{nid}_0", 0]
+    for i in range(1, len(chunks)):
+        cid = nid if i == len(chunks) - 1 else f"{nid}_cat{i}"
+        wf[cid] = {"class_type": "ConditioningConcat", "inputs": {"conditioning_to": prev, "conditioning_from": [f"{nid}_{i}", 0]}}
+        prev = [cid, 0]
+
 def build_workflow(
     *,
     ckpt: str,
@@ -548,6 +581,8 @@ def build_workflow(
         "class_type": "SaveImage",
         "inputs": {"filename_prefix": filename_prefix, "images": src},
     }
+    expand_break(wf, "2")
+    expand_break(wf, "3")
     return wf
 
 
@@ -612,12 +647,15 @@ def build_img2img_workflow(
     seed: int = 0,
     denoise: float = DEFAULT_POSE_DENOISE,
     filename_prefix: str = "yorozuya/img",
+    denoise_range: tuple[float, float] | None = None,
 ) -> dict:
-    """img2img：姿勢參考圖當 latent 起點，denoise < 1 才留得住機位／體位。"""
+    """img2img：姿勢參考圖當 latent 起點，denoise < 1 才留得住機位／體位。
+    denoise_range 給值（換妻雙人圖測試台）＝照那個範圍夾，不用預設的 0.25–0.90。"""
     d = float(denoise)
     if d <= 0:
         d = DEFAULT_POSE_DENOISE
-    d = min(0.90, max(0.25, d))
+    lo, hi = denoise_range or (0.25, 0.90)
+    d = min(hi, max(lo, d))
     wf: dict = {
         "1": {
             "class_type": "CheckpointLoaderSimple",
@@ -695,6 +733,8 @@ def build_img2img_workflow(
         "class_type": "SaveImage",
         "inputs": {"filename_prefix": filename_prefix, "images": src},
     }
+    expand_break(wf, "2")
+    expand_break(wf, "3")
     return wf
 
 
@@ -798,6 +838,7 @@ async def generate(
     base: str = "",
     pose_image: Path | None = None,
     denoise: float = 0.0,
+    denoise_range: tuple[float, float] | None = None,
 ) -> tuple[str, str | None]:
     """生一張圖並存到 save_to。回 (檔名, None) 或 ("", 錯誤訊息)。
 
@@ -834,7 +875,7 @@ async def generate(
                         out_width=out_width, out_height=out_height,
                         steps=steps, cfg=cfg, seed=seed,
                         sampler=sampler, scheduler=scheduler, clip_skip=clip_skip,
-                        denoise=denoise,
+                        denoise=denoise, denoise_range=denoise_range,
                         filename_prefix="yorozuya/" + save_to.stem,
                     )
                 else:

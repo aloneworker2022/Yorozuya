@@ -32,8 +32,9 @@ function normGrade(g) {
 
 export async function loadPools() {
   try {
-    POOLS = await fetch("content/persona_pools.json?ts=" + Date.now()).then(r => r.ok ? r.json() : null);
-  } catch { POOLS = null; }
+    const next = await fetch("content/persona_pools.json?ts=" + Date.now()).then(r => r.ok ? r.json() : null);
+    if (next) POOLS = next;   // 失敗時保留已注入／已載入的池（node 測試用 setPools）
+  } catch { /* 保留既有 POOLS */ }
   return POOLS;
 }
 export function setPools(p) { POOLS = p; }   // 測試/Node 注入用
@@ -280,6 +281,8 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
     wardrobe,
     eroticOutfits,
     sleepOutfits,
+    // 上面三份是她天生的品味（藏著）；衣櫃裡真的有的只有 owned（索引）。新召喚全空＝只有白 T 加三角褲。
+    owned: { wardrobe: [], erotic: [], sleep: [] },
     feature: txt(feature),
   };
   // 器官開發度（2026-10-09 使用者）：新召喚一律粉色起算（乳暈／乳頭／陰唇），抽到的原字串留在 look.devBase，大小／形狀照舊

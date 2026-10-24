@@ -23,50 +23,50 @@ import {
   pickRuntimeButtPack,
   buildButtImgBody,
   getButtPacksCached,
-} from "./content/butt_packs.js?v=6";
+} from "./content/butt_packs.js?v=7";
 import {
   pickRuntimeBreastPack,
   buildBreastImgBody,
-} from "./content/breast_packs.js?v=3";
+} from "./content/breast_packs.js?v=4";
 import {
   pickRuntimeKneadPack,
   buildKneadImgBody,
-} from "./content/knead_packs.js?v=3";
+} from "./content/knead_packs.js?v=4";
 import {
   pickRuntimeSuckPack,
   buildSuckImgBody,
-} from "./content/suck_packs.js?v=4";
+} from "./content/suck_packs.js?v=5";
 import {
   pickRuntimeLickPack,
   buildLickImgBody,
-} from "./content/lick_packs.js?v=4";
+} from "./content/lick_packs.js?v=5";
 import {
   pickRuntimeLabiaPack,
   buildLabiaImgBody,
-} from "./content/labia_packs.js?v=2";
+} from "./content/labia_packs.js?v=3";
 import {
   pickRuntimeLabiaRubPack,
   buildLabiaRubImgBody,
-} from "./content/labia_rub_packs.js?v=2";
+} from "./content/labia_rub_packs.js?v=3";
 import {
   pickRuntimeFingerPack,
   buildFingerImgBody,
-} from "./content/finger_packs.js?v=2";
+} from "./content/finger_packs.js?v=3";
 // 扣陰道／揉子宮口 x-ray 剖面圖組（主遊戲沒有這兩個動作；只為重產／圖鑑同契約）
-import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACKS_ON } from "./content/vagina_finger_packs.js?v=2";
-import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=2";
+import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACKS_ON } from "./content/vagina_finger_packs.js?v=3";
+import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=3";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=7";
 import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient, currentGuest, guestPoseAt } from "./content/escort.js?v=5"; // 接客還債
-import { openPeek } from "./content/escort_peek.js?v=5";
+import { openPeek } from "./content/escort_peek.js?v=8";
 import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
 import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=10";
 import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
-import { BASE_OUTFIT } from "./content/outfit_pick.js?v=1";
+import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=2";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
@@ -220,6 +220,18 @@ window.YorozuyaWallet = {
     if (c <= 0 || state.gold - c < 0) return false;
     state.gold -= c;
     log(`${why || "花費"} −${c} 金`);
+    dirty = true; scheduleSave();
+    try { renderHud(); } catch { /* */ }
+    return true;
+  },
+  /** 日租女友（2026-10-13）：收入（正）或房錢（負）。房錢可以讓金幣變負（跟育兒費一樣）。 */
+  earn(n, why = "") {
+    if (!state || bootFailed) return false;
+    const c = Math.round(Number(n) || 0);
+    if (!c) return true;
+    state.gold += c;
+    log(`${why || (c > 0 ? "收入" : "花費")} ${c > 0 ? "+" : "−"}${Math.abs(c)} 金`);
+    if (c > 0) toast(`${why || "收入"} +${c} 金`, "good");
     dirty = true; scheduleSave();
     try { renderHud(); } catch { /* */ }
     return true;
@@ -5896,6 +5908,9 @@ function consumeDaydreamForce() {}
 //   生涯服裝 —— 職業給的那一身。女高中生就是制服,不會穿西裝套裝。立繪畫這套。
 //   個人衣櫃 —— 她自己喜歡的穿搭,依關係解鎖:朋友 1 套、女友 3 套、妻子 6 套。
 // 陌生階段一套都沒有:你只見過她工作時的樣子。
+// 2026-10-23 擁有制：wardrobe／eroticOutfits／sleepOutfits 是她天生的品味(召喚就抽好、藏著),
+// look.owned = {wardrobe,erotic,sleep}(索引)才是衣櫃裡真的有的。新召喚全空＝只有白 T 加三角褲；
+// 舊存檔沒有 owned＝全部擁有。能穿的＝關係解鎖張數 ∩ 擁有。加衣服的管道之後再做。
 //
 // **詳細頁不再顯示衣櫃**(那頁精簡過,只留她的人生)。所以現在沒有玩家入口,
 // 她固定穿生涯服裝;衣櫃仍然抽好存在 look.wardrobe 裡,換衣服的機制也還在,
@@ -5913,6 +5928,7 @@ function eroticAll(s) {
 function sleepAll(s) {
   return Array.isArray(s?.look?.sleepOutfits) ? s.look.sleepOutfits : [];
 }
+// 解鎖（關係階段張數）∩ 擁有（look.owned；舊存檔沒有 owned＝全部擁有）
 function eroticUnlocked(s) { return eroticAll(s).slice(0, EROTIC_UNLOCK[s?.stage] ?? 0); }
 function sleepUnlocked(s) { return sleepAll(s).slice(0, SLEEP_UNLOCK[s?.stage] ?? 0); }
 // 解鎖到的那幾套(依關係階段截斷)
@@ -5926,16 +5942,17 @@ function outfitWorn(s) {
   if (typeof pick === "string" && pick[0] === "e") {
     const i = Number(pick.slice(1));
     const list = eroticUnlocked(s);
-    if (Number.isInteger(i) && i >= 0 && i < list.length) return list[i];
+    if (Number.isInteger(i) && i >= 0 && i < list.length && ownsOutfit(s.look, "e", i)) return list[i];
   }
   if (typeof pick === "string" && pick[0] === "s") {
     const i = Number(pick.slice(1));
     const list = sleepUnlocked(s);
-    if (Number.isInteger(i) && i >= 0 && i < list.length) return list[i];
+    if (Number.isInteger(i) && i >= 0 && i < list.length && ownsOutfit(s.look, "s", i)) return list[i];
   }
   const i = pick;
   const w = wardrobeAll(s);
-  if (Number.isInteger(i) && i >= 0 && i < w.length && i < wardrobeOpen(s)) return w[i];
+  if (Number.isInteger(i) && i >= 0 && i < w.length && i < wardrobeOpen(s) && ownsOutfit(s.look, "w", i)) return w[i];
+  if (hasOwnedList(s?.look)) return careerOutfit(s) || BASE_OUTFIT;   // 新制：沒擁有的不穿
   return careerOutfit(s) || w[0] || "";
 }
 // 換衣服 → 立繪要重織(舊圖穿的是舊衣服)
@@ -8182,6 +8199,7 @@ function buildRoomGirlFromSuccubus(s) {
     dna: s.dna,
     look,
     outfitPick: s.outfitPick ?? null,
+    outfitName: s.outfitName || null,
     libido: s.libido || null,
     specialTraits: s.specialTraits || null,
     moanVoice: s.moanVoice || null,
@@ -10303,6 +10321,7 @@ function buildCtx(s) {
       libido: s.libido || null, look: s.look || null, special_traits: s.specialTraits || null,
       // 她身上穿的是哪一套(生涯服裝 or 衣櫃第幾套)——聊天講的要跟立繪畫的一致
       outfitPick: s.outfitPick ?? null,
+      outfitName: s.outfitName || null,
       job: s.job || null,
       job_desc: s.jobDesc || null,
     },
@@ -13163,6 +13182,7 @@ function clearLineToLastPlayer() {
     if (!msgs.length) { toast("沒有訊息可清", ""); return; }
     lg.messages = [];
     lg.cursors = {};
+    lg.clearedAt = Date.now();
   } else if (lastPi === 0) {
     toast("已經只剩上一則了", "");
     return;
@@ -13170,6 +13190,8 @@ function clearLineToLastPlayer() {
     const kept = msgs.slice(lastPi);
     const keepIds = new Set(kept.map(m => m.id));
     lg.messages = kept;
+    // 2026-10-14：記下清到哪裡。RP5 寫的訊息另外存在伺服器，不記的話下次同步（/api/line/feed、讀存檔）又被加回來。
+    lg.clearedAt = Math.max(Number(lg.clearedAt) || 0, Number(kept[0].t) || 0);
     const anchor = kept[0].id;
     const cursors = lg.cursors || {};
     for (const gid of Object.keys(cursors)) {
@@ -13577,10 +13599,11 @@ async function lineSyncFeed() {
   try {
     const lg = ensureLineGroup();
     const since = lg.messages.reduce((mx, m) => (m.src === "rp5" ? Math.max(mx, Number(m.t) || 0) : mx), 0);
-    const r = await fetch(`/api/line/feed?since=${Math.max(0, since - 60e3)}`);
+    const cleared = Number(lg.clearedAt) || 0;
+    const r = await fetch(`/api/line/feed?since=${Math.max(0, since - 60e3, cleared - 1)}`);
     if (!r.ok) return 0;
     const j = await r.json();
-    const added = mergeFeed(lg.messages, j?.messages || []);
+    const added = mergeFeed(lg.messages, (j?.messages || []).filter((m) => (Number(m?.t) || 0) >= cleared));
     lineApplyPending();
     if (added.length) {
       dirty = true;
@@ -15457,6 +15480,7 @@ function cacheGirlSnapOnSession(girl) {
     seed: girl.seed,
     comfyCkpt: girl.comfyCkpt,
     outfitPick: girl.outfitPick,
+    outfitName: girl.outfitName || null,
     libido: girl.libido,
     chrono: girl.chrono,
     likes: girl.likes,

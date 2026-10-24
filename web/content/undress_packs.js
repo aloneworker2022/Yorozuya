@@ -1,4 +1,5 @@
 /** 房間脫衣用的全身圖。玩家不選景：幫她脫／叫她脫依階段用圖。自己脫上衣、幫忙脫上衣已取消。 */
+import { wornOutfitOf } from "./outfit_pick.js?v=2";
 
 const API = "/api/undress-packs";
 
@@ -285,21 +286,7 @@ function resolveComfyCkpt(girl, eng = {}) {
 }
 
 function wornOutfit(g) {
-  const look = g?.look || {};
-  const wardrobe = Array.isArray(look.wardrobe) ? look.wardrobe : [];
-  const erotic = Array.isArray(look.eroticOutfits) ? look.eroticOutfits : [];
-  const sleep = Array.isArray(look.sleepOutfits) ? look.sleepOutfits : [];
-  const pick = g?.outfitPick;
-  if (typeof pick === "string" && pick[0] === "e") {
-    const index = Number(pick.slice(1));
-    if (Number.isInteger(index) && erotic[index]) return String(erotic[index]);
-  }
-  if (typeof pick === "string" && pick[0] === "s") {
-    const index = Number(pick.slice(1));
-    if (Number.isInteger(index) && sleep[index]) return String(sleep[index]);
-  }
-  if (Number.isInteger(pick) && pick >= 0 && pick < wardrobe.length) return String(wardrobe[pick] || "");
-  return String(look.career_outfit || look.style || "");
+  return wornOutfitOf(g);
 }
 
 /** 陌生人 sfw、女友以上 nsfw。跟房間半身同一條，不強制裸。 */
