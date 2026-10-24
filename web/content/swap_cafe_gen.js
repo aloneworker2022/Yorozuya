@@ -5,8 +5,9 @@
  * 生圖：綠幕半身 → /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
-import { bindPairBox } from "./swap_pair_gen.js?v=13";
+import { bindPairBox } from "./swap_pair_gen.js?v=14";
 import { wornOutfitOf } from "./outfit_pick.js?v=2";
+import { dateOutfitOf, withDateOutfit } from "./swap_outfit.js?v=1";
 import { loadPools, generateGirl, POOLS as _poolsRef } from "./girl_gen.js?v=5";
 import { rollHusband, enrichHusband, husbandLookEn } from "./husband_gen.js?v=1";
 
@@ -94,7 +95,7 @@ export function mapWifeSwapType(w) {
   return pk(W_TYPES);
 }
 
-/** 把 generateGirl 結果標成對方妻子：年齡 24–38、1–2 套已擁有約會裝、ckpt 雙寫。 */
+/** 把 generateGirl 結果標成對方妻子：年齡 24–38、整個日常衣櫃都擁有（挑一套當約會裝）、ckpt 雙寫。 */
 export function finalizeOtherWife(g, { id, name, marriedTo = "", ckpt = "" } = {}) {
   if (!g) return null;
   const age = 24 + Math.floor(Math.random() * 15); // 24–38
@@ -103,13 +104,14 @@ export function finalizeOtherWife(g, { id, name, marriedTo = "", ckpt = "" } = {
   w.look.age = age;
   const ward = Array.isArray(w.look.wardrobe) ? w.look.wardrobe : [];
   if (ward.length) {
-    const n = 1 + Math.floor(Math.random() * Math.min(2, ward.length));
-    const idx = [];
-    while (idx.length < n) { const i = Math.floor(Math.random() * ward.length); if (!idx.includes(i)) idx.push(i); }
+    // 2026-10-24：她是別人的老婆，衣櫃是完整的；約會挑一套外出服
+    const idx = ward.map((_, i) => i);
     w.look.owned = { wardrobe: idx, erotic: [], sleep: [] };
-    w.outfitPick = idx[0];
-    w.look.style = ward[idx[0]];
-    w.look.outfit_en = w.look.outfit_en || ward[idx[0]];
+    w.outfitPick = Math.floor(Math.random() * ward.length);
+    const pick = dateOutfitOf({ ...w, outfitPick: w.outfitPick }, "other");
+    w.outfitPick = Math.max(0, ward.indexOf(pick));
+    w.look.style = ward[w.outfitPick];
+    w.look.outfit_en = w.look.outfit_en || ward[w.outfitPick];
   } else {
     w.look.owned = w.look.owned || { wardrobe: [], erotic: [], sleep: [] };
   }
@@ -226,9 +228,8 @@ export function fillTemplate(tpl, ch, ex, wife, couple) {
   const girlDesc = ch === "other"
     ? ["1 woman", g?.look?.hair_en || g?.look?.hair, g?.look?.hair_color_en || g?.look?.hair_color, age ? `${age} years old` : ""].filter(Boolean).join(", ")
     : "1 woman";
-  const outfit = ch === "other"
-    ? (wornOutfit(g) || g?.look?.style || g?.look?.outfit_en || "casual date outfit")
-    : (wornOutfit(g) || "her own casual date outfit");
+  // 2026-10-24：約會一律穿外出服（不是房間那套／白 T 三角褲）
+  const outfit = dateOutfitOf(g, ch === "other" ? "other" : "wife");
   const map = { girl: girlDesc, girl_body: gi.body, girl_outfit: outfit, man: mi.desc, man_body: mi.body, man_outfit: mi.outfit, expr: EXPR_EN[ex], auto_neg: autoNeg(ch, gi, mi) };
   const sub = (t) => String(t || "").replace(/\{(\w+)\}/g, (m, k) => (k in map ? map[k] : m)).replace(/(,\s*)+,/g, ",").replace(/^[,\s]+|[,\s]+$/g, "");
   return { pos: sub(tpl.pos), neg: sub(tpl.neg) };
@@ -242,8 +243,8 @@ export function cafeBody(ch, ex, wife, couple, eng, tpl, seed) {
   if (comfy && !ckpt) throw new Error(ch === "wife" ? "此魅子尚未綁定 Comfy 模型（comfyCkpt）" : "這個人還沒有畫圖模型（在上面的下拉選一個，或按「換一對」）");
   if (ch === "wife" && !wife?.id) throw new Error("先選魅子");
   const i2 = tpl.img2img?.on && tpl.img2img.ref ? { pose_ref: tpl.img2img.ref, pose_denoise: Math.min(0.95, Math.max(0.3, Number(tpl.img2img.denoise) || 0.6)) } : {};
-  const who = ch === "wife" ? { character: wife, outfit: wornOutfit(wife), extra: f.pos, prompt: "", lock_identity: true, char_id: wife.id }
-    : ch === "other" ? { character: couple.wife, outfit: wornOutfit(couple.wife) || couple.wife?.look?.style || couple.wife?.look?.outfit_en || "", extra: f.pos, prompt: "", lock_identity: true, char_id: couple.wife.id }
+  const who = ch === "wife" ? { character: withDateOutfit(wife, "wife"), outfit: dateOutfitOf(wife, "wife"), extra: f.pos, prompt: "", lock_identity: true, char_id: wife.id }
+    : ch === "other" ? { character: withDateOutfit(couple.wife, "other"), outfit: dateOutfitOf(couple.wife, "other"), extra: f.pos, prompt: "", lock_identity: true, char_id: couple.wife.id }
     : { prompt: f.pos, extra: "", lock_identity: false };
   return {
     key: `swap-cafe:${ch}:${ex}:${Date.now().toString(36)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,

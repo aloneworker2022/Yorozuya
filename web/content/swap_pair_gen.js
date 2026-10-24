@@ -5,7 +5,8 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=27";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=28";
+import { dateOutfitOf, withDateOutfit } from "./swap_outfit.js?v=1";
 import { husbandLookEn } from "./husband_gen.js?v=1";
 
 // 2026-10-23 Al 核可：雙人圖預設 prompt 全部改結構（只有雙人圖）。前端給「每段要什麼 tag」（pair 物件），伺服器組成
@@ -93,7 +94,8 @@ export function pairBody(slot, wife, couple, eng, seed) {
   return {
     key: `swap-pair:${String(slot).replace("~", "-")}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,
     framing: a.framing === "half" ? "half" : "full", rating: a.rating, negative: pair.neg.join(", "), visual_neg: "", cutout: false, flat_bg: false, retry: true, seed,
-    character: wife, outfit: a.clothes === "dressed" ? wornOutfit(wife) : "", extra: "", prompt: "", lock_identity: true, char_id: wife.id, pair,
+    // 2026-10-24：穿衣／半脫＝她的約會外出服（不是房間那套）；全裸不給衣服
+    character: a.clothes === "nude" ? wife : withDateOutfit(wife, "wife"), outfit: a.clothes === "nude" ? "" : dateOutfitOf(wife, "wife"), extra: "", prompt: "", lock_identity: true, char_id: wife.id, pair,
     ...(comfy ? { comfy_url: eng.comfyUrl, ckpt } : {}),
   };
 }

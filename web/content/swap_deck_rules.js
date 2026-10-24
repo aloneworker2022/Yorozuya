@@ -2,7 +2,7 @@
  * 公園：聊天／輕挑，不含酒。酒吧：沿用原 DECK_BAR。
  * KTV／飯店：配對後手牌只對對方妻子（外加 tease 混抽，見 swap_bar）。 */
 
-import { sceneBase } from "./swap_tease_rules.js?v=4";
+import { sceneBase } from "./swap_tease_rules.js?v=5";
 
 /** 有沒有喝酒效果或牌名帶酒。 */
 export const isAlcoholCard = (c) => !!(c?.fx?.drink || c?.fx?.strong || /酒|乾杯|乾一杯|烈酒|交杯|敬她一杯|敬他一杯/.test(c?.zh || ""));

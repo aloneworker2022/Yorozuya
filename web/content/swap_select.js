@@ -1,11 +1,12 @@
 /* 2026-10-21 換妻 step：先問妻子 → 選對方夫妻 → 確認 → 開車生立繪 → 約會。
  * 2026-10-23：候選夫妻＝進選單時用 generateGirl＋husband_gen 現場抽（swap_candidates），只存 localStorage 當日清單；
  * 不延用咖啡廳「換一對」／/api/swap/cafe 測試名冊。選中後才 put 那一對並在 drive 黑畫面生 一般／害羞立繪。 */
-import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=27";
+import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=28";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=26";
-import { SCENE_ZH as FLOW_ZH, pairSlotsFor } from "./swap_flow_rules.js?v=1";
+import { openBar } from "./swap_bar.js?v=27";
+import { dateOutfitOf } from "./swap_outfit.js?v=1";
+import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=2";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=1";
 
 export const SESSION_KEY = "yorozuya.swap.session";
@@ -223,6 +224,9 @@ export function openSwapStart(ctx = {}) {
 // ------------------------------------------------------------ 開車去約會：黑畫面＋生 6 張立繪（2026-10-21）
 /** 老婆／對方丈夫／對方妻子 × 一般／害羞。已經存過的那張就不重生（沒有的才生）；失敗就跳過（酒吧用名字卡）。
  * ctx.genPortrait 可以換掉生圖（測試用）。回最新的 S。 */
+const PORTRAIT_TAG_KEY = "yorozuya.swap.portraitOutfit";
+const portraitTag = (owner, ch, ex) => { try { return (JSON.parse(localStorage.getItem(PORTRAIT_TAG_KEY) || "{}") || {})[`${owner}|${ch}~${ex}`] || ""; } catch { return ""; } };
+const setPortraitTag = (owner, ch, ex, v) => { try { const m = JSON.parse(localStorage.getItem(PORTRAIT_TAG_KEY) || "{}") || {}; m[`${owner}|${ch}~${ex}`] = v; localStorage.setItem(PORTRAIT_TAG_KEY, JSON.stringify(m)); } catch { /* */ } };
 export async function openSwapDrive(ctx = {}, c, S = {}) {
   const ov = document.createElement("div"); ov.id = "swp-drive";
   ov.style.cssText = "position:fixed;inset:0;z-index:8800;background:#000;color:#eee;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font:600 17px system-ui,sans-serif";
@@ -234,14 +238,16 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   for (const ch of ["wife", "husband", "other"]) for (const ex of ["normal", "shy"]) {
     const owner = ch === "wife" ? wife?.id : c.id;
     if (!owner) continue;
-    if ((S.images?.[owner] || {})[`${ch}~${ex}`]?.cut) continue;   // 已經有了：沿用
-    jobs.push([ch, ex, owner]);
+    // 2026-10-24：妻子立繪記下「用哪套外出服生的」——換了衣服（或舊版沒記錄＝當時穿 T 恤／內衣）就重生
+    const want = ch === "husband" ? "" : dateOutfitOf(ch === "wife" ? wife : c.wife, ch === "wife" ? "wife" : "other");
+    if ((S.images?.[owner] || {})[`${ch}~${ex}`]?.cut && (!want || portraitTag(owner, ch, ex) === want)) continue;   // 已經有了：沿用
+    jobs.push([ch, ex, owner, want]);
   }
   let done = 0, fail = 0;
   const n = ov.querySelector(".n"), tick = () => { n.textContent = jobs.length ? `${done}/${jobs.length}${fail ? `（失敗 ${fail}）` : ""}` : ""; };
   tick();
-  for (const [ch, ex] of jobs) {   // 一張一張來（Comfy 排隊一樣是一張一張）
-    try { const imgs = await gen(ch, ex, wife, c, S, () => {}); if (imgs) S = { ...S, images: imgs }; }
+  for (const [ch, ex, owner, want] of jobs) {   // 一張一張來（Comfy 排隊一樣是一張一張）
+    try { const imgs = await gen(ch, ex, wife, c, S, () => {}); if (imgs) { S = { ...S, images: imgs }; if (want) setPortraitTag(owner, ch, ex, want); } }
     catch (e) { fail++; ctx.debug?.(`換妻：立繪 ${ch}・${ex} 失敗：${e?.message || e}`); }
     done++; tick();
   }
@@ -249,13 +255,15 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   const scene = ctx.scene || "park";
   const dest = FLOW_ZH[scene] || "約會場地";
   const ttl = ov.querySelector(".ttl"); if (ttl) ttl.textContent = ctx.walk ? `正在移動到${dest}` : `正在驅車前往${dest}`;   // 飯店房間↔浴室：用走的
-  if (scene === "ktv" || String(scene).startsWith("hotel")) {
-    const { pregenTease } = await import("./swap_tease.js?v=3");
+  let sess = {}; try { sess = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}") || {}; } catch { /* */ }
+  const watchHotel = String(scene).startsWith("hotel") && hotelMode(sess) === "watch";   // 只能看：不用你的動作圖
+  if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && !watchHotel) {
+    const { pregenTease } = await import("./swap_tease.js?v=4");
     S = await pregenTease(c, scene, S, { debug: (m) => ctx.debug?.(m), onTick: (d, t, f) => { n.textContent = t ? `準備動作 ${d}/${t}${f ? `（失敗 ${f}）` : ""}` : ""; } }).catch((e) => { ctx.debug?.(`換妻：動作預產失敗 ${e?.message || e}`); return S; });
   }
-  if ((scene === "ktv" || String(scene).startsWith("hotel")) && wife) {
+  if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && wife) {
     try {
-      const pair = await import("./swap_pair_gen.js?v=13");
+      const pair = await import("./swap_pair_gen.js?v=14");
       const slots = pairSlotsFor(scene, pair.PAIR_ACTS, pair.PAIR_FRAMES);
       const have = S.images?.[pair.pairOwner(wife, c)] || {};
       const miss = slots.filter((k) => !have[`pair~${k}`]?.cut);

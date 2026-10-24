@@ -4,9 +4,13 @@
  * 成功加接受度＋進度；被拒扣 2–5 並說一句拒絕。她爛醉（≥85）→ 做什麼都成功。
  * 你老婆在場看見 → 依她的忌妒心決定吃醋（緊張↑、放開↓）或變得更開放（放開↑、緊張↓），說一句。 */
 
+import { dateOutfitOf } from "./swap_outfit.js?v=1";
+
 /** 場景：bar（酒吧，沒有動作卡）／ktv／hotel_room／hotel_bath。 */
-export const TEASE_SCENES = ["ktv", "hotel_room", "hotel_bath"];
-export const SCENE_ZH = { park: "夜晚公園", bar: "酒吧", ktv: "KTV 包廂", hotel_room: "飯店房間", hotel_bath: "飯店浴室" };
+// 2026-10-24：酒吧（座位：親／摟；廁所：趁機）也有動作卡；誰能出由 swap_flow_rules.teaseWhere 決定（配對、她在不在廁所）
+export const TEASE_SCENES = ["bar", "bar_toilet", "ktv", "hotel_room", "hotel_bath"];
+export const BAR_ACTS = new Set(["waist", "kiss", "breast", "breast_knead", "oral", "labia", "finger_in", "sex"]);
+export const SCENE_ZH = { park: "夜晚公園", bar: "酒吧", bar_toilet: "酒吧廁所", ktv: "KTV 包廂", hotel_room: "旅館房間", hotel_bath: "旅館浴室" };
 /** 場景 → SCENE_CAP 用的大類（碰觸／調情上限）。公園跟酒吧一樣只有輕碰。 */
 export const sceneBase = (scene) => {
   const s = String(scene || "");
@@ -32,7 +36,7 @@ export const TEASE_CARDS = [
   { id: "t_finger_in", act: "finger_in", zh: "手指插進去", bold: 4, icon: "hand", acc: 65, drunk: 60 },
   { id: "t_vagina_finger", act: "vagina_finger", zh: "扣她的陰道", bold: 5, icon: "hand", acc: 70, drunk: 60 },
   { id: "t_cervix", act: "cervix_rub", zh: "揉她的子宮口", bold: 5, icon: "hand", acc: 80, drunk: 60, scenes: ["hotel_room", "hotel_bath"] },
-  { id: "t_sex", act: "sex", zh: "跟她做愛", bold: 5, icon: "heart", acc: 70, drunk: 0, scenes: ["hotel_room", "hotel_bath"] },
+  { id: "t_sex", act: "sex", zh: "跟她做愛", bold: 5, icon: "heart", acc: 70, drunk: 0, scenes: ["bar", "bar_toilet", "ktv", "hotel_room", "hotel_bath"] },
 ].map((c) => ({ ...c, who: "other", tease: true }));
 
 export const TEASE_FX = {
@@ -63,14 +67,13 @@ export function ensureAccept(sess) {
   return sess.accept;
 }
 
-export const sceneOk = (card, scene) => TEASE_SCENES.includes(scene) && (!card.scenes || card.scenes.includes(scene));
+export const sceneOk = (card, scene) => TEASE_SCENES.includes(scene) && (!card.scenes || card.scenes.includes(scene)) && (!String(scene).startsWith("bar") || BAR_ACTS.has(card.act));
 /** 這張卡現在能不能抽：場景、接受度、她的醉度。回 { ok, why }。 */
 export function teaseGate(card, { accept = 0, drunk = 0, scene = "bar", wifeAccept = null } = {}) {
   if (!sceneOk(card, scene)) return { ok: false, why: "場景不對" };
   if (accept < card.acc) return { ok: false, why: `接受度 ${card.acc}` };
   if (drunk < card.drunk) return { ok: false, why: `醉度 ${card.drunk}` };
-  // 做愛：兩邊都要 ≥ 70（wifeAccept 有傳才查；酒吧／舊呼叫不傳就跳過）
-  if (card.act === "sex" && wifeAccept != null && wifeAccept < 70) return { ok: false, why: `老婆接受度 70` };
+  void wifeAccept;   // 2026-10-24：拿掉 70 的階段門檻；做愛只看她自己的接受度（卡上 acc）
   return { ok: true, why: "" };
 }
 export const unlockedTease = (st) => TEASE_CARDS.filter((c) => teaseGate(c, st).ok);
@@ -88,7 +91,7 @@ export function teaseResult(card, ok) {
 }
 
 /** 做愛姿勢：房間正常體位、浴室背後。 */
-export const sexPoseFor = (scene) => (scene === "hotel_bath" ? "doggy" : "missionary");
+export const sexPoseFor = (scene) => (scene === "hotel_bath" || scene === "bar" || scene === "bar_toilet" ? "doggy" : "missionary");
 /** 動作圖要不要裸體版：飯店（房間／浴室）裸體；KTV 穿衣；x-ray 兩張沒有裸體版。 */
 export const NO_NUDE = new Set(["vagina_finger", "cervix_rub", "oral"]);
 export const teaseNude = (act, scene) => sceneBase(scene) === "hotel" && !NO_NUDE.has(act);
@@ -156,6 +159,6 @@ export function roomLookOf(w = {}) {
 export function teaseGirlOf(c) {
   const w = c?.wife || {};
   const look = roomLookOf(w);
-  const outfit = w.outfitName || look.style || look.outfit_en || w.look?.style || "";
+  const outfit = dateOutfitOf(w, "other");   // 2026-10-24：約會外出服（不是內衣／白 T）
   return { ...w, gender: "female", stage: "lover", role: w.role || "other_wife", comfyCkpt: w.comfyCkpt || w.ckpt || "", look, outfitName: outfit, outfitPick: w.outfitPick };
 }

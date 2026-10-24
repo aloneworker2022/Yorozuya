@@ -11,15 +11,15 @@ const G = await import(dir + "girl_gen.js?v=5");
 G.setPools(pools);
 
 const H = await import(dir + "husband_gen.js?v=1");
-const C = await import(dir + "swap_cafe_gen.js?v=27");
-const D = await import(dir + "swap_deck_rules.js?v=1");
-const T = await import(dir + "swap_tease_rules.js?v=4");
+const C = await import(dir + "swap_cafe_gen.js?v=28");
+const D = await import(dir + "swap_deck_rules.js?v=2");
+const T = await import(dir + "swap_tease_rules.js?v=5");
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass += 1; console.log("ok -", name); };
 const tAsync = async (name, fn) => { await fn(); pass += 1; console.log("ok -", name); };
 
-await tAsync("rollCouple：對方妻子＝generateGirl 形＋other_wife，年齡 24–38，有 1–2 套 owned", async () => {
+await tAsync("rollCouple：對方妻子＝generateGirl 形＋other_wife，年齡 24–38，擁有整個衣櫃＋選好外出服", async () => {
   const c = await C.rollCouple();
   assert.ok(c.id && c.husband && c.wife);
   const w = c.wife;
@@ -30,7 +30,9 @@ await tAsync("rollCouple：對方妻子＝generateGirl 形＋other_wife，年齡
   assert.ok(Array.isArray(w.personality) && w.personality.length);
   assert.ok(["害羞人妻", "老手", "不太情願"].includes(w.swapType));
   const owned = w.look.owned?.wardrobe || [];
-  assert.ok(owned.length >= 1 && owned.length <= 2);
+  const ward = Array.isArray(w.look.wardrobe) ? w.look.wardrobe : [];
+  assert.equal(owned.length, ward.length);
+  assert.ok(String(w.outfitPick || w.look.style || "").length > 0);
   assert.ok(!w.roster);
 });
 
@@ -104,11 +106,11 @@ t("配對後手牌只准 other（含 tease）", () => {
   assert.equal(D.handCardOk({ who: "all", zh: "x" }, "bar"), true);
 });
 
-t("做愛仍鎖接受度 70；姿勢房間 missionary／浴室 doggy", () => {
+t("做愛鎖她的接受度 70（老婆接受度不再擋）；姿勢房間 missionary／浴室 doggy", () => {
   const sex = T.TEASE_CARDS.find((c) => c.act === "sex");
   assert.ok(sex);
   assert.equal(T.teaseGate(sex, { accept: 69, drunk: 0, scene: "hotel_room", wifeAccept: 70 }).ok, false);
-  assert.equal(T.teaseGate(sex, { accept: 70, drunk: 0, scene: "hotel_room", wifeAccept: 69 }).ok, false);
+  assert.equal(T.teaseGate(sex, { accept: 70, drunk: 0, scene: "hotel_room", wifeAccept: 0 }).ok, true);
   assert.equal(T.teaseGate(sex, { accept: 70, drunk: 0, scene: "hotel_room", wifeAccept: 70 }).ok, true);
   assert.equal(T.sexPoseFor("hotel_room"), "missionary");
   assert.equal(T.sexPoseFor("hotel_bath"), "doggy");
