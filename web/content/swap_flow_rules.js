@@ -296,3 +296,17 @@ export const pairIntimate = (a) => PAIR_INTIMATE.has(String(a || ""));
 export function rollEjac(act, rng = Math.random) { return PAIR_EJAC_ACTS.has(String(act || "")) && rng() < EJAC.p; }
 /** 玩家動作卡要按幾次「下一句」才完成：口交三句，其他一句。 */
 export const teaseSteps = (act) => (act === "oral" ? 3 : 1);
+
+/** 2026-10-24：點雙人圖放大＝看他們親熱，對話框每幾秒換一句（AI，失敗用這些）。輪流：丈夫、妻子。 */
+export const ZOOM = { everyMs: 3500 };
+export const ZOOM_FB = {
+  husband: {
+    soft: ["（貼著她耳邊）妳好香……", "（摟緊她的腰）別躲嘛，讓我好好親親妳。", "（指尖撫過她的臉）妳老公真捨得……"],
+    hard: ["（喘著粗氣）哈……好緊……", "（扣住她的腰往裡頂）叫出來，沒關係……", "（低吼）妳裡面……好舒服……", "（揉著她的頭髮）對……就是這樣……"],
+  },
+  wife: {
+    soft: ["（臉紅到耳根）……嗯……不要在這裡啦……", "（輕輕回吻）……你好壞……", "（小聲喘著）……會被看到的……"],
+    hard: ["（咬著唇）嗯……啊……♡", "（抓緊他的手臂）哈……哈……太、太深了……", "（斷斷續續地）不行了……嗯啊……♡", "（喘息）……再、再慢一點……"],
+  },
+};
+export const zoomFallback = (act, who, i = 0) => { const l = ZOOM_FB[who === "wife" ? "wife" : "husband"][PAIR_EJAC_ACTS.has(String(act || "")) ? "hard" : "soft"]; return l[((i % l.length) + l.length) % l.length]; };

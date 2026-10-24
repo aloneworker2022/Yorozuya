@@ -4,6 +4,16 @@
 
 export const CANDIDATES_KEY = "yorozuya.swap.candidates";
 export const CANDIDATES_MIN = 4;
+/** 最近出現過的夫妻名字（2026-10-24：每次進選單都新抽，避開最近見過的人）。 */
+export const RECENT_KEY = "yorozuya.swap.recentNames";
+export const RECENT_MAX = 48;
+export function readRecent(store) { try { const a = JSON.parse(store?.getItem?.(RECENT_KEY) || "[]"); return Array.isArray(a) ? a.filter(Boolean).map(String) : []; } catch { return []; } }
+export function pushRecent(store, names) {
+  if (!store?.setItem) return;
+  const add = (names || []).filter(Boolean).map(String);
+  const list = [...add, ...readRecent(store).filter((n) => !add.includes(n))].slice(0, RECENT_MAX);
+  store.setItem(RECENT_KEY, JSON.stringify(list));
+}
 
 /** Asia/Taipei 的 YYYY-MM-DD。 */
 export function todayKey(now = Date.now(), timeZone = "Asia/Taipei") {
@@ -32,8 +42,9 @@ export function clearCandidates(store) {
 }
 
 /**
- * 載入今日候選。opts：
+ * 載入候選（每次新抽）。opts：
  *  force — 強制重抽
+ *  reuse — 沿用同一天那批（舊行為）
  *  min — 幾對（預設 4）
  *  store — localStorage 相容（getItem/setItem/removeItem）
  *  rollCouple / rollCkpts / usableCkpts — 注入（瀏覽器用 cafe_gen；測試可假造）
@@ -48,17 +59,24 @@ export async function loadCandidates(opts = {}) {
   const now = opts.now != null ? Number(opts.now) : Date.now();
   const day = todayKey(now);
   const prev = readCandidates(store);
-  if (!opts.force && prev?.day === day && prev.candidates.length >= min) {
+  // 2026-10-24：預設每次都新抽（不再整天沿用同幾對）；opts.reuse＝要沿用同一天那批才用
+  if (opts.reuse && !opts.force && prev?.day === day && prev.candidates.length >= min) {
     return { day, candidates: prev.candidates, reused: true };
   }
   let ck = [];
   if (typeof opts.usableCkpts === "function") {
     try { ck = await opts.usableCkpts() || []; } catch { ck = []; }
   }
+  const recent = readRecent(store);
+  for (const c of prev?.candidates || []) recent.push(c?.husband?.name, c?.wife?.name);   // 上一批也避開
   const usedNames = [];
   const candidates = [];
   for (let i = 0; i < min; i++) {
-    const c = await rollCouple({ usedNames: usedNames.slice() });
+    let c = null;
+    for (let k = 0; k < 6; k++) {   // 撞到最近見過的名字就重抽（最多 6 次，抽不到也收）
+      c = await rollCouple({ usedNames: [...recent, ...usedNames].filter(Boolean) });
+      if (!c?.id || ![c.husband?.name, c.wife?.name].some((n) => n && (recent.includes(n) || usedNames.includes(n)))) break;
+    }
     if (!c?.id) throw new Error("rollCouple 沒回夫妻");
     if (typeof opts.rollCkpts === "function" && ck.length) opts.rollCkpts(c, ck);
     usedNames.push(c.husband?.name, c.wife?.name);
@@ -66,6 +84,7 @@ export async function loadCandidates(opts = {}) {
     if (i + 1 < min) await new Promise((r) => setTimeout(r, 2));
   }
   writeCandidates(store, { day, candidates, at: now });
+  pushRecent(store, usedNames);
   return { day, candidates, reused: false };
 }
 

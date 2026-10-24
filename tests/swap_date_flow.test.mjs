@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href;
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
-const F = await import(dir + "swap_flow_rules.js?v=6");
+const F = await import(dir + "swap_flow_rules.js?v=7");
 const O = await import(dir + "swap_outfit.js?v=1");
 let pass = 0; const t = (n, fn) => { fn(); pass++; console.log("ok -", n); };
 const yes = () => 0, no = () => 0.999;
@@ -160,6 +160,9 @@ t("換妻＝同意色色：配對了才免門檻", () => {
     assert.equal(P.pairCut(h, "normal~2"), "");               // 不同 seed 的第 2 格不算
     h["pair~normal~2"].seed = 7; assert.equal(P.pairCut(h, "normal~2"), "b");
     assert.equal(P.seedFor("normal~2", h, {}), 7); assert.equal(P.seedFor("normal~2", h, { normal: 3 }), 3); assert.equal(P.seedFor("normal~1", h, {}), 0);
+    assert.equal(F.zoomFallback("normal", "wife", 0), F.ZOOM_FB.wife.hard[0]); assert.equal(F.zoomFallback("kiss", "husband", 1), F.ZOOM_FB.husband.soft[1]);
+    assert.ok(F.ZOOM.everyMs >= 2000 && F.ZOOM.everyMs <= 6000);
+    assert.match(bar, /pr\.addEventListener\("click"[^\n]*zoomOpen/); assert.match(bar, /if \(zoomOn\) \{ zoomHold = true/);
     assert.match(bar, /pairLocked\(tgt\)/); assert.match(bar, /ejacTick\(dt\)/); assert.match(bar, /ctx\.debugSliders/);
     assert.match(bar, /\$\("\.st"\)\.prepend\(\$\("\.pr"\)\)/); assert.match(bar, /\.pr\{z-index:0;left:13%;top:34%;bottom:auto;width:46%;max-width:420px/);
   });

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href.replace(/\/$/, "/");
-const M = await import(dir + "swap_candidates.js?v=1");
+const M = await import(dir + "swap_candidates.js?v=2");
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass += 1; console.log("ok -", name); };
@@ -41,20 +41,24 @@ await tAsync("loadCandidates：新抽 min 對，寫入 store，不呼叫 cafe pu
   assert.ok(store.getItem(M.CANDIDATES_KEY));
 });
 
-await tAsync("同日再載＝沿用（不重抽）", async () => {
+await tAsync("每次進選單都新抽（2026-10-24），並避開最近見過的名字", async () => {
   const store = M.memoryStore();
-  let rolls = 0;
-  const rollCouple = async () => {
-    rolls += 1;
-    return { id: `c${rolls}`, husband: { name: "H", swapPrice: 20 }, wife: { name: "W", role: "other_wife" } };
+  let rolls = 0; const seen = [];
+  const names = ["A", "B", "A", "C", "D", "E", "F", "G", "H", "I"];
+  const rollCouple = async ({ usedNames }) => {
+    seen.push(usedNames.slice());
+    const n = names[rolls % names.length]; rolls += 1;
+    return { id: `c${rolls}`, husband: { name: `夫${n}`, swapPrice: 20 }, wife: { name: `妻${n}`, role: "other_wife" } };
   };
   const now = Date.parse("2026-10-23T10:00:00+08:00");
   const a = await M.loadCandidates({ store, min: 2, now, rollCouple });
-  const b = await M.loadCandidates({ store, min: 2, now: now + 3600_000, rollCouple });
-  assert.equal(a.reused, false);
-  assert.equal(b.reused, true);
-  assert.equal(rolls, 2);
-  assert.deepEqual(b.candidates.map((c) => c.id), a.candidates.map((c) => c.id));
+  const b = await M.loadCandidates({ store, min: 2, now: now + 1000, rollCouple });
+  assert.equal(a.reused, false); assert.equal(b.reused, false);
+  for (const id of b.candidates.map((c) => c.husband.name)) assert.ok(!a.candidates.map((c) => c.husband.name).includes(id), "第二批不重複第一批的名字");
+  assert.ok(M.readRecent(store).includes("妻A"));
+  assert.ok(seen.at(-1).includes("妻A"));   // 傳給 rollCouple 的 usedNames 含最近的
+  const r = await M.loadCandidates({ store, min: 2, now: now + 2000, rollCouple, reuse: true });
+  assert.equal(r.reused, true);   // 舊行為只在 reuse 才有
 });
 
 await tAsync("force 或隔日＝重抽", async () => {
@@ -79,7 +83,7 @@ t("openSwapSelect 原始碼不再用 loadRoster 填候選", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("../web/content/swap_select.js", import.meta.url), "utf8");
   assert.match(src, /loadGameCandidates/);
-  assert.match(src, /swap_candidates\.js\?v=1/);
+  assert.match(src, /swap_candidates\.js\?v=2/);
   // openSwapSelect 內不应再呼叫 loadRoster()
   const fn = src.slice(src.indexOf("export function openSwapSelect"), src.indexOf("export function swapAskChance"));
   assert.equal(fn.includes("loadRoster("), false);

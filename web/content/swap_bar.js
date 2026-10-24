@@ -7,14 +7,14 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=42";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=43";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=28";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=17";
 import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees } from "./swap_tease_rules.js?v=5";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=2";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=4";
-import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps } from "./swap_flow_rules.js?v=6";
+import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback } from "./swap_flow_rules.js?v=7";
 
 // ============================================================ 調整用的表
 export const CD = { min: 10, max: 25, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]] };   // 秒（2026-10-22 改 10–25）；半速；醉了 CD 變短（×），但不會短於 min
@@ -233,6 +233,13 @@ const CSS = `
 #swp-bar .pv img,#swp-bar .pr img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #swp-bar .pv .pvl,#swp-bar .pr .prl{position:absolute;left:0;right:0;bottom:0;font-size:11px;padding:3px 6px;background:rgba(0,0,0,.55);color:#f2d6e6;text-align:center}
 #swp-bar .pv .pvw{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#ccc}
+#swp-bar .pz{position:absolute;inset:0;z-index:6;background:rgba(0,0,0,.72);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:56px 10px 90px}
+#swp-bar .pz[hidden]{display:none}
+#swp-bar .pz .cell{position:relative;width:min(94%,620px);aspect-ratio:3/4;max-height:64vh;filter:drop-shadow(0 10px 22px rgba(0,0,0,.6))}
+#swp-bar .pz .cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#swp-bar .pz .pzx{position:absolute;right:12px;top:calc(60px + env(safe-area-inset-top));width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(20,16,24,.85);color:#fff;font-size:18px}
+#swp-bar .pz .pzt{width:min(94%,620px);min-height:64px;background:rgba(18,14,22,.92);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:8px 12px;font-size:15px;line-height:1.5}
+#swp-bar .pz .pzt b{display:block;font-size:12px;color:#f2a6c8;margin-bottom:2px}
 #swp-bar .dbgp{position:absolute;z-index:4;right:6px;bottom:78px;background:rgba(10,10,14,.88);border:1px solid #555;border-radius:10px;padding:6px 8px;font-size:11px;display:flex;flex-direction:column;gap:3px}
 #swp-bar .dbgp input[type=range]{width:120px}
 #swp-bar .end{position:absolute;inset:0;z-index:9;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-size:18px}`;
@@ -265,6 +272,7 @@ export function openBar(ctx = {}, c, S = {}) {
       <div class="hand" hidden></div>
       <form hidden><input maxlength="120" placeholder="說點什麼…"><button type="submit">說</button></form></div>
     <div class="pr" hidden><div class="cell" style="position:absolute;inset:0"><img class="pf1" alt=""><img class="pf2" alt=""></div><div class="prl"></div></div>
+    <div class="pz" hidden><button type="button" class="pzx" aria-label="關閉">✕</button><div class="cell"><img class="pf1" alt=""><img class="pf2" alt=""></div><div class="pzt"><b></b><span></span></div></div>
     <div class="pv" hidden><img alt=""><div class="pvw"></div><div class="pvl"></div></div>
     <div class="nb"></div>`;
   document.body.append(ov);
@@ -277,7 +285,7 @@ export function openBar(ctx = {}, c, S = {}) {
   const close = () => finish({ kind: "leave" });
   const finish = (result) => {
     if (finished || closed) return; finished = true; closed = true;
-    clearInterval(timer); clearTimeout(pvT); stopPair?.();
+    clearInterval(timer); clearTimeout(pvT); stopPair?.(); try { clearInterval(zoomT); } catch { /* */ }
     save();
     ov.remove();
     try { ctx.onEnd?.({ ...result, sess, S, scene }); } catch (e) { dbg(`onEnd：${e?.message || e}`); }
@@ -715,6 +723,8 @@ export function openBar(ctx = {}, c, S = {}) {
     const a = wife ? pairAct() : "";
     const here = huToilet() || watch || (base !== "hotel" && together && !isAway("wife") && !isAway("husband")) || (base === "hotel" && wifeSwapped(sess));
     curPair = a && here ? a : "";
+    pr.style.pointerEvents = a && here && pairIntimate(a) ? "auto" : "none"; pr.style.cursor = pr.style.pointerEvents === "auto" ? "zoom-in" : "";
+    if (zoomOn && !(a && here && pairIntimate(a)) && !zoomHold) zoomClose();
     if (!a || !here) { pr.hidden = true; prKey = ""; return; }
     const have = S.images?.[pairOwner(wife, c)] || {};
     const u1 = pairCut(have, `${a}~1`) || pairCut(have, a), u2 = pairCut(have, `${a}~2`);
@@ -734,6 +744,7 @@ export function openBar(ctx = {}, c, S = {}) {
     const act = curPair;
     if (!rollEjac(act)) return;
     ejacBusy = true; pairRestUntil = Date.now() + EJAC.restSec * 1000; dbg(`${h.name} 射了（${PAIR_ZH[act] || act}）→ 結束，休息 ${EJAC.restSec} 秒`);
+    if (zoomOn) { zoomHold = true; clearInterval(zoomT); zoomSay("husband", `（${h.name}低吼一聲，在${wn}${act === "fellatio" ? "嘴裡" : "體內"}射了出來……）`); setTimeout(() => { if (zoomHold) zoomClose(); }, 2600); }
     renderPair(); status.husband = "射了"; status.wife = act === "fellatio" ? "被射在嘴裡" : "被內射了";
     log.push(`（${h.name}在${wn}${act === "fellatio" ? "嘴裡" : "裡面"}射了）`);
     void queue(async () => {
@@ -742,7 +753,31 @@ export function openBar(ctx = {}, c, S = {}) {
       await line("husband", await say1("husband", `你剛剛跟${wn}（玩家的妻子）${PAIR_ZH[act] || act}，射了。喘著氣說一句事後的話。`, "（喘著氣）哈……哈……太舒服了……"), { to: "wife" });
     }).finally(() => { ejacBusy = false; release(["husband", "wife"]); for (const k of ["husband", "wife"]) if (cd[k]) cd[k].t = 0; renderNb(); });
   };
-  if (base !== "park") stopPair = startPairLoop((f2) => { renderPair(); if (!pr.hidden) applyPairFrame(pr, f2); });
+  // ---- 點雙人圖放大：看他們親熱＋他們的對話／喘息（AI，每 3.5 秒一句；失敗用固定句）。你插不進去。
+  const pz = $(".pz"), pzN = $(".pz .pzt b"), pzT = $(".pz .pzt span"), zf1 = $(".pz .pf1"), zf2 = $(".pz .pf2");
+  let zoomOn = false, zoomHold = false, zoomT = 0, zoomI = 0, zoomBusy = false;
+  const zoomSay = (k, t) => { pzN.textContent = k === "wife" ? wn : h.name; pzT.textContent = t; };
+  const zoomLine = async () => {
+    if (closed || !zoomOn || zoomHold || zoomBusy || !pairIntimate(curPair)) return;
+    zoomBusy = true; const act = curPair, k = zoomI % 2 ? "wife" : "husband", i = zoomI++;
+    const task = k === "wife"
+      ? `你正在跟${h.name}（別人的丈夫）${PAIR_ZH[act] || act}，老公在旁邊看。寫一句你此刻的反應：甜蜜、害羞或忍不住的喘息呻吟都可以。`
+      : `你正在跟${wn}（玩家的妻子）${PAIR_ZH[act] || act}。對她說一句親密的話，或是你的喘息。`;
+    let t = ""; try { t = await say1(k, task, zoomFallback(act, k, i)); } catch { t = zoomFallback(act, k, i); }
+    zoomBusy = false; if (zoomOn && !zoomHold) zoomSay(k, t || zoomFallback(act, k, i));
+  };
+  const zoomOpen = () => {
+    if (zoomOn || !pairIntimate(curPair)) return;
+    zoomOn = true; zoomI = 0; pz.hidden = false; zoomSay("husband", zoomFallback(curPair, "husband", 0)); zoomI = 1;
+    void zoomLine(); zoomT = setInterval(() => void zoomLine(), ZOOM.everyMs);
+  };
+  const zoomClose = () => { zoomOn = false; zoomHold = false; clearInterval(zoomT); pz.hidden = true; };
+  pr.addEventListener("click", (e) => { e.stopPropagation(); zoomOpen(); });
+  pz.addEventListener("click", (e) => { e.stopPropagation(); if (!zoomHold) zoomClose(); });
+  if (base !== "park") stopPair = startPairLoop((f2) => {
+    renderPair(); if (!pr.hidden) applyPairFrame(pr, f2);
+    if (zoomOn && !pr.hidden) { if (zf1.getAttribute("src") !== pf1.getAttribute("src")) zf1.src = pf1.getAttribute("src") || ""; const b = pf2.getAttribute("src"); if (b) { if (zf2.getAttribute("src") !== b) zf2.src = b; } else zf2.removeAttribute("src"); applyPairFrame(pz, f2); }
+  });
 
   // ---- 測試：接受度／醉度滑桿
   if (ctx.test && teaseOn && ctx.debugSliders) {   // 2026-10-24：測試時也不顯示（要看再傳 debugSliders）

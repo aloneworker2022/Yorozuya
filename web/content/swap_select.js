@@ -4,10 +4,10 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=28";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=35";
+import { openBar } from "./swap_bar.js?v=36";
 import { dateOutfitOf } from "./swap_outfit.js?v=1";
-import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=6";
-import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=1";
+import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=7";
+import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;   // 僅 loadRoster（咖啡廳測試工具）用
@@ -142,7 +142,7 @@ export function openSwapSelect(ctx = {}) {
     await playSwapDate(ctx, c, S, startScene);
   };
   const reload = async (force) => {
-    body.innerHTML = `<div class="swp-next">${force ? "重抽候選夫妻…" : "抽今天的夫妻…"}</div>`;
+    body.innerHTML = `<div class="swp-next">${force ? "重抽候選夫妻…" : "抽新的夫妻…"}</div>`;
     try {
       pack = await loadGameCandidates({ force: !!force });
       ctx.debug?.(`換妻：候選 ${pack.candidates.length} 對（${pack.reused ? "沿用今日" : "新抽"}・${pack.day}）`);
