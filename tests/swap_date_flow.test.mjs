@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href;
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
-const F = await import(dir + "swap_flow_rules.js?v=5");
+const F = await import(dir + "swap_flow_rules.js?v=6");
 const O = await import(dir + "swap_outfit.js?v=1");
 let pass = 0; const t = (n, fn) => { fn(); pass++; console.log("ok -", n); };
 const yes = () => 0, no = () => 0.999;
@@ -133,7 +133,7 @@ t("換妻＝同意色色：配對了才免門檻", () => {
   });
   t("互動模型：互動中不跑 CD、不能被打斷、NPC 互動 10 秒、跟玩家對話結束才放開", () => {
     assert.match(bar, /NPC_INTER_MS = 10000/);
-    assert.match(bar, /if \(isAway\(k\) \|\| isBusy\(k\)\) continue/);
+    assert.match(bar, /if \(isAway\(k\) \|\| isBusy\(k\)/);
     assert.match(bar, /isBusy\(tgt\) && !force\) return/);
     assert.match(bar, /withPlayer\(\[k\]/);
     assert.match(bar, /finally \{ release\(set\)/);
@@ -141,6 +141,22 @@ t("換妻＝同意色色：配對了才免門檻", () => {
   t("性卡：換了就跳過接受度門檻（只看場景）", () => {
     assert.match(bar, /ok = free \|\|/);
     assert.match(bar, /consentFree\(sess, "wife"\)\) okP = 1/);
+  });
+}
+{
+  const { readFileSync } = await import("node:fs");
+  const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
+  const P = await import(dir + "swap_pair_gen.js?v=16");
+  t("pt238u: 親熱中鎖互動、射精判定、口交三句、全身雙人圖", () => {
+    for (const a of ["kiss", "grope", "fellatio", "normal", "behind", "seated"]) assert.ok(F.pairIntimate(a), a);
+    assert.ok(!F.pairIntimate("chat") && !F.pairIntimate(""));
+    assert.equal(F.EJAC.everySec, 5); assert.equal(F.EJAC.p, 0.2);
+    assert.ok(F.rollEjac("fellatio", () => 0.1)); assert.ok(!F.rollEjac("fellatio", () => 0.3));
+    assert.ok(!F.rollEjac("kiss", () => 0) && !F.rollEjac("chat", () => 0));
+    assert.equal(F.teaseSteps("oral"), 3); assert.equal(F.teaseSteps("grope"), 1);
+    assert.equal(P.pairCut({ "pair~chat~1": { cut: "u", at: 1 } }, "chat~1"), "");
+    assert.equal(P.pairCut({ "pair~chat~1": { cut: "u", at: P.PAIR_SINCE + 5 } }, "chat~1"), "u");
+    assert.match(bar, /pairLocked\(tgt\)/); assert.match(bar, /ejacTick\(dt\)/); assert.match(bar, /ctx\.debugSliders/);
   });
 }
 console.log(`\n${pass} passed`);

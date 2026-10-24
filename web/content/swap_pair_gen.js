@@ -14,13 +14,13 @@ import { husbandLookEn } from "./husband_gen.js?v=1";
 //   BREAK 1boy, <他：年紀、髮、臉、身材、鬍子、體毛、膚色、衣服、他的姿勢>
 //   BREAK 1girl, adult, <她：身材、髮色＋髮型、瞳色、特徵、膚色（伺服器從人設翻）>, <她的姿勢>, <表情>, <衣服>, <露點 tags>
 // 品質 tag 伺服器看模型名（pony→score_9…；其他→masterpiece…）；負向＝這裡給的原樣（去重）。BREAK 由 comfy.py 分段編碼再 ConditioningConcat。
-// framing：half＝upper body；wide＝wide shot, full body（口交／舔／交配）。clothes：dressed｜partial｜nude。
+// framing：2026-10-24 起全部 wide＝wide shot, full body（一般／親熱都全身，不再半身）。clothes：dressed｜partial｜nude。
 export const PAIR_ACTS = [
-  { key: "chat", zh: "聊天", scene: "ktv", framing: "half", rating: "sfw", clothes: "dressed",
+  { key: "chat", zh: "聊天", scene: "ktv", framing: "wide", rating: "sfw", clothes: "dressed",
     act: "facing another, looking at another, eye contact, sitting, conversation, smile, holding cup", his: "facing another, leaning forward, hand on another's shoulder", her: "facing another, looking at another, smile, blush", expr: "smile, blush", neg: "back-to-back, looking away" },
-  { key: "kiss", zh: "接吻", scene: "ktv", framing: "half", rating: "sfw", clothes: "dressed",
+  { key: "kiss", zh: "接吻", scene: "ktv", framing: "wide", rating: "sfw", clothes: "dressed",
     act: "kiss, face to face, facing another, embrace, closed eyes", neg: "back-to-back, looking away", his: "hand on another's cheek", her: "hand on another's chest", expr: "closed eyes, blush" },
-  { key: "grope", zh: "摸胸部", scene: "ktv", framing: "half", rating: "nsfw", clothes: "dressed", side: true,
+  { key: "grope", zh: "摸胸部", scene: "ktv", framing: "wide", rating: "nsfw", clothes: "dressed", side: true,
     act: "grabbing another's breast, from behind, groping, blush", his: "standing behind, hands on another's breasts", her: "standing", expr: "blush, embarrassed, open mouth", body: "breasts" },
   { key: "fellatio", zh: "口交", scene: "ktv", framing: "wide", rating: "nsfw", clothes: "partial", side: true,
     act: "fellatio, kneeling, penis, hand on another's head", his: "standing, hand on another's head", her: "kneeling, looking up", expr: "blush", hisCl: "pants down, penis", herCl: "open shirt", body: "penis" },
@@ -32,6 +32,10 @@ export const PAIR_ACTS = [
   { key: "behind", zh: "背後", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "kneeling, hands on another's hips", her: "all fours, looking back", body: "nipples, pussy" },
   { key: "seated", zh: "面對面坐著擁吻交配", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "sitting", her: "straddling, arms around neck", body: "nipples, pussy" },
 ];
+/** 2026-10-24 全部改全身：這之前生的雙人圖（半身）一律當沒有、重生。伺服器紀錄的 at（秒）。 */
+export const PAIR_SINCE = 1792852200;
+/** 這格可用的去背圖（太舊＝半身那批 → 空字串）。 */
+export const pairCut = (have, slot) => { const r = have?.[`pair~${slot}`]; return r?.cut && (Number(r.at) || 0) >= PAIR_SINCE ? r.cut : ""; };
 export const PAIR_KEYS = PAIR_ACTS.map((a) => a.key);
 // 2026-10-23 Al：第 1 格停 2 秒、第 2 格（插入）停 0.6 秒；第 2 格出現時「大力震一下」：一下大位移＋放大、SLAM_MS 內回穩（不連續抖）
 export const FRAME1_MS = 2000, FRAME2_MS = 600, SLAM_MS = 200, SLAM_PX = 18;
@@ -78,7 +82,7 @@ export function pairPrompt(slot, wife, couple) {
     maleCl, a.his || "", fr?.his || "");
   const herCl = nude ? "nude" : a.clothes === "partial" ? a.herCl || "clothes pull" : "";   // dressed＝伺服器翻她的生涯服裝
   const body = dedupe(a.body || "");   // 2026-10-23 胸／私密部位改由伺服器從她的人設翻（跟單人立繪同一份表），這裡只給動作要露的部位
-  const neg = dedupe(NEG_BASE, BG_NEG, a.framing === "half" ? "bed" : "white sheets", a.neg || "", fr?.neg ?? (frame === 1 ? "penetration, sex" : ""), a.clothes === "dressed" ? "nude, nipples" : "");
+  const neg = dedupe(NEG_BASE, BG_NEG, a.scene !== "hotel" ? "bed" : "white sheets", a.neg || "", fr?.neg ?? (frame === 1 ? "penetration, sex" : ""), a.clothes === "dressed" ? "nude, nipples" : "");
   return {
     framing: FRAME_EN[a.framing], fromSide: !!a.side, shared: dedupe(fr?.act || a.act), male, herPose: dedupe(a.her || ""), expr: dedupe(fr?.expr || a.expr || ""),
     herClothes: herCl, dressed: a.clothes === "dressed", clothes: a.clothes, body, neg,
@@ -93,13 +97,13 @@ export function pairBody(slot, wife, couple, eng, seed) {
   if (comfy && !ckpt) throw new Error("此魅子尚未綁定 Comfy 模型（comfyCkpt），全域也沒設");
   return {
     key: `swap-pair:${String(slot).replace("~", "-")}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,
-    framing: a.framing === "half" ? "half" : "full", rating: a.rating, negative: pair.neg.join(", "), visual_neg: "", cutout: false, flat_bg: false, retry: true, seed,
+    framing: "full", rating: a.rating, negative: pair.neg.join(", "), visual_neg: "", cutout: false, flat_bg: false, retry: true, seed,
     // 2026-10-24：穿衣／半脫＝她的約會外出服（不是房間那套）；全裸不給衣服
     character: a.clothes === "nude" ? wife : withDateOutfit(wife, "wife"), outfit: a.clothes === "nude" ? "" : dateOutfitOf(wife, "wife"), extra: "", prompt: "", lock_identity: true, char_id: wife.id, pair,
     ...(comfy ? { comfy_url: eng.comfyUrl, ckpt } : {}),
   };
 }
-export const missingPairs = (S, wife, couple) => { const have = S?.images?.[pairOwner(wife, couple)] || {}; return PAIR_SLOTS.filter((k) => !have[`pair~${k}`]?.cut); };
+export const missingPairs = (S, wife, couple) => { const have = S?.images?.[pairOwner(wife, couple)] || {}; return PAIR_SLOTS.filter((k) => !pairCut(have, k)); };
 /** 生一格（綠幕→色鍵→存，seed 一起存，第 2 格拿第 1 格的 seed）；seed 不給＝隨機。回新的 images。 */
 // ---- 去背（雙人圖專用：量四邊綠的比例，存進紀錄給測試台看）
 const loadImg2 = (url) => new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => no(new Error("圖載不到")); im.src = url; });

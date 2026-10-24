@@ -5,7 +5,7 @@
  * 生圖：綠幕半身 → /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
-import { bindPairBox } from "./swap_pair_gen.js?v=15";
+import { bindPairBox } from "./swap_pair_gen.js?v=16";
 import { wornOutfitOf } from "./outfit_pick.js?v=2";
 import { dateOutfitOf, withDateOutfit } from "./swap_outfit.js?v=1";
 import { loadPools, generateGirl, POOLS as _poolsRef } from "./girl_gen.js?v=5";

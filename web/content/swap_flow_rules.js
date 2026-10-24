@@ -284,3 +284,15 @@ export function testStartState(scene, { hotel = "play" } = {}) {
   }
   return {};
 }
+
+// ---------------------------------------------------------------- 另一對（你老婆×對方丈夫）在親熱／射精（2026-10-24）
+/** 雙人動作：chat 以外都算「親熱中」＝玩家不能跟他們兩個對話／互動、他們不跑 CD。 */
+export const PAIR_INTIMATE = new Set(["kiss", "grope", "fellatio", "cunni", "normal", "behind", "seated"]);
+/** 對方丈夫會射的動作（口交、交配）。 */
+export const PAIR_EJAC_ACTS = new Set(["fellatio", "normal", "behind", "seated"]);
+export const EJAC = { everySec: 5, p: 0.2, restSec: 60 };
+export const pairIntimate = (a) => PAIR_INTIMATE.has(String(a || ""));
+/** 每 5 秒判一次；回 true＝射了。 */
+export function rollEjac(act, rng = Math.random) { return PAIR_EJAC_ACTS.has(String(act || "")) && rng() < EJAC.p; }
+/** 玩家動作卡要按幾次「下一句」才完成：口交三句，其他一句。 */
+export const teaseSteps = (act) => (act === "oral" ? 3 : 1);

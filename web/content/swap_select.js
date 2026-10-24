@@ -4,9 +4,9 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=28";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=32";
+import { openBar } from "./swap_bar.js?v=33";
 import { dateOutfitOf } from "./swap_outfit.js?v=1";
-import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=5";
+import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=6";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=1";
 
 export const SESSION_KEY = "yorozuya.swap.session";
@@ -264,10 +264,10 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   }
   if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && wife) {
     try {
-      const pair = await import("./swap_pair_gen.js?v=15");
+      const pair = await import("./swap_pair_gen.js?v=16");
       const slots = pairSlotsFor(scene, pair.PAIR_ACTS, pair.PAIR_FRAMES);
       const have = S.images?.[pair.pairOwner(wife, c)] || {};
-      const miss = slots.filter((k) => !have[`pair~${k}`]?.cut);
+      const miss = slots.filter((k) => !pair.pairCut(have, k));   // 2026-10-24：半身舊圖不算
       let d = 0, f = 0;
       for (const slot of miss) {
         n.textContent = `準備雙人圖 ${++d}/${miss.length}${f ? `（失敗 ${f}）` : ""}`;
