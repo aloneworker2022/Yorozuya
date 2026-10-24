@@ -35,7 +35,14 @@ export const PAIR_ACTS = [
 /** 2026-10-24 全部改全身：這之前生的雙人圖（半身）一律當沒有、重生。伺服器紀錄的 at（秒）。 */
 export const PAIR_SINCE = 1792852200;
 /** 這格可用的去背圖（太舊＝半身那批 → 空字串）。 */
-export const pairCut = (have, slot) => { const r = have?.[`pair~${slot}`]; return r?.cut && (Number(r.at) || 0) >= PAIR_SINCE ? r.cut : ""; };
+export const pairCut = (have, slot) => {
+  const r = have?.[`pair~${slot}`];
+  if (!r?.cut || (Number(r.at) || 0) < PAIR_SINCE) return "";
+  // 第 2 格必須跟第 1 格同 seed（2026-10-24：遊戲內預產以前沒傳 seed，兩格差很多 → 不同 seed 的第 2 格當沒有、重生）
+  const m = /^(.+)~2$/.exec(String(slot));
+  if (m) { const s1 = Number(have?.[`pair~${m[1]}~1`]?.seed) || 0; if (!s1 || Number(r.seed) !== s1) return ""; }
+  return r.cut;
+};
 export const PAIR_KEYS = PAIR_ACTS.map((a) => a.key);
 // 2026-10-23 Al：第 1 格停 2 秒、第 2 格（插入）停 0.6 秒；第 2 格出現時「大力震一下」：一下大位移＋放大、SLAM_MS 內回穩（不連續抖）
 export const FRAME1_MS = 2000, FRAME2_MS = 600, SLAM_MS = 200, SLAM_PX = 18;
@@ -53,7 +60,7 @@ export const PAIR_FRAMES = {
 };
 /** 要生的格子：一般動作一格（pair~chat），交配動作兩格（pair~normal~1／~2）。共 5＋3×2＝11。（2026-10-23 傳教士刪了：容易出錯） */
 export const PAIR_SLOTS = PAIR_ACTS.flatMap((a) => (PAIR_FRAMES[a.key] ? [`${a.key}~1`, `${a.key}~2`] : [a.key]));
-const slotOf = (slot) => { const [act, f] = String(slot).split("~"); return { act, frame: f ? Number(f) : 0 }; };
+export const slotOf = (slot) => { const [act, f] = String(slot).split("~"); return { act, frame: f ? Number(f) : 0 }; };
 const ACT = Object.fromEntries(PAIR_ACTS.map((a) => [a.key, a]));
 const FRAME_EN = { half: "upper body", wide: "wide shot, full body" };
 // 他：年紀／個性（髮、臉、鬍子）／身材／衣服（跟她的衣服用不同字）

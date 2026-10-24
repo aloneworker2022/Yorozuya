@@ -7,10 +7,10 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=41";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=42";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=28";
-import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=16";
+import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=17";
 import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees } from "./swap_tease_rules.js?v=5";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=2";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=4";
@@ -228,7 +228,7 @@ const CSS = `
 #swp-bar .pv.in{transform:translateX(-50%);opacity:1}#swp-bar .pv.out{transform:translateX(-50%) translateX(60vw);opacity:0}
 @media(prefers-reduced-motion:reduce){#swp-bar .pv{transition:none}}
 /* 2026-10-24 對方丈夫×你老婆：中間偏左、約中段高度、大一點，無框不模糊（只留柔影） */
-#swp-bar .pr{z-index:0;left:4%;top:34%;bottom:auto;width:46%;max-width:420px;max-height:54%;aspect-ratio:3/4;background:none;border:0;border-radius:0;overflow:visible;pointer-events:none;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
+#swp-bar .pr{z-index:0;left:13%;top:34%;bottom:auto;width:46%;max-width:420px;max-height:54%;aspect-ratio:3/4;background:none;border:0;border-radius:0;overflow:visible;pointer-events:none;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
 #swp-bar .pr .prl{bottom:-18px;font-size:10px;padding:1px 4px;background:none;color:rgba(242,214,230,.8);text-shadow:0 1px 2px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #swp-bar .pv img,#swp-bar .pr img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #swp-bar .pv .pvl,#swp-bar .pr .prl{position:absolute;left:0;right:0;bottom:0;font-size:11px;padding:3px 6px;background:rgba(0,0,0,.55);color:#f2d6e6;text-align:center}

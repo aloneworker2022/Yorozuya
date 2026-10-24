@@ -146,7 +146,7 @@ t("換妻＝同意色色：配對了才免門檻", () => {
 {
   const { readFileSync } = await import("node:fs");
   const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
-  const P = await import(dir + "swap_pair_gen.js?v=16");
+  const P = await import(dir + "swap_pair_gen.js?v=17");
   t("pt238u: 親熱中鎖互動、射精判定、口交三句、全身雙人圖", () => {
     for (const a of ["kiss", "grope", "fellatio", "normal", "behind", "seated"]) assert.ok(F.pairIntimate(a), a);
     assert.ok(!F.pairIntimate("chat") && !F.pairIntimate(""));
@@ -156,8 +156,12 @@ t("換妻＝同意色色：配對了才免門檻", () => {
     assert.equal(F.teaseSteps("oral"), 3); assert.equal(F.teaseSteps("grope"), 1);
     assert.equal(P.pairCut({ "pair~chat~1": { cut: "u", at: 1 } }, "chat~1"), "");
     assert.equal(P.pairCut({ "pair~chat~1": { cut: "u", at: P.PAIR_SINCE + 5 } }, "chat~1"), "u");
+    const T = P.PAIR_SINCE + 5, h = { "pair~normal~1": { cut: "a", at: T, seed: 7 }, "pair~normal~2": { cut: "b", at: T, seed: 9 } };
+    assert.equal(P.pairCut(h, "normal~2"), "");               // 不同 seed 的第 2 格不算
+    h["pair~normal~2"].seed = 7; assert.equal(P.pairCut(h, "normal~2"), "b");
+    assert.equal(P.seedFor("normal~2", h, {}), 7); assert.equal(P.seedFor("normal~2", h, { normal: 3 }), 3); assert.equal(P.seedFor("normal~1", h, {}), 0);
     assert.match(bar, /pairLocked\(tgt\)/); assert.match(bar, /ejacTick\(dt\)/); assert.match(bar, /ctx\.debugSliders/);
-    assert.match(bar, /\$\("\.st"\)\.prepend\(\$\("\.pr"\)\)/); assert.match(bar, /\.pr\{z-index:0;left:4%;top:34%;bottom:auto;width:46%;max-width:420px/);
+    assert.match(bar, /\$\("\.st"\)\.prepend\(\$\("\.pr"\)\)/); assert.match(bar, /\.pr\{z-index:0;left:13%;top:34%;bottom:auto;width:46%;max-width:420px/);
   });
 }
 console.log(`\n${pass} passed`);

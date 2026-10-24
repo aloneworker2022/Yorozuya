@@ -4,7 +4,7 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=28";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=34";
+import { openBar } from "./swap_bar.js?v=35";
 import { dateOutfitOf } from "./swap_outfit.js?v=1";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=6";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=1";
@@ -264,16 +264,20 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   }
   if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && wife) {
     try {
-      const pair = await import("./swap_pair_gen.js?v=16");
+      const pair = await import("./swap_pair_gen.js?v=17");
       const slots = pairSlotsFor(scene, pair.PAIR_ACTS, pair.PAIR_FRAMES);
       const have = S.images?.[pair.pairOwner(wife, c)] || {};
-      const miss = slots.filter((k) => !pair.pairCut(have, k));   // 2026-10-24：半身舊圖不算
+      // 2026-10-24：半身舊圖不算；第 1 格要重生的話第 2 格也跟著重生（同 seed）
+      const miss = slots.filter((k) => !pair.pairCut(have, k) || (/~2$/.test(k) && !pair.pairCut(have, k.replace(/~2$/, "~1"))));
+      const runSeeds = {};
       let d = 0, f = 0;
       for (const slot of miss) {
         n.textContent = `準備雙人圖 ${++d}/${miss.length}${f ? `（失敗 ${f}）` : ""}`;
         try {
           // genPair 回 { images, sec, how, seed }——以前把整包當 images 塞進 S，立繪全部不見（2026-10-24 修）
-          const r = await pair.genPair(slot, wife, c, (m) => ctx.debug?.(`換妻：雙人 ${slot} ${m}`));
+          const { act, frame } = pair.slotOf(slot);
+          const r = await pair.genPair(slot, wife, c, (m) => ctx.debug?.(`換妻：雙人 ${slot} ${m}`), pair.seedFor(slot, S.images?.[pair.pairOwner(wife, c)] || {}, runSeeds));
+          if (frame === 1 && r?.seed) runSeeds[act] = r.seed;   // 第 2 格沿用這個 seed
           if (r?.images && typeof r.images === "object") S = { ...S, images: r.images };
         } catch (e) { f++; ctx.debug?.(`換妻：雙人圖 ${slot} 失敗：${e?.message || e}`); }
       }
