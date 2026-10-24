@@ -260,3 +260,27 @@ export const END_FB = {
   leave: ["今晚就到這裡，大家各自回家了。"],
   success: ["今晚的換妻約會結束了。"],
 };
+
+// ---------------------------------------------------------------- 測試捷徑的起始狀態（2026-10-24）
+/** test_room「從酒吧／KTV／旅館開始」：選完夫妻後合併進 session 的欄位。
+ *  酒吧／KTV＝第 2 段剛開始（已聊過幾輪、微醺、旗號全 false 等重擲／提議）；
+ *  旅館＝第 3 段：hotel="play"→兩邊都換了（你跟對方妻子）；"watch"→只有你老婆跟對方丈夫，你只能看。 */
+export function testStartState(scene, { hotel = "play" } = {}) {
+  const base = String(scene || "").startsWith("hotel") ? "hotel" : scene;
+  if (base === "bar" || base === "ktv") return {
+    rounds: 4, accept: 35, wifeAccept: 30, progress: 10, open: 0.2,
+    drunk: { player: 15, wife: 25, husband: 30, other: 30 },
+    move: { wife: false, husband: false, other: false }, urge: { wife: 0, husband: 0, other: 0 },
+    pairs: { wife: "player", other: "husband" },
+  };
+  if (base === "hotel") {
+    const watch = hotel === "watch";
+    return {
+      rounds: 0, accept: watch ? 40 : 70, wifeAccept: 70, progress: 30, open: 0.6,
+      drunk: { player: 30, wife: 45, husband: 40, other: 45 },
+      move: { wife: false, husband: false, other: false }, urge: { wife: 0, husband: 0, other: 0 },
+      pairs: { wife: "husband", other: watch ? "husband" : "player" },
+    };
+  }
+  return {};
+}

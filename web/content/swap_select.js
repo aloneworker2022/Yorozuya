@@ -4,9 +4,9 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=28";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=30";
+import { openBar } from "./swap_bar.js?v=31";
 import { dateOutfitOf } from "./swap_outfit.js?v=1";
-import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=4";
+import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=5";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=1";
 
 export const SESSION_KEY = "yorozuya.swap.session";
@@ -135,6 +135,7 @@ export function openSwapSelect(ctx = {}) {
       S = await api.put("couple", { couple: c });
     } catch (e) { ctx.debug?.(`換妻：暫存選中夫妻失敗（仍繼續）：${e?.message || e}`); }
     const sess = { coupleId: c.id, price: h.swapPrice, at: Date.now(), phase: startScene, wifeId: ctx.girl?.()?.id || "", wifeAgreed: true, rounds: 0 };
+    if (ctx.startState) Object.assign(sess, ctx.startState(startScene) || {});   // 測試捷徑：酒吧／KTV／旅館的起始狀態
     localStorage.setItem(SESSION_KEY, JSON.stringify(sess));
     ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ ${FLOW_ZH[startScene] || startScene}（先開車生立繪）`);
     ov.remove();
