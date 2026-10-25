@@ -7,14 +7,14 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=55";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=56";
 import { createStage } from "./swap_stage.js?v=5";
-import { pickBackdrop } from "./swap_cafe_gen.js?v=33";
-import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=22";
-import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk } from "./swap_tease_rules.js?v=7";
-import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=3";
-import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=5";
-import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=8";
+import { pickBackdrop } from "./swap_cafe_gen.js?v=34";
+import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=23";
+import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk } from "./swap_tease_rules.js?v=8";
+import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=4";
+import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=6";
+import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=9";
 import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext } from "./swap_flow_rules.js?v=9";
 
 // ============================================================ 調整用的表
@@ -356,6 +356,26 @@ export function openBar(ctx = {}, c, S = {}) {
   const watch = mode === "watch";
   const teaseOn = !watch && (base === "ktv" || base === "hotel" || base === "bar");
   let renderMv = () => {};
+  // pt257u：旅館裡你老婆×對方丈夫固定在一個地方（預設房間）；你換房間他們不跟；只有對方丈夫會決定換地方
+  const PAIR_MOVE_SEC = [90, 180], PAIR_MOVE_P = 0.35;
+  const pairLocOf = () => (sess.pairLoc === "hotel_bath" ? "hotel_bath" : "hotel_room");
+  let pairMoveAt = Date.now() + rnd(...PAIR_MOVE_SEC) * 1000;
+  const syncPairLoc = () => {
+    if (base !== "hotel") return;
+    if (!sess.pairLoc) sess.pairLoc = "hotel_room";
+    const there = pairLocOf() === scene, wz = SCENE_ZH[pairLocOf()] || "另一個房間";
+    if (!watch) absent.husband = { why: there ? `跟${wn}在這裡` : `在${wz}`, until: 8.64e15 };
+    if (!watch && wifeSwapped(sess)) absent.wife = { why: there ? `跟${h.name}在這裡` : `在${wz}`, until: 8.64e15 };
+  };
+  const pairMoveTick = () => {
+    if (base !== "hotel" || !(wifeSwapped(sess) || watch) || Date.now() < pairMoveAt) return;
+    pairMoveAt = Date.now() + rnd(...PAIR_MOVE_SEC) * 1000;
+    if (Math.random() >= PAIR_MOVE_P) return;
+    const from = pairLocOf(), to = from === "hotel_room" ? "hotel_bath" : "hotel_room";
+    sess.pairLoc = to; syncPairLoc(); save();
+    note(to === scene ? `（${h.name}牽著${wn}走了進來……）` : from === scene ? `（${h.name}拉著${wn}往${SCENE_ZH[to]}走去）` : `（隔壁傳來聲音：${h.name}跟${wn}換到${SCENE_ZH[to]}了）`);
+    dbg(`${h.name} 決定換地方：${SCENE_ZH[from]} → ${SCENE_ZH[to]}`); renderNb();
+  };
   let toiletOn = false;   // 你跟對方妻子在酒吧廁所
   const where = () => (scene === "bar" && toiletOn ? "bar_toilet" : scene);
   const paired = () => otherSwapped(sess) || (base === "hotel" && hotelMode(sess) === "none");
@@ -389,9 +409,10 @@ export function openBar(ctx = {}, c, S = {}) {
   // 2026-10-25：造型依場景（公園／酒吧清醒＝穿好；酒吧醉了＝tipsy；KTV 脫衣＝under／nude），沒那張就照 lookFallback 往回退
   const img = (owner, key, ex) => { const m = S.images?.[owner] || {}; for (const e of lookFallback(ex)) { const u = m[`${key}~${e}`]?.cut; if (u) return u; } return ""; };
   if (!sess.strip || typeof sess.strip !== "object") sess.strip = { wife: 0, other: 0 };
+  if (base === "hotel") { sess.strip.wife = 2; sess.strip.other = 2; }   // pt257u：旅館＝全員全裸
   const P = (k, ex) => {
     const tipsy = sess.drunk[k] >= DRUNK.lv.tipsy, shy = tipsy || (k === "wife" && sess.nerves >= 0.3) || (k === "other" && wType === "害羞人妻");
-    const e = ex || (k === "husband" ? (shy ? "shy" : "normal") : lookKeyOf({ scene, drunk: PARK ? 0 : sess.drunk[k], strip: sess.strip?.[k] || 0, shy, tipsyAt: DRUNK.lv.drunk }));
+    const e = ex || (k === "husband" ? (base === "hotel" ? "nude" : shy ? "shy" : "normal") : lookKeyOf({ scene, drunk: PARK ? 0 : sess.drunk[k], strip: sess.strip?.[k] || 0, shy, tipsyAt: DRUNK.lv.drunk }));
     return { id: k, url: k === "wife" ? (wife ? img(wife.id, "wife", e) : "") : img(c.id, k, e), label: name[k], tint: tipsy };
   };
   let focus = [];   // 目前台上的人
@@ -814,7 +835,7 @@ export function openBar(ctx = {}, c, S = {}) {
   const pairAct = () => {
     if (Date.now() < pairRestUntil) return "";
     if (huToilet()) return "behind";
-    if (base === "hotel") return wifeSwapped(sess) || watch ? (scene === "hotel_bath" ? "behind" : "normal") : "";
+    if (base === "hotel") return wifeSwapped(sess) || watch ? (pairLocOf() === "hotel_bath" ? "behind" : "normal") : "";
     const sw = wifeSwapped(sess);
     // 2026-10-25 Al：酒吧＝她的醉度階梯；KTV＝她對他的接受度階梯（聊天→親→摸胸→口交，最高口交；換妻不等於同意直接做）
     if (base === "bar") return barPairAct({ drunk: sess.drunk.wife, swapped: sw });
@@ -848,7 +869,7 @@ export function openBar(ctx = {}, c, S = {}) {
   };
   const pairShowOk = (a) => {
     if (!a) return false;
-    if (huToilet() || watch || base === "hotel") return true;
+    if (huToilet() || watch || base === "hotel") return true;   // （旅館：在不在同一處由 renderPair 的 here 判斷）
     // 2026-10-25：聊天圖＝她此刻正在跟他聊；親熱圖＝正在進行那段行為。發呆／跟別人＝不貼
     if (!pairIntimate(a)) return wifeWith() === "husband";
     if (pairSess && Date.now() < pairSess.until) return true;
@@ -859,7 +880,7 @@ export function openBar(ctx = {}, c, S = {}) {
   };
   const renderPair = () => {
     const a0 = wife ? pairAct() : "", a = pairShowOk(a0) ? a0 : "";
-    const here = huToilet() || watch || (base !== "hotel" && together && !isAway("wife") && !isAway("husband")) || (base === "hotel" && wifeSwapped(sess));
+    const here = huToilet() || watch || (base !== "hotel" && together && !isAway("wife") && !isAway("husband")) || (base === "hotel" && (wifeSwapped(sess) || watch) && pairLocOf() === scene);   // pt257u：他們只在固定地點，你在同一處才看得到
     curPair = a && here ? a : "";
     pr.style.pointerEvents = a && here ? "auto" : "none";   // pt256u：看得到就能點 pr.style.zIndex = a && here ? "2" : ""; pr.style.cursor = pr.style.pointerEvents === "auto" ? "zoom-in" : "";
     if (zoomOn && !(a && here) && !zoomHold) zoomClose();
@@ -1101,6 +1122,7 @@ export function openBar(ctx = {}, c, S = {}) {
     }
   };
   const tick = () => {
+    pairMoveTick();
     if (closed) return;
     const now = performance.now(), dt = Math.min(0.5, (now - last) / 1000) * (ctx.timeScale || 1); last = now;
     minuteAcc += dt;
@@ -1197,10 +1219,7 @@ export function openBar(ctx = {}, c, S = {}) {
   nb.addEventListener("click", () => setTimeout(renderAdvanceBtn, 0));
 
   timer = setInterval(tick, 100);
-  if (base === "hotel" && !watch) {
-    absent.husband = { why: "在另一個房間", until: 8.64e15 };
-    if (wifeSwapped(sess)) absent.wife = { why: "在另一個房間", until: 8.64e15 };
-  }
+  if (base === "hotel") syncPairLoc();
   renderNb();
   // 自我介紹只在公園；酒吧／KTV／飯店跳過（測試跳場 ctx.noIntro 也跳過）
   const doIntro = scene === "park" && !ctx.noIntro;

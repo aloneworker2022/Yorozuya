@@ -64,6 +64,7 @@ export function lookCharacter(g, role = "wife", ex = "normal") {
 /** 遊戲裡這個人現在要用哪個造型。scene＝park|bar|ktv|hotel…；drunk＝醉度；strip＝0/1/2（KTV 脫衣）；shy＝害羞表情。 */
 export function lookKeyOf({ scene = "bar", drunk = 0, strip = 0, shy = false, tipsyAt = 60 } = {}) {
   const s = String(scene);
+  if (s.startsWith("hotel")) return "nude";   // 2026-10-26 pt257u：旅館＝全員全裸
   if (s === "ktv" && strip >= 1) return "under";   // 2026-10-25 Al：KTV 只脫到內衣，沒有全裸
   if (s.startsWith("bar") && drunk >= tipsyAt) return "tipsy";
   return shy ? "shy" : "normal";

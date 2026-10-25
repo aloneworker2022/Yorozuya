@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href;
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
 const F = await import(dir + "swap_flow_rules.js?v=9");
-const O = await import(dir + "swap_outfit.js?v=3");
+const O = await import(dir + "swap_outfit.js?v=4");
 let pass = 0; const t = (n, fn) => { fn(); pass++; console.log("ok -", n); };
 const yes = () => 0, no = () => 0.999;
 
@@ -176,7 +176,7 @@ t("換妻＝同意色色：配對了才免門檻", () => {
 {
   const { readFileSync } = await import("node:fs");
   const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
-  const P = await import(dir + "swap_pair_gen.js?v=22");
+  const P = await import(dir + "swap_pair_gen.js?v=23");
   t("pt238u: 親熱中鎖互動、射精判定、口交三句、全身雙人圖", () => {
     for (const a of ["kiss", "grope", "fellatio", "normal", "behind", "seated"]) assert.ok(F.pairIntimate(a), a);
     assert.ok(!F.pairIntimate("chat") && !F.pairIntimate(""));
@@ -217,7 +217,7 @@ t("swap_bar／swap_select／test_room_summon 以 ES module 解析沒有語法錯
 });
 
 // —— pt250u：場景造型／KTV 脫衣兩段／雙人圖規則／POV 位置 ——
-const TR = await import(dir + "swap_tease_rules.js?v=7");
+const TR = await import(dir + "swap_tease_rules.js?v=8");
 t("造型：公園／酒吧清醒＝穿好（friend）；酒吧醉＝tipsy；KTV 只有內衣一段，沒有全裸", () => {
   assert.equal(O.lookKeyOf({ scene: "park", drunk: 99 }), "normal");
   assert.equal(O.lookKeyOf({ scene: "bar", drunk: 80 }), "tipsy");
@@ -281,4 +281,17 @@ console.log(`\n${pass} passed`);
   ok(/class="mvb"/.test(src) && /scene === "bar" \|\| scene === "ktv"/.test(src) && /"回包廂" : "回座位"/.test(src), "toilet button");
   ok(/pointerEvents = a && here \? "auto"/.test(src) && /if \(zoomOn \|\| !curPair\) return;/.test(src), "pair always clickable");
   console.log("pt256u ok");
+}
+
+// pt257u：旅館全裸、配對地點固定
+{
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
+  const ok = (c, m) => { if (!c) throw new Error(m); };
+  const O2 = await import(new URL("../web/content/swap_outfit.js?v=4", import.meta.url));
+  ok(O2.lookKeyOf({ scene: "hotel_room" }) === "nude" && O2.lookKeyOf({ scene: "hotel_bath", shy: true }) === "nude", "hotel nude");
+  ok(O2.lookKeyOf({ scene: "ktv", strip: 2 }) === "under", "ktv still under");
+  ok(/if \(base === "hotel"\) \{ sess\.strip\.wife = 2; sess\.strip\.other = 2; \}/.test(src), "hotel strip");
+  ok(/pairLocOf\(\) === scene\)/.test(src) && /sess\.pairLoc = to/.test(src), "pair fixed location");
+  console.log("pt257u ok");
 }
