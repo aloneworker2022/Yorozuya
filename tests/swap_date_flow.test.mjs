@@ -295,3 +295,13 @@ console.log(`\n${pass} passed`);
   ok(/pairLocOf\(\) === scene\)/.test(src) && /sess\.pairLoc = to/.test(src), "pair fixed location");
   console.log("pt257u ok");
 }
+
+// pt259u：旅館一次預產房間＋浴室＋全裸立繪
+{
+  const fs = await import("node:fs");
+  const t = fs.readFileSync(new URL("../web/content/swap_tease.js", import.meta.url), "utf8");
+  const s = fs.readFileSync(new URL("../web/content/swap_select.js", import.meta.url), "utf8");
+  if (!/pregenKeys\("hotel_room"\), \.\.\.pregenKeys\("hotel_bath"\)/.test(t)) throw new Error("hotel pregen both");
+  if (!/hotelGo \? \["normal", "shy", "nude"\]/.test(s)) throw new Error("nude portraits pregen");
+  console.log("pt259u ok");
+}

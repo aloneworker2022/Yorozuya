@@ -76,7 +76,9 @@ export function jobsForAct(act, scene, strip = 0) {
 }
 /** 預產（開車黑畫面）：場景那一整組缺的，一張一張生。onTick(done, total, fail)。回最新 S。 */
 export async function pregenTease(c, scene, S, { onTick = () => {}, debug = () => {} } = {}) {
-  const want = pregenKeys(scene).filter((j) => !cachedUrl(S, c, j.key));
+  // 2026-10-26 pt259u：旅館＝房間＋浴室一次產完（去浴室不用再等）
+  const all = String(scene).startsWith("hotel") ? [...pregenKeys("hotel_room"), ...pregenKeys("hotel_bath")] : pregenKeys(scene);
+  const seen = new Set(), want = all.filter((j) => !seen.has(j.key) && seen.add(j.key) && !cachedUrl(S, c, j.key));
   let done = 0, fail = 0; onTick(0, want.length, 0);
   const eng = want.length ? await gameEngine().catch(() => null) : null;
   for (const j of want) {
