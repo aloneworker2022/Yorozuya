@@ -5,7 +5,7 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=29";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=30";
 import { dateOutfitOf, withDateOutfit } from "./swap_outfit.js?v=1";
 import { husbandLookEn } from "./husband_gen.js?v=1";
 
@@ -45,7 +45,7 @@ export const pairCut = (have, slot) => {
 };
 export const PAIR_KEYS = PAIR_ACTS.map((a) => a.key);
 // 2026-10-23 Al：第 1 格停 2 秒、第 2 格（插入）停 0.6 秒；第 2 格出現時「大力震一下」：一下大位移＋放大、SLAM_MS 內回穩（不連續抖）
-export const FRAME1_MS = 2000, FRAME2_MS = 600, SLAM_MS = 200, SLAM_PX = 3.5, SLAM_SCALE = 1.015;   // 2026-10-24：小而有力（原 18px 太遠）
+export const FRAME1_MS = 2000, FRAME2_MS = 600, SLAM_MS = 200, SLAM_PX = 6.5, SLAM_SCALE = 1.02;   // 2026-10-24：小而有力（原 18px 太遠）
 // 第 2 格共用：男方用力撞（shared 段／1boy 段各加，tag 不寫句子）
 const F2_SLAM = "hard thrust, (thrusting:1.2), hip slam, forceful sex, motion lines, sweat";
 const F2_EXPR = "tongue out, ahegao, tears, rolling eyes";

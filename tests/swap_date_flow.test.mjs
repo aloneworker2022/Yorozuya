@@ -146,7 +146,7 @@ t("換妻＝同意色色：配對了才免門檻", () => {
 {
   const { readFileSync } = await import("node:fs");
   const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
-  const P = await import(dir + "swap_pair_gen.js?v=18");
+  const P = await import(dir + "swap_pair_gen.js?v=19");
   t("pt238u: 親熱中鎖互動、射精判定、口交三句、全身雙人圖", () => {
     for (const a of ["kiss", "grope", "fellatio", "normal", "behind", "seated"]) assert.ok(F.pairIntimate(a), a);
     assert.ok(!F.pairIntimate("chat") && !F.pairIntimate(""));
@@ -163,11 +163,11 @@ t("換妻＝同意色色：配對了才免門檻", () => {
     assert.equal(F.zoomFallback("normal", "wife", 0), F.ZOOM_FB.wife.hard[0]); assert.equal(F.zoomFallback("kiss", "husband", 1), F.ZOOM_FB.husband.soft[1]);
     assert.ok(F.ZOOM.everyMs >= 2000 && F.ZOOM.everyMs <= 6000);
     assert.match(bar, /pr\.addEventListener\("click"[^\n]*zoomOpen/); assert.match(bar, /if \(zoomOn\) \{ zoomHold = true/);
-    assert.ok(P.SLAM_PX >= 2 && P.SLAM_PX <= 5); assert.ok(P.SLAM_SCALE > 1 && P.SLAM_SCALE <= 1.02); assert.ok(P.SLAM_MS <= 250);
+    assert.ok(P.SLAM_PX >= 5 && P.SLAM_PX <= 8); assert.ok(P.SLAM_SCALE > 1 && P.SLAM_SCALE <= 1.025); assert.ok(P.SLAM_MS <= 250);
     const pg = readFileSync(new URL("../web/content/swap_pair_gen.js", import.meta.url), "utf8");
     assert.ok(!/@keyframes swpSlam[^\n]*translateX\(-50%\)/.test(pg) && !/T = \(x, y, sc\) => `transform:translateX/.test(pg));   // 不覆蓋元素原本的 transform
     assert.match(bar, /pairLocked\(tgt\)/); assert.match(bar, /ejacTick\(dt\)/); assert.match(bar, /ctx\.debugSliders/);
-    assert.match(bar, /\$\("\.st"\)\.prepend\(\$\("\.pr"\)\)/); assert.match(bar, /\.pr\{z-index:0;left:13%;top:34%;bottom:auto;width:46%;max-width:420px/);
+    assert.match(bar, /\$\("\.st"\)\.prepend\(\$\("\.pr"\)\)/); assert.match(bar, /\.pr\{z-index:0;left:12%;top:40%;bottom:auto;width:52%;max-width:480px/);
   });
 }
 console.log(`\n${pass} passed`);
