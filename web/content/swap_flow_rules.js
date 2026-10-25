@@ -163,22 +163,22 @@ export const wifeSwapped = (sess) => ensurePairs(sess).wife === "husband";
 export const otherSwapped = (sess) => ensurePairs(sess).other === "player";
 export const anySwapped = (sess) => wifeSwapped(sess) || otherSwapped(sess);
 /** 這位妻子同意被換出去的機率。k＝"wife"|"other"。 */
-export function swapAgreeP(sess, k) {
+export function swapAgreeP(sess, k, scene) {
   ensurePairs(sess);
   const acc = k === "wife" ? Number(sess.wifeAccept) || 0 : otherAccept(sess);
-  const drunk = Number(sess.drunk?.[k]) || 0;
+  const drunk = stageOf(scene) === 1 ? 0 : Number(sess.drunk?.[k]) || 0;   // 公園沒有醉度，只看接受度
   let p = (Number(sess.swapWill[k]) || 0) + (acc - 30) * SWAP.perAccept + drunk * SWAP.perDrunk;
   if (k === "wife") p += (Number(sess.nerves) || 0) * SWAP.wifeNerves;
   return clamp(p, 0.03, 0.95);
 }
 /** 有人提議換妻（by＝"husband"|"player"）：兩位妻子意願上升，然後各自決定（已換的不再問）。
  *  回 { wife: true|false|null, other: true|false|null }（null＝之前就換了）。 */
-export function proposeSwap(sess, by = "husband", rng = Math.random) {
+export function proposeSwap(sess, by = "husband", rng = Math.random, scene) {
   ensurePairs(sess);
   for (const k of ["wife", "other"]) sess.swapWill[k] = Math.min(SWAP.willCap, (Number(sess.swapWill[k]) || 0) + SWAP.proposeWill);
   const res = { by, wife: null, other: null };
-  if (!wifeSwapped(sess)) { res.wife = rng() < swapAgreeP(sess, "wife"); if (res.wife) sess.pairs.wife = "husband"; }
-  if (!otherSwapped(sess)) { res.other = rng() < swapAgreeP(sess, "other"); if (res.other) sess.pairs.other = "player"; }
+  if (!wifeSwapped(sess)) { res.wife = rng() < swapAgreeP(sess, "wife", scene); if (res.wife) sess.pairs.wife = "husband"; }
+  if (!otherSwapped(sess)) { res.other = rng() < swapAgreeP(sess, "other", scene); if (res.other) sess.pairs.other = "player"; }
   return res;
 }
 /** 狀態列分組：同一組排在一起。color：green＝你們夫妻、blue＝對方夫妻（依「人」本來屬於哪對）。
@@ -193,17 +193,32 @@ export function pairGroups(sess) {
 }
 /** 對方丈夫自己（第 2 段）要不要提議什麼：回 "swap"|"hotel"|null。 */
 export function husbandIntent(sess, scene, rng = Math.random) {
-  if (stageOf(scene) !== 2) return null;
+  const st = stageOf(scene);
+  if (st !== 1 && st !== 2) return null;
   ensurePairs(sess);
+  if (st === 1) {   // 公園：兩位妻子都換了 → 對方丈夫提議移動（地點他決定）；不然偶爾提議換妻
+    if (parkReady(sess)) return "move";
+    return rng() < SWAP.husbandSwapP ? "swap" : null;
+  }
   if (!(wifeSwapped(sess) && otherSwapped(sess)) && rng() < SWAP.husbandSwapP) return "swap";
   if (anySwapped(sess) && rng() < SWAP.husbandHotelP) return "hotel";
   return null;
+}
+
+/** 公園過關：兩位妻子都答應互換。 */
+export const parkReady = (sess) => wifeSwapped(sess) && otherSwapped(sess);
+/** 公園之後去哪：對方丈夫決定（"bar"|"ktv"）。接受度高的話比較想去 KTV 包廂。 */
+export function husbandPickNext(sess, rng = Math.random) {
+  const acc = ((Number(sess?.wifeAccept) || 0) + otherAccept(sess || {})) / 2;
+  return rng() < clamp(0.35 + (acc - 30) * 0.004, 0.2, 0.8) ? "ktv" : "bar";
 }
 
 // ---------------------------------------------------------------- 換地方判定
 /** 現在能不能換到 next：全員同意；去旅館還要至少有人換了。回 { ok, why }。 */
 export function canMove(sess, scene, next) {
   if (!nextOptions(scene).includes(next)) return { ok: false, why: "沒有這條路" };
+  // 2026-10-25：公園＝決定互換成不成功。兩位妻子都換了就能走（不看換地方旗號），地點由對方丈夫決定
+  if (stageOf(scene) === 1) return parkReady(sess) ? { ok: true, why: "" } : { ok: false, why: "兩位妻子都答應互換才能換地方" };
   if (!allAgree(sess)) {
     const no = NPCS.filter((k) => !sess.move[k]);
     return { ok: false, why: "還有人不想走", no };

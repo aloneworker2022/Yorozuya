@@ -4,9 +4,9 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=30";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=38";
+import { openBar } from "./swap_bar.js?v=39";
 import { dateOutfitOf } from "./swap_outfit.js?v=1";
-import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=7";
+import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=8";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
 
 export const SESSION_KEY = "yorozuya.swap.session";

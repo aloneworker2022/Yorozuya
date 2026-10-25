@@ -1,23 +1,48 @@
 // node tests/swap_date_flow.test.mjs — 換妻約會流程 2026-10-24：旗號共識／單邊換妻／只能看的旅館／外出服
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href;
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
-const F = await import(dir + "swap_flow_rules.js?v=7");
+const F = await import(dir + "swap_flow_rules.js?v=8");
 const O = await import(dir + "swap_outfit.js?v=1");
 let pass = 0; const t = (n, fn) => { fn(); pass++; console.log("ok -", n); };
 const yes = () => 0, no = () => 0.999;
 
-t("全員同意才走；缺一個不行", () => {
-  const s = {}; F.ensureMove(s);
+t("全員同意才走（第 2 段）；缺一個不行", () => {
+  const s = {}; F.ensureMove(s); F.ensurePairs(s); s.pairs.wife = "husband";
   s.move = { wife: true, husband: true, other: false };
   assert.equal(F.allAgree(s), false);
-  assert.equal(F.canMove(s, "park", "bar").ok, false);
+  assert.equal(F.canMove(s, "bar", "hotel_room").ok, false);
   s.move.other = true;
   assert.equal(F.allAgree(s), true);
-  assert.equal(F.canMove(s, "park", "bar").ok, true);
-  assert.equal(F.canMove(s, "park", "ktv").ok, true);
+  assert.equal(F.canMove(s, "bar", "hotel_room").ok, true);
   F.resetMove(s); assert.equal(F.allAgree(s), false);
+});
+t("公園：兩位妻子都換了才能走（不看旗號）；丈夫提議移動、決定地點", () => {
+  const s = {}; F.ensureMove(s); F.ensurePairs(s);
+  s.move = { wife: true, husband: true, other: true };
+  assert.equal(F.canMove(s, "park", "bar").ok, false);
+  s.pairs.wife = "husband"; assert.equal(F.canMove(s, "park", "ktv").ok, false);
+  s.pairs.other = "player"; s.move = { wife: false, husband: false, other: false };
+  assert.equal(F.parkReady(s), true);
+  assert.equal(F.canMove(s, "park", "bar").ok, true); assert.equal(F.canMove(s, "park", "ktv").ok, true);
+  assert.equal(F.husbandIntent(s, "park", yes), "move");
+  assert.equal(F.husbandPickNext(s, yes), "ktv"); assert.equal(F.husbandPickNext(s, no), "bar");
+  const s2 = {}; F.ensurePairs(s2); assert.equal(F.husbandIntent(s2, "park", () => 0.4), "swap");
+});
+t("公園沒有醉度：換妻機率只看接受度", () => {
+  const s = { wifeAccept: 40, accept: 40, drunk: { wife: 90, other: 90 } }; F.ensurePairs(s);
+  const s0 = { ...s, drunk: { wife: 0, other: 0 } }; F.ensurePairs(s0);
+  assert.equal(F.swapAgreeP(s, "wife", "park"), F.swapAgreeP(s0, "wife", "park"));
+  assert.ok(F.swapAgreeP(s, "other", "bar") >= F.swapAgreeP(s0, "other", "bar"));
+  const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
+  assert.match(bar, /if \(STG === 1\) return;   \/\/ 公園沒有酒醉值/); assert.match(bar, /husbandPickNext\(sess\)/);
+});
+t("版面：對話框收起／卡牌在中央／點人物切換", () => {
+  const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
+  assert.match(bar, /\.top\.on\{transform:none/); assert.match(bar, /\.hand\{position:absolute;left:50%;top:46%/);
+  assert.match(bar, /tapSel = tapSel === k \? "" : k/); assert.match(bar, /click = true/);
 });
 t("公園→酒吧／KTV；第 2 段→旅館要有人換過", () => {
   assert.deepEqual(F.nextOptions("park"), ["bar", "ktv"]);
@@ -167,7 +192,7 @@ t("換妻＝同意色色：配對了才免門檻", () => {
     const pg = readFileSync(new URL("../web/content/swap_pair_gen.js", import.meta.url), "utf8");
     assert.ok(!/@keyframes swpSlam[^\n]*translateX\(-50%\)/.test(pg) && !/T = \(x, y, sc\) => `transform:translateX/.test(pg));   // 不覆蓋元素原本的 transform
     assert.match(bar, /pairLocked\(tgt\)/); assert.match(bar, /ejacTick\(dt\)/); assert.match(bar, /ctx\.debugSliders/);
-    assert.match(bar, /\$\("\.st"\)\.prepend\(\$\("\.pr"\)\)/); assert.match(bar, /\.pr\{z-index:0;left:12%;top:40%;bottom:auto;width:52%;max-width:480px/);
+    assert.match(bar, /\$\("\.st"\)\.prepend\(\$\("\.pr"\)\)/); assert.match(bar, /\.pr\{z-index:0;left:12%;top:40%;bottom:auto;width:39%;max-width:340px/);
   });
 }
 console.log(`\n${pass} passed`);
