@@ -1,7 +1,9 @@
 // node tests/swap_date_flow.test.mjs — 換妻約會流程 2026-10-24：旗號共識／單邊換妻／只能看的旅館／外出服
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href;
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
 const F = await import(dir + "swap_flow_rules.js?v=8");
@@ -195,4 +197,10 @@ t("換妻＝同意色色：配對了才免門檻", () => {
     assert.match(bar, /\$\("\.st"\)\.prepend\(\$\("\.pr"\)\)/); assert.match(bar, /\.pr\{z-index:0;left:12%;top:40%;bottom:auto;width:39%;max-width:340px/);
   });
 }
+t("swap_bar／swap_select／test_room_summon 以 ES module 解析沒有語法錯誤", () => {
+  for (const m of ["swap_bar", "swap_select", "swap_flow_rules", "test_room_summon"]) {
+    const src = readFileSync(new URL(`../web/content/${m}.js`, import.meta.url), "utf8"), tmp = `${tmpdir()}/chk_${m}.mjs`;
+    writeFileSync(tmp, src); execFileSync(process.execPath, ["--check", tmp]);
+  }
+});
 console.log(`\n${pass} passed`);

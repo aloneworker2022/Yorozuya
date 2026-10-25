@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=46";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=47";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=30";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=19";
@@ -575,7 +575,8 @@ export function openBar(ctx = {}, c, S = {}) {
       await line("husband", await say1("husband", `兩位妻子都答應交換了。你提議大家換個地方，你決定去${SCENE_ZH[nx]}。一句，語氣照你的個性。`, nx === "ktv" ? "（摟著新伴，壞笑）配好對了，走——我們去 KTV 開個包廂！" : "（拍拍手）好啦，換好伴了，我們去酒吧喝一杯！"), { to: "all" });
       busyUI(); await go(nx);
     }).finally(() => { parkGoing = false; });
-  };：「去下一個地方吧」。 */
+  };
+  /** 玩家慫恿：「去下一個地方吧」。 */
   const runUrge = async () => {
     const who = target === "all" ? "all" : target;
     await say("你", who === "all" ? "（對大家）去下一個地方吧？" : `（對${name[who]}）去下一個地方吧？`);
