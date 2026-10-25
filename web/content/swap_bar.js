@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=48";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=49";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=30";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=19";
@@ -203,7 +203,7 @@ const CSS = `
 #swp-bar .hdb{position:absolute;left:6px;right:6px;top:calc(6px + env(safe-area-inset-top));z-index:4;display:flex;align-items:center;gap:8px;pointer-events:none}
 #swp-bar .hdb .snm{background:rgba(18,14,22,.75);border-radius:12px;padding:3px 10px;font-size:12px;color:#f2b8d2;font-weight:700}
 #swp-bar .hdb .x{margin-left:auto;pointer-events:auto;border:0;border-radius:12px;background:rgba(255,255,255,.16);color:#fff;font-size:12px;padding:3px 9px}
-#swp-bar .toast{position:absolute;left:50%;top:calc(40px + env(safe-area-inset-top));z-index:6;transform:translateX(-50%);max-width:88%;background:rgba(18,14,22,.9);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:5px 12px;font-size:13px;line-height:1.45;white-space:pre-wrap;transition:opacity .3s;pointer-events:none}
+#swp-bar .toast{position:absolute;left:50%;top:calc(100px + env(safe-area-inset-top));z-index:6;transform:translateX(-50%);max-width:88%;background:rgba(18,14,22,.9);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:5px 12px;font-size:13px;line-height:1.45;white-space:pre-wrap;transition:opacity .3s;pointer-events:none}
 #swp-bar .toast.off{opacity:0}
 #swp-bar .hd{display:flex;align-items:center;gap:8px}
 #swp-bar .hd .x{border:0;border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:12px;padding:3px 9px}
@@ -230,6 +230,21 @@ const CSS = `
 #swp-bar .nb .cd{height:3px;background:#3a2a40;border-radius:2px;overflow:hidden}#swp-bar .nb .cd i{display:block;height:100%;width:0;background:#ff9ac8}
 #swp-bar .nb .p.g-green{border-color:#4fd37a;box-shadow:inset 0 2px 0 #4fd37a}#swp-bar .nb .p.g-blue{border-color:#5aa0ff;box-shadow:inset 0 2px 0 #5aa0ff}#swp-bar .nb .p.gap{margin-left:10px}#swp-bar .nb .f{font-size:10px;font-weight:700}#swp-bar .nb .f.y{color:#7dffa0}#swp-bar .nb .f.n{color:#a99}
 #swp-bar .nb .p.busy{background:rgba(255,190,80,.22)}#swp-bar .nb .p.busy .cd i{background:#888}
+/* 2026-10-25 點陣風格：Fusion Pixel 字型（web/fonts，同 style.css 的 Pomo Pixel）＋階梯像素邊框 */
+@font-face{font-family:"Swp Pixel";src:url("/fonts/fusion-pixel-12px-zh-hant.woff2") format("woff2");font-display:swap}
+#swp-bar .top,#swp-bar form,#swp-bar .toast,#swp-bar .hdb,#swp-bar .nb,#swp-bar .rx button,#swp-bar #swp-adv button{font-family:"Swp Pixel","Pomo Pixel","Cubic 11","Fusion Pixel",ui-monospace,monospace;-webkit-font-smoothing:none;font-smooth:never;letter-spacing:.5px}
+#swp-bar .top,#swp-bar form,#swp-bar .toast{border:0!important;border-radius:0!important;background:#1a1222!important;box-shadow:0 -4px 0 -2px #f3eef5,0 4px 0 -2px #f3eef5,-4px 0 0 -2px #f3eef5,4px 0 0 -2px #f3eef5,0 0 0 2px #1a1222,0 0 0 4px #c0508a,6px 6px 0 2px rgba(0,0,0,.55)!important}
+#swp-bar .top{padding:10px 12px}
+#swp-bar .nm{color:#ffd166;font-weight:400}
+#swp-bar .tx{font-size:16px;line-height:1.6}
+#swp-bar .nx{color:#ffd166;animation:swp-blink 1s steps(2) infinite}
+@keyframes swp-blink{50%{opacity:0}}
+#swp-bar form{padding:6px}
+#swp-bar form input{border-radius:0!important;border:2px solid #f3eef5!important;background:#0e0a12!important;font-family:inherit;font-size:16px}
+#swp-bar form button,#swp-bar .rx button,#swp-bar .hdb .x,#swp-bar .hdb .snm,#swp-bar #swp-adv button{border-radius:0!important;border:2px solid #f3eef5!important;box-shadow:3px 3px 0 #000!important}
+#swp-bar form button{background:#c0508a}
+#swp-bar form button:active,#swp-bar .rx button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #000!important}
+#swp-bar .nb .p{border-radius:0;border-width:2px}
 #swp-bar .nb .s{font-size:10px;color:#d8c8d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px}
 #swp-bar .pv,#swp-bar .pr{position:absolute;z-index:2;top:40%;bottom:74px;border-radius:12px;overflow:hidden;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18)}
 /* 2026-10-24 玩家動作圖：跟房間調戲一樣——左側滑入、停在中央、按「下一句」完成後右側滑出 */
@@ -364,7 +379,8 @@ export function openBar(ctx = {}, c, S = {}) {
   const top = $(".top"), toast = $(".toast");
   let toastT = 0;
   /** 對話框：有人說話才拉下來；對話結束（佇列空了）收起來。 */
-  const boxOn = () => top.classList.add("on");
+  // 對話框跟輸入框互斥：對話框拉下來時輸入框收起；輸入框開著時對話框不顯示
+  const boxOn = () => { form.hidden = true; top.classList.add("on"); };
   const boxOff = () => { if (!speaking && rx.hidden) top.classList.remove("on"); };
   /** 小提示（對話框收起來時用）。 */
   const note = (t) => { toast.textContent = t; toast.classList.remove("off"); clearTimeout(toastT); toastT = setTimeout(() => toast.classList.add("off"), 2800); };
@@ -383,7 +399,7 @@ export function openBar(ctx = {}, c, S = {}) {
     dbg(`訊息 target=${opt.to || "-"} speaker=${k} label=${name[k]}`);
     log.push(`${name[k]}：${text}`); await say(name[k], text, opt);
   };
-  const ask = (ph) => new Promise((res) => { boxOn(); nm.textContent = "你"; tx.textContent = ph; form.hidden = false; inp.placeholder = ph; inp.value = ""; inp.focus(); form.onsubmit = (e) => { e.preventDefault(); form.hidden = true; const v = inp.value; inp.value = ""; inp.blur(); form.onsubmit = null; res(v); }; });
+  const ask = (ph) => new Promise((res) => { top.classList.remove("on"); form.hidden = false; inp.placeholder = ph; inp.value = ""; inp.focus(); form.onsubmit = (e) => { e.preventDefault(); form.hidden = true; const v = inp.value; inp.value = ""; inp.blur(); form.onsubmit = null; res(v); }; });
 
   // ---- AI
   // 給 AI 的紀錄：log 裡的「你」＝玩家；換成「玩家」免得 AI 以為那是它自己說的話（2026-10-22 修）
@@ -477,7 +493,7 @@ export function openBar(ctx = {}, c, S = {}) {
   const idleUI = () => {
     if (closed || !chatting) return; rx.hidden = true; chips.hidden = true; boxOff();
     const sel = !!tapSel && !watch;
-    hand.hidden = watch; hand.classList.toggle("out", sel || watch); form.hidden = !sel;
+    hand.hidden = watch; hand.classList.toggle("out", sel || watch); form.hidden = !sel; if (sel) top.classList.remove("on");
     if (sel) { if (!focus.includes(tapSel)) void show([tapSel]); } else if (focus.length) { focus = []; stage.show([]); }
     markChips(); renderHand();
   };
@@ -1044,7 +1060,7 @@ export function openBar(ctx = {}, c, S = {}) {
   };
   // 場景前進按鈕（公園／KTV／飯店浴室切換）
   const adv = document.createElement("div");
-  adv.style.cssText = "position:absolute;z-index:4;left:6px;bottom:78px;display:flex;flex-direction:column;gap:4px";
+  adv.id = "swp-adv"; adv.style.cssText = "position:absolute;z-index:4;left:6px;bottom:78px;display:flex;flex-direction:column;gap:4px";
   ov.append(adv);
   const mkBtn = (label, fn) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; b.style.cssText = "border:0;border-radius:10px;background:#c0508a;color:#fff;padding:6px 10px;font:600 12px system-ui,sans-serif"; b.addEventListener("click", () => { if (!qn && !advancing) void queue(fn); }); return b; };
   const renderAdvanceBtn = () => {
