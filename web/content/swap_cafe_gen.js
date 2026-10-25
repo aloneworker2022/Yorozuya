@@ -5,9 +5,9 @@
  * 生圖：綠幕半身 → /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
-import { bindPairBox } from "./swap_pair_gen.js?v=19";
+import { bindPairBox } from "./swap_pair_gen.js?v=20";
 import { wornOutfitOf } from "./outfit_pick.js?v=2";
-import { dateOutfitOf, withDateOutfit } from "./swap_outfit.js?v=1";
+import { dateOutfitOf, withDateOutfit, lookCharacter, lookFor } from "./swap_outfit.js?v=2";
 import { loadPools, generateGirl, POOLS as _poolsRef } from "./girl_gen.js?v=5";
 import { rollHusband, enrichHusband, husbandLookEn } from "./husband_gen.js?v=1";
 
@@ -26,8 +26,8 @@ export function pickBackdrop(scene = "cafe", i = -1) {
   return bgs[i >= 0 && i < bgs.length ? i : Math.floor(Math.random() * bgs.length)];
 }
 const CHARS = { wife: "妻子（你老婆）", husband: "對方丈夫", other: "對方妻子" };
-const EXPRS = { normal: "一般", shy: "害羞" };
-const EXPR_EN = { normal: "gentle smile, calm relaxed expression", shy: "shy, blushing, red cheeks, embarrassed, flustered, looking slightly away, bashful smile" };
+const EXPRS = { normal: "一般", shy: "害羞", tipsy: "微醺（酒吧喝醉）", under: "內衣（KTV 脫 1）", nude: "裸體（KTV 脫 2）" };   // 2026-10-25：依場景的造型
+const EXPR_EN = { tipsy: "tipsy, flushed cheeks, drunk blush, half-lidded eyes, relaxed smile", under: "embarrassed, blushing, covering herself slightly, shy", nude: "embarrassed, deep blush, shy, covering herself slightly", normal: "gentle smile, calm relaxed expression", shy: "shy, blushing, red cheeks, embarrassed, flustered, looking slightly away, bashful smile" };
 const QUALITY_EN = "masterpiece, best quality, detailed, sharp focus, clear face";
 const PORTRAIT_EN = "solo, half-body portrait, upper body, cowboy shot from the waist up, facing viewer, looking at viewer, on a casual date at a cafe";
 // 綠幕：要換深綠（使用者說的 dark green，例 #1f5f2f）只改這一行的字（例 "solid dark green background"）；色鍵看「綠比紅藍多多少」，深綠也摳得掉。
@@ -214,7 +214,8 @@ export function rollCkpts(c, list, who = "both") {
 export function defaultTemplate(ch, ex) {
   const who = ch === "husband" ? "1boy, male focus, the man: {man}, {man_body}, wearing {man_outfit}" : "1girl, the woman: {girl}, {girl_body}, wearing {girl_outfit}";
   const pos = [QUALITY_EN, PORTRAIT_EN, who, "{expr}", BG_EN].join(", ");
-  const neg = [BASE_NEG, BG_NEG, ch === "husband" ? "1girl, woman, female, breasts" : "1boy, man, male, 2girls", "{auto_neg}"].join(", ");
+  const L = ch === "husband" ? null : lookFor(ex), base = L && L.rating === "nsfw" ? BASE_NEG.replace(/, nude, nsfw, nipples$/, "") : BASE_NEG;
+  const neg = [base, L?.neg || "", BG_NEG, ch === "husband" ? "1girl, woman, female, breasts" : "1boy, man, male, 2girls", "{auto_neg}"].join(", ");
   return { pos, neg, img2img: { on: false, ref: "", denoise: 0.6 } };
 }
 export function templateFor(prompts, ch, ex) {
@@ -229,7 +230,7 @@ export function fillTemplate(tpl, ch, ex, wife, couple) {
     ? ["1 woman", g?.look?.hair_en || g?.look?.hair, g?.look?.hair_color_en || g?.look?.hair_color, age ? `${age} years old` : ""].filter(Boolean).join(", ")
     : "1 woman";
   // 2026-10-24：約會一律穿外出服（不是房間那套／白 T 三角褲）
-  const outfit = dateOutfitOf(g, ch === "other" ? "other" : "wife");
+  const lc = lookCharacter(g, ch === "other" ? "other" : "wife", ex), outfit = lookFor(ex).outfit === "nude" ? "nothing, completely nude" : (lc?.outfitName || dateOutfitOf(g, ch === "other" ? "other" : "wife"));
   const map = { girl: girlDesc, girl_body: gi.body, girl_outfit: outfit, man: mi.desc, man_body: mi.body, man_outfit: mi.outfit, expr: EXPR_EN[ex], auto_neg: autoNeg(ch, gi, mi) };
   const sub = (t) => String(t || "").replace(/\{(\w+)\}/g, (m, k) => (k in map ? map[k] : m)).replace(/(,\s*)+,/g, ",").replace(/^[,\s]+|[,\s]+$/g, "");
   return { pos: sub(tpl.pos), neg: sub(tpl.neg) };
@@ -243,12 +244,13 @@ export function cafeBody(ch, ex, wife, couple, eng, tpl, seed) {
   if (comfy && !ckpt) throw new Error(ch === "wife" ? "此魅子尚未綁定 Comfy 模型（comfyCkpt）" : "這個人還沒有畫圖模型（在上面的下拉選一個，或按「換一對」）");
   if (ch === "wife" && !wife?.id) throw new Error("先選魅子");
   const i2 = tpl.img2img?.on && tpl.img2img.ref ? { pose_ref: tpl.img2img.ref, pose_denoise: Math.min(0.95, Math.max(0.3, Number(tpl.img2img.denoise) || 0.6)) } : {};
-  const who = ch === "wife" ? { character: withDateOutfit(wife, "wife"), outfit: dateOutfitOf(wife, "wife"), extra: f.pos, prompt: "", lock_identity: true, char_id: wife.id }
-    : ch === "other" ? { character: withDateOutfit(couple.wife, "other"), outfit: dateOutfitOf(couple.wife, "other"), extra: f.pos, prompt: "", lock_identity: true, char_id: couple.wife.id }
+  const lw = (g, role) => lookCharacter(g, role, ex), lo = (g, role) => lw(g, role)?.outfitName || "";
+  const who = ch === "wife" ? { character: lw(wife, "wife"), outfit: lo(wife, "wife"), extra: f.pos, prompt: "", lock_identity: true, char_id: wife.id }
+    : ch === "other" ? { character: lw(couple.wife, "other"), outfit: lo(couple.wife, "other"), extra: f.pos, prompt: "", lock_identity: true, char_id: couple.wife.id }
     : { prompt: f.pos, extra: "", lock_identity: false };
   return {
     key: `swap-cafe:${ch}:${ex}:${Date.now().toString(36)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,
-    framing: "half", rating: "sfw", negative: f.neg, visual_neg: f.neg, cutout: false, flat_bg: false, retry: true, seed,   // 不走伺服器白底去背（flat_bg 會塞 white background）；生完自己綠幕色鍵
+    framing: "half", rating: ch === "husband" ? "sfw" : lookFor(ex).rating, negative: f.neg, visual_neg: f.neg, cutout: false, flat_bg: false, retry: true, seed,   // 不走伺服器白底去背（flat_bg 會塞 white background）；生完自己綠幕色鍵
     ...who, ...i2, ...(comfy ? { comfy_url: eng.comfyUrl, ckpt } : {}),
   };
 }
@@ -450,7 +452,7 @@ export function bindSwapCafePanel(ctx = {}) {
     }
     info();
     document.querySelectorAll("#sc-chars button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.ch === ch ? "true" : "false"));
-    $("sc-grid").replaceChildren(...Object.keys(EXPRS).map((ex) => makeCard(ch, ex)));
+    $("sc-grid").replaceChildren(...(ch === "husband" ? ["normal", "shy"] : Object.keys(EXPRS)).map((ex) => makeCard(ch, ex)));
   };
   const close = () => { panel.hidden = true; btn.setAttribute("aria-expanded", "false"); };
   btn.addEventListener("click", () => {

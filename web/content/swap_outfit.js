@@ -34,4 +34,40 @@ export function dateOutfitOf(g, role = "wife") {
   return dateDefaultOf(g);
 }
 /** 給生圖用的人物複本：outfitName＝約會裝（伺服器 _outfit_of 先看 outfitName）。不動原物件。 */
-export const withDateOutfit = (g, role = "wife") => (g ? { ...g, outfitName: dateOutfitOf(g, role) } : g);
+// 2026-10-25：stage 一律降成 friend（covered）——不然妻子 stage=wife 伺服器會加「erotic lingerie」→ 外出立繪露胸罩
+export const withDateOutfit = (g, role = "wife") => (g ? lookCharacter(g, role, "normal") : g);
+
+/* 2026-10-25：依場景／狀態的立繪「造型」（cafe 產生器的 ex 鍵）。
+ *   normal／shy：外出服、穿好（stage=friend → 伺服器 covered：不露胸罩、不露乳溝）——公園、酒吧清醒、KTV 一開始。
+ *   tipsy：酒吧喝醉才用：同一套外出服但微微鬆開（領口鬆、肩帶滑落），仍不露內衣。
+ *   under：KTV 脫衣第 1 階段：只剩內衣褲。
+ *   nude：KTV 脫衣第 2 階段：全裸。 */
+export const LOOK_KEYS = ["normal", "shy", "tipsy", "under", "nude"];
+export const UNDER_OUTFIT = "matching lace bra and panties, underwear only, lingerie";
+export const COVER_NEG = "cleavage, bra, visible bra, bra strap, lingerie, underwear, see-through, revealing clothes, open shirt, unbuttoned, midriff, nsfw, nude, nipples";
+export function lookFor(ex) {
+  if (ex === "nude") return { stage: "wife", force: true, outfit: "nude", neg: "", rating: "nsfw" };
+  if (ex === "under") return { stage: "girlfriend", outfit: UNDER_OUTFIT, neg: "nude, nipples, topless, outer clothes, jacket, dress", rating: "nsfw" };
+  if (ex === "tipsy") return { stage: "friend", outfitSuffix: ", loosened collar, top slipping slightly off one shoulder, slightly disheveled clothes", neg: "visible bra, lingerie, underwear, nude, nipples, topless", rating: "sfw" };
+  return { stage: "friend", outfit: "", neg: COVER_NEG, rating: "sfw" };
+}
+/** 生圖用的人物：外出服＋依造型決定 stage（伺服器依 stage 決定露多少）。 */
+export function lookCharacter(g, role = "wife", ex = "normal") {
+  if (!g) return g;
+  const L = lookFor(ex), base = dateOutfitOf(g, role);
+  const outfitName = L.outfit === "nude" ? "" : L.outfit || base + (L.outfitSuffix || "");
+  const out = { ...g, stage: L.stage, outfitName };
+  if (g.relationship && typeof g.relationship === "object") out.relationship = { ...g.relationship, stage: L.stage };
+  if (L.force) out._force_exposed = true;
+  return out;
+}
+/** 遊戲裡這個人現在要用哪個造型。scene＝park|bar|ktv|hotel…；drunk＝醉度；strip＝0/1/2（KTV 脫衣）；shy＝害羞表情。 */
+export function lookKeyOf({ scene = "bar", drunk = 0, strip = 0, shy = false, tipsyAt = 60 } = {}) {
+  const s = String(scene);
+  if (s === "ktv" && strip >= 2) return "nude";
+  if (s === "ktv" && strip >= 1) return "under";
+  if (s.startsWith("bar") && drunk >= tipsyAt) return "tipsy";
+  return shy ? "shy" : "normal";
+}
+/** 找不到圖時的退路順序。 */
+export const lookFallback = (ex) => ({ nude: ["nude", "under", "shy", "normal"], under: ["under", "shy", "normal"], tipsy: ["tipsy", "shy", "normal"], shy: ["shy", "normal"] }[ex] || ["normal"]);

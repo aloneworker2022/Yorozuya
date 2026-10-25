@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href;
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
 const F = await import(dir + "swap_flow_rules.js?v=8");
-const O = await import(dir + "swap_outfit.js?v=1");
+const O = await import(dir + "swap_outfit.js?v=2");
 let pass = 0; const t = (n, fn) => { fn(); pass++; console.log("ok -", n); };
 const yes = () => 0, no = () => 0.999;
 
@@ -176,7 +176,7 @@ t("換妻＝同意色色：配對了才免門檻", () => {
 {
   const { readFileSync } = await import("node:fs");
   const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
-  const P = await import(dir + "swap_pair_gen.js?v=19");
+  const P = await import(dir + "swap_pair_gen.js?v=20");
   t("pt238u: 親熱中鎖互動、射精判定、口交三句、全身雙人圖", () => {
     for (const a of ["kiss", "grope", "fellatio", "normal", "behind", "seated"]) assert.ok(F.pairIntimate(a), a);
     assert.ok(!F.pairIntimate("chat") && !F.pairIntimate(""));
@@ -205,5 +205,31 @@ t("swap_bar／swap_select／test_room_summon 以 ES module 解析沒有語法錯
     const src = readFileSync(new URL(`../web/content/${m}.js`, import.meta.url), "utf8"), tmp = `${tmpdir()}/chk_${m}.mjs`;
     writeFileSync(tmp, src); execFileSync(process.execPath, ["--check", tmp]);
   }
+});
+
+// —— pt250u：場景造型／KTV 脫衣兩段／雙人圖規則／POV 位置 ——
+const TR = await import(dir + "swap_tease_rules.js?v=6");
+t("造型：公園／酒吧清醒＝穿好（friend，不加內衣）；酒吧醉＝tipsy；KTV 脫 1／2＝under／nude", () => {
+  assert.equal(O.lookKeyOf({ scene: "park", drunk: 99 }), "normal");
+  assert.equal(O.lookKeyOf({ scene: "bar", drunk: 10 }), "normal");
+  assert.equal(O.lookKeyOf({ scene: "bar", drunk: 80 }), "tipsy");
+  assert.equal(O.lookKeyOf({ scene: "ktv", strip: 1 }), "under");
+  assert.equal(O.lookKeyOf({ scene: "ktv", strip: 2 }), "nude");
+  assert.equal(O.lookFor("normal").stage, "friend");
+  const g = O.withDateOutfit({ name: "A", relationship: { stage: "wife" } }, "wife");
+  assert.equal((g.relationship?.stage || g.stage), "friend");
+});
+t("KTV 脫衣卡：先外衣再內衣，酒吧／公園不能用", () => {
+  const c1 = TR.TEASE_CARDS.find((c) => c.id === "t_strip1"), c2 = TR.TEASE_CARDS.find((c) => c.id === "t_strip2");
+  assert.ok(TR.stripOk(c1, 0)); assert.ok(!TR.stripOk(c2, 0)); assert.ok(TR.stripOk(c2, 1)); assert.ok(!TR.stripOk(c1, 1));
+  assert.deepEqual(c1.scenes, ["ktv"]); assert.deepEqual(c2.scenes, ["ktv"]);
+});
+t("swap_bar：POV 靠下、雙人圖要她正在跟他互動、標籤跟配對換色、KTV 少喝酒", () => {
+  const src = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
+  assert.match(src, /\.pv\{[^}]*top:auto;bottom:calc/);
+  assert.match(src, /if \(a === "chat"\) return w === "husband"/);
+  assert.match(src, /toggle\("g-green", gg\[0\]\.includes\(kk\)\)/);
+  assert.match(src, /BAR_TALK/); assert.match(src, /KTV_TALK/);
+  assert.match(src, /ktv: 3/);
 });
 console.log(`\n${pass} passed`);

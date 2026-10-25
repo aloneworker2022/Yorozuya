@@ -2,7 +2,7 @@
  * 公園：聊天／輕挑，不含酒。酒吧：沿用原 DECK_BAR。
  * KTV／飯店：配對後手牌只對對方妻子（外加 tease 混抽，見 swap_bar）。 */
 
-import { sceneBase } from "./swap_tease_rules.js?v=5";
+import { sceneBase } from "./swap_tease_rules.js?v=6";
 
 /** 有沒有喝酒效果或牌名帶酒。 */
 export const isAlcoholCard = (c) => !!(c?.fx?.drink || c?.fx?.strong || /酒|乾杯|乾一杯|烈酒|交杯|敬她一杯|敬他一杯/.test(c?.zh || ""));
@@ -52,6 +52,9 @@ export const DECK_BAR = [
 
 /** KTV（配對後）：玩家手牌只對對方妻子。 */
 export const DECK_KTV = [
+  // 2026-10-25：KTV＝唱歌＋私人包廂，酒少（只剩一張碰杯）；猥褻走 tease（摸／脫衣兩段）
+  { id: "k_o_song", who: "other", zh: "點一首情歌唱給她聽", bold: 1, icon: "heart" },
+  { id: "k_o_mic", who: "other", zh: "把麥克風遞給她", bold: 1, icon: "chat" },
   { id: "k_o_cheer", who: "other", zh: "幫她鼓掌打氣", bold: 1, icon: "star" },
   { id: "k_o_praise", who: "other", zh: "稱讚她唱歌好聽", bold: 1, icon: "heart" },
   { id: "k_o_duet", who: "other", zh: "邀她對唱", bold: 2, icon: "chat" },

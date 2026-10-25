@@ -4,7 +4,7 @@
  * 成功加接受度＋進度；被拒扣 2–5 並說一句拒絕。她爛醉（≥85）→ 做什麼都成功。
  * 你老婆在場看見 → 依她的忌妒心決定吃醋（緊張↑、放開↓）或變得更開放（放開↑、緊張↓），說一句。 */
 
-import { dateOutfitOf } from "./swap_outfit.js?v=1";
+import { dateOutfitOf } from "./swap_outfit.js?v=2";
 
 /** 場景：bar（酒吧，沒有動作卡）／ktv／hotel_room／hotel_bath。 */
 // 2026-10-24：酒吧（座位：親／摟；廁所：趁機）也有動作卡；誰能出由 swap_flow_rules.teaseWhere 決定（配對、她在不在廁所）
@@ -23,6 +23,9 @@ export const sceneBase = (scene) => {
 /** act＝圖的種類（tease~<act>）；acc／drunk＝門檻；scenes＝null 任何場景（KTV／飯店），否則限定。
  * sex：飯店房間＝正常體位（missionary），浴室＝背後（doggy）。 */
 export const TEASE_CARDS = [
+  // 2026-10-25：KTV 脫衣兩階段（strip：1＝脫到剩內衣、2＝脫光）。只在 KTV 包廂；沒有圖（立繪換 under／nude 造型）
+  { id: "t_strip1", act: "strip1", strip: 1, zh: "幫她脫掉外衣", bold: 3, icon: "hand", acc: 30, drunk: 0, noImg: true, scenes: ["ktv"] },
+  { id: "t_strip2", act: "strip2", strip: 2, zh: "脫掉她的內衣", bold: 4, icon: "hand", acc: 50, drunk: 0, noImg: true, scenes: ["ktv"] },
   { id: "t_waist", act: "waist", zh: "摟她的腰", bold: 1, icon: "hand", acc: 10, drunk: 0 },
   { id: "t_kiss", act: "kiss", zh: "接吻", bold: 2, icon: "lips", acc: 15, drunk: 0, noImg: true, okAcc: 5 },
   { id: "t_butt", act: "butt", zh: "摸她的屁股", bold: 2, icon: "hand", acc: 20, drunk: 0 },
@@ -69,10 +72,13 @@ export function ensureAccept(sess) {
 
 export const sceneOk = (card, scene) => TEASE_SCENES.includes(scene) && (!card.scenes || card.scenes.includes(scene)) && (!String(scene).startsWith("bar") || BAR_ACTS.has(card.act));
 /** 這張卡現在能不能抽：場景、接受度、她的醉度。回 { ok, why }。 */
-export function teaseGate(card, { accept = 0, drunk = 0, scene = "bar", wifeAccept = null } = {}) {
+/** 脫衣卡只能照順序：現在 strip＝0 才能脫外衣，＝1 才能脫內衣。 */
+export const stripOk = (card, strip = 0) => !card?.strip || (Number(strip) || 0) === card.strip - 1;
+export function teaseGate(card, { accept = 0, drunk = 0, scene = "bar", wifeAccept = null, strip = 0 } = {}) {
   if (!sceneOk(card, scene)) return { ok: false, why: "場景不對" };
   if (accept < card.acc) return { ok: false, why: `接受度 ${card.acc}` };
   if (drunk < card.drunk) return { ok: false, why: `醉度 ${card.drunk}` };
+  if (!stripOk(card, strip)) return { ok: false, why: strip >= (card.strip || 0) ? "已經脫了" : "要先脫外衣" };
   void wifeAccept;   // 2026-10-24：拿掉 70 的階段門檻；做愛只看她自己的接受度（卡上 acc）
   return { ok: true, why: "" };
 }
@@ -94,8 +100,10 @@ export function teaseResult(card, ok) {
 export const sexPoseFor = (scene) => (scene === "hotel_bath" || scene === "bar" || scene === "bar_toilet" ? "doggy" : "missionary");
 /** 動作圖要不要裸體版：飯店（房間／浴室）裸體；KTV 穿衣；x-ray 兩張沒有裸體版。 */
 export const NO_NUDE = new Set(["vagina_finger", "cervix_rub", "oral"]);
-export const teaseNude = (act, scene) => sceneBase(scene) === "hotel" && !NO_NUDE.has(act);
-export const teaseKey = (act, nude) => `tease~${act}${nude ? "~nude" : ""}`;
+export const teaseNude = (act, scene, strip = 0) => (sceneBase(scene) === "hotel" || (sceneBase(scene) === "ktv" && strip >= 2)) && !NO_NUDE.has(act);
+/** KTV 脫到剩內衣（strip=1）：局部圖用「內衣」那組（tease~act~under）。 */
+export const teaseUnder = (act, scene, strip = 0) => sceneBase(scene) === "ktv" && strip === 1 && !NO_NUDE.has(act);
+export const teaseKey = (act, nude) => `tease~${act}${nude === "under" ? "~under" : nude ? "~nude" : ""}`;
 export const sexKey = (pose, step) => `sex~${pose}~${step}`;
 /** 某場景要預產的圖鍵：KTV＝KTV 能解鎖的所有動作（穿衣）；飯店＝房間／浴室動作（裸體）＋該姿勢 3 步。 */
 export function pregenKeys(scene) {

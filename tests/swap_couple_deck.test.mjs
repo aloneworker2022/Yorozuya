@@ -11,9 +11,9 @@ const G = await import(dir + "girl_gen.js?v=5");
 G.setPools(pools);
 
 const H = await import(dir + "husband_gen.js?v=1");
-const C = await import(dir + "swap_cafe_gen.js?v=30");
-const D = await import(dir + "swap_deck_rules.js?v=3");
-const T = await import(dir + "swap_tease_rules.js?v=5");
+const C = await import(dir + "swap_cafe_gen.js?v=31");
+const D = await import(dir + "swap_deck_rules.js?v=4");
+const T = await import(dir + "swap_tease_rules.js?v=6");
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass += 1; console.log("ok -", name); };
