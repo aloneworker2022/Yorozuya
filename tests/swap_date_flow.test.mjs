@@ -176,7 +176,7 @@ t("換妻＝同意色色：配對了才免門檻", () => {
 {
   const { readFileSync } = await import("node:fs");
   const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
-  const P = await import(dir + "swap_pair_gen.js?v=21");
+  const P = await import(dir + "swap_pair_gen.js?v=22");
   t("pt238u: 親熱中鎖互動、射精判定、口交三句、全身雙人圖", () => {
     for (const a of ["kiss", "grope", "fellatio", "normal", "behind", "seated"]) assert.ok(F.pairIntimate(a), a);
     assert.ok(!F.pairIntimate("chat") && !F.pairIntimate(""));
@@ -196,11 +196,14 @@ t("換妻＝同意色色：配對了才免門檻", () => {
     assert.ok(P.SLAM_PX >= 5 && P.SLAM_PX <= 8); assert.ok(P.SLAM_SCALE > 1 && P.SLAM_SCALE <= 1.025); assert.ok(P.SLAM_MS <= 250);
     const pg = readFileSync(new URL("../web/content/swap_pair_gen.js", import.meta.url), "utf8");
     // pt251u：對方丈夫黑影、用對方的模型、舊圖作廢
+    // pt254u：黑影取消（正常男人）、模型用她的、黑影期的圖作廢；伺服器順序＝共同 BREAK 她 BREAK 他
     const pp = P.pairPrompt("kiss", { id: "w" }, { husband: { persona: "gentleman", build: "average" } });
-    assert.ok(pp.male.some((x) => /black silhouette/.test(x))); assert.ok(!pp.male.includes("black suit, necktie") && !pp.male.includes("tanned male"));
-    assert.equal(P.pairCkpt({ comfyCkpt: "mine" }, { wife: { comfyCkpt: "theirs" }, husband: { ckpt: "his" } }, {}), "theirs");
-    assert.equal(P.pairCkpt({ comfyCkpt: "mine" }, { wife: {}, husband: { ckpt: "his" } }, {}), "his");
-    assert.ok(P.PAIR_SINCE >= 1792933200);
+    assert.ok(!pp.male.some((x) => /silhouette|shadow man/.test(x))); assert.ok(pp.male.includes("tanned male"));
+    assert.equal(P.pairCkpt({ comfyCkpt: "mine" }, { wife: { comfyCkpt: "theirs" }, husband: { ckpt: "his" } }, {}), "mine");
+    assert.equal(P.pairCkpt({}, { wife: { comfyCkpt: "theirs" } }, { comfyCkpt: "glob" }), "glob");
+    assert.ok(P.PAIR_SINCE > 1792933200);
+    const mp = readFileSync(new URL("../server/main.py", import.meta.url), "utf8");
+    assert.match(mp, /for x in \(shared, female, male\)/); assert.match(mp, /"1girl, 1boy, hetero"/);
     assert.ok(!/@keyframes swpSlam[^\n]*translateX\(-50%\)/.test(pg) && !/T = \(x, y, sc\) => `transform:translateX/.test(pg));   // 不覆蓋元素原本的 transform
     assert.match(bar, /pairLocked\(tgt\)/); assert.match(bar, /ejacTick\(dt\)/); assert.match(bar, /ctx\.debugSliders/);
     assert.match(bar, /\$\("\.st"\)\.prepend\(\$\("\.pr"\)\)/); assert.match(bar, /\.pr\{z-index:0;left:12%;top:40%;bottom:auto;width:39%;max-width:340px/);

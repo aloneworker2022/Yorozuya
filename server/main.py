@@ -2705,7 +2705,7 @@ def _pair_her_identity(ch: dict, clothes: str, body) -> list[str]:
 
 
 def _pair_prompts(opts: dict) -> tuple[str, str]:
-    """2026-10-23 換妻雙人圖預設 prompt（Al 核可的結構）：共同段 BREAK 他 BREAK 她。
+    """2026-10-23 換妻雙人圖預設 prompt（Al 核可的結構）：共同段 BREAK 她 BREAK 他（2026-10-25 起女子在前）。
     品質 tag 看模型名（pony 一套、其他 Illustrious／NoobAI 一套，不混）；她的長相從人設翻（身材、髮色髮型、瞳色、1 個特徵、膚色）；
     不寫 not／no、不寫自然語句、不加畫風／配色。負向＝前端給的原樣（去重）。"""
     pr = opts.get("pair") if isinstance(opts.get("pair"), dict) else {}
@@ -2717,11 +2717,12 @@ def _pair_prompts(opts: dict) -> tuple[str, str]:
     if not her_cl and pr.get("dressed"):
         worn = str(opts.get("outfit") or "").strip() or _outfit_of(ch)
         her_cl = sdtags.outfit_en(worn) or "casual clothes"
-    shared = _pair_tags(q, "1boy, 1girl, hetero", str(pr.get("framing") or ""), "from side" if pr.get("fromSide", True) else "", pr.get("shared") or [], _PAIR_BG)
+    # 2026-10-25 Al：女子在前、男子在後（模型專注畫她）：共同段 BREAK 她 BREAK 他
+    shared = _pair_tags(q, "1girl, 1boy, hetero", str(pr.get("framing") or ""), "from side" if pr.get("fromSide", True) else "", pr.get("shared") or [], _PAIR_BG)
     male = _pair_tags("1boy", _PAIR_BG_REPEAT, pr.get("male") or [])
     female = _pair_tags("1girl, adult", _PAIR_BG_REPEAT, _pair_her_identity(ch, str(pr.get("clothes") or ("dressed" if pr.get("dressed") else "nude")), pr.get("body") or []),
                         pr.get("herPose") or [], pr.get("expr") or [], her_cl, pr.get("body") or [])
-    pos = "\nBREAK\n".join(", ".join(x) for x in (shared, male, female))
+    pos = "\nBREAK\n".join(", ".join(x) for x in (shared, female, male))
     neg = ", ".join(_pair_tags(str(opts.get("negative") or "")))
     return pos, neg
 
