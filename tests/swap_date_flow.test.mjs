@@ -45,6 +45,7 @@ t("版面：對話框收起／卡牌在中央／點人物切換", () => {
   const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
   assert.match(bar, /\.top\.on\{transform:none/); assert.match(bar, /\.hand\{position:absolute;left:50%;top:46%/);
   assert.match(bar, /tapSel = tapSel === k \? "" : k/); assert.match(bar, /click = true/);
+  assert.match(bar, /const PARK_TALK = "[^"]*絕對不要提到喝酒/); assert.match(bar, /FB = PARK \? FB_PARK : FB_BAR/);
   assert.match(bar, /const boxOn = \(\) => \{ form\.hidden = true;/); assert.match(bar, /fusion-pixel-12px-zh-hant\.woff2/);
   assert.match(bar, /form\{position:absolute;left:10px;right:10px;top:calc\(40px/); assert.match(bar, /if \(ks\.length\) \$\("\.hand"\)\?\.classList\.add\("out"\)/);
 });

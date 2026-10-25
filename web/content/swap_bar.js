@@ -7,12 +7,12 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=49";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=50";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=30";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=19";
 import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees } from "./swap_tease_rules.js?v=5";
-import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=2";
+import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=3";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=6";
 import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext } from "./swap_flow_rules.js?v=8";
 
@@ -124,14 +124,29 @@ const W_FB = {
   老手: (w) => `（撩了撩頭髮，笑著看你）我是${w.name}～老公說今天的對象很可愛，果然沒騙我呢。`,
   不太情願: (w) => `（別開視線，抱著手臂）……${w.name}。是他硬要來的。`,
 };
-const FB = {
+const FB_BAR = {
   chat: { husband: ["（笑著舉杯）來，再喝一點嘛！", "（往前傾了傾身）你平常都玩什麼遊戲？"], other: ["（抿著嘴笑）你這個人真有趣。", "（玩著杯緣，偷偷看你）……你常來這種地方嗎？"], wife: ["（偷偷拉了拉你的衣角）……老公，你少喝一點。", "（小聲）我、我沒事啦。"] },
   touch: { husband: ["（大力拍了拍你的肩）兄弟，放輕鬆！"], other: ["（指尖輕輕碰了一下你的手背）……啊，不好意思。", "（膝蓋若有似無地靠過來）"], wife: ["（悄悄握住你的手）"] },
   lewd: { husband: ["（湊過來小聲）你老婆今天穿得真好看。"], other: ["（湊到你耳邊輕輕吹了口氣）……臉紅了？"], wife: ["（靠在你肩上，手指在你腿上畫圈）"] },
   accept: { husband: "（豪爽地笑）好啊！", other: "（臉紅了一下，沒有躲開）……嗯。", wife: "（點點頭）……好。" },
   refuse: { husband: "（擺擺手）這個就算了吧。", other: "（往後縮了縮）……不、不要啦。", wife: "（搖搖頭）……我不要。" },
 };
-const SILENCE = ["（一陣尷尬的沉默，只聽得到冰塊碰杯的聲音）", "（{a}偷偷瞄了{b}一眼，又趕緊移開視線）", "（{a}低頭玩著杯墊，沒說話）"];
+// 2026-10-25 公園句庫：散步／長椅／風景／介紹／口頭調情；不提酒
+const PARK_TALK = "這裡是夜晚的公園：大家在步道散步、坐長椅、看風景、互相認識聊天、口頭上輕輕調情。絕對不要提到喝酒、乾杯、敬酒、舉杯、點飲料或酒吧，也不要有親吻或肢體碰觸。";
+const H_FB_PARK = {
+  紳士型: (h, w) => [`（起身微微點頭）兩位好，我是${h.name}，這是我太太${w.name}。今晚夜色真好，謝謝你們願意來。`, "（指了指湖邊的步道）不如我們邊走邊聊？對了，你們兩位是怎麼認識的？"],
+  老手型: (h, w) => [`（雙手插口袋笑著走過來）嗨～我是${h.name}，旁邊這位是我老婆${w.name}，今天放輕鬆就好。`, "（朝長椅那邊歪了歪頭）去那邊坐一下吧。你們平常週末都做什麼？"],
+  炫耀型: (h, w) => [`（整了整名錶，大聲笑）你們好！我${h.name}，開公司的。這是我老婆${w.name}，身材不錯吧？`, "（張開手臂）這公園我常來夜跑，夜景一流！話說你們住哪一區？"],
+};
+const FB_PARK = {
+  chat: { husband: ["（邊走邊回頭笑）這條步道走起來很舒服吧？", "（在長椅上翹起腳）你平常都玩什麼遊戲？"], other: ["（抿著嘴笑）你這個人真有趣。", "（看著湖面，偷偷看你）……你常來這個公園嗎？"], wife: ["（偷偷拉了拉你的衣角）……老公，走慢一點。", "（小聲）我、我沒事啦。"] },
+  touch: { husband: ["（笑著指向遠處）你看那邊的夜景！"], other: ["（走在你旁邊，影子靠得很近）……晚風好舒服。"], wife: ["（悄悄靠近你一點）"] },
+  lewd: { husband: ["（湊過來小聲）你老婆今天穿得真好看。"], other: ["（壓低聲音）……你一直偷看我，對吧？"], wife: ["（紅著臉小聲）……他一直在看我。"] },
+  accept: { husband: "（豪爽地笑）好啊！走吧！", other: "（臉紅了一下，點點頭）……嗯，好啊。", wife: "（點點頭）……好。" },
+  refuse: { husband: "（擺擺手）這個就算了吧。", other: "（別開視線）……再、再說吧。", wife: "（搖搖頭）……我不要。" },
+};
+const SILENCE_PARK = ["（一陣尷尬的沉默，只聽得到樹上的鳥叫聲）", "（{a}偷偷瞄了{b}一眼，又趕緊移開視線）", "（{a}低頭踢著地上的小石子，沒說話）"];
+const SILENCE_BAR = ["（一陣尷尬的沉默，只聽得到冰塊碰杯的聲音）", "（{a}偷偷瞄了{b}一眼，又趕緊移開視線）", "（{a}低頭玩著杯墊，沒說話）"];
 
 // ============================================================ 小工具
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -281,6 +296,7 @@ export function openBar(ctx = {}, c, S = {}) {
   if (!document.getElementById("swp-bar-css")) { const st = document.createElement("style"); st.id = "swp-bar-css"; st.textContent = CSS; document.head.append(st); }
   document.getElementById("swp-bar")?.remove();
   const scene = ctx.scene || "bar", base = sceneBase(scene), SZ = SCENE_ZH[scene] || "酒吧", STG = stageOf(scene);
+  const PARK = STG === 1, FB = PARK ? FB_PARK : FB_BAR, SILENCE = PARK ? SILENCE_PARK : SILENCE_BAR, HFB = PARK ? H_FB_PARK : H_FB;
   // 公園／酒吧四人一起；KTV 同包廂；飯店預設各開一間（ctx.together 可覆寫）
   const together = ctx.together ?? (scene === "park" || scene === "bar" || scene === "ktv");
   const h = c.husband, w = c.wife, wife = ctx.girl?.() || null, wn = wife?.name || "老婆";
@@ -417,12 +433,12 @@ export function openBar(ctx = {}, c, S = {}) {
   // 2026-10-22 修：AI 身分講清楚（你是誰、你丈夫／妻子是誰、玩家是誰），只准替自己說一句
   const persona = (k) => {
     if (k === "husband") {
-      const likes = (h.likes || []).slice(0, 3).join("、") || "喝酒聊天";
+      const likes = (h.likes || []).slice(0, 3).join("、") || (PARK ? "聊天" : "喝酒聊天");
       const hobbies = (h.hobbies || []).slice(0, 2).join("、");
       const pers = h.personality || H_FLAVOR[hType] || "";
       const buildZh = h.look?.build_zh || "";
       const ht = h.height_cm || h.look?.height_cm;
-      return `你是${h.name}（男，${h.age}歲${buildZh ? `，${buildZh}` : ""}${ht ? `、身高${ht}cm` : ""}），你的妻子是${w.name}。個性：${pers}（換妻類型：${hType}）。喜好：${likes}${hobbies ? `；興趣：${hobbies}` : ""}。${HUSBAND.aim}`;
+      return `你是${h.name}（男，${h.age}歲${buildZh ? `，${buildZh}` : ""}${ht ? `、身高${ht}cm` : ""}），你的妻子是${w.name}。個性：${pers}（換妻類型：${hType}）。喜好：${likes}${hobbies ? `；興趣：${hobbies}` : ""}。${PARK ? HUSBAND.aim.replace("敬酒勸酒", "約大家散步、坐長椅聊天") : HUSBAND.aim}`;
     }
     const pers = Array.isArray(w.personality) ? w.personality.join("、") : (w.personality || W_FLAVOR[wType] || "");
     const cup = w.look?.cup || "";
@@ -430,9 +446,9 @@ export function openBar(ctx = {}, c, S = {}) {
     return `你是${w.name}（女，${w.age || w.look?.age || "?"}歲），你的丈夫是${h.name}。${w.look?.build || ""}${cupS ? `、${cupS}` : ""}，個性：${pers || W_FLAVOR[wType]}（換妻類型：${wType}）。`;
   };
   const RULE = () => `場合：${SZ}裡的換妻約會。另一對夫妻：玩家（矮胖的宅男，另一位丈夫）和他的妻子${wn}。對話紀錄裡「玩家」就是那位宅男丈夫，不是你。`
-    + `你只能以自己的身分說話：只寫你自己的一句，「（動作）台詞」格式，繁體中文口語，60 字內；不要寫名字前綴、不要旁白、不要替任何其他人說話或寫別人的台詞。`;
+    + (PARK ? PARK_TALK : "") + `你只能以自己的身分說話：只寫你自己的一句，「（動作）台詞」格式，繁體中文口語，60 字內；不要寫名字前綴、不要旁白、不要替任何其他人說話或寫別人的台詞。`;
   const say1 = async (k, task, fb) => {
-    const hist = histFor(), dz = `你現在${DRUNK_ZH[dlv(k)]}（醉度 ${Math.round(sess.drunk[k])}）。`;
+    const hist = histFor(), dz = PARK ? PARK_TALK : `你現在${DRUNK_ZH[dlv(k)]}（醉度 ${Math.round(sess.drunk[k])}）。`;
     let t = "";
     if (k === "wife") { if (wife && ctx.say) try { t = await ctx.say(wife, `（換妻約會在${SZ}。${dz}最近的對話：\n${hist}\n${task}用「（動作）台詞」格式只寫一句。）`, ""); } catch { /* */ } }
     else if (ctx.chat) try { t = await ctx.chat(persona(k) + dz + RULE(), `最近的對話：\n${hist}\n\n${task}`); } catch { /* */ }
@@ -557,7 +573,7 @@ export function openBar(ctx = {}, c, S = {}) {
     lastProp = Date.now();
     if (by === "husband") {
       await show(["husband"]);
-      await line("husband", await say1("husband", `你提議交換伴侶：你陪玩家的妻子${wn}，玩家陪你的妻子${w.name}。語氣照你的個性。`, `（舉杯）氣氛正好——不如我們交換一下？我陪${wn}，你陪${w.name}。`), { click: true });
+      await line("husband", await say1("husband", `你提議交換伴侶：你陪玩家的妻子${wn}，玩家陪你的妻子${w.name}。語氣照你的個性。`, `${PARK ? "（在路燈下停下腳步，壞笑）" : "（舉杯）"}氣氛正好——不如我們交換一下？我陪${wn}，你陪${w.name}。`), { click: true });
     } else {
       await show(["husband"]);
       await say("你", `（對${h.name}說）要不要……交換一下？`);
@@ -678,6 +694,8 @@ export function openBar(ctx = {}, c, S = {}) {
     if (ok) {
       for (const k of cardX.fx?.drink || []) drink(k, !!cardX.fx?.strong);
       for (const [k, d] of Object.entries(cardX.fx?.aff || {})) bumpAff(k, d, cardX.zh);
+      if (cardX.fx?.acc?.wife) bumpWifeAcc(cardX.fx.acc.wife, cardX.zh);
+      if (cardX.fx?.acc?.other) { sess.accept = clamp((Number(sess.accept) || 0) + cardX.fx.acc.other, 0, 100); dbg(`${name.other} 接受度 +${cardX.fx.acc.other}（${cardX.zh}）→ ${sess.accept}`); }
       if (cardX.fx?.nerves) { sess.nerves = clamp(sess.nerves + cardX.fx.nerves, 0, 1); dbg(`老婆緊張 ${cardX.fx.nerves} → ${sess.nerves.toFixed(2)}`); }
       if (cardX.fx?.open) { sess.open = clamp(sess.open + cardX.fx.open, 0, 1); dbg(`老婆放開 +${cardX.fx.open} → ${sess.open.toFixed(2)}`); }
       if (cardX.fx?.seat || cardX.fx?.cross) { sess.seat = cardX.fx.cross ? "cross" : cardX.fx.seat; dbg(`座位：${sess.seat}`); }
@@ -854,13 +872,13 @@ export function openBar(ctx = {}, c, S = {}) {
   const lastType = {};
   /** NPC↔NPC 聊天的題目（依誰對誰；兩個老婆只聊天：老手安撫新手）。 */
   const chatTask = (k, tgt) => {
-    const nv = sess.nerves >= 0.6 ? "很緊張" : sess.nerves >= 0.3 ? "有點緊張" : "還算放得開", wd = DRUNK_ZH[dlv("wife")];
-    if (k === "husband" && tgt === "wife") return `你湊過去跟${wn}（玩家的妻子）搭話：稱讚她、逗她笑或勸她喝一口，調皮但有分寸。`;
+    const nv = sess.nerves >= 0.6 ? "很緊張" : sess.nerves >= 0.3 ? "有點緊張" : "還算放得開", wd = PARK ? "清醒" : DRUNK_ZH[dlv("wife")];
+    if (k === "husband" && tgt === "wife") return PARK ? `你走到${wn}（玩家的妻子）旁邊陪她散步搭話：稱讚她、逗她笑、指風景給她看，調皮但有分寸。` : `你湊過去跟${wn}（玩家的妻子）搭話：稱讚她、逗她笑或勸她喝一口，調皮但有分寸。`;
     if (k === "husband" && tgt === "other") return `你小聲推你老婆${w.name}去陪那位宅男丈夫（玩家），例如「老婆，去陪陪他啊」。`;
     if (k === "other" && tgt === "wife") return `你是有經驗的人妻，小聲安撫第一次來、${nv}的${wn}（玩家的妻子）：問她是不是第一次、緊不緊張、結婚多久，聊聊彼此的老公，暗示「放輕鬆，很好玩的」。只聊天，不要碰她。`;
     if (k === "other" && tgt === "husband") return `你小聲跟你老公${h.name}說一句（例如偷偷評論那位宅男丈夫）。`;
-    if (k === "wife" && tgt === "other") return `你小聲跟${w.name}（對方的妻子，看起來很有經驗）聊一句：害羞緊張地回答她或問她（例如你們常這樣嗎）。你現在${nv}、${wd}，越醉越放得開。只聊天。`;
-    if (k === "wife" && tgt === "husband") return `你回應${h.name}（對方的丈夫）的搭話，${nv}，${wd}；醉度越高越願意跟他多聊。`;
+    if (k === "wife" && tgt === "other") return `你小聲跟${w.name}（對方的妻子，看起來很有經驗）聊一句：害羞緊張地回答她或問她（例如你們常這樣嗎）。你現在${nv}${PARK ? "" : `、${wd}，越醉越放得開`}。只聊天。`;
+    if (k === "wife" && tgt === "husband") return `你回應${h.name}（對方的丈夫）的搭話，${nv}${PARK ? "；接受度越高越願意跟他多聊。" : `，${wd}；醉度越高越願意跟他多聊。`}`;
     return `你小聲跟${name[tgt]}聊一句。`;
   };
   /** 醉了去廁所吐：你老婆去 → 對方丈夫可能跟去；對方妻子去 → 你可以按「跟去廁所」。 */
@@ -928,8 +946,8 @@ export function openBar(ctx = {}, c, S = {}) {
       else {
         await queue(async () => {
           busyUI(); await show([k]);
-          const ln = await say1(k, "你帶氣氛：對大家（玩家、他的妻子、你的妻子）開一個輕鬆的話題，或舉杯敬大家、勸大家多喝一點。", pick(["（舉起酒杯）來來來，為今晚認識大家乾一杯！", "（拍拍手）光喝酒太無聊了，我們來聊聊各自是怎麼追到老婆的？", "（替大家倒滿）別客氣，今晚我請，喝！"]));
-          status[k] = "帶氣氛：敬大家"; renderNb();
+          const ln = PARK ? await say1(k, "你帶氣氛：招呼大家（玩家、他的妻子、你的妻子）一起沿著步道散步、坐長椅或看夜景，順便丟一個輕鬆話題。", pick(["（指著前面的湖）走走走，我們去湖邊那裡看看！", "（拍拍長椅）來，大家坐一下，聊聊各自是怎麼追到老婆的？", "（伸了個懶腰）晚風這麼舒服，我們繞公園走一圈吧！"])) : await say1(k, "你帶氣氛：對大家（玩家、他的妻子、你的妻子）開一個輕鬆的話題，或舉杯敬大家、勸大家多喝一點。", pick(["（舉起酒杯）來來來，為今晚認識大家乾一杯！", "（拍拍手）光喝酒太無聊了，我們來聊聊各自是怎麼追到老婆的？", "（替大家倒滿）別客氣，今晚我請，喝！"]));
+          status[k] = PARK ? "帶氣氛：散步" : "帶氣氛：敬大家"; renderNb();
           await line(k, ln, { to: "all" });
           for (const x of ["player", ...NPCS]) if (!isAway(x)) drink(x);
           prog(NPC_PROG.chat, "對方丈夫帶氣氛"); save();
@@ -940,7 +958,7 @@ export function openBar(ctx = {}, c, S = {}) {
     if (tgt === "player" && qn && !force) return;   // 你那邊正忙：這輪先不找你（不要亂改對象）
     if (!tgt) return;
     if (tgt !== "player" && isBusy(tgt) && !force) return;   // 對方正在互動：不能打斷
-    if ((type === "touch" || type === "lewd") && !(PAIR_ALLOW[k]?.[tgt] || []).includes(type)) type = "chat";
+    if ((type === "touch" || type === "lewd") && (PARK || !(PAIR_ALLOW[k]?.[tgt] || []).includes(type))) type = "chat";   // 公園：只聊天，不碰
     const act = type === "touch" || type === "lewd" ? (force?.act ? { zh: force.act } : actOf(type, k, tgt)) : null;
     if ((type === "touch" || type === "lewd") && !act) type = "chat";
     if (tgt === "player") {
@@ -1041,7 +1059,7 @@ export function openBar(ctx = {}, c, S = {}) {
 
   // ---- 開場自我介紹
   const intro = async () => {
-    const [hf1, hf2] = H_FB[hType](h, w);
+    const [hf1, hf2] = HFB[hType](h, w);
     await show(["husband", "other"]);
     await line("husband", await say1("husband", `你先開口打招呼，介紹你自己和你身邊的妻子${w.name}。`, hf1), { click: true });
     await show(["other"]);
@@ -1055,8 +1073,8 @@ export function openBar(ctx = {}, c, S = {}) {
     let wl = ""; if (wife && ctx.say) { try { wl = await ctx.say(wife, `（你們夫妻正在${SZ}跟另一對夫妻${h.name}和${w.name}換妻約會的開場。剛才：\n${log.slice(-4).join("\n")}\n輪到你向他們自我介紹。你現在${nv >= 0.6 ? "非常緊張" : nv >= 0.3 ? "有點緊張" : "還算放得開"}。用「（動作）台詞」格式只寫一句。）`, wfb); } catch { /* */ } }
     await line("wife", actLine(wl, wfb.match(/^（[^）]*）/)[0]) || wfb, { click: true });
     await show(["husband"]);
-    await line("husband", await say1("husband", "大家都介紹完了。你幫大家買了飲料（公園，不喝酒），然後丟出第一個輕鬆的話題（問問題），讓氣氛熱起來。", hf2), { click: true });
-    for (const k of ["player", ...NPCS]) drink(k);
+    await line("husband", await say1("husband", PARK ? "大家都介紹完了。你提議大家沿著公園步道一起散步，然後丟出第一個輕鬆的話題（問問題），讓氣氛熱起來。" : "大家都介紹完了。你幫大家點酒，然後丟出第一個輕鬆的話題（問問題），讓氣氛熱起來。", hf2), { click: true });
+    if (!PARK) for (const k of ["player", ...NPCS]) drink(k);
   };
   // 場景前進按鈕（公園／KTV／飯店浴室切換）
   const adv = document.createElement("div");

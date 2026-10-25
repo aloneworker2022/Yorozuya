@@ -12,7 +12,7 @@ G.setPools(pools);
 
 const H = await import(dir + "husband_gen.js?v=1");
 const C = await import(dir + "swap_cafe_gen.js?v=30");
-const D = await import(dir + "swap_deck_rules.js?v=2");
+const D = await import(dir + "swap_deck_rules.js?v=3");
 const T = await import(dir + "swap_tease_rules.js?v=5");
 
 let pass = 0;
@@ -94,6 +94,10 @@ t("deckFor：場景對得上；公園無酒牌", () => {
   assert.equal(D.deckFor("hotel_bath"), D.DECK_HOTEL_BATH);
   assert.equal(D.deckFor("hotel"), D.DECK_HOTEL_ROOM);
   for (const c of D.DECK_PARK) assert.equal(D.isAlcoholCard(c), false, c.id);
+  const zh = D.DECK_PARK.map((c) => c.zh).join("|");
+  for (const w of ["散步", "長椅", "夜景", "介紹", "稱讚", "言語調戲"]) assert.ok(zh.includes(w), w);
+  for (const c of D.DECK_PARK) { assert.ok(!c.tease, c.id); assert.ok(!/親|吻|摸|廁所|碰/.test(c.zh), c.id); }
+  assert.ok(D.DECK_PARK.some((c) => c.fx?.acc?.other) && D.DECK_PARK.some((c) => c.fx?.acc?.wife));
   assert.ok(D.DECK_BAR.some(D.isAlcoholCard));
 });
 

@@ -8,24 +8,25 @@ import { sceneBase } from "./swap_tease_rules.js?v=5";
 export const isAlcoholCard = (c) => !!(c?.fx?.drink || c?.fx?.strong || /酒|乾杯|乾一杯|烈酒|交杯|敬她一杯|敬他一杯/.test(c?.zh || ""));
 
 /** 公園：無酒。who 可指任何人（破冰四人同場）。 */
-export const DECK_PARK = [
-  { id: "p_o_hi", who: "other", zh: "跟她打招呼", bold: 1, icon: "chat" },
-  { id: "p_o_praise", who: "other", zh: "稱讚她今天很漂亮", bold: 1, icon: "heart" },
-  { id: "p_o_ask", who: "other", zh: "問她平常的興趣", bold: 1, icon: "chat" },
-  { id: "p_o_walk", who: "other", zh: "邀她一起走走", bold: 2, icon: "seat" },
-  { id: "p_o_sit", who: "other", zh: "坐到她旁邊的長椅", bold: 2, icon: "seat", fx: { seat: "player-other" } },
-  { id: "p_o_hand", who: "other", zh: "偷偷碰她的手", bold: 3, icon: "hand" },
-  { id: "p_o_whisper", who: "other", zh: "說悄悄話", bold: 3, icon: "lips" },
+export const DECK_PARK = [   // 2026-10-25：公園只有聊天／口頭調情／社交；成功會加接受度（fx.acc）
+  { id: "p_a_walk", who: "all", zh: "提議大家一起散步", bold: 1, icon: "star", fx: { acc: { other: 2, wife: 2 } } },
+  { id: "p_a_intro", who: "all", zh: "介紹彼此認識", bold: 1, icon: "chat", fx: { acc: { other: 2, wife: 1 } } },
+  { id: "p_a_view", who: "all", zh: "一起看夜景", bold: 1, icon: "star", fx: { acc: { other: 2, wife: 2 } } },
+  { id: "p_a_photo", who: "all", zh: "提議合照", bold: 2, icon: "star", fx: { acc: { other: 2, wife: 2 } } },
+  { id: "p_a_truth", who: "all", zh: "玩真心話", bold: 3, icon: "star", fx: { random: true, acc: { other: 3, wife: 3 } } },
+  { id: "p_o_hi", who: "other", zh: "跟她打招呼", bold: 1, icon: "chat", fx: { acc: { other: 2 } } },
+  { id: "p_o_praise", who: "other", zh: "稱讚她今天很漂亮", bold: 1, icon: "heart", fx: { acc: { other: 4 } } },
+  { id: "p_o_ask", who: "other", zh: "問她平常的興趣", bold: 1, icon: "chat", fx: { acc: { other: 3 } } },
+  { id: "p_o_walk", who: "other", zh: "邀她一起散步", bold: 2, icon: "seat", fx: { acc: { other: 5 } } },
+  { id: "p_o_bench", who: "other", zh: "跟她坐長椅聊天", bold: 2, icon: "seat", fx: { seat: "player-other", acc: { other: 5 } } },
+  { id: "p_o_tease", who: "other", zh: "言語調戲她", bold: 3, icon: "lips", fx: { acc: { other: 6 } } },
   { id: "p_h_hi", who: "husband", zh: "跟他寒暄", bold: 1, icon: "chat" },
   { id: "p_h_work", who: "husband", zh: "聊工作", bold: 1, icon: "chat" },
-  { id: "p_h_praise", who: "husband", zh: "稱讚他老婆", bold: 2, icon: "heart", fx: { aff: { husband: 2 } } },
-  { id: "p_h_cross", who: "husband", zh: "提議男女交叉坐", bold: 3, icon: "seat", fx: { seat: "cross" } },
-  { id: "p_w_hand", who: "wife", zh: "牽她的手安撫她", bold: 1, icon: "hand", fx: { nerves: -0.15 } },
-  { id: "p_w_open", who: "wife", zh: "鼓勵她放開一點", bold: 2, icon: "star", fx: { open: 0.15 } },
-  { id: "p_w_seat", who: "wife", zh: "讓她坐到對方丈夫旁邊", bold: 4, icon: "seat", fx: { seat: "wife-husband" } },
-  { id: "p_a_topic", who: "all", zh: "丟一個輕鬆話題", bold: 1, icon: "star" },
-  { id: "p_a_photo", who: "all", zh: "提議合照", bold: 2, icon: "star" },
-  { id: "p_a_truth", who: "all", zh: "玩真心話", bold: 3, icon: "star", fx: { random: true } },
+  { id: "p_h_praise", who: "husband", zh: "稱讚他老婆", bold: 2, icon: "heart", fx: { aff: { husband: 2 }, acc: { other: 2 } } },
+  { id: "p_h_walk", who: "husband", zh: "請他陪你老婆走一段", bold: 3, icon: "seat", fx: { seat: "wife-husband", acc: { wife: 5 } } },
+  { id: "p_w_hand", who: "wife", zh: "牽她的手安撫她", bold: 1, icon: "hand", fx: { nerves: -0.15, acc: { wife: 2 } } },
+  { id: "p_w_open", who: "wife", zh: "鼓勵她放開一點", bold: 2, icon: "star", fx: { open: 0.15, acc: { wife: 4 } } },
+  { id: "p_w_praise", who: "wife", zh: "在大家面前稱讚老婆", bold: 1, icon: "heart", fx: { acc: { wife: 3 } } },
 ];
 
 /** 酒吧：原牌組（含酒）。 */
