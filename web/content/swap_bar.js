@@ -7,15 +7,15 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=51";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=52";
 import { createStage } from "./swap_stage.js?v=5";
-import { pickBackdrop } from "./swap_cafe_gen.js?v=31";
-import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=20";
-import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk } from "./swap_tease_rules.js?v=6";
-import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=2";
-import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=4";
-import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=7";
-import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext } from "./swap_flow_rules.js?v=8";
+import { pickBackdrop } from "./swap_cafe_gen.js?v=32";
+import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=21";
+import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk } from "./swap_tease_rules.js?v=7";
+import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=3";
+import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=5";
+import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=8";
+import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext } from "./swap_flow_rules.js?v=9";
 
 // ============================================================ 調整用的表
 export const CD = { min: 10, max: 25, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]] };   // 秒（2026-10-22 改 10–25）；半速；醉了 CD 變短（×），但不會短於 min
@@ -134,8 +134,8 @@ const FB_BAR = {
 };
 // 2026-10-25 公園句庫：散步／長椅／風景／介紹／口頭調情；不提酒
 // 2026-10-25：場地個性
-const BAR_TALK = "這裡是酒吧座位區：主要是喝酒、敬酒、聊天、微醺的調情；座位上最多親一下或輕輕摟腰碰手，不要寫更露骨的猥褻（那要去廁所才行）。";
-const KTV_TALK = "這裡是 KTV 私人包廂：主要是點歌、唱歌、合唱、拍手起鬨，酒喝得不多；包廂關起門很隱密，可以大膽調情、摸來摸去。";
+const BAR_TALK = "這裡是酒吧座位區：主要是喝酒、敬酒、聊天、微醺的調情；座位上最多親一下或輕輕摟腰碰手，不能脫衣服，不要寫更露骨的猥褻（要醉得很厲害才會被帶去廁所）。";
+const KTV_TALK = "這裡是 KTV 私人包廂：主要是點歌、唱歌、合唱、拍手起鬨，酒喝得不多；包廂關起門很隱密，可以調情、摸來摸去，但最多到口交，不會在包廂做愛；她會隨著親近慢慢放開，不會一下子跳很快。";
 const PARK_TALK = "這裡是夜晚的公園：大家在步道散步、坐長椅、看風景、互相認識聊天、口頭上輕輕調情。絕對不要提到喝酒、乾杯、敬酒、舉杯、點飲料或酒吧，也不要有親吻或肢體碰觸。";
 const H_FB_PARK = {
   紳士型: (h, w) => [`（起身微微點頭）兩位好，我是${h.name}，這是我太太${w.name}。今晚夜色真好，謝謝你們願意來。`, "（指了指湖邊的步道）不如我們邊走邊聊？對了，你們兩位是怎麼認識的？"],
@@ -800,12 +800,21 @@ export function openBar(ctx = {}, c, S = {}) {
     if (Date.now() < pairRestUntil) return "";
     if (huToilet()) return "behind";
     if (base === "hotel") return wifeSwapped(sess) || watch ? (scene === "hotel_bath" ? "behind" : "normal") : "";
-    const sw = wifeSwapped(sess), pg = sess.progress + sess.drunk.wife * 0.3 + sess.open * 30;
-    if (base === "bar") return sw || sess.drunk.wife >= DRUNK.lv.drunk ? (pg >= 40 || sw ? "kiss" : "chat") : "";
-    if (base === "ktv") return !sw ? (pg >= 30 ? "chat" : "") : pg >= 50 ? "normal" : pg >= 35 ? "fellatio" : pg >= 20 ? "grope" : "kiss";   // 換了＝同意：包廂直接往下
+    const sw = wifeSwapped(sess);
+    // 2026-10-25 Al：酒吧＝她的醉度階梯；KTV＝她對他的接受度階梯（聊天→親→摸胸→口交，最高口交；換妻不等於同意直接做）
+    if (base === "bar") return barPairAct({ drunk: sess.drunk.wife, swapped: sw });
+    if (base === "ktv") return ktvPairAct({ acc: sess.ktvAcc || 0, swapped: sw });
     return "";
   };
   let prKey = "";
+  /** KTV 你老婆對他的接受度：互動慢慢升；到 KTV_STRIP_AT 他叫她脫到剩內衣（立繪換 under）。 */
+  const ktvBump = (n, why) => {
+    if (!n) return; const before = sess.ktvAcc || 0; sess.ktvAcc = Math.min(KTV_ACC.max, before + n); dbg(`KTV 接受度 ${before}→${sess.ktvAcc}（${why}）`);
+    if (before < KTV_STRIP_AT && sess.ktvAcc >= KTV_STRIP_AT && !(sess.strip.wife >= 1)) {
+      sess.strip.wife = 1; log.push(`（${h.name}在${wn}耳邊說了什麼，她紅著臉把外衣脫了，只剩內衣）`);
+      void queue(async () => { busyUI(); await show(["husband", "wife"]); await say("", `（${h.name}貼著${wn}耳邊低聲說「把外衣脫了吧」……她猶豫了一下，紅著臉照做，只剩內衣）`); }).finally(() => { release(["husband", "wife"]); renderNb(); });
+    }
+  };
   /** 2026-10-25：你老婆「此刻」在跟誰互動：互動鎖（busy）優先，其次 PAIR_HOLD_MS 內最後一次互動；都沒有＝""（發呆）。 */
   const PAIR_HOLD_MS = 12000;
   const wifeWith = () => {
@@ -814,13 +823,23 @@ export function openBar(ctx = {}, c, S = {}) {
     return "";
   };
   /** 雙人圖只在她真的正在跟對方丈夫互動時貼：聊天圖＝她此刻在跟他說話；親熱圖＝她沒有在跟別人互動。 */
+  // 親熱＝一段「行為」：她剛跟他互動才開始，持續 PAIR_ACT_MS（口交到射或到時間），結束後休息 PAIR_GAP_MS 讓兩人回去互動（KTV 接受度才會再升）
+  const PAIR_ACT_MS = 25000, PAIR_GAP_MS = 8000;
+  let pairSess = null;   // { until }
+  const endPairSess = (why) => {
+    if (!pairSess) return; pairSess = null; inter.wife = null; pairRestUntil = Math.max(pairRestUntil, Date.now() + PAIR_GAP_MS);
+    if (base === "ktv" && why !== "climax") ktvBump(KTV_ACC.lewd, "親熱完");
+    dbg(`雙人行為結束（${why}）`);
+  };
   const pairShowOk = (a) => {
     if (!a) return false;
     if (huToilet() || watch || base === "hotel") return true;
-    const w = wifeWith();
-    if (a === "chat") return w === "husband";
-    if (w && w !== "husband") return false;
-    if (base === "ktv" && wifeSwapped(sess)) sess.strip.wife = Math.max(sess.strip.wife || 0, a === "normal" ? 2 : a === "fellatio" || a === "grope" ? 1 : 0);   // KTV：他把你老婆脫了
+    // 2026-10-25：聊天圖＝她此刻正在跟他聊；親熱圖＝正在進行那段行為。發呆／跟別人＝不貼
+    if (!pairIntimate(a)) return wifeWith() === "husband";
+    if (pairSess && Date.now() < pairSess.until) return true;
+    if (pairSess) { endPairSess("time"); return false; }
+    if (wifeWith() !== "husband") return false;
+    pairSess = { until: Date.now() + PAIR_ACT_MS }; dbg(`${wn}×${h.name} 開始：${PAIR_ZH[a] || a}`);
     return true;
   };
   const renderPair = () => {
@@ -846,7 +865,9 @@ export function openBar(ctx = {}, c, S = {}) {
     if (ejacBusy || !curPair || !pairIntimate(curPair)) { ejacAcc = 0; return; }
     ejacAcc += dt; if (ejacAcc < EJAC.everySec) return; ejacAcc = 0;
     const act = curPair;
-    if (!rollEjac(act)) return;
+    if (!ejacActOk(act, base) || !rollEjac(act)) return;
+    if (base === "ktv") sess.ktvAcc = Math.max(0, (sess.ktvAcc || 0) - KTV_ACC.afterClimax);
+    endPairSess("climax");   // 射了＝結束、休息，之後從低一點重新來
     ejacBusy = true; pairRestUntil = Date.now() + EJAC.restSec * 1000; dbg(`${h.name} 射了（${PAIR_ZH[act] || act}）→ 結束，休息 ${EJAC.restSec} 秒`);
     if (zoomOn) { zoomHold = true; clearInterval(zoomT); zoomSay("husband", `（${h.name}低吼一聲，在${wn}${act === "fellatio" ? "嘴裡" : "體內"}射了出來……）`); setTimeout(() => { if (zoomHold) zoomClose(); }, 2600); }
     renderPair(); status.husband = "射了"; status.wife = act === "fellatio" ? "被射在嘴裡" : "被內射了";
@@ -947,7 +968,7 @@ export function openBar(ctx = {}, c, S = {}) {
       }
     }
     // 酒吧：換了伴的對方丈夫，偶爾把你老婆帶去廁所
-    if (k === "husband" && !force && scene === "bar" && wifeSwapped(sess) && !isAway("wife") && Math.random() < HUSBAND_TOILET_P) {
+    if (k === "husband" && !force && scene === "bar" && wifeSwapped(sess) && barToiletOk(sess.drunk.wife) && !isAway("wife") && Math.random() < HUSBAND_TOILET_P) {   // 她要醉到 ≥75
       const until = Date.now() + DRUNK.vomitSec * 1500;
       absent.wife = { why: `被${h.name}帶去廁所`, until }; absent.husband = { why: "跟去廁所", until };
       log.push(`（${h.name}牽著${wn}往廁所走去……）`); status.wife = ""; bumpWifeAcc(3, "廁所");
@@ -1025,6 +1046,7 @@ export function openBar(ctx = {}, c, S = {}) {
     const label = type === "silence" ? "沉默" : type === "chat" ? "聊天" : act.zh;
     status[k] = `→ ${tgt === "wife" ? "老婆" : WHO_ZH[tgt]}：${label}`; status[tgt] = `← ${k === "wife" ? "老婆" : WHO_ZH[k]}：${label}`;
     inter[k] = inter[tgt] = { a: k, b: tgt, lines, at: Date.now() };
+    if (base === "ktv" && wifeSwapped(sess) && [k, tgt].includes("wife") && [k, tgt].includes("husband")) ktvBump(ktvAccGain(type), label);
     { const until = Math.max(Date.now() + 1500, t0 + NPC_INTER_MS); for (const x of [k, tgt]) if (busy[x]) busy[x].until = until; }
     for (const l of lines) log.push(l);
     dbg(`${name[k]} → ${name[tgt]}：${label}`);
@@ -1118,7 +1140,7 @@ export function openBar(ctx = {}, c, S = {}) {
       if (allAgree(sess)) for (const nx of nextOptions(scene)) if (canMove(sess, scene, nx).ok) adv.append(mkBtn(`前往${SCENE_ZH[nx]}`, async () => { busyUI(); await go(nx); }));
     }
     if (STG <= 2 && !(wifeSwapped(sess) && otherSwapped(sess))) adv.append(mkBtn("提議換妻", () => runSwap("player")));
-    if (scene === "bar" && !toiletOn && (otherSwapped(sess) || (absent.other?.why === "去廁所吐了" && isAway("other")))) adv.append(mkBtn(otherSwapped(sess) && !isAway("other") ? "帶她去廁所" : "跟去廁所", async () => {
+    if (scene === "bar" && !toiletOn && ((otherSwapped(sess) && barToiletOk(sess.drunk.other)) || (absent.other?.why === "去廁所吐了" && isAway("other")))) adv.append(mkBtn(otherSwapped(sess) && !isAway("other") ? "帶她去廁所" : "跟去廁所", async () => {
       toiletOn = true; absent.other = { why: "在廁所", until: Date.now() + 5000 };
       await say("", `（你跟著${name.other}進了廁所，把門鎖上……）`); handCards = []; renderAdvanceBtn(); renderNb();
     }));

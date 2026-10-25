@@ -5,8 +5,8 @@
  *       而且她的模型就是她單人立繪那個，畫風才對得上。對方丈夫自己的 ckpt 不用。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=31";
-import { dateOutfitOf, withDateOutfit } from "./swap_outfit.js?v=2";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=32";
+import { dateOutfitOf, withDateOutfit } from "./swap_outfit.js?v=3";
 import { husbandLookEn } from "./husband_gen.js?v=1";
 
 // 2026-10-23 Al 核可：雙人圖預設 prompt 全部改結構（只有雙人圖）。前端給「每段要什麼 tag」（pair 物件），伺服器組成
@@ -33,7 +33,10 @@ export const PAIR_ACTS = [
   { key: "seated", zh: "面對面坐著擁吻交配", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "sitting", her: "straddling, arms around neck", body: "nipples, pussy" },
 ];
 /** 2026-10-24 全部改全身：這之前生的雙人圖（半身）一律當沒有、重生。伺服器紀錄的 at（秒）。 */
-export const PAIR_SINCE = 1792852200;
+// 2026-10-25 21:00（UTC+8）Al：對方丈夫改畫成黑影＋改用對方的模型 → 之前有清楚男人臉／身體的雙人圖一律當沒有、重生。
+export const PAIR_SINCE = 1792933200;
+/** 2026-10-25 Al：對方丈夫一律畫成黑影（跟接客偷看的影子客人同一套，但純黑），他的臉／身材／衣服不再污染她的長相。 */
+export const SHADOW_MAN = "faceless male, shadow man, (black silhouette:1.3), solid black body, featureless, no facial features, dark figure";
 /** 這格可用的去背圖（太舊＝半身那批 → 空字串）。 */
 export const pairCut = (have, slot) => {
   const r = have?.[`pair~${slot}`];
@@ -69,7 +72,7 @@ const MAN_LOOK = { gentleman: "short hair, black hair, clean-shaven", clingy: "s
 const MAN_BODY = { average: "", slim: "skinny", muscular: "muscular male", fat: "fat man, belly", tall: "tall male", short: "short", old: "old man, receding hairline" };
 const MAN_CL = { gentleman: "black suit, necktie", clingy: "polo shirt", showoff: "leather jacket, gold necklace", dominant: "black suit, open collar", otaku: "plaid shirt" };
 const MAN_HAIRY = new Set(["fat", "old", "muscular"]);
-const NEG_BASE = "pov, first-person view, male pov, faceless male, solo, 2girls, multiple girls, 2boys, worst quality, low quality, lowres, bad anatomy, bad hands, extra fingers, extra limbs, watermark, text, green clothes, green hair, green eyes, background scenery";
+const NEG_BASE = "pov, first-person view, male pov, solo, 2girls, multiple girls, 2boys, worst quality, low quality, lowres, bad anatomy, bad hands, extra fingers, extra limbs, watermark, text, green clothes, green hair, green eyes, background scenery";
 // 2026-10-23 綠幕沒效果：補回背景負向（半身再擋床；寬景要躺／坐，不擋 bed，改擋白床單）
 const BG_NEG = "white background, gradient background, detailed background, scenery, room, floor, shadow, grey background";
 const dedupe = (...xs) => { const seen = new Set(); return xs.join(", ").split(",").map((t) => t.trim()).filter((t) => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase())); };
@@ -85,22 +88,25 @@ export function pairPrompt(slot, wife, couple) {
   const maleCl = nude ? "nude" : a.clothes === "partial"
     ? [h.look?.outfit_en || MAN_CL[h.persona] || "dress shirt", a.hisCl || ""].filter(Boolean).join(", ")
     : (h.look?.outfit_en || MAN_CL[h.persona] || mi.outfit || "dress shirt");
-  const male = dedupe(MAN_AGE(Number(h.age) || Number(h.look?.age) || 0), maleBase, nude && MAN_HAIRY.has(h.build) ? "chest hair" : "", "tanned male",
-    maleCl, a.his || "", fr?.his || "");
+  void maleBase; void maleCl;   // 2026-10-25：不再描述他的長相／衣服（黑影），只留姿勢＋必要部位
+  const male = dedupe(SHADOW_MAN, MAN_BODY[h.build] && /fat|muscular|tall/.test(h.build) ? MAN_BODY[h.build] : "", a.hisCl && a.clothes === "partial" ? a.hisCl : "", a.his || "", fr?.his || "");
   const herCl = nude ? "nude" : a.clothes === "partial" ? a.herCl || "clothes pull" : "";   // dressed＝伺服器翻她的生涯服裝
   const body = dedupe(a.body || "");   // 2026-10-23 胸／私密部位改由伺服器從她的人設翻（跟單人立繪同一份表），這裡只給動作要露的部位
-  const neg = dedupe(NEG_BASE, BG_NEG, a.scene !== "hotel" ? "bed" : "white sheets", a.neg || "", fr?.neg ?? (frame === 1 ? "penetration, sex" : ""), a.clothes === "dressed" ? "nude, nipples" : "");
+  const neg = dedupe(NEG_BASE, "detailed male face, male face, beard, stubble, glasses, suit, necktie, tanned male, chest hair", BG_NEG, a.scene !== "hotel" ? "bed" : "white sheets", a.neg || "", fr?.neg ?? (frame === 1 ? "penetration, sex" : ""), a.clothes === "dressed" ? "nude, nipples" : "");
   return {
     framing: FRAME_EN[a.framing], fromSide: !!a.side, shared: dedupe(fr?.act || a.act), male, herPose: dedupe(a.her || ""), expr: dedupe(fr?.expr || a.expr || ""),
     herClothes: herCl, dressed: a.clothes === "dressed", clothes: a.clothes, body, neg,
   };
 }
+/** 2026-10-25 Al「妻子和對方丈夫互動一律使用對方的模型」：雙人圖用對方夫妻的模型——先對方妻子綁的，沒有再對方丈夫的，再退她自己的／全域。 */
+export const pairCkpt = (wife, couple, eng = {}) => [couple?.wife?.comfyCkpt, couple?.wife?.ckpt, couple?.husband?.comfyCkpt, couple?.husband?.ckpt, wife?.comfyCkpt, eng.comfyCkpt]
+  .map((x) => String(x || "").trim()).find(Boolean) || "";
 /** /api/imggen body：她當 character（伺服器從她的人設翻長相 tags）、她的模型；pair＝每段的 tag。 */
 export function pairBody(slot, wife, couple, eng, seed) {
   const actKey = slotOf(slot).act;
   if (!wife?.id) throw new Error("先選測試魅子"); if (!couple?.husband) throw new Error("先抽一對對方夫妻");
   const a = ACT[actKey], comfy = eng.imgProvider === "comfy", pair = pairPrompt(slot, wife, couple);
-  const ckpt = String(wife.comfyCkpt || "").trim() || eng.comfyCkpt || "";
+  const ckpt = pairCkpt(wife, couple, eng);
   if (comfy && !ckpt) throw new Error("此魅子尚未綁定 Comfy 模型（comfyCkpt），全域也沒設");
   return {
     key: `swap-pair:${String(slot).replace("~", "-")}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,

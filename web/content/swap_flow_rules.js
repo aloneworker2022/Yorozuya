@@ -249,13 +249,33 @@ export function vomitChance(sess, k, scene, rng = Math.random) {
  *  where：bar（座位）／bar_toilet／ktv／hotel_room／hotel_bath；paired＝對方妻子是不是你的伴；
  *  drunk＝她醉度。回 true／false。 */
 export const SEAT_ACTS = new Set(["kiss", "waist"]);
+// 2026-10-25 Al：酒吧＝醉度階梯（越醉能做越多；不能脫衣）。座位：摟腰 ≥30、親 ≥50（配對了也一樣要醉）；帶去廁所（做愛）≥75。
+export const BAR_LADDER = { waist: 30, kiss: 50, toilet: 75 };
+export const barSeatOk = (act, drunk = 0) => act === "waist" ? drunk >= BAR_LADDER.waist : act === "kiss" ? drunk >= BAR_LADDER.kiss : false;
+export const barToiletOk = (drunk = 0) => drunk >= BAR_LADDER.toilet;
+/** 酒吧雙人圖（你老婆×對方丈夫）：看她的醉度。沒換又沒醉＝沒有；換了＝聊天；≥50＝座位親；廁所＝背後（廁所本身要 ≥75 才去得了）。 */
+export function barPairAct({ drunk = 0, swapped = false, toilet = false } = {}) {
+  if (toilet) return "behind";
+  if (!swapped && drunk < BAR_LADDER.kiss) return "";
+  return drunk >= BAR_LADDER.kiss ? "kiss" : "chat";
+}
+// 2026-10-25 Al：KTV 換妻後＝接受度階梯（她對他的 ktvAcc，靠兩人互動慢慢升），最高只到口交、不交配。
+export const KTV_LADDER = [["chat", 0], ["kiss", 25], ["grope", 45], ["fellatio", 70]];
+export const KTV_STRIP_AT = 45;   // 到這裡他叫她脫到剩內衣（KTV 只有兩段：穿著／內衣）
+export const KTV_ACC = { chat: 3, touch: 5, lewd: 6, max: 100, afterClimax: 35 };   // 射了＝這段結束，接受度掉回去重新慢慢來
+export const KTV_ACTS = new Set(["kiss", "waist", "butt", "breast", "breast_knead", "breast_suck", "nipple_lick", "oral", "strip1"]);
+export function ktvPairAct({ acc = 0, swapped = false } = {}) {
+  if (!swapped) return "";
+  let a = ""; for (const [k, v] of KTV_LADDER) if (acc >= v) a = k; return a;
+}
+export const ktvAccGain = (type) => KTV_ACC[type] || 0;
 export const TOILET_ACTS = new Set(["kiss", "breast", "breast_knead", "oral", "labia", "finger_in", "sex"]);
 export function teaseWhere(card, { where = "bar", paired = false, drunk = 0, mode = "play" } = {}) {
   if (mode === "watch") return false;
   if (where === "park") return false;
-  if (where === "bar") return SEAT_ACTS.has(card.act) && (paired || drunk >= 60);   // 座位：配對了或她喝醉才能親／摟
-  if (where === "bar_toilet") return TOILET_ACTS.has(card.act);                     // 廁所：趁機
-  if (where === "ktv") return paired && card.act !== "cervix_rub";                  // 包廂：配對後可以直接做
+  if (where === "bar") return SEAT_ACTS.has(card.act) && barSeatOk(card.act, drunk) && (paired || drunk >= BAR_LADDER.kiss);   // 座位：照醉度階梯
+  if (where === "bar_toilet") return TOILET_ACTS.has(card.act) && barToiletOk(drunk);                                        // 廁所：她要夠醉
+  if (where === "ktv") return paired && KTV_ACTS.has(card.act);                     // 包廂：最多到口交，不交配
   if (String(where).startsWith("hotel")) return paired;
   return false;
 }
@@ -264,7 +284,7 @@ export function teaseWhere(card, { where = "bar", paired = false, drunk = 0, mod
 export function pairSlotsFor(scene, PAIR_ACTS, PAIR_FRAMES) {
   const base = sceneBase(scene);
   if (!PAIR_ACTS || base === "park") return [];
-  const keys = base === "hotel" ? ["normal", "behind"] : [...PAIR_ACTS.filter((a) => a.scene === "ktv").map((a) => a.key), base === "ktv" ? "normal" : "behind"];
+  const keys = base === "hotel" ? ["normal", "behind"] : [...PAIR_ACTS.filter((a) => a.scene === "ktv").map((a) => a.key), ...(base === "ktv" ? [] : ["behind"])]   // 2026-10-25：KTV 不交配;
   return PAIR_ACTS.filter((a) => keys.includes(a.key)).flatMap((a) => (PAIR_FRAMES?.[a.key] ? [`${a.key}~1`, `${a.key}~2`] : [a.key]));
 }
 
@@ -305,6 +325,8 @@ export function testStartState(scene, { hotel = "play" } = {}) {
 export const PAIR_INTIMATE = new Set(["kiss", "grope", "fellatio", "cunni", "normal", "behind", "seated"]);
 /** 對方丈夫會射的動作（口交、交配）。 */
 export const PAIR_EJAC_ACTS = new Set(["fellatio", "normal", "behind", "seated"]);
+/** KTV 只有口交會射（不交配）。 */
+export const ejacActOk = (act, base) => (base === "ktv" ? act === "fellatio" : PAIR_EJAC_ACTS.has(String(act || "")));
 export const EJAC = { everySec: 5, p: 0.2, restSec: 60 };
 export const pairIntimate = (a) => PAIR_INTIMATE.has(String(a || ""));
 /** 每 5 秒判一次；回 true＝射了。 */
