@@ -272,3 +272,13 @@ console.log(`\n${pass} passed`);
   ok(/一起去旅館/.test(src) && /留下來繼續陪/.test(src), "hotel invite buttons");
   console.log("pt255u ok");
 }
+
+// pt256u：卡牌上移、左側廁所按鈕、雙人圖隨時可點
+{
+  const src = (await import("node:fs")).readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
+  const ok = (c, m) => { if (!c) throw new Error(m); };
+  ok(/\.hand\{position:absolute;left:50%;top:38%/.test(src), "hand higher");
+  ok(/class="mvb"/.test(src) && /scene === "bar" \|\| scene === "ktv"/.test(src) && /"回包廂" : "回座位"/.test(src), "toilet button");
+  ok(/pointerEvents = a && here \? "auto"/.test(src) && /if \(zoomOn \|\| !curPair\) return;/.test(src), "pair always clickable");
+  console.log("pt256u ok");
+}

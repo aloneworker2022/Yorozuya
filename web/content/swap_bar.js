@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=54";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=55";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=33";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=22";
@@ -234,7 +234,8 @@ const CSS = `
 #swp-bar .chip.on{background:#c0508a;color:#fff;border-color:#c0508a}
 #swp-bar .rx button{flex:1;border:1px solid #c0508a;border-radius:12px;padding:7px;font-size:14px;background:#3a1f33;color:#ffd6ea}
 /* 卡牌：畫面中央；點人物＝卡牌移出、立繪滑入 */
-#swp-bar .hand{position:absolute;left:50%;top:46%;z-index:3;display:flex;gap:8px;justify-content:center;transform:translate(-50%,-50%);transition:transform .4s cubic-bezier(.2,.85,.2,1),opacity .3s ease}
+#swp-bar .hand{position:absolute;left:50%;top:38%;z-index:3;display:flex;gap:8px;justify-content:center;transform:translate(-50%,-50%);transition:transform .4s cubic-bezier(.2,.85,.2,1),opacity .3s ease}
+#swp-bar .mvb{position:absolute;left:6px;top:50%;z-index:4;transform:translateY(-50%);border:1px solid rgba(255,255,255,.3);border-radius:14px;background:rgba(18,14,22,.75);color:#fff;font-size:12px;padding:8px 6px;writing-mode:vertical-rl;letter-spacing:2px}
 #swp-bar .hand.out{transform:translate(-50%,-50%) translateX(70vw);opacity:0;pointer-events:none}
 #swp-bar .hand canvas{width:96px;height:128px;image-rendering:pixelated;border-radius:6px;cursor:pointer}
 #swp-bar .hand canvas.off{opacity:.35;pointer-events:none}
@@ -315,6 +316,7 @@ export function openBar(ctx = {}, c, S = {}) {
       <div class="row rx" hidden></div>
       <div class="row chips" hidden></div></div>
     <div class="hand out" hidden></div>
+    <button type="button" class="mvb" hidden></button>
     <form hidden><input maxlength="120" placeholder="說點什麼…"><button type="submit">說</button></form>
     <div class="toast off"></div>
     <div class="pr" hidden><div class="cell" style="position:absolute;inset:0"><img class="pf1" alt=""><img class="pf2" alt=""></div><div class="prl"></div></div>
@@ -353,6 +355,7 @@ export function openBar(ctx = {}, c, S = {}) {
   const mode = base === "hotel" ? (hotelMode(sess) === "watch" ? "watch" : "play") : "play";
   const watch = mode === "watch";
   const teaseOn = !watch && (base === "ktv" || base === "hotel" || base === "bar");
+  let renderMv = () => {};
   let toiletOn = false;   // 你跟對方妻子在酒吧廁所
   const where = () => (scene === "bar" && toiletOn ? "bar_toilet" : scene);
   const paired = () => otherSwapped(sess) || (base === "hotel" && hotelMode(sess) === "none");
@@ -529,7 +532,7 @@ export function openBar(ctx = {}, c, S = {}) {
     const sel = !!tapSel && !watch;
     hand.hidden = watch; hand.classList.toggle("out", sel || watch); form.hidden = !sel; if (sel) top.classList.remove("on");
     if (sel) { if (!focus.includes(tapSel)) void show([tapSel]); } else if (focus.length) { focus = []; stage.show([]); }
-    markChips(); renderHand();
+    markChips(); renderHand(); renderMv();
   };
   const busyUI = () => { rx.hidden = true; chips.hidden = true; hand.classList.add("out"); form.hidden = true; };
   const typing = () => document.activeElement === inp || !!inp.value.trim();
@@ -666,7 +669,7 @@ export function openBar(ctx = {}, c, S = {}) {
   const HAND_N = teaseOn ? 4 : 3;
   const gateSt = () => ({ accept: sess.accept, drunk: sess.drunk.other, scene: where(), wifeAccept: sess.wifeAccept, strip: sess.strip.other || 0 });
   const teasePool = () => (consentFree(sess, "other") ? TEASE_CARDS.slice() : unlockedTease(gateSt()));   // 換了＝全部解鎖（場景再篩）
-  const otherHere = () => toiletOn || !isAway("other");   // 廁所裡她「不在座位」但在你身邊
+  const otherHere = () => (toiletOn ? absent.other?.why === "在廁所" : !isAway("other"));   // 廁所裡她「不在座位」但在你身邊
   const whereOk = (cd_) => teaseWhere(cd_, { where: where(), paired: paired(), drunk: sess.drunk.other, mode }) && stripOk(cd_, sess.strip.other || 0);
   const allowed = (cd_) => (toiletOn ? !!cd_.tease : handCardOk(cd_, scene)) && (cd_.tease ? (consentFree(sess, "other") || teaseGate(cd_, gateSt()).ok) && whereOk(cd_) && otherHere() : !BOLD_GATE[cd_.bold] || sess.progress >= BOLD_GATE[cd_.bold]);
   const draw = () => {
@@ -858,8 +861,8 @@ export function openBar(ctx = {}, c, S = {}) {
     const a0 = wife ? pairAct() : "", a = pairShowOk(a0) ? a0 : "";
     const here = huToilet() || watch || (base !== "hotel" && together && !isAway("wife") && !isAway("husband")) || (base === "hotel" && wifeSwapped(sess));
     curPair = a && here ? a : "";
-    pr.style.pointerEvents = a && here && pairIntimate(a) ? "auto" : "none"; pr.style.cursor = pr.style.pointerEvents === "auto" ? "zoom-in" : "";
-    if (zoomOn && !(a && here && pairIntimate(a)) && !zoomHold) zoomClose();
+    pr.style.pointerEvents = a && here ? "auto" : "none";   // pt256u：看得到就能點 pr.style.zIndex = a && here ? "2" : ""; pr.style.cursor = pr.style.pointerEvents === "auto" ? "zoom-in" : "";
+    if (zoomOn && !(a && here) && !zoomHold) zoomClose();
     if (!a || !here) { pr.hidden = true; prKey = ""; return; }
     const have = S.images?.[pairOwner(wife, c)] || {};
     const u1 = pairCut(have, `${a}~1`) || pairCut(have, a), u2 = pairCut(have, `${a}~2`);
@@ -895,16 +898,17 @@ export function openBar(ctx = {}, c, S = {}) {
   let zoomOn = false, zoomHold = false, zoomT = 0, zoomI = 0, zoomBusy = false;
   const zoomSay = (k, t) => { pzN.textContent = k === "wife" ? wn : h.name; pzT.textContent = t; };
   const zoomLine = async () => {
-    if (closed || !zoomOn || zoomHold || zoomBusy || !pairIntimate(curPair)) return;
+    if (closed || !zoomOn || zoomHold || zoomBusy || !curPair) return;
     zoomBusy = true; const act = curPair, k = zoomI % 2 ? "wife" : "husband", i = zoomI++;
-    const task = k === "wife"
+    const soft = !pairIntimate(act);
+    const task = soft ? (k === "wife" ? `你正在跟${h.name}（別人的丈夫）${PAIR_ZH[act] || act}，老公不在身邊。說一句你此刻對他說的話（害羞、曖昧、撒嬌都可以）。` : `你正在跟${wn}（玩家的妻子）${PAIR_ZH[act] || act}。對她說一句調情的話。`) : k === "wife"
       ? `你正在跟${h.name}（別人的丈夫）${PAIR_ZH[act] || act}，老公在旁邊看。寫一句你此刻的反應：甜蜜、害羞或忍不住的喘息呻吟都可以。`
       : `你正在跟${wn}（玩家的妻子）${PAIR_ZH[act] || act}。對她說一句親密的話，或是你的喘息。`;
     let t = ""; try { t = await say1(k, task, zoomFallback(act, k, i)); } catch { t = zoomFallback(act, k, i); }
     zoomBusy = false; if (zoomOn && !zoomHold) zoomSay(k, t || zoomFallback(act, k, i));
   };
   const zoomOpen = () => {
-    if (zoomOn || !pairIntimate(curPair)) return;
+    if (zoomOn || !curPair) return;
     zoomOn = true; zoomI = 0; pz.hidden = false; zoomSay("husband", zoomFallback(curPair, "husband", 0)); zoomI = 1;
     void zoomLine(); zoomT = setInterval(() => void zoomLine(), ZOOM.everyMs);
   };
@@ -1110,7 +1114,7 @@ export function openBar(ctx = {}, c, S = {}) {
       if (ch) { save(); checkReady(); }
       autoGo();
     }
-    if (toiletOn && absent.other) absent.other.until = Date.now() + 5000;   // 你們在廁所：她不會自己回座
+    if (toiletOn && absent.other?.why === "在廁所") absent.other.until = Date.now() + 5000;   // 你們在廁所：她不會自己回座
     if (chatting) {
       const slow = speaking || typing() ? CD.slow : 1;
       for (const k of NPCS) {
@@ -1149,6 +1153,24 @@ export function openBar(ctx = {}, c, S = {}) {
   adv.id = "swp-adv"; adv.style.cssText = "position:absolute;z-index:4;left:6px;bottom:78px;display:flex;flex-direction:column;gap:4px";
   ov.append(adv);
   const mkBtn = (label, fn) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; b.style.cssText = "border:0;border-radius:10px;background:#c0508a;color:#fff;padding:6px 10px;font:600 12px system-ui,sans-serif"; b.addEventListener("click", () => { if (!qn && !advancing) void queue(fn); }); return b; };
+  // pt256u：酒吧／KTV 左側按鈕＝自由移動到廁所／回座位（包廂）；能做什麼照場地規則（where()）
+  const mvb = $(".mvb");
+  renderMv = () => {
+    mvb.hidden = !(scene === "bar" || scene === "ktv") || finished || advancing || !chatting;
+    mvb.textContent = toiletOn ? (scene === "ktv" ? "回包廂" : "回座位") : "去廁所";
+  };
+  mvb.addEventListener("click", async (e) => {
+    e.stopPropagation(); if (qn || advancing || finished) return;
+    if (!toiletOn) {
+      const bring = !isAway("other") && otherSwapped(sess), there = absent.other?.why === "去廁所吐了" && isAway("other");
+      toiletOn = true; if (bring || there) absent.other = { why: "在廁所", until: Date.now() + 5000 };
+      await say("", bring ? `（你牽著${name.other}進了廁所，把門鎖上……）` : there ? `（你跟著${name.other}進了廁所……）` : "（你一個人走去廁所）");
+    } else {
+      const was = absent.other?.why === "在廁所"; toiletOn = false; if (was) absent.other = null;
+      await say("", scene === "ktv" ? "（你回到包廂）" : "（你回到座位）");
+    }
+    handCards = []; renderAdvanceBtn(); renderNb(); if (!qn) idleUI();
+  });
   const renderAdvanceBtn = () => {
     adv.innerHTML = "";
     if (finished || advancing) return;
@@ -1167,13 +1189,7 @@ export function openBar(ctx = {}, c, S = {}) {
       if (allAgree(sess)) for (const nx of nextOptions(scene)) if (canMove(sess, scene, nx).ok) adv.append(mkBtn(`前往${SCENE_ZH[nx]}`, async () => { busyUI(); await go(nx); }));
     }
     if (STG <= 2 && !(wifeSwapped(sess) && otherSwapped(sess))) adv.append(mkBtn("提議換妻", () => runSwap("player")));
-    if (scene === "bar" && !toiletOn && ((otherSwapped(sess) && barToiletOk(sess.drunk.other)) || (absent.other?.why === "去廁所吐了" && isAway("other")))) adv.append(mkBtn(otherSwapped(sess) && !isAway("other") ? "帶她去廁所" : "跟去廁所", async () => {
-      toiletOn = true; absent.other = { why: "在廁所", until: Date.now() + 5000 };
-      await say("", `（你跟著${name.other}進了廁所，把門鎖上……）`); handCards = []; renderAdvanceBtn(); renderNb();
-    }));
-    if (toiletOn) adv.append(mkBtn("回座位", async () => {
-      toiletOn = false; absent.other = null; await say("", "（你們若無其事地回到座位）"); handCards = []; renderAdvanceBtn(); renderNb();
-    }));
+    renderMv();
     if (scene === "hotel_room") adv.append(mkBtn("去浴室", async () => { busyUI(); await goNext("hotel_bath", "走進浴室"); }));
     if (scene === "hotel_bath") adv.append(mkBtn("回房間", async () => { busyUI(); await goNext("hotel_room", "回到房間"); }));
   };
