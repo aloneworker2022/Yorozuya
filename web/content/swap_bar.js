@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=47";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=48";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=30";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=19";
@@ -219,7 +219,7 @@ const CSS = `
 #swp-bar .hand.out{transform:translate(-50%,-50%) translateX(70vw);opacity:0;pointer-events:none}
 #swp-bar .hand canvas{width:96px;height:128px;image-rendering:pixelated;border-radius:6px;cursor:pointer}
 #swp-bar .hand canvas.off{opacity:.35;pointer-events:none}
-#swp-bar form{position:absolute;left:10px;right:10px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:4;display:flex;gap:8px;background:rgba(18,14,22,.85);border:1px solid rgba(255,255,255,.18);border-radius:22px;padding:5px}
+#swp-bar form{position:absolute;left:10px;right:10px;top:calc(40px + env(safe-area-inset-top));z-index:4;display:flex;gap:8px;background:rgba(18,14,22,.85);border:1px solid rgba(255,255,255,.18);border-radius:22px;padding:5px}
 #swp-bar form input{flex:1;min-width:0;border:1px solid #555;background:#221c27;color:#fff;border-radius:18px;padding:7px 12px;font-size:15px}
 #swp-bar form button{border:0;background:#c0508a;color:#fff;border-radius:18px;padding:0 14px;font-size:14px}
 #swp-bar .nb{position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;gap:4px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.75) 35%)}
@@ -354,7 +354,8 @@ export function openBar(ctx = {}, c, S = {}) {
     return { id: k, url: k === "wife" ? (wife ? img(wife.id, "wife", e) : "") : img(c.id, k, e), label: name[k], tint: tipsy };
   };
   let focus = [];   // 目前台上的人
-  const show = (ks) => { focus = ks.slice(); return stage.show(ks.map((k) => P(k))); };
+  // 2026-10-25：立繪出現＝卡牌移出畫面（卡牌回中央只在 idleUI：沒立繪、對話結束）
+  const show = (ks) => { focus = ks.slice(); if (ks.length) $(".hand")?.classList.add("out"); return stage.show(ks.map((k) => P(k))); };
   let hideT = 0;
   const hideSoon = (ms = 3500) => { clearTimeout(hideT); hideT = setTimeout(() => { if (!speaking && !closed) { focus = []; stage.show([]); } }, ms); };
 
@@ -634,9 +635,9 @@ export function openBar(ctx = {}, c, S = {}) {
     hand.replaceChildren(...handCards.map((cardX, i) => {
       const cv = document.createElement("canvas"); drawCard(cv, cardX); cv.title = `${cardX.zh}（${WHO_ZH[cardX.who]}・大膽 ${cardX.bold}）`;
       if (cardX.who !== "all" && isAway(cardX.who)) cv.classList.add("off");
-      cv.addEventListener("click", () => { if (!chatting || qn) return; handCards[i] = draw(); const tk = cardX.tease ? "other" : cardX.who === "all" ? "" : cardX.who;
-        if (!cardX.tease && pairLocked(cardX.who)) { handCards[i] = cardX; note(pairLockMsg()); return; }
-        if (tk && isBusy(tk) && !busy[tk].with.includes("player")) { note(`（${name[tk]}正在跟別人互動，等一下）`); return; }
+      cv.addEventListener("click", () => { if (!chatting || qn) return; hand.classList.add("out"); handCards[i] = draw(); const tk = cardX.tease ? "other" : cardX.who === "all" ? "" : cardX.who;
+        if (!cardX.tease && pairLocked(cardX.who)) { handCards[i] = cardX; hand.classList.remove("out"); note(pairLockMsg()); return; }
+        if (tk && isBusy(tk) && !busy[tk].with.includes("player")) { hand.classList.remove("out"); note(`（${name[tk]}正在跟別人互動，等一下）`); return; }
         void queue(() => withPlayer(tk ? [tk] : [], () => playCard(cardX))); });
       return cv;
     }));
