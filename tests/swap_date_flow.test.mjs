@@ -259,3 +259,16 @@ t("swap_bar：POV 靠下、雙人圖要她正在跟他互動、標籤跟配對�
   assert.match(src, /ktv: 3/);
 });
 console.log(`\n${pass} passed`);
+
+// pt255u：換妻後他們離開標籤；老婆不插話；去旅館要問你
+{
+  const src = (await import("node:fs")).readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
+  const ok = (c, m) => { if (!c) throw new Error(m); };
+  ok(/const pairOut = \(\) => STG === 2 && wifeSwapped\(sess\)/.test(src), "pairOut");
+  ok(/el\.hidden = outK\(k\)/.test(src) && /b\.hidden = outK\(b\.dataset\.t\)/.test(src), "hide nb/chips");
+  ok(/!pairOut\(\) && Math\.random\(\) < CHAT\.secondP/.test(src), "no second speaker");
+  ok(/together && !pairOut\(\)/.test(src), "no WIFE_SEE");
+  ok(/if \(pairOut\(\) \|\| pairGone\) return;/.test(src), "no autoGo force");
+  ok(/一起去旅館/.test(src) && /留下來繼續陪/.test(src), "hotel invite buttons");
+  console.log("pt255u ok");
+}

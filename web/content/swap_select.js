@@ -4,7 +4,7 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=33";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=46";
+import { openBar } from "./swap_bar.js?v=47";
 import { dateOutfitOf } from "./swap_outfit.js?v=3";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=9";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
