@@ -4,7 +4,7 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=34";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=50";
+import { openBar } from "./swap_bar.js?v=51";
 import { dateOutfitOf } from "./swap_outfit.js?v=4";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=9";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
@@ -235,8 +235,14 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   document.body.append(ov);
   let k = 0; const dots = setInterval(() => { ov.querySelector(".d").textContent = ".".repeat(k++ % 4); }, 400);
   const wife = ctx.girl?.() || null, gen = ctx.genPortrait || genPortrait;
+  // pt260u：標題一開始就對（以前先顯示「約會場地」）；旅館房間↔浴室＝用走的，進旅館時已經全產過 → 不再生任何圖、不卡黑畫面
+  const scene = ctx.scene || "park";
+  const dest = FLOW_ZH[scene] || "約會場地";
+  const hotelGo = String(scene).startsWith("hotel");
+  const ttl = ov.querySelector(".ttl");
+  if (ttl) ttl.textContent = ctx.walk ? `正在移動到${dest}` : hotelGo ? "正在驅車前往旅館（房間＋浴室的圖一次準備好）" : `正在驅車前往${dest}`;
+  if (ctx.walk && hotelGo) { await new Promise((r) => setTimeout(r, 600)); clearInterval(dots); ov.remove(); return S; }
   const jobs = [];
-  const hotelGo = String(ctx.scene || "").startsWith("hotel");   // pt259u：旅館＝全裸立繪也一起產（缺的才生）
   for (const ch of ["wife", "husband", "other"]) for (const ex of hotelGo ? ["normal", "shy", "nude"] : ["normal", "shy"]) {
     const owner = ch === "wife" ? wife?.id : c.id;
     if (!owner) continue;
@@ -246,7 +252,7 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
     jobs.push([ch, ex, owner, want]);
   }
   let done = 0, fail = 0;
-  const n = ov.querySelector(".n"), tick = () => { n.textContent = jobs.length ? `${done}/${jobs.length}${fail ? `（失敗 ${fail}）` : ""}` : ""; };
+  const n = ov.querySelector(".n"), tick = () => { n.textContent = jobs.length ? `準備立繪 ${done}/${jobs.length}${fail ? `（失敗 ${fail}）` : ""}` : ""; };
   tick();
   for (const [ch, ex, owner, want] of jobs) {   // 一張一張來（Comfy 排隊一樣是一張一張）
     try { const imgs = await gen(ch, ex, wife, c, S, () => {}); if (imgs) { S = { ...S, images: imgs }; if (want) setPortraitTag(owner, ch, ex, want); } }
@@ -254,9 +260,6 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
     done++; tick();
   }
   // 依場景預產：KTV／飯店的動作圖＋你老婆×對方丈夫雙人圖（缺的才生）
-  const scene = ctx.scene || "park";
-  const dest = FLOW_ZH[scene] || "約會場地";
-  const ttl = ov.querySelector(".ttl"); if (ttl) ttl.textContent = ctx.walk ? `正在移動到${dest}` : `正在驅車前往${dest}`;   // 飯店房間↔浴室：用走的
   let sess = {}; try { sess = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}") || {}; } catch { /* */ }
   const watchHotel = String(scene).startsWith("hotel") && hotelMode(sess) === "watch";   // 只能看：不用你的動作圖
   if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && !watchHotel) {
