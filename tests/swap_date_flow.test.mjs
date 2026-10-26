@@ -303,7 +303,7 @@ console.log(`\n${pass} passed`);
   const t = fs.readFileSync(new URL("../web/content/swap_tease.js", import.meta.url), "utf8");
   const s = fs.readFileSync(new URL("../web/content/swap_select.js", import.meta.url), "utf8");
   if (!/pregenKeys\("hotel_room"\), \.\.\.pregenKeys\("hotel_bath"\)/.test(t)) throw new Error("hotel pregen both");
-  if (!/hotelGo \? \["normal", "shy", "nude"\]/.test(s)) throw new Error("nude portraits pregen");
+  if (!/hotelGo \? \["normal", "shy", "nude"[\],]/.test(s)) throw new Error("nude portraits pregen");
   
 { const P = await import(dir + "swap_pair_gen.js?v=26");
 {

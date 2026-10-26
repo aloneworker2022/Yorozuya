@@ -5,9 +5,9 @@
  * 生圖：綠幕半身 → /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
-import { bindPairBox } from "./swap_pair_gen.js?v=26";
+import { bindPairBox } from "./swap_pair_gen.js?v=27";
 import { wornOutfitOf } from "./outfit_pick.js?v=2";
-import { dateOutfitOf, withDateOutfit, lookCharacter, lookFor } from "./swap_outfit.js?v=4";
+import { dateOutfitOf, withDateOutfit, lookCharacter, lookFor } from "./swap_outfit.js?v=5";
 import { loadPools, generateGirl, POOLS as _poolsRef } from "./girl_gen.js?v=5";
 import { rollHusband, enrichHusband, husbandLookEn } from "./husband_gen.js?v=1";
 
@@ -26,8 +26,8 @@ export function pickBackdrop(scene = "cafe", i = -1) {
   return bgs[i >= 0 && i < bgs.length ? i : Math.floor(Math.random() * bgs.length)];
 }
 const CHARS = { wife: "妻子（你老婆）", husband: "對方丈夫", other: "對方妻子" };
-const EXPRS = { normal: "一般", shy: "害羞", tipsy: "微醺（酒吧喝醉）", under: "內衣（KTV 脫 1）", nude: "裸體（旅館）" };   // 2026-10-25：依場景的造型
-const EXPR_EN = { tipsy: "tipsy, flushed cheeks, drunk blush, half-lidded eyes, relaxed smile", under: "embarrassed, blushing, covering herself slightly, shy", nude: "embarrassed, deep blush, shy, covering herself slightly", normal: "gentle smile, calm relaxed expression", shy: "shy, blushing, red cheeks, embarrassed, flustered, looking slightly away, bashful smile" };
+const EXPRS = { normal: "一般", shy: "害羞", tipsy: "微醺（酒吧喝醉）", under: "內衣（KTV 脫 1）", nude: "裸體（旅館）", climax: "高潮癱軟坐著（旅館做愛）", creampie: "內射後坐著腿開（旅館做愛）" };   // 2026-10-25：依場景的造型
+const EXPR_EN = { climax: "full body, sitting on bed, collapsed after orgasm, limp, exhausted, trembling legs, ahegao, flushed, sweaty, heavy breathing, messy hair, completely nude", creampie: "full body, sitting on bed, legs spread, m legs, spread pussy, cum dripping from pussy, cum on thighs, creampie aftermath, flushed, exhausted, heavy breathing, completely nude", tipsy: "tipsy, flushed cheeks, drunk blush, half-lidded eyes, relaxed smile", under: "embarrassed, blushing, covering herself slightly, shy", nude: "embarrassed, deep blush, shy, covering herself slightly", normal: "gentle smile, calm relaxed expression", shy: "shy, blushing, red cheeks, embarrassed, flustered, looking slightly away, bashful smile" };
 const QUALITY_EN = "masterpiece, best quality, detailed, sharp focus, clear face";
 const PORTRAIT_EN = "solo, half-body portrait, upper body, cowboy shot from the waist up, facing viewer, looking at viewer, on a casual date at a cafe";
 // 綠幕：要換深綠（使用者說的 dark green，例 #1f5f2f）只改這一行的字（例 "solid dark green background"）；色鍵看「綠比紅藍多多少」，深綠也摳得掉。
@@ -213,7 +213,8 @@ export function rollCkpts(c, list, who = "both") {
 // ---- 模板
 export function defaultTemplate(ch, ex) {
   const who = ch === "husband" ? "1boy, male focus, the man: {man}, {man_body}, wearing {man_outfit}" : "1girl, the woman: {girl}, {girl_body}, wearing {girl_outfit}";
-  const pos = [QUALITY_EN, PORTRAIT_EN, who, "{expr}", BG_EN].join(", ");
+  const full = ex === "climax" || ex === "creampie";   // pt283u：做愛後全身坐姿立繪，不要半身
+  const pos = [QUALITY_EN, full ? "solo, full body, whole body visible from head to feet, facing viewer, on a hotel bed" : PORTRAIT_EN, who, "{expr}", BG_EN].join(", ");
   const L = ch === "husband" ? (ex === "nude" ? { rating: "nsfw", neg: "" } : null) : lookFor(ex), base = L && L.rating === "nsfw" ? BASE_NEG.replace(/, nude, nsfw, nipples$/, "") : BASE_NEG;
   const neg = [base, L?.neg || "", BG_NEG, ch === "husband" ? "1girl, woman, female, breasts" : "1boy, man, male, 2girls", "{auto_neg}"].join(", ");
   return { pos, neg, img2img: { on: false, ref: "", denoise: 0.6 } };
@@ -250,7 +251,7 @@ export function cafeBody(ch, ex, wife, couple, eng, tpl, seed) {
     : { prompt: f.pos, extra: "", lock_identity: false };
   return {
     key: `swap-cafe:${ch}:${ex}:${Date.now().toString(36)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,
-    framing: "half", rating: ch === "husband" ? (ex === "nude" ? "nsfw" : "sfw") : lookFor(ex).rating, negative: f.neg, visual_neg: f.neg, cutout: false, flat_bg: false, retry: true, seed,   // 不走伺服器白底去背（flat_bg 會塞 white background）；生完自己綠幕色鍵
+    framing: lookFor(ex).framing || "half", rating: ch === "husband" ? (ex === "nude" ? "nsfw" : "sfw") : lookFor(ex).rating, negative: f.neg, visual_neg: f.neg, cutout: false, flat_bg: false, retry: true, seed,   // 不走伺服器白底去背（flat_bg 會塞 white background）；生完自己綠幕色鍵
     ...who, ...i2, ...(comfy ? { comfy_url: eng.comfyUrl, ckpt } : {}),
   };
 }

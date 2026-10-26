@@ -1,10 +1,10 @@
 /* 換妻・玩家對對方妻子的動作圖＋做愛步驟圖（2026-10-23）。
  * 共用房間那套 *_packs 的 build／generate（同一份圖組 prompt），魅子換成「對方妻子」：她自己的 ckpt＋補成房間 look 格式。
  * 結果存在換妻伺服器狀態 images[couple.id]["tease~<動作>(~nude)" | "sex~<姿勢>~<步驟>"]，之後直接用、不重生。 */
-import { api } from "./swap_cafe_gen.js?v=34";
+import { api } from "./swap_cafe_gen.js?v=35";
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { teaseGirlOf, teaseKey, sexKey, teaseNude, teaseUnder, sexPoseFor, pregenKeys } from "./swap_tease_rules.js?v=9";
-import { UNDER_OUTFIT } from "./swap_outfit.js?v=4";
+import { teaseGirlOf, teaseKey, sexKey, teaseNude, teaseUnder, sexPoseFor, pregenKeys, SEX_PREGEN_STEPS } from "./swap_tease_rules.js?v=10";
+import { UNDER_OUTFIT } from "./swap_outfit.js?v=5";
 import { pickRuntimeWaistPack, generateWaistPackImage } from "./waist_packs.js?v=6";
 import { pickRuntimeButtPack, generateButtPackImage } from "./butt_packs.js?v=7";
 import { pickRuntimeBreastPack, generateBreastPackImage, buildBreastImgBody } from "./breast_packs.js?v=4";
@@ -69,7 +69,7 @@ export function genTeaseImage(c, job, { eng = null, debug = () => {} } = {}) {
 }
 /** 卡牌 → 要的圖（場景決定穿衣／裸體、做愛姿勢）。做愛回 3 步。 */
 export function jobsForAct(act, scene, strip = 0) {
-  if (act === "sex") { const pose = sexPoseFor(scene); return ["open", "join", "thrust"].map((step) => ({ kind: "sex", pose, step, key: sexKey(pose, step) })); }
+  if (act === "sex") { const pose = sexPoseFor(scene); return SEX_PREGEN_STEPS.map((step) => ({ kind: "sex", pose, step, key: sexKey(pose, step) })); }
   if (!TEASE_JOBS[act]) return [];   // 接吻等：純文字，不生圖
   const nude = teaseNude(act, scene, strip), under = !nude && teaseUnder(act, scene, strip);
   return [{ kind: "tease", act, nude, under, key: teaseKey(act, nude || (under ? "under" : false)) }];

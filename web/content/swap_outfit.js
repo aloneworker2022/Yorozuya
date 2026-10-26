@@ -42,10 +42,13 @@ export const withDateOutfit = (g, role = "wife") => (g ? lookCharacter(g, role, 
  *   tipsy：酒吧喝醉才用：同一套外出服但微微鬆開（領口鬆、肩帶滑落），仍不露內衣。
  *   under：KTV 脫衣第 1 階段：只剩內衣褲。
  *   nude：KTV 脫衣第 2 階段：全裸。 */
-export const LOOK_KEYS = ["normal", "shy", "tipsy", "under", "nude"];
+export const LOOK_KEYS = ["normal", "shy", "tipsy", "under", "nude", "climax", "creampie"];
+/** pt283u：只給對方妻子（other）在旅館用：climax＝高潮多次後癱軟坐著；creampie＝被內射後坐著雙腿打開精液流出。 */
+export const SEX_LOOKS = ["climax", "creampie"];
 export const UNDER_OUTFIT = "matching lace bra and panties, underwear only, lingerie";
 export const COVER_NEG = "cleavage, bra, visible bra, bra strap, lingerie, underwear, see-through, revealing clothes, open shirt, unbuttoned, midriff, nsfw, nude, nipples";
 export function lookFor(ex) {
+  if (ex === "climax" || ex === "creampie") return { stage: "wife", force: true, outfit: "nude", neg: "", rating: "nsfw", framing: "full" };   // pt283u：旅館做愛後的全身坐姿立繪
   if (ex === "nude") return { stage: "wife", force: true, outfit: "nude", neg: "", rating: "nsfw" };
   if (ex === "under") return { stage: "girlfriend", outfit: UNDER_OUTFIT, neg: "nude, nipples, topless, outer clothes, jacket, dress", rating: "nsfw" };
   if (ex === "tipsy") return { stage: "friend", outfitSuffix: ", loosened collar, top slipping slightly off one shoulder, slightly disheveled clothes", neg: "visible bra, lingerie, underwear, nude, nipples, topless", rating: "sfw" };
@@ -70,4 +73,4 @@ export function lookKeyOf({ scene = "bar", drunk = 0, strip = 0, shy = false, ti
   return shy ? "shy" : "normal";
 }
 /** 找不到圖時的退路順序。 */
-export const lookFallback = (ex) => ({ nude: ["nude", "under", "shy", "normal"], under: ["under", "shy", "normal"], tipsy: ["tipsy", "shy", "normal"], shy: ["shy", "normal"] }[ex] || ["normal"]);
+export const lookFallback = (ex) => ({ climax: ["climax", "nude", "under", "shy", "normal"], creampie: ["creampie", "nude", "under", "shy", "normal"], nude: ["nude", "under", "shy", "normal"], under: ["under", "shy", "normal"], tipsy: ["tipsy", "shy", "normal"], shy: ["shy", "normal"] }[ex] || ["normal"]);

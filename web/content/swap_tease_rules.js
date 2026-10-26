@@ -4,7 +4,7 @@
  * 成功加接受度＋進度；被拒扣 2–5 並說一句拒絕。她爛醉（≥85）→ 做什麼都成功。
  * 你老婆在場看見 → 依她的忌妒心決定吃醋（緊張↑、放開↓）或變得更開放（放開↑、緊張↓），說一句。 */
 
-import { dateOutfitOf } from "./swap_outfit.js?v=4";
+import { dateOutfitOf } from "./swap_outfit.js?v=5";
 
 /** 場景：bar（酒吧，沒有動作卡）／ktv／hotel_room／hotel_bath。 */
 // 2026-10-24：酒吧（座位：親／摟；廁所：趁機）也有動作卡；誰能出由 swap_flow_rules.teaseWhere 決定（配對、她在不在廁所）
@@ -103,13 +103,15 @@ export const teaseNude = (act, scene, strip = 0) => sceneBase(scene) === "hotel"
 /** KTV 脫到剩內衣（strip=1）：局部圖用「內衣」那組（tease~act~under）。 */
 export const teaseUnder = (act, scene, strip = 0) => sceneBase(scene) === "ktv" && strip >= 1 && !NO_NUDE.has(act);
 export const teaseKey = (act, nude) => `tease~${act}${nude === "under" ? "~under" : nude ? "~nude" : ""}`;
+/** pt283u：旅館做愛要的步驟（準備 open、頂住 tip、做愛 thrust、射 cum、高潮 orgasm）。 */
+export const SEX_PREGEN_STEPS = ["open", "tip", "thrust", "cum", "orgasm"];
 export const sexKey = (pose, step) => `sex~${pose}~${step}`;
 /** 某場景要預產的圖鍵：KTV＝KTV 能解鎖的所有動作（穿衣）；飯店＝房間／浴室動作（裸體）＋該姿勢 3 步。 */
 export function pregenKeys(scene) {
   const out = [];
   for (const c of TEASE_CARDS) {
     if (!sceneOk(c, scene) || c.noImg) continue;   // 接吻等純文字卡：不預產圖
-    if (c.act === "sex") { const pose = sexPoseFor(scene); for (const s of ["open", "join", "thrust"]) out.push({ kind: "sex", pose, step: s, key: sexKey(pose, s) }); }
+    if (c.act === "sex") { for (const pose of ["missionary", "doggy"]) for (const s of SEX_PREGEN_STEPS) out.push({ kind: "sex", pose, step: s, key: sexKey(pose, s) }); }   // pt283u：準備／頂住／做愛／射／高潮；騎乘借正面
     else { const nude = teaseNude(c.act, scene); out.push({ kind: "tease", act: c.act, nude, key: teaseKey(c.act, nude) }); }
   }
   return out;

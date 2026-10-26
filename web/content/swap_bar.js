@@ -7,15 +7,15 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=62";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=63";
 import { createStage } from "./swap_stage.js?v=5";
-import { pickBackdrop } from "./swap_cafe_gen.js?v=34";
-import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=26";
-import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk, sexPoseFor } from "./swap_tease_rules.js?v=9";
-import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=4";
-import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=7";
-import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=10";
-import { loadSexPack, runChatSex, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB } from "./swap_chat_sex.js?v=4";
+import { pickBackdrop } from "./swap_cafe_gen.js?v=35";
+import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=27";
+import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk, sexPoseFor, sexKey } from "./swap_tease_rules.js?v=10";
+import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=5";
+import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=8";
+import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=11";
+import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB } from "./swap_chat_sex.js?v=5";
 import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext, hotelPairAct, HOTEL_PAIR_MS, PAIR_SFX_MS, sexSfx } from "./swap_flow_rules.js?v=11";
 
 // ============================================================ 調整用的表
@@ -414,7 +414,7 @@ export function openBar(ctx = {}, c, S = {}) {
   if (base === "hotel") { sess.strip.wife = 2; sess.strip.other = 2; }   // pt257u：旅館＝全員全裸
   const P = (k, ex) => {
     const tipsy = sess.drunk[k] >= DRUNK.lv.tipsy, shy = tipsy || (k === "wife" && sess.nerves >= 0.3) || (k === "other" && wType === "害羞人妻");
-    const e = ex || (k === "husband" ? (base === "hotel" ? "nude" : shy ? "shy" : "normal") : lookKeyOf({ scene, drunk: PARK ? 0 : sess.drunk[k], strip: sess.strip?.[k] || 0, shy, tipsyAt: DRUNK.lv.drunk }));
+    const e = ex || (k === "other" && base === "hotel" && sess.look?.other) || (k === "husband" ? (base === "hotel" ? "nude" : shy ? "shy" : "normal") : lookKeyOf({ scene, drunk: PARK ? 0 : sess.drunk[k], strip: sess.strip?.[k] || 0, shy, tipsyAt: DRUNK.lv.drunk }));
     return { id: k, url: k === "wife" ? (wife ? img(wife.id, "wife", e) : "") : img(c.id, k, e), label: name[k], tint: tipsy };
   };
   let focus = [];   // 目前台上的人
@@ -811,39 +811,46 @@ export function openBar(ctx = {}, c, S = {}) {
   };
   const attStage = () => { const st = swapAffStage(sess.accept); return st === "stranger" || st === "friend" ? "girlfriend" : st; };   // 換了＝同意：態度至少「又羞又要」，不演陌生人抗拒
   const OTHER_ME = () => `（你是${w.name}，${h.name}的妻子；玩家的老婆是${wn}，她不在你身邊，這句話跟她無關，不要提到她，也不要把自己叫成「妻子」。）`;
-  /** pt261u：聊天那套做愛（swap_chat_sex.js 跑 ScriptMode sex 劇本；圖＝sex~姿勢~open/join/thrust）。 */
+  /** pt283u：旅館做愛（swap_chat_sex.runHotelSex）：準備→頂住→「肏」；每按一下立刻播局部動圖＋擲骰射／高潮＋要下一句（背景生，不擋「肏」）。
+   *  三姿勢 背後／正面／騎乘（「換姿勢」鈕輪換）：局部動圖 背後→doggy，正面／騎乘→missionary。圖＝sex~姿勢~open/tip/thrust/cum/orgasm。 */
   const playChatSex = async (cardX) => {
-    const pack = await loadSexPack();
-    const jobs = jobsForAct("sex", where(), sess.strip.other || 0), by = Object.fromEntries(jobs.map((j) => [j.step, j]));
     const tok = ++pvTok; clearTimeout(pvT);
-    let cur = "";
+    sess.look = { ...(sess.look || {}), other: "" }; await show(["other"]);
     const btn = document.createElement("button"); btn.type = "button"; btn.className = "swp-thrust"; btn.textContent = "肏"; btn.hidden = true; ov.append(btn);
-    const u = (st) => cachedUrl(S, c, by[st]?.key);
-    // pt263u 全抄：局部動圖（同房間 flashScriptAnim）、場景1 點兩下、每下肏好感骰
-    let curScene = 2;
-    const anim = createLocalAnim(ov, () => ({ pose: sexPoseFor(where()), girl: w }));   // pt282u：同房間 loadThrustFrames；pose 看場景、人＝對方妻子
-    let animP = null;
-    const waitBtn = (label) => new Promise((res, rej) => { btn.textContent = label; btn.style.fontSize = label.length > 1 ? "16px" : ""; btn.hidden = false; const iv = setInterval(() => { if (closed) { clearInterval(iv); rej(new Error("closed")); } }, 500); btn.onclick = () => { clearInterval(iv); btn.hidden = true; res(); }; });
+    const pb = document.createElement("button"); pb.type = "button"; pb.className = "swp-thrust swp-pose"; pb.hidden = true; pb.style.cssText = "bottom:184px;min-width:64px;height:40px;border-radius:20px;font-size:15px;background:#7a3cd2"; ov.append(pb);
+    let animPose = "missionary", showSeq = 0;
+    const anim = createLocalAnim(ov, () => ({ pose: animPose, girl: w }));   // 同房間 loadThrustFrames；人＝對方妻子
+    const showSex = async (pose, state) => {
+      const my = ++showSeq, lbl = `${cardX.zh}・${POSE_ZH[pose]}・${STATE_ZH[state]}`;
+      pb.textContent = `換姿勢（${POSE_ZH[pose]}）`;
+      const hit = sexImgCandidates(pose, state).find((k) => cachedUrl(S, c, k));
+      const gp = pose === "cowgirl" ? "missionary" : pose, step = STATE_STEP[state];   // 騎乘還沒有自己的生圖 shot：缺圖就生正面那張
+      const job = hit ? { kind: "sex", pose, step, key: hit } : { kind: "sex", pose: gp, step, key: sexKey(gp, step) };
+      if (my !== showSeq || tok !== pvTok) return;
+      await pvShow(job, lbl, tok);
+    };
+    let pressRes = null;
+    btn.onclick = () => { const r = pressRes; pressRes = null; r?.("thrust"); };
+    pb.onclick = () => { const r = pressRes; pressRes = null; r?.("pose"); };
     try {
-      const r = await runChatSex({
-        girl: w,
-        narrate: (t) => { log.push(`（旁白：${t}）`); return say("旁白", t); },
-        reply: async (att, nar, n) => line("other", await say1("other", `${OTHER_ME()}你正在跟玩家（另一對夫妻的丈夫）在旅館做愛，這一景：${swapAttitude(att, attStage())}。旁白：${nar.replace(/妻子/g, "她")}。以${name.other}的身分，用第一人稱對正在肏你的玩家說一句反應（「你」＝玩家）。${SENSE_RULE}`, pick(SWAP_SEX_FB[n] || SWAP_SEX_FB[2])), { to: "player", click: true }),
-        showStep: async (step, label, swap) => {
-          const st = swap ? (cur === "join" ? "thrust" : "join") : step;
-          if (!by[st]) return; cur = st; await pvShow(by[st], `${cardX.zh}・${String(label || "").replace(/^場景\d\s*·\s*/, "")}`, tok);
+      const r = await runHotelSex({
+        showState: (pose, state) => { void showSex(pose, state); if (state === "tip") { btn.hidden = false; pb.hidden = false; } },
+        anim: (ap) => { animPose = ap; anim.play().then((n) => dbg(`局部動圖 ${anim.source}（${ap}，${n} 幀）`), () => {}); },
+        waitPress: () => new Promise((res, rej) => { if (closed) return rej(new Error("closed")); pressRes = res; const iv = setInterval(() => { if (closed) { clearInterval(iv); rej(new Error("closed")); } else if (pressRes !== res) clearInterval(iv); }, 500); }),
+        line: async (x) => {
+          const ev = { tip: "陰莖頂在她的入口、還沒進去", thrust: "你正在肏她", climax: "她剛剛高潮了（全身痙攣、腿發抖）", ejac: "你在她裡面射了（內射）", both: "你們一起高潮、你射在她裡面" }[x.event] || "你正在肏她";
+          const fb = SWAP_SEX_FB[x.event === "tip" ? 1 : x.event === "climax" || x.event === "both" ? 5 : x.event === "ejac" ? 4 : 2];
+          const t = await say1("other", `${OTHER_ME()}你正在跟玩家（另一對夫妻的丈夫）在旅館做愛，體位：${POSE_ZH[x.pose]}；${ev}${x.climaxes ? `（你已經高潮 ${x.climaxes} 次）` : ""}。她此刻的心情：${swapAttitude("依關係：女友又羞又要、妻子投入。", attStage())}。以${name.other}的身分，用第一人稱對正在肏你的玩家說一句反應（「你」＝玩家）。${SENSE_RULE}`, pick(fb));
+          if (!closed) await line("other", t, { to: "player", click: !!x.final });   // 只貼字：不收「肏」、不停動圖
         },
-        thrustAnim: async () => { const a = u("join"), b = u("thrust"); if (!a || !b || tok !== pvTok) return; for (const x of [b, a, b]) { pvImg.src = x; await sleep(200); } pvImg.src = u(cur) || b; },
-        waitTap: (label) => waitBtn(label),
-        waitThrust: async () => { await animP; return waitBtn("肏"); },   // 同房間：動圖播放中藏「肏」，最後一幀出現才回來
-        localAnim: (sc) => { curScene = sc; animP = anim.play().then((n) => { dbg(`局部動圖 ${anim.source}（${n} 幀）`); return n; }, () => 0); return animP; },
-        stopAnim: () => anim.stop(),
-        aff: (d) => { bumpAff("other", d, "肏"); affPop(d); save(); renderNb(); },
-        stage: () => swapAffStage(sess.accept),
-      }, pack);
+        portrait: (look) => { if ((sess.look?.other || "") === (look === "nude" ? "" : look)) return; sess.look = { ...(sess.look || {}), other: look === "nude" ? "" : look }; dbg(`${name.other} 立繪 → ${look}`); void show(["other"]); },
+        aff: () => { const d = rollAffDelta(3, swapAffStage(sess.accept)); bumpAff("other", d, "肏"); affPop(d); save(); renderNb(); },
+        onClimax: (st) => { dbg(`${name.other} 高潮（第 ${st.climaxes} 次）`); note(`${name.other} 高潮了！（${st.climaxes}）`); },
+        onEjac: () => { dbg("射了（內射）"); btn.hidden = true; pb.hidden = true; },
+      }, { pose: sexPoseFor(where()) });
       sess.sexCd = rollSexCd(); save(); dbg(`做愛結束 → CD ${sess.sexCd} 回合（可以聊天／出別的牌）`); note(`（做完了，休息一下——${sess.sexCd} 回合後才能再做；這段時間可以聊天）`);
-      dbg(`做愛（聊天劇本「${pack?.name || "做愛"}」）：肏 ${r.thrusts} 下 → ${r.climax === "both" ? "雙方高潮" : "玩家高潮"}`);
-    } finally { btn.remove(); anim.stop(); anim.el.remove(); }
+      dbg(`做愛：肏 ${r.thrusts} 下、她高潮 ${r.climaxes} 次、${r.creampie ? "內射" : "沒射"}（最後 ${POSE_ZH[r.pose]}）`);
+    } finally { btn.remove(); pb.remove(); anim.stop(); anim.el.remove(); }
   };
   const playTease = async (cardX) => {
     busyUI();

@@ -35,7 +35,7 @@ console.log("swap_chat_sex ok");
   const { THRUST } = await import("../web/content/sex_thrust.js");
   assert.deepEqual(FIRST_HOLDS, THRUST.FIRST_HOLDS); assert.deepEqual(CONTINUE_HOLDS, THRUST.CONTINUE_HOLDS);
   const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
-  assert.match(bar, /createLocalAnim\(ov, \(\) => \(\{ pose: sexPoseFor\(where\(\)\), girl: w \}\)\)/);
+  assert.match(bar, /createLocalAnim\(ov, \(\) => \(\{ pose: animPose, girl: w \}\)\)/);
   assert.deepEqual(animPlan(["1", "2", "3", "4"], false).map((x) => x[1]), FIRST_HOLDS);
   assert.deepEqual(animPlan(["1", "2", "3", "4"], true), [["2", CONTINUE_HOLDS[0]], ["3", CONTINUE_HOLDS[1]], ["4", CONTINUE_HOLDS[2]]]);
   assert.equal(rollSexCd(() => 0), 4); assert.equal(rollSexCd(() => 0.99), 5);
@@ -50,6 +50,7 @@ console.log("swap_chat_sex ok");
   assert.deepEqual(F.pairSlotsFor("hotel_room", P.PAIR_ACTS, P.PAIR_FRAMES, P.PAIR_EJAC), ["normal~1", "normal~2", "normal~3", "behind~1", "behind~2", "behind~3", "room_kiss", "bath_kiss", "afterglow"]);
   assert.ok(F.pairSlotsFor("ktv", P.PAIR_ACTS, P.PAIR_FRAMES, P.PAIR_EJAC).includes("fellatio~3"));
   assert.match(py, /\(normal\|behind\|seated\)~\(1\|2\|3\)\|pair~fellatio~3/);
+  assert.match(py, /sex~\(missionary\|doggy\|cowgirl\)~\(open\|tip\|join\|thrust\|cum\|orgasm\)/); assert.match(py, /other~\(climax\|creampie\)/);
   console.log("swap_chat_sex pt263u ok");
 }
 // ---- pt264u：好感階依接受度；attitude 不再出現「妻子」；有感覺詞
@@ -61,4 +62,39 @@ console.log("swap_chat_sex ok");
   assert.ok(!swapAttitude("陌生／朋友抗拒丟臉；女友複雜；妻子接受。", "wife").includes("妻子"));
   assert.ok(/燙|濕|麻/.test(SENSE_RULE)); assert.ok(Object.values(SWAP_SEX_FB).flat().every((t) => !t.includes("妻子")));
   console.log("swap_chat_sex pt264u ok");
+}
+
+// ---- pt283u：肏跟對話脫鉤、三姿勢、射／高潮骰、立繪切換
+{
+  const M = await import("../web/content/swap_chat_sex.js");
+  assert.equal(M.SEX_IMG_MATRIX.length, 15);
+  assert.deepEqual(M.SEX_STATES.map((s) => M.STATE_ZH[s]), ["準備", "頂住", "做愛", "射", "高潮"]);
+  assert.deepEqual(M.HOTEL_POSES.map((p) => M.POSE_ZH[p]).sort(), ["背後", "正面", "騎乘"].sort());
+  assert.equal(M.sexImgKey("doggy", "ejac"), "sex~doggy~cum"); assert.equal(M.sexImgKey("cowgirl", "climax"), "sex~cowgirl~orgasm");
+  assert.deepEqual(M.sexImgCandidates("cowgirl", "tip").slice(0, 3), ["sex~cowgirl~tip", "sex~cowgirl~open", "sex~missionary~tip"]);
+  assert.equal(M.animPoseOf("doggy"), "doggy"); assert.equal(M.animPoseOf("missionary"), "missionary"); assert.equal(M.animPoseOf("cowgirl"), "missionary");
+  assert.equal(M.rollPress(1, () => 0).ejac, false); assert.equal(M.rollPress(M.MAX_THRUST, () => 0.99).ejac, true);
+  assert.equal(M.rollPress(5, () => 0, { lastClimax: true }).climax, false);
+  assert.equal(M.portraitLook({ climaxes: 2 }), "nude"); assert.equal(M.portraitLook({ climaxes: M.CLIMAX_COLLAPSE_AT }), "climax"); assert.equal(M.portraitLook({ climaxes: 9, creampie: true }), "creampie");
+  // 脫鉤：對話永遠不回（卡住）也照樣每下肏都播動圖、骰到射就結束
+  const states = [], anims = [], looks = [], lines = []; let presses = 0;
+  const seq = [0.9, 0.9, 0.0, 0.9, 0.0, 0.9, 0.0, 0.9, 0.9, 0.0];   // rollPress 先骰 climax 再骰 ejac
+  let i = 0; const rng = () => (i < seq.length ? seq[i++] : 0.9);
+  const acts = ["thrust", "pose", "thrust", "pose", "thrust", "thrust", "thrust"];
+  const r = await M.runHotelSex({
+    showState: (p, s) => states.push(`${p}:${s}`), anim: (ap) => anims.push(ap),
+    waitPress: async () => { const a = acts.shift() || "thrust"; if (a === "thrust") presses++; return a; },
+    line: (x) => { lines.push(x.event); return x.final ? Promise.resolve() : new Promise(() => {}); },   // 非最後一句永遠生不完
+    portrait: (l) => looks.push(l), sleep: async () => {},
+  }, { rng, pose: "missionary", tipMs: 0 });
+  assert.deepEqual(states.slice(0, 2), ["missionary:prep", "missionary:tip"]);
+  assert.equal(anims.length, presses); assert.equal(r.thrusts, presses);
+  assert.deepEqual(anims.slice(0, 3), ["missionary", "doggy", "missionary"]);   // 正面→背後（換姿勢）→騎乘（借正面動圖）
+  assert.ok(r.creampie && looks.at(-1) === "creampie");
+  assert.equal(lines[0], "tip"); assert.equal(lines.length, 2); assert.equal(lines[1] === "ejac" || lines[1] === "both", true);   // 第一句卡住：後面的肏不排隊、不等它；射完只補最後一句
+  const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
+  assert.match(bar, /runHotelSex\(/); assert.match(bar, /k === "other" && base === "hotel" && sess\.look\?\.other/);
+  const O = await import("../web/content/swap_outfit.js");
+  assert.equal(O.lookFallback("creampie")[1], "nude"); assert.equal(O.lookFor("climax").framing, "full");
+  console.log("swap_chat_sex pt283u ok");
 }

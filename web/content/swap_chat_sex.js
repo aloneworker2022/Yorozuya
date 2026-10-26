@@ -175,3 +175,87 @@ export const SWAP_SEX_FB = {
   5: ["（弓起背尖叫，全身痙攣）……啊啊、去了……一起……！", "（腦袋一片空白，腿抖個不停）……好熱……整個人都化掉了……"],
   1: ["（呼吸一亂，皮膚泛紅）……你的手好燙……", "（被你碰到的地方一陣酥麻）……嗯……別、別一直看……"],
 };
+
+// ======================================================================
+// 2026-10-26 pt283u：旅館做愛重做——「肏」跟對話脫鉤、三姿勢、每下骰射／高潮、立繪切換。
+//   流程：準備（張腿）→ 頂住（陰莖頂著）→ 出「肏」鈕 → 每按一下：立刻播一次局部動圖（不等對話）＋擲骰＋要下一句台詞（背景生，生完只貼字）。
+//   對話生完貼出時不收「肏」、不停動圖；連按時台詞合併成「生完再補一句」，不排長隊。
+//   射＝內射 → 射圖、立繪換「坐著雙腿打開精液流出」(other~creampie)，做愛結束（進 CD）。
+//   她高潮可以很多次；累積 ≥ CLIMAX_COLLAPSE_AT 次 → 立繪換「高潮癱軟坐著」(other~climax)。
+// ======================================================================
+/** 三姿勢（值＝圖鍵用的 pose）：背後＝doggy、正面＝missionary、騎乘＝cowgirl。 */
+export { rollAffDelta };
+export const HOTEL_POSES = ["missionary", "doggy", "cowgirl"];
+export const POSE_ZH = { doggy: "背後", missionary: "正面", cowgirl: "騎乘" };
+/** 五狀態 → 房間 sex_pose_packs 的步驟（open／tip／thrust／cum／orgasm）。 */
+export const SEX_STATES = ["prep", "tip", "thrust", "ejac", "climax"];
+export const STATE_ZH = { prep: "準備", tip: "頂住", thrust: "做愛", ejac: "射", climax: "高潮" };
+export const STATE_STEP = { prep: "open", tip: "tip", thrust: "thrust", ejac: "cum", climax: "orgasm" };
+export const sexImgKey = (pose, state) => `sex~${pose}~${STATE_STEP[state] || state}`;
+/** 3 姿勢 × 5 狀態＝15 個圖鍵。 */
+export const SEX_IMG_MATRIX = HOTEL_POSES.flatMap((p) => SEX_STATES.map((s) => sexImgKey(p, s)));
+/** 找圖的退路：騎乘還沒有自己的圖組（伺服器沒有 sex_cowgirl_* shot）→ 借正面；頂住沒圖→準備；射／高潮沒圖→做愛；做愛沒圖→舊的 join。 */
+const STEP_FB = { prep: ["open"], tip: ["tip", "open"], thrust: ["thrust", "join"], ejac: ["cum", "thrust", "join"], climax: ["orgasm", "thrust", "join"] };
+export function sexImgCandidates(pose, state) {
+  const poses = pose === "cowgirl" ? ["cowgirl", "missionary"] : [pose];
+  return poses.flatMap((p) => (STEP_FB[state] || [state]).map((s) => `sex~${p}~${s}`));
+}
+/** 局部動圖：背後用背後（doggy）；正面、騎乘都用正面（missionary）。 */
+export const animPoseOf = (pose) => (pose === "doggy" ? "doggy" : "missionary");
+export const nextPose = (pose) => HOTEL_POSES[(HOTEL_POSES.indexOf(pose) + 1) % HOTEL_POSES.length];
+/** 每下肏的機率（第 n 下）：
+ *   射：前 EJAC_MIN-1 下不射；之後 6% 起、每下 +1.5%，上限 45%；第 MAX_THRUST 下必射。
+ *   她高潮：10% 起、每下 +2%，上限 50%；剛高潮完的下一下不再高潮（不連發）。 */
+export const ROLL = { ejacMin: 3, ejacBase: 0.06, ejacStep: 0.015, ejacMax: 0.45, climaxBase: 0.1, climaxStep: 0.02, climaxMax: 0.5 };
+export const CLIMAX_COLLAPSE_AT = 3;
+export function rollPress(n, rng = Math.random, { lastClimax = false } = {}) {
+  const pe = n < ROLL.ejacMin ? 0 : Math.min(ROLL.ejacMax, ROLL.ejacBase + ROLL.ejacStep * (n - ROLL.ejacMin));
+  const pc = lastClimax ? 0 : Math.min(ROLL.climaxMax, ROLL.climaxBase + ROLL.climaxStep * (n - 1));
+  const climax = rng() < pc;
+  const ejac = n >= MAX_THRUST || rng() < pe;
+  return { ejac, climax, pe, pc };
+}
+/** 她的立繪造型：內射 > 高潮癱軟 > 裸體。 */
+export const portraitLook = ({ climaxes = 0, creampie = false } = {}) => (creampie ? "creampie" : climaxes >= CLIMAX_COLLAPSE_AT ? "climax" : "nude");
+
+/**
+ * io：{ showState(pose, state)（換 POV 圖，不要 await 很久）, anim(animPose)（播一次局部動圖；不 await）,
+ *       waitPress() → Promise<"thrust"|"pose">（「肏」鈕／換姿勢鈕；按完鈕不收）, line(ctx) → Promise（生一句＋貼出；背景跑）,
+ *       portrait(look), aff?(), sleep?(ms), onClimax?(st), onEjac?(st) }
+ * 回 { thrusts, climaxes, creampie, pose }。
+ */
+export async function runHotelSex(io, { rng = Math.random, pose = "missionary", tipMs = 900 } = {}) {
+  const st = { pose: HOTEL_POSES.includes(pose) ? pose : "missionary", state: "prep", presses: 0, climaxes: 0, creampie: false, done: false, lastClimax: false };
+  const sleep = io.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const set = (s) => { st.state = s; try { io.showState(st.pose, s); } catch { /* */ } };
+  set("prep"); await sleep(tipMs); set("tip");
+  // 對話：一次只生一句；生的時候又按 → 生完再補一句（只補一句）
+  let lineP = null, again = null;
+  const kick = (ctx) => {
+    if (lineP) { again = ctx; return lineP; }
+    lineP = (async () => {
+      let c = ctx;
+      while (c) { again = null; try { await io.line({ ...c, pose: st.pose, climaxes: st.climaxes }); } catch { /* 生文失敗不影響肏 */ } c = st.done ? null : again; }
+    })().finally(() => { lineP = null; });
+    return lineP;
+  };
+  kick({ event: "tip" });
+  for (;;) {
+    const act = await io.waitPress();
+    if (act === "pose") { st.pose = nextPose(st.pose); set(st.state === "prep" || st.state === "tip" ? "tip" : "thrust"); continue; }
+    st.presses++;
+    io.anim(animPoseOf(st.pose));   // 每按一下就播，不等對話
+    set("thrust");
+    io.aff?.(st);
+    const r = rollPress(st.presses, rng, { lastClimax: st.lastClimax });
+    st.lastClimax = r.climax;
+    if (r.climax) { st.climaxes++; set("climax"); io.onClimax?.(st); io.portrait(portraitLook(st)); }
+    if (r.ejac) {
+      st.creampie = true; st.done = true; set("ejac"); io.onEjac?.(st); io.portrait(portraitLook(st));
+      if (lineP) await Promise.race([lineP, sleep(8000)]);   // 前一句還在生：最多等 8 秒再貼射精那句
+      try { await io.line({ event: r.climax ? "both" : "ejac", pose: st.pose, climaxes: st.climaxes, final: true }); } catch { /* */ }
+      return { thrusts: st.presses, climaxes: st.climaxes, creampie: true, pose: st.pose };
+    }
+    kick({ event: r.climax ? "climax" : "thrust" });   // 「肏」也有下一句的效果
+  }
+}
