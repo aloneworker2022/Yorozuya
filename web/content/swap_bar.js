@@ -7,15 +7,16 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=59";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=60";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=34";
-import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=23";
+import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=24";
 import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk } from "./swap_tease_rules.js?v=8";
 import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=4";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=6";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=10";
-import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext } from "./swap_flow_rules.js?v=9";
+import { loadSexPack, runChatSex, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd } from "./swap_chat_sex.js?v=2";
+import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext } from "./swap_flow_rules.js?v=10";
 
 // ============================================================ 調整用的表
 export const CD = { min: 10, max: 25, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]] };   // 秒（2026-10-22 改 10–25）；半速；醉了 CD 變短（×），但不會短於 min
@@ -682,6 +683,7 @@ export function openBar(ctx = {}, c, S = {}) {
     if (STG === 2 && anySwapped(sess)) void queue(async () => { busyUI(); await go("hotel_room"); });
   };
   const afterPlayerTurn = (why) => {
+    if (sess.sexCd > 0 && !/做愛/.test(String(why))) { const left = tickSexCd(sess); dbg(`做愛 CD → 剩 ${left} 回合`); if (!left && !qn) renderHand(); }
     const n = bumpRound(sess, scene); save(); dbg(`回合 +1（${why}）→ ${n}`);
     renderNb();
   };
@@ -693,14 +695,14 @@ export function openBar(ctx = {}, c, S = {}) {
   const teasePool = () => (consentFree(sess, "other") ? TEASE_CARDS.slice() : unlockedTease(gateSt()));   // 換了＝全部解鎖（場景再篩）
   const otherHere = () => (toiletOn ? absent.other?.why === "在廁所" : !isAway("other"));   // 廁所裡她「不在座位」但在你身邊
   const whereOk = (cd_) => teaseWhere(cd_, { where: where(), paired: paired(), drunk: sess.drunk.other, mode }) && stripOk(cd_, sess.strip.other || 0);
-  const allowed = (cd_) => (toiletOn ? !!cd_.tease : handCardOk(cd_, scene)) && (cd_.tease ? (consentFree(sess, "other") || teaseGate(cd_, gateSt()).ok) && whereOk(cd_) && otherHere() : !BOLD_GATE[cd_.bold] || sess.progress >= BOLD_GATE[cd_.bold]);
+  const allowed = (cd_) => !sexCdBlocks(cd_, sess) && (toiletOn ? !!cd_.tease : handCardOk(cd_, scene)) && (cd_.tease ? (consentFree(sess, "other") || teaseGate(cd_, gateSt()).ok) && whereOk(cd_) && otherHere() : !BOLD_GATE[cd_.bold] || sess.progress >= BOLD_GATE[cd_.bold]);
   const draw = () => {
     const ids = new Set(handCards.filter(Boolean).map((x) => x.id));
     if (teaseOn && Math.random() < TEASE_FX.handTease) {   // 動作卡：只從已解鎖的抽
-      const tp = teasePool().filter((x) => !ids.has(x.id) && handCardOk(x, scene) && whereOk(x));
+      const tp = teasePool().filter((x) => !ids.has(x.id) && !sexCdBlocks(x, sess) && handCardOk(x, scene) && whereOk(x));
       if (tp.length && otherHere()) return { ...pick(tp) };
     }
-    if (toiletOn) { const tp = teasePool().filter((x) => whereOk(x)); if (tp.length) return { ...pick(tp) }; }
+    if (toiletOn) { const tp = teasePool().filter((x) => whereOk(x) && !sexCdBlocks(x, sess)); if (tp.length) return { ...pick(tp) }; }
     const pool = deck.filter((x) => allowed(x) && !ids.has(x.id) && !outK(x.who));
     const fallback = deck.filter((x) => handCardOk(x, scene));
     let card = { ...pick(pool.length ? pool : (fallback.length ? fallback : deck)) };
@@ -708,7 +710,7 @@ export function openBar(ctx = {}, c, S = {}) {
     return card;
   };
   const renderHand = () => {
-    handCards = handCards.map((x) => (x?.tease && !allowed(x) ? draw() : x));   // 接受度掉了／她醉醒了：鎖回去的動作卡換掉
+    handCards = handCards.map((x) => (x?.tease && !allowed(x) ? draw() : x));   // （做愛 CD 中做愛卡也會被換掉）   // 接受度掉了／她醉醒了：鎖回去的動作卡換掉
     while (handCards.length < HAND_N) handCards.push(draw());
     hand.replaceChildren(...handCards.map((cardX, i) => {
       const cv = document.createElement("canvas"); drawCard(cv, cardX); cv.title = `${cardX.zh}（${WHO_ZH[cardX.who]}・大膽 ${cardX.bold}）`;
@@ -790,13 +792,16 @@ export function openBar(ctx = {}, c, S = {}) {
   };
   /** pt261u：聊天那套做愛（swap_chat_sex.js 跑 ScriptMode sex 劇本；圖＝sex~姿勢~open/join/thrust）。 */
   const playChatSex = async (cardX) => {
-    const { loadSexPack, runChatSex } = await import("./swap_chat_sex.js?v=1");
     const pack = await loadSexPack();
     const jobs = jobsForAct("sex", where(), sess.strip.other || 0), by = Object.fromEntries(jobs.map((j) => [j.step, j]));
     const tok = ++pvTok; clearTimeout(pvT);
     let cur = "";
     const btn = document.createElement("button"); btn.type = "button"; btn.className = "swp-thrust"; btn.textContent = "肏"; btn.hidden = true; ov.append(btn);
     const u = (st) => cachedUrl(S, c, by[st]?.key);
+    // pt263u 全抄：局部動圖（同房間 flashScriptAnim）、場景1 點兩下、每下肏好感骰
+    let curScene = 2;
+    const anim = createLocalAnim(ov, () => ({ pack, scene: curScene, girl: w }));
+    const waitBtn = (label) => new Promise((res, rej) => { btn.textContent = label; btn.style.fontSize = label.length > 1 ? "16px" : ""; btn.hidden = false; const iv = setInterval(() => { if (closed) { clearInterval(iv); rej(new Error("closed")); } }, 500); btn.onclick = () => { clearInterval(iv); btn.hidden = true; res(); }; });
     try {
       const r = await runChatSex({
         girl: w,
@@ -807,10 +812,16 @@ export function openBar(ctx = {}, c, S = {}) {
           if (!by[st]) return; cur = st; await pvShow(by[st], `${cardX.zh}・${String(label || "").replace(/^場景\d\s*·\s*/, "")}`, tok);
         },
         thrustAnim: async () => { const a = u("join"), b = u("thrust"); if (!a || !b || tok !== pvTok) return; for (const x of [b, a, b]) { pvImg.src = x; await sleep(200); } pvImg.src = u(cur) || b; },
-        waitThrust: () => new Promise((res, rej) => { btn.hidden = false; const iv = setInterval(() => { if (closed) { clearInterval(iv); rej(new Error("closed")); } }, 500); btn.onclick = () => { clearInterval(iv); btn.hidden = true; res(); }; }),
+        waitTap: (label) => waitBtn(label),
+        waitThrust: () => waitBtn("肏"),
+        localAnim: (sc) => { curScene = sc; return anim.play(); },
+        stopAnim: () => anim.stop(),
+        aff: (d) => bumpAff("other", d, "做愛"),
+        stage: "stranger",
       }, pack);
+      sess.sexCd = rollSexCd(); save(); dbg(`做愛結束 → CD ${sess.sexCd} 回合（可以聊天／出別的牌）`); note(`（做完了，休息一下——${sess.sexCd} 回合後才能再做；這段時間可以聊天）`);
       dbg(`做愛（聊天劇本「${pack?.name || "做愛"}」）：肏 ${r.thrusts} 下 → ${r.climax === "both" ? "雙方高潮" : "玩家高潮"}`);
-    } finally { btn.remove(); }
+    } finally { btn.remove(); anim.stop(); anim.el.remove(); }
   };
   const playTease = async (cardX) => {
     busyUI();
@@ -906,6 +917,7 @@ export function openBar(ctx = {}, c, S = {}) {
     return true;
   };
   const renderPair = () => {
+    if (ejacShow) return;   // pt263u：射精圖播放中
     const a0 = wife ? pairAct() : "", a = pairShowOk(a0) ? a0 : "";
     const here = huToilet() || watch || (base !== "hotel" && together && !isAway("wife") && !isAway("husband")) || (base === "hotel" && (wifeSwapped(sess) || watch) && pairLocOf() === scene);   // pt257u：他們只在固定地點，你在同一處才看得到
     curPair = a && here ? a : "";
@@ -923,13 +935,19 @@ export function openBar(ctx = {}, c, S = {}) {
   const pairLocked = (k) => (k === "wife" || k === "husband" || k === "all") && pairIntimate(curPair);
   const pairLockMsg = () => `（${wn}跟${h.name}正在${PAIR_ZH[curPair] || "親熱"}，現在不方便打擾他們）`;
   // 對方丈夫：口交／交配中每 5 秒判一次射（1/5）；射了就結束這段、休息一陣，兩人 CD 從 0 開始
-  let ejacAcc = 0, ejacBusy = false;
+  let ejacAcc = 0, ejacBusy = false, ejacShow = false;
   const ejacTick = (dt) => {
     if (ejacBusy || !curPair || !pairIntimate(curPair)) { ejacAcc = 0; return; }
     ejacAcc += dt; if (ejacAcc < EJAC.everySec) return; ejacAcc = 0;
     const act = curPair;
     if (!ejacActOk(act, base) || !rollEjac(act)) return;
     if (base === "ktv") sess.ktvAcc = Math.max(0, (sess.ktvAcc || 0) - KTV_ACC.afterClimax);
+    // pt263u：射了 → 第 2 格 → 射精圖＋抖 6 下（看得到才播；放大也一起）；播完才收
+    const have = S.images?.[pairOwner(wife, c)] || {}, u2 = pairCut(have, `${act}~2`) || pairCut(have, act), u3 = ejacSlot(act) ? pairCut(have, ejacSlot(act)) : "";
+    if (!pr.hidden && (u3 || u2)) {
+      ejacShow = true; dbg(`${h.name} 射精圖：2 → 射精${u3 ? "（抖 6 下）" : "（沒有射精圖，只停第 2 格）"}`);
+      void playEjac([pf1, zoomOn ? zf1 : null], u2, u3, () => !closed).finally(() => setTimeout(() => { ejacShow = false; prKey = ""; renderPair(); }, 900));
+    }
     endPairSess("climax");   // 射了＝結束、休息，之後從低一點重新來
     ejacBusy = true; pairRestUntil = Date.now() + EJAC.restSec * 1000; dbg(`${h.name} 射了（${PAIR_ZH[act] || act}）→ 結束，休息 ${EJAC.restSec} 秒`);
     if (zoomOn) { zoomHold = true; clearInterval(zoomT); zoomSay("husband", `（${h.name}低吼一聲，在${wn}${act === "fellatio" ? "嘴裡" : "體內"}射了出來……）`); setTimeout(() => { if (zoomHold) zoomClose(); }, 2600); }
@@ -964,6 +982,7 @@ export function openBar(ctx = {}, c, S = {}) {
   pr.addEventListener("click", (e) => { e.stopPropagation(); zoomOpen(); });
   pz.addEventListener("click", (e) => { e.stopPropagation(); if (!zoomHold) zoomClose(); });
   if (base !== "park") stopPair = startPairLoop((f2) => {
+    if (ejacShow) return;   // 射精圖播放中：不換圖
     renderPair(); if (!pr.hidden) applyPairFrame(pr, f2);
     if (zoomOn && !pr.hidden) { if (zf1.getAttribute("src") !== pf1.getAttribute("src")) zf1.src = pf1.getAttribute("src") || ""; const b = pf2.getAttribute("src"); if (b) { if (zf2.getAttribute("src") !== b) zf2.src = b; } else zf2.removeAttribute("src"); applyPairFrame(pz, f2); }
   });

@@ -41,6 +41,7 @@ export const pairCut = (have, slot) => {
   const r = have?.[`pair~${slot}`];
   if (!r?.cut || (Number(r.at) || 0) < PAIR_SINCE) return "";
   // 第 2 格必須跟第 1 格同 seed（2026-10-24：遊戲內預產以前沒傳 seed，兩格差很多 → 不同 seed 的第 2 格當沒有、重生）
+  if (/~3$/.test(String(slot))) return r.cut;   // 射精圖不卡 seed
   const m = /^(.+)~2$/.exec(String(slot));
   if (m) { const s1 = Number(have?.[`pair~${m[1]}~1`]?.seed) || 0; if (!s1 || Number(r.seed) !== s1) return ""; }
   return r.cut;
@@ -60,8 +61,18 @@ export const PAIR_FRAMES = {
   seated: [{ act: "straddling, upright straddle, sitting on lap, imminent penetration, kiss", expr: "blush, nervous, kiss" },
     { act: `straddling, sex, vaginal, deep penetration, ${F2_SLAM}`, his: "thrusting, hips up, grabbing another's hips", expr: F2_EXPR }],
 };
+/** 2026-10-26 pt263u：射精圖（第 3 格 ~3）：對方丈夫射了 → 第 2 格 → 這張＋抖 EJAC_SHAKES 下。交配沿用第 1 格 seed；口交沿用口交那張的 seed。 */
+const EJ_EXPR = "ahegao, tears, open mouth, heavy breathing, blush, sweat";
+export const PAIR_EJAC = {
+  normal: { act: "sex, vaginal, kneeling, upright, leg grab, spread legs, on back, deep penetration, cum in pussy, creampie, ejaculation, overflow, cum drip, trembling", his: "hips pressed forward, head back, grabbing another's thighs", expr: EJ_EXPR, neg: "lying on another, missionary" },
+  behind: { act: "doggystyle, sex from behind, vaginal, deep penetration, cum in pussy, creampie, ejaculation, overflow, cum drip, trembling", his: "hips pressed forward, head back, grabbing another's hips", expr: EJ_EXPR },
+  seated: { act: "straddling, sex, vaginal, deep penetration, cum in pussy, creampie, ejaculation, cum drip, trembling, hug", his: "hips up, holding another tight", expr: EJ_EXPR },
+  fellatio: { act: "fellatio, kneeling, penis, cum in mouth, ejaculation, cum on face, facial, hand on another's head", his: "standing, head back, hand on another's head", expr: "cum in mouth, tears, closed eyes, blush", herCl: "open shirt" },
+};
+export const EJAC_SHAKES = 6, EJAC_SHAKE_MS = 260, EJAC_LEAD_MS = 700;
+export const ejacSlot = (act) => (PAIR_EJAC[act] ? `${act}~3` : "");
 /** 要生的格子：一般動作一格（pair~chat），交配動作兩格（pair~normal~1／~2）。共 5＋3×2＝11。（2026-10-23 傳教士刪了：容易出錯） */
-export const PAIR_SLOTS = PAIR_ACTS.flatMap((a) => (PAIR_FRAMES[a.key] ? [`${a.key}~1`, `${a.key}~2`] : [a.key]));
+export const PAIR_SLOTS = PAIR_ACTS.flatMap((a) => [...(PAIR_FRAMES[a.key] ? [`${a.key}~1`, `${a.key}~2`] : [a.key]), ...(PAIR_EJAC[a.key] ? [`${a.key}~3`] : [])]);
 export const slotOf = (slot) => { const [act, f] = String(slot).split("~"); return { act, frame: f ? Number(f) : 0 }; };
 const ACT = Object.fromEntries(PAIR_ACTS.map((a) => [a.key, a]));
 const FRAME_EN = { half: "upper body", wide: "wide shot, full body" };
@@ -80,7 +91,7 @@ const dedupe = (...xs) => { const seen = new Set(); return xs.join(", ").split("
 export const pairOwner = (wife, couple) => `${wife?.id || ""}.${couple?.id || ""}`.replace(/[^A-Za-z0-9_.:-]/g, "-").slice(0, 80);
 /** 每段的 tag（伺服器的 _pair_prompts 照這個組；她的長相＋品質 tag 由伺服器補）。 */
 export function pairPrompt(slot, wife, couple) {
-  const { act: actKey, frame } = slotOf(slot), fr = frame ? PAIR_FRAMES[actKey]?.[frame - 1] : null;
+  const { act: actKey, frame } = slotOf(slot), fr = frame === 3 ? PAIR_EJAC[actKey] : frame ? PAIR_FRAMES[actKey]?.[frame - 1] : null;
   const a = ACT[actKey]; if (!a) throw new Error(`沒有這個動作 ${actKey}`);
   const h = couple?.husband || {}, nude = a.clothes === "nude", mi = manInfo(h), lookEn = husbandLookEn(h);
   const maleBase = lookEn || [MAN_LOOK[h.persona] || "short hair", MAN_BODY[h.build] || ""].filter(Boolean).join(", ");
@@ -183,6 +194,7 @@ export async function saveEdit(owner, slot, edit) {
 export function seedFor(slot, have, runSeeds) {
   const { act, frame } = slotOf(slot);
   if (frame === 2) return runSeeds[act] || Number(have?.[`pair~${act}~1`]?.seed) || 0;
+  if (frame === 3) return runSeeds[act] || Number(have?.[`pair~${act}~1`]?.seed) || Number(have?.[`pair~${act}`]?.seed) || 0;
   return 0;
 }
 
@@ -197,6 +209,17 @@ function ensureSlamCss() {
   st.textContent = `@keyframes swpSlam{0%{${T(0, 0, 1)}}30%{${T(px * 0.3, px, sc)}}50%{${T(-px * 0.2, -px * 0.4, 1 - (sc - 1) * 0.3)}}70%{${T(px * 0.1, px * 0.25, 1 + (sc - 1) * 0.3)}}85%{${T(0, -px * 0.1, 1)}}100%{${T(0, 0, 1)}}}`
     + ` .swp-slam{animation:swpSlam ${SLAM_MS}ms cubic-bezier(.2,.9,.3,1) 1;transform-origin:50% 100%}`;
   document.head.appendChild(st);
+}
+/** 射精：第 2 格停 EJAC_LEAD_MS → 換射精圖，抖 EJAC_SHAKES 下（每下 EJAC_SHAKE_MS，用同一個撞擊動畫）。imgs＝要換圖的 <img>（.pf1）；回 Promise。 */
+export async function playEjac(imgs, u2, u3, alive = () => true) {
+  ensureSlamCss();
+  const els = imgs.filter(Boolean), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (const im of els) { im.parentElement?.querySelectorAll(".pf2").forEach((b) => { b.style.visibility = "hidden"; }); im.style.visibility = "visible"; }
+  if (u2) { for (const im of els) im.src = u2; await wait(EJAC_LEAD_MS); }
+  if (!alive() || !u3) return;
+  for (const im of els) im.src = u3;
+  for (let i = 0; i < EJAC_SHAKES && alive(); i++) { for (const im of els) { im.classList.remove("swp-slam"); void im.offsetWidth; im.classList.add("swp-slam"); } await wait(EJAC_SHAKE_MS); }
+  for (const im of els) im.classList.remove("swp-slam");
 }
 /** 一直跑：第 1 格 FRAME1_MS → 第 2 格 FRAME2_MS → …；每次切換呼叫 cb(isFrame2)。回 stop()。 */
 export function startPairLoop(cb) {

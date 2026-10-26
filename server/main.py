@@ -5138,7 +5138,7 @@ _SWAP_DIR = ASSETS_DIR / "swap_cafe"
 _SWAP_STATE = _SWAP_DIR / "state.json"
 # 2026-10-22 加雙人互動圖 pair~<動作>（owner＝她 id.couple id）
 # 2026-10-23 加玩家對對方妻子的動作圖 tease~<動作>(~nude) 與做愛步驟 sex~<姿勢>~<步驟>（owner＝couple id）
-_SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy|tipsy|under|nude)|pair~(chat|kiss|grope|fellatio|cunni)|pair~(normal|behind|seated)~(1|2)"
+_SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy|tipsy|under|nude)|pair~(chat|kiss|grope|fellatio|cunni)|pair~(normal|behind|seated)~(1|2|3)|pair~fellatio~3"
                        r"|tease~(waist|butt|breast|breast_knead|breast_suck|nipple_lick|labia|labia_rub|oral|finger_in|vagina_finger|cervix_rub)(~nude|~under)?"
                        r"|sex~(missionary|doggy)~(open|join|thrust))$")   # 交配三個動作兩格（輪播）
 _SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
@@ -5300,7 +5300,7 @@ def swap_cafe_image(body: dict):
 
 
 # ---- 2026-10-22 換妻雙人圖測試台：每張圖自己的設定（正負向原文、seed／steps／cfg、起始圖＋denoise）＋預設 prompt 預覽 ----
-_PAIR_KEY = re.compile(r"^pair~(chat|kiss|grope|fellatio|cunni|(normal|behind|seated)~(1|2))$")
+_PAIR_KEY = re.compile(r"^pair~(chat|kiss|grope|fellatio|cunni|(normal|behind|seated)~(1|2|3)|fellatio~3)$")
 _PAIR_REF_PREFIX = ("/assets/swap_cafe/", "/assets/pose_refs/", "/assets/portraits/")
 
 

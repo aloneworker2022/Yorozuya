@@ -281,11 +281,12 @@ export function teaseWhere(card, { where = "bar", paired = false, drunk = 0, mod
 }
 
 /** 雙人圖：依場景要預產哪些 slot（PAIR_ACTS 的 scene 欄）。第 2 段＝KTV 那組＋廁所／包廂的交配。 */
-export function pairSlotsFor(scene, PAIR_ACTS, PAIR_FRAMES) {
+export function pairSlotsFor(scene, PAIR_ACTS, PAIR_FRAMES, PAIR_EJAC = null) {
   const base = sceneBase(scene);
   if (!PAIR_ACTS || base === "park") return [];
   const keys = base === "hotel" ? ["normal", "behind"] : [...PAIR_ACTS.filter((a) => a.scene === "ktv").map((a) => a.key), ...(base === "ktv" ? [] : ["behind"])]   // 2026-10-25：KTV 不交配;
-  return PAIR_ACTS.filter((a) => keys.includes(a.key)).flatMap((a) => (PAIR_FRAMES?.[a.key] ? [`${a.key}~1`, `${a.key}~2`] : [a.key]));
+  // pt263u：他會射的動作再加一張射精圖 ~3（KTV 只有口交會射）
+  return PAIR_ACTS.filter((a) => keys.includes(a.key)).flatMap((a) => [...(PAIR_FRAMES?.[a.key] ? [`${a.key}~1`, `${a.key}~2`] : [a.key]), ...(PAIR_EJAC?.[a.key] && ejacActOk(a.key, base) ? [`${a.key}~3`] : [])]);
 }
 
 export const END_FB = {
