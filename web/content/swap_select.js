@@ -268,7 +268,7 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   }
   if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && wife) {
     try {
-      const pair = await import("./swap_pair_gen.js?v=24");
+      const pair = await import("./swap_pair_gen.js?v=25");
       const slots = pairSlotsFor(scene, pair.PAIR_ACTS, pair.PAIR_FRAMES, pair.PAIR_EJAC);
       const have = S.images?.[pair.pairOwner(wife, c)] || {};
       // 2026-10-24：半身舊圖不算；第 1 格要重生的話第 2 格也跟著重生（同 seed）

@@ -195,13 +195,14 @@ t("換妻＝同意色色：配對了才免門檻", () => {
     assert.match(bar, /pr\.addEventListener\("click"[^\n]*zoomOpen/); assert.match(bar, /if \(zoomOn\) \{ zoomHold = true/);
     assert.ok(P.SLAM_PX >= 5 && P.SLAM_PX <= 8); assert.ok(P.SLAM_SCALE > 1 && P.SLAM_SCALE <= 1.025); assert.ok(P.SLAM_MS <= 250);
     const pg = readFileSync(new URL("../web/content/swap_pair_gen.js", import.meta.url), "utf8");
-    // pt251u：對方丈夫黑影、用對方的模型、舊圖作廢
-    // pt254u：黑影取消（正常男人）、模型用她的、黑影期的圖作廢；伺服器順序＝共同 BREAK 她 BREAK 他
+    // pt251u／pt254u 舊：黑影／女模；pt280u：男模＋her／male 前綴、禁 tanned、舊圖作廢；伺服器順序＝共同 BREAK 她 BREAK 他
     const pp = P.pairPrompt("kiss", { id: "w" }, { husband: { persona: "gentleman", build: "average" } });
-    assert.ok(!pp.male.some((x) => /silhouette|shadow man/.test(x))); assert.ok(pp.male.includes("tanned male"));
-    assert.equal(P.pairCkpt({ comfyCkpt: "mine" }, { wife: { comfyCkpt: "theirs" }, husband: { ckpt: "his" } }, {}), "mine");
-    assert.equal(P.pairCkpt({}, { wife: { comfyCkpt: "theirs" } }, { comfyCkpt: "glob" }), "glob");
-    assert.ok(P.PAIR_SINCE > 1792933200);
+    assert.ok(!pp.male.some((x) => /silhouette|shadow man|tanned/.test(x)));
+    assert.ok(pp.male.every((x) => /^male\b/i.test(x))); assert.ok(pp.male.some((x) => /fair skin/.test(x)));
+    assert.ok(pp.herPose.every((x) => /^her\b/i.test(x))); assert.ok(pp.expr.every((x) => /^her\b/i.test(x)));
+    assert.equal(P.pairCkpt({ comfyCkpt: "mine" }, { wife: { comfyCkpt: "theirs" }, husband: { ckpt: "his" } }, {}), "his");
+    assert.equal(P.pairCkpt({}, { wife: { comfyCkpt: "theirs" }, husband: {} }, { comfyCkpt: "glob" }), "glob");
+    assert.ok(P.PAIR_SINCE > 1793007000);
     const mp = readFileSync(new URL("../server/main.py", import.meta.url), "utf8");
     assert.match(mp, /for x in \(shared, female, male\)/); assert.match(mp, /"1girl, 1boy, hetero"/);
     assert.ok(!/@keyframes swpSlam[^\n]*translateX\(-50%\)/.test(pg) && !/T = \(x, y, sc\) => `transform:translateX/.test(pg));   // 不覆蓋元素原本的 transform
