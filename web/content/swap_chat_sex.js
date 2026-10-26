@@ -313,3 +313,39 @@ export function portraitTapLine(look, rng = Math.random, last = "") {
 /** 做愛中她主動的機率（每句台詞）。 */
 export const INITIATIVE_P = 0.4;
 export const isInitiative = (event, rng = Math.random) => (event === "thrust" || event === "tip") && rng() < INITIATIVE_P;
+/* pt287u：點老婆×對方丈夫雙人圖 → 老婆對玩家說話（右側立繪）。表情＝害羞／失神／高潮；內容＝害羞／懊悔／讚美對方丈夫。
+ * {h}＝對方丈夫名字。她是玩家的老婆，可以叫玩家「老公」。 */
+export const WIFE_PAIR_EXPR = ["shy", "vacant", "climax"];
+export const WIFE_PAIR_EXPR_ZH = { shy: "害羞", vacant: "失神", climax: "高潮" };
+/** 表情 → 立繪 look 退路（旅館全裸；沒有專用圖就用 nude）＋濾鏡 */
+export const WIFE_PAIR_LOOK = { shy: ["shy", "nude", "under", "normal"], vacant: ["nude", "under", "shy", "normal"], climax: ["climax", "nude", "under", "shy", "normal"] };
+export const WIFE_PAIR_FILTER = { shy: "saturate(1.25) hue-rotate(-12deg) brightness(1.05)", vacant: "saturate(.7) brightness(.95) contrast(.95)", climax: "saturate(1.4) hue-rotate(-20deg) brightness(1.08)" };
+export const WIFE_PAIR_LINES = {
+  shy: [
+    "（滿臉通紅別過頭）……老公……不要一直看啦……好丟臉……",
+    "（小聲）……被你看著……被{h}這樣弄……我、我會更有感覺的……",
+    "（遮住臉）……別盯著我們那裡看嘛……",
+    "（害羞）……老公……你、你在旁邊看……我都不知道要怎麼辦了……",
+  ],
+  regret: [
+    "（咬著唇）……對不起……老公……我真的停不下來……",
+    "（眼眶泛紅）……我是不是……變成很壞的老婆了……",
+    "（喘著）……明明說好只是試試看的……怎麼會……變成這樣……",
+    "（愧疚地看著你）……老公……你不會因為這樣討厭我吧……",
+  ],
+  praise: [
+    "（失神地）……老公……{h}的……好大……頂得好深……",
+    "（喘）……{h}好會……比你還會……對不起……可是真的好舒服……",
+    "（迷濛）……他的腰……一直不停……我快被他弄壞了……",
+    "（顫抖）……老公你看……{h}把我弄成這樣了……",
+  ],
+};
+/** 主題 → 偏好表情（讓臉跟台詞對得上） */
+const WP_EXPR_OF = { shy: ["shy", "shy", "vacant"], regret: ["shy", "vacant", "vacant"], praise: ["vacant", "climax", "climax"] };
+/** 拿一句老婆對玩家的話：{ theme, expr, text }（不連續重複） */
+export function wifePairLine(hName = "他", rng = Math.random, last = "") {
+  const themes = Object.keys(WIFE_PAIR_LINES), theme = themes[Math.floor(rng() * themes.length) % themes.length];
+  const bank = WIFE_PAIR_LINES[theme].map((l) => l.replaceAll("{h}", hName)), pool = bank.length > 1 ? bank.filter((x) => x !== last) : bank;
+  const text = pool[Math.floor(rng() * pool.length) % pool.length], ex = WP_EXPR_OF[theme];
+  return { theme, expr: ex[Math.floor(rng() * ex.length) % ex.length], text };
+}

@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=65";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=66";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=35";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=28";
@@ -15,7 +15,7 @@ import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK
 import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=5";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=9";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=12";
-import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative, portraitTapLine, posesFor } from "./swap_chat_sex.js?v=7";
+import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative, portraitTapLine, posesFor, wifePairLine, WIFE_PAIR_LOOK, WIFE_PAIR_FILTER, WIFE_PAIR_EXPR_ZH } from "./swap_chat_sex.js?v=8";
 import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext, hotelPairAct, HOTEL_PAIR_MS, PAIR_SFX_MS, sexSfx } from "./swap_flow_rules.js?v=12";
 
 // ============================================================ 調整用的表
@@ -285,6 +285,11 @@ const CSS = `
 #swp-bar .pz .cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #swp-bar .pz .pzx{position:absolute;right:12px;top:calc(60px + env(safe-area-inset-top));width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(20,16,24,.85);color:#fff;font-size:18px}
 #swp-bar .pz .pzt{width:min(94%,620px);min-height:64px;background:rgba(18,14,22,.92);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:8px 12px;font-size:15px;line-height:1.5}
+#swp-bar .pz .pzw{position:absolute;right:0;bottom:0;height:62%;max-width:46%;z-index:2;pointer-events:auto;cursor:pointer;display:flex;align-items:flex-end;justify-content:flex-end;animation:pzwIn .35s ease-out}
+#swp-bar .pz .pzw[hidden]{display:none}
+#swp-bar .pz .pzw img{height:100%;width:auto;max-width:100%;object-fit:contain;object-position:bottom right;filter:drop-shadow(0 4px 10px rgba(0,0,0,.6))}
+#swp-bar .pz .pzw i{position:absolute;top:4px;right:8px;font:600 11px system-ui;background:rgba(210,60,120,.85);color:#fff;padding:1px 7px;border-radius:9px;font-style:normal}
+@keyframes pzwIn{from{transform:translateX(40%);opacity:0}to{transform:none;opacity:1}}
 #swp-bar .pz .pzt b{display:block;font-size:12px;color:#f2a6c8;margin-bottom:2px}
 #swp-bar .dbgp{position:absolute;z-index:4;right:6px;bottom:78px;background:rgba(10,10,14,.88);border:1px solid #555;border-radius:10px;padding:6px 8px;font-size:11px;display:flex;flex-direction:column;gap:3px}
 #swp-bar .dbgp input[type=range]{width:120px}
@@ -322,7 +327,7 @@ export function openBar(ctx = {}, c, S = {}) {
     <form hidden><input maxlength="120" placeholder="說點什麼…"><button type="submit">說</button></form>
     <div class="toast off"></div>
     <div class="pr" hidden><div class="cell" style="position:absolute;inset:0"><img class="pf1" alt=""><img class="pf2" alt=""></div><div class="prl"></div></div>
-    <div class="pz" hidden><button type="button" class="pzx" aria-label="關閉">✕</button><div class="cell"><img class="pf1" alt=""><img class="pf2" alt=""></div><div class="pzt"><b></b><span></span></div></div>
+    <div class="pz" hidden><button type="button" class="pzx" aria-label="關閉">✕</button><div class="cell"><img class="pf1" alt=""><img class="pf2" alt=""></div><div class="pzt"><b></b><span></span></div><div class="pzw" hidden><img alt=""><i></i></div></div>
     <div class="pv" hidden><img alt=""><div class="pvw"></div><div class="pvl"></div></div>
     <div class="nb"></div>`;
   document.body.append(ov);
@@ -1012,12 +1017,28 @@ export function openBar(ctx = {}, c, S = {}) {
     const act = curPair, i = zoomI++, k = i % 3 === 1 ? "husband" : "wife";   // 她喘得多
     zoomSay(k, sexSfx(act, k, Math.floor(i / 2) + Math.floor(Math.random() * 3)));
   };
+  // pt287u：點雙人圖 → 先喘一聲，接著你老婆轉頭對你說話（右側立繪；表情 害羞／失神／高潮；內容 害羞／懊悔／讚美對方丈夫）
+  const pzw = $(".pz .pzw"), pzwImg = $(".pz .pzw img"), pzwTag = $(".pz .pzw i");
+  let wpLast = "", wpT = 0, wpUntil = 0;
+  const wifePairImg = (expr) => { const m = (wife && S.images?.[wife.id]) || {}; for (const e of WIFE_PAIR_LOOK[expr] || ["nude"]) { const u = m[`wife~${e}`]?.cut; if (u) return u; } return ""; };
+  const wifeToPlayer = () => {
+    if (!zoomOn || zoomHold || closed) return;
+    const r = wifePairLine(h.name, Math.random, wpLast); wpLast = r.text;
+    const u = wifePairImg(r.expr);
+    if (u) { pzwImg.src = u; pzwImg.style.filter = `${WIFE_PAIR_FILTER[r.expr]} drop-shadow(0 4px 10px rgba(0,0,0,.6))`; }
+    pzw.dataset.expr = r.expr; pzw.dataset.theme = r.theme; pzwTag.textContent = WIFE_PAIR_EXPR_ZH[r.expr];
+    pzw.hidden = !u; pzw.style.animation = "none"; void pzw.offsetWidth; pzw.style.animation = "";
+    pzN.textContent = `${wn} → 你`; pzT.textContent = r.text; wpUntil = Date.now() + 3200;   // 這句先停一下，喘息不蓋掉
+    log.push(`${wn}（對你）：${r.text}`); dbg(`${wn} 對你說（${r.theme}／${WIFE_PAIR_EXPR_ZH[r.expr]}）`);
+  };
   const zoomOpen = () => {
     if (zoomOn || !curPair) return;
-    zoomOn = true; zoomI = 0; pz.hidden = false; zoomSay("wife", sexSfx(curPair, "wife", 0)); zoomI = 1;
-    zoomT = setInterval(() => void zoomLine(), PAIR_SFX_MS);
+    zoomOn = true; zoomI = 0; pz.hidden = false; pzw.hidden = true; zoomSay("wife", sexSfx(curPair, "wife", 0)); zoomI = 1;
+    zoomT = setInterval(() => { if (Date.now() >= wpUntil) void zoomLine(); }, PAIR_SFX_MS);
+    clearTimeout(wpT); wpT = setTimeout(wifeToPlayer, 1100);
   };
-  const zoomClose = () => { zoomOn = false; zoomHold = false; clearInterval(zoomT); pz.hidden = true; };
+  const zoomClose = () => { zoomOn = false; zoomHold = false; clearInterval(zoomT); clearTimeout(wpT); wpUntil = 0; pz.hidden = true; pzw.hidden = true; };
+  pzw.addEventListener("click", (e) => { e.stopPropagation(); if (zoomOn && !zoomHold) { zoomSay("wife", sexSfx(curPair, "wife", zoomI++)); clearTimeout(wpT); wpT = setTimeout(wifeToPlayer, 700); } });
   pr.addEventListener("click", (e) => { e.stopPropagation(); zoomOpen(); });
   pz.addEventListener("click", (e) => { e.stopPropagation(); if (!zoomHold) zoomClose(); });
   if (base !== "park") stopPair = startPairLoop((f2) => {
