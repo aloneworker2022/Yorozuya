@@ -25,7 +25,7 @@ console.log("swap_chat_sex ok");
   const taps = [], affs = []; let anims = 0;
   const r = await runChatSex({ girl: { name: "美咲" }, narrate: async () => {}, reply: async () => {}, waitThrust: async () => {}, waitTap: async (l) => taps.push(l),
     localAnim: async () => { anims++; }, aff: (d) => affs.push(d), affRoll: () => 2, roll: (() => { const q = ["none", "ai", "both"]; return () => q.shift(); })() }, pack);
-  assert.equal(r.climax, "both"); assert.equal(anims, 3); assert.deepEqual(affs, [2, 2, 2]);
+  assert.equal(r.climax, "both"); assert.equal(anims, 3); assert.deepEqual(affs, [2, 2, 2, 2]);   // pt264u：高潮那下（場景5）也加好感
   assert.equal(taps[taps.length - 1], "開始"); assert.ok(taps.includes("下一句"));
   const fp = [{ id: "a", pose: "doggy", frames: { 1: { url: "/a1" }, 2: { url: "/a2" }, 3: { url: "/a3" }, 4: { url: "/a4" } } }];
   assert.deepEqual(animUrlCandidates({ pack: { pose: "doggy", scenes: {} }, scene: 2, girl: {}, framePacks: fp }).fallback, ["/a1", "/a2", "/a3", "/a4"]);
@@ -45,4 +45,14 @@ console.log("swap_chat_sex ok");
   assert.ok(F.pairSlotsFor("ktv", P.PAIR_ACTS, P.PAIR_FRAMES, P.PAIR_EJAC).includes("fellatio~3"));
   assert.match(py, /\(normal\|behind\|seated\)~\(1\|2\|3\)\|pair~fellatio~3/);
   console.log("swap_chat_sex pt263u ok");
+}
+// ---- pt264u：好感階依接受度；attitude 不再出現「妻子」；有感覺詞
+{
+  const { swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB } = await import("../web/content/swap_chat_sex.js");
+  assert.equal(swapAffStage(0), "stranger"); assert.equal(swapAffStage(70), "girlfriend"); assert.equal(swapAffStage(90), "wife");
+  const a = swapAttitude("正戲進行中。依關係：陌生抗拒、朋友羞怒、女友又羞又要、妻子投入。", "girlfriend");
+  assert.ok(!a.includes("妻子") && a.includes("又羞又要"), a);
+  assert.ok(!swapAttitude("陌生／朋友抗拒丟臉；女友複雜；妻子接受。", "wife").includes("妻子"));
+  assert.ok(/燙|濕|麻/.test(SENSE_RULE)); assert.ok(Object.values(SWAP_SEX_FB).flat().every((t) => !t.includes("妻子")));
+  console.log("swap_chat_sex pt264u ok");
 }

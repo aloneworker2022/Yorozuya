@@ -217,7 +217,7 @@ t("swap_bar／swap_select／test_room_summon 以 ES module 解析沒有語法錯
 });
 
 // —— pt250u：場景造型／KTV 脫衣兩段／雙人圖規則／POV 位置 ——
-const TR = await import(dir + "swap_tease_rules.js?v=8");
+const TR = await import(dir + "swap_tease_rules.js?v=9");
 t("造型：公園／酒吧清醒＝穿好（friend）；酒吧醉＝tipsy；KTV 只有內衣一段，沒有全裸", () => {
   assert.equal(O.lookKeyOf({ scene: "park", drunk: 99 }), "normal");
   assert.equal(O.lookKeyOf({ scene: "bar", drunk: 80 }), "tipsy");

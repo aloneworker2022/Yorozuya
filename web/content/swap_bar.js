@@ -7,15 +7,15 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=60";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=61";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=34";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=24";
-import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk } from "./swap_tease_rules.js?v=8";
+import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk } from "./swap_tease_rules.js?v=9";
 import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=4";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=6";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=10";
-import { loadSexPack, runChatSex, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd } from "./swap_chat_sex.js?v=2";
+import { loadSexPack, runChatSex, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB } from "./swap_chat_sex.js?v=3";
 import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext } from "./swap_flow_rules.js?v=10";
 
 // ============================================================ 調整用的表
@@ -790,6 +790,15 @@ export function openBar(ctx = {}, c, S = {}) {
       if (a && b) { let f = false; const loop = () => { if (tok !== pvTok || closed) return; f = !f; pvImg.src = f ? b : a; pvT = setTimeout(loop, f ? 600 : 1400); }; loop(); }
     })();
   };
+  // pt264u：好感浮字（同房間 #aff-pop：+N 粉、-N 灰、±0）；你跟對方妻子的台詞身分講清楚
+  const affPop = (d) => {
+    const el = document.createElement("div"); const v = Number(d) || 0;
+    el.textContent = `${name.other} 好感 ${v > 0 ? "+" + v : v < 0 ? v : "±0"}`;
+    el.style.cssText = `position:absolute;left:50%;top:22%;transform:translateX(-50%);z-index:40;pointer-events:none;font:700 18px/1 sans-serif;color:${v > 0 ? "#ff6fd8" : v < 0 ? "#9aa" : "#ddd"};text-shadow:0 2px 6px #000;transition:transform .9s ease-out,opacity .9s ease-out;opacity:1`;
+    ov.append(el); requestAnimationFrame(() => { el.style.transform = "translate(-50%,-40px)"; el.style.opacity = "0"; }); setTimeout(() => el.remove(), 1000);
+  };
+  const attStage = () => { const st = swapAffStage(sess.accept); return st === "stranger" || st === "friend" ? "girlfriend" : st; };   // 換了＝同意：態度至少「又羞又要」，不演陌生人抗拒
+  const OTHER_ME = () => `（你是${w.name}，${h.name}的妻子；玩家的老婆是${wn}，她不在你身邊，這句話跟她無關，不要提到她，也不要把自己叫成「妻子」。）`;
   /** pt261u：聊天那套做愛（swap_chat_sex.js 跑 ScriptMode sex 劇本；圖＝sex~姿勢~open/join/thrust）。 */
   const playChatSex = async (cardX) => {
     const pack = await loadSexPack();
@@ -806,7 +815,7 @@ export function openBar(ctx = {}, c, S = {}) {
       const r = await runChatSex({
         girl: w,
         narrate: (t) => { log.push(`（旁白：${t}）`); return say("旁白", t); },
-        reply: async (att, nar) => line("other", await say1("other", `你正在跟玩家（另一位丈夫）做愛。這一景的態度：${att}。旁白：${nar}。以${name.other}的身分一邊被他做一邊說一句反應。`, pick(TEASE_OK_FB)), { to: "player", click: true }),
+        reply: async (att, nar, n) => line("other", await say1("other", `${OTHER_ME()}你正在跟玩家（另一對夫妻的丈夫）在旅館做愛，這一景：${swapAttitude(att, attStage())}。旁白：${nar.replace(/妻子/g, "她")}。以${name.other}的身分，用第一人稱對正在肏你的玩家說一句反應（「你」＝玩家）。${SENSE_RULE}`, pick(SWAP_SEX_FB[n] || SWAP_SEX_FB[2])), { to: "player", click: true }),
         showStep: async (step, label, swap) => {
           const st = swap ? (cur === "join" ? "thrust" : "join") : step;
           if (!by[st]) return; cur = st; await pvShow(by[st], `${cardX.zh}・${String(label || "").replace(/^場景\d\s*·\s*/, "")}`, tok);
@@ -816,8 +825,8 @@ export function openBar(ctx = {}, c, S = {}) {
         waitThrust: () => waitBtn("肏"),
         localAnim: (sc) => { curScene = sc; return anim.play(); },
         stopAnim: () => anim.stop(),
-        aff: (d) => bumpAff("other", d, "做愛"),
-        stage: "stranger",
+        aff: (d) => { bumpAff("other", d, "肏"); affPop(d); save(); renderNb(); },
+        stage: () => swapAffStage(sess.accept),
       }, pack);
       sess.sexCd = rollSexCd(); save(); dbg(`做愛結束 → CD ${sess.sexCd} 回合（可以聊天／出別的牌）`); note(`（做完了，休息一下——${sess.sexCd} 回合後才能再做；這段時間可以聊天）`);
       dbg(`做愛（聊天劇本「${pack?.name || "做愛"}」）：肏 ${r.thrusts} 下 → ${r.climax === "both" ? "雙方高潮" : "玩家高潮"}`);
@@ -843,7 +852,7 @@ export function openBar(ctx = {}, c, S = {}) {
       const pov = cardX.act === "sex" ? null : showPov(cardX), n = cardX.act === "sex" ? 0 : teaseSteps(cardX.act);
       for (let i = 0; i < n; i++) {
         const stepTask = n > 1 ? `（第 ${i + 1}／${n} 句：${i === 0 ? "剛開始" : i === n - 1 ? "快結束、他快要射了" : "正在進行"}）` : "";
-        const txt = await say1("other", `玩家（另一位丈夫）對你做了「${cardX.zh}」，你${wasted ? "醉得迷迷糊糊、任他擺布" : "接受了"}。${stepTask}以${name.other}的身分一邊被他這樣做一邊說一句反應。`, pick(TEASE_OK_FB));
+        const txt = await say1("other", `${OTHER_ME()}玩家（另一對夫妻的丈夫）對你做了「${cardX.zh}」（卡上的「她」就是你），你${wasted ? "醉得迷迷糊糊、任他擺布" : "接受了"}。${stepTask}以${name.other}的身分，用第一人稱對玩家說一句此刻的反應（「你」＝玩家）。${SENSE_RULE}`, pick(TEASE_OK_FB));
         if (i === 0) await pov;
         await line("other", txt, { to: "player", click: true });
       }

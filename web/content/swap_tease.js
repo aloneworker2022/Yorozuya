@@ -3,7 +3,7 @@
  * 結果存在換妻伺服器狀態 images[couple.id]["tease~<動作>(~nude)" | "sex~<姿勢>~<步驟>"]，之後直接用、不重生。 */
 import { api } from "./swap_cafe_gen.js?v=34";
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { teaseGirlOf, teaseKey, sexKey, teaseNude, teaseUnder, sexPoseFor, pregenKeys } from "./swap_tease_rules.js?v=8";
+import { teaseGirlOf, teaseKey, sexKey, teaseNude, teaseUnder, sexPoseFor, pregenKeys } from "./swap_tease_rules.js?v=9";
 import { UNDER_OUTFIT } from "./swap_outfit.js?v=4";
 import { pickRuntimeWaistPack, generateWaistPackImage } from "./waist_packs.js?v=6";
 import { pickRuntimeButtPack, generateButtPackImage } from "./butt_packs.js?v=7";

@@ -104,6 +104,7 @@ export async function runChatSex(io, pack) {
     for (const t of (lines.length ? lines : ["……"])) { const nar = fillBinds(t, io.girl, "你"); await io.narrate(nar); await io.reply(sc(n).attitude || "", nar, n); }
   };
   const affRoll = io.affRoll || rollAffDelta;
+  const stageNow = () => (typeof io.stage === "function" ? io.stage() : io.stage) || "stranger";
   // 場景1：旁白 → （點）她回一句 → 揭圖 → （點）進正戲
   await io.showStep?.(SCENE_STEP[1], SCENE_ZH[1]);
   const l1 = narrLines(sc(1));
@@ -116,11 +117,11 @@ export async function runChatSex(io, pack) {
     thrusts++;
     const anim = io.localAnim ? io.localAnim(scene) : null;   // 動圖立刻跑，跟擲骰／生文並行（同 scriptHandleThrust）
     await io.thrustAnim?.();
-    const d = affRoll(scene, io.stage || "stranger"); if (d) io.aff?.(d);
+    const d = affRoll(scene, stageNow()); io.aff?.(d);   // pt264u：0 也回報（畫面顯示 ±0），高潮那下也算
     let act = roll(scene);
     if (thrusts >= MAX_THRUST && act !== "both") act = "player";
     const nx = nextSceneOf(scene, act);
-    if (nx === 4 || nx === 5) { await anim; io.stopAnim?.(); await play(nx); return { climax: nx === 5 ? "both" : "player", thrusts }; }
+    if (nx === 4 || nx === 5) { const dc = affRoll(nx, stageNow()); if (dc) io.aff?.(dc); await anim; io.stopAnim?.(); await play(nx); return { climax: nx === 5 ? "both" : "player", thrusts }; }
     if (nx === 3) { scene = 3; await play(3); continue; }
     if (act === "swap") await io.showStep?.(SCENE_STEP[scene], SCENE_ZH[scene], true);
     else if (act === "ai") await io.reply(sc(scene).attitude || "", "（你繼續肏她）", scene);
@@ -132,3 +133,32 @@ export const SEX_CD = [4, 5];
 export const rollSexCd = (rng = Math.random) => SEX_CD[0] + Math.floor(rng() * (SEX_CD[1] - SEX_CD[0] + 1));
 export const sexCdBlocks = (card, sess) => card?.act === "sex" && (Number(sess?.sexCd) || 0) > 0;
 export const tickSexCd = (sess) => { if ((Number(sess?.sexCd) || 0) > 0) sess.sexCd -= 1; return Number(sess?.sexCd) || 0; };
+
+/** 2026-10-26 pt264u：換妻旅館的好感階＝依她對你的接受度（換了＝同意，不是陌生人硬來）。 */
+export const swapAffStage = (accept) => { const a = Number(accept) || 0; return a >= 85 ? "wife" : a >= 60 ? "girlfriend" : a >= 30 ? "friend" : "stranger"; };
+const STAGE_ZH = { stranger: "陌生", friend: "朋友", girlfriend: "女友", wife: "妻子" };
+/** 劇本 attitude 是房間用的「依關係：陌生…、妻子享受」——換妻時那個「妻子」會讓 AI 以為在講玩家老婆。
+ *  只留她這一階的那段，並把「妻子」字眼換掉。 */
+export function swapAttitude(att, stage = "stranger") {
+  const want = STAGE_ZH[stage] || "陌生";
+  const out = [];
+  for (const sen of String(att || "").split("。").map((x) => x.trim()).filter(Boolean)) {
+    const body = sen.replace(/^依關係[：:]/, "");
+    const n = ["陌生", "朋友", "女友", "妻子"].filter((k) => body.includes(k)).length;
+    if (n < 2) { out.push(sen); continue; }
+    const parts = body.split(/[；;、，,]/).map((x) => x.trim()).filter(Boolean);
+    const hit = parts.find((x) => x.split(/[／/]/).some((y) => y.startsWith(want)) || x.includes(want)) || parts.find((x) => x.startsWith("女友")) || "";
+    const feel = hit.replace(/^((陌生|朋友|女友|妻子)[／/]?)+/, "").trim();
+    if (feel) out.push(`她此刻的心情：${feel}`);
+  }
+  return out.join("。").replace(/妻子/g, "熟女").replace(/\[name\]/g, "她").trim();
+}
+/** 感覺詞語：生文 prompt 共用。 */
+export const SENSE_RULE = "台詞要有身體感覺詞：熱、燙、濕、麻、酥、癢、脹、滑、緊、發抖、喘、腿軟、心跳好快、裡面被撐開、一陣一陣的……寫出她此刻身體的感受，不要只說動作名稱。";
+export const SWAP_SEX_FB = {
+  2: ["（咬著下唇，腰一抖）……嗯、好燙……整根都、都進來了……", "（抓緊床單，喘著）……裡面被撐得好滿……慢、慢一點……", "（臉頰燒紅）……好奇怪……麻麻的，一直往上竄……"],
+  3: ["（雙腿夾住你的腰）……啊、好深……裡面一陣一陣在縮……", "（全身發燙，喘個不停）……好舒服……腿都軟了……別停……", "（濕得發出水聲，羞得別過臉）……聽到了啦……好丟臉、可是好舒服……"],
+  4: ["（感覺到裡面一熱，身體一顫）……好燙……你射進來了……", "（喘著氣，小腹還在抽動）……熱熱的……滿到流出來了……"],
+  5: ["（弓起背尖叫，全身痙攣）……啊啊、去了……一起……！", "（腦袋一片空白，腿抖個不停）……好熱……整個人都化掉了……"],
+  1: ["（呼吸一亂，皮膚泛紅）……你的手好燙……", "（被你碰到的地方一陣酥麻）……嗯……別、別一直看……"],
+};
