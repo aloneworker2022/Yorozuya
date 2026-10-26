@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=63";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=64";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=35";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=27";
@@ -15,7 +15,7 @@ import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK
 import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=5";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=8";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=11";
-import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB } from "./swap_chat_sex.js?v=5";
+import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative, portraitTapLine } from "./swap_chat_sex.js?v=6";
 import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext, hotelPairAct, HOTEL_PAIR_MS, PAIR_SFX_MS, sexSfx } from "./swap_flow_rules.js?v=11";
 
 // ============================================================ 調整用的表
@@ -419,7 +419,16 @@ export function openBar(ctx = {}, c, S = {}) {
   };
   let focus = [];   // 目前台上的人
   // 2026-10-25：立繪出現＝卡牌移出畫面（卡牌回中央只在 idleUI：沒立繪、對話結束）
-  const show = (ks) => { focus = ks.slice(); if (ks.length) $(".hand")?.classList.add("out"); return stage.show(ks.map((k) => P(k))); };
+  // pt284u：內射（creampie）／高潮癱軟（climax）立繪可以點：她說一句變態色情回應（本地句庫，不叫 AI）
+  const tapLook = () => (base === "hotel" && ["creampie", "climax"].includes(sess.look?.other || "") ? sess.look.other : "");
+  const armTap = () => { const n = $(".st")?.querySelector('.swap-stage-char[data-id="other"]'); if (n) { const on = !!tapLook(); n.style.pointerEvents = on ? "auto" : "none"; n.style.cursor = on ? "pointer" : ""; } };
+  let tapLast = "", tapBusy = false;
+  $(".st")?.addEventListener("click", async (e) => {
+    const look = tapLook(); if (!look || tapBusy || speaking || !e.target.closest?.('.swap-stage-char[data-id="other"]')) return;
+    e.stopPropagation(); tapBusy = true;
+    try { tapLast = portraitTapLine(look, Math.random, tapLast); dbg(`點 ${name.other} 立繪（${look}）`); await line("other", tapLast, { to: "player" }); } finally { tapBusy = false; }
+  });
+  const show = (ks) => { focus = ks.slice(); if (ks.length) $(".hand")?.classList.add("out"); const p = stage.show(ks.map((k) => P(k))); armTap(); Promise.resolve(p).then(armTap, () => {}); return p; };
   let hideT = 0;
   const hideSoon = (ms = 3500) => { clearTimeout(hideT); hideT = setTimeout(() => { if (!speaking && !closed) { focus = []; stage.show([]); } }, ms); };
 
@@ -840,7 +849,9 @@ export function openBar(ctx = {}, c, S = {}) {
         line: async (x) => {
           const ev = { tip: "陰莖頂在她的入口、還沒進去", thrust: "你正在肏她", climax: "她剛剛高潮了（全身痙攣、腿發抖）", ejac: "你在她裡面射了（內射）", both: "你們一起高潮、你射在她裡面" }[x.event] || "你正在肏她";
           const fb = SWAP_SEX_FB[x.event === "tip" ? 1 : x.event === "climax" || x.event === "both" ? 5 : x.event === "ejac" ? 4 : 2];
-          const t = await say1("other", `${OTHER_ME()}你正在跟玩家（另一對夫妻的丈夫）在旅館做愛，體位：${POSE_ZH[x.pose]}；${ev}${x.climaxes ? `（你已經高潮 ${x.climaxes} 次）` : ""}。她此刻的心情：${swapAttitude("依關係：女友又羞又要、妻子投入。", attStage())}。以${name.other}的身分，用第一人稱對正在肏你的玩家說一句反應（「你」＝玩家）。${SENSE_RULE}`, pick(fb));
+          const ini = isInitiative(x.event);   // pt284u：她主動＝講色色的話（比大小、比老公、問喜不喜歡），不是動手摸
+          if (ini) dbg(`${name.other} 主動（色話）`);
+          const t = await say1("other", `${OTHER_ME()}你正在跟玩家（另一對夫妻的丈夫）在旅館做愛，體位：${POSE_ZH[x.pose]}；${ev}${x.climaxes ? `（你已經高潮 ${x.climaxes} 次）` : ""}。她此刻的心情：${swapAttitude("依關係：女友又羞又要、妻子投入。", attStage())}。以${name.other}的身分，用第一人稱對正在肏你的玩家說一句${ini ? "主動的色話" : "反應"}（「你」＝玩家）。${ini ? DIRTY_TALK_RULE : "不要寫她伸手撫摸的動作。"}${SENSE_RULE}`, pick(ini ? DIRTY_TALK : fb));
           if (!closed) await line("other", t, { to: "player", click: !!x.final });   // 只貼字：不收「肏」、不停動圖
         },
         portrait: (look) => { if ((sess.look?.other || "") === (look === "nude" ? "" : look)) return; sess.look = { ...(sess.look || {}), other: look === "nude" ? "" : look }; dbg(`${name.other} 立繪 → ${look}`); void show(["other"]); },
@@ -1131,11 +1142,12 @@ export function openBar(ctx = {}, c, S = {}) {
         busyUI();
         await show([k]);
         if (type === "silence") { const t = pick(SILENCE).replace("{a}", name[k]).replace("{b}", "你"); log.push(t); await say("", t); return; }
-        const task = type === "chat" ? "你主動找玩家聊一句（問他問題或開玩笑）。" : `你對玩家做了「${act.zh}」，一邊做一邊說一句。`;
-        const ln = await say1(k, task, pick(FB[type][k]));
+        const dirty = base === "hotel" && k === "other" && type !== "chat" && consentFree(sess, "other");   // pt284u：旅館換了以後她主動＝色話，不摸
+        const task = dirty ? `${OTHER_ME()}你主動對玩家說一句色色的話。${DIRTY_TALK_RULE}${SENSE_RULE}` : type === "chat" ? "你主動找玩家聊一句（問他問題或開玩笑）。" : `你對玩家做了「${act.zh}」，一邊做一邊說一句。`;
+        const ln = await say1(k, task, pick(dirty ? DIRTY_TALK : FB[type][k]));
         status[k] = type === "chat" ? "跟你聊天" : `→ 你：${act.zh}`; renderNb();
         await line(k, ln, { to: "player" });
-        if (type === "touch" || type === "lewd") await respond(k, act);
+        if ((type === "touch" || type === "lewd") && !dirty) await respond(k, act);
       }));
       return;
     }
