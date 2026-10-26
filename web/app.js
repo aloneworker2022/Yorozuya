@@ -7065,9 +7065,45 @@ function scriptSceneUrls(s, pack, n) {
       return bust(urls, alt?.at || ver);
     }
   }
-  // 3) 最後才退 slots[].url
-  const slots = pack?.scenes?.[String(n)]?.slots || [];
-  return bust(slots.map(x => x.url), ver);
+  // 3) 2026-10-26 pt262u：不再退 slots[].url——那是編輯器「測試生圖」用測試魅子生的，
+  //    每個人都會變成同一個人。缺圖就替「這一隻」現產（背景），產好再換上。
+  if (s?.id && pack?.id) void ensureScriptSceneArt(s, pack, n);
+  return [];
+}
+
+/** 這隻缺某場景的劇本圖：用她自己的人設現產一次（同一隻同一場同時只跑一次）。 */
+const scriptArtInflight = new Map();
+function ensureScriptSceneArt(s, pack, n) {
+  const spec = pack?.scenes?.[String(n)];
+  if (!s?.id || !pack?.id || !(spec?.slots || []).length) return Promise.resolve(false);
+  const id = `${s.id}|${pack.id}|${n}`;
+  if (scriptArtInflight.has(id)) return scriptArtInflight.get(id);
+  const run = (async () => {
+    const urls = [];
+    for (let i = 0; i < spec.slots.length; i++) {
+      let u = "";
+      try { u = await scriptGenImage(s, spec.slots[i], spec, "", i, { pack, scene: n }); } catch { /* */ }
+      urls.push(u || "");
+    }
+    if (!urls.some(Boolean)) return false;
+    const at = Date.now();
+    s.scriptArt ??= {};
+    s.scriptArt[pack.id] ??= {};
+    const prev = s.scriptArt[pack.id][String(n)]?.urls || [];
+    s.scriptArt[pack.id][String(n)] = { urls: urls.map((u, i) => { const raw = u || prev[i] || ""; return raw ? bustAssetUrl(raw, at) : ""; }), pose: "", at };
+    dirty = true;
+    try { saveNow(); } catch { /* */ }
+    try {
+      const play = chatSession?.tease?.play;
+      if (isTeasePlay() && chatWith === s.id && play?.pack?.id === pack.id && Number(play.scene) === Number(n)) {
+        play.urls = scriptSceneUrls(s, play.pack, play.scene);
+        if (typeof vnFace === "function") vnFace(s, chatSession?.mood);
+      }
+    } catch { /* */ }
+    return true;
+  })().finally(() => scriptArtInflight.delete(id));
+  scriptArtInflight.set(id, run);
+  return run;
 }
 
 function scriptFirstNarr(s, pack, n) {
