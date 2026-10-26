@@ -2,13 +2,14 @@
  * 流程跟 app.js 的 beginScriptScene／rollSexThrust 一樣：場景1 開場（旁白→她回一句）→ 場景2 正戲（「肏」鈕）
  * → 每次肏骰 rollSexThrust：換圖／新 AI／進投入（場景3）／玩家高潮（場景4）／雙方高潮（場景5）→ 結束。
  * 圖用換妻的 sex~<姿勢>~open|join|thrust（同一套快取，沒有就現產）；你老婆×對方丈夫的雙人圖不動。 */
-import { pickPack, normalizeData, fillBinds, narrLines, rollSexThrust, rollAffDelta, boundFramePackId, SCENE_ZH } from "./script_mode.js";
-import { packFrameUrls, findPack } from "./frame_pack.js";
+import { pickPack, normalizeData, fillBinds, narrLines, rollSexThrust, rollAffDelta, SCENE_ZH } from "./script_mode.js";
 
-// ---- 2026-10-26 pt263u「全抄」：局部動圖跟 app.js flashScriptAnim 同一套（sexAnim 優先 → 劇本綁定幀包 → 同體位幀包 → 任何幀包；
-// 首輪 1–4 幀「慢快快慢」，連肏只播 2–4「快快慢」；播完停在最後一幀等下一下）。
-export const FIRST_HOLDS = [300, 180, 180, 300];
-export const CONTINUE_HOLDS = [180, 180, 300];
+// ---- 2026-10-26 pt282u：局部動圖改對齊「房間脫光後做愛」那套（test_room_summon loadThrustFrames／playThrustAnim＋sex_thrust）：
+// 候選＝她的 sexAnim[pose] → 她任一 ≥2 幀的 sexAnim → 同體位幀包 → 任一幀包；pose 由場景決定（sexPoseFor(scene)），不吃 ScriptMode 劇本的 pose。
+// 首輪 1–4（FIRST_HOLDS），之後整段做愛都 2–4（CONTINUE_HOLDS）；最後一幀一出現就算播完，停 ANIM_LINGER_MS 才收，期間再按直接接下一輪（不閃）。
+import { THRUST, animFramesFor } from "./sex_thrust.js?v=8";
+export const FIRST_HOLDS = THRUST.FIRST_HOLDS;
+export const CONTINUE_HOLDS = THRUST.CONTINUE_HOLDS;
 let FRAME_PACKS = null;
 export async function loadFramePacks() {
   if (FRAME_PACKS) return FRAME_PACKS;
@@ -18,28 +19,32 @@ export async function loadFramePacks() {
   if (!packs.length) packs = arr(await get("/assets/frame_packs/index.json?ts=" + Date.now()));
   FRAME_PACKS = packs; return packs;
 }
-/** 跟 app.js scriptAnimUrlCandidates 同順序。girl.sexAnim＝{ pose: { urls, at } }。 */
-export function animUrlCandidates({ pack, scene, girl, framePacks = [] } = {}) {
+/** 同房間 loadThrustFrames（girl＝對方妻子本人；沒有 sexAnim 就落幀包，不拿玩家老婆的頂替）。回 { urls, source }。 */
+export function thrustFrameUrls({ pose = "missionary", girl, framePacks = [] } = {}) {
   const pick = (u) => (Array.isArray(u) ? u : []).map((x) => String(x || "").trim()).filter(Boolean);
-  const poseId = String(pack?.pose || "").trim();
-  let primary = [];
   const sa = girl?.sexAnim || null;
-  if (sa) {
-    if (poseId) primary = pick(sa[poseId]?.urls);
-    if (!primary.length) for (const r of Object.values(sa)) { const u = pick(r?.urls); if (u.length >= 2) { primary = u; break; } }
-    if (!primary.length) for (const r of Object.values(sa)) { const u = pick(r?.urls); if (u.length) { primary = u; break; } }
-  }
-  let fallback = pick(packFrameUrls(findPack(framePacks, boundFramePackId(pack, pack?.scenes?.[String(scene)]))));
-  if (!fallback.length && poseId) fallback = pick(packFrameUrls(framePacks.find((p) => p && p.pose === poseId && pick(packFrameUrls(p)).length)));
-  if (!fallback.length) fallback = pick(packFrameUrls(framePacks.find((p) => pick(packFrameUrls(p)).length >= 2) || framePacks.find((p) => pick(packFrameUrls(p)).length)));
-  return { primary, fallback };
+  if (pick(sa?.[pose]?.urls).length) return { urls: pick(sa[pose].urls).slice(0, 4), source: `sexAnim:${pose}` };
+  if (sa) for (const [k, r] of Object.entries(sa)) if (pick(r?.urls).length >= 2) return { urls: pick(r.urls).slice(0, 4), source: `sexAnim:${k}` };
+  const urlsOf = (p) => [1, 2, 3, 4].map((i) => String(p?.frames?.[String(i)]?.url || "")).filter(Boolean);
+  const same = framePacks.find((p) => p && p.pose === pose && urlsOf(p).length);
+  if (same) return { urls: urlsOf(same), source: `幀包:${same.name || same.id}（${pose}）` };
+  const any = framePacks.find((p) => urlsOf(p).length >= 2) || framePacks.find((p) => urlsOf(p).length);
+  if (any) return { urls: urlsOf(any), source: `幀包:${any.name || any.id}（借 ${any.pose || "?"}）` };
+  return { urls: [], source: "" };
 }
-/** 這一下要播哪幾幀＋每幀停多久（首輪 vs 連肏）。 */
-export function animPlan(urls, linger) {
-  const list = linger ? urls.slice(1, 4) : urls.slice(0, 4);
-  return list.map((u, i) => [u, (linger ? CONTINUE_HOLDS : FIRST_HOLDS)[Math.min(i, 3)]]);
+/** 這一下要播哪幾幀＋每幀停多久（同 sex_thrust.animFramesFor）。 */
+export function animPlan(urls, firstRoundDone) {
+  const { frames, holds } = animFramesFor(urls, firstRoundDone);
+  return frames.map((u, i) => [u, holds[i]]);
 }
-/** 局部動圖彈層（同房間 #sex-anim-popup 樣式：中間偏下、半透明卡、不吃點擊）。回 { play(), stop(), el }。 */
+const preloadMap = new Map();
+function preload(urls) {
+  return Promise.all((urls || []).map((u) => {
+    if (!preloadMap.has(u)) { const im = new Image(); preloadMap.set(u, new Promise((ok) => { im.onload = () => (im.decode ? im.decode().catch(() => {}).then(ok) : ok()); im.onerror = () => ok(); im.src = u; })); }
+    return preloadMap.get(u);
+  }));
+}
+/** 局部動圖彈層（同房間 #sex-anim-popup 樣式）。getCtx() → { pose, girl }。play() 在最後一幀出現時 resolve（「肏」此時才回來）。 */
 export function createLocalAnim(root, getCtx) {
   const el = document.createElement("div");
   el.className = "swp-sexanim"; el.hidden = true;
@@ -47,25 +52,33 @@ export function createLocalAnim(root, getCtx) {
   el.innerHTML = `<div style="max-width:min(72vw,480px);max-height:min(48vh,520px);border-radius:12px;overflow:hidden;background:rgba(0,0,0,.4);opacity:.4;box-shadow:0 12px 32px rgba(0,0,0,.5),0 0 0 1px rgba(255,79,216,.35)"><img alt="" style="display:block;width:100%;height:auto;max-height:min(48vh,520px);object-fit:contain"></div>`;
   root.append(el);
   const img = el.querySelector("img");
-  let run = 0, linger = false;
-  const load = (u) => new Promise((ok) => { img.onload = () => ok(true); img.onerror = () => ok(false); img.src = u; if (img.complete && img.naturalWidth) ok(true); });
+  let run = 0, firstDone = false, lingerT = 0;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const show = (u) => new Promise((ok) => { let f = false; const d = () => { if (!f) { f = true; ok(); } }; img.onload = d; img.onerror = d; img.src = u; if (img.complete && img.naturalWidth) queueMicrotask(d); setTimeout(d, THRUST.ANIM_PRELOAD_MAX_MS); });
   return {
-    el,
+    el, source: "",
     async play() {
       const my = ++run;
-      el.hidden = false;
-      const { primary, fallback } = animUrlCandidates({ ...getCtx(), framePacks: await loadFramePacks() });
+      clearTimeout(lingerT); lingerT = 0;
+      const ctx = getCtx() || {};
+      const fr = thrustFrameUrls({ ...ctx, framePacks: await loadFramePacks() });
+      this.source = fr.source || "（沒有幀）";
+      const plan = animPlan(fr.urls, firstDone);
       if (my !== run) return 0;
-      let shown = 0;
-      for (const src of [primary, fallback]) {
-        if (!src.length || shown) continue;
-        for (const [u, ms] of animPlan(src, linger)) { if (my !== run) return shown; if (await load(u)) { shown++; await wait(ms); } }
+      if (!plan.length) { firstDone = true; return 0; }
+      await Promise.race([preload(plan.map((x) => x[0])), wait(THRUST.ANIM_PRELOAD_MAX_MS)]);
+      if (my !== run) return 0;
+      el.hidden = false;
+      for (let i = 0; i < plan.length; i++) {
+        await show(plan[i][0]);
+        if (my !== run) return i;
+        if (i < plan.length - 1) { await wait(plan[i][1]); if (my !== run) return i + 1; }
       }
-      if (my === run) { if (shown) linger = true; else el.hidden = true; }
-      return shown;
+      firstDone = true;
+      lingerT = setTimeout(() => { if (my === run) el.hidden = true; }, THRUST.ANIM_LINGER_MS);
+      return plan.length;
     },
-    stop() { run++; linger = false; el.hidden = true; img.removeAttribute("src"); },
+    stop() { run++; clearTimeout(lingerT); firstDone = false; el.hidden = true; img.removeAttribute("src"); },
   };
 }
 

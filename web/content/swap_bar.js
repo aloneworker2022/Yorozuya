@@ -11,11 +11,11 @@ import { actLine, SESSION_KEY } from "./swap_select.js?v=62";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=34";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=26";
-import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk } from "./swap_tease_rules.js?v=9";
+import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk, sexPoseFor } from "./swap_tease_rules.js?v=9";
 import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=4";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=7";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=10";
-import { loadSexPack, runChatSex, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB } from "./swap_chat_sex.js?v=3";
+import { loadSexPack, runChatSex, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB } from "./swap_chat_sex.js?v=4";
 import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext, hotelPairAct, HOTEL_PAIR_MS, PAIR_SFX_MS, sexSfx } from "./swap_flow_rules.js?v=11";
 
 // ============================================================ 調整用的表
@@ -821,7 +821,8 @@ export function openBar(ctx = {}, c, S = {}) {
     const u = (st) => cachedUrl(S, c, by[st]?.key);
     // pt263u 全抄：局部動圖（同房間 flashScriptAnim）、場景1 點兩下、每下肏好感骰
     let curScene = 2;
-    const anim = createLocalAnim(ov, () => ({ pack, scene: curScene, girl: w }));
+    const anim = createLocalAnim(ov, () => ({ pose: sexPoseFor(where()), girl: w }));   // pt282u：同房間 loadThrustFrames；pose 看場景、人＝對方妻子
+    let animP = null;
     const waitBtn = (label) => new Promise((res, rej) => { btn.textContent = label; btn.style.fontSize = label.length > 1 ? "16px" : ""; btn.hidden = false; const iv = setInterval(() => { if (closed) { clearInterval(iv); rej(new Error("closed")); } }, 500); btn.onclick = () => { clearInterval(iv); btn.hidden = true; res(); }; });
     try {
       const r = await runChatSex({
@@ -834,8 +835,8 @@ export function openBar(ctx = {}, c, S = {}) {
         },
         thrustAnim: async () => { const a = u("join"), b = u("thrust"); if (!a || !b || tok !== pvTok) return; for (const x of [b, a, b]) { pvImg.src = x; await sleep(200); } pvImg.src = u(cur) || b; },
         waitTap: (label) => waitBtn(label),
-        waitThrust: () => waitBtn("肏"),
-        localAnim: (sc) => { curScene = sc; return anim.play(); },
+        waitThrust: async () => { await animP; return waitBtn("肏"); },   // 同房間：動圖播放中藏「肏」，最後一幀出現才回來
+        localAnim: (sc) => { curScene = sc; animP = anim.play().then((n) => { dbg(`局部動圖 ${anim.source}（${n} 幀）`); return n; }, () => 0); return animP; },
         stopAnim: () => anim.stop(),
         aff: (d) => { bumpAff("other", d, "肏"); affPop(d); save(); renderNb(); },
         stage: () => swapAffStage(sess.accept),

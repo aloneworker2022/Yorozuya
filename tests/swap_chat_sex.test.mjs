@@ -21,15 +21,21 @@ assert.match(py, /\(wife\|husband\|other\)~\(normal\|shy\|tipsy\|under\|nude\)/)
 console.log("swap_chat_sex ok");
 // ---- pt263u：全抄（場景1 點兩下、每下肏好感骰＋局部動圖）、射精圖、做愛 CD
 {
-  const { animUrlCandidates, animPlan, FIRST_HOLDS, CONTINUE_HOLDS, rollSexCd, sexCdBlocks, tickSexCd } = await import("../web/content/swap_chat_sex.js");
+  const { thrustFrameUrls, animPlan, FIRST_HOLDS, CONTINUE_HOLDS, rollSexCd, sexCdBlocks, tickSexCd } = await import("../web/content/swap_chat_sex.js");
   const taps = [], affs = []; let anims = 0;
   const r = await runChatSex({ girl: { name: "美咲" }, narrate: async () => {}, reply: async () => {}, waitThrust: async () => {}, waitTap: async (l) => taps.push(l),
     localAnim: async () => { anims++; }, aff: (d) => affs.push(d), affRoll: () => 2, roll: (() => { const q = ["none", "ai", "both"]; return () => q.shift(); })() }, pack);
   assert.equal(r.climax, "both"); assert.equal(anims, 3); assert.deepEqual(affs, [2, 2, 2, 2]);   // pt264u：高潮那下（場景5）也加好感
   assert.equal(taps[taps.length - 1], "開始"); assert.ok(taps.includes("下一句"));
   const fp = [{ id: "a", pose: "doggy", frames: { 1: { url: "/a1" }, 2: { url: "/a2" }, 3: { url: "/a3" }, 4: { url: "/a4" } } }];
-  assert.deepEqual(animUrlCandidates({ pack: { pose: "doggy", scenes: {} }, scene: 2, girl: {}, framePacks: fp }).fallback, ["/a1", "/a2", "/a3", "/a4"]);
-  assert.deepEqual(animUrlCandidates({ pack: { pose: "x" }, girl: { sexAnim: { x: { urls: ["/s1", "/s2"] } } }, framePacks: fp }).primary, ["/s1", "/s2"]);
+  assert.deepEqual(thrustFrameUrls({ pose: "doggy", girl: {}, framePacks: fp }).urls, ["/a1", "/a2", "/a3", "/a4"]);
+  assert.deepEqual(thrustFrameUrls({ pose: "x", girl: { sexAnim: { x: { urls: ["/s1", "/s2"] } } }, framePacks: fp }).urls, ["/s1", "/s2"]);
+  // pt282u：同房間 loadThrustFrames——沒 sexAnim[pose] 先借她自己 ≥2 幀的 sexAnim，再同體位幀包
+  assert.deepEqual(thrustFrameUrls({ pose: "missionary", girl: { sexAnim: { doggy: { urls: ["/d1", "/d2"] } } }, framePacks: fp }).urls, ["/d1", "/d2"]);
+  const { THRUST } = await import("../web/content/sex_thrust.js");
+  assert.deepEqual(FIRST_HOLDS, THRUST.FIRST_HOLDS); assert.deepEqual(CONTINUE_HOLDS, THRUST.CONTINUE_HOLDS);
+  const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
+  assert.match(bar, /createLocalAnim\(ov, \(\) => \(\{ pose: sexPoseFor\(where\(\)\), girl: w \}\)\)/);
   assert.deepEqual(animPlan(["1", "2", "3", "4"], false).map((x) => x[1]), FIRST_HOLDS);
   assert.deepEqual(animPlan(["1", "2", "3", "4"], true), [["2", CONTINUE_HOLDS[0]], ["3", CONTINUE_HOLDS[1]], ["4", CONTINUE_HOLDS[2]]]);
   assert.equal(rollSexCd(() => 0), 4); assert.equal(rollSexCd(() => 0.99), 5);
