@@ -3,7 +3,7 @@
  * 結果存在換妻伺服器狀態 images[couple.id]["tease~<動作>(~nude)" | "sex~<姿勢>~<步驟>"]，之後直接用、不重生。 */
 import { api } from "./swap_cafe_gen.js?v=35";
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { teaseGirlOf, teaseKey, sexKey, teaseNude, teaseUnder, sexPoseFor, pregenKeys, SEX_PREGEN_STEPS } from "./swap_tease_rules.js?v=10";
+import { teaseGirlOf, teaseKey, sexKey, teaseNude, teaseUnder, sexPoseFor, pregenKeys, SEX_PREGEN_STEPS } from "./swap_tease_rules.js?v=11";
 import { UNDER_OUTFIT } from "./swap_outfit.js?v=5";
 import { pickRuntimeWaistPack, generateWaistPackImage } from "./waist_packs.js?v=6";
 import { pickRuntimeButtPack, generateButtPackImage } from "./butt_packs.js?v=7";
@@ -17,6 +17,7 @@ import { pickRuntimeFingerPack, generateFingerPackImage } from "./finger_packs.j
 import { pickRuntimeVaginaFingerPack, generateVaginaFingerPackImage } from "./vagina_finger_packs.js?v=3";
 import { pickRuntimeCervixRubPack, generateCervixRubPackImage } from "./cervix_rub_packs.js?v=3";
 import { pickRuntimeSexPosePack, generateSexStepImage } from "./sex_pose_packs.js?v=11";
+import { buildProneImgBody } from "./swap_prone.js?v=1";
 import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=8";
 
 /** 動作 → 圖組（同房間 ACTION_PACK_JOBS）。oral 沒有圖組：用 tease_oral_suck 的預設動作 prompt。 */
@@ -57,7 +58,8 @@ export function genTeaseImage(c, job, { eng = null, debug = () => {} } = {}) {
   const run = (async () => {
     const e = eng || await gameEngine(), g0 = teaseGirlOf(c), girl = job.under ? { ...g0, outfitName: UNDER_OUTFIT } : g0;   // KTV 脫到剩內衣
     let r;
-    if (job.kind === "sex") { const pack = await pickRuntimeSexPosePack(job.pose); r = await generateSexStepImage(job.pose, job.step, pack, girl, e, { stage: "lover" }); }
+    if (job.kind === "sex" && job.pose === "prone") { const w = await waitImg(buildProneImgBody(job.step, girl, e)); r = { status: w.status, result: w.result, error: w.error }; }
+    else if (job.kind === "sex") { const pack = await pickRuntimeSexPosePack(job.pose); r = await generateSexStepImage(job.pose, job.step, pack, girl, e, { stage: "lover" }); }
     else { const J = TEASE_JOBS[job.act]; if (!J) throw new Error(`沒有 ${job.act} 的圖組`); const pack = await J.pick(); r = await J.gen(pack, girl, e, { stage: "lover", nude: !!job.nude }); }
     if (r?.status !== "done" || !r.result) throw new Error(r?.error || "沒有結果");
     const raw = String(r.result).split("|")[0];

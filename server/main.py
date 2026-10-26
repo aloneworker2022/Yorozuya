@@ -93,6 +93,7 @@ _SHOT_FILE_SUFS = (
     "sex_missionary_orgasm", "sex_doggy_orgasm", "sex_missionary_squirt", "sex_doggy_squirt",
     "sex_missionary_cum", "sex_doggy_cum",
     "sex_missionary_bloodcum", "sex_doggy_bloodcum",
+    *(f"sex_prone_{_st}" for _st in ("thrust", "orgasm", "open", "tip", "cum")),   # pt285u 床鋪背後組
     # 扣陰道／揉子宮口 x-ray 剖面（不分穿衣／裸體，共用一張）
     "tease_vagina_finger", "tease_cervix_rub",
     # 動作圖裸體版（比穿衣版長，先比對）
@@ -135,6 +136,7 @@ SHOT_LABEL_ZH = {
     "sex_missionary_half": "做愛·傳教士插一半", "sex_doggy_half": "做愛·後背插一半",
     "sex_missionary_full": "做愛·傳教士全插入", "sex_doggy_full": "做愛·後背全插入",
     "sex_missionary_thrust": "做愛·傳教士抽插", "sex_doggy_thrust": "做愛·後背抽插",
+    "sex_prone_open": "做愛·趴床背後準備", "sex_prone_tip": "做愛·趴床背後頂住", "sex_prone_thrust": "做愛·趴床背後抽插", "sex_prone_cum": "做愛·趴床背後內射", "sex_prone_orgasm": "做愛·趴床背後高潮",
     "sex_missionary_bloodcum": "做愛·傳教士血精", "sex_doggy_bloodcum": "做愛·後背血精",
     **{f"sex_{_p}_thrust{_n}": f"做愛·{_z}抽插{_n}" for _p, _z in (("missionary", "傳教士"), ("doggy", "後背")) for _n in range(2, 7)},
     "sex_missionary_orgasm": "做愛·傳教士高潮", "sex_doggy_orgasm": "做愛·後背高潮",
@@ -5146,7 +5148,7 @@ _SWAP_STATE = _SWAP_DIR / "state.json"
 # 2026-10-23 加玩家對對方妻子的動作圖 tease~<動作>(~nude) 與做愛步驟 sex~<姿勢>~<步驟>（owner＝couple id）
 _SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy|tipsy|under|nude)|other~(climax|creampie)|pair~(chat|kiss|grope|fellatio|cunni|room_kiss|bath_kiss|afterglow)|pair~(normal|behind|seated)~(1|2|3)|pair~fellatio~3"
                        r"|tease~(waist|butt|breast|breast_knead|breast_suck|nipple_lick|labia|labia_rub|oral|finger_in|vagina_finger|cervix_rub)(~nude|~under)?"
-                       r"|sex~(missionary|doggy|cowgirl)~(open|tip|join|thrust|cum|orgasm))$")   # 交配三個動作兩格（輪播）
+                       r"|sex~(missionary|doggy|cowgirl|prone)~(open|tip|join|thrust|cum|orgasm))$")   # 交配三個動作兩格（輪播）
 _SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 
 

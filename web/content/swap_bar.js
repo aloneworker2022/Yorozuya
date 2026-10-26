@@ -7,15 +7,15 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=64";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=65";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=35";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=27";
-import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk, sexPoseFor, sexKey } from "./swap_tease_rules.js?v=10";
+import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk, sexPoseFor, sexKey } from "./swap_tease_rules.js?v=11";
 import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=5";
-import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=8";
-import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=11";
-import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative, portraitTapLine } from "./swap_chat_sex.js?v=6";
+import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=9";
+import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=12";
+import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative, portraitTapLine, posesFor } from "./swap_chat_sex.js?v=7";
 import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext, hotelPairAct, HOTEL_PAIR_MS, PAIR_SFX_MS, sexSfx } from "./swap_flow_rules.js?v=11";
 
 // ============================================================ 調整用的表
@@ -833,7 +833,8 @@ export function openBar(ctx = {}, c, S = {}) {
       const my = ++showSeq, lbl = `${cardX.zh}・${POSE_ZH[pose]}・${STATE_ZH[state]}`;
       pb.textContent = `換姿勢（${POSE_ZH[pose]}）`;
       const hit = sexImgCandidates(pose, state).find((k) => cachedUrl(S, c, k));
-      const gp = pose === "cowgirl" ? "missionary" : pose, step = STATE_STEP[state];   // 騎乘還沒有自己的生圖 shot：缺圖就生正面那張
+      const gp = pose === "cowgirl" ? "missionary" : pose,   // prone 有自己的 shot（sex_prone_*）
+        step = STATE_STEP[state];   // 騎乘還沒有自己的生圖 shot：缺圖就生正面那張
       const job = hit ? { kind: "sex", pose, step, key: hit } : { kind: "sex", pose: gp, step, key: sexKey(gp, step) };
       if (my !== showSeq || tok !== pvTok) return;
       await pvShow(job, lbl, tok);
@@ -858,7 +859,7 @@ export function openBar(ctx = {}, c, S = {}) {
         aff: () => { const d = rollAffDelta(3, swapAffStage(sess.accept)); bumpAff("other", d, "肏"); affPop(d); save(); renderNb(); },
         onClimax: (st) => { dbg(`${name.other} 高潮（第 ${st.climaxes} 次）`); note(`${name.other} 高潮了！（${st.climaxes}）`); },
         onEjac: () => { dbg("射了（內射）"); btn.hidden = true; pb.hidden = true; },
-      }, { pose: sexPoseFor(where()) });
+      }, { pose: sexPoseFor(where()), poses: posesFor(where()) });
       sess.sexCd = rollSexCd(); save(); dbg(`做愛結束 → CD ${sess.sexCd} 回合（可以聊天／出別的牌）`); note(`（做完了，休息一下——${sess.sexCd} 回合後才能再做；這段時間可以聊天）`);
       dbg(`做愛：肏 ${r.thrusts} 下、她高潮 ${r.climaxes} 次、${r.creampie ? "內射" : "沒射"}（最後 ${POSE_ZH[r.pose]}）`);
     } finally { btn.remove(); pb.remove(); anim.stop(); anim.el.remove(); }

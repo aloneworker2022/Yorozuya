@@ -167,6 +167,9 @@ SEX_JOIN_SHOTS = tuple(f"sex_{p}_{st}" for p in ("missionary", "doggy") for st i
 # ③ 抽插的變體格（2026-10-04 flow2）：每組圖一格，各自一個檔 {id}_sex_<pose>_thrust2..6.png，肏時隨機換。
 SEX_THRUST_VARIANT_SHOTS = tuple(f"sex_{p}_thrust{n}" for p in ("missionary", "doggy") for n in range(2, 7))
 SEX_JOIN_SHOTS = SEX_JOIN_SHOTS + SEX_THRUST_VARIANT_SHOTS
+# 床鋪背後組（2026-10-26 pt285u）：她趴床、他從背後壓著、鏡頭在後面；五步 open/tip/thrust/cum/orgasm，全走 tease 雙人管線。
+SEX_PRONE_SHOTS = tuple(f"sex_prone_{st}" for st in ("open", "tip", "thrust", "cum", "orgasm"))
+SEX_JOIN_SHOTS = SEX_JOIN_SHOTS + SEX_PRONE_SHOTS
 for _s in SEX_TIP_SHOTS:
     PORTRAIT_SHOTS[_s] = dict(_ACTION_CROP_SPEC)
 for _s in SEX_JOIN_SHOTS:

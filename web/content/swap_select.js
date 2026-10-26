@@ -4,7 +4,7 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=35";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=58";
+import { openBar } from "./swap_bar.js?v=59";
 import { dateOutfitOf } from "./swap_outfit.js?v=5";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=11";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
@@ -263,7 +263,7 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   let sess = {}; try { sess = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}") || {}; } catch { /* */ }
   const watchHotel = String(scene).startsWith("hotel") && hotelMode(sess) === "watch";   // 只能看：不用你的動作圖
   if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && !watchHotel) {
-    const { pregenTease } = await import("./swap_tease.js?v=11");
+    const { pregenTease } = await import("./swap_tease.js?v=12");
     S = await pregenTease(c, scene, S, { debug: (m) => ctx.debug?.(m), onTick: (d, t, f) => { n.textContent = t ? `準備動作 ${d}/${t}${f ? `（失敗 ${f}）` : ""}` : ""; } }).catch((e) => { ctx.debug?.(`換妻：動作預產失敗 ${e?.message || e}`); return S; });
   }
   if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && wife) {

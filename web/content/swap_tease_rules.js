@@ -111,7 +111,7 @@ export function pregenKeys(scene) {
   const out = [];
   for (const c of TEASE_CARDS) {
     if (!sceneOk(c, scene) || c.noImg) continue;   // 接吻等純文字卡：不預產圖
-    if (c.act === "sex") { for (const pose of ["missionary", "doggy"]) for (const s of SEX_PREGEN_STEPS) out.push({ kind: "sex", pose, step: s, key: sexKey(pose, s) }); }   // pt283u：準備／頂住／做愛／射／高潮；騎乘借正面
+    if (c.act === "sex") { for (const pose of (scene === "hotel_bath" ? ["missionary", "doggy"] : ["missionary", "doggy", "prone"])) for (const s of SEX_PREGEN_STEPS) out.push({ kind: "sex", pose, step: s, key: sexKey(pose, s) }); }   // pt283u：準備／頂住／做愛／射／高潮；騎乘借正面
     else { const nude = teaseNude(c.act, scene); out.push({ kind: "tease", act: c.act, nude, key: teaseKey(c.act, nude) }); }
   }
   return out;

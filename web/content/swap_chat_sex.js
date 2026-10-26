@@ -185,8 +185,11 @@ export const SWAP_SEX_FB = {
 // ======================================================================
 /** 三姿勢（值＝圖鍵用的 pose）：背後＝doggy、正面＝missionary、騎乘＝cowgirl。 */
 export { rollAffDelta };
-export const HOTEL_POSES = ["missionary", "doggy", "cowgirl"];
-export const POSE_ZH = { doggy: "背後", missionary: "正面", cowgirl: "騎乘" };
+export const HOTEL_POSES = ["missionary", "doggy", "prone", "cowgirl"];   // pt285u：prone＝床鋪背後組（她趴床、他從後面壓著肏、鏡頭在後面）
+export const POSE_ZH = { doggy: "背後", missionary: "正面", cowgirl: "騎乘", prone: "趴床背後" };
+/** 只能在床上的姿勢（浴室不輪到）。 */
+export const BED_ONLY_POSES = new Set(["prone"]);
+export const posesFor = (scene) => HOTEL_POSES.filter((p) => scene !== "hotel_bath" || !BED_ONLY_POSES.has(p));
 /** 五狀態 → 房間 sex_pose_packs 的步驟（open／tip／thrust／cum／orgasm）。 */
 export const SEX_STATES = ["prep", "tip", "thrust", "ejac", "climax"];
 export const STATE_ZH = { prep: "準備", tip: "頂住", thrust: "做愛", ejac: "射", climax: "高潮" };
@@ -197,12 +200,12 @@ export const SEX_IMG_MATRIX = HOTEL_POSES.flatMap((p) => SEX_STATES.map((s) => s
 /** 找圖的退路：騎乘還沒有自己的圖組（伺服器沒有 sex_cowgirl_* shot）→ 借正面；頂住沒圖→準備；射／高潮沒圖→做愛；做愛沒圖→舊的 join。 */
 const STEP_FB = { prep: ["open"], tip: ["tip", "open"], thrust: ["thrust", "join"], ejac: ["cum", "thrust", "join"], climax: ["orgasm", "thrust", "join"] };
 export function sexImgCandidates(pose, state) {
-  const poses = pose === "cowgirl" ? ["cowgirl", "missionary"] : [pose];
+  const poses = pose === "cowgirl" ? ["cowgirl", "missionary"] : pose === "prone" ? ["prone", "doggy"] : [pose];
   return poses.flatMap((p) => (STEP_FB[state] || [state]).map((s) => `sex~${p}~${s}`));
 }
 /** 局部動圖：背後用背後（doggy）；正面、騎乘都用正面（missionary）。 */
-export const animPoseOf = (pose) => (pose === "doggy" ? "doggy" : "missionary");
-export const nextPose = (pose) => HOTEL_POSES[(HOTEL_POSES.indexOf(pose) + 1) % HOTEL_POSES.length];
+export const animPoseOf = (pose) => (pose === "doggy" || pose === "prone" ? "doggy" : "missionary");   // 背後系（含趴床背後）→ 背後動圖
+export const nextPose = (pose, poses = HOTEL_POSES) => poses[(poses.indexOf(pose) + 1) % poses.length];
 /** 每下肏的機率（第 n 下）：
  *   射：前 EJAC_MIN-1 下不射；之後 6% 起、每下 +1.5%，上限 45%；第 MAX_THRUST 下必射。
  *   她高潮：10% 起、每下 +2%，上限 50%；剛高潮完的下一下不再高潮（不連發）。 */
@@ -224,8 +227,8 @@ export const portraitLook = ({ climaxes = 0, creampie = false } = {}) => (creamp
  *       portrait(look), aff?(), sleep?(ms), onClimax?(st), onEjac?(st) }
  * 回 { thrusts, climaxes, creampie, pose }。
  */
-export async function runHotelSex(io, { rng = Math.random, pose = "missionary", tipMs = 900 } = {}) {
-  const st = { pose: HOTEL_POSES.includes(pose) ? pose : "missionary", state: "prep", presses: 0, climaxes: 0, creampie: false, done: false, lastClimax: false };
+export async function runHotelSex(io, { rng = Math.random, pose = "missionary", tipMs = 900, poses = HOTEL_POSES } = {}) {
+  const st = { pose: poses.includes(pose) ? pose : "missionary", state: "prep", presses: 0, climaxes: 0, creampie: false, done: false, lastClimax: false };
   const sleep = io.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   const set = (s) => { st.state = s; try { io.showState(st.pose, s); } catch { /* */ } };
   set("prep"); await sleep(tipMs); set("tip");
@@ -242,7 +245,7 @@ export async function runHotelSex(io, { rng = Math.random, pose = "missionary", 
   kick({ event: "tip" });
   for (;;) {
     const act = await io.waitPress();
-    if (act === "pose") { st.pose = nextPose(st.pose); set(st.state === "prep" || st.state === "tip" ? "tip" : "thrust"); continue; }
+    if (act === "pose") { st.pose = nextPose(st.pose, poses); set(st.state === "prep" || st.state === "tip" ? "tip" : "thrust"); continue; }
     st.presses++;
     io.anim(animPoseOf(st.pose));   // 每按一下就播，不等對話
     set("thrust");
