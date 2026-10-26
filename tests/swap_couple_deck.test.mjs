@@ -12,7 +12,7 @@ G.setPools(pools);
 
 const H = await import(dir + "husband_gen.js?v=1");
 const C = await import(dir + "swap_cafe_gen.js?v=34");
-const D = await import(dir + "swap_deck_rules.js?v=6");
+const D = await import(dir + "swap_deck_rules.js?v=7");
 const T = await import(dir + "swap_tease_rules.js?v=9");
 
 let pass = 0;
@@ -126,6 +126,14 @@ t("manInfo 用丈夫完整 look", () => {
   assert.ok(mi.desc.includes("hair") || mi.desc.length > 10);
   assert.ok(mi.outfit);
   assert.ok(mi.body);
+});
+
+
+t("旅館手牌固定四張：接吻、摸奶、摸陰唇、做愛（pt281u）", () => {
+  const h = D.hotelHand(T.TEASE_CARDS);
+  assert.deepEqual(h.map((x) => x.zh), ["接吻", "摸奶", "摸陰唇", "做愛"]);
+  assert.deepEqual(h.map((x) => x.id), ["t_kiss", "t_breast", "t_labia", "t_sex"]);
+  assert.ok(h.every((x) => x.tease !== false));
 });
 
 console.log(`\n${pass} passed`);

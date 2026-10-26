@@ -92,6 +92,12 @@ export const DECK_HOTEL_BATH = [
   { id: "hb_o_press", who: "other", zh: "把她壓在磁磚牆上", bold: 5, icon: "hand" },
 ];
 
+/** 2026-10-26 Al（pt281u）：旅館手牌不隨機，固定四張（tease 卡 id → 顯示名）。 */
+export const HOTEL_HAND = [["t_kiss", "接吻"], ["t_breast", "摸奶"], ["t_labia", "摸陰唇"], ["t_sex", "做愛"]];
+export function hotelHand(teaseCards) {
+  const by = Object.fromEntries((teaseCards || []).map((c) => [c.id, c]));
+  return HOTEL_HAND.filter(([id]) => by[id]).map(([id, zh]) => ({ ...by[id], zh }));
+}
 export function deckFor(scene) {
   const s = String(scene || "bar");
   if (s === "park") return DECK_PARK;

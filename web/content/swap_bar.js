@@ -7,16 +7,16 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=61";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=62";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=34";
-import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=25";
+import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=26";
 import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk } from "./swap_tease_rules.js?v=9";
 import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=4";
-import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard } from "./swap_deck_rules.js?v=6";
+import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=7";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=10";
 import { loadSexPack, runChatSex, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB } from "./swap_chat_sex.js?v=3";
-import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext } from "./swap_flow_rules.js?v=10";
+import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext, hotelPairAct, HOTEL_PAIR_MS, PAIR_SFX_MS, sexSfx } from "./swap_flow_rules.js?v=11";
 
 // ============================================================ 調整用的表
 export const CD = { min: 10, max: 25, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]] };   // 秒（2026-10-22 改 10–25）；半速；醉了 CD 變短（×），但不會短於 min
@@ -709,7 +709,19 @@ export function openBar(ctx = {}, c, S = {}) {
     if (sess.drunk.player >= DRUNK.lv.drunk && RECKLESS[card.id] && Math.random() < DRUNK.reckless) card = { ...card, zh: RECKLESS[card.id], bold: Math.min(5, card.bold + 1), reckless: true };
     return card;
   };
+  const hotelFixed = () => base === "hotel" && teaseOn && !toiletOn;   // pt281u：旅館固定四張
   const renderHand = () => {
+    if (hotelFixed()) {
+      handCards = hotelHand(TEASE_CARDS);
+      hand.replaceChildren(...handCards.map((cardX) => {
+        const cv = document.createElement("canvas"); drawCard(cv, cardX); const ok = allowed(cardX);
+        cv.title = `${cardX.zh}${ok ? "" : (sexCdBlocks(cardX, sess) ? "（冷卻中）" : "（還不行）")}`;
+        if (!ok) cv.classList.add("off");
+        cv.addEventListener("click", () => { if (!chatting || qn || !allowed(cardX)) return; hand.classList.add("out"); void queue(() => withPlayer(["other"], () => playCard({ ...cardX }))); });
+        return cv;
+      }));
+      return;
+    }
     handCards = handCards.map((x) => (x?.tease && !allowed(x) ? draw() : x));   // （做愛 CD 中做愛卡也會被換掉）   // 接受度掉了／她醉醒了：鎖回去的動作卡換掉
     while (handCards.length < HAND_N) handCards.push(draw());
     hand.replaceChildren(...handCards.map((cardX, i) => {
@@ -876,13 +888,17 @@ export function openBar(ctx = {}, c, S = {}) {
 
   // ---- 左上中央：你老婆×對方丈夫的雙人互動圖（他們剛好在場才有）
   const pr = $(".pr"), prL = $(".pr .prl"), pf1 = $(".pr .pf1"), pf2 = $(".pr .pf2");
-  const PAIR_ZH = { chat: "聊天", kiss: "接吻", grope: "摸胸部", fellatio: "口交", cunni: "舔陰唇", normal: "正常體位", behind: "背後", seated: "面對面坐著" };
+  const PAIR_ZH = { chat: "聊天", kiss: "接吻", grope: "摸胸部", fellatio: "口交", cunni: "舔陰唇", normal: "正常體位", behind: "背後", seated: "面對面坐著", room_kiss: "坐著接吻", bath_kiss: "浴室擁吻", afterglow: "張腿摸著流出精液" };
   // 2026-10-24：依配對／場景決定他們在做什麼。酒吧：換了或她醉了＝座位接吻；跟去廁所＝背後。KTV：換了才會往下。旅館：房間正常位、浴室背後。
   let pairRestUntil = 0, curPair = "";   // 射了之後休息：這段時間不親熱
   const pairAct = () => {
-    if (Date.now() < pairRestUntil) return "";
+    if (Date.now() < pairRestUntil) { if (base !== "hotel" || !(wifeSwapped(sess) || watch)) return ""; const have = S.images?.[pairOwner(wife, c)] || {}; return pairCut(have, "afterglow") ? "afterglow" : ""; }   // 旅館射完：她張腿摸著流出來
     if (huToilet()) return "behind";
-    if (base === "hotel") return wifeSwapped(sess) || watch ? (pairLocOf() === "hotel_bath" ? "behind" : "normal") : "";
+    if (base === "hotel") {   // pt281u：三組新圖＋交配組交互輪播（依地點偏好、會跨組；只挑已生好的）
+      if (!(wifeSwapped(sess) || watch)) return "";
+      const have = S.images?.[pairOwner(wife, c)] || {}, ok = (k) => !!(pairCut(have, `${k}~1`) || pairCut(have, k));
+      return hotelPairAct(pairLocOf(), Math.floor(Date.now() / HOTEL_PAIR_MS), ok);
+    }
     const sw = wifeSwapped(sess);
     // 2026-10-25 Al：酒吧＝她的醉度階梯；KTV＝她對他的接受度階梯（聊天→親→摸胸→口交，最高口交；換妻不等於同意直接做）
     if (base === "bar") return barPairAct({ drunk: sess.drunk.wife, swapped: sw });
@@ -959,33 +975,27 @@ export function openBar(ctx = {}, c, S = {}) {
     }
     endPairSess("climax");   // 射了＝結束、休息，之後從低一點重新來
     ejacBusy = true; pairRestUntil = Date.now() + EJAC.restSec * 1000; dbg(`${h.name} 射了（${PAIR_ZH[act] || act}）→ 結束，休息 ${EJAC.restSec} 秒`);
-    if (zoomOn) { zoomHold = true; clearInterval(zoomT); zoomSay("husband", `（${h.name}低吼一聲，在${wn}${act === "fellatio" ? "嘴裡" : "體內"}射了出來……）`); setTimeout(() => { if (zoomHold) zoomClose(); }, 2600); }
+    if (zoomOn) { zoomHold = true; clearInterval(zoomT); zoomSay("husband", "嗯……！哈……哈……"); setTimeout(() => { if (zoomHold) zoomClose(); }, 2600); }
     renderPair(); status.husband = "射了"; status.wife = act === "fellatio" ? "被射在嘴裡" : "被內射了";
     log.push(`（${h.name}在${wn}${act === "fellatio" ? "嘴裡" : "裡面"}射了）`);
     void queue(async () => {
       busyUI(); await show(["husband", "wife"]);
-      await say("", `（${h.name}低吼一聲，在${wn}${act === "fellatio" ? "嘴裡" : "體內"}射了出來……）`);
-      await line("husband", await say1("husband", `你剛剛跟${wn}（玩家的妻子）${PAIR_ZH[act] || act}，射了。喘著氣說一句事後的話。`, "（喘著氣）哈……哈……太舒服了……"), { to: "wife" });
+      await line("husband", "哈……哈……", { to: "wife" });   // pt281u：不要旁白、不叫 AI 長句
     }).finally(() => { ejacBusy = false; release(["husband", "wife"]); for (const k of ["husband", "wife"]) if (cd[k]) cd[k].t = 0; renderNb(); });
   };
   // ---- 點雙人圖放大：看他們親熱＋他們的對話／喘息（AI，每 3.5 秒一句；失敗用固定句）。你插不進去。
   const pz = $(".pz"), pzN = $(".pz .pzt b"), pzT = $(".pz .pzt span"), zf1 = $(".pz .pf1"), zf2 = $(".pz .pf2");
   let zoomOn = false, zoomHold = false, zoomT = 0, zoomI = 0, zoomBusy = false;
   const zoomSay = (k, t) => { pzN.textContent = k === "wife" ? wn : h.name; pzT.textContent = t; };
-  const zoomLine = async () => {
-    if (closed || !zoomOn || zoomHold || zoomBusy || !curPair) return;
-    zoomBusy = true; const act = curPair, k = zoomI % 2 ? "wife" : "husband", i = zoomI++;
-    const soft = !pairIntimate(act);
-    const task = soft ? (k === "wife" ? `你正在跟${h.name}（別人的丈夫）${PAIR_ZH[act] || act}，老公不在身邊。說一句你此刻對他說的話（害羞、曖昧、撒嬌都可以）。` : `你正在跟${wn}（玩家的妻子）${PAIR_ZH[act] || act}。對她說一句調情的話。`) : k === "wife"
-      ? `你正在跟${h.name}（別人的丈夫）${PAIR_ZH[act] || act}，老公在旁邊看。寫一句你此刻的反應：甜蜜、害羞或忍不住的喘息呻吟都可以。`
-      : `你正在跟${wn}（玩家的妻子）${PAIR_ZH[act] || act}。對她說一句親密的話，或是你的喘息。`;
-    let t = ""; try { t = await say1(k, task, zoomFallback(act, k, i)); } catch { t = zoomFallback(act, k, i); }
-    zoomBusy = false; if (zoomOn && !zoomHold) zoomSay(k, t || zoomFallback(act, k, i));
+  const zoomLine = async () => {   // pt281u：主要是做愛的聲音（本地短句），不叫 AI、不旁白
+    if (closed || !zoomOn || zoomHold || !curPair) return;
+    const act = curPair, i = zoomI++, k = i % 3 === 1 ? "husband" : "wife";   // 她喘得多
+    zoomSay(k, sexSfx(act, k, Math.floor(i / 2) + Math.floor(Math.random() * 3)));
   };
   const zoomOpen = () => {
     if (zoomOn || !curPair) return;
-    zoomOn = true; zoomI = 0; pz.hidden = false; zoomSay("husband", zoomFallback(curPair, "husband", 0)); zoomI = 1;
-    void zoomLine(); zoomT = setInterval(() => void zoomLine(), ZOOM.everyMs);
+    zoomOn = true; zoomI = 0; pz.hidden = false; zoomSay("wife", sexSfx(curPair, "wife", 0)); zoomI = 1;
+    zoomT = setInterval(() => void zoomLine(), PAIR_SFX_MS);
   };
   const zoomClose = () => { zoomOn = false; zoomHold = false; clearInterval(zoomT); pz.hidden = true; };
   pr.addEventListener("click", (e) => { e.stopPropagation(); zoomOpen(); });

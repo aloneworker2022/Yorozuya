@@ -281,10 +281,23 @@ export function teaseWhere(card, { where = "bar", paired = false, drunk = 0, mod
 }
 
 /** 雙人圖：依場景要預產哪些 slot（PAIR_ACTS 的 scene 欄）。第 2 段＝KTV 那組＋廁所／包廂的交配。 */
+/** 2026-10-26 Al（pt281u）：旅館雙人圖＝交配兩組＋三組新圖，交互輪播；依地點偏好、但也會跨組。 */
+export const HOTEL_PAIR_KEYS = ["normal", "behind", "room_kiss", "bath_kiss", "afterglow"];
+export const HOTEL_PAIR_ROT = {
+  hotel_room: ["room_kiss", "normal", "afterglow", "room_kiss", "behind", "bath_kiss"],
+  hotel_bath: ["bath_kiss", "behind", "bath_kiss", "normal", "afterglow", "room_kiss"],
+};
+export const HOTEL_PAIR_MS = 25000;
+/** 第 i 段（時間切段）該放哪組；has(key) 可篩掉還沒生好的。 */
+export function hotelPairAct(loc, i = 0, has = null) {
+  const l = HOTEL_PAIR_ROT[loc === "hotel_bath" ? "hotel_bath" : "hotel_room"], n = l.length;
+  for (let k = 0; k < n; k++) { const a = l[(((i + k) % n) + n) % n]; if (!has || has(a)) return a; }
+  return l[((i % n) + n) % n];
+}
 export function pairSlotsFor(scene, PAIR_ACTS, PAIR_FRAMES, PAIR_EJAC = null) {
   const base = sceneBase(scene);
   if (!PAIR_ACTS || base === "park") return [];
-  const keys = base === "hotel" ? ["normal", "behind"] : [...PAIR_ACTS.filter((a) => a.scene === "ktv").map((a) => a.key), ...(base === "ktv" ? [] : ["behind"])]   // 2026-10-25：KTV 不交配;
+  const keys = base === "hotel" ? HOTEL_PAIR_KEYS : [...PAIR_ACTS.filter((a) => a.scene === "ktv").map((a) => a.key), ...(base === "ktv" ? [] : ["behind"])]   // 2026-10-25：KTV 不交配;
   // pt263u：他會射的動作再加一張射精圖 ~3（KTV 只有口交會射）
   return PAIR_ACTS.filter((a) => keys.includes(a.key)).flatMap((a) => [...(PAIR_FRAMES?.[a.key] ? [`${a.key}~1`, `${a.key}~2`] : [a.key]), ...(PAIR_EJAC?.[a.key] && ejacActOk(a.key, base) ? [`${a.key}~3`] : [])]);
 }
@@ -323,7 +336,7 @@ export function testStartState(scene, { hotel = "play" } = {}) {
 
 // ---------------------------------------------------------------- 另一對（你老婆×對方丈夫）在親熱／射精（2026-10-24）
 /** 雙人動作：chat 以外都算「親熱中」＝玩家不能跟他們兩個對話／互動、他們不跑 CD。 */
-export const PAIR_INTIMATE = new Set(["kiss", "grope", "fellatio", "cunni", "normal", "behind", "seated"]);
+export const PAIR_INTIMATE = new Set(["kiss", "grope", "fellatio", "cunni", "normal", "behind", "seated", "room_kiss", "bath_kiss", "afterglow"]);
 /** 對方丈夫會射的動作（口交、交配）。 */
 export const PAIR_EJAC_ACTS = new Set(["fellatio", "normal", "behind", "seated"]);
 /** KTV 只有口交會射（不交配）。 */
@@ -337,6 +350,20 @@ export const teaseSteps = (act) => (act === "oral" ? 3 : 1);
 
 /** 2026-10-24：點雙人圖放大＝看他們親熱，對話框每幾秒換一句（AI，失敗用這些）。輪流：丈夫、妻子。 */
 export const ZOOM = { everyMs: 3500 };
+/** 2026-10-26 Al（pt281u）：點妻子雙人＝主要是做愛的聲音，少說話、無旁白、不叫 AI。 */
+export const PAIR_SFX_MS = 4500;
+export const SEX_SFX = {
+  husband: {
+    soft: ["嗯……", "（呼吸變重）", "……啾。", "哈……"],
+    hard: ["哈……哈……", "嗯……！", "呼……呼……", "哈啊……", "嗯……嗯……"],
+  },
+  wife: {
+    soft: ["嗯……♡", "啾……嗯……", "……哈……♡", "嗯嗯……"],
+    hard: ["啊……啊……♡", "嗯啊……♡", "哈啊……哈……", "啊、啊……！", "嗯……嗯……♡", "……♡♡"],
+  },
+};
+export const SEX_SFX_SOFT = new Set(["chat", "kiss", "room_kiss", "bath_kiss", "afterglow"]);
+export const sexSfx = (act, who, i = 0) => { const l = SEX_SFX[who === "wife" ? "wife" : "husband"][SEX_SFX_SOFT.has(String(act || "")) ? "soft" : "hard"]; return l[((i % l.length) + l.length) % l.length]; };
 export const ZOOM_FB = {
   husband: {
     soft: ["（貼著她耳邊）妳好香……", "（摟緊她的腰）別躲嘛，讓我好好親親妳。", "（指尖撫過她的臉）妳老公真捨得……"],

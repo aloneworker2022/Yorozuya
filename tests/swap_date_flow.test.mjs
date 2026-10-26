@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href;
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
-const F = await import(dir + "swap_flow_rules.js?v=9");
+const F = await import(dir + "swap_flow_rules.js?v=11");
 const O = await import(dir + "swap_outfit.js?v=4");
 let pass = 0; const t = (n, fn) => { fn(); pass++; console.log("ok -", n); };
 const yes = () => 0, no = () => 0.999;
@@ -176,7 +176,7 @@ t("換妻＝同意色色：配對了才免門檻", () => {
 {
   const { readFileSync } = await import("node:fs");
   const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
-  const P = await import(dir + "swap_pair_gen.js?v=23");
+  const P = await import(dir + "swap_pair_gen.js?v=26");
   t("pt238u: 親熱中鎖互動、射精判定、口交三句、全身雙人圖", () => {
     for (const a of ["kiss", "grope", "fellatio", "normal", "behind", "seated"]) assert.ok(F.pairIntimate(a), a);
     assert.ok(!F.pairIntimate("chat") && !F.pairIntimate(""));
@@ -304,5 +304,21 @@ console.log(`\n${pass} passed`);
   const s = fs.readFileSync(new URL("../web/content/swap_select.js", import.meta.url), "utf8");
   if (!/pregenKeys\("hotel_room"\), \.\.\.pregenKeys\("hotel_bath"\)/.test(t)) throw new Error("hotel pregen both");
   if (!/hotelGo \? \["normal", "shy", "nude"\]/.test(s)) throw new Error("nude portraits pregen");
-  console.log("pt259u ok");
+  
+{ const P = await import(dir + "swap_pair_gen.js?v=26");
+{
+  for (const k of ["room_kiss", "bath_kiss", "afterglow"]) assert.ok(P.PAIR_KEYS.includes(k));
+  const slots = F.pairSlotsFor("hotel_room", P.PAIR_ACTS, P.PAIR_FRAMES, P.PAIR_EJAC);
+  for (const s of ["room_kiss", "bath_kiss", "afterglow", "normal~1", "normal~2", "normal~3", "behind~1"]) assert.ok(slots.includes(s), s);
+  assert.equal(F.hotelPairAct("hotel_room", 0), "room_kiss");
+  assert.equal(F.hotelPairAct("hotel_bath", 0), "bath_kiss");
+  const seen = new Set(Array.from({ length: 6 }, (_, i) => F.hotelPairAct("hotel_room", i)));
+  assert.ok(seen.has("bath_kiss") && seen.has("normal") && seen.has("afterglow"));
+  assert.equal(F.hotelPairAct("hotel_room", 0, (k) => k === "behind"), "behind");
+  const pr = P.pairPrompt("afterglow", { id: "w" }, { id: "c", husband: { persona: "gentleman" } });
+  assert.ok(!/tanned/.test(JSON.stringify(pr)));
+  assert.ok(!/（旁白/.test(F.sexSfx("normal", "wife", 0)) && F.sexSfx("normal", "wife", 0).length < 12);
+console.log("pt281u ok"); } }
+
+console.log("pt259u ok");
 }

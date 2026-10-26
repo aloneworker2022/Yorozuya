@@ -31,6 +31,13 @@ export const PAIR_ACTS = [
   // 2026-10-23 正常體位：他跪直不壓上去、雙手抓她張開的大腿
   { key: "normal", zh: "正常體位", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "kneeling, upright, holding another's legs, leg grab", her: "lying, on back, spread legs, legs up", body: "nipples, pussy" },
   { key: "behind", zh: "背後", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "kneeling, hands on another's hips", her: "all fours, looking back", body: "nipples, pussy" },
+  // 2026-10-26 Al（pt281u）：旅館再多三組（單格），可跟交配組交互輪播
+  { key: "room_kiss", zh: "房間坐著接吻", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true,
+    act: "kiss, sitting, on bed, face to face, facing another, embrace, closed eyes", his: "sitting, hand on another's cheek, arm around another's waist", her: "sitting, arms around neck", expr: "closed eyes, blush", body: "nipples", neg: "back-to-back, looking away, sex, penetration" },
+  { key: "bath_kiss", zh: "浴室站著擁吻", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true,
+    act: "kiss, standing, embrace, hug, face to face, facing another, wet, steam, closed eyes", his: "standing, arms around another's waist", her: "standing, arms around neck, on tiptoes", expr: "closed eyes, blush, wet hair", body: "nipples", neg: "back-to-back, looking away, sex, penetration, sitting, lying" },
+  { key: "afterglow", zh: "張腿摸著流出精液", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude",
+    act: "after sex, sitting, spread legs, fingering, touching own pussy, cum in pussy, cum drip, creampie, overflow, afterglow", his: "sitting beside another, looking at another, hand on another's thigh", her: "spread legs, hand on own pussy, spreading pussy, leaning back", expr: "blush, half-closed eyes, heavy breathing, sweat", body: "nipples, pussy, cum in pussy", neg: "penetration, sex, kiss" },
   { key: "seated", zh: "面對面坐著擁吻交配", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "sitting", her: "straddling, arms around neck", body: "nipples, pussy" },
 ];
 /** 2026-10-24 全部改全身：這之前生的雙人圖（半身）一律當沒有、重生。伺服器紀錄的 at（秒）。 */
