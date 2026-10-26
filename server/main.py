@@ -5138,8 +5138,8 @@ _SWAP_DIR = ASSETS_DIR / "swap_cafe"
 _SWAP_STATE = _SWAP_DIR / "state.json"
 # 2026-10-22 加雙人互動圖 pair~<動作>（owner＝她 id.couple id）
 # 2026-10-23 加玩家對對方妻子的動作圖 tease~<動作>(~nude) 與做愛步驟 sex~<姿勢>~<步驟>（owner＝couple id）
-_SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy)|pair~(chat|kiss|grope|fellatio|cunni)|pair~(normal|behind|seated)~(1|2)"
-                       r"|tease~(waist|butt|breast|breast_knead|breast_suck|nipple_lick|labia|labia_rub|oral|finger_in|vagina_finger|cervix_rub)(~nude)?"
+_SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy|tipsy|under|nude)|pair~(chat|kiss|grope|fellatio|cunni)|pair~(normal|behind|seated)~(1|2)"
+                       r"|tease~(waist|butt|breast|breast_knead|breast_suck|nipple_lick|labia|labia_rub|oral|finger_in|vagina_finger|cervix_rub)(~nude|~under)?"
                        r"|sex~(missionary|doggy)~(open|join|thrust))$")   # 交配三個動作兩格（輪播）
 _SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 

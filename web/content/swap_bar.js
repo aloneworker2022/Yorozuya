@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=58";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=59";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=34";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut } from "./swap_pair_gen.js?v=23";
@@ -276,6 +276,7 @@ const CSS = `
 #swp-bar .pr .prl{bottom:-18px;font-size:10px;padding:1px 4px;background:none;color:rgba(242,214,230,.8);text-shadow:0 1px 2px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #swp-bar .pv img,#swp-bar .pr img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #swp-bar .pv .pvl,#swp-bar .pr .prl{position:absolute;left:0;right:0;bottom:0;font-size:11px;padding:3px 6px;background:rgba(0,0,0,.55);color:#f2d6e6;text-align:center}
+#swp-bar .swp-thrust{position:absolute;right:14px;bottom:96px;z-index:30;min-width:76px;height:76px;border-radius:50%;border:0;background:#d23c78;color:#fff;font:700 26px system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.5)}
 #swp-bar .pv .pvw{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#ccc}
 #swp-bar .pz{position:absolute;inset:0;z-index:6;background:rgba(0,0,0,.72);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:56px 10px 90px}
 #swp-bar .pz[hidden]{display:none}
@@ -787,6 +788,30 @@ export function openBar(ctx = {}, c, S = {}) {
       if (a && b) { let f = false; const loop = () => { if (tok !== pvTok || closed) return; f = !f; pvImg.src = f ? b : a; pvT = setTimeout(loop, f ? 600 : 1400); }; loop(); }
     })();
   };
+  /** pt261u：聊天那套做愛（swap_chat_sex.js 跑 ScriptMode sex 劇本；圖＝sex~姿勢~open/join/thrust）。 */
+  const playChatSex = async (cardX) => {
+    const { loadSexPack, runChatSex } = await import("./swap_chat_sex.js?v=1");
+    const pack = await loadSexPack();
+    const jobs = jobsForAct("sex", where(), sess.strip.other || 0), by = Object.fromEntries(jobs.map((j) => [j.step, j]));
+    const tok = ++pvTok; clearTimeout(pvT);
+    let cur = "";
+    const btn = document.createElement("button"); btn.type = "button"; btn.className = "swp-thrust"; btn.textContent = "肏"; btn.hidden = true; ov.append(btn);
+    const u = (st) => cachedUrl(S, c, by[st]?.key);
+    try {
+      const r = await runChatSex({
+        girl: w,
+        narrate: (t) => { log.push(`（旁白：${t}）`); return say("旁白", t); },
+        reply: async (att, nar) => line("other", await say1("other", `你正在跟玩家（另一位丈夫）做愛。這一景的態度：${att}。旁白：${nar}。以${name.other}的身分一邊被他做一邊說一句反應。`, pick(TEASE_OK_FB)), { to: "player", click: true }),
+        showStep: async (step, label, swap) => {
+          const st = swap ? (cur === "join" ? "thrust" : "join") : step;
+          if (!by[st]) return; cur = st; await pvShow(by[st], `${cardX.zh}・${String(label || "").replace(/^場景\d\s*·\s*/, "")}`, tok);
+        },
+        thrustAnim: async () => { const a = u("join"), b = u("thrust"); if (!a || !b || tok !== pvTok) return; for (const x of [b, a, b]) { pvImg.src = x; await sleep(200); } pvImg.src = u(cur) || b; },
+        waitThrust: () => new Promise((res, rej) => { btn.hidden = false; const iv = setInterval(() => { if (closed) { clearInterval(iv); rej(new Error("closed")); } }, 500); btn.onclick = () => { clearInterval(iv); btn.hidden = true; res(); }; }),
+      }, pack);
+      dbg(`做愛（聊天劇本「${pack?.name || "做愛"}」）：肏 ${r.thrusts} 下 → ${r.climax === "both" ? "雙方高潮" : "玩家高潮"}`);
+    } finally { btn.remove(); }
+  };
   const playTease = async (cardX) => {
     busyUI();
     const free = consentFree(sess, "other");   // 換了＝同意色色：不看接受度／醉度，只看場景
@@ -801,8 +826,10 @@ export function openBar(ctx = {}, c, S = {}) {
     if (ok) {
       prog(fx.dProg, cardX.zh); bumpAff("other", CARD_FX.okAff, cardX.zh);
       if (cardX.strip) { sess.strip.other = Math.max(sess.strip.other || 0, cardX.strip); dbg(`${name.other} 脫衣 → ${sess.strip.other === 1 ? "剩內衣" : "全裸"}`); await show(["other"]); }   // 立繪換 under／nude 造型
+      // 2026-10-26 pt261u：玩家做愛＝房間聊天那套劇本做愛（開場→正戲「肏」→投入→高潮），不是三句調戲
+      if (cardX.act === "sex") await playChatSex(cardX);
       // 2026-10-24：跟房間調戲一樣——圖左側滑入停中央，按「下一句」走完（口交三句），再右側滑出
-      const pov = showPov(cardX), n = teaseSteps(cardX.act);
+      const pov = cardX.act === "sex" ? null : showPov(cardX), n = cardX.act === "sex" ? 0 : teaseSteps(cardX.act);
       for (let i = 0; i < n; i++) {
         const stepTask = n > 1 ? `（第 ${i + 1}／${n} 句：${i === 0 ? "剛開始" : i === n - 1 ? "快結束、他快要射了" : "正在進行"}）` : "";
         const txt = await say1("other", `玩家（另一位丈夫）對你做了「${cardX.zh}」，你${wasted ? "醉得迷迷糊糊、任他擺布" : "接受了"}。${stepTask}以${name.other}的身分一邊被他這樣做一邊說一句反應。`, pick(TEASE_OK_FB));
