@@ -10,13 +10,13 @@
 import { actLine, SESSION_KEY } from "./swap_select.js?v=65";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=35";
-import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=27";
+import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=28";
 import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk, sexPoseFor, sexKey } from "./swap_tease_rules.js?v=11";
 import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=5";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=9";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=12";
 import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative, portraitTapLine, posesFor } from "./swap_chat_sex.js?v=7";
-import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext, hotelPairAct, HOTEL_PAIR_MS, PAIR_SFX_MS, sexSfx } from "./swap_flow_rules.js?v=11";
+import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext, hotelPairAct, HOTEL_PAIR_MS, PAIR_SFX_MS, sexSfx } from "./swap_flow_rules.js?v=12";
 
 // ============================================================ 調整用的表
 export const CD = { min: 10, max: 25, slow: 0.5, fastAt: [[85, 0.6], [60, 0.75]] };   // 秒（2026-10-22 改 10–25）；半速；醉了 CD 變短（×），但不會短於 min
@@ -908,7 +908,7 @@ export function openBar(ctx = {}, c, S = {}) {
 
   // ---- 左上中央：你老婆×對方丈夫的雙人互動圖（他們剛好在場才有）
   const pr = $(".pr"), prL = $(".pr .prl"), pf1 = $(".pr .pf1"), pf2 = $(".pr .pf2");
-  const PAIR_ZH = { chat: "聊天", kiss: "接吻", grope: "摸胸部", fellatio: "口交", cunni: "舔陰唇", normal: "正常體位", behind: "背後", seated: "面對面坐著", room_kiss: "坐著接吻", bath_kiss: "浴室擁吻", afterglow: "張腿摸著流出精液" };
+  const PAIR_ZH = { chat: "聊天", kiss: "接吻", grope: "摸胸部", fellatio: "口交", cunni: "舔陰唇", normal: "正常體位", behind: "背後", seated: "面對面坐著", prone: "趴床背後", room_kiss: "坐著接吻", bath_kiss: "浴室擁吻", afterglow: "張腿摸著流出精液" };
   // 2026-10-24：依配對／場景決定他們在做什麼。酒吧：換了或她醉了＝座位接吻；跟去廁所＝背後。KTV：換了才會往下。旅館：房間正常位、浴室背後。
   let pairRestUntil = 0, curPair = "";   // 射了之後休息：這段時間不親熱
   const pairAct = () => {

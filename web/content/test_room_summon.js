@@ -339,8 +339,8 @@ import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./re
 import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=35";
 import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=65";
 import { openSwapDrive, playSwapDate } from "./swap_select.js?v=65";
-import { openBar as openSwapScene } from "./swap_bar.js?v=59";
-import { testStartState as swapTestStart } from "./swap_flow_rules.js?v=11";
+import { openBar as openSwapScene } from "./swap_bar.js?v=60";
+import { testStartState as swapTestStart } from "./swap_flow_rules.js?v=12";
 import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=17";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";

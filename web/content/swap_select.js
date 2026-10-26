@@ -4,9 +4,9 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=35";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=59";
+import { openBar } from "./swap_bar.js?v=60";
 import { dateOutfitOf } from "./swap_outfit.js?v=5";
-import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=11";
+import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=12";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
 
 export const SESSION_KEY = "yorozuya.swap.session";
@@ -268,7 +268,7 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   }
   if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && wife) {
     try {
-      const pair = await import("./swap_pair_gen.js?v=27");
+      const pair = await import("./swap_pair_gen.js?v=28");
       const slots = pairSlotsFor(scene, pair.PAIR_ACTS, pair.PAIR_FRAMES, pair.PAIR_EJAC);
       const have = S.images?.[pair.pairOwner(wife, c)] || {};
       // 2026-10-24：半身舊圖不算；第 1 格要重生的話第 2 格也跟著重生（同 seed）

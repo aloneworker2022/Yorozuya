@@ -38,6 +38,8 @@ export const PAIR_ACTS = [
     act: "kiss, standing, embrace, hug, face to face, facing another, wet, steam, closed eyes", his: "standing, arms around another's waist", her: "standing, arms around neck, on tiptoes", expr: "closed eyes, blush, wet hair", body: "nipples", neg: "back-to-back, looking away, sex, penetration, sitting, lying" },
   { key: "afterglow", zh: "張腿摸著流出精液", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude",
     act: "after sex, sitting, spread legs, fingering, touching own pussy, cum in pussy, cum drip, creampie, overflow, afterglow", his: "sitting beside another, looking at another, hand on another's thigh", her: "spread legs, hand on own pussy, spreading pussy, leaning back", expr: "blush, half-closed eyes, heavy breathing, sweat", body: "nipples, pussy, cum in pussy", neg: "penetration, sex, kiss" },
+  // 2026-10-26 Al（pt285u／pt286u）：妻子雙人床鋪背後組——她趴躺床上、他從背後壓著肏，鏡頭在兩人背後（不加 from side）
+  { key: "prone", zh: "趴床背後壓著", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", his: "lying on another, on top, from behind, hands on bed", her: "lying, on stomach, on bed, legs together, ass", body: "ass, pussy", neg: "from side, from front, all fours, doggystyle, on back, facing viewer" },
   { key: "seated", zh: "面對面坐著擁吻交配", scene: "hotel", framing: "wide", rating: "nsfw", clothes: "nude", side: true, his: "sitting", her: "straddling, arms around neck", body: "nipples, pussy" },
 ];
 /** 2026-10-24 全部改全身：這之前生的雙人圖（半身）一律當沒有、重生。伺服器紀錄的 at（秒）。 */
@@ -65,6 +67,8 @@ export const PAIR_FRAMES = {
     { act: `sex, vaginal, kneeling, upright, leg grab, holding another's thighs, spread legs, on back, deep penetration, full insertion, ${F2_SLAM}`, his: "thrusting, hips forward, grabbing another's thighs", expr: F2_EXPR + ", pained expression, open mouth", neg: "lying on another, missionary, tip insertion" }],
   behind: [{ act: "doggystyle, all fours, penis, imminent penetration, looking back", expr: "blush, nervous" },
     { act: `doggystyle, sex from behind, vaginal, deep penetration, ${F2_SLAM}`, his: "thrusting, hips forward, grabbing another's hips", expr: F2_EXPR }],
+  prone: [{ act: "prone bone, lying on stomach, on bed, from behind, view from behind, back view, penis, imminent penetration, looking back", expr: "blush, nervous" },
+    { act: `prone bone, sex from behind, lying on stomach, on bed, from behind, view from behind, back view, vaginal, deep penetration, ${F2_SLAM}`, his: "thrusting, pressing down, hips forward", expr: F2_EXPR + ", face in pillow" }],
   seated: [{ act: "straddling, upright straddle, sitting on lap, imminent penetration, kiss", expr: "blush, nervous, kiss" },
     { act: `straddling, sex, vaginal, deep penetration, ${F2_SLAM}`, his: "thrusting, hips up, grabbing another's hips", expr: F2_EXPR }],
 };
@@ -73,6 +77,7 @@ const EJ_EXPR = "ahegao, tears, open mouth, heavy breathing, blush, sweat";
 export const PAIR_EJAC = {
   normal: { act: "sex, vaginal, kneeling, upright, leg grab, spread legs, on back, deep penetration, cum in pussy, creampie, ejaculation, overflow, cum drip, trembling", his: "hips pressed forward, head back, grabbing another's thighs", expr: EJ_EXPR, neg: "lying on another, missionary" },
   behind: { act: "doggystyle, sex from behind, vaginal, deep penetration, cum in pussy, creampie, ejaculation, overflow, cum drip, trembling", his: "hips pressed forward, head back, grabbing another's hips", expr: EJ_EXPR },
+  prone: { act: "prone bone, lying on stomach, on bed, from behind, view from behind, back view, vaginal, deep penetration, cum in pussy, creampie, ejaculation, overflow, cum drip, trembling", his: "pressing down, hips pressed forward, head back", expr: EJ_EXPR },
   seated: { act: "straddling, sex, vaginal, deep penetration, cum in pussy, creampie, ejaculation, cum drip, trembling, hug", his: "hips up, holding another tight", expr: EJ_EXPR },
   fellatio: { act: "fellatio, kneeling, penis, cum in mouth, ejaculation, cum on face, facial, hand on another's head", his: "standing, head back, hand on another's head", expr: "cum in mouth, tears, closed eyes, blush", herCl: "open shirt" },
 };

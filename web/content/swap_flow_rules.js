@@ -282,9 +282,9 @@ export function teaseWhere(card, { where = "bar", paired = false, drunk = 0, mod
 
 /** 雙人圖：依場景要預產哪些 slot（PAIR_ACTS 的 scene 欄）。第 2 段＝KTV 那組＋廁所／包廂的交配。 */
 /** 2026-10-26 Al（pt281u）：旅館雙人圖＝交配兩組＋三組新圖，交互輪播；依地點偏好、但也會跨組。 */
-export const HOTEL_PAIR_KEYS = ["normal", "behind", "room_kiss", "bath_kiss", "afterglow"];
+export const HOTEL_PAIR_KEYS = ["normal", "behind", "prone", "room_kiss", "bath_kiss", "afterglow"];   // pt286u：+prone 床鋪背後
 export const HOTEL_PAIR_ROT = {
-  hotel_room: ["room_kiss", "normal", "afterglow", "room_kiss", "behind", "bath_kiss"],
+  hotel_room: ["room_kiss", "normal", "afterglow", "prone", "room_kiss", "behind", "bath_kiss"],
   hotel_bath: ["bath_kiss", "behind", "bath_kiss", "normal", "afterglow", "room_kiss"],
 };
 export const HOTEL_PAIR_MS = 25000;
@@ -336,9 +336,9 @@ export function testStartState(scene, { hotel = "play" } = {}) {
 
 // ---------------------------------------------------------------- 另一對（你老婆×對方丈夫）在親熱／射精（2026-10-24）
 /** 雙人動作：chat 以外都算「親熱中」＝玩家不能跟他們兩個對話／互動、他們不跑 CD。 */
-export const PAIR_INTIMATE = new Set(["kiss", "grope", "fellatio", "cunni", "normal", "behind", "seated", "room_kiss", "bath_kiss", "afterglow"]);
+export const PAIR_INTIMATE = new Set(["kiss", "grope", "fellatio", "cunni", "normal", "behind", "seated", "prone", "room_kiss", "bath_kiss", "afterglow"]);
 /** 對方丈夫會射的動作（口交、交配）。 */
-export const PAIR_EJAC_ACTS = new Set(["fellatio", "normal", "behind", "seated"]);
+export const PAIR_EJAC_ACTS = new Set(["fellatio", "normal", "behind", "seated", "prone"]);
 /** KTV 只有口交會射（不交配）。 */
 export const ejacActOk = (act, base) => (base === "ktv" ? act === "fellatio" : PAIR_EJAC_ACTS.has(String(act || "")));
 export const EJAC = { everySec: 5, p: 0.2, restSec: 60 };

@@ -47,9 +47,9 @@ console.log("swap_chat_sex ok");
   assert.equal(P.seedFor("behind~3", { "pair~behind~1": { seed: 9 } }, {}), 9);
   assert.equal(P.pairCut({ "pair~normal~3": { cut: "/c3", at: 2e9, seed: 1 } }, "normal~3"), "/c3");
   const F = await import("../web/content/swap_flow_rules.js");
-  assert.deepEqual(F.pairSlotsFor("hotel_room", P.PAIR_ACTS, P.PAIR_FRAMES, P.PAIR_EJAC), ["normal~1", "normal~2", "normal~3", "behind~1", "behind~2", "behind~3", "room_kiss", "bath_kiss", "afterglow"]);
+  assert.deepEqual(F.pairSlotsFor("hotel_room", P.PAIR_ACTS, P.PAIR_FRAMES, P.PAIR_EJAC), ["normal~1", "normal~2", "normal~3", "behind~1", "behind~2", "behind~3", "room_kiss", "bath_kiss", "afterglow", "prone~1", "prone~2", "prone~3"]);
   assert.ok(F.pairSlotsFor("ktv", P.PAIR_ACTS, P.PAIR_FRAMES, P.PAIR_EJAC).includes("fellatio~3"));
-  assert.match(py, /\(normal\|behind\|seated\)~\(1\|2\|3\)\|pair~fellatio~3/);
+  assert.match(py, /\(normal\|behind\|seated\|prone\)~\(1\|2\|3\)\|pair~fellatio~3/);
   assert.match(py, /sex~\(missionary\|doggy\|cowgirl\|prone\)~\(open\|tip\|join\|thrust\|cum\|orgasm\)/); assert.match(py, /other~\(climax\|creampie\)/);
   console.log("swap_chat_sex pt263u ok");
 }

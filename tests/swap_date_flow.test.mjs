@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).href;
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
-const F = await import(dir + "swap_flow_rules.js?v=11");
+const F = await import(dir + "swap_flow_rules.js?v=12");
 const O = await import(dir + "swap_outfit.js?v=4");
 let pass = 0; const t = (n, fn) => { fn(); pass++; console.log("ok -", n); };
 const yes = () => 0, no = () => 0.999;
@@ -176,7 +176,7 @@ t("換妻＝同意色色：配對了才免門檻", () => {
 {
   const { readFileSync } = await import("node:fs");
   const bar = readFileSync(new URL("../web/content/swap_bar.js", import.meta.url), "utf8");
-  const P = await import(dir + "swap_pair_gen.js?v=26");
+  const P = await import(dir + "swap_pair_gen.js?v=28");
   t("pt238u: 親熱中鎖互動、射精判定、口交三句、全身雙人圖", () => {
     for (const a of ["kiss", "grope", "fellatio", "normal", "behind", "seated"]) assert.ok(F.pairIntimate(a), a);
     assert.ok(!F.pairIntimate("chat") && !F.pairIntimate(""));
@@ -305,16 +305,29 @@ console.log(`\n${pass} passed`);
   if (!/pregenKeys\("hotel_room"\), \.\.\.pregenKeys\("hotel_bath"\)/.test(t)) throw new Error("hotel pregen both");
   if (!/hotelGo \? \["normal", "shy", "nude"[\],]/.test(s)) throw new Error("nude portraits pregen");
   
-{ const P = await import(dir + "swap_pair_gen.js?v=26");
+{ const P = await import(dir + "swap_pair_gen.js?v=28");
 {
   for (const k of ["room_kiss", "bath_kiss", "afterglow"]) assert.ok(P.PAIR_KEYS.includes(k));
   const slots = F.pairSlotsFor("hotel_room", P.PAIR_ACTS, P.PAIR_FRAMES, P.PAIR_EJAC);
   for (const s of ["room_kiss", "bath_kiss", "afterglow", "normal~1", "normal~2", "normal~3", "behind~1"]) assert.ok(slots.includes(s), s);
   assert.equal(F.hotelPairAct("hotel_room", 0), "room_kiss");
   assert.equal(F.hotelPairAct("hotel_bath", 0), "bath_kiss");
-  const seen = new Set(Array.from({ length: 6 }, (_, i) => F.hotelPairAct("hotel_room", i)));
+  const seen = new Set(Array.from({ length: 7 }, (_, i) => F.hotelPairAct("hotel_room", i)));
   assert.ok(seen.has("bath_kiss") && seen.has("normal") && seen.has("afterglow"));
   assert.equal(F.hotelPairAct("hotel_room", 0, (k) => k === "behind"), "behind");
+  // pt286u：妻子雙人床鋪背後組 prone
+  assert.ok(P.PAIR_KEYS.includes("prone"));
+  for (const s of ["prone~1", "prone~2", "prone~3"]) assert.ok(slots.includes(s), s);
+  assert.ok(Array.from({ length: 7 }, (_, i) => F.hotelPairAct("hotel_room", i)).includes("prone"));
+  assert.ok(!Array.from({ length: 6 }, (_, i) => F.hotelPairAct("hotel_bath", i)).includes("prone"));
+  const pp = P.pairPrompt("prone~2", { id: "w" }, { id: "c", husband: { persona: "gentleman", comfyCkpt: "man.safetensors" } });
+  const sh = pp.shared.join(", ");
+  assert.ok(/lying on stomach/.test(sh) && /on bed/.test(sh) && /from behind/.test(sh) && /back view/.test(sh));
+  assert.equal(pp.fromSide, false);
+  assert.ok(pp.male.every((t) => /^male\b/.test(t)) && pp.herPose.every((t) => /^her\b/.test(t)));
+  assert.ok(pp.male.some((t) => /lying on another/.test(t)) && !/tanned/.test(JSON.stringify(pp)));
+  assert.ok(pp.neg.includes("from side"));
+  assert.equal(P.pairCkpt({ ckpt: "her" }, { husband: { comfyCkpt: "man.safetensors" } }), "man.safetensors");
   const pr = P.pairPrompt("afterglow", { id: "w" }, { id: "c", husband: { persona: "gentleman" } });
   assert.ok(!/tanned/.test(JSON.stringify(pr)));
   assert.ok(!/（旁白/.test(F.sexSfx("normal", "wife", 0)) && F.sexSfx("normal", "wife", 0).length < 12);
