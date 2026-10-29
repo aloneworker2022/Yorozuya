@@ -1,13 +1,13 @@
 /* 換妻約會：左對話、右正在說的人、下面輸入。酒吧四人群聊；之後只剩你跟對方妻子。 */
 import { api, pickBackdrop } from "./swap_cafe_gen.js?v=38";
-import { queuePortraits, kickTeasePregen } from "./swap_pregen.js?v=6";
+import { queuePortraits, kickTeasePregen } from "./swap_pregen.js?v=7";
 import {
   addAccept, addDrunk, lockIfReady, bothAgreed, husbandPickScene, barChatGain, toastOf,
   teaseList, teaseOk, husbandBeat, watchPenalty, playerStageGain, hotelHusbandAct, applyHotelAct,
   parseHotelText, portraitExpr, TEASE_ZH, TEASE_AT, HOTEL_AT,
-} from "./swap_meet_rules.js?v=2";
+} from "./swap_meet_rules.js?v=3";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=13";
-import { runHotelSex, createLocalAnim, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, posesFor, rollAffDelta, swapAffStage, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative } from "./swap_chat_sex.js?v=10";
+import { runHotelSex, createLocalAnim, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, posesFor, rollAffDelta, swapAffStage, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative } from "./swap_chat_sex.js?v=11";
 import { clinkFx, onLongPress } from "./swap_clink.js?v=1";
 import { sexKey } from "./swap_tease_rules.js?v=11";
 import { pairOwner, pairCut, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=28";
@@ -61,7 +61,7 @@ export function openSwapDate(ctx, couple, meet) {
     #sd-ov .bg{position:absolute;inset:0;background:center/cover no-repeat;z-index:0}
     #sd-ov .pbg{position:absolute;inset:0;z-index:0;pointer-events:none}
     #sd-ov .pbg[hidden]{display:none}
-    #sd-ov .pbg>div{position:absolute;left:12%;bottom:0;width:47%;max-width:408px;max-height:66%;aspect-ratio:3/4;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
+    #sd-ov .pbg>div{position:absolute;left:6%;top:50%;transform:translateY(-50%);width:44%;max-width:408px;max-height:66%;aspect-ratio:3/4;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
     #sd-ov .pbg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:bottom center}
     #sd-ov .pbg .pbl{position:absolute;left:0;top:-18px;font-size:10px;padding:1px 4px;color:rgba(242,214,230,.8);text-shadow:0 1px 2px #000;white-space:nowrap}
     #sd-ov .fig{position:absolute;left:28%;right:0;bottom:0;top:calc(2px + env(safe-area-inset-top));z-index:1;pointer-events:none;overflow:visible}
@@ -243,7 +243,9 @@ export function openSwapDate(ctx, couple, meet) {
   function renderActs() {
     const box = $(".acts"); box.innerHTML = "";
     const add = (label, fn, on = false) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; if (on) b.className = "on"; b.addEventListener("click", fn); box.append(b); };
-    if (stage2() || hotel()) add(watching ? "回到她身邊" : "看另一對", () => { watching = !watching; pairWho = watching ? "wife" : ""; if (!watching) { sideAct = ""; sideMood = ""; } render(); }, watching);
+    if (stage2() || hotel()) add(watching ? "回到她身邊" : "看另一對", () => {
+      if (!watching && hotel() && wifeLoc !== scene) { sys(`${name.wife}和${name.husband}不在這裡（他們在${SZ[wifeLoc]}）。`); render(); return; }   // pt317u #2
+      watching = !watching; pairWho = watching ? "wife" : ""; if (!watching) { sideAct = ""; sideMood = ""; } render(); }, watching);
     if (watching || scene === "bar") return;
     if (stage2()) {
       for (const act of teaseList(scene)) add(TEASE_ZH[act], () => doTease(act));
@@ -276,14 +278,16 @@ export function openSwapDate(ctx, couple, meet) {
     leaving = false;
   }
   async function go(next) {
-    scene = next;
+    const lastScene = scene; scene = next;
     logs = []; watchLogs = []; watching = false; sideAct = ""; sideMood = ""; pairSlot = ""; wifeLook = "";
     nextBeatAt = next === "park" || next === "ktv" ? 0 : Date.now() + BEAT_MS;   // pt310u #11：一進第二場景先互動一次，之後才讀秒
     if (next === "park" || next === "ktv") sys(`到了${SZ[next]}。你跟${name.other}在一起，${name.wife}跟${name.husband}在另一邊。`);
     if (String(next).startsWith("hotel")) {
       sys("她把衣服脫了。想做什麼，直接說。");
-      queuePortraits("hotel", wife, couple).then(() => refreshImages().then(render)).catch((e) => ctx.debug?.(`換妻旅館圖：${e.message || e}`));
+      if (!String(lastScene).startsWith("hotel")) { wifeLoc = Math.random() < 0.7 ? "hotel_room" : "hotel_bath"; lastBeat = "sex"; nextBeatAt = Date.now() + BEAT_MS; }
+      queuePortraits("hotel", wife, couple).then(() => refreshImages().then(() => { syncPairBg(lastBeat); render(); })).catch((e) => ctx.debug?.(`換妻旅館圖：${e.message || e}`));
     }
+    syncPairBg(lastBeat);
     render();
   }
 
@@ -340,7 +344,7 @@ export function openSwapDate(ctx, couple, meet) {
       addAccept(meet, "other", g.accept);
     } else if (hotel()) {
       const p = parseHotelText(t);
-      if (p.where) scene = p.where === "bath" ? "hotel_bath" : "hotel_room";
+      if (p.where) { scene = p.where === "bath" ? "hotel_bath" : "hotel_room"; syncPairBg(lastBeat); if (watching && wifeLoc !== scene) { watching = false; pairWho = ""; } }
       if (p.kind === "sex") {
         const r = applyHotelAct(meet, "other", "sex");
         sideAct = "sex"; sideMood = r.orgasm ? "happy" : "shy"; spread = !spread; if (spread) sideMood = r.orgasm ? "spread" : sideMood;
@@ -522,7 +526,7 @@ export function openSwapDate(ctx, couple, meet) {
   async function pairBeat() {
     if (pairBusy || ended || scene === "bar") return;
     pairBusy = true;
-    let beat = hotel() ? hotelHusbandAct(meet) : husbandBeat(meet, scene);
+    let beat = hotel() ? hotelHusbandAct(meet, Math.random, { cd: Date.now() < ohCdUntil }) : husbandBeat(meet, scene);
     // pt310u #14：他射完 20 秒內不能做愛，改口交／聊天／摸奶
     if (hotel() && beat.act === "sex" && Date.now() < ohCdUntil) {
       if (beat.orgasm) { meet.accept.wife -= beat.accept; meet.orgasm.wife -= 1; }
@@ -530,7 +534,14 @@ export function openSwapDate(ctx, couple, meet) {
       beat = applyHotelAct(meet, "wife", pick(["oral", "chat", "breast"]));
     }
     if (hotel() && beat.ejac && (beat.act === "sex" || beat.act === "oral")) ohCdUntil = Date.now() + OH_SEX_CD_MS;
-    if (hotel()) { if (beat.act === "bath") wifeLoc = "hotel_bath"; else if (beat.act === "sex") wifeLoc = "hotel_room"; wifeLook = wifeHotelLook(beat.act); }
+    if (hotel()) {   // pt317u #1 #2：他們只在房間或浴室；洗澡＝去浴室，其餘動作就地做，偶爾換地方
+      const prevLoc = wifeLoc;
+      if (beat.act === "bath") wifeLoc = "hotel_bath";
+      else if (Math.random() < 0.15) wifeLoc = wifeLoc === "hotel_bath" ? "hotel_room" : "hotel_bath";
+      if (prevLoc !== wifeLoc) sys(wifeLoc === scene ? `${name.wife}和${name.husband}進到${SZ[scene]}來了。` : `${name.wife}和${name.husband}去了${SZ[wifeLoc]}。`);
+      if (watching && wifeLoc !== scene) { watching = false; pairWho = ""; sideAct = ""; sideMood = ""; sys(`他們不在這裡了。`); }
+      wifeLook = wifeHotelLook(beat.act);
+    }
     pairSlot = stage2() ? PAIR_SLOT_OF[beat.act] || "" : "";
     beatN += 1; lastBeat = beat.act || "";
     syncPairBg(beat.act);
@@ -575,10 +586,12 @@ export function openSwapDate(ctx, couple, meet) {
 
   // pt310u #15：第三場景她在跟他做愛、地點跟你同一處 → 對話框背景播他們做愛的動圖
   function syncPairBg(act) {
-    const box = $(".pbg"), on = hotel() && act === "sex" && wifeLoc === scene;
+    // pt317u #1：他們在跟你同一處（房間／浴室）且正在親熱 → 中間靠左貼雙人互動圖（動作中的兩格動圖）
+    const ACT_SLOTS = { sex: ["behind", "normal", "prone", "seated"], oral: ["fellatio"], kiss: ["kiss"], breast: ["grope"] };
+    const box = $(".pbg"), on = hotel() && !!ACT_SLOTS[act] && wifeLoc === scene;
     stopPbg?.(); stopPbg = null;
     if (!on) { box.hidden = true; return; }
-    const have = pairHave(), slot = pick(["behind", "normal", "prone", "seated"].filter((k) => pairCut(have, `${k}~1`)) ) || "";
+    const have = pairHave(), slot = pick(ACT_SLOTS[act].filter((k) => pairCut(have, `${k}~1`))) || (act !== "sex" ? pick(ACT_SLOTS.sex.filter((k) => pairCut(have, `${k}~1`))) : "") || "";
     const u1 = slot ? pairCut(have, `${slot}~1`) : "", u2 = slot ? pairCut(have, `${slot}~2`) : "";
     if (!u1) { box.hidden = true; return; }
     box.querySelector(".pf1").src = u1; box.querySelector(".pf2").src = u2 || u1;

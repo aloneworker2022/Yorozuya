@@ -3,7 +3,7 @@ import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { api, templateFor, cafeBody } from "./swap_cafe_gen.js?v=38";
 import { PAIR_SLOTS, pairBody, pairOwner } from "./swap_pair_gen.js?v=28";
 import { pregenTease } from "./swap_tease.js?v=13";
-import { PRE_PARK, HOTEL_PORTRAIT } from "./swap_meet_rules.js?v=2";
+import { PRE_PARK, HOTEL_PORTRAIT } from "./swap_meet_rules.js?v=3";
 
 async function post(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });

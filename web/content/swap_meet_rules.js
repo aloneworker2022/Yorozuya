@@ -141,7 +141,16 @@ export function playerStageGain(kind, rng = Math.random) {
 }
 
 /** 旅館丈夫這一拍。四項各 20%；多出來的 20% 在有精液時給流出、接受度 >98 時給接吻，兩個都有就各 10%。 */
-export function hotelHusbandAct(m, rng = Math.random) {
+export function hotelHusbandAct(m, rng = Math.random, { cd = null } = {}) {
+  // pt317u #3：對方丈夫在旅館多半在做愛／口交／接吻；只有射完 CD 中才聊天（也不能做愛）
+  if (cd !== null) {
+    const semen = num(m.semen.wife) > 0;
+    const items = cd ? [["chat", 45], ["oral", 20], ["kiss", 20], ["breast", 10]] : [["sex", 50], ["oral", 22], ["kiss", 22], ["bath", 6]];
+    if (cd && semen) items.push(["leak", 10]);
+    let r = rng() * items.reduce((s, it) => s + it[1], 0), act = items[0][0];
+    for (const [k, w] of items) { r -= w; if (r < 0) { act = k; break; } }
+    return applyHotelAct(m, "wife", act, rng);
+  }
   const items = [["sex", 20], ["oral", 20], ["chat", 20], ["bath", 20]];
   const semen = num(m.semen.wife) > 0, kiss = num(m.accept.wife) > 98;
   if (semen && kiss) items.push(["leak", 10], ["kiss", 10]);

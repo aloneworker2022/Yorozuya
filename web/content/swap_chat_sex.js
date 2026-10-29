@@ -247,7 +247,9 @@ export async function runHotelSex(io, { rng = Math.random, pose = "missionary", 
   kick({ event: "tip" });
   for (;;) {
     const act = await io.waitPress();
-    if (act === "pose") { st.pose = nextPose(st.pose, poses); set(st.state === "prep" || st.state === "tip" ? "tip" : "thrust"); continue; }
+    if (act === "pose") {   // pt317u #4：換體位＝這個體位從第一步（準備→頂住）重來；興奮度（presses／高潮）不變
+      st.pose = nextPose(st.pose, poses); set("prep"); await sleep(tipMs); set("tip"); kick({ event: "tip" }); continue;
+    }
     st.presses++;
     io.anim(animPoseOf(st.pose));   // 每按一下就播，不等對話
     set("thrust");
