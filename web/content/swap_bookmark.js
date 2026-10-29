@@ -24,7 +24,6 @@ export function bindSwapBookmark(ctx = {}) {
     #sbm{position:fixed;left:0;top:22%;z-index:8300;display:flex;flex-direction:column;gap:4px;font:14px/1.3 system-ui,"Noto Sans TC",sans-serif}
     #sbm button{box-shadow:none;text-shadow:none;letter-spacing:0;cursor:pointer}
     #sbm .tab{writing-mode:vertical-rl;background:#6b3a2a;color:#fff;border:0;border-radius:0 10px 10px 0;padding:12px 8px;min-height:88px}
-    #sbm .x{background:#2a2118;color:#fff;border:0;border-radius:0 8px 8px 0;padding:4px 6px;font-size:12px}
     #sbm-card{position:fixed;left:46px;top:18%;z-index:8301;width:min(280px,78vw);background:#fff8ee;color:#2a2118;border-radius:12px;padding:12px;box-shadow:0 8px 28px #0006;font:14px/1.4 system-ui,"Noto Sans TC",sans-serif}
     #sbm-card button{font:inherit;border:0;border-radius:8px;padding:8px 10px;background:#6b3a2a;color:#fff;cursor:pointer}
     #sbm-card .row{display:flex;gap:6px;margin-top:8px}
@@ -33,7 +32,7 @@ export function bindSwapBookmark(ctx = {}) {
   document.head.append(css);
   const root = document.createElement("div");
   root.id = "sbm"; root.hidden = true;
-  root.innerHTML = `<button type="button" class="tab"></button><button type="button" class="x">取消預約</button>`;
+  root.innerHTML = `<button type="button" class="tab"></button>`;
   document.body.append(root);
   const card = document.createElement("div");
   card.id = "sbm-card"; card.hidden = true;
@@ -42,7 +41,8 @@ export function bindSwapBookmark(ctx = {}) {
 
   const paint = () => {
     const dateOpen = !!document.getElementById("sd-ov");
-    const show = !!(view && view.active && !dateOpen);
+    const booked = !!(view && view.active && (view.status === "ready" || view.status === "error" || view.status === "running" || view.status === "pending" || (view.total > 0 && view.status)));
+    const show = booked && !dateOpen;
     root.hidden = !show;
     if (!show) { card.hidden = true; return; }
     const names = view.names || {};
@@ -88,9 +88,12 @@ export function bindSwapBookmark(ctx = {}) {
   async function pull() {
     try {
       const j = await pregenState();
-      view = j.date;
-      if (view && view.status === "ready" && !view.active) view = null;
-    } catch { /* 伺服器還沒重啟：書籤先不顯示 */ }
+      const d = j && j.date;
+      // 沒預約／已取消／赴約後 inactive → 整組隱藏，下次預約才出現
+      if (!d || !d.active || !d.total) view = null;
+      else if (d.status === "ready" && !d.active) view = null;
+      else view = d;
+    } catch { view = null; }
     paint();
   }
   root.querySelector(".tab").addEventListener("click", () => {
@@ -98,12 +101,15 @@ export function bindSwapBookmark(ctx = {}) {
     if (view.status === "ready") { card.hidden = true; void depart(); return; }
     openCard();
   });
-  // pt303u：取消預約＝停伺服器佇列（排隊中的生圖一起撤掉）＋停瀏覽器動作圖＋收書籤
+  // pt303u／pt305u：取消只在詳情卡；側邊黑色頁籤拿掉。取消後整組隱藏直到下次預約。
   function cancelBooking() {
     if (!window.confirm("取消這次換妻預約？還沒生的圖會停掉。")) return;
-    pregenCancel().then(() => { view = null; card.hidden = true; paint(); ctx.debug?.("換妻：預約已取消"); }).catch((e) => ctx.debug?.(`換妻書籤：${e.message || e}`));
+    pregenCancel().then(() => {
+      view = null; card.hidden = true; root.hidden = true;
+      try { localStorage.removeItem(SCENE_KEY); } catch { /* */ }
+      paint(); ctx.debug?.("換妻：預約已取消");
+    }).catch((e) => ctx.debug?.(`換妻書籤：${e.message || e}`));
   }
-  root.querySelector(".x").addEventListener("click", cancelBooking);
   void pull();
   setInterval(() => { void pull(); }, 2000);
 }
