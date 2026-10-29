@@ -229,7 +229,7 @@ export const portraitLook = ({ climaxes = 0, creampie = false } = {}) => (creamp
  *       portrait(look), aff?(), sleep?(ms), onClimax?(st), onEjac?(st) }
  * 回 { thrusts, climaxes, creampie, pose }。
  */
-export async function runHotelSex(io, { rng = Math.random, pose = "missionary", tipMs = 900, poses = HOTEL_POSES } = {}) {
+export async function runHotelSex(io, { rng = Math.random, pose = "missionary", tipMs = 900, poses = HOTEL_POSES, endOnClimax = false } = {}) {
   const st = { pose: poses.includes(pose) ? pose : "missionary", state: "prep", presses: 0, climaxes: 0, creampie: false, done: false, lastClimax: false };
   const sleep = io.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   const set = (s) => { st.state = s; try { io.showState(st.pose, s); } catch { /* */ } };
@@ -255,11 +255,18 @@ export async function runHotelSex(io, { rng = Math.random, pose = "missionary", 
     const r = rollPress(st.presses, rng, { lastClimax: st.lastClimax });
     st.lastClimax = r.climax;
     if (r.climax) { st.climaxes++; set("climax"); io.onClimax?.(st); io.portrait(portraitLook(st)); }
+    // pt316u #5：換妻約會＝一段做愛到「她高潮」或「玩家射」就結束（先到先算）
+    if (endOnClimax && r.climax && !r.ejac) {
+      st.done = true;
+      if (lineP) await Promise.race([lineP, sleep(8000)]);
+      try { await io.line({ event: "climax", pose: st.pose, climaxes: st.climaxes, final: true }); } catch { /* */ }
+      return { thrusts: st.presses, climaxes: st.climaxes, creampie: false, pose: st.pose, end: "climax" };
+    }
     if (r.ejac) {
       st.creampie = true; st.done = true; set("ejac"); io.onEjac?.(st); io.portrait(portraitLook(st));
       if (lineP) await Promise.race([lineP, sleep(8000)]);   // 前一句還在生：最多等 8 秒再貼射精那句
       try { await io.line({ event: r.climax ? "both" : "ejac", pose: st.pose, climaxes: st.climaxes, final: true }); } catch { /* */ }
-      return { thrusts: st.presses, climaxes: st.climaxes, creampie: true, pose: st.pose };
+      return { thrusts: st.presses, climaxes: st.climaxes, creampie: true, pose: st.pose, end: "ejac" };
     }
     kick({ event: r.climax ? "climax" : "thrust" });   // 「肏」也有下一句的效果
   }

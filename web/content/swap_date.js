@@ -1,13 +1,13 @@
 /* 換妻約會：左對話、右正在說的人、下面輸入。酒吧四人群聊；之後只剩你跟對方妻子。 */
 import { api, pickBackdrop } from "./swap_cafe_gen.js?v=38";
-import { queuePortraits } from "./swap_pregen.js?v=5";
+import { queuePortraits, kickTeasePregen } from "./swap_pregen.js?v=6";
 import {
   addAccept, addDrunk, lockIfReady, bothAgreed, husbandPickScene, barChatGain, toastOf,
   teaseList, teaseOk, husbandBeat, watchPenalty, playerStageGain, hotelHusbandAct, applyHotelAct,
   parseHotelText, portraitExpr, TEASE_ZH, TEASE_AT, HOTEL_AT,
 } from "./swap_meet_rules.js?v=2";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=13";
-import { runHotelSex, createLocalAnim, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, posesFor, rollAffDelta, swapAffStage, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative } from "./swap_chat_sex.js?v=9";
+import { runHotelSex, createLocalAnim, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, posesFor, rollAffDelta, swapAffStage, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative } from "./swap_chat_sex.js?v=10";
 import { clinkFx, onLongPress } from "./swap_clink.js?v=1";
 import { sexKey } from "./swap_tease_rules.js?v=11";
 import { pairOwner, pairCut, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=28";
@@ -21,8 +21,8 @@ export const BEAT_MS = 10000;
 /** pt310u #13：第三場景她做愛時的立繪（正面開腿／背面翹臀）、聊天時隨機半身裸體。 */
 export const wifeHotelLook = (act, rng = Math.random) => act === "sex" ? (rng() < 0.5 ? "nude_spread" : "nude_prone") : act === "chat" ? (rng() < 0.5 ? "nude" : "nude_shy") : "";
 
-/** pt310u #10：玩家這場要射幾次（3–5），射完做愛就結束。 */
-export const rollEjacGoal = (rng = Math.random) => 3 + Math.floor(rng() * 3);
+/** pt316u #5：一段做愛＝到玩家射或她高潮（先到先算）就結束、回聊天；之後可以再做。 */
+export const SEX_SEGMENT_END = ["ejac", "climax"];
 /** pt310u #9：每輪隨機體位（背後／正面／騎乘…）。 */
 export const randPose = (poses, rng = Math.random, not = "") => { const p = poses.length > 1 ? poses.filter((x) => x !== not) : poses; return p[Math.floor(rng() * p.length)] || poses[0]; };
 /** pt310u #6：調戲圖 左滑入 → 停 3 秒 → 右滑出。 */
@@ -61,18 +61,18 @@ export function openSwapDate(ctx, couple, meet) {
     #sd-ov .bg{position:absolute;inset:0;background:center/cover no-repeat;z-index:0}
     #sd-ov .pbg{position:absolute;inset:0;z-index:0;pointer-events:none}
     #sd-ov .pbg[hidden]{display:none}
-    #sd-ov .pbg>div{position:absolute;left:12%;top:40%;width:39%;max-width:340px;max-height:46%;aspect-ratio:3/4;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
-    #sd-ov .pbg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
-    #sd-ov .pbg .pbl{position:absolute;left:0;bottom:-18px;font-size:10px;padding:1px 4px;color:rgba(242,214,230,.8);text-shadow:0 1px 2px #000;white-space:nowrap}
-    #sd-ov .fig{position:absolute;left:34%;right:0;bottom:0;top:14%;z-index:1;pointer-events:none}
-    #sd-ov .ch{position:absolute;left:58%;bottom:0;height:100%;width:min(96%,560px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;transform:translateX(-50%);transition:transform .55s cubic-bezier(.22,.8,.3,1),opacity .55s ease;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+    #sd-ov .pbg>div{position:absolute;left:12%;bottom:0;width:47%;max-width:408px;max-height:66%;aspect-ratio:3/4;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
+    #sd-ov .pbg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:bottom center}
+    #sd-ov .pbg .pbl{position:absolute;left:0;top:-18px;font-size:10px;padding:1px 4px;color:rgba(242,214,230,.8);text-shadow:0 1px 2px #000;white-space:nowrap}
+    #sd-ov .fig{position:absolute;left:28%;right:0;bottom:0;top:calc(2px + env(safe-area-inset-top));z-index:1;pointer-events:none;overflow:visible}
+    #sd-ov .ch{position:absolute;left:60%;bottom:0;height:100%;width:min(100%,672px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;transform:translateX(-50%);transition:transform .55s cubic-bezier(.22,.8,.3,1),opacity .55s ease;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:manipulation}
     #sd-ov .ch.from-l{transform:translateX(-50%) translateX(-110vw)}
     #sd-ov .ch.to-r{transform:translateX(-50%) translateX(110vw);opacity:0;pointer-events:none}
-    #sd-ov .ch img{display:block;max-height:100%;max-width:100%;width:auto;object-fit:contain;object-position:bottom center;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
+    #sd-ov .ch img{display:block;height:auto;max-height:100%;max-width:100%;min-height:0;width:auto;flex:0 1 auto;object-fit:contain;object-position:bottom center;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
     #sd-ov .ch .ph{width:70%;aspect-ratio:3/4;border:1px dashed #6b5a45;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#b7a88f;text-align:center;padding:8px;margin-bottom:12%;white-space:pre-line;background:rgba(0,0,0,.35)}
     #sd-ov .ch .who{position:absolute;bottom:calc(8px + env(safe-area-inset-bottom));font-size:13px;background:rgba(0,0,0,.5);padding:2px 8px;border-radius:8px}
     #sd-ov .ch.drink img{animation:sd-drink 1.4s ease-in-out}
-    @keyframes sd-drink{0%,100%{transform:none}30%{transform:rotate(-4deg) translateY(-2%)}60%{transform:rotate(3deg)}}
+    @keyframes sd-drink{0%,100%{transform:none}30%{transform:rotate(-4deg)}60%{transform:rotate(3deg)}}
     #sd-ov .cheers{position:absolute;left:50%;top:38%;z-index:6;font-size:54px;transform:translate(-50%,0) scale(.4);opacity:0;pointer-events:none;animation:sd-cheers 1.5s ease-out forwards;text-shadow:0 4px 10px #000}
     @keyframes sd-cheers{20%{opacity:1;transform:translate(-50%,-10px) scale(1.15)}70%{opacity:1;transform:translate(-50%,-30px) scale(1)}100%{opacity:0;transform:translate(-50%,-60px) scale(.9)}}
     #sd-ov .hud{position:absolute;left:0;top:0;bottom:0;width:min(40%,330px);z-index:3;display:flex;flex-direction:column;pointer-events:none;background:linear-gradient(90deg,rgba(20,14,10,.45),rgba(20,14,10,.12));padding-bottom:env(safe-area-inset-bottom)}
@@ -253,8 +253,7 @@ export function openSwapDate(ctx, couple, meet) {
     }
     if (hotel() && !sexing) {   // pt310u #7 #8：旅館＝摸奶／摸臀／摸陰唇（動作圖）＋做愛（正式版脫光後那套）
       for (const act of ["breast", "butt", "labia"]) add(TEASE_ZH[act], () => void hotelTouch(act));
-      if (!sexDone) add("做愛", () => void playSex());
-      else add("（今晚射完了）", () => {});
+      add("做愛", () => void playSex());
     }
   }
   function render() { renderStatus(); renderLog(); renderSide(); renderActs(); }
@@ -331,7 +330,7 @@ export function openSwapDate(ctx, couple, meet) {
   function sendText(text) {
     const t = String(text || "").trim(); if (!t || ended) return;
     if (watching || busy || flashing || sexing) return;
-    if (hotel()) { const p0 = parseHotelText(t); if (p0.kind === "sex" && !sexDone) { push("player", t); render(); void playSex(); return; } if (p0.kind === "tease" && p0.act !== "waist") { push("player", t); render(); void hotelTouch(p0.act); return; } }
+    if (hotel()) { const p0 = parseHotelText(t); if (p0.kind === "sex") { push("player", t); render(); void playSex(); return; } if (p0.kind === "tease" && p0.act !== "waist") { push("player", t); render(); void hotelTouch(p0.act); return; } }
     push("player", t);
     if (scene === "bar") {
       const g = barChatGain("player");
@@ -378,20 +377,32 @@ export function openSwapDate(ctx, couple, meet) {
     void teaseFlash(act).then(() => { if (!ended) { push("other", pick(FB.allow)); render(); } });
   }
   // ---- pt310u #6：猥褻動作圖：左邊滑入 → 停 3 秒 → 右邊滑出；滑出前不能再輸入／互動
-  let flashing = false, sexing = false, sexDone = false;
+  let flashing = false, sexing = false;
   const pv = $(".pv"), pvImg = $(".pv img"), pvW = $(".pv .pvw"), pvL = $(".pv .pvl");
   let pvTok = 0;
   const S0 = () => ({ images });
   const setImgs = (imgs) => { if (imgs) images = imgs; };
   const pvIn = () => { if (!pv.hidden && pv.classList.contains("in")) return; pv.classList.remove("in", "out"); pv.hidden = false; void pv.offsetWidth; pv.classList.add("in"); };
   const pvOut = async () => { if (pv.hidden) return; pv.classList.remove("in"); pv.classList.add("out"); await sleep(520); if (!pv.classList.contains("in")) { pv.hidden = true; pv.classList.remove("out"); } };
+  /** pt316u #1：同一張圖的替代鍵（旅館只認裸體版；其他場景穿衣→內衣；做愛同步驟換別的姿勢）。 */
+  function anyCached(job) {
+    const k = String(job.key || ""), keys = [k];
+    const m = /^tease~([a-z_]+?)(~nude|~under)?$/.exec(k);
+    if (m) keys.push(...(hotel() ? [`tease~${m[1]}~nude`] : [`tease~${m[1]}`, `tease~${m[1]}~under`]));
+    const sx = /^sex~[a-z]+~([a-z]+)$/.exec(k);
+    if (sx) for (const p of ["missionary", "doggy", "prone"]) keys.push(`sex~${p}~${sx[1]}`);
+    for (const x of keys) { const u = cachedUrl(S0(), couple, x); if (u) return u; }
+    return "";
+  }
   /** 放一張動作圖（有快取直接用；沒有就現產，最多等 maxWait）。回有沒有圖。 */
   async function pvShow(job, label, tok, maxWait = TEASE_GEN_WAIT_MS) {
-    let u = cachedUrl(S0(), couple, job.key);
+    let u = anyCached(job);
+    if (!u) { await refreshImages(); u = anyCached(job); }   // pt316u #1：背景預產可能剛做好，先重讀伺服器再決定要不要生
+    if (tok !== pvTok || ended) return false;
     pvIn(); pvL.textContent = label;
     if (!u) {
       pvImg.removeAttribute("src"); pvW.textContent = "生圖中…";
-      try { const g = genTeaseImage(couple, job, { debug: (m) => ctx.debug?.(m) }); const imgs = await Promise.race([g, sleep(maxWait).then(() => null)]); setImgs(imgs); u = cachedUrl(S0(), couple, job.key); }
+      try { const g = genTeaseImage(couple, job, { debug: (m) => ctx.debug?.(m) }); const imgs = await Promise.race([g, sleep(maxWait).then(() => null)]); setImgs(imgs); u = anyCached(job); }
       catch (e) { ctx.debug?.(`動作圖 ${job.key} 失敗：${e?.message || e}`); }
     }
     if (tok !== pvTok || ended) return false;
@@ -419,14 +430,15 @@ export function openSwapDate(ctx, couple, meet) {
     const t = await say("other", `玩家正在旅館對你「${TEASE_ZH[act]}」，你全裸、已經同意了。用第一人稱對玩家說一句此刻身體的反應。${SENSE_RULE}`, pick(FB.allow));
     push("other", t); render();
   }
-  // ---- pt310u #7 #9 #10：旅館玩家做愛＝正式版「脫光後做愛」那套（runHotelSex：準備→頂住→「肏」＋局部動圖＋POV 步驟圖）
-  //   對話框移出；每輪隨機體位；射精次數 3–5（不受原本一次就 CD 的限制），射完做愛結束。
+  // ---- pt310u #7 #9／pt316u #5：旅館玩家做愛＝正式版「脫光後做愛」那套（runHotelSex：準備→頂住→「肏」＋局部動圖＋POV 步驟圖）
+  //   對話框移出；體位隨機；一段＝到你射或她高潮（先到先算）就結束 → 回聊天畫面；之後可以再做。
   async function playSex() {
-    if (sexing || sexDone || flashing || busy || ended || !hotel()) return;
+    if (sexing || flashing || busy || ended || !hotel()) return;
     sexing = true; ov.classList.add("sexing"); lockInput(true); renderActs();
-    const goal = rollEjacGoal(), poses = posesFor(scene), girl = couple.wife || {};
+    const poses = posesFor(scene), girl = couple.wife || {};
     const thB = $(".sxbar .th"), psB = $(".sxbar .ps"), cnt = $(".sxbar .cnt"), sxl = $(".sxline");
-    let animPose = "missionary", showSeq = 0, pressRes = null, ejacs = 0, pose = randPose(poses);
+    let animPose = "missionary", showSeq = 0, pressRes = null, ejacs = 0;
+    const pose = randPose(poses);
     const anim = createLocalAnim(ov, () => ({ pose: animPose, girl }), { low: true });
     const tok = ++pvTok;
     const showSex = async (ps, state) => {
@@ -437,43 +449,39 @@ export function openSwapDate(ctx, couple, meet) {
       if (my !== showSeq) return;
       await pvShow(job, `做愛・${POSE_ZH[ps]}・${STATE_ZH[state]}`, tok, 360000);
     };
-    const setCnt = () => { cnt.textContent = `射 ${ejacs}/${goal}`; };
     thB.onclick = () => { const r = pressRes; pressRes = null; r?.("thrust"); };
     psB.onclick = () => { const r = pressRes; pressRes = null; r?.("pose"); };
-    sxl.textContent = ""; setCnt();
+    sxl.textContent = ""; cnt.textContent = "你射或她高潮＝這段結束";
     try {
-      while (ejacs < goal && !ended) {
-        let presses = 0;
-        const r = await runHotelSex({
-          showState: (ps, state) => { void showSex(ps, state); },
-          anim: (ap) => { animPose = ap; anim.play().catch(() => {}); },
-          waitPress: () => new Promise((res, rej) => {
-            if (ended) return rej(new Error("ended"));
-            if (presses > 2 && Math.random() < 0.12) return res("pose");   // #9：做到一半隨機換體位
-            pressRes = (a) => { if (a === "thrust") presses++; res(a); };
-            const iv = setInterval(() => { if (ended) { clearInterval(iv); rej(new Error("ended")); } else if (!pressRes) clearInterval(iv); }, 500);
-          }),
-          line: async (x) => {
-            const ev = { tip: "陰莖頂在你的入口、還沒進去", thrust: "他正在肏你", climax: "你剛剛高潮了（全身痙攣、腿發抖）", ejac: "他在你裡面射了（內射）", both: "你們一起高潮、他射在你裡面" }[x.event] || "他正在肏你";
-            const fb = SWAP_SEX_FB[x.event === "tip" ? 1 : x.event === "climax" || x.event === "both" ? 5 : x.event === "ejac" ? 4 : 2];
-            const ini = isInitiative(x.event);
-            const t = await say("other", `你全裸正在跟玩家在旅館做愛，體位：${POSE_ZH[x.pose]}；${ev}${x.climaxes ? `（你這輪已經高潮 ${x.climaxes} 次）` : ""}${ejacs ? `（他今晚已經射了 ${ejacs} 次）` : ""}。用第一人稱對正在肏你的玩家說一句${ini ? "主動的色話" : "反應"}。${ini ? DIRTY_TALK_RULE : "不要寫你伸手撫摸的動作。"}${SENSE_RULE}`, pick(ini ? DIRTY_TALK : fb));
-            if (ended) return;
-            push("other", t); sxl.textContent = `${name.other}：${t}`;
-          },
-          portrait: () => {},
-          aff: () => { const d = rollAffDelta(3, swapAffStage(meet.accept.other)); if (d) addAccept(meet, "other", d); },
-          onClimax: (st) => { meet.orgasm.other = (meet.orgasm.other || 0) + 1; sys(`${name.other}高潮了（${st.climaxes}）。`); },
-          onEjac: () => { ejacs++; meet.semen.other = (meet.semen.other || 0) + 1; setCnt(); sys(`你射在她裡面（${ejacs}/${goal}）。`); },
-        }, { pose, poses });
-        ctx.debug?.(`換妻旅館做愛：肏 ${r.thrusts} 下、她高潮 ${r.climaxes}、射 ${ejacs}/${goal}`);
-        if (ejacs < goal && !ended) { pose = randPose(poses, Math.random, r.pose); await sleep(1600); }
-      }
-      if (!ended) { sexDone = true; sys(`射了 ${ejacs} 次，做完了。`); await sleep(1800); }
+      let presses = 0;
+      const r = await runHotelSex({
+        showState: (ps, state) => { void showSex(ps, state); },
+        anim: (ap) => { animPose = ap; anim.play().catch(() => {}); },
+        waitPress: () => new Promise((res, rej) => {
+          if (ended) return rej(new Error("ended"));
+          if (presses > 2 && Math.random() < 0.12) return res("pose");   // #9：做到一半隨機換體位
+          pressRes = (a) => { if (a === "thrust") presses++; res(a); };
+          const iv = setInterval(() => { if (ended) { clearInterval(iv); rej(new Error("ended")); } else if (!pressRes) clearInterval(iv); }, 500);
+        }),
+        line: async (x) => {
+          const ev = { tip: "陰莖頂在你的入口、還沒進去", thrust: "他正在肏你", climax: "你剛剛高潮了（全身痙攣、腿發抖）", ejac: "他在你裡面射了（內射）", both: "你們一起高潮、他射在你裡面" }[x.event] || "他正在肏你";
+          const fb = SWAP_SEX_FB[x.event === "tip" ? 1 : x.event === "climax" || x.event === "both" ? 5 : x.event === "ejac" ? 4 : 2];
+          const ini = isInitiative(x.event);
+          const t = await say("other", `你全裸正在跟玩家在旅館做愛，體位：${POSE_ZH[x.pose]}；${ev}。用第一人稱對正在肏你的玩家說一句${ini ? "主動的色話" : "反應"}。${ini ? DIRTY_TALK_RULE : "不要寫你伸手撫摸的動作。"}${SENSE_RULE}`, pick(ini ? DIRTY_TALK : fb));
+          if (ended) return;
+          push("other", t); sxl.textContent = `${name.other}：${t}`;
+        },
+        portrait: () => {},
+        aff: () => { const d = rollAffDelta(3, swapAffStage(meet.accept.other)); if (d) addAccept(meet, "other", d); },
+        onClimax: () => { meet.orgasm.other = (meet.orgasm.other || 0) + 1; sys(`${name.other}高潮了。`); },
+        onEjac: () => { ejacs++; meet.semen.other = (meet.semen.other || 0) + 1; sys("你射在她裡面。"); },
+      }, { pose, poses, endOnClimax: true });
+      ctx.debug?.(`換妻旅館做愛：肏 ${r.thrusts} 下、她高潮 ${r.climaxes}、射 ${ejacs}、結束於 ${r.end}`);
+      if (!ended) { sys(r.end === "climax" ? "她高潮了，這段先停。想再做可以再按「做愛」。" : "你射了，這段先停。想再做可以再按「做愛」。"); await sleep(1800); }
     } catch { /* 結束約會 */ } finally {
       anim.stop(); anim.el.remove(); pvTok++; await pvOut().catch(() => {});
       sexing = false; ov.classList.remove("sexing"); sxl.textContent = "";
-      if (!ended) { sideAct = "leak"; sideMood = "shy"; lockInput(busy); render(); }
+      if (!ended) { sideAct = ejacs ? "leak" : "chat"; sideMood = "shy"; lockInput(busy); render(); }
     }
   }
   function doSoft(kind, line) {
@@ -594,7 +602,9 @@ export function openSwapDate(ctx, couple, meet) {
     sys(scene === "bar" ? "四個人在酒吧。你說一句，大家輪流回。按住人物可以敬酒。兩位妻子超過 50 並開口之後就會同意。" : `${SZ[scene] || ""}。`);
     render();
     if (scene === "bar") { busy = true; lockInput(true); void npcSay("husband", "你是東道主，先開口歡迎另一對夫妻。", pick(FB.husband)).finally(() => { busy = false; if (!ended) lockInput(false); }); }
-    if (hotel()) queuePortraits("hotel", wife, couple).catch((e) => ctx.debug?.(`換妻旅館圖：${e.message || e}`));
+    // pt316u #1：動作圖／做愛圖是瀏覽器排的背景預產，重新整理後會斷 → 進場就續跑（已有的跳過）
+    kickTeasePregen(couple, (m) => ctx.debug?.(m));
+    if (hotel()) queuePortraits("hotel", wife, couple).then(() => refreshImages().then(() => { if (!ended) renderSide(); })).catch((e) => ctx.debug?.(`換妻旅館圖：${e.message || e}`));
   });
   return ov;
 }

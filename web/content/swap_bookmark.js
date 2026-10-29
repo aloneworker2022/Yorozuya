@@ -1,7 +1,7 @@
 /* 換妻書籤：產圖時掛在房間左邊。產完才赴約。進度在伺服器，關掉頁面再打開還在。 */
 import { api } from "./swap_cafe_gen.js?v=38";
-import { pregenState, pregenRetry, pregenCancel, pregenEnter } from "./swap_pregen.js?v=5";
-import { openSwapDate } from "./swap_date.js?v=9";
+import { pregenState, pregenRetry, pregenCancel, pregenEnter, kickTeasePregen } from "./swap_pregen.js?v=6";
+import { openSwapDate } from "./swap_date.js?v=10";
 import { freshMeet, testMeet, SLOT_ZH } from "./swap_meet_rules.js?v=2";
 
 // pt306u：暫時預約／赴約不收錢方便測試；要恢復收費改成 false
@@ -88,6 +88,14 @@ export function bindSwapBookmark(ctx = {}) {
     ctx.debug?.(`換妻赴約：${couple.husband?.name}＆${couple.wife?.name} → ${meet.phase}`);
     openSwapDate(ctx.makeCtx ? ctx.makeCtx() : ctx, couple, meet);
   }
+  // pt316u #1：動作／做愛圖的預產跑在瀏覽器裡，重新整理（換版）就斷了；書籤還在 → 續跑一次（已有的跳過）
+  let resumedFor = "";
+  function resumeTease() {
+    const id = view?.coupleId;
+    if (!id || resumedFor === id) return;
+    resumedFor = id;
+    api.state().then((S) => { const c = (S.couples || {})[id]; if (c) kickTeasePregen(c, (m) => ctx.debug?.(m)); }).catch(() => { resumedFor = ""; });
+  }
   async function pull() {
     try {
       const j = await pregenState();
@@ -97,6 +105,7 @@ export function bindSwapBookmark(ctx = {}) {
       else if (d.status === "ready" && !d.active) view = null;
       else view = d;
     } catch { view = null; }
+    resumeTease();
     paint();
   }
   root.querySelector(".tab").addEventListener("click", () => {

@@ -4,11 +4,11 @@
 import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=38";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
-import { openBar } from "./swap_bar.js?v=66";
+import { openBar } from "./swap_bar.js?v=67";
 import { dateOutfitOf } from "./swap_outfit.js?v=8";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=12";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
-import { queuePortraits, kickTeasePregen } from "./swap_pregen.js?v=5";
+import { queuePortraits, kickTeasePregen } from "./swap_pregen.js?v=6";
 
 
 export const SESSION_KEY = "yorozuya.swap.session";
@@ -132,6 +132,8 @@ export function openSwapSelect(ctx = {}) {
     try {
       await api.put("couple", { couple: c });
       await queuePortraits("date", ctx.girl?.(), c);
+      // pt316u #1：旅館裸體立繪也在預約時就排（以前進旅館才排 → 到場還在生）
+      queuePortraits("hotel", ctx.girl?.(), c).catch((e) => ctx.debug?.(`換妻旅館圖：${e?.message || e}`));
       kickTeasePregen(c, (m) => ctx.debug?.(m));   // 不等：KTV／旅館動作圖背景排
     } catch (e) {
       body.innerHTML = `<div class="swp-next">${esc(e?.message || e)}</div><div class="swp-act"><button type="button" class="back">返回</button></div>`;
