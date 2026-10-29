@@ -1,15 +1,22 @@
 /* 換妻三段（酒吧 → 公園或 KTV → 旅館）的純規則。沒有 DOM。 */
 
+// pt301u：全部立繪一次預產（31 張）
 export const PRE_PARK = [
   ["other", "normal"], ["other", "shy"], ["other", "happy"], ["other", "startled"],
-  ["husband", "normal"], ["husband", "happy"], ["husband", "erotic"], ["husband", "nude_ero"],
+  ["other", "nude_normal"], ["other", "nude_shy"], ["other", "nude_happy"], ["other", "nude_startled"],
+  ["other", "tipsy"], ["other", "under"], ["other", "nude"], ["other", "climax"], ["other", "creampie"],
+  ["husband", "normal"], ["husband", "happy"], ["husband", "erotic"], ["husband", "nude_ero"], ["husband", "shy"], ["husband", "nude"],
   ["wife", "normal"], ["wife", "shy"], ["wife", "happy"], ["wife", "startled"],
   ["wife", "nude_ahe"], ["wife", "nude_prone"], ["wife", "nude_spread"],
+  ["wife", "tipsy"], ["wife", "under"], ["wife", "nude"], ["wife", "climax"], ["wife", "creampie"],
 ];
 export const HOTEL_PORTRAIT = [
   ["other", "nude_normal"], ["other", "nude_shy"], ["other", "nude_happy"], ["other", "nude_startled"],
 ];
 export const SLOT_ZH = {
+  "other~tipsy": "對方妻子・微醺", "other~under": "對方妻子・內衣", "other~nude": "對方妻子・裸體", "other~climax": "對方妻子・高潮癱軟坐著", "other~creampie": "對方妻子・內射後開腿坐著",
+  "husband~shy": "對方丈夫・害羞", "husband~nude": "對方丈夫・裸體",
+  "wife~tipsy": "你老婆・微醺", "wife~under": "你老婆・內衣", "wife~nude": "你老婆・裸體", "wife~climax": "你老婆・高潮癱軟坐著", "wife~creampie": "你老婆・內射後開腿坐著",
   "other~normal": "對方妻子・一般", "other~shy": "對方妻子・害羞", "other~happy": "對方妻子・開心", "other~startled": "對方妻子・驚嚇",
   "other~nude_normal": "對方妻子・裸體一般", "other~nude_shy": "對方妻子・裸體害羞", "other~nude_happy": "對方妻子・裸體開心", "other~nude_startled": "對方妻子・裸體驚嚇",
   "husband~normal": "對方丈夫・一般", "husband~happy": "對方丈夫・開心", "husband~erotic": "對方丈夫・色情", "husband~nude_ero": "對方丈夫・裸體色情",

@@ -8,7 +8,7 @@ import { openBar } from "./swap_bar.js?v=61";
 import { dateOutfitOf } from "./swap_outfit.js?v=8";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=12";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
-import { queuePortraits } from "./swap_pregen.js?v=2";
+import { queuePortraits } from "./swap_pregen.js?v=3";
 import { rememberScene } from "./swap_bookmark.js?v=2";
 
 export const SESSION_KEY = "yorozuya.swap.session";

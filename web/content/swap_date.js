@@ -1,11 +1,11 @@
 /* 換妻約會：左對話、右正在說的人、下面輸入。酒吧四人群聊；之後只剩你跟對方妻子。 */
 import { api, pickBackdrop } from "./swap_cafe_gen.js?v=38";
-import { queuePortraits } from "./swap_pregen.js?v=2";
+import { queuePortraits } from "./swap_pregen.js?v=3";
 import {
   addAccept, addDrunk, lockIfReady, bothAgreed, husbandPickScene, barChatGain, toastOf,
   teaseList, teaseOk, husbandBeat, watchPenalty, playerStageGain, hotelHusbandAct, applyHotelAct,
   parseHotelText, portraitExpr, TEASE_ZH, TEASE_AT, HOTEL_AT,
-} from "./swap_meet_rules.js?v=1";
+} from "./swap_meet_rules.js?v=2";
 
 const SZ = { bar: "酒吧", park: "夜晚公園", ktv: "KTV", hotel_room: "旅館房間", hotel_bath: "旅館浴室" };
 const BG = { bar: "bar", park: "park", ktv: "ktv", hotel_room: "hotel", hotel_bath: "bath" };

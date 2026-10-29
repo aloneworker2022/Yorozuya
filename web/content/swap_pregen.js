@@ -1,7 +1,7 @@
 /* 把換妻立繪整批交給伺服器。網頁關掉，這台仍會生完。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { api, templateFor, cafeBody } from "./swap_cafe_gen.js?v=38";
-import { PRE_PARK, HOTEL_PORTRAIT } from "./swap_meet_rules.js?v=1";
+import { PRE_PARK, HOTEL_PORTRAIT } from "./swap_meet_rules.js?v=2";
 
 async function post(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
@@ -18,7 +18,7 @@ export const pregenRetry = (bucket) => post("/api/swap/pregen/retry", { bucket }
 export const pregenCancel = () => post("/api/swap/pregen/cancel", {});
 export const pregenEnter = () => post("/api/swap/pregen/enter", {});
 
-/** bucket：date＝進酒吧前的 15 張；hotel＝對方妻子裸體四張。已有的伺服器會標完成、不重生。 */
+/** bucket：date＝進酒吧前全部 31 張；hotel＝對方妻子裸體四張。已有的伺服器會標完成、不重生。 */
 export async function queuePortraits(bucket, wife, couple) {
   if (!wife?.id) throw new Error("先選一位魅子");
   if (!couple?.id) throw new Error("沒有對方夫妻");
