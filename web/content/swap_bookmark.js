@@ -4,6 +4,9 @@ import { pregenState, pregenRetry, pregenCancel, pregenEnter } from "./swap_preg
 import { openSwapDate } from "./swap_date.js?v=2";
 import { freshMeet, testMeet, SLOT_ZH } from "./swap_meet_rules.js?v=2";
 
+// pt306u：暫時預約／赴約不收錢方便測試；要恢復收費改成 false
+export const FREE_BOOK = true;
+
 const SCENE_KEY = "yorozuya.swap.bmScene";
 export function rememberScene(coupleId, scene, opts = {}) {
   try { localStorage.setItem(SCENE_KEY, JSON.stringify({ coupleId, scene: scene || "bar", free: !!opts.free })); } catch { /* */ }
@@ -55,7 +58,7 @@ export function bindSwapBookmark(ctx = {}) {
   const openCard = () => {
     if (!view) return;
     const lines = (view.jobs || []).filter((j) => j.status !== "done").map((j) => `<li>${SLOT_ZH[j.key] || j.key}　${j.status === "error" ? (j.error || "失敗") : "還在生"}</li>`).join("");
-    const free = !!(view && sceneMeta(view.coupleId).free);
+    const free = FREE_BOOK || !!(view && sceneMeta(view.coupleId).free);
     card.innerHTML = `<b>${view.status === "ready" ? "可以赴約了" : "立繪還沒齊"}</b><div>${view.done}/${view.total}　${free ? "測試免錢" : `${view.price || 0} 金`}</div>
       ${msg ? `<div>${msg}</div>` : ""}<ul>${lines}</ul>
       <div class="row">${view.status === "ready" ? `<button type="button" class="go">赴約</button>` : ""}${view.status === "error" ? `<button type="button" class="re">重試失敗的</button>` : ""}<button type="button" class="cx">取消預約</button><button type="button" class="cl">關閉</button></div>`;
@@ -77,7 +80,7 @@ export function bindSwapBookmark(ctx = {}) {
     if (!couple) { msg = "這對夫妻的資料不在了。"; openCard(); return; }
     const meta = sceneMeta(view.coupleId);
     const price = Number(view.price) || 0;
-    if (!meta.free && price > 0 && ctx.spend && !ctx.spend(price, "換妻赴約")) { msg = `金幣不夠（要 ${price}）。`; openCard(); return; }
+    if (!FREE_BOOK && !meta.free && price > 0 && ctx.spend && !ctx.spend(price, "換妻赴約")) { msg = `金幣不夠（要 ${price}）。`; openCard(); return; }
     const scene = meta.scene;
     const meet = !scene || scene === "bar" ? freshMeet() : testMeet(scene);
     try { await pregenEnter(); } catch { /* 書籤收不起來也不擋進場 */ }
