@@ -64,8 +64,8 @@ export function openSwapDate(ctx, couple, meet) {
     #sd-ov .pbg>div{position:relative;height:88%;aspect-ratio:3/4}
     #sd-ov .pbg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:.85}
     #sd-ov .pbg .pbl{position:absolute;left:8px;bottom:calc(8px + env(safe-area-inset-bottom));font-size:12px;background:rgba(0,0,0,.55);padding:2px 8px;border-radius:8px}
-    #sd-ov .fig{position:absolute;left:0;right:0;bottom:0;top:30%;z-index:1;pointer-events:none}
-    #sd-ov .ch{position:absolute;left:50%;bottom:0;height:100%;width:min(86%,560px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;transform:translateX(-50%);transition:transform .55s cubic-bezier(.22,.8,.3,1),opacity .55s ease;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+    #sd-ov .fig{position:absolute;left:34%;right:0;bottom:0;top:14%;z-index:1;pointer-events:none}
+    #sd-ov .ch{position:absolute;left:58%;bottom:0;height:100%;width:min(96%,560px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;transform:translateX(-50%);transition:transform .55s cubic-bezier(.22,.8,.3,1),opacity .55s ease;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:manipulation}
     #sd-ov .ch.from-l{transform:translateX(-50%) translateX(-110vw)}
     #sd-ov .ch.to-r{transform:translateX(-50%) translateX(110vw);opacity:0;pointer-events:none}
     #sd-ov .ch img{display:block;max-height:100%;max-width:100%;width:auto;object-fit:contain;object-position:bottom center;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
@@ -75,7 +75,7 @@ export function openSwapDate(ctx, couple, meet) {
     @keyframes sd-drink{0%,100%{transform:none}30%{transform:rotate(-4deg) translateY(-2%)}60%{transform:rotate(3deg)}}
     #sd-ov .cheers{position:absolute;left:50%;top:38%;z-index:6;font-size:54px;transform:translate(-50%,0) scale(.4);opacity:0;pointer-events:none;animation:sd-cheers 1.5s ease-out forwards;text-shadow:0 4px 10px #000}
     @keyframes sd-cheers{20%{opacity:1;transform:translate(-50%,-10px) scale(1.15)}70%{opacity:1;transform:translate(-50%,-30px) scale(1)}100%{opacity:0;transform:translate(-50%,-60px) scale(.9)}}
-    #sd-ov .hud{position:absolute;left:0;right:0;top:0;z-index:3;display:flex;flex-direction:column;pointer-events:none;max-height:62%}
+    #sd-ov .hud{position:absolute;left:0;top:0;bottom:0;width:min(40%,330px);z-index:3;display:flex;flex-direction:column;pointer-events:none;background:linear-gradient(90deg,rgba(20,14,10,.45),rgba(20,14,10,.12));padding-bottom:env(safe-area-inset-bottom)}
     #sd-ov .hud>*{pointer-events:auto}
     #sd-ov .top{display:flex;gap:8px;align-items:center;padding:calc(8px + env(safe-area-inset-top)) 10px 8px;background:rgba(42,33,24,.55);backdrop-filter:blur(6px)}
     #sd-ov .top b{flex:1;font-size:15px}
@@ -90,7 +90,7 @@ export function openSwapDate(ctx, couple, meet) {
     #sd-ov .acts:empty{display:none}
     #sd-ov .acts button{background:rgba(58,46,34,.8);color:#f4efe6;border:0;border-radius:999px;padding:8px 12px;min-height:40px}
     #sd-ov .acts button.on{background:#8a5a2a}
-    #sd-ov .log{flex:1 1 auto;min-height:0;overflow:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;max-width:66%;-webkit-mask-image:linear-gradient(transparent,#000 14px)}
+    #sd-ov .log{flex:1 1 auto;min-height:0;overflow:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;max-width:100%;-webkit-mask-image:linear-gradient(transparent,#000 14px)}
     #sd-ov .b{max-width:100%;background:rgba(44,36,28,.62);border-radius:12px;padding:6px 10px;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,.08)}
     #sd-ov .b.player{background:rgba(36,92,56,.66)}
     #sd-ov .b .nm{font-size:11px;color:#d9c7a4;text-shadow:0 1px 2px #000}
