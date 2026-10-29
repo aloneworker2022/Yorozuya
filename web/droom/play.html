@@ -1,10 +1,17 @@
 <!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>Droom 房間</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>body{margin:0;background:#000;color:#ddd;font:14px system-ui,sans-serif;display:flex;flex-direction:column;align-items:center}
 canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;background:#000;cursor:crosshair}
-#hud{padding:6px;text-align:center}a{color:#9cf}select{background:#222;color:#ddd}</style></head><body>
-<canvas id="c" width="320" height="240"></canvas>
-<div id="hud">W/↑ 前進　S/↓ 後退　A 左移　D 右移　←/→ 或 Q/E 轉向　點畫面鎖定滑鼠轉頭　｜
+#hud{padding:6px;text-align:center}
+#wrap{position:relative;width:min(96vw,960px)}#wrap canvas{width:100%;display:block;touch-action:none}
+.pad{position:absolute;bottom:8px;display:grid;gap:4px;grid-template-columns:repeat(3,clamp(44px,13vw,64px));grid-template-rows:repeat(3,clamp(44px,13vw,64px));opacity:.55;user-select:none;-webkit-user-select:none;touch-action:none}
+#padL{left:8px}#padR{right:8px;grid-template-rows:clamp(44px,13vw,64px);bottom:calc(8px + clamp(44px,13vw,64px) + 4px)}
+.pad button{font-size:22px;border:1px solid #888;border-radius:10px;background:rgba(40,40,40,.8);color:#fff;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent}
+.pad button.on{background:rgba(120,160,220,.9)}a{color:#9cf}select{background:#222;color:#ddd}</style></head><body>
+<div id="wrap"><canvas id="c" width="320" height="240"></canvas>
+<div class="pad" id="padL"><span></span><button data-k="KeyW">▲</button><span></span><button data-k="KeyA">◀</button><span></span><button data-k="KeyD">▶</button><span></span><button data-k="KeyS">▼</button><span></span></div>
+<div class="pad" id="padR"><button data-k="KeyQ">⟲</button><span></span><button data-k="KeyE">⟳</button></div></div>
+<div id="hud">W/↑ 前進　S/↓ 後退　A 左移　D 右移　←/→ 或 Q/E 轉向　點畫面鎖定滑鼠轉頭　手機：左下方向鍵移動、右下 ⟲⟳ 轉向（或在畫面上左右滑動）　｜
 體型 <select id="b"><option value="balanced">勻稱</option><option value="slim">纖細</option><option value="petite">嬌小</option><option value="curvy">微肉</option></select>
 胸型 <select id="s"><option value="round">圓形</option><option value="bell">鐘型</option><option value="pendulous">下垂</option></select>
 罩杯 <select id="cu"></select>
@@ -16,6 +23,9 @@ const W=M[0].length,H=M.length,wall=(x,y)=>{const r=M[y|0];return !r||r[x|0]!=="
 const cv=document.getElementById("c"),g=cv.getContext("2d"),SW=320,SH=240,img=g.createImageData(SW,SH),zb=new Float32Array(SW);
 const cuSel=document.getElementById("cu");for(const c of "ABCDEFGH")cuSel.add(new Option(c,c,c=="D",c=="D"));
 let P={x:2.5,y:8.5,a:-Math.PI/4};const G={x:6.5,y:4.5,h:0,tx:6.5,ty:4.5,moving:false,ph:0,wait:1};
+// 步伐同步：sheet 的 8 格 = 一個完整步態週期（左右各跨一步）。動畫相位由「實際移動距離」推進，
+// 走 STRIDE 格世界單位剛好播完 8 格 → 腳踩地時身體才前進，不會滑步。妹子身高約 1.15 單位，週期步幅約 0.75 身高。
+const STRIDE=.85,G_SPEED=.9;
 const DIRS=[[0,"front"],[-45,"front_right"],[-90,"right"],[-135,"back_right"],[180,"back"],[135,"back_left"],[90,"left"],[45,"front_left"]];
 const cache={};let sheet=null;
 function sheetFor(d){const k=["b","s","cu","ar"].map(i=>document.getElementById(i).value).join("_")+"_"+d;
@@ -25,9 +35,15 @@ function wallCol(t,u,v,side){const brick=((v*8|0)%2?((u*4+.5)|0):((u*4)|0)),mort
  let c=t=="2"?[190,150,170]:[215,195,165];if(mort)c=[140,130,120];else{const n=(brick*37%11)/40;c=c.map(x=>x*(1-n))}
  return side?c.map(x=>x*.7):c}
 const keys={};onkeydown=e=>{keys[e.code]=1;if(e.code.startsWith("Arrow"))e.preventDefault()};onkeyup=e=>keys[e.code]=0;
-cv.onclick=()=>cv.requestPointerLock&&cv.requestPointerLock();onmousemove=e=>{if(document.pointerLockElement===cv)P.a+=e.movementX*.003};
+// 手機方向鍵：pointer 事件，按住=持續按鍵；支援多指同時按
+for(const b of document.querySelectorAll(".pad button")){const k=b.dataset.k,on=e=>{e.preventDefault();keys[k]=1;b.classList.add("on");try{b.setPointerCapture(e.pointerId)}catch(_){}},off=e=>{keys[k]=0;b.classList.remove("on")};
+ b.addEventListener("pointerdown",on);for(const ev of ["pointerup","pointercancel","lostpointercapture"])b.addEventListener(ev,off);b.addEventListener("contextmenu",e=>e.preventDefault())}
+// 手機：在畫面上左右拖曳轉頭
+let tX=null;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"){tX=e.clientX;cv.setPointerCapture(e.pointerId)}});
+cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;tX=e.clientX}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
+cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv)P.a+=e.movementX*.003};
 function tryMove(o,dx,dy,r=.2){if(!wall(o.x+dx+Math.sign(dx)*r,o.y))o.x+=dx;if(!wall(o.x,o.y+dy+Math.sign(dy)*r))o.y+=dy}
-function ai(dt){if(G.moving){const dx=G.tx-G.x,dy=G.ty-G.y,d=Math.hypot(dx,dy);if(d<.05){G.moving=false;G.wait=1+Math.random()*2.5}else{G.h=Math.atan2(dy,dx);const sp=Math.min(d,.9*dt);const ox=G.x,oy=G.y;tryMove(G,dx/d*sp,dy/d*sp,.25);if(Math.hypot(G.x-ox,G.y-oy)<1e-4)G.moving=false;G.ph+=dt*14/8}}
+function ai(dt){if(G.moving){const dx=G.tx-G.x,dy=G.ty-G.y,d=Math.hypot(dx,dy);if(d<.05){G.moving=false;G.ph=0;G.wait=1+Math.random()*2.5}else{G.h=Math.atan2(dy,dx);const sp=Math.min(d,G_SPEED*dt);const ox=G.x,oy=G.y;tryMove(G,dx/d*sp,dy/d*sp,.25);const moved=Math.hypot(G.x-ox,G.y-oy);if(moved<1e-4)G.moving=false;G.ph=(G.ph+moved/STRIDE*8)%8}}
  else if((G.wait-=dt)<0){for(let i=0;i<20;i++){const x=1.5+Math.random()*(W-3),y=1.5+Math.random()*(H-3);if(!wall(x,y)){G.tx=x;G.ty=y;G.moving=true;break}}}}
 let last=performance.now();
 function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
