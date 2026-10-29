@@ -1,12 +1,12 @@
 /* 換妻約會：左對話、右正在說的人、下面輸入。酒吧四人群聊；之後只剩你跟對方妻子。 */
 import { api, pickBackdrop } from "./swap_cafe_gen.js?v=38";
-import { queuePortraits, kickTeasePregen } from "./swap_pregen.js?v=7";
+import { queuePortraits, kickTeasePregen } from "./swap_pregen.js?v=8";
 import {
   addAccept, addDrunk, lockIfReady, bothAgreed, husbandPickScene, barChatGain, toastOf,
   teaseList, teaseOk, husbandBeat, watchPenalty, playerStageGain, hotelHusbandAct, applyHotelAct,
   parseHotelText, portraitExpr, TEASE_ZH, TEASE_AT, HOTEL_AT,
 } from "./swap_meet_rules.js?v=3";
-import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=13";
+import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=14";
 import { runHotelSex, createLocalAnim, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, posesFor, rollAffDelta, swapAffStage, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative } from "./swap_chat_sex.js?v=11";
 import { clinkFx, onLongPress } from "./swap_clink.js?v=1";
 import { sexKey } from "./swap_tease_rules.js?v=11";

@@ -2,7 +2,7 @@
 import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { api, templateFor, cafeBody } from "./swap_cafe_gen.js?v=38";
 import { PAIR_SLOTS, pairBody, pairOwner } from "./swap_pair_gen.js?v=29";
-import { pregenTease } from "./swap_tease.js?v=13";
+import { pregenTease, teaseServerJobs } from "./swap_tease.js?v=14";
 import { PRE_PARK, HOTEL_PORTRAIT } from "./swap_meet_rules.js?v=3";
 
 async function post(path, body) {
@@ -43,6 +43,8 @@ export async function queuePortraits(bucket, wife, couple) {
       const seed = seeds[act] || (seeds[act] = Math.floor(Math.random() * 2 ** 31) || 1);
       try { jobs.push({ owner: pairOwner(wife, couple), key: `pair~${slot}`, body: pairBody(slot, wife, couple, eng, seed) }); } catch { /* 沒模型就跳過雙人圖 */ }
     }
+    // pt321u：摸奶／摸臀／摸陰唇…動作圖＋旅館做愛步驟圖也一起交給伺服器（可以赴約＝這些也好了）
+    try { jobs.push(...await teaseServerJobs(couple, eng)); } catch { /* 失敗就靠瀏覽器補 */ }
   }
   const names = { wife: wife.name || "老婆", husband: couple.husband?.name || "對方丈夫", other: couple.wife?.name || "對方妻子" };
   return post("/api/swap/pregen", {
@@ -58,7 +60,10 @@ export function kickTeasePregen(couple, debug = () => {}) {
   teaseStop = false;
   teaseRun = (async () => {
     let S = await api.state();
-    for (const scene of ["ktv", "hotel"]) { if (teaseStop) break; S = await pregenTease(couple, scene, S, { debug, alive: () => !teaseStop, onTick: (d, t, f) => debug(`換妻預產動作圖（${scene}）${d}/${t}${f ? `，失敗 ${f}` : ""}`) }); }
+    // pt321u：伺服器那批已排的（沒失敗）就不在瀏覽器重生；瀏覽器只補漏
+    let skip = new Set();
+    try { const P = await pregenState(); if (P.date?.coupleId === couple.id) skip = new Set((P.date.jobs || []).filter((j) => j.status !== "error").map((j) => j.key)); } catch { /* 讀不到就照舊 */ }
+    for (const scene of ["ktv", "hotel"]) { if (teaseStop) break; S = await pregenTease(couple, scene, S, { debug, alive: () => !teaseStop, skip, onTick: (d, t, f) => debug(`換妻預產動作圖（${scene}）${d}/${t}${f ? `，失敗 ${f}` : ""}`) }); }
   })().catch((e) => debug(`換妻預產動作圖：${e?.message || e}`)).finally(() => { teaseRun = null; });
   return teaseRun;
 }

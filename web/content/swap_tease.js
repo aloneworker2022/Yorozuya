@@ -77,10 +77,10 @@ export function jobsForAct(act, scene, strip = 0) {
   return [{ kind: "tease", act, nude, under, key: teaseKey(act, nude || (under ? "under" : false)) }];
 }
 /** 預產（開車黑畫面）：場景那一整組缺的，一張一張生。onTick(done, total, fail)。回最新 S。 */
-export async function pregenTease(c, scene, S, { onTick = () => {}, debug = () => {}, alive = () => true } = {}) {
+export async function pregenTease(c, scene, S, { onTick = () => {}, debug = () => {}, alive = () => true, skip = null } = {}) {
   // 2026-10-26 pt259u：旅館＝房間＋浴室一次產完（去浴室不用再等）
   const all = String(scene).startsWith("hotel") ? [...pregenKeys("hotel_room"), ...pregenKeys("hotel_bath")] : pregenKeys(scene);
-  const seen = new Set(), want = all.filter((j) => !seen.has(j.key) && seen.add(j.key) && !cachedUrl(S, c, j.key));
+  const seen = new Set(), want = all.filter((j) => !seen.has(j.key) && seen.add(j.key) && !cachedUrl(S, c, j.key) && !(skip && skip.has(j.key)));
   let done = 0, fail = 0; onTick(0, want.length, 0);
   const eng = want.length ? await gameEngine().catch(() => null) : null;
   for (const j of want) {
@@ -90,4 +90,48 @@ export async function pregenTease(c, scene, S, { onTick = () => {}, debug = () =
     onTick(++done, want.length, fail);
   }
   return S;
+}
+
+/* pt321u：預約時就把動作圖／做愛步驟圖的「生圖 body」組好交給伺服器預產（網頁關掉也會生完）。
+ * 圖組 generate* 內部自己打 /api/imggen；這裡攔下第一個 POST 拿 body，不真的送出。一次只攔一張（序列）。 */
+const CAPTURE = Symbol("capture");
+let capWant = null;
+function installCapture() {
+  if (globalThis.fetch?.__swapCap) return;
+  const orig = globalThis.fetch.bind(globalThis);
+  const f = (url, init) => {
+    if (capWant && String(url).split("?")[0] === "/api/imggen" && init?.method === "POST") {
+      const w = capWant; capWant = null;
+      try { w(JSON.parse(init.body)); } catch { w(null); }
+      return Promise.reject(CAPTURE);
+    }
+    return orig(url, init);
+  };
+  f.__swapCap = true; globalThis.fetch = f;
+}
+async function captureBody(c, job, eng) {
+  installCapture();
+  const g0 = teaseGirlOf(c), girl = job.under ? { ...g0, outfitName: UNDER_OUTFIT } : g0;
+  if (job.kind === "sex" && job.pose === "prone") return buildProneImgBody(job.step, girl, eng);
+  const got = new Promise((res) => { capWant = res; });
+  const run = (async () => {
+    if (job.kind === "sex") { const pack = await pickRuntimeSexPosePack(job.pose); await generateSexStepImage(job.pose, job.step, pack, girl, eng, { stage: "lover" }); }
+    else { const J = TEASE_JOBS[job.act]; if (!J) throw new Error(`沒有 ${job.act} 的圖組`); const pack = await J.pick(); await J.gen(pack, girl, eng, { stage: "lover", nude: !!job.nude }); }
+  })().catch(() => {});
+  const body = await Promise.race([got, run.then(() => null), new Promise((r) => setTimeout(() => r(null), 20000))]);
+  capWant = null;
+  return body;
+}
+/** KTV＋旅館（房間／浴室）全部動作圖＋做愛步驟 → 伺服器 jobs [{owner,key,body}]。 */
+export async function teaseServerJobs(c, eng) {
+  const all = [...pregenKeys("ktv"), ...pregenKeys("hotel_room"), ...pregenKeys("hotel_bath")];
+  const seen = new Set(), out = [];
+  for (const j of all) {
+    if (seen.has(j.key)) continue; seen.add(j.key);
+    try {
+      const body = await captureBody(c, j, eng);
+      if (body) { delete body.retry; out.push({ owner: c.id, key: j.key, body }); }
+    } catch { /* 組不出來：交給瀏覽器補 */ }
+  }
+  return out;
 }

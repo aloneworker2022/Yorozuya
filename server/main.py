@@ -5517,6 +5517,13 @@ def _pregen_store(owner: str, key: str, raw_url: str, seed: int = 0) -> None:
     src = _SWAP_DIR / Path(raw.split("?")[0]).name
     cut_path = _SWAP_DIR / f"{stem}_cut.png"
     shutil.copyfile(src, cut_path)
+    if key.startswith(("tease~", "sex~")):   # pt321u：動作／做愛圖是整張場景圖，不去背（同瀏覽器 cut=raw）
+        cut_path.unlink(missing_ok=True)
+        with _SWAP_LOCK:
+            d = _swap_load()
+            d["images"].setdefault(owner, {})[key] = {"raw": raw, "cut": raw, "at": int(time.time())}
+            _swap_save(d)
+        return
     try:
         changed, _why, out = cutout.chroma_key(cut_path)
         cut_file = out if changed else src
@@ -5539,7 +5546,7 @@ def _pregen_store(owner: str, key: str, raw_url: str, seed: int = 0) -> None:
 
 
 def _clean_jobs(jobs_in) -> list[dict]:
-    if not isinstance(jobs_in, list) or not jobs_in or len(jobs_in) > 120:
+    if not isinstance(jobs_in, list) or not jobs_in or len(jobs_in) > 300:
         raise HTTPException(status_code=400, detail="jobs 不對")
     clean = []
     for j in jobs_in:

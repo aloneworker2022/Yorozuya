@@ -14,7 +14,7 @@ import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot }
 import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk, sexPoseFor, sexKey } from "./swap_tease_rules.js?v=11";
 import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=8";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=9";
-import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=13";
+import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=14";
 import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative, portraitTapLine, posesFor, wifePairLine, WIFE_PAIR_LOOK, WIFE_PAIR_FILTER, WIFE_PAIR_EXPR_ZH } from "./swap_chat_sex.js?v=11";
 import { clinkFx, onLongPress } from "./swap_clink.js?v=1";
 import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext, hotelPairAct, HOTEL_PAIR_MS, PAIR_SFX_MS, sexSfx } from "./swap_flow_rules.js?v=12";
