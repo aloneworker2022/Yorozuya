@@ -34,28 +34,28 @@ export function openSwapDate(ctx, couple, meet) {
   ov.innerHTML = `<style>
     #sd-ov{position:fixed;inset:0;z-index:8700;display:flex;flex-direction:column;background:#1a120c;color:#f4efe6;font:16px/1.45 system-ui,"Noto Sans TC",sans-serif}
     #sd-ov button,#sd-ov input{font:inherit;box-shadow:none;text-shadow:none;letter-spacing:0}
-    #sd-ov .top{display:flex;gap:8px;align-items:center;padding:8px 10px;background:#2a2118}
+    #sd-ov .top{display:flex;gap:8px;align-items:center;padding:8px 10px;background:rgba(42,33,24,.55);backdrop-filter:blur(6px);position:relative;z-index:3}
     #sd-ov .top b{flex:1;font-size:15px}
-    #sd-ov .top button{background:#3a2e22;color:#f4efe6;border:0;border-radius:8px;padding:6px 10px}
-    #sd-ov .st{font-size:12px;color:#d9c7a4;padding:4px 10px;background:#241910}
-    #sd-ov .mid{flex:1;display:flex;min-height:0}
-    #sd-ov .log{flex:1.3;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
-    #sd-ov .b{max-width:92%;background:#2c241c;border-radius:12px;padding:6px 10px}
-    #sd-ov .b.player{background:#245c38}
-    #sd-ov .b .nm{font-size:11px;color:#d9c7a4}
-    #sd-ov .b.sys{background:transparent;color:#b7a88f;font-size:12px;padding:0}
-    #sd-ov .side{flex:0.7;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:8px;background:#120e0a center/cover no-repeat;min-width:120px}
-    #sd-ov .side img{max-height:70%;max-width:100%;object-fit:contain}
-    #sd-ov .side .ph{width:72%;aspect-ratio:3/4;border:1px dashed #6b5a45;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#b7a88f;text-align:center;padding:8px}
-    #sd-ov .side .who{margin-top:6px;font-size:13px}
+    #sd-ov .top button{background:rgba(58,46,34,.75);color:#f4efe6;border:0;border-radius:8px;padding:6px 10px}
+    #sd-ov .st{font-size:12px;color:#d9c7a4;padding:4px 10px;background:rgba(36,25,16,.45);position:relative;z-index:3}
+    #sd-ov .mid{flex:1;display:flex;min-height:0;position:relative;overflow:hidden}
+    #sd-ov .log{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;position:relative;z-index:2;max-width:58%;pointer-events:auto}
+    #sd-ov .b{max-width:100%;background:rgba(44,36,28,.58);border-radius:12px;padding:6px 10px;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,.08)}
+    #sd-ov .b.player{background:rgba(36,92,56,.62)}
+    #sd-ov .b .nm{font-size:11px;color:#d9c7a4;text-shadow:0 1px 2px #000}
+    #sd-ov .b.sys{background:transparent;color:#b7a88f;font-size:12px;padding:0;border:0;backdrop-filter:none}
+    #sd-ov .side{position:absolute;right:0;bottom:0;top:0;width:min(72%,520px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:0 4px 0;background:center/cover no-repeat;z-index:1;pointer-events:none}
+    #sd-ov .side img{max-height:96%;max-width:100%;width:auto;object-fit:contain;object-position:bottom center;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
+    #sd-ov .side .ph{width:78%;aspect-ratio:3/4;border:1px dashed #6b5a45;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#b7a88f;text-align:center;padding:8px;margin-bottom:8%}
+    #sd-ov .side .who{margin:0 0 10px;font-size:13px;background:rgba(0,0,0,.4);padding:2px 8px;border-radius:8px;pointer-events:none}
     #sd-ov .dots{height:14px;color:#d9c7a4;font-size:12px}
-    #sd-ov .acts{display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px;background:#241910}
-    #sd-ov .acts button{background:#3a2e22;color:#f4efe6;border:0;border-radius:999px;padding:8px 12px;min-height:40px}
+    #sd-ov .acts{display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px;background:rgba(36,25,16,.5);position:relative;z-index:3}
+    #sd-ov .acts button{background:rgba(58,46,34,.8);color:#f4efe6;border:0;border-radius:999px;padding:8px 12px;min-height:40px}
     #sd-ov .acts button.on{background:#8a5a2a}
-    #sd-ov form{display:flex;gap:6px;padding:8px 10px;background:#2a2118}
-    #sd-ov input{flex:1;border:0;border-radius:10px;padding:10px;font-size:16px;background:#f4efe6;color:#1a120c}
+    #sd-ov form{display:flex;gap:6px;padding:8px 10px;background:rgba(42,33,24,.55);backdrop-filter:blur(6px);position:relative;z-index:3}
+    #sd-ov input{flex:1;border:0;border-radius:10px;padding:10px;font-size:16px;background:rgba(244,239,230,.92);color:#1a120c}
     #sd-ov form button{background:#c4a574;color:#1a120c;border:0;border-radius:10px;padding:0 14px;min-height:44px}
-    #sd-ov .dbg{display:flex;gap:6px;flex-wrap:wrap;padding:4px 10px;background:#120e0a}
+    #sd-ov .dbg{display:flex;gap:6px;flex-wrap:wrap;padding:4px 10px;background:rgba(18,14,10,.55);position:relative;z-index:3}
     #sd-ov .dbg button{font-size:11px;background:#333;color:#ccc;border:0;border-radius:6px;padding:4px 6px}
   </style>
   <div class="top"><b class="ttl"></b><button type="button" class="end">結束</button></div>

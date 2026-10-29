@@ -218,7 +218,7 @@ const CSS = `
 #swp-bar button{font:inherit;box-shadow:none;text-shadow:none;min-height:0;letter-spacing:0;transform:none;cursor:pointer}
 #swp-bar button::before,#swp-bar button::after{content:none}
 /* 2026-10-25 版面：對話框平常收起來；有人說話才由上往下拉下，按「下一句」結束就收回 */
-#swp-bar .top{position:absolute;left:6px;right:6px;top:calc(40px + env(safe-area-inset-top));z-index:5;transform:translateY(calc(-100% - 60px));opacity:0;pointer-events:none;transition:transform .35s cubic-bezier(.2,.85,.2,1),opacity .25s ease;background:rgba(18,14,22,.88);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 12px 10px}
+#swp-bar .top{position:absolute;left:6px;right:6px;top:calc(40px + env(safe-area-inset-top));z-index:5;transform:translateY(calc(-100% - 60px));opacity:0;pointer-events:none;transition:transform .35s cubic-bezier(.2,.85,.2,1),opacity .25s ease;background:rgba(18,14,22,.48);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 12px 10px;backdrop-filter:blur(6px)}
 #swp-bar .top.on{transform:none;opacity:1;pointer-events:auto}
 #swp-bar .hdb{position:absolute;left:6px;right:6px;top:calc(6px + env(safe-area-inset-top));z-index:4;display:flex;align-items:center;gap:8px;pointer-events:none}
 #swp-bar .hdb .snm{background:rgba(18,14,22,.75);border-radius:12px;padding:3px 10px;font-size:12px;color:#f2b8d2;font-weight:700}
@@ -254,7 +254,7 @@ const CSS = `
 /* 2026-10-25 點陣風格：Fusion Pixel 字型（web/fonts，同 style.css 的 Pomo Pixel）＋階梯像素邊框 */
 @font-face{font-family:"Swp Pixel";src:url("/fonts/fusion-pixel-12px-zh-hant.woff2") format("woff2");font-display:swap}
 #swp-bar .top,#swp-bar form,#swp-bar .toast,#swp-bar .hdb,#swp-bar .nb,#swp-bar .rx button,#swp-bar #swp-adv button{font-family:"Swp Pixel","Pomo Pixel","Cubic 11","Fusion Pixel",ui-monospace,monospace;-webkit-font-smoothing:none;font-smooth:never;letter-spacing:.5px}
-#swp-bar .top,#swp-bar form,#swp-bar .toast{border:0!important;border-radius:0!important;background:#1a1222!important;box-shadow:0 -4px 0 -2px #f3eef5,0 4px 0 -2px #f3eef5,-4px 0 0 -2px #f3eef5,4px 0 0 -2px #f3eef5,0 0 0 2px #1a1222,0 0 0 4px #c0508a,6px 6px 0 2px rgba(0,0,0,.55)!important}
+#swp-bar .top,#swp-bar form,#swp-bar .toast{border:0!important;border-radius:0!important;background:rgba(26,18,34,.52)!important;backdrop-filter:blur(6px);box-shadow:0 -4px 0 -2px rgba(243,238,245,.7),0 4px 0 -2px rgba(243,238,245,.7),-4px 0 0 -2px rgba(243,238,245,.7),4px 0 0 -2px rgba(243,238,245,.7),0 0 0 2px rgba(26,18,34,.5),0 0 0 4px rgba(192,80,138,.75),6px 6px 0 2px rgba(0,0,0,.4)!important}
 #swp-bar .top{padding:10px 12px}
 #swp-bar .nm{color:#ffd166;font-weight:400}
 #swp-bar .tx{font-size:16px;line-height:1.6}
@@ -269,7 +269,7 @@ const CSS = `
 #swp-bar .nb .s{font-size:10px;color:#d8c8d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px}
 #swp-bar .pv,#swp-bar .pr{position:absolute;z-index:2;top:40%;bottom:74px;border-radius:12px;overflow:hidden;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18)}
 /* 2026-10-24 玩家動作圖：跟房間調戲一樣——左側滑入、停在中央、按「下一句」完成後右側滑出 */
-#swp-bar .pv{z-index:3;left:50%;top:auto;bottom:calc(78px + env(safe-area-inset-bottom));width:min(78%,460px);aspect-ratio:1/1;max-height:58%;background:none;border:0;border-radius:0;overflow:visible;filter:drop-shadow(0 14px 24px rgba(0,0,0,.5));transform:translateX(-50%) translateX(-60vw);opacity:0;transition:transform .5s cubic-bezier(.2,.85,.2,1),opacity .4s ease-out}
+#swp-bar .pv{z-index:4;left:50%;top:auto;bottom:calc(70px + env(safe-area-inset-bottom));width:min(92%,560px);aspect-ratio:1/1;max-height:78%;background:none;border:0;border-radius:0;overflow:visible;filter:drop-shadow(0 14px 24px rgba(0,0,0,.5));transform:translateX(-50%) translateX(-60vw);opacity:0;transition:transform .5s cubic-bezier(.2,.85,.2,1),opacity .4s ease-out}
 #swp-bar .pv.in{transform:translateX(-50%);opacity:1}#swp-bar .pv.out{transform:translateX(-50%) translateX(60vw);opacity:0}
 @media(prefers-reduced-motion:reduce){#swp-bar .pv{transition:none}}
 /* 2026-10-24 對方丈夫×你老婆：中間偏左、約中段高度、大一點，無框不模糊（只留柔影） */
