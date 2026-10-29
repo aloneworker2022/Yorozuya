@@ -5,16 +5,17 @@ import { openSwapDate } from "./swap_date.js?v=1";
 import { freshMeet, testMeet, SLOT_ZH } from "./swap_meet_rules.js?v=1";
 
 const SCENE_KEY = "yorozuya.swap.bmScene";
-export function rememberScene(coupleId, scene) {
-  try { localStorage.setItem(SCENE_KEY, JSON.stringify({ coupleId, scene: scene || "bar" })); } catch { /* */ }
+export function rememberScene(coupleId, scene, opts = {}) {
+  try { localStorage.setItem(SCENE_KEY, JSON.stringify({ coupleId, scene: scene || "bar", free: !!opts.free })); } catch { /* */ }
 }
-function sceneOf(coupleId) {
+function sceneMeta(coupleId) {
   try {
     const j = JSON.parse(localStorage.getItem(SCENE_KEY) || "null");
-    if (j && j.coupleId === coupleId) return j.scene || "bar";
+    if (j && j.coupleId === coupleId) return { scene: j.scene || "bar", free: !!j.free };
   } catch { /* */ }
-  return "bar";
+  return { scene: "bar", free: false };
 }
+function sceneOf(coupleId) { return sceneMeta(coupleId).scene; }
 
 export function bindSwapBookmark(ctx = {}) {
   if (document.getElementById("sbm")) return;
@@ -54,7 +55,8 @@ export function bindSwapBookmark(ctx = {}) {
   const openCard = () => {
     if (!view) return;
     const lines = (view.jobs || []).filter((j) => j.status !== "done").map((j) => `<li>${SLOT_ZH[j.key] || j.key}　${j.status === "error" ? (j.error || "失敗") : "還在生"}</li>`).join("");
-    card.innerHTML = `<b>${view.status === "ready" ? "可以赴約了" : "立繪還沒齊"}</b><div>${view.done}/${view.total}　${view.price || 0} 金</div>
+    const free = !!(view && sceneMeta(view.coupleId).free);
+    card.innerHTML = `<b>${view.status === "ready" ? "可以赴約了" : "立繪還沒齊"}</b><div>${view.done}/${view.total}　${free ? "測試免錢" : `${view.price || 0} 金`}</div>
       ${msg ? `<div>${msg}</div>` : ""}<ul>${lines}</ul>
       <div class="row">${view.status === "ready" ? `<button type="button" class="go">赴約</button>` : ""}${view.status === "error" ? `<button type="button" class="re">重試失敗的</button>` : ""}<button type="button" class="cl">關閉</button></div>`;
     card.hidden = false;
@@ -72,9 +74,10 @@ export function bindSwapBookmark(ctx = {}) {
       couple = (S.couples || {})[view.coupleId];
     } catch (e) { msg = e.message || "讀不到夫妻資料"; openCard(); return; }
     if (!couple) { msg = "這對夫妻的資料不在了。"; openCard(); return; }
+    const meta = sceneMeta(view.coupleId);
     const price = Number(view.price) || 0;
-    if (price > 0 && ctx.spend && !ctx.spend(price, "換妻赴約")) { msg = `金幣不夠（要 ${price}）。`; openCard(); return; }
-    const scene = sceneOf(view.coupleId);
+    if (!meta.free && price > 0 && ctx.spend && !ctx.spend(price, "換妻赴約")) { msg = `金幣不夠（要 ${price}）。`; openCard(); return; }
+    const scene = meta.scene;
     const meet = !scene || scene === "bar" ? freshMeet() : testMeet(scene);
     try { await pregenEnter(); } catch { /* 書籤收不起來也不擋進場 */ }
     card.hidden = true; root.hidden = true; view = { ...view, active: false };

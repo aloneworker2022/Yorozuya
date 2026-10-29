@@ -9,7 +9,7 @@ import { dateOutfitOf } from "./swap_outfit.js?v=8";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=12";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
 import { queuePortraits } from "./swap_pregen.js?v=2";
-import { rememberScene } from "./swap_bookmark.js?v=1";
+import { rememberScene } from "./swap_bookmark.js?v=2";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;   // 僅 loadRoster（咖啡廳測試工具）用
@@ -137,7 +137,7 @@ export function openSwapSelect(ctx = {}) {
       body.querySelector(".back").addEventListener("click", showList);
       return;
     }
-    rememberScene(c.id, startScene);
+    rememberScene(c.id, startScene, { free: !!ctx.testScene });
     ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ 伺服器產圖，書籤好了再赴約（${startScene}）`);
     ov.remove();
   };
