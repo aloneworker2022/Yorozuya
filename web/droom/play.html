@@ -30,7 +30,13 @@ const STRIDE=.55,G_SPEED=.9;
 const DIRS=[[0,"front"],[-45,"front_right"],[-90,"right"],[-135,"back_right"],[180,"back"],[135,"back_left"],[90,"left"],[45,"front_left"]];
 const cache={};let sheet=null;
 function sheetFor(d){const k=["b","s","cu","ar"].map(i=>document.getElementById(i).value).join("_")+"_"+d;
- if(!cache[k]){const im=new Image();im.src="/droom/sheets/"+k+".png";cache[k]=im}return cache[k]}
+ if(!cache[k]){const im=new Image();im.onload=()=>{cache[k]=skinTint(im)};im.src="/droom/sheets/"+k+".png";cache[k]=im}return cache[k]}
+// 白皙肉色：原 sheet 是深色剪影，依亮度映射到肉色漸層（暗 #D9A88E → 中 #F5D0B5 → 亮 #FDE6D6），只在 play 頁上色，不改素材
+function skinTint(im){const c=document.createElement("canvas");c.width=im.naturalWidth;c.height=im.naturalHeight;const x=c.getContext("2d");x.drawImage(im,0,0);
+ const D=x.getImageData(0,0,c.width,c.height),d=D.data,A=[217,168,142],B=[245,208,181],C=[253,230,214];
+ for(let i=0;i<d.length;i+=4){if(!d[i+3])continue;const l=(d[i]*.3+d[i+1]*.59+d[i+2]*.11),t=Math.max(0,Math.min(1,(l-28)/(75-28)));
+  const [P,Q,u]=t<.5?[A,B,t*2]:[B,C,(t-.5)*2];for(let j=0;j<3;j++)d[i+j]=P[j]+(Q[j]-P[j])*u;d[i+3]=255}
+ x.putImageData(D,0,0);c.complete=true;c.naturalWidth=c.width;return c}
 // 牆面：簡單磚紋（程式產生）
 function wallCol(t,u,v,side){const brick=((v*8|0)%2?((u*4+.5)|0):((u*4)|0)),mort=(v*8%1<.08)||((u*4+((v*8|0)%2?.5:0))%1<.05);
  let c=t=="2"?[190,150,170]:[215,195,165];if(mort)c=[140,130,120];else{const n=(brick*37%11)/40;c=c.map(x=>x*(1-n))}
