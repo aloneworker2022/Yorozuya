@@ -1,13 +1,15 @@
 /* 2026-10-21 換妻 step：先問妻子 → 選對方夫妻 → 確認 → 開車生立繪 → 約會。
  * 2026-10-23：候選夫妻＝進選單時用 generateGirl＋husband_gen 現場抽（swap_candidates），只存 localStorage 當日清單；
  * 不延用咖啡廳「換一對」／/api/swap/cafe 測試名冊。選中後才 put 那一對並在 drive 黑畫面生 一般／害羞立繪。 */
-import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=35";
+import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=36";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 import { openBar } from "./swap_bar.js?v=61";
 import { dateOutfitOf } from "./swap_outfit.js?v=5";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=12";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
+import { queuePortraits } from "./swap_pregen.js?v=1";
+import { rememberScene } from "./swap_bookmark.js?v=1";
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;   // 僅 loadRoster（咖啡廳測試工具）用
@@ -118,28 +120,26 @@ export function openSwapSelect(ctx = {}) {
       <div class="swp-p"><b>妻子・${esc(w.name)}</b> ${esc(w.age)} 歲・${esc(w.swapType || "")}</div>
       <div class="swp-p">${esc(wLooks(w))}${persW(w) ? `・${esc(persW(w))}` : ""}</div>
       <div class="swp-p"><b>費用</b> ${h.swapPrice} 金</div>
-      <div class="swp-p" style="color:#8a92a0;font-size:12px">選了之後才會產生立繪，然後開車去約會。</div></div></div>
+      <div class="swp-p" style="color:#8a92a0;font-size:12px">選了之後開始產立繪。產完不會馬上進場，左邊會出現書籤，你再決定什麼時候赴約。關掉網頁，圖也會繼續生。</div></div></div>
       <div class="swp-act"><button type="button" class="back">返回</button><button type="button" class="pri go">選這對</button></div>`;
     body.querySelector(".back").addEventListener("click", showList);
     body.querySelector(".go").addEventListener("click", () => { void pick(c); });
   };
   const pick = async (c) => {
     const h = c.husband, w = c.wife;
-    const startScene = ctx.startScene || "park";
-    body.innerHTML = `<div class="swp-next">準備出發…</div>`;
-    // 只把「選中的這對」寫進伺服器（立繪／圖登記用）；候選批次本身不進咖啡廳測試名冊
-    let S = { couples: { [c.id]: c }, current: c.id, prompts: {}, images: {} };
+    const startScene = ctx.testScene || "bar";
+    body.innerHTML = `<div class="swp-next">正在把立繪交給伺服器…</div>`;
     try {
-      const st = await api.state();
-      S = { ...st, couples: { ...(st.couples || {}), [c.id]: c }, current: c.id };
-      S = await api.put("couple", { couple: c });
-    } catch (e) { ctx.debug?.(`換妻：暫存選中夫妻失敗（仍繼續）：${e?.message || e}`); }
-    const sess = { coupleId: c.id, price: h.swapPrice, at: Date.now(), phase: startScene, wifeId: ctx.girl?.()?.id || "", wifeAgreed: true, rounds: 0 };
-    if (ctx.startState) Object.assign(sess, ctx.startState(startScene) || {});   // 測試捷徑：酒吧／KTV／旅館的起始狀態
-    localStorage.setItem(SESSION_KEY, JSON.stringify(sess));
-    ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ ${FLOW_ZH[startScene] || startScene}（先開車生立繪）`);
+      await api.put("couple", { couple: c });
+      await queuePortraits("date", ctx.girl?.(), c);
+    } catch (e) {
+      body.innerHTML = `<div class="swp-next">${esc(e?.message || e)}</div><div class="swp-act"><button type="button" class="back">返回</button></div>`;
+      body.querySelector(".back").addEventListener("click", showList);
+      return;
+    }
+    rememberScene(c.id, startScene);
+    ctx.debug?.(`換妻：選了 ${h.name} ＆ ${w.name}（${h.swapPrice} 金）→ 伺服器產圖，書籤好了再赴約（${startScene}）`);
     ov.remove();
-    await playSwapDate(ctx, c, S, startScene);
   };
   const reload = async (force) => {
     body.innerHTML = `<div class="swp-next">${force ? "重抽候選夫妻…" : "抽新的夫妻…"}</div>`;

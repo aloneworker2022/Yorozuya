@@ -336,11 +336,9 @@ import * as Preg from "./pregnancy.js?v=1";
 import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
-import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=35";
-import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=66";
-import { openSwapDrive, playSwapDate } from "./swap_select.js?v=66";
-import { openBar as openSwapScene } from "./swap_bar.js?v=61";
-import { testStartState as swapTestStart } from "./swap_flow_rules.js?v=12";
+import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=36";
+import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=67";
+import { bindSwapBookmark } from "./swap_bookmark.js?v=1";
 import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=17";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
@@ -1383,6 +1381,11 @@ function bindRentalDebug() {
   rentalScenePanel = bindRentalScenePanel({ girl: () => girl, client: () => girl?.rentalMine?.active?.client || null, debug: pushDebug });
   // 2026-10-21 換妻 step 1：咖啡廳半身立繪（上排「咖啡廳」，面板在 swap_cafe_gen.js）
   bindSwapCafePanel({ girl: () => girl, debug: pushDebug });
+  bindSwapBookmark({
+    girl: () => girl, debug: pushDebug, spend: walletSpend, gold: walletGold,
+    wifeOk: () => !!(girl && swapCanAsk(girl)),
+    makeCtx: () => swapCtxOf(girl),
+  });
   onId("dbg-rental-reset", "click", () => { if (!girl) return; rm().starts = []; rm().askCoolUntil = 0; persistRoom(); renderRentalDebug(); refreshTalkActs(); });
   setInterval(() => { try { renderRentalDebug(); } catch { /* */ } }, 2000);
 }
@@ -8870,12 +8873,8 @@ function swapCtxOf(who) {
 /** 測試主流程／捷徑：都先開「選對方夫妻」（現場抽候選，不延用咖啡廳換一對名冊）；選完才開車生立繪再進場。 */
 async function openSwapTestScene(scene) {
   if (!girl) { pushDebug("換妻測試：先選一位魅子"); return; }
-  // 旅館：先選配對狀態（play＝你跟對方妻子／watch＝只有老婆被換、你只看）
-  const hotel = scene.startsWith("hotel") ? (document.querySelector('input[name="sc-hpair"]:checked')?.value || "play") : "";
-  const together = scene === "park" || scene === "bar" || scene === "ktv" || (hotel ? hotel === "watch" || !!document.getElementById("sc-together")?.checked : false);
-  const startState = scene === "park" ? null : (s) => swapTestStart(s, { hotel });
-  pushDebug(`換妻測試：從 ${scene} 開始${hotel ? `（${hotel === "watch" ? "只看" : "你跟對方妻子"}）` : ""}——先抽候選夫妻`);
-  openSwapSelect({ ...swapCtxOf(girl), startScene: scene, together, startState, test: true, expose: true });
+  pushDebug(`換妻：選好夫妻就交給伺服器產圖。產完左邊書籤赴約（${scene === "bar" ? "從酒吧" : "測試直接進 " + scene}）。關掉網頁也會繼續生。`);
+  openSwapSelect({ ...swapCtxOf(girl), testScene: scene });
 }
 document.addEventListener("click", (e) => { const b = e.target?.closest?.("[data-swt]"); if (b) void openSwapTestScene(b.dataset.swt); });
 

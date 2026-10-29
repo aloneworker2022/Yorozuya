@@ -2653,7 +2653,8 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         action_first=script_mode,
         garment=comfy.undress_garment(shot),
         # 做愛開場圖：失神（翻白眼／失焦）、後背臉朝另一邊 → 不補立繪預設的 looking at viewer
-        auto_gaze=not comfy.is_solo_pose_shot(shot),
+        # auto_gaze 有明確傳（換妻裸體趴著 false）就照傳；沒傳才沿用舊規則
+        auto_gaze=(not comfy.is_solo_pose_shot(shot)) if opts.get("auto_gaze") is None else bool(opts.get("auto_gaze")),
     )
 
 
@@ -2790,6 +2791,14 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     if not prompt and wf is None:
         if sex_strip:
             prompt = str(opts.get("extra") or "").strip()
+        elif opts.get("portrait_break"):
+            # 換妻立繪：身份先組完（extra 清空才不會被當成雙人場面），構圖／表情／綠幕用 BREAK 另編。
+            # 接在同一段後面會被 CLIP 截掉，綠幕和姿勢都畫不出來。
+            pose = str(opts.get("extra") or "").strip()
+            prompt, _ = _comfy_prompt_for({**opts, "extra": ""})
+            if pose:
+                prompt = f"{prompt} BREAK {pose}"
+            prompt = _lead_merge(str(opts.get("lead") or ""), prompt)
         else:
             prompt, _ = _comfy_prompt_for(opts)
             # 換妻雙人圖：人數／第三人稱 tags 要壓在最前面（模型對開頭權重最高），不然常畫成 POV、男人不見
@@ -3220,6 +3229,8 @@ class ImgGenIn(BaseModel):
     vary: bool = False          # 召喚重畫：換 seed、表情微差，不要每次同一張
     # 出卡場景：lock_identity + extra 鎖人設 tags；seed 每次隨機（不可固定，否則每張同圖）
     lock_identity: bool = False
+    portrait_break: bool = False  # 換妻立繪：人設組完後 BREAK 再接 extra（構圖／綠幕）
+    auto_gaze: bool | None = None  # None＝舊規則；False＝不要補 looking at viewer
     comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
     # 召喚三連拍:shot=head|half|full 且有 char_id → 存 assets/portraits/{char_id}_{shot}.png,
     # 尺寸與 seed 由伺服器依規格決定(三張同 seed = 同一張臉)
@@ -5146,7 +5157,8 @@ _SWAP_DIR = ASSETS_DIR / "swap_cafe"
 _SWAP_STATE = _SWAP_DIR / "state.json"
 # 2026-10-22 加雙人互動圖 pair~<動作>（owner＝她 id.couple id）
 # 2026-10-23 加玩家對對方妻子的動作圖 tease~<動作>(~nude) 與做愛步驟 sex~<姿勢>~<步驟>（owner＝couple id）
-_SWAP_KEY = re.compile(r"^((wife|husband|other)~(normal|shy|tipsy|under|nude)|other~(climax|creampie)|pair~(chat|kiss|grope|fellatio|cunni|room_kiss|bath_kiss|afterglow)|pair~(normal|behind|seated|prone)~(1|2|3)|pair~fellatio~3"
+_SWAP_EXPR = r"normal|shy|happy|startled|erotic|tipsy|under|nude|nude_ero|nude_ahe|nude_prone|nude_spread|nude_normal|nude_shy|nude_happy|nude_startled"
+_SWAP_KEY = re.compile(r"^((wife|husband|other)~(" + _SWAP_EXPR + r")|other~(climax|creampie)|pair~(chat|kiss|grope|fellatio|cunni|room_kiss|bath_kiss|afterglow)|pair~(normal|behind|seated|prone)~(1|2|3)|pair~fellatio~3"
                        r"|tease~(waist|butt|breast|breast_knead|breast_suck|nipple_lick|labia|labia_rub|oral|finger_in|vagina_finger|cervix_rub)(~nude|~under)?"
                        r"|sex~(missionary|doggy|cowgirl|prone)~(open|tip|join|thrust|cum|orgasm))$")   # 交配三個動作兩格（輪播）
 _SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
@@ -5307,6 +5319,309 @@ def swap_cafe_image(body: dict):
     return {"raw": raw, "cut": cut or raw, "images": d["images"]}
 
 
+# ---- 換妻書籤產圖：網頁關掉也繼續（佇列在這台，不在瀏覽器）----
+_PREGEN_PATH = _SWAP_DIR / "pregen.json"
+_pregen_wake = asyncio.Event()
+_PREGEN_LOOP: asyncio.AbstractEventLoop | None = None
+_PREGEN_LOCK = threading.RLock()
+_IMG_FIELDS = set(ImgGenIn.model_fields)
+
+
+def _pregen_kick() -> None:
+    loop = _PREGEN_LOOP
+    if loop is not None and loop.is_running():
+        loop.call_soon_threadsafe(_pregen_wake.set)
+    else:
+        _pregen_wake.set()
+
+
+def _pregen_load() -> dict:
+    with _PREGEN_LOCK:
+        try:
+            d = json.loads(_PREGEN_PATH.read_text(encoding="utf-8"))
+            if isinstance(d, dict):
+                d.setdefault("token", 0)
+                return d
+        except Exception:
+            pass
+        return {"token": 0, "date": None, "hotel": None}
+
+
+def _pregen_save(d: dict) -> None:
+    with _PREGEN_LOCK:
+        _SWAP_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _PREGEN_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(_PREGEN_PATH)
+
+
+def _swap_have(owner: str, key: str) -> bool:
+    rec = (_swap_load().get("images") or {}).get(owner) or {}
+    r = rec.get(key) if isinstance(rec, dict) else None
+    return isinstance(r, dict) and bool(r.get("cut"))
+
+
+def _img_in(body: dict) -> ImgGenIn:
+    data = {k: v for k, v in (body or {}).items() if k in _IMG_FIELDS}
+    return ImgGenIn(**data)
+
+
+def _gen_row(key: str):
+    with db() as conn:
+        return conn.execute("SELECT status, result, error FROM gen_tasks WHERE key=?", (key,)).fetchone()
+
+
+def _bucket_view(rec) -> dict:
+    if not isinstance(rec, dict) or not rec.get("jobs"):
+        return {"active": False, "status": "idle", "total": 0, "done": 0, "jobs": [], "coupleId": "", "wifeId": "", "price": 0, "names": {}}
+    jobs = rec.get("jobs") or []
+    done = sum(1 for j in jobs if j.get("status") == "done")
+    err = [j for j in jobs if j.get("status") == "error"]
+    pend = [j for j in jobs if j.get("status") in ("pending", "running")]
+    if done == len(jobs):
+        status = "ready"
+    elif err and not pend:
+        status = "error"
+    else:
+        status = "running"
+    names = rec.get("names") if isinstance(rec.get("names"), dict) else {}
+    return {
+        "active": not rec.get("hidden"),
+        "status": status,
+        "total": len(jobs),
+        "done": done,
+        "coupleId": rec.get("coupleId") or "",
+        "wifeId": rec.get("wifeId") or "",
+        "price": int(rec.get("price") or 0),
+        "names": {k: str(names.get(k) or "")[:40] for k in ("wife", "husband", "other")},
+        "jobs": [{"key": j.get("key") or "", "status": j.get("status") or "", "error": str(j.get("error") or "")[:200]} for j in jobs],
+    }
+
+
+def _pregen_public(d: dict) -> dict:
+    return {"token": int(d.get("token") or 0), "date": _bucket_view(d.get("date")), "hotel": _bucket_view(d.get("hotel"))}
+
+
+def _pregen_mark(bucket: str, owner: str, key: str, status: str, error: str, gen_key: str | None = None) -> None:
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        rec = d.get(bucket)
+        if not isinstance(rec, dict):
+            return
+        for j in rec.get("jobs") or []:
+            if j.get("owner") == owner and j.get("key") == key:
+                j["status"] = status
+                j["error"] = error
+                if gen_key is not None:
+                    j["genKey"] = gen_key
+                break
+        _pregen_save(d)
+
+
+def _pregen_store(owner: str, key: str, raw_url: str) -> None:
+    """原圖抄進換妻圖庫，再綠幕去背。去背沒有綠也把原圖當立繪，免得整批卡死。"""
+    stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}"
+    raw = _swap_copy(raw_url, "", stem + "_raw")
+    src = _SWAP_DIR / Path(raw.split("?")[0]).name
+    cut_path = _SWAP_DIR / f"{stem}_cut.png"
+    shutil.copyfile(src, cut_path)
+    try:
+        changed, _why, out = cutout.chroma_key(cut_path)
+        cut_file = out if changed else src
+    except Exception:
+        cut_file = src
+        changed = False
+    if cut_file.resolve() != src.resolve():
+        cut = f"/assets/swap_cafe/{cut_file.name}"
+    else:
+        cut = raw
+    if not changed and cut_path.is_file() and cut_path.resolve() != src.resolve():
+        cut_path.unlink(missing_ok=True)
+    d = _swap_load()
+    d["images"].setdefault(owner, {})[key] = {"raw": raw, "cut": cut, "at": int(time.time())}
+    _swap_save(d)
+
+
+def _clean_jobs(jobs_in) -> list[dict]:
+    if not isinstance(jobs_in, list) or not jobs_in or len(jobs_in) > 40:
+        raise HTTPException(status_code=400, detail="jobs 不對")
+    clean = []
+    for j in jobs_in:
+        if not isinstance(j, dict):
+            raise HTTPException(status_code=400, detail="jobs 不對")
+        owner, key = str(j.get("owner") or ""), str(j.get("key") or "")
+        if not _SWAP_OWNER.match(owner) or not _SWAP_KEY.match(key):
+            raise HTTPException(status_code=400, detail=f"owner／key 不對：{key}")
+        if not isinstance(j.get("body"), dict):
+            raise HTTPException(status_code=400, detail="缺生圖內容")
+        have = _swap_have(owner, key)
+        clean.append({"owner": owner, "key": key, "body": j["body"], "status": "done" if have else "pending", "error": "", "genKey": ""})
+    return clean
+
+
+@app.get("/api/swap/pregen")
+def swap_pregen_state():
+    """書籤進度。網頁關掉再打開，看的就是這份。"""
+    return _pregen_public(_pregen_load())
+
+
+@app.post("/api/swap/pregen")
+def swap_pregen_post(body: dict):
+    """排進一組立繪。bucket=date 是赴約前那 15 張；hotel 是進旅館才補的裸體。date 會換掉上一對。"""
+    body = body or {}
+    bucket = str(body.get("bucket") or "date")
+    if bucket not in ("date", "hotel"):
+        raise HTTPException(status_code=400, detail="bucket 不對")
+    names = body.get("names") if isinstance(body.get("names"), dict) else {}
+    rec = {
+        "coupleId": str(body.get("coupleId") or "")[:80],
+        "wifeId": str(body.get("wifeId") or "")[:80],
+        "price": int(body.get("price") or 0),
+        "names": {k: str(names.get(k) or "")[:40] for k in ("wife", "husband", "other")},
+        "hidden": False,
+        "jobs": _clean_jobs(body.get("jobs")),
+    }
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        if bucket == "date":
+            d["token"] = int(d.get("token") or 0) + 1
+            d["hotel"] = None
+        elif isinstance(d.get("hotel"), dict) and d["hotel"].get("coupleId") == rec["coupleId"]:
+            old = {(j.get("owner"), j.get("key")): j for j in d["hotel"].get("jobs") or []}
+            merged = []
+            for j in rec["jobs"]:
+                prev = old.get((j["owner"], j["key"]))
+                if prev and prev.get("status") in ("done", "running", "pending") and (prev.get("status") == "done" or prev.get("genKey")):
+                    merged.append(prev)
+                else:
+                    merged.append(j)
+            rec["jobs"] = merged
+        d[bucket] = rec
+        _pregen_save(d)
+        pub = _pregen_public(d)
+    _pregen_kick()
+    return pub
+
+
+@app.post("/api/swap/pregen/retry")
+def swap_pregen_retry(body: dict):
+    body = body or {}
+    bucket = str(body.get("bucket") or "date")
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        rec = d.get(bucket)
+        if not isinstance(rec, dict):
+            raise HTTPException(status_code=404, detail="沒有這批圖")
+        for j in rec.get("jobs") or []:
+            if j.get("status") == "error":
+                j["status"] = "done" if _swap_have(j.get("owner") or "", j.get("key") or "") else "pending"
+                j["error"] = ""
+                j["genKey"] = ""
+        _pregen_save(d)
+        pub = _pregen_public(d)
+    _pregen_kick()
+    return pub
+
+
+@app.post("/api/swap/pregen/cancel")
+def swap_pregen_cancel():
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        d["token"] = int(d.get("token") or 0) + 1
+        d["date"] = None
+        _pregen_save(d)
+        pub = _pregen_public(d)
+    _pregen_kick()
+    return pub
+
+
+@app.post("/api/swap/pregen/enter")
+def swap_pregen_enter():
+    """赴約之後書籤收起來。圖留著。"""
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        if isinstance(d.get("date"), dict):
+            d["date"]["hidden"] = True
+            _pregen_save(d)
+        return _pregen_public(d)
+
+
+async def _pregen_one(bucket: str, owner: str, key: str, token: int) -> None:
+    d = _pregen_load()
+    if bucket == "date" and int(d.get("token") or 0) != token:
+        return
+    rec = d.get(bucket)
+    job = next((j for j in (rec.get("jobs") if isinstance(rec, dict) else []) or [] if j.get("owner") == owner and j.get("key") == key), None)
+    if not job or job.get("status") == "done":
+        return
+    if _swap_have(owner, key):
+        _pregen_mark(bucket, owner, key, "done", "")
+        return
+    gen_key = str(job.get("genKey") or "")
+    try:
+        if not gen_key:
+            body = dict(job.get("body") or {})
+            body["retry"] = True
+            body["key"] = str(body.get("key") or f"swap-pregen:{owner}:{key}:{token}")
+            gen_key = imggen_submit(_img_in(body))["key"]
+            _pregen_mark(bucket, owner, key, "running", "", gen_key)
+        else:
+            _pregen_mark(bucket, owner, key, "running", "", gen_key)
+        deadline = time.time() + 900
+        while time.time() < deadline:
+            if bucket == "date" and int(_pregen_load().get("token") or 0) != token:
+                return
+            row = _gen_row(gen_key)
+            if row and row[0] == "done" and row[1]:
+                if bucket == "date" and int(_pregen_load().get("token") or 0) != token:
+                    return
+                await asyncio.to_thread(_pregen_store, owner, key, str(row[1]).split("|")[0])
+                _pregen_mark(bucket, owner, key, "done", "")
+                print(f"[換妻產圖] {key} 好了", flush=True)
+                return
+            if row and row[0] == "error":
+                _pregen_mark(bucket, owner, key, "error", str(row[2] or "生圖失敗")[:200])
+                print(f"[換妻產圖] {key} 失敗：{row[2]}", flush=True)
+                return
+            await asyncio.sleep(2)
+        _pregen_mark(bucket, owner, key, "error", "逾時")
+    except Exception as e:
+        _pregen_mark(bucket, owner, key, "error", str(e)[:200])
+        print(f"[換妻產圖] {key} 失敗：{e}", flush=True)
+
+
+async def _swap_pregen_loop() -> None:
+    global _PREGEN_LOOP
+    _PREGEN_LOOP = asyncio.get_running_loop()
+    print("[換妻產圖] 書籤佇列啟動（離開網頁也會繼續）", flush=True)
+    while True:
+        try:
+            d = _pregen_load()
+            token = int(d.get("token") or 0)
+            found = None
+            for bucket in ("date", "hotel"):
+                rec = d.get(bucket)
+                if not isinstance(rec, dict):
+                    continue
+                for j in rec.get("jobs") or []:
+                    if j.get("status") in ("pending", "running"):
+                        found = (bucket, str(j.get("owner") or ""), str(j.get("key") or ""))
+                        break
+                if found:
+                    break
+            if not found:
+                _pregen_wake.clear()
+                try:
+                    await asyncio.wait_for(_pregen_wake.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    pass
+                continue
+            await _pregen_one(found[0], found[1], found[2], token)
+        except Exception as e:
+            print(f"[換妻產圖] 佇列例外（會續跑）：{e}", flush=True)
+            await asyncio.sleep(3)
+
+
 # ---- 2026-10-22 換妻雙人圖測試台：每張圖自己的設定（正負向原文、seed／steps／cfg、起始圖＋denoise）＋預設 prompt 預覽 ----
 _PAIR_KEY = re.compile(r"^pair~(chat|kiss|grope|fellatio|cunni|room_kiss|bath_kiss|afterglow|(normal|behind|seated|prone)~(1|2|3)|fellatio~3)$")
 _PAIR_REF_PREFIX = ("/assets/swap_cafe/", "/assets/pose_refs/", "/assets/portraits/")
@@ -5396,6 +5711,7 @@ async def _start_gen_worker():
     except Exception as e:
         print(f"[發呆] 取消失敗(仍不啟動預產): {e}", flush=True)
     asyncio.create_task(_gen_worker())
+    asyncio.create_task(_swap_pregen_loop())
     asyncio.create_task(_world_clock())
     asyncio.create_task(_life_loop())
     asyncio.create_task(_line_loop())

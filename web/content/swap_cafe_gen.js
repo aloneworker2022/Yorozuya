@@ -7,7 +7,7 @@ import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
 import { bindPairBox } from "./swap_pair_gen.js?v=28";
 import { wornOutfitOf } from "./outfit_pick.js?v=2";
-import { dateOutfitOf, withDateOutfit, lookCharacter, lookFor } from "./swap_outfit.js?v=5";
+import { dateOutfitOf, withDateOutfit, lookCharacter, lookFor } from "./swap_outfit.js?v=7";
 import { loadPools, generateGirl, POOLS as _poolsRef } from "./girl_gen.js?v=5";
 import { rollHusband, enrichHusband, husbandLookEn } from "./husband_gen.js?v=1";
 
@@ -26,10 +26,53 @@ export function pickBackdrop(scene = "cafe", i = -1) {
   return bgs[i >= 0 && i < bgs.length ? i : Math.floor(Math.random() * bgs.length)];
 }
 const CHARS = { wife: "妻子（你老婆）", husband: "對方丈夫", other: "對方妻子" };
-const EXPRS = { normal: "一般", shy: "害羞", tipsy: "微醺（酒吧喝醉）", under: "內衣（KTV 脫 1）", nude: "裸體（旅館）", climax: "高潮癱軟坐著（旅館做愛）", creampie: "內射後坐著腿開（旅館做愛）" };   // 2026-10-25：依場景的造型
-const EXPR_EN = { climax: "full body, sitting on bed, collapsed after orgasm, limp, exhausted, trembling legs, ahegao, flushed, sweaty, heavy breathing, messy hair, completely nude", creampie: "full body, sitting on bed, legs spread, m legs, spread pussy, cum dripping from pussy, cum on thighs, creampie aftermath, flushed, exhausted, heavy breathing, completely nude", tipsy: "tipsy, flushed cheeks, drunk blush, half-lidded eyes, relaxed smile", under: "embarrassed, blushing, covering herself slightly, shy", nude: "embarrassed, deep blush, shy, covering herself slightly", normal: "gentle smile, calm relaxed expression", shy: "shy, blushing, red cheeks, embarrassed, flustered, looking slightly away, bashful smile" };
+const EXPRS = {
+  normal: "一般", shy: "害羞", happy: "開心", startled: "驚嚇", erotic: "色情",
+  nude_ero: "裸體色情", nude_ahe: "裸體失神", nude_prone: "裸體趴著（全身、頭不看玩家）", nude_spread: "裸體開腿（全身）",
+  nude_normal: "裸體一般", nude_shy: "裸體害羞", nude_happy: "裸體開心", nude_startled: "裸體驚嚇",
+  tipsy: "微醺（酒吧喝醉）", under: "內衣（KTV 脫 1）", nude: "裸體（旅館）", climax: "高潮癱軟坐著（旅館做愛）", creampie: "內射後坐著腿開（旅館做愛）",
+};
+const EXPR_EN = {
+  climax: "full body, sitting on bed, collapsed after orgasm, limp, exhausted, trembling legs, ahegao, flushed, sweaty, heavy breathing, messy hair, completely nude",
+  creampie: "full body, sitting on bed, legs spread, m legs, spread pussy, cum dripping from pussy, cum on thighs, creampie aftermath, flushed, exhausted, heavy breathing, completely nude",
+  tipsy: "tipsy, flushed cheeks, drunk blush, half-lidded eyes, relaxed smile",
+  under: "embarrassed, blushing, covering herself slightly, shy",
+  nude: "embarrassed, deep blush, shy, covering herself slightly",
+  normal: "gentle smile, calm relaxed expression",
+  shy: "shy, blushing, red cheeks, embarrassed, flustered, looking slightly away, bashful smile",
+  happy: "happy smile, bright eyes, cheerful, open smile",
+  startled: "startled, surprised, wide eyes, flinch, leaning back",
+  erotic: "lustful smile, half-lidded eyes, flushed, leaning forward, suggestive",
+  nude_ero: "nude man, lustful smile, half-lidded eyes, flushed, sweaty, suggestive",
+  nude_ahe: "ahegao, rolling eyes, tongue out, heavy blush, tears, despair, nude",
+  nude_prone: "ahegao, rolling eyes, blush, tears, despair, orgasm face",
+  nude_spread: "ahegao, rolling eyes, heavy blush, tears, despair, orgasm face",
+  nude_normal: "nude, calm expression, slight blush, facing viewer",
+  nude_shy: "nude, shy, deep blush, covering herself slightly, embarrassed",
+  nude_happy: "nude, happy smile, blush, relaxed",
+  nude_startled: "nude, startled, wide eyes, flinch, embarrassed",
+};
+const POSE_EN = {
+  // 不要寫 from behind／looking back：前者會被伺服器當成雙人場面，後者等於回頭看玩家。
+  nude_prone: "solo, full body, entire body, head to toe, feet visible, head visible, rear view, bent over, on all fours, ass, on a bed, looking away, head turned away, face in profile, looking down",
+  nude_spread: "solo, full body, entire body, head to toe, feet visible, head visible, lying on back, on a bed, legs spread, knees apart, facing viewer, looking at viewer",
+  nude_ahe: "solo, half-body portrait, upper body, facing viewer, looking at viewer",
+  nude_ero: "solo, half-body portrait, upper body, shirtless, facing viewer, looking at viewer",
+};
+const PANEL_CORE = {
+  wife: ["normal", "shy", "happy", "startled", "nude_ahe", "nude_prone", "nude_spread"],
+  husband: ["normal", "happy", "erotic", "nude_ero"],
+  other: ["normal", "shy", "happy", "startled", "nude_normal", "nude_shy", "nude_happy", "nude_startled"],
+};
+const PANEL_EXTRA = {
+  wife: ["tipsy", "under", "nude", "climax", "creampie"],
+  husband: ["shy", "nude"],
+  other: ["tipsy", "under", "nude", "climax", "creampie"],
+};
 const QUALITY_EN = "masterpiece, best quality, detailed, sharp focus, clear face";
-const PORTRAIT_EN = "solo, half-body portrait, upper body, cowboy shot from the waist up, facing viewer, looking at viewer, on a casual date at a cafe";
+const PORTRAIT_EN = "solo, half-body portrait, upper body, cowboy shot from the waist up, facing viewer, looking at viewer";
+const CROP_NEG = "upper body, half body, cowboy shot, portrait, close-up, cropped, out of frame, head out of frame, feet out of frame, cut off, zoomed in";
+const FULL_EX = new Set(["climax", "creampie", "nude_prone", "nude_spread"]);
 // 綠幕：要換深綠（使用者說的 dark green，例 #1f5f2f）只改這一行的字（例 "solid dark green background"）；色鍵看「綠比紅藍多多少」，深綠也摳得掉。
 export const GREEN_BG = "solid green background";
 export const BG_EN = `simple background, ${GREEN_BG}, green screen, chroma key green background, no background scenery`;
@@ -212,11 +255,16 @@ export function rollCkpts(c, list, who = "both") {
 
 // ---- 模板
 export function defaultTemplate(ch, ex) {
-  const who = ch === "husband" ? "1boy, male focus, the man: {man}, {man_body}, wearing {man_outfit}" : "1girl, the woman: {girl}, {girl_body}, wearing {girl_outfit}";
-  const full = ex === "climax" || ex === "creampie";   // pt283u：做愛後全身坐姿立繪，不要半身
-  const pos = [QUALITY_EN, full ? "solo, full body, whole body visible from head to feet, facing viewer, on a hotel bed" : PORTRAIT_EN, who, "{expr}", BG_EN].join(", ");
-  const L = ch === "husband" ? (ex === "nude" ? { rating: "nsfw", neg: "" } : null) : lookFor(ex), base = L && L.rating === "nsfw" ? BASE_NEG.replace(/, nude, nsfw, nipples$/, "") : BASE_NEG;
-  const neg = [base, L?.neg || "", BG_NEG, ch === "husband" ? "1girl, woman, female, breasts" : "1boy, man, male, 2girls", "{auto_neg}"].join(", ");
+  const who = ch === "husband" ? "1boy, male focus, wearing {man_outfit}, the man: {man}, {man_body}" : "1girl, the woman: {girl}, {girl_body}, wearing {girl_outfit}";
+  const shot = POSE_EN[ex] || (ex === "climax" || ex === "creampie" ? "solo, full body, entire body, head to toe, feet visible, head visible, facing viewer, looking at viewer, on a hotel bed" : PORTRAIT_EN);
+  // 綠幕和姿勢放最前。妻子這段會整段接到身份後面（伺服器加 BREAK）；丈夫身份與構圖分成兩段。長的身份放最後，被截掉也不影響構圖。
+  const pose = [BG_EN, shot, "{expr}"].join(", ");
+  const pos = ch === "husband" ? [QUALITY_EN, who, "BREAK", pose].join(", ") : [pose, who].join(", ");
+  const husbandNude = ex === "nude" || ex === "nude_ero";
+  const L = ch === "husband" ? (husbandNude ? { rating: "nsfw", neg: "" } : null) : lookFor(ex);
+  let base = L && L.rating === "nsfw" ? BASE_NEG.replace(/, nude, nsfw, nipples$/, "") : BASE_NEG;
+  if (FULL_EX.has(ex)) base = `${CROP_NEG}, ${base.replace(/^full body, legs, feet, lower body, /, "")}`;
+  const neg = ["BREAK", base, L?.neg || "", BG_NEG, ch === "husband" ? "1girl, woman, female, breasts" : "1boy, man, male, 2girls", "{auto_neg}"].join(", ");
   return { pos, neg, img2img: { on: false, ref: "", denoise: 0.6 } };
 }
 export function templateFor(prompts, ch, ex) {
@@ -232,7 +280,7 @@ export function fillTemplate(tpl, ch, ex, wife, couple) {
     : "1 woman";
   // 2026-10-24：約會一律穿外出服（不是房間那套／白 T 三角褲）
   const lc = lookCharacter(g, ch === "other" ? "other" : "wife", ex), outfit = lookFor(ex).outfit === "nude" ? "nothing, completely nude" : (lc?.outfitName || dateOutfitOf(g, ch === "other" ? "other" : "wife"));
-  const map = { girl: girlDesc, girl_body: gi.body, girl_outfit: outfit, man: mi.desc, man_body: mi.body, man_outfit: ch === "husband" && ex === "nude" ? "nothing, shirtless, completely nude" : mi.outfit, expr: EXPR_EN[ex], auto_neg: autoNeg(ch, gi, mi) };
+  const map = { girl: girlDesc, girl_body: gi.body, girl_outfit: outfit, man: mi.desc, man_body: mi.body, man_outfit: ch === "husband" && (ex === "nude" || ex === "nude_ero") ? "nothing, shirtless, completely nude" : mi.outfit, expr: EXPR_EN[ex] || "", auto_neg: autoNeg(ch, gi, mi) };
   const sub = (t) => String(t || "").replace(/\{(\w+)\}/g, (m, k) => (k in map ? map[k] : m)).replace(/(,\s*)+,/g, ",").replace(/^[,\s]+|[,\s]+$/g, "");
   return { pos: sub(tpl.pos), neg: sub(tpl.neg) };
 }
@@ -246,12 +294,14 @@ export function cafeBody(ch, ex, wife, couple, eng, tpl, seed) {
   if (ch === "wife" && !wife?.id) throw new Error("先選魅子");
   const i2 = tpl.img2img?.on && tpl.img2img.ref ? { pose_ref: tpl.img2img.ref, pose_denoise: Math.min(0.95, Math.max(0.3, Number(tpl.img2img.denoise) || 0.6)) } : {};
   const lw = (g, role) => lookCharacter(g, role, ex), lo = (g, role) => lw(g, role)?.outfitName || "";
-  const who = ch === "wife" ? { character: lw(wife, "wife"), outfit: lo(wife, "wife"), extra: f.pos, prompt: "", lock_identity: true, char_id: wife.id }
-    : ch === "other" ? { character: lw(couple.wife, "other"), outfit: lo(couple.wife, "other"), extra: f.pos, prompt: "", lock_identity: true, char_id: couple.wife.id }
+  const Lk = lookFor(ex);
+  const who = ch === "wife" ? { character: lw(wife, "wife"), outfit: lo(wife, "wife"), extra: f.pos, prompt: "", lock_identity: true, char_id: wife.id, portrait_break: true }
+    : ch === "other" ? { character: lw(couple.wife, "other"), outfit: lo(couple.wife, "other"), extra: f.pos, prompt: "", lock_identity: true, char_id: couple.wife.id, portrait_break: true }
     : { prompt: f.pos, extra: "", lock_identity: false };
+  if (Lk.gaze === false && ch !== "husband") who.auto_gaze = false;
   return {
     key: `swap-cafe:${ch}:${ex}:${Date.now().toString(36)}`, provider: comfy ? "comfy" : "grok-img", model: eng.imgModel, style: eng.imgStyle,
-    framing: lookFor(ex).framing || "half", rating: ch === "husband" ? (ex === "nude" ? "nsfw" : "sfw") : lookFor(ex).rating, negative: f.neg, visual_neg: f.neg, cutout: false, flat_bg: false, retry: true, seed,   // 不走伺服器白底去背（flat_bg 會塞 white background）；生完自己綠幕色鍵
+    framing: Lk.framing || "half", rating: ch === "husband" ? (ex === "nude" || ex === "nude_ero" ? "nsfw" : "sfw") : Lk.rating, negative: f.neg, visual_neg: f.neg, cutout: false, flat_bg: false, retry: true, seed,   // 不走伺服器白底去背（flat_bg 會塞 white background）；生完自己綠幕色鍵
     ...who, ...i2, ...(comfy ? { comfy_url: eng.comfyUrl, ckpt } : {}),
   };
 }
@@ -453,7 +503,7 @@ export function bindSwapCafePanel(ctx = {}) {
     }
     info();
     document.querySelectorAll("#sc-chars button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.ch === ch ? "true" : "false"));
-    $("sc-grid").replaceChildren(...(ch === "husband" ? ["normal", "shy", "nude"] : Object.keys(EXPRS)).map((ex) => makeCard(ch, ex)));
+    $("sc-grid").replaceChildren(...[...PANEL_CORE[ch], ...PANEL_EXTRA[ch]].map((ex) => makeCard(ch, ex)));
   };
   const close = () => { panel.hidden = true; btn.setAttribute("aria-expanded", "false"); };
   btn.addEventListener("click", () => {

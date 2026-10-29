@@ -42,14 +42,19 @@ export const withDateOutfit = (g, role = "wife") => (g ? lookCharacter(g, role, 
  *   tipsy：酒吧喝醉才用：同一套外出服但微微鬆開（領口鬆、肩帶滑落），仍不露內衣。
  *   under：KTV 脫衣第 1 階段：只剩內衣褲。
  *   nude：KTV 脫衣第 2 階段：全裸。 */
-export const LOOK_KEYS = ["normal", "shy", "tipsy", "under", "nude", "climax", "creampie"];
+export const LOOK_KEYS = ["normal", "shy", "happy", "startled", "erotic", "tipsy", "under", "nude", "nude_ero", "nude_ahe", "nude_prone", "nude_spread", "nude_normal", "nude_shy", "nude_happy", "nude_startled", "climax", "creampie"];
+const NUDE_HALF = new Set(["nude", "nude_ero", "nude_ahe", "nude_normal", "nude_shy", "nude_happy", "nude_startled"]);
 /** pt283u：只給對方妻子（other）在旅館用：climax＝高潮多次後癱軟坐著；creampie＝被內射後坐著雙腿打開精液流出。 */
 export const SEX_LOOKS = ["climax", "creampie"];
 export const UNDER_OUTFIT = "matching lace bra and panties, underwear only, lingerie";
 export const COVER_NEG = "cleavage, bra, visible bra, bra strap, lingerie, underwear, see-through, revealing clothes, open shirt, unbuttoned, midriff, nsfw, nude, nipples";
 export function lookFor(ex) {
   if (ex === "climax" || ex === "creampie") return { stage: "wife", force: true, outfit: "nude", neg: "", rating: "nsfw", framing: "full" };   // pt283u：旅館做愛後的全身坐姿立繪
-  if (ex === "nude") return { stage: "wife", force: true, outfit: "nude", neg: "", rating: "nsfw" };
+  // 趴著：全身入鏡，頭轉開，不要看玩家。gaze:false 讓伺服器不要補 looking at viewer。
+  if (ex === "nude_prone") return { stage: "wife", force: true, outfit: "nude", neg: "looking at viewer, looking back, facing viewer, eye contact, looking over shoulder, face towards viewer, standing, front view", rating: "nsfw", framing: "full", gaze: false };
+  // 開腿：正面可以看玩家，但必須全身入鏡。
+  if (ex === "nude_spread") return { stage: "wife", force: true, outfit: "nude", neg: "standing, from behind, all fours, bent over, looking away, head down", rating: "nsfw", framing: "full" };
+  if (NUDE_HALF.has(ex)) return { stage: "wife", force: true, outfit: "nude", neg: "", rating: "nsfw", framing: "half" };
   if (ex === "under") return { stage: "girlfriend", outfit: UNDER_OUTFIT, neg: "nude, nipples, topless, outer clothes, jacket, dress", rating: "nsfw" };
   if (ex === "tipsy") return { stage: "friend", outfitSuffix: ", loosened collar, top slipping slightly off one shoulder, slightly disheveled clothes", neg: "visible bra, lingerie, underwear, nude, nipples, topless", rating: "sfw" };
   return { stage: "friend", outfit: "", neg: COVER_NEG, rating: "sfw" };
