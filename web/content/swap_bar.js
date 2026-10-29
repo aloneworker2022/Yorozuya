@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=70";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=71";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=38";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=28";
@@ -160,6 +160,16 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
 export function drunkLv(x) { return x >= DRUNK.lv.wasted ? "wasted" : x >= DRUNK.lv.drunk ? "drunk" : x >= DRUNK.lv.tipsy ? "tipsy" : "sober"; }
+/** 2026-10-29 pt308u：越醉聊天越天馬行空、越亂回（喂給 AI 的說話風格）。 */
+export const DRUNK_TALK = {
+  sober: "說話正常、有條理，順著話題回。",
+  tipsy: "說話開始放鬆、愛開玩笑撩人，偶爾小小離題、笑點變低。",
+  drunk: "說話天馬行空：常常答非所問、突然跳到不相干的話題（小時候、外星人、宵夜、前任之類）、自己講自己笑、講太多私事，句子有點重複或打結。",
+  wasted: "爛醉亂回：幾乎不理別人說什麼，前言不對後語、胡言亂語、口齒不清（拉長音、打嗝『嗝』、講到一半忘記），想到什麼說什麼，邏輯完全亂掉。",
+};
+const DRUNK_FB = { drunk: ["欸你知道嗎…企鵝其實有膝蓋耶", "我剛剛要說什麼…算了哈哈哈", "這杯…這杯是不是在轉"], wasted: ["嗝…月亮…好像在跟我借錢……", "誰…誰把地板弄歪的啦……", "我跟你講喔…呃…我忘了……嘿嘿"] };
+/** 固定台詞也跟著醉：drunk 偶爾、wasted 常常換成亂回。 */
+export function drunkFb(fb, lv) { const a = DRUNK_FB[lv]; if (!a || Math.random() > (lv === "wasted" ? 0.7 : 0.4)) return fb; const act = fb.match(/^（[^）]*）/)?.[0] || "（傻笑）"; return `${act}${a[Math.floor(Math.random() * a.length)]}`; }
 export const DRUNK_ZH = { sober: "清醒", tipsy: "微醺，比較大膽", drunk: "喝醉了，黏人、說話放得開、很難拒絕", wasted: "爛醉，口齒不清、快睡著" };
 /** 老婆緊張程度 0–1：忠誠／感情高＝越緊張，飢渴高＝放得開，心情不好再緊一點。 */
 export function wifeNerves(who, hunger = 0, mood = null) {
@@ -495,7 +505,8 @@ export function openBar(ctx = {}, c, S = {}) {
   const RULE = () => `場合：${SZ}裡的換妻約會。另一對夫妻：玩家（矮胖的宅男，另一位丈夫）和他的妻子${wn}。對話紀錄裡「玩家」就是那位宅男丈夫，不是你。`
     + (PARK ? PARK_TALK : base === "ktv" ? KTV_TALK : base === "bar" ? BAR_TALK : "") + `你只能以自己的身分說話：只寫你自己的一句，「（動作）台詞」格式，繁體中文口語，60 字內；不要寫名字前綴、不要旁白、不要替任何其他人說話或寫別人的台詞。`;
   const say1 = async (k, task, fb) => {
-    const hist = histFor(), dz = PARK ? PARK_TALK : `你現在${DRUNK_ZH[dlv(k)]}（醉度 ${Math.round(sess.drunk[k])}）。`;
+    const hist = histFor(), dz = PARK ? PARK_TALK : `你現在${DRUNK_ZH[dlv(k)]}（醉度 ${Math.round(sess.drunk[k])}）。說話風格：${DRUNK_TALK[dlv(k)]}`;
+    if (!PARK) fb = drunkFb(fb, dlv(k));
     let t = "";
     if (k === "wife") { if (wife && ctx.say) try { t = await ctx.say(wife, `（換妻約會在${SZ}。${dz}最近的對話：\n${hist}\n${task}用「（動作）台詞」格式只寫一句。）`, ""); } catch { /* */ } }
     else if (ctx.chat) try { t = await ctx.chat(persona(k) + dz + RULE(), `最近的對話：\n${hist}\n\n${task}`); } catch { /* */ }
