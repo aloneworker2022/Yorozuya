@@ -6708,6 +6708,12 @@ def droom():
     return FileResponse(WEB_DIR / "droom" / "index.html")
 
 
+@app.get("/droom/play")
+def droom_play():
+    """Doom 風第一人稱小房間：一個妹子剪影（八方向走路 sheet），WASD 移動。靜態頁 web/droom/play.html。"""
+    return FileResponse(WEB_DIR / "droom" / "play.html")
+
+
 @app.get("/test_body")
 def test_body():
     from fastapi.responses import FileResponse
