@@ -4,7 +4,7 @@
  * 成功加接受度＋進度；被拒扣 2–5 並說一句拒絕。她爛醉（≥85）→ 做什麼都成功。
  * 你老婆在場看見 → 依她的忌妒心決定吃醋（緊張↑、放開↓）或變得更開放（放開↑、緊張↓），說一句。 */
 
-import { dateOutfitOf } from "./swap_outfit.js?v=5";
+import { dateOutfitOf } from "./swap_outfit.js?v=8";
 
 /** 場景：bar（酒吧，沒有動作卡）／ktv／hotel_room／hotel_bath。 */
 // 2026-10-24：酒吧（座位：親／摟；廁所：趁機）也有動作卡；誰能出由 swap_flow_rules.teaseWhere 決定（配對、她在不在廁所）

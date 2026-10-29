@@ -9,10 +9,10 @@
  * 數字都在下面的表裡。 */
 import { actLine, SESSION_KEY } from "./swap_select.js?v=66";
 import { createStage } from "./swap_stage.js?v=5";
-import { pickBackdrop } from "./swap_cafe_gen.js?v=35";
+import { pickBackdrop } from "./swap_cafe_gen.js?v=37";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=28";
 import { TEASE_CARDS, TEASE_FX, WIFE_SEE, WIFE_SEE_FB, TEASE_REFUSE_FB, TEASE_OK_FB, SCENE_ZH, sceneBase, ensureAccept, teaseGate, unlockedTease, teaseChance, teaseResult, wifeSees, stripOk, sexPoseFor, sexKey } from "./swap_tease_rules.js?v=11";
-import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=5";
+import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=8";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=9";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=12";
 import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative, portraitTapLine, posesFor, wifePairLine, WIFE_PAIR_LOOK, WIFE_PAIR_FILTER, WIFE_PAIR_EXPR_ZH } from "./swap_chat_sex.js?v=8";

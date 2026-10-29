@@ -7,7 +7,7 @@ import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
 import { bindPairBox } from "./swap_pair_gen.js?v=28";
 import { wornOutfitOf } from "./outfit_pick.js?v=2";
-import { dateOutfitOf, withDateOutfit, lookCharacter, lookFor } from "./swap_outfit.js?v=7";
+import { dateOutfitOf, withDateOutfit, lookCharacter, lookFor } from "./swap_outfit.js?v=8";
 import { loadPools, generateGirl, POOLS as _poolsRef } from "./girl_gen.js?v=5";
 import { rollHusband, enrichHusband, husbandLookEn } from "./husband_gen.js?v=1";
 
@@ -54,8 +54,9 @@ const EXPR_EN = {
 };
 const POSE_EN = {
   // 不要寫 from behind／looking back：前者會被伺服器當成雙人場面，後者等於回頭看玩家。
-  nude_prone: "solo, full body, entire body, head to toe, feet visible, head visible, rear view, bent over, on all fours, ass, on a bed, looking away, head turned away, face in profile, looking down",
-  nude_spread: "solo, full body, entire body, head to toe, feet visible, head visible, lying on back, on a bed, legs spread, knees apart, facing viewer, looking at viewer",
+  // pt295u：背面爬著、鏡頭在臀部後方低角度（不寫 from behind，伺服器會當雙人）
+  nude_prone: "solo, full body, rear view, back view, crawling on all fours, on hands and knees, ass focus, buttocks in foreground, hips raised, view from rear at hip level, low angle, back arched, legs and feet visible, head turned away, looking ahead, face not visible",
+  nude_spread: "solo, full body, entire body, head to toe, feet visible, head visible, lying on back, legs spread, knees apart, facing viewer, looking at viewer",
   nude_ahe: "solo, half-body portrait, upper body, facing viewer, looking at viewer",
   nude_ero: "solo, half-body portrait, upper body, shirtless, facing viewer, looking at viewer",
 };
@@ -72,6 +73,8 @@ const PANEL_EXTRA = {
 const QUALITY_EN = "masterpiece, best quality, detailed, sharp focus, clear face";
 const PORTRAIT_EN = "solo, half-body portrait, upper body, cowboy shot from the waist up, facing viewer, looking at viewer";
 const CROP_NEG = "upper body, half body, cowboy shot, portrait, close-up, cropped, out of frame, head out of frame, feet out of frame, cut off, zoomed in";
+// pt295u：立繪只要本人，不要枕頭／床具／別人（模板存過的也會補上）
+export const SOLO_NEG = "pillow, cushion, bed, bedding, bed sheet, blanket, futon, mattress, furniture, sofa, chair, table, props, object, 2girls, 2boys, multiple girls, multiple boys, multiple people, group, other people, another person, background people, crowd, extra person, partner, couple";
 const FULL_EX = new Set(["climax", "creampie", "nude_prone", "nude_spread"]);
 // 綠幕：要換深綠（使用者說的 dark green，例 #1f5f2f）只改這一行的字（例 "solid dark green background"）；色鍵看「綠比紅藍多多少」，深綠也摳得掉。
 export const GREEN_BG = "solid green background";
@@ -256,7 +259,7 @@ export function rollCkpts(c, list, who = "both") {
 // ---- 模板
 export function defaultTemplate(ch, ex) {
   const who = ch === "husband" ? "1boy, male focus, wearing {man_outfit}, the man: {man}, {man_body}" : "1girl, the woman: {girl}, {girl_body}, wearing {girl_outfit}";
-  const shot = POSE_EN[ex] || (ex === "climax" || ex === "creampie" ? "solo, full body, entire body, head to toe, feet visible, head visible, facing viewer, looking at viewer, on a hotel bed" : PORTRAIT_EN);
+  const shot = POSE_EN[ex] || (ex === "climax" || ex === "creampie" ? "solo, full body, entire body, head to toe, feet visible, head visible, facing viewer, looking at viewer, sitting on the floor" : PORTRAIT_EN);
   // 綠幕和姿勢放最前。妻子這段會整段接到身份後面（伺服器加 BREAK）；丈夫身份與構圖分成兩段。長的身份放最後，被截掉也不影響構圖。
   const pose = [BG_EN, shot, "{expr}"].join(", ");
   const pos = ch === "husband" ? [QUALITY_EN, who, "BREAK", pose].join(", ") : [pose, who].join(", ");
@@ -264,7 +267,7 @@ export function defaultTemplate(ch, ex) {
   const L = ch === "husband" ? (husbandNude ? { rating: "nsfw", neg: "" } : null) : lookFor(ex);
   let base = L && L.rating === "nsfw" ? BASE_NEG.replace(/, nude, nsfw, nipples$/, "") : BASE_NEG;
   if (FULL_EX.has(ex)) base = `${CROP_NEG}, ${base.replace(/^full body, legs, feet, lower body, /, "")}`;
-  const neg = ["BREAK", base, L?.neg || "", BG_NEG, ch === "husband" ? "1girl, woman, female, breasts" : "1boy, man, male, 2girls", "{auto_neg}"].join(", ");
+  const neg = ["BREAK", base, L?.neg || "", BG_NEG, SOLO_NEG, ch === "husband" ? "1girl, woman, female, breasts" : "1boy, man, male, 2girls", "{auto_neg}"].join(", ");
   return { pos, neg, img2img: { on: false, ref: "", denoise: 0.6 } };
 }
 export function templateFor(prompts, ch, ex) {
@@ -282,7 +285,10 @@ export function fillTemplate(tpl, ch, ex, wife, couple) {
   const lc = lookCharacter(g, ch === "other" ? "other" : "wife", ex), outfit = lookFor(ex).outfit === "nude" ? "nothing, completely nude" : (lc?.outfitName || dateOutfitOf(g, ch === "other" ? "other" : "wife"));
   const map = { girl: girlDesc, girl_body: gi.body, girl_outfit: outfit, man: mi.desc, man_body: mi.body, man_outfit: ch === "husband" && (ex === "nude" || ex === "nude_ero") ? "nothing, shirtless, completely nude" : mi.outfit, expr: EXPR_EN[ex] || "", auto_neg: autoNeg(ch, gi, mi) };
   const sub = (t) => String(t || "").replace(/\{(\w+)\}/g, (m, k) => (k in map ? map[k] : m)).replace(/(,\s*)+,/g, ",").replace(/^[,\s]+|[,\s]+$/g, "");
-  return { pos: sub(tpl.pos), neg: sub(tpl.neg) };
+  // 立繪一律單人、無道具：剝掉床／枕頭場景字，負向補 SOLO_NEG
+  const strip = (t) => t.replace(/,\s*(on (a |the )?(hotel )?bed|pillows?|on pillows?|bed sheets?|bedroom)(?=\s*(,|$))/gi, "");
+  const neg = sub(tpl.neg);
+  return { pos: strip(sub(tpl.pos)), neg: neg.includes("pillow, cushion") ? neg : `${neg}, ${SOLO_NEG}` };
 }
 /** /api/imggen 的 body。妻子／對方妻子＝character＋lock_identity＋各自模型；丈夫＝prompt（manInfo 完整 look）。 */
 export function cafeBody(ch, ex, wife, couple, eng, tpl, seed) {

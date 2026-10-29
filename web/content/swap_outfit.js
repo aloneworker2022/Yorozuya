@@ -51,7 +51,7 @@ export const COVER_NEG = "cleavage, bra, visible bra, bra strap, lingerie, under
 export function lookFor(ex) {
   if (ex === "climax" || ex === "creampie") return { stage: "wife", force: true, outfit: "nude", neg: "", rating: "nsfw", framing: "full" };   // pt283u：旅館做愛後的全身坐姿立繪
   // 趴著：全身入鏡，頭轉開，不要看玩家。gaze:false 讓伺服器不要補 looking at viewer。
-  if (ex === "nude_prone") return { stage: "wife", force: true, outfit: "nude", neg: "looking at viewer, looking back, facing viewer, eye contact, looking over shoulder, face towards viewer, standing, front view", rating: "nsfw", framing: "full", gaze: false };
+  if (ex === "nude_prone") return { stage: "wife", force: true, outfit: "nude", neg: "looking at viewer, looking back, facing viewer, eye contact, looking over shoulder, face towards viewer, standing, front view, from above, face focus, upper body, lying on bed, pillow", rating: "nsfw", framing: "full", gaze: false };
   // 開腿：正面可以看玩家，但必須全身入鏡。
   if (ex === "nude_spread") return { stage: "wife", force: true, outfit: "nude", neg: "standing, from behind, all fours, bent over, looking away, head down", rating: "nsfw", framing: "full" };
   if (NUDE_HALF.has(ex)) return { stage: "wife", force: true, outfit: "nude", neg: "", rating: "nsfw", framing: "half" };

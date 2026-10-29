@@ -1,6 +1,6 @@
 /* 把換妻立繪整批交給伺服器。網頁關掉，這台仍會生完。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { api, templateFor, cafeBody } from "./swap_cafe_gen.js?v=36";
+import { api, templateFor, cafeBody } from "./swap_cafe_gen.js?v=37";
 import { PRE_PARK, HOTEL_PORTRAIT } from "./swap_meet_rules.js?v=1";
 
 async function post(path, body) {

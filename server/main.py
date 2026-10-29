@@ -5164,6 +5164,9 @@ _SWAP_KEY = re.compile(r"^((wife|husband|other)~(" + _SWAP_EXPR + r")|other~(cli
 _SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 
 
+_SWAP_LOCK = threading.RLock()   # pt295u：state.json 讀改寫要鎖，不然產圖執行緒和網頁同時寫會互蓋（立繪「生好卻不見」）
+
+
 def _swap_load() -> dict:
     try:
         d = json.loads(_SWAP_STATE.read_text(encoding="utf-8"))
@@ -5437,9 +5440,10 @@ def _pregen_store(owner: str, key: str, raw_url: str) -> None:
         cut = raw
     if not changed and cut_path.is_file() and cut_path.resolve() != src.resolve():
         cut_path.unlink(missing_ok=True)
-    d = _swap_load()
-    d["images"].setdefault(owner, {})[key] = {"raw": raw, "cut": cut, "at": int(time.time())}
-    _swap_save(d)
+    with _SWAP_LOCK:
+        d = _swap_load()
+        d["images"].setdefault(owner, {})[key] = {"raw": raw, "cut": cut, "at": int(time.time())}
+        _swap_save(d)
 
 
 def _clean_jobs(jobs_in) -> list[dict]:
@@ -5517,6 +5521,7 @@ def swap_pregen_retry(body: dict):
                 j["status"] = "done" if _swap_have(j.get("owner") or "", j.get("key") or "") else "pending"
                 j["error"] = ""
                 j["genKey"] = ""
+                j["tries"] = 0
         _pregen_save(d)
         pub = _pregen_public(d)
     _pregen_kick()
@@ -5580,8 +5585,24 @@ async def _pregen_one(bucket: str, owner: str, key: str, token: int) -> None:
                 print(f"[換妻產圖] {key} 好了", flush=True)
                 return
             if row and row[0] == "error":
+                # pt295u：ComfyUI 偶發失敗（逾時、連線、stale running）以前一次就判死 → 換 seed 自動重試 2 次
+                tries = int(job.get("tries") or 0) + 1
+                print(f"[換妻產圖] {key} 失敗（第 {tries} 次）：{row[2]}", flush=True)
+                if tries < 3:
+                    with _PREGEN_LOCK:
+                        d2 = _pregen_load()
+                        for j2 in (d2.get(bucket) or {}).get("jobs") or []:
+                            if j2.get("owner") == owner and j2.get("key") == key:
+                                j2["tries"] = tries
+                                j2["genKey"] = ""
+                                j2["status"] = "pending"
+                                b2 = dict(j2.get("body") or {})
+                                b2["seed"] = random.randint(1, 2**31 - 1)
+                                b2["key"] = f"swap-pregen:{owner}:{key}:{token}:r{tries}"
+                                j2["body"] = b2
+                        _pregen_save(d2)
+                    return
                 _pregen_mark(bucket, owner, key, "error", str(row[2] or "生圖失敗")[:200])
-                print(f"[換妻產圖] {key} 失敗：{row[2]}", flush=True)
                 return
             await asyncio.sleep(2)
         _pregen_mark(bucket, owner, key, "error", "逾時")
