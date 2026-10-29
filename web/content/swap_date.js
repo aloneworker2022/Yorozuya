@@ -31,38 +31,56 @@ export function openSwapDate(ctx, couple, meet) {
   document.getElementById("sd-ov")?.remove();
   const ov = document.createElement("div");
   ov.id = "sd-ov";
+  // 2026-10-29 pt310u：背景滿版不被擠；輸入框在上面；人物下緣貼畫面下緣；對話紀錄疊在上方左側
   ov.innerHTML = `<style>
-    #sd-ov{position:fixed;inset:0;z-index:8700;display:flex;flex-direction:column;background:#1a120c;color:#f4efe6;font:16px/1.45 system-ui,"Noto Sans TC",sans-serif}
+    #sd-ov{position:fixed;inset:0;z-index:8700;overflow:hidden;background:#1a120c;color:#f4efe6;font:16px/1.45 system-ui,"Noto Sans TC",sans-serif}
     #sd-ov button,#sd-ov input{font:inherit;box-shadow:none;text-shadow:none;letter-spacing:0}
-    #sd-ov .top{display:flex;gap:8px;align-items:center;padding:8px 10px;background:rgba(42,33,24,.55);backdrop-filter:blur(6px);position:relative;z-index:3}
+    #sd-ov .bg{position:absolute;inset:0;background:center/cover no-repeat;z-index:0}
+    #sd-ov .fig{position:absolute;left:0;right:0;bottom:0;top:30%;z-index:1;pointer-events:none}
+    #sd-ov .ch{position:absolute;left:50%;bottom:0;height:100%;width:min(86%,560px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;transform:translateX(-50%);transition:transform .55s cubic-bezier(.22,.8,.3,1),opacity .55s ease;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    #sd-ov .ch.from-l{transform:translateX(-50%) translateX(-110vw)}
+    #sd-ov .ch.to-r{transform:translateX(-50%) translateX(110vw);opacity:0;pointer-events:none}
+    #sd-ov .ch img{display:block;max-height:100%;max-width:100%;width:auto;object-fit:contain;object-position:bottom center;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
+    #sd-ov .ch .ph{width:70%;aspect-ratio:3/4;border:1px dashed #6b5a45;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#b7a88f;text-align:center;padding:8px;margin-bottom:12%;white-space:pre-line;background:rgba(0,0,0,.35)}
+    #sd-ov .ch .who{position:absolute;bottom:calc(8px + env(safe-area-inset-bottom));font-size:13px;background:rgba(0,0,0,.5);padding:2px 8px;border-radius:8px}
+    #sd-ov .ch.drink img{animation:sd-drink 1.4s ease-in-out}
+    @keyframes sd-drink{0%,100%{transform:none}30%{transform:rotate(-4deg) translateY(-2%)}60%{transform:rotate(3deg)}}
+    #sd-ov .cheers{position:absolute;left:50%;top:38%;z-index:6;font-size:54px;transform:translate(-50%,0) scale(.4);opacity:0;pointer-events:none;animation:sd-cheers 1.5s ease-out forwards;text-shadow:0 4px 10px #000}
+    @keyframes sd-cheers{20%{opacity:1;transform:translate(-50%,-10px) scale(1.15)}70%{opacity:1;transform:translate(-50%,-30px) scale(1)}100%{opacity:0;transform:translate(-50%,-60px) scale(.9)}}
+    #sd-ov .hud{position:absolute;left:0;right:0;top:0;z-index:3;display:flex;flex-direction:column;pointer-events:none;max-height:62%}
+    #sd-ov .hud>*{pointer-events:auto}
+    #sd-ov .top{display:flex;gap:8px;align-items:center;padding:calc(8px + env(safe-area-inset-top)) 10px 8px;background:rgba(42,33,24,.55);backdrop-filter:blur(6px)}
     #sd-ov .top b{flex:1;font-size:15px}
     #sd-ov .top button{background:rgba(58,46,34,.75);color:#f4efe6;border:0;border-radius:8px;padding:6px 10px}
-    #sd-ov .st{font-size:12px;color:#d9c7a4;padding:4px 10px;background:rgba(36,25,16,.45);position:relative;z-index:3}
-    #sd-ov .mid{flex:1;display:flex;min-height:0;position:relative;overflow:hidden}
-    #sd-ov .log{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;position:relative;z-index:2;max-width:58%;pointer-events:auto}
-    #sd-ov .b{max-width:100%;background:rgba(44,36,28,.58);border-radius:12px;padding:6px 10px;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,.08)}
-    #sd-ov .b.player{background:rgba(36,92,56,.62)}
-    #sd-ov .b .nm{font-size:11px;color:#d9c7a4;text-shadow:0 1px 2px #000}
-    #sd-ov .b.sys{background:transparent;color:#b7a88f;font-size:12px;padding:0;border:0;backdrop-filter:none}
-    #sd-ov .side{position:absolute;right:0;bottom:0;top:0;width:min(72%,520px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:0 4px 0;background:center/cover no-repeat;z-index:1;pointer-events:none}
-    #sd-ov .side img{max-height:96%;max-width:100%;width:auto;object-fit:contain;object-position:bottom center;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
-    #sd-ov .side .ph{width:78%;aspect-ratio:3/4;border:1px dashed #6b5a45;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#b7a88f;text-align:center;padding:8px;margin-bottom:8%}
-    #sd-ov .side .who{margin:0 0 10px;font-size:13px;background:rgba(0,0,0,.4);padding:2px 8px;border-radius:8px;pointer-events:none}
-    #sd-ov .dots{height:14px;color:#d9c7a4;font-size:12px}
-    #sd-ov .acts{display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px;background:rgba(36,25,16,.5);position:relative;z-index:3}
+    #sd-ov .st{font-size:12px;color:#d9c7a4;padding:4px 10px;background:rgba(36,25,16,.45)}
+    #sd-ov form{display:flex;gap:6px;padding:8px 10px;background:rgba(42,33,24,.55);backdrop-filter:blur(6px)}
+    #sd-ov input{flex:1;min-width:0;border:0;border-radius:10px;padding:10px;font-size:16px;background:rgba(244,239,230,.92);color:#1a120c}
+    #sd-ov input:disabled{opacity:.6}
+    #sd-ov form button{background:#c4a574;color:#1a120c;border:0;border-radius:10px;padding:0 14px;min-height:44px}
+    #sd-ov form button:disabled{opacity:.5}
+    #sd-ov .acts{display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px;background:rgba(36,25,16,.4)}
+    #sd-ov .acts:empty{display:none}
     #sd-ov .acts button{background:rgba(58,46,34,.8);color:#f4efe6;border:0;border-radius:999px;padding:8px 12px;min-height:40px}
     #sd-ov .acts button.on{background:#8a5a2a}
-    #sd-ov form{display:flex;gap:6px;padding:8px 10px;background:rgba(42,33,24,.55);backdrop-filter:blur(6px);position:relative;z-index:3}
-    #sd-ov input{flex:1;border:0;border-radius:10px;padding:10px;font-size:16px;background:rgba(244,239,230,.92);color:#1a120c}
-    #sd-ov form button{background:#c4a574;color:#1a120c;border:0;border-radius:10px;padding:0 14px;min-height:44px}
-    #sd-ov .dbg{display:flex;gap:6px;flex-wrap:wrap;padding:4px 10px;background:rgba(18,14,10,.55);position:relative;z-index:3}
+    #sd-ov .log{flex:1 1 auto;min-height:0;overflow:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px;max-width:66%;-webkit-mask-image:linear-gradient(transparent,#000 14px)}
+    #sd-ov .b{max-width:100%;background:rgba(44,36,28,.62);border-radius:12px;padding:6px 10px;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,.08)}
+    #sd-ov .b.player{background:rgba(36,92,56,.66)}
+    #sd-ov .b .nm{font-size:11px;color:#d9c7a4;text-shadow:0 1px 2px #000}
+    #sd-ov .b.sys{background:rgba(0,0,0,.35);color:#d8c9ae;font-size:12px;padding:2px 8px;border:0;backdrop-filter:none}
+    #sd-ov .dots{height:14px;color:#ffe2a8;font-size:12px;padding:0 12px;text-shadow:0 1px 2px #000}
+    #sd-ov .dbg{position:absolute;right:4px;bottom:calc(4px + env(safe-area-inset-bottom));z-index:4;display:flex;flex-direction:column;gap:4px;opacity:.75}
     #sd-ov .dbg button{font-size:11px;background:#333;color:#ccc;border:0;border-radius:6px;padding:4px 6px}
   </style>
-  <div class="top"><b class="ttl"></b><button type="button" class="end">結束</button></div>
-  <div class="st"></div>
-  <div class="mid"><div class="log"></div><div class="side"><div class="ph">立繪還沒好</div><img alt="" hidden><div class="who"></div><div class="dots"></div></div></div>
-  <div class="acts"></div>
-  <form><input maxlength="200" placeholder="說點什麼" enterkeyhint="send" autocomplete="off"><button type="submit">送出</button></form>
+  <div class="bg"></div>
+  <div class="fig"></div>
+  <div class="hud">
+    <div class="top"><b class="ttl"></b><button type="button" class="end">結束</button></div>
+    <div class="st"></div>
+    <form><input maxlength="200" placeholder="說點什麼" enterkeyhint="send" autocomplete="off"><button type="submit">送出</button></form>
+    <div class="acts"></div>
+    <div class="dots"></div>
+    <div class="log"></div>
+  </div>
   <div class="dbg"><span style="font-size:11px;color:#887">測試</span>
     <button type="button" data-d="other">對方接受度+10</button>
     <button type="button" data-d="wife">老婆接受度+10</button>
@@ -87,7 +105,10 @@ export function openSwapDate(ctx, couple, meet) {
   function urlOf(ch, ex) {
     const owner = ch === "wife" ? wife.id : couple.id;
     const bag = images[owner] || {};
-    const chain = String(ex).startsWith("nude") ? [ex, "nude_shy", "nude_normal", "nude", "shy", "normal"] : [ex, "normal", "shy", "happy"];
+    // pt310u #17：旅館一律裸體立繪；沒有裸體圖寧可顯示「還沒好」也不退回穿衣服的
+    if (hotel() && !String(ex).startsWith("nude")) ex = ch === "husband" ? "nude_ero" : /shy|startled/.test(ex) ? "nude_shy" : /happy/.test(ex) ? "nude_happy" : "nude_normal";
+    const chain = hotel() ? [ex, "nude_shy", "nude_normal", "nude", "nude_happy", "nude_ero", "nude_ahe"]
+      : String(ex).startsWith("nude") ? [ex, "nude_shy", "nude_normal", "nude", "shy", "normal"] : [ex, "normal", "shy", "happy"];
     for (const k of chain) { const c = bag[`${ch}~${k}`]?.cut; if (c) return c; }
     return "";
   }
@@ -96,14 +117,31 @@ export function openSwapDate(ctx, couple, meet) {
     if (scene === "bar") return rightNow || "husband";
     return "other";
   }
+  // pt310u #16：每句都帶「誰在哪、跟誰、在做什麼」＋最近對話，免得她們亂講（例如 KTV 說老公在等她，其實他正跟玩家老婆在一起）
+  let lastBeat = "";
+  const BEAT_ZH = { chat: "聊天", kiss: "接吻", oral: "口交", sex: "做愛", bath: "一起洗澡", leak: "做完在休息", breast: "摸胸", butt: "摸屁股", waist: "摟腰", labia: "摸下面", molest: "毛手毛腳", drink: "喝酒", duet: "唱歌" };
+  function sceneCtx(who) {
+    const here = SZ[scene] || scene, act = lastBeat ? `（剛剛在${BEAT_ZH[lastBeat] || lastBeat}）` : "";
+    if (scene === "bar") return `現在四個人（${name.husband}和妻子${name.other}、玩家和妻子${name.wife}）一起坐在${here}同一桌喝酒聊天，還沒交換。`;
+    const where = hotel() ? "隔壁另一間房" : `${here}的另一邊（另一個包廂／另一段步道）`;
+    const base = `已經交換伴侶了：玩家正跟${name.other}單獨在${here}；${name.wife}（玩家的妻子）正跟${name.husband}（${name.other}的丈夫）在${where}${act}。`;
+    if (who === "other") return `${base}你的丈夫${name.husband}此刻正在陪玩家的妻子${name.wife}，不是在等你，也不在你身邊；你身邊的人是玩家。`;
+    if (who === "wife") return `${base}你的丈夫（玩家）此刻正在陪${name.other}；你身邊的人是${name.husband}。`;
+    if (who === "husband") return `${base}你身邊的人是${name.wife}；你的妻子${name.other}正在陪玩家。`;
+    return base;
+  }
+  const histTxt = (box = logs) => box.filter((m) => m.who !== "sys").slice(-8).map((m) => `${m.who === "player" ? "玩家" : name[m.who]}：${m.text}`).join("\n");
   async function say(who, task, fallback) {
+    const ctxTxt = `${sceneCtx(who)}${(meet.drunk?.[who] || 0) >= 60 ? "你已經喝醉了。" : ""}`;
+    const box = watching && (who === "wife" || who === "husband") && scene !== "bar" ? watchLogs : logs;
+    const hist = histTxt(box), histPart = hist ? `最近的對話：\n${hist}\n` : "";
     try {
       if (who === "wife" && ctx.say) {
-        const t = await ctx.say(wife, `（換妻約會，現在在${SZ[scene] || scene}。${task}用「（動作）台詞」只寫一句。）`, fallback);
+        const t = await ctx.say(wife, `（換妻約會，現在在${SZ[scene] || scene}。${ctxTxt}${histPart}${task}用「（動作）台詞」只寫一句，不要替別人說話。）`, fallback);
         if (t) return String(t).slice(0, 140);
       } else if ((who === "husband" || who === "other") && ctx.chat) {
         const self = who === "husband" ? `你是${name.husband}（男），你的妻子是${name.other}` : `你是${name.other}（女），你的丈夫是${name.husband}`;
-        const t = await ctx.chat(`${self}。這是跟另一對夫妻的換妻約會，現在在${SZ[scene] || scene}。玩家是另一位丈夫。用「（動作）台詞」只寫一句。`, task);
+        const t = await ctx.chat(`${self}。這是跟另一對夫妻的換妻約會，現在在${SZ[scene] || scene}。玩家是另一位丈夫，他的妻子是${name.wife}。${ctxTxt}用「（動作）台詞」只寫你自己的一句，不要替別人說話、不要旁白。`, `${histPart}${task}`);
         if (t) return String(t).slice(0, 140);
       }
     } catch { /* 用句庫 */ }
@@ -118,16 +156,28 @@ export function openSwapDate(ctx, couple, meet) {
       : `<div class="b ${m.who === "player" ? "player" : ""}"><div class="nm">${esc(name[m.who] || "")}</div>${esc(m.text)}</div>`).join("") || `<div class="b sys">${watching ? "他們下一動才會說話。" : "今晚剛開始。"}</div>`;
     if (atBottom) log.scrollTop = log.scrollHeight;
   }
+  // pt310u #2：換人＝新的人從左邊滑進來、原本的人從中間往右滑出
+  let figWho = "", figNode = null;
+  function figFill(node, who, url) {
+    node.dataset.url = url || "";
+    node.innerHTML = url ? `<img alt="" src="${esc(url)}"><div class="who">${esc(name[who] || "")}</div>`
+      : `<div class="ph">${esc(name[who] || "")}\n立繪還沒好</div><div class="who">${esc(name[who] || "")}</div>`;
+  }
   function renderSide() {
     const who = shown();
     const accept = who === "other" ? meet.accept.other : who === "wife" ? meet.accept.wife : 0;
     const ex = portraitExpr(who, { scene, act: sideAct, accept, mood: sideMood });
     const url = urlOf(who, ex);
-    const img = $(".side img"), ph = $(".side .ph");
-    if (url) { img.src = url; img.hidden = false; ph.hidden = true; } else { img.hidden = true; ph.hidden = false; ph.textContent = `${name[who] || ""}\n立繪還沒好`; }
-    $(".who").textContent = name[who] || "";
-    $(".dots").textContent = typing ? "正在輸入…" : "";
-    $(".side").style.backgroundImage = `url(${backdrop(scene)})`;
+    const fig = $(".fig");
+    if (who !== figWho || !figNode) {
+      const old = figNode;
+      if (old) { old.classList.add("to-r"); setTimeout(() => old.remove(), 600); }
+      const n = document.createElement("div"); n.className = "ch from-l"; n.dataset.who = who; figFill(n, who, url);
+      fig.append(n); void n.offsetWidth; n.classList.remove("from-l");
+      figNode = n; figWho = who;
+    } else if ((figNode.dataset.url || "") !== (url || "")) figFill(figNode, who, url);
+    $(".dots").textContent = typing ? `${name[rightNow] || ""}正在輸入…` : "";
+    $(".bg").style.backgroundImage = `url(${backdrop(scene)})`;
   }
   let sideAct = "", sideMood = "";
   function renderStatus() {
@@ -143,7 +193,7 @@ export function openSwapDate(ctx, couple, meet) {
     if (stage2()) {
       for (const act of teaseList(scene)) add(TEASE_ZH[act], () => doTease(act));
       if (scene === "park") add("走走", () => doSoft("walk", "你們在公園走了一小段。"));
-      if (scene === "ktv") { add("對唱", () => doSoft("duet", "你們唱了一首。")); add("喝酒", () => doDrink()); }
+      if (scene === "ktv") { add("對唱", () => doSoft("duet", "你們唱了一首。")); add("敬酒", () => doToast()); }
       if (meet.accept.other > HOTEL_AT) add("去旅館", () => proposeHotel());
     }
   }
@@ -177,10 +227,14 @@ export function openSwapDate(ctx, couple, meet) {
     render();
   }
 
+  // pt310u #4：酒吧＝玩家說一句算一回合；三個人依序回，每句都等打字＋讀完才換下一個，不再自己一直刷
+  const readMs = (t) => Math.min(5200, Math.max(1600, String(t || "").length * 90));
+  function lockInput(on) { const i = $("input"), b = $("form button"); i.disabled = on; b.disabled = on; i.placeholder = on ? "等大家說完…" : "說點什麼"; }
   async function npcSay(who, task, fallback) {
-    busy = true; typing = true; rightNow = who; sideMood = ""; renderSide();
+    typing = true; rightNow = who; sideMood = ""; renderSide();
     const text = await say(who, task, fallback);
     typing = false;
+    if (ended) return text;
     const box = watching && (who === "wife" || who === "husband") && scene !== "bar" ? watchLogs : logs;
     push(who, text, box);
     if (scene === "bar") {
@@ -188,20 +242,34 @@ export function openSwapDate(ctx, couple, meet) {
       addAccept(meet, "wife", g.wife); addAccept(meet, "other", g.other);
       noteLock(who);
     }
-    busy = false; render();
-    if (wantReply && !leaving) { wantReply = false; const n = nextNpc(); void npcSay(n.who, n.task, n.fb); }
+    render();
+    await sleep(readMs(text));   // 讓玩家看完這句
+    return text;
+  }
+  async function npcRound(first) {
+    if (busy || ended) return;
+    busy = true; lockInput(true);
+    try {
+      if (scene === "bar") {
+        const order = ["husband", "other", "wife"];
+        const ks = first ? [first, ...order.filter((k) => k !== first)] : order;
+        for (const who of ks) {
+          if (ended || leaving || scene !== "bar") break;
+          await npcSay(who, who === ks[0] ? "玩家剛剛說了話，回應他一句。" : "接著前面大家說的，在四個人的酒桌上自然地說一句（可以回玩家，也可以回剛剛說話的人）。", pick(FB[who] || FB.other));
+        }
+      } else {
+        const n = nextNpc();
+        await npcSay(n.who, n.task, n.fb);
+      }
+    } finally { busy = false; if (!ended) { lockInput(false); render(); } }
   }
   function nextNpc() {
-    if (stage2() || hotel()) return { who: "other", task: "你現在跟玩家單獨在一起。他剛剛說了話。你的回應可以害羞、可以拒絕，但留在這裡。", fb: pick(FB.other) };
-    const order = ["husband", "other", "wife"];
-    const i = order.indexOf(rightNow);
-    const who = order[(i + 1) % order.length];
-    return { who, task: "輪到你在四個人的酒桌上說一句，自然一點。", fb: pick(FB[who] || FB.other) };
+    return { who: "other", task: "你現在跟玩家單獨在一起。他剛剛說了話。你的回應可以害羞、可以拒絕，但留在這裡。", fb: pick(FB.other) };
   }
 
   function sendText(text) {
     const t = String(text || "").trim(); if (!t || ended) return;
-    if (watching) return;
+    if (watching || busy) return;
     push("player", t);
     if (scene === "bar") {
       const g = barChatGain("player");
@@ -229,9 +297,8 @@ export function openSwapDate(ctx, couple, meet) {
       } else sideAct = "";
     }
     render();
-    const n = nextNpc();
-    if (busy) wantReply = true;
-    else void npcSay(n.who, n.task, n.fb);
+    const first = scene === "bar" ? (["husband", "other", "wife"].find((k) => t.includes(name[k])) || "") : "";
+    void npcRound(first);
   }
 
   function doTease(act) {
@@ -260,13 +327,18 @@ export function openSwapDate(ctx, couple, meet) {
     sys(g.ok && g.drunk ? `她喝了。醉度 +${g.drunk}${g.accept ? `，接受度 +${g.accept}` : "，接受度沒有加"}。` : "她搖頭，這杯沒喝。");
     render();
   }
+  // pt310u #3：酒吧／KTV 點人物＝敬酒：乾杯特效＋她仰頭喝
   function doToast() {
     const who = shown();
-    if (scene !== "bar" || !who || who === "player") return;
-    const t = toastOf(who, who === "husband" ? 80 : meet.accept[who] || 0);
-    if (who === "wife" || who === "other") addAccept(meet, who, t.accept);
-    addDrunk(meet, who, t.drunk);
-    sys(t.drank ? `${name[who]}喝了你敬的酒。${t.accept ? `接受度 +${t.accept}。` : ""}` : `${name[who]}沒有喝。`);
+    if ((scene !== "bar" && scene !== "ktv") || !who || who === "player" || busy) return;
+    const t = scene === "bar" ? toastOf(who, who === "husband" ? 80 : meet.accept[who] || 0) : (() => { const g = playerStageGain("drink"); return { drank: g.ok, accept: g.accept, drunk: g.drunk }; })();
+    const fx = document.createElement("div"); fx.className = "cheers"; fx.textContent = t.drank ? "🍻" : "🙅"; ov.append(fx); setTimeout(() => fx.remove(), 1600);
+    if (t.drank && figNode) { figNode.classList.remove("drink"); void figNode.offsetWidth; figNode.classList.add("drink"); }
+    if ((who === "wife" || who === "other") && t.accept) addAccept(meet, who, t.accept);
+    if (t.drunk) addDrunk(meet, who, t.drunk);
+    push("player", "（舉杯）乾杯！");
+    sys(t.drank ? `${name[who]}跟你碰杯，一口喝掉。醉度 ${meet.drunk[who] ?? ""}${t.accept ? `，接受度 +${t.accept}` : ""}。` : `${name[who]}笑著搖頭，這杯沒喝。`);
+    if (scene === "bar") noteLock(who);
     render();
   }
   function proposeHotel() {
@@ -282,7 +354,7 @@ export function openSwapDate(ctx, couple, meet) {
     if (pairBusy || ended || scene === "bar") return;
     pairBusy = true;
     const beat = hotel() ? hotelHusbandAct(meet) : husbandBeat(meet, scene);
-    beatN += 1;
+    beatN += 1; lastBeat = beat.act || "";
     if (watching) {
       if (beat.act === "sex") { spread = !spread; sideMood = spread ? "spread" : ""; }
       watchPenalty(meet);
@@ -310,12 +382,8 @@ export function openSwapDate(ctx, couple, meet) {
   $("input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); $("form").requestSubmit(); }
   });
-  let hold = 0;
-  const side = $(".side");
-  side.addEventListener("pointerdown", () => { if (scene !== "bar") return; hold = setTimeout(doToast, 520); });
-  const holdEnd = () => clearTimeout(hold);
-  side.addEventListener("pointerup", holdEnd); side.addEventListener("pointerleave", holdEnd);
-  side.addEventListener("contextmenu", (e) => e.preventDefault());
+  $(".fig").addEventListener("click", (e) => { if (e.target.closest(".ch") && !watching) doToast(); });
+  $(".fig").addEventListener("contextmenu", (e) => e.preventDefault());
   ov.querySelectorAll("[data-d]").forEach((b) => b.addEventListener("click", () => {
     const d = b.dataset.d;
     if (d === "other") addAccept(meet, "other", 10);
@@ -326,15 +394,10 @@ export function openSwapDate(ctx, couple, meet) {
   }));
 
   const timer = setInterval(() => { if (!ended) void pairBeat(); }, 10000);
-  const barTimer = setInterval(() => {
-    if (ended || scene !== "bar" || busy || leaving) return;
-    const n = nextNpc();
-    void npcSay(n.who, n.task, n.fb);
-  }, 9000);
   const imgTimer = setInterval(() => { if (!ended) void refreshImages().then(() => { if (!ended) renderSide(); }); }, 4000);
   function finish(why) {
     if (ended) return; ended = true;
-    clearInterval(timer); clearInterval(barTimer); clearInterval(imgTimer);
+    clearInterval(timer); clearInterval(imgTimer);
     try {
       localStorage.setItem(LAST_KEY, JSON.stringify({ at: Date.now(), why, wifeId: wife.id, coupleId: couple.id, semen: meet.semen, orgasm: meet.orgasm, accept: meet.accept }));
     } catch { /* */ }
@@ -343,9 +406,9 @@ export function openSwapDate(ctx, couple, meet) {
   }
   void refreshImages().then(() => {
     render();
-    sys(scene === "bar" ? "四個人在酒吧。聊天、長按右邊的人敬酒。兩位妻子超過 50 並開口之後就會同意。" : `${SZ[scene] || ""}。`);
+    sys(scene === "bar" ? "四個人在酒吧。你說一句，大家輪流回。點人物可以敬酒。兩位妻子超過 50 並開口之後就會同意。" : `${SZ[scene] || ""}。`);
     render();
-    if (scene === "bar") void npcSay("husband", "你是東道主，先開口歡迎另一對夫妻。", pick(FB.husband));
+    if (scene === "bar") { busy = true; lockInput(true); void npcSay("husband", "你是東道主，先開口歡迎另一對夫妻。", pick(FB.husband)).finally(() => { busy = false; if (!ended) lockInput(false); }); }
     if (hotel()) queuePortraits("hotel", wife, couple).catch((e) => ctx.debug?.(`換妻旅館圖：${e.message || e}`));
   });
   return ov;
