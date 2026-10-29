@@ -54,17 +54,19 @@ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
  // 不讓玩家穿過妹子
  const gx=P.x-G.x,gy=P.y-G.y,gd=Math.hypot(gx,gy);if(gd<.4){P.x=G.x+gx/gd*.4;P.y=G.y+gy/gd*.4}
  ai(dt);render();requestAnimationFrame(frame)}
+// 視角高度（牆高=1；0.5 為原本的低視角）
+const EYE=0.62;
 function render(){const d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
- for(let y=0;y<SH;y++){const ceil=y<SH/2,rd=Math.abs(SH/2/(y-SH/2+.5)),
+ for(let y=0;y<SH;y++){const ceil=y<SH/2,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-SH/2+.5)),
   lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
   for(let x=0;x<SW;x++,fx+=stx,fy+=sty){const i=(y*SW+x)*4,chk=((Math.floor(fx)+Math.floor(fy))&1),sh=Math.min(1,.45+2.5/rd);
    const c=ceil?[150,145,160]:(chk?[200,190,175]:[175,165,150]);d[i]=c[0]*sh;d[i+1]=c[1]*sh;d[i+2]=c[2]*sh;d[i+3]=255}}
  for(let x=0;x<SW;x++){const cam=2*x/SW-1,rx=dx+px*cam,ry=dy+py*cam;let mx=P.x|0,my=P.y|0;
   const ddx=Math.abs(1/rx),ddy=Math.abs(1/ry),sx=rx<0?-1:1,sy=ry<0?-1:1;let sdx=(rx<0?P.x-mx:mx+1-P.x)*ddx,sdy=(ry<0?P.y-my:my+1-P.y)*ddy,side=0;
   for(let k=0;k<64;k++){if(sdx<sdy){sdx+=ddx;mx+=sx;side=0}else{sdy+=ddy;my+=sy;side=1}if(wall(mx,my))break}
-  const pd=side?sdy-ddy:sdx-ddx;zb[x]=pd;const lh=SH/pd|0,y0=Math.max(0,(SH-lh)/2|0),y1=Math.min(SH,(SH+lh)/2|0);
+  const pd=side?sdy-ddy:sdx-ddx;zb[x]=pd;const lh=SH/pd|0,wt=SH/2-lh*(1-EYE),y0=Math.max(0,wt|0),y1=Math.min(SH,(SH/2+lh*EYE)|0);
   let u=side?P.x+pd*rx:P.y+pd*ry;u-=Math.floor(u);const t=M[my][mx],shd=Math.min(1,.45+2.5/pd);
-  for(let y=y0;y<y1;y++){const v=(y-(SH-lh)/2)/lh,c=wallCol(t,u,v,side),i=(y*SW+x)*4;d[i]=c[0]*shd;d[i+1]=c[1]*shd;d[i+2]=c[2]*shd}}
+  for(let y=y0;y<y1;y++){const v=(y-wt)/lh,c=wallCol(t,u,v,side),i=(y*SW+x)*4;d[i]=c[0]*shd;d[i+1]=c[1]*shd;d[i+2]=c[2]*shd}}
  g.putImageData(img,0,0);
  // 妹子 billboard：依「她面向」與「她→玩家」夾角選 8 方向 sheet
  const vx=G.x-P.x,vy=G.y-P.y,inv=1/(px*dy-dx*py),tx=inv*(dy*vx-dx*vy),tz=inv*(-py*vx+px*vy);
@@ -72,7 +74,7 @@ function render(){const d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,
  for(const q of DIRS){const e=Math.abs(((rel-q[0])+540)%360-180);if(e<Math.abs(((rel-best[0])+540)%360-180))best=q}
  const im=sheetFor(best[1]),fr=G.moving?(G.ph|0)%8:0;
  document.getElementById("st").textContent=`妹子：${G.moving?"走路":"站著"}（${{front:"正面",front_right:"右前",right:"右",back_right:"右後",back:"背面",back_left:"左後",left:"左",front_left:"左前"}[best[1]]}）　距離 ${Math.hypot(vx,vy).toFixed(1)}`;
- if(tz>.15&&im.complete&&im.naturalWidth){const hgt=SH/tz*1.15,wid=hgt*64/140,cx=SW/2*(1+tx/tz),top=SH/2+SH/tz*.5-hgt;
+ if(tz>.15&&im.complete&&im.naturalWidth){const hgt=SH/tz*1.15,wid=hgt*64/140,cx=SW/2*(1+tx/tz),top=SH/2+SH/tz*EYE-hgt;
   const shd=Math.min(1,2.2/tz);
   for(let x=Math.max(0,cx-wid/2|0);x<Math.min(SW,cx+wid/2);x++){if(zb[x]<tz)continue;const sxp=fr*64+((x-(cx-wid/2))/wid*64|0);g.drawImage(im,sxp,0,1,140,x,top,1,hgt)}}}
 requestAnimationFrame(frame);
