@@ -8,6 +8,7 @@ import {
 } from "./swap_meet_rules.js?v=2";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=13";
 import { runHotelSex, createLocalAnim, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, posesFor, rollAffDelta, swapAffStage, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative } from "./swap_chat_sex.js?v=8";
+import { clinkFx, onLongPress } from "./swap_clink.js?v=1";
 import { sexKey } from "./swap_tease_rules.js?v=11";
 import { pairOwner, pairCut, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=28";
 
@@ -64,7 +65,7 @@ export function openSwapDate(ctx, couple, meet) {
     #sd-ov .pbg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:.85}
     #sd-ov .pbg .pbl{position:absolute;left:8px;bottom:calc(8px + env(safe-area-inset-bottom));font-size:12px;background:rgba(0,0,0,.55);padding:2px 8px;border-radius:8px}
     #sd-ov .fig{position:absolute;left:0;right:0;bottom:0;top:30%;z-index:1;pointer-events:none}
-    #sd-ov .ch{position:absolute;left:50%;bottom:0;height:100%;width:min(86%,560px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;transform:translateX(-50%);transition:transform .55s cubic-bezier(.22,.8,.3,1),opacity .55s ease;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    #sd-ov .ch{position:absolute;left:50%;bottom:0;height:100%;width:min(86%,560px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;transform:translateX(-50%);transition:transform .55s cubic-bezier(.22,.8,.3,1),opacity .55s ease;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:manipulation}
     #sd-ov .ch.from-l{transform:translateX(-50%) translateX(-110vw)}
     #sd-ov .ch.to-r{transform:translateX(-50%) translateX(110vw);opacity:0;pointer-events:none}
     #sd-ov .ch img{display:block;max-height:100%;max-width:100%;width:auto;object-fit:contain;object-position:bottom center;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
@@ -492,7 +493,7 @@ export function openSwapDate(ctx, couple, meet) {
     const who = shown();
     if ((scene !== "bar" && scene !== "ktv") || !who || who === "player" || busy) return;
     const t = scene === "bar" ? toastOf(who, who === "husband" ? 80 : meet.accept[who] || 0) : (() => { const g = playerStageGain("drink"); return { drank: g.ok, accept: g.accept, drunk: g.drunk }; })();
-    const fx = document.createElement("div"); fx.className = "cheers"; fx.textContent = t.drank ? "🍻" : "🙅"; ov.append(fx); setTimeout(() => fx.remove(), 1600);
+    clinkFx(ov, !!t.drank);
     if (t.drank && figNode) { figNode.classList.remove("drink"); void figNode.offsetWidth; figNode.classList.add("drink"); }
     if ((who === "wife" || who === "other") && t.accept) addAccept(meet, who, t.accept);
     if (t.drunk) addDrunk(meet, who, t.drunk);
@@ -552,7 +553,8 @@ export function openSwapDate(ctx, couple, meet) {
   $("input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); $("form").requestSubmit(); }
   });
-  $(".fig").addEventListener("click", (e) => { if (e.target.closest(".ch") && !watching) doToast(); });
+  // pt312u：按住人物 0.5 秒＝敬酒（短按不喝）
+  onLongPress($(".fig"), (t) => (!watching && (scene === "bar" || scene === "ktv") ? t.closest?.(".ch") : null), () => doToast());
   $(".fig").addEventListener("contextmenu", (e) => e.preventDefault());
   ov.querySelectorAll("[data-d]").forEach((b) => b.addEventListener("click", () => {
     const d = b.dataset.d;
@@ -589,7 +591,7 @@ export function openSwapDate(ctx, couple, meet) {
   }
   void refreshImages().then(() => {
     render();
-    sys(scene === "bar" ? "四個人在酒吧。你說一句，大家輪流回。點人物可以敬酒。兩位妻子超過 50 並開口之後就會同意。" : `${SZ[scene] || ""}。`);
+    sys(scene === "bar" ? "四個人在酒吧。你說一句，大家輪流回。按住人物可以敬酒。兩位妻子超過 50 並開口之後就會同意。" : `${SZ[scene] || ""}。`);
     render();
     if (scene === "bar") { busy = true; lockInput(true); void npcSay("husband", "你是東道主，先開口歡迎另一對夫妻。", pick(FB.husband)).finally(() => { busy = false; if (!ended) lockInput(false); }); }
     if (hotel()) queuePortraits("hotel", wife, couple).catch((e) => ctx.debug?.(`換妻旅館圖：${e.message || e}`));

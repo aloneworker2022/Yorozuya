@@ -7,7 +7,7 @@
  * 卡牌：手牌 3 張（canvas 像素畫），用掉補一張；大膽度 ≥4 要進度夠。成功與否＝擲（對象數值＋醉度＋你的姿態）。
  * 醉度：每個人（含你）0–100；喝酒 +10–20（烈酒更多），看體型／個性的酒量；每分鐘慢慢退。
  * 數字都在下面的表裡。 */
-import { actLine, SESSION_KEY } from "./swap_select.js?v=71";
+import { actLine, SESSION_KEY } from "./swap_select.js?v=72";
 import { createStage } from "./swap_stage.js?v=5";
 import { pickBackdrop } from "./swap_cafe_gen.js?v=38";
 import { pairOwner, startPairLoop, applyPairFrame, pairCut, playEjac, ejacSlot } from "./swap_pair_gen.js?v=28";
@@ -16,6 +16,7 @@ import { lookKeyOf, lookFallback } from "./swap_outfit.js?v=8";
 import { DECK_PARK, DECK_BAR, DECK_KTV, DECK_HOTEL_ROOM, DECK_HOTEL_BATH, deckFor, handCardOk, isAlcoholCard, hotelHand } from "./swap_deck_rules.js?v=9";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=13";
 import { rollAffDelta, runHotelSex, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, createLocalAnim, rollSexCd, sexCdBlocks, tickSexCd, swapAffStage, swapAttitude, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative, portraitTapLine, posesFor, wifePairLine, WIFE_PAIR_LOOK, WIFE_PAIR_FILTER, WIFE_PAIR_EXPR_ZH } from "./swap_chat_sex.js?v=8";
+import { clinkFx, onLongPress } from "./swap_clink.js?v=1";
 import { ensureWifeAccept, ensureSceneRounds, bumpRound, END_FB, backdropOf, stageOf, nextOptions, MOVE, ensureMove, rollMove, urgeMove, allAgree, resetMove, ensurePairs, wifeSwapped, otherSwapped, anySwapped, proposeSwap, pairGroups, HOME, husbandIntent, canMove, hotelMode, vomitChance, teaseWhere, barPairAct, barToiletOk, BAR_LADDER, ktvPairAct, ktvAccGain, KTV_ACC, KTV_STRIP_AT, ejacActOk, npcProposeMove, consentFree, pairIntimate, rollEjac, EJAC, teaseSteps, ZOOM, zoomFallback, parkReady, husbandPickNext, hotelPairAct, HOTEL_PAIR_MS, PAIR_SFX_MS, sexSfx } from "./swap_flow_rules.js?v=12";
 
 // ============================================================ 調整用的表
@@ -436,7 +437,18 @@ export function openBar(ctx = {}, c, S = {}) {
   // 2026-10-25：立繪出現＝卡牌移出畫面（卡牌回中央只在 idleUI：沒立繪、對話結束）
   // pt284u：內射（creampie）／高潮癱軟（climax）立繪可以點：她說一句變態色情回應（本地句庫，不叫 AI）
   const tapLook = () => (base === "hotel" && ["creampie", "climax"].includes(sess.look?.other || "") ? sess.look.other : "");
-  const armTap = () => { const n = $(".st")?.querySelector('.swap-stage-char[data-id="other"]'); if (n) { const on = !!tapLook(); n.style.pointerEvents = on ? "auto" : "none"; n.style.cursor = on ? "pointer" : ""; } };
+  const canToast = () => (scene === "bar" || scene === "ktv") && !toiletOn && !closed;
+  const armTap = () => { for (const n of $(".st")?.querySelectorAll(".swap-stage-char[data-id]") || []) { const on = (n.dataset.id === "other" && !!tapLook()) || (canToast() && n.dataset.id !== "player"); n.style.pointerEvents = on ? "auto" : "none"; n.style.cursor = on ? "pointer" : ""; n.style.webkitTouchCallout = "none"; n.style.userSelect = "none"; } };
+  // pt312u：酒吧／KTV 按住人物 0.5 秒＝敬酒：碰杯動畫＋他/她喝一杯、你也喝
+  if ($(".st")) onLongPress($(".st"), (t) => (canToast() && !speaking ? t.closest?.(".swap-stage-char[data-id]") : null), (el) => {
+    const k = el.dataset.id; if (!(k in sess.drunk) || k === "player" || isAway(k)) return;
+    const ok = k === "husband" || sess.drunk[k] < 95;
+    clinkFx($(".st"), ok);
+    if (!ok) { note(`${name[k]}搖搖頭，這杯喝不下了。`); return; }
+    drink(k); drink("player"); bumpAff(k, 1, "敬酒"); prog(0.5, "敬酒");
+    el.animate?.([{ transform: "rotate(0)" }, { transform: "rotate(-4deg) translateY(-6px)" }, { transform: "rotate(0)" }], { duration: 900, delay: 700, composite: "add" });
+    note(`🍻 你和${name[k]}碰杯，一口乾了！${name[k]}醉度 ${sess.drunk[k]}`); save(); renderNb();
+  });
   let tapLast = "", tapBusy = false;
   $(".st")?.addEventListener("click", async (e) => {
     const look = tapLook(); if (!look || tapBusy || speaking || !e.target.closest?.('.swap-stage-char[data-id="other"]')) return;

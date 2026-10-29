@@ -1,7 +1,7 @@
 /* 換妻書籤：產圖時掛在房間左邊。產完才赴約。進度在伺服器，關掉頁面再打開還在。 */
 import { api } from "./swap_cafe_gen.js?v=38";
 import { pregenState, pregenRetry, pregenCancel, pregenEnter } from "./swap_pregen.js?v=5";
-import { openSwapDate } from "./swap_date.js?v=5";
+import { openSwapDate } from "./swap_date.js?v=6";
 import { freshMeet, testMeet, SLOT_ZH } from "./swap_meet_rules.js?v=2";
 
 // pt306u：暫時預約／赴約不收錢方便測試；要恢復收費改成 false
