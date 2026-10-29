@@ -6701,6 +6701,13 @@ def test_body_m():
     return FileResponse(WEB_DIR / "test_bodyM" / "index.html")
 
 
+@app.get("/droom")
+def droom():
+    """房間妹子剪影預覽（平視、乳暈／體型／胸型×罩杯／八方向走路），靜態頁在 web/droom/。"""
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "droom" / "index.html")
+
+
 @app.get("/test_body")
 def test_body():
     from fastapi.responses import FileResponse
