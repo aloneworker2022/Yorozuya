@@ -77,13 +77,14 @@ export function jobsForAct(act, scene, strip = 0) {
   return [{ kind: "tease", act, nude, under, key: teaseKey(act, nude || (under ? "under" : false)) }];
 }
 /** 預產（開車黑畫面）：場景那一整組缺的，一張一張生。onTick(done, total, fail)。回最新 S。 */
-export async function pregenTease(c, scene, S, { onTick = () => {}, debug = () => {} } = {}) {
+export async function pregenTease(c, scene, S, { onTick = () => {}, debug = () => {}, alive = () => true } = {}) {
   // 2026-10-26 pt259u：旅館＝房間＋浴室一次產完（去浴室不用再等）
   const all = String(scene).startsWith("hotel") ? [...pregenKeys("hotel_room"), ...pregenKeys("hotel_bath")] : pregenKeys(scene);
   const seen = new Set(), want = all.filter((j) => !seen.has(j.key) && seen.add(j.key) && !cachedUrl(S, c, j.key));
   let done = 0, fail = 0; onTick(0, want.length, 0);
   const eng = want.length ? await gameEngine().catch(() => null) : null;
   for (const j of want) {
+    if (!alive()) break;   // pt303u：取消預約就停
     try { const imgs = await genTeaseImage(c, j, { eng, debug }); if (imgs) S = { ...S, images: imgs }; }
     catch (e) { fail++; debug(`換妻：動作圖 ${j.key} 失敗：${e?.message || e}`); }
     onTick(++done, want.length, fail);

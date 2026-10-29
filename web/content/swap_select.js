@@ -8,8 +8,8 @@ import { openBar } from "./swap_bar.js?v=61";
 import { dateOutfitOf } from "./swap_outfit.js?v=8";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=12";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
-import { queuePortraits, kickTeasePregen } from "./swap_pregen.js?v=4";
-import { rememberScene } from "./swap_bookmark.js?v=2";
+import { queuePortraits, kickTeasePregen } from "./swap_pregen.js?v=5";
+
 
 export const SESSION_KEY = "yorozuya.swap.session";
 const ROSTER_MIN = 4;   // 僅 loadRoster（咖啡廳測試工具）用
@@ -50,6 +50,9 @@ const wLooks = (w) => {
   const cup = w.look?.cup, cupS = cup ? (/罩杯/.test(cup) ? cup : `${cup}罩杯`) : "";
   return [w.look?.hair_color || w.look?.hair, w.look?.build, cupS, w.look?.height_cm && `${w.look.height_cm}cm`, w.look?.style].filter(Boolean).join("・");
 };
+const persOf = (p) => [p?.swapType, Array.isArray(p?.personality) ? p.personality.join("、") : p?.personality].filter(Boolean).join("・") || "—";
+const bodyH = (h) => { const ht = h.height_cm || h.look?.height_cm; return [`${h.look?.build_zh || BZH[h.build] || h.build || "普通"}體型`, ht && `${ht}cm`].filter(Boolean).join("、"); };
+const bodyW = (w) => { const cup = w.look?.cup, ht = w.look?.height_cm; return [w.look?.build, cup && (/罩杯/.test(cup) ? cup : `${cup}罩杯`), ht && `${ht}cm`].filter(Boolean).join("、") || "—"; };
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
 
 /** 咖啡廳測試面板用：讀／補 /api/swap/cafe 名冊。正式選夫妻請用 loadCandidates，不要叫這個。 */
@@ -96,11 +99,10 @@ export function openSwapSelect(ctx = {}) {
     for (const c of pack.candidates) {
       const h = c.husband, w = c.wife, b = document.createElement("button");
       b.type = "button"; b.className = "swp-card"; b.dataset.couple = c.id;
+      // pt303u：只放 姓名・價錢・個性・身材
       b.innerHTML = `<div class="swp-top"><span class="swp-nm">${esc(h.name)} ＆ ${esc(w.name)}</span><span class="pr">${h.swapPrice} 金</span></div>
-        <div class="swp-p">丈夫 ${esc(h.age)} 歲・妻子 ${esc(w.age)} 歲</div>
-        <div><span class="tg h">${esc(h.swapType || "")}</span><span class="tg w">${esc(w.swapType || "")}</span></div>
-        <div class="swp-p"><b>他</b> ${esc(hLooks(h))}${h.personality ? `・${esc(h.personality)}` : ""}</div>
-        <div class="swp-p"><b>她</b> ${esc(wLooks(w))}${persW(w) ? `・${esc(persW(w))}` : ""}</div>`;
+        <div class="swp-p"><b>他</b> 個性：${esc(persOf(h))}・身材：${esc(bodyH(h))}</div>
+        <div class="swp-p"><b>她</b> 個性：${esc(persOf(w))}・身材：${esc(bodyW(w))}</div>`;
       b.addEventListener("click", () => confirm(c));
       list.append(b);
     }
@@ -115,11 +117,9 @@ export function openSwapSelect(ctx = {}) {
     const h = c.husband, w = c.wife;
     title(`${h.name} ＆ ${w.name}`);
     body.innerHTML = `<div class="swp-pick"><div class="swp-card" style="cursor:default">
-      <div class="swp-p"><b>丈夫・${esc(h.name)}</b> ${esc(h.age)} 歲・${esc(h.swapType || "")}</div>
-      <div class="swp-p">${esc(hLooks(h))}${h.personality ? `・${esc(h.personality)}` : ""}</div>
-      <div class="swp-p"><b>妻子・${esc(w.name)}</b> ${esc(w.age)} 歲・${esc(w.swapType || "")}</div>
-      <div class="swp-p">${esc(wLooks(w))}${persW(w) ? `・${esc(persW(w))}` : ""}</div>
-      <div class="swp-p"><b>費用</b> ${h.swapPrice} 金</div>
+      <div class="swp-p"><b>丈夫・${esc(h.name)}</b>　個性：${esc(persOf(h))}　身材：${esc(bodyH(h))}</div>
+      <div class="swp-p"><b>妻子・${esc(w.name)}</b>　個性：${esc(persOf(w))}　身材：${esc(bodyW(w))}</div>
+      <div class="swp-p"><b>價錢</b> ${h.swapPrice} 金</div>
       <div class="swp-p" style="color:#8a92a0;font-size:12px">選了之後開始產立繪。產完不會馬上進場，左邊會出現書籤，你再決定什麼時候赴約。關掉網頁，圖也會繼續生。</div></div></div>
       <div class="swp-act"><button type="button" class="back">返回</button><button type="button" class="pri go">選這對</button></div>`;
     body.querySelector(".back").addEventListener("click", showList);
@@ -264,7 +264,7 @@ export async function openSwapDrive(ctx = {}, c, S = {}) {
   let sess = {}; try { sess = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}") || {}; } catch { /* */ }
   const watchHotel = String(scene).startsWith("hotel") && hotelMode(sess) === "watch";   // 只能看：不用你的動作圖
   if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && !watchHotel) {
-    const { pregenTease } = await import("./swap_tease.js?v=12");
+    const { pregenTease } = await import("./swap_tease.js?v=13");
     S = await pregenTease(c, scene, S, { debug: (m) => ctx.debug?.(m), onTick: (d, t, f) => { n.textContent = t ? `準備動作 ${d}/${t}${f ? `（失敗 ${f}）` : ""}` : ""; } }).catch((e) => { ctx.debug?.(`換妻：動作預產失敗 ${e?.message || e}`); return S; });
   }
   if ((scene === "bar" || scene === "ktv" || String(scene).startsWith("hotel")) && wife) {

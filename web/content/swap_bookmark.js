@@ -1,6 +1,6 @@
 /* 換妻書籤：產圖時掛在房間左邊。產完才赴約。進度在伺服器，關掉頁面再打開還在。 */
 import { api } from "./swap_cafe_gen.js?v=38";
-import { pregenState, pregenRetry, pregenCancel, pregenEnter } from "./swap_pregen.js?v=4";
+import { pregenState, pregenRetry, pregenCancel, pregenEnter } from "./swap_pregen.js?v=5";
 import { openSwapDate } from "./swap_date.js?v=1";
 import { freshMeet, testMeet, SLOT_ZH } from "./swap_meet_rules.js?v=2";
 
@@ -33,7 +33,7 @@ export function bindSwapBookmark(ctx = {}) {
   document.head.append(css);
   const root = document.createElement("div");
   root.id = "sbm"; root.hidden = true;
-  root.innerHTML = `<button type="button" class="tab"></button><button type="button" class="x">拿掉</button>`;
+  root.innerHTML = `<button type="button" class="tab"></button><button type="button" class="x">取消預約</button>`;
   document.body.append(root);
   const card = document.createElement("div");
   card.id = "sbm-card"; card.hidden = true;
@@ -58,11 +58,12 @@ export function bindSwapBookmark(ctx = {}) {
     const free = !!(view && sceneMeta(view.coupleId).free);
     card.innerHTML = `<b>${view.status === "ready" ? "可以赴約了" : "立繪還沒齊"}</b><div>${view.done}/${view.total}　${free ? "測試免錢" : `${view.price || 0} 金`}</div>
       ${msg ? `<div>${msg}</div>` : ""}<ul>${lines}</ul>
-      <div class="row">${view.status === "ready" ? `<button type="button" class="go">赴約</button>` : ""}${view.status === "error" ? `<button type="button" class="re">重試失敗的</button>` : ""}<button type="button" class="cl">關閉</button></div>`;
+      <div class="row">${view.status === "ready" ? `<button type="button" class="go">赴約</button>` : ""}${view.status === "error" ? `<button type="button" class="re">重試失敗的</button>` : ""}<button type="button" class="cx">取消預約</button><button type="button" class="cl">關閉</button></div>`;
     card.hidden = false;
     card.querySelector(".cl")?.addEventListener("click", () => { card.hidden = true; });
     card.querySelector(".re")?.addEventListener("click", () => { msg = ""; pregenRetry("date").then(pull).catch((e) => { msg = e.message; openCard(); }); });
     card.querySelector(".go")?.addEventListener("click", () => { void depart(); });
+    card.querySelector(".cx")?.addEventListener("click", cancelBooking);
   };
   async function depart() {
     msg = "";
@@ -97,9 +98,12 @@ export function bindSwapBookmark(ctx = {}) {
     if (view.status === "ready") { card.hidden = true; void depart(); return; }
     openCard();
   });
-  root.querySelector(".x").addEventListener("click", () => {
-    pregenCancel().then(() => { view = null; card.hidden = true; paint(); }).catch((e) => ctx.debug?.(`換妻書籤：${e.message || e}`));
-  });
+  // pt303u：取消預約＝停伺服器佇列（排隊中的生圖一起撤掉）＋停瀏覽器動作圖＋收書籤
+  function cancelBooking() {
+    if (!window.confirm("取消這次換妻預約？還沒生的圖會停掉。")) return;
+    pregenCancel().then(() => { view = null; card.hidden = true; paint(); ctx.debug?.("換妻：預約已取消"); }).catch((e) => ctx.debug?.(`換妻書籤：${e.message || e}`));
+  }
+  root.querySelector(".x").addEventListener("click", cancelBooking);
   void pull();
   setInterval(() => { void pull(); }, 2000);
 }

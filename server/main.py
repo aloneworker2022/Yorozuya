@@ -5533,7 +5533,13 @@ def swap_pregen_cancel():
     with _PREGEN_LOCK:
         d = _pregen_load()
         d["token"] = int(d.get("token") or 0) + 1
+        # pt303u：排在 gen_tasks 還沒開始的一起撤掉，取消後不再生
+        keys = [str(j.get("genKey")) for b in ("date", "hotel") for j in ((d.get(b) or {}).get("jobs") or []) if j.get("genKey")]
+        if keys:
+            with db() as conn:
+                conn.executemany("DELETE FROM gen_tasks WHERE key=? AND status='pending'", [(k,) for k in keys])
         d["date"] = None
+        d["hotel"] = None
         _pregen_save(d)
         pub = _pregen_public(d)
     _pregen_kick()
