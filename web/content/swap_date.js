@@ -491,7 +491,7 @@ export function openSwapDate(ctx, couple, meet) {
   // pt310u #3：酒吧／KTV 點人物＝敬酒：乾杯特效＋她仰頭喝
   function doToast() {
     const who = shown();
-    if ((scene !== "bar" && scene !== "ktv") || !who || who === "player" || busy) return;
+    if ((scene !== "bar" && scene !== "ktv") || !who || who === "player") return;
     const t = scene === "bar" ? toastOf(who, who === "husband" ? 80 : meet.accept[who] || 0) : (() => { const g = playerStageGain("drink"); return { drank: g.ok, accept: g.accept, drunk: g.drunk }; })();
     clinkFx(ov, !!t.drank);
     if (t.drank && figNode) { figNode.classList.remove("drink"); void figNode.offsetWidth; figNode.classList.add("drink"); }

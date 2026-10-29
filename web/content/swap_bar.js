@@ -440,7 +440,7 @@ export function openBar(ctx = {}, c, S = {}) {
   const canToast = () => (scene === "bar" || scene === "ktv") && !toiletOn && !closed;
   const armTap = () => { for (const n of $(".st")?.querySelectorAll(".swap-stage-char[data-id]") || []) { const on = (n.dataset.id === "other" && !!tapLook()) || (canToast() && n.dataset.id !== "player"); n.style.pointerEvents = on ? "auto" : "none"; n.style.cursor = on ? "pointer" : ""; n.style.webkitTouchCallout = "none"; n.style.userSelect = "none"; } };
   // pt312u：酒吧／KTV 按住人物 0.5 秒＝敬酒：碰杯動畫＋他/她喝一杯、你也喝
-  if ($(".st")) onLongPress($(".st"), (t) => (canToast() && !speaking ? t.closest?.(".swap-stage-char[data-id]") : null), (el) => {
+  if ($(".st")) onLongPress($(".st"), (t) => (canToast() ? t.closest?.(".swap-stage-char[data-id]") : null), (el) => {
     const k = el.dataset.id; if (!(k in sess.drunk) || k === "player" || isAway(k)) return;
     const ok = k === "husband" || sess.drunk[k] < 95;
     clinkFx($(".st"), ok);
