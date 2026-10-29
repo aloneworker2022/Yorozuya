@@ -8,7 +8,7 @@ import { openBar } from "./swap_bar.js?v=61";
 import { dateOutfitOf } from "./swap_outfit.js?v=8";
 import { SCENE_ZH as FLOW_ZH, pairSlotsFor, hotelMode } from "./swap_flow_rules.js?v=12";
 import { loadCandidates, CANDIDATES_MIN } from "./swap_candidates.js?v=2";
-import { queuePortraits } from "./swap_pregen.js?v=3";
+import { queuePortraits, kickTeasePregen } from "./swap_pregen.js?v=4";
 import { rememberScene } from "./swap_bookmark.js?v=2";
 
 export const SESSION_KEY = "yorozuya.swap.session";
@@ -132,6 +132,7 @@ export function openSwapSelect(ctx = {}) {
     try {
       await api.put("couple", { couple: c });
       await queuePortraits("date", ctx.girl?.(), c);
+      kickTeasePregen(c, (m) => ctx.debug?.(m));   // 不等：KTV／旅館動作圖背景排
     } catch (e) {
       body.innerHTML = `<div class="swp-next">${esc(e?.message || e)}</div><div class="swp-act"><button type="button" class="back">返回</button></div>`;
       body.querySelector(".back").addEventListener("click", showList);

@@ -5447,7 +5447,7 @@ def _pregen_store(owner: str, key: str, raw_url: str) -> None:
 
 
 def _clean_jobs(jobs_in) -> list[dict]:
-    if not isinstance(jobs_in, list) or not jobs_in or len(jobs_in) > 40:
+    if not isinstance(jobs_in, list) or not jobs_in or len(jobs_in) > 120:
         raise HTTPException(status_code=400, detail="jobs 不對")
     clean = []
     for j in jobs_in:
