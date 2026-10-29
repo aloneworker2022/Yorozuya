@@ -74,8 +74,12 @@ function render(){const d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,
  for(const q of DIRS){const e=Math.abs(((rel-q[0])+540)%360-180);if(e<Math.abs(((rel-best[0])+540)%360-180))best=q}
  const im=sheetFor(best[1]),fr=G.moving?(G.ph|0)%8:0;
  document.getElementById("st").textContent=`妹子：${G.moving?"走路":"站著"}（${{front:"正面",front_right:"右前",right:"右",back_right:"右後",back:"背面",back_left:"左後",left:"左",front_left:"左前"}[best[1]]}）　距離 ${Math.hypot(vx,vy).toFixed(1)}`;
- if(tz>.15&&im.complete&&im.naturalWidth){const hgt=SH/tz*1.15,wid=hgt*64/140,cx=SW/2*(1+tx/tz),top=SH/2+SH/tz*EYE-hgt;
+ if(tz>.15&&im.complete&&im.naturalWidth){const hgt=SH/tz*1.15,wid=hgt*64/140;let cx=SW/2*(1+tx/tz);let top=SH/2+SH/tz*EYE-hgt;
   const shd=Math.min(1,2.2/tz);
+  // 步伐律動：每步一次上下起伏（腳著地時最低、跨步中最高）＋每週期一次左右重心擺動；停下時平滑歸零
+  G.bw=(G.bw||0)+((G.moving?1:0)-(G.bw||0))*.2;const a=G.ph/8*Math.PI*2;
+  const bob=G.bw*hgt*.022*Math.abs(Math.sin(a)),sway=G.bw*wid*.035*Math.sin(a/2*2);
+  top-=bob;cx+=sway;
   for(let x=Math.max(0,cx-wid/2|0);x<Math.min(SW,cx+wid/2);x++){if(zb[x]<tz)continue;const sxp=fr*64+((x-(cx-wid/2))/wid*64|0);g.drawImage(im,sxp,0,1,140,x,top,1,hgt)}}}
 requestAnimationFrame(frame);
 </script></body></html>
