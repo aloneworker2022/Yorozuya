@@ -52,7 +52,7 @@ const wLooks = (w) => {
 };
 const persOf = (p) => [p?.swapType, Array.isArray(p?.personality) ? p.personality.join("、") : p?.personality].filter(Boolean).join("・") || "—";
 const bodyH = (h) => { const ht = h.height_cm || h.look?.height_cm; return [`${h.look?.build_zh || BZH[h.build] || h.build || "普通"}體型`, ht && `${ht}cm`].filter(Boolean).join("、"); };
-const bodyW = (w) => { const cup = w.look?.cup, ht = w.look?.height_cm; return [w.look?.build, cup && (/罩杯/.test(cup) ? cup : `${cup}罩杯`), ht && `${ht}cm`].filter(Boolean).join("、") || "—"; };
+const bodyW = (w) => { const ht = w.look?.height_cm; return [w.look?.build || "普通身材", ht && `${ht}cm`].filter(Boolean).join("、"); }; // pt307u：不顯示罩杯
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
 
 /** 咖啡廳測試面板用：讀／補 /api/swap/cafe 名冊。正式選夫妻請用 loadCandidates，不要叫這個。 */
