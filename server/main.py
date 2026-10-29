@@ -5167,21 +5167,106 @@ _SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 _SWAP_LOCK = threading.RLock()   # pt295u：state.json 讀改寫要鎖，不然產圖執行緒和網頁同時寫會互蓋（立繪「生好卻不見」）
 
 
-def _swap_load() -> dict:
+def _swap_parse(path: Path) -> dict | None:
     try:
-        d = json.loads(_SWAP_STATE.read_text(encoding="utf-8"))
+        d = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(d, dict):
             return {"couples": d.get("couples") or {}, "current": d.get("current") or "", "prompts": d.get("prompts") or {}, "images": d.get("images") or {}, "edits": d.get("edits") or {}}
     except Exception:
         pass
-    return {"couples": {}, "current": "", "prompts": {}, "images": {}, "edits": {}}
+    return None
+
+
+def _swap_load() -> dict:
+    # pt319u：state.json 壞掉（兩個寫入者同時寫同一個 .tmp）以前會回「空的」→ 下一次存檔把所有已生的圖紀錄洗掉 → 預產圖「生了卻沒用」。
+    # 現在讀不到就退回上一份好的備份（.bak），再不行才空。
+    with _SWAP_LOCK:
+        d = _swap_parse(_SWAP_STATE)
+        if d is None and _SWAP_STATE.exists():
+            d = _swap_parse(_SWAP_STATE.with_suffix(".bak"))
+            if d is not None:
+                print("[換妻] state.json 讀不到，改用 state.bak", flush=True)
+        if d is None:
+            d = {"couples": {}, "current": "", "prompts": {}, "images": {}, "edits": {}}
+        _swap_recover(d)
+        return d
 
 
 def _swap_save(d: dict) -> None:
-    _SWAP_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = _SWAP_STATE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(_SWAP_STATE)
+    with _SWAP_LOCK:
+        _SWAP_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _SWAP_STATE.with_name(f"state.{os.getpid()}.{threading.get_ident()}.tmp")   # pt319u：每個寫入者自己的 tmp
+        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+        if _SWAP_STATE.exists() and _swap_parse(_SWAP_STATE) is not None:
+            try:
+                shutil.copyfile(_SWAP_STATE, _SWAP_STATE.with_suffix(".bak"))
+            except Exception:
+                pass
+        tmp.replace(_SWAP_STATE)
+
+
+_SWAP_FILE_RE = re.compile(r"^(.+)_(\d{13})_(raw|cut)\.(png|jpg|jpeg|webp)$")
+
+
+def _swap_recover(d: dict) -> None:
+    """pt319u：圖檔在 assets/swap_cafe/ 但 state.json 紀錄被別的寫入者蓋掉（「生好卻不見」）→ 依檔名 <owner>_<key>_<ms>_raw|cut 補回紀錄（只補缺的，不覆蓋）。
+    另外補伺服器預產雙人圖缺的 seed（以前 _pregen_store 沒存 seed → pairCut 把所有 ~2 格當沒有）。"""
+    try:
+        imgs = d.setdefault("images", {})
+        try:   # 不拿 _PREGEN_LOCK（retry 會先拿 PREGEN 再讀 swap，反過來拿會死結）
+            pg = json.loads((_SWAP_DIR / "pregen.json").read_text(encoding="utf-8"))
+        except Exception:
+            pg = {}
+        jobs = [j for b in ("date", "hotel") for j in (((pg or {}).get(b) or {}).get("jobs") or []) if isinstance(j, dict)]
+        owners = set(imgs) | set(d.get("couples") or {}) | {str(j.get("owner") or "") for j in jobs}
+        owners.discard("")
+        san = {re.sub(r"[^A-Za-z0-9_-]", "-", o): o for o in owners}
+        try:
+            names = os.listdir(_SWAP_DIR)
+        except Exception:
+            names = []
+        sig = (len(names), max((n for n in names), default=""), len(jobs))
+        if _SWAP_RECOVER_SIG.get("sig") != sig:
+            best: dict = {}
+            for n in names:
+                m = _SWAP_FILE_RE.match(n)
+                if not m or len(m.group(1)) >= 80:
+                    continue
+                stem, ms, kind = m.group(1), int(m.group(2)), m.group(3)
+                for so, o in san.items():
+                    if stem.startswith(so + "_"):
+                        key = stem[len(so) + 1:].replace("-", "~")
+                        if _SWAP_KEY.match(key):
+                            b = best.setdefault((o, key), {"ms": 0})
+                            if ms > b["ms"]:
+                                best[(o, key)] = b = {"ms": ms}
+                            if ms == b["ms"]:
+                                b[kind] = f"/assets/swap_cafe/{n}"
+                        break
+            _SWAP_RECOVER_SIG["sig"], _SWAP_RECOVER_SIG["best"] = sig, best
+        for (o, key), b in (_SWAP_RECOVER_SIG.get("best") or {}).items():
+            have = (imgs.get(o) or {}).get(key)
+            if isinstance(have, dict) and have.get("cut"):
+                continue
+            raw = b.get("raw") or b.get("cut")
+            if not raw:
+                continue
+            imgs.setdefault(o, {})[key] = {"raw": raw, "cut": b.get("cut") or raw, "at": b["ms"] // 1000, "recovered": True}
+            if (o, key) not in _SWAP_RECOVER_SAID:
+                _SWAP_RECOVER_SAID.add((o, key))
+                print(f"[換妻] 補回圖紀錄 {o} {key}", flush=True)
+        for j in jobs:
+            o, key = str(j.get("owner") or ""), str(j.get("key") or "")
+            r = (imgs.get(o) or {}).get(key)
+            seed = (j.get("body") or {}).get("seed")
+            if key.startswith("pair~") and isinstance(r, dict) and not r.get("seed") and isinstance(seed, int) and seed > 0:
+                r["seed"] = seed
+    except Exception as e:
+        print(f"[換妻] 補圖紀錄失敗：{e}", flush=True)
+
+
+_SWAP_RECOVER_SIG: dict = {}
+_SWAP_RECOVER_SAID: set = set()
 
 
 @app.get("/api/swap/cafe")
@@ -5196,10 +5281,11 @@ def swap_cafe_couple(body: dict):
     c = (body or {}).get("couple")
     if not isinstance(c, dict) or not _SWAP_OWNER.match(str(c.get("id") or "")):
         raise HTTPException(status_code=400, detail="couple.id 不對")
-    d = _swap_load()
-    d["couples"][str(c["id"])] = {k: c.get(k) for k in ("id", "husband", "wife", "at")}
-    d["current"] = str(c["id"])
-    _swap_save(d)
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        d["couples"][str(c["id"])] = {k: c.get(k) for k in ("id", "husband", "wife", "at")}
+        d["current"] = str(c["id"])
+        _swap_save(d)
     return d
 
 
@@ -5210,13 +5296,14 @@ def swap_cafe_prompt(body: dict):
     key = str(body.get("key") or "")
     if not _SWAP_KEY.match(key):
         raise HTTPException(status_code=400, detail="key 不對（wife|husband|other ~ normal|shy）")
-    d = _swap_load()
-    tpl = rental_scene.clean_prompt(body.get("tpl"))
-    if tpl:
-        d["prompts"][key] = tpl
-    else:
-        d["prompts"].pop(key, None)
-    _swap_save(d)
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        tpl = rental_scene.clean_prompt(body.get("tpl"))
+        if tpl:
+            d["prompts"][key] = tpl
+        else:
+            d["prompts"].pop(key, None)
+        _swap_save(d)
     return d
 
 
@@ -5277,10 +5364,11 @@ async def swap_cafe_recut(body: dict):
             tmp.unlink(missing_ok=True)
         url = f"/assets/swap_cafe/{out.name}"
         info = {"ok": bool(changed) and (cutout.LAST_CHROMA.get("border_green") or 0) >= 0.5, "how": "伺服器綠幕去背", "why": why, **cutout.LAST_CHROMA}
-    d = _swap_load()
-    r2 = d["images"].setdefault(owner, {}).setdefault(key, rec)
-    r2["cut"], r2["cutinfo"] = url, info
-    _swap_save(d)
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        r2 = d["images"].setdefault(owner, {}).setdefault(key, rec)
+        r2["cut"], r2["cutinfo"] = url, info
+        _swap_save(d)
     return {"changed": changed, "why": why, **{k: info.get(k) for k in ("border_green", "removed")}, "images": d["images"]}
 
 
@@ -5294,31 +5382,32 @@ def swap_cafe_image(body: dict):
     stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}"
     raw = _swap_copy(str(body.get("raw") or ""), "", stem + "_raw") if body.get("raw") else ""
     cut = _swap_copy(str(body.get("cut") or ""), str(body.get("cut_data") or ""), stem + "_cut") if (body.get("cut") or body.get("cut_data")) else ""
-    d = _swap_load()
-    rec = {"raw": raw, "cut": cut or raw, "at": int(time.time())}
-    # 雙人圖：生圖時存在原圖旁邊的實際 prompt／參數（<原圖>.json）帶進來；前端給的生圖秒數也存
-    try:
-        src = _asset_path(str(body.get("raw") or "").split("?")[0]) if body.get("raw") else None
-        side = src.with_name(src.name + ".json") if src is not None else None
-        if side is not None and side.is_file():
-            rec["gen"] = json.loads(side.read_text(encoding="utf-8"))
-    except Exception:
-        pass
-    ci = _cutinfo_clean(body.get("cutinfo"))
-    if ci:
-        rec["cutinfo"] = ci
-    try:
-        if float(body.get("sec") or 0) > 0:
-            rec.setdefault("gen", {})["sec"] = float(body["sec"])
-    except (TypeError, ValueError):
-        pass
-    try:
-        if int(body.get("seed") or 0) > 0:
-            rec["seed"] = int(body["seed"])   # 雙人兩格：第 2 格沿用第 1 格的 seed
-    except (TypeError, ValueError):
-        pass
-    d["images"].setdefault(owner, {})[key] = rec
-    _swap_save(d)
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        rec = {"raw": raw, "cut": cut or raw, "at": int(time.time())}
+        # 雙人圖：生圖時存在原圖旁邊的實際 prompt／參數（<原圖>.json）帶進來；前端給的生圖秒數也存
+        try:
+            src = _asset_path(str(body.get("raw") or "").split("?")[0]) if body.get("raw") else None
+            side = src.with_name(src.name + ".json") if src is not None else None
+            if side is not None and side.is_file():
+                rec["gen"] = json.loads(side.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        ci = _cutinfo_clean(body.get("cutinfo"))
+        if ci:
+            rec["cutinfo"] = ci
+        try:
+            if float(body.get("sec") or 0) > 0:
+                rec.setdefault("gen", {})["sec"] = float(body["sec"])
+        except (TypeError, ValueError):
+            pass
+        try:
+            if int(body.get("seed") or 0) > 0:
+                rec["seed"] = int(body["seed"])   # 雙人兩格：第 2 格沿用第 1 格的 seed
+        except (TypeError, ValueError):
+            pass
+        d["images"].setdefault(owner, {})[key] = rec
+        _swap_save(d)
     return {"raw": raw, "cut": cut or raw, "images": d["images"]}
 
 
@@ -5421,7 +5510,7 @@ def _pregen_mark(bucket: str, owner: str, key: str, status: str, error: str, gen
         _pregen_save(d)
 
 
-def _pregen_store(owner: str, key: str, raw_url: str) -> None:
+def _pregen_store(owner: str, key: str, raw_url: str, seed: int = 0) -> None:
     """原圖抄進換妻圖庫，再綠幕去背。去背沒有綠也把原圖當立繪，免得整批卡死。"""
     stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}"
     raw = _swap_copy(raw_url, "", stem + "_raw")
@@ -5442,7 +5531,10 @@ def _pregen_store(owner: str, key: str, raw_url: str) -> None:
         cut_path.unlink(missing_ok=True)
     with _SWAP_LOCK:
         d = _swap_load()
-        d["images"].setdefault(owner, {})[key] = {"raw": raw, "cut": cut, "at": int(time.time())}
+        rec = {"raw": raw, "cut": cut, "at": int(time.time())}
+        if seed:
+            rec["seed"] = int(seed)   # pt319u：雙人第 2 格要跟第 1 格同 seed 才會被 pairCut 採用；以前沒存 → 所有預產 ~2 都被丟掉
+        d["images"].setdefault(owner, {})[key] = rec
         _swap_save(d)
 
 
@@ -5586,7 +5678,8 @@ async def _pregen_one(bucket: str, owner: str, key: str, token: int) -> None:
             if row and row[0] == "done" and row[1]:
                 if bucket == "date" and int(_pregen_load().get("token") or 0) != token:
                     return
-                await asyncio.to_thread(_pregen_store, owner, key, str(row[1]).split("|")[0])
+                seed = (job.get("body") or {}).get("seed")
+                await asyncio.to_thread(_pregen_store, owner, key, str(row[1]).split("|")[0], seed if isinstance(seed, int) else 0)
                 _pregen_mark(bucket, owner, key, "done", "")
                 print(f"[換妻產圖] {key} 好了", flush=True)
                 return
@@ -5603,7 +5696,8 @@ async def _pregen_one(bucket: str, owner: str, key: str, token: int) -> None:
                                 j2["genKey"] = ""
                                 j2["status"] = "pending"
                                 b2 = dict(j2.get("body") or {})
-                                b2["seed"] = random.randint(1, 2**31 - 1)
+                                if not key.startswith("pair~"):   # pt319u：雙人格重試保留 seed，不然第 2 格對不上第 1 格
+                                    b2["seed"] = random.randint(1, 2**31 - 1)
                                 b2["key"] = f"swap-pregen:{owner}:{key}:{token}:r{tries}"
                                 j2["body"] = b2
                         _pregen_save(d2)
@@ -5676,13 +5770,14 @@ def swap_cafe_edit(body: dict):
     owner, key = str(body.get("owner") or ""), str(body.get("key") or "")
     if not _SWAP_OWNER.match(owner) or not _PAIR_KEY.match(key):
         raise HTTPException(status_code=400, detail="owner／key 不對")
-    d = _swap_load()
-    e = _pair_edit_clean(body.get("edit"))
-    if e:
-        d["edits"].setdefault(owner, {})[key] = e
-    else:
-        d["edits"].get(owner, {}).pop(key, None)
-    _swap_save(d)
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        e = _pair_edit_clean(body.get("edit"))
+        if e:
+            d["edits"].setdefault(owner, {})[key] = e
+        else:
+            d["edits"].get(owner, {}).pop(key, None)
+        _swap_save(d)
     return d
 
 

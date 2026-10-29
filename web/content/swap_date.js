@@ -395,7 +395,8 @@ export function openSwapDate(ctx, couple, meet) {
     if (m) keys.push(...(hotel() ? [`tease~${m[1]}~nude`] : [`tease~${m[1]}`, `tease~${m[1]}~under`]));
     const sx = /^sex~[a-z]+~([a-z]+)$/.exec(k);
     if (sx) for (const p of ["missionary", "doggy", "prone"]) keys.push(`sex~${p}~${sx[1]}`);
-    for (const x of keys) { const u = cachedUrl(S0(), couple, x); if (u) return u; }
+    for (const x of keys) { const u = cachedUrl(S0(), couple, x); if (u) { if (x !== k) ctx.debug?.(`動作圖 ${k} → 用已有 ${x}`); return u; } }
+    ctx.debug?.(`動作圖 ${k} 沒有（找過 ${couple.id}：${keys.join("、")}）`);
     return "";
   }
   /** 放一張動作圖（有快取直接用；沒有就現產，最多等 maxWait）。回有沒有圖。 */
