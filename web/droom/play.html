@@ -55,7 +55,7 @@ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
  const gx=P.x-G.x,gy=P.y-G.y,gd=Math.hypot(gx,gy);if(gd<.4){P.x=G.x+gx/gd*.4;P.y=G.y+gy/gd*.4}
  ai(dt);render();requestAnimationFrame(frame)}
 // 視角高度（牆高=1；0.5 為原本的低視角）
-const EYE=0.71;
+const EYE=0.95;
 function render(){const d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<SH/2,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-SH/2+.5)),
   lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
