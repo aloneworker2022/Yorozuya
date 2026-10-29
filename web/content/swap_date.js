@@ -7,7 +7,7 @@ import {
   parseHotelText, portraitExpr, TEASE_ZH, TEASE_AT, HOTEL_AT,
 } from "./swap_meet_rules.js?v=2";
 import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=13";
-import { runHotelSex, createLocalAnim, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, posesFor, rollAffDelta, swapAffStage, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative } from "./swap_chat_sex.js?v=8";
+import { runHotelSex, createLocalAnim, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, posesFor, rollAffDelta, swapAffStage, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative } from "./swap_chat_sex.js?v=9";
 import { clinkFx, onLongPress } from "./swap_clink.js?v=1";
 import { sexKey } from "./swap_tease_rules.js?v=11";
 import { pairOwner, pairCut, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=28";
@@ -59,11 +59,11 @@ export function openSwapDate(ctx, couple, meet) {
     #sd-ov{position:fixed;inset:0;z-index:8700;overflow:hidden;background:#1a120c;color:#f4efe6;font:16px/1.45 system-ui,"Noto Sans TC",sans-serif}
     #sd-ov button,#sd-ov input{font:inherit;box-shadow:none;text-shadow:none;letter-spacing:0}
     #sd-ov .bg{position:absolute;inset:0;background:center/cover no-repeat;z-index:0}
-    #sd-ov .pbg{position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,.35)}
+    #sd-ov .pbg{position:absolute;inset:0;z-index:0;pointer-events:none}
     #sd-ov .pbg[hidden]{display:none}
-    #sd-ov .pbg>div{position:relative;height:88%;aspect-ratio:3/4}
-    #sd-ov .pbg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:.85}
-    #sd-ov .pbg .pbl{position:absolute;left:8px;bottom:calc(8px + env(safe-area-inset-bottom));font-size:12px;background:rgba(0,0,0,.55);padding:2px 8px;border-radius:8px}
+    #sd-ov .pbg>div{position:absolute;left:12%;top:40%;width:39%;max-width:340px;max-height:46%;aspect-ratio:3/4;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
+    #sd-ov .pbg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+    #sd-ov .pbg .pbl{position:absolute;left:0;bottom:-18px;font-size:10px;padding:1px 4px;color:rgba(242,214,230,.8);text-shadow:0 1px 2px #000;white-space:nowrap}
     #sd-ov .fig{position:absolute;left:34%;right:0;bottom:0;top:14%;z-index:1;pointer-events:none}
     #sd-ov .ch{position:absolute;left:58%;bottom:0;height:100%;width:min(96%,560px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;transform:translateX(-50%);transition:transform .55s cubic-bezier(.22,.8,.3,1),opacity .55s ease;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:manipulation}
     #sd-ov .ch.from-l{transform:translateX(-50%) translateX(-110vw)}
@@ -106,7 +106,7 @@ export function openSwapDate(ctx, couple, meet) {
     #sd-ov .hud{transition:transform .45s ease}
     #sd-ov.sexing .hud{transform:translateY(-110%)}
     #sd-ov.sexing .fig{opacity:0;transition:opacity .3s}
-    #sd-ov .sxline{position:absolute;left:10px;right:10px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:8;background:rgba(30,16,24,.78);border-radius:12px;padding:8px 12px;font-size:15px;display:none}
+    #sd-ov .sxline{position:absolute;left:10px;right:10px;top:calc(12px + env(safe-area-inset-top));z-index:8;background:rgba(30,16,24,.78);border-radius:12px;padding:8px 12px;font-size:15px;display:none}
     #sd-ov.sexing .sxline{display:block}
     #sd-ov .sxline:empty{display:none}
     #sd-ov .sxbar{position:absolute;right:14px;bottom:calc(90px + env(safe-area-inset-bottom));z-index:9;display:none;flex-direction:column;align-items:flex-end;gap:10px}
@@ -427,7 +427,7 @@ export function openSwapDate(ctx, couple, meet) {
     const goal = rollEjacGoal(), poses = posesFor(scene), girl = couple.wife || {};
     const thB = $(".sxbar .th"), psB = $(".sxbar .ps"), cnt = $(".sxbar .cnt"), sxl = $(".sxline");
     let animPose = "missionary", showSeq = 0, pressRes = null, ejacs = 0, pose = randPose(poses);
-    const anim = createLocalAnim(ov, () => ({ pose: animPose, girl }));
+    const anim = createLocalAnim(ov, () => ({ pose: animPose, girl }), { low: true });
     const tok = ++pvTok;
     const showSex = async (ps, state) => {
       const my = ++showSeq; psB.textContent = `換姿勢（${POSE_ZH[ps]}）`;

@@ -45,11 +45,13 @@ function preload(urls) {
   }));
 }
 /** 局部動圖彈層（同房間 #sex-anim-popup 樣式）。getCtx() → { pose, girl }。play() 在最後一幀出現時 resolve（「肏」此時才回來）。 */
-export function createLocalAnim(root, getCtx) {
+export function createLocalAnim(root, getCtx, opts = {}) {
   const el = document.createElement("div");
   el.className = "swp-sexanim"; el.hidden = true;
-  el.style.cssText = "position:absolute;inset:0;z-index:28;display:flex;align-items:center;justify-content:center;padding-top:18vh;pointer-events:none";
-  el.innerHTML = `<div style="max-width:min(72vw,480px);max-height:min(48vh,520px);border-radius:12px;overflow:hidden;background:rgba(0,0,0,.4);opacity:.4;box-shadow:0 12px 32px rgba(0,0,0,.5),0 0 0 1px rgba(255,79,216,.35)"><img alt="" style="display:block;width:100%;height:auto;max-height:min(48vh,520px);object-fit:contain"></div>`;
+  // pt315u #1：opts.low（旅館）→ 局部動圖往下、縮小、不透明度 .7
+  const L = opts.low ? { box: "padding-bottom:calc(24px + env(safe-area-inset-bottom));align-items:flex-end", w: "min(52vw,320px)", h: "min(30vh,320px)", op: ".7" } : { box: "padding-top:18vh;align-items:center", w: "min(72vw,480px)", h: "min(48vh,520px)", op: ".4" };
+  el.style.cssText = `position:absolute;inset:0;z-index:28;display:flex;justify-content:center;${L.box};pointer-events:none`;
+  el.innerHTML = `<div style="max-width:${L.w};max-height:${L.h};border-radius:12px;overflow:hidden;background:rgba(0,0,0,.4);opacity:${L.op};box-shadow:0 12px 32px rgba(0,0,0,.5),0 0 0 1px rgba(255,79,216,.35)"><img alt="" style="display:block;width:100%;height:auto;max-height:${L.h};object-fit:contain"></div>`;
   root.append(el);
   const img = el.querySelector("img");
   let run = 0, firstDone = false, lingerT = 0;
