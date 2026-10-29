@@ -312,7 +312,7 @@
         const [tx, ty, tz] = jig.thigh;
         sh.ell(BODY, [s * 4.6 * F(b, 'hip') + tx, yl(C - 2) - 1.2 + ty, C - 2.5 + tz], [3.9 * F(b, 'thigh'), 3.9 * F(b, 'thigh') * (1 - .6 * q), 3.6]);
       }
-      const AR = (AREOLA_R[doll.areola] || 1.5) * (.75 + r0(P, doll) * .06), nipAt = (q, fwd = [0, 1, 0]) => { if (doll.nipples === false) return; sh.nip = 1; sh.ell(BODY, [q[0] + fwd[0] * .1, q[1] + fwd[1] * .3, q[2] + fwd[2] * .3], [AR, .45, AR * (fwd[2] ? .8 : 1)]); sh.nip = 2; sh.ell(BODY, [q[0] + fwd[0] * .55, q[1] + fwd[1] * .55, q[2] + fwd[2] * .55], [.6, .6, .6]); sh.nip = 0; };
+      const AR = (AREOLA_R[doll.areola] || 1.5) * (.35 + r0(P, doll) * .16)   /* 2026-10-29 pt11u：乳暈隨乳房大小放大（A≈0.72× → H≈1.4×） */, nipAt = (q, fwd = [0, 1, 0]) => { if (doll.nipples === false) return; sh.nip = 1; sh.ell(BODY, [q[0] + fwd[0] * .1, q[1] + fwd[1] * .3, q[2] + fwd[2] * .3], [AR, .45, AR * (fwd[2] ? .8 : 1)]); sh.nip = 2; sh.ell(BODY, [q[0] + fwd[0] * .55, q[1] + fwd[1] * .55, q[2] + fwd[2] * .55], [.6, .6, .6]); sh.nip = 0; };
       const SHP = doll.shape || 'round', r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
       sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
@@ -329,12 +329,13 @@
         } else if (SHP === 'pendulous' && hang <= .05) {
           // 下垂（v8）：根部在胸口高處，乳肉沿重力往下（−z）長長掛下來，最低點遠低於乳房下緣，底部像袋子最飽滿、乳頭朝下
           const L = r * 1.9 + 1.5;
-          const top = [s * (2.9 + r * .22) * cs, yl(zA) + 2.0 * cs + r * .25, zA];
-          const mid = [s * (3.2 + r * .3) * cs, yl(zA) + 2.4 * cs + r * .55, zA - L * .55];
-          const bot = [s * (3.4 + r * .32) * cs + bx, yl(zA) + 2.4 * cs + r * .6 + by, zA - L];
-          sh.cone(BODY, top, mid, r * .5, r * .78);
-          sh.cone(BODY, mid, bot, r * .78, r * .9);
-          sh.ell(BODY, [bot[0], bot[1], bot[2] + r * .1], [r * .98, r * .8, r * .85]);
+          // 2026-10-29 pt11u：上胸不飽滿——根部薄而貼胸（扁、凹），體積全集中在底部；走路時底部晃得比根部多
+          const top = [s * (2.9 + r * .22) * cs, yl(zA) + 1.6 * cs + r * .05, zA];
+          const mid = [s * (3.2 + r * .3) * cs + bx * .5, yl(zA) + 2.0 * cs + r * .28 + by * .5, zA - L * .55 + bz * .5];
+          const bot = [s * (3.4 + r * .32) * cs + bx * 1.3, yl(zA) + 2.4 * cs + r * .6 + by, zA - L + bz * 1.3];
+          sh.cone(BODY, top, mid, r * .28, r * .55);
+          sh.cone(BODY, mid, bot, r * .55, r * .92);
+          sh.ell(BODY, [bot[0], bot[1], bot[2] + r * .1], [r * 1.02, r * .82, r * .88]);
           nipAt([bot[0], bot[1] + r * .95, bot[2] - r * .15], [0, .8, -.6]);
         } else if (SHP === 'round' && hang <= .05) {
           // 圓形：上下一樣飽滿的球
@@ -497,7 +498,7 @@
       const curve = bounceCurve(P, doll), n = curve.length;
       const f = phase / (2 * Math.PI) * n, i = Math.trunc(f) % n, t = f - Math.trunc(f);
       const yv = curve[i] * (1 - t) + curve[(i + 1) % n] * t;
-      const amp = (CUP_BOUNCE[doll.cup] ?? .35) * scale, dz = yv * amp;
+      const cb = CUP_BOUNCE[doll.cup] ?? .35, amp = cb * (.55 + .45 * cb) * 1.35 * scale, dz = yv * amp;   // 2026-10-29 pt11u：越大越晃（超線性：A≈0.1 → H≈2.4）
       return [.35 * amp * Math.sin(phase) * .6, .35 * dz, dz, Math.max(-.08, Math.min(.08, -dz * .025))];
     }
 
