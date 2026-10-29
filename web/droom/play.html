@@ -24,8 +24,8 @@ const cv=document.getElementById("c"),g=cv.getContext("2d"),SW=320,SH=240,img=g.
 const cuSel=document.getElementById("cu");for(const c of "ABCDEFGH")cuSel.add(new Option(c,c,c=="D",c=="D"));
 let P={x:2.5,y:8.5,a:-Math.PI/4};const G={x:6.5,y:4.5,h:0,tx:6.5,ty:4.5,moving:false,ph:0,wait:1};
 // 步伐同步：sheet 的 8 格 = 一個完整步態週期（左右各跨一步）。動畫相位由「實際移動距離」推進，
-// 走 STRIDE 格世界單位剛好播完 8 格 → 腳踩地時身體才前進，不會滑步。妹子身高約 1.15 單位，週期步幅約 0.75 身高。
-const STRIDE=.85,G_SPEED=.9;
+// 走 STRIDE 格世界單位剛好播完 8 格 → 腳踩地時身體才前進，不會滑步。妹子身高約 1.15 單位，週期步幅約 0.48 身高。
+const STRIDE=.55,G_SPEED=.9;
 const DIRS=[[0,"front"],[-45,"front_right"],[-90,"right"],[-135,"back_right"],[180,"back"],[135,"back_left"],[90,"left"],[45,"front_left"]];
 const cache={};let sheet=null;
 function sheetFor(d){const k=["b","s","cu","ar"].map(i=>document.getElementById(i).value).join("_")+"_"+d;
@@ -55,7 +55,7 @@ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
  const gx=P.x-G.x,gy=P.y-G.y,gd=Math.hypot(gx,gy);if(gd<.4){P.x=G.x+gx/gd*.4;P.y=G.y+gy/gd*.4}
  ai(dt);render();requestAnimationFrame(frame)}
 // 視角高度（牆高=1；0.5 為原本的低視角）
-const EYE=0.62;
+const EYE=0.71;
 function render(){const d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<SH/2,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-SH/2+.5)),
   lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
