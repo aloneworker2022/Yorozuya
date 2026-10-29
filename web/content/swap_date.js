@@ -64,11 +64,11 @@ export function openSwapDate(ctx, couple, meet) {
     #sd-ov .pbg>div{position:absolute;left:6%;top:50%;transform:translateY(-50%);width:44%;max-width:408px;max-height:66%;aspect-ratio:3/4;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
     #sd-ov .pbg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:bottom center}
     #sd-ov .pbg .pbl{position:absolute;left:0;top:-18px;font-size:10px;padding:1px 4px;color:rgba(242,214,230,.8);text-shadow:0 1px 2px #000;white-space:nowrap}
-    #sd-ov .fig{position:absolute;left:28%;right:0;bottom:0;top:calc(2px + env(safe-area-inset-top));z-index:1;pointer-events:none;overflow:visible}
-    #sd-ov .ch{position:absolute;left:60%;bottom:0;height:100%;width:min(100%,672px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;transform:translateX(-50%);transition:transform .55s cubic-bezier(.22,.8,.3,1),opacity .55s ease;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+    #sd-ov .fig{position:absolute;left:22%;right:0;bottom:0;top:calc(2px + env(safe-area-inset-top));z-index:1;pointer-events:none;overflow:visible}
+    #sd-ov .ch{position:absolute;left:58%;bottom:0;height:100%;width:min(125%,860px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;transform:translateX(-50%);transition:transform .55s cubic-bezier(.22,.8,.3,1),opacity .55s ease;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:manipulation}
     #sd-ov .ch.from-l{transform:translateX(-50%) translateX(-110vw)}
     #sd-ov .ch.to-r{transform:translateX(-50%) translateX(110vw);opacity:0;pointer-events:none}
-    #sd-ov .ch img{display:block;height:auto;max-height:100%;max-width:100%;min-height:0;width:auto;flex:0 1 auto;object-fit:contain;object-position:bottom center;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
+    #sd-ov .ch img{display:block;height:100%;max-height:100%;max-width:100%;min-height:0;width:auto;flex:0 1 auto;object-fit:contain;object-position:bottom center;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
     #sd-ov .ch .ph{width:70%;aspect-ratio:3/4;border:1px dashed #6b5a45;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#b7a88f;text-align:center;padding:8px;margin-bottom:12%;white-space:pre-line;background:rgba(0,0,0,.35)}
     #sd-ov .ch .who{position:absolute;bottom:calc(8px + env(safe-area-inset-bottom));font-size:13px;background:rgba(0,0,0,.5);padding:2px 8px;border-radius:8px}
     #sd-ov .ch.drink img{animation:sd-drink 1.4s ease-in-out}
