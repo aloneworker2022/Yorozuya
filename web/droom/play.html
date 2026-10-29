@@ -5,24 +5,25 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 #hud{padding:6px;text-align:center}
 #wrap{position:relative;width:min(96vw,960px)}#wrap canvas{width:100%;display:block;touch-action:none}
 .pad{position:absolute;bottom:8px;display:grid;gap:4px;grid-template-columns:repeat(3,clamp(44px,13vw,64px));grid-template-rows:repeat(3,clamp(44px,13vw,64px));opacity:.55;user-select:none;-webkit-user-select:none;touch-action:none}
-#padL{left:8px}#padR{right:8px;grid-template-rows:clamp(44px,13vw,64px);bottom:calc(8px + clamp(44px,13vw,64px) + 4px)}
+#padL{left:8px}#padR{right:8px;grid-template-rows:repeat(2,clamp(44px,13vw,64px));bottom:calc(8px + clamp(44px,13vw,64px) + 4px)}
 .pad button{font-size:22px;border:1px solid #888;border-radius:10px;background:rgba(40,40,40,.8);color:#fff;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent}
 .pad button.on{background:rgba(120,160,220,.9)}a{color:#9cf}select{background:#222;color:#ddd}</style></head><body>
 <div id="wrap"><canvas id="c" width="320" height="240"></canvas>
 <div class="pad" id="padL"><span></span><button data-k="KeyW">▲</button><span></span><button data-k="KeyA">◀</button><span></span><button data-k="KeyD">▶</button><span></span><button data-k="KeyS">▼</button><span></span></div>
-<div class="pad" id="padR"><button data-k="KeyQ">⟲</button><span></span><button data-k="KeyE">⟳</button></div></div>
-<div id="hud">W/↑ 前進　S/↓ 後退　A 左移　D 右移　←/→ 或 Q/E 轉向　點畫面鎖定滑鼠轉頭　手機：左下方向鍵移動、右下 ⟲⟳ 轉向（或在畫面上左右滑動）　｜
+<div class="pad" id="padR"><button data-k="KeyQ">⟲</button><button data-k="KeyR">⇡</button><button data-k="KeyE">⟳</button><span></span><button data-k="KeyF">⇣</button><span></span></div></div>
+<div id="hud">W/↑ 前進　S/↓ 後退　A 左移　D 右移　←/→ 或 Q/E 轉向　R/F 抬頭/低頭　點畫面鎖定滑鼠轉頭（上下也可看）　手機：左下方向鍵移動、右下 ⟲⟳ 轉向、⇡⇣ 抬頭低頭（或在畫面上左右/上下滑動）　｜
 體型 <select id="b"><option value="balanced">勻稱</option><option value="slim">纖細</option><option value="petite">嬌小</option><option value="curvy">微肉</option></select>
 胸型 <select id="s"><option value="round">圓形</option><option value="bell">鐘型</option><option value="pendulous">下垂</option></select>
 罩杯 <select id="cu"></select>
 乳暈 <select id="ar"><option value="small">小</option><option value="medium" selected>中</option><option value="large">大</option></select>
 ｜ <a href="/droom">← 回剪影預覽</a><div id="st"></div></div>
 <script>
-const M=["1111111111111","1000000000001","1000000000001","1000000000001","1000000000001","1000000000001","1000000002001","1000000002001","1000000000001","1000000000001","1111111111111"];
+// 房間：內部 6×6 地板（外圈為牆，粉色牆面一段點綴）
+const M=["11111111","10000001","10000001","10000002","10000002","10000001","10000001","11111111"];
 const W=M[0].length,H=M.length,wall=(x,y)=>{const r=M[y|0];return !r||r[x|0]!=="0"};
 const cv=document.getElementById("c"),g=cv.getContext("2d"),SW=320,SH=240,img=g.createImageData(SW,SH),zb=new Float32Array(SW);
 const cuSel=document.getElementById("cu");for(const c of "ABCDEFGH")cuSel.add(new Option(c,c,c=="D",c=="D"));
-let P={x:2.5,y:8.5,a:-Math.PI/4};const G={x:6.5,y:4.5,h:0,tx:6.5,ty:4.5,moving:false,ph:0,wait:1};
+let P={x:1.6,y:6.4,a:-Math.PI/4,p:0};const G={x:4.5,y:2.5,h:0,tx:4.5,ty:2.5,moving:false,ph:0,wait:1};
 // 步伐同步：sheet 的 8 格 = 一個完整步態週期（左右各跨一步）。動畫相位由「實際移動距離」推進，
 // 走 STRIDE 格世界單位剛好播完 8 格 → 腳踩地時身體才前進，不會滑步。妹子身高約 1.15 單位，週期步幅約 0.48 身高。
 const STRIDE=.55,G_SPEED=.9;
@@ -39,9 +40,10 @@ const keys={};onkeydown=e=>{keys[e.code]=1;if(e.code.startsWith("Arrow"))e.preve
 for(const b of document.querySelectorAll(".pad button")){const k=b.dataset.k,on=e=>{e.preventDefault();keys[k]=1;b.classList.add("on");try{b.setPointerCapture(e.pointerId)}catch(_){}},off=e=>{keys[k]=0;b.classList.remove("on")};
  b.addEventListener("pointerdown",on);for(const ev of ["pointerup","pointercancel","lostpointercapture"])b.addEventListener(ev,off);b.addEventListener("contextmenu",e=>e.preventDefault())}
 // 手機：在畫面上左右拖曳轉頭
-let tX=null;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"){tX=e.clientX;cv.setPointerCapture(e.pointerId)}});
-cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;tX=e.clientX}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
-cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv)P.a+=e.movementX*.003};
+const PMAX=.5,clampP=()=>P.p=Math.max(-PMAX,Math.min(PMAX,P.p));
+let tX=null,tY=0;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"){tX=e.clientX;tY=e.clientY;cv.setPointerCapture(e.pointerId)}});
+cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;P.p-=(e.clientY-tY)*.006;clampP();tX=e.clientX;tY=e.clientY}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
+cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv){P.a+=e.movementX*.003;P.p-=e.movementY*.003;clampP()}};
 function tryMove(o,dx,dy,r=.2){if(!wall(o.x+dx+Math.sign(dx)*r,o.y))o.x+=dx;if(!wall(o.x,o.y+dy+Math.sign(dy)*r))o.y+=dy}
 function ai(dt){if(G.moving){const dx=G.tx-G.x,dy=G.ty-G.y,d=Math.hypot(dx,dy);if(d<.05){G.moving=false;G.ph=0;G.wait=1+Math.random()*2.5}else{G.h=Math.atan2(dy,dx);const sp=Math.min(d,G_SPEED*dt);const ox=G.x,oy=G.y;tryMove(G,dx/d*sp,dy/d*sp,.25);const moved=Math.hypot(G.x-ox,G.y-oy);if(moved<1e-4)G.moving=false;G.ph=(G.ph+moved/STRIDE*8)%8}}
  else if((G.wait-=dt)<0){for(let i=0;i<20;i++){const x=1.5+Math.random()*(W-3),y=1.5+Math.random()*(H-3);if(!wall(x,y)){G.tx=x;G.ty=y;G.moving=true;break}}}}
@@ -49,6 +51,7 @@ let last=performance.now();
 function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
  const sp=2.2*dt,ca=Math.cos(P.a),sa=Math.sin(P.a);let f=0,s=0;
  if(keys.KeyW||keys.ArrowUp)f++;if(keys.KeyS||keys.ArrowDown)f--;if(keys.KeyD)s++;if(keys.KeyA)s--;
+ if(keys.KeyR||keys.PageUp)P.p+=1.2*dt;if(keys.KeyF||keys.PageDown)P.p-=1.2*dt;clampP();
  if(keys.ArrowLeft||keys.KeyQ)P.a-=2.2*dt;if(keys.ArrowRight||keys.KeyE)P.a+=2.2*dt;
  tryMove(P,(ca*f-sa*s)*sp,(sa*f+ca*s)*sp);
  // 不讓玩家穿過妹子
@@ -56,15 +59,16 @@ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
  ai(dt);render();requestAnimationFrame(frame)}
 // 視角高度（牆高=1；0.5 為原本的低視角）
 const EYE=0.95;
-function render(){const d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
- for(let y=0;y<SH;y++){const ceil=y<SH/2,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-SH/2+.5)),
+// 上下視角：y-shearing，地平線 HZ 隨 pitch 上下移動（P.p>0 抬頭）
+function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
+ for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
   lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
   for(let x=0;x<SW;x++,fx+=stx,fy+=sty){const i=(y*SW+x)*4,chk=((Math.floor(fx)+Math.floor(fy))&1),sh=Math.min(1,.45+2.5/rd);
    const c=ceil?[150,145,160]:(chk?[200,190,175]:[175,165,150]);d[i]=c[0]*sh;d[i+1]=c[1]*sh;d[i+2]=c[2]*sh;d[i+3]=255}}
  for(let x=0;x<SW;x++){const cam=2*x/SW-1,rx=dx+px*cam,ry=dy+py*cam;let mx=P.x|0,my=P.y|0;
   const ddx=Math.abs(1/rx),ddy=Math.abs(1/ry),sx=rx<0?-1:1,sy=ry<0?-1:1;let sdx=(rx<0?P.x-mx:mx+1-P.x)*ddx,sdy=(ry<0?P.y-my:my+1-P.y)*ddy,side=0;
   for(let k=0;k<64;k++){if(sdx<sdy){sdx+=ddx;mx+=sx;side=0}else{sdy+=ddy;my+=sy;side=1}if(wall(mx,my))break}
-  const pd=side?sdy-ddy:sdx-ddx;zb[x]=pd;const lh=SH/pd|0,wt=SH/2-lh*(1-EYE),y0=Math.max(0,wt|0),y1=Math.min(SH,(SH/2+lh*EYE)|0);
+  const pd=side?sdy-ddy:sdx-ddx;zb[x]=pd;const lh=SH/pd|0,wt=HZ-lh*(1-EYE),y0=Math.max(0,wt|0),y1=Math.min(SH,(HZ+lh*EYE)|0);
   let u=side?P.x+pd*rx:P.y+pd*ry;u-=Math.floor(u);const t=M[my][mx],shd=Math.min(1,.45+2.5/pd);
   for(let y=y0;y<y1;y++){const v=(y-wt)/lh,c=wallCol(t,u,v,side),i=(y*SW+x)*4;d[i]=c[0]*shd;d[i+1]=c[1]*shd;d[i+2]=c[2]*shd}}
  g.putImageData(img,0,0);
@@ -74,7 +78,7 @@ function render(){const d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,
  for(const q of DIRS){const e=Math.abs(((rel-q[0])+540)%360-180);if(e<Math.abs(((rel-best[0])+540)%360-180))best=q}
  const im=sheetFor(best[1]),fr=G.moving?(G.ph|0)%8:0;
  document.getElementById("st").textContent=`妹子：${G.moving?"走路":"站著"}（${{front:"正面",front_right:"右前",right:"右",back_right:"右後",back:"背面",back_left:"左後",left:"左",front_left:"左前"}[best[1]]}）　距離 ${Math.hypot(vx,vy).toFixed(1)}`;
- if(tz>.15&&im.complete&&im.naturalWidth){const hgt=SH/tz*1.15,wid=hgt*64/140;let cx=SW/2*(1+tx/tz);let top=SH/2+SH/tz*EYE-hgt;
+ if(tz>.15&&im.complete&&im.naturalWidth){const hgt=SH/tz*1.15,wid=hgt*64/140;let cx=SW/2*(1+tx/tz);let top=HZ+SH/tz*EYE-hgt;
   const shd=Math.min(1,2.2/tz);
   // 步伐律動：每步一次上下起伏（腳著地時最低、跨步中最高）＋每週期一次左右重心擺動；停下時平滑歸零
   G.bw=(G.bw||0)+((G.moving?1:0)-(G.bw||0))*.2;const a=G.ph/8*Math.PI*2;
