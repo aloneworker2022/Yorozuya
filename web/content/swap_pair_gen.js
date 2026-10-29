@@ -52,7 +52,8 @@ export const pairCut = (have, slot) => {
   // 第 2 格必須跟第 1 格同 seed（2026-10-24：遊戲內預產以前沒傳 seed，兩格差很多 → 不同 seed 的第 2 格當沒有、重生）
   if (/~3$/.test(String(slot))) return r.cut;   // 射精圖不卡 seed
   const m = /^(.+)~2$/.exec(String(slot));
-  if (m) { const s1 = Number(have?.[`pair~${m[1]}~1`]?.seed) || 0; if (!s1 || Number(r.seed) !== s1) return ""; }
+  // pt320u：舊預產圖沒存 seed → 兩邊有一邊沒 seed 就照用（只有兩邊都有且不同才當沒有），不然動圖只剩第 1 格不會動
+  if (m) { const s1 = Number(have?.[`pair~${m[1]}~1`]?.seed) || 0, s2 = Number(r.seed) || 0; if (!have?.[`pair~${m[1]}~1`]?.cut) return ""; if (s1 && s2 && s1 !== s2) return ""; }
   return r.cut;
 };
 export const PAIR_KEYS = PAIR_ACTS.map((a) => a.key);

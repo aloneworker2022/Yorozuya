@@ -1,7 +1,7 @@
 /* 把換妻立繪整批交給伺服器。網頁關掉，這台仍會生完。 */
 import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { api, templateFor, cafeBody } from "./swap_cafe_gen.js?v=38";
-import { PAIR_SLOTS, pairBody, pairOwner } from "./swap_pair_gen.js?v=28";
+import { PAIR_SLOTS, pairBody, pairOwner } from "./swap_pair_gen.js?v=29";
 import { pregenTease } from "./swap_tease.js?v=13";
 import { PRE_PARK, HOTEL_PORTRAIT } from "./swap_meet_rules.js?v=3";
 

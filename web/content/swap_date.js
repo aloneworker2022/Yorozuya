@@ -10,7 +10,7 @@ import { cachedUrl, genTeaseImage, jobsForAct } from "./swap_tease.js?v=13";
 import { runHotelSex, createLocalAnim, POSE_ZH, STATE_ZH, STATE_STEP, sexImgCandidates, posesFor, rollAffDelta, swapAffStage, SENSE_RULE, SWAP_SEX_FB, DIRTY_TALK_RULE, DIRTY_TALK, isInitiative } from "./swap_chat_sex.js?v=11";
 import { clinkFx, onLongPress } from "./swap_clink.js?v=1";
 import { sexKey } from "./swap_tease_rules.js?v=11";
-import { pairOwner, pairCut, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=28";
+import { pairOwner, pairCut, startPairLoop, applyPairFrame } from "./swap_pair_gen.js?v=29";
 
 /** pt310u #12：第二場景（KTV／公園）她跟對方丈夫的親密動作 → 雙人圖格子。 */
 export const PAIR_SLOT_OF = { kiss: "kiss", oral: "fellatio", breast: "grope", breast_knead: "grope", breast_suck: "grope", nipple_lick: "grope", butt: "grope", waist: "grope", molest: "grope", labia: "cunni", labia_rub: "cunni", sex: "behind~2" };
@@ -61,6 +61,8 @@ export function openSwapDate(ctx, couple, meet) {
     #sd-ov .bg{position:absolute;inset:0;background:center/cover no-repeat;z-index:0}
     #sd-ov .pbg{position:absolute;inset:0;z-index:0;pointer-events:none}
     #sd-ov .pbg[hidden]{display:none}
+    #sd-ov .pbg>div.sway{animation:sdSway 1.1s ease-in-out infinite}
+    @keyframes sdSway{0%,100%{transform:translateY(-50%) scale(1)}50%{transform:translateY(-51.5%) scale(1.015)}}
     #sd-ov .pbg>div{position:absolute;left:6%;top:50%;transform:translateY(-50%);width:44%;max-width:408px;max-height:66%;aspect-ratio:3/4;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
     #sd-ov .pbg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:bottom center}
     #sd-ov .pbg .pbl{position:absolute;left:0;top:-18px;font-size:10px;padding:1px 4px;color:rgba(242,214,230,.8);text-shadow:0 1px 2px #000;white-space:nowrap}
@@ -153,10 +155,13 @@ export function openSwapDate(ctx, couple, meet) {
   async function refreshImages() {
     try { const S = await api.state(); images = S.images || {}; } catch { /* 書籤還在生，先用名字 */ }
   }
-  let pairSlot = "", wifeLook = "", wifeLoc = "hotel_room", ohCdUntil = 0, nextBeatAt = Date.now() + BEAT_MS, stopPbg = null;
+  let pairSlot = "", wifeLook = "", wifeLoc = "hotel_room", ohCdUntil = 0, pairF2 = false, nextBeatAt = Date.now() + BEAT_MS, stopPbg = null;
   const pairHave = () => images[pairOwner(wife, couple)] || {};
   function urlOf(ch, ex) {
-    if ((ch === "wife" || ch === "husband") && watching && stage2() && pairSlot) { const u = pairCut(pairHave(), pairSlot) || pairCut(pairHave(), pairSlot.replace(/~2$/, "~1")); if (u) return u; }
+    if ((ch === "wife" || ch === "husband") && watching && stage2() && pairSlot) {
+      // pt320u：交配動作兩格輪播（第 1 格↔第 2 格），不再固定顯示 ~2
+      const h = pairHave(), base = pairSlot.replace(/~\d$/, ""), u1 = pairCut(h, `${base}~1`), u2 = pairCut(h, `${base}~2`);
+      const u = (u1 && u2 ? (pairF2 ? u2 : u1) : u1 || u2) || pairCut(h, pairSlot) || pairCut(h, base); if (u) return u; }
     if (ch === "wife" && hotel() && wifeLook) ex = wifeLook;
     const owner = ch === "wife" ? wife.id : couple.id;
     const bag = images[owner] || {};
@@ -592,8 +597,12 @@ export function openSwapDate(ctx, couple, meet) {
     const box = $(".pbg"), on = hotel() && !!ACT_SLOTS[act] && wifeLoc === scene;
     stopPbg?.(); stopPbg = null;
     if (!on) { box.hidden = true; return; }
-    const have = pairHave(), slot = pick(ACT_SLOTS[act].filter((k) => pairCut(have, `${k}~1`))) || (act !== "sex" ? pick(ACT_SLOTS.sex.filter((k) => pairCut(have, `${k}~1`))) : "") || "";
-    const u1 = slot ? pairCut(have, `${slot}~1`) : "", u2 = slot ? pairCut(have, `${slot}~2`) : "";
+    // pt320u：口交／接吻／摸奶是單格動作（key 沒有 ~1）→ 以前永遠找不到、退回交配；單格加輕微晃動
+    const have = pairHave(), two = (k) => pairCut(have, `${k}~1`), one = (k) => pairCut(have, k);
+    let slot = pick(ACT_SLOTS[act].filter(two)) || "", u1 = slot ? two(slot) : "", u2 = slot ? pairCut(have, `${slot}~2`) : "";
+    if (!u1) { slot = pick(ACT_SLOTS[act].filter(one)) || ""; u1 = slot ? one(slot) : ""; u2 = ""; }
+    if (!u1 && act !== "sex") { slot = pick(ACT_SLOTS.sex.filter(two)) || ""; u1 = slot ? two(slot) : ""; u2 = slot ? pairCut(have, `${slot}~2`) : ""; }
+    box.firstElementChild.classList.toggle("sway", !u2);
     if (!u1) { box.hidden = true; return; }
     box.querySelector(".pf1").src = u1; box.querySelector(".pf2").src = u2 || u1;
     box.querySelector(".pbl").textContent = `${name.wife} × ${name.husband}（就在你旁邊）`;
@@ -601,10 +610,11 @@ export function openSwapDate(ctx, couple, meet) {
     stopPbg = startPairLoop((f2) => applyPairFrame(box, f2));
   }
   const timer = setInterval(() => { if (!ended && Date.now() >= nextBeatAt) { nextBeatAt = Date.now() + BEAT_MS; void pairBeat(); } }, 500);
+  const stopWatchLoop = startPairLoop((f2) => { pairF2 = f2; if (!ended && watching && pairSlot) renderSide(); });   // pt320u：看另一對時兩格輪播
   const imgTimer = setInterval(() => { if (!ended) void refreshImages().then(() => { if (!ended) renderSide(); }); }, 4000);
   function finish(why) {
     if (ended) return; ended = true;
-    clearInterval(timer); clearInterval(imgTimer); stopPbg?.();
+    clearInterval(timer); clearInterval(imgTimer); stopPbg?.(); stopWatchLoop?.();
     try {
       localStorage.setItem(LAST_KEY, JSON.stringify({ at: Date.now(), why, wifeId: wife.id, coupleId: couple.id, semen: meet.semen, orgasm: meet.orgasm, accept: meet.accept }));
     } catch { /* */ }
