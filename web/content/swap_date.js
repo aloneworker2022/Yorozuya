@@ -1,5 +1,5 @@
 /* 換妻約會：左對話、右正在說的人、下面輸入。酒吧四人群聊；之後只剩你跟對方妻子。 */
-import { api, pickBackdrop } from "./swap_cafe_gen.js?v=37";
+import { api, pickBackdrop } from "./swap_cafe_gen.js?v=38";
 import { queuePortraits } from "./swap_pregen.js?v=2";
 import {
   addAccept, addDrunk, lockIfReady, bothAgreed, husbandPickScene, barChatGain, toastOf,

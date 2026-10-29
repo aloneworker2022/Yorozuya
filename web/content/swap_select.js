@@ -1,7 +1,7 @@
 /* 2026-10-21 換妻 step：先問妻子 → 選對方夫妻 → 確認 → 開車生立繪 → 約會。
  * 2026-10-23：候選夫妻＝進選單時用 generateGirl＋husband_gen 現場抽（swap_candidates），只存 localStorage 當日清單；
  * 不延用咖啡廳「換一對」／/api/swap/cafe 測試名冊。選中後才 put 那一對並在 drive 黑畫面生 一般／害羞立繪。 */
-import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=37";
+import { api, BZH, pickBackdrop, genPortrait, rollCouple, rollCkpts, usableCkpts, ensureSwapMeta, enrichCouple } from "./swap_cafe_gen.js?v=38";
 import { askChanceFor, canRental, stageKeyOf } from "./rental.js?v=7";
 import { familyOf } from "./girl_voice.js?v=1";
 import { openBar } from "./swap_bar.js?v=61";

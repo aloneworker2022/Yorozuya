@@ -1,7 +1,7 @@
 /* 換妻・玩家對對方妻子的動作圖＋做愛步驟圖（2026-10-23）。
  * 共用房間那套 *_packs 的 build／generate（同一份圖組 prompt），魅子換成「對方妻子」：她自己的 ckpt＋補成房間 look 格式。
  * 結果存在換妻伺服器狀態 images[couple.id]["tease~<動作>(~nude)" | "sex~<姿勢>~<步驟>"]，之後直接用、不重生。 */
-import { api } from "./swap_cafe_gen.js?v=37";
+import { api } from "./swap_cafe_gen.js?v=38";
 import { gameEngine } from "./rental_scene_gen.js?v=17";
 import { teaseGirlOf, teaseKey, sexKey, teaseNude, teaseUnder, sexPoseFor, pregenKeys, SEX_PREGEN_STEPS } from "./swap_tease_rules.js?v=11";
 import { UNDER_OUTFIT } from "./swap_outfit.js?v=8";

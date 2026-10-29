@@ -5158,7 +5158,7 @@ _SWAP_STATE = _SWAP_DIR / "state.json"
 # 2026-10-22 加雙人互動圖 pair~<動作>（owner＝她 id.couple id）
 # 2026-10-23 加玩家對對方妻子的動作圖 tease~<動作>(~nude) 與做愛步驟 sex~<姿勢>~<步驟>（owner＝couple id）
 _SWAP_EXPR = r"normal|shy|happy|startled|erotic|tipsy|under|nude|nude_ero|nude_ahe|nude_prone|nude_spread|nude_normal|nude_shy|nude_happy|nude_startled"
-_SWAP_KEY = re.compile(r"^((wife|husband|other)~(" + _SWAP_EXPR + r")|other~(climax|creampie)|pair~(chat|kiss|grope|fellatio|cunni|room_kiss|bath_kiss|afterglow)|pair~(normal|behind|seated|prone)~(1|2|3)|pair~fellatio~3"
+_SWAP_KEY = re.compile(r"^((wife|husband|other)~(" + _SWAP_EXPR + r")|(wife|other)~(climax|creampie)|pair~(chat|kiss|grope|fellatio|cunni|room_kiss|bath_kiss|afterglow)|pair~(normal|behind|seated|prone)~(1|2|3)|pair~fellatio~3"
                        r"|tease~(waist|butt|breast|breast_knead|breast_suck|nipple_lick|labia|labia_rub|oral|finger_in|vagina_finger|cervix_rub)(~nude|~under)?"
                        r"|sex~(missionary|doggy|cowgirl|prone)~(open|tip|join|thrust|cum|orgasm))$")   # 交配三個動作兩格（輪播）
 _SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")

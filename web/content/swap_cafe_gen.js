@@ -33,8 +33,8 @@ const EXPRS = {
   tipsy: "微醺（酒吧喝醉）", under: "內衣（KTV 脫 1）", nude: "裸體（旅館）", climax: "高潮癱軟坐著（旅館做愛）", creampie: "內射後坐著腿開（旅館做愛）",
 };
 const EXPR_EN = {
-  climax: "full body, sitting on bed, collapsed after orgasm, limp, exhausted, trembling legs, ahegao, flushed, sweaty, heavy breathing, messy hair, completely nude",
-  creampie: "full body, sitting on bed, legs spread, m legs, spread pussy, cum dripping from pussy, cum on thighs, creampie aftermath, flushed, exhausted, heavy breathing, completely nude",
+  climax: "full body, sitting, slumped, limp, collapsed after orgasm, spent, exhausted, leaning back on hands, trembling legs, ahegao, half-closed eyes, flushed, sweaty, heavy breathing, messy hair, completely nude",
+  creampie: "full body, sitting, legs spread wide, m legs, knees apart, spread pussy, cum dripping from pussy, cum on thighs, creampie aftermath, flushed, exhausted, heavy breathing, completely nude",
   tipsy: "tipsy, flushed cheeks, drunk blush, half-lidded eyes, relaxed smile",
   under: "embarrassed, blushing, covering herself slightly, shy",
   nude: "embarrassed, deep blush, shy, covering herself slightly",
@@ -56,7 +56,8 @@ const POSE_EN = {
   // 不要寫 from behind／looking back：前者會被伺服器當成雙人場面，後者等於回頭看玩家。
   // pt295u：背面爬著、鏡頭在臀部後方低角度（不寫 from behind，伺服器會當雙人）
   nude_prone: "solo, full body, rear view, back view, crawling on all fours, on hands and knees, ass focus, buttocks in foreground, hips raised, view from rear at hip level, low angle, back arched, legs and feet visible, head turned away, looking ahead, face not visible",
-  nude_spread: "solo, full body, entire body, head to toe, feet visible, head visible, lying on back, legs spread, knees apart, facing viewer, looking at viewer",
+  // pt296u：正面躺著、雙手掰開陰唇
+  nude_spread: "solo, full body, front view, lying on back, legs spread, knees apart, spread pussy, labia, both hands spreading labia, fingers pulling labia open, pussy focus, facing viewer, looking at viewer, head visible",
   nude_ahe: "solo, half-body portrait, upper body, facing viewer, looking at viewer",
   nude_ero: "solo, half-body portrait, upper body, shirtless, facing viewer, looking at viewer",
 };
@@ -259,7 +260,7 @@ export function rollCkpts(c, list, who = "both") {
 // ---- 模板
 export function defaultTemplate(ch, ex) {
   const who = ch === "husband" ? "1boy, male focus, wearing {man_outfit}, the man: {man}, {man_body}" : "1girl, the woman: {girl}, {girl_body}, wearing {girl_outfit}";
-  const shot = POSE_EN[ex] || (ex === "climax" || ex === "creampie" ? "solo, full body, entire body, head to toe, feet visible, head visible, facing viewer, looking at viewer, sitting on the floor" : PORTRAIT_EN);
+  const shot = POSE_EN[ex] || (ex === "climax" || ex === "creampie" ? "solo, full body, entire body, head to toe, feet visible, head visible, facing viewer, looking at viewer, sitting" : PORTRAIT_EN);
   // 綠幕和姿勢放最前。妻子這段會整段接到身份後面（伺服器加 BREAK）；丈夫身份與構圖分成兩段。長的身份放最後，被截掉也不影響構圖。
   const pose = [BG_EN, shot, "{expr}"].join(", ");
   const pos = ch === "husband" ? [QUALITY_EN, who, "BREAK", pose].join(", ") : [pose, who].join(", ");
