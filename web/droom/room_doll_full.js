@@ -329,13 +329,12 @@
         } else if (SHP === 'pendulous' && hang <= .05) {
           // 下垂（v8）：根部在胸口高處，乳肉沿重力往下（−z）長長掛下來，最低點遠低於乳房下緣，底部像袋子最飽滿、乳頭朝下
           const L = r * 1.9 + 1.5;
-          // 2026-10-29 pt11u：上胸不飽滿——根部薄而貼胸（扁、凹），體積全集中在底部；走路時底部晃得比根部多
-          const top = [s * (2.9 + r * .22) * cs, yl(zA) + 1.6 * cs + r * .05, zA];
-          const mid = [s * (3.2 + r * .3) * cs + bx * .5, yl(zA) + 2.0 * cs + r * .28 + by * .5, zA - L * .55 + bz * .5];
-          const bot = [s * (3.4 + r * .32) * cs + bx * 1.3, yl(zA) + 2.4 * cs + r * .6 + by, zA - L + bz * 1.3];
-          sh.cone(BODY, top, mid, r * .28, r * .55);
-          sh.cone(BODY, mid, bot, r * .55, r * .92);
-          sh.ell(BODY, [bot[0], bot[1], bot[2] + r * .1], [r * 1.02, r * .82, r * .88]);
+          const top = [s * (2.9 + r * .22) * cs, yl(zA) + 2.0 * cs + r * .25, zA];
+          const mid = [s * (3.2 + r * .3) * cs, yl(zA) + 2.4 * cs + r * .55, zA - L * .55];
+          const bot = [s * (3.4 + r * .32) * cs + bx, yl(zA) + 2.4 * cs + r * .6 + by, zA - L + bz];   // 2026-10-29：形狀回復 v8 下垂（pt11u 上胸變扁版被退回）；保留 bz 讓走路晃動吃得到
+          sh.cone(BODY, top, mid, r * .5, r * .78);
+          sh.cone(BODY, mid, bot, r * .78, r * .9);
+          sh.ell(BODY, [bot[0], bot[1], bot[2] + r * .1], [r * .98, r * .8, r * .85]);
           nipAt([bot[0], bot[1] + r * .95, bot[2] - r * .15], [0, .8, -.6]);
         } else if (SHP === 'round' && hang <= .05) {
           // 圓形：上下一樣飽滿的球
