@@ -99,7 +99,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = !!sh.cloth; p.flat = !!sh.flat; prims.push(p); };
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; prims.push(p); };
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -374,9 +374,12 @@
     }
     // 2026-10-30 pt28u：第一套衣服「餐巾白布」——一塊薄白布從脖子／鎖骨垂下，順著胸型繃過乳尖再直直落下，蓋住胸部。
     // 做法：每條直條（x）沿 z 由上往下找身體最前緣，布只會往前不會往回貼（掛在乳尖上再垂直落下）。tag cloth＝1。
-    const CLOTHES = ['napkin'];
+    // 2026-10-30 pt29u：加金色頸鍊（布不會掉）、下緣邊框、兩個下垂角＋配重（bell 鈴鐺／jade 玉石）。
+    // sheet 只是「部位標記色」：布 CLOTH_RGB/LO、邊框 TRIM_RGB、鍊 CHAIN_RGB、配重 WEIGHT_RGB；真正配色由前端依配色方案上色。
+    const CLOTHES = ['napkin_bell', 'napkin_jade'];
     const CLOTH_RGB = [250, 250, 252], CLOTH_LO_RGB = [214, 216, 228], CLOTH_A = 236;
-    function napkin(sh, P, doll, tor) {
+    const TRIM_RGB = [255, 0, 0], CHAIN_RGB = [0, 255, 0], WEIGHT_RGB = [0, 0, 255], WEIGHT_LO_RGB = [0, 0, 160];
+    function napkin(sh, P, doll, tor, weight) {
       const S = tor.S, r = tor.cupr, bo = bustOuter(P, doll), hw = Math.min(bo * .92, 8.3 * F(P.b, 'sh') - 2.2) + .6;
       const top = S - .6, bot = tor.zB - r - 4.2 - .25 * r;
       const nx = Math.max(6, Math.round(hw * 2 / 1.1)), nz = Math.max(6, Math.round((top - bot) / 2.0));
@@ -390,16 +393,46 @@
         }
         C.push(col);
       }
-      sh.cloth = true;
+      sh.cloth = 1;
+      const BOT = [];   // 每條直條最下面一點（邊框／配重用）
       for (let i = 0; i <= nx; i++) {   // 乳溝處布橫跨兩邊乳尖繃著，不陷進去
         const pts = [], edge = Math.abs(X[i]) / hw;
         for (let j = 0; j <= nz; j++) {
           let L = -1e3, R = -1e3; for (let q = 0; q <= i; q++) L = Math.max(L, C[q][j]); for (let q = i; q <= nx; q++) R = Math.max(R, C[q][j]);
           const y = Math.min(L, R); if (y > -1e3) pts.push([X[i], y + .55, Z[j] - edge * edge * 1.2]);
         }
-        if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .8));
+        if (pts.length > 1) {
+          const e = edge > .8 ? (edge - .8) / .2 : 0, last = pts[pts.length - 1];   // 兩個角往下垂
+          if (e > 0) pts.push([last[0], last[1] + .2, last[2] - 3.2 * e]);
+          sh.chain(BODY, pts, pts.map(() => .8)); BOT.push(pts[pts.length - 1]);
+        }
       }
-      sh.cloth = false;
+      // 下緣邊框
+      sh.cloth = 2;
+      if (BOT.length > 1) sh.chain(BODY, BOT.map(q => [q[0], q[1] + .35, q[2] + .3]), BOT.map(() => 1.05));
+      // 配重：掛在兩個下垂角
+      sh.cloth = 4;
+      for (const q of [BOT[0], BOT[BOT.length - 1]]) {
+        if (!q) continue; const c = [q[0], q[1] + .3, q[2] - 1.6];
+        if (weight === 'bell') { sh.ell(BODY, c, [1.5, 1.5, 1.4]); sh.ell(BODY, [c[0], c[1], c[2] - .9], [1.9, 1.9, .6]); }
+        else sh.ell(BODY, [c[0], c[1], c[2] - .6], [1.0, 1.0, 2.0]);
+      }
+      // 金色頸鍊：從布兩個上角繞過脖子後面
+      sh.cloth = 3;
+      const nz0 = S + 2.2; let yf = null, yb = null, xr = null;
+      for (let k = 0; k < 300; k++) { const y = 15 - k * .1; if (bodyDist(sh, 0, y, nz0) < 0) { yf = y; break; } }
+      for (let k = 0; k < 300; k++) { const y = -15 + k * .1; if (bodyDist(sh, 0, y, nz0) < 0) { yb = y; break; } }
+      if (yf !== null && yb !== null) {
+        const yc = (yf + yb) / 2;
+        for (let k = 0; k < 200; k++) { const x = 12 - k * .1; if (bodyDist(sh, x, yc, nz0) < 0) { xr = x; break; } }
+        const ry = (yf - yb) / 2 + .7, rx = (xr || 3) + .7, ring = [];
+        for (let a = 0; a <= 180; a += 15) { const t = a * Math.PI / 180; ring.push([rx * Math.cos(t), yc - ry * Math.sin(t), nz0 + .3 * Math.sin(t)]); }
+        const L = C[0][0] + .55, R = C[nx][0] + .55;
+        sh.chain(BODY, [[-hw, R > -1e3 ? L : yf, top], [-rx, yc, nz0]], [.4, .4]);
+        sh.chain(BODY, [[hw, R > -1e3 ? R : yf, top], [rx, yc, nz0]], [.4, .4]);
+        sh.chain(BODY, ring, ring.map(() => .4));
+      }
+      sh.cloth = 0;
     }
     function definition(sh, P, tor, xoff = 0) {
       const b = P.b, S = tor.S, zW = tor.zW;
@@ -749,7 +782,7 @@
         }
         if (front) { sh.off = o; definition(sh, P, tor); }
         sh.off = o;
-        if (doll.cloth === 'napkin') napkin(sh, P, doll, tor);
+        if (String(doll.cloth || '').startsWith('napkin')) napkin(sh, P, doll, tor, doll.cloth.split('_')[1] || 'bell');
         hair(sh, P, doll, tor, ({ pony_hi: 3.5, pony_lo: 2.5 }[doll.hair] || 0) * w);
         sh.off = [0, 0, 0];
         return { sh, P };
@@ -774,7 +807,7 @@
           arm(sh, P, sh_j, elbow, wrist);
         }
         if (front) definition(sh, P, tor);
-        if (doll.cloth === 'napkin') napkin(sh, P, doll, tor);
+        if (String(doll.cloth || '').startsWith('napkin')) napkin(sh, P, doll, tor, doll.cloth.split('_')[1] || 'bell');
         hair(sh, P, doll, tor, -sway);
         return { sh, P };
       }
@@ -1269,7 +1302,7 @@
         const p = prims[i];
         let q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
         if (p.xf) { const w = mulV(p.xf.R, q); q = [w[0] + p.xf.t[0], w[1] + p.xf.t[1], w[2] + p.xf.t[2]]; }
-        bcx[i] = q[0]; bcy[i] = q[1]; bcz[i] = q[2]; brr[i] = p.br; pm[i] = p.mat; pb[i] = p.cloth ? 5 : p.nip ? p.nip + 1 : p.bust ? 1 : 0;
+        bcx[i] = q[0]; bcy[i] = q[1]; bcz[i] = q[2]; brr[i] = p.br; pm[i] = p.mat; pb[i] = p.cloth ? 4 + p.cloth : p.nip ? p.nip + 1 : p.bust ? 1 : 0;
         mnx = Math.min(mnx, bcx[i] - brr[i]); mxx = Math.max(mxx, bcx[i] + brr[i]);
         mny = Math.min(mny, bcy[i] - brr[i]); mxy = Math.max(mxy, bcy[i] + brr[i]);
         mnz = Math.min(mnz, bcz[i] - brr[i]); mxz = Math.max(mxz, bcz[i] + brr[i]);
@@ -1344,7 +1377,7 @@
             const j = ny * width + nx;
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
-          if (bust[i] === 5) { set(i, near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32; continue; }
+          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32; continue; }
           set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
         }
         if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32;
@@ -1454,7 +1487,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { CLOTHES, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
