@@ -34,3 +34,6 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - room_doll_full.js `groin()`：`doll.pubic`＝strip 一條線／triangle 三角形（無＝沒有）、`doll.labia`＝line 一線／butterfly 蝴蝶唇、`doll.pants`＝lace_thong 蕾絲丁字褲（低腰細褲頭＋前三角蕾絲＋後 T 字細繩）。
 - 圖層 `sheets/groin/<body>_<pubic|labia|pants>_<style>_<dir>.png`（160 張，`render_groin.cjs`），部位標記色：陰毛 #F0F（前端換成髮色）、陰唇 #FF0、蕾絲 #0FF/#0AA、褲頭 #F80。
 - 疊法：身體上色後 陰唇→陰毛→丁字褲（蕾絲棋盤鏤空半透）→餐巾布。index.html／play.html 加「陰毛」「陰唇」「褲子」「蕾絲色（黑／白／紅／粉紅）」。
+
+## 2026-10-30 pt33u：走路擺手
+- walk 手臂擺幅 16°（前擺只有 ×0.35）→ 約 ±24～30°，與同側腳反向；前擺時手肘多彎、手往身體中線收，後擺時手略往外，前／後方向也看得出擺手。身體、頭髮、餐巾布、下身 sheet 全部重繪。
