@@ -161,8 +161,9 @@ function drawSelf(moving){const th=-P.p;if(th<.45)return;
 // pt68u：改用你的苗 self_ref.png（低頭看自己）：低頭時從畫面底冒出，低頭到底（-PMIN）貼齊畫面底，抬頭時往下退出
 // pt71u：低頭到底只伸出陰莖黑影（手畫 pixel PNG penis_sil.png，非程式繪形）
 // pt72u：軟的時候很小隻（另一張手畫 pixel PNG penis_sil_soft.png，同像素比例）；低頭可再低一點（PMIN 1.21→1.4）
-const SELF_HARD=new Image();SELF_HARD.src="/droom/penis_sil.png?v=1";const SELF_SOFT=new Image();SELF_SOFT.src="/droom/penis_sil_soft.png?v=1";
-function drawSelfRef(moving){const SELF_IM=pnSel.value=="soft"?SELF_SOFT:SELF_HARD;if(!SELF_IM.complete||!SELF_IM.naturalWidth)return;const th=-P.p,T0=.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
+const SELF_HARD=new Image();SELF_HARD.src="/droom/penis_sil.png?v=1";const SELF_SOFT=new Image();SELF_SOFT.src="/droom/penis_sil_soft.png?v=2";const SELF_SEMI=new Image();SELF_SEMI.src="/droom/penis_sil_semi.png?v=1";
+// pt73u：軟最小（頭不大）→ 中大一點 → 硬最大，三張手畫 pixel PNG 同比例
+function drawSelfRef(moving){const SELF_IM=pnSel.value=="soft"?SELF_SOFT:pnSel.value=="semi"?SELF_SEMI:SELF_HARD;if(!SELF_IM.complete||!SELF_IM.naturalWidth)return;const th=-P.p,T0=.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
  const s=SH*.4/18,H=Math.round(SELF_IM.naturalHeight*s),W=Math.round(SELF_IM.naturalWidth*s);SELF_B+=(moving?.14:0);const bob=moving&&k>=1?0:(moving?Math.sin(SELF_B)*1.5:0);
  g.imageSmoothingEnabled=false;g.drawImage(SELF_IM,(SW-W)/2|0,Math.round(SH-H+(1-k)*(H+2)+bob),W,H)}
 function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
