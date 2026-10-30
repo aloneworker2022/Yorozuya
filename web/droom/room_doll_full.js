@@ -501,6 +501,30 @@
         sh.chain(HAIR, swc(bend([[0, y0 - 9.6, zc + 3.0], [sv * .3, y0 - 12.6, zc + .5], [sv * .7, y0 - 12.6, zc - 7], [sv, yl(S) - 10.0, S - 9]]), [0, .2, .6, 1]), [2.6, 3.1, 2.4, 1.0]);
         return;
       }
+      if (B === 'feather') {   // 2026-10-30 pt25u 羽毛剪（參考 beauty321 / marieclaire / ToolNeko）：鎖骨～胸口中長髮，
+        // 頭頂與中段保留厚度，臉旁從下巴開始一片片細碎層次往外往後飄，髮尾削薄成羽毛尖（上直下彎），不是外刺也不是一刀切。
+        const end = S - .22 * T, n = Math.max(3, Math.trunc((zc - end) / 2.2));
+        for (let i = 0; i <= n; i++) {   // 後片：上段飽滿、下段漸薄
+          const t = i / n, z = zc + 1 - (zc + 1 - end) * t;
+          const w = 8.0 - .8 * t - (t > .75 ? (t - .75) * 6 : 0);
+          const yb = yl(z) - (4.6 + 2.6 * Math.min(1, t * 1.6));
+          sh.ell(HAIR, sw([sway * t * t, yb, z], t ** 1.6), [w, 2.4 + (1 - t) * 2.0, 2.6]);
+        }
+        for (let k = 0; k < 5; k++) {   // 後片髮尾：長短交錯的細羽尖，微微外翻
+          const x = -6 + k * 3, zt = end - 1.2 - (k % 2 ? 1.6 : 0) - (k === 2 ? 1 : 0), zb = end + 2.5;
+          sh.cone(HAIR, sw([x * .9, yl(zb) - 6.6, zb], .9), sw([x * 1.08 + sway * .3, yl(zt) - 6.2, zt], 1), 1.5, .25);
+        }
+        for (const s of [-1, 1]) {   // 臉旁層次：下巴→頸→鎖骨三層，每片下段往外往後輕掠、尖端削細
+          sh.chain(HAIR, swc([[s * 6.4, y0 - .6 + fy, zc + 1], [s * 7.4, y0 - 1.2 + fy, zc - 6], [s * 7.6, yl(S) - 2.0 + fy, S - 1]], [0, .3, 1]), [1.9, 1.9, 1.5]);
+          const tiers = [[zc - hh - .5, 7.0, 1.6], [zc - hh - 4.5, 7.4, 1.6], [S - .1 * T, 7.6, 1.4]];
+          tiers.forEach(([zz, xr, r], k) => {
+            const top = zz + 5.5, mid = zz + 1.6;
+            sh.chain(HAIR, swc([[s * (xr - .4), y0 + 1.4 - k * .9 + fy, top], [s * (xr + .3), y0 + .6 - k * 1.1 + fy, mid], [s * (xr + 1.7 + k * .3), y0 - .8 - k * 1.3 + fy, zz - 1.2]], [.1 + k * .2, .3 + k * .2, .5 + k * .25]), [r, r * .8, .25]);
+            sh.cone(HAIR, sw([s * xr, y0 - .2 - k + fy, mid + .6], .3 + k * .2), sw([s * (xr + 1.2), y0 - 2.2 - k + fy, zz - .2], .5 + k * .2), r * .7, .2);
+          });
+        }
+        return;
+      }
       const end = { long: S - .5 * T, wavy: S - .5 * T, medium: S - 3.5, feather: S - 1.5 }[B];
       const n = Math.max(3, Math.trunc((zc - end) / 2.2)), wave = B === 'wavy';
       for (let i = 0; i <= n; i++) {
@@ -518,10 +542,6 @@
         pts.push([s * (6.9 + flare + (wave ? -.8 : 0)) + sway * .3, yl(lockEnd) - .8 + fy, lockEnd]);
         sh.chain(HAIR, swc(pts, pts.length === 3 ? [0, .3, 1] : [0, .25, .6, 1]), pts.length === 3 ? [1.9, 2.0, 1.0] : [2.0, 2.2, 2.0, 1.0]);
         if (wave) for (let k = 0; k < 3; k++) sh.ell(HAIR, sw([s * (8.6 - k * .5 + (k % 2 ? 1.2 : 0)), yl(S - k * 5) - 1.0 + fy, S - 2 - k * 5], .5 + k * .2), [1.9, 1.8, 2.2]);
-        if (B === 'feather') for (let k = 0; k < 3; k++) {   // 羽毛剪：層次，髮尾往外翹
-          const zz = zc - 6 - k * 3.2;
-          sh.cone(HAIR, sw([s * 7.6, yl(zz) - 2.0 + fy, zz + 1.5], .3), sw([s * (10.4 + k * .4), yl(zz) - 1.2 + fy, zz - 1.8], .6), 1.6, .5);
-        }
       }
     }
     // ------------------------------------------------------------ gait + bounce
