@@ -17,13 +17,13 @@
     const CUP_R = { A: 2.3, B: 3.1, C: 3.8, D: 4.5, E: 5.15, F: 5.7, G: 6.1, H: 6.55, I: 7.0 };
     const CUP_BOUNCE = { A: .12, B: .35, C: .55, D: .8, E: 1.05, F: 1.25, G: 1.42, H: 1.58, I: 1.75 };
     const BASE = { frame: 1, sh: 1, chest: 1, waist: 1, hip: 1, butt: 1, thigh: 1, calf: 1, arm: 1, bust: 1,
-      belly: 0, soft: 0, muscle: 0, bone: 0, leg: 0, head: 1, neck: 0 };
+      belly: 0, perk: 0, soft: 0, muscle: 0, bone: 0, leg: 0, head: 1, neck: 0 };
     const BUILDS = {
-      '勻稱有致': {},
+      '勻稱有致': { butt: 1.05, perk: 1 },   // pt34u 臀部翹
       '骨感清瘦': { sh: .98, chest: .9, waist: .84, hip: .84, butt: .66, thigh: .72, calf: .78, arm: .74, bust: .8, bone: 1 },
-      '纖細苗條': { sh: .95, chest: .93, waist: .86, hip: .92, butt: .86, thigh: .86, calf: .88, arm: .86, bust: .95, leg: .008 },
-      '嬌小玲瓏': { frame: .88, sh: .94, waist: .94, hip: .96, thigh: .96, calf: .94, arm: .92, bust: .95, head: 1.06, leg: -.012 },
-      '微肉圓潤': { sh: 1.04, chest: 1.1, waist: 1.24, hip: 1.14, butt: 1.18, thigh: 1.26, calf: 1.16, arm: 1.26, bust: 1.12, belly: 1, soft: 1 },
+      '纖細苗條': { sh: .95, chest: .93, waist: .86, hip: .85, butt: .78, thigh: .76, calf: .78, arm: .86, bust: .95, leg: .008 },
+      '嬌小玲瓏': { frame: .88, sh: .94, waist: .94, hip: .94, butt: .94, thigh: .92, calf: .9, arm: .92, bust: .95, head: 1.06, leg: -.012 },
+      '微肉圓潤': { sh: 1.04, chest: 1.1, waist: 1.24, hip: 1.24, butt: 1.28, thigh: 1.4, calf: 1.26, arm: 1.26, bust: 1.12, belly: 1, soft: 1 },
       '結實緊緻': { sh: 1.05, chest: 1.0, waist: .94, hip: 1.03, butt: 1.1, thigh: 1.08, calf: 1.1, arm: 1.04, muscle: .55 },
       '運動健美': { sh: 1.13, chest: 1.06, waist: .98, hip: 1.0, butt: 1.1, thigh: 1.14, calf: 1.18, arm: 1.14, bust: .95, muscle: 1 },
       '軟肉感有腰': { chest: 1.04, waist: .95, hip: 1.16, butt: 1.22, thigh: 1.2, calf: 1.06, arm: 1.12, bust: 1.08, belly: .45, soft: .7 },
@@ -225,8 +225,8 @@
       const calf_r = 3.05 * wC * (1 + .08 * b.muscle);
       sh.cone(BODY, knee, cpos, knee_r * .95, calf_r);
       sh.cone(BODY, cpos, ankle, calf_r, 1.55 * Math.min(wC, 1.1) * fr ** .5);
-      const [tx, ty, tz] = toe, fl = 4.6 * fr ** .7;
-      sh.cone(BODY, [ax, ay - .6, az - 1.6], [ax + tx * fl, ay + ty * fl, Math.max(0.9, az - 2.4 + tz * fl)], 1.7 * fr ** .5, 1.1);
+      const [tx, ty, tz] = toe, fl = 6.4 * fr ** .7;   // pt34u 腳掌加大
+      sh.cone(BODY, [ax - tx * .8, ay - .6 - ty * .8, az - 1.6], [ax + tx * fl, ay + ty * fl, Math.max(1.1, az - 2.4 + tz * fl)], 2.1 * fr ** .5, 1.5);
     }
     function arm(sh, P, shoulder, elbow, wrist, hand = true) {
       const b = P.b, wA = F(b, 'arm'), fr = b.frame;
@@ -302,10 +302,10 @@
       }
       if (b.belly) { const bz = zW - .32 * T; sh.ell(BODY, [0, yl(bz) + 1.6 + 1.2 * b.belly, bz], [5.4 * F(b, 'waist'), 3.6 + .6 * b.belly, 5.0]); }
       for (const s of [-1, 1]) {
-        const bb = F(b, 'butt'), lift = 1.2 * b.muscle, q = jig ? jig.sq : 0;
+        const bb = F(b, 'butt'), lift = 1.2 * b.muscle + 1.1 * b.perk, q = jig ? jig.sq : 0;
         // jig（偷看，2026-10-15）：被撞時臀肉往撞的方向推、前後壓扁、上下左右鼓出，再彈回來晃
         const [jx, jy, jz] = jig ? jig.d : [0, 0, 0];
-        sh.ell(BODY, [s * 3.7 * F(b, 'hip') + jx, yl(C + .09 * T) - 2.7 - .4 * (bb - 1) + jy, C + .09 * T + lift + jz],
+        sh.ell(BODY, [s * 3.7 * F(b, 'hip') + jx, yl(C + .09 * T) - 2.7 - .4 * (bb - 1) - .6 * b.perk + jy, C + .09 * T + lift + jz],
           [4.5 * bb * (1 + .45 * q), 4.2 * bb * (1 - q), 4.6 * bb * (1 + .35 * q)]);
       }
       if (jig && jig.thigh) for (const s of [-1, 1]) {
