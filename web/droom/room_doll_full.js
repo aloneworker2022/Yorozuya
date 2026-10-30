@@ -212,7 +212,7 @@
       return { H, b, head_h, zc, chin, S, C, T: S - C, knee: C * 0.6, hipz: C + 3.4, ankle: 3.3 };
     }
     const F = (b, k) => b[k] * b.frame;
-    let FOOT_HD = false;   // pt38u：build 時 opts.scale≥2 才開
+    let FOOT_HD = false, TIPTOE = 0;   // pt39u：赤腳走路微墊腳（腳跟抬高量）   // pt38u：build 時 opts.scale≥2 才開
     function leg(sh, P, side, hip, knee, ankle, toe) {
       const b = P.b, wT = F(b, 'thigh'), wC = F(b, 'calf'), fr = b.frame;
       const [hx, hy, hz] = hip, [kx, ky, kz] = knee, [ax, ay, az] = ankle;
@@ -229,8 +229,9 @@
       const [tx, ty, tz] = toe, fl = 6.4 * fr ** .7;   // pt34u 腳掌加大
       if (!FOOT_HD) { sh.cone(BODY, [ax - tx * .8, ay - .6 - ty * .8, az - 1.6], [ax + tx * fl, ay + ty * fl, Math.max(1.1, az - 2.4 + tz * fl)], 2.1 * fr ** .5, 1.5); return; }
       // 2026-10-30 pt38u：2× 才畫細腳——腳跟、足弓、蹠骨球、五根腳趾、內外踝骨
-      const q = fr ** .5, heel = [ax - tx * .8, ay - .6 - ty * .8, az - 1.6];
-      const tip = [ax + tx * fl, ay + ty * fl, Math.max(1.1, az - 2.4 + tz * fl)];
+      // pt39u：2× 腳掌再加大（長 ×1.3、粗 ×1.2）；走路赤腳時腳跟微抬、前掌著地
+      const q = fr ** .5 * 1.2, fl2 = fl * 1.3, heel = [ax - tx * 1.0, ay - .6 - ty * 1.0, az - 1.6 + TIPTOE];
+      const tip = [ax + tx * fl2, ay + ty * fl2, Math.max(1.1, az - 2.4 + tz * fl2)];
       const at = (u, dz = 0) => [heel[0] + (tip[0] - heel[0]) * u, heel[1] + (tip[1] - heel[1]) * u, heel[2] + (tip[2] - heel[2]) * u + dz];
       let lx = ty, ly = -tx; const ln = Math.hypot(lx, ly); if (ln < .2) { lx = 1; ly = 0; } else { lx /= ln; ly /= ln; }
       if (lx * -side < 0) { lx = -lx; ly = -ly; }   // l＝往身體中線（內側）
@@ -866,8 +867,10 @@
         skirt(sh, P, doll, tor, sway * .5);
         for (const s of [-1, 1]) {
           const [kn, an, lift] = g[s];
+          TIPTOE = doll.shoes ? 0 : 1.1;
           leg(sh, P, s, [s * hip_x, 0, hipz], [s * (kx() - .2), kn[1], kn[2]], [s * 2.8, an[1], an[2]],
             [0, .96 - lift * .04, lift > 1 ? -.25 : 0]);
+          TIPTOE = 0;
           // pt33u：手臂跟腳反向擺（前後看也要看得出來）——擺幅加大、往前擺時手肘彎、手往身體中線收；往後擺時手往外一點
           const c = Math.cos(phase) * (s === 1 ? 1 : -1);
           const swd = 30 * c * (c > 0 ? .8 : 1);
