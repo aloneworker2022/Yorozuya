@@ -118,13 +118,13 @@ const EYE=0.95;
 // pt41u：身體模型放在玩家鏡頭「正下方」、面朝外（與玩家同方向），用真實俯仰投影：往下看＝從上方看到自己
 // pt44u–pt46u：鏡頭在半空中（EYE），自己的身體是一根「黏在鏡頭正下方」的立體柱子、朝外（與玩家同向）。
 // 往下看＝從眼睛往下看到柱子的前緣：小腹 → 鼠蹊往外延伸；陰莖從鼠蹊長出：軟＝往下垂、微勃＝變粗斜前、勃起＝脹大往上翹。
-// 世界用 y-shearing，身體用真實俯仰投影（只在低頭時出現），俯角 = -P.p（最多約 69°）。pt49u：身體上下方向原本顛倒，已翻轉。
+// 世界用 y-shearing，身體用真實俯仰投影（只在低頭時出現），俯角 = -P.p（最多約 69°）。pt50u：畫面由上到下＝小腹→陰毛→陰莖（越往下＝離眼睛越遠、越低的部位越靠畫面下方）。
 let SELF_B=0;
 function drawSelf(moving){const th=-P.p;if(th<.45)return;
  const c=Math.cos(th),sn=Math.sin(th),F=SH;
  SELF_B+=(moving?.14:0);const bob=moving?Math.sin(SELF_B)*.005:0;
  // 本地座標：f=往前（朝外）、s=往右、z=離地高（牆高=1，眼睛 EYE）。柱子軸心在 f≈-.02，正在鏡頭下方
- const pr=(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2-F*v/dep,dep]};
+ const pr=(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2+F*v/dep,dep]};
  const X=g,HAIR=(HAIR_PAL[document.getElementById("hc").value]||HAIR_PAL.black)[0];
  const shade=(t)=>`rgb(${217-40*t|0},${168-42*t|0},${142-40*t|0})`;
  const poly=(pts,col)=>{const q=pts.map(p=>pr(...p));if(q.some(v=>!v))return;X.fillStyle=col;X.beginPath();q.forEach((v,i)=>i?X.lineTo(v[0],v[1]):X.moveTo(v[0],v[1]));X.closePath();X.fill()};
