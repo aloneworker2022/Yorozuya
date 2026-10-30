@@ -124,7 +124,8 @@ function drawSelf(moving){const th=-P.p;if(th<.45)return;
  const c=Math.cos(th),sn=Math.sin(th),F=SH;
  SELF_B+=(moving?.14:0);const bob=moving?Math.sin(SELF_B)*.005:0;
  // 本地座標：f=往前（朝外）、s=往右、z=離地高（牆高=1，眼睛 EYE）。柱子軸心在 f≈-.02，正在鏡頭下方
- const F0=-.02,pr0_=()=>(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2+F*v/dep,dep]};
+ const F0=-.02,pr0_=()=>(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2-F*v/dep,dep]};
+ // pt53u修：#38 投影已反號又再鏡射＝雙重翻轉，整個身體跑到畫面底下外面；pr0 用原投影，只鏡射一次
  // pt51u：幾何上下翻轉（非貼圖順序）：柱子被切開的上緣貼畫面底端→肚臍靠底→鼠蹊→陰毛倒三角頂點朝上→最外（畫面上方）陰莖；軟陰莖往外（往上）縮
  const pr0=pr0_(),YT=(pr0(F0,0,.76)||[0,SH])[1],pr=(f,s,z)=>{const q=pr0(f,s,z);return q?[q[0],SH+YT-q[1],q[2]]:null};
  const X=g,HAIR=(HAIR_PAL[document.getElementById("hc").value]||HAIR_PAL.black)[0];
