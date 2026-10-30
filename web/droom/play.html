@@ -93,7 +93,8 @@ const keys={};onkeydown=e=>{keys[e.code]=1;if(e.code=="KeyX"&&!e.repeat){pnSel.v
 for(const b of document.querySelectorAll(".pad button")){const k=b.dataset.k,on=e=>{e.preventDefault();keys[k]=1;b.classList.add("on");try{b.setPointerCapture(e.pointerId)}catch(_){}},off=e=>{keys[k]=0;b.classList.remove("on")};
  b.addEventListener("pointerdown",on);for(const ev of ["pointerup","pointercancel","lostpointercapture"])b.addEventListener(ev,off);b.addEventListener("contextmenu",e=>e.preventDefault())}
 // 手機：在畫面上左右拖曳轉頭
-const PMAX=1.3,clampP=()=>P.p=Math.max(-PMAX,Math.min(PMAX,P.p));
+// pt49u：往下少看約 5°（俯角上限 ~74°→~69°），抬頭維持 1.3
+const PMAX=1.3,PMIN=1.21,clampP=()=>P.p=Math.max(-PMIN,Math.min(PMAX,P.p));
 let tX=null,tY=0;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"){tX=e.clientX;tY=e.clientY;cv.setPointerCapture(e.pointerId)}});
 cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;P.p-=(e.clientY-tY)*.006;clampP();tX=e.clientX;tY=e.clientY}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
 cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv){P.a+=e.movementX*.003;P.p-=e.movementY*.003;clampP()}};
@@ -117,13 +118,13 @@ const EYE=0.95;
 // pt41u：身體模型放在玩家鏡頭「正下方」、面朝外（與玩家同方向），用真實俯仰投影：往下看＝從上方看到自己
 // pt44u–pt46u：鏡頭在半空中（EYE），自己的身體是一根「黏在鏡頭正下方」的立體柱子、朝外（與玩家同向）。
 // 往下看＝從眼睛往下看到柱子的前緣：小腹 → 鼠蹊往外延伸；陰莖從鼠蹊長出：軟＝往下垂、微勃＝變粗斜前、勃起＝脹大往上翹。
-// 世界用 y-shearing，身體用真實俯仰投影（只在低頭時出現），俯角 = -P.p（最多約 74°）。
+// 世界用 y-shearing，身體用真實俯仰投影（只在低頭時出現），俯角 = -P.p（最多約 69°）。pt49u：身體上下方向原本顛倒，已翻轉。
 let SELF_B=0;
 function drawSelf(moving){const th=-P.p;if(th<.45)return;
  const c=Math.cos(th),sn=Math.sin(th),F=SH;
  SELF_B+=(moving?.14:0);const bob=moving?Math.sin(SELF_B)*.005:0;
  // 本地座標：f=往前（朝外）、s=往右、z=離地高（牆高=1，眼睛 EYE）。柱子軸心在 f≈-.02，正在鏡頭下方
- const pr=(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2+F*v/dep,dep]};
+ const pr=(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2-F*v/dep,dep]};
  const X=g,HAIR=(HAIR_PAL[document.getElementById("hc").value]||HAIR_PAL.black)[0];
  const shade=(t)=>`rgb(${217-40*t|0},${168-42*t|0},${142-40*t|0})`;
  const poly=(pts,col)=>{const q=pts.map(p=>pr(...p));if(q.some(v=>!v))return;X.fillStyle=col;X.beginPath();q.forEach((v,i)=>i?X.lineTo(v[0],v[1]):X.moveTo(v[0],v[1]));X.closePath();X.fill()};
