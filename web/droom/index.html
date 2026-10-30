@@ -79,19 +79,14 @@ function draw(){const k=key();{const u=turl(k);if(u)v.style.backgroundImage=`url
  info.textContent=`陰毛${PUN[col.pu]}・${LBN[col.lb]}・${PAN[col.pa]}${col.pa=="none"?"":"（"+LCN[col.lc]+"）"}・${CLN[col.cl]}${col.cl=="none"?"":"（"+CSN[col.cs]+"・"+CWN[col.cw]+"）"}・${BHN[col.bh]}＋${FHN[col.fh]}・${HN[col.h]}髮・${NN[col.n]}乳頭・${BO[st.b]}・${AR[st.a]}・${SH[st.s]}・${st.c} 罩杯・${DI[st.d]}・第 ${i+1}/8 格`}
 function loop(){clearInterval(t);t=setInterval(()=>{if(play){i=(i+1)%8;draw()}},1000/fps)}
 const stop=()=>{play=false;pp.textContent="▶ 播放"};pp.onclick=()=>{play=!play;pp.textContent=play?"⏸ 暫停":"▶ 播放"};
-pv.onclick=()=>{stop();i=(i+7)%8;draw()};nx.onclick=()=>{stop();i=(i+1)%8;draw()};fp.oninput=()=>{fps=+fp.value;fv.textContent=fps;loop()};draw();loop();</script><section id="lying" style="margin:24px auto;text-align:center;color:#ddd;font-family:sans-serif"><h3>手繪：男子躺著（頭朝鏡頭，跟妹子同高 64×140）</h3><canvas id="lyc" width="64" height="140" style="width:128px;height:280px;image-rendering:pixelated;background:#f4ecd8;border-radius:6px"></canvas></section>
-<script>(()=>{const x=document.getElementById("lyc").getContext("2d");
-const R=(c,a,b,w,h)=>{x.fillStyle=c;x.fillRect(a,b,w,h)},sk="#e9c9a8",sd="#c9a184",ln="#2b2118";
-// 腳（遠方，小）
-R(sk,26,8,4,30);R(sk,34,8,4,30);R(ln,25,6,6,3);R(ln,33,6,6,3);
-// 骨盆／腹部（越近越寬）
-for(let y=38;y<96;y++){const w=Math.round(14+(y-38)*.32);R(sk,32-w,y,w*2,1);R(ln,32-w-1,y,1,1);R(ln,32+w,y,1,1)}
-R(ln,31,64,2,2);// 肚臍
-R(sd,24,84,6,1);R(sd,34,84,6,1);// 胸
-// 手臂沿身側
-R(sk,9,60,4,34);R(sk,51,60,4,34);R(ln,8,60,1,34);R(ln,55,60,1,34);
-// 肩
-R(sk,8,94,48,6);R(ln,8,94,48,1);
-// 頭（最近，大，從頭頂看）
-for(let y=100;y<138;y++){const d=(y-119)/19,w=Math.round(18*Math.sqrt(Math.max(0,1-d*d)));R(y>106?"#3a2a1c":sk,32-w,y,w*2,1)}
-})();</script>
+pv.onclick=()=>{stop();i=(i+7)%8;draw()};nx.onclick=()=>{stop();i=(i+1)%8;draw()};fp.oninput=()=>{fps=+fp.value;fv.textContent=fps;loop()};draw();loop();</script><section id="lying" style="margin:24px auto;text-align:center;color:#ddd;font-family:sans-serif"><h3>躺著／往下看自己（用你的圖：頭在底、兩側手臂、中間腹部、腳尖凸出）｜右：抬頭時身體往下退出畫面</h3>
+<canvas id="lyc" width="64" height="140" style="width:128px;height:280px;image-rendering:pixelated;background:#f4ecd8;border-radius:6px;margin:0 8px"></canvas><canvas id="lyu" width="64" height="140" style="width:128px;height:280px;image-rendering:pixelated;background:#f4ecd8;border-radius:6px;margin:0 8px"></canvas>
+<div><label>抬頭 <input id="lyp" type="range" min="0" max="100" value="0"></label> <button id="lya">自動</button></div></section>
+<script>(()=>{const a=document.getElementById("lyc").getContext("2d"),b=document.getElementById("lyu").getContext("2d"),sl=document.getElementById("lyp"),im=new Image();
+let auto=true,t=0;const W=64,H=Math.round(79*64/101);
+const draw=(c,off,bg)=>{c.imageSmoothingEnabled=false;c.clearRect(0,0,64,140);c.fillStyle=bg;c.fillRect(0,0,64,140);c.drawImage(im,0,140-H+off,W,H)};
+const up=()=>{const k=+sl.value/100;// 0＝往下看（身體在底），1＝抬頭（身體整個退出畫面底）
+draw(b,Math.round(k*(H+2)),k>.5?"#e8e4f0":"#f4ecd8")};
+im.onload=()=>{draw(a,0,"#f4ecd8");up();setInterval(()=>{if(!auto)return;t+=.03;sl.value=Math.round((1-Math.cos(t))*50);up()},50)};
+sl.oninput=()=>{auto=false;up()};document.getElementById("lya").onclick=()=>{auto=true};
+im.src="self_ref.png";})();</script>
