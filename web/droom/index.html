@@ -79,32 +79,14 @@ function draw(){const k=key();{const u=turl(k);if(u)v.style.backgroundImage=`url
  info.textContent=`陰毛${PUN[col.pu]}・${LBN[col.lb]}・${PAN[col.pa]}${col.pa=="none"?"":"（"+LCN[col.lc]+"）"}・${CLN[col.cl]}${col.cl=="none"?"":"（"+CSN[col.cs]+"・"+CWN[col.cw]+"）"}・${BHN[col.bh]}＋${FHN[col.fh]}・${HN[col.h]}髮・${NN[col.n]}乳頭・${BO[st.b]}・${AR[st.a]}・${SH[st.s]}・${st.c} 罩杯・${DI[st.d]}・第 ${i+1}/8 格`}
 function loop(){clearInterval(t);t=setInterval(()=>{if(play){i=(i+1)%8;draw()}},1000/fps)}
 const stop=()=>{play=false;pp.textContent="▶ 播放"};pp.onclick=()=>{play=!play;pp.textContent=play?"⏸ 暫停":"▶ 播放"};
-pv.onclick=()=>{stop();i=(i+7)%8;draw()};nx.onclick=()=>{stop();i=(i+1)%8;draw()};fp.oninput=()=>{fps=+fp.value;fv.textContent=fps;loop()};draw();loop();</script><section id="lying" style="margin:24px auto;text-align:center;color:#ddd;font-family:sans-serif"><h3>站著第一人稱：左＝低頭看自己（胸→肚臍→鼠蹊→腿→腳尖，從畫面底冒出）｜右：看前方 ↔ 低頭</h3>
-<canvas id="lyc" width="64" height="140" style="width:128px;height:280px;image-rendering:pixelated;border-radius:6px;margin:0 8px"></canvas><canvas id="lyu" width="64" height="140" style="width:128px;height:280px;image-rendering:pixelated;border-radius:6px;margin:0 8px"></canvas>
-<div><label>低頭 <input id="lyp" type="range" min="0" max="100" value="0"></label> <button id="lya">自動</button></div></section>
-<script>(()=>{const A=document.getElementById("lyc").getContext("2d"),B=document.getElementById("lyu").getContext("2d"),sl=document.getElementById("lyp");
-const sk="#e9c9a8",sd="#c9a184",ln="#2b2118",hr="#3a2a1c";
-// k：0＝看前方（只看到牆／地平線，身體不在畫面），1＝低頭（身體從畫面底往上冒）
-function draw(x,k){const R=(c,a,b,w,h)=>{x.fillStyle=c;x.fillRect(a,b,w,h)};
- const hz=Math.round(70-k*130);// 地平線隨低頭往上移
- R("#d8d2c4",0,0,64,140);R("#8a7a66",0,Math.max(0,hz),64,140);R("#5a4c3c",0,Math.max(0,hz),64,1);
- const o=Math.round((1-k)*150);// 身體位移：k=0 整個在畫面底下方
- const Y=y=>y+o;
- // 腳尖（最遠、最上、最小）
- R(sk,22,Y(14),7,5);R(sk,35,Y(14),7,5);R(ln,22,Y(13),7,1);R(ln,35,Y(13),7,1);
- // 腿（往上越遠越細）
- for(let y=19;y<70;y++){const w=Math.round(3+(y-19)*.08),g=Math.round(6-(y-19)*.1);R(sk,32-g-w*2,Y(y),w*2,1);R(sk,32+g,Y(y),w*2,1)}
- // 陰毛（倒三角，頂點朝上＝往腿）＋陰莖（垂向腿間，最外）
- for(let y=70;y<80;y++){const w=Math.round((y-70)*1.1);R(hr,32-w,Y(y),w*2+1,1)}
- R(sk,30,Y(62),4,9);R(sd,30,Y(62),4,1);
- // 小腹／腹部（越近越寬）
- for(let y=80;y<126;y++){const w=Math.round(13+(y-80)*.2);R(sk,32-w,Y(y),w*2,1);R(ln,32-w-1,Y(y),1,1);R(ln,32+w,Y(y),1,1)}
- R(ln,31,Y(98),2,2);// 肚臍
- // 手臂兩側（近、大）
- R(sk,3,Y(84),6,56);R(sk,55,Y(84),6,56);R(ln,9,Y(84),1,56);R(ln,54,Y(84),1,56);
- // 胸（最近，貼畫面底）
- R(sd,20,Y(132),8,2);R(sd,36,Y(132),8,2);
-}
-let auto=true,t=0;draw(A,1);const up=()=>draw(B,+sl.value/100);up();
-setInterval(()=>{if(!auto)return;t+=.03;sl.value=Math.round((1-Math.cos(t))*50);up()},50);
-sl.oninput=()=>{auto=false;up()};document.getElementById("lya").onclick=()=>{auto=true};})();</script>
+pv.onclick=()=>{stop();i=(i+7)%8;draw()};nx.onclick=()=>{stop();i=(i+1)%8;draw()};fp.oninput=()=>{fps=+fp.value;fv.textContent=fps;loop()};draw();loop();</script><section id="lying" style="margin:24px auto;text-align:center;color:#ddd;font-family:sans-serif"><h3>左＝你的圖（低頭看自己：頭／肩在底、兩側手臂、中間腹部、腳尖凸出）｜右：看前方 ↔ 低頭（身體從畫面底冒出）</h3>
+<canvas id="lyc" width="64" height="140" style="width:128px;height:280px;image-rendering:pixelated;background:#fff;border-radius:6px;margin:0 8px"></canvas><canvas id="lyu" width="64" height="140" style="width:128px;height:280px;image-rendering:pixelated;background:#fff;border-radius:6px;margin:0 8px"></canvas>
+<div><label>低頭 <input id="lyp" type="range" min="0" max="100" value="100"></label> <button id="lya">自動</button></div></section>
+<script>(()=>{const A=document.getElementById("lyc").getContext("2d"),B=document.getElementById("lyu").getContext("2d"),sl=document.getElementById("lyp"),im=new Image();
+let auto=true,t=0;
+const draw=(c,k)=>{c.imageSmoothingEnabled=false;c.fillStyle="#fff";c.fillRect(0,0,64,140);const W=64,H=Math.min(140,Math.round(im.height*64/im.width));
+ c.drawImage(im,0,140-H+Math.round((1-k)*(H+2)),W,H)};// k=1 低頭：你的圖貼畫面底；k=0 看前方：整個退到畫面底下
+const up=()=>draw(B,+sl.value/100);
+im.onload=()=>{draw(A,1);up();setInterval(()=>{if(!auto)return;t+=.03;sl.value=Math.round((1+Math.cos(t))*50);up()},50)};
+sl.oninput=()=>{auto=false;up()};document.getElementById("lya").onclick=()=>{auto=true};
+im.src="/droom/self_ref.png";})();</script>
