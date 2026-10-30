@@ -27,6 +27,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 褲子 <select id="pa"><option value="none">無</option><option value="lace_thong" selected>蕾絲丁字褲</option></select>
 蕾絲色 <select id="lc"><option value="black">黑</option><option value="white">白</option><option value="red">紅</option><option value="pink">粉紅</option></select>
 乳頭 <select id="nc"><option value="pink">粉紅</option><option value="brown">咖啡</option><option value="black">黑</option></select>
+我的陰莖 <select id="pn"><option value="soft">軟</option><option value="semi">微勃起</option><option value="erect">勃起</option></select>（X 切換・往下看可見）
 ｜ <a href="/droom">← 回剪影預覽</a><div id="st"></div></div>
 <script>
 // 房間：內部 6×6 地板（外圈為牆，粉色牆面一段點綴）
@@ -86,12 +87,13 @@ function skinTint(c,HP,NP,CD,cs,cw,GD,lc){const x=c.getContext("2d");
 function wallCol(t,u,v,side){const brick=((v*8|0)%2?((u*4+.5)|0):((u*4)|0)),mort=(v*8%1<.08)||((u*4+((v*8|0)%2?.5:0))%1<.05);
  let c=t=="2"?[190,150,170]:[215,195,165];if(mort)c=[140,130,120];else{const n=(brick*37%11)/40;c=c.map(x=>x*(1-n))}
  return side?c.map(x=>x*.7):c}
-const keys={};onkeydown=e=>{keys[e.code]=1;if(e.code.startsWith("Arrow"))e.preventDefault()};onkeyup=e=>keys[e.code]=0;
+const PN=["soft","semi","erect"],pnSel=document.getElementById("pn");
+const keys={};onkeydown=e=>{keys[e.code]=1;if(e.code=="KeyX"&&!e.repeat){pnSel.value=PN[(PN.indexOf(pnSel.value)+1)%3]}if(e.code.startsWith("Arrow"))e.preventDefault()};onkeyup=e=>keys[e.code]=0;
 // 手機方向鍵：pointer 事件，按住=持續按鍵；支援多指同時按
 for(const b of document.querySelectorAll(".pad button")){const k=b.dataset.k,on=e=>{e.preventDefault();keys[k]=1;b.classList.add("on");try{b.setPointerCapture(e.pointerId)}catch(_){}},off=e=>{keys[k]=0;b.classList.remove("on")};
  b.addEventListener("pointerdown",on);for(const ev of ["pointerup","pointercancel","lostpointercapture"])b.addEventListener(ev,off);b.addEventListener("contextmenu",e=>e.preventDefault())}
 // 手機：在畫面上左右拖曳轉頭
-const PMAX=.5,clampP=()=>P.p=Math.max(-PMAX,Math.min(PMAX,P.p));
+const PMAX=.6,clampP=()=>P.p=Math.max(-PMAX,Math.min(PMAX,P.p));
 let tX=null,tY=0;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"){tX=e.clientX;tY=e.clientY;cv.setPointerCapture(e.pointerId)}});
 cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;P.p-=(e.clientY-tY)*.006;clampP();tX=e.clientX;tY=e.clientY}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
 cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv){P.a+=e.movementX*.003;P.p-=e.movementY*.003;clampP()}};
@@ -111,6 +113,37 @@ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
 // 視角高度（牆高=1；0.5 為原本的低視角）
 const EYE=0.95;
 // 上下視角：y-shearing，地平線 HZ 隨 pitch 上下移動（P.p>0 抬頭）
+// 2026-10-30 pt40u：往下看時看到自己身體（只到鼠蹊部：小腹、陰毛、陰莖；不畫全身）。陰莖三型態：軟／微勃起／勃起
+let SELF_B=0;
+function drawSelf(moving){const t=Math.max(0,Math.min(1,(-P.p-.12)/.34));if(t<=0)return;
+ SELF_B+=(moving?.12:0);const bob=moving?Math.sin(SELF_B)*2:0;
+ const X=g,cx=SW/2,top=SH-t*150+bob,SK="#d9a483",SK2="#b98265",SK3="#9c6a52",HAIR="#2a1d18";
+ X.save();
+ // 大腿（左右往下延伸出畫面）
+ X.fillStyle=SK2;X.beginPath();X.moveTo(cx-120,top+40);X.quadraticCurveTo(cx-60,top+70,cx-14,top+92);X.lineTo(cx-30,SH+10);X.lineTo(cx-150,SH+10);X.closePath();X.fill();
+ X.beginPath();X.moveTo(cx+120,top+40);X.quadraticCurveTo(cx+60,top+70,cx+14,top+92);X.lineTo(cx+30,SH+10);X.lineTo(cx+150,SH+10);X.closePath();X.fill();
+ // 小腹到鼠蹊部
+ X.fillStyle=SK;X.beginPath();X.moveTo(cx-130,top-20);X.lineTo(cx+130,top-20);X.lineTo(cx+120,top+40);X.quadraticCurveTo(cx+50,top+62,cx+14,top+92);X.lineTo(cx-14,top+92);X.quadraticCurveTo(cx-50,top+62,cx-120,top+40);X.closePath();X.fill();
+ X.fillStyle=SK2;X.fillRect(cx-1,top-14,2,3);// 肚臍
+ // 鼠蹊線
+ X.strokeStyle=SK3;X.lineWidth=1;X.beginPath();X.moveTo(cx-95,top+30);X.quadraticCurveTo(cx-50,top+55,cx-20,top+84);X.moveTo(cx+95,top+30);X.quadraticCurveTo(cx+50,top+55,cx+20,top+84);X.stroke();
+ // 陰毛（三角形，像素點散布）
+ X.fillStyle=HAIR;for(let i=0;i<260;i++){const r=((i*9301+49297)%233280)/233280,q=((i*4241+7919)%9973)/9973;const yy=top+20+q*60,half=8+(yy-top-20)*-.0+ (1-(yy-top-20)/60)*34;const xx=cx+(r*2-1)*half;X.fillRect(xx|0,yy|0,1,2)}
+ // 陰莖
+ const st=pnSel.value;X.fillStyle=SK2;
+ if(st=="soft"){ // 軟：往下垂，從上方看短而前縮
+  X.fillStyle=SK3;X.beginPath();X.ellipse(cx,top+100,15,12,0,0,7);X.fill();// 陰囊
+  X.fillStyle=SK2;X.beginPath();X.ellipse(cx,top+92,8,15,0,0,7);X.fill();X.fillStyle="#c97d77";X.beginPath();X.ellipse(cx,top+106,7,5,0,0,7);X.fill()}
+ else if(st=="semi"){ // 微勃起：往前下斜，較長較粗
+  X.fillStyle=SK3;X.beginPath();X.ellipse(cx,top+104,15,11,0,0,7);X.fill();
+  X.fillStyle=SK2;X.beginPath();X.ellipse(cx,top+100,10,26,0,0,7);X.fill();X.fillStyle="#c86f6c";X.beginPath();X.ellipse(cx,top+122,10,8,0,0,7);X.fill();
+  X.fillStyle="#8a4f4a";X.fillRect(cx,top+124,1,3)}
+ else{ // 勃起：朝上翹起貼近小腹，從上往下看是向自己這邊、透視縮短
+  X.fillStyle=SK3;X.beginPath();X.ellipse(cx,top+98,16,11,0,0,7);X.fill();
+  X.fillStyle=SK2;X.beginPath();X.moveTo(cx-11,top+92);X.lineTo(cx-10,top+38);X.lineTo(cx+10,top+38);X.lineTo(cx+11,top+92);X.closePath();X.fill();
+  X.strokeStyle="#8f5a48";X.beginPath();X.moveTo(cx-4,top+86);X.quadraticCurveTo(cx-7,top+66,cx-3,top+46);X.stroke();// 血管
+  X.fillStyle="#c25f60";X.beginPath();X.ellipse(cx,top+34,12,10,0,0,7);X.fill();X.fillStyle="#7a3b3b";X.fillRect(cx,top+27,1,4)}
+ X.restore()}
 function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
   lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
@@ -135,6 +168,7 @@ function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a
   G.bw=(G.bw||0)+((G.moving?1:0)-(G.bw||0))*.2;const a=G.ph/8*Math.PI*2;
   const bob=G.bw*hgt*.022*Math.abs(Math.sin(a)),sway=G.bw*wid*.035*Math.sin(a/2*2);
   top-=bob;cx+=sway;
-  for(let x=Math.max(0,cx-wid/2|0);x<Math.min(SW,cx+wid/2);x++){if(zb[x]<tz)continue;const sxp=fr*FW+((x-(cx-wid/2))/wid*FW|0);g.drawImage(im,sxp,0,1,FH,x,top,1,hgt)}}}
+  for(let x=Math.max(0,cx-wid/2|0);x<Math.min(SW,cx+wid/2);x++){if(zb[x]<tz)continue;const sxp=fr*FW+((x-(cx-wid/2))/wid*FW|0);g.drawImage(im,sxp,0,1,FH,x,top,1,hgt)}}
+ drawSelf(keys.KeyW||keys.KeyS||keys.ArrowUp||keys.ArrowDown||keys.KeyA||keys.KeyD)}
 requestAnimationFrame(frame);
 </script></body></html>
