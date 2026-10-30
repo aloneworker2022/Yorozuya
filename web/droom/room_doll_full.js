@@ -212,6 +212,7 @@
       return { H, b, head_h, zc, chin, S, C, T: S - C, knee: C * 0.6, hipz: C + 3.4, ankle: 3.3 };
     }
     const F = (b, k) => b[k] * b.frame;
+    let FOOT_HD = false;   // pt38u：build 時 opts.scale≥2 才開
     function leg(sh, P, side, hip, knee, ankle, toe) {
       const b = P.b, wT = F(b, 'thigh'), wC = F(b, 'calf'), fr = b.frame;
       const [hx, hy, hz] = hip, [kx, ky, kz] = knee, [ax, ay, az] = ankle;
@@ -226,7 +227,31 @@
       sh.cone(BODY, knee, cpos, knee_r * .95, calf_r);
       sh.cone(BODY, cpos, ankle, calf_r, 1.55 * Math.min(wC, 1.1) * fr ** .5);
       const [tx, ty, tz] = toe, fl = 6.4 * fr ** .7;   // pt34u 腳掌加大
-      sh.cone(BODY, [ax - tx * .8, ay - .6 - ty * .8, az - 1.6], [ax + tx * fl, ay + ty * fl, Math.max(1.1, az - 2.4 + tz * fl)], 2.1 * fr ** .5, 1.5);
+      if (!FOOT_HD) { sh.cone(BODY, [ax - tx * .8, ay - .6 - ty * .8, az - 1.6], [ax + tx * fl, ay + ty * fl, Math.max(1.1, az - 2.4 + tz * fl)], 2.1 * fr ** .5, 1.5); return; }
+      // 2026-10-30 pt38u：2× 才畫細腳——腳跟、足弓、蹠骨球、五根腳趾、內外踝骨
+      const q = fr ** .5, heel = [ax - tx * .8, ay - .6 - ty * .8, az - 1.6];
+      const tip = [ax + tx * fl, ay + ty * fl, Math.max(1.1, az - 2.4 + tz * fl)];
+      const at = (u, dz = 0) => [heel[0] + (tip[0] - heel[0]) * u, heel[1] + (tip[1] - heel[1]) * u, heel[2] + (tip[2] - heel[2]) * u + dz];
+      let lx = ty, ly = -tx; const ln = Math.hypot(lx, ly); if (ln < .2) { lx = 1; ly = 0; } else { lx /= ln; ly /= ln; }
+      if (lx * -side < 0) { lx = -lx; ly = -ly; }   // l＝往身體中線（內側）
+      const L = (p, k, dz = 0) => [p[0] + lx * k, p[1] + ly * k, p[2] + dz];
+      sh.ell(BODY, heel, [1.45 * q, 1.45 * q, 1.35 * q]);                                  // 腳跟
+      sh.cone(BODY, heel, L(at(.45, 1.0), .5), 1.3 * q, 1.0 * q);                           // 足弓（內側抬高、底下留縫）
+      sh.cone(BODY, L(at(.25, .3), -.9), L(at(.7, .05), -.9), 1.0 * q, 1.0 * q);           // 外側足緣（貼地）
+      sh.cone(BODY, L(at(.3, 1.3), 0), at(.7, .2), 1.15 * q, 1.2 * q);                       // 腳背→蹠骨
+      sh.cone(BODY, L(at(.7), .7), L(at(.7), -1.0), 1.0 * q, .9 * q);                         // 蹠骨球（橫寬）
+      const toes = [[.95, 1.0, .62], [.4, .9, .48], [-.15, .82, .44], [-.65, .74, .4], [-1.1, .64, .36]];
+      for (const [o, len, r] of toes) {
+        const b0 = L(at(.72), o * 1.2), e = L(at(.72 + .3 * len), o * 1.45, -.15);
+        sh.cone(BODY, b0, e, r * q, r * .85 * q);
+      }
+      for (let i = 0; i < 4; i++) {                                                           // 趾縫線
+        const o = (toes[i][0] + toes[i + 1][0]) / 2, rr = (toes[i][2] + toes[i + 1][2]) / 2 * q;
+        sh.cone(MARK, L(at(.76, rr * .9), o * 1.25), L(at(.72 + .3 * toes[i + 1][1], rr * .8), o * 1.45, -.15), .2, .2);
+      }
+      sh.ell(BODY, L(ankle, 1.25 * q, .4), [.85, .85, .9]);                                    // 內踝（較高）
+      sh.ell(BODY, L(ankle, -1.3 * q, -.2), [.85, .85, .9]);                                   // 外踝（較低）
+      sh.cone(BODY, [ax - tx * 1.0, ay - ty * 1.0 - .4, az + 3.5], [heel[0], heel[1], heel[2] + 1.0], .8 * q, 1.0 * q);   // 阿基里斯腱
     }
     function arm(sh, P, shoulder, elbow, wrist, hand = true) {
       const b = P.b, wA = F(b, 'arm'), fr = b.frame;
@@ -787,6 +812,7 @@
       return res;
     }
     function build(doll, pose, frame, yaw, opts = {}) {
+      FOOT_HD = (opts.scale || 1) >= 2;
       const P = proportions(doll), sh = makeShape(), b = P.b;
       const hip_x = 5.1 * F(b, 'hip') * (1 + .3 * (F(b, 'thigh') - 1));
       const kx = () => 3.2 + .65 * F(b, 'thigh');
