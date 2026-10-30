@@ -16,6 +16,6 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 ## 2026-10-30 pt24u：巨大乳暈＋髮型系統（後髮＋前髮）
 - 乳暈新增 `huge`（巨大）：貼著乳房曲面的殼（乳房橢球 ×1.03，平面切在乳頭後 0.62 半徑），蓋住朝前約半個乳房。sheet 矩陣改為 4 乳暈 → 3072 張。
 - 身體 sheet 一律不含頭髮（doll.hair='none'）。頭髮另畫在 `sheets/hair/<body>_<back|front>_<style>_<dir>.png`（只留頭髮像素，被身體擋住的不畫）。
-  - 後髮 backHair：long 長髮 / wavy 波浪長髮 / short 短髮 / pony 馬尾 / medium 中長髮 / feather 羽毛剪
+  - 後髮 backHair：long 長髮 / wavy 波浪長髮 / short 短髮 / pony 馬尾 / medium 中長髮
   - 前髮 frontHair（含頭頂髮帽）：blunt 齊瀏海 / french 法式瀏海 / side 旁分 / pomp 吹高髮 / curtain 長髮分兩邊
 - index.html 與 play.html：身體＋後髮＋前髮逐格疊（面向後方時後髮在上），再上白皙膚色、髮色、乳頭色。
