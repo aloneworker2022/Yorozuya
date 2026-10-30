@@ -5,8 +5,9 @@ button{background:#2a2436;color:#ddd;border:1px solid #443a58;border-radius:8px;
 .spr{width:256px;height:560px;background-size:2048px 560px;image-rendering:pixelated;background-repeat:no-repeat}#v{display:inline-block;background-color:#221d2c;border-radius:12px;margin:10px;border:16px solid #221d2c}
 #ring{display:grid;grid-template-columns:repeat(3,110px);gap:6px;justify-content:center}#ring .spr{width:64px;height:140px;background-size:512px 140px;margin:auto}#ring div{background:#221d2c;border-radius:8px;padding:4px;font-size:12px;color:#aaa;cursor:pointer}
 #msg{color:#e0a0a0;min-height:1.2em}small{color:#777}</style><a href="/droom/play" style="position:fixed;right:10px;top:8px;color:#9cf;z-index:9">▶ 進房間（Doom 模式）</a>
-<h1>Yorozuya 房間妹子剪影・完整走路預覽（平視）</h1>
+<h1>Yorozuya 房間妹子・完整走路預覽（平視）</h1>
 <div class=bar><b>體型</b><span id=B></span></div><div class=bar><b>乳暈</b><span id=A></span></div>
+<div class=bar><b>髮色</b><span id=H></span></div><div class=bar><b>乳頭</b><span id=N></span></div>
 <div class=bar><b>胸型</b><span id=S></span></div><div class=bar><b>罩杯</b><span id=C></span></div><div class=bar><b>方向</b><span id=Dd></span></div>
 <div class=bar><button id=pp>⏸ 暫停</button><button id=pv>◀ 上一格</button><button id=nx>下一格 ▶</button><label>速度 <input id=fp type=range min=2 max=24 value=14> <span id=fv>14</span> fps</label></div>
 <div id=msg></div><div id=v class=spr></div><div id=info></div>
@@ -23,10 +24,27 @@ function fix(ch){if(HAVE.has(key()))return"";const order={b:["a","d","s","c","b"
 const groups=[[B,BO,"b"],[A,AR,"a"],[S,SH,"s"],[C,CU,"c"],[Dd,Object.fromEntries(Object.entries(DI).filter(([k])=>k!="_")),"d"]];
 for(const[el,o,k]of groups)for(const[v,n]of Object.entries(o)){const b=document.createElement("button");b.textContent=n;b.dataset.v=v;b.onclick=()=>{st[k]=v;msg.textContent=fix(k);draw()};el.append(b)}
 for(const[d,n]of Object.entries(DI)){const w=document.createElement("div");if(d!="_"){w.innerHTML='<div class=spr></div>'+n;w.dataset.d=d;w.onclick=()=>{st.d=d;msg.textContent=fix("d");draw()}}else w.style.background="none";ring.append(w)}
-function draw(){const k=key();v.style.backgroundImage=`url(/droom/sheets/${k}.png)`;v.style.backgroundPosition=`${-256*i}px 0`;
- for(const w of ring.querySelectorAll("[data-d]")){const kk=key({...st,d:w.dataset.d}),s=w.firstChild;s.style.backgroundImage=HAVE.has(kk)?`url(/droom/sheets/${kk}.png)`:"none";s.style.backgroundPosition=`${-64*i}px 0`;w.style.outline=w.dataset.d==st.d?"2px solid #a08ad0":""}
+const HAIR_PAL={blue:[[30,70,170],[90,140,230]],green:[[22,72,44],[60,124,84]],red:[[110,18,32],[170,54,70]],black:[[22,20,24],[74,72,80]],gold:[[205,160,50],[248,214,120]]};
+const NIP_PAL={pink:[[236,150,160],[226,120,138]],brown:[[160,104,72],[120,74,48]],black:[[70,50,46],[34,24,22]]};
+const HN={blue:"藍色",green:"深綠色",red:"深紅色",black:"黑色",gold:"金色"},NN={pink:"粉紅色",brown:"咖啡色",black:"黑色"};
+const col={h:Object.keys(HN)[Math.random()*5|0],n:Object.keys(NN)[Math.random()*3|0]};
+// 剪影 sheet → 白皙膚色＋髮色＋乳頭色（與 /droom/play 同一套調色）
+function tint(im,HP,NP){const c=document.createElement("canvas");c.width=im.naturalWidth;c.height=im.naturalHeight;const x=c.getContext("2d");x.drawImage(im,0,0);
+ const D=x.getImageData(0,0,c.width,c.height),d=D.data,A=[217,168,142],B=[245,208,181],C=[253,230,214];
+ for(let i=0;i<d.length;i+=4){if(!d[i+3])continue;const r=d[i],gg=d[i+1],b=d[i+2],a=d[i+3];let o=null;
+  if(a>=212&&a<=228)o=(r>60?HP[1]:HP[0]);else if(r==150&&gg==100&&b==128)o=NP[0];else if(r==205&&gg==150&&b==175)o=NP[1];
+  if(o){d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2];d[i+3]=255;continue}
+  const l=(r*.3+gg*.59+b*.11),t=Math.max(0,Math.min(1,(l-28)/(75-28)));const [P,Q,u]=t<.5?[A,B,t*2]:[B,C,(t-.5)*2];
+  for(let j=0;j<3;j++)d[i+j]=P[j]+(Q[j]-P[j])*u;d[i+3]=255}
+ x.putImageData(D,0,0);return c.toDataURL()}
+const TC={};function turl(k){const ck=k+"|"+col.h+"|"+col.n;if(TC[ck])return TC[ck]==1?null:TC[ck];TC[ck]=1;const im=new Image();
+ im.onload=()=>{try{TC[ck]=tint(im,HAIR_PAL[col.h],NIP_PAL[col.n])}catch(e){TC[ck]=`/droom/sheets/${k}.png`}draw()};im.src=`/droom/sheets/${k}.png`;return null}
+for(const[el,o,k]of [[H,HN,"h"],[N,NN,"n"]])for(const[v,n]of Object.entries(o)){const b=document.createElement("button");b.textContent=n;b.dataset.v=v;b.onclick=()=>{col[k]=v;draw()};el.append(b)}
+function draw(){const k=key();{const u=turl(k);if(u)v.style.backgroundImage=`url(${u})`}v.style.backgroundPosition=`${-256*i}px 0`;
+ for(const w of ring.querySelectorAll("[data-d]")){const kk=key({...st,d:w.dataset.d}),s=w.firstChild;if(HAVE.has(kk)){const u=turl(kk);if(u)s.style.backgroundImage=`url(${u})`}else s.style.backgroundImage="none";s.style.backgroundPosition=`${-64*i}px 0`;w.style.outline=w.dataset.d==st.d?"2px solid #a08ad0":""}
  for(const[el,o,kk]of groups)for(const b of el.children){b.className=(b.dataset.v==st[kk]?"on ":"")+(HAVE.has(key({...st,[kk]:b.dataset.v}))?"":"na")}
- info.textContent=`${BO[st.b]}・${AR[st.a]}・${SH[st.s]}・${st.c} 罩杯・${DI[st.d]}・第 ${i+1}/8 格`}
+ for(const[el,kk]of [[H,"h"],[N,"n"]])for(const b of el.children)b.className=b.dataset.v==col[kk]?"on":"";
+ info.textContent=`${HN[col.h]}髮・${NN[col.n]}乳頭・${BO[st.b]}・${AR[st.a]}・${SH[st.s]}・${st.c} 罩杯・${DI[st.d]}・第 ${i+1}/8 格`}
 function loop(){clearInterval(t);t=setInterval(()=>{if(play){i=(i+1)%8;draw()}},1000/fps)}
 const stop=()=>{play=false;pp.textContent="▶ 播放"};pp.onclick=()=>{play=!play;pp.textContent=play?"⏸ 暫停":"▶ 播放"};
 pv.onclick=()=>{stop();i=(i+7)%8;draw()};nx.onclick=()=>{stop();i=(i+1)%8;draw()};fp.oninput=()=>{fps=+fp.value;fv.textContent=fps;loop()};draw();loop();</script></html>
