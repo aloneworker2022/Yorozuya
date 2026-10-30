@@ -94,7 +94,7 @@ for(const b of document.querySelectorAll(".pad button")){const k=b.dataset.k,on=
  b.addEventListener("pointerdown",on);for(const ev of ["pointerup","pointercancel","lostpointercapture"])b.addEventListener(ev,off);b.addEventListener("contextmenu",e=>e.preventDefault())}
 // 手機：在畫面上左右拖曳轉頭
 // pt49u：往下少看約 5°（俯角上限 ~74°→~69°），抬頭維持 1.3
-const PMAX=1.3,PMIN=1.21,clampP=()=>P.p=Math.max(-PMIN,Math.min(PMAX,P.p));
+const PMAX=1.3,PMIN=1.4,clampP=()=>P.p=Math.max(-PMIN,Math.min(PMAX,P.p));
 let tX=null,tY=0;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"){tX=e.clientX;tY=e.clientY;cv.setPointerCapture(e.pointerId)}});
 cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;P.p-=(e.clientY-tY)*.006;clampP();tX=e.clientX;tY=e.clientY}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
 cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv){P.a+=e.movementX*.003;P.p-=e.movementY*.003;clampP()}};
@@ -160,9 +160,10 @@ function drawSelf(moving){const th=-P.p;if(th<.45)return;
 }
 // pt68u：改用你的苗 self_ref.png（低頭看自己）：低頭時從畫面底冒出，低頭到底（-PMIN）貼齊畫面底，抬頭時往下退出
 // pt71u：低頭到底只伸出陰莖黑影（手畫 pixel PNG penis_sil.png，非程式繪形）
-const SELF_IM=new Image();SELF_IM.src="/droom/penis_sil.png?v=1";
-function drawSelfRef(moving){if(!SELF_IM.complete||!SELF_IM.naturalWidth)return;const th=-P.p,T0=.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
- const H=Math.round(SH*.4),W=Math.round(H*SELF_IM.naturalWidth/SELF_IM.naturalHeight);SELF_B+=(moving?.14:0);const bob=moving&&k>=1?0:(moving?Math.sin(SELF_B)*1.5:0);
+// pt72u：軟的時候很小隻（另一張手畫 pixel PNG penis_sil_soft.png，同像素比例）；低頭可再低一點（PMIN 1.21→1.4）
+const SELF_HARD=new Image();SELF_HARD.src="/droom/penis_sil.png?v=1";const SELF_SOFT=new Image();SELF_SOFT.src="/droom/penis_sil_soft.png?v=1";
+function drawSelfRef(moving){const SELF_IM=pnSel.value=="soft"?SELF_SOFT:SELF_HARD;if(!SELF_IM.complete||!SELF_IM.naturalWidth)return;const th=-P.p,T0=.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
+ const s=SH*.4/18,H=Math.round(SELF_IM.naturalHeight*s),W=Math.round(SELF_IM.naturalWidth*s);SELF_B+=(moving?.14:0);const bob=moving&&k>=1?0:(moving?Math.sin(SELF_B)*1.5:0);
  g.imageSmoothingEnabled=false;g.drawImage(SELF_IM,(SW-W)/2|0,Math.round(SH-H+(1-k)*(H+2)+bob),W,H)}
 function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
