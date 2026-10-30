@@ -842,12 +842,16 @@
           const [kn, an, lift] = g[s];
           leg(sh, P, s, [s * hip_x, 0, hipz], [s * (kx() - .2), kn[1], kn[2]], [s * 2.8, an[1], an[2]],
             [0, .96 - lift * .04, lift > 1 ? -.25 : 0]);
-          const swd = 16 * Math.cos(phase) * (s === 1 ? 1 : -1);
-          const sw = swd * (swd > 0 ? .35 : 1.15) * Math.PI / 180;
-          const ex = Math.max(waist_out + 2.8 * F(b, 'arm') + 1.2, arm_clear());
+          // pt33u：手臂跟腳反向擺（前後看也要看得出來）——擺幅加大、往前擺時手肘彎、手往身體中線收；往後擺時手往外一點
+          const c = Math.cos(phase) * (s === 1 ? 1 : -1);
+          const swd = 30 * c * (c > 0 ? .8 : 1);
+          const sw = swd * Math.PI / 180, fwd = Math.max(0, c), bk = Math.max(0, -c);
+          const ex = Math.max(waist_out + 2.8 * F(b, 'arm') + 1.2, arm_clear()) + 1.2 * bk;
           const sh_j = [s * 8.3 * F(b, 'sh'), -1.4, tor.S - 2.6];
           const elbow = [s * ex, -1.6 + 19 * Math.sin(sw), sh_j[2] - 19 * Math.cos(sw)];
-          const wrist = [s * Math.max(hip_out + 1.5 * F(b, 'arm') + .4, ex + .5), elbow[1] + 15 * Math.sin(sw + .12), elbow[2] - 15 * Math.cos(sw + .12)];
+          const fa = sw + (.12 + .55 * fwd) * Math.sign(sw || 1);
+          const wx = Math.max(hip_out + 1.5 * F(b, 'arm') + .4 - 3.2 * fwd + 1.5 * bk, ex - 2.5 * fwd + .5);
+          const wrist = [s * wx, elbow[1] + 15 * Math.sin(fa), elbow[2] - 15 * Math.cos(fa)];
           arm(sh, P, sh_j, elbow, wrist);
         }
         if (front) definition(sh, P, tor);
