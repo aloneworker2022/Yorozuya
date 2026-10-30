@@ -89,4 +89,4 @@ const draw=(c,k)=>{c.imageSmoothingEnabled=false;c.fillStyle="#fff";c.fillRect(0
 const up=()=>draw(B,+sl.value/100);
 im.onload=()=>{draw(A,1);up();setInterval(()=>{if(!auto)return;t+=.03;sl.value=Math.round((1+Math.cos(t))*50);up()},50)};
 sl.oninput=()=>{auto=false;up()};document.getElementById("lya").onclick=()=>{auto=true};
-im.src="/droom/self_ref.png";})();</script>
+im.src="/droom/self_ref.png?v=2";})();</script>
