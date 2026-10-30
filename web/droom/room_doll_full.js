@@ -434,6 +434,48 @@
       }
       sh.cloth = 0;
     }
+
+    // 2026-10-30 pt31u：下身第一批——陰毛（strip 一條線／triangle 三角形／none）、陰唇（line 一線／butterfly 蝴蝶唇）、褲子 lace_thong 蕾絲丁字褲。
+    // 跟布一樣是「部位標記色」圖層：陰毛 PUBIC_RGB（前端換成髮色）、陰唇 LABIA_RGB、蕾絲 LACE_RGB／LACE_LO_RGB、褲頭 BAND_RGB。
+    const PUBICS = ['strip', 'triangle'], LABIAS = ['line', 'butterfly'], PANTS = ['lace_thong'];
+    const PUBIC_RGB = [255, 0, 255], LABIA_RGB = [255, 255, 0], LACE_RGB = [0, 255, 255], LACE_LO_RGB = [0, 170, 170], BAND_RGB = [255, 128, 0];
+    function groin(sh, P, doll, tor) {
+      const C = tor.C, surf = (x, z, back = false) => { for (let k = 0; k < 300; k++) { const y = back ? -20 + k * .1 : 20 - k * .1; if (bodyDist(sh, x, y, z) < 0) return y; } return null; };
+      const patch = (x, z, r, d = .25) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .35, r]); };
+      const gap = 1.2;   // 兩腿之間的胯下最低點（約 C）
+      if (doll.labia === 'line' || doll.labia === 'butterfly') {
+        sh.cloth = 6;
+        for (let z = C + 2.8; z >= C - .4; z -= .4) patch(0, z, .38, .35);
+        if (doll.labia === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.6; z >= C - .2; z -= .45) patch(sx * .55, z, .55, .45);
+      }
+      if (doll.pubic === 'strip' || doll.pubic === 'triangle') {
+        sh.cloth = 5;
+        const z0 = C + 3.0, z1 = C + 7.5;
+        for (let z = z0; z <= z1; z += .55) {
+          const hw = doll.pubic === 'strip' ? .75 : .5 + (z - z0) * .78;
+          for (let x = -hw; x <= hw + 1e-6; x += .6) patch(x, z, .5, .3);
+        }
+      }
+      if (doll.pants === 'lace_thong') {
+        const zb = C + 9.5;   // 低腰褲頭
+        sh.cloth = 7;   // 前片三角蕾絲：上寬下窄收進胯下
+        for (let z = zb - .6; z >= C - gap; z -= .5) {
+          const t = Math.max(0, Math.min(1, (zb - z) / (zb - C))), hw = 6.2 * (1 - t) + .9 * t;
+          for (let x = -hw; x <= hw + 1e-6; x += .55) patch(x, z, .55, .55);
+        }
+        sh.cloth = 8;   // 褲頭細帶繞一圈＋後面 T 字細繩
+        const ring = [];
+        for (let a = 0; a <= 360; a += 12) {
+          const t = a * Math.PI / 180, dx = Math.sin(t), dy = Math.cos(t); let q = null;
+          for (let k = 0; k < 200; k++) { const r = 20 - k * .1; if (bodyDist(sh, dx * r, dy * r, zb) < 0) { q = [dx * (r + .3), dy * (r + .3), zb]; break; } }
+          if (q) ring.push(q);
+        }
+        if (ring.length > 2) sh.chain(BODY, ring, ring.map(() => .32));
+        const bk = []; for (let z = zb; z >= C - gap; z -= .8) { const y = surf(0, z, true); if (y !== null) bk.push([0, y - .45, z]); }
+        if (bk.length > 1) sh.chain(BODY, bk, bk.map(() => .42));
+      }
+      sh.cloth = 0;
+    }
     function definition(sh, P, tor, xoff = 0) {
       const b = P.b, S = tor.S, zW = tor.zW;
       const lin = (a, z, n) => Array.from({ length: n }, (_, i) => a + (z - a) * i / (n - 1));
@@ -782,6 +824,7 @@
         }
         if (front) { sh.off = o; definition(sh, P, tor); }
         sh.off = o;
+        if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
         if (String(doll.cloth || '').startsWith('napkin')) napkin(sh, P, doll, tor, doll.cloth.split('_')[1] || 'bell');
         hair(sh, P, doll, tor, ({ pony_hi: 3.5, pony_lo: 2.5 }[doll.hair] || 0) * w);
         sh.off = [0, 0, 0];
@@ -807,6 +850,7 @@
           arm(sh, P, sh_j, elbow, wrist);
         }
         if (front) definition(sh, P, tor);
+        if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
         if (String(doll.cloth || '').startsWith('napkin')) napkin(sh, P, doll, tor, doll.cloth.split('_')[1] || 'bell');
         hair(sh, P, doll, tor, -sway);
         return { sh, P };
@@ -1377,7 +1421,7 @@
             const j = ny * width + nx;
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
-          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32; continue; }
+          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32; continue; }
           set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
         }
         if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32;
@@ -1487,7 +1531,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { PUBICS, LABIAS, PANTS, PUBIC_RGB, LABIA_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
