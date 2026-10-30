@@ -24,3 +24,8 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - room_doll_full.js `napkin()`：一片薄白布從脖子／鎖骨垂下，順著胸型繃過兩邊乳尖（乳溝處橫跨不陷入）再直直落下到胸下；prim 標 `cloth`，渲染成 CLOTH_RGB／邊緣 CLOTH_LO_RGB、alpha CLOTH_A=236。`doll.cloth='napkin'` 才畫，身體 sheet 不變。
 - 圖層：`sheets/cloth/<body>_<shape>_<cup>_napkin_<dir>.png`（4×3×8×8＝768 張，`render_cloth.cjs`，SHARD/NSHARD 可平行），只留布的像素。
 - index.html／play.html：「服裝 無／餐巾白布」，預設餐巾白布。上色後以 78% 白半透明蓋上（乳暈乳頭隱約透出），頭髮在布前面處不蓋。
+
+## 2026-10-30 pt29u：餐巾布修飾＋配色
+- `napkin()` 加：金色頸鍊（從布兩上角繞到脖子後）、下緣邊框、兩個下垂角＋配重（`bell` 鈴鐺／`jade` 玉石）。
+- cloth sheet 改為部位標記色：布 CLOTH_RGB/LO、邊框 #F00、鍊 #0F0、配重 #00F/#0000A0；檔名 `sheets/cloth/<body>_<shape>_<cup>_napkin_<bell|jade>_<dir>.png`（1536 張）。
+- 前端配色：粉紅透明布＋金邊／黑色透明布＋白邊／白色透明布＋紅邊；鍊一律金色；鈴鐺金、玉石綠。index.html 有「配色」「配重」按鈕，play.html 有下拉。
