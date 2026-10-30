@@ -29,3 +29,8 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - `napkin()` 加：金色頸鍊（從布兩上角繞到脖子後）、下緣邊框、兩個下垂角＋配重（`bell` 鈴鐺／`jade` 玉石）。
 - cloth sheet 改為部位標記色：布 CLOTH_RGB/LO、邊框 #F00、鍊 #0F0、配重 #00F/#0000A0；檔名 `sheets/cloth/<body>_<shape>_<cup>_napkin_<bell|jade>_<dir>.png`（1536 張）。
 - 前端配色：粉紅透明布＋金邊／黑色透明布＋白邊／白色透明布＋紅邊；鍊一律金色；鈴鐺金、玉石綠。index.html 有「配色」「配重」按鈕，play.html 有下拉。
+
+## 2026-10-30 pt31u：下身第一批（陰毛／陰唇／蕾絲丁字褲）
+- room_doll_full.js `groin()`：`doll.pubic`＝strip 一條線／triangle 三角形（無＝沒有）、`doll.labia`＝line 一線／butterfly 蝴蝶唇、`doll.pants`＝lace_thong 蕾絲丁字褲（低腰細褲頭＋前三角蕾絲＋後 T 字細繩）。
+- 圖層 `sheets/groin/<body>_<pubic|labia|pants>_<style>_<dir>.png`（160 張，`render_groin.cjs`），部位標記色：陰毛 #F0F（前端換成髮色）、陰唇 #FF0、蕾絲 #0FF/#0AA、褲頭 #F80。
+- 疊法：身體上色後 陰唇→陰毛→丁字褲（蕾絲棋盤鏤空半透）→餐巾布。index.html／play.html 加「陰毛」「陰唇」「褲子」「蕾絲色（黑／白／紅／粉紅）」。
