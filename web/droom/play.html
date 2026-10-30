@@ -93,7 +93,8 @@ const keys={};onkeydown=e=>{keys[e.code]=1;if(e.code=="KeyX"&&!e.repeat){pnSel.v
 for(const b of document.querySelectorAll(".pad button")){const k=b.dataset.k,on=e=>{e.preventDefault();keys[k]=1;b.classList.add("on");try{b.setPointerCapture(e.pointerId)}catch(_){}},off=e=>{keys[k]=0;b.classList.remove("on")};
  b.addEventListener("pointerdown",on);for(const ev of ["pointerup","pointercancel","lostpointercapture"])b.addEventListener(ev,off);b.addEventListener("contextmenu",e=>e.preventDefault())}
 // 手機：在畫面上左右拖曳轉頭
-const PMAX=.6,clampP=()=>P.p=Math.max(-PMAX,Math.min(PMAX,P.p));
+// pt49u：往下少看約 5°（俯角上限 ~74°→~69°），抬頭維持 1.3
+const PMAX=1.3,PMIN=1.21,clampP=()=>P.p=Math.max(-PMIN,Math.min(PMAX,P.p));
 let tX=null,tY=0;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"){tX=e.clientX;tY=e.clientY;cv.setPointerCapture(e.pointerId)}});
 cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;P.p-=(e.clientY-tY)*.006;clampP();tX=e.clientX;tY=e.clientY}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
 cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv){P.a+=e.movementX*.003;P.p-=e.movementY*.003;clampP()}};
@@ -115,37 +116,44 @@ const EYE=0.95;
 // 上下視角：y-shearing，地平線 HZ 隨 pitch 上下移動（P.p>0 抬頭）
 // 2026-10-30 pt40u：往下看時看到自己身體（只到鼠蹊部：小腹、陰毛、陰莖；不畫全身）。陰莖三型態：軟／微勃起／勃起
 // pt41u：身體模型放在玩家鏡頭「正下方」、面朝外（與玩家同方向），用真實俯仰投影：往下看＝從上方看到自己
+// pt44u–pt46u：鏡頭在半空中（EYE），自己的身體是一根「黏在鏡頭正下方」的立體柱子、朝外（與玩家同向）。
+// 往下看＝從眼睛往下看到柱子的前緣：小腹 → 鼠蹊往外延伸；陰莖從鼠蹊長出：軟＝往下垂、微勃＝變粗斜前、勃起＝脹大往上翹。
+// 世界用 y-shearing，身體用真實俯仰投影（只在低頭時出現），俯角 = -P.p（最多約 69°）。pt50u：畫面由上到下＝小腹→陰毛→陰莖（越往下＝離眼睛越遠、越低的部位越靠畫面下方）。
 let SELF_B=0;
-function drawSelf(moving){const k=Math.max(0,-P.p)/PMAX;if(k<.15)return;
- const th=.35+k*1.15,c=Math.cos(th),sn=Math.sin(th),F=SH;// 往下最多約 86°
- SELF_B+=(moving?.12:0);const bob=moving?Math.sin(SELF_B)*.006:0;
- // 本地座標：f=往前(朝外)、s=往右、z=離地高（牆高=1，眼睛 EYE）
- const pr=(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2+F*v/dep+OY,dep]};
- // 錨定：鼠蹊固定在畫面下方（身體在鏡頭正下方，大腿延伸出畫面底）
- let OY=0;const gq=pr(.08,0,.46);OY=SH*(1.02-.2*k)-gq[1];
- const X=g,SK="#d9a483",SK2="#c08a6c",SK3="#9c6a52",HAIR="#2a1d18";
+function drawSelf(moving){const th=-P.p;if(th<.45)return;
+ const c=Math.cos(th),sn=Math.sin(th),F=SH;
+ SELF_B+=(moving?.14:0);const bob=moving?Math.sin(SELF_B)*.005:0;
+ // 本地座標：f=往前（朝外）、s=往右、z=離地高（牆高=1，眼睛 EYE）。柱子軸心在 f≈-.02，正在鏡頭下方
+ const pr=(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2+F*v/dep,dep]};
+ const X=g,HAIR=(HAIR_PAL[document.getElementById("hc").value]||HAIR_PAL.black)[0];
+ const shade=(t)=>`rgb(${217-40*t|0},${168-42*t|0},${142-40*t|0})`;
  const poly=(pts,col)=>{const q=pts.map(p=>pr(...p));if(q.some(v=>!v))return;X.fillStyle=col;X.beginPath();q.forEach((v,i)=>i?X.lineTo(v[0],v[1]):X.moveTo(v[0],v[1]));X.closePath();X.fill()};
- const ell=(f,s,z,rs,rz,col)=>{const o=pr(f,s,z),a=pr(f,s+rs,z),b=pr(f,s,z+rz);if(!o||!a||!b)return;X.fillStyle=col;X.beginPath();X.ellipse(o[0],o[1],Math.abs(a[0]-o[0])+.5,Math.abs(b[1]-o[1])+.5,0,0,7);X.fill()};
- const seg=(p0,p1,r0,r1,col)=>{const A=pr(...p0),B=pr(...p1);if(!A||!B)return;const w0=F*r0/A[2],w1=F*r1/B[2],dx=B[0]-A[0],dy=B[1]-A[1],L=Math.hypot(dx,dy)||1,nx=-dy/L,ny=dx/L;
-  X.fillStyle=col;X.beginPath();X.moveTo(A[0]+nx*w0,A[1]+ny*w0);X.lineTo(B[0]+nx*w1,B[1]+ny*w1);X.lineTo(B[0]-nx*w1,B[1]-ny*w1);X.lineTo(A[0]-nx*w0,A[1]-ny*w0);X.closePath();X.fill();
-  X.beginPath();X.arc(B[0],B[1],w1,0,7);X.fill();return B};
- X.save();
- // 大腿（從鼠蹊往下往前一點，到膝蓋）
- for(const sd of[-1,1]){poly([[.07,sd*.02,.46],[.09,sd*.14,.52],[.12,sd*.12,.27],[.10,sd*.03,.27]],SK2)}
- // 小腹：從肚臍往下到鼠蹊，前面微凸
- poly([[.05,-.15,.78],[.05,.15,.78],[.11,.15,.6],[.1,.13,.52],[.08,.03,.46],[.08,-.03,.46],[.1,-.13,.52],[.11,-.15,.6]],SK);
- ell(.112,0,.6,.008,.006,SK3);// 肚臍
- // 陰毛（倒三角，固定亂數點）
- X.fillStyle=HAIR;for(let i=0;i<260;i++){const r=((i*9301+49297)%233280)/233280,q=((i*4241+7919)%9973)/9973,z=.47+q*.08,hw=.015+q*.06,v=pr(.085,(r*2-1)*hw,z);if(v)X.fillRect(v[0]|0,v[1]|0,1,2)}
- // 陰囊＋陰莖（根部在鼠蹊、朝外＝往前）
- const st=pnSel.value,base=[.09,0,.47];ell(.085,0,.43,.035,.03,SK3);
- let tip;
- if(st=="soft")tip=seg(base,[.11,0,.39],.016,.015,SK2);
- else if(st=="semi")tip=seg(base,[.19,0,.43],.018,.018,SK2);
- else tip=seg(base,[.2,0,.56],.019,.019,SK2);
- const tp=st=="soft"?[.11,0,.385]:st=="semi"?[.195,0,.428]:[.205,0,.567];
- ell(...tp,.019,.016,st=="soft"?"#c97d77":"#c25f60");
- X.restore()}
+ // 柱子剖面：每個高度 z 的前緣半橢圓（前凸量 D、半寬 R）；小腹微凸，到鼠蹊往內收
+ const prof=z=>{const t=(z-.46)/(.74-.46);return{R:.13+.02*Math.sin(Math.min(1,t)*Math.PI*.5),D:.075+.04*Math.sin(Math.max(0,Math.min(1,t*1.3))*Math.PI)}};
+ const F0=-.02,N=14;
+ // 大腿：從鼠蹊兩側往下（站姿），看起來在柱子邊緣下方露一點
+ for(const sd of[-1,1])poly([[F0+.06,sd*.03,.47],[F0+.07,sd*.13,.52],[F0+.10,sd*.12,.25],[F0+.10,sd*.035,.25]],shade(.55));
+ // 柱子由上往下一片片畫（前半圈），最上緣是被鏡頭「切開」的柱子邊緣
+ for(let z=.76;z>=.47;z-=.012){const{R,D}=prof(z),pts=[];for(let i=0;i<=N;i++){const a=Math.PI*i/N,ss=-Math.cos(a)*R;pts.push([F0+Math.sin(a)*D,ss,z])}pts.push([F0,R,z],[F0,-R,z]);
+  poly(pts,shade(.15+.35*(.76-z)/.3))}
+ // 肚臍
+ {const{D}=prof(.62),o=pr(F0+D+.002,0,.62);if(o){X.fillStyle=shade(1);X.beginPath();X.ellipse(o[0],o[1],1.6,1.1,0,0,7);X.fill()}}
+ // 鼠蹊線（腹股溝 V）
+ X.strokeStyle=shade(.8);X.lineWidth=1;for(const sd of[-1,1]){const a=pr(F0+.08,sd*.12,.55),b=pr(F0+.07,sd*.03,.47);if(a&&b){X.beginPath();X.moveTo(a[0],a[1]);X.lineTo(b[0],b[1]);X.stroke()}}
+ // 陰毛：鼠蹊前緣倒三角，顏色跟髮色
+ for(let i=0;i<320;i++){const r=((i*9301+49297)%233280)/233280,q=((i*4241+7919)%9973)/9973,z=.47+q*.07,hw=.012+q*.06,ss=(r*2-1)*hw,{D}=prof(z),v=pr(F0+D*Math.sqrt(Math.max(0,1-(ss/.14)**2))+.004,ss,z);
+  if(v){X.fillStyle=`rgb(${HAIR[0]+(i%3)*12},${HAIR[1]+(i%3)*10},${HAIR[2]+(i%3)*10})`;X.fillRect(v[0]|0,v[1]|0,1,2)}}
+ // 陰莖：沿曲線一節節畫圓柱（由根部往外）。軟＝下垂、微勃＝粗、斜前下、勃起＝更粗、上翹彎
+ const st=pnSel.value,base=[F0+.075,0,.475],L=st=="soft"?.11:st=="semi"?.12:.15,r0=st=="soft"?.016:st=="semi"?.02:.023;
+ // 陰囊（在陰莖下方、根部）
+ {const o=pr(F0+.07,0,.43),e=pr(F0+.07,.04,.43);if(o&&e){X.fillStyle=shade(.85);X.beginPath();X.ellipse(o[0],o[1],Math.abs(e[0]-o[0]),Math.abs(e[0]-o[0])*.8,0,0,7);X.fill()}}
+ const ang=u=>st=="soft"?-.75-.55*u:st=="semi"?-.35+.1*u:.55+.45*u;// 與水平夾角（正=往上）
+ let P0=base,pts=[base];for(let i=1;i<=10;i++){const a=ang(i/10),d=L/10;P0=[P0[0]+Math.cos(a)*d,0,P0[2]+Math.sin(a)*d];pts.push(P0)}
+ for(let i=0;i<pts.length;i++){const q=pr(...pts[i]);if(!q)continue;const rr=r0*(i==pts.length-1?.95:1),w=F*rr/q[2];X.fillStyle=i>=pts.length-2?(st=="soft"?"#c98078":"#c2605f"):shade(.6-.25*i/pts.length);
+  X.beginPath();X.ellipse(q[0],q[1],w,w*.85,0,0,7);X.fill()}
+ // 龜頭中線
+ {const q=pr(...pts[pts.length-1]);if(q){X.fillStyle="#8c3c42";X.fillRect(q[0]|0,(q[1]|0)-1,1,2)}}
+}
 function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
   lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
