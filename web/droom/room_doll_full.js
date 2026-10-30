@@ -1340,9 +1340,11 @@
     /** 回傳 {width,height,anchor,pixels:Uint8ClampedArray,depth:Float32Array(-Infinity=空)}。 */
     function render(doll, pose = 'idle', frame = 0, yaw = 0, opts = {}) {
       const cv = CANVAS[(POSES[pose] && POSES[pose].canvas) || 'std'];
-      const width = cv.w, height = cv.h, ax = cv.ax, ay = cv.ay;
       const { sh, P } = build(doll, pose, frame, yaw, opts);
       if (cv.side) return renderSide(sh, P, cv);
+      // 2026-10-30 pt36u：opts.scale＝解析度倍率（2＝寬高各兩倍，同一個模型取樣更細）
+      const K = Math.max(1, Math.round(opts.scale || 1));
+      const width = cv.w * K, height = cv.h * K, ax = cv.ax, ay = cv.ay;
       const prims = sh.prims, np = prims.length;
       // world-space bounding spheres (primitive offsets folded in)
       const bcx = new Float64Array(np), bcy = new Float64Array(np), bcz = new Float64Array(np), brr = new Float64Array(np), pm = new Uint8Array(np), pb = new Uint8Array(np);
@@ -1365,9 +1367,9 @@
       const STEP = .8 / Math.sqrt(5);
       const dist = [0, 0, 0];
       for (let py = 0; py < height; py++) {
-        const sy = py + .5 - ay;
+        const sy = (py + .5) / K - ay;
         for (let px = 0; px < width; px++) {
-          const sx = px + .5 - ax;
+          const sx = (px + .5) / K - ax;
           // ray: X = (sx*c - 2t*s)/gw, Y = (sx*s + 2t*c)/gw, Z = t - sy
           const ox = sx * c / gw - gcx, oy = sx * s / gw - gcy, oz = -sy - gcz;
           const bq = 2 * (ox * dX + oy * dY + oz * dZ), cq = ox * ox + oy * oy + oz * oz - gr * gr;
@@ -1408,7 +1410,7 @@
         else if (!hit[i] && n4 >= 3) { m[i] = 1; holes[i] = 1; }
       }
       const pixels = new Uint8ClampedArray(n * 4), depth = new Float32Array(n).fill(-Infinity);
-      const sheenRow = ay - P.H * .55;
+      const sheenRow = (ay - P.H * .55) * K;
       const set = (i, rgb, a) => { pixels[i * 4] = rgb[0]; pixels[i * 4 + 1] = rgb[1]; pixels[i * 4 + 2] = rgb[2]; pixels[i * 4 + 3] = a; };
       for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
         const i = y * width + x;
@@ -1426,10 +1428,10 @@
             const j = ny * width + nx;
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
-          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32; continue; }
+          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
           set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
         }
-        if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32;
+        if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32;
       }
       for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {   // pinholes take their neighbours' depth
         const i = y * width + x;
@@ -1438,7 +1440,7 @@
         for (const j of [i - width, i + width, i - 1, i + 1]) if (j >= 0 && j < n && Number.isFinite(depth[j]) && hit[j]) { sum += depth[j]; cnt++; }
         depth[i] = cnt ? sum / cnt : 0;
       }
-      return { width, height, anchor: { x: ax, y: ay }, pixels, depth };
+      return { width, height, anchor: { x: ax * K, y: ay * K }, pixels, depth };
     }
     /** 側面正交投影（接客偷看）：視線沿 −x，螢幕 x＝ax＋y·scale、螢幕 y＝ay−z·scale。深度＝x（越大越近）。 */
     function renderSide(sh, P, cv, pal = SIDE_PAL) {
