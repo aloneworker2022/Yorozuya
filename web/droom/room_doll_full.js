@@ -279,6 +279,30 @@
       for (const [x, z] of pts2) { const y = frontSurfaceY(sh, x, z); if (y !== null) pts.push([x, y - r + depth, z]); }
       for (let i = 0; i + 1 < pts.length; i++) sh.cone(MARK, pts[i], pts[i + 1], r, r);
     }
+    // pt75u：HD（scale≥2）背面線條——脊椎溝、腰窩、臀溝、臀下摺、側腰
+    function backSurfaceY(sh, x, z) {
+      for (let i = 0; i < 240; i++) { const y = -14 + i * .1; if (bodyDist(sh, x, y, z) < 0) return y; }
+      return null;
+    }
+    function backMarks(sh, pts2, depth = .25, r = .42) {
+      const pts = [];
+      for (const [x, z] of pts2) { const y = backSurfaceY(sh, x, z); if (y !== null) pts.push([x, y + r - depth, z]); }
+      for (let i = 0; i + 1 < pts.length; i++) sh.cone(MARK, pts[i], pts[i + 1], r, r);
+    }
+    function hdBackLines(sh, P, tor) {
+      const b = P.b, { S, C, T, zW } = tor, bb = F(b, 'butt'), hx = F(b, 'hip'), wx = F(b, 'waist');
+      const lin = (a, z, n) => Array.from({ length: n }, (_, i) => a + (z - a) * i / (n - 1));
+      const zt = C + .09 * T + 1.1 * b.perk;                       // 臀峰高度
+      backMarks(sh, lin(S - 4, zt + 3.2 * bb, 9).map(z => [0, z]), .3, .4);           // 脊椎溝
+      backMarks(sh, lin(zt + 2.6 * bb, C - 1.2, 5).map(z => [0, z]), .45, .5);        // 臀溝
+      for (const s of [-1, 1]) {
+        backMarks(sh, [[s * 2.2 * hx, zt + 3.4 * bb], [s * 2.6 * hx, zt + 3.0 * bb]], .4, .5);   // 腰窩
+        const cx = s * 3.7 * hx, zb = zt - 3.9 * bb;                 // 臀下摺（弧線）
+        backMarks(sh, [[s * .6, zb + 1.2], [cx - s * 1.6 * bb, zb - .1], [cx + s * .6 * bb, zb - .2], [cx + s * 2.8 * bb, zb + .9]]);
+        backMarks(sh, [[s * 5.2 * wx, zW + 4], [s * 5.6 * wx, zW], [s * 6.6 * hx, zW - 4.5]], .3, .38);  // 側背→腰→臀的弧
+        backMarks(sh, [[s * 3.6 * F(b, 'sh'), S - 3.5], [s * 4.8 * F(b, 'sh'), S - 8], [s * 4.4 * wx, zW + 5]], .25, .36);  // 肩胛→背闊
+      }
+    }
     function r0(P, doll) { return cupRadius(P, doll); }
     function cupRadius(P, doll) { const b = P.b; return (CUP_R[doll.cup] || 3.1) * b.bust ** .7 * b.frame ** .5; }
     function bustOuter(P, doll) { const b = P.b, r = cupRadius(P, doll); return (3.2 + r * .3) * F(b, 'chest') ** .5 + r * .95; }
@@ -884,6 +908,7 @@
           arm(sh, P, sh_j, elbow, wrist);
         }
         if (front) definition(sh, P, tor);
+        if (FOOT_HD && Math.cos(yaw * Math.PI / 180) < .35) hdBackLines(sh, P, tor);
         if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
         if (String(doll.cloth || '').startsWith('napkin')) napkin(sh, P, doll, tor, doll.cloth.split('_')[1] || 'bell');
         hair(sh, P, doll, tor, -sway);
