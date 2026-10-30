@@ -471,8 +471,9 @@
           if (q) ring.push(q);
         }
         if (ring.length > 2) sh.chain(BODY, ring, ring.map(() => .32));
-        const bk = []; for (let z = zb; z >= C - gap; z -= .8) { const y = surf(0, z, true); if (y !== null) bk.push([0, y - .45, z]); }
-        if (bk.length > 1) sh.chain(BODY, bk, bk.map(() => .42));
+        const bk = []; for (let z = zb; z >= C - gap; z -= .8) { const y = surf(0, z, true); if (y !== null) bk.push([0, y - .2, z]); }
+        // pt32u：T 字細繩嵌進臀溝表面（不往外推）、變細，走路時不會畫到臀部輪廓外；render_groin 另以裸身剪影裁切
+        if (bk.length > 1) sh.chain(BODY, bk, bk.map(() => .3));
       }
       sh.cloth = 0;
     }

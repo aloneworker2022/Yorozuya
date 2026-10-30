@@ -8,6 +8,7 @@ fs.mkdirSync(__dirname+'/sheets/groin',{recursive:true});let ji=0,n=0;
 for(const[k,st]of L)for(const b in BODY)for(const d in DIR){if((ji++)%NSH!==SHARD)continue;
 const doll=D.lookToDoll({...BODY[b],cup:'D 罩杯'});doll.shape='round';doll.areola='medium';doll.hair='none';doll[k]=st;
 const S={width:512,height:140,pixels:new Uint8ClampedArray(512*140*4)};
-for(let i=0;i<8;i++){const f=D.render(doll,'walk',i,DIR[d]);for(let y=0;y<140;y++)for(let x=0;x<64;x++){const si=(y*64+x)*4;if(f.pixels[si+3]!==D.CLOTH_A)continue;S.pixels.set(f.pixels.subarray(si,si+4),(y*512+i*64+x)*4);}}
+const nk={...doll};delete nk[k];// pt32u：裸身剪影，圖層像素必須落在身體上（細繩不出臀部輪廓）
+for(let i=0;i<8;i++){const f=D.render(doll,'walk',i,DIR[d]),g=D.render(nk,'walk',i,DIR[d]);for(let y=0;y<140;y++)for(let x=0;x<64;x++){const si=(y*64+x)*4;if(f.pixels[si+3]!==D.CLOTH_A||!g.pixels[si+3])continue;S.pixels.set(f.pixels.subarray(si,si+4),(y*512+i*64+x)*4);}}
 png(S,1,`${__dirname}/sheets/groin/${b}_${k}_${st}_${d}.png`);n++;}
 console.log('groin done',SHARD,n);
