@@ -264,7 +264,33 @@
         let d = [wrist[0] - elbow[0], wrist[1] - elbow[1], wrist[2] - elbow[2]];
         const n = hypot3(d[0], d[1], d[2]) || 1; d = d.map(v => v / n);
         const L = 3.8 * fr ** .7;
-        sh.cone(BODY, wrist, wrist.map((w, i) => w + d[i] * L), 1.65 * fr ** .5, 1.1 * fr ** .5);
+        if (!FOOT_HD) { sh.cone(BODY, wrist, wrist.map((w, i) => w + d[i] * L), 1.65 * fr ** .5, 1.1 * fr ** .5); return; }
+        // 2026-10-30 pt76u：2× 才畫細手——掌心肉墊、手背、四指＋拇指、指縫／掌紋 MARK
+        const side = shoulder[0] >= 0 ? 1 : -1, q = fr ** .5;
+        const orth = (v) => { const k = v[0] * d[0] + v[1] * d[1] + v[2] * d[2]; let o = v.map((x, i) => x - k * d[i]); const m = hypot3(o[0], o[1], o[2]) || 1; return o.map(x => x / m); };
+        const f = orth([0, 1, 0]);                       // 往前（拇指側）
+        const m = [d[1] * f[2] - d[2] * f[1], d[2] * f[0] - d[0] * f[2], d[0] * f[1] - d[1] * f[0]].map(x => x * -side);   // 掌心朝身體
+        const at = (u, fw = 0, md = 0) => wrist.map((w, i) => w + d[i] * u + f[i] * fw + m[i] * md);
+        const pl = 2.5 * fr ** .7;                       // 手掌長
+        sh.cone(BODY, at(0), at(pl * .55), 1.05 * q, 1.0 * q);                                   // 掌根
+        sh.cone(BODY, at(pl * .3, .55), at(pl * .3, -.55), .95 * q, .95 * q);                     // 掌心橫寬
+        sh.cone(BODY, at(pl * .85, .7), at(pl * .85, -.7), .78 * q, .72 * q);                     // 指根關節
+        sh.ell(BODY, at(pl * .35, .55, .45), [.75 * q, .75 * q, .9 * q]);                        // 大魚際（拇指根肉墊）
+        const fing = [[.62, 1.0, .34], [.2, 1.08, .33], [-.22, 1.0, .31], [-.6, .82, .27]];      // 食、中、無名、小指
+        for (const [o, len, r] of fing) {
+          const b0 = at(pl * .88, o), k1 = at(pl * .88 + 1.25 * len * fr ** .7, o * 1.05, .18), e = at(pl * .88 + 2.3 * len * fr ** .7, o * 1.05, .42);
+          sh.cone(BODY, b0, k1, r * q, r * .9 * q);
+          sh.cone(BODY, k1, e, r * .9 * q, r * .72 * q);                                         // 指尖微彎向掌心
+        }
+        for (let i = 0; i < 3; i++) {                                                           // 指縫線
+          const o = (fing[i][0] + fing[i + 1][0]) / 2;
+          sh.cone(MARK, at(pl * .95, o, .1), at(pl * .88 + 1.9 * fr ** .7, o * 1.05, .35), .14, .14);
+        }
+        const t0 = at(pl * .25, .85, .3), t1 = at(pl * .6, 1.35, .75), t2 = at(pl * .95, 1.45, 1.05);
+        sh.cone(BODY, t0, t1, .42 * q, .36 * q); sh.cone(BODY, t1, t2, .36 * q, .3 * q);          // 拇指
+        sh.cone(MARK, at(pl * .2, .5, .95 * q), at(pl * .55, -.3, .9 * q), .12, .12);              // 生命線
+        sh.cone(MARK, at(pl * .7, .7, .85 * q), at(pl * .62, -.75, .8 * q), .12, .12);             // 感情線
+        sh.cone(MARK, at(pl * .02, .9, 0), at(pl * .02, -.9, 0), .12, .12);                        // 手腕摺
       }
     }
     function frontSurfaceY(sh, x, z) {
