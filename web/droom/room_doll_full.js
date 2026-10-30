@@ -464,7 +464,7 @@
 
 
     // 2026-10-30 pt24u：髮型系統＝後髮＋前髮兩層（null＝不畫這層）。前髮含頭頂髮帽。
-    const BACK_HAIRS = ['long', 'wavy', 'short', 'pony', 'medium'];
+    const BACK_HAIRS = ['long', 'wavy', 'short', 'pony', 'medium', 'twin', 'ponyhi', 'bun'];   // 2026-10-30 pt27u：＋雙馬尾、高馬尾、包子頭
     const FRONT_HAIRS = ['blunt', 'french', 'side', 'pomp', 'curtain'];
     function layeredHair(sh, P, doll, tor, sway, side, sw, swc, bend) {
       const zc = tor.zc, S = tor.S, yl = tor.yl, y0 = yl(zc), hh = P.head_h / 2, T = P.T, fy = side ? -3.4 : 0;
@@ -500,6 +500,24 @@
         sh.ell(HAIR, [0, y0 - 8.2, zc + 2.4], [2.7, 2.6, 2.6]);
         const sv = sway * 2.2;
         sh.chain(HAIR, swc(bend([[0, y0 - 9.6, zc + 3.0], [sv * .3, y0 - 12.6, zc + .5], [sv * .7, y0 - 12.6, zc - 7], [sv, yl(S) - 10.0, S - 9]]), [0, .2, .6, 1]), [2.6, 3.1, 2.4, 1.0]);
+        return;
+      }
+      if (B === 'twin' || B === 'ponyhi' || B === 'bun') {   // 2026-10-30 pt27u：綁起來的三款，後腦先貼頭包好
+        sh.ell(HAIR, [0, y0 - 2.4, zc + .4], [7.9, 6.4, hh + .6], { y0: NOFACE, zc, bang: 0, bottom: zc - 4.6, cut: null });
+        const sv = sway * 2.2;
+        if (B === 'twin') for (const s of [-1, 1]) {   // 雙馬尾：頭頂兩側高綁，兩束往外再垂到胸下
+          sh.ell(HAIR, [s * 6.4, y0 - 2.4, zc + 4.4], [2.1, 2.0, 2.1]);
+          sh.chain(HAIR, swc(bend([[s * 8.2, y0 - 2.6, zc + 4.2], [s * 11.2, y0 - 2.6, zc - .5], [s * 12.4 + sv * .3, y0 - 2.6, zc - 11],
+            [s * 12.0 + sv * .6, y0 - 2.4, S - 14], [s * 10.8 + sv * .8, yl(S) - 2.2, S - 24]]), [0, .12, .4, .72, 1]), [2.0, 2.5, 2.1, 1.6, .7]);
+        }
+        if (B === 'ponyhi') {   // 高馬尾：綁在頭頂後方（比馬尾高很多），先往上後翹再垂下
+          sh.ell(HAIR, [0, y0 - 5.6, zc + hh - .4], [2.8, 2.7, 2.6]);
+          sh.chain(HAIR, swc(bend([[0, y0 - 6.6, zc + hh + .4], [sv * .2, y0 - 10.8, zc + hh + 1.2], [sv * .5, y0 - 13.4, zc + 2.0], [sv * .8, y0 - 13.0, zc - 8], [sv, yl(S) - 10.5, S - 6]]), [0, .1, .3, .65, 1]), [2.6, 3.0, 3.0, 2.3, 1.0]);
+        }
+        if (B === 'bun') {   // 包子頭：頭頂一顆圓髻＋底部束口
+          sh.ell(HAIR, sw([0, y0 - 3.0, zc + hh + 3.4], .05), [4.4, 4.2, 3.9]);
+          sh.ell(HAIR, [0, y0 - 2.6, zc + hh + .2], [2.6, 2.5, 1.4]);
+        }
         return;
       }
       const end = { long: S - .5 * T, wavy: S - .5 * T, medium: S - 3.5 }[B];
