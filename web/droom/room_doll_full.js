@@ -409,7 +409,7 @@
       }
       // 下緣邊框
       sh.cloth = 2;
-      if (BOT.length > 1) sh.chain(BODY, BOT.map(q => [q[0], q[1] + .35, q[2] + .3]), BOT.map(() => 1.05));
+      if (BOT.length > 1) sh.chain(BODY, BOT.map(q => [q[0], q[1] + .35, q[2] + .3]), BOT.map(() => .45));
       // 配重：掛在兩個下垂角
       sh.cloth = 4;
       for (const q of [BOT[0], BOT[BOT.length - 1]]) {
