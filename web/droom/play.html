@@ -159,9 +159,10 @@ function drawSelf(moving){const th=-P.p;if(th<.45)return;
  {const q=pr(...pts[pts.length-1]);if(q){X.fillStyle="#8c3c42";X.fillRect(q[0]|0,(q[1]|0)-1,1,2)}}
 }
 // pt68u：改用你的苗 self_ref.png（低頭看自己）：低頭時從畫面底冒出，低頭到底（-PMIN）貼齊畫面底，抬頭時往下退出
-const SELF_IM=new Image();SELF_IM.src="/droom/self_ref.png?v=2";
+// pt71u：低頭到底只伸出陰莖黑影（手畫 pixel PNG penis_sil.png，非程式繪形）
+const SELF_IM=new Image();SELF_IM.src="/droom/penis_sil.png?v=1";
 function drawSelfRef(moving){if(!SELF_IM.complete||!SELF_IM.naturalWidth)return;const th=-P.p,T0=.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
- const H=Math.round(SH*.85),W=Math.round(H*SELF_IM.naturalWidth/SELF_IM.naturalHeight);SELF_B+=(moving?.14:0);const bob=moving&&k>=1?0:(moving?Math.sin(SELF_B)*1.5:0);
+ const H=Math.round(SH*.4),W=Math.round(H*SELF_IM.naturalWidth/SELF_IM.naturalHeight);SELF_B+=(moving?.14:0);const bob=moving&&k>=1?0:(moving?Math.sin(SELF_B)*1.5:0);
  g.imageSmoothingEnabled=false;g.drawImage(SELF_IM,(SW-W)/2|0,Math.round(SH-H+(1-k)*(H+2)+bob),W,H)}
 function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
