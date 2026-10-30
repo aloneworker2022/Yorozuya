@@ -158,6 +158,11 @@ function drawSelf(moving){const th=-P.p;if(th<.45)return;
  // 龜頭中線
  {const q=pr(...pts[pts.length-1]);if(q){X.fillStyle="#8c3c42";X.fillRect(q[0]|0,(q[1]|0)-1,1,2)}}
 }
+// pt68u：改用你的苗 self_ref.png（低頭看自己）：低頭時從畫面底冒出，低頭到底（-PMIN）貼齊畫面底，抬頭時往下退出
+const SELF_IM=new Image();SELF_IM.src="/droom/self_ref.png?v=2";
+function drawSelfRef(moving){if(!SELF_IM.complete||!SELF_IM.naturalWidth)return;const th=-P.p,T0=.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
+ const H=Math.round(SH*.85),W=Math.round(H*SELF_IM.naturalWidth/SELF_IM.naturalHeight);SELF_B+=(moving?.14:0);const bob=moving&&k>=1?0:(moving?Math.sin(SELF_B)*1.5:0);
+ g.imageSmoothingEnabled=false;g.drawImage(SELF_IM,(SW-W)/2|0,Math.round(SH-H+(1-k)*(H+2)+bob),W,H)}
 function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
   lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
@@ -183,6 +188,6 @@ function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a
   const bob=G.bw*hgt*.022*Math.abs(Math.sin(a)),sway=G.bw*wid*.035*Math.sin(a/2*2);
   top-=bob;cx+=sway;
   for(let x=Math.max(0,cx-wid/2|0);x<Math.min(SW,cx+wid/2);x++){if(zb[x]<tz)continue;const sxp=fr*FW+((x-(cx-wid/2))/wid*FW|0);g.drawImage(im,sxp,0,1,FH,x,top,1,hgt)}}
- drawSelf(keys.KeyW||keys.KeyS||keys.ArrowUp||keys.ArrowDown||keys.KeyA||keys.KeyD)}
+ drawSelfRef(keys.KeyW||keys.KeyS||keys.ArrowUp||keys.ArrowDown||keys.KeyA||keys.KeyD)}
 requestAnimationFrame(frame);
 </script></body></html>
