@@ -8,7 +8,7 @@ button{background:#2a2436;color:#ddd;border:1px solid #443a58;border-radius:8px;
 <h1>Yorozuya 房間妹子・完整走路預覽（平視）</h1>
 <div class=bar><b>體型</b><span id=B></span></div><div class=bar><b>乳暈</b><span id=A></span></div>
 <div class=bar><b>後髮</b><span id=BH></span></div><div class=bar><b>前髮</b><span id=FH></span></div>
-<div class=bar><b>髮色</b><span id=H></span></div><div class=bar><b>乳頭</b><span id=N></span></div>
+<div class=bar><b>髮色</b><span id=H></span></div><div class=bar><b>乳頭</b><span id=N></span></div><div class=bar><b>服裝</b><span id=CL></span></div>
 <div class=bar><b>胸型</b><span id=S></span></div><div class=bar><b>罩杯</b><span id=C></span></div><div class=bar><b>方向</b><span id=Dd></span></div>
 <div class=bar><button id=pp>⏸ 暫停</button><button id=pv>◀ 上一格</button><button id=nx>下一格 ▶</button><label>速度 <input id=fp type=range min=2 max=24 value=14> <span id=fv>14</span> fps</label></div>
 <div id=msg></div><div id=v class=spr></div><div id=info></div>
@@ -29,32 +29,37 @@ const HAIR_PAL={blue:[[30,70,170],[90,140,230]],green:[[22,72,44],[60,124,84]],r
 const NIP_PAL={pink:[[236,150,160],[226,120,138]],brown:[[160,104,72],[120,74,48]],black:[[70,50,46],[34,24,22]]};
 const HN={blue:"藍色",green:"深綠色",red:"深紅色",black:"黑色",gold:"金色"},NN={pink:"粉紅色",brown:"咖啡色",black:"黑色"};
 const BHN={long:"長髮",wavy:"波浪長髮",short:"短髮",pony:"馬尾",medium:"中長髮",twin:"雙馬尾",ponyhi:"高馬尾",bun:"包子頭"},FHN={blunt:"齊瀏海",french:"法式瀏海",side:"旁分",pomp:"吹高髮",curtain:"長髮分兩邊"};
+const CLN={none:"無",napkin:"餐巾白布"};
 const pick=o=>{const k=Object.keys(o);return k[Math.random()*k.length|0]};
-const col={h:pick(HN),n:pick(NN),bh:pick(BHN),fh:pick(FHN)};
+const col={h:pick(HN),n:pick(NN),bh:pick(BHN),fh:pick(FHN),cl:"napkin"};
 const LD={};function img(u){if(!LD[u]){const im=new Image();LD[u]=new Promise(r=>{im.onload=()=>r(im);im.onerror=()=>r(null)});im.src=u}return LD[u]}
 // 身體 sheet（無頭髮）＋後髮＋前髮疊成一張；面向後方時後髮畫在最上面
 function over(x,im){const w=x.canvas.width,h=x.canvas.height,t=document.createElement("canvas");t.width=w;t.height=h;const tx=t.getContext("2d");tx.drawImage(im,0,0);const s=tx.getImageData(0,0,w,h).data,D=x.getImageData(0,0,w,h),d=D.data;for(let i=0;i<d.length;i+=4)if(s[i+3])for(let j=0;j<4;j++)d[i+j]=s[i+j];x.putImageData(D,0,0)}   // 頭髮像素整格蓋上（不混色，保住調色盤 alpha 讓上色認得）
 async function compose(k){const p=k.split("_"),b=p[0],d=p.slice(4).join("_");
- const L=[img(`/droom/sheets/${k}.png`),img(`/droom/sheets/hair/${b}_back_${col.bh}_${d}.png`),img(`/droom/sheets/hair/${b}_front_${col.fh}_${d}.png`)];
- const [base,bk,fr]=await Promise.all(L);const c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d");
- x.drawImage(base,0,0);for(const im of d.startsWith("back")?[fr,bk]:[bk,fr])if(im)over(x,im);return c}
+ const L=[img(`/droom/sheets/${k}.png`),img(`/droom/sheets/hair/${b}_back_${col.bh}_${d}.png`),img(`/droom/sheets/hair/${b}_front_${col.fh}_${d}.png`),col.cl=="none"?null:img(`/droom/sheets/cloth/${b}_${p[1]}_${p[2]}_${col.cl}_${d}.png`)];
+ const [base,bk,fr,clm]=await Promise.all(L);const c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d");
+ x.drawImage(base,0,0);for(const im of d.startsWith("back")?[fr,bk]:[bk,fr])if(im)over(x,im);c._cl=clm;return c}
 // 剪影 sheet → 白皙膚色＋髮色＋乳頭色（與 /droom/play 同一套調色）
+function clothData(im,w,h){if(!im||!im.naturalWidth)return null;const t=document.createElement("canvas");t.width=w;t.height=h;const x=t.getContext("2d");x.drawImage(im,0,0);return x.getImageData(0,0,w,h).data}
+// 2026-10-30 pt28u：衣服（餐巾白布）在上色後才蓋：半透明白（約 78%），乳頭隱約透出；頭髮在布前面就不蓋。布伸出身體外的部分直接畫半透明白。
+function clothOver(d,hm,CD){if(!CD)return;for(let i=0;i<d.length;i+=4){if(!CD[i+3]||hm[i>>2])continue;const k=.78;
+ if(d[i+3]){for(let j=0;j<3;j++)d[i+j]=d[i+j]*(1-k)+CD[i+j]*k}else{d[i]=CD[i];d[i+1]=CD[i+1];d[i+2]=CD[i+2];d[i+3]=200}}}
 function tint(c,HP,NP){const x=c.getContext("2d");
- const D=x.getImageData(0,0,c.width,c.height),d=D.data,A=[217,168,142],B=[245,208,181],C=[253,230,214];
+ const D=x.getImageData(0,0,c.width,c.height),d=D.data,hm=new Uint8Array(d.length>>2).map((_,i)=>d[i*4+3]>=212&&d[i*4+3]<=228),A=[217,168,142],B=[245,208,181],C=[253,230,214];
  for(let i=0;i<d.length;i+=4){if(!d[i+3])continue;const r=d[i],gg=d[i+1],b=d[i+2],a=d[i+3];let o=null;
   if(a>=212&&a<=228)o=(r>60?HP[1]:HP[0]);else if(r==150&&gg==100&&b==128)o=NP[0];else if(r==205&&gg==150&&b==175)o=NP[1];
   if(o){d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2];d[i+3]=255;continue}
   const l=(r*.3+gg*.59+b*.11),t=Math.max(0,Math.min(1,(l-28)/(75-28)));const [P,Q,u]=t<.5?[A,B,t*2]:[B,C,(t-.5)*2];
   for(let j=0;j<3;j++)d[i+j]=P[j]+(Q[j]-P[j])*u;d[i+3]=255}
- x.putImageData(D,0,0);return c.toDataURL()}
-const TC={};function turl(k){const ck=[k,col.h,col.n,col.bh,col.fh].join("|");if(TC[ck])return TC[ck]==1?null:TC[ck];TC[ck]=1;
+ clothOver(d,hm,clothData(c._cl,c.width,c.height));x.putImageData(D,0,0);return c.toDataURL()}
+const TC={};function turl(k){const ck=[k,col.h,col.n,col.bh,col.fh,col.cl].join("|");if(TC[ck])return TC[ck]==1?null:TC[ck];TC[ck]=1;
  compose(k).then(c=>{try{TC[ck]=tint(c,HAIR_PAL[col.h],NIP_PAL[col.n])}catch(e){TC[ck]=`/droom/sheets/${k}.png`}draw()});return null}
-for(const[el,o,k]of [[BH,BHN,"bh"],[FH,FHN,"fh"],[H,HN,"h"],[N,NN,"n"]])for(const[v,n]of Object.entries(o)){const b=document.createElement("button");b.textContent=n;b.dataset.v=v;b.onclick=()=>{col[k]=v;draw()};el.append(b)}
+for(const[el,o,k]of [[BH,BHN,"bh"],[FH,FHN,"fh"],[H,HN,"h"],[N,NN,"n"],[CL,CLN,"cl"]])for(const[v,n]of Object.entries(o)){const b=document.createElement("button");b.textContent=n;b.dataset.v=v;b.onclick=()=>{col[k]=v;draw()};el.append(b)}
 function draw(){const k=key();{const u=turl(k);if(u)v.style.backgroundImage=`url(${u})`}v.style.backgroundPosition=`${-256*i}px 0`;
  for(const w of ring.querySelectorAll("[data-d]")){const kk=key({...st,d:w.dataset.d}),s=w.firstChild;if(HAVE.has(kk)){const u=turl(kk);if(u)s.style.backgroundImage=`url(${u})`}else s.style.backgroundImage="none";s.style.backgroundPosition=`${-64*i}px 0`;w.style.outline=w.dataset.d==st.d?"2px solid #a08ad0":""}
  for(const[el,o,kk]of groups)for(const b of el.children){b.className=(b.dataset.v==st[kk]?"on ":"")+(HAVE.has(key({...st,[kk]:b.dataset.v}))?"":"na")}
- for(const[el,kk]of [[BH,"bh"],[FH,"fh"],[H,"h"],[N,"n"]])for(const b of el.children)b.className=b.dataset.v==col[kk]?"on":"";
- info.textContent=`${BHN[col.bh]}＋${FHN[col.fh]}・${HN[col.h]}髮・${NN[col.n]}乳頭・${BO[st.b]}・${AR[st.a]}・${SH[st.s]}・${st.c} 罩杯・${DI[st.d]}・第 ${i+1}/8 格`}
+ for(const[el,kk]of [[BH,"bh"],[FH,"fh"],[H,"h"],[N,"n"],[CL,"cl"]])for(const b of el.children)b.className=b.dataset.v==col[kk]?"on":"";
+ info.textContent=`${CLN[col.cl]}・${BHN[col.bh]}＋${FHN[col.fh]}・${HN[col.h]}髮・${NN[col.n]}乳頭・${BO[st.b]}・${AR[st.a]}・${SH[st.s]}・${st.c} 罩杯・${DI[st.d]}・第 ${i+1}/8 格`}
 function loop(){clearInterval(t);t=setInterval(()=>{if(play){i=(i+1)%8;draw()}},1000/fps)}
 const stop=()=>{play=false;pp.textContent="▶ 播放"};pp.onclick=()=>{play=!play;pp.textContent=play?"⏸ 暫停":"▶ 播放"};
 pv.onclick=()=>{stop();i=(i+7)%8;draw()};nx.onclick=()=>{stop();i=(i+1)%8;draw()};fp.oninput=()=>{fps=+fp.value;fv.textContent=fps;loop()};draw();loop();</script></html>

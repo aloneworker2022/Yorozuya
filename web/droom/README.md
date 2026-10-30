@@ -19,3 +19,8 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
   - 後髮 backHair：long 長髮 / wavy 波浪長髮 / short 短髮 / pony 馬尾 / medium 中長髮
   - 前髮 frontHair（含頭頂髮帽）：blunt 齊瀏海 / french 法式瀏海 / side 旁分 / pomp 吹高髮 / curtain 長髮分兩邊
 - index.html 與 play.html：身體＋後髮＋前髮逐格疊（面向後方時後髮在上），再上白皙膚色、髮色、乳頭色。
+
+## 2026-10-30 pt28u：服裝第一套「餐巾白布」（napkin）
+- room_doll_full.js `napkin()`：一片薄白布從脖子／鎖骨垂下，順著胸型繃過兩邊乳尖（乳溝處橫跨不陷入）再直直落下到胸下；prim 標 `cloth`，渲染成 CLOTH_RGB／邊緣 CLOTH_LO_RGB、alpha CLOTH_A=236。`doll.cloth='napkin'` 才畫，身體 sheet 不變。
+- 圖層：`sheets/cloth/<body>_<shape>_<cup>_napkin_<dir>.png`（4×3×8×8＝768 張，`render_cloth.cjs`，SHARD/NSHARD 可平行），只留布的像素。
+- index.html／play.html：「服裝 無／餐巾白布」，預設餐巾白布。上色後以 78% 白半透明蓋上（乳暈乳頭隱約透出），頭髮在布前面處不蓋。
