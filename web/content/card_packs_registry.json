@@ -1,0 +1,91 @@
+{
+  "active": "ca",
+  "packs": [
+    {
+      "id": "main",
+      "file": "cards.json",
+      "name": "正式牌庫",
+      "note": "預設 content/cards.json",
+      "activatedAt": 1786070538.3692527,
+      "updatedAt": 1786072229.66158
+    },
+    {
+      "id": "card_x",
+      "file": "card_x.json",
+      "name": "實驗 X",
+      "note": "",
+      "clonedFrom": "main",
+      "createMode": "clone",
+      "createdAt": 1786070531.683768,
+      "activatedAt": 1786070538.3526099
+    },
+    {
+      "id": "ca",
+      "file": "ca.json",
+      "name": "ca",
+      "note": "6基礎 + 20衍生",
+      "clonedFrom": null,
+      "createMode": "empty",
+      "createdAt": 1786072256.606594,
+      "updatedAt": 1787792075.6304398,
+      "activatedAt": 1787791723.5823457
+    },
+    {
+      "id": "G_card",
+      "file": "G_card.json",
+      "name": "G_card",
+      "note": "空白重來",
+      "clonedFrom": null,
+      "createMode": "empty",
+      "createdAt": 1786310400,
+      "updatedAt": 1786347179.297213,
+      "activatedAt": 1786329472.4041004
+    }
+  ],
+  "history": [
+    {
+      "at": 1786070538.3526113,
+      "from": "main",
+      "to": "card_x"
+    },
+    {
+      "at": 1786070538.369254,
+      "from": "card_x",
+      "to": "main"
+    },
+    {
+      "at": 1786092427.1266422,
+      "from": "main",
+      "to": "ca"
+    },
+    {
+      "at": 1786329472.404107,
+      "from": "ca",
+      "to": "G_card",
+      "epoch": 2,
+      "playerCardsWiped": true
+    },
+    {
+      "at": 1786445575.3880568,
+      "from": "G_card",
+      "to": "ca",
+      "epoch": 3,
+      "playerCardsWiped": true
+    },
+    {
+      "at": 1787791506.194556,
+      "from": "ca",
+      "to": "ca",
+      "epoch": 4,
+      "playerCardsWiped": true
+    },
+    {
+      "at": 1787791723.58235,
+      "from": "ca",
+      "to": "ca",
+      "epoch": 5,
+      "playerCardsWiped": true
+    }
+  ],
+  "liveEpoch": 5
+}

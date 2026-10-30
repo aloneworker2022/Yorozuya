@@ -2,4 +2,17 @@ __pycache__/
 data/
 assets/portraits/
 assets/album/
+assets/testword/
+assets/pose_refs/
 .venv/
+.env
+.env.*
+*.pem
+*.json.bak
+*.bak
+
+# 2026-10-17 旅館房間流程的生圖（test_room 生、伺服器 manifest）
+assets/rental_scenes/
+
+# 2026-10-21 換妻咖啡廳半身立繪（test_room 生）
+assets/swap_cafe/

@@ -1,0 +1,176 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>Droom 房間</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>body{margin:0;background:#000;color:#ddd;font:14px system-ui,sans-serif;display:flex;flex-direction:column;align-items:center}
+canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;background:#000;cursor:crosshair}
+#hud{padding:6px;text-align:center}
+#wrap{position:relative;width:min(96vw,960px)}#wrap canvas{width:100%;display:block;touch-action:none}
+.pad{position:absolute;bottom:8px;display:grid;gap:4px;grid-template-columns:repeat(3,clamp(44px,13vw,64px));grid-template-rows:repeat(3,clamp(44px,13vw,64px));opacity:.55;user-select:none;-webkit-user-select:none;touch-action:none}
+#padL{left:8px}#padR{right:8px;grid-template-rows:repeat(2,clamp(44px,13vw,64px));bottom:calc(8px + clamp(44px,13vw,64px) + 4px)}
+.pad button{font-size:22px;border:1px solid #888;border-radius:10px;background:rgba(40,40,40,.8);color:#fff;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent}
+.pad button.on{background:rgba(120,160,220,.9)}a{color:#9cf}select{background:#222;color:#ddd}</style></head><body>
+<div id="wrap"><canvas id="c" width="320" height="240"></canvas>
+<div class="pad" id="padL"><span></span><button data-k="KeyW">▲</button><span></span><button data-k="KeyA">◀</button><span></span><button data-k="KeyD">▶</button><span></span><button data-k="KeyS">▼</button><span></span></div>
+<div class="pad" id="padR"><button data-k="KeyQ">⟲</button><button data-k="KeyR">⇡</button><button data-k="KeyE">⟳</button><span></span><button data-k="KeyF">⇣</button><span></span></div></div>
+<div id="hud">W/↑ 前進　S/↓ 後退　A 左移　D 右移　←/→ 或 Q/E 轉向　R/F 抬頭/低頭　點畫面鎖定滑鼠轉頭（上下也可看）　手機：左下方向鍵移動、右下 ⟲⟳ 轉向、⇡⇣ 抬頭低頭（或在畫面上左右/上下滑動）　｜
+體型 <select id="b"><option value="balanced">勻稱</option><option value="slim">纖細</option><option value="petite">嬌小</option><option value="curvy">微肉</option></select>
+胸型 <select id="s"><option value="round">圓形</option><option value="bell">鐘型</option><option value="pendulous">下垂</option></select>
+罩杯 <select id="cu"></select>
+乳暈 <select id="ar"><option value="small">小</option><option value="medium" selected>中</option><option value="large">大</option><option value="huge">巨大</option></select>
+髮色 <select id="hc"><option value="blue">藍</option><option value="green">深綠</option><option value="red">深紅</option><option value="black">黑</option><option value="gold">金</option></select>
+後髮 <select id="bh"><option value="long">長髮</option><option value="wavy">波浪長髮</option><option value="short">短髮</option><option value="pony">馬尾</option><option value="medium">中長髮</option><option value="twin">雙馬尾</option><option value="ponyhi">高馬尾</option><option value="bun">包子頭</option></select>
+前髮 <select id="fh"><option value="blunt">齊瀏海</option><option value="french">法式瀏海</option><option value="side">旁分</option><option value="pomp">吹高髮</option><option value="curtain">長髮分兩邊</option></select>
+服裝 <select id="cl"><option value="none">無</option><option value="napkin" selected>餐巾布</option></select>
+配色 <select id="cs"><option value="pink">粉紅布金邊</option><option value="black">黑布白邊</option><option value="white" selected>白布紅邊</option></select>
+配重 <select id="cw"><option value="bell">金鈴鐺</option><option value="jade">綠玉石</option></select>
+陰毛 <select id="pu"><option value="none">沒有</option><option value="strip">一條線</option><option value="triangle" selected>三角形</option></select>
+陰唇 <select id="lb"><option value="line">一線</option><option value="butterfly">蝴蝶唇</option></select>
+褲子 <select id="pa"><option value="none">無</option><option value="lace_thong" selected>蕾絲丁字褲</option></select>
+蕾絲色 <select id="lc"><option value="black">黑</option><option value="white">白</option><option value="red">紅</option><option value="pink">粉紅</option></select>
+乳頭 <select id="nc"><option value="pink">粉紅</option><option value="brown">咖啡</option><option value="black">黑</option></select>
+我的陰莖 <select id="pn"><option value="soft">軟</option><option value="semi">微勃起</option><option value="erect">勃起</option></select>（X 切換・往下看可見）
+｜ <a href="/droom">← 回剪影預覽</a><div id="st"></div></div>
+<script>
+// 房間：內部 6×6 地板（外圈為牆，粉色牆面一段點綴）
+const M=["11111111","10000001","10000001","10000002","10000002","10000001","10000001","11111111"];
+const W=M[0].length,H=M.length,wall=(x,y)=>{const r=M[y|0];return !r||r[x|0]!=="0"};
+const cv=document.getElementById("c"),g=cv.getContext("2d"),SW=320,SH=240,img=g.createImageData(SW,SH),zb=new Float32Array(SW);
+const cuSel=document.getElementById("cu");for(const c of "ABCDEFGH")cuSel.add(new Option(c,c,c=="D",c=="D"));
+let P={x:1.6,y:6.4,a:-Math.PI/4,p:0};const G={x:4.5,y:2.5,h:0,tx:4.5,ty:2.5,moving:false,ph:0,wait:1};
+// 步伐同步：sheet 的 8 格 = 一個完整步態週期（左右各跨一步）。動畫相位由「實際移動距離」推進，
+// 走 STRIDE 格世界單位剛好播完 8 格 → 腳踩地時身體才前進，不會滑步。妹子身高約 1.15 單位，週期步幅約 0.48 身高。
+// 2026-10-30 pt36u：?hd=1 → 妹子用 2× sheet（128×280／格），只有 勻稱／圓形／D
+const HD=new URLSearchParams(location.search).has("hd"),SD=HD?"/droom/sheets2x/":"/droom/sheets/",FW=HD?128:64,FH=HD?280:140;
+if(HD)for(const[id,v]of[["b","balanced"],["s","round"],["cu","D"]]){const e=document.getElementById(id);e.value=v;e.disabled=true}
+const STRIDE=.55,G_SPEED=.9;
+const DIRS=[[0,"front"],[-45,"front_right"],[-90,"right"],[-135,"back_right"],[180,"back"],[135,"back_left"],[90,"left"],[45,"front_left"]];
+const cache={};let sheet=null;
+// 髮色 5 種、乳頭 3 種（彼此獨立；進頁時隨機挑，也可用下拉切換）
+const HAIR_PAL={blue:[[30,70,170],[90,140,230]],green:[[22,72,44],[60,124,84]],red:[[110,18,32],[170,54,70]],black:[[22,20,24],[74,72,80]],gold:[[205,160,50],[248,214,120]]};
+const NIP_PAL={pink:[[236,150,160],[226,120,138]],brown:[[160,104,72],[120,74,48]],black:[[70,50,46],[34,24,22]]};
+for(const [id,P2] of [["hc",HAIR_PAL],["nc",NIP_PAL],["bh",{long:1,wavy:1,short:1,pony:1,medium:1,twin:1,ponyhi:1,bun:1}],["fh",{blunt:1,french:1,side:1,pomp:1,curtain:1}]]){const k=Object.keys(P2);document.getElementById(id).value=k[Math.random()*k.length|0]}
+function over(x,im){const w=x.canvas.width,h=x.canvas.height,t=document.createElement("canvas");t.width=w;t.height=h;const tx=t.getContext("2d");tx.drawImage(im,0,0);const s=tx.getImageData(0,0,w,h).data,D=x.getImageData(0,0,w,h),d=D.data;for(let i=0;i<d.length;i+=4)if(s[i+3])for(let j=0;j<4;j++)d[i+j]=s[i+j];x.putImageData(D,0,0)}   // 頭髮像素整格蓋上（不混色，保住調色盤 alpha 讓上色認得）
+function sheetFor(d){const k=["b","s","cu","ar"].map(i=>document.getElementById(i).value).join("_")+"_"+d,hc=document.getElementById("hc").value,nc=document.getElementById("nc").value,bh=document.getElementById("bh").value,fh=document.getElementById("fh").value,cl=document.getElementById("cl").value,cs=document.getElementById("cs").value,cw=document.getElementById("cw").value,pu=document.getElementById("pu").value,lb=document.getElementById("lb").value,pa=document.getElementById("pa").value,lc=document.getElementById("lc").value,ck=k+"|"+hc+"|"+nc+"|"+bh+"|"+fh+"|"+cl+"|"+cs+"|"+cw+"|"+pu+"|"+lb+"|"+pa+"|"+lc;
+ if(!cache[ck]){const b=k.split("_")[0],urls=[SD+k+".png",SD+"hair/"+b+"_back_"+bh+"_"+d+".png",SD+"hair/"+b+"_front_"+fh+"_"+d+".png"];if(cl!="none"){const q=k.split("_");urls.push(SD+"cloth/"+q[0]+"_"+q[1]+"_"+q[2]+"_"+cl+"_"+cw+"_"+d+".png")}else urls.push("");
+  for(const g of [["labia",lb],["pubic",pu],["pants",pa]])urls.push(g[1]=="none"?"":SD+"groin/"+b+"_"+g[0]+"_"+g[1]+"_"+d+".png");
+  const ims=urls.map(u=>{if(!u)return null;const im=new Image();im.src=u;return im});cache[ck]=ims[0];
+  Promise.all(ims.map(im=>im&&new Promise(r=>{im.onload=im.onerror=r}))).then(()=>{const[base,bk,fr,clm,...gl]=ims,c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d");
+   x.drawImage(base,0,0);for(const im of d.startsWith("back")?[fr,bk]:[bk,fr])if(im.naturalWidth)over(x,im);cache[ck]=skinTint(c,HAIR_PAL[hc],NIP_PAL[nc],clothData(clm,c.width,c.height),cs,cw,gl.map(im=>clothData(im,c.width,c.height)),lc)})}return cache[ck]}
+// 上色：sheet 是固定調色盤的剪影（render.cjs / room_doll_full.js），依原色分區：
+// 頭髮 (31,24,42)/(78,66,98) → 髮色暗/亮；乳暈 (150,100,128)、乳頭 (205,150,175) → 乳頭色；其餘身體 → 白皙肉色 #D9A88E→#F5D0B5→#FDE6D6
+function clothData(im,w,h){if(!im||!im.naturalWidth)return null;const t=document.createElement("canvas");t.width=w;t.height=h;const x=t.getContext("2d");x.drawImage(im,0,0);return x.getImageData(0,0,w,h).data}
+// 2026-10-30 pt29u：衣服 sheet 是部位標記色（布／邊框 #F00／頸鍊 #0F0／配重 #00F）→ 依配色方案上色。鍊一律金色；配重 鈴鐺=金、玉石=綠。
+const CLOTH_SCHEME={pink:{c:[255,168,198],k:.62,t:[224,178,58]},black:{c:[28,26,34],k:.66,t:[250,250,250]},white:{c:[250,250,252],k:.74,t:[204,28,40]}};
+const CSN={pink:"粉紅透明布＋金邊",black:"黑色透明布＋白邊",white:"白色透明布＋紅邊"},CWN={bell:"金鈴鐺",jade:"綠玉石"};
+const GOLD=[[232,188,72],[170,124,34]],JADE=[[70,180,110],[28,110,62]];
+function clothOver(d,hm,CD,cs,cw){if(!CD)return;const S=CLOTH_SCHEME[cs]||CLOTH_SCHEME.white,W=cw=="jade"?JADE:GOLD;
+ for(let i=0;i<d.length;i+=4){if(!CD[i+3]||hm[i>>2])continue;const r=CD[i],g=CD[i+1],b=CD[i+2];let o=null,k=1;
+  if(r==255&&g==0&&b==0)o=S.t;else if(r==0&&g==255&&b==0)o=((i>>2)%3?GOLD[0]:GOLD[1]);else if(r==0&&g==0)o=b>200?W[0]:W[1];
+  else{k=S.k;const sh=r<240?.82:1;o=S.c.map(v=>v*sh)}
+  if(d[i+3]&&k<1){for(let j=0;j<3;j++)d[i+j]=d[i+j]*(1-k)+o[j]*k}else{d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2];d[i+3]=k<1?200:255}}}
+// 2026-10-30 pt31u：下身圖層（陰毛 #F0F→髮色、陰唇 #FF0、蕾絲 #0FF/#0AA、褲頭 #F80）。順序：陰唇→陰毛→丁字褲，最後才蓋餐巾布。
+const LACE_PAL={black:[20,18,24],white:[248,246,250],red:[176,20,44],pink:[244,150,186]};
+function groinOver(d,hm,GD,HP,lc,W){const LC=LACE_PAL[lc]||LACE_PAL.black;for(const L of GD){if(!L)continue;
+ for(let i=0;i<d.length;i+=4){if(!L[i+3]||hm[i>>2])continue;const r=L[i],g=L[i+1],b=L[i+2],p=i>>2,x=p%W,y=p/W|0;let o,k=1;
+  if(r==255&&g==0&&b==255)o=(x+y)%3?HP[0]:HP[1];else if(r==255&&g==255&&b==0)o=[196,108,118];else if(r==255&&g==128){o=LC;k=.8}
+  else{o=LC;k=(x+y)%2?.5:((x^y)&2?.32:.18)}   // pt32u 蕾絲半透明：花紋處較實、鏤空處透肉
+  for(let j=0;j<3;j++)d[i+j]=d[i+j]*(1-k)+o[j]*k;d[i+3]=255}}}
+function skinTint(c,HP,NP,CD,cs,cw,GD,lc){const x=c.getContext("2d");
+ const D=x.getImageData(0,0,c.width,c.height),d=D.data,hm=new Uint8Array(d.length>>2).map((_,i)=>d[i*4+3]>=212&&d[i*4+3]<=228),A=[217,168,142],B=[245,208,181],C=[253,230,214];
+ for(let i=0;i<d.length;i+=4){if(!d[i+3])continue;const r=d[i],gg=d[i+1],b=d[i+2],a=d[i+3];let o=null;
+  if(a>=212&&a<=228)o=(r>60?HP[1]:HP[0]);
+  else if(r==150&&gg==100&&b==128)o=NP[0];else if(r==205&&gg==150&&b==175)o=NP[1];
+  if(o){d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2];d[i+3]=255;continue}
+  const l=(r*.3+gg*.59+b*.11),t=Math.max(0,Math.min(1,(l-28)/(75-28)));
+  const [P,Q,u]=t<.5?[A,B,t*2]:[B,C,(t-.5)*2];for(let j=0;j<3;j++)d[i+j]=P[j]+(Q[j]-P[j])*u;d[i+3]=255}
+ groinOver(d,hm,GD||[],HP,lc,c.width);clothOver(d,hm,CD,cs,cw);x.putImageData(D,0,0);c.complete=true;c.naturalWidth=c.width;return c}
+// 牆面：簡單磚紋（程式產生）
+function wallCol(t,u,v,side){const brick=((v*8|0)%2?((u*4+.5)|0):((u*4)|0)),mort=(v*8%1<.08)||((u*4+((v*8|0)%2?.5:0))%1<.05);
+ let c=t=="2"?[190,150,170]:[215,195,165];if(mort)c=[140,130,120];else{const n=(brick*37%11)/40;c=c.map(x=>x*(1-n))}
+ return side?c.map(x=>x*.7):c}
+const PN=["soft","semi","erect"],pnSel=document.getElementById("pn");
+const keys={};onkeydown=e=>{keys[e.code]=1;if(e.code=="KeyX"&&!e.repeat){pnSel.value=PN[(PN.indexOf(pnSel.value)+1)%3]}if(e.code.startsWith("Arrow"))e.preventDefault()};onkeyup=e=>keys[e.code]=0;
+// 手機方向鍵：pointer 事件，按住=持續按鍵；支援多指同時按
+for(const b of document.querySelectorAll(".pad button")){const k=b.dataset.k,on=e=>{e.preventDefault();keys[k]=1;b.classList.add("on");try{b.setPointerCapture(e.pointerId)}catch(_){}},off=e=>{keys[k]=0;b.classList.remove("on")};
+ b.addEventListener("pointerdown",on);for(const ev of ["pointerup","pointercancel","lostpointercapture"])b.addEventListener(ev,off);b.addEventListener("contextmenu",e=>e.preventDefault())}
+// 手機：在畫面上左右拖曳轉頭
+const PMAX=.6,clampP=()=>P.p=Math.max(-PMAX,Math.min(PMAX,P.p));
+let tX=null,tY=0;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"){tX=e.clientX;tY=e.clientY;cv.setPointerCapture(e.pointerId)}});
+cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;P.p-=(e.clientY-tY)*.006;clampP();tX=e.clientX;tY=e.clientY}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
+cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv){P.a+=e.movementX*.003;P.p-=e.movementY*.003;clampP()}};
+function tryMove(o,dx,dy,r=.2){if(!wall(o.x+dx+Math.sign(dx)*r,o.y))o.x+=dx;if(!wall(o.x,o.y+dy+Math.sign(dy)*r))o.y+=dy}
+function ai(dt){if(G.moving){const dx=G.tx-G.x,dy=G.ty-G.y,d=Math.hypot(dx,dy);if(d<.05){G.moving=false;G.ph=0;G.wait=1+Math.random()*2.5}else{G.h=Math.atan2(dy,dx);const sp=Math.min(d,G_SPEED*dt);const ox=G.x,oy=G.y;tryMove(G,dx/d*sp,dy/d*sp,.25);const moved=Math.hypot(G.x-ox,G.y-oy);if(moved<1e-4)G.moving=false;G.ph=(G.ph+moved/STRIDE*8)%8}}
+ else if((G.wait-=dt)<0){for(let i=0;i<20;i++){const x=1.5+Math.random()*(W-3),y=1.5+Math.random()*(H-3);if(!wall(x,y)){G.tx=x;G.ty=y;G.moving=true;break}}}}
+let last=performance.now();
+function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
+ const sp=2.2*dt,ca=Math.cos(P.a),sa=Math.sin(P.a);let f=0,s=0;
+ if(keys.KeyW||keys.ArrowUp)f++;if(keys.KeyS||keys.ArrowDown)f--;if(keys.KeyD)s++;if(keys.KeyA)s--;
+ if(keys.KeyR||keys.PageUp)P.p+=1.2*dt;if(keys.KeyF||keys.PageDown)P.p-=1.2*dt;clampP();
+ if(keys.ArrowLeft||keys.KeyQ)P.a-=2.2*dt;if(keys.ArrowRight||keys.KeyE)P.a+=2.2*dt;
+ tryMove(P,(ca*f-sa*s)*sp,(sa*f+ca*s)*sp);
+ // 不讓玩家穿過妹子
+ const gx=P.x-G.x,gy=P.y-G.y,gd=Math.hypot(gx,gy);if(gd<.4){P.x=G.x+gx/gd*.4;P.y=G.y+gy/gd*.4}
+ ai(dt);render();requestAnimationFrame(frame)}
+// 視角高度（牆高=1；0.5 為原本的低視角）
+const EYE=0.95;
+// 上下視角：y-shearing，地平線 HZ 隨 pitch 上下移動（P.p>0 抬頭）
+// 2026-10-30 pt40u：往下看時看到自己身體（只到鼠蹊部：小腹、陰毛、陰莖；不畫全身）。陰莖三型態：軟／微勃起／勃起
+// pt41u：身體模型放在玩家鏡頭「正下方」、面朝外（與玩家同方向），用真實俯仰投影：往下看＝從上方看到自己
+let SELF_B=0;
+function drawSelf(moving){const k=Math.max(0,-P.p)/PMAX;if(k<.15)return;
+ const th=.35+k*1.15,c=Math.cos(th),sn=Math.sin(th),F=SH;// 往下最多約 86°
+ SELF_B+=(moving?.12:0);const bob=moving?Math.sin(SELF_B)*.006:0;
+ // 本地座標：f=往前(朝外)、s=往右、z=離地高（牆高=1，眼睛 EYE）
+ const pr=(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2+F*v/dep+OY,dep]};
+ // 錨定：鼠蹊固定在畫面下方（身體在鏡頭正下方，大腿延伸出畫面底）
+ let OY=0;const gq=pr(.08,0,.46);OY=SH*(1.02-.2*k)-gq[1];
+ const X=g,SK="#d9a483",SK2="#c08a6c",SK3="#9c6a52",HAIR="#2a1d18";
+ const poly=(pts,col)=>{const q=pts.map(p=>pr(...p));if(q.some(v=>!v))return;X.fillStyle=col;X.beginPath();q.forEach((v,i)=>i?X.lineTo(v[0],v[1]):X.moveTo(v[0],v[1]));X.closePath();X.fill()};
+ const ell=(f,s,z,rs,rz,col)=>{const o=pr(f,s,z),a=pr(f,s+rs,z),b=pr(f,s,z+rz);if(!o||!a||!b)return;X.fillStyle=col;X.beginPath();X.ellipse(o[0],o[1],Math.abs(a[0]-o[0])+.5,Math.abs(b[1]-o[1])+.5,0,0,7);X.fill()};
+ const seg=(p0,p1,r0,r1,col)=>{const A=pr(...p0),B=pr(...p1);if(!A||!B)return;const w0=F*r0/A[2],w1=F*r1/B[2],dx=B[0]-A[0],dy=B[1]-A[1],L=Math.hypot(dx,dy)||1,nx=-dy/L,ny=dx/L;
+  X.fillStyle=col;X.beginPath();X.moveTo(A[0]+nx*w0,A[1]+ny*w0);X.lineTo(B[0]+nx*w1,B[1]+ny*w1);X.lineTo(B[0]-nx*w1,B[1]-ny*w1);X.lineTo(A[0]-nx*w0,A[1]-ny*w0);X.closePath();X.fill();
+  X.beginPath();X.arc(B[0],B[1],w1,0,7);X.fill();return B};
+ X.save();
+ // 大腿（從鼠蹊往下往前一點，到膝蓋）
+ for(const sd of[-1,1]){poly([[.07,sd*.02,.46],[.09,sd*.14,.52],[.12,sd*.12,.27],[.10,sd*.03,.27]],SK2)}
+ // 小腹：從肚臍往下到鼠蹊，前面微凸
+ poly([[.05,-.15,.78],[.05,.15,.78],[.11,.15,.6],[.1,.13,.52],[.08,.03,.46],[.08,-.03,.46],[.1,-.13,.52],[.11,-.15,.6]],SK);
+ ell(.112,0,.6,.008,.006,SK3);// 肚臍
+ // 陰毛（倒三角，固定亂數點）
+ X.fillStyle=HAIR;for(let i=0;i<260;i++){const r=((i*9301+49297)%233280)/233280,q=((i*4241+7919)%9973)/9973,z=.47+q*.08,hw=.015+q*.06,v=pr(.085,(r*2-1)*hw,z);if(v)X.fillRect(v[0]|0,v[1]|0,1,2)}
+ // 陰囊＋陰莖（根部在鼠蹊、朝外＝往前）
+ const st=pnSel.value,base=[.09,0,.47];ell(.085,0,.43,.035,.03,SK3);
+ let tip;
+ if(st=="soft")tip=seg(base,[.11,0,.39],.016,.015,SK2);
+ else if(st=="semi")tip=seg(base,[.19,0,.43],.018,.018,SK2);
+ else tip=seg(base,[.2,0,.56],.019,.019,SK2);
+ const tp=st=="soft"?[.11,0,.385]:st=="semi"?[.195,0,.428]:[.205,0,.567];
+ ell(...tp,.019,.016,st=="soft"?"#c97d77":"#c25f60");
+ X.restore()}
+function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
+ for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
+  lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
+  for(let x=0;x<SW;x++,fx+=stx,fy+=sty){const i=(y*SW+x)*4,chk=((Math.floor(fx)+Math.floor(fy))&1),sh=Math.min(1,.45+2.5/rd);
+   const c=ceil?[150,145,160]:(chk?[200,190,175]:[175,165,150]);d[i]=c[0]*sh;d[i+1]=c[1]*sh;d[i+2]=c[2]*sh;d[i+3]=255}}
+ for(let x=0;x<SW;x++){const cam=2*x/SW-1,rx=dx+px*cam,ry=dy+py*cam;let mx=P.x|0,my=P.y|0;
+  const ddx=Math.abs(1/rx),ddy=Math.abs(1/ry),sx=rx<0?-1:1,sy=ry<0?-1:1;let sdx=(rx<0?P.x-mx:mx+1-P.x)*ddx,sdy=(ry<0?P.y-my:my+1-P.y)*ddy,side=0;
+  for(let k=0;k<64;k++){if(sdx<sdy){sdx+=ddx;mx+=sx;side=0}else{sdy+=ddy;my+=sy;side=1}if(wall(mx,my))break}
+  const pd=side?sdy-ddy:sdx-ddx;zb[x]=pd;const lh=SH/pd|0,wt=HZ-lh*(1-EYE),y0=Math.max(0,wt|0),y1=Math.min(SH,(HZ+lh*EYE)|0);
+  let u=side?P.x+pd*rx:P.y+pd*ry;u-=Math.floor(u);const t=M[my][mx],shd=Math.min(1,.45+2.5/pd);
+  for(let y=y0;y<y1;y++){const v=(y-wt)/lh,c=wallCol(t,u,v,side),i=(y*SW+x)*4;d[i]=c[0]*shd;d[i+1]=c[1]*shd;d[i+2]=c[2]*shd}}
+ g.putImageData(img,0,0);
+ // 妹子 billboard：依「她面向」與「她→玩家」夾角選 8 方向 sheet
+ const vx=G.x-P.x,vy=G.y-P.y,inv=1/(px*dy-dx*py),tx=inv*(dy*vx-dx*vy),tz=inv*(-py*vx+px*vy);
+ let rel=((G.h-Math.atan2(P.y-G.y,P.x-G.x))*180/Math.PI+540)%360-180,best=DIRS[0];
+ for(const q of DIRS){const e=Math.abs(((rel-q[0])+540)%360-180);if(e<Math.abs(((rel-best[0])+540)%360-180))best=q}
+ const im=sheetFor(best[1]),fr=G.moving?(G.ph|0)%8:0;
+ document.getElementById("st").textContent=`妹子：${G.moving?"走路":"站著"}（${{front:"正面",front_right:"右前",right:"右",back_right:"右後",back:"背面",back_left:"左後",left:"左",front_left:"左前"}[best[1]]}）　距離 ${Math.hypot(vx,vy).toFixed(1)}`;
+ if(tz>.15&&im.complete&&im.naturalWidth){const hgt=SH/tz*1.15,wid=hgt*FW/FH;let cx=SW/2*(1+tx/tz);let top=HZ+SH/tz*EYE-hgt;
+  const shd=Math.min(1,2.2/tz);
+  // 步伐律動：每步一次上下起伏（腳著地時最低、跨步中最高）＋每週期一次左右重心擺動；停下時平滑歸零
+  G.bw=(G.bw||0)+((G.moving?1:0)-(G.bw||0))*.2;const a=G.ph/8*Math.PI*2;
+  const bob=G.bw*hgt*.022*Math.abs(Math.sin(a)),sway=G.bw*wid*.035*Math.sin(a/2*2);
+  top-=bob;cx+=sway;
+  for(let x=Math.max(0,cx-wid/2|0);x<Math.min(SW,cx+wid/2);x++){if(zb[x]<tz)continue;const sxp=fr*FW+((x-(cx-wid/2))/wid*FW|0);g.drawImage(im,sxp,0,1,FH,x,top,1,hgt)}}
+ drawSelf(keys.KeyW||keys.KeyS||keys.ArrowUp||keys.ArrowDown||keys.KeyA||keys.KeyD)}
+requestAnimationFrame(frame);
+</script></body></html>

@@ -1,0 +1,733 @@
+@font-face{font-family:RoomPixel;src:url('/fonts/fusion-pixel-12px-zh-hant.woff2') format('woff2');font-display:swap}
+*{box-sizing:border-box}
+/* sandbox page only — do not paint main app body */
+html.room-page body{margin:0;min-height:100svh;background:#eee8dd;color:#514c45;font-family:RoomPixel,system-ui,sans-serif;display:flex;flex-direction:column;justify-content:center}
+html.sheet-open,html.sheet-open body{overflow:hidden;overscroll-behavior:none}
+body.sheet-open{position:fixed;left:0;right:0;width:100%}
+html.room-page body.editing{justify-content:flex-start}
+html.room-page a{color:inherit;text-decoration:none}
+html.room-page .stage{width:min(100%,640px);margin:0 auto;padding:24px 20px 96px}body.room-home .home-room-stage{width:100%;max-width:520px;margin:0 auto;padding:0 8px 0}
+html.room-page .scene,#main-room-stage .scene{display:flex;justify-content:center}
+#room-pack-chrome{position:fixed;z-index:5;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:calc(100vw - 32px)}
+#room-pack-chrome #edit-room{position:static;min-width:72px}
+#room-pack-chrome button{min-width:72px}
+#room-editor{width:min(100%,560px);margin:28px auto 0}
+#room-editor[hidden]{display:none}
+.back{display:inline-block;padding:8px 0;font-size:12px;letter-spacing:1px}
+#room,html.room-page canvas{display:block;width:min(100%,416px);height:auto;image-rendering:pixelated;touch-action:none;user-select:none;cursor:grab}
+#room.dragging,html.room-page canvas.dragging{cursor:grabbing}
+.tool-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:18px 0 0}
+.view-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
+.view-controls button{min-width:44px;padding:10px 12px}
+#zoom-level{min-width:48px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums}
+.gesture-hint{font-size:12px;color:#93897b;margin:8px 0 0;line-height:1.6}
+.furniture-panel{margin:18px 0 0;padding:14px;background:#f5efe3;border:1px solid #d5c9b5}
+.furniture-info{display:flex;align-items:center;gap:12px}.furniture-info img{width:64px;height:70px;object-fit:contain;image-rendering:pixelated}.furniture-info strong{font-size:16px;font-weight:400}.furniture-info p{font-size:12px;color:#8b8071;line-height:1.6;margin:8px 0}
+.furniture-actions{display:flex;gap:10px;flex-wrap:wrap}.furniture-actions button{flex:1;font-size:14px}
+#furniture-status,#empty-selection{font-size:12px;color:#776c5b;line-height:1.6;min-height:38px;margin:12px 0 0}
+.inventory{margin:28px 0 0}
+.inventory-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:22px 0 14px}.inventory-heading h2{margin:0;font-size:18px;font-weight:400}.inventory-heading span{font-size:12px;color:#897d6c}
+#furniture-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;padding:12px 8px;background:#f7f1e6}
+.furniture-card img{width:112px;height:112px;max-width:100%;object-fit:contain;image-rendering:pixelated}
+.furniture-card strong{font-weight:400;font-size:14px}.catalog-size,.in-room{font-size:12px;color:#8c806f}.add-label{font-size:12px;margin-top:4px;padding:6px;background:#dce2cf;color:#58654b;width:100%}
+#placed-items{display:flex;gap:8px;flex-wrap:wrap}#placed-items button{font-size:12px;padding:10px}
+#remove-item{color:#975e50}
+.actor-panel{margin:16px 0 0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #d5c9b5}.actor-panel strong{font-size:14px;font-weight:400}.actor-panel p{font-size:12px;line-height:1.6;color:#897d6c;margin:6px 0 0}.actor-panel button{font-size:12px;white-space:nowrap;padding:10px}
+.actor-panel{flex-wrap:wrap}.actor-actions{display:flex;gap:8px;flex-wrap:wrap}html.room-page button:disabled,#home-room-chrome button:disabled,#room-pack-chrome button:disabled,#portrait-sheet button:disabled,#edit-room:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.actor-hint{font-size:12px;color:#657353;margin:4px 0 0}
+.summon-panel{margin:16px 0 0;padding:0 0 8px;border-bottom:1px solid #d5c9b5}
+.summon-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.summon-head strong{font-size:14px;font-weight:400}
+#summon-status{font-size:12px;line-height:1.6;color:#897d6c;margin:6px 0 0}
+#summon-card{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px;padding:12px;background:#f5efe3;border:1px solid #d5c9b5}
+#summon-card[hidden]{display:none}
+.summon-card-actions{display:flex;flex-direction:row;gap:8px;flex:none;align-items:center;flex-wrap:wrap}
+#let-leave{flex:none}
+#let-leave[hidden]{display:none}
+.girl-world{width:min(100%,416px);margin:16px auto 0;padding:14px 16px;background:#f5efe3;border:1px solid #d5c9b5}
+.girl-world[hidden]{display:none}
+.girl-world p{font-size:12px;line-height:1.7;color:#897d6c;margin:0}
+.girl-world strong{display:block;margin:8px 0 0;font-size:18px;font-weight:400;letter-spacing:1px}
+#world-home,#world-activity,#world-shift{margin-top:8px}
+#world-shift{white-space:pre-wrap}
+#world-actions,#activity-choices{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+#world-actions[hidden],#activity-choices[hidden],#world-activity[hidden],#world-shift[hidden]{display:none}
+#world-clock{margin-top:8px}
+.girl-where,.girl-mood{width:min(100%,416px);margin:16px auto 0;padding:14px 16px;background:#f5efe3;border:1px solid #d5c9b5;font-size:14px;letter-spacing:1px}
+.girl-where[hidden]{display:none}
+.girl-mood[hidden]{display:none}
+.bond-debug{width:min(100%,560px);margin:20px auto 72px;padding:12px 14px;background:#ebe6dc;border:1px dashed #b7ad9c;font-size:12px;line-height:1.6}
+.bond-debug[hidden]{display:none}
+.bond-debug > p{margin:0;letter-spacing:1px;color:#897d6c}
+.bond-debug dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:8px 0 0}
+.bond-debug dt{color:#897d6c}
+.bond-debug dd{margin:0}
+.bond-debug ol{margin:8px 0 0;padding-left:1.2em}
+.bond-debug li{margin:0}
+.bond-debug select{font:inherit;color:inherit;background:#f5efe3;border:1px solid #b7ad9c}
+.girl-friends{width:min(100%,416px);margin:16px auto 0;padding:14px 16px;background:#f5efe3;border:1px solid #d5c9b5}
+.girl-friends[hidden]{display:none}
+.girl-friends p{font-size:12px;letter-spacing:1px;color:#897d6c;margin:0}
+.girl-friends ul{list-style:none;margin:8px 0 0;padding:0}
+.girl-friends li{font-size:14px;line-height:1.7}
+.summon-head > div{min-width:0}#draw-girl{flex:none}
+#summon-name{font-size:16px;font-weight:400}
+#summon-meta{font-size:12px;color:#8b8071;line-height:1.6;margin:6px 0 0}
+.summon-panel .note{margin:12px 0 0;text-align:left;letter-spacing:0}
+.summon-roster{margin-top:14px;padding-top:12px;border-top:1px dashed #d5c9b5}
+.summon-roster-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.summon-roster-head strong{font-size:14px;font-weight:400}
+.summon-roster-head .mini{font-size:12px;color:#8a82a5}
+.summon-roster-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.summon-roster-row select{flex:1 1 160px;min-width:140px;max-width:100%;font:inherit;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;padding:10px 12px;min-height:44px;border-radius:2px}
+#roster-summon-hint{margin:8px 0 0;font-size:12px;color:#897d6c;min-height:1.2em}
+#roster-summon-hint.err{color:#975e50}
+#reload-roster-girls{min-width:44px;padding:10px 12px}
+#portrait-sheet{position:fixed;left:0;right:0;top:0;bottom:0;width:100%;height:100%;z-index:20;display:flex;align-items:flex-start;justify-content:center;padding:max(10px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom));pointer-events:none}
+#portrait-sheet[hidden]{display:none}
+#portrait-backdrop{position:absolute;inset:0;margin:0;padding:0;min-height:0;border:0;border-radius:0;box-shadow:none;background:transparent;cursor:pointer;pointer-events:auto}
+.talk{position:relative;z-index:2;width:min(100%,440px);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:0;pointer-events:none;gap:0}
+#talk-panel{position:relative;z-index:3;width:100%;display:flex;flex-direction:column;align-items:stretch;gap:8px;pointer-events:none}
+/* Pin feet to the real screen bottom (fixed), grow upward; slide only on X. */
+#portrait-img{position:fixed;left:50%;bottom:max(0px,env(safe-area-inset-bottom));z-index:0;display:block;height:min(72svh,680px);width:auto;max-width:min(96vw,560px);margin:0;object-fit:contain;object-position:bottom center;background:none;filter:drop-shadow(0 14px 24px rgba(0,0,0,.5));pointer-events:none;transform:translateX(-50%) translateX(42vw);opacity:0;transition:transform .55s cubic-bezier(.2,.85,.2,1),opacity .45s ease-out;will-change:transform,opacity}
+#portrait-img[hidden]{display:none!important}
+#portrait-img.portrait-in{transform:translateX(-50%);opacity:1}
+@media(prefers-reduced-motion:reduce){#portrait-img{transition:none;transform:translateX(-50%);opacity:1}#portrait-img.portrait-in{transform:translateX(-50%)}}
+/* 摸臀／摟腰動作閃現：正方形、約立繪寬 0.8、左滑入停 1.5s 後離開 */
+#action-flash-img{--portrait-w:min(96vw,560px);position:fixed;left:50%;bottom:max(0px,env(safe-area-inset-bottom));z-index:1;display:block;width:calc(0.8 * var(--portrait-w));height:calc(0.8 * var(--portrait-w));margin:0;object-fit:cover;object-position:center;background:none;filter:drop-shadow(0 14px 24px rgba(0,0,0,.5));pointer-events:none;transform:translateX(-50%) translateX(-55vw);opacity:0;transition:transform .5s cubic-bezier(.2,.85,.2,1),opacity .4s ease-out;will-change:transform,opacity}
+#action-flash-img[hidden]{display:none!important}
+#action-flash-img.flash-in{transform:translateX(-50%);opacity:1}
+#action-flash-img.flash-out{transform:translateX(-50%) translateX(55vw);opacity:0}
+@media(prefers-reduced-motion:reduce){#action-flash-img{transition:none}#action-flash-img.flash-in{transform:translateX(-50%);opacity:1}#action-flash-img.flash-out{transform:translateX(-50%) translateX(55vw);opacity:0}}
+
+/* 非正戲興奮洩精：中央提示，顯示約 1 秒 */
+#climax-tip,.climax-tip{
+  position:fixed;left:50%;top:42%;z-index:30;
+  transform:translate(-50%,-50%) scale(.92);
+  margin:0;padding:.55em 1.1em;
+  font-family:RoomPixel,system-ui,sans-serif;
+  font-size:clamp(22px,5.5vw,34px);letter-spacing:.12em;
+  color:#fff8f0;background:rgba(40,28,24,.78);
+  border:1px solid rgba(255,220,180,.35);border-radius:6px;
+  box-shadow:0 8px 28px rgba(0,0,0,.45);
+  pointer-events:none;opacity:0;
+  transition:opacity .22s ease-out,transform .22s ease-out;
+  will-change:opacity,transform;
+}
+#climax-tip[hidden],.climax-tip[hidden]{display:none!important}
+/* 身體警告紅卡（2026-10-08）：精液 <6「身體快不行了」／0 以下不能做愛。浮在房間對話框（70～75）與提示（90）上面；點一下收 */
+.body-warn-card{
+  position:fixed;left:50%;top:30%;z-index:96;
+  transform:translate(-50%,-50%) scale(.94);
+  box-sizing:border-box;min-width:min(72vw,300px);max-width:88vw;
+  margin:0;padding:.7em 1.2em .65em;text-align:center;
+  font-family:RoomPixel,system-ui,sans-serif;-webkit-font-smoothing:none;
+  color:#fff3f3;background:rgba(200,18,42,.74);
+  border:2px solid rgba(255,150,160,.8);border-radius:6px;
+  box-shadow:0 0 0 2px rgba(70,0,14,.45),0 10px 30px rgba(0,0,0,.45);
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+  opacity:0;pointer-events:auto;cursor:pointer;
+  transition:opacity .22s ease-out,transform .22s ease-out;
+}
+.body-warn-card[hidden]{display:none!important}
+.body-warn-card.in{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.body-warn-card b{display:block;font-weight:400;font-size:clamp(22px,6vw,32px);letter-spacing:.14em;line-height:1.3;text-shadow:2px 2px 0 rgba(70,0,14,.85)}
+.body-warn-card.long b{font-size:clamp(18px,5vw,26px);letter-spacing:.08em}
+.body-warn-card small{display:block;margin-top:.4em;font-size:13px;letter-spacing:.04em;opacity:.92}
+.body-warn-card small[hidden]{display:none}
+@media(prefers-reduced-motion:reduce){.body-warn-card{transition:none}}
+/* 性飢渴（2026-10-09）：妻子走過來求你時的粉紅小卡。不擋房間（頂部、小、5 秒自己收、點一下收） */
+.hunger-note{
+  position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);z-index:94;
+  transform:translate(-50%,-6px);box-sizing:border-box;max-width:86vw;
+  margin:0;padding:.5em 1em .45em;text-align:center;
+  font-family:RoomPixel,system-ui,sans-serif;-webkit-font-smoothing:none;
+  color:#fff4f8;background:rgba(214,72,128,.62);
+  border:2px solid rgba(255,190,214,.7);border-radius:6px;
+  box-shadow:0 6px 18px rgba(0,0,0,.3);
+  opacity:0;pointer-events:auto;cursor:pointer;
+  transition:opacity .25s ease-out,transform .25s ease-out;
+}
+.hunger-note[hidden]{display:none!important}
+.hunger-note.in{opacity:1;transform:translate(-50%,0)}
+.hunger-note b{display:block;font-weight:400;font-size:15px;letter-spacing:.04em;line-height:1.35;text-shadow:1px 1px 0 rgba(90,10,40,.7)}
+.hunger-note small{display:block;margin-top:.2em;font-size:12px;opacity:.9}
+.hunger-note small[hidden]{display:none}
+@media(prefers-reduced-motion:reduce){.hunger-note{transition:none}}
+#climax-tip.tip-in,.climax-tip.tip-in{opacity:1;transform:translate(-50%,-50%) scale(1)}
+#climax-tip.tip-out,.climax-tip.tip-out{opacity:0;transform:translate(-50%,-50%) scale(.96)}
+@media(prefers-reduced-motion:reduce){
+  #climax-tip,.climax-tip{transition:none}
+  #climax-tip.tip-in,.climax-tip.tip-in{opacity:1}
+  #climax-tip.tip-out,.climax-tip.tip-out{opacity:0}
+}
+#talk-box,#talk-input-row{border:2px solid #fff;position:relative;border-radius:10px}
+#talk-box{width:100%;box-sizing:border-box;background:rgba(10,16,40,.72);color:#f4fbff;padding:10px 14px 12px;min-height:6.8em;pointer-events:auto;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);font-family:RoomPixel,system-ui,sans-serif}
+#talk-nameline{display:flex;align-items:center;gap:.6em;margin-bottom:.45em}
+#portrait-name{font-size:.85em;letter-spacing:.15em;color:#ffe14a;font-weight:400;text-shadow:1px 1px 0 #1a2748;font-family:RoomPixel,system-ui,sans-serif}
+#portrait-meta{font-size:1em;line-height:1.65;white-space:pre-wrap;word-break:break-word;margin:0;color:inherit;font-family:RoomPixel,system-ui,sans-serif;-webkit-font-smoothing:none;font-smooth:never}
+#talk-typing i{display:inline-block;width:5px;height:5px;margin-right:4px;border-radius:2px;background:#ffe14a;animation:talk-pulse 1s infinite}
+#talk-typing i:nth-child(2){animation-delay:.25s}
+#talk-typing i:nth-child(3){animation-delay:.5s}
+@keyframes talk-pulse{0%,100%{opacity:.35}50%{opacity:1}}
+#talk-input-row{display:flex;gap:.5em;width:100%;box-sizing:border-box;background:rgba(10,16,40,.72);padding:8px 10px;margin:0;pointer-events:auto;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);font-family:RoomPixel,system-ui,sans-serif}
+#talk-input{flex:1;min-width:0;background:rgba(244,251,255,.08);border:2px solid rgba(244,251,255,.2);border-radius:8px;color:#f4fbff;font-family:RoomPixel,system-ui,sans-serif;font-size:1.05em;padding:.7em .85em;outline:none;-webkit-font-smoothing:none;font-smooth:never}
+#talk-input::placeholder{color:rgba(244,251,255,.45)}
+#talk-input:disabled{opacity:.45}
+#talk-send{flex:none;background:#16305c;border:2px solid #fff;border-radius:8px;box-shadow:none;min-height:0;color:#ffe14a;font-family:RoomPixel,system-ui,sans-serif;font-size:.85em;padding:.35em .9em;cursor:pointer}
+#talk-send:disabled{opacity:.35;cursor:default}
+#portrait-backdrop{width:100%;height:100%;appearance:none;-webkit-appearance:none}
+@media(min-width:600px){#furniture-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.actor-panel[hidden]{display:none}
+html.room-page button,#home-room-chrome button,#room-pack-chrome button,#edit-room,#portrait-sheet button,#room-scene-overlay button,#main-room-stage button{font:inherit;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;padding:12px 16px;min-height:44px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
+html.room-page button[aria-pressed=true],#home-room-chrome button[aria-pressed=true],#room-pack-chrome button[aria-pressed=true],#room-pack-chrome button[aria-expanded=true],#edit-room[aria-pressed=true]{background:#dce2cf;border-color:#9ca78a}html.room-page button:focus-visible,html.room-page a:focus-visible,#home-room-chrome button:focus-visible,#portrait-sheet button:focus-visible{outline:2px solid #657353;outline-offset:4px}
+.note{font-size:12px;letter-spacing:1px;color:#93897b;margin:16px 0 0}
+@media(min-width:800px){#room,html.room-page canvas{width:416px}}
+
+.body-panel{margin:16px 0 0;padding:12px 0 8px;border-bottom:1px solid #d5c9b5}
+.body-panel[hidden]{display:none}
+.body-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;margin-top:10px}
+.body-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#776c5b}
+.body-grid label output{display:inline;font-variant-numeric:tabular-nums;color:#514c45;margin-left:4px}
+.body-grid .body-stage{margin-left:6px;color:#657353}
+.body-grid input[type=range]{width:100%;accent-color:#657353}
+.body-grid select{font:inherit;color:inherit;background:#f5efe3;border:1px solid #c8bba7;padding:6px 8px;border-radius:6px}
+.body-check{flex-direction:row!important;align-items:center;gap:8px!important}
+@media(min-width:600px){.body-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* 互動鍵列：螢幕底部，不在輸入框下方 */
+.talk-acts{position:fixed;left:0;right:0;bottom:0;z-index:26;display:flex;flex-wrap:nowrap;gap:6px;width:100%;box-sizing:border-box;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:8px 10px max(10px,env(safe-area-inset-bottom));pointer-events:auto;scrollbar-width:none;background:linear-gradient(180deg,rgba(10,16,40,0),rgba(10,16,40,.72) 28%);justify-content:flex-start}
+.talk-acts::-webkit-scrollbar{display:none}
+.talk-acts[hidden]{display:none!important}
+.talk-acts button{flex:0 0 auto;min-height:44px;min-width:44px;padding:8px 12px;margin:0;border:2px solid rgba(244,251,255,.35);border-radius:999px;background:rgba(22,48,92,.92);color:#ffe14a;box-shadow:none;font:inherit;font-size:.82em;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
+.talk-acts button:disabled,.talk-acts button.is-locked{opacity:.38;cursor:not-allowed;color:rgba(244,251,255,.55);border-color:rgba(244,251,255,.18);background:rgba(20,28,48,.75)}
+.talk-acts button:active:not(:disabled):not(.is-locked){background:rgba(40,70,120,.95)}
+.talk-acts button .act-lock{display:block;font-size:.65em;letter-spacing:0;color:rgba(244,251,255,.55);margin-top:2px;font-weight:400}
+/* 玩家興奮／精液：底欄文字提示 */
+.talk-acts-hint{flex:0 0 auto;align-self:center;font-size:.72em;color:rgba(244,251,255,.65);padding:0 6px;white-space:nowrap}
+
+.body-player-row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
+.body-player-row .note{margin:0}
+.romance-items{margin:16px 0 0;padding:12px 0 8px;border-bottom:1px solid #d5c9b5}
+.romance-items[hidden]{display:none}
+.romance-items .inventory-heading{margin-bottom:8px}
+.romance-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.romance-row button{min-height:36px;padding:6px 14px;font:inherit;cursor:pointer}
+.romance-row button:disabled{opacity:.45;cursor:not-allowed}
+.romance-items .note{margin:8px 0 0;text-align:left}
+.talk-acts button[data-romance]{border-color:rgba(255,200,120,.6);color:#ffd27a;background:rgba(72,40,20,.92)}
+.talk-acts button[data-romance]:active:not(:disabled){background:rgba(100,55,28,.95)}
+
+
+/* 高失神解鎖的專屬場面 stub（脫衣／做愛） */
+.room-scene-overlay{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));background:rgba(6,10,28,.82);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);pointer-events:auto}
+.room-scene-overlay[hidden]{display:none!important}
+.room-scene-card{width:min(100%,380px);box-sizing:border-box;padding:22px 20px 18px;border:2px solid rgba(244,251,255,.4);border-radius:14px;background:rgba(14,22,48,.94);color:#f4fbff;text-align:center;box-shadow:0 16px 40px rgba(0,0,0,.45)}
+.room-scene-card.has-figure{width:min(100%,440px);max-height:100%;overflow:auto;display:flex;flex-direction:column;align-items:center;background:rgba(14,22,48,.78)}
+.room-scene-title{margin:0 0 12px;font-size:1.15em;font-weight:400;letter-spacing:.18em;color:#ffe14a;text-shadow:1px 1px 0 #1a2748}
+.room-scene-choices{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%;margin:0 0 12px}
+.room-scene-choices[hidden]{display:none!important}
+#room-scene-overlay .room-scene-choices button{flex:1 1 auto;min-height:44px;padding:8px 12px;border:2px solid rgba(255,180,220,.55);border-radius:999px;background:rgba(22,48,92,.95);color:#ffb8d9;font:inherit;font-size:.86em;letter-spacing:.04em;cursor:pointer;box-shadow:none}
+#room-scene-overlay .room-scene-choices button[aria-pressed=true]{background:rgba(92,36,68,.95);color:#ffe14a;border-color:rgba(255,225,74,.75)}
+#room-scene-overlay .room-scene-choices button:disabled{opacity:.45;cursor:not-allowed}
+#room-scene-overlay .room-scene-choices button:active:not(:disabled){background:rgba(40,70,120,.95)}
+.room-scene-img{display:block;height:min(62svh,680px);width:auto;max-width:100%;margin:0 auto 10px;object-fit:contain;object-position:bottom center;background:none;filter:drop-shadow(0 16px 28px rgba(0,0,0,.55))}
+.room-scene-img[hidden]{display:none!important}
+.room-scene-body{margin:0 0 18px;font-size:.95em;line-height:1.7;color:rgba(244,251,255,.85);white-space:pre-wrap}
+.room-scene-card.has-figure .room-scene-body{margin-bottom:12px}
+@media (max-width:640px),(max-height:700px){
+  .room-scene-img{height:min(52svh,520px)}
+}
+/* 脫衣畫面：人在中間的框裡，框下是對話，再下面才是選項。 */
+.room-scene-card.undress-play{width:min(100%,420px);max-height:100%;overflow:auto;display:flex;flex-direction:column;align-items:center;background:rgba(8,12,28,.42)}
+.room-scene-card.undress-play .room-scene-title{order:0}
+.room-scene-card.undress-play .room-scene-img{order:1;width:min(72vw,260px);height:min(48svh,460px);margin:0 auto 12px;padding:10px 8px 0;box-sizing:border-box;border:3px solid rgba(244,251,255,.62);border-radius:4px;background:linear-gradient(180deg,rgba(36,48,88,.96),rgba(14,20,44,.96));box-shadow:0 0 0 7px rgba(10,14,32,.88),0 18px 30px rgba(0,0,0,.45);object-fit:contain;object-position:bottom center;filter:none}
+.room-scene-card.undress-play .room-scene-body{order:2;width:100%;min-height:5.2em;max-height:24svh;overflow:auto;box-sizing:border-box;margin:0 0 12px;padding:8px 12px 10px;text-align:left;border:2px solid rgba(244,251,255,.38);border-radius:10px;background:rgba(6,10,24,.92)}
+.room-scene-card.undress-play .undress-who{display:block;margin-bottom:4px;color:#ffe14a;letter-spacing:.12em;font-size:.82em}
+.room-scene-card.undress-play .undress-tx{display:block;white-space:pre-wrap}
+.room-scene-card.undress-play .room-scene-choices{order:3;margin:0 0 10px}
+.room-scene-card.undress-play > button{order:4}
+@media (max-width:640px),(max-height:700px){
+  .room-scene-card.undress-play .room-scene-img{width:min(64vw,220px);height:min(40svh,360px)}
+}
+.room-scene-card > button{min-height:44px;padding:10px 18px;border:2px solid rgba(244,251,255,.45);border-radius:999px;background:rgba(22,48,92,.95);color:#ffe14a;font:inherit;font-size:.9em;letter-spacing:.06em;cursor:pointer;box-shadow:none}
+.room-scene-card > button:active{background:rgba(40,70,120,.95)}
+.talk-acts button[data-scene]{border-color:rgba(255,180,220,.55);color:#ffb8d9}
+/* 脫衣（對話版，test_room data-undress-chat）：藏上方輸入框；底部按鈕列＝叫她脫／幫她脫／下一句＋回到對話 */
+#portrait-sheet.undress-chat #talk-input-row{display:none!important}
+.talk-acts.undress-bar{justify-content:center}
+.talk-acts.undress-bar .talk-acts-hint{display:none}
+/* 按鈕外觀沿用對話互動鍵（#portrait-sheet button）；只調寬度、下一句加粗、回到對話淡一點 */
+#portrait-sheet .talk-acts.undress-bar button[data-undress]{min-width:5.5em;padding:10px 18px}
+#portrait-sheet .talk-acts.undress-bar button[data-undress=next]{min-width:8em;font-weight:700}
+#portrait-sheet .talk-acts.undress-bar button[data-undress=back]{min-width:0;padding:10px 12px;opacity:.8;font-size:.9em}
+/* 妻子來求（2026-10-09）：藏輸入框；底下只有「做愛／拒絕」 */
+#portrait-sheet.beg-chat #talk-input-row{display:none!important}
+#portrait-sheet .talk-acts.beg-bar button[data-beg]{min-width:6.5em;padding:12px 22px;font-weight:700;letter-spacing:.2em}
+#portrait-sheet .talk-acts.beg-bar button[data-beg=sex]{border-color:rgba(255,150,200,.7);color:#ffc2de;background:rgba(92,22,60,.94)}
+#portrait-sheet .talk-acts.beg-bar button[data-beg=sex].is-dry{opacity:.6}
+/* 肏互動（對話版做愛，test_room data-sex-poses）：主圖＝做愛步驟圖；右側量條；局部動畫卡在下方中間 */
+#portrait-sheet .talk-acts.sex-bar button[data-sex=thrust]{min-width:7em;padding:12px 22px;font-size:1.05em;font-weight:800;letter-spacing:.3em;border-color:rgba(255,150,200,.7);color:#ffc2de;background:rgba(92,22,60,.94)}
+#portrait-sheet .talk-acts.sex-bar button[data-sex=thrust]:active{background:rgba(130,30,80,.96)}
+#portrait-sheet .talk-acts.sex-bar button[data-sex=next]{min-width:8em;font-weight:700}
+.sex-hud{position:fixed;right:max(6px,env(safe-area-inset-right));top:34svh;z-index:24;width:128px;padding:7px 8px 6px;box-sizing:border-box;border:1px solid rgba(244,251,255,.3);border-radius:10px;background:rgba(8,12,30,.72);color:#f4fbff;font-size:11px;line-height:1.2;pointer-events:none}
+.sex-hud[hidden]{display:none!important}
+.sex-hud .sx-g{display:grid;grid-template-columns:2.6em 1fr;grid-template-rows:auto auto;column-gap:4px;margin:0 0 5px}
+.sex-hud .sx-g b{grid-row:1/3;align-self:center;font-weight:700;color:#ffe14a;letter-spacing:.06em}
+.sex-hud .sx-g i{display:block;height:7px;border-radius:4px;background:rgba(244,251,255,.16);overflow:hidden}
+.sex-hud .sx-g s{display:block;height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,#ff7fb8,#ff3d8b);transition:width .25s ease-out;text-decoration:none}
+.sex-hud .sx-g[hidden]{display:none}
+.sex-hud .sx-g[data-g=hunger] s{background:linear-gradient(90deg,#ffb07f,#ff3d6b)}
+.sex-hud .sx-g[data-g=excite] s{background:linear-gradient(90deg,#7fd8ff,#3d8bff)}
+.sex-hud .sx-g[data-g=semen] s{background:linear-gradient(90deg,#f4f1d0,#e6d77a)}
+.sex-hud .sx-g em{font-style:normal;text-align:right;color:rgba(244,251,255,.82)}
+.sex-hud .sx-g.hot em{color:#ff8fbf;font-weight:700}
+.sex-hud .sx-g[data-g=semen].hot s{background:linear-gradient(90deg,#ff9a6b,#ff3b3b)}
+.sex-hud .sx-g[data-g=semen].hot em{color:#ff6b6b}
+.sex-hud .sx-warn{margin:2px 0 0;color:#ff7a7a;font-weight:700;font-size:10.5px;line-height:1.3}
+.sex-hud .sx-warn[hidden]{display:none}
+.thrust-anim{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));z-index:22;width:min(92vw,500px);transform:translateX(-50%);padding:5px;box-sizing:border-box;border:2px solid rgba(244,251,255,.4);border-radius:10px;background:rgba(6,10,24,.55);box-shadow:0 10px 26px rgba(0,0,0,.45);pointer-events:none;opacity:0;transition:opacity .12s ease-out}
+.thrust-anim.on{opacity:.94}
+.thrust-anim[hidden]{display:none!important}
+.thrust-anim img{display:block;width:100%;height:auto;max-height:30svh;object-fit:contain;border-radius:6px}
+@keyframes thrust-shake{0%,100%{translate:0 0}25%{translate:0 6px}50%{translate:0 -3px}75%{translate:0 4px}}
+#portrait-img.thrust-shake{animation:thrust-shake .4s ease-in-out}
+
+/* ===== ROOM-SHIP：上卡／中房／下輸入 ===== */
+html.room-ship, body.room-ship {
+  justify-content: flex-start;
+  background: #e8e2d6;
+}
+body.room-ship .stage {
+  width: min(100%, 640px);
+  margin: 0 auto;
+  padding: max(8px, env(safe-area-inset-top)) 12px 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  box-sizing: border-box;
+}
+/* 頂部狀態卡：壓矮 */
+body.room-ship .girl-where,
+body.room-ship .girl-mood,
+body.room-ship .girl-friends,
+body.room-ship .girl-world {
+  width: min(100%, 416px);
+  margin: 4px auto 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  max-height: 3.2em;
+  overflow: hidden;
+}
+body.room-ship .girl-friends { max-height: 4.5em; }
+body.room-ship .girl-world strong { font-size: 14px; margin: 2px 0 0; }
+body.room-ship .girl-world p { font-size: 11px; line-height: 1.35; }
+/* 房間畫布：中下 */
+body.room-ship .scene {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 8px 0 max(12px, env(safe-area-inset-bottom));
+  min-height: 42svh;
+}
+body.room-ship canvas {
+  width: min(100%, 380px);
+}
+/* ship：藏除錯／沙盒 */
+body.room-ship #bond-debug,
+body.room-ship #body-panel,
+body.room-ship #romance-items,
+body.room-ship .summon-panel,
+body.room-ship .actor-panel,
+body.room-ship .furniture-panel,
+body.room-ship .inventory,
+body.room-ship .tool-row,
+body.room-ship .gesture-hint,
+body.room-home #bond-debug,
+body.room-home #body-panel,
+body.room-home #romance-items,
+body.room-home .summon-panel,
+body.room-home .actor-panel,
+body.room-home .furniture-panel,
+body.room-home .inventory,
+body.room-home .tool-row,
+body.room-home .gesture-hint {
+  display: none !important;
+}
+body.room-ship #room-pack-chrome {
+  opacity: .9;
+  transform: scale(.92);
+  transform-origin: bottom right;
+}
+body.room-ship #edit-room {
+  opacity: .55;
+}
+/* 對話：輸入貼底；對話框在輸入上方；立繪中下 */
+body.room-ship #portrait-sheet {
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: max(8px, env(safe-area-inset-top)) 8px 0;
+}
+body.room-ship .talk {
+  width: min(100%, 440px);
+  margin: 0 auto;
+  height: 100%;
+  justify-content: flex-end;
+  padding-bottom: 0;
+}
+body.room-ship #talk-panel {
+  order: 2;
+  margin-top: auto;
+  gap: 6px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+body.room-ship #talk-box {
+  order: 1;
+  min-height: 4.8em;
+  max-height: 28svh;
+  overflow-y: auto;
+}
+body.room-ship #talk-input-row {
+  order: 2;
+}
+body.room-ship #portrait-img {
+  height: min(58svh, 560px);
+  bottom: max(7.5em, calc(env(safe-area-inset-bottom) + 6.5em));
+}
+body.room-ship #action-flash-img {
+  bottom: max(7.5em, calc(env(safe-area-inset-bottom) + 6.5em));
+}
+body.room-ship .talk-acts {
+  bottom: max(4.2em, calc(env(safe-area-inset-bottom) + 3.6em));
+  background: linear-gradient(180deg, rgba(10,16,40,0), rgba(10,16,40,.55) 40%);
+}
+
+/* ship 回主頁 */
+.ship-back{display:none}
+body.room-ship .ship-back{
+  display:inline-flex!important;
+  position:fixed;z-index:8;
+  top:max(10px,env(safe-area-inset-top));
+  left:max(12px,env(safe-area-inset-left));
+  padding:8px 12px;font-size:12px;letter-spacing:1px;
+  color:#60594d;background:#f6f1e7;border:1px solid #c8bba7;
+  box-shadow:2px 2px 0 #d6cbbb;border-radius:2px;text-decoration:none;
+}
+body.room-ship .stage{padding-top:max(48px,calc(env(safe-area-inset-top) + 36px))}
+
+
+/* ===== ROOM-HOME embed（嵌進 index 主畫面）===== */
+body.room-home #edit-room,
+body.room-home #ship-back,
+body.room-home #bond-debug,
+body.room-home #body-panel,
+body.room-home #romance-items,
+body.room-home .summon-panel,
+body.room-home .actor-panel,
+body.room-home .furniture-panel,
+body.room-home .inventory,
+body.room-home .tool-row,
+body.room-home .gesture-hint,
+body.room-home #room-editor {
+  display: none !important;
+}
+body.room-home #main-room-stage {
+  pointer-events: none;
+  z-index: 1;
+}
+body.room-home #main-room-stage .scene {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end; /* 房子布局往下 */
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0 0 0.35em;
+  margin: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+body.room-home #main-room-stage #room {
+  /* 房子本體跟 test_room 一樣：416 寬、高度跟比例；不撐滿舞台 */
+  width: min(100%, 416px);
+  height: auto;
+  max-width: min(100%, 416px);
+  max-height: none;
+  aspect-ratio: 416 / 328;
+  object-fit: contain;
+  pointer-events: auto;
+  image-rendering: pixelated;
+}
+/* 主畫面可有多名魅魔：不顯示單人「離開／住處／地點」橫幅 */
+body.room-home #main-room-stage .girl-where,
+body.room-home #main-room-stage .girl-mood,
+body.room-home #main-room-stage .girl-friends,
+body.room-home #main-room-stage .girl-world {
+  display: none !important;
+}
+/* 對話上／互動鍵下：勿抄 room-ship 把整塊 talk 貼底，否則跟 .talk-acts 擠成一团 */
+body.room-home #portrait-sheet {
+  z-index: 70;
+  align-items: flex-start;
+  justify-content: center;
+  padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+}
+body.room-home .talk {
+  width: min(100%, 440px);
+  margin: 0 auto;
+  height: auto;
+  justify-content: flex-start;
+  padding-bottom: 0;
+}
+body.room-home #talk-panel {
+  order: 0;
+  margin-top: 0;
+  gap: 6px;
+  padding-bottom: 0;
+  width: 100%;
+}
+body.room-home #talk-box {
+  order: 1;
+  min-height: 4.8em;
+  max-height: min(32svh, 260px);
+  overflow-y: auto;
+}
+body.room-home #talk-input-row { order: 2; }
+body.room-home #portrait-img {
+  height: min(58svh, 560px);
+  /* 腳貼在互動鍵列上方 */
+  bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
+}
+body.room-home #action-flash-img {
+  bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
+}
+body.room-home .talk-acts {
+  bottom: 0;
+  z-index: 72;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+}
+/* 聊天時藏主畫面委託輸入，避免跟互動鍵搶底欄 */
+body.room-home.sheet-open #quest-input-row {
+  visibility: hidden;
+  pointer-events: none;
+}
+body.room-home #room-scene-overlay { z-index: 75; }
+body.room-home #home-room-chrome { display: none !important; }
+
+/* ===== 摸臀／摟腰圖：固定快捷列 + 浮動面板 ===== */
+.tease-pack-panel{
+  position:fixed;z-index:6;
+  right:max(16px,env(safe-area-inset-right));
+  bottom:calc(max(16px,env(safe-area-inset-bottom)) + 64px);
+  width:min(calc(100vw - 32px),420px);
+  max-height:min(70vh,640px);
+  overflow:auto;
+  padding:12px;
+  background:#f5efe3;
+  border:1px solid #d5c9b5;
+  box-shadow:2px 2px 0 #d6cbbb;
+  border-radius:2px;
+}
+.tease-pack-panel[hidden]{display:none}
+.tease-pack-panel-head{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding-bottom:8px;border-bottom:1px solid #d5c9b5}
+.tease-pack-panel-head strong{font-size:14px}
+.tease-pack-panel-head .mini{font-size:12px;color:#897d6c;line-height:1.5}
+.tease-pack-panel label{display:block;font-size:12px;color:#776c5b;margin:.45em 0 .2em}
+.tease-pack-panel textarea,
+.tease-pack-panel input[type=text],
+.tease-pack-panel input[type=number],
+.tease-pack-panel select{width:100%;font:inherit;color:inherit;background:#eee8dd;border:1px solid #cbbfaa;border-radius:4px;padding:.4em .55em}
+.tease-pack-panel textarea{resize:vertical;line-height:1.5;min-height:4em}
+.tease-pack-panel button{font:inherit;padding:8px 12px;color:#60594d;border:1px solid #c8bba7;background:#f6f1e7;min-height:40px;cursor:pointer;box-shadow:2px 2px 0 #d6cbbb;border-radius:2px}
+.bp-row,.wp-row,.br-row,.kn-row,.su-row,.lk-row,.lb-row,.lr-row,.fg-row,.sd-row,.ud-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:.35em 0}
+.bp-grow,.wp-grow,.br-grow,.kn-grow,.su-grow,.lk-grow,.lb-grow,.lr-grow,.fg-grow,.ud-grow{flex:1 1 10em;min-width:0}
+.bp-fix0,.wp-fix0,.br-fix0,.kn-fix0,.su-fix0,.lk-fix0,.lb-fix0,.lr-fix0,.fg-fix0,.ud-fix0{flex:0 1 7em}
+.tease-pack-panel button.bp-cy,
+.tease-pack-panel button.wp-cy,
+.tease-pack-panel button.br-cy,
+.tease-pack-panel button.kn-cy,
+.tease-pack-panel button.su-cy,
+.tease-pack-panel button.lk-cy,
+.tease-pack-panel button.lb-cy,
+.tease-pack-panel button.lr-cy,
+.tease-pack-panel button.fg-cy,
+.tease-pack-panel button.sd-cy,
+.tease-pack-panel button.ud-cy{background:#dce2cf;color:#48604a}
+.tease-pack-panel button.bp-del,
+.tease-pack-panel button.wp-del,
+.tease-pack-panel button.br-del,
+.tease-pack-panel button.kn-del,
+.tease-pack-panel button.su-del,
+.tease-pack-panel button.lk-del,
+.tease-pack-panel button.lb-del,
+.tease-pack-panel button.lr-del,
+.tease-pack-panel button.fg-del,
+.tease-pack-panel button.sd-del,
+.tease-pack-panel button.ud-del{color:#975e50}
+.tease-pack-panel button.bp-big,
+.tease-pack-panel button.wp-big,
+.tease-pack-panel button.br-big,
+.tease-pack-panel button.kn-big,
+.tease-pack-panel button.su-big,
+.tease-pack-panel button.lk-big,
+.tease-pack-panel button.lb-big,
+.tease-pack-panel button.lr-big,
+.tease-pack-panel button.fg-big,
+.tease-pack-panel button.sd-big,
+.tease-pack-panel button.ud-big{font-size:14px;letter-spacing:1px;padding:10px 16px}
+.bp-ref-head,.wp-ref-head,.br-ref-head,.kn-ref-head,.su-ref-head,.lk-ref-head,.lb-ref-head,.lr-ref-head,.fg-ref-head,.ud-ref-head{font-size:13px;margin:.6em 0 .25em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bp-mode-flag,.wp-mode-flag,.br-mode-flag,.kn-mode-flag,.su-mode-flag,.lk-mode-flag,.lb-mode-flag,.lr-mode-flag,.fg-mode-flag,.ud-mode-flag{display:inline-block;padding:.1em .45em;border-radius:3px;font-size:11px;letter-spacing:.04em}
+.bp-mode-flag.txt,.wp-mode-flag.txt,.br-mode-flag.txt,.kn-mode-flag.txt,.su-mode-flag.txt,.lk-mode-flag.txt,.lb-mode-flag.txt,.lr-mode-flag.txt,.fg-mode-flag.txt,.ud-mode-flag.txt{background:#d7e4e2;color:#3d6b68}
+.bp-mode-flag.img,.wp-mode-flag.img,.br-mode-flag.img,.kn-mode-flag.img,.su-mode-flag.img,.lk-mode-flag.img,.lb-mode-flag.img,.lr-mode-flag.img,.fg-mode-flag.img,.ud-mode-flag.img{background:#e8d5e4;color:#8a3d78}
+.bp-thumb,.wp-thumb,.br-thumb,.kn-thumb,.su-thumb,.lk-thumb,.lb-thumb,.lr-thumb,.fg-thumb,.ud-thumb{max-width:140px;max-height:140px;margin-top:6px;border-radius:4px;background:#ddd6c8;display:block}
+.bp-status,.wp-status,.br-status,.kn-status,.su-status,.lk-status,.lb-status,.lr-status,.fg-status,.ud-status{font-size:12px;color:#4a7a52;min-height:1.2em;margin-top:.35em}
+.bp-status.err,.wp-status.err,.br-status.err,.kn-status.err,.su-status.err,.lk-status.err,.lb-status.err,.lr-status.err,.fg-status.err,.ud-status.err{color:#975e50}
+.bp-art,.wp-art,.br-art,.kn-art,.su-art,.lk-art,.lb-art,.lr-art,.fg-art,.sd-art,.ud-art{min-height:120px;margin-top:8px;background:#eee8dd;border:1px dashed #cbbfaa;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
+.bp-art img,.wp-art img,.br-art img,.kn-art img,.su-art img,.lk-art img,.lb-art img,.lr-art img,.fg-art img,.sd-art img,.ud-art img{max-width:100%;max-height:360px;display:block}
+.bp-art .mini,.wp-art .mini,.br-art .mini,.kn-art .mini,.su-art .mini,.lk-art .mini,.lb-art .mini,.lr-art .mini,.fg-art .mini,.sd-art .mini,.ud-art .mini,.tease-pack-panel .mini{font-size:12px;color:#8a82a5}
+/* 動作圖編輯器只屬於獨立 test_room 頁，主站永不顯示。 */
+body.room-home #btn-butt-packs,
+body.room-home #btn-waist-packs,
+body.room-home #btn-breast-packs,
+body.room-home #btn-knead-packs,
+body.room-home #btn-suck-packs,
+body.room-home #btn-lick-packs,
+body.room-home #btn-labia-packs,
+body.room-home #btn-labia-rub-packs,
+body.room-home #btn-finger-packs,
+body.room-home #btn-standee-packs,
+body.room-home #btn-undress-packs,
+body.room-home #butt-pack-editor,
+body.room-home #waist-pack-editor,
+body.room-home #breast-pack-editor,
+body.room-home #knead-pack-editor,
+body.room-home #suck-pack-editor,
+body.room-home #lick-pack-editor,
+body.room-home #labia-pack-editor,
+body.room-home #labia-rub-pack-editor,
+body.room-home #finger-pack-editor,
+body.room-home #standee-pack-editor,
+body.room-home #undress-pack-editor,
+html:not(.room-page) #btn-butt-packs,
+html:not(.room-page) #btn-waist-packs,
+html:not(.room-page) #btn-breast-packs,
+html:not(.room-page) #btn-knead-packs,
+html:not(.room-page) #btn-suck-packs,
+html:not(.room-page) #btn-lick-packs,
+html:not(.room-page) #btn-labia-packs,
+html:not(.room-page) #btn-labia-rub-packs,
+html:not(.room-page) #btn-finger-packs,
+html:not(.room-page) #btn-standee-packs,
+html:not(.room-page) #btn-undress-packs,
+html:not(.room-page) #butt-pack-editor,
+html:not(.room-page) #waist-pack-editor,
+html:not(.room-page) #breast-pack-editor,
+html:not(.room-page) #knead-pack-editor,
+html:not(.room-page) #suck-pack-editor,
+html:not(.room-page) #lick-pack-editor,
+html:not(.room-page) #labia-pack-editor,
+html:not(.room-page) #labia-rub-pack-editor,
+html:not(.room-page) #finger-pack-editor,
+html:not(.room-page) #standee-pack-editor,
+html:not(.room-page) #undress-pack-editor {
+  display: none !important;
+}
+
+/* 主站 index 不需要空的房間快捷列；test_room 的 room-page 保留完整 chrome。 */
+html:not(.room-page) #room-pack-chrome { display: none; }
+
+
+/* 召喚儀式狀態（主站房間／test_room） */
+.room-summon-ritual{
+  position:fixed;z-index:70;
+  left:50%;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 72px);
+  transform:translateX(-50%);
+  max-width:min(92vw,420px);
+  padding:.55em 1em;
+  background:rgba(32,28,40,.88);
+  color:#f3ebe0;
+  border:1px solid rgba(210,190,160,.35);
+  border-radius:4px;
+  font-size:14px;letter-spacing:.04em;
+  text-align:center;
+  pointer-events:none;
+  box-shadow:0 4px 18px rgba(0,0,0,.28);
+}
+.room-summon-ritual[hidden]{display:none}
+body.room-home .room-summon-ritual:not([hidden]){display:block}
+.room-summon-ritual-line{line-height:1.45}
+.room-summon-blocks{
+  display:flex;flex-wrap:wrap;justify-content:center;align-items:center;
+  gap:5px 4px;margin-top:.7em;line-height:0;
+}
+.room-summon-blocks[hidden]{display:none !important}
+.room-summon-blocks i{
+  width:8px;height:8px;flex:0 0 auto;
+  display:inline-flex;align-items:center;justify-content:center;
+}
+.room-summon-blocks i::after{
+  content:"";width:3px;height:3px;border-radius:50%;
+  background:rgba(243,235,224,.42);
+}
+.room-summon-blocks i.on::after,
+.room-summon-blocks i.now::after{
+  width:8px;height:8px;border-radius:1px;background:#f3ebe0;
+}
+.room-summon-blocks i.now::after{
+  background:rgba(243,235,224,.55);
+  animation:ritual-block-pulse 1.1s ease-in-out infinite;
+}
+@keyframes ritual-block-pulse{50%{opacity:.28}}
+@media (prefers-reduced-motion:reduce){
+  .room-summon-blocks i.now::after{animation:none;opacity:1}
+}
+#main-room-stage[aria-busy="true"]{opacity:.92}
+.room-summon-progress{
+  position:fixed;z-index:70;
+  left:50%;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 30px);
+  transform:translateX(-50%);
+  max-width:min(92vw,420px);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  padding:.3em .8em;
+  background:rgba(32,28,40,.78);
+  color:#e9dcc8;
+  border-radius:4px;
+  font-size:12px;letter-spacing:.03em;
+  text-align:center;
+  pointer-events:none;
+}
+.room-summon-progress[hidden]{display:none}
+
+/* 立繪 9 槽堆疊面板 */
+.standee-pack-panel{max-height:min(88vh,920px);overflow:auto}
+.sd-slots{display:flex;flex-direction:column;gap:14px;margin-top:8px}
+.sd-block{border:1px solid #d5c9b5;border-radius:6px;padding:10px 12px;background:#f3eee4}
+.sd-block-head{display:flex;flex-direction:column;gap:2px;margin:0 0 6px;padding-bottom:6px;border-bottom:1px solid #e0d6c6}
+.sd-block-head strong{font-size:13px}
+.sd-grow{flex:1;min-width:120px}
+.sd-form0{display:flex;flex-direction:column;gap:2px;min-width:100px}
+.sd-ref-head{display:flex;align-items:center;gap:8px;margin:.55em 0 .25em;font-size:12px;color:#776c5b}
+.sd-mode-flag{font-size:11px;padding:2px 6px;border-radius:3px;background:#e8e2d6}
+.sd-mode-flag.img{background:#dce2cf;color:#48604a}
+.sd-mode-flag.txt{color:#776c5b}
+.sd-thumb{max-width:120px;max-height:120px;margin:.35em 0;border:1px solid #cbbfaa;display:block}
+.sd-status{min-height:1.4em;margin:.5em 0;font-size:12px;color:#657353}
+.sd-status.err{color:#975e50}
+
+/* 動作圖組：穿衣版／裸體版切換（nude_action.js 插入） */
+.tease-pack-panel .nude-variant-row{display:flex;gap:0;margin:.6em 0 .1em}
+.tease-pack-panel .nude-variant-row .nv-tab{flex:1;border-radius:0;border:1px solid #cbbfaa;background:#eee8dd;color:#776c5b;padding:.35em .6em;font:inherit}
+.tease-pack-panel .nude-variant-row .nv-tab:first-child{border-radius:4px 0 0 4px}
+.tease-pack-panel .nude-variant-row .nv-tab:last-child{border-radius:0 4px 4px 0;border-left:0}
+.tease-pack-panel .nude-variant-row .nv-tab.on{background:#b5485d;border-color:#b5485d;color:#fff}
+.tease-pack-panel .nude-variant-hint{font-size:12px;color:#897d6c;line-height:1.5}
+/* 想念值除錯列（test_room data-miss-you） */
+.bond-debug .miss-dbg button{min-height:30px;padding:3px 8px;margin:2px 2px 0 0;font-size:.78em;box-shadow:none}
+/* 做愛三步分頁（傳教士圖／後背圖編輯器）：① 開場 ② 局部 ③ 加入 */
+.sx-steps{gap:6px;align-items:center}
+.sx-steps button{flex:1 1 22%;min-width:0;min-height:36px;padding:4px 6px;border-radius:999px;white-space:nowrap}
+.sx-steps button[aria-pressed=true]{background:#7a3558;color:#fff;border-color:#7a3558;font-weight:700}

@@ -1,0 +1,15 @@
+{
+  "packs": [
+    {
+      "id": "crdefault01",
+      "name": "揉子宮口 1",
+      "poseDenoise": 0.55,
+      "prompt": "simple background, white background, x-ray, cross-section, internal view, cutaway, lower body, pussy focus, vagina, uterus, cervix, 1 finger inserted, one male finger deep inside vagina, fingering, fingertip pressing cervix, finger touching cervix, pussy juice, nsfw, NO face of girl, NO head of girl",
+      "negative": "head, face, hair, eyes, smile, looking at viewer, portrait, penis, multiple fingers, fist, extra fingers, panties, clothes, clothes covering crotch, text, watermark, ugly",
+      "ref": "",
+      "url": "",
+      "updated": 1791000000000
+    }
+  ],
+  "activeId": "crdefault01"
+}

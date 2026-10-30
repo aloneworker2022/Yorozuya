@@ -1,0 +1,236 @@
+/* 接客還債（2026-10-10 Al）：純規則，手機與 node 測試共用；RP5 那邊數字在 server/escort.py（tests 會比對）。
+ * 負債＝state.gold < 0。只有妻子以上（妻子／貼心／順從／病態）會為了你去接客；沒有老婆就只擋召喚。
+ * 負債 > 50：老婆自己去。一輪固定 4 位客人，每位 30～60 分鐘（總長加總，2～4 小時），每位 15～40 金。開了就做完。
+ * 負債 ≤ 50（含沒欠債）：她不去，也沒有按鈕可以請她去（2026-10-15 使用者）。askChance／askable 只留給 test_room 除錯列。
+ * 24 小時內最多 2 輪，兩輪之間至少休息 4 小時。偷看 10～25 金（加到負債上），8% 被她發現。 */
+import { familyOf, stageIndexOf, STAGE_IDX, isWifeStage } from "./girl_voice.js?v=1";
+
+export const AUTO_DEBT = 50;            // 負債超過這個（嚴格 >）老婆自己去
+export const CLIENT_MIN_MS = 30 * 60e3;  // 每位客人 30～60 分鐘，一輪總長是加總
+export const CLIENT_MAX_MS = 60 * 60e3;
+export const CLIENTS_PER_SHIFT = 4;      // 一輪做滿這幾位才休息
+export const CLIENTS_MAX = 4;
+export const PAY_MIN = 15;
+export const PAY_MAX = 40;
+export const SHIFTS_PER_DAY = 2;
+export const DAY_MS = 24 * 3600e3;
+export const REST_MS = 4 * 3600e3;       // 兩班之間至少休息
+export const ASK_COOL_MS = 6 * 3600e3;   // 拜託被拒絕後多久才能再拜託
+export const PEEK_MIN = 10;
+export const PEEK_MAX = 25;
+export const NOTICE_CHANCE = 0.08;
+export const RETURN_WINDOW_MS = 12 * 3600e3;  // 收工後這麼久內打開 App，才自動回房間
+export const LIBIDO_PAY = { N: 0, R: 2, S: 4, SS: 7, SSR: 10 };
+export const POSES = ["missionary", "cowgirl", "doggy", "kiss", "reverse"];
+export const POSE_ZH = { missionary: "傳教士", cowgirl: "騎乘", doggy: "老漢推車", kiss: "面對面擁吻", reverse: "背向坐姿" };
+
+export function stageKeyOf(who) { return who?.roomStage || who?.stage || "stranger"; }
+export function canEscort(who) { return !!who && !who.ntr && isWifeStage(stageKeyOf(who)); }
+export function debtOf(gold) { const g = Number(gold); return Number.isFinite(g) && g < 0 ? Math.round(-g) : 0; }
+export function autoDue(gold) { return debtOf(gold) > AUTO_DEBT; }
+/** 負債 ≤ 50，含沒欠債：她不自己去，玩家可以請。 */
+export function askable(gold) { return debtOf(gold) <= AUTO_DEBT; }
+
+/** 好幾個老婆：人在房裡的優先，其次階段高、忠誠高。 */
+export function pickWife(girls, roomId = "") {
+  const list = (girls || []).filter(canEscort);
+  if (!list.length) return null;
+  list.sort((a, b) => (b.id === roomId) - (a.id === roomId)
+    || stageIndexOf(stageKeyOf(b)) - stageIndexOf(stageKeyOf(a))
+    || (Number(b.stats?.loyalty) || 0) - (Number(a.stats?.loyalty) || 0));
+  return list[0];
+}
+
+/** escort 紀錄：world.escort（RP5 畫的）＋手機自己的 girl.escortMine（離房時間、拜託冷卻、偷看）。 */
+export function shiftsIn(starts, now, span = DAY_MS) { return (starts || []).filter((t) => now - Number(t) < span).length; }
+export function limitOk(log, now) {
+  const starts = log?.starts || [];
+  if (shiftsIn(starts, now) >= SHIFTS_PER_DAY) return { ok: false, why: "today" };
+  const end = Number(log?.lastEnd) || 0;
+  if (end && now - end < REST_MS) return { ok: false, why: "rest", wait: REST_MS - (now - end) };
+  return { ok: true };
+}
+
+/** 一位客人付多少：15～40，看性慾等級和被肏開發的場數。 */
+export function clientPay(grade, fucked, r = Math.random()) {
+  const base = PAY_MIN + Math.floor(r * 16);              // 15～30
+  const dev = Math.min(5, Math.floor((Number(fucked) || 0) / 10));
+  return Math.max(PAY_MIN, Math.min(PAY_MAX, base + (LIBIDO_PAY[String(grade || "R").toUpperCase()] ?? 2) + dev));
+}
+
+/** 拜託她：答應的機率。 */
+export const ASK_STAGE = { wife: 0.55, devoted_wife: 0.75, obedient_wife: 0.85, pathological_wife: 0.7 };
+export const ASK_FAMILY = { 冷淡: -0.1, 溫柔: 0.05, 熱絡: 0.05, 佔有: 0, 反差: 0.1 };
+export function askChance({ stage, family, loyalty = 60, mood = null, hunger = 0 } = {}) {
+  let p = ASK_STAGE[stage] ?? 0;
+  if (!p) return 0;
+  p += ASK_FAMILY[family] ?? 0;
+  p += ((Number(loyalty) || 60) - 60) / 200;
+  if (mood?.type === "angry" || mood?.type === "hurt") p -= Math.min(0.35, (Number(mood.level) || 0) / 150);
+  if (family === "反差" && hunger >= 60) p += 0.1;
+  return Math.max(0.1, Math.min(0.95, Math.round(p * 100) / 100));
+}
+
+/** 出門／回家的心情：看個性家族（有的委屈、有的認命、有的反而興奮）。 */
+export const FEEL = { 冷淡: "resigned", 溫柔: "wronged", 熱絡: "willing", 佔有: "wronged", 反差: "aroused" };
+export function feelOf(who) { return FEEL[familyOf(who)] || "wronged"; }
+/** 回房間時的情緒餘溫（房間 MOOD_TYPES）。 */
+export function returnMood(who, clients) {
+  const n = Math.max(1, Number(clients) || 1), f = feelOf(who);
+  if (f === "aroused") return { type: "aroused", level: 18 + 6 * n, cause: "剛接完客回來，身體還在發燙" };
+  if (f === "willing") return null;   // 幫你還了債，反而有點得意：不留壞情緒
+  if (f === "resigned") return { type: "hurt", level: 8 + 4 * n, cause: "接客回來，累了" };
+  return { type: "hurt", level: 14 + 6 * n, cause: "為了你去接客，心裡委屈" };
+}
+export function noticedMood(who) {
+  const fam = familyOf(who);
+  return fam === "反差" || fam === "熱絡" ? { type: "flustered", level: 40, cause: "接客時發現你在門縫偷看" }
+    : { type: "angry", level: 38, cause: "接客時發現你在門縫偷看" };
+}
+
+/** 出門前那一句（沒有模型時用）。 */
+const LEAVE_LINES = {
+  wronged: ["……債的事我去處理，你不要想太多。", "我出門一下……你乖乖等我回來。", "沒關係的，為了你，我可以。"],
+  resigned: ["我去工作了。", "……該去還債了，晚點回來。", "別擺那種臉，我去就是了。"],
+  willing: ["交給我吧！很快就幫你還完～", "我去賺錢囉，回來要誇我！", "放心啦，這點小事我來。"],
+  aroused: ["……那我去囉，你、你不要亂想喔。", "去接客的話……嗯，我會好好做的。", "幫你還債是應該的……才、才不是因為想要。"],
+};
+const ASK_YES = { wronged: ["……好，我去。", "既然你開口了……我去。"], resigned: ["知道了，我去。", "……行吧。"], willing: ["好啊，包在我身上！", "嗯！我去幫你賺回來～"], aroused: ["……好啦，我去就是了。", "要我去……那我去囉。"] };
+const ASK_NO = { wronged: ["……今天真的不想去，好不好？", "可以先不要嗎……"], resigned: ["今天不行。", "改天吧。"], willing: ["今天好累喔，明天再說～", "這點債你先自己想辦法嘛。"], aroused: ["今、今天不行啦！", "……不要，今天不要。"] };
+export function pickLine(pool, r = Math.random()) { return pool[Math.floor(r * pool.length) % pool.length] || ""; }
+export function leaveLine(who, r) { return pickLine(LEAVE_LINES[feelOf(who)], r); }
+export function askLine(who, yes, r) { return pickLine((yes ? ASK_YES : ASK_NO)[feelOf(who)], r); }
+
+/** RP5 累計付了多少（world.escort.paid）→ 手機收差額（state.escortTaken[id]）。回傳這次收多少。 */
+export function collectPaid(state, s) {
+  const paid = Math.floor(Number(s?.world?.escort?.paid) || 0);
+  if (!state || !s?.id || !paid) return 0;
+  state.escortTaken = state.escortTaken && typeof state.escortTaken === "object" ? state.escortTaken : {};
+  const taken = Math.floor(Number(state.escortTaken[s.id]) || 0);
+  if (paid <= taken) return 0;
+  state.escortTaken[s.id] = paid;
+  state.gold = (Number(state.gold) || 0) + (paid - taken);
+  return paid - taken;
+}
+/** owing：這筆錢進來之前是不是還欠著。沒欠債時她是被請來接客，不說「還債」。 */
+export function repayToast(name, amount, gold, owing = true) {
+  const left = debtOf(gold);
+  if (left > 0) return `${name}還了 ${amount} 金，剩餘負債 ${left} 金`;
+  return owing ? `${name}還了 ${amount} 金，債還清了` : `${name}接客賺了 ${amount} 金`;
+}
+
+/** 偷看：價格、會不會被發現、抽體位。 */
+export function peekCost(r = Math.random()) { return PEEK_MIN + Math.floor(r * (PEEK_MAX - PEEK_MIN + 1)); }
+export function peekNoticed(r = Math.random()) { return r < NOTICE_CHANCE; }
+export function pickPose(r = Math.random()) { return POSES[Math.floor(r * POSES.length) % POSES.length]; }
+
+/** 正在接客嗎（RP5 view）。 */
+export function workingNow(s, now = Date.now()) {
+  const a = s?.world?.agenda;
+  return !!a && a.kind === "escort" && Number(a.until) > now;
+}
+/** 收工了、還沒帶回房間的那一班。 */
+export function returnDue(s, now = Date.now()) {
+  const e = s?.world?.escort;
+  const seq = Math.floor(Number(e?.lastSeq) || 0);
+  if (!seq || seq <= Math.floor(Number(s?.escortBackSeq) || 0)) return null;
+  if (workingNow(s, now)) return null;
+  const end = Number(e?.lastEnd) || 0;
+  if (!end || now - end > RETURN_WINDOW_MS) return null;
+  return { seq, end, clients: Number(e?.lastClients) || 1, paid: Number(e?.lastPaid) || 0 };
+}
+
+/** 她現在願不願意（房間用）：個性家族、心情餘溫、飢渴都帶進去。 */
+export function askChanceFor(who, mood = null, hunger = 0) {
+  return askChance({ stage: stageKeyOf(who), family: familyOf(who), loyalty: who?.stats?.loyalty ?? 60, mood, hunger });
+}
+/** 手機這邊看得到的開班紀錄：RP5 的（world.escort.starts／lastEnd）＋手機自己帶她出門的（escortMine.starts）。 */
+export function escortLog(who) {
+  const e = who?.world?.escort || {};
+  const mine = who?.escortMine || {};
+  const starts = [...new Set([...(e.starts || []), ...(mine.starts || [])].map(Number).filter(Boolean))];
+  return { starts, lastEnd: Number(e.lastEnd) || 0 };
+}
+/** 這輪每位客人自己的時長。舊存檔沒有 ms 就回 null，改把整輪平均分。 */
+export function guestSpans(active) {
+  const guests = Array.isArray(active?.guests) ? active.guests : [];
+  const spans = guests.map((g) => Math.floor(Number(g?.ms) || 0));
+  if (!spans.length || spans.some((ms) => ms <= 0)) return null;
+  return spans;
+}
+/** 名冊卡：「接客中・第 N 位客人」。有每位的時長就照加總走，否則平均分。 */
+export function currentClient(s, now = Date.now()) {
+  const a = s?.world?.escort?.active;
+  if (!a || !workingNow(s, now)) return 0;
+  const n = Math.max(1, Number(a.clients) || 1);
+  const spans = guestSpans(a);
+  if (spans) {
+    let acc = 0;
+    const elapsed = now - Number(a.startedAt);
+    const m = Math.min(n, spans.length);
+    for (let i = 0; i < m; i++) {
+      acc += spans[i];
+      if (elapsed < acc) return i + 1;
+    }
+    return m;
+  }
+  const span = Math.max(1, Number(a.until) - Number(a.startedAt));
+  return Math.min(n, Math.floor(((now - Number(a.startedAt)) / span) * n) + 1);
+}
+/** 第 k 位客人（1 起算）在這一輪裡的起訖。 */
+export function guestWindow(active, k) {
+  const n = Math.max(1, Number(active?.clients) || 1);
+  const spans = guestSpans(active);
+  if (spans && spans.length >= k) {
+    const before = spans.slice(0, k - 1).reduce((sum, ms) => sum + ms, 0);
+    const segStart = Number(active.startedAt) + before;
+    return { segStart, segEnd: segStart + spans[k - 1] };
+  }
+  const span = Math.max(1, Number(active?.until) - Number(active?.startedAt));
+  return {
+    segStart: Number(active?.startedAt) + span * (k - 1) / n,
+    segEnd: Number(active?.startedAt) + span * k / n,
+  };
+}
+
+/** FNV-1a 32 位（跟 server/escort.py fnv 同一套）。 */
+export function fnv(text) {
+  let h = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(String(text ?? ""))) { h ^= byte; h = Math.imul(h, 0x01000193) >>> 0; }
+  return h;
+}
+/** 客人體型（2026-10-10）：用客人 id 決定，常客永遠同一個身材。server/escort.py client_build 同一套。 */
+export const CLIENT_BUILDS = ["average", "slim", "muscular", "fat", "tall", "short", "old"];
+export function clientBuild(id) { return CLIENT_BUILDS[fnv(id) % CLIENT_BUILDS.length]; }
+/** 每位客人一個體位（客人 id＋班次＋第幾位），15% 在他那段的 35～65% 處換一次。server client_pose 同一套。 */
+export const PEEK_POSES = ["missionary", "cowgirl", "doggy", "kiss", "reverse"];
+export function clientPose(id, seq, idx) {
+  const h = fnv(`${id}|${seq | 0}|${idx | 0}|pose`), i = h % PEEK_POSES.length;
+  const out = { pose: PEEK_POSES[i], pose2: "", switchAt: 0 };
+  const sw = fnv(`${id}|${seq | 0}|${idx | 0}|switch`);
+  if (sw % 100 < 15) {
+    out.pose2 = PEEK_POSES[(i + 1 + Math.floor(sw / 100) % (PEEK_POSES.length - 1)) % PEEK_POSES.length];
+    out.switchAt = Math.round((0.35 + (Math.floor(sw / 10000) % 31) / 100) * 100) / 100;
+  }
+  return out;
+}
+/** 正在接的那位客人（RP5 開班時排好的 guests）＋他那段的起訖時間；沒有就用班次＋第幾位當種子。 */
+export function currentGuest(s, now = Date.now()) {
+  const k = currentClient(s, now);
+  if (!k) return null;
+  const a = s.world.escort.active;
+  const { segStart, segEnd } = guestWindow(a, k);
+  const g = Array.isArray(a.guests) ? a.guests[k - 1] : null;
+  const id = g?.id || `s${a.seq || 0}-${k}`;
+  const p = g && PEEK_POSES.includes(g.pose) ? { pose: g.pose, pose2: PEEK_POSES.includes(g.pose2) ? g.pose2 : "", switchAt: Number(g.switchAt) || 0 }
+    : clientPose(id, a.seq, k - 1);
+  return { id, k, segStart, segEnd, ...p, build: CLIENT_BUILDS.includes(g?.build) ? g.build : clientBuild(id),
+    named: !!g?.named, name: g?.named ? String(g.name || "") : "" };
+}
+/** 這位客人現在是哪個體位（中途換的話過了 switchAt 就是 pose2）。 */
+export function guestPoseAt(g, now = Date.now()) {
+  if (!g) return "";
+  if (!g.pose2) return g.pose;
+  const f = (now - g.segStart) / Math.max(1, g.segEnd - g.segStart);
+  return f >= g.switchAt ? g.pose2 : g.pose;
+}

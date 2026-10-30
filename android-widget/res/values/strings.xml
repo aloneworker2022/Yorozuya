@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">發現</string>
+    <string name="widget_name">發現</string>
+    <string name="widget_desc">把待辦直接丟進萬事屋發現池</string>
+    <string name="hint">待辦…</string>
+    <string name="send">送出</string>
+</resources>

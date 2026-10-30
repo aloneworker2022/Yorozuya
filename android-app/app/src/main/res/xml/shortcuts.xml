@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 長按桌面圖示 → 「更換伺服器」 -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="change_server"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_change_server"
+        android:shortcutLongLabel="@string/shortcut_change_server">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="tw.yorozuya.app"
+            android:targetClass="tw.yorozuya.app.SetupActivity" />
+    </shortcut>
+</shortcuts>

@@ -2,44 +2,193 @@
 
 - 靜態伺服:web/(遊戲本體)+ assets/(生成圖像)
 - 存檔 API:GET/PUT /api/save(SQLite,版本號防呆的 last-write-wins)
+- LLM:Ollama 串流 / Grok Build 無頭訂單(grok -p;streaming-json end 即完成)
 
 啟動:uvicorn main:app --host 0.0.0.0 --port 8000
 """
 
 import asyncio
+import hashlib
+import io
+import base64
 import json
+import os
+import random
+import re
+import secrets
+import shutil
 import sqlite3
+import threading
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import comfy
+import cutout
+import daydream as ddream
+import discover_bonus
+import jp_news
+import life_agent
+import escort_lines
+import rental_lines
+import rental_scene
+import line_group
+import memos
+import sdtags
 import sim
+import summon_queue
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "game.db"
 WEB_DIR = ROOT / "web"
 ASSETS_DIR = ROOT / "assets"
 
+# Grok Build 無頭 CLI(唯一雲端路徑;不走 xAI HTTP API)
+GROK_BIN = os.environ.get("GROK_BIN", "grok")
+GROK_CWD = Path(os.environ.get("GROK_CWD", str(ROOT / "data" / "grok_cwd")))
+GROK_TIMEOUT = float(os.environ.get("GROK_TIMEOUT", "180"))
+# streaming-json 一條事件可以超過 StreamReader 預設的 64KB。
+# 超過時 readline 會丟 ValueError，立繪單就整張失敗。
+GROK_STREAM_LIMIT = int(os.environ.get("GROK_STREAM_LIMIT", str(8 * 1024 * 1024)))
+# Build 預設 1 回合(0=不帶 --max-turns)
+GROK_MAX_TURNS = int(os.environ.get("GROK_MAX_TURNS", "1") or "0")
+GROK_DEFAULT_MODELS = [
+    "grok-4.5",
+    "grok-4.3",
+    "grok-build",
+    "grok-4.20-0309-non-reasoning",
+    "grok-4.20-0309-reasoning",
+]
+_GROK_DISALLOWED_TOOLS = (
+    "run_terminal_cmd,search_replace,write,read_file,list_dir,grep,"
+    "web_search,web_fetch,spawn_subagent,image_gen,image_edit,"
+    "open_page,use_tool,todo_write"
+)
+# 生圖任務允許的工具(image_gen/image_edit + 搬檔用 shell/list;image_edit 讓三段能照素體那張畫)
+_GROK_IMG_TOOLS = "image_gen,image_edit,run_terminal_cmd,list_dir,read_file"
+IMG_TEST_DIR = ASSETS_DIR / "testword"
+# 遊戲本體的召喚三連拍(head/half/full),與 testword 的實驗圖分開放
+PORTRAIT_DIR = ASSETS_DIR / "portraits"
+# 姿勢／骨架參考圖（使用者上傳，不當正式立繪；做愛局部動畫骨架會用）
+POSE_REF_DIR = ASSETS_DIR / "pose_refs"
+FRAME_PACK_DIR = ASSETS_DIR / "frame_packs"
+FRAME_PACK_INDEX = FRAME_PACK_DIR / "index.json"
+_POSE_MAX_BYTES = 15 * 1024 * 1024
+_POSE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+# 不去背的測試檔前綴(cutout 示範)。GC 不會刪。
+_ASSET_KEEP_PREFIXES = frozenset({"chk"})
+_SHOT_FILE_SUFS = (
+    # 做愛三步（傳教士／後背）：開場／局部／玩家加入
+    "sex_missionary_open", "sex_doggy_open",
+    "sex_missionary_tip", "sex_doggy_tip", "sex_missionary_join", "sex_doggy_join",
+    "sex_missionary_half", "sex_doggy_half", "sex_missionary_full", "sex_doggy_full",
+    "sex_missionary_thrust", "sex_doggy_thrust",
+    *(f"sex_{_p}_thrust{_n}" for _p in ("missionary", "doggy") for _n in range(2, 7)),
+    "sex_missionary_orgasm", "sex_doggy_orgasm", "sex_missionary_squirt", "sex_doggy_squirt",
+    "sex_missionary_cum", "sex_doggy_cum",
+    "sex_missionary_bloodcum", "sex_doggy_bloodcum",
+    *(f"sex_prone_{_st}" for _st in ("thrust", "orgasm", "open", "tip", "cum")),   # pt285u 床鋪背後組
+    # 扣陰道／揉子宮口 x-ray 剖面（不分穿衣／裸體，共用一張）
+    "tease_vagina_finger", "tease_cervix_rub",
+    # 動作圖裸體版（比穿衣版長，先比對）
+    "tease_breast_knead_nude", "tease_breast_suck_nude", "tease_nipple_lick_nude",
+    "tease_labia_rub_nude", "tease_finger_in_nude", "tease_breast_nude", "tease_labia_nude",
+    "tease_butt_nude", "tease_waist_nude",
+    "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
+    "tease_cowgirl", "tease_breast", "tease_breast_knead", "tease_breast_suck", "tease_nipple_lick", "tease_labia", "tease_labia_rub", "tease_finger_in", "tease_thigh", "tease_butt", "tease_waist",
+    "tease_oral_ready", "tease_oral_suck", "tease_oral_deep", "tease_oral_cum",
+    "tease_oral",
+    "tease_doggy_ready", "tease_doggy_half", "tease_doggy_more", "tease_doggy_deep", "tease_doggy_cum",
+    "tease_doggy",
+    "half_xiu", "half_xi", "half_nu", "half_ai", "half_le",
+    "undress_stand", "undress_low", "undress_cover",
+    "undress_nude", "undress_slip", "undress_loose", "undress_sit", "half", "full", "head",
+)
+SHOT_LABEL_ZH = {
+    "head": "大頭照", "half": "半身(聊天立繪)", "full": "全身(看板娘)",
+    "undress_sit": "脫衣·虛脫坐下",
+    "undress_loose": "脫衣·只穿內衣",
+    "undress_slip": "脫衣·只穿內褲",
+    "undress_nude": "脫衣·脫掉內褲",
+    "undress_cover": "脫衣·遮住胸和下體",
+    "undress_low": "脫衣·遮住下面",
+    "undress_stand": "脫衣·裸體立繪",
+    "half_xi": "半身·喜", "half_nu": "半身·怒", "half_ai": "半身·哀",
+    "half_le": "半身·樂", "half_xiu": "半身·害羞",
+    "tease_breast": "調戲·摸奶", "tease_breast_knead": "調戲·揉奶", "tease_breast_suck": "調戲·吸奶頭", "tease_nipple_lick": "調戲·舔奶頭", "tease_labia": "調戲·摸陰唇", "tease_labia_rub": "調戲·揉陰唇", "tease_finger_in": "調戲·手指插入",
+    "tease_thigh": "調戲·摸大腿",
+    "tease_butt": "調戲·摸臀",
+    "tease_butt_nude": "調戲·摸臀（裸）", "tease_waist_nude": "調戲·摟腰（裸）",
+    "tease_breast_nude": "調戲·摸奶（裸）", "tease_breast_knead_nude": "調戲·揉奶（裸）",
+    "tease_breast_suck_nude": "調戲·吸奶頭（裸）", "tease_nipple_lick_nude": "調戲·舔奶頭（裸）",
+    "tease_labia_nude": "調戲·摸陰唇（裸）", "tease_labia_rub_nude": "調戲·揉陰唇（裸）",
+    "tease_finger_in_nude": "調戲·手指插入（裸）",
+    "tease_vagina_finger": "調戲·扣陰道（剖面）", "tease_cervix_rub": "調戲·揉子宮口（剖面）",
+    "sex_missionary_open": "做愛·傳教士開場", "sex_doggy_open": "做愛·後背開場",
+    "sex_missionary_tip": "做愛·傳教士局部", "sex_doggy_tip": "做愛·後背局部",
+    "sex_missionary_join": "做愛·傳教士加入", "sex_doggy_join": "做愛·後背加入",
+    "sex_missionary_half": "做愛·傳教士插一半", "sex_doggy_half": "做愛·後背插一半",
+    "sex_missionary_full": "做愛·傳教士全插入", "sex_doggy_full": "做愛·後背全插入",
+    "sex_missionary_thrust": "做愛·傳教士抽插", "sex_doggy_thrust": "做愛·後背抽插",
+    "sex_prone_open": "做愛·趴床背後準備", "sex_prone_tip": "做愛·趴床背後頂住", "sex_prone_thrust": "做愛·趴床背後抽插", "sex_prone_cum": "做愛·趴床背後內射", "sex_prone_orgasm": "做愛·趴床背後高潮",
+    "sex_missionary_bloodcum": "做愛·傳教士血精", "sex_doggy_bloodcum": "做愛·後背血精",
+    **{f"sex_{_p}_thrust{_n}": f"做愛·{_z}抽插{_n}" for _p, _z in (("missionary", "傳教士"), ("doggy", "後背")) for _n in range(2, 7)},
+    "sex_missionary_orgasm": "做愛·傳教士高潮", "sex_doggy_orgasm": "做愛·後背高潮",
+    "sex_missionary_squirt": "做愛·傳教士潮吹", "sex_doggy_squirt": "做愛·後背潮吹",
+    "sex_missionary_cum": "做愛·傳教士內射", "sex_doggy_cum": "做愛·後背內射",
+    "tease_waist": "調戲·摟腰",
+    "tease_oral": "調戲·口交",
+    "tease_oral_ready": "調戲·口交·頂嘴",
+    "tease_oral_suck": "調戲·口交·含住",
+    "tease_oral_deep": "調戲·口交·整根",
+    "tease_oral_cum": "調戲·口交·口內射",
+    "tease_doggy": "調戲·背後插入",
+    "tease_doggy_ready": "調戲·背後·抓臀勃起",
+    "tease_doggy_half": "調戲·背後·龜頭進入",
+    "tease_doggy_more": "調戲·背後·插一半",
+    "tease_doggy_deep": "調戲·背後·整根頂到底",
+    "tease_doggy_cum": "調戲·背後·高潮內射",
+    "tease_cowgirl": "調戲·騎乘",
+    "tease_cowgirl_ready": "調戲·騎乘·坐下勃起",
+    "tease_cowgirl_half": "調戲·騎乘·龜頭進入",
+    "tease_cowgirl_more": "調戲·騎乘·插一半",
+    "tease_cowgirl_deep": "調戲·騎乘·整根頂到底",
+    "tease_cowgirl_cum": "調戲·騎乘·高潮內射",
+}
+GROK_IMG_TIMEOUT = float(os.environ.get("GROK_IMG_TIMEOUT", "300"))
+GROK_IMG_MAX_TURNS = int(os.environ.get("GROK_IMG_MAX_TURNS", "8") or "8")
+
+
+def _grok_build_available() -> bool:
+    return bool(shutil.which(GROK_BIN) or Path(GROK_BIN).is_file())
+
+
 app = FastAPI(title="魅魔萬事屋")
 
 
-# 前端檔案一律要求瀏覽器「用前先驗證」(no-cache):避免 app.js 與它 import 的模組被
-# 各自長期快取、版本不同步 → import 失敗把整個 app 炸成無法互動的空殼。
-# (no-cache ≠ no-store:仍可快取,但每次都要跟伺服器對驗;沒變回 304、變了拿新版。)
+# 前端檔案禁止 304：ES module（testdate.js → sex_scene.js / hotel.js）若拿到空的
+# 304，整份腳本載入失敗，抽妹子／抽召喚師按鈕綁不上。no-store + 去掉條件標頭。
 _REVALIDATE_EXT = (".html", ".js", ".css", ".json", ".md", ".webmanifest")
+_NO_304_HEADERS = (b"if-none-match", b"if-modified-since")
 
 
 @app.middleware("http")
 async def _revalidate_frontend(request, call_next):
-    resp = await call_next(request)
     p = request.url.path
     if p == "/" or p.endswith(_REVALIDATE_EXT):
-        resp.headers["Cache-Control"] = "no-cache"
+        request.scope["headers"] = [
+            (k, v) for k, v in request.scope["headers"] if k not in _NO_304_HEADERS
+        ]
+    resp = await call_next(request)
+    if p == "/" or p.endswith(_REVALIDATE_EXT):
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["Pragma"] = "no-cache"
     return resp
 
 
@@ -80,6 +229,23 @@ def db() -> sqlite3.Connection:
             updated  REAL NOT NULL
         )"""
     )
+    # 優先序欄位(舊檔補上):玩家正在等的那句排前面,背景素材往後站
+    try:
+        conn.execute("ALTER TABLE gen_tasks ADD COLUMN prio INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    # 召喚預產清單：手機一次交完整份，RP5 照 gen_tasks 跑，手機關了也繼續。
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS summon_queue (
+            id       TEXT PRIMARY KEY,
+            girl_id  TEXT NOT NULL,
+            mode     TEXT NOT NULL DEFAULT '',
+            items    TEXT NOT NULL,
+            acked    INTEGER NOT NULL DEFAULT 0,
+            created  REAL NOT NULL,
+            updated  REAL NOT NULL
+        )"""
+    )
     # 召喚師交配環模擬(伺服器權威運算,獨立於手機存檔 blob)。單列 JSON。
     conn.execute(
         """CREATE TABLE IF NOT EXISTS sim (
@@ -88,6 +254,49 @@ def db() -> sqlite3.Connection:
             updated_at REAL NOT NULL
         )"""
     )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS daydream (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            data       TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )"""
+    )
+    # 她在日本的生活。網頁整本存檔蓋上來時，這張表仍是正在走的行程。
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS life_agent (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            data       TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )"""
+    )
+    # 名冊群 LINE：RP5 主動發文的紀錄（手機合併，id 去重）
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS line_group (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            data       TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )"""
+    )
+    # 發現待辦留在 RP5。前端只讀來合併，不負責把字寫進這張表。
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS quest_inbox (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            text    TEXT NOT NULL,
+            created REAL NOT NULL
+        )"""
+    )
+    # 舊庫補欄：這次發現佔的金、有沒有佔每日名額、擲獎時的遊戲日。
+    # handed：舊版前端 drain 用，標過仍留列，不刪。
+    for stmt in (
+        "ALTER TABLE quest_inbox ADD COLUMN gold INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE quest_inbox ADD COLUMN counted INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE quest_inbox ADD COLUMN day INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE quest_inbox ADD COLUMN handed INTEGER NOT NULL DEFAULT 0",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
     return conn
 
 
@@ -96,9 +305,49 @@ class SavePut(BaseModel):
     data: dict
 
 
+class QuestDiscoverIn(BaseModel):
+    text: str
+
+
+@app.get("/api/jp-news")
+async def jp_news_search(q: str = ""):
+    """她在日本住所上網時用。只搜日本新聞標題，不抓內文、不接受網址。"""
+    return await jp_news.search_jp_news(q)
+
+
 @app.get("/api/health")
 def health():
-    return {"ok": True, "time": time.time()}
+    return {
+        "ok": True,
+        "time": time.time(),
+        "grok_build": _grok_build_available(),
+        "grok_bin": GROK_BIN,
+        "comfy_url": comfy.COMFY_URL,
+        "gpu": comfy.gpu_state(),
+        "cutout": cutout.AVAILABLE,   # 立繪去背要 Pillow;沒裝就是留著背景
+        "memos": memos.configured(),
+        "memos_url": memos.memos_url(),
+        "daydream": _dd_public(),
+    }
+
+
+class DiaryUpsert(BaseModel):
+    ymd: str
+    text: str
+    name: str | None = None
+
+
+@app.get("/api/memos/status")
+def memos_status():
+    return memos.status()
+
+
+@app.post("/api/memos/diary")
+def memos_diary(body: DiaryUpsert):
+    try:
+        return memos.upsert_diary(body.ymd, body.text, body.name)
+    except memos.MemosError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
 
 
 @app.get("/api/save")
@@ -107,7 +356,108 @@ def get_save():
         row = conn.execute("SELECT version, data, updated_at FROM save WHERE id = 1").fetchone()
     if row is None:
         return {"version": 0, "data": None, "updated_at": None}
-    return {"version": row[0], "data": json.loads(row[1]), "updated_at": row[2]}
+    data = json.loads(row[1])
+    if isinstance(data, dict):
+        ddream.apply_patches(data, _dd_load())
+        _life_overlay(data)
+        try:
+            line_group.merge_into_save(data, _line_read())
+        except Exception as e:
+            print(f"[LINE] 蓋不進這次存檔：{e}", flush=True)
+    return {"version": row[0], "data": data, "updated_at": row[2]}
+
+
+_QUEST_TEXT_MAX = 80
+
+
+def _clean_quest_text(raw: str) -> str:
+    text = " ".join(str(raw or "").split())
+    if len(text) > _QUEST_TEXT_MAX:
+        text = text[:_QUEST_TEXT_MAX].rstrip()
+    return text
+
+
+def _discover_snapshot(conn):
+    """存檔裡的發現計數與睡眠結束時刻。沒存檔就用預設 06:00。"""
+    row = conn.execute("SELECT data FROM save WHERE id = 1").fetchone()
+    discover, sleep_end = None, "06:00"
+    if row:
+        try:
+            data = json.loads(row[0])
+        except (TypeError, ValueError):
+            data = None
+        if isinstance(data, dict):
+            discover = data.get("discover") if isinstance(data.get("discover"), dict) else None
+            settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+            end = settings.get("sleepEnd")
+            if isinstance(end, str) and ":" in end:
+                sleep_end = end
+    return discover, sleep_end
+
+
+def _discover_row(r):
+    return {"id": r[0], "text": r[1], "created": r[2], "gold": r[3], "counted": r[4], "day": r[5]}
+
+
+@app.get("/api/quests/discover")
+def list_discover_quests():
+    """RP5 上的發現待辦。前端用 id 合併，這支不刪列。"""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, text, created, gold, counted, day FROM quest_inbox ORDER BY id"
+        ).fetchall()
+    return {"items": [_discover_row(r) for r in rows]}
+
+
+@app.post("/api/quests/discover")
+def post_discover_quest(body: QuestDiscoverIn):
+    """發現輸入直接寫進 RP5。每天前 10 次隨機 +0～2 金，名額只算這張表。"""
+    text = _clean_quest_text(body.text)
+    if not text:
+        raise HTTPException(status_code=400, detail="請輸入待辦")
+    now_ms = time.time() * 1000
+    with db() as conn:
+        _discover, sleep_end = _discover_snapshot(conn)
+        day = discover_bonus.game_day(now_ms, sleep_end)
+        used = conn.execute(
+            "SELECT COUNT(*) FROM quest_inbox WHERE counted = 1 AND day = ?",
+            (day,),
+        ).fetchone()[0]
+        gold, counted, day = discover_bonus.next_bonus(
+            {"day": day, "count": used}, 0, now_ms, sleep_end,
+        )
+        cur = conn.execute(
+            "INSERT INTO quest_inbox (text, created, gold, counted, day) VALUES (?, ?, ?, ?, ?)",
+            (text, time.time(), gold, counted, day),
+        )
+        new_id = cur.lastrowid
+        pending = conn.execute("SELECT COUNT(*) FROM quest_inbox").fetchone()[0]
+        created = conn.execute(
+            "SELECT created FROM quest_inbox WHERE id = ?", (new_id,)
+        ).fetchone()[0]
+    return {
+        "ok": True,
+        "id": new_id,
+        "text": text,
+        "created": created,
+        "pending": pending,
+        "gold": gold,
+        "counted": counted,
+        "day": day,
+    }
+
+
+@app.post("/api/quests/inbox/drain")
+def drain_quest_inbox():
+    """舊前端用。交出尚未標記的列並標成 handed，不刪。新前端改讀 GET /api/quests/discover。"""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, text, created, gold, counted, day FROM quest_inbox "
+            "WHERE handed = 0 ORDER BY id"
+        ).fetchall()
+        if rows:
+            conn.execute("UPDATE quest_inbox SET handed = 1 WHERE handed = 0")
+    return {"items": [_discover_row(r) for r in rows]}
 
 
 @app.put("/api/save")
@@ -120,12 +470,15 @@ def put_save(body: SavePut):
                 status_code=409,
                 detail={"message": "版本衝突:伺服器上有更新的存檔,請先 GET /api/save", "version": current},
             )
+        data = body.data if isinstance(body.data, dict) else {}
+        ddream.apply_patches(data, _dd_load())
+        _life_absorb(data)
         new_version = current + 1
         conn.execute(
             "INSERT INTO save (id, version, data, updated_at) VALUES (1, ?, ?, ?) "
             "ON CONFLICT (id) DO UPDATE SET version = excluded.version, "
             "data = excluded.data, updated_at = excluded.updated_at",
-            (new_version, json.dumps(body.data, ensure_ascii=False), time.time()),
+            (new_version, json.dumps(data, ensure_ascii=False), time.time()),
         )
     return {"version": new_version}
 
@@ -153,12 +506,2502 @@ def delete_bg(name: str):
     return {"ok": True}
 
 
-# ---- LLM 代理(瀏覽器 → RP5 → Ollama;免 CORS、免混合內容問題)----
-# 伺服器不檢視、不修改訊息內容,僅轉發位元組(8.1 零解析原則)
+def _normalize_pose_image(data: bytes) -> tuple[bytes, int, int]:
+    """把使用者丟進來的檔解成 RGB/RGBA PNG。不靠副檔名。長邊超過 2048 會縮小。"""
+    try:
+        from PIL import Image
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail="伺服器沒裝 Pillow，無法讀圖") from e
+    try:
+        im = Image.open(io.BytesIO(data))
+        im.load()
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail="讀不了這張圖。畫素沒有下限；iPhone 請先「另存 JPG」，不要用 HEIC。",
+        ) from e
+    if im.mode not in ("RGB", "RGBA"):
+        im = im.convert("RGBA" if "A" in im.getbands() else "RGB")
+    w, h = im.size
+    if w < 8 or h < 8:
+        raise HTTPException(status_code=400, detail=f"圖太小（{w}×{h}）。隨便一張正常照片即可，沒有畫素下限，但至少要看得出畫面。")
+    max_side = 2048
+    if max(w, h) > max_side:
+        scale = max_side / max(w, h)
+        im = im.resize((max(8, int(w * scale)), max(8, int(h * scale))), Image.Resampling.LANCZOS)
+        w, h = im.size
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    return buf.getvalue(), w, h
+
+
+def _pose_gen_size(path: Path, default_w: int = 832, default_h: int = 1216) -> tuple[int, int]:
+    """依參考圖長寬比挑 SDXL 桶，不要硬裁成 832×1216。"""
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            w, h = im.size
+    except Exception:
+        return default_w, default_h
+    if w <= 0 or h <= 0:
+        return default_w, default_h
+    long = 1216
+    if h >= w:
+        nh = long
+        nw = int(round((long * w / h) / 64) * 64)
+    else:
+        nw = long
+        nh = int(round((long * h / w) / 64) * 64)
+    return min(1536, max(512, nw or 64)), min(1536, max(512, nh or 64))
+
+
+def _save_pose_png(data: bytes) -> dict:
+    if not data:
+        raise HTTPException(status_code=400, detail="空檔")
+    if len(data) > _POSE_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="圖太大（上限 15MB）")
+    png, w, h = _normalize_pose_image(data)
+    POSE_REF_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}.png"
+    (POSE_REF_DIR / name).write_bytes(png)
+    return {
+        "name": name,
+        "url": f"/assets/pose_refs/{name}",
+        "width": w,
+        "height": h,
+        "bytes": len(png),
+    }
+
+
+_PACK_IDX = re.compile(r"(?:^|[^0-9])([1-4])(?:[^0-9]|$)")
+
+
+def _pack_index(name: str) -> int | None:
+    """檔名裡獨立的 1～4。10.png 不算 1。"""
+    stem = Path(name or "").name
+    m = _PACK_IDX.search(stem)
+    return int(m.group(1)) if m else None
+
+
+def _pack_from_zip(data: bytes) -> list[tuple[int | None, str, bytes]]:
+    out: list[tuple[int | None, str, bytes]] = []
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as e:
+        raise HTTPException(status_code=400, detail="不是有效的 zip") from e
+    for info in zf.infolist():
+        if info.is_dir():
+            continue
+        raw_name = Path(info.filename.replace("\\", "/")).name
+        if raw_name.startswith(".") or raw_name.startswith("._"):
+            continue
+        if "__macosx" in info.filename.lower():
+            continue
+        ext = Path(raw_name).suffix.lower()
+        if ext not in _POSE_EXTS:
+            continue
+        blob = zf.read(info)
+        out.append((_pack_index(raw_name), raw_name, blob))
+    return out
+
+
+def _number_pack_blobs(
+    collected: list[tuple[int | None, str, bytes]],
+) -> dict[int, tuple[str, bytes]]:
+    numbered: dict[int, tuple[str, bytes]] = {}
+    unnumbered: list[tuple[str, bytes]] = []
+    for idx, fname, blob in collected:
+        if idx in (1, 2, 3, 4):
+            numbered[idx] = (fname, blob)
+        else:
+            unnumbered.append((fname, blob))
+    empty = [i for i in (1, 2, 3, 4) if i not in numbered]
+    if unnumbered and empty:
+        unnumbered.sort(key=lambda x: x[0].lower())
+        for i, item in zip(empty, unnumbered):
+            numbered[i] = item
+    if not numbered:
+        raise HTTPException(
+            status_code=400,
+            detail="對不到 1～4。請把檔名寫成 1.png、2.png、3.png、4.png（或 zip 裡同樣編號）。",
+        )
+    return numbered
+
+
+async def _collect_pack_uploads(files: list[UploadFile]) -> tuple[list[tuple[int | None, str, bytes]], str]:
+    collected: list[tuple[int | None, str, bytes]] = []
+    hint = ""
+    for f in files:
+        data = await f.read()
+        fname = f.filename or "bone.png"
+        if not hint:
+            hint = Path(fname).stem
+        if Path(fname).suffix.lower() == ".zip" or (len(files) == 1 and data[:2] == b"PK"):
+            collected.extend(_pack_from_zip(data))
+            if fname.lower().endswith(".zip"):
+                hint = Path(fname).stem
+            continue
+        collected.append((_pack_index(fname), fname, data))
+    if not collected:
+        raise HTTPException(status_code=400, detail="包裡沒有圖片（要 png／jpg／webp，檔名含 1～4）")
+    return collected, hint
+
+
+def _frame_pack_load() -> list[dict]:
+    if not FRAME_PACK_INDEX.is_file():
+        return []
+    try:
+        data = json.loads(FRAME_PACK_INDEX.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    packs = data.get("packs") if isinstance(data, dict) else data
+    return [p for p in (packs or []) if isinstance(p, dict) and p.get("id")]
+
+
+def _frame_pack_save(packs: list[dict]) -> None:
+    FRAME_PACK_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = FRAME_PACK_INDEX.with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps({"packs": packs}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    tmp.replace(FRAME_PACK_INDEX)
+
+
+FRAME_PACK_POSES = ("missionary", "doggy", "cowgirl_front")
+
+
+def _norm_pack_pose(raw: str) -> str:
+    p = (raw or "").strip()
+    return p if p in FRAME_PACK_POSES else "missionary"
+
+
+def _frame_pack_public(p: dict) -> dict:
+    frames = p.get("frames") if isinstance(p.get("frames"), dict) else {}
+    return {
+        "id": p.get("id"),
+        "name": p.get("name") or p.get("id"),
+        "pose": _norm_pack_pose(p.get("pose")),
+        "created": p.get("created") or 0,
+        "frames": {str(i): frames.get(str(i)) for i in (1, 2, 3, 4) if frames.get(str(i))},
+    }
+
+
+@app.post("/api/pose-refs")
+async def upload_pose_ref(file: UploadFile = File(...)):
+    """姿勢／骨架參考圖。人設仍用人設＋立繪。"""
+    data = await file.read()
+    return _save_pose_png(data)
+
+
+@app.post("/api/pose-refs/pack")
+async def upload_pose_pack(files: list[UploadFile] = File(...)):
+    """一次收四張骨架（檔名含 1～4）或一個 zip。回 frames[1..4]。不入組庫。"""
+    if not files:
+        raise HTTPException(status_code=400, detail="沒有檔")
+    collected, _hint = await _collect_pack_uploads(files)
+    numbered = _number_pack_blobs(collected)
+    frames = {}
+    for i, (fname, blob) in sorted(numbered.items()):
+        saved = _save_pose_png(blob)
+        saved["from"] = fname
+        saved["index"] = i
+        frames[str(i)] = saved
+    return {
+        "frames": frames,
+        "got": sorted(int(k) for k in frames),
+        "missing": [i for i in (1, 2, 3, 4) if str(i) not in frames],
+    }
+
+
+@app.get("/api/frame-packs")
+def list_frame_packs(pose: str = ""):
+    """圖組庫：很多組，每組四張（1～4）。pose 給值只回該體位。"""
+    packs = [_frame_pack_public(p) for p in _frame_pack_load()]
+    want = (pose or "").strip()
+    if want:
+        want = _norm_pack_pose(want) if want in FRAME_PACK_POSES else want
+        packs = [p for p in packs if p.get("pose") == want]
+    packs.sort(key=lambda p: p.get("created") or 0, reverse=True)
+    return {"packs": packs}
+
+
+@app.post("/api/frame-packs")
+async def create_frame_pack(
+    files: list[UploadFile] = File(...),
+    name: str = Form(""),
+    pose: str = Form(""),
+):
+    """新增一組：四張圖（檔名 1～4）或 zip。pose 綁體位。"""
+    if not files:
+        raise HTTPException(status_code=400, detail="沒有檔")
+    collected, hint = await _collect_pack_uploads(files)
+    numbered = _number_pack_blobs(collected)
+    missing = [i for i in (1, 2, 3, 4) if i not in numbered]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"這一組要四張。還缺第 { '、'.join(str(i) for i in missing) } 張。",
+        )
+    pid = uuid.uuid4().hex[:10]
+    dest = FRAME_PACK_DIR / pid
+    dest.mkdir(parents=True, exist_ok=True)
+    frames: dict[str, dict] = {}
+    for i in (1, 2, 3, 4):
+        _fname, blob = numbered[i]
+        png, w, h = _normalize_pose_image(blob)
+        fname = f"{i}.png"
+        (dest / fname).write_bytes(png)
+        frames[str(i)] = {
+            "url": f"/assets/frame_packs/{pid}/{fname}",
+            "width": w,
+            "height": h,
+            "bytes": len(png),
+            "index": i,
+        }
+    label = (name or "").strip() or hint or f"組 {pid[:6]}"
+    pack = {
+        "id": pid,
+        "name": label[:40],
+        "pose": _norm_pack_pose(pose),
+        "created": time.time(),
+        "frames": frames,
+    }
+    packs = _frame_pack_load()
+    packs.append(pack)
+    _frame_pack_save(packs)
+    return {"pack": _frame_pack_public(pack)}
+
+
+class FramePackPatch(BaseModel):
+    name: str = ""
+    pose: str = ""
+
+
+@app.patch("/api/frame-packs/{pack_id}")
+def rename_frame_pack(pack_id: str, body: FramePackPatch):
+    pid = _safe_token(pack_id, 16)
+    packs = _frame_pack_load()
+    hit = next((p for p in packs if p.get("id") == pid), None)
+    if not hit:
+        raise HTTPException(status_code=404, detail="沒有這一組")
+    label = (body.name or "").strip()
+    if label:
+        hit["name"] = label[:40]
+    if (body.pose or "").strip():
+        if body.pose.strip() not in FRAME_PACK_POSES:
+            raise HTTPException(status_code=400, detail="未知體位")
+        hit["pose"] = body.pose.strip()
+    if not label and not (body.pose or "").strip():
+        raise HTTPException(status_code=400, detail="名稱或體位要填一個")
+    _frame_pack_save(packs)
+    return {"pack": _frame_pack_public(hit)}
+
+
+@app.delete("/api/frame-packs/{pack_id}")
+def delete_frame_pack(pack_id: str):
+    pid = _safe_token(pack_id, 16)
+    packs = _frame_pack_load()
+    keep = [p for p in packs if p.get("id") != pid]
+    if len(keep) == len(packs):
+        raise HTTPException(status_code=404, detail="沒有這一組")
+    _frame_pack_save(keep)
+    folder = FRAME_PACK_DIR / pid
+    if folder.is_dir():
+        shutil.rmtree(folder, ignore_errors=True)
+    return {"ok": True}
+
+
+@app.get("/api/pose-refs")
+def list_pose_refs(limit: int = 16):
+    POSE_REF_DIR.mkdir(parents=True, exist_ok=True)
+    files = [
+        p for p in POSE_REF_DIR.iterdir()
+        if p.is_file() and p.suffix.lower() in _POSE_EXTS
+    ]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    out = []
+    for p in files[: max(1, min(int(limit or 16), 40))]:
+        out.append({
+            "name": p.name,
+            "url": f"/assets/pose_refs/{p.name}",
+            "size": p.stat().st_size,
+            "mtime": p.stat().st_mtime,
+        })
+    return {"items": out}
+
+
+@app.delete("/api/pose-refs/{name}")
+def delete_pose_ref(name: str):
+    p = POSE_REF_DIR / Path(name).name
+    if p.suffix.lower() not in _POSE_EXTS:
+        raise HTTPException(status_code=400, detail="不是圖片")
+    p.unlink(missing_ok=True)
+    return {"ok": True}
+
+
+# ---- LLM 代理(瀏覽器 → RP5 → Ollama 串流 / Grok Build 無頭訂單)----
+# 伺服器不檢視、不修改訊息內容,僅轉發/累積原文(8.1 零解析原則)
+# provider: "ollama" | "grok-build"(舊別名 grok/xai/api 一律當 grok-build)
+
+
+def _normalize_provider(p) -> str:
+    p = (p or "ollama").strip().lower()
+    # 舊存檔可能寫 xai/api/grok —— 全部收斂到 Build 無頭,不再有 HTTP API
+    if p in ("grok-build", "grokbuild", "build", "grok", "xai", "spacexai", "api"):
+        return "grok-build"
+    return "ollama"
+
+
+def _strip_thinking(text: str) -> str:
+    """剝掉 Qwen3 / Qwen3.5 等的思考塊，只留真正台詞。
+
+    常見格式：
+      <think>...</think>
+      <think>...</think>
+    以及未關 thinking 時整段思考 + 空行 + 正式回覆。
+    """
+    if not text:
+        return text or ""
+    s = str(text)
+    # 成對標籤（含大小寫、多餘空白）
+    s = re.sub(r"<think\b[^>]*>[\s\S]*?</think\s*>", "", s, flags=re.I)
+    s = re.sub(r"<thinking\b[^>]*>[\s\S]*?</thinking\s*>", "", s, flags=re.I)
+    # 殘留的開閉標籤
+    s = re.sub(r"</?think(?:ing)?\b[^>]*>", "", s, flags=re.I)
+    # 少數模型用紅acted 風格
+    s = re.sub(r"<\|?redacted_thinking\|?>[\s\S]*?<\|?/redacted_thinking\|?>", "", s, flags=re.I)
+    return s.strip()
+
+
+def _ollama_chat_body(model: str, messages: list, options: dict | None = None) -> dict:
+    """組 Ollama /api/chat body：預設關閉 think（Qwen3.5 否則會先長考再答）。"""
+    opts = dict(options or {})
+    # 遊戲台詞要短：若呼叫端沒設 num_predict，給一個上限避免爆
+    if "num_predict" not in opts and "num_predict" not in {k.lower() for k in opts}:
+        opts.setdefault("num_predict", 256)
+    body = {
+        "model": model,
+        "messages": messages or [],
+        "stream": True,
+        "options": opts,
+        # Ollama 0.9+ / 支援 thinking 的模型：關閉思考模式
+        "think": False,
+    }
+    return body
+
+
+def _normalize_messages(messages: list) -> list[dict]:
+    out: list[dict] = []
+    for m in messages or []:
+        if not isinstance(m, dict):
+            continue
+        role = (m.get("role") or "user").strip().lower()
+        if role not in ("system", "user", "assistant"):
+            role = "user"
+        content = m.get("content")
+        if content is None:
+            continue
+        text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+        if not text.strip():
+            continue
+        out.append({"role": role, "content": text})
+    return out
+
+
+def _messages_to_prompt(messages: list) -> str:
+    """把 chat messages 壓成給 grok -p 的單一 prompt。"""
+    system_parts: list[str] = []
+    turns: list[str] = []
+    for m in _normalize_messages(messages):
+        if m["role"] == "system":
+            system_parts.append(m["content"])
+        elif m["role"] == "assistant":
+            turns.append(f"assistant: {m['content']}")
+        else:
+            turns.append(f"user: {m['content']}")
+    chunks: list[str] = []
+    if system_parts:
+        chunks.append("[系統指示]\n" + "\n\n".join(system_parts))
+    if turns:
+        chunks.append("[對話]\n" + "\n\n".join(turns))
+    chunks.append(
+        "[輸出要求]\n只輸出角色的下一句回覆本文。"
+        "不要加 role 前綴、不要解釋、不要條列工具、不要提及你是 AI 或 Grok。"
+    )
+    return "\n\n".join(chunks)
+
+
+async def _kill_proc_tree(proc: asyncio.subprocess.Process) -> None:
+    """結束 grok 行程組。Build 在吐完 end 後常還會做 session 收尾,不殺會一直卡住訂單。"""
+    if proc.returncode is not None:
+        return
+    try:
+        # start_new_session=True 時 pid == 進程組 id
+        os.killpg(proc.pid, 15)  # SIGTERM
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.terminate()
+        except ProcessLookupError:
+            return
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=2)
+        return
+    except (asyncio.TimeoutError, ProcessLookupError):
+        pass
+    try:
+        os.killpg(proc.pid, 9)  # SIGKILL
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=2)
+    except (asyncio.TimeoutError, ProcessLookupError):
+        pass
+
+
+async def _run_grok_cli(
+    prompt: str,
+    *,
+    model: str = "grok-4.5",
+    cwd: Path | None = None,
+    timeout: float | None = None,
+    max_turns: int | None = None,
+    tools: str | None = None,
+    disallowed_tools: str | None = None,
+    rules: str | None = None,
+    always_approve: bool = False,
+    on_partial=None,
+) -> tuple[str, str | None]:
+    """跑 grok -p(streaming-json);type=end 即完成並殺行程。回 (text, error)。"""
+    if not _grok_build_available():
+        return "", f"找不到 Grok Build 指令 `{GROK_BIN}`(請安裝或設 GROK_BIN)"
+    if not (prompt or "").strip():
+        return "", "空 prompt"
+    model = (model or "grok-4.5").strip() or "grok-4.5"
+    work = Path(cwd) if cwd else GROK_CWD
+    work.mkdir(parents=True, exist_ok=True)
+    prompt_path = work / f"prompt-{uuid.uuid4().hex}.txt"
+    prompt_path.write_text(prompt, encoding="utf-8")
+    cmd = [
+        GROK_BIN,
+        "--prompt-file", str(prompt_path),
+        "-m", model,
+        "--output-format", "streaming-json",
+        "--no-subagents",
+        "--disable-web-search",
+        "--no-plan",
+        "--no-memory",
+        "--no-auto-update",
+        "--verbatim",
+        "--cwd", str(work),
+    ]
+    if always_approve:
+        cmd.append("--always-approve")
+    if tools:
+        cmd.extend(["--tools", tools])
+    elif disallowed_tools:
+        cmd.extend(["--disallowed-tools", disallowed_tools])
+    if rules:
+        cmd.extend(["--rules", rules])
+    mt = GROK_MAX_TURNS if max_turns is None else max_turns
+    if mt and mt > 0:
+        cmd.extend(["--max-turns", str(mt)])
+    to = GROK_TIMEOUT if timeout is None else timeout
+    env = {**os.environ, "GROK_DISABLE_AUTOUPDATER": "1"}
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            limit=GROK_STREAM_LIMIT,
+            env=env,
+            start_new_session=True,
+        )
+    except FileNotFoundError:
+        try:
+            prompt_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return "", f"無法啟動 `{GROK_BIN}`"
+
+    text_parts: list[str] = []
+    err_lines: list[str] = []
+    final_err: str | None = None
+    saw_end = False
+
+    async def _drain_stderr():
+        assert proc.stderr is not None
+        try:
+            while True:
+                line = await proc.stderr.readline()
+                if not line:
+                    break
+                s = line.decode("utf-8", errors="replace").rstrip()
+                if s:
+                    err_lines.append(s)
+                    if len(err_lines) > 80:
+                        del err_lines[:-40]
+        except Exception:
+            pass
+
+    stderr_task = asyncio.create_task(_drain_stderr())
+
+    async def _read_events():
+        nonlocal final_err, saw_end
+        assert proc.stdout is not None
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            s = line.decode("utf-8", errors="replace").strip()
+            if not s:
+                continue
+            try:
+                ev = json.loads(s)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(ev, dict):
+                continue
+            et = ev.get("type")
+            if et == "text":
+                piece = ev.get("data") or ""
+                if piece:
+                    text_parts.append(str(piece))
+                    if on_partial:
+                        try:
+                            on_partial("".join(text_parts))
+                        except Exception:
+                            pass
+            elif et == "error":
+                final_err = str(ev.get("message") or ev)[:500]
+                saw_end = True
+                break
+            elif et in ("end", "max_turns_reached"):
+                saw_end = True
+                break
+
+    try:
+        if to and to > 0:
+            await asyncio.wait_for(_read_events(), timeout=to)
+        else:
+            await _read_events()
+    except asyncio.TimeoutError:
+        final_err = f"Grok Build 逾時({int(to)}s)"
+    finally:
+        await _kill_proc_tree(proc)
+        try:
+            await asyncio.wait_for(stderr_task, timeout=1)
+        except (asyncio.TimeoutError, Exception):
+            stderr_task.cancel()
+        try:
+            prompt_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    text = "".join(text_parts)
+    if text.strip():
+        return text, None
+    if final_err:
+        return "", final_err
+    err_tail = "\n".join(err_lines[-8:]).strip()
+    if saw_end:
+        return "", "Grok Build 結束但沒有正文"
+    if proc.returncode not in (0, None, -9, -15, 130, 143):
+        return "", f"Grok Build 失敗(exit {proc.returncode})" + (f": {err_tail[:300]}" if err_tail else "")
+    return "", "Grok Build 無輸出" + (f": {err_tail[:300]}" if err_tail else "")
+
+
+async def _run_grok_build(
+    model: str,
+    messages: list,
+    options: dict | None = None,
+    on_partial=None,
+) -> tuple[str, str | None]:
+    """文字角色扮演:禁工具,streaming-json end 即完成。"""
+    prompt = _messages_to_prompt(messages)
+    return await _run_grok_cli(
+        prompt,
+        model=model or "grok-4.5",
+        cwd=GROK_CWD,
+        disallowed_tools=_GROK_DISALLOWED_TOOLS,
+        rules="角色扮演純文字輸出。禁止使用任何工具。禁止讀寫檔案。禁止執行指令。",
+        on_partial=on_partial,
+    )
+
+
+def _character_visual_brief(ch: dict, framing: str = "", garment: str = "") -> str:
+    """生圖用 character sheet:一行 Danbooru tag,不塞中文、不塞英文句子。"""
+    if not isinstance(ch, dict):
+        return "1girl, adult"
+    ch2 = dict(ch)
+    worn = _outfit_of(ch2)
+    if worn and not garment:
+        ch2["_worn_outfit"] = worn
+    en_brief, _unknown = sdtags.appearance_en_brief(
+        ch2, stage=str(ch.get("stage") or ""), framing=framing, garment=garment,
+    )
+    return en_brief
+
+
+_FRAME_MAP = {
+    "half": "upper body",
+    "full": "full body",
+    "lower": "lower body, below waist",
+    "chest": "chest close-up, breasts focus, her face out of frame, cropped at chin",
+    "xray": "lower body, x-ray cross-section, internal view of vagina, cervix and uterus, no clothes drawn",
+}
+_STYLE_MAP = {
+    "anime": "anime",
+    "realistic": "photorealistic",
+    "pixel": "pixel art",
+}
+# NSFW 一樣不寫分級字眼(理由同 _RATING_ZH):寫了只會被 grok 的生圖擋掉。
+_RATING_MAP = {
+    "sfw": "SFW, fully clothed, wholesome, safe for work",
+    "nsfw": "",
+}
+
+
+def _fill_manual_fields(
+    character: dict | None, name: str, personality: str, backstory: str
+) -> dict:
+    """character 為主;沒抽卡時用手填欄位補洞。"""
+    ch = dict(character) if isinstance(character, dict) else {}
+    if name and not ch.get("name"):
+        ch["name"] = name
+    if personality and not ch.get("personality"):
+        ch["personality"] = [x.strip() for x in personality.replace("、", ",").split(",") if x.strip()]
+    if backstory and not ch.get("backstory"):
+        ch["backstory"] = backstory
+    return ch
+
+
+def _build_girl_image_prompt(
+    *,
+    framing: str,
+    rating: str,
+    style: str,
+    character: dict | None = None,
+    name: str = "",
+    personality: str = "",
+    backstory: str = "",
+    extra: str = "",
+    out_path: Path,
+    ref_path: Path | None = None,
+    pose_path: Path | None = None,
+    scene_kind: str = "",
+    garment: str = "",
+    solo: bool = False,
+    vary_line: str = "",
+) -> str:
+    """組給 Grok Build 的生圖指令。人物欄位以 character(完整 generateGirl 結果)為準。
+
+    出卡場景層級（與 docs/card-system.md §12.3.1 對齊）：
+      ① CHARACTER SHEET / 半身參考圖 = 身份固定（髮眼身服裝 + seed）
+      ②+③ ACTION(extra) = 卡牌運鏡 visualEn + 回話後表情肢體（只改 pose，不改長相）
+    pose_path = 姿勢／構圖參考（機位、體位、插入深度）；與身份 ref 分開。
+    """
+    framing = (framing or "half").lower()
+    rating = (rating or "sfw").lower()
+    style = (style or "anime").lower()
+    garment = (garment or "").strip().lower()
+    frame_map, style_map, rating_map = _FRAME_MAP, _STYLE_MAP, _RATING_MAP
+    ch = _fill_manual_fields(character, name, personality, backstory)
+    brief = _character_visual_brief(ch, framing=framing, garment=garment)
+
+    size_note = (
+        "Output size MUST be exactly 256x256 pixels."
+        if style == "pixel"
+        else "High resolution illustration suitable for a game scene."
+    )
+    extra, extra_neg = sdtags.split_pos_neg_tags(extra)
+    extra, extra_aside = sdtags.split_paren_aside(extra)
+    extra_l = extra.lower()
+    # 雙人／做愛／NTR 才走兩人構圖。對話卡 visualEn 的 NO groping 不算。
+    multi_scene = sdtags.is_multi_scene(extra)
+    pov = sdtags.is_pov_cam(extra)
+    # 做愛開場圖：男人還沒上場 → 只有她；nsfw／doggy 字樣不轉雙人、不轉第一人稱。
+    if solo:
+        multi_scene = False
+        pov = False
+
+    # 有姿勢參考 → image_edit 以那張為主構圖；立繪 ref 只鎖臉。
+    # 沒有姿勢圖時：有立繪參考 → image_edit 鎖同一張臉；否則 image_gen + sheet
+    if pose_path is not None:
+        if ref_path is not None:
+            id_lines = (
+                f"SECONDARY image (her identity only):\n{ref_path}\n"
+                "Replace the woman in the pose image with THIS character (face, hair, body).\n"
+                "Do NOT copy the other woman's face from the pose image.\n"
+            )
+        else:
+            id_lines = (
+                "Redraw the woman as the CHARACTER SHEET person.\n"
+                "Do NOT keep the other woman's face from the pose image.\n"
+            )
+        tool_note = (
+            "You MUST use the image_edit tool.\n"
+            f"PRIMARY image (composition — MANDATORY):\n{pose_path}\n"
+            "This image locks camera, POV, body arrangement, and the general sexual position.\n"
+            "Keep the same camera angle and the same position (oral / doggy / cowgirl).\n"
+            f"{id_lines}"
+            "ACTION tags still decide the exact beat: insertion depth, ejaculation, expression, clothes, hands.\n"
+            "If ACTION says not yet inserted / glans entering / vaginal x-ray / cutaway / fully inserted / creampie, follow ACTION "
+            "for that detail even if the pose image shows a different depth.\n"
+            "Do NOT invent a different position or a third-person couple shot."
+        )
+    elif ref_path is not None and solo:
+        tool_note = (
+            f"You MUST use the image_edit tool with this reference image path:\n"
+            f"{ref_path}\n"
+            "This reference locks ONLY her face/hair/body identity.\n"
+            "This is a SOLO scene: only her (1girl, solo). NO man, NO male hands, NO second person.\n"
+            "Draw the full new pose and camera from ACTION — not the portrait's pose.\n"
+            "Do NOT generate a different woman."
+        )
+    elif ref_path is not None and multi_scene and pov:
+        tool_note = (
+            f"You MUST use the image_edit tool with this reference image path:\n"
+            f"{ref_path}\n"
+            "This reference locks ONLY her face/hair/body identity.\n"
+            "This is a FIRST-PERSON / player-POV scene: she is the subject; "
+            "the man is only viewer hands / body at the camera edge, not a second full face.\n"
+            "Obey ACTION tags exactly (groping, breast grab, fellatio, doggy, cowgirl, etc.).\n"
+            "Do NOT generate a different woman."
+        )
+    elif ref_path is not None and multi_scene:
+        tool_note = (
+            f"You MUST use the image_edit tool with this reference image path:\n"
+            f"{ref_path}\n"
+            "This reference locks ONLY her face/hair/body identity.\n"
+            "This is a TWO-PERSON scene (1man + 1girl). Draw BOTH people interacting.\n"
+            "Camera MUST be third-person / side view / cinematic — NEVER first-person POV, "
+            "NEVER viewer hands, NEVER portrait staring at camera only.\n"
+            "Obey ACTION tags exactly (1man, 1girl, sex, fucking, groping, etc.).\n"
+            "Do NOT generate a different woman; the man may be a generic adult male."
+        )
+    elif ref_path is not None:
+        tool_note = (
+            f"You MUST use the image_edit tool with this reference image path:\n"
+            f"{ref_path}\n"
+            "This reference is her portrait template (same face, hair, body, outfit).\n"
+            "Edit lightly: keep identity; apply ACTION for expression (happy/shy/angry/etc.) "
+            "and simple pose (standing/sitting/walking).\n"
+            "Only if ACTION mentions male hands or special gaze (chest/thighs/looking away), "
+            "add that change — otherwise keep looking at viewer like the portrait.\n"
+            "Do NOT generate a different person."
+        )
+    elif style == "pixel":
+        tool_note = (
+            "Prefer image_gen. For exact 256x256 pixel art you may use code if image_gen cannot force size."
+        )
+    else:
+        tool_note = "You MUST use the image_gen tool (do NOT draw with Python/code)."
+    # 立繪／穿衣場面：就算遊戲設定是 nsfw，也不把「露胸」當預設。
+    # 罩杯只描述衣服底下的輪廓；只有 ACTION 明確脫衣才放行。
+    lewd_action = sdtags.is_nsfw_act(extra)
+    keep_act = sdtags.keeps_stage_clothes(extra)
+    level = sdtags.clothing_level(
+        str((ch or {}).get("stage") or ""),
+        nsfw_act=lewd_action and not keep_act,
+        character=ch,
+    )
+    if garment in ("underwear", "topoff", "cover"):
+        level = "shape"
+    elif garment in ("panties", "nude", "coverlow"):
+        level = "exposed"
+    if garment:
+        rating = "nsfw"
+    elif level == "covered" and not lewd_action:
+        rating = "sfw"
+    else:
+        rating = "nsfw"
+    rating_txt = rating_map.get(rating, rating_map["sfw"])
+    rating_line = f"- Content rating: {rating_txt}\n" if rating_txt else ""
+
+    # extra 常帶出卡場面英文（visualEn + AI pose）；標成 ACTION，不覆蓋身份
+    extra_block = ""
+    script_mode = str(scene_kind or "").strip().lower() == "script"
+    if extra_aside.strip():
+        extra_block = f"""
+=== MAIN PICTURE (tags outside parentheses) ===
+{extra.strip() or "half-body portrait, looking at viewer"}
+=== END MAIN ===
+=== PARENTHETICAL (tags inside parentheses) ===
+{extra_aside.strip()}
+=== END PARENTHETICAL ===
+The MAIN PICTURE is the large image: her half-body portrait, face and upper body, looking at viewer.
+Draw the PARENTHETICAL tags ONLY inside one small rectangular inset in a corner.
+Do not let the parenthetical become the whole picture. Do not turn the canvas into a from-behind / ass-focus shot.
+Keep the large image as the portrait. The inset is a small extra panel only.
+"""
+    elif extra.strip():
+        if script_mode:
+            extra_block = f"""
+=== ACTION / SCENE TO DRAW (MANDATORY — designer prompt, both positive tags) ===
+{extra.strip()}
+=== END ACTION ===
+CRITICAL: ACTION is the picture. Draw that camera, those hands, that pose, that act.
+Do NOT output a solo ID portrait looking at the viewer unless ACTION says so.
+CHARACTER SHEET is identity only (face, hair, body, clothes). Do not ignore ACTION.
+"""
+        elif solo:
+            solo_outfit = (
+                "She is completely nude. The panties are off. No bra, no panties, no underwear. "
+                "Do not put any clothes back on."
+                if garment == "nude" else "Keep her outfit as ACTION says."
+            )
+            extra_block = f"""
+=== ACTION / SCENE TO DRAW (SOLO — she is alone; the man has NOT joined yet) ===
+{extra.strip()}
+=== END ACTION ===
+CRITICAL COMPOSITION RULES:
+- Draw ONLY her (1girl, solo). NO man, NO male body, NO penis, NO male hands, NO shadow man, NO second person.
+- NOT a first-person POV with viewer hands. Use only the camera ACTION states (front view / from behind).
+- Follow ACTION's pose, camera, hands and expression exactly — a full new pose, not a light edit of the reference portrait.
+- Gaze follows ACTION: if ACTION says facing away / face hidden, she does NOT look back and does NOT look at the viewer.
+Do NOT change her hair, eyes, or body type. {solo_outfit}
+"""
+        elif multi_scene and pov:
+            extra_block = f"""
+=== ACTION / SCENE TO DRAW (MANDATORY — first-person player POV) ===
+{extra.strip()}
+=== END ACTION ===
+CRITICAL COMPOSITION RULES:
+- Camera is FIRST-PERSON / from his POV. She is the subject filling the frame.
+- Draw viewer hands / male hands / his body at the camera edge as ACTION says.
+- Do NOT draw a second man's face looking at the camera. Do NOT make it a solo portrait.
+- If ACTION contains groping / breast grab / ass grab / thigh → his hands on that body part.
+- If ACTION contains fellatio / oral / blowjob / penis at lips / cum in mouth:
+  this is a HALF-BODY close-up, penis in the foreground.
+  Do NOT force her to look up or look at the viewer / camera; let the oral pose decide her head.
+  Keep her clothes unless ACTION says nude; only a wife-level nude beat should be fully naked.
+  Hands in the oral beat belong to HER, not the player, unless ACTION says male hand on her head.
+  covering own eyes / covering own face → one of HER own hands over her own eyes or her own face (either is fine); not his hand.
+  holding the penis → one of HER own hands wrapped around the shaft.
+  Follow the exact beat in ACTION — do not collapse all oral beats into the same pose:
+  * tip / glans against lips / about to start / hand on her head → penis tip touching her lips, NOT inside the mouth; one male hand pressing her head down.
+  * penis in mouth / sucking / blowjob (and NOT deepthroat, NOT cum) → lips around the shaft, performing oral, not swallowing the whole length.
+  * deepthroat / entire penis / irrumatio → the whole penis is inside her mouth, nose against his body.
+  * cum in mouth / oral creampie / ejaculation in mouth → he ejaculates into her mouth; semen visible in/around her mouth.
+- If ACTION contains doggy / from behind / grabbing her buttocks with an erect penis:
+  this is a FROM-BEHIND / first-person shot. Keep the same camera across doggy beats. Do not add girl on all fours — doggy style already covers the pose.
+  Keep her clothes unless ACTION says nude; only a wife-level nude beat should be fully naked.
+  Tags prefixed girl belong to the woman (face, hands, clothes). Tags prefixed male belong to the man.
+  Do NOT add girl looking at viewer / camera / player. Do NOT add girl looking back.
+  Never have her look at the camera or over her shoulder at the player.
+  girl head up / girl looking up → her chin up, not looking at the camera.
+  girl head down / girl looking down → her face toward the floor or bed, not looking at the camera.
+  Girl hand tags are short (not sentences). Follow ACTION:
+    girl hand grabbing male hand → one girl hand on his hand (resistance).
+    girl other hand reaching back / girl hand gripping male arm → her other hand reaches back and grabs his arm.
+    girl hands on bed / girl hands supporting → both girl hands on the bed or floor.
+  Male hands stay on her ass / hips as ACTION says.
+  Follow the exact beat in ACTION — do not collapse all doggy beats into the same insertion depth:
+  * grabbing buttocks / erect penis / against her pussy / about to penetrate / not yet inserted →
+    both male hands gripping her ass; a fully erect penis visible against her vulva or between her buttocks; NOT inside.
+  * glans entering / only the glans inserted / glans wrapped by labia / labia enveloping the glans / long penis / very long penis / half of the penis still outside → only the glans is inside; labia wrap and envelop the glans; the penis is long, very long; half of it still remains outside; NOT fully inserted.
+  * girl open mouth / buttocks slamming / ass impacting / body shaking / vaginal x-ray / cutaway / cross-section / internal view → her mouth is open; her buttocks slam / impact his groin; her body is shaking; show a vaginal x-ray / cutaway of internal penetration.
+  * first-person POV / glans / glans inside girl vagina / glans at vaginal opening / long vagina / deep vagina / long vaginal canal / vaginal x-ray / cutaway →
+    first-person POV; use glans tags only, do not add penis/shaft tags; the vagina is long; the glans does NOT hit the uterus or cervix; show a vaginal x-ray.
+  * hitting cervix / glans hitting uterus / buttocks slamming →
+    hitting the cervix / uterus; do not add penis/shaft tags; show a vaginal x-ray if ACTION has x-ray.
+  * creampie / cum inside / internal ejaculation / orgasm creampie →
+    he climaxes inside her; semen overflows around the shaft and from her pussy.
+- If ACTION contains cowgirl / girl on top / straddling:
+  this is a FIRST-PERSON shot from below. She straddles him, girl on top. Keep the same camera across cowgirl beats.
+  Keep her clothes unless ACTION says nude; only a wife-level nude beat should be fully naked.
+  Tags prefixed girl belong to the woman. Tags prefixed male belong to the man.
+  Do NOT add girl looking at viewer / camera / player. Do NOT add girl looking back.
+  Never have her look at the camera. girl head up → chin up; girl head down → face toward his body or the bed.
+  Girl hand tags are short. Follow ACTION:
+    girl hand grabbing male hand → one girl hand on his hand (resistance).
+    girl other hand on male chest / girl hand pushing male chest → her other hand on his chest.
+    girl hands on male chest / girl hands supporting → both girl hands on his chest or the bed.
+  Male hands stay on her hips / waist as ACTION says.
+  Follow the exact beat — do not collapse all cowgirl beats into the same insertion depth:
+  * about to penetrate / still outside / awaiting insertion →
+    she hovers over him; erect penis against her vulva; NOT inside.
+  * glans entering / only the glans inserted / glans wrapped by labia / labia enveloping the glans / long penis / very long penis / half of the penis still outside → she has lowered just enough that only the glans is inside; labia wrap and envelop the glans; the penis is long, very long; half of it still remains outside; NOT fully seated.
+  * girl open mouth / labia pressed tightly against male abdomen / male pubic hair / vaginal x-ray / cutaway / cross-section / internal view → her mouth is open; her labia are pressed tightly against his abdomen; male pubic hair is visible; show a vaginal x-ray / cutaway of internal penetration.
+  * first-person POV / glans / glans inside girl vagina / glans at vaginal opening / long vagina / deep vagina / long vaginal canal / vaginal x-ray / cutaway →
+    first-person POV from below; use glans tags only, do not add penis/shaft tags; the vagina is long; the glans does NOT hit the uterus or cervix; show a vaginal x-ray.
+  * hitting cervix / glans hitting uterus / labia pressed tightly against male abdomen →
+    hitting the cervix / uterus; do not add penis/shaft tags; show a vaginal x-ray if ACTION has x-ray.
+  * creampie / cum inside / internal ejaculation → he climaxes inside her; semen overflows around the shaft.
+- If ACTION contains sex / fucking / vaginal / penetration → draw intercourse, unless the beat above says not yet inserted.
+Do NOT change her hair, eyes, body type, or outfit identity unless ACTION undresses her.
+"""
+        elif multi_scene:
+            extra_block = f"""
+=== ACTION / SCENE TO DRAW (MANDATORY — two-person NTR/interaction beat) ===
+{extra.strip()}
+=== END ACTION ===
+CRITICAL COMPOSITION RULES:
+- Tags 1man + 1girl mean BOTH people must be visible and interacting.
+- Third-person camera only. NO first-person. NO from-his-POV. NO viewer hands in foreground.
+- The woman uses CHARACTER SHEET / reference face. The man is a second character in frame.
+- If ACTION contains sex / fucking / vaginal / penetration → draw intercourse between them.
+- If ACTION contains groping / molestation / breast grab → draw him groping her body.
+- If ACTION is clothed talking/walking → fully clothed couple interaction.
+- Do NOT output a solo portrait of only her looking at the camera.
+Do NOT change her hair, eyes, body type, or outfit identity unless ACTION undresses her.
+"""
+        else:
+            if garment == "underwear":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "Outer clothes are already off: she wears only a bra and panties. "
+                    "Do not put a shirt, dress, skirt, jacket, or uniform back on. "
+                    "Keep her breasts covered by the bra."
+                )
+            elif garment == "panties":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "She wears only panties. No bra. Her breasts are bare. "
+                    "Do not put a shirt, dress, bra, or uniform back on. Do not remove the panties."
+                )
+            elif garment == "nude":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "She is completely nude. The panties are off. No bra, no panties, no underwear. "
+                    "Do not put any clothes back on."
+                )
+            elif garment == "topoff":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "She is pulling her shirt up. Bra and panties stay on. Breasts stay covered by the bra. "
+                    "Do not remove the bra or panties. Do not draw a second person's face or body."
+                )
+            elif garment == "cover":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "She is nude and standing. One arm covers her breasts, one hand covers her crotch. "
+                    "Do not draw clothes. Do not show nipples or genitals."
+                )
+            elif garment == "coverlow":
+                look_lock = "same face, hair, body"
+                outfit_rule = (
+                    "Do NOT change her hair, eyes, or body type. "
+                    "She is nude and standing. Breasts are bare. One hand covers her crotch only. "
+                    "Do not cover her breasts. Do not draw clothes."
+                )
+            else:
+                look_lock = "same face, hair, outfit"
+                outfit_rule = "Do NOT change hair, eyes, body type, or outfit identity."
+            extra_block = f"""
+=== ACTION / SCENE TO DRAW (pose, camera, interaction — do NOT change identity) ===
+{extra.strip()}
+=== END ACTION ===
+Draw the SAME woman from the CHARACTER SHEET{(' / reference image' if ref_path is not None else '')}.
+EDIT RULES (portrait template base):
+- Start from the reference portrait look ({look_lock}).
+- Apply ACTION: simple expression tags (happy/shy/angry/crying/etc.) and pose (standing/sitting/walking).
+- Keep looking at viewer UNLESS ACTION says looking away / looking at screen / scenery / special gaze.
+- Add male hands / first-person hands ONLY if ACTION mentions them.
+- Special gaze (chest/thighs/away) ONLY if ACTION mentions them.
+- Do NOT invent complex new camera blocking; light edit of the portrait is preferred.
+{outfit_rule}
+"""
+
+    pose_block = ""
+    if pose_path is not None:
+        pose_block = f"""
+=== POSE / COMPOSITION REFERENCE (PRIMARY — not her identity) ===
+File: {pose_path}
+Copy camera, POV, body arrangement, and sexual position from this image.
+Do NOT copy the other woman's face, hair, or body type.
+The woman in the output MUST match CHARACTER SHEET{(' / identity reference' if ref_path is not None else '')}.
+=== END POSE REFERENCE ===
+"""
+
+    ref_block = ""
+    if ref_path is not None:
+        if pose_path is not None:
+            ref_block = f"""
+=== IDENTITY REFERENCE (FACE / HAIR / BODY ONLY) ===
+File: {ref_path}
+Use this only for her face/hair/body match. Keep the pose image's camera and position.
+=== END REFERENCE ===
+"""
+        elif script_mode:
+            ref_block = f"""
+=== IDENTITY REFERENCE (FACE / HAIR / BODY ONLY) ===
+File: {ref_path}
+Use this only for her face/hair/body. Composition MUST follow ACTION, not this portrait's pose.
+=== END REFERENCE ===
+"""
+        elif solo:
+            ref_block = f"""
+=== REFERENCE PORTRAIT (HER IDENTITY ONLY — not the final composition) ===
+File: {ref_path}
+Use this only for her face/hair/body match. Final image MUST be the ACTION pose (solo, she alone),
+not a copy of this portrait's pose or gaze.
+=== END REFERENCE ===
+"""
+        elif multi_scene and pov:
+            ref_block = f"""
+=== REFERENCE PORTRAIT (HER IDENTITY ONLY — not the final composition) ===
+File: {ref_path}
+Use this only for her face/hair/body match. Final image MUST be the ACTION scene
+(first-person player POV, she as subject), not a copy of this solo portrait pose.
+=== END REFERENCE ===
+"""
+        elif multi_scene:
+            ref_block = f"""
+=== REFERENCE PORTRAIT (HER IDENTITY ONLY — not the final composition) ===
+File: {ref_path}
+Use this only for her face/hair/body match. Final image MUST show the full ACTION scene
+(1man + 1girl interaction, third-person), not a copy of this solo portrait pose.
+=== END REFERENCE ===
+"""
+        else:
+            ref_block = f"""
+=== REFERENCE PORTRAIT (SAME PERSON — identity lock) ===
+File: {ref_path}
+Match this face and identity only. Do NOT copy the portrait's square facing-camera pose if ACTION
+describes a different angle (side seat, walking beside, looking at window, etc.).
+=== END REFERENCE ===
+"""
+
+    do_not = ""
+    if extra_neg:
+        do_not = f"""
+=== DO NOT DRAW (negative — not in the picture) ===
+{extra_neg}
+=== END DO NOT DRAW ===
+"""
+
+    tool_name = "image_edit" if (pose_path is not None or ref_path is not None) else "image_gen"
+    vary_block = f"\n{vary_line.strip()}\n" if str(vary_line or "").strip() else ""
+    return f"""Generate ONE image. Use {tool_name}. Save to:
+{out_path}
+
+Tags (identity — do not write Chinese, do not write sentences):
+{brief}, {frame_map.get(framing, frame_map["half"])}, {style_map.get(style, style_map["anime"])}
+
+{tool_note}
+{pose_block}{ref_block}{extra_block}{do_not}{vary_block}{rating_line}{size_note}
+No text overlay, no watermark.
+{"1man and 1girl both visible." if multi_scene else ("Only her — 1girl, solo, no man in the picture." if solo else "")}
+"""
+
+
+# ---- 分段生圖:同一位妹子拆成「頭 / 胸 / 下半身」,每段各出兩張 ----
+# 抽卡欄位本來就是分開的(眼睛、罩杯、體型…),整張畫時模型會把它們糊在一起;
+# 拆開各吃自己那組欄位,才看得出「大眼睛」「G 罩杯圓潤」到底畫成什麼樣。
+#
+# 每段兩輪:第一輪不寫任何服裝欄位,第二輪拿第一輪那張當參考圖再把衣服畫上去。
+#
+# prompt 寫法:短。只列這一段真的要畫的特徵 + 取景,其餘一個字都不加。
+# 尤其不要出現「素體 / body base / 參考圖表 / 不穿衣服」這類詞——講到身體的
+# 抽象名詞,模型就會自己補一件緊身衣上去。要它不畫衣服,就是不提衣服。
+IMG_BARE_PARTS = ("head0", "bust0", "lower0")   # 第一輪:不寫服裝
+IMG_SEG_PARTS = ("head", "bust", "lower")       # 第二輪:加穿搭
+IMG_PARTS = IMG_BARE_PARTS + IMG_SEG_PARTS
+# 第二輪各段的參考圖 = 第一輪同一段那張
+PART_REF_OF = dict(zip(IMG_SEG_PARTS, IMG_BARE_PARTS))
+PART_LABEL_ZH = {
+    "head0": "頭", "bust0": "胸", "lower0": "下半身",
+    "head": "頭・穿搭", "bust": "胸・穿搭", "lower": "下半身・穿搭",
+}
+
+# 膚色與服裝配色人設池裡沒有,由欄位做確定性雜湊補一組——同一個人設永遠推出同一組。
+_SKIN_TONES = ["皮膚白皙", "膚色瓷白", "皮膚透白", "膚色偏白", "膚色蜜色", "膚色健康小麥"]
+_PALETTES = [
+    "黑與米白", "奶油米", "藏青與白", "霧粉與灰",
+    "橄欖綠與卡其", "酒紅與炭灰", "天藍與白", "薰衣草紫與銀灰",
+]
+_STYLE_ZH = {"anime": "動漫風格", "realistic": "寫實照片風", "pixel": "像素風,256×256"}
+# NSFW 不寫任何分級字眼:grok 的生圖本來就不吃色情,寫「成人向 18+」只會換來拒稿。
+# 分級真正在管的是抽卡(girl_gen 的 nsfw 項目開關),不是這裡。
+_RATING_ZH = {"sfw": "全年齡", "nsfw": ""}
+
+
+def _resolve_ref_image(ref: str) -> Path | None:
+    """把前端傳來的 /assets/… 換成本機絕對路徑。
+
+    認 portraits（立繪鎖臉）、testword（分段第二輪／實驗圖）、pose_refs（姿勢構圖）。
+    只取 basename，擋路徑穿越。URL 有目錄前綴時只在那個目錄找。
+    """
+    ref = (ref or "").strip()
+    if not ref:
+        return None
+    u = ref.split("?", 1)[0].split("#", 1)[0]
+    if u.startswith("/assets/frame_packs/"):
+        rel = u[len("/assets/frame_packs/"):]
+        parts = Path(rel).parts
+        if (
+            len(parts) == 2
+            and re.fullmatch(r"[A-Za-z0-9_-]+", parts[0] or "")
+            and Path(parts[1]).suffix.lower() in _POSE_EXTS
+            and parts[1] not in (".", "..")
+        ):
+            p = FRAME_PACK_DIR / parts[0] / parts[1]
+            return p if p.is_file() and p.stat().st_size > 0 else None
+        return None
+    name = Path(u).name
+    if not name or name in (".", "..") or "/" in name or "\\" in name:
+        return None
+    # 綠幕立繪 _ck.png（透明）當參考圖時改用原圖（綠底），img2img 不吃 alpha
+    if u.startswith("/assets/portraits/") and name.lower().endswith("_ck.png"):
+        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+            raw = PORTRAIT_DIR / (name[:-7] + ext)
+            if raw.is_file() and raw.stat().st_size > 0:
+                return raw
+    hinted = (
+        (POSE_REF_DIR, "/assets/pose_refs/"),
+        (PORTRAIT_DIR, "/assets/portraits/"),
+        (IMG_TEST_DIR, "/assets/testword/"),
+        (FRAME_PACK_DIR, "/assets/frame_packs/"),
+    )
+    for base, prefix in hinted:
+        if u.startswith(prefix):
+            p = base / name
+            return p if p.is_file() and p.stat().st_size > 0 else None
+    if u.startswith("/assets/swap_cafe/"):
+        # 換妻圖庫（只有明確寫這個前綴才找；只取 basename）
+        p = _SWAP_DIR / name
+        return p if Path(name).suffix.lower() in _POSE_EXTS and p.is_file() and p.stat().st_size > 0 else None
+    for base, _ in hinted:
+        p = base / name
+        if p.is_file() and p.stat().st_size > 0:
+            return p
+    return None
+
+
+def _has_owned(look: dict) -> bool:
+    """look.owned 有＝新制（只穿擁有的）；沒有＝舊存檔，全部視為擁有。"""
+    return isinstance(look.get("owned"), dict)
+
+
+def _owns_outfit(look: dict, kind: str, i: int) -> bool:
+    if not _has_owned(look):
+        return True
+    key = {"e": "erotic", "s": "sleep"}.get(kind, "wardrobe")
+    lst = look["owned"].get(key)
+    if not isinstance(lst, list):
+        return False
+    try:
+        return int(i) in {int(x) for x in lst}
+    except (TypeError, ValueError):
+        return False
+
+
+def _outfit_of(ch: dict) -> str:
+    """這張圖她穿什麼。
+
+    預設是**生涯服裝**——職業給的那一身(學生就是制服)。抽卡人設裡職業寫得
+    清清楚楚,衣服卻跟它無關,是這遊戲最出戲的一種錯。個人衣櫃要玩家在詳細頁
+    挑過才換;哪幾套解得開由前端依關係階段管,伺服器只認索引。
+
+    例外：妻子／女友且未指定 outfitPick 時，若有 eroticOutfits，預設穿第一套
+    情色裝（lace／lingerie 名進 prompt），不再強制生涯制服或全裸。
+    outfitName 有字、或 outfitPick 為 base，優先於上面兩條（獻祭第一套是白 T）。
+    look.owned（新召喚）在時只穿擁有的那幾套；挑到沒擁有的→生涯服裝→白 T。
+    """
+    look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
+    wardrobe = look.get("wardrobe") if isinstance(look.get("wardrobe"), list) else []
+    named = str(ch.get("outfitName") or "").strip()
+    if named:
+        return named
+    pick = ch.get("outfitPick")
+    if isinstance(pick, bool):
+        pick = None   # True/False 不是索引
+    if pick == "base":
+        return "白色 T 恤配三角褲"
+    if isinstance(pick, str):
+        kind = pick[:1]
+        try:
+            i = int(pick[1:] or 0)
+        except ValueError:
+            i = -1
+        extras = look.get("eroticOutfits") if kind == "e" else (
+            look.get("sleepOutfits") if kind == "s" else None
+        )
+        if isinstance(extras, list) and 0 <= i < len(extras) and _owns_outfit(look, kind, i):
+            return str(extras[i] or "")
+    if isinstance(pick, int) and 0 <= pick < len(wardrobe) and _owns_outfit(look, "w", pick):
+        return str(wardrobe[pick] or "")
+    # 妻子／女友無明確挑裝：優先情色衣櫃第一套
+    stage = str(ch.get("stage") or "").strip().lower()
+    if not stage and isinstance(ch.get("relationship"), dict):
+        stage = str(ch["relationship"].get("stage") or "").strip().lower()
+    if stage in ("wife", "girlfriend"):
+        erotic = look.get("eroticOutfits")
+        if isinstance(erotic, list):
+            for i, item in enumerate(erotic):
+                first = str(item or "").strip()
+                if first and _owns_outfit(look, "e", i):
+                    return first
+    career = str(look.get("career_outfit") or "").strip()
+    if career:
+        return career
+    if _has_owned(look):
+        return "白色 T 恤配三角褲"   # 新制：沒擁有的不穿，style 是衣櫃第一套（品味）不算
+    return str(look.get("style") or "")
+
+
+# 召喚重畫：同一個人（髮色、眼睛、身材、衣服規則不變），但不要每次都是同一張。
+_VARY_LOOKS = (
+    "different micro-expression, slight head tilt",
+    "different expression, eyes looking a little aside",
+    "soft different smile, hair strands shifted",
+    "slightly different blush, chin a little lower",
+    "calmer expression, slightly different lighting on the face",
+    "mildly annoyed expression",
+    "sleepy eyes, slightly different hair arrangement",
+    "small surprised expression",
+)
+
+
+def _apply_image_vary(opts: dict) -> dict:
+    """vary=1：換 seed、補一點表情差異；有姿勢參考時把 denoise 推高一點，避免照抄上一張。"""
+    if not isinstance(opts, dict) or not opts.get("vary"):
+        return opts
+    out = dict(opts)
+    seed = int(out.get("seed") or 0) or (secrets.randbelow(2**31 - 1) or 1)
+    out["seed"] = seed
+    bit = _VARY_LOOKS[seed % len(_VARY_LOOKS)]
+    extra = str(out.get("extra") or "").strip()
+    if bit not in extra:
+        out["extra"] = ", ".join(x for x in (extra, bit) if x)
+    prompt = str(out.get("prompt") or "").strip()
+    if prompt and bit not in prompt:
+        out["prompt"] = prompt + ", " + bit
+    denoise = float(out.get("pose_denoise") or 0)
+    if denoise > 0:
+        out["pose_denoise"] = min(0.82, denoise + 0.12 + (seed % 7) * 0.015)
+    out["_vary_line"] = (
+        "VARIATION: draw a new picture of the same woman, not a copy of an earlier result. "
+        "Keep her hair color, eye color, body type, outfit rules, and the required pose or action. "
+        "Keep the requested framing and crop. Leave a flat solid-color margin around her; "
+        "do not zoom in, do not widen the shot, and do not change the background. "
+        f"Change expression and small details only: {bit}. "
+        "Do not repeat the same face angle and the same expression."
+    )
+    return out
+
+
+def _identity_anchor(ch: dict) -> dict:
+    look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
+    seed = "|".join(str(look.get(k) or "") for k in ("hair", "eyes", "build", "bust", "style"))
+    seed += "|" + str(ch.get("name") or "")
+    h = hashlib.sha1(seed.encode("utf-8")).digest()
+    worn = _outfit_of(ch)
+    a = {
+        "skin": _SKIN_TONES[h[0] % len(_SKIN_TONES)],
+        "palette": _PALETTES[h[1] % len(_PALETTES)],
+        # 同一位妹子固定同一個 seed:三連拍才會是同一張臉,重生也還是同一個人
+        # (plan-v4「同 DNA(traits + seed)維持長相一致」)
+        "seed": int.from_bytes(h[2:6], "big") % (2**31 - 1) or 1,
+        # 年齡:新人設由 girl_gen 抽。舊存檔沒這欄,用雜湊補一個固定值——
+        # 不給年齡模型畫出來的年紀會漂,同一個人每次都不同歲數。
+        "age": look.get("age") or (sdtags.AGE_MIN + h[6] % (sdtags.AGE_MAX - sdtags.AGE_MIN + 1)),
+        "height_cm": look.get("height_cm") or "",
+        "hair": look.get("hair") or "",
+        "hair_color": look.get("hair_color") or "",
+        "eyes": look.get("eyes") or "",
+        "face": look.get("face") or "",
+        "mouth": look.get("mouth") or "",
+        "build": look.get("build") or "",
+        "bust": look.get("bust") or "、".join(x for x in (look.get("cup"), look.get("breast_shape")) if x),
+        "cup": look.get("cup") or "",
+        "breast_shape": look.get("breast_shape") or "",
+        "areola": look.get("areola") or "",
+        "nipple": look.get("nipple") or "",
+        "labia_size": look.get("labia_size") or "",
+        "clitoris_size": look.get("clitoris_size") or "",
+        "labia_color": look.get("labia_color") or "",
+        "pubic_hair": look.get("pubic_hair") or "",
+        "eye_color": look.get("eye_color") or "",
+        "style": look.get("style") or "",
+        "outfit": worn,
+        # 生涯服裝自己就是一整套配色(護士服白的、巫女服紅白),再疊一組隨機
+        # 配色只會打架;個人衣櫃那邊才用得上調色盤。
+        "outfit_career": bool(worn) and worn == str(look.get("career_outfit") or ""),
+        "feature": look.get("feature") or "",
+    }
+    # 特殊屬性說了算:抽到「巨乳」就不能同時寫 B 罩杯,兩句都寫只會得到一張
+    # 兩邊都不像的圖。中文這條路的做法是把一般欄位的中文整個換掉(tag 那條
+    # 走 sdtags.build_prompt 的同一份判定)。
+    for key, name in sdtags.overridden_fields(ch).items():
+        if key in a:
+            a[key] = name
+    return a
+
+
+def _seg_lines(seg: str, a: dict, ch: dict, *, dressed: bool) -> tuple[str, str]:
+    """回 (特徵, 取景)。特徵只列這一段真的要畫的東西,照抄抽卡原文,不改寫不擴寫。"""
+    if seg == "head":
+        # 臉分五軸(臉型/眼/嘴/髮型/髮色)+瞳色:只寫「大眼睛、長直髮」時每張臉都不一樣
+        bits = [a["face"], a["eyes"], a.get("eye_color") or "", a["mouth"],
+                "、".join(x for x in (a["hair_color"], a["hair"]) if x), a["feature"]]
+        # 表情用原型(「傲嬌」「活潑開朗」這種短詞)。tone 是講說話方式的整句話,
+        # 塞進生圖 prompt 只是雜訊——畫圖看不見她愛加「呢」「呀」。
+        pers = ch.get("personality") or []
+        mood = ch.get("archetype") or (pers[0] if isinstance(pers, list) and pers else "")
+        if mood:
+            bits.append(f"表情{mood}")
+        return "、".join(x for x in bits if x), "臉部特寫,髮頂到鎖骨"
+    if seg == "bust":
+        bust = sdtags.clothed_bust_zh(a["bust"]) if dressed else a["bust"]
+        bits = [bust, a["build"], a["skin"]]
+        if not dressed:
+            bits.insert(1, a.get("areola") or "")
+            bits.insert(2, a.get("nipple") or "")
+        if dressed and a["outfit"]:
+            bits.append(f"{a['outfit']}的上半身"
+                        + ("" if a["outfit_career"] else f",{a['palette']}"))
+            bits.append("衣服穿好、胸部被衣服完全蓋住")
+        return "、".join(x for x in bits if x), "下巴到腰,不畫臉"
+    bits = [a["build"], f"{a['height_cm']}cm" if a["height_cm"] else "", a["skin"]]
+    if not dressed:
+        bits += [a.get("labia_size") or "", a.get("clitoris_size") or "", a.get("labia_color") or "", a.get("pubic_hair") or ""]
+    if dressed and a["outfit"]:
+        bits.append(f"{a['outfit']}的下半身,含鞋襪")
+    return "、".join(x for x in bits if x), "腰到腳"
+
+
+def _seg_prompt_body(
+    *,
+    part: str,
+    rating: str,
+    style: str,
+    character: dict | None = None,
+    name: str = "",
+    personality: str = "",
+    backstory: str = "",
+    extra: str = "",
+) -> str:
+    """一段生圖 = Danbooru tag 一行。中文池子字串先查表再送,不寫英文句子。"""
+    part = (part or "bust0").lower()
+    if part not in IMG_PARTS:
+        part = "bust0"
+    dressed = part in IMG_SEG_PARTS
+    ch = _fill_manual_fields(character, name, personality, backstory)
+    worn = _outfit_of(ch)
+    if worn:
+        ch["_worn_outfit"] = worn
+    tags, _unknown = sdtags.part_tag_line(ch, part, dressed=dressed, art_style=style)
+    if extra.strip():
+        extra_pos, _neg = sdtags.split_pos_neg_tags(extra)
+        if extra_pos:
+            tags = sdtags.flatten_tags(tags, extra_pos)
+    return tags
+
+
+def _wrap_part_prompt(body: str, *, out_path: Path, ref_path: Path | None = None) -> str:
+    """把可編輯的 body 包成真正送出去的 prompt:前面補存檔路徑,後面補參考圖。"""
+    lines = ["用 image_gen 產一張圖,存成:" + str(out_path), "", body.strip()]
+    if ref_path is not None:
+        lines.append(f"參考 {ref_path}:同一個人,臉、膚色、身形照這張,把衣服畫上去")
+    return "\n".join(lines) + "\n"
+
+
+def _is_oral_strip(pos: str) -> bool:
+    el = (pos or "").lower()
+    return any(k in el for k in ("fellatio", "oral", "deepthroat", "girl mouth", "glans against girl lips"))
+
+
+def _merge_oral_identity(body: str, character: dict | None) -> str:
+    """口交特寫把人設臉／髮／嘴疊進 prompt。已有的 tag flatten 去重。"""
+    if not character or not isinstance(character, dict):
+        return body
+    pos, neg = sdtags.split_pos_neg_tags(body)
+    if not _is_oral_strip(pos):
+        return body
+    ident, _ = sdtags.appearance_en_head(character)
+    merged = sdtags.flatten_tags(ident, pos)
+    if neg:
+        return merged + ", NO " + neg.replace(",", ", NO ")
+    return merged
+
+
+def _sex_strip_camera(pos: str) -> str:
+    """口交看嘴與臉；性器特寫不畫陰莖；其餘是腹部交合特寫。"""
+    el = (pos or "").lower()
+    if _is_oral_strip(pos):
+        return "Single camera: close-up of mouth and penis. Her face and lips in frame."
+    has_pussy = any(k in el for k in ("pussy", "labia", "vulva", "clitoris"))
+    has_penis = any(k in el for k in ("penis", "glans", "shaft"))
+    if has_pussy and not has_penis:
+        return "Single camera: close-up of vulva and labia. Faces out of frame. No penis."
+    return "Single camera: close-up of both abdomens, focusing on penis and labia. Faces out of frame."
+
+
+def _wrap_sex_strip_prompt(
+    body: str, *, out_path: Path, style: str = "anime", extra_neg: str = "",
+    pose_path: Path | None = None, vary_line: str = "",
+) -> str:
+    """做愛局部單幀。口交的人設臉／髮已由 _merge_oral_identity 疊進 body。"""
+    style_txt = _STYLE_MAP.get((style or "anime").lower(), _STYLE_MAP["anime"])
+    pos, from_en = sdtags.split_pos_neg_tags(body)
+    neg = ", ".join(x for x in (from_en, extra_neg) if x)
+    do_not = f"\nDo NOT draw: {neg}\n" if neg else ""
+    vary_block = f"\n{vary_line.strip()}\n" if str(vary_line or "").strip() else ""
+    if pose_path is not None:
+        return f"""Generate ONE image. Use image_edit. Save to:
+{out_path}
+
+You MUST use the image_edit tool.
+PRIMARY image (skeleton / paint sketch — composition lock):
+{pose_path}
+
+Keep the same camera, crop, and body arrangement as this sketch.
+This is a stick-figure / MS Paint skeleton: follow the lines for pose and insertion depth.
+Paint a finished illustration over it. Do NOT leave the stick figure or pencil lines visible.
+Solid black background. No text, no numbers, no captions, no watermarks.
+
+Draw this (tags, not Chinese, not sentences):
+{pos}
+
+Style: {style_txt}
+High resolution.{do_not}{vary_block}
+"""
+    cam = _sex_strip_camera(pos)
+    return f"""Generate ONE image. Use image_gen. Save to:
+{out_path}
+
+You MUST use the image_gen tool (do NOT draw with Python/code).
+Use aspect_ratio "3:2" (wide close-up).
+
+This is one still from a 4-frame sex animation, not a comic, not a sprite sheet.
+{cam}
+Solid black background. No text, no numbers, no captions, no watermarks, no extra panels.
+
+Draw this (tags, not Chinese, not sentences):
+{pos}
+
+Style: {style_txt}
+High resolution.{do_not}{vary_block}
+"""
+
+
+def _stage_ref_in_work(src: Path | None, work: Path, stem: str) -> Path | None:
+    """把參考圖拷進 grok 工作目錄,沙箱比較找得到。"""
+    if src is None or not src.is_file() or src.stat().st_size <= 0:
+        return None
+    ext = src.suffix.lower() if src.suffix.lower() in _POSE_EXTS else ".png"
+    dest = work / f"{stem}{ext}"
+    try:
+        dest.write_bytes(src.read_bytes())
+    except OSError:
+        return src
+    return dest
+
+
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    """寫到 path.suffix.buff 再 replace 正式檔（省空間、原子覆寫）。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    buff = path.with_suffix(path.suffix + ".buff")
+    try:
+        buff.write_bytes(data)
+        buff.replace(path)
+    finally:
+        if buff.exists():
+            try:
+                buff.unlink()
+            except OSError:
+                pass
+
+
+async def _run_grok_image(
+    model: str,
+    *,
+    framing: str,
+    rating: str,
+    style: str,
+    character: dict | None = None,
+    name: str = "",
+    personality: str = "",
+    backstory: str = "",
+    extra: str = "",
+    part: str = "",
+    ref: str = "",
+    pose_ref: str = "",
+    prompt_body: str = "",
+    do_cutout: bool = False,
+    char_id: str = "",
+    shot: str = "",
+    card_id: str = "",
+    scene_kind: str = "",
+    vary_line: str = "",
+) -> tuple[str, str | None]:
+    """Grok Build + image_gen。成功回 (url_path, None)。
+    part 給值(head0/bust0/lower0 或 head/bust/lower)= 只畫那一段;留空 = 舊行為的整張圖。
+    ref = 第一輪同段那張的 /assets/testword/… URL,第二輪拿它當參考圖。
+    pose_ref = 姿勢／構圖／骨架參考圖。
+    do_cutout=True：半身／立繪去背（平背景 + cutout）。
+    有 char_id+shot／card_id 時落到 portraits（覆寫）；否則 testword 實驗圖。"""
+    part = (part or "").lower()
+    dest_opts = {
+        "shot": shot, "char_id": char_id, "card_id": card_id,
+        "scene_kind": scene_kind, "part": part,
+    }
+    out_dir, url_dir, fname = _dest_for_image(dest_opts)
+    abs_out = out_dir / fname
+    # 工作目錄放空沙箱,產圖後搬到 assets
+    work = GROK_CWD / f"img-{uuid.uuid4().hex[:12]}"
+    work.mkdir(parents=True, exist_ok=True)
+    # 讓 agent 先寫進 work,再 copy 到 abs_out(路徑寫死在 prompt)
+    target = abs_out  # absolute path in prompt
+    shot_l = (shot or "").strip().lower()
+    use_pose = bool(pose_ref) and (
+        not shot_l
+        or comfy.is_tease_shot(shot_l)
+        or comfy.is_solo_pose_shot(shot_l)
+        or comfy.is_standee_shot(shot_l)
+        or str(scene_kind or "").lower() == "sex_strip"
+    )
+    id_local = _stage_ref_in_work(_resolve_ref_image(ref), work, "identity")
+    pose_local = _stage_ref_in_work(
+        _resolve_ref_image(pose_ref) if use_pose else None, work, "pose"
+    )
+    staged = {p.resolve() for p in (id_local, pose_local) if p is not None}
+    # 去背：extra 補平背景提示
+    extra_use = (extra or "").strip()
+    green = do_cutout and comfy.is_green_portrait_shot(shot_l) and str(scene_kind or "").lower() != "script"
+    if green:
+        extra_use = (extra_use + ", solid flat pure green (#00FF00) chroma-key background, green screen, "
+                     "no scenery, no floor, no shadow").strip(", ")
+    elif do_cutout and "simple background" not in extra_use.lower():
+        extra_use = (extra_use + ", plain solid color background, simple background, no scenery").strip(", ")
+    if part in IMG_PARTS:
+        # prompt_body 有值 = 使用者在 testword 改過的版本,原樣送出(只補存檔路徑/參考圖)
+        body = prompt_body.strip() or _seg_prompt_body(
+            part=part, rating=rating, style=style,
+            character=character,
+            name=name, personality=personality, backstory=backstory, extra=extra_use,
+        )
+        prompt = _wrap_part_prompt(body, out_path=target, ref_path=id_local)
+    elif str(scene_kind or "").lower() == "sex_strip":
+        body = prompt_body.strip() or extra_use
+        if not body:
+            return "", "做愛局部動畫要有 prompt"
+        body = _merge_oral_identity(body, character)
+        _, extra_neg = sdtags.split_pos_neg_tags(extra_use)
+        prompt = _wrap_sex_strip_prompt(
+            body, out_path=target, style=style, extra_neg=extra_neg,
+            pose_path=pose_local, vary_line=vary_line,
+        )
+    else:
+        # 出卡場景：可帶半身立繪 ref 鎖同一張臉；tease 可再帶姿勢圖鎖構圖
+        prompt = _build_girl_image_prompt(
+            framing=framing, rating=rating, style=style,
+            character=character,
+            name=name, personality=personality, backstory=backstory, extra=extra_use,
+            out_path=target,
+            ref_path=id_local,
+            pose_path=pose_local,
+            scene_kind=scene_kind,
+            garment=comfy.undress_garment(shot_l),
+            solo=comfy.is_solo_pose_shot(shot_l),
+            vary_line=vary_line,
+        )
+    text, err = await _run_grok_cli(
+        prompt,
+        model=model or "grok-4.5",
+        cwd=work,
+        timeout=GROK_IMG_TIMEOUT,
+        max_turns=GROK_IMG_MAX_TURNS,
+        tools=_GROK_IMG_TOOLS,
+        always_approve=True,
+        rules="產一張圖存到指定路徑,不要產別的檔。",
+    )
+    # 找產物:目標路徑 / work 下最新圖
+    found: Path | None = None
+    if target.is_file() and target.stat().st_size > 0:
+        found = target
+    else:
+        cands = [
+            p for p in work.rglob("*")
+            if p.is_file()
+            and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
+            and p.resolve() not in staged
+        ]
+        cands.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        if cands:
+            try:
+                _atomic_write_bytes(abs_out, cands[0].read_bytes())
+                found = abs_out
+            except Exception as e:
+                return "", f"搬移圖片失敗:{e}"
+    try:
+        shutil.rmtree(work, ignore_errors=True)
+    except Exception:
+        pass
+    if found and found.is_file() and found.stat().st_size > 0:
+        if green and cutout.AVAILABLE:
+            ck = await _green_key_portrait(found)
+            if ck is not None:
+                fname = ck.name
+        elif do_cutout and cutout.AVAILABLE:
+            try:
+                spec = comfy.portrait_shot_spec(shot_l) if shot_l else None
+                border_min = float((spec or {}).get("border_min") or cutout.BORDER_MIN)
+                changed, why = await asyncio.to_thread(
+                    cutout.cut_background, found,
+                    cutout.TOLERANCE, border_min, cutout.DILATE)
+                _note_cut(found.name, changed, why)
+            except Exception as e:
+                _note_cut(found.name, False, f"cutout err:{e}")
+        ver = f"?v={int(time.time())}" if out_dir == PORTRAIT_DIR else ""
+        return f"{url_dir}/{fname}{ver}", None
+    msg = err or (text[:300] if text else "未產生圖片檔")
+    return "", f"生圖失敗:{msg}"
+
+
+async def _green_key_portrait(raw: Path) -> Path | None:
+    """主程式立繪綠幕去背：原圖不動，複製成 <stem>_ck.png 再色鍵。
+    成功＝有摳掉、而且四邊綠 ≥ 50%（同換妻 /api/swap 重新去背的判準）→ 回 _ck 路徑；否則刪 _ck、回 None（交原圖）。"""
+    ck = raw.with_name(f"{raw.stem}_ck.png")
+    try:
+        ck.unlink(missing_ok=True)   # 舊的 _ck 是上一張圖的，不能留
+        if not cutout.AVAILABLE:
+            _note_cut(raw.name, False, "沒裝 Pillow（綠幕）")
+            return None
+        shutil.copyfile(raw, ck)
+        changed, why, out = await asyncio.to_thread(cutout.chroma_key, ck)
+        ok = bool(changed) and (cutout.LAST_CHROMA.get("border_green") or 0) >= 0.5
+        _note_cut(raw.name, ok, why if ok else f"綠幕沒摳成、交原圖：{why}")
+        if ok:
+            return out
+    except Exception as e:
+        _note_cut(raw.name, False, f"綠幕 err:{e}")
+    ck.unlink(missing_ok=True)
+    return None
+
+
+# ---- 去背紀錄:摳不掉的原因要看得見 ----
+# 去背是生圖之後的背景步驟,失敗時只會靜靜留著白底——玩家看到的是「還是白的」,
+# 卻沒有任何地方講為什麼(沒裝 Pillow?模型畫了場景?角色跟背景同色?)。
+# 留最近幾筆給設定頁與 testword 讀,問題當場看得到,不必去翻伺服器 log。
+_CUT_LOG: list[dict] = []
+_CUT_LOG_MAX = 30
+
+
+def _note_cut(name: str, changed: bool, why: str) -> None:
+    _CUT_LOG.append({"name": name, "changed": bool(changed), "why": why, "t": time.time()})
+    del _CUT_LOG[:-_CUT_LOG_MAX]
+    print(f"[去背] {name}:{why}", flush=True)
+
+
+class CutIn(BaseModel):
+    """對已經生好的圖重摳一次。調容差、或先前沒裝 Pillow 補裝之後,
+    不必重生一張(那要再燒一次 GPU),直接對現有檔案再跑一遍。"""
+    url: str                                  # /assets/portraits/… 或 /assets/testword/…
+    tol: int = 0                              # 0 = cutout.TOLERANCE
+    border_min: float = 0                     # 0 = 依檔名猜構圖(head 放寬),猜不到用預設
+    dilate: int = -1                          # -1 = cutout.DILATE
+    mode: str = ""                            # "chroma" = 綠幕色鍵（換妻咖啡廳立繪）；空 = 原本的白底去背
+
+
+def _asset_path(url: str) -> Path | None:
+    """把 /assets/xxx/yyy.png 換成本機路徑。認 portraits / testword / pose_refs,
+    取 basename 擋路徑穿越。"""
+    u = (url or "").strip().split("?")[0].split("#")[0]
+    if u.startswith("/assets/frame_packs/"):
+        return _resolve_ref_image(u)
+    for prefix, base in (
+        ("/assets/portraits/", PORTRAIT_DIR),
+        ("/assets/testword/", IMG_TEST_DIR),
+        ("/assets/pose_refs/", POSE_REF_DIR),
+    ):
+        if u.startswith(prefix):
+            p = base / Path(u).name
+            return p if p.is_file() else None
+    return None
+
+
+def _safe_token(s, n: int = 40) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "", str(s or ""))[:n]
+
+
+def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
+    """生圖落地。(out_dir, url_prefix, fname)
+
+    - shot + char_id → portraits/{id}_{shot}.png（覆寫；.buff 原子寫）
+    - char_id + card_id／scene_kind∈{card,watch,scene} → portraits/{id}_card_{tag}.png（覆寫）
+    - scene_kind=script／sex_strip／其餘 → testword/{stamp}.png（每次新檔，不與立繪同路徑）
+    """
+    shot = str(opts.get("shot") or "").lower()
+    char_id = _safe_token(opts.get("char_id"), 40)
+    card_id = _safe_token(opts.get("card_id"), 48)
+    scene_kind = str(opts.get("scene_kind") or "").strip().lower()
+    part = str(opts.get("part") or "").lower()
+    # 劇本／sex_strip 優先：就算誤帶 portrait shot 也不進 portraits/
+    if scene_kind in ("script", "sex_strip"):
+        IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+        fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
+        return IMG_TEST_DIR, "/assets/testword", fname
+    if comfy.portrait_shot_spec(shot) is not None and char_id:
+        PORTRAIT_DIR.mkdir(parents=True, exist_ok=True)
+        return PORTRAIT_DIR, "/assets/portraits", f"{char_id}_{shot}.png"
+    if char_id and (card_id or scene_kind in ("card", "watch", "scene")):
+        PORTRAIT_DIR.mkdir(parents=True, exist_ok=True)
+        tag = card_id or scene_kind or "scene"
+        return PORTRAIT_DIR, "/assets/portraits", f"{char_id}_card_{tag}.png"
+    IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+    fname = f"{stamp}_{part}.png" if part in IMG_PARTS else f"{stamp}.png"
+    return IMG_TEST_DIR, "/assets/testword", fname
+
+
+def _portrait_owner(stem: str) -> str:
+    """檔名 stem → 角色 id。{id}_half / {id}_card_{cardId}。"""
+    s = str(stem or "")
+    if s.lower().endswith("_ck"):
+        s = s[:-3]   # 綠幕去背另存的 <stem>_ck.png
+    if "_card_" in s:
+        return s.split("_card_", 1)[0]
+    low = s.lower()
+    mark = low.rfind("_undress_")
+    if mark > 0:
+        return s[:mark]
+    for suf in _SHOT_FILE_SUFS:
+        tail = "_" + suf
+        if low.endswith(tail):
+            return s[: -len(tail)]
+    return s
+
+
+def _dir_stats(d: Path) -> dict:
+    n, b = 0, 0
+    if d.is_dir():
+        for p in d.iterdir():
+            if p.is_file():
+                n += 1
+                try:
+                    b += p.stat().st_size
+                except OSError:
+                    pass
+    return {"count": n, "bytes": b}
+
+
+def _unlink_files(paths) -> tuple[int, int]:
+    n, b = 0, 0
+    for p in paths:
+        try:
+            if not p.is_file():
+                continue
+            sz = p.stat().st_size
+            p.unlink()
+            n += 1
+            b += sz
+        except OSError:
+            pass
+    return n, b
+
+
+def _live_ids_from_save() -> set[str]:
+    ids: set[str] = set()
+    try:
+        with db() as conn:
+            row = conn.execute("SELECT data FROM save WHERE id = 1").fetchone()
+        if not row:
+            return ids
+        data = json.loads(row[0])
+        for s in (data.get("succubi") or []):
+            if isinstance(s, dict):
+                tid = _safe_token(s.get("id"), 40)
+                if tid:
+                    ids.add(tid)
+    except Exception:
+        pass
+    return ids
+
+
+def _keep_urls_from_save() -> set[str]:
+    names: set[str] = set()
+    try:
+        with db() as conn:
+            row = conn.execute("SELECT data FROM save WHERE id = 1").fetchone()
+        if not row:
+            return names
+        data = json.loads(row[0])
+        girls = list(data.get("succubi") or [])
+        snap = (data.get("cardSession") or {}).get("girlSnap")
+        if isinstance(snap, dict):
+            girls.append(snap)
+        for s in girls:
+            if not isinstance(s, dict):
+                continue
+            if s.get("portrait"):
+                p = _asset_path(str(s.get("portrait")))
+                if p:
+                    names.add(p.name)
+            for u in (s.get("portraits") or {}).values():
+                p = _asset_path(str(u or ""))
+                if p:
+                    names.add(p.name)
+            for v in (s.get("cardCg") or {}).values():
+                if isinstance(v, dict) and v.get("url"):
+                    p = _asset_path(str(v.get("url")))
+                    if p:
+                        names.add(p.name)
+            # daydream sex_strip／劇本圖也落 testword；GC 必須保住引用中的檔
+            sex_anim = s.get("sexAnim") or {}
+            if isinstance(sex_anim, dict):
+                for rec in sex_anim.values():
+                    if not isinstance(rec, dict):
+                        continue
+                    for u in (rec.get("urls") or []):
+                        p = _asset_path(str(u or ""))
+                        if p:
+                            names.add(p.name)
+            script_art = s.get("scriptArt") or {}
+            if isinstance(script_art, dict):
+                for pack in script_art.values():
+                    if not isinstance(pack, dict):
+                        continue
+                    for rec in pack.values():
+                        if not isinstance(rec, dict):
+                            continue
+                        for u in (rec.get("urls") or []):
+                            p = _asset_path(str(u or ""))
+                            if p:
+                                names.add(p.name)
+        chain = (data.get("cardSession") or {}).get("sceneChainUrl")
+        p = _asset_path(str(chain or ""))
+        if p:
+            names.add(p.name)
+    except Exception:
+        pass
+    return names
+
+
+class PurgeGirlIn(BaseModel):
+    char_id: str
+    urls: list[str] = []
+
+
+class AssetGcIn(BaseModel):
+    keep_ids: list[str] = []
+    keep_urls: list[str] = []
+    prune_testword: bool = True
+    keep_testword_recent: int = 48
+    prune_grok_cwd: bool = True
+
+
+@app.get("/api/assets/stats")
+def asset_stats():
+    """磁碟上的生成圖用量（立繪 / testword 實驗 / grok 工作目錄）。"""
+    cwd_n, cwd_b = 0, 0
+    if GROK_CWD.is_dir():
+        for p in GROK_CWD.rglob("*"):
+            if p.is_file():
+                cwd_n += 1
+                try:
+                    cwd_b += p.stat().st_size
+                except OSError:
+                    pass
+    return {
+        "portraits": _dir_stats(PORTRAIT_DIR),
+        "testword": _dir_stats(IMG_TEST_DIR),
+        "pose_refs": _dir_stats(POSE_REF_DIR),
+        "grok_cwd": {"count": cwd_n, "bytes": cwd_b},
+        "live_ids": sorted(_live_ids_from_save()),
+    }
+
+
+@app.post("/api/assets/purge-girl")
+def purge_girl_assets(body: PurgeGirlIn):
+    """妹子離開名冊：刪她的立繪三連拍、出卡覆寫檔、以及仍指到 testword 的舊 URL。"""
+    cid = _safe_token(body.char_id, 40)
+    if not cid:
+        raise HTTPException(400, "需要 char_id")
+    doomed: list[Path] = []
+    if PORTRAIT_DIR.is_dir():
+        for p in PORTRAIT_DIR.iterdir():
+            if p.is_file() and _portrait_owner(p.stem) == cid:
+                doomed.append(p)
+    for u in body.urls or []:
+        p = _asset_path(u)
+        if p and p not in doomed:
+            doomed.append(p)
+    n, b = _unlink_files(doomed)
+    return {"ok": True, "char_id": cid, "deleted": n, "bytes": b}
+
+
+@app.post("/api/assets/gc")
+def assets_gc(body: AssetGcIn):
+    """清孤兒圖：名冊裡沒有的妹子立繪、沒人引用的出卡圖、過舊的 testword 實驗圖。"""
+    keep_ids = {_safe_token(x, 40) for x in (body.keep_ids or []) if _safe_token(x, 40)}
+    keep_ids |= _live_ids_from_save()
+    keep_names = set(_keep_urls_from_save())
+    for u in body.keep_urls or []:
+        p = _asset_path(u)
+        if p:
+            keep_names.add(p.name)
+
+    doomed: list[Path] = []
+    if PORTRAIT_DIR.is_dir():
+        for p in PORTRAIT_DIR.iterdir():
+            if not p.is_file():
+                continue
+            owner = _portrait_owner(p.stem)
+            if owner in _ASSET_KEEP_PREFIXES:
+                continue
+            if p.name in keep_names:
+                continue
+            if owner not in keep_ids:
+                doomed.append(p)
+
+    testword_pruned = 0
+    if body.prune_testword and IMG_TEST_DIR.is_dir():
+        tw = [
+            p for p in IMG_TEST_DIR.iterdir()
+            if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
+        ]
+        tw.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        keep_n = max(0, int(body.keep_testword_recent or 0))
+        recent = {p.name for p in tw[:keep_n]}
+        for p in tw:
+            if p.name in keep_names or p.name in recent:
+                continue
+            doomed.append(p)
+            testword_pruned += 1
+
+    n, b = _unlink_files(doomed)
+
+    cwd_n, cwd_b = 0, 0
+    if body.prune_grok_cwd and GROK_CWD.is_dir():
+        cutoff = time.time() - 3600
+        for child in list(GROK_CWD.iterdir()):
+            try:
+                if not child.is_dir():
+                    continue
+                mt = child.stat().st_mtime
+                if mt > cutoff:
+                    continue
+                sz = sum(f.stat().st_size for f in child.rglob("*") if f.is_file())
+                shutil.rmtree(child, ignore_errors=True)
+                cwd_n += 1
+                cwd_b += sz
+            except OSError:
+                pass
+
+    return {
+        "ok": True,
+        "deleted": n,
+        "bytes": b,
+        "testwordPruned": testword_pruned,
+        "grokCwdRemoved": cwd_n,
+        "grokCwdBytes": cwd_b,
+        "keptIds": len(keep_ids),
+        "after": {
+            "portraits": _dir_stats(PORTRAIT_DIR),
+            "testword": _dir_stats(IMG_TEST_DIR),
+        },
+    }
+
+
+@app.get("/api/cutout")
+def cutout_status():
+    """去背能不能用、最近幾張的結果。設定頁與 testword 都讀這支。"""
+    return {
+        "available": cutout.AVAILABLE,
+        "hint": "" if cutout.AVAILABLE else
+                "沒裝 Pillow,立繪不會去背(白底疊在遊戲畫面上)。"
+                "修法:pip install -r server/requirements.txt,然後重開伺服器。",
+        "tolerance": cutout.TOLERANCE,
+        "border_min": cutout.BORDER_MIN,
+        "dilate": cutout.DILATE,
+        "recent": list(reversed(_CUT_LOG)),
+    }
+
+
+def _portrait_shot_from_stem(stem: str) -> str:
+    """檔名 stem → shot 鍵。支援 half_xi 等（不可只 rsplit 最後一段，會變成 xi）。"""
+    s = (stem or "").lower()
+    mark = s.rfind("_undress_")
+    if mark >= 0 and comfy.is_undress_shot(s[mark + 1:]):
+        return s[mark + 1:]
+    for k in _SHOT_FILE_SUFS:
+        if s.endswith("_" + k) or s == k:
+            return k
+    return s.rsplit("_", 1)[-1] if "_" in s else s
+
+
+@app.post("/api/cutout")
+async def cutout_run(body: CutIn):
+    """對已存在的圖重跑去背。回 {changed, why}。"""
+    p = _asset_path(body.url)
+    if p is None:
+        raise HTTPException(404, "找不到這張圖(只認 /assets/portraits/ 與 /assets/testword/)")
+    if body.mode == "chroma":
+        # 2026-10-23 不再就地覆寫原圖（以前原圖被摳過、「原圖」連結與重新去背拿到的都是已摳的）：另存 <stem>_ck.png
+        ck = p.with_name(f"{p.stem}_ck.png")
+        if p.stem.endswith("_ck"):
+            ck = p
+        else:
+            shutil.copyfile(p, ck)
+        changed, why, out = await asyncio.to_thread(cutout.chroma_key, ck)
+        if not changed and ck != p:
+            ck.unlink(missing_ok=True); out = p
+        _note_cut(out.name, changed, why)
+        base = body.url.split("?")[0]
+        if out != p:
+            base = base.rsplit("/", 1)[0] + "/" + out.name
+        return {"changed": changed, "why": why, "url": f"{base}?v={int(time.time())}", **cutout.LAST_CHROMA}
+    shot_key = _portrait_shot_from_stem(p.stem)
+    bmin = body.border_min or (
+        (comfy.portrait_shot_spec(shot_key) or {}).get("border_min")
+        or cutout.BORDER_MIN)
+    changed, why = await asyncio.to_thread(
+        cutout.cut_background, p,
+        int(body.tol) or cutout.TOLERANCE, float(bmin),
+        cutout.DILATE if body.dilate < 0 else int(body.dilate))
+    _note_cut(p.name, changed, why)
+    # 覆蓋了同一個檔名,URL 帶版本號瀏覽器才會重抓
+    return {"changed": changed, "why": why, "url": f"{body.url.split('?')[0]}?v={int(time.time())}"}
+
+
+# ---- ComfyUI 本機生圖(Windows 那台,與 Ollama 共用一張卡,換班見 comfy.lease)----
+
+
+def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
+    """人設 → 英文 SD tag。膚色/配色沿用 Grok 那條路的確定性雜湊,
+    同一個人設不管走哪條路都推出同一組,兩邊的圖才是同一個人。
+
+    出卡場景：identity tags 在前、extra（visualEn + AI 動作）在後；
+    scene=True 時去掉 solo / looking at viewer，才畫得出互動。
+    scene_kind=script：強制互動場景、動作 early、禁立繪 flat_bg。
+    """
+    ch = opts.get("character") if isinstance(opts.get("character"), dict) else None
+    extra_pos, extra_from_en = sdtags.split_pos_neg_tags(str(opts.get("extra") or ""))
+    if extra_pos:
+        opts = {**opts, "extra": extra_pos}
+    if extra_from_en and not str(opts.get("visual_neg") or "").strip():
+        opts = {**opts, "visual_neg": extra_from_en}
+    elif extra_from_en:
+        opts = {**opts, "visual_neg": ", ".join(x for x in (opts.get("visual_neg"), extra_from_en) if x)}
+    anchor = _identity_anchor(ch or {})
+    part = str(opts.get("part") or "").lower()
+    # 三連拍的 shot 直接就是取景(head/half/full),蓋掉 framing
+    shot = str(opts.get("shot") or "").lower()
+    # half_xi 等情緒半身用 half 取景；感應調戲看前端 framing（half／full／lower）
+    if comfy.is_tease_shot(shot):
+        fr = str(opts.get("framing") or "half")
+    else:
+        fr = "half" if shot.startswith("half") else shot
+    if fr not in sdtags.FRAMING:
+        fr = str(opts.get("framing") or "half")
+    script_mode = str(opts.get("scene_kind") or "").strip().lower() == "script"
+    # 有 extra 且 lock_identity（出卡）→ 場景模式；純立繪仍 solo
+    # 感應調戲一律當雙人場景（玩家 POV），不要畫成 solo 立繪
+    # 劇本預產：即使 extra 弱／中文，也強制場景，勿畫成證件照半身
+    scene = bool(opts.get("lock_identity")) and bool(str(opts.get("extra") or "").strip())
+    if comfy.is_tease_shot(shot):
+        scene = True
+    # 做愛開場圖＝脫衣全身立繪那一族：solo 立繪構圖（1girl, solo），就算舊前端帶 lock_identity 也不當雙人場景
+    if comfy.is_solo_pose_shot(shot):
+        scene = False
+    if script_mode:
+        scene = True
+        extra = str(opts.get("extra") or "").strip()
+        boost: list[str] = []
+        # 劇本一律補雙人；弱／中文 slot 否則會變成 solo upper-body 立繪
+        if not sdtags.is_multi_scene(extra):
+            boost.extend(["1man", "1girl"])
+        # 背後第三人稱已寫 from behind 且無 pov → 不硬塞 first-person
+        third = sdtags.extra_has_key(extra, ("from behind", "back focus", "third person"))
+        if not sdtags.is_pov_cam(extra) and not third:
+            boost.extend(["from his pov", "male hands"])
+        elif not sdtags.is_pov_cam(extra) and sdtags.is_oral_act(extra):
+            boost.extend(["from his pov"])
+        if boost:
+            extra = ", ".join(boost) + (", " + extra if extra else "")
+            opts = {**opts, "extra": extra}
+        # 劇本禁止證件照構圖詞；half 仍用 upper body，但不寫 looking at viewer（scene 已擋）
+        if fr == "head":
+            fr = "half"
+    want_flat = False if script_mode else (
+        bool((comfy.portrait_shot_spec(shot) or {}).get("cutout")) or bool(opts.get("flat_bg"))
+    )
+    return sdtags.build_prompt(
+        ch,
+        # 要去背的那幾張,prompt 先要一塊平背景(見 cutout.py)。
+        # 三連拍照規格走;testword 那條由勾選決定。劇本永不 flat_bg。
+        flat_bg=want_flat,
+        # 主程式三張立繪：綠幕（同換妻雙人圖），劇本不走
+        green_bg=want_flat and not script_mode and comfy.is_green_portrait_shot(shot),
+        part=part,
+        framing=fr,
+        rating=str(opts.get("rating") or "sfw"),
+        art_style=str(opts.get("style") or "anime"),
+        skin=anchor["skin"],
+        palette=anchor["palette"],
+        age=anchor["age"],
+        # 生涯服裝優先(職業給的那身);玩家挑過個人衣櫃才換
+        outfit=str(opts.get("outfit") or "") or anchor["outfit"],
+        # 第一輪(head0/bust0/lower0)不寫服裝,跟中文那版同一個取捨
+        dressed=part not in IMG_BARE_PARTS,
+        stage=str(opts.get("stage") or (ch or {}).get("stage") or ""),
+        extra=str(opts.get("extra") or ""),
+        scene=scene,
+        action_first=script_mode,
+        garment=comfy.undress_garment(shot),
+        # 做愛開場圖：失神（翻白眼／失焦）、後背臉朝另一邊 → 不補立繪預設的 looking at viewer
+        # auto_gaze 有明確傳（換妻裸體趴著 false）就照傳；沒傳才沿用舊規則
+        auto_gaze=(not comfy.is_solo_pose_shot(shot)) if opts.get("auto_gaze") is None else bool(opts.get("auto_gaze")),
+    )
+
+
+_PAIR_Q_PONY = "score_9, score_8_up, score_7_up, source_anime"
+_PAIR_Q_ILL = "masterpiece, best quality, amazing quality, very aesthetic, absurdres"
+# 2026-10-23 綠幕加強：共同段加權；BREAK 每段各自編碼，綠底只寫在第一段會被稀釋 → 他／她兩段開頭（人數 tag 後）再寫一次
+_PAIR_BG = "(green background:1.3), (simple background:1.2), green screen, chroma key"
+_PAIR_BG_REPEAT = "(green background:1.2)"
+
+
+def _pair_tags(*chunks) -> list[str]:
+    """逗號 tag 串去重（保留順序），去掉 not／no 開頭的否定詞（SD 讀不懂）。"""
+    seen: set[str] = set()
+    out: list[str] = []
+    for ch in chunks:
+        items = ch if isinstance(ch, list) else str(ch or "").split(",")
+        for t in items:
+            t = str(t).strip()
+            if not t or re.match(r"(?i)^(not|no)\s", t) or t.lower() in seen:
+                continue
+            seen.add(t.lower())
+            out.append(t)
+    return out
+
+
+def _pair_her_identity(ch: dict, clothes: str, body) -> list[str]:
+    """2026-10-23 雙人圖 1girl 段的長相：跟單人立繪同一份來源（sdtags.appearance_en_parts＋_identity_anchor 的年齡／膚色、特殊屬性）。
+    年齡、臉型、眼型、瞳色、嘴、髮色、髮型、特徵、特殊屬性、胸（罩杯＋胸型，依穿衣程度）、身材（含孕肚）、身高、膚色。
+    全裸／半脫才加私密部位：乳暈、乳頭、陰毛、陰唇色（各取第一個 tag，最多 4 個；陰唇只有畫到 pussy 的動作）。"""
+    if not ch:
+        return []
+    anchor = _identity_anchor(ch)
+    exposed = clothes in ("nude", "partial")
+    parts, _unk = sdtags.appearance_en_parts(ch, stage="stranger" if not exposed else "", garment="nude" if exposed else "", clothed=not exposed)
+    if not parts.get("bust"):
+        # 舊／簡寫存檔只有字母（"D"）：跟單人立繪的 girlInfo 同一張表，不另外發明
+        cl = str((ch.get("look") or {}).get("cup") or "").strip()[:1].upper()
+        parts["bust"] = {"A": "flat chest", "B": "small breasts", "C": "medium breasts", "D": "large breasts", "E": "huge breasts", "F": "huge breasts"}.get(cl) or ("gigantic breasts" if "G" <= cl <= "Z" else "")
+    sp_over = sdtags.resolve_specials(ch)[1]
+    skin = "" if "skin" in sp_over else sdtags.SKIN.get(anchor["skin"], "")
+    out = [sdtags.age_tags(anchor["age"])] + [parts.get(k, "") for k in
+           ("face", "eyes", "eye_color", "mouth", "hair_color", "hair", "feature", "specials", "bust", "build", "height")] + [skin]
+    if exposed:
+        bt = ",".join(body) if isinstance(body, list) else str(body or "")
+        keys = ["areola", "nipple", "pubic_hair"] + (["labia_color"] if "pussy" in bt else [])
+        if clothes == "partial":
+            keys = [k for k in keys if (k in ("areola", "nipple") and ("nipple" in bt or "breast" in bt)) or (k in ("pubic_hair", "labia_color") and "pussy" in bt)]
+        out += [str(parts.get(k) or "").split(",")[0].strip() for k in keys]
+    seen: set[str] = set()
+    # 2026-10-26 Al：她的長相／部位一律加 her 前綴，避免跟男方特徵混
+    tags = [t for t in (x.strip() for x in ",".join(out).split(",")) if t and not (t.lower() in seen or seen.add(t.lower()))]
+    return [t if re.match(r"(?i)^her\b", t) else f"her {t}" for t in tags]
+
+
+def _pair_prompts(opts: dict) -> tuple[str, str]:
+    """2026-10-23 換妻雙人圖預設 prompt（Al 核可的結構）：共同段 BREAK 她 BREAK 他（2026-10-25 起女子在前）。
+    品質 tag 看模型名（pony 一套、其他 Illustrious／NoobAI 一套，不混）；她的長相從人設翻（身材、髮色髮型、瞳色、1 個特徵、膚色）；
+    2026-10-26：她的段加 her 前綴；男子模型由前端 pairCkpt 傳入。
+    不寫 not／no、不寫自然語句、不加畫風／配色。負向＝前端給的原樣（去重）。"""
+    pr = opts.get("pair") if isinstance(opts.get("pair"), dict) else {}
+    ch = opts.get("character") if isinstance(opts.get("character"), dict) else {}
+    look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
+    q = _PAIR_Q_PONY if "pony" in str(opts.get("ckpt") or "").lower() else _PAIR_Q_ILL
+    tr = lambda table, k: table.get(str(look.get(k) or "").strip(), "")
+    her_cl = str(pr.get("herClothes") or "").strip()
+    if not her_cl and pr.get("dressed"):
+        worn = str(opts.get("outfit") or "").strip() or _outfit_of(ch)
+        her_cl = sdtags.outfit_en(worn) or "casual clothes"
+    # dressed 由伺服器翻的衣服也可能沒 her 前綴
+    if her_cl:
+        her_cl = ", ".join(t if re.match(r"(?i)^her\b", t) else f"her {t}" for t in _pair_tags(her_cl))
+    # 2026-10-25 Al：女子在前、男子在後；2026-10-26 她／他描述已帶 her／male
+    shared = _pair_tags(q, "1girl, 1boy, hetero", str(pr.get("framing") or ""), "from side" if pr.get("fromSide", True) else "", pr.get("shared") or [], _PAIR_BG)
+    male = _pair_tags("1boy", _PAIR_BG_REPEAT, pr.get("male") or [])
+    female = _pair_tags("1girl, adult", _PAIR_BG_REPEAT, _pair_her_identity(ch, str(pr.get("clothes") or ("dressed" if pr.get("dressed") else "nude")), pr.get("body") or []),
+                        pr.get("herPose") or [], pr.get("expr") or [], her_cl, pr.get("body") or [])
+    pos = "\nBREAK\n".join(", ".join(x) for x in (shared, female, male))
+    neg = ", ".join(_pair_tags(str(opts.get("negative") or "")))
+    return pos, neg
+
+
+def _lead_merge(lead: str, prompt: str) -> str:
+    """換妻雙人圖：lead 壓在最前面；2026-10-22 Al：人數寫成有空格的「1 man／1 girl」，伺服器自己加的 1man／1girl 也跟著換（只有帶 lead 的雙人圖）。"""
+    lead = (lead or "").strip()
+    if not lead or not prompt:
+        return prompt
+    swap_n = {"1man": "1 man", "1girl": "1 girl", "1boy": "1 boy"}
+    seen_t: set[str] = set()
+    toks: list[str] = []
+    for tk in f"{lead}, {prompt}".split(","):
+        tk = tk.strip()
+        tk = swap_n.get(tk.lower(), tk)
+        if tk and tk.lower() not in seen_t:
+            seen_t.add(tk.lower())
+            toks.append(tk)
+    return ", ".join(toks)
+
+
+async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
+    """ComfyUI 生一張。落地規則見 `_dest_for_image`。"""
+    opts = _apply_image_vary(opts)
+    out_dir, url_dir, fname = _dest_for_image(opts)
+    shot = str(opts.get("shot") or "").lower()
+    if comfy.portrait_shot_spec(shot) is None:
+        shot = ""
+
+    extra_pos, extra_from_en = sdtags.split_pos_neg_tags(str(opts.get("extra") or ""))
+    opts["extra"] = extra_pos
+    extra_neg = ", ".join(
+        x for x in (
+            extra_from_en,
+            str(opts.get("visual_neg") or "").strip(),
+            str(opts.get("negative") or "").strip(),
+        ) if x
+    )
+    # 脫光的景不能在負向寫 nude／naked，否則衣服會被畫回去。
+    garment = comfy.undress_garment(shot)
+    if garment in ("nude", "cover", "coverlow"):
+        banned = {"nude", "naked", "completely naked", "completely nude", "topless", "bottomless"}
+        extra_neg = ", ".join(
+            t.strip() for t in extra_neg.split(",")
+            if t.strip() and t.strip().lower() not in banned
+        )
+    if garment:
+        extra_neg = ", ".join(x for x in (extra_neg, sdtags.HEADWEAR_NEGATIVE) if x)
+
+    wf = opts.get("workflow") if isinstance(opts.get("workflow"), dict) else None
+    # prompt 有值 = 使用者在 testword 改過的版本,原樣送出;留空才由人設現組
+    prompt = str(opts.get("prompt") or "").strip()
+    sex_strip = str(opts.get("scene_kind") or "").lower() == "sex_strip"
+    pair_neg = None
+    if not prompt and wf is None and isinstance(opts.get("pair"), dict):
+        prompt, pair_neg = _pair_prompts(opts)
+    if not prompt and wf is None:
+        if sex_strip:
+            prompt = str(opts.get("extra") or "").strip()
+        elif opts.get("portrait_break"):
+            # 換妻立繪：身份先組完（extra 清空才不會被當成雙人場面），構圖／表情／綠幕用 BREAK 另編。
+            # 接在同一段後面會被 CLIP 截掉，綠幕和姿勢都畫不出來。
+            pose = str(opts.get("extra") or "").strip()
+            prompt, _ = _comfy_prompt_for({**opts, "extra": ""})
+            if pose:
+                prompt = f"{prompt} BREAK {pose}"
+            prompt = _lead_merge(str(opts.get("lead") or ""), prompt)
+        else:
+            prompt, _ = _comfy_prompt_for(opts)
+            # 換妻雙人圖：人數／第三人稱 tags 要壓在最前面（模型對開頭權重最高），不然常畫成 POV、男人不見
+            prompt = _lead_merge(str(opts.get("lead") or ""), prompt)
+    if not prompt and wf is None:
+        return "", "ComfyUI 生圖要有 prompt 或整份 workflow"
+    if sex_strip and prompt:
+        ppos, pneg = sdtags.split_pos_neg_tags(prompt)
+        prompt = ppos
+        extra_neg = ", ".join(x for x in (extra_neg, pneg) if x)
+        prompt = _merge_oral_identity(prompt, opts.get("character") if isinstance(opts.get("character"), dict) else None)
+
+    # 三連拍／情緒半身表：尺寸照 plan-v4，seed 取人設雜湊（同 seed = 同一張臉）。
+    # tease_*／standee_*／出卡：客戶端沒帶 seed 時每次隨機；否則重產幾乎同一張。
+    # （pose_ref + 低 denoise 仍會偏相似，但主因是固定 identity seed。）
+    spec = comfy.portrait_shot_spec(shot) or {}
+    gen_w, gen_h = spec.get("gen", (0, 0))
+    out_w, out_h = spec.get("out", (0, 0))
+    seed = int(opts.get("seed") or 0)
+    if not seed:
+        if comfy.is_identity_sheet_shot(shot):
+            # head/half/half_*/full：固定人設 seed（召喚臉鎖）
+            seed = _identity_anchor(opts.get("character") or {})["seed"]
+        else:
+            # tease_* / standee_* / 出卡 / testword：每次隨機
+            seed = secrets.randbelow(2**31 - 1) or 1
+
+    # 三連拍照規格去背;testword 那條(沒有 shot)由前端的勾選決定,
+    # 想在測試台上看去背效果不必先跑一次召喚。
+    want_cut = bool(spec.get("cutout")) if shot else bool(opts.get("cutout"))
+    # 畫崩／魔物／幼態 + 卡面 visualNeg／從 visualEn 拆出的 NO xxx。不塞 nude 預設詞。
+    green = bool(shot) and want_cut and comfy.is_green_portrait_shot(shot) \
+        and str(opts.get("scene_kind") or "").strip().lower() != "script"
+    negative = sdtags.negative_for(want_cut, clothed=False, extra_neg=extra_neg, green_bg=green)
+    raw_prompt = bool(opts.get("raw_prompt"))
+    if raw_prompt:
+        # 換妻雙人圖「用這些設定重生」：正負向都原樣（使用者在測試台改的就是最後送出去的）
+        negative = str(opts.get("negative") or "").strip()
+    elif pair_neg is not None:
+        negative = pair_neg
+
+    pose_src = _resolve_ref_image(str(opts.get("pose_ref") or ""))
+    # 只讓 tease／standee／脫衣場面吃 pose_ref；召喚三連拍／情緒半身表不鎖姿勢參考
+    if pose_src is not None and shot and not (
+        comfy.is_tease_shot(shot) or comfy.is_standee_shot(shot) or comfy.is_undress_family_shot(shot)
+    ):
+        pose_src = None
+    if pose_src is not None:
+        gen_w, gen_h = _pose_gen_size(pose_src, gen_w or comfy.DEFAULT_WIDTH, gen_h or comfy.DEFAULT_HEIGHT)
+        out_w, out_h = 0, 0
+        # 動作裁切圖固定正方形；勿被 pose 參考圖長寬比蓋成直圖
+        if comfy.is_action_crop_shot(shot):
+            sq = (comfy.PORTRAIT_SHOTS.get(shot) or {}).get("gen") or (1024, 1024)
+            gen_w, gen_h = int(sq[0]), int(sq[1])
+        elif comfy.is_undress_family_shot(shot):
+            box = spec.get("gen") or (832, 1216)
+            gen_w, gen_h = int(box[0]), int(box[1])
+    name, err = await comfy.generate(
+        positive=prompt,
+        negative=negative,
+        ckpt=str(opts.get("ckpt") or ""),
+        save_to=out_dir / fname,
+        width=gen_w or int(opts.get("width") or comfy.DEFAULT_WIDTH),
+        height=gen_h or int(opts.get("height") or comfy.DEFAULT_HEIGHT),
+        out_width=out_w or int(opts.get("out_width") or 0),
+        out_height=out_h or int(opts.get("out_height") or 0),
+        steps=int(opts.get("steps") or comfy.DEFAULT_STEPS),
+        cfg=float(opts.get("cfg") or comfy.DEFAULT_CFG),
+        seed=seed,
+        workflow=wf,
+        base=str(opts.get("comfy_url") or ""),
+        pose_image=pose_src,
+        denoise=float(opts.get("pose_denoise") or 0),
+        # 雙人圖測試台：denoise 0.05–1.0 照使用者給的，不夾到 0.25–0.90
+        denoise_range=(0.05, 1.0) if raw_prompt else None,
+    )
+    if err:
+        return "", err
+    # 2026-10-22 換妻雙人圖：把實際送 ComfyUI 的 prompt／參數存一份在圖旁邊（<圖>.json），/api/swap/cafe/image 登記時帶進紀錄
+    if str(opts.get("lead") or "").strip() or opts.get("pair") or raw_prompt:
+        try:
+            meta = {
+                "positive": prompt, "negative": negative, "ckpt": str(opts.get("ckpt") or ""), "seed": seed,
+                "steps": int(opts.get("steps") or comfy.DEFAULT_STEPS), "cfg": float(opts.get("cfg") or comfy.DEFAULT_CFG),
+                "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER, "clip_skip": comfy.DEFAULT_CLIP_SKIP,
+                "width": gen_w or int(opts.get("width") or comfy.DEFAULT_WIDTH), "height": gen_h or int(opts.get("height") or comfy.DEFAULT_HEIGHT),
+                "denoise": float(opts.get("pose_denoise") or 0) if pose_src is not None else None,
+                "pose_ref": str(opts.get("pose_ref") or "") if pose_src is not None else "",
+                "at": int(time.time()),
+                "raw": raw_prompt,
+            }
+            (out_dir / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+    # 立繪要疊在遊戲畫面上,背景得摳掉。摳不乾淨時 cut_background 會原圖不動
+    # ——寧可留著背景,也不要交出一張被啃過的破圖。
+    if want_cut and green:
+        # 綠幕：原圖留著，摳好的另存 _ck.png；摳不成就交原圖
+        ck = await _green_key_portrait(out_dir / fname)
+        if ck is not None:
+            name = ck.name
+    elif want_cut:
+        changed, why = await asyncio.to_thread(
+            cutout.cut_background, out_dir / fname,
+            cutout.TOLERANCE, float(spec.get("border_min") or cutout.BORDER_MIN))
+        _note_cut(fname, changed, why)
+    # 立繪／出卡覆寫同一個檔名,URL 帶版本號才不會被瀏覽器拿舊的
+    ver = f"?v={int(time.time())}" if out_dir == PORTRAIT_DIR else ""
+    return f"{url_dir}/{name}{ver}", None
+
+
+@app.get("/api/comfy/status")
+async def comfy_status(url: str = ""):
+    """ComfyUI 通不通、有哪些 checkpoint、GPU 現在歸誰用。
+
+    url 給值 = 測那台並記住(RP5 與 GPU 主機不同機,localhost 在 RP5 上
+    指的是 RP5 自己,所以位址一定要能從設定頁帶進來)。"""
+    base = (url or "").strip().rstrip("/")
+    stats = await comfy.system_stats(base)
+    if base and stats is not None:
+        comfy.note_comfy_url(base)   # 連得上才記,免得打錯字把好位址蓋掉
+    devices = (stats or {}).get("devices") or []
+    # 四種 loader 的清單都回:checkpoints 有東西卻生不出圖時,要靠 text_encoders /
+    # vaes 有沒有料才判斷得出那個檔是不是「只含主模型」的單件檔
+    models = await comfy.model_lists(base) if stats else {}
+    return {
+        "ok": stats is not None,
+        "url": base or comfy.comfy_url(),
+        "checkpoints": models.get("checkpoints", []),
+        "models": models,
+        # 試過確定載不動的(只含主模型、沒有 CLIP)——設定頁把它們標出來
+        "bad_checkpoints": comfy.bad_ckpts(),
+        "vram": [
+            {
+                "name": d.get("name"),
+                "total_mb": round((d.get("vram_total") or 0) / 1048576),
+                "free_mb": round((d.get("vram_free") or 0) / 1048576),
+            }
+            for d in devices
+        ],
+        "gpu": comfy.gpu_state(),
+    }
+
+
+async def _stream_ollama_chat(endpoint: str, body: dict, on_token) -> str | None:
+    """Ollama NDJSON 串流;on_token(chunk) 累積。回傳 error 字串或 None。
+
+    所有 Ollama 流量都經過這裡,所以 GPU 換班鎖也開在這 —— 進來前先把
+    ComfyUI 的 checkpoint 卸出 VRAM,免得 Ollama 載模型時撞到 OOM。
+    連續聊天只有第一句會付換班成本(lease 是黏著的)。
+    整段再套一層逾時:半開的連線不會觸發 httpx 讀取逾時,會把鎖佔到重開機。
+    """
+    comfy.note_ollama_endpoint(endpoint)
+    try:
+        return await asyncio.wait_for(_stream_ollama_chat_locked(endpoint, body, on_token), timeout=180)
+    except asyncio.TimeoutError:
+        return "Ollama 逾時，沒有產生文字"
+
+
+async def _stream_ollama_chat_locked(endpoint: str, body: dict, on_token) -> str | None:
+    async with comfy.lease("llm"):
+        try:
+            timeout = httpx.Timeout(connect=5, read=120, write=30, pool=5)
+            async with httpx.AsyncClient(timeout=timeout) as c:
+                async with c.stream("POST", endpoint.rstrip("/") + "/api/chat", json=body) as r:
+                    async for line in r.aiter_lines():
+                        if not line.strip():
+                            continue
+                        o = json.loads(line)
+                        if o.get("error"):
+                            return str(o["error"])
+                        message = o.get("message") or {}
+                        # 0.34 起思考放在 thinking，台詞在 content。沒關思考時 content 會一直是空的。
+                        piece = message.get("content") or ""
+                        if piece:
+                            on_token(piece)
+                        if o.get("done"):
+                            break
+        except Exception as e:
+            return f"Ollama 連線失敗({type(e).__name__})"
+    return None
 
 
 @app.get("/api/llm/tags")
-async def llm_tags(endpoint: str = "http://localhost:11434"):
+async def llm_tags(endpoint: str = "http://localhost:11434", provider: str = "ollama"):
+    provider = _normalize_provider(provider)
+    if provider == "grok-build":
+        if not _grok_build_available():
+            raise HTTPException(
+                status_code=502,
+                detail=f"找不到 Grok Build 指令 `{GROK_BIN}`。安裝 grok CLI 或設 GROK_BIN。",
+            )
+        names = list(GROK_DEFAULT_MODELS)
+        cache = Path.home() / ".grok" / "models_cache.json"
+        try:
+            if cache.is_file():
+                data = json.loads(cache.read_text(encoding="utf-8"))
+                models = data.get("models") or {}
+                if isinstance(models, dict) and models:
+                    names = list(models.keys())
+        except Exception:
+            pass
+        return {"models": [{"name": n} for n in names], "configured": True, "engine": "grok-build"}
     try:
         async with httpx.AsyncClient(timeout=5) as c:
             r = await c.get(endpoint.rstrip("/") + "/api/tags")
@@ -167,63 +3010,94 @@ async def llm_tags(endpoint: str = "http://localhost:11434"):
         raise HTTPException(status_code=502, detail="Ollama 連不上")
 
 
-# 聊天改為「job 制」:手機發起後由 RP5 對 Ollama 收完整回覆,
-# 手機只輪詢結果——切去別的 app、網路斷線都不會中斷生成。
-# 伺服器僅逐字累積原文,不檢視、不修改(8.1)。
+# Ollama → chat_job 串流;Grok Build → 訂單整包(chat_job 也相容)
 
 CHAT_JOBS: dict[str, dict] = {}
 
 
-async def _run_chat_job(job_id: str, endpoint: str, body: dict):
+async def _run_chat_job(job_id: str, provider: str, endpoint: str, body: dict):
     job = CHAT_JOBS[job_id]
+    acc_parts: list[str] = []
+
+    def on_token(piece: str):
+        acc_parts.append(piece)
+        job["text"] = "".join(acc_parts)
+
+    # 一定要收尾標 done:沒標的話代工佇列會一直讓路給這個「還在跑」的前景 job
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
-            async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
-                async for line in r.aiter_lines():
-                    if not line.strip():
-                        continue
-                    o = json.loads(line)
-                    if o.get("error"):
-                        job["error"] = str(o["error"])
-                        break
-                    job["text"] += (o.get("message") or {}).get("content", "")
-                    if o.get("done"):
-                        break
-    except Exception as e:
+        if provider == "grok-build":
+            text, err = await _run_grok_build(
+                body.get("model") or "grok-4.5",
+                body.get("messages") or [],
+                body.get("options"),
+                on_partial=on_token,  # streaming-json 邊產邊推,前端輪詢看得到進度
+            )
+            if text:
+                job["text"] = text
+            if err and not text:
+                job["error"] = err
+        else:
+            ollama_body = _ollama_chat_body(
+                body.get("model"),
+                body.get("messages") or [],
+                body.get("options") or {},
+            )
+            err = await _stream_ollama_chat(endpoint, ollama_body, on_token)
+            if err and not job["text"]:
+                job["error"] = err
+        # 收尾剝思考塊（串流中途可能已含 <think>）
+        if job.get("text"):
+            job["text"] = _strip_thinking(job["text"])
+    except Exception as e:  # noqa: BLE001 — 例外也要讓佇列繼續跑
         if not job["text"]:
-            job["error"] = f"Ollama 連線失敗({type(e).__name__})"
-    job["done"] = True
+            job["error"] = str(e)[:500]
+    finally:
+        job["done"] = True
 
 
 @app.post("/api/llm/chat_job")
 async def create_chat_job(body: dict):
+    provider = _normalize_provider(body.pop("provider", None))
     endpoint = str(body.pop("endpoint", "http://localhost:11434")).rstrip("/")
-    body["stream"] = True
     now = time.time()
     for k in [k for k, v in CHAT_JOBS.items() if now - v["t"] > 600]:
         CHAT_JOBS.pop(k, None)
     job_id = uuid.uuid4().hex
     CHAT_JOBS[job_id] = {"text": "", "done": False, "error": None, "t": now}
-    asyncio.create_task(_run_chat_job(job_id, endpoint, body))
+    asyncio.create_task(_run_chat_job(job_id, provider, endpoint, body))
     return {"job_id": job_id}
 
 
-# 相容端點:舊版前端(未更新的 PWA)仍打這裡;內部走同一套 job
 @app.post("/api/llm/chat")
 async def llm_chat_compat(body: dict):
     from fastapi.responses import StreamingResponse
 
+    provider = _normalize_provider(body.pop("provider", None))
     endpoint = str(body.pop("endpoint", "http://localhost:11434")).rstrip("/")
     body["stream"] = True
 
     async def gen():
         try:
+            if provider == "grok-build":
+                text, err = await _run_grok_build(
+                    body.get("model") or "grok-4.5",
+                    body.get("messages") or [],
+                    body.get("options"),
+                )
+                if err and not text:
+                    yield json.dumps({"error": err}, ensure_ascii=False).encode() + b"\n"
+                else:
+                    yield json.dumps(
+                        {"message": {"role": "assistant", "content": text}, "done": True},
+                        ensure_ascii=False,
+                    ).encode() + b"\n"
+                return
             async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
                 async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
                     async for chunk in r.aiter_bytes():
                         yield chunk
         except httpx.HTTPError as e:
-            yield json.dumps({"error": f"Ollama 連線失敗({type(e).__name__})"}).encode() + b"\n"
+            yield json.dumps({"error": f"LLM 連線失敗({type(e).__name__})"}).encode() + b"\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
 
@@ -292,19 +3166,95 @@ def random_script(category: str):
     return {"id": r[0], "method": r[1], "body": r[2]}
 
 
-# ---- 代工生成佇列(手機下單/收貨;伺服器背景跑 Ollama)----
+# ---- 代工生成佇列(手機下單/收貨)----
+# endpoint 哨兵:
+#   grok-build / grok / xai → 文字 Grok Build
+#   grok-img → 生圖(Grok Build + image_gen)
+#   其餘 → Ollama URL
 
 
 class GenIn(BaseModel):
     key: str
-    endpoint: str
+    endpoint: str = "http://localhost:11434"
     model: str
-    messages: list
+    messages: list = []
     options: dict | None = None
+    provider: str | None = None  # "ollama" | "grok-build" | "grok-img"
     retry: bool = False  # True:若該 key 先前失敗,重新排隊
+    prio: int = 0  # 佇列優先序(大的先跑):玩家在等的回覆 > 開場白 > 背景素材
+
+
+class ImgGenIn(BaseModel):
+    """testword 妹子生圖下單。仍進 gen_tasks,endpoint=grok-img。
+    character = girl_gen.generateGirl() 完整結果(或存檔魅魔欄位),生圖以此為準。"""
+    key: str | None = None
+    model: str = "grok-4.5"
+    framing: str = "half"       # half | full(part 有值時忽略)
+    pair: dict | None = None    # 2026-10-23 換妻雙人圖：每段的 tag（_pair_prompts 組成 BREAK 三段），key 要 swap-pair: 開頭
+    raw_prompt: bool = False    # 2026-10-22 換妻雙人圖（key 開頭 swap-pair:）：prompt／negative 原樣送，伺服器一個字都不加
+    lead: str = ""              # 2026-10-22 換妻雙人圖：放在整段 prompt 最前面（例 (1girl, 1boy:1.3)），只有 Comfy 那條用
+    rating: str = "sfw"         # sfw | nsfw
+    style: str = "anime"        # anime | realistic | pixel
+    character: dict | None = None  # 完整人設(優先)
+    name: str = ""              # 無 character 時的簡填
+    personality: str = ""
+    backstory: str = ""
+    extra: str = ""
+    part: str = ""              # ""=整張;head0|bust0|lower0=第一輪;head|bust|lower=第二輪穿搭
+    ref: str = ""               # 參考圖 URL：分段第二輪用 testword；出卡鎖臉可用 /assets/portraits/…
+    pose_ref: str = ""          # 姿勢／構圖／骨架參考圖
+    pose_denoise: float = 0     # Comfy img2img；0 = 預設 0.40
+    prompt: str = ""            # 使用者在 testword 改過的 prompt(留空=伺服器依人設自己組)
+    # 指定這張圖穿哪一套。留空 = 由 character 決定(生涯服裝優先,見 _outfit_of)
+    outfit: str = ""
+    # testword 用:生完就去背(三連拍不看這欄,照 PORTRAIT_SHOTS 的規格走)。
+    # 想去背通常也要 flat_bg——沒有平背景可摳,三道閘門一定擋下來。
+    cutout: bool = False
+    flat_bg: bool = False
+    retry: bool = False
+    # provider: "grok-img"(雲端 Grok Build)| "comfy"(Windows 本機 ComfyUI)
+    provider: str = "grok-img"
+    # 以下只有 provider=comfy 會用到。ComfyUI 吃的是 SD tag,不是中文敘述。
+    negative: str = ""          # 留空 = comfy.DEFAULT_NEGATIVE
+    ckpt: str = ""              # 留空 = COMFY_CKPT,再空 = ComfyUI 清單第一個
+    # 以下 0 一律代表「沒指定」,交給 comfy.DEFAULT_* 決定——不要在這裡再寫一組
+    # 預設值,那會無聲蓋掉模型該用的參數(換模型時只改 comfy.py 一處)
+    width: int = 0              # 實際算圖尺寸(SDXL 給 832×1216 這種標準桶才不糊)
+    height: int = 0
+    out_width: int = 0          # 算完再縮到這個尺寸(立繪 192×288);0 = 不縮
+    out_height: int = 0
+    steps: int = 0
+    cfg: float = 0
+    seed: int = 0               # 0 = 隨機；有 shot 時 0→人設 seed。發呆刷新會傳新 seed 覆寫同檔
+    vary: bool = False          # 召喚重畫：換 seed、表情微差，不要每次同一張
+    # 出卡場景：lock_identity + extra 鎖人設 tags；seed 每次隨機（不可固定，否則每張同圖）
+    lock_identity: bool = False
+    portrait_break: bool = False  # 換妻立繪：人設組完後 BREAK 再接 extra（構圖／綠幕）
+    auto_gaze: bool | None = None  # None＝舊規則；False＝不要補 looking at viewer
+    comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
+    # 召喚三連拍:shot=head|half|full 且有 char_id → 存 assets/portraits/{char_id}_{shot}.png,
+    # 尺寸與 seed 由伺服器依規格決定(三張同 seed = 同一張臉)
+    shot: str = ""
+    char_id: str = ""
+    card_id: str = ""             # 出卡場景：覆寫 portraits/{id}_card_{cardId}.png
+    scene_kind: str = ""          # card | watch | scene（無 card_id 時當檔名標籤）
+    workflow: dict | None = None  # 整份 API 格式 workflow;給了就原樣送出,上面全部忽略
 
 
 GEN_WAKE = asyncio.Event()
+
+
+def _gen_endpoint_for(provider: str | None, endpoint: str) -> str:
+    ep = (endpoint or "").strip().lower()
+    p = (provider or "").strip().lower()
+    if p in ("comfy", "comfyui", "comfy-img") or ep in ("comfy", "comfy-img"):
+        return "comfy-img"
+    if p in ("grok-img", "img", "image") or ep in ("grok-img", "img"):
+        return "grok-img"
+    p2 = _normalize_provider(provider) if provider else None
+    if p2 == "grok-build" or ep in ("grok-build", "build", "grok", "xai"):
+        return "grok-build"
+    return (endpoint or "http://localhost:11434").rstrip("/")
 
 
 @app.post("/api/gen")
@@ -312,6 +3262,7 @@ def gen_submit(t: GenIn):
     """下單即查詢:同 key 重複下單無害,回傳當前狀態(done 時附結果)。
     先前失敗且 retry=True → 重新排隊(仍回報 error 讓手機計失敗次數)。"""
     now = time.time()
+    ep = _gen_endpoint_for(t.provider, t.endpoint)
     with db() as conn:
         row = conn.execute(
             "SELECT status, result, error FROM gen_tasks WHERE key = ?", (t.key,)
@@ -320,20 +3271,539 @@ def gen_submit(t: GenIn):
             status, result, error = row
             if status == "error" and t.retry:
                 conn.execute(
-                    "UPDATE gen_tasks SET status='pending', error=NULL, updated=? WHERE key=?",
-                    (now, t.key),
+                    "UPDATE gen_tasks SET status='pending', error=NULL, prio=?, updated=? WHERE key=?",
+                    (int(t.prio or 0), now, t.key),
                 )
                 GEN_WAKE.set()
+            elif status == "pending" and int(t.prio or 0) > 0:
+                # 同一單重下且標了優先(玩家在等)→ 就地插隊,不必等前面的背景素材
+                conn.execute(
+                    "UPDATE gen_tasks SET prio=MAX(prio, ?) WHERE key=?", (int(t.prio or 0), t.key)
+                )
             return {"key": t.key, "status": status, "result": result, "error": error}
         conn.execute(
-            "INSERT INTO gen_tasks (key, endpoint, model, messages, options, status, created, updated) "
-            "VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
-            (t.key, t.endpoint.rstrip("/"), t.model,
+            "INSERT INTO gen_tasks (key, endpoint, model, messages, options, status, prio, created, updated) "
+            "VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
+            (t.key, ep, t.model,
              json.dumps(t.messages, ensure_ascii=False),
-             json.dumps(t.options or {}, ensure_ascii=False), now, now),
+             json.dumps(t.options or {}, ensure_ascii=False), int(t.prio or 0), now, now),
         )
     GEN_WAKE.set()
     return {"key": t.key, "status": "pending", "result": None, "error": None}
+
+
+@app.post("/api/imggen")
+def imggen_submit(t: ImgGenIn):
+    """testword 生圖下單 → gen_tasks。result 為 /assets/testword/….png
+
+    provider=grok-img → 雲端 Grok Build;provider=comfy → Windows 本機 ComfyUI。
+    兩條路的產物存在同一個資料夾、同一套命名,相簿不必分開處理。
+    """
+    key, ep, opts = _imggen_opts(t)
+    body = GenIn(
+        key=key,
+        endpoint=ep,
+        provider=ep,
+        model=t.model or "grok-4.5",
+        messages=[],  # 參數在 options
+        options=opts,
+        retry=t.retry,
+    )
+    return gen_submit(body)
+
+
+def _imggen_opts(t: ImgGenIn) -> tuple[str, str, dict]:
+    """imggen_submit 的參數整理（2026-10-22 拆出來，換妻雙人圖的 prompt 預覽也用同一份）。"""
+    key = (t.key or "").strip() or f"img:{int(time.time() * 1000)}:{uuid.uuid4().hex[:8]}"
+    character = t.character if isinstance(t.character, dict) else None
+    outfit = (t.outfit or "").strip()
+    # Grok 那條不讀 outfit 欄，只看人設。有指定衣服就寫進這次任務的副本。
+    if outfit and isinstance(character, dict) and str(character.get("outfitName") or "").strip() != outfit:
+        character = dict(character)
+        character["outfitName"] = outfit
+    part = (t.part or "").lower()
+    ep = _gen_endpoint_for(t.provider, "")
+    # ref：分段第二輪、或出卡半身立繪鎖臉（portraits / testword）
+    ref_in = (t.ref or "").strip()
+    allow_ref = bool(part in IMG_SEG_PARTS) or bool(ref_in and t.lock_identity) or bool(
+        ref_in.startswith("/assets/portraits/") or ref_in.startswith("/assets/testword/")
+    )
+    pose_in = (t.pose_ref or "").strip()
+    allow_pose = bool(
+        pose_in.startswith("/assets/pose_refs/")
+        or pose_in.startswith("/assets/testword/")
+        or pose_in.startswith("/assets/portraits/")
+        or pose_in.startswith("/assets/frame_packs/")
+        # 換妻雙人圖：起始圖可以是換妻圖庫（雙人圖／她的半身立繪）
+        or (pose_in.startswith("/assets/swap_cafe/") and key.startswith("swap-pair:"))
+    )
+    shot_in = (t.shot or "").strip().lower()
+    sex_strip = (t.scene_kind or "").strip().lower() == "sex_strip"
+    script_kind = (t.scene_kind or "").strip().lower() == "script"
+    # 劇本／sex_strip 絕不能當 portrait shot（否則落到 portraits/ 變立繪路徑）
+    if script_kind or sex_strip:
+        shot_in = ""
+    # 立繪 shot 看規格（調戲場景 cutout=False）；沒登記才吃前端 cutout
+    portrait_cut = False if (script_kind or sex_strip) else comfy.shot_wants_cutout(shot_in, bool(t.cutout))
+    opts = {
+        "kind": "sex_strip" if sex_strip else "girl_image",
+        "part": part if part in IMG_PARTS else "",
+        "ref": ref_in if allow_ref else "",
+        "pose_ref": pose_in if allow_pose else "",
+        "pose_denoise": float(t.pose_denoise or 0),
+        "framing": (t.framing or "half").lower(),
+        "rating": (t.rating or "sfw").lower(),
+        "style": (t.style or "anime").lower(),
+        "character": character,
+        "name": t.name or "",
+        "personality": t.personality or "",
+        "backstory": t.backstory or "",
+        "extra": t.extra or "",
+        "negative": t.negative or "",
+        "outfit": t.outfit or "",
+        "stage": (
+            (t.character.get("stage") if isinstance(t.character, dict) else "")
+            or ""
+        ),
+        "lock_identity": bool(t.lock_identity),
+        "shot": shot_in,
+        "char_id": (t.char_id or "").strip(),
+        "card_id": (t.card_id or "").strip(),
+        "scene_kind": (t.scene_kind or "").strip(),
+        "cutout": False if script_kind else portrait_cut,
+        "flat_bg": False if script_kind else bool(t.flat_bg or portrait_cut),
+        # Comfy：prompt 有值才原樣送；出卡應留空，讓 _comfy_prompt_for 用人設 + extra
+        # Grok：整張圖不吃前端 prompt（只在分段 part、或做愛局部橫幅時吃）
+        "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip) else "",
+        "lead": (t.lead or "").strip()[:400],
+        "raw_prompt": bool(t.raw_prompt) and key.startswith("swap-pair:"),
+        "pair": t.pair if (isinstance(t.pair, dict) and key.startswith("swap-pair:")) else None,
+    }
+    if ep == "comfy-img":
+        # 出卡場景：下單時就寫入隨機 seed，避免 worker 用舊邏輯／固定人設 seed 出同圖
+        seed_in = int(t.seed or 0)
+        if not seed_in and not shot_in:
+            seed_in = secrets.randbelow(2**31 - 1) or 1
+        opts.update({
+            "negative": t.negative or "",
+            # 優先前端明確傳的 ckpt；空則用魅子自帶 comfyCkpt（避免 resolve 隨便挑清單第一個）
+            "ckpt": (t.ckpt or "").strip() or (
+                str((t.character or {}).get("comfyCkpt") or "").strip()
+                if isinstance(t.character, dict) else ""
+            ),
+            "width": int(t.width or 0),
+            "height": int(t.height or 0),
+            "out_width": int(t.out_width or 0),
+            "out_height": int(t.out_height or 0),
+            "steps": int(t.steps or 0),
+            "cfg": float(t.cfg or 0),
+            "seed": seed_in,
+        "vary": bool(t.vary),
+            "comfy_url": (t.comfy_url or "").strip(),
+            "workflow": t.workflow if isinstance(t.workflow, dict) else None,
+        })
+    return key, ep, opts
+
+
+class SummonQueueItemIn(BaseModel):
+    slot: dict = {}
+    body: dict = {}
+
+
+class SummonQueueIn(BaseModel):
+    girlId: str
+    mode: str = ""
+    items: list[SummonQueueItemIn] = []
+
+
+def _summon_queue_row(conn, qid: str):
+    return conn.execute(
+        "SELECT id, girl_id, mode, items, acked, created, updated FROM summon_queue WHERE id = ?",
+        (qid,),
+    ).fetchone()
+
+
+def _summon_queue_refresh(conn, row) -> dict:
+    try:
+        items = json.loads(row[3] or "[]")
+    except Exception:
+        items = []
+    if not isinstance(items, list):
+        items = []
+    changed = False
+    refreshed = []
+    for raw in items:
+        item = raw if isinstance(raw, dict) else {}
+        status = str(item.get("status") or "")
+        if item.get("key") and status not in ("done", "error"):
+            task = conn.execute(
+                "SELECT status, result, error FROM gen_tasks WHERE key = ?",
+                (item["key"],),
+            ).fetchone()
+            merged = summon_queue.merge_task(item, task)
+            if merged.get("status") != item.get("status") or merged.get("result") != item.get("result") or merged.get("error") != item.get("error"):
+                changed = True
+            item = merged
+        refreshed.append(item)
+    if changed:
+        conn.execute(
+            "UPDATE summon_queue SET items = ?, updated = ? WHERE id = ?",
+            (json.dumps(refreshed, ensure_ascii=False), time.time(), row[0]),
+        )
+    summary = summon_queue.summarize(refreshed)
+    return {
+        "id": row[0],
+        "girlId": row[1],
+        "mode": row[2] or "",
+        "acked": bool(row[4]),
+        **summary,
+        "items": [summon_queue.public_item(it) for it in refreshed],
+    }
+
+
+def _summon_queue_supersede(conn, girl_id: str) -> None:
+    """同一人又交一份新清單：還沒開始的舊單取消，避免兩份同時搶 GPU。"""
+    rows = conn.execute(
+        "SELECT id, items FROM summon_queue WHERE girl_id = ? AND acked = 0",
+        (girl_id,),
+    ).fetchall()
+    now = time.time()
+    for qid, raw in rows:
+        try:
+            items = json.loads(raw or "[]")
+        except Exception:
+            items = []
+        if not isinstance(items, list):
+            items = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            key = str(it.get("key") or "")
+            if not key or it.get("status") in ("done", "error"):
+                continue
+            conn.execute(
+                "UPDATE gen_tasks SET status='error', error=?, updated=? WHERE key=? AND status='pending'",
+                ("被新的召喚清單取代", now, key),
+            )
+            it["status"] = "error"
+            it["error"] = "被新的召喚清單取代"
+        conn.execute(
+            "UPDATE summon_queue SET items = ?, acked = 1, updated = ? WHERE id = ?",
+            (json.dumps(items, ensure_ascii=False), now, qid),
+        )
+
+
+@app.post("/api/summon-queue")
+def summon_queue_submit(body: SummonQueueIn):
+    """一次收下召喚要畫的全部圖，放進 gen_tasks。手機不必留著。"""
+    girl_id = (body.girlId or "").strip()
+    if not girl_id or len(girl_id) > 80:
+        raise HTTPException(status_code=400, detail="缺少魅子 id")
+    incoming = list(body.items or [])
+    if len(incoming) > 240:
+        raise HTTPException(status_code=400, detail="清單太長")
+    mode = (body.mode or "").strip()[:24]
+    items = []
+    for index, spec in enumerate(incoming):
+        slot = spec.slot if isinstance(spec.slot, dict) else {}
+        raw = dict(spec.body or {})
+        raw["vary"] = True
+        try:
+            seed = int(raw.get("seed") or 0)
+        except (TypeError, ValueError):
+            seed = 0
+        if seed <= 0:
+            raw["seed"] = secrets.randbelow(2**31 - 1) or 1
+        else:
+            raw["seed"] = seed
+        # 同一毫秒組出來的 key 會撞，gen_tasks 會把後面幾張吃成同一單。
+        base_key = str(raw.get("key") or "").strip()
+        uniq = uuid.uuid4().hex[:8]
+        key = f"{base_key}:{index}:{uniq}" if base_key else f"summon:{girl_id}:{index}:{uniq}"
+        raw["key"] = key
+        raw["retry"] = True
+        status, result, error = "pending", None, None
+        try:
+            submitted = imggen_submit(ImgGenIn(**raw))
+            status = submitted.get("status") or "pending"
+            result = submitted.get("result")
+            error = submitted.get("error")
+            key = submitted.get("key") or key
+        except Exception as ex:
+            status, error = "error", f"{type(ex).__name__}: {ex}"
+            print(f"[summon-queue] {girl_id} #{index} {error}", flush=True)
+        items.append({
+            "key": key,
+            "slot": slot,
+            "status": status,
+            "result": result,
+            "error": error,
+        })
+    qid = uuid.uuid4().hex[:16]
+    now = time.time()
+    with db() as conn:
+        _summon_queue_supersede(conn, girl_id)
+        conn.execute(
+            "INSERT INTO summon_queue (id, girl_id, mode, items, acked, created, updated) VALUES (?, ?, ?, ?, 0, ?, ?)",
+            (qid, girl_id, mode, json.dumps(items, ensure_ascii=False), now, now),
+        )
+        row = _summon_queue_row(conn, qid)
+        payload = _summon_queue_refresh(conn, row)
+    print(f"[summon-queue] {girl_id} {qid} {payload['total']} 張", flush=True)
+    return payload
+
+
+@app.get("/api/summon-queue")
+def summon_queue_latest(girl: str = ""):
+    """這個人還沒收下的那份清單（手機重新打開時用）。沒有就空。"""
+    girl_id = (girl or "").strip()
+    if not girl_id:
+        return {"id": "", "girlId": "", "mode": "", "acked": False, **summon_queue.summarize([]), "items": []}
+    with db() as conn:
+        row = conn.execute(
+            "SELECT id, girl_id, mode, items, acked, created, updated FROM summon_queue "
+            "WHERE girl_id = ? AND acked = 0 ORDER BY created DESC LIMIT 1",
+            (girl_id,),
+        ).fetchone()
+        if not row:
+            return {"id": "", "girlId": girl_id, "mode": "", "acked": False, **summon_queue.summarize([]), "items": []}
+        return _summon_queue_refresh(conn, row)
+
+
+@app.get("/api/summon-queue/{qid}")
+def summon_queue_status(qid: str):
+    with db() as conn:
+        row = _summon_queue_row(conn, qid)
+        if not row:
+            raise HTTPException(status_code=404, detail="清單不存在")
+        return _summon_queue_refresh(conn, row)
+
+
+@app.post("/api/summon-queue/{qid}/ack")
+def summon_queue_ack(qid: str):
+    with db() as conn:
+        cur = conn.execute(
+            "UPDATE summon_queue SET acked = 1, updated = ? WHERE id = ?",
+            (time.time(), qid),
+        )
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="清單不存在")
+    return {"ok": True}
+
+
+@app.get("/api/imggen/list")
+def imggen_list(limit: int = 24):
+    """列出 testword 最近生圖。"""
+    IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+    files = [
+        p for p in IMG_TEST_DIR.iterdir()
+        if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
+    ]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    out = []
+    for p in files[: max(1, min(limit, 100))]:
+        tail = p.stem.rsplit("_", 1)[-1].lower()
+        out.append({
+            "name": p.name,
+            "url": f"/assets/testword/{p.name}",
+            "size": p.stat().st_size,
+            "mtime": p.stat().st_mtime,
+            "part": tail if tail in IMG_PARTS else "",
+        })
+    return {"items": out}
+
+
+@app.post("/api/comfy/preview")
+def comfy_preview(t: ImgGenIn):
+    """不生圖,只把人設翻成 SD tag 給 testword 顯示/編輯。
+
+    整張一份 + 分段六份一起回,跟 /api/imggen/preview 同一個用法。
+    unknown 是查不到對照的欄位原文——池子被改過時會出現在這裡,
+    比圖畫錯了才回頭猜快得多。
+    """
+    base = {
+        "character": t.character if isinstance(t.character, dict) else None,
+        "framing": (t.framing or "half").lower(),
+        "rating": (t.rating or "sfw").lower(),
+        "style": (t.style or "anime").lower(),
+        "extra": t.extra or "",
+        "outfit": t.outfit or "",
+    }
+    whole, unknown = _comfy_prompt_for({**base, "part": ""})
+    parts = []
+    for p in IMG_PARTS:
+        text, unk = _comfy_prompt_for({**base, "part": p})
+        parts.append({"part": p, "label": PART_LABEL_ZH.get(p, p), "prompt": text})
+        unknown += unk
+    # 召喚三連拍:遊戲真正會送出去的那三份。跟上面的六段是不同的東西,
+    # 要看「遊戲到底送了什麼」就是看這裡。
+    shots = []
+    for k, spec in comfy.PORTRAIT_SHOTS.items():
+        text, unk = _comfy_prompt_for({**base, "part": "", "shot": k})
+        shots.append({
+            "shot": k,
+            "label": SHOT_LABEL_ZH.get(k, k),
+            "prompt": text,
+            "negative": sdtags.negative_for(bool(spec.get("cutout")), clothed=True),
+            "gen": list(spec["gen"]),
+            "out": list(spec["out"]),
+            "cutout": bool(spec.get("cutout")),
+        })
+        unknown += unk
+    return {
+        "whole": whole,
+        "parts": parts,
+        "shots": shots,
+        "negative": sdtags.negative_for(clothed=True),
+        "unknown": sorted(set(unknown)),
+        "defaults": {
+            "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT,
+            "steps": comfy.DEFAULT_STEPS, "cfg": comfy.DEFAULT_CFG,
+            "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER,
+            "clip_skip": comfy.DEFAULT_CLIP_SKIP,
+        },
+    }
+
+
+_LOOK_SRC_ZH = {
+    "age": "人設 look.age（年齡）",
+    "face": "人設 look.face（臉型）",
+    "eyes": "人設 look.eyes（眼睛）",
+    "eye_color": "人設 look.eye_color（瞳色）",
+    "mouth": "人設 look.mouth（嘴）",
+    "hair": "人設 look.hair（髮型）",
+    "hair_color": "人設 look.hair_color（髮色）",
+    "build": "人設 look.build（體型）",
+    "bust": "人設 look.bust（胸）",
+    "cup": "人設 look.cup（罩杯）",
+    "breast_shape": "人設 look.breast_shape（乳型）",
+    "areola": "人設 look.areola（乳暈）",
+    "nipple": "人設 look.nipple（乳頭）",
+    "labia_size": "人設 look.labia_size（陰唇大小）",
+    "clitoris_size": "人設 look.clitoris_size（陰蒂大小）",
+    "labia_color": "人設 look.labia_color（陰唇顏色）",
+    "pubic_hair": "人設 look.pubic_hair（陰毛）",
+    "feature": "人設 look.feature（特徵）",
+    "outfit": "人設服裝（生涯／衣櫃）",
+    "skin": "人設膚色（雜湊）",
+    "specials": "人設 specialTraits（特殊屬性）",
+    "height": "人設 look.height_cm（身高）",
+}
+
+
+def _img_prompt_trace(t: ImgGenIn) -> dict:
+    """把這次生圖會用到的每一段標上來處，給 testword 圖下展開。"""
+    ch = _fill_manual_fields(
+        t.character if isinstance(t.character, dict) else None,
+        t.name or "", t.personality or "", t.backstory or "",
+    )
+    worn = _outfit_of(ch)
+    if worn:
+        ch["_worn_outfit"] = worn
+    extra_pos, extra_from_en = sdtags.split_pos_neg_tags(t.extra or "")
+    extra = extra_pos
+    visual_neg = ", ".join(x for x in ((t.negative or "").strip(), extra_from_en) if x)
+    framing = (t.framing or "half").lower()
+    garment = comfy.undress_garment(str(t.shot or ""))
+    look_parts, unknown = sdtags.appearance_en_parts(
+        ch, stage=str(ch.get("stage") or ""), crop=framing, garment=garment,
+    )
+    brief = _character_visual_brief(ch, framing=framing, garment=garment)
+    rating = (t.rating or "sfw").lower()
+    style = (t.style or "anime").lower()
+    layers: list[dict] = []
+    if ch.get("name"):
+        layers.append({"id": "name", "src": "人設 name", "text": str(ch.get("name"))})
+    if ch.get("job"):
+        layers.append({"id": "job", "src": "人設 job", "text": str(ch.get("job"))})
+    if ch.get("tone"):
+        layers.append({"id": "tone", "src": "人設 tone", "text": str(ch.get("tone"))})
+    pers = ch.get("personality") or []
+    if isinstance(pers, list) and pers:
+        layers.append({"id": "personality", "src": "人設 personality", "text": "、".join(str(p) for p in pers[:6])})
+    elif pers:
+        layers.append({"id": "personality", "src": "人設 personality", "text": str(pers)})
+    genital_ok = (framing or "").lower() in ("lower", "xray") or sdtags.extra_has_key(
+        extra, ("pussy", "labia", "clitoris", "vulva", "vagina")
+    )
+    for k, tag in look_parts.items():
+        if tag and k != "clothing_level":
+            if k in ("labia_size", "clitoris_size", "labia_color", "pubic_hair") and not genital_ok:
+                continue
+            layers.append({"id": f"look_{k}", "src": _LOOK_SRC_ZH.get(k, f"人設 look.{k}"), "text": tag})
+    lv = look_parts.get("clothing_level") or sdtags.clothing_level(str(ch.get("stage") or ""), character=ch)
+    lv_zh = {"covered": "陌生／朋友·穿好只留罩杯", "shape": "女友·露胸型／乳溝", "erotic": "妻子·情色服裝（露膚／情趣，非全裸）", "exposed": "強制全裸含乳暈乳頭", "underwear": "脫衣·只穿內衣（胸罩與內褲）", "panties": "脫衣·只穿內褲（上身裸）", "nude": "脫衣·脫掉內褲（什麼都不穿）", "topoff": "脫衣·拉起上衣（胸罩與內褲還在）", "cover": "脫衣·裸體遮胸和下體", "coverlow": "脫衣·裸體只遮下面"}.get(lv, lv)
+    layers.append({"id": "clothing_level", "src": "衣服多寡（關係階段）", "text": lv_zh})
+    if extra:
+        layers.append({"id": "extra", "src": "正向 extra（運鏡＋玩家動作）", "text": extra})
+    if visual_neg:
+        layers.append({"id": "visual_neg", "src": "負向（visualNeg／從 visualEn 拆出的 NO）", "text": visual_neg})
+    layers.append({"id": "framing", "src": "設定 framing", "text": framing})
+    layers.append({"id": "style", "src": "設定 style", "text": style})
+    layers.append({"id": "rating", "src": "設定 rating", "text": rating})
+    if t.ref:
+        layers.append({"id": "ref", "src": "參考圖 ref", "text": t.ref})
+    if t.pose_ref:
+        layers.append({"id": "pose_ref", "src": "姿勢參考圖 pose_ref", "text": t.pose_ref})
+    if t.ckpt:
+        layers.append({"id": "ckpt", "src": "Comfy checkpoint", "text": t.ckpt})
+    extra_for_grok = extra
+    if visual_neg:
+        extra_for_grok = extra + ", " + ", ".join(
+            f"NO {x.strip()}" for x in visual_neg.split(",") if x.strip()
+        )
+    grok_full = _build_girl_image_prompt(
+        framing=framing, rating=rating, style=style,
+        character=ch, extra=extra_for_grok,
+        out_path=Path("/assets/testword/_preview.png"),
+        ref_path=_resolve_ref_image(t.ref or ""),
+        pose_path=_resolve_ref_image(t.pose_ref or ""),
+        scene_kind=str(t.scene_kind or ""),
+        garment=garment,
+        solo=comfy.is_solo_pose_shot((t.shot or "").strip().lower()),
+    )
+    comfy_full, unk2 = _comfy_prompt_for({
+        "character": ch, "framing": framing, "rating": rating,
+        "style": style, "extra": extra, "outfit": t.outfit or "",
+        "lock_identity": bool(t.lock_identity),
+        "flat_bg": bool(t.flat_bg),
+        "shot": (t.shot or "").strip().lower(),
+    })
+    unknown = list(dict.fromkeys([*unknown, *unk2]))
+    return {
+        "layers": layers,
+        "character_sheet": brief,
+        "grok_prompt": grok_full,
+        "comfy_prompt": comfy_full,
+        "comfy_negative": sdtags.negative_for(flat_bg=bool(t.flat_bg), clothed=False, extra_neg=visual_neg),
+        "unknown": unknown,
+        "provider": t.provider or "grok-img",
+    }
+
+
+@app.post("/api/imggen/preview")
+def imggen_preview(t: ImgGenIn):
+    """不生圖,只回這份人設組出來的 prompt(六段各一份)。
+    testword 拿它填編輯框:使用者改完再按各自的生成鍵,改過的版本原樣送回 /api/imggen。
+    另附 trace：整張場景圖每一段從哪裡來（卡牌測試器用）。"""
+    parts = [(t.part or "").lower()] if (t.part or "").lower() in IMG_PARTS else list(IMG_PARTS)
+    out = []
+    for p in parts:
+        out.append({
+            "part": p,
+            "label": PART_LABEL_ZH.get(p, p),
+            "ref_of": PART_REF_OF.get(p, ""),   # 第二輪要參考的是第一輪哪一段
+            # 可編輯的部分。存檔路徑與參考圖那兩行送出前才補,不放進編輯框
+            "prompt": _seg_prompt_body(
+                part=p,
+                rating=(t.rating or "sfw").lower(),
+                style=(t.style or "anime").lower(),
+                character=t.character if isinstance(t.character, dict) else None,
+                name=t.name or "", personality=t.personality or "",
+                backstory=t.backstory or "", extra=t.extra or "",
+            ),
+        })
+    return {"parts": out, "trace": _img_prompt_trace(t)}
 
 
 @app.delete("/api/gen")
@@ -344,21 +3814,34 @@ def gen_clear():
     return {"ok": True}
 
 
+# running 超過這個秒數 → 當 worker 重啟/卡死留下的孤兒,回收成 error,免得永遠佔位
+GEN_RUNNING_STALE_SEC = float(os.environ.get("GEN_RUNNING_STALE_SEC", "600"))
+
+
 async def _gen_worker():
     """一次跑一件;前景聊天 job 進行中就讓路(別讓背景生成搶慢即時對話)。"""
     while True:
         try:
-            if any(not j["done"] for j in CHAT_JOBS.values()):
-                await asyncio.sleep(1)
+            # 只讓路給「真的還在跑」的前景 job;卡住超過 2 分鐘的當作死掉,不再拖累佇列
+            now_ts = time.time()
+            if any(not j["done"] and now_ts - j["t"] < 120 for j in CHAT_JOBS.values()):
+                await asyncio.sleep(0.3)
                 continue
+            # 先清旗標再查表:查完之後進來的新單一定會再 set 一次,不會被清掉而空等 5 秒
+            GEN_WAKE.clear()
             with db() as conn:
                 conn.execute("DELETE FROM gen_tasks WHERE created < ?", (time.time() - 172800,))
+                # 回收孤兒 running(重啟後留下、或 stream 掛掉沒寫回)
+                conn.execute(
+                    "UPDATE gen_tasks SET status='error', error=?, updated=? "
+                    "WHERE status='running' AND updated < ?",
+                    ("逾時未完成(stale running)", now_ts, now_ts - GEN_RUNNING_STALE_SEC),
+                )
                 row = conn.execute(
                     "SELECT key, endpoint, model, messages, options FROM gen_tasks "
-                    "WHERE status='pending' ORDER BY created LIMIT 1"
+                    "WHERE status='pending' ORDER BY prio DESC, created LIMIT 1"
                 ).fetchone()
             if not row:
-                GEN_WAKE.clear()
                 try:
                     await asyncio.wait_for(GEN_WAKE.wait(), timeout=5)
                 except asyncio.TimeoutError:
@@ -369,24 +3852,68 @@ async def _gen_worker():
                 conn.execute("UPDATE gen_tasks SET status='running', updated=? WHERE key=?", (time.time(), key))
             text, err = "", None
             try:
-                body = {"model": model, "messages": json.loads(messages),
-                        "stream": True, "options": json.loads(options or "{}")}
-                async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=5)) as c:
-                    async with c.stream("POST", endpoint + "/api/chat", json=body) as r:
-                        async for line in r.aiter_lines():
-                            if not line.strip():
-                                continue
-                            o = json.loads(line)
-                            if o.get("error"):
-                                err = str(o["error"])
-                                break
-                            text += (o.get("message") or {}).get("content", "")
-                            if o.get("done"):
-                                break
-            except Exception as e:
-                err = f"Ollama 連線失敗({type(e).__name__})"
-            if not text.strip() and not err:
-                err = "空回應"
+                msgs = json.loads(messages)
+                opts = json.loads(options or "{}")
+                parts: list[str] = []
+
+                def on_token(piece: str):
+                    parts.append(piece)
+
+                if endpoint == "comfy-img":
+                    url, err = await _run_comfy_image(opts)
+                    text = url or ""
+                elif endpoint == "grok-img":
+                    opts = _apply_image_vary(opts)
+                    # 立繪去背看 shot 規格；調戲場景不去背
+                    shot_g = str(opts.get("shot") or "").lower()
+                    want_cut = comfy.shot_wants_cutout(shot_g, bool(opts.get("cutout")))
+                    extra_g = str(opts.get("extra") or "")
+                    neg_g = ", ".join(
+                        x for x in (
+                            str(opts.get("visual_neg") or "").strip(),
+                            str(opts.get("negative") or "").strip(),
+                        ) if x
+                    )
+                    if neg_g:
+                        extra_g = extra_g + ", " + ", ".join(
+                            f"NO {b.strip()}" for b in neg_g.split(",") if b.strip()
+                        )
+                    url, err = await _run_grok_image(
+                        model,
+                        framing=str(opts.get("framing") or "half"),
+                        rating=str(opts.get("rating") or "sfw"),
+                        style=str(opts.get("style") or "anime"),
+                        character=opts.get("character") if isinstance(opts.get("character"), dict) else None,
+                        name=str(opts.get("name") or ""),
+                        personality=str(opts.get("personality") or ""),
+                        backstory=str(opts.get("backstory") or ""),
+                        extra=extra_g,
+                        part=str(opts.get("part") or ""),
+                        ref=str(opts.get("ref") or ""),
+                        pose_ref=str(opts.get("pose_ref") or ""),
+                        prompt_body=str(opts.get("prompt") or ""),
+                        do_cutout=want_cut,
+                        char_id=str(opts.get("char_id") or ""),
+                        shot=str(opts.get("shot") or ""),
+                        card_id=str(opts.get("card_id") or ""),
+                        scene_kind=str(opts.get("scene_kind") or ""),
+                        vary_line=str(opts.get("_vary_line") or ""),
+                    )
+                    text = url or ""
+                elif endpoint in ("grok-build", "grok", "xai"):
+                    text, err = await _run_grok_build(model, msgs, opts)
+                else:
+                    body = _ollama_chat_body(model, msgs, opts)
+                    err = await _stream_ollama_chat(endpoint, body, on_token)
+                    text = "".join(parts)
+                # Qwen3.5 等：即使傳了 think:false，仍可能帶思考塊 → 一律剝掉
+                text = _strip_thinking(text or "")
+                if not text.strip() and not err:
+                    err = "空回應"
+            except Exception as ex:
+                # 單筆失敗（例如缺 import）不可留 running 到逾時；寫 error 讓前端能 retry
+                text, err = "", f"{type(ex).__name__}: {ex}"
+                print(f"[gen_worker] {key} crash: {err}", flush=True)
             with db() as conn:
                 conn.execute(
                     "UPDATE gen_tasks SET status=?, result=?, error=?, updated=? WHERE key=?",
@@ -432,7 +3959,7 @@ class SimSync(BaseModel):
     rating: str | None = None              # 'sfw' | 'nsfw'
     roster: list = []                      # [{id, ntr, kanban, busy}] 名冊快照
     seeds: dict | None = None              # {id: rel} 伺服器沒追蹤到時採用的既有關係
-    patches: dict | None = None            # {id: {seen:[actId], texts:{actId:text}, rescue:bool}}
+    patches: dict | None = None            # {id: {seen:[actId], texts:{actId:text}, rescue:bool, clear:bool}}
     kanbans: list = []                     # [{id, until}] 看板娘計時(權威時鐘用)
     quests: list = []                      # [{id, deadline}] 執行中委託計時(權威時鐘用)
     day: int | None = None                 # 手機當前日序(跨日結算的起點,首次 sync 用)
@@ -459,7 +3986,7 @@ async def sim_sync(body: SimSync):
         if body.day is not None and clock.get("lastDay") is None:
             clock["lastDay"] = body.day
         sim.adopt_seeds(store, body.seeds)
-        sim.apply_patches(store, body.patches)
+        sim.apply_patches(store, body.patches, now_ms)
         sim.run_tick(store, now_ms)
         rels = {gid: store["rels"].get(gid) for gid in store["roster"].keys()}
         outcomes = store.get("outcomes", [])
@@ -477,12 +4004,35 @@ class SimLive(BaseModel):
 
 @app.post("/api/sim/live_act")
 async def sim_live_act(body: SimLive):
-    """觀戰直播:她此刻正被召喚中,伺服器現生一個 act slot(可能觸發交配/娶走)並回傳最新關係。"""
+    """觀戰取 act:先把 taken 進度補算到 now(吐出依 actAt 節奏預生的 slot),
+    若補算後仍無未讀且她還在召喚中,才現生 1 個 slot 當直播(避免跳過預生節奏、
+    一進觀戰就無中生有)。"""
+    if not sim.SUMMONER_ENABLED:   # 召喚師纏身已停用:沒有召喚中的對象
+        return {"rel": None, "married": False}
     now_ms = int(body.now if body.now is not None else time.time() * 1000)
     async with SIM_LOCK:
         store = _sim_load()
         rel = store.get("rels", {}).get(body.id)
         if not rel or not rel.get("taken"):
+            return {"rel": rel, "married": False}
+        # 1) 先走既有預生節奏(可能一次吐出多 slot / 到期解召喚 / 懷孕娶走)
+        married = False
+        if sim._process_taken(store, body.id, rel, now_ms):
+            # _process_taken 在娶走時會 pop rel 並寫 outcome
+            if body.id not in store.get("rels", {}):
+                married = True
+        rel = store.get("rels", {}).get(body.id)
+        if married or not rel:
+            _sim_save(store)
+            return {"rel": None, "married": married}
+        # 2) 已有未讀 → 直接回傳,不要再現生
+        unseen = [a for a in (rel.get("acts") or []) if not a.get("seen")]
+        if unseen:
+            _sim_save(store)
+            return {"rel": rel, "married": False}
+        # 3) 預生額度用完、仍在召喚中 → 直播補 1 slot
+        if not rel.get("taken"):
+            _sim_save(store)
             return {"rel": rel, "married": False}
         married = sim.process_act_slot(rel, now_ms, store.get("rating", "sfw"))
         if married:
@@ -490,9 +4040,537 @@ async def sim_live_act(body: SimLive):
             store.setdefault("outcomes", []).append(
                 {"type": "married", "id": body.id, "suName": su.get("name") if su else None, "t": now_ms})
             store["rels"].pop(body.id, None)
-            store.get("sched", {}).pop(body.id, None)
+            store.get("takenWin", {}).pop(body.id, None)
         _sim_save(store)
         return {"rel": store.get("rels", {}).get(body.id), "married": married}
+
+
+# ── 發呆時段（伺服器權威：關網頁也照跑）──
+_DD_LOCK = threading.Lock()
+DAYDREAM_WAKE = asyncio.Event()
+_DD_WAIT_SEC = 180
+
+
+def _dd_load() -> dict:
+    with _DD_LOCK:
+        with db() as conn:
+            row = conn.execute("SELECT data FROM daydream WHERE id = 1").fetchone()
+        if not row:
+            return ddream.new_store()
+        try:
+            data = json.loads(row[0])
+        except Exception:
+            data = None
+        if not isinstance(data, dict):
+            data = ddream.new_store()
+        base = ddream.new_store()
+        base.update(data)
+        base.setdefault("queue", [])
+        base.setdefault("patches", {})
+        return base
+
+
+def _dd_save(store: dict) -> None:
+    with _DD_LOCK:
+        with db() as conn:
+            conn.execute(
+                "INSERT INTO daydream (id, data, updated_at) VALUES (1, ?, ?) "
+                "ON CONFLICT (id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+                (json.dumps(store, ensure_ascii=False), time.time()),
+            )
+
+
+def _dd_public() -> dict:
+    return ddream.public_status(_dd_load())
+
+
+def _dd_read_save() -> dict | None:
+    with db() as conn:
+        row = conn.execute("SELECT data FROM save WHERE id = 1").fetchone()
+    if not row:
+        return None
+    try:
+        data = json.loads(row[0])
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _dd_flush_patches_to_save(store: dict) -> bool:
+    """把 daydream patches 合併進存檔 succubi（scriptArt／portraits／sexAnim 等）。
+
+    發呆圖原本只活在 patches；新 stamp 清 patches 時若不先寫入存檔，劇本模式就會
+    找不到 s.scriptArt。get_save／put_save 的 apply_patches 仍保留當雙保險。
+    """
+    if not (store.get("patches") or {}):
+        return False
+    with db() as conn:
+        row = conn.execute("SELECT version, data FROM save WHERE id = 1").fetchone()
+        if row is None:
+            return False
+        version, raw = row[0], row[1]
+        try:
+            data = json.loads(raw) if raw else {}
+        except Exception:
+            return False
+        if not isinstance(data, dict):
+            return False
+        ddream.apply_patches(data, store)
+        new_version = int(version) + 1
+        conn.execute(
+            "UPDATE save SET version = ?, data = ?, updated_at = ? WHERE id = 1",
+            (new_version, json.dumps(data, ensure_ascii=False), time.time()),
+        )
+    return True
+
+
+def _dd_settings(data: dict) -> dict:
+    s = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+    img = str(s.get("imgProvider") or "grok-img").strip().lower()
+    provider = "comfy" if img in ("comfy", "comfyui", "comfy-img") else "grok-img"
+    return {
+        "provider": provider,
+        "model": str(s.get("model") or "grok-4.5"),
+        "style": str(s.get("imgStyle") or "anime"),
+        "rating": str(s.get("rating") or "nsfw"),
+        "comfy_url": str(s.get("comfyUrl") or ""),
+        "player": str(s.get("player") or (data.get("playerProfile") or {}).get("name") or "你"),
+        "nsfw": str(s.get("rating") or "nsfw") == "nsfw",
+        "llm_provider": (
+            "grok-build"
+            if str(s.get("llmProvider") or "").lower().startswith("grok")
+            else "ollama"
+        ),
+        "ollama_url": str(s.get("ollamaUrl") or "http://localhost:11434"),
+    }
+
+
+def _dd_girl(data: dict, gid: str) -> dict | None:
+    for g in data.get("succubi") or []:
+        if isinstance(g, dict) and g.get("id") == gid:
+            return g
+    return None
+
+
+async def _dd_wait_key(key: str, timeout: float = _DD_WAIT_SEC) -> str:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        with db() as conn:
+            row = conn.execute(
+                "SELECT status, result FROM gen_tasks WHERE key = ?", (key,)
+            ).fetchone()
+        if row:
+            status, result = row
+            if status == "done":
+                return str(result or "")
+            if status == "error":
+                return ""
+        await asyncio.sleep(1.2)
+    return ""
+
+
+async def _dd_llm(key: str, messages: list, model: str, provider: str, endpoint: str = "") -> str:
+    if not model or not messages:
+        return ""
+    body = GenIn(
+        key=key, model=model, messages=messages, provider=provider,
+        endpoint=endpoint or "http://localhost:11434", retry=True, prio=0,
+    )
+    r = gen_submit(body)
+    if r.get("status") == "done":
+        return str(r.get("result") or "").strip()
+    return (await _dd_wait_key(key, 120)).strip()
+
+
+async def _dd_image(t: ImgGenIn) -> str:
+    r = imggen_submit(t)
+    if r.get("status") == "done":
+        return str(r.get("result") or "")
+    if r.get("status") == "error" and not t.retry:
+        return ""
+    return await _dd_wait_key(str(r.get("key") or t.key or ""))
+
+
+def _dd_img_base(girl: dict, cfg: dict, key: str, **kw) -> ImgGenIn:
+    return ImgGenIn(
+        key=key,
+        provider=cfg["provider"],
+        model=cfg["model"],
+        style=cfg["style"],
+        character=ddream.slim_girl(girl),
+        retry=True,
+        comfy_url=cfg["comfy_url"],
+        ckpt=str(girl.get("comfyCkpt") or ""),
+        char_id=str(girl.get("id") or ""),
+        **kw,
+    )
+
+
+async def _dd_run_portraits(girl: dict, cfg: dict, key: str, on_label) -> dict:
+    portraits = {}
+    ts = int(time.time() * 1000)
+    # 發呆刷新：三張同 seed 鎖臉，但每輪必須換新 seed。
+    # 若沿用召喚的人設 seed，Comfy 會產出幾乎同一張圖，看起來像沒蓋掉。
+    refresh_seed = secrets.randbelow(2**31 - 1) or 1
+    for shot in ("full", "half", "head"):
+        await on_label(f"立繪 · {shot}")
+        extra = ""   # 背景交給 prompt builder（三張立繪是綠幕）
+        if shot == "half":
+            extra = "half-body portrait, looking at viewer"
+        url = await _dd_image(_dd_img_base(
+            girl, cfg, f"{key}:{shot}",
+            shot=shot,
+            framing="full" if cfg["provider"] == "comfy" else ("full" if shot == "full" else "half"),
+            rating="sfw",
+            extra=extra,
+            cutout=True,
+            flat_bg=True,
+            seed=refresh_seed,
+        ))
+        if url:
+            # 檔名固定覆寫（buff→正式檔）；URL 換 ?v= 逼前端重抓
+            portraits[shot] = ddream.bust_asset_url(url, ts)
+    return {"portraits": portraits, "portraitsRefreshedAt": ts}
+
+
+async def _dd_run_emotion(girl: dict, cfg: dict, key: str, mood: str, on_label) -> dict:
+    defn = ddream.HALF_EMOTIONS.get(mood) or ddream.HALF_EMOTIONS["xi"]
+    await on_label(f"表情 · {defn['label']}")
+    half_ref = str((girl.get("portraits") or {}).get("half") or (girl.get("portraits") or {}).get("full") or "")
+    extra = ", ".join([
+        "half-body portrait", "same woman as reference",
+        "keep same face, hair, outfit", "looking at viewer", defn["tags"],
+    ])
+    url = await _dd_image(_dd_img_base(
+        girl, cfg, key,
+        shot=defn["shot"],
+        framing="half",
+        rating="sfw",
+        extra=extra,
+        cutout=True,
+        flat_bg=True,
+        ref=half_ref.split("?")[0] if half_ref.startswith("/assets/") else "",
+        lock_identity=True,
+        seed=secrets.randbelow(2**31 - 1) or 1,
+    ))
+    if not url:
+        return {}
+    ts = int(time.time() * 1000)
+    return {
+        "portraits": {defn["shot"]: ddream.bust_asset_url(url, ts)},
+        "extraShotAt": {defn["shot"]: ts},
+    }
+
+
+async def _dd_run_sex(girl: dict, cfg: dict, key: str, pose_id: str, on_label) -> dict:
+    built = ddream.sex_frames(pose_id, cfg["style"], girl.get("look") if isinstance(girl.get("look"), dict) else {})
+    pose = built["pose"]
+    sex_pack = None
+    for p in ddream.load_script_packs().get("packs") or []:
+        if p.get("kind") == "sex" and p.get("pose") == pose_id:
+            sex_pack = p
+            break
+    if not sex_pack:
+        for p in ddream.load_script_packs().get("packs") or []:
+            if p.get("kind") == "sex":
+                sex_pack = p
+                break
+    pack = ddream.frame_pack(str((sex_pack or {}).get("framePackId") or ""), pose_id)
+    urls = []
+    for i, fr in enumerate(built["frames"]):
+        await on_label(f"做愛動畫 · {pose['label']} · 第 {i + 1} 幀")
+        bone = ddream.pack_frame_url(pack, i + 1)
+        url = await _dd_image(_dd_img_base(
+            girl, cfg, f"{key}:{i}",
+            framing="lower",
+            rating="nsfw",
+            extra=fr["pos"],
+            prompt=fr["pos"],
+            negative=", ".join(x for x in (built["neg"], fr.get("extraNeg")) if x),
+            cutout=False,
+            flat_bg=False,
+            scene_kind="sex_strip",
+            pose_ref=bone,
+            pose_denoise=0.70 if bone else 0,
+            width=1216,
+            height=832,
+        ))
+        urls.append(url or "")
+    prev = ((girl.get("sexAnim") or {}).get(pose_id) or {}).get("urls") or []
+    merged = [u or (prev[i] if i < len(prev) else "") for i, u in enumerate(urls)]
+    return {"sexAnim": {pose_id: {"urls": merged, "at": int(time.time() * 1000)}}}
+
+
+async def _dd_run_script(girl: dict, cfg: dict, key: str, pack_id: str, scene: int, on_label) -> dict:
+    job = next((j for j in ddream.list_script_jobs() if j.get("packId") == pack_id and j.get("scene") == scene), None)
+    if not job:
+        return {}
+    spec = job["spec"]
+    pack = job["pack"]
+    player = cfg["player"]
+    attitude = ddream.fill_binds(spec.get("attitude") or "", girl, player)
+    narr = ddream.narr_last(spec, girl, player)
+    await on_label(f"{job['label']} · 回話")
+    reply = ""
+    pose = ""
+    if cfg["model"]:
+        reply = await _dd_llm(
+            f"{key}:reply",
+            ddream.reply_msgs(girl.get("name"), attitude, narr, girl.get("stage")),
+            cfg["model"],
+            cfg["llm_provider"],
+            cfg.get("ollama_url") or "",
+        )
+        if reply:
+            await on_label(f"{job['label']} · 組 prompt")
+            raw = await _dd_llm(
+                f"{key}:pose",
+                ddream.pose_msgs(girl.get("name"), reply),
+                cfg["model"],
+                cfg["llm_provider"],
+                cfg.get("ollama_url") or "",
+            )
+            pose = ddream.parse_pose_lines(raw)
+    fp_id = str(spec.get("framePackId") or pack.get("framePackId") or "").strip()
+    frame = ddream.frame_pack(fp_id, str(pack.get("pose") or ""))
+    slots = spec.get("slots") if isinstance(spec.get("slots"), list) else []
+    urls = []
+    for i, slot in enumerate(slots):
+        await on_label(f"{job['label']} · 圖 {i + 1}")
+        if not isinstance(slot, dict):
+            urls.append("")
+            continue
+        extra = ddream.fill_binds(
+            ", ".join(x for x in (str(slot.get("prompt") or "").strip(), pose) if x),
+            girl, player,
+        )
+        neg = ddream.fill_binds(slot.get("negative") or "", girl, player)
+        bone = ddream.pose_ref_for_slot(spec, slot, i, pack, frame)
+        url = await _dd_image(_dd_img_base(
+            girl, cfg, f"{key}:img:{i}",
+            # scene1 half 仍要動作構圖（非證件照）；scene≥2 full
+            framing="half" if int(scene or 1) <= 1 else "full",
+            rating="nsfw",
+            extra=extra,
+            negative=neg,
+            cutout=False,
+            flat_bg=False,
+            lock_identity=True,
+            scene_kind="script",
+            shot="",  # 絕不能帶 portrait shot，否則落入 portraits/
+            pose_ref=bone,
+            pose_denoise=0.55 if bone else 0,
+        ))
+        urls.append(url or "")
+    prev = (((girl.get("scriptArt") or {}).get(pack_id) or {}).get(str(scene)) or {}).get("urls") or []
+    at = int(time.time() * 1000)
+    merged = [u or (prev[i] if i < len(prev) else "") for i, u in enumerate(urls)]
+    # 劇本圖落 testword（新檔），仍加 ?v= 與立繪一致，避免發呆後前端吃到舊快取／殘留路徑
+    merged = [ddream.bust_asset_url(u, at) if u else "" for u in merged]
+    return {"scriptArt": {pack_id: {str(scene): {"urls": merged, "pose": pose, "at": at}}}}
+
+
+def _dd_begin(store: dict, data: dict, force: bool) -> dict:
+    girls = [g for g in (data.get("succubi") or []) if isinstance(g, dict) and g.get("id")]
+    slot = ddream.current_slot()
+    stamp = ddream.slot_stamp()
+    nsfw = _dd_settings(data)["nsfw"]
+    # 強制發呆若沿用同 stamp 的 gen_tasks key，會直接吃到已 done 的舊圖不重產。
+    # force 時在 key 裡加 nonce，逼生圖佇列重跑。
+    run_tag = f"{stamp}:force:{int(time.time() * 1000)}" if force else stamp
+    queue = ddream.build_queue(girls, nsfw, run_tag)
+    keep_patches = (not force) and store.get("stamp") == stamp
+    # 新 stamp／force 會丟棄 patches：先寫進存檔，避免劇本預產圖蒸發
+    if not keep_patches and (store.get("patches") or {}):
+        try:
+            if _dd_flush_patches_to_save(store):
+                print(
+                    f"[發呆] {time.strftime('%Y-%m-%d %H:%M:%S')} 清 patches 前已寫入存檔 "
+                    f"stamp={store.get('stamp')}",
+                    flush=True,
+                )
+        except Exception as e:
+            print(f"[發呆] flush patches 失敗(仍繼續清): {e}", flush=True)
+    store.update({
+        "stamp": stamp,
+        "slot": slot["id"],
+        "running": bool(queue),
+        "completed": False,
+        "force": bool(force) and bool(queue),
+        "done": 0,
+        "total": len(queue),
+        "label": f"{slot['label']}發呆" if queue else "",
+        "girlId": "",
+        "queue": queue,
+        "patches": (store.get("patches") or {}) if keep_patches else {},
+    })
+    # 名冊空：這一窗先不算完成，等有魅魔再跑
+    if not queue:
+        store["completed"] = False
+        store["running"] = False
+        store["force"] = False
+    return store
+
+
+async def _dd_tick_once() -> None:
+    data = _dd_read_save()
+    if not data:
+        return
+    girls = [g for g in (data.get("succubi") or []) if isinstance(g, dict) and g.get("id")]
+    store = _dd_load()
+    stamp = ddream.slot_stamp()
+    if not girls:
+        if store.get("running"):
+            store["running"] = False
+            store["label"] = ""
+            store["girlId"] = ""
+            store["queue"] = []
+            _dd_save(store)
+        return
+    same = store.get("stamp") == stamp
+    if store.get("force") and store.get("running") and store.get("queue"):
+        pass
+    elif (not same) or (not store.get("running") and not store.get("completed")):
+        store = _dd_begin(store, data, force=bool(store.get("force") and same))
+        _dd_save(store)
+        if store.get("running"):
+            print(
+                f"[發呆] {time.strftime('%Y-%m-%d %H:%M:%S')} 開始 {store.get('label')} "
+                f"stamp={store.get('stamp')} jobs={store.get('total')}",
+                flush=True,
+            )
+        if not store.get("running"):
+            return
+    elif same and store.get("completed") and not store.get("force"):
+        return
+    elif store.get("running") and store.get("queue"):
+        pass
+    else:
+        return
+    job = (store.get("queue") or [None])[0]
+    if not job:
+        store["running"] = False
+        store["completed"] = True
+        store["force"] = False
+        store["label"] = ""
+        store["girlId"] = ""
+        _dd_save(store)
+        print(f"[發呆] {time.strftime('%Y-%m-%d %H:%M:%S')} 完成 stamp={store.get('stamp')}", flush=True)
+        return
+    gid = job.get("girlId")
+    girl = _dd_girl(data, gid)
+    cfg = _dd_settings(data)
+
+    async def on_label(text):
+        st = _dd_load()
+        st["label"] = text
+        st["girlId"] = gid
+        st["running"] = True
+        _dd_save(st)
+
+    patch = {}
+    try:
+        if not girl:
+            patch = {}
+        elif job.get("kind") == "portraits":
+            patch = await _dd_run_portraits(girl, cfg, job["key"], on_label)
+        elif job.get("kind") == "emotion":
+            patch = await _dd_run_emotion(girl, cfg, job["key"], job.get("mood"), on_label)
+        elif job.get("kind") == "sex":
+            patch = await _dd_run_sex(girl, cfg, job["key"], job.get("poseId"), on_label)
+        elif job.get("kind") == "script":
+            patch = await _dd_run_script(girl, cfg, job["key"], job.get("packId"), int(job.get("scene") or 1), on_label)
+    except Exception as e:
+        print(f"[發呆] job 失敗 {job.get('label')}: {e}", flush=True)
+        patch = {}
+    store = _dd_load()
+    q = list(store.get("queue") or [])
+    if q and q[0].get("key") == job.get("key"):
+        q.pop(0)
+    store["queue"] = q
+    store["done"] = int(store.get("done") or 0) + 1
+    store["girlId"] = gid or ""
+    if patch and gid:
+        ddream.set_patch(store, gid, **patch)
+        # 每張成功產圖立刻合併進存檔，避免只靠 ephemeral patches
+        try:
+            _dd_flush_patches_to_save(store)
+        except Exception as e:
+            print(f"[發呆] set_patch 後 flush 失敗: {e}", flush=True)
+    if not q:
+        store["running"] = False
+        store["completed"] = True
+        store["force"] = False
+        store["label"] = ""
+        store["girlId"] = ""
+        print(f"[發呆] {time.strftime('%Y-%m-%d %H:%M:%S')} 完成 stamp={store.get('stamp')}", flush=True)
+        # 完成時再 flush 一次（無新 patch 時 no-op）
+        try:
+            _dd_flush_patches_to_save(store)
+        except Exception as e:
+            print(f"[發呆] 完成 flush 失敗: {e}", flush=True)
+    _dd_save(store)
+
+
+def _dd_retire() -> None:
+    """發呆已取消：還沒寫進存檔的圖合併一次，然後停掉佇列。不再開新的預產。"""
+    try:
+        store = _dd_load()
+    except Exception as e:
+        print(f"[發呆] 取消時讀不到狀態: {e}", flush=True)
+        return
+    flushed = False
+    if store.get("patches"):
+        try:
+            flushed = bool(_dd_flush_patches_to_save(store))
+        except Exception as e:
+            print(f"[發呆] 取消前寫入存檔失敗: {e}", flush=True)
+    was_running = bool(store.get("running") or store.get("queue") or store.get("force"))
+    store["running"] = False
+    store["force"] = False
+    store["queue"] = []
+    store["label"] = ""
+    store["girlId"] = ""
+    if flushed:
+        store["patches"] = {}
+    if was_running or flushed:
+        _dd_save(store)
+    if was_running:
+        print("[發呆] 已取消，停掉進行中的預產", flush=True)
+
+
+def _dd_force() -> dict:
+    return {
+        "ok": False,
+        "err": "發呆已取消",
+        "running": False,
+        "completed": False,
+        "done": 0,
+        "total": 0,
+        "label": "",
+        "girlId": "",
+    }
+
+
+@app.get("/api/daydream")
+def daydream_status():
+    store = _dd_load()
+    return {
+        **ddream.public_status(store),
+        "queue": len(store.get("queue") or []),
+        "patches": store.get("patches") or {},
+    }
+
+
+@app.post("/api/daydream/force")
+def daydream_force():
+    """發呆預產已取消。保留路徑，避免舊頁面打到 404。"""
+    return _dd_force()
+
+
+async def _daydream_loop():
+    """發呆已取消，不再排程。"""
+    return
 
 
 _HEARTBEAT_SEC = 600            # 每 10 分鐘印一次「已執行檢查」心跳
@@ -514,6 +4592,1223 @@ def _world_beat(store, now: float, forced: bool = False) -> None:
     )
 
 
+_LIFE_LOCK = threading.Lock()
+
+
+def _life_read() -> dict:
+    with db() as conn:
+        row = conn.execute("SELECT data FROM life_agent WHERE id = 1").fetchone()
+    if not row:
+        return life_agent.new_store()
+    try:
+        data = json.loads(row[0])
+    except Exception:
+        data = None
+    if not isinstance(data, dict):
+        return life_agent.new_store()
+    data.setdefault("girls", {})
+    return data
+
+
+def _life_write(store: dict) -> None:
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO life_agent (id, data, updated_at) VALUES (1, ?, ?) "
+            "ON CONFLICT (id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+            (json.dumps(store, ensure_ascii=False), time.time()),
+        )
+
+
+def _life_mutate(fn):
+    with _LIFE_LOCK:
+        store = _life_read()
+        fn(store)
+        _life_write(store)
+        return store
+
+
+def _life_overlay(data: dict) -> None:
+    if not isinstance(data, dict):
+        return
+    now_ms = int(time.time() * 1000)
+
+    def apply(store):
+        life_agent.absorb(store, data, now_ms)
+        life_agent.overlay(data, store, now_ms)
+
+    try:
+        _life_mutate(apply)
+    except Exception as e:
+        print(f"[生活] 蓋不進這次存檔：{e}", flush=True)
+
+
+def _life_absorb(data: dict) -> None:
+    _life_overlay(data)
+
+
+async def _life_say(data: dict, system: str, user: str) -> str:
+    settings = _dd_settings(data or {})
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+    try:
+        if settings["llm_provider"] == "grok-build":
+            text, _err = await _run_grok_build(settings["model"] or "grok-4.5", messages, None)
+            return (text or "").strip()
+        acc: list[str] = []
+        body = _ollama_chat_body(settings["model"], messages, {"temperature": 0.8})
+        await _stream_ollama_chat(settings["ollama_url"], body, lambda piece: acc.append(piece))
+        return _strip_thinking("".join(acc)).strip()
+    except Exception as e:
+        print(f"[生活] 模型沒回：{e}", flush=True)
+        return ""
+
+
+def _life_clock(action: dict) -> str:
+    line = str(action.get("clock") or "").strip()
+    return f"{line}\n" if line else ""
+
+
+def _life_span(action: dict) -> str:
+    started = int(action.get("startedAt") or 0)
+    ended = int(action.get("until") or 0)
+    if started <= 10**11 or ended <= 10**11:
+        return ""
+    a = life_agent.japan_clock(started)["label"]
+    b = life_agent.japan_clock(ended)["label"]
+    return f"這一件是日本時間{a}到{b}。"
+
+
+async def _life_write_event(data: dict, action: dict) -> str:
+    """模型把抽到的事寫成 2～4 句。不合格只重寫一次（一次結算最多兩次模型）；再不行回空字串，交給範本。"""
+    system, user = life_agent.event_prompt(action)
+    reply = await _life_say(data, system, user)
+    text = life_agent.accept_text(action, reply)
+    if text:
+        return text
+    messages_user = f"{user}\n\n上一則：{reply[:300]}\n{life_agent.RETRY_ASK}" if reply else user
+    return life_agent.accept_text(action, await _life_say(data, system, messages_user))
+
+
+async def _life_browse(data: dict, action: dict) -> tuple[str, list]:
+    home = action.get("homeName") or "住所"
+    hobbies = "、".join(action.get("hobbies") or []) or "沒有特別寫"
+    first = bool((action.get("event") or {}).get("firstToday"))
+    word = ""
+    if first:
+        # 一天只有第一次上網叫模型挑搜尋詞、寫成一筆記憶；之後的從興趣／常見詞抽，只併進睡前那一行
+        word = life_agent.clip_keyword(await _life_say(
+            data,
+            "你替她決定網上要搜的一個詞。只回一個短詞，優先日文。不要句子，不要解釋。",
+            f"{_life_clock(action)}{_life_span(action)}"
+            f"她是{action.get('name') or '她'}。興趣：{hobbies}。心情：{action.get('mood') or '平靜'}。",
+        ))
+    if not word:
+        pool = list(action.get("hobbies") or []) + list(life_agent.D.BROWSE_WORDS)
+        word = life_agent.clip_keyword(random.choice(pool)) if pool else ""
+    word = word or "天気"
+    try:
+        news = await jp_news.search_jp_news(word, limit=2)
+        items = news.get("items") or []
+    except Exception:
+        items = []
+    bits = []
+    for item in items[:2]:
+        title = str(item.get("title") or "").strip()
+        if not title:
+            continue
+        source = str(item.get("source") or "").strip()
+        bits.append(f"{title}（{source}）" if source else title)
+    # 沒抓到新聞就只寫搜了什麼，不寫「沒有載入到新聞」，免得她在聊天裡講出這句
+    seen = f"看到{'、'.join(bits)}。" if bits else "隨便滑了一陣，沒看到什麼特別的。"
+    text = f"在住所{home}上網，搜了「{word}」。{seen}" if first else ""
+    return text, ["上網", word, bits[0] if bits else ""]
+
+
+async def _life_once() -> None:
+    """一輪：不用模型的事全部做完（排下一件、沒做夢的睡醒），再最多結算一件要寫字的（最久沒結算的先）。"""
+    data = _dd_read_save() or {}
+    now_ms = int(time.time() * 1000)
+    box = {"action": None, "logs": []}
+
+    def prep(store):
+        life_agent.absorb(store, data, now_ms)
+        box["logs"] = life_agent.quick_step(store, now_ms)
+        started = life_agent.auto_escort(store, data, now_ms)
+        if started:
+            box["logs"].append(f"接客還債開班：{(started.get('event') or {}).get('escort', {}).get('clients')} 位客人")
+        gid = life_agent.next_due(store, now_ms)
+        box["action"] = life_agent.prepare_resolve(store, gid, now_ms) if gid else None
+
+    _life_mutate(prep)
+    for line in box["logs"]:
+        print(f"[生活] {line}", flush=True)
+    action = box["action"]
+    if not action:
+        return
+    gid = action["id"]
+    ev = action.get("event") or {}
+    action["span"] = _life_span(action)
+    keys: list[str] = []
+    text = ""
+    if action["kind"] == "browse":
+        text, keys = await _life_browse(data, action)
+    elif life_agent.needs_llm(ev):
+        text = await _life_write_event(data, action)
+        if not text:
+            print(f"[生活] {action.get('name') or '她'} 模型沒寫成，用範本", flush=True)
+    finished_until = int(action["until"])
+    now2 = int(time.time() * 1000)
+
+    def commit_resolve(fresh):
+        life_agent.absorb(fresh, _dd_read_save() or data, now2)
+        if life_agent.settle(fresh, gid, finished_until, text, now2, keys=keys):
+            rec = fresh["girls"].get(gid) or {}
+            last = rec.get("last") or {}
+            nxt = (rec.get("agenda") or {}).get("kind") or ""
+            print(
+                f"[生活] {rec.get('name') or '她'} {life_agent.KIND_ZH.get(action['kind'], '')}結束："
+                f"{(last.get('text') or '')[:60]}｜心情 {last.get('moodBefore')}→{last.get('moodAfter')}｜下一件 {life_agent.KIND_ZH.get(nxt, nxt)}",
+                flush=True,
+            )
+
+    _life_mutate(commit_resolve)
+
+
+async def _life_loop():
+    """她在日本的生活。網頁開不開都走。一次只寫一件已經到期的事。"""
+    await asyncio.sleep(8)
+    while True:
+        try:
+            await _life_once()
+        except Exception as e:
+            print(f"[生活] 這一輪沒走完：{e}", flush=True)
+        await asyncio.sleep(20)
+
+
+# ───────────── 名冊群 LINE：主動發文（server/line_group.py）─────────────
+_LINE_LOCK = threading.Lock()
+
+
+def _line_read() -> dict:
+    with db() as conn:
+        row = conn.execute("SELECT data FROM line_group WHERE id = 1").fetchone()
+    try:
+        data = json.loads(row[0]) if row else None
+    except Exception:
+        data = None
+    return data if isinstance(data, dict) else line_group.new_store()
+
+
+def _line_mutate(fn):
+    with _LINE_LOCK:
+        store = _line_read()
+        fn(store)
+        with db() as conn:
+            conn.execute(
+                "INSERT INTO line_group (id, data, updated_at) VALUES (1, ?, ?) "
+                "ON CONFLICT (id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+                (json.dumps(store, ensure_ascii=False), time.time()),
+            )
+        return store
+
+
+async def _line_once() -> None:
+    """一輪最多寫一則（一次模型）。模型沒回、漏秘密就用範本句。"""
+    data = _dd_read_save() or {}
+    life = _life_read()
+    now_ms = int(time.time() * 1000)
+    box = {"job": None}
+
+    def plan(store):
+        box["job"] = line_group.step(store, data, life, now_ms)
+
+    store = _line_mutate(plan)
+    job = box["job"]
+    if not job:
+        return
+    girl = line_group.roster(data).get(job["gid"])
+    if not girl:
+        return
+    lines: list[str] = []
+    if str((data.get("settings") or {}).get("model") or "").strip():
+        msgs = line_group.build_prompt(job, data, store, life, now_ms)
+        lines = line_group.accept(await _life_say(data, msgs[0]["content"], msgs[1]["content"]), girl)
+    if not lines:
+        lines = line_group.canned(job, girl, store=store)
+    now2 = int(time.time() * 1000)
+
+    def write(store2):
+        line_group.commit(store2, job, girl, lines, data, life, now2)
+
+    _line_mutate(write)
+    print(f"[LINE] {girl.get('name')}（{'主動' if job['kind'] == 'post' else job.get('act')}）：{' / '.join(lines)[:80]}", flush=True)
+
+
+async def _line_loop():
+    await asyncio.sleep(15)
+    while True:
+        try:
+            await _line_once()
+        except Exception as e:
+            print(f"[LINE] 這一輪沒走完：{e}", flush=True)
+        await asyncio.sleep(45)
+
+
+@app.get("/api/line/feed")
+def line_feed(since: float = 0):
+    """手機合併 RP5 寫的群訊息（id 去重）。"""
+    return {"now": int(time.time() * 1000), "messages": line_group.feed_since(_line_read(), since)}
+
+
+@app.get("/api/life")
+def life_public():
+    """網頁來讀她現在在日本做什麼。不在這裡把欠的班補完。"""
+    data = _dd_read_save() or {}
+    now_ms = int(time.time() * 1000)
+
+    def prep(store):
+        life_agent.absorb(store, data, now_ms)
+
+    store = _life_mutate(prep)
+    return life_agent.public_snapshot(store, now_ms)
+
+
+@app.post("/api/life/choose")
+def life_choose(body: dict):
+    """沙盒手動指定這一趟。人在房間裡不算。"""
+    gid = str((body or {}).get("id") or "")
+    kind = str((body or {}).get("kind") or "")
+    if kind == "wander":
+        kind = "stroll"
+    if not gid or kind not in life_agent.KINDS:
+        raise HTTPException(status_code=400, detail="要指定她，以及打工、溜達、上網或睡覺")
+    data = _dd_read_save() or {}
+    now_ms = int(time.time() * 1000)
+    ok = {"done": False}
+
+    def commit(store):
+        life_agent.absorb(store, data, now_ms)
+        rec = (store.get("girls") or {}).get(gid)
+        if not rec or rec.get("phase") != "japan":
+            return
+        rec["agenda"] = None
+        ok["done"] = life_agent.apply_choice(store, gid, kind, now_ms)
+
+    store = _life_mutate(commit)
+    if not ok["done"]:
+        raise HTTPException(status_code=409, detail="她現在不在日本，排不了這一趟")
+    return life_agent.public_snapshot(store, now_ms)
+
+
+@app.post("/api/life/friend")
+def life_friend(body: dict):
+    """test_room 交友線除錯：op = meet（馬上再碰到這個人）／stage（改階）／naked（光著身子離房的那一趟）。"""
+    body = body or {}
+    gid = str(body.get("id") or "")
+    op = str(body.get("op") or "")
+    pid = str(body.get("personId") or "")
+    if not gid or op not in ("meet", "stage", "naked"):
+        raise HTTPException(status_code=400, detail="要指定她和 op（meet／stage／naked）")
+    data = _dd_read_save() or {}
+    now_ms = int(time.time() * 1000)
+    ok = {"done": False}
+
+    def commit(store):
+        life_agent.absorb(store, data, now_ms)
+        rec = (store.get("girls") or {}).get(gid)
+        if not rec or rec.get("phase") != "japan":
+            return
+        if op == "meet":
+            ok["done"] = life_agent.force_meet(rec, pid, now_ms) is not None
+        elif op == "stage":
+            ok["done"] = life_agent.set_friend_stage(rec, pid, str(body.get("stage") or ""), now_ms)
+        else:
+            count = int(body.get("count") or 0)
+            ok["done"] = life_agent.start_naked(rec, f"dbg{now_ms}", now_ms, random.random, force=True, count=count) is not None
+
+    store = _life_mutate(commit)
+    if not ok["done"]:
+        raise HTTPException(status_code=409, detail="她現在不在日本，或找不到這個人")
+    return life_agent.public_snapshot(store, now_ms)
+
+
+@app.post("/api/life/escort")
+def life_escort(body: dict):
+    """test_room 接客除錯：op = start（馬上開一班，不看上限；debt 指定要還多少、clients 指定幾位）／end（現在收工結算）。"""
+    body = body or {}
+    gid = str(body.get("id") or "")
+    op = str(body.get("op") or "")
+    if not gid or op not in ("start", "end"):
+        raise HTTPException(status_code=400, detail="要指定她和 op（start／end）")
+    data = _dd_read_save() or {}
+    now_ms = int(time.time() * 1000)
+    ok = {"done": False}
+
+    def commit(store):
+        life_agent.absorb(store, data, now_ms)
+        rec = (store.get("girls") or {}).get(gid)
+        if not rec or rec.get("phase") != "japan":
+            return
+        if op == "start":
+            debt = int(body.get("debt") or 0) or max(1, life_agent.ES.est_debt(data, store))
+            ok["done"] = life_agent.start_escort(rec, debt, now_ms, random.random, force=True, clients=int(body.get("clients") or 0)) is not None
+        else:
+            ag = rec.get("agenda") or {}
+            if ag.get("kind") == "escort":
+                ag["until"] = now_ms
+                ok["done"] = life_agent.settle_escort(rec, now_ms) is not None
+
+    store = _life_mutate(commit)
+    if not ok["done"]:
+        raise HTTPException(status_code=409, detail="她現在不在日本，或沒有在接客")
+    return life_agent.public_snapshot(store, now_ms)
+
+
+@app.post("/api/bodym/assemble")
+def bodym_assemble(body: dict):
+    """test_bodyM「偷看體位 → 圖生圖」：把畫好的幀（/assets/testword|pose_refs|… 的圖）照每幀毫秒數組成動圖。
+    body：{urls:[…], ms:[…]（或 ms 單一數字）, fmt:"gif"|"webp", name}。回 {url}，存在 assets/testword/。"""
+    from PIL import Image
+
+    body = body or {}
+    urls = [str(u) for u in (body.get("urls") or []) if u][:120]
+    if len(urls) < 2:
+        raise HTTPException(status_code=400, detail="至少要兩幀")
+    ms_in = body.get("ms")
+    ms = [int(m) for m in ms_in] if isinstance(ms_in, list) else [int(ms_in or 100)] * len(urls)
+    ms = [max(20, min(2000, m)) for m in (ms + [ms[-1] if ms else 100] * len(urls))[: len(urls)]]
+    frames = []
+    for u in urls:
+        p = _resolve_ref_image(u)
+        if p is None:
+            raise HTTPException(status_code=404, detail=f"找不到幀：{u}")
+        frames.append(Image.open(p).convert("RGB"))
+    w, h = frames[0].size
+    frames = [f if f.size == (w, h) else f.resize((w, h), Image.LANCZOS) for f in frames]
+    fmt = "webp" if str(body.get("fmt") or "").lower() == "webp" else "gif"
+    tag = re.sub(r"[^A-Za-z0-9_-]", "", str(body.get("name") or ""))[:40] or "peek"
+    out = IMG_TEST_DIR / f"bodym_{tag}_{int(time.time() * 1000)}.{fmt}"
+    IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
+    if fmt == "webp":
+        frames[0].save(out, save_all=True, append_images=frames[1:], duration=ms, loop=0, quality=88, method=4)
+    else:
+        pal = [f.quantize(colors=255, method=Image.Quantize.MEDIANCUT) for f in frames]
+        pal[0].save(out, save_all=True, append_images=pal[1:], duration=ms, loop=0, disposal=2)
+    return {"url": f"/assets/testword/{out.name}", "frames": len(frames), "fmt": fmt}
+
+
+# 接客偷看的 AI 台詞：每位客人＋體位一份，記在記憶體（重開偷看沿用、句子用完再往後接）。
+_PEEK_LINES: dict[str, dict] = {}
+
+
+@app.post("/api/escort/peek-lines")
+async def escort_peek_lines(body: dict):
+    """body：{id, guest, pose, build, name, regular, family, voice, stage, more}。回 {lines:[{side,text}], cached}。
+    模型 40 秒沒回、寫不好 → lines 空（手機用本地句庫）。"""
+    body = body or {}
+    key = f"{body.get('id') or ''}|{body.get('guest') or ''}|{body.get('pose') or ''}"
+    now = time.time()
+    for k in [k for k, v in _PEEK_LINES.items() if now - v["at"] > 6 * 3600]:
+        _PEEK_LINES.pop(k, None)
+    row = _PEEK_LINES.get(key)
+    if row and row["lines"] and not body.get("more"):
+        return {"lines": row["lines"], "cached": True}
+    info = dict(body)
+    if row:
+        info["have"] = [f"{'客' if l['side'] == 'client' else '她'}：{l['text']}" for l in row["lines"][-10:]]
+    system, user = escort_lines.prompt(info)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=40)
+    except asyncio.TimeoutError:
+        reply = ""
+    lines = escort_lines.parse(reply)
+    if not lines:
+        return {"lines": row["lines"] if row else [], "cached": bool(row), "failed": True}
+    row = row or {"lines": [], "at": now}
+    row["lines"] = (row["lines"] + lines)[-64:]
+    row["at"] = now
+    _PEEK_LINES[key] = row
+    if len(_PEEK_LINES) > 200:
+        _PEEK_LINES.pop(next(iter(_PEEK_LINES)))
+    return {"lines": row["lines"], "cached": False}
+
+
+@app.post("/api/rental/line")
+async def rental_line(body: dict):
+    """日租女友 LINE（2026-10-13）：一次寫一則。body 見 server/rental_lines.py（side／kind／girl／client／spot／plan／hotel／recent／text…）。
+    回 {text}；模型 20 秒沒回或寫壞 → text 空（手機用句庫）。"""
+    body = body or {}
+    if str(body.get("side") or "") not in ("client", "wife"):
+        raise HTTPException(status_code=400, detail="side 要是 client 或 wife")
+    system, user = rental_lines.prompt(body)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+    except asyncio.TimeoutError:
+        reply = ""
+    return {"text": rental_lines.parse(reply)}
+
+
+@app.post("/api/rental/intent")
+async def rental_intent(body: dict):
+    """日租女友：玩家這句 LINE 是鼓勵／勸阻／普通。回 {intent: encourage|restrain|none|""}（空＝模型沒回，手機用關鍵字）。"""
+    body = body or {}
+    system, user = rental_lines.intent_prompt(str(body.get("side") or ""), str(body.get("text") or ""))
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=8)
+    except asyncio.TimeoutError:
+        reply = ""
+    return {"intent": rental_lines.parse_intent(reply)}
+
+
+@app.post("/api/rental/scene-talk")
+async def rental_scene_talk(body: dict):
+    """日租女友・旅館房間（2026-10-17）：玩家點了她和客人 → 即時寫一段對話（每次重寫、不快取）。
+    body：{venue, loc, pose, phase?（"orgasm"|"cum"：快結束時）, step, cums, girl:{name,stage,family,archetype}, client:{name,build,persona,regular}}。
+    回 {lines:[{side,text}], ai: bool}；模型 20 秒沒回或寫壞 → 固定句庫（ai=false）。"""
+    body = body or {}
+    loc, pose = str(body.get("loc") or ""), str(body.get("pose") or "")
+    if not rental_scene.slot_key(loc, pose):
+        raise HTTPException(status_code=400, detail="loc／pose 不對")
+    system, user = rental_scene.prompt(body)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+    except Exception:
+        reply = ""
+    lines = rental_scene.parse(reply)
+    if lines:
+        return {"lines": lines, "ai": True}
+    return {"lines": rental_scene.fallback(loc, pose, str(body.get("phase") or "")), "ai": False}
+
+
+@app.post("/api/rental/drive-narration")
+async def rental_drive_narration(body: dict):
+    """開車去旅館路上的旁白（2026-10-19）：body {venue, girl:{name}, client:{name,build,persona}} → {text, ai}；20 秒沒回 → 固定句。"""
+    body = body or {}
+    system, user = rental_scene.drive_prompt(body)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+    except Exception:
+        reply = ""
+    text = rental_scene.parse_narration(reply)
+    if text:
+        return {"text": text, "ai": True}
+    return {"text": rental_scene.DRIVE_FALLBACK.get(str(body.get("venue") or ""), rental_scene.DRIVE_FALLBACK["hotel"]), "ai": False}
+
+
+@app.get("/api/rental/scene-images")
+def rental_scene_images():
+    """test_room 生好的旅館圖：{venue: {slot_key: [url, url]}}。"""
+    return {"images": rental_scene.load_manifest(ASSETS_DIR), "slots": list(rental_scene.SLOTS), "venues": list(rental_scene.VENUES)}
+
+
+@app.get("/api/rental/scene-prompts")
+def rental_scene_prompts():
+    """旅館場景圖的提示詞模板（test_room 編輯器存的）。"""
+    return {"prompts": rental_scene.load_prompts(ASSETS_DIR)}
+
+
+@app.put("/api/rental/scene-prompts")
+def rental_scene_prompt_put(body: dict):
+    """存一張圖的模板：body {venue, key:"格#張", tpl:{pos, neg, img2img}|null}（null＝刪掉、回到預設）。"""
+    body = body or {}
+    venue, key = str(body.get("venue") or ""), str(body.get("key") or "")
+    if venue not in rental_scene.VENUES or not rental_scene.image_key_ok(key):
+        raise HTTPException(status_code=400, detail="venue／key 不對（要「格#張」）")
+    data = rental_scene.load_prompts(ASSETS_DIR)
+    tpl = rental_scene.clean_prompt(body.get("tpl"))
+    row = data.setdefault(venue, {})
+    if tpl:
+        row[key] = tpl
+    else:
+        row.pop(key, None)
+    rental_scene.save_prompts(ASSETS_DIR, data)
+    return {"prompts": data}
+
+
+@app.post("/api/rental/scene-images")
+def rental_scene_image_put(body: dict):
+    """把一張生好的圖（/assets/testword/… 或 pose_refs）搬到 assets/rental_scenes/ 並登記到 manifest（testword 會被 GC）。
+    body：{venue, key, slot(0|1), url, owners?:["她id|客人id", "她id|*"]}（有 owners → 只登記到這個她／客人；沒有 → 通用）。"""
+    body = body or {}
+    venue, key = str(body.get("venue") or ""), str(body.get("key") or "")
+    if venue not in rental_scene.VENUES or not rental_scene.allowed_key(key):
+        raise HTTPException(status_code=400, detail="venue／key 不對")
+    src = _asset_path(str(body.get("url") or ""))
+    if src is None:
+        raise HTTPException(status_code=404, detail="找不到圖")
+    slot = max(0, min(rental_scene.SLOTS_PER - 1, int(body.get("slot") or 0)))
+    out_dir = ASSETS_DIR / "rental_scenes"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    owners = [o for o in (body.get("owners") or [body.get("owner") or ""]) if rental_scene.owner_key(str(o))][:2]
+    tag = re.sub(r"[^A-Za-z0-9_-]", "-", str(owners[0]))[:40] + "_" if owners else ""
+    name = f"{venue}_{key}_{slot}_{tag}{int(time.time() * 1000)}{src.suffix.lower() or '.png'}"
+    shutil.copyfile(src, out_dir / name)
+    data = rental_scene.load_manifest(ASSETS_DIR)
+    for o in owners or [""]:
+        rental_scene.put_image(data, venue, key, slot, f"/assets/rental_scenes/{name}", owner=str(o))
+    rental_scene.save_manifest(ASSETS_DIR, data)
+    return {"url": f"/assets/rental_scenes/{name}", "images": data}
+
+
+# ---- 2026-10-21 換妻：咖啡廳半身立繪（test_room）----
+_SWAP_DIR = ASSETS_DIR / "swap_cafe"
+_SWAP_STATE = _SWAP_DIR / "state.json"
+# 2026-10-22 加雙人互動圖 pair~<動作>（owner＝她 id.couple id）
+# 2026-10-23 加玩家對對方妻子的動作圖 tease~<動作>(~nude) 與做愛步驟 sex~<姿勢>~<步驟>（owner＝couple id）
+_SWAP_EXPR = r"normal|shy|happy|startled|erotic|tipsy|under|nude|nude_ero|nude_ahe|nude_prone|nude_spread|nude_normal|nude_shy|nude_happy|nude_startled"
+_SWAP_KEY = re.compile(r"^((wife|husband|other)~(" + _SWAP_EXPR + r")|(wife|other)~(climax|creampie)|pair~(chat|kiss|grope|fellatio|cunni|room_kiss|bath_kiss|afterglow)|pair~(normal|behind|seated|prone)~(1|2|3)|pair~fellatio~3"
+                       r"|tease~(waist|butt|breast|breast_knead|breast_suck|nipple_lick|labia|labia_rub|oral|finger_in|vagina_finger|cervix_rub)(~nude|~under)?"
+                       r"|sex~(missionary|doggy|cowgirl|prone)~(open|tip|join|thrust|cum|orgasm))$")   # 交配三個動作兩格（輪播）
+_SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
+
+
+_SWAP_LOCK = threading.RLock()   # pt295u：state.json 讀改寫要鎖，不然產圖執行緒和網頁同時寫會互蓋（立繪「生好卻不見」）
+
+
+def _swap_parse(path: Path) -> dict | None:
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(d, dict):
+            return {"couples": d.get("couples") or {}, "current": d.get("current") or "", "prompts": d.get("prompts") or {}, "images": d.get("images") or {}, "edits": d.get("edits") or {}}
+    except Exception:
+        pass
+    return None
+
+
+def _swap_load() -> dict:
+    # pt319u：state.json 壞掉（兩個寫入者同時寫同一個 .tmp）以前會回「空的」→ 下一次存檔把所有已生的圖紀錄洗掉 → 預產圖「生了卻沒用」。
+    # 現在讀不到就退回上一份好的備份（.bak），再不行才空。
+    with _SWAP_LOCK:
+        d = _swap_parse(_SWAP_STATE)
+        if d is None and _SWAP_STATE.exists():
+            d = _swap_parse(_SWAP_STATE.with_suffix(".bak"))
+            if d is not None:
+                print("[換妻] state.json 讀不到，改用 state.bak", flush=True)
+        if d is None:
+            d = {"couples": {}, "current": "", "prompts": {}, "images": {}, "edits": {}}
+        _swap_recover(d)
+        return d
+
+
+def _swap_save(d: dict) -> None:
+    with _SWAP_LOCK:
+        _SWAP_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _SWAP_STATE.with_name(f"state.{os.getpid()}.{threading.get_ident()}.tmp")   # pt319u：每個寫入者自己的 tmp
+        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+        if _SWAP_STATE.exists() and _swap_parse(_SWAP_STATE) is not None:
+            try:
+                shutil.copyfile(_SWAP_STATE, _SWAP_STATE.with_suffix(".bak"))
+            except Exception:
+                pass
+        tmp.replace(_SWAP_STATE)
+
+
+_SWAP_FILE_RE = re.compile(r"^(.+)_(\d{13})_(raw|cut)\.(png|jpg|jpeg|webp)$")
+
+
+def _swap_recover(d: dict) -> None:
+    """pt319u：圖檔在 assets/swap_cafe/ 但 state.json 紀錄被別的寫入者蓋掉（「生好卻不見」）→ 依檔名 <owner>_<key>_<ms>_raw|cut 補回紀錄（只補缺的，不覆蓋）。
+    另外補伺服器預產雙人圖缺的 seed（以前 _pregen_store 沒存 seed → pairCut 把所有 ~2 格當沒有）。"""
+    try:
+        imgs = d.setdefault("images", {})
+        try:   # 不拿 _PREGEN_LOCK（retry 會先拿 PREGEN 再讀 swap，反過來拿會死結）
+            pg = json.loads((_SWAP_DIR / "pregen.json").read_text(encoding="utf-8"))
+        except Exception:
+            pg = {}
+        jobs = [j for b in ("date", "hotel") for j in (((pg or {}).get(b) or {}).get("jobs") or []) if isinstance(j, dict)]
+        owners = set(imgs) | set(d.get("couples") or {}) | {str(j.get("owner") or "") for j in jobs}
+        owners.discard("")
+        san = {re.sub(r"[^A-Za-z0-9_-]", "-", o): o for o in owners}
+        try:
+            names = os.listdir(_SWAP_DIR)
+        except Exception:
+            names = []
+        sig = (len(names), max((n for n in names), default=""), len(jobs))
+        if _SWAP_RECOVER_SIG.get("sig") != sig:
+            best: dict = {}
+            for n in names:
+                m = _SWAP_FILE_RE.match(n)
+                if not m or len(m.group(1)) >= 80:
+                    continue
+                stem, ms, kind = m.group(1), int(m.group(2)), m.group(3)
+                for so, o in san.items():
+                    if stem.startswith(so + "_"):
+                        key = stem[len(so) + 1:].replace("-", "~")
+                        if _SWAP_KEY.match(key):
+                            b = best.setdefault((o, key), {"ms": 0})
+                            if ms > b["ms"]:
+                                best[(o, key)] = b = {"ms": ms}
+                            if ms == b["ms"]:
+                                b[kind] = f"/assets/swap_cafe/{n}"
+                        break
+            _SWAP_RECOVER_SIG["sig"], _SWAP_RECOVER_SIG["best"] = sig, best
+        for (o, key), b in (_SWAP_RECOVER_SIG.get("best") or {}).items():
+            have = (imgs.get(o) or {}).get(key)
+            if isinstance(have, dict) and have.get("cut"):
+                continue
+            raw = b.get("raw") or b.get("cut")
+            if not raw:
+                continue
+            imgs.setdefault(o, {})[key] = {"raw": raw, "cut": b.get("cut") or raw, "at": b["ms"] // 1000, "recovered": True}
+            if (o, key) not in _SWAP_RECOVER_SAID:
+                _SWAP_RECOVER_SAID.add((o, key))
+                print(f"[換妻] 補回圖紀錄 {o} {key}", flush=True)
+        for j in jobs:
+            o, key = str(j.get("owner") or ""), str(j.get("key") or "")
+            r = (imgs.get(o) or {}).get(key)
+            seed = (j.get("body") or {}).get("seed")
+            if key.startswith("pair~") and isinstance(r, dict) and not r.get("seed") and isinstance(seed, int) and seed > 0:
+                r["seed"] = seed
+    except Exception as e:
+        print(f"[換妻] 補圖紀錄失敗：{e}", flush=True)
+
+
+_SWAP_RECOVER_SIG: dict = {}
+_SWAP_RECOVER_SAID: set = set()
+
+
+@app.get("/api/swap/cafe")
+def swap_cafe_state():
+    """換妻咖啡廳：對方夫妻檔案、每張圖的提示詞模板、已生的圖（raw＋去背）。"""
+    return _swap_load()
+
+
+@app.put("/api/swap/cafe/couple")
+def swap_cafe_couple(body: dict):
+    """存一對對方夫妻：body {couple:{id, husband, wife}}，並設為目前這對。"""
+    c = (body or {}).get("couple")
+    if not isinstance(c, dict) or not _SWAP_OWNER.match(str(c.get("id") or "")):
+        raise HTTPException(status_code=400, detail="couple.id 不對")
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        d["couples"][str(c["id"])] = {k: c.get(k) for k in ("id", "husband", "wife", "at")}
+        d["current"] = str(c["id"])
+        _swap_save(d)
+    return d
+
+
+@app.put("/api/swap/cafe/prompt")
+def swap_cafe_prompt(body: dict):
+    """存一張圖的模板：body {key:"角色~表情", tpl:{pos,neg,img2img}|null}（null＝回預設）。"""
+    body = body or {}
+    key = str(body.get("key") or "")
+    if not _SWAP_KEY.match(key):
+        raise HTTPException(status_code=400, detail="key 不對（wife|husband|other ~ normal|shy）")
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        tpl = rental_scene.clean_prompt(body.get("tpl"))
+        if tpl:
+            d["prompts"][key] = tpl
+        else:
+            d["prompts"].pop(key, None)
+        _swap_save(d)
+    return d
+
+
+def _swap_copy(url: str, data_b64: str, name: str) -> str:
+    _SWAP_DIR.mkdir(parents=True, exist_ok=True)
+    if data_b64:
+        raw = base64.b64decode(data_b64.split(",", 1)[-1])
+        if len(raw) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="圖太大")
+        (_SWAP_DIR / f"{name}.png").write_bytes(raw)
+        return f"/assets/swap_cafe/{name}.png"
+    src = _asset_path(url)
+    if src is None:
+        raise HTTPException(status_code=404, detail="找不到圖")
+    out = f"{name}{src.suffix.lower() or '.png'}"
+    shutil.copyfile(src, _SWAP_DIR / out)
+    return f"/assets/swap_cafe/{out}"
+
+
+def _cutinfo_clean(c) -> dict | None:
+    """去背結果（前端／伺服器量的）：{ok, how, border_green 0–1, removed 0–1, why}。"""
+    if not isinstance(c, dict):
+        return None
+    out: dict = {"ok": bool(c.get("ok")), "how": str(c.get("how") or "")[:40], "why": str(c.get("why") or "")[:200]}
+    for k in ("border_green", "removed"):
+        try:
+            out[k] = max(0.0, min(1.0, float(c.get(k))))
+        except (TypeError, ValueError):
+            out[k] = None
+    return out
+
+
+@app.post("/api/swap/cafe/recut")
+async def swap_cafe_recut(body: dict):
+    """雙人圖「重新去背」：拿已存的原圖重跑綠幕色鍵（不重生），換掉 cut。body {owner, key, cut_data?（瀏覽器去背的 PNG dataURL）, cutinfo?}。
+    沒給 cut_data → 伺服器色鍵；回 {changed, why, border_green, removed, images}。"""
+    body = body or {}
+    owner, key = str(body.get("owner") or ""), str(body.get("key") or "")
+    if not _SWAP_OWNER.match(owner) or not _PAIR_KEY.match(key):
+        raise HTTPException(status_code=400, detail="owner／key 不對")
+    d = _swap_load()
+    rec = (d["images"].get(owner) or {}).get(key)
+    if not isinstance(rec, dict) or not str(rec.get("raw") or "").startswith("/assets/swap_cafe/"):
+        raise HTTPException(status_code=404, detail="這張還沒有原圖")
+    src = _SWAP_DIR / Path(str(rec["raw"]).split("?")[0]).name
+    if not src.is_file():
+        raise HTTPException(status_code=404, detail="原圖檔不見了")
+    stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}_cut"
+    if body.get("cut_data"):
+        url = _swap_copy("", str(body["cut_data"]), stem)
+        info = _cutinfo_clean(body.get("cutinfo")) or {"ok": True, "how": "瀏覽器綠幕去背"}
+        changed, why = True, info.get("why") or "瀏覽器綠幕去背"
+    else:
+        tmp = _SWAP_DIR / f"{stem}{src.suffix.lower() or '.png'}"
+        shutil.copyfile(src, tmp)
+        changed, why, out = await asyncio.to_thread(cutout.chroma_key, tmp)
+        if out != tmp:
+            tmp.unlink(missing_ok=True)
+        url = f"/assets/swap_cafe/{out.name}"
+        info = {"ok": bool(changed) and (cutout.LAST_CHROMA.get("border_green") or 0) >= 0.5, "how": "伺服器綠幕去背", "why": why, **cutout.LAST_CHROMA}
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        r2 = d["images"].setdefault(owner, {}).setdefault(key, rec)
+        r2["cut"], r2["cutinfo"] = url, info
+        _swap_save(d)
+    return {"changed": changed, "why": why, **{k: info.get(k) for k in ("border_green", "removed")}, "images": d["images"]}
+
+
+@app.post("/api/swap/cafe/image")
+def swap_cafe_image(body: dict):
+    """登記一張半身立繪：body {owner（她 id 或 couple id）, key, raw（url）, cut（url）| cut_data（dataURL PNG，瀏覽器去背）}。"""
+    body = body or {}
+    owner, key = str(body.get("owner") or ""), str(body.get("key") or "")
+    if not _SWAP_OWNER.match(owner) or not _SWAP_KEY.match(key):
+        raise HTTPException(status_code=400, detail="owner／key 不對")
+    stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}"
+    raw = _swap_copy(str(body.get("raw") or ""), "", stem + "_raw") if body.get("raw") else ""
+    cut = _swap_copy(str(body.get("cut") or ""), str(body.get("cut_data") or ""), stem + "_cut") if (body.get("cut") or body.get("cut_data")) else ""
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        rec = {"raw": raw, "cut": cut or raw, "at": int(time.time())}
+        # 雙人圖：生圖時存在原圖旁邊的實際 prompt／參數（<原圖>.json）帶進來；前端給的生圖秒數也存
+        try:
+            src = _asset_path(str(body.get("raw") or "").split("?")[0]) if body.get("raw") else None
+            side = src.with_name(src.name + ".json") if src is not None else None
+            if side is not None and side.is_file():
+                rec["gen"] = json.loads(side.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        ci = _cutinfo_clean(body.get("cutinfo"))
+        if ci:
+            rec["cutinfo"] = ci
+        try:
+            if float(body.get("sec") or 0) > 0:
+                rec.setdefault("gen", {})["sec"] = float(body["sec"])
+        except (TypeError, ValueError):
+            pass
+        try:
+            if int(body.get("seed") or 0) > 0:
+                rec["seed"] = int(body["seed"])   # 雙人兩格：第 2 格沿用第 1 格的 seed
+        except (TypeError, ValueError):
+            pass
+        d["images"].setdefault(owner, {})[key] = rec
+        _swap_save(d)
+    return {"raw": raw, "cut": cut or raw, "images": d["images"]}
+
+
+# ---- 換妻書籤產圖：網頁關掉也繼續（佇列在這台，不在瀏覽器）----
+_PREGEN_PATH = _SWAP_DIR / "pregen.json"
+_pregen_wake = asyncio.Event()
+_PREGEN_LOOP: asyncio.AbstractEventLoop | None = None
+_PREGEN_LOCK = threading.RLock()
+_IMG_FIELDS = set(ImgGenIn.model_fields)
+
+
+def _pregen_kick() -> None:
+    loop = _PREGEN_LOOP
+    if loop is not None and loop.is_running():
+        loop.call_soon_threadsafe(_pregen_wake.set)
+    else:
+        _pregen_wake.set()
+
+
+def _pregen_load() -> dict:
+    with _PREGEN_LOCK:
+        try:
+            d = json.loads(_PREGEN_PATH.read_text(encoding="utf-8"))
+            if isinstance(d, dict):
+                d.setdefault("token", 0)
+                return d
+        except Exception:
+            pass
+        return {"token": 0, "date": None, "hotel": None}
+
+
+def _pregen_save(d: dict) -> None:
+    with _PREGEN_LOCK:
+        _SWAP_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _PREGEN_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(_PREGEN_PATH)
+
+
+def _swap_have(owner: str, key: str) -> bool:
+    rec = (_swap_load().get("images") or {}).get(owner) or {}
+    r = rec.get(key) if isinstance(rec, dict) else None
+    return isinstance(r, dict) and bool(r.get("cut"))
+
+
+def _img_in(body: dict) -> ImgGenIn:
+    data = {k: v for k, v in (body or {}).items() if k in _IMG_FIELDS}
+    return ImgGenIn(**data)
+
+
+def _gen_row(key: str):
+    with db() as conn:
+        return conn.execute("SELECT status, result, error FROM gen_tasks WHERE key=?", (key,)).fetchone()
+
+
+def _bucket_view(rec) -> dict:
+    if not isinstance(rec, dict) or not rec.get("jobs"):
+        return {"active": False, "status": "idle", "total": 0, "done": 0, "jobs": [], "coupleId": "", "wifeId": "", "price": 0, "names": {}}
+    jobs = rec.get("jobs") or []
+    done = sum(1 for j in jobs if j.get("status") == "done")
+    err = [j for j in jobs if j.get("status") == "error"]
+    pend = [j for j in jobs if j.get("status") in ("pending", "running")]
+    if done == len(jobs):
+        status = "ready"
+    elif err and not pend:
+        status = "error"
+    else:
+        status = "running"
+    names = rec.get("names") if isinstance(rec.get("names"), dict) else {}
+    return {
+        "active": not rec.get("hidden"),
+        "status": status,
+        "total": len(jobs),
+        "done": done,
+        "coupleId": rec.get("coupleId") or "",
+        "wifeId": rec.get("wifeId") or "",
+        "price": int(rec.get("price") or 0),
+        "names": {k: str(names.get(k) or "")[:40] for k in ("wife", "husband", "other")},
+        "jobs": [{"key": j.get("key") or "", "status": j.get("status") or "", "error": str(j.get("error") or "")[:200]} for j in jobs],
+    }
+
+
+def _pregen_public(d: dict) -> dict:
+    return {"token": int(d.get("token") or 0), "date": _bucket_view(d.get("date")), "hotel": _bucket_view(d.get("hotel"))}
+
+
+def _pregen_mark(bucket: str, owner: str, key: str, status: str, error: str, gen_key: str | None = None) -> None:
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        rec = d.get(bucket)
+        if not isinstance(rec, dict):
+            return
+        for j in rec.get("jobs") or []:
+            if j.get("owner") == owner and j.get("key") == key:
+                j["status"] = status
+                j["error"] = error
+                if gen_key is not None:
+                    j["genKey"] = gen_key
+                break
+        _pregen_save(d)
+
+
+def _pregen_store(owner: str, key: str, raw_url: str, seed: int = 0) -> None:
+    """原圖抄進換妻圖庫，再綠幕去背。去背沒有綠也把原圖當立繪，免得整批卡死。"""
+    stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}"
+    raw = _swap_copy(raw_url, "", stem + "_raw")
+    src = _SWAP_DIR / Path(raw.split("?")[0]).name
+    cut_path = _SWAP_DIR / f"{stem}_cut.png"
+    shutil.copyfile(src, cut_path)
+    if key.startswith(("tease~", "sex~")):   # pt321u：動作／做愛圖是整張場景圖，不去背（同瀏覽器 cut=raw）
+        cut_path.unlink(missing_ok=True)
+        with _SWAP_LOCK:
+            d = _swap_load()
+            d["images"].setdefault(owner, {})[key] = {"raw": raw, "cut": raw, "at": int(time.time())}
+            _swap_save(d)
+        return
+    try:
+        changed, _why, out = cutout.chroma_key(cut_path)
+        cut_file = out if changed else src
+    except Exception:
+        cut_file = src
+        changed = False
+    if cut_file.resolve() != src.resolve():
+        cut = f"/assets/swap_cafe/{cut_file.name}"
+    else:
+        cut = raw
+    if not changed and cut_path.is_file() and cut_path.resolve() != src.resolve():
+        cut_path.unlink(missing_ok=True)
+    with _SWAP_LOCK:
+        d = _swap_load()
+        rec = {"raw": raw, "cut": cut, "at": int(time.time())}
+        if seed:
+            rec["seed"] = int(seed)   # pt319u：雙人第 2 格要跟第 1 格同 seed 才會被 pairCut 採用；以前沒存 → 所有預產 ~2 都被丟掉
+        d["images"].setdefault(owner, {})[key] = rec
+        _swap_save(d)
+
+
+def _clean_jobs(jobs_in) -> list[dict]:
+    if not isinstance(jobs_in, list) or not jobs_in or len(jobs_in) > 300:
+        raise HTTPException(status_code=400, detail="jobs 不對")
+    clean = []
+    for j in jobs_in:
+        if not isinstance(j, dict):
+            raise HTTPException(status_code=400, detail="jobs 不對")
+        owner, key = str(j.get("owner") or ""), str(j.get("key") or "")
+        if not _SWAP_OWNER.match(owner) or not _SWAP_KEY.match(key):
+            raise HTTPException(status_code=400, detail=f"owner／key 不對：{key}")
+        if not isinstance(j.get("body"), dict):
+            raise HTTPException(status_code=400, detail="缺生圖內容")
+        have = _swap_have(owner, key)
+        clean.append({"owner": owner, "key": key, "body": j["body"], "status": "done" if have else "pending", "error": "", "genKey": ""})
+    return clean
+
+
+@app.get("/api/swap/pregen")
+def swap_pregen_state():
+    """書籤進度。網頁關掉再打開，看的就是這份。"""
+    return _pregen_public(_pregen_load())
+
+
+@app.post("/api/swap/pregen")
+def swap_pregen_post(body: dict):
+    """排進一組立繪。bucket=date 是赴約前那 15 張；hotel 是進旅館才補的裸體。date 會換掉上一對。"""
+    body = body or {}
+    bucket = str(body.get("bucket") or "date")
+    if bucket not in ("date", "hotel"):
+        raise HTTPException(status_code=400, detail="bucket 不對")
+    names = body.get("names") if isinstance(body.get("names"), dict) else {}
+    rec = {
+        "coupleId": str(body.get("coupleId") or "")[:80],
+        "wifeId": str(body.get("wifeId") or "")[:80],
+        "price": int(body.get("price") or 0),
+        "names": {k: str(names.get(k) or "")[:40] for k in ("wife", "husband", "other")},
+        "hidden": False,
+        "jobs": _clean_jobs(body.get("jobs")),
+    }
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        if bucket == "date":
+            d["token"] = int(d.get("token") or 0) + 1
+            d["hotel"] = None
+        elif isinstance(d.get("hotel"), dict) and d["hotel"].get("coupleId") == rec["coupleId"]:
+            old = {(j.get("owner"), j.get("key")): j for j in d["hotel"].get("jobs") or []}
+            merged = []
+            for j in rec["jobs"]:
+                prev = old.get((j["owner"], j["key"]))
+                if prev and prev.get("status") in ("done", "running", "pending") and (prev.get("status") == "done" or prev.get("genKey")):
+                    merged.append(prev)
+                else:
+                    merged.append(j)
+            rec["jobs"] = merged
+        d[bucket] = rec
+        _pregen_save(d)
+        pub = _pregen_public(d)
+    _pregen_kick()
+    return pub
+
+
+@app.post("/api/swap/pregen/retry")
+def swap_pregen_retry(body: dict):
+    body = body or {}
+    bucket = str(body.get("bucket") or "date")
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        rec = d.get(bucket)
+        if not isinstance(rec, dict):
+            raise HTTPException(status_code=404, detail="沒有這批圖")
+        for j in rec.get("jobs") or []:
+            if j.get("status") == "error":
+                j["status"] = "done" if _swap_have(j.get("owner") or "", j.get("key") or "") else "pending"
+                j["error"] = ""
+                j["genKey"] = ""
+                j["tries"] = 0
+        _pregen_save(d)
+        pub = _pregen_public(d)
+    _pregen_kick()
+    return pub
+
+
+@app.post("/api/swap/pregen/cancel")
+def swap_pregen_cancel():
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        d["token"] = int(d.get("token") or 0) + 1
+        # pt303u：排在 gen_tasks 還沒開始的一起撤掉，取消後不再生
+        keys = [str(j.get("genKey")) for b in ("date", "hotel") for j in ((d.get(b) or {}).get("jobs") or []) if j.get("genKey")]
+        if keys:
+            with db() as conn:
+                conn.executemany("DELETE FROM gen_tasks WHERE key=? AND status='pending'", [(k,) for k in keys])
+        d["date"] = None
+        d["hotel"] = None
+        _pregen_save(d)
+        pub = _pregen_public(d)
+    _pregen_kick()
+    return pub
+
+
+@app.post("/api/swap/pregen/enter")
+def swap_pregen_enter():
+    """赴約之後書籤收起來。圖留著。"""
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        if isinstance(d.get("date"), dict):
+            d["date"]["hidden"] = True
+            _pregen_save(d)
+        return _pregen_public(d)
+
+
+async def _pregen_one(bucket: str, owner: str, key: str, token: int) -> None:
+    d = _pregen_load()
+    if bucket == "date" and int(d.get("token") or 0) != token:
+        return
+    rec = d.get(bucket)
+    job = next((j for j in (rec.get("jobs") if isinstance(rec, dict) else []) or [] if j.get("owner") == owner and j.get("key") == key), None)
+    if not job or job.get("status") == "done":
+        return
+    if _swap_have(owner, key):
+        _pregen_mark(bucket, owner, key, "done", "")
+        return
+    gen_key = str(job.get("genKey") or "")
+    try:
+        if not gen_key:
+            body = dict(job.get("body") or {})
+            body["retry"] = True
+            body["key"] = str(body.get("key") or f"swap-pregen:{owner}:{key}:{token}")
+            gen_key = imggen_submit(_img_in(body))["key"]
+            _pregen_mark(bucket, owner, key, "running", "", gen_key)
+        else:
+            _pregen_mark(bucket, owner, key, "running", "", gen_key)
+        deadline = time.time() + 900
+        while time.time() < deadline:
+            if bucket == "date" and int(_pregen_load().get("token") or 0) != token:
+                return
+            row = _gen_row(gen_key)
+            if row and row[0] == "done" and row[1]:
+                if bucket == "date" and int(_pregen_load().get("token") or 0) != token:
+                    return
+                seed = (job.get("body") or {}).get("seed")
+                await asyncio.to_thread(_pregen_store, owner, key, str(row[1]).split("|")[0], seed if isinstance(seed, int) else 0)
+                _pregen_mark(bucket, owner, key, "done", "")
+                print(f"[換妻產圖] {key} 好了", flush=True)
+                return
+            if row and row[0] == "error":
+                # pt295u：ComfyUI 偶發失敗（逾時、連線、stale running）以前一次就判死 → 換 seed 自動重試 2 次
+                tries = int(job.get("tries") or 0) + 1
+                print(f"[換妻產圖] {key} 失敗（第 {tries} 次）：{row[2]}", flush=True)
+                if tries < 3:
+                    with _PREGEN_LOCK:
+                        d2 = _pregen_load()
+                        for j2 in (d2.get(bucket) or {}).get("jobs") or []:
+                            if j2.get("owner") == owner and j2.get("key") == key:
+                                j2["tries"] = tries
+                                j2["genKey"] = ""
+                                j2["status"] = "pending"
+                                b2 = dict(j2.get("body") or {})
+                                if not key.startswith("pair~"):   # pt319u：雙人格重試保留 seed，不然第 2 格對不上第 1 格
+                                    b2["seed"] = random.randint(1, 2**31 - 1)
+                                b2["key"] = f"swap-pregen:{owner}:{key}:{token}:r{tries}"
+                                j2["body"] = b2
+                        _pregen_save(d2)
+                    return
+                _pregen_mark(bucket, owner, key, "error", str(row[2] or "生圖失敗")[:200])
+                return
+            await asyncio.sleep(2)
+        _pregen_mark(bucket, owner, key, "error", "逾時")
+    except Exception as e:
+        _pregen_mark(bucket, owner, key, "error", str(e)[:200])
+        print(f"[換妻產圖] {key} 失敗：{e}", flush=True)
+
+
+async def _swap_pregen_loop() -> None:
+    global _PREGEN_LOOP
+    _PREGEN_LOOP = asyncio.get_running_loop()
+    print("[換妻產圖] 書籤佇列啟動（離開網頁也會繼續）", flush=True)
+    while True:
+        try:
+            d = _pregen_load()
+            token = int(d.get("token") or 0)
+            found = None
+            for bucket in ("date", "hotel"):
+                rec = d.get(bucket)
+                if not isinstance(rec, dict):
+                    continue
+                for j in rec.get("jobs") or []:
+                    if j.get("status") in ("pending", "running"):
+                        found = (bucket, str(j.get("owner") or ""), str(j.get("key") or ""))
+                        break
+                if found:
+                    break
+            if not found:
+                _pregen_wake.clear()
+                try:
+                    await asyncio.wait_for(_pregen_wake.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    pass
+                continue
+            await _pregen_one(found[0], found[1], found[2], token)
+        except Exception as e:
+            print(f"[換妻產圖] 佇列例外（會續跑）：{e}", flush=True)
+            await asyncio.sleep(3)
+
+
+# ---- 2026-10-22 換妻雙人圖測試台：每張圖自己的設定（正負向原文、seed／steps／cfg、起始圖＋denoise）＋預設 prompt 預覽 ----
+_PAIR_KEY = re.compile(r"^pair~(chat|kiss|grope|fellatio|cunni|room_kiss|bath_kiss|afterglow|(normal|behind|seated|prone)~(1|2|3)|fellatio~3)$")
+_PAIR_REF_PREFIX = ("/assets/swap_cafe/", "/assets/pose_refs/", "/assets/portraits/")
+
+
+def _pair_edit_clean(e) -> dict | None:
+    if not isinstance(e, dict):
+        return None
+    out: dict = {"pos": str(e.get("pos") or "")[:8000], "neg": str(e.get("neg") or "")[:8000]}
+    ref = str(e.get("ref") or "").split("?")[0]
+    out["ref"] = ref if ref.startswith(_PAIR_REF_PREFIX) and ".." not in ref else ""
+    for k, lo, hi, cast in (("denoise", 0.05, 1.0, float), ("cfg", 1.0, 30.0, float), ("steps", 1, 150, int), ("seed", 0, 2**31 - 1, int)):
+        try:
+            v = e.get(k)
+            out[k] = None if v in (None, "") else max(lo, min(hi, cast(v)))
+        except (TypeError, ValueError):
+            out[k] = None
+    return out if (out["pos"].strip() or out["neg"].strip()) else None
+
+
+@app.put("/api/swap/cafe/edit")
+def swap_cafe_edit(body: dict):
+    """存一張雙人圖的測試台設定：body {owner, key:"pair~…", edit:{pos,neg,ref,denoise,seed,steps,cfg}|null（null＝回預設）}。"""
+    body = body or {}
+    owner, key = str(body.get("owner") or ""), str(body.get("key") or "")
+    if not _SWAP_OWNER.match(owner) or not _PAIR_KEY.match(key):
+        raise HTTPException(status_code=400, detail="owner／key 不對")
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        e = _pair_edit_clean(body.get("edit"))
+        if e:
+            d["edits"].setdefault(owner, {})[key] = e
+        else:
+            d["edits"].get(owner, {}).pop(key, None)
+        _swap_save(d)
+    return d
+
+
+@app.post("/api/swap/pair/preview")
+def swap_pair_preview(t: ImgGenIn):
+    """雙人圖的預設 prompt：照生圖同一條路組（人設 tags＋lead＋伺服器加的＋預設負向），不生圖。key 要 swap-pair: 開頭。"""
+    if not str(t.key or "").startswith("swap-pair:"):
+        raise HTTPException(status_code=400, detail="只給換妻雙人圖用")
+    _, _, opts = _imggen_opts(t)
+    opts = _apply_image_vary(opts)
+    if isinstance(opts.get("pair"), dict):
+        prompt, negative = _pair_prompts(opts)
+        return {"positive": prompt, "negative": negative, "steps": comfy.DEFAULT_STEPS, "cfg": comfy.DEFAULT_CFG,
+                "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER, "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT}
+    extra_pos, extra_from_en = sdtags.split_pos_neg_tags(str(opts.get("extra") or ""))
+    opts["extra"] = extra_pos
+    extra_neg = ", ".join(x for x in (extra_from_en, str(opts.get("visual_neg") or "").strip(), str(opts.get("negative") or "").strip()) if x)
+    prompt, _ = _comfy_prompt_for(opts)
+    prompt = _lead_merge(str(opts.get("lead") or ""), prompt)
+    negative = sdtags.negative_for(bool(opts.get("cutout")), clothed=False, extra_neg=extra_neg)
+    return {"positive": prompt, "negative": negative, "steps": comfy.DEFAULT_STEPS, "cfg": comfy.DEFAULT_CFG,
+            "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER, "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT}
+
+
 async def _world_clock():
     """世界時鐘:伺服器權威 runtime。每 30 秒把召喚師模擬 + 計時判定(看板娘到期/委託逾期/跨日)
     補算到真實時間(關螢幕、離線也照跑),並每 10 分鐘輸出一次心跳日誌。"""
@@ -533,16 +5828,131 @@ async def _world_clock():
 
 @app.on_event("startup")
 async def _start_gen_worker():
+    if not cutout.AVAILABLE:
+        print("[警告] 沒裝 Pillow —— 立繪不會去背(白底疊在遊戲畫面上)。"
+              "修法:pip install -r server/requirements.txt,然後重開伺服器。"
+              "(狀態也看得到:GET /api/cutout、設定頁按「測試 ComfyUI」、"
+              "/testword 的「🩹 去背狀態」)", flush=True)
     print("[世界時鐘] 啟動 — 伺服器權威 runtime 上線,每 30 秒跑檢查、每 10 分鐘印心跳", flush=True)
+    print("[生活] 她人在日本的時候由這台照真實時間走，網頁只看", flush=True)
+    try:
+        _dd_retire()
+    except Exception as e:
+        print(f"[發呆] 取消失敗(仍不啟動預產): {e}", flush=True)
     asyncio.create_task(_gen_worker())
+    asyncio.create_task(_swap_pregen_loop())
     asyncio.create_task(_world_clock())
+    asyncio.create_task(_life_loop())
+    asyncio.create_task(_line_loop())
 
 
-# Testword 編輯召喚師池(dateChance 等行為參數);整包覆寫 content/summoners.json
+# /editmale 編輯其他召喚師池: names、behaviors(行為卡)、actions(肢體行為)。
+def _norm_behaviors(raw):
+    out = []
+    seen = set()
+    for i, x in enumerate(raw or []):
+        if isinstance(x, str):
+            name = x.strip()
+            if not name:
+                continue
+            sid = f"bh_{i}"
+            out.append({"id": sid, "name": name, "how": "", "when": "approach", "line": "common"})
+            seen.add(sid)
+            continue
+        if not isinstance(x, dict):
+            continue
+        name = str(x.get("name") or "").strip()
+        if not name:
+            continue
+        sid = str(x.get("id") or "").strip() or f"bh_{i}"
+        if sid in seen:
+            sid = f"{sid}_{i}"
+        seen.add(sid)
+        when = str(x.get("when") or "approach").strip()
+        if when not in ("approach", "chat"):
+            when = "approach"
+        line = str(x.get("line") or "common").strip()
+        if line not in ("common", "otaku", "creep", "erotic"):
+            line = "common"
+        out.append({"id": sid, "name": name, "how": str(x.get("how") or "").strip(), "when": when, "line": line})
+    return out
+
+
+def _norm_actions(raw):
+    out = []
+    seen = set()
+    for i, x in enumerate(raw or []):
+        if not isinstance(x, dict):
+            continue
+        name = str(x.get("name") or "").strip()
+        if not name:
+            continue
+        sid = str(x.get("id") or "").strip() or f"act_{i}"
+        if sid in seen:
+            sid = f"{sid}_{i}"
+        seen.add(sid)
+        when = str(x.get("when") or "approach").strip()
+        if when not in ("approach", "chat"):
+            when = "approach"
+        out.append({"id": sid, "name": name, "how": str(x.get("how") or "").strip(), "when": when})
+    return out
+
+
+def _norm_date_acts(raw):
+    kinds = ("talk", "touch", "strip", "penis", "invite", "mate")
+    out = []
+    seen = set()
+    for i, x in enumerate(raw or []):
+        if not isinstance(x, dict):
+            continue
+        name = str(x.get("name") or "").strip()
+        if not name:
+            continue
+        sid = str(x.get("id") or "").strip() or f"da_{i}"
+        if sid in seen:
+            sid = f"{sid}_{i}"
+        seen.add(sid)
+        kind = str(x.get("kind") or "talk").strip()
+        if kind not in kinds:
+            kind = "talk"
+        try:
+            mn = int(x.get("minArousal") or 0)
+        except Exception:
+            mn = 0
+        mn = max(0, min(30, mn))
+        out.append({
+            "id": sid,
+            "name": name,
+            "how": str(x.get("how") or "").strip(),
+            "cmd": str(x.get("cmd") or "").strip(),
+            "kind": kind,
+            "minArousal": mn,
+        })
+    return out
+
+
 @app.put("/api/summoners")
 def put_summoners(body: dict):
-    if not isinstance(body.get("summoners"), list):
-        raise HTTPException(400, "需要 {summoners: [...]}")
+    has_names = "names" in body
+    has_summoners = "summoners" in body
+    has_behaviors = "behaviors" in body
+    has_actions = "actions" in body
+    has_play = "play_ladders" in body
+    has_date_acts = "date_acts" in body
+    if not has_names and not has_summoners and not has_behaviors and not has_actions and not has_play and not has_date_acts:
+        raise HTTPException(400, "需要 {names:[...]}、{behaviors:[...]}、{actions:[...]}、{play_ladders:{...}}、{date_acts:[...]} 或 {summoners:[...]}")
+    if has_names and not isinstance(body.get("names"), list):
+        raise HTTPException(400, "names 必須是字串陣列")
+    if has_summoners and not isinstance(body.get("summoners"), list):
+        raise HTTPException(400, "summoners 必須是陣列")
+    if has_behaviors and not isinstance(body.get("behaviors"), list):
+        raise HTTPException(400, "behaviors 必須是陣列")
+    if has_actions and not isinstance(body.get("actions"), list):
+        raise HTTPException(400, "actions 必須是陣列")
+    if has_play and not isinstance(body.get("play_ladders"), dict):
+        raise HTTPException(400, "play_ladders 必須是物件")
+    if has_date_acts and not isinstance(body.get("date_acts"), list):
+        raise HTTPException(400, "date_acts 必須是陣列")
     path = WEB_DIR / "content" / "summoners.json"
     current = {}
     if path.exists():
@@ -550,12 +5960,30 @@ def put_summoners(body: dict):
             current = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             current = {}
-    current["summoners"] = body["summoners"]
+    out = {"ok": True}
+    if has_names:
+        current["names"] = [str(x).strip() for x in body["names"] if str(x).strip()]
+        out["names"] = len(current["names"])
+    if has_behaviors:
+        current["behaviors"] = _norm_behaviors(body["behaviors"])
+        out["behaviors"] = len(current["behaviors"])
+    if has_actions:
+        current["actions"] = _norm_actions(body["actions"])
+        out["actions"] = len(current["actions"])
+    if has_summoners:
+        current["summoners"] = body["summoners"]
+        out["count"] = len(body["summoners"])
+    if has_play:
+        current["play_ladders"] = body["play_ladders"]
+        out["play_ladders"] = True
+    if has_date_acts:
+        current["date_acts"] = _norm_date_acts(body["date_acts"])
+        out["date_acts"] = len(current["date_acts"])
     path.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {"ok": True, "count": len(body["summoners"])}
+    return out
 
 
-# /edit_person 編輯魅魔生成池;整包覆寫 content/persona_pools.json(男性=召喚師,走 /api/summoners)
+# /edit_person 編輯魅魔生成池;整包覆寫 content/persona_pools.json(男性=召喚師,走 /editmale)
 @app.put("/api/pools")
 def put_pools(body: dict):
     if not isinstance(body.get("female"), dict):
@@ -569,6 +5997,637 @@ def put_pools(body: dict):
 def testword():
     from fastapi.responses import FileResponse
     return FileResponse(WEB_DIR / "testword.html")
+
+
+@app.get("/testdate")
+def testdate():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "testdate.html")
+
+
+@app.get("/test_date")
+def test_date():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_date.html")
+
+
+# ── 多檔牌組版本（card_x.json 等）────────────────────────────────
+# 註冊表 content/card_packs_registry.json：
+#   { "active", "liveEpoch", "packs": [{ "id","file","name","note",... }] }
+# 每份牌組是獨立 JSON（與 cards.json 同形）。
+# 遊戲只有一個「上線槽」= active：
+#   - 上線 = 換 active + liveEpoch++ + 清空玩家牌制進度（牌庫／貨架／創角話術）
+#   - 草稿檔仍保留在 disk，方便回滾再上線（再上線仍會再清一次玩家牌進度）
+
+CONTENT_DIR = WEB_DIR / "content"
+PACK_REGISTRY_PATH = CONTENT_DIR / "card_packs_registry.json"
+_PACK_ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_\-]{0,47}$")
+_PACK_FILE_RE = re.compile(r"^[a-zA-Z0-9_\-]+\.json$")
+
+
+def _default_pack_registry() -> dict:
+    return {
+        "active": "main",
+        "liveEpoch": 1,
+        "packs": [
+            {
+                "id": "main",
+                "file": "cards.json",
+                "name": "正式牌庫",
+                "note": "預設／相容路徑 content/cards.json",
+            }
+        ],
+    }
+
+
+def _load_pack_registry() -> dict:
+    if not PACK_REGISTRY_PATH.exists():
+        reg = _default_pack_registry()
+        # 若 cards.json 存在就寫出註冊表，方便後續多版本
+        try:
+            PACK_REGISTRY_PATH.write_text(
+                json.dumps(reg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+        except Exception:
+            pass
+        return reg
+    try:
+        reg = json.loads(PACK_REGISTRY_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(500, f"card_packs_registry.json 損壞: {e}")
+    if not isinstance(reg, dict):
+        raise HTTPException(500, "card_packs_registry.json 格式錯誤")
+    packs = reg.get("packs")
+    if not isinstance(packs, list) or not packs:
+        reg = _default_pack_registry()
+    # 確保 main 在
+    if not any(isinstance(p, dict) and p.get("id") == "main" for p in reg["packs"]):
+        reg["packs"].insert(
+            0,
+            {
+                "id": "main",
+                "file": "cards.json",
+                "name": "正式牌庫",
+                "note": "預設",
+            },
+        )
+    if not reg.get("active") or not any(
+        p.get("id") == reg["active"] for p in reg["packs"] if isinstance(p, dict)
+    ):
+        reg["active"] = "main"
+    try:
+        reg["liveEpoch"] = int(reg.get("liveEpoch") or 1)
+    except (TypeError, ValueError):
+        reg["liveEpoch"] = 1
+    if reg["liveEpoch"] < 1:
+        reg["liveEpoch"] = 1
+    return reg
+
+
+def _save_pack_registry(reg: dict) -> None:
+    PACK_REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PACK_REGISTRY_PATH.write_text(
+        json.dumps(reg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _pack_meta(reg: dict, pack_id: str) -> dict:
+    for p in reg.get("packs") or []:
+        if isinstance(p, dict) and p.get("id") == pack_id:
+            return p
+    raise HTTPException(404, f"找不到牌組: {pack_id}")
+
+
+def _pack_path(meta: dict) -> Path:
+    fname = (meta.get("file") or "").strip()
+    if not _PACK_FILE_RE.match(fname):
+        raise HTTPException(400, f"非法牌組檔名: {fname}")
+    # 只允許 content/ 底下單一檔名，擋路徑穿越
+    path = (CONTENT_DIR / fname).resolve()
+    if path.parent != CONTENT_DIR.resolve():
+        raise HTTPException(400, "牌組路徑越界")
+    return path
+
+
+def _empty_pack_doc(title: str = "新牌組") -> dict:
+    return {
+        "_meta": {
+            "title": title,
+            "spec": "docs/card-system.md",
+            "schema_version": 2,
+            "token_model": "每卡一個詞墜 token；parentId 繼承父鏈。",
+            "pack_note": "獨立牌組檔；上線靠 registry.active 切換，不刪舊檔。",
+        },
+        "enums": {
+            "kind": ["speech", "shop_premium", "girl_trait", "venue_event"],
+            "chain_attr": ["talk", "touch", "sex", "play", "any"],
+            "stage": ["stranger", "friend", "girlfriend", "wife"],
+            "mode": ["kanban", "date"],
+        },
+        "defaults": {
+            "hand_size": 5,
+            "max_girl_cards": 3,
+            "max_inject": 5,
+            "shop_slots": 3,
+            "shop_refresh_hours": 4,
+            "bubble_chance": 0.15,
+            "dates_per_girl_per_day": 2,
+            "base_plays_by_stage": {
+                "stranger": 1,
+                "friend": 2,
+                "girlfriend": 3,
+                "wife": 4,
+            },
+            "stay_base_by_stage": {
+                "stranger": 0.05,
+                "friend": 0.15,
+                "girlfriend": 0.3,
+                "wife": 0.45,
+            },
+            "answer_rate_by_stage": {
+                "stranger": 0.1,
+                "friend": 0.35,
+                "girlfriend": 0.6,
+                "wife": 0.8,
+            },
+            "phone_cost": 1,
+            "phone_cost_range": [1, 1],
+            "answer_rate": 2 / 3,
+            "emotion_fail_open": {"min": -3, "max": -1},
+        },
+        "starter_pool": [],
+        "shop_weights": {"speech_pool": [], "premium_pool": []},
+        "cards": [],
+        "venues": [],
+        "girl_card_build_rules": {},
+        "bubble_canned": {},
+    }
+
+
+def _validate_pack_doc(body: dict) -> dict:
+    """驗證並正規化一份牌組文件；回傳可寫入的 body。"""
+    if not isinstance(body, dict) or not isinstance(body.get("cards"), list):
+        raise HTTPException(400, "需要 {cards: [...]}")
+    cards = body["cards"]
+    ids = []
+    for i, c in enumerate(cards):
+        if not isinstance(c, dict) or not c.get("id"):
+            raise HTTPException(400, f"cards[{i}] 缺 id")
+        cid = str(c["id"]).strip()
+        if not cid:
+            raise HTTPException(400, f"cards[{i}] id 為空")
+        if cid in ids:
+            raise HTTPException(400, f"重複 id: {cid}")
+        ids.append(cid)
+        c["id"] = cid
+        pid = c.get("parentId")
+        if pid is None or pid == "":
+            c["parentId"] = None
+    idset = set(ids)
+    by = {c["id"]: c for c in cards}
+    for c in cards:
+        pid = c.get("parentId")
+        if not pid:
+            continue
+        if pid not in idset:
+            raise HTTPException(400, f"卡 {c['id']} 的 parentId={pid} 不存在")
+        if pid == c["id"]:
+            raise HTTPException(400, f"卡 {c['id']} 不能 parent 自己")
+        # 環
+        seen = set()
+        cur = c
+        while cur:
+            if cur["id"] in seen:
+                raise HTTPException(400, f"詞墜繼承成環: {c['id']}")
+            seen.add(cur["id"])
+            pp = cur.get("parentId")
+            cur = by.get(pp) if pp else None
+    meta = body.get("_meta") if isinstance(body.get("_meta"), dict) else {}
+    meta.setdefault("title", "魅魔萬事屋·互動牌定義（內容模組）")
+    meta.setdefault("spec", "docs/card-system.md")
+    meta["schema_version"] = int(meta.get("schema_version") or 2)
+    meta["token_model"] = (
+        "每卡一個詞墜 token；parentId 繼承父鏈詞墜。"
+        "解析後效果字串如 [問候] [說笑話]。"
+    )
+    meta["pack_model"] = (
+        "多檔牌組：registry.active 決定遊戲用哪份；"
+        "編輯 card_x.json 等草稿，上線只切指標，舊版可回滾。"
+    )
+    body["_meta"] = meta
+    # starter_pool 清幽靈
+    if isinstance(body.get("starter_pool"), list):
+        body["starter_pool"] = [x for x in body["starter_pool"] if x in idset]
+    return body
+
+
+def _read_pack_file(path: Path) -> dict:
+    if not path.exists():
+        raise HTTPException(404, f"找不到牌組檔: {path.name}")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(500, f"{path.name} 解析失敗: {e}")
+
+
+def _write_pack_file(path: Path, body: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # 同檔 .bak
+    try:
+        if path.exists():
+            bak = path.with_suffix(path.suffix + ".bak")
+            bak.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    except Exception:
+        pass
+    path.write_text(json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _pack_summary(meta: dict, reg: dict) -> dict:
+    path = _pack_path(meta)
+    count = None
+    if path.exists():
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            count = len(doc.get("cards") or [])
+        except Exception:
+            count = None
+    return {
+        "id": meta.get("id"),
+        "file": meta.get("file"),
+        "name": meta.get("name") or meta.get("id"),
+        "note": meta.get("note") or "",
+        "active": meta.get("id") == reg.get("active"),
+        "exists": path.exists(),
+        "cardCount": count,
+        "clonedFrom": meta.get("clonedFrom"),
+        "createdAt": meta.get("createdAt"),
+        "activatedAt": meta.get("activatedAt"),
+    }
+
+
+@app.get("/api/card-packs")
+def list_card_packs():
+    """列出所有牌組版本 + 目前上線的 active。"""
+    reg = _load_pack_registry()
+    packs = [_pack_summary(p, reg) for p in reg["packs"] if isinstance(p, dict) and p.get("id")]
+    try:
+        live_epoch = int(reg.get("liveEpoch") or 1)
+    except (TypeError, ValueError):
+        live_epoch = 1
+    return {
+        "active": reg.get("active"),
+        "liveEpoch": live_epoch,
+        "packs": packs,
+    }
+
+
+@app.get("/api/card-packs/{pack_id}")
+def get_card_pack(pack_id: str):
+    reg = _load_pack_registry()
+    meta = _pack_meta(reg, pack_id)
+    doc = _read_pack_file(_pack_path(meta))
+    return {
+        "pack": _pack_summary(meta, reg),
+        "doc": doc,
+    }
+
+
+@app.put("/api/card-packs/{pack_id}")
+def put_card_pack(pack_id: str, body: dict):
+    """只寫該牌組檔，不動其他版本。body 可為整份 doc，或 {doc:{...}, name?, note?}。"""
+    reg = _load_pack_registry()
+    meta = _pack_meta(reg, pack_id)
+    doc = body.get("doc") if isinstance(body.get("doc"), dict) else body
+    doc = _validate_pack_doc(doc)
+    if "name" in body and body["name"]:
+        meta["name"] = str(body["name"]).strip()
+    if "note" in body:
+        meta["note"] = str(body.get("note") or "")
+    meta["updatedAt"] = time.time()
+    _write_pack_file(_pack_path(meta), doc)
+    _save_pack_registry(reg)
+    return {
+        "ok": True,
+        "pack": _pack_summary(meta, reg),
+        "count": len(doc.get("cards") or []),
+        "schema_version": (doc.get("_meta") or {}).get("schema_version"),
+    }
+
+
+class PackCreateIn(BaseModel):
+    id: str
+    name: str = ""
+    note: str = ""
+    # empty | clone | lineage
+    mode: str = "clone"
+    # clone / lineage 來源
+    from_pack: str = "main"
+    # lineage 模式：來源卡 id + full|subtree
+    from_card_id: str = ""
+    lineage_mode: str = "full"
+    file: str = ""  # 可空：自動 card_{id}.json；main 固定 cards.json
+
+
+@app.post("/api/card-packs")
+def create_card_pack(body: PackCreateIn):
+    """新開牌組檔（空 / 整包克隆 / 只抽輩分）。不影響 active。"""
+    reg = _load_pack_registry()
+    pid = (body.id or "").strip()
+    if not _PACK_ID_RE.match(pid):
+        raise HTTPException(400, "id 須為英文開頭的字母數字_-(最多48字)")
+    if any(p.get("id") == pid for p in reg["packs"] if isinstance(p, dict)):
+        raise HTTPException(400, f"牌組 id 已存在: {pid}")
+    fname = (body.file or "").strip()
+    if not fname:
+        fname = "cards.json" if pid == "main" else f"{pid}.json"
+    if not fname.endswith(".json"):
+        fname += ".json"
+    if not _PACK_FILE_RE.match(fname):
+        raise HTTPException(400, f"非法檔名: {fname}")
+    # 檔名不可撞
+    for p in reg["packs"]:
+        if isinstance(p, dict) and p.get("file") == fname:
+            raise HTTPException(400, f"檔名已被 {p.get('id')} 使用: {fname}")
+    path = (CONTENT_DIR / fname).resolve()
+    if path.parent != CONTENT_DIR.resolve():
+        raise HTTPException(400, "路徑越界")
+    if path.exists():
+        raise HTTPException(400, f"檔案已存在: {fname}")
+
+    mode = (body.mode or "clone").lower()
+    if mode == "empty":
+        doc = _empty_pack_doc(body.name or pid)
+    elif mode in ("clone", "lineage"):
+        src_meta = _pack_meta(reg, body.from_pack or "main")
+        src_doc = _read_pack_file(_pack_path(src_meta))
+        if mode == "clone":
+            doc = json.loads(json.dumps(src_doc, ensure_ascii=False))
+        else:
+            # 只抽輩分：縮小檔案，方便編輯
+            from_card = (body.from_card_id or "").strip()
+            if not from_card:
+                raise HTTPException(400, "lineage 模式需要 from_card_id")
+            src_cards = src_doc.get("cards") or []
+            by = {c["id"]: c for c in src_cards if isinstance(c, dict) and c.get("id")}
+            if from_card not in by:
+                raise HTTPException(400, f"來源卡不存在: {from_card}")
+            # 找根 + 子樹
+            lm = (body.lineage_mode or "full").lower()
+            root_id = from_card
+            if lm == "full":
+                cur = by[from_card]
+                seen = set()
+                while cur.get("parentId") and cur["parentId"] in by and cur["id"] not in seen:
+                    seen.add(cur["id"])
+                    cur = by[cur["parentId"]]
+                root_id = cur["id"]
+            # BFS 子孫
+            kids = {}
+            for c in src_cards:
+                pid0 = c.get("parentId")
+                if pid0:
+                    kids.setdefault(pid0, []).append(c["id"])
+            keep = []
+            q = [root_id]
+            seen2 = set()
+            while q:
+                i = q.pop(0)
+                if i in seen2:
+                    continue
+                seen2.add(i)
+                keep.append(i)
+                q.extend(kids.get(i) or [])
+            keep_set = set(keep)
+            new_cards = []
+            for c in src_cards:
+                if c["id"] not in keep_set:
+                    continue
+                cc = json.loads(json.dumps(c, ensure_ascii=False))
+                if lm == "subtree" and c["id"] == root_id:
+                    cc["parentId"] = None
+                elif cc.get("parentId") and cc["parentId"] not in keep_set:
+                    cc["parentId"] = None
+                new_cards.append(cc)
+            doc = json.loads(json.dumps(src_doc, ensure_ascii=False))
+            doc["cards"] = new_cards
+            # starter/shop 只留還在的 id
+            if isinstance(doc.get("starter_pool"), list):
+                doc["starter_pool"] = [x for x in doc["starter_pool"] if x in keep_set]
+            sw = doc.get("shop_weights") if isinstance(doc.get("shop_weights"), dict) else {}
+            for k in ("speech_pool", "premium_pool"):
+                if isinstance(sw.get(k), list):
+                    sw[k] = [x for x in sw[k] if x in keep_set]
+            doc["shop_weights"] = sw
+            meta = doc.get("_meta") if isinstance(doc.get("_meta"), dict) else {}
+            meta["extracted_lineage"] = {
+                "from_pack": body.from_pack,
+                "from_card_id": from_card,
+                "root_id": root_id,
+                "mode": lm,
+                "count": len(new_cards),
+            }
+            doc["_meta"] = meta
+    else:
+        raise HTTPException(400, "mode 須為 empty | clone | lineage")
+
+    doc = _validate_pack_doc(doc)
+    meta = {
+        "id": pid,
+        "file": fname,
+        "name": (body.name or pid).strip() or pid,
+        "note": body.note or "",
+        "clonedFrom": body.from_pack if mode != "empty" else None,
+        "createMode": mode,
+        "createdAt": time.time(),
+    }
+    _write_pack_file(path, doc)
+    reg["packs"].append(meta)
+    _save_pack_registry(reg)
+    return {
+        "ok": True,
+        "pack": _pack_summary(meta, reg),
+        "count": len(doc.get("cards") or []),
+    }
+
+
+def _wipe_player_card_progress_in_save(pack_id: str, epoch: int) -> dict:
+    """
+    上線槽硬切：清空存檔裡的玩家牌制進度。
+    草稿牌組 JSON 檔不動；只動 save 表 blob 的 card* 欄位。
+    """
+    with db() as conn:
+        row = conn.execute("SELECT version, data FROM save WHERE id = 1").fetchone()
+        if row is None:
+            return {"wiped": False, "reason": "no_save"}
+        version, raw = row[0], row[1]
+        try:
+            data = json.loads(raw) if raw else {}
+        except Exception:
+            return {"wiped": False, "reason": "save_corrupt"}
+        if not isinstance(data, dict):
+            return {"wiped": False, "reason": "save_corrupt"}
+        data["cardInventory"] = {}
+        data["cardDeck"] = []
+        data["deckPresets"] = []
+        data["cardShop"] = None
+        data["cardSession"] = None
+        data["cardsLive"] = {"packId": pack_id, "epoch": int(epoch)}
+        pp = data.get("playerProfile")
+        if not isinstance(pp, dict):
+            pp = {}
+        pp["starterSpeechCardId"] = None
+        data["playerProfile"] = pp
+        new_version = int(version) + 1
+        conn.execute(
+            "UPDATE save SET version = ?, data = ?, updated_at = ? WHERE id = 1",
+            (new_version, json.dumps(data, ensure_ascii=False), time.time()),
+        )
+        return {"wiped": True, "saveVersion": new_version, "packId": pack_id, "epoch": int(epoch)}
+
+
+@app.post("/api/card-packs/{pack_id}/activate")
+def activate_card_pack(pack_id: str):
+    """
+    上線到唯一 live 槽：
+    - 換 active + liveEpoch++
+    - 清空玩家牌庫／出戰牌組／卡店貨架／牌局／創角話術
+    - 草稿 JSON 檔仍保留，可再切回（切回也會再清進度）
+    """
+    reg = _load_pack_registry()
+    meta = _pack_meta(reg, pack_id)
+    path = _pack_path(meta)
+    if not path.exists():
+        raise HTTPException(400, f"牌組檔不存在，無法上線: {meta.get('file')}")
+    # 輕量驗證
+    doc = _read_pack_file(path)
+    _validate_pack_doc(doc)
+    prev = reg.get("active")
+    reg["active"] = pack_id
+    meta["activatedAt"] = time.time()
+    # 每次上線（含同包重上線）都推進 epoch，並清玩家牌進度——測試重開很常見
+    try:
+        epoch = int(reg.get("liveEpoch") or 1) + 1
+    except (TypeError, ValueError):
+        epoch = 1
+    reg["liveEpoch"] = epoch
+    # 歷史
+    hist = reg.setdefault("history", [])
+    if not isinstance(hist, list):
+        hist = []
+        reg["history"] = hist
+    hist.append({
+        "at": time.time(),
+        "from": prev,
+        "to": pack_id,
+        "epoch": epoch,
+        "playerCardsWiped": True,
+    })
+    hist[:] = hist[-50:]
+    _save_pack_registry(reg)
+    wipe = _wipe_player_card_progress_in_save(pack_id, epoch)
+    msg = (
+        f"已上線 {pack_id}（epoch {epoch}）"
+        + (f" · 已清空玩家牌制進度" if wipe.get("wiped") else " · 尚無存檔可清")
+        + (f" · 草稿「{prev}」仍在 disk" if prev and prev != pack_id else "")
+    )
+    return {
+        "ok": True,
+        "active": pack_id,
+        "previous": prev,
+        "liveEpoch": epoch,
+        "playerCardsWiped": bool(wipe.get("wiped")),
+        "wipe": wipe,
+        "pack": _pack_summary(meta, reg),
+        "count": len(doc.get("cards") or []),
+        "message": msg,
+    }
+
+
+@app.delete("/api/card-packs/{pack_id}")
+def delete_card_pack(pack_id: str, delete_file: bool = False):
+    """刪除牌組版本（不可刪 active；main 預設只移除註冊不刪 cards.json）。"""
+    reg = _load_pack_registry()
+    if pack_id == reg.get("active"):
+        raise HTTPException(400, "不能刪目前上線的牌組；請先切到其他版本")
+    if pack_id == "main" and not delete_file:
+        raise HTTPException(400, "main 請用 delete_file=true 才允許（危險）")
+    meta = _pack_meta(reg, pack_id)
+    path = _pack_path(meta)
+    reg["packs"] = [p for p in reg["packs"] if not (isinstance(p, dict) and p.get("id") == pack_id)]
+    _save_pack_registry(reg)
+    removed_file = False
+    if delete_file and path.exists() and meta.get("file") != "cards.json":
+        try:
+            path.unlink()
+            removed_file = True
+        except Exception as e:
+            raise HTTPException(500, f"註冊已移除但刪檔失敗: {e}")
+    return {"ok": True, "removed": pack_id, "fileDeleted": removed_file}
+
+
+@app.patch("/api/card-packs/{pack_id}")
+def patch_card_pack_meta(pack_id: str, body: dict):
+    """只改註冊名稱／備註，不碰牌組內容。"""
+    reg = _load_pack_registry()
+    meta = _pack_meta(reg, pack_id)
+    if "name" in body and body["name"] is not None:
+        meta["name"] = str(body["name"]).strip() or meta["id"]
+    if "note" in body:
+        meta["note"] = str(body.get("note") or "")
+    _save_pack_registry(reg)
+    return {"ok": True, "pack": _pack_summary(meta, reg)}
+
+
+# 相容：/api/cards 永遠讀寫「目前上線」的那份
+@app.get("/api/cards")
+def get_cards():
+    """遊戲與舊工具：回傳目前 active 牌組內容。"""
+    reg = _load_pack_registry()
+    active = reg.get("active") or "main"
+    meta = _pack_meta(reg, active)
+    doc = _read_pack_file(_pack_path(meta))
+    # 標上目前掛載的卡組，前端創角／除錯用（存檔時可忽略）
+    if not isinstance(doc.get("_meta"), dict):
+        doc["_meta"] = {}
+    doc["_meta"]["active_pack"] = active
+    doc["_meta"]["active_file"] = meta.get("file")
+    doc["_meta"]["active_name"] = meta.get("name") or active
+    try:
+        doc["_meta"]["live_epoch"] = int(reg.get("liveEpoch") or 1)
+    except (TypeError, ValueError):
+        doc["_meta"]["live_epoch"] = 1
+    # 若 starter_pool 空但有 starter 旗標／speech 卡，補一份給前端（不寫回檔）
+    cards = doc.get("cards") if isinstance(doc.get("cards"), list) else []
+    pool = doc.get("starter_pool") if isinstance(doc.get("starter_pool"), list) else []
+    idset = {c.get("id") for c in cards if isinstance(c, dict)}
+    pool = [x for x in pool if x in idset]
+    if not pool:
+        pool = [c["id"] for c in cards if isinstance(c, dict) and c.get("starter") and c.get("id")]
+    if not pool:
+        pool = [
+            c["id"]
+            for c in cards
+            if isinstance(c, dict)
+            and c.get("id")
+            and c.get("kind") == "speech"
+            and not c.get("shatterOnUse")
+        ]
+    doc["starter_pool"] = pool
+    return doc
+
+
+@app.put("/api/cards")
+def put_cards(body: dict):
+    """寫入目前 active 牌組（相容舊 cardedit）。建議改用 PUT /api/card-packs/{id}。"""
+    reg = _load_pack_registry()
+    active = reg.get("active") or "main"
+    return put_card_pack(active, body)
+
+
+@app.get("/cardedit")
+def cardedit():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "cardedit.html")
 
 
 # /edit_person 編輯性趣池;整包覆寫 content/kinks.json
@@ -594,6 +6653,86 @@ def edit_person():
     return FileResponse(WEB_DIR / "edit_person.html")
 
 
+@app.get("/editmale")
+def editmale():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "editmale.html")
+
+
+@app.get("/edit_date")
+def edit_date():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "edit_date.html")
+
+
+@app.get("/edit_room")
+def edit_room():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "edit_room.html")
+
+
+@app.get("/edit_pic")
+def edit_pic():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "edit_pic.html")
+
+
+@app.get("/test_sex")
+def test_sex():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_sex.html")
+
+
+@app.get("/test_jspace")
+def test_jspace():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_jspace.html")
+
+
+@app.get("/test_room")
+def test_room():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_room.html")
+
+
+@app.get("/test_bodyM")
+def test_body_m():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_bodyM" / "index.html")
+
+
+@app.get("/droom")
+def droom():
+    """房間妹子剪影預覽（平視、乳暈／體型／胸型×罩杯／八方向走路），靜態頁在 web/droom/。"""
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "droom" / "index.html")
+
+
+@app.get("/droom/play")
+def droom_play():
+    """Doom 風第一人稱小房間：一個妹子剪影（八方向走路 sheet），WASD 移動。靜態頁 web/droom/play.html。"""
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "droom" / "play.html")
+
+
+@app.get("/test_body")
+def test_body():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_body.html")
+
+
+@app.put("/api/edit_date")
+def put_edit_date(body: dict):
+    if not isinstance(body, dict):
+        raise HTTPException(400, "需要劇本物件")
+    path = WEB_DIR / "content" / "edit_date.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True}
+
+
 # /testword 編輯魅魔獻祭三場景腳本;整包覆寫 content/sacrifice.json
 @app.put("/api/sacrifice")
 def put_sacrifice(body: dict):
@@ -613,11 +6752,730 @@ def put_sacrifice(body: dict):
     return {"ok": True, "count": len(body["methods"])}
 
 
+def _script_packs_path():
+    return WEB_DIR / "content" / "script_packs.json"
+
+
+def _butt_packs_path():
+    return WEB_DIR / "content" / "butt_packs.json"
+
+
+@app.get("/api/butt-packs")
+def get_butt_packs():
+    path = _butt_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/butt-packs")
+def put_butt_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _butt_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+
+def _waist_packs_path():
+    return WEB_DIR / "content" / "waist_packs.json"
+
+
+@app.get("/api/waist-packs")
+def get_waist_packs():
+    path = _waist_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/waist-packs")
+def put_waist_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _waist_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+
+
+def _breast_packs_path():
+    return WEB_DIR / "content" / "breast_packs.json"
+
+
+@app.get("/api/breast-packs")
+def get_breast_packs():
+    path = _breast_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/breast-packs")
+def put_breast_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _breast_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _knead_packs_path():
+    return WEB_DIR / "content" / "knead_packs.json"
+
+
+@app.get("/api/knead-packs")
+def get_knead_packs():
+    path = _knead_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/knead-packs")
+def put_knead_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _knead_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _undress_packs_path():
+    return WEB_DIR / "content" / "undress_packs.json"
+
+
+@app.get("/api/undress-packs")
+def get_undress_packs():
+    path = _undress_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/undress-packs")
+def put_undress_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _undress_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _suck_packs_path():
+    return WEB_DIR / "content" / "suck_packs.json"
+
+
+@app.get("/api/suck-packs")
+def get_suck_packs():
+    path = _suck_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/suck-packs")
+def put_suck_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _suck_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+
+def _lick_packs_path():
+    return WEB_DIR / "content" / "lick_packs.json"
+
+
+@app.get("/api/lick-packs")
+def get_lick_packs():
+    path = _lick_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/lick-packs")
+def put_lick_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _lick_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _labia_packs_path():
+    return WEB_DIR / "content" / "labia_packs.json"
+
+
+@app.get("/api/labia-packs")
+def get_labia_packs():
+    path = _labia_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/labia-packs")
+def put_labia_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _labia_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _labia_rub_packs_path():
+    return WEB_DIR / "content" / "labia_rub_packs.json"
+
+
+@app.get("/api/labia-rub-packs")
+def get_labia_rub_packs():
+    path = _labia_rub_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/labia-rub-packs")
+def put_labia_rub_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _labia_rub_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _finger_packs_path():
+    return WEB_DIR / "content" / "finger_packs.json"
+
+
+@app.get("/api/finger-packs")
+def get_finger_packs():
+    path = _finger_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/finger-packs")
+def put_finger_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _finger_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+# 扣陰道／揉子宮口：x-ray 剖面動作圖組（2026-10-03）
+
+def _vagina_finger_packs_path():
+    return WEB_DIR / "content" / "vagina_finger_packs.json"
+
+
+@app.get("/api/vagina-finger-packs")
+def get_vagina_finger_packs():
+    path = _vagina_finger_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/vagina-finger-packs")
+def put_vagina_finger_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _vagina_finger_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+def _cervix_rub_packs_path():
+    return WEB_DIR / "content" / "cervix_rub_packs.json"
+
+
+@app.get("/api/cervix-rub-packs")
+def get_cervix_rub_packs():
+    path = _cervix_rub_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+@app.put("/api/cervix-rub-packs")
+def put_cervix_rub_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path = _cervix_rub_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+# 做愛開場圖組（傳教士／後背，2026-10-03）：同其他圖組的 {packs, activeId} 契約
+
+
+def _pack_doc_read(path):
+    if not path.is_file():
+        return {"packs": [], "activeId": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeId": ""}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeId": ""}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    packs = [p for p in packs if isinstance(p, dict)]
+    active = str(data.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    return {"packs": packs, "activeId": active}
+
+
+def _pack_doc_write(path, body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeId}")
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    active = str(body.get("activeId") or "")
+    if packs and not any(str(p.get("id") or "") == active for p in packs):
+        active = str(packs[0].get("id") or "")
+    if not packs:
+        active = ""
+    doc = {"packs": packs, "activeId": active}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
+@app.get("/api/sex-missionary-packs")
+def get_sex_missionary_packs():
+    return _pack_doc_read(WEB_DIR / "content" / "sex_missionary_packs.json")
+
+
+@app.put("/api/sex-missionary-packs")
+def put_sex_missionary_packs(body: dict):
+    return _pack_doc_write(WEB_DIR / "content" / "sex_missionary_packs.json", body)
+
+
+@app.get("/api/sex-doggy-packs")
+def get_sex_doggy_packs():
+    return _pack_doc_read(WEB_DIR / "content" / "sex_doggy_packs.json")
+
+
+@app.put("/api/sex-doggy-packs")
+def put_sex_doggy_packs(body: dict):
+    return _pack_doc_write(WEB_DIR / "content" / "sex_doggy_packs.json", body)
+
+
+def _standee_packs_path():
+    return WEB_DIR / "content" / "standee_packs.json"
+
+
+@app.get("/api/standee-packs")
+def get_standee_packs():
+    """半身立繪表情 9 槽：{slots:{slight|aroused|wantFill|climax|interfere|blank|beg|stun|spasm}}"""
+    path = _standee_packs_path()
+    slot_ids = (
+        "slight", "aroused", "wantFill", "climax",
+        "interfere", "blank", "beg", "stun", "spasm",
+    )
+    empty = {sid: {} for sid in slot_ids}
+    if not path.is_file():
+        return {"slots": empty}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"slots": empty}
+    if not isinstance(data, dict):
+        return {"slots": empty}
+    raw = data.get("slots") if isinstance(data.get("slots"), dict) else {}
+    slots = {}
+    for sid in slot_ids:
+        s = raw.get(sid) if isinstance(raw.get(sid), dict) else {}
+        slots[sid] = s if isinstance(s, dict) else {}
+    return {"slots": slots}
+
+
+@app.put("/api/standee-packs")
+def put_standee_packs(body: dict):
+    if not isinstance(body.get("slots"), dict):
+        raise HTTPException(400, "需要 {slots:{...}}")
+    slot_ids = (
+        "slight", "aroused", "wantFill", "climax",
+        "interfere", "blank", "beg", "stun", "spasm",
+    )
+    raw = body["slots"]
+    slots = {}
+    for sid in slot_ids:
+        s = raw.get(sid) if isinstance(raw.get(sid), dict) else {}
+        slots[sid] = s if isinstance(s, dict) else {}
+    doc = {"slots": slots}
+    path = _standee_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    filled = sum(1 for s in slots.values() if str(s.get("prompt") or "").strip())
+    return {"ok": True, "count": filled}
+
+
+@app.get("/api/script-packs")
+def get_script_packs():
+    path = _script_packs_path()
+    if not path.is_file():
+        return {"packs": [], "activeByKind": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"packs": [], "activeByKind": {}}
+    if not isinstance(data, dict):
+        return {"packs": [], "activeByKind": {}}
+    packs = data.get("packs") if isinstance(data.get("packs"), list) else []
+    active = data.get("activeByKind") if isinstance(data.get("activeByKind"), dict) else {}
+    return {"packs": packs, "activeByKind": active}
+
+
+@app.put("/api/script-packs")
+def put_script_packs(body: dict):
+    if not isinstance(body.get("packs"), list):
+        raise HTTPException(400, "需要 {packs:[...], activeByKind:{}}")
+    active = body.get("activeByKind") if isinstance(body.get("activeByKind"), dict) else {}
+    packs = [p for p in body["packs"] if isinstance(p, dict)]
+    doc = {"packs": packs, "activeByKind": active}
+    path = _script_packs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "count": len(packs)}
+
+
 @app.get("/body")
 def body():
     # 虛擬設計台:偽 3D 點陣胸部人台,供胸罩/衣著版型預覽
     from fastapi.responses import FileResponse
     return FileResponse(WEB_DIR / "body.html")
+
+
+@app.get("/widget")
+def widget():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "widget.html")
+
+
+@app.get("/download")
+def download_app_page():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "download.html")
+
+
+@app.get("/yorozuya.apk")
+def yorozuya_apk():
+    from fastapi.responses import FileResponse
+    path = WEB_DIR / "yorozuya.apk"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="還沒有 APK")
+    return FileResponse(
+        path,
+        media_type="application/vnd.android.package-archive",
+        filename="yorozuya.apk",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/discover.apk")
+def discover_apk():
+    from fastapi.responses import FileResponse
+    path = WEB_DIR / "discover.apk"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="還沒有 APK")
+    return FileResponse(
+        path,
+        media_type="application/vnd.android.package-archive",
+        filename="discover.apk",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)

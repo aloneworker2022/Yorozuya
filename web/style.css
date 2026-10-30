@@ -364,13 +364,13 @@ body[data-tab="2"] #track-wrap { pointer-events: none; }
 body[data-tab="2"] .panel { pointer-events: auto; }
 /* 對話模式:看板娘點亮上移(galgame 式),夢霧狀的模糊身影 */
 body.chat-mode #kanban { filter: brightness(1); pointer-events: none; }
-body.chat-mode #kanban-girl { transform: translateY(-10%) scale(1.25); animation: haze 5s ease-in-out infinite; }
+body.chat-mode #kanban-girl { transform: translateY(-10%) scale(1.35); animation: haze 5s ease-in-out infinite; }
 body.chat-mode #kanban-girl svg {
   filter: blur(1.6px) drop-shadow(0 0 26px var(--rc, #9aa0b5)) drop-shadow(0 0 60px color-mix(in srgb, var(--rc, #9aa0b5) 40%, transparent));
 }
 @keyframes haze {
-  0%, 100% { transform: translateY(-10%) scale(1.25); opacity: .92; }
-  50% { transform: translateY(-11.5%) scale(1.27); opacity: 1; }
+  0%, 100% { transform: translateY(-10%) scale(1.35); opacity: .92; }
+  50% { transform: translateY(-11.5%) scale(1.38); opacity: 1; }
 }
 #book { position: relative; cursor: pointer; animation: float 4s ease-in-out infinite; }
 #book img {
@@ -388,18 +388,119 @@ body.chat-mode #kanban-girl svg {
   animation: pulse 3s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100% { opacity: .5; } 50% { opacity: 1; } }
-#kanban-bubble {
-  position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
-  width: max-content; max-width: 260px; z-index: 2;
-  background: var(--panel); padding: .6em .9em; font-size: .85em;
-  color: var(--pink); text-align: center;
+/* ===== 委託氣泡對話（半身＋對話框覆蓋層）===== */
+#bubble-overlay {
+  position: fixed; inset: 0; z-index: 48;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  background: rgba(8, 6, 14, .55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  pointer-events: auto;
+  padding: 0 0 max(12px, env(safe-area-inset-bottom));
+  animation: bubble-fade-in .22s ease-out;
 }
+#bubble-overlay.hidden { display: none; }
+@keyframes bubble-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+#bubble-dialog {
+  width: min(100%, 440px);
+  display: flex; flex-direction: column; align-items: center;
+  pointer-events: auto;
+  transform: translateY(8px);
+  animation: bubble-rise .28s ease-out forwards;
+}
+@keyframes bubble-rise {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+#bubble-figure {
+  width: 100%;
+  height: min(60vh, 500px);
+  display: flex; align-items: flex-end; justify-content: center;
+  margin-bottom: -1.2em;
+  pointer-events: none;
+}
+#bubble-portrait {
+  max-height: 100%;
+  max-width: min(92vw, 420px);
+  width: auto;
+  object-fit: contain;
+  object-position: bottom center;
+  filter: drop-shadow(0 12px 28px rgba(0, 0, 0, .55));
+  user-select: none; -webkit-user-drag: none;
+}
+#bubble-portrait-fb {
+  width: 7.5rem; height: 7.5rem; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2.4rem; font-weight: 600; letter-spacing: .05em;
+  color: var(--cyan);
+  background: color-mix(in srgb, var(--panel) 88%, #000);
+  border: 2px solid color-mix(in srgb, var(--cyan) 45%, transparent);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+  margin-bottom: 1.4em;
+}
+#bubble-box {
+  position: relative;
+  width: min(94vw, 400px);
+  background: color-mix(in srgb, var(--panel) 94%, #000);
+  border: 1px solid color-mix(in srgb, var(--pink) 35%, var(--line));
+  border-radius: 14px;
+  padding: .85em 1em 1.05em;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, .04) inset,
+    0 16px 40px rgba(0, 0, 0, .45);
+  color: var(--text, #e8e0f4);
+}
+#bubble-name-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: .6em; margin-bottom: .45em;
+}
+#bubble-name {
+  font-size: .82em;
+  letter-spacing: .14em;
+  color: var(--cyan);
+  font-weight: 600;
+}
+#bubble-aff {
+  font-size: .78em;
+  color: var(--gold);
+  white-space: nowrap;
+}
+#bubble-text {
+  font-size: 1.02em;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--pink) 55%, #fff 45%);
+  white-space: pre-wrap;
+  min-height: 2.6em;
+}
+#bubble-hint {
+  margin-top: .55em;
+  text-align: right;
+  font-size: .7em;
+  letter-spacing: .08em;
+  color: var(--dim);
+  opacity: .75;
+  animation: bubble-hint-pulse 1.4s ease-in-out infinite;
+}
+@keyframes bubble-hint-pulse {
+  0%, 100% { opacity: .45; }
+  50% { opacity: .9; }
+}
+body.card-mode #bubble-overlay { display: none !important; } /* 打牌中不插播 */
 #kanban-zzz {
   position: absolute; top: 26%; left: 58%; z-index: 2;
   color: var(--cyan); font-size: 1.1em; letter-spacing: .2em;
   animation: float 3s ease-in-out infinite;
 }
-#kanban-girl { position: relative; cursor: pointer; animation: float 5s ease-in-out infinite; text-align: center; }
+/* 看板娘立繪：貼底站、靜止（不要上下晃）；召喚書仍走 #kanban 置中 */
+#kanban-girl {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  cursor: pointer; animation: none; text-align: center;
+  width: 100%; max-height: 100vh;
+  display: flex; align-items: flex-end; justify-content: center;
+}
 #kanban-girl svg { filter: drop-shadow(0 0 14px var(--rc, #9aa0b5)); }
 /* 多看板娘:並排站台,各自可點 */
 #kanban-girl.multi { display: flex; align-items: flex-end; justify-content: center; gap: 3vw; }
@@ -413,7 +514,8 @@ body.chat-mode #kanban-girl svg {
 /* 休息中(未召喚為看板娘):暗淡、去光暈,提示可再召喚 */
 #kanban-girl.resting { opacity: .5; }
 #kanban-girl.resting svg { filter: grayscale(.6) brightness(.8) drop-shadow(0 0 8px rgba(0,0,0,.5)); }
-body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
+body.asleep #kanban-girl { animation: none; opacity: .7; }
+body.asleep #book { animation: none; opacity: .7; }
 
 /* ===== z3 HUD / 分頁列 ===== */
 #hud {
@@ -483,8 +585,85 @@ body.asleep #kanban-girl, body.asleep #book { animation: none; opacity: .7; }
 }
 #qs-exec { transform: translateX(0); }
 #qs-proc { transform: translateX(100%); }
+#qs-diary { transform: translateX(-100%); }
 #page-quests.on-proc #qs-exec { transform: translateX(-40%); }
 #page-quests.on-proc #qs-proc { transform: translateX(0); }
+#page-quests.on-diary #qs-exec,
+#page-quests.on-line #qs-exec {
+  transform: translateX(40%);
+  pointer-events: none; /* 勿點穿回委託板 */
+}
+#page-quests.on-diary #qs-proc,
+#page-quests.on-line #qs-proc {
+  transform: translateX(140%);
+  pointer-events: none;
+}
+#page-quests.on-diary #qs-diary,
+#page-quests.on-line #qs-diary { transform: translateX(0); }
+#page-quests.on-diary #quest-input-row,
+#page-quests.on-line #quest-input-row { visibility: hidden; pointer-events: none; }
+#page-quests.on-diary .q-force-tabs,
+#page-quests.on-line .q-force-tabs { opacity: 0; pointer-events: none; }
+
+/* 左側頁籤：Line 疊在日誌後面，只露出底下一節 */
+.diary-tab, .line-tab {
+  position: absolute; left: 0;
+  width: 26px; padding: 14px 5px 16px 4px;
+  border-left: none;
+  border-radius: 0 11px 11px 0;
+  font: inherit; font-size: .66em;
+  cursor: pointer;
+  box-shadow: 2px 3px 10px rgba(0, 0, 0, .38);
+}
+.diary-tab {
+  top: 28%;
+  z-index: 9;
+  background: #c4453c; color: #f6e6d8;
+  border: 1px solid #9a2f28; border-left: none;
+}
+.line-tab {
+  /* 大部分被日誌蓋住，只留底下一節；再往上疊 */
+  top: calc(28% + 32px);
+  z-index: 7;
+  padding: 18px 2px 18px;
+  background: #06c755; color: #f0fff4;
+  border: 1px solid #049a40; border-left: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.diary-tab span {
+  display: block; width: 1em; margin: 0 auto;
+  word-break: break-all; line-height: 1.45; letter-spacing: 0;
+}
+/* LINE 橫排：整詞橫寫再旋轉，沿頁籤長邊讀 */
+.line-tab span {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+  white-space: nowrap;
+  word-break: normal;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  transform: rotate(-90deg);
+  transform-origin: center center;
+}
+.diary-tab:active, .line-tab:active { transform: translateX(1px); }
+.diary-tab.on {
+  z-index: 10;
+  background: #e25a4e; color: #fff8f0;
+  box-shadow: 2px 3px 14px rgba(226, 90, 78, .45);
+}
+.line-tab.on {
+  z-index: 10;
+  background: #1adf6a; color: #fff;
+  box-shadow: 2px 3px 14px rgba(6, 199, 85, .45);
+}
+#qs-diary .lv-area { padding-left: 38px; }
+#page-quests.on-line #qs-diary .lv-area { padding-left: 38px; }
+.lv-badge.diary-badge {
+  background: color-mix(in srgb, #c4453c 32%, transparent); color: #e25a4e;
+}
 
 /* 執行中三格 */
 .pin-hdr {
@@ -535,9 +714,165 @@ body.card-center .q-body { justify-content: center; text-align: center; }
   font-size: .62em; color: color-mix(in srgb, currentColor 60%, transparent);
   padding: 3px 8px; background: color-mix(in srgb, currentColor 9%, transparent);
 }
+/* 飢渴:只在上來時顯示,平靜時整行不存在 */
+.crave-mid { color: color-mix(in srgb, var(--pink) 70%, var(--dim)); }
+.crave-high { color: var(--pink); text-shadow: 0 0 8px color-mix(in srgb, var(--pink) 40%, transparent); }
+/* 她盯著這件委託:卡片上的便利貼。她的要求留在畫面上,不是聊天講完就消失 */
+.q-errand {
+  font-size: .66em; letter-spacing: .04em; margin-top: 10px; padding: 5px 9px;
+  align-self: flex-start; border-left: 2px solid var(--pink);
+  background: color-mix(in srgb, var(--pink) 12%, transparent);
+  color: color-mix(in srgb, currentColor 75%, transparent);
+}
+.q-errand .qe-who { color: var(--pink); font-weight: 600; }
+.q-errand.late { border-left-color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+.q-errand.late .qe-who { color: var(--red); }
 .q-card .swind {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 3.5rem; opacity: 0; pointer-events: none; z-index: 4;
+}
+/* 已承接:連點三下直接完成的進度 */
+.q-tapfx {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 0 12px 14px; pointer-events: none; z-index: 3;
+  opacity: 0; transform: translateY(6px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.q-tapfx.on { opacity: 1; transform: none; }
+.q-tap-msg {
+  font-size: .68em; letter-spacing: .1em; color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 16%, transparent);
+  padding: 4px 10px; margin-bottom: 8px;
+}
+.q-tap-pips { display: flex; gap: 7px; }
+.q-tap-pips i {
+  display: block; width: 7px; height: 7px; border-radius: 50%;
+  background: color-mix(in srgb, var(--gold) 28%, transparent);
+  transition: background .12s, box-shadow .12s, transform .12s;
+}
+.q-tap-pips i.on {
+  background: var(--gold);
+  box-shadow: 0 0 8px var(--gold);
+  transform: scale(1.2);
+}
+.q-card.q-instant {
+  box-shadow: 0 0 36px color-mix(in srgb, var(--gold) 55%, transparent), 0 20px 60px rgba(0, 0, 0, .5);
+}
+
+/* 已承接長按:畫面正中的對話卡(不是網頁 dialog/prompt) */
+#split-overlay {
+  position: fixed; inset: 0; z-index: 56;
+  background: rgba(5, 2, 10, .72); backdrop-filter: blur(8px);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 16vh 16px calc(16px + env(safe-area-inset-bottom));
+}
+#split-overlay.hidden { display: none; }
+.split-card {
+  width: 100%; max-width: 340px;
+  background: var(--card-vn, var(--panel)); color: var(--card-vn-text, var(--text));
+  border: 1px solid var(--line); padding: 22px 20px 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .55);
+  display: flex; flex-direction: column;
+  animation: cIn .22s cubic-bezier(.25, .8, .25, 1);
+  user-select: text; touch-action: auto; cursor: default;
+}
+.split-name {
+  font-size: calc(1.15rem * var(--card-font-scale, 1)); line-height: 1.6;
+  word-break: break-all; margin-bottom: 14px;
+  text-shadow: var(--card-vn-halo, none);
+}
+.split-input-row { display: flex; gap: .5em; width: 100%; }
+#split-input {
+  flex: 1; min-width: 0;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: none; color: var(--text);
+  font: inherit; font-size: 1.05em; padding: .75em .9em; outline: none;
+}
+#split-input::placeholder { color: var(--dim); }
+#split-ok {
+  flex: 0 0 auto; border: none; cursor: pointer;
+  background: rgba(111, 227, 225, .2); color: var(--cyan);
+  font: inherit; font-size: .82em; letter-spacing: .06em;
+  padding: .7em .85em; white-space: nowrap;
+}
+#split-ok:hover { background: rgba(111, 227, 225, .32); }
+
+/* 玩家日誌:橫線小本子 */
+.nb-card {
+  --nb-line: 28px;
+  --nb-ink: #3a2a1c;
+  --nb-paper: #f3ead8;
+  --nb-rule: rgba(70, 110, 160, .28);
+  --nb-margin: #d96a62;
+  width: 100%; max-width: 340px; min-height: 280px;
+  background: var(--nb-paper); color: var(--nb-ink);
+  border: 1px solid color-mix(in srgb, #8a5a3a 40%, #c4b49a);
+  box-shadow: 0 18px 50px rgba(40, 18, 8, .42), inset 0 1px 0 rgba(255, 255, 255, .55);
+  display: flex; flex-direction: column;
+  position: relative; overflow: hidden;
+  user-select: text; touch-action: pan-y;
+  animation: cIn .22s cubic-bezier(.25, .8, .25, 1);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Songti TC", "Noto Serif TC", serif;
+}
+.nb-card::before {
+  content: ""; position: absolute; left: 30px; top: 0; bottom: 0; width: 1.5px;
+  background: var(--nb-margin); pointer-events: none; z-index: 1;
+}
+.nb-head {
+  flex-shrink: 0; padding: 12px 16px 8px 40px;
+  border-bottom: 1.5px solid var(--nb-margin);
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+}
+.nb-date { font-size: .92em; letter-spacing: .06em; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nb-flip {
+  flex-shrink: 0; font-size: .62em; letter-spacing: .08em;
+  color: color-mix(in srgb, var(--nb-ink) 55%, transparent);
+}
+.nb-meta {
+  display: flex; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.nb-streak {
+  font-size: .62em; letter-spacing: .04em; color: #8a5a18; white-space: nowrap;
+}
+.nb-sync {
+  font-size: .58em; letter-spacing: .04em;
+  color: color-mix(in srgb, var(--nb-ink) 45%, transparent);
+}
+.nb-sync.ok { color: #2f6b3a; }
+.nb-sync.bad { color: #a33; }
+.nb-sync.busy { color: #8a5a18; }
+.nb-hint {
+  flex-shrink: 0; margin: 0; padding: 0 16px 10px 40px;
+  font-size: .58em; line-height: 1.45;
+  color: color-mix(in srgb, var(--nb-ink) 48%, transparent);
+}
+.nb-body {
+  flex: 1; padding: 6px 16px 14px 40px; min-height: 0;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 calc(var(--nb-line) - 1px),
+    var(--nb-rule) calc(var(--nb-line) - 1px) var(--nb-line)
+  );
+  background-attachment: local;
+}
+.nb-body textarea {
+  display: block; width: 100%; min-height: calc(var(--nb-line) * 8);
+  margin: 0; padding: 0; border: none; resize: none;
+  background: transparent; color: inherit; font: inherit;
+  font-size: .92em; line-height: var(--nb-line);
+  outline: none; overflow: hidden; box-sizing: border-box;
+  overflow-wrap: anywhere; word-break: break-word;
+  caret-color: var(--nb-margin);
+}
+.nb-body textarea::placeholder {
+  color: color-mix(in srgb, var(--nb-ink) 38%, #888);
+  letter-spacing: .02em;
+}
+.nb-swind {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 2.4rem; opacity: 0; pointer-events: none; z-index: 4;
+  color: var(--nb-margin);
 }
 .q-card .bar-wrap { margin-top: 12px; }
 .q-card .remain { font-size: .72em; color: color-mix(in srgb, currentColor 60%, transparent); margin-top: .4em; }
@@ -644,6 +979,16 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 .chooser button { background: rgba(255, 215, 95, .12); color: var(--gold); }
 .chooser button:hover { background: rgba(255, 215, 95, .25); }
 .chooser button small { color: var(--dim); }
+.date-venues {
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: .4em;
+  margin-top: .7em;
+  padding: .65em .7em .75em;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+}
 
 /* 倒數條(分段像素) */
 .bar-wrap { margin-top: .5em; height: 10px; background: rgba(0, 0, 0, .4); position: relative; }
@@ -670,7 +1015,15 @@ body.card-center .q-body { justify-content: center; text-align: center; }
   font: inherit; font-size: 1.05em; padding: .75em .9em; outline: none;
   min-width: 0;
 }
-#quest-add { border-radius: 10px; }
+#quest-add {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 2.9em; width: 2.9em; padding: 0;
+  border-radius: 10px;
+  background: rgba(111, 227, 225, .2);
+  color: var(--cyan);
+}
+#quest-add .paper-plane { width: 1.35em; height: 1.35em; display: block; }
+#quest-add:hover { background: rgba(111, 227, 225, .32); }
 #quest-input::placeholder { color: var(--dim); }
 
 /* ===== 設定 ===== */
@@ -686,6 +1039,10 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 }
 .setting-row input[type="text"] { width: 9em; text-align: right; }
 .setting-row input.wide { width: 13em; text-align: left; }
+.setting-row.model-row { align-items: flex-start; flex-wrap: wrap; }
+.model-fields { display: flex; flex-direction: column; gap: .35em; flex: 1 1 12em; min-width: 0; }
+.model-fields select,
+.model-fields input.wide { width: 100%; max-width: 100%; text-align: left; box-sizing: border-box; }
 .btn-row { display: flex; gap: .5em; margin-top: .8em; }
 #log-list div { padding: .25em 0; border-bottom: 1px solid var(--line); }
 
@@ -713,13 +1070,51 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 }
 .shop-item button:disabled { opacity: .35; cursor: default; }
 .shop-item.sold { opacity: .35; }
-#dungeon-list span { display: inline-block; margin: .15em .5em .15em 0; color: var(--dim); }
+
+/* NTR 日記 */
+/* NTR 日記僅 AI 內部用，玩家 UI 已移除；保留選擇器以免舊快取殘留報錯 */
+.ntr-diary-wrap {
+  margin-top: 1em; padding-top: .8em; border-top: 1px solid var(--line);
+}
+.ntr-diary-toggle {
+  width: 100%;
+  background: rgba(255, 95, 122, .14);
+  border: 1px solid rgba(255, 95, 122, .35);
+  border-radius: 10px;
+  color: var(--red);
+  font: inherit; padding: .55em .8em; cursor: pointer;
+}
+.ntr-diary-list { margin-top: .5em; max-height: 42vh; overflow: auto; }
+.ntr-diary-period {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .5em .65em;
+  margin-bottom: .45em;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+}
+.ntr-diary-period:hover { border-color: color-mix(in srgb, var(--red) 40%, var(--line)); }
+.ntr-diary-period-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: .5em;
+}
+.ntr-diary-body {
+  margin-top: .45em; font-size: .9em; line-height: 1.65;
+  white-space: pre-wrap; color: var(--text);
+}
+.ntr-diary-outline { margin-top: .25em; opacity: .75; }
+
+#dungeon-list span, #inv-list span { display: inline-block; margin: .15em .5em .15em 0; color: var(--dim); }
 
 /* ===== 魅魔名冊 ===== */
 .scard {
   display: flex; align-items: center; gap: .8em; cursor: pointer;
   padding: .6em .2em; border-bottom: 1px solid var(--line);
+  touch-action: pan-y;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
 }
+.scard.is-holding { background: color-mix(in srgb, var(--red) 16%, transparent); }
+.scard .thumb, .scard .thumb * { pointer-events: none; -webkit-user-drag: none; }
 .scard:last-child { border-bottom: none; }
 .scard .thumb { flex-shrink: 0; filter: drop-shadow(0 0 5px var(--rc)); }
 .scard .sinfo { flex: 1; min-width: 0; }
@@ -728,7 +1123,77 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 .scard .aff-bar { height: 6px; background: rgba(0, 0, 0, .4); margin-top: .35em; }
 .scard .aff-bar > div { height: 100%; background: var(--rc); }
 .scard .aff-bar > div.neg { background: var(--red); }
+.hearts {
+  display: inline-flex;
+  gap: .08em;
+  align-items: center;
+  line-height: 1;
+  vertical-align: middle;
+}
+.hearts .h {
+  font-size: 1.05em;
+  color: color-mix(in srgb, var(--pink) 22%, transparent);
+}
+.hearts .h.on {
+  color: var(--pink);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--pink) 55%, transparent);
+}
+.hearts.cracked .h {
+  color: color-mix(in srgb, var(--red) 28%, transparent);
+  filter: grayscale(.2);
+}
+.hearts.cracked .h.on {
+  color: var(--red);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--red) 50%, transparent);
+  filter: none;
+}
+.scard .hearts { margin-top: .3em; display: flex; font-size: 1.05em; }
+#succubus-detail .hearts { justify-content: center; font-size: 1.35em; margin: .35em 0 .15em; }
+.aff-num {
+  margin-top: .22em;
+  display: flex;
+  align-items: baseline;
+  gap: .28em;
+  min-width: 0;
+  font-size: .78em;
+  line-height: 1.2;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.aff-num b {
+  color: var(--cyan);
+  font-size: 1.2em;
+  font-weight: 700;
+}
+.aff-num-goal { color: var(--dim); }
+.aff-num.cold b { color: var(--red); }
+#succubus-detail .aff-num {
+  justify-content: center;
+  margin: .2em auto .15em;
+  font-size: .95em;
+}
+#succubus-detail .aff-num b { font-size: 1.45em; }
+#chat-hearts { flex-shrink: 0; }
+#chat-hearts.hidden { display: none; }
 .scard.ntr { filter: grayscale(1) brightness(.7); }
+.scard .roster-summon {
+  flex-shrink: 0;
+  background: rgba(111, 227, 225, .15);
+  border: none;
+  color: var(--cyan);
+  font: inherit;
+  font-size: .72em;
+  padding: .45em .65em;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.scard .roster-summon:disabled { opacity: .35; cursor: default; }
+/* 一間房一次一位：房裡有別人時，召喚鈕變灰、點了只跳提示 */
+.scard .roster-summon.is-full { background: rgba(255, 255, 255, .06); color: var(--dim); cursor: not-allowed; }
+.detail-actions button.is-full { filter: grayscale(1); opacity: .45; cursor: not-allowed; }
+.detail-actions .room-full-note { width: 100%; font-size: .78em; text-align: center; color: var(--gold); }
+.roster-hint.room-full { color: var(--gold); }
+.roster-hint { margin: -.15em 0 .45em; }
 .status-dot { width: 8px; height: 8px; flex-shrink: 0; }
 .status-dot.ok { background: var(--cyan); }
 .status-dot.due { background: var(--gold); animation: pulse 1.5s infinite; }
@@ -737,21 +1202,91 @@ body.card-center .q-body { justify-content: center; text-align: center; }
 
 /* ===== 魅魔詳情 ===== */
 #succubus-detail .portrait { text-align: center; margin: .8em 0; }
-#succubus-detail .portrait svg { filter: drop-shadow(0 0 18px var(--rc)); }
-#succubus-detail .traits { display: flex; gap: .4em; flex-wrap: wrap; justify-content: center; margin: .5em 0; }
-#succubus-detail .traits span {
-  font-size: .7em; color: var(--dim); background: rgba(216, 207, 232, .08); padding: .2em .6em;
+#succubus-detail .detail-portrait {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
+#succubus-detail .detail-portrait img {
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+#succubus-detail .portrait svg { filter: drop-shadow(0 0 18px var(--rc)); }
+/* 生成好的立繪(像素 256x256 sprite:pixelated 放大不糊、contain 不裁切人物) */
+.portrait-img {
+  max-width: 100%; max-height: 360px; border-radius: 10px;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  border: 1px solid color-mix(in srgb, var(--rc, var(--pink)) 45%, transparent);
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--rc, var(--pink)) 45%, transparent));
+}
+/* 去背立繪(half / full)不吃上面那套框:
+   - 邊框會在透明區域「外面」畫一個方框,人明明去背了卻還關在盒子裡
+   - 圓角同理
+   - pixelated 是給 256px sprite 放大用的;這些是 832×1216 縮下來顯示,
+     用 pixelated 只會在斜邊produce鋸齒
+   drop-shadow 保留:它吃 alpha,會沿著人的輪廓打光而不是方框。 */
+.portrait-img.shot-half, .portrait-img.shot-full {
+  border: none; border-radius: 0; image-rendering: auto;
+}
+.summon-result .portrait-img { max-height: 430px; }
+/* 名冊縮圖:固定小方格,完整顯示不裁切 */
+.scard .thumb .portrait-img { width: 64px; height: 64px; object-fit: contain; border-radius: 6px; filter: none; }
+/* 看板娘站位:去背全身當背景板——單人更大更近(貼底)。
+   用 vh 而不是固定 px:手機直式、平板、桌機都要能站好。
+   width:auto 保持原比例,不要 132px 見方那種硬塞——那是像素 sprite 時代的規格。
+   高／寬一起放 1.3 倍:手機常被 max-width 卡住,只加高不會真的變大。
+   超出畫面的頭頂讓 body overflow:hidden 裁掉,腳底仍貼齊。 */
+#kanban-girl .kgirl .portrait-img {
+  height: min(127vh, 1950px); width: auto;
+  max-height: none;        /* 蓋掉 .portrait-img 的 360px —— 那是像素 sprite 時代的規格 */
+  max-width: 130vw;
+  object-fit: contain; object-position: bottom center;
+  border-radius: 0;
+  display: block; margin: 0 auto;
+}
+/* 名字改成疊在立繪下緣:接在圖下面的話,整塊會高過畫面被裁掉頭 */
+#kanban-girl .kgirl:has(.portrait-img) { position: relative; }
+#kanban-girl .kgirl:has(.portrait-img) .kname {
+  position: absolute; left: 0; right: 0; bottom: .2em; margin: 0;
+  text-shadow: 0 0 8px #000, 0 0 3px #000;
+}
+#kanban-girl.multi .kgirl .portrait-img { height: min(104vh, 1300px); max-width: 68vw; }
+/* 三人以上再讓一步,免得互相擠出畫面 */
+#kanban-girl.multi .kgirl:nth-child(n+3) .portrait-img,
+#kanban-girl.multi:has(.kgirl:nth-child(3)) .kgirl .portrait-img { height: min(86vh, 1040px); max-width: 47vw; }
+#kanban-girl .kgirl.taken .portrait-img { filter: grayscale(.7) brightness(.75); }
+/* 召喚生圖中:剪影微微呼吸 */
+.summon-brewing { animation: crest-brew 2.2s ease-in-out infinite; }
 #succubus-detail .aff-line { text-align: center; font-size: .85em; margin: .5em 0; }
 #succubus-detail .aff-line b { color: var(--rc); }
-.detail-actions { display: flex; gap: .5em; justify-content: center; flex-wrap: wrap; margin-top: .8em; }
+.detail-actions {
+  display: flex; gap: .5em; justify-content: center; flex-wrap: wrap;
+  margin-top: .6em;
+  position: sticky; bottom: .35em; z-index: 2;
+  padding: .35em 0;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
 .detail-actions button {
   background: rgba(255, 79, 216, .18); border: none; color: var(--pink);
   font: inherit; font-size: .85em; padding: .5em 1em; cursor: pointer;
 }
 .detail-actions button.cyan { background: rgba(111, 227, 225, .15); color: var(--cyan); }
 .detail-actions button.gold { background: rgba(255, 215, 95, .15); color: var(--gold); }
+.detail-actions button.danger { background: rgba(255, 95, 122, .2); color: var(--red); }
 .detail-actions button:disabled { opacity: .35; cursor: default; }
+.detail-actions #sac-ask:not([hidden]) {
+  display: flex; flex-wrap: wrap; gap: .4em; justify-content: center; align-items: center;
+  width: 100%;
+}
+.detail-actions #sac-ask[hidden] { display: none !important; }
+.detail-actions #sac-ask .sac-ask-text { width: 100%; font-size: .8em; text-align: center; }
+/* 行內小動作鈕(去背重試這類補救操作,不該長得像主要按鈕) */
+.link-btn {
+  background: none; border: none; color: var(--cyan); font: inherit; font-size: .95em;
+  text-decoration: underline; cursor: pointer; padding: 0 .3em;
+}
+
 .say-bubble {
   max-width: 90%; margin: .8em auto 0; padding: .6em .9em;
   background: rgba(0, 0, 0, .35); font-size: .85em; text-align: center;
@@ -786,6 +1321,154 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 .chat-top #chat-log-btn { margin-left: auto; }
 #chat-spacer { flex: 1; }
 
+/* 對話對象的立繪:去背半身,壓在對話框上方(文字冒險的站位)。
+   底部負邊距讓她的下襬被對話框蓋住,看起來是「站在框後面」而不是浮著。
+   min-height 0 + flex-shrink 讓小螢幕先壓縮立繪,對話框永遠不會被擠掉。 */
+#vn-figure-slot {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  width: 100%;
+  flex-shrink: 1;
+  min-height: 0;
+}
+#vn-figure {
+  display: block; margin: 0 auto -1.2em;
+  height: min(60vh, 540px); width: auto; max-width: 100%;
+  object-fit: contain; object-position: bottom center;
+  flex-shrink: 1; min-height: 0;
+  filter: drop-shadow(0 6px 22px rgba(0, 0, 0, .55));
+  pointer-events: none;
+  animation: float 6s ease-in-out infinite;
+}
+/* 劇本揭圖是聊天內的最底層背景板；對話與操作仍在其上 */
+body.script-reveal #vn-figure-slot {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+  pointer-events: none;
+  min-height: 0;
+}
+body.script-reveal .chat-top,
+body.script-reveal #vn-box,
+body.script-reveal #chat-input-row,
+body.script-reveal #tease-act-row,
+body.script-reveal #sense-act-row,
+body.script-reveal #watch-controls,
+body.script-reveal #sac-controls,
+body.script-reveal #ssac-controls {
+  position: relative;
+  z-index: 2;
+}
+body.sex-anim-on.script-reveal #vn-figure {
+  /* 劇本圖仍可見於局部動畫下方，不藏立繪 */
+  filter: brightness(.55);
+}
+#vn-figure.hidden { display: none; }
+#vn-figure.tease-on {
+  object-position: center center;
+  height: min(68vh, 640px);
+  animation: none;
+  margin-bottom: -0.4em;
+}
+body.script-reveal #vn-figure.tease-on {
+  object-position: top center;
+  margin-bottom: 0;
+}
+/* 局部動畫：中間偏下、加大、半透明卡；播完可留幀連肏 */
+#sex-anim-popup {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483000 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding-top: max(18vh, env(safe-area-inset-top, 0px));
+  background: transparent;
+  pointer-events: none;
+  isolation: isolate;
+}
+#sex-anim-popup.hidden { display: none !important; }
+#sex-anim-popup .sex-anim-popup-card {
+  position: relative;
+  z-index: 1;
+  max-width: min(72vw, 480px);
+  max-height: min(48vh, 520px);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, .4);
+  opacity: 0.4;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 79, 216, .35);
+  pointer-events: none;
+}
+#sex-anim-popup .sex-anim-popup-card img,
+#sex-anim-popup #sex-anim-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(48vh, 520px);
+  object-fit: contain;
+  margin: 0;
+}
+#aff-pop {
+  position: absolute;
+  left: 0.7em;
+  top: 36%;
+  z-index: 22;
+  font-family: ui-monospace, "Courier New", monospace;
+  font-size: clamp(2em, 8vw, 3em);
+  font-weight: 900;
+  letter-spacing: .04em;
+  pointer-events: none;
+  opacity: 0;
+  text-shadow: 3px 3px 0 #000, -1px -1px 0 #000;
+}
+#aff-pop.hidden { display: none; }
+#aff-pop.plus { color: #ffe14a; }
+#aff-pop.minus { color: #ff4d4d; }
+#aff-pop.zero { color: #c8c8c8; }
+#aff-pop.go { display: block; animation: aff-pop 1.1s ease-out forwards; }
+@keyframes aff-pop {
+  0% { opacity: 1; transform: translateY(12px) scale(1.35); }
+  55% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-64px) scale(1); }
+}
+/* 聊天有立繪時,背景那尊看板娘整個退場。
+   原本的設計是把看板娘放大模糊當「夢霧狀的身影」,那是在沒有立繪的年代;
+   現在她本人清清楚楚站在對話框上,背後再站一尊同一個人只是重影。
+   一定要連 animation 一起關:haze 在動 opacity,CSS 動畫壓過一般宣告,
+   只寫 opacity:0 會被動畫每幀蓋回去。 */
+body.chat-mode.has-figure #kanban-girl {
+  animation: none; opacity: 0; transform: none; pointer-events: none;
+}
+/* 感應遠距：沒有立繪、沒有頭像，只留對話框；背板不顯示看板娘肖像 */
+body.sense-mode #vn-figure,
+body.sense-mode #vn-face { display: none !important; }
+body.sense-mode #vn-figure.tease-on { display: none !important; }
+body.sense-mode #chat-input-row,
+body.sense-mode #chat-romance,
+body.sense-mode #tease-act-row {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+body.sense-mode #kanban-girl {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* ===== VN 對話框(日式文字冒險) ===== */
 #vn-box {
   background: var(--card-vn, var(--panel)); color: var(--card-vn-text, var(--text));
@@ -795,6 +1478,13 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 }
 #vn-text { text-shadow: var(--card-vn-halo, none); }
 #vn-nameline { display: flex; align-items: center; gap: .6em; margin-bottom: .45em; }
+/* 聊天頭像:召喚三連拍的大頭照。像素風要 crisp,不要瀏覽器幫忙糊平 */
+#vn-face {
+  width: 2.2em; height: 2.2em; flex: 0 0 auto;
+  border-radius: 5px; object-fit: cover;
+  border: 1px solid var(--line);
+  image-rendering: pixelated;
+}
 #vn-name {
   font-size: .85em; letter-spacing: .15em; color: var(--pink);
   text-shadow: 0 0 8px color-mix(in srgb, currentColor 55%, transparent);
@@ -839,14 +1529,74 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   font: inherit; font-size: .85em; padding: .35em .9em; cursor: pointer;
 }
 #chat-send:disabled { opacity: .35; }
-/* 詢問鈕:與輸入框、送出鈕同高對齊,寬度較短 */
-#chat-ask {
-  background: rgba(90, 200, 255, .16); border: 1px solid rgba(90, 200, 255, .35);
-  border-radius: 10px; color: var(--cyan);
-  font: inherit; font-size: .85em; padding: .35em .7em; cursor: pointer;
-  flex-shrink: 0;
+#chat-romance {
+  flex-shrink: 0; border: none; border-radius: 10px;
+  font: inherit; font-size: .85em; padding: .35em .75em; cursor: pointer;
+  background: linear-gradient(135deg, rgba(255, 120, 180, .35), rgba(255, 200, 80, .28));
+  color: #ffb6d9; font-weight: 600; letter-spacing: .05em;
 }
-#chat-ask:disabled { opacity: .35; cursor: default; }
+#chat-romance.hidden { display: none; }
+#chat-romance:disabled { opacity: .35; cursor: default; }
+.shop-item.special .sname { color: var(--pink); }
+.inv-row {
+  display: flex; align-items: center; gap: .6em;
+  padding: .45em 0; border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+.inv-row:last-of-type { border-bottom: none; }
+.inv-row .sname { flex: 1; }
+.inv-row .sprice { color: var(--gold); }
+
+#tease-act-row {
+  display: flex; gap: .5em; align-items: center; background: var(--panel); padding: .8em;
+  margin-top: .5em; flex-shrink: 0;
+  min-height: 3.6em; /* 一列按鈕高度，藏鈕不塌 */
+}
+#tease-act-row.hidden { display: none; }
+/* 藏鈕用 visibility，不 display:none，避免對話跳排版 */
+#tease-act-row #tease-next.is-ghost,
+#tease-act-row #tease-thrust.is-ghost {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#sense-act-row {
+  display: flex; flex-wrap: wrap; gap: .5em; background: var(--panel); padding: .8em;
+  margin-top: .5em; flex-shrink: 0; align-items: stretch;
+}
+#sense-act-row.hidden { display: none; }
+#sense-act-row > button {
+  flex: 1; min-width: 6em; border: none; border-radius: 10px; font: inherit;
+  font-size: 1.05em; letter-spacing: .2em; padding: .75em 0; cursor: pointer;
+  background: rgba(111, 227, 225, .18); color: var(--cyan);
+}
+#sense-act-row > button:disabled { opacity: .35; cursor: default; }
+#sense-act-row.sense-confirming > button#sense-summon,
+#sense-act-row.sense-confirming > button#sense-date { display: none; }
+.sense-date-confirm {
+  width: 100%; display: flex; flex-wrap: wrap; gap: .5em; align-items: center;
+  justify-content: center; text-align: center;
+}
+.sense-date-confirm.hidden { display: none; }
+.sense-date-confirm .sense-date-msg {
+  width: 100%; font-size: .85em; color: var(--dim); margin: .1em 0 .2em;
+}
+.sense-date-confirm button {
+  flex: 1; min-width: 6em; border: none; border-radius: 10px; font: inherit;
+  font-size: .95em; padding: .65em 0; cursor: pointer;
+}
+.sense-date-confirm button.cyan {
+  background: rgba(111, 227, 225, .18); color: var(--cyan);
+}
+#tease-next, #tease-thrust, #tease-cum {
+  flex: 1; border: none; border-radius: 10px; font: inherit;
+  font-size: 1.15em; letter-spacing: .35em; padding: .75em 0; cursor: pointer;
+}
+#tease-next { background: rgba(111, 227, 225, .2); color: var(--cyan); letter-spacing: .2em; }
+#tease-thrust { background: rgba(255, 79, 216, .28); color: var(--pink); }
+#tease-cum { background: rgba(255, 210, 80, .28); color: var(--gold); }
+#tease-next.hidden, #tease-cum.hidden, #tease-thrust.hidden { display: none; }
+#tease-next:disabled, #tease-thrust:disabled, #tease-cum:disabled { opacity: .35; cursor: default; }
+body.tease-play #chat-input-row { display: none; }
 
 /* 觀戰控制列 */
 #watch-controls { display: flex; gap: .5em; background: var(--panel); padding: .8em; margin-top: .5em; border-radius: 8px; flex-shrink: 0; }
@@ -870,7 +1620,8 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   background: rgba(255, 79, 216, .15); border: none; color: var(--pink);
   font: inherit; padding: .45em .9em; cursor: pointer;
 }
-#summon-counts button:disabled { opacity: .3; cursor: default; }
+#summon-counts button:disabled,
+#summon-counts button.is-blocked { opacity: .45; }
 #summon-overlay {
   position: fixed; inset: 0; z-index: 60;
   background: rgba(5, 2, 10, .85);
@@ -924,10 +1675,72 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   font-size: .65em; line-height: 1; display: flex; align-items: center; justify-content: center;
 }
 
-/* ===== 淫紋(聊天入場券) ===== */
-#crest {
-  position: fixed; right: .9em; bottom: calc(4.8em + env(safe-area-inset-bottom));
-  z-index: 12; width: 58px; height: 58px;
+/* ===== 主畫面右下：小方塊打牌鍵（避開委託輸入列） ===== */
+#crests {
+  position: fixed;
+  right: .65em;
+  bottom: calc(5.6em + env(safe-area-inset-bottom));
+  z-index: 12;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: .45em;
+  align-items: flex-end;
+  pointer-events: none;
+}
+#crests > * { pointer-events: auto; }
+/* 緊湊方塊：頭像 + 角標，不擋輸入框 */
+.play-fab {
+  position: relative;
+  width: 2.85em; height: 2.85em;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--rc, var(--pink)) 55%, var(--line));
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .35);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--rc, var(--pink)) 40%, transparent));
+  transition: transform .12s ease, filter .12s ease;
+  overflow: hidden;
+}
+.play-fab:active { transform: scale(.94); }
+.play-fab.active-sess {
+  border-color: var(--cyan);
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--cyan) 55%, transparent));
+}
+.play-fab-face {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.play-fab-icon {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--pink); font-size: 1.15em;
+  background: color-mix(in srgb, var(--rc, var(--pink)) 14%, transparent);
+}
+.play-fab-badge {
+  position: absolute;
+  right: 2px; bottom: 2px;
+  min-width: 1.15em; height: 1.15em;
+  padding: 0 .2em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--pink) 88%, #000);
+  color: #fff;
+  font-size: .58em;
+  font-weight: 700;
+  letter-spacing: .04em;
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+.play-fab.active-sess .play-fab-badge {
+  background: color-mix(in srgb, var(--cyan) 85%, #000);
+}
+/* 相容舊 class 名（若還有殘留） */
+.play-chip { display: none; }
+.crest-btn {
+  position: relative; width: 58px; height: 58px; padding: 0;
   background: var(--panel); border: 1px solid var(--line); border-radius: 50%;
   color: var(--pink); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -938,22 +1751,32 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
   0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pink) 50%, transparent)); }
   50% { transform: scale(1.08); filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 85%, transparent)); }
 }
-/* 醞釀中:她的話還在生成——極暗慢呼吸,不可點(有紋 vs 沒紋一眼可辨) */
-#crest.brewing {
-  opacity: .25; pointer-events: none;
-  animation: crest-brew 2.6s ease-in-out infinite;
-  filter: none;
+/* 正在輸入:淫紋換成小對話框 + 跳動的三點——她在打字,點不下去,打完自動變回亮紋 */
+.crest-btn.typing {
+  cursor: default; animation: none;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--pink) 35%, transparent));
 }
-@keyframes crest-brew {
-  0%, 100% { opacity: .18; }
-  50% { opacity: .34; }
+.crest-btn.typing .tbub {
+  fill: none; stroke: currentColor; stroke-width: 2.4;
+  stroke-linejoin: round; opacity: .8;
 }
-#crest b {
-  position: absolute; top: -4px; right: -4px;
-  min-width: 20px; height: 20px; border-radius: 50%;
-  background: var(--pink); color: var(--bg);
-  font-size: .72em; line-height: 20px; text-align: center;
-  text-shadow: none;
+.crest-btn.typing .tdot {
+  fill: currentColor;
+  animation: typing-dot 1.25s ease-in-out infinite;
+}
+.crest-btn.typing .tdot.d2 { animation-delay: .18s; }
+.crest-btn.typing .tdot.d3 { animation-delay: .36s; }
+@keyframes typing-dot {
+  0%, 65%, 100% { opacity: .28; }
+  30% { opacity: 1; }
+}
+/* 是誰在找你:多位看板娘同時有話時一眼分辨(邊框帶她的稀有度色) */
+.crest-btn .cname {
+  position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+  max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--panel); border: 1px solid var(--rc, var(--line)); border-radius: 1em;
+  padding: 0 .45em; font-size: .56em; line-height: 1.6;
+  color: var(--text); text-shadow: none;
 }
 
 /* ===== 斷線重連 ===== */
@@ -981,25 +1804,1324 @@ body.chat-mode #track-wrap, body.chat-mode #tabs { visibility: hidden; }
 }
 .toast.bad { color: var(--red); }
 .toast.good { color: var(--cyan); }
+/* 腎虧送醫：常在房間聊天／做愛時跳出來，要浮在房間對話框（z 70～75）上面 */
+#toasts:has(.toast.shenkui) { z-index: 90; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 @keyframes toast-out { to { opacity: 0; } }
 
 /* ===== 小圓角統一(容器 8px / 控件 6px / 小標籤 4px) ===== */
 .panel, .q-card, .pin-slot, #vn-box, #chat-input-row, #quest-input-row,
-.reward-sheet, .summon-result .portrait, .conn-box {
+.reward-sheet, .summon-result .portrait, .conn-box, .split-card {
   border-radius: 8px;
 }
-.msg, #quest-input, #chat-input, #quest-add, #chat-send,
+.msg, #quest-input, #chat-input, #chat-send,
 .qbtns button, .detail-actions button, .shop-item button, #summon-counts button,
 .btn-row button, .reward-grid button, .reward-cancel, .conn-box button,
 .summon-result button, .chooser button,
 .setting-row input, .setting-row select, .bg-thumb,
-.card-color-row input[type="color"] {
+.card-color-row input[type="color"],
+#split-input, #split-ok {
   border-radius: 6px;
 }
+#quest-add { border-radius: 10px; }
 .q-tag, .q-hints .hint, .lv-badge, .stage-chip, .say-bubble,
-#kanban-bubble, .toast {
+.toast {
   border-radius: 4px;
 }
 .q-force-tab { border-radius: 6px 0 0 6px; }   /* 貼右緣,只圓外側 */
 .bar-wrap, .aff-bar { border-radius: 3px; overflow: hidden; }
+
+/* ===== v6 互動牌制 ===== */
+.card-tag {
+  display: inline-block; font-size: .65em; letter-spacing: .05em;
+  padding: .1em .4em; margin-right: .4em; vertical-align: middle;
+  border: 1px solid var(--line);
+}
+.card-tag.speech { color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 40%, transparent); }
+.card-tag.shatter { color: var(--pink); border-color: color-mix(in srgb, var(--pink) 40%, transparent); }
+.card-tag.erotic { color: #ff7ab8; border-color: color-mix(in srgb, #ff7ab8 50%, transparent); background: color-mix(in srgb, #ff7ab8 12%, transparent); }
+.card-sale { color: var(--gold); font-size: .75em; margin-left: .3em; }
+/* 牌庫：按鈕格 + 下方詳情 */
+.card-inv-filters {
+  display: flex; flex-wrap: wrap; gap: .4em; margin: .5em 0 .65em;
+}
+.card-inv-filter {
+  font: inherit; font-size: .78em; cursor: pointer;
+  padding: .3em .7em; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--dim);
+}
+.card-inv-filter.on {
+  color: var(--cyan);
+  border-color: color-mix(in srgb, var(--cyan) 45%, var(--line));
+  background: color-mix(in srgb, var(--cyan) 12%, transparent);
+}
+.card-inv-btns {
+  display: flex; flex-wrap: wrap; gap: .45em;
+  margin-bottom: .75em;
+}
+.card-inv-btn {
+  font: inherit; cursor: pointer; text-align: left;
+  min-width: 5.8em; max-width: 11em; flex: 1 1 auto;
+  padding: .5em .65em; border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0,0,0,.28); color: var(--text);
+  display: flex; flex-direction: column; gap: .15em;
+  transition: border-color .15s, background .15s;
+}
+.card-inv-btn.speech { border-color: color-mix(in srgb, var(--cyan) 30%, var(--line)); }
+.card-inv-btn.shatter { border-color: color-mix(in srgb, var(--pink) 30%, var(--line)); }
+.card-inv-btn.on {
+  border-color: var(--pink);
+  background: color-mix(in srgb, var(--pink) 14%, rgba(0,0,0,.28));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pink) 35%, transparent);
+}
+.card-inv-btn .cib-name {
+  font-size: .88em; font-weight: 600; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.card-inv-btn.speech .cib-name { color: var(--cyan); }
+.card-inv-btn.shatter .cib-name { color: var(--pink); }
+.card-inv-btn .cib-meta { font-size: .7em; color: var(--dim); letter-spacing: .04em; }
+
+.card-inv-detail {
+  margin-top: .2em; padding: .85em .9em;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--pink) 35%, var(--line));
+  background: rgba(0,0,0,.32);
+  animation: onboard-in .22s ease;
+}
+.card-inv-detail.hidden { display: none; }
+.cid-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4em .55em; margin-bottom: .45em; }
+.cid-title { margin: 0; font-size: 1.05em; color: var(--text); flex: 1 1 100%; }
+.cid-rarity { font-size: .75em; letter-spacing: .12em; color: var(--gold); }
+.cid-scene {
+  margin: 0 0 .75em; line-height: 1.6; font-size: .92em;
+  padding: .55em .65em; border-radius: 6px;
+  background: rgba(255,255,255,.04);
+}
+.cid-rows { display: flex; flex-direction: column; gap: .35em; }
+.cid-row {
+  display: grid; grid-template-columns: 4.5em 1fr; gap: .5em;
+  font-size: .82em; line-height: 1.45;
+}
+.cid-row .k { color: var(--dim); }
+.cid-row .v { color: var(--text); word-break: break-word; }
+.cid-row .v b { color: var(--cyan); font-weight: 600; }
+.cid-hint { margin: .7em 0 .5em; line-height: 1.5; }
+.cid-close {
+  margin-top: .55em; font: inherit; font-size: .8em; cursor: pointer;
+  background: transparent; border: 1px solid var(--line); color: var(--dim);
+  padding: .35em .8em; border-radius: 6px;
+}
+.cid-close:hover { color: var(--text); border-color: var(--cyan); }
+
+.card-inv-row {
+  display: flex; align-items: center; gap: .5em; flex-wrap: wrap;
+  padding: .4em 0; border-bottom: 1px solid var(--line);
+}
+.card-inv-row:last-child { border-bottom: none; }
+.card-inv-row .sname { flex: 1; min-width: 6em; }
+.inject-row button {
+  font: inherit; font-size: .8em; min-width: 2em; cursor: pointer;
+  background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--text);
+}
+.inject-row button:disabled { opacity: .3; }
+
+/* ===== 創角輪巡 ===== */
+#starter-modal {
+  position: fixed; inset: 0; z-index: 90;
+  background: linear-gradient(160deg, rgba(12, 8, 22, .96), rgba(28, 12, 36, .96));
+  display: flex; align-items: center; justify-content: center;
+  padding: 1em; padding-bottom: calc(1em + env(safe-area-inset-bottom));
+}
+#starter-modal.hidden { display: none; }
+.onboard-shell {
+  width: min(440px, 100%); max-height: min(92vh, 720px);
+  display: flex; flex-direction: column; gap: .75em;
+}
+.onboard-progress {
+  display: flex; gap: .35em; justify-content: center; flex-wrap: wrap;
+}
+.onboard-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(255,255,255,.15); transition: .2s;
+}
+.onboard-dot.on { background: var(--pink); box-shadow: 0 0 8px color-mix(in srgb, var(--pink) 60%, transparent); }
+.onboard-dot.done { background: var(--cyan); opacity: .7; }
+.onboard-panel {
+  flex: 1; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 1.1em 1.15em 1.2em;
+  animation: onboard-in .28s ease;
+}
+@keyframes onboard-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+}
+.onboard-panel h2 {
+  color: var(--cyan); font-size: 1.05em; margin: 0 0 .35em;
+  letter-spacing: .06em;
+}
+.onboard-panel .lead {
+  color: var(--dim); font-size: .88em; line-height: 1.55; margin: 0 0 1em;
+}
+.onboard-panel .ob-q {
+  font-size: .98em; line-height: 1.55; margin: 0 0 .9em; color: var(--text);
+}
+.onboard-name-input {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 1.1em;
+  padding: .7em .85em; border-radius: 8px;
+  border: 1px solid var(--line); background: rgba(0,0,0,.35); color: var(--text);
+  outline: none;
+}
+.onboard-name-input:focus { border-color: var(--cyan); }
+.onboard-choices { display: flex; flex-direction: column; gap: .5em; }
+.onboard-choice {
+  text-align: left; font: inherit; cursor: pointer;
+  background: rgba(0,0,0,.28); border: 1px solid var(--line);
+  color: var(--text); padding: .75em .85em; border-radius: 8px;
+  line-height: 1.45; transition: border-color .15s, background .15s;
+}
+.onboard-choice:hover { border-color: color-mix(in srgb, var(--cyan) 50%, var(--line)); }
+.onboard-choice.selected {
+  border-color: var(--pink);
+  background: color-mix(in srgb, var(--pink) 12%, rgba(0,0,0,.28));
+}
+.onboard-choice b { display: block; color: var(--pink); font-size: .78em; margin-bottom: .2em; letter-spacing: .08em; }
+.onboard-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: .5em;
+}
+.onboard-grid .onboard-choice { min-height: 4.2em; }
+.onboard-grid .onboard-choice .dim { display: block; margin-top: .25em; font-size: .78em; }
+.onboard-nav {
+  display: flex; gap: .6em; justify-content: space-between; align-items: center;
+}
+.onboard-nav button {
+  font: inherit; cursor: pointer; border: none; border-radius: 8px;
+  padding: .65em 1.2em; min-width: 5.5em;
+}
+.onboard-nav .ob-back {
+  background: transparent; color: var(--dim); border: 1px solid var(--line);
+}
+.onboard-nav .ob-next {
+  background: color-mix(in srgb, var(--pink) 28%, transparent); color: var(--pink);
+  margin-left: auto;
+}
+.onboard-nav .ob-next:disabled { opacity: .35; cursor: default; }
+.onboard-nav .ob-finish {
+  background: color-mix(in srgb, var(--cyan) 25%, transparent); color: var(--cyan);
+  margin-left: auto;
+}
+.onboard-result-card {
+  margin-top: .6em; padding: .9em; border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--pink) 40%, var(--line));
+  background: rgba(0,0,0,.3);
+}
+.onboard-result-card .tag {
+  font-size: .72em; color: var(--cyan); letter-spacing: .12em; margin-bottom: .35em;
+}
+.onboard-result-card h3 { margin: 0 0 .45em; color: var(--pink); font-size: 1.15em; }
+.onboard-result-card p { margin: 0; line-height: 1.6; font-size: .92em; }
+.onboard-summary {
+  margin-top: .9em; font-size: .82em; color: var(--dim); line-height: 1.5;
+}
+
+/* ===== 牌桌全螢幕：立繪在底層；旁白／卡牌在上層 ===== */
+body.card-mode #track-wrap,
+body.card-mode #tabs { visibility: hidden; }
+body.card-mode #kanban { filter: brightness(.35); pointer-events: none; }
+/* 有立繪時看板娘背景退場，避免重影 */
+body.card-mode.has-ct-figure #kanban-girl {
+  animation: none; opacity: 0; transform: none; pointer-events: none;
+}
+
+#card-table-view {
+  position: fixed; top: 0; bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 100%; max-width: 560px;
+  z-index: 80;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(8, 4, 16, .35) 0%, rgba(8, 4, 16, .55) 38%, rgba(8, 4, 16, .92) 100%);
+  box-sizing: border-box;
+}
+#card-table-view.hidden { display: none; }
+
+/* 底層：半身立繪（不擋點擊；永遠在旁白／卡後面）
+   腳底切齊旁白框上緣：bottom 對準 #ct-fore 底部 UI 高度 */
+#ct-portrait {
+  position: absolute;
+  left: 0; right: 0;
+  top: env(safe-area-inset-top, 0);
+  /* 與旁白+手牌堆疊高度對齊，立繪下緣貼卡牌／旁白上沿 */
+  bottom: calc(12.2em + env(safe-area-inset-bottom, 0));
+  z-index: 0;
+  display: flex; align-items: flex-end; justify-content: center;
+  pointer-events: none;
+  padding: 0;
+  overflow: hidden;
+}
+#ct-portrait-img {
+  display: block;
+  height: min(74vh, 600px);
+  width: auto; max-width: 100%;
+  object-fit: contain; object-position: bottom center;
+  filter: drop-shadow(0 8px 28px rgba(0, 0, 0, .6));
+  /* 略往上提一點 */
+  transform: translateY(2%);
+}
+#ct-portrait-img.hidden { display: none; }
+#ct-portrait-fallback {
+  width: 5.2em; height: 5.2em;
+  margin-bottom: .4em;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.7em; letter-spacing: .05em; color: var(--pink);
+  background: color-mix(in srgb, var(--pink) 14%, transparent);
+  border: 1px solid var(--line);
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pink) 40%, transparent));
+}
+#ct-portrait-fallback.hidden { display: none; }
+/* M5：成形中／無立繪提示（不擋操作） */
+#ct-portrait-badge {
+  position: absolute;
+  left: 50%;
+  bottom: .35em;
+  transform: translateX(-50%);
+  padding: .15em .55em;
+  border-radius: 999px;
+  font-size: .72em;
+  letter-spacing: .04em;
+  color: var(--text, #f5e8ff);
+  background: color-mix(in srgb, var(--bg, #1a1020) 72%, transparent);
+  border: 1px solid var(--line, rgba(255,255,255,.18));
+  pointer-events: none;
+  white-space: nowrap;
+}
+#ct-portrait-badge.hidden { display: none; }
+
+/* 準備牌組：左→右一點＝一張卡；完成 · → ✓ */
+.narr-prep-list { width: 100%; }
+.narr-dots {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: .55em .7em;
+  max-width: 100%;
+  padding: .8em .5em 1em;
+  font-size: 1.45em;
+  line-height: 1;
+  color: var(--dim, #9aa0b5);
+}
+.narr-dot {
+  display: inline-flex;
+  width: 1.1em;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.narr-dot.ok {
+  color: var(--cyan, #6fe3e1);
+  font-weight: 700;
+  font-size: .9em;
+}
+.narr-dot.mid {
+  color: color-mix(in srgb, var(--cyan, #6fe3e1) 65%, var(--dim, #9aa0b5));
+  font-weight: 600;
+  font-size: .85em;
+}
+
+/* 前景：頂欄 + 空白 + 旁白 + 確認 + 手牌 */
+#ct-fore {
+  position: relative; z-index: 2;
+  height: 100%;
+  display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top, 0) .7em env(safe-area-inset-bottom, 0);
+  box-sizing: border-box;
+  pointer-events: none; /* 空白區點穿到背後；子元素再開 */
+}
+#ct-fore > * { pointer-events: auto; }
+#ct-space {
+  flex: 1 1 auto; min-height: 2em;
+  pointer-events: none !important;
+}
+
+.card-table-top {
+  display: flex; align-items: center; gap: .5em;
+  padding: .55em 0 .35em; flex-shrink: 0;
+  position: relative; z-index: 3;
+}
+.card-table-top .back-btn {
+  margin-bottom: 0;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border-radius: 6px; padding: .25em .55em;
+}
+.card-table-top #card-table-title {
+  flex: 1; text-align: center; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0,0,0,.75);
+}
+/* 出戰牌組 */
+.card-deck-list {
+  display: flex; flex-wrap: wrap; gap: .4em;
+  min-height: 2.2em;
+}
+.deck-chip {
+  display: inline-flex; align-items: center; gap: .3em;
+  padding: .35em .55em; border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  color: var(--text); font: inherit; font-size: .82em;
+  cursor: pointer;
+}
+.deck-chip.is-shatter {
+  border-color: color-mix(in srgb, var(--pink) 45%, var(--line));
+}
+.deck-chip.is-speech {
+  border-color: color-mix(in srgb, var(--cyan) 40%, var(--line));
+}
+.deck-chip-tag {
+  font-size: .7em; opacity: .75; letter-spacing: .06em;
+}
+.deck-chip:active { transform: scale(.97); }
+.card-inv-btn.in-deck {
+  outline: 1px solid color-mix(in srgb, var(--pink) 50%, var(--line));
+}
+.cid-actions {
+  display: flex; flex-wrap: wrap; gap: .45em; margin-top: .65em;
+}
+.cid-actions .cid-close { margin-top: 0; }
+
+/* 等 AI 反應：左上角「推出」 */
+.card-table-top .back-btn.ct-eject-btn {
+  color: var(--pink);
+  border: 1px solid color-mix(in srgb, var(--pink) 45%, var(--line));
+  letter-spacing: .08em;
+}
+.ct-react-wait {
+  margin-top: .55em;
+  text-align: center;
+  opacity: .75;
+}
+/* 她正在讀取…… */
+#ct-vn-text .ct-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 1.4em;
+  padding: .15em 0;
+}
+#ct-vn-text .ct-typing i {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--pink);
+  opacity: .35;
+  animation: ct-typing-dot 1.15s ease-in-out infinite;
+}
+#ct-vn-text .ct-typing i:nth-child(2) { animation-delay: .18s; }
+#ct-vn-text .ct-typing i:nth-child(3) { animation-delay: .36s; }
+@keyframes ct-typing-dot {
+  0%, 80%, 100% { opacity: .25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+
+/* 旁白：不透明，壓在立繪前面 */
+#ct-vn {
+  flex-shrink: 0;
+  position: relative; z-index: 3;
+  background: var(--card-vn, rgba(12, 8, 22, .94));
+  color: var(--card-vn-text, var(--text));
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: .75em .95em .85em;
+  min-height: 5.2em;
+  text-shadow: var(--card-vn-halo, none);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, .35);
+  backdrop-filter: blur(6px);
+}
+#ct-vn-name {
+  font-size: .85em; letter-spacing: .14em; color: var(--pink);
+  text-shadow: 0 0 8px color-mix(in srgb, currentColor 55%, transparent);
+  margin-bottom: .35em;
+  min-height: 1.2em;
+}
+.ct-react-triple {
+  display: flex;
+  flex-direction: column;
+  gap: .28em;
+  line-height: 1.45;
+}
+.ct-react-triple .lab {
+  display: inline-block;
+  min-width: 2.6em;
+  margin-right: .45em;
+  color: var(--cyan, #6fe3e1);
+  font-size: .85em;
+  opacity: .9;
+}
+
+#ct-vn-text {
+  font-size: .95em; line-height: 1.65;
+  white-space: pre-wrap; word-break: break-word;
+  min-height: 2.4em;
+}
+/* 出卡兩拍：點對話框進下一拍 */
+#ct-vn.ct-vn-tap {
+  cursor: pointer;
+  user-select: none;
+}
+#ct-vn.ct-vn-tap:active {
+  filter: brightness(1.08);
+}
+#ct-vn.ct-vn-tap #ct-vn-meta::after {
+  content: " ▾";
+  color: var(--cyan);
+  animation: pulse 1s infinite;
+}
+#ct-vn-meta {
+  margin-top: .45em; font-size: .82em; line-height: 1.45;
+}
+#ct-vn-meta b { color: var(--cyan); font-weight: 600; }
+.chain-hint { color: var(--pink); }
+
+/* 碎卡確認／長按詳情 */
+#ct-confirm {
+  flex-shrink: 0;
+  position: relative; z-index: 4;
+  padding: 0;
+  background: rgba(12, 8, 22, .94);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+#ct-confirm.hidden { display: none; }
+.card-confirm {
+  margin: 0; padding: .75em .9em; border: none;
+  border-top: 1px solid color-mix(in srgb, var(--red) 50%, var(--line));
+  border-radius: 0; background: rgba(80, 20, 30, .55);
+}
+.card-confirm p { margin: 0 0 .55em; line-height: 1.5; }
+.card-confirm .bad { color: var(--red); }
+
+/* 手牌層：永遠在立繪之上 */
+#ct-hand {
+  flex-shrink: 0;
+  position: relative; z-index: 3;
+  max-height: 32vh;
+  overflow: hidden;
+  padding: .35em .15em calc(.55em + env(safe-area-inset-bottom, 0));
+  display: flex; flex-direction: column; gap: .2em;
+  background: rgba(12, 8, 22, .94);
+  border: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .4);
+}
+.ct-empty { padding: .5em .2em; text-align: center; }
+
+.ct-card-wrap {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  padding: 2px 14px 0;
+}
+/* 只要標題：矮卡 */
+.ct-play-card {
+  width: 100%; max-width: 300px;
+  min-height: 4.2em;
+  background: color-mix(in srgb, var(--panel) 92%, #000);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: .9em 1.05em;
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: center;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .4);
+  user-select: none; touch-action: none; will-change: transform; cursor: grab;
+  animation: cIn .18s cubic-bezier(.25, .8, .25, 1);
+  border-radius: 6px;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
+}
+.ct-play-card.compact { min-height: 4em; padding: .85em 1em; }
+.ct-play-card:active { cursor: grabbing; }
+.ct-play-card.is-shatter {
+  border-color: color-mix(in srgb, var(--pink) 45%, var(--line));
+}
+.ct-play-card.is-speech {
+  border-color: color-mix(in srgb, var(--cyan) 30%, var(--line));
+}
+/* 目前聚焦／已帶上 → 變色 */
+.ct-play-card.is-selected {
+  background: color-mix(in srgb, var(--cyan) 28%, var(--panel));
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cyan) 50%, transparent),
+    0 8px 24px color-mix(in srgb, var(--cyan) 28%, transparent);
+}
+.ct-play-card.is-selected .ct-pc-body { color: var(--text); text-shadow: 0 0 10px color-mix(in srgb, var(--cyan) 45%, transparent); }
+.ct-play-card.is-shatter.is-selected {
+  background: color-mix(in srgb, var(--pink) 30%, var(--panel));
+  border-color: var(--pink);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pink) 50%, transparent),
+    0 8px 24px color-mix(in srgb, var(--pink) 30%, transparent);
+}
+.ct-play-card.is-shatter.is-selected .ct-pc-body { color: #fff; text-shadow: 0 0 10px color-mix(in srgb, var(--pink) 55%, transparent); }
+.ct-play-card.is-blocked {
+  opacity: .5;
+  filter: grayscale(.2);
+}
+.ct-pc-body {
+  font-size: calc(1.05rem * var(--card-font-scale, 1));
+  line-height: 1.4;
+  word-break: break-word;
+  color: var(--cyan);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-align: center;
+  width: 100%;
+}
+.ct-play-card.is-shatter .ct-pc-body { color: var(--pink); }
+.ct-pc-badge {
+  position: absolute; top: .45em; right: .55em;
+  font-size: .68em; letter-spacing: .04em;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 16%, transparent);
+  padding: 1px 7px; border-radius: 1em;
+}
+.ct-play-card.is-selected .ct-pc-badge {
+  color: #1a1020;
+  background: var(--gold);
+}
+.ct-play-card .swind {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 2.4rem; opacity: 0; pointer-events: none; z-index: 4;
+}
+.ct-card-dots {
+  flex-shrink: 0; display: flex; justify-content: center; gap: 6px; padding: 4px 0 0;
+}
+.ct-card-nav {
+  flex-shrink: 0; text-align: center; font-size: .68em; padding: 0 4px;
+  letter-spacing: .04em;
+}
+
+/* 長按詳情 */
+.card-peek {
+  margin: 0; padding: .75em .9em;
+  border: none; border-radius: 0;
+  background: rgba(12, 8, 22, .96);
+  border-top: 1px solid var(--line);
+}
+.card-peek-name {
+  font-size: .95em; letter-spacing: .1em; color: var(--pink);
+  margin-bottom: .4em;
+}
+.card-peek-scene {
+  font-size: .9em; line-height: 1.6;
+  margin-bottom: .45em; white-space: pre-wrap;
+}
+.card-peek-meta { margin-bottom: .5em; line-height: 1.45; }
+.card-peek .link-btn {
+  background: none; border: none; color: var(--cyan);
+  font: inherit; cursor: pointer; padding: 0; font-size: .85em;
+}
+
+.card-scene {
+  line-height: 1.65; margin: .6em 0 1em;
+  padding: .8em; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+}
+.card-meta { margin-bottom: .8em; font-size: .9em; }
+.card-actions { margin-top: .1em; flex-wrap: wrap; flex-shrink: 0; }
+.card-actions button { margin: .15em; }
+
+/* 小螢幕 */
+@media (max-height: 620px) {
+  #ct-portrait { bottom: calc(10.8em + env(safe-area-inset-bottom, 0)); }
+  #ct-portrait-img { height: min(64vh, 470px); transform: translateY(3%); }
+  #vn-figure { height: min(48vh, 400px); }
+  #bubble-figure { height: min(48vh, 380px); }
+  #ct-vn { min-height: 4em; padding: .5em .75em .55em; }
+  #ct-hand { max-height: 34vh; }
+  .ct-play-card, .ct-play-card.compact { min-height: 3.6em; padding: .75em .9em; }
+}
+
+/* 做愛前戲 2 選 1 */
+.ct-sex-choice { width: 100%; padding: .25rem 0 0.75rem; }
+.ct-sex-choice-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .6rem;
+}
+.ct-sex-choice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .35rem;
+  text-align: left;
+  padding: .75rem .8rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, #ff7ab8 45%, transparent);
+  background: color-mix(in srgb, #ff7ab8 10%, rgba(0,0,0,.35));
+  color: inherit;
+  cursor: pointer;
+  min-height: 5.5rem;
+}
+.ct-sex-choice-card:active { transform: scale(0.98); }
+.ct-sex-choice-name { font-weight: 700; font-size: 1.05em; color: #ffc1dc; }
+
+/* ── 日誌・名冊群 LINE ── */
+.line-chat {
+  display: flex; flex-direction: column;
+  width: 100%; max-width: 420px; margin: 0 auto;
+  height: min(70vh, 560px); min-height: 320px;
+  background: #748a9e;
+  border-radius: 14px; overflow: hidden;
+  box-shadow: 0 16px 40px rgba(20, 30, 40, .45);
+  animation: cIn .22s cubic-bezier(.25, .8, .25, 1);
+}
+.line-hdr {
+  flex-shrink: 0; display: flex; align-items: center; gap: 6px;
+  padding: 10px 12px; background: #06c755; color: #fff;
+}
+.line-back {
+  flex-shrink: 0; width: 36px; height: 36px; border: none; border-radius: 10px;
+  background: rgba(255,255,255,.18); color: #fff; font-size: 1.4em; line-height: 1;
+  cursor: pointer;
+}
+.line-back:active { background: rgba(255,255,255,.3); }
+.line-hdr-main { min-width: 0; }
+.line-hdr-title { font-weight: 700; font-size: 1em; letter-spacing: .04em; }
+.line-hdr-sub { font-size: .68em; opacity: .9; }
+.line-hdr-main { flex: 1; min-width: 0; }
+.line-clear {
+  flex-shrink: 0; margin-left: auto;
+  border: none; border-radius: 10px;
+  padding: 7px 10px; font: inherit; font-size: .72em; font-weight: 700;
+  background: rgba(255,255,255,.2); color: #fff; cursor: pointer;
+  letter-spacing: .04em;
+}
+.line-clear:active { background: rgba(255,255,255,.35); }
+
+.line-msgs {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 12px 10px 8px; display: flex; flex-direction: column; gap: 10px;
+  background: #748a9e;
+  -webkit-overflow-scrolling: touch;
+}
+.line-row { display: flex; align-items: flex-end; gap: 6px; max-width: 92%; }
+.line-row.me { align-self: flex-end; flex-direction: row-reverse; }
+.line-row.them { align-self: flex-start; }
+.line-av {
+  width: 34px; height: 34px; border-radius: 10px; object-fit: cover;
+  background: rgba(255,255,255,.25); flex-shrink: 0;
+}
+.line-av-fallback { display: inline-block; }
+.line-bubble-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.line-row.me .line-bubble-col { align-items: flex-end; }
+.line-name {
+  font-size: .62em; color: rgba(255,255,255,.92); padding-left: 2px;
+  letter-spacing: .02em;
+}
+.line-bubble {
+  max-width: 240px; padding: 8px 11px; border-radius: 14px;
+  font-size: .88em; line-height: 1.45; word-break: break-word;
+  box-shadow: 0 1px 2px rgba(0,0,0,.12);
+}
+.line-bubble.them {
+  background: #fff; color: #222;
+  border-top-left-radius: 4px;
+}
+.line-bubble.me {
+  background: #8cef6a; color: #163018;
+  border-top-right-radius: 4px;
+}
+.line-bubble.line-typing {
+  color: #666; font-style: italic; opacity: .9;
+}
+.line-reads {
+  font-size: .58em; color: rgba(255,255,255,.85);
+  letter-spacing: .02em; padding-right: 2px; max-width: 200px;
+  text-align: right;
+}
+
+.line-composer {
+  flex-shrink: 0; display: flex; gap: 8px; align-items: center;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: #eeeef0; border-top: 1px solid rgba(0,0,0,.08);
+}
+.line-composer input {
+  flex: 1; min-width: 0; border: none; border-radius: 18px;
+  padding: 10px 14px; font: inherit; font-size: .92em;
+  background: #fff; color: #222; outline: none;
+}
+.line-composer input:disabled { opacity: .65; }
+.line-send {
+  flex-shrink: 0; border: none; border-radius: 18px;
+  padding: 10px 14px; font: inherit; font-weight: 700; font-size: .88em;
+  background: #06c755; color: #fff; cursor: pointer;
+}
+.line-send:disabled { opacity: .45; cursor: default; }
+.line-send:not(:disabled):active { filter: brightness(0.95); }
+
+#qs-diary .lv-inner:has(.line-chat) {
+  align-items: stretch;
+}
+
+#page-quests.on-line #diary-nav {
+  display: none;
+}
+#page-quests.on-line #qs-diary .lv-area {
+  padding-left: 38px;
+}
+#page-quests.on-line .line-chat {
+  height: min(72vh, 560px);
+}
+/* 日誌／LINE：點卡片外空白可回委託板 */
+#qs-diary .lv-area, #qs-diary .lv-inner, #diary-stage {
+  cursor: default;
+}
+
+#diary-stage:has(.line-chat) {
+  width: 100%;
+  display: flex; justify-content: center;
+}
+
+/* ===== ROOM-SHIP 對齊：卡區上移壓矮（約會桌殘留／測試用）===== */
+#card-table-view.layout-ship #ct-fore {
+  flex-direction: column;
+}
+#card-table-view.layout-ship .card-table-top { order: 0; }
+#card-table-view.layout-ship #ct-hand {
+  order: 1;
+  max-height: 18vh;
+  padding: .2em .1em .35em;
+  border-radius: 10px;
+  margin-bottom: .25em;
+}
+#card-table-view.layout-ship #ct-space { order: 2; flex: 1 1 auto; min-height: 30vh; }
+#card-table-view.layout-ship #ct-vn {
+  order: 3;
+  border-radius: 12px 12px 0 0;
+  min-height: 4em;
+}
+#card-table-view.layout-ship #ct-confirm { order: 4; }
+#card-table-view.layout-ship .ct-play-card,
+#card-table-view.layout-ship .ct-play-card.compact {
+  min-height: 2.8em;
+  padding: .45em .7em;
+}
+
+
+/* ===== ROOM-HOME：主畫面 上卡／中下房／底輸入 ===== */
+body.room-home #page-quests {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  padding-bottom: calc(0.6em + env(safe-area-inset-bottom));
+}
+body.room-home #home-card-strip {
+  flex: 0 0 auto;
+  max-height: 24vh;
+  min-height: 0;
+  margin-top: clamp(4.5vh, 12vh, 14vh); /* 整組往中線 */
+  position: relative;
+  z-index: 3;
+  overflow: hidden;
+  background: transparent;
+}
+body.room-home #home-card-strip .q-scenes {
+  flex: none;
+  height: 24vh;
+  max-height: 24vh;
+  min-height: 0;
+  background: transparent;
+}
+body.room-home #home-card-strip .q-scene {
+  background: transparent;
+}
+body.room-home #home-card-strip .pin-hdr {
+  margin: 0;
+  padding: 0.15em 0;
+  font-size: 0.8em;
+}
+body.room-home #home-card-strip .pin-carousel {
+  max-height: calc(24vh - 2.2em);
+}
+body.room-home #home-card-strip .pin-slide {
+  padding: 4px 22px;
+}
+body.room-home #home-card-strip .pin-slot,
+body.room-home #home-card-strip .pin-card,
+body.room-home #home-card-strip .q-card {
+  /* 不用 transform:scale — 會跟 cIn 動畫搶 transform，造成先大後小抖動 */
+  max-width: 280px;
+  min-height: 150px;
+  padding: 16px 14px 12px;
+}
+body.room-home #home-card-strip .q-card,
+body.room-home #home-card-strip .q-card.q-instant {
+  animation: cInHome .22s cubic-bezier(.25, .8, .25, 1);
+}
+@keyframes cInHome {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+body.room-home #home-card-strip .q-body {
+  font-size: calc(1.15rem * var(--card-font-scale, 1) * 0.9);
+}
+body.room-home #home-card-strip .pin-slot {
+  border-style: dashed;
+  border-width: 1px;
+  min-height: 150px;
+  padding: 18px 14px;
+}
+/* 執行中／選卡：無陰影、無邊線 */
+body.room-home #home-card-strip .q-card,
+body.room-home #home-card-strip .q-card.q-instant,
+body.room-home #home-card-strip .q-card.c-exec,
+body.room-home #home-card-strip .q-card.c-found,
+body.room-home #home-card-strip .q-card.c-acc {
+  box-shadow: none;
+  filter: none;
+  border: none;
+  outline: none;
+}
+body.room-home #home-card-strip .pin-hdr-title {
+  text-shadow: none;
+}
+body.room-home #home-card-strip .dot.on {
+  box-shadow: none;
+}
+/* 選卡／處理／日誌：卡疊在房間上，房間仍可見 */
+body.room-home #page-quests.on-proc #home-card-strip,
+body.room-home #page-quests.on-diary #home-card-strip,
+body.room-home #page-quests.on-line #home-card-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: calc(3.2em + env(safe-area-inset-bottom));
+  max-height: none;
+  flex: none;
+  margin-top: 0.35em;
+  z-index: 6;
+  overflow: hidden;
+  background: transparent;
+  pointer-events: none; /* 空白穿透看到房間；卡自己可點 */
+}
+body.room-home #page-quests.on-proc #home-card-strip .q-scenes,
+body.room-home #page-quests.on-diary #home-card-strip .q-scenes,
+body.room-home #page-quests.on-line #home-card-strip .q-scenes {
+  height: 100%;
+  max-height: none;
+  pointer-events: none;
+  background: transparent;
+}
+body.room-home #page-quests.on-proc #home-card-strip .q-scene,
+body.room-home #page-quests.on-diary #home-card-strip .q-scene,
+body.room-home #page-quests.on-line #home-card-strip .q-scene {
+  pointer-events: none;
+  background: transparent;
+}
+body.room-home #page-quests.on-proc #home-card-strip .q-card,
+body.room-home #page-quests.on-proc #home-card-strip .pin-slot,
+body.room-home #page-quests.on-proc #home-card-strip .lv-inner,
+body.room-home #page-quests.on-proc #home-card-strip .lv-hdr,
+body.room-home #page-quests.on-proc #home-card-strip .q-force-tabs,
+body.room-home #page-quests.on-proc #home-card-strip .back-btn,
+body.room-home #page-quests.on-proc #home-card-strip .pin-dots,
+body.room-home #page-quests.on-proc #home-card-strip .pin-hdr,
+body.room-home #page-quests.on-diary #home-card-strip .q-card,
+body.room-home #page-quests.on-diary #home-card-strip .lv-inner,
+body.room-home #page-quests.on-diary #home-card-strip .lv-hdr,
+body.room-home #page-quests.on-diary #home-card-strip .back-btn,
+body.room-home #page-quests.on-line #home-card-strip .q-card,
+body.room-home #page-quests.on-line #home-card-strip .lv-inner,
+body.room-home #page-quests.on-line #home-card-strip .lv-hdr,
+body.room-home #page-quests.on-line #home-card-strip .back-btn,
+body.room-home #page-quests.on-proc #home-card-strip .diary-tab,
+body.room-home #page-quests.on-proc #home-card-strip .line-tab,
+body.room-home #page-quests.on-diary #home-card-strip .diary-tab,
+body.room-home #page-quests.on-diary #home-card-strip .line-tab,
+body.room-home #page-quests.on-line #home-card-strip .diary-tab,
+body.room-home #page-quests.on-line #home-card-strip .line-tab {
+  pointer-events: auto;
+}
+body.room-home #page-quests.on-proc #main-room-stage,
+body.room-home #page-quests.on-diary #main-room-stage,
+body.room-home #page-quests.on-line #main-room-stage {
+  display: flex;
+  opacity: 1;
+}
+/* 房間背板（只調上下）：下框＝輸入上；上緣＝執行中之上 */
+body.room-home #main-room-stage {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0; /* 上緣：卡牌「執行中」上面 */
+  bottom: calc(6.7em + env(safe-area-inset-bottom)); /* 下毛點兩倍：輸入框上面留更長 */
+  margin: 0;
+  width: 100%;
+  max-width: none; /* 不要用左右寬度限制來排版 */
+  padding: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: stretch;
+  overflow: hidden; /* 畫布關在舞台內，不衝出畫面 */
+  pointer-events: none;
+}
+body.room-home #quest-input-row {
+  flex-shrink: 0;
+  margin-top: auto;
+  position: relative;
+  bottom: auto;
+  z-index: 7;
+}
+
+/* 委託頁：看板娘退居背景，房間當主視覺 */
+body.room-home[data-tab="0"] #kanban {
+  opacity: 0.18;
+  filter: brightness(0.55);
+  pointer-events: none;
+}
+body.room-home[data-tab="0"] #kanban-girl {
+  transform: none;
+  animation: none;
+}
+/* 其他分頁：房間舞台本就在 page-quests 內會滑走；恢復看板可點 */
+body.room-home[data-tab="2"] #kanban {
+  opacity: 1;
+  filter: brightness(1);
+}
+
+/* ===== 番茄鐘：翻頁鐘。App 會把手機轉橫（鐘佔滿、她縮在右邊）；網頁維持直向（鐘在上、她在下） ===== */
+@font-face {
+  font-family: "Pomo Pixel";
+  src: url("fonts/fusion-pixel-12px-zh-hant.woff2") format("woff2");
+  font-display: swap;
+}
+body.pomo-on { overflow: hidden; }
+body.pomo-on #toasts { z-index: 80; } /* 鐘蓋著整個畫面，提示要浮在它上面 */
+#pomo {
+  --pomo-tile-top: #2b2242;
+  --pomo-tile-bot: #211a34;
+  --pomo-digit: #f6eeff;
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; flex-direction: column;
+  background: var(--bg, #141021);
+  background-image: radial-gradient(ellipse at 50% 40%, var(--glow, #251440) 0%, var(--bg, #141021) 72%);
+  color: var(--text);
+  padding:
+    max(16px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right))
+    max(18px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+#pomo[hidden] { display: none; }
+.pomo-clock {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: .9rem;
+}
+.pomo-task {
+  max-width: 100%;
+  padding: 0 .5rem;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  text-align: center;
+  color: var(--dim); font-size: .95rem; line-height: 1.4;
+}
+.pomo-face { display: flex; flex-direction: column; align-items: stretch; gap: .9rem; }
+.pomo-flaps {
+  display: flex; align-items: center; justify-content: center;
+  gap: .07em;
+  /* 直向：寬度決定字級（4 格＋冒號約 3.9em） */
+  font-size: min(19vw, 30vh, 8rem);
+  font-family: "Pomo Pixel", "Cubic 11", "Fusion Pixel", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.pomo-pair { display: flex; gap: .06em; }
+.pomo-flap {
+  position: relative;
+  width: .8em; height: 1.2em;
+  perspective: 3.2em;
+  /* 像素風：硬邊黑框＋往下一階的影子，不用柔焦陰影 */
+  border-radius: .05em;
+  box-shadow:
+    0 0 0 .025em #07040c,
+    0 .06em 0 .025em rgba(0,0,0,.45);
+}
+.pomo-flap .fh {
+  position: absolute; left: 0; right: 0;
+  height: 50%;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.pomo-flap .ft, .pomo-flap .lt {
+  top: 0;
+  border-radius: .05em .05em 0 0;
+  background: linear-gradient(var(--pomo-tile-top), color-mix(in srgb, var(--pomo-tile-top) 80%, #000));
+}
+.pomo-flap .fb, .pomo-flap .lb {
+  bottom: 0;
+  border-radius: 0 0 .05em .05em;
+  background: linear-gradient(var(--pomo-tile-bot), color-mix(in srgb, var(--pomo-tile-bot) 70%, #000));
+}
+.pomo-flap .fh b {
+  position: absolute; left: 0; right: 0;
+  height: 200%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 400;
+  color: var(--pomo-digit);
+  text-shadow: 0 0 .06em color-mix(in srgb, var(--pink, #ff4fd8) 55%, transparent);
+  -webkit-font-smoothing: none;
+}
+.pomo-flap .ft b, .pomo-flap .lt b { top: 0; }
+.pomo-flap .fb b, .pomo-flap .lb b { bottom: 0; }
+.pomo-flap .lt { z-index: 2; transform-origin: 50% 100%; }
+.pomo-flap .lb { z-index: 2; transform-origin: 50% 0; transform: rotateX(90deg); }
+/* 中間的鉸鍊縫＋兩邊的小卡榫 */
+.pomo-flap::after {
+  content: "";
+  position: absolute; left: 0; right: 0; top: calc(50% - .015em);
+  height: .03em;
+  background: #07040c;
+  z-index: 3;
+}
+.pomo-flap::before {
+  content: "";
+  position: absolute; top: calc(50% - .05em);
+  left: -.035em; right: -.035em;
+  height: .1em;
+  background:
+    linear-gradient(var(--pink, #ff4fd8), var(--pink, #ff4fd8)) left / .05em 100% no-repeat,
+    linear-gradient(var(--pink, #ff4fd8), var(--pink, #ff4fd8)) right / .05em 100% no-repeat;
+  opacity: .55;
+  z-index: 4;
+}
+.pomo-flap.is-flip .lt { animation: pomo-fold-top .26s ease-in forwards; }
+.pomo-flap.is-flip .lb { animation: pomo-fold-bot .26s .26s ease-out forwards; }
+@keyframes pomo-fold-top {
+  0% { transform: rotateX(0); filter: brightness(1); }
+  100% { transform: rotateX(-90deg); filter: brightness(.55); }
+}
+@keyframes pomo-fold-bot {
+  0% { transform: rotateX(90deg); filter: brightness(1.35); }
+  100% { transform: rotateX(0); filter: brightness(1); }
+}
+.pomo-colon {
+  display: flex; flex-direction: column; justify-content: center;
+  gap: .22em;
+  width: .3em; height: 1.2em;
+  align-items: center;
+  animation: pomo-blink 1s steps(1) infinite;
+}
+.pomo-colon i {
+  display: block;
+  width: .11em; height: .11em;
+  background: var(--pink, #ff4fd8);
+  box-shadow: 0 0 .08em color-mix(in srgb, var(--pink, #ff4fd8) 70%, transparent);
+}
+@keyframes pomo-blink { 50% { opacity: .25; } }
+#pomo:not(.is-run) .pomo-colon { animation: none; }
+/* 進度：細細一條像素條，走完＝時間到 */
+.pomo-bar {
+  height: 8px;
+  border: 2px solid color-mix(in srgb, var(--pink, #ff4fd8) 45%, #07040c);
+  background: rgba(0,0,0,.35);
+  overflow: hidden;
+}
+.pomo-bar i {
+  display: block; height: 100%; width: 0;
+  background: repeating-linear-gradient(90deg, var(--pink, #ff4fd8) 0 6px, transparent 6px 8px);
+  transition: width .4s steps(4);
+}
+/* ---- 她：計時中站在旁邊、腳貼螢幕底；長按／時間到就滑到正中間（跟房間聊天同一套擺法） ---- */
+#pomo { --pomo-ease: cubic-bezier(.2,.85,.2,1); }
+.pomo-girl {
+  position: absolute; z-index: 2;
+  left: 50%; bottom: 0;
+  /* 直向（網頁）：她在鐘下面，佔下半個畫面 */
+  height: min(56svh, 620px);
+  width: auto; max-width: min(96vw, 560px);
+  object-fit: contain; object-position: bottom center;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 14px 24px rgba(0,0,0,.5));
+  transition:
+    left .55s var(--pomo-ease),
+    bottom .55s var(--pomo-ease),
+    height .55s var(--pomo-ease),
+    max-width .55s var(--pomo-ease),
+    transform .2s ease-out,
+    filter .2s ease-out;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-user-drag: none;
+}
+.pomo-girl.is-pressing {
+  transform: translateX(-50%) scale(1.02);
+  filter: drop-shadow(0 14px 24px rgba(0,0,0,.5)) brightness(1.12);
+}
+/* 名牌＋「長按她」疊在她身上，不把她往上推 */
+.pomo-tag {
+  position: absolute; z-index: 3;
+  left: 50%; bottom: max(10px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex; align-items: baseline; gap: .6em;
+  padding: .3em .9em;
+  border-radius: 999px;
+  border: 1px solid rgba(244,251,255,.25);
+  background: rgba(10,16,40,.62);
+  font-family: RoomPixel, "Pomo Pixel", system-ui, sans-serif;
+  white-space: nowrap;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.pomo-name { color: #ffe14a; font-size: .85rem; letter-spacing: .15em; text-shadow: 1px 1px 0 #1a2748; }
+.pomo-name:empty { display: none; }
+.pomo-hint { margin: 0; color: rgba(244,251,255,.6); font-size: .72rem; }
+/* 直向：鐘只用她上面那一段 */
+.pomo-clock { padding-bottom: min(56svh, 620px); }
+
+/* ---- 提問（長按＝痾，什麼？／時間到＝完成了嗎？／結果）：照房間聊天的樣子 ---- */
+.pomo-scrim {
+  position: absolute; inset: 0; z-index: 1;
+  background: rgba(6,8,20,.55);
+  opacity: 0; pointer-events: none;
+  transition: opacity .35s ease-out;
+}
+#pomo.is-ask .pomo-scrim,
+#pomo.is-result .pomo-scrim { opacity: 1; pointer-events: auto; }
+#pomo .pomo-clock { transition: opacity .35s ease-out; }
+#pomo.is-ask .pomo-clock,
+#pomo.is-result .pomo-clock { opacity: .22; }
+#pomo.is-ask .pomo-tag,
+#pomo.is-result .pomo-tag { display: none; }
+/* 直向提問：她在正中、腳貼在按鈕列上面（同 body.room-home #portrait-img） */
+#pomo.is-ask .pomo-girl,
+#pomo.is-result .pomo-girl {
+  left: 50%;
+  bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
+  height: min(60svh, 560px);
+}
+/* 對話框＝房間 #talk-box 的樣子：深藍半透明、白框、黃名字、像素字 */
+.pomo-talk {
+  position: absolute; z-index: 3;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  width: min(calc(100% - 16px), 440px);
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  min-height: 4.8em;
+  padding: 10px 14px 12px;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  background: rgba(10,16,40,.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: #f4fbff;
+  font-family: RoomPixel, "Pomo Pixel", system-ui, sans-serif;
+  text-shadow: none;
+  animation: pomo-talk-in .32s .18s var(--pomo-ease) both;
+}
+#pomo:not(.is-ask):not(.is-result) .pomo-talk { display: none; }
+.pomo-talk-name {
+  margin-bottom: .45em;
+  font-size: .85em; letter-spacing: .15em;
+  color: #ffe14a;
+  text-shadow: 1px 1px 0 #1a2748;
+}
+.pomo-line {
+  margin: 0;
+  font-size: 1em; line-height: 1.65;
+  white-space: pre-wrap; word-break: break-word;
+  text-align: left;
+  -webkit-font-smoothing: none;
+}
+@keyframes pomo-talk-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+/* 按鈕列＝房間 .talk-acts 的樣子：底部漸層、藍底黃字膠囊鈕 */
+.pomo-acts {
+  position: absolute; z-index: 4;
+  left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: center; align-items: center;
+  gap: 10px;
+  padding: 8px 10px max(10px, env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(10,16,40,0), rgba(10,16,40,.72) 28%);
+  animation: pomo-acts-in .3s .22s ease-out both;
+}
+/* .pomo-acts 有 display:flex，會蓋掉 [hidden]：以前計時中也露出「完成／打斷」兩顆按不動的鈕 */
+#pomo [hidden] { display: none !important; }
+.pomo-acts button {
+  flex: 0 0 auto;
+  min-height: 44px; min-width: 5.5em;
+  padding: 10px 18px;
+  margin: 0;
+  border: 2px solid rgba(244,251,255,.35);
+  border-radius: 999px;
+  background: rgba(22,48,92,.92);
+  color: #ffe14a;
+  box-shadow: none;
+  font: inherit; font-family: RoomPixel, "Pomo Pixel", system-ui, sans-serif;
+  font-size: .95em; letter-spacing: .04em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pomo-acts button:active { background: rgba(40,70,120,.95); }
+.pomo-acts .yes { font-weight: 700; }
+.pomo-acts .no { border-color: rgba(255,180,220,.55); color: #ffb8d9; }
+.pomo-acts .back { min-width: 0; padding: 10px 12px; opacity: .8; font-size: .85em; color: #f4fbff; }
+@keyframes pomo-acts-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pomo-girl, .pomo-scrim, #pomo .pomo-clock { transition: none; }
+  .pomo-talk, .pomo-acts { animation: none; }
+}
+
+@media (orientation: landscape) {
+  /* 橫向：鐘在左邊，她站在右邊那一欄、幾乎整個高度、腳貼底 */
+  #pomo { --pomo-side-w: min(36vw, 68vh); }
+  .pomo-clock {
+    gap: .6rem;
+    padding-bottom: 0;
+    padding-right: var(--pomo-side-w);
+  }
+  .pomo-flaps {
+    font-size: min(
+      calc((100vw - var(--pomo-side-w) - env(safe-area-inset-left) - env(safe-area-inset-right) - 48px) / 4.05),
+      56vh
+    );
+  }
+  .pomo-face { gap: min(.9rem, 3vh); }
+  .pomo-girl {
+    left: calc(100% - env(safe-area-inset-right) - var(--pomo-side-w) / 2);
+    height: 96vh;
+    max-width: calc(var(--pomo-side-w) + 32px);
+  }
+  .pomo-tag { left: calc(100% - env(safe-area-inset-right) - var(--pomo-side-w) / 2); }
+  /* 橫向提問：她滑到正中間，頭頂留給對話框，腳貼底，按鈕疊在她下半身的漸層上（同房間） */
+  #pomo.is-ask .pomo-girl,
+  #pomo.is-result .pomo-girl {
+    left: 50%;
+    bottom: 0;
+    height: calc(100vh - 4.4em - env(safe-area-inset-top));
+    max-width: 60vw;
+  }
+  /* 橫向高度不夠：對話框縮成一行（名字在左、台詞在右），把高度讓給她 */
+  .pomo-talk {
+    width: min(72vw, 560px); min-height: 0;
+    display: flex; align-items: baseline; gap: .9em;
+    padding: 6px 14px 7px;
+  }
+  .pomo-talk-name { flex: 0 0 auto; margin-bottom: 0; }
+  .pomo-line { flex: 1 1 auto; min-width: 0; line-height: 1.5; }
+}

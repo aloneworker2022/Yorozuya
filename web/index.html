@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-nude-action-packs="1" data-undress-chat="1" data-miss-you="1" data-stun-reckoning="1" data-sex-poses="1" data-hunger="1" data-organ-dev="1">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -12,22 +12,40 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="萬事屋">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=81">
+<link rel="stylesheet" href="content/test_room.css?v=101">
 </head>
-<body>
+<body class="room-home">
 
 <!-- z0:全域背景圖層 -->
 <div id="bg-layer"></div>
 
-<!-- z1:看板娘層(有魅魔 = 剪影立繪;無魅魔 = 召喚書) -->
+<!-- z1:看板娘層(有看板娘 = 剪影立繪;沒人在店頭 = 空背板) -->
 <div id="kanban">
-  <div id="kanban-bubble" class="hidden"></div>
   <div id="kanban-zzz" class="hidden">Z z z…</div>
-  <div id="book">
+  <div id="book" class="hidden">
     <img src="img/summon-book.png" alt="魅魔召喚之書" draggable="false">
     <div id="magic-circle"></div>
   </div>
   <div id="kanban-girl" class="hidden"></div>
+</div>
+
+<!-- 委託氣泡／碎嘴：獨立覆蓋層（半身＋對話框），不塞在被壓暗的看板層裡 -->
+<div id="bubble-overlay" class="hidden" aria-live="polite">
+  <div id="bubble-dialog">
+    <div id="bubble-figure">
+      <img id="bubble-portrait" class="hidden" alt="" draggable="false">
+      <div id="bubble-portrait-fb" class="hidden" aria-hidden="true"></div>
+    </div>
+    <div id="bubble-box">
+      <div id="bubble-name-row">
+        <span id="bubble-name"></span>
+        <span id="bubble-aff" class="hidden"></span>
+      </div>
+      <div id="bubble-text"></div>
+      <div id="bubble-hint">點一下繼續</div>
+    </div>
+  </div>
 </div>
 
 <!-- z3:頂部 HUD -->
@@ -43,7 +61,11 @@
   <div id="track">
 
     <section class="page" id="page-quests">
+      <!-- 上：窄卡區（委託／狀態） -->
+      <div id="home-card-strip" class="home-card-strip">
       <div class="q-scenes">
+        <button type="button" id="diary-tab" class="diary-tab" aria-label="日誌"><span>日誌</span></button>
+        <button type="button" id="line-tab" class="line-tab" aria-label="LINE"><span>LINE</span></button>
 
         <!-- 場景一:執行中三格(輪播,上滑完成) -->
         <div class="q-scene" id="qs-exec">
@@ -73,10 +95,63 @@
           <div class="q-force-tabs" id="q-force-tabs"></div>
         </div>
 
+        <!-- 場景三:玩家日誌(橫線小本子,上下翻日期) -->
+        <div class="q-scene" id="qs-diary">
+          <div class="lv-hdr">
+            <button class="back-btn" id="diary-back"><span class="back-icon">‹</span> 委託板</button>
+            <span class="lv-badge diary-badge" id="diary-badge">日誌</span>
+          </div>
+          <div class="lv-area">
+            <div class="lv-inner">
+              <div id="diary-stage"></div>
+              <div class="lv-nav" id="diary-nav"></div>
+            </div>
+          </div>
+        </div>
+
       </div>
+      </div><!-- /home-card-strip -->
+
+      <!-- 中下：像素房間（主畫面房子） -->
+      <div id="main-room-stage" class="home-room-stage" aria-label="我的房間">
+        <section id="girl-world" class="girl-world" hidden aria-live="polite">
+          <p id="world-lead"></p>
+          <strong id="world-region"></strong>
+          <p id="world-clock"></p>
+          <p id="world-home"></p>
+          <p id="world-activity" hidden></p>
+          <p id="world-shift" hidden></p>
+          <div id="world-actions" hidden>
+            <button id="summon-back" type="button">召喚</button>
+            <button id="open-activity" type="button" aria-expanded="false" aria-controls="activity-choices">活動</button>
+          </div>
+          <div id="activity-choices" hidden>
+            <button id="activity-work" type="button">打工</button>
+            <button id="activity-wander" type="button">亂逛</button>
+            <button id="activity-browse" type="button">在家上網</button>
+            <button id="activity-idle" type="button">發呆</button>
+            <button id="activity-tidy" type="button">整理房間</button>
+            <button id="activity-meal" type="button">吃飯</button>
+            <button id="activity-sleep" type="button">睡覺</button>
+          </div>
+        </section>
+        <p id="girl-where" class="girl-where" hidden></p>
+        <p id="girl-mood" class="girl-mood" hidden></p>
+        <section id="girl-friends" class="girl-friends" hidden aria-label="朋友">
+          <p id="friend-heading">朋友</p>
+          <ul id="friend-list"></ul>
+        </section>
+        <div class="scene"><canvas id="room" width="416" height="328" role="img" aria-label="像素房間。長按人物跟她說話。"></canvas></div>
+      </div>
+
       <div id="quest-input-row">
-        <input id="quest-input" type="text" maxlength="80" placeholder="輸入現實中的待辦…(Enter 送出)">
-        <button id="quest-add">發現</button>
+        <input id="quest-input" type="text" maxlength="80" placeholder="待辦…或打她的名字叫過來">
+        <button id="quest-add" type="button" aria-label="送出" title="送出">
+          <svg class="paper-plane" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M22 2 15 22l-4-9-9-4z"/>
+            <path d="M22 2 11 13" fill="none" stroke="color-mix(in srgb, var(--panel) 85%, #000)" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
     </section>
 
@@ -85,6 +160,10 @@
         <h2>祭品商店</h2>
         <p id="merchant-line" class="dim small"></p>
         <div id="shop-stock"></div>
+      </div>
+      <div class="panel sub" id="inv-panel" hidden>
+        <h2>物品欄</h2>
+        <div id="inv-list" class="small"></div>
       </div>
       <div class="panel sub">
         <h2>地牢 <span id="dungeon-count" class="dim"></span></h2>
@@ -100,6 +179,7 @@
       <div id="succubi-home">
         <div class="panel" id="roster-panel">
           <h2>魅魔名冊</h2>
+          <p class="dim small roster-hint">點一下打開。長按她獻祭。</p>
           <div id="roster"></div>
         </div>
         <div class="panel sub center-note" id="summon-block">
@@ -119,6 +199,10 @@
           <span><input id="set-sleep-start" type="time"> ~ <input id="set-sleep-end" type="time"></span>
         </div>
         <div class="setting-row"><label>配色</label><select id="set-theme"></select></div>
+        <div class="setting-row"><label>對話打字速度</label>
+          <span class="range-wrap"><input type="range" id="set-type-speed" min="0.1" max="1" step="0.1"><span id="type-speed-val" class="dim small"></span></span>
+        </div>
+        <div class="dim small" style="margin-top:-.35em">感應／聊天／約會台詞一個字一個字印。0.1 最慢，1 最快。點畫面可跳過。</div>
       </div>
       <div class="panel sub">
         <h2>版面(卡片顏色/透明度・字體自動反差)</h2>
@@ -143,16 +227,46 @@
         <div id="bg-thumbs"></div>
       </div>
       <div class="panel sub">
-        <h2>AI(Ollama)</h2>
-        <div class="setting-row"><label>端點</label><input id="set-ollama" type="text" class="wide" placeholder="http://<主機>:11434"></div>
-        <div class="setting-row"><label>模型</label><input id="set-model" type="text" class="wide" list="model-list" placeholder="(留空 = 罐頭模式)"><datalist id="model-list"></datalist></div>
-        <div class="setting-row"><label>內容分級</label><select id="set-rating"><option value="sfw">SFW</option><option value="nsfw">NSFW(依內容模組)</option></select></div>
+        <h2>AI</h2>
+        <div class="setting-row"><label>供應商</label>
+          <select id="set-llm-provider">
+            <option value="ollama">Ollama(本機串流)</option>
+            <option value="grok-build">Grok Build(無頭·訂單)</option>
+          </select>
+        </div>
+        <div class="setting-row" id="row-ollama-url"><label>端點</label><input id="set-ollama" type="text" class="wide" placeholder="http://&lt;主機&gt;:11434"></div>
+        <div class="setting-row hidden" id="row-grok-hint"><label>引擎</label><span class="dim small">伺服器跑 <code>grok -p</code> 無頭(需 <code>grok login</code>),streaming-json end 即完成</span></div>
+        <div class="setting-row model-row"><label>模型</label>
+          <span class="model-fields">
+            <select id="set-model-pick" class="wide"><option value="">（載入已安裝的模型…）</option></select>
+            <input id="set-model" type="text" class="wide" placeholder="或手打模型名（留空＝罐頭）" autocomplete="off">
+          </span>
+        </div>
+        <div class="setting-row"><label>內容分級</label><select id="set-rating"><option value="nsfw">NSFW（全域固定）</option></select></div>
         <div class="btn-row"><button id="btn-llm-test">測試連線</button><span id="llm-test-result" class="dim small"></span></div>
+        <div class="setting-row"><label>生圖</label>
+          <select id="set-imgprov">
+            <option value="grok-img">Grok Build(雲端·單張)</option>
+            <option value="comfy">ComfyUI(本機顯卡·三連拍)</option>
+          </select></div>
+        <div class="setting-row"><label>約會場景圖</label><input id="set-card-scene-art" type="checkbox" title="約會出卡時依她的回應生場景圖（實驗·費時）"></div>
+        <div class="setting-row"><label></label><span class="dim small">實驗：有生圖能力時，約會章節會依「場面＋她的回應」翻成英文再畫一張。不擋約會；畫面顯示「繪場景中…」。可關。</span></div>
+        <div class="setting-row hidden" id="row-comfy-url"><label>ComfyUI</label><input id="set-comfy" type="text" class="wide" placeholder="http://192.168.68.55:8188"></div>
+        <div class="setting-row hidden" id="row-comfy-note"><label></label><span class="dim small">生圖那台(顯卡主機)。<b>不能填 localhost</b>——那是伺服器自己,不是顯卡。召喚時出大頭照 / 半身 / 全身三張。<b>不必選模型</b>：每位魅魔召喚時會從你 checkpoints 裡隨機綁定一個專屬模型，之後她的立繪／場景圖都用那一個。</span></div>
+        <div class="setting-row hidden" id="row-comfy-ckpt"><label>模型</label>
+          <select id="set-comfy-ckpt" class="wide"><option value="">(已改為每位妹子自帶)</option></select></div>
+        <div class="btn-row hidden" id="row-comfy-test"><button id="btn-comfy-test">測試 ComfyUI</button><span id="comfy-test-result" class="dim small"></span></div>
+        <div class="btn-row"><button id="btn-asset-gc">清理孤兒圖</button><span id="asset-gc-result" class="dim small"></span></div>
+        <div class="setting-row"><label></label><span class="dim small">獻祭／離開的妹子立繪、打過的出卡場景圖、testword 舊實驗圖（最近 48 張會留）。名冊上還在的人不會動。</span></div>
       </div>
       <div class="panel sub">
         <h2>存檔</h2>
         <div class="setting-row"><label>伺服器</label><span id="set-srv" class="dim">—</span></div>
         <div class="setting-row"><label>存檔版本</label><span id="set-ver" class="dim">—</span></div>
+        <div class="btn-row">
+          <button id="btn-sync-progress" type="button">上傳手機進度</button>
+        </div>
+        <div class="dim small">以手機為準。手機按「上傳手機進度」，人在不在房間、身體和住所會一起上傳。電腦按「改跟手機」，房間會改成跟手機一樣，不會再把電腦上還站著的人蓋回去。</div>
         <div class="btn-row">
           <button id="btn-export">匯出</button>
           <button id="btn-import">匯入</button>
@@ -168,8 +282,25 @@
         <div id="log-list" class="dim small"></div>
       </div>
       <div class="panel sub">
+        <h2>日誌 / Memos</h2>
+        <div class="dim small">連續每天寫滿 12 字：第 n 天領 n 金（上限 5）。寫滿會同步到這台電腦的 Memos（標籤 #yorozuya #日誌）。</div>
+        <div class="setting-row"><label>連寫</label><span id="set-nb-streak" class="dim">—</span></div>
+        <div class="setting-row"><label>Memos</label><span id="set-memos" class="dim">—</span></div>
+        <div class="btn-row"><button id="btn-memos-test" type="button">測試 Memos</button><span id="memos-test-result" class="dim small"></span></div>
+      </div>
+      <div class="panel sub">
+        <h2>發現</h2>
+        <div class="dim small">桌面「發現」跟魅魔萬事屋用下面這個網址。每天前 10 次輸入，隨機 +0～2 金，跟這裡打待辦一樣。</div>
+        <div class="setting-row"><label>網址</label><span id="set-discover-url" class="dim" style="word-break:break-all;text-align:right">—</span></div>
+        <div class="setting-row"><label>小工具</label><a href="/widget">打開發現頁</a></div>
+        <div class="setting-row"><label>安裝包</label><a href="/discover.apk">下載發現</a></div>
+        <div class="btn-row"><button id="btn-change-server" type="button" class="hidden">更換伺服器</button></div>
+      </div>
+      <div class="panel sub">
         <h2>版本</h2>
         <div class="setting-row"><label>遊戲版本</label><span id="set-appver" class="dim">—</span></div>
+        <div class="setting-row"><label>手機 App</label><a href="/download">下載乾淨完整版</a></div>
+        <div class="setting-row"><label>約會卡組</label><span id="set-cardpack" class="dim">—</span></div>
         <div class="btn-row">
           <button id="btn-force-update">⟳ 強制更新(清快取重載,存檔不受影響)</button>
         </div>
@@ -190,52 +321,59 @@
 <!-- 召喚演出 -->
 <div id="summon-overlay" class="hidden"></div>
 
-<!-- 淫紋:聊天入場券(委託操作隨機觸發,點擊與看板娘聊天) -->
-<button id="crest" class="hidden" title="她在呼喚你">
-  <svg viewBox="0 0 200 210" width="46" height="48" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="crest-g" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#9a3fb0"/>
-        <stop offset=".22" stop-color="#cc2380"/>
-        <stop offset=".5" stop-color="#e0104f"/>
-        <stop offset=".78" stop-color="#cc2380"/>
-        <stop offset="1" stop-color="#9a3fb0"/>
-      </linearGradient>
-    </defs>
-    <g fill="url(#crest-g)" fill-rule="evenodd">
-      <path d="M100 26 C95 15 80 16 81 26 C82 34 92 38 100 47 C108 38 118 34 119 26 C120 16 105 15 100 26 Z"/>
-      <g id="crest-half">
-        <path d="M110 34 C118 26 124 16 125 6 C132 18 126 34 113 43 Z"/>
-        <path d="M122 42 C134 34 142 26 150 22 C146 36 136 46 123 51 Z"/>
-        <path d="M116 56 C126 40 152 32 168 38 C184 44 186 62 174 78 C162 92 138 100 124 95 C136 90 152 81 158 68 C164 54 156 44 144 45 C132 46 122 51 116 56 Z
-                 M148 52 C157 50 163 57 158 66 C153 73 143 70 143 61 C143 56 145 53 148 52 Z"/>
-        <path d="M146 30 C156 20 170 15 181 17 C172 26 160 33 150 37 Z"/>
-        <path d="M176 44 C188 50 195 62 194 76 C187 64 178 57 168 53 Z"/>
-        <path d="M100 58 C114 46 133 51 134 67 C135 82 118 94 100 106 C106 97 114 91 121 83 C129 74 128 62 119 59 C111 56 104 59 100 64 Z"/>
-        <path d="M109 66 C116 70 118 80 111 87 C116 78 113 70 106 68 Z"/>
-        <path d="M112 108 C119 111 122 120 117 127 C121 118 116 111 109 110 Z"/>
-        <circle cx="117" cy="125" r="3.4"/>
-        <path d="M103 104 C111 126 112 158 103 190 L100 199 L100 188 C107 158 106 128 99 108 Z"/>
-      </g>
-      <use href="#crest-half" transform="translate(200,0) scale(-1,1)"/>
-      <path d="M100 68 C96 61 87 62 88 69 C89 74 95 77 100 83 C105 77 111 74 112 69 C113 62 104 61 100 68 Z"/>
-      <path d="M100 118 L109 141 L100 164 L91 141 Z  M100 127 L104.5 141 L100 155 L95.5 141 Z"/>
-      <path d="M100 169 L104.5 177 L100 185 L95.5 177 Z"/>
-    </g>
-  </svg>
-  <b id="crest-n"></b>
-</button>
+<!-- 創角輪巡：歡迎 → 姓名 → 隨機基礎話術 -->
+<div id="starter-modal" class="hidden">
+  <div class="onboard-shell">
+    <div class="onboard-progress" id="onboard-progress"></div>
+    <div class="onboard-panel" id="onboard-panel"></div>
+    <div class="onboard-nav" id="onboard-nav"></div>
+  </div>
+</div>
+
+<!-- 約會桌全螢幕：立繪在底層；頂欄／旁白／章節選項浮在上層 -->
+<div id="card-table-view" class="hidden layout-ship">
+  <div id="ct-portrait" aria-hidden="true">
+    <img id="ct-portrait-img" class="hidden" alt="" draggable="false">
+    <div id="ct-portrait-fallback" class="hidden"></div>
+    <div id="ct-portrait-badge" class="hidden" aria-live="polite"></div>
+  </div>
+  <div id="ct-fore">
+    <div class="card-table-top">
+      <button class="back-btn" id="card-table-back">‹ 返回</button>
+      <span id="card-table-title" class="dim small"></span>
+      <button class="back-btn" id="card-table-close" title="結束這次約會">先走</button>
+    </div>
+    <div id="ct-space"></div>
+    <div id="ct-vn">
+      <div id="ct-vn-name"></div>
+      <div id="ct-vn-text"></div>
+      <div id="ct-vn-meta" class="dim small"></div>
+    </div>
+    <div id="ct-confirm" class="hidden"></div>
+    <div id="ct-hand"></div>
+  </div>
+</div>
+
+<!-- 主畫面右下：舊打牌入口（已取消，僅佔位） -->
+<div id="crests" class="hidden"></div>
 
 <!-- 聊天/約會:全螢幕插播層(不可被分頁切換打斷,結束對話才退出) -->
 <div id="chat-view" class="hidden">
   <div class="chat-top">
     <button class="back-btn" id="chat-back">‹ 結束對話</button>
     <span id="chat-title" class="dim small"></span>
+    <span id="chat-hearts" class="hearts hidden" aria-live="polite"></span>
     <button class="back-btn" id="chat-log-btn">紀錄</button>
   </div>
   <div id="chat-spacer"></div>
+  <!-- 對話對象的立繪(去背半身):文字冒險式,站在對話框上方 -->
+  <div id="vn-figure-slot">
+    <img id="vn-figure" class="hidden" alt="" draggable="false">
+  </div>
+  <span id="aff-pop" class="hidden" aria-hidden="true"></span>
   <div id="vn-box">
     <div id="vn-nameline">
+      <img id="vn-face" class="hidden" alt="">
       <span id="vn-name"></span>
       <span id="vn-typing" class="hidden"><i></i><i></i><i></i></span>
     </div>
@@ -243,9 +381,19 @@
     <span id="vn-cursor" class="hidden">▼</span>
   </div>
   <div id="chat-input-row">
-    <button id="chat-ask" title="問她:你不在時發生了什麼?">詢問</button>
+    <button id="chat-romance" type="button" class="hidden">告白</button>
     <input id="chat-input" type="text" maxlength="300" placeholder="說點什麼…(Enter 送出)">
     <button id="chat-send">送出</button>
+  </div>
+  <div id="sense-act-row" class="hidden" hidden aria-hidden="true">
+    <button type="button" id="sense-summon" class="cyan hidden" hidden>召喚</button>
+    <button type="button" id="sense-date" class="cyan hidden" hidden>約會</button>
+    <div id="sense-date-confirm" class="hidden sense-date-confirm"></div>
+  </div>
+  <div id="tease-act-row" class="hidden">
+    <button type="button" id="tease-next" class="hidden">下一句 ▶</button>
+    <button type="button" id="tease-thrust">肏</button>
+    <button type="button" id="tease-cum">射精</button>
   </div>
   <div id="watch-controls" class="hidden">
     <button id="watch-next">下一句 ▶</button>
@@ -262,6 +410,23 @@
 </div>
 
 <!-- 斷線重連畫面 -->
+<!-- 已承接長按:遊戲對話卡(不是網頁 prompt),寫多一件後退回發現 -->
+<!-- 局部動畫獨立彈層：不掛在 #chat-view 框架內，永遠置頂 -->
+<div id="sex-anim-popup" class="hidden" aria-hidden="true" role="dialog" aria-label="局部動畫">
+  <div class="sex-anim-popup-card">
+    <img id="sex-anim-img" alt="">
+  </div>
+</div>
+<div id="split-overlay" class="hidden" aria-hidden="true">
+  <div class="split-card" id="split-card" role="dialog" aria-labelledby="split-name">
+    <div class="split-name" id="split-name"></div>
+    <div class="split-input-row">
+      <input id="split-input" type="text" maxlength="80" placeholder="多出來的任務…" autocomplete="off">
+      <button id="split-ok" type="button">分裂</button>
+    </div>
+  </div>
+</div>
+
 <div id="conn-overlay" class="hidden">
   <div class="conn-box">
     <div>連線伺服器中…</div>
@@ -301,6 +466,167 @@
   setTimeout(function () { sessionStorage.removeItem("healCount"); }, 10000);
 })();
 </script>
-<script type="module" src="app.js"></script>
+
+<!-- 房間陪伴：生產嵌層（除錯面板 DOM 保留給腳本，CSS 隱藏） -->
+<div id="home-room-chrome" hidden aria-hidden="true">
+  <section id="bond-debug" class="bond-debug" hidden aria-label="內部">
+    <p>內部</p>
+    <dl>
+      <dt>關係</dt><dd id="dbg-stage">—</dd>
+      <dt>感情</dt><dd id="dbg-aff">—</dd>
+      <dt>判定</dt><dd id="dbg-mark">—</dd>
+      <dt>名字</dt><dd id="dbg-names">—</dd>
+      <dt>心情</dt><dd id="dbg-mood">—</dd>
+      <dt>設定</dt><dd><select id="dbg-jump" aria-label="直接跳到的關係">
+        <option value="">照感情</option>
+        <option value="stranger">陌生</option>
+        <option value="acquaintance">普通</option>
+        <option value="friend">朋友</option>
+        <option value="close_friend">親密好友</option>
+        <option value="girlfriend">女友</option>
+        <option value="passionate">熱戀</option>
+        <option value="lover">愛人</option>
+        <option value="wife">妻子</option>
+        <option value="devoted_wife">貼心妻子</option>
+        <option value="obedient_wife">順從妻子</option>
+        <option value="pathological_wife">病態妻子</option>
+      </select></dd>
+    </dl>
+    <ol id="dbg-log"></ol>
+  </section>
+  <div id="room-editor" hidden>
+    <a class="back" href="/" aria-label="回到 Yorozuya">← 萬事屋</a>
+    <p class="gesture-hint">點家具選取，按「移動」後再點空地。</p>
+    <section class="summon-panel" aria-label="抽妹子">
+      <div class="summon-head"><div><strong>抽妹子</strong><p id="summon-status">抽出一個人。</p></div><button id="draw-girl" type="button">抽妹子</button></div>
+      <div class="summon-roster" aria-label="名冊生徒召喚">
+        <div class="summon-roster-head"><strong>名冊生徒</strong><span class="mini">從遊戲存檔名冊召喚進這間房</span></div>
+        <div class="summon-roster-row">
+          <select id="roster-girl-pick" aria-label="選擇名冊生徒">
+            <option value="">（讀取名冊…）</option>
+          </select>
+          <button id="summon-roster-girl" type="button">召喚進房</button>
+          <button id="reload-roster-girls" type="button" title="重新讀取名冊">↻</button>
+        </div>
+        <p id="roster-summon-hint" class="mini dim">讀取中…</p>
+      </div>
+      <div id="summon-card" hidden>
+        <div><strong id="summon-name"></strong><p id="summon-meta"></p></div>
+        <div class="summon-card-actions">
+          <button id="let-leave" type="button">讓她離開</button>
+        </div>
+      </div>
+      <p class="note">召喚進房間時會自動預產半身與已存動作圖組（儀式中請稍候）。沙盒。</p>
+    </section>
+
+    <section id="body-panel" class="body-panel" hidden aria-label="身體狀態">
+      <div class="inventory-heading"><h2>身體狀態</h2><span id="body-summary">尚無對象</span></div>
+      <div class="body-grid">
+        <label>性奮 <output id="body-arousal-val">0</output><span class="body-stage" id="body-arousal-stage"></span>
+          <input id="body-arousal" type="range" min="0" max="30" value="0"></label>
+        <label>乳頭腫 <output id="body-nipple-swell-val">0</output>
+          <input id="body-nipple-swell" type="range" min="0" max="3" value="0"></label>
+        <label class="body-check"><input id="body-nipple-wet" type="checkbox"> 乳尖濕</label>
+        <label>乳房脹 <output id="body-breast-swell-val">0</output>
+          <input id="body-breast-swell" type="range" min="0" max="3" value="0"></label>
+        <label>陰蒂腫 <output id="body-clit-swell-val">0</output>
+          <input id="body-clit-swell" type="range" min="0" max="3" value="0"></label>
+        <label class="body-check"><input id="body-clit-wet" type="checkbox"> 陰蒂濕</label>
+        <label>陰唇腫 <output id="body-labia-swell-val">0</output>
+          <input id="body-labia-swell" type="range" min="0" max="3" value="0"></label>
+        <label class="body-check"><input id="body-labia-wet" type="checkbox"> 陰唇濕</label>
+        <label>陰道濕 <output id="body-vagina-wet-val">0</output>
+          <input id="body-vagina-wet" type="range" min="0" max="3" value="0"></label>
+        <label>陰道內<select id="body-vagina-stuffed"></select></label>
+        <label>後穴內<select id="body-anus-stuffed"></select></label>
+        <label>子宮精液 <output id="body-semen-val">沒有</output>
+          <input id="body-semen" type="range" min="0" max="3" value="0"></label>
+      </div>
+      <div class="body-player-row">
+        <button id="body-refill-semen" type="button">恢復精液</button>
+        <span class="note" id="body-player-hint">玩家精液／興奮見對話底欄</span>
+      </div>
+    </section>
+    <section id="romance-items" class="romance-items" hidden aria-label="戀愛道具・商店">
+      <div class="inventory-heading"><h2>戀愛道具・商店</h2><span id="romance-inv">金幣 200　花束 ×0　戒指 ×0　打胎藥 ×0</span></div>
+      <div class="romance-row">
+        <button id="claim-gold" type="button">領取金幣 +100</button>
+        <button id="claim-bouquet" type="button" disabled>領取花束</button>
+        <button id="claim-ring" type="button" disabled>領取戒指</button>
+      </div>
+      <div class="romance-row">
+        <button id="buy-abort-pill" type="button" disabled>購買打胎藥</button>
+        <button id="use-abort-pill" type="button" disabled>使用打胎藥</button>
+      </div>
+      <p class="note" id="romance-status">沙盒</p>
+    </section>
+    <div class="actor-panel" hidden><div><strong>她</strong><p id="actor-status">她會走動。</p><p class="actor-hint">長按她說話。</p></div><div class="actor-actions"><button id="actor-sit" type="button">找位置坐</button><button id="actor-stand" type="button" disabled>起身</button><button id="actor-toggle" type="button" aria-pressed="false">暫停動作</button></div></div>
+    <div class="tool-row">
+      <button id="grid" type="button" aria-pressed="false">顯示格線</button>
+      <div class="view-controls" role="group" aria-label="房間視角">
+        <button id="zoom-out" type="button" aria-label="縮小房間">−</button>
+        <output id="zoom-level" aria-label="縮放比例">100%</output>
+        <button id="zoom-in" type="button" aria-label="放大房間">＋</button>
+        <button id="reset-view" type="button">重置視角</button>
+      </div>
+    </div>
+    <section class="furniture-panel" aria-label="選取家具">
+      <div id="selection">
+        <div class="furniture-info"><img id="item-preview" alt=""><div><strong id="item-name"></strong><p id="item-size"></p></div></div>
+        <div class="furniture-actions"><button id="move-item" type="button" aria-pressed="false">移動</button><button id="turn-item" type="button">旋轉</button><button id="remove-item" type="button">收回</button></div>
+      </div>
+      <p id="empty-selection" hidden>點選房間內的家具。</p>
+      <p id="furniture-status" role="status">點選家具後可移動、旋轉或收回。</p>
+    </section>
+    <section class="inventory" aria-label="家具列表">
+      <div class="inventory-heading"><h2>家具</h2><span>點一下加入</span></div>
+      <div id="furniture-list"></div>
+      <div class="inventory-heading"><h2 id="room-count">房間內 1 件</h2><span>點名稱也能選取</span></div>
+      <div id="placed-items" aria-label="房間內的家具"></div>
+    </section>
+  </div>
+</div>
+<nav id="room-pack-chrome" class="room-pack-chrome" aria-label="房間快捷">
+    <button id="edit-room" type="button" aria-pressed="false" aria-controls="room-editor" hidden>編輯</button>
+  </nav>
+<div id="room-summon-ritual" class="room-summon-ritual" hidden role="status" aria-live="polite"></div>
+  <div id="portrait-sheet" hidden>
+  <button id="portrait-backdrop" type="button" aria-label="結束對話"></button>
+  <div class="talk" role="dialog" aria-modal="true" aria-labelledby="portrait-name">
+    <div id="talk-panel">
+      <form id="talk-input-row">
+        <input id="talk-input" type="text" maxlength="300" placeholder="說點什麼…(Enter 送出)" autocomplete="off" enterkeyhint="send">
+        <button id="talk-send" type="submit">送出</button>
+      </form>
+      <div id="talk-box">
+        <div id="talk-nameline">
+          <span id="portrait-name"></span>
+          <span id="talk-typing" hidden><i></i><i></i><i></i></span>
+        </div>
+        <div id="portrait-meta"></div>
+      </div>
+    </div>
+    <img id="portrait-img" alt="" hidden>
+    <img id="action-flash-img" alt="" hidden>
+      <div id="climax-tip" class="climax-tip" hidden role="status" aria-live="polite">射精了！</div>
+  </div>
+  <div id="talk-acts" class="talk-acts" role="toolbar" aria-label="身體互動" hidden></div>
+</div>
+<div id="room-scene-overlay" class="room-scene-overlay" hidden>
+  <div class="room-scene-card" role="dialog" aria-modal="true" aria-labelledby="room-scene-title">
+    <h2 id="room-scene-title" class="room-scene-title"></h2>
+    <div id="room-scene-choices" class="room-scene-choices" hidden></div>
+    <img id="room-scene-img" class="room-scene-img" alt="" hidden>
+    <p id="room-scene-body" class="room-scene-body">場面建置中</p>
+    <button id="room-scene-back" type="button">回到房間對話</button>
+  </div>
+</div>
+<script src="content/room_furniture.js?v=4"></script>
+<script src="content/room_doll.js?v=17"></script>
+<script src="content/room_activity.js?v=3"></script>
+<script src="content/room_character.js?v=11"></script>
+<script src="content/test_room.js?v=24"></script>
+<script type="module" src="content/test_room_summon.js?v=342"></script>
+<script type="module" src="app.js?v=142"></script>
 </body>
 </html>

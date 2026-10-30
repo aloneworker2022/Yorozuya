@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">魅魔萬事屋</string>
+    <string name="setup_title">設定伺服器</string>
+    <string name="setup_heading">連到萬事屋伺服器</string>
+    <string name="setup_desc">輸入跑 FastAPI（uvicorn）那台電腦的網址。手機和伺服器要在同一個網路（同一個 Wi‑Fi，或都連上 Tailscale）。</string>
+    <string name="setup_hint">http://192.168.x.x:8000</string>
+    <string name="setup_example">例：http://192.168.1.20:8000　或　http://my-pc.tailnet.ts.net:8000</string>
+    <string name="setup_save">儲存並開啟</string>
+    <string name="setup_test">測試連線</string>
+    <string name="setup_invalid">網址格式不對，例：http://192.168.1.20:8000</string>
+    <string name="error_title">連不上伺服器</string>
+    <string name="error_retry">重試</string>
+    <string name="error_change">更換伺服器</string>
+    <string name="shortcut_change_server">更換伺服器</string>
+    <string name="exit_title">魅魔萬事屋</string>
+    <string name="exit_quit">離開</string>
+    <string name="exit_reload">重新整理</string>
+    <string name="exit_change">更換伺服器</string>
+</resources>

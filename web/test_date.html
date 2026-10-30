@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>約會</title>
+<style>
+  @font-face {
+    font-family: "Fusion Pixel";
+    src: url("/fonts/fusion-pixel-12px-zh-hant.woff2") format("woff2");
+    font-display: swap;
+  }
+  :root {
+    --px: 4px;
+    --ink: #f8f8f8;
+    --gold: #f8d878;
+    --cyan: #70d0d8;
+    --pink: #e878c0;
+    --dim: #a0a0a0;
+    --fill: rgba(0, 0, 0, .62);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; }
+  body[data-time="morning"] { --sky: #c9a06a; --sky2: #3a2a18; }
+  body[data-time="afternoon"] { --sky: #6fe3e1; --sky2: #163038; }
+  body[data-time="evening"] { --sky: #ff7aa8; --sky2: #3a1424; }
+  body[data-time="night"] { --sky: #6a7cff; --sky2: #101428; }
+  body {
+    background:
+      radial-gradient(1200px 420px at 50% -80px, color-mix(in srgb, var(--sky) 28%, transparent), transparent 70%),
+      linear-gradient(180deg, var(--sky2), #0c0a12 42%);
+    color: var(--ink);
+    font-family: "Fusion Pixel", ui-monospace, monospace;
+    font-size: 24px;
+    line-height: 1.5;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: unset;
+    font-smooth: never;
+    image-rendering: pixelated;
+  }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 0;
+    image-rendering: pixelated;
+  }
+  button:disabled { opacity: .35; cursor: not-allowed; }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    background: transparent;
+  }
+
+  .win {
+    background: var(--fill);
+    border: var(--px) solid #f8f8f8;
+    box-shadow:
+      0 0 0 var(--px) #000,
+      inset 0 0 0 2px #000;
+    border-radius: 0;
+  }
+
+  .hud {
+    display: flex;
+    gap: 0;
+    padding: 8px 10px 10px;
+    margin-bottom: 10px;
+  }
+  .stat {
+    flex: 1;
+    min-width: 0;
+    padding: 0 6px;
+  }
+  .stat .lab {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    line-height: 1.2;
+    color: var(--gold);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    gap: 8px;
+  }
+  .stat .lab b { color: var(--ink); font-weight: 400; }
+  .bar {
+    height: 8px;
+    background: #202020;
+    box-shadow: inset 0 0 0 2px #000;
+    overflow: hidden;
+  }
+  .bar i { display: block; height: 100%; width: 0; }
+  .bar.stamina i { background: #58c840; }
+  .bar.arousal i { background: #e850a0; }
+  .bar.shame i { background: #58c8d8; }
+  .stat.plain .bar { display: none; }
+  .stat.plain .lab { margin-bottom: 0; justify-content: center; gap: 8px; }
+  .stat.obey { display: none; }
+  .hud.has-male .stat.obey { display: block; }
+  .stat.hype { display: none; }
+  .hud.has-male .stat.hype { display: block; }
+  .bar.hype i { background: #f0a040; }
+
+  .stage {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 280px;
+    margin-bottom: 10px;
+  }
+  .stage-head {
+    padding: 8px 12px 6px;
+    border-bottom: 2px solid #f8f8f8;
+  }
+  .where {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .where .scene { font-size: 12px; color: var(--gold); }
+  .where h2 { font-size: 24px; font-weight: 400; }
+  .where .money { font-size: 12px; color: var(--gold); }
+  .place-desc { margin-top: 6px; font-size: 12px; color: var(--dim); }
+
+  .log {
+    flex: 1;
+    overflow: auto;
+    padding: 10px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 180px;
+    max-height: 46vh;
+    cursor: pointer;
+  }
+  .log .bubble { align-self: stretch; max-width: 100%; }
+  .empty {
+    margin: auto;
+    color: var(--dim);
+    font-size: 24px;
+    text-align: left;
+    width: 100%;
+  }
+  .bubble { max-width: 100%; }
+  .bubble .who { font-size: 12px; color: var(--gold); margin-bottom: 2px; }
+  .bubble.player .who { color: var(--cyan); }
+  .bubble.girl .who { color: var(--pink); }
+  .bubble.sys .who { color: var(--gold); font-size: 12px; }
+  .bubble.sys { color: var(--gold); font-size: 24px; }
+  .bubble .cg { margin-top: .35em; }
+  .bubble .cg img { max-width: 100%; max-height: 280px; border-radius: 8px; display: block; }
+  .bubble.male .who { color: #ffb07a; }
+  .bubble.male { color: #ffd0b0; }
+  .bubble.sex { color: #f8a0b8; }
+  .delta { font-size: 12px; color: var(--dim); margin-top: 2px; }
+
+  .acts-bar { padding: 8px; }
+  .chat-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .acts-bar.paging .chat-row,
+  .acts-bar.no-chat .chat-row { display: none; }
+  #date-input {
+    flex: 1;
+    min-width: 0;
+    background: #000;
+    color: var(--ink);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000;
+    padding: 10px 10px;
+    font: inherit;
+    font-size: 24px;
+    border-radius: 0;
+    outline: none;
+  }
+  #date-input::placeholder { color: var(--dim); font-size: 12px; }
+  #date-input:disabled { opacity: .35; }
+  #date-send {
+    flex: 0 0 auto;
+    padding: 10px 12px;
+    background: #000;
+    color: var(--cyan);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000;
+    font-size: 12px;
+  }
+  #date-send:hover { color: var(--gold); }
+  .acts {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+  /* paging／覆蓋層：行動列整組藏起（後台也一併藏，只在可操作時出現） */
+  .acts-bar.paging .acts { display: none; }
+  .acts.has-male { grid-template-columns: 1fr 1fr; }
+  .acts.has-male [data-act="tease"],
+  .acts.has-male [data-act="molest"],
+  .acts.has-male [data-act="end"],
+  .acts.has-male [data-act="rescue"] { display: none; }
+  .acts:not(.has-male) [data-act="block-tease"],
+  .acts:not(.has-male) [data-act="block-molest"],
+  .acts:not(.has-male) [data-act="rescue"] { display: none; }
+  .acts.male-free [data-act="block-tease"],
+  .acts.male-free [data-act="block-molest"],
+  .acts.male-free [data-act="eat"],
+  .acts.male-free [data-act="end"],
+  .acts.male-free [data-act="tease"],
+  .acts.male-free [data-act="molest"],
+  .acts.male-free [data-act="rescue"] { display: none; }
+  .modal .choice-btns { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .modal .choice-btns button {
+    background: #000; color: var(--ink); border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000; padding: 10px 12px; font: inherit; font-size: 16px; text-align: left;
+  }
+  .modal .choice-btns button:hover { color: var(--gold); }
+  .modal #modal-ok.hidden { display: none; }
+  .acts-bar:not(.paging) #btn-next { display: none; }
+  /* 猥褻覆蓋層開啟時：整條底欄藏掉（含下一頁），只留覆蓋層上的後台 */
+  .acts-bar.cg-open {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .acts-bar {
+    position: relative;
+    z-index: 50;
+  }
+  #btn-next {
+    display: block;
+    width: 100%;
+    padding: 12px 4px;
+    background: #000;
+    color: var(--gold);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000;
+    font-size: 24px;
+  }
+  #btn-next:hover::before { content: "▶"; margin-right: 4px; }
+  .act {
+    padding: 12px 4px;
+    background: #000;
+    color: var(--ink);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000;
+    font-size: 24px;
+    letter-spacing: 0;
+  }
+  .act:hover { color: var(--gold); }
+  .act:hover::before { content: "▶"; margin-right: 2px; }
+  .act.admin { color: var(--dim); }
+  .act.admin:hover { color: var(--ink); }
+  .act.home {
+    color: var(--cyan);
+    grid-column: 1 / -1;
+  }
+  body.official-date .act.admin { display: none; }
+  .act.hot { color: #f8a0b8; box-shadow: 0 0 0 var(--px) #f8a0b8; }
+
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 100;
+  }
+  .overlay.on { display: flex; }
+  .modal {
+    width: min(520px, 100%);
+    max-height: 90vh;
+    overflow: auto;
+    background: rgba(0,0,0,.82);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000, inset 0 0 0 2px #000;
+    padding: 14px 16px 12px;
+  }
+  .modal h3 { color: var(--gold); margin-bottom: 10px; font-size: 24px; font-weight: 400; }
+  .modal p { color: var(--dim); font-size: 12px; margin-bottom: 12px; }
+  .modal .row { margin-bottom: 12px; }
+  .modal .lab { font-size: 12px; color: var(--gold); margin-bottom: 6px; }
+  .modal input, .modal select {
+    width: 100%;
+    background: #000;
+    color: var(--ink);
+    border: 2px solid #f8f8f8;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12px;
+    border-radius: 0;
+  }
+  .modal .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  #admin-girl { font-size: 12px; color: var(--ink); line-height: 1.5; }
+  #admin-status { font-size: 12px; min-height: 1.2em; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill {
+    background: #000;
+    color: var(--dim);
+    border: 2px solid #f8f8f8;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  .pill.on { color: var(--gold); }
+  .modal .close {
+    margin-top: 6px;
+    background: #000;
+    color: var(--ink);
+    border: var(--px) solid #f8f8f8;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .cg-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, .88);
+  }
+  .cg-overlay.on { display: flex; }
+  .cg-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: min(920px, 100%);
+    max-height: 100%;
+    width: 100%;
+  }
+  .cg-stage > img {
+    display: block;
+    max-width: 100%;
+    max-height: min(72vh, calc(100vh - 160px));
+    object-fit: contain;
+    cursor: pointer;
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000;
+    background: #000;
+  }
+  .cg-cap {
+    width: 100%;
+    cursor: pointer;
+    background: rgba(0, 0, 0, .72);
+    border: var(--px) solid #f8f8f8;
+    box-shadow: 0 0 0 var(--px) #000, inset 0 0 0 2px #000;
+    padding: 10px 12px;
+  }
+  .cg-who {
+    font-size: 12px;
+    color: var(--cyan);
+    margin-bottom: 2px;
+  }
+  .cg-overlay[data-phase="girl"] .cg-who { color: var(--pink); }
+  .cg-tx { font-size: 24px; line-height: 1.5; }
+  .cg-delta { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .cg-delta:empty { display: none; }
+  @media (max-width: 640px) {
+    .cg-tx { font-size: 12px; }
+    .cg-stage > img { max-height: min(60vh, calc(100vh - 140px)); }
+  }
+
+  @media (max-width: 640px) {
+    body { font-size: 12px; }
+    .where h2, .act, .empty { font-size: 12px; }
+    .bubble.sys { font-size: 16px; }
+    .acts { grid-template-columns: repeat(3, 1fr); }
+    #date-input { font-size: 12px; }
+    #btn-next { font-size: 12px; }
+    .act { padding: 10px 2px; }
+    .act:hover::before { content: ""; margin: 0; }
+  }
+</style>
+</head>
+<body data-time="morning">
+
+<div class="page">
+  <div class="hud win" id="hud">
+    <div class="stat">
+      <div class="lab">體力 <b id="stamina-n">10/10</b></div>
+      <div class="bar stamina"><i id="stamina-bar"></i></div>
+    </div>
+    <div class="stat">
+      <div class="lab">性慾 <b id="arousal-n">0/20</b></div>
+      <div class="bar arousal"><i id="arousal-bar"></i></div>
+    </div>
+    <div class="stat">
+      <div class="lab">羞恥 <b id="shame-n">0/15</b></div>
+      <div class="bar shame"><i id="shame-bar"></i></div>
+    </div>
+    <div class="stat plain">
+      <div class="lab">感情 <b id="heart-n">0</b></div>
+    </div>
+    <div class="stat obey">
+      <div class="lab">順從 <b id="obey-n">抗拒</b></div>
+      <div class="bar shame"><i id="obey-bar"></i></div>
+    </div>
+    <div class="stat hype">
+      <div class="lab">性奮 <b id="hype-n">0/8</b></div>
+      <div class="bar hype"><i id="hype-bar"></i></div>
+    </div>
+  </div>
+
+  <section class="stage win">
+    <div class="stage-head">
+      <div class="where">
+        <div>
+          <div class="scene">公園 · <span id="girl-now"></span></div>
+          <h2 id="zone-name">廣場</h2>
+        </div>
+        <div class="money">金錢 <span id="money-n">200</span></div>
+      </div>
+      <p class="place-desc" id="zone-desc"></p>
+    </div>
+    <div class="log" id="log">
+      <div class="empty" id="empty">後台抽妹子、設模型、開始一場。</div>
+    </div>
+  </section>
+
+  <div class="acts-bar win" id="acts-bar">
+    <div class="chat-row" id="chat-row">
+      <input id="date-input" type="text" maxlength="200" placeholder="說點什麼…(Enter 送出)" autocomplete="off">
+      <button class="act" type="button" id="date-send">送出</button>
+    </div>
+    <div class="acts" id="acts">
+      <button class="act" type="button" data-act="block-tease">阻止調戲</button>
+      <button class="act hot" type="button" data-act="block-molest">阻止猥褻</button>
+      <button class="act" type="button" data-act="rescue">帶女子脫離騷擾</button>
+      <button class="act" type="button" data-act="tease">調戲</button>
+      <button class="act hot" type="button" data-act="molest">猥褻</button>
+      <button class="act" type="button" data-act="eat">吃東西</button>
+      <button class="act" type="button" data-act="end">回家</button>
+      <button class="act home" type="button" data-act="home" id="btn-home" hidden>回主畫面</button>
+      <button class="act admin" type="button" data-act="admin">後台</button>
+    </div>
+    <button class="act next" type="button" id="btn-next">下一頁</button>
+  </div>
+</div>
+
+
+<div id="cg-overlay" class="cg-overlay" data-phase="player" aria-hidden="true">
+  <div class="cg-stage">
+    <img id="cg-img" alt="">
+    <div class="cg-cap" id="cg-cap">
+      <div class="cg-who" id="cg-who"></div>
+      <div class="cg-tx" id="cg-tx"></div>
+      <div class="cg-delta" id="cg-delta"></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="modal-title">特殊場景</h3>
+    <p id="modal-body"></p>
+    <div class="choice-btns" id="modal-choices" hidden></div>
+    <button type="button" class="close" id="modal-ok">知道了</button>
+  </div>
+</div>
+
+<div class="overlay" id="admin">
+  <div class="modal">
+    <h3>後台</h3>
+    <p>抽妹子、設模型、開始一場。關係決定她怎麼回話（跟看板店頭聊同一套）。單男猜招戰基礎 1/36 出場（性慾／羞恥每點減分母；正式與手動相同）（劇本在 /edit_date）。聊天劇本在 <a href="/edit_date" style="color:var(--cyan)">/edit_date</a>。生圖測試 <a href="/edit_pic" style="color:var(--cyan)">/edit_pic</a>。</p>
+    <div class="row">
+      <div class="lab">妹子</div>
+      <div id="admin-girl">還沒抽妹子。</div>
+      <div class="btns" style="margin-top:6px">
+        <button type="button" class="close" id="btn-draw-girl">抽妹子</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lab">Ollama 網址</div>
+      <input id="t-endpoint" value="http://192.168.68.55:11434" spellcheck="false">
+    </div>
+    <div class="row">
+      <div class="lab">回應模型</div>
+      <input id="t-model" value="e-girl:latest" list="t-model-list">
+      <datalist id="t-model-list"></datalist>
+      <div class="btns" style="margin-top:6px">
+        <button type="button" class="close" id="btn-ping">測連線</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lab">關係</div>
+      <div class="pills" id="rels"></div>
+    </div>
+    <div class="row">
+      <div class="lab">時段</div>
+      <div class="pills" id="times"></div>
+    </div>
+    <div class="row">
+      <div class="lab">地點</div>
+      <div class="pills" id="zones"></div>
+    </div>
+    <div id="admin-status"></div>
+    <div class="btns">
+      <button type="button" class="close" id="btn-start">開始一場</button>
+      <button type="button" class="close" id="admin-ok">關閉</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/content/t_d.js?v=20260917a"></script>
+</body>
+</html>

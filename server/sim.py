@@ -6,8 +6,9 @@
 - 本模組只運算「數字/事件」(擲骰、交配、階段推進、taken 時效),act 的『文字』一律留 null,
   由手機在觀戰/詢問時才即時生成(核心零檢視內容原則不變)。
 - 伺服器擁有自己的資料表(sim),絕不碰手機的存檔 blob(save)。手機仍是存檔唯一寫入者。
-  手機把召喚師狀態當「唯讀鏡像」顯示;會改到模擬的玩家動作(看過/掙脫)以 patch 回報。
+  手機把召喚師狀態當「唯讀鏡像」顯示;會改到模擬的玩家動作(看過/掙脫/破除纏身)以 patch 回報。
 - 結局(懷孕娶走)會移除魅魔,這動到名冊=存檔,故伺服器只記 outcome,由手機套用。
+- 破除纏身(patch clear):寫 mem[girl][summonerId]=階段後拔 rel;下次同類型再纏上接續。
 
 常數與邏輯與 web/app.js 的客戶端版本一一對應,是同一套規則的權威實作。
 """
@@ -22,20 +23,25 @@ ROOT = Path(__file__).resolve().parent.parent
 CONTENT = ROOT / "web" / "content"
 HOUR = 3600 * 1000
 
+# ── 召喚師纏身總開關(2026-10 退役;對應 app.js SUMMONER_ON)──
+# False:不纏上、不召喚走、不交配、不懷孕娶走;既有關係在下一輪 tick 清空(mem 保留,日後重開可接續)。
+# 權威時鐘(看板娘到期/委託逾期/跨日)照跑。
+SUMMONER_ENABLED = False
+
 # ── 交配環常數(對應 app.js)──
 STAGE_RESIST = [40, 20, 10, 10, 5, 1]   # 各階段抵抗值(=交配機率分母 1/resist)
 STAGE_ADVANCE = [2, 3, 5, 5]            # ⓪~③ 交配 N 次推進
 CONFESS_CHANCE = 1 / 5                  # ④ 每次交配 1/5 告白升女友
 FIANCEE_MATINGS = 20                    # ⑤ 累積 20 次交配解環
 PREGNANCY_CHANCE = 1 / 2               # 解環後每次內射 1/2 懷孕娶走
-# 未纏上:每 30 分鐘一輪,依稀有度決定被纏上機率(越稀有越容易被召喚師盯上;SSR 必定)
-ENTANGLE_CHANCE = {"N": 1 / 5, "R": 1 / 4, "S": 1 / 3, "SS": 1 / 2, "SSR": 1.0}
-DEFAULT_ENTANGLE = 1 / 5               # 未知稀有度時的保底(比照 N)
+# 未纏上、非看板:每 1 小時一輪,固定 1/10 被纏上(看板娘/NTR 不判)
+ENTANGLE_CHANCE = 1 / 10
 # 已纏上:每 30 分鐘一輪,依稀有度決定被召喚/約會機率(越稀有越常被召喚;SSR 必定)
 TAKEN_CHANCE = {"N": 1 / 3, "R": 1 / 3, "S": 1 / 2, "SS": 1 / 2, "SSR": 1.0}
 DEFAULT_TAKEN = 1 / 3                   # 未知稀有度時的保底(比照 N)
 ACT_CAP = 60                            # 每隻魅魔保留的互動紀錄上限
-WIN30_MS = 30 * 60 * 1000              # 纏上判定的 30 分鐘窗(對齊整點與 30 分,等同旗標清除)
+WIN30_MS = 30 * 60 * 1000              # 召喚/約會判定的 30 分鐘窗(對齊整點與 30 分)
+WIN_HOUR_MS = 60 * 60 * 1000           # 非看板纏上判定的 1 小時窗(對齊整點)
 
 DEFAULT_SPOTS = ["咖啡廳", "夜景展望台", "海邊", "電影院", "遊樂園"]
 
@@ -91,13 +97,58 @@ def summoner_by_id(sid):
     return None
 
 
-def make_rel(su_id, now_ms):
+def remember_rel(store, gid, rel):
+    """破除纏身時記住「這隻魅魔 × 這位召喚師」的階段,下次同類型再纏上會接續。"""
+    if not rel or not gid:
+        return
+    sid = rel.get("id")
+    if not sid:
+        return
+    stg = min(5, max(0, int(rel.get("stage") or 0)))
+    store.setdefault("mem", {}).setdefault(gid, {})[sid] = {
+        "stage": stg,
+        "matingCount": int(rel.get("matingCount") or 0),
+        "ringUnlocked": bool(rel.get("ringUnlocked")),
+        "kinks": list(rel.get("kinks") or []),
+    }
+
+
+def mem_of(store, gid, su_id):
+    return (store.get("mem") or {}).get(gid, {}).get(su_id)
+
+
+def clear_rel(store, gid, now_ms=None):
+    """解除召喚師纏身:寫入 mem 後拔掉 rel;本 30 分窗不再被立刻重纏。"""
+    rel = store.get("rels", {}).get(gid)
+    if not rel:
+        return False
+    remember_rel(store, gid, rel)
+    store["rels"].pop(gid, None)
+    store.get("takenWin", {}).pop(gid, None)
+    if now_ms is not None:
+        store.setdefault("judgeWin", {})[gid] = now_ms // WIN_HOUR_MS
+    return True
+
+
+def make_rel(su_id, now_ms, mem=None):
+    """新建召喚師關係;若有同類型記憶(破除後再纏),接續 stage / 解環 / 性趣。"""
     _, kinks = load_content()
     names = [k["name"] for k in kinks]
+    stg = 0
+    mating = 0
+    ring = False
+    kink_list = sample_n(names, rand_int(4, 10)) if names else []
+    if mem:
+        stg = min(5, max(0, int(mem.get("stage") or 0)))
+        mating = int(mem.get("matingCount") or 0)
+        ring = bool(mem.get("ringUnlocked"))
+        if mem.get("kinks"):
+            kink_list = list(mem["kinks"])
     return {
-        "id": su_id, "sinceDay": day_num(now_ms), "stage": 0, "resist": STAGE_RESIST[0],
-        "matingCount": 0, "ringUnlocked": False,
-        "kinks": sample_n(names, rand_int(4, 10)) if names else [], "taken": None, "acts": [],
+        "id": su_id, "sinceDay": day_num(now_ms), "stage": stg,
+        "resist": STAGE_RESIST[stg],
+        "matingCount": mating, "ringUnlocked": ring,
+        "kinks": kink_list, "taken": None, "acts": [],
     }
 
 
@@ -141,6 +192,8 @@ def do_mating(rel, now_ms):
 
 def process_act_slot(rel, now_ms, rating):
     """一個 act slot:NSFW 才擲交配(1/resist),中=交配(3則)、沒中=猥褻(1則);每 slot 抵抗 −1。"""
+    if not SUMMONER_ENABLED:
+        return False
     rel.setdefault("stage", 0)
     if rel.get("resist") is None:
         rel["resist"] = STAGE_RESIST[rel["stage"]]
@@ -158,6 +211,8 @@ def process_act_slot(rel, now_ms, rating):
 
 def _process_taken(store, gid, rel, now_ms):
     """taken 持續狀態:每小時生 3~5 個 act slot(離線補算);到期解召喚。回傳是否有變化。"""
+    if not SUMMONER_ENABLED:
+        return False
     tk = rel["taken"]
     if tk.get("until") is None:
         tk["until"] = now_ms + rand_int(2, 5) * HOUR
@@ -192,9 +247,12 @@ def _process_taken(store, gid, rel, now_ms):
 
 def _tick_girl(store, gid, now_ms):
     """每次 tick(sync 每 15 秒 / worker 每 60 秒)對一隻魅魔跑一次。判定用「時窗旗標」擋重複:
-    - 纏上:每 30 分鐘一輪(對齊整點/30分),同輪只判一次;不是看板娘(且非 NTR)才判,1/5 命中。
-    - 已纏上未被召喚:每「小時」一輪判定是否被召喚/約會(TAKEN_CHANCE)。
+    - 纏上:非看板每 1 小時一輪(對齊整點,機率 1/10),同輪只判一次;看板娘/NTR 不判。
+    - 已纏上未被召喚:每 30 分一輪判定是否被召喚/約會(TAKEN_CHANCE);看板娘/NTR/busy 不判。
+    - 看板娘在店頭 = 受保護:不能被帶走;若先前已被帶走則當場解除 taken。
     - 被召喚中:只生 act、等時效解召喚,不重判。"""
+    if not SUMMONER_ENABLED:
+        return False
     meta = store.get("roster", {}).get(gid, {})
     ntr = bool(meta.get("ntr"))
     kanban = bool(meta.get("kanban"))
@@ -202,23 +260,33 @@ def _tick_girl(store, gid, now_ms):
     rarity = meta.get("rarity")
     rel = store["rels"].get(gid)
 
-    # ── 未纏上 → 纏上判定 ──
+    # ── 未纏上 → 纏上判定(非看板,每小時 1/10)──
     if not rel:
-        win = now_ms // WIN30_MS                 # 30 分鐘窗編號(對齊整點/30分)= 判定旗標
+        win = now_ms // WIN_HOUR_MS              # 1 小時窗編號(對齊整點)= 判定旗標
         jw = store.setdefault("judgeWin", {})
         if (kanban or ntr) or jw.get(gid) == win:
             return False                          # 看板娘/NTR中,或這一輪已判過 → 略過
         jw[gid] = win                             # 標記本輪已判(不論成敗)
-        if random.random() < ENTANGLE_CHANCE.get(rarity, DEFAULT_ENTANGLE):
+        if random.random() < ENTANGLE_CHANCE:
             sums, _ = load_content()
             if sums:
                 su = pick(sums)
-                store["rels"][gid] = make_rel(su["id"], now_ms)
+                prev = mem_of(store, gid, su["id"])
+                store["rels"][gid] = make_rel(su["id"], now_ms, prev)
                 store.setdefault("takenWin", {})[gid] = now_ms // WIN30_MS   # 纏上當下這輪先不召喚
-                store.setdefault("outcomes", []).append(
-                    {"type": "entangled", "id": gid, "suName": su.get("name"), "t": now_ms})
+                outcome = {"type": "entangled", "id": gid, "suName": su.get("name"), "t": now_ms}
+                if prev:
+                    outcome["resumed"] = True
+                    outcome["stage"] = store["rels"][gid].get("stage", 0)
+                store.setdefault("outcomes", []).append(outcome)
                 return True
         return False
+
+    # ── 看板娘在店頭 = 受保護:不能同時被別的召喚師帶走 ──
+    if kanban and rel.get("taken"):
+        rel["taken"] = None
+        store.setdefault("takenWin", {})[gid] = now_ms // WIN30_MS
+        return True
 
     # ── 已纏上、被召喚中 → 生 act / 到期解召喚 ──
     if rel.get("taken"):
@@ -227,7 +295,7 @@ def _tick_girl(store, gid, now_ms):
     # ── 已纏上、未被召喚 → 每 30 分鐘一輪判定是否召喚/約會(對齊整點/30分)──
     winT = now_ms // WIN30_MS
     tw = store.setdefault("takenWin", {})
-    if (ntr or busy) or tw.get(gid) == winT:
+    if (kanban or ntr or busy) or tw.get(gid) == winT:
         return False
     tw[gid] = winT
     if random.random() < TAKEN_CHANCE.get(rarity, DEFAULT_TAKEN):
@@ -238,22 +306,37 @@ def _tick_girl(store, gid, now_ms):
             spots = (su or {}).get("spots") or []
             loc = pick(spots)["name"] if spots else pick(DEFAULT_SPOTS)
         dur = 1 if is_date else rand_int(2, 5)     # 約會 1 小時;召喚 2~5 小時
-        rel["taken"] = {"type": "date" if is_date else "kanban", "location": loc,
-                        "until": now_ms + dur * HOUR, "actAt": now_ms}
-        return True
+        rel["taken"] = {
+            "type": "date" if is_date else "kanban",
+            "location": loc,
+            "until": now_ms + dur * HOUR,
+            "actAt": now_ms,
+            "startedAt": now_ms,           # 本次帶走起點（NTR 日記／感應記憶只認這次）
+            "sessionId": uid(),
+        }
+        # 召喚當下立刻結算第一小時的 act 額度(3~5 slot),不要等到下一輪 tick 才預生
+        # ——否則玩家秒進觀戰會撞上空佇列、全走 live_act 現生,體感像「沒有預先產生」。
+        return _process_taken(store, gid, rel, now_ms) or True
     return False
 
 
 def adopt_seeds(store, seeds):
     """伺服器尚未追蹤該魅魔(冷啟/資料遺失)時,採用手機送來的既有召喚師關係當種子。"""
+    if not SUMMONER_ENABLED:
+        return
     for gid, rel in (seeds or {}).items():
         if rel and gid not in store["rels"]:
             store["rels"][gid] = rel
 
 
-def apply_patches(store, patches):
-    """玩家動作回報:標記看過、回填已生成的 act 文字、掙脫召喚。"""
+def apply_patches(store, patches, now_ms=None):
+    """玩家動作回報:標記看過、回填已生成的 act 文字、掙脫召喚、破除纏身(clear)。"""
+    now_ms = int(now_ms if now_ms is not None else time.time() * 1000)
     for gid, p in (patches or {}).items():
+        # 破除纏身:可在無 rel 時略過;有 rel 則寫 mem 後拔掉(不必先有 taken)
+        if p.get("clear") or p.get("sever"):
+            clear_rel(store, gid, now_ms)
+            continue
         rel = store["rels"].get(gid)
         if not rel:
             continue
@@ -320,22 +403,36 @@ def run_tick(store, now_ms):
     store.setdefault("takenWin", {})
     if _tick_clock(store, now_ms):
         changed = True
+    if not SUMMONER_ENABLED:
+        # 召喚師已停用:清掉所有現存關係/判定窗與未套用的纏上/娶走結局(沒有人會被帶走)
+        for b in ("rels", "judgeWin", "takenWin"):
+            if store.get(b):
+                store[b] = {}
+                changed = True
+        outs = store.get("outcomes") or []
+        kept = [o for o in outs if o.get("type") not in ("entangled", "married")]
+        if len(kept) != len(outs):
+            store["outcomes"] = kept
+            changed = True
     for gid in list(store.get("roster", {}).keys()):
         if _tick_girl(store, gid, now_ms):
             changed = True
-    # 名冊已無的魅魔(消失/被娶走/被獻祭):清掉關係與判定旗標
+    # 名冊已無的魅魔(消失/被娶走/被獻祭):清掉關係、記憶與判定旗標
     roster = store.get("roster", {})
     for gid in list(store["rels"].keys()):
         if gid not in roster:
             store["rels"].pop(gid, None)
             changed = True
-    for m in ("judgeWin", "takenWin"):
-        for gid in list(store[m].keys()):
+    for m in ("judgeWin", "takenWin", "mem"):
+        bucket = store.get(m) or {}
+        for gid in list(bucket.keys()):
             if gid not in roster:
-                store[m].pop(gid, None)
+                bucket.pop(gid, None)
+                changed = True
     return changed
 
 
 def new_store():
     return {"rels": {}, "roster": {}, "rating": "sfw", "outcomes": [], "judgeWin": {}, "takenWin": {},
+            "mem": {},  # {girlId: {summonerId: {stage, matingCount, ringUnlocked, kinks}}}
             "clock": {"kanbans": {}, "quests": {}, "lastDay": None}}

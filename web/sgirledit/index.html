@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>sgirledit · 編輯妹子</title>
+  <link rel="stylesheet" href="/style.css?v=75">
+  <style>
+    html, body { height: auto !important; overflow: auto !important; }
+    body { margin: 0; padding: 16px 16px 32px; }
+    main { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 1.25rem; margin: 0 0 .2em; }
+    h2 { font-size: 1rem; margin: 1.1em 0 .35em; }
+    .dim { opacity: .72; font-size: .85rem; }
+    .row { display: flex; flex-wrap: wrap; gap: .5em; align-items: center; }
+    label { display: flex; flex-direction: column; gap: .2em; font-size: .85rem; min-width: 8em; flex: 1; }
+    button { font: inherit; padding: .4em .75em; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: default; }
+    textarea, input, select {
+      font: inherit; width: 100%; box-sizing: border-box; color: inherit;
+      background: var(--bg); border: 1px solid var(--line); padding: .35em;
+    }
+    textarea { min-height: 4.5em; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5em; }
+    .status { min-height: 1.3em; }
+    .status.err { color: var(--red); }
+    .shot { width: 100%; height: auto; display: block; background: #0003; margin-top: .4em; }
+    .shot[hidden] { display: none !important; }
+    .series { border: 1px solid var(--line); padding: .6em; margin: .6em 0; }
+    .frames { display: flex; gap: .35em; overflow-x: auto; }
+    .frames img { width: 28%; min-width: 7em; height: auto; background: #0003; }
+    #player {
+      position: fixed; inset: 0; z-index: 80;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(8, 6, 16, .72);
+    }
+    #player[hidden] { display: none !important; }
+    #player .box {
+      position: relative; width: min(92vw, 420px);
+      background: var(--panel); border: 1px solid var(--line); padding: .7em;
+    }
+    #player img { width: 100%; height: auto; display: block; background: #0003; }
+    #player-exit { position: absolute; top: .35em; right: .35em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>sgirledit</h1>
+  <p class="dim">先選模型，再抽一位。樣貌和衣服可以改。然後先畫裸體半身，再畫裸體全身。這兩張不進名冊。</p>
+  <p id="status" class="status"></p>
+
+  <label>產生模型 <select id="ckpt"><option value="">載入模型清單…</option></select></label>
+  <div class="row">
+    <button id="btn-draw" type="button">抽妹子</button>
+    <span id="who-name" class="dim">還沒抽</span>
+  </div>
+
+  <h2>樣貌</h2>
+  <div class="grid">
+    <label>髮型 <input id="hair" type="text"></label>
+    <label>髮色 <input id="hair-color" type="text"></label>
+    <label>眼睛 <input id="eyes" type="text"></label>
+    <label>瞳色 <input id="eye-color" type="text"></label>
+    <label>身高 cm <input id="height" type="number" min="120" max="200" step="1"></label>
+    <label>體型 <input id="build" type="text"></label>
+    <label>罩杯 <input id="cup" type="text"></label>
+    <label>特徵（含膚色） <input id="feature" type="text"></label>
+  </div>
+
+  <h2>衣服</h2>
+  <label>身上的衣服 <textarea id="outfit"></textarea></label>
+
+  <h2>裸體圖</h2>
+  <div class="row">
+    <label>seed <input id="seed" type="number" min="1" step="1" placeholder="空＝半身先抽，全身沿用"></label>
+  </div>
+  <button id="btn-half" type="button">產生裸體半身</button>
+  <img id="pic-half" class="shot" alt="裸體半身" hidden>
+  <button id="btn-full" type="button">產生裸體全身</button>
+  <img id="pic-full" class="shot" alt="裸體全身" hidden>
+
+  <h2>半身系列</h2>
+  <p class="dim">用裸體半身當底做圖生圖。站著渣眼 3 張（睜眼、渣眼、閉眼）、說話 3 張、手插腰 5 張、手抱胸 5 張、大笑 5 張。播放在畫面中間，每張 0.5 秒。</p>
+  <label>noisdens <input id="denoise" type="number" min="0.25" max="0.9" step="0.05" value="0.4"></label>
+  <div id="series"></div>
+</main>
+<div id="player" hidden>
+  <div class="box">
+    <button id="player-exit" type="button">離開</button>
+    <img id="player-img" alt="">
+    <p id="player-label" class="dim"></p>
+  </div>
+</div>
+<script type="module" src="/content/sgirledit.js?v=5"></script>
+</body>
+</html>
