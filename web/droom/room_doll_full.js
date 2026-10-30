@@ -11,7 +11,7 @@
     const LINE_RGB = [30, 24, 40], MARK_RGB = [33, 27, 45];
     // 2026-10-13：乳房弧線（疊在身體前面時描一條淺色線，不然黑影疊黑影看不出胸型）
     const BUST_RGB = [134, 112, 152], BUST_DEPTH = 1.0;
-    const AREOLA_RGB = [150, 100, 128], NIP_RGB = [205, 150, 175], AREOLA_R = { small: 1.15, medium: 1.75, large: 2.5 };
+    const AREOLA_RGB = [150, 100, 128], NIP_RGB = [205, 150, 175], AREOLA_R = { small: 1.15, medium: 1.75, large: 2.5, huge: 3.6 };
     const BODY_A = 204, HAIR_A = 220;
     const GIRTH = 1.1;
     const CUP_R = { A: 2.3, B: 3.1, C: 3.8, D: 4.5, E: 5.15, F: 5.7, G: 6.1, H: 6.55, I: 7.0 };
@@ -168,6 +168,7 @@
         if (cl.cut !== null) c = Math.max(c, cl.cut - z);
         if (c > d) d = c;
       }
+      if (p.pl) { const n = p.pl.n, c = p.pl.o - (x * n[0] + y * n[1] + z * n[2]); if (c > d) d = c; }   // 2026-10-30 pt24u：平面切（巨大乳暈殼）
       if (p.floor && -fz > d) d = -fz;
       return d;
     }
@@ -312,7 +313,12 @@
         const [tx, ty, tz] = jig.thigh;
         sh.ell(BODY, [s * 4.6 * F(b, 'hip') + tx, yl(C - 2) - 1.2 + ty, C - 2.5 + tz], [3.9 * F(b, 'thigh'), 3.9 * F(b, 'thigh') * (1 - .6 * q), 3.6]);
       }
-      const AR = (AREOLA_R[doll.areola] || 1.5) * (.35 + r0(P, doll) * .16)   /* 2026-10-29 pt11u：乳暈隨乳房大小放大（A≈0.72× → H≈1.4×） */, nipAt = (q, fwd = [0, 1, 0]) => { if (doll.nipples === false) return; sh.nip = 1; sh.ell(BODY, [q[0] + fwd[0] * .1, q[1] + fwd[1] * .3, q[2] + fwd[2] * .3], [AR, .45, AR * (fwd[2] ? .8 : 1)]); sh.nip = 2; sh.ell(BODY, [q[0] + fwd[0] * .55, q[1] + fwd[1] * .55, q[2] + fwd[2] * .55], [.6, .6, .6]); sh.nip = 0; };
+      const AR = (AREOLA_R[doll.areola] || 1.5) * (.35 + r0(P, doll) * .16)   /* 2026-10-29 pt11u：乳暈隨乳房大小放大（A≈0.72× → H≈1.4×） */, nipAt = (q, fwd = [0, 1, 0], bod = null) => { if (doll.nipples === false) return; sh.nip = 1;
+        if (doll.areola === 'huge' && bod) {   // 2026-10-30 pt24u：巨大乳暈＝貼著乳房曲面的殼，蓋住朝前約半個乳房（球面 60° 帽）
+          const fl = Math.hypot(...fwd), n = fwd.map(v => v / fl), rf = Math.hypot(bod.r[0] * n[0], bod.r[1] * n[1], bod.r[2] * n[2]);
+          sh.ell(BODY, bod.c, bod.r.map(v => v * 1.03 + .12));
+          sh.prims[sh.prims.length - 1].pl = { n, o: n[0] * q[0] + n[1] * q[1] + n[2] * q[2] - rf * .62 };
+        } else sh.ell(BODY, [q[0] + fwd[0] * .1, q[1] + fwd[1] * .3, q[2] + fwd[2] * .3], [AR, .45, AR * (fwd[2] ? .8 : 1)]); sh.nip = 2; sh.ell(BODY, [q[0] + fwd[0] * .55, q[1] + fwd[1] * .55, q[2] + fwd[2] * .55], [.6, .6, .6]); sh.nip = 0; };
       const SHP = doll.shape || 'round', r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
       sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
@@ -325,7 +331,7 @@
           const bot = [s * (3.3 + r * .4) * cs + bx, yl(zB) + 3.3 * cs + r * .55 + by, zB - r * .55];
           sh.cone(BODY, top, bot, r * .3, r * .95);
           sh.ell(BODY, bot, [r * 1.12, r * .9, r * .82]);
-          nipAt([bot[0], bot[1] + r * .97, bot[2] - r * .05]);
+          nipAt([bot[0], bot[1] + r * .97, bot[2] - r * .05], [0, 1, 0], { c: bot, r: [r * 1.12, r * .9, r * .82] });
         } else if (SHP === 'pendulous' && hang <= .05) {
           // 下垂（v8）：根部在胸口高處，乳肉沿重力往下（−z）長長掛下來，最低點遠低於乳房下緣，底部像袋子最飽滿、乳頭朝下
           const L = r * 1.9 + 1.5;
@@ -335,12 +341,12 @@
           sh.cone(BODY, top, mid, r * .5, r * .78);
           sh.cone(BODY, mid, bot, r * .78, r * .9);
           sh.ell(BODY, [bot[0], bot[1], bot[2] + r * .1], [r * .98, r * .8, r * .85]);
-          nipAt([bot[0], bot[1] + r * .95, bot[2] - r * .15], [0, .8, -.6]);
+          nipAt([bot[0], bot[1] + r * .95, bot[2] - r * .15], [0, .8, -.6], { c: [bot[0], bot[1], bot[2] + r * .1], r: [r * .98, r * .8, r * .85] });
         } else if (SHP === 'round' && hang <= .05) {
           // 圓形：上下一樣飽滿的球
           sh.cone(BODY, root, [cx, cy, zB + r * .15], r * .55, r * .8);
           sh.ell(BODY, [cx, cy - r * .1, zB + r * .15], [r * .95, r * .92, r * .95]);
-          nipAt([cx, cy - r * .1 + r * .92, zB + r * .1]);
+          nipAt([cx, cy - r * .1 + r * .92, zB + r * .1], [0, 1, 0], { c: [cx, cy - r * .1, zB + r * .15], r: [r * .95, r * .92, r * .95] });
         } else
         if (hang > .05) {
           // v5 高斯垂吊：胸口根部最寬（＝乳房寬），沿重力方向平滑收窄，到乳頭微尖。寬度(t)＝Rb·exp(−k t²)。
@@ -400,6 +406,8 @@
       const SW = swing || [0, 0, 0], sw = (p, w) => [p[0] + SW[0] * w, p[1] + SW[1] * w, p[2] + SW[2] * w];
       const swc = (pts, ws) => pts.map((p, i) => sw(p, ws[i]));
       const zc = tor.zc, S = tor.S, yl = tor.yl, y0 = yl(zc), style = doll.hair, hh = P.head_h / 2, T = P.T;
+      if (style === 'none') return;
+      if ('backHair' in doll || 'frontHair' in doll) return layeredHair(sh, P, doll, tor, sway, side, sw, swc, bend);
       const bottoms = { short: zc - 4.5, bob: zc - 9.6, bun: zc - 5.5, buns: zc - 5.5, pony_hi: zc - 5.5, pony_lo: zc - 7 };
       const bottom = style in bottoms ? bottoms[style] : null;
       const cap = { y0, zc, bang: 2.4, bottom, cut: null };
@@ -454,6 +462,68 @@
       }
     }
 
+
+    // 2026-10-30 pt24u：髮型系統＝後髮＋前髮兩層（null＝不畫這層）。前髮含頭頂髮帽。
+    const BACK_HAIRS = ['long', 'wavy', 'short', 'pony', 'medium', 'feather'];
+    const FRONT_HAIRS = ['blunt', 'french', 'side', 'pomp', 'curtain'];
+    function layeredHair(sh, P, doll, tor, sway, side, sw, swc, bend) {
+      const zc = tor.zc, S = tor.S, yl = tor.yl, y0 = yl(zc), hh = P.head_h / 2, T = P.T, fy = side ? -3.4 : 0;
+      const NOFACE = 1e9, B = doll.backHair, F = doll.frontHair;
+      if (F) {
+        const bang = { blunt: 2.0, french: 3.4, side: 4.6, pomp: 6.0, curtain: 4.8 }[F] ?? 2.4;
+        sh.ell(HAIR, [0, y0 - .6, zc + .9], [8.0, 8.3, hh + 1.1], { y0, zc, bang, bottom: null, cut: null });
+        for (const s of [-1, 1]) sh.cone(HAIR, [s * 5.6, y0 + 3.6 + fy, zc + 3.5], [s * 6.5, y0 + 4.0 + fy * 1.1, zc - 2.0], side ? 1.5 : 1.9, side ? .9 : 1.1);
+        if (F === 'blunt') {   // 齊瀏海：一刀平切蓋到眉毛
+          sh.ell(HAIR, [0, y0 + 5.6, zc + 4.2], [6.9, 2.6, 3.4], { y0: NOFACE, zc, bang: 0, bottom: zc + .6, cut: null });
+        } else if (F === 'french') {   // 法式瀏海：短、輕、中間微分的空氣感細束
+          for (const x of [-4.2, -2.1, 0, 2.1, 4.2]) sh.cone(HAIR, [x * .8, y0 + 5.0, zc + hh - .2], [x * 1.05, y0 + 6.9, zc + 2.4 + Math.abs(x) * .25], 1.3, .45);
+        } else if (F === 'side') {   // 旁分：髮線偏一邊，一大片斜斜蓋過額頭到另一側
+          sh.chain(HAIR, [[-2.6, y0 + 4.2, zc + hh + .4], [1.8, y0 + 6.4, zc + 4.6], [6.4, y0 + 5.4, zc + 1.4], [7.4, y0 + 3.6, zc - 2.5]], [2.2, 2.0, 1.6, 1.0]);
+          sh.ell(HAIR, [-5.6, y0 + 4.4, zc + 4.6], [2.4, 2.2, 2.0]);
+        } else if (F === 'pomp') {   // 吹高髮：前額髮根吹蓬、往上往後翻
+          sh.ell(HAIR, [0, y0 + 3.6, zc + hh + 1.0], [6.2, 4.4, 3.2]);
+          sh.ell(HAIR, [0, y0 + 5.8, zc + hh - .8], [5.0, 2.4, 2.6], { y0: NOFACE, zc, bang: 0, bottom: zc + 5.4, cut: null });
+        } else if (F === 'curtain') {   // 長髮分兩邊：中分，兩大束沿臉頰垂到胸前上緣
+          for (const s of [-1, 1]) {
+            sh.chain(HAIR, swc([[s * 1.2, y0 + 5.4, zc + hh], [s * 5.4, y0 + 5.2, zc + 3.0], [s * 7.2, y0 + 3.2, zc - 4.0], [s * 8.4 + sway * .2, yl(S) + 1.6 + fy, S - 3], [s * 8.6 + sway * .3, yl(S - .3 * T) + 2.0 + fy, S - .3 * T]], [0, .05, .2, .6, 1]), [1.5, 1.9, 2.0, 1.9, 1.0]);
+          }
+        }
+      }
+      if (!B) return;
+      if (B === 'short') {   // 短髮：後腦勺包到耳下
+        sh.ell(HAIR, [0, y0 - 2.6, zc - .6], [8.4, 6.6, hh + .4], { y0: NOFACE, zc, bang: 0, bottom: zc - 5.0, cut: null });
+        return;
+      }
+      if (B === 'pony') {   // 馬尾：後腦高綁，一束甩動
+        sh.ell(HAIR, [0, y0 - 2.4, zc + .4], [7.9, 6.4, hh + .6], { y0: NOFACE, zc, bang: 0, bottom: zc - 4.6, cut: null });
+        sh.ell(HAIR, [0, y0 - 8.2, zc + 2.4], [2.7, 2.6, 2.6]);
+        const sv = sway * 2.2;
+        sh.chain(HAIR, swc(bend([[0, y0 - 9.6, zc + 3.0], [sv * .3, y0 - 12.6, zc + .5], [sv * .7, y0 - 12.6, zc - 7], [sv, yl(S) - 10.0, S - 9]]), [0, .2, .6, 1]), [2.6, 3.1, 2.4, 1.0]);
+        return;
+      }
+      const end = { long: S - .5 * T, wavy: S - .5 * T, medium: S - 3.5, feather: S - 1.5 }[B];
+      const n = Math.max(3, Math.trunc((zc - end) / 2.2)), wave = B === 'wavy';
+      for (let i = 0; i <= n; i++) {
+        const t = i / n, z = zc + 1 - (zc + 1 - end) * t;
+        let w = 8.0 - 1.4 * t + ((B === 'medium' || B === 'feather') && t > .7 ? 1.2 : 0);
+        if (wave) w += 1.0 + 1.1 * Math.sin(t * Math.PI * 4.5);
+        const yb = yl(z) - (4.6 + 2.6 * Math.min(1, t * 1.6));
+        sh.ell(HAIR, sw([sway * t * t + (wave ? .8 * Math.sin(t * Math.PI * 3) : 0), yb, z], t ** 1.6), [w, 2.4 + (1 - t) * 2.2, 2.6]);
+      }
+      const lockEnd = { long: S - .38 * T, wavy: S - .38 * T, medium: S - 1.0, feather: S - 1.5 }[B];
+      const flare = B === 'medium' ? 2.2 : B === 'feather' ? 3.0 : wave ? 1.8 : .8;
+      for (const s of [-1, 1]) {   // 兩側髮束（放在肩後，前髮另外管胸前）
+        const pts = [[s * 6.4, y0 - .6 + fy, zc + 1], [s * (7.6 + flare * .5), y0 - 1.0 + fy, zc - 7]];
+        if (B === 'long' || wave) pts.push([s * (7.8 + (wave ? 1.2 : 0)) + sway * .2, yl(S) - 1.0 + fy, S - 2]);
+        pts.push([s * (6.9 + flare + (wave ? -.8 : 0)) + sway * .3, yl(lockEnd) - .8 + fy, lockEnd]);
+        sh.chain(HAIR, swc(pts, pts.length === 3 ? [0, .3, 1] : [0, .25, .6, 1]), pts.length === 3 ? [1.9, 2.0, 1.0] : [2.0, 2.2, 2.0, 1.0]);
+        if (wave) for (let k = 0; k < 3; k++) sh.ell(HAIR, sw([s * (8.6 - k * .5 + (k % 2 ? 1.2 : 0)), yl(S - k * 5) - 1.0 + fy, S - 2 - k * 5], .5 + k * .2), [1.9, 1.8, 2.2]);
+        if (B === 'feather') for (let k = 0; k < 3; k++) {   // 羽毛剪：層次，髮尾往外翹
+          const zz = zc - 6 - k * 3.2;
+          sh.cone(HAIR, sw([s * 7.6, yl(zz) - 2.0 + fy, zz + 1.5], .3), sw([s * (10.4 + k * .4), yl(zz) - 1.2 + fy, zz - 1.8], .6), 1.6, .5);
+        }
+      }
+    }
     // ------------------------------------------------------------ gait + bounce
     function legAngles(ph) {
       const thigh = 1.5 + 15.5 * Math.cos(ph);
@@ -1340,7 +1410,7 @@
     return { SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
-      lookToDoll, dollKey, hairStyle, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
+      lookToDoll, dollKey, hairStyle, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
   }
   const api = factory();
   api.factorySource = factory.toString();
