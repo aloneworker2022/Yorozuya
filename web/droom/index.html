@@ -28,7 +28,7 @@ for(const[d,n]of Object.entries(DI)){const w=document.createElement("div");if(d!
 const HAIR_PAL={blue:[[30,70,170],[90,140,230]],green:[[22,72,44],[60,124,84]],red:[[110,18,32],[170,54,70]],black:[[22,20,24],[74,72,80]],gold:[[205,160,50],[248,214,120]]};
 const NIP_PAL={pink:[[236,150,160],[226,120,138]],brown:[[160,104,72],[120,74,48]],black:[[70,50,46],[34,24,22]]};
 const HN={blue:"藍色",green:"深綠色",red:"深紅色",black:"黑色",gold:"金色"},NN={pink:"粉紅色",brown:"咖啡色",black:"黑色"};
-const BHN={long:"長髮",wavy:"波浪長髮",short:"短髮",pony:"馬尾",medium:"中長髮",feather:"羽毛剪"},FHN={blunt:"齊瀏海",french:"法式瀏海",side:"旁分",pomp:"吹高髮",curtain:"長髮分兩邊"};
+const BHN={long:"長髮",wavy:"波浪長髮",short:"短髮",pony:"馬尾",medium:"中長髮"},FHN={blunt:"齊瀏海",french:"法式瀏海",side:"旁分",pomp:"吹高髮",curtain:"長髮分兩邊"};
 const pick=o=>{const k=Object.keys(o);return k[Math.random()*k.length|0]};
 const col={h:pick(HN),n:pick(NN),bh:pick(BHN),fh:pick(FHN)};
 const LD={};function img(u){if(!LD[u]){const im=new Image();LD[u]=new Promise(r=>{im.onload=()=>r(im);im.onerror=()=>r(null)});im.src=u}return LD[u]}

@@ -17,7 +17,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 罩杯 <select id="cu"></select>
 乳暈 <select id="ar"><option value="small">小</option><option value="medium" selected>中</option><option value="large">大</option><option value="huge">巨大</option></select>
 髮色 <select id="hc"><option value="blue">藍</option><option value="green">深綠</option><option value="red">深紅</option><option value="black">黑</option><option value="gold">金</option></select>
-後髮 <select id="bh"><option value="long">長髮</option><option value="wavy">波浪長髮</option><option value="short">短髮</option><option value="pony">馬尾</option><option value="medium">中長髮</option><option value="feather">羽毛剪</option></select>
+後髮 <select id="bh"><option value="long">長髮</option><option value="wavy">波浪長髮</option><option value="short">短髮</option><option value="pony">馬尾</option><option value="medium">中長髮</option></select>
 前髮 <select id="fh"><option value="blunt">齊瀏海</option><option value="french">法式瀏海</option><option value="side">旁分</option><option value="pomp">吹高髮</option><option value="curtain">長髮分兩邊</option></select>
 乳頭 <select id="nc"><option value="pink">粉紅</option><option value="brown">咖啡</option><option value="black">黑</option></select>
 ｜ <a href="/droom">← 回剪影預覽</a><div id="st"></div></div>
@@ -36,7 +36,7 @@ const cache={};let sheet=null;
 // 髮色 5 種、乳頭 3 種（彼此獨立；進頁時隨機挑，也可用下拉切換）
 const HAIR_PAL={blue:[[30,70,170],[90,140,230]],green:[[22,72,44],[60,124,84]],red:[[110,18,32],[170,54,70]],black:[[22,20,24],[74,72,80]],gold:[[205,160,50],[248,214,120]]};
 const NIP_PAL={pink:[[236,150,160],[226,120,138]],brown:[[160,104,72],[120,74,48]],black:[[70,50,46],[34,24,22]]};
-for(const [id,P2] of [["hc",HAIR_PAL],["nc",NIP_PAL],["bh",{long:1,wavy:1,short:1,pony:1,medium:1,feather:1}],["fh",{blunt:1,french:1,side:1,pomp:1,curtain:1}]]){const k=Object.keys(P2);document.getElementById(id).value=k[Math.random()*k.length|0]}
+for(const [id,P2] of [["hc",HAIR_PAL],["nc",NIP_PAL],["bh",{long:1,wavy:1,short:1,pony:1,medium:1}],["fh",{blunt:1,french:1,side:1,pomp:1,curtain:1}]]){const k=Object.keys(P2);document.getElementById(id).value=k[Math.random()*k.length|0]}
 function over(x,im){const w=x.canvas.width,h=x.canvas.height,t=document.createElement("canvas");t.width=w;t.height=h;const tx=t.getContext("2d");tx.drawImage(im,0,0);const s=tx.getImageData(0,0,w,h).data,D=x.getImageData(0,0,w,h),d=D.data;for(let i=0;i<d.length;i+=4)if(s[i+3])for(let j=0;j<4;j++)d[i+j]=s[i+j];x.putImageData(D,0,0)}   // 頭髮像素整格蓋上（不混色，保住調色盤 alpha 讓上色認得）
 function sheetFor(d){const k=["b","s","cu","ar"].map(i=>document.getElementById(i).value).join("_")+"_"+d,hc=document.getElementById("hc").value,nc=document.getElementById("nc").value,bh=document.getElementById("bh").value,fh=document.getElementById("fh").value,ck=k+"|"+hc+"|"+nc+"|"+bh+"|"+fh;
  if(!cache[ck]){const b=k.split("_")[0],urls=["/droom/sheets/"+k+".png","/droom/sheets/hair/"+b+"_back_"+bh+"_"+d+".png","/droom/sheets/hair/"+b+"_front_"+fh+"_"+d+".png"];

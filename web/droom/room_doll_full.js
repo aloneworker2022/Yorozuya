@@ -464,7 +464,7 @@
 
 
     // 2026-10-30 pt24u：髮型系統＝後髮＋前髮兩層（null＝不畫這層）。前髮含頭頂髮帽。
-    const BACK_HAIRS = ['long', 'wavy', 'short', 'pony', 'medium', 'feather'];
+    const BACK_HAIRS = ['long', 'wavy', 'short', 'pony', 'medium'];
     const FRONT_HAIRS = ['blunt', 'french', 'side', 'pomp', 'curtain'];
     function layeredHair(sh, P, doll, tor, sway, side, sw, swc, bend) {
       const zc = tor.zc, S = tor.S, yl = tor.yl, y0 = yl(zc), hh = P.head_h / 2, T = P.T, fy = side ? -3.4 : 0;
@@ -473,8 +473,9 @@
         const bang = { blunt: 2.0, french: 3.4, side: 4.6, pomp: 6.0, curtain: 4.8 }[F] ?? 2.4;
         sh.ell(HAIR, [0, y0 - .6, zc + .9], [8.0, 8.3, hh + 1.1], { y0, zc, bang, bottom: null, cut: null });
         for (const s of [-1, 1]) sh.cone(HAIR, [s * 5.6, y0 + 3.6 + fy, zc + 3.5], [s * 6.5, y0 + 4.0 + fy * 1.1, zc - 2.0], side ? 1.5 : 1.9, side ? .9 : 1.1);
-        if (F === 'blunt') {   // 齊瀏海：一刀平切蓋到眉毛
-          sh.ell(HAIR, [0, y0 + 5.6, zc + 4.2], [6.9, 2.6, 3.4], { y0: NOFACE, zc, bang: 0, bottom: zc + .6, cut: null });
+        if (F === 'blunt') {   // 齊瀏海（2026-10-30 pt26u 依使用者參考照）：厚實、密、一刀水平切齊，蓋過眉毛，寬度到兩側太陽穴、方角無碎髮
+          sh.ell(HAIR, [0, y0 + 5.4, zc + 3.6], [7.9, 2.9, 4.6], { y0: NOFACE, zc, bang: 0, bottom: zc - .5, cut: null });
+          for (const s of [-1, 1]) sh.ell(HAIR, [s * 6.6, y0 + 4.2, zc + 1.6], [1.9, 2.4, 2.8], { y0: NOFACE, zc, bang: 0, bottom: zc - .5, cut: null });   // 方角：兩端垂直落下不收圓
         } else if (F === 'french') {   // 法式瀏海：短、輕、中間微分的空氣感細束
           for (const x of [-4.2, -2.1, 0, 2.1, 4.2]) sh.cone(HAIR, [x * .8, y0 + 5.0, zc + hh - .2], [x * 1.05, y0 + 6.9, zc + 2.4 + Math.abs(x) * .25], 1.3, .45);
         } else if (F === 'side') {   // 旁分：髮線偏一邊，一大片斜斜蓋過額頭到另一側
@@ -501,41 +502,17 @@
         sh.chain(HAIR, swc(bend([[0, y0 - 9.6, zc + 3.0], [sv * .3, y0 - 12.6, zc + .5], [sv * .7, y0 - 12.6, zc - 7], [sv, yl(S) - 10.0, S - 9]]), [0, .2, .6, 1]), [2.6, 3.1, 2.4, 1.0]);
         return;
       }
-      if (B === 'feather') {   // 2026-10-30 pt25u 羽毛剪（參考 beauty321 / marieclaire / ToolNeko）：鎖骨～胸口中長髮，
-        // 頭頂與中段保留厚度，臉旁從下巴開始一片片細碎層次往外往後飄，髮尾削薄成羽毛尖（上直下彎），不是外刺也不是一刀切。
-        const end = S - .22 * T, n = Math.max(3, Math.trunc((zc - end) / 2.2));
-        for (let i = 0; i <= n; i++) {   // 後片：上段飽滿、下段漸薄
-          const t = i / n, z = zc + 1 - (zc + 1 - end) * t;
-          const w = 8.0 - .8 * t - (t > .75 ? (t - .75) * 6 : 0);
-          const yb = yl(z) - (4.6 + 2.6 * Math.min(1, t * 1.6));
-          sh.ell(HAIR, sw([sway * t * t, yb, z], t ** 1.6), [w, 2.4 + (1 - t) * 2.0, 2.6]);
-        }
-        for (let k = 0; k < 5; k++) {   // 後片髮尾：長短交錯的細羽尖，微微外翻
-          const x = -6 + k * 3, zt = end - 1.2 - (k % 2 ? 1.6 : 0) - (k === 2 ? 1 : 0), zb = end + 2.5;
-          sh.cone(HAIR, sw([x * .9, yl(zb) - 6.6, zb], .9), sw([x * 1.08 + sway * .3, yl(zt) - 6.2, zt], 1), 1.5, .25);
-        }
-        for (const s of [-1, 1]) {   // 臉旁層次：下巴→頸→鎖骨三層，每片下段往外往後輕掠、尖端削細
-          sh.chain(HAIR, swc([[s * 6.4, y0 - .6 + fy, zc + 1], [s * 7.4, y0 - 1.2 + fy, zc - 6], [s * 7.6, yl(S) - 2.0 + fy, S - 1]], [0, .3, 1]), [1.9, 1.9, 1.5]);
-          const tiers = [[zc - hh - .5, 7.0, 1.6], [zc - hh - 4.5, 7.4, 1.6], [S - .1 * T, 7.6, 1.4]];
-          tiers.forEach(([zz, xr, r], k) => {
-            const top = zz + 5.5, mid = zz + 1.6;
-            sh.chain(HAIR, swc([[s * (xr - .4), y0 + 1.4 - k * .9 + fy, top], [s * (xr + .3), y0 + .6 - k * 1.1 + fy, mid], [s * (xr + 1.7 + k * .3), y0 - .8 - k * 1.3 + fy, zz - 1.2]], [.1 + k * .2, .3 + k * .2, .5 + k * .25]), [r, r * .8, .25]);
-            sh.cone(HAIR, sw([s * xr, y0 - .2 - k + fy, mid + .6], .3 + k * .2), sw([s * (xr + 1.2), y0 - 2.2 - k + fy, zz - .2], .5 + k * .2), r * .7, .2);
-          });
-        }
-        return;
-      }
-      const end = { long: S - .5 * T, wavy: S - .5 * T, medium: S - 3.5, feather: S - 1.5 }[B];
+      const end = { long: S - .5 * T, wavy: S - .5 * T, medium: S - 3.5 }[B];
       const n = Math.max(3, Math.trunc((zc - end) / 2.2)), wave = B === 'wavy';
       for (let i = 0; i <= n; i++) {
         const t = i / n, z = zc + 1 - (zc + 1 - end) * t;
-        let w = 8.0 - 1.4 * t + ((B === 'medium' || B === 'feather') && t > .7 ? 1.2 : 0);
+        let w = 8.0 - 1.4 * t + (B === 'medium' && t > .7 ? 1.2 : 0);
         if (wave) w += 1.0 + 1.1 * Math.sin(t * Math.PI * 4.5);
         const yb = yl(z) - (4.6 + 2.6 * Math.min(1, t * 1.6));
         sh.ell(HAIR, sw([sway * t * t + (wave ? .8 * Math.sin(t * Math.PI * 3) : 0), yb, z], t ** 1.6), [w, 2.4 + (1 - t) * 2.2, 2.6]);
       }
-      const lockEnd = { long: S - .38 * T, wavy: S - .38 * T, medium: S - 1.0, feather: S - 1.5 }[B];
-      const flare = B === 'medium' ? 2.2 : B === 'feather' ? 3.0 : wave ? 1.8 : .8;
+      const lockEnd = { long: S - .38 * T, wavy: S - .38 * T, medium: S - 1.0 }[B];
+      const flare = B === 'medium' ? 2.2 : wave ? 1.8 : .8;
       for (const s of [-1, 1]) {   // 兩側髮束（放在肩後，前髮另外管胸前）
         const pts = [[s * 6.4, y0 - .6 + fy, zc + 1], [s * (7.6 + flare * .5), y0 - 1.0 + fy, zc - 7]];
         if (B === 'long' || wave) pts.push([s * (7.8 + (wave ? 1.2 : 0)) + sway * .2, yl(S) - 1.0 + fy, S - 2]);
