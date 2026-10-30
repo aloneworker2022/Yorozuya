@@ -124,13 +124,15 @@ function drawSelf(moving){const th=-P.p;if(th<.45)return;
  const c=Math.cos(th),sn=Math.sin(th),F=SH;
  SELF_B+=(moving?.14:0);const bob=moving?Math.sin(SELF_B)*.005:0;
  // 本地座標：f=往前（朝外）、s=往右、z=離地高（牆高=1，眼睛 EYE）。柱子軸心在 f≈-.02，正在鏡頭下方
- const pr=(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2+F*v/dep,dep]};
+ const F0=-.02,pr0_=()=>(f,s,z)=>{const dz=EYE-(z+bob),dep=f*c+dz*sn,v=dz*c-f*sn;return dep<.02?null:[SW/2+F*s/dep,SH/2+F*v/dep,dep]};
+ // pt51u：幾何上下翻轉（非貼圖順序）：柱子被切開的上緣貼畫面底端→肚臍靠底→鼠蹊→陰毛倒三角頂點朝上→最外（畫面上方）陰莖；軟陰莖往外（往上）縮
+ const pr0=pr0_(),YT=(pr0(F0,0,.76)||[0,SH])[1],pr=(f,s,z)=>{const q=pr0(f,s,z);return q?[q[0],SH+YT-q[1],q[2]]:null};
  const X=g,HAIR=(HAIR_PAL[document.getElementById("hc").value]||HAIR_PAL.black)[0];
  const shade=(t)=>`rgb(${217-40*t|0},${168-42*t|0},${142-40*t|0})`;
  const poly=(pts,col)=>{const q=pts.map(p=>pr(...p));if(q.some(v=>!v))return;X.fillStyle=col;X.beginPath();q.forEach((v,i)=>i?X.lineTo(v[0],v[1]):X.moveTo(v[0],v[1]));X.closePath();X.fill()};
  // 柱子剖面：每個高度 z 的前緣半橢圓（前凸量 D、半寬 R）；小腹微凸，到鼠蹊往內收
  const prof=z=>{const t=(z-.46)/(.74-.46);return{R:.13+.02*Math.sin(Math.min(1,t)*Math.PI*.5),D:.075+.04*Math.sin(Math.max(0,Math.min(1,t*1.3))*Math.PI)}};
- const F0=-.02,N=14;
+ const N=14;
  // 大腿：從鼠蹊兩側往下（站姿），看起來在柱子邊緣下方露一點
  for(const sd of[-1,1])poly([[F0+.06,sd*.03,.47],[F0+.07,sd*.13,.52],[F0+.10,sd*.12,.25],[F0+.10,sd*.035,.25]],shade(.55));
  // 柱子由上往下一片片畫（前半圈），最上緣是被鏡頭「切開」的柱子邊緣
