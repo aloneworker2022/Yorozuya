@@ -19,8 +19,8 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 髮色 <select id="hc"><option value="blue">藍</option><option value="green">深綠</option><option value="red">深紅</option><option value="black">黑</option><option value="gold">金</option></select>
 後髮 <select id="bh"><option value="long">長髮</option><option value="wavy">波浪長髮</option><option value="short">短髮</option><option value="pony">馬尾</option><option value="medium">中長髮</option><option value="twin">雙馬尾</option><option value="ponyhi">高馬尾</option><option value="bun">包子頭</option></select>
 前髮 <select id="fh"><option value="blunt">齊瀏海</option><option value="french">法式瀏海</option><option value="side">旁分</option><option value="pomp">吹高髮</option><option value="curtain">長髮分兩邊</option></select>
-服裝 <select id="cl"><option value="none">無</option><option value="napkin" selected>餐巾布</option></select>
-配色 <select id="cs"><option value="pink">粉紅布金邊</option><option value="black">黑布白邊</option><option value="white" selected>白布紅邊</option></select>
+服裝 <select id="cl"><option value="none">無</option><option value="napkin" selected>餐巾布</option><option value="bra">胸罩</option><option value="tee">白色 T恤</option></select>
+配色 <select id="cs"><option value="pink">粉紅布金邊</option><option value="black">黑布白邊</option><option value="white" selected>白布紅邊</option><option value="red">紅（胸罩）</option></select>
 配重 <select id="cw"><option value="bell">金鈴鐺</option><option value="jade">綠玉石</option></select>
 陰毛 <select id="pu"><option value="none">沒有</option><option value="strip">一條線</option><option value="triangle" selected>三角形</option></select>
 陰唇 <select id="lb"><option value="line">一線</option><option value="butterfly">蝴蝶唇</option></select>
@@ -50,16 +50,18 @@ const NIP_PAL={pink:[[236,150,160],[226,120,138]],brown:[[160,104,72],[120,74,48
 for(const [id,P2] of [["hc",HAIR_PAL],["nc",NIP_PAL],["bh",{long:1,wavy:1,short:1,pony:1,medium:1,twin:1,ponyhi:1,bun:1}],["fh",{blunt:1,french:1,side:1,pomp:1,curtain:1}]]){const k=Object.keys(P2);document.getElementById(id).value=k[Math.random()*k.length|0]}
 function over(x,im){const w=x.canvas.width,h=x.canvas.height,t=document.createElement("canvas");t.width=w;t.height=h;const tx=t.getContext("2d");tx.drawImage(im,0,0);const s=tx.getImageData(0,0,w,h).data,D=x.getImageData(0,0,w,h),d=D.data;for(let i=0;i<d.length;i+=4)if(s[i+3])for(let j=0;j<4;j++)d[i+j]=s[i+j];x.putImageData(D,0,0)}   // 頭髮像素整格蓋上（不混色，保住調色盤 alpha 讓上色認得）
 function sheetFor(d){const k=["b","s","cu","ar"].map(i=>document.getElementById(i).value).join("_")+"_"+d,hc=document.getElementById("hc").value,nc=document.getElementById("nc").value,bh=document.getElementById("bh").value,fh=document.getElementById("fh").value,cl=document.getElementById("cl").value,cs=document.getElementById("cs").value,cw=document.getElementById("cw").value,pu=document.getElementById("pu").value,lb=document.getElementById("lb").value,pa=document.getElementById("pa").value,lc=document.getElementById("lc").value,ck=k+"|"+hc+"|"+nc+"|"+bh+"|"+fh+"|"+cl+"|"+cs+"|"+cw+"|"+pu+"|"+lb+"|"+pa+"|"+lc;
- if(!cache[ck]){const b=k.split("_")[0],urls=[SD+k+".png",SD+"hair/"+b+"_back_"+bh+"_"+d+".png",SD+"hair/"+b+"_front_"+fh+"_"+d+".png"];if(cl!="none"){const q=k.split("_");urls.push(SD+"cloth/"+q[0]+"_"+q[1]+"_"+q[2]+"_"+cl+"_"+cw+"_"+d+".png")}else urls.push("");
+ if(!cache[ck]){const b=k.split("_")[0],urls=[SD+k+".png",SD+"hair/"+b+"_back_"+bh+"_"+d+".png",SD+"hair/"+b+"_front_"+fh+"_"+d+".png"];if(cl!="none"){const q=k.split("_");urls.push(SD+"cloth/"+q[0]+"_"+q[1]+"_"+q[2]+"_"+CLF(cl,cw)+"_"+d+".png")}else urls.push("");
   for(const g of [["labia",lb],["pubic",pu],["pants",pa]])urls.push(g[1]=="none"?"":SD+"groin/"+b+"_"+g[0]+"_"+g[1]+"_"+d+".png");
   const ims=urls.map(u=>{if(!u)return null;const im=new Image();im.src=u;return im});cache[ck]=ims[0];
   Promise.all(ims.map(im=>im&&new Promise(r=>{im.onload=im.onerror=r}))).then(()=>{const[base,bk,fr,clm,...gl]=ims,c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d");
-   x.drawImage(base,0,0);for(const im of d.startsWith("back")?[fr,bk]:[bk,fr])if(im.naturalWidth)over(x,im);cache[ck]=skinTint(c,HAIR_PAL[hc],NIP_PAL[nc],clothData(clm,c.width,c.height),cs,cw,gl.map(im=>clothData(im,c.width,c.height)),lc)})}return cache[ck]}
+   x.drawImage(base,0,0);for(const im of d.startsWith("back")?[fr,bk]:[bk,fr])if(im.naturalWidth)over(x,im);cache[ck]=skinTint(c,HAIR_PAL[hc],NIP_PAL[nc],clothData(clm,c.width,c.height),CSK(cl,cs),cw,gl.map(im=>clothData(im,c.width,c.height)),lc)})}return cache[ck]}
 // 上色：sheet 是固定調色盤的剪影（render.cjs / room_doll_full.js），依原色分區：
 // 頭髮 (31,24,42)/(78,66,98) → 髮色暗/亮；乳暈 (150,100,128)、乳頭 (205,150,175) → 乳頭色；其餘身體 → 白皙肉色 #D9A88E→#F5D0B5→#FDE6D6
 function clothData(im,w,h){if(!im||!im.naturalWidth)return null;const t=document.createElement("canvas");t.width=w;t.height=h;const x=t.getContext("2d");x.drawImage(im,0,0);return x.getImageData(0,0,w,h).data}
 // 2026-10-30 pt29u：衣服 sheet 是部位標記色（布／邊框 #F00／頸鍊 #0F0／配重 #00F）→ 依配色方案上色。鍊一律金色；配重 鈴鐺=金、玉石=綠。
-const CLOTH_SCHEME={pink:{c:[255,168,198],k:.62,t:[224,178,58]},black:{c:[28,26,34],k:.66,t:[250,250,250]},white:{c:[250,250,252],k:.74,t:[204,28,40]}};
+const CLOTH_SCHEME={pink:{c:[255,168,198],k:.62,t:[224,178,58]},black:{c:[28,26,34],k:.66,t:[250,250,250]},white:{c:[250,250,252],k:.74,t:[204,28,40]},bra_black:{c:[24,22,28],k:1,t:[60,56,66]},bra_white:{c:[248,248,250],k:1,t:[222,222,230]},bra_red:{c:[190,22,42],k:1,t:[130,10,26]},tee:{c:[246,246,248],k:.93,t:[226,226,232]}};
+// 2026-10-30 pt77u：胸罩（黑／白／紅，不透明）、白色 T 恤（幾乎不透明）。sheet 名：napkin→napkin_<配重>，其他直接用服裝 id（bra／tee）
+const CLF=(cl,cw)=>cl=="napkin"?"napkin_"+cw:cl,CSK=(cl,cs)=>cl=="tee"?"tee":cl=="bra"?"bra_"+(["black","white","red"].includes(cs)?cs:"black"):cs;
 const CSN={pink:"粉紅透明布＋金邊",black:"黑色透明布＋白邊",white:"白色透明布＋紅邊"},CWN={bell:"金鈴鐺",jade:"綠玉石"};
 const GOLD=[[232,188,72],[170,124,34]],JADE=[[70,180,110],[28,110,62]];
 function clothOver(d,hm,CD,cs,cw){if(!CD)return;const S=CLOTH_SCHEME[cs]||CLOTH_SCHEME.white,W=cw=="jade"?JADE:GOLD;
@@ -194,4 +196,9 @@ function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a
   for(let x=Math.max(0,cx-wid/2|0);x<Math.min(SW,cx+wid/2);x++){if(zb[x]<tz)continue;const sxp=fr*FW+((x-(cx-wid/2))/wid*FW|0);g.drawImage(im,sxp,0,1,FH,x,top,1,hgt)}}
  drawSelfRef(keys.KeyW||keys.KeyS||keys.ArrowUp||keys.ArrowDown||keys.KeyA||keys.KeyD)}
 requestAnimationFrame(frame);
+// 2026-10-30 pt77u：胸罩→配色只留 黑／白／紅、藏配重；白色 T恤→藏配色和配重
+(function(){const cl=document.getElementById("cl"),cs=document.getElementById("cs"),cw=document.getElementById("cw"),L={pink:"粉紅布金邊",black:"黑布白邊",white:"白布紅邊",red:"紅"},B={black:"黑",white:"白",red:"紅"};
+ function sync(){const v=cl.value,br=v=="bra";for(const o of cs.options){o.hidden=br?!(o.value in B):o.value=="red";o.textContent=br?(B[o.value]||L[o.value]):L[o.value]}
+  if(br&&!(cs.value in B))cs.value="black";if(!br&&cs.value=="red")cs.value="white";cs.style.display=(v=="napkin"||br)?"":"none";cw.style.display=v=="napkin"?"":"none"}
+ cl.addEventListener("change",()=>{sync();cs.dispatchEvent(new Event("change"))});sync()})();
 </script></body></html>

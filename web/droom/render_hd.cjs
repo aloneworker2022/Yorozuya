@@ -14,6 +14,6 @@ function sheet(doll,file,keep,nk){const S={width:FW*8,height:FH,pixels:new Uint8
 for(const d in DIR){
  if(!ONLY||ONLY=='body'){for(const a of ['small','medium','large','huge']){const x=base();x.areola=a;sheet(x,{d,p:`/${B}_${S0}_${C0}_${a}_${d}.png`})}}
  if(!ONLY||ONLY=='hair')for(const[L,list]of[['back',D.BACK_HAIRS],['front',D.FRONT_HAIRS]])for(const st of list){const x=D.lookToDoll({...LOOK,cup:C0+' 罩杯'});x.shape=S0;x.areola=A0;x.backHair=L=='back'?st:null;x.frontHair=L=='front'?st:null;sheet(x,{d,p:`/hair/${B}_${L}_${st}_${d}.png`},D.HAIR_A)}
- if(!ONLY||ONLY=='cloth')for(const cl of D.CLOTHES){const x=base();x.cloth=cl;sheet(x,{d,p:`/cloth/${B}_${S0}_${C0}_${cl}_${d}.png`},D.CLOTH_A)}
+ if(!ONLY||ONLY=='cloth')for(const cl of D.CLOTHES.filter(c=>!process.env.CL||process.env.CL.split(',').includes(c))){const x=base();x.cloth=cl;sheet(x,{d,p:`/cloth/${B}_${S0}_${C0}_${cl}_${d}.png`},D.CLOTH_A)}
  if(!ONLY||ONLY=='groin')for(const[k,st]of[...D.PUBICS.map(s=>['pubic',s]),...D.LABIAS.map(s=>['labia',s]),...D.PANTS.map(s=>['pants',s])]){const x=base();x[k]=st;const nk={...x};delete nk[k];sheet(x,{d,p:`/groin/${B}_${k}_${st}_${d}.png`},D.CLOTH_A,nk)}
 }

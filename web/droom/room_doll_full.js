@@ -99,7 +99,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; prims.push(p); };
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; prims.push(p); };
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -213,7 +213,7 @@
     }
     const F = (b, k) => b[k] * b.frame;
     let FOOT_HD = false, TIPTOE = 0;   // pt39u：赤腳走路微墊腳（腳跟抬高量）   // pt38u：build 時 opts.scale≥2 才開
-    function leg(sh, P, side, hip, knee, ankle, toe) {
+    function legRaw(sh, P, side, hip, knee, ankle, toe) {
       const b = P.b, wT = F(b, 'thigh'), wC = F(b, 'calf'), fr = b.frame;
       const [hx, hy, hz] = hip, [kx, ky, kz] = knee, [ax, ay, az] = ankle;
       const knee_r = b.bone ? 2.55 : 2.75 * Math.min(wT, 1.08) * fr ** .3;
@@ -254,7 +254,10 @@
       sh.ell(BODY, L(ankle, -1.3 * q, -.2), [.85, .85, .9]);                                   // 外踝（較低）
       sh.cone(BODY, [ax - tx * 1.0, ay - ty * 1.0 - .4, az + 3.5], [heel[0], heel[1], heel[2] + 1.0], .8 * q, 1.0 * q);   // 阿基里斯腱
     }
-    function arm(sh, P, shoulder, elbow, wrist, hand = true) {
+    // 2026-10-30 pt77u：手腳零件標 limb（上衣算軀幹表面時排除），手臂關節記下來給袖子用
+    function arm(sh, P, shoulder, elbow, wrist, hand = true) { (sh._arms = sh._arms || []).push([shoulder, elbow]); sh.limb = 1; try { return armRaw(sh, P, shoulder, elbow, wrist, hand); } finally { sh.limb = 0; } }
+    function leg(sh, ...a) { sh.limb = 1; try { return legRaw(sh, ...a); } finally { sh.limb = 0; } }
+    function armRaw(sh, P, shoulder, elbow, wrist, hand = true) {
       const b = P.b, wA = F(b, 'arm'), fr = b.frame;
       const elbow_r = b.bone ? 1.95 : 2.1 * wA;
       sh.cone(BODY, shoulder, elbow, 2.8 * wA, elbow_r);
@@ -452,7 +455,7 @@
     // 做法：每條直條（x）沿 z 由上往下找身體最前緣，布只會往前不會往回貼（掛在乳尖上再垂直落下）。tag cloth＝1。
     // 2026-10-30 pt29u：加金色頸鍊（布不會掉）、下緣邊框、兩個下垂角＋配重（bell 鈴鐺／jade 玉石）。
     // sheet 只是「部位標記色」：布 CLOTH_RGB/LO、邊框 TRIM_RGB、鍊 CHAIN_RGB、配重 WEIGHT_RGB；真正配色由前端依配色方案上色。
-    const CLOTHES = ['napkin_bell', 'napkin_jade'];
+    const CLOTHES = ['napkin_bell', 'napkin_jade', 'bra', 'tee'];
     const CLOTH_RGB = [250, 250, 252], CLOTH_LO_RGB = [214, 216, 228], CLOTH_A = 236;
     const TRIM_RGB = [255, 0, 0], CHAIN_RGB = [0, 255, 0], WEIGHT_RGB = [0, 0, 255], WEIGHT_LO_RGB = [0, 0, 160];
     function napkin(sh, P, doll, tor, weight) {
@@ -509,6 +512,97 @@
         sh.chain(BODY, ring, ring.map(() => .4));
       }
       sh.cloth = 0;
+    }
+
+    // 2026-10-30 pt77u：上衣——胸罩 bra（罩杯貼著乳房、下圍帶、肩帶、背帶；黑／白／紅由前端上色）、白色短袖 T 恤 tee。
+    // 一樣只輸出部位標記色：布 cloth=1、邊／帶 cloth=2。軀幹表面只看非手腳、非衣服的身體零件。
+    const torsoD = (sh, x, y, z, f) => { let best = 1e3; for (const p of sh.prims) if (p.mat === 0 && !p.limb && !p.cloth && (!f || f(p))) { const d = primDist(p, x, y, z); if (d < best) best = d; } return best; };
+    const rayHit = (sh, o, dir, f, max = 30, st = .1) => { for (let t = 0; t < max; t += st) { const q = [o[0] + dir[0] * t, o[1] + dir[1] * t, o[2] + dir[2] * t]; if (torsoD(sh, q[0], q[1], q[2], f) < 0) return q; } return null; };
+    function bra(sh, P, doll, tor) {
+      const b = P.b, r = tor.cupr, cs = F(b, 'chest') ** .5, isB = p => p.bust && !p.nip;
+      const nips = sh.prims.filter(p => p.nip === 2 && p.k === 0 && !p.limb).map(p => [p.c[0] + p.off[0], p.c[1] + p.off[1], p.c[2] + p.off[2]]);
+      let zLo = 1e3, zTop = -1e3;
+      sh.cloth = 1;
+      for (const s of [-1, 1]) {
+        const n = nips.find(q => Math.sign(q[0]) === s) || [s * (3.2 + r * .3) * cs, tor.yl(tor.zB) + 3.3 * cs + r, tor.zB];
+        sh.ell(BODY, [n[0], n[1] + .55, n[2]], [2.3, 1.0, 2.3]);   // 乳頭不戳出罩杯
+        const cx = n[0] * .92, top = n[2] + r * .5 + .4; zTop = Math.max(zTop, top);
+        for (let z = top; z > n[2] - r * 3.5 - 2; z -= .45) {
+          const yc = tor.yl(z) + 1;
+          for (let a = -35; a <= 110; a += 6) {
+            const t = a * Math.PI / 180, dir = [-Math.sin(t) * s, -Math.cos(t), 0];
+            const o = [cx - dir[0] * 20, yc - dir[1] * 20, z], q = rayHit(sh, o, dir);
+            if (!q || torsoD(sh, q[0], q[1], q[2], isB) > .35) continue;
+            if (s * q[0] < .35) continue;   // 中間留一點乳溝
+            sh.ell(BODY, [q[0] - dir[0] * .45, q[1] - dir[1] * .45, z], [.6, .6, .55]); zLo = Math.min(zLo, z);
+          }
+        }
+      }
+      if (zLo > 1e2) { sh.cloth = 0; return; }
+      // 罩杯上緣滾邊、下圍帶（一整圈）
+      sh.cloth = 2;
+      const ringAt = (z, pad) => { const R = []; for (let a = 0; a <= 360; a += 10) { const t = a * Math.PI / 180, dir = [-Math.sin(t), -Math.cos(t), 0], yc = tor.yl(z) - 1, q = rayHit(sh, [-dir[0] * 20, yc - dir[1] * 20, z], dir); if (q) R.push([q[0] - dir[0] * pad, q[1] - dir[1] * pad, z]); } return R; };
+      const band = [], bz = zLo - .2; for (const dz of [0, .55, 1.1]) { const R = ringAt(bz + dz, .35); if (R.length > 2) sh.chain(BODY, R, R.map(() => .45)); band.push(R); }
+      // 肩帶：罩杯上緣外側 → 越過肩膀 → 背後下圍帶
+      for (const s of [-1, 1]) {
+        const x = s * Math.max(4.6 * F(b, 'sh'), (2.6 + r * .35) * cs), pts = [];
+        for (let z = zTop - .4; z < tor.S; z += .8) { const q = rayHit(sh, [x, 25, z], [0, -1, 0]); if (q) pts.push([x, q[1] + .4, z]); }
+        const yt = tor.yl(tor.S) - 1, tq = rayHit(sh, [x, yt, tor.S + 2.5], [0, 0, -1]); if (tq) pts.push([x, yt, tq[2] + .3]);
+        for (let z = tor.S - .5; z > bz + .6; z -= .8) { const q = rayHit(sh, [x, -25, z], [0, 1, 0]); if (q) pts.push([x, q[1] - .4, z]); }
+        const bk = rayHit(sh, [x, -25, bz + .6], [0, 1, 0]); if (bk) pts.push([x, bk[1] - .3, bz + .6]);
+        if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .55));
+      }
+      sh.cloth = 0;
+    }
+    function hull2(pts) {
+      const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+      for (const q of p) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+      for (const q of p.reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+      return lo.slice(0, -1).concat(up.slice(0, -1));
+    }
+    function tee(sh, P, doll, tor) {
+      const S = tor.S, top = S + 1.2, hem = tor.C + 5.5, K = 44, nz = Math.max(8, Math.round((top - hem) / .8));
+      const Zs = [], G = [];   // G[j][k]＝第 j 層、第 k 角的布面點
+      for (let j = 0; j <= nz; j++) {
+        const z = top - (top - hem) * j / nz, yc = tor.yl(z) + .8, raw = [];
+        for (let k = 0; k < K; k++) { const t = 2 * Math.PI * k / K, dir = [-Math.sin(t), -Math.cos(t), 0], q = rayHit(sh, [-dir[0] * 22, yc - dir[1] * 22, z], dir, null, 44, .12); if (q) raw.push([q[0], q[1]]); }
+        if (raw.length < 3) { Zs.push(z); G.push(null); continue; }
+        const H = hull2(raw), row = [];   // 凸包：乳溝、腋下都不陷進去
+        for (let k = 0; k < K; k++) {
+          const t = 2 * Math.PI * k / K, dx = Math.sin(t), dy = Math.cos(t); let best = 0;
+          for (let i = 0; i < H.length; i++) {   // 從中心沿方向射到凸包邊
+            const A = H[i], B = H[(i + 1) % H.length], ex = B[0] - A[0], ey = B[1] - A[1], den = dx * ey - dy * ex; if (Math.abs(den) < 1e-9) continue;
+            const ax = A[0], ay = A[1] - yc, u = (ax * ey - ay * ex) / den, v = (ax * dy - ay * dx) / den; if (u > 0 && v >= -1e-6 && v <= 1 + 1e-6) best = Math.max(best, u);
+          }
+          let d = best + .45;
+          const prev = G[j - 1] && G[j - 1][k];   // 胸前：過了乳尖以後布直直往下垂（不貼回肚子）
+          if (prev && dy > .15 && z < tor.zB + tor.cupr * .3) d = Math.max(d, (prev[0] * dx + (prev[1] - yc) * dy));
+          row.push([dx * d, yc + dy * d, z]);
+        }
+        Zs.push(z); G.push(row);
+      }
+      sh.cloth = 1;
+      for (let k = 0; k < K; k++) { const col = G.filter(Boolean).map(r => r[k]); if (col.length > 1) sh.chain(BODY, col, col.map(() => .75)); }
+      for (const row of G) if (row) sh.chain(BODY, row.concat([row[0]]), row.map(() => .55).concat([.55]));
+      // 短袖：從肩關節套到上臂一半
+      const wA = F(P.b, 'arm');
+      for (const [s0, e] of sh._arms || []) {
+        const m = s0.map((v, i) => v + (e[i] - v) * .45), up = [s0[0] * .75, s0[1], s0[2] + 1.6];
+        sh.cone(BODY, up, s0, 3.2 * wA + .5, 3.3 * wA + .6); sh.cone(BODY, s0, m, 3.3 * wA + .6, 2.9 * wA + .7);
+        sh.cloth = 2; sh.cone(BODY, m, m.map((v, i) => v + (e[i] - s0[i]) * .04), 3.0 * wA + .75, 3.0 * wA + .75); sh.cloth = 1;
+      }
+      // 下襬、圓領滾邊
+      sh.cloth = 2;
+      const last = G.filter(Boolean).pop(), first = G.find(Boolean);
+      if (last) sh.chain(BODY, last.concat([last[0]]).map(q => [q[0], q[1], q[2] + .1]), last.map(() => .7).concat([.7]));
+      if (first) { const nk = first.filter(q => Math.abs(q[0]) < 4.5); if (nk.length > 1) sh.chain(BODY, nk, nk.map(() => .5)); }
+      sh.cloth = 0;
+    }
+    function dress(sh, P, doll, tor) {
+      const c = String(doll.cloth || '');
+      if (c.startsWith('napkin')) napkin(sh, P, doll, tor, c.split('_')[1] || 'bell');
+      else if (c === 'bra') bra(sh, P, doll, tor);
+      else if (c === 'tee') tee(sh, P, doll, tor);
     }
 
     // 2026-10-30 pt31u：下身第一批——陰毛（strip 一條線／triangle 三角形／none）、陰唇（line 一線／butterfly 蝴蝶唇）、褲子 lace_thong 蕾絲丁字褲。
@@ -903,7 +997,7 @@
         if (front) { sh.off = o; definition(sh, P, tor); }
         sh.off = o;
         if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
-        if (String(doll.cloth || '').startsWith('napkin')) napkin(sh, P, doll, tor, doll.cloth.split('_')[1] || 'bell');
+        if (doll.cloth) dress(sh, P, doll, tor);
         hair(sh, P, doll, tor, ({ pony_hi: 3.5, pony_lo: 2.5 }[doll.hair] || 0) * w);
         sh.off = [0, 0, 0];
         return { sh, P };
@@ -936,7 +1030,7 @@
         if (front) definition(sh, P, tor);
         if (FOOT_HD && Math.cos(yaw * Math.PI / 180) < .35) hdBackLines(sh, P, tor);
         if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
-        if (String(doll.cloth || '').startsWith('napkin')) napkin(sh, P, doll, tor, doll.cloth.split('_')[1] || 'bell');
+        if (doll.cloth) dress(sh, P, doll, tor);
         hair(sh, P, doll, tor, -sway);
         return { sh, P };
       }
