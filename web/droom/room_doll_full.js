@@ -99,7 +99,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.flat = !!sh.flat; prims.push(p); };
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = !!sh.cloth; p.flat = !!sh.flat; prims.push(p); };
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -371,6 +371,35 @@
       }
       sh.bust = false;
       return { zc, S, C, T, zW, zB, cupr: r, yl };
+    }
+    // 2026-10-30 pt28u：第一套衣服「餐巾白布」——一塊薄白布從脖子／鎖骨垂下，順著胸型繃過乳尖再直直落下，蓋住胸部。
+    // 做法：每條直條（x）沿 z 由上往下找身體最前緣，布只會往前不會往回貼（掛在乳尖上再垂直落下）。tag cloth＝1。
+    const CLOTHES = ['napkin'];
+    const CLOTH_RGB = [250, 250, 252], CLOTH_LO_RGB = [214, 216, 228], CLOTH_A = 236;
+    function napkin(sh, P, doll, tor) {
+      const S = tor.S, r = tor.cupr, bo = bustOuter(P, doll), hw = Math.min(bo * .92, 8.3 * F(P.b, 'sh') - 2.2) + .6;
+      const top = S - .6, bot = tor.zB - r - 4.2 - .25 * r;
+      const nx = Math.max(6, Math.round(hw * 2 / 1.1)), nz = Math.max(6, Math.round((top - bot) / 2.0));
+      const X = [], Z = [], C = [];   // C[i][j]＝第 i 條、第 j 段的布面前緣 y（往下只會更前，不貼回去）
+      for (let j = 0; j <= nz; j++) Z.push(top - (top - bot) * j / nz);
+      for (let i = 0; i <= nx; i++) {
+        const x = -hw + 2 * hw * i / nx; X.push(x); let yMax = -1e3; const col = [];
+        for (let j = 0; j <= nz; j++) {
+          let ys = null; for (let k = 0; k < 300; k++) { const y = 24 - k * .1; if (bodyDist(sh, x, y, Z[j]) < 0) { ys = y; break; } }
+          if (ys !== null) yMax = Math.max(yMax, ys); col.push(yMax);
+        }
+        C.push(col);
+      }
+      sh.cloth = true;
+      for (let i = 0; i <= nx; i++) {   // 乳溝處布橫跨兩邊乳尖繃著，不陷進去
+        const pts = [], edge = Math.abs(X[i]) / hw;
+        for (let j = 0; j <= nz; j++) {
+          let L = -1e3, R = -1e3; for (let q = 0; q <= i; q++) L = Math.max(L, C[q][j]); for (let q = i; q <= nx; q++) R = Math.max(R, C[q][j]);
+          const y = Math.min(L, R); if (y > -1e3) pts.push([X[i], y + .55, Z[j] - edge * edge * 1.2]);
+        }
+        if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .8));
+      }
+      sh.cloth = false;
     }
     function definition(sh, P, tor, xoff = 0) {
       const b = P.b, S = tor.S, zW = tor.zW;
@@ -720,6 +749,7 @@
         }
         if (front) { sh.off = o; definition(sh, P, tor); }
         sh.off = o;
+        if (doll.cloth === 'napkin') napkin(sh, P, doll, tor);
         hair(sh, P, doll, tor, ({ pony_hi: 3.5, pony_lo: 2.5 }[doll.hair] || 0) * w);
         sh.off = [0, 0, 0];
         return { sh, P };
@@ -744,6 +774,7 @@
           arm(sh, P, sh_j, elbow, wrist);
         }
         if (front) definition(sh, P, tor);
+        if (doll.cloth === 'napkin') napkin(sh, P, doll, tor);
         hair(sh, P, doll, tor, -sway);
         return { sh, P };
       }
@@ -1238,7 +1269,7 @@
         const p = prims[i];
         let q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
         if (p.xf) { const w = mulV(p.xf.R, q); q = [w[0] + p.xf.t[0], w[1] + p.xf.t[1], w[2] + p.xf.t[2]]; }
-        bcx[i] = q[0]; bcy[i] = q[1]; bcz[i] = q[2]; brr[i] = p.br; pm[i] = p.mat; pb[i] = p.nip ? p.nip + 1 : p.bust ? 1 : 0;
+        bcx[i] = q[0]; bcy[i] = q[1]; bcz[i] = q[2]; brr[i] = p.br; pm[i] = p.mat; pb[i] = p.cloth ? 5 : p.nip ? p.nip + 1 : p.bust ? 1 : 0;
         mnx = Math.min(mnx, bcx[i] - brr[i]); mxx = Math.max(mxx, bcx[i] + brr[i]);
         mny = Math.min(mny, bcy[i] - brr[i]); mxy = Math.max(mxy, bcy[i] + brr[i]);
         mnz = Math.min(mnz, bcz[i] - brr[i]); mxz = Math.max(mxz, bcz[i] + brr[i]);
@@ -1313,6 +1344,7 @@
             const j = ny * width + nx;
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
+          if (bust[i] === 5) { set(i, near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32; continue; }
           set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
         }
         if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32;
@@ -1422,7 +1454,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { CLOTHES, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
