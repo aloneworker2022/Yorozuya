@@ -404,6 +404,14 @@
       for (const s of [-1, 1]) {
         const root = [s * (2.6 + r * .22) * cs + bx * .3, yl(zA) + 2.6 * cs + r * .12 + by * .3, zA + bz * .3];
         const cx = s * (3.2 + r * .3) * cs + bx, cy = yl(zB) + 3.3 * cs + r * .5 + by;
+        if (doll.braSupport) {
+          // 2026-10-30 pt78u：穿胸罩＝托高＋往中間集中＋往前挺。不管原本圓／鐘／下垂，都收成被罩杯撐住的圓挺形（下垂型變化最大）
+          const zS = zB + 1.4 + r * .3 + bz * .3, c = [s * (2.5 + r * .26) * cs + bx * .35, yl(zS) + 3.5 * cs + r * .62 + by * .4, zS];
+          sh.cone(BODY, [s * (2.4 + r * .2) * cs, yl(zA) + 2.4 * cs + r * .1, zA], c, r * .55, r * .82);
+          const R = [r * .9, r * .95, r * .86];
+          sh.ell(BODY, c, R);
+          nipAt([c[0], c[1] + R[1] * .97, c[2] + r * .05], [0, 1, 0], { c, r: R });
+        } else
         if (SHP === 'bell' && hang <= .05) {
           // 鐘型（v8, front-view patch）：上緣窄、細細從胸口長出；下半部寬而飽滿、重心偏低（像鐘）。z 是高度（往下＝減 z）
           const top = [s * (2.9 + r * .2) * cs, yl(zA) + 2.2 * cs, zA - r * .1];
@@ -600,6 +608,7 @@
     }
     function dress(sh, P, doll, tor) {
       const c = String(doll.cloth || '');
+      if (doll.underBra && c !== 'bra') bra(sh, P, doll, tor);   // pt78u：外衣裡面穿胸罩
       if (c.startsWith('napkin')) napkin(sh, P, doll, tor, c.split('_')[1] || 'bell');
       else if (c === 'bra') bra(sh, P, doll, tor);
       else if (c === 'tee') tee(sh, P, doll, tor);
@@ -997,7 +1006,7 @@
         if (front) { sh.off = o; definition(sh, P, tor); }
         sh.off = o;
         if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
-        if (doll.cloth) dress(sh, P, doll, tor);
+        if (doll.cloth || doll.underBra) dress(sh, P, doll, tor);
         hair(sh, P, doll, tor, ({ pony_hi: 3.5, pony_lo: 2.5 }[doll.hair] || 0) * w);
         sh.off = [0, 0, 0];
         return { sh, P };
@@ -1030,7 +1039,7 @@
         if (front) definition(sh, P, tor);
         if (FOOT_HD && Math.cos(yaw * Math.PI / 180) < .35) hdBackLines(sh, P, tor);
         if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
-        if (doll.cloth) dress(sh, P, doll, tor);
+        if (doll.cloth || doll.underBra) dress(sh, P, doll, tor);
         hair(sh, P, doll, tor, -sway);
         return { sh, P };
       }
