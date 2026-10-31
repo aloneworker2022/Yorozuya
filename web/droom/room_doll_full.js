@@ -701,6 +701,17 @@
       if (b.bone) for (const s of [-1, 1]) marks(sh, [[xoff + s * 1.6, S - 1.6], [xoff + s * 4.0, S - 1.2], [xoff + s * 6.4, S - 1.0]], .3);
       if (b.belly || b.muscle >= .5) marks(sh, [[xoff, zW - 3.2], [xoff, zW - 3.7]], .35, .6);
     }
+    /** 2026-10-31：鼠蹊線（照使用者參考圖）——從骨盆前面的髖骨（腰側往下）往內往下收到胯下兩側，兩條合成比基尼褲邊那種 V。
+     * 二次貝茲、略往內凹；CREASE_RGB 專用深膚色。 */
+    function inguinal(sh, P, tor) {
+      const b = P.b, C = tor.C, z0 = C + (tor.zW - C) * .72, x0 = 6.9 * F(b, 'hip');
+      sh.crease = 1;
+      for (const s of [-1, 1]) {
+        const p0 = [s * x0, z0], p1 = [s * x0 * .5, C + (z0 - C) * .42], p2 = [s * 1.5, C + .7];
+        marks(sh, Array.from({ length: 10 }, (_, i) => { const u = i / 9, a = (1 - u) ** 2, m = 2 * u * (1 - u), c = u * u; return [a * p0[0] + m * p1[0] + c * p2[0], a * p0[1] + m * p1[1] + c * p2[1]]; }), .34, .45);
+      }
+      sh.crease = 0;
+    }
     function skirt(sh, P, doll, tor, sway = 0) {
       if (!doll.skirt) return;
       const b = P.b, C = tor.C, top = tor.zW + 2;
@@ -1080,7 +1091,7 @@
           const wrist = [s * wx, elbow[1] + 15 * Math.sin(fa), elbow[2] - 15 * Math.cos(fa)];
           arm(sh, P, sh_j, elbow, wrist);
         }
-        if (front) definition(sh, P, tor);
+        if (front) { definition(sh, P, tor); if (!doll.skirt) inguinal(sh, P, tor); }
         if (FOOT_HD && Math.cos(yaw * Math.PI / 180) < .35) hdBackLines(sh, P, tor);
         if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
         if (doll.cloth || doll.underBra) dress(sh, P, doll, tor);
@@ -1158,7 +1169,7 @@
         }
         if (front) definition(sh, P, tor);
         // 鼠蹊部摺線：從髖骨外上方斜斜往下收到胯下兩側（大腿根跟骨盆的交界）
-        sh.crease = 1; for (const s of [-1, 1]) marks(sh, Array.from({ length: 7 }, (_, i) => { const u = i / 6; return [s * ((hip_x + 2.4) * (1 - u) + 1.9 * u), (hz + 3.6) * (1 - u) + (tor.C + .9) * u]; }), .34, .45); sh.crease = 0;
+        inguinal(sh, P, tor);
         if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
         hair(sh, P, doll, tor);
         return { sh, P };
