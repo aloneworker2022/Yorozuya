@@ -1,5 +1,5 @@
 /* 試煉房抽妹子：人設跟 /testword 同一套。抽到後背景補半身立繪。不寫遊戲名冊。 */
-import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=3";
+import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=5";
 import {
   ensureBody,
   clampBody,
@@ -159,7 +159,7 @@ import {
   SEX_SUMMON_ANIM_FRAMES,
   planSexSummonSet,
   sexSummonImageCount,
-} from "./sex_pose_packs.js?v=10";
+} from "./sex_pose_packs.js?v=11";
 import { buildSexAnimFrames, SEX_ANIM_SIZE } from "./sex_anim.js";
 import { packFrameUrl } from "./frame_pack.js";
 import {
@@ -228,14 +228,14 @@ import {
   loadButtDoc,
   generateButtPackImage,
   buildButtImgBody,
-} from "./butt_packs.js?v=6";
+} from "./butt_packs.js?v=7";
 import {
   mountWaistPackEditor,
   pickRuntimeWaistPack,
   loadWaistDoc,
   generateWaistPackImage,
   buildWaistImgBody,
-} from "./waist_packs.js?v=5";
+} from "./waist_packs.js?v=6";
 import {
   mountBreastPackEditor,
   pickRuntimeBreastPack,
@@ -243,7 +243,7 @@ import {
   generateBreastPackImage,
   buildBreastImgBody,
   isBreastDefaultPrompt,
-} from "./breast_packs.js?v=3";
+} from "./breast_packs.js?v=4";
 import {
   mountKneadPackEditor,
   pickRuntimeKneadPack,
@@ -251,7 +251,7 @@ import {
   generateKneadPackImage,
   buildKneadImgBody,
   isKneadDefaultPrompt,
-} from "./knead_packs.js?v=3";
+} from "./knead_packs.js?v=4";
 import {
   mountUndressPackEditor,
   listUndressScenes,
@@ -259,7 +259,7 @@ import {
   presetByShot,
   SUMMON_UNDRESS_SHOTS,
   DROPPED_UNDRESS_SHOTS,
-} from "./undress_packs.js?v=7";
+} from "./undress_packs.js?v=8";
 import {
   mountSuckPackEditor,
   pickRuntimeSuckPack,
@@ -267,7 +267,7 @@ import {
   generateSuckPackImage,
   buildSuckImgBody,
   isSuckDefaultPrompt,
-} from "./suck_packs.js?v=4";
+} from "./suck_packs.js?v=5";
 import {
   mountLickPackEditor,
   pickRuntimeLickPack,
@@ -275,28 +275,28 @@ import {
   generateLickPackImage,
   buildLickImgBody,
   isLickDefaultPrompt,
-} from "./lick_packs.js?v=4";
+} from "./lick_packs.js?v=5";
 import {
   mountLabiaPackEditor,
   pickRuntimeLabiaPack,
   loadLabiaDoc,
   generateLabiaPackImage,
   buildLabiaImgBody,
-} from "./labia_packs.js?v=2";
+} from "./labia_packs.js?v=3";
 import {
   mountLabiaRubPackEditor,
   pickRuntimeLabiaRubPack,
   loadLabiaRubDoc,
   generateLabiaRubPackImage,
   buildLabiaRubImgBody,
-} from "./labia_rub_packs.js?v=2";
+} from "./labia_rub_packs.js?v=3";
 import {
   mountFingerPackEditor,
   pickRuntimeFingerPack,
   loadFingerDoc,
   generateFingerPackImage,
   buildFingerImgBody,
-} from "./finger_packs.js?v=2";
+} from "./finger_packs.js?v=3";
 import {
   mountVaginaFingerPackEditor,
   pickRuntimeVaginaFingerPack,
@@ -304,14 +304,14 @@ import {
   generateVaginaFingerPackImage,
   buildVaginaFingerImgBody,
   XRAY_ACTION_PACKS_ON,
-} from "./vagina_finger_packs.js?v=2";
+} from "./vagina_finger_packs.js?v=3";
 import {
   mountCervixRubPackEditor,
   pickRuntimeCervixRubPack,
   loadCervixRubDoc,
   generateCervixRubPackImage,
   buildCervixRubImgBody,
-} from "./cervix_rub_packs.js?v=2";
+} from "./cervix_rub_packs.js?v=3";
 import {
   mountStandeePackEditor,
   loadStandeeDoc,
@@ -319,20 +319,30 @@ import {
   generateStandeePackImage,
   buildStandeeImgBody,
   standeeUrlFor,
-} from "./standee_packs.js?v=1";
+} from "./standee_packs.js?v=2";
 import { SUMMON_RITUAL_LINES, startSummonRitualStatus, paintRitualBlocks } from "./summon_ritual.js?v=4";
 import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_action.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
 import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=10";
-import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit } from "./outfit_pick.js?v=1";
+import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit, wornOutfitOf } from "./outfit_pick.js?v=2";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
 import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
-import { openPeek } from "./escort_peek.js?v=5";
+import { openPeek } from "./escort_peek.js?v=8";
 import * as Preg from "./pregnancy.js?v=1";
+import { createRental } from "./rental_ui.js?v=36";
+import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
+import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
+import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=38";
+import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=75";
+import { bindSwapBookmark } from "./swap_bookmark.js?v=14";
+import { canRental as swapCanAsk } from "./rental.js?v=7";
+import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=17";
+import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
+import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
 import { moanVoiceId } from "./stun_speech.js?v=25";
 import {
   hungerOn,
@@ -648,7 +658,7 @@ if (typeof window !== "undefined") {
 /** 她走到面前了：能開就直接開對話框。 */
 function maybeOpenBegDialog() {
   if (!girl || !HUNGER_ON || begDialog || sheetOpen()) return false;
-  if (!girlInRoom() || girl.errand === "clothes" || talkBusy || pending || summoning) return false;
+  if (!girlInRoom() || girl.errand || talkBusy || pending || summoning) return false;
   if (document.visibilityState === "hidden") return false;
   const pomo = $("pomo");
   if (pomo && !pomo.hidden) return false;
@@ -919,7 +929,7 @@ function talkBusyFlags() {
   return {
     notInRoom: !girlInRoom(), hidden: document.visibilityState === "hidden", roomHidden: !!room && !room.getClientRects().length,
     sheetOpen: sheetOpen(), talkBusy: !!talkBusy || !!pending, pomodoro: !!pomo && !pomo.hidden, scene: sceneOpen() || !!activeRoomScene,
-    sex: !!sexChat, undress: undressChatActive(), editor: !!editor && !editor.hidden, summoning: !!summoning, errand: girl?.errand === "clothes",
+    sex: !!sexChat, undress: undressChatActive(), editor: !!editor && !editor.hidden, summoning: !!summoning, errand: !!girl?.errand,
     asleep: live?.kind === "sleep",
   };
 }
@@ -1048,10 +1058,115 @@ function bindTalkDebug() {
   onId("dbg-talk-now", "click", () => { const st = talkState(); if (!st) return; st.leftMs = 0; st.closedAt = 0; proactiveTalkTick(); renderTalkDebug(); });
 }
 
+// ---------------------------------------------------------------- 日租女友（rental.js／rental_ui.js，2026-10-13）
+/**
+ * 妻子以上，玩家拜託、她決定。約會中她「出門辦事」（errand＝rental）：存檔上仍在房間（RP5 不排日本行程），
+ * 畫面上藏起來、不能聊天、停留計時暫停；LINE 面板在 rental_ui.js。結束回房：忠誠／感情／心情／飢渴／子宮精液／被肏場數／懷孕在這裡套。
+ */
+function walletEarn(n, why = "") {
+  const v = Math.round(Number(n) || 0);
+  if (!v) return true;
+  const w = window.YorozuyaWallet;
+  if (typeof w?.earn === "function" && w.earn(v, why)) return true;
+  setSandboxGold(walletGold() + v);
+  return true;
+}
+function rentalGoOut(who) {
+  if (!who) return;
+  if (sheetOpen()) hideSheet();
+  who.errand = "rental";
+  who.roomVisitUntil = Date.now() + 8 * 3600e3;   // RP5 看到停留還沒到期＝人在房裡，不會把她帶回日本
+  try { window.RoomActor?.conceal?.(true); } catch { /* */ }
+  setSummonTalkBusy(true);
+  const status = $("summon-status");
+  if (status) status.textContent = `${who.name}出門去當日租女友了。上方的綠條可以看 LINE。`;
+  persistRoom();
+}
+function rentalComeBack(who) {
+  if (!who) return;
+  if (who.errand === "rental") delete who.errand;
+  try { window.RoomActor?.conceal?.(false); } catch { /* */ }
+  setSummonTalkBusy(false);
+  armRoomVisit(who);
+  who.chatEnter = "summon";
+  const status = $("summon-status");
+  if (status) status.textContent = `${who.name}約會完回到房間了。長按她聊聊今天的事。`;
+  try { renderCard(); } catch { /* */ }
+  persistRoom();
+}
+function rentalApply(who, eff) {
+  if (!who || !eff) return;
+  who.stats = who.stats && typeof who.stats === "object" ? who.stats : {};
+  if (eff.loyalty) who.stats.loyalty = Math.max(0, Math.min(100, (Number(who.stats.loyalty ?? 60) || 0) + eff.loyalty));
+  if (eff.affection && who === girl) bumpAffection(eff.affection, "日租女友");
+  if (eff.mood) noteMood(who, { ...eff.mood, now: Date.now() });
+  const h = eff.hotel?.result;
+  if (h) {
+    const b = ensureBody(who);
+    if (HUNGER_ON) {
+      for (let i = 0; i < (h.creampies || 0); i++) relieveHunger(who, "creampie", Date.now(), who.stage || "stranger");
+      if (h.level !== "kiss") relieveHunger(who, "orgasm", Date.now(), who.stage || "stranger");
+    }
+    if (h.creampies && b?.organs?.uterus) b.organs.uterus.semen = Math.min(3, (Number(b.organs.uterus.semen) || 0) + h.creampies);
+    if (h.level === "sex") { try { devAddSessions(who, "sex", 1); } catch { /* */ } }
+    // 懷孕：客人每次內射擲一次（跟接客同一套機率）；懷著就不擲
+    for (let i = 0; i < (h.creampies || 0) && !Preg.pregOf(who); i++) {
+      const id = String(who.gameGirlId || who.id || "");
+      if (Math.random() < Preg.conceiveChance(HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0, Preg.fertile(id))) {
+        Preg.conceive(who, { key: `rental${Date.now()}${i}`, father: { name: eff.client?.name || "日租的客人", role: "日租客人" }, source: "rental" });
+        pushDebug(`日租女友：受孕（父親 ${eff.client?.name || "客人"}）`);
+      }
+    }
+  }
+  pushDebug(`日租女友：忠誠 ${eff.loyalty || 0}、感情 ${eff.affection || 0}${eff.mood ? `、心情 ${eff.mood.type} ${eff.mood.level}` : ""}`);
+}
+const rental = createRental({
+  who: () => girl,
+  inRoom: () => girlInRoom() && !girl?.errand,
+  say: async (who, ask, fallback) => {
+    try {
+      const reply = await withTimeout(askGirl(ask), 12000, "");
+      return scrubHusband(cleanLine(reply), who.stage || "stranger", who.playerPet || "").slice(0, 80) || fallback;
+    } catch { return fallback; }
+  },
+  typeLine: async (name, text) => {
+    lines.push({ role: "assistant", content: text });
+    talkBusy = true; refreshTalkActs();
+    try { await typeLine(name, text); } finally { talkBusy = false; refreshTalkActs(); }
+  },
+  goOut: rentalGoOut,
+  comeBack: rentalComeBack,
+  gold: () => walletGold(),
+  earn: walletEarn,
+  hunger: (who) => (HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0),
+  mood: (who) => getMoodCarry(who),
+  applyEffects: rentalApply,
+  persist: () => persistRoom(),
+  debug: (m) => pushDebug(m),
+  // 你在 LINE 說的是鼓勵／勸阻／普通（server/rental_lines.py intent）；失敗回空 → 關鍵字
+  intent: async (side, text) => {
+    const resp = await fetch("/api/rental/intent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ side, text: String(text || "").slice(0, 120) }) });
+    if (!resp.ok) return "";
+    return String((await resp.json().catch(() => ({})))?.intent || "");
+  },
+  // AI 寫 LINE（server/rental_lines.py）；伺服器沒有／失敗回空字串 → rental_ui 用句庫
+  ai: async (kind, ctx) => {
+    if (!girl || !ctx?.date) return "";
+    const resp = await fetch("/api/rental/line", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(rentalAiPayload(girl, ctx.date, ctx.side, kind, ctx)) });
+    if (!resp.ok) return "";
+    const t = String((await resp.json().catch(() => ({})))?.text || "").trim();
+    return ctx.side === "wife" ? scrubHusband(t, girl.stage || "stranger", girl.playerPet || "") : t;
+  },
+  peek: (opts) => openPeek({ ...opts, doll: window.RoomDoll?.lookToDoll(opts.who?.look || null, { belly: Preg.bellyOf(opts.who) }),
+    voice: moanVoiceId(opts.who) || "", family: familyOfGirl(opts.who) }),
+});
+window.RoomRental = rental;
+
 // ---------------------------------------------------------------- 接客還債（escort.js，2026-10-10 Al）
 /**
  * 只有老婆（妻子以上）。負債 > 50：人在房裡的老婆自己走到你面前說一句、然後出門（不能阻止）；
- * 負債 ≤ 50（含沒欠債）：互動列可以請她去（有負債寫還債，沒欠債寫繼續接客），她決定。出門＝world.escortGo 旗＋送她走，RP5 開班（手機關著也照走）。
+ * 負債 ≤ 50（含沒欠債）：她不去、互動列沒有按鈕（拜託流程只留給 test_room 除錯列）。出門＝world.escortGo 旗＋送她走，RP5 開班（手機關著也照走）。
  * 金幣：主遊戲（app.js YorozuyaWallet）；test_room 沙盒用 localStorage yoro_sandbox_gold。
  */
 let escortDialog = null;   // {mode:'auto'|'ask', phase:'opening'|'choose', line}
@@ -1163,7 +1278,7 @@ function escortLeave(who = girl) {
   if (status) status.textContent = `${who.name}出門去接客還債了。手機關著也會照常工作，做完會回到房間。`;
   try { window.dispatchEvent(new CustomEvent("yoro-escort-go", { detail: { id: who.gameGirlId || who.id } })); } catch { /* */ }
 }
-/** 互動列：負債 ≤ 50（含沒欠債）、老婆、沒在冷卻，可以請她去接客。 */
+/** 除錯列用：負債 ≤ 50（含沒欠債）、老婆、沒在冷卻，可以請她去接客（正式互動列沒有按鈕）。 */
 function canAskEscort() {
   return !!girl && girlInRoom() && canEscort(girl) && askable(walletGold()) && !escortDialog
     && Date.now() >= (Number(girl.escortMine?.askCoolUntil) || 0);
@@ -1220,6 +1335,60 @@ function debugPeek(pose, noticed = false) {
     onClose: (st) => { if (st.opened && noticed) pushDebug("偷看：被她發現了（除錯）"); } });
 }
 function familyOfGirl(who) { try { return familyOf(who); } catch { return ""; } }
+function renderRentalDebug() {
+  const el = $("dbg-rental");
+  if (!el || !girl) return;
+  const m = girl.rentalMine || {}, d = m.active;
+  el.textContent = d ? `約會中：${d.client.name}・升溫 ${d.heat}・影響 她${d.influence?.wife || 0}／客${d.influence?.client || 0}・邀請 ${d.invite.resolved ? `${Math.round(d.invite.p * 100)}% ${d.invite.yes ? "成功" : "沒成功"}` : "還沒到"}・${d.hotel?.presence || "—"}`
+    : `今天 ${(m.starts || []).filter((t) => Date.now() - t < 864e5).length} 場・熟客 ${(m.regulars || []).length}・上一場 ${m.last ? `${m.last.clientName} ${m.last.stars}★ ${m.last.honesty}` : "—"}`;
+}
+function bindRentalDebug() {
+  const rm = () => { girl.rentalMine = girl.rentalMine || {}; return girl.rentalMine; };
+  onId("dbg-rental-ask", "click", () => { if (!girl) return; rm().starts = []; rm().askCoolUntil = 0; if (!sheetOpen()) showSheet(); void rental.ask(); });
+  onId("dbg-rental-pick", "click", () => { if (!girl) return; rm().starts = []; rm().askCoolUntil = 0; rental.openPicker(); });
+  onId("dbg-rental-hour", "click", () => { const d = girl?.rentalMine?.active; if (!d) return; d.startedAt -= 2 * 60e3; if (d.pauseAt) d.pauseAt -= 2 * 60e3; persistRoom(); rental.tick(); });
+  onId("dbg-rental-invite", "click", () => { const d = girl?.rentalMine?.active; if (!d || d.hotel) return; d.forceInvite = true; persistRoom(); pushDebug("日租除錯：這場的邀請會成功"); renderRentalDebug(); });
+  onId("dbg-rental-end", "click", () => { if (girl?.rentalMine?.active) rental._finish(girl); renderRentalDebug(); });
+  for (const v of ["hotel", "motel"]) onId(`dbg-room-${v}`, "click", () => openRentalRoom({ venue: v, room: "305", night: true, clientName: "佐藤", look: girl?.look || {}, doll: window.RoomDoll?.lookToDoll(girl?.look || null) || null,
+    onContinue: () => pushDebug(`日租除錯：房間（${v}）按了繼續`) }));
+  for (const night of [false, true]) onId(`dbg-room-ryokan${night ? "-n" : ""}`, "click", () => openRentalRoom({ venue: "ryokan", room: "桜の間", night, clientName: "佐藤", look: girl?.look || {}, doll: window.RoomDoll?.lookToDoll(girl?.look || null) || null,
+    onContinue: () => pushDebug("日租除錯：房間（日式）按了繼續") }));
+  for (const v of ["ryokan", "hotel", "motel"]) onId(`dbg-entry-${v}`, "click", () => {   // 只看畫面：選了什麼只記在除錯紀錄
+    openRentalEntry({ venue: v, room: v === "ryokan" ? "桜の間" : "305", venues: RENTAL_VENUES, stayZh: "休息", clientName: "佐藤",
+      onChoose: (p) => pushDebug(`日租除錯：玄關（${v}）選了${p === "in" ? "進去" : "在外面等"}`) });
+  });
+  // 2026-10-17：房間流程（rental_session.js）除錯：不用跑約會，直接進房看流程；點人物 → AI 圖＋即時對話
+  // 2026-10-17 Al：客人＝旅館圖面板選的那位（沒選＝隨機一位，rental.rollClients）；圖先找這個她＋這個客人的
+  let rentalScenePanel = null;
+  for (const v of ["ryokan", "hotel", "motel"]) onId(`dbg-flow-${v}`, "click", () => {
+    const s = planRentalSession();
+    const c = rentalScenePanel?.client?.() || { id: "", name: "佐藤", age: 35, build: "average", persona: "dominant" };
+    pushDebug(`房間流程（${v}）：${s.acts.map((a) => `${a.loc}/${a.pose}`).join(" → ")}・內射 ${s.acts.filter((a) => a.cum).length} 次`);
+    // 2026-10-19：跟遊戲一樣——開車旁白＋生第一張 → 進房後跟著生成換段
+    const gInfo = { name: girl?.name || "她", stage: girl?.roomStage || girl?.stage || "wife", family: familyOfGirl(girl), archetype: girl?.archetype || "" };
+    const cInfo = { name: c.name, age: c.age, build: c.build, persona: RENTAL_PERSONA_ZH[c.persona] || c.persona };
+    const owners = rentalOwnersOf(girl?.id, c.id);
+    void openRentalDrive({ venue: v, venueZh: RENTAL_VENUES[v]?.zh, girl, client: c, girlInfo: gInfo, clientInfo: cInfo, owners, debug: pushDebug }).then(() => {
+    const runner = getRentalRunner(s, { venue: v, girl, client: c, owners, talkBase: { girl: gInfo, client: cInfo }, debug: pushDebug, onDone: () => pushDebug("房間流程：退房了") });
+    openRentalRoom({ runner, venue: v, room: v === "ryokan" ? "桜の間" : "305", night: true, clientName: c.name, look: girl?.look || {}, doll: window.RoomDoll?.lookToDoll(girl?.look || null) || null,
+      session: s, owners: rentalOwnersOf(girl?.id, c.id), voice: (girl && moanVoiceId(girl)) || "", girl: { name: girl?.name || "她", stage: girl?.roomStage || girl?.stage || "wife", family: familyOfGirl(girl), archetype: girl?.archetype || "" },
+      client: { name: c.name, age: c.age, build: c.build, persona: RENTAL_PERSONA_ZH[c.persona] || c.persona },
+      onStep: (st) => { if (!st.done) pushDebug(`房間流程：第 ${st.i + 1} 段 ${st.act.loc}/${st.act.pose}${st.act.cum ? "（內射）" : ""}`); else pushDebug("房間流程：退房了"); },
+      onLeave: () => { runner.stop(); pushDebug(`房間流程（${v}）：離開`); } });
+    });
+  });
+  // 2026-10-17：旅館房間圖改放在上排快捷（日式房間／汽車旅館／旅館），面板在 rental_scene_gen.js
+  rentalScenePanel = bindRentalScenePanel({ girl: () => girl, client: () => girl?.rentalMine?.active?.client || null, debug: pushDebug });
+  // 2026-10-21 換妻 step 1：咖啡廳半身立繪（上排「咖啡廳」，面板在 swap_cafe_gen.js）
+  bindSwapCafePanel({ girl: () => girl, debug: pushDebug });
+  bindSwapBookmark({
+    girl: () => girl, debug: pushDebug, spend: walletSpend, gold: walletGold,
+    wifeOk: () => !!(girl && swapCanAsk(girl)),
+    makeCtx: () => swapCtxOf(girl),
+  });
+  onId("dbg-rental-reset", "click", () => { if (!girl) return; rm().starts = []; rm().askCoolUntil = 0; persistRoom(); renderRentalDebug(); refreshTalkActs(); });
+  setInterval(() => { try { renderRentalDebug(); } catch { /* */ } }, 2000);
+}
 function bindEscortDebug() {
   onId("dbg-escort-gold-80", "click", () => setSandboxGold(-80));
   onId("dbg-escort-gold-30", "click", () => setSandboxGold(-30));
@@ -1487,7 +1656,7 @@ function armRoomVisit(who = girl) {
 /** 人還沒站定，或正在換衣服：這段不擲停留，也不把人送去日本。人已經在房裡時，沒清掉的繪圖清單不算。 */
 function visitClockHeld() {
   if (summoning || summonBackBusy) return true;
-  if (girl?.errand === "clothes") return true;
+  if (girl?.errand === "clothes" || girl?.errand === "rental") return true;
   const ritual = $("room-summon-ritual");
   if (ritual && !ritual.hidden) return true;
   if (girl?.summonQueueId && !window.RoomActor?.isPresent?.()) return true;
@@ -3663,24 +3832,7 @@ async function gameChatRoute() {
 }
 
 function wornOutfit(g) {
-  const named = String(g?.outfitName || "").trim();
-  if (named) return named;
-  const look = g?.look || {};
-  const wardrobe = Array.isArray(look.wardrobe) ? look.wardrobe : [];
-  const erotic = Array.isArray(look.eroticOutfits) ? look.eroticOutfits : [];
-  const sleep = Array.isArray(look.sleepOutfits) ? look.sleepOutfits : [];
-  const pick = g?.outfitPick;
-  if (pick === "base") return BASE_OUTFIT;
-  if (typeof pick === "string" && pick[0] === "e") {
-    const index = Number(pick.slice(1));
-    if (Number.isInteger(index) && erotic[index]) return String(erotic[index]);
-  }
-  if (typeof pick === "string" && pick[0] === "s") {
-    const index = Number(pick.slice(1));
-    if (Number.isInteger(index) && sleep[index]) return String(sleep[index]);
-  }
-  if (Number.isInteger(pick) && pick >= 0 && pick < wardrobe.length) return String(wardrobe[pick] || "");
-  return String(look.career_outfit || look.style || "");
+  return wornOutfitOf(g);
 }
 
 /** 進房當下選一套，並記住名字。中途過晚上 6 點不重選。 */
@@ -6141,6 +6293,7 @@ function lifeNotes(userText = "") {
     notes.push(`她已安頓小孩，標註「配種成功 ×${breedingSuccessCount(girl)}」。`);
   }
   notes.push(...lifeMemoryPromptLines(girl, userText, { here: "room" }));
+  notes.push(...rentalPromptLines(girl));   // 日租女友（rental.js）：剛才那場的真相＋她要怎麼講
   notes.push(...lineEventPromptLines(girl));   // LINE 群裡的事（line_social.js）
   return notes;
 }
@@ -8677,6 +8830,54 @@ async function runClothesErrand(next) {
   try { renderCard(); } catch { /* */ }
 }
 
+// 換妻酒吧 NPC 的 AI key：同一毫秒兩個 NPC 一起問時 key 不能一樣（不然拿到別人的回覆）
+let swapBarSeq = 0;
+// 換妻（2026-10-21）：聊天裡提「換妻／交換伴侶…」、她是妻子階段 → 擲答應（swapAskChance）、AI 回（動作）台詞；答應才開夫妻名冊。
+async function maybeHandleSwapAsk(raw) {
+  if (!isSwapAsk(raw) || !girl || !swapCanAsk(girl) || girl.errand) return false;
+  if (sexChatActive() || activeRoomScene || undressPlay) return false;
+  const who = girl;
+  lines.push({ role: "user", content: raw });
+  talkBusy = true; setTalkEnabled(true);
+  let d = null;
+  try {
+    await typeLine("你", raw);
+    d = swapDecide(who, { mood: getMoodCarry(who), hunger: HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0 });
+    pushDebug(`換妻：問${who.name}（答應機率 ${Math.round(d.p * 100)}%）→ ${d.yes ? "答應" : "拒絕"}`);
+    let line = "";
+    try { line = scrubHusband(cleanLine(await withTimeout(askGirl(d.ask), 12000, "")), who.stage || "stranger", who.playerPet || ""); } catch { /* 句庫 */ }
+    line = swapActLine(line, d.act) || d.fallback;
+    lines.push({ role: "assistant", content: line });
+    await typeLine(who.name, line);
+  } finally { talkBusy = false; setTalkEnabled(true); }
+  if (d?.yes) setTimeout(() => openSwapSelect(swapCtxOf(who)), 1500);   // 讓她那句先看清楚
+  return true;
+}
+
+/** 換妻場景共用 ctx（老婆＝who）。 */
+function swapCtxOf(who) {
+  return {
+    girl: () => who, debug: pushDebug,
+    mood: (w) => getMoodCarry(w),
+    hunger: (w) => (HUNGER_ON ? peekHunger(w, Date.now(), w.stage || "stranger") : 0),
+    // 老婆：用她自己的聊天人設
+    say: async (w, ask, fallback) => { try { const r = await withTimeout(askGirl(ask), 12000, ""); return scrubHusband(cleanLine(r), w.stage || "stranger", w.playerPet || "").slice(0, 120) || fallback; } catch { return fallback; } },
+    // 對方夫妻（NPC）：單純 system＋user
+    chat: async (system, user) => {
+      const route = await gameChatRoute(), msgs = [{ role: "system", content: system }, { role: "user", content: user }];
+      const run = route.provider === "ollama" ? askOllama(route, msgs) : askGrok(route, msgs, `swapbar:${Date.now().toString(36)}:${(++swapBarSeq).toString(36)}${Math.random().toString(36).slice(2, 7)}`);
+      return cleanLine(await withTimeout(run, 12000, "")).slice(0, 160);
+    },
+  };
+}
+/** 測試主流程／捷徑：都先開「選對方夫妻」（現場抽候選，不延用咖啡廳換一對名冊）；選完才開車生立繪再進場。 */
+async function openSwapTestScene(scene) {
+  if (!girl) { pushDebug("換妻測試：先選一位魅子"); return; }
+  pushDebug(`換妻：選好夫妻就交給伺服器產圖。產完左邊書籤赴約（${scene === "bar" ? "從酒吧" : "測試直接進 " + scene}）。關掉網頁也會繼續生。`);
+  openSwapSelect({ ...swapCtxOf(girl), testScene: scene });
+}
+document.addEventListener("click", (e) => { const b = e.target?.closest?.("[data-swt]"); if (b) void openSwapTestScene(b.dataset.swt); });
+
 async function maybeHandleClothesAsk(raw) {
   if (!isChangeClothesAsk(raw) || !canAskClothes(girl)) return false;
   if (sexChatActive() || activeRoomScene || undressPlay) return false;
@@ -8715,7 +8916,7 @@ async function deliverUserTalk(text, opts = {}) {
   if (girl) talkNoteReplied(talkState());
   const raw = String(text || "").trim();
   if (!girl || !raw) return;
-  if (girl.errand === "clothes") return;
+  if (girl.errand) return;
   // 頂點求歡：說什麼、按什麼都變成她問要不要做
   if (peakBegNow()) {
     if (talkBusy && !(begDialog && begDialog.phase === "choose")) return;
@@ -8731,6 +8932,7 @@ async function deliverUserTalk(text, opts = {}) {
     return;
   }
   if (talkBusy || talkFor !== girl.id) return;
+  if (!opts.actId && await maybeHandleSwapAsk(raw)) return;
   if (!opts.actId && await maybeHandleClothesAsk(raw)) return;
 
   ensureBody(girl);
@@ -9552,17 +9754,15 @@ function refreshTalkActs() {
     btn.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void giveMedicine(); });
     row.append(btn);
   }
-  // 負債 ≤ 50（含沒欠債）：請老婆去接客（她決定）。負債超過 50 她自己去，不顯示。
-  if (!talkBusy && canAskEscort()) {
+  // 接客沒有按鈕：只有負債超過 50 她才自己去（autoDue）。
+  // 妻子以上：請她去當日租女友（她決定；一天一場）
+  if (!talkBusy && rental.canAsk()) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.dataset.romance = "escort";
-    const owing = debtOf(walletGold());
-    btn.textContent = owing > 0 ? "拜託她幫忙還債" : "請她繼續接客";
-    btn.title = owing > 0
-      ? `負債 ${owing} 金：拜託她去接一輪（4 位，她會自己決定）`
-      : "請她再去接一輪（4 位，她會自己決定）";
-    btn.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void askEscort(); });
+    btn.dataset.romance = "rental";
+    btn.textContent = "請她去當日租女友";
+    btn.title = "陪客人約會一天，賺 2～10 金（她會自己決定）";
+    btn.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void rental.ask(); });
     row.append(btn);
   }
   // 告白／求婚（互斥；條件不符則不顯示）
@@ -9860,9 +10060,10 @@ function unlockSheetScroll() {
 }
 
 function showSheet() {
-  if (girl?.errand === "clothes") {
+  if (girl?.errand) {
     const status = $("summon-status");
-    if (status) status.textContent = `${girl.name}去換衣服了，還沒回來。`;
+    if (status) status.textContent = girl.errand === "rental" ? `${girl.name}去當日租女友了，還沒回來。點上方的綠條看 LINE。` : `${girl.name}去換衣服了，還沒回來。`;
+    if (girl.errand === "rental") rental.openPanel();
     return;
   }
   const sheet = $("portrait-sheet");
@@ -10523,6 +10724,7 @@ function buildRoomGirlFromSuccubus(s) {
     dna: s.dna,
     look,
     outfitPick: s.outfitPick ?? null,
+    outfitName: s.outfitName || null,
     libido: s.libido || null,
     specialTraits: s.specialTraits || null,
     moanVoice: s.moanVoice || null,
@@ -10865,6 +11067,7 @@ async function summonHerBack() {
     if ($("summon-status")) $("summon-status").textContent = `${girl.name}正在工作（接客還債），收工會自己回來。`;
     return;
   }
+  if (girl.rentalMine?.active) { rental.openPanel(); return; }
   const who = girl;
   summonBackBusy = true;
   const btn = $("summon-back");
@@ -11540,7 +11743,9 @@ function bindBodyPanel() {
   } else {
     window.RoomActor?.setPresent(!girl.world?.home);
   }
-  try { window.RoomActor?.conceal?.(false); } catch { /* */ }
+  try { window.RoomActor?.conceal?.(!!girl.rentalMine?.active); } catch { /* */ }
+  if (girl.rentalMine?.active) { girl.errand = "rental"; setTimeout(() => { setSummonTalkBusy(true); rental.tick(); }, 300); }
+  else if (girl.errand === "rental") delete girl.errand;
   // 已離房：跑掉的性奮按時間慢慢退；沒有冷卻時鐘的舊檔仍直接歸 0。開放度這趟清掉。
   if (!girlInRoom()) {
     if (girl.bodyState?.arousalCoolAt) decayArousalCool(girl);
@@ -11642,6 +11847,7 @@ bindMissDebug();
 bindHungerDebug();
 bindTalkDebug();
 bindEscortDebug();
+bindRentalDebug();
 bindPregDebug();
 bindOrganDevDebug();
 bindReckonDebug();

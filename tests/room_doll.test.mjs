@@ -35,8 +35,8 @@ t("幀尺寸 64×140、錨點 (32,126)、深度與像素一一對應", () => {
   assert.ok(Math.abs(bottom - f.anchor.y) <= 4, `bottom ${bottom}`);
 });
 
-t("顏色／透明度只有 v4 那幾種（身體 α204、頭髮 α220）", () => {
-  const allowed = new Set([[...D.BODY_RGB, 204], [...D.LINE_RGB, 204], [...D.MARK_RGB, 204], [...D.HAIR_RGB, 220], [...D.HAIR_HI_RGB, 220]].map(String));
+t("顏色／透明度只有 v4 那幾種（身體 α204、頭髮 α220；2026-10-13 加乳房弧線）", () => {
+  const allowed = new Set([[...D.BODY_RGB, 204], [...D.LINE_RGB, 204], [...D.MARK_RGB, 204], [...D.BUST_RGB, 204], [...D.HAIR_RGB, 220], [...D.HAIR_HI_RGB, 220]].map(String));
   const f = D.render(D.lookToDoll({ ...base, build: "運動健美", hair: "雙馬尾" }), "idle", 0, 0);
   const seen = new Set();
   for (let i = 0; i < f.pixels.length; i += 4) if (f.pixels[i + 3]) seen.add(String(Array.from(f.pixels.subarray(i, i + 4))));
@@ -134,6 +134,43 @@ t("身高不綁體型：嬌小玲瓏 172cm 照樣 172", () => {
   const tall = D.render(d, "idle", 0, 0), short = D.render({ ...d, height_cm: 150 }, "idle", 0, 0);
   const top = f => { for (let y = 0; y < f.height; y++) for (let x = 0; x < f.width; x++) if (f.pixels[(y * 64 + x) * 4 + 3]) return y; };
   assert.ok(top(short) - top(tall) >= 15);
+});
+
+t("乳房弧線：正面看得到下緣那條線（黑影疊黑影也讀得出胸型），平胸 A 也不會整片變線", () => {
+  const count = (cup, yaw) => { const f = D.render(D.lookToDoll({ ...base, cup }), "idle", 0, yaw); let n = 0;
+    for (let i = 0; i < f.pixels.length; i += 4) if (f.pixels[i] === D.BUST_RGB[0] && f.pixels[i + 1] === D.BUST_RGB[1] && f.pixels[i + 3]) n++; return n; };
+  for (const yaw of [0, 45]) assert.ok(count("E", yaw) >= 8, `E yaw ${yaw}: ${count("E", yaw)}`);
+  assert.ok(count("H", 0) > count("A", 0));
+  const side = D.render(D.lookToDoll({ ...base, cup: "E" }), "sex_doggy", 0, 0);
+  let n = 0; for (let i = 0; i < side.pixels.length; i += 4) if (side.pixels[i] === D.SIDE_PAL.bust[0] && side.pixels[i + 1] === D.SIDE_PAL.bust[1] && side.pixels[i + 3]) n++;
+  assert.ok(n >= 4, `偷看側面也描：${n}`);
+});
+
+t("客人（2026-10-13）：五個體位都畫得出男人、跟她同一個畫布、體型不同畫出來不同", () => {
+  const d = D.lookToDoll(base);
+  for (const pose of D.SEX_POSES) {
+    const her = D.render(d, pose, 0, 0), him = D.renderMan(d, pose, 0, { h: 1, w: 1, lm: 1 });
+    assert.equal(him.width, her.width); assert.equal(him.height, her.height);
+    assert.ok(opaque(him) > 1500, `${pose}: ${opaque(him)}`);
+    let blue = 0; for (let i = 0; i < him.pixels.length; i += 4) if (him.pixels[i + 3] && him.pixels[i + 2] > him.pixels[i]) blue++;
+    assert.equal(blue, opaque(him), `${pose} 全是藍色`);
+  }
+  const fat = D.renderMan(d, "sex_doggy", 0, { h: .97, w: 1.35, lm: 1.2, belly: 1 }), slim = D.renderMan(d, "sex_doggy", 0, { h: 1.02, w: .74, lm: .78 });
+  assert.ok(opaque(fat) > opaque(slim) * 1.2);
+});
+
+t("客人跟著抽送動：傳教士頂到底和退出來那格骨盆位置不同、膝蓋不動", () => {
+  const d = D.lookToDoll(base), M = { h: 1, w: 1, lm: 1 };
+  const f0 = D.renderMan(d, "sex_missionary", 0, M), f3 = D.renderMan(d, "sex_missionary", 3, M);
+  assert.notEqual(hash(f0), hash(f3));
+});
+
+t("偷看側面：她平塗（2026-10-15 使用者）、客人仍有三階明暗", () => {
+  const d = D.lookToDoll({ ...base, cup: "E" });
+  const tones = (f, pal) => { const seen = new Set(); for (let i = 0; i < f.pixels.length; i += 4) if (f.pixels[i + 3]) seen.add(String(Array.from(f.pixels.subarray(i, i + 3))));
+    return [pal.lo, pal.body, pal.hi].filter(c => seen.has(String(c))).length; };
+  assert.equal(tones(D.render(d, "sex_cowgirl", 0, 0), D.SIDE_PAL), 1);
+  assert.equal(tones(D.renderMan(d, "sex_doggy", 0, { h: 1, w: 1, lm: 1 }), D.MAN_PAL), 3);
 });
 
 console.log(`room_doll: ${pass} passed`);
