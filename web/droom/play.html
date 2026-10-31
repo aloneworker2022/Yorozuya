@@ -203,7 +203,7 @@ function selfPenis(cx,y0,pn){
  // 2026-10-31 使用者給參考圖：勃起時莖的粗細＝根部 1、中段 1.2、前端（龜頭下）0.8；龜頭寬圓頭（比莖前端寬、冠狀溝外擴）、頂端中間微凹成兩瓣，下緣冠狀溝弧形；龜頭下方兩道包皮皺紋。
  const P=pn=="erect"?{L:98,wb:10,m:1.2,f:.8,gl:.27,gw:12.5,bend:2,persp:.12,cover:0}
   :pn=="semi"?{L:64,wb:10.5,m:1.1,f:.9,gl:.28,gw:11.5,bend:6,persp:.1,cover:.5}
-  :{L:30,wb:12,ws:12.5,gl:.42,gw:11,bend:1,persp:.05,cover:1};
+  :{L:19,wb:8,ws:8.5,gl:.45,gw:8,bend:.5,persp:.03,cover:1};   // 2026-10-31：軟再小一號（使用者）
  const tip=y0-P.L,tg=1-P.gl;
  for(let y=Math.max(0,Math.floor(tip));y<=y0;y++){const t=(y0-y)/P.L;if(t<0||t>1)continue;
   const sc=1-P.persp*t,xc=cx+P.bend*t*t;let hw,id=5;
@@ -222,8 +222,8 @@ function selfPenis(cx,y0,pn){
    SELF_ID[i]=pid;SELF_U[i]=u;
    if(pn=="erect"&&pid==5&&Math.abs(u)<.75)for(const w of[.035,.065])if(Math.abs(t-(tg-w-.012*u*u))<.5/P.L)SELF_U[i]=9;   // 龜頭下兩道包皮皺紋
    if(pn=="soft"&&t>.88&&Math.abs(u)<.42)SELF_ID[i]=6}}   // 軟：尖端露一點紅
- if(pn=="soft")for(const[a,r]of[[-.5,.55],[.45,.5],[0,.75]]){for(let k=0;k<7;k++){const yy=Math.round(tip+P.L*(.13+k*.035)),xx=Math.round(cx+a*P.ws*(1-k*.06)+(k-3)*a*.4);if(yy>=0&&SELF_ID[yy*SW+xx]==5&&k/7<r)SELF_U[yy*SW+xx]=9}}   // 包皮往尖端收的皺褶（三條短線）
- if(pn=="soft")for(let y=Math.round(tip+1);y<=Math.round(tip+5);y++)for(let x=Math.round(cx-3);x<=Math.round(cx+3);x++){const u=(x+.5-cx)/3.5,v=(y+.5-tip-3)/2.5;if(u*u+v*v<=1&&SELF_ID[y*SW+x]){SELF_ID[y*SW+x]=6;SELF_U[y*SW+x]=u*.8}}}   // 軟：包皮口露一點紅
+ if(pn=="soft")for(const[a,r]of[[-.5,.55],[.45,.5],[0,.75]]){for(let k=0;k<7;k++){const yy=Math.round(tip+P.L*(.15+k*.05)),xx=Math.round(cx+a*P.ws*(1-k*.06)+(k-3)*a*.4);if(yy>=0&&SELF_ID[yy*SW+xx]==5&&k/7<r)SELF_U[yy*SW+xx]=9}}   // 包皮往尖端收的皺褶（三條短線）
+ if(pn=="soft")for(let y=Math.round(tip+1);y<=Math.round(tip+5);y++)for(let x=Math.round(cx-3);x<=Math.round(cx+3);x++){const u=(x+.5-cx)/2.6,v=(y+.5-tip-2.5)/1.8;if(u*u+v*v<=1&&SELF_ID[y*SW+x]){SELF_ID[y*SW+x]=6;SELF_U[y*SW+x]=u*.8}}}   // 軟：包皮口露一點紅
 function pnShade(id,u){if(u==9)return PN_VEIN;if(u==8)return SELF_LINE;const lam=Math.sqrt(Math.max(0,1-u*u)),f=Math.max(0,Math.min(.999,lam*.85-u*.3));if(id==6&&f>.93&&u<-.1)return PN_SPEC;return PN_RAMP[id][f*4|0]}
 // 2026-10-31：使用者：頭要低到幾乎垂直才開始看到陰莖 → 俯角 1.2（約 69°）以前完全看不到，1.2→PMIN 才從畫面底升上來
 function drawSelfRef(moving){const th=-P.p,T0=1.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
