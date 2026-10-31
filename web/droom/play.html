@@ -113,7 +113,9 @@ for(const b of document.querySelectorAll(".pad button")){const k=b.dataset.k,on=
 // 手機：在畫面上左右拖曳轉頭
 // pt49u：往下少看約 5°（俯角上限 ~74°→~69°），抬頭維持 1.3
 // 2026-10-31：使用者選「畫面跟著捲下去」：地平線移出畫面上緣（P.p≈−0.625）後繼續按 ⇣，自己的身體跟地板同速度從畫面底捲進來，再捲一整個畫面高（HZ＝−SH，P.p＝−1.875）到底才停
-const PMAX=1.3,PMIN=2.85,clampP=()=>P.p=Math.max(-PMIN,Math.min(PMAX,P.p));
+// 2026-10-31：使用者：捲到底＝地板方塊變成整塊，這時陰莖（身體）剛好出現到位。低頭進度 lookS()：地平線移出畫面（HZl＝0）→ 0，HZl＝−SH（PMIN＝1.875）→ 1。
+// 世界 HZ＝HZl×(1＋9s²)（到底 −10SH，地板只剩一整塊、貼牆也看不到牆）；身體在 s 0.3→1 從畫面底捲到位（往上 SELF_LIFT），跟世界同時到底。
+const PMAX=1.3,PMIN=1.875,clampP=()=>P.p=Math.max(-PMIN,Math.min(PMAX,P.p));
 let tX=null,tY=0;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"){tX=e.clientX;tY=e.clientY;cv.setPointerCapture(e.pointerId)}});
 cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;P.p-=(e.clientY-tY)*.006;clampP();tX=e.clientX;tY=e.clientY}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
 cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv){P.a+=e.movementX*.003;P.p-=e.movementY*.003;clampP()}};
@@ -236,7 +238,8 @@ function skinShade(id,u){const lam=Math.sqrt(Math.max(0,1-u*u)),f=Math.max(0,Mat
 // 2026-10-31：使用者：身體太下面、要再往上一點；下體要快到地（牆捲完只剩地板）才出現。
 // → 世界先捲（HZ 0→−SH，牆加速離開），之後身體才從畫面底以 1.5 倍速捲進來，到底停在往上 SELF_LIFT 的位置（PMIN＝2.85 剛好到位）。
 const SELF_LIFT=40;
-function drawSelfRef(moving){const HZ=SH/2+P.p*SH*.8,oy=Math.max(-SELF_LIFT,Math.round(SH+(HZ+SH)*1.5));if(oy>=SH)return;   // 身體圖層跟著地平線同速捲動：HZ＝0 時剛在畫面底、HZ＝−SH 時到位
+function lookS(){return Math.min(1,Math.max(0,-(SH/2+P.p*SH*.8)/SH))}
+function drawSelfRef(moving){const b=Math.min(1,Math.max(0,(lookS()-.3)/.7)),oy=Math.round(SH-(SH+SELF_LIFT)*b);if(b<=0)return;
  SELF_B+=(moving?.14:0);const st=moving?Math.sin(SELF_B):0,cx=SW/2,pn=pnSel.value;SELF_ID.fill(0);
  // 2026-10-31：腳改成幾乎垂直往下看的樣子（使用者：只看到一點點大腿＋腳掌，不是往上伸；像圓筒、類似疲軟的陰莖）
  // 腿往下直直離開眼睛 → 大腿只剩畫面下方一小截圓頭圓筒（大部分被下腹擋住），膝蓋、小腿看不到；腳掌從大腿圓頭前面探出來（腳背＋五根腳趾）。
@@ -256,7 +259,7 @@ function drawSelfRef(moving){const HZ=SH/2+P.p*SH*.8,oy=Math.max(-SELF_LIFT,Math
  SELF_X.putImageData(SELF_D,0,0);g.imageSmoothingEnabled=false;g.drawImage(SELF_CV,0,oy)}
 // 2026-10-31：使用者：低頭到底要看不到牆、只看到地板。地平線移出畫面上緣後（HZ<0），世界（地板／牆／妹子）的 HZ 加速往上捲：
 // HZw＝HZ×(1＋9s²)，s＝0→1（身體捲進來那段）；到底 HZw＝−10SH，牆最近約 0.1 格也會整面在畫面上方（貼牆角實測最近 0.17）。身體圖層照舊用線性 HZ 等速捲進來。
-function render(){const HZl=SH/2+P.p*SH*.8,sw=Math.min(1,Math.max(0,-HZl/SH)),HZ=Math.round(HZl<0?HZl*(1+9*sw*sw):HZl),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
+function render(){const HZl=SH/2+P.p*SH*.8,sw=lookS(),HZ=Math.round(HZl<0?HZl*(1+9*sw*sw):HZl),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
   lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
   for(let x=0;x<SW;x++,fx+=stx,fy+=sty){const i=(y*SW+x)*4,chk=((Math.floor(fx)+Math.floor(fy))&1),sh=Math.min(1,.45+2.5/rd);
