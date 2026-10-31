@@ -636,16 +636,30 @@
 
     // 2026-10-30 pt31u：下身第一批——陰毛（strip 一條線／triangle 三角形／none）、陰唇（line 一線／butterfly 蝴蝶唇）、褲子 lace_thong 蕾絲丁字褲。
     // 跟布一樣是「部位標記色」圖層：陰毛 PUBIC_RGB（前端換成髮色）、陰唇 LABIA_RGB、蕾絲 LACE_RGB／LACE_LO_RGB、褲頭 BAND_RGB。
-    const PUBICS = ['strip', 'triangle'], LABIAS = ['line', 'butterfly'], PANTS = ['lace_thong'];
-    const PUBIC_RGB = [255, 0, 255], LABIA_RGB = [255, 255, 0], LACE_RGB = [0, 255, 255], LACE_LO_RGB = [0, 170, 170], BAND_RGB = [255, 128, 0];
+    const PUBICS = ['strip', 'triangle'], LABIAS = ['line', 'butterfly', 'line_open', 'butterfly_open'], PANTS = ['lace_thong'];   // 2026-10-31：*_open＝打開（露出紅色內裡＋深紅小口）
+    const PUBIC_RGB = [255, 0, 255], LABIA_RGB = [255, 255, 0], LACE_RGB = [0, 255, 255], LACE_LO_RGB = [0, 170, 170], BAND_RGB = [255, 128, 0], OPEN_RGB = [255, 0, 0], HOLE_RGB = [128, 0, 0];   // 打開：內裡 #F00、小口 #800000
     function groin(sh, P, doll, tor) {
       const C = tor.C, surf = (x, z, back = false) => { for (let k = 0; k < 300; k++) { const y = back ? -20 + k * .1 : 20 - k * .1; if (bodyDist(sh, x, y, z) < 0) return y; } return null; };
       const patch = (x, z, r, d = .25) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .35, r]); };
       const gap = 1.2;   // 兩腿之間的胯下最低點（約 C）
-      if (doll.labia === 'line' || doll.labia === 'butterfly') {
+      const lab = String(doll.labia || ''), lOpen = lab.endsWith('_open'), lStyle = lab.replace('_open', '');
+      if (!lOpen && (lStyle === 'line' || lStyle === 'butterfly')) {
         sh.cloth = 6;
         for (let z = C + 2.8; z >= C - .4; z -= .4) patch(0, z, .38, .35);
-        if (doll.labia === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.6; z >= C - .2; z -= .45) patch(sx * .55, z, .55, .45);
+        if (lStyle === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.6; z >= C - .2; z -= .45) patch(sx * .55, z, .55, .45);
+      }
+      if (lOpen && (lStyle === 'line' || lStyle === 'butterfly')) {
+        const flat = (x, z, r, d) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .2, r]); };   // 貼平皮膚（薄片），斜看不會凸出來
+        // 2026-10-31：打開——細縫往兩邊撐開成細長橢圓：外緣陰唇色、裡面紅色內裡、下三分之一一個深紅小口
+        const zt = C + 3.4, zb = C + .1, W = lStyle === 'butterfly' ? .95 : .8, hwAt = z => { const u = Math.min(1, Math.max(0, (zt - z) / (zt - zb))); return W * Math.sin(Math.PI * u ** 1.25) ** .7; };   // 上尖下圓的杏仁形，最寬在偏下
+        sh.cloth = 9;
+        for (let z = zt - .2; z >= zb + .2; z -= .3) { const hw = hwAt(z); for (let x = -hw + .15; x <= hw - .15 + 1e-6; x += .3) flat(x, z, .32, .1); }
+        sh.cloth = 10;
+        const zh = zb + (zt - zb) * .28;
+        for (let z = zh + .55; z >= zh - .55; z -= .25) { const hw = .32 * Math.sqrt(Math.max(0, 1 - ((z - zh) / .6) ** 2)); for (let x = -hw; x <= hw + 1e-6; x += .2) flat(x, z, .22, .14); }
+        sh.cloth = 6;
+        for (let z = zt; z >= zb - 1e-6; z -= .3) { const hw = hwAt(z); for (const sx of [-1, 1]) flat(sx * (hw + .12), z, .3, .16); }
+        if (lStyle === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.7; z >= C - .1; z -= .4) { const hw = hwAt(z); flat(sx * (hw + .55), z, .5, .16); }   // 小陰唇往外翻開
       }
       if (doll.pubic === 'strip' || doll.pubic === 'triangle') {
         sh.cloth = 5;
@@ -1640,7 +1654,7 @@
             const j = ny * width + nx;
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
-          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
+          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 13 ? OPEN_RGB : cb === 14 ? HOLE_RGB : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
           let stampRgb = null;
           if (stamps.length && bust[i] === 1 && hit[i]) {
             const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
@@ -1807,7 +1821,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { PUBICS, LABIAS, PANTS, PUBIC_RGB, LABIA_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { PUBICS, LABIAS, PANTS, PUBIC_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };

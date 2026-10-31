@@ -50,3 +50,8 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
   - 手腳：`render()` 記每個像素是不是手腳（`limb`），手腳像素旁邊有比較遠（>EDGE_DEPTH 2.5）的身體 → 標 `EDGE_RGB` (240,240,240)，前端上成白色。
 - 頭髮遮擋：舊頭髮圖層用圓形 D 的身體算遮擋，換大胸／下垂時從縫裡露出的後髮會蓋在乳房上變黑洞。改用 `renderHairLayer()`：頭髮單獨畫一次＋H 罩杯 圓形／鐘型／下垂／托高各畫一次，四種都看得到的像素＝在身體前面（alpha 220，一律蓋上）；其餘＝可能被擋（alpha `HAIR_BACK_A` 214），前端 `over()` 只畫在身體以外。
 - 重畫：1× body＋hair（render.cjs，`ONLY=body|hair` 可只畫一種）、2× body／sup／hair（render_hd.cjs）。cloth／groin 不受影響。
+
+## 2026-10-31：私處「打開」
+- `LABIAS` 加 `line_open`／`butterfly_open`：細縫撐開成上尖下圓的杏仁形，外緣陰唇色 #FF0、紅色內裡 `OPEN_RGB` #F00、下三分之一深紅小口 `HOLE_RGB` #800000（前端 → (208,52,72)＋少量亮點、(122,14,30)）。蝴蝶唇打開另有兩片小陰唇往外翻。
+- 打開的零件是貼平皮膚的薄片（斜看不凸出）。groin sheets 只新增 *_open_*（1×／2× 各 64 張）。
+- 前端：陰唇選單加「一線（打開）」「蝴蝶唇（打開）」；小口顏色比對容許誤差（canvas 預乘 alpha 會讓 128 偏掉）。
