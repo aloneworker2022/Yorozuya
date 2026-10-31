@@ -4,7 +4,7 @@
 const D=require(__dirname+'/room_doll_full.js'),png=require(__dirname+'/png.cjs'),fs=require('fs');
 const BODY={balanced:{height_cm:161,build:'勻稱有致',hair:'中分長髮'},slim:{height_cm:166,build:'纖細苗條',hair:'短髮'},petite:{height_cm:150,build:'嬌小玲瓏',hair:'雙馬尾'},curvy:{height_cm:163,build:'微肉圓潤',hair:'大波浪長髮'}};
 const DIR={front:0,front_right:45,right:90,back_right:135,back:180,back_left:-135,left:-90,front_left:-45};
-const SH=['round','bell','pendulous'],CU='ABCDEFGH'.split(''),SHARD=+(process.env.SHARD||0),NSH=+(process.env.NSHARD||1);
+const SH=process.env.SHAPES?process.env.SHAPES.split(','):['round','bell','pendulous'],CU='ABCDEFGH'.split(''),SHARD=+(process.env.SHARD||0),NSH=+(process.env.NSHARD||1);
 fs.mkdirSync(__dirname+'/sheets/cloth',{recursive:true});let ji=0,n=0;
 for(const cl of D.CLOTHES.filter(c=>!process.env.CL||process.env.CL.split(',').includes(c)))for(const b in BODY)for(const s of SH)for(const c of CU)for(const d in DIR){if((ji++)%NSH!==SHARD)continue;
 const doll=D.lookToDoll({...BODY[b],cup:c+' 罩杯'});doll.shape=s;doll.areola='medium';doll.hair='none';doll.cloth=cl;

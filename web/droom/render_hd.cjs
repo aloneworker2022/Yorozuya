@@ -5,7 +5,7 @@ const D=require(__dirname+'/room_doll_full.js'),png=require(__dirname+'/png.cjs'
 const K=2,FW=64*K,FH=140*K,O=__dirname+'/sheets2x';
 const BODY={balanced:{height_cm:161,build:'勻稱有致',hair:'中分長髮'},slim:{height_cm:166,build:'纖細苗條',hair:'短髮'},petite:{height_cm:150,build:'嬌小玲瓏',hair:'雙馬尾'},curvy:{height_cm:163,build:'微肉圓潤',hair:'大波浪長髮'}};
 const DIR={front:0,front_right:45,right:90,back_right:135,back:180,back_left:-135,left:-90,front_left:-45};
-const AR=['small','medium','large','huge'],SH=['round','bell','pendulous'],CU='ABCDEFGH'.split(''),SUPCL=['bra','tee','napkin_bell','napkin_jade'];
+const AR=['small','medium','large','huge'],SH=process.env.SHAPES?process.env.SHAPES.split(','):['round','bell','pendulous'],CU='ABCDEFGH'.split(''),SUPCL=['bra','tee','napkin_bell','napkin_jade'];
 const ONLY=process.env.ONLY,SHARD=+(process.env.SHARD||0),NSH=+(process.env.NSHARD||1),FORCE=!!process.env.FORCE;
 const CLF=c=>!process.env.CL||process.env.CL.split(',').includes(c);
 for(const d of ['','/hair','/cloth','/groin','/sup','/sup/cloth'])fs.mkdirSync(O+d,{recursive:true});
