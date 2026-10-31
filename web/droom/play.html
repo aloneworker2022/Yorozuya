@@ -181,11 +181,36 @@ function drawSelf(moving){const th=-P.p;if(th<.45)return;
 // pt71u：低頭到底只伸出陰莖黑影（手畫 pixel PNG penis_sil.png，非程式繪形）
 // pt72u：軟的時候很小隻（另一張手畫 pixel PNG penis_sil_soft.png，同像素比例）；低頭可再低一點（PMIN 1.21→1.4）
 // pt74u：龜頭深紅、其他深咖啡；軟只凸出一點點，半→硬龜頭越露越多
-const SELF_HARD=new Image();SELF_HARD.src="/droom/penis_sil.png?v=2";const SELF_SOFT=new Image();SELF_SOFT.src="/droom/penis_sil_soft.png?v=3";const SELF_SEMI=new Image();SELF_SEMI.src="/droom/penis_sil_semi.png?v=2";
+// 2026-10-31：手畫陰莖 PNG（penis_sil*.png）不再使用，改程式畫第一人稱透視
 // pt73u：軟最小（頭不大）→ 中大一點 → 硬最大，三張手畫 pixel PNG 同比例
-function drawSelfRef(moving){const SELF_IM=pnSel.value=="soft"?SELF_SOFT:pnSel.value=="semi"?SELF_SEMI:SELF_HARD;if(!SELF_IM.complete||!SELF_IM.naturalWidth)return;const th=-P.p,T0=.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
- const s=SH*.4/18,H=Math.round(SELF_IM.naturalHeight*s),W=Math.round(SELF_IM.naturalWidth*s);SELF_B+=(moving?.14:0);const bob=moving&&k>=1?0:(moving?Math.sin(SELF_B)*1.5:0);
- g.imageSmoothingEnabled=false;g.drawImage(SELF_IM,(SW-W)/2|0,Math.round(SH-H+(1-k)*(H+2)+bob),W,H)}
+// 2026-10-31：低頭看自己改成第一人稱透視（使用者：要看到大腿和陰莖，原本只有正面的陰莖剪影、角度不對）。
+// 站著低頭：畫面最下緣是下腹，往上依序是大腿根→膝蓋→小腿→踩地的腳（越遠越小）；陰莖從兩腿根中間往畫面上方（往前）伸，勃起越長、龜頭越露。
+// 程式逐像素畫（不抗鋸齒）＋深色描邊＋邊緣陰影；低頭越多升得越高；走路時兩腳一前一後交替。
+const SELF_CV=document.createElement("canvas");SELF_CV.width=SW;SELF_CV.height=SH;const SELF_X=SELF_CV.getContext("2d"),SELF_D=SELF_X.createImageData(SW,SH),SELF_ID=new Uint8Array(SW*SH);
+const SELF_COL={1:[[200,154,122],[168,124,98]],2:[[210,164,132],[176,130,104]],3:[[214,168,136],[182,136,108]],4:[[92,54,40],[70,40,30]],5:[[78,44,32],[60,32,24]],6:[[134,20,30],[104,12,22]]},SELF_LINE=[56,36,32];
+function selfPoly(pts,id){let x0=SW,x1=0,y0=SH,y1=0;for(const[x,y]of pts){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}
+ for(let y=Math.max(0,y0|0);y<=Math.min(SH-1,y1);y++)for(let x=Math.max(0,x0|0);x<=Math.min(SW-1,x1);x++){let c=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){const[xi,yi]=pts[i],[xj,yj]=pts[j];if((yi>y+.5)!=(yj>y+.5)&&x+.5<(xj-xi)*(y+.5-yi)/(yj-yi)+xi)c=!c}if(c)SELF_ID[y*SW+x]=id}}
+function selfEll(cx,cy,rx,ry,id){for(let y=Math.max(0,cy-ry|0);y<=Math.min(SH-1,cy+ry);y++)for(let x=Math.max(0,cx-rx|0);x<=Math.min(SW-1,cx+rx);x++){const u=(x+.5-cx)/rx,v=(y+.5-cy)/ry;if(u*u+v*v<=1)SELF_ID[y*SW+x]=id}}
+function drawSelfRef(moving){const th=-P.p,T0=.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
+ SELF_B+=(moving?.14:0);const st=moving?Math.sin(SELF_B):0,cx=SW/2,pn=pnSel.value;SELF_ID.fill(0);
+ for(const s of[-1,1]){const f=st*s*13;   // 走路：這隻腳往前（畫面往上、變小）f>0
+  const ky=110-f*.55,ay=60-f,fy=40-f*1.1,sc=1-f*.012;
+  selfPoly([[cx+s*60*sc,ky+2],[cx+s*55*sc,ky-30],[cx+s*50*sc,ay],[cx+s*34*sc,ay],[cx+s*31*sc,ky-30],[cx+s*28*sc,ky+2]],1);   // 小腿
+  selfEll(cx+s*43*sc,fy+14,14*sc,17*sc,1);for(const[o,r]of[[-9,3.4],[-3,3.2],[3,3],[8,2.7],[12,2.4]])selfEll(cx+s*(43+o*.9)*sc,fy-1+Math.abs(o)*.25,r*sc,r*1.15*sc,1);   // 腳背＋五根腳趾（從上看）
+  selfPoly([[cx+s*128,242],[cx+s*114,200],[cx+s*92,160],[cx+s*66,ky+12],[cx+s*58*sc,ky-4],[cx+s*30*sc,ky-6],[cx+s*24,ky+20],[cx+s*18,170],[cx+s*10,212],[cx+s*4,242]],2)}   // 大腿（根部粗、往膝蓋收）
+ selfEll(cx,272,156,56,3);   // 下腹（畫面最下緣的弧）
+ selfEll(cx-9,214,15,13,4);selfEll(cx+9,214,15,13,4);   // 陰囊（左右兩顆，從陰莖根部兩側露出）
+ const L=pn=="erect"?92:pn=="semi"?58:30,tip=214-L,gw=pn=="erect"?13:pn=="semi"?11:8,lean=pn=="semi"?3:0;
+ selfPoly([[cx-12,214],[cx-9+lean,tip+6],[cx+9+lean,tip+6],[cx+12,214]],5);   // 陰莖（從上往下看：往前伸＝往畫面上方）
+ if(pn=="soft")selfEll(cx,tip+4,gw,gw*.9,5);   // 軟：包皮包著，龜頭只露一點
+ if(pn!="soft")selfEll(cx+lean,tip+5,gw*.95,3.5,5);   // 冠狀溝（龜頭下緣一圈比莖粗）
+ selfEll(cx+lean,tip+(pn=="soft"?2:0),gw*(pn=="soft"?.55:.95),gw*(pn=="soft"?.5:.78),6);   // 龜頭：從上看是寬扁的蘑菇頭
+ const d=SELF_D.data,ID=SELF_ID;d.fill(0);
+ for(let y=0;y<SH;y++)for(let x=0;x<SW;x++){const i=y*SW+x,id=ID[i];if(!id)continue;let line=false,shade=false;
+  for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=SW||yy>=SH)continue;const n=ID[yy*SW+xx];if(n<id&&!(id==3&&n==2&&yy>=SH-1))line=true}
+  if(!line)for(const[dx,dy]of[[3,0],[-3,0],[0,3],[0,-3]]){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=SW||yy>=SH)continue;if(ID[yy*SW+xx]!=id){shade=true;break}}
+  const c=line?SELF_LINE:SELF_COL[id][shade?1:0];d.set([c[0],c[1],c[2],255],i*4)}
+ SELF_X.putImageData(SELF_D,0,0);g.imageSmoothingEnabled=false;g.drawImage(SELF_CV,0,Math.round((1-k)*(SH-30)))}
 function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
   lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
