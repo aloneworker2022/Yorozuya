@@ -112,8 +112,8 @@ for(const b of document.querySelectorAll(".pad button")){const k=b.dataset.k,on=
  b.addEventListener("pointerdown",on);for(const ev of ["pointerup","pointercancel","lostpointercapture"])b.addEventListener(ev,off);b.addEventListener("contextmenu",e=>e.preventDefault())}
 // 手機：在畫面上左右拖曳轉頭
 // pt49u：往下少看約 5°（俯角上限 ~74°→~69°），抬頭維持 1.3
-// 2026-10-31：低頭可以到幾乎垂直（PMIN 1.4→1.52，約 87°）
-const PMAX=1.3,PMIN=1.52,clampP=()=>P.p=Math.max(-PMIN,Math.min(PMAX,P.p));
+// 2026-10-31：低頭可以到垂直 90°（PMIN＝π/2）
+const PMAX=1.3,PMIN=Math.PI/2,clampP=()=>P.p=Math.max(-PMIN,Math.min(PMAX,P.p));
 let tX=null,tY=0;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"){tX=e.clientX;tY=e.clientY;cv.setPointerCapture(e.pointerId)}});
 cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;P.p-=(e.clientY-tY)*.006;clampP();tX=e.clientX;tY=e.clientY}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
 cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv){P.a+=e.movementX*.003;P.p-=e.movementY*.003;clampP()}};
@@ -231,8 +231,8 @@ function selfCyl(xc,yb,yt,hb,ht,id,rr){for(let y=Math.max(0,Math.floor(yt));y<=M
 function selfToe(xc,yc,r){for(let y=Math.floor(yc-r*1.2);y<=Math.ceil(yc+r*1.2);y++)for(let x=Math.floor(xc-r);x<=Math.ceil(xc+r);x++){if(x<0||y<0||x>=SW||y>=SH)continue;const u=(x+.5-xc)/r,v=(y+.5-yc)/(r*1.2);if(u*u+v*v>1)continue;const i=y*SW+x;SELF_ID[i]=1;SELF_U[i]=u*.9+v*.3}}
 const SKIN_RAMP={1:[[150,108,84],[176,130,102],[198,152,120],[216,172,140]],2:[[164,120,94],[188,142,112],[210,164,132],[226,184,152]]};
 function skinShade(id,u){const lam=Math.sqrt(Math.max(0,1-u*u)),f=Math.max(0,Math.min(.999,lam*.9-u*.25+.05));return SKIN_RAMP[id][f*4|0]}
-// 2026-10-31：使用者：頭要低到幾乎垂直才開始看到陰莖 → 俯角 1.2（約 69°）以前完全看不到，1.2→PMIN 才從畫面底升上來
-function drawSelfRef(moving){const th=-P.p,T0=1.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
+// 2026-10-31：使用者：要低到 90° 才出現（不然跟其他建模對不上）→ 俯角 1.5（約 86°）以前完全看不到，最後約 4° 才從畫面底升上來、90° 到位
+function drawSelfRef(moving){const th=-P.p,T0=1.5,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
  SELF_B+=(moving?.14:0);const st=moving?Math.sin(SELF_B):0,cx=SW/2,pn=pnSel.value;SELF_ID.fill(0);
  // 2026-10-31：腳改成幾乎垂直往下看的樣子（使用者：只看到一點點大腿＋腳掌，不是往上伸；像圓筒、類似疲軟的陰莖）
  // 腿往下直直離開眼睛 → 大腿只剩畫面下方一小截圓頭圓筒（大部分被下腹擋住），膝蓋、小腿看不到；腳掌從大腿圓頭前面探出來（腳背＋五根腳趾）。
