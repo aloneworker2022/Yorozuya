@@ -57,8 +57,8 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 前端：陰唇選單加「一線（打開）」「蝴蝶唇（打開）」；小口顏色比對容許誤差（canvas 預乘 alpha 會讓 128 偏掉）。
 
 ## 2026-10-31：坐地 M 字腿／V 字腿＋腿型（照參考圖）＋陰毛重做
-- 姿勢 `sit_m`（屁股坐地、膝蓋立起往兩邊倒、腳板踩地）／`sit_v`（兩腿伸直往兩邊張 33°、腳尖朝上）：靜態一格、上身微往後靠、兩手撐身後地上、canvas `floor`（128×140）、地板以下切掉；屁股（V 字還有大腿外側）被地板壓扁往外擠。
-- sheet：`render_sit.cjs`（POSE=sit_m|sit_v、HD=1 出 2×）→ `sheets[2x]/<pose>/<body>_<shape>_<cup>_<areola>.png`、`<pose>/hair/…`、`<pose>/groin/…`；一張＝8 方向橫排（front, front_right, right, back_right, back, back_left, left, front_left）。坐姿不畫衣服。
+- 姿勢 `sit_m`（屁股坐地、膝蓋立起往兩邊倒、腳板踩地）／`sit_v`（兩腿伸直往兩邊張 33°、腳尖朝上）：靜態一格、上身微往後靠、兩手撐身後地上、canvas `floor`（150×84）、地板以下切掉；屁股（V 字還有大腿外側）被地板壓扁往外擠。
+- sheet：`render_sit.cjs`（POSE=sit_m|sit_v、HD=1 出 2×）→ `sheets[2x]/<pose>/<body>_<shape>_<cup>_<areola>.png`、`<pose>/hair/…`、`<pose>/groin/…`；每格 150×84（2× 300×168），一張＝8 方向橫排（front, front_right, right, back_right, back, back_left, left, front_left）。坐姿不畫衣服。
 - index.html 加「姿勢」選單（走路／坐地 M 字腿／坐地 V 字腿）。
 - 腿型（照使用者參考圖 Bad／Good）：大腿根部往外鼓（雙三角輪廓）、膝蓋微靠攏（kx 3.2→2.75）、膝蓋內側鼓包低／外側高。
 - 鼠蹊線 `inguinal()`：從髖骨往內往下收到胯下、再沿大腿內側往下一小段；CREASE_RGB 細、淡（前端 226,178,152）。走路正面（無裙）＋坐姿都畫。

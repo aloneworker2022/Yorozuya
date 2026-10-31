@@ -1,9 +1,9 @@
 // 2026-10-31：坐地張腿姿勢 sheet（M 字 sit_m／V 字 sit_v），靜態一格。一張 sheet＝8 個方向橫排（front, front_right, right, back_right, back, back_left, left, front_left）。
-// 每格 128×140（1×）／256×280（HD=1，2×）；canvas 'floor'。輸出：
+// 每格 150×84（1×）／300×168（HD=1，2×）；canvas 'floor'。輸出：
 //   sheets[2x]/<pose>/<body>_<shape>_<cup>_<areola>.png、<pose>/hair/<body>_<back|front>_<style>.png、<pose>/groin/<body>_<pubic|labia|pants>_<style>.png
 // 坐姿不畫衣服（cloth／sup）。平行：SHARD=i NSHARD=n；POSE=sit_m|sit_v；ONLY=body,hair,groin；FORCE=1 重畫已存在的檔
 const D=require(__dirname+'/room_doll_full.js'),png=require(__dirname+'/png.cjs'),fs=require('fs');
-const POSE=process.env.POSE||'sit_m',HD=!!process.env.HD,K=HD?2:1,FW=128*K,FH=140*K,O=__dirname+(HD?'/sheets2x/':'/sheets/')+POSE;
+const POSE=process.env.POSE||'sit_m',HD=!!process.env.HD,K=HD?2:1,FW=150*K,FH=84*K,O=__dirname+(HD?'/sheets2x/':'/sheets/')+POSE;
 const BODY={balanced:{height_cm:161,build:'勻稱有致',hair:'中分長髮'},slim:{height_cm:166,build:'纖細苗條',hair:'短髮'},petite:{height_cm:150,build:'嬌小玲瓏',hair:'雙馬尾'},curvy:{height_cm:163,build:'微肉圓潤',hair:'大波浪長髮'}};
 const DIRS=[0,45,90,135,180,-135,-90,-45];
 const AR=['small','medium','large','huge'],SH=['round','bell','pendulous'],CU='ABCDEFGH'.split('');

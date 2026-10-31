@@ -20,7 +20,7 @@ const HD=new URLSearchParams(location.search).has("hd"),SD=HD?"/droom/sheets2x/"
 const BO={balanced:"勻稱",slim:"纖細",petite:"嬌小",curvy:"豐腴"},AR={small:"小乳暈",medium:"中乳暈",large:"大乳暈",huge:"巨大乳暈"},SH={round:"圓形",bell:"鐘型",pendulous:"下垂"},CU=Object.fromEntries("ABCDEFGH".split("").map(x=>[x,x+" 罩杯"]));
 const DI={front_left:"左前",front:"前",front_right:"右前",left:"左",_:"",right:"右",back_left:"左後",back:"後",back_right:"右後"};
 let st={b:"balanced",a:"medium",s:"round",c:"D",d:"front"},i=0,play=true,fps=14,t;
-// 2026-10-31：姿勢——走路（8 格動畫×8 方向分檔）／坐地 M 字腿、V 字腿（靜態；一張 sheet＝8 方向橫排、每格 128×140，2× 256×280；坐姿不含衣服）
+// 2026-10-31：姿勢——走路（8 格動畫×8 方向分檔）／坐地 M 字腿、V 字腿（靜態；一張 sheet＝8 方向橫排、每格 150×84，2× 300×168；坐姿不含衣服）
 let pose="walk";const PON={walk:"走路",sit_m:"坐地 M 字腿",sit_v:"坐地 V 字腿"},SIT_ORD=["front","front_right","right","back_right","back","back_left","left","front_left"];
 for(const[v,n]of Object.entries(PON))PO.add(new Option(n,v));PO.onchange=()=>{pose=PO.value;draw()};
 const key=(o=st)=>[o.b,o.s,o.c,o.a,o.d].join("_");
@@ -47,6 +47,7 @@ function over(x,im,fs){const w=x.canvas.width,h=x.canvas.height,t=document.creat
 async function composeSit(k){const p=k.split("_"),b=p[0],PD=`${SD}${pose}/`,isB=f=>f>=3&&f<=5,nb=f=>!isB(f);
  const [base,bk,fr]=await Promise.all([img(`${PD}${b}_${p[1]}_${p[2]}_${p[3]}.png`),img(`${PD}hair/${b}_back_${col.bh}.png`),img(`${PD}hair/${b}_front_${col.fh}.png`)]);
  const gl=await Promise.all([col.lb&&img(`${PD}groin/${b}_labia_${col.lb}.png`),col.pu!="none"&&img(`${PD}groin/${b}_pubic_${col.pu}.png`),col.pa!="none"&&img(`${PD}groin/${b}_pants_${col.pa}.png`)].map(x=>x||null));
+ if(!base)return null;   // 這個組合的坐姿 sheet 還沒有
  const c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d");x.drawImage(base,0,0);
  if(bk)over(x,bk,nb);if(fr)over(x,fr,nb);if(fr)over(x,fr,isB);if(bk)over(x,bk,isB);c._cl=null;c._br=null;c._gl=gl;return c}
 async function compose(k){if(pose!="walk")return composeSit(k);const p=k.split("_"),b=p[0],d=p.slice(4).join("_");
@@ -88,10 +89,10 @@ function tint(c,HP,NP){const x=c.getContext("2d");
  groinOver(d,hm,(c._gl||[]).map(im=>clothData(im,c.width,c.height)),HP,col.lc,c.width);
  if(c._br||c._cl)clothOver(d,hm,clothData(c._br,c.width,c.height),col.cl=="bra"?CSK(col.cl,col.cs):"bra_"+col.ub,col.cw);clothOver(d,hm,clothData(c._cl,c.width,c.height),CSK(col.cl,col.cs),col.cw);outline(d,c.width,c.height,c.width/8);x.putImageData(D,0,0);return c.toDataURL()}
 const TC={};function turl(k){if(pose!="walk")k=k.split("_").slice(0,4).join("_")+"_front";const ck=[pose,k,col.h,col.n,col.bh,col.fh,col.cl,col.cs,col.cw,col.ub,col.pu,col.lb,col.pa,col.lc].join("|");if(TC[ck])return TC[ck]==1?null:TC[ck];TC[ck]=1;
- compose(k).then(c=>{try{TC[ck]=tint(c,HAIR_PAL[col.h],NIP_PAL[col.n])}catch(e){TC[ck]=`${SD}${k}.png`}draw()});return null}
+ compose(k).then(c=>{if(!c){delete TC[ck];msg.textContent="這個組合的坐姿還沒算好";return}try{TC[ck]=tint(c,HAIR_PAL[col.h],NIP_PAL[col.n])}catch(e){TC[ck]=`${SD}${k}.png`}draw()});return null}
 for(const[el,o,k]of [[BH,BHN,"bh"],[FH,FHN,"fh"],[H,HN,"h"],[N,NN,"n"],[CL,CLN,"cl"],[CS,CSN,"cs"],[CW,CWN,"cw"],[UB,UBN,"ub"],[PU,PUN,"pu"],[LB,LBN,"lb"],[PA,PAN,"pa"],[LC,LCN,"lc"]]){for(const[v,n]of Object.entries(o))el.add(new Option(n,v));el.onchange=()=>{col[k]=el.value;draw()}}
-function draw(){const k=key();{const u=turl(k);if(u)v.style.backgroundImage=`url(${u})`}const sit=pose!="walk";Object.assign(v.style,sit?{width:"256px",height:"280px",backgroundSize:"2048px 280px",backgroundPosition:`${-256*SIT_ORD.indexOf(st.d)}px 0`}:{width:"",height:"",backgroundSize:"",backgroundPosition:`${-256*i}px 0`});
- for(const w of ring.querySelectorAll("[data-d]")){const kk=key({...st,d:w.dataset.d}),s=w.firstChild;if(HAVE.has(kk)){const u=turl(kk);if(u)s.style.backgroundImage=`url(${u})`}else s.style.backgroundImage="none";Object.assign(s.style,sit?{height:"70px",backgroundSize:"512px 70px",backgroundPosition:`${-64*SIT_ORD.indexOf(w.dataset.d)}px 0`}:{height:"",backgroundSize:"",backgroundPosition:`${-64*i}px 0`});w.style.outline=w.dataset.d==st.d?"2px solid #a08ad0":""}
+function draw(){const k=key();{const u=turl(k);if(u)v.style.backgroundImage=`url(${u})`}const sit=pose!="walk";Object.assign(v.style,sit?{width:"375px",height:"210px",backgroundSize:"3000px 210px",backgroundPosition:`${-375*SIT_ORD.indexOf(st.d)}px 0`}:{width:"",height:"",backgroundSize:"",backgroundPosition:`${-256*i}px 0`});
+ for(const w of ring.querySelectorAll("[data-d]")){const kk=key({...st,d:w.dataset.d}),s=w.firstChild;if(HAVE.has(kk)){const u=turl(kk);if(u)s.style.backgroundImage=`url(${u})`}else s.style.backgroundImage="none";Object.assign(s.style,sit?{height:"36px",backgroundSize:"512px 36px",backgroundPosition:`${-64*SIT_ORD.indexOf(w.dataset.d)}px 0`}:{height:"",backgroundSize:"",backgroundPosition:`${-64*i}px 0`});w.style.outline=w.dataset.d==st.d?"2px solid #a08ad0":""}
  {const sig=JSON.stringify([st,col]);if(sig!==window.__uiSig){window.__uiSig=sig;   // pt87u：播放每格重寫 select 會把拉開的選單關掉→只在狀態改變時同步
  for(const[el,o,kk]of groups){el.value=st[kk];for(const b of el.options)b.textContent=o[b.value]+(HAVE.has(key({...st,[kk]:b.value}))?"":"（未算）")}
  for(const[el,kk]of [[BH,"bh"],[FH,"fh"],[H,"h"],[N,"n"],[CL,"cl"],[CS,"cs"],[CW,"cw"],[UB,"ub"],[PU,"pu"],[LB,"lb"],[PA,"pa"],[LC,"lc"]])el.value=col[kk];

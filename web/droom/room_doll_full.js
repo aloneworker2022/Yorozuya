@@ -942,7 +942,7 @@
       peek: { w: 260, h: 166, ax: 120, ay: 152, side: true, scale: 1.28 },
       tall: { w: W, h: 166, ax: ANCHOR.x, ay: 152, tMax: 40, tMin: -45 },
       wide: { w: 128, h: 100, ax: 64, ay: 70, tMax: 95, tMin: -95 },
-      floor: { w: 128, h: 140, ax: 64, ay: 126, tMax: 95, tMin: -95 },   // 2026-10-31：坐地張腿（腿往兩邊張，要寬一點）
+      floor: { w: 150, h: 84, ax: 75, ay: 78, tMax: 95, tMin: -95 },   // 2026-10-31：坐地張腿（腿往兩邊張要寬；坐著矮，上面不留空）
     };
     /** frames：小循環格數；fps：循環速度（每秒幾格）；canvas：見上。 */
     const POSES = {
