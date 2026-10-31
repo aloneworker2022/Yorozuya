@@ -41,4 +41,5 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 ## 2026-10-31：乳暈改畫在曲面＋下垂巨乳外擴
 - 乳暈不再用圓盤／斜切殼 SDF（會被乳房曲面搶深度吃掉）；改成 `areolaStamps` 在乳房像素上依世界座標距離塗 AREOLA／NIP 標記色，乳頭另沿指向往外凸小球。
 - 下垂型（pendulous）維持朝下約 40°；巨乳外擴：根部靠近胸骨、下緣隨罩杯往左右拉開（兩顆果子同根）。
+- 2026-10-31：罩杯半徑重排 A≈只剩乳暈（1.0）、B 1.85、C 2.85、D 4.15…G 6.2、H 6.75；走路時 D 以上手臂前擺打到乳房 → 整胸左右晃（越大越明顯）。
 - 標記色不變（前端照舊上色）；重渲 body sheets（含 sheets2x）才看得到。

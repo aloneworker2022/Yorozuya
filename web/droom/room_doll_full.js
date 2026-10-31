@@ -14,8 +14,8 @@
     const AREOLA_RGB = [150, 100, 128], NIP_RGB = [205, 150, 175], AREOLA_R = { small: 1.15, medium: 1.75, large: 2.5, huge: 3.6 };
     const BODY_A = 204, HAIR_A = 220;
     const GIRTH = 1.1;
-    const CUP_R = { A: 2.3, B: 3.1, C: 3.8, D: 4.5, E: 5.15, F: 5.7, G: 6.1, H: 6.55, I: 7.0 };
-    const CUP_BOUNCE = { A: .12, B: .35, C: .55, D: .8, E: 1.05, F: 1.25, G: 1.42, H: 1.58, I: 1.75 };
+    const CUP_R = { A: 1.0, B: 1.85, C: 2.85, D: 4.15, E: 5.0, F: 5.7, G: 6.2, H: 6.75, I: 7.2 };  // 2026-10-31：A≈只剩乳暈、B/C 收小；D～H 階梯拉開
+    const CUP_BOUNCE = { A: .04, B: .18, C: .4, D: .8, E: 1.05, F: 1.25, G: 1.42, H: 1.58, I: 1.75 };
     const BASE = { frame: 1, sh: 1, chest: 1, waist: 1, hip: 1, butt: 1, thigh: 1, calf: 1, arm: 1, bust: 1,
       belly: 0, perk: 0, soft: 0, muscle: 0, bone: 0, leg: 0, head: 1, neck: 0 };
     const BUILDS = {
@@ -1032,6 +1032,14 @@
         const n = WALK_FRAMES, phase = 2 * Math.PI * (((frame % n) + n) % n) / n;
         const g = gait(P, phase), hipz = g.hipz;
         const bnc = bounceAt(P, doll, phase, opts.bounceScale ?? 1);
+        {   // 2026-10-31：大奶走路時手臂前擺會打到乳房 → 整胸左右晃（越大越明顯）
+          const cb = CUP_BOUNCE[doll.cup] ?? .35;
+          if (cb > .55) {
+            const hit = Math.max(0, cb - .5) * 2.2 * (opts.bounceScale ?? 1);
+            // cos(phase)>0：右手前擺；<0：左手前擺 → 往被打的那一側推
+            bnc[0] += hit * Math.cos(phase);
+          }
+        }
         const tor = torso(sh, P, doll, 0, hipz - P.hipz, .02, bnc);
         const sway = 1.2 * Math.cos(phase);
         skirt(sh, P, doll, tor, sway * .5);
