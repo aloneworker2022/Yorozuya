@@ -50,3 +50,17 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
   - 手腳：`render()` 記每個像素是不是手腳（`limb`），手腳像素旁邊有比較遠（>EDGE_DEPTH 2.5）的身體 → 標 `EDGE_RGB` (240,240,240)，前端上成白色。
 - 頭髮遮擋：舊頭髮圖層用圓形 D 的身體算遮擋，換大胸／下垂時從縫裡露出的後髮會蓋在乳房上變黑洞。改用 `renderHairLayer()`：頭髮單獨畫一次＋H 罩杯 圓形／鐘型／下垂／托高各畫一次，四種都看得到的像素＝在身體前面（alpha 220，一律蓋上）；其餘＝可能被擋（alpha `HAIR_BACK_A` 214），前端 `over()` 只畫在身體以外。
 - 重畫：1× body＋hair（render.cjs，`ONLY=body|hair` 可只畫一種）、2× body／sup／hair（render_hd.cjs）。cloth／groin 不受影響。
+
+## 2026-10-31：私處「打開」
+- `LABIAS` 加 `line_open`／`butterfly_open`：細縫撐開成上尖下圓的杏仁形，外緣陰唇色 #FF0、紅色內裡 `OPEN_RGB` #F00、下三分之一深紅小口 `HOLE_RGB` #800000（前端 → (208,52,72)＋少量亮點、(122,14,30)）。蝴蝶唇打開另有兩片小陰唇往外翻。
+- 打開＝真的在身體上挖一個往內凹的洞（`sh.carve` 零件，render 時 身體 − 洞）：洞壁標紅色內裡，比原表面深 0.7 以上標深紅小口；外緣陰唇色是貼平皮膚的薄片。側面看只是平的皮膚，不會凸出。groin sheets 只新增 *_open_*（1×／2× 各 64 張）。
+- 前端：陰唇選單加「一線（打開）」「蝴蝶唇（打開）」；小口顏色比對容許誤差（canvas 預乘 alpha 會讓 128 偏掉）。
+
+## 2026-10-31：坐地 M 字腿／V 字腿＋腿型（照參考圖）＋陰毛重做
+- 姿勢 `sit_m`（屁股坐地、膝蓋立起往兩邊倒、腳板踩地）／`sit_v`（兩腿伸直往兩邊張 33°、腳尖朝上）：靜態一格、上身微往後靠、兩手撐身後地上、canvas `floor`（150×84）、地板以下切掉；屁股（V 字還有大腿外側）被地板壓扁往外擠。
+- sheet：`render_sit.cjs`（POSE=sit_m|sit_v、HD=1 出 2×）→ `sheets[2x]/<pose>/<body>_<shape>_<cup>_<areola>.png`、`<pose>/hair/…`、`<pose>/groin/…`；每格 150×84（2× 300×168），一張＝8 方向橫排（front, front_right, right, back_right, back, back_left, left, front_left）。坐姿不畫衣服。
+- index.html 加「姿勢」選單（走路／坐地 M 字腿／坐地 V 字腿）。
+- 腿型（照使用者參考圖 Bad／Good）：大腿根部往外鼓（雙三角輪廓）、膝蓋微靠攏（kx 3.2→2.75）、膝蓋內側鼓包低／外側高。
+- 鼠蹊線 `inguinal()`：從髖骨往內往下收到胯下、再沿大腿內側往下一小段；CREASE_RGB 細、淡（前端 226,178,152）。走路正面（無裙）＋坐姿都畫。
+- 陰毛重做：貼平皮膚的薄片；中間 PUBIC_RGB（前端：幾乎全是毛＋亮色毛紋、零星透皮膚）、外緣 PUBIC_EDGE_RGB #C0C（半透參差）。三角形＝倒三角、上緣兩肩圓弧；一條線＝窄長條、下端收尖。
+- play.html（房間 Doom 模式）：預設改用 2× sheet（`?sd=1` 才用 1×）；介面加「姿勢」選單（走路／坐地 M 字腿／坐地 V 字腿），選坐姿時妹子停在原地坐下，依玩家看她的角度選 8 方向之一；坐姿 sheet 用同一個每像素比例、地面列對齊走路 sheet。

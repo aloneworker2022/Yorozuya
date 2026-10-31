@@ -16,6 +16,7 @@
     // 2026-10-31：白邊 1px——手腳擋在身體（或另一隻腳）前面的邊緣標 EDGE_RGB，前端上成白色。
     // HAIR_BACK_A：頭髮圖層裡「可能被身體擋住」的像素（前端只畫在身體以外），一般頭髮仍是 HAIR_A。
     const EDGE_RGB = [240, 240, 240], EDGE_DEPTH = 2.5, HAIR_BACK_A = 214;
+    const CREASE_RGB = [90, 60, 60];   // 2026-10-31：鼠蹊部摺線（比一般線條深），前端上成深膚色
     const GIRTH = 1.1;
     const CUP_R = { A: 1.0, B: 1.85, C: 2.85, D: 4.15, E: 5.0, F: 5.7, G: 6.2, H: 6.75, I: 7.2 };  // 2026-10-31：A≈只剩乳暈、B/C 收小；D～H 階梯拉開
     const CUP_BOUNCE = { A: .04, B: .18, C: .4, D: .8, E: 1.05, F: 1.25, G: 1.42, H: 1.58, I: 1.75 };
@@ -102,7 +103,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; prims.push(p); };
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; prims.push(p); };
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -223,10 +224,20 @@
       const mid = [hx + (kx - hx) * .4, hy + (ky - hy) * .4, hz + (kz - hz) * .4];
       sh.cone(BODY, hip, mid, 4.7 * wT, 4.15 * wT);
       sh.cone(BODY, mid, knee, 4.15 * wT, knee_r);
+      {   // 2026-10-31：大腿根部往外鼓（參考圖 Good：從腿根鼓出來、往膝蓋收＝雙三角輪廓）
+        const at = u => [hx + (kx - hx) * u, hy + (ky - hy) * u, hz + (kz - hz) * u];
+        const a = at(.08), m2 = at(.42);
+        sh.cone(BODY, [a[0] + side * 1.25 * wT, a[1], a[2]], [m2[0] + side * .55 * wT, m2[1], m2[2]], 4.45 * wT, 3.7 * wT);
+      }
       if (b.muscle) sh.ell(BODY, [hx + (kx - hx) * .62 + side * .9, hy + (ky - hy) * .62 + 1.0, hz + (kz - hz) * .62], [2.9 * wT, 3.0 * wT, 5.5]);
       const peak = b.muscle < .8 ? .26 : .22;
       const cpos = [kx + (ax - kx) * peak + side * .25, ky + (ay - ky) * peak - .7 - .5 * b.muscle, kz + (az - kz) * peak];
       const calf_r = 3.05 * wC * (1 + .08 * b.muscle);
+      {   // 2026-10-31：膝蓋兩側鼓包高低不同（參考圖 Good 3）——內側（往中線）低、外側高
+        const dl = Math.hypot(ax - kx, ay - ky, az - kz) || 1, d = [(ax - kx) / dl, (ay - ky) / dl, (az - kz) / dl];
+        sh.ell(BODY, [kx - side * 1.35 * fr ** .3 + d[0] * 1.1, ky + d[1] * 1.1 + .2, kz + d[2] * 1.1], [1.55, 1.6, 1.7]);
+        sh.ell(BODY, [kx + side * 1.4 * fr ** .3 - d[0] * .5, ky - d[1] * .5, kz - d[2] * .5], [1.35, 1.5, 1.6]);
+      }
       sh.cone(BODY, knee, cpos, knee_r * .95, calf_r);
       sh.cone(BODY, cpos, ankle, calf_r, 1.55 * Math.min(wC, 1.1) * fr ** .5);
       const [tx, ty, tz] = toe, fl = 6.4 * fr ** .7;   // pt34u 腳掌加大
@@ -636,23 +647,42 @@
 
     // 2026-10-30 pt31u：下身第一批——陰毛（strip 一條線／triangle 三角形／none）、陰唇（line 一線／butterfly 蝴蝶唇）、褲子 lace_thong 蕾絲丁字褲。
     // 跟布一樣是「部位標記色」圖層：陰毛 PUBIC_RGB（前端換成髮色）、陰唇 LABIA_RGB、蕾絲 LACE_RGB／LACE_LO_RGB、褲頭 BAND_RGB。
-    const PUBICS = ['strip', 'triangle'], LABIAS = ['line', 'butterfly'], PANTS = ['lace_thong'];
-    const PUBIC_RGB = [255, 0, 255], LABIA_RGB = [255, 255, 0], LACE_RGB = [0, 255, 255], LACE_LO_RGB = [0, 170, 170], BAND_RGB = [255, 128, 0];
+    const PUBICS = ['strip', 'triangle'], LABIAS = ['line', 'butterfly', 'line_open', 'butterfly_open'], PANTS = ['lace_thong'];   // 2026-10-31：*_open＝打開（露出紅色內裡＋深紅小口）
+    const PUBIC_RGB = [255, 0, 255], LABIA_RGB = [255, 255, 0], LACE_RGB = [0, 255, 255], LACE_LO_RGB = [0, 170, 170], BAND_RGB = [255, 128, 0], OPEN_RGB = [255, 0, 0], HOLE_RGB = [128, 0, 0], PUBIC_EDGE_RGB = [192, 0, 192];   // 打開：內裡 #F00、小口 #800000
     function groin(sh, P, doll, tor) {
       const C = tor.C, surf = (x, z, back = false) => { for (let k = 0; k < 300; k++) { const y = back ? -20 + k * .1 : 20 - k * .1; if (bodyDist(sh, x, y, z) < 0) return y; } return null; };
       const patch = (x, z, r, d = .25) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .35, r]); };
       const gap = 1.2;   // 兩腿之間的胯下最低點（約 C）
-      if (doll.labia === 'line' || doll.labia === 'butterfly') {
+      const lab = String(doll.labia || ''), lOpen = lab.endsWith('_open'), lStyle = lab.replace('_open', '');
+      if (!lOpen && (lStyle === 'line' || lStyle === 'butterfly')) {
         sh.cloth = 6;
         for (let z = C + 2.8; z >= C - .4; z -= .4) patch(0, z, .38, .35);
-        if (doll.labia === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.6; z >= C - .2; z -= .45) patch(sx * .55, z, .55, .45);
+        if (lStyle === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.6; z >= C - .2; z -= .45) patch(sx * .55, z, .55, .45);
+      }
+      if (lOpen && (lStyle === 'line' || lStyle === 'butterfly')) {
+        const flat = (x, z, r, d) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .2, r]); };   // 貼平皮膚（薄片），斜看不會凸出來
+        // 2026-10-31：打開——細縫往兩邊撐開成細長橢圓：外緣陰唇色、裡面紅色內裡、下三分之一一個深紅小口
+        const zt = C + 3.4, zb = C + .1, W = lStyle === 'butterfly' ? .95 : .8, hwAt = z => { const u = Math.min(1, Math.max(0, (zt - z) / (zt - zb))); return W * Math.sin(Math.PI * u ** 1.25) ** .7; };   // 上尖下圓的杏仁形，最寬在偏下
+        {   // 真的挖一個往內凹的洞：從正面看是開口，側面只是平的皮膚
+          const zc = (zt + zb) / 2 - .2, ys = surf(0, zc);
+          if (ys !== null) { sh.carve = 1; sh.ell(BODY, [0, ys - .35, zc], [W * .95, 1.6, (zt - zb) / 2]); sh.carve = 0; }
+        }
+        sh.cloth = 6;
+        for (let z = zt; z >= zb - 1e-6; z -= .3) { const hw = hwAt(z); for (const sx of [-1, 1]) flat(sx * (hw + .12), z, .3, .16); }
+        if (lStyle === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.7; z >= C - .1; z -= .4) { const hw = hwAt(z); flat(sx * (hw + .55), z, .5, .16); }   // 小陰唇往外翻開
       }
       if (doll.pubic === 'strip' || doll.pubic === 'triangle') {
-        sh.cloth = 5;
-        const z0 = C + 3.0, z1 = C + 7.5;
-        for (let z = z0; z <= z1; z += .55) {
-          const hw = doll.pubic === 'strip' ? .75 : .5 + (z - z0) * .78;
-          for (let x = -hw; x <= hw + 1e-6; x += .6) patch(x, z, .5, .3);
+        // 2026-10-31：陰毛重做——貼平皮膚的薄片（不凸出）；中間 PUBIC_RGB（密、前端畫一根根毛紋、透一點皮膚）、外緣 PUBIC_EDGE_RGB（稀疏、往外淡掉）
+        // 三角形：倒三角、上緣兩肩圓弧；一條線：窄長條、下端收尖
+        const tri = doll.pubic === 'triangle', z0 = C + (tri ? 2.7 : 3.0), z1 = C + (tri ? 7.0 : 7.2);
+        const hwAt = z => { let hw = tri ? .55 + (z - z0) * .74 : .72 * Math.min(1, .45 + (z - z0) / 2); if (tri && z > z1 - 1.6) hw *= Math.sqrt(Math.max(0, 1 - ((z - (z1 - 1.6)) / 1.7) ** 2)); return hw; };
+        const flat = (x, z, r) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + .1, z], [r, .2, r]); };
+        for (let z = z0; z <= z1 + 1e-6; z += .3) {
+          const hw = hwAt(z), ew = tri ? .8 : .35;
+          for (let x = -hw; x <= hw + 1e-6; x += .3) {
+            const edge = Math.abs(x) > hw - ew || z > z1 - .7 || z < z0 + .45;
+            sh.cloth = edge ? 11 : 5; flat(x, z, .3);
+          }
         }
       }
       if (doll.pants === 'lace_thong') {
@@ -686,6 +716,20 @@
       }
       if (b.bone) for (const s of [-1, 1]) marks(sh, [[xoff + s * 1.6, S - 1.6], [xoff + s * 4.0, S - 1.2], [xoff + s * 6.4, S - 1.0]], .3);
       if (b.belly || b.muscle >= .5) marks(sh, [[xoff, zW - 3.2], [xoff, zW - 3.7]], .35, .6);
+    }
+    /** 2026-10-31：鼠蹊線（照使用者參考圖）——從骨盆前面的髖骨（腰側往下）往內往下收到胯下兩側，兩條合成比基尼褲邊那種 V。
+     * 二次貝茲、略往內凹；CREASE_RGB 專用深膚色。 */
+    function inguinal(sh, P, tor) {
+      const b = P.b, C = tor.C, z0 = C + (tor.zW - C) * .72, x0 = 6.9 * F(b, 'hip');
+      sh.crease = 1;
+      for (const s of [-1, 1]) {
+        // 參考圖 Good：線從髖骨往內往下，到胯下旁邊轉成往下，沿大腿內側再延伸一小段（不在胯下斷掉）
+        const p0 = [s * x0, z0], p1 = [s * x0 * .42, C + (z0 - C) * .3], p2 = [s * 1.9, C - .6];
+        const pts = Array.from({ length: 11 }, (_, i) => { const u = i / 10, a = (1 - u) ** 2, m = 2 * u * (1 - u), c = u * u; return [a * p0[0] + m * p1[0] + c * p2[0], a * p0[1] + m * p1[1] + c * p2[1]]; });
+        pts.push([s * 2.0, C - 1.8], [s * 2.1, C - 3.0]);
+        marks(sh, pts, .24, .3);   // 細一點、微微的
+      }
+      sh.crease = 0;
     }
     function skirt(sh, P, doll, tor, sway = 0) {
       if (!doll.skirt) return;
@@ -898,6 +942,7 @@
       peek: { w: 260, h: 166, ax: 120, ay: 152, side: true, scale: 1.28 },
       tall: { w: W, h: 166, ax: ANCHOR.x, ay: 152, tMax: 40, tMin: -45 },
       wide: { w: 128, h: 100, ax: 64, ay: 70, tMax: 95, tMin: -95 },
+      floor: { w: 150, h: 84, ax: 75, ay: 78, tMax: 95, tMin: -95 },   // 2026-10-31：坐地張腿（腿往兩邊張要寬；坐著矮，上面不留空）
     };
     /** frames：小循環格數；fps：循環速度（每秒幾格）；canvas：見上。 */
     const POSES = {
@@ -907,6 +952,7 @@
       stare: { frames: 2, fps: .9 }, twirl: { frames: 3, fps: 2.4 },
       lie_phone: { frames: 2, fps: .5, canvas: 'wide' }, prone_kick: { frames: 4, fps: 3, canvas: 'wide' },
       sleep_curl: { frames: 2, fps: .35, canvas: 'wide' }, sit_curl: { frames: 2, fps: .45 },
+      sit_m: { frames: 1, fps: 0, canvas: 'floor' }, sit_v: { frames: 1, fps: 0, canvas: 'floor' },   // 2026-10-31：坐地 M 字腿／V 字腿（先靜態）
       // 接客偷看（2026-10-10）：側面正交投影、10 格一個抽送循環（慢慢退出→猛地頂進）
       sex_missionary: { frames: 30, fps: 9, canvas: 'peek' }, sex_cowgirl: { frames: 30, fps: 12, canvas: 'peek' },
       sex_doggy: { frames: 30, fps: 12, canvas: 'peek' }, sex_kiss: { frames: 30, fps: 12, canvas: 'peek' },
@@ -989,7 +1035,7 @@
       FOOT_HD = (opts.scale || 1) >= 2;
       const P = proportions(doll), sh = makeShape(), b = P.b;
       const hip_x = 5.1 * F(b, 'hip') * (1 + .3 * (F(b, 'thigh') - 1));
-      const kx = () => 3.2 + .65 * F(b, 'thigh');
+      const kx = () => 2.75 + .65 * F(b, 'thigh');   // 2026-10-31：膝蓋微微靠攏（參考圖 Good 2；原 3.2）
       const hip_out = Math.max(9.0 * F(b, 'hip'), hip_x + 4.7 * F(b, 'thigh'));
       const waist_out = 5.9 * F(b, 'waist');
       const bo = bustOuter(P, doll), arm_clear = () => bo * .8 + .5;
@@ -1064,7 +1110,7 @@
           const wrist = [s * wx, elbow[1] + 15 * Math.sin(fa), elbow[2] - 15 * Math.cos(fa)];
           arm(sh, P, sh_j, elbow, wrist);
         }
-        if (front) definition(sh, P, tor);
+        if (front) { definition(sh, P, tor); if (!doll.skirt) inguinal(sh, P, tor); }
         if (FOOT_HD && Math.cos(yaw * Math.PI / 180) < .35) hdBackLines(sh, P, tor);
         if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
         if (doll.cloth || doll.underBra) dress(sh, P, doll, tor);
@@ -1112,6 +1158,42 @@
           arm(sh, P, shj(s, tor), [s * Math.max(hip_out + 1.2, Math.abs(k[0]) + 6), k[1] - 1.5, k[2] - 5], [s * 1.4, k[1] + 4.2, k[2] - 9.5]);
         }
         if (doll.skirt) sh.ell(BODY, [0, 2, hz + 1.5], [9.2 * F(b, 'hip') * 1.1, 8, 3]);
+        hair(sh, P, doll, tor);
+        return { sh, P };
+      }
+      if (pose === 'sit_m' || pose === 'sit_v') {   // 2026-10-31：坐在地上、雙腿打開；上身微微往後靠，兩手撐在身後地上
+        sh.floor = true;   // 地板以下切掉（手掌撐地不會穿出地面）
+        const dz = 2.4 - P.C, hz = P.hipz + dz, hy = -1.5;
+        const tor = torso(sh, P, doll, hy, dz, -.16);
+        for (const s of [-1, 1]) {
+          const hip = [s * hip_x, hy, hz];
+          let knee, ankle, toe;
+          if (pose === 'sit_m') {   // M 字：膝蓋立起往兩邊倒，腳板踩地、腳跟靠近屁股
+            ankle = [s * 10.5, hy + 15.5, P.ankle];
+            knee = ik(hip, ankle, Lt, Ls, [s * 1, .1, .55]);
+            toe = [s * .35, .94, 0];
+          } else {              // V 字：兩腿伸直往兩邊張開，腳跟貼地、腳尖朝上
+            const a = 33 * Math.PI / 180, L = (Lt + Ls) * .985, fz = P.ankle - .4 - hz;
+            const hor = Math.sqrt(Math.max(1, L * L - fz * fz));
+            ankle = [hip[0] + s * hor * Math.sin(a), hy + hor * Math.cos(a), P.ankle - .4];
+            knee = ik(hip, ankle, Lt, Ls, [0, 0, 1]);
+            toe = [s * .3, .35, .89];
+          }
+          leg(sh, P, s, hip, knee, ankle, toe);
+          // 2026-10-31：坐在地上，屁股和大腿外側被地板壓扁往外擠（參考蹲姿速寫）
+          const bt = F(b, 'butt'), th = F(b, 'thigh');
+          sh.ell(BODY, [s * (hip_x + 1.4), hy - 2.8, 2.2], [5.4 * bt, 6.0 * bt, 2.7]);
+          if (pose === 'sit_v') { const u = .3, q = [hip[0] + (knee[0] - hip[0]) * u, hip[1] + (knee[1] - hip[1]) * u, 2.0]; sh.ell(BODY, [q[0] + s * 1.2, q[1], q[2]], [4.6 * th, 4.8 * th, 2.4]); }
+        }
+        for (const s of [-1, 1]) {   // 手撐在身後地上（手肘伸直、往外一點）
+          const sj = shj(s, tor), wrist = [s * (hip_out + 2.2), hy - 9.5, 3.2];
+          const elbow = [(sj[0] + wrist[0]) / 2 + s * 1.6, (sj[1] + wrist[1]) / 2 - .6, (sj[2] + wrist[2]) / 2];
+          arm(sh, P, sj, elbow, wrist);
+        }
+        if (front) definition(sh, P, tor);
+        // 鼠蹊部摺線：從髖骨外上方斜斜往下收到胯下兩側（大腿根跟骨盆的交界）
+        inguinal(sh, P, tor);
+        if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
         hair(sh, P, doll, tor);
         return { sh, P };
       }
@@ -1578,6 +1660,7 @@
       const hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n), limb = new Uint8Array(n);
       const STEP = .8 / Math.sqrt(5);
       const dist = [0, 0, 0];
+      const carveIdx = []; for (let i = 0; i < np; i++) if (prims[i].carve) carveIdx.push(i);   // 2026-10-31：挖洞零件（從身體減掉，私處打開用）
       for (let py = 0; py < height; py++) {
         const sy = (py + .5) / K - ay;
         for (let px = 0; px < width; px++) {
@@ -1594,19 +1677,24 @@
           for (let it = 0; it < 220 && t >= tEnd; it++) {
             const X = (sx * c - 2 * t * s) / gw, Y = (sx * s + 2 * t * c) / gw, Z = -sy;
             dist[0] = dist[1] = dist[2] = 1e3;
-            let bb = 0, lf = 0;
+            let bb = 0, lf = 0, ck = 0;
             for (let i = 0; i < np; i++) {
+              if (prims[i].carve) continue;
               const m = pm[i], lb = hypot3(X - bcx[i], Y - bcy[i], Z - bcz[i]) - brr[i];
               if (lb >= dist[m]) continue;
               const d = primDist(prims[i], X, Y, Z);
-              if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = pb[i]; lf = prims[i].limb; } }
+              if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = pb[i]; lf = prims[i].limb; } else if (m === 2) ck = prims[i].crease; }
+            }
+            if (carveIdx.length) {   // 身體 − 洞：洞壁標紅色內裡（cb 13），比原表面深 0.7 以上標深紅小口（cb 14）
+              let cd = 1e3; for (const i of carveIdx) { const v = primDist(prims[i], X, Y, Z); if (v < cd) cd = v; }
+              if (-cd > dist[0]) { const ob = dist[0]; dist[0] = -cd; bb = ob < -.7 ? 14 : 13; lf = 0; }
             }
             const d = Math.min(dist[0], dist[1], dist[2]);
             if (d < .05) {
               hit[idx] = 1; tt[idx] = t;
               let mm = dist[1] < dist[0] + .15 ? 2 : 1;
               if (dist[2] < .05 && dist[1] > .05) mm = 3;
-              mat[idx] = mm; bust[idx] = mm === 1 ? bb : 0; limb[idx] = mm === 1 ? lf : 0;
+              mat[idx] = mm; bust[idx] = mm === 1 ? bb : mm === 3 && ck ? 99 : 0; limb[idx] = mm === 1 ? lf : 0;
               break;
             }
             t -= Math.max(d, .08) * STEP;
@@ -1631,7 +1719,7 @@
         if (isHair) {
           const upHair = y > 0 && m[i - width] && mat[i - width] === 2;
           set(i, !upHair && y < sheenRow ? HAIR_HI_RGB : HAIR_RGB, HAIR_A);
-        } else if (isMark) set(i, MARK_RGB, BODY_A);
+        } else if (isMark) set(i, bust[i] === 99 ? CREASE_RGB : MARK_RGB, BODY_A);
         else {
           const di = hit[i] ? tt[i] : -1e9;
           let near = false;
@@ -1640,7 +1728,7 @@
             const j = ny * width + nx;
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
-          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
+          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 13 ? OPEN_RGB : cb === 14 ? HOLE_RGB : cb === 15 ? PUBIC_EDGE_RGB : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
           let stampRgb = null;
           if (stamps.length && bust[i] === 1 && hit[i]) {
             const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
@@ -1807,10 +1895,10 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { PUBICS, LABIAS, PANTS, PUBIC_RGB, LABIA_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
-      lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
+      lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, CREASE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
   }
   const api = factory();
   api.factorySource = factory.toString();
