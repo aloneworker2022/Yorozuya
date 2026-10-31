@@ -92,7 +92,7 @@ function wallCol(t,u,v,side){const brick=((v*8|0)%2?((u*4+.5)|0):((u*4)|0)),mort
  let c=t=="2"?[190,150,170]:[215,195,165];if(mort)c=[140,130,120];else{const n=(brick*37%11)/40;c=c.map(x=>x*(1-n))}
  return side?c.map(x=>x*.7):c}
 const PN=["soft","semi","erect"],pnSel=document.getElementById("pn");
-const keys={};onkeydown=e=>{keys[e.code]=1;if(e.code=="KeyX"&&!e.repeat){pnSel.value=PN[(PN.indexOf(pnSel.value)+1)%3]}if(e.code.startsWith("Arrow"))e.preventDefault()};onkeyup=e=>keys[e.code]=0;
+const keys={};const inForm=e=>e.target&&/^(SELECT|INPUT|TEXTAREA)$/.test(e.target.tagName);onkeydown=e=>{if(inForm(e))return;keys[e.code]=1;if(e.code=="KeyX"&&!e.repeat){pnSel.value=PN[(PN.indexOf(pnSel.value)+1)%3]}if(e.code.startsWith("Arrow"))e.preventDefault()};onkeyup=e=>keys[e.code]=0;for(const s of document.querySelectorAll("#hud select")){s.addEventListener("change",()=>s.blur());s.addEventListener("pointerdown",()=>document.pointerLockElement&&document.exitPointerLock())}addEventListener("blur",()=>{for(const k in keys)keys[k]=0});
 // 手機方向鍵：pointer 事件，按住=持續按鍵；支援多指同時按
 for(const b of document.querySelectorAll(".pad button")){const k=b.dataset.k,on=e=>{e.preventDefault();keys[k]=1;b.classList.add("on");try{b.setPointerCapture(e.pointerId)}catch(_){}},off=e=>{keys[k]=0;b.classList.remove("on")};
  b.addEventListener("pointerdown",on);for(const ev of ["pointerup","pointercancel","lostpointercapture"])b.addEventListener(ev,off);b.addEventListener("contextmenu",e=>e.preventDefault())}
