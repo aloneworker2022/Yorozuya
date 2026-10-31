@@ -63,3 +63,4 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 腿型（照使用者參考圖 Bad／Good）：大腿根部往外鼓（雙三角輪廓）、膝蓋微靠攏（kx 3.2→2.75）、膝蓋內側鼓包低／外側高。
 - 鼠蹊線 `inguinal()`：從髖骨往內往下收到胯下、再沿大腿內側往下一小段；CREASE_RGB 細、淡（前端 226,178,152）。走路正面（無裙）＋坐姿都畫。
 - 陰毛重做：貼平皮膚的薄片；中間 PUBIC_RGB（前端：幾乎全是毛＋亮色毛紋、零星透皮膚）、外緣 PUBIC_EDGE_RGB #C0C（半透參差）。三角形＝倒三角、上緣兩肩圓弧；一條線＝窄長條、下端收尖。
+- play.html（房間 Doom 模式）：預設改用 2× sheet（`?sd=1` 才用 1×）；介面加「姿勢」選單（走路／坐地 M 字腿／坐地 V 字腿），選坐姿時妹子停在原地坐下，依玩家看她的角度選 8 方向之一；坐姿 sheet 用同一個每像素比例、地面列對齊走路 sheet。
