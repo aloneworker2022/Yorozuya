@@ -41,4 +41,12 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 ## 2026-10-31：乳暈改畫在曲面＋下垂巨乳外擴
 - 乳暈不再用圓盤／斜切殼 SDF（會被乳房曲面搶深度吃掉）；改成 `areolaStamps` 在乳房像素上依世界座標距離塗 AREOLA／NIP 標記色，乳頭另沿指向往外凸小球。
 - 下垂型（pendulous）維持朝下約 40°；巨乳外擴：根部靠近胸骨、下緣隨罩杯往左右拉開（兩顆果子同根）。
+- 2026-10-31：罩杯半徑重排 A≈只剩乳暈（1.0）、B 1.85、C 2.85、D 4.15…G 6.2、H 6.75；走路時 D 以上手臂前擺打到乳房 → 整胸左右晃（越大越明顯）。
 - 標記色不變（前端照舊上色）；重渲 body sheets（含 sheets2x）才看得到。
+
+## 2026-10-31：白邊 1px＋頭髮遮擋修正
+- 白邊：
+  - 外輪廓：前端 `outline()`（index.html／play.html 上色後），整個人（含頭髮）外圈 1px 白，不跨格。
+  - 手腳：`render()` 記每個像素是不是手腳（`limb`），手腳像素旁邊有比較遠（>EDGE_DEPTH 2.5）的身體 → 標 `EDGE_RGB` (240,240,240)，前端上成白色。
+- 頭髮遮擋：舊頭髮圖層用圓形 D 的身體算遮擋，換大胸／下垂時從縫裡露出的後髮會蓋在乳房上變黑洞。改用 `renderHairLayer()`：頭髮單獨畫一次＋H 罩杯 圓形／鐘型／下垂／托高各畫一次，四種都看得到的像素＝在身體前面（alpha 220，一律蓋上）；其餘＝可能被擋（alpha `HAIR_BACK_A` 214），前端 `over()` 只畫在身體以外。
+- 重畫：1× body＋hair（render.cjs，`ONLY=body|hair` 可只畫一種）、2× body／sup／hair（render_hd.cjs）。cloth／groin 不受影響。

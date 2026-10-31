@@ -49,7 +49,7 @@ const HAIR_PAL={blue:[[30,70,170],[90,140,230]],green:[[22,72,44],[60,124,84]],r
 const NIP_PAL={pink:[[236,150,160],[226,120,138]],brown:[[160,104,72],[120,74,48]],black:[[70,50,46],[34,24,22]]};
 for(const [id,P2] of [["hc",HAIR_PAL],["nc",NIP_PAL],["bh",{long:1,wavy:1,short:1,pony:1,medium:1,twin:1,ponyhi:1,bun:1}],["fh",{blunt:1,french:1,side:1,pomp:1,curtain:1}]]){const k=Object.keys(P2);document.getElementById(id).value=k[Math.random()*k.length|0]}
 function up2(u,r,miss){const j=new Image();j.onload=()=>{const c=document.createElement("canvas");c.width=j.naturalWidth*2;c.height=j.naturalHeight*2;const x=c.getContext("2d");x.imageSmoothingEnabled=false;x.drawImage(j,0,0,c.width,c.height);const k=new Image();k.onload=()=>r(k);k.src=c.toDataURL()};j.onerror=()=>r(miss);j.src=u.replace("/sheets2x/","/sheets/")}   // pt79u：2× sheet 還沒渲好 → 1× 最近鄰放大 2 倍（標記色不變）
-function over(x,im){const w=x.canvas.width,h=x.canvas.height,t=document.createElement("canvas");t.width=w;t.height=h;const tx=t.getContext("2d");tx.drawImage(im,0,0);const s=tx.getImageData(0,0,w,h).data,D=x.getImageData(0,0,w,h),d=D.data;for(let i=0;i<d.length;i+=4)if(s[i+3])for(let j=0;j<4;j++)d[i+j]=s[i+j];x.putImageData(D,0,0)}   // 頭髮像素整格蓋上（不混色，保住調色盤 alpha 讓上色認得）
+function over(x,im){const w=x.canvas.width,h=x.canvas.height,t=document.createElement("canvas");t.width=w;t.height=h;const tx=t.getContext("2d");tx.drawImage(im,0,0);const s=tx.getImageData(0,0,w,h).data,D=x.getImageData(0,0,w,h),d=D.data;for(let i=0;i<d.length;i+=4)if(s[i+3]&&!(s[i+3]==214&&d[i+3]))for(let j=0;j<4;j++)d[i+j]=s[i+j];x.putImageData(D,0,0)}   // 2026-10-31：alpha 214＝可能被身體擋住的後髮，只畫在身體以外   // 頭髮像素整格蓋上（不混色，保住調色盤 alpha 讓上色認得）
 function sheetFor(d){const k=["b","s","cu","ar"].map(i=>document.getElementById(i).value).join("_")+"_"+d,hc=document.getElementById("hc").value,nc=document.getElementById("nc").value,bh=document.getElementById("bh").value,fh=document.getElementById("fh").value,cl=document.getElementById("cl").value,cs=document.getElementById("cs").value,cw=document.getElementById("cw").value,pu=document.getElementById("pu").value,lb=document.getElementById("lb").value,pa=document.getElementById("pa").value,lc=document.getElementById("lc").value,ub=document.getElementById("ub").value,ck=ub+"|"+k+"|"+hc+"|"+nc+"|"+bh+"|"+fh+"|"+cl+"|"+cs+"|"+cw+"|"+pu+"|"+lb+"|"+pa+"|"+lc;
  if(!cache[ck]){const b=k.split("_")[0],urls=[SD+k+".png",SD+"hair/"+b+"_back_"+bh+"_"+d+".png",SD+"hair/"+b+"_front_"+fh+"_"+d+".png"];const q=k.split("_"),BO=cl=="bra"||(ub!="none"&&cl!="none"),SP=SD+"sup/"+q[0]+"_sup_"+q[2]+"_";if(BO)urls[0]=SP+q[3]+"_"+d+".png";   // pt78u 穿胸罩→托高身體 sheets/sup/
   urls.push(BO?SD+"sup/cloth/"+q[0]+"_sup_"+q[2]+"_bra_"+d+".png":"");urls.push(cl=="none"||cl=="bra"?"":BO?SD+"sup/cloth/"+q[0]+"_sup_"+q[2]+"_"+CLF(cl,cw)+"_"+d+".png":SD+"cloth/"+q[0]+"_"+q[1]+"_"+q[2]+"_"+CLF(cl,cw)+"_"+d+".png");
@@ -78,15 +78,17 @@ function groinOver(d,hm,GD,HP,lc,W){const LC=LACE_PAL[lc]||LACE_PAL.black;for(co
   if(r==255&&g==0&&b==255)o=(x+y)%3?HP[0]:HP[1];else if(r==255&&g==255&&b==0)o=[196,108,118];else if(r==255&&g==128){o=LC;k=.8}
   else{o=LC;k=(x+y)%2?.5:((x^y)&2?.32:.18)}   // pt32u 蕾絲半透明：花紋處較實、鏤空處透肉
   for(let j=0;j<3;j++)d[i+j]=d[i+j]*(1-k)+o[j]*k;d[i+3]=255}}}
+// 2026-10-31：整個人外輪廓 1px 白邊（透明像素旁邊有不透明像素就塗白；不跨格）
+function outline(d,W,H,FW){const al=new Uint8Array(W*H);for(let i=0;i<W*H;i++)al[i]=d[i*4+3]?1:0;for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(al[i])continue;const fx=x%FW;if((fx>0&&al[i-1])||(fx<FW-1&&al[i+1])||(y>0&&al[i-W])||(y<H-1&&al[i+W])){d[i*4]=d[i*4+1]=d[i*4+2]=255;d[i*4+3]=255}}}
 function skinTint(c,HP,NP,CD,cs,cw,GD,lc){const x=c.getContext("2d");
  const D=x.getImageData(0,0,c.width,c.height),d=D.data,hm=new Uint8Array(d.length>>2).map((_,i)=>d[i*4+3]>=212&&d[i*4+3]<=228),A=[217,168,142],B=[245,208,181],C=[253,230,214];
  for(let i=0;i<d.length;i+=4){if(!d[i+3])continue;const r=d[i],gg=d[i+1],b=d[i+2],a=d[i+3];let o=null;
-  if(a>=212&&a<=228)o=(r>60?HP[1]:HP[0]);
+  if(a>=212&&a<=228)o=(r>60?HP[1]:HP[0]);else if(r==240&&gg==240&&b==240)o=[255,255,255];   // 2026-10-31 手腳白邊
   else if(r==150&&gg==100&&b==128)o=NP[0];else if(r==205&&gg==150&&b==175)o=NP[1];
   if(o){d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2];d[i+3]=255;continue}
   const l=(r*.3+gg*.59+b*.11),t=Math.max(0,Math.min(1,(l-28)/(75-28)));
   const [P,Q,u]=t<.5?[A,B,t*2]:[B,C,(t-.5)*2];for(let j=0;j<3;j++)d[i+j]=P[j]+(Q[j]-P[j])*u;d[i+3]=255}
- groinOver(d,hm,GD||[],HP,lc,c.width);for(const[cd,sk]of CD)clothOver(d,hm,cd,sk,cw);x.putImageData(D,0,0);c.complete=true;c.naturalWidth=c.width;return c}
+ groinOver(d,hm,GD||[],HP,lc,c.width);for(const[cd,sk]of CD)clothOver(d,hm,cd,sk,cw);outline(d,c.width,c.height,c.width/8);x.putImageData(D,0,0);c.complete=true;c.naturalWidth=c.width;return c}
 // 牆面：簡單磚紋（程式產生）
 function wallCol(t,u,v,side){const brick=((v*8|0)%2?((u*4+.5)|0):((u*4)|0)),mort=(v*8%1<.08)||((u*4+((v*8|0)%2?.5:0))%1<.05);
  let c=t=="2"?[190,150,170]:[215,195,165];if(mort)c=[140,130,120];else{const n=(brick*37%11)/40;c=c.map(x=>x*(1-n))}
