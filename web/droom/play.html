@@ -250,7 +250,9 @@ function drawSelfRef(moving){const HZ=SH/2+P.p*SH*.8,oy=Math.max(0,Math.round(SH
   if(!line)for(const[dx,dy]of[[3,0],[-3,0],[0,3],[0,-3]]){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=SW||yy>=SH)continue;if(ID[yy*SW+xx]!=id){shade=true;break}}
   const c=line?SELF_LINE:id>=5?pnShade(id,SELF_U[i]):id<=2?skinShade(id,SELF_U[i]):SELF_COL[id][shade?1:0];d.set([c[0],c[1],c[2],255],i*4)}
  SELF_X.putImageData(SELF_D,0,0);g.imageSmoothingEnabled=false;g.drawImage(SELF_CV,0,oy)}
-function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
+// 2026-10-31：使用者：低頭到底要看不到牆、只看到地板。地平線移出畫面上緣後（HZ<0），世界（地板／牆／妹子）的 HZ 加速往上捲：
+// HZw＝HZ×(1＋9s²)，s＝0→1（身體捲進來那段）；到底 HZw＝−10SH，牆最近約 0.1 格也會整面在畫面上方（貼牆角實測最近 0.17）。身體圖層照舊用線性 HZ 等速捲進來。
+function render(){const HZl=SH/2+P.p*SH*.8,sw=Math.min(1,Math.max(0,-HZl/SH)),HZ=Math.round(HZl<0?HZl*(1+9*sw*sw):HZl),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
   lx=P.x+rd*(dx-px),ly=P.y+rd*(dy-py),stx=rd*2*px/SW,sty=rd*2*py/SW;let fx=lx,fy=ly;
   for(let x=0;x<SW;x++,fx+=stx,fy+=sty){const i=(y*SW+x)*4,chk=((Math.floor(fx)+Math.floor(fy))&1),sh=Math.min(1,.45+2.5/rd);
