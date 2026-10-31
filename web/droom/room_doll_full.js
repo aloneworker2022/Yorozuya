@@ -13,6 +13,9 @@
     const BUST_RGB = [134, 112, 152], BUST_DEPTH = 1.0;
     const AREOLA_RGB = [150, 100, 128], NIP_RGB = [205, 150, 175], AREOLA_R = { small: 1.15, medium: 1.75, large: 2.5, huge: 3.6 };
     const BODY_A = 204, HAIR_A = 220;
+    // 2026-10-31：白邊 1px——手腳擋在身體（或另一隻腳）前面的邊緣標 EDGE_RGB，前端上成白色。
+    // HAIR_BACK_A：頭髮圖層裡「可能被身體擋住」的像素（前端只畫在身體以外），一般頭髮仍是 HAIR_A。
+    const EDGE_RGB = [240, 240, 240], EDGE_DEPTH = 2.5, HAIR_BACK_A = 214;
     const GIRTH = 1.1;
     const CUP_R = { A: 1.0, B: 1.85, C: 2.85, D: 4.15, E: 5.0, F: 5.7, G: 6.2, H: 6.75, I: 7.2 };  // 2026-10-31：A≈只剩乳暈、B/C 收小；D～H 階梯拉開
     const CUP_BOUNCE = { A: .04, B: .18, C: .4, D: .8, E: 1.05, F: 1.25, G: 1.42, H: 1.58, I: 1.75 };
@@ -1553,7 +1556,7 @@
       // 2026-10-30 pt36u：opts.scale＝解析度倍率（2＝寬高各兩倍，同一個模型取樣更細）
       const K = Math.max(1, Math.round(opts.scale || 1));
       const width = cv.w * K, height = cv.h * K, ax = cv.ax, ay = cv.ay;
-      const prims = sh.prims, np = prims.length;
+      const prims = opts.onlyMat != null ? sh.prims.filter(p => p.mat === opts.onlyMat) : sh.prims, np = prims.length;   // onlyMat：只畫某材質（頭髮圖層用）
       const stamps = sh.areolaStamps || [];
       // world-space bounding spheres (primitive offsets folded in)
       const bcx = new Float64Array(np), bcy = new Float64Array(np), bcz = new Float64Array(np), brr = new Float64Array(np), pm = new Uint8Array(np), pb = new Uint8Array(np);
@@ -1572,7 +1575,7 @@
       const th = yaw * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), gw = GIRTH;
       const dX = -2 * s / gw, dY = 2 * c / gw, dZ = 0, dd = dX * dX + dY * dY + dZ * dZ;
       const n = width * height;
-      const hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n);
+      const hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n), limb = new Uint8Array(n);
       const STEP = .8 / Math.sqrt(5);
       const dist = [0, 0, 0];
       for (let py = 0; py < height; py++) {
@@ -1591,19 +1594,19 @@
           for (let it = 0; it < 220 && t >= tEnd; it++) {
             const X = (sx * c - 2 * t * s) / gw, Y = (sx * s + 2 * t * c) / gw, Z = -sy;
             dist[0] = dist[1] = dist[2] = 1e3;
-            let bb = 0;
+            let bb = 0, lf = 0;
             for (let i = 0; i < np; i++) {
               const m = pm[i], lb = hypot3(X - bcx[i], Y - bcy[i], Z - bcz[i]) - brr[i];
               if (lb >= dist[m]) continue;
               const d = primDist(prims[i], X, Y, Z);
-              if (d < dist[m]) { dist[m] = d; if (m === 0) bb = pb[i]; }
+              if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = pb[i]; lf = prims[i].limb; } }
             }
             const d = Math.min(dist[0], dist[1], dist[2]);
             if (d < .05) {
               hit[idx] = 1; tt[idx] = t;
               let mm = dist[1] < dist[0] + .15 ? 2 : 1;
               if (dist[2] < .05 && dist[1] > .05) mm = 3;
-              mat[idx] = mm; bust[idx] = mm === 1 ? bb : 0;
+              mat[idx] = mm; bust[idx] = mm === 1 ? bb : 0; limb[idx] = mm === 1 ? lf : 0;
               break;
             }
             t -= Math.max(d, .08) * STEP;
@@ -1649,7 +1652,15 @@
             }
           }
           if (stampRgb) set(i, stampRgb, 255);
-          else set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
+          else {
+            let edge = false;   // 2026-10-31：手腳的邊緣，旁邊是比較遠的身體／另一隻腳 → 白邊 1px
+            if (limb[i] && hit[i]) for (const [nx, ny] of [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]]) {
+              if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+              const j = ny * width + nx;
+              if (m[j] && hit[j] && mat[j] === 1 && tt[j] < di - EDGE_DEPTH) { edge = true; break; }
+            }
+            set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : edge ? EDGE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
+          }
         }
         if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32;
       }
@@ -1780,12 +1791,26 @@
       }
       return { width, height, anchor: { x: width - f.anchor.x, y: f.anchor.y }, pixels, depth };
     }
+    /** 2026-10-31：頭髮圖層（只留頭髮像素）。舊做法用圓形 D 的身體算遮擋，換成大胸／下垂時，原本從縫裡露出的後髮會蓋在乳房上變成黑洞。
+     * 新做法：頭髮單獨畫一次（全部頭髮）＋用最大的身體（H 罩杯 圓形／鐘型／下垂／托高）各畫一次；
+     * 四種身體都看得到的像素＝擋在身體前面 → HAIR_A（一律蓋上）；其餘頭髮像素 → HAIR_BACK_A（前端只畫在身體以外）。 */
+    function renderHairLayer(doll, pose = 'walk', frame = 0, yaw = 0, opts = {}) {
+      const solo = render(doll, pose, frame, yaw, { ...opts, onlyMat: HAIR });
+      const vars = [['round', 0], ['bell', 0], ['pendulous', 0], ['round', 1]].map(([shape, sup]) => render({ ...doll, cup: 'H', shape, braSupport: !!sup }, pose, frame, yaw, opts).pixels);
+      const src = solo.pixels, out = new Uint8ClampedArray(src.length);
+      for (let i = 0; i < src.length; i += 4) {
+        if (src[i + 3] !== HAIR_A) continue;
+        if (vars.every(v => v[i + 3] === HAIR_A)) { for (let j = 0; j < 4; j++) out[i + j] = vars[0][i + j]; }
+        else { out[i] = src[i]; out[i + 1] = src[i + 1]; out[i + 2] = src[i + 2]; out[i + 3] = HAIR_BACK_A; }
+      }
+      return { ...solo, pixels: out };
+    }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
     return { PUBICS, LABIAS, PANTS, PUBIC_RGB, LABIA_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
-      lookToDoll, dollKey, hairStyle, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
+      lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
   }
   const api = factory();
   api.factorySource = factory.toString();

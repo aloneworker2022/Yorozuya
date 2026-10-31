@@ -6,16 +6,17 @@ const jobs=new Set();for(const b in BODY)for(const s of SH)for(const c of CU)for
 for(const b in BODY)for(const a of AR)for(const d in DIR)jobs.add([b,'round','D',a,d].join('_'));
 for(const s of SH)for(const c of CU)for(const d in DIR)jobs.add(['balanced',s,c,'medium',d].join('_'));
 for(const s of SH)for(const c of CU)for(const a of AR)jobs.add(['balanced',s,c,a,'front'].join('_'));
-let n=0;for(const k of jobs){if((ji++)%NSH!==SHARD)continue;const[b,s,c,a,d]=k.split('_').length>5?(()=>{const p=k.split('_');return[p[0],p[1],p[2],p[3],p.slice(4).join('_')]})():k.split('_');
+let n=0;if(process.env.ONLY!=='hair')for(const k of jobs){if((ji++)%NSH!==SHARD)continue;const[b,s,c,a,d]=k.split('_').length>5?(()=>{const p=k.split('_');return[p[0],p[1],p[2],p[3],p.slice(4).join('_')]})():k.split('_');
 const doll=D.lookToDoll({...BODY[b],cup:c+' 罩杯'});doll.shape=s;doll.areola=a;doll.hair='none';   // 2026-10-30 pt24u：身體 sheet 不含頭髮，頭髮另外疊 sheets/hair/
 const S={width:64*8,height:140,pixels:new Uint8ClampedArray(512*140*4)};
 for(let i=0;i<8;i++){const f=D.render(doll,'walk',i,DIR[d]);for(let y=0;y<140;y++)S.pixels.set(f.pixels.subarray(y*256,(y+1)*256),(y*512+i*64)*4);}
 png(S,1,`${__dirname}/sheets/${k}.png`);if(++n%50==0)console.log(n,jobs.size);}
-// 頭髮圖層：sheets/hair/<body>_<back|front>_<style>_<dir>.png，只留頭髮像素（被身體擋住的不畫）
+// 頭髮圖層：sheets/hair/<body>_<back|front>_<style>_<dir>.png，只留頭髮像素（2026-10-31：renderHairLayer，可能被擋的後髮標 HAIR_BACK_A）
+if(process.env.ONLY!=='body'){   // ONLY=body|hair 只畫一種
 require('fs').mkdirSync(__dirname+'/sheets/hair',{recursive:true});let hn=0;
 for(const b in BODY)for(const[L,list]of[['back',D.BACK_HAIRS],['front',D.FRONT_HAIRS]])for(const st of list)for(const d in DIR){if((ji++)%NSH!==SHARD)continue;
 const doll=D.lookToDoll({...BODY[b],cup:'D 罩杯'});doll.shape='round';doll.areola='medium';doll.backHair=L=='back'?st:null;doll.frontHair=L=='front'?st:null;
 const S={width:64*8,height:140,pixels:new Uint8ClampedArray(512*140*4)};
-for(let i=0;i<8;i++){const f=D.render(doll,'walk',i,DIR[d]);for(let y=0;y<140;y++)for(let x=0;x<64;x++){const si=(y*64+x)*4;if(f.pixels[si+3]!==D.HAIR_A)continue;S.pixels.set(f.pixels.subarray(si,si+4),(y*512+i*64+x)*4);}}
-png(S,1,`${__dirname}/sheets/hair/${b}_${L}_${st}_${d}.png`);hn++;}console.log('hair',hn);
+for(let i=0;i<8;i++){const f=D.renderHairLayer(doll,'walk',i,DIR[d]);for(let y=0;y<140;y++)for(let x=0;x<64;x++){const si=(y*64+x)*4;if(!f.pixels[si+3])continue;S.pixels.set(f.pixels.subarray(si,si+4),(y*512+i*64+x)*4);}}
+png(S,1,`${__dirname}/sheets/hair/${b}_${L}_${st}_${d}.png`);hn++;}console.log('hair',hn);}
 require('fs').writeFileSync(__dirname+'/combos.json',JSON.stringify([...jobs]));console.log('done',n);
