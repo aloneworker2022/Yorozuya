@@ -102,7 +102,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; prims.push(p); };
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; prims.push(p); };
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -652,11 +652,10 @@
         const flat = (x, z, r, d) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .2, r]); };   // 貼平皮膚（薄片），斜看不會凸出來
         // 2026-10-31：打開——細縫往兩邊撐開成細長橢圓：外緣陰唇色、裡面紅色內裡、下三分之一一個深紅小口
         const zt = C + 3.4, zb = C + .1, W = lStyle === 'butterfly' ? .95 : .8, hwAt = z => { const u = Math.min(1, Math.max(0, (zt - z) / (zt - zb))); return W * Math.sin(Math.PI * u ** 1.25) ** .7; };   // 上尖下圓的杏仁形，最寬在偏下
-        sh.cloth = 9;
-        for (let z = zt - .2; z >= zb + .2; z -= .3) { const hw = hwAt(z); for (let x = -hw + .15; x <= hw - .15 + 1e-6; x += .3) flat(x, z, .32, .1); }
-        sh.cloth = 10;
-        const zh = zb + (zt - zb) * .28;
-        for (let z = zh + .55; z >= zh - .55; z -= .25) { const hw = .32 * Math.sqrt(Math.max(0, 1 - ((z - zh) / .6) ** 2)); for (let x = -hw; x <= hw + 1e-6; x += .2) flat(x, z, .22, .14); }
+        {   // 真的挖一個往內凹的洞：從正面看是開口，側面只是平的皮膚
+          const zc = (zt + zb) / 2 - .2, ys = surf(0, zc);
+          if (ys !== null) { sh.carve = 1; sh.ell(BODY, [0, ys - .35, zc], [W * .95, 1.6, (zt - zb) / 2]); sh.carve = 0; }
+        }
         sh.cloth = 6;
         for (let z = zt; z >= zb - 1e-6; z -= .3) { const hw = hwAt(z); for (const sx of [-1, 1]) flat(sx * (hw + .12), z, .3, .16); }
         if (lStyle === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.7; z >= C - .1; z -= .4) { const hw = hwAt(z); flat(sx * (hw + .55), z, .5, .16); }   // 小陰唇往外翻開
@@ -1592,6 +1591,7 @@
       const hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n), limb = new Uint8Array(n);
       const STEP = .8 / Math.sqrt(5);
       const dist = [0, 0, 0];
+      const carveIdx = []; for (let i = 0; i < np; i++) if (prims[i].carve) carveIdx.push(i);   // 2026-10-31：挖洞零件（從身體減掉，私處打開用）
       for (let py = 0; py < height; py++) {
         const sy = (py + .5) / K - ay;
         for (let px = 0; px < width; px++) {
@@ -1610,10 +1610,15 @@
             dist[0] = dist[1] = dist[2] = 1e3;
             let bb = 0, lf = 0;
             for (let i = 0; i < np; i++) {
+              if (prims[i].carve) continue;
               const m = pm[i], lb = hypot3(X - bcx[i], Y - bcy[i], Z - bcz[i]) - brr[i];
               if (lb >= dist[m]) continue;
               const d = primDist(prims[i], X, Y, Z);
               if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = pb[i]; lf = prims[i].limb; } }
+            }
+            if (carveIdx.length) {   // 身體 − 洞：洞壁標紅色內裡（cb 13），比原表面深 0.7 以上標深紅小口（cb 14）
+              let cd = 1e3; for (const i of carveIdx) { const v = primDist(prims[i], X, Y, Z); if (v < cd) cd = v; }
+              if (-cd > dist[0]) { const ob = dist[0]; dist[0] = -cd; bb = ob < -.7 ? 14 : 13; lf = 0; }
             }
             const d = Math.min(dist[0], dist[1], dist[2]);
             if (d < .05) {

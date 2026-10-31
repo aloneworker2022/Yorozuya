@@ -53,5 +53,5 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 
 ## 2026-10-31：私處「打開」
 - `LABIAS` 加 `line_open`／`butterfly_open`：細縫撐開成上尖下圓的杏仁形，外緣陰唇色 #FF0、紅色內裡 `OPEN_RGB` #F00、下三分之一深紅小口 `HOLE_RGB` #800000（前端 → (208,52,72)＋少量亮點、(122,14,30)）。蝴蝶唇打開另有兩片小陰唇往外翻。
-- 打開的零件是貼平皮膚的薄片（斜看不凸出）。groin sheets 只新增 *_open_*（1×／2× 各 64 張）。
+- 打開＝真的在身體上挖一個往內凹的洞（`sh.carve` 零件，render 時 身體 − 洞）：洞壁標紅色內裡，比原表面深 0.7 以上標深紅小口；外緣陰唇色是貼平皮膚的薄片。側面看只是平的皮膚，不會凸出。groin sheets 只新增 *_open_*（1×／2× 各 64 張）。
 - 前端：陰唇選單加「一線（打開）」「蝴蝶唇（打開）」；小口顏色比對容許誤差（canvas 預乘 alpha 會讓 128 偏掉）。
