@@ -225,14 +225,22 @@ function selfPenis(cx,y0,pn){
  if(pn=="soft")for(const[a,r]of[[-.5,.55],[.45,.5],[0,.75]]){for(let k=0;k<7;k++){const yy=Math.round(tip+P.L*(.15+k*.05)),xx=Math.round(cx+a*P.ws*(1-k*.06)+(k-3)*a*.4);if(yy>=0&&SELF_ID[yy*SW+xx]==5&&k/7<r)SELF_U[yy*SW+xx]=9}}   // 包皮往尖端收的皺褶（三條短線）
  if(pn=="soft")for(let y=Math.round(tip+1);y<=Math.round(tip+5);y++)for(let x=Math.round(cx-3);x<=Math.round(cx+3);x++){const u=(x+.5-cx)/2.6,v=(y+.5-tip-2.5)/1.8;if(u*u+v*v<=1&&SELF_ID[y*SW+x]){SELF_ID[y*SW+x]=6;SELF_U[y*SW+x]=u*.8}}}   // 軟：包皮口露一點紅
 function pnShade(id,u){if(u==9)return PN_VEIN;if(u==8)return SELF_LINE;const lam=Math.sqrt(Math.max(0,1-u*u)),f=Math.max(0,Math.min(.999,lam*.85-u*.3));if(id==6&&f>.93&&u<-.1)return PN_SPEC;return PN_RAMP[id][f*4|0]}
+// 從上往下看的圓筒：yb（近、畫面下）→ yt（遠、畫面上），半寬 hb→ht，遠端圓頭（高 rr）；記 u 給圓柱明暗
+function selfCyl(xc,yb,yt,hb,ht,id,rr){for(let y=Math.max(0,Math.floor(yt));y<=Math.min(SH-1,yb);y++){const t=(yb-y)/(yb-yt);let hw=hb+(ht-hb)*t;const e=yt+rr-y-.5;if(e>0)hw*=Math.sqrt(Math.max(0,1-(e/rr)*(e/rr)));
+ for(let x=Math.floor(xc-hw);x<=Math.ceil(xc+hw);x++){if(x<0||x>=SW)continue;const u=(x+.5-xc)/hw;if(Math.abs(u)>1)continue;SELF_ID[y*SW+x]=id;SELF_U[y*SW+x]=u}}}
+function selfToe(xc,yc,r){for(let y=Math.floor(yc-r*1.2);y<=Math.ceil(yc+r*1.2);y++)for(let x=Math.floor(xc-r);x<=Math.ceil(xc+r);x++){if(x<0||y<0||x>=SW||y>=SH)continue;const u=(x+.5-xc)/r,v=(y+.5-yc)/(r*1.2);if(u*u+v*v>1)continue;const i=y*SW+x;SELF_ID[i]=1;SELF_U[i]=u*.9+v*.3}}
+const SKIN_RAMP={1:[[150,108,84],[176,130,102],[198,152,120],[216,172,140]],2:[[164,120,94],[188,142,112],[210,164,132],[226,184,152]]};
+function skinShade(id,u){const lam=Math.sqrt(Math.max(0,1-u*u)),f=Math.max(0,Math.min(.999,lam*.9-u*.25+.05));return SKIN_RAMP[id][f*4|0]}
 // 2026-10-31：使用者：頭要低到幾乎垂直才開始看到陰莖 → 俯角 1.2（約 69°）以前完全看不到，1.2→PMIN 才從畫面底升上來
 function drawSelfRef(moving){const th=-P.p,T0=1.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
  SELF_B+=(moving?.14:0);const st=moving?Math.sin(SELF_B):0,cx=SW/2,pn=pnSel.value;SELF_ID.fill(0);
- for(const s of[-1,1]){const f=st*s*13;   // 走路：這隻腳往前（畫面往上、變小）f>0
-  const ky=110-f*.55,ay=60-f,fy=40-f*1.1,sc=1-f*.012;
-  selfPoly([[cx+s*60*sc,ky+2],[cx+s*55*sc,ky-30],[cx+s*50*sc,ay],[cx+s*34*sc,ay],[cx+s*31*sc,ky-30],[cx+s*28*sc,ky+2]],1);   // 小腿
-  selfEll(cx+s*43*sc,fy+14,14*sc,17*sc,1);for(const[o,r]of[[-9,3.4],[-3,3.2],[3,3],[8,2.7],[12,2.4]])selfEll(cx+s*(43+o*.9)*sc,fy-1+Math.abs(o)*.25,r*sc,r*1.15*sc,1);   // 腳背＋五根腳趾（從上看）
-  selfPoly([[cx+s*128,242],[cx+s*114,200],[cx+s*92,160],[cx+s*66,ky+12],[cx+s*58*sc,ky-4],[cx+s*30*sc,ky-6],[cx+s*24,ky+20],[cx+s*18,170],[cx+s*10,212],[cx+s*4,242]],2)}   // 大腿（根部粗、往膝蓋收）
+ // 2026-10-31：腳改成幾乎垂直往下看的樣子（使用者：只看到一點點大腿＋腳掌，不是往上伸；像圓筒、類似疲軟的陰莖）
+ // 腿往下直直離開眼睛 → 大腿只剩畫面下方一小截圓頭圓筒（大部分被下腹擋住），膝蓋、小腿看不到；腳掌從大腿圓頭前面探出來（腳背＋五根腳趾）。
+ for(const s of[-1,1]){const f=st*s*6;   // 走路：這隻腳往前 f>0（往畫面上方、略小）
+  const fx=cx+s*47,ty=166-f*.5;
+  selfCyl(fx-s*2,214,ty-f*.8-20,12,15,1,7);   // 腳背（腳踝藏在大腿後面，往前變寬到腳掌）
+  const toeY=ty-f*.8-20;for(const[o,r]of[[-11,5.2],[-2,4],[5,3.7],[11,3.3],[15.5,2.9]]){const tx=fx-s*2-s*o*.9;selfToe(tx,toeY+Math.abs(o)*.35+(o<0?-1:1),r)}   // 五根腳趾：大拇趾在內側（靠中間）
+  selfCyl(fx,SH+20,ty,34,28,2,26)}   // 大腿：圓頭圓筒（像軟陰莖），只露一小截
  selfEll(cx,272,156,56,3);   // 下腹（畫面最下緣的弧）
  selfEll(cx-9,214,15,13,4);selfEll(cx+9,214,15,13,4);   // 陰囊（左右兩顆，從陰莖根部兩側露出）
  selfPenis(cx,214,pn);
@@ -240,7 +248,7 @@ function drawSelfRef(moving){const th=-P.p,T0=1.2,k=Math.max(0,Math.min(1,(th-T0
  for(let y=0;y<SH;y++)for(let x=0;x<SW;x++){const i=y*SW+x,id=ID[i];if(!id)continue;let line=false,shade=false;
   for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=SW||yy>=SH)continue;const n=ID[yy*SW+xx];if(n<id&&!(id==3&&n==2&&yy>=SH-1))line=true}
   if(!line)for(const[dx,dy]of[[3,0],[-3,0],[0,3],[0,-3]]){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=SW||yy>=SH)continue;if(ID[yy*SW+xx]!=id){shade=true;break}}
-  const c=line?SELF_LINE:id>=5?pnShade(id,SELF_U[i]):SELF_COL[id][shade?1:0];d.set([c[0],c[1],c[2],255],i*4)}
+  const c=line?SELF_LINE:id>=5?pnShade(id,SELF_U[i]):id<=2?skinShade(id,SELF_U[i]):SELF_COL[id][shade?1:0];d.set([c[0],c[1],c[2],255],i*4)}
  SELF_X.putImageData(SELF_D,0,0);g.imageSmoothingEnabled=false;g.drawImage(SELF_CV,0,Math.round((1-k)*(SH-30)))}
 function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
