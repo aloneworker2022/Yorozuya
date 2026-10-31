@@ -428,7 +428,17 @@
           sh.cone(BODY, top, mid, r * .5, r * .78);
           sh.cone(BODY, mid, bot, r * .78, r * .9);
           sh.ell(BODY, [bot[0], bot[1], bot[2] + r * .1], [r * .98, r * .8, r * .85]);
-          nipAt([bot[0], bot[1] + r * .95, bot[2] - r * .15], [0, .8, -.6], { c: [bot[0], bot[1], bot[2] + r * .1], r: [r * .98, r * .8, r * .85] });
+          {   // 2026-10-31 pt91u：下垂型乳頭乳暈朝下約 40°——放在乳房曲面上 40° 往下的位置，乳暈改成貼曲面的斜帽（不再是直立平片）
+            const pc = [bot[0], bot[1], bot[2] + r * .1], pr = [r * .98, r * .8, r * .85], a = 40 * Math.PI / 180, n = [0, Math.cos(a), -Math.sin(a)];
+            const q = [pc[0], pc[1] + pr[1] * n[1], pc[2] + pr[2] * n[2]];
+            if (doll.areola === 'huge' || doll.nipples === false) nipAt(q, n, { c: pc, r: pr });
+            else {
+              const rf = Math.hypot(pr[1] * n[1], pr[2] * n[2]);
+              sh.nip = 1; sh.ell(BODY, pc, pr.map(v => v * 1.03 + .12));
+              sh.prims[sh.prims.length - 1].pl = { n, o: n[1] * pc[1] + n[2] * pc[2] + Math.sqrt(Math.max(rf * rf - AR * AR, 0)) };
+              sh.nip = 2; sh.ell(BODY, [q[0], q[1] + n[1] * .55, q[2] + n[2] * .55], [.6, .6, .6]); sh.nip = 0;
+            }
+          }
         } else if (SHP === 'round' && hang <= .05) {
           // 圓形：上下一樣飽滿的球
           sh.cone(BODY, root, [cx, cy, zB + r * .15], r * .55, r * .8);
