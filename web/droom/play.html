@@ -83,7 +83,7 @@ function outline(d,W,H,FW){const al=new Uint8Array(W*H);for(let i=0;i<W*H;i++)al
 function skinTint(c,HP,NP,CD,cs,cw,GD,lc){const x=c.getContext("2d");
  const D=x.getImageData(0,0,c.width,c.height),d=D.data,hm=new Uint8Array(d.length>>2).map((_,i)=>d[i*4+3]>=212&&d[i*4+3]<=228),A=[217,168,142],B=[245,208,181],C=[253,230,214];
  for(let i=0;i<d.length;i+=4){if(!d[i+3])continue;const r=d[i],gg=d[i+1],b=d[i+2],a=d[i+3];let o=null;
-  if(a>=212&&a<=228)o=(r>60?HP[1]:HP[0]);else if(r==240&&gg==240&&b==240)o=[255,255,255];   // 2026-10-31 手腳白邊
+  if(a>=212&&a<=228)o=(r>60?HP[1]:HP[0]);else if(r==240&&gg==240&&b==240)o=[255,255,255];else if(r==90&&gg==60&&b==60)o=[198,136,114];   // 2026-10-31 手腳白邊
   else if(r==150&&gg==100&&b==128)o=NP[0];else if(r==205&&gg==150&&b==175)o=NP[1];
   if(o){d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2];d[i+3]=255;continue}
   const l=(r*.3+gg*.59+b*.11),t=Math.max(0,Math.min(1,(l-28)/(75-28)));

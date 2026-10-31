@@ -16,6 +16,7 @@
     // 2026-10-31：白邊 1px——手腳擋在身體（或另一隻腳）前面的邊緣標 EDGE_RGB，前端上成白色。
     // HAIR_BACK_A：頭髮圖層裡「可能被身體擋住」的像素（前端只畫在身體以外），一般頭髮仍是 HAIR_A。
     const EDGE_RGB = [240, 240, 240], EDGE_DEPTH = 2.5, HAIR_BACK_A = 214;
+    const CREASE_RGB = [90, 60, 60];   // 2026-10-31：鼠蹊部摺線（比一般線條深），前端上成深膚色
     const GIRTH = 1.1;
     const CUP_R = { A: 1.0, B: 1.85, C: 2.85, D: 4.15, E: 5.0, F: 5.7, G: 6.2, H: 6.75, I: 7.2 };  // 2026-10-31：A≈只剩乳暈、B/C 收小；D～H 階梯拉開
     const CUP_BOUNCE = { A: .04, B: .18, C: .4, D: .8, E: 1.05, F: 1.25, G: 1.42, H: 1.58, I: 1.75 };
@@ -102,7 +103,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; prims.push(p); };
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; prims.push(p); };
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -1156,6 +1157,8 @@
           arm(sh, P, sj, elbow, wrist);
         }
         if (front) definition(sh, P, tor);
+        // 鼠蹊部摺線：從髖骨外上方斜斜往下收到胯下兩側（大腿根跟骨盆的交界）
+        sh.crease = 1; for (const s of [-1, 1]) marks(sh, Array.from({ length: 7 }, (_, i) => { const u = i / 6; return [s * ((hip_x + 2.4) * (1 - u) + 1.9 * u), (hz + 3.6) * (1 - u) + (tor.C + .9) * u]; }), .34, .45); sh.crease = 0;
         if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
         hair(sh, P, doll, tor);
         return { sh, P };
@@ -1640,13 +1643,13 @@
           for (let it = 0; it < 220 && t >= tEnd; it++) {
             const X = (sx * c - 2 * t * s) / gw, Y = (sx * s + 2 * t * c) / gw, Z = -sy;
             dist[0] = dist[1] = dist[2] = 1e3;
-            let bb = 0, lf = 0;
+            let bb = 0, lf = 0, ck = 0;
             for (let i = 0; i < np; i++) {
               if (prims[i].carve) continue;
               const m = pm[i], lb = hypot3(X - bcx[i], Y - bcy[i], Z - bcz[i]) - brr[i];
               if (lb >= dist[m]) continue;
               const d = primDist(prims[i], X, Y, Z);
-              if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = pb[i]; lf = prims[i].limb; } }
+              if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = pb[i]; lf = prims[i].limb; } else if (m === 2) ck = prims[i].crease; }
             }
             if (carveIdx.length) {   // 身體 − 洞：洞壁標紅色內裡（cb 13），比原表面深 0.7 以上標深紅小口（cb 14）
               let cd = 1e3; for (const i of carveIdx) { const v = primDist(prims[i], X, Y, Z); if (v < cd) cd = v; }
@@ -1657,7 +1660,7 @@
               hit[idx] = 1; tt[idx] = t;
               let mm = dist[1] < dist[0] + .15 ? 2 : 1;
               if (dist[2] < .05 && dist[1] > .05) mm = 3;
-              mat[idx] = mm; bust[idx] = mm === 1 ? bb : 0; limb[idx] = mm === 1 ? lf : 0;
+              mat[idx] = mm; bust[idx] = mm === 1 ? bb : mm === 3 && ck ? 99 : 0; limb[idx] = mm === 1 ? lf : 0;
               break;
             }
             t -= Math.max(d, .08) * STEP;
@@ -1682,7 +1685,7 @@
         if (isHair) {
           const upHair = y > 0 && m[i - width] && mat[i - width] === 2;
           set(i, !upHair && y < sheenRow ? HAIR_HI_RGB : HAIR_RGB, HAIR_A);
-        } else if (isMark) set(i, MARK_RGB, BODY_A);
+        } else if (isMark) set(i, bust[i] === 99 ? CREASE_RGB : MARK_RGB, BODY_A);
         else {
           const di = hit[i] ? tt[i] : -1e9;
           let near = false;
@@ -1861,7 +1864,7 @@
     return { PUBICS, LABIAS, PANTS, PUBIC_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
-      lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
+      lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, CREASE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
   }
   const api = factory();
   api.factorySource = factory.toString();
