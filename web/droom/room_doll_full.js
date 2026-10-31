@@ -911,6 +911,7 @@
       peek: { w: 260, h: 166, ax: 120, ay: 152, side: true, scale: 1.28 },
       tall: { w: W, h: 166, ax: ANCHOR.x, ay: 152, tMax: 40, tMin: -45 },
       wide: { w: 128, h: 100, ax: 64, ay: 70, tMax: 95, tMin: -95 },
+      floor: { w: 128, h: 140, ax: 64, ay: 126, tMax: 95, tMin: -95 },   // 2026-10-31：坐地張腿（腿往兩邊張，要寬一點）
     };
     /** frames：小循環格數；fps：循環速度（每秒幾格）；canvas：見上。 */
     const POSES = {
@@ -920,6 +921,7 @@
       stare: { frames: 2, fps: .9 }, twirl: { frames: 3, fps: 2.4 },
       lie_phone: { frames: 2, fps: .5, canvas: 'wide' }, prone_kick: { frames: 4, fps: 3, canvas: 'wide' },
       sleep_curl: { frames: 2, fps: .35, canvas: 'wide' }, sit_curl: { frames: 2, fps: .45 },
+      sit_m: { frames: 1, fps: 0, canvas: 'floor' }, sit_v: { frames: 1, fps: 0, canvas: 'floor' },   // 2026-10-31：坐地 M 字腿／V 字腿（先靜態）
       // 接客偷看（2026-10-10）：側面正交投影、10 格一個抽送循環（慢慢退出→猛地頂進）
       sex_missionary: { frames: 30, fps: 9, canvas: 'peek' }, sex_cowgirl: { frames: 30, fps: 12, canvas: 'peek' },
       sex_doggy: { frames: 30, fps: 12, canvas: 'peek' }, sex_kiss: { frames: 30, fps: 12, canvas: 'peek' },
@@ -1125,6 +1127,36 @@
           arm(sh, P, shj(s, tor), [s * Math.max(hip_out + 1.2, Math.abs(k[0]) + 6), k[1] - 1.5, k[2] - 5], [s * 1.4, k[1] + 4.2, k[2] - 9.5]);
         }
         if (doll.skirt) sh.ell(BODY, [0, 2, hz + 1.5], [9.2 * F(b, 'hip') * 1.1, 8, 3]);
+        hair(sh, P, doll, tor);
+        return { sh, P };
+      }
+      if (pose === 'sit_m' || pose === 'sit_v') {   // 2026-10-31：坐在地上、雙腿打開；上身微微往後靠，兩手撐在身後地上
+        sh.floor = true;   // 地板以下切掉（手掌撐地不會穿出地面）
+        const dz = 2.4 - P.C, hz = P.hipz + dz, hy = -1.5;
+        const tor = torso(sh, P, doll, hy, dz, -.16);
+        for (const s of [-1, 1]) {
+          const hip = [s * hip_x, hy, hz];
+          let knee, ankle, toe;
+          if (pose === 'sit_m') {   // M 字：膝蓋立起往兩邊倒，腳板踩地、腳跟靠近屁股
+            ankle = [s * 10.5, hy + 15.5, P.ankle];
+            knee = ik(hip, ankle, Lt, Ls, [s * 1, .1, .55]);
+            toe = [s * .35, .94, 0];
+          } else {              // V 字：兩腿伸直往兩邊張開，腳跟貼地、腳尖朝上
+            const a = 33 * Math.PI / 180, L = (Lt + Ls) * .985, fz = P.ankle - .4 - hz;
+            const hor = Math.sqrt(Math.max(1, L * L - fz * fz));
+            ankle = [hip[0] + s * hor * Math.sin(a), hy + hor * Math.cos(a), P.ankle - .4];
+            knee = ik(hip, ankle, Lt, Ls, [0, 0, 1]);
+            toe = [s * .3, .35, .89];
+          }
+          leg(sh, P, s, hip, knee, ankle, toe);
+        }
+        for (const s of [-1, 1]) {   // 手撐在身後地上（手肘伸直、往外一點）
+          const sj = shj(s, tor), wrist = [s * (hip_out + 2.2), hy - 9.5, 3.2];
+          const elbow = [(sj[0] + wrist[0]) / 2 + s * 1.6, (sj[1] + wrist[1]) / 2 - .6, (sj[2] + wrist[2]) / 2];
+          arm(sh, P, sj, elbow, wrist);
+        }
+        if (front) definition(sh, P, tor);
+        if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
         hair(sh, P, doll, tor);
         return { sh, P };
       }
