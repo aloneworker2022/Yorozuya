@@ -7,6 +7,7 @@ const BODY={balanced:{height_cm:161,build:'勻稱有致',hair:'中分長髮'},sl
 const DIR={front:0,front_right:45,right:90,back_right:135,back:180,back_left:-135,left:-90,front_left:-45};
 const AR=['small','medium','large','huge'],SH=process.env.SHAPES?process.env.SHAPES.split(','):['round','bell','pendulous'],CU='ABCDEFGH'.split(''),SUPCL=['bra','tee','napkin_bell','napkin_jade'];
 const ONLY=process.env.ONLY,SHARD=+(process.env.SHARD||0),NSH=+(process.env.NSHARD||1),FORCE=!!process.env.FORCE;
+const SINCE=Date.parse(process.env.SINCE||'')||0;   // 2026-10-31：SINCE=時間 → 這個時間之後畫過的檔就跳過（重畫中斷後接著畫）
 const CLF=c=>!process.env.CL||process.env.CL.split(',').includes(c);
 for(const d of ['','/hair','/cloth','/groin','/sup','/sup/cloth'])fs.mkdirSync(O+d,{recursive:true});
 const mk=(b,c,s,a)=>{const x=D.lookToDoll({...BODY[b],cup:c+' 罩杯'});x.shape=s;x.areola=a;x.hair='none';return x};
@@ -19,7 +20,7 @@ for(const b in BODY)for(const d in DIR){
  if(on('sup'))for(const c of CU)for(const a of AR)jobs.push([`/sup/${b}_sup_${c}_${a}_${d}.png`,d,()=>{const x=mk(b,c,'round',a);x.braSupport=true;return x}]);
  if(on('supcloth'))for(const c of CU)for(const cl of SUPCL.filter(CLF))jobs.push([`/sup/cloth/${b}_sup_${c}_${cl}_${d}.png`,d,()=>{const x=mk(b,c,'round','medium');x.braSupport=true;x.cloth=cl;return x},D.CLOTH_A]);
 }
-let n=0,sk=0;jobs.forEach(([p,d,f,keep,nkk],ji)=>{if(ji%NSH!==SHARD)return;if(!FORCE&&fs.existsSync(O+p)&&fs.statSync(O+p).size>100){sk++;return}
+let n=0,sk=0;jobs.forEach(([p,d,f,keep,nkk],ji)=>{if(ji%NSH!==SHARD)return;if(fs.existsSync(O+p)&&fs.statSync(O+p).size>100&&(!FORCE||(SINCE&&fs.statSync(O+p).mtimeMs>SINCE))){sk++;return}
  const doll=f();let nk=null;if(nkk){nk={...doll};delete nk[nkk]}
  const S={width:FW*8,height:FH,pixels:new Uint8ClampedArray(FW*8*FH*4)};
  for(let i=0;i<8;i++){const r=keep==='hair'?D.renderHairLayer(doll,'walk',i,DIR[d],{scale:K}):D.render(doll,'walk',i,DIR[d],{scale:K}),g=nk&&D.render(nk,'walk',i,DIR[d],{scale:K});
