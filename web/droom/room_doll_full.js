@@ -392,12 +392,21 @@
         const [tx, ty, tz] = jig.thigh;
         sh.ell(BODY, [s * 4.6 * F(b, 'hip') + tx, yl(C - 2) - 1.2 + ty, C - 2.5 + tz], [3.9 * F(b, 'thigh'), 3.9 * F(b, 'thigh') * (1 - .6 * q), 3.6]);
       }
-      const AR = (AREOLA_R[doll.areola] || 1.5) * (.35 + r0(P, doll) * .16)   /* 2026-10-29 pt11u：乳暈隨乳房大小放大（A≈0.72× → H≈1.4×） */, nipAt = (q, fwd = [0, 1, 0], bod = null) => { if (doll.nipples === false) return; sh.nip = 1;
-        if (doll.areola === 'huge' && bod) {   // 2026-10-30 pt24u：巨大乳暈＝貼著乳房曲面的殼，蓋住朝前約半個乳房（球面 60° 帽）
-          const fl = Math.hypot(...fwd), n = fwd.map(v => v / fl), rf = Math.hypot(bod.r[0] * n[0], bod.r[1] * n[1], bod.r[2] * n[2]);
-          sh.ell(BODY, bod.c, bod.r.map(v => v * 1.03 + .12));
-          sh.prims[sh.prims.length - 1].pl = { n, o: n[0] * q[0] + n[1] * q[1] + n[2] * q[2] - rf * .62 };
-        } else sh.ell(BODY, [q[0] + fwd[0] * .1, q[1] + fwd[1] * .3, q[2] + fwd[2] * .3], [AR, .45, AR * (fwd[2] ? .8 : 1)]); sh.nip = 2; sh.ell(BODY, [q[0] + fwd[0] * .55, q[1] + fwd[1] * .55, q[2] + fwd[2] * .55], [.6, .6, .6]); sh.nip = 0; };
+      // 2026-10-31：乳暈改畫在乳房曲面像素上（不再用會被奶吃掉的圓盤／斜切殼）；乳頭沿指向往外凸小球
+      const AR0 = (AREOLA_R[doll.areola] || 1.5) * (.35 + r0(P, doll) * .16)   /* 2026-10-29 pt11u：乳暈隨乳房大小放大（A≈0.72× → H≈1.4×） */;
+      const nipAt = (q, fwd = [0, 1, 0], bod = null) => {
+        if (doll.nipples === false) return;
+        let ar = AR0;
+        const fl = Math.hypot(...fwd) || 1, n = fwd.map(v => v / fl);
+        if (doll.areola === 'huge' && bod) {
+          const rf = Math.hypot(bod.r[0] * n[0], bod.r[1] * n[1], bod.r[2] * n[2]);
+          ar = Math.max(ar, rf * .62);
+        } else if (doll.areola === 'large') ar = Math.max(ar, AR0 * 1.15);
+        (sh.areolaStamps = sh.areolaStamps || []).push({ q: [q[0], q[1], q[2]], ar, nip: Math.max(1.1, ar * .22) });
+        sh.nip = 2;
+        sh.ell(BODY, [q[0] + n[0] * .85, q[1] + n[1] * .85, q[2] + n[2] * .85], [1.15, 1.15, 1.15]);
+        sh.nip = 0;
+      };
       const SHP = doll.shape || 'round', r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
       sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
@@ -421,23 +430,21 @@
           nipAt([bot[0], bot[1] + r * .97, bot[2] - r * .05], [0, 1, 0], { c: bot, r: [r * 1.12, r * .9, r * .82] });
         } else if (SHP === 'pendulous' && hang <= .05) {
           // 下垂（v8）：根部在胸口高處，乳肉沿重力往下（−z）長長掛下來，最低點遠低於乳房下緣，底部像袋子最飽滿、乳頭朝下
+          // 2026-10-31：巨乳外擴——根部靠近胸骨（兩顆果子同根），下緣／底部隨罩杯往左右拉開
           const L = r * 1.9 + 1.5;
-          const top = [s * (2.9 + r * .22) * cs, yl(zA) + 2.0 * cs + r * .25, zA];
-          const mid = [s * (3.2 + r * .3) * cs, yl(zA) + 2.4 * cs + r * .55, zA - L * .55];
-          const bot = [s * (3.4 + r * .32) * cs + bx, yl(zA) + 2.4 * cs + r * .6 + by, zA - L + bz];   // 2026-10-29：形狀回復 v8 下垂（pt11u 上胸變扁版被退回）；保留 bz 讓走路晃動吃得到
+          const flare = Math.max(0, (r - 3.5) * .6);   // C≈0 → D≈0.6 → G≈1.56
+          const top = [s * (2.35 + r * .1) * cs, yl(zA) + 2.0 * cs + r * .25, zA];
+          const mid = [s * (2.95 + r * .26 + flare * .5) * cs, yl(zA) + 2.4 * cs + r * .55, zA - L * .55];
+          const bot = [s * (3.2 + r * .28 + flare) * cs + bx, yl(zA) + 2.4 * cs + r * .6 + by, zA - L + bz];
           sh.cone(BODY, top, mid, r * .5, r * .78);
           sh.cone(BODY, mid, bot, r * .78, r * .9);
-          sh.ell(BODY, [bot[0], bot[1], bot[2] + r * .1], [r * .98, r * .8, r * .85]);
-          {   // 2026-10-31 pt91u：下垂型乳頭乳暈朝下約 40°——放在乳房曲面上 40° 往下的位置，乳暈改成貼曲面的斜帽（不再是直立平片）
-            const pc = [bot[0], bot[1], bot[2] + r * .1], pr = [r * .98, r * .8, r * .85], a = 40 * Math.PI / 180, n = [0, Math.cos(a), -Math.sin(a)];
-            const q = [pc[0], pc[1] + pr[1] * n[1], pc[2] + pr[2] * n[2]];
-            if (doll.areola === 'huge' || doll.nipples === false) nipAt(q, n, { c: pc, r: pr });
-            else {
-              const rf = Math.hypot(pr[1] * n[1], pr[2] * n[2]);
-              sh.nip = 1; sh.ell(BODY, pc, pr.map(v => v * 1.03 + .12));
-              sh.prims[sh.prims.length - 1].pl = { n, o: n[1] * pc[1] + n[2] * pc[2] + Math.sqrt(Math.max(rf * rf - AR * AR, 0)) };
-              sh.nip = 2; sh.ell(BODY, [q[0], q[1] + n[1] * .55, q[2] + n[2] * .55], [.6, .6, .6]); sh.nip = 0;
-            }
+          const pr = [r * (.98 + flare * .04), r * .8, r * .85];
+          sh.ell(BODY, [bot[0], bot[1], bot[2] + r * .1], pr);
+          {   // 2026-10-31 pt91u：朝下約 40°；乳暈畫在曲面；巨乳時指向略帶左右外開
+            const pc = [bot[0], bot[1], bot[2] + r * .1], a = 40 * Math.PI / 180, out = Math.min(.35, flare * .18);
+            const n = [s * out, Math.cos(a), -Math.sin(a)], nn = Math.hypot(...n), nu = n.map(v => v / nn);
+            const q = [pc[0] + pr[0] * nu[0], pc[1] + pr[1] * nu[1], pc[2] + pr[2] * nu[2]];
+            nipAt(q, nu, { c: pc, r: pr });
           }
         } else if (SHP === 'round' && hang <= .05) {
           // 圓形：上下一樣飽滿的球
@@ -1539,6 +1546,7 @@
       const K = Math.max(1, Math.round(opts.scale || 1));
       const width = cv.w * K, height = cv.h * K, ax = cv.ax, ay = cv.ay;
       const prims = sh.prims, np = prims.length;
+      const stamps = sh.areolaStamps || [];
       // world-space bounding spheres (primitive offsets folded in)
       const bcx = new Float64Array(np), bcy = new Float64Array(np), bcz = new Float64Array(np), brr = new Float64Array(np), pm = new Uint8Array(np), pb = new Uint8Array(np);
       let mnx = 1e9, mny = 1e9, mnz = 1e9, mxx = -1e9, mxy = -1e9, mxz = -1e9;
@@ -1622,9 +1630,44 @@
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
           if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
-          set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
+          let stampRgb = null;
+          if (stamps.length && bust[i] === 1 && hit[i]) {
+            const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
+            const X = (sx0 * c - 2 * t0 * s) / gw, Y = (sx0 * s + 2 * t0 * c) / gw, Z = -sy0;
+            for (const st of stamps) {
+              const d = hypot3(X - st.q[0], Y - st.q[1], Z - st.q[2]);
+              if (d <= st.nip) { stampRgb = NIP_RGB; break; }
+              if (d <= st.ar && !stampRgb) stampRgb = AREOLA_RGB;
+            }
+          }
+          if (stampRgb) set(i, stampRgb, 255);
+          else set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
         }
         if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32;
+      }
+      if (stamps.length) {
+        for (const st of stamps) {
+          const qx = st.q[0], qy = st.q[1], qz = st.q[2];
+          let best = -1, bestD = 1e9, bx = 0, by = 0;
+          for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+            const i = y * width + x;
+            if (!m[i] || !hit[i] || bust[i] !== 1) continue;
+            const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
+            const X = (sx0 * c - 2 * t0 * s) / gw, Y = (sx0 * s + 2 * t0 * c) / gw, Z = -sy0;
+            const d = hypot3(X - qx, Y - qy, Z - qz);
+            if (d < bestD) { bestD = d; best = i; bx = x; by = y; }
+          }
+          if (best < 0) continue;
+          const rPix = Math.max(2, Math.round(0.9 * K));
+          for (let oy = -rPix; oy <= rPix; oy++) for (let ox = -rPix; ox <= rPix; ox++) {
+            if (ox * ox + oy * oy > rPix * rPix + 0.2) continue;
+            const xx = bx + ox, yy = by + oy;
+            if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+            const i = yy * width + xx;
+            if (!m[i] || bust[i] !== 1) continue;
+            set(i, NIP_RGB, 255);
+          }
+        }
       }
       for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {   // pinholes take their neighbours' depth
         const i = y * width + x;
