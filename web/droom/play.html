@@ -192,6 +192,34 @@ const SELF_COL={1:[[200,154,122],[168,124,98]],2:[[210,164,132],[176,130,104]],3
 function selfPoly(pts,id){let x0=SW,x1=0,y0=SH,y1=0;for(const[x,y]of pts){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}
  for(let y=Math.max(0,y0|0);y<=Math.min(SH-1,y1);y++)for(let x=Math.max(0,x0|0);x<=Math.min(SW-1,x1);x++){let c=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){const[xi,yi]=pts[i],[xj,yj]=pts[j];if((yi>y+.5)!=(yj>y+.5)&&x+.5<(xj-xi)*(y+.5-yi)/(yj-yi)+xi)c=!c}if(c)SELF_ID[y*SW+x]=id}}
 function selfEll(cx,cy,rx,ry,id){for(let y=Math.max(0,cy-ry|0);y<=Math.min(SH-1,cy+ry);y++)for(let x=Math.max(0,cx-rx|0);x<=Math.min(SW-1,cx+rx);x++){const u=(x+.5-cx)/rx,v=(y+.5-cy)/ry;if(u*u+v*v<=1)SELF_ID[y*SW+x]=id}}
+// 2026-10-31：陰莖形狀重做（使用者：先改陰莖形狀）。幾乎垂直往下看＝看到陰莖背面：
+//  勃起：根部粗、往前略收、微微往上翹（越遠越小）；冠狀溝外擴一圈比莖粗，龜頭像橡實（前端圓、尖端尿道口一個小凹）；背面一條淺淺的血管。
+//  微勃起：比較短、往一邊歪，包皮退一半（龜頭只露前半）。
+//  軟：往下垂＝從上看很短、粗短一截，包皮整個包住，尖端皺成一小撮、露一點點紅。
+//  逐列算中心線＋半寬，記每個像素在圓柱上的橫向位置 u（−1 左緣～1 右緣）→ 圓柱明暗（左上打光）、量化成 4 階 pixel 色。
+const SELF_U=new Float32Array(SW*SH);
+const PN_RAMP={5:[[50,27,21],[64,37,27],[80,47,35],[100,61,45]],6:[[88,10,20],[116,18,28],[144,30,40],[176,58,68]]},PN_SPEC=[212,118,124],PN_VEIN=[60,34,40];
+function selfPenis(cx,y0,pn){
+ const P=pn=="erect"?{L:98,wb:12.5,ws:9,gl:.27,gw:15,bend:3,persp:.22,cover:0}
+  :pn=="semi"?{L:64,wb:12,ws:10,gl:.3,gw:13,bend:7,persp:.14,cover:.5}
+  :{L:30,wb:12,ws:12.5,gl:.42,gw:11,bend:1,persp:.05,cover:1};
+ const tip=y0-P.L,tg=1-P.gl;
+ for(let y=Math.max(0,Math.floor(tip));y<=y0;y++){const t=(y0-y)/P.L;if(t<0||t>1)continue;
+  const sc=1-P.persp*t,xc=cx+P.bend*t*t;let hw,id=5;
+  if(t<tg){const a=t/tg;hw=P.wb+(P.ws-P.wb)*Math.min(1,a*1.6)+(pn=="soft"?Math.sin(a*Math.PI)*1.2:0)}   // 莖：根部粗、很快收到莖粗
+  else{const s=(t-tg)/(1-tg);
+   if(pn=="soft"){hw=P.ws*Math.sqrt(Math.max(0,1-Math.pow(Math.max(0,s-.2)/.8,2)))*(1-.25*s)}   // 軟：包皮圓頭、往尖端收成一撮
+   else{const fl=Math.min(1,s/.1);hw=s<.35?P.ws+(P.gw-P.ws)*fl*fl*(3-2*fl):P.gw*Math.sqrt(Math.max(0,1-Math.pow((s-.35)/.65,2)))*(1-.12*(s-.35));   // 冠狀溝外擴＋橡實圓頭
+    id=s>=P.cover*.55+.04?6:5}}   // 微勃起：包皮蓋住龜頭後半
+  hw*=sc;
+  for(let x=Math.floor(xc-hw);x<=Math.ceil(xc+hw);x++){if(x<0||x>=SW)continue;const u=(x+.5-xc)/hw;if(Math.abs(u)>1)continue;const i=y*SW+x;SELF_ID[i]=id;SELF_U[i]=u;
+   if(pn=="erect"&&id==5&&t>.12&&t<tg-.06&&Math.abs(u-(-.18+.22*Math.sin(t*9)))<.1)SELF_U[i]=9;   // 背面血管
+   if(pn!="soft"&&id==6&&t>.985&&Math.abs(u)<.16)SELF_U[i]=8;   // 尿道口小凹
+   if(pn=="soft"&&t>.88&&Math.abs(u)<.42)SELF_ID[i]=6}}   // 軟：尖端露一點紅
+ if(pn=="soft")for(const[a,r]of[[-.5,.55],[.45,.5],[0,.75]]){for(let k=0;k<7;k++){const yy=Math.round(tip+P.L*(.13+k*.035)),xx=Math.round(cx+a*P.ws*(1-k*.06)+(k-3)*a*.4);if(yy>=0&&SELF_ID[yy*SW+xx]==5&&k/7<r)SELF_U[yy*SW+xx]=9}}   // 包皮往尖端收的皺褶（三條短線）
+ if(pn=="soft")for(let y=Math.round(tip+1);y<=Math.round(tip+5);y++)for(let x=Math.round(cx-3);x<=Math.round(cx+3);x++){const u=(x+.5-cx)/3.5,v=(y+.5-tip-3)/2.5;if(u*u+v*v<=1&&SELF_ID[y*SW+x]){SELF_ID[y*SW+x]=6;SELF_U[y*SW+x]=u*.8}}   // 軟：包皮口露一點紅
+ if(pn=="semi"){const yb=Math.round(y0-P.L*(tg+(1-tg)*.2));for(let x=0;x<SW;x++){const i=yb*SW+x;if(SELF_ID[i]==5&&SELF_ID[i-SW]==6)SELF_U[i]=9}}}   // 包皮邊緣
+function pnShade(id,u){if(u==9)return PN_VEIN;if(u==8)return SELF_LINE;const lam=Math.sqrt(Math.max(0,1-u*u)),f=Math.max(0,Math.min(.999,lam*.85-u*.3));if(id==6&&f>.93&&u<-.1)return PN_SPEC;return PN_RAMP[id][f*4|0]}
 // 2026-10-31：使用者：頭要低到幾乎垂直才開始看到陰莖 → 俯角 1.2（約 69°）以前完全看不到，1.2→PMIN 才從畫面底升上來
 function drawSelfRef(moving){const th=-P.p,T0=1.2,k=Math.max(0,Math.min(1,(th-T0)/(PMIN-T0)));if(k<=0)return;
  SELF_B+=(moving?.14:0);const st=moving?Math.sin(SELF_B):0,cx=SW/2,pn=pnSel.value;SELF_ID.fill(0);
@@ -202,16 +230,12 @@ function drawSelfRef(moving){const th=-P.p,T0=1.2,k=Math.max(0,Math.min(1,(th-T0
   selfPoly([[cx+s*128,242],[cx+s*114,200],[cx+s*92,160],[cx+s*66,ky+12],[cx+s*58*sc,ky-4],[cx+s*30*sc,ky-6],[cx+s*24,ky+20],[cx+s*18,170],[cx+s*10,212],[cx+s*4,242]],2)}   // 大腿（根部粗、往膝蓋收）
  selfEll(cx,272,156,56,3);   // 下腹（畫面最下緣的弧）
  selfEll(cx-9,214,15,13,4);selfEll(cx+9,214,15,13,4);   // 陰囊（左右兩顆，從陰莖根部兩側露出）
- const L=pn=="erect"?92:pn=="semi"?58:30,tip=214-L,gw=pn=="erect"?13:pn=="semi"?11:8,lean=pn=="semi"?3:0;
- selfPoly([[cx-12,214],[cx-9+lean,tip+6],[cx+9+lean,tip+6],[cx+12,214]],5);   // 陰莖（從上往下看：往前伸＝往畫面上方）
- if(pn=="soft")selfEll(cx,tip+4,gw,gw*.9,5);   // 軟：包皮包著，龜頭只露一點
- if(pn!="soft")selfEll(cx+lean,tip+5,gw*.95,3.5,5);   // 冠狀溝（龜頭下緣一圈比莖粗）
- selfEll(cx+lean,tip+(pn=="soft"?2:0),gw*(pn=="soft"?.55:.95),gw*(pn=="soft"?.5:.78),6);   // 龜頭：從上看是寬扁的蘑菇頭
+ selfPenis(cx,214,pn);
  const d=SELF_D.data,ID=SELF_ID;d.fill(0);
  for(let y=0;y<SH;y++)for(let x=0;x<SW;x++){const i=y*SW+x,id=ID[i];if(!id)continue;let line=false,shade=false;
   for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=SW||yy>=SH)continue;const n=ID[yy*SW+xx];if(n<id&&!(id==3&&n==2&&yy>=SH-1))line=true}
   if(!line)for(const[dx,dy]of[[3,0],[-3,0],[0,3],[0,-3]]){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=SW||yy>=SH)continue;if(ID[yy*SW+xx]!=id){shade=true;break}}
-  const c=line?SELF_LINE:SELF_COL[id][shade?1:0];d.set([c[0],c[1],c[2],255],i*4)}
+  const c=line?SELF_LINE:id>=5?pnShade(id,SELF_U[i]):SELF_COL[id][shade?1:0];d.set([c[0],c[1],c[2],255],i*4)}
  SELF_X.putImageData(SELF_D,0,0);g.imageSmoothingEnabled=false;g.drawImage(SELF_CV,0,Math.round((1-k)*(SH-30)))}
 function render(){const HZ=Math.round(SH/2+P.p*SH*.8),d=img.data,dx=Math.cos(P.a),dy=Math.sin(P.a),px=-dy*.66,py=dx*.66;
  for(let y=0;y<SH;y++){const ceil=y<HZ,rd=Math.abs(SH*(ceil?1-EYE:EYE)/(y-HZ+.5)),
