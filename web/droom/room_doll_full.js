@@ -224,6 +224,11 @@
       const mid = [hx + (kx - hx) * .4, hy + (ky - hy) * .4, hz + (kz - hz) * .4];
       sh.cone(BODY, hip, mid, 4.7 * wT, 4.15 * wT);
       sh.cone(BODY, mid, knee, 4.15 * wT, knee_r);
+      {   // 2026-10-31：大腿根部往外鼓（參考圖 Good：從腿根鼓出來、往膝蓋收＝雙三角輪廓）
+        const at = u => [hx + (kx - hx) * u, hy + (ky - hy) * u, hz + (kz - hz) * u];
+        const a = at(.08), m2 = at(.42);
+        sh.cone(BODY, [a[0] + side * 1.25 * wT, a[1], a[2]], [m2[0] + side * .55 * wT, m2[1], m2[2]], 4.45 * wT, 3.7 * wT);
+      }
       if (b.muscle) sh.ell(BODY, [hx + (kx - hx) * .62 + side * .9, hy + (ky - hy) * .62 + 1.0, hz + (kz - hz) * .62], [2.9 * wT, 3.0 * wT, 5.5]);
       const peak = b.muscle < .8 ? .26 : .22;
       const cpos = [kx + (ax - kx) * peak + side * .25, ky + (ay - ky) * peak - .7 - .5 * b.muscle, kz + (az - kz) * peak];
@@ -707,8 +712,11 @@
       const b = P.b, C = tor.C, z0 = C + (tor.zW - C) * .72, x0 = 6.9 * F(b, 'hip');
       sh.crease = 1;
       for (const s of [-1, 1]) {
-        const p0 = [s * x0, z0], p1 = [s * x0 * .5, C + (z0 - C) * .42], p2 = [s * 1.5, C + .7];
-        marks(sh, Array.from({ length: 10 }, (_, i) => { const u = i / 9, a = (1 - u) ** 2, m = 2 * u * (1 - u), c = u * u; return [a * p0[0] + m * p1[0] + c * p2[0], a * p0[1] + m * p1[1] + c * p2[1]]; }), .24, .3);   // 細一點、微微的
+        // 參考圖 Good：線從髖骨往內往下，到胯下旁邊轉成往下，沿大腿內側再延伸一小段（不在胯下斷掉）
+        const p0 = [s * x0, z0], p1 = [s * x0 * .42, C + (z0 - C) * .3], p2 = [s * 1.9, C - .6];
+        const pts = Array.from({ length: 11 }, (_, i) => { const u = i / 10, a = (1 - u) ** 2, m = 2 * u * (1 - u), c = u * u; return [a * p0[0] + m * p1[0] + c * p2[0], a * p0[1] + m * p1[1] + c * p2[1]]; });
+        pts.push([s * 2.0, C - 1.8], [s * 2.1, C - 3.0]);
+        marks(sh, pts, .24, .3);   // 細一點、微微的
       }
       sh.crease = 0;
     }
