@@ -708,7 +708,7 @@
       sh.crease = 1;
       for (const s of [-1, 1]) {
         const p0 = [s * x0, z0], p1 = [s * x0 * .5, C + (z0 - C) * .42], p2 = [s * 1.5, C + .7];
-        marks(sh, Array.from({ length: 10 }, (_, i) => { const u = i / 9, a = (1 - u) ** 2, m = 2 * u * (1 - u), c = u * u; return [a * p0[0] + m * p1[0] + c * p2[0], a * p0[1] + m * p1[1] + c * p2[1]]; }), .34, .45);
+        marks(sh, Array.from({ length: 10 }, (_, i) => { const u = i / 9, a = (1 - u) ** 2, m = 2 * u * (1 - u), c = u * u; return [a * p0[0] + m * p1[0] + c * p2[0], a * p0[1] + m * p1[1] + c * p2[1]]; }), .24, .3);   // 細一點、微微的
       }
       sh.crease = 0;
     }
