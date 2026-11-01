@@ -87,3 +87,9 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - `render_face.cjs` 改成多項目：`ITEMS=nose,blindfold`、`BODIES=…`、`POSES=walk,sit_m,sit_v` 可限定；檔名 `face/<body>_nose_small_<dir>.png`。樣品只出 balanced 走路 1×／2×。
 - 前端 `noseOver()`：只畫在頭髮以外；正面只在鼻子最下緣點一個陰影（右側淡一點），鼻樑沿用原膚色；側面凸出臉外的部分補膚色＋下緣陰影（外圈白邊照舊）。「鼻子」選單 無／小鼻子（預設小鼻子）；眼罩預設改成無。
 - 鼻子第 2 版（使用者給動漫鼻參考圖）：側面改三角形微翹（鼻樑斜直線→小鼻尖→鼻底往回收到人中，離臉約 1.9）；前端改用「線」畫：每格依方向（右＋1／左−1，正面算右）在鼻子外緣下半段畫一條線、最下緣往回勾（J 字），另一側隔一格點一個小鼻孔，線色 (184,116,98)；凸出臉外補膚色。
+
+## 2026-11-01：動漫臉型（樣品，使用者：是臉型的問題，給臉型參考圖）
+- room_doll_full.js `animeHead()`（`doll.face='anime'` 才用；`headPart` 多傳 doll）：上半圓頭骨（頭頂高度不變、頭髮照舊貼合）＋中臉／臉頰橢球＋兩條下顎線 cone 從耳下斜往前下收到尖下巴＋下巴中間 cone。參數集中在 `ANIME_HEAD`。
+  正面：顴骨最寬、往下收成 V 字下巴；側面：額頭→鼻→鼻下內凹→下巴往前，下顎線斜回耳下，脖子接在下顎後面。
+- `nose()`：有 doll.face 時沿 x＝0 從前面往後找臉表面（先算好所有表面點再放零件）。
+- 樣品只做截圖（勻稱 round D 中乳暈 2×），sheet 沒換；使用者確認後才重畫 body／hair／face 圖層（要加 `face:'anime'`）。

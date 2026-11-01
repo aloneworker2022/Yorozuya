@@ -349,7 +349,19 @@
     function r0(P, doll) { return cupRadius(P, doll); }
     function cupRadius(P, doll) { const b = P.b; return (CUP_R[doll.cup] || 3.1) * b.bust ** .7 * b.frame ** .5; }
     function bustOuter(P, doll) { const b = P.b, r = cupRadius(P, doll); return (3.2 + r * .3) * F(b, 'chest') ** .5 + r * .95; }
-    function headPart(sh, P, yl, zc) {
+    // 2026-11-01：動漫臉型（使用者參考圖；doll.face＝'anime' 才用，先做樣品）：
+    //  上半＝圓頭骨（頭頂高度不變，頭髮照舊貼合）；下半＝V 字下巴：顴骨（眼睛高度）最寬，兩條下顎線從耳下斜斜往前下收到尖下巴；
+    //  側面：臉前緣從額頭往下微微往後斜到下巴，下顎線從下巴斜往後上到耳下，脖子接在下顎後面。
+    const ANIME_HEAD = { crZ: 1.2, crRz: 7.6, jaw: [4.3, -1.6, -2.0], chin: [0, 4.4, -8.2], jr: [1.8, .85], cheek: [[5.4, 5.4, 4.6], [0, 1.2, -3.6]] };
+    function animeHead(sh, P, yl, zc) {
+      const hs = P.b.head, A = ANIME_HEAD, y0 = yl(zc) + .3, at = (x, y, z) => [x * hs, y0 + y * hs, zc + z * hs];
+      sh.ell(BODY, at(0, 0, A.crZ), [6.9 * hs, 7.2 * hs, A.crRz * hs]);                                  // 圓頭骨
+      sh.ell(BODY, at(...A.cheek[1]), A.cheek[0].map(v => v * hs));                                      // 臉頰／中臉（把 V 填滿）
+      for (const s of [-1, 1]) sh.cone(BODY, at(s * A.jaw[0], A.jaw[1], A.jaw[2]), at(...A.chin), A.jr[0] * hs, A.jr[1] * hs);   // 下顎線 → 尖下巴
+      sh.cone(BODY, at(0, 2.0, -4.5), at(...A.chin), 3.0 * hs, .85 * hs);                                 // 下巴中間（嘴下方）
+    }
+    function headPart(sh, P, yl, zc, doll = {}) {
+      if (doll.face === 'anime') return animeHead(sh, P, yl, zc);
       const hs = P.b.head, soft = P.b.soft;
       sh.ell(BODY, [0, yl(zc) + .3, zc], [6.9 * hs, 7.2 * hs, P.head_h / 2]);
       sh.ell(BODY, [0, yl(zc) + 2.2, zc - 6.0 * hs], [(4.6 + .8 * soft) * hs, 4.6 * hs, 3.6 * hs]);
@@ -376,7 +388,7 @@
       const b = P.b, zc = P.zc + dz, S = P.S + dz, C = P.C + dz, T = P.T;
       const yl = (z) => dy + (z - C) * lean;
       const soft = b.soft;
-      if (!noHead) headPart(sh, P, yl, zc);
+      if (!noHead) headPart(sh, P, yl, zc, doll);
       const neck_r = 2.7 * b.frame * (1 + .12 * soft + .06 * b.muscle);
       sh.cone(BODY, [0, yl(S) - .4, S - 1], [0, yl(zc) - .6, P.chin + dz + 2], neck_r, neck_r * .85);
       const wS = F(b, 'sh');
@@ -774,14 +786,15 @@
     const NOSE_RGB = [255, 0, 128], NOSE_LO_RGB = [160, 0, 80], NOSES = ['small'];
     function nose(sh, P, doll, tor) {
       const hs = P.b.head, hh = P.head_h / 2, zc = tor.zc, yc = tor.yl(zc) + .3, ry = 7.2 * hs;
-      const yf = z => yc + ry * Math.sqrt(Math.max(0, 1 - ((z - zc) / hh) ** 2));   // 臉正前方表面
+      const yf = doll.face ? (z => { for (let y = yc + 14; y > yc; y -= .05) if (bodyDist(sh, 0, y, z) < 0) return y; return yc; })   // 動漫臉型：沿 x＝0 從前面往後找臉的表面
+        : (z => yc + ry * Math.sqrt(Math.max(0, 1 - ((z - zc) / hh) ** 2)));   // 臉正前方表面
       // 2026-11-01 照使用者參考圖（動漫鼻側面）：鼻樑斜直線往前下、鼻尖小而微翹、下緣往回收到臉（三角形輪廓）
-      const zt = zc - 1.5, zb = zc - 4.0, tip = [0, yf(zb) + 1.9, zb + .35];
+      const zt = zc - 1.5, zb = zc - 4.0, F = { t: yf(zt), b: yf(zb), u: yf(zb - .3), m: yf(zb + .5) }, tip = [0, F.b + 1.9, zb + .35];   // 先找好臉表面再放零件（不然會找到剛放的鼻子）
       sh.cloth = 13;
-      sh.cone(BODY, [0, yf(zt) - .4, zt], tip, .3 * hs, .42 * hs);                        // 鼻樑
-      sh.ell(BODY, tip, [.55 * hs, .45 * hs, .42 * hs]);                                  // 鼻尖（小、微翹）
-      sh.cone(BODY, tip, [0, yf(zb - .3) - .3, zb - .3], .42 * hs, .4 * hs);              // 鼻底往回收到人中
-      sh.ell(BODY, [0, yf(zb + .5) + .5, zb + .5], [.4 * hs, 1.0, 1.1]);                   // 鼻翼：補滿鼻子跟臉之間的縫
+      sh.cone(BODY, [0, F.t - .4, zt], tip, .3 * hs, .42 * hs);                        // 鼻樑
+      sh.ell(BODY, tip, [.55 * hs, .45 * hs, .42 * hs]);                               // 鼻尖（小、微翹）
+      sh.cone(BODY, tip, [0, F.u - .3, zb - .3], .42 * hs, .4 * hs);                   // 鼻底往回收到人中
+      sh.ell(BODY, [0, F.m + .5, zb + .5], [.4 * hs, 1.0, 1.1]);                       // 鼻翼：補滿鼻子跟臉之間的縫
       sh.cloth = 0;
     }
     function hair(sh, P, doll, tor, sway = 0, grav = null, side = false, swing = null) {
