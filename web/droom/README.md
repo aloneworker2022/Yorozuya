@@ -127,3 +127,9 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - room_doll_full.js `brows()`：`doll.brows` 有值才畫；兩邊各一條貼臉表面的細帶（x 1.0～3.9、z ＋0.8），tag cloth＝17 → `BROW_RGB` #FFC040／#A07828。只標位置。
 - 前端 `browsOver()`：分左右兩條（眉頭＝靠臉中間；正側面眉頭朝前），照眉型畫（t＝0 眉頭→1 眉尾）：自然 natural（微弧）、平眉 flat、細彎 arch（彎多、眉尾收細）、粗眉 thick（眉頭兩列）、八字 worried（眉頭上）、怒眉 angry（眉頭下）；顏色＝髮色暗色、眉頭深一點。選單「眉毛」。
 - 眼罩跟動漫臉：`blindfold()` 在動漫臉時帶子中線改到眼睛高（z −1.95），沿實際臉表面（含鼻子、顴骨）往外 0.35 繞一圈（先找好所有點再放零件）；眉毛在布上緣上面隔一格。
+
+## 2026-11-01：拆部位（樣品，使用者：既然要改無頭版本，還有什麼可以切——之後有爬、坐、跳舞等動作）
+- 每個零件標部位 `p.part`：head（headPart／動漫頭）、torso（其餘軀幹、脖子、臀）、breast（sh.bust／nip）、armL／armR（arm() 依肩膀左右）、legs（leg()）。
+- `render(..., {parts:[…], gbuf:true})` 只算某些部位、回傳原始資料（hit、tt 深度、mat、bust 標記、limb）；`render(..., {gbufIn})` 用疊好的原始資料直接上色。`renderParts()`／`renderComposite()`：各部位分開算 → 每格取最近（tt 最大）→ 統一上色（輪廓線、手腳白邊、乳房邊線都在疊好後才算）。
+- 樣品（`parts_sample.cjs`）：勻稱圓形 D 走路 6 方向×2 格，疊回去和整張一起算只差 41/78367 像素（0.05%，乳房邊緣深度門檻），而且分開算比整張快約一倍（13.3 秒 → 6.8 秒）。整張渲染結果不變（跟上一版逐位元組相同）。
+- 下一步（待使用者確認）：每個部位出「原始資料 sheet」（深度 16 位元＋標記），前端疊圖後上色；乳房只依胸型×罩杯×乳暈變、頭只依臉型變。
