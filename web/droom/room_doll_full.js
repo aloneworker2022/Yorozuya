@@ -378,13 +378,22 @@
     // 正面：顴骨最寬（±6.6），往下到下顎角（±5.0, −6.1）再直線收到尖下巴。
     const ANIME_HEAD = {
       crZ: 1.2, crRz: 7.6,
-      prof: [[6.7, -.3], [7.0, -2.4], [7.2, -4.3], [7.0, -5.4], [6.6, -6.4], [6.3, -7.3], [5.6, -8.4], [5.0, -8.8], [4.2, -8.7], [-1.0, -5.4], [-3.2, -3.0], [-3.2, -.3]],   // 鼻下往後收（嘴、下巴比鼻尖後面）、尖下巴、下顎線直直斜回耳下
+      // 側面（使用者圈的重點）：眉骨微凸 → 山根凹（鼻子從這裡開始）→ 鼻下 → 上唇微凸 → 嘴縫 → 下唇 → 唇下凹 → 下巴 → 尖下巴底 → 下顎線斜回耳下
+      prof: [[6.6, 1.0], [7.1, -.7], [6.55, -1.9], [6.9, -4.4], [7.2, -5.0], [6.75, -5.55], [6.95, -6.0], [6.45, -6.8], [6.65, -7.6], [6.35, -8.4], [5.7, -8.85], [4.8, -8.8], [.4, -6.6], [-1.2, -5.4], [-3.2, -3.0], [-3.2, 1.0]],
+      eye: [3.9, 5.9, -1.95, 1.5, 1.1, 1.0],
+      brow: [3.7, 4.95, -.6, 1.9, 1.0, .75],    // 眉骨：x, y, z, 半徑
+      cheek: [3.8, 4.6, -3.2, 1.9, 1.25, 1.35],  // 顴骨   // 眼窩（挖掉）：x, y, z, 半徑 x/y/z
       front: [[-6.2, -.3], [6.2, -.3], [5.8, -3.0], [4.5, -6.0], [.6, -8.5], [-.6, -8.5], [-4.5, -6.0], [-5.8, -3.0]],   // ＋圓角 0.4；上緣收在頭骨裡面（不然臉會比頭寬）
-      top: [6.2, 6.4, .9],   // 由上往下看的橢圓：半寬、前後半徑、中心 y
+      top: [6.2, 7.6, -.5],   // 前面圓弧（45 度時遠側眼窩剛好在輪廓上）   // 由上往下看的橢圓：半寬、前後半徑、中心 y
     };
     function animeHead(sh, P, yl, zc) {
       const hs = P.b.head, A = ANIME_HEAD, y0 = yl(zc) + .3, k = P.head_h / 17.6;
       sh.ell(BODY, [0, y0, zc + A.crZ * k], [6.9 * hs, 7.2 * hs, A.crRz * k]);                                   // 圓頭骨
+      sh.carve = 2; for (const sx of [-1, 1]) sh.ell(BODY, [sx * A.eye[0] * hs, y0 + A.eye[1] * hs, zc + A.eye[2] * k], [A.eye[3] * hs, A.eye[4] * hs, A.eye[5] * k]); sh.carve = 0;   // 2026-11-01 眼窩微凹（45 度、側面看得到）
+      for (const sx of [-1, 1]) {   // 2026-11-01 眉骨、顴骨各微凸 → 45 度看外輪廓：額頭→眉骨→眼窩凹→顴骨→下巴（使用者圈的重點）
+        sh.ell(BODY, [sx * A.brow[0] * hs, y0 + A.brow[1] * hs, zc + A.brow[2] * k], [A.brow[3] * hs, A.brow[4] * hs, A.brow[5] * k]);
+        sh.ell(BODY, [sx * A.cheek[0] * hs, y0 + A.cheek[1] * hs, zc + A.cheek[2] * k], [A.cheek[3] * hs, A.cheek[4] * hs, A.cheek[5] * k]);
+      }
       sh.face(BODY, A.prof.map(([y, z]) => [y0 + y * hs, zc + z * k]), A.front.map(([x, z]) => [x * hs, zc + z * k]), [A.top[0] * hs, A.top[1] * hs, y0 + A.top[2] * hs], .3);   // 臉（側面輪廓∩正面 V 字）
     }
     function headPart(sh, P, yl, zc, doll = {}) {
@@ -417,7 +426,7 @@
       const soft = b.soft;
       if (!noHead) headPart(sh, P, yl, zc, doll);
       const neck_r = 2.7 * b.frame * (1 + .12 * soft + .06 * b.muscle);
-      if (doll.face === 'anime') sh.cone(BODY, [0, yl(S) + .2, S - 1], [0, yl(zc) + 1.0, P.chin + dz + 2.2], neck_r * .8, neck_r * .68);   // 2026-11-01 動漫臉：脖子細一點、往前斜，從下顎中間接下去（參考圖）
+      if (doll.face === 'anime') sh.cone(BODY, [0, yl(S) + .2, S - 1], [0, yl(zc) + .5, P.chin + dz + 2.6], neck_r * .8, neck_r * .66);   // 2026-11-01 動漫臉：脖子細一點、往前斜，從下顎中間接下去（參考圖）
       else sh.cone(BODY, [0, yl(S) - .4, S - 1], [0, yl(zc) - .6, P.chin + dz + 2], neck_r, neck_r * .85);
       const wS = F(b, 'sh');
       sh.cone(BODY, [-8.0 * wS, yl(S) - .6, S - 1.8], [8.0 * wS, yl(S) - .6, S - 1.8], 2.9 * b.frame, 2.9 * b.frame);
@@ -817,6 +826,13 @@
       const yf = doll.face ? (z => { for (let y = yc + 14; y > yc; y -= .05) if (bodyDist(sh, 0, y, z) < 0) return y; return yc; })   // 動漫臉型：沿 x＝0 從前面往後找臉的表面
         : (z => yc + ry * Math.sqrt(Math.max(0, 1 - ((z - zc) / hh) ** 2)));   // 臉正前方表面
       // 2026-11-01 照使用者參考圖（動漫鼻側面）：鼻樑斜直線往前下、鼻尖小而微翹、下緣往回收到臉（三角形輪廓）
+      if (doll.face === 'anime') {   // 2026-11-01 使用者：鼻子有山根，不是直直翹出去——從山根（眼睛高、臉上凹處）順著鼻樑斜到鼻尖，鼻底收回人中：貼在臉上的三角楔形
+        const k = P.head_h / 17.6, y0 = yc - .3 + .3, Z = z => zc + z * k, Y = y => y0 + y * hs;
+        sh.cloth = 13;
+        sh.face(BODY, [[Y(6.2), Z(-1.75)], [Y(6.75), Z(-1.9)], [Y(8.75), Z(-3.95)], [Y(8.5), Z(-4.25)], [Y(7.0), Z(-4.45)], [Y(6.2), Z(-4.45)]],
+          [[-.3 * hs, Z(-1.7)], [.3 * hs, Z(-1.7)], [.95 * hs, Z(-4.5)], [-.95 * hs, Z(-4.5)]], [3 * hs, 30, y0], .15);
+        sh.cloth = 0; return;
+      }
       const zt = zc - 1.5, zb = zc - 4.0, F = { t: yf(zt), b: yf(zb), u: yf(zb - .3), m: yf(zb + .5) }, tip = [0, F.b + 1.9, zb + .35];   // 先找好臉表面再放零件（不然會找到剛放的鼻子）
       sh.cloth = 13;
       sh.cone(BODY, [0, F.t - .4, zt], tip, .3 * hs, .42 * hs);                        // 鼻樑
@@ -1766,8 +1782,8 @@
               if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = pb[i]; lf = prims[i].limb; } else if (m === 2) ck = prims[i].crease; }
             }
             if (carveIdx.length) {   // 身體 − 洞：洞壁標紅色內裡（cb 13），比原表面深 0.7 以上標深紅小口（cb 14）
-              let cd = 1e3; for (const i of carveIdx) { const v = primDist(prims[i], X, Y, Z); if (v < cd) cd = v; }
-              if (-cd > dist[0]) { const ob = dist[0]; dist[0] = -cd; bb = ob < -.7 ? 14 : 13; lf = 0; }
+              let cd = 1e3, ct = 1; for (const i of carveIdx) { const v = primDist(prims[i], X, Y, Z); if (v < cd) { cd = v; ct = prims[i].carve; } }
+              if (-cd > dist[0]) { const ob = dist[0]; dist[0] = -cd; if (ct === 2) bb = 0; else bb = ob < -.7 ? 14 : 13; lf = 0; }   // carve＝2：只挖、不改顏色（眼窩）
             }
             const d = Math.min(dist[0], dist[1], dist[2]);
             if (d < .05) {
