@@ -49,13 +49,13 @@ async function composeSit(k){const p=k.split("_"),b=p[0],PD=`${SD}${pose}/`,isB=
  const gl=await Promise.all([col.lb&&img(`${PD}groin/${b}_labia_${col.lb}.png`),col.pu!="none"&&img(`${PD}groin/${b}_pubic_${col.pu}.png`),col.pa!="none"&&img(`${PD}groin/${b}_pants_${col.pa}.png`)].map(x=>x||null));
  if(!base)return null;   // 這個組合的坐姿 sheet 還沒有
  const c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d");x.drawImage(base,0,0);
- if(bk)over(x,bk,nb);if(fr)over(x,fr,nb);if(fr)over(x,fr,isB);if(bk)over(x,bk,isB);c._cl=null;c._br=null;c._gl=gl;c._fc=col.bf=="none"?null:await img(`${PD}face/${b}_blindfold_cloth.png`);c._nz=col.ns=="none"?null:await img(`${PD}face/${b}_nose_${col.ns}.png`);c._sOf=f=>SIT_ORD[f].includes("left")?-1:1;return c}
+ if(bk)over(x,bk,nb);if(fr)over(x,fr,nb);if(fr)over(x,fr,isB);if(bk)over(x,bk,isB);c._cl=null;c._br=null;c._gl=gl;c._fc=col.bf=="none"?null:await img(`${PD}face/${b}_blindfold_cloth.png`);c._nz=col.ns=="none"?null:await img(`${PD}face/${b}_nose_${col.ns}.png`);c._sOf=f=>(SIT_ORD[f]=="left"||SIT_ORD[f]=="right")?0:SIT_ORD[f].includes("left")?-1:1;return c}
 async function compose(k){if(pose!="walk")return composeSit(k);const p=k.split("_"),b=p[0],d=p.slice(4).join("_");
  const BO=col.cl=="bra"||(col.ub!="none"&&col.cl!="none"),SP=`${SD}sup/${b}_sup_${p[2]}_`;   // pt78u 穿胸罩→托高身體
  const L=[img(BO?`${SP}${p[3]}_${d}.png`:`${SD}${k}.png`),img(`${SD}hair/${b}_back_${col.bh}_${d}.png`),img(`${SD}hair/${b}_front_${col.fh}_${d}.png`),col.cl=="none"||col.cl=="bra"?null:img(BO?`${SD}sup/cloth/${b}_sup_${p[2]}_${CLF(col.cl,col.cw)}_${d}.png`:`${SD}cloth/${b}_${p[1]}_${p[2]}_${CLF(col.cl,col.cw)}_${d}.png`),BO?img(`${SD}sup/cloth/${b}_sup_${p[2]}_bra_${d}.png`):null];
  const GL=[col.lb&&img(`${SD}groin/${b}_labia_${col.lb}_${d}.png`),col.pu!="none"&&img(`${SD}groin/${b}_pubic_${col.pu}_${d}.png`),col.pa!="none"&&img(`${SD}groin/${b}_pants_${col.pa}_${d}.png`)].map(x=>x||null);
  const [base,bk,fr,clm,brm]=await Promise.all(L),gl=await Promise.all(GL);const c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d");
- x.drawImage(base,0,0);for(const im of d.startsWith("back")?[fr,bk]:[bk,fr])if(im)over(x,im);c._cl=clm;c._br=brm;c._gl=gl;c._fc=col.bf=="none"?null:await img(`${SD}face/${b}_blindfold_cloth_${d}.png`);c._nz=col.ns=="none"?null:await img(`${SD}face/${b}_nose_${col.ns}_${d}.png`);c._sOf=()=>d.includes("left")?-1:1;return c}
+ x.drawImage(base,0,0);for(const im of d.startsWith("back")?[fr,bk]:[bk,fr])if(im)over(x,im);c._cl=clm;c._br=brm;c._gl=gl;c._fc=col.bf=="none"?null:await img(`${SD}face/${b}_blindfold_cloth_${d}.png`);c._nz=col.ns=="none"?null:await img(`${SD}face/${b}_nose_${col.ns}_${d}.png`);c._sOf=()=>(d=="left"||d=="right")?0:d.includes("left")?-1:1;return c}
 // 剪影 sheet → 白皙膚色＋髮色＋乳頭色（與 /droom/play 同一套調色）
 function clothData(im,w,h){if(!im||!im.naturalWidth)return null;const t=document.createElement("canvas");t.width=w;t.height=h;const x=t.getContext("2d");x.drawImage(im,0,0);return x.getImageData(0,0,w,h).data}
 // 2026-10-30 pt29u：衣服 sheet 是部位標記色（布／邊框 #F00／頸鍊 #0F0／配重 #00F）→ 依配色方案上色。鍊一律金色；配重 鈴鐺=金、玉石=綠。
@@ -84,7 +84,8 @@ function noseOver(d,hm,ND,W,sOf){if(!ND)return;const H=ND.length/4/W,FW=W/8,SK=[
  const put=(x,y,o)=>{const i=(y*W+x)*4;if(hm[i>>2])return;d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2];d[i+3]=255};
  for(let f=0;f<8;f++){const s=sOf(f);let x0=1e9,x1=-1,y0=1e9,y1=-1;
   for(let y=0;y<H;y++)for(let x=f*FW;x<(f+1)*FW;x++)if(isN(x,y)){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}
-  if(x1<0)continue;const yl=y0+Math.floor((y1-y0)*.35);
+  if(x1<0)continue;const yl=y0+Math.floor((y1-y0)*.6);   // 2026-11-01 鼻子變長（從眉間開始）：線只畫靠鼻尖那 40%
+  if(!s){for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)if(isN(x,y)&&!d[(y*W+x)*4+3])put(x,y,SK);continue}   // 正側面：不畫鼻子的線（使用者），凸出臉外的補膚色
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){if(!isN(x,y))continue;const i=(y*W+x)*4;
    if((y>=yl&&!isN(x+s,y))||!isN(x,y+1))put(x,y,LN);else if(!d[i+3])put(x,y,SK)}
   {let xe=s>0?1e9:-1;for(let x=x0;x<=x1;x++)if(isN(x,y1))xe=s>0?Math.min(xe,x):Math.max(xe,x);const xn=xe-2*s;if(xn>=f*FW&&xn<(f+1)*FW&&d[(y1*W+xn)*4+3])put(xn,y1,LN)}}}   // 小鼻孔
