@@ -437,7 +437,7 @@ window.RoomActivitySink = (evt) => {
   const A = roomActs(), mem = roomActMem();
   if (!A || !mem || !evt?.id) return;
   if (evt.type === "start") {
-    A.noteStart(mem, { id: evt.id, at: evt.at, dur: evt.dur });
+    A.noteStart(mem, { id: evt.id, at: evt.at, dur: evt.dur, ordered: !!evt.ordered });
     if (evt.id === "hunger_beg" && HUNGER_ON) hungerBegStarted();
   } else if (evt.type === "hold" && mem.cur?.id === evt.id) {
     mem.cur.since = evt.at;
@@ -1585,7 +1585,7 @@ function activityChatOpen() {
   }
   const prev = mem.history[0] || null;
   const hit = A.interrupt(mem, { now, chrono: girl.chrono?.name || "", hour: taiwanNow().hour });
-  mem.talk = { id: mem.cur.id, since: mem.cur.since, at: now, prevId: prev?.id || "", prevAt: prev?.at || 0, wake: !!hit.wake };
+  mem.talk = { id: mem.cur.id, since: mem.cur.since, at: now, prevId: prev?.id || "", prevAt: prev?.at || 0, wake: !!hit.wake, ordered: !!mem.cur.ordered };
   if (hit.mood) noteMood(girl, { ...hit.mood, now });
   if (hit.affection) bumpAffection(hit.affection, "她正無聊，你來找她");
   if (hit.mood || hit.affection || hit.wake) {
