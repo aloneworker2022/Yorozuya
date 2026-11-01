@@ -133,3 +133,4 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - `render(..., {parts:[…], gbuf:true})` 只算某些部位、回傳原始資料（hit、tt 深度、mat、bust 標記、limb）；`render(..., {gbufIn})` 用疊好的原始資料直接上色。`renderParts()`／`renderComposite()`：各部位分開算 → 每格取最近（tt 最大）→ 統一上色（輪廓線、手腳白邊、乳房邊線都在疊好後才算）。
 - 樣品（`parts_sample.cjs`）：勻稱圓形 D 走路 6 方向×2 格，疊回去和整張一起算只差 41/78367 像素（0.05%，乳房邊緣深度門檻），而且分開算比整張快約一倍（13.3 秒 → 6.8 秒）。整張渲染結果不變（跟上一版逐位元組相同）。
 - 下一步（待使用者確認）：每個部位出「原始資料 sheet」（深度 16 位元＋標記），前端疊圖後上色；乳房只依胸型×罩杯×乳暈變、頭只依臉型變。
+- 其他姿勢驗證（使用者：做其他動作會不會壞掉，例如蹲下）：idle／crouch 蹲下／hug_knees／sit／sit_m／sit_v／stretch／wall_lean／sway／stare／twirl／lie_phone／prone_kick／sleep_curl／sit_curl，各 5 方向×2 格，拆開疊回去和整張一起算的差異都 ≤0.08%（蹲下 0.006%），躺姿（整組旋轉）也正常。匯出 `POSES`。
