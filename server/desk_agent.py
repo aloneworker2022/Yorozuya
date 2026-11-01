@@ -4,8 +4,7 @@
 伺服器背景叫 agent 去跑（手機關了也繼續），過程全部記成事件，房間和工作日誌照事件畫。
 做完桌上變成報告書；玩家看完按「完成委託」或「退回重做」（附意見，同一件接著做）。
 
-第一步只有假的 agent（MockAgent，照劇本吐事件），先把流程和畫面做好。
-之後接 Hermes（RP5 上的 Runs API ＋ hooks）只要多一個 adapter，事件格式不變：
+agent：DESK_AGENT=mock（假的，照劇本吐事件）｜hermes（RP5 上的 Hermes，server/desk_hermes.py）。事件格式：
 
 事件 {seq, at(ms), actor, kind, text, status}
   actor：main（她＝主 agent）｜sub:<n>（使魔＝subagent）｜ext:<provider>（外包：claude／grok／chatgpt…）
@@ -53,6 +52,10 @@ def init(conn: sqlite3.Connection) -> None:
             rounds      INTEGER NOT NULL DEFAULT 0
         )"""
     )
+    try:   # agent 那邊的 session（Hermes：退回重做／伺服器重開都接著同一個）
+        conn.execute("ALTER TABLE desk_runs ADD COLUMN agent_session TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
     conn.execute(
         """CREATE TABLE IF NOT EXISTS desk_events (
             run_id  INTEGER NOT NULL,
@@ -73,11 +76,11 @@ def _row(r) -> dict | None:
     if not r:
         return None
     keys = ("id", "questId", "title", "girlId", "girlName", "status", "agent", "created", "started", "finished",
-            "report", "feedback", "rounds")
+            "report", "feedback", "rounds", "session")
     return dict(zip(keys, r))
 
 
-_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds"
+_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session"
 
 
 def current(conn: sqlite3.Connection) -> dict | None:
@@ -114,7 +117,7 @@ def add_event(conn: sqlite3.Connection, run_id: int, actor: str, kind: str, text
 
 def _set(conn: sqlite3.Connection, run_id: int, **cols) -> None:
     names = {"status": "status", "started": "started", "finished": "finished", "report": "report",
-             "feedback": "feedback", "rounds": "rounds", "agent": "agent"}
+             "feedback": "feedback", "rounds": "rounds", "agent": "agent", "session": "agent_session"}
     sets = ", ".join(f"{names[k]}=?" for k in cols)
     conn.execute(f"UPDATE desk_runs SET {sets} WHERE id=?", (*cols.values(), run_id))
     conn.commit()
@@ -184,7 +187,7 @@ def summary(conn: sqlite3.Connection, run: dict | None) -> dict:
 # ───────────────────────────── agent adapters
 
 def agent_name() -> str:
-    """DESK_AGENT：mock（預設）｜hermes（第二步才接）。"""
+    """DESK_AGENT：mock（預設）｜hermes。"""
     return (os.environ.get("DESK_AGENT") or "mock").strip().lower() or "mock"
 
 
@@ -197,7 +200,7 @@ class MockAgent:
     def __init__(self, step_s: float = 3.0):
         self.step_s = step_s
 
-    async def run(self, run: dict, emit: Emit) -> str:
+    async def run(self, run: dict, emit: Emit, store=None) -> str:
         t, fb, s = run["title"], run.get("feedback") or "", self.step_s
         if fb:
             emit("main", "plan", f"看了你的意見：「{fb[:60]}」，照這個改。", "")
@@ -253,6 +256,9 @@ def make_agent():
     name = agent_name()
     if name == "mock":
         return MockAgent(float(os.environ.get("DESK_MOCK_STEP_S") or 3.0))
+    if name == "hermes":
+        import desk_hermes
+        return desk_hermes.HermesAgent()
     return None
 
 
@@ -266,8 +272,9 @@ def busy(run_id: int) -> bool:
     return bool(t and not t.done())
 
 
-async def drive(connect: Callable[[], sqlite3.Connection], run_id: int) -> None:
-    """跑一輪：running → done（報告）／failed。cancel 時安靜結束（狀態由 cancel() 寫）。"""
+async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: bool = False) -> None:
+    """跑一輪：running → done（報告）／failed。cancel 時安靜結束（狀態由 cancel() 寫）。
+    resume：伺服器重開後接著跑（Hermes 接著同一個 session）。"""
     conn = connect()
     try:
         run = get(conn, run_id)
@@ -275,14 +282,20 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int) -> None:
             return
         agent = make_agent()
         if agent is None:
-            add_event(conn, run_id, "main", "error", f"沒有「{agent_name()}」這種 agent（第一步只有 mock）。", "fail")
+            add_event(conn, run_id, "main", "error", f"沒有「{agent_name()}」這種 agent（DESK_AGENT 只能是 mock 或 hermes）。", "fail")
             _set(conn, run_id, status="failed", finished=now_ms())
             return
 
         def emit(actor: str, kind: str, text: str, status: str = "") -> None:
             add_event(conn, run_id, actor, kind, text, status)
 
-        report = await agent.run(run, emit)
+        def store(**cols) -> None:
+            _set(conn, run_id, **cols)
+
+        # 使魔編號接著之前的（退回重做時不會跟上一輪的使魔①撞名）
+        sub_base = conn.execute("SELECT COUNT(DISTINCT actor) FROM desk_events WHERE run_id=? AND actor LIKE 'sub:%'",
+                                (run_id,)).fetchone()[0] or 0
+        report = await agent.run({**run, "subBase": sub_base, "resume": resume}, emit, store)
         if (get(conn, run_id) or {}).get("status") != "running":
             return
         add_event(conn, run_id, "main", "report", "報告寫好了，放在桌上。", "ok")
@@ -300,10 +313,10 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int) -> None:
         _tasks.pop(run_id, None)
 
 
-def _spawn(connect, run_id: int) -> None:
+def _spawn(connect, run_id: int, resume: bool = False) -> None:
     if busy(run_id):
         return
-    _tasks[run_id] = asyncio.create_task(drive(connect, run_id))
+    _tasks[run_id] = asyncio.create_task(drive(connect, run_id, resume))
 
 
 def start(connect, conn: sqlite3.Connection) -> dict:
@@ -319,7 +332,8 @@ def start(connect, conn: sqlite3.Connection) -> dict:
         return run
     _set(conn, run["id"], status="running", started=now_ms(), finished=0, rounds=run["rounds"] + 1, agent=agent_name())
     add_event(conn, run["id"], "main", "status", "坐下來開工了。" if run["status"] == "placed" else "重新開工。", "")
-    _spawn(connect, run["id"])
+    # 出錯後重來：agent 那邊已經有 session → 接著做，不重新開題
+    _spawn(connect, run["id"], resume=run["status"] == "failed" and bool(run.get("session")))
     return get(conn, run["id"])
 
 
@@ -365,7 +379,7 @@ def resume_all(connect) -> int:
         rows = conn.execute("SELECT id FROM desk_runs WHERE status='running'").fetchall()
         for (rid,) in rows:
             add_event(conn, rid, "main", "status", "伺服器重開，接著做。", "")
-            _spawn(connect, rid)
+            _spawn(connect, rid, resume=True)
         return len(rows)
     finally:
         conn.close()

@@ -226,7 +226,7 @@
       const tl = events.slice().reverse().filter(e => e.actor === 'main' || e.kind !== 'tool' || e.status !== 'run').slice(0, 60).map(e =>
         `<li class="${e.status === 'fail' ? 'fail' : e.status === 'ok' ? 'ok' : ''}"><span class="t">${hhmm(e.at)}</span><span><span class="w">${esc(who(e.actor))}${KIND[e.kind] ? '・' + KIND[e.kind] : ''}</span>${esc(e.text)}</span></li>`).join('');
       body = `<div class="title">${esc(run.title)}</div>
-        <div><span class="chip ${run.status === 'running' ? 'run' : run.status}">${STATUS[run.status] || run.status}${elapsed}</span>${agent === 'mock' ? '<span class="mini">示範 agent（還沒接 Hermes）</span>' : `<span class="mini">${esc(agent)}</span>`}</div>
+        <div><span class="chip ${run.status === 'running' ? 'run' : run.status}">${STATUS[run.status] || run.status}${elapsed}</span><span class="mini">${agent === 'mock' ? '示範 agent（還沒接 Hermes）' : agent === 'hermes' ? 'Hermes（RP5）' : esc(agent)}</span></div>
         ${summary.trouble && run.status === 'running' ? `<div class="trouble">卡住：${esc(summary.trouble.text)}</div>` : ''}
         ${subs ? `<div class="sec">使魔（subagent）</div><div class="cards">${subs}</div>` : ''}
         ${exts ? `<div class="sec">外包</div><div class="cards">${exts}</div>` : ''}
