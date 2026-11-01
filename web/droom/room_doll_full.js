@@ -887,12 +887,26 @@
       { const c = pts[pts.length >> 1]; if (c) sh.ell(BODY, [c[0], c[1] + .12, z], [.3, .3, .34 * k]); }   // 嘴中間稍微凸出一點：側面也抓得到嘴的位置
       sh.cloth = 0;
     }
+    // 2026-11-01：眼睛位置標記（樣品）。doll.eyes 有值才畫；兩眼中心 x ±2.75、z −1.95（頭高 17.6），各一片貼著臉表面的薄片（半寬 1.45、半高 1.25：動漫大眼），tag cloth＝15 → EYE_RGB。
+    // 眼型（大圓眼／杏眼／下垂眼／貓眼／笑眼／閉眼）與瞳色由前端照位置畫像素。
+    const EYE_RGB = [128, 128, 255], EYE_LO_RGB = [64, 64, 160];
+    function eyes(sh, P, doll, tor) {
+      const hs = P.b.head, k = P.head_h / 17.6, zc = tor.zc, yc = tor.yl(zc) + .3, pts = [];
+      for (const sx of [-1, 1]) for (let dz = -1.25; dz <= 1.25 + 1e-6; dz += .31) for (let dx = -1.45; dx <= 1.45 + 1e-6; dx += .29) {
+        const x = (sx * 2.75 + dx) * hs, z = zc + (-1.95 + dz) * k;
+        for (let y = yc + 14; y > yc; y -= .04) if (bodyDist(sh, x, y, z) < 0) { pts.push([x, y, z]); break; }   // 先找好臉表面
+      }
+      sh.cloth = 15;
+      for (const [x, y, z] of pts) sh.ell(BODY, [x, y - .02, z], [.2, .14, .2 * k]);
+      sh.cloth = 0;
+    }
     function hair(sh, P, doll, tor, sway = 0, grav = null, side = false, swing = null) {
       const Rg = grav ? gravRot(grav) : null;
       const bend = (pts, root = pts[0]) => !Rg ? pts : pts.map(p => { const d = mulV(Rg, [p[0] - root[0], p[1] - root[1], p[2] - root[2]]); return [root[0] + d[0], root[1] + d[1], root[2] + d[2]]; });
       // swing（頭的局部座標向量）：髮根不動、越往髮尾甩越多；sw(p, w) 把點 p 照權重 w（0～1）推過去
       const SW = swing || [0, 0, 0], sw = (p, w) => [p[0] + SW[0] * w, p[1] + SW[1] * w, p[2] + SW[2] * w];
       const swc = (pts, ws) => pts.map((p, i) => sw(p, ws[i]));
+      if (doll.eyes) eyes(sh, P, doll, tor);   // 2026-11-01 眼睛位置
       if (doll.mouth) mouth(sh, P, doll, tor);   // 2026-11-01 嘴巴位置（在鼻子前面放，找表面時不會找到鼻子）
       if (doll.nose) nose(sh, P, doll, tor);   // 2026-11-01
       if (doll.blindfold) blindfold(sh, P, doll, tor, sway);   // 2026-10-31：眼罩跟頭髮一起畫（所有姿勢都有）
@@ -1871,7 +1885,7 @@
             const j = ny * width + nx;
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
-          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 13 ? OPEN_RGB : cb === 14 ? HOLE_RGB : cb === 15 ? PUBIC_EDGE_RGB : cb === 16 ? (near ? BLIND_LO_RGB : BLIND_RGB) : cb === 17 ? (near ? NOSE_LO_RGB : NOSE_RGB) : cb === 18 ? (near ? MOUTH_LO_RGB : MOUTH_RGB) : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
+          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 13 ? OPEN_RGB : cb === 14 ? HOLE_RGB : cb === 15 ? PUBIC_EDGE_RGB : cb === 16 ? (near ? BLIND_LO_RGB : BLIND_RGB) : cb === 17 ? (near ? NOSE_LO_RGB : NOSE_RGB) : cb === 18 ? (near ? MOUTH_LO_RGB : MOUTH_RGB) : cb === 19 ? (near ? EYE_LO_RGB : EYE_RGB) : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
           let stampRgb = null;
           if (stamps.length && bust[i] === 1 && hit[i]) {
             const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
@@ -2038,7 +2052,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, CREASE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };

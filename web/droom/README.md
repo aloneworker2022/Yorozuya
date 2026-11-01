@@ -110,3 +110,9 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - room_doll_full.js `mouth()`：`doll.mouth` 有值才畫；動漫臉嘴縫高度（z −5.55）沿臉表面貼一條薄帶（x ±1.4）＋中間一顆稍凸的點（側面也抓得到），tag cloth＝14 → `MOUTH_RGB` #80FF80／#40A040。只標位置。
 - 前端 `mouthOver()`：每格找標記範圍（中心、寬），照嘴型畫像素：閉嘴 line、微笑 smile、小 o 嘴 o、張嘴笑 open、嘟嘴 pout、口紅 lip；正側面從臉前緣往內畫一小段。換嘴型不用重畫圖。選單「嘴巴」。
 - 圖層檔名 `face/<body>_mouth_<dir>.png`（坐姿 `<pose>/face/<body>_mouth.png`）；還沒正式出（render_face.cjs 尚未加 mouth）。
+
+## 2026-11-01：眼睛（樣品）
+- room_doll_full.js `eyes()`：`doll.eyes` 有值才畫；兩眼中心 x ±2.75、z −1.95，各一片貼臉表面的薄片（半寬 1.45、半高 1.25），tag cloth＝15 → `EYE_RGB` #8080FF／#4040A0。只標位置。
+- 前端 `eyesOver()`：每格把標記分成一隻隻眼睛（範圍＝眼眶，外眼角＝離另一隻遠的那側；只剩一隻＝正側面，外眼角朝耳朵），照眼型畫：大圓眼 round、杏眼 almond、下垂眼 droopy、貓眼 cat、笑眼 happy（∩）、閉眼 closed（︶）；上睫毛最粗、外眼角加厚，眼白、瞳孔三階（上深下亮）＋亮點，外側下睫毛。瞳色：咖啡／藍／綠／紅／紫／黑。選單「眼睛」「瞳色」。
+- 圖層檔名 `face/<body>_eyes_<dir>.png`（坐姿 `<pose>/face/<body>_eyes.png`）；還沒正式出。
+- 臉部樣品一律用 2×（hd）做；1× 同一個模型、解析度減半，細節會更小。
