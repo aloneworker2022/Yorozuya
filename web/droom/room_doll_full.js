@@ -118,6 +118,12 @@
         let br = 0; for (const q of poly) br = Math.max(br, Math.hypot(q[0] - cy, q[1] - cz));
         push({ k: 3, mat, poly, hw, rr, clip: null, bc: [0, cy, cz], br: Math.hypot(br, hw) + rr });
       };
+      // 2026-11-01：臉零件＝側面多邊形（y 往前, z 往上）與正面多邊形（x, z）的交集，邊角圓 rr
+      sh.face = (mat, prof, front, top, rr = .4) => {
+        let cy = 0, cz = 0; for (const q of prof) { cy += q[0] / prof.length; cz += q[1] / prof.length; }
+        let br = 0; for (const q of prof) br = Math.max(br, Math.hypot(q[0] - cy, q[1] - cz)); for (const q of front) br = Math.max(br, Math.abs(q[0]));
+        push({ k: 4, mat, prof, front, top, rr, clip: null, bc: [0, cy, cz], br: br * 1.5 + rr });
+      };
       sh.chain = (mat, pts, radii) => { for (let i = 0; i < pts.length - 1; i++) sh.cone(mat, pts[i], pts[i + 1], radii[i], radii[i + 1]); };
       sh.capped = (mat, c, h, rBottom, rTop, ysq, ycen) => {
         const rr = Math.max(rBottom, rTop) * Math.max(1, ysq);
@@ -126,6 +132,18 @@
           bc: [c[0], c[1] + ycen, c[2]], br: Math.sqrt(rr * rr + h * h) + 1 });
       };
       return sh;
+    }
+    // 2D 多邊形有號距離（裡面負）
+    function poly2(v, u, w) {
+      const N = v.length; let dd = (u - v[0][0]) ** 2 + (w - v[0][1]) ** 2, sg = 1;
+      for (let a = 0, b = N - 1; a < N; b = a++) {
+        const eu = v[b][0] - v[a][0], ew = v[b][1] - v[a][1], pu = u - v[a][0], pw = w - v[a][1];
+        const t = clamp((pu * eu + pw * ew) / (eu * eu + ew * ew || 1e-9), 0, 1), bu = pu - eu * t, bw = pw - ew * t;
+        dd = Math.min(dd, bu * bu + bw * bw);
+        const c1 = w >= v[a][1], c2 = w < v[b][1], c3 = eu * pw > ew * pu;
+        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) sg = -sg;
+      }
+      return sg * Math.sqrt(dd);
     }
     function primDist(p, x, y, z) {
       const fz = z;
@@ -144,6 +162,9 @@
         const a = p.a, ba = p.ba, px = x - a[0], py = y - a[1], pz = z - a[2];
         const t = clamp((px * ba[0] + py * ba[1] + pz * ba[2]) / p.L2, 0, 1);
         d = hypot3(px - ba[0] * t, py - ba[1] * t, pz - ba[2] * t) - (p.ra + (p.rb - p.ra) * t);
+      } else if (p.k === 4) {   // 2026-11-01 臉：側面輪廓（y,z）∩ 正面輪廓（x,z），圓角 rr
+        const [ea, eb, ec] = p.top, de = (Math.hypot(x / ea, (y - ec) / eb) - 1) * Math.min(ea, eb);   // 由上往下看：橢圓（臉的水平切面是圓弧，不是方的）
+        d = Math.max(poly2(p.prof, y, z), poly2(p.front, x, z), de) - p.rr;
       } else if (p.k === 3) {
         const v = p.poly, N = v.length;
         let dd = (y - v[0][0]) ** 2 + (z - v[0][1]) ** 2, sg = 1;
@@ -352,13 +373,19 @@
     // 2026-11-01：動漫臉型（使用者參考圖；doll.face＝'anime' 才用，先做樣品）：
     //  上半＝圓頭骨（頭頂高度不變，頭髮照舊貼合）；下半＝V 字下巴：顴骨（眼睛高度）最寬，兩條下顎線從耳下斜斜往前下收到尖下巴；
     //  側面：臉前緣從額頭往下微微往後斜到下巴，下顎線從下巴斜往後上到耳下，脖子接在下顎後面。
-    const ANIME_HEAD = { crZ: 1.2, crRz: 7.6, jaw: [4.3, -1.6, -2.0], chin: [0, 4.4, -8.2], jr: [1.8, .85], cheek: [[5.4, 5.4, 4.6], [0, 1.2, -3.6]] };
+    // 照參考圖側面量的（頭高 17.6＝頭頂 +8.8～下巴 −8.8；y 往前，額頭前緣 7.0）：眼睛 −1.9、鼻尖 −4.0（鼻子另外畫）、嘴 −5.8、下巴尖 −8.8；
+    // 臉前緣從額頭往下幾乎垂直（下巴不往前凸，比鼻尖後面很多），下巴是尖點；下顎線從下巴斜往後上到耳下（約 27°）。
+    // 正面：顴骨最寬（±6.6），往下到下顎角（±5.0, −6.1）再直線收到尖下巴。
+    const ANIME_HEAD = {
+      crZ: 1.2, crRz: 7.6,
+      prof: [[6.7, -.3], [7.0, -2.4], [7.2, -4.3], [7.0, -5.4], [6.6, -6.4], [6.3, -7.3], [5.6, -8.4], [5.0, -8.8], [4.2, -8.7], [-1.0, -5.4], [-3.2, -3.0], [-3.2, -.3]],   // 鼻下往後收（嘴、下巴比鼻尖後面）、尖下巴、下顎線直直斜回耳下
+      front: [[-6.2, -.3], [6.2, -.3], [5.8, -3.0], [4.5, -6.0], [.6, -8.5], [-.6, -8.5], [-4.5, -6.0], [-5.8, -3.0]],   // ＋圓角 0.4；上緣收在頭骨裡面（不然臉會比頭寬）
+      top: [6.2, 6.4, .9],   // 由上往下看的橢圓：半寬、前後半徑、中心 y
+    };
     function animeHead(sh, P, yl, zc) {
-      const hs = P.b.head, A = ANIME_HEAD, y0 = yl(zc) + .3, at = (x, y, z) => [x * hs, y0 + y * hs, zc + z * hs];
-      sh.ell(BODY, at(0, 0, A.crZ), [6.9 * hs, 7.2 * hs, A.crRz * hs]);                                  // 圓頭骨
-      sh.ell(BODY, at(...A.cheek[1]), A.cheek[0].map(v => v * hs));                                      // 臉頰／中臉（把 V 填滿）
-      for (const s of [-1, 1]) sh.cone(BODY, at(s * A.jaw[0], A.jaw[1], A.jaw[2]), at(...A.chin), A.jr[0] * hs, A.jr[1] * hs);   // 下顎線 → 尖下巴
-      sh.cone(BODY, at(0, 2.0, -4.5), at(...A.chin), 3.0 * hs, .85 * hs);                                 // 下巴中間（嘴下方）
+      const hs = P.b.head, A = ANIME_HEAD, y0 = yl(zc) + .3, k = P.head_h / 17.6;
+      sh.ell(BODY, [0, y0, zc + A.crZ * k], [6.9 * hs, 7.2 * hs, A.crRz * k]);                                   // 圓頭骨
+      sh.face(BODY, A.prof.map(([y, z]) => [y0 + y * hs, zc + z * k]), A.front.map(([x, z]) => [x * hs, zc + z * k]), [A.top[0] * hs, A.top[1] * hs, y0 + A.top[2] * hs], .3);   // 臉（側面輪廓∩正面 V 字）
     }
     function headPart(sh, P, yl, zc, doll = {}) {
       if (doll.face === 'anime') return animeHead(sh, P, yl, zc);
@@ -390,7 +417,8 @@
       const soft = b.soft;
       if (!noHead) headPart(sh, P, yl, zc, doll);
       const neck_r = 2.7 * b.frame * (1 + .12 * soft + .06 * b.muscle);
-      sh.cone(BODY, [0, yl(S) - .4, S - 1], [0, yl(zc) - .6, P.chin + dz + 2], neck_r, neck_r * .85);
+      if (doll.face === 'anime') sh.cone(BODY, [0, yl(S) + .2, S - 1], [0, yl(zc) + 1.0, P.chin + dz + 2.2], neck_r * .8, neck_r * .68);   // 2026-11-01 動漫臉：脖子細一點、往前斜，從下顎中間接下去（參考圖）
+      else sh.cone(BODY, [0, yl(S) - .4, S - 1], [0, yl(zc) - .6, P.chin + dz + 2], neck_r, neck_r * .85);
       const wS = F(b, 'sh');
       sh.cone(BODY, [-8.0 * wS, yl(S) - .6, S - 1.8], [8.0 * wS, yl(S) - .6, S - 1.8], 2.9 * b.frame, 2.9 * b.frame);
       if (b.muscle) for (const s of [-1, 1]) sh.ell(BODY, [s * 9.2 * wS, yl(S) - .6, S - 4.0], [2.9 * b.muscle ** .5 + .4, 2.8, 3.6]);
