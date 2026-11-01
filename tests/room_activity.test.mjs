@@ -313,7 +313,7 @@ t("控制器：走過去→進入→維持→起身，一件接一件不重複�
   console.log("    starts:", starts.join(" → "));
 });
 
-t("叫她做事：去工作→坐到面對書桌的椅子上打字；坐著時叫她去睡覺→先起身再躺到床上；沒有家具就說沒有", () => {
+t("叫她做事：去工作→坐到面對書桌的椅子上寫字；坐著時叫她去睡覺→先起身再躺到床上；沒有家具就說沒有", () => {
   const RC = globalThis.RoomCharacter;
   // 書桌 (1..2,0)、椅子 (1,1) 面向書桌（back-right）、另一張椅子 (3,4) 背對書桌、床 (3,0..1)
   const cells = { "1,0": "desk", "2,0": "desk", "1,1": "chair", "3,4": "chair", "3,0": "bed", "3,1": "bed" };
@@ -347,6 +347,16 @@ t("叫她做事：去工作→坐到面對書桌的椅子上打字；坐著時�
   bare.setPresent(true);
   assert.equal(bare.order("sleep").ok, false);
   assert.match(bare.order("work").message, /沒有/);
+});
+
+t("聊天叫她：「去工作」「快去睡覺」算；只是提到、或說不要，不算", () => {
+  const yes = { work: ["去工作", "妳去書桌那邊寫作業", "快去念書", "工作吧", "去寫東西啦", "你去做事"],
+    sleep: ["去睡覺", "快去睡", "該睡了吧", "早點睡", "去床上躺著", "睡吧", "妳先去休息", "睡覺！"] };
+  for (const [kind, list] of Object.entries(yes)) for (const text of list) assert.equal(A.orderIntent(text), kind, text);
+  for (const text of ["我昨天沒睡覺", "你工作是什麼", "不要去睡", "先不要工作", "別睡啦陪我", "今天工作好累", "睡得好嗎", ""])
+    assert.equal(A.orderIntent(text), null, text);
+  assert.match(A.orderPromptLine("sleep"), /床上睡覺/);
+  assert.match(A.orderPromptLine("work"), /書桌/);
 });
 
 console.log(`room_activity: ${pass} passed`);

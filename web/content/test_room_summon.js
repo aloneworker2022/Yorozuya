@@ -1596,6 +1596,8 @@ function activityChatOpen() {
 function activityChatClose() {
   const A = roomActs(), mem = roomActMem();
   window.RoomActor?.hold?.(false);
+  // 叫她去工作／睡覺：聊天關掉後才走（放最後，蓋過聊完偏向的重挑）
+  queueMicrotask(runRoomOrder);
   // 只有真的打開過（activityChatOpen 記了起點）才算一場聊天
   if (!A || !mem || !roomActTalkStart) return;
   const now = Date.now();
@@ -1618,6 +1620,40 @@ function activityChatClose() {
     pushDebug(`聊完偏向：${bias.kind} ${bias.strength.toFixed(2)}`);
   }
   if (bias || woke) window.RoomActor?.replan?.();
+}
+// ---------------------------------------------------------------- 用說的叫她去工作／睡覺（2026-11-01）
+// 打字說「去工作」「去睡覺」→ 她回一句（prompt 說她會照做）→ 對話自己收起來 → 她走去書桌／床。
+// 規則（哪些話算叫她）在 room_activity.js orderIntent。
+let roomOrderAsk = null;   // {kind:'work'|'sleep', at, girlId}
+function noteRoomOrderAsk(text) {
+  const A = roomActs();
+  if (!A?.orderIntent || !girl || !girlInRoom()) return null;
+  const kind = A.orderIntent(text);
+  if (!kind) return null;
+  roomOrderAsk = { kind, at: Date.now(), girlId: girl.id };
+  pushDebug(`叫她去${kind === "sleep" ? "睡覺" : "工作"}（聊完就過去）`);
+  return roomOrderAsk;
+}
+function roomOrderPromptLines() {
+  const A = roomActs(), ask = roomOrderAsk;
+  if (!A?.orderPromptLine || !ask || !girl || ask.girlId !== girl.id || Date.now() - ask.at > 90 * 1000) return [];
+  return [A.orderPromptLine(ask.kind)];
+}
+/** 她回完那句 → 停一下讓你看完 → 收起對話（你又開始打字就不收，等你自己關）。 */
+function closeAfterOrderReply(ask) {
+  setTimeout(() => {
+    if (roomOrderAsk !== ask || !girl || ask.girlId !== girl.id || !sheetOpen() || talkBusy) return;
+    if (($("talk-input")?.value || "").trim()) return;
+    hideSheet();
+  }, 2200);
+}
+/** 關掉對話時：有叫她去做就去。 */
+function runRoomOrder() {
+  const ask = roomOrderAsk;
+  roomOrderAsk = null;
+  if (!ask || !girl || ask.girlId !== girl.id || !girlInRoom()) return;
+  const r = window.RoomActor?.order?.(ask.kind);
+  if (r) pushDebug(`叫她去${ask.kind === "sleep" ? "睡覺" : "工作"}：${r.message}`);
 }
 /** talkSystem：她剛才在房間裡做什麼（第一句要接上）＋稍早做過的事。 */
 function activityPromptLines() {
@@ -8302,6 +8338,7 @@ function talkSystem(userText = "") {
       : `你是${girl.name}。你是魅魔,一個沒有過去、沒有經歷的魔女。`,
     roomSight(),
     ...activityPromptLines(),
+    ...roomOrderPromptLines(),
     sheIsOut() ? japanNow().line : taiwanNow().line,
     stayClockLine(),
     sheIsOut()
@@ -9353,7 +9390,9 @@ async function sendTalk(event) {
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
+  const order = noteRoomOrderAsk(text);
   await deliverUserTalk(text);
+  if (order) closeAfterOrderReply(order);
 }
 
 async function sendTalkAct(actId) {

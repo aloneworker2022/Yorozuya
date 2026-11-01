@@ -72,12 +72,33 @@
     { id: 'bed_sleep', name: '躺在床上睡覺', pose: 'sleep_curl', place: 'seat', seat: ['bed'], seatKind: 'lie', dur: [150, 300], orderDur: [900, 1800],
       icon: 'zzz', kind: 'sleep', relax: 1, w: .35,
       doing: '躺在床上睡著了', react: '剛被吵醒' },
-    { id: 'desk_work', name: '坐在書桌前工作', pose: 'sit_work', place: 'seat', seat: ['chair'], near: 'desk', dur: [120, 300], orderDur: [900, 1800],
-      icon: 'work', kind: 'focus', focus: .9, relax: 0, w: .7,
-      doing: '坐在書桌前專心工作', react: '正在專心工作，第一句先像「等我打完這行…好，怎麼了？」那樣，再理他' },
+    { id: 'desk_work', name: '坐在書桌前寫東西', pose: 'sit_work', place: 'seat', seat: ['chair'], near: 'desk', dur: [120, 300], orderDur: [900, 1800],
+      icon: 'write', kind: 'focus', focus: .9, relax: 0, w: .7,
+      doing: '坐在書桌前低著頭專心寫東西', react: '正在寫東西寫到一半，第一句先像「等一下，我寫完這句…好，怎麼了？」那樣，再理他' },
   ];
   /** 玩家下的指令 → 活動。 */
   const ORDERS = { sleep: 'bed_sleep', work: 'desk_work' };
+  // 聊天裡叫她去做（2026-11-01 Al：不用按鈕，用說的）。要有「去／快／該…」這類叫人的口氣，
+  // 只提到「工作」「睡覺」不算（例：「我昨天沒睡覺」）；有否定就不算。
+  const ORDER_NOT = /不要|不用|不准|不必|別(去|睡|工作|寫)|先不|還不/;
+  const ORDER_SAY = {
+    work: [/(去|快去|給我去|乖乖去|先去|妳去|你去|回去|過去)(書桌|桌子|桌前)?(那邊|那裡|前面)?(坐著)?(工作|上班|做事|寫字|寫東西|寫作業|寫功課|念書|讀書|辦公|寫報告)/,
+      /(工作|寫作業|寫功課|念書|讀書|寫字|寫東西)(吧|去|啦|囉)/, /^(去)?工作[!！。~～]*$/],
+    sleep: [/(去|快去|給我去|乖乖去|先去|妳去|你去|回去|上)(床上?)?(睡|睡覺|睡一下|睡個覺|休息|躺著?)/,
+      /(快|該|早點|趕快)(去)?睡(覺)?(吧|了|啦|囉)?/, /睡(覺|一下)?(吧|啦|囉)/, /^(去)?睡覺?[!！。~～]*$/],
+  };
+  /** 玩家這句話是不是叫她去工作／睡覺 → 'work' | 'sleep' | null。 */
+  function orderIntent(text) {
+    const t = String(text || '').replace(/\s+/g, '');
+    if (!t || ORDER_NOT.test(t)) return null;
+    for (const kind of ['sleep', 'work']) if (ORDER_SAY[kind].some(re => re.test(t))) return kind;
+    return null;
+  }
+  /** 叫她去做的那一句：prompt（她照做、回一句再過去）。 */
+  function orderPromptLine(kind) {
+    const where = kind === 'sleep' ? '床上睡覺' : '書桌那邊坐著寫東西';
+    return `【他剛剛叫你去${where}】你會照做：回完這句就起身過去。用你的口氣回他一句（可以乖乖答應、撒嬌或小抱怨），不要拒絕，不要寫動作旁白。`;
+  }
   const BY_ID = Object.fromEntries(ACTIVITIES.map(a => [a.id, a]));
   const HISTORY_MAX = 8;
   const BIAS_TAU_MS = 8 * 60 * 1000;          // 聊完的偏向：e 倍衰減時間
@@ -335,7 +356,7 @@
     return `她剛才正${act.doing}；${act.react}`;
   }
 
-  const api = { ACTIVITIES, BY_ID, ORDERS, STAGES, HISTORY_MAX, HUNGER_ACT_AT, BIAS_TAU_MS, GLAD_COOLDOWN_MS, ANNOY_COOLDOWN_MS, REOPEN_GRACE_MS, MIN_ENGAGED_MS, WAKE_ANNOY,
+  const api = { ACTIVITIES, BY_ID, ORDERS, orderIntent, orderPromptLine, STAGES, HISTORY_MAX, HUNGER_ACT_AT, BIAS_TAU_MS, GLAD_COOLDOWN_MS, ANNOY_COOLDOWN_MS, REOPEN_GRACE_MS, MIN_ENGAGED_MS, WAKE_ANNOY,
     sleepiness, liveliness, partOfDay, biasStrength, weights, pick, duration, ensureMem, noteStart, historyIds,
     interrupt, chatBias, promptLines, openerHint, ago };
   if (typeof module === 'object' && module && module.exports) module.exports = api;
