@@ -775,10 +775,13 @@
     function nose(sh, P, doll, tor) {
       const hs = P.b.head, hh = P.head_h / 2, zc = tor.zc, yc = tor.yl(zc) + .3, ry = 7.2 * hs;
       const yf = z => yc + ry * Math.sqrt(Math.max(0, 1 - ((z - zc) / hh) ** 2));   // 臉正前方表面
-      const zt = zc - 1.9, zb = zc - 3.7;
+      // 2026-11-01 照使用者參考圖（動漫鼻側面）：鼻樑斜直線往前下、鼻尖小而微翹、下緣往回收到臉（三角形輪廓）
+      const zt = zc - 1.5, zb = zc - 4.0, tip = [0, yf(zb) + 1.9, zb + .35];
       sh.cloth = 13;
-      sh.cone(BODY, [0, yf(zt) - .3, zt], [0, yf(zb) + 1.05, zb + .15], .38 * hs, .5 * hs);   // 鼻樑
-      sh.ell(BODY, [0, yf(zb) + 1.0, zb], [.62 * hs, .55 * hs, .5 * hs]);                    // 鼻尖
+      sh.cone(BODY, [0, yf(zt) - .4, zt], tip, .3 * hs, .42 * hs);                        // 鼻樑
+      sh.ell(BODY, tip, [.55 * hs, .45 * hs, .42 * hs]);                                  // 鼻尖（小、微翹）
+      sh.cone(BODY, tip, [0, yf(zb - .3) - .3, zb - .3], .42 * hs, .4 * hs);              // 鼻底往回收到人中
+      sh.ell(BODY, [0, yf(zb + .5) + .5, zb + .5], [.4 * hs, 1.0, 1.1]);                   // 鼻翼：補滿鼻子跟臉之間的縫
       sh.cloth = 0;
     }
     function hair(sh, P, doll, tor, sway = 0, grav = null, side = false, swing = null) {

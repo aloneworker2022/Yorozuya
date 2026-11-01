@@ -86,3 +86,4 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - room_doll_full.js `nose()`：`doll.nose='small'` 才畫；小而尖的動漫鼻，鼻樑從 zc−1.9 往前下斜到鼻尖 zc−3.7（離臉面約 1.5）＋鼻尖小圓。tag cloth＝13 → `NOSE_RGB` #FF0080／深度邊緣 `NOSE_LO_RGB` #A00050。從 `hair()` 開頭呼叫（所有姿勢都有）。
 - `render_face.cjs` 改成多項目：`ITEMS=nose,blindfold`、`BODIES=…`、`POSES=walk,sit_m,sit_v` 可限定；檔名 `face/<body>_nose_small_<dir>.png`。樣品只出 balanced 走路 1×／2×。
 - 前端 `noseOver()`：只畫在頭髮以外；正面只在鼻子最下緣點一個陰影（右側淡一點），鼻樑沿用原膚色；側面凸出臉外的部分補膚色＋下緣陰影（外圈白邊照舊）。「鼻子」選單 無／小鼻子（預設小鼻子）；眼罩預設改成無。
+- 鼻子第 2 版（使用者給動漫鼻參考圖）：側面改三角形微翹（鼻樑斜直線→小鼻尖→鼻底往回收到人中，離臉約 1.9）；前端改用「線」畫：每格依方向（右＋1／左−1，正面算右）在鼻子外緣下半段畫一條線、最下緣往回勾（J 字），另一側隔一格點一個小鼻孔，線色 (184,116,98)；凸出臉外補膚色。
