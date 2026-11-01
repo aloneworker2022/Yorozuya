@@ -274,6 +274,24 @@ t("每個活動姿勢：4 種外型 × 每一格 × 會用到的朝向都有像�
   }
 });
 
+t("書桌前的動作（寫字／振筆疾書／撐頭想／滑手機／伸懶腰）：四個方向 × 每一格都有像素、循環格彼此不同", () => {
+  const poses = Object.keys(A.BY_ID.desk_work.poses);
+  assert.deepEqual(poses.sort(), ["sit_phone", "sit_scribble", "sit_stretch", "sit_think", "sit_work"]);
+  for (const pose of poses) {
+    const P = D.POSES[pose], C = D.CANVAS[P.canvas || "std"];
+    for (const look of looks) for (const yaw of [45, -45, 135, -135]) {
+      const seen = new Set();
+      for (let f = 0; f < P.frames; f++) {
+        const fr = D.render(D.lookToDoll(look), pose, f, yaw, { seat: 35 });
+        assert.equal(fr.width, C.w); assert.equal(fr.height, C.h);
+        assert.ok(opaque(fr) > 500, `${pose} yaw${yaw} f${f}`);
+        seen.add(Buffer.from(fr.pixels.buffer).toString("base64"));
+      }
+      assert.equal(seen.size, P.frames, `${pose} yaw${yaw} 每格不同`);
+    }
+  }
+});
+
 t("躺姿用寬畫布、腳底錨點在畫布裡；外型不同畫出來不同", () => {
   for (const pose of ["lie_phone", "prone_kick", "sleep_curl"]) {
     assert.equal(D.POSES[pose].canvas, "wide");
@@ -342,6 +360,16 @@ t("叫她做事：去工作→坐到面對書桌的椅子上寫字；坐著時�
   assert.equal(actor.state.furnitureId, 3);
   const pos = actor.position();
   assert.ok(Math.abs(pos.u - 3.5) < .01 && Math.abs(pos.v - 1.02) < .01, "躺的位置在床墊中間");
+  // 回書桌工作：坐在書桌前會換動作（寫字、撐頭想…），位置往書桌靠
+  assert.ok(actor.order("work").ok);
+  assert.ok(run(60, () => actor.activity()?.id === "desk_work" && actor.state.mode === "sitting"));
+  const seenPoses = new Set();
+  // （node 裡姿勢圖不會在同一輪生好，看「要換成」的那個）
+  for (let i = 0; i < 20 * 300; i++) { actor.update(.05); actor.frame(); const x = actor.activity(); seenPoses.add(x?.nextPose || x?.pose); }
+  assert.ok(seenPoses.size >= 3, [...seenPoses].join());
+  const near = actor.position();
+  assert.ok(near.v < 1.5 - .1, `往書桌靠（v ${near.v}）`);
+  assert.ok(actor.forcePose("sit_stretch"));
   // 自己挑活動時：一般「坐」不會選到床上躺的位置
   const bare = RC.create({ cols: 4, rows: 6, blocked: () => false, getSeats: () => [], random: seeded(2) });
   bare.setPresent(true);
