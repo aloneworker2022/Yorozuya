@@ -81,3 +81,8 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 圖層 `render_face.cjs`（SHARD/NSHARD 平行；1×＋2× 一次出）：走路 `sheets[2x]/face/<body>_blindfold_cloth_<dir>.png`、坐姿 `sheets[2x]/<sit_m|sit_v>/face/<body>_blindfold_cloth.png`；用無頭髮的身體算，只留眼罩像素。
 - 目前是樣品：只出了 balanced（勻稱）走路 1×／2× 的眼罩圖層，其他體型與坐姿等使用者看過樣品再出（`node render_face.cjs` 會補齊缺的檔）。
 - 前端（play.html／index.html）「眼罩」選單：無／黑布（預設）／紅布／白布。`faceOver()` 最後才蓋（在下身、衣服之後、白邊之前），連頭髮像素也蓋上＝布綁在頭髮外面；上下緣一列較暗＋淡淡布紋。
+
+## 2026-11-01：臉部——鼻子（樣品，使用者：先做鼻子）
+- room_doll_full.js `nose()`：`doll.nose='small'` 才畫；小而尖的動漫鼻，鼻樑從 zc−1.9 往前下斜到鼻尖 zc−3.7（離臉面約 1.5）＋鼻尖小圓。tag cloth＝13 → `NOSE_RGB` #FF0080／深度邊緣 `NOSE_LO_RGB` #A00050。從 `hair()` 開頭呼叫（所有姿勢都有）。
+- `render_face.cjs` 改成多項目：`ITEMS=nose,blindfold`、`BODIES=…`、`POSES=walk,sit_m,sit_v` 可限定；檔名 `face/<body>_nose_small_<dir>.png`。樣品只出 balanced 走路 1×／2×。
+- 前端 `noseOver()`：只畫在頭髮以外；正面只在鼻子最下緣點一個陰影（右側淡一點），鼻樑沿用原膚色；側面凸出臉外的部分補膚色＋下緣陰影（外圈白邊照舊）。「鼻子」選單 無／小鼻子（預設小鼻子）；眼罩預設改成無。
