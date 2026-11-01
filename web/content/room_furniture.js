@@ -33,7 +33,8 @@
       b(1.12,.2,.6,.6,25,12,...pale); b(1.34,.807,.15,.03,30,2,...dark);
       b(.25,.25,.4,.4,42,2,...blue);b(.29,.25,.32,.38,44,1,...pale);
     }},
-    bed: {name:'雲朵單人床',cols:1,rows:2,seats:[{u:.72,v:1.25,height:29,direction:1}],draw(b) {
+    // kind:'lie' = lying spot on the mattress (sleep); plain seats are for sitting.
+    bed: {name:'雲朵單人床',cols:1,rows:2,seats:[{u:.72,v:1.25,height:29,direction:1},{u:.55,v:.8,height:19,direction:3,kind:'lie'}],draw(b) {
       b(.08,.06,.84,1.84,5,11,...wood); b(.08,.04,.84,.13,0,44,...pale);
       b(.12,.2,.76,1.66,16,9,...pale);b(.15,.7,.7,1.13,25,4,...blue);
       b(.16,.27,.68,.34,25,6,'#fff0d9','#e6d8c0','#c9bca8');
@@ -107,7 +108,7 @@
     def.draw(box);
     const seats=(def.seats||[]).map(seat=>{
       const [u,v]=rotate(seat.u,seat.v);
-      return {u,v,height:seat.height,facing:directions[(directions.indexOf(facing)+seat.direction)%4]};
+      return {u,v,height:seat.height,kind:seat.kind||'sit',facing:directions[(directions.indexOf(facing)+seat.direction)%4]};
     });
     return {canvas,anchor,cols,rows,seats,depth,pixels:ctx.getImageData(0,0,canvas.width,canvas.height).data};
   }

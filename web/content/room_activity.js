@@ -67,7 +67,17 @@
     { id: 'chair_phone', name: '蜷在椅子上滑手機', pose: 'sit_curl', place: 'seat', seat: ['chair'], dur: [90, 180],
       icon: 'phone', kind: 'focus', focus: .8, relax: 1, w: .9,
       doing: '把腳收到椅子上蜷著滑手機', react: '正在滑手機，第一句先像「等一下…好，什麼事？」' },
+    // 書桌＋床（agent office，2026-11-01）：seatKind 'lie'＝床上躺的位置；near＝座位正前方要有這件家具。
+    // 玩家也可以直接叫她去（RoomActor.order('sleep'|'work')，ordered:true 時 prompt 會說是他叫的）。
+    { id: 'bed_sleep', name: '躺在床上睡覺', pose: 'sleep_curl', place: 'seat', seat: ['bed'], seatKind: 'lie', dur: [150, 300], orderDur: [900, 1800],
+      icon: 'zzz', kind: 'sleep', relax: 1, w: .35,
+      doing: '躺在床上睡著了', react: '剛被吵醒' },
+    { id: 'desk_work', name: '坐在書桌前工作', pose: 'sit_work', place: 'seat', seat: ['chair'], near: 'desk', dur: [120, 300], orderDur: [900, 1800],
+      icon: 'work', kind: 'focus', focus: .9, relax: 0, w: .7,
+      doing: '坐在書桌前專心工作', react: '正在專心工作，第一句先像「等我打完這行…好，怎麼了？」那樣，再理他' },
   ];
+  /** 玩家下的指令 → 活動。 */
+  const ORDERS = { sleep: 'bed_sleep', work: 'desk_work' };
   const BY_ID = Object.fromEntries(ACTIVITIES.map(a => [a.id, a]));
   const HISTORY_MAX = 8;
   const BIAS_TAU_MS = 8 * 60 * 1000;          // 聊完的偏向：e 倍衰減時間
@@ -137,6 +147,9 @@
     for (const a of ACTIVITIES) {
       let w = a.w;
       if (a.place === 'seat' && !(a.seat || []).some(t => seats.has(t))) { out.set(a.id, 0); continue; }
+      if (a.near && !seats.has(a.near) && !(ctx.furniture || []).includes(a.near)) { out.set(a.id, 0); continue; }
+      // 有床就睡床上，很少直接睡地板
+      if (a.id === 'sleep' && seats.has('bed')) w *= .15;
       // 時段＋作息
       if (a.kind === 'sleep') w *= .15 + 14 * sl * sl;
       else if (a.lie) w *= 1 + sl * .6;
@@ -198,9 +211,9 @@
     for (const a of ACTIVITIES) { r -= ws.get(a.id); if (r < 0 && ws.get(a.id) > 0) return { act: a, weights: ws }; }
     return { act: ACTIVITIES.filter(a => ws.get(a.id) > 0).pop(), weights: ws };
   }
-  /** 這次要做多久（秒）。睡覺在想睡的時段更久。 */
-  function duration(act, ctx = {}, rng = Math.random) {
-    const [lo, hi] = act.dur;
+  /** 這次要做多久（秒）。睡覺在想睡的時段更久。ordered：玩家叫的（orderDur）。 */
+  function duration(act, ctx = {}, rng = Math.random, ordered = false) {
+    const [lo, hi] = ordered && act.orderDur ? act.orderDur : act.dur;   // 玩家叫她去做的：做久一點
     let d = lo + (hi - lo) * rng();
     if (act.kind === 'sleep') d *= 1 + sleepiness(ctx.hour ?? 12, ctx.chrono || '');
     return Math.round(d);
@@ -215,13 +228,14 @@
     return m;
   }
   /** 開始一件新的事：上一件收進 history（新→舊）。 */
-  function noteStart(mem, { id, at = Date.now(), dur = 0 } = {}) {
+  function noteStart(mem, { id, at = Date.now(), dur = 0, ordered = false } = {}) {
     const m = ensureMem(mem);
     if (!BY_ID[id]) return m;
     if (m.cur) m.history.unshift({ id: m.cur.id, at: m.cur.since, end: at });
     m.history = m.history.slice(0, HISTORY_MAX);
     m.seq += 1;
     m.cur = { id, since: at, dur: Math.round(dur) || 0, seq: m.seq };
+    if (ordered) m.cur.ordered = true;
     return m;
   }
   function historyIds(mem) {
@@ -299,6 +313,7 @@
       const prev = talk.prevId && BY_ID[talk.prevId];
       out.push('【你剛才在房間裡】');
       out.push(`他找你說話的時候，你${act.kind === 'sleep' ? '' : '正'}${act.doing}${talk.since ? `（大概${long}了）` : ''}。` +
+        (talk.ordered ? `（是他剛才叫你去${act.kind === 'sleep' ? '睡覺' : '做'}的。）` : '') +
         (prev ? `在那之前你${prev.doing}。` : ''));
       if (opening) {
         if (talk.wake || act.kind === 'sleep') out.push(`你剛才睡著了，是被他叫醒的。起床反應：${wakeReact || '迷迷糊糊'}。第一句帶著剛醒的口氣。`);
@@ -320,7 +335,7 @@
     return `她剛才正${act.doing}；${act.react}`;
   }
 
-  const api = { ACTIVITIES, BY_ID, STAGES, HISTORY_MAX, HUNGER_ACT_AT, BIAS_TAU_MS, GLAD_COOLDOWN_MS, ANNOY_COOLDOWN_MS, REOPEN_GRACE_MS, MIN_ENGAGED_MS, WAKE_ANNOY,
+  const api = { ACTIVITIES, BY_ID, ORDERS, STAGES, HISTORY_MAX, HUNGER_ACT_AT, BIAS_TAU_MS, GLAD_COOLDOWN_MS, ANNOY_COOLDOWN_MS, REOPEN_GRACE_MS, MIN_ENGAGED_MS, WAKE_ANNOY,
     sleepiness, liveliness, partOfDay, biasStrength, weights, pick, duration, ensureMem, noteStart, historyIds,
     interrupt, chatBias, promptLines, openerHint, ago };
   if (typeof module === 'object' && module && module.exports) module.exports = api;

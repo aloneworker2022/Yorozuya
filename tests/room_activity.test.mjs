@@ -24,18 +24,19 @@ const base = { stage: "friend", now: T0, seats: ["chair"] };
 const LIE = ["lie_phone", "prone_kick", "sleep"];
 const sum = (f, ids) => ids.reduce((s, id) => s + f[id], 0);
 
-t("8～10 個地上活動＋2 個椅子活動；欄位齊全、時長 1～3 分鐘左右", () => {
+t("8～10 個地上活動＋4 個座位活動；欄位齊全、時長 1～3 分鐘左右", () => {
   // 性飢渴的兩個（squirm／hunger_beg，hunger.js 2026-10-09）只在飢渴時出現，不算在一般活動裡
   const HUNGER_ONLY = ["squirm", "hunger_beg", "approach_talk"];   // approach_talk：主動聊天（proactive_talk.js）直接叫出來
   const floor = A.ACTIVITIES.filter(a => a.place === "floor" && !HUNGER_ONLY.includes(a.id)), seat = A.ACTIVITIES.filter(a => a.place === "seat");
   assert.ok(floor.length >= 8 && floor.length <= 11, String(floor.length));
   for (const id of HUNGER_ONLY) assert.ok(A.BY_ID[id] && A.BY_ID[id].moodOnly && A.BY_ID[id].w === 0, id);
-  assert.equal(seat.length, 2);
+  assert.equal(seat.length, 4);   // 椅子 2＋書桌工作＋床上睡（2026-11-01）
   for (const a of A.ACTIVITIES) {
     assert.ok(D.POSES[a.pose], `${a.id} pose ${a.pose}`);
     assert.ok(a.doing && a.react && a.name, a.id);
     assert.ok(a.dur[0] >= 40 && a.dur[1] <= (a.wait ? 660 : 300) && a.dur[0] < a.dur[1], a.id);   // wait：站在前面等你（最多約 10 分鐘）
-    if (a.place === "seat") assert.ok(a.seat.includes("chair"));
+    if (a.place === "seat") assert.ok(a.seat.includes("chair") || a.seat.includes("bed"));
+    if (a.orderDur) assert.ok(a.orderDur[0] > a.dur[1], a.id);   // 玩家叫的做比較久
   }
   // 沒有椅子就不會選椅子活動（資料驅動：以後加床／沙發只要加一筆）
   const w = A.weights({ ...base, seats: [] });
@@ -310,6 +311,42 @@ t("控制器：走過去→進入→維持→起身，一件接一件不重複�
   assert.equal(actor.activity().id, id);
   actor.hold(false);
   console.log("    starts:", starts.join(" → "));
+});
+
+t("叫她做事：去工作→坐到面對書桌的椅子上打字；坐著時叫她去睡覺→先起身再躺到床上；沒有家具就說沒有", () => {
+  const RC = globalThis.RoomCharacter;
+  // 書桌 (1..2,0)、椅子 (1,1) 面向書桌（back-right）、另一張椅子 (3,4) 背對書桌、床 (3,0..1)
+  const cells = { "1,0": "desk", "2,0": "desk", "1,1": "chair", "3,4": "chair", "3,0": "bed", "3,1": "bed" };
+  const seatsOf = [
+    { id: 1, type: "chair", u: 1, v: 1, cols: 1, rows: 1, seats: [{ u: 1.5, v: 1.5, height: 35, kind: "sit", facing: "back-right" }] },
+    { id: 4, type: "chair", u: 3, v: 4, cols: 1, rows: 1, seats: [{ u: 3.5, v: 4.5, height: 35, kind: "sit", facing: "left" }] },
+    { id: 3, type: "bed", u: 3, v: 0, cols: 1, rows: 2, seats: [{ u: 3.72, v: 1.25, height: 29, kind: "sit", facing: "right" }, { u: 3.5, v: 1.02, height: 27, kind: "lie", facing: "left" }] },
+  ];
+  const events = [];
+  const actor = RC.create({ cols: 4, rows: 6, blocked: (u, v) => !!cells[`${u},${v}`], getSeats: () => seatsOf,
+    furnitureAt: (u, v) => cells[`${u},${v}`] || null, random: seeded(5),
+    getContext: () => ({ hour: 15, stage: "friend", now: T0 }), onActivity: e => events.push(e) });
+  actor.setPresent(true);
+  const run = (sec, until) => { for (let i = 0; i < sec * 20; i++) { actor.update(.05); if (until && until()) return true; } return false; };
+  const r = actor.order("work");
+  assert.ok(r.ok, r.message);
+  assert.ok(run(60, () => actor.state.mode === "sitting"), "坐下了");
+  assert.equal(actor.activity().id, "desk_work");
+  assert.equal(actor.state.furnitureId, 1, "面向書桌的那張椅子");
+  assert.ok(actor.activity().left >= 900, "叫的做比較久");
+  assert.equal(events.find(e => e.type === "start" && e.id === "desk_work").ordered, true);
+  assert.equal(actor.order("work").ok, false, "已經在工作");
+  const s = actor.order("sleep");
+  assert.ok(s.ok, s.message);
+  assert.ok(run(60, () => actor.activity()?.id === "bed_sleep" && actor.state.mode === "sitting"), "躺到床上");
+  assert.equal(actor.state.furnitureId, 3);
+  const pos = actor.position();
+  assert.ok(Math.abs(pos.u - 3.5) < .01 && Math.abs(pos.v - 1.02) < .01, "躺的位置在床墊中間");
+  // 自己挑活動時：一般「坐」不會選到床上躺的位置
+  const bare = RC.create({ cols: 4, rows: 6, blocked: () => false, getSeats: () => [], random: seeded(2) });
+  bare.setPresent(true);
+  assert.equal(bare.order("sleep").ok, false);
+  assert.match(bare.order("work").message, /沒有/);
 });
 
 console.log(`room_activity: ${pass} passed`);

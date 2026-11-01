@@ -26,8 +26,14 @@
   const origin = { x: 240, y: 132 };
   const wallHeight = 100;
   const catalog = window.RoomFurniture;
-  const items = [{id:1,type:'chair',u:1,v:3,facing:'left'}];
-  let selectedId = null, nextId = 2;
+  // Default room (agent office, 2026-11-01): a desk against the back wall with a chair facing it
+  // (去工作 = sit there typing), and a bed in the corner (去睡覺 = lie down on it).
+  const items = [
+    {id:1,type:'chair',u:1,v:1,facing:'back-right'},
+    {id:2,type:'desk',u:1,v:0,facing:'left'},
+    {id:3,type:'bed',u:3,v:0,facing:'left'},
+  ];
+  let selectedId = null, nextId = 4;
   const moveButton = document.getElementById('move-item');
   const editButton = document.getElementById('edit-room');
   const editor = document.getElementById('room-editor');
@@ -36,13 +42,15 @@
   const selected = () => items.find(item => item.id === selectedId);
   const frameOf = item => catalog[item.type].frames[item.facing];
   let showGrid = false;
+  const itemAtCell = (u, v) => items.find(item => {
+    const f = frameOf(item); return u >= item.u && u < item.u + f.cols && v >= item.v && v < item.v + f.rows;
+  });
   const project = (u, v, z = 0) => [origin.x + (u - v) * TILE_WIDTH / 2, origin.y + (u + v) * TILE_HEIGHT / 2 - z];
   const actor=window.RoomCharacter.create({cols:COLS,rows:ROWS,getSeats:()=>items.map(item=>{
     const f=frameOf(item);return {...item,name:catalog[item.type].name,cols:f.cols,rows:f.rows,
       seats:f.seats.map(seat=>({...seat,u:item.u+seat.u,v:item.v+seat.v}))};
-  }).filter(item=>item.seats.length),blocked:(u,v)=>items.some(item=>{
-    const f=frameOf(item);return u>=item.u&&u<item.u+f.cols&&v>=item.v&&v<item.v+f.rows;
-  }),
+  }).filter(item=>item.seats.length),blocked:(u,v)=>!!itemAtCell(u,v),
+  furnitureAt:(u,v)=>itemAtCell(u,v)?.type||null,
   // Activity context (time/chrono/mood/missYou/stage/hobbies/history/post-chat bias) and the
   // activity log come from the summon module; without it she still picks activities on defaults.
   getContext:()=>typeof window.RoomActivityContext==='function'?window.RoomActivityContext():null,
@@ -183,6 +191,7 @@
     sweat:{ink:[86,150,214],alt:[200,228,250],px:['..#..','.###.','#o###','#####','.###.']},
     talk:{ink:[226,86,124],px:['.#####.','#.....#','#.#.#.#','#.....#','.####..','.#.....']},
     tilde:{ink:[214,140,48],px:['.##....','#..#..#','....##.']},
+    work:{ink:[70,74,96],alt:[150,200,235],px:['.#####.','.#ooo#.','.#ooo#.','.#####.','#######']},
   };
   // Bubble anchor: above her head (top of the hair — also right when she lies down), never below her topmost pixel.
   function frameHead(f){
@@ -586,7 +595,9 @@
     syncLook:()=>syncActorLook(true),dollStats:()=>actor.dollStats(),
     // Activities: what she is doing; hold the pose while the chat is open; re-pick after a chat.
     activity:()=>actor.activity(),hold:on=>actor.hold(on),replan:()=>actor.replan(),
-    startActivity:id=>{const ok=actor.startActivity(id);if(ok)resumeActor();return ok;}};
+    startActivity:id=>{const ok=actor.startActivity(id);if(ok)resumeActor();return ok;},
+    /** 'sleep' | 'work' → {ok,message} */
+    order:kind=>{const r=actor.order(kind);if(r.ok)resumeActor();refreshActorControls();return r;}};
   window.RoomView={
     furniture(){
       const counts=new Map();
@@ -605,6 +616,33 @@
     if(result.ok)resumeActor();
     refreshActorControls();draw();
   });
+  // ------------------------------------------------------------------ orders（去睡覺／去工作）
+  // Small bar over the room canvas (main room + test_room), shown while she is in the room.
+  const orderBar=document.createElement('div');
+  orderBar.className='room-orders';orderBar.hidden=true;orderBar.setAttribute('role','toolbar');orderBar.setAttribute('aria-label','叫她做事');
+  const orderTip=document.createElement('p');orderTip.className='room-order-tip';orderTip.setAttribute('role','status');orderTip.setAttribute('aria-live','polite');orderTip.hidden=true;
+  let orderTipTimer=null;
+  for(const [kind,label] of [['sleep','去睡覺'],['work','去工作']]){
+    const b=document.createElement('button');b.type='button';b.dataset.order=kind;b.textContent=label;
+    b.addEventListener('click',()=>{
+      const r=window.RoomActor.order(kind);
+      orderTip.textContent=r.message;orderTip.hidden=false;
+      clearTimeout(orderTipTimer);orderTipTimer=setTimeout(()=>{orderTip.hidden=true;},2600);
+    });
+    orderBar.append(b);
+  }
+  canvas.parentElement.append(orderBar,orderTip);
+  function syncOrders(){
+    const show=actor.present&&!actorConcealed&&!editing;
+    if(orderBar.hidden===show)orderBar.hidden=!show;
+    if(!show)orderTip.hidden=true;
+    if(!show)return;
+    const a=actor.activity(),mode=actor.state.mode,on=a&&(a.phase==='hold'||mode==='sitting'||mode==='approaching'||mode==='walking');
+    for(const b of orderBar.children){
+      const pressed=String(!!on&&a.id===window.RoomActivity?.ORDERS?.[b.dataset.order]);
+      if(b.getAttribute('aria-pressed')!==pressed)b.setAttribute('aria-pressed',pressed);
+    }
+  }
   document.getElementById('actor-stand').addEventListener('click',()=>{
     if(actor.standUp())resumeActor();refreshActorControls();draw();
   });
@@ -617,7 +655,7 @@
     const dt=previous?Math.min((now-previous)/1000,.1):0;previous=now;
     if(actor.present)syncActorLook(false);
     actor.update(dt,!actor.present||actorConcealed||!wandering||placing||pointers.size>0);
-    refreshActorControls();
+    refreshActorControls();syncOrders();
     if(actor.present)drawActor();
   }
   requestAnimationFrame(animate);
