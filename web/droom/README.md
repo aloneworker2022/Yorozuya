@@ -105,3 +105,8 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 45 度下巴（使用者：太有稜角，要倒三角）：臉改成疊層零件 `sh.loft`（prim k＝5）：每個高度一個水平橢圓切面（`ANIME_HEAD.loft`：[z, 半寬, 前緣 y, 後緣 y]），往下越來越小、下巴收成一點 → 正面 V、側面輪廓、45 度都是順的倒三角。
 - 鼻子 9 種（使用者：做 9 種來選）：`NOSE_STYLES` 參數化（鼻根 root、鼻尖 tip、凸出 P、鼻樑彎 conc、鼻頭圓 r、上翹 up、正面上下寬 wt／wb）：1 尖鼻 small、2 圓鼻頭 round、3 翹鼻 upturned、4 小巧鼻 petite、5 高挺鼻 tall、6 微駝峰 hump、7 鈕扣鼻 button、8 寬鼻翼 wide、9 細長鼻 long。選單 1～9。圖層還沒出。
 - 側面下巴（使用者：太圓）：loft 最後幾層前緣撐到最底（6.6→6.2）、後緣往前收快，圓角 0.25→0.15 → 下巴尖角、下顎線直。
+
+## 2026-11-01：嘴巴（樣品，使用者：先做嘴唇）
+- room_doll_full.js `mouth()`：`doll.mouth` 有值才畫；動漫臉嘴縫高度（z −5.55）沿臉表面貼一條薄帶（x ±1.4）＋中間一顆稍凸的點（側面也抓得到），tag cloth＝14 → `MOUTH_RGB` #80FF80／#40A040。只標位置。
+- 前端 `mouthOver()`：每格找標記範圍（中心、寬），照嘴型畫像素：閉嘴 line、微笑 smile、小 o 嘴 o、張嘴笑 open、嘟嘴 pout、口紅 lip；正側面從臉前緣往內畫一小段。換嘴型不用重畫圖。選單「嘴巴」。
+- 圖層檔名 `face/<body>_mouth_<dir>.png`（坐姿 `<pose>/face/<body>_mouth.png`）；還沒正式出（render_face.cjs 尚未加 mouth）。

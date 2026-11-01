@@ -9,7 +9,7 @@ button{background:#2a2436;color:#ddd;border:1px solid #443a58;border-radius:8px;
 <div class=bar><b>姿勢</b><select id=PO></select></div><div class=bar><b>體型</b><select id=B></select></div><div class=bar><b>乳暈</b><select id=A></select></div>
 <div class=bar><b>後髮</b><select id=BH></select></div><div class=bar><b>前髮</b><select id=FH></select></div>
 <div class=bar><b>髮色</b><select id=H></select></div><div class=bar><b>乳頭</b><select id=N></select></div><div class=bar><b>服裝</b><select id=CL></select></div><div class=bar><b>配色</b><select id=CS></select></div><div class=bar><b>配重</b><select id=CW></select></div><div class=bar><b>裡面胸罩</b><select id=UB></select></div>
-<div class=bar><b>陰毛</b><select id=PU></select></div><div class=bar><b>陰唇</b><select id=LB></select></div><div class=bar><b>褲子</b><select id=PA></select></div><div class=bar><b>蕾絲色</b><select id=LC></select></div><div class=bar><b>鼻子</b><select id=NS></select></div><div class=bar><b>眼罩</b><select id=BF></select></div>
+<div class=bar><b>陰毛</b><select id=PU></select></div><div class=bar><b>陰唇</b><select id=LB></select></div><div class=bar><b>褲子</b><select id=PA></select></div><div class=bar><b>蕾絲色</b><select id=LC></select></div><div class=bar><b>鼻子</b><select id=NS></select></div><div class=bar><b>嘴巴</b><select id=MO></select></div><div class=bar><b>眼罩</b><select id=BF></select></div>
 <div class=bar><b>胸型</b><select id=S></select></div><div class=bar><b>罩杯</b><select id=C></select></div><div class=bar><b>方向</b><select id=Dd></select></div>
 <div class=bar><button id=pp>⏸ 暫停</button><button id=pv>◀ 上一格</button><button id=nx>下一格 ▶</button><label>速度 <input id=fp type=range min=2 max=24 value=14> <span id=fv>14</span> fps</label></div>
 <div id=msg></div><div id=v class=spr></div><div id=info></div>
@@ -38,7 +38,7 @@ const BHN={long:"長髮",wavy:"波浪長髮",short:"短髮",pony:"馬尾",medium
 const CLN={none:"無",napkin:"餐巾布",bra:"胸罩",tee:"白色 T恤"},PUN={none:"沒有",strip:"一條線",triangle:"三角形"},LBN={line:"一線",butterfly:"蝴蝶唇",line_open:"一線（打開）",butterfly_open:"蝴蝶唇（打開）"},PAN={none:"無",lace_thong:"蕾絲丁字褲"},LCN={black:"黑",white:"白",red:"紅",pink:"粉紅"};
 const CSN={pink:"粉紅透明布＋金邊",black:"黑色透明布＋白邊",white:"白色透明布＋紅邊",red:"紅色"},BRN={black:"黑色",white:"白色",red:"紅色"},UBN={none:"不穿",black:"黑色",white:"白色",red:"紅色"},CWN={bell:"金鈴鐺",jade:"綠玉石"};
 const pick=o=>{const k=Object.keys(o);return k[Math.random()*k.length|0]};
-const col={h:pick(HN),n:pick(NN),bh:pick(BHN),fh:pick(FHN),cl:"napkin",cs:pick({pink:1,black:1,white:1}),cw:pick(CWN),pu:pick(PUN),lb:pick(LBN),pa:"lace_thong",lc:pick(LCN),ub:"none",bf:"none",ns:"small"};const NSN={none:"無",small:"1 尖鼻",round:"2 圓鼻頭",upturned:"3 翹鼻",petite:"4 小巧鼻",tall:"5 高挺鼻",hump:"6 微駝峰",button:"7 鈕扣鼻",wide:"8 寬鼻翼",long:"9 細長鼻"},BFN={none:"無",black:"黑布",red:"紅布",white:"白布"};
+const col={h:pick(HN),n:pick(NN),bh:pick(BHN),fh:pick(FHN),cl:"napkin",cs:pick({pink:1,black:1,white:1}),cw:pick(CWN),pu:pick(PUN),lb:pick(LBN),pa:"lace_thong",lc:pick(LCN),ub:"none",bf:"none",ns:"small",mo:"line"};const MON={none:"無",line:"閉嘴",smile:"微笑",o:"小 o 嘴",open:"張嘴笑",pout:"嘟嘴",lip:"口紅"};const NSN={none:"無",small:"1 尖鼻",round:"2 圓鼻頭",upturned:"3 翹鼻",petite:"4 小巧鼻",tall:"5 高挺鼻",hump:"6 微駝峰",button:"7 鈕扣鼻",wide:"8 寬鼻翼",long:"9 細長鼻"},BFN={none:"無",black:"黑布",red:"紅布",white:"白布"};
 function up2(u,r,miss){const j=new Image();j.onload=()=>{const c=document.createElement("canvas");c.width=j.naturalWidth*2;c.height=j.naturalHeight*2;const x=c.getContext("2d");x.imageSmoothingEnabled=false;x.drawImage(j,0,0,c.width,c.height);const k=new Image();k.onload=()=>r(k);k.src=c.toDataURL()};j.onerror=()=>r(miss);j.src=u.replace("/sheets2x/","/sheets/")}   // pt79u：2× sheet 還沒渲好 → 1× 最近鄰放大 2 倍（標記色不變）
 const LD={};function img(u){if(!LD[u]){const im=new Image();LD[u]=new Promise(r=>{im.onload=()=>r(im);im.onerror=()=>HD&&u.includes("/sheets2x/")?up2(u,r,null):r(null)});im.src=u}return LD[u]}
 // 身體 sheet（無頭髮）＋後髮＋前髮疊成一張；面向後方時後髮畫在最上面
@@ -49,13 +49,13 @@ async function composeSit(k){const p=k.split("_"),b=p[0],PD=`${SD}${pose}/`,isB=
  const gl=await Promise.all([col.lb&&img(`${PD}groin/${b}_labia_${col.lb}.png`),col.pu!="none"&&img(`${PD}groin/${b}_pubic_${col.pu}.png`),col.pa!="none"&&img(`${PD}groin/${b}_pants_${col.pa}.png`)].map(x=>x||null));
  if(!base)return null;   // 這個組合的坐姿 sheet 還沒有
  const c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d");x.drawImage(base,0,0);
- if(bk)over(x,bk,nb);if(fr)over(x,fr,nb);if(fr)over(x,fr,isB);if(bk)over(x,bk,isB);c._cl=null;c._br=null;c._gl=gl;c._fc=col.bf=="none"?null:await img(`${PD}face/${b}_blindfold_cloth.png`);c._nz=col.ns=="none"?null:await img(`${PD}face/${b}_nose_${col.ns}.png`);c._sOf=f=>(SIT_ORD[f]=="left"||SIT_ORD[f]=="right")?0:SIT_ORD[f].includes("left")?-1:1;return c}
+ if(bk)over(x,bk,nb);if(fr)over(x,fr,nb);if(fr)over(x,fr,isB);if(bk)over(x,bk,isB);c._cl=null;c._br=null;c._gl=gl;c._fc=col.bf=="none"?null:await img(`${PD}face/${b}_blindfold_cloth.png`);c._nz=col.ns=="none"?null:await img(`${PD}face/${b}_nose_${col.ns}.png`);c._mz=col.mo=="none"?null:await img(`${PD}face/${b}_mouth.png`);c._dOf=f=>[SIT_ORD[f].includes("left")?-1:1,SIT_ORD[f]=="left"||SIT_ORD[f]=="right"];c._sOf=f=>(SIT_ORD[f]=="left"||SIT_ORD[f]=="right")?0:SIT_ORD[f].includes("left")?-1:1;return c}
 async function compose(k){if(pose!="walk")return composeSit(k);const p=k.split("_"),b=p[0],d=p.slice(4).join("_");
  const BO=col.cl=="bra"||(col.ub!="none"&&col.cl!="none"),SP=`${SD}sup/${b}_sup_${p[2]}_`;   // pt78u 穿胸罩→托高身體
  const L=[img(BO?`${SP}${p[3]}_${d}.png`:`${SD}${k}.png`),img(`${SD}hair/${b}_back_${col.bh}_${d}.png`),img(`${SD}hair/${b}_front_${col.fh}_${d}.png`),col.cl=="none"||col.cl=="bra"?null:img(BO?`${SD}sup/cloth/${b}_sup_${p[2]}_${CLF(col.cl,col.cw)}_${d}.png`:`${SD}cloth/${b}_${p[1]}_${p[2]}_${CLF(col.cl,col.cw)}_${d}.png`),BO?img(`${SD}sup/cloth/${b}_sup_${p[2]}_bra_${d}.png`):null];
  const GL=[col.lb&&img(`${SD}groin/${b}_labia_${col.lb}_${d}.png`),col.pu!="none"&&img(`${SD}groin/${b}_pubic_${col.pu}_${d}.png`),col.pa!="none"&&img(`${SD}groin/${b}_pants_${col.pa}_${d}.png`)].map(x=>x||null);
  const [base,bk,fr,clm,brm]=await Promise.all(L),gl=await Promise.all(GL);const c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d");
- x.drawImage(base,0,0);for(const im of d.startsWith("back")?[fr,bk]:[bk,fr])if(im)over(x,im);c._cl=clm;c._br=brm;c._gl=gl;c._fc=col.bf=="none"?null:await img(`${SD}face/${b}_blindfold_cloth_${d}.png`);c._nz=col.ns=="none"?null:await img(`${SD}face/${b}_nose_${col.ns}_${d}.png`);c._sOf=()=>(d=="left"||d=="right")?0:d.includes("left")?-1:1;return c}
+ x.drawImage(base,0,0);for(const im of d.startsWith("back")?[fr,bk]:[bk,fr])if(im)over(x,im);c._cl=clm;c._br=brm;c._gl=gl;c._fc=col.bf=="none"?null:await img(`${SD}face/${b}_blindfold_cloth_${d}.png`);c._nz=col.ns=="none"?null:await img(`${SD}face/${b}_nose_${col.ns}_${d}.png`);c._mz=col.mo=="none"?null:await img(`${SD}face/${b}_mouth_${d}.png`);c._dOf=()=>[d.includes("left")?-1:1,d=="left"||d=="right"];c._sOf=()=>(d=="left"||d=="right")?0:d.includes("left")?-1:1;return c}
 // 剪影 sheet → 白皙膚色＋髮色＋乳頭色（與 /droom/play 同一套調色）
 function clothData(im,w,h){if(!im||!im.naturalWidth)return null;const t=document.createElement("canvas");t.width=w;t.height=h;const x=t.getContext("2d");x.drawImage(im,0,0);return x.getImageData(0,0,w,h).data}
 // 2026-10-30 pt29u：衣服 sheet 是部位標記色（布／邊框 #F00／頸鍊 #0F0／配重 #00F）→ 依配色方案上色。鍊一律金色；配重 鈴鐺=金、玉石=綠。
@@ -89,6 +89,27 @@ function noseOver(d,hm,ND,W,sOf){if(!ND)return;const H=ND.length/4/W,FW=W/8,SK=[
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){if(!isN(x,y))continue;const i=(y*W+x)*4;
    if((y>=yl&&!isN(x+s,y))||!isN(x,y+1))put(x,y,LN);else if(!d[i+3])put(x,y,SK)}
   {let xe=s>0?1e9:-1;for(let x=x0;x<=x1;x++)if(isN(x,y1))xe=s>0?Math.min(xe,x):Math.max(xe,x);const xn=xe-2*s;if(xn>=f*FW&&xn<(f+1)*FW&&d[(y1*W+xn)*4+3])put(xn,y1,LN)}}}   // 小鼻孔
+// 2026-11-01：嘴巴圖層（標記色 #80FF80／#40A040，只標嘴的位置）。嘴型由這裡照位置畫像素（換嘴型不用重畫圖）：
+//  每格找標記的範圍（中心、寬度）；正面／斜面照寬度畫；正側面在臉前緣往內畫一小段。fs＝臉朝右＋1／左−1，side＝正側面。
+const MOUTH_STYLES={line:"閉嘴",smile:"微笑",o:"小 o 嘴",open:"張嘴笑",pout:"嘟嘴",lip:"口紅"};
+const MLINE=[150,82,82],MDARK=[110,26,40],MIN=[200,96,110],MLIP=[214,92,116],MLIPD=[164,44,68];
+function mouthOver(d,hm,MD,W,dOf,st){if(!MD||!MOUTH_STYLES[st])return;const H=MD.length/4/W,FW=W/8,isM=(x,y)=>{const i=(y*W+x)*4;return MD[i+3]&&MD[i]>=60&&MD[i]<=130&&MD[i+1]>=150};
+ const put=(x,y,o)=>{if(x<0||y<0||x>=W||y>=H)return;const i=(y*W+x)*4;if(hm[i>>2]||!d[i+3])return;d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2]};
+ for(let f=0;f<8;f++){const[fs,side]=dOf(f);let x0=1e9,x1=-1,ys=0,n=0;
+  for(let y=0;y<H;y++)for(let x=f*FW;x<(f+1)*FW;x++)if(isM(x,y)){x0=Math.min(x0,x);x1=Math.max(x1,x);ys+=y;n++}
+  if(!n)continue;const cy=Math.round(ys/n),w=x1-x0+1;
+  if(side){const xe=fs>0?x1:x0,L=(dx,y,o)=>put(xe-fs*dx,y,o);   // 正側面：從臉前緣往內
+   if(st=="o"||st=="open"){L(0,cy,MDARK);L(1,cy,MDARK);if(st=="open"){L(0,cy+1,MDARK);L(1,cy+1,MIN)}}
+   else if(st=="lip"){L(0,cy,MLIPD);L(1,cy,MLIPD);L(0,cy+1,MLIP)}
+   else{L(1,cy,MLINE);L(2,cy,MLINE);if(st=="smile")L(3,cy-1,MLINE);if(st=="pout")L(0,cy,MLIP)}
+   continue}
+  const cx=(x0+x1)/2,hw=Math.max(1,Math.round(w*.32)),row=(y,a,b,o)=>{for(let x=Math.round(cx-a);x<=Math.round(cx+b);x++)put(x,y,o)};
+  if(st=="line")row(cy,hw,hw,MLINE);
+  else if(st=="smile"){row(cy,hw-1,hw-1,MLINE);put(Math.round(cx-hw),cy-1,MLINE);put(Math.round(cx+hw),cy-1,MLINE)}
+  else if(st=="o"){row(cy,.5,.5,MDARK);row(cy+1,.5,.5,MDARK);row(cy-1,.5,.5,MLINE)}
+  else if(st=="open"){row(cy,hw,hw,MDARK);row(cy+1,hw-1,hw-1,MDARK);row(cy+1,.5,.5,MIN);row(cy+2,Math.max(0,hw-2),Math.max(0,hw-2),MDARK)}
+  else if(st=="pout"){row(cy,.5,.5,MLIPD);row(cy-1,1,1,MLIP);row(cy+1,1,1,MLIP)}
+  else if(st=="lip"){row(cy,hw,hw,MLIPD);row(cy-1,Math.max(0,hw-1),Math.max(0,hw-1),MLIP);row(cy+1,Math.max(0,hw-1),Math.max(0,hw-1),MLIP)}}}
 // 2026-10-31：臉部圖層——眼罩（標記色 #0080FF／邊緣 #0048A0）。綁在頭髮外面：連頭髮像素也蓋上（與 play.html 同一套）。
 const BLIND_PAL={black:[[34,32,38],[18,16,20],[56,54,62]],red:[[178,24,40],[120,12,26],[206,60,74]],white:[[236,236,240],[196,196,206],[252,252,255]]};
 function faceOver(d,FD,col,W){if(!FD||!BLIND_PAL[col])return;const C=BLIND_PAL[col],isB=i=>FD[i+3]&&FD[i]==0&&FD[i+2]>=150;
@@ -103,15 +124,15 @@ function tint(c,HP,NP){const x=c.getContext("2d");
   const l=(r*.3+gg*.59+b*.11),t=Math.max(0,Math.min(1,(l-28)/(75-28)));const [P,Q,u]=t<.5?[A,B,t*2]:[B,C,(t-.5)*2];
   for(let j=0;j<3;j++)d[i+j]=P[j]+(Q[j]-P[j])*u;d[i+3]=255}
  groinOver(d,hm,(c._gl||[]).map(im=>clothData(im,c.width,c.height)),HP,col.lc,c.width);
- if(c._br||c._cl)clothOver(d,hm,clothData(c._br,c.width,c.height),col.cl=="bra"?CSK(col.cl,col.cs):"bra_"+col.ub,col.cw);clothOver(d,hm,clothData(c._cl,c.width,c.height),CSK(col.cl,col.cs),col.cw);noseOver(d,hm,clothData(c._nz,c.width,c.height),c.width,c._sOf||(()=>1));faceOver(d,clothData(c._fc,c.width,c.height),col.bf,c.width);outline(d,c.width,c.height,c.width/8);x.putImageData(D,0,0);return c.toDataURL()}
-const TC={};function turl(k){if(pose!="walk")k=k.split("_").slice(0,4).join("_")+"_front";const ck=[pose,k,col.h,col.n,col.bh,col.fh,col.cl,col.cs,col.cw,col.ub,col.pu,col.lb,col.pa,col.lc,col.bf,col.ns].join("|");if(TC[ck])return TC[ck]==1?null:TC[ck];TC[ck]=1;
+ if(c._br||c._cl)clothOver(d,hm,clothData(c._br,c.width,c.height),col.cl=="bra"?CSK(col.cl,col.cs):"bra_"+col.ub,col.cw);clothOver(d,hm,clothData(c._cl,c.width,c.height),CSK(col.cl,col.cs),col.cw);noseOver(d,hm,clothData(c._nz,c.width,c.height),c.width,c._sOf||(()=>1));mouthOver(d,hm,clothData(c._mz,c.width,c.height),c.width,c._dOf||(()=>[1,false]),col.mo);faceOver(d,clothData(c._fc,c.width,c.height),col.bf,c.width);outline(d,c.width,c.height,c.width/8);x.putImageData(D,0,0);return c.toDataURL()}
+const TC={};function turl(k){if(pose!="walk")k=k.split("_").slice(0,4).join("_")+"_front";const ck=[pose,k,col.h,col.n,col.bh,col.fh,col.cl,col.cs,col.cw,col.ub,col.pu,col.lb,col.pa,col.lc,col.bf,col.ns,col.mo].join("|");if(TC[ck])return TC[ck]==1?null:TC[ck];TC[ck]=1;
  compose(k).then(c=>{if(!c){delete TC[ck];msg.textContent="這個組合的坐姿還沒算好";return}try{TC[ck]=tint(c,HAIR_PAL[col.h],NIP_PAL[col.n])}catch(e){TC[ck]=`${SD}${k}.png`}draw()});return null}
-for(const[el,o,k]of [[BH,BHN,"bh"],[FH,FHN,"fh"],[H,HN,"h"],[N,NN,"n"],[CL,CLN,"cl"],[CS,CSN,"cs"],[CW,CWN,"cw"],[UB,UBN,"ub"],[PU,PUN,"pu"],[LB,LBN,"lb"],[PA,PAN,"pa"],[LC,LCN,"lc"],[BF,BFN,"bf"],[NS,NSN,"ns"]]){for(const[v,n]of Object.entries(o))el.add(new Option(n,v));el.onchange=()=>{col[k]=el.value;draw()}}
+for(const[el,o,k]of [[BH,BHN,"bh"],[FH,FHN,"fh"],[H,HN,"h"],[N,NN,"n"],[CL,CLN,"cl"],[CS,CSN,"cs"],[CW,CWN,"cw"],[UB,UBN,"ub"],[PU,PUN,"pu"],[LB,LBN,"lb"],[PA,PAN,"pa"],[LC,LCN,"lc"],[BF,BFN,"bf"],[NS,NSN,"ns"],[MO,MON,"mo"]]){for(const[v,n]of Object.entries(o))el.add(new Option(n,v));el.onchange=()=>{col[k]=el.value;draw()}}
 function draw(){const k=key();{const u=turl(k);if(u)v.style.backgroundImage=`url(${u})`}const sit=pose!="walk";Object.assign(v.style,sit?{width:"375px",height:"210px",backgroundSize:"3000px 210px",backgroundPosition:`${-375*SIT_ORD.indexOf(st.d)}px 0`}:{width:"",height:"",backgroundSize:"",backgroundPosition:`${-256*i}px 0`});
  for(const w of ring.querySelectorAll("[data-d]")){const kk=key({...st,d:w.dataset.d}),s=w.firstChild;if(HAVE.has(kk)){const u=turl(kk);if(u)s.style.backgroundImage=`url(${u})`}else s.style.backgroundImage="none";Object.assign(s.style,sit?{height:"36px",backgroundSize:"512px 36px",backgroundPosition:`${-64*SIT_ORD.indexOf(w.dataset.d)}px 0`}:{height:"",backgroundSize:"",backgroundPosition:`${-64*i}px 0`});w.style.outline=w.dataset.d==st.d?"2px solid #a08ad0":""}
  {const sig=JSON.stringify([st,col]);if(sig!==window.__uiSig){window.__uiSig=sig;   // pt87u：播放每格重寫 select 會把拉開的選單關掉→只在狀態改變時同步
  for(const[el,o,kk]of groups){el.value=st[kk];for(const b of el.options)b.textContent=o[b.value]+(HAVE.has(key({...st,[kk]:b.value}))?"":"（未算）")}
- for(const[el,kk]of [[BH,"bh"],[FH,"fh"],[H,"h"],[N,"n"],[CL,"cl"],[CS,"cs"],[CW,"cw"],[UB,"ub"],[PU,"pu"],[LB,"lb"],[PA,"pa"],[LC,"lc"],[BF,"bf"],[NS,"ns"]])el.value=col[kk];
+ for(const[el,kk]of [[BH,"bh"],[FH,"fh"],[H,"h"],[N,"n"],[CL,"cl"],[CS,"cs"],[CW,"cw"],[UB,"ub"],[PU,"pu"],[LB,"lb"],[PA,"pa"],[LC,"lc"],[BF,"bf"],[NS,"ns"],[MO,"mo"]])el.value=col[kk];
  CS.parentNode.style.display=col.cl=="napkin"||col.cl=="bra"?"":"none";CW.parentNode.style.display=col.cl=="napkin"?"":"none";UB.parentNode.style.display=col.cl=="napkin"||col.cl=="tee"?"":"none";{const br=col.cl=="bra";for(const b of CS.options){b.hidden=br?!(b.value in BRN):b.value=="red";b.textContent=br?BRN[b.value]||"":CSN[b.value]}CS.value=br?CSK(col.cl,col.cs).slice(4):(col.cs=="red"?"white":col.cs)}}}   // pt77u 胸罩只給黑白紅；T 恤不選配色
  info.textContent=`${PON[pose]}${pose=="walk"?"":"（坐姿不含衣服）"}・陰毛${PUN[col.pu]}・${LBN[col.lb]}・${PAN[col.pa]}${col.pa=="none"?"":"（"+LCN[col.lc]+"）"}・${CLN[col.cl]}${col.cl=="none"||col.cl=="tee"?"":col.cl=="bra"?"（"+BRN[CSK(col.cl,col.cs).slice(4)]+"）":"（"+CSN[col.cs]+"・"+CWN[col.cw]+"）"}・${BHN[col.bh]}＋${FHN[col.fh]}・${HN[col.h]}髮・${NN[col.n]}乳頭・${BO[st.b]}・${AR[st.a]}・${SH[st.s]}・${st.c} 罩杯・${DI[st.d]}・第 ${i+1}/8 格`}
 function loop(){clearInterval(t);t=setInterval(()=>{if(play){i=(i+1)%8;draw()}},1000/fps)}
