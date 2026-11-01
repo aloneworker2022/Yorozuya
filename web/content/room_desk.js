@@ -66,10 +66,20 @@
   const busy = () => !!(run && run.status === 'running');
   /** 桌上要畫什麼：paper 一疊紙（放著／做中）｜report 報告書（交上來了）｜null。 */
   const prop = () => !run ? null : run.status === 'done' ? 'report' : 'paper';
-  /** 她在書桌前的氣泡：卡住冒汗；做中寫字；報告交了愛心。 */
+  /** 她在書桌前換什麼動作（權重）：做中多半在寫、偶爾撐頭想；卡住就一直撐著頭想；交了報告伸懶腰、滑手機。
+      沒有委託在做 → null（照 desk_work.poses）。 */
+  function poseWeights() {
+    if (!run) return null;
+    if (run.status === 'running') return summary.trouble ? { sit_think: 5, sit_work: 1, sit_scribble: .6 }
+      : { sit_work: 3, sit_scribble: 2.5, sit_think: 1.2, sit_stretch: .3 };
+    if (run.status === 'done') return { sit_stretch: 1.5, sit_phone: 2, sit_think: .5 };
+    if (run.status === 'failed') return { sit_think: 3, sit_phone: 1 };
+    return null;
+  }
+  /** 她在書桌前的氣泡（蓋過動作的氣泡）：卡住冒汗；報告交了愛心；其他照她的動作（寫字鉛筆、想事情點點…）。 */
   function icon() {
     if (!run) return null;
-    if (run.status === 'running') return summary.trouble ? 'sweat' : 'write';
+    if (run.status === 'running') return summary.trouble ? 'sweat' : null;
     if (run.status === 'failed') return 'sweat';
     if (run.status === 'done') return 'heart';
     return null;
@@ -264,7 +274,7 @@
     } catch (e) { msg = e.message || String(e); paint(true); }
   }
 
-  window.RoomDesk = { give, start, busy, prop, icon, promptLines, openLog, closeLog,
+  window.RoomDesk = { give, start, busy, prop, icon, poseWeights, promptLines, openLog, closeLog,
     state: () => ({ run, events: events.slice(), summary, agent, offline }), pull };
   void pull();
   loop();

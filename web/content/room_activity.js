@@ -72,7 +72,10 @@
     { id: 'bed_sleep', name: '躺在床上睡覺', pose: 'sleep_curl', place: 'seat', seat: ['bed'], seatKind: 'lie', dur: [150, 300], orderDur: [900, 1800],
       icon: 'zzz', kind: 'sleep', relax: 1, w: .35,
       doing: '躺在床上睡著了', react: '剛被吵醒' },
+    // poses：在書桌前會換著做（10～25 秒換一次，伸懶腰短一點）；桌上的委託在做時由 room_desk.js 決定權重
     { id: 'desk_work', name: '坐在書桌前寫東西', pose: 'sit_work', place: 'seat', seat: ['chair'], near: 'desk', dur: [120, 300], orderDur: [900, 1800],
+      poses: { sit_work: 2, sit_scribble: .8, sit_think: 1.5, sit_phone: 1.6, sit_stretch: .6 },
+      seatShift: .22,   // 坐到椅子前緣、靠近書桌（不然手搆不到桌面）
       icon: 'write', kind: 'focus', focus: .9, relax: 0, w: .7,
       doing: '坐在書桌前低著頭專心寫東西', react: '正在寫東西寫到一半，第一句先像「等一下，我寫完這句…好，怎麼了？」那樣，再理他' },
   ];

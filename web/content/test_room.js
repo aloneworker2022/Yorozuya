@@ -81,6 +81,7 @@
   }).filter(item=>item.seats.length),blocked:(u,v)=>!!itemAtCell(u,v),
   furnitureAt:(u,v)=>itemAtCell(u,v)?.type||null,
   keep:id=>id==='desk_work'&&!!window.RoomDesk?.busy?.(),
+  subPoses:spec=>spec.id==='desk_work'?window.RoomDesk?.poseWeights?.()||null:null,
   // Activity context (time/chrono/mood/missYou/stage/hobbies/history/post-chat bias) and the
   // activity log come from the summon module; without it she still picks activities on defaults.
   getContext:()=>typeof window.RoomActivityContext==='function'?window.RoomActivityContext():null,
@@ -280,11 +281,14 @@
     f.head=hn?{top:Math.min(top,hairTop),x:hx/hn}:{top:Math.max(0,top),x:f.anchor.x};
     return f.head;
   }
+  const DESK_POSE_ICON={sit_work:'write',sit_scribble:'write',sit_think:'dots',sit_phone:'phone',sit_stretch:'tilde'};
   function drawBubble(output,f,ox,oy){
     let b=typeof actor.bubble==='function'?actor.bubble():null;
     // At the desk with a quest (room_desk.js): the desk decides (writing / stuck / report done) and it stays up.
-    const cur=actor.activity?.(),deskIcon=cur&&cur.id==='desk_work'&&window.RoomDesk?.icon?.();
-    if(deskIcon&&actor.state.mode==='sitting')b={icon:deskIcon,alpha:1,t:b?b.t:performance.now()/1000};
+    // While the quest runs the bubble stays up and follows her pose (writing / thinking / stretching).
+    const cur=actor.activity?.(),atDesk=cur&&cur.id==='desk_work'&&actor.state.mode==='sitting';
+    const deskIcon=atDesk&&(window.RoomDesk?.icon?.()||(window.RoomDesk?.busy?.()&&DESK_POSE_ICON[cur.pose]));
+    if(deskIcon)b={icon:deskIcon,alpha:1,t:b?b.t:performance.now()/1000};
     if(!b||!ICONS[b.icon])return;
     const icon=ICONS[b.icon],S=2,gw=icon.px[0].length*S,gh=icon.px.length*S,pad=3;
     const bw=gw+pad*2,bh=Math.max(gh,8)+pad*2;
@@ -722,6 +726,7 @@
     // Activities: what she is doing; hold the pose while the chat is open; re-pick after a chat.
     activity:()=>actor.activity(),hold:on=>actor.hold(on),replan:()=>actor.replan(),
     startActivity:id=>{const ok=actor.startActivity(id);if(ok)resumeActor();return ok;},
+    forcePose:pose=>actor.forcePose(pose),
     /** 'sleep' | 'work' → {ok,message} */
     tip:(text,ms)=>roomTip(text,ms),
     order:kind=>{const r=actor.order(kind);if(r.ok)resumeActor();else roomTip(r.message);refreshActorControls();return r;}};
