@@ -34,12 +34,12 @@
       b(.25,.25,.4,.4,42,2,...blue);b(.29,.25,.32,.38,44,1,...pale);
     }},
     // kind:'lie' = lying spot on the mattress (sleep); plain seats are for sitting.
-    // 2026-11-01：加大成 2×3 雙人床（單人床太短，她躺上去腳會穿出床尾）。
-    bed: {name:'雲朵雙人床',cols:2,rows:3,seats:[{u:1.72,v:1.9,height:29,direction:1},{u:1,v:1.2,height:19,direction:3,kind:'lie'}],draw(b) {
-      b(.08,.06,1.84,2.88,5,11,...wood); b(.08,.04,1.84,.13,0,48,...pale);
-      b(.12,.2,1.76,2.7,16,9,...pale);b(.15,1.05,1.7,1.82,25,4,...blue);
-      b(.3,.28,1.4,.42,25,6,'#fff0d9','#e6d8c0','#c9bca8');
-      b(.15,1.07,1.7,.1,29,1,'#d3e0df','#bbcdcd','#97b1b8');
+    // 2026-11-01：1×3 加長單人床（1×2 太短，她躺上去腳會穿出床尾；2×3 雙人床又太大）。
+    bed: {name:'雲朵單人床',cols:1,rows:3,seats:[{u:.72,v:1.9,height:29,direction:1},{u:.55,v:1.2,height:19,direction:3,kind:'lie'}],draw(b) {
+      b(.08,.06,.84,2.88,5,11,...wood); b(.08,.04,.84,.13,0,46,...pale);
+      b(.12,.2,.76,2.7,16,9,...pale);b(.15,1.05,.7,1.82,25,4,...blue);
+      b(.16,.28,.68,.4,25,6,'#fff0d9','#e6d8c0','#c9bca8');
+      b(.15,1.07,.7,.1,29,1,'#d3e0df','#bbcdcd','#97b1b8');
     }},
     sofa: {name:'奶茶雙人沙發',cols:2,rows:1,seats:[{u:.61,v:.56,height:30,direction:0},{u:1.39,v:.56,height:30,direction:0}],draw(b) {
       for(const u of [.16,1.74])for(const v of [.2,.74])b(u,v,.1,.1,0,8,...dark);
