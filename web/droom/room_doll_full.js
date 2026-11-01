@@ -747,12 +747,35 @@
     }
     /** 2026-10-13：grav＝頭部局部座標裡的「下」。站著是 [0,0,−1]（不動）；躺／趴時馬尾、雙馬尾、麻花辮從根部照重力垂，不再跟著頭轉成一根棍子。 */
     /** side＝側面（偷看）：鬢髮與兩側髮束收到臉頰後面（耳朵前後），不然從側面看整張臉被頭髮蓋住（2026-10-15）。 */
+    // 2026-10-31：臉部第一項——眼罩（一塊布綁住眼睛）。doll.blindfold 有值才畫；tag cloth＝12（標記色 BLIND_RGB／邊緣 BLIND_LO_RGB，前端上色）。
+    // 布帶貼著頭（headPart 的頭橢球往外 0.35）繞一圈，高度蓋住眼睛（瀏海下緣 zc＋2.4 以下）；後腦打一個結＋兩條布尾往下垂、走路時跟著晃。
+    const BLIND_RGB = [0, 128, 255], BLIND_LO_RGB = [0, 72, 160], BLINDS = ['cloth'];
+    function blindfold(sh, P, doll, tor, sway = 0) {
+      const hs = P.b.head, hh = P.head_h / 2, zc = tor.zc, yc = tor.yl(zc) + .3, rx = 6.9 * hs, ry = 7.2 * hs;
+      const at = (a, z, out = .35) => { const k = Math.sqrt(Math.max(0, 1 - ((z - zc) / hh) ** 2)); return [Math.sin(a) * (rx * k + out), yc + Math.cos(a) * (ry * k + out), z]; };
+      const zE = zc - .9;   // 眼睛高度（帶子中線）
+      sh.cloth = 12;
+      for (let z = zE - 1.5; z <= zE + 1.5 + 1e-6; z += .6) {   // 布帶：幾圈疊起來＝一條寬帶
+        const ring = []; for (let d = 0; d <= 360; d += 12) ring.push(at(d * Math.PI / 180, z));
+        sh.chain(BODY, ring, ring.map(() => .42));
+      }
+      const kb = at(Math.PI, zE, .9);   // 後腦的結
+      sh.ell(BODY, kb, [1.5, 1.1, 1.3]);
+      for (const sx of [-1, 1]) sh.ell(BODY, [kb[0] + sx * 1.5, kb[1] - .2, kb[2] + .2], [1.2, .8, .9]);   // 結兩邊的小耳
+      for (const [sx, len] of [[-1, 6.5], [1, 5.6]]) {   // 兩條布尾往下垂，稍微分開、跟著走路晃
+        const pts = [], rr = [];
+        for (let i = 0; i <= 5; i++) { const u = i / 5; pts.push([kb[0] + sx * (.6 + 1.6 * u) + sway * .5 * u * u, kb[1] - .5 - 1.2 * u, kb[2] - .4 - len * u]); rr.push(.62 - .12 * u); }
+        sh.chain(BODY, pts, rr);
+      }
+      sh.cloth = 0;
+    }
     function hair(sh, P, doll, tor, sway = 0, grav = null, side = false, swing = null) {
       const Rg = grav ? gravRot(grav) : null;
       const bend = (pts, root = pts[0]) => !Rg ? pts : pts.map(p => { const d = mulV(Rg, [p[0] - root[0], p[1] - root[1], p[2] - root[2]]); return [root[0] + d[0], root[1] + d[1], root[2] + d[2]]; });
       // swing（頭的局部座標向量）：髮根不動、越往髮尾甩越多；sw(p, w) 把點 p 照權重 w（0～1）推過去
       const SW = swing || [0, 0, 0], sw = (p, w) => [p[0] + SW[0] * w, p[1] + SW[1] * w, p[2] + SW[2] * w];
       const swc = (pts, ws) => pts.map((p, i) => sw(p, ws[i]));
+      if (doll.blindfold) blindfold(sh, P, doll, tor, sway);   // 2026-10-31：眼罩跟頭髮一起畫（所有姿勢都有）
       const zc = tor.zc, S = tor.S, yl = tor.yl, y0 = yl(zc), style = doll.hair, hh = P.head_h / 2, T = P.T;
       if (style === 'none') return;
       if ('backHair' in doll || 'frontHair' in doll) return layeredHair(sh, P, doll, tor, sway, side, sw, swc, bend);
@@ -1728,7 +1751,7 @@
             const j = ny * width + nx;
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
-          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 13 ? OPEN_RGB : cb === 14 ? HOLE_RGB : cb === 15 ? PUBIC_EDGE_RGB : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
+          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 13 ? OPEN_RGB : cb === 14 ? HOLE_RGB : cb === 15 ? PUBIC_EDGE_RGB : cb === 16 ? (near ? BLIND_LO_RGB : BLIND_RGB) : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
           let stampRgb = null;
           if (stamps.length && bust[i] === 1 && hit[i]) {
             const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
@@ -1895,7 +1918,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, CREASE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };

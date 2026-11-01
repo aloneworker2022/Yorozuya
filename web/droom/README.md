@@ -75,3 +75,9 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 低頭到底看不到牆（使用者）：地平線移出畫面後，世界（地板／牆／妹子）的 HZ 加速往上捲（HZ×(1＋9s²)，到底 −10SH），貼牆角也只剩地板＋自己身體；身體圖層照舊等速捲進來。
 - 低頭再調（使用者）：身體要快到地（牆捲完只剩地板）才出現——世界先捲 HZ 0→−SH，之後身體才從畫面底 1.5 倍速捲進來；到底往上移 40px（SELF_LIFT），身體畫布加高 40、下腹加寬蓋滿畫面底；PMIN 2.85。
 - 低頭到底＝地板方塊變成整塊，身體這時剛好到位（使用者）：低頭進度 lookS()（HZl 0→−SH，PMIN 1.875）同時驅動世界加速捲（到底 −10SH）與身體捲入（s 0.3→1），兩者同時到底；取代上一條「牆捲完才開始捲身體」。
+
+## 2026-10-31：臉部第一項——眼罩（一塊布綁住眼睛）
+- room_doll_full.js `blindfold()`：`doll.blindfold='cloth'` 才畫；布帶貼著頭橢球（往外 0.35）繞一圈、中線在 zc−0.9（瀏海下緣以下，蓋住眼睛），寬約 3.4；後腦一個結＋兩個小耳＋兩條布尾往下垂（走路跟著晃）。從 `hair()` 開頭呼叫，所以走路、坐姿都有。tag cloth＝12 → 標記色 `BLIND_RGB` #0080FF／邊緣 `BLIND_LO_RGB` #0048A0（alpha CLOTH_A）。
+- 圖層 `render_face.cjs`（SHARD/NSHARD 平行；1×＋2× 一次出）：走路 `sheets[2x]/face/<body>_blindfold_cloth_<dir>.png`、坐姿 `sheets[2x]/<sit_m|sit_v>/face/<body>_blindfold_cloth.png`；用無頭髮的身體算，只留眼罩像素。
+- 目前是樣品：只出了 balanced（勻稱）走路 1×／2× 的眼罩圖層，其他體型與坐姿等使用者看過樣品再出（`node render_face.cjs` 會補齊缺的檔）。
+- 前端（play.html／index.html）「眼罩」選單：無／黑布（預設）／紅布／白布。`faceOver()` 最後才蓋（在下身、衣服之後、白邊之前），連頭髮像素也蓋上＝布綁在頭髮外面；上下緣一列較暗＋淡淡布紋。
