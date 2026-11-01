@@ -359,4 +359,25 @@ t("聊天叫她：「去工作」「快去睡覺」算；只是提到、或說�
   assert.match(A.orderPromptLine("work"), /書桌/);
 });
 
+t("把委託交給她：對到已承接的那件；聽不出是哪件就給候選；只是提到不算；沙盒用他說的字", () => {
+  const qs = [{ id: "a", text: "寫第三季報告" }, { id: "b", text: "整理收據" }, { id: "c", text: "回覆客戶信件" }];
+  const pick = (t) => A.deskIntent(t, qs)?.quest?.id ?? null;
+  assert.equal(pick("這件交給妳：寫第三季報告"), "a");
+  assert.equal(pick("幫我整理收據"), "b");
+  assert.equal(pick("季報拿去做"), "a");
+  assert.equal(pick("妳來處理客戶的信"), "c");
+  assert.equal(pick("把「回覆客戶信件」放妳桌上"), "c");
+  const vague = A.deskIntent("幫我做一下", qs);
+  assert.equal(vague.quest, null); assert.equal(vague.candidates.length, 3);
+  for (const t of ["我昨天幫我媽做飯", "不要交給妳", "去工作", "季報好難"]) assert.equal(A.deskIntent(t, qs), null, t);
+  assert.equal(A.deskIntent("這件交給妳：寫一份旅遊計畫", null).quest.text, "寫一份旅遊計畫");
+  assert.match(A.givePromptLine({ placed: "整理收據" }), /整理收據/);
+  assert.match(A.givePromptLine({ busy: "寫第三季報告" }), /一次只能做一件/);
+  assert.match(A.givePromptLine({ candidates: qs }), /哪一件/);
+  assert.match(A.givePromptLine({ candidates: [] }), /先去接委託/);
+  // 桌上的委託還在做：她會回書桌（不受不重複限制）
+  const w = A.weights({ ...base, seats: ["chair"], furniture: ["desk"], deskBusy: true, history: ["desk_work"] });
+  assert.equal(w.get("desk_work"), 30);
+});
+
 console.log(`room_activity: ${pass} passed`);

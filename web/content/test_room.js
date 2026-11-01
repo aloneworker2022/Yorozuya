@@ -80,6 +80,7 @@
       seats:f.seats.map(seat=>({...seat,u:item.u+seat.u,v:item.v+seat.v}))};
   }).filter(item=>item.seats.length),blocked:(u,v)=>!!itemAtCell(u,v),
   furnitureAt:(u,v)=>itemAtCell(u,v)?.type||null,
+  keep:id=>id==='desk_work'&&!!window.RoomDesk?.busy?.(),
   // Activity context (time/chrono/mood/missYou/stage/hobbies/history/post-chat bias) and the
   // activity log come from the summon module; without it she still picks activities on defaults.
   getContext:()=>typeof window.RoomActivityContext==='function'?window.RoomActivityContext():null,
@@ -182,10 +183,54 @@
         if(d>=depths[target]) {depths[target]=d;output.data.set(f.pixels.subarray(source*4,source*4+4),target*4);}
       }
     }
+    drawDeskProp(output,depths);
     scenePixels=output;sceneDepth=depths;
     drawActor();
   }
 
+  // Her desk work (room_desk.js): a stack of paper while the quest is on the desk, a bound report when done.
+  // Drawn on the right half of the first desk's top (the left half has the notebook).
+  let deskPropKey = '';
+  function drawDeskProp(output, depths) {
+    const kind = window.RoomDesk?.prop?.() || null;
+    deskPropKey = kind || '';
+    const desk = kind && items.find(item => item.type === 'desk');
+    if (!desk) return;
+    const def = {cols: 2, rows: 1}, f = frameOf(desk);
+    const rot = (u, v) => desk.facing === 'right' ? [v, def.cols - u] : desk.facing === 'back-right' ? [def.cols - u, def.rows - v]
+      : desk.facing === 'back-left' ? [def.rows - v, u] : [u, v];
+    const box = (u0, v0, w, d, z, h, top, front, side) => {
+      const a = rot(u0, v0), b = rot(u0 + w, v0 + d);
+      const u = desk.u + Math.min(a[0], b[0]), v = desk.v + Math.min(a[1], b[1]), W = Math.abs(b[0] - a[0]), D = Math.abs(b[1] - a[1]);
+      const fill = (pts, color) => {
+        const P = pts.map(p => project(...p)), depth = Math.max(...pts.map(p => p[0] + p[1] + p[2] / 32)) + .05;
+        const c = [parseInt(color.slice(1, 3), 16), parseInt(color.slice(3, 5), 16), parseInt(color.slice(5, 7), 16)];
+        const y0 = Math.ceil(Math.min(...P.map(p => p[1]))), y1 = Math.ceil(Math.max(...P.map(p => p[1])));
+        for (let y = y0; y < y1; y++) {
+          const hits = [];
+          for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; if ((p[1] <= y && q[1] > y) || (q[1] <= y && p[1] > y)) hits.push(p[0] + (y - p[1]) * (q[0] - p[0]) / (q[1] - p[1])); }
+          hits.sort((m, n) => m - n);
+          for (let i = 0; i + 1 < hits.length; i += 2) for (let x = Math.ceil(hits[i]); x < Math.ceil(hits[i + 1]); x++) {
+            if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
+            const k = y * canvas.width + x; if (depth < depths[k]) continue;
+            depths[k] = depth; output.data.set([...c, 255], k * 4);
+          }
+        }
+      };
+      fill([[u, v + D, z], [u + W, v + D, z], [u + W, v + D, z + h], [u, v + D, z + h]], front);
+      fill([[u + W, v, z], [u + W, v + D, z], [u + W, v + D, z + h], [u + W, v, z + h]], side);
+      fill([[u, v, z + h], [u + W, v, z + h], [u + W, v + D, z + h], [u, v + D, z + h]], top);
+    };
+    if (f.cols + f.rows !== 3) return;
+    if (kind === 'report') {
+      box(1.2, .3, .42, .36, 42, 3, '#fffaf0', '#e4d9c6', '#cdbfa8');
+      box(1.18, .28, .46, .4, 45, 1, '#8c4a3a', '#6f3a2d', '#5d3026');   // bound cover
+      box(1.24, .34, .1, .28, 46, .5, '#e9c98a', '#c8a76a', '#b39258');   // ribbon
+    } else {
+      box(1.22, .3, .4, .34, 42, 4, '#fffdf6', '#e8e0d0', '#d2c7b4');
+      box(1.26, .26, .38, .32, 46, 1, '#fffef9', '#ece4d4', '#d8cdb9');
+    }
+  }
   let actorConcealed = false;
   function drawActor() {
     if(!scenePixels)return;
@@ -236,7 +281,10 @@
     return f.head;
   }
   function drawBubble(output,f,ox,oy){
-    const b=typeof actor.bubble==='function'?actor.bubble():null;
+    let b=typeof actor.bubble==='function'?actor.bubble():null;
+    // At the desk with a quest (room_desk.js): the desk decides (writing / stuck / report done) and it stays up.
+    const cur=actor.activity?.(),deskIcon=cur&&cur.id==='desk_work'&&window.RoomDesk?.icon?.();
+    if(deskIcon&&actor.state.mode==='sitting')b={icon:deskIcon,alpha:1,t:b?b.t:performance.now()/1000};
     if(!b||!ICONS[b.icon])return;
     const icon=ICONS[b.icon],S=2,gw=icon.px[0].length*S,gh=icon.px.length*S,pad=3;
     const bw=gw+pad*2,bh=Math.max(gh,8)+pad*2;
@@ -566,6 +614,11 @@
     pointers.delete(event.pointerId);
     if (!pointers.size) canvas.classList.remove('dragging');
     if (drag && was) { endDrag(event.type === 'pointerup'); return; }
+    // Tap the desk (not editing): her work log / report (room_desk.js).
+    if (was && event.type === 'pointerup' && !was.moved && !was.longFired && !was.actor && !editing && !placing) {
+      const tapped = hitItem(localPoint(event));
+      if (tapped && tapped.type === 'desk' && window.RoomDesk?.openLog) { window.RoomDesk.openLog(); return; }
+    }
     if (!was || event.type !== 'pointerup' || was.moved || was.longFired || was.actor || !editing) return;
     const point = localPoint(event);
     const hit = hitItem(point);
@@ -670,6 +723,7 @@
     activity:()=>actor.activity(),hold:on=>actor.hold(on),replan:()=>actor.replan(),
     startActivity:id=>{const ok=actor.startActivity(id);if(ok)resumeActor();return ok;},
     /** 'sleep' | 'work' → {ok,message} */
+    tip:(text,ms)=>roomTip(text,ms),
     order:kind=>{const r=actor.order(kind);if(r.ok)resumeActor();else roomTip(r.message);refreshActorControls();return r;}};
   window.RoomView={
     furniture(){
@@ -714,6 +768,8 @@
     if(actor.present)syncActorLook(false);
     actor.update(dt,!actor.present||actorConcealed||!wandering||placing||pointers.size>0);
     refreshActorControls();
+    // Desk prop changed (paper put down / report done / cleared) → redraw the scene.
+    if((window.RoomDesk?.prop?.()||'')!==deskPropKey)draw();
     if(actor.present)drawActor();
   }
   requestAnimationFrame(animate);
