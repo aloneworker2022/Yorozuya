@@ -817,13 +817,15 @@
     function blindfold(sh, P, doll, tor, sway = 0) {
       const hs = P.b.head, hh = P.head_h / 2, zc = tor.zc, yc = tor.yl(zc) + .3, rx = 6.9 * hs, ry = 7.2 * hs;
       const at = (a, z, out = .35) => { const k = Math.sqrt(Math.max(0, 1 - ((z - zc) / hh) ** 2)); return [Math.sin(a) * (rx * k + out), yc + Math.cos(a) * (ry * k + out), z]; };
-      const zE = zc - .9;   // 眼睛高度（帶子中線）
+      const anime = doll.face === 'anime', k = P.head_h / 17.6;
+      const zE = anime ? zc - 1.95 * k : zc - .9;   // 眼睛高度（帶子中線）；動漫臉的眼睛比較低
+      // 2026-11-01 動漫臉：沿實際臉表面（含鼻子、顴骨）往外 0.35 繞一圈，先把所有點找好再放零件
+      const surfAt = (a, z, out) => { const dx = Math.sin(a), dy = Math.cos(a); for (let r = 16; r > .5; r -= .05) if (bodyDist(sh, dx * r, yc + dy * r, z) < 0) return [dx * (r + out), yc + dy * (r + out), z]; return at(a, z, out); };
+      const ringAt = (z) => { const ring = []; for (let d = 0; d <= 360; d += 12) ring.push(anime ? surfAt(d * Math.PI / 180, z, .35) : at(d * Math.PI / 180, z)); return ring; };
+      const rings = []; for (let z = zE - 1.5; z <= zE + 1.5 + 1e-6; z += .6) rings.push(ringAt(z));
+      const kb = anime ? surfAt(Math.PI, zE, .9) : at(Math.PI, zE, .9);   // 後腦的結
       sh.cloth = 12;
-      for (let z = zE - 1.5; z <= zE + 1.5 + 1e-6; z += .6) {   // 布帶：幾圈疊起來＝一條寬帶
-        const ring = []; for (let d = 0; d <= 360; d += 12) ring.push(at(d * Math.PI / 180, z));
-        sh.chain(BODY, ring, ring.map(() => .42));
-      }
-      const kb = at(Math.PI, zE, .9);   // 後腦的結
+      for (const ring of rings) sh.chain(BODY, ring, ring.map(() => .42));   // 布帶：幾圈疊起來＝一條寬帶
       sh.ell(BODY, kb, [1.5, 1.1, 1.3]);
       for (const sx of [-1, 1]) sh.ell(BODY, [kb[0] + sx * 1.5, kb[1] - .2, kb[2] + .2], [1.2, .8, .9]);   // 結兩邊的小耳
       for (const [sx, len] of [[-1, 6.5], [1, 5.6]]) {   // 兩條布尾往下垂，稍微分開、跟著走路晃
@@ -912,6 +914,16 @@
       for (const [x, y, z] of pts) sh.ell(BODY, [x, y - .02, z], [.2, .14, .2 * k]);
       sh.cloth = 0;
     }
+    // 2026-11-01：眉毛位置標記（樣品，使用者：眼睛用布綁著不用做，接著做眉毛）。doll.brows 有值才畫；兩邊各一條貼臉表面的細帶（x 1.0～3.9、z ＋0.8，眼罩上緣上面隔一格），tag cloth＝17 → BROW_RGB。
+    // 眉型（自然／平眉／細彎／粗眉／八字／怒眉）、顏色（跟髮色）由前端照位置畫。
+    const BROW_RGB = [255, 192, 64], BROW_LO_RGB = [160, 120, 40];
+    function brows(sh, P, doll, tor) {
+      const hs = P.b.head, k = P.head_h / 17.6, zc = tor.zc, yc = tor.yl(zc) + .3, z = zc + .8 * k, pts = [];
+      for (const sx of [-1, 1]) for (let x = 1.0; x <= 3.9 + 1e-6; x += .25) { const xx = sx * x * hs; for (let y = yc + 14; y > yc; y -= .04) if (bodyDist(sh, xx, y, z) < 0) { pts.push([xx, y]); break; } }
+      sh.cloth = 17;
+      for (const [x, y] of pts) sh.ell(BODY, [x, y - .02, z], [.2, .14, .3 * k]);
+      sh.cloth = 0;
+    }
     function hair(sh, P, doll, tor, sway = 0, grav = null, side = false, swing = null) {
       const Rg = grav ? gravRot(grav) : null;
       const bend = (pts, root = pts[0]) => !Rg ? pts : pts.map(p => { const d = mulV(Rg, [p[0] - root[0], p[1] - root[1], p[2] - root[2]]); return [root[0] + d[0], root[1] + d[1], root[2] + d[2]]; });
@@ -919,6 +931,7 @@
       const SW = swing || [0, 0, 0], sw = (p, w) => [p[0] + SW[0] * w, p[1] + SW[1] * w, p[2] + SW[2] * w];
       const swc = (pts, ws) => pts.map((p, i) => sw(p, ws[i]));
       if (doll.eyes) eyes(sh, P, doll, tor);   // 2026-11-01 眼睛位置
+      if (doll.brows) brows(sh, P, doll, tor);   // 2026-11-01 眉毛位置
       if (doll.mouth) mouth(sh, P, doll, tor);   // 2026-11-01 嘴巴位置（在鼻子前面放，找表面時不會找到鼻子）
       if (doll.nose) nose(sh, P, doll, tor);   // 2026-11-01
       if (doll.blindfold) blindfold(sh, P, doll, tor, sway);   // 2026-10-31：眼罩跟頭髮一起畫（所有姿勢都有）
@@ -1897,7 +1910,7 @@
             const j = ny * width + nx;
             if (m[j] && hit[j] && tt[j] > di + 4.5) { near = true; break; }
           }
-          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 13 ? OPEN_RGB : cb === 14 ? HOLE_RGB : cb === 15 ? PUBIC_EDGE_RGB : cb === 16 ? (near ? BLIND_LO_RGB : BLIND_RGB) : cb === 17 ? (near ? NOSE_LO_RGB : NOSE_RGB) : cb === 18 ? (near ? MOUTH_LO_RGB : MOUTH_RGB) : cb === 20 ? (near ? LIPLO_LO_RGB : LIPLO_RGB) : cb === 19 ? (near ? EYE_LO_RGB : EYE_RGB) : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
+          if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 13 ? OPEN_RGB : cb === 14 ? HOLE_RGB : cb === 15 ? PUBIC_EDGE_RGB : cb === 16 ? (near ? BLIND_LO_RGB : BLIND_RGB) : cb === 17 ? (near ? NOSE_LO_RGB : NOSE_RGB) : cb === 18 ? (near ? MOUTH_LO_RGB : MOUTH_RGB) : cb === 20 ? (near ? LIPLO_LO_RGB : LIPLO_RGB) : cb === 19 ? (near ? EYE_LO_RGB : EYE_RGB) : cb === 21 ? (near ? BROW_LO_RGB : BROW_RGB) : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
           let stampRgb = null;
           if (stamps.length && bust[i] === 1 && hit[i]) {
             const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
@@ -2064,7 +2077,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { LIPLO_RGB, LIPLO_LO_RGB, EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { BROW_RGB, BROW_LO_RGB, LIPLO_RGB, LIPLO_LO_RGB, EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, CREASE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
