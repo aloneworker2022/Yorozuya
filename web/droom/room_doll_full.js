@@ -124,6 +124,11 @@
         let br = 0; for (const q of prof) br = Math.max(br, Math.hypot(q[0] - cy, q[1] - cz)); for (const q of front) br = Math.max(br, Math.abs(q[0]));
         push({ k: 4, mat, prof, front, top, rr, clip: null, bc: [0, cy, cz], br: br * 1.5 + rr });
       };
+      sh.loft = (mat, rows, rr = .25) => {   // rows：[z, 半寬, 前緣 y, 後緣 y]，z 由上往下
+        let br = 0; const cz = (rows[0][0] + rows[rows.length - 1][0]) / 2, cy = (rows[0][2] + rows[0][3]) / 2;
+        for (const [z, w, yf, yb] of rows) br = Math.max(br, Math.hypot(w, Math.max(Math.abs(yf - cy), Math.abs(yb - cy)), z - cz));
+        push({ k: 5, mat, rows, rr, clip: null, bc: [0, cy, cz], br: br + rr + .5 });
+      };
       sh.chain = (mat, pts, radii) => { for (let i = 0; i < pts.length - 1; i++) sh.cone(mat, pts[i], pts[i + 1], radii[i], radii[i + 1]); };
       sh.capped = (mat, c, h, rBottom, rTop, ysq, ycen) => {
         const rr = Math.max(rBottom, rTop) * Math.max(1, ysq);
@@ -162,6 +167,13 @@
         const a = p.a, ba = p.ba, px = x - a[0], py = y - a[1], pz = z - a[2];
         const t = clamp((px * ba[0] + py * ba[1] + pz * ba[2]) / p.L2, 0, 1);
         d = hypot3(px - ba[0] * t, py - ba[1] * t, pz - ba[2] * t) - (p.ra + (p.rb - p.ra) * t);
+      } else if (p.k === 5) {   // 2026-11-01 疊層：每個高度一個水平橢圓切面（前後半徑可不同），上下線性內插；下巴收成一點 → 斜看也是倒三角
+        const R = p.rows, N = R.length, zt = R[0][0], zb = R[N - 1][0], zz = clamp(z, zb, zt);
+        let i = 0; while (i < N - 2 && zz < R[i + 1][0]) i++;
+        const a = R[i], b = R[i + 1], t = (a[0] - zz) / (a[0] - b[0] || 1e-9), L = j => a[j] + (b[j] - a[j]) * t;
+        const w = Math.max(.05, L(1)), yf = L(2), yb = L(3), yw = yb + .42 * (yf - yb), bb = Math.max(.05, y > yw ? yf - yw : yw - yb);
+        const dxy = (Math.hypot(x / w, (y - yw) / bb) - 1) * Math.min(w, bb) * .9, dz = Math.max(z - zt, zb - z);
+        d = (dz > 0 ? Math.hypot(Math.max(dxy, 0), dz) : Math.max(dxy, dz)) - p.rr;
       } else if (p.k === 4) {   // 2026-11-01 臉：側面輪廓（y,z）∩ 正面輪廓（x,z），圓角 rr
         const [ea, eb, ec] = p.top, de = (Math.hypot(x / ea, (y - ec) / eb) - 1) * Math.min(ea, eb);   // 由上往下看：橢圓（臉的水平切面是圓弧，不是方的）
         d = Math.max(poly2(p.prof, y, z), poly2(p.front, x, z), de) - p.rr;
@@ -384,6 +396,9 @@
       brow: [3.7, 4.95, -.6, 1.9, 1.0, .75],    // 眉骨：x, y, z, 半徑
       cheek: [3.8, 4.6, -3.2, 1.9, 1.25, 1.35],  // 顴骨   // 眼窩（挖掉）：x, y, z, 半徑 x/y/z
       front: [[-6.2, -.3], [6.2, -.3], [5.8, -3.0], [4.5, -6.0], [.6, -8.5], [-.6, -8.5], [-4.5, -6.0], [-5.8, -3.0]],   // ＋圓角 0.4；上緣收在頭骨裡面（不然臉會比頭寬）
+      // 2026-11-01 使用者：45 度下巴太有稜角，要倒三角 → 臉改成疊層（每個高度一個橢圓切面）：[z, 半寬, 前緣 y, 後緣 y]
+      loft: [[1.0, 6.3, 6.7, -3.2], [-.5, 6.3, 7.0, -3.2], [-1.9, 6.1, 6.85, -3.2], [-3.0, 5.8, 6.9, -3.0], [-4.4, 5.3, 6.9, -2.2], [-5.0, 5.0, 7.2, -1.6],
+        [-5.55, 4.7, 6.75, -1.2], [-6.0, 4.3, 6.95, -.6], [-6.8, 3.4, 6.45, .6], [-7.6, 2.3, 6.65, 2.2], [-8.3, 1.2, 6.4, 3.8], [-8.8, .25, 5.9, 5.2]],
       top: [6.2, 7.6, -.5],   // 前面圓弧（45 度時遠側眼窩剛好在輪廓上）   // 由上往下看的橢圓：半寬、前後半徑、中心 y
     };
     function animeHead(sh, P, yl, zc) {
@@ -394,7 +409,7 @@
         sh.ell(BODY, [sx * A.brow[0] * hs, y0 + A.brow[1] * hs, zc + A.brow[2] * k], [A.brow[3] * hs, A.brow[4] * hs, A.brow[5] * k]);
         sh.ell(BODY, [sx * A.cheek[0] * hs, y0 + A.cheek[1] * hs, zc + A.cheek[2] * k], [A.cheek[3] * hs, A.cheek[4] * hs, A.cheek[5] * k]);
       }
-      sh.face(BODY, A.prof.map(([y, z]) => [y0 + y * hs, zc + z * k]), A.front.map(([x, z]) => [x * hs, zc + z * k]), [A.top[0] * hs, A.top[1] * hs, y0 + A.top[2] * hs], .3);   // 臉（側面輪廓∩正面 V 字）
+      sh.loft(BODY, A.loft.map(([z, w, yf, yb]) => [zc + z * k, w * hs, y0 + yf * hs, y0 + yb * hs]), .25);   // 臉（疊層：側面輪廓＝前緣、正面＝半寬、下巴收成一點）
     }
     function headPart(sh, P, yl, zc, doll = {}) {
       if (doll.face === 'anime') return animeHead(sh, P, yl, zc);
@@ -820,7 +835,19 @@
     }
     // 2026-11-01：臉部——鼻子（樣品）。doll.nose 有值才畫；tag cloth＝13（標記色 NOSE_RGB／深度邊緣 NOSE_LO_RGB），前端只畫陰影＋側面突出的輪廓。
     // 小而尖的動漫鼻：鼻樑從眼睛下方（zc−1.9）往前下斜到鼻尖（zc−3.7，離臉面約 1.5），鼻尖一顆小圓；貼著頭橢球的正前方。
-    const NOSE_RGB = [255, 0, 128], NOSE_LO_RGB = [160, 0, 80], NOSES = ['small', 'round'];   // small＝尖鼻（鼻樑直、鼻尖尖）；round＝圓鼻頭（山根往下微微內凹、鼻頭小圓）
+    const NOSE_RGB = [255, 0, 128], NOSE_LO_RGB = [160, 0, 80], NOSES = ['small', 'round', 'upturned', 'petite', 'tall', 'hump', 'button', 'wide', 'long'];
+    // 2026-11-01 使用者：鼻子做 9 種來選。參數（頭高 17.6 單位）：root 鼻根 z、tip 鼻尖 z、P 凸出、conc 鼻樑彎（＋內凹／−微駝）、r 鼻頭圓半徑（0＝尖）、up 上翹、wt／wb 正面上／下半寬
+    const NOSE_STYLES = {
+      small:    { name: '尖鼻',   root: 1.8,  tip: -3.95, P: 1.8,  conc: 0,    r: 0,   up: 0,    wt: .2,  wb: .95 },
+      round:    { name: '圓鼻頭', root: 1.8,  tip: -3.6,  P: 1.35, conc: .6,   r: .6,  up: .2,   wt: .2,  wb: .95 },
+      upturned: { name: '翹鼻',   root: 1.6,  tip: -3.45, P: 1.5,  conc: 1.0,  r: .3,  up: 1.0,  wt: .2,  wb: .9 },
+      petite:   { name: '小巧鼻', root: .2,   tip: -3.7,  P: 1.0,  conc: .3,   r: .3,  up: .3,   wt: .15, wb: .7 },
+      tall:     { name: '高挺鼻', root: 2.2,  tip: -4.1,  P: 2.3,  conc: -.1,  r: .2,  up: 0,    wt: .3,  wb: 1.0 },
+      hump:     { name: '微駝峰', root: 1.8,  tip: -4.0,  P: 1.9,  conc: -.7,  r: .25, up: -.2,  wt: .25, wb: .95 },
+      button:   { name: '鈕扣鼻', root: -1.0, tip: -3.7,  P: .85,  conc: .2,   r: .55, up: .4,   wt: .15, wb: .8 },
+      wide:     { name: '寬鼻翼', root: 1.6,  tip: -3.9,  P: 1.5,  conc: .2,   r: .45, up: .1,   wt: .3,  wb: 1.35 },
+      long:     { name: '細長鼻', root: 2.4,  tip: -4.3,  P: 2.0,  conc: .15,  r: .15, up: 0,    wt: .15, wb: .7 },
+    };
     function nose(sh, P, doll, tor) {
       const hs = P.b.head, hh = P.head_h / 2, zc = tor.zc, yc = tor.yl(zc) + .3, ry = 7.2 * hs;
       const yf = doll.face ? (z => { for (let y = yc + 14; y > yc; y -= .05) if (bodyDist(sh, 0, y, z) < 0) return y; return yc; })   // 動漫臉型：沿 x＝0 從前面往後找臉的表面
@@ -830,13 +857,15 @@
         const k = P.head_h / 17.6, y0 = yc - .3 + .3, Z = z => zc + z * k, Y = y => y0 + y * hs;
         sh.cloth = 13;
         // 2026-11-01 使用者畫的：鼻樑從眉間（比眼睛高）開始，順著臉往下慢慢凸出，到鼻尖最高；正面是上細下寬的長條
-        if (doll.nose === 'round') {   // 2026-11-01 使用者：第二種鼻子——山根往下微微往內彎，鼻頭小圓
-          sh.face(BODY, [[Y(6.3), Z(1.8)], [Y(7.0), Z(1.8)], [Y(7.15), Z(.2)], [Y(7.4), Z(-1.4)], [Y(7.85), Z(-2.7)], [Y(8.3), Z(-3.5)], [Y(8.2), Z(-4.2)], [Y(7.0), Z(-4.45)], [Y(6.3), Z(-4.45)]],
-            [[-.2 * hs, Z(1.8)], [.2 * hs, Z(1.8)], [.75 * hs, Z(-3.0)], [.95 * hs, Z(-4.5)], [-.95 * hs, Z(-4.5)], [-.75 * hs, Z(-3.0)]], [3 * hs, 30, y0], .15);
-          sh.ell(BODY, [0, Y(7.95), Z(-3.75)], [.75 * hs, .6 * hs, .58 * k]);   // 鼻頭小圓
-        } else
-        sh.face(BODY, [[Y(6.3), Z(1.8)], [Y(7.0), Z(1.8)], [Y(8.75), Z(-3.95)], [Y(8.5), Z(-4.25)], [Y(7.0), Z(-4.45)], [Y(6.3), Z(-4.45)]],
-          [[-.2 * hs, Z(1.8)], [.2 * hs, Z(1.8)], [.95 * hs, Z(-4.5)], [-.95 * hs, Z(-4.5)]], [3 * hs, 30, y0], .15);
+        const N = NOSE_STYLES[doll.nose] || NOSE_STYLES.small, LF = ANIME_HEAD.loft;
+        const fy = z => { for (let i = 0; i < LF.length - 1; i++) if (z <= LF[i][0] && z >= LF[i + 1][0]) { const t = (LF[i][0] - z) / (LF[i][0] - LF[i + 1][0]); return LF[i][2] + (LF[i + 1][2] - LF[i][2]) * t + .2; } return 7; };   // 臉前緣（單位座標）
+        const base = N.tip - .45 - .45 * Math.max(0, N.up), prof = [];
+        for (let i = 0; i <= 8; i++) { const t = i / 8, z = N.root + (N.tip - N.root) * t; prof.push([fy(z) + N.P * t - N.conc * N.P * .28 * Math.sin(Math.PI * t), z]); }   // 鼻樑（從臉上長出來）
+        prof.push([fy(base) + N.P * .55, base + .05], [fy(base), base]);   // 鼻底收回人中（上翹＝鼻底往上斜）
+        for (let i = 8; i >= 0; i--) { const z = base + (N.root - base) * i / 8; prof.push([fy(z) - .7, z]); }   // 背面埋在臉裡
+        sh.cloth = 13;
+        sh.face(BODY, prof.map(([y, z]) => [Y(y), Z(z)]), [[-N.wt * hs, Z(N.root)], [N.wt * hs, Z(N.root)], [N.wb * hs, Z(base - .05)], [-N.wb * hs, Z(base - .05)]], [3 * hs, 30, y0], .15);
+        if (N.r) sh.ell(BODY, [0, Y(fy(N.tip) + N.P - N.r * .7), Z(N.tip - N.r * .25)], [(N.r + .15) * hs, N.r * hs, N.r * k]);   // 鼻頭小圓
         sh.cloth = 0; return;
       }
       const zt = zc - 1.5, zb = zc - 4.0, F = { t: yf(zt), b: yf(zb), u: yf(zb - .3), m: yf(zb + .5) }, tip = [0, F.b + 1.9, zb + .35];   // 先找好臉表面再放零件（不然會找到剛放的鼻子）
@@ -1997,7 +2026,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { NOSES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, CREASE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };

@@ -102,3 +102,5 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 鼻子第 3 版（使用者在剪影上畫出鼻子＋山根）：鼻樑從眉間（zc＋1.8，比眼睛高）開始，順著臉往下慢慢凸出，到鼻尖（−3.95，離臉 1.8）最高；正面上細（±0.2）下寬（±0.95）的長條。側面輪廓拿掉眼睛高的深凹口（鼻樑從額頭順下來）。
   前端：正側面（right／left）不畫鼻子的線，只把凸出臉外的部分補膚色；正面／斜面的線只畫靠鼻尖那 40%。
 - 鼻子兩種（使用者）：`small`＝尖鼻（鼻樑直、鼻尖尖）；`round`＝圓鼻頭（山根往下微微往內彎，鼻頭一顆小圓）。選單「鼻子」：無／尖鼻／圓鼻頭。圖層檔名 `face/<body>_nose_<small|round>_<dir>.png`（圓鼻頭圖層還沒出）。
+- 45 度下巴（使用者：太有稜角，要倒三角）：臉改成疊層零件 `sh.loft`（prim k＝5）：每個高度一個水平橢圓切面（`ANIME_HEAD.loft`：[z, 半寬, 前緣 y, 後緣 y]），往下越來越小、下巴收成一點 → 正面 V、側面輪廓、45 度都是順的倒三角。
+- 鼻子 9 種（使用者：做 9 種來選）：`NOSE_STYLES` 參數化（鼻根 root、鼻尖 tip、凸出 P、鼻樑彎 conc、鼻頭圓 r、上翹 up、正面上下寬 wt／wb）：1 尖鼻 small、2 圓鼻頭 round、3 翹鼻 upturned、4 小巧鼻 petite、5 高挺鼻 tall、6 微駝峰 hump、7 鈕扣鼻 button、8 寬鼻翼 wide、9 細長鼻 long。選單 1～9。圖層還沒出。
