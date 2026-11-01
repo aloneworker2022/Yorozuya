@@ -28,12 +28,41 @@
   const catalog = window.RoomFurniture;
   // Default room (agent office, 2026-11-01): a desk against the back wall with a chair facing it
   // (去工作 = sit there typing), and a bed in the corner (去睡覺 = lie down on it).
-  const items = [
-    {id:1,type:'chair',u:1,v:1,facing:'back-right'},
-    {id:2,type:'desk',u:1,v:0,facing:'left'},
-    {id:3,type:'bed',u:3,v:0,facing:'left'},
+  const DEFAULT_ITEMS = [
+    {id:1,type:'chair',u:0,v:1,facing:'back-right'},
+    {id:2,type:'desk',u:0,v:0,facing:'left'},
+    {id:3,type:'bed',u:2,v:0,facing:'left'},
   ];
-  let selectedId = null, nextId = 4;
+  // Furniture layout is kept on this device (long-press drag / edit mode changes survive a reload).
+  const LAYOUT_KEY = 'yorozuya.room.layout.v1';
+  function loadLayout() {
+    let list = null;
+    try { list = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null'); } catch { list = null; }
+    if (!Array.isArray(list)) return null;
+    const out = [], taken = new Set();
+    for (const raw of list) {
+      const def = raw && catalog[raw.type];
+      if (!def || !def.directions.includes(raw.facing) || !Number.isInteger(raw.u) || !Number.isInteger(raw.v)) continue;
+      const f = def.frames[raw.facing];
+      if (raw.u < 0 || raw.v < 0 || raw.u + f.cols > COLS || raw.v + f.rows > ROWS) continue;
+      const cells = [];
+      for (let u = raw.u; u < raw.u + f.cols; u++) for (let v = raw.v; v < raw.v + f.rows; v++) cells.push(`${u},${v}`);
+      if (cells.some(c => taken.has(c))) continue;
+      cells.forEach(c => taken.add(c));
+      out.push({id: out.length + 1, type: raw.type, u: raw.u, v: raw.v, facing: raw.facing});
+    }
+    return out;
+  }
+  let savedLayout = '';
+  function saveLayout() {
+    const text = JSON.stringify(items.map(({type, u, v, facing}) => ({type, u, v, facing})));
+    if (text === savedLayout) return;
+    savedLayout = text;
+    try { localStorage.setItem(LAYOUT_KEY, text); } catch { /* private mode: layout just isn't kept */ }
+  }
+  const items = loadLayout() || DEFAULT_ITEMS.map(item => ({...item}));
+  savedLayout = JSON.stringify(items.map(({type, u, v, facing}) => ({type, u, v, facing})));
+  let selectedId = null, nextId = items.reduce((m, item) => Math.max(m, item.id), 0) + 1;
   const moveButton = document.getElementById('move-item');
   const editButton = document.getElementById('edit-room');
   const editor = document.getElementById('room-editor');
@@ -129,7 +158,7 @@
       for (let u = 0; u <= COLS; u++) line([u,0],[u,ROWS],'#7c8061');
       for (let v = 0; v <= ROWS; v++) line([0,v],[COLS,v],'#7c8061');
     }
-    const active = editing ? selected() : null;
+    const active = drag ? drag.item : editing ? selected() : null;
     if (active) {
       const pos = active;
       const f=frameOf(pos);
@@ -282,6 +311,38 @@
     return hers >= frame.depth[index] + item.u + item.v;
   }
   let press = null, longTimer = null;
+  // Long-press a piece of furniture (outside edit mode too) → it follows your finger, snapped to the grid;
+  // release on a free spot to put it there, otherwise it goes back. drag: {item, orig:{u,v}, grab:{du,dv}}
+  let drag = null;
+  let roomTip = () => {};   // set up with the order bar below
+  function startDrag(item, point) {
+    if (actor.isFurnitureLocked(item.id)) { roomTip('她正在使用這件家具，起身離開後才能移動。'); return false; }
+    const g = groundPoint(point);
+    drag = {item, orig: {u: item.u, v: item.v}, grab: {du: g.u - item.u, dv: g.v - item.v}};
+    try { navigator.vibrate?.(12); } catch { /* */ }
+    roomTip(`拖曳${catalog[item.type].name}，放開就擺好。`, 0);
+    draw();
+    return true;
+  }
+  function moveDrag(point) {
+    const g = groundPoint(point), f = frameOf(drag.item);
+    const u = Math.max(0, Math.min(COLS - f.cols, Math.round(g.u - drag.grab.du)));
+    const v = Math.max(0, Math.min(ROWS - f.rows, Math.round(g.v - drag.grab.dv)));
+    if (u === drag.item.u && v === drag.item.v) return;
+    drag.item.u = u; drag.item.v = v;
+    draw();
+  }
+  function endDrag(commit) {
+    const {item, orig} = drag;
+    const moved = item.u !== orig.u || item.v !== orig.v;
+    const ok = commit && canPlace(item);
+    if (!ok) { item.u = orig.u; item.v = orig.v; }
+    drag = null;
+    const name = catalog[item.type].name;
+    roomTip(!moved ? '' : ok ? `已把${name}移到新位置。` : '那裡有家具、人物或超出房間，已放回原位。');
+    if (status) status.textContent = ok && moved ? `已放好${name}。` : status.textContent;
+    refresh(); draw();
+  }
   const LONG_PRESS_MS = 500, TAP_PX = 8;
   function openPortrait() {
     if (window.RoomPortrait?.open) window.RoomPortrait.open();
@@ -348,6 +409,7 @@
       document.getElementById('item-preview').alt=def.name;
       document.getElementById('turn-item').textContent=`${def.labels[item.facing]} 旋轉`;
     }
+    if (!drag) saveLayout();
     document.getElementById('room-count').textContent=`房間內 ${items.length} 件`;
     const placed=document.getElementById('placed-items');placed.replaceChildren();
     for(const entry of items) {
@@ -448,7 +510,7 @@
   }
   canvas.addEventListener('pointerdown', event => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    if (pointers.size >= 2) return;
+    if (pointers.size >= 2 || drag) return;
     canvas.setPointerCapture(event.pointerId);
     const point = localPoint(event);
     pointers.set(event.pointerId, point);
@@ -468,11 +530,21 @@
       }, LONG_PRESS_MS);
       return;
     }
+    const onItem = !placing ? hitItem(point) : null;
+    if (onItem) {
+      clearLong();
+      longTimer = setTimeout(() => {
+        if (!press || press.id !== event.pointerId || press.moved || pointers.size !== 1) return;
+        press.longFired = true;
+        if (startDrag(onItem, point)) canvas.classList.add('dragging');
+      }, LONG_PRESS_MS);
+    }
     canvas.classList.add('dragging');
   });
   canvas.addEventListener('pointermove', event => {
     if (!pointers.has(event.pointerId)) return;
     const moved = localPoint(event);
+    if (drag && press && press.id === event.pointerId) { pointers.set(event.pointerId, moved); moveDrag(moved); return; }
     if (press && press.id === event.pointerId && Math.hypot(moved.x - press.x, moved.y - press.y) > TAP_PX) {
       press.moved = true;
       clearLong();
@@ -493,6 +565,7 @@
     if (was) { clearLong(); press = null; }
     pointers.delete(event.pointerId);
     if (!pointers.size) canvas.classList.remove('dragging');
+    if (drag && was) { endDrag(event.type === 'pointerup'); return; }
     if (!was || event.type !== 'pointerup' || was.moved || was.longFired || was.actor || !editing) return;
     const point = localPoint(event);
     const hit = hitItem(point);
@@ -525,7 +598,7 @@
     refresh(); draw();
   }
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, release);
-  window.addEventListener('blur', () => { pointers.clear(); clearLong(); press = null; canvas.classList.remove('dragging'); });
+  window.addEventListener('blur', () => { if (drag) endDrag(false); pointers.clear(); clearLong(); press = null; canvas.classList.remove('dragging'); });
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
@@ -622,12 +695,16 @@
   orderBar.className='room-orders';orderBar.hidden=true;orderBar.setAttribute('role','toolbar');orderBar.setAttribute('aria-label','叫她做事');
   const orderTip=document.createElement('p');orderTip.className='room-order-tip';orderTip.setAttribute('role','status');orderTip.setAttribute('aria-live','polite');orderTip.hidden=true;
   let orderTipTimer=null;
+  /** Short message over the room (orders, furniture drag). ms 0 = stays until the next message. */
+  roomTip=(text,ms=2600)=>{
+    clearTimeout(orderTipTimer);
+    orderTip.textContent=text||'';orderTip.hidden=!text;
+    if(text&&ms)orderTipTimer=setTimeout(()=>{orderTip.hidden=true;},ms);
+  };
   for(const [kind,label] of [['sleep','去睡覺'],['work','去工作']]){
     const b=document.createElement('button');b.type='button';b.dataset.order=kind;b.textContent=label;
     b.addEventListener('click',()=>{
-      const r=window.RoomActor.order(kind);
-      orderTip.textContent=r.message;orderTip.hidden=false;
-      clearTimeout(orderTipTimer);orderTipTimer=setTimeout(()=>{orderTip.hidden=true;},2600);
+      roomTip(window.RoomActor.order(kind).message);
     });
     orderBar.append(b);
   }
@@ -635,7 +712,7 @@
   function syncOrders(){
     const show=actor.present&&!actorConcealed&&!editing;
     if(orderBar.hidden===show)orderBar.hidden=!show;
-    if(!show)orderTip.hidden=true;
+    // (the tip line stays: it also carries furniture-drag messages when she is not here)
     if(!show)return;
     const a=actor.activity(),mode=actor.state.mode,on=a&&(a.phase==='hold'||mode==='sitting'||mode==='approaching'||mode==='walking');
     for(const b of orderBar.children){
