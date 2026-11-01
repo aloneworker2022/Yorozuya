@@ -31,7 +31,7 @@
   const DEFAULT_ITEMS = [
     {id:1,type:'chair',u:0,v:1,facing:'back-right'},
     {id:2,type:'desk',u:0,v:0,facing:'left'},
-    {id:3,type:'bed',u:2,v:0,facing:'left'},
+    {id:3,type:'bed',u:3,v:0,facing:'left'},
   ];
   // Furniture layout is kept on this device (long-press drag / edit mode changes survive a reload).
   const LAYOUT_KEY = 'yorozuya.room.layout.v1';
