@@ -182,7 +182,8 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
     const n=2*P.frames-2,j=i%n;return j<P.frames?j:n-j;
   }
   // furnitureAt(u,v) → furniture type on that cell (desk_work needs a desk right in front of the chair).
-  function create({cols,rows,blocked,getSeats=()=>[],furnitureAt=()=>null,random=Math.random,getContext=()=>null,onActivity=()=>{}}) {
+  // keep(activityId) → true: stay in that seat activity (her desk work while the agent is running, room_desk.js).
+  function create({cols,rows,blocked,getSeats=()=>[],furnitureAt=()=>null,keep=()=>false,random=Math.random,getContext=()=>null,onActivity=()=>{}}) {
     const state={u:2.5,v:3.5,moving:false,mirrored:false,back:false,step:0,mode:'idle',furnitureId:null,facing:'left',seatHeight:35};
     let look=null;   // this girl's doll frame set (null until setLook)
     let route=[],next=null,wait=1.8,elapsed=0,seat=null,sitTime=0,sitCooldown=0,present=false;
@@ -301,6 +302,7 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
       ctx.seats=[...new Set(getSeats().map(item=>item.type))];
       const all=new Set();for(let u=0;u<cols;u++)for(let v=0;v<rows;v++){const t=furnitureAt(u,v);if(t)all.add(t);}
       ctx.furniture=[...all];
+      if(ctx.deskBusy==null){try{ctx.deskBusy=!!keep('desk_work');}catch{ctx.deskBusy=false;}}
       if(!Array.isArray(ctx.history)||!ctx.history.length)ctx.history=localHist.slice();
       return ctx;
     }
@@ -318,7 +320,7 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
         for(const a of Acts.ACTIVITIES){r-=w.get(a.id);if(r<0&&w.get(a.id)>0){spec=a;break;}}
         if(!spec)break;
         if(spec.place==='seat'){
-          const dur=Acts.duration(spec,ctx,random);
+          const dur=Acts.duration(spec,ctx,random,!!(ctx.deskBusy&&spec.id==='desk_work'));
           act={spec,dur,phase:'go',seat:true};
           if(requestSit(undefined,spec.seat,true).ok){emit({type:'start',id:spec.id,at:Date.now(),dur});return true;}
           act=null;skip.add(spec.id);continue;
@@ -483,8 +485,10 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
         if(paused){state.moving=false;return;}
         sitCooldown=Math.max(0,sitCooldown-dt);
         if(state.mode==='sitting'){
-          if(!held)sitTime-=dt;state.moving=false;
-          if(sitTime<=0||replanReq){replanReq=false;standUp();}
+          let kept=false;try{kept=!!(act&&act.seat&&keep(act.spec.id));}catch{kept=false;}
+          if(!held&&!kept)sitTime-=dt;state.moving=false;
+          if(kept)replanReq=false;   // still working: a chat's re-pick does not pull her off the desk
+          else if(sitTime<=0||replanReq){replanReq=false;standUp();}
           return;
         }
         if(state.mode==='activity'&&act){state.moving=false;stepActivity(dt);return;}

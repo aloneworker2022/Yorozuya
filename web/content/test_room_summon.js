@@ -1636,8 +1636,34 @@ function noteRoomOrderAsk(text) {
 }
 function roomOrderPromptLines() {
   const A = roomActs(), ask = roomOrderAsk;
-  if (!A?.orderPromptLine || !ask || !girl || ask.girlId !== girl.id || Date.now() - ask.at > 90 * 1000) return [];
+  if (!A?.orderPromptLine || !ask || ask.fromDesk || !girl || ask.girlId !== girl.id || Date.now() - ask.at > 90 * 1000) return [];
   return [A.orderPromptLine(ask.kind)];
+}
+// ---------------------------------------------------------------- 把委託交給她（放到她桌上，room_desk.js，2026-11-01）
+// 「這件交給妳：寫季報」→ 對主遊戲已承接／執行中的委託（沙盒沒有委託板就用他說的字）→ 伺服器放上桌（一次一件）
+// → 她回一句答應 → 對話收起 → 走去書桌；坐下就開工（room_desk.js 看到她在書桌前就 start）。
+let deskGiveAsk = null;   // {r, at, girlId}：只給這一句回話用
+async function noteDeskGive(text) {
+  const A = roomActs(), D = window.RoomDesk;
+  if (!A?.deskIntent || !D || !girl || !girlInRoom()) return null;
+  const Q = window.YorozuyaQuests;
+  const hit = A.deskIntent(text, Q ? (Q.list() || []) : null);
+  if (!hit) return null;
+  const r = hit.quest
+    ? await D.give({ questId: hit.quest.id, title: hit.quest.text, girlId: girl.id, girlName: girl.name })
+    : { candidates: hit.candidates };
+  deskGiveAsk = { r, at: Date.now(), girlId: girl.id };
+  pushDebug(`交委託給她：${r.placed ? `放上桌「${r.placed}」` : r.busy ? `桌上已有「${r.busy}」` : r.offline ? "伺服器連不上" : r.error || "聽不出是哪件"}`);
+  if (!r.placed) return { ask: null };
+  roomOrderAsk = { kind: "work", at: Date.now(), girlId: girl.id, fromDesk: true };
+  return { ask: roomOrderAsk };
+}
+function deskPromptLines() {
+  const A = roomActs(), D = window.RoomDesk, ask = deskGiveAsk;
+  const out = [];
+  if (A?.givePromptLine && ask && girl && ask.girlId === girl.id) out.push(A.givePromptLine(ask.r));
+  else if (D?.promptLines && girlInRoom()) out.push(...D.promptLines());
+  return out;
 }
 /** 她回完那句 → 停一下讓你看完 → 收起對話（你又開始打字就不收，等你自己關）。 */
 function closeAfterOrderReply(ask) {
@@ -8339,6 +8365,7 @@ function talkSystem(userText = "") {
     roomSight(),
     ...activityPromptLines(),
     ...roomOrderPromptLines(),
+    ...deskPromptLines(),
     sheIsOut() ? japanNow().line : taiwanNow().line,
     stayClockLine(),
     sheIsOut()
@@ -9390,8 +9417,11 @@ async function sendTalk(event) {
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
-  const order = noteRoomOrderAsk(text);
+  // 先看是不是把委託交給她（放上桌）；不是才看是不是叫她去工作／睡覺
+  const give = await noteDeskGive(text);
+  const order = give ? give.ask : noteRoomOrderAsk(text);
   await deliverUserTalk(text);
+  deskGiveAsk = null;
   if (order) closeAfterOrderReply(order);
 }
 

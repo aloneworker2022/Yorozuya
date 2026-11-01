@@ -243,6 +243,22 @@ window.YorozuyaWallet = {
   },
 };
 
+// 她桌上的工作（room_desk.js，2026-11-01）：房間讀已承接／執行中的委託來對「這件交給妳」；報告收下時完成委託。
+window.YorozuyaQuests = {
+  /** 已承接（lv 1）＋執行中（lv 2）。存檔還沒好回 null（房間就不對委託）。 */
+  list() {
+    if (!state || bootFailed) return null;
+    return (state.quests || []).filter(q => q.lv === 1 || q.lv === 2).map(q => ({ id: q.id, text: q.text, lv: q.lv }));
+  },
+  has(id) { return !!(state && (state.quests || []).some(q => q.id === id)); },
+  /** 報告收下 → 委託完成（照一般完成：領金、日誌、氣泡）。 */
+  complete(id) {
+    if (!state || bootFailed || !this.has(id)) return false;
+    complete(id);
+    return true;
+  },
+};
+
 /** 腎虧：精液量掉到 −7 以下，自動花 60～140 金看醫生（精液量已由房間拉回 −1）。金幣不夠就變負債，不擋。 */
 /** 玩家精液（房間那份，含時間回復）。房間模組沒載就看本機房間存檔；都沒有當滿的。 */
 function roomSemenCc() {

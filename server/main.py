@@ -32,6 +32,7 @@ from pydantic import BaseModel
 import comfy
 import cutout
 import daydream as ddream
+import desk_agent
 import discover_bonus
 import jp_news
 import life_agent
@@ -297,6 +298,8 @@ def db() -> sqlite3.Connection:
             conn.execute(stmt)
         except sqlite3.OperationalError:
             pass
+    # 她桌上的工作（agent office）：desk_runs／desk_events（server/desk_agent.py）
+    desk_agent.init(conn)
     return conn
 
 
@@ -5844,6 +5847,57 @@ async def _start_gen_worker():
     asyncio.create_task(_world_clock())
     asyncio.create_task(_life_loop())
     asyncio.create_task(_line_loop())
+    try:
+        n = desk_agent.resume_all(db)
+        print(f"[桌上工作] agent={desk_agent.agent_name()}" + (f"，接著跑 {n} 件" if n else ""), flush=True)
+    except Exception as e:
+        print(f"[桌上工作] 啟動失敗：{e}", flush=True)
+
+
+# ───────────── 她桌上的工作（agent office，server/desk_agent.py）─────────────
+# 一次一件：聊天交給她 → put；她坐到書桌前 → start；做完 → 報告；你看完 → accept 或 redo。
+def _desk(fn, *args):
+    conn = db()
+    try:
+        return fn(conn, *args)
+    except desk_agent.DeskError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/api/desk")
+def desk_view(since: int = 0):
+    return _desk(desk_agent.view, max(0, int(since or 0)))
+
+
+@app.post("/api/desk/put")
+def desk_put(body: dict):
+    body = body or {}
+    run = _desk(lambda c: desk_agent.put(c, quest_id=body.get("questId") or "", title=body.get("title") or "",
+                                         girl_id=body.get("girlId") or "", girl_name=body.get("girlName") or ""))
+    return {"run": run}
+
+
+@app.post("/api/desk/start")
+async def desk_start():
+    return {"run": _desk(lambda c: desk_agent.start(db, c))}
+
+
+@app.post("/api/desk/redo")
+async def desk_redo(body: dict):
+    fb = (body or {}).get("feedback") or ""
+    return {"run": _desk(lambda c: desk_agent.redo(db, c, fb))}
+
+
+@app.post("/api/desk/cancel")
+async def desk_cancel():
+    return {"run": _desk(desk_agent.cancel)}
+
+
+@app.post("/api/desk/accept")
+def desk_accept():
+    return {"run": _desk(desk_agent.accept)}
 
 
 # /editmale 編輯其他召喚師池: names、behaviors(行為卡)、actions(肢體行為)。

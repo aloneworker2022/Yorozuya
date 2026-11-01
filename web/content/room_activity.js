@@ -94,6 +94,53 @@
     for (const kind of ['sleep', 'work']) if (ORDER_SAY[kind].some(re => re.test(t))) return kind;
     return null;
   }
+  // 把委託交給她（放到她桌上，2026-11-01）：「這件交給妳：寫季報」「幫我做季報」「季報拿去做」「放妳桌上」。
+  const GIVE_SAY = /(交給(妳|你)|交給妳做|給(妳|你)做|幫我(做|寫|處理|弄|查|整理|想)|拿去(做|寫|處理)|放(到|在)?(妳|你)(的)?桌上|(妳|你)來(做|處理|寫)|拜託(妳|你)(做|處理|寫)?)/;
+  const PUNCT = /[\s「」『』"'“”‘’（）()【】\[\]，,。.！!？?：:；;、~～…]+/g;
+  const norm = t => String(t || '').replace(PUNCT, '').toLowerCase();
+  function commonRun(a, b) {   // 最長共同連續字數
+    let best = 0;
+    for (let i = 0; i < a.length; i++) for (let j = 0; j < b.length; j++) {
+      let k = 0; while (i + k < a.length && j + k < b.length && a[i + k] === b[j + k]) k++;
+      if (k > best) best = k;
+    }
+    return best;
+  }
+  /**
+   * 玩家這句是不是把委託交給她 → null｜{target, quest, candidates}
+   * quests：[{id,text}]（主遊戲已承接／執行中）；null＝沙盒沒有委託板 → 用他說的字當委託。
+   * quest：對到的那件（對不到或好幾件一樣像 → null，candidates 給她問）。
+   */
+  function deskIntent(text, quests = null) {
+    const raw = String(text || '');
+    if (!GIVE_SAY.test(raw.replace(/\s+/g, '')) || ORDER_NOT.test(raw)) return null;
+    const quoted = raw.match(/[「『"“]([^」』"”]{2,})[」』"”]/);
+    const after = raw.split(/[：:]/).slice(1).join('：');
+    let target = quoted ? quoted[1] : after || raw.replace(GIVE_SAY, ' ').replace(/這件|那件|這個|那個|委託|事情|工作|一下|好嗎|可以嗎|吧|啦|喔|哦|嗎/g, ' ');
+    target = target.replace(/\s+/g, ' ').trim();
+    const t = norm(target);
+    if (!Array.isArray(quests)) return { target, quest: t.length >= 2 ? { id: '', text: target } : null, candidates: [] };
+    const scored = quests.filter(q => q && q.text).map(q => {
+      const qt = norm(q.text);
+      if (!t || !qt) return { q, s: 0 };
+      if (t.includes(qt) || (t.length >= 2 && qt.includes(t))) return { q, s: 100 + Math.min(t.length, qt.length) };
+      const run = commonRun(t, qt);
+      return { q, s: run >= 2 && run >= Math.min(t.length, qt.length) / 2 ? run : 0 };
+    }).filter(x => x.s > 0).sort((a, b) => b.s - a.s);
+    if (!scored.length) return { target, quest: quests.length === 1 && !t ? quests[0] : null, candidates: quests.slice(0, 6) };
+    const top = scored.filter(x => x.s === scored[0].s).map(x => x.q);
+    return { target, quest: top.length === 1 ? top[0] : null, candidates: top.length > 1 ? top : [] };
+  }
+  /** 交委託那一句的 prompt：放上桌了／桌上已有一件／聽不出是哪件。 */
+  function givePromptLine(r) {
+    if (!r) return '';
+    if (r.placed) return `【他把委託「${r.placed}」交給你，放到你桌上了】你會去書桌那邊做：回完這句就過去。用你的口氣答應他（可以撒嬌或小抱怨），不要拒絕，不要寫動作旁白。`;
+    if (r.busy) return `【他想再交一件委託給你，可是你桌上的「${r.busy}」還沒交差】一次只能做一件。用你的口氣跟他說，等這件做完再給你。`;
+    if (r.offline) return '【他想交一件委託給你，可是你的書桌現在用不了（伺服器連不上）】用你的口氣跟他說等一下再給你。';
+    const names = (r.candidates || []).map(q => `「${q.text}」`).join('、');
+    return names ? `【他想交一件委託給你，但你聽不出是哪一件】他接下的委託有：${names}。問他是哪一件。`
+      : '【他想交一件委託給你，可是他現在沒有接下的委託】跟他說要先去接委託，再拿給你。';
+  }
   /** 叫她去做的那一句：prompt（她照做、回一句再過去）。 */
   function orderPromptLine(kind) {
     const where = kind === 'sleep' ? '床上睡覺' : '書桌那邊坐著寫東西';
@@ -218,6 +265,8 @@
       if (hist[0] === a.id) w = 0;
       else if (hist[1] === a.id) w *= .35;
       else if (hist.slice(0, 5).filter(x => x === a.id).length >= 2) w *= .6;
+      // 桌上的委託還在做（room_desk.js）：她會回書桌繼續（不受上面的不重複限制）
+      if (a.id === 'desk_work' && ctx.deskBusy) w = 30;
       out.set(a.id, Math.max(0, w));
     }
     return out;
@@ -356,7 +405,7 @@
     return `她剛才正${act.doing}；${act.react}`;
   }
 
-  const api = { ACTIVITIES, BY_ID, ORDERS, orderIntent, orderPromptLine, STAGES, HISTORY_MAX, HUNGER_ACT_AT, BIAS_TAU_MS, GLAD_COOLDOWN_MS, ANNOY_COOLDOWN_MS, REOPEN_GRACE_MS, MIN_ENGAGED_MS, WAKE_ANNOY,
+  const api = { ACTIVITIES, BY_ID, ORDERS, orderIntent, orderPromptLine, deskIntent, givePromptLine, STAGES, HISTORY_MAX, HUNGER_ACT_AT, BIAS_TAU_MS, GLAD_COOLDOWN_MS, ANNOY_COOLDOWN_MS, REOPEN_GRACE_MS, MIN_ENGAGED_MS, WAKE_ANNOY,
     sleepiness, liveliness, partOfDay, biasStrength, weights, pick, duration, ensureMem, noteStart, historyIds,
     interrupt, chatBias, promptLines, openerHint, ago };
   if (typeof module === 'object' && module && module.exports) module.exports = api;
