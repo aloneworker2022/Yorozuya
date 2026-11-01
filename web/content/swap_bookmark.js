@@ -25,6 +25,7 @@ export function bindSwapBookmark(ctx = {}) {
   const css = document.createElement("style");
   css.textContent = `
     #sbm{position:fixed;left:0;top:22%;z-index:8300;display:flex;flex-direction:column;gap:4px;font:14px/1.3 system-ui,"Noto Sans TC",sans-serif}
+    #sbm[hidden],#sbm-card[hidden]{display:none}  /* 上面 display:flex 會蓋掉 hidden：沒預約／赴約後／取消後要真的消失 */
     #sbm button{box-shadow:none;text-shadow:none;letter-spacing:0;cursor:pointer}
     #sbm .tab{writing-mode:vertical-rl;background:#6b3a2a;color:#fff;border:0;border-radius:0 10px 10px 0;padding:12px 8px;min-height:88px}
     #sbm-card{position:fixed;left:46px;top:18%;z-index:8301;width:min(280px,78vw);background:#fff8ee;color:#2a2118;border-radius:12px;padding:12px;box-shadow:0 8px 28px #0006;font:14px/1.4 system-ui,"Noto Sans TC",sans-serif}
