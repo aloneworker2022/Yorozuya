@@ -134,3 +134,4 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 樣品（`parts_sample.cjs`）：勻稱圓形 D 走路 6 方向×2 格，疊回去和整張一起算只差 41/78367 像素（0.05%，乳房邊緣深度門檻），而且分開算比整張快約一倍（13.3 秒 → 6.8 秒）。整張渲染結果不變（跟上一版逐位元組相同）。
 - 下一步（待使用者確認）：每個部位出「原始資料 sheet」（深度 16 位元＋標記），前端疊圖後上色；乳房只依胸型×罩杯×乳暈變、頭只依臉型變。
 - 其他姿勢驗證（使用者：做其他動作會不會壞掉，例如蹲下）：idle／crouch 蹲下／hug_knees／sit／sit_m／sit_v／stretch／wall_lean／sway／stare／twirl／lie_phone／prone_kick／sleep_curl／sit_curl，各 5 方向×2 格，拆開疊回去和整張一起算的差異都 ≤0.08%（蹲下 0.006%），躺姿（整組旋轉）也正常。匯出 `POSES`。
+- 新姿勢 `squat_down`（使用者：站著然後蹲下這個動作）：16 格一個循環（u＝(1−cos)/2，再 smoothstep：兩端慢中間快）；臀從站高（dz −0.4）降到蹲姿（C＝17）、上身前傾 0→0.26、腳掌往外踩開、膝蓋往前外彎（ik pole 漸變）、手從垂在身側移到放在膝蓋上。拆開疊回去和整張一起算差 0.01～0.05%。

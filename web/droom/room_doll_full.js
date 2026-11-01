@@ -1137,6 +1137,7 @@
       stare: { frames: 2, fps: .9 }, twirl: { frames: 3, fps: 2.4 },
       lie_phone: { frames: 2, fps: .5, canvas: 'wide' }, prone_kick: { frames: 4, fps: 3, canvas: 'wide' },
       sleep_curl: { frames: 2, fps: .35, canvas: 'wide' }, sit_curl: { frames: 2, fps: .45 },
+      squat_down: { frames: 16, fps: 8 },   // 2026-11-01 站著→蹲下→站起來（使用者：站著然後蹲下這個動作）
       sit_m: { frames: 1, fps: 0, canvas: 'floor' }, sit_v: { frames: 1, fps: 0, canvas: 'floor' },   // 2026-10-31：坐地 M 字腿／V 字腿（先靜態）
       // 接客偷看（2026-10-10）：側面正交投影、10 格一個抽送循環（慢慢退出→猛地頂進）
       sex_missionary: { frames: 30, fps: 9, canvas: 'peek' }, sex_cowgirl: { frames: 30, fps: 12, canvas: 'peek' },
@@ -1379,6 +1380,24 @@
         // 鼠蹊部摺線：從髖骨外上方斜斜往下收到胯下兩側（大腿根跟骨盆的交界）
         inguinal(sh, P, tor);
         if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
+        hair(sh, P, doll, tor);
+        return { sh, P };
+      }
+      if (pose === 'squat_down') {   // 2026-11-01 站著蹲下再站起來：16 格一個循環，u＝0 站直 → 1 蹲到底（緩動：兩端慢、中間快）
+        const u = (1 - Math.cos(2 * Math.PI * f / NF)) / 2, e = u * u * (3 - 2 * u), L = (a, b) => a + (b - a) * e, LV = (A, B) => A.map((v, i) => L(v, B[i]));
+        const dz = L(-.4, 17 - P.C), hz = P.hipz + dz, lean = L(0, .26);
+        const tor = torso(sh, P, doll, 0, dz, lean);
+        const knees = {};
+        for (const s of [-1, 1]) {
+          const hip = [s * hip_x, 0, hz], ankle = LV([s * 3.0, .2, P.ankle], [s * 4.2, 3.5, P.ankle]);
+          knees[s] = ik(hip, ankle, Lt, Ls, LV([s * .05, 1, 0], [s * .25, 1, .35]));
+          leg(sh, P, s, hip, knees[s], ankle, LV([s * .3, .95, 0], [s * .2, .98, 0]));
+        }
+        for (const s of [-1, 1]) {   // 手：垂在身側 → 放在膝蓋上
+          const k = knees[s], hangE = [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 1.6, arm_clear()), -1.0, tor.zW - 1], hangW = [s * (hip_out + 1.5 * F(b, 'arm') + 1.1), .8, tor.C - 1];
+          arm(sh, P, shj(s, tor), LV(hangE, [s * (hip_out + 1.5), k[1] - 6, k[2] + 6]), LV(hangW, [s * 2.2, k[1] + 2.5, k[2] + 2]));
+        }
+        if (front) { definition(sh, P, tor); if (!doll.skirt) inguinal(sh, P, tor); }
         hair(sh, P, doll, tor);
         return { sh, P };
       }
