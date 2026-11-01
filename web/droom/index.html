@@ -135,9 +135,13 @@ function mouthOver(d,hm,MD,W,dOf,st,lpc){if(!MD||!MOUTH_STYLES[st])return;const 
   const row=(y,a,o,k)=>{for(let x=R(cx-a);x<=R(cx+a);x++)put(x,y,o,k)};
   const isOpen=st=="open"||st=="grin"||st=="opentongue",hasT=st=="tongue"||st=="opentongue";
   if(side){const xe=fs>0?Math.max(ux1,lx1):Math.min(ux0,lx0),P=(dx,y,o)=>put(xe-fs*dx,y,o);   // 正側面：從嘴縫往內；舌頭伸出輪廓外
-   if(isOpen){for(let j=0;j<=2;j++){P(j,yB+1,MDARK);if(j<2)P(j,yB+2,MDARK)}P(0,yB,MLD);if(st=="grin")P(0,yB+1,MTEETH);P(0,yB+3,ML_L)}
+   if(isOpen||hasT){   // 使用者：側面嘴巴要張開——上唇不動，下面挖出往內的暗紅缺口，缺口下面是下唇邊；吐舌＝舌頭從缺口出來往下垂過下唇
+    const g=st=="tongue"?2:3;P(0,yB,MLD);P(1,yB,MLD);
+    const CUT=(dx,y)=>{const x=xe-fs*dx;if(x<0||y<0||x>=W||y>=H)return;const i=(y*W+x)*4;if(!hm[i>>2])d[i+3]=0};   // 把輪廓挖開（之後白邊會繞進缺口）
+    for(let r=1;r<=g;r++){CUT(0,yB+r);if(r<g)CUT(-1,yB+r);for(let j=1;j<=(r==g?2:3);j++)P(j,yB+r,r==1&&st=="grin"&&j<3?MTEETH:j==1?MDARK2:MDARK)}
+    P(0,yB+g+1,ML_L);
+    if(hasT){P(0,yB+g-1,TONG);P(-1,yB+g,TONG);P(0,yB+g,TONG);P(-1,yB+g+1,TONG_L);P(0,yB+g+1,TONG);P(-1,yB+g+2,TONG);P(0,yB+g+2,TONG_D);P(-1,yB+g+3,TONG_D)}}
    else for(let j=1;j<=3;j++)P(j,yB+(st=="smile"&&j==3?-1:0),j==1?MLD:ML_L);
-   if(hasT){const ty=yB+(isOpen?2:1);P(0,ty-1,TONG);P(-1,ty,TONG);P(0,ty,TONG);P(-1,ty+1,TONG);P(0,ty+1,TONG_L);P(-1,ty+2,TONG_D);P(0,ty+2,TONG)}   // 使用者：側面舌頭往下垂（蓋在下唇前面），不是往前伸
    if(st=="o"){P(0,yB+1,MDARK);P(1,yB+1,MDARK)}continue}
   if(st=="o"){for(let y=yB-1;y<=yB+1;y++)row(y,.6,MDARK);put(R(cx),yB-2,ML_L)}
   else if(st=="open"||st=="opentongue"){   // 張嘴：圓角開口（上緣深線、裡面暗紅、下方舌頭）
