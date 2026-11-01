@@ -220,7 +220,7 @@
     sweat:{ink:[86,150,214],alt:[200,228,250],px:['..#..','.###.','#o###','#####','.###.']},
     talk:{ink:[226,86,124],px:['.#####.','#.....#','#.#.#.#','#.....#','.####..','.#.....']},
     tilde:{ink:[214,140,48],px:['.##....','#..#..#','....##.']},
-    work:{ink:[70,74,96],alt:[150,200,235],px:['.#####.','.#ooo#.','.#ooo#.','.#####.','#######']},
+    write:{ink:[70,64,80],alt:[232,190,92],px:['.....##','....#o#','...#o#.','..#o#..','.#o#...','##.....']},
   };
   // Bubble anchor: above her head (top of the hair — also right when she lies down), never below her topmost pixel.
   function frameHead(f){
@@ -314,7 +314,7 @@
   // Long-press a piece of furniture (outside edit mode too) → it follows your finger, snapped to the grid;
   // release on a free spot to put it there, otherwise it goes back. drag: {item, orig:{u,v}, grab:{du,dv}}
   let drag = null;
-  let roomTip = () => {};   // set up with the order bar below
+  let roomTip = () => {};   // set up with the room tip line below
   function startDrag(item, point) {
     if (actor.isFurnitureLocked(item.id)) { roomTip('她正在使用這件家具，起身離開後才能移動。'); return false; }
     const g = groundPoint(point);
@@ -670,7 +670,7 @@
     activity:()=>actor.activity(),hold:on=>actor.hold(on),replan:()=>actor.replan(),
     startActivity:id=>{const ok=actor.startActivity(id);if(ok)resumeActor();return ok;},
     /** 'sleep' | 'work' → {ok,message} */
-    order:kind=>{const r=actor.order(kind);if(r.ok)resumeActor();refreshActorControls();return r;}};
+    order:kind=>{const r=actor.order(kind);if(r.ok)resumeActor();else roomTip(r.message);refreshActorControls();return r;}};
   window.RoomView={
     furniture(){
       const counts=new Map();
@@ -689,37 +689,18 @@
     if(result.ok)resumeActor();
     refreshActorControls();draw();
   });
-  // ------------------------------------------------------------------ orders（去睡覺／去工作）
-  // Small bar over the room canvas (main room + test_room), shown while she is in the room.
-  const orderBar=document.createElement('div');
-  orderBar.className='room-orders';orderBar.hidden=true;orderBar.setAttribute('role','toolbar');orderBar.setAttribute('aria-label','叫她做事');
+  // ------------------------------------------------------------------ room tip
+  // One short line over the room canvas (furniture drag). Orders (去睡覺／去工作) are given in chat
+  // (test_room_summon.js → RoomActor.order), not with buttons.
   const orderTip=document.createElement('p');orderTip.className='room-order-tip';orderTip.setAttribute('role','status');orderTip.setAttribute('aria-live','polite');orderTip.hidden=true;
   let orderTipTimer=null;
-  /** Short message over the room (orders, furniture drag). ms 0 = stays until the next message. */
+  /** ms 0 = stays until the next message. */
   roomTip=(text,ms=2600)=>{
     clearTimeout(orderTipTimer);
     orderTip.textContent=text||'';orderTip.hidden=!text;
     if(text&&ms)orderTipTimer=setTimeout(()=>{orderTip.hidden=true;},ms);
   };
-  for(const [kind,label] of [['sleep','去睡覺'],['work','去工作']]){
-    const b=document.createElement('button');b.type='button';b.dataset.order=kind;b.textContent=label;
-    b.addEventListener('click',()=>{
-      roomTip(window.RoomActor.order(kind).message);
-    });
-    orderBar.append(b);
-  }
-  canvas.parentElement.append(orderBar,orderTip);
-  function syncOrders(){
-    const show=actor.present&&!actorConcealed&&!editing;
-    if(orderBar.hidden===show)orderBar.hidden=!show;
-    // (the tip line stays: it also carries furniture-drag messages when she is not here)
-    if(!show)return;
-    const a=actor.activity(),mode=actor.state.mode,on=a&&(a.phase==='hold'||mode==='sitting'||mode==='approaching'||mode==='walking');
-    for(const b of orderBar.children){
-      const pressed=String(!!on&&a.id===window.RoomActivity?.ORDERS?.[b.dataset.order]);
-      if(b.getAttribute('aria-pressed')!==pressed)b.setAttribute('aria-pressed',pressed);
-    }
-  }
+  canvas.parentElement.append(orderTip);
   document.getElementById('actor-stand').addEventListener('click',()=>{
     if(actor.standUp())resumeActor();refreshActorControls();draw();
   });
@@ -732,7 +713,7 @@
     const dt=previous?Math.min((now-previous)/1000,.1):0;previous=now;
     if(actor.present)syncActorLook(false);
     actor.update(dt,!actor.present||actorConcealed||!wandering||placing||pointers.size>0);
-    refreshActorControls();syncOrders();
+    refreshActorControls();
     if(actor.present)drawActor();
   }
   requestAnimationFrame(animate);
