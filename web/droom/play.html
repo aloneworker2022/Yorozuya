@@ -31,7 +31,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 眼睛 <select id="ey"><option value="none">無</option><option value="round" selected>大圓眼</option><option value="almond">杏眼</option><option value="droopy">下垂眼</option><option value="cat">貓眼</option><option value="happy">笑眼</option><option value="closed">閉眼</option></select>
 瞳色 <select id="ec"><option value="brown">咖啡</option><option value="blue">藍</option><option value="green">綠</option><option value="red">紅</option><option value="purple">紫</option><option value="black">黑</option></select>
 唇色 <select id="lpc"><option value="none">無（自然）</option><option value="pink">淡粉</option><option value="coral">珊瑚</option><option value="red">正紅</option><option value="berry">莓果</option><option value="nude">裸色</option><option value="peach">蜜桃橘</option><option value="plum">梅紫</option><option value="wine">酒紅</option></select>
-嘴巴 <select id="mo"><option value="none">無</option><option value="line" selected>自然閉嘴</option><option value="lip">粉唇</option><option value="smile">微笑</option><option value="o">小 o 嘴</option><option value="open">張嘴笑</option><option value="pout">嘟嘴</option></select>
+嘴巴 <select id="mo"><option value="none">無</option><option value="line" selected>自然閉嘴</option><option value="smile">微笑</option><option value="open">張嘴</option><option value="grin">開口笑</option><option value="tongue">吐舌</option><option value="opentongue">張嘴吐舌</option><option value="o">小 o 嘴</option><option value="pout">嘟嘴</option><option value="lip">粉唇</option></select>
 眼罩 <select id="bf"><option value="none" selected>無</option><option value="black">黑布</option><option value="red">紅布</option><option value="white">白布</option></select>
 蕾絲色 <select id="lc"><option value="black">黑</option><option value="white">白</option><option value="red">紅</option><option value="pink">粉紅</option></select>
 乳頭 <select id="nc"><option value="pink">粉紅</option><option value="brown">咖啡</option><option value="black">黑</option></select>
@@ -135,33 +135,44 @@ function eyesOver(d,hm,ED,W,dOf,st,ic){if(!ED||!EYE_STYLES[st])return;const H=ED
    if(!narrow){put(ix0,top,SCL);if(iw>=4)put(ix1,bot-1,[255,255,255])}   // 亮點
    // 下睫毛：外側一小段
    if(!narrow)for(let x=xo;Math.abs(x-xo)<Math.max(1,w*.4);x-=out)put(x,bot+1,LASH2)})}}
-// 2026-11-01：嘴巴圖層（上唇 #80FF80／#40A040、下唇 #C8FF80／#78A040）。照使用者給的參考圖重畫：
-//  主線＝上唇最下一列（中段深、兩端淡、嘴角收尖）；上方中間一小點；下唇最下面中間一小段影子；凸出臉外的唇補膚色（側面看得到唇形）。
-//  粉唇 lip＝上下唇染淡粉紅＋下唇亮點；微笑＝嘴角往上；小 o／張嘴笑／嘟嘴。正側面：從嘴縫往內畫一小段。
-const MOUTH_STYLES={line:"自然閉嘴",lip:"粉唇",smile:"微笑",o:"小 o 嘴",open:"張嘴笑",pout:"嘟嘴"};
-const ML_D=[118,58,62],ML_L=[176,112,104],ML_S=[214,158,138],MDARK=[110,26,40],MPINK=[240,150,158],MTEETH=[250,248,246];
+// 2026-11-01：嘴巴圖層（上唇 #80FF80／#40A040、下唇 #C8FF80／#78A040）。照使用者給的參考圖：
+//  主線＝上唇最下一列（中段深、兩端淡、嘴角收尖）；上方中間一小點；下唇下面一小段影子；凸出臉外的唇補膚色（側面看得到唇形）。
+//  表情（使用者：嘴巴張開、微笑、吐舌頭）：微笑 smile、張嘴 open、開口笑 grin（上排牙＋D 字）、吐舌 tongue、張嘴吐舌 opentongue；另有小 o、嘟嘴。
+const MOUTH_STYLES={line:"自然閉嘴",smile:"微笑",open:"張嘴",grin:"開口笑",tongue:"吐舌",opentongue:"張嘴吐舌",o:"小 o 嘴",pout:"嘟嘴",lip:"粉唇"};
+const ML_D=[118,58,62],ML_L=[176,112,104],ML_S=[214,158,138],MDARK=[96,22,36],MDARK2=[132,40,52],MTEETH=[252,250,248],TONG=[240,136,150],TONG_D=[204,92,110],TONG_L=[250,176,184];
 // 2026-11-01 使用者：嘴唇顏色可以多種 → 唇色（任何嘴型都能套）：[唇色, 濃度, 嘴線深色]
 const LIP_PAL={pink:[[240,150,158],.42,[150,60,70]],coral:[[246,128,112],.5,[156,58,52]],red:[[212,30,48],.7,[110,10,24]],berry:[[176,40,92],.65,[96,12,48]],nude:[[214,148,132],.4,[140,84,76]],peach:[[250,160,96],.48,[160,82,40]],plum:[[140,60,120],.6,[80,24,64]],wine:[[118,16,40],.72,[60,6,18]]};
 const LIP_N={none:"無（自然）",pink:"淡粉",coral:"珊瑚",red:"正紅",berry:"莓果",nude:"裸色",peach:"蜜桃橘",plum:"梅紫",wine:"酒紅"};
-function mouthOver(d,hm,MD,W,dOf,st,lpc){const LP=LIP_PAL[lpc]||(st=="lip"||st=="pout"?LIP_PAL.pink:null);if(!MD||!MOUTH_STYLES[st])return;const H=MD.length/4/W,FW=W/8,SK=[245,208,181];
- const kind=(x,y)=>{if(x<0||y<0||x>=W||y>=H)return 0;const i=(y*W+x)*4;if(!MD[i+3]||MD[i+1]<150||MD[i+2]>130||MD[i]<60)return 0;return MD[i]<150&&MD[i+1]>200||MD[i]<100?1:2};   // 1＝上唇（#80FF80／#40A040）2＝下唇（#C8FF80／#78A040）
+function mouthOver(d,hm,MD,W,dOf,st,lpc){if(!MD||!MOUTH_STYLES[st])return;const LP=LIP_PAL[lpc]||(st=="lip"||st=="pout"?LIP_PAL.pink:null),H=MD.length/4/W,FW=W/8,SK=[245,208,181];
+ const kind=(x,y)=>{if(x<0||y<0||x>=W||y>=H)return 0;const i=(y*W+x)*4;if(!MD[i+3]||MD[i+1]<150||MD[i+2]>130||MD[i]<60)return 0;return MD[i]<150&&MD[i+1]>200||MD[i]<100?1:2};   // 1＝上唇 2＝下唇
  const put=(x,y,o,k=1)=>{if(x<0||y<0||x>=W||y>=H)return;const i=(y*W+x)*4;if(hm[i>>2])return;if(!d[i+3]){d[i]=SK[0];d[i+1]=SK[1];d[i+2]=SK[2];d[i+3]=255}for(let j=0;j<3;j++)d[i+j]=d[i+j]*(1-k)+o[j]*k};
  for(let f=0;f<8;f++){const[fs,side]=dOf(f);let ux0=1e9,ux1=-1,uy0=1e9,uy1=-1,lx0=1e9,lx1=-1,ly1=-1,n=0;
   for(let y=0;y<H;y++)for(let x=f*FW;x<(f+1)*FW;x++){const k=kind(x,y);if(!k)continue;n++;put(x,y,SK,0);
    if(k==1){ux0=Math.min(ux0,x);ux1=Math.max(ux1,x);uy0=Math.min(uy0,y);uy1=Math.max(uy1,y)}else{lx0=Math.min(lx0,x);lx1=Math.max(lx1,x);ly1=Math.max(ly1,y)}}
   if(!n||ux1<0)continue;
   if(LP)for(let y=uy0;y<=Math.max(ly1,uy1);y++)for(let x=f*FW;x<(f+1)*FW;x++)if(kind(x,y))put(x,y,LP[0],LP[1]);   // 唇色
-  const yB=uy1,cx=(ux0+ux1)/2,hw=(ux1-ux0)/2,MLD=LP?LP[2]:ML_D;
-  if(side){const xe=fs>0?Math.max(ux1,lx1):Math.min(ux0,lx0);   // 正側面：從嘴縫往內（微笑＝嘴角略往上）
-   for(let j=1;j<=3;j++)put(xe-fs*j,yB+(st=="smile"&&j==3?-1:0),j==1?MLD:ML_L);
-   if(st=="open"||st=="o"){put(xe-fs,yB+1,MDARK);put(xe-fs*2,yB+1,MDARK)}continue}
-  const w=st=="pout"||st=="o"?Math.max(1,hw*.45):hw*.92;
-  if(st=="o"){for(let y=yB-1;y<=yB+1;y++)for(let x=Math.round(cx-1);x<=Math.round(cx+.5);x++)put(x,y,MDARK);put(Math.round(cx-1),yB-2,ML_L)}
-  else if(st=="open"){for(let x=Math.round(cx-w);x<=Math.round(cx+w);x++){put(x,yB,MTEETH);put(x,yB-1,ML_D)}for(let x=Math.round(cx-w*.75);x<=Math.round(cx+w*.75);x++)put(x,yB+1,MDARK);for(let x=Math.round(cx-w*.45);x<=Math.round(cx+w*.45);x++)put(x,yB+2,MDARK);put(Math.round(cx),yB+2,[214,110,120])}
-  else for(let x=Math.round(cx-w);x<=Math.round(cx+w);x++){const t=Math.abs(x-cx)/Math.max(1,w);put(x,st=="smile"&&t>.75?yB-1:yB,t<.55?MLD:(LP?LP[2]:ML_L),LP&&t>=.55?.7:1)}
-  if(st!="open"&&st!="o"&&!d[((uy0-2)*W+Math.round(cx))*4+1]==0&&d[((uy0-2)*W+Math.round(cx))*4]>200)put(Math.round(cx),uy0-1,ML_S);   // 上方中間一小點（人中下緣；上面兩格是皮膚才畫，不黏到鼻子）
-  if(ly1>=0){const lw=Math.max(.5,(lx1-lx0)/2*.35),lc=(lx0+lx1)/2;for(let x=Math.round(lc-lw);x<=Math.round(lc+lw);x++)put(x,ly1+1,ML_S)}   // 下唇影子
-  if(LP&&ly1>=0&&st!="open")put(Math.round(cx-1),ly1,[255,236,236],.8)}}   // 下唇亮點   // 下唇亮點
+  const yB=uy1,cx=(ux0+ux1)/2,hw=(ux1-ux0)/2,MLD=LP?LP[2]:ML_D,R=v=>Math.round(v);
+  const row=(y,a,o,k)=>{for(let x=R(cx-a);x<=R(cx+a);x++)put(x,y,o,k)};
+  const isOpen=st=="open"||st=="grin"||st=="opentongue",hasT=st=="tongue"||st=="opentongue";
+  if(side){const xe=fs>0?Math.max(ux1,lx1):Math.min(ux0,lx0),P=(dx,y,o)=>put(xe-fs*dx,y,o);   // 正側面：從嘴縫往內；舌頭伸出輪廓外
+   if(isOpen){for(let j=0;j<=2;j++){P(j,yB+1,MDARK);if(j<2)P(j,yB+2,MDARK)}P(0,yB,MLD);if(st=="grin")P(0,yB+1,MTEETH);P(0,yB+3,ML_L)}
+   else for(let j=1;j<=3;j++)P(j,yB+(st=="smile"&&j==3?-1:0),j==1?MLD:ML_L);
+   if(hasT){const ty=yB+(isOpen?2:1);P(-1,ty,TONG);P(-2,ty,TONG);P(-1,ty+1,TONG_D);P(0,ty,TONG);P(-2,ty+1,TONG_D)}
+   if(st=="o"){P(0,yB+1,MDARK);P(1,yB+1,MDARK)}continue}
+  if(st=="o"){for(let y=yB-1;y<=yB+1;y++)row(y,.6,MDARK);put(R(cx),yB-2,ML_L)}
+  else if(st=="open"||st=="opentongue"){   // 張嘴：圓角開口（上緣深線、裡面暗紅、下方舌頭）
+   const a=Math.max(1.5,hw*.62);row(yB,a*.85,MLD);row(yB+1,a,MDARK);row(yB+2,a*.9,MDARK);row(yB+3,a*.55,MDARK2);row(yB+4,a*.3,ML_L);
+   if(st=="open")row(yB+3,a*.35,TONG);put(R(cx-a*.85),yB,ML_L);put(R(cx+a*.85),yB,ML_L)}
+  else if(st=="grin"){   // 開口笑：上緣平直、嘴角上揚、上排牙、D 字收底、舌頭
+   const a=Math.max(2,hw*.88);row(yB,a,MLD);put(R(cx-a)-1,yB-1,MLD);put(R(cx+a)+1,yB-1,MLD);row(yB+1,a*.85,MTEETH);row(yB+2,a*.7,MDARK);row(yB+2,a*.3,TONG);row(yB+3,a*.42,MDARK2);row(yB+4,a*.2,ML_L)}
+  else for(let x=R(cx-hw*(st=="pout"?.45:st=="tongue"?.75:.92));x<=R(cx+hw*(st=="pout"?.45:st=="tongue"?.75:.92));x++){const t=Math.abs(x-cx)/Math.max(1,hw*.92);put(x,st=="smile"&&t>.75?yB-1:yB,t<.55?MLD:(LP?LP[2]:ML_L),LP&&t>=.55?.7:1)}
+  if(st=="smile"){put(R(cx-hw*.92)-1,yB-1,ML_L);put(R(cx+hw*.92)+1,yB-1,ML_L)}   // 嘴角小點
+  if(hasT){const ty=yB+(st=="opentongue"?3:1),tw=Math.max(1,hw*.4);   // 舌頭從下唇伸出來：粉紅、外框深一點、中間舌溝、底部圓
+   if(st=="tongue")row(yB,.6,MDARK);
+   row(ty,tw,TONG);row(ty+1,tw*.85,TONG);row(ty+2,tw*.45,TONG_D);put(R(cx),ty,TONG_D,.6);put(R(cx-tw*.6),ty,TONG_L)}   // 短短一截：兩列粉紅＋圓底，中間舌溝淡淡一點
+  if(!isOpen&&!hasT&&st!="o"&&d[((uy0-2)*W+R(cx))*4+1]&&d[((uy0-2)*W+R(cx))*4]>200)put(R(cx),uy0-1,ML_S);   // 上方中間一小點（上面兩格是皮膚才畫）
+  if(ly1>=0&&!isOpen&&!hasT){const lw=Math.max(.5,(lx1-lx0)/2*.35),lc=(lx0+lx1)/2;for(let x=R(lc-lw);x<=R(lc+lw);x++)put(x,ly1+1,ML_S)}   // 下唇影子
+  if(LP&&ly1>=0&&!isOpen&&!hasT)put(R(cx-1),ly1,[255,236,236],.8)}}   // 下唇亮點
 // 2026-10-31：臉部圖層——眼罩（標記色 #0080FF／邊緣 #0048A0）。綁在頭髮外面：連頭髮像素也蓋上；不透明布，上下緣一列較暗＋淡淡橫向布紋。
 const BLIND_PAL={black:[[34,32,38],[18,16,20],[56,54,62]],red:[[178,24,40],[120,12,26],[206,60,74]],white:[[236,236,240],[196,196,206],[252,252,255]]};
 function faceOver(d,FD,col,W){if(!FD||!BLIND_PAL[col])return;const C=BLIND_PAL[col],isB=i=>FD[i+3]&&FD[i]==0&&FD[i+2]>=150;
