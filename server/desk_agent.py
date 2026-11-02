@@ -57,7 +57,9 @@ def init(conn: sqlite3.Connection) -> None:
     for stmt in ("ALTER TABLE desk_runs ADD COLUMN agent_session TEXT NOT NULL DEFAULT ''",
                  "ALTER TABLE desk_runs ADD COLUMN note TEXT NOT NULL DEFAULT ''",
                  # ask：agent 停下來等你決定的事（JSON：kind approval／clarify、text、id…），回答完清空
-                 "ALTER TABLE desk_runs ADD COLUMN ask TEXT NOT NULL DEFAULT ''"):
+                 "ALTER TABLE desk_runs ADD COLUMN ask TEXT NOT NULL DEFAULT ''",
+                 # mode：這一輪是 redo（退回重做）還是 extend（延伸：委託已完成、接著做後續）
+                 "ALTER TABLE desk_runs ADD COLUMN mode TEXT NOT NULL DEFAULT ''"):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:
@@ -82,11 +84,11 @@ def _row(r) -> dict | None:
     if not r:
         return None
     keys = ("id", "questId", "title", "girlId", "girlName", "status", "agent", "created", "started", "finished",
-            "report", "feedback", "rounds", "session", "note", "ask")
+            "report", "feedback", "rounds", "session", "note", "ask", "mode")
     return dict(zip(keys, r))
 
 
-_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session, note, ask"
+_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session, note, ask, mode"
 
 
 def current(conn: sqlite3.Connection) -> dict | None:
@@ -123,7 +125,8 @@ def add_event(conn: sqlite3.Connection, run_id: int, actor: str, kind: str, text
 
 def _set(conn: sqlite3.Connection, run_id: int, **cols) -> None:
     names = {"status": "status", "started": "started", "finished": "finished", "report": "report",
-             "feedback": "feedback", "rounds": "rounds", "agent": "agent", "session": "agent_session", "ask": "ask"}
+             "feedback": "feedback", "rounds": "rounds", "agent": "agent", "session": "agent_session", "ask": "ask",
+             "mode": "mode", "quest_id": "quest_id"}
     sets = ", ".join(f"{names[k]}=?" for k in cols)
     conn.execute(f"UPDATE desk_runs SET {sets} WHERE id=?", (*cols.values(), run_id))
     conn.commit()
@@ -225,6 +228,12 @@ class MockAgent:
         self.ask = ask              # DESK_MOCK_ASK=1：做到一半停下來要你核准（測「她走過來問你」）
         self.on_ask = None          # drive 設：on_ask(dict|None)
         self._answer: asyncio.Future | None = None
+        self.notes: list[str] = []
+
+    async def steer(self, text: str) -> str:
+        """補充指示：記下來，報告裡照著寫。"""
+        self.notes.append(text)
+        return "live"
 
     async def respond(self, text: str) -> str:
         choice = approval_choice(text)
@@ -237,7 +246,10 @@ class MockAgent:
 
     async def run(self, run: dict, emit: Emit, store=None) -> str:
         t, fb, s = run["title"], run.get("feedback") or "", self.step_s
-        if fb:
+        if fb and run.get("mode") == "extend":
+            emit("main", "plan", f"接著做後續：「{fb[:60]}」。", "")
+            await asyncio.sleep(s)
+        elif fb:
             emit("main", "plan", f"看了你的意見：「{fb[:60]}」，照這個改。", "")
             await asyncio.sleep(s)
         emit("main", "plan", f"看一下委託「{t}」：先查資料、再分兩邊整理和寫初稿，最後檢查。", "")
@@ -293,7 +305,10 @@ class MockAgent:
             "- 結論的方向對不對",
         ]
         if fb:
-            lines[4:4] = ["## 依你的意見修改", f"> {fb}", ""]
+            head = "## 延伸：接著做的後續" if run.get("mode") == "extend" else "## 依你的意見修改"
+            lines[4:4] = [head, f"> {fb}", ""]
+        if self.notes:
+            lines += ["", "## 你中途的補充指示", *[f"- {n}" for n in self.notes]]
         return "\n".join(lines)
 
 
@@ -402,10 +417,45 @@ def redo(connect, conn: sqlite3.Connection, feedback: str) -> dict:
     fb = " ".join(str(feedback or "").split())[:NOTE_MAX]
     if not fb:
         raise DeskError("寫一下哪裡要改")
-    _set(conn, run["id"], status="running", feedback=fb, started=now_ms(), finished=0, rounds=run["rounds"] + 1)
+    _set(conn, run["id"], status="running", feedback=fb, mode="redo", started=now_ms(), finished=0, rounds=run["rounds"] + 1)
     add_event(conn, run["id"], "main", "note", f"你退回來：{fb}", "")
     _spawn(connect, run["id"])
     return get(conn, run["id"])
+
+
+def extend(connect, conn: sqlite3.Connection, followup: str) -> dict:
+    """延伸：這件委託算完成（前端先領金幣、委託板拿掉），工作留在桌上，她接著同一個 session 做後續。
+    quest_id 清掉：之後收下報告不會再完成一次委託。"""
+    run = current(conn)
+    if not run or run["status"] != "done":
+        raise DeskError("現在沒有交上來的報告")
+    fb = " ".join(str(followup or "").split())[:NOTE_MAX]
+    if not fb:
+        raise DeskError("寫一下後續要做什麼")
+    _set(conn, run["id"], status="running", feedback=fb, mode="extend", quest_id="", started=now_ms(), finished=0,
+         rounds=run["rounds"] + 1)
+    add_event(conn, run["id"], "main", "note", f"委託完成，接著做後續：{fb}", "ok")
+    _spawn(connect, run["id"])
+    return get(conn, run["id"])
+
+
+async def steer(conn: sqlite3.Connection, text: str) -> dict:
+    """補充指示：她做到一半，你插一句（Hermes：正在跑就 steer，在等使魔就排到下一輪）。"""
+    run = current(conn)
+    text = " ".join(str(text or "").split())[:NOTE_MAX]
+    if not run or run["status"] != "running":
+        raise DeskError("她現在沒在做，補充不了（交了報告可以用延伸或退回重做）")
+    if not text:
+        raise DeskError("寫一下要補充什麼")
+    agent = _agents.get(run["id"])
+    if agent is None or not busy(run["id"]) or not hasattr(agent, "steer"):
+        raise DeskError("她這邊的工作還沒接上，等一下再補充", 409)
+    try:
+        how = await agent.steer(text)
+    except ValueError as e:
+        raise DeskError(str(e))
+    add_event(conn, run["id"], "main", "note", f"你補充：{text}" + ("（下一輪帶給她）" if how == "queued" else ""), "")
+    return {"run": get(conn, run["id"]), "how": how}
 
 
 def cancel(conn: sqlite3.Connection) -> dict | None:

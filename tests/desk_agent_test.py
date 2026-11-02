@@ -136,6 +136,39 @@ async def main():
         pass
     assert D.approval_choice("不可以") == "deny" and D.approval_choice("好啊") == "once" and D.approval_choice("我再想想") is None
     os.environ.pop("DESK_MOCK_ASK")
+
+    # 延伸：報告交了 → 委託算完成（quest_id 清掉）、工作留在桌上接著做後續 → 新報告有延伸段落
+    D.accept(c)
+    D.put(c, quest_id="q9", title="寫季報")
+    D.start(connect, c)
+    await wait_status("done")
+    try:
+        D.extend(connect, c, "  ")
+        raise AssertionError("沒寫後續也能延伸")
+    except D.DeskError:
+        pass
+    run = D.extend(connect, c, "再寫一份給老闆的一頁摘要")
+    assert run["status"] == "running" and run["questId"] == "" and run["mode"] == "extend"
+    run = await wait_status("done")
+    assert "延伸" in run["report"] and "一頁摘要" in run["report"] and run["rounds"] == 2
+    assert any("委託完成，接著做後續" in e["text"] for e in D.view(c)["events"])
+
+    # 補充指示：做到一半插一句 → 記在日誌、報告照著寫；沒在做時不行
+    try:
+        await D.steer(c, "多寫一點")
+        raise AssertionError("交了報告還能補充")
+    except D.DeskError:
+        pass
+    D.accept(c)
+    os.environ["DESK_MOCK_STEP_S"] = "0.05"
+    D.put(c, title="慢慢做的")
+    D.start(connect, c)
+    await asyncio.sleep(0.1)
+    r = await D.steer(c, "記得附上來源")
+    assert r["how"] == "live" and any(e["text"] == "你補充：記得附上來源" for e in D.view(c)["events"])
+    run = await wait_status("done")
+    assert "記得附上來源" in run["report"]
+    os.environ["DESK_MOCK_STEP_S"] = "0.01"
     c.close()
     print("desk_agent: ok")
 

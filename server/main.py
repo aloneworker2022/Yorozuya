@@ -5913,6 +5913,25 @@ async def desk_answer(body: dict):
         conn.close()
 
 
+@app.post("/api/desk/extend")
+async def desk_extend(body: dict):
+    """延伸：委託算完成（前端先領金幣），工作留在桌上接著做後續。"""
+    text = (body or {}).get("followup") or ""
+    return {"run": _desk(lambda c: desk_agent.extend(db, c, text))}
+
+
+@app.post("/api/desk/steer")
+async def desk_steer(body: dict):
+    """補充指示：她做到一半插一句。"""
+    conn = db()
+    try:
+        return await desk_agent.steer(conn, (body or {}).get("text") or "")
+    except desk_agent.DeskError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    finally:
+        conn.close()
+
+
 @app.post("/api/desk/cancel")
 async def desk_cancel():
     return {"run": _desk(desk_agent.cancel)}

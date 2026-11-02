@@ -154,6 +154,7 @@
     if (run.note) out.push(`他附的說明：${run.note}`);
     else if (run.status === 'running') {
       out.push(`你正在做他交給你的委託${t}（做了${mins(Date.now() - (run.started || Date.now()))}）。`);
+      if (run.mode === 'extend' && run.feedback) out.push(`這件他已經收下了，你在做他要的後續：${run.feedback}`);
       if (summary.last) out.push(`現在做到：${summary.last.text}`);
       if (summary.trouble) out.push(`剛剛卡住：${summary.trouble.text}`);
       const live = summary.subs.filter(s => s.status === 'run').length;
@@ -262,8 +263,12 @@
       body = `<p>${offline ? '書桌連不上伺服器。' : '桌上沒有工作。'}</p><p class="mini">在聊天裡跟她說「這件交給妳：（委託）」，就會放到她桌上；她坐到書桌前就開工。一次只能放一件。</p>`;
     } else if (mode === 'report' && run.status === 'done') {
       body = `<div class="title">${esc(run.title)}</div><div class="report">${md(run.report)}</div>
-        <div class="row"><button type="button" class="main" data-a="accept">完成委託</button><button type="button" data-a="redo-open">退回重做</button><button type="button" data-a="log">看工作日誌</button></div>
-        ${mode === 'report' && msg === '__redo' ? '' : ''}`;
+        <div class="row"><button type="button" class="main" data-a="accept">完成委託</button><button type="button" data-a="extend-open">延伸</button><button type="button" data-a="redo-open">退回重做</button><button type="button" data-a="log">看工作日誌</button></div>
+        <p class="mini">延伸＝這件先算完成、金幣先拿，她留在桌上接著做後續。</p>`;
+    } else if (mode === 'extend') {
+      body = `<div class="title">${esc(run.title)}</div><p class="mini">這件委託先算完成（金幣先給、委託板上的拿掉），她接著同一份工作做後續，做完交新的報告。</p>
+        <textarea id="desk-ext" maxlength="2000" placeholder="例：再寫一份給老闆的一頁摘要">${esc(keep || '')}</textarea>
+        <div class="row"><button type="button" class="main" data-a="extend">完成並延伸</button><button type="button" data-a="report">回報告</button></div>`;
     } else if (mode === 'redo') {
       body = `<div class="title">${esc(run.title)}</div><p class="mini">寫哪裡要改，她會照你的意見接著做同一件。</p>
         <textarea id="desk-fb" maxlength="2000" placeholder="例：結論寫短一點，多舉一個例子">${esc(keep || '')}</textarea>
@@ -289,7 +294,10 @@
           ${run.status === 'failed' ? '<button type="button" class="main" data-a="start">重來</button>' : ''}
           ${run.status === 'placed' ? '<span class="mini">叫她「去工作」，她坐到書桌前就開工。</span>' : ''}
           <button type="button" data-a="cancel">收回這件</button>
-        </div>`;
+        </div>
+        ${run.status === 'running' && !run.ask ? `<div class="sec">補充指示</div>
+          <textarea id="desk-steer" maxlength="2000" placeholder="做到一半想加的話，例：記得附上來源">${esc(keep || '')}</textarea>
+          <div class="row"><button type="button" class="main" data-a="steer">送出補充</button></div>` : ''}`;
     }
     box.innerHTML = head + body + (msg && msg !== '__redo' ? `<div class="msg">${esc(msg)}</div>` : '');
     box.querySelector('.x').onclick = closeLog;
@@ -300,6 +308,23 @@
     try {
       if (a === 'log' || a === 'report') { mode = a; paint(true); return; }
       if (a === 'redo-open') { mode = 'redo'; paint(true); card.querySelector('#desk-fb')?.focus(); return; }
+      if (a === 'extend-open') { mode = 'extend'; paint(true); card.querySelector('#desk-ext')?.focus(); return; }
+      if (a === 'extend') {
+        // 先讓伺服器收下延伸（寫後續、還有報告才行），成功了才完成委託領金幣
+        const done = run, text = card.querySelector('#desk-ext')?.value || '';
+        take({ ...(await api('/api/desk/extend', { followup: text })), events: [], summary });
+        const Q = window.YorozuyaQuests;
+        const ok = done?.questId && Q?.complete ? Q.complete(done.questId) : false;
+        toastRoom(ok ? `「${done.title}」完成了，她接著做後續。` : '她接著做後續。');
+        mode = 'log';
+        refreshQuests();
+      }
+      if (a === 'steer') {
+        const text = card.querySelector('#desk-steer')?.value || '';
+        const j = await api('/api/desk/steer', { text });
+        card.querySelector('#desk-steer').value = '';
+        toastRoom(j.how === 'queued' ? '記下了，下一輪會帶給她。' : '補充給她了。');
+      }
       if (a === 'start') { await start(); mode = 'log'; }
       if (a === 'yes' || a === 'no' || a === 'ans') {
         const text = a === 'yes' ? '可以' : a === 'no' ? '不行' : (card.querySelector('#desk-ans')?.value || '');
