@@ -15,7 +15,12 @@
     const r = await fetch(path, body === undefined ? { cache: 'no-store' } : {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) { const e = new Error(j.detail || `HTTP ${r.status}`); e.status = r.status; throw e; }
+    if (!r.ok) {
+      // 405／404：網頁是新的、伺服器還在跑舊程式（git pull 後沒重開 uvicorn）→ 不認得這個接口
+      const old = (r.status === 405 || r.status === 404) && /^\/api\/desk/.test(path);
+      const e = new Error(old ? '伺服器還是舊版，請重開遊戲伺服器（~/start_yorozuya.sh）' : (j.detail || `HTTP ${r.status}`));
+      e.status = r.status; throw e;
+    }
     return j;
   }
   function take(j) {
