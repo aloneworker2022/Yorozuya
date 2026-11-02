@@ -528,6 +528,9 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
         sitCooldown=Math.max(0,sitCooldown-dt);
         if(state.mode==='sitting'){
           let kept=false;try{kept=!!(act&&act.seat&&keep(act.spec.id));}catch{kept=false;}
+          // 桌上的工作做完／收回了：不要把為了工作排的 15～30 分鐘坐完，收一下（20～45 秒）就起來
+          if(kept&&act)act.wasKept=true;
+          else if(act&&act.wasKept){act.wasKept=false;sitTime=Math.min(sitTime,20+random()*25);}
           stepSubPose();
           if(!held&&!kept)sitTime-=dt;state.moving=false;
           if(kept)replanReq=false;   // still working: a chat's re-pick does not pull her off the desk

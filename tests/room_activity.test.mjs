@@ -391,6 +391,22 @@ t("叫她做事：去工作→坐到面對書桌的椅子上寫字；坐著時�
     assert.ok(desk.order("sleep").ok, "你叫她去睡就會去");
     working = false;
   }
+  // 桌上的工作做完了：不把為了工作排的 15～30 分鐘坐完，收一下（≤45 秒）就起來（2026-11-02 Al：沒工作還一直坐著）
+  {
+    let working = true;
+    const desk = RC.create({ cols: 4, rows: 6, blocked: (u, v) => !!cells[`${u},${v}`], getSeats: () => seatsOf,
+      furnitureAt: (u, v) => cells[`${u},${v}`] || null, keep: id => id === "desk_work" && working, random: seeded(11),
+      getContext: () => ({ hour: 15, stage: "friend", now: T0 }) });
+    desk.setPresent(true);
+    assert.ok(desk.order("work").ok);
+    for (let i = 0; i < 20 * 60 && !(desk.activity()?.id === "desk_work" && desk.state.mode === "sitting"); i++) desk.update(.05);
+    for (let i = 0; i < 20 * 60; i++) desk.update(.05);
+    assert.equal(desk.activity()?.id, "desk_work", "工作中坐著");
+    working = false;
+    let up = -1;
+    for (let i = 0; i < 20 * 60; i++) { desk.update(.05); if (desk.state.mode !== "sitting") { up = i / 20; break; } }
+    assert.ok(up >= 0 && up <= 46, `做完工作很快就起來（${up} 秒）`);
+  }
   // 自己挑活動時：一般「坐」不會選到床上躺的位置
   const bare = RC.create({ cols: 4, rows: 6, blocked: () => false, getSeats: () => [], random: seeded(2) });
   bare.setPresent(true);
