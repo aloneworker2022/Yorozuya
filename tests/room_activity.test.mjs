@@ -370,6 +370,27 @@ t("叫她做事：去工作→坐到面對書桌的椅子上寫字；坐著時�
   const near = actor.position();
   assert.ok(near.v < 1.5 - .1, `往書桌靠（v ${near.v}）`);
   assert.ok(actor.forcePose("sit_stretch"));
+  // 書桌上有工作（keep）：她自己的念頭（走過來聊天…）拉不走她；你叫的（去睡覺）和來問工作的事可以
+  {
+    let working = true;
+    const desk = RC.create({ cols: 4, rows: 6, blocked: (u, v) => !!cells[`${u},${v}`], getSeats: () => seatsOf,
+      furnitureAt: (u, v) => cells[`${u},${v}`] || null, keep: id => id === "desk_work" && working, random: seeded(9),
+      getContext: () => ({ hour: 15, stage: "friend", now: T0 }) });
+    desk.setPresent(true);
+    assert.ok(desk.order("work").ok);
+    for (let i = 0; i < 20 * 60 && !(desk.activity()?.id === "desk_work" && desk.state.mode === "sitting"); i++) desk.update(.05);
+    assert.equal(desk.startActivity("approach_talk"), false, "想聊天也不離開書桌");
+    assert.equal(desk.startActivity("hunger_beg"), false);
+    for (let i = 0; i < 20 * 120; i++) desk.update(.05);
+    assert.equal(desk.activity()?.id, "desk_work", "工作時一直坐著（時間到也不起來）");
+    assert.equal(desk.startActivity("desk_ask"), true, "來問工作的事可以");
+    for (let i = 0; i < 20 * 30 && desk.activity()?.id !== "desk_ask"; i++) desk.update(.05);
+    assert.equal(desk.activity()?.id, "desk_ask");
+    assert.ok(desk.order("work").ok);
+    for (let i = 0; i < 20 * 60 && !(desk.activity()?.id === "desk_work" && desk.state.mode === "sitting"); i++) desk.update(.05);
+    assert.ok(desk.order("sleep").ok, "你叫她去睡就會去");
+    working = false;
+  }
   // 自己挑活動時：一般「坐」不會選到床上躺的位置
   const bare = RC.create({ cols: 4, rows: 6, blocked: () => false, getSeats: () => [], random: seeded(2) });
   bare.setPresent(true);
@@ -400,7 +421,9 @@ t("把委託交給她：對到已承接的那件；聽不出是哪件就給候�
   for (const t of ["我昨天幫我媽做飯", "不要交給妳", "去工作", "季報好難"]) assert.equal(A.deskIntent(t, qs), null, t);
   assert.equal(A.deskIntent("這件交給妳：寫一份旅遊計畫", null).quest.text, "寫一份旅遊計畫");
   assert.match(A.givePromptLine({ placed: "整理收據" }), /整理收據/);
-  assert.match(A.givePromptLine({ busy: "寫第三季報告" }), /一次只能做一件/);
+  assert.match(A.givePromptLine({ busy: "「寫第三季報告」已經在她桌上了" }), /已經在你桌上/);
+  assert.match(A.givePromptLine({ placed: "整理收據", pos: 3 }), /排在第 3 件/);
+  assert.doesNotMatch(A.givePromptLine({ placed: "整理收據", pos: 1 }), /排在第/);
   assert.match(A.givePromptLine({ candidates: qs }), /哪一件/);
   assert.match(A.givePromptLine({ candidates: [] }), /先去接委託/);
   // 桌上的委託還在做：她會回書桌（不受不重複限制）

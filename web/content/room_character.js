@@ -444,6 +444,10 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
       startActivity(id,opts={}){
         if(!Acts||!Acts.BY_ID[id]||!present)return false;
         replanReq=false;
+        // Working at the desk (keep): she does not wander off on her own impulses (come chat, hunger…);
+        // only your orders (order(): go sleep…) and coming to ask about the work pull her away.
+        let kept=false;try{kept=!!(act&&act.seat&&state.mode==='sitting'&&keep(act.spec.id));}catch{kept=false;}
+        if(kept&&!opts.ordered&&id!=='desk_ask')return false;
         // Seated (desk, chair, bed): get up first, start it once she is off the seat.
         if(seat&&(state.mode==='sitting'||state.mode==='leaving')){
           if(state.mode==='sitting')standUp();

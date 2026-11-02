@@ -5867,8 +5867,15 @@ def _desk(fn, *args):
 
 
 @app.get("/api/desk")
-def desk_view(since: int = 0):
-    return _desk(desk_agent.view, max(0, int(since or 0)))
+def desk_view(since: int = 0, sinceId: int = 0):
+    """桌上全部：她正在做的那件（since：同一件 sinceId 的事件從哪則之後）、排隊的、報告、出錯的。"""
+    return _desk(desk_agent.view, max(0, int(since or 0)), int(sinceId or 0))
+
+
+@app.get("/api/desk/run")
+def desk_run(id: int):
+    """一件的全部（報告書、出錯的日誌）。"""
+    return _desk(desk_agent.detail, id)
 
 
 @app.get("/api/desk/agent-check")
@@ -5897,8 +5904,8 @@ async def desk_start():
 
 @app.post("/api/desk/redo")
 async def desk_redo(body: dict):
-    fb = (body or {}).get("feedback") or ""
-    return {"run": _desk(lambda c: desk_agent.redo(db, c, fb))}
+    fb, rid = (body or {}).get("feedback") or "", (body or {}).get("id")
+    return {"run": _desk(lambda c: desk_agent.redo(db, c, fb, rid))}
 
 
 @app.post("/api/desk/answer")
@@ -5916,8 +5923,8 @@ async def desk_answer(body: dict):
 @app.post("/api/desk/extend")
 async def desk_extend(body: dict):
     """延伸：委託算完成（前端先領金幣），工作留在桌上接著做後續。"""
-    text = (body or {}).get("followup") or ""
-    return {"run": _desk(lambda c: desk_agent.extend(db, c, text))}
+    text, rid = (body or {}).get("followup") or "", (body or {}).get("id")
+    return {"run": _desk(lambda c: desk_agent.extend(db, c, text, rid))}
 
 
 @app.post("/api/desk/steer")
@@ -5945,13 +5952,24 @@ async def desk_kick():
 
 
 @app.post("/api/desk/cancel")
-async def desk_cancel():
-    return {"run": _desk(desk_agent.cancel)}
+async def desk_cancel(body: dict | None = None):
+    """收回一件（id；沒給＝她正在做的那件）。"""
+    rid = (body or {}).get("id")
+    return {"run": _desk(lambda c: desk_agent.cancel(c, rid))}
 
 
 @app.post("/api/desk/accept")
-def desk_accept():
-    return {"run": _desk(desk_agent.accept)}
+def desk_accept(body: dict | None = None):
+    """收下一份報告（id；沒給＝最早的那份）。"""
+    rid = (body or {}).get("id")
+    return {"run": _desk(lambda c: desk_agent.accept(c, rid))}
+
+
+@app.post("/api/desk/retry")
+def desk_retry(body: dict | None = None):
+    """出錯的那件重來（排回隊伍、插隊）。"""
+    rid = (body or {}).get("id")
+    return {"run": _desk(lambda c: desk_agent.retry(c, rid))}
 
 
 # /editmale 編輯其他召喚師池: names、behaviors(行為卡)、actions(肢體行為)。
