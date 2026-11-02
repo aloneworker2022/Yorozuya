@@ -274,7 +274,102 @@
       if(alpha)blend(ox+x,oy+y,f.pixels.subarray(i,i+3),alpha,u+v+(f.depth?f.depth[y*f.width+x]:Math.max(0,f.anchor.y-y)/32));
     }
     drawBubble(output,f,ox,oy);
+    drawFamiliars(output);
     ctx.putImageData(output,0,0);renderView();
+  }
+
+  // ------------------------------------------------------------------ 使魔上房間（2026-11-02）
+  // 她叫出使魔（RoomDesk summary.subs status 'run'）→ 書桌旁飛著一隻小魅魔、拍翅膀；交回結果 → 一陣煙（成功粉、失敗灰）消失。
+  // 只畫看過在跑的（剛打開頁面時早就做完的不畫）；最多 4 隻。點使魔 → 提示牠在做什麼。
+  const FAM_PX=['....h...h....','....#h.h#....','...#bbbbb#...','..#bebbbeb#..','..#bbbbbbb#..','..#bbmmmbbt#.','...#bbbbb#.t.','....#...#....'];
+  const FAM_WING=[[[1,0],[1,1],[1,11],[1,12],[2,0],[2,1],[2,2],[2,10],[2,11],[2,12],[3,1],[3,11]],
+    [[3,1],[3,2],[3,10],[3,11],[4,0],[4,1],[4,2],[4,10],[4,11],[4,12],[5,0],[5,12]]];
+  const FAM_COL={'#':[52,32,70],b:[150,92,190],m:[205,160,225],e:[255,226,120],h:[240,222,200],t:[110,70,150],w:[118,76,160]};
+  const FAM_S=2,FAM_LIFE_DONE=1.4;
+  // 書桌中心算起（u,v 格、z 高度）：書桌上方、旁邊、前面
+  const FAM_SPOTS=[[.6,.55,66],[.95,-.1,78],[0,-.15,94],[.35,1.15,58],[-.75,.9,70],[-1,0,64]];
+  const familiars=new Map();   // id → {slot, born, endAt, status, goal, last, screen:{x,y,w,h}}
+  let familiarRun=0;
+  function syncFamiliars(now){
+    const st=window.RoomDesk?.state?.(),run=st&&st.run;
+    if(!run||run.id!==familiarRun){for(const f of familiars.values())if(!f.endAt)f.endAt=now;familiarRun=run?run.id:0;}
+    const subs=run&&run.status==='running'?(st.summary?.subs||[]):[];
+    for(const sub of subs){
+      let f=familiars.get(sub.id);
+      if(!f&&sub.status==='run'){
+        const live=[...familiars.values()].filter(x=>!x.endAt);
+        if(live.length>=4)continue;
+        const used=new Set(live.map(x=>x.slot)),me=actor.present?actor.position():null;
+        // 不要擋在她身上：離她太近的位置跳過
+        let slot=FAM_SPOTS.findIndex((_,i)=>{if(used.has(i))return false;const h=familiarHome(i);
+          return h&&(!me||Math.hypot(h.u-me.u,h.v-me.v)>1);});
+        if(slot<0)slot=FAM_SPOTS.findIndex((_,i)=>!used.has(i));
+        f={slot,born:now,endAt:0,status:'run'};familiars.set(sub.id,f);
+      }
+      if(!f)continue;
+      f.goal=sub.goal||'';f.last=sub.last||'';
+      if(sub.status!=='run'&&!f.endAt){f.endAt=now;f.status=sub.status;}
+    }
+    // 這輪停了（她離開書桌、出錯）→ 全部收回
+    if(!run||run.status!=='running')for(const f of familiars.values())if(!f.endAt){f.endAt=now;f.status='gone';}
+    for(const [id,f] of familiars)if(f.endAt&&now-f.endAt>FAM_LIFE_DONE)familiars.delete(id);
+  }
+  function familiarHome(slot){
+    const desk=items.find(item=>item.type==='desk');
+    if(!desk)return null;
+    const f=frameOf(desk),cu=desk.u+f.cols/2,cv=desk.v+f.rows/2;
+    const off=FAM_SPOTS[slot];
+    const clamp=(x,max)=>Math.max(.35,Math.min(max-.35,x));
+    return {u:clamp(cu+off[0],COLS),v:clamp(cv+off[1],ROWS),z:off[2]};
+  }
+  function drawFamiliars(output){
+    const now=performance.now()/1000;
+    syncFamiliars(now);
+    if(!familiars.size)return;
+    const put=(x,y,c,a,d)=>{
+      if(x<0||y<0||x>=canvas.width||y>=canvas.height)return;
+      const i=y*canvas.width+x;if(d<sceneDepth[i])return;
+      for(let k=0;k<3;k++)output.data[i*4+k]=Math.round(c[k]*a+output.data[i*4+k]*(1-a));
+    };
+    for(const fam of familiars.values()){
+      const home=familiarHome(fam.slot);if(!home){fam.screen=null;continue;}
+      const t=now-fam.born,phase=fam.slot*1.7;
+      // 出場：從書桌上冒出來（.4 秒）；之後在原地上下飄、左右晃
+      const rise=Math.min(1,t/.4);
+      const u=home.u+Math.sin(now*.9+phase)*.12,v=home.v+Math.cos(now*.7+phase)*.08;
+      const z=home.z*rise+Math.sin(now*3+phase)*3;
+      const [px,py]=project(u,v,z),d=u+v+z/32+.5;
+      const w=FAM_PX[0].length*FAM_S,h=FAM_PX.length*FAM_S,ox=Math.round(px-w/2),oy=Math.round(py-h/2);
+      const gone=fam.endAt?now-fam.endAt:0;
+      if(!fam.endAt||gone<.25){
+        const a=fam.endAt?1-gone/.25:Math.min(1,t/.3);
+        const flap=Math.floor(now*8+fam.slot)%2;
+        const pix=(r,c,col)=>{for(let dy=0;dy<FAM_S;dy++)for(let dx=0;dx<FAM_S;dx++)put(ox+c*FAM_S+dx,oy+r*FAM_S+dy,col,a,d);};
+        for(const [r,c] of FAM_WING[flap])pix(r,c,FAM_COL.w);
+        FAM_PX.forEach((row,r)=>[...row].forEach((ch,c)=>{if(FAM_COL[ch])pix(r,c,FAM_COL[ch]);}));
+        // 眨眼
+        if((now+phase)%3.2<.12)for(const c of [4,8])pix(3,c,FAM_COL.b);
+        // 地上的小影子
+        const [sx,sy]=project(u,v,0);
+        for(let y=-1;y<=1;y++)for(let x=-6;x<=6;x++)if(x*x/36+y*y<=1)put(Math.round(sx)+x,Math.round(sy)+y,[40,33,45],.12*a,u+v);
+        fam.screen=fam.endAt?null:{x:ox,y:oy,w,h};
+      } else fam.screen=null;
+      // 交回結果：一陣煙（成功粉、失敗灰、被收回淡紫）
+      if(fam.endAt){
+        const p=Math.min(1,gone/FAM_LIFE_DONE),col=fam.status==='ok'?[255,170,205]:fam.status==='fail'?[170,165,170]:[200,180,225];
+        for(let k=0;k<10;k++){
+          const ang=k/10*Math.PI*2+fam.slot,r=4+p*16;
+          const x=Math.round(px+Math.cos(ang)*r),y=Math.round(py+Math.sin(ang)*r*.6-p*6);
+          for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++)put(x+dx,y+dy,col,(1-p)*.9,d+1);
+        }
+      }
+    }
+  }
+  /** 點到使魔 → {goal,last}｜null（point 是畫布座標）。 */
+  function hitFamiliar(point){
+    const p=worldPoint(point);
+    for(const fam of familiars.values()){const b=fam.screen;if(b&&p.x>=b.x-4&&p.x<b.x+b.w+4&&p.y>=b.y-4&&p.y<b.y+b.h+4)return fam;}
+    return null;
   }
 
   // ------------------------------------------------------------------ activity bubble
@@ -644,6 +739,8 @@
     if (drag && was) { endDrag(event.type === 'pointerup'); return; }
     // Tap the desk (not editing): her work log / report; the bookshelf: what she finished (room_desk.js).
     if (was && event.type === 'pointerup' && !was.moved && !was.longFired && !was.actor && !editing && !placing) {
+      const fam = hitFamiliar(localPoint(event));
+      if (fam) { roomTip(`使魔：${fam.goal || '幫她做事'}${fam.last ? `（${fam.last}）` : ''}`, 4000); return; }
       const tapped = hitItem(localPoint(event));
       if (tapped && tapped.type === 'desk' && window.RoomDesk?.openLog) { window.RoomDesk.openLog(); return; }
       if (tapped && tapped.type === 'bookshelf' && window.RoomDesk?.openShelf) { window.RoomDesk.openShelf(); return; }
