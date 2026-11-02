@@ -273,6 +273,7 @@ async def main():
     import os, sqlite3, tempfile
     import desk_agent as D
     os.environ["DESK_AGENT"] = "hermes"
+    os.environ["DESK_FILES_DIR"] = tempfile.mkdtemp()
     fake7 = FakeHermes([
         {"events": [{"event": "run.completed", "output": "<<<REPORT>>>\n# 第一版\n<<<END>>>"}]},
         {"events": [{"event": "run.completed", "output": "<<<REPORT>>>\n# 第二版\n<<<END>>>"}]},

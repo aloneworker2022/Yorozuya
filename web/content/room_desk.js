@@ -330,7 +330,14 @@
 #desk-card .msg{margin-top:8px;font-size:12px;color:#8a3a31}
 #desk-card .ask{margin:8px 0;padding:10px 12px;border-radius:8px;background:#fff4d6;border:1px solid #ecd49a;font-size:13px}
 #desk-card .ask b{display:block;font-size:12px;color:#7a5a17;margin-bottom:2px}
-#desk-card .ask .row{margin-top:8px}`;
+#desk-card .ask .row{margin-top:8px}
+#desk-card a.dl{font-size:13px;border:1px solid #c8bba7;background:#f6f1e7;color:#4e463a;border-radius:8px;padding:8px 10px;text-decoration:none;white-space:nowrap}
+#desk-card .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin-top:6px}
+#desk-card .thumbs img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:8px;border:1px solid #e1d6c3;background:#fff;display:block}
+#desk-card .peek .hd{margin:0 0 6px}#desk-card .peek .t{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#desk-card pre{white-space:pre-wrap;word-break:break-word;font-size:12px;margin:0;max-height:50svh;overflow:auto}
+#desk-card .tbl{overflow:auto;max-height:50svh}#desk-card table{border-collapse:collapse;font-size:12px}
+#desk-card th,#desk-card td{border:1px solid #e1d6c3;padding:3px 6px;text-align:left;white-space:nowrap}#desk-card th{background:#f3ece0}`;
     document.head.append(css);
     const ov = document.createElement('div');
     ov.id = 'desk-ov'; ov.hidden = true;
@@ -356,11 +363,13 @@
   }
   function closeLog() { if (card) card.hidden = true; }
   async function openItem(id, view) {
+    preview = null;
     try { sel = await api(`/api/desk/run?id=${id}`); mode = view; msg = ''; }
     catch (e) { msg = e.message; }
     paint(true);
   }
   function itemRow(r, buttons, sub = '') {
+    if (r.nfiles) sub = `${sub ? sub + '・' : ''}📎 ${r.nfiles}`;
     return `<div class="item"><div class="t"><b>${esc(r.title)}</b>${sub ? `<span class="mini">${sub}</span>` : ''}</div>${buttons}</div>`;
   }
   function paintOverview() {
@@ -407,6 +416,50 @@
     const sub = [shelfPending.length ? `${shelfPending.length} 份報告等你看` : '', shelfTotal ? `完成 ${shelfTotal} 件` : ''].filter(Boolean).join('・');
     return `<div class="sec">書櫃</div>${itemRow({ title: '她完成的放在書櫃' }, '<button type="button" data-a="shelf">去書櫃看</button>', sub)}`;
   }
+  // ------------------------------------------------------------ 附檔案（她做出來的檔案，/api/desk/file）
+  const IMG_RE = /\.(png|jpe?g|gif|webp|bmp)$/i, TEXT_RE = /\.(md|markdown|txt|csv|tsv|json|log|py|js|ts|html?|css|xml|ya?ml|sh)$/i;
+  const fileUrl = (id, name, dl) => `/api/desk/file?id=${id}&name=${encodeURIComponent(name)}${dl ? '&dl=1' : ''}`;
+  const kb = n => n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 102.4) / 10} KB` : `${Math.round(n / 104857.6) / 10} MB`;
+  let preview = null;   // {name, html}
+  function filesBlock(r) {
+    const files = (sel && sel.files) || [];
+    if (!files.length) return '';
+    const imgs = files.filter(f => IMG_RE.test(f.name));
+    const rows = files.map(f => itemRow({ title: f.name },
+      `${TEXT_RE.test(f.name) ? `<button type="button" data-a="peek" data-f="${esc(f.name)}">看</button>` : ''}<a class="dl" href="${fileUrl(r.id, f.name, 1)}" download>下載</a>`,
+      kb(f.size))).join('');
+    return `<div class="sec">附件（${files.length}）</div>
+      ${imgs.length ? `<div class="thumbs">${imgs.map(f => `<a href="${fileUrl(r.id, f.name)}" target="_blank" rel="noopener"><img src="${fileUrl(r.id, f.name)}" alt="${esc(f.name)}" loading="lazy"></a>`).join('')}</div>` : ''}
+      ${rows}
+      ${preview ? `<div class="box peek"><div class="hd"><b class="t">${esc(preview.name)}</b><button type="button" class="x" data-a="unpeek" aria-label="收起">×</button></div>${preview.html}</div>` : ''}`;
+  }
+  function csvTable(text) {
+    const sep = text.includes('\t') && !text.includes(',') ? '\t' : ',';
+    const parse = line => { const out = []; let cur = '', q = false;
+      for (let i = 0; i < line.length; i++) { const c = line[i];
+        if (q) { if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; } else if (c === '"') q = false; else cur += c; }
+        else if (c === '"') q = true; else if (c === sep) { out.push(cur); cur = ''; } else cur += c; }
+      out.push(cur); return out; };
+    const rows = text.split(/\r?\n/).filter(l => l.trim()).slice(0, 80).map(parse);
+    if (!rows.length) return '<p class="mini">（空的）</p>';
+    return `<div class="tbl"><table><thead><tr>${rows[0].map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${
+      rows.slice(1).map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+  async function peek(name) {
+    const r = sel && sel.run;
+    if (!r || !name) return;
+    try {
+      const res = await fetch(fileUrl(r.id, name), { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      let text = await res.text();
+      const cut = text.length > 20000;
+      if (cut) text = text.slice(0, 20000);
+      const html = /\.(csv|tsv)$/i.test(name) ? csvTable(text) : /\.(md|markdown)$/i.test(name) ? `<div class="report">${md(text)}</div>` : `<pre>${esc(text)}</pre>`;
+      preview = { name, html: html + (cut ? '<p class="mini">（太長，只顯示前面一段，要看全部請下載）</p>' : '') };
+    } catch (e) { msg = `打不開 ${name}：${e.message}`; }
+    paint(true);
+    card.querySelector('.peek')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
   /** 書櫃裡的那件：請她看看（打開對話、她說心得，可以接著討論）／丟掉。 */
   function shelfButtons(r) {
     return `<div class="row"><button type="button" class="main" data-a="discuss">請她看看、說說心得</button><button type="button" data-a="remove" data-id="${r.id}">丟掉</button></div>`;
@@ -440,11 +493,13 @@
       body = `<div class="title">${esc(r.title)}</div><div><span class="chip done">完成了</span><span class="mini">${r.finished ? day(r.finished) + ' 交的' : ''}</span></div>
         ${r.note ? `<p class="mini">說明：${esc(r.note)}</p>` : ''}
         <div class="report">${r.report ? md(r.report) : '<p class="mini">（沒有報告內容）</p>'}</div>
+        ${filesBlock(r)}
         ${shelfButtons(r)}
         ${timeline(sel.events, sel.summary, r)}`;
     }
     else if (mode === 'report') {
       body = `<div class="title">${esc(r.title)}</div><div class="report">${md(r.report)}</div>
+        ${filesBlock(r)}
         <div class="row"><button type="button" class="main" data-a="accept">完成委託</button><button type="button" data-a="extend-open">延伸</button><button type="button" data-a="redo-open">退回重做</button></div>
         <p class="mini">延伸＝這件先算完成、金幣先拿，她接著做後續（插隊，下一件就做）。</p>
         ${r.shelved ? shelfButtons(r) : ''}
@@ -460,12 +515,13 @@
     } else if (mode === 'fail') {
       body = `<div class="title">${esc(r.title)}</div><div><span class="chip failed">出錯停了</span></div>
         <div class="row"><button type="button" class="main" data-a="retry" data-id="${r.id}">重來</button><button type="button" data-a="cancel" data-id="${r.id}">收回</button></div>
+        ${filesBlock(r)}
         ${timeline(sel.events, sel.summary, r)}`;
     }
     box.innerHTML = head + body + (msg ? `<div class="msg">${esc(msg)}</div>` : '');
-    box.querySelectorAll('[data-a]').forEach(b => b.onclick = () => act(b.dataset.a, b.dataset.id ? Number(b.dataset.id) : null));
+    box.querySelectorAll('[data-a]').forEach(b => b.onclick = () => act(b.dataset.a, b.dataset.id ? Number(b.dataset.id) : null, b.dataset.f));
   }
-  async function act(a, id) {
+  async function act(a, id, fname) {
     msg = '';
     const Q = window.YorozuyaQuests;
     try {
@@ -473,6 +529,8 @@
       if (a === 'back') { mode = home; sel = null; paint(true); return; }
       if (a === 'shelf') { mode = home = 'shelf'; sel = null; paint(true); return; }
       if (a === 'archive') { await openItem(id, 'archive'); return; }
+      if (a === 'peek') { await peek(fname); return; }
+      if (a === 'unpeek') { preview = null; paint(true); return; }
       if (a === 'discuss') {
         // test_room_summon 接手：她在房間就打開對話、她先說心得（RoomDesk.onDiscuss 由它設）
         const r = sel?.run;

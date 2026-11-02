@@ -17,8 +17,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sqlite3
 import time
+from pathlib import Path
 from typing import Callable
 
 # run.status：queued 排隊中（舊資料的 placed 一樣）｜running 做中｜paused 她離開書桌、停著｜done 報告交了｜failed 出錯停了
@@ -26,6 +28,49 @@ from typing import Callable
 # 書櫃（2026-11-02 Al）：報告交了、她離開書桌 → 前端 shelve → shelved＝收進書櫃的時間（報告不在桌上、在書櫃）；
 #   收下的（accepted）也都在書櫃，點書櫃可以再看。退回／延伸再交報告時 shelved 歸 0（先放在桌上）。
 SHELF_MAX = 100           # 書櫃一次回幾件收下的
+# 附檔案（2026-11-02）：每件一個資料夾 <DESK_FILES_DIR>/<run id>/，agent 把產出的檔案存在這裡，報告書列出來。
+FILES_MAX = 60            # 一件最多列幾個檔案
+
+
+def files_root() -> Path:
+    return Path(os.environ.get("DESK_FILES_DIR") or Path(__file__).resolve().parents[1] / "data" / "desk_files")
+
+
+def files_dir(run_id: int, make: bool = False) -> Path:
+    d = files_root() / str(int(run_id))
+    if make:
+        d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def list_files(run_id: int) -> list[dict]:
+    """這件的附檔（相對路徑、大小、改的時間；隱藏檔不算）。"""
+    d = files_dir(run_id)
+    if not d.is_dir():
+        return []
+    out = []
+    for p in sorted(d.rglob("*")):
+        rel = p.relative_to(d)
+        if not p.is_file() or any(part.startswith(".") for part in rel.parts):
+            continue
+        st = p.stat()
+        out.append({"name": rel.as_posix(), "size": st.st_size, "at": int(st.st_mtime * 1000)})
+        if len(out) >= FILES_MAX:
+            break
+    return out
+
+
+def file_path(run_id: int, name: str) -> Path:
+    """附檔的實際位置（不能跑出這件的資料夾）。"""
+    d = files_dir(run_id).resolve()
+    p = (d / str(name or "")).resolve()
+    if d not in p.parents or not p.is_file() or any(part.startswith(".") for part in p.relative_to(d).parts):
+        raise DeskError("沒有這個檔案", 404)
+    return p
+
+
+def drop_files(run_id: int) -> None:
+    shutil.rmtree(files_dir(run_id), ignore_errors=True)
 # 她正在做的那件（working）：running／paused 那件；沒有就是排第一的（prio 大的先＝退回重做／延伸／重來插隊，再照放上來的順序）。
 # 報告（done）和出錯（failed）不擋後面，疊在桌上等你處理。
 # 她不在書桌前就不做（2026-11-02 Al）：前端看到她離開書桌 → pause（Hermes 這一輪 stop、session 留著）；坐回來 → start 接著做。
@@ -335,6 +380,15 @@ class MockAgent:
         emit("sub:2", "done", "初稿寫好了", "ok")
         emit("ext:claude", "done", "（示範）格式 OK，改了 3 個錯字", "ok")
         await asyncio.sleep(s)
+        fdir = run.get("filesDir")
+        if fdir:   # 示範附檔：重點表、初稿
+            try:
+                Path(fdir).mkdir(parents=True, exist_ok=True)
+                (Path(fdir) / "重點.csv").write_text("項目,說明\n重點一,示範\n重點二,示範\n", encoding="utf-8")
+                (Path(fdir) / "初稿.md").write_text(f"# {t}\n\n（示範初稿）\n", encoding="utf-8")
+                emit("main", "tool", "寫檔案：重點.csv、初稿.md", "ok")
+            except OSError:
+                pass
         emit("main", "think", "把重點、初稿、修正合在一起，寫成報告。", "")
         await asyncio.sleep(s)
         lines = [
@@ -419,7 +473,8 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
         # 使魔編號接著之前的（退回重做時不會跟上一輪的使魔①撞名）
         sub_base = conn.execute("SELECT COUNT(DISTINCT actor) FROM desk_events WHERE run_id=? AND actor LIKE 'sub:%'",
                                 (run_id,)).fetchone()[0] or 0
-        report = await agent.run({**run, "subBase": sub_base, "resume": resume}, emit, store)
+        fdir = files_dir(run_id, make=True)
+        report = await agent.run({**run, "subBase": sub_base, "resume": resume, "filesDir": str(fdir.resolve())}, emit, store)
         if (get(conn, run_id) or {}).get("status") != "running":
             return
         add_event(conn, run_id, "main", "report", "報告寫好了，放在桌上。", "ok")
@@ -577,6 +632,7 @@ def cancel(conn: sqlite3.Connection, run_id=None) -> dict | None:
         t.cancel()
     _agents.pop(run["id"], None)
     _set(conn, run["id"], status="cancelled", finished=now_ms(), ask="")
+    drop_files(run["id"])
     add_event(conn, run["id"], "main", "status", "收回了。", "")
     return get(conn, run["id"])
 
@@ -637,6 +693,7 @@ def remove(conn: sqlite3.Connection, run_id) -> dict:
     conn.execute("DELETE FROM desk_events WHERE run_id=?", (run["id"],))
     conn.execute("DELETE FROM desk_runs WHERE id=?", (run["id"],))
     conn.commit()
+    drop_files(run["id"])
     return _brief(run)
 
 
@@ -663,7 +720,10 @@ def resume_all(connect) -> int:
 
 
 def _brief(run: dict) -> dict:
-    return {k: run[k] for k in ("id", "questId", "title", "girlName", "status", "note", "finished", "mode", "feedback", "prio", "shelved")}
+    out = {k: run[k] for k in ("id", "questId", "title", "girlName", "status", "note", "finished", "mode", "feedback", "prio", "shelved")}
+    if run["status"] in ("done", "accepted", "failed"):
+        out["nfiles"] = len(list_files(run["id"]))
+    return out
 
 
 def view(conn: sqlite3.Connection, since: int = 0, since_id: int = 0) -> dict:
@@ -687,4 +747,5 @@ def detail(conn: sqlite3.Connection, run_id: int) -> dict:
     run = get(conn, int(run_id))
     if not run or run["status"] not in (*ACTIVE, "accepted"):
         raise DeskError("桌上沒有這件", 404)
-    return {"run": {**run, "ask": ask_of(run)}, "events": events(conn, run["id"], 0), "summary": summary(conn, run)}
+    return {"run": {**run, "ask": ask_of(run)}, "events": events(conn, run["id"], 0), "summary": summary(conn, run),
+            "files": list_files(run["id"])}

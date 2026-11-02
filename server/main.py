@@ -5978,6 +5978,21 @@ def desk_remove(body: dict | None = None):
     return {"run": _desk(lambda c: desk_agent.remove(c, rid))}
 
 
+@app.get("/api/desk/file")
+def desk_file(id: int, name: str, dl: int = 0):
+    """附檔（她做出來的檔案）。sandbox：HTML／SVG 打開也不會在遊戲網域跑程式。"""
+    from fastapi.responses import FileResponse
+    try:
+        p = desk_agent.file_path(id, name)
+    except desk_agent.DeskError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    resp = FileResponse(p, filename=p.name, content_disposition_type="attachment" if dl else "inline")
+    resp.headers["Content-Security-Policy"] = "sandbox"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.post("/api/desk/retry")
 def desk_retry(body: dict | None = None):
     """出錯的那件重來（排回隊伍、插隊）。"""

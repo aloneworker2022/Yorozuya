@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
 os.environ["DESK_AGENT"] = "mock"
 os.environ["DESK_MOCK_STEP_S"] = "0.01"
+os.environ["DESK_FILES_DIR"] = tempfile.mkdtemp()
 import desk_agent as D  # noqa: E402
 
 DB = Path(tempfile.mkdtemp()) / "desk.db"
@@ -310,8 +311,20 @@ async def main():
     D.shelve(c)
     D.remove(c, e["id"])
     assert D.get(c, e["id"]) is None and D.events(c, e["id"]) == [] and D.view(c)["shelf"]["pending"] == []
+    # 附檔：假 agent 存了重點.csv、初稿.md；報告書列得出來、拿得到；跑出資料夾的不行；丟掉連資料夾一起刪
+    names = [f["name"] for f in D.detail(c, a["id"])["files"]]
+    assert "重點.csv" in names and "初稿.md" in names, names
+    assert D.file_path(a["id"], "重點.csv").read_text(encoding="utf-8").startswith("項目")
+    for bad in ("../1/重點.csv", "/etc/passwd", "", "nope.txt"):
+        try:
+            D.file_path(a["id"], bad)
+            raise AssertionError(f"拿得到 {bad}")
+        except D.DeskError:
+            pass
+    assert D.view(c)["shelf"]["done"][0].get("nfiles") == 2
     n = D.view(c)["shelf"]["doneTotal"]
     D.remove(c, a["id"])
+    assert not D.files_dir(a["id"]).exists(), "丟掉連附檔一起刪"
     assert D.view(c)["shelf"]["doneTotal"] == n - 1 and all(r["id"] != a["id"] for r in D.view(c)["shelf"]["done"])
     os.environ["DESK_MOCK_STEP_S"] = "0.01"
     c.close()
