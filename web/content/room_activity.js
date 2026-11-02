@@ -61,13 +61,98 @@
     { id: 'approach_talk', name: '走到你面前想跟你說話', pose: 'stare', place: 'floor', spot: 'front', facing: 'front', dur: [600, 660],
       icon: 'talk', kind: 'mood', relax: 0, w: 0, moodOnly: true, sticky: true, wait: true,
       doing: '特地走到他面前，看著他、想跟他說話', react: '是自己走過來找他聊天的，第一句由你先開口' },
+    // 桌上的工作卡住、要他決定（room_desk.js：agent 停下來等核准／提問）：只由 room_desk 叫出來（權重 0）
+    { id: 'desk_ask', name: '從書桌走過來問你工作上的事', pose: 'stare', place: 'floor', spot: 'front', facing: 'front', dur: [600, 660],
+      icon: 'talk', kind: 'mood', relax: 0, w: 0, moodOnly: true, sticky: true, wait: true,
+      doing: '特地從書桌那邊走過來，有工作上的事要問他', react: '有工作上的事要他決定，第一句先問' },
     { id: 'chair_sit', name: '端正地坐在椅子上', pose: 'sit', place: 'seat', seat: ['chair'], dur: [80, 180],
       icon: null, kind: 'idle', relax: 0, w: 1,
       doing: '端正地坐在椅子上', react: '坐著沒事做，被叫到馬上看過來' },
     { id: 'chair_phone', name: '蜷在椅子上滑手機', pose: 'sit_curl', place: 'seat', seat: ['chair'], dur: [90, 180],
       icon: 'phone', kind: 'focus', focus: .8, relax: 1, w: .9,
       doing: '把腳收到椅子上蜷著滑手機', react: '正在滑手機，第一句先像「等一下…好，什麼事？」' },
+    // 書桌＋床（agent office，2026-11-01）：seatKind 'lie'＝床上躺的位置；near＝座位正前方要有這件家具。
+    // 玩家也可以直接叫她去（RoomActor.order('sleep'|'work')，ordered:true 時 prompt 會說是他叫的）。
+    { id: 'bed_sleep', name: '躺在床上睡覺', pose: 'sleep_curl', place: 'seat', seat: ['bed'], seatKind: 'lie', dur: [150, 300], orderDur: [900, 1800],
+      icon: 'zzz', kind: 'sleep', relax: 1, w: .35,
+      doing: '躺在床上睡著了', react: '剛被吵醒' },
+    // poses：在書桌前會換著做（10～25 秒換一次，伸懶腰短一點）；桌上的委託在做時由 room_desk.js 決定權重
+    { id: 'desk_work', name: '坐在書桌前寫東西', pose: 'sit_work', place: 'seat', seat: ['chair'], near: 'desk', dur: [120, 300], orderDur: [900, 1800],
+      poses: { sit_work: 2, sit_scribble: .8, sit_think: 1.5, sit_phone: 1.6, sit_stretch: .6 },
+      seatShift: .22,   // 坐到椅子前緣、靠近書桌（不然手搆不到桌面）
+      icon: 'write', kind: 'focus', focus: .9, relax: 0, w: .7,
+      doing: '坐在書桌前低著頭專心寫東西', react: '正在寫東西寫到一半，第一句先像「等一下，我寫完這句…好，怎麼了？」那樣，再理他' },
   ];
+  /** 玩家下的指令 → 活動。 */
+  const ORDERS = { sleep: 'bed_sleep', work: 'desk_work' };
+  // 聊天裡叫她去做（2026-11-01 Al：不用按鈕，用說的）。要有「去／快／該…」這類叫人的口氣，
+  // 只提到「工作」「睡覺」不算（例：「我昨天沒睡覺」）；有否定就不算。
+  const ORDER_NOT = /不要|不用|不准|不必|別(去|睡|工作|寫)|先不|還不/;
+  const ORDER_SAY = {
+    work: [/(去|快去|給我去|乖乖去|先去|妳去|你去|回去|過去)(書桌|桌子|桌前)?(那邊|那裡|前面)?(坐著)?(工作|上班|做事|寫字|寫東西|寫作業|寫功課|念書|讀書|辦公|寫報告)/,
+      /(工作|寫作業|寫功課|念書|讀書|寫字|寫東西)(吧|去|啦|囉)/, /^(去)?工作[!！。~～]*$/],
+    sleep: [/(去|快去|給我去|乖乖去|先去|妳去|你去|回去|上)(床上?)?(睡|睡覺|睡一下|睡個覺|休息|躺著?)/,
+      /(快|該|早點|趕快)(去)?睡(覺)?(吧|了|啦|囉)?/, /睡(覺|一下)?(吧|啦|囉)/, /^(去)?睡覺?[!！。~～]*$/],
+  };
+  /** 玩家這句話是不是叫她去工作／睡覺 → 'work' | 'sleep' | null。 */
+  function orderIntent(text) {
+    const t = String(text || '').replace(/\s+/g, '');
+    if (!t || ORDER_NOT.test(t)) return null;
+    for (const kind of ['sleep', 'work']) if (ORDER_SAY[kind].some(re => re.test(t))) return kind;
+    return null;
+  }
+  // 把委託交給她（放到她桌上，2026-11-01）：「這件交給妳：寫季報」「幫我做季報」「季報拿去做」「放妳桌上」。
+  const GIVE_SAY = /(交給(妳|你)|交給妳做|給(妳|你)做|幫我(做|寫|處理|弄|查|整理|想)|拿去(做|寫|處理)|放(到|在)?(妳|你)(的)?桌上|(妳|你)來(做|處理|寫)|拜託(妳|你)(做|處理|寫)?)/;
+  const PUNCT = /[\s「」『』"'“”‘’（）()【】\[\]，,。.！!？?：:；;、~～…]+/g;
+  const norm = t => String(t || '').replace(PUNCT, '').toLowerCase();
+  function commonRun(a, b) {   // 最長共同連續字數
+    let best = 0;
+    for (let i = 0; i < a.length; i++) for (let j = 0; j < b.length; j++) {
+      let k = 0; while (i + k < a.length && j + k < b.length && a[i + k] === b[j + k]) k++;
+      if (k > best) best = k;
+    }
+    return best;
+  }
+  /**
+   * 玩家這句是不是把委託交給她 → null｜{target, quest, candidates}
+   * quests：[{id,text}]（主遊戲已承接／執行中）；null＝沙盒沒有委託板 → 用他說的字當委託。
+   * quest：對到的那件（對不到或好幾件一樣像 → null，candidates 給她問）。
+   */
+  function deskIntent(text, quests = null) {
+    const raw = String(text || '');
+    if (!GIVE_SAY.test(raw.replace(/\s+/g, '')) || ORDER_NOT.test(raw)) return null;
+    const quoted = raw.match(/[「『"“]([^」』"”]{2,})[」』"”]/);
+    const after = raw.split(/[：:]/).slice(1).join('：');
+    let target = quoted ? quoted[1] : after || raw.replace(GIVE_SAY, ' ').replace(/這件|那件|這個|那個|委託|事情|工作|一下|好嗎|可以嗎|吧|啦|喔|哦|嗎/g, ' ');
+    target = target.replace(/\s+/g, ' ').trim();
+    const t = norm(target);
+    if (!Array.isArray(quests)) return { target, quest: t.length >= 2 ? { id: '', text: target } : null, candidates: [] };
+    const scored = quests.filter(q => q && q.text).map(q => {
+      const qt = norm(q.text);
+      if (!t || !qt) return { q, s: 0 };
+      if (t.includes(qt) || (t.length >= 2 && qt.includes(t))) return { q, s: 100 + Math.min(t.length, qt.length) };
+      const run = commonRun(t, qt);
+      return { q, s: run >= 2 && run >= Math.min(t.length, qt.length) / 2 ? run : 0 };
+    }).filter(x => x.s > 0).sort((a, b) => b.s - a.s);
+    if (!scored.length) return { target, quest: quests.length === 1 && !t ? quests[0] : null, candidates: quests.slice(0, 6) };
+    const top = scored.filter(x => x.s === scored[0].s).map(x => x.q);
+    return { target, quest: top.length === 1 ? top[0] : null, candidates: top.length > 1 ? top : [] };
+  }
+  /** 交委託那一句的 prompt：放上桌了／桌上已有一件／聽不出是哪件。 */
+  function givePromptLine(r) {
+    if (!r) return '';
+    if (r.placed) return `【他把委託「${r.placed}」交給你，放到你桌上了】你會去書桌那邊做：回完這句就過去。用你的口氣答應他（可以撒嬌或小抱怨），不要拒絕，不要寫動作旁白。`;
+    if (r.busy) return `【他想再交一件委託給你，可是你桌上的「${r.busy}」還沒交差】一次只能做一件。用你的口氣跟他說，等這件做完再給你。`;
+    if (r.offline) return '【他想交一件委託給你，可是你的書桌現在用不了（伺服器連不上）】用你的口氣跟他說等一下再給你。';
+    const names = (r.candidates || []).map(q => `「${q.text}」`).join('、');
+    return names ? `【他想交一件委託給你，但你聽不出是哪一件】他接下的委託有：${names}。問他是哪一件。`
+      : '【他想交一件委託給你，可是他現在沒有接下的委託】跟他說要先去接委託，再拿給你。';
+  }
+  /** 叫她去做的那一句：prompt（她照做、回一句再過去）。 */
+  function orderPromptLine(kind) {
+    const where = kind === 'sleep' ? '床上睡覺' : '書桌那邊坐著寫東西';
+    return `【他剛剛叫你去${where}】你會照做：回完這句就起身過去。用你的口氣回他一句（可以乖乖答應、撒嬌或小抱怨），不要拒絕，不要寫動作旁白。`;
+  }
   const BY_ID = Object.fromEntries(ACTIVITIES.map(a => [a.id, a]));
   const HISTORY_MAX = 8;
   const BIAS_TAU_MS = 8 * 60 * 1000;          // 聊完的偏向：e 倍衰減時間
@@ -137,6 +222,9 @@
     for (const a of ACTIVITIES) {
       let w = a.w;
       if (a.place === 'seat' && !(a.seat || []).some(t => seats.has(t))) { out.set(a.id, 0); continue; }
+      if (a.near && !seats.has(a.near) && !(ctx.furniture || []).includes(a.near)) { out.set(a.id, 0); continue; }
+      // 有床就睡床上，很少直接睡地板
+      if (a.id === 'sleep' && seats.has('bed')) w *= .15;
       // 時段＋作息
       if (a.kind === 'sleep') w *= .15 + 14 * sl * sl;
       else if (a.lie) w *= 1 + sl * .6;
@@ -164,7 +252,7 @@
         if (a.kind === 'sleep') w *= 1 - .6 * k;
       }
       if (a.id === 'hunger_beg') w = ctx.hungerBeg && !ctx.calm ? 40 : 0;
-      if (a.id === 'approach_talk') w = 0;
+      if (a.id === 'approach_talk' || a.id === 'desk_ask') w = 0;
       // 想念：高 → 走到前面盯著你、不想躺遠遠的
       if (a.id === 'stare') w += Math.max(0, miss - 30) / 16;
       if ((a.lie || a.kind === 'sleep') && miss > 40) w *= 1 - (miss - 40) / 100;
@@ -184,6 +272,8 @@
       if (hist[0] === a.id) w = 0;
       else if (hist[1] === a.id) w *= .35;
       else if (hist.slice(0, 5).filter(x => x === a.id).length >= 2) w *= .6;
+      // 桌上的委託還在做（room_desk.js）：她會回書桌繼續（不受上面的不重複限制）
+      if (a.id === 'desk_work' && ctx.deskBusy) w = 30;
       out.set(a.id, Math.max(0, w));
     }
     return out;
@@ -198,9 +288,9 @@
     for (const a of ACTIVITIES) { r -= ws.get(a.id); if (r < 0 && ws.get(a.id) > 0) return { act: a, weights: ws }; }
     return { act: ACTIVITIES.filter(a => ws.get(a.id) > 0).pop(), weights: ws };
   }
-  /** 這次要做多久（秒）。睡覺在想睡的時段更久。 */
-  function duration(act, ctx = {}, rng = Math.random) {
-    const [lo, hi] = act.dur;
+  /** 這次要做多久（秒）。睡覺在想睡的時段更久。ordered：玩家叫的（orderDur）。 */
+  function duration(act, ctx = {}, rng = Math.random, ordered = false) {
+    const [lo, hi] = ordered && act.orderDur ? act.orderDur : act.dur;   // 玩家叫她去做的：做久一點
     let d = lo + (hi - lo) * rng();
     if (act.kind === 'sleep') d *= 1 + sleepiness(ctx.hour ?? 12, ctx.chrono || '');
     return Math.round(d);
@@ -215,13 +305,14 @@
     return m;
   }
   /** 開始一件新的事：上一件收進 history（新→舊）。 */
-  function noteStart(mem, { id, at = Date.now(), dur = 0 } = {}) {
+  function noteStart(mem, { id, at = Date.now(), dur = 0, ordered = false } = {}) {
     const m = ensureMem(mem);
     if (!BY_ID[id]) return m;
     if (m.cur) m.history.unshift({ id: m.cur.id, at: m.cur.since, end: at });
     m.history = m.history.slice(0, HISTORY_MAX);
     m.seq += 1;
     m.cur = { id, since: at, dur: Math.round(dur) || 0, seq: m.seq };
+    if (ordered) m.cur.ordered = true;
     return m;
   }
   function historyIds(mem) {
@@ -299,6 +390,7 @@
       const prev = talk.prevId && BY_ID[talk.prevId];
       out.push('【你剛才在房間裡】');
       out.push(`他找你說話的時候，你${act.kind === 'sleep' ? '' : '正'}${act.doing}${talk.since ? `（大概${long}了）` : ''}。` +
+        (talk.ordered ? `（是他剛才叫你去${act.kind === 'sleep' ? '睡覺' : '做'}的。）` : '') +
         (prev ? `在那之前你${prev.doing}。` : ''));
       if (opening) {
         if (talk.wake || act.kind === 'sleep') out.push(`你剛才睡著了，是被他叫醒的。起床反應：${wakeReact || '迷迷糊糊'}。第一句帶著剛醒的口氣。`);
@@ -320,7 +412,7 @@
     return `她剛才正${act.doing}；${act.react}`;
   }
 
-  const api = { ACTIVITIES, BY_ID, STAGES, HISTORY_MAX, HUNGER_ACT_AT, BIAS_TAU_MS, GLAD_COOLDOWN_MS, ANNOY_COOLDOWN_MS, REOPEN_GRACE_MS, MIN_ENGAGED_MS, WAKE_ANNOY,
+  const api = { ACTIVITIES, BY_ID, ORDERS, orderIntent, orderPromptLine, deskIntent, givePromptLine, STAGES, HISTORY_MAX, HUNGER_ACT_AT, BIAS_TAU_MS, GLAD_COOLDOWN_MS, ANNOY_COOLDOWN_MS, REOPEN_GRACE_MS, MIN_ENGAGED_MS, WAKE_ANNOY,
     sleepiness, liveliness, partOfDay, biasStrength, weights, pick, duration, ensureMem, noteStart, historyIds,
     interrupt, chatBias, promptLines, openerHint, ago };
   if (typeof module === 'object' && module && module.exports) module.exports = api;

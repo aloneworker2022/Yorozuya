@@ -26,8 +26,43 @@
   const origin = { x: 240, y: 132 };
   const wallHeight = 100;
   const catalog = window.RoomFurniture;
-  const items = [{id:1,type:'chair',u:1,v:3,facing:'left'}];
-  let selectedId = null, nextId = 2;
+  // Default room (agent office, 2026-11-01): a desk against the back wall with a chair facing it
+  // (去工作 = sit there typing), and a bed in the corner (去睡覺 = lie down on it).
+  const DEFAULT_ITEMS = [
+    {id:1,type:'chair',u:0,v:1,facing:'back-right'},
+    {id:2,type:'desk',u:0,v:0,facing:'left'},
+    {id:3,type:'bed',u:3,v:0,facing:'left'},
+  ];
+  // Furniture layout is kept on this device (long-press drag / edit mode changes survive a reload).
+  const LAYOUT_KEY = 'yorozuya.room.layout.v1';
+  function loadLayout() {
+    let list = null;
+    try { list = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null'); } catch { list = null; }
+    if (!Array.isArray(list)) return null;
+    const out = [], taken = new Set();
+    for (const raw of list) {
+      const def = raw && catalog[raw.type];
+      if (!def || !def.directions.includes(raw.facing) || !Number.isInteger(raw.u) || !Number.isInteger(raw.v)) continue;
+      const f = def.frames[raw.facing];
+      if (raw.u < 0 || raw.v < 0 || raw.u + f.cols > COLS || raw.v + f.rows > ROWS) continue;
+      const cells = [];
+      for (let u = raw.u; u < raw.u + f.cols; u++) for (let v = raw.v; v < raw.v + f.rows; v++) cells.push(`${u},${v}`);
+      if (cells.some(c => taken.has(c))) continue;
+      cells.forEach(c => taken.add(c));
+      out.push({id: out.length + 1, type: raw.type, u: raw.u, v: raw.v, facing: raw.facing});
+    }
+    return out;
+  }
+  let savedLayout = '';
+  function saveLayout() {
+    const text = JSON.stringify(items.map(({type, u, v, facing}) => ({type, u, v, facing})));
+    if (text === savedLayout) return;
+    savedLayout = text;
+    try { localStorage.setItem(LAYOUT_KEY, text); } catch { /* private mode: layout just isn't kept */ }
+  }
+  const items = loadLayout() || DEFAULT_ITEMS.map(item => ({...item}));
+  savedLayout = JSON.stringify(items.map(({type, u, v, facing}) => ({type, u, v, facing})));
+  let selectedId = null, nextId = items.reduce((m, item) => Math.max(m, item.id), 0) + 1;
   const moveButton = document.getElementById('move-item');
   const editButton = document.getElementById('edit-room');
   const editor = document.getElementById('room-editor');
@@ -36,13 +71,17 @@
   const selected = () => items.find(item => item.id === selectedId);
   const frameOf = item => catalog[item.type].frames[item.facing];
   let showGrid = false;
+  const itemAtCell = (u, v) => items.find(item => {
+    const f = frameOf(item); return u >= item.u && u < item.u + f.cols && v >= item.v && v < item.v + f.rows;
+  });
   const project = (u, v, z = 0) => [origin.x + (u - v) * TILE_WIDTH / 2, origin.y + (u + v) * TILE_HEIGHT / 2 - z];
   const actor=window.RoomCharacter.create({cols:COLS,rows:ROWS,getSeats:()=>items.map(item=>{
     const f=frameOf(item);return {...item,name:catalog[item.type].name,cols:f.cols,rows:f.rows,
       seats:f.seats.map(seat=>({...seat,u:item.u+seat.u,v:item.v+seat.v}))};
-  }).filter(item=>item.seats.length),blocked:(u,v)=>items.some(item=>{
-    const f=frameOf(item);return u>=item.u&&u<item.u+f.cols&&v>=item.v&&v<item.v+f.rows;
-  }),
+  }).filter(item=>item.seats.length),blocked:(u,v)=>!!itemAtCell(u,v),
+  furnitureAt:(u,v)=>itemAtCell(u,v)?.type||null,
+  keep:id=>id==='desk_work'&&!!(window.RoomDesk?.working||window.RoomDesk?.busy)?.(),
+  subPoses:spec=>spec.id==='desk_work'?window.RoomDesk?.poseWeights?.()||null:null,
   // Activity context (time/chrono/mood/missYou/stage/hobbies/history/post-chat bias) and the
   // activity log come from the summon module; without it she still picks activities on defaults.
   getContext:()=>typeof window.RoomActivityContext==='function'?window.RoomActivityContext():null,
@@ -121,7 +160,7 @@
       for (let u = 0; u <= COLS; u++) line([u,0],[u,ROWS],'#7c8061');
       for (let v = 0; v <= ROWS; v++) line([0,v],[COLS,v],'#7c8061');
     }
-    const active = editing ? selected() : null;
+    const active = drag ? drag.item : editing ? selected() : null;
     if (active) {
       const pos = active;
       const f=frameOf(pos);
@@ -145,10 +184,54 @@
         if(d>=depths[target]) {depths[target]=d;output.data.set(f.pixels.subarray(source*4,source*4+4),target*4);}
       }
     }
+    drawDeskProp(output,depths);
     scenePixels=output;sceneDepth=depths;
     drawActor();
   }
 
+  // Her desk work (room_desk.js): a stack of paper while the quest is on the desk, a bound report when done.
+  // Drawn on the right half of the first desk's top (the left half has the notebook).
+  let deskPropKey = '';
+  function drawDeskProp(output, depths) {
+    const kind = window.RoomDesk?.prop?.() || null;
+    deskPropKey = kind || '';
+    const desk = kind && items.find(item => item.type === 'desk');
+    if (!desk) return;
+    const def = {cols: 2, rows: 1}, f = frameOf(desk);
+    const rot = (u, v) => desk.facing === 'right' ? [v, def.cols - u] : desk.facing === 'back-right' ? [def.cols - u, def.rows - v]
+      : desk.facing === 'back-left' ? [def.rows - v, u] : [u, v];
+    const box = (u0, v0, w, d, z, h, top, front, side) => {
+      const a = rot(u0, v0), b = rot(u0 + w, v0 + d);
+      const u = desk.u + Math.min(a[0], b[0]), v = desk.v + Math.min(a[1], b[1]), W = Math.abs(b[0] - a[0]), D = Math.abs(b[1] - a[1]);
+      const fill = (pts, color) => {
+        const P = pts.map(p => project(...p)), depth = Math.max(...pts.map(p => p[0] + p[1] + p[2] / 32)) + .05;
+        const c = [parseInt(color.slice(1, 3), 16), parseInt(color.slice(3, 5), 16), parseInt(color.slice(5, 7), 16)];
+        const y0 = Math.ceil(Math.min(...P.map(p => p[1]))), y1 = Math.ceil(Math.max(...P.map(p => p[1])));
+        for (let y = y0; y < y1; y++) {
+          const hits = [];
+          for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; if ((p[1] <= y && q[1] > y) || (q[1] <= y && p[1] > y)) hits.push(p[0] + (y - p[1]) * (q[0] - p[0]) / (q[1] - p[1])); }
+          hits.sort((m, n) => m - n);
+          for (let i = 0; i + 1 < hits.length; i += 2) for (let x = Math.ceil(hits[i]); x < Math.ceil(hits[i + 1]); x++) {
+            if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
+            const k = y * canvas.width + x; if (depth < depths[k]) continue;
+            depths[k] = depth; output.data.set([...c, 255], k * 4);
+          }
+        }
+      };
+      fill([[u, v + D, z], [u + W, v + D, z], [u + W, v + D, z + h], [u, v + D, z + h]], front);
+      fill([[u + W, v, z], [u + W, v + D, z], [u + W, v + D, z + h], [u + W, v, z + h]], side);
+      fill([[u, v, z + h], [u + W, v, z + h], [u + W, v + D, z + h], [u, v + D, z + h]], top);
+    };
+    if (f.cols + f.rows !== 3) return;
+    if (kind === 'report') {
+      box(1.2, .3, .42, .36, 42, 3, '#fffaf0', '#e4d9c6', '#cdbfa8');
+      box(1.18, .28, .46, .4, 45, 1, '#8c4a3a', '#6f3a2d', '#5d3026');   // bound cover
+      box(1.24, .34, .1, .28, 46, .5, '#e9c98a', '#c8a76a', '#b39258');   // ribbon
+    } else {
+      box(1.22, .3, .4, .34, 42, 4, '#fffdf6', '#e8e0d0', '#d2c7b4');
+      box(1.26, .26, .38, .32, 46, 1, '#fffef9', '#ece4d4', '#d8cdb9');
+    }
+  }
   let actorConcealed = false;
   function drawActor() {
     if(!scenePixels)return;
@@ -183,6 +266,7 @@
     sweat:{ink:[86,150,214],alt:[200,228,250],px:['..#..','.###.','#o###','#####','.###.']},
     talk:{ink:[226,86,124],px:['.#####.','#.....#','#.#.#.#','#.....#','.####..','.#.....']},
     tilde:{ink:[214,140,48],px:['.##....','#..#..#','....##.']},
+    write:{ink:[70,64,80],alt:[232,190,92],px:['.....##','....#o#','...#o#.','..#o#..','.#o#...','##.....']},
   };
   // Bubble anchor: above her head (top of the hair — also right when she lies down), never below her topmost pixel.
   function frameHead(f){
@@ -197,8 +281,14 @@
     f.head=hn?{top:Math.min(top,hairTop),x:hx/hn}:{top:Math.max(0,top),x:f.anchor.x};
     return f.head;
   }
+  const DESK_POSE_ICON={sit_work:'write',sit_scribble:'write',sit_think:'dots',sit_phone:'phone',sit_stretch:'tilde'};
   function drawBubble(output,f,ox,oy){
-    const b=typeof actor.bubble==='function'?actor.bubble():null;
+    let b=typeof actor.bubble==='function'?actor.bubble():null;
+    // At the desk with a quest (room_desk.js): the desk decides (writing / stuck / report done) and it stays up.
+    // While the quest runs the bubble stays up and follows her pose (writing / thinking / stretching).
+    const cur=actor.activity?.(),atDesk=cur&&cur.id==='desk_work'&&actor.state.mode==='sitting';
+    const deskIcon=atDesk&&(window.RoomDesk?.icon?.()||(window.RoomDesk?.busy?.()&&DESK_POSE_ICON[cur.pose]));
+    if(deskIcon)b={icon:deskIcon,alpha:1,t:b?b.t:performance.now()/1000};
     if(!b||!ICONS[b.icon])return;
     const icon=ICONS[b.icon],S=2,gw=icon.px[0].length*S,gh=icon.px.length*S,pad=3;
     const bw=gw+pad*2,bh=Math.max(gh,8)+pad*2;
@@ -273,6 +363,38 @@
     return hers >= frame.depth[index] + item.u + item.v;
   }
   let press = null, longTimer = null;
+  // Long-press a piece of furniture (outside edit mode too) → it follows your finger, snapped to the grid;
+  // release on a free spot to put it there, otherwise it goes back. drag: {item, orig:{u,v}, grab:{du,dv}}
+  let drag = null;
+  let roomTip = () => {};   // set up with the room tip line below
+  function startDrag(item, point) {
+    if (actor.isFurnitureLocked(item.id)) { roomTip('她正在使用這件家具，起身離開後才能移動。'); return false; }
+    const g = groundPoint(point);
+    drag = {item, orig: {u: item.u, v: item.v}, grab: {du: g.u - item.u, dv: g.v - item.v}};
+    try { navigator.vibrate?.(12); } catch { /* */ }
+    roomTip(`拖曳${catalog[item.type].name}，放開就擺好。`, 0);
+    draw();
+    return true;
+  }
+  function moveDrag(point) {
+    const g = groundPoint(point), f = frameOf(drag.item);
+    const u = Math.max(0, Math.min(COLS - f.cols, Math.round(g.u - drag.grab.du)));
+    const v = Math.max(0, Math.min(ROWS - f.rows, Math.round(g.v - drag.grab.dv)));
+    if (u === drag.item.u && v === drag.item.v) return;
+    drag.item.u = u; drag.item.v = v;
+    draw();
+  }
+  function endDrag(commit) {
+    const {item, orig} = drag;
+    const moved = item.u !== orig.u || item.v !== orig.v;
+    const ok = commit && canPlace(item);
+    if (!ok) { item.u = orig.u; item.v = orig.v; }
+    drag = null;
+    const name = catalog[item.type].name;
+    roomTip(!moved ? '' : ok ? `已把${name}移到新位置。` : '那裡有家具、人物或超出房間，已放回原位。');
+    if (status) status.textContent = ok && moved ? `已放好${name}。` : status.textContent;
+    refresh(); draw();
+  }
   const LONG_PRESS_MS = 500, TAP_PX = 8;
   function openPortrait() {
     if (window.RoomPortrait?.open) window.RoomPortrait.open();
@@ -339,6 +461,7 @@
       document.getElementById('item-preview').alt=def.name;
       document.getElementById('turn-item').textContent=`${def.labels[item.facing]} 旋轉`;
     }
+    if (!drag) saveLayout();
     document.getElementById('room-count').textContent=`房間內 ${items.length} 件`;
     const placed=document.getElementById('placed-items');placed.replaceChildren();
     for(const entry of items) {
@@ -439,7 +562,7 @@
   }
   canvas.addEventListener('pointerdown', event => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    if (pointers.size >= 2) return;
+    if (pointers.size >= 2 || drag) return;
     canvas.setPointerCapture(event.pointerId);
     const point = localPoint(event);
     pointers.set(event.pointerId, point);
@@ -459,11 +582,21 @@
       }, LONG_PRESS_MS);
       return;
     }
+    const onItem = !placing ? hitItem(point) : null;
+    if (onItem) {
+      clearLong();
+      longTimer = setTimeout(() => {
+        if (!press || press.id !== event.pointerId || press.moved || pointers.size !== 1) return;
+        press.longFired = true;
+        if (startDrag(onItem, point)) canvas.classList.add('dragging');
+      }, LONG_PRESS_MS);
+    }
     canvas.classList.add('dragging');
   });
   canvas.addEventListener('pointermove', event => {
     if (!pointers.has(event.pointerId)) return;
     const moved = localPoint(event);
+    if (drag && press && press.id === event.pointerId) { pointers.set(event.pointerId, moved); moveDrag(moved); return; }
     if (press && press.id === event.pointerId && Math.hypot(moved.x - press.x, moved.y - press.y) > TAP_PX) {
       press.moved = true;
       clearLong();
@@ -484,6 +617,12 @@
     if (was) { clearLong(); press = null; }
     pointers.delete(event.pointerId);
     if (!pointers.size) canvas.classList.remove('dragging');
+    if (drag && was) { endDrag(event.type === 'pointerup'); return; }
+    // Tap the desk (not editing): her work log / report (room_desk.js).
+    if (was && event.type === 'pointerup' && !was.moved && !was.longFired && !was.actor && !editing && !placing) {
+      const tapped = hitItem(localPoint(event));
+      if (tapped && tapped.type === 'desk' && window.RoomDesk?.openLog) { window.RoomDesk.openLog(); return; }
+    }
     if (!was || event.type !== 'pointerup' || was.moved || was.longFired || was.actor || !editing) return;
     const point = localPoint(event);
     const hit = hitItem(point);
@@ -516,7 +655,7 @@
     refresh(); draw();
   }
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, release);
-  window.addEventListener('blur', () => { pointers.clear(); clearLong(); press = null; canvas.classList.remove('dragging'); });
+  window.addEventListener('blur', () => { if (drag) endDrag(false); pointers.clear(); clearLong(); press = null; canvas.classList.remove('dragging'); });
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
@@ -586,7 +725,11 @@
     syncLook:()=>syncActorLook(true),dollStats:()=>actor.dollStats(),
     // Activities: what she is doing; hold the pose while the chat is open; re-pick after a chat.
     activity:()=>actor.activity(),hold:on=>actor.hold(on),replan:()=>actor.replan(),
-    startActivity:id=>{const ok=actor.startActivity(id);if(ok)resumeActor();return ok;}};
+    startActivity:id=>{const ok=actor.startActivity(id);if(ok)resumeActor();return ok;},
+    forcePose:pose=>actor.forcePose(pose),
+    /** 'sleep' | 'work' → {ok,message} */
+    tip:(text,ms)=>roomTip(text,ms),
+    order:kind=>{const r=actor.order(kind);if(r.ok)resumeActor();else roomTip(r.message);refreshActorControls();return r;}};
   window.RoomView={
     furniture(){
       const counts=new Map();
@@ -605,6 +748,18 @@
     if(result.ok)resumeActor();
     refreshActorControls();draw();
   });
+  // ------------------------------------------------------------------ room tip
+  // One short line over the room canvas (furniture drag). Orders (去睡覺／去工作) are given in chat
+  // (test_room_summon.js → RoomActor.order), not with buttons.
+  const orderTip=document.createElement('p');orderTip.className='room-order-tip';orderTip.setAttribute('role','status');orderTip.setAttribute('aria-live','polite');orderTip.hidden=true;
+  let orderTipTimer=null;
+  /** ms 0 = stays until the next message. */
+  roomTip=(text,ms=2600)=>{
+    clearTimeout(orderTipTimer);
+    orderTip.textContent=text||'';orderTip.hidden=!text;
+    if(text&&ms)orderTipTimer=setTimeout(()=>{orderTip.hidden=true;},ms);
+  };
+  canvas.parentElement.append(orderTip);
   document.getElementById('actor-stand').addEventListener('click',()=>{
     if(actor.standUp())resumeActor();refreshActorControls();draw();
   });
@@ -618,6 +773,8 @@
     if(actor.present)syncActorLook(false);
     actor.update(dt,!actor.present||actorConcealed||!wandering||placing||pointers.size>0);
     refreshActorControls();
+    // Desk prop changed (paper put down / report done / cleared) → redraw the scene.
+    if((window.RoomDesk?.prop?.()||'')!==deskPropKey)draw();
     if(actor.present)drawActor();
   }
   requestAnimationFrame(animate);

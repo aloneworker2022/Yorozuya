@@ -10,6 +10,7 @@
 import asyncio
 import hashlib
 import io
+import base64
 import json
 import os
 import random
@@ -31,10 +32,13 @@ from pydantic import BaseModel
 import comfy
 import cutout
 import daydream as ddream
+import desk_agent
 import discover_bonus
 import jp_news
 import life_agent
 import escort_lines
+import rental_lines
+import rental_scene
 import line_group
 import memos
 import sdtags
@@ -90,6 +94,7 @@ _SHOT_FILE_SUFS = (
     "sex_missionary_orgasm", "sex_doggy_orgasm", "sex_missionary_squirt", "sex_doggy_squirt",
     "sex_missionary_cum", "sex_doggy_cum",
     "sex_missionary_bloodcum", "sex_doggy_bloodcum",
+    *(f"sex_prone_{_st}" for _st in ("thrust", "orgasm", "open", "tip", "cum")),   # pt285u 床鋪背後組
     # 扣陰道／揉子宮口 x-ray 剖面（不分穿衣／裸體，共用一張）
     "tease_vagina_finger", "tease_cervix_rub",
     # 動作圖裸體版（比穿衣版長，先比對）
@@ -132,6 +137,7 @@ SHOT_LABEL_ZH = {
     "sex_missionary_half": "做愛·傳教士插一半", "sex_doggy_half": "做愛·後背插一半",
     "sex_missionary_full": "做愛·傳教士全插入", "sex_doggy_full": "做愛·後背全插入",
     "sex_missionary_thrust": "做愛·傳教士抽插", "sex_doggy_thrust": "做愛·後背抽插",
+    "sex_prone_open": "做愛·趴床背後準備", "sex_prone_tip": "做愛·趴床背後頂住", "sex_prone_thrust": "做愛·趴床背後抽插", "sex_prone_cum": "做愛·趴床背後內射", "sex_prone_orgasm": "做愛·趴床背後高潮",
     "sex_missionary_bloodcum": "做愛·傳教士血精", "sex_doggy_bloodcum": "做愛·後背血精",
     **{f"sex_{_p}_thrust{_n}": f"做愛·{_z}抽插{_n}" for _p, _z in (("missionary", "傳教士"), ("doggy", "後背")) for _n in range(2, 7)},
     "sex_missionary_orgasm": "做愛·傳教士高潮", "sex_doggy_orgasm": "做愛·後背高潮",
@@ -292,6 +298,8 @@ def db() -> sqlite3.Connection:
             conn.execute(stmt)
         except sqlite3.OperationalError:
             pass
+    # 她桌上的工作（agent office）：desk_runs／desk_events（server/desk_agent.py）
+    desk_agent.init(conn)
     return conn
 
 
@@ -1646,6 +1654,12 @@ def _resolve_ref_image(ref: str) -> Path | None:
     name = Path(u).name
     if not name or name in (".", "..") or "/" in name or "\\" in name:
         return None
+    # 綠幕立繪 _ck.png（透明）當參考圖時改用原圖（綠底），img2img 不吃 alpha
+    if u.startswith("/assets/portraits/") and name.lower().endswith("_ck.png"):
+        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+            raw = PORTRAIT_DIR / (name[:-7] + ext)
+            if raw.is_file() and raw.stat().st_size > 0:
+                return raw
     hinted = (
         (POSE_REF_DIR, "/assets/pose_refs/"),
         (PORTRAIT_DIR, "/assets/portraits/"),
@@ -1656,11 +1670,33 @@ def _resolve_ref_image(ref: str) -> Path | None:
         if u.startswith(prefix):
             p = base / name
             return p if p.is_file() and p.stat().st_size > 0 else None
+    if u.startswith("/assets/swap_cafe/"):
+        # 換妻圖庫（只有明確寫這個前綴才找；只取 basename）
+        p = _SWAP_DIR / name
+        return p if Path(name).suffix.lower() in _POSE_EXTS and p.is_file() and p.stat().st_size > 0 else None
     for base, _ in hinted:
         p = base / name
         if p.is_file() and p.stat().st_size > 0:
             return p
     return None
+
+
+def _has_owned(look: dict) -> bool:
+    """look.owned 有＝新制（只穿擁有的）；沒有＝舊存檔，全部視為擁有。"""
+    return isinstance(look.get("owned"), dict)
+
+
+def _owns_outfit(look: dict, kind: str, i: int) -> bool:
+    if not _has_owned(look):
+        return True
+    key = {"e": "erotic", "s": "sleep"}.get(kind, "wardrobe")
+    lst = look["owned"].get(key)
+    if not isinstance(lst, list):
+        return False
+    try:
+        return int(i) in {int(x) for x in lst}
+    except (TypeError, ValueError):
+        return False
 
 
 def _outfit_of(ch: dict) -> str:
@@ -1673,6 +1709,7 @@ def _outfit_of(ch: dict) -> str:
     例外：妻子／女友且未指定 outfitPick 時，若有 eroticOutfits，預設穿第一套
     情色裝（lace／lingerie 名進 prompt），不再強制生涯制服或全裸。
     outfitName 有字、或 outfitPick 為 base，優先於上面兩條（獻祭第一套是白 T）。
+    look.owned（新召喚）在時只穿擁有的那幾套；挑到沒擁有的→生涯服裝→白 T。
     """
     look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
     wardrobe = look.get("wardrobe") if isinstance(look.get("wardrobe"), list) else []
@@ -1693,9 +1730,9 @@ def _outfit_of(ch: dict) -> str:
         extras = look.get("eroticOutfits") if kind == "e" else (
             look.get("sleepOutfits") if kind == "s" else None
         )
-        if isinstance(extras, list) and 0 <= i < len(extras):
+        if isinstance(extras, list) and 0 <= i < len(extras) and _owns_outfit(look, kind, i):
             return str(extras[i] or "")
-    if isinstance(pick, int) and 0 <= pick < len(wardrobe):
+    if isinstance(pick, int) and 0 <= pick < len(wardrobe) and _owns_outfit(look, "w", pick):
         return str(wardrobe[pick] or "")
     # 妻子／女友無明確挑裝：優先情色衣櫃第一套
     stage = str(ch.get("stage") or "").strip().lower()
@@ -1703,11 +1740,17 @@ def _outfit_of(ch: dict) -> str:
         stage = str(ch["relationship"].get("stage") or "").strip().lower()
     if stage in ("wife", "girlfriend"):
         erotic = look.get("eroticOutfits")
-        if isinstance(erotic, list) and erotic:
-            first = str(erotic[0] or "").strip()
-            if first:
-                return first
-    return str(look.get("career_outfit") or look.get("style") or "")
+        if isinstance(erotic, list):
+            for i, item in enumerate(erotic):
+                first = str(item or "").strip()
+                if first and _owns_outfit(look, "e", i):
+                    return first
+    career = str(look.get("career_outfit") or "").strip()
+    if career:
+        return career
+    if _has_owned(look):
+        return "白色 T 恤配三角褲"   # 新制：沒擁有的不穿，style 是衣櫃第一套（品味）不算
+    return str(look.get("style") or "")
 
 
 # 召喚重畫：同一個人（髮色、眼睛、身材、衣服規則不變），但不要每次都是同一張。
@@ -2029,7 +2072,11 @@ async def _run_grok_image(
     staged = {p.resolve() for p in (id_local, pose_local) if p is not None}
     # 去背：extra 補平背景提示
     extra_use = (extra or "").strip()
-    if do_cutout and "simple background" not in extra_use.lower():
+    green = do_cutout and comfy.is_green_portrait_shot(shot_l) and str(scene_kind or "").lower() != "script"
+    if green:
+        extra_use = (extra_use + ", solid flat pure green (#00FF00) chroma-key background, green screen, "
+                     "no scenery, no floor, no shadow").strip(", ")
+    elif do_cutout and "simple background" not in extra_use.lower():
         extra_use = (extra_use + ", plain solid color background, simple background, no scenery").strip(", ")
     if part in IMG_PARTS:
         # prompt_body 有值 = 使用者在 testword 改過的版本,原樣送出(只補存檔路徑/參考圖)
@@ -2096,7 +2143,11 @@ async def _run_grok_image(
     except Exception:
         pass
     if found and found.is_file() and found.stat().st_size > 0:
-        if do_cutout and cutout.AVAILABLE:
+        if green and cutout.AVAILABLE:
+            ck = await _green_key_portrait(found)
+            if ck is not None:
+                fname = ck.name
+        elif do_cutout and cutout.AVAILABLE:
             try:
                 spec = comfy.portrait_shot_spec(shot_l) if shot_l else None
                 border_min = float((spec or {}).get("border_min") or cutout.BORDER_MIN)
@@ -2110,6 +2161,27 @@ async def _run_grok_image(
         return f"{url_dir}/{fname}{ver}", None
     msg = err or (text[:300] if text else "未產生圖片檔")
     return "", f"生圖失敗:{msg}"
+
+
+async def _green_key_portrait(raw: Path) -> Path | None:
+    """主程式立繪綠幕去背：原圖不動，複製成 <stem>_ck.png 再色鍵。
+    成功＝有摳掉、而且四邊綠 ≥ 50%（同換妻 /api/swap 重新去背的判準）→ 回 _ck 路徑；否則刪 _ck、回 None（交原圖）。"""
+    ck = raw.with_name(f"{raw.stem}_ck.png")
+    try:
+        ck.unlink(missing_ok=True)   # 舊的 _ck 是上一張圖的，不能留
+        if not cutout.AVAILABLE:
+            _note_cut(raw.name, False, "沒裝 Pillow（綠幕）")
+            return None
+        shutil.copyfile(raw, ck)
+        changed, why, out = await asyncio.to_thread(cutout.chroma_key, ck)
+        ok = bool(changed) and (cutout.LAST_CHROMA.get("border_green") or 0) >= 0.5
+        _note_cut(raw.name, ok, why if ok else f"綠幕沒摳成、交原圖：{why}")
+        if ok:
+            return out
+    except Exception as e:
+        _note_cut(raw.name, False, f"綠幕 err:{e}")
+    ck.unlink(missing_ok=True)
+    return None
 
 
 # ---- 去背紀錄:摳不掉的原因要看得見 ----
@@ -2133,6 +2205,7 @@ class CutIn(BaseModel):
     tol: int = 0                              # 0 = cutout.TOLERANCE
     border_min: float = 0                     # 0 = 依檔名猜構圖(head 放寬),猜不到用預設
     dilate: int = -1                          # -1 = cutout.DILATE
+    mode: str = ""                            # "chroma" = 綠幕色鍵（換妻咖啡廳立繪）；空 = 原本的白底去背
 
 
 def _asset_path(url: str) -> Path | None:
@@ -2190,6 +2263,8 @@ def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
 def _portrait_owner(stem: str) -> str:
     """檔名 stem → 角色 id。{id}_half / {id}_card_{cardId}。"""
     s = str(stem or "")
+    if s.lower().endswith("_ck"):
+        s = s[:-3]   # 綠幕去背另存的 <stem>_ck.png
     if "_card_" in s:
         return s.split("_card_", 1)[0]
     low = s.lower()
@@ -2467,6 +2542,21 @@ async def cutout_run(body: CutIn):
     p = _asset_path(body.url)
     if p is None:
         raise HTTPException(404, "找不到這張圖(只認 /assets/portraits/ 與 /assets/testword/)")
+    if body.mode == "chroma":
+        # 2026-10-23 不再就地覆寫原圖（以前原圖被摳過、「原圖」連結與重新去背拿到的都是已摳的）：另存 <stem>_ck.png
+        ck = p.with_name(f"{p.stem}_ck.png")
+        if p.stem.endswith("_ck"):
+            ck = p
+        else:
+            shutil.copyfile(p, ck)
+        changed, why, out = await asyncio.to_thread(cutout.chroma_key, ck)
+        if not changed and ck != p:
+            ck.unlink(missing_ok=True); out = p
+        _note_cut(out.name, changed, why)
+        base = body.url.split("?")[0]
+        if out != p:
+            base = base.rsplit("/", 1)[0] + "/" + out.name
+        return {"changed": changed, "why": why, "url": f"{base}?v={int(time.time())}", **cutout.LAST_CHROMA}
     shot_key = _portrait_shot_from_stem(p.stem)
     bmin = body.border_min or (
         (comfy.portrait_shot_spec(shot_key) or {}).get("border_min")
@@ -2547,6 +2637,8 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         # 要去背的那幾張,prompt 先要一塊平背景(見 cutout.py)。
         # 三連拍照規格走;testword 那條由勾選決定。劇本永不 flat_bg。
         flat_bg=want_flat,
+        # 主程式三張立繪：綠幕（同換妻雙人圖），劇本不走
+        green_bg=want_flat and not script_mode and comfy.is_green_portrait_shot(shot),
         part=part,
         framing=fr,
         rating=str(opts.get("rating") or "sfw"),
@@ -2564,8 +2656,104 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         action_first=script_mode,
         garment=comfy.undress_garment(shot),
         # 做愛開場圖：失神（翻白眼／失焦）、後背臉朝另一邊 → 不補立繪預設的 looking at viewer
-        auto_gaze=not comfy.is_solo_pose_shot(shot),
+        # auto_gaze 有明確傳（換妻裸體趴著 false）就照傳；沒傳才沿用舊規則
+        auto_gaze=(not comfy.is_solo_pose_shot(shot)) if opts.get("auto_gaze") is None else bool(opts.get("auto_gaze")),
     )
+
+
+_PAIR_Q_PONY = "score_9, score_8_up, score_7_up, source_anime"
+_PAIR_Q_ILL = "masterpiece, best quality, amazing quality, very aesthetic, absurdres"
+# 2026-10-23 綠幕加強：共同段加權；BREAK 每段各自編碼，綠底只寫在第一段會被稀釋 → 他／她兩段開頭（人數 tag 後）再寫一次
+_PAIR_BG = "(green background:1.3), (simple background:1.2), green screen, chroma key"
+_PAIR_BG_REPEAT = "(green background:1.2)"
+
+
+def _pair_tags(*chunks) -> list[str]:
+    """逗號 tag 串去重（保留順序），去掉 not／no 開頭的否定詞（SD 讀不懂）。"""
+    seen: set[str] = set()
+    out: list[str] = []
+    for ch in chunks:
+        items = ch if isinstance(ch, list) else str(ch or "").split(",")
+        for t in items:
+            t = str(t).strip()
+            if not t or re.match(r"(?i)^(not|no)\s", t) or t.lower() in seen:
+                continue
+            seen.add(t.lower())
+            out.append(t)
+    return out
+
+
+def _pair_her_identity(ch: dict, clothes: str, body) -> list[str]:
+    """2026-10-23 雙人圖 1girl 段的長相：跟單人立繪同一份來源（sdtags.appearance_en_parts＋_identity_anchor 的年齡／膚色、特殊屬性）。
+    年齡、臉型、眼型、瞳色、嘴、髮色、髮型、特徵、特殊屬性、胸（罩杯＋胸型，依穿衣程度）、身材（含孕肚）、身高、膚色。
+    全裸／半脫才加私密部位：乳暈、乳頭、陰毛、陰唇色（各取第一個 tag，最多 4 個；陰唇只有畫到 pussy 的動作）。"""
+    if not ch:
+        return []
+    anchor = _identity_anchor(ch)
+    exposed = clothes in ("nude", "partial")
+    parts, _unk = sdtags.appearance_en_parts(ch, stage="stranger" if not exposed else "", garment="nude" if exposed else "", clothed=not exposed)
+    if not parts.get("bust"):
+        # 舊／簡寫存檔只有字母（"D"）：跟單人立繪的 girlInfo 同一張表，不另外發明
+        cl = str((ch.get("look") or {}).get("cup") or "").strip()[:1].upper()
+        parts["bust"] = {"A": "flat chest", "B": "small breasts", "C": "medium breasts", "D": "large breasts", "E": "huge breasts", "F": "huge breasts"}.get(cl) or ("gigantic breasts" if "G" <= cl <= "Z" else "")
+    sp_over = sdtags.resolve_specials(ch)[1]
+    skin = "" if "skin" in sp_over else sdtags.SKIN.get(anchor["skin"], "")
+    out = [sdtags.age_tags(anchor["age"])] + [parts.get(k, "") for k in
+           ("face", "eyes", "eye_color", "mouth", "hair_color", "hair", "feature", "specials", "bust", "build", "height")] + [skin]
+    if exposed:
+        bt = ",".join(body) if isinstance(body, list) else str(body or "")
+        keys = ["areola", "nipple", "pubic_hair"] + (["labia_color"] if "pussy" in bt else [])
+        if clothes == "partial":
+            keys = [k for k in keys if (k in ("areola", "nipple") and ("nipple" in bt or "breast" in bt)) or (k in ("pubic_hair", "labia_color") and "pussy" in bt)]
+        out += [str(parts.get(k) or "").split(",")[0].strip() for k in keys]
+    seen: set[str] = set()
+    # 2026-10-26 Al：她的長相／部位一律加 her 前綴，避免跟男方特徵混
+    tags = [t for t in (x.strip() for x in ",".join(out).split(",")) if t and not (t.lower() in seen or seen.add(t.lower()))]
+    return [t if re.match(r"(?i)^her\b", t) else f"her {t}" for t in tags]
+
+
+def _pair_prompts(opts: dict) -> tuple[str, str]:
+    """2026-10-23 換妻雙人圖預設 prompt（Al 核可的結構）：共同段 BREAK 她 BREAK 他（2026-10-25 起女子在前）。
+    品質 tag 看模型名（pony 一套、其他 Illustrious／NoobAI 一套，不混）；她的長相從人設翻（身材、髮色髮型、瞳色、1 個特徵、膚色）；
+    2026-10-26：她的段加 her 前綴；男子模型由前端 pairCkpt 傳入。
+    不寫 not／no、不寫自然語句、不加畫風／配色。負向＝前端給的原樣（去重）。"""
+    pr = opts.get("pair") if isinstance(opts.get("pair"), dict) else {}
+    ch = opts.get("character") if isinstance(opts.get("character"), dict) else {}
+    look = ch.get("look") if isinstance(ch.get("look"), dict) else {}
+    q = _PAIR_Q_PONY if "pony" in str(opts.get("ckpt") or "").lower() else _PAIR_Q_ILL
+    tr = lambda table, k: table.get(str(look.get(k) or "").strip(), "")
+    her_cl = str(pr.get("herClothes") or "").strip()
+    if not her_cl and pr.get("dressed"):
+        worn = str(opts.get("outfit") or "").strip() or _outfit_of(ch)
+        her_cl = sdtags.outfit_en(worn) or "casual clothes"
+    # dressed 由伺服器翻的衣服也可能沒 her 前綴
+    if her_cl:
+        her_cl = ", ".join(t if re.match(r"(?i)^her\b", t) else f"her {t}" for t in _pair_tags(her_cl))
+    # 2026-10-25 Al：女子在前、男子在後；2026-10-26 她／他描述已帶 her／male
+    shared = _pair_tags(q, "1girl, 1boy, hetero", str(pr.get("framing") or ""), "from side" if pr.get("fromSide", True) else "", pr.get("shared") or [], _PAIR_BG)
+    male = _pair_tags("1boy", _PAIR_BG_REPEAT, pr.get("male") or [])
+    female = _pair_tags("1girl, adult", _PAIR_BG_REPEAT, _pair_her_identity(ch, str(pr.get("clothes") or ("dressed" if pr.get("dressed") else "nude")), pr.get("body") or []),
+                        pr.get("herPose") or [], pr.get("expr") or [], her_cl, pr.get("body") or [])
+    pos = "\nBREAK\n".join(", ".join(x) for x in (shared, female, male))
+    neg = ", ".join(_pair_tags(str(opts.get("negative") or "")))
+    return pos, neg
+
+
+def _lead_merge(lead: str, prompt: str) -> str:
+    """換妻雙人圖：lead 壓在最前面；2026-10-22 Al：人數寫成有空格的「1 man／1 girl」，伺服器自己加的 1man／1girl 也跟著換（只有帶 lead 的雙人圖）。"""
+    lead = (lead or "").strip()
+    if not lead or not prompt:
+        return prompt
+    swap_n = {"1man": "1 man", "1girl": "1 girl", "1boy": "1 boy"}
+    seen_t: set[str] = set()
+    toks: list[str] = []
+    for tk in f"{lead}, {prompt}".split(","):
+        tk = tk.strip()
+        tk = swap_n.get(tk.lower(), tk)
+        if tk and tk.lower() not in seen_t:
+            seen_t.add(tk.lower())
+            toks.append(tk)
+    return ", ".join(toks)
 
 
 async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
@@ -2600,11 +2788,24 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     # prompt 有值 = 使用者在 testword 改過的版本,原樣送出;留空才由人設現組
     prompt = str(opts.get("prompt") or "").strip()
     sex_strip = str(opts.get("scene_kind") or "").lower() == "sex_strip"
+    pair_neg = None
+    if not prompt and wf is None and isinstance(opts.get("pair"), dict):
+        prompt, pair_neg = _pair_prompts(opts)
     if not prompt and wf is None:
         if sex_strip:
             prompt = str(opts.get("extra") or "").strip()
+        elif opts.get("portrait_break"):
+            # 換妻立繪：身份先組完（extra 清空才不會被當成雙人場面），構圖／表情／綠幕用 BREAK 另編。
+            # 接在同一段後面會被 CLIP 截掉，綠幕和姿勢都畫不出來。
+            pose = str(opts.get("extra") or "").strip()
+            prompt, _ = _comfy_prompt_for({**opts, "extra": ""})
+            if pose:
+                prompt = f"{prompt} BREAK {pose}"
+            prompt = _lead_merge(str(opts.get("lead") or ""), prompt)
         else:
             prompt, _ = _comfy_prompt_for(opts)
+            # 換妻雙人圖：人數／第三人稱 tags 要壓在最前面（模型對開頭權重最高），不然常畫成 POV、男人不見
+            prompt = _lead_merge(str(opts.get("lead") or ""), prompt)
     if not prompt and wf is None:
         return "", "ComfyUI 生圖要有 prompt 或整份 workflow"
     if sex_strip and prompt:
@@ -2632,7 +2833,15 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
     # 想在測試台上看去背效果不必先跑一次召喚。
     want_cut = bool(spec.get("cutout")) if shot else bool(opts.get("cutout"))
     # 畫崩／魔物／幼態 + 卡面 visualNeg／從 visualEn 拆出的 NO xxx。不塞 nude 預設詞。
-    negative = sdtags.negative_for(want_cut, clothed=False, extra_neg=extra_neg)
+    green = bool(shot) and want_cut and comfy.is_green_portrait_shot(shot) \
+        and str(opts.get("scene_kind") or "").strip().lower() != "script"
+    negative = sdtags.negative_for(want_cut, clothed=False, extra_neg=extra_neg, green_bg=green)
+    raw_prompt = bool(opts.get("raw_prompt"))
+    if raw_prompt:
+        # 換妻雙人圖「用這些設定重生」：正負向都原樣（使用者在測試台改的就是最後送出去的）
+        negative = str(opts.get("negative") or "").strip()
+    elif pair_neg is not None:
+        negative = pair_neg
 
     pose_src = _resolve_ref_image(str(opts.get("pose_ref") or ""))
     # 只讓 tease／standee／脫衣場面吃 pose_ref；召喚三連拍／情緒半身表不鎖姿勢參考
@@ -2666,12 +2875,35 @@ async def _run_comfy_image(opts: dict) -> tuple[str, str | None]:
         base=str(opts.get("comfy_url") or ""),
         pose_image=pose_src,
         denoise=float(opts.get("pose_denoise") or 0),
+        # 雙人圖測試台：denoise 0.05–1.0 照使用者給的，不夾到 0.25–0.90
+        denoise_range=(0.05, 1.0) if raw_prompt else None,
     )
     if err:
         return "", err
+    # 2026-10-22 換妻雙人圖：把實際送 ComfyUI 的 prompt／參數存一份在圖旁邊（<圖>.json），/api/swap/cafe/image 登記時帶進紀錄
+    if str(opts.get("lead") or "").strip() or opts.get("pair") or raw_prompt:
+        try:
+            meta = {
+                "positive": prompt, "negative": negative, "ckpt": str(opts.get("ckpt") or ""), "seed": seed,
+                "steps": int(opts.get("steps") or comfy.DEFAULT_STEPS), "cfg": float(opts.get("cfg") or comfy.DEFAULT_CFG),
+                "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER, "clip_skip": comfy.DEFAULT_CLIP_SKIP,
+                "width": gen_w or int(opts.get("width") or comfy.DEFAULT_WIDTH), "height": gen_h or int(opts.get("height") or comfy.DEFAULT_HEIGHT),
+                "denoise": float(opts.get("pose_denoise") or 0) if pose_src is not None else None,
+                "pose_ref": str(opts.get("pose_ref") or "") if pose_src is not None else "",
+                "at": int(time.time()),
+                "raw": raw_prompt,
+            }
+            (out_dir / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
     # 立繪要疊在遊戲畫面上,背景得摳掉。摳不乾淨時 cut_background 會原圖不動
     # ——寧可留著背景,也不要交出一張被啃過的破圖。
-    if want_cut:
+    if want_cut and green:
+        # 綠幕：原圖留著，摳好的另存 _ck.png；摳不成就交原圖
+        ck = await _green_key_portrait(out_dir / fname)
+        if ck is not None:
+            name = ck.name
+    elif want_cut:
         changed, why = await asyncio.to_thread(
             cutout.cut_background, out_dir / fname,
             cutout.TOLERANCE, float(spec.get("border_min") or cutout.BORDER_MIN))
@@ -2961,6 +3193,9 @@ class ImgGenIn(BaseModel):
     key: str | None = None
     model: str = "grok-4.5"
     framing: str = "half"       # half | full(part 有值時忽略)
+    pair: dict | None = None    # 2026-10-23 換妻雙人圖：每段的 tag（_pair_prompts 組成 BREAK 三段），key 要 swap-pair: 開頭
+    raw_prompt: bool = False    # 2026-10-22 換妻雙人圖（key 開頭 swap-pair:）：prompt／negative 原樣送，伺服器一個字都不加
+    lead: str = ""              # 2026-10-22 換妻雙人圖：放在整段 prompt 最前面（例 (1girl, 1boy:1.3)），只有 Comfy 那條用
     rating: str = "sfw"         # sfw | nsfw
     style: str = "anime"        # anime | realistic | pixel
     character: dict | None = None  # 完整人設(優先)
@@ -2997,6 +3232,8 @@ class ImgGenIn(BaseModel):
     vary: bool = False          # 召喚重畫：換 seed、表情微差，不要每次同一張
     # 出卡場景：lock_identity + extra 鎖人設 tags；seed 每次隨機（不可固定，否則每張同圖）
     lock_identity: bool = False
+    portrait_break: bool = False  # 換妻立繪：人設組完後 BREAK 再接 extra（構圖／綠幕）
+    auto_gaze: bool | None = None  # None＝舊規則；False＝不要補 looking at viewer
     comfy_url: str = ""         # ComfyUI 位址。RP5 與 GPU 主機不同機時必填(留空 = 用 COMFY_URL)
     # 召喚三連拍:shot=head|half|full 且有 char_id → 存 assets/portraits/{char_id}_{shot}.png,
     # 尺寸與 seed 由伺服器依規格決定(三張同 seed = 同一張臉)
@@ -3065,6 +3302,21 @@ def imggen_submit(t: ImgGenIn):
     provider=grok-img → 雲端 Grok Build;provider=comfy → Windows 本機 ComfyUI。
     兩條路的產物存在同一個資料夾、同一套命名,相簿不必分開處理。
     """
+    key, ep, opts = _imggen_opts(t)
+    body = GenIn(
+        key=key,
+        endpoint=ep,
+        provider=ep,
+        model=t.model or "grok-4.5",
+        messages=[],  # 參數在 options
+        options=opts,
+        retry=t.retry,
+    )
+    return gen_submit(body)
+
+
+def _imggen_opts(t: ImgGenIn) -> tuple[str, str, dict]:
+    """imggen_submit 的參數整理（2026-10-22 拆出來，換妻雙人圖的 prompt 預覽也用同一份）。"""
     key = (t.key or "").strip() or f"img:{int(time.time() * 1000)}:{uuid.uuid4().hex[:8]}"
     character = t.character if isinstance(t.character, dict) else None
     outfit = (t.outfit or "").strip()
@@ -3085,6 +3337,8 @@ def imggen_submit(t: ImgGenIn):
         or pose_in.startswith("/assets/testword/")
         or pose_in.startswith("/assets/portraits/")
         or pose_in.startswith("/assets/frame_packs/")
+        # 換妻雙人圖：起始圖可以是換妻圖庫（雙人圖／她的半身立繪）
+        or (pose_in.startswith("/assets/swap_cafe/") and key.startswith("swap-pair:"))
     )
     shot_in = (t.shot or "").strip().lower()
     sex_strip = (t.scene_kind or "").strip().lower() == "sex_strip"
@@ -3124,6 +3378,9 @@ def imggen_submit(t: ImgGenIn):
         # Comfy：prompt 有值才原樣送；出卡應留空，讓 _comfy_prompt_for 用人設 + extra
         # Grok：整張圖不吃前端 prompt（只在分段 part、或做愛局部橫幅時吃）
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip) else "",
+        "lead": (t.lead or "").strip()[:400],
+        "raw_prompt": bool(t.raw_prompt) and key.startswith("swap-pair:"),
+        "pair": t.pair if (isinstance(t.pair, dict) and key.startswith("swap-pair:")) else None,
     }
     if ep == "comfy-img":
         # 出卡場景：下單時就寫入隨機 seed，避免 worker 用舊邏輯／固定人設 seed 出同圖
@@ -3148,16 +3405,7 @@ def imggen_submit(t: ImgGenIn):
             "comfy_url": (t.comfy_url or "").strip(),
             "workflow": t.workflow if isinstance(t.workflow, dict) else None,
         })
-    body = GenIn(
-        key=key,
-        endpoint=ep,
-        provider=ep,
-        model=t.model or "grok-4.5",
-        messages=[],  # 參數在 options
-        options=opts,
-        retry=t.retry,
-    )
-    return gen_submit(body)
+    return key, ep, opts
 
 
 class SummonQueueItemIn(BaseModel):
@@ -3969,9 +4217,9 @@ async def _dd_run_portraits(girl: dict, cfg: dict, key: str, on_label) -> dict:
     refresh_seed = secrets.randbelow(2**31 - 1) or 1
     for shot in ("full", "half", "head"):
         await on_label(f"立繪 · {shot}")
-        extra = "plain solid color background, simple background"
+        extra = ""   # 背景交給 prompt builder（三張立繪是綠幕）
         if shot == "half":
-            extra = "half-body portrait, looking at viewer, " + extra
+            extra = "half-body portrait, looking at viewer"
         url = await _dd_image(_dd_img_base(
             girl, cfg, f"{key}:{shot}",
             shot=shot,
@@ -4790,6 +5038,780 @@ async def escort_peek_lines(body: dict):
     return {"lines": row["lines"], "cached": False}
 
 
+@app.post("/api/rental/line")
+async def rental_line(body: dict):
+    """日租女友 LINE（2026-10-13）：一次寫一則。body 見 server/rental_lines.py（side／kind／girl／client／spot／plan／hotel／recent／text…）。
+    回 {text}；模型 20 秒沒回或寫壞 → text 空（手機用句庫）。"""
+    body = body or {}
+    if str(body.get("side") or "") not in ("client", "wife"):
+        raise HTTPException(status_code=400, detail="side 要是 client 或 wife")
+    system, user = rental_lines.prompt(body)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+    except asyncio.TimeoutError:
+        reply = ""
+    return {"text": rental_lines.parse(reply)}
+
+
+@app.post("/api/rental/intent")
+async def rental_intent(body: dict):
+    """日租女友：玩家這句 LINE 是鼓勵／勸阻／普通。回 {intent: encourage|restrain|none|""}（空＝模型沒回，手機用關鍵字）。"""
+    body = body or {}
+    system, user = rental_lines.intent_prompt(str(body.get("side") or ""), str(body.get("text") or ""))
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=8)
+    except asyncio.TimeoutError:
+        reply = ""
+    return {"intent": rental_lines.parse_intent(reply)}
+
+
+@app.post("/api/rental/scene-talk")
+async def rental_scene_talk(body: dict):
+    """日租女友・旅館房間（2026-10-17）：玩家點了她和客人 → 即時寫一段對話（每次重寫、不快取）。
+    body：{venue, loc, pose, phase?（"orgasm"|"cum"：快結束時）, step, cums, girl:{name,stage,family,archetype}, client:{name,build,persona,regular}}。
+    回 {lines:[{side,text}], ai: bool}；模型 20 秒沒回或寫壞 → 固定句庫（ai=false）。"""
+    body = body or {}
+    loc, pose = str(body.get("loc") or ""), str(body.get("pose") or "")
+    if not rental_scene.slot_key(loc, pose):
+        raise HTTPException(status_code=400, detail="loc／pose 不對")
+    system, user = rental_scene.prompt(body)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+    except Exception:
+        reply = ""
+    lines = rental_scene.parse(reply)
+    if lines:
+        return {"lines": lines, "ai": True}
+    return {"lines": rental_scene.fallback(loc, pose, str(body.get("phase") or "")), "ai": False}
+
+
+@app.post("/api/rental/drive-narration")
+async def rental_drive_narration(body: dict):
+    """開車去旅館路上的旁白（2026-10-19）：body {venue, girl:{name}, client:{name,build,persona}} → {text, ai}；20 秒沒回 → 固定句。"""
+    body = body or {}
+    system, user = rental_scene.drive_prompt(body)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+    except Exception:
+        reply = ""
+    text = rental_scene.parse_narration(reply)
+    if text:
+        return {"text": text, "ai": True}
+    return {"text": rental_scene.DRIVE_FALLBACK.get(str(body.get("venue") or ""), rental_scene.DRIVE_FALLBACK["hotel"]), "ai": False}
+
+
+@app.get("/api/rental/scene-images")
+def rental_scene_images():
+    """test_room 生好的旅館圖：{venue: {slot_key: [url, url]}}。"""
+    return {"images": rental_scene.load_manifest(ASSETS_DIR), "slots": list(rental_scene.SLOTS), "venues": list(rental_scene.VENUES)}
+
+
+@app.get("/api/rental/scene-prompts")
+def rental_scene_prompts():
+    """旅館場景圖的提示詞模板（test_room 編輯器存的）。"""
+    return {"prompts": rental_scene.load_prompts(ASSETS_DIR)}
+
+
+@app.put("/api/rental/scene-prompts")
+def rental_scene_prompt_put(body: dict):
+    """存一張圖的模板：body {venue, key:"格#張", tpl:{pos, neg, img2img}|null}（null＝刪掉、回到預設）。"""
+    body = body or {}
+    venue, key = str(body.get("venue") or ""), str(body.get("key") or "")
+    if venue not in rental_scene.VENUES or not rental_scene.image_key_ok(key):
+        raise HTTPException(status_code=400, detail="venue／key 不對（要「格#張」）")
+    data = rental_scene.load_prompts(ASSETS_DIR)
+    tpl = rental_scene.clean_prompt(body.get("tpl"))
+    row = data.setdefault(venue, {})
+    if tpl:
+        row[key] = tpl
+    else:
+        row.pop(key, None)
+    rental_scene.save_prompts(ASSETS_DIR, data)
+    return {"prompts": data}
+
+
+@app.post("/api/rental/scene-images")
+def rental_scene_image_put(body: dict):
+    """把一張生好的圖（/assets/testword/… 或 pose_refs）搬到 assets/rental_scenes/ 並登記到 manifest（testword 會被 GC）。
+    body：{venue, key, slot(0|1), url, owners?:["她id|客人id", "她id|*"]}（有 owners → 只登記到這個她／客人；沒有 → 通用）。"""
+    body = body or {}
+    venue, key = str(body.get("venue") or ""), str(body.get("key") or "")
+    if venue not in rental_scene.VENUES or not rental_scene.allowed_key(key):
+        raise HTTPException(status_code=400, detail="venue／key 不對")
+    src = _asset_path(str(body.get("url") or ""))
+    if src is None:
+        raise HTTPException(status_code=404, detail="找不到圖")
+    slot = max(0, min(rental_scene.SLOTS_PER - 1, int(body.get("slot") or 0)))
+    out_dir = ASSETS_DIR / "rental_scenes"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    owners = [o for o in (body.get("owners") or [body.get("owner") or ""]) if rental_scene.owner_key(str(o))][:2]
+    tag = re.sub(r"[^A-Za-z0-9_-]", "-", str(owners[0]))[:40] + "_" if owners else ""
+    name = f"{venue}_{key}_{slot}_{tag}{int(time.time() * 1000)}{src.suffix.lower() or '.png'}"
+    shutil.copyfile(src, out_dir / name)
+    data = rental_scene.load_manifest(ASSETS_DIR)
+    for o in owners or [""]:
+        rental_scene.put_image(data, venue, key, slot, f"/assets/rental_scenes/{name}", owner=str(o))
+    rental_scene.save_manifest(ASSETS_DIR, data)
+    return {"url": f"/assets/rental_scenes/{name}", "images": data}
+
+
+# ---- 2026-10-21 換妻：咖啡廳半身立繪（test_room）----
+_SWAP_DIR = ASSETS_DIR / "swap_cafe"
+_SWAP_STATE = _SWAP_DIR / "state.json"
+# 2026-10-22 加雙人互動圖 pair~<動作>（owner＝她 id.couple id）
+# 2026-10-23 加玩家對對方妻子的動作圖 tease~<動作>(~nude) 與做愛步驟 sex~<姿勢>~<步驟>（owner＝couple id）
+_SWAP_EXPR = r"normal|shy|happy|startled|erotic|tipsy|under|nude|nude_ero|nude_ahe|nude_prone|nude_spread|nude_normal|nude_shy|nude_happy|nude_startled"
+_SWAP_KEY = re.compile(r"^((wife|husband|other)~(" + _SWAP_EXPR + r")|(wife|other)~(climax|creampie)|pair~(chat|kiss|grope|fellatio|cunni|room_kiss|bath_kiss|afterglow)|pair~(normal|behind|seated|prone)~(1|2|3)|pair~fellatio~3"
+                       r"|tease~(waist|butt|breast|breast_knead|breast_suck|nipple_lick|labia|labia_rub|oral|finger_in|vagina_finger|cervix_rub)(~nude|~under)?"
+                       r"|sex~(missionary|doggy|cowgirl|prone)~(open|tip|join|thrust|cum|orgasm))$")   # 交配三個動作兩格（輪播）
+_SWAP_OWNER = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
+
+
+_SWAP_LOCK = threading.RLock()   # pt295u：state.json 讀改寫要鎖，不然產圖執行緒和網頁同時寫會互蓋（立繪「生好卻不見」）
+
+
+def _swap_parse(path: Path) -> dict | None:
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(d, dict):
+            return {"couples": d.get("couples") or {}, "current": d.get("current") or "", "prompts": d.get("prompts") or {}, "images": d.get("images") or {}, "edits": d.get("edits") or {}}
+    except Exception:
+        pass
+    return None
+
+
+def _swap_load() -> dict:
+    # pt319u：state.json 壞掉（兩個寫入者同時寫同一個 .tmp）以前會回「空的」→ 下一次存檔把所有已生的圖紀錄洗掉 → 預產圖「生了卻沒用」。
+    # 現在讀不到就退回上一份好的備份（.bak），再不行才空。
+    with _SWAP_LOCK:
+        d = _swap_parse(_SWAP_STATE)
+        if d is None and _SWAP_STATE.exists():
+            d = _swap_parse(_SWAP_STATE.with_suffix(".bak"))
+            if d is not None:
+                print("[換妻] state.json 讀不到，改用 state.bak", flush=True)
+        if d is None:
+            d = {"couples": {}, "current": "", "prompts": {}, "images": {}, "edits": {}}
+        _swap_recover(d)
+        return d
+
+
+def _swap_save(d: dict) -> None:
+    with _SWAP_LOCK:
+        _SWAP_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _SWAP_STATE.with_name(f"state.{os.getpid()}.{threading.get_ident()}.tmp")   # pt319u：每個寫入者自己的 tmp
+        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+        if _SWAP_STATE.exists() and _swap_parse(_SWAP_STATE) is not None:
+            try:
+                shutil.copyfile(_SWAP_STATE, _SWAP_STATE.with_suffix(".bak"))
+            except Exception:
+                pass
+        tmp.replace(_SWAP_STATE)
+
+
+_SWAP_FILE_RE = re.compile(r"^(.+)_(\d{13})_(raw|cut)\.(png|jpg|jpeg|webp)$")
+
+
+def _swap_recover(d: dict) -> None:
+    """pt319u：圖檔在 assets/swap_cafe/ 但 state.json 紀錄被別的寫入者蓋掉（「生好卻不見」）→ 依檔名 <owner>_<key>_<ms>_raw|cut 補回紀錄（只補缺的，不覆蓋）。
+    另外補伺服器預產雙人圖缺的 seed（以前 _pregen_store 沒存 seed → pairCut 把所有 ~2 格當沒有）。"""
+    try:
+        imgs = d.setdefault("images", {})
+        try:   # 不拿 _PREGEN_LOCK（retry 會先拿 PREGEN 再讀 swap，反過來拿會死結）
+            pg = json.loads((_SWAP_DIR / "pregen.json").read_text(encoding="utf-8"))
+        except Exception:
+            pg = {}
+        jobs = [j for b in ("date", "hotel") for j in (((pg or {}).get(b) or {}).get("jobs") or []) if isinstance(j, dict)]
+        owners = set(imgs) | set(d.get("couples") or {}) | {str(j.get("owner") or "") for j in jobs}
+        owners.discard("")
+        san = {re.sub(r"[^A-Za-z0-9_-]", "-", o): o for o in owners}
+        try:
+            names = os.listdir(_SWAP_DIR)
+        except Exception:
+            names = []
+        sig = (len(names), max((n for n in names), default=""), len(jobs))
+        if _SWAP_RECOVER_SIG.get("sig") != sig:
+            best: dict = {}
+            for n in names:
+                m = _SWAP_FILE_RE.match(n)
+                if not m or len(m.group(1)) >= 80:
+                    continue
+                stem, ms, kind = m.group(1), int(m.group(2)), m.group(3)
+                for so, o in san.items():
+                    if stem.startswith(so + "_"):
+                        key = stem[len(so) + 1:].replace("-", "~")
+                        if _SWAP_KEY.match(key):
+                            b = best.setdefault((o, key), {"ms": 0})
+                            if ms > b["ms"]:
+                                best[(o, key)] = b = {"ms": ms}
+                            if ms == b["ms"]:
+                                b[kind] = f"/assets/swap_cafe/{n}"
+                        break
+            _SWAP_RECOVER_SIG["sig"], _SWAP_RECOVER_SIG["best"] = sig, best
+        for (o, key), b in (_SWAP_RECOVER_SIG.get("best") or {}).items():
+            have = (imgs.get(o) or {}).get(key)
+            if isinstance(have, dict) and have.get("cut"):
+                continue
+            raw = b.get("raw") or b.get("cut")
+            if not raw:
+                continue
+            imgs.setdefault(o, {})[key] = {"raw": raw, "cut": b.get("cut") or raw, "at": b["ms"] // 1000, "recovered": True}
+            if (o, key) not in _SWAP_RECOVER_SAID:
+                _SWAP_RECOVER_SAID.add((o, key))
+                print(f"[換妻] 補回圖紀錄 {o} {key}", flush=True)
+        for j in jobs:
+            o, key = str(j.get("owner") or ""), str(j.get("key") or "")
+            r = (imgs.get(o) or {}).get(key)
+            seed = (j.get("body") or {}).get("seed")
+            if key.startswith("pair~") and isinstance(r, dict) and not r.get("seed") and isinstance(seed, int) and seed > 0:
+                r["seed"] = seed
+    except Exception as e:
+        print(f"[換妻] 補圖紀錄失敗：{e}", flush=True)
+
+
+_SWAP_RECOVER_SIG: dict = {}
+_SWAP_RECOVER_SAID: set = set()
+
+
+@app.get("/api/swap/cafe")
+def swap_cafe_state():
+    """換妻咖啡廳：對方夫妻檔案、每張圖的提示詞模板、已生的圖（raw＋去背）。"""
+    return _swap_load()
+
+
+@app.put("/api/swap/cafe/couple")
+def swap_cafe_couple(body: dict):
+    """存一對對方夫妻：body {couple:{id, husband, wife}}，並設為目前這對。"""
+    c = (body or {}).get("couple")
+    if not isinstance(c, dict) or not _SWAP_OWNER.match(str(c.get("id") or "")):
+        raise HTTPException(status_code=400, detail="couple.id 不對")
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        d["couples"][str(c["id"])] = {k: c.get(k) for k in ("id", "husband", "wife", "at")}
+        d["current"] = str(c["id"])
+        _swap_save(d)
+    return d
+
+
+@app.put("/api/swap/cafe/prompt")
+def swap_cafe_prompt(body: dict):
+    """存一張圖的模板：body {key:"角色~表情", tpl:{pos,neg,img2img}|null}（null＝回預設）。"""
+    body = body or {}
+    key = str(body.get("key") or "")
+    if not _SWAP_KEY.match(key):
+        raise HTTPException(status_code=400, detail="key 不對（wife|husband|other ~ normal|shy）")
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        tpl = rental_scene.clean_prompt(body.get("tpl"))
+        if tpl:
+            d["prompts"][key] = tpl
+        else:
+            d["prompts"].pop(key, None)
+        _swap_save(d)
+    return d
+
+
+def _swap_copy(url: str, data_b64: str, name: str) -> str:
+    _SWAP_DIR.mkdir(parents=True, exist_ok=True)
+    if data_b64:
+        raw = base64.b64decode(data_b64.split(",", 1)[-1])
+        if len(raw) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="圖太大")
+        (_SWAP_DIR / f"{name}.png").write_bytes(raw)
+        return f"/assets/swap_cafe/{name}.png"
+    src = _asset_path(url)
+    if src is None:
+        raise HTTPException(status_code=404, detail="找不到圖")
+    out = f"{name}{src.suffix.lower() or '.png'}"
+    shutil.copyfile(src, _SWAP_DIR / out)
+    return f"/assets/swap_cafe/{out}"
+
+
+def _cutinfo_clean(c) -> dict | None:
+    """去背結果（前端／伺服器量的）：{ok, how, border_green 0–1, removed 0–1, why}。"""
+    if not isinstance(c, dict):
+        return None
+    out: dict = {"ok": bool(c.get("ok")), "how": str(c.get("how") or "")[:40], "why": str(c.get("why") or "")[:200]}
+    for k in ("border_green", "removed"):
+        try:
+            out[k] = max(0.0, min(1.0, float(c.get(k))))
+        except (TypeError, ValueError):
+            out[k] = None
+    return out
+
+
+@app.post("/api/swap/cafe/recut")
+async def swap_cafe_recut(body: dict):
+    """雙人圖「重新去背」：拿已存的原圖重跑綠幕色鍵（不重生），換掉 cut。body {owner, key, cut_data?（瀏覽器去背的 PNG dataURL）, cutinfo?}。
+    沒給 cut_data → 伺服器色鍵；回 {changed, why, border_green, removed, images}。"""
+    body = body or {}
+    owner, key = str(body.get("owner") or ""), str(body.get("key") or "")
+    if not _SWAP_OWNER.match(owner) or not _PAIR_KEY.match(key):
+        raise HTTPException(status_code=400, detail="owner／key 不對")
+    d = _swap_load()
+    rec = (d["images"].get(owner) or {}).get(key)
+    if not isinstance(rec, dict) or not str(rec.get("raw") or "").startswith("/assets/swap_cafe/"):
+        raise HTTPException(status_code=404, detail="這張還沒有原圖")
+    src = _SWAP_DIR / Path(str(rec["raw"]).split("?")[0]).name
+    if not src.is_file():
+        raise HTTPException(status_code=404, detail="原圖檔不見了")
+    stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}_cut"
+    if body.get("cut_data"):
+        url = _swap_copy("", str(body["cut_data"]), stem)
+        info = _cutinfo_clean(body.get("cutinfo")) or {"ok": True, "how": "瀏覽器綠幕去背"}
+        changed, why = True, info.get("why") or "瀏覽器綠幕去背"
+    else:
+        tmp = _SWAP_DIR / f"{stem}{src.suffix.lower() or '.png'}"
+        shutil.copyfile(src, tmp)
+        changed, why, out = await asyncio.to_thread(cutout.chroma_key, tmp)
+        if out != tmp:
+            tmp.unlink(missing_ok=True)
+        url = f"/assets/swap_cafe/{out.name}"
+        info = {"ok": bool(changed) and (cutout.LAST_CHROMA.get("border_green") or 0) >= 0.5, "how": "伺服器綠幕去背", "why": why, **cutout.LAST_CHROMA}
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        r2 = d["images"].setdefault(owner, {}).setdefault(key, rec)
+        r2["cut"], r2["cutinfo"] = url, info
+        _swap_save(d)
+    return {"changed": changed, "why": why, **{k: info.get(k) for k in ("border_green", "removed")}, "images": d["images"]}
+
+
+@app.post("/api/swap/cafe/image")
+def swap_cafe_image(body: dict):
+    """登記一張半身立繪：body {owner（她 id 或 couple id）, key, raw（url）, cut（url）| cut_data（dataURL PNG，瀏覽器去背）}。"""
+    body = body or {}
+    owner, key = str(body.get("owner") or ""), str(body.get("key") or "")
+    if not _SWAP_OWNER.match(owner) or not _SWAP_KEY.match(key):
+        raise HTTPException(status_code=400, detail="owner／key 不對")
+    stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}"
+    raw = _swap_copy(str(body.get("raw") or ""), "", stem + "_raw") if body.get("raw") else ""
+    cut = _swap_copy(str(body.get("cut") or ""), str(body.get("cut_data") or ""), stem + "_cut") if (body.get("cut") or body.get("cut_data")) else ""
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        rec = {"raw": raw, "cut": cut or raw, "at": int(time.time())}
+        # 雙人圖：生圖時存在原圖旁邊的實際 prompt／參數（<原圖>.json）帶進來；前端給的生圖秒數也存
+        try:
+            src = _asset_path(str(body.get("raw") or "").split("?")[0]) if body.get("raw") else None
+            side = src.with_name(src.name + ".json") if src is not None else None
+            if side is not None and side.is_file():
+                rec["gen"] = json.loads(side.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        ci = _cutinfo_clean(body.get("cutinfo"))
+        if ci:
+            rec["cutinfo"] = ci
+        try:
+            if float(body.get("sec") or 0) > 0:
+                rec.setdefault("gen", {})["sec"] = float(body["sec"])
+        except (TypeError, ValueError):
+            pass
+        try:
+            if int(body.get("seed") or 0) > 0:
+                rec["seed"] = int(body["seed"])   # 雙人兩格：第 2 格沿用第 1 格的 seed
+        except (TypeError, ValueError):
+            pass
+        d["images"].setdefault(owner, {})[key] = rec
+        _swap_save(d)
+    return {"raw": raw, "cut": cut or raw, "images": d["images"]}
+
+
+# ---- 換妻書籤產圖：網頁關掉也繼續（佇列在這台，不在瀏覽器）----
+_PREGEN_PATH = _SWAP_DIR / "pregen.json"
+_pregen_wake = asyncio.Event()
+_PREGEN_LOOP: asyncio.AbstractEventLoop | None = None
+_PREGEN_LOCK = threading.RLock()
+_IMG_FIELDS = set(ImgGenIn.model_fields)
+
+
+def _pregen_kick() -> None:
+    loop = _PREGEN_LOOP
+    if loop is not None and loop.is_running():
+        loop.call_soon_threadsafe(_pregen_wake.set)
+    else:
+        _pregen_wake.set()
+
+
+def _pregen_load() -> dict:
+    with _PREGEN_LOCK:
+        try:
+            d = json.loads(_PREGEN_PATH.read_text(encoding="utf-8"))
+            if isinstance(d, dict):
+                d.setdefault("token", 0)
+                return d
+        except Exception:
+            pass
+        return {"token": 0, "date": None, "hotel": None}
+
+
+def _pregen_save(d: dict) -> None:
+    with _PREGEN_LOCK:
+        _SWAP_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _PREGEN_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(_PREGEN_PATH)
+
+
+def _swap_have(owner: str, key: str) -> bool:
+    rec = (_swap_load().get("images") or {}).get(owner) or {}
+    r = rec.get(key) if isinstance(rec, dict) else None
+    return isinstance(r, dict) and bool(r.get("cut"))
+
+
+def _img_in(body: dict) -> ImgGenIn:
+    data = {k: v for k, v in (body or {}).items() if k in _IMG_FIELDS}
+    return ImgGenIn(**data)
+
+
+def _gen_row(key: str):
+    with db() as conn:
+        return conn.execute("SELECT status, result, error FROM gen_tasks WHERE key=?", (key,)).fetchone()
+
+
+def _bucket_view(rec) -> dict:
+    if not isinstance(rec, dict) or not rec.get("jobs"):
+        return {"active": False, "status": "idle", "total": 0, "done": 0, "jobs": [], "coupleId": "", "wifeId": "", "price": 0, "names": {}}
+    jobs = rec.get("jobs") or []
+    done = sum(1 for j in jobs if j.get("status") == "done")
+    err = [j for j in jobs if j.get("status") == "error"]
+    pend = [j for j in jobs if j.get("status") in ("pending", "running")]
+    if done == len(jobs):
+        status = "ready"
+    elif err and not pend:
+        status = "error"
+    else:
+        status = "running"
+    names = rec.get("names") if isinstance(rec.get("names"), dict) else {}
+    return {
+        "active": not rec.get("hidden"),
+        "status": status,
+        "total": len(jobs),
+        "done": done,
+        "coupleId": rec.get("coupleId") or "",
+        "wifeId": rec.get("wifeId") or "",
+        "price": int(rec.get("price") or 0),
+        "names": {k: str(names.get(k) or "")[:40] for k in ("wife", "husband", "other")},
+        "jobs": [{"key": j.get("key") or "", "status": j.get("status") or "", "error": str(j.get("error") or "")[:200]} for j in jobs],
+    }
+
+
+def _pregen_public(d: dict) -> dict:
+    return {"token": int(d.get("token") or 0), "date": _bucket_view(d.get("date")), "hotel": _bucket_view(d.get("hotel"))}
+
+
+def _pregen_mark(bucket: str, owner: str, key: str, status: str, error: str, gen_key: str | None = None) -> None:
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        rec = d.get(bucket)
+        if not isinstance(rec, dict):
+            return
+        for j in rec.get("jobs") or []:
+            if j.get("owner") == owner and j.get("key") == key:
+                j["status"] = status
+                j["error"] = error
+                if gen_key is not None:
+                    j["genKey"] = gen_key
+                break
+        _pregen_save(d)
+
+
+def _pregen_store(owner: str, key: str, raw_url: str, seed: int = 0) -> None:
+    """原圖抄進換妻圖庫，再綠幕去背。去背沒有綠也把原圖當立繪，免得整批卡死。"""
+    stem = re.sub(r"[^A-Za-z0-9_-]", "-", f"{owner}_{key}")[:80] + f"_{int(time.time() * 1000)}"
+    raw = _swap_copy(raw_url, "", stem + "_raw")
+    src = _SWAP_DIR / Path(raw.split("?")[0]).name
+    cut_path = _SWAP_DIR / f"{stem}_cut.png"
+    shutil.copyfile(src, cut_path)
+    if key.startswith(("tease~", "sex~")):   # pt321u：動作／做愛圖是整張場景圖，不去背（同瀏覽器 cut=raw）
+        cut_path.unlink(missing_ok=True)
+        with _SWAP_LOCK:
+            d = _swap_load()
+            d["images"].setdefault(owner, {})[key] = {"raw": raw, "cut": raw, "at": int(time.time())}
+            _swap_save(d)
+        return
+    try:
+        changed, _why, out = cutout.chroma_key(cut_path)
+        cut_file = out if changed else src
+    except Exception:
+        cut_file = src
+        changed = False
+    if cut_file.resolve() != src.resolve():
+        cut = f"/assets/swap_cafe/{cut_file.name}"
+    else:
+        cut = raw
+    if not changed and cut_path.is_file() and cut_path.resolve() != src.resolve():
+        cut_path.unlink(missing_ok=True)
+    with _SWAP_LOCK:
+        d = _swap_load()
+        rec = {"raw": raw, "cut": cut, "at": int(time.time())}
+        if seed:
+            rec["seed"] = int(seed)   # pt319u：雙人第 2 格要跟第 1 格同 seed 才會被 pairCut 採用；以前沒存 → 所有預產 ~2 都被丟掉
+        d["images"].setdefault(owner, {})[key] = rec
+        _swap_save(d)
+
+
+def _clean_jobs(jobs_in) -> list[dict]:
+    if not isinstance(jobs_in, list) or not jobs_in or len(jobs_in) > 300:
+        raise HTTPException(status_code=400, detail="jobs 不對")
+    clean = []
+    for j in jobs_in:
+        if not isinstance(j, dict):
+            raise HTTPException(status_code=400, detail="jobs 不對")
+        owner, key = str(j.get("owner") or ""), str(j.get("key") or "")
+        if not _SWAP_OWNER.match(owner) or not _SWAP_KEY.match(key):
+            raise HTTPException(status_code=400, detail=f"owner／key 不對：{key}")
+        if not isinstance(j.get("body"), dict):
+            raise HTTPException(status_code=400, detail="缺生圖內容")
+        have = _swap_have(owner, key)
+        clean.append({"owner": owner, "key": key, "body": j["body"], "status": "done" if have else "pending", "error": "", "genKey": ""})
+    return clean
+
+
+@app.get("/api/swap/pregen")
+def swap_pregen_state():
+    """書籤進度。網頁關掉再打開，看的就是這份。"""
+    return _pregen_public(_pregen_load())
+
+
+@app.post("/api/swap/pregen")
+def swap_pregen_post(body: dict):
+    """排進一組立繪。bucket=date 是赴約前那 15 張；hotel 是進旅館才補的裸體。date 會換掉上一對。"""
+    body = body or {}
+    bucket = str(body.get("bucket") or "date")
+    if bucket not in ("date", "hotel"):
+        raise HTTPException(status_code=400, detail="bucket 不對")
+    names = body.get("names") if isinstance(body.get("names"), dict) else {}
+    rec = {
+        "coupleId": str(body.get("coupleId") or "")[:80],
+        "wifeId": str(body.get("wifeId") or "")[:80],
+        "price": int(body.get("price") or 0),
+        "names": {k: str(names.get(k) or "")[:40] for k in ("wife", "husband", "other")},
+        "hidden": False,
+        "jobs": _clean_jobs(body.get("jobs")),
+    }
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        if bucket == "date":
+            d["token"] = int(d.get("token") or 0) + 1
+            d["hotel"] = None
+        elif isinstance(d.get("hotel"), dict) and d["hotel"].get("coupleId") == rec["coupleId"]:
+            old = {(j.get("owner"), j.get("key")): j for j in d["hotel"].get("jobs") or []}
+            merged = []
+            for j in rec["jobs"]:
+                prev = old.get((j["owner"], j["key"]))
+                if prev and prev.get("status") in ("done", "running", "pending") and (prev.get("status") == "done" or prev.get("genKey")):
+                    merged.append(prev)
+                else:
+                    merged.append(j)
+            rec["jobs"] = merged
+        d[bucket] = rec
+        _pregen_save(d)
+        pub = _pregen_public(d)
+    _pregen_kick()
+    return pub
+
+
+@app.post("/api/swap/pregen/retry")
+def swap_pregen_retry(body: dict):
+    body = body or {}
+    bucket = str(body.get("bucket") or "date")
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        rec = d.get(bucket)
+        if not isinstance(rec, dict):
+            raise HTTPException(status_code=404, detail="沒有這批圖")
+        for j in rec.get("jobs") or []:
+            if j.get("status") == "error":
+                j["status"] = "done" if _swap_have(j.get("owner") or "", j.get("key") or "") else "pending"
+                j["error"] = ""
+                j["genKey"] = ""
+                j["tries"] = 0
+        _pregen_save(d)
+        pub = _pregen_public(d)
+    _pregen_kick()
+    return pub
+
+
+@app.post("/api/swap/pregen/cancel")
+def swap_pregen_cancel():
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        d["token"] = int(d.get("token") or 0) + 1
+        # pt303u：排在 gen_tasks 還沒開始的一起撤掉，取消後不再生
+        keys = [str(j.get("genKey")) for b in ("date", "hotel") for j in ((d.get(b) or {}).get("jobs") or []) if j.get("genKey")]
+        if keys:
+            with db() as conn:
+                conn.executemany("DELETE FROM gen_tasks WHERE key=? AND status='pending'", [(k,) for k in keys])
+        d["date"] = None
+        d["hotel"] = None
+        _pregen_save(d)
+        pub = _pregen_public(d)
+    _pregen_kick()
+    return pub
+
+
+@app.post("/api/swap/pregen/enter")
+def swap_pregen_enter():
+    """赴約之後書籤收起來。圖留著。"""
+    with _PREGEN_LOCK:
+        d = _pregen_load()
+        if isinstance(d.get("date"), dict):
+            d["date"]["hidden"] = True
+            _pregen_save(d)
+        return _pregen_public(d)
+
+
+async def _pregen_one(bucket: str, owner: str, key: str, token: int) -> None:
+    d = _pregen_load()
+    if bucket == "date" and int(d.get("token") or 0) != token:
+        return
+    rec = d.get(bucket)
+    job = next((j for j in (rec.get("jobs") if isinstance(rec, dict) else []) or [] if j.get("owner") == owner and j.get("key") == key), None)
+    if not job or job.get("status") == "done":
+        return
+    if _swap_have(owner, key):
+        _pregen_mark(bucket, owner, key, "done", "")
+        return
+    gen_key = str(job.get("genKey") or "")
+    try:
+        if not gen_key:
+            body = dict(job.get("body") or {})
+            body["retry"] = True
+            body["key"] = str(body.get("key") or f"swap-pregen:{owner}:{key}:{token}")
+            gen_key = imggen_submit(_img_in(body))["key"]
+            _pregen_mark(bucket, owner, key, "running", "", gen_key)
+        else:
+            _pregen_mark(bucket, owner, key, "running", "", gen_key)
+        deadline = time.time() + 900
+        while time.time() < deadline:
+            if bucket == "date" and int(_pregen_load().get("token") or 0) != token:
+                return
+            row = _gen_row(gen_key)
+            if row and row[0] == "done" and row[1]:
+                if bucket == "date" and int(_pregen_load().get("token") or 0) != token:
+                    return
+                seed = (job.get("body") or {}).get("seed")
+                await asyncio.to_thread(_pregen_store, owner, key, str(row[1]).split("|")[0], seed if isinstance(seed, int) else 0)
+                _pregen_mark(bucket, owner, key, "done", "")
+                print(f"[換妻產圖] {key} 好了", flush=True)
+                return
+            if row and row[0] == "error":
+                # pt295u：ComfyUI 偶發失敗（逾時、連線、stale running）以前一次就判死 → 換 seed 自動重試 2 次
+                tries = int(job.get("tries") or 0) + 1
+                print(f"[換妻產圖] {key} 失敗（第 {tries} 次）：{row[2]}", flush=True)
+                if tries < 3:
+                    with _PREGEN_LOCK:
+                        d2 = _pregen_load()
+                        for j2 in (d2.get(bucket) or {}).get("jobs") or []:
+                            if j2.get("owner") == owner and j2.get("key") == key:
+                                j2["tries"] = tries
+                                j2["genKey"] = ""
+                                j2["status"] = "pending"
+                                b2 = dict(j2.get("body") or {})
+                                if not key.startswith("pair~"):   # pt319u：雙人格重試保留 seed，不然第 2 格對不上第 1 格
+                                    b2["seed"] = random.randint(1, 2**31 - 1)
+                                b2["key"] = f"swap-pregen:{owner}:{key}:{token}:r{tries}"
+                                j2["body"] = b2
+                        _pregen_save(d2)
+                    return
+                _pregen_mark(bucket, owner, key, "error", str(row[2] or "生圖失敗")[:200])
+                return
+            await asyncio.sleep(2)
+        _pregen_mark(bucket, owner, key, "error", "逾時")
+    except Exception as e:
+        _pregen_mark(bucket, owner, key, "error", str(e)[:200])
+        print(f"[換妻產圖] {key} 失敗：{e}", flush=True)
+
+
+async def _swap_pregen_loop() -> None:
+    global _PREGEN_LOOP
+    _PREGEN_LOOP = asyncio.get_running_loop()
+    print("[換妻產圖] 書籤佇列啟動（離開網頁也會繼續）", flush=True)
+    while True:
+        try:
+            d = _pregen_load()
+            token = int(d.get("token") or 0)
+            found = None
+            for bucket in ("date", "hotel"):
+                rec = d.get(bucket)
+                if not isinstance(rec, dict):
+                    continue
+                for j in rec.get("jobs") or []:
+                    if j.get("status") in ("pending", "running"):
+                        found = (bucket, str(j.get("owner") or ""), str(j.get("key") or ""))
+                        break
+                if found:
+                    break
+            if not found:
+                _pregen_wake.clear()
+                try:
+                    await asyncio.wait_for(_pregen_wake.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    pass
+                continue
+            await _pregen_one(found[0], found[1], found[2], token)
+        except Exception as e:
+            print(f"[換妻產圖] 佇列例外（會續跑）：{e}", flush=True)
+            await asyncio.sleep(3)
+
+
+# ---- 2026-10-22 換妻雙人圖測試台：每張圖自己的設定（正負向原文、seed／steps／cfg、起始圖＋denoise）＋預設 prompt 預覽 ----
+_PAIR_KEY = re.compile(r"^pair~(chat|kiss|grope|fellatio|cunni|room_kiss|bath_kiss|afterglow|(normal|behind|seated|prone)~(1|2|3)|fellatio~3)$")
+_PAIR_REF_PREFIX = ("/assets/swap_cafe/", "/assets/pose_refs/", "/assets/portraits/")
+
+
+def _pair_edit_clean(e) -> dict | None:
+    if not isinstance(e, dict):
+        return None
+    out: dict = {"pos": str(e.get("pos") or "")[:8000], "neg": str(e.get("neg") or "")[:8000]}
+    ref = str(e.get("ref") or "").split("?")[0]
+    out["ref"] = ref if ref.startswith(_PAIR_REF_PREFIX) and ".." not in ref else ""
+    for k, lo, hi, cast in (("denoise", 0.05, 1.0, float), ("cfg", 1.0, 30.0, float), ("steps", 1, 150, int), ("seed", 0, 2**31 - 1, int)):
+        try:
+            v = e.get(k)
+            out[k] = None if v in (None, "") else max(lo, min(hi, cast(v)))
+        except (TypeError, ValueError):
+            out[k] = None
+    return out if (out["pos"].strip() or out["neg"].strip()) else None
+
+
+@app.put("/api/swap/cafe/edit")
+def swap_cafe_edit(body: dict):
+    """存一張雙人圖的測試台設定：body {owner, key:"pair~…", edit:{pos,neg,ref,denoise,seed,steps,cfg}|null（null＝回預設）}。"""
+    body = body or {}
+    owner, key = str(body.get("owner") or ""), str(body.get("key") or "")
+    if not _SWAP_OWNER.match(owner) or not _PAIR_KEY.match(key):
+        raise HTTPException(status_code=400, detail="owner／key 不對")
+    with _SWAP_LOCK:   # pt319u：所有改 state.json 的都要鎖
+        d = _swap_load()
+        e = _pair_edit_clean(body.get("edit"))
+        if e:
+            d["edits"].setdefault(owner, {})[key] = e
+        else:
+            d["edits"].get(owner, {}).pop(key, None)
+        _swap_save(d)
+    return d
+
+
+@app.post("/api/swap/pair/preview")
+def swap_pair_preview(t: ImgGenIn):
+    """雙人圖的預設 prompt：照生圖同一條路組（人設 tags＋lead＋伺服器加的＋預設負向），不生圖。key 要 swap-pair: 開頭。"""
+    if not str(t.key or "").startswith("swap-pair:"):
+        raise HTTPException(status_code=400, detail="只給換妻雙人圖用")
+    _, _, opts = _imggen_opts(t)
+    opts = _apply_image_vary(opts)
+    if isinstance(opts.get("pair"), dict):
+        prompt, negative = _pair_prompts(opts)
+        return {"positive": prompt, "negative": negative, "steps": comfy.DEFAULT_STEPS, "cfg": comfy.DEFAULT_CFG,
+                "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER, "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT}
+    extra_pos, extra_from_en = sdtags.split_pos_neg_tags(str(opts.get("extra") or ""))
+    opts["extra"] = extra_pos
+    extra_neg = ", ".join(x for x in (extra_from_en, str(opts.get("visual_neg") or "").strip(), str(opts.get("negative") or "").strip()) if x)
+    prompt, _ = _comfy_prompt_for(opts)
+    prompt = _lead_merge(str(opts.get("lead") or ""), prompt)
+    negative = sdtags.negative_for(bool(opts.get("cutout")), clothed=False, extra_neg=extra_neg)
+    return {"positive": prompt, "negative": negative, "steps": comfy.DEFAULT_STEPS, "cfg": comfy.DEFAULT_CFG,
+            "sampler": comfy.DEFAULT_SAMPLER, "scheduler": comfy.DEFAULT_SCHEDULER, "width": comfy.DEFAULT_WIDTH, "height": comfy.DEFAULT_HEIGHT}
+
+
 async def _world_clock():
     """世界時鐘:伺服器權威 runtime。每 30 秒把召喚師模擬 + 計時判定(看板娘到期/委託逾期/跨日)
     補算到真實時間(關螢幕、離線也照跑),並每 10 分鐘輸出一次心跳日誌。"""
@@ -4821,9 +5843,84 @@ async def _start_gen_worker():
     except Exception as e:
         print(f"[發呆] 取消失敗(仍不啟動預產): {e}", flush=True)
     asyncio.create_task(_gen_worker())
+    asyncio.create_task(_swap_pregen_loop())
     asyncio.create_task(_world_clock())
     asyncio.create_task(_life_loop())
     asyncio.create_task(_line_loop())
+    try:
+        n = desk_agent.resume_all(db)
+        print(f"[桌上工作] agent={desk_agent.agent_name()}" + (f"，接著跑 {n} 件" if n else ""), flush=True)
+    except Exception as e:
+        print(f"[桌上工作] 啟動失敗：{e}", flush=True)
+
+
+# ───────────── 她桌上的工作（agent office，server/desk_agent.py）─────────────
+# 一次一件：聊天交給她 → put；她坐到書桌前 → start；做完 → 報告；你看完 → accept 或 redo。
+def _desk(fn, *args):
+    conn = db()
+    try:
+        return fn(conn, *args)
+    except desk_agent.DeskError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/api/desk")
+def desk_view(since: int = 0):
+    return _desk(desk_agent.view, max(0, int(since or 0)))
+
+
+@app.get("/api/desk/agent-check")
+async def desk_agent_check():
+    """正在跑的這個遊戲伺服器連得上書桌的 agent 嗎（Hermes：用它手上的 HERMES_KEY 查 capabilities；不回 key）。"""
+    name = desk_agent.agent_name()
+    if name != "hermes":
+        return {"agent": name, "ok": name == "mock"}
+    import desk_hermes
+    return {"agent": name, **(await desk_hermes.HermesAgent().check())}
+
+
+@app.post("/api/desk/put")
+def desk_put(body: dict):
+    body = body or {}
+    run = _desk(lambda c: desk_agent.put(c, quest_id=body.get("questId") or "", title=body.get("title") or "",
+                                         girl_id=body.get("girlId") or "", girl_name=body.get("girlName") or "",
+                                         note=body.get("note") or ""))
+    return {"run": run}
+
+
+@app.post("/api/desk/start")
+async def desk_start():
+    return {"run": _desk(lambda c: desk_agent.start(db, c))}
+
+
+@app.post("/api/desk/redo")
+async def desk_redo(body: dict):
+    fb = (body or {}).get("feedback") or ""
+    return {"run": _desk(lambda c: desk_agent.redo(db, c, fb))}
+
+
+@app.post("/api/desk/answer")
+async def desk_answer(body: dict):
+    """回答她停下來問的事（Hermes 核准：可以／不行；提問：照你說的）。"""
+    conn = db()
+    try:
+        return await desk_agent.answer(conn, (body or {}).get("answer") or "")
+    except desk_agent.DeskError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.post("/api/desk/cancel")
+async def desk_cancel():
+    return {"run": _desk(desk_agent.cancel)}
+
+
+@app.post("/api/desk/accept")
+def desk_accept():
+    return {"run": _desk(desk_agent.accept)}
 
 
 # /editmale 編輯其他召喚師池: names、behaviors(行為卡)、actions(肢體行為)。
@@ -5679,6 +6776,26 @@ def test_room():
 def test_body_m():
     from fastapi.responses import FileResponse
     return FileResponse(WEB_DIR / "test_bodyM" / "index.html")
+
+
+@app.get("/droom")
+def droom():
+    """房間妹子剪影預覽（平視、乳暈／體型／胸型×罩杯／八方向走路），靜態頁在 web/droom/。"""
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "droom" / "index.html")
+
+
+@app.get("/droom/play")
+def droom_play():
+    """Doom 風第一人稱小房間：一個妹子剪影（八方向走路 sheet），WASD 移動。靜態頁 web/droom/play.html。"""
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "droom" / "play.html")
+
+
+@app.get("/test_body")
+def test_body():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "test_body.html")
 
 
 @app.put("/api/edit_date")

@@ -181,13 +181,16 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
     if(!P.pingpong)return i%P.frames;
     const n=2*P.frames-2,j=i%n;return j<P.frames?j:n-j;
   }
-  function create({cols,rows,blocked,getSeats=()=>[],random=Math.random,getContext=()=>null,onActivity=()=>{}}) {
+  // furnitureAt(u,v) → furniture type on that cell (desk_work needs a desk right in front of the chair).
+  // keep(activityId) → true: stay in that seat activity (her desk work while the agent is running, room_desk.js).
+  // subPoses(spec) → {pose: weight} to use instead of spec.poses (her desk work: room_desk.js), or null.
+  function create({cols,rows,blocked,getSeats=()=>[],furnitureAt=()=>null,keep=()=>false,subPoses=()=>null,random=Math.random,getContext=()=>null,onActivity=()=>{}}) {
     const state={u:2.5,v:3.5,moving:false,mirrored:false,back:false,step:0,mode:'idle',furnitureId:null,facing:'left',seatHeight:35};
     let look=null;   // this girl's doll frame set (null until setLook)
     let route=[],next=null,wait=1.8,elapsed=0,seat=null,sitTime=0,sitCooldown=0,present=false;
     // Activity (room_activity.js). act: {spec,dur,phase:'go'|'enter'|'hold'|'exit',t,spot,seat,holdAt}
     const Acts=window.RoomActivity||null;
-    let act=null,held=false,replanReq=false,animT=0;
+    let act=null,held=false,replanReq=false,animT=0,pendingOrder=null,pendingStart=null;
     const localHist=[];   // newest first; used when the context has no history (no summon module)
     const ENTER_S=.8,LIE_ENTER_S=1.3;
     const valid=(u,v)=>u>=0&&v>=0&&u<cols&&v<rows&&!blocked(u,v);
@@ -216,13 +219,21 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
       if(!present)return {ok:false,message:'房間裡還沒有人。'};
       if(seat)return {ok:false,message:state.mode==='sitting'?'她已經坐下了。':'她正在使用座位，請稍候。'};
       const reachableCells=reachable();
+      // Which anchors fit: lying spots (bed) only for lying activities; desk_work only at a chair facing a desk.
+      const spec=planned&&act?act.spec:null,wantKind=spec&&spec.seatKind||'sit';
+      const fits=anchor=>{
+        if((anchor.kind||'sit')!==wantKind)return false;
+        if(!spec||!spec.near)return true;
+        const [du,dv]=fronts[anchor.facing];
+        return furnitureAt(Math.floor(anchor.u+du),Math.floor(anchor.v+dv))===spec.near;
+      };
       // Furniture defines seat anchors and rotated footprints. Navigation ends
       // on its reachable perimeter, never on an occupied furniture tile.
       const choices=getSeats().filter(item=>(id===undefined||item.id===id)&&(!types||types.includes(item.type))).flatMap(item=>{
         const perimeter=[];
         for(let u=item.u;u<item.u+item.cols;u++)perimeter.push({u,v:item.v-1},{u,v:item.v+item.rows});
         for(let v=item.v;v<item.v+item.rows;v++)perimeter.push({u:item.u-1,v},{u:item.u+item.cols,v});
-        return item.seats.flatMap(anchor=>perimeter.map(exit=>{
+        return item.seats.filter(fits).flatMap(anchor=>perimeter.map(exit=>{
           const cell=reachableCells.find(c=>c.u===exit.u&&c.v===exit.v);
           const distance=Math.hypot(exit.u+.5-anchor.u,exit.v+.5-anchor.v);
           const [du,dv]=fronts[anchor.facing];
@@ -290,6 +301,9 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
       let ctx=null;try{ctx=getContext();}catch{ctx=null;}
       ctx=Object.assign({},ctx||{});
       ctx.seats=[...new Set(getSeats().map(item=>item.type))];
+      const all=new Set();for(let u=0;u<cols;u++)for(let v=0;v<rows;v++){const t=furnitureAt(u,v);if(t)all.add(t);}
+      ctx.furniture=[...all];
+      if(ctx.deskBusy==null){try{ctx.deskBusy=!!keep('desk_work');}catch{ctx.deskBusy=false;}}
       if(!Array.isArray(ctx.history)||!ctx.history.length)ctx.history=localHist.slice();
       return ctx;
     }
@@ -307,7 +321,7 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
         for(const a of Acts.ACTIVITIES){r-=w.get(a.id);if(r<0&&w.get(a.id)>0){spec=a;break;}}
         if(!spec)break;
         if(spec.place==='seat'){
-          const dur=Acts.duration(spec,ctx,random);
+          const dur=Acts.duration(spec,ctx,random,!!(ctx.deskBusy&&spec.id==='desk_work'));
           act={spec,dur,phase:'go',seat:true};
           if(requestSit(undefined,spec.seat,true).ok){emit({type:'start',id:spec.id,at:Date.now(),dur});return true;}
           act=null;skip.add(spec.id);continue;
@@ -343,6 +357,31 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
         if(act.t<=0){act=null;state.mode='idle';wait=.8+random()*1.6;}
       }
     }
+    // ------------------------------------------------------------ sub-poses (an activity with spec.poses)
+    // While seated she changes between the poses every 10–25 s (a stretch only lasts a few seconds).
+    // The new pose's frames are generated first; until then the old pose keeps playing.
+    const SUB_ICON={sit_work:'write',sit_scribble:'write',sit_think:'dots',sit_phone:'phone',sit_stretch:'tilde'};
+    function pickSubPose(){
+      let w=null;try{w=subPoses(act.spec);}catch{w=null;}
+      w=w||act.spec.poses;
+      const list=Object.entries(w||{}).filter(([p,v])=>v>0&&Doll&&Doll.POSES[p]&&p!==act.pose);
+      if(!list.length)return act.pose||act.spec.pose;
+      let r=random()*list.reduce((s,[,v])=>s+v,0);
+      for(const [p,v] of list){r-=v;if(r<0)return p;}
+      return list[list.length-1][0];
+    }
+    function stepSubPose(){
+      if(!act||!act.seat||!act.spec.poses||act.phase!=='hold')return;
+      if(!act.pose){act.pose=act.spec.pose;act.poseUntil=animT+8+random()*10;return;}
+      // New pose's frames not ready after 4 s (worker trouble): switch anyway rather than freeze on one pose.
+      if(act.nextPose&&animT-act.nextAt>4){act.pose=act.nextPose;act.nextPose=null;}
+      if(act.nextPose||animT<act.poseUntil)return;
+      const p=act.forced||pickSubPose();
+      act.poseUntil=animT+(p==='sit_stretch'?3.5+random()*2:10+random()*15);
+      if(p===act.pose)return;
+      act.nextPose=p;act.nextAt=animT;
+      prefetchPose(look,p,{yaw:Doll?Doll.SEAT_YAW[state.facing]??-45:-45,mirror:false},state.seatHeight);
+    }
     function bubble(){
       if(!act||!act.spec.icon)return null;
       const sleepy=act.spec.kind==='sleep';
@@ -353,26 +392,30 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
       if(sleepy||act.spec.sticky)a=1;   // zzz / 求你（hunger_beg）一直浮著
       else if(t<6)a=Math.min(1,t/.3,(6-t)/.4);
       else{const c=(t-6)%20;if(c>15)a=Math.min(1,(c-15)/.3,(20-c)/.4);}
-      return a>0?{icon:act.spec.icon,alpha:Math.max(0,Math.min(1,a)),t}:null;
+      return a>0?{icon:(act.pose&&SUB_ICON[act.pose])||act.spec.icon,alpha:Math.max(0,Math.min(1,a)),t}:null;
     }
     function activityInfo(){
       if(!act)return null;
       return {id:act.spec.id,name:act.spec.name,phase:act.phase,kind:act.spec.kind,left:Math.max(0,Math.round(act.dur)),
-        facing:act.spot?act.spot.facing:state.facing,seat:!!act.seat};
+        facing:act.spot?act.spot.facing:state.facing,seat:!!act.seat,pose:act.pose||act.spec.pose,nextPose:act.nextPose||null};
     }
     return {
       state,requestSit,standUp,
       get present(){return present;},
       setPresent(value){
         present=!!value;
-        if(!present){seat=null;state.furnitureId=null;route=[];next=null;state.moving=false;state.mode='idle';act=null;return;}
+        if(!present){pendingOrder=null;pendingStart=null;seat=null;state.furnitureId=null;route=[];next=null;state.moving=false;state.mode='idle';act=null;return;}
         if(!valid(Math.floor(state.u),Math.floor(state.v))){
           for(let v=0;v<rows;v++)for(let u=0;u<cols;u++)if(valid(u,v)){state.u=u+.5;state.v=v+.5;v=rows;break;}
         }
         wait=1.2;
       },
       // Sitting uses a visual seat anchor, while navigation stays beside it.
-      position(){return state.mode==='sitting'&&seat?{u:seat.anchor.u,v:seat.anchor.v}:{u:state.u,v:state.v};},
+      position(){
+        if(!(state.mode==='sitting'&&seat))return {u:state.u,v:state.v};
+        const k=act&&act.seat&&act.spec.seatShift||0,[du,dv]=fronts[seat.anchor.facing]||[0,0];
+        return {u:seat.anchor.u+du*k,v:seat.anchor.v+dv*k};
+      },
       isFurnitureLocked(id){return present&&!!seat&&seat.id===id;},
       occupies(u,v){
         if(!present)return false;
@@ -395,32 +438,65 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
         if(act.phase==='go'&&!act.seat){act=null;route=[];state.mode='idle';wait=.3;return;}
         if(act.phase==='enter'||act.phase==='hold')replanReq=true;
       },
+      /** Tests / debugging: switch the seated sub-pose now (null = back to picking). */
+      forcePose(pose){if(!act||!act.spec.poses)return false;act.forced=pose||null;act.poseUntil=0;act.nextPose=null;return true;},
       /** Tests / debugging: start a given activity now. */
-      startActivity(id){
+      startActivity(id,opts={}){
         if(!Acts||!Acts.BY_ID[id]||!present)return false;
         replanReq=false;
-        if(state.mode==='sitting'){standUp();}
-        const spec=Acts.BY_ID[id];
+        // Seated (desk, chair, bed): get up first, start it once she is off the seat.
+        if(seat&&(state.mode==='sitting'||state.mode==='leaving')){
+          if(state.mode==='sitting')standUp();
+          pendingStart={id,opts};pendingOrder=null;return true;
+        }
+        const spec=Acts.BY_ID[id],ordered=!!opts.ordered;
+        const dur=()=>Acts.duration(spec,ordered?context():{},random,ordered);
         if(spec.place==='seat'){
           if(seat)return false;
-          act={spec,dur:Acts.duration(spec,{},random),phase:'go',seat:true};
-          if(requestSit(undefined,spec.seat,true).ok){emit({type:'start',id,at:Date.now(),dur:act.dur});return true;}
-          act=null;return false;
+          const prev=act;
+          act={spec,dur:dur(),phase:'go',seat:true,ordered};
+          if(requestSit(undefined,spec.seat,true).ok){emit({type:'start',id,at:Date.now(),dur:act.dur,ordered});return true;}
+          act=prev;return false;
         }
         if(seat)return false;
         const spot=findSpot(spec);if(!spot)return false;
-        act={spec,dur:Acts.duration(spec,{},random),phase:'go',spot};
+        act={spec,dur:dur(),phase:'go',spot,ordered};
         route=alignRoute(spot.path);route.push({u:spot.cell.u,v:spot.cell.v,x:spot.pos.u,y:spot.pos.v});
         next=null;state.mode='walking';
         prefetchPose(look,spec.pose,VIEW[spot.facing]);if(spec.lie)poseFrame(look,'hug_knees',0,VIEW[spot.facing],null,true);
-        emit({type:'start',id,at:Date.now(),dur:act.dur});
+        emit({type:'start',id,at:Date.now(),dur:act.dur,ordered});
         return true;
+      },
+      /**
+       * Player order: 'sleep' → lie down on the bed, 'work' → sit at the desk. If she is sitting she
+       * gets up first and goes right after. → {ok, message}
+       */
+      order(kind){
+        const id=Acts&&Acts.ORDERS[kind],spec=id&&Acts.BY_ID[id];
+        if(!spec)return {ok:false,message:'沒有這個指令。'};
+        if(!present)return {ok:false,message:'房間裡還沒有人。'};
+        const what=kind==='sleep'?'床':'書桌和椅子';
+        const types=new Set(getSeats().map(item=>item.type));
+        if(!spec.seat.some(t=>types.has(t)))return {ok:false,message:`房間裡沒有${what}。`};
+        if(act&&act.spec.id===id&&(act.phase==='hold'||state.mode==='sitting'||state.mode==='approaching'))
+          return {ok:false,message:kind==='sleep'?'她已經在睡了。':'她已經在工作了。'};
+        if(seat){
+          if(state.mode==='sitting')standUp();
+          if(state.mode!=='leaving')return {ok:false,message:'她正在走向座位，請稍候。'};
+          pendingOrder=kind;
+          return {ok:true,message:kind==='sleep'?'她起身，準備去睡覺。':'她起身，準備去工作。'};
+        }
+        pendingOrder=null;
+        if(this.startActivity(id,{ordered:true}))return {ok:true,message:kind==='sleep'?'她走去床邊準備睡覺。':'她走去書桌準備工作。'};
+        return {ok:false,message:kind==='sleep'?'床旁邊沒有空位可以走過去。':'書桌前要有一張面對書桌、走得到的椅子。'};
       },
       frame(){
         if(state.mode==='sitting'){
-          const pose=act&&act.seat?act.spec.pose:'sit';
+          const view={yaw:Doll?Doll.SEAT_YAW[state.facing]??-45:-45,mirror:false};
+          if(act&&act.nextPose&&look&&poseFrame(look,act.nextPose,0,view,state.seatHeight,true)){act.pose=act.nextPose;act.nextPose=null;}
+          const pose=act&&act.seat?act.pose||act.spec.pose:'sit';
           if(Acts&&look){
-            const f=poseFrame(look,pose,loopIndex(pose,animT),{yaw:Doll.SEAT_YAW[state.facing]??-45,mirror:false},state.seatHeight,true);
+            const f=poseFrame(look,pose,loopIndex(pose,animT),view,state.seatHeight,true);
             if(f)return f;
           }
           return sitFrame(look,state.facing,state.seatHeight,true)||seatedFrame(state.facing,state.seatHeight);
@@ -447,8 +523,11 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
         if(paused){state.moving=false;return;}
         sitCooldown=Math.max(0,sitCooldown-dt);
         if(state.mode==='sitting'){
-          if(!held)sitTime-=dt;state.moving=false;
-          if(sitTime<=0||replanReq){replanReq=false;standUp();}
+          let kept=false;try{kept=!!(act&&act.seat&&keep(act.spec.id));}catch{kept=false;}
+          stepSubPose();
+          if(!held&&!kept)sitTime-=dt;state.moving=false;
+          if(kept)replanReq=false;   // still working: a chat's re-pick does not pull her off the desk
+          else if(sitTime<=0||replanReq){replanReq=false;standUp();}
           return;
         }
         if(state.mode==='activity'&&act){state.moving=false;stepActivity(dt);return;}
@@ -460,7 +539,11 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
               if(act&&act.seat){act.phase='hold';act.holdAt=animT;emit({type:'hold',id:act.spec.id,at:Date.now()});}
               return;
             }
-            if(state.mode==='leaving'){seat=null;state.furnitureId=null;state.mode='idle';sitCooldown=15;wait=1.5;act=null;}
+            if(state.mode==='leaving'){
+              seat=null;state.furnitureId=null;state.mode='idle';sitCooldown=15;wait=1.5;act=null;
+              if(pendingOrder){const kind=pendingOrder;pendingOrder=null;this.order(kind);return;}
+              if(pendingStart){const p=pendingStart;pendingStart=null;this.startActivity(p.id,p.opts);return;}
+            }
             if(state.mode==='walking'&&act&&act.phase==='go'&&act.spot){arrive();return;}
             wait-=dt;if(wait>0||held){state.moving=false;state.mode='idle';return;}
             if(Acts){if(planNext())return;wait=2;state.mode='idle';state.moving=false;return;}

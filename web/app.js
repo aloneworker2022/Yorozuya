@@ -23,50 +23,50 @@ import {
   pickRuntimeButtPack,
   buildButtImgBody,
   getButtPacksCached,
-} from "./content/butt_packs.js?v=6";
+} from "./content/butt_packs.js?v=7";
 import {
   pickRuntimeBreastPack,
   buildBreastImgBody,
-} from "./content/breast_packs.js?v=3";
+} from "./content/breast_packs.js?v=4";
 import {
   pickRuntimeKneadPack,
   buildKneadImgBody,
-} from "./content/knead_packs.js?v=3";
+} from "./content/knead_packs.js?v=4";
 import {
   pickRuntimeSuckPack,
   buildSuckImgBody,
-} from "./content/suck_packs.js?v=4";
+} from "./content/suck_packs.js?v=5";
 import {
   pickRuntimeLickPack,
   buildLickImgBody,
-} from "./content/lick_packs.js?v=4";
+} from "./content/lick_packs.js?v=5";
 import {
   pickRuntimeLabiaPack,
   buildLabiaImgBody,
-} from "./content/labia_packs.js?v=2";
+} from "./content/labia_packs.js?v=3";
 import {
   pickRuntimeLabiaRubPack,
   buildLabiaRubImgBody,
-} from "./content/labia_rub_packs.js?v=2";
+} from "./content/labia_rub_packs.js?v=3";
 import {
   pickRuntimeFingerPack,
   buildFingerImgBody,
-} from "./content/finger_packs.js?v=2";
+} from "./content/finger_packs.js?v=3";
 // 扣陰道／揉子宮口 x-ray 剖面圖組（主遊戲沒有這兩個動作；只為重產／圖鑑同契約）
-import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACKS_ON } from "./content/vagina_finger_packs.js?v=2";
-import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=2";
+import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACKS_ON } from "./content/vagina_finger_packs.js?v=3";
+import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=3";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=7";
 import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, pickPose, POSE_ZH as ESCORT_POSE_ZH, debtOf, canEscort, currentClient, currentGuest, guestPoseAt } from "./content/escort.js?v=5"; // 接客還債
-import { openPeek } from "./content/escort_peek.js?v=5";
+import { openPeek } from "./content/escort_peek.js?v=8";
 import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
 import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=10";
 import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
-import { BASE_OUTFIT } from "./content/outfit_pick.js?v=1";
+import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=2";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
@@ -224,9 +224,39 @@ window.YorozuyaWallet = {
     try { renderHud(); } catch { /* */ }
     return true;
   },
+  /** 日租女友（2026-10-13）：收入（正）或房錢（負）。房錢可以讓金幣變負（跟育兒費一樣）。 */
+  earn(n, why = "") {
+    if (!state || bootFailed) return false;
+    const c = Math.round(Number(n) || 0);
+    if (!c) return true;
+    state.gold += c;
+    log(`${why || (c > 0 ? "收入" : "花費")} ${c > 0 ? "+" : "−"}${Math.abs(c)} 金`);
+    if (c > 0) toast(`${why || "收入"} +${c} 金`, "good");
+    dirty = true; scheduleSave();
+    try { renderHud(); } catch { /* */ }
+    return true;
+  },
   payDoctor(bill) {
     if (!state || bootFailed) return false;
     chargeDoctorBill(bill);
+    return true;
+  },
+};
+
+// 她桌上的工作（room_desk.js，2026-11-01）：房間讀已承接／執行中的委託來對「這件交給妳」；報告收下時完成委託。
+window.YorozuyaQuests = {
+  /** 已承接（lv 1）＋執行中（lv 2）。存檔還沒好回 null（房間就不對委託）。 */
+  list() {
+    if (!state || bootFailed) return null;
+    return (state.quests || []).filter(q => q.lv === 1 || q.lv === 2).map(q => ({ id: q.id, text: q.text, lv: q.lv }));
+  },
+  has(id) { return !!(state && (state.quests || []).some(q => q.id === id)); },
+  /** 書桌狀態變了（放上桌／收下／收回）→ 委託板重畫（卡片上的「在她桌上」）。 */
+  refresh() { if (state && !bootFailed) { try { renderQuests(); } catch { /* */ } } },
+  /** 報告收下 → 委託完成（照一般完成：領金、日誌、氣泡）。 */
+  complete(id) {
+    if (!state || bootFailed || !this.has(id)) return false;
+    complete(id);
     return true;
   },
 };
@@ -5896,6 +5926,9 @@ function consumeDaydreamForce() {}
 //   生涯服裝 —— 職業給的那一身。女高中生就是制服,不會穿西裝套裝。立繪畫這套。
 //   個人衣櫃 —— 她自己喜歡的穿搭,依關係解鎖:朋友 1 套、女友 3 套、妻子 6 套。
 // 陌生階段一套都沒有:你只見過她工作時的樣子。
+// 2026-10-23 擁有制：wardrobe／eroticOutfits／sleepOutfits 是她天生的品味(召喚就抽好、藏著),
+// look.owned = {wardrobe,erotic,sleep}(索引)才是衣櫃裡真的有的。新召喚全空＝只有白 T 加三角褲；
+// 舊存檔沒有 owned＝全部擁有。能穿的＝關係解鎖張數 ∩ 擁有。加衣服的管道之後再做。
 //
 // **詳細頁不再顯示衣櫃**(那頁精簡過,只留她的人生)。所以現在沒有玩家入口,
 // 她固定穿生涯服裝;衣櫃仍然抽好存在 look.wardrobe 裡,換衣服的機制也還在,
@@ -5913,6 +5946,7 @@ function eroticAll(s) {
 function sleepAll(s) {
   return Array.isArray(s?.look?.sleepOutfits) ? s.look.sleepOutfits : [];
 }
+// 解鎖（關係階段張數）∩ 擁有（look.owned；舊存檔沒有 owned＝全部擁有）
 function eroticUnlocked(s) { return eroticAll(s).slice(0, EROTIC_UNLOCK[s?.stage] ?? 0); }
 function sleepUnlocked(s) { return sleepAll(s).slice(0, SLEEP_UNLOCK[s?.stage] ?? 0); }
 // 解鎖到的那幾套(依關係階段截斷)
@@ -5926,16 +5960,17 @@ function outfitWorn(s) {
   if (typeof pick === "string" && pick[0] === "e") {
     const i = Number(pick.slice(1));
     const list = eroticUnlocked(s);
-    if (Number.isInteger(i) && i >= 0 && i < list.length) return list[i];
+    if (Number.isInteger(i) && i >= 0 && i < list.length && ownsOutfit(s.look, "e", i)) return list[i];
   }
   if (typeof pick === "string" && pick[0] === "s") {
     const i = Number(pick.slice(1));
     const list = sleepUnlocked(s);
-    if (Number.isInteger(i) && i >= 0 && i < list.length) return list[i];
+    if (Number.isInteger(i) && i >= 0 && i < list.length && ownsOutfit(s.look, "s", i)) return list[i];
   }
   const i = pick;
   const w = wardrobeAll(s);
-  if (Number.isInteger(i) && i >= 0 && i < w.length && i < wardrobeOpen(s)) return w[i];
+  if (Number.isInteger(i) && i >= 0 && i < w.length && i < wardrobeOpen(s) && ownsOutfit(s.look, "w", i)) return w[i];
+  if (hasOwnedList(s?.look)) return careerOutfit(s) || BASE_OUTFIT;   // 新制：沒擁有的不穿
   return careerOutfit(s) || w[0] || "";
 }
 // 換衣服 → 立繪要重織(舊圖穿的是舊衣服)
@@ -7048,9 +7083,45 @@ function scriptSceneUrls(s, pack, n) {
       return bust(urls, alt?.at || ver);
     }
   }
-  // 3) 最後才退 slots[].url
-  const slots = pack?.scenes?.[String(n)]?.slots || [];
-  return bust(slots.map(x => x.url), ver);
+  // 3) 2026-10-26 pt262u：不再退 slots[].url——那是編輯器「測試生圖」用測試魅子生的，
+  //    每個人都會變成同一個人。缺圖就替「這一隻」現產（背景），產好再換上。
+  if (s?.id && pack?.id) void ensureScriptSceneArt(s, pack, n);
+  return [];
+}
+
+/** 這隻缺某場景的劇本圖：用她自己的人設現產一次（同一隻同一場同時只跑一次）。 */
+const scriptArtInflight = new Map();
+function ensureScriptSceneArt(s, pack, n) {
+  const spec = pack?.scenes?.[String(n)];
+  if (!s?.id || !pack?.id || !(spec?.slots || []).length) return Promise.resolve(false);
+  const id = `${s.id}|${pack.id}|${n}`;
+  if (scriptArtInflight.has(id)) return scriptArtInflight.get(id);
+  const run = (async () => {
+    const urls = [];
+    for (let i = 0; i < spec.slots.length; i++) {
+      let u = "";
+      try { u = await scriptGenImage(s, spec.slots[i], spec, "", i, { pack, scene: n }); } catch { /* */ }
+      urls.push(u || "");
+    }
+    if (!urls.some(Boolean)) return false;
+    const at = Date.now();
+    s.scriptArt ??= {};
+    s.scriptArt[pack.id] ??= {};
+    const prev = s.scriptArt[pack.id][String(n)]?.urls || [];
+    s.scriptArt[pack.id][String(n)] = { urls: urls.map((u, i) => { const raw = u || prev[i] || ""; return raw ? bustAssetUrl(raw, at) : ""; }), pose: "", at };
+    dirty = true;
+    try { saveNow(); } catch { /* */ }
+    try {
+      const play = chatSession?.tease?.play;
+      if (isTeasePlay() && chatWith === s.id && play?.pack?.id === pack.id && Number(play.scene) === Number(n)) {
+        play.urls = scriptSceneUrls(s, play.pack, play.scene);
+        if (typeof vnFace === "function") vnFace(s, chatSession?.mood);
+      }
+    } catch { /* */ }
+    return true;
+  })().finally(() => scriptArtInflight.delete(id));
+  scriptArtInflight.set(id, run);
+  return run;
 }
 
 function scriptFirstNarr(s, pack, n) {
@@ -8182,6 +8253,7 @@ function buildRoomGirlFromSuccubus(s) {
     dna: s.dna,
     look,
     outfitPick: s.outfitPick ?? null,
+    outfitName: s.outfitName || null,
     libido: s.libido || null,
     specialTraits: s.specialTraits || null,
     moanVoice: s.moanVoice || null,
@@ -10303,6 +10375,7 @@ function buildCtx(s) {
       libido: s.libido || null, look: s.look || null, special_traits: s.specialTraits || null,
       // 她身上穿的是哪一套(生涯服裝 or 衣櫃第幾套)——聊天講的要跟立繪畫的一致
       outfitPick: s.outfitPick ?? null,
+      outfitName: s.outfitName || null,
       job: s.job || null,
       job_desc: s.jobDesc || null,
     },
@@ -12536,8 +12609,11 @@ function syncSideTabs() {
   if (d) d.classList.toggle("on", qScene === "diary" && !lineOpen);
   if (l) l.classList.toggle("on", qScene === "line" || (qScene === "diary" && lineOpen));
 }
+let procOpenedAt = 0, procQuietUntil = 0;
+const quietProc = () => { procQuietUntil = Date.now() + 450; };
 function goProc() {
   qScene = "proc";
+  procOpenedAt = Date.now();
   lineOpen = false;
   const pg = document.getElementById("page-quests");
   if (pg) { pg.classList.remove("on-diary", "on-line"); pg.classList.add("on-proc"); }
@@ -13163,6 +13239,7 @@ function clearLineToLastPlayer() {
     if (!msgs.length) { toast("沒有訊息可清", ""); return; }
     lg.messages = [];
     lg.cursors = {};
+    lg.clearedAt = Date.now();
   } else if (lastPi === 0) {
     toast("已經只剩上一則了", "");
     return;
@@ -13170,6 +13247,8 @@ function clearLineToLastPlayer() {
     const kept = msgs.slice(lastPi);
     const keepIds = new Set(kept.map(m => m.id));
     lg.messages = kept;
+    // 2026-10-14：記下清到哪裡。RP5 寫的訊息另外存在伺服器，不記的話下次同步（/api/line/feed、讀存檔）又被加回來。
+    lg.clearedAt = Math.max(Number(lg.clearedAt) || 0, Number(kept[0].t) || 0);
     const anchor = kept[0].id;
     const cursors = lg.cursors || {};
     for (const gid of Object.keys(cursors)) {
@@ -13577,10 +13656,11 @@ async function lineSyncFeed() {
   try {
     const lg = ensureLineGroup();
     const since = lg.messages.reduce((mx, m) => (m.src === "rp5" ? Math.max(mx, Number(m.t) || 0) : mx), 0);
-    const r = await fetch(`/api/line/feed?since=${Math.max(0, since - 60e3)}`);
+    const cleared = Number(lg.clearedAt) || 0;
+    const r = await fetch(`/api/line/feed?since=${Math.max(0, since - 60e3, cleared - 1)}`);
     if (!r.ok) return 0;
     const j = await r.json();
-    const added = mergeFeed(lg.messages, j?.messages || []);
+    const added = mergeFeed(lg.messages, (j?.messages || []).filter((m) => (Number(m?.t) || 0) >= cleared));
     lineApplyPending();
     if (added.length) {
       dirty = true;
@@ -13764,6 +13844,7 @@ function renderExec() {
     const q = exec[i];
     if (q) return `<div class="pin-slide"><div class="q-card c-exec">
         <div class="q-body">${esc(q.text)}</div>
+        ${onDeskTag(q.id)}
         ${errandNoteHTML(q.id)}
         <div class="swind"></div>
       </div></div>`;
@@ -14495,6 +14576,7 @@ function renderProc() {
   // 卡片只放項目本身;狀態靠徽章/卡色分辨,操作靠手勢(規則玩家已熟)
   stage.innerHTML = `<div class="q-card ${lv === 0 ? "c-found" : "c-acc"}" id="proc-card">
     <div class="q-body">${esc(q.text)}</div>
+    ${onDeskTag(q.id)}
     ${errandNoteHTML(q.id)}
     ${lv === 1 ? `<div class="q-tapfx" id="proc-tapfx">
       <div class="q-tap-msg"></div>
@@ -14531,7 +14613,7 @@ function renderProc() {
     down: () => flyCard(card, "down", () => drop(q.id)),
     left: () => nav2(1), right: () => nav2(-1),
     tap: showAccTap,
-    hold: () => openSplitCard(q),
+    hold: (at) => openCardPick(q, at),
     triple: () => {
       card.classList.add("q-instant");
       flyCard(card, "up", () => complete(q.id));
@@ -14549,7 +14631,103 @@ function flyCard(el, dir, action) {
   setTimeout(action, 240);
 }
 
+// ── 已承接長按：卡片來到畫面中央 → 往上滑＝放到她桌上、往下滑＝分裂 → 輸入框（2026-11-01）
+// 放上桌：輸入的字是這件工作的說明（交給 agent、寫在工作日誌）；分裂：照舊（多一件，一起退回發現）
+function openCardPick(q, at = null) {
+  if (!q || q.lv !== 1) return;
+  quietProc();
+  let ov = $("#card-pick");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "card-pick";
+    ov.className = "hidden";
+    ov.setAttribute("aria-hidden", "true");
+    ov.innerHTML = `<div class="cp-hint up">↑ 放到她桌上</div>
+      <div class="q-card c-acc cp-card" id="cp-card" role="dialog" aria-label="這件委託要做什麼"><div class="q-body"></div><div class="swind"></div></div>
+      <div class="cp-hint down">↓ 分裂</div>`;
+    document.body.append(ov);
+    // 點背景關掉（剛打開的那一下不算：長按放手的點擊會落在背景上）
+    ov.addEventListener("click", e => { if (e.target === ov && Date.now() >= procQuietUntil) closeCardPick(); });
+  }
+  const card = ov.querySelector("#cp-card");
+  const fresh = card.cloneNode(true);   // 換掉舊的手勢
+  // 上一次飛走的動畫留下的樣式（透明、在畫面外）一定要清掉，不然卡片看不見但手勢還在
+  fresh.removeAttribute("style");
+  fresh.querySelectorAll("[style]").forEach(el => el.removeAttribute("style"));
+  fresh.querySelector(".q-body").textContent = q.text;
+  card.replaceWith(fresh);
+  ov.classList.remove("hidden");
+  ov.setAttribute("aria-hidden", "false");
+  let acted = false;
+  const go = (dir) => {
+    if (acted) return;
+    acted = true;
+    flyCard(fresh, dir, () => { closeCardPick(); openSplitCard(q, dir === "up" ? "desk" : "split"); });
+  };
+  swipeable(fresh, { up: () => go("up"), down: () => go("down") });
+  // 長按後手指沒放、直接往上／往下滑：同一下就算（卡片跟著手指走；沒滑夠就停在中央，再滑一次）
+  if (at) {
+    const TH = 55;
+    let lastY = at.y;
+    const follow = (y) => {
+      lastY = y;
+      const dy = Math.max(-90, Math.min(90, y - at.y));
+      fresh.style.transition = "none";
+      fresh.style.transform = `translateY(${dy}px)`;
+    };
+    const mv = (ev) => {
+      const pt = ev.touches ? ev.touches[0] : ev;
+      if (!pt || (!ev.touches && ev.buttons !== 1)) return;
+      follow(pt.clientY);
+      if (ev.touches && ev.cancelable) ev.preventDefault();
+    };
+    const end = (ev) => {
+      cleanup();
+      const pt = ev.changedTouches ? ev.changedTouches[0] : ev;
+      const dy = (pt && pt.clientY != null ? pt.clientY : lastY) - at.y;
+      fresh.style.transition = "transform .15s ease";
+      fresh.style.transform = "";
+      if (dy < -TH) go("up");
+      else if (dy > TH) go("down");
+    };
+    const cleanup = () => {
+      document.removeEventListener("touchmove", mv);
+      document.removeEventListener("touchend", end);
+      document.removeEventListener("touchcancel", cleanup);
+      window.removeEventListener("mousemove", mv);
+      window.removeEventListener("mouseup", end);
+    };
+    document.addEventListener("touchmove", mv, { passive: false });
+    document.addEventListener("touchend", end);
+    document.addEventListener("touchcancel", cleanup);
+    window.addEventListener("mousemove", mv);
+    window.addEventListener("mouseup", end);
+  }
+}
+function closeCardPick() {
+  quietProc();
+  const ov = $("#card-pick");
+  if (!ov) return;
+  ov.classList.add("hidden");
+  ov.setAttribute("aria-hidden", "true");
+}
+/** 放到她桌上（room_desk.js）：一次一件；她在房間就直接去書桌開工，不在就等她回來。 */
+async function putQuestOnDesk(q, note) {
+  const D = window.RoomDesk;
+  if (!D?.give) { toast("書桌還沒準備好", "bad"); return false; }
+  const r = await D.give({ questId: q.id, title: q.text, note, go: true });
+  if (r.placed) { toast(`「${q.text}」放到她桌上了`, "good"); renderQuests(); return true; }
+  toast(r.busy ? `她桌上已經有「${r.busy}」，一次只能一件` : r.offline ? "書桌連不上伺服器" : (r.error || "放不上去"), "bad");
+  return false;
+}
+/** 這件在不在她桌上（卡片上標一下）。 */
+function onDeskTag(id) {
+  const run = window.RoomDesk?.state?.()?.run;
+  return run && run.questId === id ? `<div class="q-desk-tag">在她桌上</div>` : "";
+}
+
 let splitTargetId = null;
+let splitMode = "split";
 let splitBound = false;
 
 function bindSplitOverlay() {
@@ -14571,7 +14749,7 @@ function bindSplitOverlay() {
   });
 }
 
-function openSplitCard(q) {
+function openSplitCard(q, mode = "split") {
   if (!q || q.lv !== 1) return;
   bindSplitOverlay();
   const ov = $("#split-overlay");
@@ -14579,14 +14757,20 @@ function openSplitCard(q) {
   const input = $("#split-input");
   if (!ov || !name || !input) return;
   splitTargetId = q.id;
+  splitMode = mode;
   name.textContent = q.text;
   input.value = "";
+  input.maxLength = mode === "desk" ? 300 : 80;
+  input.placeholder = mode === "desk" ? "給她的說明（可以空著）…" : "多出來的任務…";
+  const ok = $("#split-ok");
+  if (ok) ok.textContent = mode === "desk" ? "放上桌" : "分裂";
   ov.classList.remove("hidden");
   ov.setAttribute("aria-hidden", "false");
   setTimeout(() => input.focus(), 40);
 }
 
 function closeSplitCard() {
+  quietProc();
   const ov = $("#split-overlay");
   const input = $("#split-input");
   splitTargetId = null;
@@ -14601,6 +14785,12 @@ function commitSplitCard() {
   const id = splitTargetId;
   const extra = $("#split-input")?.value || "";
   if (!id) { closeSplitCard(); return; }
+  if (splitMode === "desk") {
+    const q = state.quests.find(x => x.id === id);
+    closeSplitCard();
+    if (q) void putQuestOnDesk(q, extra.trim());
+    return;
+  }
   const r = splitAcceptedQuest(id, extra);
   if (!r.ok) { toast(r.err, "bad"); return; }
   closeSplitCard();
@@ -14631,7 +14821,7 @@ function swipeable(el, { up, down, left, right, dbl, triple, tap, hold, holdMs =
     el.style.transform = "";
     const ov = el.querySelector(".swind"); if (ov) ov.style.opacity = 0;
     try { if (navigator.vibrate) navigator.vibrate(12); } catch { /* */ }
-    hold();
+    hold({ x: sx, y: sy });   // 長按的位置：接著不放手滑（委託板長按 → 卡片到中央 → 同一下往上／往下滑）
   };
   const s = (cx, cy) => {
     sx = cx; sy = cy; active = true; held = false;
@@ -15457,6 +15647,7 @@ function cacheGirlSnapOnSession(girl) {
     seed: girl.seed,
     comfyCkpt: girl.comfyCkpt,
     outfitPick: girl.outfitPick,
+    outfitName: girl.outfitName || null,
     libido: girl.libido,
     chrono: girl.chrono,
     likes: girl.likes,
@@ -19142,6 +19333,17 @@ on("quest-input", "keydown", e => {
 });
 on("hud-need", "click", () => switchTab(2));
 on("q-back", "click", () => goExec());
+// 處理中（發現／已承接）點空白處 → 回執行中（主畫面）。卡片、分頁、返回、輸入列、側邊分頁、各種浮層不算空白。
+const PROC_KEEP = ".q-card, .q-force-tabs, .lv-hdr, .lv-nav, .pin-slot, .pin-carousel, #pin-dots, #quest-input-row, #tabs, #diary-tab, #line-tab, " +
+  "#split-overlay, #card-pick, #sbm, #sbm-card, #desk-ov, #portrait-sheet, #room-scene-overlay, [role=dialog], " +
+  "button, input, textarea, select, a";
+document.addEventListener("click", e => {
+  if (qScene !== "proc" || document.body.dataset.tab !== "0") return;
+  // 打開處理畫面、長按卡片跳出／關掉浮層的那一下點擊不算（長按放手時點擊會落在浮層跟卡片共同的上層）
+  if (Date.now() - procOpenedAt < 400 || Date.now() < procQuietUntil) return;
+  if (!(e.target instanceof Element) || e.target.closest(PROC_KEEP)) return;
+  goExec();
+});
 on("diary-tab", "click", () => toggleDiary());
 on("line-tab", "click", () => toggleLine());
 on("diary-back", "click", () => {
