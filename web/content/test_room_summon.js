@@ -444,6 +444,7 @@ window.RoomActivitySink = (evt) => {
     // 2026-10-09 Al：不跳粉紅小卡，直接打開對話框（她開口求、下面只有「做愛／拒絕」）
     if (evt.id === "hunger_beg" && HUNGER_ON && girl) maybeOpenBegDialog();
     if (evt.id === "approach_talk" && girl) maybeOpenProactiveTalk();
+    if (evt.id === "desk_ask" && girl) maybeOpenDeskAsk();
   } else return;
   if (mem.bias && !A.biasStrength(mem.bias)) mem.bias = null;
   // 活動 1～3 分鐘才換一次；開始時順手存檔（最多 20 秒一次）
@@ -1658,10 +1659,45 @@ async function noteDeskGive(text) {
   roomOrderAsk = { kind: "work", at: Date.now(), girlId: girl.id, fromDesk: true };
   return { ask: roomOrderAsk };
 }
+// ---------------------------------------------------------------- 她從書桌走過來問你（agent 停下來等核准／提問，room_desk.js）
+// 走到你面前 → 打開對話、她先問 → 你打的下一句就是回答（送給 agent）→ 她回一句、對話收起、回書桌。
+let deskAskOpen = false;          // 這次打開對話是她來問工作上的事
+let deskAnswerSaid = null;        // {r:{ok,choice}|{error}, girlId}：只給這一句回話用
+function maybeOpenDeskAsk() {
+  if (!girl || !window.RoomDesk?.pendingAsk?.()) return false;
+  const b = talkBusyFlags();
+  if (b.notInRoom || b.hidden || b.roomHidden || b.sheetOpen || b.talkBusy || b.scene || b.sex || b.undress || b.editor || b.summoning || b.errand) return false;
+  pushDebug("書桌：她走過來問你工作上的事 → 打開對話框");
+  deskAskOpen = true;
+  showSheet();
+  return true;
+}
+/** 打字送出時：她正在等工作上的回答 → 這句就是回答。回傳要不要收起對話後叫她回書桌。 */
+async function noteDeskAnswer(text) {
+  const D = window.RoomDesk;
+  if (!D?.pendingAsk?.() || !girl || !girlInRoom()) return null;
+  const r = await D.answer(text);
+  deskAnswerSaid = { r, girlId: girl.id };
+  pushDebug(`書桌：你回答「${text}」→ ${r.error ? `沒收下（${r.error}）` : r.choice}`);
+  if (r.error) return { ask: null };
+  roomOrderAsk = { kind: "work", at: Date.now(), girlId: girl.id, fromDesk: true };
+  return { ask: roomOrderAsk };
+}
+function deskAnswerLine() {
+  const a = deskAnswerSaid;
+  if (!a || !girl || a.girlId !== girl.id) return "";
+  if (a.r.error) return `【他的回答你沒聽懂（${a.r.error}）】用你的口氣再問他一次。`;
+  const said = { once: "他說可以", deny: "他說不行" }[a.r.choice] || "他回答了你的問題";
+  return `【${said}】你會照他的意思回書桌接著做：回他一句（可以撒嬌或小抱怨），不要寫動作旁白。`;
+}
+// 委託板長按放上桌時，書桌問「現在房間裡是誰」（工作日誌寫她的名字）
+if (window.RoomDesk) window.RoomDesk.who = () => (girl && girlInRoom() ? { id: girl.id, name: girl.name } : null);
 function deskPromptLines() {
   const A = roomActs(), D = window.RoomDesk, ask = deskGiveAsk;
   const out = [];
-  if (A?.givePromptLine && ask && girl && ask.girlId === girl.id) out.push(A.givePromptLine(ask.r));
+  const ans = deskAnswerLine();
+  if (ans) out.push(ans);
+  else if (A?.givePromptLine && ask && girl && ask.girlId === girl.id) out.push(A.givePromptLine(ask.r));
   else if (D?.promptLines && girlInRoom()) out.push(...D.promptLines());
   return out;
 }
@@ -1677,6 +1713,8 @@ function closeAfterOrderReply(ask) {
 function runRoomOrder() {
   const ask = roomOrderAsk;
   roomOrderAsk = null;
+  // 她走過來問工作上的事、你沒回答就關掉：她先回書桌（問題還在，點書桌也能回答）
+  if (!ask && girl && girlInRoom() && window.RoomActor?.activity?.()?.id === "desk_ask") { window.RoomActor?.order?.("work"); return; }
   if (!ask || !girl || ask.girlId !== girl.id || !girlInRoom()) return;
   const r = window.RoomActor?.order?.(ask.kind);
   if (r) pushDebug(`叫她去${ask.kind === "sleep" ? "睡覺" : "工作"}：${r.message}`);
@@ -8554,6 +8592,14 @@ async function openTalk() {
     let opener = enterOpener(returning);
     // 她主動走過來找你聊：開場換成她的來意（其他旁白補充照帶）
     const proOpen = talkOpenNow;
+    // 她從書桌走過來問工作上的事：開場就是她的問題
+    const deskAsk = deskAskOpen && !proOpen ? window.RoomDesk?.pendingAsk?.() : null;
+    deskAskOpen = false;
+    const deskAskFb = deskAsk ? `那個……工作上有件事${deskAsk.kind === "clarify" ? "要問你" : "要你決定"}：${deskAsk.text}` : "";
+    if (deskAsk) {
+      opener = `她從書桌那邊走過來，有工作上的事要問他：${deskAsk.text}。第一句就用你的口氣${deskAsk.kind === "clarify" ? "問他這件事" : "簡單說要做什麼、問他可不可以"}，只寫說出口的話。`;
+      lines.push({ role: "user", content: "（她從書桌那邊走過來，看起來有工作上的事要問你。）" });
+    }
     if (proOpen) {
       const ask = proactiveOpenerAsk(girl, proOpen);
       const extra = (opener.match(/（旁白補充：[^）]*）/g) || []).filter((x) => !/走到他面前來求|求他/.test(x)).join("");
@@ -8582,7 +8628,7 @@ async function openTalk() {
         $("portrait-name").textContent = girl.name;
         $("portrait-meta").textContent = partial;
       } : null);
-      const proFb = proOpen ? talkFallbackOpener(proOpen.trigger, girl.stage || "stranger") : "";
+      const proFb = proOpen ? talkFallbackOpener(proOpen.trigger, girl.stage || "stranger") : deskAskFb;
       const proReply = proOpen && reply ? scrubHusband(cleanLine(reply), girl.stage || "stranger", girl.playerPet || "") : reply;
       line = presentOccupied(girl, proReply || proFb || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……嗯？")), "", openerOcc) || proFb || "……嗯？";
     }
@@ -9417,11 +9463,13 @@ async function sendTalk(event) {
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
-  // 先看是不是把委託交給她（放上桌）；不是才看是不是叫她去工作／睡覺
-  const give = await noteDeskGive(text);
-  const order = give ? give.ask : noteRoomOrderAsk(text);
+  // 她在等工作上的回答 → 這句就是回答；不然看是不是把委託交給她（放上桌）；都不是才看是不是叫她去工作／睡覺
+  const ans = await noteDeskAnswer(text);
+  const give = ans ? null : await noteDeskGive(text);
+  const order = ans ? ans.ask : give ? give.ask : noteRoomOrderAsk(text);
   await deliverUserTalk(text);
   deskGiveAsk = null;
+  deskAnswerSaid = null;
   if (order) closeAfterOrderReply(order);
 }
 

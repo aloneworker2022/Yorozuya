@@ -61,6 +61,10 @@
     { id: 'approach_talk', name: '走到你面前想跟你說話', pose: 'stare', place: 'floor', spot: 'front', facing: 'front', dur: [600, 660],
       icon: 'talk', kind: 'mood', relax: 0, w: 0, moodOnly: true, sticky: true, wait: true,
       doing: '特地走到他面前，看著他、想跟他說話', react: '是自己走過來找他聊天的，第一句由你先開口' },
+    // 桌上的工作卡住、要他決定（room_desk.js：agent 停下來等核准／提問）：只由 room_desk 叫出來（權重 0）
+    { id: 'desk_ask', name: '從書桌走過來問你工作上的事', pose: 'stare', place: 'floor', spot: 'front', facing: 'front', dur: [600, 660],
+      icon: 'talk', kind: 'mood', relax: 0, w: 0, moodOnly: true, sticky: true, wait: true,
+      doing: '特地從書桌那邊走過來，有工作上的事要問他', react: '有工作上的事要他決定，第一句先問' },
     { id: 'chair_sit', name: '端正地坐在椅子上', pose: 'sit', place: 'seat', seat: ['chair'], dur: [80, 180],
       icon: null, kind: 'idle', relax: 0, w: 1,
       doing: '端正地坐在椅子上', react: '坐著沒事做，被叫到馬上看過來' },
@@ -248,7 +252,7 @@
         if (a.kind === 'sleep') w *= 1 - .6 * k;
       }
       if (a.id === 'hunger_beg') w = ctx.hungerBeg && !ctx.calm ? 40 : 0;
-      if (a.id === 'approach_talk') w = 0;
+      if (a.id === 'approach_talk' || a.id === 'desk_ask') w = 0;
       // 想念：高 → 走到前面盯著你、不想躺遠遠的
       if (a.id === 'stare') w += Math.max(0, miss - 30) / 16;
       if ((a.lie || a.kind === 'sleep') && miss > 40) w *= 1 - (miss - 40) / 100;

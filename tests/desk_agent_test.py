@@ -86,7 +86,8 @@ async def main():
     # 收下 → 桌上清空，可以放下一件
     D.accept(c)
     assert D.current(c) is None
-    D.put(c, quest_id="q2", title="整理收據")
+    run2 = D.put(c, quest_id="q2", title="整理收據", note="只要今年的")
+    assert run2["note"] == "只要今年的" and "說明：只要今年的" in D.view(c)["events"][0]["text"]
     D.start(connect, c)
     await asyncio.sleep(0.03)
     # 做到一半收回：停掉、桌上清空，不會再交報告
@@ -105,6 +106,36 @@ async def main():
     os.environ["DESK_AGENT"] = "mock"
     D.start(connect, c)
     await wait_status("done")
+    # 她停下來問你（DESK_MOCK_ASK=1）：桌上記著問題 → 聽不懂的回答擋下 → 「可以」→ 接著做完
+    D.accept(c)
+    os.environ["DESK_MOCK_ASK"] = "1"
+    D.put(c, title="要核准的")
+    D.start(connect, c)
+    for _ in range(300):
+        v = D.view(c)
+        if v["run"]["ask"]:
+            break
+        await asyncio.sleep(0.01)
+    assert v["run"]["ask"]["kind"] == "approval" and "save_notes" in v["run"]["ask"]["text"]
+    assert any(e["kind"] == "ask" and e["text"].startswith("要你決定") for e in v["events"])
+    try:
+        await D.answer(c, "我再想想")
+        raise AssertionError("聽不懂也收")
+    except D.DeskError as e:
+        assert "可以" in str(e)
+    assert D.ask_of(D.current(c)), "聽不懂的回答不算，問題還在"
+    r = await D.answer(c, "可以啊")
+    assert r["choice"] == "once"
+    assert D.ask_of(D.current(c)) is None
+    run = await wait_status("done")
+    assert any(e["text"].startswith("你回答：") for e in D.view(c)["events"])
+    try:
+        await D.answer(c, "可以")
+        raise AssertionError("沒在問還能回答")
+    except D.DeskError:
+        pass
+    assert D.approval_choice("不可以") == "deny" and D.approval_choice("好啊") == "once" and D.approval_choice("我再想想") is None
+    os.environ.pop("DESK_MOCK_ASK")
     c.close()
     print("desk_agent: ok")
 

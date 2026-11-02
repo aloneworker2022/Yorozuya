@@ -190,7 +190,7 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
     let route=[],next=null,wait=1.8,elapsed=0,seat=null,sitTime=0,sitCooldown=0,present=false;
     // Activity (room_activity.js). act: {spec,dur,phase:'go'|'enter'|'hold'|'exit',t,spot,seat,holdAt}
     const Acts=window.RoomActivity||null;
-    let act=null,held=false,replanReq=false,animT=0,pendingOrder=null;
+    let act=null,held=false,replanReq=false,animT=0,pendingOrder=null,pendingStart=null;
     const localHist=[];   // newest first; used when the context has no history (no summon module)
     const ENTER_S=.8,LIE_ENTER_S=1.3;
     const valid=(u,v)=>u>=0&&v>=0&&u<cols&&v<rows&&!blocked(u,v);
@@ -404,7 +404,7 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
       get present(){return present;},
       setPresent(value){
         present=!!value;
-        if(!present){pendingOrder=null;seat=null;state.furnitureId=null;route=[];next=null;state.moving=false;state.mode='idle';act=null;return;}
+        if(!present){pendingOrder=null;pendingStart=null;seat=null;state.furnitureId=null;route=[];next=null;state.moving=false;state.mode='idle';act=null;return;}
         if(!valid(Math.floor(state.u),Math.floor(state.v))){
           for(let v=0;v<rows;v++)for(let u=0;u<cols;u++)if(valid(u,v)){state.u=u+.5;state.v=v+.5;v=rows;break;}
         }
@@ -444,7 +444,11 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
       startActivity(id,opts={}){
         if(!Acts||!Acts.BY_ID[id]||!present)return false;
         replanReq=false;
-        if(state.mode==='sitting'){standUp();}
+        // Seated (desk, chair, bed): get up first, start it once she is off the seat.
+        if(seat&&(state.mode==='sitting'||state.mode==='leaving')){
+          if(state.mode==='sitting')standUp();
+          pendingStart={id,opts};pendingOrder=null;return true;
+        }
         const spec=Acts.BY_ID[id],ordered=!!opts.ordered;
         const dur=()=>Acts.duration(spec,ordered?context():{},random,ordered);
         if(spec.place==='seat'){
@@ -538,6 +542,7 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
             if(state.mode==='leaving'){
               seat=null;state.furnitureId=null;state.mode='idle';sitCooldown=15;wait=1.5;act=null;
               if(pendingOrder){const kind=pendingOrder;pendingOrder=null;this.order(kind);return;}
+              if(pendingStart){const p=pendingStart;pendingStart=null;this.startActivity(p.id,p.opts);return;}
             }
             if(state.mode==='walking'&&act&&act.phase==='go'&&act.spot){arrive();return;}
             wait-=dt;if(wait>0||held){state.moving=false;state.mode='idle';return;}
