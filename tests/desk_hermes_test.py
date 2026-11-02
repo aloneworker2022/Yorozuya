@@ -217,6 +217,30 @@ async def main():
     assert fg.approved == {"request_id": "p1", "execution_generation": 3, "choice": "deny"}, fg.approved
     assert await task == "ok" and ag.pending is None
 
+    # 6c) 補充指示：正在跑 → steer（input 不收就換 message）；沒在跑 → 排到下一輪 prompt
+    class Steer(FakeHermes):
+        def handler(self, req):
+            if req.method == "POST" and req.url.path.endswith("/steer"):
+                body = json.loads(req.content)
+                if "input" in body:
+                    return httpx.Response(422, json={"error": "unknown field input"})
+                self.steered = body
+                return httpx.Response(200, json={"status": "accepted"})
+            return super().handler(req)
+    fs = Steer([{"events": [{"event": "run.completed", "output": "<<<REPORT>>>ok<<<END>>>"}]}])
+    asg = agent(fs)
+    asg.live_run = "run_9"
+    assert await asg.steer("記得附來源") == "live" and fs.steered == {"message": "記得附來源"} and asg.steer_key == "message"
+    asg.live_run = ""
+    assert await asg.steer("只要北部") == "queued"
+    await asg.run({"title": "城市"}, lambda *a: None, None)
+    assert "使用者中途補充" in fs.inputs[0] and "只要北部" in fs.inputs[0] and asg.notes == []
+
+    # 6d) 延伸：同一個 session → extend_prompt
+    fe = FakeHermes([{"events": [{"event": "run.completed", "output": "<<<REPORT>>>二<<<END>>>"}]}])
+    await agent(fe).run({"title": "城市", "session": "api_1", "feedback": "再列南部", "mode": "extend"}, lambda *a: None, None)
+    assert "收下了上面的報告" in fe.inputs[0] and "再列南部" in fe.inputs[0]
+
     # 7) 整條：書桌 put → start（DESK_AGENT=hermes）→ 報告；session 存進 desk_runs；退回重做接著同一個 session
     import os, sqlite3, tempfile
     import desk_agent as D

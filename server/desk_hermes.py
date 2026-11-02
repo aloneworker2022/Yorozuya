@@ -79,6 +79,15 @@ NUDGE_PROMPT = "請把目前的成果整理成最終報告（繁體中文 markdo
 RESUME_PROMPT = "剛才中斷了（伺服器重開）。看一下上面做到哪，接著把委託做完；全部做完就交報告，放在 <<<REPORT>>> 和 <<<END>>> 之間。"
 
 
+def extend_prompt(followup: str) -> str:
+    return (f"使用者收下了上面的報告（委託完成），接著要做後續：{followup}\n"
+            "延續剛才的成果做這個後續，做完交一份新的完整報告，放在 <<<REPORT>>> 和 <<<END>>> 之間。")
+
+
+def notes_block(notes: list[str]) -> str:
+    return "\n\n使用者中途補充：\n" + "\n".join(f"- {n}" for n in notes) if notes else ""
+
+
 def redo_prompt(feedback: str) -> str:
     return (f"使用者看了報告，退回來要你修改：{feedback}\n"
             "照這個意見改，改完交一份新的完整報告，放在 <<<REPORT>>> 和 <<<END>>> 之間。")
@@ -121,6 +130,7 @@ class HermesAgent:
         self.live_run = ""
         self.on_ask = None          # desk_agent.drive 設：on_ask(dict|None)
         self.pending: dict | None = None   # 停下來等你決定的那件（approval／clarify）
+        self.notes: list[str] = []         # 補充指示：沒有正在跑的 run 時排著，下一輪帶進 prompt
 
     # ───────── HTTP
     def _client(self):
@@ -173,11 +183,14 @@ class HermesAgent:
             if run.get("resume"):
                 prompt = RESUME_PROMPT
             elif fb and not fresh:
-                prompt = redo_prompt(fb)
+                prompt = extend_prompt(fb) if run.get("mode") == "extend" else redo_prompt(fb)
             else:
-                prompt = first_prompt(run) + (f"\n\n使用者的意見：{fb}" if fb else "")
+                lead = "使用者要你接著做的後續" if run.get("mode") == "extend" else "使用者的意見"
+                prompt = first_prompt(run) + (f"\n\n{lead}：{fb}" if fb else "")
             nudged = False
             for _ in range(MAX_TURNS):
+                if self.notes:
+                    prompt, self.notes = prompt + notes_block(self.notes), []
                 output = await self._turn(c, sid, prompt, emit)
                 await self._scan(c, sid, emit)
                 if self._waiting():
@@ -321,6 +334,22 @@ class HermesAgent:
         }
         if self.on_ask:
             self.on_ask({k: v for k, v in self.pending.items() if k in ("kind", "text", "choices")})
+
+    async def steer(self, text: str) -> str:
+        """補充指示 → 正在跑的 run（POST /v1/runs/{id}/steer）；沒在跑（等使魔）或 steer 不收 → 排到下一輪。
+        steer 的 body 文件沒寫（2026-11）：依序試 input／message／text，收下就停。回傳 live｜queued。"""
+        rid = self.live_run
+        if rid:
+            async with self._client() as c:
+                for key in ("input", "message", "text"):
+                    r = await c.post(f"/v1/runs/{rid}/steer", json={key: text})
+                    if r.status_code < 400:
+                        self.steer_key = key
+                        return "live"
+                    if r.status_code not in (400, 422):
+                        break
+        self.notes.append(text)
+        return "queued"
 
     async def respond(self, text: str) -> str:
         """你的回答 → Hermes。核准：可以＝once、不行＝deny；提問：原話。回傳 once／deny／answer。"""
