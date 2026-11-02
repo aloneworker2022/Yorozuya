@@ -21,9 +21,10 @@ import sqlite3
 import time
 from typing import Callable
 
-# run.status：placed 放在桌上還沒開工｜running 做中｜done 報告交了｜failed 出錯停了
+# run.status：placed 放在桌上還沒開工｜running 做中｜paused 她離開書桌、停著｜done 報告交了｜failed 出錯停了
 #             ｜cancelled 收回｜accepted 你收下（委託完成）
-ACTIVE = ("placed", "running", "done", "failed")
+# 她不在書桌前就不做（2026-11-02 Al）：前端看到她離開書桌 → pause（Hermes 這一輪 stop、session 留著）；坐回來 → start 接著做。
+ACTIVE = ("placed", "running", "paused", "done", "failed")
 TITLE_MAX = 200
 NOTE_MAX = 2000
 EVENTS_MAX = 400          # 一件工作最多記幾則（超過只留最新的，報告不受影響）
@@ -392,7 +393,7 @@ def _spawn(connect, run_id: int, resume: bool = False) -> None:
 
 
 def start(connect, conn: sqlite3.Connection) -> dict:
-    """她坐下開工。placed／failed → running。已經在跑就照舊（重複呼叫沒事）。"""
+    """她坐下開工。placed／failed／paused → running。已經在跑就照舊（重複呼叫沒事）。"""
     run = current(conn)
     if not run:
         raise DeskError("桌上沒有工作", 404)
@@ -400,6 +401,11 @@ def start(connect, conn: sqlite3.Connection) -> dict:
         if not busy(run["id"]):
             _spawn(connect, run["id"])
         return run
+    if run["status"] == "paused":   # 她回到書桌：同一輪、同一個 session 接著做
+        _set(conn, run["id"], status="running")
+        add_event(conn, run["id"], "main", "status", "回到書桌，接著做。", "")
+        _spawn(connect, run["id"], resume=bool(run.get("session")))
+        return get(conn, run["id"])
     if run["status"] not in ("placed", "failed"):
         return run
     _set(conn, run["id"], status="running", started=now_ms(), finished=0, rounds=run["rounds"] + 1, agent=agent_name())
@@ -456,6 +462,21 @@ async def steer(conn: sqlite3.Connection, text: str) -> dict:
         raise DeskError(str(e))
     add_event(conn, run["id"], "main", "note", f"你補充：{text}" + ("（下一輪帶給她）" if how == "queued" else ""), "")
     return {"run": get(conn, run["id"]), "how": how}
+
+
+def pause(conn: sqlite3.Connection) -> dict | None:
+    """她離開書桌：停下來（agent 這一輪停掉；Hermes 的 session 和已經派出去的使魔留著），回來再 start。
+    沒在做就什麼都不動（重複呼叫沒事）。"""
+    run = current(conn)
+    if not run or run["status"] != "running":
+        return run
+    t = _tasks.pop(run["id"], None)
+    if t and not t.done():
+        t.cancel()
+    _agents.pop(run["id"], None)
+    _set(conn, run["id"], status="paused", ask="")
+    add_event(conn, run["id"], "main", "status", "她離開書桌，工作先停下來。", "")
+    return get(conn, run["id"])
 
 
 def cancel(conn: sqlite3.Connection) -> dict | None:

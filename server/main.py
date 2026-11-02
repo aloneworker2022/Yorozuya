@@ -5932,6 +5932,12 @@ async def desk_steer(body: dict):
         conn.close()
 
 
+@app.post("/api/desk/pause")
+async def desk_pause():
+    """她離開書桌：工作先停下來（坐回來 /api/desk/start 接著做）。"""
+    return {"run": _desk(desk_agent.pause)}
+
+
 @app.post("/api/desk/cancel")
 async def desk_cancel():
     return {"run": _desk(desk_agent.cancel)}

@@ -55,7 +55,7 @@
   // ------------------------------------------------------------ 房間
   /** 她坐到書桌前、桌上的委託還沒開工（或出錯停了）→ 開工。 */
   function maybeStart() {
-    if (!run || (run.status !== 'placed') || Date.now() - startAsked < 8000) return;
+    if (!run || (run.status !== 'placed' && run.status !== 'paused') || Date.now() - startAsked < 8000) return;
     const a = window.RoomActor?.activity?.();
     if (!a || a.id !== 'desk_work' || a.phase !== 'hold') return;
     startAsked = Date.now();
@@ -90,6 +90,28 @@
     }
   }
   const pendingAsk = () => (run && run.ask) || null;
+  // ------------------------------------------------------------ 她不在書桌前就不做（2026-11-02 Al）
+  // 做中而她離開書桌（去做別的事、去睡覺、離開房間）超過 8 秒 → 停下來；坐回書桌 → maybeStart 接著做。
+  // 走過來問你（desk_ask）算在工作裡。手機關著／頁面在背景看不到她 → 不算離開（她人還在書桌前）。
+  // 剛打開頁面：還沒看過她坐在書桌前（正走回去）不算離開；她根本不在房間要等 15 秒（房間還在載入）。
+  const AWAY_MS = 8000, LOAD_GRACE_MS = 15000, loadedAt = Date.now();
+  let awaySince = 0, seenAtDesk = false, pausing = false;
+  function watchDesk() {
+    if (!run || run.status !== 'running' || document.hidden) { awaySince = 0; return; }
+    const A = window.RoomActor, present = !!A?.isPresent?.(), a = present ? A.activity?.() : null;
+    const atDesk = !!a && ((a.id === 'desk_work' && a.phase === 'hold') || a.id === 'desk_ask');
+    if (atDesk) { seenAtDesk = true; awaySince = 0; return; }
+    if (!seenAtDesk && (present || Date.now() - loadedAt < LOAD_GRACE_MS)) return;
+    if (!awaySince) awaySince = Date.now();
+    if (Date.now() - awaySince > AWAY_MS && !pausing) { awaySince = 0; seenAtDesk = false; void pause(); }
+  }
+  async function pause() {
+    pausing = true;
+    try { take({ ...(await api('/api/desk/pause', {})), events: [], summary }); await pull(); toastRoom('她離開書桌了，工作先停著。'); }
+    catch { /* 下一秒再看 */ }
+    finally { pausing = false; }
+  }
+  setInterval(watchDesk, 1000);
   function refreshQuests() { try { window.YorozuyaQuests?.refresh?.(); } catch { /* */ } }
   function onStatusChange() {
     refreshQuests();
@@ -98,7 +120,7 @@
   }
   const busy = () => !!(run && run.status === 'running');
   /** 桌上有她該做的事（放著還沒開工＋做中）：她會回書桌、坐著不起來。 */
-  const working = () => !!(run && (run.status === 'running' || run.status === 'placed'));
+  const working = () => !!(run && (run.status === 'running' || run.status === 'placed' || run.status === 'paused'));
   /** 桌上要畫什麼：paper 一疊紙（放著／做中）｜report 報告書（交上來了）｜null。 */
   const prop = () => !run ? null : run.status === 'done' ? 'report' : 'paper';
   /** 她在書桌前換什麼動作（權重）：做中多半在寫、偶爾撐頭想；卡住就一直撐著頭想；交了報告伸懶腰、滑手機。
@@ -164,7 +186,8 @@
       if (summary.trouble) out.push(`剛剛卡住：${summary.trouble.text}`);
       const live = summary.subs.filter(s => s.status === 'run').length;
       if (live) out.push(`你叫了 ${live} 隻使魔在幫忙。`);
-    } else if (run.status === 'done') out.push(`${t}的報告你寫好了，放在桌上等他看。`);
+    } else if (run.status === 'paused') out.push(`他交給你的委託${t}做到一半停著（你離開書桌了），回到書桌就接著做。`);
+    else if (run.status === 'done') out.push(`${t}的報告你寫好了，放在桌上等他看。`);
     else if (run.status === 'failed') out.push(`${t}做到一半出錯停下來了。`);
     out.push('聊到的話自然提起就好，不要條列過程。');
     return out;
@@ -189,7 +212,7 @@
     close();
     return out.join('');
   }
-  const STATUS = { placed: '放在桌上・還沒開工', running: '做中', done: '報告交了', failed: '出錯停了' };
+  const STATUS = { placed: '放在桌上・還沒開工', running: '做中', paused: '停著・她不在書桌前', done: '報告交了', failed: '出錯停了' };
   const KIND = { ask: '問你', plan: '計畫', tool: '工具', think: '想', trouble: '卡住', spawn: '叫出', done: '完成', dispatch: '外包', report: '報告', note: '你說', status: '', error: '出錯' };
   function who(actor) {
     if (actor === 'main') return run?.girlName || '她';
@@ -298,6 +321,7 @@
           ${run.status === 'done' ? '<button type="button" class="main" data-a="report">看報告書</button>' : ''}
           ${run.status === 'failed' ? '<button type="button" class="main" data-a="start">重來</button>' : ''}
           ${run.status === 'placed' ? '<span class="mini">叫她「去工作」，她坐到書桌前就開工。</span>' : ''}
+          ${run.status === 'paused' ? '<span class="mini">她回到書桌就接著做（叫她「去工作」也行）。</span>' : ''}
           <button type="button" data-a="cancel">收回這件</button>
         </div>
         ${run.status === 'running' && !run.ask ? `<div class="sec">補充指示</div>
@@ -364,7 +388,7 @@
     } catch (e) { msg = e.message || String(e); paint(true); }
   }
 
-  window.RoomDesk = { give, start, answer, pendingAsk, busy, working, prop, icon, poseWeights, promptLines, openLog, closeLog,
+  window.RoomDesk = { give, start, pause, answer, pendingAsk, busy, working, prop, icon, poseWeights, promptLines, openLog, closeLog,
     state: () => ({ run, events: events.slice(), summary, agent, offline }), pull };
   void pull();
   loop();

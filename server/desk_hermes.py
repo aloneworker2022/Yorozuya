@@ -76,7 +76,7 @@ def first_prompt(run: dict) -> str:
 
 CONTINUE_PROMPT = "使魔（subagent）的結果都回來了（在上面）。接著把委託做完；全部做完就交報告，放在 <<<REPORT>>> 和 <<<END>>> 之間。"
 NUDGE_PROMPT = "請把目前的成果整理成最終報告（繁體中文 markdown：摘要、做了什麼、成果、還要你確認），放在 <<<REPORT>>> 和 <<<END>>> 之間。"
-RESUME_PROMPT = "剛才中斷了（伺服器重開）。看一下上面做到哪，接著把委託做完；全部做完就交報告，放在 <<<REPORT>>> 和 <<<END>>> 之間。"
+RESUME_PROMPT = "剛才中斷了（離開了一下，或伺服器重開）。看一下上面做到哪（派出去的使魔結果可能已經回來了），接著把委託做完；全部做完就交報告，放在 <<<REPORT>>> 和 <<<END>>> 之間。"
 
 
 def extend_prompt(followup: str) -> str:

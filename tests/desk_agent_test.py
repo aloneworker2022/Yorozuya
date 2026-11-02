@@ -169,6 +169,29 @@ async def main():
     run = await wait_status("done")
     assert "記得附上來源" in run["report"]
     os.environ["DESK_MOCK_STEP_S"] = "0.01"
+
+    # 她離開書桌 → 停下來（paused、agent 停掉、不會交報告）；坐回來 → 接著做到交報告
+    D.accept(c)
+    os.environ["DESK_MOCK_STEP_S"] = "0.05"
+    D.put(c, title="會被打斷的")
+    D.start(connect, c)
+    await asyncio.sleep(0.1)
+    run = D.pause(c)
+    assert run["status"] == "paused" and not D.busy(run["id"])
+    assert D.pause(c)["status"] == "paused", "重複叫沒事"
+    await asyncio.sleep(0.6)
+    assert D.current(c)["status"] == "paused" and D.current(c)["report"] == "", "停著不會交報告"
+    try:
+        await D.steer(c, "停著也想補充")
+        raise AssertionError("停著還能補充")
+    except D.DeskError:
+        pass
+    run = D.start(connect, c)
+    assert run["status"] == "running" and run["rounds"] == 1, "接著做，不算新的一輪"
+    run = await wait_status("done")
+    texts = [e["text"] for e in D.view(c)["events"]]
+    assert "她離開書桌，工作先停下來。" in texts and "回到書桌，接著做。" in texts
+    os.environ["DESK_MOCK_STEP_S"] = "0.01"
     c.close()
     print("desk_agent: ok")
 
