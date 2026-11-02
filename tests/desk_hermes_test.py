@@ -37,6 +37,8 @@ class FakeHermes:
         if req.headers.get("authorization") != f"Bearer {self.key}":
             return httpx.Response(401, json={"error": "bad key"})
         p, m = req.url.path, req.method
+        if m == "GET" and p == "/v1/capabilities" and getattr(self, "caps", False):
+            return httpx.Response(200, json={"features": {"run_submission": True, "run_events_sse": True}})
         if m == "POST" and p == "/api/sessions":
             return httpx.Response(200, json={"object": "hermes.session", "session": {"id": "api_1"}})
         if m == "POST" and p == "/v1/runs":
@@ -142,7 +144,14 @@ async def main():
             {"title": "x"}, lambda *a: None, None)
         raise AssertionError("key 不對也能跑")
     except RuntimeError as e:
-        assert "HERMES_KEY" in str(e)
+        assert "HERMES_KEY" in str(e) and "POST /api/sessions" in str(e), str(e)
+    ok = await agent(FakeHermes([])).check()
+    assert ok["ok"] is False and "404" in ok["error"]          # 假 Hermes 沒有 capabilities → 說出哪裡 404
+    f_ok = FakeHermes([]); f_ok.caps = True
+    good = await agent(f_ok).check()
+    assert good == {"url": "http://hermes", "keyLength": 1, "ok": True, "runs": True, "events": True}, good
+    bad = await H.HermesAgent(url="http://hermes", key="wrong", transport=httpx.MockTransport(FakeHermes([]).handler)).check()
+    assert bad["ok"] is False and "401" in bad["error"] and bad["keyLength"] == 5 and "wrong" not in str(bad)
 
     # 5) 做到一半收回（cancel）→ 叫 Hermes 停
     fake5 = FakeHermes([], hang=True)

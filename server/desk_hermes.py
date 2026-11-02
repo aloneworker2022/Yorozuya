@@ -129,9 +129,24 @@ class HermesAgent:
     async def _json(self, c, method: str, path: str, body=None):
         r = await c.request(method, path, json=body)
         if r.status_code == 401:
-            raise RuntimeError("Hermes 拒絕連線：HERMES_KEY 不對")
-        r.raise_for_status()
+            raise RuntimeError(f"Hermes 拒絕（{method} {path} → 401）：HERMES_KEY 跟 Hermes 的 API_SERVER_KEY 不一樣，"
+                               "或改過 key 之後遊戲伺服器／Hermes gateway 還沒重開")
+        if r.status_code >= 400:
+            raise RuntimeError(f"Hermes {method} {path} → {r.status_code}：{clip(r.text, 160)}")
         return r.json() if r.content else {}
+
+    async def check(self) -> dict:
+        """遊戲伺服器現在連得上 Hermes 嗎（GET /api/desk/agent-check）。不回 key，只回長度。"""
+        out = {"url": self.url, "keyLength": len(self.key)}
+        if not self.key:
+            return {**out, "ok": False, "error": "沒設定 HERMES_KEY"}
+        try:
+            async with self._client() as c:
+                cap = await self._json(c, "GET", "/v1/capabilities")
+            feats = cap.get("features") or {}
+            return {**out, "ok": True, "runs": bool(feats.get("run_submission")), "events": bool(feats.get("run_events_sse"))}
+        except Exception as e:
+            return {**out, "ok": False, "error": str(e) or type(e).__name__}
 
     # ───────── 主流程
     async def run(self, run: dict, emit: Callable, store: Callable | None = None) -> str:
