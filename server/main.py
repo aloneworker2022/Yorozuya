@@ -5871,6 +5871,16 @@ def desk_view(since: int = 0):
     return _desk(desk_agent.view, max(0, int(since or 0)))
 
 
+@app.get("/api/desk/agent-check")
+async def desk_agent_check():
+    """正在跑的這個遊戲伺服器連得上書桌的 agent 嗎（Hermes：用它手上的 HERMES_KEY 查 capabilities；不回 key）。"""
+    name = desk_agent.agent_name()
+    if name != "hermes":
+        return {"agent": name, "ok": name == "mock"}
+    import desk_hermes
+    return {"agent": name, **(await desk_hermes.HermesAgent().check())}
+
+
 @app.post("/api/desk/put")
 def desk_put(body: dict):
     body = body or {}
