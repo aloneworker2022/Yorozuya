@@ -807,13 +807,26 @@ def delete_lesson(conn: sqlite3.Connection, lesson_id) -> None:
     conn.commit()
 
 
+def forget_girl(conn: sqlite3.Connection, girl_id: str = "", girl_name: str = "") -> int:
+    """她永遠離開了（獻祭、離開、被帶走…）：筆記本整本丟掉（書櫃裡她做完的工作留著）。→ 丟了幾條。"""
+    gid, name = str(girl_id or "").strip(), str(girl_name or "").strip()
+    keys = [k for k in (gid, f"name:{name}" if name else "") if k]
+    if not keys and not name:
+        raise DeskError("不知道是哪個妹子")
+    q = f"DELETE FROM desk_lessons WHERE girl_key IN ({','.join('?' * len(keys)) or "''"})"
+    args: list = list(keys)
+    if name:   # 房間 id 跟名冊 id 不一樣時記在別的 key 上：同名的也算她的
+        q += " OR girl_name=?"
+        args.append(name)
+    n = conn.execute(q, args).rowcount
+    conn.commit()
+    return n
+
+
 def notebooks(conn: sqlite3.Connection) -> list[dict]:
-    """全部妹子的筆記本（有筆記、或做過工作的）：[{girlKey, girlName, lessons:[…新的在前]}]。"""
+    """全部妹子的筆記本（有筆記的）：[{girlKey, girlName, lessons:[…新的在前]}]。
+    只做過工作、沒筆記的不列（房間裡的她前端自己開一本空的）；離開的妹子 forget_girl 整本丟掉。"""
     books: dict[str, dict] = {}
-    for gid, name in conn.execute("SELECT girl_id, girl_name FROM desk_runs ORDER BY id DESC").fetchall():
-        k = girl_key(gid, name)
-        if k and k not in books:
-            books[k] = {"girlKey": k, "girlName": name, "lessons": []}
     for r in conn.execute(f"SELECT {_LESSON_COLS} FROM desk_lessons ORDER BY id DESC").fetchall():
         L = _lesson(r)
         b = books.setdefault(L["girlKey"], {"girlKey": L["girlKey"], "girlName": L["girlName"], "lessons": []})

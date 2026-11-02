@@ -363,6 +363,13 @@ async def main():
     assert "舊的名字筆記" in D.lesson_lines(c, D.get(c, g["id"]))
     snow = [b for b in D.notebooks(c) if b["girlName"] == "小雪"]
     assert len(snow) == 1 and any(L["text"] == "舊的名字筆記" for L in snow[0]["lessons"]), snow
+    # 她被獻祭了：筆記本整本丟掉（id 的、只有名字的、同名記在別的 key 的），書櫃裡的工作留著；別人的不動
+    D.add_lesson(c, "room-xyz", "房間 id 記的", girl_name="小雪")
+    D.add_lesson(c, "g3", "小美的", girl_name="小美")
+    assert D.forget_girl(c, "gx", "小雪") >= 3
+    assert not [b for b in D.notebooks(c) if b["girlName"] == "小雪"], D.notebooks(c)
+    assert [L["text"] for b in D.notebooks(c) if b["girlKey"] == "g3" for L in b["lessons"]] == ["小美的"]
+    assert D.get(c, g["id"]) is not None, "工作還在"
     D.cancel(c, g["id"])
     os.environ["DESK_MOCK_STEP_S"] = "0.01"
     c.close()

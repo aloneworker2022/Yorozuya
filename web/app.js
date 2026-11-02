@@ -1196,6 +1196,17 @@ function dropGirlFromRoster(sOrId, extra = {}) {
   if (typeof detailId !== "undefined" && detailId === id) detailId = null;
   if (typeof stopDaydreamIfNoGirls === "function") stopDaydreamIfNoGirls();
   forgetRoomGirl(id);
+  forgetDeskNotes(id, s?.name || "");
+}
+/** 她永遠離開了（獻祭、離開、被帶走…）：她桌上工作的筆記本整本丟掉（room_desk.js 送伺服器，連不上就之後補）。 */
+function forgetDeskNotes(id, name) {
+  const KEY = "yorozuya.desk.forget.v1";
+  try {
+    const q = JSON.parse(localStorage.getItem(KEY) || "[]");
+    q.push({ girlId: id, girlName: name });
+    localStorage.setItem(KEY, JSON.stringify(q.slice(-50)));
+  } catch { /* */ }
+  try { window.RoomDesk?.flushForget?.(); } catch { /* 書桌模組沒載：下次載入時補 */ }
 }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function pick2(arr) { const a = [...arr]; const i = a.splice(Math.floor(Math.random() * a.length), 1)[0]; return [i, pick(a)]; }

@@ -56,6 +56,7 @@
       const j = await api(`/api/desk?since=${run ? lastSeq : 0}&sinceId=${run ? run.id : 0}`);
       offline = false;
       take(j);
+      void flushForget();
       noticeChanges();
       maybeStart();
       maybeAsk();
@@ -87,6 +88,7 @@
     const a = window.RoomActor?.activity?.();
     if (!a || a.id !== 'desk_work' || a.phase !== 'hold') return;
     startAsked = Date.now();
+    if (window.RoomDesk.tooTired?.()) { toastRoom('她累壞了，先讓她休息，休息夠了才做得動。'); return; }
     void start();
   }
   async function start() {
@@ -162,6 +164,27 @@
     finally { shelving = false; }
   }
   setInterval(watchShelf, 1000);
+  // 她永遠離開了（app.js dropGirlFromRoster 排進來）→ 伺服器把她的筆記本整本丟掉；連不上就留著下次再送
+  const FORGET_KEY = 'yorozuya.desk.forget.v1';
+  let forgetting = false;
+  async function flushForget() {
+    if (forgetting) return;
+    let q = [];
+    try { q = JSON.parse(localStorage.getItem(FORGET_KEY) || '[]'); } catch { q = []; }
+    if (!Array.isArray(q) || !q.length) return;
+    forgetting = true;
+    try {
+      while (q.length) {
+        await api('/api/desk/notes/forget', q[0]);
+        q.shift();
+        try { localStorage.setItem(FORGET_KEY, JSON.stringify(q)); } catch { /* */ }
+      }
+      notes.loaded = false;
+    } catch (e) {
+      if (e.status === 400) { q.shift(); try { localStorage.setItem(FORGET_KEY, JSON.stringify(q)); } catch { /* */ } }
+    } finally { forgetting = false; }
+  }
+  function workFeel(kind, r) { try { window.RoomDesk.onWork?.(kind, r); } catch { /* */ } }
   function refreshQuests() { try { window.YorozuyaQuests?.refresh?.(); } catch { /* */ } }
   const busy = () => !!(run && run.status === 'running');
   /** 桌上有她該做的事（做中／停著／排隊）：她會回書桌、坐著不起來。 */
@@ -176,6 +199,8 @@
   }
   /** 她在書桌前換什麼動作（權重）：做中多半在寫、偶爾撐頭想；卡住就一直撐著頭想；做完了伸懶腰、滑手機。 */
   function poseWeights() {
+    const tired = window.RoomDesk.feel?.()?.tired || 0;
+    if (run && run.status === 'running' && tired >= 70 && !summary.trouble) return { sit_think: 2.5, sit_stretch: 1.5, sit_work: 1.5, sit_scribble: .5 };
     if (run && run.status === 'running') return summary.trouble ? { sit_think: 5, sit_work: 1, sit_scribble: .6 }
       : { sit_work: 3, sit_scribble: 2.5, sit_think: 1.2, sit_stretch: .3 };
     if (!run && reports.length) return { sit_stretch: 1.5, sit_phone: 2, sit_think: .5 };
@@ -185,7 +210,7 @@
   /** 她在書桌前的氣泡（蓋過動作的氣泡）：要問你／卡住冒汗；全做完有報告愛心；其他照她的動作。 */
   function icon() {
     if (run && run.ask) return 'sweat';
-    if (run && run.status === 'running') return summary.trouble ? 'sweat' : null;
+    if (run && run.status === 'running') return summary.trouble || (window.RoomDesk.feel?.()?.tired || 0) >= 80 ? 'sweat' : null;
     if (run) return null;
     if (reports.length) return 'heart';
     if (failed.length) return 'sweat';
@@ -382,11 +407,18 @@
     if (r.nfiles) sub = `${sub ? sub + '・' : ''}📎 ${r.nfiles}`;
     return `<div class="item"><div class="t"><b>${esc(r.title)}</b>${sub ? `<span class="mini">${sub}</span>` : ''}</div>${buttons}</div>`;
   }
+  /** 她的狀態（累度、心情）一行。 */
+  function feelRow() {
+    const f = window.RoomDesk.feel?.();
+    if (!f) return '';
+    const mood = f.mood === 'proud' ? '・開心' : f.mood === 'down' ? '・有點沮喪' : '';
+    return `<p class="mini">${esc(f.name)}的狀態：累度 ${f.tired}%${f.label ? `（${esc(f.label)}）` : ''}${mood}</p>`;
+  }
   function paintOverview() {
     if (!run && !queue.length && !reports.length && !failed.length) {
       return `<p>${offline ? '書桌連不上伺服器。' : '桌上沒有工作。'}</p>${shelfHint()}<p class="mini">委託板上長按已承接的委託往上滑，或在聊天裡跟她說「這件交給妳：（委託）」，就會放到她桌上（可以放很多件，她照順序做）。</p>`;
     }
-    let html = '';
+    let html = feelRow();
     if (run) {
       const elapsed = run.started && run.status !== 'queued' && run.status !== 'placed' ? `・${mins(Date.now() - run.started)}` : '';
       html += `<div class="sec">${run.status === 'running' || run.status === 'paused' ? '正在做' : '下一件'}</div><div class="box">
@@ -667,12 +699,14 @@
         const qid = j.run?.doneQuestId || r.questId;
         const ok = qid && Q?.complete ? Q.complete(qid) : false;
         toastRoom(ok ? `「${r.title}」完成了，她接著做後續。` : '她接著做後續。');
+        workFeel('extend', r);
         mode = home; sel = null;
       }
       if (a === 'redo') {
         const r = sel.run, fb = card.querySelector('#desk-fb')?.value || '', teach = !!card.querySelector('#desk-teach')?.checked;
         await api('/api/desk/redo', { id: r.id, feedback: fb, teach });
         toastRoom(teach ? '退回去了，也記進她的筆記本，以後都會這樣做。' : '退回去了，她下一件就照你的意見重做。');
+        workFeel('redo', r);
         mode = home; sel = null;
       }
       if (a === 'accept') {
@@ -680,6 +714,7 @@
         await api('/api/desk/accept', { id: r.id });
         const ok = r.questId && Q?.complete ? Q.complete(r.questId) : false;
         toastRoom(ok ? `「${r.title}」完成了。` : `收下「${r.title}」的報告了。`);
+        workFeel('accept', r);
         mode = home; sel = null;
       }
       if (a === 'retry') {
@@ -716,7 +751,7 @@
     } catch (e) { msg = e.message || String(e); paint(true); }
   }
 
-  window.RoomDesk = { give, start, pause, answer, pendingAsk, busy, working, prop, icon, poseWeights, promptLines, openLog, openShelf, closeLog,
+  window.RoomDesk = { flushForget, give, start, pause, answer, pendingAsk, busy, working, prop, icon, poseWeights, promptLines, openLog, openShelf, closeLog,
     questIds, state: () => ({ run, events: events.slice(), summary, agent, offline, queue, reports, failed, shelfPending, shelfDone }), pull };
   void pull();
   loop();

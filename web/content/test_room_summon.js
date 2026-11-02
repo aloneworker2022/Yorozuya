@@ -344,6 +344,7 @@ import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } fr
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
 import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
 import { moanVoiceId } from "./stun_speech.js?v=25";
+import { ensureFeel as ensureDeskFeel, tickFeel as tickDeskFeel, noteWork as noteDeskWork, feelPromptLines as deskFeelLines, tiredLabel as deskTiredLabel } from "./desk_feel.js?v=1";
 import {
   hungerOn,
   ensureHunger,
@@ -1691,7 +1692,8 @@ function deskAnswerLine() {
   return `【${said}】你會照他的意思回書桌接著做：回他一句（可以撒嬌或小抱怨），不要寫動作旁白。`;
 }
 // 委託板長按放上桌時，書桌問「現在房間裡是誰」（工作日誌寫她的名字）
-if (window.RoomDesk) window.RoomDesk.who = () => (girl && girlInRoom() ? { id: girl.id, name: girl.name } : null);
+// id 用名冊的（gameGirlId）：她離開名冊時 app.js 用同一個 id 丟掉她的筆記本
+if (window.RoomDesk) window.RoomDesk.who = () => (girl && girlInRoom() ? { id: String(girl.gameGirlId || girl.id), name: girl.name } : null);
 // ---------------------------------------------------------------- 書櫃：請她看看、說說心得（room_desk.js，2026-11-02）
 // 書櫃裡點「請她看看」→ 她在房間就打開對話、她先說心得；這次對話她都看得到那份報告（關掉對話就收起來）。
 let deskDiscuss = null;   // {item:{id,title,report,note,girlId,girlName,accepted}, girlId, fresh}
@@ -1712,7 +1714,7 @@ if (window.RoomDesk) window.RoomDesk.onDiscuss = (item) => {
 function deskDiscussLines() {
   const d = deskDiscuss;
   if (!d || !girl || d.girlId !== girl.id) return [];
-  const it = d.item, mine = !it.girlId || it.girlId === girl.id || (!!it.girlName && it.girlName === girl.name);
+  const it = d.item, mine = !it.girlId || it.girlId === String(girl.gameGirlId || girl.id) || it.girlId === girl.id || (!!it.girlName && it.girlName === girl.name);
   let rep = String(it.report || "").trim();
   if (rep.length > DISCUSS_REPORT_MAX) rep = rep.slice(0, DISCUSS_REPORT_MAX) + "…（後面省略）";
   return [
@@ -1723,9 +1725,50 @@ ${rep}` : "（報告沒有內容。）",
     "跟他聊這份：說你的心得、哪裡得意、哪裡不滿意、還能怎麼延伸；他問細節就照報告內容答，報告沒寫的不要編。不要整段念報告。",
   ].filter(Boolean);
 }
+// ---------------------------------------------------------------- 工作會累、被收下開心、被退回沮喪（desk_feel.js，2026-11-02）
+// 在書桌前做工作會累（關係越好越不累）；累壞了 → 去床上躺、不回書桌（RoomDesk.tooTired），休息夠了才回去。
+let deskFeelSavedAt = 0;
+function deskFeelTick() {
+  if (!girl) return null;
+  const f = ensureDeskFeel(girl);
+  const a = girlInRoom() ? window.RoomActor?.activity?.() : null;
+  const working = !!(a && a.id === "desk_work" && a.phase === "hold" && window.RoomDesk?.busy?.());
+  const sleeping = !!(a && a.id === "bed_sleep");
+  const was = f.tired;
+  const ev = tickDeskFeel(f, { working, sleeping, stageKey: girl.stage || "stranger" });
+  if (ev === "exhausted") {
+    pushDebug(`書桌：${girl.name} 工作累壞了 → 去休息`);
+    try { window.RoomActor?.tip?.(`${girl.name}累壞了，先去床上躺一下（工作停著，休息夠了會自己回去）。`, 5000); } catch { /* */ }
+    try { if (girlInRoom()) window.RoomActor?.order?.("sleep"); } catch { /* */ }
+  } else if (ev === "rested") {
+    pushDebug(`書桌：${girl.name} 休息夠了`);
+    if (window.RoomDesk?.working?.()) { try { window.RoomActor?.tip?.(`${girl.name}休息夠了，可以回去工作了。`, 4000); } catch { /* */ } }
+  }
+  if (ev || (Math.abs(f.tired - was) > 0 && Date.now() - deskFeelSavedAt > 60000)) { deskFeelSavedAt = Date.now(); persistRoom(); }
+  return f;
+}
+setInterval(() => { try { deskFeelTick(); } catch { /* */ } }, 15000);
+if (window.RoomDesk) {
+  window.RoomDesk.tooTired = () => !!(girl && girlInRoom() && ensureDeskFeel(girl)?.resting);
+  window.RoomDesk.feel = () => {
+    if (!girl || !girlInRoom()) return null;
+    const f = ensureDeskFeel(girl);
+    return { name: girl.name, tired: Math.round(f.tired), resting: f.resting, label: deskTiredLabel(f), mood: f.mood?.type || "" };
+  };
+  /** 你收下／延伸／退回她的工作（room_desk.js）：是房間裡這個她做的才算。 */
+  window.RoomDesk.onWork = (kind, run) => {
+    if (!girl || !girlInRoom() || !run) return;
+    const gid = String(girl.gameGirlId || girl.id);
+    if (run.girlId && run.girlId !== gid && run.girlId !== girl.id && run.girlName !== girl.name) return;
+    deskFeelTick();
+    noteDeskWork(ensureDeskFeel(girl), kind, { stageKey: girl.stage || "stranger", title: run.title || "" });
+    pushDebug(`書桌：你${{ accept: "收下", extend: "收下並延伸", redo: "退回" }[kind] || kind}「${run.title}」→ 她${kind === "redo" ? "有點沮喪" : "很開心"}`);
+    persistRoom();
+  };
+}
 function deskPromptLines() {
   const A = roomActs(), D = window.RoomDesk, ask = deskGiveAsk;
-  const out = [...deskDiscussLines()];
+  const out = [...deskDiscussLines(), ...(girl && girlInRoom() ? deskFeelLines(deskFeelTick()) : [])];
   const ans = deskAnswerLine();
   if (ans) out.push(ans);
   else if (A?.givePromptLine && ask && girl && ask.girlId === girl.id) out.push(A.givePromptLine(ask.r));

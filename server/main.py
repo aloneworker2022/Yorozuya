@@ -5928,6 +5928,13 @@ def desk_notes_update(body: dict):
     return {"lesson": _desk(lambda c: desk_agent.update_lesson(c, b.get("id"), b.get("text"), b.get("status")))}
 
 
+@app.post("/api/desk/notes/forget")
+def desk_notes_forget(body: dict):
+    """她永遠離開了（獻祭…）：筆記本整本丟掉。"""
+    b = body or {}
+    return {"dropped": _desk(lambda c: desk_agent.forget_girl(c, b.get("girlId") or "", b.get("girlName") or ""))}
+
+
 @app.post("/api/desk/notes/delete")
 def desk_notes_delete(body: dict):
     rid = (body or {}).get("id")

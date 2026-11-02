@@ -104,7 +104,8 @@
       seats:f.seats.map(seat=>({...seat,u:item.u+seat.u,v:item.v+seat.v}))};
   }).filter(item=>item.seats.length),blocked:(u,v)=>!!itemAtCell(u,v),
   furnitureAt:(u,v)=>itemAtCell(u,v)?.type||null,
-  keep:id=>id==='desk_work'&&!!(window.RoomDesk?.working||window.RoomDesk?.busy)?.(),
+  // 累壞了（room_desk tooTired）不留在書桌、也不被工作拉回去
+  keep:id=>id==='desk_work'&&!!(window.RoomDesk?.working||window.RoomDesk?.busy)?.()&&!window.RoomDesk?.tooTired?.(),
   subPoses:spec=>spec.id==='desk_work'?window.RoomDesk?.poseWeights?.()||null:null,
   // Activity context (time/chrono/mood/missYou/stage/hobbies/history/post-chat bias) and the
   // activity log come from the summon module; without it she still picks activities on defaults.
