@@ -301,7 +301,18 @@ async def main():
     D.start(connect, c)
     await wait_status("done")
     assert [r["id"] for r in D.view(c)["reports"]] == [e["id"]] and D.view(c)["shelf"]["pending"] == []
-    D.cancel(c, e["id"])
+    # 書櫃丟掉：桌上的不行（還沒收進書櫃）；收進書櫃的、收下的可以，連日誌一起刪
+    try:
+        D.remove(c, e["id"])
+        raise AssertionError("桌上的報告不能從書櫃丟")
+    except D.DeskError:
+        pass
+    D.shelve(c)
+    D.remove(c, e["id"])
+    assert D.get(c, e["id"]) is None and D.events(c, e["id"]) == [] and D.view(c)["shelf"]["pending"] == []
+    n = D.view(c)["shelf"]["doneTotal"]
+    D.remove(c, a["id"])
+    assert D.view(c)["shelf"]["doneTotal"] == n - 1 and all(r["id"] != a["id"] for r in D.view(c)["shelf"]["done"])
     os.environ["DESK_MOCK_STEP_S"] = "0.01"
     c.close()
     print("desk_agent: ok")

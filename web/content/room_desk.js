@@ -407,6 +407,10 @@
     const sub = [shelfPending.length ? `${shelfPending.length} 份報告等你看` : '', shelfTotal ? `完成 ${shelfTotal} 件` : ''].filter(Boolean).join('・');
     return `<div class="sec">書櫃</div>${itemRow({ title: '她完成的放在書櫃' }, '<button type="button" data-a="shelf">去書櫃看</button>', sub)}`;
   }
+  /** 書櫃裡的那件：請她看看（打開對話、她說心得，可以接著討論）／丟掉。 */
+  function shelfButtons(r) {
+    return `<div class="row"><button type="button" class="main" data-a="discuss">請她看看、說說心得</button><button type="button" data-a="remove" data-id="${r.id}">丟掉</button></div>`;
+  }
   const day = at => { const d = new Date(at); return `${d.getMonth() + 1}/${d.getDate()} ${hhmm(at)}`; };
   function paintShelf() {
     if (!shelfPending.length && !shelfDone.length) {
@@ -436,12 +440,14 @@
       body = `<div class="title">${esc(r.title)}</div><div><span class="chip done">完成了</span><span class="mini">${r.finished ? day(r.finished) + ' 交的' : ''}</span></div>
         ${r.note ? `<p class="mini">說明：${esc(r.note)}</p>` : ''}
         <div class="report">${r.report ? md(r.report) : '<p class="mini">（沒有報告內容）</p>'}</div>
+        ${shelfButtons(r)}
         ${timeline(sel.events, sel.summary, r)}`;
     }
     else if (mode === 'report') {
       body = `<div class="title">${esc(r.title)}</div><div class="report">${md(r.report)}</div>
         <div class="row"><button type="button" class="main" data-a="accept">完成委託</button><button type="button" data-a="extend-open">延伸</button><button type="button" data-a="redo-open">退回重做</button></div>
         <p class="mini">延伸＝這件先算完成、金幣先拿，她接著做後續（插隊，下一件就做）。</p>
+        ${r.shelved ? shelfButtons(r) : ''}
         ${timeline(sel.events, sel.summary, r)}`;
     } else if (mode === 'extend') {
       body = `<div class="title">${esc(r.title)}</div><p class="mini">這件委託先算完成（金幣先給、委託板上的拿掉），她接著同一份工作做後續（插隊，下一件就做），做完交新的報告。</p>
@@ -467,6 +473,23 @@
       if (a === 'back') { mode = home; sel = null; paint(true); return; }
       if (a === 'shelf') { mode = home = 'shelf'; sel = null; paint(true); return; }
       if (a === 'archive') { await openItem(id, 'archive'); return; }
+      if (a === 'discuss') {
+        // test_room_summon 接手：她在房間就打開對話、她先說心得（RoomDesk.onDiscuss 由它設）
+        const r = sel?.run;
+        const res = r && window.RoomDesk.onDiscuss ? window.RoomDesk.onDiscuss({ id: r.id, title: r.title, report: r.report || '',
+          note: r.note || '', girlId: r.girlId || '', girlName: r.girlName || '', accepted: r.status === 'accepted' }) : { error: '她不在房間。' };
+        if (res && res.ok) { closeLog(); return; }
+        msg = (res && res.error) || '現在沒辦法叫她看。'; paint(true); return;
+      }
+      if (a === 'remove') {
+        const r = sel?.run;
+        const pend = r && r.status === 'done';
+        if (!window.confirm(pend ? '丟掉這份報告？還沒收下，委託會回到委託板（沒有完成），報告和日誌刪掉就回不來了。'
+          : '從書櫃丟掉這件？報告和日誌刪掉就回不來了（委託已經完成，金幣不會收回）。')) return;
+        await api('/api/desk/remove', { id });
+        toastRoom(`「${r?.title || ''}」丟掉了。`);
+        mode = home; sel = null;
+      }
       if (a === 'open') { await openItem(id, 'report'); return; }
       if (a === 'openfail') { await openItem(id, 'fail'); return; }
       if (a === 'report') { mode = 'report'; paint(true); return; }

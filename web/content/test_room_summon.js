@@ -1692,9 +1692,40 @@ function deskAnswerLine() {
 }
 // 委託板長按放上桌時，書桌問「現在房間裡是誰」（工作日誌寫她的名字）
 if (window.RoomDesk) window.RoomDesk.who = () => (girl && girlInRoom() ? { id: girl.id, name: girl.name } : null);
+// ---------------------------------------------------------------- 書櫃：請她看看、說說心得（room_desk.js，2026-11-02）
+// 書櫃裡點「請她看看」→ 她在房間就打開對話、她先說心得；這次對話她都看得到那份報告（關掉對話就收起來）。
+let deskDiscuss = null;   // {item:{id,title,report,note,girlId,girlName,accepted}, girlId, fresh}
+const DISCUSS_REPORT_MAX = 2500;
+if (window.RoomDesk) window.RoomDesk.onDiscuss = (item) => {
+  if (!girl || !girlInRoom()) return { error: "她不在房間，叫她回來再拿給她看。" };
+  const b = talkBusyFlags();
+  if (b.errand) return { error: `${girl.name}出門了，還沒回來。` };
+  if (b.asleep) return { error: "她在睡覺，等她醒來再拿給她看。" };
+  if (b.talkBusy || b.scene || b.sex || b.undress || b.summoning) return { error: "她現在沒空，等一下再拿給她看。" };
+  const open = b.sheetOpen;
+  deskDiscuss = { item, girlId: girl.id, fresh: !open };
+  pushDebug(`書櫃：請她看「${item.title}」${open ? "（對話開著：接著聊）" : "→ 打開對話、她先說心得"}`);
+  if (open) { try { window.RoomActor?.tip?.(`把「${item.title}」遞給她了，跟她聊聊吧。`); } catch { /* */ } }
+  else showSheet();
+  return { ok: true };
+};
+function deskDiscussLines() {
+  const d = deskDiscuss;
+  if (!d || !girl || d.girlId !== girl.id) return [];
+  const it = d.item, mine = !it.girlId || it.girlId === girl.id || (!!it.girlName && it.girlName === girl.name);
+  let rep = String(it.report || "").trim();
+  if (rep.length > DISCUSS_REPORT_MAX) rep = rep.slice(0, DISCUSS_REPORT_MAX) + "…（後面省略）";
+  return [
+    `【他拿書櫃裡的工作給你看】「${it.title}」${mine ? "是你做完交給他的" : `是${it.girlName || "別人"}做的，不是你`}${it.accepted ? "（他已經收下了）" : "（他還沒收下）"}。`,
+    it.note ? `他當初附的說明：${it.note}` : "",
+    rep ? `報告內容：
+${rep}` : "（報告沒有內容。）",
+    "跟他聊這份：說你的心得、哪裡得意、哪裡不滿意、還能怎麼延伸；他問細節就照報告內容答，報告沒寫的不要編。不要整段念報告。",
+  ].filter(Boolean);
+}
 function deskPromptLines() {
   const A = roomActs(), D = window.RoomDesk, ask = deskGiveAsk;
-  const out = [];
+  const out = [...deskDiscussLines()];
   const ans = deskAnswerLine();
   if (ans) out.push(ans);
   else if (A?.givePromptLine && ask && girl && ask.girlId === girl.id) out.push(A.givePromptLine(ask.r));
@@ -8595,7 +8626,15 @@ async function openTalk() {
     // 她從書桌走過來問工作上的事：開場就是她的問題
     const deskAsk = deskAskOpen && !proOpen ? window.RoomDesk?.pendingAsk?.() : null;
     deskAskOpen = false;
-    const deskAskFb = deskAsk ? `那個……工作上有件事${deskAsk.kind === "clarify" ? "要問你" : "要你決定"}：${deskAsk.text}` : "";
+    // 書櫃裡請她看看：開場就是她的心得
+    const deskTalk = !deskAsk && !proOpen && deskDiscuss?.fresh && deskDiscuss.girlId === girl.id ? deskDiscuss.item : null;
+    if (deskDiscuss) deskDiscuss.fresh = false;
+    const deskAskFb = deskAsk ? `那個……工作上有件事${deskAsk.kind === "clarify" ? "要問你" : "要你決定"}：${deskAsk.text}`
+      : deskTalk ? `「${deskTalk.title}」啊……嗯，我想想看怎麼說。` : "";
+    if (deskTalk) {
+      opener = `他從書櫃拿出「${deskTalk.title}」的報告遞給你，請你看看、說說心得。第一句用你的口氣說你的心得（一兩個重點就好，不要念報告），只寫說出口的話。`;
+      lines.push({ role: "user", content: `（你從書櫃拿出「${deskTalk.title}」的報告遞給她：「妳看看，說說心得？」）` });
+    }
     if (deskAsk) {
       opener = `她從書桌那邊走過來，有工作上的事要問他：${deskAsk.text}。第一句就用你的口氣${deskAsk.kind === "clarify" ? "問他這件事" : "簡單說要做什麼、問他可不可以"}，只寫說出口的話。`;
       lines.push({ role: "user", content: "（她從書桌那邊走過來，看起來有工作上的事要問你。）" });
@@ -10716,6 +10755,7 @@ function loadRoomSave() {
 }
 
 function hideSheet() {
+  deskDiscuss = null;   // 書櫃那份報告：關掉對話就收起來
   // 老婆要出門接客：關掉對話框＝目送她出門（不能阻止）
   if (escortDialog && girl) { const who = girl; escortDialog.phase = "done"; setTimeout(() => { if (girl === who && girlInRoom()) escortLeave(who); }, 0); }
   // 求的對話框：關掉＝不理她（求的窗口照 hungerChatClose 收）

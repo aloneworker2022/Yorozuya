@@ -5971,6 +5971,13 @@ def desk_shelve():
     return {"shelved": _desk(desk_agent.shelve)}
 
 
+@app.post("/api/desk/remove")
+def desk_remove(body: dict | None = None):
+    """從書櫃丟掉一件（id）：收下的或收進書櫃的報告，連日誌一起刪。"""
+    rid = (body or {}).get("id")
+    return {"run": _desk(lambda c: desk_agent.remove(c, rid))}
+
+
 @app.post("/api/desk/retry")
 def desk_retry(body: dict | None = None):
     """出錯的那件重來（排回隊伍、插隊）。"""

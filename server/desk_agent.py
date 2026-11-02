@@ -629,6 +629,17 @@ def shelve(conn: sqlite3.Connection) -> int:
     return len(ids)
 
 
+def remove(conn: sqlite3.Connection, run_id) -> dict:
+    """從書櫃丟掉一件（收下的、或收進書櫃還沒看的報告）：連日誌一起刪，回不來。"""
+    run = get(conn, int(run_id or 0))
+    if not run or not (run["status"] == "accepted" or (run["status"] == "done" and run["shelved"])):
+        raise DeskError("書櫃裡沒有這件", 404)
+    conn.execute("DELETE FROM desk_events WHERE run_id=?", (run["id"],))
+    conn.execute("DELETE FROM desk_runs WHERE id=?", (run["id"],))
+    conn.commit()
+    return _brief(run)
+
+
 def shelf(conn: sqlite3.Connection) -> dict:
     """書櫃：等你看的報告（收進來的 done）＋收下的（accepted，新的在前）。"""
     pending = conn.execute(f"SELECT {_RUN_COLS} FROM desk_runs WHERE status='done' AND shelved>0 ORDER BY finished ASC, id ASC").fetchall()
