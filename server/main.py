@@ -5965,6 +5965,12 @@ def desk_accept(body: dict | None = None):
     return {"run": _desk(lambda c: desk_agent.accept(c, rid))}
 
 
+@app.post("/api/desk/shelve")
+def desk_shelve():
+    """她離開書桌：桌上交了的報告收進書櫃。"""
+    return {"shelved": _desk(desk_agent.shelve)}
+
+
 @app.post("/api/desk/retry")
 def desk_retry(body: dict | None = None):
     """出錯的那件重來（排回隊伍、插隊）。"""

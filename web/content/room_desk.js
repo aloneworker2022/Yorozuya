@@ -6,7 +6,9 @@
    2026-11-02：一次可以放很多件，排成一列照順序做；做完一件報告疊在桌上、她接著做下一件。
    放上桌的委託從委託板拿掉（questIds，app.js 濾掉），要看就點書桌。
    她坐到書桌前（desk_work 定下來）而該做的那件還沒開工／停著 → 自動 start。
-   window.RoomDesk = {give, start, pause, answer, busy, working, prop, icon, poseWeights, promptLines, openLog, questIds, state} */
+   書櫃（2026-11-02 Al）：報告交了、她離開書桌（不在書桌前 5 秒）→ 報告收進書櫃（/api/desk/shelve）；
+   收下的（完成的委託）也在書櫃。點書櫃（test_room.js）→ openShelf：等你看的報告＋完成的委託，點進去看報告書。
+   window.RoomDesk = {give, start, pause, answer, busy, working, prop, icon, poseWeights, promptLines, openLog, openShelf, questIds, state} */
 (() => {
   'use strict';
   const POLL_MS = 2000, IDLE_POLL_MS = 6000;
@@ -14,6 +16,8 @@
   // run：她正在做（或下一件要做）的那件；queue：排在後面的；reports：交上來的報告；failed：出錯的
   let run = null, events = [], summary = EMPTY_SUMMARY, agent = 'mock';
   let queue = [], reports = [], failed = [];
+  // 書櫃：shelfPending 收進書櫃、還沒看的報告；shelfDone 收下的（完成的委託，新的在前）
+  let shelfPending = [], shelfDone = [], shelfTotal = 0;
   let lastSeq = 0, offline = false, polling = false, startAsked = 0, seenIds = null, questKey = '';
 
   async function api(path, body) {
@@ -39,6 +43,9 @@
     queue = j.queue || [];
     reports = j.reports || [];
     failed = j.failed || [];
+    shelfPending = j.shelf?.pending || [];
+    shelfDone = j.shelf?.done || [];
+    shelfTotal = j.shelf?.doneTotal || shelfDone.length;
   }
   async function pull() {
     if (polling) return;
@@ -59,7 +66,7 @@
   }
   /** 新的報告／出錯 → 房間上說一聲；桌上的委託變了 → 委託板重畫（放上桌的不顯示）。 */
   function noticeChanges() {
-    const ids = new Set([...reports.map(r => `d${r.id}`), ...failed.map(r => `f${r.id}`)]);
+    const ids = new Set([...reports.map(r => `d${r.id}`), ...shelfPending.map(r => `d${r.id}`), ...failed.map(r => `f${r.id}`)]);
     if (seenIds) {
       for (const r of reports) if (!seenIds.has(`d${r.id}`)) toastRoom(`「${r.title}」的報告寫好了，點書桌看。`);
       for (const r of failed) if (!seenIds.has(`f${r.id}`)) toastRoom(`「${r.title}」做到一半出錯停了，點書桌看。`);
@@ -128,6 +135,29 @@
     finally { pausing = false; }
   }
   setInterval(watchDesk, 1000);
+  // ------------------------------------------------------------ 書櫃（2026-11-02 Al）
+  // 報告交了、她不在書桌前（去做別的事、去睡覺、離開房間）5 秒 → 桌上的報告收進書櫃。走過來問你（desk_ask）、
+  // 正走回書桌（desk_work）不算離開。剛打開頁面她不在房間：等房間載入（LOAD_GRACE_MS）。
+  const SHELVE_MS = 5000;
+  let shelfAway = 0, shelving = false;
+  function watchShelf() {
+    if (!reports.length || document.hidden || shelving) { shelfAway = 0; return; }
+    const A = window.RoomActor, present = !!A?.isPresent?.(), a = present ? A.activity?.() : null;
+    if (a && (a.id === 'desk_work' || a.id === 'desk_ask')) { shelfAway = 0; return; }
+    if (!present && Date.now() - loadedAt < LOAD_GRACE_MS) return;
+    if (!shelfAway) shelfAway = Date.now();
+    if (Date.now() - shelfAway > SHELVE_MS) { shelfAway = 0; void shelve(); }
+  }
+  async function shelve() {
+    shelving = true;
+    try {
+      const j = await api('/api/desk/shelve', {});
+      await pull();
+      if (j.shelved) toastRoom(j.shelved > 1 ? `她把 ${j.shelved} 份報告收進書櫃了，點書櫃看。` : '她把報告收進書櫃了，點書櫃看。');
+    } catch { /* 下一秒再看 */ }
+    finally { shelving = false; }
+  }
+  setInterval(watchShelf, 1000);
   function refreshQuests() { try { window.YorozuyaQuests?.refresh?.(); } catch { /* */ } }
   const busy = () => !!(run && run.status === 'running');
   /** 桌上有她該做的事（做中／停著／排隊）：她會回書桌、坐著不起來。 */
@@ -137,7 +167,7 @@
   /** 桌上的委託（委託板上不顯示這些）。 */
   function questIds() {
     const s = new Set();
-    for (const r of [run, ...queue, ...reports, ...failed]) if (r && r.questId) s.add(r.questId);
+    for (const r of [run, ...queue, ...reports, ...failed, ...shelfPending]) if (r && r.questId) s.add(r.questId);
     return s;
   }
   /** 她在書桌前換什麼動作（權重）：做中多半在寫、偶爾撐頭想；卡住就一直撐著頭想；做完了伸懶腰、滑手機。 */
@@ -183,7 +213,7 @@
   function mins(ms) { const m = Math.max(0, Math.round(ms / 60000)); return m < 1 ? '不到一分鐘' : m < 60 ? `${m} 分鐘` : `${Math.round(m / 6) / 10} 小時`; }
   /** 她桌上的工作 → prompt（她知道自己在做什麼、卡在哪、還有幾件；不要把過程條列給他）。 */
   function promptLines() {
-    if (!run && !queue.length && !reports.length && !failed.length) return [];
+    if (!run && !queue.length && !reports.length && !failed.length && !shelfPending.length) return [];
     const out = ['【你桌上的工作】'];
     if (run) {
       const t = `「${run.title}」`;
@@ -208,6 +238,8 @@
     if (queue.length) out.push(`後面還排著 ${queue.length} 件：${queue.slice(0, 4).map(q => `「${q.title}」`).join('、')}${queue.length > 4 ? '…' : ''}。`);
     if (reports.length) out.push(`有 ${reports.length} 份報告寫好了放在桌上等他看：${reports.slice(0, 3).map(q => `「${q.title}」`).join('、')}。`);
     if (failed.length) out.push(`${failed.map(q => `「${q.title}」`).join('、')}做到一半出錯停下來了。`);
+    if (shelfPending.length) out.push(`有 ${shelfPending.length} 份報告你收進書櫃了，還在等他看：${shelfPending.slice(0, 3).map(q => `「${q.title}」`).join('、')}。`);
+    if (shelfTotal) out.push(`書櫃裡放著你完成的 ${shelfTotal} 件委託${shelfDone.length ? `（最近的是「${shelfDone[0].title}」）` : ''}。`);
     out.push('聊到的話自然提起就好，不要條列過程。');
     return out;
   }
@@ -254,8 +286,9 @@
       <div class="sec">工作日誌</div><ol class="tl">${tl || '<li><span></span><span class="mini">還沒有紀錄。</span></li>'}</ol>`;
   }
 
-  // mode：log 總覽｜report 一份報告書｜extend／redo 寫延伸／退回｜fail 出錯的那件；sel：點進去的那件（/api/desk/run）
-  let card = null, mode = 'log', msg = '', sel = null;
+  // mode：log 總覽｜shelf 書櫃｜report 一份報告書｜extend／redo 寫延伸／退回｜fail 出錯的那件｜archive 書櫃裡完成的那件
+  // home：從哪裡打開的（log 書桌／shelf 書櫃），‹ 和做完動作回那裡；sel：點進去的那件（/api/desk/run）
+  let card = null, mode = 'log', home = 'log', msg = '', sel = null;
   function ensureCard() {
     if (card) return card;
     const css = document.createElement('style');
@@ -302,14 +335,21 @@
     const ov = document.createElement('div');
     ov.id = 'desk-ov'; ov.hidden = true;
     ov.innerHTML = '<div id="desk-card" role="dialog" aria-modal="true" aria-labelledby="desk-h"></div>';
-    ov.addEventListener('click', e => { if (e.target === ov) closeLog(); });
+    // 點外面關掉：按下去和放開都在外面才算。點書桌／書櫃打開的那一下，手機放開後補的 click 會落在剛蓋上的 ov 上
+    // → 之前一打開就馬上關掉（看起來像點書桌沒反應）。
+    let downOut = false;
+    ov.addEventListener('pointerdown', e => { downOut = e.target === ov; });
+    ov.addEventListener('click', e => { if (e.target === ov && downOut) closeLog(); downOut = false; });
     document.body.append(ov);
     card = ov;
     return card;
   }
-  function openLog() {
+  function openLog() { openHome('log'); }
+  /** 點書櫃：她完成的（收進書櫃等你看的報告＋收下的委託）。 */
+  function openShelf() { openHome('shelf'); }
+  function openHome(where) {
     ensureCard();
-    mode = 'log'; sel = null; msg = '';
+    mode = home = where; sel = null; msg = '';
     card.hidden = false;
     paint(true);
     void pull();
@@ -325,7 +365,7 @@
   }
   function paintOverview() {
     if (!run && !queue.length && !reports.length && !failed.length) {
-      return `<p>${offline ? '書桌連不上伺服器。' : '桌上沒有工作。'}</p><p class="mini">委託板上長按已承接的委託往上滑，或在聊天裡跟她說「這件交給妳：（委託）」，就會放到她桌上（可以放很多件，她照順序做）。</p>`;
+      return `<p>${offline ? '書桌連不上伺服器。' : '桌上沒有工作。'}</p>${shelfHint()}<p class="mini">委託板上長按已承接的委託往上滑，或在聊天裡跟她說「這件交給妳：（委託）」，就會放到她桌上（可以放很多件，她照順序做）。</p>`;
     }
     let html = '';
     if (run) {
@@ -359,6 +399,26 @@
       `<button type="button" class="main" data-a="open" data-id="${r.id}">看報告</button>`, r.finished ? `${hhmm(r.finished)} 交的` : '')).join('');
     if (failed.length) html += `<div class="sec">出錯的（${failed.length}）</div>` + failed.map(r => itemRow(r,
       `<button type="button" data-a="openfail" data-id="${r.id}">看</button><button type="button" class="main" data-a="retry" data-id="${r.id}">重來</button>`)).join('');
+    return html + shelfHint();
+  }
+  /** 書桌總覽底下：書櫃裡有東西 → 一列「去書櫃看」。 */
+  function shelfHint() {
+    if (!shelfPending.length && !shelfTotal) return '';
+    const sub = [shelfPending.length ? `${shelfPending.length} 份報告等你看` : '', shelfTotal ? `完成 ${shelfTotal} 件` : ''].filter(Boolean).join('・');
+    return `<div class="sec">書櫃</div>${itemRow({ title: '她完成的放在書櫃' }, '<button type="button" data-a="shelf">去書櫃看</button>', sub)}`;
+  }
+  const day = at => { const d = new Date(at); return `${d.getMonth() + 1}/${d.getDate()} ${hhmm(at)}`; };
+  function paintShelf() {
+    if (!shelfPending.length && !shelfDone.length) {
+      return `<p>${offline ? '書櫃連不上伺服器。' : '書櫃裡還沒有她完成的東西。'}</p><p class="mini">她做完的報告，等她離開書桌就會收進書櫃；你收下的委託也會放在這裡，隨時可以再看。</p>`;
+    }
+    let html = '';
+    if (shelfPending.length) html += `<div class="sec">等你看的報告（${shelfPending.length}）</div>` + shelfPending.map(r => itemRow(r,
+      `<button type="button" class="main" data-a="open" data-id="${r.id}">看報告</button>`, r.finished ? `${day(r.finished)} 交的` : '')).join('');
+    if (shelfDone.length) html += `<div class="sec">完成的委託（${shelfTotal}）</div>` + shelfDone.map(r => itemRow(r,
+      `<button type="button" data-a="archive" data-id="${r.id}">看</button>`,
+      [r.finished ? day(r.finished) : '', r.girlName || ''].filter(Boolean).join('・'))).join('')
+      + (shelfTotal > shelfDone.length ? `<p class="mini">只列出最近 ${shelfDone.length} 件。</p>` : '');
     return html;
   }
   function paint(force = false) {
@@ -367,10 +427,17 @@
     const keep = box.querySelector('textarea')?.value;
     if (!force && box.querySelector('textarea') === document.activeElement) return;   // 正在打字：不重畫
     const r = sel && sel.run;
-    const titles = { log: '她桌上的工作', report: '報告書', extend: '延伸', redo: '退回重做', fail: '出錯的工作' };
-    const head = `<div class="hd">${mode !== 'log' ? '<button type="button" class="x" data-a="back" aria-label="回總覽">‹</button>' : ''}<h2 id="desk-h">${titles[mode] || ''}</h2><button type="button" class="x" data-a="close" aria-label="關閉">×</button></div>`;
+    const titles = { log: '她桌上的工作', shelf: '書櫃', report: '報告書', extend: '延伸', redo: '退回重做', fail: '出錯的工作', archive: '完成的委託' };
+    const head = `<div class="hd">${mode !== home ? '<button type="button" class="x" data-a="back" aria-label="回上一頁">‹</button>' : ''}<h2 id="desk-h">${titles[mode] || ''}</h2><button type="button" class="x" data-a="close" aria-label="關閉">×</button></div>`;
     let body = '';
-    if (mode === 'log' || !r) body = paintOverview();
+    if (mode === 'shelf' || (!r && home === 'shelf')) body = paintShelf();
+    else if (mode === 'log' || !r) body = paintOverview();
+    else if (mode === 'archive') {
+      body = `<div class="title">${esc(r.title)}</div><div><span class="chip done">完成了</span><span class="mini">${r.finished ? day(r.finished) + ' 交的' : ''}</span></div>
+        ${r.note ? `<p class="mini">說明：${esc(r.note)}</p>` : ''}
+        <div class="report">${r.report ? md(r.report) : '<p class="mini">（沒有報告內容）</p>'}</div>
+        ${timeline(sel.events, sel.summary, r)}`;
+    }
     else if (mode === 'report') {
       body = `<div class="title">${esc(r.title)}</div><div class="report">${md(r.report)}</div>
         <div class="row"><button type="button" class="main" data-a="accept">完成委託</button><button type="button" data-a="extend-open">延伸</button><button type="button" data-a="redo-open">退回重做</button></div>
@@ -397,7 +464,9 @@
     const Q = window.YorozuyaQuests;
     try {
       if (a === 'close') { closeLog(); return; }
-      if (a === 'back') { mode = 'log'; sel = null; paint(true); return; }
+      if (a === 'back') { mode = home; sel = null; paint(true); return; }
+      if (a === 'shelf') { mode = home = 'shelf'; sel = null; paint(true); return; }
+      if (a === 'archive') { await openItem(id, 'archive'); return; }
       if (a === 'open') { await openItem(id, 'report'); return; }
       if (a === 'openfail') { await openItem(id, 'fail'); return; }
       if (a === 'report') { mode = 'report'; paint(true); return; }
@@ -410,30 +479,30 @@
         const qid = j.run?.doneQuestId || r.questId;
         const ok = qid && Q?.complete ? Q.complete(qid) : false;
         toastRoom(ok ? `「${r.title}」完成了，她接著做後續。` : '她接著做後續。');
-        mode = 'log'; sel = null;
+        mode = home; sel = null;
       }
       if (a === 'redo') {
         const r = sel.run, fb = card.querySelector('#desk-fb')?.value || '';
         await api('/api/desk/redo', { id: r.id, feedback: fb });
         toastRoom('退回去了，她下一件就照你的意見重做。');
-        mode = 'log'; sel = null;
+        mode = home; sel = null;
       }
       if (a === 'accept') {
         const r = sel.run;
         await api('/api/desk/accept', { id: r.id });
         const ok = r.questId && Q?.complete ? Q.complete(r.questId) : false;
         toastRoom(ok ? `「${r.title}」完成了。` : `收下「${r.title}」的報告了。`);
-        mode = 'log'; sel = null;
+        mode = home; sel = null;
       }
       if (a === 'retry') {
         await api('/api/desk/retry', { id });
         toastRoom('排回去了，她下一件就重來。');
-        mode = 'log'; sel = null;
+        mode = home; sel = null;
       }
       if (a === 'cancel') {
         if (!window.confirm('把這件從她桌上收回？做到一半的會停掉。')) return;
         await api('/api/desk/cancel', { id });
-        mode = 'log'; sel = null;
+        mode = home; sel = null;
       }
       if (a === 'kick') {
         if (!window.confirm('停掉她現在這一輪，叫她從做到的地方接著做？（她看起來卡住、很久沒動靜時用）')) return;
@@ -459,8 +528,8 @@
     } catch (e) { msg = e.message || String(e); paint(true); }
   }
 
-  window.RoomDesk = { give, start, pause, answer, pendingAsk, busy, working, prop, icon, poseWeights, promptLines, openLog, closeLog,
-    questIds, state: () => ({ run, events: events.slice(), summary, agent, offline, queue, reports, failed }), pull };
+  window.RoomDesk = { give, start, pause, answer, pendingAsk, busy, working, prop, icon, poseWeights, promptLines, openLog, openShelf, closeLog,
+    questIds, state: () => ({ run, events: events.slice(), summary, agent, offline, queue, reports, failed, shelfPending, shelfDone }), pull };
   void pull();
   loop();
 })();

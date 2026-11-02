@@ -23,6 +23,9 @@ from typing import Callable
 
 # run.status：queued 排隊中（舊資料的 placed 一樣）｜running 做中｜paused 她離開書桌、停著｜done 報告交了｜failed 出錯停了
 #             ｜cancelled 收回｜accepted 你收下（委託完成）
+# 書櫃（2026-11-02 Al）：報告交了、她離開書桌 → 前端 shelve → shelved＝收進書櫃的時間（報告不在桌上、在書櫃）；
+#   收下的（accepted）也都在書櫃，點書櫃可以再看。退回／延伸再交報告時 shelved 歸 0（先放在桌上）。
+SHELF_MAX = 100           # 書櫃一次回幾件收下的
 # 她正在做的那件（working）：running／paused 那件；沒有就是排第一的（prio 大的先＝退回重做／延伸／重來插隊，再照放上來的順序）。
 # 報告（done）和出錯（failed）不擋後面，疊在桌上等你處理。
 # 她不在書桌前就不做（2026-11-02 Al）：前端看到她離開書桌 → pause（Hermes 這一輪 stop、session 留著）；坐回來 → start 接著做。
@@ -66,7 +69,9 @@ def init(conn: sqlite3.Connection) -> None:
                  # mode：這一輪是 redo（退回重做）還是 extend（延伸：委託已完成、接著做後續）
                  "ALTER TABLE desk_runs ADD COLUMN mode TEXT NOT NULL DEFAULT ''",
                  # prio：插隊（退回重做／延伸／重來 = 1，開工時歸 0）
-                 "ALTER TABLE desk_runs ADD COLUMN prio INTEGER NOT NULL DEFAULT 0"):
+                 "ALTER TABLE desk_runs ADD COLUMN prio INTEGER NOT NULL DEFAULT 0",
+                 # shelved：報告收進書櫃的時間（0＝還在桌上）
+                 "ALTER TABLE desk_runs ADD COLUMN shelved INTEGER NOT NULL DEFAULT 0"):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:
@@ -91,11 +96,11 @@ def _row(r) -> dict | None:
     if not r:
         return None
     keys = ("id", "questId", "title", "girlId", "girlName", "status", "agent", "created", "started", "finished",
-            "report", "feedback", "rounds", "session", "note", "ask", "mode", "prio")
+            "report", "feedback", "rounds", "session", "note", "ask", "mode", "prio", "shelved")
     return dict(zip(keys, r))
 
 
-_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session, note, ask, mode, prio"
+_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session, note, ask, mode, prio, shelved"
 
 
 def _in(statuses) -> str:
@@ -169,7 +174,7 @@ def add_event(conn: sqlite3.Connection, run_id: int, actor: str, kind: str, text
 def _set(conn: sqlite3.Connection, run_id: int, **cols) -> None:
     names = {"status": "status", "started": "started", "finished": "finished", "report": "report",
              "feedback": "feedback", "rounds": "rounds", "agent": "agent", "session": "agent_session", "ask": "ask",
-             "mode": "mode", "quest_id": "quest_id", "prio": "prio"}
+             "mode": "mode", "quest_id": "quest_id", "prio": "prio", "shelved": "shelved"}
     sets = ", ".join(f"{names[k]}=?" for k in cols)
     conn.execute(f"UPDATE desk_runs SET {sets} WHERE id=?", (*cols.values(), run_id))
     conn.commit()
@@ -418,7 +423,7 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
         if (get(conn, run_id) or {}).get("status") != "running":
             return
         add_event(conn, run_id, "main", "report", "報告寫好了，放在桌上。", "ok")
-        _set(conn, run_id, status="done", finished=now_ms(), report=str(report or "")[:60000], ask="")
+        _set(conn, run_id, status="done", finished=now_ms(), report=str(report or "")[:60000], ask="", shelved=0)
         _chain(connect, conn)
     except asyncio.CancelledError:
         raise
@@ -614,6 +619,25 @@ def accept(conn: sqlite3.Connection, run_id=None) -> dict:
     return get(conn, run["id"])
 
 
+def shelve(conn: sqlite3.Connection) -> int:
+    """她離開書桌：桌上交了的報告收進書櫃。→ 收了幾份。"""
+    t = now_ms()
+    ids = [r[0] for r in conn.execute("SELECT id FROM desk_runs WHERE status='done' AND shelved=0").fetchall()]
+    for rid in ids:
+        _set(conn, rid, shelved=t)
+        add_event(conn, rid, "main", "status", "她離開書桌，報告收進書櫃了。", "")
+    return len(ids)
+
+
+def shelf(conn: sqlite3.Connection) -> dict:
+    """書櫃：等你看的報告（收進來的 done）＋收下的（accepted，新的在前）。"""
+    pending = conn.execute(f"SELECT {_RUN_COLS} FROM desk_runs WHERE status='done' AND shelved>0 ORDER BY finished ASC, id ASC").fetchall()
+    done = conn.execute(f"SELECT {_RUN_COLS} FROM desk_runs WHERE status='accepted' ORDER BY finished DESC, id DESC LIMIT ?",
+                        (SHELF_MAX,)).fetchall()
+    total = conn.execute("SELECT COUNT(*) FROM desk_runs WHERE status='accepted'").fetchone()[0]
+    return {"pending": [_brief(_row(r)) for r in pending], "done": [_brief(_row(r)) for r in done], "doneTotal": total}
+
+
 def resume_all(connect) -> int:
     """伺服器重開：還在 running 的接著跑（mock 從頭再跑一次）。"""
     conn = connect()
@@ -628,7 +652,7 @@ def resume_all(connect) -> int:
 
 
 def _brief(run: dict) -> dict:
-    return {k: run[k] for k in ("id", "questId", "title", "status", "note", "finished", "mode", "feedback", "prio")}
+    return {k: run[k] for k in ("id", "questId", "title", "girlName", "status", "note", "finished", "mode", "feedback", "prio", "shelved")}
 
 
 def view(conn: sqlite3.Connection, since: int = 0, since_id: int = 0) -> dict:
@@ -636,7 +660,8 @@ def view(conn: sqlite3.Connection, since: int = 0, since_id: int = 0) -> dict:
     run = working(conn)
     out = {"run": None, "events": [], "summary": summary(conn, None), "agent": agent_name(),
            "queue": [_brief(r) for r in queue(conn) if not run or r["id"] != run["id"]],
-           "reports": [_brief(r) for r in listed(conn, "done")],
+           "reports": [_brief(r) for r in listed(conn, "done") if not r["shelved"]],
+           "shelf": shelf(conn),
            "failed": [_brief(r) for r in listed(conn, "failed")]}
     if run:
         out["run"] = {**run, "report": "", "ask": ask_of(run)}
@@ -647,8 +672,8 @@ def view(conn: sqlite3.Connection, since: int = 0, since_id: int = 0) -> dict:
 
 
 def detail(conn: sqlite3.Connection, run_id: int) -> dict:
-    """一件的全部（報告書、出錯的日誌用）。"""
+    """一件的全部（報告書、出錯的日誌、書櫃裡收下的用）。"""
     run = get(conn, int(run_id))
-    if not run or run["status"] not in ACTIVE:
+    if not run or run["status"] not in (*ACTIVE, "accepted"):
         raise DeskError("桌上沒有這件", 404)
     return {"run": {**run, "ask": ask_of(run)}, "events": events(conn, run["id"], 0), "summary": summary(conn, run)}

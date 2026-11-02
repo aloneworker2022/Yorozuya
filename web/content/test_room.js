@@ -32,6 +32,8 @@
     {id:1,type:'chair',u:0,v:1,facing:'back-right'},
     {id:2,type:'desk',u:0,v:0,facing:'left'},
     {id:3,type:'bed',u:3,v:0,facing:'left'},
+    // 書櫃（2026-11-02）：她做完的報告離開書桌後收在這裡、收下的委託也在（點書櫃看，room_desk.js openShelf）
+    {id:4,type:'bookshelf',u:0,v:4,facing:'right'},
   ];
   // Furniture layout is kept on this device (long-press drag / edit mode changes survive a reload).
   const LAYOUT_KEY = 'yorozuya.room.layout.v1';
@@ -61,6 +63,28 @@
     try { localStorage.setItem(LAYOUT_KEY, text); } catch { /* private mode: layout just isn't kept */ }
   }
   const items = loadLayout() || DEFAULT_ITEMS.map(item => ({...item}));
+  // 舊的擺法沒有書櫃 → 補一個（只補一次；之後自己收回就不再補）
+  const SHELF_ADDED_KEY = 'yorozuya.room.shelfAdded.v1';
+  (() => {
+    let done = false;
+    try { done = !!localStorage.getItem(SHELF_ADDED_KEY); localStorage.setItem(SHELF_ADDED_KEY, '1'); } catch { /* */ }
+    if (done || items.some(item => item.type === 'bookshelf') || !catalog.bookshelf) return;
+    const fits = pos => {
+      const f = catalog.bookshelf.frames[pos.facing];
+      if (pos.u + f.cols > COLS || pos.v + f.rows > ROWS) return false;
+      return items.every(o => { const g = catalog[o.type].frames[o.facing];
+        return pos.u + f.cols <= o.u || o.u + g.cols <= pos.u || pos.v + f.rows <= o.v || o.v + g.rows <= pos.v; });
+    };
+    // 靠左牆前面（不擋住書桌前的她）優先，再左牆、後牆，再找哪裡都行
+    const tries = [];
+    for (let v = ROWS - 2; v >= 0; v--) tries.push({u: 0, v, facing: 'right'});
+    for (let u = 0; u < COLS; u++) tries.push({u, v: 0, facing: 'left'});
+    for (const facing of ['left', 'right']) for (let v = 0; v < ROWS; v++) for (let u = 0; u < COLS; u++) tries.push({u, v, facing});
+    const spot = tries.find(fits);
+    if (!spot) return;
+    items.push({id: items.reduce((m, item) => Math.max(m, item.id), 0) + 1, type: 'bookshelf', ...spot});
+    saveLayout();
+  })();
   savedLayout = JSON.stringify(items.map(({type, u, v, facing}) => ({type, u, v, facing})));
   let selectedId = null, nextId = items.reduce((m, item) => Math.max(m, item.id), 0) + 1;
   const moveButton = document.getElementById('move-item');
@@ -618,10 +642,11 @@
     pointers.delete(event.pointerId);
     if (!pointers.size) canvas.classList.remove('dragging');
     if (drag && was) { endDrag(event.type === 'pointerup'); return; }
-    // Tap the desk (not editing): her work log / report (room_desk.js).
+    // Tap the desk (not editing): her work log / report; the bookshelf: what she finished (room_desk.js).
     if (was && event.type === 'pointerup' && !was.moved && !was.longFired && !was.actor && !editing && !placing) {
       const tapped = hitItem(localPoint(event));
       if (tapped && tapped.type === 'desk' && window.RoomDesk?.openLog) { window.RoomDesk.openLog(); return; }
+      if (tapped && tapped.type === 'bookshelf' && window.RoomDesk?.openShelf) { window.RoomDesk.openShelf(); return; }
     }
     if (!was || event.type !== 'pointerup' || was.moved || was.longFired || was.actor || !editing) return;
     const point = localPoint(event);

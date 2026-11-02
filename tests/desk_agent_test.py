@@ -282,6 +282,26 @@ async def main():
     assert "改短一點" in D.detail(c, a["id"])["run"]["report"]
     D.cancel(c, d["id"])
     assert [r["id"] for r in D.view(c)["reports"]] == [a["id"]]
+
+    # 書櫃：她離開書桌 → 桌上的報告收進書櫃（不在 reports、在 shelf.pending）；收下的在 shelf.done、看得到報告
+    assert D.view(c)["shelf"]["done"][0]["id"] == b["id"], "收下的在書櫃"
+    assert D.detail(c, b["id"])["run"]["report"], "收下的還看得到報告"
+    assert D.shelve(c) == 1 and D.shelve(c) == 0
+    v = D.view(c)
+    assert v["reports"] == [] and [r["id"] for r in v["shelf"]["pending"]] == [a["id"]]
+    D.accept(c, a["id"])                     # 書櫃裡的也能收下
+    v = D.view(c)
+    assert v["shelf"]["pending"] == [] and v["shelf"]["done"][0]["id"] == a["id"]
+    # 退回重做再交：先放在桌上（shelved 歸 0）
+    e = D.put(c, title="書櫃退回")
+    D.start(connect, c)
+    await wait_status("done")
+    D.shelve(c)
+    D.redo(connect, c, "再改", e["id"])
+    D.start(connect, c)
+    await wait_status("done")
+    assert [r["id"] for r in D.view(c)["reports"]] == [e["id"]] and D.view(c)["shelf"]["pending"] == []
+    D.cancel(c, e["id"])
     os.environ["DESK_MOCK_STEP_S"] = "0.01"
     c.close()
     print("desk_agent: ok")
