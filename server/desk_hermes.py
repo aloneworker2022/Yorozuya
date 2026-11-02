@@ -71,29 +71,42 @@ def first_prompt(run: dict) -> str:
         *([f"- 做出來的檔案（表格 csv／xlsx、圖片、初稿、程式碼…）存到這個資料夾：{run['filesDir']}"
            "（只存成品，不要存暫存檔）；報告裡用檔名提到它們，使用者會在報告下面看到附件。"] if run.get("filesDir") else []),
         "",
+        *lessons_block(run.get("lessons")),
         "全部做完時，把成果寫成一份報告（繁體中文 markdown），包含：",
-        "## 摘要、## 做了什麼、## 成果、## 還要你確認",
+        "## 摘要、## 做了什麼、## 成果、## 還要你確認、## 這次學到的",
+        "「## 這次學到的」：回頭檢討這次，0～3 點下次做類似工作用得上的做法、或該避開的錯（例：哪個來源不可靠、哪一步該先確認），"
+        "每點一行、寫成以後能照做的句子；沒有就寫「無」。",
         "報告整份放在 <<<REPORT>>> 和 <<<END>>> 兩個標記之間。還沒做完就不要寫這兩個標記。",
     ])
 
 
 CONTINUE_PROMPT = "使魔（subagent）的結果都回來了（在上面）。接著把委託做完；全部做完就交報告，放在 <<<REPORT>>> 和 <<<END>>> 之間。"
-NUDGE_PROMPT = "請把目前的成果整理成最終報告（繁體中文 markdown：摘要、做了什麼、成果、還要你確認），放在 <<<REPORT>>> 和 <<<END>>> 之間。"
+NUDGE_PROMPT = "請把目前的成果整理成最終報告（繁體中文 markdown：摘要、做了什麼、成果、還要你確認、這次學到的），放在 <<<REPORT>>> 和 <<<END>>> 之間。"
 RESUME_PROMPT = "剛才中斷了（離開了一下，或伺服器重開）。看一下上面做到哪（派出去的使魔結果可能已經回來了），接著把委託做完；全部做完就交報告，放在 <<<REPORT>>> 和 <<<END>>> 之間。"
 
 
-def extend_prompt(followup: str) -> str:
+def lessons_block(lessons) -> list[str]:
+    """她的工作筆記（使用者教的、她自己學到的、批准過的）。"""
+    if not lessons:
+        return []
+    return ["你的工作筆記（使用者教過你的、你以前學到的；這次也照著做，跟委託說明衝突時以委託為準）：",
+            *[f"- {x}" for x in lessons], ""]
+
+
+def extend_prompt(followup: str, lessons=None) -> str:
     return (f"使用者收下了上面的報告（委託完成），接著要做後續：{followup}\n"
-            "延續剛才的成果做這個後續，做完交一份新的完整報告，放在 <<<REPORT>>> 和 <<<END>>> 之間。")
+            + "\n".join(lessons_block(lessons)) +
+            "延續剛才的成果做這個後續，做完交一份新的完整報告（一樣要有「## 這次學到的」），放在 <<<REPORT>>> 和 <<<END>>> 之間。")
 
 
 def notes_block(notes: list[str]) -> str:
     return "\n\n使用者中途補充：\n" + "\n".join(f"- {n}" for n in notes) if notes else ""
 
 
-def redo_prompt(feedback: str) -> str:
+def redo_prompt(feedback: str, lessons=None) -> str:
     return (f"使用者看了報告，退回來要你修改：{feedback}\n"
-            "照這個意見改，改完交一份新的完整報告，放在 <<<REPORT>>> 和 <<<END>>> 之間。")
+            + "\n".join(lessons_block(lessons)) +
+            "照這個意見改，改完交一份新的完整報告（「## 這次學到的」寫你這次被退回學到什麼），放在 <<<REPORT>>> 和 <<<END>>> 之間。")
 
 
 def extract_report(text: str) -> str:
@@ -188,7 +201,7 @@ class HermesAgent:
             if run.get("resume"):
                 prompt = RESUME_PROMPT
             elif fb and not fresh:
-                prompt = extend_prompt(fb) if run.get("mode") == "extend" else redo_prompt(fb)
+                prompt = extend_prompt(fb, run.get("lessons")) if run.get("mode") == "extend" else redo_prompt(fb, run.get("lessons"))
             else:
                 lead = "使用者要你接著做的後續" if run.get("mode") == "extend" else "使用者的意見"
                 prompt = first_prompt(run) + (f"\n\n{lead}：{fb}" if fb else "")

@@ -5905,7 +5905,34 @@ async def desk_start():
 @app.post("/api/desk/redo")
 async def desk_redo(body: dict):
     fb, rid = (body or {}).get("feedback") or "", (body or {}).get("id")
-    return {"run": _desk(lambda c: desk_agent.redo(db, c, fb, rid))}
+    teach = bool((body or {}).get("teach"))
+    return {"run": _desk(lambda c: desk_agent.redo(db, c, fb, rid, teach))}
+
+
+# 她的筆記本（每個妹子各自的工作筆記）
+@app.get("/api/desk/notes")
+def desk_notes():
+    return {"books": _desk(desk_agent.notebooks)}
+
+
+@app.post("/api/desk/notes/add")
+def desk_notes_add(body: dict):
+    b = body or {}
+    key = desk_agent.girl_key(b.get("girlId") or "", b.get("girlName") or "") if not b.get("girlKey") else str(b["girlKey"])
+    return {"lesson": _desk(lambda c: desk_agent.add_lesson(c, key, b.get("text") or "", girl_name=b.get("girlName") or ""))}
+
+
+@app.post("/api/desk/notes/update")
+def desk_notes_update(body: dict):
+    b = body or {}
+    return {"lesson": _desk(lambda c: desk_agent.update_lesson(c, b.get("id"), b.get("text"), b.get("status")))}
+
+
+@app.post("/api/desk/notes/delete")
+def desk_notes_delete(body: dict):
+    rid = (body or {}).get("id")
+    _desk(lambda c: desk_agent.delete_lesson(c, rid))
+    return {"ok": True}
 
 
 @app.post("/api/desk/answer")

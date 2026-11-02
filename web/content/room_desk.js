@@ -17,7 +17,8 @@
   let run = null, events = [], summary = EMPTY_SUMMARY, agent = 'mock';
   let queue = [], reports = [], failed = [];
   // 書櫃：shelfPending 收進書櫃、還沒看的報告；shelfDone 收下的（完成的委託，新的在前）
-  let shelfPending = [], shelfDone = [], shelfTotal = 0;
+  let shelfPending = [], shelfDone = [], shelfTotal = 0, notesPending = 0;
+  let seenNotes = 0;
   let lastSeq = 0, offline = false, polling = false, startAsked = 0, seenIds = null, questKey = '';
 
   async function api(path, body) {
@@ -46,6 +47,7 @@
     shelfPending = j.shelf?.pending || [];
     shelfDone = j.shelf?.done || [];
     shelfTotal = j.shelf?.doneTotal || shelfDone.length;
+    notesPending = j.notesPending || 0;
   }
   async function pull() {
     if (polling) return;
@@ -71,6 +73,8 @@
       for (const r of reports) if (!seenIds.has(`d${r.id}`)) toastRoom(`「${r.title}」的報告寫好了，點書桌看。`);
       for (const r of failed) if (!seenIds.has(`f${r.id}`)) toastRoom(`「${r.title}」做到一半出錯停了，點書桌看。`);
     }
+    if (seenIds && notesPending > seenNotes) toastRoom('她在筆記本寫了這次學到的，等你批准（點書櫃 → 她的筆記本）。');
+    seenNotes = notesPending;
     seenIds = ids;
     const k = [...questIds()].sort().join(',');
     if (k !== questKey) { questKey = k; refreshQuests(); }
@@ -331,6 +335,12 @@
 #desk-card .ask{margin:8px 0;padding:10px 12px;border-radius:8px;background:#fff4d6;border:1px solid #ecd49a;font-size:13px}
 #desk-card .ask b{display:block;font-size:12px;color:#7a5a17;margin-bottom:2px}
 #desk-card .ask .row{margin-top:8px}
+#desk-card .item.note .t span:first-child{display:block;font-size:14px;line-height:1.5;word-break:break-word}
+#desk-card label.teach{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:#5d5243}
+#desk-card label.teach input{width:18px;height:18px;margin:0}
+#desk-card .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+#desk-card .chipb{font:inherit;font-size:13px;border:1px solid #c8bba7;background:#f6f1e7;color:#4e463a;border-radius:16px;padding:5px 12px;min-height:32px;cursor:pointer}
+#desk-card .chipb.on{background:#6b3a2a;border-color:#6b3a2a;color:#fff}
 #desk-card a.dl{font-size:13px;border:1px solid #c8bba7;background:#f6f1e7;color:#4e463a;border-radius:8px;padding:8px 10px;text-decoration:none;white-space:nowrap}
 #desk-card .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin-top:6px}
 #desk-card .thumbs img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:8px;border:1px solid #e1d6c3;background:#fff;display:block}
@@ -460,12 +470,77 @@
     paint(true);
     card.querySelector('.peek')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
+  // ------------------------------------------------------------ 她的筆記本（每個妹子各自的工作筆記，2026-11-02）
+  // 你教的（退回時勾「記進筆記」）、你直接寫的、她自己檢討的（報告「這次學到的」→ 等你批准）；開工時帶給 agent。
+  const SRC = { teach: '你教的', write: '你寫的', reflect: '她學到的' };
+  const notes = { books: [], key: '', editing: 0, loaded: false };
+  const whoKey = () => { try { const w = window.RoomDesk.who?.(); return w ? (w.id || (w.name ? `name:${w.name}` : '')) : ''; } catch { return ''; } };
+  async function loadNotes() {
+    try { notes.books = (await api('/api/desk/notes')).books || []; notes.loaded = true; }
+    catch (e) { msg = e.message; }
+    // 現在房間裡的她沒有筆記本 → 先開一本空的
+    const me = whoKey();
+    if (me && !notes.books.some(b => b.girlKey === me)) {
+      const w = window.RoomDesk.who?.() || {};
+      notes.books.unshift({ girlKey: me, girlName: w.name || '', lessons: [] });
+    }
+    if (!notes.books.some(b => b.girlKey === notes.key)) notes.key = me || notes.books[0]?.girlKey || '';
+    await pull();
+    paint(true);
+  }
+  const curBook = () => notes.books.find(b => b.girlKey === notes.key) || null;
+  function noteRow(L) {
+    if (notes.editing === L.id) {
+      return `<div class="box"><textarea id="desk-note-edit" maxlength="500">${esc(L.text)}</textarea>
+        <div class="row"><button type="button" class="main" data-a="note-save" data-id="${L.id}">存</button><button type="button" data-a="note-cancel">取消</button></div></div>`;
+    }
+    const ok = L.status === 'proposed' ? `<button type="button" class="main" data-a="note-ok" data-id="${L.id}">批准</button>` : '';
+    return `<div class="item note"><div class="t"><span>${esc(L.text)}</span><span class="mini">${SRC[L.source] || ''}${L.created ? `・${day(L.created)}` : ''}</span></div>
+      ${ok}<button type="button" data-a="note-edit" data-id="${L.id}">改</button><button type="button" data-a="note-del" data-id="${L.id}">撕掉</button></div>`;
+  }
+  function paintNotes() {
+    if (!notes.loaded) return '<p class="mini">翻筆記本中…</p>';
+    if (!notes.books.length) return '<p>還沒有筆記本。</p><p class="mini">妹子在房間的時候打開，就能寫教材給她；她做過工作也會有自己的一本。</p>';
+    const b = curBook();
+    const chips = notes.books.length > 1 ? `<div class="chips">${notes.books.map(x => {
+      const n = x.lessons.filter(L => L.status === 'proposed').length;
+      return `<button type="button" class="chipb${x.girlKey === notes.key ? ' on' : ''}" data-a="book" data-f="${esc(x.girlKey)}">${esc(x.girlName || '她')}${n ? `・${n}` : ''}</button>`;
+    }).join('')}</div>` : '';
+    const prop = b.lessons.filter(L => L.status === 'proposed'), act = b.lessons.filter(L => L.status === 'active');
+    return `${chips}<div class="title">${esc(b.girlName || '她')}的筆記本</div>
+      <p class="mini">這裡的筆記她每次開工、被退回重做都會照著做。只有她自己的，教別的妹子要另外教。</p>
+      ${prop.length ? `<div class="sec">她自己學到的，等你批准（${prop.length}）</div>${prop.map(noteRow).join('')}` : ''}
+      <div class="sec">筆記（${act.length}）</div>${act.length ? act.map(noteRow).join('') : '<p class="mini">還沒有。退回重做時勾「記進筆記」、批准她的心得，或在下面直接寫。</p>'}
+      <div class="sec">寫教材給她</div>
+      <textarea id="desk-note" maxlength="500" placeholder="例：查產品規格一定要找官網，價格要寫查的日期；寫報告先給結論再說理由"></textarea>
+      <div class="row"><button type="button" class="main" data-a="note-add">寫進筆記本</button></div>`;
+  }
+  /** 報告書下面：這件工作她學到的（待批准的可以批准／丟掉）。 */
+  function learnedBlock() {
+    const ls = (sel && sel.lessons) || [];
+    if (!ls.length) return '';
+    return `<div class="sec">${esc(sel.run.girlName || '她')}這次學到的</div>` + ls.map(L => `<div class="item note"><div class="t"><span>${esc(L.text)}</span>
+      <span class="mini">${L.status === 'proposed' ? '等你批准' : `已記進筆記本・${SRC[L.source] || ''}`}</span></div>
+      ${L.status === 'proposed' ? `<button type="button" class="main" data-a="learn-ok" data-id="${L.id}">批准</button><button type="button" data-a="learn-del" data-id="${L.id}">不用</button>` : ''}</div>`).join('');
+  }
+  async function reloadSel() {
+    const r = sel && sel.run;
+    if (!r) return;
+    try { const keepFiles = preview; sel = await api(`/api/desk/run?id=${r.id}`); preview = keepFiles; } catch (e) { msg = e.message; }
+    await pull();
+    paint(true);
+  }
   /** 書櫃裡的那件：請她看看（打開對話、她說心得，可以接著討論）／丟掉。 */
   function shelfButtons(r) {
     return `<div class="row"><button type="button" class="main" data-a="discuss">請她看看、說說心得</button><button type="button" data-a="remove" data-id="${r.id}">丟掉</button></div>`;
   }
   const day = at => { const d = new Date(at); return `${d.getMonth() + 1}/${d.getDate()} ${hhmm(at)}`; };
   function paintShelf() {
+    const book = itemRow({ title: '她的筆記本' }, `<button type="button"${notesPending ? ' class="main"' : ''} data-a="notes">打開</button>`,
+      notesPending ? `${notesPending} 條心得等你批准` : '你教她的、她自己學到的做法');
+    return book + paintShelfItems();
+  }
+  function paintShelfItems() {
     if (!shelfPending.length && !shelfDone.length) {
       return `<p>${offline ? '書櫃連不上伺服器。' : '書櫃裡還沒有她完成的東西。'}</p><p class="mini">她做完的報告，等她離開書桌就會收進書櫃；你收下的委託也會放在這裡，隨時可以再看。</p>`;
     }
@@ -484,22 +559,25 @@
     const keep = box.querySelector('textarea')?.value;
     if (!force && box.querySelector('textarea') === document.activeElement) return;   // 正在打字：不重畫
     const r = sel && sel.run;
-    const titles = { log: '她桌上的工作', shelf: '書櫃', report: '報告書', extend: '延伸', redo: '退回重做', fail: '出錯的工作', archive: '完成的委託' };
+    const titles = { log: '她桌上的工作', shelf: '書櫃', report: '報告書', extend: '延伸', redo: '退回重做', fail: '出錯的工作', archive: '完成的委託', notes: '她的筆記本' };
     const head = `<div class="hd">${mode !== home ? '<button type="button" class="x" data-a="back" aria-label="回上一頁">‹</button>' : ''}<h2 id="desk-h">${titles[mode] || ''}</h2><button type="button" class="x" data-a="close" aria-label="關閉">×</button></div>`;
     let body = '';
-    if (mode === 'shelf' || (!r && home === 'shelf')) body = paintShelf();
+    if (mode === 'notes') body = paintNotes();
+    else if (mode === 'shelf' || (!r && home === 'shelf')) body = paintShelf();
     else if (mode === 'log' || !r) body = paintOverview();
     else if (mode === 'archive') {
       body = `<div class="title">${esc(r.title)}</div><div><span class="chip done">完成了</span><span class="mini">${r.finished ? day(r.finished) + ' 交的' : ''}</span></div>
         ${r.note ? `<p class="mini">說明：${esc(r.note)}</p>` : ''}
         <div class="report">${r.report ? md(r.report) : '<p class="mini">（沒有報告內容）</p>'}</div>
         ${filesBlock(r)}
+        ${learnedBlock()}
         ${shelfButtons(r)}
         ${timeline(sel.events, sel.summary, r)}`;
     }
     else if (mode === 'report') {
       body = `<div class="title">${esc(r.title)}</div><div class="report">${md(r.report)}</div>
         ${filesBlock(r)}
+        ${learnedBlock()}
         <div class="row"><button type="button" class="main" data-a="accept">完成委託</button><button type="button" data-a="extend-open">延伸</button><button type="button" data-a="redo-open">退回重做</button></div>
         <p class="mini">延伸＝這件先算完成、金幣先拿，她接著做後續（插隊，下一件就做）。</p>
         ${r.shelved ? shelfButtons(r) : ''}
@@ -511,6 +589,7 @@
     } else if (mode === 'redo') {
       body = `<div class="title">${esc(r.title)}</div><p class="mini">寫哪裡要改，她會照你的意見重做同一件（插隊，下一件就做）。</p>
         <textarea id="desk-fb" maxlength="2000" placeholder="例：結論寫短一點，多舉一個例子">${esc(keep || '')}</textarea>
+        <label class="teach"><input type="checkbox" id="desk-teach"> 也記進她的筆記（以後都這樣做）</label>
         <div class="row"><button type="button" class="main" data-a="redo">送回去重做</button><button type="button" data-a="report">回報告</button></div>`;
     } else if (mode === 'fail') {
       body = `<div class="title">${esc(r.title)}</div><div><span class="chip failed">出錯停了</span></div>
@@ -530,6 +609,34 @@
       if (a === 'shelf') { mode = home = 'shelf'; sel = null; paint(true); return; }
       if (a === 'archive') { await openItem(id, 'archive'); return; }
       if (a === 'peek') { await peek(fname); return; }
+      if (a === 'notes') { mode = 'notes'; notes.editing = 0; paint(true); await loadNotes(); return; }
+      if (a === 'book') { notes.key = fname; notes.editing = 0; paint(true); return; }
+      if (a === 'note-add') {
+        const text = card.querySelector('#desk-note')?.value || '', b = curBook();
+        if (!b) return;
+        await api('/api/desk/notes/add', { girlKey: b.girlKey, girlName: b.girlName, text });
+        card.querySelector('#desk-note').value = '';
+        toastRoom(`寫進${b.girlName || '她'}的筆記本了，下次開工會照著做。`);
+        await loadNotes(); return;
+      }
+      if (a === 'note-ok' || a === 'learn-ok') {
+        await api('/api/desk/notes/update', { id, status: 'active' });
+        toastRoom('批准了，記進她的筆記本。');
+        if (a === 'learn-ok') { await reloadSel(); return; }
+        await loadNotes(); return;
+      }
+      if (a === 'note-del' || a === 'learn-del') {
+        if (a === 'note-del' && !window.confirm('從筆記本撕掉這條？')) return;
+        await api('/api/desk/notes/delete', { id });
+        if (a === 'learn-del') { await reloadSel(); return; }
+        await loadNotes(); return;
+      }
+      if (a === 'note-edit') { notes.editing = id; paint(true); card.querySelector('#desk-note-edit')?.focus(); return; }
+      if (a === 'note-cancel') { notes.editing = 0; paint(true); return; }
+      if (a === 'note-save') {
+        await api('/api/desk/notes/update', { id, text: card.querySelector('#desk-note-edit')?.value || '' });
+        notes.editing = 0; await loadNotes(); return;
+      }
       if (a === 'unpeek') { preview = null; paint(true); return; }
       if (a === 'discuss') {
         // test_room_summon 接手：她在房間就打開對話、她先說心得（RoomDesk.onDiscuss 由它設）
@@ -563,9 +670,9 @@
         mode = home; sel = null;
       }
       if (a === 'redo') {
-        const r = sel.run, fb = card.querySelector('#desk-fb')?.value || '';
-        await api('/api/desk/redo', { id: r.id, feedback: fb });
-        toastRoom('退回去了，她下一件就照你的意見重做。');
+        const r = sel.run, fb = card.querySelector('#desk-fb')?.value || '', teach = !!card.querySelector('#desk-teach')?.checked;
+        await api('/api/desk/redo', { id: r.id, feedback: fb, teach });
+        toastRoom(teach ? '退回去了，也記進她的筆記本，以後都會這樣做。' : '退回去了，她下一件就照你的意見重做。');
         mode = home; sel = null;
       }
       if (a === 'accept') {

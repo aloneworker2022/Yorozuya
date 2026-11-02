@@ -326,6 +326,44 @@ async def main():
     D.remove(c, a["id"])
     assert not D.files_dir(a["id"]).exists(), "丟掉連附檔一起刪"
     assert D.view(c)["shelf"]["doneTotal"] == n - 1 and all(r["id"] != a["id"] for r in D.view(c)["shelf"]["done"])
+
+    # 她的筆記本：她自己檢討的 → 待批准；批准後開工帶進 prompt；退回時「教她」直接記進去；每個妹子各自的
+    assert D.reflections("## 摘要\n- x\n## 這次學到的\n- 先查官網。\n2. 價格要附日期\n## 其他\n- 不算") == ["先查官網。", "價格要附日期。"]
+    assert D.reflections("## 這次學到的\n- 無") == []
+    g = D.put(c, title="筆記測試", girl_id="gx", girl_name="小雪")
+    D.start(connect, c)
+    await wait_status("done")
+    det = D.detail(c, g["id"])
+    props = [L for L in det["lessons"] if L["status"] == "proposed"]
+    assert len(props) == 1 and props[0]["source"] == "reflect" and props[0]["girlKey"] == "gx", det["lessons"]
+    assert D.view(c)["notesPending"] >= 1
+    assert D.lesson_lines(c, D.get(c, g["id"])) == [], "還沒批准的不帶"
+    D.update_lesson(c, props[0]["id"], status="active")
+    D.add_lesson(c, "gx", "查產品規格一定要找官網", girl_name="小雪")
+    D.add_lesson(c, "g2", "別人的筆記", girl_name="小美")
+    D.redo(connect, c, "價格要附查的日期", g["id"], teach=True)
+    lines = D.lesson_lines(c, D.get(c, g["id"]))
+    assert lines[-1] == "價格要附查的日期" and "查產品規格一定要找官網" in lines and "別人的筆記" not in lines, lines
+    D.start(connect, c)
+    await wait_status("done")
+    assert "價格要附查的日期" in D.detail(c, g["id"])["run"]["report"], "開工帶著筆記"
+    assert not [L for L in D.detail(c, g["id"])["lessons"] if L["status"] == "proposed"], "筆記本已經有的心得不再提"
+    books = {b["girlKey"]: b for b in D.notebooks(c)}
+    assert len(books["gx"]["lessons"]) >= 3 and [L["text"] for L in books["g2"]["lessons"]] == ["別人的筆記"]
+    D.delete_lesson(c, books["g2"]["lessons"][0]["id"])
+    assert not any(L for b in D.notebooks(c) if b["girlKey"] == "g2" for L in b["lessons"])
+    for bad in (lambda: D.add_lesson(c, "", "x"), lambda: D.add_lesson(c, "gx", "  "), lambda: D.delete_lesson(c, 99999)):
+        try:
+            bad()
+            raise AssertionError("該擋")
+        except D.DeskError:
+            pass
+    # 只有名字的舊筆記本：併進同名有 id 的那本，開工也帶
+    D.add_lesson(c, "name:小雪", "舊的名字筆記", girl_name="小雪")
+    assert "舊的名字筆記" in D.lesson_lines(c, D.get(c, g["id"]))
+    snow = [b for b in D.notebooks(c) if b["girlName"] == "小雪"]
+    assert len(snow) == 1 and any(L["text"] == "舊的名字筆記" for L in snow[0]["lessons"]), snow
+    D.cancel(c, g["id"])
     os.environ["DESK_MOCK_STEP_S"] = "0.01"
     c.close()
     print("desk_agent: ok")

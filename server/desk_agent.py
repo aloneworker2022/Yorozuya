@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import sqlite3
 import time
@@ -30,6 +31,13 @@ from typing import Callable
 SHELF_MAX = 100           # 書櫃一次回幾件收下的
 # 附檔案（2026-11-02）：每件一個資料夾 <DESK_FILES_DIR>/<run id>/，agent 把產出的檔案存在這裡，報告書列出來。
 FILES_MAX = 60            # 一件最多列幾個檔案
+
+
+# 她的筆記本（2026-11-02 Al）：每個妹子各自的工作筆記，開工／退回時放進 prompt。
+#   source：teach 退回時教的｜write 你直接寫的｜reflect 她自己檢討的（status proposed，你批准才 active）
+LESSON_MAX = 500          # 一條最多幾個字
+LESSONS_IN_PROMPT = 30    # 開工時帶幾條（新的優先）
+REFLECT_HEAD = "這次學到的"
 
 
 def files_root() -> Path:
@@ -121,6 +129,18 @@ def init(conn: sqlite3.Connection) -> None:
             conn.execute(stmt)
         except sqlite3.OperationalError:
             pass
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS desk_lessons (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            girl_key  TEXT NOT NULL,
+            girl_name TEXT NOT NULL DEFAULT '',
+            text      TEXT NOT NULL,
+            source    TEXT NOT NULL DEFAULT 'write',
+            status    TEXT NOT NULL DEFAULT 'active',
+            run_id    INTEGER NOT NULL DEFAULT 0,
+            created   INTEGER NOT NULL
+        )"""
+    )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS desk_events (
             run_id  INTEGER NOT NULL,
@@ -415,6 +435,9 @@ class MockAgent:
             lines[4:4] = [head, f"> {fb}", ""]
         if self.notes:
             lines += ["", "## 你中途的補充指示", *[f"- {n}" for n in self.notes]]
+        if run.get("lessons"):
+            lines += ["", "## 照筆記做的", *[f"- {x}" for x in run["lessons"]]]
+        lines += ["", f"## {REFLECT_HEAD}", "- 資料對不起來時，換關鍵字、找第二個來源核對"]
         return "\n".join(lines)
 
 
@@ -474,11 +497,13 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
         sub_base = conn.execute("SELECT COUNT(DISTINCT actor) FROM desk_events WHERE run_id=? AND actor LIKE 'sub:%'",
                                 (run_id,)).fetchone()[0] or 0
         fdir = files_dir(run_id, make=True)
-        report = await agent.run({**run, "subBase": sub_base, "resume": resume, "filesDir": str(fdir.resolve())}, emit, store)
+        report = await agent.run({**run, "subBase": sub_base, "resume": resume, "filesDir": str(fdir.resolve()),
+                                  "lessons": lesson_lines(conn, run)}, emit, store)
         if (get(conn, run_id) or {}).get("status") != "running":
             return
         add_event(conn, run_id, "main", "report", "報告寫好了，放在桌上。", "ok")
         _set(conn, run_id, status="done", finished=now_ms(), report=str(report or "")[:60000], ask="", shelved=0)
+        _propose_reflections(conn, run, report)
         _chain(connect, conn)
     except asyncio.CancelledError:
         raise
@@ -496,6 +521,25 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
         if _tasks.get(run_id) is asyncio.current_task():
             _tasks.pop(run_id, None)
             _agents.pop(run_id, None)
+
+
+def _propose_reflections(conn: sqlite3.Connection, run: dict, report: str) -> None:
+    """她自己檢討的 → 筆記本「待你批准」（同一件之前還沒批的先換掉）。"""
+    k = girl_key(run.get("girlId"), run.get("girlName"))
+    items = reflections(report)
+    if not k or not items:
+        return
+    conn.execute("DELETE FROM desk_lessons WHERE run_id=? AND status='proposed'", (run["id"],))
+    norm = lambda x: re.sub(r"[\s。．.!！]", "", str(x))   # noqa: E731
+    ks = _keys(run.get("girlId"), run.get("girlName"))
+    have = {norm(r[0]) for r in conn.execute(f"SELECT text FROM desk_lessons WHERE girl_key IN ({','.join('?' * len(ks))})",
+                                             ks).fetchall()}
+    items = [t for t in items if norm(t) not in have]
+    if not items:
+        return
+    for t in items:
+        add_lesson(conn, k, t, girl_name=run.get("girlName") or "", source="reflect", status="proposed", run_id=run["id"])
+    add_event(conn, run["id"], "main", "note", f"在筆記本寫了 {len(items)} 條這次學到的，等你批准。", "")
 
 
 def _spawn(connect, run_id: int, resume: bool = False) -> None:
@@ -545,7 +589,7 @@ def retry(conn: sqlite3.Connection, run_id=None) -> dict:
     return get(conn, run["id"])
 
 
-def redo(connect, conn: sqlite3.Connection, feedback: str, run_id=None) -> dict:
+def redo(connect, conn: sqlite3.Connection, feedback: str, run_id=None, teach: bool = False) -> dict:
     """退回重做：帶你的意見，同一件重做（插隊，下一件就做它）。"""
     run = _pick(conn, run_id, ("done",), "現在沒有交上來的報告")
     fb = " ".join(str(feedback or "").split())[:NOTE_MAX]
@@ -553,6 +597,11 @@ def redo(connect, conn: sqlite3.Connection, feedback: str, run_id=None) -> dict:
         raise DeskError("寫一下哪裡要改")
     _set(conn, run["id"], status="queued", feedback=fb, mode="redo", prio=1)
     add_event(conn, run["id"], "main", "note", f"你退回來：{fb}", "")
+    if teach:   # 以後都這樣做 → 記進她的筆記本
+        k = girl_key(run.get("girlId"), run.get("girlName"))
+        if k:
+            add_lesson(conn, k, fb, girl_name=run.get("girlName") or "", source="teach", run_id=run["id"])
+            add_event(conn, run["id"], "main", "note", "記進筆記本了，以後都會這樣做。", "ok")
     return get(conn, run["id"])
 
 
@@ -697,6 +746,115 @@ def remove(conn: sqlite3.Connection, run_id) -> dict:
     return _brief(run)
 
 
+# ───────────────────────────── 她的筆記本
+
+def girl_key(girl_id: str = "", girl_name: str = "") -> str:
+    """筆記本歸誰：有 id 用 id，沒有用名字。"""
+    gid, name = str(girl_id or "").strip(), str(girl_name or "").strip()
+    return gid or (f"name:{name}" if name else "")
+
+
+def _keys(girl_id: str = "", girl_name: str = "") -> list[str]:
+    """這個妹子的筆記可能記在哪：id，和舊的只有名字的那本（沒有 id 時放上桌的）。"""
+    out = [girl_key(girl_id, girl_name)]
+    if girl_name and str(girl_id or "").strip():
+        out.append(f"name:{str(girl_name).strip()}")
+    return [k for k in out if k]
+
+
+_LESSON_COLS = "id, girl_key, girl_name, text, source, status, run_id, created"
+
+
+def _lesson(r) -> dict:
+    return dict(zip(("id", "girlKey", "girlName", "text", "source", "status", "runId", "created"), r))
+
+
+def add_lesson(conn: sqlite3.Connection, key: str, text: str, *, girl_name: str = "", source: str = "write",
+               status: str = "active", run_id: int = 0) -> dict:
+    text = " ".join(str(text or "").split()) if source == "reflect" else str(text or "").strip()
+    if not key:
+        raise DeskError("不知道是哪個妹子的筆記本")
+    if not text:
+        raise DeskError("筆記是空的")
+    if source not in ("teach", "write", "reflect") or status not in ("active", "proposed"):
+        raise DeskError("筆記的來源／狀態不對")
+    cur = conn.execute("INSERT INTO desk_lessons (girl_key, girl_name, text, source, status, run_id, created) VALUES (?,?,?,?,?,?,?)",
+                       (key, str(girl_name or "")[:60], text[:LESSON_MAX], source, status, int(run_id or 0), now_ms()))
+    conn.commit()
+    return _lesson(conn.execute(f"SELECT {_LESSON_COLS} FROM desk_lessons WHERE id=?", (cur.lastrowid,)).fetchone())
+
+
+def update_lesson(conn: sqlite3.Connection, lesson_id, text: str | None = None, status: str | None = None) -> dict:
+    row = conn.execute(f"SELECT {_LESSON_COLS} FROM desk_lessons WHERE id=?", (int(lesson_id or 0),)).fetchone()
+    if not row:
+        raise DeskError("沒有這條筆記", 404)
+    if text is not None:
+        text = str(text).strip()
+        if not text:
+            raise DeskError("筆記是空的")
+        conn.execute("UPDATE desk_lessons SET text=? WHERE id=?", (text[:LESSON_MAX], row[0]))
+    if status is not None:
+        if status not in ("active", "proposed"):
+            raise DeskError("筆記的狀態不對")
+        conn.execute("UPDATE desk_lessons SET status=? WHERE id=?", (status, row[0]))
+    conn.commit()
+    return _lesson(conn.execute(f"SELECT {_LESSON_COLS} FROM desk_lessons WHERE id=?", (row[0],)).fetchone())
+
+
+def delete_lesson(conn: sqlite3.Connection, lesson_id) -> None:
+    if not conn.execute("DELETE FROM desk_lessons WHERE id=?", (int(lesson_id or 0),)).rowcount:
+        raise DeskError("沒有這條筆記", 404)
+    conn.commit()
+
+
+def notebooks(conn: sqlite3.Connection) -> list[dict]:
+    """全部妹子的筆記本（有筆記、或做過工作的）：[{girlKey, girlName, lessons:[…新的在前]}]。"""
+    books: dict[str, dict] = {}
+    for gid, name in conn.execute("SELECT girl_id, girl_name FROM desk_runs ORDER BY id DESC").fetchall():
+        k = girl_key(gid, name)
+        if k and k not in books:
+            books[k] = {"girlKey": k, "girlName": name, "lessons": []}
+    for r in conn.execute(f"SELECT {_LESSON_COLS} FROM desk_lessons ORDER BY id DESC").fetchall():
+        L = _lesson(r)
+        b = books.setdefault(L["girlKey"], {"girlKey": L["girlKey"], "girlName": L["girlName"], "lessons": []})
+        b["girlName"] = b["girlName"] or L["girlName"]
+        b["lessons"].append(L)
+    # 只有名字的那本併進同名、有 id 的那本（同一個妹子）
+    named = {b["girlName"]: b for k, b in books.items() if not k.startswith("name:") and b["girlName"]}
+    for k in [k for k in books if k.startswith("name:")]:
+        to = named.get(k[5:])
+        if to:
+            to["lessons"] = sorted(to["lessons"] + books.pop(k)["lessons"], key=lambda L: -L["id"])
+    return list(books.values())
+
+
+def lesson_lines(conn: sqlite3.Connection, run: dict) -> list[str]:
+    """這件工作的妹子的筆記（批准過的），給 agent。"""
+    ks = _keys(run.get("girlId"), run.get("girlName"))
+    if not ks:
+        return []
+    rows = conn.execute(f"SELECT text FROM desk_lessons WHERE girl_key IN ({','.join('?' * len(ks))}) AND status='active' "
+                        "ORDER BY id DESC LIMIT ?", (*ks, LESSONS_IN_PROMPT)).fetchall()
+    return [r[0] for r in reversed(rows)]
+
+
+def reflections(report: str) -> list[str]:
+    """報告裡「## 這次學到的」底下的條列（她自己檢討的，最多 3 條；寫「無」就沒有）。"""
+    out, inside = [], False
+    for line in str(report or "").splitlines():
+        h = re.match(r"^\s*#{1,4}\s*(.*)", line)
+        if h:
+            inside = REFLECT_HEAD in h.group(1)
+            continue
+        if not inside:
+            continue
+        m = re.match(r"^\s*(?:[-*•]|\d+[.)])\s+(.*)", line)
+        t = (m.group(1) if m else "").strip().strip("。").strip()
+        if t and t not in ("無", "沒有", "none", "None"):
+            out.append(t + "。")
+    return out[:3]
+
+
 def shelf(conn: sqlite3.Connection) -> dict:
     """書櫃：等你看的報告（收進來的 done）＋收下的（accepted，新的在前）。"""
     pending = conn.execute(f"SELECT {_RUN_COLS} FROM desk_runs WHERE status='done' AND shelved>0 ORDER BY finished ASC, id ASC").fetchall()
@@ -733,6 +891,7 @@ def view(conn: sqlite3.Connection, since: int = 0, since_id: int = 0) -> dict:
            "queue": [_brief(r) for r in queue(conn) if not run or r["id"] != run["id"]],
            "reports": [_brief(r) for r in listed(conn, "done") if not r["shelved"]],
            "shelf": shelf(conn),
+           "notesPending": conn.execute("SELECT COUNT(*) FROM desk_lessons WHERE status='proposed'").fetchone()[0],
            "failed": [_brief(r) for r in listed(conn, "failed")]}
     if run:
         out["run"] = {**run, "report": "", "ask": ask_of(run)}
@@ -748,4 +907,6 @@ def detail(conn: sqlite3.Connection, run_id: int) -> dict:
     if not run or run["status"] not in (*ACTIVE, "accepted"):
         raise DeskError("桌上沒有這件", 404)
     return {"run": {**run, "ask": ask_of(run)}, "events": events(conn, run["id"], 0), "summary": summary(conn, run),
-            "files": list_files(run["id"])}
+            "files": list_files(run["id"]),
+            "lessons": [_lesson(r) for r in conn.execute(f"SELECT {_LESSON_COLS} FROM desk_lessons WHERE run_id=? ORDER BY id",
+                                                          (run["id"],)).fetchall()]}
