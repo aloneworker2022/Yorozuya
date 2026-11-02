@@ -5847,6 +5847,7 @@ async def _start_gen_worker():
     asyncio.create_task(_world_clock())
     asyncio.create_task(_life_loop())
     asyncio.create_task(_line_loop())
+    asyncio.create_task(_desk_schedule_loop())
     try:
         n = desk_agent.resume_all(db)
         print(f"[桌上工作] agent={desk_agent.agent_name()}" + (f"，接著跑 {n} 件" if n else ""), flush=True)
@@ -5926,6 +5927,49 @@ def desk_notes_add(body: dict):
 def desk_notes_update(body: dict):
     b = body or {}
     return {"lesson": _desk(lambda c: desk_agent.update_lesson(c, b.get("id"), b.get("text"), b.get("status")))}
+
+
+async def _desk_schedule_loop():
+    """定期工作：每分鐘看一次，到時間就放一件上她的桌（她在房間就會去書桌做）。"""
+    while True:
+        try:
+            conn = db()
+            try:
+                for r in desk_agent.due_schedules(conn):
+                    print(f"[桌上工作] 定期工作放上桌：{r['title']}（{r['girlName'] or '她'}）", flush=True)
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"[桌上工作] 定期工作檢查失敗：{e}", flush=True)
+        await asyncio.sleep(60)
+
+
+@app.get("/api/desk/schedules")
+def desk_schedules():
+    return {"schedules": _desk(desk_agent.schedules)}
+
+
+@app.post("/api/desk/schedules/add")
+def desk_schedules_add(body: dict):
+    b = body or {}
+    return {"schedule": _desk(lambda c: desk_agent.add_schedule(c, title=b.get("title") or "", note=b.get("note") or "",
+                                                                at_time=b.get("time") or "", weekdays=b.get("weekdays") or "",
+                                                                girl_id=b.get("girlId") or "", girl_name=b.get("girlName") or ""))}
+
+
+@app.post("/api/desk/schedules/update")
+def desk_schedules_update(body: dict):
+    b = dict(body or {})
+    sid = b.pop("id", None)
+    kw = {k: b[k] for k in ("title", "note", "time", "weekdays", "enabled") if k in b}
+    return {"schedule": _desk(lambda c: desk_agent.update_schedule(c, sid, **kw))}
+
+
+@app.post("/api/desk/schedules/delete")
+def desk_schedules_delete(body: dict):
+    sid = (body or {}).get("id")
+    _desk(lambda c: desk_agent.delete_schedule(c, sid))
+    return {"ok": True}
 
 
 @app.post("/api/desk/notes/forget")

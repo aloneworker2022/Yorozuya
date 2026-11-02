@@ -371,6 +371,37 @@ async def main():
     assert [L["text"] for b in D.notebooks(c) if b["girlKey"] == "g3" for L in b["lessons"]] == ["小美的"]
     assert D.get(c, g["id"]) is not None, "工作還在"
     D.cancel(c, g["id"])
+
+    # 定期工作：到時間放上她的桌（標日期）；同一天不重複；上一件還沒做完不再放；只在選的星期；建立時已過今天的時間從下一次開始
+    import time as _t
+    at = lambda d, h, m: _t.mktime((2026, 11, d, h, m, 0, 0, 0, -1))   # 2026-11-02 是星期一
+    sc = D.add_schedule(c, title="每日新聞整理", note="台灣科技新聞前五則", at_time="8:00", weekdays="12345",
+                        girl_id="gn", girl_name="小新", now=at(2, 7, 0))
+    assert sc["time"] == "08:00" and sc["lastDay"] == ""
+    assert D.due_schedules(c, now=at(2, 7, 59)) == []
+    r1 = D.due_schedules(c, now=at(2, 8, 1))
+    assert len(r1) == 1 and r1[0]["title"] == "每日新聞整理（11/2）" and r1[0]["girlName"] == "小新" and r1[0]["note"].startswith("台灣")
+    assert D.due_schedules(c, now=at(2, 9, 0)) == [], "同一天不重複"
+    assert D.due_schedules(c, now=at(3, 8, 5)) == [], "上一件還沒做完不再放"
+    D.cancel(c, r1[0]["id"])
+    assert D.due_schedules(c, now=at(4, 8, 5))[0]["title"].endswith("（11/4）")
+    for r in D.queue(c):
+        D.cancel(c, r["id"])
+    assert D.due_schedules(c, now=at(7, 9, 0)) == [], "星期六沒選"
+    late = D.add_schedule(c, title="晚上的", at_time="06:00", girl_name="小新", now=at(9, 7, 0))
+    assert D.due_schedules(c, now=at(9, 7, 1)) == [], "建立時今天已經過了"
+    D.update_schedule(c, late["id"], enabled=False)
+    assert D.due_schedules(c, now=at(10, 6, 30)) == [], "關掉的不放"
+    for bad in (dict(title="", at_time="08:00"), dict(title="x", at_time="25:00"), dict(title="x", at_time="08:00", weekdays="")):
+        try:
+            D.add_schedule(c, girl_name="小新", **{"weekdays": "0123456", **bad})
+            raise AssertionError(f"該擋 {bad}")
+        except D.DeskError:
+            pass
+    D.forget_girl(c, "gn", "小新")
+    assert D.schedules(c) == [], "她離開了，排給她的定期工作也拿掉"
+    for r in D.queue(c):
+        D.cancel(c, r["id"])
     os.environ["DESK_MOCK_STEP_S"] = "0.01"
     c.close()
     print("desk_agent: ok")

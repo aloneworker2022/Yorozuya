@@ -124,11 +124,28 @@ def init(conn: sqlite3.Connection) -> None:
                  # prio：插隊（退回重做／延伸／重來 = 1，開工時歸 0）
                  "ALTER TABLE desk_runs ADD COLUMN prio INTEGER NOT NULL DEFAULT 0",
                  # shelved：報告收進書櫃的時間（0＝還在桌上）
-                 "ALTER TABLE desk_runs ADD COLUMN shelved INTEGER NOT NULL DEFAULT 0"):
+                 "ALTER TABLE desk_runs ADD COLUMN shelved INTEGER NOT NULL DEFAULT 0",
+                 # schedule_id：定期工作放上來的（同一個定期工作上一件還沒做完就不再放）
+                 "ALTER TABLE desk_runs ADD COLUMN schedule_id INTEGER NOT NULL DEFAULT 0"):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:
             pass
+    # 定期工作（2026-11-02 Al）：每天／每週幾的幾點，自動放一件上她的桌
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS desk_schedules (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            title     TEXT NOT NULL,
+            note      TEXT NOT NULL DEFAULT '',
+            girl_id   TEXT NOT NULL DEFAULT '',
+            girl_name TEXT NOT NULL DEFAULT '',
+            at_time   TEXT NOT NULL,
+            weekdays  TEXT NOT NULL DEFAULT '0123456',
+            enabled   INTEGER NOT NULL DEFAULT 1,
+            last_day  TEXT NOT NULL DEFAULT '',
+            created   INTEGER NOT NULL
+        )"""
+    )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS desk_lessons (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -252,7 +269,7 @@ class DeskError(Exception):
 
 
 def put(conn: sqlite3.Connection, *, quest_id: str = "", title: str, girl_id: str = "", girl_name: str = "",
-        note: str = "") -> dict:
+        note: str = "", schedule_id: int = 0) -> dict:
     """放上桌（排到隊伍最後）。同一件委託已經在桌上就不行。note：附的說明。回傳的 run 帶 pos（排第幾件）。"""
     title = " ".join(str(title or "").split())[:TITLE_MAX]
     note = str(note or "").strip()[:NOTE_MAX]
@@ -264,8 +281,8 @@ def put(conn: sqlite3.Connection, *, quest_id: str = "", title: str, girl_id: st
         if dup:
             raise DeskError(f"「{dup[0]}」已經在她桌上了", 409)
     c = conn.execute(
-        "INSERT INTO desk_runs (quest_id, title, girl_id, girl_name, status, agent, created, note) VALUES (?,?,?,?,?,?,?,?)",
-        (quest_id, title, str(girl_id or "")[:80], str(girl_name or "")[:40], "queued", agent_name(), now_ms(), note),
+        "INSERT INTO desk_runs (quest_id, title, girl_id, girl_name, status, agent, created, note, schedule_id) VALUES (?,?,?,?,?,?,?,?,?)",
+        (quest_id, title, str(girl_id or "")[:80], str(girl_name or "")[:40], "queued", agent_name(), now_ms(), note, int(schedule_id or 0)),
     )
     conn.commit()
     run_id = c.lastrowid
@@ -820,6 +837,7 @@ def forget_girl(conn: sqlite3.Connection, girl_id: str = "", girl_name: str = ""
         args.append(name)
     n = conn.execute(q, args).rowcount
     conn.commit()
+    forget_schedules(conn, gid, name)
     return n
 
 
@@ -868,6 +886,109 @@ def reflections(report: str) -> list[str]:
     return out[:3]
 
 
+# ───────────────────────────── 定期工作
+
+_SCHED_COLS = "id, title, note, girl_id, girl_name, at_time, weekdays, enabled, last_day, created"
+TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
+
+def _sched(r) -> dict:
+    d = dict(zip(("id", "title", "note", "girlId", "girlName", "time", "weekdays", "enabled", "lastDay", "created"), r))
+    d["enabled"] = bool(d["enabled"])
+    return d
+
+
+def _today(now: float | None = None) -> tuple[str, int, str]:
+    """伺服器當地時間：(YYYY-MM-DD, 星期 0＝日…6＝六, HH:MM)。"""
+    t = time.localtime(now if now is not None else time.time())
+    return time.strftime("%Y-%m-%d", t), (t.tm_wday + 1) % 7, time.strftime("%H:%M", t)
+
+
+def _clean_sched(title, note, at_time, weekdays) -> tuple[str, str, str, str]:
+    title = " ".join(str(title or "").split())[:TITLE_MAX]
+    if not title:
+        raise DeskError("定期工作要寫做什麼")
+    m = TIME_RE.match(str(at_time or "").strip())
+    if not m:
+        raise DeskError("時間寫成 HH:MM（例：08:30）")
+    days = "".join(sorted({c for c in str(weekdays or "") if c in "0123456"}))
+    if not days:
+        raise DeskError("至少選一天")
+    return title, str(note or "").strip()[:NOTE_MAX], f"{int(m.group(1)):02d}:{m.group(2)}", days
+
+
+def schedules(conn: sqlite3.Connection) -> list[dict]:
+    return [_sched(r) for r in conn.execute(f"SELECT {_SCHED_COLS} FROM desk_schedules ORDER BY at_time, id").fetchall()]
+
+
+def add_schedule(conn: sqlite3.Connection, *, title: str, note: str = "", at_time: str, weekdays: str = "0123456",
+                 girl_id: str = "", girl_name: str = "", now: float | None = None) -> dict:
+    title, note, at_time, days = _clean_sched(title, note, at_time, weekdays)
+    if not (girl_id or girl_name):
+        raise DeskError("要有妹子在房間才能排定期工作（排給她）")
+    day, _, hm = _today(now)
+    # 今天的時間已經過了：從下一次開始（不要一建立就放上桌）
+    cur = conn.execute(
+        "INSERT INTO desk_schedules (title, note, girl_id, girl_name, at_time, weekdays, last_day, created) VALUES (?,?,?,?,?,?,?,?)",
+        (title, note, str(girl_id)[:80], str(girl_name)[:40], at_time, days, day if hm >= at_time else "", now_ms()))
+    conn.commit()
+    return _sched(conn.execute(f"SELECT {_SCHED_COLS} FROM desk_schedules WHERE id=?", (cur.lastrowid,)).fetchone())
+
+
+def update_schedule(conn: sqlite3.Connection, sched_id, **kw) -> dict:
+    row = conn.execute(f"SELECT {_SCHED_COLS} FROM desk_schedules WHERE id=?", (int(sched_id or 0),)).fetchone()
+    if not row:
+        raise DeskError("沒有這個定期工作", 404)
+    cur = _sched(row)
+    title, note, at_time, days = _clean_sched(kw.get("title", cur["title"]), kw.get("note", cur["note"]),
+                                              kw.get("time", cur["time"]), kw.get("weekdays", cur["weekdays"]))
+    enabled = cur["enabled"] if kw.get("enabled") is None else bool(kw["enabled"])
+    last = cur["lastDay"]
+    if at_time != cur["time"] or (enabled and not cur["enabled"]):   # 改時間／重新打開：今天已經過了就從下一次開始
+        day, _, hm = _today(kw.get("now"))
+        last = day if hm >= at_time else ""
+    conn.execute("UPDATE desk_schedules SET title=?, note=?, at_time=?, weekdays=?, enabled=?, last_day=? WHERE id=?",
+                 (title, note, at_time, days, int(enabled), last, cur["id"]))
+    conn.commit()
+    return _sched(conn.execute(f"SELECT {_SCHED_COLS} FROM desk_schedules WHERE id=?", (cur["id"],)).fetchone())
+
+
+def delete_schedule(conn: sqlite3.Connection, sched_id) -> None:
+    if not conn.execute("DELETE FROM desk_schedules WHERE id=?", (int(sched_id or 0),)).rowcount:
+        raise DeskError("沒有這個定期工作", 404)
+    conn.commit()
+
+
+def due_schedules(conn: sqlite3.Connection, now: float | None = None) -> list[dict]:
+    """到時間的定期工作 → 放上她的桌（今天放過的、上一件還沒做完的不放）。→ 放上去的 run。"""
+    day, wd, hm = _today(now)
+    out = []
+    for sc in schedules(conn):
+        if not sc["enabled"] or sc["lastDay"] == day or str(wd) not in sc["weekdays"] or hm < sc["time"]:
+            continue
+        conn.execute("UPDATE desk_schedules SET last_day=? WHERE id=?", (day, sc["id"]))
+        conn.commit()
+        busy = conn.execute(f"SELECT id FROM desk_runs WHERE schedule_id=? AND status IN ({_in(WORKING)})", (sc["id"],)).fetchone()
+        if busy:
+            continue
+        t = time.localtime(now if now is not None else time.time())
+        out.append(put(conn, title=f"{sc['title']}（{t.tm_mon}/{t.tm_mday}）", note=sc["note"], girl_id=sc["girlId"],
+                       girl_name=sc["girlName"], schedule_id=sc["id"]))
+    return out
+
+
+def forget_schedules(conn: sqlite3.Connection, girl_id: str = "", girl_name: str = "") -> int:
+    """她永遠離開了：排給她的定期工作也拿掉。"""
+    q, args = "DELETE FROM desk_schedules WHERE 0", []
+    if girl_id:
+        q += " OR girl_id=?"; args.append(girl_id)
+    if girl_name:
+        q += " OR girl_name=?"; args.append(girl_name)
+    n = conn.execute(q, args).rowcount
+    conn.commit()
+    return n
+
+
 def shelf(conn: sqlite3.Connection) -> dict:
     """書櫃：等你看的報告（收進來的 done）＋收下的（accepted，新的在前）。"""
     pending = conn.execute(f"SELECT {_RUN_COLS} FROM desk_runs WHERE status='done' AND shelved>0 ORDER BY finished ASC, id ASC").fetchall()
@@ -905,6 +1026,7 @@ def view(conn: sqlite3.Connection, since: int = 0, since_id: int = 0) -> dict:
            "reports": [_brief(r) for r in listed(conn, "done") if not r["shelved"]],
            "shelf": shelf(conn),
            "notesPending": conn.execute("SELECT COUNT(*) FROM desk_lessons WHERE status='proposed'").fetchone()[0],
+           "schedules": schedules(conn),
            "failed": [_brief(r) for r in listed(conn, "failed")]}
     if run:
         out["run"] = {**run, "report": "", "ask": ask_of(run)}

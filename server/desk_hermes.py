@@ -25,6 +25,7 @@ import asyncio
 import json
 import os
 import re
+import time
 from typing import Callable
 
 REPORT_RE = re.compile(r"<<<REPORT>>>(.*?)(?:<<<END>>>|$)", re.S)
@@ -62,6 +63,7 @@ def first_prompt(run: dict) -> str:
     t = run["title"]
     return "\n".join([
         f"幫使用者處理一件現實生活中的委託：「{t}」。",
+        f"今天是 {time.strftime('%Y-%m-%d（%a）%H:%M')}（使用者在台灣）；要查新消息、價格就以今天為準。",
         *([f"使用者的說明：{run['note']}"] if run.get("note") else []),
         "",
         "做法：",

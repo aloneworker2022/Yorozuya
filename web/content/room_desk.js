@@ -18,7 +18,7 @@
   let queue = [], reports = [], failed = [];
   // 書櫃：shelfPending 收進書櫃、還沒看的報告；shelfDone 收下的（完成的委託，新的在前）
   let shelfPending = [], shelfDone = [], shelfTotal = 0, notesPending = 0;
-  let seenNotes = 0;
+  let seenNotes = 0, scheds = [];
   let lastSeq = 0, offline = false, polling = false, startAsked = 0, seenIds = null, questKey = '';
 
   async function api(path, body) {
@@ -48,6 +48,7 @@
     shelfDone = j.shelf?.done || [];
     shelfTotal = j.shelf?.doneTotal || shelfDone.length;
     notesPending = j.notesPending || 0;
+    scheds = j.schedules || [];
   }
   async function pull() {
     if (polling) return;
@@ -361,6 +362,7 @@
 #desk-card .ask b{display:block;font-size:12px;color:#7a5a17;margin-bottom:2px}
 #desk-card .ask .row{margin-top:8px}
 #desk-card .item.note .t span:first-child{display:block;font-size:14px;line-height:1.5;word-break:break-word}
+#desk-card .inp{width:100%;box-sizing:border-box;font:inherit;border:1px solid #d5c9b5;border-radius:8px;padding:8px;background:#fff;min-height:40px}
 #desk-card label.teach{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:#5d5243}
 #desk-card label.teach input{width:18px;height:18px;margin:0}
 #desk-card .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
@@ -416,7 +418,7 @@
   }
   function paintOverview() {
     if (!run && !queue.length && !reports.length && !failed.length) {
-      return `<p>${offline ? '書桌連不上伺服器。' : '桌上沒有工作。'}</p>${shelfHint()}<p class="mini">委託板上長按已承接的委託往上滑，或在聊天裡跟她說「這件交給妳：（委託）」，就會放到她桌上（可以放很多件，她照順序做）。</p>`;
+      return `${feelRow()}<p>${offline ? '書桌連不上伺服器。' : '桌上沒有工作。'}</p>${schedHint()}${shelfHint()}<p class="mini">委託板上長按已承接的委託往上滑，或在聊天裡跟她說「這件交給妳：（委託）」，就會放到她桌上（可以放很多件，她照順序做）。</p>`;
     }
     let html = feelRow();
     if (run) {
@@ -450,7 +452,31 @@
       `<button type="button" class="main" data-a="open" data-id="${r.id}">看報告</button>`, r.finished ? `${hhmm(r.finished)} 交的` : '')).join('');
     if (failed.length) html += `<div class="sec">出錯的（${failed.length}）</div>` + failed.map(r => itemRow(r,
       `<button type="button" data-a="openfail" data-id="${r.id}">看</button><button type="button" class="main" data-a="retry" data-id="${r.id}">重來</button>`)).join('');
-    return html + shelfHint();
+    return html + schedHint() + shelfHint();
+  }
+  // ------------------------------------------------------------ 定期工作（每天／每週幾的幾點，自動放一件上她的桌，2026-11-02）
+  const WD = '日一二三四五六';
+  const daysText = d => d === '0123456' ? '每天' : d === '12345' ? '平日' : d === '06' ? '週末' : `每週${[...d].map(x => WD[x]).join('、')}`;
+  let schedDays = '0123456';
+  function schedHint() {
+    const on = scheds.filter(x => x.enabled).length;
+    return `<div class="sec">定期工作</div>${itemRow({ title: on ? `${on} 個定期工作` : '每天／每週固定做的事' },
+      '<button type="button" data-a="sched">排定期工作</button>', on ? scheds.filter(x => x.enabled).slice(0, 2).map(x => `${esc(x.time)} ${esc(x.title)}`).join('・') : '例：每天早上整理新聞')}`;
+  }
+  function paintSched() {
+    const w = (() => { try { return window.RoomDesk.who?.(); } catch { return null; } })();
+    const list = scheds.map(x => `<div class="item"><div class="t"><b>${esc(x.title)}</b><span class="mini">${daysText(x.weekdays)} ${esc(x.time)}・${esc(x.girlName || '她')}${x.enabled ? '' : '・暫停中'}${x.note ? `・${esc(x.note)}` : ''}</span></div>
+      <button type="button" data-a="sched-toggle" data-id="${x.id}">${x.enabled ? '暫停' : '打開'}</button><button type="button" data-a="sched-del" data-id="${x.id}">刪</button></div>`).join('');
+    const chips = [...WD].map((c, i) => `<button type="button" class="chipb${schedDays.includes(String(i)) ? ' on' : ''}" data-a="sched-day" data-f="${i}">${c}</button>`).join('');
+    return `<p class="mini">到了時間，她桌上會多一件（標上日期），她在房間就會去書桌做，做完報告一樣放桌上、離開書桌收進書櫃。上一件還沒做完就不會再放。</p>
+      ${list || '<p class="mini">還沒有定期工作。</p>'}
+      <div class="sec">新增${w ? `（排給${esc(w.name)}）` : ''}</div>
+      ${w ? `<input id="desk-sc-title" class="inp" maxlength="200" placeholder="做什麼，例：整理今天的科技新聞">
+        <textarea id="desk-sc-note" maxlength="2000" placeholder="說明（可以空著），例：台灣和日本各五則，附連結"></textarea>
+        <div class="row"><label class="mini">時間 <input id="desk-sc-time" class="inp" type="time" value="08:00" style="width:auto"></label></div>
+        <div class="chips" style="margin-top:8px">${chips}</div>
+        <div class="row"><button type="button" class="main" data-a="sched-add">排進去</button></div>`
+      : '<p class="mini">要有妹子在房間才能排（排給她做）。</p>'}`;
   }
   /** 書桌總覽底下：書櫃裡有東西 → 一列「去書櫃看」。 */
   function shelfHint() {
@@ -589,12 +615,15 @@
     if (!card || card.hidden) return;
     const box = card.querySelector('#desk-card');
     const keep = box.querySelector('textarea')?.value;
-    if (!force && box.querySelector('textarea') === document.activeElement) return;   // 正在打字：不重畫
+    // 正在打字、或在定期工作／筆記本（沒有會動的東西）：輪詢不重畫，免得打到一半的字被洗掉
+    const typing = box.contains(document.activeElement) && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName);
+    if (!force && (typing || mode === 'sched' || mode === 'notes')) return;
     const r = sel && sel.run;
-    const titles = { log: '她桌上的工作', shelf: '書櫃', report: '報告書', extend: '延伸', redo: '退回重做', fail: '出錯的工作', archive: '完成的委託', notes: '她的筆記本' };
+    const titles = { sched: '定期工作', log: '她桌上的工作', shelf: '書櫃', report: '報告書', extend: '延伸', redo: '退回重做', fail: '出錯的工作', archive: '完成的委託', notes: '她的筆記本' };
     const head = `<div class="hd">${mode !== home ? '<button type="button" class="x" data-a="back" aria-label="回上一頁">‹</button>' : ''}<h2 id="desk-h">${titles[mode] || ''}</h2><button type="button" class="x" data-a="close" aria-label="關閉">×</button></div>`;
     let body = '';
     if (mode === 'notes') body = paintNotes();
+    else if (mode === 'sched') body = paintSched();
     else if (mode === 'shelf' || (!r && home === 'shelf')) body = paintShelf();
     else if (mode === 'log' || !r) body = paintOverview();
     else if (mode === 'archive') {
@@ -641,6 +670,31 @@
       if (a === 'shelf') { mode = home = 'shelf'; sel = null; paint(true); return; }
       if (a === 'archive') { await openItem(id, 'archive'); return; }
       if (a === 'peek') { await peek(fname); return; }
+      if (a === 'sched') { mode = 'sched'; paint(true); return; }
+      if (a === 'sched-day') {
+        const d = new Set(schedDays); d.has(fname) ? d.delete(fname) : d.add(fname);
+        const title = card.querySelector('#desk-sc-title')?.value, note = card.querySelector('#desk-sc-note')?.value, tm = card.querySelector('#desk-sc-time')?.value;
+        schedDays = [...d].sort().join(''); paint(true);
+        if (title != null) { card.querySelector('#desk-sc-title').value = title; card.querySelector('#desk-sc-note').value = note; card.querySelector('#desk-sc-time').value = tm; }
+        return;
+      }
+      if (a === 'sched-add') {
+        const w = window.RoomDesk.who?.() || {};
+        await api('/api/desk/schedules/add', { title: card.querySelector('#desk-sc-title')?.value || '', note: card.querySelector('#desk-sc-note')?.value || '',
+          time: card.querySelector('#desk-sc-time')?.value || '', weekdays: schedDays, girlId: w.id || '', girlName: w.name || '' });
+        toastRoom(`排好了，${w.name || '她'}到時間會去書桌做。`);
+        await pull(); paint(true); return;
+      }
+      if (a === 'sched-toggle') {
+        const x = scheds.find(y => y.id === id);
+        await api('/api/desk/schedules/update', { id, enabled: !(x && x.enabled) });
+        await pull(); paint(true); return;
+      }
+      if (a === 'sched-del') {
+        if (!window.confirm('刪掉這個定期工作？（已經放上桌的那件不會收回）')) return;
+        await api('/api/desk/schedules/delete', { id });
+        await pull(); paint(true); return;
+      }
       if (a === 'notes') { mode = 'notes'; notes.editing = 0; paint(true); await loadNotes(); return; }
       if (a === 'book') { notes.key = fname; notes.editing = 0; paint(true); return; }
       if (a === 'note-add') {
