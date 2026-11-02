@@ -296,9 +296,10 @@ async def main():
     r = await until("done")
     assert r["report"] == "# 第一版" and r["session"] == "api_1" and r["agent"] == "hermes"
     D.redo(connect, c, "多寫人口")
+    D.start(connect, c)   # 退回的排回隊伍，她坐在書桌前就做
     r = await until("done")
     assert r["report"] == "# 第二版" and len(fake7.inputs) == 2 and "多寫人口" in fake7.inputs[1]
-    assert any(e["text"] == "接上 Hermes 了。" for e in D.view(c)["events"])
+    assert any(e["text"] == "接上 Hermes 了。" for e in D.detail(c, r["id"])["events"])
     c.close()
     print("desk_hermes: ok")
 

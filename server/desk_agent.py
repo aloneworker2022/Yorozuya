@@ -1,8 +1,8 @@
 """她桌上的工作（agent office，2026-11-01）。
 
-玩家在聊天裡把一件委託交給她 → 放到她桌上（一次只能一件）→ 她坐到書桌前就開工：
-伺服器背景叫 agent 去跑（手機關了也繼續），過程全部記成事件，房間和工作日誌照事件畫。
-做完桌上變成報告書；玩家看完按「完成委託」或「退回重做」（附意見，同一件接著做）。
+玩家把委託放到她桌上（聊天交給她，或委託板長按往上滑）→ 排成一列，她坐在書桌前就照順序一件一件做（2026-11-02：
+一次可以放很多件）。伺服器背景叫 agent 去跑，過程全部記成事件，房間和工作日誌照事件畫。做完一件、報告疊在桌上，
+她接著做下一件；玩家有空再一份份看：完成委託／延伸（委託先完成、接著做後續）／退回重做（附意見）——後兩者插隊。
 
 agent：DESK_AGENT=mock（假的，照劇本吐事件）｜hermes（RP5 上的 Hermes，server/desk_hermes.py）。事件格式：
 
@@ -21,10 +21,14 @@ import sqlite3
 import time
 from typing import Callable
 
-# run.status：placed 放在桌上還沒開工｜running 做中｜paused 她離開書桌、停著｜done 報告交了｜failed 出錯停了
+# run.status：queued 排隊中（舊資料的 placed 一樣）｜running 做中｜paused 她離開書桌、停著｜done 報告交了｜failed 出錯停了
 #             ｜cancelled 收回｜accepted 你收下（委託完成）
+# 她正在做的那件（working）：running／paused 那件；沒有就是排第一的（prio 大的先＝退回重做／延伸／重來插隊，再照放上來的順序）。
+# 報告（done）和出錯（failed）不擋後面，疊在桌上等你處理。
 # 她不在書桌前就不做（2026-11-02 Al）：前端看到她離開書桌 → pause（Hermes 這一輪 stop、session 留著）；坐回來 → start 接著做。
-ACTIVE = ("placed", "running", "paused", "done", "failed")
+ACTIVE = ("queued", "placed", "running", "paused", "done", "failed")
+WORKING = ("running", "paused", "queued", "placed")
+WAITING = ("queued", "placed")
 TITLE_MAX = 200
 NOTE_MAX = 2000
 EVENTS_MAX = 400          # 一件工作最多記幾則（超過只留最新的，報告不受影響）
@@ -60,7 +64,9 @@ def init(conn: sqlite3.Connection) -> None:
                  # ask：agent 停下來等你決定的事（JSON：kind approval／clarify、text、id…），回答完清空
                  "ALTER TABLE desk_runs ADD COLUMN ask TEXT NOT NULL DEFAULT ''",
                  # mode：這一輪是 redo（退回重做）還是 extend（延伸：委託已完成、接著做後續）
-                 "ALTER TABLE desk_runs ADD COLUMN mode TEXT NOT NULL DEFAULT ''"):
+                 "ALTER TABLE desk_runs ADD COLUMN mode TEXT NOT NULL DEFAULT ''",
+                 # prio：插隊（退回重做／延伸／重來 = 1，開工時歸 0）
+                 "ALTER TABLE desk_runs ADD COLUMN prio INTEGER NOT NULL DEFAULT 0"):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:
@@ -85,19 +91,55 @@ def _row(r) -> dict | None:
     if not r:
         return None
     keys = ("id", "questId", "title", "girlId", "girlName", "status", "agent", "created", "started", "finished",
-            "report", "feedback", "rounds", "session", "note", "ask", "mode")
+            "report", "feedback", "rounds", "session", "note", "ask", "mode", "prio")
     return dict(zip(keys, r))
 
 
-_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session, note, ask, mode"
+_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session, note, ask, mode, prio"
+
+
+def _in(statuses) -> str:
+    return ",".join("'" + x + "'" for x in statuses)
+
+
+def working(conn: sqlite3.Connection) -> dict | None:
+    """她正在做（或下一件要做）的那件：running／paused 先，再來排隊的（插隊的先，再照放上來的順序）。"""
+    r = conn.execute(
+        f"SELECT {_RUN_COLS} FROM desk_runs WHERE status IN ({_in(WORKING)}) "
+        "ORDER BY (status IN ('running','paused')) DESC, prio DESC, id ASC LIMIT 1").fetchone()
+    return _row(r)
+
+
+def queue(conn: sqlite3.Connection) -> list[dict]:
+    """排隊的（照要做的順序；含 working 如果它還沒開工）。"""
+    rows = conn.execute(f"SELECT {_RUN_COLS} FROM desk_runs WHERE status IN ({_in(WAITING)}) ORDER BY prio DESC, id ASC").fetchall()
+    return [_row(r) for r in rows]
+
+
+def listed(conn: sqlite3.Connection, status: str) -> list[dict]:
+    rows = conn.execute(f"SELECT {_RUN_COLS} FROM desk_runs WHERE status=? ORDER BY finished ASC, id ASC", (status,)).fetchall()
+    return [_row(r) for r in rows]
 
 
 def current(conn: sqlite3.Connection) -> dict | None:
-    """桌上那件（還沒收下／收回的最新一件）。"""
-    r = conn.execute(
-        f"SELECT {_RUN_COLS} FROM desk_runs WHERE status IN ({','.join('?' * len(ACTIVE))}) ORDER BY id DESC LIMIT 1",
-        ACTIVE,
-    ).fetchone()
+    """最相關的那件：她正在做的；沒有就是最近交上來的報告／出錯的。"""
+    w = working(conn)
+    if w:
+        return w
+    r = conn.execute(f"SELECT {_RUN_COLS} FROM desk_runs WHERE status IN ('done','failed') ORDER BY finished DESC, id DESC LIMIT 1").fetchone()
+    return _row(r)
+
+
+def _pick(conn: sqlite3.Connection, run_id, statuses: tuple, missing: str) -> dict:
+    """用 id 找桌上的那件（沒給 id：最早的那件）。"""
+    if run_id:
+        run = get(conn, int(run_id))
+        if not run or run["status"] not in statuses:
+            raise DeskError(missing)
+        return run
+    r = conn.execute(f"SELECT {_RUN_COLS} FROM desk_runs WHERE status IN ({_in(statuses)}) ORDER BY finished ASC, id ASC LIMIT 1").fetchone()
+    if not r:
+        raise DeskError(missing)
     return _row(r)
 
 
@@ -127,7 +169,7 @@ def add_event(conn: sqlite3.Connection, run_id: int, actor: str, kind: str, text
 def _set(conn: sqlite3.Connection, run_id: int, **cols) -> None:
     names = {"status": "status", "started": "started", "finished": "finished", "report": "report",
              "feedback": "feedback", "rounds": "rounds", "agent": "agent", "session": "agent_session", "ask": "ask",
-             "mode": "mode", "quest_id": "quest_id"}
+             "mode": "mode", "quest_id": "quest_id", "prio": "prio"}
     sets = ", ".join(f"{names[k]}=?" for k in cols)
     conn.execute(f"UPDATE desk_runs SET {sets} WHERE id=?", (*cols.values(), run_id))
     conn.commit()
@@ -141,22 +183,26 @@ class DeskError(Exception):
 
 def put(conn: sqlite3.Connection, *, quest_id: str = "", title: str, girl_id: str = "", girl_name: str = "",
         note: str = "") -> dict:
-    """放上桌。桌上已經有一件（還沒收下或收回）就不行。note：附的說明。"""
+    """放上桌（排到隊伍最後）。同一件委託已經在桌上就不行。note：附的說明。回傳的 run 帶 pos（排第幾件）。"""
     title = " ".join(str(title or "").split())[:TITLE_MAX]
     note = str(note or "").strip()[:NOTE_MAX]
+    quest_id = str(quest_id or "")[:80]
     if not title:
         raise DeskError("委託沒有內容")
-    cur = current(conn)
-    if cur:
-        raise DeskError(f"桌上已經有「{cur['title']}」", 409)
+    if quest_id:
+        dup = conn.execute(f"SELECT title FROM desk_runs WHERE quest_id=? AND status IN ({_in(ACTIVE)})", (quest_id,)).fetchone()
+        if dup:
+            raise DeskError(f"「{dup[0]}」已經在她桌上了", 409)
     c = conn.execute(
         "INSERT INTO desk_runs (quest_id, title, girl_id, girl_name, status, agent, created, note) VALUES (?,?,?,?,?,?,?,?)",
-        (str(quest_id or "")[:80], title, str(girl_id or "")[:80], str(girl_name or "")[:40], "placed", agent_name(), now_ms(), note),
+        (quest_id, title, str(girl_id or "")[:80], str(girl_name or "")[:40], "queued", agent_name(), now_ms(), note),
     )
     conn.commit()
     run_id = c.lastrowid
-    add_event(conn, run_id, "main", "status", f"委託「{title}」放到桌上了。" + (f"說明：{note}" if note else ""), "")
-    return get(conn, run_id)
+    ahead = conn.execute(f"SELECT COUNT(*) FROM desk_runs WHERE status IN ({_in(WORKING)}) AND id<>?", (run_id,)).fetchone()[0]
+    add_event(conn, run_id, "main", "status", f"委託「{title}」放到桌上了" + (f"（前面還有 {ahead} 件）" if ahead else "") + "。"
+              + (f"說明：{note}" if note else ""), "")
+    return {**get(conn, run_id), "pos": ahead + 1}
 
 
 def summary(conn: sqlite3.Connection, run: dict | None) -> dict:
@@ -373,12 +419,14 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
             return
         add_event(conn, run_id, "main", "report", "報告寫好了，放在桌上。", "ok")
         _set(conn, run_id, status="done", finished=now_ms(), report=str(report or "")[:60000], ask="")
+        _chain(connect, conn)
     except asyncio.CancelledError:
         raise
     except Exception as e:   # 出錯就停在 failed，桌上還在，可以重來
         try:
             add_event(conn, run_id, "main", "error", f"出錯停下來了：{e}", "fail")
-            _set(conn, run_id, status="failed", finished=now_ms(), ask="")
+            _set(conn, run_id, status="failed", finished=now_ms(), ask="", prio=0)
+            _chain(connect, conn)
         except Exception:
             pass
     finally:
@@ -396,62 +444,73 @@ def _spawn(connect, run_id: int, resume: bool = False) -> None:
     _tasks[run_id] = asyncio.create_task(drive(connect, run_id, resume))
 
 
+def _begin(connect, conn: sqlite3.Connection, run: dict) -> dict:
+    """排隊的那件開工（running）。出錯重來／退回重做／延伸：agent 那邊已經有 session → 照 mode 接著做。"""
+    _set(conn, run["id"], status="running", started=now_ms(), finished=0, rounds=run["rounds"] + 1, agent=agent_name(), prio=0)
+    again = run["rounds"] > 0 and not run.get("mode")   # 出錯後重來（不是退回重做／延伸）
+    add_event(conn, run["id"], "main", "status", "重新開工。" if again else "坐下來開工了。" if not run.get("mode") else "開始做。", "")
+    _spawn(connect, run["id"], resume=again and bool(run.get("session")))
+    return get(conn, run["id"])
+
+
+def _chain(connect, conn: sqlite3.Connection) -> None:
+    """做完（或出錯）一件：她人就在書桌前 → 接著做下一件（離開書桌的話前端會叫停）。"""
+    nxt = working(conn)
+    if nxt and nxt["status"] in WAITING:
+        _begin(connect, conn, nxt)
+
+
 def start(connect, conn: sqlite3.Connection) -> dict:
-    """她坐下開工。placed／failed／paused → running。已經在跑就照舊（重複呼叫沒事）。"""
-    run = current(conn)
+    """她坐在書桌前：做她該做的那件（停著的接著做、排隊的開工）。已經在跑就照舊（重複呼叫沒事）。"""
+    run = working(conn)
     if not run:
-        raise DeskError("桌上沒有工作", 404)
+        raise DeskError("桌上沒有要做的工作", 404)
     if run["status"] == "running":
         if not busy(run["id"]):
-            _spawn(connect, run["id"])
+            _spawn(connect, run["id"], resume=bool(run.get("session")))
         return run
     if run["status"] == "paused":   # 她回到書桌：同一輪、同一個 session 接著做
         _set(conn, run["id"], status="running")
         add_event(conn, run["id"], "main", "status", "回到書桌，接著做。", "")
         _spawn(connect, run["id"], resume=bool(run.get("session")))
         return get(conn, run["id"])
-    if run["status"] not in ("placed", "failed"):
-        return run
-    _set(conn, run["id"], status="running", started=now_ms(), finished=0, rounds=run["rounds"] + 1, agent=agent_name())
-    add_event(conn, run["id"], "main", "status", "坐下來開工了。" if run["status"] == "placed" else "重新開工。", "")
-    # 出錯後重來：agent 那邊已經有 session → 接著做，不重新開題
-    _spawn(connect, run["id"], resume=run["status"] == "failed" and bool(run.get("session")))
+    return _begin(connect, conn, run)
+
+
+def retry(conn: sqlite3.Connection, run_id=None) -> dict:
+    """出錯的那件重來：排回隊伍（插隊，下一件就做它）。"""
+    run = _pick(conn, run_id, ("failed",), "沒有出錯的工作")
+    _set(conn, run["id"], status="queued", prio=1, ask="")
+    add_event(conn, run["id"], "main", "status", "排回去重來。", "")
     return get(conn, run["id"])
 
 
-def redo(connect, conn: sqlite3.Connection, feedback: str) -> dict:
-    """退回重做：帶你的意見，同一件接著做。"""
-    run = current(conn)
-    if not run or run["status"] != "done":
-        raise DeskError("現在沒有交上來的報告")
+def redo(connect, conn: sqlite3.Connection, feedback: str, run_id=None) -> dict:
+    """退回重做：帶你的意見，同一件重做（插隊，下一件就做它）。"""
+    run = _pick(conn, run_id, ("done",), "現在沒有交上來的報告")
     fb = " ".join(str(feedback or "").split())[:NOTE_MAX]
     if not fb:
         raise DeskError("寫一下哪裡要改")
-    _set(conn, run["id"], status="running", feedback=fb, mode="redo", started=now_ms(), finished=0, rounds=run["rounds"] + 1)
+    _set(conn, run["id"], status="queued", feedback=fb, mode="redo", prio=1)
     add_event(conn, run["id"], "main", "note", f"你退回來：{fb}", "")
-    _spawn(connect, run["id"])
     return get(conn, run["id"])
 
 
-def extend(connect, conn: sqlite3.Connection, followup: str) -> dict:
-    """延伸：這件委託算完成（前端先領金幣、委託板拿掉），工作留在桌上，她接著同一個 session 做後續。
-    quest_id 清掉：之後收下報告不會再完成一次委託。"""
-    run = current(conn)
-    if not run or run["status"] != "done":
-        raise DeskError("現在沒有交上來的報告")
+def extend(connect, conn: sqlite3.Connection, followup: str, run_id=None) -> dict:
+    """延伸：這件委託算完成（前端先領金幣、委託板拿掉），工作留在桌上，她接著同一個 session 做後續（插隊）。
+    quest_id 清掉：之後收下報告不會再完成一次委託。回傳的 run 帶 questId 改之前的值在 doneQuestId。"""
+    run = _pick(conn, run_id, ("done",), "現在沒有交上來的報告")
     fb = " ".join(str(followup or "").split())[:NOTE_MAX]
     if not fb:
         raise DeskError("寫一下後續要做什麼")
-    _set(conn, run["id"], status="running", feedback=fb, mode="extend", quest_id="", started=now_ms(), finished=0,
-         rounds=run["rounds"] + 1)
+    _set(conn, run["id"], status="queued", feedback=fb, mode="extend", quest_id="", prio=1)
     add_event(conn, run["id"], "main", "note", f"委託完成，接著做後續：{fb}", "ok")
-    _spawn(connect, run["id"])
-    return get(conn, run["id"])
+    return {**get(conn, run["id"]), "doneQuestId": run["questId"]}
 
 
 async def steer(conn: sqlite3.Connection, text: str) -> dict:
     """補充指示：她做到一半，你插一句（Hermes：正在跑就 steer，在等使魔就排到下一輪）。"""
-    run = current(conn)
+    run = working(conn)
     text = " ".join(str(text or "").split())[:NOTE_MAX]
     if not run or run["status"] != "running":
         raise DeskError("她現在沒在做，補充不了（交了報告可以用延伸或退回重做）")
@@ -471,7 +530,7 @@ async def steer(conn: sqlite3.Connection, text: str) -> dict:
 def pause(conn: sqlite3.Connection) -> dict | None:
     """她離開書桌：停下來（agent 這一輪停掉；Hermes 的 session 和已經派出去的使魔留著），回來再 start。
     沒在做就什麼都不動（重複呼叫沒事）。"""
-    run = current(conn)
+    run = working(conn)
     if not run or run["status"] != "running":
         return run
     t = _tasks.pop(run["id"], None)
@@ -485,7 +544,7 @@ def pause(conn: sqlite3.Connection) -> dict | None:
 
 def kick(connect, conn: sqlite3.Connection) -> dict:
     """重新接上：她好像卡住了（一直 running 沒動靜）→ 停掉這一輪，同一個 session 叫她從做到的地方接著做。"""
-    run = current(conn)
+    run = working(conn)
     if not run or run["status"] != "running":
         raise DeskError("她現在沒在做")
     t = _tasks.pop(run["id"], None)
@@ -498,15 +557,22 @@ def kick(connect, conn: sqlite3.Connection) -> dict:
     return get(conn, run["id"])
 
 
-def cancel(conn: sqlite3.Connection) -> dict | None:
-    run = current(conn)
-    if not run:
-        return None
+def cancel(conn: sqlite3.Connection, run_id=None) -> dict | None:
+    """收回一件（沒給 id：她正在做的那件）。收回正在做的 → 停掉；不會自己接著做下一件（等她坐下）。"""
+    if run_id:
+        run = get(conn, int(run_id))
+        if not run or run["status"] not in ACTIVE:
+            raise DeskError("桌上沒有這件")
+    else:
+        run = working(conn)
+        if not run:
+            return None
     t = _tasks.pop(run["id"], None)
     if t and not t.done():
         t.cancel()
+    _agents.pop(run["id"], None)
     _set(conn, run["id"], status="cancelled", finished=now_ms(), ask="")
-    add_event(conn, run["id"], "main", "status", "收回了，桌上清空。", "")
+    add_event(conn, run["id"], "main", "status", "收回了。", "")
     return get(conn, run["id"])
 
 
@@ -520,7 +586,7 @@ def ask_of(run: dict | None) -> dict | None:
 
 async def answer(conn: sqlite3.Connection, text: str) -> dict:
     """你回答她停下來問的事（核准：可以／不行；提問：照你說的）。"""
-    run = current(conn)
+    run = working(conn)
     ask = ask_of(run)
     text = " ".join(str(text or "").split())[:NOTE_MAX]
     if not run or not ask:
@@ -541,10 +607,8 @@ async def answer(conn: sqlite3.Connection, text: str) -> dict:
     return {"run": get(conn, run["id"]), "choice": choice}
 
 
-def accept(conn: sqlite3.Connection) -> dict:
-    run = current(conn)
-    if not run or run["status"] != "done":
-        raise DeskError("現在沒有交上來的報告")
+def accept(conn: sqlite3.Connection, run_id=None) -> dict:
+    run = _pick(conn, run_id, ("done",), "現在沒有交上來的報告")
     _set(conn, run["id"], status="accepted")
     add_event(conn, run["id"], "main", "status", "你收下報告，委託完成。", "ok")
     return get(conn, run["id"])
@@ -563,14 +627,28 @@ def resume_all(connect) -> int:
         conn.close()
 
 
-def view(conn: sqlite3.Connection, since: int = 0) -> dict:
-    run = current(conn)
-    out = {"run": None, "events": [], "summary": summary(conn, None), "agent": agent_name()}
+def _brief(run: dict) -> dict:
+    return {k: run[k] for k in ("id", "questId", "title", "status", "note", "finished", "mode", "feedback", "prio")}
+
+
+def view(conn: sqlite3.Connection, since: int = 0, since_id: int = 0) -> dict:
+    """桌上全部：她正在做的那件（run＋事件，since 只在同一件時有效）、排隊的、交上來的報告、出錯的。"""
+    run = working(conn)
+    out = {"run": None, "events": [], "summary": summary(conn, None), "agent": agent_name(),
+           "queue": [_brief(r) for r in queue(conn) if not run or r["id"] != run["id"]],
+           "reports": [_brief(r) for r in listed(conn, "done")],
+           "failed": [_brief(r) for r in listed(conn, "failed")]}
     if run:
-        if run["status"] != "done":
-            run = {**run, "report": ""}   # 報告只在交上來時帶（大）
-        out["run"] = {**run, "ask": ask_of(run)}
-        out["events"] = events(conn, run["id"], since)
+        out["run"] = {**run, "report": "", "ask": ask_of(run)}
+        out["events"] = events(conn, run["id"], since if since_id == run["id"] else 0)
         out["summary"] = summary(conn, run)
         out["busy"] = busy(run["id"])
     return out
+
+
+def detail(conn: sqlite3.Connection, run_id: int) -> dict:
+    """一件的全部（報告書、出錯的日誌用）。"""
+    run = get(conn, int(run_id))
+    if not run or run["status"] not in ACTIVE:
+        raise DeskError("桌上沒有這件", 404)
+    return {"run": {**run, "ask": ask_of(run)}, "events": events(conn, run["id"], 0), "summary": summary(conn, run)}

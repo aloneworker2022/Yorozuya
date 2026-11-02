@@ -248,7 +248,7 @@ window.YorozuyaQuests = {
   /** 已承接（lv 1）＋執行中（lv 2）。存檔還沒好回 null（房間就不對委託）。 */
   list() {
     if (!state || bootFailed) return null;
-    return (state.quests || []).filter(q => q.lv === 1 || q.lv === 2).map(q => ({ id: q.id, text: q.text, lv: q.lv }));
+    return (state.quests || []).filter(q => (q.lv === 1 || q.lv === 2) && !onHerDesk(q.id)).map(q => ({ id: q.id, text: q.text, lv: q.lv }));
   },
   has(id) { return !!(state && (state.quests || []).some(q => q.id === id)); },
   /** 書桌狀態變了（放上桌／收下／收回）→ 委託板重畫（卡片上的「在她桌上」）。 */
@@ -12597,7 +12597,9 @@ const PIN_EASE = "transform .3s cubic-bezier(.4,0,.2,1)";
 const NOTEBOOK_CAP = 90;
 const NOTEBOOK_FIELD_MAX = 600;
 
-function poolItems(lv) { return state.quests.filter(q => q.lv === lv); }
+// 放到她桌上的委託不在委託板上顯示（要看就點書桌；room_desk.js questIds）
+function onHerDesk(id) { try { return !!window.RoomDesk?.questIds?.().has(id); } catch { return false; } }
+function poolItems(lv) { return state.quests.filter(q => q.lv === lv && !(lv === 1 && onHerDesk(q.id))); }
 function curPool() {
   if (procPool !== null && poolItems(procPool).length) return procPool;
   procPool = null;
