@@ -14613,7 +14613,7 @@ function renderProc() {
     down: () => flyCard(card, "down", () => drop(q.id)),
     left: () => nav2(1), right: () => nav2(-1),
     tap: showAccTap,
-    hold: () => openCardPick(q),
+    hold: (at) => openCardPick(q, at),
     triple: () => {
       card.classList.add("q-instant");
       flyCard(card, "up", () => complete(q.id));
@@ -14633,7 +14633,7 @@ function flyCard(el, dir, action) {
 
 // ── 已承接長按：卡片來到畫面中央 → 往上滑＝放到她桌上、往下滑＝分裂 → 輸入框（2026-11-01）
 // 放上桌：輸入的字是這件工作的說明（交給 agent、寫在工作日誌）；分裂：照舊（多一件，一起退回發現）
-function openCardPick(q) {
+function openCardPick(q, at = null) {
   if (!q || q.lv !== 1) return;
   quietProc();
   let ov = $("#card-pick");
@@ -14646,18 +14646,63 @@ function openCardPick(q) {
       <div class="q-card c-acc cp-card" id="cp-card" role="dialog" aria-label="這件委託要做什麼"><div class="q-body"></div><div class="swind"></div></div>
       <div class="cp-hint down">↓ 分裂</div>`;
     document.body.append(ov);
-    ov.addEventListener("click", e => { if (e.target === ov) closeCardPick(); });
+    // 點背景關掉（剛打開的那一下不算：長按放手的點擊會落在背景上）
+    ov.addEventListener("click", e => { if (e.target === ov && Date.now() >= procQuietUntil) closeCardPick(); });
   }
   const card = ov.querySelector("#cp-card");
-  card.querySelector(".q-body").textContent = q.text;
   const fresh = card.cloneNode(true);   // 換掉舊的手勢
+  // 上一次飛走的動畫留下的樣式（透明、在畫面外）一定要清掉，不然卡片看不見但手勢還在
+  fresh.removeAttribute("style");
+  fresh.querySelectorAll("[style]").forEach(el => el.removeAttribute("style"));
+  fresh.querySelector(".q-body").textContent = q.text;
   card.replaceWith(fresh);
   ov.classList.remove("hidden");
   ov.setAttribute("aria-hidden", "false");
-  swipeable(fresh, {
-    up: () => flyCard(fresh, "up", () => { closeCardPick(); openSplitCard(q, "desk"); }),
-    down: () => flyCard(fresh, "down", () => { closeCardPick(); openSplitCard(q, "split"); }),
-  });
+  let acted = false;
+  const go = (dir) => {
+    if (acted) return;
+    acted = true;
+    flyCard(fresh, dir, () => { closeCardPick(); openSplitCard(q, dir === "up" ? "desk" : "split"); });
+  };
+  swipeable(fresh, { up: () => go("up"), down: () => go("down") });
+  // 長按後手指沒放、直接往上／往下滑：同一下就算（卡片跟著手指走；沒滑夠就停在中央，再滑一次）
+  if (at) {
+    const TH = 55;
+    let lastY = at.y;
+    const follow = (y) => {
+      lastY = y;
+      const dy = Math.max(-90, Math.min(90, y - at.y));
+      fresh.style.transition = "none";
+      fresh.style.transform = `translateY(${dy}px)`;
+    };
+    const mv = (ev) => {
+      const pt = ev.touches ? ev.touches[0] : ev;
+      if (!pt || (!ev.touches && ev.buttons !== 1)) return;
+      follow(pt.clientY);
+      if (ev.touches && ev.cancelable) ev.preventDefault();
+    };
+    const end = (ev) => {
+      cleanup();
+      const pt = ev.changedTouches ? ev.changedTouches[0] : ev;
+      const dy = (pt && pt.clientY != null ? pt.clientY : lastY) - at.y;
+      fresh.style.transition = "transform .15s ease";
+      fresh.style.transform = "";
+      if (dy < -TH) go("up");
+      else if (dy > TH) go("down");
+    };
+    const cleanup = () => {
+      document.removeEventListener("touchmove", mv);
+      document.removeEventListener("touchend", end);
+      document.removeEventListener("touchcancel", cleanup);
+      window.removeEventListener("mousemove", mv);
+      window.removeEventListener("mouseup", end);
+    };
+    document.addEventListener("touchmove", mv, { passive: false });
+    document.addEventListener("touchend", end);
+    document.addEventListener("touchcancel", cleanup);
+    window.addEventListener("mousemove", mv);
+    window.addEventListener("mouseup", end);
+  }
 }
 function closeCardPick() {
   quietProc();
@@ -14776,7 +14821,7 @@ function swipeable(el, { up, down, left, right, dbl, triple, tap, hold, holdMs =
     el.style.transform = "";
     const ov = el.querySelector(".swind"); if (ov) ov.style.opacity = 0;
     try { if (navigator.vibrate) navigator.vibrate(12); } catch { /* */ }
-    hold();
+    hold({ x: sx, y: sy });   // 長按的位置：接著不放手滑（委託板長按 → 卡片到中央 → 同一下往上／往下滑）
   };
   const s = (cx, cy) => {
     sx = cx; sy = cy; active = true; held = false;
