@@ -52,10 +52,16 @@ def init(conn: sqlite3.Connection) -> None:
             rounds      INTEGER NOT NULL DEFAULT 0
         )"""
     )
-    try:   # agent 那邊的 session（Hermes：退回重做／伺服器重開都接著同一個）
-        conn.execute("ALTER TABLE desk_runs ADD COLUMN agent_session TEXT NOT NULL DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass
+    # agent_session：agent 那邊的 session（Hermes：退回重做／伺服器重開都接著同一個）
+    # note：放上桌時附的說明（委託板長按 → 放到她桌上 → 輸入框），交給 agent
+    for stmt in ("ALTER TABLE desk_runs ADD COLUMN agent_session TEXT NOT NULL DEFAULT ''",
+                 "ALTER TABLE desk_runs ADD COLUMN note TEXT NOT NULL DEFAULT ''",
+                 # ask：agent 停下來等你決定的事（JSON：kind approval／clarify、text、id…），回答完清空
+                 "ALTER TABLE desk_runs ADD COLUMN ask TEXT NOT NULL DEFAULT ''"):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
     conn.execute(
         """CREATE TABLE IF NOT EXISTS desk_events (
             run_id  INTEGER NOT NULL,
@@ -76,11 +82,11 @@ def _row(r) -> dict | None:
     if not r:
         return None
     keys = ("id", "questId", "title", "girlId", "girlName", "status", "agent", "created", "started", "finished",
-            "report", "feedback", "rounds", "session")
+            "report", "feedback", "rounds", "session", "note", "ask")
     return dict(zip(keys, r))
 
 
-_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session"
+_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session, note, ask"
 
 
 def current(conn: sqlite3.Connection) -> dict | None:
@@ -117,7 +123,7 @@ def add_event(conn: sqlite3.Connection, run_id: int, actor: str, kind: str, text
 
 def _set(conn: sqlite3.Connection, run_id: int, **cols) -> None:
     names = {"status": "status", "started": "started", "finished": "finished", "report": "report",
-             "feedback": "feedback", "rounds": "rounds", "agent": "agent", "session": "agent_session"}
+             "feedback": "feedback", "rounds": "rounds", "agent": "agent", "session": "agent_session", "ask": "ask"}
     sets = ", ".join(f"{names[k]}=?" for k in cols)
     conn.execute(f"UPDATE desk_runs SET {sets} WHERE id=?", (*cols.values(), run_id))
     conn.commit()
@@ -129,21 +135,23 @@ class DeskError(Exception):
         self.status = status
 
 
-def put(conn: sqlite3.Connection, *, quest_id: str = "", title: str, girl_id: str = "", girl_name: str = "") -> dict:
-    """放上桌。桌上已經有一件（還沒收下或收回）就不行。"""
+def put(conn: sqlite3.Connection, *, quest_id: str = "", title: str, girl_id: str = "", girl_name: str = "",
+        note: str = "") -> dict:
+    """放上桌。桌上已經有一件（還沒收下或收回）就不行。note：附的說明。"""
     title = " ".join(str(title or "").split())[:TITLE_MAX]
+    note = str(note or "").strip()[:NOTE_MAX]
     if not title:
         raise DeskError("委託沒有內容")
     cur = current(conn)
     if cur:
         raise DeskError(f"桌上已經有「{cur['title']}」", 409)
     c = conn.execute(
-        "INSERT INTO desk_runs (quest_id, title, girl_id, girl_name, status, agent, created) VALUES (?,?,?,?,?,?,?)",
-        (str(quest_id or "")[:80], title, str(girl_id or "")[:80], str(girl_name or "")[:40], "placed", agent_name(), now_ms()),
+        "INSERT INTO desk_runs (quest_id, title, girl_id, girl_name, status, agent, created, note) VALUES (?,?,?,?,?,?,?,?)",
+        (str(quest_id or "")[:80], title, str(girl_id or "")[:80], str(girl_name or "")[:40], "placed", agent_name(), now_ms(), note),
     )
     conn.commit()
     run_id = c.lastrowid
-    add_event(conn, run_id, "main", "status", f"委託「{title}」放到桌上了。", "")
+    add_event(conn, run_id, "main", "status", f"委託「{title}」放到桌上了。" + (f"說明：{note}" if note else ""), "")
     return get(conn, run_id)
 
 
@@ -193,12 +201,39 @@ def agent_name() -> str:
 
 Emit = Callable[[str, str, str, str], None]   # (actor, kind, text, status)
 
+_YES = ("可以", "好", "行", "准", "同意", "允許", "ok", "okay", "yes", "沒問題", "去吧", "做吧", "執行", "跑吧", "嗯", "恩", "對")
+_NO = ("不行", "不要", "不准", "不可以", "不好", "別", "拒絕", "no", "算了", "不用", "停", "不能", "否")
+
+
+def approval_choice(text: str) -> str | None:
+    """你對「可不可以」的回答 → once（准）｜deny（不准）｜None（聽不出來）。否定先看（「不可以」含「可以」）。"""
+    t = " ".join(str(text or "").lower().split())
+    if not t:
+        return None
+    if any(w in t for w in _NO):
+        return "deny"
+    if any(w in t for w in _YES):
+        return "once"
+    return None
+
 
 class MockAgent:
     """假的 agent：照劇本吐事件、最後交一份示範報告。用來把房間、日誌、報告書做好。"""
 
-    def __init__(self, step_s: float = 3.0):
+    def __init__(self, step_s: float = 3.0, ask: bool = False):
         self.step_s = step_s
+        self.ask = ask              # DESK_MOCK_ASK=1：做到一半停下來要你核准（測「她走過來問你」）
+        self.on_ask = None          # drive 設：on_ask(dict|None)
+        self._answer: asyncio.Future | None = None
+
+    async def respond(self, text: str) -> str:
+        choice = approval_choice(text)
+        if choice is None:
+            raise ValueError("聽不出可不可以，說「可以」或「不行」")
+        if not self._answer or self._answer.done():
+            raise ValueError("現在沒有在等你回答")
+        self._answer.set_result(choice)
+        return choice
 
     async def run(self, run: dict, emit: Emit, store=None) -> str:
         t, fb, s = run["title"], run.get("feedback") or "", self.step_s
@@ -210,6 +245,15 @@ class MockAgent:
         emit("main", "tool", f"查資料：{t}", "run")
         await asyncio.sleep(s)
         emit("main", "tool", "查到幾筆可以用的資料。", "ok")
+        if self.ask and self.on_ask:
+            self._answer = asyncio.get_running_loop().create_future()
+            self.on_ask({"kind": "approval", "text": "要跑一個指令（save_notes.sh）把查到的資料存成檔案，可以嗎？",
+                         "choices": ["once", "deny"]})
+            choice = await self._answer
+            if choice == "once":
+                emit("main", "tool", "跑指令：save_notes.sh", "ok")
+            else:
+                emit("main", "trouble", "你說不行，改成直接寫在報告裡。", "ok")
         emit("sub:1", "spawn", "整理查到的資料，挑出重點", "")
         await asyncio.sleep(s * .6)
         emit("sub:2", "spawn", "照重點寫一份初稿", "")
@@ -232,6 +276,7 @@ class MockAgent:
         lines = [
             f"# {t}",
             "",
+            *([f"> 你的說明：{run['note']}", ""] if run.get("note") else []),
             "> 這是**假的 agent**（第一步的示範）交的報告；接上 Hermes 之後這裡會是真的成果。",
             "",
             "## 摘要",
@@ -255,7 +300,7 @@ class MockAgent:
 def make_agent():
     name = agent_name()
     if name == "mock":
-        return MockAgent(float(os.environ.get("DESK_MOCK_STEP_S") or 3.0))
+        return MockAgent(float(os.environ.get("DESK_MOCK_STEP_S") or 3.0), ask=os.environ.get("DESK_MOCK_ASK") == "1")
     if name == "hermes":
         import desk_hermes
         return desk_hermes.HermesAgent()
@@ -265,6 +310,7 @@ def make_agent():
 # ───────────────────────────── 背景執行
 
 _tasks: dict[int, asyncio.Task] = {}
+_agents: dict[int, object] = {}     # 正在跑的 agent（回答它的問題用）
 
 
 def busy(run_id: int) -> bool:
@@ -292,6 +338,16 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
         def store(**cols) -> None:
             _set(conn, run_id, **cols)
 
+        def on_ask(ask: dict | None) -> None:
+            """agent 停下來等你決定（核准／提問）→ 記在桌上、日誌記一筆；None＝不用等了。"""
+            _set(conn, run_id, ask=json.dumps(ask, ensure_ascii=False) if ask else "")
+            if ask:
+                head = "要你決定" if ask.get("kind") != "clarify" else "要問你"
+                add_event(conn, run_id, "main", "ask", f"{head}：{ask.get('text') or '（沒寫是什麼）'}", "")
+
+        agent.on_ask = on_ask
+        _agents[run_id] = agent
+
         # 使魔編號接著之前的（退回重做時不會跟上一輪的使魔①撞名）
         sub_base = conn.execute("SELECT COUNT(DISTINCT actor) FROM desk_events WHERE run_id=? AND actor LIKE 'sub:%'",
                                 (run_id,)).fetchone()[0] or 0
@@ -299,18 +355,19 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
         if (get(conn, run_id) or {}).get("status") != "running":
             return
         add_event(conn, run_id, "main", "report", "報告寫好了，放在桌上。", "ok")
-        _set(conn, run_id, status="done", finished=now_ms(), report=str(report or "")[:60000])
+        _set(conn, run_id, status="done", finished=now_ms(), report=str(report or "")[:60000], ask="")
     except asyncio.CancelledError:
         raise
     except Exception as e:   # 出錯就停在 failed，桌上還在，可以重來
         try:
             add_event(conn, run_id, "main", "error", f"出錯停下來了：{e}", "fail")
-            _set(conn, run_id, status="failed", finished=now_ms())
+            _set(conn, run_id, status="failed", finished=now_ms(), ask="")
         except Exception:
             pass
     finally:
         conn.close()
         _tasks.pop(run_id, None)
+        _agents.pop(run_id, None)
 
 
 def _spawn(connect, run_id: int, resume: bool = False) -> None:
@@ -358,9 +415,40 @@ def cancel(conn: sqlite3.Connection) -> dict | None:
     t = _tasks.pop(run["id"], None)
     if t and not t.done():
         t.cancel()
-    _set(conn, run["id"], status="cancelled", finished=now_ms())
+    _set(conn, run["id"], status="cancelled", finished=now_ms(), ask="")
     add_event(conn, run["id"], "main", "status", "收回了，桌上清空。", "")
     return get(conn, run["id"])
+
+
+def ask_of(run: dict | None) -> dict | None:
+    try:
+        a = json.loads((run or {}).get("ask") or "null")
+        return a if isinstance(a, dict) else None
+    except ValueError:
+        return None
+
+
+async def answer(conn: sqlite3.Connection, text: str) -> dict:
+    """你回答她停下來問的事（核准：可以／不行；提問：照你說的）。"""
+    run = current(conn)
+    ask = ask_of(run)
+    text = " ".join(str(text or "").split())[:NOTE_MAX]
+    if not run or not ask:
+        raise DeskError("現在沒有要你回答的事")
+    if not text:
+        raise DeskError("寫一下你的回答")
+    agent = _agents.get(run["id"])
+    if agent is None or not busy(run["id"]) or not hasattr(agent, "respond"):
+        _set(conn, run["id"], ask="")
+        raise DeskError("這個問題已經失效（工作重開過）", 409)
+    try:
+        choice = await agent.respond(text)
+    except ValueError as e:
+        raise DeskError(str(e))
+    _set(conn, run["id"], ask="")
+    said = {"once": "（可以）", "deny": "（不行）"}.get(choice, "")
+    add_event(conn, run["id"], "main", "note", f"你回答：{text}{said}", "")
+    return {"run": get(conn, run["id"]), "choice": choice}
 
 
 def accept(conn: sqlite3.Connection) -> dict:
@@ -391,7 +479,7 @@ def view(conn: sqlite3.Connection, since: int = 0) -> dict:
     if run:
         if run["status"] != "done":
             run = {**run, "report": ""}   # 報告只在交上來時帶（大）
-        out["run"] = run
+        out["run"] = {**run, "ask": ask_of(run)}
         out["events"] = events(conn, run["id"], since)
         out["summary"] = summary(conn, run)
         out["busy"] = busy(run["id"])

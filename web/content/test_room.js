@@ -80,7 +80,7 @@
       seats:f.seats.map(seat=>({...seat,u:item.u+seat.u,v:item.v+seat.v}))};
   }).filter(item=>item.seats.length),blocked:(u,v)=>!!itemAtCell(u,v),
   furnitureAt:(u,v)=>itemAtCell(u,v)?.type||null,
-  keep:id=>id==='desk_work'&&!!window.RoomDesk?.busy?.(),
+  keep:id=>id==='desk_work'&&!!(window.RoomDesk?.working||window.RoomDesk?.busy)?.(),
   subPoses:spec=>spec.id==='desk_work'?window.RoomDesk?.poseWeights?.()||null:null,
   // Activity context (time/chrono/mood/missYou/stage/hobbies/history/post-chat bias) and the
   // activity log come from the summon module; without it she still picks activities on defaults.

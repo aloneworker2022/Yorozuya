@@ -251,6 +251,8 @@ window.YorozuyaQuests = {
     return (state.quests || []).filter(q => q.lv === 1 || q.lv === 2).map(q => ({ id: q.id, text: q.text, lv: q.lv }));
   },
   has(id) { return !!(state && (state.quests || []).some(q => q.id === id)); },
+  /** 書桌狀態變了（放上桌／收下／收回）→ 委託板重畫（卡片上的「在她桌上」）。 */
+  refresh() { if (state && !bootFailed) { try { renderQuests(); } catch { /* */ } } },
   /** 報告收下 → 委託完成（照一般完成：領金、日誌、氣泡）。 */
   complete(id) {
     if (!state || bootFailed || !this.has(id)) return false;
@@ -12607,8 +12609,11 @@ function syncSideTabs() {
   if (d) d.classList.toggle("on", qScene === "diary" && !lineOpen);
   if (l) l.classList.toggle("on", qScene === "line" || (qScene === "diary" && lineOpen));
 }
+let procOpenedAt = 0, procQuietUntil = 0;
+const quietProc = () => { procQuietUntil = Date.now() + 450; };
 function goProc() {
   qScene = "proc";
+  procOpenedAt = Date.now();
   lineOpen = false;
   const pg = document.getElementById("page-quests");
   if (pg) { pg.classList.remove("on-diary", "on-line"); pg.classList.add("on-proc"); }
@@ -13839,6 +13844,7 @@ function renderExec() {
     const q = exec[i];
     if (q) return `<div class="pin-slide"><div class="q-card c-exec">
         <div class="q-body">${esc(q.text)}</div>
+        ${onDeskTag(q.id)}
         ${errandNoteHTML(q.id)}
         <div class="swind"></div>
       </div></div>`;
@@ -14570,6 +14576,7 @@ function renderProc() {
   // 卡片只放項目本身;狀態靠徽章/卡色分辨,操作靠手勢(規則玩家已熟)
   stage.innerHTML = `<div class="q-card ${lv === 0 ? "c-found" : "c-acc"}" id="proc-card">
     <div class="q-body">${esc(q.text)}</div>
+    ${onDeskTag(q.id)}
     ${errandNoteHTML(q.id)}
     ${lv === 1 ? `<div class="q-tapfx" id="proc-tapfx">
       <div class="q-tap-msg"></div>
@@ -14606,7 +14613,7 @@ function renderProc() {
     down: () => flyCard(card, "down", () => drop(q.id)),
     left: () => nav2(1), right: () => nav2(-1),
     tap: showAccTap,
-    hold: () => openSplitCard(q),
+    hold: () => openCardPick(q),
     triple: () => {
       card.classList.add("q-instant");
       flyCard(card, "up", () => complete(q.id));
@@ -14624,7 +14631,58 @@ function flyCard(el, dir, action) {
   setTimeout(action, 240);
 }
 
+// ── 已承接長按：卡片來到畫面中央 → 往上滑＝放到她桌上、往下滑＝分裂 → 輸入框（2026-11-01）
+// 放上桌：輸入的字是這件工作的說明（交給 agent、寫在工作日誌）；分裂：照舊（多一件，一起退回發現）
+function openCardPick(q) {
+  if (!q || q.lv !== 1) return;
+  quietProc();
+  let ov = $("#card-pick");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "card-pick";
+    ov.className = "hidden";
+    ov.setAttribute("aria-hidden", "true");
+    ov.innerHTML = `<div class="cp-hint up">↑ 放到她桌上</div>
+      <div class="q-card c-acc cp-card" id="cp-card" role="dialog" aria-label="這件委託要做什麼"><div class="q-body"></div><div class="swind"></div></div>
+      <div class="cp-hint down">↓ 分裂</div>`;
+    document.body.append(ov);
+    ov.addEventListener("click", e => { if (e.target === ov) closeCardPick(); });
+  }
+  const card = ov.querySelector("#cp-card");
+  card.querySelector(".q-body").textContent = q.text;
+  const fresh = card.cloneNode(true);   // 換掉舊的手勢
+  card.replaceWith(fresh);
+  ov.classList.remove("hidden");
+  ov.setAttribute("aria-hidden", "false");
+  swipeable(fresh, {
+    up: () => flyCard(fresh, "up", () => { closeCardPick(); openSplitCard(q, "desk"); }),
+    down: () => flyCard(fresh, "down", () => { closeCardPick(); openSplitCard(q, "split"); }),
+  });
+}
+function closeCardPick() {
+  quietProc();
+  const ov = $("#card-pick");
+  if (!ov) return;
+  ov.classList.add("hidden");
+  ov.setAttribute("aria-hidden", "true");
+}
+/** 放到她桌上（room_desk.js）：一次一件；她在房間就直接去書桌開工，不在就等她回來。 */
+async function putQuestOnDesk(q, note) {
+  const D = window.RoomDesk;
+  if (!D?.give) { toast("書桌還沒準備好", "bad"); return false; }
+  const r = await D.give({ questId: q.id, title: q.text, note, go: true });
+  if (r.placed) { toast(`「${q.text}」放到她桌上了`, "good"); renderQuests(); return true; }
+  toast(r.busy ? `她桌上已經有「${r.busy}」，一次只能一件` : r.offline ? "書桌連不上伺服器" : (r.error || "放不上去"), "bad");
+  return false;
+}
+/** 這件在不在她桌上（卡片上標一下）。 */
+function onDeskTag(id) {
+  const run = window.RoomDesk?.state?.()?.run;
+  return run && run.questId === id ? `<div class="q-desk-tag">在她桌上</div>` : "";
+}
+
 let splitTargetId = null;
+let splitMode = "split";
 let splitBound = false;
 
 function bindSplitOverlay() {
@@ -14646,7 +14704,7 @@ function bindSplitOverlay() {
   });
 }
 
-function openSplitCard(q) {
+function openSplitCard(q, mode = "split") {
   if (!q || q.lv !== 1) return;
   bindSplitOverlay();
   const ov = $("#split-overlay");
@@ -14654,14 +14712,20 @@ function openSplitCard(q) {
   const input = $("#split-input");
   if (!ov || !name || !input) return;
   splitTargetId = q.id;
+  splitMode = mode;
   name.textContent = q.text;
   input.value = "";
+  input.maxLength = mode === "desk" ? 300 : 80;
+  input.placeholder = mode === "desk" ? "給她的說明（可以空著）…" : "多出來的任務…";
+  const ok = $("#split-ok");
+  if (ok) ok.textContent = mode === "desk" ? "放上桌" : "分裂";
   ov.classList.remove("hidden");
   ov.setAttribute("aria-hidden", "false");
   setTimeout(() => input.focus(), 40);
 }
 
 function closeSplitCard() {
+  quietProc();
   const ov = $("#split-overlay");
   const input = $("#split-input");
   splitTargetId = null;
@@ -14676,6 +14740,12 @@ function commitSplitCard() {
   const id = splitTargetId;
   const extra = $("#split-input")?.value || "";
   if (!id) { closeSplitCard(); return; }
+  if (splitMode === "desk") {
+    const q = state.quests.find(x => x.id === id);
+    closeSplitCard();
+    if (q) void putQuestOnDesk(q, extra.trim());
+    return;
+  }
   const r = splitAcceptedQuest(id, extra);
   if (!r.ok) { toast(r.err, "bad"); return; }
   closeSplitCard();
@@ -19218,6 +19288,17 @@ on("quest-input", "keydown", e => {
 });
 on("hud-need", "click", () => switchTab(2));
 on("q-back", "click", () => goExec());
+// 處理中（發現／已承接）點空白處 → 回執行中（主畫面）。卡片、分頁、返回、輸入列、側邊分頁、各種浮層不算空白。
+const PROC_KEEP = ".q-card, .q-force-tabs, .lv-hdr, .lv-nav, .pin-slot, .pin-carousel, #pin-dots, #quest-input-row, #tabs, #diary-tab, #line-tab, " +
+  "#split-overlay, #card-pick, #sbm, #sbm-card, #desk-ov, #portrait-sheet, #room-scene-overlay, [role=dialog], " +
+  "button, input, textarea, select, a";
+document.addEventListener("click", e => {
+  if (qScene !== "proc" || document.body.dataset.tab !== "0") return;
+  // 打開處理畫面、長按卡片跳出／關掉浮層的那一下點擊不算（長按放手時點擊會落在浮層跟卡片共同的上層）
+  if (Date.now() - procOpenedAt < 400 || Date.now() < procQuietUntil) return;
+  if (!(e.target instanceof Element) || e.target.closest(PROC_KEEP)) return;
+  goExec();
+});
 on("diary-tab", "click", () => toggleDiary());
 on("line-tab", "click", () => toggleLine());
 on("diary-back", "click", () => {

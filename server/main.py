@@ -5885,7 +5885,8 @@ async def desk_agent_check():
 def desk_put(body: dict):
     body = body or {}
     run = _desk(lambda c: desk_agent.put(c, quest_id=body.get("questId") or "", title=body.get("title") or "",
-                                         girl_id=body.get("girlId") or "", girl_name=body.get("girlName") or ""))
+                                         girl_id=body.get("girlId") or "", girl_name=body.get("girlName") or "",
+                                         note=body.get("note") or ""))
     return {"run": run}
 
 
@@ -5898,6 +5899,18 @@ async def desk_start():
 async def desk_redo(body: dict):
     fb = (body or {}).get("feedback") or ""
     return {"run": _desk(lambda c: desk_agent.redo(db, c, fb))}
+
+
+@app.post("/api/desk/answer")
+async def desk_answer(body: dict):
+    """回答她停下來問的事（Hermes 核准：可以／不行；提問：照你說的）。"""
+    conn = db()
+    try:
+        return await desk_agent.answer(conn, (body or {}).get("answer") or "")
+    except desk_agent.DeskError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    finally:
+        conn.close()
 
 
 @app.post("/api/desk/cancel")

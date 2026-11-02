@@ -61,6 +61,7 @@ def first_prompt(run: dict) -> str:
     t = run["title"]
     return "\n".join([
         f"幫使用者處理一件現實生活中的委託：「{t}」。",
+        *([f"使用者的說明：{run['note']}"] if run.get("note") else []),
         "",
         "做法：",
         "- 可以分開做的部分，可以用 delegate_task 交給 subagent；它們在背景跑，結果回來時我會再叫你繼續。",
@@ -118,6 +119,8 @@ class HermesAgent:
         self.seen_msg = 0
         self.next_sub = 1
         self.live_run = ""
+        self.on_ask = None          # desk_agent.drive 設：on_ask(dict|None)
+        self.pending: dict | None = None   # 停下來等你決定的那件（approval／clarify）
 
     # ───────── HTTP
     def _client(self):
@@ -266,9 +269,8 @@ class HermesAgent:
                         emit("main", "trouble", f"{tool_zh(name)}沒成功，再試一次。", "fail")
                     else:
                         emit("main", "tool", f"{tool_zh(name)}好了。", "ok")
-                elif ev == "approval.request":
-                    emit("main", "trouble", f"要你核准：{clip(e.get('preview') or e.get('description') or e.get('command') or '', 120)}"
-                         "（核准還沒接上，會一直等）", "fail")
+                elif ev in ("approval.request", "clarify.request"):
+                    await self._ask(c, rid, e)
                 elif ev == "run.completed":
                     output, ended = e.get("output"), "completed"
                     break
@@ -286,6 +288,62 @@ class HermesAgent:
             raise RuntimeError({"run.failed": "Hermes 這一輪失敗了", "run.cancelled": "Hermes 這一輪被取消了",
                                 "run.interrupted": "Hermes 這一輪被打斷了"}.get(ended, f"Hermes 這一輪沒做完（{ended}）"))
         return output if isinstance(output, str) and output else "".join(text)
+
+    # ───────── 停下來問你（approval／clarify）
+    async def _ask(self, c, rid: str, e: dict) -> None:
+        """Hermes 停下來等決定：從事件和 GET /v1/runs/{id} 的 pending_controls 湊出要回答的那件。
+        文件（2026-11）只寫了回答要 request_id（＝prompt_id）＋execution_generation；欄位名稱寬鬆地找。"""
+        kind = "clarify" if str(e.get("event", "")).startswith("clarify") else "approval"
+        ctl: dict = {}
+        try:
+            st = await self._json(c, "GET", f"/v1/runs/{rid}")
+        except Exception:
+            st = {}
+        pend = st.get("pending_controls") or []
+        if isinstance(pend, dict):
+            pend = pend.get("items") or pend.get("controls") or ([pend] if pend else [])
+        for p in pend if isinstance(pend, list) else []:
+            if isinstance(p, dict):
+                ctl = p
+                if "clarif" in str(p.get("type") or p.get("kind") or "").lower():
+                    kind = "clarify"
+                break
+        pick = lambda *ks: next((src.get(k) for src in (e, ctl) for k in ks if src.get(k) not in (None, "")), None)  # noqa: E731
+        text = pick("question", "description", "command", "preview", "prompt", "message", "summary", "title", "text") or ""
+        self.pending = {
+            "kind": kind,
+            "id": pick("request_id", "prompt_id", "id"),
+            "gen": pick("execution_generation", "generation") if pick("execution_generation", "generation") is not None
+            else st.get("execution_generation"),
+            "run": rid,
+            "text": clip(text, 300),
+            "choices": pick("choices", "options") or (["once", "deny"] if kind == "approval" else None),
+        }
+        if self.on_ask:
+            self.on_ask({k: v for k, v in self.pending.items() if k in ("kind", "text", "choices")})
+
+    async def respond(self, text: str) -> str:
+        """你的回答 → Hermes。核准：可以＝once、不行＝deny；提問：原話。回傳 once／deny／answer。"""
+        ask = self.pending
+        if not ask:
+            raise ValueError("現在沒有在等你回答")
+        if ask["kind"] == "clarify":
+            path, body, res = "clarify", {"answer": str(text)}, "answer"
+        else:
+            from desk_agent import approval_choice
+            choice = approval_choice(text)
+            if choice is None:
+                raise ValueError("聽不出可不可以，說「可以」或「不行」")
+            path, body, res = "approval", {"choice": choice}, choice
+        body = {"request_id": ask["id"], "execution_generation": ask["gen"], **body}
+        async with self._client() as c:
+            r = await c.post(f"/v1/runs/{ask['run']}/{path}", json=body)
+        if r.status_code >= 400:
+            if r.status_code == 409:
+                self.pending = None
+            raise ValueError(f"Hermes 沒收下回答（{r.status_code}）：{clip(r.text, 120)}")
+        self.pending = None
+        return res
 
     async def _scan(self, c, sid: str, emit, quiet: bool = False) -> None:
         """看 session 裡新的訊息：使魔出發（dispatched）、使魔回來（BATCH COMPLETE）。"""

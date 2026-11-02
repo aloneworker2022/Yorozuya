@@ -129,7 +129,8 @@ async def main():
         {"events": [{"event": "run.completed", "output": "台北、台中"}]},
         {"events": [{"event": "message.delta", "delta": "就是台北和台中。"}, {"event": "run.completed", "output": ""}]},
     ])
-    rep3 = await agent(fake3).run({"title": "城市"}, lambda *a: None, None)
+    rep3 = await agent(fake3).run({"title": "城市", "note": "只要北部"}, lambda *a: None, None)
+    assert "使用者的說明：只要北部" in fake3.inputs[0]
     assert fake3.inputs[1] == H.NUDGE_PROMPT and rep3 == "就是台北和台中。", rep3
 
     # 4) 失敗事件 → 丟錯（書桌會變「出錯停了」）；key 不對 → 說 key 不對
@@ -176,6 +177,45 @@ async def main():
     assert H.extract_report("a <<<REPORT>>> b") == "b" and H.extract_report("none") == ""
     assert H.tool_line("delegate_task", "1 tasks: ?") == "叫使魔"
     assert H.tool_line("delegate_task", "2 tasks: 列出城市") == "叫使魔（2 隻）：列出城市"
+
+    # 6b) Hermes 停下來要核准：查 pending_controls → 問你 → 你說不行 → 送 deny（request_id／execution_generation 照給的）→ 接著跑
+    gate = asyncio.Event()
+    class Gated(FakeHermes):
+        def handler(self, req):
+            p, m = req.url.path, req.method
+            if m == "GET" and p.endswith("/events"):
+                class S(httpx.AsyncByteStream):
+                    async def __aiter__(s_):
+                        yield b'data: {"event": "approval.request", "seq": 0}\n\n'
+                        await gate.wait()
+                        yield ('data: ' + json.dumps({"event": "run.completed", "output": "<<<REPORT>>>ok<<<END>>>", "seq": 1}) + "\n\n").encode()
+                return httpx.Response(200, stream=S())
+            if m == "GET" and p.startswith("/v1/runs/run_"):
+                return httpx.Response(200, json={"status": "waiting_for_approval", "pending_controls": [
+                    {"prompt_id": "p1", "execution_generation": 3, "type": "approval", "description": "rm -rf ./tmp"}]})
+            if m == "POST" and p.endswith("/approval"):
+                self.approved = json.loads(req.content)
+                gate.set()
+                return httpx.Response(200, json={"status": "resolved"})
+            return super().handler(req)
+    fg = Gated([])
+    ag = agent(fg)
+    asks = []
+    ag.on_ask = asks.append
+    task = asyncio.create_task(ag.run({"title": "清暫存"}, lambda *a: None, None))
+    for _ in range(200):
+        if asks:
+            break
+        await asyncio.sleep(.01)
+    assert asks == [{"kind": "approval", "text": "rm -rf ./tmp", "choices": ["once", "deny"]}], asks
+    try:
+        await ag.respond("讓我想想")
+        raise AssertionError("聽不懂也送")
+    except ValueError:
+        pass
+    assert await ag.respond("不行，別刪") == "deny"
+    assert fg.approved == {"request_id": "p1", "execution_generation": 3, "choice": "deny"}, fg.approved
+    assert await task == "ok" and ag.pending is None
 
     # 7) 整條：書桌 put → start（DESK_AGENT=hermes）→ 報告；session 存進 desk_runs；退回重做接著同一個 session
     import os, sqlite3, tempfile
