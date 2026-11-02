@@ -492,7 +492,7 @@
     const g = groundPoint(point);
     drag = {item, orig: {u: item.u, v: item.v}, grab: {du: g.u - item.u, dv: g.v - item.v}};
     try { navigator.vibrate?.(12); } catch { /* */ }
-    roomTip(`拖曳${catalog[item.type].name}，放開就擺好。`, 0);
+    roomTip(`拖曳${catalog[item.type].name}，放開就擺好；不拖直接放開＝轉向。`, 0);
     draw();
     return true;
   }
@@ -504,9 +504,27 @@
     drag.item.u = u; drag.item.v = v;
     draw();
   }
+  /** 轉 90 度。長的家具（2×1）轉了會變 1×2：原地放不下就在附近找一格放得下的。→ 轉了沒 */
+  function turnItem(item) {
+    const def = catalog[item.type], facing = def.directions[(def.directions.indexOf(item.facing) + 1) % 4];
+    for (const [du, dv] of [[0, 0], [-1, 0], [0, -1], [-1, -1], [1, 0], [0, 1]]) {
+      const next = {...item, facing, u: item.u + du, v: item.v + dv};
+      if (canPlace(next)) { Object.assign(item, next); return true; }
+    }
+    return false;
+  }
   function endDrag(commit) {
     const {item, orig} = drag;
     const moved = item.u !== orig.u || item.v !== orig.v;
+    // 長按、沒拖就放開 → 轉 90 度
+    if (commit && !moved) {
+      drag = null;
+      const name = catalog[item.type].name;
+      const ok = !actor.isFurnitureLocked(item.id) && turnItem(item);
+      roomTip(ok ? `已把${name}轉向（${catalog[item.type].labels[item.facing]}）。` : `${name}轉了會碰到家具、她或牆，先拖到空一點的地方再轉。`);
+      refresh(); draw();
+      return;
+    }
     const ok = commit && canPlace(item);
     if (!ok) { item.u = orig.u; item.v = orig.v; }
     drag = null;
@@ -603,9 +621,7 @@
   });
   document.getElementById('turn-item').addEventListener('click',()=>{
     const item=selected();if(!editing||!item||actor.isFurnitureLocked(item.id))return;
-    const def=catalog[item.type];
-    const next={...item,facing:def.directions[(def.directions.indexOf(item.facing)+1)%4]};
-    if(canPlace(next)) {Object.assign(item,next);status.textContent='已旋轉家具。';}
+    if(turnItem(item)) status.textContent='已旋轉家具。';
     else status.textContent='旋轉後會碰到家具、人物或超出房間，請先移到空位。';
     refresh();draw();
   });
