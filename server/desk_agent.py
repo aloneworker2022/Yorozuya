@@ -362,7 +362,8 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
                 add_event(conn, run_id, "main", "ask", f"{head}：{ask.get('text') or '（沒寫是什麼）'}", "")
 
         agent.on_ask = on_ask
-        _agents[run_id] = agent
+        if _tasks.get(run_id) is asyncio.current_task():
+            _agents[run_id] = agent
 
         # 使魔編號接著之前的（退回重做時不會跟上一輪的使魔①撞名）
         sub_base = conn.execute("SELECT COUNT(DISTINCT actor) FROM desk_events WHERE run_id=? AND actor LIKE 'sub:%'",
@@ -382,8 +383,11 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
             pass
     finally:
         conn.close()
-        _tasks.pop(run_id, None)
-        _agents.pop(run_id, None)
+        # 只清自己的：停下來（pause／kick）後新的一輪可能已經登記了，舊的這輪收尾（叫 Hermes stop）比較慢，
+        # 不能把新那輪的登記清掉（2026-11-02：之前會清掉 → 新那輪找不到 → 回答核准失敗、一直 running）
+        if _tasks.get(run_id) is asyncio.current_task():
+            _tasks.pop(run_id, None)
+            _agents.pop(run_id, None)
 
 
 def _spawn(connect, run_id: int, resume: bool = False) -> None:
@@ -476,6 +480,21 @@ def pause(conn: sqlite3.Connection) -> dict | None:
     _agents.pop(run["id"], None)
     _set(conn, run["id"], status="paused", ask="")
     add_event(conn, run["id"], "main", "status", "她離開書桌，工作先停下來。", "")
+    return get(conn, run["id"])
+
+
+def kick(connect, conn: sqlite3.Connection) -> dict:
+    """重新接上：她好像卡住了（一直 running 沒動靜）→ 停掉這一輪，同一個 session 叫她從做到的地方接著做。"""
+    run = current(conn)
+    if not run or run["status"] != "running":
+        raise DeskError("她現在沒在做")
+    t = _tasks.pop(run["id"], None)
+    if t and not t.done():
+        t.cancel()
+    _agents.pop(run["id"], None)
+    _set(conn, run["id"], ask="")
+    add_event(conn, run["id"], "main", "status", "重新接上，叫她接著做。", "")
+    _spawn(connect, run["id"], resume=bool(run.get("session")))
     return get(conn, run["id"])
 
 

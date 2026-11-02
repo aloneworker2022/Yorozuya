@@ -192,6 +192,48 @@ async def main():
     texts = [e["text"] for e in D.view(c)["events"]]
     assert "她離開書桌，工作先停下來。" in texts and "回到書桌，接著做。" in texts
     os.environ["DESK_MOCK_STEP_S"] = "0.01"
+
+    # 停下來馬上又坐回來：舊的那輪收尾（叫 Hermes stop）比較慢，不能把新那輪的登記清掉
+    class SlowStop:
+        def __init__(self):
+            self.on_ask = None
+        async def run(self, run, emit, store=None):
+            try:
+                await asyncio.sleep(0.3)
+            except asyncio.CancelledError:
+                await asyncio.shield(asyncio.sleep(0.15))   # 收尾很慢
+                raise
+            return "# ok"
+        async def steer(self, text):
+            return "live"
+    real = D.make_agent
+    D.make_agent = lambda: SlowStop()
+    D.accept(c)
+    D.put(c, title="停下來又坐回來")
+    D.start(connect, c)
+    await asyncio.sleep(0.05)
+    D.pause(c)
+    D.start(connect, c)
+    rid = D.current(c)["id"]
+    await asyncio.sleep(0.2)   # 舊的那輪這時收尾完
+    assert D.busy(rid) and rid in D._agents, "新那輪的登記還在"
+    assert (await D.steer(c, "還接得上嗎"))["how"] == "live"
+    await wait_status("done")
+
+    # 重新接上（卡住時）：停掉這一輪、接著做；沒在做時不行
+    D.accept(c)
+    D.put(c, title="卡住的")
+    D.start(connect, c)
+    await asyncio.sleep(0.05)
+    run = D.kick(connect, c)
+    assert run["status"] == "running" and any(e["text"] == "重新接上，叫她接著做。" for e in D.view(c)["events"])
+    await wait_status("done")
+    try:
+        D.kick(connect, c)
+        raise AssertionError("沒在做也能重新接上")
+    except D.DeskError:
+        pass
+    D.make_agent = real
     c.close()
     print("desk_agent: ok")
 

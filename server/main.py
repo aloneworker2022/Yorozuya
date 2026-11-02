@@ -5938,6 +5938,12 @@ async def desk_pause():
     return {"run": _desk(desk_agent.pause)}
 
 
+@app.post("/api/desk/kick")
+async def desk_kick():
+    """重新接上：卡住時停掉這一輪，同一個 session 接著做。"""
+    return {"run": _desk(lambda c: desk_agent.kick(db, c))}
+
+
 @app.post("/api/desk/cancel")
 async def desk_cancel():
     return {"run": _desk(desk_agent.cancel)}

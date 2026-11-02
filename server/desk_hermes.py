@@ -4,7 +4,8 @@
   DESK_AGENT=hermes
   HERMES_URL=http://127.0.0.1:8642      （預設就是這個；Hermes 跟遊戲伺服器同一台）
   HERMES_KEY=<~/.hermes/.env 的 API_SERVER_KEY>
-  DESK_HERMES_SUB_WAIT_S=1800           （等使魔回來最多幾秒）
+  DESK_HERMES_SUB_WAIT_S=900            （等使魔回來最多幾秒）
+  DESK_HERMES_IDLE_S=120                （一輪幾秒沒有新事件就去問 Hermes 這輪的狀態）
   DESK_HERMES_TURN_S=1800               （一輪最多幾秒）
 
 流程（2026-11-01 在 RP5 v0.22.2+3291 實測）：
@@ -117,11 +118,13 @@ class HermesAgent:
     """Hermes 跑一件委託。transport：測試用（httpx.MockTransport）。"""
 
     def __init__(self, url: str | None = None, key: str | None = None, transport=None,
-                 sub_wait_s: float | None = None, turn_s: float | None = None, poll_s: float = 10.0):
+                 sub_wait_s: float | None = None, turn_s: float | None = None, poll_s: float = 10.0,
+                 idle_s: float | None = None):
         self.url = (url or os.environ.get("HERMES_URL") or "http://127.0.0.1:8642").rstrip("/")
         self.key = key if key is not None else (os.environ.get("HERMES_KEY") or "")
         self.transport = transport
-        self.sub_wait_s = float(sub_wait_s if sub_wait_s is not None else os.environ.get("DESK_HERMES_SUB_WAIT_S") or 1800)
+        self.sub_wait_s = float(sub_wait_s if sub_wait_s is not None else os.environ.get("DESK_HERMES_SUB_WAIT_S") or 900)
+        self.idle_s = float(idle_s if idle_s is not None else os.environ.get("DESK_HERMES_IDLE_S") or 120)
         self.turn_s = float(turn_s if turn_s is not None else os.environ.get("DESK_HERMES_TURN_S") or 1800)
         self.poll_s = poll_s
         self.subs: dict[str, dict] = {}      # delegation_id → {ns:[n…], done:bool}
@@ -212,8 +215,11 @@ class HermesAgent:
         return any(not d["done"] for d in self.subs.values())
 
     async def _wait_subs(self, c, sid: str, emit) -> None:
-        waited = 0.0
+        waited, said = 0.0, 0.0
         while self._waiting():
+            if waited - said >= 300:   # 每 5 分鐘在日誌說一聲，不然看起來像卡住
+                said = waited
+                emit("main", "think", f"還在等使魔回來（等了 {int(waited // 60)} 分鐘）。", "")
             if waited >= self.sub_wait_s:
                 for d in self.subs.values():
                     if not d["done"]:
@@ -256,45 +262,101 @@ class HermesAgent:
         else:
             await c.post(f"/v1/runs/{rid}/stop")
 
-    async def _stream(self, c, rid: str, emit) -> str:
+    async def _idle_check(self, c, rid: str, quiet_s: float, emit):
+        """這一輪太久沒有新事件（keepalive 不算）→ 問 Hermes 狀態。回傳 (ended, output) 或 None（真的還在跑）。"""
+        try:
+            st = await self._json(c, "GET", f"/v1/runs/{rid}")
+        except Exception:
+            st = {}
+        status = str(st.get("status") or "")
+        if status == "completed":
+            return "completed", st.get("output")
+        if status in ("failed", "cancelled", "interrupted", "unknown"):
+            return f"run.{status}", None
+        if "approval" in status or "clarif" in status or st.get("pending_controls"):
+            if not self.pending:
+                await self._ask(c, rid, {"event": "clarify.request" if "clarif" in status else "approval.request"})
+            return None
+        emit("main", "think", f"Hermes 還在跑（{int(quiet_s // 60)} 分鐘沒有新動靜）。", "")
+        return None
+
+    async def _stream(self, c, rid: str, emit, reconnects: int = 0, last_id: str = "") -> str:
         text, output, ended = [], None, None
-        async with c.stream("GET", f"/v1/runs/{rid}/events") as resp:
+        loop = asyncio.get_running_loop()
+        last_event = last_check = loop.time()
+        headers = {"Last-Event-ID": last_id} if last_id else None
+        async with c.stream("GET", f"/v1/runs/{rid}/events", headers=headers) as resp:
             resp.raise_for_status()
-            async for line in resp.aiter_lines():
-                if not line.startswith("data:"):
-                    continue
-                try:
-                    e = json.loads(line[5:].strip())
-                except ValueError:
-                    continue
-                ev = e.get("event") or ""
-                if ev == "message.delta":
-                    text.append(str(e.get("delta") or ""))
-                elif ev == "message.interim":
-                    if e.get("text"):
-                        emit("main", "think", clip(e["text"]), "")
-                elif ev == "tool.started":
-                    name = e.get("tool") or ""
-                    emit("main", "tool", tool_line(name, e.get("preview") or ""), "run")
-                elif ev == "tool.completed":
-                    name = e.get("tool") or ""
-                    if e.get("error"):
-                        emit("main", "trouble", f"{tool_zh(name)}沒成功，再試一次。", "fail")
+            lines = resp.aiter_lines()
+            nxt = None   # 等下一行的 task：逾時不取消它（取消會把串流關掉），下次接著等
+            try:
+                while True:
+                    if nxt is None:
+                        nxt = asyncio.ensure_future(lines.__anext__())
+                    done, _ = await asyncio.wait({nxt}, timeout=self.idle_s)
+                    if done:
+                        try:
+                            line = nxt.result()
+                        except StopAsyncIteration:
+                            break
+                        finally:
+                            nxt = None
                     else:
-                        emit("main", "tool", f"{tool_zh(name)}好了。", "ok")
-                elif ev in ("approval.request", "clarify.request"):
-                    await self._ask(c, rid, e)
-                elif ev == "run.completed":
-                    output, ended = e.get("output"), "completed"
-                    break
-                elif ev in ("run.failed", "run.cancelled", "run.interrupted"):
-                    ended = ev
-                    break
+                        line = ""
+                    now = loop.time()
+                    if line.startswith("id:"):
+                        last_id = line[3:].strip()
+                        continue
+                    if not line.startswith("data:"):
+                        # keepalive／空行：只看「多久沒有真正的事件」，太久就去問 Hermes 這輪怎麼了
+                        if now - last_event >= self.idle_s and now - last_check >= self.idle_s:
+                            last_check = now
+                            got = await self._idle_check(c, rid, now - last_event, emit)
+                            if got:
+                                ended, output = got
+                                break
+                        continue
+                    last_event = now
+                    try:
+                        e = json.loads(line[5:].strip())
+                    except ValueError:
+                        continue
+                    ev = e.get("event") or ""
+                    if ev == "message.delta":
+                        text.append(str(e.get("delta") or ""))
+                    elif ev == "message.interim":
+                        if e.get("text"):
+                            emit("main", "think", clip(e["text"]), "")
+                    elif ev == "tool.started":
+                        name = e.get("tool") or ""
+                        emit("main", "tool", tool_line(name, e.get("preview") or ""), "run")
+                    elif ev == "tool.completed":
+                        name = e.get("tool") or ""
+                        if e.get("error"):
+                            emit("main", "trouble", f"{tool_zh(name)}沒成功，再試一次。", "fail")
+                        else:
+                            emit("main", "tool", f"{tool_zh(name)}好了。", "ok")
+                    elif ev in ("approval.request", "clarify.request"):
+                        await self._ask(c, rid, e)
+                    elif ev == "run.completed":
+                        output, ended = e.get("output"), "completed"
+                        break
+                    elif ev in ("run.failed", "run.cancelled", "run.interrupted"):
+                        ended = ev
+                        break
+            finally:
+                if nxt is not None:
+                    nxt.cancel()
         if ended is None:   # 串流關了但沒有結尾事件 → 問一下狀態
             st = await self._json(c, "GET", f"/v1/runs/{rid}")
             status = st.get("status") or ""
             if status == "completed":
                 output, ended = st.get("output"), "completed"
+            elif status and status not in ("failed", "cancelled", "interrupted", "unknown") and reconnects < 20:
+                # 串流斷了但這輪還在跑（running／waiting…）→ 接回去（從最後一則接著收）
+                await asyncio.sleep(min(5.0, 0.5 * (reconnects + 1)))
+                more = await self._stream(c, rid, emit, reconnects + 1, last_id)
+                return more or "".join(text)
             else:
                 ended = f"run.{status or 'unknown'}"
         if ended != "completed":

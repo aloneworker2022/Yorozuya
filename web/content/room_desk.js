@@ -322,8 +322,10 @@
           ${run.status === 'failed' ? '<button type="button" class="main" data-a="start">重來</button>' : ''}
           ${run.status === 'placed' ? '<span class="mini">叫她「去工作」，她坐到書桌前就開工。</span>' : ''}
           ${run.status === 'paused' ? '<span class="mini">她回到書桌就接著做（叫她「去工作」也行）。</span>' : ''}
+          ${run.status === 'running' ? '<button type="button" data-a="kick">卡住了？重新接上</button>' : ''}
           <button type="button" data-a="cancel">收回這件</button>
         </div>
+        ${run.status === 'running' && events.length ? `<p class="mini">最後一則動靜：${mins(Date.now() - events[events.length - 1].at)}前</p>` : ''}
         ${run.status === 'running' && !run.ask ? `<div class="sec">補充指示</div>
           <textarea id="desk-steer" maxlength="2000" placeholder="做到一半想加的話，例：記得附上來源">${esc(keep || '')}</textarea>
           <div class="row"><button type="button" class="main" data-a="steer">送出補充</button></div>` : ''}`;
@@ -347,6 +349,11 @@
         toastRoom(ok ? `「${done.title}」完成了，她接著做後續。` : '她接著做後續。');
         mode = 'log';
         refreshQuests();
+      }
+      if (a === 'kick') {
+        if (!window.confirm('停掉她現在這一輪，叫她從做到的地方接著做？（她看起來卡住、很久沒動靜時用）')) return;
+        take({ ...(await api('/api/desk/kick', {})), events: [], summary });
+        toastRoom('重新接上了，她接著做。');
       }
       if (a === 'steer') {
         const text = card.querySelector('#desk-steer')?.value || '';

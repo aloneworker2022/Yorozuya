@@ -241,6 +241,34 @@ async def main():
     await agent(fe).run({"title": "城市", "session": "api_1", "feedback": "再列南部", "mode": "extend"}, lambda *a: None, None)
     assert "收下了上面的報告" in fe.inputs[0] and "再列南部" in fe.inputs[0]
 
+    # 6e) 一直沒動靜（只有 keepalive）→ 去問 Hermes：其實做完了 → 拿結果；串流斷了但還在跑 → 接回去
+    class Quiet(FakeHermes):
+        def handler(self, req):
+            p, m = req.url.path, req.method
+            if m == "GET" and p.endswith("/events"):
+                self.conns = getattr(self, "conns", 0) + 1
+                self.last_ids = getattr(self, "last_ids", []) + [req.headers.get("last-event-id")]
+                if self.mode == "idle":
+                    class S(httpx.AsyncByteStream):
+                        async def __aiter__(s_):
+                            for _ in range(200):
+                                yield b": keepalive\n\n"
+                                await asyncio.sleep(0.01)
+                    return httpx.Response(200, stream=S())
+                if self.conns == 1:   # 斷線：有一則、沒有結尾
+                    return httpx.Response(200, content=b'id: 1\ndata: {"event": "tool.started", "tool": "web_search", "preview": "x", "seq": 0}\n\n')
+                return httpx.Response(200, content=sse([{"event": "run.completed", "output": "<<<REPORT>>>接回來了<<<END>>>"}]))
+            if m == "GET" and p.startswith("/v1/runs/run_"):
+                return httpx.Response(200, json={"status": "completed", "output": "<<<REPORT>>>其實做完了<<<END>>>"}
+                                      if self.mode == "idle" else {"status": "running"})
+            return super().handler(req)
+    fq = Quiet([]); fq.mode = "idle"
+    evq = []
+    assert await agent(fq, idle_s=0.05).run({"title": "x"}, lambda *a: evq.append(a), None) == "其實做完了"
+    fr = Quiet([]); fr.mode = "drop"
+    assert await agent(fr).run({"title": "x"}, lambda *a: None, None) == "接回來了"
+    assert fr.conns == 2 and fr.last_ids == [None, "1"], fr.last_ids
+
     # 7) 整條：書桌 put → start（DESK_AGENT=hermes）→ 報告；session 存進 desk_runs；退回重做接著同一個 session
     import os, sqlite3, tempfile
     import desk_agent as D
