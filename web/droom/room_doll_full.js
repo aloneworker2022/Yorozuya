@@ -485,7 +485,7 @@
       if (b.belly) { const bz = zW - .32 * T; sh.ell(BODY, [0, yl(bz) + 1.6 + 1.2 * b.belly, bz], [5.4 * F(b, 'waist'), 3.6 + .6 * b.belly, 5.0]); }
       sh.part = 'hips';
       for (const s of [-1, 1]) {
-        const bb = F(b, 'butt'), lift = 1.2 * b.muscle + 1.1 * b.perk, q = jig ? jig.sq : 0;
+        const bb = F(b, 'butt') * (doll._butt || 1), lift = 1.2 * b.muscle + 1.1 * b.perk, q = jig ? jig.sq : 0;
         // jig（偷看，2026-10-15）：被撞時臀肉往撞的方向推、前後壓扁、上下左右鼓出，再彈回來晃
         const [jx, jy, jz] = jig ? jig.d : [0, 0, 0];
         sh.ell(BODY, [s * 3.7 * F(b, 'hip') + jx, yl(C + .09 * T) - 2.7 - .4 * (bb - 1) - .6 * b.perk + jy, C + .09 * T + lift + jz],
@@ -1397,13 +1397,15 @@
         // 做法：軀幹（不含頭、不含乳房）＋背部線條先在站立座標建好 → 依高度分段轉（輕微塌腰）→ 二分法找前傾角讓肩膀落地；
         //   腳也換算回站立座標建（之後跟骨盆一起轉），所以下身（陰唇、陰毛）能像站姿一樣沿著有大腿的身體表面貼。
         sh.floor = true;
-        const g = opts.assUp || {}, A_CH = g.chest ?? -8, A_PEL = g.pelvis ?? 35;   // 度：骨盆相對軀幹大轉（臀部的面朝上朝後、陰部夾在臀下兩腿間）、胸口微收——背從臀部一路斜下到頭（參考圖）
+        // v3（使用者：臀肉要出來；腰微微下凹；大腿微微往兩側開，陰唇朝後）：腰背分三段——骨盆（在下腰轉）、腰（基準）、胸口（在上腰轉）
+        const g = opts.assUp || {}, A_CH = g.chest ?? 34, A_PEL = g.pelvis ?? 55;   // 度：A_PEL 骨盆轉到臀部的面朝上偏後；A_CH 胸口往回仰（比腰平＝微凹）
         const i0 = sh.prims.length;
-        const tor = torso(sh, P, { ...doll, _noBust: true }, 0, 0, 0, [0, 0, 0, 0], true);
+        const tor = torso(sh, P, { ...doll, _noBust: true, _butt: g.butt ?? 1.12 }, 0, 0, 0, [0, 0, 0, 0], true);
         if (FOOT_HD) hdBackLines(sh, P, tor);
-        const piv = [0, tor.yl(tor.zW), tor.zW], sm = u => u * u * (3 - 2 * u);
-        const angAt = z => A_PEL + (A_CH - A_PEL) * sm(Math.max(0, Math.min(1, (z - (tor.zW - 7)) / 14)));
-        const bendXf = z => about(rotX(angAt(z)), piv);
+        const sm = u => u * u * (3 - 2 * u), cl = u => Math.max(0, Math.min(1, u));
+        const zLo = tor.C + .3 * tor.T, zHi = tor.zW + 5, pLo = [0, tor.yl(zLo), zLo], pHi = [0, tor.yl(zHi), zHi];
+        const wP = z => 1 - sm(cl((z - (zLo - 4)) / 8)), wC = z => sm(cl((z - (zHi - 3)) / 6));   // 骨盆／胸口各自的權重（中間的腰不轉）
+        const bendXf = z => compose(about(rotX(A_CH * wC(z)), pHi), about(rotX(A_PEL * wP(z)), pLo));
         const TH = (g.thighAng ?? 4) * Math.PI / 180, hzT = Lt * Math.cos(TH) + 2.0;   // 髖高：大腿幾乎垂直（往前 TH）＋膝蓋厚度
         const placeAt = (beta) => { const R0 = { R: rotX(-(90 + beta)), t: [0, 0, 0] }, hw = toWorld(compose(R0, bendXf(P.hipz)), [0, 0, P.hipz]); return { R: R0.R, t: [-hw[0], -hw[1], hzT - hw[2]] }; };
         const shL = [0, tor.yl(tor.S) - .4, tor.S - SHJ_DZ], shZ = g.shoulderZ ?? 12;   // 肩關節離地高度（胸口壓地、頭枕在手臂上，肩膀不貼地）
@@ -1424,7 +1426,7 @@
         for (let i = i0; i < sh.prims.length; i++) { const p = sh.prims[i]; p.xf = compose(BODYX, bendXf(p.bc[2] + p.off[2])); }
         sh.xf = null;
         for (const s of [-1, 1]) {   // 腳（世界座標）：膝蓋在髖正下方略往外，小腿平貼地往後，腳背貼地
-          const hip = toWorld(PEL, [s * hip_x, 0, P.hipz]), kz = 2.0, dx = s * hip_x * (g.knee ?? .25);
+          const hip = toWorld(PEL, [s * hip_x, 0, P.hipz]), kz = 2.0, dx = s * hip_x * (g.knee ?? 1.0);   // 大腿微微往兩側開（不是平行的 11）
           const dy = Math.sqrt(Math.max(1, Lt * Lt - dx * dx - (hip[2] - kz) ** 2)) * Math.sign(g.thighAng ?? 4);
           const knee = [hip[0] + dx, hip[1] + dy, kz], ankle = [knee[0] - s * .6, knee[1] - Ls * .97, 1.35];
           leg(sh, P, s, hip, knee, ankle, [0, -1, -.12]);
@@ -1435,10 +1437,14 @@
           sh.bust = true;
           for (const s of [-1, 1]) {
             const root = toWorld(CH, [s * (2.7 + r * .25) * cs, tor.yl(zA) + 2.4 * cs + r * .2, zA - r * .2]);
-            const rz = Math.max(r * .42, Math.min(r * .8, root[2] * .5)), flat = [root[0] + s * r * .25, root[1] - r * .15, rz * .62];
-            sh.cone(BODY, root, flat, r * .62, r * .85);
-            sh.ell(BODY, flat, [r * (1.0 + .3 * q), r * (1.0 + .2 * q), rz]);
-            sh.ell(BODY, [flat[0] + s * r * (.75 + .3 * q), flat[1] - r * .1, rz * .55], [r * (.55 + .2 * q), r * .75, rz * .8]);   // 往外擠出來的肉
+            // 一團沉甸甸的軟肉：乳根寬、往下越來越飽滿，底部壓在地上攤開（不是細柱子）
+            const rz = Math.max(r * .55, Math.min(r * .95, root[2] * .45)), flat = [root[0] + s * r * .3, root[1] - r * .1, rz * .6];
+            const mid = [(root[0] + flat[0]) / 2 + s * r * .1, (root[1] + flat[1]) / 2, (root[2] + flat[2]) / 2];
+            sh.ell(BODY, root, [r * .85, r * .8, r * .8]);
+            sh.cone(BODY, root, mid, r * .85, r * 1.0);
+            sh.cone(BODY, mid, flat, r * 1.0, r * 1.1);
+            sh.ell(BODY, flat, [r * (1.15 + .3 * q), r * (1.1 + .2 * q), rz]);
+            sh.ell(BODY, [flat[0] + s * r * (.85 + .3 * q), flat[1] - r * .1, rz * .55], [r * (.6 + .2 * q), r * .8, rz * .8]);   // 往外擠出來的肉
           }
           sh.bust = false;
         }
