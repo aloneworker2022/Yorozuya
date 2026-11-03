@@ -103,7 +103,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; p.part = sh.bust || sh.nip ? 'breast' : (sh.part || 'torso'); prims.push(p); };   // 2026-11-01 部位：head／torso／breast／armL／armR／legs（拆圖層用）
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; p.part = sh.bust || sh.nip ? 'breast' : (sh.part || 'torso'); prims.push(p); };   // 2026-11-01 部位：head／chest／waist／hips／torso／breast／armL／armR／legs（拆圖層用；2026-11-03 軀幹再拆三塊）
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -233,7 +233,7 @@
     }
     function bodyDist(sh, x, y, z) {
       let best = 1e3;
-      for (const p of sh.prims) if (p.mat === 0) { const d = primDist(p, x, y, z); if (d < best) best = d; }
+      for (const p of sh.prims) if (p.mat === 0 && !(sh.surfSkipBust && p.part === 'breast')) { const d = primDist(p, x, y, z); if (d < best) best = d; }
       return best;
     }
     const BODY = 0, HAIR = 1, MARK = 2;
@@ -443,24 +443,40 @@
       const yl = (z) => dy + (z - C) * lean;
       const soft = b.soft;
       if (!noHead) headPart(sh, P, yl, zc, doll);
+      // 2026-11-03 拆部位：軀幹再分 chest（脖子＋肩＋胸廓）／waist（腰腹、懷孕肚）／hips（骨盆、胯下、臀）
+      const _pp = sh.part; sh.part = 'chest';
       const neck_r = 2.7 * b.frame * (1 + .12 * soft + .06 * b.muscle);
       if (doll.face === 'anime') sh.cone(BODY, [0, yl(S) + .2, S - 1], [0, yl(zc) + .5, P.chin + dz + 2.6], neck_r * .8, neck_r * .66);   // 2026-11-01 動漫臉：脖子細一點、往前斜，從下顎中間接下去（參考圖）
       else sh.cone(BODY, [0, yl(S) - .4, S - 1], [0, yl(zc) - .6, P.chin + dz + 2], neck_r, neck_r * .85);
       const wS = F(b, 'sh');
-      sh.cone(BODY, [-8.0 * wS, yl(S) - .6, S - 1.8], [8.0 * wS, yl(S) - .6, S - 1.8], 2.9 * b.frame, 2.9 * b.frame);
-      if (b.muscle) for (const s of [-1, 1]) sh.ell(BODY, [s * 9.2 * wS, yl(S) - .6, S - 4.0], [2.9 * b.muscle ** .5 + .4, 2.8, 3.6]);
+      {   // 2026-11-03 肩頸背（使用者：肩膀、背膀到脖子的線條要刻畫，不然太假）：取代原本一條水平肩膀橫條
+        //  斜方肌從脖子半高分兩段斜下到肩峰（正面／背面看到斜肩）；橫條壓低；肩頭三角肌圓帽；脖子根部外擴；背後兩片肩胛骨微凸
+        const fr = b.frame, yb = yl(S) - 1.0;
+        sh.cone(BODY, [-6.6 * wS, yl(S) - .5, S - 2.9], [6.6 * wS, yl(S) - .5, S - 2.9], 2.6 * fr, 2.6 * fr);   // 鎖骨～肩胛的橫條
+        sh.cone(BODY, [0, yl(S) - .6, S - 1.4], [0, yl(S) - .3, S + 1.6], neck_r * 1.3, neck_r * 1.0);          // 脖子根部外擴
+        for (const s of [-1, 1]) {
+          sh.cone(BODY, [s * 1.5, yb + .2, S + 3.6], [s * 4.2 * wS, yb, S + 1.2], .75 * fr, 1.2 * fr);           // 斜方肌上段（頸側）
+          sh.cone(BODY, [s * 4.2 * wS, yb, S + 1.2], [s * 7.5 * wS, yb + .1, S - 1.7], 1.2 * fr, 1.5 * fr);      // 斜方肌下段（→肩峰）
+          sh.ell(BODY, [s * 8.7 * wS, yl(S) - .6, S - 3.5], [2.75 * fr + .35 * b.muscle, 2.7 * fr, 3.2 * fr + .5 * b.muscle]);   // 三角肌圓帽
+          sh.ell(BODY, [s * 4.0 * wS, yl(S) - 2.3, S - 5.6], [2.6 * fr, 1.6, 3.0]);                              // 肩胛骨
+        }
+      }
       const zCh = S - .24 * T;
       sh.ell(BODY, [0, yl(zCh) - .2, zCh], [7.7 * F(b, 'chest'), 4.9 * F(b, 'chest') ** .5, .27 * T]);
       const zW = S - .6 * T;
+      sh.part = 'waist';
       sh.ell(BODY, [0, yl(zW), zW], [5.9 * F(b, 'waist'), 4.3 * F(b, 'waist') ** .7, .2 * T]);
+      sh.part = 'hips';
       const zP = C + .2 * T;
       sh.ell(BODY, [0, yl(zP) - .2, zP], [9.0 * F(b, 'hip'), 5.3 * F(b, 'hip') ** .6, .24 * T]);
       sh.ell(BODY, [0, yl(C + 3) - .3, C + 3.5], [5.0 * F(b, 'hip'), 3.8, 4.2]);
+      sh.part = 'waist';
       if (doll.belly > 0) {   // 懷孕（2026-10-10）：第 3 天起肚子往前圓起來，第 10 天最大
         const e = doll.belly, pz = zW - .3 * T - 1.2 * e;
         sh.ell(BODY, [0, yl(pz) + 1.4 + 6.2 * e, pz], [(5.6 + 2.6 * e) * F(b, 'waist') ** .5, 3.2 + 5.6 * e, 5.4 + 3.4 * e]);
       }
       if (b.belly) { const bz = zW - .32 * T; sh.ell(BODY, [0, yl(bz) + 1.6 + 1.2 * b.belly, bz], [5.4 * F(b, 'waist'), 3.6 + .6 * b.belly, 5.0]); }
+      sh.part = 'hips';
       for (const s of [-1, 1]) {
         const bb = F(b, 'butt'), lift = 1.2 * b.muscle + 1.1 * b.perk, q = jig ? jig.sq : 0;
         // jig（偷看，2026-10-15）：被撞時臀肉往撞的方向推、前後壓扁、上下左右鼓出，再彈回來晃
@@ -473,6 +489,7 @@
         const [tx, ty, tz] = jig.thigh;
         sh.ell(BODY, [s * 4.6 * F(b, 'hip') + tx, yl(C - 2) - 1.2 + ty, C - 2.5 + tz], [3.9 * F(b, 'thigh'), 3.9 * F(b, 'thigh') * (1 - .6 * q), 3.6]);
       }
+      sh.part = _pp;
       // 2026-10-31：乳暈改畫在乳房曲面像素上（不再用會被奶吃掉的圓盤／斜切殼）；乳頭沿指向往外凸小球
       const AR0 = (AREOLA_R[doll.areola] || 1.5) * (.35 + r0(P, doll) * .16)   /* 2026-10-29 pt11u：乳暈隨乳房大小放大（A≈0.72× → H≈1.4×） */;
       const nipAt = (q, fwd = [0, 1, 0], bod = null) => {
@@ -776,13 +793,21 @@
     function definition(sh, P, tor, xoff = 0) {
       const b = P.b, S = tor.S, zW = tor.zW;
       const lin = (a, z, n) => Array.from({ length: n }, (_, i) => a + (z - a) * i / (n - 1));
+      // 2026-11-03 拆部位：線條貼胸廓／腹部（不貼到乳房上，乳房擋住的地方自然被擋），鎖骨歸 chest、腹肌肚臍歸 waist
+      const pp = sh.part; sh.surfSkipBust = true; sh.part = 'waist';
       if (b.muscle) {
         const top = tor.zB - tor.cupr - 1.2;
         marks(sh, lin(top, zW - 4.5, 6).map(z => [xoff, z]));
         if (b.muscle >= .8) for (const s of [-1, 1]) marks(sh, lin(zW + 3.5, zW - 3.5, 4).map(z => [xoff + s * 3.4 * F(b, 'waist'), z]));
       }
+      sh.part = 'chest';
       if (b.bone) for (const s of [-1, 1]) marks(sh, [[xoff + s * 1.6, S - 1.6], [xoff + s * 4.0, S - 1.2], [xoff + s * 6.4, S - 1.0]], .3);
+      else {   // 2026-11-03 鎖骨：淡淡兩條，往外微微上揚、中間留凹（非骨感體型）
+        sh.crease = 1; for (const s of [-1, 1]) marks(sh, [[xoff + s * 1.2, S - 2.7], [xoff + s * 2.6, S - 2.5], [xoff + s * 4.4, S - 1.9]], .2, .26); sh.crease = 0;
+      }
+      sh.part = 'waist';
       if (b.belly || b.muscle >= .5) marks(sh, [[xoff, zW - 3.2], [xoff, zW - 3.7]], .35, .6);
+      sh.surfSkipBust = false; sh.part = pp;
     }
     /** 2026-10-31：鼠蹊線（照使用者參考圖）——從骨盆前面的髖骨（腰側往下）往內往下收到胯下兩側，兩條合成比基尼褲邊那種 V。
      * 二次貝茲、略往內凹；CREASE_RGB 專用深膚色。 */
@@ -1909,7 +1934,34 @@
           }
         }
       }
-      if (opts.gbuf) return { width, height, hit, mat, tt, bust, limb };   // 2026-11-01 拆圖層：只回原始資料（打到沒、深度、材質、標記、手腳）
+      if (opts.gbuf) {   // 2026-11-01 拆圖層：只回原始資料（打到沒、深度、材質、標記、手腳）
+        if (opts.bakeStamps && stamps.length) {   // 2026-11-03：乳暈／乳頭 stamp 直接烤進 bust 標記（2＝乳暈、3＝乳頭），前端不用世界座標
+          const b0 = bust.slice();
+          for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+            const i = y * width + x; if (!hit[i] || b0[i] !== 1) continue;
+            const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
+            const X = (sx0 * c - 2 * t0 * s) / gw, Y = (sx0 * s + 2 * t0 * c) / gw, Z = -sy0;
+            for (const st of stamps) { const d = hypot3(X - st.q[0], Y - st.q[1], Z - st.q[2]); if (d <= st.nip) { bust[i] = 3; break; } if (d <= st.ar) bust[i] = 2; }
+          }
+          for (const st of stamps) {   // 乳頭中心那顆圓（同 render 最後一段）：找離乳頭最近的乳房像素，畫半徑 0.9K 的圓
+            let best = -1, bestD = 1e9, bx = 0, by = 0;
+            for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+              const i = y * width + x; if (!hit[i] || b0[i] !== 1) continue;
+              const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
+              const X = (sx0 * c - 2 * t0 * s) / gw, Y = (sx0 * s + 2 * t0 * c) / gw, Z = -sy0, d = hypot3(X - st.q[0], Y - st.q[1], Z - st.q[2]);
+              if (d < bestD) { bestD = d; best = i; bx = x; by = y; }
+            }
+            if (best < 0) continue;
+            const rPix = Math.max(2, Math.round(0.9 * K));
+            for (let oy = -rPix; oy <= rPix; oy++) for (let ox = -rPix; ox <= rPix; ox++) {
+              if (ox * ox + oy * oy > rPix * rPix + 0.2) continue;
+              const xx = bx + ox, yy = by + oy; if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+              const i = yy * width + xx; if (hit[i] && b0[i] === 1) bust[i] = 3;
+            }
+          }
+        }
+        return { width, height, hit, mat, tt, bust, limb };
+      }
       // clean single-pixel specks and pinholes
       const m = new Uint8Array(n), holes = new Uint8Array(n);
       const at = (a, x, y) => (x < 0 || y < 0 || x >= width || y >= height) ? 0 : a[y * width + x];
@@ -1995,7 +2047,7 @@
       return { width, height, anchor: { x: ax * K, y: ay * K }, pixels, depth };
     }
     // 2026-11-01 拆圖層樣品：各部位分開算原始資料，每格取最近（tt 最大）的那個，再統一上色。union of SDF＝每格最近的表面，所以結果應與整張一起算相同。
-    const PARTS = ['head', 'torso', 'breast', 'armL', 'armR', 'legs'];
+    const PARTS = ['head', 'chest', 'waist', 'hips', 'torso', 'breast', 'armL', 'armR', 'legs'];   // 2026-11-03 torso 只剩各姿勢另加的小零件（手掌墊、手機…）
     function renderParts(doll, pose, frame, yaw, opts = {}) {
       const bufs = {}; for (const pt of PARTS) bufs[pt] = render(doll, pose, frame, yaw, { ...opts, parts: [pt], gbuf: true });
       return { bufs, composite: renderComposite(doll, pose, frame, yaw, opts, bufs) };
