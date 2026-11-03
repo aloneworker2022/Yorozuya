@@ -19,6 +19,7 @@
     const FAINT_RGB = [110, 75, 75];   // 2026-11-03：若隱若現的淡線（背部中線），前端上成很淡的膚色線
     const CREASE_RGB = [90, 60, 60];   // 2026-10-31：鼠蹊部摺線（比一般線條深），前端上成深膚色
     const GIRTH = 1.1;
+    const TRUNK_SM = 2.6;   // 2026-11-03 軀幹疊層沿高度的平滑量（越大腰背越順）
     const SHJ_DZ = 3.4;   // 2026-11-03 肩關節在肩線下多少（原 2.6；使用者：斜肩往下、脖子明顯 → 肩膀外側壓低）
     const CUP_R = { A: 1.0, B: 1.85, C: 2.85, D: 4.15, E: 5.0, F: 5.7, G: 6.2, H: 6.75, I: 7.2 };  // 2026-10-31：A≈只剩乳暈、B/C 收小；D～H 階梯拉開
     const CUP_BOUNCE = { A: .04, B: .18, C: .4, D: .8, E: 1.05, F: 1.25, G: 1.42, H: 1.58, I: 1.75 };
@@ -468,14 +469,34 @@
           sh.ell(BODY, [s * 4.0 * wS, yl(S) - 2.3, S - 5.6], [2.6 * fr, 1.6, 3.0]);                              // 肩胛骨
         }
       }
-      const zCh = S - .24 * T;
-      sh.ell(BODY, [0, yl(zCh) - .2, zCh], [7.7 * F(b, 'chest'), 4.9 * F(b, 'chest') ** .5, .27 * T]);
-      const zW = S - .6 * T;
-      sh.part = 'waist';
-      sh.ell(BODY, [0, yl(zW), zW], [5.9 * F(b, 'waist'), 4.3 * F(b, 'waist') ** .7, .2 * T]);
-      sh.part = 'hips';
-      const zP = C + .2 * T;
-      sh.ell(BODY, [0, yl(zP) - .2, zP], [9.0 * F(b, 'hip'), 5.3 * F(b, 'hip') ** .6, .24 * T]);
+      const zCh = S - .24 * T, zW = S - .6 * T, zP = C + .2 * T;
+      const TRUNK = [[zCh, -.2, 7.7 * F(b, 'chest'), 4.9 * F(b, 'chest') ** .5, .27 * T], [zW, 0, 5.9 * F(b, 'waist'), 4.3 * F(b, 'waist') ** .7, .2 * T], [zP, -.2, 9.0 * F(b, 'hip'), 5.3 * F(b, 'hip') ** .6, .24 * T]];
+      if (doll._oldTrunk) {   // 舊做法：胸廓／腰／骨盆三顆橢球（對照用）
+        sh.ell(BODY, [0, yl(zCh) - .2, zCh], [TRUNK[0][2], TRUNK[0][3], TRUNK[0][4]]);
+        sh.part = 'waist'; sh.ell(BODY, [0, yl(zW), zW], [TRUNK[1][2], TRUNK[1][3], TRUNK[1][4]]);
+        sh.part = 'hips'; sh.ell(BODY, [0, yl(zP) - .2, zP], [TRUNK[2][2], TRUNK[2][3], TRUNK[2][4]]);
+      } else {
+        // 2026-11-03 軀幹改疊層（使用者：腰部跟背部要剛好連線重疊）：每個高度取三顆橢球的外框（寬、前緣、後緣），
+        // 沿高度平滑（σ＝TRUNK_SM）抹掉胸→腰→骨盆的階梯 → 背從上背、腰的凹順到臀部；正面也是平滑的 V 字收腰再弧到髖。
+        // 切成短段（每段 2 格、上下各多 .6 重疊），依高度分給 chest／waist／hips；趴跪等彎曲姿勢逐段轉也順。
+        const zTop = zCh + TRUNK[0][4], zBot = zP - TRUNK[2][4], dzs = .5, Z = [];
+        for (let z = zTop; z >= zBot - 1e-6; z -= dzs) Z.push(z);
+        const env = Z.map(z => { let w = 0, yf = -1e9, yb = 1e9; for (const [cz, oy, rx, ry, rz] of TRUNK) { const u = (z - cz) / rz; if (Math.abs(u) >= 1) continue; const f = Math.sqrt(1 - u * u); w = Math.max(w, rx * f); yf = Math.max(yf, oy + ry * f); yb = Math.min(yb, oy - ry * f); } return w ? [w, yf, yb] : [.3, .3, -.3]; });
+        // 平滑量分開：寬（正面腰身）輕輕抹、前緣中等、後緣（背）抹最多——背要順，腰身不能被撐粗
+        const smooth = (j, sg) => { const ker = []; for (let k = -Math.ceil(3 * sg / dzs); k <= Math.ceil(3 * sg / dzs); k++) ker.push([k, Math.exp(-.5 * (k * dzs / sg) ** 2)]);
+          return env.map((_, i) => { let s0 = 0, ws = 0; for (const [k, wgt] of ker) { const q = env[Math.max(0, Math.min(env.length - 1, i + k))]; s0 += q[j] * wgt; ws += wgt; } return s0 / ws; }); };
+        const sg = TRUNK_SM, SW = smooth(0, sg * .45), SF = smooth(1, sg * .75), SB = smooth(2, sg);
+        // 兩端別被平滑撐胖：頂／底各取原外框與平滑值的小者
+        const rows = Z.map((z, i) => { const e = env[i], end = Math.min(1, Math.min(zTop - z, z - zBot) / (2 * sg)); const L = (a, c) => c + (a - c) * end; return [z, L(SW[i], Math.min(SW[i], e[0])), yl(z) + L(SF[i], Math.min(SF[i], e[1])), yl(z) + L(SB[i], Math.max(SB[i], e[2]))]; });
+        const per = 4;   // 每段 4 列（2 格）
+        for (let i = 0; i < rows.length - 1; i += per) {
+          const seg = rows.slice(Math.max(0, i - 1), Math.min(rows.length, i + per + 2));   // 上下各多一列重疊
+          const zm = (seg[0][0] + seg[seg.length - 1][0]) / 2;
+          sh.part = zm > zW + .1 * T ? 'chest' : zm < zW - .1 * T ? 'hips' : 'waist';
+          sh.loft(BODY, seg, .2);
+        }
+        sh.part = 'hips';
+      }
       sh.ell(BODY, [0, yl(C + 3) - .3, C + 3.5], [5.0 * F(b, 'hip'), 3.8, 4.2]);
       sh.part = 'waist';
       if (doll.belly > 0) {   // 懷孕（2026-10-10）：第 3 天起肚子往前圓起來，第 10 天最大
