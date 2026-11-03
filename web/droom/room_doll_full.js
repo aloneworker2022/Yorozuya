@@ -19,7 +19,7 @@
     const FAINT_RGB = [110, 75, 75];   // 2026-11-03：若隱若現的淡線（背部中線），前端上成很淡的膚色線
     const CREASE_RGB = [90, 60, 60];   // 2026-10-31：鼠蹊部摺線（比一般線條深），前端上成深膚色
     const GIRTH = 1.1;
-    const TRUNK_SM = 2.6;   // 2026-11-03 軀幹疊層沿高度的平滑量（越大腰背越順）
+    const TRUNK_SM = 2.6, UB_SLOPE = .5;   // 2026-11-03 軀幹疊層沿高度的平滑量（越大腰背越順）
     const SHJ_DZ = 3.4;   // 2026-11-03 肩關節在肩線下多少（原 2.6；使用者：斜肩往下、脖子明顯 → 肩膀外側壓低）
     const CUP_R = { A: 1.0, B: 1.85, C: 2.85, D: 4.15, E: 5.0, F: 5.7, G: 6.2, H: 6.75, I: 7.2 };  // 2026-10-31：A≈只剩乳暈、B/C 收小；D～H 階梯拉開
     const CUP_BOUNCE = { A: .04, B: .18, C: .4, D: .8, E: 1.05, F: 1.25, G: 1.42, H: 1.58, I: 1.75 };
@@ -461,12 +461,12 @@
         //  斜方肌從脖子半高分兩段斜下到肩峰（正面／背面看到斜肩）；橫條壓低；肩頭三角肌圓帽；脖子根部外擴；背後兩片肩胛骨微凸
         const fr = b.frame, yb = yl(S) - 1.0;
         sh.cone(BODY, [-6.6 * wS, yl(S) - .5, S - 3.6], [6.6 * wS, yl(S) - .5, S - 3.6], 2.6 * fr, 2.6 * fr);   // 鎖骨～肩胛的橫條
-        sh.cone(BODY, [0, yl(S) - .6, S - 1.6], [0, yl(S) - .3, S + .8], neck_r * 1.15, neck_r * 1.0);          // 脖子根部外擴
+        sh.cone(BODY, [0, yl(S) + .5, S - 1.6], [0, yl(S) + .3, S + .8], neck_r * 1.1, neck_r * .95);   // 2026-11-03 往前移：後面不再撐出去（使用者：上背像駝背）          // 脖子根部外擴
         for (const s of [-1, 1]) {
           sh.cone(BODY, [s * 1.7, yb + .2, S + 1.4], [s * 4.2 * wS, yb, S + .1], .7 * fr, 1.1 * fr);           // 斜方肌上段（頸側；2026-11-03 使用者：接在脖子低一點、坡度緩，脖子才明顯）
           sh.cone(BODY, [s * 4.2 * wS, yb, S + .1], [s * 7.5 * wS, yb + .1, S - 2.2], 1.1 * fr, 1.5 * fr);      // 斜方肌下段（→肩峰）
           sh.ell(BODY, [s * 8.7 * wS, yl(S) - .6, S - 4.3], [2.75 * fr + .35 * b.muscle, 2.7 * fr, 3.2 * fr + .5 * b.muscle]);   // 三角肌圓帽
-          sh.ell(BODY, [s * 4.0 * wS, yl(S) - 2.3, S - 5.6], [2.6 * fr, 1.6, 3.0]);                              // 肩胛骨
+          sh.ell(BODY, [s * 4.0 * wS, yl(S) - 2.05, S - 5.6], [2.6 * fr, 1.25, 3.0]);   // 2026-11-03 壓扁往前收（背的輪廓改淺後，原本的會凸出來）                              // 肩胛骨
         }
       }
       const zCh = S - .24 * T, zW = S - .6 * T, zP = C + .2 * T;
@@ -487,7 +487,15 @@
           return env.map((_, i) => { let s0 = 0, ws = 0; for (const [k, wgt] of ker) { const q = env[Math.max(0, Math.min(env.length - 1, i + k))]; s0 += q[j] * wgt; ws += wgt; } return s0 / ws; }); };
         const sg = TRUNK_SM, SW = smooth(0, sg * .45), SF = smooth(1, sg * .75), SB = smooth(2, sg);
         // 兩端別被平滑撐胖：頂／底各取原外框與平滑值的小者
-        const rows = Z.map((z, i) => { const e = env[i], end = Math.min(1, Math.min(zTop - z, z - zBot) / (2 * sg)); const L = (a, c) => c + (a - c) * end; return [z, L(SW[i], Math.min(SW[i], e[0])), yl(z) + L(SF[i], Math.min(SF[i], e[1])), yl(z) + L(SB[i], Math.max(SB[i], e[2]))]; });
+        // 上背（使用者：肩胛骨下來要順順地下來，不要拱起來像駝背）：背的後緣限制在「脖子後緣往下的斜線」以內——
+        // 從脖子根（S＋1，後緣約 −1.6）每往下 1 退 UB_SLOPE，到肩胛骨下緣才接上胸廓本來的背
+        // 肩胛骨（S−5）以下背直直往下：不再比肩胛骨更往後（原本胸廓中段最凸＝拱背）
+        // v2：直接給背的側面輪廓（脖子根 → 肩胛 → 胸廓 → 腰微凹 → 交給骨盆），各體型照胸／腰厚度縮放；骨盆以下不管（臀部另外有）
+        const kc = TRUNK[0][3] / 4.9, kw = TRUNK[1][3] / 4.3;
+        const BK = [[S + 1, -1.7], [S - 2, -2.7 * kc], [S - 5, -3.35 * kc], [zCh, -3.6 * kc], [zW + 3, -3.45 * kw], [zW, -3.3 * kw], [zP + 2, -4.2 * kw], [zP, -1e9]];
+        const ubAt = z => { if (z >= BK[0][0]) return BK[0][1]; for (let i = 0; i < BK.length - 1; i++) if (z >= BK[i + 1][0]) { const [z0, a] = BK[i], [z1, c] = BK[i + 1]; if (c < -1e8) return -1e9; const u = sm((z0 - z) / (z0 - z1)); return a + (c - a) * u; } return -1e9; };
+        const sm = u => u * u * (3 - 2 * u);
+        const rows = Z.map((z, i) => { const e = env[i], end = Math.min(1, Math.min(zTop - z, z - zBot) / (2 * sg)); const L = (a, c) => c + (a - c) * end; return [z, L(SW[i], Math.min(SW[i], e[0])), yl(z) + L(SF[i], Math.min(SF[i], e[1])), yl(z) + Math.max(L(SB[i], Math.max(SB[i], e[2])), ubAt(z))]; });
         const per = 4;   // 每段 4 列（2 格）
         for (let i = 0; i < rows.length - 1; i += per) {
           const seg = rows.slice(Math.max(0, i - 1), Math.min(rows.length, i + per + 2));   // 上下各多一列重疊
