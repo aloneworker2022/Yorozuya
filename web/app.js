@@ -8265,6 +8265,8 @@ function buildRoomGirlFromSuccubus(s) {
     look,
     outfitPick: s.outfitPick ?? null,
     outfitName: s.outfitName || null,
+    picOutfit: s.picOutfit || "",
+    visitShown: (s.visitShown && typeof s.visitShown === "object" && !Array.isArray(s.visitShown)) ? { ...s.visitShown } : {},
     libido: s.libido || null,
     specialTraits: s.specialTraits || null,
     moanVoice: s.moanVoice || null,
@@ -8504,6 +8506,22 @@ function applyRoomProgressData(data) {
   setScalar("loveTalkLastAt", (v) => (Number.isFinite(Number(v)) ? Number(v) : -999));
   setScalar("petNudgeLastAt", (v) => (Number.isFinite(Number(v)) ? Number(v) : -999));
 
+  if (Object.prototype.hasOwnProperty.call(data, "outfitPick")) {
+    s.outfitPick = data.outfitPick;
+    changed = true;
+  }
+  if (typeof data.outfitName === "string" && data.outfitName !== s.outfitName) {
+    s.outfitName = data.outfitName;
+    changed = true;
+  }
+  if (typeof data.picOutfit === "string" && data.picOutfit !== s.picOutfit) {
+    s.picOutfit = data.picOutfit;
+    changed = true;
+  }
+  if (data.visitShown && typeof data.visitShown === "object" && !Array.isArray(data.visitShown)) {
+    s.visitShown = { ...data.visitShown };
+    changed = true;
+  }
   if (data.portraits && typeof data.portraits === "object") {
     s.portraits = { ...(s.portraits || {}), ...data.portraits };
     if (data.portraits.half || data.portraits.full || data.portrait) {

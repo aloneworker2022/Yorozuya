@@ -2701,13 +2701,15 @@ async function pregenSummonBundle(who, opts = {}) {
   if (!who?.id) return { planned: 0, done: 0, failed: 0, skipped: true, finished: true, id: "" };
   const mode = opts.mode || "arrive";
   const items = [];
+  const reuseShown = !!opts.reuseShown;
   if (opts.portraits) {
     items.push(...await collectSummonPortraitItems(who, {
       halfOnly: !!opts.halfOnly,
       clothedOnly: !!opts.clothedOnly,
+      reuseShown,
     }));
   }
-  if (opts.sex) items.push(...await collectSummonSexItems(who));
+  if (opts.sex) items.push(...await collectSummonSexItems(who, { reuseShown }));
   if (!items.length) {
     paintSummonTenths(0, 0);
     return { planned: 0, done: 0, failed: 0, skipped: true, finished: true, id: "" };
@@ -2789,6 +2791,8 @@ function finishSummonArrival(who, mode) {
   } catch (err) { console.warn("[escort back]", err?.message || err); }
   if (mode === "back" || mode === "arrive") {
     try { armRoomVisit(who); } catch { /* */ }
+    beginShownVisit(who, who.summonArrivalQueue);
+    delete who.summonArrivalQueue;
   }
   try { syncArousalOffChatTimer(); } catch { /* */ }
   try { renderCard(); } catch { /* */ }
@@ -2858,6 +2862,7 @@ async function resumeSummonQueue(who) {
   }
   if (payload.finished) {
     await cacheVisitPics(who);
+    who.summonArrivalQueue = { finished: true, failed: payload.failed | 0, skipped: !(payload.total | 0) };
     finishSummonArrival(who, payload.mode || mode);
     await ackSummonQueue(payload.id || qid);
     return;
@@ -2874,6 +2879,11 @@ async function resumeSummonQueue(who) {
     });
     if (girl !== who) return;
     await cacheVisitPics(who);
+    who.summonArrivalQueue = {
+      finished: !!finalPayload?.finished,
+      failed: finalPayload?.failed | 0,
+      skipped: !(finalPayload?.total | 0),
+    };
     finishSummonArrival(who, finalPayload?.mode || mode);
     await ackSummonQueue(finalPayload?.id || qid);
   } catch (err) {
@@ -2936,6 +2946,7 @@ async function showSexStep(who, step = "open") {
   if (view !== undressView || activeRoomScene !== "sex" || !sceneOpen() || girl !== who) return;
   sexStepView = { pose, step, packId: pick.packId || packId };
   if (pick.url) {
+    noteSexShown(who, pose, step, pick.url, pick.packId);
     paintSceneFigure(pick.url, `${who.name}的${c.label.replace("開場", "")}${meta.label}圖`);
     const tail = meta.next ? `（按「下一步」看${SEX_STEP_META[meta.next].label}）` : "（這一輪到這裡結束；按「回到房間對話」離開。）";
     if (body) body.textContent = `${head}\n${tail}`;
@@ -3008,6 +3019,7 @@ function setSexChatImage(url, step) {
   if (!sexChat || !url) return;
   sexChat.img = url;
   sexChat.imgStep = step;
+  noteSexShown(girl, sexChat.pose, step, url, sexChat.packId);
   paintSexChatImage();
 }
 
@@ -3174,6 +3186,7 @@ async function playThrustAnim() {
       img.onload = done;
       img.onerror = done;
       img.src = frames[i];
+      noteAnimShown(girl, sexChat.pose, frames[i]);
       if (img.complete && img.naturalWidth) queueMicrotask(done);
       setTimeout(done, THRUST.ANIM_PRELOAD_MAX_MS);
     });
@@ -4009,9 +4022,142 @@ function wornOutfit(g) {
   return wornOutfitOf(g);
 }
 
+/** 這套圖是穿哪一套畫的。`pick|名字`。 */
+function outfitStamp(who) {
+  return `${who?.outfitPick ?? ""}|${String(who?.outfitName || "")}`;
+}
+
+/** 還沒記過就用現在身上這套。要在重抽衣服之前叫。 */
+function rememberPicOutfit(who) {
+  if (!who || who.picOutfit) return;
+  who.picOutfit = outfitStamp(who);
+}
+
+/** 現在這套跟畫面上的穿衣圖不是同一套。 */
+function outfitChanged(who) {
+  const prev = String(who?.picOutfit || "");
+  if (!prev) return false;
+  return prev !== outfitStamp(who);
+}
+
+function summonSlotKey(slot) {
+  const kind = String(slot?.kind || "");
+  if (kind === "half") return "half";
+  if (kind === "standee") return `standee|${slot.slotId || ""}`;
+  if (kind === "pack") return `pack|${slot.packsKey || ""}|${slot.packId || ""}`;
+  if (kind === "undress") return `undress|${slot.shot || ""}`;
+  return "";
+}
+
+function summonSlotHasPicture(who, slot) {
+  const p = who?.portraits || {};
+  const kind = String(slot?.kind || "");
+  if (kind === "half") return !!String(p.half || "");
+  if (kind === "standee") return !!String(p.standee?.[slot.slotId] || "");
+  if (kind === "pack") return !!String(p[slot.packsKey]?.[slot.packId] || "");
+  if (kind === "undress") return !!String(p[slot.shot] || "");
+  return false;
+}
+
+/** 沒有圖就補。衣服換了就重畫穿衣的。其餘只重畫上一趟出現過的。 */
+function summonSlotNeedsDraw(who, slot) {
+  if (!summonSlotHasPicture(who, slot)) return true;
+  if (slot?.outfit && outfitChanged(who)) return true;
+  const key = summonSlotKey(slot);
+  return !!(key && who?.visitShown && who.visitShown[key]);
+}
+
+/** 人出現、這一趟的圖也交出去了：清掉上一趟的使用紀錄，並記住現在這套衣服。 */
+function beginShownVisit(who, queued) {
+  if (!who) return;
+  const ok = queued && (queued.skipped || (queued.finished && !queued.failed));
+  if (!ok) return;
+  who.visitShown = {};
+  who.picOutfit = outfitStamp(who);
+}
+
+function markVisitShown(who, key) {
+  if (!who || who !== girl || !key) return;
+  if (who.summonArrivalPending) return;
+  if (typeof window.RoomActor?.isPresent === "function" && !window.RoomActor.isPresent()) return;
+  who.visitShown = who.visitShown && typeof who.visitShown === "object" ? who.visitShown : {};
+  if (who.visitShown[key]) return;
+  who.visitShown[key] = 1;
+  try { persistRoom(); } catch { /* */ }
+}
+
+function notePackShown(who, url) {
+  const file = String(url || "").split("?")[0];
+  if (!file || !who?.portraits) return;
+  for (const [packsKey, pool] of Object.entries(who.portraits)) {
+    if (!pool || typeof pool !== "object" || Array.isArray(pool)) continue;
+    if (!packsKey.endsWith("_packs")) continue;
+    for (const [packId, stored] of Object.entries(pool)) {
+      if (String(stored || "").split("?")[0] !== file) continue;
+      markVisitShown(who, `pack|${packsKey}|${packId}`);
+      return;
+    }
+  }
+}
+
+function noteSexShown(who, pose, step, url, packId) {
+  const packsKey = sexStepPacksKey(pose, step);
+  const pool = who?.portraits?.[packsKey] || {};
+  const file = String(url || "").split("?")[0];
+  let id = String(packId || "");
+  if (file) {
+    for (const [k, stored] of Object.entries(pool)) {
+      if (String(stored || "").split("?")[0] === file) { id = k; break; }
+    }
+  }
+  if (pose && step && id) markVisitShown(who, `sex|${pose}|${step}|${id}`);
+}
+
+function noteAnimShown(who, pose, url) {
+  const urls = who?.sexAnim?.[pose]?.urls || [];
+  const file = String(url || "").split("?")[0];
+  const index = urls.findIndex((u) => String(u || "").split("?")[0] === file);
+  if (pose && index >= 0) markVisitShown(who, `anim|${pose}|${index}`);
+}
+
+/** 上一趟看過、而且現在還有圖的做愛步驟／局部動圖，加進重畫清單。 */
+function addShownSexJobs(who, jobs) {
+  const shown = who?.visitShown;
+  if (!shown || typeof shown !== "object") return;
+  const stepHave = new Set(jobs.filter((j) => j.kind === "step").map((j) => `${j.pose}|${j.step}|${j.packId}`));
+  for (const key of Object.keys(shown)) {
+    if (!shown[key]) continue;
+    if (key.startsWith("sex|")) {
+      const parts = key.split("|");
+      const pose = parts[1];
+      const step = parts[2];
+      const packId = parts.slice(3).join("|");
+      const id = `${pose}|${step}|${packId}`;
+      if (!pose || !step || !packId || stepHave.has(id)) continue;
+      const url = String(who.portraits?.[sexStepPacksKey(pose, step)]?.[packId] || "");
+      if (!url) continue;
+      jobs.push({ kind: "step", pose, step, packId });
+      stepHave.add(id);
+      continue;
+    }
+    if (!key.startsWith("anim|")) continue;
+    const [, pose, frameRaw] = key.split("|");
+    const frame = frameRaw | 0;
+    const url = String(who.sexAnim?.[pose]?.urls?.[frame] || "");
+    if (!pose || !url) continue;
+    let job = jobs.find((j) => j.kind === "anim" && j.pose === pose);
+    if (!job) {
+      job = { kind: "anim", pose, frames: [] };
+      jobs.push(job);
+    }
+    if (!job.frames.includes(frame)) job.frames.push(frame);
+  }
+}
+
 /** 進房當下選一套，並記住名字。中途過晚上 6 點不重選。 */
 function assignEntryOutfit(who) {
   if (!who) return;
+  rememberPicOutfit(who);
   const picked = pickSummonOutfit(who.look, { hour: taiwanNow().hour });
   who.outfitName = picked.name;
   who.outfitPick = picked.pick;
@@ -4618,6 +4764,7 @@ function showTeasePortrait(who, shotKey, url, alt) {
   if (!who || !url) return;
   who.portraits = who.portraits || {};
   who.portraits[shotKey] = url;
+  notePackShown(who, url);
   if (girl && girl.id === who.id && sheetOpen()) {
     showActionFlash(url, alt, { hold: INSERT_HOLD_SHOTS.has(shotKey) });
   }
@@ -5248,8 +5395,13 @@ async function collectSummonPortraitItems(who = girl, opts = {}) {
     ].filter((job) => XRAY_ACTION_PACKS_ON || !job.noNude);
 
     const items = [];
+    const reuseShown = !!opts.reuseShown;
+    const pushItem = (item) => {
+      if (reuseShown && !summonSlotNeedsDraw(who, item.slot)) return;
+      items.push(item);
+    };
     try {
-      items.push({ slot: { kind: "half" }, body: portraitBody(who, engine) });
+      pushItem({ slot: { kind: "half", outfit: true }, body: portraitBody(who, engine) });
     } catch (err) {
       console.warn("[summon-queue] half", err?.message || err);
     }
@@ -5267,8 +5419,8 @@ async function collectSummonPortraitItems(who = girl, opts = {}) {
       }
       for (const pack of packs) {
         try {
-          items.push({
-            slot: { kind: "pack", packsKey: job.packsKey, packId: pack.id, shotKey: job.shotKey },
+          pushItem({
+            slot: { kind: "pack", packsKey: job.packsKey, packId: pack.id, shotKey: job.shotKey, outfit: !job.noNude },
             body: job.build(pack, who, engine, { stage, worn }),
           });
         } catch (err) {
@@ -5276,7 +5428,7 @@ async function collectSummonPortraitItems(who = girl, opts = {}) {
         }
         if (!withNude || job.noNude) continue;
         try {
-          items.push({
+          pushItem({
             slot: { kind: "pack", packsKey: nudePacksKey(job.packsKey), packId: pack.id },
             body: job.build(pack, who, engine, { stage, worn, nude: true }),
           });
@@ -5294,8 +5446,8 @@ async function collectSummonPortraitItems(who = girl, opts = {}) {
     }
     for (const slot of standeeSlots) {
       try {
-        items.push({
-          slot: { kind: "standee", slotId: slot.id },
+        pushItem({
+          slot: { kind: "standee", slotId: slot.id, outfit: true },
           body: buildStandeeImgBody(slot, who, engine, { stage, worn }),
         });
       } catch (err) {
@@ -5319,7 +5471,7 @@ async function collectSummonPortraitItems(who = girl, opts = {}) {
         continue;
       }
       try {
-        items.push({
+        pushItem({
           slot: { kind: "undress", shot },
           body: buildUndressImgBody(pack, who, engine, { rating: halfRating(who) }),
         });
@@ -5334,9 +5486,10 @@ async function collectSummonPortraitItems(who = girl, opts = {}) {
 }
 
 /** 缺的做愛圖（兩姿勢步驟＋局部動圖）。只組單。 */
-async function collectSummonSexItems(who) {
+async function collectSummonSexItems(who, opts = {}) {
   if (!SEX_POSES_ON || !who?.id) return [];
   const jobs = await planSexSetFor(who);
+  if (opts.reuseShown) addShownSexJobs(who, jobs);
   if (!jobs.length) return [];
   const engine = await gameImgRoute();
   await ensureGirlComfyCkpt(who);
@@ -5731,6 +5884,9 @@ function paintHalfPortrait(who = girl, opts = {}) {
     : standee && slotId
       ? `${who.name}的立繪（${slotId}）`
       : `${who.name}的立繪`;
+  if (liveUrl && liveShot) markVisitShown(who, `undress|${liveShot}`);
+  else if (standee && slotId) markVisitShown(who, `standee|${slotId}`);
+  else markVisitShown(who, "half");
   const prev = img.getAttribute("src") || "";
   const srcChanged = prev !== url;
   if (srcChanged) img.src = url;
@@ -8952,6 +9108,7 @@ async function runClothesErrand(next) {
   const who = girl;
   if (!who || !next) return;
   who.errand = "clothes";
+  rememberPicOutfit(who);
   who.errandPrevName = who.outfitName || wornOutfit(who);
   who.errandPrevPick = who.outfitPick ?? null;
   delete who.errandPrevHalf;
@@ -8999,6 +9156,7 @@ async function runClothesErrand(next) {
   setSummonTalkBusy(false);
   paintSexSetProgress("");
   if (!failed) {
+    who.picOutfit = outfitStamp(who);
     try { clearVisitUndress(who); } catch { /* */ }
   }
   try { paintHalfPortrait(who); } catch { /* */ }
@@ -10481,6 +10639,12 @@ function pickRoomDurableProgress(who) {
   }
   if (who.portraits && typeof who.portraits === "object") detail.portraits = who.portraits;
   if (who.sexAnim && typeof who.sexAnim === "object") detail.sexAnim = who.sexAnim;
+  if (Object.prototype.hasOwnProperty.call(who, "outfitPick")) detail.outfitPick = who.outfitPick;
+  if (who.outfitName) detail.outfitName = who.outfitName;
+  if (who.picOutfit) detail.picOutfit = String(who.picOutfit);
+  if (who.visitShown && typeof who.visitShown === "object" && !Array.isArray(who.visitShown)) {
+    detail.visitShown = { ...who.visitShown };
+  }
   if (who.world && typeof who.world === "object") detail.world = who.world;
   if (who.bodyState && typeof who.bodyState === "object") detail.bodyState = who.bodyState;
   if (who.body && typeof who.body === "object") detail.body = who.body;
@@ -10535,6 +10699,12 @@ function mergeRoomGirlDurable(base, prior) {
   stripRetiredNude(out);
   if (prior.undress && typeof prior.undress === "object") {
     out.undress = snapshotUndress(prior.undress);
+  }
+  if (Object.prototype.hasOwnProperty.call(prior, "outfitPick")) out.outfitPick = prior.outfitPick;
+  if (prior.outfitName) out.outfitName = prior.outfitName;
+  if (prior.picOutfit) out.picOutfit = String(prior.picOutfit);
+  if (prior.visitShown && typeof prior.visitShown === "object" && !Array.isArray(prior.visitShown)) {
+    out.visitShown = { ...prior.visitShown };
   }
   return out;
 }
@@ -10705,7 +10875,7 @@ async function adoptRosterGirl(payload) {
     let queued = null;
     let handoffFailed = false;
     try {
-      queued = await pregenSummonBundle(girl, { portraits: true, sex: true, mode: "arrive" });
+      queued = await pregenSummonBundle(girl, { portraits: true, sex: true, mode: "arrive", reuseShown: !continuingVisit });
     } catch (err) {
       handoffFailed = true;
       console.warn("[adoptRosterGirl pregen]", err?.message || err);
@@ -10715,7 +10885,10 @@ async function adoptRosterGirl(payload) {
     // 畫完並下載完才讓她出現。停留從這一刻才開始。
     await cacheVisitPics(girl);
     window.RoomActor?.setPresent(true);
-    if (!continuingVisit) armRoomVisit(girl);
+    if (!continuingVisit) {
+      armRoomVisit(girl);
+      beginShownVisit(girl, queued);
+    }
     persistRoom();
     renderCard();
     renderWorld();
@@ -11150,7 +11323,7 @@ async function drawGirl() {
     let handoffFailed = false;
     try {
       try {
-        queued = await pregenSummonBundle(rolled, { portraits: true, sex: true, mode: "arrive" });
+        queued = await pregenSummonBundle(rolled, { portraits: true, sex: true, mode: "arrive", reuseShown: true });
       } catch (err) {
         handoffFailed = true;
         console.warn("[draw-girl pregen]", err?.message || err);
@@ -11162,6 +11335,7 @@ async function drawGirl() {
         await cacheVisitPics(girl);
         window.RoomActor?.setPresent(true);
         armRoomVisit(girl);
+        beginShownVisit(girl, queued);
         syncArousalOffChatTimer();
         persistRoom();
         renderCard();
@@ -11279,7 +11453,7 @@ async function summonHerBack() {
   const stopRitual = beginSummonRitualUI();
   let queued = null;
   try {
-    queued = await pregenSummonBundle(who, { portraits: true, sex: true, mode: "back" });
+    queued = await pregenSummonBundle(who, { portraits: true, sex: true, mode: "back", reuseShown: true });
     await cacheVisitPics(who);
   } catch (err) {
     if ($("summon-status")) $("summon-status").textContent = err?.message || String(err);
@@ -11292,6 +11466,7 @@ async function summonHerBack() {
     summonBackBusy = false;
   }
   if (girl !== who || !sheIsOut()) return;
+  who.summonArrivalQueue = queued;
   finishSummonArrival(who, "back");
   if (queued?.finished && queued.id) await ackSummonQueue(queued.id);
 }
