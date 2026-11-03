@@ -2032,7 +2032,10 @@
       if (cv.side) return renderSide(sh, P, cv);
       // 2026-10-30 pt36u：opts.scale＝解析度倍率（2＝寬高各兩倍，同一個模型取樣更細）
       const K = Math.max(1, Math.round(opts.scale || 1));
-      const width = cv.w * K, height = cv.h * K, ax = cv.ax, ay = cv.ay;
+      // 2026-11-03 近景：opts.cam＝透視攝影機（玩家站在她面前）。{ dist 水平距離（模型單位，從她的原點量）, eyeZ 眼睛高, pitch 往下看（弳）, f 焦距（K＝1 的像素）, w, h 畫布（K＝1）, cx, cy 主點（K＝1） }
+      //   光線 P(t)＝A＋t·B，t 從 0（攝影機）往負走；|B| 跟正交一樣是「水平拉寬空間」的 2 單位，深度門檻（線條、白邊）不用改。沒有 cam＝原本的正交，程式不變。
+      const CAM = opts.cam || null;
+      const width = (CAM ? CAM.w : cv.w) * K, height = (CAM ? CAM.h : cv.h) * K, ax = cv.ax, ay = cv.ay;
       let prims = opts.onlyMat != null ? sh.prims.filter(p => p.mat === opts.onlyMat) : sh.prims;
       if (opts.parts) prims = prims.filter(p => p.carve || opts.parts.includes(p.part));   // 2026-11-01 拆圖層：只算某些部位
       const np = prims.length;   // onlyMat：只畫某材質（頭髮圖層用）
@@ -2052,7 +2055,24 @@
       const gcx = (mnx + mxx) / 2, gcy = (mny + mxy) / 2, gcz = (mnz + mxz) / 2;
       const gr = hypot3(mxx - gcx, mxy - gcy, mxz - gcz) + .5;
       const th = yaw * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), gw = GIRTH;
-      const dX = -2 * s / gw, dY = 2 * c / gw, dZ = 0, dd = dX * dX + dY * dY + dZ * dZ;
+      let dX = -2 * s / gw, dY = 2 * c / gw, dZ = 0, dd = dX * dX + dY * dY + dZ * dZ;
+      let camRay = null, camPx = 1, camRow = null;
+      if (CAM) {   // 攝影機在她前方（yaw 方向的 (−s, c)），往她看、往下 pitch；水平拉寬空間＝模型 x,y × gw
+        const cp = Math.cos(CAM.pitch || 0), sp = Math.sin(CAM.pitch || 0), F = CAM.f, D0 = CAM.dist;
+        const fw = [s * cp, -c * cp, -sp], rt = [c, s, 0], up = [s * sp, -c * sp, cp];
+        const A0 = [-s * D0, c * D0, CAM.eyeZ];
+        camPx = F / (D0 * gw);
+        camRow = (z) => { const d = [s * D0 * gw, -c * D0 * gw, z - CAM.eyeZ], fz = d[0] * fw[0] + d[1] * fw[1] + d[2] * fw[2], uz = d[0] * up[0] + d[1] * up[1] + d[2] * up[2]; return (CAM.cy - F * uz / fz) * K; };   // 她中線上高度 z 在畫面第幾列   // 她身上 1 單位 ≈ 幾個像素（K＝1），點乳頭圓之類用
+        camRay = (px, py, A, B) => {
+          const u = (px + .5) / K - CAM.cx, v = (py + .5) / K - CAM.cy;
+          let x = fw[0] * F + rt[0] * u - up[0] * v, y = fw[1] * F + rt[1] * u - up[1] * v, z = fw[2] * F + rt[2] * u - up[2] * v;
+          const L = Math.hypot(x, y, z); x /= L; y /= L; z /= L;
+          A[0] = A0[0]; A[1] = A0[1]; A[2] = A0[2];
+          B[0] = -2 * x / gw; B[1] = -2 * y / gw; B[2] = -2 * z;
+        };
+      }
+      const RA = [0, 0, 0], RB = [0, 0, 0];
+      const camAt = (px, py, t) => { camRay(px, py, RA, RB); return [RA[0] + t * RB[0], RA[1] + t * RB[1], RA[2] + t * RB[2]]; };
       const n = width * height;
       const hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n), limb = new Uint8Array(n);
       const G0 = opts.gbufIn;   // 2026-11-01 拆圖層：直接用疊好的原始資料上色（不跑光線）
@@ -2066,18 +2086,19 @@
         for (let px = 0; px < width; px++) {
           const sx = (px + .5) / K - ax;
           // ray: X = (sx*c - 2t*s)/gw, Y = (sx*s + 2t*c)/gw, Z = t - sy
-          const ox = sx * c / gw - gcx, oy = sx * s / gw - gcy, oz = -sy - gcz;
+          if (camRay) { camRay(px, py, RA, RB); dX = RB[0]; dY = RB[1]; dZ = RB[2]; dd = dX * dX + dY * dY + dZ * dZ; }
+          const ox = (camRay ? RA[0] : sx * c / gw) - gcx, oy = (camRay ? RA[1] : sx * s / gw) - gcy, oz = (camRay ? RA[2] : -sy) - gcz;
           const bq = 2 * (ox * dX + oy * dY + oz * dZ), cq = ox * ox + oy * oy + oz * oz - gr * gr;
           const disc = bq * bq - 4 * dd * cq;
           if (disc < 0) continue;
           const sq = Math.sqrt(disc);
-          let t = Math.min(cv.tMax, (-bq + sq) / (2 * dd));
-          const tEnd = Math.max(cv.tMin, (-bq - sq) / (2 * dd));
+          let t = Math.min(camRay ? 0 : cv.tMax, (-bq + sq) / (2 * dd));
+          const tEnd = Math.max(camRay ? -1e4 : cv.tMin, (-bq - sq) / (2 * dd));
           const idx = py * width + px;
           // 2026-11-03 加速：先挑出這條光線碰得到的零件（包圍球離光線 CULL_M 以內），走的時候只算這些；都碰不到＝這格空白
           let nc = 0;
           if (CULL) {
-            const ax0 = sx * c / gw, ay0 = sx * s / gw, az0 = -sy;
+            const ax0 = camRay ? RA[0] : sx * c / gw, ay0 = camRay ? RA[1] : sx * s / gw, az0 = camRay ? RA[2] : -sy;
             for (let i = 0; i < np; i++) {
               if (prims[i].carve) continue;
               const wx = ax0 - bcx[i], wy = ay0 - bcy[i], wz = az0 - bcz[i], k = (wx * dX + wy * dY + wz * dZ) / dd;
@@ -2087,7 +2108,7 @@
             if (!nc) continue;
           }
           for (let it = 0; it < 220 && t >= tEnd; it++) {
-            const X = (sx * c - 2 * t * s) / gw, Y = (sx * s + 2 * t * c) / gw, Z = -sy;
+            const X = camRay ? RA[0] + t * dX : (sx * c - 2 * t * s) / gw, Y = camRay ? RA[1] + t * dY : (sx * s + 2 * t * c) / gw, Z = camRay ? RA[2] + t * dZ : -sy;
             dist[0] = dist[1] = dist[2] = 1e3;
             let bb = 0, lf = 0, ck = 0;
             for (let q = 0, qn = CULL ? nc : np; q < qn; q++) {
@@ -2120,7 +2141,7 @@
           for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
             const i = y * width + x; if (!hit[i] || b0[i] !== 1) continue;
             const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
-            const X = (sx0 * c - 2 * t0 * s) / gw, Y = (sx0 * s + 2 * t0 * c) / gw, Z = -sy0;
+            const [X, Y, Z] = camRay ? camAt(x, y, t0) : [(sx0 * c - 2 * t0 * s) / gw, (sx0 * s + 2 * t0 * c) / gw, -sy0];
             for (const st of stamps) { const d = hypot3(X - st.q[0], Y - st.q[1], Z - st.q[2]); if (d <= st.nip) { bust[i] = 3; break; } if (d <= st.ar) bust[i] = 2; }
           }
           for (const st of stamps) {   // 乳頭中心那顆圓（同 render 最後一段）：找離乳頭最近的乳房像素，畫半徑 0.9K 的圓
@@ -2128,11 +2149,11 @@
             for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
               const i = y * width + x; if (!hit[i] || b0[i] !== 1) continue;
               const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
-              const X = (sx0 * c - 2 * t0 * s) / gw, Y = (sx0 * s + 2 * t0 * c) / gw, Z = -sy0, d = hypot3(X - st.q[0], Y - st.q[1], Z - st.q[2]);
+              const [X, Y, Z] = camRay ? camAt(x, y, t0) : [(sx0 * c - 2 * t0 * s) / gw, (sx0 * s + 2 * t0 * c) / gw, -sy0], d = hypot3(X - st.q[0], Y - st.q[1], Z - st.q[2]);
               if (d < bestD) { bestD = d; best = i; bx = x; by = y; }
             }
             if (best < 0) continue;
-            const rPix = Math.max(2, Math.round(0.9 * K));
+            const rPix = Math.max(2, Math.round(0.9 * K * camPx));
             for (let oy = -rPix; oy <= rPix; oy++) for (let ox = -rPix; ox <= rPix; ox++) {
               if (ox * ox + oy * oy > rPix * rPix + 0.2) continue;
               const xx = bx + ox, yy = by + oy; if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
@@ -2151,7 +2172,7 @@
         else if (!hit[i] && n4 >= 3) { m[i] = 1; holes[i] = 1; }
       }
       const pixels = new Uint8ClampedArray(n * 4), depth = new Float32Array(n).fill(-Infinity);
-      const sheenRow = (ay - P.H * .55) * K;
+      const sheenRow = camRow ? camRow(P.H * .55) : (ay - P.H * .55) * K;
       const set = (i, rgb, a) => { pixels[i * 4] = rgb[0]; pixels[i * 4 + 1] = rgb[1]; pixels[i * 4 + 2] = rgb[2]; pixels[i * 4 + 3] = a; };
       for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
         const i = y * width + x;
@@ -2173,7 +2194,7 @@
           let stampRgb = null;
           if (stamps.length && bust[i] === 1 && hit[i]) {
             const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
-            const X = (sx0 * c - 2 * t0 * s) / gw, Y = (sx0 * s + 2 * t0 * c) / gw, Z = -sy0;
+            const [X, Y, Z] = camRay ? camAt(x, y, t0) : [(sx0 * c - 2 * t0 * s) / gw, (sx0 * s + 2 * t0 * c) / gw, -sy0];
             for (const st of stamps) {
               const d = hypot3(X - st.q[0], Y - st.q[1], Z - st.q[2]);
               if (d <= st.nip) { stampRgb = NIP_RGB; break; }
@@ -2201,12 +2222,12 @@
             const i = y * width + x;
             if (!m[i] || !hit[i] || bust[i] !== 1) continue;
             const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
-            const X = (sx0 * c - 2 * t0 * s) / gw, Y = (sx0 * s + 2 * t0 * c) / gw, Z = -sy0;
+            const [X, Y, Z] = camRay ? camAt(x, y, t0) : [(sx0 * c - 2 * t0 * s) / gw, (sx0 * s + 2 * t0 * c) / gw, -sy0];
             const d = hypot3(X - qx, Y - qy, Z - qz);
             if (d < bestD) { bestD = d; best = i; bx = x; by = y; }
           }
           if (best < 0) continue;
-          const rPix = Math.max(2, Math.round(0.9 * K));
+          const rPix = Math.max(2, Math.round(0.9 * K * camPx));
           for (let oy = -rPix; oy <= rPix; oy++) for (let ox = -rPix; ox <= rPix; ox++) {
             if (ox * ox + oy * oy > rPix * rPix + 0.2) continue;
             const xx = bx + ox, yy = by + oy;
