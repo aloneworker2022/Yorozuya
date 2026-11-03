@@ -515,7 +515,7 @@
       const SHP = doll.shape || 'round', r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
       sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
-      for (const s of [-1, 1]) {
+      for (const s of doll._noBust ? [] : [-1, 1]) {   // _noBust：乳房另外畫（趴跪翹臀：擺好姿勢後在世界座標往下垂、壓在地上）
         const root = [s * (2.6 + r * .22) * cs + bx * .3, yl(zA) + 2.6 * cs + r * .12 + by * .3, zA + bz * .3];
         const cx = s * (3.2 + r * .3) * cs + bx, cy = yl(zB) + 3.3 * cs + r * .5 + by;
         if (doll._press) {
@@ -1392,43 +1392,68 @@
         return { sh, P };
       }
       if (pose === 'ass_up') {   // 2026-11-03 趴跪翹臀（使用者：趴著、臀部翹起來；看點＝乳房在地上被壓軟、臀部和腰背的線條）
-        // 做法：軀幹（不含頭）先在站立座標建好、背部線條也貼好 → 每個零件依高度轉不同角度（胸口往後仰、骨盆前傾＝塌腰）
-        // → 整體往前趴（二分法找前傾角，讓壓扁的乳房剛好貼地）；腳、手、頭在世界座標另外擺。
+        // v2（使用者給 3 張參考圖）：大腿接近垂直（膝蓋在髖正下方、約一個髖寬），軀幹從翹高的臀部一路斜下到肩膀貼地，腰腹離地；
+        // 前臂在頭前交疊、頭枕在手臂上；乳房擺好姿勢後從胸口往下垂、壓在地上往兩側擠。
+        // 做法：軀幹（不含頭、不含乳房）＋背部線條先在站立座標建好 → 依高度分段轉（輕微塌腰）→ 二分法找前傾角讓肩膀落地；
+        //   腳也換算回站立座標建（之後跟骨盆一起轉），所以下身（陰唇、陰毛）能像站姿一樣沿著有大腿的身體表面貼。
         sh.floor = true;
-        const g = opts.assUp || {}, A_CH = g.chest ?? 34, A_PEL = g.pelvis ?? -14;   // 度：胸口後仰／骨盆前傾（塌腰）
+        const g = opts.assUp || {}, A_CH = g.chest ?? -8, A_PEL = g.pelvis ?? 35;   // 度：骨盆相對軀幹大轉（臀部的面朝上朝後、陰部夾在臀下兩腿間）、胸口微收——背從臀部一路斜下到頭（參考圖）
         const i0 = sh.prims.length;
-        const tor = torso(sh, P, { ...doll, _press: g.press ?? 1 }, 0, 0, 0, [0, 0, 0, 0], true);
+        const tor = torso(sh, P, { ...doll, _noBust: true }, 0, 0, 0, [0, 0, 0, 0], true);
         if (FOOT_HD) hdBackLines(sh, P, tor);
-        if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);   // 下身也在站立座標貼好，再跟著骨盆轉
         const piv = [0, tor.yl(tor.zW), tor.zW], sm = u => u * u * (3 - 2 * u);
         const angAt = z => A_PEL + (A_CH - A_PEL) * sm(Math.max(0, Math.min(1, (z - (tor.zW - 7)) / 14)));
         const bendXf = z => about(rotX(angAt(z)), piv);
-        // 整體前傾角 BETA 固定（胸口那段接近水平貼地）；平移：髖在 x＝y＝0、壓扁的乳房前緣剛好壓進地板一點 → 髖的高度由此決定。
-        // 這個模型腿長、軀幹短：膝蓋在髖正下方的話胸口碰不到地 → 膝蓋往前一點、其餘用左右打開吸收（真人這個姿勢也常把膝蓋打開）。
-        const BETA = g.beta ?? 45, R0 = { R: rotX(-(90 + BETA)), t: [0, 0, 0] };
-        const pf = sh._pressFront || [0, tor.yl(tor.zB) + 6, tor.zB], target = -(sh._pressRy || 2) * (g.sink ?? .32);
-        const hw = toWorld(compose(R0, bendXf(P.hipz)), [0, 0, P.hipz]), fw = toWorld(compose(R0, bendXf(pf[2])), pf);
-        const BODYX = { R: R0.R, t: [-hw[0], -hw[1], target - fw[2]] };
-        sh._assUp = { BETA, hz: target - fw[2] + hw[2] };
-        for (let i = i0; i < sh.prims.length; i++) { const p = sh.prims[i]; p.xf = compose(BODYX, bendXf(p.bc[2] + p.off[2])); }
+        const TH = (g.thighAng ?? 4) * Math.PI / 180, hzT = Lt * Math.cos(TH) + 2.0;   // 髖高：大腿幾乎垂直（往前 TH）＋膝蓋厚度
+        const placeAt = (beta) => { const R0 = { R: rotX(-(90 + beta)), t: [0, 0, 0] }, hw = toWorld(compose(R0, bendXf(P.hipz)), [0, 0, P.hipz]); return { R: R0.R, t: [-hw[0], -hw[1], hzT - hw[2]] }; };
+        const shL = [0, tor.yl(tor.S) - .4, tor.S - SHJ_DZ], shZ = g.shoulderZ ?? 12;   // 肩關節離地高度（胸口壓地、頭枕在手臂上，肩膀不貼地）
+        let lo = -10, hi = 80;
+        for (let it = 0; it < 40; it++) { const m = (lo + hi) / 2; if (toWorld(compose(placeAt(m), bendXf(shL[2])), shL)[2] > shZ) lo = m; else hi = m; }
+        const BETA = (lo + hi) / 2, BODYX = placeAt(BETA);
+        sh._assUp = { BETA, hz: hzT };
         const CH = compose(BODYX, bendXf(tor.S)), PEL = compose(BODYX, bendXf(tor.C - 4));
+        // 下身：先放一雙站姿的臨時腿（只當表面用），陰唇／陰毛照站姿貼好後把臨時腿刪掉 → 跟著骨盆轉
+        // （這個姿勢髖彎很深，站立座標裡真正的大腿會擋在胯下前面，貼上去會浮在外面）
+        if (doll.pubic || doll.labia || doll.pants) {
+          const t0 = sh.prims.length;
+          for (const s of [-1, 1]) leg(sh, P, s, [s * hip_x, 0, P.hipz], [s * kx(), .4, P.knee], [s * 3.0, -.2, P.ankle], [s * .3, .95, 0]);
+          const t1 = sh.prims.length;
+          groin(sh, P, doll, tor);
+          sh.prims.splice(t0, t1 - t0);
+        }
+        for (let i = i0; i < sh.prims.length; i++) { const p = sh.prims[i]; p.xf = compose(BODYX, bendXf(p.bc[2] + p.off[2])); }
         sh.xf = null;
-        const Lu = P.H * .16, Lf = P.H * .14;
-        for (const s of [-1, 1]) {   // 膝蓋跪地往兩邊分開一點，小腿平貼地往後，腳背貼地、腳底朝上
-          const hip = toWorld(PEL, [s * hip_x, 0, P.hipz]), kz = 2.0, dy = g.kneeFwd ?? 4;
-          const dx = Math.sqrt(Math.max(4, Lt * Lt - dy * dy - (hip[2] - kz) ** 2));   // 膝蓋往兩邊打開多少：剛好用完大腿長
-          const knee = [hip[0] + s * dx, hip[1] + dy, kz], ankle = [s * hip_x * 1.25, knee[1] - Ls * .97, 1.35];
+        for (const s of [-1, 1]) {   // 腳（世界座標）：膝蓋在髖正下方略往外，小腿平貼地往後，腳背貼地
+          const hip = toWorld(PEL, [s * hip_x, 0, P.hipz]), kz = 2.0, dx = s * hip_x * (g.knee ?? .25);
+          const dy = Math.sqrt(Math.max(1, Lt * Lt - dx * dx - (hip[2] - kz) ** 2)) * Math.sign(g.thighAng ?? 4);
+          const knee = [hip[0] + dx, hip[1] + dy, kz], ankle = [knee[0] - s * .6, knee[1] - Ls * .97, 1.35];
           leg(sh, P, s, hip, knee, ankle, [0, -1, -.12]);
         }
-        for (const s of [-1, 1]) {   // 前臂平放在頭兩側地上
+        // 乳房（世界座標）：從胸口的乳根往下垂到地板，壓扁成貼地的軟團、往兩側擠；地板切平
+        {
+          const r = cupRadius(P, doll), cs = F(b, 'chest') ** .5, zA = tor.S - .16 * tor.T, q = g.press ?? 1;
+          sh.bust = true;
+          for (const s of [-1, 1]) {
+            const root = toWorld(CH, [s * (2.7 + r * .25) * cs, tor.yl(zA) + 2.4 * cs + r * .2, zA - r * .2]);
+            const rz = Math.max(r * .42, Math.min(r * .8, root[2] * .5)), flat = [root[0] + s * r * .25, root[1] - r * .15, rz * .62];
+            sh.cone(BODY, root, flat, r * .62, r * .85);
+            sh.ell(BODY, flat, [r * (1.0 + .3 * q), r * (1.0 + .2 * q), rz]);
+            sh.ell(BODY, [flat[0] + s * r * (.75 + .3 * q), flat[1] - r * .1, rz * .55], [r * (.55 + .2 * q), r * .75, rz * .8]);   // 往外擠出來的肉
+          }
+          sh.bust = false;
+        }
+        const Lu = P.H * .16, Lf = P.H * .14;
+        for (const s of [-1, 1]) {   // 前臂在頭前方交疊、平放地上
           const sj = toWorld(CH, [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) - .4, tor.S - SHJ_DZ]);
-          const eW = [sj[0] + s * 4.5, sj[1] + Lu * .35, 1.7], wW = [s * 4.2, eW[1] + Lf * .92, 1.3];
+          const eW = [sj[0] + s * 3.2, sj[1] + Lu * .72, 1.8], wW = [-s * 3.0, eW[1] + Lf * .55 + (s > 0 ? 1.2 : 0), s > 0 ? 3.0 : 1.5];
           arm(sh, P, sj, eW, wW);
         }
-        // 頭：側臉貼地（臉朝 +x），脖子往後仰一點
-        const neck = [0, tor.yl(tor.S), tor.S + 1.5], headR = mulR(rotX(g.headUp ?? 48), rotZ(g.headTurn ?? 80));
-        sh.xf = compose(CH, about(headR, neck));
+        // 頭：側臉朝下枕在交疊的前臂上
+        const neck = [0, tor.yl(tor.S), tor.S + 1.5], headR = mulR(rotX(g.headUp ?? 40), rotZ(g.headTurn ?? 55));
+        const ih = sh.prims.length, HX = compose(CH, about(headR, neck)); sh.xf = { R: HX.R, t: HX.t.slice() };
         headPart(sh, P, tor.yl, tor.zc, doll);
+        let zmin = 1e9; for (let i = ih; i < sh.prims.length; i++) { const p = sh.prims[i], w = toWorld(p.xf, p.bc); zmin = Math.min(zmin, w[2] - p.br * .7); }
+        sh.xf.t[2] += (g.headZ ?? 3.2) - zmin;   // 頭整顆抬到枕在手臂上的高度（同一個 xf 物件，已建的頭零件一起動）
         hair(sh, P, doll, tor, 0, mulT(mulR(CH.R, headR), [0, 0, -1]));
         sh.xf = null; sh.floor = false;
         return { sh, P };
