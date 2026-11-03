@@ -105,7 +105,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; p.part = sh.bust || sh.nip ? 'breast' : (sh.part || 'torso'); prims.push(p); };   // 2026-11-01 部位：head／chest／waist／hips／torso／breast／armL／armR／legs（拆圖層用；2026-11-03 軀幹再拆三塊）
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; p.part = sh.bust || sh.nip ? 'breast' : sh.cloth ? 'over' : (sh.part || 'torso'); prims.push(p); };   // 2026-11-01 部位：head／chest／waist／hips／torso／breast／armL／armR／legs（拆圖層用；2026-11-03 軀幹再拆三塊；衣服／下身／臉部標記等 cloth 零件＝over）
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -1900,7 +1900,8 @@
       if (G0) { hit.set(G0.hit); mat.set(G0.mat); tt.set(G0.tt); bust.set(G0.bust); limb.set(G0.limb); }
       const STEP = .8 / Math.sqrt(5);
       const dist = [0, 0, 0];
-      const carveIdx = []; for (let i = 0; i < np; i++) if (prims[i].carve) carveIdx.push(i);   // 2026-10-31：挖洞零件（從身體減掉，私處打開用）
+      const carveIdx = []; for (let i = 0; i < np; i++) if (prims[i].carve) carveIdx.push(i);
+      const CULL = opts.cull !== false, CULL_M = 1.5, cand = new Int32Array(np);   // 2026-11-03 光線先挑零件（opts.cull＝false 關掉）   // 2026-10-31：挖洞零件（從身體減掉，私處打開用）
       for (let py = 0; py < (G0 || !np ? 0 : height); py++) {
         const sy = (py + .5) / K - ay;
         for (let px = 0; px < width; px++) {
@@ -1914,11 +1915,24 @@
           let t = Math.min(cv.tMax, (-bq + sq) / (2 * dd));
           const tEnd = Math.max(cv.tMin, (-bq - sq) / (2 * dd));
           const idx = py * width + px;
+          // 2026-11-03 加速：先挑出這條光線碰得到的零件（包圍球離光線 CULL_M 以內），走的時候只算這些；都碰不到＝這格空白
+          let nc = 0;
+          if (CULL) {
+            const ax0 = sx * c / gw, ay0 = sx * s / gw, az0 = -sy;
+            for (let i = 0; i < np; i++) {
+              if (prims[i].carve) continue;
+              const wx = ax0 - bcx[i], wy = ay0 - bcy[i], wz = az0 - bcz[i], k = (wx * dX + wy * dY + wz * dZ) / dd;
+              const ex = wx - k * dX, ey = wy - k * dY, ez = wz - k * dZ, rr = brr[i] + CULL_M;
+              if (ex * ex + ey * ey + ez * ez <= rr * rr) cand[nc++] = i;
+            }
+            if (!nc) continue;
+          }
           for (let it = 0; it < 220 && t >= tEnd; it++) {
             const X = (sx * c - 2 * t * s) / gw, Y = (sx * s + 2 * t * c) / gw, Z = -sy;
             dist[0] = dist[1] = dist[2] = 1e3;
             let bb = 0, lf = 0, ck = 0;
-            for (let i = 0; i < np; i++) {
+            for (let q = 0, qn = CULL ? nc : np; q < qn; q++) {
+              const i = CULL ? cand[q] : q;
               if (prims[i].carve) continue;
               const m = pm[i], lb = hypot3(X - bcx[i], Y - bcy[i], Z - bcz[i]) - brr[i];
               if (lb >= dist[m]) continue;

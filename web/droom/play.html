@@ -38,6 +38,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 乳頭 <select id="nc"><option value="pink">粉紅</option><option value="brown">咖啡</option><option value="black">黑</option></select>
 我的陰莖 <select id="pn"><option value="soft">軟</option><option value="semi">微勃起</option><option value="erect">勃起</option></select>（X 切換・往下看可見）
 ｜ <a href="/droom">← 回剪影預覽</a><div id="st"></div></div>
+<script src="/droom/parts_shade.js?v=3"></script>
 <script>
 // 房間：內部 6×6 地板（外圈為牆，粉色牆面一段點綴）
 const M=["11111111","10000001","10000001","10000002","10000002","10000001","10000001","11111111"];
@@ -51,6 +52,12 @@ let P={x:1.6,y:6.4,a:-Math.PI/4,p:0};const G={x:4.5,y:2.5,h:0,tx:4.5,ty:2.5,movi
 // 2026-10-31：預設 2×（?sd=1 才用 1×）；坐姿 sheet 一格 150×84（2× 300×168），8 方向橫排、地面在第 78 列（走路 sheet 地面在第 126 列）
 const HD=!new URLSearchParams(location.search).has("sd"),SD=HD?"/droom/sheets2x/":"/droom/sheets/",FW=HD?128:64,FH=HD?280:140,SFW=HD?300:150,SFH=HD?168:84,SIT_ORD=["front","front_right","right","back_right","back","back_left","left","front_left"];
 const pose=()=>document.getElementById("po").value;
+// 2026-11-03 拆部位：身體預設用 parts2x 各部位原始資料疊圖上色（parts_shade.js，同 index.html）；?noparts=1 用整張 sheet；缺檔回 null（改用整張 sheet）
+const PARTS=HD&&!new URLSearchParams(location.search).has("noparts"),PART_NAMES=["head","chest","waist","hips","torso","armL","armR","legs"];
+function partsCanvas(po,b,shape,cup,ar,d){if(!PARTS)return Promise.resolve(null);const P=`/droom/parts2x/${po}/`,sf=po=="walk"?`_${d}.png`:".png",ld=u=>new Promise(r=>{const im=new Image();im.onload=()=>r(im);im.onerror=()=>r(null);im.src=u});
+ return Promise.all([...PART_NAMES.map(p=>ld(`${P}${b}_${p}${sf}`)),ld(`${P}breast/${b}_${shape}_${cup}_${ar}${sf}`)]).then(ims=>{if(ims.some(x=>!x))return null;
+  const w=ims[0].naturalWidth,h=ims[0].naturalHeight,c=document.createElement("canvas");c.width=w;c.height=h;const x=c.getContext("2d",{willReadFrequently:true});
+  const data=ims.map(im=>{x.clearRect(0,0,w,h);x.drawImage(im,0,0);return x.getImageData(0,0,w,h).data});const D=x.createImageData(w,h);PartsShade.shade(PartsShade.merge(data,w*h),w,h,D.data);x.putImageData(D,0,0);c.naturalWidth=w;c.naturalHeight=h;return c})}
 const STRIDE=.55,G_SPEED=.9;
 const DIRS=[[0,"front"],[-45,"front_right"],[-90,"right"],[-135,"back_right"],[180,"back"],[135,"back_left"],[90,"left"],[45,"front_left"]];
 const cache={};let sheet=null;
@@ -63,7 +70,7 @@ function over(x,im,fs){const w=x.canvas.width,h=x.canvas.height,t=document.creat
 // 2026-10-31：坐姿 sheet（一張含 8 方向；不含衣服）：身體＋後髮＋前髮（面向後方的三格後髮在上）＋下身
 function sitSheet(){const po=pose(),v=i=>document.getElementById(i).value,q=["b","s","cu","ar"].map(v),b=q[0],PD=SD+po+"/",ck="sit|"+po+"|"+q.join("_")+"|"+["hc","nc","bh","fh","pu","lb","pa","lc","bf","ns","mo","ey","ec","lpc","bw"].map(v).join("|");
  if(!cache[ck]){cache[ck]=new Image();const ld=u=>u?new Promise(r=>{const im=new Image();im.onload=()=>r(im);im.onerror=()=>HD&&u.includes("/sheets2x/")?up2(u,r,null):r(null);im.src=u}):Promise.resolve(null);
-  Promise.all([PD+q.join("_")+".png",PD+"hair/"+b+"_back_"+v("bh")+".png",PD+"hair/"+b+"_front_"+v("fh")+".png",...[["labia","lb"],["pubic","pu"],["pants","pa"]].map(([k,id])=>v(id)=="none"?"":PD+"groin/"+b+"_"+k+"_"+v(id)+".png"),v("bf")=="none"?"":PD+"face/"+b+"_blindfold_cloth.png",v("ns")=="none"?"":PD+"face/"+b+"_nose_"+v("ns")+".png",v("mo")=="none"?"":PD+"face/"+b+"_mouth.png",v("ey")=="none"?"":PD+"face/"+b+"_eyes.png",v("bw")=="none"?"":PD+"face/"+b+"_brows.png"].map(ld)).then(([base,bk,fr,...gl])=>{const bz=gl.pop(),ez=gl.pop(),mz=gl.pop(),nz=gl.pop(),fc=gl.pop();if(!base)return;
+  Promise.all([PD+q.join("_")+".png",PD+"hair/"+b+"_back_"+v("bh")+".png",PD+"hair/"+b+"_front_"+v("fh")+".png",...[["labia","lb"],["pubic","pu"],["pants","pa"]].map(([k,id])=>v(id)=="none"?"":PD+"groin/"+b+"_"+k+"_"+v(id)+".png"),v("bf")=="none"?"":PD+"face/"+b+"_blindfold_cloth.png",v("ns")=="none"?"":PD+"face/"+b+"_nose_"+v("ns")+".png",v("mo")=="none"?"":PD+"face/"+b+"_mouth.png",v("ey")=="none"?"":PD+"face/"+b+"_eyes.png",v("bw")=="none"?"":PD+"face/"+b+"_brows.png"].map((u,i)=>i?ld(u):partsCanvas(po,b,q[1],q[2],q[3],"").then(c=>c||ld(u)))).then(([base,bk,fr,...gl])=>{const bz=gl.pop(),ez=gl.pop(),mz=gl.pop(),nz=gl.pop(),fc=gl.pop();if(!base)return;
    const c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d"),isB=f=>f>=3&&f<=5,nb=f=>!isB(f);x.drawImage(base,0,0);
    if(bk)over(x,bk,nb);if(fr)over(x,fr,nb);if(fr)over(x,fr,isB);if(bk)over(x,bk,isB);
    cache[ck]=skinTint(c,HAIR_PAL[v("hc")],NIP_PAL[v("nc")],[],null,v("cw"),gl.map(im=>clothData(im,c.width,c.height)),v("lc"),[clothData(fc,c.width,c.height),v("bf"),clothData(nz,c.width,c.height),f=>(SIT_ORD[f]=="left"||SIT_ORD[f]=="right")?0:SIT_ORD[f].includes("left")?-1:1,clothData(mz,c.width,c.height),f=>[SIT_ORD[f].includes("left")?-1:1,SIT_ORD[f]=="left"||SIT_ORD[f]=="right"],[v("mo"),v("lpc")],clothData(ez,c.width,c.height),v("ey"),v("ec"),clothData(bz,c.width,c.height),v("bw")])})}return cache[ck]}
@@ -73,6 +80,7 @@ function sheetFor(d){const k=["b","s","cu","ar"].map(i=>document.getElementById(
   for(const g of [["labia",lb],["pubic",pu],["pants",pa]])urls.push(g[1]=="none"?"":SD+"groin/"+b+"_"+g[0]+"_"+g[1]+"_"+d+".png");
   urls.push(bf=="none"?"":SD+"face/"+b+"_blindfold_cloth_"+d+".png");urls.push(ns=="none"?"":SD+"face/"+b+"_nose_"+ns+"_"+d+".png");urls.push(mo=="none"?"":SD+"face/"+b+"_mouth_"+d+".png");urls.push(ey=="none"?"":SD+"face/"+b+"_eyes_"+d+".png");urls.push(bw=="none"?"":SD+"face/"+b+"_brows_"+d+".png");   // 2026-10-31 眼罩
   const ims=urls.map(u=>u&&new Promise(r=>{const im=new Image();im.onload=()=>r(im);im.onerror=()=>HD&&u.includes("/sheets2x/")?up2(u,r,im):r(im);im.src=u}));cache[ck]=new Image();
+  {const i0=ims[0];ims[0]=partsCanvas("walk",q[0],BO?"sup":q[1],q[2],q[3],d).then(c=>c||i0)}   // 2026-11-03 拆部位：身體先試 parts2x
   Promise.all(ims).then(ims=>{const bz=ims.pop(),ez=ims.pop(),mz=ims.pop(),nz=ims.pop(),fc=ims.pop(),[base,bk,fr,brm,clm,...gl]=ims,c=document.createElement("canvas");c.width=base.naturalWidth;c.height=base.naturalHeight;const x=c.getContext("2d");
    x.drawImage(base,0,0);for(const im of d.startsWith("back")?[fr,bk]:[bk,fr])if(im.naturalWidth)over(x,im);cache[ck]=skinTint(c,HAIR_PAL[hc],NIP_PAL[nc],[[clothData(brm,c.width,c.height),cl=="bra"?CSK(cl,cs):"bra_"+ub],[clothData(clm,c.width,c.height),CSK(cl,cs)]],null,cw,gl.map(im=>clothData(im,c.width,c.height)),lc,[clothData(fc,c.width,c.height),bf,clothData(nz,c.width,c.height),()=>(d=="left"||d=="right")?0:d.includes("left")?-1:1,clothData(mz,c.width,c.height),()=>[d.includes("left")?-1:1,d=="left"||d=="right"],[mo,lpc],clothData(ez,c.width,c.height),ey,ec,clothData(bz,c.width,c.height),bw])})}return cache[ck]}
 // 上色：sheet 是固定調色盤的剪影（render.cjs / room_doll_full.js），依原色分區：
