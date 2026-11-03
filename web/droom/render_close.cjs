@@ -1,9 +1,9 @@
 // 2026-11-03 近景（樣品）：玩家站在她面前約 0.6 格時看到的樣子，用透視攝影機（render opts.cam）重畫，不再拿遠景 sheet 放大。
 // 每格 CW×CH（K＝1＝遊戲畫布 320×240 的像素密度；0.6 格時平視＝胸部以上），畫全身（低頭也看得到腳）。
 // 輸出 sheets_close/ 底下跟 sheets2x 相同的相對路徑（身體、頭髮、衣服、臉部標記），play.html 近距離時改用這套。
-// 2026-11-03 面對面（FACE=1）：解析度 3 倍（K＝3），只出站姿 1 格；輸出 sheets_f2f/<view>/（路徑同 sheets2x，1 格寬）。VIEWS=p0,top 可限定。
+// 2026-11-03 面對面（FACE=1）：解析度 3 倍（K＝3），只出站姿 1 格；輸出 sheets_f2f/<view>/（路徑同 sheets2x，1 格寬）。VIEWS=p0,down 可限定。
 //   p0 ＝碰撞點 0.4 格平視，每格 320×780（K＝1），第 130 列＝玩家眼睛高（往下畫到腳，捲上去時不會切掉）；play.html 讓它跟世界一起捲。
-//   top＝低頭到一個角度後換的「從上往下」固定畫面（使用者：下一張不跟著視線動、角度更直）：攝影機在她前方 0.25 格、高 112（略高過頭頂）、往下 66°（嘴在畫面最上緣，臉不再出現），
+//   down＝低頭到一個角度後換的下一張（使用者實測：角度只要比平視再斜一點點、位置跟原本一樣、跟著視線上下移動）：攝影機跟 p0 同一點（0.4 格、玩家眼睛高），往下 DOWN 度（預設 20），320×530，第 150 列（往下到腳）＝視線方向。
 //         320×240＝整個畫面（肩膀、胸部、手到腿）。
 //   FACE=1 node render_close.cjs
 // 用法：node render_close.cjs  [BODY=balanced] [SHAPE=round] [CUP=D] [AR=medium] [DIRS=front,...] [BH=wavy,...] [FH=curtain,...] [CL=napkin_bell] [SHARD=i NSHARD=n]
@@ -11,8 +11,8 @@ const D = require(__dirname + '/room_doll_full.js'), png = require(__dirname + '
 const CELL = 126 / 1.15;   // play.html：走路 sheet 地面以上 126 單位＝1.15 格
 const FACEV = !!process.env.FACE, D0 = +(process.env.D0 || (FACEV ? .4 : .6)), CW = FACEV ? 320 : 240, CH = FACEV ? 780 : 480, K = FACEV ? 3 : 1, NFR = FACEV ? 1 : 8;
 const CAM0 = { dist: D0 * CELL, eyeZ: .95 * CELL, pitch: 0, f: 240, w: CW, h: CH, cx: CW / 2, cy: FACEV ? 130 : 20 };   // f＝SH（play.html 1 格遠＝SH 像素）；近景 cy＝玩家眼睛高（地平線）在第幾列
-const VIEW_CAM = { p0: CAM0, top: { dist: .25 * CELL, eyeZ: 112, pitch: 66 * Math.PI / 180, f: 240, w: 320, h: 240, cx: 160, cy: 120 } };
-const VIEWS = FACEV ? (process.env.VIEWS || 'p0,top').split(',') : ['close'];
+const VIEW_CAM = { p0: CAM0, down: { ...CAM0, pitch: +(process.env.DOWN || 20) * Math.PI / 180, h: 530, cy: 150 } };
+const VIEWS = FACEV ? (process.env.VIEWS || 'p0,down').split(',') : ['close'];
 const BODY = { balanced: { height_cm: 161, build: '勻稱有致', hair: '中分長髮' }, slim: { height_cm: 166, build: '纖細苗條', hair: '短髮' }, petite: { height_cm: 150, build: '嬌小玲瓏', hair: '雙馬尾' }, curvy: { height_cm: 163, build: '微肉圓潤', hair: '大波浪長髮' } };
 const DIR = { front: 0, front_right: 45, right: 90, back_right: 135, back: 180, back_left: -135, left: -90, front_left: -45 };
 const env = (k, def) => process.env[k] ? process.env[k].split(',') : def;
