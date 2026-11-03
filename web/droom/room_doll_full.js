@@ -1398,14 +1398,24 @@
         //   腳也換算回站立座標建（之後跟骨盆一起轉），所以下身（陰唇、陰毛）能像站姿一樣沿著有大腿的身體表面貼。
         sh.floor = true;
         // v3（使用者：臀肉要出來；腰微微下凹；大腿微微往兩側開，陰唇朝後）：腰背分三段——骨盆（在下腰轉）、腰（基準）、胸口（在上腰轉）
-        const g = opts.assUp || {}, A_CH = g.chest ?? 34, A_PEL = g.pelvis ?? 55;   // 度：A_PEL 骨盆轉到臀部的面朝上偏後；A_CH 胸口往回仰（比腰平＝微凹）
+        const g = opts.assUp || {}, A_CH = g.chest ?? 22, A_PEL = g.pelvis ?? 55;   // 度：A_PEL 骨盆轉到臀部的面朝上偏後；A_CH 胸口往回仰（比腰平＝微凹）
         const i0 = sh.prims.length;
         const tor = torso(sh, P, { ...doll, _noBust: true, _butt: g.butt ?? 1.12 }, 0, 0, 0, [0, 0, 0, 0], true);
         if (FOOT_HD) hdBackLines(sh, P, tor);
+        // v4（使用者：胸後背要是一條完美的弧線，不要鼓起來）：沿脊椎連續彎——每個高度 z 的轉角 θ(z) 平滑變化，
+        // 位置沿著彎過的脊椎積分（c(z)＝∫R(θ)·ẑ），所以沒有分段硬轉的折角：
+        //   骨盆（z≤zP）整塊轉 A_PEL（臀部的面朝上偏後）→ 下腰平滑轉回 0（微微下凹）→ 腰到肩膀角度均勻漸變到 A_CH（一條順的弧）
         const sm = u => u * u * (3 - 2 * u), cl = u => Math.max(0, Math.min(1, u));
-        const zLo = tor.C + .3 * tor.T, zHi = tor.zW + 5, pLo = [0, tor.yl(zLo), zLo], pHi = [0, tor.yl(zHi), zHi];
-        const wP = z => 1 - sm(cl((z - (zLo - 4)) / 8)), wC = z => sm(cl((z - (zHi - 3)) / 6));   // 骨盆／胸口各自的權重（中間的腰不轉）
-        const bendXf = z => compose(about(rotX(A_CH * wC(z)), pHi), about(rotX(A_PEL * wP(z)), pLo));
+        const zP = tor.C + .12 * tor.T, zW0 = tor.zW + 1, zS = tor.S - 1;
+        const th = z => z <= zP ? A_PEL : z <= zW0 ? A_PEL * (1 - sm((z - zP) / (zW0 - zP))) : A_CH * cl((z - zW0) / (zS - zW0));
+        const SPZ = [], SPC = [], z0s = tor.C - 30, dz0 = .25;   // 脊椎曲線表：從腰 zW0 往上下積分
+        { const n = Math.ceil(70 / dz0), iw = Math.round((zW0 - z0s) / dz0); for (let k = 0; k <= n; k++) SPZ.push(z0s + k * dz0);
+          SPC[iw] = [0, tor.yl(zW0), zW0];
+          const step = (zz, sgn) => { const R = rotX(th(zz)), d = mulV(R, [0, 0, 1]); return d.map(v => v * dz0 * sgn); };
+          for (let k = iw + 1; k <= n; k++) { const d = step(SPZ[k] - dz0 / 2, 1); SPC[k] = SPC[k - 1].map((v, i) => v + d[i]); }
+          for (let k = iw - 1; k >= 0; k--) { const d = step(SPZ[k] + dz0 / 2, -1); SPC[k] = SPC[k + 1].map((v, i) => v + d[i]); } }
+        const spineAt = z => { const u = Math.max(0, Math.min(SPZ.length - 1.001, (z - z0s) / dz0)), k = Math.floor(u), f = u - k; return SPC[k].map((v, i) => v + (SPC[k + 1][i] - v) * f); };
+        const bendXf = z => { const R = rotX(th(z)), c = spineAt(z), q = mulV(R, [0, tor.yl(z), z]); return { R, t: [c[0] - q[0], c[1] - q[1], c[2] - q[2]] }; };
         const TH = (g.thighAng ?? 4) * Math.PI / 180, hzT = Lt * Math.cos(TH) + 2.0;   // 髖高：大腿幾乎垂直（往前 TH）＋膝蓋厚度
         const placeAt = (beta) => { const R0 = { R: rotX(-(90 + beta)), t: [0, 0, 0] }, hw = toWorld(compose(R0, bendXf(P.hipz)), [0, 0, P.hipz]); return { R: R0.R, t: [-hw[0], -hw[1], hzT - hw[2]] }; };
         const shL = [0, tor.yl(tor.S) - .4, tor.S - SHJ_DZ], shZ = g.shoulderZ ?? 12;   // 肩關節離地高度（胸口壓地、頭枕在手臂上，肩膀不貼地）
