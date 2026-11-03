@@ -19,6 +19,7 @@
     const FAINT_RGB = [110, 75, 75];   // 2026-11-03：若隱若現的淡線（背部中線），前端上成很淡的膚色線
     const CREASE_RGB = [90, 60, 60];   // 2026-10-31：鼠蹊部摺線（比一般線條深），前端上成深膚色
     const GIRTH = 1.1;
+    const TRUNK_SM = 2.6, UB_SLOPE = .5;   // 2026-11-03 軀幹疊層沿高度的平滑量（越大腰背越順）
     const SHJ_DZ = 3.4;   // 2026-11-03 肩關節在肩線下多少（原 2.6；使用者：斜肩往下、脖子明顯 → 肩膀外側壓低）
     const CUP_R = { A: 1.0, B: 1.85, C: 2.85, D: 4.15, E: 5.0, F: 5.7, G: 6.2, H: 6.75, I: 7.2 };  // 2026-10-31：A≈只剩乳暈、B/C 收小；D～H 階梯拉開
     const CUP_BOUNCE = { A: .04, B: .18, C: .4, D: .8, E: 1.05, F: 1.25, G: 1.42, H: 1.58, I: 1.75 };
@@ -105,7 +106,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; p.part = sh.bust || sh.nip ? 'breast' : sh.cloth ? 'over' : (sh.part || 'torso'); prims.push(p); };   // 2026-11-01 部位：head／chest／waist／hips／torso／breast／armL／armR／legs（拆圖層用；2026-11-03 軀幹再拆三塊；衣服／下身／臉部標記等 cloth 零件＝over）
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!(sh.bust || sh.buttEdge); p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; p.part = sh.bust || sh.nip ? 'breast' : sh.cloth ? 'over' : (sh.part || 'torso'); prims.push(p); };   // 2026-11-01 部位：head／chest／waist／hips／torso／breast／armL／armR／legs（拆圖層用；2026-11-03 軀幹再拆三塊；衣服／下身／臉部標記等 cloth 零件＝over）
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -367,23 +368,23 @@
       for (const [x, z] of pts2) { const y = backSurfaceY(sh, x, z); if (y !== null) pts.push([x, y + r - depth, z]); }
       for (let i = 0; i + 1 < pts.length; i++) sh.cone(MARK, pts[i], pts[i + 1], r, r);
     }
-    function hdBackLines(sh, P, tor) {
+    function hdBackLines(sh, P, tor, mask = 63) {   // mask：1 脊椎溝 2 臀溝 4 腰窩 8 臀下摺 16 側背→腰→臀 32 肩胛→背闊
       const b = P.b, { S, C, T, zW } = tor, bb = F(b, 'butt'), hx = F(b, 'hip'), wx = F(b, 'waist');
       const lin = (a, z, n) => Array.from({ length: n }, (_, i) => a + (z - a) * i / (n - 1));
       const zt = C + .09 * T + 1.1 * b.perk;                       // 臀峰高度
-      {   // 脊椎溝（2026-11-03 使用者：不要那麼粗，微微的一條 1px，中間斷掉若隱若現）→ 淡線色、細、分段（固定的斷點，每格一樣不閃）
+      if (mask & 1) {   // 脊椎溝（2026-11-03 使用者：不要那麼粗，微微的一條 1px，中間斷掉若隱若現）→ 淡線色、細、分段（固定的斷點，每格一樣不閃）
         const zs = lin(S - 4, zt + 3.2 * bb, 22), on = [1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1];
         sh.crease = 2;
         for (let i = 0; i < zs.length;) { if (!on[i]) { i++; continue; } let j = i; while (j + 1 < zs.length && on[j + 1]) j++; if (j > i) backMarks(sh, zs.slice(i, j + 1).map(z => [0, z]), .26, .26); i = j + 1; }
         sh.crease = 0;
       }
-      backMarks(sh, lin(zt + 2.6 * bb, C - 1.2, 5).map(z => [0, z]), .45, .5);        // 臀溝
+      if (mask & 2) backMarks(sh, lin(zt + 2.6 * bb, C - 1.2, 5).map(z => [0, z]), .45, .5);        // 臀溝
       for (const s of [-1, 1]) {
-        backMarks(sh, [[s * 2.2 * hx, zt + 3.4 * bb], [s * 2.6 * hx, zt + 3.0 * bb]], .4, .5);   // 腰窩
+        if (mask & 4) backMarks(sh, [[s * 2.2 * hx, zt + 3.4 * bb], [s * 2.6 * hx, zt + 3.0 * bb]], .4, .5);   // 腰窩
         const cx = s * 3.7 * hx, zb = zt - 3.9 * bb;                 // 臀下摺（弧線）
-        backMarks(sh, [[s * .6, zb + 1.2], [cx - s * 1.6 * bb, zb - .1], [cx + s * .6 * bb, zb - .2], [cx + s * 2.8 * bb, zb + .9]]);
-        backMarks(sh, [[s * 5.2 * wx, zW + 4], [s * 5.6 * wx, zW], [s * 6.6 * hx, zW - 4.5]], .3, .38);  // 側背→腰→臀的弧
-        backMarks(sh, [[s * 3.6 * F(b, 'sh'), S - 3.5], [s * 4.8 * F(b, 'sh'), S - 8], [s * 4.4 * wx, zW + 5]], .25, .36);  // 肩胛→背闊
+        if (mask & 8) backMarks(sh, [[s * .6, zb + 1.2], [cx - s * 1.6 * bb, zb - .1], [cx + s * .6 * bb, zb - .2], [cx + s * 2.8 * bb, zb + .9]]);
+        if (mask & 16) backMarks(sh, [[s * 5.2 * wx, zW + 4], [s * 5.6 * wx, zW], [s * 6.6 * hx, zW - 4.5]], .3, .38);  // 側背→腰→臀的弧
+        if (mask & 32) backMarks(sh, [[s * 3.6 * F(b, 'sh'), S - 3.5], [s * 4.8 * F(b, 'sh'), S - 8], [s * 4.4 * wx, zW + 5]], .25, .36);  // 肩胛→背闊
       }
     }
     function r0(P, doll) { return cupRadius(P, doll); }
@@ -460,22 +461,50 @@
         //  斜方肌從脖子半高分兩段斜下到肩峰（正面／背面看到斜肩）；橫條壓低；肩頭三角肌圓帽；脖子根部外擴；背後兩片肩胛骨微凸
         const fr = b.frame, yb = yl(S) - 1.0;
         sh.cone(BODY, [-6.6 * wS, yl(S) - .5, S - 3.6], [6.6 * wS, yl(S) - .5, S - 3.6], 2.6 * fr, 2.6 * fr);   // 鎖骨～肩胛的橫條
-        sh.cone(BODY, [0, yl(S) - .6, S - 1.6], [0, yl(S) - .3, S + .8], neck_r * 1.15, neck_r * 1.0);          // 脖子根部外擴
+        sh.cone(BODY, [0, yl(S) + .5, S - 1.6], [0, yl(S) + .3, S + .8], neck_r * 1.1, neck_r * .95);   // 2026-11-03 往前移：後面不再撐出去（使用者：上背像駝背）          // 脖子根部外擴
         for (const s of [-1, 1]) {
           sh.cone(BODY, [s * 1.7, yb + .2, S + 1.4], [s * 4.2 * wS, yb, S + .1], .7 * fr, 1.1 * fr);           // 斜方肌上段（頸側；2026-11-03 使用者：接在脖子低一點、坡度緩，脖子才明顯）
           sh.cone(BODY, [s * 4.2 * wS, yb, S + .1], [s * 7.5 * wS, yb + .1, S - 2.2], 1.1 * fr, 1.5 * fr);      // 斜方肌下段（→肩峰）
           sh.ell(BODY, [s * 8.7 * wS, yl(S) - .6, S - 4.3], [2.75 * fr + .35 * b.muscle, 2.7 * fr, 3.2 * fr + .5 * b.muscle]);   // 三角肌圓帽
-          sh.ell(BODY, [s * 4.0 * wS, yl(S) - 2.3, S - 5.6], [2.6 * fr, 1.6, 3.0]);                              // 肩胛骨
+          sh.ell(BODY, [s * 4.0 * wS, yl(S) - 2.05, S - 5.6], [2.6 * fr, 1.25, 3.0]);   // 2026-11-03 壓扁往前收（背的輪廓改淺後，原本的會凸出來）                              // 肩胛骨
         }
       }
-      const zCh = S - .24 * T;
-      sh.ell(BODY, [0, yl(zCh) - .2, zCh], [7.7 * F(b, 'chest'), 4.9 * F(b, 'chest') ** .5, .27 * T]);
-      const zW = S - .6 * T;
-      sh.part = 'waist';
-      sh.ell(BODY, [0, yl(zW), zW], [5.9 * F(b, 'waist'), 4.3 * F(b, 'waist') ** .7, .2 * T]);
-      sh.part = 'hips';
-      const zP = C + .2 * T;
-      sh.ell(BODY, [0, yl(zP) - .2, zP], [9.0 * F(b, 'hip'), 5.3 * F(b, 'hip') ** .6, .24 * T]);
+      const zCh = S - .24 * T, zW = S - .6 * T, zP = C + .2 * T;
+      const TRUNK = [[zCh, -.2, 7.7 * F(b, 'chest'), 4.9 * F(b, 'chest') ** .5, .27 * T], [zW, 0, 5.9 * F(b, 'waist'), 4.3 * F(b, 'waist') ** .7, .2 * T], [zP, -.2, 9.0 * F(b, 'hip'), 5.3 * F(b, 'hip') ** .6, .24 * T]];
+      if (doll._oldTrunk) {   // 舊做法：胸廓／腰／骨盆三顆橢球（對照用）
+        sh.ell(BODY, [0, yl(zCh) - .2, zCh], [TRUNK[0][2], TRUNK[0][3], TRUNK[0][4]]);
+        sh.part = 'waist'; sh.ell(BODY, [0, yl(zW), zW], [TRUNK[1][2], TRUNK[1][3], TRUNK[1][4]]);
+        sh.part = 'hips'; sh.ell(BODY, [0, yl(zP) - .2, zP], [TRUNK[2][2], TRUNK[2][3], TRUNK[2][4]]);
+      } else {
+        // 2026-11-03 軀幹改疊層（使用者：腰部跟背部要剛好連線重疊）：每個高度取三顆橢球的外框（寬、前緣、後緣），
+        // 沿高度平滑（σ＝TRUNK_SM）抹掉胸→腰→骨盆的階梯 → 背從上背、腰的凹順到臀部；正面也是平滑的 V 字收腰再弧到髖。
+        // 切成短段（每段 2 格、上下各多 .6 重疊），依高度分給 chest／waist／hips；趴跪等彎曲姿勢逐段轉也順。
+        const zTop = zCh + TRUNK[0][4], zBot = zP - TRUNK[2][4], dzs = .5, Z = [];
+        for (let z = zTop; z >= zBot - 1e-6; z -= dzs) Z.push(z);
+        const env = Z.map(z => { let w = 0, yf = -1e9, yb = 1e9; for (const [cz, oy, rx, ry, rz] of TRUNK) { const u = (z - cz) / rz; if (Math.abs(u) >= 1) continue; const f = Math.sqrt(1 - u * u); w = Math.max(w, rx * f); yf = Math.max(yf, oy + ry * f); yb = Math.min(yb, oy - ry * f); } return w ? [w, yf, yb] : [.3, .3, -.3]; });
+        // 平滑量分開：寬（正面腰身）輕輕抹、前緣中等、後緣（背）抹最多——背要順，腰身不能被撐粗
+        const smooth = (j, sg) => { const ker = []; for (let k = -Math.ceil(3 * sg / dzs); k <= Math.ceil(3 * sg / dzs); k++) ker.push([k, Math.exp(-.5 * (k * dzs / sg) ** 2)]);
+          return env.map((_, i) => { let s0 = 0, ws = 0; for (const [k, wgt] of ker) { const q = env[Math.max(0, Math.min(env.length - 1, i + k))]; s0 += q[j] * wgt; ws += wgt; } return s0 / ws; }); };
+        const sg = TRUNK_SM, SW = smooth(0, sg * .45), SF = smooth(1, sg * .75), SB = smooth(2, sg);
+        // 兩端別被平滑撐胖：頂／底各取原外框與平滑值的小者
+        // 上背（使用者：肩胛骨下來要順順地下來，不要拱起來像駝背）：背的後緣限制在「脖子後緣往下的斜線」以內——
+        // 從脖子根（S＋1，後緣約 −1.6）每往下 1 退 UB_SLOPE，到肩胛骨下緣才接上胸廓本來的背
+        // 肩胛骨（S−5）以下背直直往下：不再比肩胛骨更往後（原本胸廓中段最凸＝拱背）
+        // v2：直接給背的側面輪廓（脖子根 → 肩胛 → 胸廓 → 腰微凹 → 交給骨盆），各體型照胸／腰厚度縮放；骨盆以下不管（臀部另外有）
+        const kc = TRUNK[0][3] / 4.9, kw = TRUNK[1][3] / 4.3;
+        const BK = [[S + 1, -1.7], [S - 2, -2.7 * kc], [S - 5, -3.35 * kc], [zCh, -3.6 * kc], [zW + 3, -3.45 * kw], [zW, -3.3 * kw], [zP + 2, -4.2 * kw], [zP, -1e9]];
+        const ubAt = z => { if (z >= BK[0][0]) return BK[0][1]; for (let i = 0; i < BK.length - 1; i++) if (z >= BK[i + 1][0]) { const [z0, a] = BK[i], [z1, c] = BK[i + 1]; if (c < -1e8) return -1e9; const u = sm((z0 - z) / (z0 - z1)); return a + (c - a) * u; } return -1e9; };
+        const sm = u => u * u * (3 - 2 * u);
+        const rows = Z.map((z, i) => { const e = env[i], end = Math.min(1, Math.min(zTop - z, z - zBot) / (2 * sg)); const L = (a, c) => c + (a - c) * end; return [z, L(SW[i], Math.min(SW[i], e[0])), yl(z) + L(SF[i], Math.min(SF[i], e[1])), yl(z) + Math.max(L(SB[i], Math.max(SB[i], e[2])), ubAt(z))]; });
+        const per = 4;   // 每段 4 列（2 格）
+        for (let i = 0; i < rows.length - 1; i += per) {
+          const seg = rows.slice(Math.max(0, i - 1), Math.min(rows.length, i + per + 2));   // 上下各多一列重疊
+          const zm = (seg[0][0] + seg[seg.length - 1][0]) / 2;
+          sh.part = zm > zW + .1 * T ? 'chest' : zm < zW - .1 * T ? 'hips' : 'waist';
+          sh.loft(BODY, seg, .2);
+        }
+        sh.part = 'hips';
+      }
       sh.ell(BODY, [0, yl(C + 3) - .3, C + 3.5], [5.0 * F(b, 'hip'), 3.8, 4.2]);
       sh.part = 'waist';
       if (doll.belly > 0) {   // 懷孕（2026-10-10）：第 3 天起肚子往前圓起來，第 10 天最大
@@ -485,12 +514,14 @@
       if (b.belly) { const bz = zW - .32 * T; sh.ell(BODY, [0, yl(bz) + 1.6 + 1.2 * b.belly, bz], [5.4 * F(b, 'waist'), 3.6 + .6 * b.belly, 5.0]); }
       sh.part = 'hips';
       for (const s of [-1, 1]) {
-        const bb = F(b, 'butt'), lift = 1.2 * b.muscle + 1.1 * b.perk, q = jig ? jig.sq : 0;
+        const bb = F(b, 'butt') * (doll._butt || 1), lift = 1.2 * b.muscle + 1.1 * b.perk, q = jig ? jig.sq : 0;
         // jig（偷看，2026-10-15）：被撞時臀肉往撞的方向推、前後壓扁、上下左右鼓出，再彈回來晃
         const [jx, jy, jz] = jig ? jig.d : [0, 0, 0];
+        sh.buttEdge = !!doll._buttLines;   // 2026-11-03 趴跪翹臀：臀肉也描乳房那種邊線（臀肉跟大腿／腰交界的弧），部位仍是 hips
         sh.ell(BODY, [s * 3.7 * F(b, 'hip') + jx, yl(C + .09 * T) - 2.7 - .4 * (bb - 1) - .6 * b.perk + jy, C + .09 * T + lift + jz],
           [4.5 * bb * (1 + .45 * q), 4.2 * bb * (1 - q), 4.6 * bb * (1 + .35 * q)]);
       }
+      sh.buttEdge = false;
       if (jig && jig.thigh) for (const s of [-1, 1]) {
         const q = jig.sq;   // 大腿根的肉跟著晃（晚一點、小一點）
         const [tx, ty, tz] = jig.thigh;
@@ -515,9 +546,20 @@
       const SHP = doll.shape || 'round', r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
       sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
-      for (const s of [-1, 1]) {
+      for (const s of doll._noBust ? [] : [-1, 1]) {   // _noBust：乳房另外畫（趴跪翹臀：擺好姿勢後在世界座標往下垂、壓在地上）
         const root = [s * (2.6 + r * .22) * cs + bx * .3, yl(zA) + 2.6 * cs + r * .12 + by * .3, zA + bz * .3];
         const cx = s * (3.2 + r * .3) * cs + bx, cy = yl(zB) + 3.3 * cs + r * .5 + by;
+        if (doll._press) {
+          // 2026-11-03 趴跪翹臀（ass_up）：乳房壓在地上——往前（局部 +y＝地板方向）壓扁、往兩側和上下擠開，地板把貼地那面切平；
+          // 外側再擠出一團肉（從背後、斜後方看，兩側腋下露出來）
+          const q = doll._press, ry = r * (.95 - .42 * q);
+          const c = [s * (3.0 + r * .4) * cs, yl(zB) + 3.0 * cs + r * .36, zB + r * .1], R = [r * (1.05 + .32 * q), ry, r * (1.0 + .24 * q)];
+          sh.ell(BODY, c, R);
+          sh.cone(BODY, root, c, r * .5, r * .8);
+          sh.ell(BODY, [c[0] + s * r * (.8 + .35 * q), c[1] - r * .05, c[2] - r * .05], [r * (.6 + .25 * q), r * .62, r * .9]);
+          nipAt([c[0], c[1] + ry * .97, c[2]], [0, 1, 0], { c, r: R });
+          sh._pressFront = [0, c[1] + ry, c[2]]; sh._pressRy = ry;
+        } else
         if (doll.braSupport) {
           // 2026-10-30 pt78u：穿胸罩＝托高＋往中間集中＋往前挺。不管原本圓／鐘／下垂，都收成被罩杯撐住的圓挺形（下垂型變化最大）
           const zS = zB + 1.4 + r * .3 + bz * .3, c = [s * (2.5 + r * .26) * cs + bx * .35, yl(zS) + 3.5 * cs + r * .62 + by * .4, zS];
@@ -740,6 +782,27 @@
     // 跟布一樣是「部位標記色」圖層：陰毛 PUBIC_RGB（前端換成髮色）、陰唇 LABIA_RGB、蕾絲 LACE_RGB／LACE_LO_RGB、褲頭 BAND_RGB。
     const PUBICS = ['strip', 'triangle'], LABIAS = ['line', 'butterfly', 'line_open', 'butterfly_open'], PANTS = ['lace_thong'];   // 2026-10-31：*_open＝打開（露出紅色內裡＋深紅小口）
     const PUBIC_RGB = [255, 0, 255], LABIA_RGB = [255, 255, 0], LACE_RGB = [0, 255, 255], LACE_LO_RGB = [0, 170, 170], BAND_RGB = [255, 128, 0], OPEN_RGB = [255, 0, 0], HOLE_RGB = [128, 0, 0], PUBIC_EDGE_RGB = [192, 0, 192];   // 打開：內裡 #F00、小口 #800000
+    /** 2026-11-03 趴跪翹臀：陰唇在世界座標從正後方（−y 往 +y）打射線貼在胯下最後面的表面，正對後方。
+     *  (x, z) 照站姿 groin 的參數：z 從 C 往上＝往陰蒂那端，這裡對應世界往下（趴著時陰蒂在下、肛門在上）。zv＝胯下中心的世界高度。 */
+    function labiaBack(sh, doll, C, zv) {
+      const wz = z => zv - (z - C), surf = (x, z) => { for (let k = 0; k < 500; k++) { const y = -40 + k * .1; if (bodyDist(sh, x, y, wz(z)) < 0) return y; } return null; };
+      const patch = (x, z, r, d) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y - d, wz(z)], [r, .35, r]); };
+      const flat = (x, z, r, d) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y - d, wz(z)], [r, .2, r]); };
+      const lab = String(doll.labia || ''), lOpen = lab.endsWith('_open'), lStyle = lab.replace('_open', '');
+      if (lStyle !== 'line' && lStyle !== 'butterfly') return;
+      if (!lOpen) {
+        sh.cloth = 6;
+        for (let z = C + 2.8; z >= C - .4; z -= .4) patch(0, z, .38, .35);
+        if (lStyle === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.6; z >= C - .2; z -= .45) patch(sx * .55, z, .55, .45);
+      } else {
+        const zt = C + 3.4, zb = C + .1, W = lStyle === 'butterfly' ? .95 : .8, hwAt = z => { const u = Math.min(1, Math.max(0, (zt - z) / (zt - zb))); return W * Math.sin(Math.PI * u ** 1.25) ** .7; };
+        { const zc = (zt + zb) / 2 - .2, ys = surf(0, zc); if (ys !== null) { sh.carve = 1; sh.ell(BODY, [0, ys + .35, wz(zc)], [W * .95, 1.6, (zt - zb) / 2]); sh.carve = 0; } }   // 往前（+y）挖
+        sh.cloth = 6;
+        for (let z = zt; z >= zb - 1e-6; z -= .3) { const hw = hwAt(z); for (const sx of [-1, 1]) flat(sx * (hw + .12), z, .3, .16); }
+        if (lStyle === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.7; z >= C - .1; z -= .4) { const hw = hwAt(z); flat(sx * (hw + .55), z, .5, .16); }
+      }
+      sh.cloth = 0;
+    }
     function groin(sh, P, doll, tor) {
       const C = tor.C, surf = (x, z, back = false) => { for (let k = 0; k < 300; k++) { const y = back ? -20 + k * .1 : 20 - k * .1; if (bodyDist(sh, x, y, z) < 0) return y; } return null; };
       const patch = (x, z, r, d = .25) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .35, r]); };
@@ -1171,6 +1234,7 @@
       sleep_curl: { frames: 2, fps: .35, canvas: 'wide' }, sit_curl: { frames: 2, fps: .45 },
       squat_down: { frames: 16, fps: 8 },   // 2026-11-01 站著→蹲下→站起來（使用者：站著然後蹲下這個動作）
       sit_m: { frames: 1, fps: 0, canvas: 'floor' }, sit_v: { frames: 1, fps: 0, canvas: 'floor' },   // 2026-10-31：坐地 M 字腿／V 字腿（先靜態）
+      ass_up: { frames: 1, fps: 0, canvas: 'floor' },   // 2026-11-03 趴跪翹臀（胸貼地、膝跪地、臀翹高；先靜態樣品）
       // 接客偷看（2026-10-10）：側面正交投影、10 格一個抽送循環（慢慢退出→猛地頂進）
       sex_missionary: { frames: 30, fps: 9, canvas: 'peek' }, sex_cowgirl: { frames: 30, fps: 12, canvas: 'peek' },
       sex_doggy: { frames: 30, fps: 12, canvas: 'peek' }, sex_kiss: { frames: 30, fps: 12, canvas: 'peek' },
@@ -1377,6 +1441,101 @@
         }
         if (doll.skirt) sh.ell(BODY, [0, 2, hz + 1.5], [9.2 * F(b, 'hip') * 1.1, 8, 3]);
         hair(sh, P, doll, tor);
+        return { sh, P };
+      }
+      if (pose === 'ass_up') {   // 2026-11-03 趴跪翹臀（使用者：趴著、臀部翹起來；看點＝乳房在地上被壓軟、臀部和腰背的線條）
+        // v2（使用者給 3 張參考圖）：大腿接近垂直（膝蓋在髖正下方、約一個髖寬），軀幹從翹高的臀部一路斜下到肩膀貼地，腰腹離地；
+        // 前臂在頭前交疊、頭枕在手臂上；乳房擺好姿勢後從胸口往下垂、壓在地上往兩側擠。
+        // 做法：軀幹（不含頭、不含乳房）＋背部線條先在站立座標建好 → 依高度分段轉（輕微塌腰）→ 二分法找前傾角讓肩膀落地；
+        //   腳也換算回站立座標建（之後跟骨盆一起轉），所以下身（陰唇、陰毛）能像站姿一樣沿著有大腿的身體表面貼。
+        sh.floor = true;
+        // v3（使用者：臀肉要出來；腰微微下凹；大腿微微往兩側開，陰唇朝後）：腰背分三段——骨盆（在下腰轉）、腰（基準）、胸口（在上腰轉）
+        const g = opts.assUp || {}, A_CH = g.chest ?? 56, A_PEL = g.pelvis ?? 95;   // 度：A_PEL 骨盆轉到臀部的面朝上偏後；A_CH 胸口往回仰（比腰平＝微凹）
+        const i0 = sh.prims.length;
+        const tor = torso(sh, P, { ...doll, _noBust: true, _butt: g.butt ?? 1.25, _buttLines: true }, 0, 0, 0, [0, 0, 0, 0], true);
+        if (FOOT_HD) {
+          hdBackLines(sh, P, tor, g.backLines ?? (63 & ~8 & ~4));   // 站姿的臀下摺會被拉成一條橫線、腰窩會在臀頂凸出兩個小角 → 都不用
+          // 臀下緣：沿每片臀肉的下半圈畫 U 形弧（從背後看是兩個圓臀的下緣，接到大腿）
+          const bb2 = F(b, 'butt') * (g.butt ?? 1.25), zc2 = tor.C + .09 * tor.T + 1.1 * b.perk, rx = 4.5 * bb2 * .9, rz = 4.6 * bb2 * .88;
+          for (const s of [-1, 1]) {
+            const cx = s * 3.7 * F(b, 'hip'), pts = [];
+            for (let k = 0; k <= 8; k++) { const a = (200 + 140 * k / 8) * Math.PI / 180; pts.push([cx + s * rx * Math.cos(a) * (s > 0 ? 1 : -1) * s, zc2 + rz * Math.sin(a)]); }
+            if (g.foldArc) backMarks(sh, pts, .3, .42);   // 2026-11-03 使用者：這條線不對 → 預設不畫（靠臀肉描邊）
+          }
+        }
+        // v4（使用者：胸後背要是一條完美的弧線，不要鼓起來）：沿脊椎連續彎——每個高度 z 的轉角 θ(z) 平滑變化，
+        // 位置沿著彎過的脊椎積分（c(z)＝∫R(θ)·ẑ），所以沒有分段硬轉的折角：
+        //   骨盆（z≤zP）整塊轉 A_PEL（臀部的面朝上偏後）→ 下腰平滑轉回 0（微微下凹）→ 腰到肩膀角度均勻漸變到 A_CH（一條順的弧）
+        const sm = u => u * u * (3 - 2 * u), cl = u => Math.max(0, Math.min(1, u));
+        const zP = tor.C + .12 * tor.T, zW0 = tor.zW + 1, zS = tor.S - 1;
+        const th = z => z <= zP ? A_PEL : z <= zW0 ? A_PEL * (1 - sm((z - zP) / (zW0 - zP))) : A_CH * cl((z - zW0) / (zS - zW0));
+        const SPZ = [], SPC = [], z0s = tor.C - 30, dz0 = .25;   // 脊椎曲線表：從腰 zW0 往上下積分
+        { const n = Math.ceil(70 / dz0), iw = Math.round((zW0 - z0s) / dz0); for (let k = 0; k <= n; k++) SPZ.push(z0s + k * dz0);
+          SPC[iw] = [0, tor.yl(zW0), zW0];
+          const step = (zz, sgn) => { const R = rotX(th(zz)), d = mulV(R, [0, 0, 1]); return d.map(v => v * dz0 * sgn); };
+          for (let k = iw + 1; k <= n; k++) { const d = step(SPZ[k] - dz0 / 2, 1); SPC[k] = SPC[k - 1].map((v, i) => v + d[i]); }
+          for (let k = iw - 1; k >= 0; k--) { const d = step(SPZ[k] + dz0 / 2, -1); SPC[k] = SPC[k + 1].map((v, i) => v + d[i]); } }
+        const spineAt = z => { const u = Math.max(0, Math.min(SPZ.length - 1.001, (z - z0s) / dz0)), k = Math.floor(u), f = u - k; return SPC[k].map((v, i) => v + (SPC[k + 1][i] - v) * f); };
+        const bendXf = z => { const R = rotX(th(z)), c = spineAt(z), q = mulV(R, [0, tor.yl(z), z]); return { R, t: [c[0] - q[0], c[1] - q[1], c[2] - q[2]] }; };
+        // 髖高：大腿往前 TH、往兩側打開 KNEE（膝蓋離髖的橫向距離＝hip_x×KNEE）時，剛好用完大腿長＋膝蓋厚度（打越開髖越低）
+        const TH = (g.thighAng ?? 4) * Math.PI / 180, KNEE = g.knee ?? 2.0, hzT = Math.sqrt(Math.max(4, Lt * Lt - (hip_x * KNEE) ** 2 - (Lt * Math.sin(TH)) ** 2)) + 2.0;
+        const placeAt = (beta) => { const R0 = { R: rotX(-(90 + beta)), t: [0, 0, 0] }, hw = toWorld(compose(R0, bendXf(P.hipz)), [0, 0, P.hipz]); return { R: R0.R, t: [-hw[0], -hw[1], hzT - hw[2]] }; };
+        const shL = [0, tor.yl(tor.S) - .4, tor.S - SHJ_DZ], shZ = g.shoulderZ ?? 12;   // 肩關節離地高度（胸口壓地、頭枕在手臂上，肩膀不貼地）
+        let lo = -10, hi = 80;
+        for (let it = 0; it < 40; it++) { const m = (lo + hi) / 2; if (toWorld(compose(placeAt(m), bendXf(shL[2])), shL)[2] > shZ) lo = m; else hi = m; }
+        const BETA = (lo + hi) / 2, BODYX = placeAt(BETA);
+        sh._assUp = { BETA, hz: hzT };
+        const CH = compose(BODYX, bendXf(tor.S)), PEL = compose(BODYX, bendXf(tor.C - 4));
+        // 下身：先放一雙站姿的臨時腿（只當表面用），陰唇／陰毛照站姿貼好後把臨時腿刪掉 → 跟著骨盆轉
+        // （這個姿勢髖彎很深，站立座標裡真正的大腿會擋在胯下前面，貼上去會浮在外面）
+        if (doll.pubic || doll.labia || doll.pants) {
+          const t0 = sh.prims.length;
+          for (const s of [-1, 1]) leg(sh, P, s, [s * hip_x, 0, P.hipz], [s * kx(), .4, P.knee], [s * 3.0, -.2, P.ankle], [s * .3, .95, 0]);
+          const t1 = sh.prims.length;
+          groin(sh, P, { ...doll, labia: null }, tor);   // 陰毛／丁字褲照站姿貼；陰唇擺好姿勢後從正後方貼（labiaBack）
+          sh.prims.splice(t0, t1 - t0);
+        }
+        for (let i = i0; i < sh.prims.length; i++) { const p = sh.prims[i]; p.xf = compose(BODYX, bendXf(p.bc[2] + p.off[2])); }
+        sh.xf = null;
+        const crW = toWorld(compose(BODYX, bendXf(tor.C)), [0, tor.yl(tor.C) + .5, tor.C + .6]);   // 胯下中心（世界）
+        for (const s of [-1, 1]) {   // 腳（世界座標）：膝蓋在髖正下方略往外，小腿平貼地往後，腳背貼地
+          const hip = toWorld(PEL, [s * hip_x, 0, P.hipz]), kz = 2.0, dx = s * hip_x * KNEE;   // 雙腿往兩側打開
+          const dy = Math.sqrt(Math.max(1, Lt * Lt - dx * dx - (hip[2] - kz) ** 2)) * Math.sign(g.thighAng ?? 4);
+          const knee = [hip[0] + dx, hip[1] + dy, kz], ankle = [knee[0] - s * .6, knee[1] - Ls * .97, 1.35];
+          leg(sh, P, s, hip, knee, ankle, [0, -1, -.12]);
+        }
+        if (doll.labia) labiaBack(sh, doll, tor.C, crW[2] + (g.vulvaZ ?? 0));   // 陰唇：從正後方貼（腳建好之後，表面才對）
+        // 乳房（世界座標）：從胸口的乳根往下垂到地板，壓扁成貼地的軟團、往兩側擠；地板切平
+        {
+          const r = cupRadius(P, doll), cs = F(b, 'chest') ** .5, zA = tor.S - .16 * tor.T, q = g.press ?? 1;
+          sh.bust = true;
+          for (const s of [-1, 1]) {
+            const root = toWorld(CH, [s * (2.7 + r * .25) * cs, tor.yl(zA) + 2.4 * cs + r * .2, zA - r * .2]);
+            // 一團沉甸甸的軟肉：乳根寬、往下越來越飽滿，底部壓在地上攤開（不是細柱子）
+            const rz = Math.max(r * .55, Math.min(r * .95, root[2] * .45)), flat = [root[0] + s * r * .3, root[1] - r * .1, rz * .6];
+            const mid = [(root[0] + flat[0]) / 2 + s * r * .1, (root[1] + flat[1]) / 2, (root[2] + flat[2]) / 2];
+            sh.ell(BODY, root, [r * .85, r * .8, r * .8]);
+            sh.cone(BODY, root, mid, r * .85, r * 1.0);
+            sh.cone(BODY, mid, flat, r * 1.0, r * 1.1);
+            sh.ell(BODY, flat, [r * (1.15 + .3 * q), r * (1.1 + .2 * q), rz]);
+            sh.ell(BODY, [flat[0] + s * r * (.85 + .3 * q), flat[1] - r * .1, rz * .55], [r * (.6 + .2 * q), r * .8, rz * .8]);   // 往外擠出來的肉
+          }
+          sh.bust = false;
+        }
+        const Lu = P.H * .16, Lf = P.H * .14;
+        for (const s of [-1, 1]) {   // 前臂在頭前方交疊、平放地上
+          const sj = toWorld(CH, [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) - .4, tor.S - SHJ_DZ]);
+          const eW = [sj[0] + s * 3.2, sj[1] + Lu * .72, 1.8], wW = [-s * 3.0, eW[1] + Lf * .55 + (s > 0 ? 1.2 : 0), s > 0 ? 3.0 : 1.5];
+          arm(sh, P, sj, eW, wW);
+        }
+        // 頭：側臉朝下枕在交疊的前臂上
+        const neck = [0, tor.yl(tor.S), tor.S + 1.5], headR = mulR(rotX(g.headUp ?? 40), rotZ(g.headTurn ?? 55));
+        const ih = sh.prims.length, HX = compose(CH, about(headR, neck)); sh.xf = { R: HX.R, t: HX.t.slice() };
+        headPart(sh, P, tor.yl, tor.zc, doll);
+        let zmin = 1e9; for (let i = ih; i < sh.prims.length; i++) { const p = sh.prims[i], w = toWorld(p.xf, p.bc); zmin = Math.min(zmin, w[2] - p.br * .7); }
+        sh.xf.t[2] += (g.headZ ?? 3.2) - zmin;   // 頭整顆抬到枕在手臂上的高度（同一個 xf 物件，已建的頭零件一起動）
+        hair(sh, P, doll, tor, 0, mulT(mulR(CH.R, headR), [0, 0, -1]));
+        sh.xf = null; sh.floor = false;
         return { sh, P };
       }
       if (pose === 'sit_m' || pose === 'sit_v') {   // 2026-10-31：坐在地上、雙腿打開；上身微微往後靠，兩手撐在身後地上
@@ -2068,7 +2227,7 @@
       return { width, height, anchor: { x: ax * K, y: ay * K }, pixels, depth };
     }
     // 2026-11-01 拆圖層樣品：各部位分開算原始資料，每格取最近（tt 最大）的那個，再統一上色。union of SDF＝每格最近的表面，所以結果應與整張一起算相同。
-    const PARTS = ['head', 'chest', 'waist', 'hips', 'torso', 'breast', 'armL', 'armR', 'legs'];   // 2026-11-03 torso 只剩各姿勢另加的小零件（手掌墊、手機…）
+    const PARTS = ['head', 'chest', 'waist', 'hips', 'torso', 'breast', 'armL', 'armR', 'legs', 'over'];   // 2026-11-03 torso 只剩各姿勢另加的小零件（手掌墊、手機…）
     function renderParts(doll, pose, frame, yaw, opts = {}) {
       const bufs = {}; for (const pt of PARTS) bufs[pt] = render(doll, pose, frame, yaw, { ...opts, parts: [pt], gbuf: true });
       return { bufs, composite: renderComposite(doll, pose, frame, yaw, opts, bufs) };
