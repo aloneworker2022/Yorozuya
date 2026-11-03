@@ -45,7 +45,8 @@ function unit(pose, b, dir) {
       const bp = R(mk(b, { shape: o.shape, cup: o.cup, sup: o.sup }), { gbufIn: G0 }).pixels;
       return [px, (q, j) => keep(q, j) && bp[j + 3] > 0];
     };
-    if (walk && on('cloth')) for (const sh of SHAPES) for (const c of CUPS) for (const cl of D.CLOTHES) { const [px, k] = overlay({ shape: sh, cup: c, cloth: cl }, isA); put(`${pre}cloth/${b}_${sh}_${c}_${cl}${sfx}`, i, px, k); }
+    // 胸罩前端一律用 sup/cloth（托高），cloth/<shape>_bra 用不到 → 預設不出（ALLCL=1 才出）
+    if (walk && on('cloth')) for (const sh of SHAPES) for (const c of CUPS) for (const cl of D.CLOTHES.filter(x => x !== 'bra' || process.env.ALLCL)) { const [px, k] = overlay({ shape: sh, cup: c, cloth: cl }, isA); put(`${pre}cloth/${b}_${sh}_${c}_${cl}${sfx}`, i, px, k); }
     if (walk && on('supcloth')) for (const c of CUPS) for (const cl of SUPCL) { const [px, k] = overlay({ cup: c, sup: true, cloth: cl }, isA); put(`${pre}sup/cloth/${b}_sup_${c}_${cl}${sfx}`, i, px, k); }
     if (on('face')) for (const [it, list, cols, styled] of FACE) for (const st of list) {
       const [px, k] = overlay({ [it]: st }, (q, j) => q[j + 3] === D.CLOTH_A && cols.some(c => q[j] === c[0] && q[j + 1] === c[1] && q[j + 2] === c[2]));
