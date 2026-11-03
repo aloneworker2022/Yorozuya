@@ -148,3 +148,11 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 還沒做：其他體型／乳房組合全出、play.html 接 parts、坐姿等其他姿勢的 parts、頭髮圖層照動漫臉重算、臉部圖層（嘴／眉）補出。
 - 2026-11-03 肩頸再調（使用者：斜肩往下、夾角小一點讓脖子明顯，不是更往上）：斜方肌改接在脖子低一點（S＋1.4）、坡度緩，脖子根部外擴縮小；肩關節統一成 `SHJ_DZ`＝3.4（原 2.6，所有姿勢的手臂肩關節一起降），橫條／三角肌跟著降 → 脖子比較長、比較清楚，肩膀往外是緩坡再接圓肩。
 - 背部中線（使用者：不要那麼粗，微微的一條 1px，中間可能斷掉、若隱若現）：脊椎溝改成淡線 `FAINT_RGB` (110,75,75)（`sh.crease＝2` → 標記 98；parts 碼 123），前端上成 (236,197,171)；細 1px、固定位置斷 4 處（每格一樣、不會閃）。index.html／play.html tint 各加一行；`parts_shade.js?v=2`。臀溝不變。
+
+## 2026-11-03：全部拆（遊戲現在用的 3 個姿勢：走路／坐地 M 字腿／坐地 V 字腿，只出 2×）
+- 範圍（使用者定）：4 體型 × 全部乳房組合（round／bell／pendulous／sup × A～H × 4 乳暈）× 3 姿勢的拆部位；頭髮、衣服、托高衣服、下身、臉部（眼罩、鼻子 9 種、嘴、眉）照新動漫臉＋新肩頸重出；index.html／play.html 預設用拆部位（`?noparts=1` 用整張 sheet）。
+- `render_parts.cjs` 支援坐姿（`POSE=sit_m|sit_v`）：`parts2x/<pose>/<body>_<part>.png`、`parts2x/<pose>/breast/<body>_<shape>_<cup>_<areola>.png`，一張＝8 方向橫排（每格 300×168）。
+- 渲染器加速（`render()`，`opts.cull` 預設開）：每條光線先挑出包圍球離光線 1.5 以內的零件，走的時候只算這些，都碰不到就跳過。快 3～7 倍（T 恤一格 13 秒 → 1.9 秒、身體 1.2 → 0.4 秒），跟原本每張只差 0～6 個像素（線條邊緣）。
+- 衣服／下身／臉部標記等 cloth 零件歸新部位 `over`（不影響身體部位）。
+- `render_layers.cjs`：重出 sheets2x 的 cloth／sup/cloth／hair／groin／face（走路＋坐姿），路徑不變。每個 體型×方向×格 身體 gbuf 只算一次、乳房依 胸型×罩杯 快取；衣服／下身／臉部＝只算 over 疊上去上色；頭髮＝只算頭髮跟 H 罩杯四種身體比遠近（同 renderHairLayer）；私處打開（挖洞）照舊整張畫。`TEST=1` 跟舊做法逐張比對：臉部、下身 0～5%（只差幾個像素：鼻子、眉毛邊）、頭髮 0.15～0.6%。
+- 臉部圖層補出嘴（`face/<body>_mouth_<dir>.png`）與眉（`face/<body>_brows_<dir>.png`）；眼睛照使用者定案不出。1× sheets 沒有重出（只用 2×）。
