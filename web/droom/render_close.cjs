@@ -3,13 +3,13 @@
 // 輸出 sheets_close/ 底下跟 sheets2x 相同的相對路徑（身體、頭髮、衣服、臉部標記），play.html 近距離時改用這套。
 // 2026-11-03 面對面（FACE=1）：碰撞點 0.4 格、解析度 3 倍（K＝3）、低頭角度 PITCH（度，0＝平視）各一套，只出站姿 1 格；
 //   每格 320×380（K＝1），主點在中間（cx 160、cy 190）＝這個角度的視線方向；輸出 sheets_f2f/p<PITCH>/（路徑同 sheets2x，1 格寬）。
-//   FACE=1 PITCH=0,30,50 node render_close.cjs
+//   FACE=1 PITCH=0,40,60 node render_close.cjs
 // 用法：node render_close.cjs  [BODY=balanced] [SHAPE=round] [CUP=D] [AR=medium] [DIRS=front,...] [BH=wavy,...] [FH=curtain,...] [CL=napkin_bell] [SHARD=i NSHARD=n]
 const D = require(__dirname + '/room_doll_full.js'), png = require(__dirname + '/png.cjs'), fs = require('fs'), path = require('path');
 const CELL = 126 / 1.15;   // play.html：走路 sheet 地面以上 126 單位＝1.15 格
 const FACEV = !!process.env.FACE, D0 = +(process.env.D0 || (FACEV ? .4 : .6)), CW = FACEV ? 320 : 240, CH = FACEV ? 380 : 480, K = FACEV ? 3 : 1, NFR = FACEV ? 1 : 8;
 const CAM0 = { dist: D0 * CELL, eyeZ: .95 * CELL, pitch: 0, f: 240, w: CW, h: CH, cx: CW / 2, cy: FACEV ? CH / 2 : 20 };   // f＝SH（play.html 1 格遠＝SH 像素）；近景 cy＝玩家眼睛高（地平線）在第幾列
-const PITCHES = FACEV ? (process.env.PITCH || '0,30,50').split(',').map(Number) : [0];
+const PITCHES = FACEV ? (process.env.PITCH || '0,40,60').split(',').map(Number) : [0];
 const BODY = { balanced: { height_cm: 161, build: '勻稱有致', hair: '中分長髮' }, slim: { height_cm: 166, build: '纖細苗條', hair: '短髮' }, petite: { height_cm: 150, build: '嬌小玲瓏', hair: '雙馬尾' }, curvy: { height_cm: 163, build: '微肉圓潤', hair: '大波浪長髮' } };
 const DIR = { front: 0, front_right: 45, right: 90, back_right: 135, back: 180, back_left: -135, left: -90, front_left: -45 };
 const env = (k, def) => process.env[k] ? process.env[k].split(',') : def;
