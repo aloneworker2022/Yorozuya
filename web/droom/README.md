@@ -135,3 +135,14 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 下一步（待使用者確認）：每個部位出「原始資料 sheet」（深度 16 位元＋標記），前端疊圖後上色；乳房只依胸型×罩杯×乳暈變、頭只依臉型變。
 - 其他姿勢驗證（使用者：做其他動作會不會壞掉，例如蹲下）：idle／crouch 蹲下／hug_knees／sit／sit_m／sit_v／stretch／wall_lean／sway／stare／twirl／lie_phone／prone_kick／sleep_curl／sit_curl，各 5 方向×2 格，拆開疊回去和整張一起算的差異都 ≤0.08%（蹲下 0.006%），躺姿（整組旋轉）也正常。匯出 `POSES`。
 - 新姿勢 `squat_down`（使用者：站著然後蹲下這個動作）：16 格一個循環（u＝(1−cos)/2，再 smoothstep：兩端慢中間快）；臀從站高（dz −0.4）降到蹲姿（C＝17）、上身前傾 0→0.26、腳掌往外踩開、膝蓋往前外彎（ik pole 漸變）、手從垂在身側移到放在膝蓋上。拆開疊回去和整張一起算差 0.01～0.05%。
+
+## 2026-11-03：拆部位正式開工（2×）
+- 軀幹再拆三塊（使用者）：`chest`（脖子＋肩＋胸廓；脖子歸上胸）／`waist`（腰腹、小肚子、懷孕肚）／`hips`（骨盆、胯下、臀、偷看晃的大腿根）。`PARTS`＝head／chest／waist／hips／torso（各姿勢另加的小零件）／breast／armL／armR／legs。
+- 肩頸背（使用者：肩膀、背膀到脖子的線條要刻畫，不然太假）：原本一條水平肩膀橫條 → 斜方肌（脖子半高分兩段斜下到肩峰）＋壓低的橫條＋三角肌圓帽＋脖子根部外擴＋背後肩胛骨微凸；非骨感體型加淡淡兩條鎖骨（CREASE，往外微微上揚、中間留凹）。
+- `definition()` 的線條改貼胸廓／腹部（`sh.surfSkipBust`，不貼到乳房上），鎖骨歸 chest、腹肌肚臍歸 waist → 除了乳房，其他部位都不跟罩杯／胸型變（已驗證）。
+- 原始資料 sheet 格式（`parts_shade.js`，前端與 Node 共用）：RGBA，A 只有 0／255；R,G＝深度 16 位元（(tt+128)×256）；B＝標記碼（0 一般／1 乳房／2 乳暈／3 乳頭／120 頭髮／121 線條／122 摺線）＋bit7 手腳。乳暈 stamp 在出圖時烤進乳房（`render(..., {gbuf, bakeStamps})`）。
+  前端 `merge()` 每格取最近（線條有 0.02 的優先，模仿整張渲染「表面 0.05 以內算線條」）→ `shade()` 照 render() 規則上色 → 跟 sheets2x 身體 sheet 同一套調色盤，頭髮／衣服／下身／臉部圖層與 tint 都不用改。
+- 出圖 `render_parts.cjs`（只出 2×，動漫臉）：`parts2x/walk/<body>_<part>_<dir>.png`（8 部位）＋`parts2x/walk/breast/<body>_<shape>_<cup>_<areola>_<dir>.png`（胸型 round／bell／pendulous／sup 托高）。BODY／ONLY=base|breast／SHAPES／CUPS／AREOLAS／DIRS 篩選，SHARD／NSHARD 平行；`CHECK=1` 驗證疊回去 vs 整張（勻稱 round／sup × D／H × 巨乳暈：差 0.146%，都在線條邊、深度門檻；右後方乳頭點不再從乳房邊冒出來）。
+  速度：一個體型的 8 部位×8 方向 64 張 4 核 16 秒；乳房一張約 0.25 秒（全部 4 體型×4 胸型×8 罩杯×4 乳暈×8 方向＝4096 張，4 核約 5 分鐘）。舊做法整張重畫 2× 約 6 小時。
+- index.html：預設改 2×（`?sd=1` 才 1×，同 play.html）；`?parts=1` 身體改用 parts2x 疊圖（缺檔回整張 sheet）。目前只出了樣品：勻稱 64 張基本部位＋圓形 D 中乳暈乳房 8 張。
+- 還沒做：其他體型／乳房組合全出、play.html 接 parts、坐姿等其他姿勢的 parts、頭髮圖層照動漫臉重算、臉部圖層（嘴／眉）補出。
