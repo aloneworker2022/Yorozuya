@@ -1433,7 +1433,7 @@
         const i0 = sh.prims.length;
         const tor = torso(sh, P, { ...doll, _noBust: true, _butt: g.butt ?? 1.25, _buttLines: true }, 0, 0, 0, [0, 0, 0, 0], true);
         if (FOOT_HD) {
-          hdBackLines(sh, P, tor, g.backLines ?? (63 & ~8));   // 站姿的臀下摺在這個姿勢會被拉成一條橫線 → 不用
+          hdBackLines(sh, P, tor, g.backLines ?? (63 & ~8 & ~4));   // 站姿的臀下摺會被拉成一條橫線、腰窩會在臀頂凸出兩個小角 → 都不用
           // 臀下緣：沿每片臀肉的下半圈畫 U 形弧（從背後看是兩個圓臀的下緣，接到大腿）
           const bb2 = F(b, 'butt') * (g.butt ?? 1.25), zc2 = tor.C + .09 * tor.T + 1.1 * b.perk, rx = 4.5 * bb2 * .9, rz = 4.6 * bb2 * .88;
           for (const s of [-1, 1]) {
