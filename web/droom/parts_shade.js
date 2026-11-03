@@ -2,14 +2,14 @@
 // 每個部位一張「原始資料 sheet」（RGBA PNG，A 只有 0／255）：
 //   R,G＝深度 tt（16 位元：q＝round((tt+128)×256)，越大越靠近鏡頭）
 //   B ＝標記碼（bit 0～6）＋手腳旗標（bit 7）。標記碼：身體＝乳房標記 0 一般／1 乳房／2 乳暈／3 乳頭（乳暈已烤進來）；
-//       120 頭髮、121 線條（MARK）、122 摺線（CREASE）
+//       120 頭髮、121 線條（MARK）、122 摺線（CREASE）、123 淡線（FAINT，背部中線）
 // 前端把同一格的各部位疊起來（每格取最近的），再照 room_doll_full.js render() 同一套規則上色，
 // 產出跟原本身體 sheet 一樣的調色盤像素（之後頭髮、衣服、臉部圖層、tint 都不用改）。
 (function (root, f) { const api = f(); if (typeof module === 'object' && module.exports) module.exports = api; else root.PartsShade = api; })(this, function () {
   const BODY_RGB = [51, 45, 64], HAIR_RGB = [31, 24, 42], LINE_RGB = [30, 24, 40], MARK_RGB = [33, 27, 45];
   const BUST_RGB = [134, 112, 152], BUST_DEPTH = 1.0, AREOLA_RGB = [150, 100, 128], NIP_RGB = [205, 150, 175];
-  const BODY_A = 204, HAIR_A = 220, EDGE_RGB = [240, 240, 240], EDGE_DEPTH = 2.5, CREASE_RGB = [90, 60, 60];
-  const C_HAIR = 120, C_MARK = 121, C_CREASE = 122, MARK_TOL = .02;
+  const BODY_A = 204, HAIR_A = 220, EDGE_RGB = [240, 240, 240], EDGE_DEPTH = 2.5, CREASE_RGB = [90, 60, 60], FAINT_RGB = [110, 75, 75];
+  const C_HAIR = 120, C_MARK = 121, C_CREASE = 122, C_FAINT = 123, MARK_TOL = .02;
 
   /** render(..., {gbuf:true}) 的結果 → RGBA（Node 出圖用） */
   function encode(g) {
@@ -17,7 +17,7 @@
     for (let i = 0; i < n; i++) {
       if (!g.hit[i]) continue;
       const q = Math.max(0, Math.min(65535, Math.round((g.tt[i] + 128) * 256)));
-      const code = g.mat[i] === 2 ? C_HAIR : g.mat[i] === 3 ? (g.bust[i] === 99 ? C_CREASE : C_MARK) : g.bust[i] & 127;
+      const code = g.mat[i] === 2 ? C_HAIR : g.mat[i] === 3 ? (g.bust[i] === 98 ? C_FAINT : g.bust[i] === 99 ? C_CREASE : C_MARK) : g.bust[i] & 127;
       px[i * 4] = q >> 8; px[i * 4 + 1] = q & 255; px[i * 4 + 2] = code | (g.limb[i] ? 128 : 0); px[i * 4 + 3] = 255;
     }
     return px;
@@ -51,7 +51,7 @@
   function shade(G, width, height, out) {
     const n = width * height, { hit, tt, code, limb } = G;
     const mat = new Uint8Array(n), bust = new Uint8Array(n);
-    for (let i = 0; i < n; i++) if (hit[i]) { const c = code[i]; mat[i] = c === C_HAIR ? 2 : c >= C_MARK ? 3 : 1; bust[i] = c === C_CREASE ? 99 : c < 100 ? c : 0; }
+    for (let i = 0; i < n; i++) if (hit[i]) { const c = code[i]; mat[i] = c === C_HAIR ? 2 : c >= C_MARK ? 3 : 1; bust[i] = c === C_FAINT ? 98 : c === C_CREASE ? 99 : c < 100 ? c : 0; }
     const m = new Uint8Array(n);
     const at = (a, x, y) => (x < 0 || y < 0 || x >= width || y >= height) ? 0 : a[y * width + x];
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
@@ -64,7 +64,7 @@
       const i = y * width + x;
       if (!m[i]) { px[i * 4 + 3] = 0; continue; }
       if (mat[i] === 2) { set(i, HAIR_RGB, HAIR_A); continue; }
-      if (mat[i] === 3) { set(i, bust[i] === 99 ? CREASE_RGB : MARK_RGB, BODY_A); continue; }
+      if (mat[i] === 3) { set(i, bust[i] === 98 ? FAINT_RGB : bust[i] === 99 ? CREASE_RGB : MARK_RGB, BODY_A); continue; }
       const di = hit[i] ? tt[i] : -1e9;
       let near = false;
       for (const [nx, ny] of [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]]) {

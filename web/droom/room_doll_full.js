@@ -16,8 +16,10 @@
     // 2026-10-31：白邊 1px——手腳擋在身體（或另一隻腳）前面的邊緣標 EDGE_RGB，前端上成白色。
     // HAIR_BACK_A：頭髮圖層裡「可能被身體擋住」的像素（前端只畫在身體以外），一般頭髮仍是 HAIR_A。
     const EDGE_RGB = [240, 240, 240], EDGE_DEPTH = 2.5, HAIR_BACK_A = 214;
+    const FAINT_RGB = [110, 75, 75];   // 2026-11-03：若隱若現的淡線（背部中線），前端上成很淡的膚色線
     const CREASE_RGB = [90, 60, 60];   // 2026-10-31：鼠蹊部摺線（比一般線條深），前端上成深膚色
     const GIRTH = 1.1;
+    const SHJ_DZ = 3.4;   // 2026-11-03 肩關節在肩線下多少（原 2.6；使用者：斜肩往下、脖子明顯 → 肩膀外側壓低）
     const CUP_R = { A: 1.0, B: 1.85, C: 2.85, D: 4.15, E: 5.0, F: 5.7, G: 6.2, H: 6.75, I: 7.2 };  // 2026-10-31：A≈只剩乳暈、B/C 收小；D～H 階梯拉開
     const CUP_BOUNCE = { A: .04, B: .18, C: .4, D: .8, E: 1.05, F: 1.25, G: 1.42, H: 1.58, I: 1.75 };
     const BASE = { frame: 1, sh: 1, chest: 1, waist: 1, hip: 1, butt: 1, thigh: 1, calf: 1, arm: 1, bust: 1,
@@ -369,7 +371,12 @@
       const b = P.b, { S, C, T, zW } = tor, bb = F(b, 'butt'), hx = F(b, 'hip'), wx = F(b, 'waist');
       const lin = (a, z, n) => Array.from({ length: n }, (_, i) => a + (z - a) * i / (n - 1));
       const zt = C + .09 * T + 1.1 * b.perk;                       // 臀峰高度
-      backMarks(sh, lin(S - 4, zt + 3.2 * bb, 9).map(z => [0, z]), .3, .4);           // 脊椎溝
+      {   // 脊椎溝（2026-11-03 使用者：不要那麼粗，微微的一條 1px，中間斷掉若隱若現）→ 淡線色、細、分段（固定的斷點，每格一樣不閃）
+        const zs = lin(S - 4, zt + 3.2 * bb, 22), on = [1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1];
+        sh.crease = 2;
+        for (let i = 0; i < zs.length;) { if (!on[i]) { i++; continue; } let j = i; while (j + 1 < zs.length && on[j + 1]) j++; if (j > i) backMarks(sh, zs.slice(i, j + 1).map(z => [0, z]), .26, .26); i = j + 1; }
+        sh.crease = 0;
+      }
       backMarks(sh, lin(zt + 2.6 * bb, C - 1.2, 5).map(z => [0, z]), .45, .5);        // 臀溝
       for (const s of [-1, 1]) {
         backMarks(sh, [[s * 2.2 * hx, zt + 3.4 * bb], [s * 2.6 * hx, zt + 3.0 * bb]], .4, .5);   // 腰窩
@@ -452,12 +459,12 @@
       {   // 2026-11-03 肩頸背（使用者：肩膀、背膀到脖子的線條要刻畫，不然太假）：取代原本一條水平肩膀橫條
         //  斜方肌從脖子半高分兩段斜下到肩峰（正面／背面看到斜肩）；橫條壓低；肩頭三角肌圓帽；脖子根部外擴；背後兩片肩胛骨微凸
         const fr = b.frame, yb = yl(S) - 1.0;
-        sh.cone(BODY, [-6.6 * wS, yl(S) - .5, S - 2.9], [6.6 * wS, yl(S) - .5, S - 2.9], 2.6 * fr, 2.6 * fr);   // 鎖骨～肩胛的橫條
-        sh.cone(BODY, [0, yl(S) - .6, S - 1.4], [0, yl(S) - .3, S + 1.6], neck_r * 1.3, neck_r * 1.0);          // 脖子根部外擴
+        sh.cone(BODY, [-6.6 * wS, yl(S) - .5, S - 3.6], [6.6 * wS, yl(S) - .5, S - 3.6], 2.6 * fr, 2.6 * fr);   // 鎖骨～肩胛的橫條
+        sh.cone(BODY, [0, yl(S) - .6, S - 1.6], [0, yl(S) - .3, S + .8], neck_r * 1.15, neck_r * 1.0);          // 脖子根部外擴
         for (const s of [-1, 1]) {
-          sh.cone(BODY, [s * 1.5, yb + .2, S + 3.6], [s * 4.2 * wS, yb, S + 1.2], .75 * fr, 1.2 * fr);           // 斜方肌上段（頸側）
-          sh.cone(BODY, [s * 4.2 * wS, yb, S + 1.2], [s * 7.5 * wS, yb + .1, S - 1.7], 1.2 * fr, 1.5 * fr);      // 斜方肌下段（→肩峰）
-          sh.ell(BODY, [s * 8.7 * wS, yl(S) - .6, S - 3.5], [2.75 * fr + .35 * b.muscle, 2.7 * fr, 3.2 * fr + .5 * b.muscle]);   // 三角肌圓帽
+          sh.cone(BODY, [s * 1.7, yb + .2, S + 1.4], [s * 4.2 * wS, yb, S + .1], .7 * fr, 1.1 * fr);           // 斜方肌上段（頸側；2026-11-03 使用者：接在脖子低一點、坡度緩，脖子才明顯）
+          sh.cone(BODY, [s * 4.2 * wS, yb, S + .1], [s * 7.5 * wS, yb + .1, S - 2.2], 1.1 * fr, 1.5 * fr);      // 斜方肌下段（→肩峰）
+          sh.ell(BODY, [s * 8.7 * wS, yl(S) - .6, S - 4.3], [2.75 * fr + .35 * b.muscle, 2.7 * fr, 3.2 * fr + .5 * b.muscle]);   // 三角肌圓帽
           sh.ell(BODY, [s * 4.0 * wS, yl(S) - 2.3, S - 5.6], [2.6 * fr, 1.6, 3.0]);                              // 肩胛骨
         }
       }
@@ -1252,7 +1259,7 @@
       const bo = bustOuter(P, doll), arm_clear = () => bo * .8 + .5;
       const front = Math.cos(yaw * Math.PI / 180) > -.2;
       const Lt = P.hipz - P.knee, Ls = P.knee - P.ankle;
-      const shj = (s, tor, dy = -.4) => [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) + dy, tor.S - 2.6];
+      const shj = (s, tor, dy = -.4) => [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) + dy, tor.S - SHJ_DZ];
       const phone = (c) => sh.ell(BODY, c, [3.0, .85, 4.6]);
       const NF = (POSES[pose] && POSES[pose].frames) || 1, f = ((frame % NF) + NF) % NF;
       if (pose === 'idle') {
@@ -1261,7 +1268,7 @@
         const tor = torso(sh, P, doll);
         skirt(sh, P, doll, tor);
         for (const s of [-1, 1]) {
-          const sh_j = [s * 8.3 * F(b, 'sh'), -.4, tor.S - 2.6];
+          const sh_j = [s * 8.3 * F(b, 'sh'), -.4, tor.S - SHJ_DZ];
           if (s === w) {
             const elbow = [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 6.2, hip_out + 2.2), -1.8, tor.zW + 2.5];
             const wrist = [s * (waist_out + (hip_out - waist_out) * .45 + 1.6), .3, tor.zW - .22 * tor.T];
@@ -1314,7 +1321,7 @@
           const swd = 30 * c * (c > 0 ? .8 : 1);
           const sw = swd * Math.PI / 180, fwd = Math.max(0, c), bk = Math.max(0, -c);
           const ex = Math.max(waist_out + 2.8 * F(b, 'arm') + 1.2, arm_clear()) + 1.2 * bk;
-          const sh_j = [s * 8.3 * F(b, 'sh'), -1.4, tor.S - 2.6];
+          const sh_j = [s * 8.3 * F(b, 'sh'), -1.4, tor.S - SHJ_DZ];
           const elbow = [s * ex, -1.6 + 19 * Math.sin(sw), sh_j[2] - 19 * Math.cos(sw)];
           const fa = sw + (.12 + .55 * fwd) * Math.sign(sw || 1);
           const wx = Math.max(hip_out + 1.5 * F(b, 'arm') + .4 - 3.2 * fwd + 1.5 * bk, ex - 2.5 * fwd + .5);
@@ -1336,7 +1343,7 @@
         const kz = P.ankle + Ls, ky = hip_y + Math.sqrt(Math.max(1, Lt * Lt - (hipz - kz) ** 2));
         for (const s of [-1, 1]) {
           leg(sh, P, s, [s * hip_x, hip_y, hipz], [s * kx(), ky, kz], [s * 3.0, ky - 1.0, P.ankle], [s * .15, .98, 0]);
-          const sh_j = [s * 8.3 * F(b, 'sh'), hip_y - .6, tor.S - 2.6];
+          const sh_j = [s * 8.3 * F(b, 'sh'), hip_y - .6, tor.S - SHJ_DZ];
           const elbow = [s * (waist_out + 2.8 * F(b, 'arm') + 1.4), hip_y + 1.5, tor.zW - 2];
           const wrist = [s * 5.0 * F(b, 'hip'), hip_y + 10.5, hipz + 4.6 * F(b, 'thigh')];
           arm(sh, P, sh_j, elbow, wrist);
@@ -1724,7 +1731,7 @@
         leg(sh, P, s, hipL, toLocal(xf, kneeW), toLocal(xf, ankW), mulT(R, toe));
       }
       for (const s of [-1, 1]) {
-        const sj = [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) - .4, tor.S - 2.6], sjW = toWorld(xf, sj);
+        const sj = [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) - .4, tor.S - SHJ_DZ], sjW = toWorld(xf, sj);
         const wW = g.wrists === 'under' ? [s * 6.5 * F(b, 'sh'), sjW[1] - 5, 1.2] : g.wrists(s);   // v6：手腕略往前，側面看得到垂下的胸
         const eW = ik(sjW, wW, Lu, Lf, g.apole(s));
         arm(sh, P, sj, toLocal(xf, eW), toLocal(xf, wW));
@@ -1927,7 +1934,7 @@
               hit[idx] = 1; tt[idx] = t;
               let mm = dist[1] < dist[0] + .15 ? 2 : 1;
               if (dist[2] < .05 && dist[1] > .05) mm = 3;
-              mat[idx] = mm; bust[idx] = mm === 1 ? bb : mm === 3 && ck ? 99 : 0; limb[idx] = mm === 1 ? lf : 0;
+              mat[idx] = mm; bust[idx] = mm === 1 ? bb : mm === 3 && ck ? (ck === 2 ? 98 : 99) : 0; limb[idx] = mm === 1 ? lf : 0;
               break;
             }
             t -= Math.max(d, .08) * STEP;
@@ -1980,7 +1987,7 @@
         if (isHair) {
           const upHair = y > 0 && m[i - width] && mat[i - width] === 2;
           set(i, !upHair && y < sheenRow ? HAIR_HI_RGB : HAIR_RGB, HAIR_A);
-        } else if (isMark) set(i, bust[i] === 99 ? CREASE_RGB : MARK_RGB, BODY_A);
+        } else if (isMark) set(i, bust[i] === 98 ? FAINT_RGB : bust[i] === 99 ? CREASE_RGB : MARK_RGB, BODY_A);
         else {
           const di = hit[i] ? tt[i] : -1e9;
           let near = false;
@@ -2167,7 +2174,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { PARTS, renderParts, renderComposite, POSES, BROW_RGB, BROW_LO_RGB, LIPLO_RGB, LIPLO_LO_RGB, EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { FAINT_RGB, PARTS, renderParts, renderComposite, POSES, BROW_RGB, BROW_LO_RGB, LIPLO_RGB, LIPLO_LO_RGB, EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, CREASE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
