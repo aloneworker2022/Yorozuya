@@ -12,7 +12,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 <div class="pad" id="padL"><span></span><button data-k="KeyW">▲</button><span></span><button data-k="KeyA">◀</button><span></span><button data-k="KeyD">▶</button><span></span><button data-k="KeyS">▼</button><span></span></div>
 <div class="pad" id="padR"><button data-k="KeyQ">⟲</button><button data-k="KeyR">⇡</button><button data-k="KeyE">⟳</button><span></span><button data-k="KeyF">⇣</button><span></span></div></div>
 <div id="hud">W/↑ 前進　S/↓ 後退　A 左移　D 右移　←/→ 或 Q/E 轉向　R/F 抬頭/低頭　點畫面鎖定滑鼠轉頭（上下也可看）　手機：左下方向鍵移動、右下 ⟲⟳ 轉向、⇡⇣ 抬頭低頭（或在畫面上左右/上下滑動）　｜
-姿勢 <select id="po"><option value="walk">走路</option><option value="sit_m">坐地 M 字腿</option><option value="sit_v">坐地 V 字腿</option></select>
+姿勢 <select id="po"><option value="walk">走路</option><option value="stand">站著不動</option><option value="sit_m">坐地 M 字腿</option><option value="sit_v">坐地 V 字腿</option></select>
 體型 <select id="b"><option value="balanced">勻稱</option><option value="slim">纖細</option><option value="petite">嬌小</option><option value="curvy">微肉</option></select>
 胸型 <select id="s"><option value="round">圓形</option><option value="bell">鐘型</option><option value="pendulous">下垂</option></select>
 罩杯 <select id="cu"></select>
@@ -241,7 +241,7 @@ let tX=null,tY=0;cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse
 cv.addEventListener("pointermove",e=>{if(tX!==null){P.a+=(e.clientX-tX)*.008;P.p-=(e.clientY-tY)*.006;clampP();tX=e.clientX;tY=e.clientY}});for(const ev of ["pointerup","pointercancel"])cv.addEventListener(ev,()=>tX=null);
 cv.onclick=e=>matchMedia("(pointer:coarse)").matches||(cv.requestPointerLock&&cv.requestPointerLock());onmousemove=e=>{if(document.pointerLockElement===cv){P.a+=e.movementX*.003;P.p-=e.movementY*.003;clampP()}};
 function tryMove(o,dx,dy,r=.2){if(!wall(o.x+dx+Math.sign(dx)*r,o.y))o.x+=dx;if(!wall(o.x,o.y+dy+Math.sign(dy)*r))o.y+=dy}
-function ai(dt){if(pose()!="walk"){G.moving=false;G.ph=0;return}   // 坐著不走
+function ai(dt){if(pose()!="walk"){G.moving=false;G.ph=0;return}   // 坐著／站著不動（stand）：停在原地，不再走動
  if(G.moving){const dx=G.tx-G.x,dy=G.ty-G.y,d=Math.hypot(dx,dy);if(d<.05){G.moving=false;G.ph=0;G.wait=1+Math.random()*2.5}else{G.h=Math.atan2(dy,dx);const sp=Math.min(d,G_SPEED*dt);const ox=G.x,oy=G.y;tryMove(G,dx/d*sp,dy/d*sp,.25);const moved=Math.hypot(G.x-ox,G.y-oy);if(moved<1e-4)G.moving=false;G.ph=(G.ph+moved/STRIDE*8)%8}}
  else if((G.wait-=dt)<0){for(let i=0;i<20;i++){const x=1.5+Math.random()*(W-3),y=1.5+Math.random()*(H-3);if(!wall(x,y)){G.tx=x;G.ty=y;G.moving=true;break}}}}
 let last=performance.now();
@@ -396,7 +396,7 @@ function render(){const HZl=SH/2+P.p*SH*.8,sw=lookS(),HZ=Math.round(HZl<0?HZl*(1
  const vx=G.x-P.x,vy=G.y-P.y,inv=1/(px*dy-dx*py),tx=inv*(dy*vx-dx*vy),tz=inv*(-py*vx+px*vy);
  let rel=((G.h-Math.atan2(P.y-G.y,P.x-G.x))*180/Math.PI+540)%360-180,best=DIRS[0];
  for(const q of DIRS){const e=Math.abs(((rel-q[0])+540)%360-180);if(e<Math.abs(((rel-best[0])+540)%360-180))best=q}
- const sit=pose()!="walk",fr=sit?SIT_ORD.indexOf(best[1]):G.moving?(G.ph|0)%8:0;let im=sit?sitSheet():sheetFor(best[1]),fw=sit?SFW:FW,fh=sit?SFH:FH;
+ const sit=pose().startsWith("sit"),fr=sit?SIT_ORD.indexOf(best[1]):G.moving?(G.ph|0)%8:0;let im=sit?sitSheet():sheetFor(best[1]),fw=sit?SFW:FW,fh=sit?SFH:FH;
  if(CLOSE&&!sit&&tz<CLOSE_T){const nim=sheetFor(best[1],true);if(nim.complete&&nim.naturalWidth&&!nim.bad){im=nim;fw=CLOSE_W;fh=CLOSE_H}}   // 近景 sheet 還在載入／缺檔 → 先用遠景
  document.getElementById("st").textContent=`妹子：${sit?{sit_m:"坐地 M 字腿",sit_v:"坐地 V 字腿"}[pose()]:G.moving?"走路":"站著"}（${{front:"正面",front_right:"右前",right:"右",back_right:"右後",back:"背面",back_left:"左後",left:"左",front_left:"左前"}[best[1]]}）　距離 ${Math.hypot(vx,vy).toFixed(1)}`;
  if(tz>.15&&im.complete&&im.naturalWidth){const H0=SH/tz*1.15,sc=H0/FH,hgt=sit?SFH*sc:H0,wid=hgt*fw/fh;let cx=SW/2*(1+tx/tz);let top=HZ+SH/tz*EYE-H0+(sit?(126-78)*(HD?2:1)*sc:0);   // 坐姿：同一個每像素比例，地面列對齊走路 sheet 的地面列
