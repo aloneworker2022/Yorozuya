@@ -518,6 +518,17 @@
       for (const s of [-1, 1]) {
         const root = [s * (2.6 + r * .22) * cs + bx * .3, yl(zA) + 2.6 * cs + r * .12 + by * .3, zA + bz * .3];
         const cx = s * (3.2 + r * .3) * cs + bx, cy = yl(zB) + 3.3 * cs + r * .5 + by;
+        if (doll._press) {
+          // 2026-11-03 趴跪翹臀（ass_up）：乳房壓在地上——往前（局部 +y＝地板方向）壓扁、往兩側和上下擠開，地板把貼地那面切平；
+          // 外側再擠出一團肉（從背後、斜後方看，兩側腋下露出來）
+          const q = doll._press, ry = r * (.95 - .42 * q);
+          const c = [s * (3.0 + r * .4) * cs, yl(zB) + 3.0 * cs + r * .36, zB + r * .1], R = [r * (1.05 + .32 * q), ry, r * (1.0 + .24 * q)];
+          sh.ell(BODY, c, R);
+          sh.cone(BODY, root, c, r * .5, r * .8);
+          sh.ell(BODY, [c[0] + s * r * (.8 + .35 * q), c[1] - r * .05, c[2] - r * .05], [r * (.6 + .25 * q), r * .62, r * .9]);
+          nipAt([c[0], c[1] + ry * .97, c[2]], [0, 1, 0], { c, r: R });
+          sh._pressFront = [0, c[1] + ry, c[2]]; sh._pressRy = ry;
+        } else
         if (doll.braSupport) {
           // 2026-10-30 pt78u：穿胸罩＝托高＋往中間集中＋往前挺。不管原本圓／鐘／下垂，都收成被罩杯撐住的圓挺形（下垂型變化最大）
           const zS = zB + 1.4 + r * .3 + bz * .3, c = [s * (2.5 + r * .26) * cs + bx * .35, yl(zS) + 3.5 * cs + r * .62 + by * .4, zS];
@@ -1171,6 +1182,7 @@
       sleep_curl: { frames: 2, fps: .35, canvas: 'wide' }, sit_curl: { frames: 2, fps: .45 },
       squat_down: { frames: 16, fps: 8 },   // 2026-11-01 站著→蹲下→站起來（使用者：站著然後蹲下這個動作）
       sit_m: { frames: 1, fps: 0, canvas: 'floor' }, sit_v: { frames: 1, fps: 0, canvas: 'floor' },   // 2026-10-31：坐地 M 字腿／V 字腿（先靜態）
+      ass_up: { frames: 1, fps: 0, canvas: 'floor' },   // 2026-11-03 趴跪翹臀（胸貼地、膝跪地、臀翹高；先靜態樣品）
       // 接客偷看（2026-10-10）：側面正交投影、10 格一個抽送循環（慢慢退出→猛地頂進）
       sex_missionary: { frames: 30, fps: 9, canvas: 'peek' }, sex_cowgirl: { frames: 30, fps: 12, canvas: 'peek' },
       sex_doggy: { frames: 30, fps: 12, canvas: 'peek' }, sex_kiss: { frames: 30, fps: 12, canvas: 'peek' },
@@ -1377,6 +1389,48 @@
         }
         if (doll.skirt) sh.ell(BODY, [0, 2, hz + 1.5], [9.2 * F(b, 'hip') * 1.1, 8, 3]);
         hair(sh, P, doll, tor);
+        return { sh, P };
+      }
+      if (pose === 'ass_up') {   // 2026-11-03 趴跪翹臀（使用者：趴著、臀部翹起來；看點＝乳房在地上被壓軟、臀部和腰背的線條）
+        // 做法：軀幹（不含頭）先在站立座標建好、背部線條也貼好 → 每個零件依高度轉不同角度（胸口往後仰、骨盆前傾＝塌腰）
+        // → 整體往前趴（二分法找前傾角，讓壓扁的乳房剛好貼地）；腳、手、頭在世界座標另外擺。
+        sh.floor = true;
+        const g = opts.assUp || {}, A_CH = g.chest ?? 34, A_PEL = g.pelvis ?? -14;   // 度：胸口後仰／骨盆前傾（塌腰）
+        const i0 = sh.prims.length;
+        const tor = torso(sh, P, { ...doll, _press: g.press ?? 1 }, 0, 0, 0, [0, 0, 0, 0], true);
+        if (FOOT_HD) hdBackLines(sh, P, tor);
+        if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);   // 下身也在站立座標貼好，再跟著骨盆轉
+        const piv = [0, tor.yl(tor.zW), tor.zW], sm = u => u * u * (3 - 2 * u);
+        const angAt = z => A_PEL + (A_CH - A_PEL) * sm(Math.max(0, Math.min(1, (z - (tor.zW - 7)) / 14)));
+        const bendXf = z => about(rotX(angAt(z)), piv);
+        // 整體前傾角 BETA 固定（胸口那段接近水平貼地）；平移：髖在 x＝y＝0、壓扁的乳房前緣剛好壓進地板一點 → 髖的高度由此決定。
+        // 這個模型腿長、軀幹短：膝蓋在髖正下方的話胸口碰不到地 → 膝蓋往前一點、其餘用左右打開吸收（真人這個姿勢也常把膝蓋打開）。
+        const BETA = g.beta ?? 45, R0 = { R: rotX(-(90 + BETA)), t: [0, 0, 0] };
+        const pf = sh._pressFront || [0, tor.yl(tor.zB) + 6, tor.zB], target = -(sh._pressRy || 2) * (g.sink ?? .32);
+        const hw = toWorld(compose(R0, bendXf(P.hipz)), [0, 0, P.hipz]), fw = toWorld(compose(R0, bendXf(pf[2])), pf);
+        const BODYX = { R: R0.R, t: [-hw[0], -hw[1], target - fw[2]] };
+        sh._assUp = { BETA, hz: target - fw[2] + hw[2] };
+        for (let i = i0; i < sh.prims.length; i++) { const p = sh.prims[i]; p.xf = compose(BODYX, bendXf(p.bc[2] + p.off[2])); }
+        const CH = compose(BODYX, bendXf(tor.S)), PEL = compose(BODYX, bendXf(tor.C - 4));
+        sh.xf = null;
+        const Lu = P.H * .16, Lf = P.H * .14;
+        for (const s of [-1, 1]) {   // 膝蓋跪地往兩邊分開一點，小腿平貼地往後，腳背貼地、腳底朝上
+          const hip = toWorld(PEL, [s * hip_x, 0, P.hipz]), kz = 2.0, dy = g.kneeFwd ?? 4;
+          const dx = Math.sqrt(Math.max(4, Lt * Lt - dy * dy - (hip[2] - kz) ** 2));   // 膝蓋往兩邊打開多少：剛好用完大腿長
+          const knee = [hip[0] + s * dx, hip[1] + dy, kz], ankle = [s * hip_x * 1.25, knee[1] - Ls * .97, 1.35];
+          leg(sh, P, s, hip, knee, ankle, [0, -1, -.12]);
+        }
+        for (const s of [-1, 1]) {   // 前臂平放在頭兩側地上
+          const sj = toWorld(CH, [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) - .4, tor.S - SHJ_DZ]);
+          const eW = [sj[0] + s * 4.5, sj[1] + Lu * .35, 1.7], wW = [s * 4.2, eW[1] + Lf * .92, 1.3];
+          arm(sh, P, sj, eW, wW);
+        }
+        // 頭：側臉貼地（臉朝 +x），脖子往後仰一點
+        const neck = [0, tor.yl(tor.S), tor.S + 1.5], headR = mulR(rotX(g.headUp ?? 48), rotZ(g.headTurn ?? 80));
+        sh.xf = compose(CH, about(headR, neck));
+        headPart(sh, P, tor.yl, tor.zc, doll);
+        hair(sh, P, doll, tor, 0, mulT(mulR(CH.R, headR), [0, 0, -1]));
+        sh.xf = null; sh.floor = false;
         return { sh, P };
       }
       if (pose === 'sit_m' || pose === 'sit_v') {   // 2026-10-31：坐在地上、雙腿打開；上身微微往後靠，兩手撐在身後地上
@@ -2068,7 +2122,7 @@
       return { width, height, anchor: { x: ax * K, y: ay * K }, pixels, depth };
     }
     // 2026-11-01 拆圖層樣品：各部位分開算原始資料，每格取最近（tt 最大）的那個，再統一上色。union of SDF＝每格最近的表面，所以結果應與整張一起算相同。
-    const PARTS = ['head', 'chest', 'waist', 'hips', 'torso', 'breast', 'armL', 'armR', 'legs'];   // 2026-11-03 torso 只剩各姿勢另加的小零件（手掌墊、手機…）
+    const PARTS = ['head', 'chest', 'waist', 'hips', 'torso', 'breast', 'armL', 'armR', 'legs', 'over'];   // 2026-11-03 torso 只剩各姿勢另加的小零件（手掌墊、手機…）
     function renderParts(doll, pose, frame, yaw, opts = {}) {
       const bufs = {}; for (const pt of PARTS) bufs[pt] = render(doll, pose, frame, yaw, { ...opts, parts: [pt], gbuf: true });
       return { bufs, composite: renderComposite(doll, pose, frame, yaw, opts, bufs) };
