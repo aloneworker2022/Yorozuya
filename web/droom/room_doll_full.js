@@ -106,7 +106,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!sh.bust; p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; p.part = sh.bust || sh.nip ? 'breast' : sh.cloth ? 'over' : (sh.part || 'torso'); prims.push(p); };   // 2026-11-01 部位：head／chest／waist／hips／torso／breast／armL／armR／legs（拆圖層用；2026-11-03 軀幹再拆三塊；衣服／下身／臉部標記等 cloth 零件＝over）
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!(sh.bust || sh.buttEdge); p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; p.part = sh.bust || sh.nip ? 'breast' : sh.cloth ? 'over' : (sh.part || 'torso'); prims.push(p); };   // 2026-11-01 部位：head／chest／waist／hips／torso／breast／armL／armR／legs（拆圖層用；2026-11-03 軀幹再拆三塊；衣服／下身／臉部標記等 cloth 零件＝over）
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -368,23 +368,23 @@
       for (const [x, z] of pts2) { const y = backSurfaceY(sh, x, z); if (y !== null) pts.push([x, y + r - depth, z]); }
       for (let i = 0; i + 1 < pts.length; i++) sh.cone(MARK, pts[i], pts[i + 1], r, r);
     }
-    function hdBackLines(sh, P, tor) {
+    function hdBackLines(sh, P, tor, mask = 63) {   // mask：1 脊椎溝 2 臀溝 4 腰窩 8 臀下摺 16 側背→腰→臀 32 肩胛→背闊
       const b = P.b, { S, C, T, zW } = tor, bb = F(b, 'butt'), hx = F(b, 'hip'), wx = F(b, 'waist');
       const lin = (a, z, n) => Array.from({ length: n }, (_, i) => a + (z - a) * i / (n - 1));
       const zt = C + .09 * T + 1.1 * b.perk;                       // 臀峰高度
-      {   // 脊椎溝（2026-11-03 使用者：不要那麼粗，微微的一條 1px，中間斷掉若隱若現）→ 淡線色、細、分段（固定的斷點，每格一樣不閃）
+      if (mask & 1) {   // 脊椎溝（2026-11-03 使用者：不要那麼粗，微微的一條 1px，中間斷掉若隱若現）→ 淡線色、細、分段（固定的斷點，每格一樣不閃）
         const zs = lin(S - 4, zt + 3.2 * bb, 22), on = [1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1];
         sh.crease = 2;
         for (let i = 0; i < zs.length;) { if (!on[i]) { i++; continue; } let j = i; while (j + 1 < zs.length && on[j + 1]) j++; if (j > i) backMarks(sh, zs.slice(i, j + 1).map(z => [0, z]), .26, .26); i = j + 1; }
         sh.crease = 0;
       }
-      backMarks(sh, lin(zt + 2.6 * bb, C - 1.2, 5).map(z => [0, z]), .45, .5);        // 臀溝
+      if (mask & 2) backMarks(sh, lin(zt + 2.6 * bb, C - 1.2, 5).map(z => [0, z]), .45, .5);        // 臀溝
       for (const s of [-1, 1]) {
-        backMarks(sh, [[s * 2.2 * hx, zt + 3.4 * bb], [s * 2.6 * hx, zt + 3.0 * bb]], .4, .5);   // 腰窩
+        if (mask & 4) backMarks(sh, [[s * 2.2 * hx, zt + 3.4 * bb], [s * 2.6 * hx, zt + 3.0 * bb]], .4, .5);   // 腰窩
         const cx = s * 3.7 * hx, zb = zt - 3.9 * bb;                 // 臀下摺（弧線）
-        backMarks(sh, [[s * .6, zb + 1.2], [cx - s * 1.6 * bb, zb - .1], [cx + s * .6 * bb, zb - .2], [cx + s * 2.8 * bb, zb + .9]]);
-        backMarks(sh, [[s * 5.2 * wx, zW + 4], [s * 5.6 * wx, zW], [s * 6.6 * hx, zW - 4.5]], .3, .38);  // 側背→腰→臀的弧
-        backMarks(sh, [[s * 3.6 * F(b, 'sh'), S - 3.5], [s * 4.8 * F(b, 'sh'), S - 8], [s * 4.4 * wx, zW + 5]], .25, .36);  // 肩胛→背闊
+        if (mask & 8) backMarks(sh, [[s * .6, zb + 1.2], [cx - s * 1.6 * bb, zb - .1], [cx + s * .6 * bb, zb - .2], [cx + s * 2.8 * bb, zb + .9]]);
+        if (mask & 16) backMarks(sh, [[s * 5.2 * wx, zW + 4], [s * 5.6 * wx, zW], [s * 6.6 * hx, zW - 4.5]], .3, .38);  // 側背→腰→臀的弧
+        if (mask & 32) backMarks(sh, [[s * 3.6 * F(b, 'sh'), S - 3.5], [s * 4.8 * F(b, 'sh'), S - 8], [s * 4.4 * wx, zW + 5]], .25, .36);  // 肩胛→背闊
       }
     }
     function r0(P, doll) { return cupRadius(P, doll); }
@@ -517,9 +517,11 @@
         const bb = F(b, 'butt') * (doll._butt || 1), lift = 1.2 * b.muscle + 1.1 * b.perk, q = jig ? jig.sq : 0;
         // jig（偷看，2026-10-15）：被撞時臀肉往撞的方向推、前後壓扁、上下左右鼓出，再彈回來晃
         const [jx, jy, jz] = jig ? jig.d : [0, 0, 0];
+        sh.buttEdge = !!doll._buttLines;   // 2026-11-03 趴跪翹臀：臀肉也描乳房那種邊線（臀肉跟大腿／腰交界的弧），部位仍是 hips
         sh.ell(BODY, [s * 3.7 * F(b, 'hip') + jx, yl(C + .09 * T) - 2.7 - .4 * (bb - 1) - .6 * b.perk + jy, C + .09 * T + lift + jz],
           [4.5 * bb * (1 + .45 * q), 4.2 * bb * (1 - q), 4.6 * bb * (1 + .35 * q)]);
       }
+      sh.buttEdge = false;
       if (jig && jig.thigh) for (const s of [-1, 1]) {
         const q = jig.sq;   // 大腿根的肉跟著晃（晚一點、小一點）
         const [tx, ty, tz] = jig.thigh;
@@ -1427,10 +1429,19 @@
         //   腳也換算回站立座標建（之後跟骨盆一起轉），所以下身（陰唇、陰毛）能像站姿一樣沿著有大腿的身體表面貼。
         sh.floor = true;
         // v3（使用者：臀肉要出來；腰微微下凹；大腿微微往兩側開，陰唇朝後）：腰背分三段——骨盆（在下腰轉）、腰（基準）、胸口（在上腰轉）
-        const g = opts.assUp || {}, A_CH = g.chest ?? 22, A_PEL = g.pelvis ?? 55;   // 度：A_PEL 骨盆轉到臀部的面朝上偏後；A_CH 胸口往回仰（比腰平＝微凹）
+        const g = opts.assUp || {}, A_CH = g.chest ?? 56, A_PEL = g.pelvis ?? 70;   // 度：A_PEL 骨盆轉到臀部的面朝上偏後；A_CH 胸口往回仰（比腰平＝微凹）
         const i0 = sh.prims.length;
-        const tor = torso(sh, P, { ...doll, _noBust: true, _butt: g.butt ?? 1.12 }, 0, 0, 0, [0, 0, 0, 0], true);
-        if (FOOT_HD) hdBackLines(sh, P, tor);
+        const tor = torso(sh, P, { ...doll, _noBust: true, _butt: g.butt ?? 1.25, _buttLines: true }, 0, 0, 0, [0, 0, 0, 0], true);
+        if (FOOT_HD) {
+          hdBackLines(sh, P, tor, g.backLines ?? (63 & ~8));   // 站姿的臀下摺在這個姿勢會被拉成一條橫線 → 不用
+          // 臀下緣：沿每片臀肉的下半圈畫 U 形弧（從背後看是兩個圓臀的下緣，接到大腿）
+          const bb2 = F(b, 'butt') * (g.butt ?? 1.25), zc2 = tor.C + .09 * tor.T + 1.1 * b.perk, rx = 4.5 * bb2 * .9, rz = 4.6 * bb2 * .88;
+          for (const s of [-1, 1]) {
+            const cx = s * 3.7 * F(b, 'hip'), pts = [];
+            for (let k = 0; k <= 8; k++) { const a = (200 + 140 * k / 8) * Math.PI / 180; pts.push([cx + s * rx * Math.cos(a) * (s > 0 ? 1 : -1) * s, zc2 + rz * Math.sin(a)]); }
+            backMarks(sh, pts, .3, .42);
+          }
+        }
         // v4（使用者：胸後背要是一條完美的弧線，不要鼓起來）：沿脊椎連續彎——每個高度 z 的轉角 θ(z) 平滑變化，
         // 位置沿著彎過的脊椎積分（c(z)＝∫R(θ)·ẑ），所以沒有分段硬轉的折角：
         //   骨盆（z≤zP）整塊轉 A_PEL（臀部的面朝上偏後）→ 下腰平滑轉回 0（微微下凹）→ 腰到肩膀角度均勻漸變到 A_CH（一條順的弧）
@@ -1445,7 +1456,8 @@
           for (let k = iw - 1; k >= 0; k--) { const d = step(SPZ[k] + dz0 / 2, -1); SPC[k] = SPC[k + 1].map((v, i) => v + d[i]); } }
         const spineAt = z => { const u = Math.max(0, Math.min(SPZ.length - 1.001, (z - z0s) / dz0)), k = Math.floor(u), f = u - k; return SPC[k].map((v, i) => v + (SPC[k + 1][i] - v) * f); };
         const bendXf = z => { const R = rotX(th(z)), c = spineAt(z), q = mulV(R, [0, tor.yl(z), z]); return { R, t: [c[0] - q[0], c[1] - q[1], c[2] - q[2]] }; };
-        const TH = (g.thighAng ?? 4) * Math.PI / 180, hzT = Lt * Math.cos(TH) + 2.0;   // 髖高：大腿幾乎垂直（往前 TH）＋膝蓋厚度
+        // 髖高：大腿往前 TH、往兩側打開 KNEE（膝蓋離髖的橫向距離＝hip_x×KNEE）時，剛好用完大腿長＋膝蓋厚度（打越開髖越低）
+        const TH = (g.thighAng ?? 4) * Math.PI / 180, KNEE = g.knee ?? 2.0, hzT = Math.sqrt(Math.max(4, Lt * Lt - (hip_x * KNEE) ** 2 - (Lt * Math.sin(TH)) ** 2)) + 2.0;
         const placeAt = (beta) => { const R0 = { R: rotX(-(90 + beta)), t: [0, 0, 0] }, hw = toWorld(compose(R0, bendXf(P.hipz)), [0, 0, P.hipz]); return { R: R0.R, t: [-hw[0], -hw[1], hzT - hw[2]] }; };
         const shL = [0, tor.yl(tor.S) - .4, tor.S - SHJ_DZ], shZ = g.shoulderZ ?? 12;   // 肩關節離地高度（胸口壓地、頭枕在手臂上，肩膀不貼地）
         let lo = -10, hi = 80;
@@ -1465,7 +1477,7 @@
         for (let i = i0; i < sh.prims.length; i++) { const p = sh.prims[i]; p.xf = compose(BODYX, bendXf(p.bc[2] + p.off[2])); }
         sh.xf = null;
         for (const s of [-1, 1]) {   // 腳（世界座標）：膝蓋在髖正下方略往外，小腿平貼地往後，腳背貼地
-          const hip = toWorld(PEL, [s * hip_x, 0, P.hipz]), kz = 2.0, dx = s * hip_x * (g.knee ?? 1.0);   // 大腿微微往兩側開（不是平行的 11）
+          const hip = toWorld(PEL, [s * hip_x, 0, P.hipz]), kz = 2.0, dx = s * hip_x * KNEE;   // 雙腿往兩側打開
           const dy = Math.sqrt(Math.max(1, Lt * Lt - dx * dx - (hip[2] - kz) ** 2)) * Math.sign(g.thighAng ?? 4);
           const knee = [hip[0] + dx, hip[1] + dy, kz], ankle = [knee[0] - s * .6, knee[1] - Ls * .97, 1.35];
           leg(sh, P, s, hip, knee, ankle, [0, -1, -.12]);
