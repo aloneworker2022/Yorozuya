@@ -1429,7 +1429,7 @@
         //   腳也換算回站立座標建（之後跟骨盆一起轉），所以下身（陰唇、陰毛）能像站姿一樣沿著有大腿的身體表面貼。
         sh.floor = true;
         // v3（使用者：臀肉要出來；腰微微下凹；大腿微微往兩側開，陰唇朝後）：腰背分三段——骨盆（在下腰轉）、腰（基準）、胸口（在上腰轉）
-        const g = opts.assUp || {}, A_CH = g.chest ?? 56, A_PEL = g.pelvis ?? 70;   // 度：A_PEL 骨盆轉到臀部的面朝上偏後；A_CH 胸口往回仰（比腰平＝微凹）
+        const g = opts.assUp || {}, A_CH = g.chest ?? 56, A_PEL = g.pelvis ?? 95;   // 度：A_PEL 骨盆轉到臀部的面朝上偏後；A_CH 胸口往回仰（比腰平＝微凹）
         const i0 = sh.prims.length;
         const tor = torso(sh, P, { ...doll, _noBust: true, _butt: g.butt ?? 1.25, _buttLines: true }, 0, 0, 0, [0, 0, 0, 0], true);
         if (FOOT_HD) {
@@ -1439,7 +1439,7 @@
           for (const s of [-1, 1]) {
             const cx = s * 3.7 * F(b, 'hip'), pts = [];
             for (let k = 0; k <= 8; k++) { const a = (200 + 140 * k / 8) * Math.PI / 180; pts.push([cx + s * rx * Math.cos(a) * (s > 0 ? 1 : -1) * s, zc2 + rz * Math.sin(a)]); }
-            backMarks(sh, pts, .3, .42);
+            if (g.foldArc) backMarks(sh, pts, .3, .42);   // 2026-11-03 使用者：這條線不對 → 預設不畫（靠臀肉描邊）
           }
         }
         // v4（使用者：胸後背要是一條完美的弧線，不要鼓起來）：沿脊椎連續彎——每個高度 z 的轉角 θ(z) 平滑變化，
