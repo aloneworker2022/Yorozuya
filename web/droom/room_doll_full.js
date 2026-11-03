@@ -782,6 +782,27 @@
     // 跟布一樣是「部位標記色」圖層：陰毛 PUBIC_RGB（前端換成髮色）、陰唇 LABIA_RGB、蕾絲 LACE_RGB／LACE_LO_RGB、褲頭 BAND_RGB。
     const PUBICS = ['strip', 'triangle'], LABIAS = ['line', 'butterfly', 'line_open', 'butterfly_open'], PANTS = ['lace_thong'];   // 2026-10-31：*_open＝打開（露出紅色內裡＋深紅小口）
     const PUBIC_RGB = [255, 0, 255], LABIA_RGB = [255, 255, 0], LACE_RGB = [0, 255, 255], LACE_LO_RGB = [0, 170, 170], BAND_RGB = [255, 128, 0], OPEN_RGB = [255, 0, 0], HOLE_RGB = [128, 0, 0], PUBIC_EDGE_RGB = [192, 0, 192];   // 打開：內裡 #F00、小口 #800000
+    /** 2026-11-03 趴跪翹臀：陰唇在世界座標從正後方（−y 往 +y）打射線貼在胯下最後面的表面，正對後方。
+     *  (x, z) 照站姿 groin 的參數：z 從 C 往上＝往陰蒂那端，這裡對應世界往下（趴著時陰蒂在下、肛門在上）。zv＝胯下中心的世界高度。 */
+    function labiaBack(sh, doll, C, zv) {
+      const wz = z => zv - (z - C), surf = (x, z) => { for (let k = 0; k < 500; k++) { const y = -40 + k * .1; if (bodyDist(sh, x, y, wz(z)) < 0) return y; } return null; };
+      const patch = (x, z, r, d) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y - d, wz(z)], [r, .35, r]); };
+      const flat = (x, z, r, d) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y - d, wz(z)], [r, .2, r]); };
+      const lab = String(doll.labia || ''), lOpen = lab.endsWith('_open'), lStyle = lab.replace('_open', '');
+      if (lStyle !== 'line' && lStyle !== 'butterfly') return;
+      if (!lOpen) {
+        sh.cloth = 6;
+        for (let z = C + 2.8; z >= C - .4; z -= .4) patch(0, z, .38, .35);
+        if (lStyle === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.6; z >= C - .2; z -= .45) patch(sx * .55, z, .55, .45);
+      } else {
+        const zt = C + 3.4, zb = C + .1, W = lStyle === 'butterfly' ? .95 : .8, hwAt = z => { const u = Math.min(1, Math.max(0, (zt - z) / (zt - zb))); return W * Math.sin(Math.PI * u ** 1.25) ** .7; };
+        { const zc = (zt + zb) / 2 - .2, ys = surf(0, zc); if (ys !== null) { sh.carve = 1; sh.ell(BODY, [0, ys + .35, wz(zc)], [W * .95, 1.6, (zt - zb) / 2]); sh.carve = 0; } }   // 往前（+y）挖
+        sh.cloth = 6;
+        for (let z = zt; z >= zb - 1e-6; z -= .3) { const hw = hwAt(z); for (const sx of [-1, 1]) flat(sx * (hw + .12), z, .3, .16); }
+        if (lStyle === 'butterfly') for (const sx of [-1, 1]) for (let z = C + 1.7; z >= C - .1; z -= .4) { const hw = hwAt(z); flat(sx * (hw + .55), z, .5, .16); }
+      }
+      sh.cloth = 0;
+    }
     function groin(sh, P, doll, tor) {
       const C = tor.C, surf = (x, z, back = false) => { for (let k = 0; k < 300; k++) { const y = back ? -20 + k * .1 : 20 - k * .1; if (bodyDist(sh, x, y, z) < 0) return y; } return null; };
       const patch = (x, z, r, d = .25) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .35, r]); };
@@ -1471,17 +1492,19 @@
           const t0 = sh.prims.length;
           for (const s of [-1, 1]) leg(sh, P, s, [s * hip_x, 0, P.hipz], [s * kx(), .4, P.knee], [s * 3.0, -.2, P.ankle], [s * .3, .95, 0]);
           const t1 = sh.prims.length;
-          groin(sh, P, doll, tor);
+          groin(sh, P, { ...doll, labia: null }, tor);   // 陰毛／丁字褲照站姿貼；陰唇擺好姿勢後從正後方貼（labiaBack）
           sh.prims.splice(t0, t1 - t0);
         }
         for (let i = i0; i < sh.prims.length; i++) { const p = sh.prims[i]; p.xf = compose(BODYX, bendXf(p.bc[2] + p.off[2])); }
         sh.xf = null;
+        const crW = toWorld(compose(BODYX, bendXf(tor.C)), [0, tor.yl(tor.C) + .5, tor.C + .6]);   // 胯下中心（世界）
         for (const s of [-1, 1]) {   // 腳（世界座標）：膝蓋在髖正下方略往外，小腿平貼地往後，腳背貼地
           const hip = toWorld(PEL, [s * hip_x, 0, P.hipz]), kz = 2.0, dx = s * hip_x * KNEE;   // 雙腿往兩側打開
           const dy = Math.sqrt(Math.max(1, Lt * Lt - dx * dx - (hip[2] - kz) ** 2)) * Math.sign(g.thighAng ?? 4);
           const knee = [hip[0] + dx, hip[1] + dy, kz], ankle = [knee[0] - s * .6, knee[1] - Ls * .97, 1.35];
           leg(sh, P, s, hip, knee, ankle, [0, -1, -.12]);
         }
+        if (doll.labia) labiaBack(sh, doll, tor.C, crW[2] + (g.vulvaZ ?? 0));   // 陰唇：從正後方貼（腳建好之後，表面才對）
         // 乳房（世界座標）：從胸口的乳根往下垂到地板，壓扁成貼地的軟團、往兩側擠；地板切平
         {
           const r = cupRadius(P, doll), cs = F(b, 'chest') ** .5, zA = tor.S - .16 * tor.T, q = g.press ?? 1;
