@@ -11,6 +11,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 <div id="wrap"><canvas id="c" width="320" height="240"></canvas><canvas id="cz" width="640" height="480" style="position:absolute;left:0;top:0;pointer-events:none;background:transparent"></canvas>
 <div class="pad" id="padL"><span></span><button data-k="KeyW">▲</button><span></span><button data-k="KeyA">◀</button><span></span><button data-k="KeyD">▶</button><span></span><button data-k="KeyS">▼</button><span></span></div>
 <div class="pad" id="padR"><button data-k="KeyQ">⟲</button><button data-k="KeyR">⇡</button><button data-k="KeyE">⟳</button><span></span><button data-k="KeyF">⇣</button><span></span></div></div>
+<div id="lookbar" style="width:min(96vw,960px);display:flex;align-items:center;gap:8px;padding:6px 0;box-sizing:border-box"><span>抬頭</span><input type="range" id="lk" min="-1.3" max="1.875" step="0.005" value="0" style="flex:1;min-width:0"><span>低頭</span><button id="meet">走到她面前</button></div>
 <div id="hud">W/↑ 前進　S/↓ 後退　A 左移　D 右移　←/→ 或 Q/E 轉向　R/F 抬頭/低頭　點畫面鎖定滑鼠轉頭（上下也可看）　手機：左下方向鍵移動、右下 ⟲⟳ 轉向、⇡⇣ 抬頭低頭（或在畫面上左右/上下滑動）　｜
 姿勢 <select id="po"><option value="walk">走路</option><option value="stand">站著不動</option><option value="sit_m">坐地 M 字腿</option><option value="sit_v">坐地 V 字腿</option></select>
 體型 <select id="b"><option value="balanced">勻稱</option><option value="slim">纖細</option><option value="petite">嬌小</option><option value="curvy">微肉</option></select>
@@ -75,7 +76,7 @@ function sitSheet(){const po=pose(),v=i=>document.getElementById(i).value,q=["b"
    if(bk)over(x,bk,nb);if(fr)over(x,fr,nb);if(fr)over(x,fr,isB);if(bk)over(x,bk,isB);
    cache[ck]=skinTint(c,HAIR_PAL[v("hc")],NIP_PAL[v("nc")],[],null,v("cw"),gl.map(im=>clothData(im,c.width,c.height)),v("lc"),[clothData(fc,c.width,c.height),v("bf"),clothData(nz,c.width,c.height),f=>(SIT_ORD[f]=="left"||SIT_ORD[f]=="right")?0:SIT_ORD[f].includes("left")?-1:1,clothData(mz,c.width,c.height),f=>[SIT_ORD[f].includes("left")?-1:1,SIT_ORD[f]=="left"||SIT_ORD[f]=="right"],[v("mo"),v("lpc")],clothData(ez,c.width,c.height),v("ey"),v("ec"),clothData(bz,c.width,c.height),v("bw")])})}return cache[ck]}
 // 2026-11-03 近景：距離 < CLOSE_T 格改用 sheets_close/（render_close.cjs，透視攝影機在她前方 CLOSE_D0 格、玩家眼睛高；每格 240×480，第 CLOSE_CY 列＝玩家眼睛高）。缺檔＝照舊用遠景 sheet。樣品階段 ?close=1 才開（目前只出了 勻稱・圓形・D・中乳暈・波浪後髮・長髮分兩邊・餐巾布鈴鐺・尖鼻・閉嘴・自然眉）
-const CLOSE=new URLSearchParams(location.search).has("close"),CLOSE_SD="/droom/sheets_close/",CLOSE_T=.85,CLOSE_D0=.6,CLOSE_W=240,CLOSE_H=480,CLOSE_CY=20;
+let CLOSE=new URLSearchParams(location.search).has("close"),CLOSE_SD="/droom/sheets_close/",CLOSE_T=.85,CLOSE_D0=.6,CLOSE_W=240,CLOSE_H=480,CLOSE_CY=20;
 // 2026-11-03 面對面（使用者：碰撞點再靠近＝只看到肩膀以上、解析度變高；低頭到某個角度換下一張，像左右轉換方向一樣）：
 //   sheets_f2f/p0/（render_close.cjs FACE=1）：0.4 格、2 倍解析度、平視一張（站姿 1 格，先只有正面）。
 //   距離 < F2F_T、她停著、正面 → 畫在疊在上面的 #cz（640×480＝畫布 F2F_K＝2 倍；使用者：解析度調低一點，原本 3 倍）。
@@ -424,6 +425,14 @@ function render(){const HZl=SH/2+P.p*SH*.8,sw=lookS(),HZ=Math.round(HZl<0&&!F2F_
   else for(let x=Math.max(0,cx-wid/2|0);x<Math.min(SW,cx+wid/2);x++){if(zb[x]<tz)continue;const sxp=fr*fw+((x-(cx-wid/2))/wid*fw|0);g.drawImage(im,sxp,0,1,fh,x,top,1,hgt)}}
  drawSelfRef(keys.KeyW||keys.KeyS||keys.ArrowUp||keys.ArrowDown||keys.KeyA||keys.KeyD)}
 requestAnimationFrame(frame);
+// 2026-11-04 使用者：畫面下面一條拉桿，靠近的人可以上下拉看全身。拉桿＝視線上下（左抬頭、右低頭，值＝−P.p）；「走到她面前」＝開近景、她站著不動、玩家放在她正面 0.4 格平視。
+(function(){const lk=document.getElementById("lk");let drag=false;
+ lk.addEventListener("input",()=>{P.p=-(+lk.value);clampP()});
+ lk.addEventListener("pointerdown",()=>drag=true);for(const ev of ["pointerup","pointercancel","change"])lk.addEventListener(ev,()=>drag=false);
+ (function sync(){if(!drag&&Math.abs(+lk.value+P.p)>.004)lk.value=-P.p;requestAnimationFrame(sync)})();
+ document.getElementById("meet").addEventListener("click",()=>{CLOSE=true;const po=document.getElementById("po");po.value="stand";po.dispatchEvent(new Event("change"));G.moving=false;G.tx=G.x;G.ty=G.y;
+  let best=null;for(let i=0;i<16;i++){const a=G.h+(i%2?1:-1)*Math.ceil(i/2)*Math.PI/8,x=G.x+Math.cos(a)*.4,y=G.y+Math.sin(a)*.4;if(!wall(x,y)&&!wall(G.x+Math.cos(a)*.6,G.y+Math.sin(a)*.6)){best=a;break}}
+  if(best==null)best=G.h;G.h=best;P.x=G.x+Math.cos(best)*.4;P.y=G.y+Math.sin(best)*.4;P.a=best+Math.PI;P.p=0})})();
 // 2026-10-30 pt77u：胸罩→配色只留 黑／白／紅、藏配重；白色 T恤→藏配色和配重
 (function(){const cl=document.getElementById("cl"),cs=document.getElementById("cs"),cw=document.getElementById("cw"),L={pink:"粉紅布金邊",black:"黑布白邊",white:"白布紅邊",red:"紅"},B={black:"黑",white:"白",red:"紅"};
  function sync(){const v=cl.value,br=v=="bra";for(const o of cs.options){o.hidden=br?!(o.value in B):o.value=="red";o.textContent=br?(B[o.value]||L[o.value]):L[o.value]}
