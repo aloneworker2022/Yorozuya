@@ -34,32 +34,37 @@
     padding: calc(14px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
   }
   .row {
-    display: flex; gap: .5em; align-items: stretch;
+    display: grid; grid-template-columns: 1fr 1fr; gap: .7em;
     background: var(--panel);
     padding: .7em;
     border-radius: 14px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
   }
+  #q, #mic { aspect-ratio: 1; width: 100%; min-width: 0; border-radius: 14px; }
   #q {
-    flex: 1; min-width: 0;
     background: color-mix(in srgb, var(--text) 8%, transparent);
-    border: none; border-radius: 10px;
+    border: none;
     color: var(--text);
     font: inherit;
     padding: .85em .9em;
-    outline: none;
+    outline: none; resize: none;
   }
   #q::placeholder { color: var(--dim); }
-  #go {
-    display: inline-flex; align-items: center; justify-content: center;
-    flex: 0 0 2.9em; width: 2.9em;
-    border: none; border-radius: 10px;
-    background: rgba(111, 227, 225, .22);
-    color: var(--cyan);
-    cursor: pointer;
+  #q:disabled { opacity: .5; }
+  #mic {
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(157, 243, 255, .2);
+    background: rgba(157, 243, 255, .1);
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
   }
-  #go:disabled { opacity: .4; cursor: default; }
-  #go svg { width: 1.35em; height: 1.35em; display: block; }
+  #mic:active { background: rgba(90, 58, 28, .35); }
+  #mic .dot {
+    width: 36%; aspect-ratio: 1; border-radius: 50%;
+    background: #ff3b4f; box-shadow: 0 0 0 0 rgba(255, 59, 79, .5);
+  }
+  #mic.on { border-color: rgba(255, 77, 94, .6); }
+  #mic.on .dot { animation: rec 1.1s ease-out infinite; }
+  @keyframes rec { 0% { box-shadow: 0 0 0 0 rgba(255, 59, 79, .55); } 100% { box-shadow: 0 0 0 1.1em rgba(255, 59, 79, 0); } }
   #st {
     margin: .7em .2em 0;
     min-height: 1.3em;
@@ -68,22 +73,6 @@
   }
   #st.ok { color: var(--ok); }
   #st.bad { color: var(--bad); }
-  #mic {
-    display: flex; align-items: center; justify-content: center;
-    width: 7.5em; height: 7.5em; margin: 1em auto 0;
-    border: 1px solid rgba(157, 243, 255, .2); border-radius: 18px;
-    background: var(--panel);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
-    cursor: pointer; -webkit-tap-highlight-color: transparent;
-  }
-  #mic:active { background: rgba(90, 58, 28, .35); }
-  #mic .dot {
-    width: 2.9em; height: 2.9em; border-radius: 50%;
-    background: #ff3b4f; box-shadow: 0 0 0 0 rgba(255, 59, 79, .5);
-  }
-  #mic.on { border-color: rgba(255, 77, 94, .6); }
-  #mic.on .dot { animation: rec 1.1s ease-out infinite; }
-  @keyframes rec { 0% { box-shadow: 0 0 0 0 rgba(255, 59, 79, .55); } 100% { box-shadow: 0 0 0 1.1em rgba(255, 59, 79, 0); } }
   .hint {
     margin-top: 1.4em;
     font-size: .78em;
@@ -94,17 +83,11 @@
 </style>
 </head>
 <body>
+  <!-- 2026-11-04：左邊語音（紅點），右邊輸入框，兩個都是正方形；沒有送出鈕，打完按鍵盤的送出（Enter）；說完話直接送 -->
   <form class="row" id="f" autocomplete="off">
-    <input id="q" type="text" maxlength="80" placeholder="待辦…" enterkeyhint="send" autofocus>
-    <button id="go" type="submit" aria-label="送出發現" title="送出">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path fill="currentColor" d="M22 2 15 22l-4-9-9-4z"/>
-        <path d="M22 2 11 13" fill="none" stroke="#141021" stroke-width="1.6" stroke-linecap="round"/>
-      </svg>
-    </button>
+    <button id="mic" type="button" aria-label="語音輸入" title="語音輸入"><span class="dot"></span></button>
+    <textarea id="q" maxlength="80" placeholder="待辦…" enterkeyhint="send" rows="1" autofocus></textarea>
   </form>
-  <!-- 語音輸入（2026-11-04）：大方塊紅點，按一下開始聽、再按一下停；聽到的字填進上面的框、直接送出 -->
-  <button id="mic" type="button" aria-label="語音輸入" title="語音輸入"><span class="dot"></span></button>
   <p id="st"></p>
   <p class="hint">瀏覽器選單 → 加到主畫面，就能當小工具用。</p>
 <script>
@@ -113,7 +96,6 @@ if (window.matchMedia("(display-mode: standalone)").matches || window.navigator.
 }
 const f = document.getElementById("f");
 const q = document.getElementById("q");
-const go = document.getElementById("go");
 const st = document.getElementById("st");
 function say(t, cls) {
   st.textContent = t || "";
@@ -123,7 +105,7 @@ f.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = (q.value || "").trim();
   if (!text) { q.focus(); return; }
-  go.disabled = true;
+  q.disabled = true;
   say("送出中…");
   try {
     const r = await fetch("/api/quests/discover", {
@@ -143,9 +125,13 @@ f.addEventListener("submit", async (e) => {
   } catch {
     say("連不上伺服器", "bad");
   } finally {
-    go.disabled = false;
+    q.disabled = false;
     q.focus();
   }
+});
+// 沒有送出鈕：鍵盤的送出（Enter）就送；輸入法選字中的 Enter 不算
+q.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); f.requestSubmit(); }
 });
 setTimeout(() => q.focus(), 200);
 
