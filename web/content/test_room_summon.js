@@ -1773,6 +1773,7 @@ function deskPromptLines() {
   if (ans) out.push(ans);
   else if (A?.givePromptLine && ask && girl && ask.girlId === girl.id) out.push(A.givePromptLine(ask.r));
   else if (D?.promptLines && girlInRoom()) out.push(...D.promptLines());
+  if (girl && girlInRoom()) out.push(...(window.RoomFrames?.promptLines?.() || []));   // 牆上相框（她寫的網頁）
   return out;
 }
 /** 她回完那句 → 停一下讓你看完 → 收起對話（你又開始打字就不收，等你自己關）。 */

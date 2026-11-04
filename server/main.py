@@ -33,6 +33,7 @@ import comfy
 import cutout
 import daydream as ddream
 import desk_agent
+import room_frames
 import discover_bonus
 import jp_news
 import life_agent
@@ -300,6 +301,8 @@ def db() -> sqlite3.Connection:
             pass
     # 她桌上的工作（agent office）：desk_runs／desk_events（server/desk_agent.py）
     desk_agent.init(conn)
+    # 牆上的相框（她寫的網頁）：room_frames／room_frame_wants（server/room_frames.py）
+    room_frames.init(conn)
     return conn
 
 
@@ -6066,6 +6069,68 @@ def desk_file(id: int, name: str, dl: int = 0):
         raise HTTPException(status_code=e.status, detail=str(e))
     resp = FileResponse(p, filename=p.name, content_disposition_type="attachment" if dl else "inline")
     resp.headers["Content-Security-Policy"] = "sandbox"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# ───────────── 牆上的相框（她寫的網頁，server/room_frames.py）─────────────
+desk_agent.ON_DONE.append(room_frames.on_done)
+
+
+def _frames(fn, *args):
+    conn = db()
+    try:
+        return fn(conn, *args)
+    except (room_frames.FrameError, desk_agent.DeskError) as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/api/frames")
+def frames_view():
+    """四個位置（空的 null）＋你請她寫、還在做的。"""
+    return _frames(room_frames.view)
+
+
+@app.get("/api/frames/candidates")
+def frames_candidates():
+    """書桌做完的那些件裡有網頁的（可以掛）。"""
+    return {"items": _frames(room_frames.candidates)}
+
+
+@app.post("/api/frames/hang")
+def frames_hang(body: dict | None = None):
+    """你掛：{runId, name?, slot?}（slot 沒給＝第一個空位；掛滿 409）。"""
+    b = body or {}
+    return {"frame": _frames(lambda c: room_frames.hang(c, b.get("runId"), b.get("name") or "", b.get("slot"), by="you"))}
+
+
+@app.post("/api/frames/unhang")
+def frames_unhang(body: dict | None = None):
+    """拿下來（只有玩家）：{slot}。"""
+    return {"frame": _frames(lambda c: room_frames.unhang(c, (body or {}).get("slot")))}
+
+
+@app.post("/api/frames/ask")
+def frames_ask(body: dict | None = None):
+    """請她寫一個網頁掛在這格：{slot, what, girlId, girlName} → 放一件上她的桌，做完她自己掛。"""
+    b = body or {}
+    run = _frames(lambda c: room_frames.ask(c, b.get("slot"), b.get("what") or "", b.get("girlId") or "", b.get("girlName") or ""))
+    return {"run": run}
+
+
+@app.get("/frames/{fid}/{path:path}")
+def frames_file(fid: str, path: str = ""):
+    """相框裡的網頁。sandbox allow-scripts（沒有 allow-same-origin）：可以跑 JS，但碰不到遊戲的資料。"""
+    from fastapi.responses import FileResponse
+    try:
+        p = room_frames.file_path(fid, path)
+    except room_frames.FrameError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    resp = FileResponse(p)
+    resp.headers["Content-Security-Policy"] = "sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Cache-Control"] = "no-store"
     return resp
