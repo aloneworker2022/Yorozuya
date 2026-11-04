@@ -429,11 +429,12 @@ function render(){const HZl=SH/2+P.p*SH*.8,sw=lookS(),HZ=Math.round(HZl<0&&!F2F_
 //   左右分屏＝左右眼各畫一次（玩家往左右各移 VR_IPD/2 格，約 6 公分；面對面疊層 #cz 也一起畫），每眼 4:3 置中、兩側裁掉；不做鏡片變形。
 //   轉頭：deviceorientation 算手機背面朝向（R＝Rz(α)Rx(β)Ry(γ)·(0,0,−1)）→ 方位角改 P.a、仰角改 P.p（tan 仰角＝0.8·P.p），進 VR 那一刻的朝向當正前方。
 //   按住畫面＝往前走（Cardboard 的按鈕就是點螢幕）；✕ 離開。iOS 要按鈕授權陀螺儀；陀螺儀要 https（或 localhost）。
-let VR_ON=false,VR_O=null,VR_H0=null,VR_A0=0;const VR_IPD=.04,vrEl=document.getElementById("vr"),vrc=document.getElementById("vrc"),vrx=vrc.getContext("2d");
+//   App（android-app 8.3＋）裡改用殼的旋轉感測器：YoroAndroid.startHeadTracking() → window.yoroHead(h, p)（http 區網也能用；網頁 deviceorientation 只在 https 才有）。
+let VR_ON=false,VR_O=null,VR_D=null,VR_H0=null,VR_A0=0;const YA=window.YoroAndroid;window.yoroHead=(h,p)=>{VR_D={h,p}};const VR_IPD=.04,vrEl=document.getElementById("vr"),vrc=document.getElementById("vrc"),vrx=vrc.getContext("2d");
 addEventListener("deviceorientation",e=>{if(e.alpha==null&&e.beta==null)return;VR_O=[e.alpha||0,e.beta||0,e.gamma||0]});
 function vrDir(){const[a,b,g]=VR_O.map(v=>v*Math.PI/180),sa=Math.sin(a),ca=Math.cos(a),sb=Math.sin(b),cb=Math.cos(b),sg=Math.sin(g),cg=Math.cos(g);
  const x=-sg*ca-cg*sb*sa,y=-sg*sa+cg*sb*ca,z=-cg*cb;return{h:Math.atan2(x,y),p:Math.asin(Math.max(-1,Math.min(1,z)))}}   // 手機背面朝哪：h 方位（順時針）、p 仰角
-function vrHead(){if(!VR_O)return;const d=vrDir();if(VR_H0==null){VR_H0=d.h;VR_A0=P.a}
+function vrHead(){if(!VR_D&&!VR_O)return;const d=VR_D||vrDir();if(VR_H0==null){VR_H0=d.h;VR_A0=P.a}
  P.a=VR_A0+(d.h-VR_H0);P.p=Math.tan(Math.max(-1.45,Math.min(1.45,d.p)))/.8;clampP()}
 function renderVR(){const dpr=Math.min(2,devicePixelRatio||1),W=Math.round(vrc.clientWidth*dpr),H=Math.round(vrc.clientHeight*dpr);if(vrc.width!==W||vrc.height!==H){vrc.width=W;vrc.height=H}
  vrx.fillStyle="#000";vrx.fillRect(0,0,W,H);vrx.imageSmoothingEnabled=false;const hw=W/2,dh=H,dw=dh*4/3,ox=P.x,oy=P.y,rx=-Math.sin(P.a),ry=Math.cos(P.a);
@@ -441,9 +442,13 @@ function renderVR(){const dpr=Math.min(2,devicePixelRatio||1),W=Math.round(vrc.c
   const dx=x0+hw/2-dw/2;vrx.drawImage(cv,dx,0,dw,dh);if(F2F_NOW)vrx.drawImage(zc,dx,0,dw,dh);vrx.restore()}
  P.x=ox;P.y=oy}
 async function vrStart(){try{if(typeof DeviceOrientationEvent!="undefined"&&DeviceOrientationEvent.requestPermission)await DeviceOrientationEvent.requestPermission()}catch(e){}
- vrEl.style.display="block";VR_ON=true;VR_H0=null;try{await vrEl.requestFullscreen?.()}catch(e){}try{await screen.orientation?.lock?.("landscape")}catch(e){}
- const m=document.getElementById("vrmsg");m.textContent=(isSecureContext?"":"（不是 https，陀螺儀可能不能用）")+"手機橫放進 VR 眼鏡・轉頭看四周・按住畫面往前走";setTimeout(()=>m.textContent="",4000)}
-function vrStop(){VR_ON=false;keys.KeyW=0;vrEl.style.display="none";try{screen.orientation?.unlock?.()}catch(e){}if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}
+ vrEl.style.display="block";VR_ON=true;VR_H0=null;VR_D=null;let note="";
+ if(YA){let ok=false;try{ok=YA.startHeadTracking?YA.startHeadTracking():false}catch(e){}try{YA.setLandscape&&YA.setLandscape(true);YA.setKeepScreenOn&&YA.setKeepScreenOn(true)}catch(e){}   // App：殼負責轉橫向、全螢幕、追頭
+  if(!YA.startHeadTracking)note="（App 太舊，請到設定下載新版手機 App 才能轉頭）";else if(!ok)note="（這支手機沒有旋轉感測器）"}
+ else{try{await vrEl.requestFullscreen?.()}catch(e){}try{await screen.orientation?.lock?.("landscape")}catch(e){}if(!isSecureContext)note="（不是 https，瀏覽器不給陀螺儀；請用手機 App 開）"}
+ const m=document.getElementById("vrmsg");m.textContent=note+"手機橫放進 VR 眼鏡・轉頭看四周・按住畫面往前走";setTimeout(()=>m.textContent="",note?8000:4000)}
+function vrStop(){VR_ON=false;keys.KeyW=0;vrEl.style.display="none";if(YA){try{YA.stopHeadTracking&&YA.stopHeadTracking();YA.setLandscape&&YA.setLandscape(false);YA.setKeepScreenOn&&YA.setKeepScreenOn(false)}catch(e){}}
+ try{screen.orientation?.unlock?.()}catch(e){}if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}
 document.getElementById("vrb").addEventListener("click",vrStart);
 document.getElementById("vrx").addEventListener("pointerdown",e=>{e.stopPropagation();vrStop()});
 vrEl.addEventListener("pointerdown",e=>{if(e.target.id!="vrx")keys.KeyW=1});for(const ev of["pointerup","pointercancel","pointerleave"])vrEl.addEventListener(ev,()=>keys.KeyW=0);

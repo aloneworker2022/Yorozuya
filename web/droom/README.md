@@ -192,3 +192,4 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
   - index.html／play.html 服裝、褲子預設改「無」。index.html 預覽拉桿 0～540。
 - 2026-11-04 手機 VR（使用者：做成手機網頁 VR，放進 Google VR 眼鏡／Cardboard 試）：play.html 拉桿旁「👓 VR」→ 全螢幕、鎖橫向、左右分屏（每眼各畫一次，玩家往左右各移 0.02 格≈6 公分；面對面疊層也畫），每眼 4:3 置中裁兩側，不做鏡片變形。
   轉頭＝deviceorientation 算手機背面朝向 → 方位角改 P.a、仰角改 P.p，進 VR 當下的朝向＝正前方；按住畫面往前走；✕ 離開。iOS 會跳陀螺儀授權；陀螺儀要 https 或 localhost。
+- 2026-11-04 VR 改到手機 App 裡（使用者：瀏覽器沒辦法）：原因是手機 Chrome／WebView 只在 https 才給網頁 deviceorientation，`http://區網IP` 拿不到。android-app 8.3（versionCode 13）加 `HeadTracker`：殼讀旋轉感測器 → `window.yoroHead(h, p)`；play.html 在 App 裡用它，並用 `YoroAndroid.setLandscape／setKeepScreenOn` 轉橫向、全螢幕、不休眠，離開時關回。舊殼提示重裝。遊戲設定頁加「VR 房間」連到 /droom/play（App 沒有網址列）。

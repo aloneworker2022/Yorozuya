@@ -43,6 +43,7 @@ public class MainActivity extends Activity {
     private static final int REQ_FILE = 1001;
 
     private WebView web;
+    private HeadTracker head;   // droom VR 追頭
     private ProgressBar progress;
     private View errorView;
     private TextView errorMsg;
@@ -107,7 +108,8 @@ public class MainActivity extends Activity {
         cm.setAcceptThirdPartyCookies(web, true);
 
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        web.addJavascriptInterface(new AndroidBridge(this), AndroidBridge.NAME);
+        head = new HeadTracker(this, web);
+        web.addJavascriptInterface(new AndroidBridge(this, head), AndroidBridge.NAME);
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
         web.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) ->
@@ -342,6 +344,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (head != null) head.onResume();
         if (web != null) {
             web.onResume();
             // true = 剛從鎖屏或別的 App 回來。時間若已到，頁面會算未完成。
@@ -355,12 +358,14 @@ public class MainActivity extends Activity {
             web.evaluateJavascript("window.__pomoAway&&window.__pomoAway()", null);
             web.onPause();
         }
+        if (head != null) head.onPause();
         CookieManager.getInstance().flush();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
+        if (head != null) head.stop();
         if (web != null) {
             web.stopLoading();
             web.setWebChromeClient(null);

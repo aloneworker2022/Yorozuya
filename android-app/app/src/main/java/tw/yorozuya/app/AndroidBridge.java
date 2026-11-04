@@ -30,6 +30,7 @@ import java.io.OutputStream;
  * - vibrate(ms)：WebView 本身不支援 navigator.vibrate，這裡補上
  * - setLandscape(on)：番茄鐘翻頁鐘轉橫向／轉回直向；setKeepScreenOn(on)：番茄鐘開著時螢幕不休眠；
  *   appVersion()：殼的 versionCode
+ * - startHeadTracking()／stopHeadTracking()：droom VR 用手機旋轉感測器追頭 → window.yoroHead(h, p)（13 起才有）
  * - saveFile(name, mime, base64)：WebView 不會處理 &lt;a download href="blob:..."&gt;，
  *   遊戲「匯出存檔」靠這個存到手機的「下載」資料夾
  * 只會注入到使用者設定的伺服器（同源）頁面。
@@ -71,9 +72,24 @@ final class AndroidBridge {
     }
 
     private final Activity activity;
+    private final HeadTracker head;
 
-    AndroidBridge(Activity activity) {
+    AndroidBridge(Activity activity, HeadTracker head) {
         this.activity = activity;
+        this.head = head;
+    }
+
+    /** droom VR：開始追頭（手機背面方向 → window.yoroHead(h, p)）。沒有旋轉感測器回 false。 */
+    @JavascriptInterface
+    public boolean startHeadTracking() {
+        if (head == null || !head.available()) return false;
+        activity.runOnUiThread(head::start);
+        return true;
+    }
+
+    @JavascriptInterface
+    public void stopHeadTracking() {
+        if (head != null) activity.runOnUiThread(head::stop);
     }
 
     @JavascriptInterface
