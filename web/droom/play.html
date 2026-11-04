@@ -11,7 +11,8 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 <div id="wrap"><canvas id="c" width="320" height="240"></canvas><canvas id="cz" width="640" height="480" style="position:absolute;left:0;top:0;pointer-events:none;background:transparent"></canvas>
 <div class="pad" id="padL"><span></span><button data-k="KeyW">▲</button><span></span><button data-k="KeyA">◀</button><span></span><button data-k="KeyD">▶</button><span></span><button data-k="KeyS">▼</button><span></span></div>
 <div class="pad" id="padR"><button data-k="KeyQ">⟲</button><button data-k="KeyR">⇡</button><button data-k="KeyE">⟳</button><span></span><button data-k="KeyF">⇣</button><span></span></div></div>
-<div id="lookbar" style="width:min(96vw,960px);display:flex;align-items:center;gap:8px;padding:6px 0;box-sizing:border-box"><span>抬頭</span><input type="range" id="lk" min="-1.3" max="1.875" step="0.005" value="0" style="flex:1;min-width:0"><span>低頭</span><button id="meet">走到她面前</button></div>
+<div id="lookbar" style="width:min(96vw,960px);display:flex;align-items:center;gap:8px;padding:6px 0;box-sizing:border-box"><span>抬頭</span><input type="range" id="lk" min="-1.3" max="1.875" step="0.005" value="0" style="flex:1;min-width:0"><span>低頭</span><button id="meet">走到她面前</button><button id="vrb">👓 VR</button></div>
+<div id="vr" style="display:none;position:fixed;inset:0;background:#000;z-index:50;touch-action:none;user-select:none;-webkit-user-select:none"><canvas id="vrc" style="width:100%;height:100%;display:block;image-rendering:pixelated"></canvas><div style="position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#222"></div><button id="vrx" style="position:absolute;top:6px;left:50%;transform:translateX(-50%);opacity:.45;font-size:16px;padding:2px 10px">✕</button><div id="vrmsg" style="position:absolute;left:0;right:0;bottom:12px;text-align:center;color:#ccc;font-size:13px;pointer-events:none"></div></div>
 <div id="hud">W/↑ 前進　S/↓ 後退　A 左移　D 右移　←/→ 或 Q/E 轉向　R/F 抬頭/低頭　點畫面鎖定滑鼠轉頭（上下也可看）　手機：左下方向鍵移動、右下 ⟲⟳ 轉向、⇡⇣ 抬頭低頭（或在畫面上左右/上下滑動）　｜
 姿勢 <select id="po"><option value="walk">走路</option><option value="stand">站著不動</option><option value="sit_m">坐地 M 字腿</option><option value="sit_v">坐地 V 字腿</option></select>
 體型 <select id="b"><option value="balanced">勻稱</option><option value="slim">纖細</option><option value="petite">嬌小</option><option value="curvy">微肉</option></select>
@@ -261,7 +262,7 @@ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
  tryMove(P,(ca*f-sa*s)*sp,(sa*f+ca*s)*sp);
  // 不讓玩家穿過妹子
  const gx=P.x-G.x,gy=P.y-G.y,gd=Math.hypot(gx,gy);if(gd<.4){P.x=G.x+gx/gd*.4;P.y=G.y+gy/gd*.4}
- ai(dt);render();requestAnimationFrame(frame)}
+ if(VR_ON)vrHead();ai(dt);VR_ON?renderVR():render();requestAnimationFrame(frame)}
 // 視角高度（牆高=1；0.5 為原本的低視角）
 const EYE=0.95;
 // 上下視角：y-shearing，地平線 HZ 隨 pitch 上下移動（P.p>0 抬頭）
@@ -424,6 +425,29 @@ function render(){const HZl=SH/2+P.p*SH*.8,sw=lookS(),HZ=Math.round(HZl<0&&!F2F_
    for(let x=Math.max(0,cx-w2/2|0);x<Math.min(SW,cx+w2/2);x++){if(zb[x]<tz)continue;const sxp=fr*fw+((x-(cx-w2/2))/w2*fw|0);g.drawImage(im,sxp,0,1,fh,x,t2,1,h2)}}
   else for(let x=Math.max(0,cx-wid/2|0);x<Math.min(SW,cx+wid/2);x++){if(zb[x]<tz)continue;const sxp=fr*fw+((x-(cx-wid/2))/wid*fw|0);g.drawImage(im,sxp,0,1,fh,x,top,1,hgt)}}
  drawSelfRef(keys.KeyW||keys.KeyS||keys.ArrowUp||keys.ArrowDown||keys.KeyA||keys.KeyD)}
+// 2026-11-04 手機 VR（使用者：做成手機網頁 VR，可以放進 Google VR 眼鏡／Cardboard）：
+//   左右分屏＝左右眼各畫一次（玩家往左右各移 VR_IPD/2 格，約 6 公分；面對面疊層 #cz 也一起畫），每眼 4:3 置中、兩側裁掉；不做鏡片變形。
+//   轉頭：deviceorientation 算手機背面朝向（R＝Rz(α)Rx(β)Ry(γ)·(0,0,−1)）→ 方位角改 P.a、仰角改 P.p（tan 仰角＝0.8·P.p），進 VR 那一刻的朝向當正前方。
+//   按住畫面＝往前走（Cardboard 的按鈕就是點螢幕）；✕ 離開。iOS 要按鈕授權陀螺儀；陀螺儀要 https（或 localhost）。
+let VR_ON=false,VR_O=null,VR_H0=null,VR_A0=0;const VR_IPD=.04,vrEl=document.getElementById("vr"),vrc=document.getElementById("vrc"),vrx=vrc.getContext("2d");
+addEventListener("deviceorientation",e=>{if(e.alpha==null&&e.beta==null)return;VR_O=[e.alpha||0,e.beta||0,e.gamma||0]});
+function vrDir(){const[a,b,g]=VR_O.map(v=>v*Math.PI/180),sa=Math.sin(a),ca=Math.cos(a),sb=Math.sin(b),cb=Math.cos(b),sg=Math.sin(g),cg=Math.cos(g);
+ const x=-sg*ca-cg*sb*sa,y=-sg*sa+cg*sb*ca,z=-cg*cb;return{h:Math.atan2(x,y),p:Math.asin(Math.max(-1,Math.min(1,z)))}}   // 手機背面朝哪：h 方位（順時針）、p 仰角
+function vrHead(){if(!VR_O)return;const d=vrDir();if(VR_H0==null){VR_H0=d.h;VR_A0=P.a}
+ P.a=VR_A0+(d.h-VR_H0);P.p=Math.tan(Math.max(-1.45,Math.min(1.45,d.p)))/.8;clampP()}
+function renderVR(){const dpr=Math.min(2,devicePixelRatio||1),W=Math.round(vrc.clientWidth*dpr),H=Math.round(vrc.clientHeight*dpr);if(vrc.width!==W||vrc.height!==H){vrc.width=W;vrc.height=H}
+ vrx.fillStyle="#000";vrx.fillRect(0,0,W,H);vrx.imageSmoothingEnabled=false;const hw=W/2,dh=H,dw=dh*4/3,ox=P.x,oy=P.y,rx=-Math.sin(P.a),ry=Math.cos(P.a);
+ for(const e of[-1,1]){P.x=ox+rx*e*VR_IPD/2;P.y=oy+ry*e*VR_IPD/2;render();const x0=e<0?0:hw;vrx.save();vrx.beginPath();vrx.rect(x0,0,hw,H);vrx.clip();
+  const dx=x0+hw/2-dw/2;vrx.drawImage(cv,dx,0,dw,dh);if(F2F_NOW)vrx.drawImage(zc,dx,0,dw,dh);vrx.restore()}
+ P.x=ox;P.y=oy}
+async function vrStart(){try{if(typeof DeviceOrientationEvent!="undefined"&&DeviceOrientationEvent.requestPermission)await DeviceOrientationEvent.requestPermission()}catch(e){}
+ vrEl.style.display="block";VR_ON=true;VR_H0=null;try{await vrEl.requestFullscreen?.()}catch(e){}try{await screen.orientation?.lock?.("landscape")}catch(e){}
+ const m=document.getElementById("vrmsg");m.textContent=(isSecureContext?"":"（不是 https，陀螺儀可能不能用）")+"手機橫放進 VR 眼鏡・轉頭看四周・按住畫面往前走";setTimeout(()=>m.textContent="",4000)}
+function vrStop(){VR_ON=false;keys.KeyW=0;vrEl.style.display="none";try{screen.orientation?.unlock?.()}catch(e){}if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}
+document.getElementById("vrb").addEventListener("click",vrStart);
+document.getElementById("vrx").addEventListener("pointerdown",e=>{e.stopPropagation();vrStop()});
+vrEl.addEventListener("pointerdown",e=>{if(e.target.id!="vrx")keys.KeyW=1});for(const ev of["pointerup","pointercancel","pointerleave"])vrEl.addEventListener(ev,()=>keys.KeyW=0);
+document.addEventListener("fullscreenchange",()=>{if(!document.fullscreenElement&&VR_ON&&vrEl.requestFullscreen)vrStop()});
 requestAnimationFrame(frame);
 // 2026-11-04 使用者：畫面下面一條拉桿，靠近的人可以上下拉看全身。拉桿＝視線上下（左抬頭、右低頭，值＝−P.p）；「走到她面前」＝開近景、她站著不動、玩家放在她正面 0.4 格平視。
 (function(){const lk=document.getElementById("lk");let drag=false;
