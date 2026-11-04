@@ -190,3 +190,5 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
   - room_doll_full.js 走路加 `opts.stand`：雙腳打直併攏、手不擺、胸不晃、頭髮不甩、不墊腳；沒帶時走路逐位元組不變（已比對）。render_close.cjs 面對面用 stand，sheet 縮成 420×900。
   - 面對面另出下身圖層 `sheets_f2f/p0/groin/`（陰毛、陰唇含打開、丁字褲；同 render_hd：只留 CLOTH_A 且身體在的地方）。
   - index.html／play.html 服裝、褲子預設改「無」。index.html 預覽拉桿 0～540。
+- 2026-11-04 手機 VR（使用者：做成手機網頁 VR，放進 Google VR 眼鏡／Cardboard 試）：play.html 拉桿旁「👓 VR」→ 全螢幕、鎖橫向、左右分屏（每眼各畫一次，玩家往左右各移 0.02 格≈6 公分；面對面疊層也畫），每眼 4:3 置中裁兩側，不做鏡片變形。
+  轉頭＝deviceorientation 算手機背面朝向 → 方位角改 P.a、仰角改 P.p，進 VR 當下的朝向＝正前方；按住畫面往前走；✕ 離開。iOS 會跳陀螺儀授權；陀螺儀要 https 或 localhost。
