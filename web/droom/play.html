@@ -83,7 +83,7 @@ let CLOSE=new URLSearchParams(location.search).has("close"),CLOSE_SD="/droom/she
 //   只有一張 p0（0.4 格平視，往下畫到腳；使用者：只要靠近那一段，低頭不換張）。放在 HZ（視線方向＝地平線），跟地板牆壁一起往上捲；
 //   面對面時世界不加速（使用者：玩家視角上下移動，角色位置也一樣），低頭多少就捲多少（F2F_NOW 用上一格的值）。
 let NF=8;   // 上色時一張 sheet 有幾格（面對面 sheet 只有 1 格）
-const F2F_SD="/droom/sheets_f2f/",F2F_T=.5,F2F_D0=.4,F2F_K=2,F2F_CY=130,zc=document.getElementById("cz"),zx=zc.getContext("2d");let F2F_NOW=false;
+const F2F_SD="/droom/sheets_f2f/",F2F_T=.5,F2F_D0=.4,F2F_K=2,F2F_CY=130,F2F_PITCH=10,zc=document.getElementById("cz"),zx=zc.getContext("2d");let F2F_NOW=false;
 function sheetFor(d,near){const SD0=typeof near=="string"?near:near?CLOSE_SD:SD,k=["b","s","cu","ar"].map(i=>document.getElementById(i).value).join("_")+"_"+d,hc=document.getElementById("hc").value,nc=document.getElementById("nc").value,bh=document.getElementById("bh").value,fh=document.getElementById("fh").value,cl=document.getElementById("cl").value,cs=document.getElementById("cs").value,cw=document.getElementById("cw").value,pu=document.getElementById("pu").value,lb=document.getElementById("lb").value,pa=document.getElementById("pa").value,lc=document.getElementById("lc").value,ub=document.getElementById("ub").value,bf=document.getElementById("bf").value,ns=document.getElementById("ns").value,mo=document.getElementById("mo").value,ey=document.getElementById("ey").value,ec=document.getElementById("ec").value,lpc=document.getElementById("lpc").value,bw=document.getElementById("bw").value,ck=(near?near+"|":"")+bw+lpc+ey+ec+"|"+mo+"|"+ns+"|"+bf+"|"+ub+"|"+k+"|"+hc+"|"+nc+"|"+bh+"|"+fh+"|"+cl+"|"+cs+"|"+cw+"|"+pu+"|"+lb+"|"+pa+"|"+lc;
  if(!cache[ck]){const b=k.split("_")[0],urls=[SD0+k+".png",SD0+"hair/"+b+"_back_"+bh+"_"+d+".png",SD0+"hair/"+b+"_front_"+fh+"_"+d+".png"];const q=k.split("_"),BO=cl=="bra"||(ub!="none"&&cl!="none"),SP=SD0+"sup/"+q[0]+"_sup_"+q[2]+"_";if(BO)urls[0]=SP+q[3]+"_"+d+".png";   // pt78u 穿胸罩→托高身體 sheets/sup/
   urls.push(BO?SD0+"sup/cloth/"+q[0]+"_sup_"+q[2]+"_bra_"+d+".png":"");urls.push(cl=="none"||cl=="bra"?"":BO?SD0+"sup/cloth/"+q[0]+"_sup_"+q[2]+"_"+CLF(cl,cw)+"_"+d+".png":SD0+"cloth/"+q[0]+"_"+q[1]+"_"+q[2]+"_"+CLF(cl,cw)+"_"+d+".png");
@@ -418,7 +418,7 @@ function render(){const HZl=SH/2+P.p*SH*.8,sw=lookS(),HZ=Math.round(HZl<0&&!F2F_
   G.bw=(G.bw||0)+((G.moving?1:0)-(G.bw||0))*.2;const a=G.ph/8*Math.PI*2;
   const bob=G.bw*hgt*.022*Math.abs(Math.sin(a)),sway=G.bw*wid*.035*Math.sin(a/2*2);
   top-=bob;cx+=sway;
-  if(f2f){F2F_NOW=true;const k=F2F_D0/tz,w3=f2f.width*k,h3=f2f.height*k,px=F2F_K*cx,py=F2F_K*HZ;   // 這張的視線方向在 HZ＋f·tanθ（跟世界同一條地平線）；在 0.4 格畫的 → 放大 0.4/距離；#cz 一格＝畫布 1/3 格
+  if(f2f){F2F_NOW=true;const k=F2F_D0/tz,w3=f2f.width*k,h3=f2f.height*k,px=F2F_K*cx,py=F2F_K*(HZ+SH*Math.tan(F2F_PITCH*Math.PI/180));   // 2026-11-04 p0 往下 10° 拍（使用者：更直立）：視線方向在 HZ＋f·tan10°   // 這張的視線方向在 HZ＋f·tanθ（跟世界同一條地平線）；在 0.4 格畫的 → 放大 0.4/距離；#cz 一格＝畫布 1/3 格
    zx.imageSmoothingEnabled=false;zx.drawImage(f2f,0,0,f2f.width,f2f.height,Math.round(px-w3/2),Math.round(py-F2F_K*F2F_CY*k),Math.round(w3),Math.round(h3))}
   else if(fw==CLOSE_W){const k=CLOSE_D0/tz,w2=CLOSE_W*k,h2=CLOSE_H*k,t2=HZ-CLOSE_CY*k-bob;   // 近景：sheet 第 CLOSE_CY 列＝玩家眼睛高＝地平線 HZ；在 CLOSE_D0 格畫的，現在距離 tz → 放大 CLOSE_D0/tz
    for(let x=Math.max(0,cx-w2/2|0);x<Math.min(SW,cx+w2/2);x++){if(zb[x]<tz)continue;const sxp=fr*fw+((x-(cx-w2/2))/w2*fw|0);g.drawImage(im,sxp,0,1,fh,x,t2,1,h2)}}

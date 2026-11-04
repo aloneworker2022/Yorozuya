@@ -10,7 +10,8 @@ const D = require(__dirname + '/room_doll_full.js'), png = require(__dirname + '
 const CELL = 126 / 1.15;   // play.html：走路 sheet 地面以上 126 單位＝1.15 格
 const FACEV = !!process.env.FACE, D0 = +(process.env.D0 || (FACEV ? .4 : .6)), CW = FACEV ? 320 : 240, CH = FACEV ? 780 : 480, K = FACEV ? 2 : 1, NFR = FACEV ? 1 : 8;
 const CAM0 = { dist: D0 * CELL, eyeZ: .95 * CELL, pitch: 0, f: 240, w: CW, h: CH, cx: CW / 2, cy: FACEV ? 130 : 20 };   // f＝SH（play.html 1 格遠＝SH 像素）；近景 cy＝玩家眼睛高（地平線）在第幾列
-const VIEW_CAM = { p0: CAM0, down: { ...CAM0, pitch: +(process.env.DOWN || 20) * Math.PI / 180, h: 530, cy: 150 } };
+const P0_PITCH = +(process.env.P0PITCH || 10);   // 2026-11-04 使用者：人物太斜，要更直立、像由上往下看一點 → 平視那張攝影機往下一點點（度）
+const VIEW_CAM = { p0: { ...CAM0, pitch: P0_PITCH * Math.PI / 180 }, down: { ...CAM0, pitch: +(process.env.DOWN || 20) * Math.PI / 180, h: 530, cy: 150 } };
 const VIEWS = FACEV ? (process.env.VIEWS || 'p0').split(',') : ['close'];
 const BODY = { balanced: { height_cm: 161, build: '勻稱有致', hair: '中分長髮' }, slim: { height_cm: 166, build: '纖細苗條', hair: '短髮' }, petite: { height_cm: 150, build: '嬌小玲瓏', hair: '雙馬尾' }, curvy: { height_cm: 163, build: '微肉圓潤', hair: '大波浪長髮' } };
 const DIR = { front: 0, front_right: 45, right: 90, back_right: 135, back: 180, back_left: -135, left: -90, front_left: -45 };
