@@ -1361,9 +1361,11 @@
       }
       if (pose === 'walk') {
         const n = WALK_FRAMES, phase = 2 * Math.PI * (((frame % n) + n) % n) / n;
-        const g = gait(P, phase), hipz = g.hipz;
-        const bnc = bounceAt(P, doll, phase, opts.bounceScale ?? 1);
-        {   // 2026-10-31：大奶走路時手臂前擺會打到乳房 → 整胸左右晃（越大越明顯）
+        // 2026-11-04 opts.stand：站著不動（使用者：近景先讓她站著就好）＝雙腳打直併攏、手不擺、不晃；沒帶時走路完全不變
+        const ST = !!opts.stand, legSt = [[0, 0, P.knee], [0, 0, P.ankle], 0];
+        const g = ST ? { hipz: P.hipz, [-1]: legSt, [1]: legSt } : gait(P, phase), hipz = g.hipz;
+        const bnc = ST ? bounceAt(P, doll, phase, 0).map(() => 0) : bounceAt(P, doll, phase, opts.bounceScale ?? 1);
+        if (!ST) {   // 2026-10-31：大奶走路時手臂前擺會打到乳房 → 整胸左右晃（越大越明顯）
           const cb = CUP_BOUNCE[doll.cup] ?? .35;
           if (cb > .55) {
             const hit = Math.max(0, cb - .5) * 2.2 * (opts.bounceScale ?? 1);
@@ -1372,16 +1374,16 @@
           }
         }
         const tor = torso(sh, P, doll, 0, hipz - P.hipz, .02, bnc);
-        const sway = 1.2 * Math.cos(phase);
+        const sway = ST ? 0 : 1.2 * Math.cos(phase);
         skirt(sh, P, doll, tor, sway * .5);
         for (const s of [-1, 1]) {
           const [kn, an, lift] = g[s];
-          TIPTOE = doll.shoes ? 0 : 1.1;
+          TIPTOE = doll.shoes || ST ? 0 : 1.1;
           leg(sh, P, s, [s * hip_x, 0, hipz], [s * (kx() - .2), kn[1], kn[2]], [s * 2.8, an[1], an[2]],
             [0, .96 - lift * .04, lift > 1 ? -.25 : 0]);
           TIPTOE = 0;
           // pt33u：手臂跟腳反向擺（前後看也要看得出來）——擺幅加大、往前擺時手肘彎、手往身體中線收；往後擺時手往外一點
-          const c = Math.cos(phase) * (s === 1 ? 1 : -1);
+          const c = ST ? 0 : Math.cos(phase) * (s === 1 ? 1 : -1);
           const swd = 30 * c * (c > 0 ? .8 : 1);
           const sw = swd * Math.PI / 180, fwd = Math.max(0, c), bk = Math.max(0, -c);
           const ex = Math.max(waist_out + 2.8 * F(b, 'arm') + 1.2, arm_clear()) + 1.2 * bk;

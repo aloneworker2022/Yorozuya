@@ -186,3 +186,7 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 2026-11-04 面對面 p0 改成往下 10° 拍（使用者：人物太斜，更直立、像由上往下看一點，調一點點）：`render_close.cjs` `P0PITCH`（預設 10）；play.html `F2F_PITCH`＝10，視線方向放在 HZ＋f·tan10°。下半身不再被拉長往後仰。
 - 2026-11-04 面對面：她站前面一點、人放大一點（使用者）：攝影機距離 0.4→0.33 格（`D0`）、焦距 240→276（×1.15），sheet 改 368×980 單位（736×1960 像素，往下到腳），第 150 列＝視線方向。play.html 照舊在 0.4 格（碰撞點）時 1:1 顯示這張（`F2F_D0`＝0.4、`F2F_CY`＝150）；index.html 預覽窗 240×300 單位、拉桿 0～680。
 - 2026-11-04 面對面再近、再大（使用者）：攝影機 0.33→0.28 格、焦距 276→310，sheet 420×1300 單位（840×2600 像素，往下到腳），第 130 列＝視線方向；play.html `F2F_CY`＝130；index.html 預覽窗 280×360（1:1）、拉桿 0～940。
+- 2026-11-04 近景先讓她站著、先不要穿衣服（使用者）：
+  - room_doll_full.js 走路加 `opts.stand`：雙腳打直併攏、手不擺、胸不晃、頭髮不甩、不墊腳；沒帶時走路逐位元組不變（已比對）。render_close.cjs 面對面用 stand，sheet 縮成 420×900。
+  - 面對面另出下身圖層 `sheets_f2f/p0/groin/`（陰毛、陰唇含打開、丁字褲；同 render_hd：只留 CLOTH_A 且身體在的地方）。
+  - index.html／play.html 服裝、褲子預設改「無」。index.html 預覽拉桿 0～540。
