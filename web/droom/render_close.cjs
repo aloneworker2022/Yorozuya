@@ -8,8 +8,9 @@
 // 用法：node render_close.cjs  [BODY=balanced] [SHAPE=round] [CUP=D] [AR=medium] [DIRS=front,...] [BH=wavy,...] [FH=curtain,...] [CL=napkin_bell] [SHARD=i NSHARD=n]
 const D = require(__dirname + '/room_doll_full.js'), png = require(__dirname + '/png.cjs'), fs = require('fs'), path = require('path');
 const CELL = 126 / 1.15;   // play.html：走路 sheet 地面以上 126 單位＝1.15 格
-const FACEV = !!process.env.FACE, D0 = +(process.env.D0 || (FACEV ? .4 : .6)), CW = FACEV ? 320 : 240, CH = FACEV ? 780 : 480, K = FACEV ? 2 : 1, NFR = FACEV ? 1 : 8;
-const CAM0 = { dist: D0 * CELL, eyeZ: .95 * CELL, pitch: 0, f: 240, w: CW, h: CH, cx: CW / 2, cy: FACEV ? 130 : 20 };   // f＝SH（play.html 1 格遠＝SH 像素）；近景 cy＝玩家眼睛高（地平線）在第幾列
+const FACEV = !!process.env.FACE, D0 = +(process.env.D0 || (FACEV ? .33 : .6)), CW = FACEV ? 368 : 240, CH = FACEV ? 980 : 480, K = FACEV ? 2 : 1, NFR = FACEV ? 1 : 8;
+const CAM0 = { dist: D0 * CELL, eyeZ: .95 * CELL, pitch: 0, f: FACEV ? 276 : 240, w: CW, h: CH, cx: CW / 2, cy: FACEV ? 150 : 20 };   // 2026-11-04 面對面：她站前面一點（0.33 格）、人放大一點（f 276＝×1.15），368×980 往下到腳
+   // f＝SH（play.html 1 格遠＝SH 像素）；近景 cy＝玩家眼睛高（地平線）在第幾列
 const P0_PITCH = +(process.env.P0PITCH || 10);   // 2026-11-04 使用者：人物太斜，要更直立、像由上往下看一點 → 平視那張攝影機往下一點點（度）
 const VIEW_CAM = { p0: { ...CAM0, pitch: P0_PITCH * Math.PI / 180 }, down: { ...CAM0, pitch: +(process.env.DOWN || 20) * Math.PI / 180, h: 530, cy: 150 } };
 const VIEWS = FACEV ? (process.env.VIEWS || 'p0').split(',') : ['close'];
