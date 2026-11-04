@@ -7,7 +7,6 @@ import android.os.Bundle;
 import android.speech.RecognizerIntent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -15,7 +14,6 @@ import android.widget.Toast;
 public class AddActivity extends Activity {
     private static final int REQ_VOICE = 41;
     private EditText input;
-    private Button send;
     private boolean sending;
 
     @Override
@@ -23,19 +21,25 @@ public class AddActivity extends Activity {
         super.onCreate(saved);
         setContentView(R.layout.activity_add);
         input = (EditText) findViewById(R.id.input);
-        send = (Button) findViewById(R.id.send);
+        // 輸入框可以換行顯示（字多時往下排），但鍵盤右下角仍是「送出」
+        input.setHorizontallyScrolling(false);
+        input.setMaxLines(8);
+        // 兩個都是正方形：邊長＝各一半的寬度
+        final View sheet = findViewById(R.id.sheet);
+        sheet.post(new Runnable() {
+            public void run() { squareUp(sheet); }
+        });
         findViewById(R.id.spacer).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { finish(); }
-        });
-        send.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { submit(); }
         });
         findViewById(R.id.mic).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { listen(); }
         });
         input.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             public boolean onEditorAction(TextView v, int action, android.view.KeyEvent e) {
-                if (action == EditorInfo.IME_ACTION_SEND) {
+                boolean enter = e != null && e.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER
+                        && e.getAction() == android.view.KeyEvent.ACTION_DOWN;
+                if (action == EditorInfo.IME_ACTION_SEND || enter) {
                     submit();
                     return true;
                 }
@@ -49,6 +53,17 @@ public class AddActivity extends Activity {
     public void finish() {
         super.finish();
         overridePendingTransition(R.anim.fade_in, R.anim.slide_out_bottom);
+    }
+
+    private void squareUp(View sheet) {
+        View mic = findViewById(R.id.mic);
+        int side = mic.getWidth();
+        if (side <= 0) return;
+        for (View v : new View[] { mic, input }) {
+            android.view.ViewGroup.LayoutParams lp = v.getLayoutParams();
+            lp.height = side;
+            v.setLayoutParams(lp);
+        }
     }
 
     /** 語音輸入（2026-11-04）：叫系統的語音辨識（不用麥克風權限，辨識畫面由系統／Google 給），說完填進輸入框、直接送出（2026-11-04：不用再按送出）。 */
@@ -97,7 +112,7 @@ public class AddActivity extends Activity {
             return;
         }
         sending = true;
-        send.setEnabled(false);
+        input.setEnabled(false);
         new Thread(new Runnable() {
             public void run() {
                 DiscoverClient.Result result = null;
@@ -110,7 +125,7 @@ public class AddActivity extends Activity {
                 runOnUiThread(new Runnable() {
                     public void run() {
                         sending = false;
-                        send.setEnabled(true);
+                        input.setEnabled(true);
                         if (done.error == null) {
                             String msg = done.gold > 0
                                     ? "已送進發現 +" + done.gold + " 金"
