@@ -181,6 +181,7 @@
     line([0,0,7],[COLS,0,7],'#ffe3b9');
     line([0,ROWS],[COLS,ROWS],'#f3d3a5');
     line([COLS,0],[COLS,ROWS],'#f0cda0');
+    drawFrames();
     if (showGrid || (editing && placing)) {
       for (let u = 0; u <= COLS; u++) line([u,0],[u,ROWS],'#7c8061');
       for (let v = 0; v <= ROWS; v++) line([0,v],[COLS,v],'#7c8061');
@@ -214,6 +215,56 @@
     drawActor();
   }
 
+  // 牆上的相框（room_frames.js，2026-11-04）：左牆 0、1，後牆 2、3。畫在牆上、家具之前（家具照深度蓋過去）。
+  // 一格的四角（世界座標 u,v,z）：外框 [a,b] 沿牆方向、z 從 FR_Z0 到 FR_Z1；inset 往內縮。
+  const FR_Z0=46,FR_Z1=84,FR_HALF=.55;
+  function frameQuad(slot,inset=0,dz=0){
+    const left=slot<2,c=left?(slot?3:1.3):(slot===2?1:3),a=c-FR_HALF+inset,b=c+FR_HALF-inset,z0=FR_Z0+dz,z1=FR_Z1-dz,o=.02;
+    return left?[[o,a,z0],[o,b,z0],[o,b,z1],[o,a,z1]]:[[a,o,z0],[b,o,z0],[b,o,z1],[a,o,z1]];
+  }
+  const hsl=(h,s,l)=>{s/=100;l/=100;const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),f=n=>l-a*Math.max(-1,Math.min(k(n)-3,9-k(n),1));
+    return '#'+[f(0),f(8),f(4)].map(x=>Math.round(x*255).toString(16).padStart(2,'0')).join('');};
+  // 沿牆方向 t（0..1）、高度 y（0..1，下到上）在一格裡的世界座標
+  function framePt(slot,t,y){const q=frameQuad(slot,.1,5);const lerp=(p,r,k)=>p.map((x,i)=>x+(r[i]-x)*k);return lerp(lerp(q[0],q[1],t),lerp(q[3],q[2],t),y);}
+  let framesKey='';
+  function drawFrames(){
+    framesKey=window.RoomFrames?.key?.()||'';
+    const list=window.RoomFrames?.slots?.()||[];
+    list.forEach((s,slot)=>{
+      const q=frameQuad(slot),left=slot<2;
+      const nail=left?[.03,(q[0][1]+q[1][1])/2,FR_Z1+6]:[(q[0][0]+q[1][0])/2,.03,FR_Z1+6];
+      if(s.state==='frame'){
+        line(q[3],nail,'#6b4a33');line(q[2],nail,'#6b4a33');   // 掛繩
+        face(q,left?'#7a4c31':'#8a5a3c');                      // 木框
+        face(frameQuad(slot,.06,3),left?'#e6d6b6':'#f3e6cc');  // 卡紙
+        face(frameQuad(slot,.1,5),hsl(s.hue,55,left?80:86));  // 網頁
+        face([framePt(slot,0,.8),framePt(slot,1,.8),framePt(slot,1,1),framePt(slot,0,1)],hsl(s.hue,50,left?55:62)); // 標題列
+        for(const [y,w] of [[.62,.8],[.48,.6],[.34,.7]])line(framePt(slot,.12,y),framePt(slot,.12+w*.76,y),hsl(s.hue,35,left?52:58));
+        if(s.her){const p=framePt(slot,.82,.18);face([[p[0],p[1],p[2]-2],[p[0]+(left?0:.06),p[1]+(left?.06:0),p[2]-2],[p[0]+(left?0:.06),p[1]+(left?.06:0),p[2]+2],[p[0],p[1],p[2]+2]],'#c0508a');}
+      } else {
+        // 空的：淡淡的框印（點得到）＋一根釘子；她正在寫的那格多一張小便條
+        const ghost=left?'#d5c3a0':'#e8d7b6';for(let i=0;i<4;i++)line(q[i],q[(i+1)%4],ghost);
+        face(left?[[.03,nail[1]-.04,nail[2]-1.5],[.03,nail[1]+.04,nail[2]-1.5],[.03,nail[1]+.04,nail[2]+1.5],[.03,nail[1]-.04,nail[2]+1.5]]
+                 :[[nail[0]-.04,.03,nail[2]-1.5],[nail[0]+.04,.03,nail[2]-1.5],[nail[0]+.04,.03,nail[2]+1.5],[nail[0]-.04,.03,nail[2]+1.5]],'#7d6a55');
+        if(s.state==='want'){const c=left?[.03,nail[1],FR_Z1-14]:[nail[0],.03,FR_Z1-14],w=.16;
+          face(left?[[.03,c[1]-w,c[2]-9],[.03,c[1]+w,c[2]-9],[.03,c[1]+w,c[2]+9],[.03,c[1]-w,c[2]+9]]
+                   :[[c[0]-w,.03,c[2]-9],[c[0]+w,.03,c[2]-9],[c[0]+w,.03,c[2]+9],[c[0]-w,.03,c[2]+9]],'#fff3a8');}
+      }
+    });
+  }
+  /** 點到哪一格相框（被家具／她擋住的地方不算）→ slot 或 -1 */
+  function hitFrame(point){
+    if(!window.RoomFrames)return -1;
+    const p=worldPoint(point),x=Math.floor(p.x),y=Math.floor(p.y);
+    if(sceneDepth&&x>=0&&y>=0&&x<canvas.width&&y<canvas.height&&sceneDepth[y*canvas.width+x]>-Infinity)return -1;
+    for(let slot=0;slot<4;slot++){
+      const P=frameQuad(slot).map(q=>project(...q));let inside=false;
+      for(let i=0,j=P.length-1;i<P.length;j=i++){const [xi,yi]=P[i],[xj,yj]=P[j];
+        if((yi>p.y)!==(yj>p.y)&&p.x<(xj-xi)*(p.y-yi)/(yj-yi)+xi)inside=!inside;}
+      if(inside)return slot;
+    }
+    return -1;
+  }
   // Her desk work (room_desk.js): a stack of paper while the quest is on the desk, a bound report when done.
   // Drawn on the right half of the first desk's top (the left half has the notebook).
   let deskPropKey = '';
@@ -759,6 +810,8 @@
       const fam = hitFamiliar(localPoint(event));
       if (fam) { roomTip(`使魔：${fam.goal || '幫她做事'}${fam.last ? `（${fam.last}）` : ''}`, 4000); return; }
       const tapped = hitItem(localPoint(event));
+      const frameSlot = tapped ? -1 : hitFrame(localPoint(event));
+      if (frameSlot >= 0) { window.RoomFrames.open(frameSlot); return; }
       if (tapped && tapped.type === 'desk' && window.RoomDesk?.openLog) { window.RoomDesk.openLog(); return; }
       if (tapped && tapped.type === 'bookshelf' && window.RoomDesk?.openShelf) { window.RoomDesk.openShelf(); return; }
     }
@@ -914,6 +967,7 @@
     refreshActorControls();
     // Desk prop changed (paper put down / report done / cleared) → redraw the scene.
     if((window.RoomDesk?.prop?.()||'')!==deskPropKey)draw();
+    if((window.RoomFrames?.key?.()||'')!==framesKey)draw();
     if(actor.present)drawActor();
   }
   requestAnimationFrame(animate);

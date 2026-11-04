@@ -494,7 +494,7 @@
     if (!files.length) return '';
     const imgs = files.filter(f => IMG_RE.test(f.name));
     const rows = files.map(f => itemRow({ title: f.name },
-      `${TEXT_RE.test(f.name) ? `<button type="button" data-a="peek" data-f="${esc(f.name)}">看</button>` : ''}<a class="dl" href="${fileUrl(r.id, f.name, 1)}" download>下載</a>`,
+      `${/\.html?$/i.test(f.name) && window.RoomFrames ? `<button type="button" data-a="hangwall" data-f="${esc(f.name)}">掛牆上</button>` : ''}${TEXT_RE.test(f.name) ? `<button type="button" data-a="peek" data-f="${esc(f.name)}">看</button>` : ''}<a class="dl" href="${fileUrl(r.id, f.name, 1)}" download>下載</a>`,
       kb(f.size))).join('');
     return `<div class="sec">附件（${files.length}）</div>
       ${imgs.length ? `<div class="thumbs">${imgs.map(f => `<a href="${fileUrl(r.id, f.name)}" target="_blank" rel="noopener"><img src="${fileUrl(r.id, f.name)}" alt="${esc(f.name)}" loading="lazy"></a>`).join('')}</div>` : ''}
@@ -670,6 +670,8 @@
       if (a === 'shelf') { mode = home = 'shelf'; sel = null; paint(true); return; }
       if (a === 'archive') { await openItem(id, 'archive'); return; }
       if (a === 'peek') { await peek(fname); return; }
+      // 網頁掛到牆上的相框（room_frames.js；掛滿要先拿下一幅）
+      if (a === 'hangwall') { if (sel?.run && await window.RoomFrames?.hangFile?.(sel.run.id, fname)) closeLog(); return; }
       if (a === 'sched') { mode = 'sched'; paint(true); return; }
       if (a === 'sched-day') {
         const d = new Set(schedDays); d.has(fname) ? d.delete(fname) : d.add(fname);

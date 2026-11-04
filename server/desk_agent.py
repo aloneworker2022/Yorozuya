@@ -15,6 +15,7 @@ agent：DESK_AGENT=mock（假的，照劇本吐事件）｜hermes（RP5 上的 H
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import os
 import re
@@ -89,6 +90,10 @@ TITLE_MAX = 200
 NOTE_MAX = 2000
 EVENTS_MAX = 400          # 一件工作最多記幾則（超過只留最新的，報告不受影響）
 POLL_EVENTS_MAX = 200     # 一次回幾則
+
+
+# 報告交了之後要做的事（hook(conn, run_id)）：main.py 註冊（room_frames.on_done）
+ON_DONE: list[Callable] = []
 
 
 def now_ms() -> int:
@@ -354,6 +359,20 @@ def approval_choice(text: str) -> str | None:
     return None
 
 
+# 假 agent 的示範網頁（委託標題有「網頁」才寫）：點愛心會數數、會飄
+MOCK_PAGE = """<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{t}</title>
+<style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+background:linear-gradient(160deg,#ffe3ef,#e6dcff);font:16px system-ui,sans-serif;color:#5a3b63;overflow:hidden}
+button{font-size:64px;border:0;background:none;cursor:pointer;transition:transform .15s}button:active{transform:scale(.85)}
+.h{position:absolute;pointer-events:none;animation:up 1.4s ease-out forwards}@keyframes up{to{transform:translateY(-160px);opacity:0}}</style>
+</head><body><h3>{t}</h3><p>（示範網頁：假 agent 做的）</p><button id="b" aria-label="愛心">💜</button><p>被點了 <b id="n">0</b> 下</p>
+<script>let n=0;b.onclick=e=>{n++;document.getElementById('n').textContent=n;const s=document.createElement('span');
+s.className='h';s.textContent='💕';s.style.left=e.clientX+'px';s.style.top=e.clientY+'px';document.body.appendChild(s);
+setTimeout(()=>s.remove(),1500)};</script></body></html>
+"""
+
+
 class MockAgent:
     """假的 agent：照劇本吐事件、最後交一份示範報告。用來把房間、日誌、報告書做好。"""
 
@@ -424,6 +443,9 @@ class MockAgent:
                 (Path(fdir) / "重點.csv").write_text("項目,說明\n重點一,示範\n重點二,示範\n", encoding="utf-8")
                 (Path(fdir) / "初稿.md").write_text(f"# {t}\n\n（示範初稿）\n", encoding="utf-8")
                 emit("main", "tool", "寫檔案：重點.csv、初稿.md", "ok")
+                if "網頁" in t:   # 示範網頁（相框用）：一個會動的小 app
+                    (Path(fdir) / "index.html").write_text(MOCK_PAGE.replace("{t}", html.escape(t)), encoding="utf-8")
+                    emit("main", "tool", "寫檔案：index.html（示範網頁）", "ok")
             except OSError:
                 pass
         emit("main", "think", "把重點、初稿、修正合在一起，寫成報告。", "")
@@ -521,6 +543,11 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
         add_event(conn, run_id, "main", "report", "報告寫好了，放在桌上。", "ok")
         _set(conn, run_id, status="done", finished=now_ms(), report=str(report or "")[:60000], ask="", shelved=0)
         _propose_reflections(conn, run, report)
+        for hook in ON_DONE:   # 例：room_frames 你請她寫的網頁 → 她自己掛上牆
+            try:
+                hook(conn, run_id)
+            except Exception as e:  # noqa: BLE001 — 掛不上不影響報告
+                add_event(conn, run_id, "main", "error", f"做完後的收尾出錯：{e}", "fail")
         _chain(connect, conn)
     except asyncio.CancelledError:
         raise
