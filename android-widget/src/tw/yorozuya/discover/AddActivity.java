@@ -51,7 +51,7 @@ public class AddActivity extends Activity {
         overridePendingTransition(R.anim.fade_in, R.anim.slide_out_bottom);
     }
 
-    /** 語音輸入（2026-11-04）：叫系統的語音辨識（不用麥克風權限，辨識畫面由系統／Google 給），說完填進輸入框，再按送出。 */
+    /** 語音輸入（2026-11-04）：叫系統的語音辨識（不用麥克風權限，辨識畫面由系統／Google 給），說完填進輸入框、直接送出（2026-11-04：不用再按送出）。 */
     private void listen() {
         Intent it = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         it.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
@@ -80,7 +80,7 @@ public class AddActivity extends Activity {
         if (text.length() > 80) text = text.substring(0, 80);
         input.setText(text);
         input.setSelection(text.length());
-        input.requestFocus();
+        submit();   // 說完直接送；送不出去（連不上…）字留在框裡可以再按送出
     }
 
     private void submit() {

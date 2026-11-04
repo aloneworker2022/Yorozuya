@@ -103,7 +103,7 @@
       </svg>
     </button>
   </form>
-  <!-- 語音輸入（2026-11-04）：大方塊紅點，按一下開始聽、再按一下停；聽到的字填進上面的框，再按送出 -->
+  <!-- 語音輸入（2026-11-04）：大方塊紅點，按一下開始聽、再按一下停；聽到的字填進上面的框、直接送出 -->
   <button id="mic" type="button" aria-label="語音輸入" title="語音輸入"><span class="dot"></span></button>
   <p id="st"></p>
   <p class="hint">瀏覽器選單 → 加到主畫面，就能當小工具用。</p>
@@ -176,7 +176,7 @@ mic.addEventListener("click", () => {
   rec.onend = () => {
     mic.classList.remove("on");
     rec = null;
-    if (heard.trim()) { say("聽到了，確認後按送出"); q.focus(); }
+    if (heard.trim()) f.requestSubmit();   // 說完直接送（送不出去字留在框裡）
     else if (st.textContent.startsWith("在聽")) say("沒聽清楚，再按一次", "bad");
   };
   mic.classList.add("on"); say("在聽…說出待辦（再按一下停）");
