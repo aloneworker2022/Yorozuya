@@ -68,6 +68,22 @@
   }
   #st.ok { color: var(--ok); }
   #st.bad { color: var(--bad); }
+  #mic {
+    display: flex; align-items: center; justify-content: center;
+    width: 7.5em; height: 7.5em; margin: 1em auto 0;
+    border: 1px solid rgba(157, 243, 255, .2); border-radius: 18px;
+    background: var(--panel);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  #mic:active { background: rgba(90, 58, 28, .35); }
+  #mic .dot {
+    width: 2.9em; height: 2.9em; border-radius: 50%;
+    background: #ff3b4f; box-shadow: 0 0 0 0 rgba(255, 59, 79, .5);
+  }
+  #mic.on { border-color: rgba(255, 77, 94, .6); }
+  #mic.on .dot { animation: rec 1.1s ease-out infinite; }
+  @keyframes rec { 0% { box-shadow: 0 0 0 0 rgba(255, 59, 79, .55); } 100% { box-shadow: 0 0 0 1.1em rgba(255, 59, 79, 0); } }
   .hint {
     margin-top: 1.4em;
     font-size: .78em;
@@ -87,6 +103,8 @@
       </svg>
     </button>
   </form>
+  <!-- 語音輸入（2026-11-04）：大方塊紅點，按一下開始聽、再按一下停；聽到的字填進上面的框，再按送出 -->
+  <button id="mic" type="button" aria-label="語音輸入" title="語音輸入"><span class="dot"></span></button>
   <p id="st"></p>
   <p class="hint">瀏覽器選單 → 加到主畫面，就能當小工具用。</p>
 <script>
@@ -130,6 +148,40 @@ f.addEventListener("submit", async (e) => {
   }
 });
 setTimeout(() => q.focus(), 200);
+
+// ---- 語音輸入（Web Speech API；Chrome 要 https 或 localhost 才能用麥克風）
+const mic = document.getElementById("mic");
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+mic.addEventListener("click", () => {
+  if (rec) { rec.stop(); return; }
+  if (!SR) { say("這個瀏覽器不能語音輸入，請用鍵盤上的麥克風", "bad"); return; }
+  const base = (q.value || "").trim();
+  let heard = "";
+  rec = new SR();
+  rec.lang = "zh-TW";
+  rec.interimResults = true;
+  rec.continuous = false;
+  rec.onresult = (e) => {
+    heard = Array.from(e.results).map(r => r[0].transcript).join("");
+    q.value = (base ? base + " " : "") + heard.trim();
+    q.value = q.value.slice(0, 80);
+  };
+  rec.onerror = (e) => {
+    const m = { "not-allowed": "不能用麥克風（要允許麥克風；用 http 開的網頁瀏覽器不給，要 https）",
+      "service-not-allowed": "不能用麥克風（要允許麥克風；用 http 開的網頁瀏覽器不給，要 https）",
+      "no-speech": "沒聽到聲音，再按一次", "audio-capture": "找不到麥克風", "network": "語音辨識連不上網路" }[e.error];
+    say(m || `語音輸入出錯（${e.error}）`, "bad");
+  };
+  rec.onend = () => {
+    mic.classList.remove("on");
+    rec = null;
+    if (heard.trim()) { say("聽到了，確認後按送出"); q.focus(); }
+    else if (st.textContent.startsWith("在聽")) say("沒聽清楚，再按一次", "bad");
+  };
+  mic.classList.add("on"); say("在聽…說出待辦（再按一下停）");
+  try { rec.start(); } catch { rec = null; mic.classList.remove("on"); say("語音輸入開不起來", "bad"); }
+});
 </script>
 </body>
 </html>
