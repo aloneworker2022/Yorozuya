@@ -13256,43 +13256,28 @@ function lineEntryPreview() {
 function openLineChat() { goLine(); }
 
 
-/** 清掉較早訊息，只留「最後一則玩家訊息」起（含其後回覆／已讀）。 */
+/** 清除：只留最後一則訊息（2026-11-04：原本留「最後一則玩家訊息」起，
+ *  她們在 RP5 自己發的文一多就清不掉，按了還說「已經只剩上一則」）。 */
 function clearLineToLastPlayer() {
-  if (lineBusy) { toast("回覆處理中，稍后再清", ""); return; }
+  if (lineBusy) { toast("回覆處理中，稍後再清", ""); return; }
   const lg = ensureLineGroup();
   if (!lg) return;
   const msgs = lg.messages || [];
-  let lastPi = -1;
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    if (msgs[i].kind === "player") { lastPi = i; break; }
-  }
-  if (lastPi < 0) {
-    if (!msgs.length) { toast("沒有訊息可清", ""); return; }
-    lg.messages = [];
-    lg.cursors = {};
-    lg.clearedAt = Date.now();
-  } else if (lastPi === 0) {
-    toast("已經只剩上一則了", "");
-    return;
-  } else {
-    const kept = msgs.slice(lastPi);
-    const keepIds = new Set(kept.map(m => m.id));
-    lg.messages = kept;
-    // 2026-10-14：記下清到哪裡。RP5 寫的訊息另外存在伺服器，不記的話下次同步（/api/line/feed、讀存檔）又被加回來。
-    lg.clearedAt = Math.max(Number(lg.clearedAt) || 0, Number(kept[0].t) || 0);
-    const anchor = kept[0].id;
-    const cursors = lg.cursors || {};
-    for (const gid of Object.keys(cursors)) {
-      const id = cursors[gid]?.lastPlayerMsgId;
-      cursors[gid] = { lastPlayerMsgId: keepIds.has(id) ? id : anchor };
-    }
-    lg.cursors = cursors;
-  }
+  if (!msgs.length) { toast("沒有訊息可清", ""); return; }
+  if (msgs.length === 1) { toast("已經只剩最後一則了", ""); return; }
+  const last = msgs[msgs.length - 1];
+  lg.messages = [last];
+  // 2026-10-14：記下清到哪裡。RP5 寫的訊息另外存在伺服器，不記的話下次同步（/api/line/feed、讀存檔）又被加回來。
+  lg.clearedAt = Math.max(Number(lg.clearedAt) || 0, Number(last.t) || 0);
+  // 每個人「上次讀到哪」都指到留下的這則（不然下次回覆會去找已經清掉的訊息）
+  const cursors = lg.cursors || {};
+  for (const gid of Object.keys(cursors)) cursors[gid] = { lastPlayerMsgId: last.id };
+  lg.cursors = cursors;
   dirty = true;
   scheduleSave();
   _lineScrollStick = true;
   paintLineMessages();
-  toast("已清到上一則", "good");
+  toast("已清到只剩最後一則", "good");
 }
 
 
@@ -13812,7 +13797,7 @@ function renderLineChat(stage, nav) {
         <div class="line-hdr-title">${esc(lg.title || "名冊群")}</div>
         <div class="line-hdr-sub">${n} 人・點空白或「委託板」可返回</div>
       </div>
-      <button type="button" class="line-clear" id="line-clear" title="清掉較早，只留上一則玩家訊息起">清除</button>
+      <button type="button" class="line-clear" id="line-clear" title="清掉較早的，只留最後一則">清除</button>
     </div>
     <div class="line-msgs" id="line-msgs"></div>
     <div class="line-composer">
