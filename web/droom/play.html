@@ -414,8 +414,8 @@ function render(){const HZl=SH/2+P.p*SH*.8,sw=lookS(),HZ=Math.round(HZl<0&&!F2F_
  const sit=pose().startsWith("sit"),fr=sit?SIT_ORD.indexOf(best[1]):G.moving?(G.ph|0)%8:0;let im=sit?sitSheet():sheetFor(best[1]),fw=sit?SFW:FW,fh=sit?SFH:FH;
  if(CLOSE&&!sit&&tz<CLOSE_T){const nim=sheetFor(best[1],true);if(nim.complete&&nim.naturalWidth&&!nim.bad){im=nim;fw=CLOSE_W;fh=CLOSE_H}}   // 近景 sheet 還在載入／缺檔 → 先用遠景
  let f2f=null;F2F_NOW=false;zx.clearRect(0,0,zc.width,zc.height);
- if(CLOSE&&!sit&&!G.moving&&tz<F2F_T&&best[1]=="front"){
-  const fim=sheetFor("front",F2F_SD+"p0/");if(fim.complete&&fim.naturalWidth&&!fim.bad)f2f=fim}
+ if(CLOSE&&!sit&&!G.moving&&tz<F2F_T){   // 2026-11-05 使用者：面對面八個方向都有（轉一圈）
+  const fim=sheetFor(best[1],F2F_SD+"p0/");if(fim.complete&&fim.naturalWidth&&!fim.bad)f2f=fim}
  document.getElementById("st").textContent=`妹子：${sit?{sit_m:"坐地 M 字腿",sit_v:"坐地 V 字腿"}[pose()]:G.moving?"走路":"站著"}（${{front:"正面",front_right:"右前",right:"右",back_right:"右後",back:"背面",back_left:"左後",left:"左",front_left:"左前"}[best[1]]}）　距離 ${Math.hypot(vx,vy).toFixed(1)}${f2f?"　面對面":""}`;
  if(tz>.15&&im.complete&&im.naturalWidth){const H0=SH/tz*1.15,sc=H0/FH,hgt=sit?SFH*sc:H0,wid=hgt*fw/fh;let cx=SW/2*(1+tx/tz);let top=HZ+SH/tz*EYE-H0+(sit?(126-78)*(HD?2:1)*sc:0);   // 坐姿：同一個每像素比例，地面列對齊走路 sheet 的地面列
   const shd=Math.min(1,2.2/tz);
@@ -443,7 +443,7 @@ function girl3D(){const dx=Math.cos(P.a),dy=Math.sin(P.a),vx=G.x-P.x,vy=G.y-P.y,
  for(const q of DIRS){const e=Math.abs(((rel-q[0])+540)%360-180);if(e<Math.abs(((rel-best[0])+540)%360-180))best=q}
  const sit=pose().startsWith("sit"),fr=sit?SIT_ORD.indexOf(best[1]):G.moving?(G.ph|0)%8:0,im=sit?sitSheet():sheetFor(best[1]),fw=sit?SFW:FW,fh=sit?SFH:FH;
  let f2f=null;F2F_NOW=false;
- if(CLOSE&&!sit&&!G.moving&&tz<F2F_T&&best[1]=="front"){const fim=sheetFor("front",F2F_SD+"p0/");if(fim.complete&&fim.naturalWidth&&!fim.bad)f2f=fim}
+ if(CLOSE&&!sit&&!G.moving&&tz<F2F_T){const fim=sheetFor(best[1],F2F_SD+"p0/");if(fim.complete&&fim.naturalWidth&&!fim.bad)f2f=fim}
  document.getElementById("st").textContent=`妹子：${sit?{sit_m:"坐地 M 字腿",sit_v:"坐地 V 字腿"}[pose()]:G.moving?"走路":"站著"}（${{front:"正面",front_right:"右前",right:"右",back_right:"右後",back:"背面",back_left:"左後",left:"左",front_left:"左前"}[best[1]]}）　距離 ${dist.toFixed(1)}${f2f?"　面對面":""}　3D`;
  G.bw=(G.bw||0)+((G.moving?1:0)-(G.bw||0))*.2;
  if(f2f){F2F_NOW=true;return[{kind:"cyl",c:f2f,ex:P.x,ey:P.y,ez:EYE3,dir:Math.atan2(vy,vx),R:Math.max(.15,dist),fpx:310*F2F_K,cx:f2f.width/2,cy:F2F_CY*F2F_K,k:F2F_D0/Math.max(.15,tz)}]}
