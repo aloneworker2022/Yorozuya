@@ -86,8 +86,9 @@ let CLOSE=new URLSearchParams(location.search).has("close"),CLOSE_SD="/droom/she
 //   面對面時世界不加速（使用者：玩家視角上下移動，角色位置也一樣），低頭多少就捲多少（F2F_NOW 用上一格的值）。
 //   2026-11-05 p0 改「低頭看」投影（使用者：臉正常、越往下越短、胸往前凸、腳短）：每列＝低頭到那個角度的視線，第 80 列＝地平線、不用再往下 10°。
 //   2026-11-05 再改（使用者：再靠近一點、頭高一點、快要平視臉和肩膀）：攝影機 0.22 格、眼睛高 0.87 格（約她下巴），第 200 列＝地平線。
+//   2026-11-05 三改（使用者：太近一點；切過去太跳、像忽然放大）：改在 0.3 格拍、碰撞點／走到她面前也改 0.3 格（F2F_D0），1:1 顯示不再放大；第 150 列＝地平線。
 let NF=8;   // 上色時一張 sheet 有幾格（面對面 sheet 只有 1 格）
-const F2F_SD="/droom/sheets_f2f/",F2F_T=.5,F2F_D0=.4,F2F_K=2,F2F_CY=200,F2F_PITCH=0,zc=document.getElementById("cz"),zx=zc.getContext("2d");let F2F_NOW=false;
+const F2F_SD="/droom/sheets_f2f/",F2F_T=.5,F2F_D0=.3,F2F_K=2,F2F_CY=150,F2F_PITCH=0,zc=document.getElementById("cz"),zx=zc.getContext("2d");let F2F_NOW=false;
 function sheetFor(d,near){const SD0=typeof near=="string"?near:near?CLOSE_SD:SD,k=["b","s","cu","ar"].map(i=>document.getElementById(i).value).join("_")+"_"+d,hc=document.getElementById("hc").value,nc=document.getElementById("nc").value,bh=document.getElementById("bh").value,fh=document.getElementById("fh").value,cl=document.getElementById("cl").value,cs=document.getElementById("cs").value,cw=document.getElementById("cw").value,pu=document.getElementById("pu").value,lb=document.getElementById("lb").value,pa=document.getElementById("pa").value,lc=document.getElementById("lc").value,ub=document.getElementById("ub").value,bf=document.getElementById("bf").value,ns=document.getElementById("ns").value,mo=document.getElementById("mo").value,ey=document.getElementById("ey").value,ec=document.getElementById("ec").value,lpc=document.getElementById("lpc").value,bw=document.getElementById("bw").value,ck=(near?near+"|":"")+bw+lpc+ey+ec+"|"+mo+"|"+ns+"|"+bf+"|"+ub+"|"+k+"|"+hc+"|"+nc+"|"+bh+"|"+fh+"|"+cl+"|"+cs+"|"+cw+"|"+pu+"|"+lb+"|"+pa+"|"+lc;
  if(!cache[ck]){const b=k.split("_")[0],urls=[SD0+k+".png",SD0+"hair/"+b+"_back_"+bh+"_"+d+".png",SD0+"hair/"+b+"_front_"+fh+"_"+d+".png"];const q=k.split("_"),BO=cl=="bra"||(ub!="none"&&cl!="none"),SP=SD0+"sup/"+q[0]+"_sup_"+q[2]+"_";if(BO)urls[0]=SP+q[3]+"_"+d+".png";   // pt78u 穿胸罩→托高身體 sheets/sup/
   urls.push(BO?SD0+"sup/cloth/"+q[0]+"_sup_"+q[2]+"_bra_"+d+".png":"");urls.push(cl=="none"||cl=="bra"?"":BO?SD0+"sup/cloth/"+q[0]+"_sup_"+q[2]+"_"+CLF(cl,cw)+"_"+d+".png":SD0+"cloth/"+q[0]+"_"+q[1]+"_"+q[2]+"_"+CLF(cl,cw)+"_"+d+".png");
@@ -264,7 +265,7 @@ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
  if(keys.ArrowLeft||keys.KeyQ)P.a-=2.2*dt;if(keys.ArrowRight||keys.KeyE)P.a+=2.2*dt;
  tryMove(P,(ca*f-sa*s)*sp,(sa*f+ca*s)*sp);
  // 不讓玩家穿過妹子
- const gx=P.x-G.x,gy=P.y-G.y,gd=Math.hypot(gx,gy);if(gd<.4){P.x=G.x+gx/gd*.4;P.y=G.y+gy/gd*.4}
+ const gx=P.x-G.x,gy=P.y-G.y,gd=Math.hypot(gx,gy);if(gd<F2F_D0){P.x=G.x+gx/gd*F2F_D0;P.y=G.y+gy/gd*F2F_D0}   // 2026-11-05 碰撞點 0.4→0.3 格（＝面對面拍的距離）
  if(VR_ON)vrHead();ai(dt);VR_ON?renderVR():GL_ON?render3D([0,0,640,480],0,girl3D()):render();requestAnimationFrame(frame)}
 // 視角高度（牆高=1；0.5 為原本的低視角）
 const EYE=0.95;
@@ -432,7 +433,9 @@ function render(){const HZl=SH/2+P.p*SH*.8,sw=lookS(),HZ=Math.round(HZl<0&&!F2F_
 //   她（遠）：直立板子貼 8 方向 sheet 一格，sheet 第 126 列（2× 252）＝地面、每像素＝1.15/FH 格（跟舊畫面同大小；舊畫面腳底浮在地上 0.115 格，這裡改成踩地）。
 //   她（面對面）：sheets_f2f/p0 的 'look' 圖貼在以玩家兩眼中間為中心、半徑＝她的距離的弧面（第 F2F_CY 列＝水平、每弳 310×F2F_K 像素；跟舊畫面一樣在 0.4 格時 1:1，放大 F2F_D0/距離）。
 //   玩家自己的身體（?self=1）只有舊畫法有。
-const GL_C=document.getElementById("c3"),GL_OK=!!(window.Droom3D&&Droom3D.init(GL_C,M));let GL_ON=GL_OK&&!new URLSearchParams(location.search).has("2d");
+//   2026-11-05 使用者：切到近景太跳 → 3D 跟近景同一套比例：板子每像素＝1.15/(126×倍率) 格（＝render_close 的 CELL，她約 1 格高），眼睛高 EYE3＝0.87 格（≈她下巴，同近景）；
+//     近景照實際距離放大 F2F_D0/距離（在 0.3 格拍、0.3 格看＝1:1），所以遠處板子和近景同大小、同位置，只是換成細一點的圖。
+const EYE3=.87,GL_C=document.getElementById("c3"),GL_OK=!!(window.Droom3D&&Droom3D.init(GL_C,M));let GL_ON=GL_OK&&!new URLSearchParams(location.search).has("2d");
 function gl3dShow(){GL_C.style.display=GL_ON?"block":"none";zc.style.display=GL_ON?"none":"";const b=document.getElementById("b3d");b.textContent=GL_ON?"🧊 3D":"▦ 2D";b.disabled=!GL_OK;b.title=GL_OK?"切換 3D／舊畫法":"這台不支援 WebGL"}
 document.getElementById("b3d").addEventListener("click",()=>{GL_ON=GL_OK&&!GL_ON;gl3dShow()});gl3dShow();
 function girl3D(){const dx=Math.cos(P.a),dy=Math.sin(P.a),vx=G.x-P.x,vy=G.y-P.y,tz=vx*dx+vy*dy,dist=Math.hypot(vx,vy);
@@ -443,11 +446,11 @@ function girl3D(){const dx=Math.cos(P.a),dy=Math.sin(P.a),vx=G.x-P.x,vy=G.y-P.y,
  if(CLOSE&&!sit&&!G.moving&&tz<F2F_T&&best[1]=="front"){const fim=sheetFor("front",F2F_SD+"p0/");if(fim.complete&&fim.naturalWidth&&!fim.bad)f2f=fim}
  document.getElementById("st").textContent=`妹子：${sit?{sit_m:"坐地 M 字腿",sit_v:"坐地 V 字腿"}[pose()]:G.moving?"走路":"站著"}（${{front:"正面",front_right:"右前",right:"右",back_right:"右後",back:"背面",back_left:"左後",left:"左",front_left:"左前"}[best[1]]}）　距離 ${dist.toFixed(1)}${f2f?"　面對面":""}　3D`;
  G.bw=(G.bw||0)+((G.moving?1:0)-(G.bw||0))*.2;
- if(f2f){F2F_NOW=true;return[{kind:"cyl",c:f2f,ex:P.x,ey:P.y,ez:EYE,dir:Math.atan2(vy,vx),R:Math.max(.15,dist),fpx:310*F2F_K,cx:f2f.width/2,cy:F2F_CY*F2F_K,k:F2F_D0/Math.max(.15,tz)}]}
+ if(f2f){F2F_NOW=true;return[{kind:"cyl",c:f2f,ex:P.x,ey:P.y,ez:EYE3,dir:Math.atan2(vy,vx),R:Math.max(.15,dist),fpx:310*F2F_K,cx:f2f.width/2,cy:F2F_CY*F2F_K,k:F2F_D0/Math.max(.15,tz)}]}
  if(!im.complete||!im.naturalWidth||im.bad)return[];
- const s=1.15/FH,gy=(sit?78:126)*(HD?2:1),w=fw*s,a=G.ph/8*Math.PI*2,bob=G.bw*1.15*.022*Math.abs(Math.sin(a)),sway=G.bw*w*.035*Math.sin(a),L=dist||1,W0=im.width;
+ const s=1.15/(126*(HD?2:1)),gy=(sit?78:126)*(HD?2:1),w=fw*s,a=G.ph/8*Math.PI*2,bob=G.bw*1.15*.022*Math.abs(Math.sin(a)),sway=G.bw*w*.035*Math.sin(a),L=dist||1,W0=im.width;
  return[{kind:"bill",c:im,x:G.x-vy/L*sway,y:G.y+vx/L*sway,w,z0:(gy-fh)*s-bob,z1:gy*s-bob,u0:fr*fw/W0,u1:(fr+1)*fw/W0,v0:0,v1:1}]}
-function render3D(vp,eo,gs){const ca=Math.cos(P.a),sa=Math.sin(P.a);Droom3D.draw({x:P.x-sa*eo,y:P.y+ca*eo,z:EYE,yaw:P.a,pitch:Math.atan(.8*P.p),tanH:.66,aspect:4/3,vp},gs)}
+function render3D(vp,eo,gs){const ca=Math.cos(P.a),sa=Math.sin(P.a);Droom3D.draw({x:P.x-sa*eo,y:P.y+ca*eo,z:EYE3,yaw:P.a,pitch:Math.atan(.8*P.p),tanH:.66,aspect:4/3,vp},gs)}
 // 2026-11-04 手機 VR（使用者：做成手機網頁 VR，可以放進 Google VR 眼鏡／Cardboard）：
 //   左右分屏＝左右眼各畫一次（玩家往左右各移 VR_IPD/2 格，約 6 公分；面對面疊層 #cz 也一起畫），每眼 4:3 置中、兩側裁掉；不做鏡片變形。
 //   轉頭：deviceorientation 算手機背面朝向（R＝Rz(α)Rx(β)Ry(γ)·(0,0,−1)）→ 方位角改 P.a、仰角改 P.p（tan 仰角＝0.8·P.p），進 VR 那一刻的朝向當正前方。
@@ -484,8 +487,8 @@ requestAnimationFrame(frame);
  lk.addEventListener("pointerdown",()=>drag=true);for(const ev of ["pointerup","pointercancel","change"])lk.addEventListener(ev,()=>drag=false);
  (function sync(){if(!drag&&Math.abs(+lk.value+P.p)>.004)lk.value=-P.p;requestAnimationFrame(sync)})();
  document.getElementById("meet").addEventListener("click",()=>{CLOSE=true;const po=document.getElementById("po");po.value="stand";po.dispatchEvent(new Event("change"));G.moving=false;G.tx=G.x;G.ty=G.y;
-  let best=null;for(let i=0;i<16;i++){const a=G.h+(i%2?1:-1)*Math.ceil(i/2)*Math.PI/8,x=G.x+Math.cos(a)*.4,y=G.y+Math.sin(a)*.4;if(!wall(x,y)&&!wall(G.x+Math.cos(a)*.6,G.y+Math.sin(a)*.6)){best=a;break}}
-  if(best==null)best=G.h;G.h=best;P.x=G.x+Math.cos(best)*.4;P.y=G.y+Math.sin(best)*.4;P.a=best+Math.PI;P.p=0})})();
+  let best=null;for(let i=0;i<16;i++){const a=G.h+(i%2?1:-1)*Math.ceil(i/2)*Math.PI/8,x=G.x+Math.cos(a)*F2F_D0,y=G.y+Math.sin(a)*F2F_D0;if(!wall(x,y)&&!wall(G.x+Math.cos(a)*(F2F_D0+.2),G.y+Math.sin(a)*(F2F_D0+.2))){best=a;break}}
+  if(best==null)best=G.h;G.h=best;P.x=G.x+Math.cos(best)*F2F_D0;P.y=G.y+Math.sin(best)*F2F_D0;P.a=best+Math.PI;P.p=0})})();
 // 2026-10-30 pt77u：胸罩→配色只留 黑／白／紅、藏配重；白色 T恤→藏配色和配重
 (function(){const cl=document.getElementById("cl"),cs=document.getElementById("cs"),cw=document.getElementById("cw"),L={pink:"粉紅布金邊",black:"黑布白邊",white:"白布紅邊",red:"紅"},B={black:"黑",white:"白",red:"紅"};
  function sync(){const v=cl.value,br=v=="bra";for(const o of cs.options){o.hidden=br?!(o.value in B):o.value=="red";o.textContent=br?(B[o.value]||L[o.value]):L[o.value]}
