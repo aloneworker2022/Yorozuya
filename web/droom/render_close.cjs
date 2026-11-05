@@ -11,8 +11,13 @@ const CELL = 126 / 1.15;   // play.html：走路 sheet 地面以上 126 單位�
 const FACEV = !!process.env.FACE, D0 = +(process.env.D0 || (FACEV ? .28 : .6)), CW = FACEV ? 420 : 240, CH = FACEV ? 900 : 480, K = FACEV ? 2 : 1, NFR = FACEV ? 1 : 8;
 const CAM0 = { dist: D0 * CELL, eyeZ: .95 * CELL, pitch: 0, f: FACEV ? 310 : 240, w: CW, h: CH, cx: CW / 2, cy: FACEV ? 130 : 20 };   // 2026-11-04 面對面：她再近一點（0.28 格）、再大一點（f 310≈×1.29），420×900 往下到腳（站姿）
    // f＝SH（play.html 1 格遠＝SH 像素）；近景 cy＝玩家眼睛高（地平線）在第幾列
-const P0_PITCH = +(process.env.P0PITCH || 10);   // 2026-11-04 使用者：人物太斜，要更直立、像由上往下看一點 → 平視那張攝影機往下一點點（度）
-const VIEW_CAM = { p0: { ...CAM0, pitch: P0_PITCH * Math.PI / 180 }, down: { ...CAM0, pitch: +(process.env.DOWN || 20) * Math.PI / 180, h: 530, cy: 150 } };
+const P0_PITCH = +(process.env.P0PITCH || 10);   // 2026-11-04 使用者：人物太斜，要更直立、像由上往下看一點 → 平視那張攝影機往下一點點（度）（PROJ=rect 才用）
+// 2026-11-05 使用者：靠近時做錯了——應該臉正常、越往下越短，胸部往前凸（不是平視）、腳比較短（從上往下看進去）。
+//   針孔（平面底片）往畫面下面會越拉越長 → p0 改用 cam.proj＝'look'（每一列＝低頭到那個角度時的正中間：俯角＝(列−cy)/f，角度等距），
+//   不用再往下 10°（'look' 轉上下只是整張平移）；cy＝80＝玩家眼睛高（地平線），420×560 往下到腳。PROJ=rect 回舊做法。
+const LOOKP = FACEV && (process.env.PROJ || 'look') === 'look';
+const P0_CAM = LOOKP ? { ...CAM0, proj: 'look', pitch: 0, h: 560, cy: 80 } : { ...CAM0, pitch: P0_PITCH * Math.PI / 180 };
+const VIEW_CAM = { p0: P0_CAM, down: { ...CAM0, pitch: +(process.env.DOWN || 20) * Math.PI / 180, h: 530, cy: 150 } };
 const VIEWS = FACEV ? (process.env.VIEWS || 'p0').split(',') : ['close'];
 const BODY = { balanced: { height_cm: 161, build: '勻稱有致', hair: '中分長髮' }, slim: { height_cm: 166, build: '纖細苗條', hair: '短髮' }, petite: { height_cm: 150, build: '嬌小玲瓏', hair: '雙馬尾' }, curvy: { height_cm: 163, build: '微肉圓潤', hair: '大波浪長髮' } };
 const DIR = { front: 0, front_right: 45, right: 90, back_right: 135, back: 180, back_left: -135, left: -90, front_left: -45 };
@@ -50,4 +55,4 @@ jobs.forEach(([v, d], ji) => {
   for (const [p, S] of Object.entries(outs)) { fs.mkdirSync(path.dirname(O + p), { recursive: true }); png(S, 1, O + p); }
   console.log(FACEV ? `f2f ${v}` : 'close', d, 'done'); n++;
 });
-console.log('close shard', SHARD, 'units', n, 'of', jobs.length, 'CAM', JSON.stringify(CAM0));
+console.log('close shard', SHARD, 'units', n, 'of', jobs.length, 'CAM', JSON.stringify(FACEV ? P0_CAM : CAM0));

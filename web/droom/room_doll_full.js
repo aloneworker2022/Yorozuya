@@ -2058,16 +2058,24 @@
       const gr = hypot3(mxx - gcx, mxy - gcy, mxz - gcz) + .5;
       const th = yaw * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), gw = GIRTH;
       let dX = -2 * s / gw, dY = 2 * c / gw, dZ = 0, dd = dX * dX + dY * dY + dZ * dZ;
-      let camRay = null, camPx = 1, camRow = null;
+      let camRay = null, camPx = 1, camRow = null, camPxAt = null;   // camPxAt(q)：'look' 時每點自己的透視倍率
       if (CAM) {   // 攝影機在她前方（yaw 方向的 (−s, c)），往她看、往下 pitch；水平拉寬空間＝模型 x,y × gw
         const cp = Math.cos(CAM.pitch || 0), sp = Math.sin(CAM.pitch || 0), F = CAM.f, D0 = CAM.dist;
         const fw = [s * cp, -c * cp, -sp], rt = [c, s, 0], up = [s * sp, -c * sp, cp];
         const A0 = [-s * D0, c * D0, CAM.eyeZ];
         camPx = F / (D0 * gw);
         camRow = (z) => { const d = [s * D0 * gw, -c * D0 * gw, z - CAM.eyeZ], fz = d[0] * fw[0] + d[1] * fw[1] + d[2] * fw[2], uz = d[0] * up[0] + d[1] * up[1] + d[2] * up[2]; return (CAM.cy - F * uz / fz) * K; };   // 她中線上高度 z 在畫面第幾列   // 她身上 1 單位 ≈ 幾個像素（K＝1），點乳頭圓之類用
+        // 2026-11-05 cam.proj＝'look'（使用者：靠近時臉正常、越往下越短，胸部往前凸、腳變短＝從上往下看進去）：
+        //   一般針孔（平面底片）越往畫面下面越被拉長；'look' 改成「每一列＝低頭到那個角度時正中間那條線」：列 v 的俯角＝pitch＋v/f（角度等距），
+        //   所以身上每單位高度在畫面上＝f·d/(d²＋z²)，越往下越扁；左右照該列攝影機的針孔（越遠越窄）。play.html 的低頭也是角度等速捲，對得起來。
+        const LOOK = CAM.proj === 'look';
+        if (LOOK) camRow = (z) => (CAM.cy + F * (Math.atan2(CAM.eyeZ - z, D0 * gw) - (CAM.pitch || 0))) * K;
+        if (LOOK) camPxAt = (q) => F / Math.max(1e-6, Math.hypot((q[0] - A0[0]) * gw, (q[1] - A0[1]) * gw, q[2] - A0[2]));
         camRay = (px, py, A, B) => {
           const u = (px + .5) / K - CAM.cx, v = (py + .5) / K - CAM.cy;
-          let x = fw[0] * F + rt[0] * u - up[0] * v, y = fw[1] * F + rt[1] * u - up[1] * v, z = fw[2] * F + rt[2] * u - up[2] * v;
+          let x, y, z;
+          if (LOOK) { const ph = (CAM.pitch || 0) + v / F, cq = Math.cos(ph), sq = Math.sin(ph); x = s * cq * F + rt[0] * u; y = -c * cq * F + rt[1] * u; z = -sq * F; }
+          else { x = fw[0] * F + rt[0] * u - up[0] * v; y = fw[1] * F + rt[1] * u - up[1] * v; z = fw[2] * F + rt[2] * u - up[2] * v; }
           const L = Math.hypot(x, y, z); x /= L; y /= L; z /= L;
           A[0] = A0[0]; A[1] = A0[1]; A[2] = A0[2];
           B[0] = -2 * x / gw; B[1] = -2 * y / gw; B[2] = -2 * z;
@@ -2155,7 +2163,7 @@
               if (d < bestD) { bestD = d; best = i; bx = x; by = y; }
             }
             if (best < 0) continue;
-            const rPix = Math.max(2, Math.round(0.9 * K * camPx));
+            const rPix = Math.max(2, Math.round(0.9 * K * (camPxAt ? camPxAt(st.q) : camPx)));
             for (let oy = -rPix; oy <= rPix; oy++) for (let ox = -rPix; ox <= rPix; ox++) {
               if (ox * ox + oy * oy > rPix * rPix + 0.2) continue;
               const xx = bx + ox, yy = by + oy; if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
@@ -2229,7 +2237,7 @@
             if (d < bestD) { bestD = d; best = i; bx = x; by = y; }
           }
           if (best < 0) continue;
-          const rPix = Math.max(2, Math.round(0.9 * K * camPx));
+          const rPix = Math.max(2, Math.round(0.9 * K * (camPxAt ? camPxAt([qx, qy, qz]) : camPx)));
           for (let oy = -rPix; oy <= rPix; oy++) for (let ox = -rPix; ox <= rPix; ox++) {
             if (ox * ox + oy * oy > rPix * rPix + 0.2) continue;
             const xx = bx + ox, yy = by + oy;
