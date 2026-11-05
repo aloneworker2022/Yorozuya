@@ -193,3 +193,9 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 2026-11-04 手機 VR（使用者：做成手機網頁 VR，放進 Google VR 眼鏡／Cardboard 試）：play.html 拉桿旁「👓 VR」→ 全螢幕、鎖橫向、左右分屏（每眼各畫一次，玩家往左右各移 0.02 格≈6 公分；面對面疊層也畫），每眼 4:3 置中裁兩側，不做鏡片變形。
   轉頭＝deviceorientation 算手機背面朝向 → 方位角改 P.a、仰角改 P.p，進 VR 當下的朝向＝正前方；按住畫面往前走；✕ 離開。iOS 會跳陀螺儀授權；陀螺儀要 https 或 localhost。
 - 2026-11-04 VR 改到手機 App 裡（使用者：瀏覽器沒辦法）：原因是手機 Chrome／WebView 只在 https 才給網頁 deviceorientation，`http://區網IP` 拿不到。android-app 8.3（versionCode 13）加 `HeadTracker`：殼讀旋轉感測器 → `window.yoroHead(h, p)`；play.html 在 App 裡用它，並用 `YoroAndroid.setLandscape／setKeepScreenOn` 轉橫向、全螢幕、不休眠，離開時關回。舊殼提示重裝。遊戲設定頁加「VR 房間」連到 /droom/play（App 沒有網址列）。
+
+## 2026-11-05：面對面改「低頭看」投影（使用者：靠近時做錯了）
+- 問題：面對面 p0 用一般針孔攝影機（平面底片），越往畫面下面越被拉長（腿、下半身反而變長、像平視）。使用者要的是「臉部正常，往下越短；胸部看起來往前凸出而不是平視；腳比較短——從上往下看進去」。
+- room_doll_full.js `render(..., {cam: {proj: 'look', ...}})`：每一列＝玩家低頭到那個角度時正中間那條線，列 v 的俯角＝pitch＋(v−cy)/f（角度等距）；左右照該列攝影機的針孔。她身上每單位高度在畫面上＝f·d/(d²＋z²)，越往下越扁，越遠也越窄（腳收成倒三角）；臉在地平線附近，跟原本一樣大。乳頭圓半徑照每點自己的距離算。沒帶 `proj` 時跟原本針孔逐位元組相同。
+- render_close.cjs 面對面 p0 預設 `PROJ=look`：pitch 0（'look' 上下轉只是整張平移，不用再往下 10°）、第 80 列＝玩家眼睛高（地平線），sheet 420×560 單位（840×1120 像素，往下到腳）；`PROJ=rect` 回舊的針孔＋往下 10°。
+- play.html `F2F_CY`＝80、`F2F_PITCH`＝0（第 80 列放在 HZ；play.html 低頭也是照角度等速捲，對得起來）；index.html 靠近預覽 sheet 高 560、拉桿 0～200。
