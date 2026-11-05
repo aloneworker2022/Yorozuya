@@ -127,10 +127,10 @@
         let br = 0; for (const q of prof) br = Math.max(br, Math.hypot(q[0] - cy, q[1] - cz)); for (const q of front) br = Math.max(br, Math.abs(q[0]));
         push({ k: 4, mat, prof, front, top, rr, clip: null, bc: [0, cy, cz], br: br * 1.5 + rr });
       };
-      sh.loft = (mat, rows, rr = .25) => {   // rows：[z, 半寬, 前緣 y, 後緣 y]，z 由上往下
+      sh.loft = (mat, rows, rr = .25, flat = null) => {   // rows：[z, 半寬, 前緣 y, 後緣 y]，z 由上往下；flat＝{n, z0, z1}：z0～z1 之間前半圈改超橢圓（指數 n，前面比較平）
         let br = 0; const cz = (rows[0][0] + rows[rows.length - 1][0]) / 2, cy = (rows[0][2] + rows[0][3]) / 2;
         for (const [z, w, yf, yb] of rows) br = Math.max(br, Math.hypot(w, Math.max(Math.abs(yf - cy), Math.abs(yb - cy)), z - cz));
-        push({ k: 5, mat, rows, rr, clip: null, bc: [0, cy, cz], br: br + rr + .5 });
+        push({ k: 5, mat, rows, rr, sup: flat, clip: null, bc: [0, cy, cz], br: br + rr + .5 });
       };
       sh.chain = (mat, pts, radii) => { for (let i = 0; i < pts.length - 1; i++) sh.cone(mat, pts[i], pts[i + 1], radii[i], radii[i + 1]); };
       sh.capped = (mat, c, h, rBottom, rTop, ysq, ycen) => {
@@ -175,7 +175,12 @@
         let i = 0; while (i < N - 2 && zz < R[i + 1][0]) i++;
         const a = R[i], b = R[i + 1], t = (a[0] - zz) / (a[0] - b[0] || 1e-9), L = j => a[j] + (b[j] - a[j]) * t;
         const w = Math.max(.05, L(1)), yf = L(2), yb = L(3), yw = yb + .42 * (yf - yb), bb = Math.max(.05, y > yw ? yf - yw : yw - yb);
-        const dxy = (Math.hypot(x / w, (y - yw) / bb) - 1) * Math.min(w, bb) * .9, dz = Math.max(z - zt, zb - z);
+        let nrm = Math.hypot(x / w, (y - yw) / bb);
+        if (p.sup && y > yw) {   // 2026-11-05 前半圈超橢圓：臉前面是寬而平的面（兩眼都在上面），到外眼角後面才轉彎；z0（下）～z1（上）之間漸變
+          const F = p.sup, s0 = clamp((zz - F.z0) / (F.z1 - F.z0), 0, 1), n = 2 + (F.n - 2) * s0 * s0 * (3 - 2 * s0);
+          if (n > 2.01) nrm = Math.pow(Math.pow(Math.abs(x / w), n) + Math.pow(Math.abs((y - yw) / bb), n), 1 / n);
+        }
+        const dxy = (nrm - 1) * Math.min(w, bb) * .9, dz = Math.max(z - zt, zb - z);
         d = (dz > 0 ? Math.hypot(Math.max(dxy, 0), dz) : Math.max(dxy, dz)) - p.rr;
       } else if (p.k === 4) {   // 2026-11-01 臉：側面輪廓（y,z）∩ 正面輪廓（x,z），圓角 rr
         const [ea, eb, ec] = p.top, de = (Math.hypot(x / ea, (y - ec) / eb) - 1) * Math.min(ea, eb);   // 由上往下看：橢圓（臉的水平切面是圓弧，不是方的）
@@ -408,14 +413,16 @@
       // 2026-11-05 使用者：45 度遠的那隻眼睛跑到鼻樑上 → 原因＝眼窩挖太深（臉在 x 2.9 的表面 y≈6.4，挖到 4.7，深 1.7），45 度時遠眼被眼窩邊擋到只剩靠鼻樑一角 → 改中等深（中心 y 6.6、深約 1）；太淺的話遠眼會凸出臉的輪廓
       //   眉骨、顴骨往前、往上一點（眉骨 y 4.95→5.6、顴骨 y 4.6→5.0、z −3.2→−2.7）：45 度時遠側由眉骨＋顴骨形成輪廓，遠眼夾在鼻樑和輪廓中間（參考圖 3/4 側臉）
       // 2026-11-05 第 6 版（使用者：認真研究鼻樑、眼窩；眼睛是凹進去的，不是凸眼）：眼窩加深（中心比臉表面低約 1.2）、坡緩一點（前後半徑 1.6），眼睛整個坐在凹槽裡，上面眉骨、下面顴骨都比眼睛前面
-      eye: [2.9, 6.75, -.8, 1.95, 1.6, 1.3],
+      // 2026-11-05 第 7 版：臉前面改平（flatN 4.5）後，眼窩中等深（中心比臉表面低約 0.8）就夠：45 度時遠眼在鼻樑和輪廓中間、凹在眼窩裡
+      eye: [2.9, 7.1, -.8, 1.95, 1.5, 1.3],
       brow: [3.4, 5.6, .55, 2.2, 1.0, .8],    // 眉骨：x, y, z, 半徑
       cheek: [3.6, 5.0, -2.7, 2.0, 1.3, 1.4],  // 顴骨   // 眼窩（挖掉）：x, y, z, 半徑 x/y/z
       front: [[-6.2, -.3], [6.2, -.3], [5.8, -3.0], [4.5, -6.0], [.6, -8.5], [-.6, -8.5], [-4.5, -6.0], [-5.8, -3.0]],   // ＋圓角 0.4；上緣收在頭骨裡面（不然臉會比頭寬）
       // 2026-11-01 使用者：45 度下巴太有稜角，要倒三角 → 臉改成疊層（每個高度一個橢圓切面）：[z, 半寬, 前緣 y, 後緣 y]
       loft: [[1.0, 6.3, 6.7, -3.2], [-.5, 6.3, 7.0, -3.2], [-1.9, 6.1, 6.85, -3.2], [-3.0, 5.8, 6.9, -3.0], [-4.4, 5.3, 6.9, -2.2], [-5.0, 5.0, 6.85, -1.6],
         [-5.55, 4.7, 6.8, -1.2], [-6.0, 4.3, 6.7, -.6], [-6.8, 3.4, 6.5, .6], [-7.2, 2.9, 6.35, 1.3], [-7.6, 2.3, 6.6, 1.9], [-8.3, 1.15, 6.5, 3.7], [-8.65, .5, 6.4, 5.0], [-8.8, .2, 6.2, 5.8]],   // 2026-11-01 使用者：側面下巴太圓 → 前緣撐到最底、尖角、下顎線直；嘴的地方平順（嘴唇另外做零件）
-      top: [6.2, 7.6, -.5],   // 前面圓弧（45 度時遠側眼窩剛好在輪廓上）   // 由上往下看的橢圓：半寬、前後半徑、中心 y
+      top: [6.2, 7.6, -.5],
+      flatN: 4.5, flatZ: [-5.0, -2.2],   // 臉前面平的程度（超橢圓指數）、從哪個高度（下）漸變到哪個高度（上）完全平   // 前面圓弧（45 度時遠側眼窩剛好在輪廓上）   // 由上往下看的橢圓：半寬、前後半徑、中心 y
     };
     function animeHead(sh, P, yl, zc) {
       const hs = P.b.head, A = ANIME_HEAD, y0 = yl(zc) + .3, k = P.head_h / 17.6;
@@ -425,7 +432,8 @@
         sh.ell(BODY, [sx * A.brow[0] * hs, y0 + A.brow[1] * hs, zc + A.brow[2] * k], [A.brow[3] * hs, A.brow[4] * hs, A.brow[5] * k]);
         sh.ell(BODY, [sx * A.cheek[0] * hs, y0 + A.cheek[1] * hs, zc + A.cheek[2] * k], [A.cheek[3] * hs, A.cheek[4] * hs, A.cheek[5] * k]);
       }
-      sh.loft(BODY, A.loft.map(([z, w, yf, yb]) => [zc + z * k, w * hs, y0 + yf * hs, y0 + yb * hs]), .15);   // 臉（疊層：側面輪廓＝前緣、正面＝半寬、下巴收成一點）
+      // 2026-11-05 使用者（3/4 參考圖疊圖）：臉的橫切面原本是圓的，45 度時遠側整個轉到後面、鼻樑變成輪廓、遠眼沒地方出現 → 眉毛到嘴巴這段前半圈改超橢圓（前面寬而平），下巴照舊
+      sh.loft(BODY, A.loft.map(([z, w, yf, yb]) => [zc + z * k, w * hs, y0 + yf * hs, y0 + yb * hs]), .15, { n: A.flatN, z0: zc + A.flatZ[0] * k, z1: zc + A.flatZ[1] * k });   // 臉（疊層：側面輪廓＝前緣、正面＝半寬、下巴收成一點）
     }
     function headPart(sh, P, yl, zc, doll = {}) {
       const pp = sh.part; sh.part = 'head';
@@ -969,7 +977,7 @@
         const fy = z => { for (let i = 0; i < LF.length - 1; i++) if (z <= LF[i][0] && z >= LF[i + 1][0]) { const t = (LF[i][0] - z) / (LF[i][0] - LF[i + 1][0]); return LF[i][2] + (LF[i + 1][2] - LF[i][2]) * t + .2; } return 7; };   // 臉前緣（單位座標）
         const base = N.tip - .45 - .45 * Math.max(0, N.up), prof = [];
         // 2026-11-05 第 6 版（使用者：鼻樑、眼窩要研究清楚）：鼻樑從眉間就隆起（山根），眼睛高時已經比臉前緣高約 1.3，擋在兩眼內眼角前面；之後照原本斜到鼻尖
-        const BR = N.bridge ?? .5;
+        const BR = N.bridge ?? .2;   // 第 7 版：臉前面改平後鼻樑只要微微隆起（.5 時 45 度把遠眼整個擋掉）
         for (let i = 0; i <= 8; i++) { const t = i / 8, z = N.root + (N.tip - N.root) * t; prof.push([fy(z) + N.P * t + BR * Math.sin(Math.PI * Math.min(1, t * 1.6)) * (1 - t) * 1.6 - N.conc * N.P * .28 * Math.sin(Math.PI * t), z]); }   // 鼻樑（從臉上長出來）
         prof.push([fy(base) + N.P * .55, base + .05], [fy(base), base]);   // 鼻底收回人中（上翹＝鼻底往上斜）
         for (let i = 8; i >= 0; i--) { const z = base + (N.root - base) * i / 8; prof.push([fy(z) - .7, z]); }   // 背面埋在臉裡
@@ -2394,7 +2402,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { ANIME_HEAD, FAINT_RGB, PARTS, renderParts, renderComposite, POSES, BROW_RGB, BROW_LO_RGB, LIPLO_RGB, LIPLO_LO_RGB, EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { ANIME_HEAD, bodyDist, FAINT_RGB, PARTS, renderParts, renderComposite, POSES, BROW_RGB, BROW_LO_RGB, LIPLO_RGB, LIPLO_LO_RGB, EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, CREASE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };

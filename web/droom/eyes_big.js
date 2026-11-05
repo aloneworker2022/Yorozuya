@@ -117,6 +117,6 @@
     return true;
   }
   // far：斜面遠的那隻被擠到鼻樑旁（寬度 < 近眼 55%）時 'hide'＝被山根擋住不畫（2026-11-05 使用者：側面眼睛應該被山根擋住、不是印上去）、'lash'＝只畫眼線睫毛、'full'＝整隻畫
-  const EyeBig = { over, paint, SHAPE, far: 'hide' };
+  const EyeBig = { over, paint, SHAPE, far: 'full' };   // 第 7 版：臉前面改平，45 度遠眼看得到（使用者：遠眼在鼻樑旁、凹在眼窩裡）→ 整隻畫，被鼻樑擋住的照標記不畫
   window.EyeBig = EyeBig;
 })();
