@@ -8,10 +8,10 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 #padL{left:8px}#padR{right:8px;grid-template-rows:repeat(2,clamp(44px,13vw,64px));bottom:calc(8px + clamp(44px,13vw,64px) + 4px)}
 .pad button{font-size:22px;border:1px solid #888;border-radius:10px;background:rgba(40,40,40,.8);color:#fff;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent}
 .pad button.on{background:rgba(120,160,220,.9)}a{color:#9cf}select{background:#222;color:#ddd}</style></head><body>
-<div id="wrap"><canvas id="c" width="320" height="240"></canvas><canvas id="cz" width="640" height="480" style="position:absolute;left:0;top:0;pointer-events:none;background:transparent"></canvas>
+<div id="wrap"><canvas id="c" width="320" height="240"></canvas><canvas id="cz" width="640" height="480" style="position:absolute;left:0;top:0;pointer-events:none;background:transparent"></canvas><canvas id="c3" width="640" height="480" style="position:absolute;left:0;top:0;pointer-events:none;display:none"></canvas>
 <div class="pad" id="padL"><span></span><button data-k="KeyW">▲</button><span></span><button data-k="KeyA">◀</button><span></span><button data-k="KeyD">▶</button><span></span><button data-k="KeyS">▼</button><span></span></div>
 <div class="pad" id="padR"><button data-k="KeyQ">⟲</button><button data-k="KeyR">⇡</button><button data-k="KeyE">⟳</button><span></span><button data-k="KeyF">⇣</button><span></span></div></div>
-<div id="lookbar" style="width:min(96vw,960px);display:flex;align-items:center;gap:8px;padding:6px 0;box-sizing:border-box"><span>抬頭</span><input type="range" id="lk" min="-1.3" max="1.875" step="0.005" value="0" style="flex:1;min-width:0"><span>低頭</span><button id="meet">走到她面前</button><button id="vrb">👓 VR</button></div>
+<div id="lookbar" style="width:min(96vw,960px);display:flex;align-items:center;gap:8px;padding:6px 0;box-sizing:border-box"><span>抬頭</span><input type="range" id="lk" min="-1.3" max="1.875" step="0.005" value="0" style="flex:1;min-width:0"><span>低頭</span><button id="meet">走到她面前</button><button id="b3d">🧊 3D</button><button id="vrb">👓 VR</button></div>
 <div id="vr" style="display:none;position:fixed;inset:0;background:#000;z-index:50;touch-action:none;user-select:none;-webkit-user-select:none"><canvas id="vrc" style="width:100%;height:100%;display:block;image-rendering:pixelated"></canvas><div style="position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#222"></div><button id="vrx" style="position:absolute;top:6px;left:50%;transform:translateX(-50%);opacity:.45;font-size:16px;padding:2px 10px">✕</button><div id="vrmsg" style="position:absolute;left:0;right:0;bottom:12px;text-align:center;color:#ccc;font-size:13px;pointer-events:none"></div></div>
 <div id="hud">W/↑ 前進　S/↓ 後退　A 左移　D 右移　←/→ 或 Q/E 轉向　R/F 抬頭/低頭　點畫面鎖定滑鼠轉頭（上下也可看）　手機：左下方向鍵移動、右下 ⟲⟳ 轉向、⇡⇣ 抬頭低頭（或在畫面上左右/上下滑動）　｜
 姿勢 <select id="po"><option value="walk">走路</option><option value="stand">站著不動</option><option value="sit_m">坐地 M 字腿</option><option value="sit_v">坐地 V 字腿</option></select>
@@ -41,6 +41,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 我的陰莖 <select id="pn"><option value="soft">軟</option><option value="semi">微勃起</option><option value="erect">勃起</option></select>（X 切換・往下看可見）
 ｜ <a href="/droom">← 回剪影預覽</a><div id="st"></div></div>
 <script src="/droom/parts_shade.js?v=3"></script>
+<script src="/droom/gl3d.js?v=1"></script>
 <script>
 // 房間：內部 6×6 地板（外圈為牆，粉色牆面一段點綴）
 const M=["11111111","10000001","10000001","10000002","10000002","10000001","10000001","11111111"];
@@ -264,7 +265,7 @@ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
  tryMove(P,(ca*f-sa*s)*sp,(sa*f+ca*s)*sp);
  // 不讓玩家穿過妹子
  const gx=P.x-G.x,gy=P.y-G.y,gd=Math.hypot(gx,gy);if(gd<.4){P.x=G.x+gx/gd*.4;P.y=G.y+gy/gd*.4}
- if(VR_ON)vrHead();ai(dt);VR_ON?renderVR():render();requestAnimationFrame(frame)}
+ if(VR_ON)vrHead();ai(dt);VR_ON?renderVR():GL_ON?render3D([0,0,640,480],0,girl3D()):render();requestAnimationFrame(frame)}
 // 視角高度（牆高=1；0.5 為原本的低視角）
 const EYE=0.95;
 // 上下視角：y-shearing，地平線 HZ 隨 pitch 上下移動（P.p>0 抬頭）
@@ -427,6 +428,26 @@ function render(){const HZl=SH/2+P.p*SH*.8,sw=lookS(),HZ=Math.round(HZl<0&&!F2F_
    for(let x=Math.max(0,cx-w2/2|0);x<Math.min(SW,cx+w2/2);x++){if(zb[x]<tz)continue;const sxp=fr*fw+((x-(cx-w2/2))/w2*fw|0);g.drawImage(im,sxp,0,1,fh,x,t2,1,h2)}}
   else for(let x=Math.max(0,cx-wid/2|0);x<Math.min(SW,cx+wid/2);x++){if(zb[x]<tz)continue;const sxp=fr*fw+((x-(cx-wid/2))/wid*fw|0);g.drawImage(im,sxp,0,1,fh,x,top,1,hgt)}}
  drawSelfRef(keys.KeyW||keys.KeyS||keys.ArrowUp||keys.ArrowDown||keys.KeyA||keys.KeyD)}
+// 2026-11-05 真 3D（使用者選 B；gl3d.js）：房間、她、面對面都用 WebGL 畫，低頭＝真的轉頭（不是整張往上推）。「🧊 3D」切換新舊畫法（預設 3D；?2d=1 用舊的；WebGL 開不起來自動用舊的）。
+//   她（遠）：直立板子貼 8 方向 sheet 一格，sheet 第 126 列（2× 252）＝地面、每像素＝1.15/FH 格（跟舊畫面同大小；舊畫面腳底浮在地上 0.115 格，這裡改成踩地）。
+//   她（面對面）：sheets_f2f/p0 的 'look' 圖貼在以玩家兩眼中間為中心、半徑＝她的距離的弧面（第 F2F_CY 列＝水平、每弳 310×F2F_K 像素；跟舊畫面一樣在 0.4 格時 1:1，放大 F2F_D0/距離）。
+//   玩家自己的身體（?self=1）只有舊畫法有。
+const GL_C=document.getElementById("c3"),GL_OK=!!(window.Droom3D&&Droom3D.init(GL_C,M));let GL_ON=GL_OK&&!new URLSearchParams(location.search).has("2d");
+function gl3dShow(){GL_C.style.display=GL_ON?"block":"none";zc.style.display=GL_ON?"none":"";const b=document.getElementById("b3d");b.textContent=GL_ON?"🧊 3D":"▦ 2D";b.disabled=!GL_OK;b.title=GL_OK?"切換 3D／舊畫法":"這台不支援 WebGL"}
+document.getElementById("b3d").addEventListener("click",()=>{GL_ON=GL_OK&&!GL_ON;gl3dShow()});gl3dShow();
+function girl3D(){const dx=Math.cos(P.a),dy=Math.sin(P.a),vx=G.x-P.x,vy=G.y-P.y,tz=vx*dx+vy*dy,dist=Math.hypot(vx,vy);
+ let rel=((G.h-Math.atan2(P.y-G.y,P.x-G.x))*180/Math.PI+540)%360-180,best=DIRS[0];
+ for(const q of DIRS){const e=Math.abs(((rel-q[0])+540)%360-180);if(e<Math.abs(((rel-best[0])+540)%360-180))best=q}
+ const sit=pose().startsWith("sit"),fr=sit?SIT_ORD.indexOf(best[1]):G.moving?(G.ph|0)%8:0,im=sit?sitSheet():sheetFor(best[1]),fw=sit?SFW:FW,fh=sit?SFH:FH;
+ let f2f=null;F2F_NOW=false;
+ if(CLOSE&&!sit&&!G.moving&&tz<F2F_T&&best[1]=="front"){const fim=sheetFor("front",F2F_SD+"p0/");if(fim.complete&&fim.naturalWidth&&!fim.bad)f2f=fim}
+ document.getElementById("st").textContent=`妹子：${sit?{sit_m:"坐地 M 字腿",sit_v:"坐地 V 字腿"}[pose()]:G.moving?"走路":"站著"}（${{front:"正面",front_right:"右前",right:"右",back_right:"右後",back:"背面",back_left:"左後",left:"左",front_left:"左前"}[best[1]]}）　距離 ${dist.toFixed(1)}${f2f?"　面對面":""}　3D`;
+ G.bw=(G.bw||0)+((G.moving?1:0)-(G.bw||0))*.2;
+ if(f2f){F2F_NOW=true;return[{kind:"cyl",c:f2f,ex:P.x,ey:P.y,ez:EYE,dir:Math.atan2(vy,vx),R:Math.max(.15,dist),fpx:310*F2F_K,cx:f2f.width/2,cy:F2F_CY*F2F_K,k:F2F_D0/Math.max(.15,tz)}]}
+ if(!im.complete||!im.naturalWidth||im.bad)return[];
+ const s=1.15/FH,gy=(sit?78:126)*(HD?2:1),w=fw*s,a=G.ph/8*Math.PI*2,bob=G.bw*1.15*.022*Math.abs(Math.sin(a)),sway=G.bw*w*.035*Math.sin(a),L=dist||1,W0=im.width;
+ return[{kind:"bill",c:im,x:G.x-vy/L*sway,y:G.y+vx/L*sway,w,z0:(gy-fh)*s-bob,z1:gy*s-bob,u0:fr*fw/W0,u1:(fr+1)*fw/W0,v0:0,v1:1}]}
+function render3D(vp,eo,gs){const ca=Math.cos(P.a),sa=Math.sin(P.a);Droom3D.draw({x:P.x-sa*eo,y:P.y+ca*eo,z:EYE,yaw:P.a,pitch:Math.atan(.8*P.p),tanH:.66,aspect:4/3,vp},gs)}
 // 2026-11-04 手機 VR（使用者：做成手機網頁 VR，可以放進 Google VR 眼鏡／Cardboard）：
 //   左右分屏＝左右眼各畫一次（玩家往左右各移 VR_IPD/2 格，約 6 公分；面對面疊層 #cz 也一起畫），每眼 4:3 置中、兩側裁掉；不做鏡片變形。
 //   轉頭：deviceorientation 算手機背面朝向（R＝Rz(α)Rx(β)Ry(γ)·(0,0,−1)）→ 方位角改 P.a、仰角改 P.p（tan 仰角＝0.8·P.p），進 VR 那一刻的朝向當正前方。
@@ -440,6 +461,7 @@ function vrHead(){if(!VR_D&&!VR_O)return;const d=VR_D||vrDir();if(VR_H0==null){V
  P.a=VR_A0+(d.h-VR_H0);P.p=Math.tan(Math.max(-VR_DOWN,Math.min(1.45,d.p)))/.8;clampP()}   // 2026-11-05 使用者：VR 低頭最多 45°（Cardboard 只能靠脖子彎；這個畫法低頭是整張往上推，再低會怪）
 function renderVR(){const dpr=Math.min(2,devicePixelRatio||1),W=Math.round(vrc.clientWidth*dpr),H=Math.round(vrc.clientHeight*dpr);if(vrc.width!==W||vrc.height!==H){vrc.width=W;vrc.height=H}
  vrx.fillStyle="#000";vrx.fillRect(0,0,W,H);vrx.imageSmoothingEnabled=false;const hw=W/2,dh=H,dw=dh*4/3,ox=P.x,oy=P.y,rx=-Math.sin(P.a),ry=Math.cos(P.a);
+ if(GL_ON){const gs=girl3D();for(const e of[-1,1]){render3D([0,0,640,480],e*VR_IPD/2,gs);const x0=e<0?0:hw;vrx.save();vrx.beginPath();vrx.rect(x0,0,hw,H);vrx.clip();vrx.drawImage(GL_C,x0+hw/2-dw/2,0,dw,dh);vrx.restore()}return}   // 2026-11-05 真 3D：每眼各畫一次（她的弧面以兩眼中間為中心）
  for(const e of[-1,1]){P.x=ox+rx*e*VR_IPD/2;P.y=oy+ry*e*VR_IPD/2;render();const x0=e<0?0:hw;vrx.save();vrx.beginPath();vrx.rect(x0,0,hw,H);vrx.clip();
   const dx=x0+hw/2-dw/2;vrx.drawImage(cv,dx,0,dw,dh);if(F2F_NOW)vrx.drawImage(zc,dx,0,dw,dh);vrx.restore()}
  P.x=ox;P.y=oy}
