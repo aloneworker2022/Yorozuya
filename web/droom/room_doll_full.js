@@ -234,10 +234,12 @@
       const n = hypot3(v[0], v[1], v[2]) || 1; v = v.map(x => x / n);
       return A.map((x, i) => x + a * u[i] + h * v[i]);
     }
-    function bodyDist(sh, x, y, z) {
-      let best = 1e3;
-      for (const p of sh.prims) if (p.mat === 0 && !(sh.surfSkipBust && p.part === 'breast')) { const d = primDist(p, x, y, z); if (d < best) best = d; }
-      return best;
+    // 2026-11-05 sock＝true：眼窩挖洞（carve＝2）當成挖掉（身體 − 洞），不是實心。眼睛標記用：原本把洞當實心，標記浮在眼窩前面 1 多單位，
+    //   正面看不出來、45 度時遠眼浮在空中、貼在鼻樑旁（使用者：側面眼睛應該被山根擋住，不是印上去）。其他東西（眼罩布等）照舊。
+    function bodyDist(sh, x, y, z, sock = false) {
+      let best = 1e3, hole = 1e3;
+      for (const p of sh.prims) if (p.mat === 0 && !(sh.surfSkipBust && p.part === 'breast')) { const d = primDist(p, x, y, z); if (sock && p.carve === 2) { if (d < hole) hole = d; } else if (d < best) best = d; }
+      return sock ? Math.max(best, -hole) : best;
     }
     const BODY = 0, HAIR = 1, MARK = 2;
 
@@ -1013,10 +1015,10 @@
       // 2026-11-05 使用者：眼睛沒有那麼大 → 半寬 1.45、半高 1.1（眼寬約臉寬 1/5、兩眼間隔約一個眼寬）；標記貼在眼窩凹進去的表面上
       for (const sx of [-1, 1]) for (let dz = -1.1; dz <= 1.1 + 1e-6; dz += .275) for (let dx = -1.45; dx <= 1.45 + 1e-6; dx += .29) {
         const x = (sx * 2.9 + dx) * hs, z = zc + (EYE_Z + dz) * k;
-        for (let y = yc + 14; y > yc; y -= .04) if (bodyDist(sh, x, y, z) < 0) { pts.push([x, y, z]); break; }   // 先找好臉表面
+        for (let y = yc + 14; y > yc; y -= .04) if (bodyDist(sh, x, y, z, true) < 0) { pts.push([x, y, z]); break; }   // 先找好臉表面（眼窩挖掉之後的表面）
       }
-      sh.cloth = 15;
-      for (const [x, y, z] of pts) sh.ell(BODY, [x, y - .02, z], [.2, .14, .2 * k]);
+      sh.cloth = 15;   // 2026-11-05 標記貼在挖好的眼窩表面；render 時眼窩不挖臉部標記（hasSock）
+      for (const [x, y, z] of pts) sh.ell(BODY, [x, y + .04, z], [.2, .14, .2 * k]);   // 薄薄一層貼在眼窩表面（厚了 45 度時會凸出輪廓）
       sh.cloth = 0;
     }
     // 2026-11-01：眉毛位置標記（樣品，使用者：眼睛用布綁著不用做，接著做眉毛）。doll.brows 有值才畫；兩邊各一條貼臉表面的細帶（x 1.0～3.9、z ＋0.8，眼罩上緣上面隔一格），tag cloth＝17 → BROW_RGB。
@@ -2097,6 +2099,7 @@
       const STEP = .8 / Math.sqrt(5);
       const dist = [0, 0, 0];
       const carveIdx = []; for (let i = 0; i < np; i++) if (prims[i].carve) carveIdx.push(i);
+      const hasSock = carveIdx.some(i => prims[i].carve === 2);   // 2026-11-05 有眼窩：臉部標記不被眼窩挖掉
       const CULL = opts.cull !== false, CULL_M = 1.5, cand = new Int32Array(np);   // 2026-11-03 光線先挑零件（opts.cull＝false 關掉）   // 2026-10-31：挖洞零件（從身體減掉，私處打開用）
       for (let py = 0; py < (G0 || !np ? 0 : height); py++) {
         const sy = (py + .5) / K - ay;
@@ -2127,18 +2130,21 @@
           for (let it = 0; it < 220 && t >= tEnd; it++) {
             const X = camRay ? RA[0] + t * dX : (sx * c - 2 * t * s) / gw, Y = camRay ? RA[1] + t * dY : (sx * s + 2 * t * c) / gw, Z = camRay ? RA[2] + t * dZ : -sy;
             dist[0] = dist[1] = dist[2] = 1e3;
-            let bb = 0, lf = 0, ck = 0;
+            let bb = 0, lf = 0, ck = 0, dCl = 1e3, bCl = 0;   // dCl／bCl：最近的臉部標記零件（眼窩不挖它們）
             for (let q = 0, qn = CULL ? nc : np; q < qn; q++) {
               const i = CULL ? cand[q] : q;
               if (prims[i].carve) continue;
               const m = pm[i], lb = hypot3(X - bcx[i], Y - bcy[i], Z - bcz[i]) - brr[i];
+              if (hasSock && m === 0 && pb[i] >= 4 && lb < dCl) { const d0 = primDist(prims[i], X, Y, Z); if (d0 < dCl) { dCl = d0; bCl = pb[i]; } }   // 臉部標記另外算（在頭裡面時會被下一行跳過）
               if (lb >= dist[m]) continue;
               const d = primDist(prims[i], X, Y, Z);
               if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = pb[i]; lf = prims[i].limb; } else if (m === 2) ck = prims[i].crease; }
             }
             if (carveIdx.length) {   // 身體 − 洞：洞壁標紅色內裡（cb 13），比原表面深 0.7 以上標深紅小口（cb 14）
               let cd = 1e3, ct = 1; for (const i of carveIdx) { const v = primDist(prims[i], X, Y, Z); if (v < cd) { cd = v; ct = prims[i].carve; } }
-              if (-cd > dist[0]) { const ob = dist[0]; dist[0] = -cd; if (ct === 2) bb = 0; else bb = ob < -.7 ? 14 : 13; lf = 0; }   // carve＝2：只挖、不改顏色（眼窩）
+              if (-cd > dist[0]) { const ob = dist[0]; dist[0] = -cd; if (ct === 2) bb = 0; else bb = ob < -.7 ? 14 : 13; lf = 0;   // carve＝2：只挖、不改顏色（眼窩）
+                if (ct === 2 && dCl < dist[0]) { dist[0] = dCl; bb = bCl; }
+                if (ct === 2) dist[0] = Math.min(dist[0], .15); }   // 眼窩裡面走小步（步子是距離的 1.8 倍，空心的眼窩會直接跳過貼在裡面的標記）   // 2026-11-05 眼窩不挖臉部標記（眼睛標記貼在眼窩裡，原本被一起挖掉只剩一圈）
             }
             const d = Math.min(dist[0], dist[1], dist[2]);
             if (d < .05) {
