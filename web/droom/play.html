@@ -432,12 +432,12 @@ function render(){const HZl=SH/2+P.p*SH*.8,sw=lookS(),HZ=Math.round(HZl<0&&!F2F_
 //   轉頭：deviceorientation 算手機背面朝向（R＝Rz(α)Rx(β)Ry(γ)·(0,0,−1)）→ 方位角改 P.a、仰角改 P.p（tan 仰角＝0.8·P.p），進 VR 那一刻的朝向當正前方。
 //   按住畫面＝往前走（Cardboard 的按鈕就是點螢幕）；✕ 離開。iOS 要按鈕授權陀螺儀；陀螺儀要 https（或 localhost）。
 //   App（android-app 8.3＋）裡改用殼的旋轉感測器：YoroAndroid.startHeadTracking() → window.yoroHead(h, p)（http 區網也能用；網頁 deviceorientation 只在 https 才有）。
-let VR_ON=false,VR_O=null,VR_D=null,VR_H0=null,VR_A0=0;const YA=window.YoroAndroid;window.yoroHead=(h,p)=>{VR_D={h,p}};const VR_IPD=.04,vrEl=document.getElementById("vr"),vrc=document.getElementById("vrc"),vrx=vrc.getContext("2d");
+const VR_DOWN=Math.PI/4;let VR_ON=false,VR_O=null,VR_D=null,VR_H0=null,VR_A0=0;const YA=window.YoroAndroid;window.yoroHead=(h,p)=>{VR_D={h,p}};const VR_IPD=.04,vrEl=document.getElementById("vr"),vrc=document.getElementById("vrc"),vrx=vrc.getContext("2d");
 addEventListener("deviceorientation",e=>{if(e.alpha==null&&e.beta==null)return;VR_O=[e.alpha||0,e.beta||0,e.gamma||0]});
 function vrDir(){const[a,b,g]=VR_O.map(v=>v*Math.PI/180),sa=Math.sin(a),ca=Math.cos(a),sb=Math.sin(b),cb=Math.cos(b),sg=Math.sin(g),cg=Math.cos(g);
  const x=-sg*ca-cg*sb*sa,y=-sg*sa+cg*sb*ca,z=-cg*cb;return{h:Math.atan2(x,y),p:Math.asin(Math.max(-1,Math.min(1,z)))}}   // 手機背面朝哪：h 方位（順時針）、p 仰角
 function vrHead(){if(!VR_D&&!VR_O)return;const d=VR_D||vrDir();if(VR_H0==null){VR_H0=d.h;VR_A0=P.a}
- P.a=VR_A0+(d.h-VR_H0);P.p=Math.tan(Math.max(-1.45,Math.min(1.45,d.p)))/.8;clampP()}
+ P.a=VR_A0+(d.h-VR_H0);P.p=Math.tan(Math.max(-VR_DOWN,Math.min(1.45,d.p)))/.8;clampP()}   // 2026-11-05 使用者：VR 低頭最多 45°（Cardboard 只能靠脖子彎；這個畫法低頭是整張往上推，再低會怪）
 function renderVR(){const dpr=Math.min(2,devicePixelRatio||1),W=Math.round(vrc.clientWidth*dpr),H=Math.round(vrc.clientHeight*dpr);if(vrc.width!==W||vrc.height!==H){vrc.width=W;vrc.height=H}
  vrx.fillStyle="#000";vrx.fillRect(0,0,W,H);vrx.imageSmoothingEnabled=false;const hw=W/2,dh=H,dw=dh*4/3,ox=P.x,oy=P.y,rx=-Math.sin(P.a),ry=Math.cos(P.a);
  for(const e of[-1,1]){P.x=ox+rx*e*VR_IPD/2;P.y=oy+ry*e*VR_IPD/2;render();const x0=e<0?0:hw;vrx.save();vrx.beginPath();vrx.rect(x0,0,hw,H);vrx.clip();
