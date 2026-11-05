@@ -41,6 +41,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 我的陰莖 <select id="pn"><option value="soft">軟</option><option value="semi">微勃起</option><option value="erect">勃起</option></select>（X 切換・往下看可見）
 ｜ <a href="/droom">← 回剪影預覽</a><div id="st"></div></div>
 <script src="/droom/parts_shade.js?v=3"></script>
+<script src="/droom/eyes_big.js?v=1"></script>
 <script src="/droom/gl3d.js?v=1"></script>
 <script>
 // 房間：內部 6×6 地板（外圈為牆，粉色牆面一段點綴）
@@ -141,7 +142,8 @@ const IRIS_N={brown:"咖啡",blue:"藍",green:"綠",red:"紅",purple:"紫",black
 const LASH=[34,26,36],LASH2=[96,66,72],SCL=[252,250,250];
 function eyesOver(d,hm,ED,W,dOf,st,ic){if(!ED||!EYE_STYLES[st])return;const H=ED.length/4/W,FW=W/NF,IR=IRIS_PAL[ic]||IRIS_PAL.brown,isE=(x,y)=>{const i=(y*W+x)*4;return ED[i+3]&&ED[i+2]>=150&&ED[i]>=60&&ED[i]<=130&&ED[i+1]>=60&&ED[i+1]<=130};
  const put=(x,y,o)=>{if(x<0||y<0||x>=W||y>=H)return;const i=(y*W+x)*4;if(hm[i>>2]||!d[i+3])return;d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2]};
- for(let f=0;f<8;f++){const[fs,side]=dOf(f),cols=[];let y0=1e9,y1=-1;
+ for(let f=0;f<8;f++){if(window.EyeBig&&EyeBig.over(d,hm,ED,W,NF,dOf,st,IR,f))continue;   // 2026-11-05 近景大眼睛（eyes_big.js）
+  const[fs,side]=dOf(f),cols=[];let y0=1e9,y1=-1;
   for(let x=f*FW;x<(f+1)*FW;x++){let on=false;for(let y=0;y<H;y++)if(isE(x,y)){on=true;y0=Math.min(y0,y);y1=Math.max(y1,y)}cols.push(on)}
   const eyes=[];for(let i=0;i<cols.length;i++)if(cols[i]){let j=i;while(j+1<cols.length&&cols[j+1])j++;eyes.push([f*FW+i,f*FW+j]);i=j}
   if(!eyes.length)continue;const yt=y0,yb=y1,ym=Math.round((y0+y1)/2);

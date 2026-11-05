@@ -29,7 +29,9 @@ const env = (k, def) => process.env[k] ? process.env[k].split(',') : def;
 const B = env('BODY', ['balanced'])[0], SHAPE = process.env.SHAPE || 'round', CUP = process.env.CUP || 'D', AR = process.env.AR || 'medium';
 const DIRS = env('DIRS', FACEV ? ['front'] : Object.keys(DIR)), BHS = env('BH', ['wavy']), FHS = env('FH', ['curtain']), CLS = env('CL', ['napkin_bell']);
 const SHARD = +(process.env.SHARD || 0), NSH = +(process.env.NSHARD || 1);
-const FACE = [['nose', 'small', [D.NOSE_RGB, D.NOSE_LO_RGB], 'nose_small'], ['mouth', 'line', [D.MOUTH_RGB, D.MOUTH_LO_RGB, D.LIPLO_RGB, D.LIPLO_LO_RGB], 'mouth'], ['brows', 'natural', [D.BROW_RGB, D.BROW_LO_RGB], 'brows']];
+const FACE = [['nose', 'small', [D.NOSE_RGB, D.NOSE_LO_RGB], 'nose_small'], ['mouth', 'line', [D.MOUTH_RGB, D.MOUTH_LO_RGB, D.LIPLO_RGB, D.LIPLO_LO_RGB], 'mouth'], ['brows', 'natural', [D.BROW_RGB, D.BROW_LO_RGB], 'brows'], ['eyes', 'mark', [D.EYE_RGB, D.EYE_LO_RGB], 'eyes']];   // 2026-11-05 眼睛位置（使用者：下一步做眼睛）
+// ONLY=eyes（或 nose,mouth,...）：只重出這幾個臉部圖層，其他（身體、頭髮、衣服、下身）不動
+const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null;
 const mk = (o = {}) => { const x = D.lookToDoll({ ...BODY[B], cup: CUP + ' 罩杯' }); x.shape = SHAPE; x.areola = AR; x.face = 'anime'; if (!o.backHair && !o.frontHair) x.hair = 'none'; Object.assign(x, o); return x; };
 let CAM = CAM0, O = __dirname + '/sheets_close';
 const R = (doll, f, yaw) => D.render(doll, 'walk', f, yaw, { scale: K, cam: CAM, stand: FACEV });
@@ -46,6 +48,7 @@ jobs.forEach(([v, d], ji) => {
   const yaw = DIR[d], outs = {}, FW = CAM.w * K, FH = CAM.h * K;
   const put = (p, i, px, keep) => { const S = outs[p] || (outs[p] = { width: FW * NFR, height: FH, pixels: new Uint8ClampedArray(FW * NFR * FH * 4) }); for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) { const si = (y * FW + x) * 4; if (keep(px, si)) S.pixels.set(px.subarray(si, si + 4), (y * FW * NFR + i * FW + x) * 4); } };
   for (let f = 0; f < NFR; f++) {
+    if (!ONLY) {
     put(`/${B}_${SHAPE}_${CUP}_${AR}_${d}.png`, f, R(mk(), f, yaw).pixels, all);
     for (const st of BHS) put(`/hair/${B}_back_${st}_${d}.png`, f, D.renderHairLayer(mk({ backHair: st, frontHair: null }), 'walk', f, yaw, { scale: K, cam: CAM, stand: FACEV }).pixels, all);
     for (const st of FHS) put(`/hair/${B}_front_${st}_${d}.png`, f, D.renderHairLayer(mk({ backHair: null, frontHair: st }), 'walk', f, yaw, { scale: K, cam: CAM, stand: FACEV }).pixels, all);
@@ -54,7 +57,8 @@ jobs.forEach(([v, d], ji) => {
       const r = R(mk({ [k]: st }), f, yaw).pixels, g = R(mk(), f, yaw).pixels;
       put(`/groin/${B}_${k}_${st}_${d}.png`, f, r, (q, i) => q[i + 3] === D.CLOTH_A && g[i + 3] > 0);
     }
-    for (const [k, st, c, name] of FACE) put(`/face/${B}_${name}_${d}.png`, f, R(mk({ [k]: st }), f, yaw).pixels, cols(c));
+    }
+    for (const [k, st, c, name] of FACE) if (!ONLY || ONLY.includes(name)) put(`/face/${B}_${name}_${d}.png`, f, R(mk({ [k]: st }), f, yaw).pixels, cols(c));
   }
   for (const [p, S] of Object.entries(outs)) { fs.mkdirSync(path.dirname(O + p), { recursive: true }); png(S, 1, O + p); }
   console.log(FACEV ? `f2f ${v}` : 'close', d, 'done'); n++;
