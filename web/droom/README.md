@@ -199,3 +199,4 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - room_doll_full.js `render(..., {cam: {proj: 'look', ...}})`：每一列＝玩家低頭到那個角度時正中間那條線，列 v 的俯角＝pitch＋(v−cy)/f（角度等距）；左右照該列攝影機的針孔。她身上每單位高度在畫面上＝f·d/(d²＋z²)，越往下越扁，越遠也越窄（腳收成倒三角）；臉在地平線附近，跟原本一樣大。乳頭圓半徑照每點自己的距離算。沒帶 `proj` 時跟原本針孔逐位元組相同。
 - render_close.cjs 面對面 p0 預設 `PROJ=look`：pitch 0（'look' 上下轉只是整張平移，不用再往下 10°）、第 80 列＝玩家眼睛高（地平線），sheet 420×560 單位（840×1120 像素，往下到腳）；`PROJ=rect` 回舊的針孔＋往下 10°。
 - play.html `F2F_CY`＝80、`F2F_PITCH`＝0（第 80 列放在 HZ；play.html 低頭也是照角度等速捲，對得起來）；index.html 靠近預覽 sheet 高 560、拉桿 0～200。
+- 2026-11-05 再改（使用者：人物再靠近玩家一點、頭高一點；不是由上往下看妹子，而是快要平視她的臉部、肩膀）：攝影機 0.28→0.22 格（`D0`）、眼睛高 0.95→0.87 格（`EYE`，約她下巴高），第 200 列＝玩家眼睛高（頭頂留給頭髮），sheet 420×640。play.html `F2F_CY`＝200；index.html 預覽 sheet 高 640、拉桿 0～280。
