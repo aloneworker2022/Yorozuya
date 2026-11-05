@@ -8,10 +8,11 @@
 (function () {
   // open＝開口高（×參考眼寬）；tilt＝外眼角比內眼角低多少（＋往下、−往上，×參考眼寬）；pk＝上眼皮最高點在哪（0 內→1 外）
   const SHAPE = {
-    round:  { open: .46, tilt: -.02, pk: .45, lash: 1 },
-    almond: { open: .38, tilt: -.05, pk: .40, lash: 1 },
-    droopy: { open: .38, tilt: .07,  pk: .38, lash: .8 },
-    cat:    { open: .33, tilt: -.13, pk: .42, lash: 1.2 },
+    // 2026-11-05 使用者（參考圖）：開眼太小 → 開口高加大（杏眼 .38→.5）；模型的眼睛也往上移、變大
+    round:  { open: .58, tilt: -.02, pk: .45, lash: 1 },
+    almond: { open: .50, tilt: -.05, pk: .40, lash: 1 },
+    droopy: { open: .50, tilt: .07,  pk: .38, lash: .8 },
+    cat:    { open: .44, tilt: -.13, pk: .42, lash: 1.2 },
   };
   const LINE = [52, 34, 34], LINE2 = [96, 64, 60], CREASE = [176, 122, 108], LOWER = [150, 100, 96], SCL = [252, 250, 250], SCL_SH = [222, 214, 222], WHITE = [255, 255, 255], CARU = [226, 150, 150];
   const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };

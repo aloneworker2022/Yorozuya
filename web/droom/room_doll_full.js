@@ -396,12 +396,14 @@
     // 照參考圖側面量的（頭高 17.6＝頭頂 +8.8～下巴 −8.8；y 往前，額頭前緣 7.0）：眼睛 −1.9、鼻尖 −4.0（鼻子另外畫）、嘴 −5.8、下巴尖 −8.8；
     // 臉前緣從額頭往下幾乎垂直（下巴不往前凸，比鼻尖後面很多），下巴是尖點；下顎線從下巴斜往後上到耳下（約 27°）。
     // 正面：顴骨最寬（±6.6），往下到下顎角（±5.0, −6.1）再直線收到尖下巴。
+    const EYE_Z = -.8;   // 2026-11-05 動漫臉眼睛中心高（相對頭中心，頭高 17.6 為準）
     const ANIME_HEAD = {
       crZ: 1.2, crRz: 7.6,
       // 側面（使用者圈的重點）：眉骨微凸 → 山根凹（鼻子從這裡開始）→ 鼻下 → 上唇微凸 → 嘴縫 → 下唇 → 唇下凹 → 下巴 → 尖下巴底 → 下顎線斜回耳下
       prof: [[6.6, 1.0], [7.0, -.5], [6.85, -1.9], [6.9, -4.4], [7.2, -5.0], [6.75, -5.55], [6.95, -6.0], [6.45, -6.8], [6.65, -7.6], [6.35, -8.4], [5.7, -8.85], [4.8, -8.8], [.4, -6.6], [-1.2, -5.4], [-3.2, -3.0], [-3.2, 1.0]],
-      eye: [3.9, 5.9, -1.95, 1.5, 1.1, 1.0],
-      brow: [3.7, 4.95, -.6, 1.9, 1.0, .75],    // 眉骨：x, y, z, 半徑
+      // 2026-11-05 使用者（給參考圖：臉、眼睛位置大小都錯）：眼睛在頭高 61% 太低、太小 → 眼睛中心 −1.95→−0.8（頭高約 55%，參考圖 54%），眼窩、眉骨跟著往上
+      eye: [3.9, 5.9, -.8, 1.5, 1.2, 1.1],
+      brow: [3.7, 4.95, .55, 1.9, 1.0, .75],    // 眉骨：x, y, z, 半徑
       cheek: [3.8, 4.6, -3.2, 1.9, 1.25, 1.35],  // 顴骨   // 眼窩（挖掉）：x, y, z, 半徑 x/y/z
       front: [[-6.2, -.3], [6.2, -.3], [5.8, -3.0], [4.5, -6.0], [.6, -8.5], [-.6, -8.5], [-4.5, -6.0], [-5.8, -3.0]],   // ＋圓角 0.4；上緣收在頭骨裡面（不然臉會比頭寬）
       // 2026-11-01 使用者：45 度下巴太有稜角，要倒三角 → 臉改成疊層（每個高度一個橢圓切面）：[z, 半寬, 前緣 y, 後緣 y]
@@ -916,7 +918,7 @@
       const hs = P.b.head, hh = P.head_h / 2, zc = tor.zc, yc = tor.yl(zc) + .3, rx = 6.9 * hs, ry = 7.2 * hs;
       const at = (a, z, out = .35) => { const k = Math.sqrt(Math.max(0, 1 - ((z - zc) / hh) ** 2)); return [Math.sin(a) * (rx * k + out), yc + Math.cos(a) * (ry * k + out), z]; };
       const anime = doll.face === 'anime', k = P.head_h / 17.6;
-      const zE = anime ? zc - 1.95 * k : zc - .9;   // 眼睛高度（帶子中線）；動漫臉的眼睛比較低
+      const zE = anime ? zc + EYE_Z * k : zc - .9;   // 眼睛高度（帶子中線）；動漫臉照眼睛高（2026-11-05 往上移到 EYE_Z）
       // 2026-11-01 動漫臉：沿實際臉表面（含鼻子、顴骨）往外 0.35 繞一圈，先把所有點找好再放零件
       const surfAt = (a, z, out) => { const dx = Math.sin(a), dy = Math.cos(a); for (let r = 16; r > .5; r -= .05) if (bodyDist(sh, dx * r, yc + dy * r, z) < 0) return [dx * (r + out), yc + dy * (r + out), z]; return at(a, z, out); };
       const ringAt = (z) => { const ring = []; for (let d = 0; d <= 360; d += 12) ring.push(anime ? surfAt(d * Math.PI / 180, z, .35) : at(d * Math.PI / 180, z)); return ring; };
@@ -1001,11 +1003,12 @@
     }
     // 2026-11-01：眼睛位置標記（樣品）。doll.eyes 有值才畫；兩眼中心 x ±2.75、z −1.95（頭高 17.6），各一片貼著臉表面的薄片（半寬 1.45、半高 1.25：動漫大眼），tag cloth＝15 → EYE_RGB。
     // 眼型（大圓眼／杏眼／下垂眼／貓眼／笑眼／閉眼）與瞳色由前端照位置畫像素。
+    // 2026-11-05 使用者（參考圖）：眼睛往上（中心 z −1.95→EYE_Z −0.8）、變大（半寬 1.45→1.65、半高 1.25→1.35、中心 x ±2.75→±2.9）
     const EYE_RGB = [128, 128, 255], EYE_LO_RGB = [64, 64, 160];
     function eyes(sh, P, doll, tor) {
       const hs = P.b.head, k = P.head_h / 17.6, zc = tor.zc, yc = tor.yl(zc) + .3, pts = [];
-      for (const sx of [-1, 1]) for (let dz = -1.25; dz <= 1.25 + 1e-6; dz += .31) for (let dx = -1.45; dx <= 1.45 + 1e-6; dx += .29) {
-        const x = (sx * 2.75 + dx) * hs, z = zc + (-1.95 + dz) * k;
+      for (const sx of [-1, 1]) for (let dz = -1.35; dz <= 1.35 + 1e-6; dz += .3) for (let dx = -1.65; dx <= 1.65 + 1e-6; dx += .3) {
+        const x = (sx * 2.9 + dx) * hs, z = zc + (EYE_Z + dz) * k;
         for (let y = yc + 14; y > yc; y -= .04) if (bodyDist(sh, x, y, z) < 0) { pts.push([x, y, z]); break; }   // 先找好臉表面
       }
       sh.cloth = 15;
@@ -1016,7 +1019,7 @@
     // 眉型（自然／平眉／細彎／粗眉／八字／怒眉）、顏色（跟髮色）由前端照位置畫。
     const BROW_RGB = [255, 192, 64], BROW_LO_RGB = [160, 120, 40];
     function brows(sh, P, doll, tor) {
-      const hs = P.b.head, k = P.head_h / 17.6, zc = tor.zc, yc = tor.yl(zc) + .3, z = zc + .8 * k, pts = [];
+      const hs = P.b.head, k = P.head_h / 17.6, zc = tor.zc, yc = tor.yl(zc) + .3, z = zc + (EYE_Z + 1.95) * k, pts = [];   // 2026-11-05 眉毛跟著眼睛往上（眼睛上面約 1.95）
       for (const sx of [-1, 1]) for (let x = 1.0; x <= 3.9 + 1e-6; x += .25) { const xx = sx * x * hs; for (let y = yc + 14; y > yc; y -= .04) if (bodyDist(sh, xx, y, z) < 0) { pts.push([xx, y]); break; } }
       sh.cloth = 17;
       for (const [x, y] of pts) sh.ell(BODY, [x, y - .02, z], [.2, .14, .3 * k]);
