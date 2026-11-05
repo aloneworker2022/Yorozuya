@@ -25,6 +25,9 @@ const VIEW_CAM = { p0: P0_CAM, down: { ...CAM0, pitch: +(process.env.DOWN || 20)
 const VIEWS = FACEV ? (process.env.VIEWS || 'p0').split(',') : ['close'];
 const BODY = { balanced: { height_cm: 161, build: '勻稱有致', hair: '中分長髮' }, slim: { height_cm: 166, build: '纖細苗條', hair: '短髮' }, petite: { height_cm: 150, build: '嬌小玲瓏', hair: '雙馬尾' }, curvy: { height_cm: 163, build: '微肉圓潤', hair: '大波浪長髮' } };
 const DIR = { front: 0, front_right: 45, right: 90, back_right: 135, back: 180, back_left: -135, left: -90, front_left: -45 };
+// 2026-11-05 使用者：斜面太斜 → 面對面的斜前／斜後用 35 度出圖（參考圖 3/4 側臉約 30～35 度；遊戲裡照 8 方向選張，站在 45 度看到的是 35 度那張）。F2F_OBL 可改
+const F2F_OBL = +(process.env.F2F_OBL || 35);
+if (process.env.FACE) Object.assign(DIR, { front_right: F2F_OBL, front_left: -F2F_OBL, back_right: 180 - F2F_OBL, back_left: -(180 - F2F_OBL) });
 const env = (k, def) => process.env[k] ? process.env[k].split(',') : def;
 const B = env('BODY', ['balanced'])[0], SHAPE = process.env.SHAPE || 'round', CUP = process.env.CUP || 'D', AR = process.env.AR || 'medium';
 const DIRS = env('DIRS', FACEV ? ['front'] : Object.keys(DIR)), BHS = env('BH', ['wavy']), FHS = env('FH', ['curtain']), CLS = env('CL', ['napkin_bell']);
