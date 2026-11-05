@@ -18,7 +18,9 @@ const P0_PITCH = +(process.env.P0PITCH || 10);   // 2026-11-04 使用者：人�
 const LOOKP = FACEV && (process.env.PROJ || 'look') === 'look';
 // 2026-11-05 再改（使用者：人物再靠近玩家一點、頭高一點；不是由上往下看妹子，而是快要平視她的臉部、肩膀）：
 //   攝影機 0.28→0.22 格（D0）、眼睛高 0.95→0.87 格（EYE；約她下巴高，臉跟肩膀接近平視），cy 80→200（頭頂留給頭髮），420×640。
-const P0_CAM = LOOKP ? { ...CAM0, proj: 'look', pitch: 0, dist: +(process.env.D0 || .22) * CELL, eyeZ: +(process.env.EYE || .87) * CELL, h: 640, cy: 200 } : { ...CAM0, pitch: P0_PITCH * Math.PI / 180 };
+// 2026-11-05 三改（使用者：比例可以但太近一點；忽然切到這張太跳、像忽然放大）：原因＝在 0.22 格拍、卻在 0.4 格顯示（放大約 1.8 倍）。
+//   改成在 0.3 格拍、play.html 也在 0.3 格（碰撞點）顯示，跟 3D 的遠處板子同一個比例、同一個眼睛高（0.87 格≈她下巴），切換時不放大；cy 150、420×540。
+const P0_CAM = LOOKP ? { ...CAM0, proj: 'look', pitch: 0, dist: +(process.env.D0 || .3) * CELL, eyeZ: +(process.env.EYE || .87) * CELL, h: 540, cy: 150 } : { ...CAM0, pitch: P0_PITCH * Math.PI / 180 };
 const VIEW_CAM = { p0: P0_CAM, down: { ...CAM0, pitch: +(process.env.DOWN || 20) * Math.PI / 180, h: 530, cy: 150 } };
 const VIEWS = FACEV ? (process.env.VIEWS || 'p0').split(',') : ['close'];
 const BODY = { balanced: { height_cm: 161, build: '勻稱有致', hair: '中分長髮' }, slim: { height_cm: 166, build: '纖細苗條', hair: '短髮' }, petite: { height_cm: 150, build: '嬌小玲瓏', hair: '雙馬尾' }, curvy: { height_cm: 163, build: '微肉圓潤', hair: '大波浪長髮' } };
