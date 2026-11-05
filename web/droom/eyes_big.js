@@ -9,16 +9,19 @@
   // open＝開口高（×參考眼寬）；tilt＝外眼角比內眼角低多少（＋往下、−往上，×參考眼寬）；pk＝上眼皮最高點在哪（0 內→1 外）
   const SHAPE = {
     // 2026-11-05 使用者（參考圖）：開眼太小 → 開口高加大（杏眼 .38→.5）；模型的眼睛也往上移、變大
-    round:  { open: .58, tilt: -.02, pk: .45, lash: 1 },
-    almond: { open: .50, tilt: -.05, pk: .40, lash: 1 },
-    droopy: { open: .50, tilt: .07,  pk: .38, lash: .8 },
-    cat:    { open: .44, tilt: -.13, pk: .42, lash: 1.2 },
+    // 2026-11-05 第 3 版（使用者：眼睛在眼窩裡面、沒有那麼大）：開口回到眼寬約四成，瞳孔小一點，睫毛短一點
+    round:  { open: .46, tilt: -.02, pk: .45, lash: .9 },
+    almond: { open: .40, tilt: -.05, pk: .40, lash: .9 },
+    droopy: { open: .40, tilt: .07,  pk: .38, lash: .75 },
+    cat:    { open: .35, tilt: -.13, pk: .42, lash: 1.05 },
   };
-  const LINE = [52, 34, 34], LINE2 = [96, 64, 60], CREASE = [176, 122, 108], LOWER = [150, 100, 96], SCL = [252, 250, 250], SCL_SH = [222, 214, 222], WHITE = [255, 255, 255], CARU = [226, 150, 150];
+  const SOCK = [196, 140, 122], LINE = [52, 34, 34], LINE2 = [96, 64, 60], CREASE = [176, 122, 108], LOWER = [150, 100, 96], SCL = [252, 250, 250], SCL_SH = [222, 214, 222], WHITE = [255, 255, 255], CARU = [226, 150, 150];
   const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-  function paint(d, hm, W, H, box, out, turn, side, st, IR, wRef) {
+  function paint(d, hm, W, H, box, out, turn, side, st, IR, wRef, vis) {
     const [x0, y0, x1, y1] = box, w = x1 - x0 + 1, h = y1 - y0 + 1, R = wRef || w;
-    const put = (x, y, o, k = 1) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= W || y >= H) return; const i = (y * W + x) * 4; if (hm[i >> 2] || !d[i + 3]) return; for (let j = 0; j < 3; j++) d[i + j] = d[i + j] * (1 - k) + o[j] * k; };
+    // vis：看得到的眼睛範圍（標記往外擴幾格）；被鼻樑擋住的地方沒有標記 → 不畫（不會像貼紙一樣蓋在鼻子上）。外眼角的睫毛、眼尾不受限（free）
+    let free = false;
+    const put = (x, y, o, k = 1) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= W || y >= H) return; const i = (y * W + x) * 4; if (hm[i >> 2] || !d[i + 3]) return; if (vis && !free && !vis[i >> 2]) return; for (let j = 0; j < 3; j++) d[i + j] = d[i + j] * (1 - k) + o[j] * k; };
     const X = u => out > 0 ? x0 + u * (w - 1) : x1 - u * (w - 1), U = x => out > 0 ? (x - x0) / (w - 1) : (x1 - x) / (w - 1);
     const stroke = (xa, ya, xb, yb, t0, t1, c) => { const n = Math.ceil(Math.hypot(xb - xa, yb - ya) * 2) + 1; for (let i = 0; i <= n; i++) { const s = i / n, x = xa + (xb - xa) * s, y = ya + (yb - ya) * s, t = t0 + (t1 - t0) * s; for (let dy = -t / 2; dy <= t / 2; dy += .5) for (let dx = -t / 2; dx <= t / 2; dx += .5) put(x + dx, y + dy, c); } };
     const cyc = (y0 + y1) / 2 + h * .06;
@@ -45,7 +48,7 @@
     const sk = u => u < S.pk ? .5 * u / S.pk : .5 + .5 * (u - S.pk) / (1 - S.pk);
     const top = u => base(u) - O * .64 * Math.pow(Math.max(0, Math.sin(Math.PI * sk(u))), .75);
     const bot = u => base(u) + O * .36 * Math.pow(Math.max(0, Math.sin(Math.PI * (u < .55 ? .5 * u / .55 : .5 + .5 * (u - .55) / .45))), 1.15);
-    const um = .48, ri = O * .56, icx = X(um) + turn * .1 * w, icy = (top(um) + bot(um)) / 2 - O * .04, irx = ri * Math.min(1, .5 + .5 * w / R);
+    const um = .48, ri = O * .52, icx = X(um) + turn * .1 * w, icy = (top(um) + bot(um)) / 2 - O * .04, irx = ri * Math.min(1, .5 + .5 * w / R);
     // 1) 眼白＋瞳孔
     for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
       const u = U(x), yt = top(u), yb = bot(u);
@@ -63,17 +66,22 @@
     { const hx = icx - irx * .32, hy = icy - ri * .3, hr = Math.max(1.5, ri * .17); for (let y = hy - hr; y <= hy + hr; y++) for (let x = hx - hr; x <= hx + hr; x++) if ((x - hx) ** 2 + (y - hy) ** 2 <= hr * hr && y > top(U(x)) + 1) put(x, y, WHITE); put(icx + irx * .3, icy + ri * .32, WHITE, .8); }
     // 2) 雙眼皮摺線：上眼皮上方一條細線（中間離遠、兩端靠近）
     for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) { const u = U(x); if (u < .18 || u > .97) continue; const y = top(u) - O * (.2 + .18 * Math.sin(Math.PI * u)); const k = sstep(.18, .35, u) * (1 - sstep(.85, .97, u)); put(x, y, CREASE, .9 * k + .1); if (u > .4 && u < .85) put(x, y - 1, CREASE, .4 * k); }
+    // 眼窩陰影：上眼皮到摺線之間淡淡一層、內眼角旁邊一點、下眼皮下面一點（眼睛看起來凹在眼窩裡）
+    for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) { const u = U(x), yt = top(u), yc = yt - O * (.2 + .18 * Math.sin(Math.PI * u)) - 1, k = .28 * Math.sin(Math.PI * Math.min(1, u * 1.1));
+      for (let y = Math.floor(yc); y < yt; y++) put(x, y, SOCK, k * (.5 + .5 * (y - yc) / Math.max(1, yt - yc)));
+      const yb = bot(u); for (let j = 2; j < 2 + O * .18; j++) put(x, yb + j, SOCK, .12 * (1 - u * .5)); }
+    for (let j = 0; j < O * .35; j++) for (let i = 0; i < O * .25; i++) put(X(0) - out * (i + 2), base(0) - O * .1 + j, SOCK, .14 * (1 - i / (O * .25)));
     // 3) 上眼線：內側細、外側粗；眼尾往外一撇
     for (let x = Math.min(x0, x1) - 1; x <= Math.max(x0, x1) + 1; x++) {
-      const u = Math.min(1, Math.max(0, U(x))), t = R * (.026 + .065 * sstep(.12, .78, u)), yt = top(u);
+      const u = Math.min(1, Math.max(0, U(x))), t = R * (.022 + .05 * sstep(.12, .78, u)), yt = top(u);
       for (let y = yt - t * .75; y <= yt + t * .3; y++) put(x, y, u < .12 ? LINE2 : LINE);
     }
-    { const xe = X(1), ye = top(1), L = R * .17; stroke(xe, ye - R * .025, xe + out * L, ye - L * (.28 - S.tilt * 1.5), R * .07, 1, LINE); }
+    free = true; { const xe = X(1), ye = top(1), L = R * .13; stroke(xe, ye - R * .02, xe + out * L, ye - L * (.28 - S.tilt * 1.5), R * .055, 1, LINE); } free = false;
     // 4) 上睫毛：一根根往外翹，越外越長越斜
-    const nL = 8;
-    for (let k = 0; k < nL; k++) { const q = k / (nL - 1), u = .3 + .7 * q, xs = X(Math.min(1, u)), ys = top(Math.min(1, u)) - R * (.026 + .065 * sstep(.12, .78, u)) * .6;
-      const a = (80 - 60 * q) * Math.PI / 180, L = R * (.05 + .1 * q * q + .02 * (k % 2)) * S.lash;
-      stroke(xs, ys, xs + out * L * Math.cos(a), ys - L * Math.sin(a), Math.max(2, R * .035), 1, LINE); }
+    const nL = 7;
+    for (let k = 0; k < nL; k++) { const q = k / (nL - 1), u = .35 + .65 * q, xs = X(Math.min(1, u)), ys = top(Math.min(1, u)) - R * (.022 + .05 * sstep(.12, .78, u)) * .6;
+      const a = (80 - 60 * q) * Math.PI / 180, L = R * (.035 + .075 * q * q + .015 * (k % 2)) * S.lash;
+      free = q > .6; stroke(xs, ys, xs + out * L * Math.cos(a), ys - L * Math.sin(a), Math.max(1.5, R * .028), 1, LINE); free = false; }
     // 5) 下眼線（外側 70%，細淡）＋外側兩三根下睫毛
     for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) { const u = U(x); if (u < .3) continue; put(x, bot(u) + 1, LOWER, .5 + .45 * sstep(.3, .8, u)); }
     for (const u of [.62, .74, .85, .95]) { const xs = X(u), ys = bot(u) + 1, L = R * (.03 + .03 * (u - .6) / .35); stroke(xs, ys, xs + out * L * .55, ys + L * .85, 2, 1, LINE2); }
@@ -90,10 +98,13 @@
     const boxes = eyes.map(([a, b]) => { let t = 1e9, u = -1; for (let x = a; x <= b; x++) for (let y = 0; y < H; y++) if (isE(x, y)) { t = Math.min(t, y); u = Math.max(u, y); } return [a, t, b, u]; });
     if (Math.max(...boxes.map(b => b[3] - b[1])) < 12) return false;   // 太小（遠景）→ 舊畫法
     const one = boxes.length === 1 || side, ws = boxes.map(b => b[2] - b[0] + 1);
+    // 看得到的眼睛範圍：標記往外擴 Dl 格（眼線、摺線、陰影會畫到標記外面一點）
+    const Dl = Math.max(2, Math.round(Math.max(...ws) * .16)), vis = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = f * FW; x < (f + 1) * FW; x++) if (isE(x, y)) for (let dy = -Dl; dy <= Dl; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; const r = Dl - Math.abs(dy); for (let dx = -r; dx <= r; dx++) { const xx = x + dx; if (xx >= 0 && xx < W) vis[yy * W + xx] = 1; } }
     // 斜面：兩隻眼睛一寬一窄（遠的那隻窄）→ 臉轉向窄的那邊，瞳孔一起往那邊偏；開口高度照寬的那隻（正側面照眼睛高）
     const turn = boxes.length === 2 && Math.abs(ws[0] - ws[1]) > .12 * Math.max(...ws) ? (ws[0] < ws[1] ? -1 : 1) : 0;
     const wRef = one ? Math.max(...boxes.map(b => (b[3] - b[1] + 1) * 1.25)) : Math.max(...ws);
-    boxes.forEach((b, k) => { const out = boxes.length > 1 ? (k === 0 ? -1 : 1) : -fs || 1; paint(d, hm, W, H, b, out, turn, one, st, IR, wRef); });
+    boxes.forEach((b, k) => { const out = boxes.length > 1 ? (k === 0 ? -1 : 1) : -fs || 1; paint(d, hm, W, H, b, out, turn, one, st, IR, wRef, vis); });
     return true;
   }
   window.EyeBig = { over, paint, SHAPE };
