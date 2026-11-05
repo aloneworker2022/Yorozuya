@@ -17,7 +17,7 @@
   };
   const SOCK = [196, 140, 122], LINE = [52, 34, 34], LINE2 = [96, 64, 60], CREASE = [176, 122, 108], LOWER = [150, 100, 96], SCL = [252, 250, 250], SCL_SH = [222, 214, 222], WHITE = [255, 255, 255], CARU = [226, 150, 150];
   const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-  function paint(d, hm, W, H, box, out, turn, side, st, IR, wRef, vis) {
+  function paint(d, hm, W, H, box, out, turn, side, st, IR, wRef, vis, lashOnly) {
     const [x0, y0, x1, y1] = box, w = x1 - x0 + 1, h = y1 - y0 + 1, R = wRef || w;
     // vis：看得到的眼睛範圍（標記往外擴幾格）；被鼻樑擋住的地方沒有標記 → 不畫（不會像貼紙一樣蓋在鼻子上）。外眼角的睫毛、眼尾不受限（free）
     let free = false;
@@ -49,7 +49,8 @@
     const top = u => base(u) - O * .64 * Math.pow(Math.max(0, Math.sin(Math.PI * sk(u))), .75);
     const bot = u => base(u) + O * .36 * Math.pow(Math.max(0, Math.sin(Math.PI * (u < .55 ? .5 * u / .55 : .5 + .5 * (u - .55) / .45))), 1.15);
     const um = .48, ri = O * .52, icx = X(um) + turn * .1 * w, icy = (top(um) + bot(um)) / 2 - O * .04, irx = ri * Math.min(1, .5 + .5 * w / R);
-    // 1) 眼白＋瞳孔
+    // 1) 眼白＋瞳孔（lashOnly＝斜面被擠到鼻樑旁的遠眼：只畫眼線和睫毛，不畫眼白、瞳孔）
+    if (!lashOnly) {
     for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
       const u = U(x), yt = top(u), yb = bot(u);
       for (let y = Math.ceil(yt); y <= Math.floor(yb); y++) {
@@ -63,7 +64,8 @@
       }
     }
     // 亮點：左上一個小圓（光從左上）＋右下一點
-    { const hx = icx - irx * .32, hy = icy - ri * .3, hr = Math.max(1.5, ri * .17); for (let y = hy - hr; y <= hy + hr; y++) for (let x = hx - hr; x <= hx + hr; x++) if ((x - hx) ** 2 + (y - hy) ** 2 <= hr * hr && y > top(U(x)) + 1) put(x, y, WHITE); put(icx + irx * .3, icy + ri * .32, WHITE, .8); }
+    if (!lashOnly) { const hx = icx - irx * .32, hy = icy - ri * .3, hr = Math.max(1.5, ri * .17); for (let y = hy - hr; y <= hy + hr; y++) for (let x = hx - hr; x <= hx + hr; x++) if ((x - hx) ** 2 + (y - hy) ** 2 <= hr * hr && y > top(U(x)) + 1) put(x, y, WHITE); put(icx + irx * .3, icy + ri * .32, WHITE, .8); }
+    }
     // 2) 雙眼皮摺線：上眼皮上方一條細線（中間離遠、兩端靠近）
     for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) { const u = U(x); if (u < .18 || u > .97) continue; const y = top(u) - O * (.2 + .18 * Math.sin(Math.PI * u)); const k = sstep(.18, .35, u) * (1 - sstep(.85, .97, u)); put(x, y, CREASE, .9 * k + .1); if (u > .4 && u < .85) put(x, y - 1, CREASE, .4 * k); }
     // 眼窩陰影：上眼皮到摺線之間淡淡一層、內眼角旁邊一點、下眼皮下面一點（眼睛看起來凹在眼窩裡）
@@ -104,8 +106,10 @@
     // 斜面：兩隻眼睛一寬一窄（遠的那隻窄）→ 臉轉向窄的那邊，瞳孔一起往那邊偏；開口高度照寬的那隻（正側面照眼睛高）
     const turn = boxes.length === 2 && Math.abs(ws[0] - ws[1]) > .12 * Math.max(...ws) ? (ws[0] < ws[1] ? -1 : 1) : 0;
     const wRef = one ? Math.max(...boxes.map(b => (b[3] - b[1] + 1) * 1.25)) : Math.max(...ws);
-    boxes.forEach((b, k) => { const out = boxes.length > 1 ? (k === 0 ? -1 : 1) : -fs || 1; paint(d, hm, W, H, b, out, turn, one, st, IR, wRef, vis); });
+    boxes.forEach((b, k) => { const out = boxes.length > 1 ? (k === 0 ? -1 : 1) : -fs || 1; paint(d, hm, W, H, b, out, turn, one, st, IR, wRef, vis, boxes.length === 2 && EyeBig.far === 'lash' && ws[k] < .55 * Math.max(...ws)); });
     return true;
   }
-  window.EyeBig = { over, paint, SHAPE };
+  // far：斜面遠的那隻被擠到鼻樑旁（寬度 < 近眼 55%）時 'lash'＝只畫眼線睫毛、'full'＝整隻畫
+  const EyeBig = { over, paint, SHAPE, far: 'lash' };
+  window.EyeBig = EyeBig;
 })();

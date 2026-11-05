@@ -403,9 +403,11 @@
       prof: [[6.6, 1.0], [7.0, -.5], [6.85, -1.9], [6.9, -4.4], [7.2, -5.0], [6.75, -5.55], [6.95, -6.0], [6.45, -6.8], [6.65, -7.6], [6.35, -8.4], [5.7, -8.85], [4.8, -8.8], [.4, -6.6], [-1.2, -5.4], [-3.2, -3.0], [-3.2, 1.0]],
       // 2026-11-05 使用者（給參考圖：臉、眼睛位置大小都錯）：眼睛在頭高 61% 太低、太小 → 眼睛中心 −1.95→−0.8（頭高約 55%，參考圖 54%），眼窩、眉骨跟著往上
       // 2026-11-05 使用者（第 2 組參考圖）：眼睛要在眼窩裡面 → 眼窩中心移到眼睛正後面（x 3.9→2.9），稍微大一點包住眼睛
-      eye: [2.9, 5.9, -.8, 1.75, 1.2, 1.15],
-      brow: [3.7, 4.95, .55, 1.9, 1.0, .75],    // 眉骨：x, y, z, 半徑
-      cheek: [3.8, 4.6, -3.2, 1.9, 1.25, 1.35],  // 顴骨   // 眼窩（挖掉）：x, y, z, 半徑 x/y/z
+      // 2026-11-05 使用者：45 度遠的那隻眼睛跑到鼻樑上 → 原因＝眼窩挖太深（臉在 x 2.9 的表面 y≈6.4，挖到 4.7，深 1.7），45 度時遠眼被眼窩邊擋到只剩靠鼻樑一角 → 改中等深（中心 y 6.6、深約 1）；太淺的話遠眼會凸出臉的輪廓
+      //   眉骨、顴骨往前、往上一點（眉骨 y 4.95→5.6、顴骨 y 4.6→5.0、z −3.2→−2.7）：45 度時遠側由眉骨＋顴骨形成輪廓，遠眼夾在鼻樑和輪廓中間（參考圖 3/4 側臉）
+      eye: [2.9, 6.6, -.8, 1.75, 1.2, 1.15],
+      brow: [3.4, 5.6, .55, 2.2, 1.0, .8],    // 眉骨：x, y, z, 半徑
+      cheek: [3.6, 5.0, -2.7, 2.0, 1.3, 1.4],  // 顴骨   // 眼窩（挖掉）：x, y, z, 半徑 x/y/z
       front: [[-6.2, -.3], [6.2, -.3], [5.8, -3.0], [4.5, -6.0], [.6, -8.5], [-.6, -8.5], [-4.5, -6.0], [-5.8, -3.0]],   // ＋圓角 0.4；上緣收在頭骨裡面（不然臉會比頭寬）
       // 2026-11-01 使用者：45 度下巴太有稜角，要倒三角 → 臉改成疊層（每個高度一個橢圓切面）：[z, 半寬, 前緣 y, 後緣 y]
       loft: [[1.0, 6.3, 6.7, -3.2], [-.5, 6.3, 7.0, -3.2], [-1.9, 6.1, 6.85, -3.2], [-3.0, 5.8, 6.9, -3.0], [-4.4, 5.3, 6.9, -2.2], [-5.0, 5.0, 6.85, -1.6],
@@ -2383,7 +2385,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { FAINT_RGB, PARTS, renderParts, renderComposite, POSES, BROW_RGB, BROW_LO_RGB, LIPLO_RGB, LIPLO_LO_RGB, EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { ANIME_HEAD, FAINT_RGB, PARTS, renderParts, renderComposite, POSES, BROW_RGB, BROW_LO_RGB, LIPLO_RGB, LIPLO_LO_RGB, EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, CREASE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
