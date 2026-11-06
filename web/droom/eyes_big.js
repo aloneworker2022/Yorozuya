@@ -132,6 +132,10 @@
   const mix = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
   function inPoly(P, x, y) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
   function segD(px, py, ax, ay, bx, by) { const vx = bx - ax, vy = by - ay, t = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy || 1))); return [Math.hypot(px - ax - vx * t, py - ay - vy * t), t]; }
+  // 眼妝顏色：lid＝眼皮／外眼角／下眼線煙燻、bone＝眉骨下、hi＝內眼角亮色；k、kb＝濃度。EyeBig.makeup 換（none 不畫）
+  const MAKEUP = { smoky: { lid: [66, 50, 58], bone: [186, 136, 138], hi: [252, 238, 232], k: .82, kb: .22 },
+    rose: { lid: [150, 80, 92], bone: [214, 150, 150], hi: [252, 238, 232], k: .5, kb: .2 },
+    brown: { lid: [110, 72, 56], bone: [196, 150, 130], hi: [252, 240, 228], k: .55, kb: .16 }, none: null };
   function paintInk(d, hm, W, H, box, out, turn, IR, wRef, vis, far, visE) {
     // 2026-11-06 第 2 版（使用者在參考圖上畫紅線：眼形不對、眼皮沒出來、線條死板、眼眶、瞳孔位置、睫毛都不對）：
     //   眼形＝斜的平行四邊形：內眼角最低；上眼皮從內眼角斜斜往上、過中間就平平拉到外眼角；下眼皮內半段幾乎平、外半段斜斜往上收到外眼角（外眼角尖、在高處）。
@@ -147,7 +151,7 @@
     const tU = u => (.025 + .06 * sstep(.04, .55, u)) * (.4 + .6 * sstep(-.03, .12, u));     // 上眼線粗細（v 單位）
     const tL = u => .006 + .03 * sstep(.4, .88, u) * (1 - .5 * sstep(.93, 1, u));            // 下眼線粗細
     const ri = .215, iu = .45 + turn * .1, icx = X(iu), icv = topV(.45) + .17, irx = ri * R * Math.min(1, .42 + .58 * w / R);
-    const creaseV = u => topV(cl((u + .14) / 1.1)) - .12 - .02 * Math.sin(Math.PI * cl(u));    // 摺線：比上眼線往內、往上平移
+    const creaseV = u => topV(cl((u + .14) / 1.1)) - .16 - .03 * Math.sin(Math.PI * cl(u));   // 眼皮寬一點（參考圖眼皮看得到一大片）    // 摺線：比上眼線往內、往上平移
     // 眼尾：上緣沿上眼線外段拉到尖端（細長、往外微上），下緣從尖端回到外眼角
     const wing = [];
     { const tip = [X(1.3), Y(OUT - .07)];
@@ -163,7 +167,7 @@
     // 0) 眼窩抹平＋眼影
     const sx = Math.round(X(.5)), sy = Math.round(Y(BOT + .55)); let skin = [240, 204, 180];
     if (sx >= 0 && sy >= 0 && sx < W && sy < H && d[(sy * W + sx) * 4 + 3] && !hm[sy * W + sx]) { const i = (sy * W + sx) * 4; skin = [d[i], d[i + 1], d[i + 2]]; }
-    const ecx = X(.5), ecy = Y(-.08), erx = Math.abs(X(1.24) - X(-.24)) / 2, ery = .72 * R;
+    const ecx = X(.5), ecy = Y(-.12), erx = Math.abs(X(1.24) - X(-.24)) / 2, ery = .76 * R;
     for (let y = Math.floor(ecy - ery); y <= ecy + ery; y++) for (let x = Math.floor(ecx - erx); x <= ecx + erx; x++) {
       if (!okPx(x, y)) continue; const e = Math.hypot((x - ecx) / erx, (y - ecy) / ery); if (e >= 1) continue;
       const u = U(x), v = V(y), above = sstep(creaseV(u) + .12, creaseV(u) - .02, v), g = 1 - e * e;
@@ -173,9 +177,25 @@
     // 1) 各層
     const layer = (x, y, c) => {
       const u = U(x), uc = cl(u), v = V(y), tv = topV(uc), bv = botV(uc);
+      // 2026-11-06 眼妝（使用者：眼影呢、眼妝沒有加入）：參考圖是煙燻灰眼影——
+      //   眼皮上一整片（貼眼線最深、往摺線漸淡、外側比內側濃），過摺線再往上暈一點；外眼角往外上 V 字暈開包住眼尾；
+      //   下眼線外半段下面一片煙燻，跟外眼角接起來；眉骨下到眉毛之間一層很淡的玫瑰灰；內眼角一點亮色。
+      { const MK = EyeBig.makeup && MAKEUP[EyeBig.makeup] || MAKEUP.smoky;
+        if (MK) { const cv = creaseV(u), kin = sstep(-.16, .15, u);
+          let a = 0;
+          if (u > -.16 && u < 1.12 && v > cv - .16 && v < tv + .01) {   // 眼皮＋摺線上方暈開
+            const q = v > cv ? 1 - .35 * sstep(tv, cv, v) : (1 - sstep(cv, cv - .16, v)) * .65;
+            a = Math.max(a, q * kin * (.55 + .45 * sstep(.2, .85, u)) * (1 - sstep(1.02, 1.12, u)));
+          }
+          { const ex = (u - 1.04) / .32, ey = (v - (OUT - .04)) / .24, e = ex * ex + ey * ey; if (e < 2) a = Math.max(a, .95 * Math.exp(-1.6 * e)); }   // 外眼角 V 字
+          if (u > .35 && u < 1.08 && v > bv) { const dv = v - bv, wv = .07 + .05 * sstep(.4, .9, u); a = Math.max(a, .8 * sstep(.35, .8, u) * (1 - sstep(.95, 1.08, u)) * Math.exp(-((dv / wv) ** 2))); }   // 下眼線外側煙燻
+          if (a > 0 && !(u >= 0 && u <= 1 && v > tv && v < bv)) c = mix(c, MK.lid, MK.k * a);
+          if (v < cv - .03 && v > cv - .4) c = mix(c, MK.bone, MK.kb * sstep(cv - .4, cv - .2, v) * (1 - sstep(cv - .1, cv - .03, v)) * sstep(-.2, .2, u) * (1 - sstep(.95, 1.2, u)));   // 眉骨下淡玫瑰灰
+          { const e = ((u + .03) / .08) ** 2 + ((v - .0) / .06) ** 2; if (e < 1 && !(u >= 0 && v > tv && v < bv)) c = mix(c, MK.hi, .55 * (1 - e)); }   // 內眼角亮色
+        } }
       // 眼皮（摺線到眼線之間）：淡淡偏灰紫，越靠眼線越深；摺線本身頭尾收尖、暈開
       if (u > -.14 && u < 1.08) { const cv = creaseV(u), k = sstep(-.14, .08, u) * (1 - sstep(.96, 1.08, u));
-        if (v > cv && v < tv) c = mix(c, LID, (.35 + .4 * sstep(cv, tv, v)) * k);
+        if (v > cv && v < tv) c = mix(c, LID, (.35 + .4 * sstep(cv, tv, v)) * k * (EyeBig.makeup && EyeBig.makeup !== 'none' ? .25 : 1));   // 有眼妝時眼皮色只淡淡一層，不蓋掉眼影
         const dc = Math.abs(v - cv - .004), tc = .014 * (.3 + .7 * Math.sin(Math.PI * cl((u + .14) / 1.22)));
         if (dc < tc + .01) c = mix(c, [112, 72, 70], .85 * k * sstep(tc + .01, tc - .004, dc));
         if (v < cv && v > cv - .07) c = mix(c, INK.SHADOW, .12 * k * (1 - (cv - v) / .07)); }   // 摺線上面一點點陰影（眉骨下凹）
@@ -213,7 +233,7 @@
         const wd = L.wd * Math.pow(1 - t, 1.3); if (dd < wd + .3) c = mix(c, L.col, L.k * sstep(wd + .3, wd - .2, dd)); }
       return c;
     };
-    const xs = [X(-.2), X(1.34)], bx0 = Math.floor(Math.min(...xs)), bx1 = Math.ceil(Math.max(...xs)), by0 = Math.floor(Y(-.62)), by1 = Math.ceil(Y(BOT + .2));
+    const xs = [X(-.24), X(1.56)], bx0 = Math.floor(Math.min(...xs)), bx1 = Math.ceil(Math.max(...xs)), by0 = Math.floor(Y(-.92)), by1 = Math.ceil(Y(BOT + .26));
     const N = 4;
     for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) {
       if (!okPx(x, y)) continue; const i = (y * W + x) * 4, c0 = [d[i], d[i + 1], d[i + 2]], acc = [0, 0, 0];
@@ -316,6 +336,6 @@
     return true;
   }
   // far：斜面遠的那隻被擠到鼻樑旁（寬度 < 近眼 55%）時 'hide'＝被山根擋住不畫（2026-11-05 使用者：側面眼睛應該被山根擋住、不是印上去）、'lash'＝只畫眼線睫毛、'full'＝整隻畫
-  const EyeBig = { over, paint, SHAPE, far: 'full', browOver, noseOver };   // 第 7 版：臉前面改平，45 度遠眼看得到（使用者：遠眼在鼻樑旁、凹在眼窩裡）→ 整隻畫，被鼻樑擋住的照標記不畫
+  const EyeBig = { over, paint, SHAPE, far: 'full', browOver, noseOver, MAKEUP, makeup: 'smoky' };   // 第 7 版：臉前面改平，45 度遠眼看得到（使用者：遠眼在鼻樑旁、凹在眼窩裡）→ 整隻畫，被鼻樑擋住的照標記不畫
   window.EyeBig = EyeBig;
 })();
