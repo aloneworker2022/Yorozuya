@@ -309,3 +309,6 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - ★ 2026-11-06 使用者定案：「濃眼線」命名為 **煙燻狐狸眼**（eyes_big.js key `ink`，選單顯示「煙燻狐狸眼」），存起來以後用。
   - 定案內容＝上面濃眼線那幾段的最後狀態：斜平行四邊形眼形（內眼角低、外眼角尖在高處）、雙眼皮摺線與眼皮、整顆很大的瞳孔（半徑 .36 眼寬）中心在上眼皮邊上只露下半、粗黑上眼線＋細長上揚眼尾、下眼影漸層（眼尾最重）、往外放射的睫毛（細密一圈＋外眼角長撮）、眼白球面明暗、眼妝 `smoky`；寬度 ×0.8。
   - 要再改這款先問使用者；要變化另開新 key，不要動 `ink`。
+- 2026-11-06 接客偷看用 droom 遠景樣子（樣品，使用者：妻子去賺錢打開房間看到的她體態不對，用 droom 遠景、做一倍就好，先做一組看看）：
+  - room_doll_full.js `render(..., {lit:true})`：體位（側面畫布 peek）也走一般遠景算法（明暗、線條、白邊），不走 renderSide 平塗。畫布同像素大小、同錨點、K＝1.28（可非整數），側面不橫向拉寬（gw＝1）；從 +x 那側看（跟 renderSide／renderMan 同一側）再左右翻回來，深度輸出世界 x，跟客人照深度合成。
+  - content/escort_peek.js `opts.droom`：她改用 droom 人偶（另外載進自己的盒子，不蓋掉房間的 window.RoomDoll）＋droom 上色 `droomTint`（亮度→三階膚色、頭髮兩色、乳頭兩色、1px 白外框；她不描暖／冷輪廓），髮色／乳頭色從 look 的文字對應。客人照舊。`openPeek`／`peekStills` 都吃 `droom:true`；**預設還是關的**（等使用者看完樣品）。先做後背（doggy）一組。

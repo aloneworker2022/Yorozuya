@@ -2060,15 +2060,20 @@
     // ------------------------------------------------------------ render
     /** 回傳 {width,height,anchor,pixels:Uint8ClampedArray,depth:Float32Array(-Infinity=空)}。 */
     function render(doll, pose = 'idle', frame = 0, yaw = 0, opts = {}) {
-      const cv = CANVAS[(POSES[pose] && POSES[pose].canvas) || 'std'];
+      let cv = CANVAS[(POSES[pose] && POSES[pose].canvas) || 'std'];
       const { sh, P } = build(doll, pose, frame, yaw, opts);
-      if (cv.side) return renderSide(sh, P, cv);
+      // 2026-11-06 opts.lit：體位（側面畫布）也走一般（遠景）算法——有明暗、線條、白邊，接客偷看用 droom 遠景的樣子。
+      //   畫布換成同樣像素大小、同樣錨點，K＝側面的 1.28（像素／單位，可以不是整數），人物大小跟原本側面圖一樣。
+      let KL = 0;
+      if (cv.side && opts.lit) { KL = cv.scale; yaw = -90; cv = { w: cv.w / KL, h: cv.h / KL, ax: cv.ax / KL, ay: cv.ay / KL, tMax: 95, tMin: -95 }; }
+      else if (cv.side) return renderSide(sh, P, cv);
       // 2026-10-30 pt36u：opts.scale＝解析度倍率（2＝寬高各兩倍，同一個模型取樣更細）
-      const K = Math.max(1, Math.round(opts.scale || 1));
+      const K = KL || Math.max(1, Math.round(opts.scale || 1));
+      const SXF = KL ? -1 : 1;   // lit 體位：從 +x（客人看的那側、跟 renderSide 同一側）看過去，畫面左右翻回來＝螢幕右＝世界 +y
       // 2026-11-03 近景：opts.cam＝透視攝影機（玩家站在她面前）。{ dist 水平距離（模型單位，從她的原點量）, eyeZ 眼睛高, pitch 往下看（弳）, f 焦距（K＝1 的像素）, w, h 畫布（K＝1）, cx, cy 主點（K＝1） }
       //   光線 P(t)＝A＋t·B，t 從 0（攝影機）往負走；|B| 跟正交一樣是「水平拉寬空間」的 2 單位，深度門檻（線條、白邊）不用改。沒有 cam＝原本的正交，程式不變。
       const CAM = opts.cam || null;
-      const width = (CAM ? CAM.w : cv.w) * K, height = (CAM ? CAM.h : cv.h) * K, ax = cv.ax, ay = cv.ay;
+      const width = Math.round((CAM ? CAM.w : cv.w) * K), height = Math.round((CAM ? CAM.h : cv.h) * K), ax = cv.ax, ay = cv.ay;
       let prims = opts.onlyMat != null ? sh.prims.filter(p => p.mat === opts.onlyMat) : sh.prims;
       if (opts.parts) prims = prims.filter(p => p.carve || opts.parts.includes(p.part));   // 2026-11-01 拆圖層：只算某些部位
       const np = prims.length;   // onlyMat：只畫某材質（頭髮圖層用）
@@ -2087,7 +2092,7 @@
       }
       const gcx = (mnx + mxx) / 2, gcy = (mny + mxy) / 2, gcz = (mnz + mxz) / 2;
       const gr = hypot3(mxx - gcx, mxy - gcy, mxz - gcz) + .5;
-      const th = yaw * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), gw = GIRTH;
+      const th = yaw * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), gw = KL ? 1 : GIRTH;   // lit 體位（側面）不橫向拉寬，跟 renderSide 一樣大
       let dX = -2 * s / gw, dY = 2 * c / gw, dZ = 0, dd = dX * dX + dY * dY + dZ * dZ;
       let camRay = null, camPx = 1, camRow = null, camPxAt = null;   // camPxAt(q)：'look' 時每點自己的透視倍率
       if (CAM) {   // 攝影機在她前方（yaw 方向的 (−s, c)），往她看、往下 pitch；水平拉寬空間＝模型 x,y × gw
@@ -2126,7 +2131,7 @@
       for (let py = 0; py < (G0 || !np ? 0 : height); py++) {
         const sy = (py + .5) / K - ay;
         for (let px = 0; px < width; px++) {
-          const sx = (px + .5) / K - ax;
+          const sx = SXF * ((px + .5) / K - ax);
           // ray: X = (sx*c - 2t*s)/gw, Y = (sx*s + 2t*c)/gw, Z = t - sy
           if (camRay) { camRay(px, py, RA, RB); dX = RB[0]; dY = RB[1]; dZ = RB[2]; dd = dX * dX + dY * dY + dZ * dZ; }
           const ox = (camRay ? RA[0] : sx * c / gw) - gcx, oy = (camRay ? RA[1] : sx * s / gw) - gcy, oz = (camRay ? RA[2] : -sy) - gcz;
@@ -2186,7 +2191,7 @@
           const b0 = bust.slice();
           for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
             const i = y * width + x; if (!hit[i] || b0[i] !== 1) continue;
-            const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
+            const sx0 = SXF * ((x + .5) / K - ax), sy0 = (y + .5) / K - ay, t0 = tt[i];
             const [X, Y, Z] = camRay ? camAt(x, y, t0) : [(sx0 * c - 2 * t0 * s) / gw, (sx0 * s + 2 * t0 * c) / gw, -sy0];
             for (const st of stamps) { const d = hypot3(X - st.q[0], Y - st.q[1], Z - st.q[2]); if (d <= st.nip) { bust[i] = 3; break; } if (d <= st.ar) bust[i] = 2; }
           }
@@ -2194,7 +2199,7 @@
             let best = -1, bestD = 1e9, bx = 0, by = 0;
             for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
               const i = y * width + x; if (!hit[i] || b0[i] !== 1) continue;
-              const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
+              const sx0 = SXF * ((x + .5) / K - ax), sy0 = (y + .5) / K - ay, t0 = tt[i];
               const [X, Y, Z] = camRay ? camAt(x, y, t0) : [(sx0 * c - 2 * t0 * s) / gw, (sx0 * s + 2 * t0 * c) / gw, -sy0], d = hypot3(X - st.q[0], Y - st.q[1], Z - st.q[2]);
               if (d < bestD) { bestD = d; best = i; bx = x; by = y; }
             }
@@ -2239,7 +2244,7 @@
           if (bust[i] >= 5) { const cb = bust[i]; set(i, cb === 9 ? PUBIC_RGB : cb === 10 ? LABIA_RGB : cb === 11 ? (near ? LACE_LO_RGB : LACE_RGB) : cb === 12 ? BAND_RGB : cb === 13 ? OPEN_RGB : cb === 14 ? HOLE_RGB : cb === 15 ? PUBIC_EDGE_RGB : cb === 16 ? (near ? BLIND_LO_RGB : BLIND_RGB) : cb === 17 ? (near ? NOSE_LO_RGB : NOSE_RGB) : cb === 18 ? (near ? MOUTH_LO_RGB : MOUTH_RGB) : cb === 20 ? (near ? LIPLO_LO_RGB : LIPLO_RGB) : cb === 19 ? (near ? EYE_LO_RGB : EYE_RGB) : cb === 21 ? (near ? BROW_LO_RGB : BROW_RGB) : cb === 6 ? TRIM_RGB : cb === 7 ? CHAIN_RGB : cb === 8 ? (near ? WEIGHT_LO_RGB : WEIGHT_RGB) : near ? CLOTH_LO_RGB : CLOTH_RGB, CLOTH_A); if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32; continue; }
           let stampRgb = null;
           if (stamps.length && bust[i] === 1 && hit[i]) {
-            const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
+            const sx0 = SXF * ((x + .5) / K - ax), sy0 = (y + .5) / K - ay, t0 = tt[i];
             const [X, Y, Z] = camRay ? camAt(x, y, t0) : [(sx0 * c - 2 * t0 * s) / gw, (sx0 * s + 2 * t0 * c) / gw, -sy0];
             for (const st of stamps) {
               const d = hypot3(X - st.q[0], Y - st.q[1], Z - st.q[2]);
@@ -2258,7 +2263,7 @@
             set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : edge ? EDGE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : sockL[i] ? SOCK_RGB[sockL[i] - 1] : BODY_RGB, BODY_A);
           }
         }
-        if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32;
+        if (hit[i]) depth[i] = KL ? ((SXF * ((x + .5) / K - ax)) * c - 2 * tt[i] * s) / gw : (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32;   // lit 體位：深度用世界 x（跟 renderSide／renderMan 同一套，偷看照深度合成她和客人）
       }
       if (stamps.length) {
         for (const st of stamps) {
@@ -2267,7 +2272,7 @@
           for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
             const i = y * width + x;
             if (!m[i] || !hit[i] || bust[i] !== 1) continue;
-            const sx0 = (x + .5) / K - ax, sy0 = (y + .5) / K - ay, t0 = tt[i];
+            const sx0 = SXF * ((x + .5) / K - ax), sy0 = (y + .5) / K - ay, t0 = tt[i];
             const [X, Y, Z] = camRay ? camAt(x, y, t0) : [(sx0 * c - 2 * t0 * s) / gw, (sx0 * s + 2 * t0 * c) / gw, -sy0];
             const d = hypot3(X - qx, Y - qy, Z - qz);
             if (d < bestD) { bestD = d; best = i; bx = x; by = y; }
