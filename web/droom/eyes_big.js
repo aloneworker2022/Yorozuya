@@ -133,7 +133,7 @@
   function inPoly(P, x, y) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
   function segD(px, py, ax, ay, bx, by) { const vx = bx - ax, vy = by - ay, t = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy || 1))); return [Math.hypot(px - ax - vx * t, py - ay - vy * t), t]; }
   // 眼妝顏色：lid＝眼皮／外眼角／下眼線煙燻、bone＝眉骨下、hi＝內眼角亮色；k、kb＝濃度。EyeBig.makeup 換（none 不畫）
-  const MAKEUP = { smoky: { lid: [66, 50, 58], bone: [186, 136, 138], hi: [252, 238, 232], k: .82, kb: .22 },
+  const MAKEUP = { smoky: { lid: [58, 46, 54], bone: [186, 136, 138], hi: [252, 238, 232], k: .85, kb: .1 },
     rose: { lid: [150, 80, 92], bone: [214, 150, 150], hi: [252, 238, 232], k: .5, kb: .2 },
     brown: { lid: [110, 72, 56], bone: [196, 150, 130], hi: [252, 240, 228], k: .55, kb: .16 }, none: null };
   function paintInk(d, hm, W, H, box, out, turn, IR, wRef, vis, far, visE) {
@@ -184,11 +184,13 @@
         if (MK) { const cv = creaseV(u), kin = sstep(-.16, .15, u);
           let a = 0;
           if (u > -.16 && u < 1.12 && v > cv - .16 && v < tv + .01) {   // 眼皮＋摺線上方暈開
-            const q = v > cv ? 1 - .35 * sstep(tv, cv, v) : (1 - sstep(cv, cv - .16, v)) * .65;
-            a = Math.max(a, q * kin * (.55 + .45 * sstep(.2, .85, u)) * (1 - sstep(1.02, 1.12, u)));
+            const q = v > cv ? 1 - .7 * sstep(tv, cv, v) : 0;   // 第 2 版（使用者：重點在眼睛下面、不是暈開）：眼皮只貼眼線淡淡一層，不過摺線
+            a = Math.max(a, .45 * q * kin * (.5 + .5 * sstep(.3, .9, u)) * (1 - sstep(1.0, 1.1, u)));
           }
-          { const ex = (u - 1.04) / .32, ey = (v - (OUT - .04)) / .24, e = ex * ex + ey * ey; if (e < 2) a = Math.max(a, .95 * Math.exp(-1.6 * e)); }   // 外眼角 V 字
-          if (u > .35 && u < 1.08 && v > bv) { const dv = v - bv, wv = .07 + .05 * sstep(.4, .9, u); a = Math.max(a, .8 * sstep(.35, .8, u) * (1 - sstep(.95, 1.08, u)) * Math.exp(-((dv / wv) ** 2))); }   // 下眼線外側煙燻
+          { const ex = (u - 1.0) / .14, ey = (v - OUT) / .1, e = ex * ex + ey * ey; if (e < 1) a = Math.max(a, .6 * (1 - e)); }   // 外眼角只一小塊接眼尾和下眼影（不再大片 V 字暈開）
+          if (u > .02 && u < 1.04 && v > bv - .01) {   // 下眼影：沿下眼線一整條實實的深灰帶，外側最寬最重、內眼角收細；下緣清楚（只收 1/4 漸層），不是霧
+            const dv = v - bv, wv = .04 + .12 * sstep(.1, .8, u) * (1 - .4 * sstep(.92, 1.02, u)), edge = sstep(wv, wv * .72, dv);
+            a = Math.max(a, (.8 + .2 * sstep(.3, .8, u)) * sstep(.02, .14, u) * (1 - sstep(.98, 1.04, u)) * edge); }
           if (a > 0 && !(u >= 0 && u <= 1 && v > tv && v < bv)) c = mix(c, MK.lid, MK.k * a);
           if (v < cv - .03 && v > cv - .4) c = mix(c, MK.bone, MK.kb * sstep(cv - .4, cv - .2, v) * (1 - sstep(cv - .1, cv - .03, v)) * sstep(-.2, .2, u) * (1 - sstep(.95, 1.2, u)));   // 眉骨下淡玫瑰灰
           { const e = ((u + .03) / .08) ** 2 + ((v - .0) / .06) ** 2; if (e < 1 && !(u >= 0 && v > tv && v < bv)) c = mix(c, MK.hi, .55 * (1 - e)); }   // 內眼角亮色
