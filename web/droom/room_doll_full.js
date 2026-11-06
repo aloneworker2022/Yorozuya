@@ -973,7 +973,7 @@
       wide:     { name: '寬鼻翼', root: 1.6,  tip: -3.9,  P: 1.5,  conc: .2,   r: .45, up: .1,   wt: .3,  wb: 1.35 },
       long:     { name: '細長鼻', root: 2.4,  tip: -4.3,  P: 2.0,  conc: .15,  r: .15, up: 0,    wt: .15, wb: .7 },
       // 2026-11-06 使用者給真人參考照（學這個五官）：鼻樑直而細、鼻頭圓潤一顆、微微上翹看得到鼻孔，鼻翼不寬
-      soft:     { name: '圓翹鼻', root: 1.7,  tip: -3.75, P: 1.6,  conc: .2,   r: .55, up: .45,  wt: .2,  wb: 1.0 },
+      soft:     { name: '圓翹鼻', root: 1.7,  tip: -3.55, P: 1.3,  conc: .2,   r: .42, up: .45,  wt: .16, wb: .72 },   // 第 3 版（使用者：鼻子太大）：短一點、窄一點、凸出少一點
     };
     function nose(sh, P, doll, tor) {
       const hs = P.b.head, hh = P.head_h / 2, zc = tor.zc, yc = tor.yl(zc) + .3, ry = 7.2 * hs;

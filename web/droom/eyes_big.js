@@ -166,7 +166,7 @@
         const xIn = f * FW + (inner > 0 ? b : a), xh = xIn - inner * w * .15, len = w * 1.08;
         const yc = (yOf[a] + yOf[b] + 2 * yOf[(a + b) >> 1]) / 4;
         const cen = t => yc + T * (.06 - .14 * sstep(0, .62, t) + .17 * Math.pow(sstep(.62, 1, t), 1.1));
-        const thk = t => T * (t < .62 ? .27 - .08 * t / .62 : Math.max(.025, .19 * (1 - (t - .62) / .38) ** 1.3));
+        const thk = t => T * (t < .62 ? .17 - .05 * t / .62 : Math.max(.02, .12 * (1 - (t - .62) / .38) ** 1.3));   // 第 3 版（使用者：太粗）×0.63
         const n = Math.ceil(len * 2);
         for (let i = 0; i <= n; i++) { const t = i / n, x = xh - inner * t * len, c = cen(t), th = thk(t), hi = c - th * .55, lo = c + th * .45;
           for (let y = Math.floor(hi) - 1; y <= lo + 1; y++) { const e = Math.min(y - hi, lo - y) + .5; if (e <= 0) continue; const q = (y - hi) / th;
@@ -207,10 +207,10 @@
     for (let x = x0 - 1; x <= x1 + 1; x++) { let yb = -1; for (let y = y1; y >= y0; y--) if (isN(x, y)) { yb = y; break; } if (yb < 0) continue; const u = Math.abs(x - cx) / (wTip / 2), k = .75 * (1 - Math.min(1, u) ** 2);
       for (let dy = 0; dy < 5; dy++) put(x, yb - dy, SH2, k * (1 - dy / 5)); put(x, yb + 1, SH, k * .6); put(x, yb + 2, SH, k * .3); }   // 鼻頭下面的陰影＋落在人中上的影子
     // 鼻孔：兩個小橢圓（斜面遠的那個小一點）；鼻翼：兩條小弧
-    for (const side of [-1, 1]) { const far = side === -s ? .7 : 1, nx = cx + side * wTip * .2 * far, ny = y1 - h * .035;
-      ell(nx, ny, Math.max(2, wTip * .1 * far), Math.max(1.5, h * .028), NOS, .9);
+    for (const side of [-1, 1]) { const far = side === -s ? .7 : 1, nx = cx + side * wTip * .16 * far, ny = y1 - h * .03;
+      ell(nx, ny, Math.max(1.5, wTip * .08 * far), Math.max(1.2, h * .022), NOS, .9);
       const dark = side === s ? .85 : .55;   // 鼻翼：外側一條弧（從鼻翼上緣彎下來接到鼻孔），背光那側深、裡面淡淡一片陰影
-      for (let i = 0; i <= 16; i++) { const a = i / 16, ax = cx + side * wTip * (.38 - .1 * a), ay = y1 - h * (.15 - .13 * a) - h * .035 * Math.sin(Math.PI * a), kk = dark * Math.sin(Math.PI * Math.min(1, .15 + a * 1.1));
+      for (let i = 0; i <= 16; i++) { const a = i / 16, ax = cx + side * wTip * (.32 - .08 * a), ay = y1 - h * (.12 - .1 * a) - h * .035 * Math.sin(Math.PI * a), kk = dark * Math.sin(Math.PI * Math.min(1, .15 + a * 1.1));
         put(ax, ay, LN, kk); put(ax - side, ay, LN, kk * .5); if (side === s) for (let j = 1; j < 4; j++) put(ax - side * (j + 1), ay, SH, .25 * (1 - j / 4)); } }
     return true;
   }
