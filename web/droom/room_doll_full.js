@@ -16,7 +16,9 @@
     // 2026-10-31：白邊 1px——手腳擋在身體（或另一隻腳）前面的邊緣標 EDGE_RGB，前端上成白色。
     // HAIR_BACK_A：頭髮圖層裡「可能被身體擋住」的像素（前端只畫在身體以外），一般頭髮仍是 HAIR_A。
     const EDGE_RGB = [240, 240, 240], EDGE_DEPTH = 2.5, HAIR_BACK_A = 214;
-    const FAINT_RGB = [110, 75, 75];   // 2026-11-03：若隱若現的淡線（背部中線），前端上成很淡的膚色線
+    const FAINT_RGB = [110, 75, 75];
+    // 2026-11-05 使用者：眼睛要凹進去（身體平塗看不出凹）→ 眼窩挖進去的表面照深度上比較暗的身體色（前端照亮度上膚色：越深越暗）
+    const SOCK_RGB = [[45, 39, 58], [40, 34, 52], [35, 29, 46]];   // 2026-11-03：若隱若現的淡線（背部中線），前端上成很淡的膚色線
     const CREASE_RGB = [90, 60, 60];   // 2026-10-31：鼠蹊部摺線（比一般線條深），前端上成深膚色
     const GIRTH = 1.1;
     const TRUNK_SM = 2.6, UB_SLOPE = .5;   // 2026-11-03 軀幹疊層沿高度的平滑量（越大腰背越順）
@@ -414,7 +416,8 @@
       //   眉骨、顴骨往前、往上一點（眉骨 y 4.95→5.6、顴骨 y 4.6→5.0、z −3.2→−2.7）：45 度時遠側由眉骨＋顴骨形成輪廓，遠眼夾在鼻樑和輪廓中間（參考圖 3/4 側臉）
       // 2026-11-05 第 6 版（使用者：認真研究鼻樑、眼窩；眼睛是凹進去的，不是凸眼）：眼窩加深（中心比臉表面低約 1.2）、坡緩一點（前後半徑 1.6），眼睛整個坐在凹槽裡，上面眉骨、下面顴骨都比眼睛前面
       // 2026-11-05 第 7 版：臉前面改平（flatN 4.5）後，眼窩中等深（中心比臉表面低約 0.8）就夠：45 度時遠眼在鼻樑和輪廓中間、凹在眼窩裡
-      eye: [2.9, 7.1, -.8, 1.95, 1.5, 1.3],
+      eye: [2.9, 7.1, -.8, 1.95, 1.5, 1.3],   // （第 9 版起不用，改 sock）
+      sock: [[1.4, .5, 1.05, 1.3, 1.45], [2.1, .72, 1.05, 1.3, 1.6], [2.9, .82, 1.05, 1.3, 1.65], [3.7, .72, 1.05, 1.3, 1.6], [4.4, .5, 1.05, 1.3, 1.45]], sockDz: .1,   // 五顆重疊，凹得均勻
       // 2026-11-05 第 8 版（使用者：為什麼眼睛周圍會凸出來）：第 4 版把眉骨、顴骨加大往前，眼睛上下各黏一塊凸起 → 改回原本大小（只跟著眼睛高度移）
       brow: [3.7, 4.95, .55, 1.9, 1.0, .75],    // 眉骨：x, y, z, 半徑
       cheek: [3.8, 4.6, -2.4, 1.9, 1.25, 1.35],  // 顴骨   // 眼窩（挖掉）：x, y, z, 半徑 x/y/z
@@ -423,18 +426,22 @@
       loft: [[1.0, 6.3, 6.7, -3.2], [-.5, 6.3, 7.0, -3.2], [-1.9, 6.1, 6.85, -3.2], [-3.0, 5.8, 6.9, -3.0], [-4.4, 5.3, 6.9, -2.2], [-5.0, 5.0, 6.85, -1.6],
         [-5.55, 4.7, 6.8, -1.2], [-6.0, 4.3, 6.7, -.6], [-6.8, 3.4, 6.5, .6], [-7.2, 2.9, 6.35, 1.3], [-7.6, 2.3, 6.6, 1.9], [-8.3, 1.15, 6.5, 3.7], [-8.65, .5, 6.4, 5.0], [-8.8, .2, 6.2, 5.8]],   // 2026-11-01 使用者：側面下巴太圓 → 前緣撐到最底、尖角、下顎線直；嘴的地方平順（嘴唇另外做零件）
       top: [6.2, 7.6, -.5],
-      flatN: 2.8, flatZ: [-5.0, -2.2],   // 第 8 版：4.5 太平，外眼角附近的臉比鼻子那排還前面、45 度從輪廓鼓出去 → 2.8   // 臉前面平的程度（超橢圓指數）、從哪個高度（下）漸變到哪個高度（上）完全平   // 前面圓弧（45 度時遠側眼窩剛好在輪廓上）   // 由上往下看的橢圓：半寬、前後半徑、中心 y
+      flatN: 2, flatZ: [-5.0, -2.2],   // 第 9 版：改回圓（使用者：眼睛周圍凸出來）——2.8 時外眼角外側比鼻樑旁還前面（量切面：7.5 vs 7.3），眼睛像擺在往前鼓的板子上   // 第 8 版：4.5 太平，外眼角附近的臉比鼻子那排還前面、45 度從輪廓鼓出去 → 2.8   // 臉前面平的程度（超橢圓指數）、從哪個高度（下）漸變到哪個高度（上）完全平   // 前面圓弧（45 度時遠側眼窩剛好在輪廓上）   // 由上往下看的橢圓：半寬、前後半徑、中心 y
     };
     function animeHead(sh, P, yl, zc) {
       const hs = P.b.head, A = ANIME_HEAD, y0 = yl(zc) + .3, k = P.head_h / 17.6;
       sh.ell(BODY, [0, y0, zc + A.crZ * k], [6.9 * hs, 7.2 * hs, A.crRz * k]);                                   // 圓頭骨
-      sh.carve = 2; for (const sx of [-1, 1]) sh.ell(BODY, [sx * A.eye[0] * hs, y0 + A.eye[1] * hs, zc + A.eye[2] * k], [A.eye[3] * hs, A.eye[4] * hs, A.eye[5] * k]); sh.carve = 0;   // 2026-11-01 眼窩微凹（45 度、側面看得到）
       for (const sx of [-1, 1]) {   // 2026-11-01 眉骨、顴骨各微凸 → 45 度看外輪廓：額頭→眉骨→眼窩凹→顴骨→下巴（使用者圈的重點）
         sh.ell(BODY, [sx * A.brow[0] * hs, y0 + A.brow[1] * hs, zc + A.brow[2] * k], [A.brow[3] * hs, A.brow[4] * hs, A.brow[5] * k]);
         sh.ell(BODY, [sx * A.cheek[0] * hs, y0 + A.cheek[1] * hs, zc + A.cheek[2] * k], [A.cheek[3] * hs, A.cheek[4] * hs, A.cheek[5] * k]);
       }
       // 2026-11-05 使用者（3/4 參考圖疊圖）：臉的橫切面原本是圓的，45 度時遠側整個轉到後面、鼻樑變成輪廓、遠眼沒地方出現 → 眉毛到嘴巴這段前半圈改超橢圓（前面寬而平），下巴照舊
       sh.loft(BODY, A.loft.map(([z, w, yf, yb]) => [zc + z * k, w * hs, y0 + yf * hs, y0 + yb * hs]), .15, { n: A.flatN, z0: zc + A.flatZ[0] * k, z1: zc + A.flatZ[1] * k });   // 臉（疊層：側面輪廓＝前緣、正面＝半寬、下巴收成一點）
+      // 2026-11-05 第 9 版 眼窩（使用者：眼睛不是貼在眼眶上，要凹進去）：原本一顆橢圓挖洞，臉往兩側往後彎，洞只咬到靠鼻子那半邊，外半隻眼睛貼在沒凹的臉上。
+      //   改成沿著眼睛橫排三顆（內、中、外），每顆先找那裡的臉表面，再往裡挖固定深度 → 整隻眼睛加一圈邊都在均勻的凹槽裡。sock：[x, 深度, 半寬, 前後半徑, 上下半徑]
+      const zs = zc + (EYE_Z + A.sockDz) * k, surfY = x => { for (let y = y0 + 12; y > y0 - 4; y -= .03) if (bodyDist(sh, x, y, zs) < 0) return y; return y0; };
+      const holes = []; for (const sx of [-1, 1]) for (const [x, dep, rx, ry, rz] of A.sock) { const X = sx * x * hs, ys = surfY(X); holes.push([X, ys + ry * hs - dep * hs, rx * hs, ry * hs, rz * k]); }   // 先找好表面再挖（不然會找到剛挖的洞）
+      sh.carve = 2; for (const [X, Y, rx, ry, rz] of holes) sh.ell(BODY, [X, Y, zs], [rx, ry, rz]); sh.carve = 0;
     }
     function headPart(sh, P, yl, zc, doll = {}) {
       const pp = sh.part; sh.part = 'head';
@@ -2105,7 +2112,7 @@
       const RA = [0, 0, 0], RB = [0, 0, 0];
       const camAt = (px, py, t) => { camRay(px, py, RA, RB); return [RA[0] + t * RB[0], RA[1] + t * RB[1], RA[2] + t * RB[2]]; };
       const n = width * height;
-      const hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n), limb = new Uint8Array(n);
+      const hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n), limb = new Uint8Array(n), sockL = new Uint8Array(n);   // sockL：眼窩挖進去多深（0 沒有、1～3 越來越深）
       const G0 = opts.gbufIn;   // 2026-11-01 拆圖層：直接用疊好的原始資料上色（不跑光線）
       if (G0) { hit.set(G0.hit); mat.set(G0.mat); tt.set(G0.tt); bust.set(G0.bust); limb.set(G0.limb); }
       const STEP = .8 / Math.sqrt(5);
@@ -2142,7 +2149,7 @@
           for (let it = 0; it < 220 && t >= tEnd; it++) {
             const X = camRay ? RA[0] + t * dX : (sx * c - 2 * t * s) / gw, Y = camRay ? RA[1] + t * dY : (sx * s + 2 * t * c) / gw, Z = camRay ? RA[2] + t * dZ : -sy;
             dist[0] = dist[1] = dist[2] = 1e3;
-            let bb = 0, lf = 0, ck = 0, dCl = 1e3, bCl = 0;   // dCl／bCl：最近的臉部標記零件（眼窩不挖它們）
+            let bb = 0, lf = 0, ck = 0, dCl = 1e3, bCl = 0, sk = 0;   // dCl／bCl：最近的臉部標記零件（眼窩不挖它們）
             for (let q = 0, qn = CULL ? nc : np; q < qn; q++) {
               const i = CULL ? cand[q] : q;
               if (prims[i].carve) continue;
@@ -2154,8 +2161,8 @@
             }
             if (carveIdx.length) {   // 身體 − 洞：洞壁標紅色內裡（cb 13），比原表面深 0.7 以上標深紅小口（cb 14）
               let cd = 1e3, ct = 1; for (const i of carveIdx) { const v = primDist(prims[i], X, Y, Z); if (v < cd) { cd = v; ct = prims[i].carve; } }
-              if (-cd > dist[0]) { const ob = dist[0]; dist[0] = -cd; if (ct === 2) bb = 0; else bb = ob < -.7 ? 14 : 13; lf = 0;   // carve＝2：只挖、不改顏色（眼窩）
-                if (ct === 2 && dCl < dist[0]) { dist[0] = dCl; bb = bCl; }
+              if (-cd > dist[0]) { const ob = dist[0]; dist[0] = -cd; if (ct === 2) { bb = 0; sk = -ob; } else bb = ob < -.7 ? 14 : 13; lf = 0;   // carve＝2：只挖、不改顏色（眼窩）；sk＝比原本的臉表面深多少
+                if (ct === 2 && dCl < dist[0]) { dist[0] = dCl; bb = bCl; sk = 0; }
                 if (ct === 2) dist[0] = Math.min(dist[0], .15); }   // 眼窩裡面走小步（步子是距離的 1.8 倍，空心的眼窩會直接跳過貼在裡面的標記）   // 2026-11-05 眼窩不挖臉部標記（眼睛標記貼在眼窩裡，原本被一起挖掉只剩一圈）
             }
             const d = Math.min(dist[0], dist[1], dist[2]);
@@ -2164,6 +2171,7 @@
               let mm = dist[1] < dist[0] + .15 ? 2 : 1;
               if (dist[2] < .05 && dist[1] > .05) mm = 3;
               mat[idx] = mm; bust[idx] = mm === 1 ? bb : mm === 3 && ck ? (ck === 2 ? 98 : 99) : 0; limb[idx] = mm === 1 ? lf : 0;
+              sockL[idx] = mm === 1 && sk > .12 ? (sk > .6 ? 3 : sk > .35 ? 2 : 1) : 0;
               break;
             }
             t -= Math.max(d, .08) * STEP;
@@ -2244,7 +2252,7 @@
               const j = ny * width + nx;
               if (m[j] && hit[j] && mat[j] === 1 && tt[j] < di - EDGE_DEPTH) { edge = true; break; }
             }
-            set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : edge ? EDGE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
+            set(i, bust[i] === 3 ? NIP_RGB : bust[i] === 2 ? AREOLA_RGB : near ? LINE_RGB : edge ? EDGE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : sockL[i] ? SOCK_RGB[sockL[i] - 1] : BODY_RGB, BODY_A);
           }
         }
         if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - ((y + .5) / K - ay))) / 32;
