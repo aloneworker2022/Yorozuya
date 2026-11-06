@@ -431,8 +431,8 @@ export function openPeek(opts = {}) {
   };
   const framesReady = (async () => {
     let dr = null, dl = doll, DD = D;
-    // 2026-11-06 使用者：先合併看——後背（doggy）預設用 droom 黑影版（ass_up 姿勢、她和客人都黑）；其他體位還沒做，照舊。opts.droom 明確給值就照給的。
-    const droomMode = opts.droom ?? (pose === "doggy" ? "silhouette" : false);
+    // 2026-11-06 使用者看過：人物完全沒有律動（droom 模型還沒完成）→ 先不要用，預設關回去；程式留著，opts.droom 明確給值才用。
+    const droomMode = opts.droom ?? false;
     if (droomMode) {   // droom 遠景樣子：她換 droom 人偶＋上色（體位錨點也跟著用它的）
       const F = await droomDoll(), L = droomLook(F, opts.who?.look || opts.look || null, opts.dollExtra || {});
       dr = { F, HP: L.HP, NP: L.NP, sil: droomMode === "silhouette" }; dl = L.doll; DD = F;

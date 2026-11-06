@@ -315,3 +315,4 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 2026-11-06 偷看後背第 2 版（使用者：不對，要用 droom 的模型做——姿勢動作要重做；偷看所以只有黑色，客人也黑）：
   - room_doll_full.js `build(..., 'sex_doggy', ..., {assUpDoggy:true})`：整個 droom 的 `ass_up`（大腿垂直、臀翹高、腰微凹、胸壓在床上、頭枕手臂）搬到偷看床上、轉成頭朝左；每格照 HER_J：以膝蓋為支點往前晃（`assUpRock` 3.5°）＋整個人往前送 1.6×j。`assUpY`（9）／`assUpKnee` 可調位置。
   - escort_peek.js `droom:'silhouette'`：她和客人都是黑影（她 #0C090E、客人 #14121A），只在兩人交界（前面那個人的邊）描一條暗灰 #463E52 分前後。`droom:true` 是有膚色的版本（留著）。預設還是關。
+- 2026-11-06 使用者看過偷看後背黑影版：人物完全沒有律動（droom 模型還沒完成）→ 先不要用。escort_peek 預設關回去（`opts.droom` 明確給值才用），偷看全部回到原本的樣子；`assUpDoggy`、`lit`、`droomTint`、黑影合成都留著，之後 droom 模型做好（有律動）再打開。
