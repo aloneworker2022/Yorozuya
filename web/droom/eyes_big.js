@@ -150,7 +150,8 @@
     const botV = u => { u = cl(u); if (u < .28) return BOT * Math.sin(Math.PI / 2 * u / .28) ** .8; if (u < LO) return BOT + .015 * Math.sin(Math.PI * (u - .28) / (LO - .28)); return BOT + (OUT - BOT) * Math.pow((u - LO) / (1 - LO), 1.25); };
     const tU = u => (.025 + .06 * sstep(.04, .55, u)) * (.4 + .6 * sstep(-.03, .12, u));     // 上眼線粗細（v 單位）
     const tL = u => .006 + .03 * sstep(.4, .88, u) * (1 - .5 * sstep(.93, 1, u));            // 下眼線粗細
-    const ri = .215, iu = .45 + turn * .1, icx = X(iu), icv = topV(.45) + .17, irx = ri * R * Math.min(1, .42 + .58 * w / R);
+    const ri = .28, iu = .46 + turn * .1, icx = X(iu), icv = topV(.46) + .21,   // 2026-11-06 使用者：眼睛的靈魂是瞳孔比較大 → 半徑 .215→.28（直徑超過開口，上面被眼皮蓋、下面碰下眼皮）
+    irx = ri * R * Math.min(1, .42 + .58 * w / R);
     const creaseV = u => topV(cl((u + .14) / 1.1)) - .16 - .03 * Math.sin(Math.PI * cl(u));   // 眼皮寬一點（參考圖眼皮看得到一大片）    // 摺線：比上眼線往內、往上平移
     // 眼尾：上緣沿上眼線外段拉到尖端（細長、往外微上），下緣從尖端回到外眼角
     const wing = [];
