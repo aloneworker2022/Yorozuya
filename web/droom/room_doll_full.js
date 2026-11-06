@@ -1791,6 +1791,20 @@
         hair(sh, P, doll, tor);
         return { sh, P };
       }
+      // 2026-11-06 接客偷看的後背改用 droom 的 ass_up（使用者：姿勢動作要用 droom 的模型重做）：
+      //   整個 ass_up（大腿垂直、臀翹高、腰微凹、胸壓在床上、頭枕手臂）搬到偷看的床上、轉成頭朝左（−y），
+      //   每一格照抽送：以膝蓋（床面）為支點往前晃一點＋整個人往前送一點（HER_J，跟原本後背同一個節奏）。
+      if (pose === 'sex_doggy' && opts.assUpDoggy) {
+        const j = HER_J[f], soft = 1 + .25 * b.soft;
+        const r0 = build(doll, 'ass_up', 0, yaw, { ...opts, assUpDoggy: false });
+        const Y0 = opts.assUpY ?? 9, kneeY = Y0 - (opts.assUpKnee ?? 2), ang = -(opts.assUpRock ?? 3.5) * j * soft;
+        const rock = about(rotX(ang), [0, kneeY, 0]);
+        const T = compose({ R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, -1.6 * j * soft, 0] }, compose(rock, { R: rotZ(180), t: [0, Y0, 0] }));
+        const mapped = new Map();
+        for (const p of r0.sh.prims) { const k = p.xf || null; if (!mapped.has(k)) mapped.set(k, k ? compose(T, k) : T); p.xf = mapped.get(k); }
+        for (const st of r0.sh.areolaStamps || []) st.q = toWorld(T, st.q);
+        return r0;
+      }
       if (SEX_POSES.includes(pose)) return buildSex(doll, pose, f, opts);
       throw new Error('unknown pose ' + pose);
     }

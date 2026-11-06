@@ -59,6 +59,12 @@ export function composeFrame(r, opt = {}) {
   for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x; if (!own[i]) continue;
     const lit = edge(i, at(x - 1, y)) || edge(i, at(x, y - 1)), dark = edge(i, at(x + 1, y)) || edge(i, at(x, y + 1));
+    if (opt.sil) {   // 偷看只有黑色（使用者）：兩個人都是黑影，只在兩人交界（前面那個人的邊）描一條暗灰，分得出誰在前面
+      const a = at(x - 1, y), b2 = at(x + 1, y), c = at(x, y - 1), d2 = at(x, y + 1);
+      const cross = [a, b2, c, d2].some((j) => j >= 0 && own[j] && own[j] !== own[i] && dp[i] > dp[j] + .5);
+      paint.push([i, cross ? [70, 62, 82] : own[i] === 1 ? [12, 9, 14] : [20, 18, 26]]);
+      continue;
+    }
     if (own[i] === 1 && opt.droom) continue;   // droom：她已經有白外框，不描暖／冷邊
     if (lit || dark) paint.push([i, RIM[own[i]][lit ? 0 : 1]]);
   }
@@ -120,13 +126,13 @@ export function droomLook(F, look, extra = {}) {
 function droomRender(F, doll, pose, frame, man, HP, NP) {
   if (!fullWorker && typeof Worker !== "undefined") {
     try {
-      const src = `const RoomDoll=(${F.factorySource})();const droomTint=${droomTint.toString()};onmessage=(e)=>{const j=e.data;try{const f=RoomDoll.render(j.doll,j.pose,j.frame,0,{lit:true});droomTint(f.pixels,f.width,f.height,j.HP,j.NP);const m=j.man?RoomDoll.renderMan(j.doll,j.pose,j.frame,j.man):null;const tr=[f.pixels.buffer,f.depth.buffer];if(m)tr.push(m.pixels.buffer,m.depth.buffer);postMessage({id:j.id,w:f.width,h:f.height,px:f.pixels,dp:f.depth,mpx:m&&m.pixels,mdp:m&&m.depth},tr);}catch(err){postMessage({id:j.id,err:String(err&&err.message||err)});}};`;
+      const src = `const RoomDoll=(${F.factorySource})();const droomTint=${droomTint.toString()};onmessage=(e)=>{const j=e.data;try{const f=RoomDoll.render(j.doll,j.pose,j.frame,0,{lit:true,assUpDoggy:true});droomTint(f.pixels,f.width,f.height,j.HP,j.NP);const m=j.man?RoomDoll.renderMan(j.doll,j.pose,j.frame,j.man):null;const tr=[f.pixels.buffer,f.depth.buffer];if(m)tr.push(m.pixels.buffer,m.depth.buffer);postMessage({id:j.id,w:f.width,h:f.height,px:f.pixels,dp:f.depth,mpx:m&&m.pixels,mdp:m&&m.depth},tr);}catch(err){postMessage({id:j.id,err:String(err&&err.message||err)});}};`;
       fullWorker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
       fullWorker.onmessage = (e) => { const w = waiters.get(e.data.id); if (w) { waiters.delete(e.data.id); w(e.data); } };
     } catch { fullWorker = null; }
   }
   if (!fullWorker) {
-    const f = F.render(doll, pose, frame, 0, { lit: true }); droomTint(f.pixels, f.width, f.height, HP, NP);
+    const f = F.render(doll, pose, frame, 0, { lit: true, assUpDoggy: true }); droomTint(f.pixels, f.width, f.height, HP, NP);
     const m = man ? F.renderMan(doll, pose, frame, man) : null;
     return Promise.resolve({ w: f.width, h: f.height, px: f.pixels, dp: f.depth, mpx: m?.pixels, mdp: m?.depth });
   }
@@ -140,7 +146,7 @@ async function dollFrames(doll, pose, man = null, dr = null) {
   for (let i = 0; i < n; i++) {
     const r = dr ? await droomRender(dr.F, doll, pose, i, man, dr.HP, dr.NP) : await renderFrame(doll, pose, i, man);
     if (r.err) throw new Error(r.err);
-    const { px } = composeFrame(r, { droom: !!dr });
+    const { px } = composeFrame(r, { droom: !!dr, sil: !!dr?.sil });
     const c = document.createElement("canvas");
     c.width = r.w; c.height = r.h;
     c.getContext("2d").putImageData(new ImageData(px, r.w, r.h), 0, 0);
@@ -427,7 +433,7 @@ export function openPeek(opts = {}) {
     let dr = null, dl = doll, DD = D;
     if (opts.droom) {   // droom 遠景樣子：她換 droom 人偶＋上色（體位錨點也跟著用它的）
       const F = await droomDoll(), L = droomLook(F, opts.who?.look || opts.look || null, opts.dollExtra || {});
-      dr = { F, HP: L.HP, NP: L.NP }; dl = L.doll; DD = F;
+      dr = { F, HP: L.HP, NP: L.NP, sil: opts.droom === "silhouette" }; dl = L.doll; DD = F;
     }
     const fr = await dollFrames(dl, dpose, MAN_BUILDS[man], dr);
     D = DD; doll = dl; st.frames = fr; st.anchor = { ...D.sexAnchor(doll, dpose, 0), man };

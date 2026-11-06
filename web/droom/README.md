@@ -312,3 +312,6 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - 2026-11-06 接客偷看用 droom 遠景樣子（樣品，使用者：妻子去賺錢打開房間看到的她體態不對，用 droom 遠景、做一倍就好，先做一組看看）：
   - room_doll_full.js `render(..., {lit:true})`：體位（側面畫布 peek）也走一般遠景算法（明暗、線條、白邊），不走 renderSide 平塗。畫布同像素大小、同錨點、K＝1.28（可非整數），側面不橫向拉寬（gw＝1）；從 +x 那側看（跟 renderSide／renderMan 同一側）再左右翻回來，深度輸出世界 x，跟客人照深度合成。
   - content/escort_peek.js `opts.droom`：她改用 droom 人偶（另外載進自己的盒子，不蓋掉房間的 window.RoomDoll）＋droom 上色 `droomTint`（亮度→三階膚色、頭髮兩色、乳頭兩色、1px 白外框；她不描暖／冷輪廓），髮色／乳頭色從 look 的文字對應。客人照舊。`openPeek`／`peekStills` 都吃 `droom:true`；**預設還是關的**（等使用者看完樣品）。先做後背（doggy）一組。
+- 2026-11-06 偷看後背第 2 版（使用者：不對，要用 droom 的模型做——姿勢動作要重做；偷看所以只有黑色，客人也黑）：
+  - room_doll_full.js `build(..., 'sex_doggy', ..., {assUpDoggy:true})`：整個 droom 的 `ass_up`（大腿垂直、臀翹高、腰微凹、胸壓在床上、頭枕手臂）搬到偷看床上、轉成頭朝左；每格照 HER_J：以膝蓋為支點往前晃（`assUpRock` 3.5°）＋整個人往前送 1.6×j。`assUpY`（9）／`assUpKnee` 可調位置。
+  - escort_peek.js `droom:'silhouette'`：她和客人都是黑影（她 #0C090E、客人 #14121A），只在兩人交界（前面那個人的邊）描一條暗灰 #463E52 分前後。`droom:true` 是有膚色的版本（留著）。預設還是關。
