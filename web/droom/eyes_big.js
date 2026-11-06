@@ -21,7 +21,7 @@
   };
   // 2026-11-06 第 4 組參考圖（黑短髮齊瀏海、淺灰瞳、粗黑上眼線＋上揚眼尾）：「濃眼線」ink，另外一套畫法 paintInk（抗鋸齒）。
   //   側面照舊用 paint（open／tilt／wing 給側面用）。
-  SHAPE.ink = { open: .45, tilt: -.05, pk: .42, lash: .8, wing: 1, scale: 1 };
+  SHAPE.ink = { open: .45, tilt: -.05, pk: .42, lash: .8, wing: 1, scale: .8 };   // 2026-11-06 使用者：眼睛太大 → 寬度 ×0.8
   const SOCK = [196, 132, 112], LINE = [52, 34, 34], LINE2 = [96, 64, 60], CREASE = [176, 122, 108], LOWER = [150, 100, 96], SCL = [252, 250, 250], SCL_SH = [222, 214, 222], WHITE = [255, 255, 255], CARU = [226, 150, 150];
   const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   function paint(d, hm, W, H, box, out, turn, side, st, IR, wRef, vis, lashOnly) {
@@ -166,14 +166,19 @@
     // 第 3 版之 2（梳子齒不像）：參考圖上睫毛大多融在粗眼線裡，只有眼尾幾撮長的翹出來 → 兩層：
     //   細密層：沿眼線每隔一點一根短、細、半透明的睫毛（角度從中心往外放射、長短亂一點），讓眼線上緣毛毛的；
     //   長撮：只在外眼角 3 撮（上）／外側 3 撮（下），2～3 根一撮。
-    const LASH = [[.76, 1, .15, 40, 14, 3, 1], [.86, 1, .17, 26, 14, 3, 1], [.95, 1, .15, 12, 12, 2, 1],
-                  [.62, -1, .1, -72, -8, 2, 1], [.75, -1, .12, -56, -10, 3, 1], [.87, -1, .1, -38, -12, 2, 1]];
+    // 第 3 版之 3（使用者：睫毛要往外，不是貼著）：角度改成從眼睛中心往外放射（垂直眼皮邊緣伸出去）、加長、幾乎不往回捲，根長在眼線上緣。
+    //   [u, 上(1)/下(−1), 長, 放射角再偏多少（＋往外）, 捲, 根數, 濃度]
+    const LASH = [[.74, 1, .2, 10, 6, 3, 1], [.85, 1, .22, 12, 6, 3, 1], [.95, 1, .19, 14, 5, 2, 1],
+                  [.62, -1, .13, 8, -4, 2, 1], [.75, -1, .15, 10, -4, 3, 1], [.87, -1, .13, 12, -4, 2, 1]];
     { let sd = 7; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
-      for (let u = .18; u < .99; u += .028) LASH.push([u + rnd() * .012, 1, .05 + .05 * sstep(.2, .9, u) + rnd() * .02, 88 - 76 * sstep(.15, 1, u) + rnd() * 8 - 4, 8, 1, .55]);
-      for (let u = .3; u < .97; u += .035) LASH.push([u + rnd() * .012, -1, .035 + .03 * sstep(.3, .9, u) + rnd() * .015, -88 + 52 * sstep(.3, 1, u) + rnd() * 8 - 4, -6, 1, .45]); }
+      for (let u = .16; u < .99; u += .026) LASH.push([u + rnd() * .012, 1, .09 + .06 * sstep(.2, .9, u) + rnd() * .03, 6 + rnd() * 8 - 4, 4, 1, .7]);
+      for (let u = .28; u < .97; u += .034) LASH.push([u + rnd() * .012, -1, .05 + .04 * sstep(.3, .9, u) + rnd() * .02, 6 + rnd() * 8 - 4, -3, 1, .55]); }
+    const lcx = X(.45), lcy = Y(-.02);
     const hairs = [];
-    for (const [u, up, L, a, curl, n, al] of LASH) {
-      const rv = up > 0 ? topV(u) - tU(u) * .35 : botV(u) + tL(u) * .4, rx = X(u), ry = Y(rv);   // 根：上＝眼線中間（被眼線蓋住）、下＝下眼皮邊緣
+    for (let [u, up, L, a, curl, n, al] of LASH) {
+      const rv = up > 0 ? topV(u) - tU(u) * .7 : botV(u) + tL(u) * .6, rx = X(u), ry = Y(rv);   // 根：上＝眼線中間（被眼線蓋住）、下＝下眼皮邊緣
+      const rad = Math.atan2(lcy - ry, out * (rx - lcx)) * 180 / Math.PI;   // 從眼睛中心往外
+      a = up > 0 ? Math.min(100, Math.max(6, rad - a)) : Math.max(-100, Math.min(-6, rad + a));
       for (let k = 0; k < n; k++) { const o = (k - (n - 1) / 2), a0 = (a + o * 7) * Math.PI / 180, a1 = (a + curl + o * 4) * Math.PI / 180, LL = L * (1 - .12 * Math.abs(o)) * R;
         const p0 = [rx + out * o * .01 * R, ry], p1 = [p0[0] + out * Math.cos(a0) * LL * .55, p0[1] - Math.sin(a0) * LL * .55], p2 = [p0[0] + out * Math.cos(a1) * LL, p0[1] - Math.sin(a1) * LL];
         const pts = []; for (let t = 0; t <= 8; t++) { const s2 = t / 8; pts.push([(1 - s2) ** 2 * p0[0] + 2 * s2 * (1 - s2) * p1[0] + s2 * s2 * p2[0], (1 - s2) ** 2 * p0[1] + 2 * s2 * (1 - s2) * p1[1] + s2 * s2 * p2[1]]); }
@@ -182,7 +187,7 @@
     // 0) 眼窩抹平＋眼影
     const sx = Math.round(X(.5)), sy = Math.round(Y(BOT + .55)); let skin = [240, 204, 180];
     if (sx >= 0 && sy >= 0 && sx < W && sy < H && d[(sy * W + sx) * 4 + 3] && !hm[sy * W + sx]) { const i = (sy * W + sx) * 4; skin = [d[i], d[i + 1], d[i + 2]]; }
-    const ecx = X(.5), ecy = Y(-.12), erx = Math.abs(X(1.24) - X(-.24)) / 2, ery = .76 * R;
+    const ecx = X(.5), ecy = Y(-.12), erx = Math.abs(X(1.5) - X(-.5)) / 2, ery = 1.0 * R;   // 眼睛縮小後模型的眼窩沒縮 → 抹平範圍放大
     for (let y = Math.floor(ecy - ery); y <= ecy + ery; y++) for (let x = Math.floor(ecx - erx); x <= ecx + erx; x++) {
       if (!okPx(x, y)) continue; const e = Math.hypot((x - ecx) / erx, (y - ecy) / ery); if (e >= 1) continue;
       const u = U(x), v = V(y), above = sstep(creaseV(u) + .12, creaseV(u) - .02, v), g = 1 - e * e;
