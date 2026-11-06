@@ -159,10 +159,25 @@
       for (let i = 1; i <= 10; i++) { const s = i / 10; wing.push([X(1) + (tip[0] - X(1)) * s, Y(OUT - tU(1) * .9 + (OUT - .07 - (OUT - tU(1) * .9)) * s) - .012 * R * Math.sin(Math.PI * s)]); }
       for (let i = 1; i <= 10; i++) { const s = i / 10; wing.push([tip[0] + (X(1) - tip[0]) * s, Y(OUT - .07 + (OUT + .025 - (OUT - .07)) * s)]); }
       for (let i = 1; i < 10; i++) { const u = 1 - .28 * i / 10; wing.push([X(u), Y(topV(u) + .01)]); } }
-    // 睫毛（頭粗尾尖、微彎）：[u, 上(1)/下(−1), 長, 角度]
-    const LASH = [[.7, 1, .07, 50], [.84, 1, .09, 34], [.93, 1, .08, 22], [.42, -1, .13, -84], [.56, -1, .15, -74], [.68, -1, .17, -62], [.79, -1, .16, -48], [.89, -1, .12, -32]];   // 下睫毛（使用者紅線）：外半段幾撮往下外刷、長到超出下眼影   // 少少幾撮：上面藏在眼線裡只露尖，下面外側淡淡幾撮
-    const lashes = LASH.map(([u, up, L, a]) => { const sv = up > 0 ? topV(u) - tU(u) * .7 : botV(u) + tL(u) * .8, an = a * Math.PI / 180;
-      return { ax: X(u), ay: Y(sv), bx: X(u) + out * Math.cos(an) * L * R, by: Y(sv) - Math.sin(an) * L * R, wd: (up > 0 ? .03 : .022) * R, bend: up > 0 ? .25 : -.15, col: INK.LINE, k: 1 }; });
+    // 2026-11-06 睫毛第 3 版（使用者：睫毛感覺是畫在皮膚上不是真的）：從眼皮邊緣長出來——
+    //   根部藏在眼線／下眼皮邊緣裡，先往前（往外）伸再往上（下睫毛往下）捲，貝茲曲線、根粗尖細、尖端半透明；
+    //   一撮 2～3 根從同一點長出、尖端微微散開（刷過睫毛膏的樣子）。上睫毛越外越長越斜，下睫毛短、細、只在外半段。
+    // [u, 上(1)/下(−1), 長, 根部角度, 捲（度）, 根數]
+    // 第 3 版之 2（梳子齒不像）：參考圖上睫毛大多融在粗眼線裡，只有眼尾幾撮長的翹出來 → 兩層：
+    //   細密層：沿眼線每隔一點一根短、細、半透明的睫毛（角度從中心往外放射、長短亂一點），讓眼線上緣毛毛的；
+    //   長撮：只在外眼角 3 撮（上）／外側 3 撮（下），2～3 根一撮。
+    const LASH = [[.76, 1, .15, 40, 14, 3, 1], [.86, 1, .17, 26, 14, 3, 1], [.95, 1, .15, 12, 12, 2, 1],
+                  [.62, -1, .1, -72, -8, 2, 1], [.75, -1, .12, -56, -10, 3, 1], [.87, -1, .1, -38, -12, 2, 1]];
+    { let sd = 7; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+      for (let u = .18; u < .99; u += .028) LASH.push([u + rnd() * .012, 1, .05 + .05 * sstep(.2, .9, u) + rnd() * .02, 88 - 76 * sstep(.15, 1, u) + rnd() * 8 - 4, 8, 1, .55]);
+      for (let u = .3; u < .97; u += .035) LASH.push([u + rnd() * .012, -1, .035 + .03 * sstep(.3, .9, u) + rnd() * .015, -88 + 52 * sstep(.3, 1, u) + rnd() * 8 - 4, -6, 1, .45]); }
+    const hairs = [];
+    for (const [u, up, L, a, curl, n, al] of LASH) {
+      const rv = up > 0 ? topV(u) - tU(u) * .35 : botV(u) + tL(u) * .4, rx = X(u), ry = Y(rv);   // 根：上＝眼線中間（被眼線蓋住）、下＝下眼皮邊緣
+      for (let k = 0; k < n; k++) { const o = (k - (n - 1) / 2), a0 = (a + o * 7) * Math.PI / 180, a1 = (a + curl + o * 4) * Math.PI / 180, LL = L * (1 - .12 * Math.abs(o)) * R;
+        const p0 = [rx + out * o * .01 * R, ry], p1 = [p0[0] + out * Math.cos(a0) * LL * .55, p0[1] - Math.sin(a0) * LL * .55], p2 = [p0[0] + out * Math.cos(a1) * LL, p0[1] - Math.sin(a1) * LL];
+        const pts = []; for (let t = 0; t <= 8; t++) { const s2 = t / 8; pts.push([(1 - s2) ** 2 * p0[0] + 2 * s2 * (1 - s2) * p1[0] + s2 * s2 * p2[0], (1 - s2) ** 2 * p0[1] + 2 * s2 * (1 - s2) * p1[1] + s2 * s2 * p2[1]]); }
+        const wd = (up > 0 ? .02 : .013) * R * (al < 1 ? .6 : 1); hairs.push({ pts, wd, al, bb: [Math.min(...pts.map(p => p[0])) - wd - 1, Math.min(...pts.map(p => p[1])) - wd - 1, Math.max(...pts.map(p => p[0])) + wd + 1, Math.max(...pts.map(p => p[1])) + wd + 1] }); } }
     const okPx = (x, y) => { if (x < 0 || y < 0 || x >= W || y >= H) return false; const i = y * W + x; return !hm[i] && d[i * 4 + 3] && (!far || vis[i] || (visE[i] && U(x) > .18) || U(x) > .85); };
     // 0) 眼窩抹平＋眼影
     const sx = Math.round(X(.5)), sy = Math.round(Y(BOT + .55)); let skin = [240, 204, 180];
@@ -201,23 +216,29 @@
         if (v > cv && v < tv) c = mix(c, LID, (.35 + .4 * sstep(cv, tv, v)) * k * (EyeBig.makeup && EyeBig.makeup !== 'none' ? .25 : 1));   // 有眼妝時眼皮色只淡淡一層，不蓋掉眼影
         const dc = Math.abs(v - cv - .004), tc = .014 * (.3 + .7 * Math.sin(Math.PI * cl((u + .14) / 1.22)));
         if (dc < tc + .01) c = mix(c, [112, 72, 70], .85 * k * sstep(tc + .01, tc - .004, dc));
-        if (v < cv && v > cv - .07) c = mix(c, INK.SHADOW, .12 * k * (1 - (cv - v) / .07)); }   // 摺線上面一點點陰影（眉骨下凹）
+        if (v > cv && v < cv + .045) c = mix(c, [120, 84, 84], .3 * k * (1 - (v - cv) / .045));   // 摺線下面：眼皮塞進摺線裡的影子
+        if (v < cv && v > cv - .05) c = mix(c, [255, 236, 226], .18 * k * (1 - (cv - v) / .05));   // 摺線上面：蓋下來的皮被照亮
+        if (v > cv && v < tv) { const bl = Math.exp(-(((uc - (iu + .02)) / .2) ** 2) - (((v - (cv + tv) / 2) / ((tv - cv) * .45 + 1e-6)) ** 2)); c = mix(c, [255, 234, 224], .32 * bl * k); } }   // 眼皮被底下的眼球撐起來，正中間（瞳孔上方）亮一塊
       // 眼睛裡面
       if (u >= 0 && u <= 1 && v >= tv && v <= bv) {
         const dt = v - tv, depth = bv - tv + 1e-6;
+        // 2026-11-06 立體（使用者：眼睛不立體、眼皮和眼球沒有層次）：眼白當球面——離瞳孔越遠越暗（偏冷灰）、上面被眼皮遮住更暗
         c = mix(INK.SCL_SH, INK.SCL, sstep(0, .55, dt / depth));
-        c = mix(c, INK.SCL_SH, .5 * (1 - sstep(0, .2, Math.min(u, 1 - u))));   // 兩端暗
+        { const sx2 = (x - icx) / (w * .55), sy2 = (v - icv) / .3, sph = Math.min(1, sx2 * sx2 + .5 * sy2 * sy2); c = mix(c, [168, 162, 178], .55 * sph * sph + .1 * sph); }
         const ex = (x - icx) / irx, ey = (v - icv) / ri, r = Math.hypot(ex, ey);
         if (r <= 1.02) {
           let ic = mix(IR[1], IR[2], sstep(-.3, .9, ey));
           const a = Math.atan2(ey, ex), st = .5 + .5 * Math.sin(a * 13 + r * 4); ic = mix(ic, IR[0], .12 * st * sstep(.32, .75, r));
           ic = mix(ic, IR[0].map(q => q * .5), sstep(.8, .97, r));   // 深外圈
           ic = mix(ic, INK.PUPIL, sstep(.33, .27, r));                // 瞳仁
-          c = mix(c, ic, sstep(1.02, .97, r));
+          { const cs = sstep(.15, .85, ey * .75 + ex * .45) * sstep(.95, .6, r) * sstep(.3, .5, r); ic = mix(ic, IR[2].map(q => Math.min(255, q * 1.18 + 12)), .55 * cs); }   // 角膜聚光：光從左上進來，右下那半圈亮（凹進去的虹膜）
+          c = mix(c, ic, sstep(1.04, .9, r));   // 外圈邊緣微微暈進眼白
         }
-        const lid = 1 - sstep(0, .17, dt); c = c.map(q => q * (1 - .62 * lid * lid - .12 * lid));   // 厚眼皮落下的陰影
+        const lid = 1 - sstep(0, .2, dt); c = mix(c.map(q => q * (1 - .6 * lid * lid - .14 * lid)), [60, 48, 64], .25 * lid);   // 厚眼皮落在眼球上的陰影（偏冷）
+        c = c.map(q => q * (1 - .22 * sstep(.04, 0, bv - v)));   // 下眼皮邊緣在眼球下緣壓一點暗（眼球在眼皮後面）
         const lo = sstep(.045, 0, bv - v) * sstep(.1, .3, u) * (1 - sstep(.85, .95, u)); c = mix(c, [214, 178, 172], .7 * lo);   // 下眼皮內緣（厚度）
-        if (Math.hypot((x - (icx - .28 * irx)) / (.15 * irx), (v - (icv - .22 * ri)) / (.13 * ri)) < 1) c = mix(c, [255, 255, 255], .95);   // 亮點
+        { const hd = Math.hypot((x - (icx - .3 * irx)) / (.17 * irx), (v - (icv - .26 * ri)) / (.15 * ri)); if (hd < 1.25) c = mix(c, [255, 255, 255], .97 * sstep(1.25, .9, hd)); }   // 亮點（角膜反光，邊緣軟）
+        { const wx = (x - (icx + .05 * irx)) / (.75 * irx), wy = (v - (icv - .55 * ri)) / (.18 * ri); if (wx * wx + wy * wy < 1) c = mix(c, [255, 255, 255], .12); }   // 角膜上緣一條很淡的反光（球面）
         if (Math.hypot((x - (icx + .3 * irx)) / (.07 * irx), (v - (icv + .45 * ri)) / (.06 * ri)) < 1) c = mix(c, [255, 255, 255], .6);
         if (Math.hypot((x - X(.04)) / Math.max(1, .05 * w), (v - .03) / .06) < 1) c = mix(c, INK.CARU, .85);   // 淚腺
       }
@@ -228,12 +249,13 @@
       // 上眼線：厚、往外越粗，上緣暈開一點
       if (u >= -.03 && u <= 1) { const t = tU(uc), e = tv - v;
         if (e < t * .85 && e > -.012) c = mix(c, INK.LINE, sstep(t * .95, t * .75, e));
+        else if (e >= t * .85 + .03 && e < t * .85 + .05) c = mix(c, [255, 232, 222], .2 * sstep(.1, .4, uc));   // 眼皮邊緣的厚度：眼線上面一條亮邊
         else if (e >= t * .85 && e < t * .85 + .03) c = mix(c, INK.LINE2, .35 * (1 - (e - t * .85) / .03)); }
       if (inPoly(wing, x, y)) c = INK.LINE;
       { const [dd, t] = segD(x, y, X(.015), Y(-.01), X(-.06), Y(.045)); if (dd < .018 * R * (1 - t) + .2) c = INK.LINE; }   // 內眼角往內下一小勾
-      for (const L of lashes) { const mx = (L.ax + L.bx) / 2 + L.bend * (L.by - L.ay) * .3, my = (L.ay + L.by) / 2 - L.bend * (L.bx - L.ax) * .3;
-        const [d1, t1] = segD(x, y, L.ax, L.ay, mx, my), [d2, t2] = segD(x, y, mx, my, L.bx, L.by), dd = Math.min(d1, d2), t = d1 < d2 ? t1 * .5 : .5 + t2 * .5;
-        const wd = L.wd * Math.pow(1 - t, 1.3); if (dd < wd + .3) c = mix(c, L.col, L.k * sstep(wd + .3, wd - .2, dd)); }
+      for (const hr of hairs) { if (x < hr.bb[0] || x > hr.bb[2] || y < hr.bb[1] || y > hr.bb[3]) continue;
+        let dd = 1e9, tt = 0; for (let k = 0; k < 8; k++) { const [d1, t1] = segD(x, y, hr.pts[k][0], hr.pts[k][1], hr.pts[k + 1][0], hr.pts[k + 1][1]); if (d1 < dd) { dd = d1; tt = (k + t1) / 8; } }
+        const wd = hr.wd * (1 - .85 * tt) + .15; if (dd < wd + .4) c = mix(c, INK.LINE, hr.al * (1 - .5 * tt * tt) * sstep(wd + .4, wd - .2, dd)); }
       return c;
     };
     const xs = [X(-.24), X(1.56)], bx0 = Math.floor(Math.min(...xs)), bx1 = Math.ceil(Math.max(...xs)), by0 = Math.floor(Y(-.92)), by1 = Math.ceil(Y(BOT + .36));
