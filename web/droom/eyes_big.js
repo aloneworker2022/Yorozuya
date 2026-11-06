@@ -128,78 +128,92 @@
   //   上眼線粗黑（往外越粗）、往外上拉出實心眼尾；下眼線外側深、跟眼尾接起來；眼皮下一片陰影落在瞳孔／眼白上；
   //   瞳孔：深外圈、上暗下亮、放射紋、瞳仁、左上一個亮點＋右下小點；雙眼皮摺線＋摺線到眼線之間淡淡陰影；外側三根短睫毛。
   //   眼窩：先把模型五顆圓挖出來的一圈一圈陰影抹平，換成平滑的眼影（上眼皮、內眼角最深）。
-  const INK = { LINE: [24, 18, 22], LINE2: [78, 52, 54], SCL: [246, 242, 240], SCL_SH: [196, 182, 186], CARU: [222, 150, 148], CREASE: [140, 92, 86], SHADOW: [168, 110, 100], PUPIL: [16, 12, 16] };
+  const INK = { LINE: [24, 18, 22], LINE2: [78, 52, 54], SCL: [238, 234, 234], SCL_SH: [188, 176, 182], CARU: [222, 150, 148], CREASE: [140, 92, 86], SHADOW: [168, 110, 100], PUPIL: [16, 12, 16] };
   const mix = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
   function inPoly(P, x, y) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
   function segD(px, py, ax, ay, bx, by) { const vx = bx - ax, vy = by - ay, t = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy || 1))); return [Math.hypot(px - ax - vx * t, py - ay - vy * t), t]; }
   function paintInk(d, hm, W, H, box, out, turn, IR, wRef, vis, far, visE) {
-    const [x0, y0, x1, y1] = box, w = x1 - x0 + 1, h = y1 - y0 + 1, R = wRef || w;
+    // 2026-11-06 第 2 版（使用者在參考圖上畫紅線：眼形不對、眼皮沒出來、線條死板、眼眶、瞳孔位置、睫毛都不對）：
+    //   眼形＝斜的平行四邊形：內眼角最低；上眼皮從內眼角斜斜往上、過中間就平平拉到外眼角；下眼皮內半段幾乎平、外半段斜斜往上收到外眼角（外眼角尖、在高處）。
+    //   上面一條跟上眼線平行的雙眼皮摺線（從內眼角上方開始），中間看得到一片眼皮。瞳孔偏高、上緣被厚眼皮蓋住、下面露一點眼白，上半部很深的眼皮陰影。
+    //   線條有粗細、頭尾收尖、邊緣暈開；上睫毛幾撮往外上翹，下睫毛外半段幾撮往下外刷；下眼皮有厚度（淡色內緣＋外側深的下眼線）。
+    const [x0, y0, x1, y1] = box, w = x1 - x0 + 1, R = wRef || w;
     const X = u => out > 0 ? x0 + u * (w - 1) : x1 - u * (w - 1), U = x => out > 0 ? (x - x0) / (w - 1) : (x1 - x) / (w - 1);
-    const cyc = (y0 + y1) / 2 + h * .04, Hu = .3 * R, Hl = .15 * R, tilt = -.06;
-    const base = u => cyc + tilt * R * u;
-    const sk = (u, p) => u < p ? .5 * u / p : .5 + .5 * (u - p) / (1 - p);
-    const top = u => base(u) - Hu * Math.pow(Math.max(0, Math.sin(Math.PI * sk(Math.min(1, Math.max(0, u)), .42))), .62);
-    const bot = u => base(u) + Hl * Math.pow(Math.max(0, Math.sin(Math.PI * sk(Math.min(1, Math.max(0, u)), .56))), .85);
-    const tU = u => R * (.03 + .055 * sstep(.05, .85, u)) * (.35 + .65 * sstep(-.02, .14, u));   // 上眼線粗細
-    const tL = u => R * (.008 + .026 * sstep(.3, .92, u));                                       // 下眼線粗細
-    const ri = .255 * R, irx = ri * Math.min(1, .42 + .58 * w / R), icx = X(.5) + turn * .1 * w, icy = bot(.5) - ri * .8;   // 上眼皮蓋住瞳孔上緣約兩成
-    // 眼尾：上緣沿上眼線外段（貝茲）拉到尖端、下緣從外眼角直線到尖端
-    const xe = X(1), ye = base(1), xt = xe + out * .3 * R, yt = ye - .18 * R;
+    const cl = u => Math.min(1, Math.max(0, u));
+    const by = (y0 + y1) / 2 + .1 * R, Y = v => by + v * R, V = y => (y - by) / R;   // v＝0 是內眼角高度，往下為正（×參考眼寬）
+    const TOP = -.3, BOT = .17, OUT = -.27, PK = .55, LO = .6;
+    const topV = u => { u = cl(u); return u < PK ? TOP * (1 - Math.pow(1 - u / PK, 1.7)) : TOP + (OUT - TOP) * Math.pow((u - PK) / (1 - PK), 2); };
+    const botV = u => { u = cl(u); if (u < .28) return BOT * Math.sin(Math.PI / 2 * u / .28) ** .8; if (u < LO) return BOT + .015 * Math.sin(Math.PI * (u - .28) / (LO - .28)); return BOT + (OUT - BOT) * Math.pow((u - LO) / (1 - LO), 1.25); };
+    const tU = u => (.025 + .06 * sstep(.04, .55, u)) * (.4 + .6 * sstep(-.03, .12, u));     // 上眼線粗細（v 單位）
+    const tL = u => .006 + .03 * sstep(.4, .88, u) * (1 - .5 * sstep(.93, 1, u));            // 下眼線粗細
+    const ri = .215, iu = .45 + turn * .1, icx = X(iu), icv = topV(.45) + .17, irx = ri * R * Math.min(1, .42 + .58 * w / R);
+    const creaseV = u => topV(cl((u + .14) / 1.1)) - .12 - .02 * Math.sin(Math.PI * cl(u));    // 摺線：比上眼線往內、往上平移
+    // 眼尾：上緣沿上眼線外段拉到尖端（細長、往外微上），下緣從尖端回到外眼角
     const wing = [];
-    { const ax = X(.68), ay = top(.68) - tU(.68) * .85, cx = X(1.02), cy = top(1) - tU(1) * .95 - .03 * R;
-      for (let i = 0; i <= 16; i++) { const s = i / 16; wing.push([(1 - s) ** 2 * ax + 2 * s * (1 - s) * cx + s * s * xt, (1 - s) ** 2 * ay + 2 * s * (1 - s) * cy + s * s * yt]); }
-      for (let i = 1; i <= 8; i++) { const s = i / 8; wing.push([xt + (xe - xt) * s, yt + (ye + .015 * R - yt) * s]); }   // 下緣：尖端回到外眼角
-      for (let i = 1; i < 12; i++) { const u = 1 - .32 * i / 12; wing.push([X(u), top(u) + .01 * R]); } }
-    const hook = [[X(.03), base(0) - .02 * R], [X(-.045), base(0) + .05 * R], [X(.08), base(0) + .015 * R]];   // 內眼角往下一小尖
-    const lashes = [[.62, .07, 40], [.76, .1, 26], [.88, .12, 12]].map(([u, L, a]) => { const xs = X(u), ys = top(u) - tU(u) * .6, an = a * Math.PI / 180; return [xs, ys, xs + out * L * R * Math.cos(an), ys - L * R * Math.sin(an), .03 * R]; });
-    const crease = u => top(u) - .13 * R - .035 * R * Math.sin(Math.PI * Math.min(1, u));
-    // 遠眼：眼睛裡面只在標記上（被鼻樑擋住的不畫），眼線、眼皮可以畫到擴一圈的範圍，但靠鼻樑那段（內眼角）不行
+    { const tip = [X(1.3), Y(OUT - .07)];
+      for (let i = 0; i <= 14; i++) { const s = i / 14, u = .72 + .28 * s; wing.push([X(u), Y(topV(u) - tU(u) * .9)]); }
+      for (let i = 1; i <= 10; i++) { const s = i / 10; wing.push([X(1) + (tip[0] - X(1)) * s, Y(OUT - tU(1) * .9 + (OUT - .07 - (OUT - tU(1) * .9)) * s) - .012 * R * Math.sin(Math.PI * s)]); }
+      for (let i = 1; i <= 10; i++) { const s = i / 10; wing.push([tip[0] + (X(1) - tip[0]) * s, Y(OUT - .07 + (OUT + .025 - (OUT - .07)) * s)]); }
+      for (let i = 1; i < 10; i++) { const u = 1 - .28 * i / 10; wing.push([X(u), Y(topV(u) + .01)]); } }
+    // 睫毛（頭粗尾尖、微彎）：[u, 上(1)/下(−1), 長, 角度]
+    const LASH = [[.7, 1, .07, 50], [.84, 1, .09, 34], [.93, 1, .08, 22], [.58, -1, .05, -70], [.7, -1, .07, -58], [.8, -1, .065, -44]];   // 少少幾撮：上面藏在眼線裡只露尖，下面外側淡淡幾撮
+    const lashes = LASH.map(([u, up, L, a]) => { const sv = up > 0 ? topV(u) - tU(u) * .7 : botV(u) + tL(u) * .8, an = a * Math.PI / 180;
+      return { ax: X(u), ay: Y(sv), bx: X(u) + out * Math.cos(an) * L * R, by: Y(sv) - Math.sin(an) * L * R, wd: (up > 0 ? .03 : .016) * R, bend: up > 0 ? .25 : -.2, col: up > 0 ? INK.LINE : INK.LINE2, k: up > 0 ? 1 : .7 }; });
     const okPx = (x, y) => { if (x < 0 || y < 0 || x >= W || y >= H) return false; const i = y * W + x; return !hm[i] && d[i * 4 + 3] && (!far || vis[i] || (visE[i] && U(x) > .18) || U(x) > .85); };
-    // 0) 眼窩抹平＋眼影（像素層級、不用取樣）：橢圓範圍內把底色拉向平滑的膚色漸層
-    const sx = Math.round(X(.5)), sy = Math.round(bot(.5) + .6 * R); let skin = [240, 204, 180];
+    // 0) 眼窩抹平＋眼影
+    const sx = Math.round(X(.5)), sy = Math.round(Y(BOT + .55)); let skin = [240, 204, 180];
     if (sx >= 0 && sy >= 0 && sx < W && sy < H && d[(sy * W + sx) * 4 + 3] && !hm[sy * W + sx]) { const i = (sy * W + sx) * 4; skin = [d[i], d[i + 1], d[i + 2]]; }
-    const ecx = X(.5), ecy = base(.5) - .04 * R, erx = Math.abs(X(1.22) - X(-.22)) / 2, ery = .7 * R;
+    const ecx = X(.5), ecy = Y(-.08), erx = Math.abs(X(1.24) - X(-.24)) / 2, ery = .72 * R;
     for (let y = Math.floor(ecy - ery); y <= ecy + ery; y++) for (let x = Math.floor(ecx - erx); x <= ecx + erx; x++) {
       if (!okPx(x, y)) continue; const e = Math.hypot((x - ecx) / erx, (y - ecy) / ery); if (e >= 1) continue;
-      const u = U(x), above = y < top(Math.min(1, Math.max(0, u))) ? 1 : 0, g = 1 - e * e;
-      const tone = mix(skin, INK.SHADOW, g * (.07 + .17 * above) * (1.15 - .4 * Math.min(1, Math.max(0, u))));   // 上眼皮、內眼角深
+      const u = U(x), v = V(y), above = sstep(creaseV(u) + .12, creaseV(u) - .02, v), g = 1 - e * e;
+      const tone = mix(skin, INK.SHADOW, g * (.06 + .16 * above) * (1.2 - .45 * cl(u)));
       const k = .95 * sstep(1, .5, e), i = (y * W + x) * 4; for (let j = 0; j < 3; j++) d[i + j] = d[i + j] * (1 - k) + tone[j] * k; }
-    // 1) 各層（取樣點 x,y → 顏色）
+    const LID = mix(skin, [186, 146, 146], .45);
+    // 1) 各層
     const layer = (x, y, c) => {
-      const u = U(x), uc = Math.min(1, Math.max(0, u)), yt0 = top(uc), yb0 = bot(uc);
-      // 摺線到眼線之間的眼皮陰影、雙眼皮摺線
-      if (u > .1 && u < 1.04) { const yc = crease(u), k = sstep(.1, .3, u);
-        if (y > yc && y < yt0) c = mix(c, INK.SHADOW, .22 * k);
-        if (Math.abs(y - yc) < .011 * R + .3) c = mix(c, INK.CREASE, .65 * k); }
+      const u = U(x), uc = cl(u), v = V(y), tv = topV(uc), bv = botV(uc);
+      // 眼皮（摺線到眼線之間）：淡淡偏灰紫，越靠眼線越深；摺線本身頭尾收尖、暈開
+      if (u > -.14 && u < 1.08) { const cv = creaseV(u), k = sstep(-.14, .08, u) * (1 - sstep(.96, 1.08, u));
+        if (v > cv && v < tv) c = mix(c, LID, (.35 + .4 * sstep(cv, tv, v)) * k);
+        const dc = Math.abs(v - cv - .004), tc = .014 * (.3 + .7 * Math.sin(Math.PI * cl((u + .14) / 1.22)));
+        if (dc < tc + .01) c = mix(c, [112, 72, 70], .85 * k * sstep(tc + .01, tc - .004, dc));
+        if (v < cv && v > cv - .07) c = mix(c, INK.SHADOW, .12 * k * (1 - (cv - v) / .07)); }   // 摺線上面一點點陰影（眉骨下凹）
       // 眼睛裡面
-      if (u >= 0 && u <= 1 && y >= yt0 && y <= yb0) {
-        const lid = 1 - sstep(0, .2 * R, y - yt0);   // 上眼皮落下的陰影
-        c = mix(INK.SCL_SH, INK.SCL, sstep(0, .5, (y - yt0) / (yb0 - yt0 + 1e-6)) * (1 - .35 * (1 - sstep(.0, .14, Math.min(u, 1 - u)))));
-        const ex = (x - icx) / irx, ey = (y - icy) / ri, r = Math.hypot(ex, ey);
-        if (r <= 1) {
-          let ic = ey < -.2 ? mix(IR[0], IR[1], sstep(-1, -.2, ey)) : mix(IR[1], IR[2], sstep(-.2, .85, ey));
-          const a = Math.atan2(ey, ex), st = .5 + .5 * Math.sin(a * 11 + r * 5); ic = mix(ic, IR[0], .1 * st * sstep(.35, .7, r));   // 放射紋
-          ic = mix(ic, IR[0].map(q => q * .55), sstep(.78, .95, r));   // 深外圈
-          if (ey > .25 && r > .45 && r < .86) ic = mix(ic, IR[2].map(q => Math.min(255, q * 1.08)), .35 * sstep(.25, .6, ey));   // 下緣反光
-          ic = mix(ic, INK.PUPIL, sstep(.4, .34, r));   // 瞳仁
-          c = mix(c, ic, sstep(1, .96, r));
+      if (u >= 0 && u <= 1 && v >= tv && v <= bv) {
+        const dt = v - tv, depth = bv - tv + 1e-6;
+        c = mix(INK.SCL_SH, INK.SCL, sstep(0, .55, dt / depth));
+        c = mix(c, INK.SCL_SH, .5 * (1 - sstep(0, .2, Math.min(u, 1 - u))));   // 兩端暗
+        const ex = (x - icx) / irx, ey = (v - icv) / ri, r = Math.hypot(ex, ey);
+        if (r <= 1.02) {
+          let ic = mix(IR[1], IR[2], sstep(-.3, .9, ey));
+          const a = Math.atan2(ey, ex), st = .5 + .5 * Math.sin(a * 13 + r * 4); ic = mix(ic, IR[0], .12 * st * sstep(.32, .75, r));
+          ic = mix(ic, IR[0].map(q => q * .5), sstep(.8, .97, r));   // 深外圈
+          ic = mix(ic, INK.PUPIL, sstep(.33, .27, r));                // 瞳仁
+          c = mix(c, ic, sstep(1.02, .97, r));
         }
-        c = c.map(q => q * (1 - .5 * lid));
-        if (Math.hypot((x - (icx - .3 * irx)) / (.2 * irx), (y - (icy - .3 * ri)) / (.17 * ri)) < 1) c = [255, 255, 255];   // 亮點
-        if (Math.hypot((x - (icx + .32 * irx)) / (.08 * irx), (y - (icy + .4 * ri)) / (.07 * ri)) < 1) c = mix(c, [255, 255, 255], .8);
-        if (Math.hypot((x - X(.035)) / Math.max(1, .045 * w), (y - (base(0) + .01 * R)) / (.06 * R)) < 1) c = INK.CARU;   // 內眼角淚腺
+        const lid = 1 - sstep(0, .17, dt); c = c.map(q => q * (1 - .62 * lid * lid - .12 * lid));   // 厚眼皮落下的陰影
+        const lo = sstep(.045, 0, bv - v) * sstep(.1, .3, u) * (1 - sstep(.85, .95, u)); c = mix(c, [214, 178, 172], .7 * lo);   // 下眼皮內緣（厚度）
+        if (Math.hypot((x - (icx - .28 * irx)) / (.15 * irx), (v - (icv - .22 * ri)) / (.13 * ri)) < 1) c = mix(c, [255, 255, 255], .95);   // 亮點
+        if (Math.hypot((x - (icx + .3 * irx)) / (.07 * irx), (v - (icv + .45 * ri)) / (.06 * ri)) < 1) c = mix(c, [255, 255, 255], .6);
+        if (Math.hypot((x - X(.04)) / Math.max(1, .05 * w), (v - .03) / .06) < 1) c = mix(c, INK.CARU, .85);   // 淚腺
       }
-      // 下眼線（外側深）＋下面一層暈開
-      if (u > .12 && u <= 1.01) { const dy = y - yb0, t = tL(uc), k = sstep(.12, .45, u);
-        if (dy > -t * .3 && dy < t) c = mix(c, mix(INK.LINE2, INK.LINE, sstep(.45, .9, u)), (.6 + .4 * sstep(.3, .7, u)) * k);
-        else if (dy >= t && dy < t + .07 * R) c = mix(c, INK.SHADOW, .25 * k * (1 - (dy - t) / (.07 * R))); }
-      // 上眼線
-      if (u >= -.02 && u <= 1) { const t = tU(uc); if (y >= yt0 - t * .85 && y <= yt0 + .012 * R) c = INK.LINE; }
-      if (inPoly(wing, x, y) || inPoly(hook, x, y)) c = INK.LINE;
-      for (const [ax, ay, bx, by, wd] of lashes) { const [dd, t] = segD(x, y, ax, ay, bx, by); if (dd < wd * (1 - t) * .6 + .25) c = INK.LINE; }
+      // 下眼線：外半段深、接到外眼角；下面暈開
+      if (u > .06 && u <= 1.01) { const dv = v - bv, t = tL(uc), k = sstep(.06, .3, u);
+        if (dv > -t * .25 && dv < t) c = mix(c, mix(INK.LINE2, INK.LINE, sstep(.45, .85, u)), (.55 + .45 * sstep(.35, .75, u)) * k * sstep(t, t * .6, dv));
+        else if (dv >= t && dv < t + .09) c = mix(c, INK.SHADOW, (.25 + .2 * sstep(.4, .85, u)) * k * (1 - (dv - t) / .09)); }   // 下眼線下面煙燻暈開（外側濃）
+      // 上眼線：厚、往外越粗，上緣暈開一點
+      if (u >= -.03 && u <= 1) { const t = tU(uc), e = tv - v;
+        if (e < t * .85 && e > -.012) c = mix(c, INK.LINE, sstep(t * .95, t * .75, e));
+        else if (e >= t * .85 && e < t * .85 + .03) c = mix(c, INK.LINE2, .35 * (1 - (e - t * .85) / .03)); }
+      if (inPoly(wing, x, y)) c = INK.LINE;
+      { const [dd, t] = segD(x, y, X(.015), Y(-.01), X(-.06), Y(.045)); if (dd < .018 * R * (1 - t) + .2) c = INK.LINE; }   // 內眼角往內下一小勾
+      for (const L of lashes) { const mx = (L.ax + L.bx) / 2 + L.bend * (L.by - L.ay) * .3, my = (L.ay + L.by) / 2 - L.bend * (L.bx - L.ax) * .3;
+        const [d1, t1] = segD(x, y, L.ax, L.ay, mx, my), [d2, t2] = segD(x, y, mx, my, L.bx, L.by), dd = Math.min(d1, d2), t = d1 < d2 ? t1 * .5 : .5 + t2 * .5;
+        const wd = L.wd * Math.pow(1 - t, 1.3); if (dd < wd + .3) c = mix(c, L.col, L.k * sstep(wd + .3, wd - .2, dd)); }
       return c;
     };
-    const bx0 = Math.floor(Math.min(X(-.12), xt) - 1), bx1 = Math.ceil(Math.max(X(-.12), xt) + 1), by0 = Math.floor(Math.min(yt, crease(.5)) - 2), by1 = Math.ceil(bot(.56) + .12 * R);
+    const xs = [X(-.2), X(1.34)], bx0 = Math.floor(Math.min(...xs)), bx1 = Math.ceil(Math.max(...xs)), by0 = Math.floor(Y(-.62)), by1 = Math.ceil(Y(BOT + .2));
     const N = 4;
     for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) {
       if (!okPx(x, y)) continue; const i = (y * W + x) * 4, c0 = [d[i], d[i + 1], d[i + 2]], acc = [0, 0, 0];
