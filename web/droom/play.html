@@ -41,7 +41,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 我的陰莖 <select id="pn"><option value="soft">軟</option><option value="semi">微勃起</option><option value="erect">勃起</option></select>（X 切換・往下看可見）
 ｜ <a href="/droom">← 回剪影預覽</a><div id="st"></div></div>
 <script src="/droom/parts_shade.js?v=3"></script>
-<script src="/droom/eyes_big.js?v=11"></script>
+<script src="/droom/eyes_big.js?v=12"></script>
 <script src="/droom/gl3d.js?v=1"></script>
 <script>
 // 房間：內部 6×6 地板（外圈為牆，粉色牆面一段點綴）
@@ -125,14 +125,14 @@ function groinOver(d,hm,GD,HP,lc,W){const LC=LACE_PAL[lc]||LACE_PAL.black;for(co
 // 2026-11-01：鼻子圖層（標記色 #FF0080／深度邊緣 #A00050）。照使用者參考圖（動漫鼻）用「線」畫，不用整塊陰影：
 //  每格依方向 s（右＋1／左−1；正面算右＝光從左上）：鼻子外緣（s 那一側）下半段一條線＋最下緣往回勾（J 字），另一側隔一格點一個小鼻孔；
 //  側面凸出臉外的部分補膚色（外圈白邊照舊）。只畫在頭髮以外。
-function noseOver(d,hm,ND,W,sOf){if(!ND)return;const H=ND.length/4/W,FW=W/NF,SK=[245,208,181],LN=[184,116,98],isN=(x,y)=>x>=0&&y>=0&&x<W&&y<H&&(()=>{const i=(y*W+x)*4;return ND[i+3]&&ND[i]>100&&ND[i+1]==0&&ND[i+2]>40})();
+function noseOver(d,hm,ND,W,sOf){if(!ND)return;const H=ND.length/4/W,FW=W/NF,SK=[245,208,181],LN=[184,116,98],LB=[214,160,140],isN=(x,y)=>x>=0&&y>=0&&x<W&&y<H&&(()=>{const i=(y*W+x)*4;return ND[i+3]&&ND[i]>100&&ND[i+1]==0&&ND[i+2]>40})();
  const put=(x,y,o)=>{const i=(y*W+x)*4;if(hm[i>>2])return;d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2];d[i+3]=255};
  for(let f=0;f<8;f++){const s=sOf(f);let x0=1e9,x1=-1,y0=1e9,y1=-1;
   for(let y=0;y<H;y++)for(let x=f*FW;x<(f+1)*FW;x++)if(isN(x,y)){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}
   if(x1<0)continue;const yl=y0+Math.floor((y1-y0)*.6);   // 2026-11-01 鼻子變長（從眉間開始）：線只畫靠鼻尖那 40%
   if(!s){for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)if(isN(x,y)&&!d[(y*W+x)*4+3])put(x,y,SK);continue}   // 正側面：不畫鼻子的線（使用者），凸出臉外的補膚色
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){if(!isN(x,y))continue;const i=(y*W+x)*4;
-   if((y>=yl&&!isN(x+s,y))||!isN(x,y+1))put(x,y,LN);else if(!d[i+3])put(x,y,SK)}
+   if((y>=yl&&!isN(x+s,y))||!isN(x,y+1))put(x,y,LN);else if(y>=y0+(y1-y0)*.1&&!isN(x+s,y))put(x,y,LB);else if(!d[i+3])put(x,y,SK)}   // 2026-11-06 使用者：鼻樑是挺的、遮到另一隻眼睛 → 上半段鼻樑邊也畫一條淡線（鼻樑輪廓）
   {let xe=s>0?1e9:-1;for(let x=x0;x<=x1;x++)if(isN(x,y1))xe=s>0?Math.min(xe,x):Math.max(xe,x);const xn=xe-2*s;if(xn>=f*FW&&xn<(f+1)*FW&&d[(y1*W+xn)*4+3])put(xn,y1,LN)}}}   // 小鼻孔
 // 2026-11-01：眼睛圖層（標記色 #8080FF／#4040A0，只標兩眼位置）。眼型、瞳色由這裡照位置畫像素：
 //  每格把標記分成一隻隻眼睛（中間有空欄就分開），各自的範圍＝眼眶；外眼角＝離另一隻眼睛遠的那側（只剩一隻＝正側面，外眼角朝耳朵）。
