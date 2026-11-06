@@ -160,9 +160,9 @@
       for (let i = 1; i <= 10; i++) { const s = i / 10; wing.push([tip[0] + (X(1) - tip[0]) * s, Y(OUT - .07 + (OUT + .025 - (OUT - .07)) * s)]); }
       for (let i = 1; i < 10; i++) { const u = 1 - .28 * i / 10; wing.push([X(u), Y(topV(u) + .01)]); } }
     // 睫毛（頭粗尾尖、微彎）：[u, 上(1)/下(−1), 長, 角度]
-    const LASH = [[.7, 1, .07, 50], [.84, 1, .09, 34], [.93, 1, .08, 22], [.58, -1, .05, -70], [.7, -1, .07, -58], [.8, -1, .065, -44]];   // 少少幾撮：上面藏在眼線裡只露尖，下面外側淡淡幾撮
+    const LASH = [[.7, 1, .07, 50], [.84, 1, .09, 34], [.93, 1, .08, 22], [.42, -1, .13, -84], [.56, -1, .15, -74], [.68, -1, .17, -62], [.79, -1, .16, -48], [.89, -1, .12, -32]];   // 下睫毛（使用者紅線）：外半段幾撮往下外刷、長到超出下眼影   // 少少幾撮：上面藏在眼線裡只露尖，下面外側淡淡幾撮
     const lashes = LASH.map(([u, up, L, a]) => { const sv = up > 0 ? topV(u) - tU(u) * .7 : botV(u) + tL(u) * .8, an = a * Math.PI / 180;
-      return { ax: X(u), ay: Y(sv), bx: X(u) + out * Math.cos(an) * L * R, by: Y(sv) - Math.sin(an) * L * R, wd: (up > 0 ? .03 : .016) * R, bend: up > 0 ? .25 : -.2, col: up > 0 ? INK.LINE : INK.LINE2, k: up > 0 ? 1 : .7 }; });
+      return { ax: X(u), ay: Y(sv), bx: X(u) + out * Math.cos(an) * L * R, by: Y(sv) - Math.sin(an) * L * R, wd: (up > 0 ? .03 : .022) * R, bend: up > 0 ? .25 : -.15, col: INK.LINE, k: 1 }; });
     const okPx = (x, y) => { if (x < 0 || y < 0 || x >= W || y >= H) return false; const i = y * W + x; return !hm[i] && d[i * 4 + 3] && (!far || vis[i] || (visE[i] && U(x) > .18) || U(x) > .85); };
     // 0) 眼窩抹平＋眼影
     const sx = Math.round(X(.5)), sy = Math.round(Y(BOT + .55)); let skin = [240, 204, 180];
@@ -188,10 +188,11 @@
             a = Math.max(a, .45 * q * kin * (.5 + .5 * sstep(.3, .9, u)) * (1 - sstep(1.0, 1.1, u)));
           }
           { const ex = (u - 1.0) / .14, ey = (v - OUT) / .1, e = ex * ex + ey * ey; if (e < 1) a = Math.max(a, .6 * (1 - e)); }   // 外眼角只一小塊接眼尾和下眼影（不再大片 V 字暈開）
-          if (u > .02 && u < 1.04 && v > bv - .01) {   // 下眼影：沿下眼線一整條實實的深灰帶，外側最寬最重、內眼角收細；下緣清楚（只收 1/4 漸層），不是霧
-            const dv = v - bv, wv = .04 + .12 * sstep(.1, .8, u) * (1 - .4 * sstep(.92, 1.02, u)), edge = sstep(wv, wv * .72, dv);
-            a = Math.max(a, (.8 + .2 * sstep(.3, .8, u)) * sstep(.02, .14, u) * (1 - sstep(.98, 1.04, u)) * edge); }
           if (a > 0 && !(u >= 0 && u <= 1 && v > tv && v < bv)) c = mix(c, MK.lid, MK.k * a);
+          if (u > .02 && u < 1.06 && v > bv - .01) {   // 下眼影第 3 版（使用者：黑色是漸層、眼尾比較重）：貼下眼線最黑、往下漸淡；內眼角淡、往眼尾越黑越寬
+            const dv = Math.max(0, v - bv), wv = .1 + .2 * sstep(.1, .85, u) * (1 - .3 * sstep(.95, 1.05, u)), f = 1 - sstep(wv * .2, wv, dv);   // 貼眼線一小段全黑，再平順淡到底
+            const col = mix(MK.lid, [20, 14, 18], sstep(.45, .95, u)), aa = (.3 + .65 * sstep(.15, .9, u)) * sstep(.02, .16, u) * (1 - sstep(1.0, 1.06, u)) * f;
+            if (aa > 0) c = mix(c, col, aa); }
           if (v < cv - .03 && v > cv - .4) c = mix(c, MK.bone, MK.kb * sstep(cv - .4, cv - .2, v) * (1 - sstep(cv - .1, cv - .03, v)) * sstep(-.2, .2, u) * (1 - sstep(.95, 1.2, u)));   // 眉骨下淡玫瑰灰
           { const e = ((u + .03) / .08) ** 2 + ((v - .0) / .06) ** 2; if (e < 1 && !(u >= 0 && v > tv && v < bv)) c = mix(c, MK.hi, .55 * (1 - e)); }   // 內眼角亮色
         } }
@@ -223,7 +224,7 @@
       // 下眼線：外半段深、接到外眼角；下面暈開
       if (u > .06 && u <= 1.01) { const dv = v - bv, t = tL(uc), k = sstep(.06, .3, u);
         if (dv > -t * .25 && dv < t) c = mix(c, mix(INK.LINE2, INK.LINE, sstep(.45, .85, u)), (.55 + .45 * sstep(.35, .75, u)) * k * sstep(t, t * .6, dv));
-        else if (dv >= t && dv < t + .09) c = mix(c, INK.SHADOW, (.25 + .2 * sstep(.4, .85, u)) * k * (1 - (dv - t) / .09)); }   // 下眼線下面煙燻暈開（外側濃）
+        else if (!(EyeBig.makeup && EyeBig.makeup !== 'none') && dv >= t && dv < t + .09) c = mix(c, INK.SHADOW, (.25 + .2 * sstep(.4, .85, u)) * k * (1 - (dv - t) / .09)); }   // 下眼線下面煙燻暈開（外側濃）
       // 上眼線：厚、往外越粗，上緣暈開一點
       if (u >= -.03 && u <= 1) { const t = tU(uc), e = tv - v;
         if (e < t * .85 && e > -.012) c = mix(c, INK.LINE, sstep(t * .95, t * .75, e));
@@ -235,7 +236,7 @@
         const wd = L.wd * Math.pow(1 - t, 1.3); if (dd < wd + .3) c = mix(c, L.col, L.k * sstep(wd + .3, wd - .2, dd)); }
       return c;
     };
-    const xs = [X(-.24), X(1.56)], bx0 = Math.floor(Math.min(...xs)), bx1 = Math.ceil(Math.max(...xs)), by0 = Math.floor(Y(-.92)), by1 = Math.ceil(Y(BOT + .26));
+    const xs = [X(-.24), X(1.56)], bx0 = Math.floor(Math.min(...xs)), bx1 = Math.ceil(Math.max(...xs)), by0 = Math.floor(Y(-.92)), by1 = Math.ceil(Y(BOT + .36));
     const N = 4;
     for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) {
       if (!okPx(x, y)) continue; const i = (y * W + x) * 4, c0 = [d[i], d[i + 1], d[i + 2]], acc = [0, 0, 0];
