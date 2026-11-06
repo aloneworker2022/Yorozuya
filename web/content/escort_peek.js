@@ -111,7 +111,7 @@ let fullApi = null, fullWorker = null;
 /** 載 droom 人偶（自己的盒子）。 */
 export async function droomDoll() {
   if (fullApi) return fullApi;
-  const src = await (await fetch(new URL("../droom/room_doll_full.js?v=2", import.meta.url))).text();
+  const src = await (await fetch(new URL("../droom/room_doll_full.js?v=3", import.meta.url))).text();
   const box = {};
   new Function("globalThis", "module", src)(box, undefined);
   fullApi = box.RoomDoll;
@@ -431,9 +431,11 @@ export function openPeek(opts = {}) {
   };
   const framesReady = (async () => {
     let dr = null, dl = doll, DD = D;
-    if (opts.droom) {   // droom 遠景樣子：她換 droom 人偶＋上色（體位錨點也跟著用它的）
+    // 2026-11-06 使用者：先合併看——後背（doggy）預設用 droom 黑影版（ass_up 姿勢、她和客人都黑）；其他體位還沒做，照舊。opts.droom 明確給值就照給的。
+    const droomMode = opts.droom ?? (pose === "doggy" ? "silhouette" : false);
+    if (droomMode) {   // droom 遠景樣子：她換 droom 人偶＋上色（體位錨點也跟著用它的）
       const F = await droomDoll(), L = droomLook(F, opts.who?.look || opts.look || null, opts.dollExtra || {});
-      dr = { F, HP: L.HP, NP: L.NP, sil: opts.droom === "silhouette" }; dl = L.doll; DD = F;
+      dr = { F, HP: L.HP, NP: L.NP, sil: droomMode === "silhouette" }; dl = L.doll; DD = F;
     }
     const fr = await dollFrames(dl, dpose, MAN_BUILDS[man], dr);
     D = DD; doll = dl; st.frames = fr; st.anchor = { ...D.sexAnchor(doll, dpose, 0), man };
