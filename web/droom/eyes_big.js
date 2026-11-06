@@ -150,7 +150,8 @@
     const botV = u => { u = cl(u); if (u < .28) return BOT * Math.sin(Math.PI / 2 * u / .28) ** .8; if (u < LO) return BOT + .015 * Math.sin(Math.PI * (u - .28) / (LO - .28)); return BOT + (OUT - BOT) * Math.pow((u - LO) / (1 - LO), 1.25); };
     const tU = u => (.025 + .06 * sstep(.04, .55, u)) * (.4 + .6 * sstep(-.03, .12, u));     // 上眼線粗細（v 單位）
     const tL = u => .006 + .03 * sstep(.4, .88, u) * (1 - .5 * sstep(.93, 1, u));            // 下眼線粗細
-    const ri = .28, iu = .46 + turn * .1, icx = X(iu), icv = topV(.46) + .21,   // 2026-11-06 使用者：眼睛的靈魂是瞳孔比較大 → 半徑 .215→.28（直徑超過開口，上面被眼皮蓋、下面碰下眼皮）
+    // 2026-11-06 使用者畫圈：瞳孔是整顆很大、中心就在上眼皮邊上，上半顆藏在眼皮後面、只露下半；瞳仁也被眼皮遮一半
+    const ri = .36, iu = .46 + turn * .1, icx = X(iu), icv = topV(.46) + .07,
     irx = ri * R * Math.min(1, .42 + .58 * w / R);
     const creaseV = u => topV(cl((u + .14) / 1.1)) - .16 - .03 * Math.sin(Math.PI * cl(u));   // 眼皮寬一點（參考圖眼皮看得到一大片）    // 摺線：比上眼線往內、往上平移
     // 眼尾：上緣沿上眼線外段拉到尖端（細長、往外微上），下緣從尖端回到外眼角
@@ -243,9 +244,9 @@
         const lid = 1 - sstep(0, .2, dt); c = mix(c.map(q => q * (1 - .6 * lid * lid - .14 * lid)), [60, 48, 64], .25 * lid);   // 厚眼皮落在眼球上的陰影（偏冷）
         c = c.map(q => q * (1 - .22 * sstep(.04, 0, bv - v)));   // 下眼皮邊緣在眼球下緣壓一點暗（眼球在眼皮後面）
         const lo = sstep(.045, 0, bv - v) * sstep(.1, .3, u) * (1 - sstep(.85, .95, u)); c = mix(c, [214, 178, 172], .7 * lo);   // 下眼皮內緣（厚度）
-        { const hd = Math.hypot((x - (icx - .3 * irx)) / (.17 * irx), (v - (icv - .26 * ri)) / (.15 * ri)); if (hd < 1.25) c = mix(c, [255, 255, 255], .97 * sstep(1.25, .9, hd)); }   // 亮點（角膜反光，邊緣軟）
-        { const wx = (x - (icx + .05 * irx)) / (.75 * irx), wy = (v - (icv - .55 * ri)) / (.18 * ri); if (wx * wx + wy * wy < 1) c = mix(c, [255, 255, 255], .12); }   // 角膜上緣一條很淡的反光（球面）
-        if (Math.hypot((x - (icx + .3 * irx)) / (.07 * irx), (v - (icv + .45 * ri)) / (.06 * ri)) < 1) c = mix(c, [255, 255, 255], .6);
+        { const hd = Math.hypot((x - (icx - .2 * irx)) / (.09 * irx), (v - (icv + .1 * ri)) / (.08 * ri)); if (hd < 1.25) c = mix(c, [255, 255, 255], .97 * sstep(1.25, .9, hd)); }   // 亮點（角膜反光，邊緣軟）
+        { const wx = (x - (icx + .05 * irx)) / (.6 * irx), wy = (v - (icv + .78 * ri)) / (.1 * ri); if (wx * wx + wy * wy < 1) c = mix(c, [255, 255, 255], .1); }   // 角膜上緣一條很淡的反光（球面）
+        if (Math.hypot((x - (icx + .3 * irx)) / (.05 * irx), (v - (icv + .5 * ri)) / (.045 * ri)) < 1) c = mix(c, [255, 255, 255], .6);
         if (Math.hypot((x - X(.04)) / Math.max(1, .05 * w), (v - .03) / .06) < 1) c = mix(c, INK.CARU, .85);   // 淚腺
       }
       // 下眼線：外半段深、接到外眼角；下面暈開
