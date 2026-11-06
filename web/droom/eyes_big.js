@@ -17,7 +17,7 @@
     cat:    { open: .48, tilt: -.14, pk: .45, lash: 1.15 },
     // 2026-11-06 使用者給真人參考照（學這個五官）：杏仁眼、開口偏窄、上眼皮蓋住瞳孔上緣一點（內雙、眼皮有陰影），
     //   細長上揚的眼線（外眼角往外上拉出尖尾，不是粗睫毛三角）、下眼線整條淡淡暈開（外側深）、瞳孔中等＋深外圈＋小瞳仁
-    winged: { open: .4, tilt: -.03, pk: .5, lash: .8, wing: 1, iris: 1, pupil: .3, hood: 1 },
+    winged: { open: .32, tilt: -.03, pk: .5, lash: .7, wing: 1, iris: 1.05, scale: .88, pupil: .3, hood: 1 },
   };
   const SOCK = [196, 132, 112], LINE = [52, 34, 34], LINE2 = [96, 64, 60], CREASE = [176, 122, 108], LOWER = [150, 100, 96], SCL = [252, 250, 250], SCL_SH = [222, 214, 222], WHITE = [255, 255, 255], CARU = [226, 150, 150];
   const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -65,7 +65,7 @@
         const ex = (x - icx) / irx, ey = (y - icy) / ri, r = Math.hypot(ex, ey);
         if (r <= 1) {
           let c = r > .86 ? IR[0].map(q => q * .7) : y - yt < O * .3 ? IR[0] : ey < .25 ? IR[1] : IR[2];
-          if (S.wing && r > .86) c = IR[0].map(q => q * .45);   // 深外圈（參考照：淺色瞳孔外面一圈深）
+          if (S.wing && r > .86) c = IR[0].map(q => q * .7);   // 深外圈（參考照：淺色瞳孔外面一圈深）
           else if (S.wing && r > .3 && r <= .86) { const a = Math.atan2(ey, ex), k = .5 + .5 * Math.sin(a * 9 + r * 6); c = c.map((q, j) => q * (1 - .12 * k) + IR[2][j] * .12 * k); }   // 虹膜放射紋
           if (r < (S.pupil || .42)) c = [20, 16, 22];   // 瞳仁
           put(x, y, c);
@@ -129,6 +129,7 @@
     if (!eyes.length) return false;
     const boxes = eyes.map(([a, b]) => { let t = 1e9, u = -1; for (let x = a; x <= b; x++) for (let y = 0; y < H; y++) if (isE(x, y)) { t = Math.min(t, y); u = Math.max(u, y); } return [a, t, b, u]; });
     if (Math.max(...boxes.map(b => b[3] - b[1])) < 12) return false;   // 太小（遠景）→ 舊畫法
+    { const sc = (SHAPE[st] || {}).scale; if (sc) for (const bx of boxes) { const c = (bx[0] + bx[2]) / 2, hw = (bx[2] - bx[0]) * sc / 2; bx[0] = Math.round(c - hw); bx[2] = Math.round(c + hw); } }   // 2026-11-06 參考照的眼睛比較小（約臉寬 1/5）
     const one = boxes.length === 1 || side, ws = boxes.map(b => b[2] - b[0] + 1);
     // 看得到的眼睛範圍：標記往外擴 Dl 格（眼線、摺線、陰影會畫到標記外面一點）
     const Dl = Math.max(2, Math.round(Math.max(...ws) * .16)), vis = new Uint8Array(W * H), vis0 = new Uint8Array(W * H);   // vis0：不擴（遠眼用，2026-11-06 使用者：挺的鼻樑要遮到另一隻眼睛）
@@ -155,16 +156,23 @@
     const Wmax = Math.max(...bs.map(([a, b]) => b - a + 1)); if (Wmax < 20) return false;   // 遠景 → 舊畫法
     const S = BROW[st] || BROW.natural, C = HP[0].map(v => v * .75), C2 = HP[0].map((v, j) => v * .55 + HP[1][j] * .45);
     const put = (x, y, o) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= W || y >= H) return; const i = (y * W + x) * 4; if (hm[i >> 2] || !d[i + 3]) return; d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2]; };
-    if (st === 'bold') {   // 2026-11-06 真人參考照：濃眉——又粗又黑、壓低貼近眼睛；下緣幾乎直、上緣慢慢升到約 65% 的眉峰，再斜斜收成短而尖的眉尾；眉頭方、一根根往上的毛
-      const Cb = HP[0].map(v => v * .55), Cb2 = HP[0].map((v, j) => v * .5 + HP[1][j] * .35), SKN = [245, 208, 181];
-      bs.forEach(([a, b], k) => { const inner = bs.length > 1 ? (k === 0 ? 1 : -1) : fs || 1, xa = f * FW + (inner > 0 ? b : a), w = b - a + 1, R = Math.max(w, Wmax * .6);
-        const yc = (yOf[a] + yOf[b] + 2 * yOf[(a + b) >> 1]) / 4 + R * .05;   // 壓低一點
-        for (let i = 0; i <= w * 2; i++) { const t = i / (w * 2), x = xa - inner * t * (w - 1), pk = .65;
-          const lo = yc + R * (.07 - .02 * t + .16 * sstep(pk, 1, t)), hi = yc - R * (.1 + .05 * sstep(0, pk, t)) + R * .3 * sstep(pk, 1.05, t), th = lo - hi;
-          if (th < 1) continue;
-          for (let y = hi; y <= lo; y++) { const q = (y - hi) / Math.max(1, th);
-            if (t < .16 && q < .3 * (1 - t / .16)) continue;   // 眉頭：上緣圓起來、比較淡
-            put(x, y, t < .16 || q > .75 ? Cb2 : Cb); } } });
+    if (st === 'bold') {
+      // 2026-11-06 真人參考照：濃眉。第 2 版（使用者：眉型、位置不對）——照參考照量：
+      //   位置：眉頭在內眼角正上方（模型標記的眉頭偏鼻樑內側，往外移 15%），眉尾超過外眼角，全長約 1.2 個標記寬；眉毛下緣到眼睛的距離比眼睛開口高一點（不再壓低）。
+      //   眉型：眉頭最粗（方方的、顏色淡一點、往上的毛流），往外慢慢變細、一路往上升到約 62% 的眉峰（柔和的角），再往下收成尖尖的眉尾，眉尾高度跟眉頭下緣差不多。邊緣半透明不鋸齒。
+      const Cb = HP[0].map(v => v * .5), Cb2 = HP[0].map((v, j) => v * .55 + HP[1][j] * .3 + 40);
+      const putA = (x, y, o, k) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= W || y >= H || k <= 0) return; const i = (y * W + x) * 4; if (hm[i >> 2] || !d[i + 3]) return; k = Math.min(1, k); for (let j = 0; j < 3; j++) d[i + j] = d[i + j] * (1 - k) + o[j] * k; };
+      bs.forEach(([a, b], k) => { const inner = bs.length > 1 ? (k === 0 ? 1 : -1) : fs || 1, w = b - a + 1, T = Wmax;
+        const xIn = f * FW + (inner > 0 ? b : a), xh = xIn - inner * w * .15, len = w * 1.08;
+        const yc = (yOf[a] + yOf[b] + 2 * yOf[(a + b) >> 1]) / 4;
+        const cen = t => yc + T * (.06 - .14 * sstep(0, .62, t) + .17 * Math.pow(sstep(.62, 1, t), 1.1));
+        const thk = t => T * (t < .62 ? .27 - .08 * t / .62 : Math.max(.025, .19 * (1 - (t - .62) / .38) ** 1.3));
+        const n = Math.ceil(len * 2);
+        for (let i = 0; i <= n; i++) { const t = i / n, x = xh - inner * t * len, c = cen(t), th = thk(t), hi = c - th * .55, lo = c + th * .45;
+          for (let y = Math.floor(hi) - 1; y <= lo + 1; y++) { const e = Math.min(y - hi, lo - y) + .5; if (e <= 0) continue; const q = (y - hi) / th;
+            let col = Cb, kk = Math.min(1, e);
+            if (t < .14) { const u = t / .14; kk *= .35 + .65 * u * u; if (q < .3 * (1 - u) || q > 1 - .15 * (1 - u)) kk *= .4; col = u < .6 ? Cb2 : Cb; }   // 眉頭：從淡到深漸變、上下角圓一點
+            putA(x, y, col, kk); } } });
       return true;
     }
     bs.forEach(([a, b], k) => { const inner = bs.length > 1 ? (k === 0 ? 1 : -1) : fs || 1, xa = f * FW + (inner > 0 ? b : a), w = b - a + 1, R = Math.max(w, Wmax * .6);

@@ -32,7 +32,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 鼻子 <select id="ns"><option value="none">無</option><option value="small" selected>1 尖鼻</option><option value="round">2 圓鼻頭</option><option value="upturned">3 翹鼻</option><option value="petite">4 小巧鼻</option><option value="tall">5 高挺鼻</option><option value="hump">6 微駝峰</option><option value="button">7 鈕扣鼻</option><option value="wide">8 寬鼻翼</option><option value="long">9 細長鼻</option><option value="soft">10 圓翹鼻</option></select>
 眉毛 <select id="bw"><option value="none">無</option><option value="natural" selected>自然眉</option><option value="flat">平眉</option><option value="arch">細彎眉</option><option value="thick">粗眉</option><option value="worried">八字眉</option><option value="angry">怒眉</option><option value="bold">濃眉</option></select>
 眼睛 <select id="ey"><option value="none">無</option><option value="round" selected>大圓眼</option><option value="almond">杏眼</option><option value="droopy">下垂眼</option><option value="cat">貓眼</option><option value="happy">笑眼</option><option value="closed">閉眼</option><option value="winged">上揚眼線</option></select>
-瞳色 <select id="ec"><option value="brown">咖啡</option><option value="blue">藍</option><option value="green">綠</option><option value="red">紅</option><option value="purple">紫</option><option value="black">黑</option><option value="gray">灰藍</option></select>
+瞳色 <select id="ec"><option value="brown">咖啡</option><option value="blue">藍</option><option value="green">綠</option><option value="red">紅</option><option value="purple">紫</option><option value="black">黑</option><option value="gray">淺灰</option></select>
 唇色 <select id="lpc"><option value="none">無（自然）</option><option value="pink">淡粉</option><option value="coral">珊瑚</option><option value="red">正紅</option><option value="berry">莓果</option><option value="nude">裸色</option><option value="peach">蜜桃橘</option><option value="plum">梅紫</option><option value="wine">酒紅</option></select>
 嘴巴 <select id="mo"><option value="none">無</option><option value="line" selected>自然閉嘴</option><option value="smile">微笑</option><option value="open">張嘴</option><option value="grin">開口笑</option><option value="tongue">吐舌</option><option value="opentongue">張嘴吐舌</option><option value="o">小 o 嘴</option><option value="pout">嘟嘴</option><option value="lip">粉唇</option></select>
 眼罩 <select id="bf"><option value="none" selected>無</option><option value="black">黑布</option><option value="red">紅布</option><option value="white">白布</option></select>
@@ -41,7 +41,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 我的陰莖 <select id="pn"><option value="soft">軟</option><option value="semi">微勃起</option><option value="erect">勃起</option></select>（X 切換・往下看可見）
 ｜ <a href="/droom">← 回剪影預覽</a><div id="st"></div></div>
 <script src="/droom/parts_shade.js?v=3"></script>
-<script src="/droom/eyes_big.js?v=15"></script>
+<script src="/droom/eyes_big.js?v=16"></script>
 <script src="/droom/gl3d.js?v=1"></script>
 <script>
 // 房間：內部 6×6 地板（外圈為牆，粉色牆面一段點綴）
@@ -139,8 +139,8 @@ function noseOver(d,hm,ND,W,sOf){if(!ND)return;const H=ND.length/4/W,FW=W/NF,SK=
 // 2026-11-01：眼睛圖層（標記色 #8080FF／#4040A0，只標兩眼位置）。眼型、瞳色由這裡照位置畫像素：
 //  每格把標記分成一隻隻眼睛（中間有空欄就分開），各自的範圍＝眼眶；外眼角＝離另一隻眼睛遠的那側（只剩一隻＝正側面，外眼角朝耳朵）。
 const EYE_STYLES={round:"大圓眼",almond:"杏眼",droopy:"下垂眼",cat:"貓眼",happy:"笑眼",closed:"閉眼",winged:"上揚眼線"};
-const IRIS_PAL={gray:[[64,78,92],[132,152,166],[196,212,222]],brown:[[64,36,28],[128,76,46],[196,136,84]],blue:[[26,44,104],[58,108,198],[150,200,250]],green:[[22,70,44],[52,140,84],[140,210,150]],red:[[96,16,28],[180,40,56],[240,120,130]],purple:[[54,30,96],[118,70,180],[196,150,240]],black:[[20,18,24],[52,48,60],[110,106,120]]};
-const IRIS_N={brown:"咖啡",gray:"灰藍",blue:"藍",green:"綠",red:"紅",purple:"紫",black:"黑"};
+const IRIS_PAL={gray:[[96,108,106],[152,166,162],[204,212,206]],brown:[[64,36,28],[128,76,46],[196,136,84]],blue:[[26,44,104],[58,108,198],[150,200,250]],green:[[22,70,44],[52,140,84],[140,210,150]],red:[[96,16,28],[180,40,56],[240,120,130]],purple:[[54,30,96],[118,70,180],[196,150,240]],black:[[20,18,24],[52,48,60],[110,106,120]]};
+const IRIS_N={brown:"咖啡",gray:"淺灰",blue:"藍",green:"綠",red:"紅",purple:"紫",black:"黑"};
 const LASH=[34,26,36],LASH2=[96,66,72],SCL=[252,250,250];
 function eyesOver(d,hm,ED,W,dOf,st,ic){if(!ED||!EYE_STYLES[st])return;const H=ED.length/4/W,FW=W/NF,IR=IRIS_PAL[ic]||IRIS_PAL.brown,isE=(x,y)=>{const i=(y*W+x)*4;return ED[i+3]&&ED[i+2]>=150&&ED[i]>=60&&ED[i]<=130&&ED[i+1]>=60&&ED[i+1]<=130};
  const put=(x,y,o)=>{if(x<0||y<0||x>=W||y>=H)return;const i=(y*W+x)*4;if(hm[i>>2]||!d[i+3])return;d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2]};

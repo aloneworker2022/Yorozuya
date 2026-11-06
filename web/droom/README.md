@@ -269,3 +269,7 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
   - 鼻子「10 圓翹鼻」`soft`（room_doll_full.js `NOSE_STYLES.soft`：鼻樑直細、鼻頭圓、微翹）＋近景鼻子畫法 `EyeBig.noseOver`（index／play 的 `NOSE_BIG` 裡的鼻子才用）：鼻樑背光側漸淡陰影、鼻頭亮點＋背光側圓陰影、鼻頭下陰影、兩個鼻孔（斜面遠的小）、鼻翼弧線；正側面只補膚色＋一個鼻孔。遠景照舊。
   - 圖層：`render_close.cjs` 新 `NOSES=small,soft`；只出了面對面 `sheets_f2f/p0/face/balanced_nose_soft_<dir>.png` 8 方向（`FACE=1 NOSES=soft ONLY=nose_soft`）。
   - 注意：「長髮分兩邊」前髮在近景會蓋到眼睛外側（眼尾被頭髮遮住，不是沒畫）；看眼線用齊瀏海等其他前髮。
+- 2026-11-06 第 2 版（使用者：眉毛眉型、位置不對；眼睛沒這麼大；瞳孔顏色不對）：
+  - 濃眉照參考照量：眉頭在內眼角正上方（標記的眉頭偏鼻樑內側 → 往外移 15% 標記寬）、全長約 1.08 個標記寬、眉尾超過外眼角；不再壓低（眉毛下緣到眼睛的距離比眼睛開口高一點）。眉頭最粗、從淡到深漸變，往外慢慢變細並一路升到約 62% 的眉峰，再往下收成尖眉尾；邊緣半透明。
+  - 上揚眼線眼睛變小：開口 0.4→0.32 眼寬、整隻眼睛寬度 ×0.88（`SHAPE.winged.scale`，約臉寬 1/5）。
+  - 瞳色 `gray` 改「淺灰」：淡灰帶一點綠（參考照），外圈不要那麼黑。eyes_big.js v=16、sw CACHE v530。
