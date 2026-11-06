@@ -62,7 +62,7 @@ import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, 
 import { openPeek } from "./content/escort_peek.js?v=8";
 import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=10";
+import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=11";
 import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";

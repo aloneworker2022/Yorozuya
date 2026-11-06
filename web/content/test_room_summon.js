@@ -325,7 +325,7 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { rollStayHours, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=10";
+import { neglectMs, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=11";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit, wornOutfitOf } from "./outfit_pick.js?v=2";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
@@ -1817,15 +1817,33 @@ let workToken = 0;
 let lifeLoopTimer = 0;
 let autoLifeBusy = false;
 
-/** 儀式結束、人出現之後才擲。非妻子 2～4 小時，妻子帶 8～16 小時。絕對 until，聊天不重設。 */
+/** 儀式結束、人出現之後才開始算。2026-11-06 起不是固定幾小時，而是「多久沒人理她就走」（非妻子 60 分、妻子帶 180 分，life_schedule.js NEGLECT_MIN）；
+ *  roomVisitUntil＝最後一次被理＋這段時間，每次理她就往後推（noticeHer）。RP5 照舊看 roomVisitUntil：手機關著、沒人理她，到點就把她帶回日本。 */
 function armRoomVisit(who = girl) {
   if (!who) return;
   const wife = isWifeStage(who.stage);
-  const hours = rollStayHours(wife);
   who.roomStayBand = wife ? "wife" : "short";
-  who.roomStayHours = hours;
-  who.roomVisitUntil = Date.now() + hours * 60 * 60 * 1000;
+  delete who.roomStayHours;
+  who.roomVisitUntil = Date.now() + neglectMs(wife);
   delete who.summonArrivalPending;
+}
+
+/** 你理她了：沒人理的計時從現在重算（只會往後推）。人不在房裡、還沒站定、出去辦事時不動。 */
+function noticeHer(who = girl) {
+  if (!who || !girlInRoom() || sheIsOut() || who.errand) return;
+  if (!(who.roomStayBand === "wife" || who.roomStayBand === "short")) return;
+  const until = Date.now() + neglectMs(who.roomStayBand === "wife");
+  if (!(Number(who.roomVisitUntil) > 1e11) || until > who.roomVisitUntil) who.roomVisitUntil = until;
+  // 存檔讓 RP5 看到新的期限（手機關著時它照這個時間帶她回日本）；5 分鐘內推的不另外存，說話／動作本來就會存
+  if (until - (Number(who.noticeSavedUntil) || 0) > 5 * 60 * 1000) { who.noticeSavedUntil = until; try { persistRoom(); } catch { /* */ } }
+}
+
+/** 她在做你叫她做的事（叫她去睡／去工作，或書桌上還有你放的工作）：算有人理她，不會因為沒聊天就走。 */
+function herOrderedBusy() {
+  if (!girl || !girlInRoom()) return false;
+  const a = window.RoomActor?.activity?.() || null;
+  if (a && a.ordered && (a.id === "bed_sleep" || a.id === "desk_work")) return true;
+  return !!(a && a.id === "desk_work" && window.RoomDesk?.busy?.());
 }
 
 /** 人還沒站定，或正在換衣服：這段不擲停留，也不把人送去日本。人已經在房裡時，沒清掉的繪圖清單不算。 */
@@ -2114,6 +2132,7 @@ async function showUndressScene(who, pack) {
 }
 
 async function openUndressChoices(who) {
+  noticeHer(who);
   const token = undressView;
   const bodyEl = $("room-scene-body");
   if (bodyEl) bodyEl.textContent = "選一個場面。";
@@ -3543,6 +3562,7 @@ function syncThrustButton() {
 
 /** 開場（只有她）→ 下一步加入。 */
 async function openSexChat(who) {
+  noticeHer(who);
   if (!who || undressStage(who) < 3 || !sheetOpen()) return;
   if (sexStartBlocked()) return;
   const pose = sexPoseFor(who);
@@ -9265,6 +9285,7 @@ async function maybeHandleClothesAsk(raw) {
 
 async function deliverUserTalk(text, opts = {}) {
   if (girl) talkNoteReplied(talkState());
+  noticeHer();
   const raw = String(text || "").trim();
   if (!girl || !raw) return;
   if (girl.errand) return;
@@ -11753,8 +11774,8 @@ function stayClockLine() {
   if (!girl || sheIsOut()) return "";
   const until = Number(girl.roomVisitUntil);
   if (!Number.isFinite(until) || until < 1e11) return "";
-  const end = taiwanNow(new Date(until));
-  return `這趟待到台灣時間${end.label}（${end.dayPart}）就會離開房間，回到日本。時間還沒到不要說要走。`;
+  const min = Math.round(neglectMs(girl.roomStayBand === "wife") / 60000);
+  return `你會一直待在他房間，除非他很久不理你（約 ${min >= 120 ? `${min / 60} 小時` : `${min} 分鐘`}沒跟你說話、沒碰你）才會自己回日本，或是被他弄到受不了逃走。他現在有在理你，不要說要走、不要提回去的時間。`;
 }
 
 /** 人已經在房裡、存檔卻沒有到期時間：計時沒開始過，這次直接到點。新召喚會先 arm，不會進這裡。 */
@@ -11791,7 +11812,7 @@ async function tickLifeLoop() {
   if (!girl || autoLifeBusy || visitClockHeld()) return;
   if (pending && !girlInRoom()) return;
   ensureRoomVisitArmed();
-  if (stayTalking()) return;
+  if (stayTalking() || herOrderedBusy()) { noticeHer(); return; }   // 說話中、做愛中、在做你叫她做的事：都算有人理她
   // 這趟進房時還不是妻子，中途成為妻子：改擲 8～16 小時。儀式進行中不改。
   if (!sheIsOut() && isWifeStage(girl.stage) && girl.roomStayBand !== "wife") {
     armRoomVisit(girl);
