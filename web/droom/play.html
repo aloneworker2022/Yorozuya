@@ -41,7 +41,7 @@ canvas{image-rendering:pixelated;width:min(96vw,960px);aspect-ratio:4/3;backgrou
 我的陰莖 <select id="pn"><option value="soft">軟</option><option value="semi">微勃起</option><option value="erect">勃起</option></select>（X 切換・往下看可見）
 ｜ <a href="/droom">← 回剪影預覽</a><div id="st"></div></div>
 <script src="/droom/parts_shade.js?v=3"></script>
-<script src="/droom/eyes_big.js?v=12"></script>
+<script src="/droom/eyes_big.js?v=14"></script>
 <script src="/droom/gl3d.js?v=1"></script>
 <script>
 // 房間：內部 6×6 地板（外圈為牆，粉色牆面一段點綴）
@@ -167,7 +167,8 @@ const BROW_STYLES={natural:"自然眉",flat:"平眉",arch:"細彎眉",thick:"粗
 function browsOver(d,hm,BD,W,dOf,st,HP){if(!BD||!BROW_STYLES[st])return;const H=BD.length/4/W,FW=W/NF,isB=(x,y)=>{const i=(y*W+x)*4;return BD[i+3]&&BD[i]>=150&&BD[i+1]>=110&&BD[i+1]<=200&&BD[i+2]<=70};
  const C=HP[0].map(v=>Math.max(0,v*.85)),C2=HP[0].map((v,j)=>v*.6+HP[1][j]*.4);
  const put=(x,y,o)=>{if(x<0||y<0||x>=W||y>=H)return;const i=(y*W+x)*4;if(hm[i>>2]||!d[i+3])return;d[i]=o[0];d[i+1]=o[1];d[i+2]=o[2]};
- for(let f=0;f<8;f++){const[fs,side]=dOf(f),cols=[];let yc=-1,n=0,ys=0;
+ for(let f=0;f<8;f++){if(window.EyeBig&&EyeBig.browOver&&EyeBig.browOver(d,hm,BD,W,NF,dOf,st,HP,f))continue;   // 2026-11-06 近景大眉毛（eyes_big.js）
+  const[fs,side]=dOf(f),cols=[];let yc=-1,n=0,ys=0;
   for(let x=f*FW;x<(f+1)*FW;x++){let on=false;for(let y=0;y<H;y++)if(isB(x,y)){on=true;ys+=y;n++}cols.push(on)}
   if(!n)continue;yc=Math.round(ys/n);const bs=[];
   for(let i=0;i<cols.length;i++)if(cols[i]){let j=i;while(j+1<cols.length&&cols[j+1])j++;bs.push([f*FW+i,f*FW+j]);i=j}
