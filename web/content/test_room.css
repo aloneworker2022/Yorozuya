@@ -507,6 +507,9 @@ body.room-home #talk-box {
   overflow-y: auto;
   z-index: 4;
 }
+/* 她在想／還沒字／猥褻動作圖在畫面上 → 對話框先藏起來（syncTalkBoxVis） */
+body.room-home #portrait-sheet.talk-hide #talk-box { visibility: hidden; opacity: 0; pointer-events: none; }
+body.room-home #talk-box { transition: opacity .15s ease-out; }
 body.room-home #portrait-img {
   height: min(78svh, 720px);
   bottom: 0;   /* 腳貼畫面底，下半身被對話框蓋住 */

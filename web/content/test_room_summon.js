@@ -6578,7 +6578,35 @@ function sheetOpen() {
 function setTyping(on) {
   const el = $("talk-typing");
   if (el) el.hidden = !on;
+  syncTalkBoxVis();
 }
+
+/* 2026-11-06 使用者：猥褻動作的時候對話框要消失；妹子還沒開始輸出文字、還在想的時候對話框也不要先出現。
+   寫 #portrait-meta 的地方很多，所以不一個個改：看「在想（打字點點亮著）／框裡沒字／動作圖在畫面上」三件事，
+   任一成立就在 #portrait-sheet 加 talk-hide（CSS 把 #talk-box 藏起來）。MutationObserver 盯著這三個元素自動更新。 */
+function syncTalkBoxVis() {
+  const sheet = $("portrait-sheet");
+  if (!sheet) return;
+  const typing = !!($("talk-typing") && !$("talk-typing").hidden);
+  const meta = $("portrait-meta");
+  const empty = !meta || !String(meta.textContent || "").trim();
+  const flash = !!($("action-flash-img") && !$("action-flash-img").hidden);
+  sheet.classList.toggle("talk-hide", typing || empty || flash);
+}
+(function watchTalkBoxVis() {
+  if (typeof MutationObserver !== "function" || typeof document === "undefined") return;
+  const hook = () => {
+    const ids = ["portrait-meta", "talk-typing", "action-flash-img"], els = ids.map((id) => $(id));
+    if (els.some((e) => !e)) return false;
+    const mo = new MutationObserver(syncTalkBoxVis);
+    mo.observe(els[0], { childList: true, characterData: true, subtree: true });
+    mo.observe(els[1], { attributes: true, attributeFilter: ["hidden"] });
+    mo.observe(els[2], { attributes: true, attributeFilter: ["hidden"] });
+    syncTalkBoxVis();
+    return true;
+  };
+  if (!hook()) document.addEventListener("DOMContentLoaded", hook, { once: true });
+})();
 
 function setTalkEnabled(on) {
   if ($("talk-input")) $("talk-input").disabled = !on;
