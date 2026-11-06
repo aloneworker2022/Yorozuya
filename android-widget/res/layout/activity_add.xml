@@ -13,7 +13,8 @@
         android:layout_weight="1" />
 
     <!-- 2026-11-04：左邊語音（紅點），右邊輸入框，兩個都是正方形（邊長由 AddActivity 依寬度算）；
-         沒有送出鈕，打完按鍵盤的送出；說完話直接送 -->
+         沒有送出鈕，打完按鍵盤的送出；說完話直接送
+         2026-11-06：輸入框字變大、置中、點陣字（Fusion Pixel 12px 繁中，assets/；大小由 AddActivity 照 12px 格線算） -->
     <LinearLayout
         android:id="@+id/sheet"
         android:layout_width="match_parent"
@@ -47,7 +48,7 @@
             android:layout_marginLeft="10dp"
             android:layout_weight="1"
             android:background="@drawable/input_bg"
-            android:gravity="top|left"
+            android:gravity="center"
             android:hint="@string/hint"
             android:imeOptions="actionSend"
             android:inputType="text"
@@ -55,6 +56,6 @@
             android:padding="12dp"
             android:textColor="@color/text"
             android:textColorHint="@color/dim"
-            android:textSize="16sp" />
+            android:textSize="30sp" />
     </LinearLayout>
 </LinearLayout>

@@ -13,6 +13,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="發現">
 <style>
+  /* 2026-11-06 使用者：框這麼大字卻這麼小 → 輸入框字變大、置中、點陣字（Fusion Pixel 12px 繁中，跟 App 同一套；字級取 12px 的整數倍才是一格一格的方塊） */
+  @font-face { font-family: DiscoverPixel; src: url("fonts/fusion-pixel-12px-zh-hant.woff2") format("woff2"); font-display: swap; }
   :root {
     --bg: #141021;
     --panel: rgba(18, 12, 34, .78);
@@ -45,10 +47,13 @@
     background: color-mix(in srgb, var(--text) 8%, transparent);
     border: none;
     color: var(--text);
-    font: inherit;
-    padding: .85em .9em;
+    font: 36px/1.25 DiscoverPixel, system-ui, sans-serif;
+    text-align: center;
+    padding: 12px;
+    -webkit-font-smoothing: none; font-smooth: never;
     outline: none; resize: none;
   }
+  #q.small { font-size: 24px; }
   #q::placeholder { color: var(--dim); }
   #q:disabled { opacity: .5; }
   #mic {
@@ -119,6 +124,7 @@ f.addEventListener("submit", async (e) => {
       return;
     }
     q.value = "";
+    fit();
     const gold = Number(j.gold) || 0;
     say(gold > 0 ? `已送進發現 +${gold} 金` : "已送進發現", "ok");
     try { navigator.vibrate?.(12); } catch {}
@@ -134,6 +140,26 @@ q.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); f.requestSubmit(); }
 });
 setTimeout(() => q.focus(), 200);
+
+// 2026-11-06 字置中：左右靠 text-align，上下照內容高度算上邊距（textarea 不能直接垂直置中）；字多到裝不下縮一級（36px → 24px）
+const mirror = document.createElement("div");
+function fit() {
+  q.classList.remove("small");
+  for (const small of [false, true]) {
+    q.classList.toggle("small", small);
+    const c = getComputedStyle(q);
+    Object.assign(mirror.style, { position: "absolute", visibility: "hidden", left: "-9999px", top: "0", width: (q.clientWidth - 24) + "px",
+      font: c.font, lineHeight: c.lineHeight, whiteSpace: "pre-wrap", wordBreak: "break-word", textAlign: "center" });
+    mirror.textContent = (q.value || q.placeholder || "") + (q.value.endsWith("\n") ? " " : "");
+    if (!mirror.isConnected) document.body.appendChild(mirror);
+    const h = mirror.offsetHeight, room = q.clientHeight - 24;
+    if (h <= room || small) { q.style.paddingTop = 12 + Math.max(0, Math.floor((room - h) / 2)) + "px"; break; }
+  }
+}
+q.addEventListener("input", fit);
+window.addEventListener("resize", fit);
+document.fonts?.ready.then(fit);
+fit();
 
 // ---- 語音輸入（Web Speech API；Chrome 要 https 或 localhost 才能用麥克風）
 const mic = document.getElementById("mic");
@@ -152,6 +178,7 @@ mic.addEventListener("click", () => {
     heard = Array.from(e.results).map(r => r[0].transcript).join("");
     q.value = (base ? base + " " : "") + heard.trim();
     q.value = q.value.slice(0, 80);
+    fit();
   };
   rec.onerror = (e) => {
     const m = { "not-allowed": "不能用麥克風（要允許麥克風；用 http 開的網頁瀏覽器不給，要 https）",

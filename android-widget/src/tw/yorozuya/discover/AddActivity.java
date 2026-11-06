@@ -3,6 +3,11 @@ package tw.yorozuya.discover;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.graphics.Paint;
+import android.graphics.Typeface;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.util.TypedValue;
 import android.os.Bundle;
 import android.speech.RecognizerIntent;
 import android.view.View;
@@ -24,6 +29,7 @@ public class AddActivity extends Activity {
         // 輸入框可以換行顯示（字多時往下排），但鍵盤右下角仍是「送出」
         input.setHorizontallyScrolling(false);
         input.setMaxLines(8);
+        pixelFont();
         // 兩個都是正方形：邊長＝各一半的寬度
         final View sheet = findViewById(R.id.sheet);
         sheet.post(new Runnable() {
@@ -53,6 +59,35 @@ public class AddActivity extends Activity {
     public void finish() {
         super.finish();
         overridePendingTransition(R.anim.fade_in, R.anim.slide_out_bottom);
+    }
+
+    /** 2026-11-06 使用者：框這麼大字卻這麼小 → 字變大、置中（layout gravity=center）、點陣字。
+     *  字型＝Fusion Pixel 12px 繁中（assets/，OFL；網頁 web/fonts 同一套）。一個字 12 格，字級取 12px 的整數倍、關掉反鋸齒，邊緣才是一格一格的方塊。
+     *  字多到框裝不下時縮一級（約 30dp → 20dp）。 */
+    private int bigPx, smallPx;
+    private void pixelFont() {
+        try {
+            input.setTypeface(Typeface.createFromAsset(getAssets(), "fusion-pixel-12px-zh-hant.ttf"));
+        } catch (RuntimeException e) {
+            return;   // 字型讀不到就用系統字（照樣放大、置中）
+        }
+        input.setPaintFlags(input.getPaintFlags() & ~Paint.ANTI_ALIAS_FLAG);
+        float dp = getResources().getDisplayMetrics().density;
+        bigPx = 12 * Math.max(2, Math.round(30 * dp / 12f));
+        smallPx = 12 * Math.max(1, Math.round(20 * dp / 12f));
+        input.setTextSize(TypedValue.COMPLEX_UNIT_PX, bigPx);
+        input.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            public void afterTextChanged(Editable s) { input.post(new Runnable() { public void run() { fit(); } }); }
+        });
+    }
+
+    private void fit() {
+        if (bigPx == 0 || input.getLayout() == null) return;
+        int room = input.getHeight() - input.getPaddingTop() - input.getPaddingBottom();
+        if (input.getTextSize() == bigPx && input.getLineCount() * input.getLineHeight() > room) input.setTextSize(TypedValue.COMPLEX_UNIT_PX, smallPx);
+        else if (input.getTextSize() == smallPx && input.length() == 0) input.setTextSize(TypedValue.COMPLEX_UNIT_PX, bigPx);
     }
 
     private void squareUp(View sheet) {
