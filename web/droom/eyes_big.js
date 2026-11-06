@@ -106,14 +106,16 @@
     if (Math.max(...boxes.map(b => b[3] - b[1])) < 12) return false;   // 太小（遠景）→ 舊畫法
     const one = boxes.length === 1 || side, ws = boxes.map(b => b[2] - b[0] + 1);
     // 看得到的眼睛範圍：標記往外擴 Dl 格（眼線、摺線、陰影會畫到標記外面一點）
-    const Dl = Math.max(2, Math.round(Math.max(...ws) * .16)), vis = new Uint8Array(W * H);
+    const Dl = Math.max(2, Math.round(Math.max(...ws) * .16)), vis = new Uint8Array(W * H), vis0 = new Uint8Array(W * H);   // vis0：不擴（遠眼用，2026-11-06 使用者：挺的鼻樑要遮到另一隻眼睛）
+    for (let y = 0; y < H; y++) for (let x = f * FW; x < (f + 1) * FW; x++) if (isE(x, y)) vis0[y * W + x] = 1;
     for (let y = 0; y < H; y++) for (let x = f * FW; x < (f + 1) * FW; x++) if (isE(x, y)) for (let dy = -Dl; dy <= Dl; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; const r = Dl - Math.abs(dy); for (let dx = -r; dx <= r; dx++) { const xx = x + dx; if (xx >= 0 && xx < W) vis[yy * W + xx] = 1; } }
     // 斜面：兩隻眼睛一寬一窄（遠的那隻窄）→ 臉轉向窄的那邊，瞳孔一起往那邊偏；開口高度照寬的那隻（正側面照眼睛高）
     const turn = boxes.length === 2 && Math.abs(ws[0] - ws[1]) > .12 * Math.max(...ws) ? (ws[0] < ws[1] ? -1 : 1) : 0;
     const wRef = one ? Math.max(...boxes.map(b => (b[3] - b[1] + 1) * 1.25)) : Math.max(...ws);
     boxes.forEach((b, k) => { const out = boxes.length > 1 ? (k === 0 ? -1 : 1) : -fs || 1;
       if (boxes.length === 2 && EyeBig.far === 'hide' && ws[k] < .55 * Math.max(...ws)) return;   // 被山根擋住：遠眼整隻不畫
-      paint(d, hm, W, H, b, out, turn, one, st, IR, wRef, vis, boxes.length === 2 && EyeBig.far === 'lash' && ws[k] < .55 * Math.max(...ws)); });
+      const far = boxes.length === 2 && ws[k] < .8 * Math.max(...ws);
+      paint(d, hm, W, H, b, out, turn, one, st, IR, wRef, far ? vis0 : vis, boxes.length === 2 && EyeBig.far === 'lash' && ws[k] < .55 * Math.max(...ws)); });
     return true;
   }
   // far：斜面遠的那隻被擠到鼻樑旁（寬度 < 近眼 55%）時 'hide'＝被山根擋住不畫（2026-11-05 使用者：側面眼睛應該被山根擋住、不是印上去）、'lash'＝只畫眼線睫毛、'full'＝整隻畫
