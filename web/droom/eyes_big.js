@@ -73,10 +73,10 @@
     //   ② 內眼角靠山根那側：一條直的陰影往鼻樑漸淡（鼻樑側面）
     //   ③ 下眼皮下面淡淡一層（眼袋的凹）
     free = true;
-    for (let x = Math.min(x0, x1) - Math.round(w * .06); x <= Math.max(x0, x1) + Math.round(w * .04); x++) { const u = Math.min(1.05, Math.max(-.05, U(x))), yt = top(Math.min(1, Math.max(0, u))), H1 = O * 1.05, kk = .42 * (1 - .45 * Math.max(0, u - .3) / .75) * Math.min(1, (u + .1) / .25);
+    for (let x = Math.min(x0, x1) - Math.round(w * .06); x <= Math.max(x0, x1) + Math.round(w * .04); x++) { const u = Math.min(1.05, Math.max(-.05, U(x))), yt = top(Math.min(1, Math.max(0, u))), H1 = O * 1.05, kk = .2 * (1 - .45 * Math.max(0, u - .3) / .75) * Math.min(1, (u + .1) / .25);
       for (let y = Math.floor(yt - H1); y < yt; y++) { const q = (y - (yt - H1)) / H1; put(x, y, SOCK, kk * q * q); } }
-    { const xi = X(0), yI = base(0), Wd = O * .8, Wi = O * .35; for (let i = -Math.floor(Wi); i < Wd; i++) for (let y = Math.floor(yI - O * 1.0); y <= yI + O * .7; y++) { const x = xi - out * i, u = U(x); if (i < 0 && y >= top(Math.max(0, u)) - 1 && y <= bot(Math.max(0, u)) + 1) continue; const f = i < 0 ? 1 + i / Wi : 1 - i / Wd, g = y < yI ? 1 - (yI - y) / (O * 1.0) : 1 - (y - yI) / (O * .7); put(x, y, SOCK, .34 * f * f * Math.max(0, g) ** 1.5); } }
-    for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) { const u = U(x), yb = bot(u); for (let j = 2; j < O * .5; j++) put(x, yb + j, SOCK, .16 * (1 - j / (O * .5)) * Math.sin(Math.PI * Math.min(1, u * 1.05))); }
+    { const xi = X(0), yI = base(0), Wd = O * .8, Wi = O * .35; for (let i = -Math.floor(Wi); i < Wd; i++) for (let y = Math.floor(yI - O * 1.0); y <= yI + O * .7; y++) { const x = xi - out * i, u = U(x); if (i < 0 && y >= top(Math.max(0, u)) - 1 && y <= bot(Math.max(0, u)) + 1) continue; const f = i < 0 ? 1 + i / Wi : 1 - i / Wd, g = y < yI ? 1 - (yI - y) / (O * 1.0) : 1 - (y - yI) / (O * .7); put(x, y, SOCK, .15 * f * f * Math.max(0, g) ** 1.5); } }
+    for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) { const u = U(x), yb = bot(u); for (let j = 2; j < O * .5; j++) put(x, yb + j, SOCK, .08 * (1 - j / (O * .5)) * Math.sin(Math.PI * Math.min(1, u * 1.05))); }
     free = false;
     // 3) 上眼線：內側細、外側粗；眼尾往外一撇
     for (let x = Math.min(x0, x1) - 1; x <= Math.max(x0, x1) + 1; x++) {
