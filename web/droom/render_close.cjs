@@ -32,7 +32,8 @@ const env = (k, def) => process.env[k] ? process.env[k].split(',') : def;
 const B = env('BODY', ['balanced'])[0], SHAPE = process.env.SHAPE || 'round', CUP = process.env.CUP || 'D', AR = process.env.AR || 'medium';
 const DIRS = env('DIRS', FACEV ? ['front'] : Object.keys(DIR)), BHS = env('BH', ['wavy']), FHS = env('FH', ['curtain']), CLS = env('CL', ['napkin_bell']);
 const SHARD = +(process.env.SHARD || 0), NSH = +(process.env.NSHARD || 1);
-const FACE = [['nose', 'small', [D.NOSE_RGB, D.NOSE_LO_RGB], 'nose_small'], ['mouth', 'line', [D.MOUTH_RGB, D.MOUTH_LO_RGB, D.LIPLO_RGB, D.LIPLO_LO_RGB], 'mouth'], ['brows', 'natural', [D.BROW_RGB, D.BROW_LO_RGB], 'brows'], ['eyes', 'mark', [D.EYE_RGB, D.EYE_LO_RGB], 'eyes', { nose: 'small' }]];   // 2026-11-05 使用者：側面眼睛是被山根擋住、不是印上去 → 眼睛圖層連鼻子一起算（鼻子擋住的地方沒有眼睛）   // 2026-11-05 眼睛位置（使用者：下一步做眼睛）
+const FACE = [...(process.env.NOSES || 'small').split(',').map(n => ['nose', n, [D.NOSE_RGB, D.NOSE_LO_RGB], 'nose_' + n]),   // 2026-11-06 NOSES=small,soft 可出別的鼻子
+   ['mouth', 'line', [D.MOUTH_RGB, D.MOUTH_LO_RGB, D.LIPLO_RGB, D.LIPLO_LO_RGB], 'mouth'], ['brows', 'natural', [D.BROW_RGB, D.BROW_LO_RGB], 'brows'], ['eyes', 'mark', [D.EYE_RGB, D.EYE_LO_RGB], 'eyes', { nose: 'small' }]];   // 2026-11-05 使用者：側面眼睛是被山根擋住、不是印上去 → 眼睛圖層連鼻子一起算（鼻子擋住的地方沒有眼睛）   // 2026-11-05 眼睛位置（使用者：下一步做眼睛）
 // ONLY=eyes（或 nose,mouth,...）：只重出這幾個臉部圖層，其他（身體、頭髮、衣服、下身）不動
 const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null;
 const mk = (o = {}) => { const x = D.lookToDoll({ ...BODY[B], cup: CUP + ' 罩杯' }); x.shape = SHAPE; x.areola = AR; x.face = 'anime'; if (!o.backHair && !o.frontHair) x.hair = 'none'; Object.assign(x, o); return x; };

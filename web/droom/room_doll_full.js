@@ -960,7 +960,7 @@
     }
     // 2026-11-01：臉部——鼻子（樣品）。doll.nose 有值才畫；tag cloth＝13（標記色 NOSE_RGB／深度邊緣 NOSE_LO_RGB），前端只畫陰影＋側面突出的輪廓。
     // 小而尖的動漫鼻：鼻樑從眼睛下方（zc−1.9）往前下斜到鼻尖（zc−3.7，離臉面約 1.5），鼻尖一顆小圓；貼著頭橢球的正前方。
-    const NOSE_RGB = [255, 0, 128], NOSE_LO_RGB = [160, 0, 80], NOSES = ['small', 'round', 'upturned', 'petite', 'tall', 'hump', 'button', 'wide', 'long'];
+    const NOSE_RGB = [255, 0, 128], NOSE_LO_RGB = [160, 0, 80], NOSES = ['small', 'round', 'upturned', 'petite', 'tall', 'hump', 'button', 'wide', 'long', 'soft'];
     // 2026-11-01 使用者：鼻子做 9 種來選。參數（頭高 17.6 單位）：root 鼻根 z、tip 鼻尖 z、P 凸出、conc 鼻樑彎（＋內凹／−微駝）、r 鼻頭圓半徑（0＝尖）、up 上翹、wt／wb 正面上／下半寬
     const NOSE_STYLES = {
       small:    { name: '尖鼻',   root: 1.8,  tip: -3.95, P: 1.8,  conc: 0,    r: 0,   up: 0,    wt: .2,  wb: .95 },
@@ -972,6 +972,8 @@
       button:   { name: '鈕扣鼻', root: -1.0, tip: -3.7,  P: .85,  conc: .2,   r: .55, up: .4,   wt: .15, wb: .8 },
       wide:     { name: '寬鼻翼', root: 1.6,  tip: -3.9,  P: 1.5,  conc: .2,   r: .45, up: .1,   wt: .3,  wb: 1.35 },
       long:     { name: '細長鼻', root: 2.4,  tip: -4.3,  P: 2.0,  conc: .15,  r: .15, up: 0,    wt: .15, wb: .7 },
+      // 2026-11-06 使用者給真人參考照（學這個五官）：鼻樑直而細、鼻頭圓潤一顆、微微上翹看得到鼻孔，鼻翼不寬
+      soft:     { name: '圓翹鼻', root: 1.7,  tip: -3.75, P: 1.6,  conc: .2,   r: .55, up: .45,  wt: .2,  wb: 1.0 },
     };
     function nose(sh, P, doll, tor) {
       const hs = P.b.head, hh = P.head_h / 2, zc = tor.zc, yc = tor.yl(zc) + .3, ry = 7.2 * hs;

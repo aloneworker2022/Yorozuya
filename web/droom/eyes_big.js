@@ -15,6 +15,9 @@
     almond: { open: .55, tilt: -.05, pk: .42, lash: 1 },
     droopy: { open: .55, tilt: .08,  pk: .4,  lash: .85 },
     cat:    { open: .48, tilt: -.14, pk: .45, lash: 1.15 },
+    // 2026-11-06 使用者給真人參考照（學這個五官）：杏仁眼、開口偏窄、上眼皮蓋住瞳孔上緣一點（內雙、眼皮有陰影），
+    //   細長上揚的眼線（外眼角往外上拉出尖尾，不是粗睫毛三角）、下眼線整條淡淡暈開（外側深）、瞳孔中等＋深外圈＋小瞳仁
+    winged: { open: .4, tilt: -.03, pk: .5, lash: .8, wing: 1, iris: 1, pupil: .3, hood: 1 },
   };
   const SOCK = [196, 132, 112], LINE = [52, 34, 34], LINE2 = [96, 64, 60], CREASE = [176, 122, 108], LOWER = [150, 100, 96], SCL = [252, 250, 250], SCL_SH = [222, 214, 222], WHITE = [255, 255, 255], CARU = [226, 150, 150];
   const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -42,6 +45,7 @@
           put(x, y, r <= 1 ? (r > .8 ? IR[0] : ey < -.3 ? IR[0] : ey < .35 ? IR[1] : IR[2]) : y - top(u) < 2 ? SCL_SH : SCL); } }
       for (let x = Math.min(x0, x1) - 1; x <= Math.max(x0, x1) + 1; x++) { const u = Math.min(1, Math.max(0, U(x))), t = R * (.025 + .03 * u); for (let y = top(u) - t * .7; y <= top(u) + t * .3; y++) put(x, y, LINE); put(x, bot(u) + 1, LOWER, .9); }
       for (let k = 0; k < 4; k++) { const u = .05 + k * .2, xs = X(u), ys = top(u), L = R * (.06 + .02 * k); stroke(xs, ys, xs - out * L * .5, ys - L * .9, 2, 1, LINE); }   // 睫毛往前上翹
+      if (S.wing) { free = true; stroke(X(.85), top(.85), X(1) + out * R * .2, cyc - R * .12, R * .04, 1, LINE); free = false; }   // 2026-11-06 上揚眼線：側面也拉出尾巴（往耳朵、往上）
       return;
     }
     // 正面／斜面
@@ -52,7 +56,7 @@
     const sk = u => u < S.pk ? .5 * u / S.pk : .5 + .5 * (u - S.pk) / (1 - S.pk);
     const top = u => base(u) - O * .6 * Math.pow(Math.max(0, Math.sin(Math.PI * sk(u))), .6);
     const bot = u => base(u) + O * .4 * Math.pow(Math.max(0, Math.sin(Math.PI * (u < .5 ? .5 * u / .5 : .5 + .5 * (u - .5) / .5))), .8);
-    const um = .5, ri = O * .6, icx = X(um) + turn * .1 * w, icy = (top(um) + bot(um)) / 2 + O * .02, irx = ri * .92 * Math.min(1, .45 + .55 * w / R);
+    const um = .5, ri = O * .6 * (S.iris || 1), icx = X(um) + turn * .1 * w, icy = (top(um) + bot(um)) / 2 + O * (S.hood ? -.06 : .02), irx = ri * .92 * Math.min(1, .45 + .55 * w / R);
     // 1) 眼白＋瞳孔
     if (!lashOnly) {
     for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
@@ -61,7 +65,9 @@
         const ex = (x - icx) / irx, ey = (y - icy) / ri, r = Math.hypot(ex, ey);
         if (r <= 1) {
           let c = r > .86 ? IR[0].map(q => q * .7) : y - yt < O * .3 ? IR[0] : ey < .25 ? IR[1] : IR[2];
-          if (r < .42) c = [20, 16, 22];   // 大瞳仁
+          if (S.wing && r > .86) c = IR[0].map(q => q * .45);   // 深外圈（參考照：淺色瞳孔外面一圈深）
+          else if (S.wing && r > .3 && r <= .86) { const a = Math.atan2(ey, ex), k = .5 + .5 * Math.sin(a * 9 + r * 6); c = c.map((q, j) => q * (1 - .12 * k) + IR[2][j] * .12 * k); }   // 虹膜放射紋
+          if (r < (S.pupil || .42)) c = [20, 16, 22];   // 瞳仁
           put(x, y, c);
         } else put(x, y, u < .04 ? CARU : y - yt < Math.max(1.5, O * .16) ? SCL_SH : SCL);
       }
@@ -71,6 +77,10 @@
       put(icx + irx * .35, icy + ri * .35, WHITE); put(icx + irx * .35 + 1, icy + ri * .35, WHITE, .7); }
     }
     // 2) 雙眼皮摺線：貼近眼睛的一條細線
+    if (S.hood) {   // 內雙：摺線貼近眼線、中間一片眼皮陰影（參考照）
+      for (let x = Math.min(x0, x1); x <= Math.max(x0, x1) + Math.round(w * .04); x++) { const u = Math.min(1.04, U(x)); if (u < .12) continue; const uu = Math.min(1, u), yc = top(uu) - O * (.2 + .06 * Math.sin(Math.PI * uu)), k = sstep(.12, .35, u);
+        put(x, yc, LINE2, .6 * k); for (let y = Math.ceil(yc + 1); y < top(uu); y++) put(x, y, SOCK, .35 * k); }
+    } else
     for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) { const u = U(x); if (u < .22 || u > 1) continue; const y = top(u) - O * (.16 + .1 * Math.sin(Math.PI * u)); const k = sstep(.22, .4, u); put(x, y, LINE2, .75 * k); }
     // 眼窩陰影（第 9 版起真的凹陷已經有陰影，這裡只淡淡補一點）
     free = true;
@@ -79,10 +89,24 @@
     free = false;
     // 3) 上眼線：粗，往外越粗
     for (let x = Math.min(x0, x1) - 1; x <= Math.max(x0, x1) + 1; x++) {
-      const u = Math.min(1, Math.max(0, U(x))), t = R * (.03 + .07 * sstep(.05, .85, u)), yt = top(u);
+      const u = Math.min(1, Math.max(0, U(x))), t = R * (S.wing ? .035 + .035 * sstep(.05, .9, u) : .03 + .07 * sstep(.05, .85, u)), yt = top(u);
       for (let y = yt - t * .8; y <= yt + t * .25; y++) put(x, y, LINE);
     }
     // 外眼角：實心三角（上眼線往下包到下眼皮）＋三根粗睫毛往外翹
+    if (S.wing) {   // 細長上揚眼線：從上眼線外段一路拉出眼尾外面、往上收成尖（實心楔形），沒有粗睫毛
+      free = true;
+      const xe = X(1), ye = top(1) + (bot(1) - top(1)) * .1, xt = xe + out * R * .3, yt2 = ye - R * (.13 + .2 * Math.max(0, -S.tilt));
+      for (let i = 0, n = Math.ceil(R * .6); i <= n; i++) { const s2 = i / n, u = .72 + .28 * s2, xa = X(u), ya = top(u) - R * .01;   // 上緣：沿上眼線到尾尖
+        const xb = xe + (xt - xe) * s2, yb = ye + (yt2 - ye) * s2;   // 下緣：從外眼角直線到尾尖
+        stroke(xa, ya, xb + (xt - xb) * s2 * s2, yb + (yt2 - yb) * s2 * s2, Math.max(1, R * .03 * (1 - s2)), 1, LINE); }
+      stroke(xe, ye, xt, yt2, R * .04, 1, LINE);
+      for (let k = 0; k < 6; k++) { const u = .35 + k * .11, xs = X(Math.min(1, u)), ys = top(Math.min(1, u)) - R * .02, L = R * (.04 + .015 * k) * S.lash; stroke(xs, ys, xs + out * L * .55, ys - L, Math.max(1, R * .02), 1, LINE); }   // 短而密的睫毛
+      stroke(X(0), base(0) - O * .02, X(-.05), base(0) + O * .1, R * .025, 1, LINE);   // 內眼角
+      free = false;
+      for (let x = Math.min(x0, x1) - 1; x <= Math.max(x0, x1) + 1; x++) { const u = Math.min(1, Math.max(0, U(x))), yb = bot(u) + 1;   // 下眼線：整條暈開、外側深，下面一層淡淡陰影
+        if (u < .1) continue; const k = sstep(.1, .45, u); put(x, yb, LINE2, .35 + .5 * k); put(x, yb + 1, LINE2, .25 * k); for (let y = yb + 2; y < yb + 2 + O * .25; y++) put(x, y, SOCK, .18 * k * (1 - (y - yb - 2) / (O * .25))); }
+      return;
+    }
     for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) { const u = U(x); if (u < .8) continue; const yt = top(u), yb = bot(u), f = sstep(.8, 1, u); for (let y = yt; y <= yt + (yb - yt) * f * .75; y++) put(x, y, LINE); }
     free = true;
     { const xe = X(1), ye = top(1) + (bot(1) - top(1)) * .2;
@@ -131,6 +155,18 @@
     const Wmax = Math.max(...bs.map(([a, b]) => b - a + 1)); if (Wmax < 20) return false;   // 遠景 → 舊畫法
     const S = BROW[st] || BROW.natural, C = HP[0].map(v => v * .75), C2 = HP[0].map((v, j) => v * .55 + HP[1][j] * .45);
     const put = (x, y, o) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= W || y >= H) return; const i = (y * W + x) * 4; if (hm[i >> 2] || !d[i + 3]) return; d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2]; };
+    if (st === 'bold') {   // 2026-11-06 真人參考照：濃眉——又粗又黑、壓低貼近眼睛；下緣幾乎直、上緣慢慢升到約 65% 的眉峰，再斜斜收成短而尖的眉尾；眉頭方、一根根往上的毛
+      const Cb = HP[0].map(v => v * .55), Cb2 = HP[0].map((v, j) => v * .5 + HP[1][j] * .35), SKN = [245, 208, 181];
+      bs.forEach(([a, b], k) => { const inner = bs.length > 1 ? (k === 0 ? 1 : -1) : fs || 1, xa = f * FW + (inner > 0 ? b : a), w = b - a + 1, R = Math.max(w, Wmax * .6);
+        const yc = (yOf[a] + yOf[b] + 2 * yOf[(a + b) >> 1]) / 4 + R * .05;   // 壓低一點
+        for (let i = 0; i <= w * 2; i++) { const t = i / (w * 2), x = xa - inner * t * (w - 1), pk = .65;
+          const lo = yc + R * (.07 - .02 * t + .16 * sstep(pk, 1, t)), hi = yc - R * (.1 + .05 * sstep(0, pk, t)) + R * .3 * sstep(pk, 1.05, t), th = lo - hi;
+          if (th < 1) continue;
+          for (let y = hi; y <= lo; y++) { const q = (y - hi) / Math.max(1, th);
+            if (t < .16 && q < .3 * (1 - t / .16)) continue;   // 眉頭：上緣圓起來、比較淡
+            put(x, y, t < .16 || q > .75 ? Cb2 : Cb); } } });
+      return true;
+    }
     bs.forEach(([a, b], k) => { const inner = bs.length > 1 ? (k === 0 ? 1 : -1) : fs || 1, xa = f * FW + (inner > 0 ? b : a), w = b - a + 1, R = Math.max(w, Wmax * .6);
       const yc = (yOf[a] + yOf[b] + 2 * yOf[(a + b) >> 1]) / 4;
       for (let i = 0; i <= w * 2; i++) { const t = i / (w * 2), x = xa - inner * t * (w - 1);
@@ -139,7 +175,38 @@
         for (let y = yy - th / 2; y <= yy + th / 2; y++) put(x, y, (y > yy + th * .25) ? C2 : C); } });
     return true;
   }
+  // 2026-11-06 近景鼻子（真人參考照：鼻樑直、鼻頭圓潤、看得到兩個小鼻孔）。模型標鼻子位置（face/<body>_nose_<style>_<dir>.png，#FF0080）。
+  //   鼻樑兩側只有很淡的陰影（背光那側一條）、鼻頭一個亮點、鼻頭下面一片陰影、兩個鼻孔、鼻翼兩條小弧線。正側面只補膚色＋一個鼻孔。回傳 false＝太小（遠景）用舊畫法
+  function noseOver(d, hm, ND, W, NF, s, f) {
+    const H = ND.length / 4 / W, FW = W / NF, isN = (x, y) => { if (x < f * FW || x >= (f + 1) * FW || y < 0 || y >= H) return false; const i = (y * W + x) * 4; return ND[i + 3] && ND[i] > 100 && ND[i + 1] == 0 && ND[i + 2] > 40; };
+    let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1; for (let y = 0; y < H; y++) for (let x = f * FW; x < (f + 1) * FW; x++) if (isN(x, y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    if (x1 < 0 || y1 - y0 < 30) return false;
+    const SK = [245, 208, 181], HI = [253, 230, 216], SH = [222, 166, 144], SH2 = [200, 136, 116], NOS = [120, 62, 58], LN = [176, 108, 92];
+    const put = (x, y, o, k = 1) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= W || y >= H) return; const i = (y * W + x) * 4; if (hm[i >> 2]) return; if (!d[i + 3]) { d[i] = SK[0]; d[i + 1] = SK[1]; d[i + 2] = SK[2]; d[i + 3] = 255; } for (let j = 0; j < 3; j++) d[i + j] = d[i + j] * (1 - k) + o[j] * k; };
+    const h = y1 - y0, ell = (cx, cy, rx, ry, c, k) => { for (let y = Math.floor(cy - ry); y <= cy + ry; y++) for (let x = Math.floor(cx - rx); x <= cx + rx; x++) { const e = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2; if (e <= 1) put(x, y, c, k * (e > .6 ? .6 : 1)); } };
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (isN(x, y) && !d[(y * W + x) * 4 + 3]) put(x, y, SK);   // 凸出臉外補膚色
+    // 下半部每列的左右邊、鼻頭中心（最下面 25% 的平均）
+    let sx = 0, n = 0; for (let y = Math.round(y1 - h * .25); y <= y1; y++) for (let x = x0; x <= x1; x++) if (isN(x, y)) { sx += x; n++; }
+    const cx = n ? sx / n : (x0 + x1) / 2, wTip = x1 - x0 + 1;
+    if (!s) { const dir = (x1 - cx) > (cx - x0) ? -1 : 1; ell(cx + dir * wTip * .1, y1 - h * .04, Math.max(1.5, wTip * .12), Math.max(1, h * .025), NOS, .8); return true; }   // 正側面
+    // 鼻樑：背光那側（s 那側，光從另一邊上方）一條往內漸淡的陰影，越往下越明顯
+    for (let y = Math.round(y0 + h * .12); y <= y1 - h * .18; y++) { let xe = -1; if (s < 0) { for (let x = x0; x <= x1; x++) if (isN(x, y)) { xe = x; break; } } else { for (let x = x1; x >= x0; x--) if (isN(x, y)) { xe = x; break; } } if (xe < 0) continue;
+      const k = .12 + .3 * (y - y0) / h; for (let j = 0; j < 4; j++) put(xe - s * j, y, SH, k * (1 - j / 4)); }
+    // 鼻頭：圓潤一顆（亮點偏光那側上方）、鼻頭下面一片陰影
+    const ty = y1 - h * .14, rT = wTip * .3;
+    ell(cx + s * rT * .6, ty, rT * .5, h * .07, SH, .3);   // 鼻頭背光那側的圓形陰影
+    ell(cx - s * rT * .2, ty - h * .035, rT * .32, h * .028, HI, .9);   // 鼻頭亮點
+    for (let x = x0 - 1; x <= x1 + 1; x++) { let yb = -1; for (let y = y1; y >= y0; y--) if (isN(x, y)) { yb = y; break; } if (yb < 0) continue; const u = Math.abs(x - cx) / (wTip / 2), k = .75 * (1 - Math.min(1, u) ** 2);
+      for (let dy = 0; dy < 5; dy++) put(x, yb - dy, SH2, k * (1 - dy / 5)); put(x, yb + 1, SH, k * .6); put(x, yb + 2, SH, k * .3); }   // 鼻頭下面的陰影＋落在人中上的影子
+    // 鼻孔：兩個小橢圓（斜面遠的那個小一點）；鼻翼：兩條小弧
+    for (const side of [-1, 1]) { const far = side === -s ? .7 : 1, nx = cx + side * wTip * .2 * far, ny = y1 - h * .035;
+      ell(nx, ny, Math.max(2, wTip * .1 * far), Math.max(1.5, h * .028), NOS, .9);
+      const dark = side === s ? .85 : .55;   // 鼻翼：外側一條弧（從鼻翼上緣彎下來接到鼻孔），背光那側深、裡面淡淡一片陰影
+      for (let i = 0; i <= 16; i++) { const a = i / 16, ax = cx + side * wTip * (.38 - .1 * a), ay = y1 - h * (.15 - .13 * a) - h * .035 * Math.sin(Math.PI * a), kk = dark * Math.sin(Math.PI * Math.min(1, .15 + a * 1.1));
+        put(ax, ay, LN, kk); put(ax - side, ay, LN, kk * .5); if (side === s) for (let j = 1; j < 4; j++) put(ax - side * (j + 1), ay, SH, .25 * (1 - j / 4)); } }
+    return true;
+  }
   // far：斜面遠的那隻被擠到鼻樑旁（寬度 < 近眼 55%）時 'hide'＝被山根擋住不畫（2026-11-05 使用者：側面眼睛應該被山根擋住、不是印上去）、'lash'＝只畫眼線睫毛、'full'＝整隻畫
-  const EyeBig = { over, paint, SHAPE, far: 'full', browOver };   // 第 7 版：臉前面改平，45 度遠眼看得到（使用者：遠眼在鼻樑旁、凹在眼窩裡）→ 整隻畫，被鼻樑擋住的照標記不畫
+  const EyeBig = { over, paint, SHAPE, far: 'full', browOver, noseOver };   // 第 7 版：臉前面改平，45 度遠眼看得到（使用者：遠眼在鼻樑旁、凹在眼窩裡）→ 整隻畫，被鼻樑擋住的照標記不畫
   window.EyeBig = EyeBig;
 })();
