@@ -490,25 +490,35 @@ body.room-home #talk-panel {
   padding-bottom: 0;
   width: 100%;
 }
+/* 2026-11-06 使用者：聊天排版——輸入框在畫面最上方；她說的話移到下方、蓋在人物前面；人物和對話框底部都貼齊畫面底部。
+   對話框固定高度（--talk-box-h），互動鍵列放在對話框正上方（手機拇指按得到）。 */
+body.room-home { --talk-box-h: clamp(112px, 21svh, 168px); --talk-bottom: max(6px, env(safe-area-inset-bottom)); }
+body.room-home #talk-input-row { order: 0; }
 body.room-home #talk-box {
   order: 1;
-  min-height: 4.8em;
-  max-height: min(32svh, 260px);
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--talk-bottom);
+  width: min(calc(100% - 16px), 440px);
+  height: var(--talk-box-h);
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
+  z-index: 4;
 }
-body.room-home #talk-input-row { order: 2; }
 body.room-home #portrait-img {
-  height: min(58svh, 560px);
-  /* 腳貼在互動鍵列上方 */
-  bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
+  height: min(78svh, 720px);
+  bottom: 0;   /* 腳貼畫面底，下半身被對話框蓋住 */
 }
 body.room-home #action-flash-img {
-  bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
+  bottom: 0;
 }
 body.room-home .talk-acts {
-  bottom: 0;
+  bottom: calc(var(--talk-bottom) + var(--talk-box-h) + 2px);
   z-index: 72;
-  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  padding: 6px 10px;
+  background: none;
 }
 /* 聊天時藏主畫面委託輸入，避免跟互動鍵搶底欄 */
 body.room-home.sheet-open #quest-input-row {
