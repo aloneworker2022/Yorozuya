@@ -316,3 +316,9 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
   - room_doll_full.js `build(..., 'sex_doggy', ..., {assUpDoggy:true})`：整個 droom 的 `ass_up`（大腿垂直、臀翹高、腰微凹、胸壓在床上、頭枕手臂）搬到偷看床上、轉成頭朝左；每格照 HER_J：以膝蓋為支點往前晃（`assUpRock` 3.5°）＋整個人往前送 1.6×j。`assUpY`（9）／`assUpKnee` 可調位置。
   - escort_peek.js `droom:'silhouette'`：她和客人都是黑影（她 #0C090E、客人 #14121A），只在兩人交界（前面那個人的邊）描一條暗灰 #463E52 分前後。`droom:true` 是有膚色的版本（留著）。預設還是關。
 - 2026-11-06 使用者看過偷看後背黑影版：人物完全沒有律動（droom 模型還沒完成）→ 先不要用。escort_peek 預設關回去（`opts.droom` 明確給值才用），偷看全部回到原本的樣子；`assUpDoggy`、`lit`、`droomTint`、黑影合成都留著，之後 droom 模型做好（有律動）再打開。
+
+## 2026-11-07 新乳型（第 1 種：dome 饅頭）
+- 計畫 9 種乳型：round／bell／pendulous（現有）＋ dome 饅頭、perky 挺俏、teardrop 水滴、papaya 木瓜、wide 外擴（越大越垂）、close 深溝（越大越垂）；罩杯補 I。新乳型只出遊戲配對表抽得到的罩杯（dome A～E、perky A～F、teardrop C～I、papaya D～I、wide B～I、close C～I）。
+- `dome`：底寬、隆起矮、往前凸得少（橢球 1.05r × 前後 0.6r × 上下 0.92r，中心貼近胸口）；根部錐半徑比前面那面小，不然會撐回圓形。
+- 樣本工具 `render_bust_sample.cjs`（每列一個罩杯、每欄 乳型 × 方向）：`SHAPES=round,dome CUPS=A,B,C,D,E DIRS=front,right K=4 Y0=.25 Y1=.46 OUT=samples/bust_dome.png node render_bust_sample.cjs`。
+- 樣本確認前不出 sheet。

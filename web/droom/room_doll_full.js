@@ -618,6 +618,14 @@
             const q = [pc[0] + pr[0] * nu[0], pc[1] + pr[1] * nu[1], pc[2] + pr[2] * nu[2]];
             nipAt(q, nu, { c: pc, r: pr });
           }
+        } else if (SHP === 'dome' && hang <= .05) {
+          // 2026-11-07 饅頭（dome）：底很寬、隆起矮、往前凸得少，像倒扣的饅頭；A 幾乎只是一片微隆。
+          // 中心貼近胸口（往前推得少）、左右上下鋪開，前面那面較平；乳頭在正前方偏下一點。
+          const c = [s * (3.2 + r * .28) * cs + bx, yl(zB) + 3.1 * cs + r * .1 + by, zB + r * .12];
+          const R = [r * 1.05, r * .6, r * .92];
+          sh.cone(BODY, root, c, r * .45, r * .5);   // 根部接胸口；半徑要比前面那面小，不然會把饅頭撐成圓的
+          sh.ell(BODY, c, R);
+          nipAt([c[0], c[1] + R[1] * .97, c[2] - r * .06], [0, 1, 0], { c, r: R });
         } else if (SHP === 'round' && hang <= .05) {
           // 圓形：上下一樣飽滿的球
           sh.cone(BODY, root, [cx, cy, zB + r * .15], r * .55, r * .8);
