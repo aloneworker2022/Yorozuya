@@ -8,7 +8,7 @@ function pack(g) {
   return { hit: g.hit, tt, code };
 }
 const xfer = (G) => [G.hit.buffer, G.tt.buffer, G.code.buffer];
-importScripts('/droom/room_doll_full.js?v=15');
+importScripts('/droom/room_doll_full.js?v=17');
 const D = self.RoomDoll;
 const GIRTH = 1.1;   // room_doll_full.js 的 GIRTH（左右拉寬）
 let look = null, K = 2, cam = null, box = null;
@@ -26,9 +26,10 @@ function frameCam(maxPull) {
   for (const p of sh.prims) if (p.kw && p.k === 0) low = Math.min(low, p.c[2] - p.r[2]);
   const pull = maxPull * r;
   const xr = Math.max(nip[0] + r * 1.5 + pull * .8, 11.5);
-  const Wx = 2 * xr + 2, zTop = P.S + .8, zBot = low - pull - 1.5, Hz = zTop - zBot;
-  // 2026-11-07 使用者：要 pix 風格——寬 88（×2＝176 像素），放大顯示看得到格子
-  const w = 88, dist = 220, f = w * dist / Wx, h = Math.round(Hz * f / (dist * GIRTH));
+  const Wx = 2 * xr + 2, zTop = P.S + 5.5, zBot = low - pull - 5,   // 參考圖：看得到脖子、鎖骨，往下到肋骨
+    Hz = zTop - zBot;
+  // 2026-11-07 使用者：要 pix 風格——寬 56（×2＝112 像素，照使用者給的參考圖：軀幹約 90 格），放大顯示看得到格子
+  const w = 56, dist = 220, f = w * dist / Wx, h = Math.round(Hz * f / (dist * GIRTH));
   return { dist, eyeZ: (zTop + zBot) / 2, pitch: 0, f, w, h, cx: w / 2, cy: h / 2 };
 }
 self.onmessage = (e) => {

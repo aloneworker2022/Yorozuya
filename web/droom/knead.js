@@ -21,7 +21,7 @@
   const cv = $('kn_cv'), off = document.createElement('canvas'), octx = off.getContext('2d');
   let ctx = cv.getContext('2d');
   const hcv = document.createElement('canvas'), hctx = hcv.getContext('2d');
-  const worker = new Worker('/droom/knead_worker.js?v=13');
+  const worker = new Worker('/droom/knead_worker.js?v=16');
   let gen = 0, base = null, W = 0, H = 0, cupBounce = .8, soft = 1, cam = null;
   const cache = new Map();   // key → { px, knead }
   let queue = [], busy = false, want = keyOf([0, 0, 0], 0), shown = null;
@@ -84,51 +84,54 @@
   for (const id of ['kn_s', 'kn_c', 'kn_a']) $(id).onchange = setup;
 
   // ── 上色：肉色皮膚＋光（從深度算法線）＋陰影（附近有東西比較靠前＝被遮）＋外輪廓 ──
-  // 2026-11-07 第 3 版（使用者：要 pix 風格、加一點陰影就好，不要變成光滑 3D）：每種顏色只有 4 階（亮／本色／陰影／深陰影）＋深色外框
-  const TONES = {
-    skin: [[255, 228, 208], [246, 202, 178], [222, 164, 144], [184, 122, 112]],
-    areola: [[232, 156, 156], [218, 136, 138], [192, 110, 116], [160, 86, 96]],
-    nipple: [[222, 132, 140], [204, 114, 124], [178, 92, 106], [148, 72, 88]],
+  // 2026-11-07 第 6 版（照使用者給的像素參考圖）：
+  //   乳房大多是一片平的淺桃色，只有外下緣稍暗；深紅棕外框只描外輪廓和乳房下緣／外側（上半跟胸口融在一起不描）；
+  //   乳房下面的身體有一塊平的深色投影（主要的陰影）；乳頭附近、肩膀有小白色亮點（濕亮）；乳暈外圈深、裡面淺、乳頭深；深色背景。
+  const C = {
+    bg: [29, 20, 34], out: [112, 38, 40],
+    hi: [255, 240, 232], base: [240, 196, 178], shade: [226, 170, 152], deep: [196, 120, 106],
+    arRing: [196, 112, 110], ar: [226, 152, 144], arShade: [206, 130, 124], nip: [178, 88, 92], nipDeep: [146, 64, 70],
   };
-  const BG = [236, 232, 226], EDGE = [120, 70, 66];
-  const TONE_AT = [1.04, .84, .66];   // 亮度 ≥ 這些 → 第 0／1／2 階，其餘第 3 階
-  const LIGHT = (() => { const v = [-.35, .5, .79], l = Math.hypot(...v); return v.map(x => x / l); })();   // 左上前方
+  const LIGHT = (() => { const v = [-.25, .35, .9], l = Math.hypot(...v); return v.map(x => x / l); })();   // 幾乎正面、略從左上
+  const HV = (() => { const v = [-.42, .5, 1.75], l = Math.hypot(...v); return v.map(x => x / l); })();      // 亮點的半向量（左上）
   function shadeSkin(G) {
     const { hit, tt, code } = G, n = W * H, out = new Uint8ClampedArray(n * 4);
     const ppy = cam.f / (cam.dist * GIRTH) * K, ppx = ppy * GIRTH, dW = 2 / GIRTH;   // 每單位幾像素（直／橫）；tt → 世界深度
     const D = (i) => tt[i] * dW;
-    const JUMP = 1.2;   // 深度差超過＝不同表面（輪廓）
-    const R = Math.max(3, Math.round(ppy * 1.6));   // 陰影取樣半徑
-    // 只看上方（光從上面來）：乳房下面的身體會暗，乳房上面的胸口不會（使用者：上胸那條線很突兀）
-    const AO_DIRS = [...Array(7)].map((_, i) => { const a = Math.PI + i * Math.PI / 6; return [Math.cos(a), Math.sin(a)]; });
+    const JUMP = 1.2;   // 深度差超過＝不同表面
+    const put = (o, c) => { out[o] = c[0]; out[o + 1] = c[1]; out[o + 2] = c[2]; out[o + 3] = 255; };
+    const RS = Math.max(3, Math.round(ppy * 2.2));   // 投影往上找多遠
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x, o = i * 4;
-      if (!hit[i]) { out[o] = BG[0]; out[o + 1] = BG[1]; out[o + 2] = BG[2]; out[o + 3] = 255; continue; }
+      if (!hit[i]) { put(o, C.bg); continue; }
       const c = code[i], d0 = D(i);
-      const g = (j1, j2, ok1, ok2) => {   // 單邊差分挑不跨輪廓的那邊
+      // 外框：外輪廓；乳房（含乳暈）下緣／兩側壓在身體上的那條（往上那格不算＝上半不描）
+      let edge = false;
+      for (const j of [i - 1, i + 1, i - W, i + W]) if (j < 0 || j >= n || !hit[j]) { edge = true; break; }
+      if (!edge && (c === 1 || c === 2)) for (const j of [i - 1, i + 1, i + W]) if (code[j] === 0 && d0 - D(j) > JUMP * 1.5) { edge = true; break; }
+      if (!edge && c === 1) for (const j of [i - 1, i + 1]) if ((code[j] === 1 || code[j] === 2) && d0 - D(j) > JUMP) { edge = true; break; }   // 乳溝：兩顆乳房之間
+      if (edge) { put(o, C.out); continue; }
+      // 法線（單邊差分挑不跨輪廓的那邊）
+      const g = (j1, j2, ok1, ok2) => {
         const a = ok1 && hit[j1] && Math.abs(D(j1) - d0) < JUMP ? d0 - D(j1) : null, b = ok2 && hit[j2] && Math.abs(D(j2) - d0) < JUMP ? D(j2) - d0 : null;
         return a != null && b != null ? (a + b) / 2 : a != null ? a : b != null ? b : 0;
       };
-      const gx = g(i - 1, i + 1, x > 0, x < W - 1) * ppx, gy = g(i - W, i + W, y > 0, y < H - 1) * ppy;   // 深度（往鏡頭）對世界距離的斜率
+      const gx = g(i - 1, i + 1, x > 0, x < W - 1) * ppx, gy = g(i - W, i + W, y > 0, y < H - 1) * ppy;
       let nx = -gx, ny = gy, nz = 1; const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
       const dif = Math.max(0, nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]);
-      let occ = 0;   // 附近比較靠前的東西＝陰影（乳房下緣、手指掐進去的凹）
-      for (const [ax, ay] of AO_DIRS) for (const rr of [R * .35, R]) {
-        const sx = Math.round(x + ax * rr), sy = Math.round(y + ay * rr); if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue;
-        const j = sy * W + sx; if (!hit[j]) continue;
-        const dz = D(j) - d0; if (dz > .15) occ += Math.min(1, (dz - .15) / (rr / ppy * .9 + .3));
+      const spec = nx * HV[0] + ny * HV[1] + nz * HV[2];
+      // 投影：正上方（含左右斜上）有比自己前面很多的東西（乳房）＝身體上那塊深色
+      let cast = false;   // 正上方幾格內是乳房＝在乳房下面（參考圖那塊深色），乳溝下方中間那條不算
+      if (c === 0) for (let k = 1; k <= RS && !cast; k++) { const sy = y - k; if (sy < 0) break; const j = sy * W + x; if (code[j] === 1 || code[j] === 2) { cast = true; break; } }
+      if (cast && Math.abs(x - W / 2) < RS * .7) cast = false;   // 乳溝正下方中間那條不暗（參考圖）
+      if (c === 3) { put(o, spec > .985 ? C.hi : dif < .7 ? C.nipDeep : C.nip); continue; }
+      if (c === 2) {
+        let ring = false; for (const j of [i - 1, i + 1, i - W, i + W]) if (code[j] === 1 || code[j] === 0) { ring = true; break; }
+        put(o, spec > .992 ? C.hi : ring ? C.arRing : dif < .72 ? C.arShade : C.ar); continue;
       }
-      const ao = 1 - .55 * Math.min(1, occ / (AO_DIRS.length * 2) * 2.2);
-      let edge = false;   // 外輪廓：旁邊是空的，或旁邊比自己後面很多（乳房蓋在身體上的那條線）
-      // 2026-11-07 使用者：上胸那條折線太突兀 → 深度跳的內線只畫在乳房下緣和兩側（往上那格不算），上半滑下來的地方不描線
-      for (const j of [i - 1, i + 1, i - W, i + W]) if (j < 0 || j >= n || !hit[j]) { edge = true; break; }
-      if (!edge && (c === 1 || c === 2)) for (const j of [i - 1, i + 1, i + W]) if (code[j] === 0 && D(i) - D(j) > JUMP * 1.5) { edge = true; break; }
-      const pal = c === 3 ? TONES.nipple : c === 2 ? TONES.areola : TONES.skin;
-      const lum = (.5 + .58 * dif) * ao;
-      let tone = lum >= TONE_AT[0] ? 0 : lum >= TONE_AT[1] ? 1 : lum >= TONE_AT[2] ? 2 : 3;
-      // 模型的輔助線（胸骨中線、鎖骨等）不畫：使用者要乾淨的胸口
-      const col = edge ? EDGE : pal[tone];
-      out[o] = col[0]; out[o + 1] = col[1]; out[o + 2] = col[2]; out[o + 3] = 255;
+      if (cast) { put(o, C.deep); continue; }
+      if (spec > (c === 1 ? .996 : .999)) { put(o, C.hi); continue; }   // 小白亮點：每顆乳房一小塊、肩膀偶爾一點
+      put(o, dif >= .8 ? C.base : dif >= .5 ? C.shade : C.deep);
     }
     return out;
   }

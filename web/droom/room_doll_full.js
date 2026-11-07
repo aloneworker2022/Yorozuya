@@ -108,7 +108,7 @@
       const prims = [];
       // xf：整組零件的剛體變換（world = R·local + t），躺／趴／側睡用；floor：把地板以下切掉。
       const sh = { prims, off: [0, 0, 0], xf: null, floor: false };
-      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!(sh.bust || sh.buttEdge); p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; p.part = sh.bust || sh.nip ? 'breast' : sh.cloth ? 'over' : (sh.part || 'torso'); prims.push(p); };   // 2026-11-01 部位：head／chest／waist／hips／torso／breast／armL／armR／legs（拆圖層用；2026-11-03 軀幹再拆三塊；衣服／下身／臉部標記等 cloth 零件＝over）
+      const push = (p) => { p.off = sh.off.slice(); p.xf = sh.xf; p.floor = sh.floor; p.bust = !!(sh.bust || sh.buttEdge); p.nip = sh.nip || 0; p.cloth = sh.cloth || 0; p.flat = !!sh.flat; p.limb = sh.limb || 0; p.bside = sh.bside || 0; p.carve = sh.carve || 0; p.crease = sh.crease || 0; p.part = sh.bust || sh.nip ? 'breast' : sh.cloth ? 'over' : (sh.part || 'torso'); prims.push(p); };   // 2026-11-01 部位：head／chest／waist／hips／torso／breast／armL／armR／legs（拆圖層用；2026-11-03 軀幹再拆三塊；衣服／下身／臉部標記等 cloth 零件＝over）
       sh.ell = (mat, c, r, clip) => push({ k: 0, mat, c, r, clip: clip || null,
         bc: c, br: Math.max(r[0], r[1], r[2]) });
       sh.cone = (mat, a, b, ra, rb, clip) => {
@@ -175,6 +175,8 @@
       }
       return d;
     }
+    // 平滑乳房：靠中線（乳溝）接得比較緊，兩顆內側才有摺痕、不會被胸口填成一團（使用者參考圖）
+    function smKx(SM, X) { const u = Math.max(0, Math.min(1, (Math.abs(X) - SM.r * .25) / (SM.r * .9))); return .3 + .7 * u * u * (3 - 2 * u); }
     function smin(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * .25; }
     // 揉乳房的權重：從根部（0）沿著根部→乳頭方向到乳頭（1），平滑往上
     function kneadW(kw, x, y, z) {
@@ -633,9 +635,9 @@
       const SHP = doll.shape || 'round', r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
       // 2026-11-07 平滑乳房（使用者附圖：從胸口很滑順地下來、下半飽滿、下緣有摺痕）：上半跟胸口平滑接（k 大）、下緣接得很緊（摺痕）
-      if (doll.smoothBust) sh.smoothBust = { z0: zB - r * .15, z1: zB + r * .85, k: r * 1.1 + .6, kb: r * .95 + .4, kt: 1.6 };
+      if (doll.smoothBust) sh.smoothBust = { z0: zB - r * .15, z1: zB + r * .85, k: r * 1.1 + .6, kb: r * .95 + .4, kt: 1.6, r };
       sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
-      for (const s of doll._noBust ? [] : [-1, 1]) {   // _noBust：乳房另外畫（趴跪翹臀：擺好姿勢後在世界座標往下垂、壓在地上）
+      for (const s of doll._noBust ? [] : [-1, 1]) { sh.bside = s;   // _noBust：乳房另外畫（趴跪翹臀：擺好姿勢後在世界座標往下垂、壓在地上）
         const kn0 = sh.prims.length, ks0 = (sh.areolaStamps || []).length;   // 2026-11-07 揉乳房：記下這一顆從哪個零件開始
         const root = [s * (2.6 + r * .22) * cs + bx * .3, yl(zA) + 2.6 * cs + r * .12 + by * .3, zA + bz * .3];
         const cx = s * (3.2 + r * .3) * cs + bx, cy = yl(zB) + 3.3 * cs + r * .5 + by;
@@ -719,7 +721,7 @@
         }
         if (doll.knead && doll.knead.side === s) kneadTag(sh, doll.knead, s, root, r, kn0, ks0, [cx, cy + r, zB]);
       }
-      sh.bust = false;
+      sh.bust = false; sh.bside = 0;
       return { zc, S, C, T, zW, zB, cupr: r, yl };
     }
     // 2026-10-30 pt28u：第一套衣服「餐巾白布」——一塊薄白布從脖子／鎖骨垂下，順著胸型繃過乳尖再直直落下，蓋住胸部。
@@ -2260,7 +2262,7 @@
           for (let it = 0; it < 220 && t >= tEnd; it++) {
             const X = camRay ? RA[0] + t * dX : (sx * c - 2 * t * s) / gw, Y = camRay ? RA[1] + t * dY : (sx * s + 2 * t * c) / gw, Z = camRay ? RA[2] + t * dZ : -sy;
             dist[0] = dist[1] = dist[2] = 1e3;
-            let dB = 1e3, dT = 1e3, lfT = 0;   // 平滑乳房（SM）：乳房、身體各自的距離
+            let dB = 1e3, dBL = 1e3, dT = 1e3, lfT = 0;   // 平滑乳房（SM）：乳房、身體各自的距離
             let bb = 0, lf = 0, ck = 0, dCl = 1e3, bCl = 0, sk = 0;   // dCl／bCl：最近的臉部標記零件（眼窩不挖它們）
             for (let q = 0, qn = CULL ? nc : np; q < qn; q++) {
               const i = CULL ? cand[q] : q;
@@ -2268,7 +2270,7 @@
               const m = pm[i], lb = hypot3(X - bcx[i], Y - bcy[i], Z - bcz[i]) - brr[i];
               if (hasSock && m === 0 && pb[i] >= 4 && lb < dCl) { const d0 = primDist(prims[i], X, Y, Z); if (d0 < dCl) { dCl = d0; bCl = pb[i]; } }   // 臉部標記另外算（在頭裡面時會被下一行跳過）
               if (SM && m === 0 && pb[i] <= 1) {   // 平滑乳房：乳房（pb 1，不含乳頭）彼此平滑接；身體（pb 0）另外記，迴圈後兩者再平滑接
-                if (pb[i] === 1) { if (lb >= dB + SM.kb) continue; dB = smin(dB, primDist(prims[i], X, Y, Z), SM.kb); }
+                if (pb[i] === 1) { if (prims[i].bside < 0) { if (lb >= dBL + SM.kb) continue; dBL = smin(dBL, primDist(prims[i], X, Y, Z), SM.kb); } else { if (lb >= dB + SM.kb) continue; dB = smin(dB, primDist(prims[i], X, Y, Z), SM.kb); } }   // 左右兩顆各自平滑、彼此硬接（才有乳溝，不會黏成一團）
                 else { if (lb >= dT + SM.kt) continue; const d = primDist(prims[i], X, Y, Z); if (d < dT) lfT = prims[i].limb; dT = prims[i].limb ? Math.min(dT, d) : smin(dT, d, SM.kt); }   // 軀幹零件之間也磨圓（打光才不會一塊一塊）
                 continue;
               }
@@ -2276,8 +2278,9 @@
               const d = primDist(prims[i], X, Y, Z);
               if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = pb[i]; lf = prims[i].limb; } else if (m === 2) ck = prims[i].crease; }
             }
+            if (SM) dB = Math.min(dB, dBL);
             if (SM) {   // 2026-11-07 乳房平滑接上身體：上半（z 高）接得很滑、往下越接越緊，乳房下緣保留摺痕
-              const w = Math.max(0, Math.min(1, (Z - SM.z0) / (SM.z1 - SM.z0))), k = SM.k * w * w * (3 - 2 * w) + .02;
+              const w = Math.max(0, Math.min(1, (Z - SM.z0) / (SM.z1 - SM.z0))), k = SM.k * w * w * (3 - 2 * w) * smKx(SM, X) + .02;
               const dS = smin(dT, dB, k);
               if (dS < dist[0]) { dist[0] = dS; bb = dB < dT + k * .3 ? 1 : 0; lf = bb ? 0 : lfT; }
             }
@@ -2293,10 +2296,11 @@
                 const iL = 1 / Math.sqrt(dd);
                 for (let r2 = 0; r2 < 4; r2++) {
                   const X2 = camRay ? RA[0] + t * dX : (sx * c - 2 * t * s) / gw, Y2 = camRay ? RA[1] + t * dY : (sx * s + 2 * t * c) / gw, Z2 = camRay ? RA[2] + t * dZ : -sy;
-                  let dm = 1e3, rB = 1e3, rT = 1e3;
+                  let dm = 1e3, rB = 1e3, rBL = 1e3, rT = 1e3;
                   for (let q = 0, qn = CULL ? nc : np; q < qn; q++) { const i = CULL ? cand[q] : q; if (prims[i].carve || pm[i] !== 0) continue; const v = primDist(prims[i], X2, Y2, Z2);
-                    if (SM && pb[i] === 1) rB = smin(rB, v, SM.kb); else if (SM && pb[i] === 0) rT = prims[i].limb ? Math.min(rT, v) : smin(rT, v, SM.kt); else if (v < dm) dm = v; }
-                  if (SM) { const w = Math.max(0, Math.min(1, (Z2 - SM.z0) / (SM.z1 - SM.z0))); dm = Math.min(dm, smin(rT, rB, SM.k * w * w * (3 - 2 * w) + .02)); }
+                    if (SM && pb[i] === 1) { if (prims[i].bside < 0) rBL = smin(rBL, v, SM.kb); else rB = smin(rB, v, SM.kb); } else if (SM && pb[i] === 0) rT = prims[i].limb ? Math.min(rT, v) : smin(rT, v, SM.kt); else if (v < dm) dm = v; }
+                  if (SM) rB = Math.min(rB, rBL);
+                  if (SM) { const w = Math.max(0, Math.min(1, (Z2 - SM.z0) / (SM.z1 - SM.z0))); dm = Math.min(dm, smin(rT, rB, SM.k * w * w * (3 - 2 * w) * smKx(SM, X2) + .02)); }
                   if (Math.abs(dm) < 1e-4) break;
                   t -= dm * iL;
                 }
