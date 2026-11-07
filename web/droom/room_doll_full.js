@@ -270,20 +270,39 @@
       const st = sh.areolaStamps || [], nip = st.length > ks0 ? st[st.length - 1].q : front0;
       const fv = [nip[0] - root[0], nip[1] - root[1], nip[2] - root[2]], L = Math.hypot(...fv) || 1;
       const o = (kn.o || [0, 0, 0]).map(v => v * r), pinch = Math.max(0, Math.min(1, kn.pinch || 0));
-      const fingers = [];
+      // 2026-11-07 第 3 版（使用者：要像人的手掌）：手是真人大小（不跟罩杯放大；1 單位≈1.46 公分：手寬 8 公分≈5.5、手指 7 公分≈4.8、手掌 10 公分≈6.8），
+      //   從右上方伸過來：手背蓋在乳房上外側，4 指併攏斜斜往內下（乳溝那側）壓下去，指尖掐進肉；拇指在下外側托著。
       const surfY = (x, z) => { for (let k = 0; k < 200; k++) { const y = nip[1] + 3 - k * .08; if (bodyDist(sh, x, y, z) < 0) return y; } return nip[1] - r * .5; };
-      const rho = r * .62 + .5;
-      for (const [deg, thumb] of [[40, 0], [72, 0], [104, 0], [136, 0], [-120, 1]]) {   // 角度：0°＝往外（s 那側）、90°＝往上
-        const a = deg * Math.PI / 180, x = nip[0] + s * Math.cos(a) * rho, z = nip[2] + Math.sin(a) * rho;
-        const tr = (thumb ? .3 : .24) * r + .35;
-        fingers.push([x, surfY(x, z) - tr * .2, z, (thumb ? .38 : .32) * r + .3, tr * tr, thumb]);
+      const U = [-.5 * s, -.866], V = [.866 * s, -.5];   // U＝手指方向（x, z）：往內下；V＝橫向（食指 → 小指）
+      const tc = [nip[0] - s * (.35 * r + .6), nip[2] - .1 * r];   // 4 根指尖的中心：乳頭內側一點
+      const SP = 1.35, FL = [3.8, 4.6, 4.9, 4.4], FR = .7;   // 指距、小指～食指長（i＝0 在上內側＝小指，i＝3 靠拇指＝食指）、指尖半徑
+      const fingers = [], hand = { tips: [], knuck: [] };
+      for (let i = 0; i < 4; i++) {
+        const off = (i - 1.5) * SP, ext = [-.4, .2, .45, 0][i];   // 中指最前、小指最後
+        const tx = tc[0] + V[0] * off + U[0] * ext, tz = tc[1] + V[1] * off + U[1] * ext;
+        const kx = tx - U[0] * FL[i], kz = tz - U[1] * FL[i];
+        fingers.push([tx, surfY(tx, tz) - .15, tz, .45 + .08 * r, FR * FR * 1.4, 0]);
+        hand.tips.push([tx, 0, tz]); hand.knuck.push([kx, 0, kz]);
       }
+      const th = [nip[0] + s * (.35 * r + .4), nip[2] - .72 * r - .2];   // 拇指尖：乳房下外側
+      fingers.push([th[0], surfY(th[0], th[1]) - .15, th[1], .5 + .08 * r, FR * FR * 1.8, 1]);
+      const kc = hand.knuck.reduce((a, q) => [a[0] + q[0] / 4, a[1] + q[2] / 4], [0, 0]);
+      hand.wrist = [kc[0] - U[0] * 6.8, 0, kc[1] - U[1] * 6.8];
+      const kI = hand.knuck[3];   // 拇指根：食指指根往手腕退 2.8、再往拇指那側 1.4（不要從手腕長出來）
+      hand.thumbBase = [kI[0] - U[0] * 2.8 + V[0] * 1.4, 0, kI[2] - U[1] * 2.8 + V[1] * 1.4];
+      hand.thumbTip = [th[0], 0, th[1]];
+      for (const k of ['tips', 'knuck']) hand[k] = hand[k].map(q => [q[0], nip[1] + 1, q[2]]);
+      for (const k of ['wrist', 'thumbBase', 'thumbTip']) hand[k] = [hand[k][0], nip[1] + 1, hand[k][2]];
       const kw = { root, f: fv.map(v => v / L), L, o, pinch, fingers };
       const grow = Math.hypot(...o) + pinch * r * .4 + .5;
       for (let i = kn0; i < sh.prims.length; i++) { const p = sh.prims[i]; p.kw = kw; p.br += grow; }
       const warp = (q) => { const w = kneadW(kw, q[0], q[1], q[2]); return [q[0] + o[0] * w, q[1] + o[1] * w, q[2] + o[2] * w]; };
       for (let j = ks0; j < st.length; j++) { st[j].q = warp(st[j].q); st[j].kn = true; }
-      sh.knead = { side: s, r, nip: warp(nip), root, fingers: fingers.map(f => ({ q: warp(f), thumb: f[5] })) };
+      // 整隻手跟著指尖被拉到的位置平移（手抓著肉一起走）
+      const tw = warp(fingers[1]), sh0 = [tw[0] - fingers[1][0], tw[1] - fingers[1][1], tw[2] - fingers[1][2]];
+      const mv = (q) => [q[0] + sh0[0], q[1] + sh0[1], q[2] + sh0[2]];
+      sh.knead = { side: s, r, nip: warp(nip), root, fingers: fingers.map(f => ({ q: warp(f), thumb: f[5] })),
+        hand: { tips: fingers.slice(0, 4).map(f => warp(f)), knuck: hand.knuck.map(mv), wrist: mv(hand.wrist), thumbBase: mv(hand.thumbBase), thumbTip: warp(fingers[4]), fingerR: FR } };
     }
     function bodyDist(sh, x, y, z, sock = false) {
       let best = 1e3, hole = 1e3;
@@ -2190,7 +2209,9 @@
       }
       const kneadOut = () => {   // 揉乳房：乳頭、指尖、乳房根部的畫面像素（畫黑手用；只有透視攝影機才給）
         const kn = sh.knead; if (!kn || !camProj) return null;
-        return { side: kn.side, r: kn.r, pxPerUnit: camPx * K, nip: camProj(kn.nip), root: camProj(kn.root), fingers: kn.fingers.map(f => ({ thumb: f.thumb, p: camProj(f.q) })) };
+        const h = kn.hand;
+        return { side: kn.side, r: kn.r, pxPerUnit: camPx * K, nip: camProj(kn.nip), root: camProj(kn.root), fingers: kn.fingers.map(f => ({ thumb: f.thumb, p: camProj(f.q) })),
+          hand: h && { tips: h.tips.map(camProj), knuck: h.knuck.map(camProj), wrist: camProj(h.wrist), thumbBase: camProj(h.thumbBase), thumbTip: camProj(h.thumbTip), fingerR: h.fingerR } };
       };
       const RA = [0, 0, 0], RB = [0, 0, 0];
       const camAt = (px, py, t) => { camRay(px, py, RA, RB); return [RA[0] + t * RB[0], RA[1] + t * RB[1], RA[2] + t * RB[2]]; };
@@ -2203,6 +2224,7 @@
       const carveIdx = []; for (let i = 0; i < np; i++) if (prims[i].carve) carveIdx.push(i);
       const hasSock = carveIdx.some(i => prims[i].carve === 2);   // 2026-11-05 有眼窩：臉部標記不被眼窩挖掉
       const CULL = opts.cull !== false, CULL_M = 1.5, cand = new Int32Array(np);   // 2026-11-03 光線先挑零件（opts.cull＝false 關掉）   // 2026-10-31：挖洞零件（從身體減掉，私處打開用）
+      const REFINE = !!opts.refine;
       const BOX = opts.box || null;   // 2026-11-07 揉乳房：只算這個框（像素 [x0, y0, x1, y1]），框外留空
       for (let py = BOX ? Math.max(0, BOX[1]) : 0; py < (G0 || !np ? 0 : BOX ? Math.min(height, BOX[3]) : height); py++) {
         const sy = (py + .5) / K - ay;
@@ -2251,6 +2273,15 @@
             }
             const d = Math.min(dist[0], dist[1], dist[2]);
             if (d < .05) {
+              if (REFINE && dist[0] <= d + 1e-9) {   // 2026-11-07 揉乳房要打光：命中後沿光線用距離把 t 修到表面上（不修的話深度誤差 ~0.05，打光會一圈一圈）
+                const iL = 1 / Math.sqrt(dd);
+                for (let r2 = 0; r2 < 4; r2++) {
+                  const X2 = camRay ? RA[0] + t * dX : (sx * c - 2 * t * s) / gw, Y2 = camRay ? RA[1] + t * dY : (sx * s + 2 * t * c) / gw, Z2 = camRay ? RA[2] + t * dZ : -sy;
+                  let dm = 1e3; for (let q = 0, qn = CULL ? nc : np; q < qn; q++) { const i = CULL ? cand[q] : q; if (prims[i].carve || pm[i] !== 0) continue; const v = primDist(prims[i], X2, Y2, Z2); if (v < dm) dm = v; }
+                  if (Math.abs(dm) < 1e-4) break;
+                  t -= dm * iL;
+                }
+              }
               hit[idx] = 1; tt[idx] = t;
               let mm = dist[1] < dist[0] + .15 ? 2 : 1;
               if (dist[2] < .05 && dist[1] > .05) mm = 3;
