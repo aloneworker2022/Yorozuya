@@ -175,6 +175,7 @@
       }
       return d;
     }
+    function smin(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * .25; }
     // 揉乳房的權重：從根部（0）沿著根部→乳頭方向到乳頭（1），平滑往上
     function kneadW(kw, x, y, z) {
       const t = ((x - kw.root[0]) * kw.f[0] + (y - kw.root[1]) * kw.f[1] + (z - kw.root[2]) * kw.f[2]) / kw.L;
@@ -631,6 +632,8 @@
       };
       const SHP = doll.shape || 'round', r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
+      // 2026-11-07 平滑乳房（使用者附圖：從胸口很滑順地下來、下半飽滿、下緣有摺痕）：上半跟胸口平滑接（k 大）、下緣接得很緊（摺痕）
+      if (doll.smoothBust) sh.smoothBust = { z0: zB - r * .15, z1: zB + r * .85, k: r * 1.1 + .6, kb: r * .55 + .3, kt: 1.6 };
       sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
       for (const s of doll._noBust ? [] : [-1, 1]) {   // _noBust：乳房另外畫（趴跪翹臀：擺好姿勢後在世界座標往下垂、壓在地上）
         const kn0 = sh.prims.length, ks0 = (sh.areolaStamps || []).length;   // 2026-11-07 揉乳房：記下這一顆從哪個零件開始
@@ -2163,7 +2166,7 @@
       if (opts.parts) prims = prims.filter(p => p.carve || opts.parts.includes(p.part));   // 2026-11-01 拆圖層：只算某些部位
       // 2026-11-07 揉乳房：kneadOnly＝只畫被揉的那一顆（零件 kw、乳暈 kn）；kneadSkip＝其他全部（底圖畫一次）
       let stamps = sh.areolaStamps || [];
-      if (opts.kneadOnly) { prims = prims.filter(p => p.kw); stamps = stamps.filter(st => st.kn); }
+      if (opts.kneadOnly) { prims = prims.filter(p => p.kw || (sh.smoothBust && p.mat === 0 && !p.bust && !p.nip && !p.cloth)); stamps = stamps.filter(st => st.kn); }   // 平滑乳房要連身體一起算（才接得起來）
       else if (opts.kneadSkip) { prims = prims.filter(p => !p.kw); stamps = stamps.filter(st => !st.kn); }
       const np = prims.length;   // onlyMat：只畫某材質（頭髮圖層用）
       // world-space bounding spheres (primitive offsets folded in)
@@ -2225,6 +2228,7 @@
       const hasSock = carveIdx.some(i => prims[i].carve === 2);   // 2026-11-05 有眼窩：臉部標記不被眼窩挖掉
       const CULL = opts.cull !== false, CULL_M = 1.5, cand = new Int32Array(np);   // 2026-11-03 光線先挑零件（opts.cull＝false 關掉）   // 2026-10-31：挖洞零件（從身體減掉，私處打開用）
       const REFINE = !!opts.refine;
+      const SM = sh.smoothBust || null;   // 2026-11-07：doll.smoothBust＝乳房平滑接上身體（使用者：不是圓筒接一顆球）
       const BOX = opts.box || null;   // 2026-11-07 揉乳房：只算這個框（像素 [x0, y0, x1, y1]），框外留空
       for (let py = BOX ? Math.max(0, BOX[1]) : 0; py < (G0 || !np ? 0 : BOX ? Math.min(height, BOX[3]) : height); py++) {
         const sy = (py + .5) / K - ay;
@@ -2255,15 +2259,26 @@
           for (let it = 0; it < 220 && t >= tEnd; it++) {
             const X = camRay ? RA[0] + t * dX : (sx * c - 2 * t * s) / gw, Y = camRay ? RA[1] + t * dY : (sx * s + 2 * t * c) / gw, Z = camRay ? RA[2] + t * dZ : -sy;
             dist[0] = dist[1] = dist[2] = 1e3;
+            let dB = 1e3, dT = 1e3, lfT = 0;   // 平滑乳房（SM）：乳房、身體各自的距離
             let bb = 0, lf = 0, ck = 0, dCl = 1e3, bCl = 0, sk = 0;   // dCl／bCl：最近的臉部標記零件（眼窩不挖它們）
             for (let q = 0, qn = CULL ? nc : np; q < qn; q++) {
               const i = CULL ? cand[q] : q;
               if (prims[i].carve) continue;
               const m = pm[i], lb = hypot3(X - bcx[i], Y - bcy[i], Z - bcz[i]) - brr[i];
               if (hasSock && m === 0 && pb[i] >= 4 && lb < dCl) { const d0 = primDist(prims[i], X, Y, Z); if (d0 < dCl) { dCl = d0; bCl = pb[i]; } }   // 臉部標記另外算（在頭裡面時會被下一行跳過）
+              if (SM && m === 0 && pb[i] <= 1) {   // 平滑乳房：乳房（pb 1，不含乳頭）彼此平滑接；身體（pb 0）另外記，迴圈後兩者再平滑接
+                if (pb[i] === 1) { if (lb >= dB + SM.kb) continue; dB = smin(dB, primDist(prims[i], X, Y, Z), SM.kb); }
+                else { if (lb >= dT + SM.kt) continue; const d = primDist(prims[i], X, Y, Z); if (d < dT) lfT = prims[i].limb; dT = prims[i].limb ? Math.min(dT, d) : smin(dT, d, SM.kt); }   // 軀幹零件之間也磨圓（打光才不會一塊一塊）
+                continue;
+              }
               if (lb >= dist[m]) continue;
               const d = primDist(prims[i], X, Y, Z);
               if (d < dist[m]) { dist[m] = d; if (m === 0) { bb = pb[i]; lf = prims[i].limb; } else if (m === 2) ck = prims[i].crease; }
+            }
+            if (SM) {   // 2026-11-07 乳房平滑接上身體：上半（z 高）接得很滑、往下越接越緊，乳房下緣保留摺痕
+              const w = Math.max(0, Math.min(1, (Z - SM.z0) / (SM.z1 - SM.z0))), k = SM.k * w * w * (3 - 2 * w) + .02;
+              const dS = smin(dT, dB, k);
+              if (dS < dist[0]) { dist[0] = dS; bb = dB < dT + k * .3 ? 1 : 0; lf = bb ? 0 : lfT; }
             }
             if (carveIdx.length) {   // 身體 − 洞：洞壁標紅色內裡（cb 13），比原表面深 0.7 以上標深紅小口（cb 14）
               let cd = 1e3, ct = 1; for (const i of carveIdx) { const v = primDist(prims[i], X, Y, Z); if (v < cd) { cd = v; ct = prims[i].carve; } }
@@ -2277,7 +2292,10 @@
                 const iL = 1 / Math.sqrt(dd);
                 for (let r2 = 0; r2 < 4; r2++) {
                   const X2 = camRay ? RA[0] + t * dX : (sx * c - 2 * t * s) / gw, Y2 = camRay ? RA[1] + t * dY : (sx * s + 2 * t * c) / gw, Z2 = camRay ? RA[2] + t * dZ : -sy;
-                  let dm = 1e3; for (let q = 0, qn = CULL ? nc : np; q < qn; q++) { const i = CULL ? cand[q] : q; if (prims[i].carve || pm[i] !== 0) continue; const v = primDist(prims[i], X2, Y2, Z2); if (v < dm) dm = v; }
+                  let dm = 1e3, rB = 1e3, rT = 1e3;
+                  for (let q = 0, qn = CULL ? nc : np; q < qn; q++) { const i = CULL ? cand[q] : q; if (prims[i].carve || pm[i] !== 0) continue; const v = primDist(prims[i], X2, Y2, Z2);
+                    if (SM && pb[i] === 1) rB = smin(rB, v, SM.kb); else if (SM && pb[i] === 0) rT = prims[i].limb ? Math.min(rT, v) : smin(rT, v, SM.kt); else if (v < dm) dm = v; }
+                  if (SM) { const w = Math.max(0, Math.min(1, (Z2 - SM.z0) / (SM.z1 - SM.z0))); dm = Math.min(dm, smin(rT, rB, SM.k * w * w * (3 - 2 * w) + .02)); }
                   if (Math.abs(dm) < 1e-4) break;
                   t -= dm * iL;
                 }

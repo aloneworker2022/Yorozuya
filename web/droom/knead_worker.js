@@ -8,14 +8,14 @@ function pack(g) {
   return { hit: g.hit, tt, code };
 }
 const xfer = (G) => [G.hit.buffer, G.tt.buffer, G.code.buffer];
-importScripts('/droom/room_doll_full.js?v=9');
+importScripts('/droom/room_doll_full.js?v=11');
 const D = self.RoomDoll;
 const GIRTH = 1.1;   // room_doll_full.js 的 GIRTH（左右拉寬）
 let look = null, K = 2, cam = null, box = null;
 const mk = (o, pinch) => {
   const d = D.lookToDoll({ height_cm: 161, build: look.build || '勻稱有致', cup: look.cup + ' 罩杯' });
   d.shape = look.shape; d.areola = look.areola; d.hair = 'none'; d.face = 'anime';
-  d.knead = { side: 1, o, pinch };
+  d.knead = { side: 1, o, pinch }; d.smoothBust = true;
   return d;
 };
 // 取景（使用者：胸部為主、從脖子下開始、橫幅大一點；很垂的照比例拉大畫面）

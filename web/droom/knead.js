@@ -21,7 +21,7 @@
   const cv = $('kn_cv'), off = document.createElement('canvas'), octx = off.getContext('2d');
   let ctx = cv.getContext('2d');
   const hcv = document.createElement('canvas'), hctx = hcv.getContext('2d');
-  const worker = new Worker('/droom/knead_worker.js?v=7');
+  const worker = new Worker('/droom/knead_worker.js?v=9');
   let gen = 0, base = null, W = 0, H = 0, cupBounce = .8, soft = 1, cam = null;
   const cache = new Map();   // key → { px, knead }
   let queue = [], busy = false, want = keyOf([0, 0, 0], 0), shown = null;
