@@ -21,7 +21,7 @@
   const cv = $('kn_cv'), off = document.createElement('canvas'), octx = off.getContext('2d');
   let ctx = cv.getContext('2d');
   const hcv = document.createElement('canvas'), hctx = hcv.getContext('2d');
-  const worker = new Worker('/droom/knead_worker.js?v=6');
+  const worker = new Worker('/droom/knead_worker.js?v=7');
   let gen = 0, base = null, W = 0, H = 0, cupBounce = .8, soft = 1, cam = null;
   const cache = new Map();   // key → { px, knead }
   let queue = [], busy = false, want = keyOf([0, 0, 0], 0), shown = null;
@@ -84,7 +84,14 @@
   for (const id of ['kn_s', 'kn_c', 'kn_a']) $(id).onchange = setup;
 
   // ── 上色：肉色皮膚＋光（從深度算法線）＋陰影（附近有東西比較靠前＝被遮）＋外輪廓 ──
-  const SKIN = [247, 212, 192], AREOLA = [221, 146, 146], NIPPLE = [206, 120, 128], BG = [236, 232, 226], EDGE = [150, 96, 88];
+  // 2026-11-07 第 3 版（使用者：要 pix 風格、加一點陰影就好，不要變成光滑 3D）：每種顏色只有 4 階（亮／本色／陰影／深陰影）＋深色外框
+  const TONES = {
+    skin: [[255, 228, 208], [246, 202, 178], [222, 164, 144], [184, 122, 112]],
+    areola: [[232, 156, 156], [218, 136, 138], [192, 110, 116], [160, 86, 96]],
+    nipple: [[222, 132, 140], [204, 114, 124], [178, 92, 106], [148, 72, 88]],
+  };
+  const BG = [236, 232, 226], EDGE = [120, 70, 66];
+  const TONE_AT = [1.04, .84, .66];   // 亮度 ≥ 這些 → 第 0／1／2 階，其餘第 3 階
   const LIGHT = (() => { const v = [-.35, .5, .79], l = Math.hypot(...v); return v.map(x => x / l); })();   // 左上前方
   function shadeSkin(G) {
     const { hit, tt, code } = G, n = W * H, out = new Uint8ClampedArray(n * 4);
@@ -113,11 +120,12 @@
       const ao = 1 - .55 * Math.min(1, occ / (AO_DIRS.length * 2) * 2.2);
       let edge = false;   // 外輪廓：旁邊是空的，或旁邊比自己後面很多（乳房蓋在身體上的那條線）
       for (const j of [i - 1, i + 1, i - W, i + W]) if (j < 0 || j >= n || !hit[j] || D(i) - D(j) > JUMP * 1.5) { edge = true; break; }
-      const base = c === 3 ? NIPPLE : c === 2 ? AREOLA : SKIN;
-      let lum = (.5 + .58 * dif) * ao;
-      if (c === 121 || c === 122) lum *= .9;   // 鎖骨等線條：淡淡的
-      for (let k = 0; k < 3; k++) out[o + k] = edge ? EDGE[k] * (.7 + .3 * ao) : Math.min(255, base[k] * lum);
-      out[o + 3] = 255;
+      const pal = c === 3 ? TONES.nipple : c === 2 ? TONES.areola : TONES.skin;
+      const lum = (.5 + .58 * dif) * ao;
+      let tone = lum >= TONE_AT[0] ? 0 : lum >= TONE_AT[1] ? 1 : lum >= TONE_AT[2] ? 2 : 3;
+      if ((c === 121 || c === 122) && tone < 2) tone = 2;   // 鎖骨等線條：陰影色一條
+      const col = edge ? EDGE : pal[tone];
+      out[o] = col[0]; out[o + 1] = col[1]; out[o + 2] = col[2]; out[o + 3] = 255;
     }
     return out;
   }
@@ -181,6 +189,7 @@
     const tb = h.thumbBase, tt = h.thumbTip, tm = lerp(tb, tt, .5);
     capsule(tb, tm, fr * 1.35, fr * 1.15); capsule(tm, tt, fr * 1.15, fr * 1.0);
     ctx.restore();
+    { const im = hctx.getImageData(0, 0, W, H), a = im.data; for (let i = 3; i < a.length; i += 4) a[i] = a[i] >= 128 ? 255 : 0; hctx.putImageData(im, 0, 0); }   // pix 風格：手的邊不要糊（不透明度二分）
     ctx = real; ctx.save(); ctx.globalAlpha = .9; ctx.drawImage(hcv, 0, 0); ctx.restore();
   }
 

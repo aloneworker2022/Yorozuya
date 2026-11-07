@@ -27,7 +27,8 @@ function frameCam(maxPull) {
   const pull = maxPull * r;
   const xr = Math.max(nip[0] + r * 1.5 + pull * .8, 11.5);
   const Wx = 2 * xr + 2, zTop = P.S + .8, zBot = low - pull - 1.5, Hz = zTop - zBot;
-  const w = 220, dist = 220, f = w * dist / Wx, h = Math.round(Hz * f / (dist * GIRTH));
+  // 2026-11-07 使用者：要 pix 風格——寬 88（×2＝176 像素），放大顯示看得到格子
+  const w = 88, dist = 220, f = w * dist / Wx, h = Math.round(Hz * f / (dist * GIRTH));
   return { dist, eyeZ: (zTop + zBot) / 2, pitch: 0, f, w, h, cx: w / 2, cy: h / 2 };
 }
 self.onmessage = (e) => {
