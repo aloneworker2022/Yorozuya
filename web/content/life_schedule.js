@@ -32,7 +32,15 @@ export const ERO_HUNGER = [10, 14, 18, 22, 25];
 export const LIBIDO_HUNGER = { N: 0.8, R: 1.0, S: 1.1, SS: 1.2, SSR: 1.3 };
 const STROLL_SHORT_MS = 30 * 60 * 1000;
 
-/** 非妻子 2、3 或 4 小時；妻子帶 8～16 小時。 */
+/** 2026-11-06 使用者：召喚的魅魔太快跑了 → 不再固定待幾小時，改成「沒人理她才走」：
+ *  每次你理她（說話、按互動、脫衣、做愛、叫她去睡覺／工作）都從現在重算；非妻子 60 分鐘、妻子帶 180 分鐘沒被理就回日本。
+ *  猥褻受不了的逃走照舊走侵犯值（滿了就逃）。 */
+export const NEGLECT_MIN = { short: 60, wife: 180 };
+export function neglectMs(isWife) {
+  return (isWife ? NEGLECT_MIN.wife : NEGLECT_MIN.short) * 60 * 1000;
+}
+
+/** （舊，2026-11-06 起不用）非妻子 2、3 或 4 小時；妻子帶 8～16 小時。 */
 export function rollStayHours(isWife, random = Math.random) {
   const n = Number(random());
   if (isWife) return 8 + Math.floor(n * 9);

@@ -511,7 +511,11 @@ def merge_into_save(data: dict, store: dict, cap: int = 500) -> int:
         return 0
     msgs = lg.setdefault("messages", [])
     have = {m.get("id") for m in msgs if isinstance(m, dict)}
-    added = [dict(m) for m in store["feed"] if m.get("id") not in have]
+    try:   # 手機按過「清除」：那之前的不要再蓋回去（2026-10-14）
+        cleared = float(lg.get("clearedAt") or 0)
+    except (TypeError, ValueError):
+        cleared = 0.0
+    added = [dict(m) for m in store["feed"] if m.get("id") not in have and float(m.get("t") or 0) >= cleared]
     if added:
         msgs.extend(added)
         msgs.sort(key=lambda m: float(m.get("t") or 0))

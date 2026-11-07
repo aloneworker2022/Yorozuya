@@ -52,9 +52,21 @@ CUP = {
     "I 罩杯、不科學爆乳": "gigantic breasts",
     "I 罩杯、壓迫感超巨乳": "gigantic breasts, hyper breasts",
     "I 罩杯、誇張巨乳": "gigantic breasts, huge breasts",
+    # 2026-11-07：罩杯字串只寫大小（形狀交給乳型），補 C／F／G／H
+    "A 罩杯、幾乎平坦": "flat chest",
+    "A 罩杯、小小的貧乳": "flat chest, tiny breasts",
+    "B 罩杯、小巧可愛": "small breasts",
+    "C 罩杯、大小剛好": "medium breasts",
+    "C 罩杯、勻稱適中": "medium breasts",
+    "D 罩杯、豐盈好握": "large breasts",
+    "E 罩杯、沉甸甸有份量": "large breasts, huge breasts",
+    "F 罩杯、份量十足的巨乳": "huge breasts",
+    "G 罩杯、雙手捧不住的巨乳": "huge breasts, gigantic breasts",
+    "H 罩杯、壓迫感超巨乳": "gigantic breasts, hyper breasts",
 }
 
 BREAST_SHAPE = {
+    "平坦／微隆": "flat chest",
     "半球型": "round breasts",
     "饅頭型": "round breasts, soft breasts",
     "挺俏上挺": "perky breasts",
@@ -648,6 +660,11 @@ AESTHETIC_NEGATIVE = "score_1, score_2, score_3"
 
 # 去背用的 negative:任何場景元素都會讓外框判定失敗、整張放棄去背
 FLAT_BG_NEGATIVE = "scenery, detailed background, indoors, outdoors, gradient background"
+# 綠幕版：白／灰／漸層底、房間地板、落地陰影都會讓四邊不是綠色、色鍵摳不掉
+GREEN_BG_NEGATIVE = (
+    "white background, grey background, gray background, gradient background, "
+    "scenery, detailed background, indoors, outdoors, room, floor, wall, shadow, drop shadow"
+)
 
 # 她們**不是魔物**。world.md:「魅魔不是地獄來的惡魔…那只是他們對你的叫法」,
 # 「你原本是現實世界裡一個普通女子——護理師、上班族、插畫家、店員」,
@@ -972,6 +989,8 @@ AGE_NEGATIVE = "child, loli, chibi, baby face"
 
 # 要去背的立繪:先要一塊平背景,後製才摳得乾淨
 FLAT_BG_TAGS = "simple background, white background, plain background"
+# 2026-10-23 主程式三張立繪走綠幕（同換妻雙人圖 main._PAIR_BG）：後製 cutout.chroma_key 依色相摳
+GREEN_BG_TAGS = "(green background:1.3), (simple background:1.2), green screen, chroma key"
 
 
 # 脫衣場面不留帽子、綁髮、頭飾。只拿掉綁法，顏色和長短留著。
@@ -1021,7 +1040,8 @@ def without_headwear(text: str) -> str:
     return ", ".join(kept)
 
 
-def negative_for(flat_bg: bool = False, clothed: bool = False, extra_neg: str = "") -> str:
+def negative_for(flat_bg: bool = False, clothed: bool = False, extra_neg: str = "",
+                 green_bg: bool = False) -> str:
     """組 negative。預設只擋畫崩／魔物／幼態，不塞 nude／nipples。
 
     extra_neg = 卡面 visualNeg，或從 visualEn 拆出來的 NO xxx。
@@ -1031,7 +1051,9 @@ def negative_for(flat_bg: bool = False, clothed: bool = False, extra_neg: str = 
     extra_neg = (extra_neg or "").strip()
     if extra_neg:
         bits.append(extra_neg)
-    if flat_bg:
+    if green_bg:
+        bits.append(GREEN_BG_NEGATIVE)
+    elif flat_bg:
         bits.append(FLAT_BG_NEGATIVE)
     return ", ".join(b for b in bits if b)
 
@@ -1473,6 +1495,7 @@ def build_prompt(
     outfit: str = "",
     dressed: bool = True,
     flat_bg: bool = False,
+    green_bg: bool = False,
     extra: str = "",
     scene: bool = False,
     stage: str = "",
@@ -1572,7 +1595,9 @@ def build_prompt(
         bits.append(extra.strip())
     # 要去背的那幾張:先讓模型畫出一塊平背景,後製才摳得乾淨(見 cutout.py)。
     # simple background / white background 是 danbooru 訓練得很紮實的一組。
-    if flat_bg:
+    if green_bg:
+        bits.append(GREEN_BG_TAGS)
+    elif flat_bg:
         bits.append(FLAT_BG_TAGS)
 
     p = (part or "").lower()

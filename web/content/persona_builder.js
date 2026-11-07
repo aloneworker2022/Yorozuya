@@ -234,8 +234,13 @@ function lookText(c, { intimate = false } = {}) {
     // 規則跟立繪同一套(server 的 _outfit_of),她講的跟畫的才會是同一身衣服。
     const wardrobe = Array.isArray(L.wardrobe) && L.wardrobe.length ? L.wardrobe : (L.style ? [L.style] : []);
     const i = c.outfitPick;
-    const worn = (Number.isInteger(i) && i >= 0 && i < wardrobe.length)
-      ? wardrobe[i] : (L.career_outfit || wardrobe[0] || "");
+    // 新制有 owned：只穿擁有的；outfitName 優先（進房抽的那套）
+    const hasOwned = !!(L.owned && typeof L.owned === "object" && !Array.isArray(L.owned));
+    const owns = (k) => !hasOwned || (Array.isArray(L.owned.wardrobe) && L.owned.wardrobe.map(Number).includes(k));
+    const named = String(c.outfitName || "").trim();
+    const worn = named || (c.outfitPick === "base" ? "白色 T 恤配三角褲"
+      : (Number.isInteger(i) && i >= 0 && i < wardrobe.length && owns(i))
+        ? wardrobe[i] : (L.career_outfit || (hasOwned ? "白色 T 恤配三角褲" : (wardrobe[0] || ""))));
     const bits = [
       L.height_cm ? `${L.height_cm}cm` : null,
       L.build,

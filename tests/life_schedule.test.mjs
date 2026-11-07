@@ -133,4 +133,9 @@ t("色情奇遇記憶：陌生打死不提、朋友被問才含糊、女友後�
   assert.doesNotMatch(b, /裸體/);
 });
 
+t("沒人理她才走：非妻子 60 分、妻子帶 180 分（2026-11-06）", () => {
+  assert.equal(S.neglectMs(false), 60 * 60 * 1000);
+  assert.equal(S.neglectMs(true), 180 * 60 * 1000);
+});
+
 console.log(`${pass} passed`);

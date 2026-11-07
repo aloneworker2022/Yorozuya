@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>人體模特兒 · 胸部結構研習 | 魅魔萬事屋</title>
+<meta name="theme-color" content="#f4f1ea">
+<style>
+:root{ --paper:#f6f3ec; --ink:#2b2a28; --dim:#7d786e; --line:#d8d2c4; --accent:#b0476e; }
+*{margin:0;padding:0;box-sizing:border-box;}
+body{ background:var(--paper); color:var(--ink); font-family:system-ui,"Noto Sans TC",sans-serif;
+  font-size:14px; padding:12px 16px 40px; }
+.wrap{max-width:820px;margin:0 auto;}
+header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line);
+  padding-bottom:8px;margin-bottom:10px;}
+header h1{font-size:17px;}
+header .sub{color:var(--dim);font-size:12px;}
+header a{margin-left:auto;color:var(--accent);text-decoration:none;font-size:12px;}
+#stage{position:relative;width:100%;height:min(68vh,620px);min-height:360px;border:1px solid var(--line);
+  border-radius:6px;background:#fff;overflow:hidden;touch-action:none;}
+#stage canvas{display:block;width:100%;height:100%;}
+.cap{color:var(--dim);font-size:11px;text-align:center;margin:6px 0 10px;}
+.views{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.views button,.toggles label{font:inherit;font-size:12px;padding:5px 10px;border:1px solid var(--line);
+  background:#fff;border-radius:4px;cursor:pointer;color:var(--ink);}
+.views button.on{border-color:var(--accent);color:var(--accent);}
+.panel{background:#fff;border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin-bottom:10px;}
+.panel h2{font-size:13px;margin-bottom:8px;color:var(--accent);}
+.row{display:flex;align-items:center;gap:10px;margin:7px 0;}
+.row label{flex:0 0 78px;font-size:12px;color:var(--dim);}
+.row input{flex:1;accent-color:var(--accent);}
+.row .v{flex:0 0 40px;text-align:right;font-size:12px;}
+.toggles{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.toggles input{margin-right:4px;vertical-align:-1px;}
+ol{padding-left:1.3em;line-height:1.7;font-size:13px;}
+ol b{color:var(--accent);}
+.wrong{color:var(--dim);font-size:12px;line-height:1.6;margin-top:8px;}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>人體模特兒 · 胸部結構研習</h1>
+  <span class="sub">照參考圖：蛋形量體 × 圓桶胸廓</span>
+  <a href="/">← 回萬事屋</a>
+</header>
+
+<div id="stage"></div>
+<div class="cap">拖曳旋轉 · 雙指縮放 · 灰線是剖面結構線（cross-contour）</div>
+
+<div class="views" id="views">
+  <button data-v="front">正面</button>
+  <button data-v="q34" class="on">3/4 側</button>
+  <button data-v="side">正側面</button>
+  <button data-v="top">俯視</button>
+  <button data-v="low">仰視</button>
+  <button data-v="back">背面</button>
+</div>
+
+<div class="panel">
+  <h2>◆ 胸部參數</h2>
+  <div class="row"><label>大小</label><input id="size" type="range" min="60" max="150" value="100"><span class="v" id="size-v"></span></div>
+  <div class="row"><label>外張角</label><input id="splay" type="range" min="0" max="40" value="18"><span class="v" id="splay-v"></span></div>
+  <div class="row"><label>胸廓上位置</label><input id="around" type="range" min="18" max="42" value="30"><span class="v" id="around-v"></span></div>
+  <div class="row"><label>上緣斜坡</label><input id="slope" type="range" min="0" max="90" value="45"><span class="v" id="slope-v"></span></div>
+  <div class="row"><label>下垂</label><input id="sag" type="range" min="0" max="60" value="22"><span class="v" id="sag-v"></span></div>
+  <div class="toggles">
+    <label><input type="checkbox" id="axis" checked>方向軸</label>
+    <label><input type="checkbox" id="egg" checked>右下角蛋形原型</label>
+    <label><input type="checkbox" id="grid" checked>結構線</label>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>◆ 從參考圖學到的（我之前錯在哪）</h2>
+  <ol>
+    <li><b>是蛋形，不是球。</b>上窄下寬、頂端尖、底部飽滿重（右下角那顆蛋就是原型）。</li>
+    <li><b>長在圓桶上，不是貼平牆。</b>胸廓是橫切面接近橢圓的桶，兩顆分別坐在桶的左右前側，所以各自朝外、略朝下，兩個尖端方向是「八字」分開的，不是平行朝前。</li>
+    <li><b>上緣是斜坡、下緣是圓弧。</b>上半從鎖骨下方逐漸隆起、和胸肌融成一片；下半鼓出一個圓底，和肋骨之間形成乳下褶。</li>
+    <li><b>外側往腋下收。</b>外上緣接到腋窩與手臂根部，不是在胸前畫兩個獨立圓。</li>
+    <li><b>中間有胸骨間隔。</b>內緣停在胸骨兩側，中間留一段平的。</li>
+    <li><b>換角度時形狀會變。</b>3/4 側時遠側那顆變成側面輪廓、壓在胸廓邊上；俯視時能看到兩顆往外張開。</li>
+  </ol>
+  <div class="wrong">舊的 <a href="/body.html">body.html</a>「水球 × 2」：圓形袋口釘在平面牆上、裡面裝圓水球往下墜——
+    形狀（圓）、附著面（平牆）、方向（正前方）三個都錯。這頁先只做靜態量體，確認結構對了再談晃動物理。</div>
+</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0xffffff);
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 0.05, 50);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.42, 0);
+controls.enableDamping = true;
+controls.enablePan = false;
+controls.minDistance = 1.2; controls.maxDistance = 6;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xcfc8bb, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.position.set(-1.5, 2.5, 2.5); scene.add(sun);
+
+// ---------- 材質：白紙量體 + 灰結構線 + 深色輪廓 ----------
+const skinMat = new THREE.MeshLambertMaterial({ color: 0xfbfaf7, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+const lineMat = new THREE.LineBasicMaterial({ color: 0x9a958c });
+const outlineMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms: { w: { value: 0.0045 } },
+  vertexShader: `uniform float w; void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position + normal * w, 1.0); }`,
+  fragmentShader: `void main(){ gl_FragColor = vec4(0.17,0.16,0.15,1.0); }`,
+});
+
+// 參數曲面：f(u,v)→Vector3，u 繞一圈(wrap)、v 沿長軸；回傳 mesh 群組（量體 + 輪廓 + 結構線）
+function surface(f, nu, nv, { wrapU = true, uLines = [], vLines = [], lineFine = 4 } = {}) {
+  const cols = wrapU ? nu : nu + 1, pos = [], idx = [];
+  for (let j = 0; j <= nv; j++) for (let i = 0; i < cols; i++) { const p = f(i / nu, j / nv); pos.push(p.x, p.y, p.z); }
+  for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+    const i1 = wrapU ? (i + 1) % nu : i + 1;
+    const a = j * cols + i, b = j * cols + i1, c = (j + 1) * cols + i, d = (j + 1) * cols + i1;
+    idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  // 讓法線朝外：以質心算有號體積，負的就翻轉三角形
+  let cx = 0, cy = 0, cz = 0, n3 = pos.length / 3;
+  for (let k = 0; k < pos.length; k += 3) { cx += pos[k]; cy += pos[k + 1]; cz += pos[k + 2]; }
+  cx /= n3; cy /= n3; cz /= n3;
+  let vol = 0; const P3 = k => [pos[3 * k] - cx, pos[3 * k + 1] - cy, pos[3 * k + 2] - cz];
+  for (let k = 0; k < idx.length; k += 3) { const [a, b, c] = [P3(idx[k]), P3(idx[k + 1]), P3(idx[k + 2])];
+    vol += a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0]); }
+  if (vol < 0) for (let k = 0; k < idx.length; k += 3) { const t = idx[k + 1]; idx[k + 1] = idx[k + 2]; idx[k + 2] = t; }
+  g.setIndex(idx); g.computeVertexNormals();
+  const grp = new THREE.Group();
+  grp.add(new THREE.Mesh(g, skinMat), new THREE.Mesh(g, outlineMat));
+  // 結構線
+  const lp = [], fine = lineFine;
+  for (const v of vLines) for (let i = 0; i < nu * fine; i++) { const a = f(i / (nu * fine), v), b = f((i + 1) / (nu * fine), v); lp.push(a.x, a.y, a.z, b.x, b.y, b.z); }
+  for (const u of uLines) for (let j = 0; j < nv * fine; j++) { const a = f(u, j / (nv * fine)), b = f(u, (j + 1) / (nv * fine)); lp.push(a.x, a.y, a.z, b.x, b.y, b.z); }
+  if (lp.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); const L = new THREE.LineSegments(lg, lineMat); L.userData.grid = true; grp.add(L); }
+  return grp;
+}
+// 開口截面蓋子（像參考圖裡切開的手臂、腿、脖子）
+function cap(center, normal, rx, rz, dirX) {
+  const s = new THREE.Shape(); s.absellipse(0, 0, rx, rz, 0, Math.PI * 2);
+  const g = new THREE.ShapeGeometry(s, 32), m = new THREE.Mesh(g, skinMat);
+  const n = normal.clone().normalize(), x = (dirX || new THREE.Vector3(1, 0, 0)).clone();
+  x.sub(n.clone().multiplyScalar(x.dot(n))).normalize();
+  const y = new THREE.Vector3().crossVectors(n, x);
+  m.matrix.makeBasis(x, y, n).setPosition(center); m.matrixAutoUpdate = false;
+  const edge = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, rx, rz).getPoints(48)), new THREE.LineBasicMaterial({ color: 0x2b2a28 }));
+  edge.matrix.copy(m.matrix); edge.matrixAutoUpdate = false;
+  const grp = new THREE.Group(); grp.add(m, edge); return grp;
+}
+
+// ---------- 軀幹：橫切面放樣（y, 半寬 a, 半厚 b, 前後中心 zc, 方度 n） ----------
+const SEC = [
+  [0.035, 0.07, 0.055, 0.00, 2.2],
+  [0.09, 0.17, 0.095, 0.00, 2.4],
+  [0.17, 0.235, 0.12, -0.005, 2.6],
+  [0.27, 0.25, 0.13, -0.01, 2.6],   // 臀最寬
+  [0.39, 0.205, 0.118, 0.00, 2.4],  // 髂骨
+  [0.49, 0.165, 0.11, 0.005, 2.2],  // 腰
+  [0.58, 0.19, 0.122, 0.005, 2.2],  // 下肋
+  [0.68, 0.225, 0.14, 0.00, 2.3],   // 乳下胸廓
+  [0.78, 0.245, 0.148, -0.005, 2.4],// 胸廓最寬
+  [0.87, 0.255, 0.13, -0.012, 2.8], // 肩線/腋
+  [0.935, 0.2, 0.1, -0.015, 2.6],   // 斜方肌
+  [0.975, 0.075, 0.07, -0.005, 2.0],
+];
+function crSpline(p0, p1, p2, p3, t) { const t2 = t * t, t3 = t2 * t; return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3); }
+function secAt(v) { // v∈[0,1] → 插值後的截面
+  const n = SEC.length - 1, f = v * n, k = Math.min(n - 1, Math.floor(f)), t = f - k;
+  const g = i => SEC[Math.max(0, Math.min(n, i))];
+  return [0, 1, 2, 3, 4].map(c => crSpline(g(k - 1)[c], g(k)[c], g(k + 1)[c], g(k + 2)[c], t));
+}
+function torsoPt(u, v) {
+  const [y, a, b, zc, ne] = secAt(v), t = u * Math.PI * 2, c = Math.cos(t), s = Math.sin(t), e = 2 / ne;
+  return new THREE.Vector3(a * Math.sign(c) * Math.abs(c) ** e, y, zc + b * Math.sign(s) * Math.abs(s) ** e);
+}
+// 找軀幹在某高度、某角度(由正前方往側邊)的表面點與法線
+function torsoFrame(y, deg, side) {
+  let lo = 0, hi = 1; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; secAt(m)[0] < y ? lo = m : hi = m; }
+  const v = (lo + hi) / 2, u = (90 - side * deg) / 360, du = 1e-3, dv = 1e-3;
+  const p = torsoPt(u, v), pu = torsoPt(u + du, v).sub(torsoPt(u - du, v)), pv = torsoPt(u, v + dv).sub(torsoPt(u, v - dv));
+  const n = new THREE.Vector3().crossVectors(pu, pv).normalize(); if (n.z < 0) n.negate();
+  return { p, n };
+}
+
+// ---------- 四肢斷面 ----------
+function tube(p0, p1, r0, r1, bulge = 0, flat = 1) {
+  const axis = p1.clone().sub(p0), L = axis.length(), d = axis.clone().normalize();
+  const x = new THREE.Vector3(1, 0, 0).sub(d.clone().multiplyScalar(d.x)).normalize(), z = new THREE.Vector3().crossVectors(x, d);
+  const f = (u, v) => { const t = u * Math.PI * 2, r = r0 + (r1 - r0) * v + bulge * Math.sin(Math.PI * v);
+    return p0.clone().addScaledVector(d, L * v).addScaledVector(x, Math.cos(t) * r).addScaledVector(z, Math.sin(t) * r * flat); };
+  return surface(f, 32, 12, { uLines: [0, 0.25, 0.5, 0.75], vLines: [0.33, 0.66] });
+}
+function ball(c, r) {
+  return surface((u, v) => { const t = u * Math.PI * 2, p = v * Math.PI; return new THREE.Vector3(c.x + r * Math.sin(p) * Math.cos(t), c.y + r * Math.cos(p), c.z + r * Math.sin(p) * Math.sin(t)); }, 28, 16, {});
+}
+
+const body = new THREE.Group(); scene.add(body);
+
+// 脖子
+const nk0 = new THREE.Vector3(0, 0.93, -0.01), nk1 = new THREE.Vector3(0, 1.08, 0.012);
+body.add(tube(nk0, nk1, 0.058, 0.052));
+body.add(cap(nk1, nk1.clone().sub(nk0), 0.052, 0.052));
+// 肩、上臂斷面
+for (const s of [-1, 1]) {
+  body.add(ball(new THREE.Vector3(s * 0.245, 0.862, -0.012), 0.07));
+  const a0 = new THREE.Vector3(s * 0.262, 0.86, -0.014), a1 = new THREE.Vector3(s * 0.295, 0.64, -0.022);
+  body.add(tube(a0, a1, 0.058, 0.046, 0.004));
+  body.add(cap(a1, a1.clone().sub(a0), 0.046, 0.046));
+  // 大腿斷面
+  const t0 = new THREE.Vector3(s * 0.125, 0.17, 0.0), t1 = new THREE.Vector3(s * 0.1, -0.33, 0.012);
+  body.add(tube(t0, t1, 0.125, 0.078, 0.012, 0.95));
+  body.add(cap(t1, t1.clone().sub(t0), 0.078, 0.078 * 0.95));
+}
+
+// ---------- 胸部：蛋形，從胸廓表面「長出來」 ----------
+// 不是另外黏一顆球：軀幹表面沿法線被蛋形量體推出來；上緣模糊成斜坡，下緣保留乳下褶。
+const P = { size: 1, splay: 18, around: 30, slope: 0.45, sag: 0.22 };
+const axes = new THREE.Group(); scene.add(axes);
+let torsoGrp = null, breastDefs = [];
+
+function eggPt(alpha, beta, R, shear, sag) {
+  // 極點在尖端：alpha 0=尖端、π=貼胸的底面
+  const w = Math.cos(alpha), rad = Math.sin(alpha);
+  let x = rad * Math.cos(beta), y = rad * Math.sin(beta);
+  x *= R.x * (1 - 0.16 * y);                // 上窄下寬
+  y *= y > 0 ? R.yTop : R.yBot;
+  let z = w * R.z;
+  z -= shear * Math.max(0, y) * 1.4;        // 上半往胸口收 → 斜坡
+  z += shear * Math.max(0, -y) * 0.35;      // 下半往前鼓 → 圓底
+  const fw = Math.max(0, w);
+  y -= sag * R.z * fw * fw * 0.9;           // 下垂：越靠尖端掉越多
+  return new THREE.Vector3(x, y, z);
+}
+// eggPt 的反函數版：世界座標點 → 蛋的隱函數值（<1 在裡面）
+function eggF(q, b) {
+  const d = q.clone().sub(b.center), x = d.dot(b.side3), yf = d.dot(b.up3), zf = d.dot(b.out), R = b.R;
+  let ys = yf, w = 0;
+  for (let k = 0; k < 5; k++) {
+    const sh = ys > 0 ? -P.slope * ys * 1.4 : P.slope * (-ys) * 0.35;
+    w = (zf - sh) / R.z; const fw = Math.max(0, w); ys = yf + P.sag * R.z * fw * fw * 0.9;
+  }
+  const yn = ys > 0 ? ys / R.yTop : ys / R.yBot, xn = x / (R.x * (1 - 0.16 * Math.max(-1, Math.min(1, yn))));
+  return xn * xn + yn * yn + w * w;
+}
+function defineBreasts() {
+  breastDefs = []; axes.clear();
+  const s = P.size, R = { x: 0.135 * s, yTop: 0.15 * s, yBot: 0.13 * s, z: 0.125 * s };
+  for (const side of [-1, 1]) {
+    const { p, n } = torsoFrame(0.72, P.around, side);
+    const out = n.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), side * THREE.MathUtils.degToRad(P.splay * 0.5));
+    out.y -= 0.12; out.normalize();
+    let side3 = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), out).normalize();
+    let up3 = new THREE.Vector3().crossVectors(out, side3).normalize();
+    const roll = -side * THREE.MathUtils.degToRad(20);       // 上緣往腋下斜
+    side3.applyAxisAngle(out, roll); up3.applyAxisAngle(out, roll);
+    const center = p.clone().addScaledVector(out, -0.062 * s); // 底面埋進胸廓
+    const b = { side, center, side3, up3, out, R };
+    const toWorld = q => center.clone().addScaledVector(side3, q.x).addScaledVector(up3, q.y).addScaledVector(out, q.z);
+    const tip = toWorld(eggPt(0, 0, R, P.slope, P.sag));
+    b.dir = tip.clone().sub(center).normalize(); breastDefs.push(b);
+  }
+}
+function torsoNormal(u, v) {
+  const e = 1e-3, pu = torsoPt(u + e, v).sub(torsoPt(u - e, v)), pv = torsoPt(u, Math.min(1, v + e)).sub(torsoPt(u, Math.max(0, v - e)));
+  const n = new THREE.Vector3().crossVectors(pu, pv).normalize();
+  const p = torsoPt(u, v), c = new THREE.Vector3(0, p.y, secAt(v)[3]);
+  if (n.dot(p.clone().sub(c)) < 0) n.negate();
+  return n;
+}
+const NU = 220, NV = 180;
+function buildTorso() {
+  if (torsoGrp) { body.remove(torsoGrp); torsoGrp.traverse(o => o.geometry && o.geometry.dispose()); }
+  defineBreasts();
+  const raw = new Float32Array(NU * (NV + 1));
+  const idx = (i, j) => j * NU + ((i % NU) + NU) % NU;
+  // 1) 每個表面點沿法線找蛋的最外緣 → 原始推出量
+  for (let j = 0; j <= NV; j++) {
+    const v = j / NV; if (v < 0.5 || v > 0.97) continue;
+    for (let i = 0; i < NU; i++) {
+      const u = i / NU; if (u < 0.03 || u > 0.47) continue;  // 只算前半圈
+      const p = torsoPt(u, v), n = torsoNormal(u, v);
+      const inside = t => { const q = p.clone().addScaledVector(n, t); return breastDefs.some(b => eggF(q, b) < 1); };
+      let hi = -1;
+      for (let t = 0.3; t >= 0; t -= 0.012) if (inside(t)) { hi = t; break; }
+      if (hi < 0) continue;
+      let a = hi, c = hi + 0.012;
+      for (let k = 0; k < 8; k++) { const m = (a + c) / 2; inside(m) ? a = m : c = m; }
+      raw[idx(i, j)] = a;
+    }
+  }
+  // 2) 模糊版（給上緣、內外側做圓滑過渡）
+  let blur = raw.slice(), tmp = new Float32Array(raw.length);
+  const r = 4;
+  for (let pass = 0; pass < 3; pass++) {
+    for (let j = 0; j <= NV; j++) for (let i = 0; i < NU; i++) { let s = 0; for (let k = -r; k <= r; k++) s += blur[idx(i + k, j)]; tmp[idx(i, j)] = s / (2 * r + 1); }
+    for (let j = 0; j <= NV; j++) for (let i = 0; i < NU; i++) { let s = 0, c = 0; for (let k = -r; k <= r; k++) { const jj = j + k; if (jj < 0 || jj > NV) continue; s += tmp[idx(i, jj)]; c++; } blur[idx(i, j)] = s / c; }
+  }
+  // 乳下褶用的版本：只做極輕的模糊，去掉格子鋸齒但保持清楚
+  const crisp = raw.slice();
+  for (let pass = 0; pass < 2; pass++) { const src = crisp.slice();
+    for (let j = 1; j < NV; j++) for (let i = 0; i < NU; i++) { let s = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) s += src[idx(i + di, j + dj)]; crisp[idx(i, j)] = Math.max(src[idx(i, j)] * 0.6, s / 9); } }
+  // 3) 合成：下半保留原始(清楚的乳下褶)，其他地方取 max(原始, 模糊)
+  const D = new Float32Array(raw.length);
+  for (let j = 0; j <= NV; j++) for (let i = 0; i < NU; i++) {
+    const k = idx(i, j); if (raw[k] === 0 && blur[k] < 1e-5) continue;
+    const p = torsoPt(i / NU, j / NV), b = breastDefs[p.x < 0 ? 0 : 1];
+    const yl = p.clone().sub(b.center).dot(b.up3);
+    const low = THREE.MathUtils.smoothstep(-yl, 0.0, 0.06);   // 1 = 明顯在下半
+    const soft = Math.max(raw[k], blur[k]);
+    D[k] = soft + (crisp[k] - soft) * low;
+  }
+  const dAt = (u, v, arr = D) => { // 雙線性取值
+    const x = u * NU, y = v * NV, i0 = Math.floor(x), j0 = Math.min(NV - 1, Math.floor(y)), fx = x - i0, fy = y - j0;
+    const a = arr[idx(i0, j0)], b = arr[idx(i0 + 1, j0)], c = arr[idx(i0, j0 + 1)], d = arr[idx(i0 + 1, j0 + 1)];
+    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+  };
+  const full = (u, v) => torsoPt(u, v).addScaledVector(torsoNormal(u, v), dAt(u, v));
+  torsoGrp = surface(full, NU, NV, { uLines: [0.25, 0.75, 0, 0.5, 0.125, 0.375, 0.625, 0.875], vLines: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], lineFine: 1 });
+  // 4) 胸部的十字結構線（經過尖端的橫線＋直線，只畫在隆起範圍）
+  const lp = [], ink = [];
+  const push = (arr, a, b) => arr.push(a.x, a.y, a.z, b.x, b.y, b.z);
+  const lift = (u, v) => full(u, v).addScaledVector(torsoNormal(u, v), 0.0015);
+  for (const b of breastDefs) {
+    let best = 0, bu = 0, bv = 0;
+    for (let j = 0; j <= NV; j++) for (let i = 0; i < NU; i++) { const k = idx(i, j); if (raw[k] > best && (torsoPt(i / NU, j / NV).x < 0) === (b.side < 0)) { best = raw[k]; bu = i / NU; bv = j / NV; } }
+    axes.add(new THREE.ArrowHelper(b.dir, full(bu, bv), 0.16, 0xb0476e, 0.035, 0.02));
+    const S = 240;
+    for (let k = 0; k < S; k++) {
+      const u0 = k / S, u1 = (k + 1) / S; if (dAt(u0, bv) > 0.004 && dAt(u1, bv) > 0.004) push(lp, lift(u0, bv), lift(u1, bv));
+      const v0 = k / S, v1 = (k + 1) / S; if (dAt(bu, v0) > 0.004 && dAt(bu, v1) > 0.004) push(lp, lift(bu, v0), lift(bu, v1));
+    }
+  }
+  // 5) 乳下褶：原始推出量的邊界(marching squares)，只畫下半與外側
+  const eps = 1e-4;
+  for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) {
+    const c = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]], val = c.map(([a, bb]) => crisp[idx(a, bb)] - 0.004);
+    const pts = [];
+    for (let e = 0; e < 4; e++) { const A = val[e], B = val[(e + 1) % 4]; if ((A > 0) !== (B > 0)) { const t = A / (A - B), [ia, ja] = c[e], [ib, jb] = c[(e + 1) % 4]; pts.push([(ia + (ib - ia) * t) / NU, (ja + (jb - ja) * t) / NV]); } }
+    if (pts.length < 2) continue;
+    const P0 = lift(...pts[0]), P1 = lift(...pts[1]), b = breastDefs[P0.x < 0 ? 0 : 1];
+    const yl = P0.clone().add(P1).multiplyScalar(0.5).sub(b.center).dot(b.up3);
+    if (yl < 0.01 && Math.abs(P0.x) > 0.035) push(ink, P0, P1);
+  }
+  const mk = (arr, color) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); return new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color })); };
+  const cross = mk(lp, 0x9a958c); cross.userData.grid = true;
+  torsoGrp.add(cross, mk(ink, 0x2b2a28));
+  body.add(torsoGrp);
+  axes.visible = document.getElementById('axis').checked; applyGrid();
+}
+
+buildTorso();
+
+// 右下角那顆蛋：原型
+const eggProto = surface((u, v) => {
+  const t = u * Math.PI * 2, a = v * Math.PI, y = Math.cos(a), r = Math.sin(a) * (1 - 0.18 * y);
+  return new THREE.Vector3(0.48 + r * Math.cos(t) * 0.07, 0.12 + y * (y > 0 ? 0.085 : 0.075), r * Math.sin(t) * 0.07);
+}, 40, 24, { uLines: [0, 0.25, 0.5, 0.75], vLines: [0.5] });
+scene.add(eggProto);
+
+// ---------- 視角 ----------
+const VIEWS = {
+  front: [0, 0.55, 3.1], q34: [1.75, 0.75, 2.45], side: [3.1, 0.6, 0.15],
+  top: [0.5, 3.0, 1.0], low: [0.9, -1.2, 2.6], back: [-0.3, 0.6, -3.1],
+};
+function setView(k) { camera.position.set(...VIEWS[k]); controls.update();
+  document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.v === k)); }
+document.getElementById('views').onclick = e => { const k = e.target.dataset && e.target.dataset.v; if (k) setView(k); };
+setView('q34');
+
+// ---------- UI ----------
+const fmt = { size: v => (v / 100).toFixed(2), splay: v => v + '°', around: v => v + '°', slope: v => v + '%', sag: v => v + '%' };
+for (const k of Object.keys(fmt)) {
+  const el = document.getElementById(k), out = document.getElementById(k + '-v');
+  const upd = () => { const v = +el.value; out.textContent = fmt[k](v);
+    P[k] = k === 'size' || k === 'slope' || k === 'sag' ? v / 100 : v; schedule(); };
+  el.addEventListener('input', upd); out.textContent = fmt[k](+el.value);
+}
+let pending = false;
+function schedule() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; buildTorso(); }); }
+function applyGrid() { const on = document.getElementById('grid').checked; scene.traverse(o => { if (o.userData.grid) o.visible = on; }); }
+document.getElementById('axis').onchange = e => axes.visible = e.target.checked;
+document.getElementById('egg').onchange = e => eggProto.visible = e.target.checked;
+document.getElementById('grid').onchange = applyGrid;
+
+function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+window.__ready = true;
+</script>
+</body>
+</html>

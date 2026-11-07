@@ -23,6 +23,7 @@ import {
   parseCardVisualPose,
   formatCardReactDisplay,
 } from "./persona_builder.js";
+import { breastFit } from "./girl_gen.js";
 import {
   BIND_PLACEHOLDERS,
   bindContextFromGirl,
@@ -1462,7 +1463,9 @@ async function rollGirl() {
     const A = g.appearance || {};
     const occ = pickPoolItem(g.occupations);
     const cup = poolText(pickPoolItem(A.cup || A.bust)) || "";
-    const shape = poolText(pickPoolItem(A.breast_shape)) || "";
+    // 乳型照罩杯 × 乳型配對表（A 不會抽到下垂）
+    const okShapes = (A.breast_shape || []).filter((x) => breastFit(cup, poolText(x)) > 0);
+    const shape = poolText(pickPoolItem(okShapes.length ? okShapes : A.breast_shape)) || "";
     $("re-name").value = typeof name === "string" ? name : name?.text || "小夜";
     $("re-per").value = personality.join("、");
     girlCache = {
