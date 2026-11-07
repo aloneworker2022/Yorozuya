@@ -1,5 +1,6 @@
 /** test_bodyM：抽妹子 → 選喜怒哀樂 → 由上往下加幀。每一幀可先生圖查看；播放才把已畫好的幀放大到畫面中央。 */
 import { setPools, generateGirl } from "./girl_gen.js";
+import { wornOutfitOf } from "./outfit_pick.js?v=2";
 
 // 與 testword 立繪 PO_DEFS 的半身喜怒哀樂同一句（不含害羞）。
 const EMOTIONS = [
@@ -67,21 +68,7 @@ function emotionOf(id) {
 }
 
 function wornOutfit(g) {
-  const L = g?.look || {};
-  const ward = Array.isArray(L.wardrobe) ? L.wardrobe : [];
-  const ero = Array.isArray(L.eroticOutfits) ? L.eroticOutfits : [];
-  const slp = Array.isArray(L.sleepOutfits) ? L.sleepOutfits : [];
-  const pick = g?.outfitPick;
-  if (typeof pick === "string" && pick[0] === "e") {
-    const i = Number(pick.slice(1));
-    if (Number.isInteger(i) && ero[i]) return String(ero[i]);
-  }
-  if (typeof pick === "string" && pick[0] === "s") {
-    const i = Number(pick.slice(1));
-    if (Number.isInteger(i) && slp[i]) return String(slp[i]);
-  }
-  if (Number.isInteger(pick) && pick >= 0 && pick < ward.length) return String(ward[pick] || "");
-  return String(L.career_outfit || L.style || "");
+  return wornOutfitOf(g);
 }
 
 function imageRating(g) {

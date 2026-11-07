@@ -490,25 +490,38 @@ body.room-home #talk-panel {
   padding-bottom: 0;
   width: 100%;
 }
+/* 2026-11-06 使用者：聊天排版——輸入框在畫面最上方；她說的話移到下方、蓋在人物前面；人物和對話框底部都貼齊畫面底部。
+   對話框固定高度（--talk-box-h），互動鍵列放在對話框正上方（手機拇指按得到）。 */
+body.room-home { --talk-box-h: clamp(112px, 21svh, 168px); --talk-bottom: max(6px, env(safe-area-inset-bottom)); }
+body.room-home #talk-input-row { order: 0; }
 body.room-home #talk-box {
   order: 1;
-  min-height: 4.8em;
-  max-height: min(32svh, 260px);
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--talk-bottom);
+  width: min(calc(100% - 16px), 440px);
+  height: var(--talk-box-h);
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
+  z-index: 4;
 }
-body.room-home #talk-input-row { order: 2; }
+/* 她在想／還沒字／猥褻動作圖在畫面上 → 對話框先藏起來（syncTalkBoxVis） */
+body.room-home #portrait-sheet.talk-hide #talk-box { visibility: hidden; opacity: 0; pointer-events: none; }
+body.room-home #talk-box { transition: opacity .15s ease-out; }
 body.room-home #portrait-img {
-  height: min(58svh, 560px);
-  /* 腳貼在互動鍵列上方 */
-  bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
+  height: min(78svh, 720px);
+  bottom: 0;   /* 腳貼畫面底，下半身被對話框蓋住 */
 }
 body.room-home #action-flash-img {
-  bottom: max(3.8em, calc(env(safe-area-inset-bottom) + 3.2em));
+  bottom: 0;
 }
 body.room-home .talk-acts {
-  bottom: 0;
+  bottom: calc(var(--talk-bottom) + var(--talk-box-h) + 2px);
   z-index: 72;
-  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  padding: 6px 10px;
+  background: none;
 }
 /* 聊天時藏主畫面委託輸入，避免跟互動鍵搶底欄 */
 body.room-home.sheet-open #quest-input-row {
@@ -731,3 +744,8 @@ body.room-home .room-summon-ritual:not([hidden]){display:block}
 .sx-steps{gap:6px;align-items:center}
 .sx-steps button{flex:1 1 22%;min-width:0;min-height:36px;padding:4px 6px;border-radius:999px;white-space:nowrap}
 .sx-steps button[aria-pressed=true]{background:#7a3558;color:#fff;border-color:#7a3558;font-weight:700}
+
+/* 房間上方一行小提示（拖家具，2026-11-01）；叫她做事改用聊天，沒有按鈕 */
+html.room-page .scene,#main-room-stage .scene{position:relative}
+.room-order-tip[hidden]{display:none}
+.room-order-tip{position:absolute;left:6px;bottom:8px;z-index:3;margin:0;padding:.25em .6em;max-width:calc(100% - 12px);font-size:12px;color:#e9dcc8;background:rgba(32,28,40,.78);border-radius:4px;pointer-events:none}

@@ -35,6 +35,7 @@ aapt package -f -m \
   -J "$OUT/gen" \
   -M AndroidManifest.xml \
   -S res \
+  -A assets \
   -I "$LIB/android.jar" \
   --min-sdk-version 24 \
   --target-sdk-version 34 \

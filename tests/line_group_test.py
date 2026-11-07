@@ -184,4 +184,14 @@ def _():
     assert "老公" in sys_ and "@阿哲" in msgs[1]["content"]
 
 
+
+@t("清除（2026-10-14）：手機記 clearedAt，讀存檔合併時不把那之前的 RP5 訊息蓋回去")
+def _():
+    store = {"feed": [{"id": "a", "t": NOW - 10 * MIN, "kind": "girl"}, {"id": "b", "t": NOW + MIN, "kind": "girl"}]}
+    data = {"lineGroup": {"messages": [], "clearedAt": NOW}}
+    assert L.merge_into_save(data, store) == 1
+    assert [m["id"] for m in data["lineGroup"]["messages"]] == ["b"]
+    old = {"lineGroup": {"messages": []}}
+    assert L.merge_into_save(old, store) == 2
+
 print(f"\n{passed} passed")

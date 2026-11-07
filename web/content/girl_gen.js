@@ -32,8 +32,9 @@ function normGrade(g) {
 
 export async function loadPools() {
   try {
-    POOLS = await fetch("content/persona_pools.json?ts=" + Date.now()).then(r => r.ok ? r.json() : null);
-  } catch { POOLS = null; }
+    const next = await fetch("content/persona_pools.json?ts=" + Date.now()).then(r => r.ok ? r.json() : null);
+    if (next) POOLS = next;   // 失敗時保留已注入／已載入的池（node 測試用 setPools）
+  } catch { /* 保留既有 POOLS */ }
   return POOLS;
 }
 export function setPools(p) { POOLS = p; }   // 測試/Node 注入用
@@ -140,26 +141,50 @@ function rollGraded(pool, luck, rating, extraWeight = null) {
     if (extraWeight) wt *= extraWeight(x, g, tier);
     return wt;
   });
-  return weightedPick(av, w);
+  // 權重 0 的（配對表上不可能的）不抽；全部 0 → null 讓呼叫端退回
+  const keep = av.map((x, i) => [x, w[i]]).filter(([, wt]) => wt > 0);
+  if (!keep.length) return null;
+  return weightedPick(keep.map(([x]) => x), keep.map(([, wt]) => wt));
 }
 
 function cupLetter(item) {
   if (!item) return "";
   if (item.cup) return String(item.cup).toUpperCase();
-  const m = String(item.text || "").match(/([ABDEI])\s*罩杯/i);
+  const m = String(item.text || item || "").match(/([A-I])\s*罩杯/i);
   return m ? m[1].toUpperCase() : "";
 }
 
-// A／B 只抽 N／R 乳型;I 額外加重 SS／SSR 乳型
+// 罩杯 × 乳型配對表（2026-11-07 使用者：大小和乳型要配對，例如 A 不可能垂）。
+// 0＝不可能、0.3＝少見、1＝正常、1.8＝很搭；乳型權重＝稀有度權重 × 這個值。
+export const CUP_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+const X = 0, L = 0.3, O = 1, W = 1.8;
+export const BREAST_FIT = {
+  //                 A  B  C  D  E  F  G  H  I
+  "平坦／微隆":      [W, L, X, X, X, X, X, X, X],
+  "饅頭型":          [O, W, W, O, L, X, X, X, X],
+  "挺俏上挺":        [O, W, W, O, L, L, X, X, X],
+  "半球型":          [X, O, W, W, W, O, L, L, X],
+  "自然圓潤":        [X, O, W, W, O, O, L, X, X],
+  "外擴／八字":      [X, O, O, O, O, O, O, O, O],
+  "水滴型":          [X, X, O, W, W, W, O, O, O],
+  "極密著深溝":      [X, X, L, O, W, W, W, W, W],
+  "木瓜型":          [X, X, X, O, O, W, W, W, O],
+  "鐘型":            [X, X, X, L, O, O, W, W, W],
+  "母乳型沉重下垂":  [X, X, X, X, L, O, O, W, W],
+};
+
+/** 這個罩杯配這個乳型的權重（表外的乳型或認不出罩杯 → 1，不擋）。 */
+export function breastFit(cup, shape) {
+  const letter = cupLetter(typeof cup === "string" ? { text: cup } : cup);
+  const row = BREAST_FIT[String((shape && (shape.text || shape.name)) || shape || "").trim()];
+  const i = CUP_LETTERS.indexOf(letter);
+  if (!row || i < 0) return 1;
+  return row[i];
+}
+
 function rollBreastShape(pool, luck, rating, cupItem) {
-  const letter = cupLetter(cupItem);
-  const small = letter === "A" || letter === "B";
-  const hyper = letter === "I";
-  return rollGraded(pool, luck, rating, (x, g) => {
-    if (small && !(g === "N" || g === "R")) return 0;
-    if (hyper && (g === "SS" || g === "SSR")) return 2.6;
-    return 1;
-  });
+  return rollGraded(pool, luck, rating, (x) => breastFit(cupItem, x))
+    || rollGraded(pool, luck, rating);
 }
 
 // 特殊屬性:抽 1~3 個,同類(cat)不重複,luck 拉高高稀有度
@@ -280,6 +305,8 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
     wardrobe,
     eroticOutfits,
     sleepOutfits,
+    // 上面三份是她天生的品味（藏著）；衣櫃裡真的有的只有 owned（索引）。新召喚全空＝只有白 T 加三角褲。
+    owned: { wardrobe: [], erotic: [], sleep: [] },
     feature: txt(feature),
   };
   // 器官開發度（2026-10-09 使用者）：新召喚一律粉色起算（乳暈／乳頭／陰唇），抽到的原字串留在 look.devBase，大小／形狀照舊

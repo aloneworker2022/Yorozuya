@@ -5,4 +5,6 @@
     <string name="widget_desc">把待辦直接丟進萬事屋發現池</string>
     <string name="hint">待辦…</string>
     <string name="send">送出</string>
+    <string name="voice">語音輸入</string>
+    <string name="voice_prompt">說出待辦…</string>
 </resources>
