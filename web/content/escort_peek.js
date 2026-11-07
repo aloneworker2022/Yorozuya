@@ -111,7 +111,7 @@ let fullApi = null, fullWorker = null;
 /** 載 droom 人偶（自己的盒子）。 */
 export async function droomDoll() {
   if (fullApi) return fullApi;
-  const src = await (await fetch(new URL("../droom/room_doll_full.js?v=4", import.meta.url))).text();
+  const src = await (await fetch(new URL("../droom/room_doll_full.js?v=5", import.meta.url))).text();
   const box = {};
   new Function("globalThis", "module", src)(box, undefined);
   fullApi = box.RoomDoll;

@@ -162,6 +162,26 @@
         x = R[0] * dx + R[3] * dy + R[6] * dz; y = R[1] * dx + R[4] * dy + R[7] * dz; z = R[2] * dx + R[5] * dy + R[8] * dz;
       }
       x -= p.off[0]; y -= p.off[1]; z -= p.off[2];
+      // 2026-11-07 揉乳房：這顆乳房的零件先反推回揉之前的位置（越靠前面的肉被拉得越多，根部不動），再算距離；掐＝手指壓下去的凹痕
+      const kw = p.kw;
+      if (kw) {
+        const w = kneadW(kw, x, y, z);
+        x -= kw.o[0] * w; y -= kw.o[1] * w; z -= kw.o[2] * w;
+      }
+      let d = primDistRaw(p, x, y, z, fz);
+      if (kw) {
+        if (kw.pinch > 0) for (const f of kw.fingers) { const dd = (x - f[0]) ** 2 + (y - f[1]) ** 2 + (z - f[2]) ** 2; d += kw.pinch * f[3] * Math.exp(-dd / f[4]); }
+        d *= .8;   // 變形後距離不再精確，步子走小一點免得穿過去
+      }
+      return d;
+    }
+    // 揉乳房的權重：從根部（0）沿著根部→乳頭方向到乳頭（1），平滑往上
+    function kneadW(kw, x, y, z) {
+      const t = ((x - kw.root[0]) * kw.f[0] + (y - kw.root[1]) * kw.f[1] + (z - kw.root[2]) * kw.f[2]) / kw.L;
+      const u = t <= 0 ? 0 : t >= 1 ? 1 : t;
+      return u * u * (3 - 2 * u);
+    }
+    function primDistRaw(p, x, y, z, fz) {
       let d;
       if (p.k === 0) {
         const c = p.c, r = p.r, dx = x - c[0], dy = y - c[1], dz = z - c[2];
@@ -243,6 +263,28 @@
     }
     // 2026-11-05 sock＝true：眼窩挖洞（carve＝2）當成挖掉（身體 − 洞），不是實心。眼睛標記用：原本把洞當實心，標記浮在眼窩前面 1 多單位，
     //   正面看不出來、45 度時遠眼浮在空中、貼在鼻樑旁（使用者：側面眼睛應該被山根擋住，不是印上去）。其他東西（眼罩布等）照舊。
+    // 2026-11-07 揉乳房（droom 揉乳房視窗）：doll.knead＝{ side: ±1（哪一顆）, o: [左右, 前後, 上下]（乳頭被拉到哪，單位＝乳房半徑 r）, pinch: 0～1（手指掐進去）}
+    //   這一顆的零件（kn0 之後）標上 kw：越靠乳頭被拉得越多、根部不動；掐＝乳頭周圍 5 個指尖（上外側 4 指＋下內側拇指）各壓一個凹痕。
+    //   sh.knead 回傳拉過之後的乳頭／指尖位置（畫黑手用）。
+    function kneadTag(sh, kn, s, root, r, kn0, ks0, front0) {
+      const st = sh.areolaStamps || [], nip = st.length > ks0 ? st[st.length - 1].q : front0;
+      const fv = [nip[0] - root[0], nip[1] - root[1], nip[2] - root[2]], L = Math.hypot(...fv) || 1;
+      const o = (kn.o || [0, 0, 0]).map(v => v * r), pinch = Math.max(0, Math.min(1, kn.pinch || 0));
+      const fingers = [];
+      const surfY = (x, z) => { for (let k = 0; k < 200; k++) { const y = nip[1] + 3 - k * .08; if (bodyDist(sh, x, y, z) < 0) return y; } return nip[1] - r * .5; };
+      const rho = r * .62 + .5;
+      for (const [deg, thumb] of [[40, 0], [72, 0], [104, 0], [136, 0], [-120, 1]]) {   // 角度：0°＝往外（s 那側）、90°＝往上
+        const a = deg * Math.PI / 180, x = nip[0] + s * Math.cos(a) * rho, z = nip[2] + Math.sin(a) * rho;
+        const tr = (thumb ? .3 : .24) * r + .35;
+        fingers.push([x, surfY(x, z) - tr * .2, z, (thumb ? .38 : .32) * r + .3, tr * tr, thumb]);
+      }
+      const kw = { root, f: fv.map(v => v / L), L, o, pinch, fingers };
+      const grow = Math.hypot(...o) + pinch * r * .4 + .5;
+      for (let i = kn0; i < sh.prims.length; i++) { const p = sh.prims[i]; p.kw = kw; p.br += grow; }
+      const warp = (q) => { const w = kneadW(kw, q[0], q[1], q[2]); return [q[0] + o[0] * w, q[1] + o[1] * w, q[2] + o[2] * w]; };
+      for (let j = ks0; j < st.length; j++) { st[j].q = warp(st[j].q); st[j].kn = true; }
+      sh.knead = { side: s, r, nip: warp(nip), root, fingers: fingers.map(f => ({ q: warp(f), thumb: f[5] })) };
+    }
     function bodyDist(sh, x, y, z, sock = false) {
       let best = 1e3, hole = 1e3;
       for (const p of sh.prims) if (p.mat === 0 && !(sh.surfSkipBust && p.part === 'breast')) { const d = primDist(p, x, y, z); if (sock && p.carve === 2) { if (d < hole) hole = d; } else if (d < best) best = d; }
@@ -572,6 +614,7 @@
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
       sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
       for (const s of doll._noBust ? [] : [-1, 1]) {   // _noBust：乳房另外畫（趴跪翹臀：擺好姿勢後在世界座標往下垂、壓在地上）
+        const kn0 = sh.prims.length, ks0 = (sh.areolaStamps || []).length;   // 2026-11-07 揉乳房：記下這一顆從哪個零件開始
         const root = [s * (2.6 + r * .22) * cs + bx * .3, yl(zA) + 2.6 * cs + r * .12 + by * .3, zA + bz * .3];
         const cx = s * (3.2 + r * .3) * cs + bx, cy = yl(zB) + 3.3 * cs + r * .5 + by;
         if (doll._press) {
@@ -652,6 +695,7 @@
           sh.cone(BODY, root, [cx, cy, zB], r * .45, r * .82);
           sh.ell(BODY, [cx, cy - r * .1 - r * sy * .3, zB], [r * .95 * (1 + sy * .35), r * .86 * (1 - sy), r * .86 * (1 - sq)]);
         }
+        if (doll.knead && doll.knead.side === s) kneadTag(sh, doll.knead, s, root, r, kn0, ks0, [cx, cy + r, zB]);
       }
       sh.bust = false;
       return { zc, S, C, T, zW, zB, cupr: r, yl };
@@ -2098,8 +2142,11 @@
       const width = Math.round((CAM ? CAM.w : cv.w) * K), height = Math.round((CAM ? CAM.h : cv.h) * K), ax = cv.ax, ay = cv.ay;
       let prims = opts.onlyMat != null ? sh.prims.filter(p => p.mat === opts.onlyMat) : sh.prims;
       if (opts.parts) prims = prims.filter(p => p.carve || opts.parts.includes(p.part));   // 2026-11-01 拆圖層：只算某些部位
+      // 2026-11-07 揉乳房：kneadOnly＝只畫被揉的那一顆（零件 kw、乳暈 kn）；kneadSkip＝其他全部（底圖畫一次）
+      let stamps = sh.areolaStamps || [];
+      if (opts.kneadOnly) { prims = prims.filter(p => p.kw); stamps = stamps.filter(st => st.kn); }
+      else if (opts.kneadSkip) { prims = prims.filter(p => !p.kw); stamps = stamps.filter(st => !st.kn); }
       const np = prims.length;   // onlyMat：只畫某材質（頭髮圖層用）
-      const stamps = sh.areolaStamps || [];
       // world-space bounding spheres (primitive offsets folded in)
       const bcx = new Float64Array(np), bcy = new Float64Array(np), bcz = new Float64Array(np), brr = new Float64Array(np), pm = new Uint8Array(np), pb = new Uint8Array(np);
       let mnx = 1e9, mny = 1e9, mnz = 1e9, mxx = -1e9, mxy = -1e9, mxz = -1e9;
@@ -2116,12 +2163,14 @@
       const gr = hypot3(mxx - gcx, mxy - gcy, mxz - gcz) + .5;
       const th = yaw * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), gw = KL ? 1 : GIRTH;   // lit 體位（側面）不橫向拉寬，跟 renderSide 一樣大
       let dX = -2 * s / gw, dY = 2 * c / gw, dZ = 0, dd = dX * dX + dY * dY + dZ * dZ;
-      let camRay = null, camPx = 1, camRow = null, camPxAt = null;   // camPxAt(q)：'look' 時每點自己的透視倍率
+      let camRay = null, camPx = 1, camRow = null, camPxAt = null, camProj = null;   // camPxAt(q)：'look' 時每點自己的透視倍率
       if (CAM) {   // 攝影機在她前方（yaw 方向的 (−s, c)），往她看、往下 pitch；水平拉寬空間＝模型 x,y × gw
         const cp = Math.cos(CAM.pitch || 0), sp = Math.sin(CAM.pitch || 0), F = CAM.f, D0 = CAM.dist;
         const fw = [s * cp, -c * cp, -sp], rt = [c, s, 0], up = [s * sp, -c * sp, cp];
         const A0 = [-s * D0, c * D0, CAM.eyeZ];
         camPx = F / (D0 * gw);
+        camProj = (q) => { const d = [(q[0] - A0[0]) * gw, (q[1] - A0[1]) * gw, q[2] - A0[2]], df = d[0] * fw[0] + d[1] * fw[1] + d[2] * fw[2];   // 2026-11-07：世界座標 → 畫面像素（針孔）
+          return [(F * (d[0] * rt[0] + d[1] * rt[1] + d[2] * rt[2]) / df + CAM.cx) * K - .5, (-F * (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / df + CAM.cy) * K - .5]; };
         camRow = (z) => { const d = [s * D0 * gw, -c * D0 * gw, z - CAM.eyeZ], fz = d[0] * fw[0] + d[1] * fw[1] + d[2] * fw[2], uz = d[0] * up[0] + d[1] * up[1] + d[2] * up[2]; return (CAM.cy - F * uz / fz) * K; };   // 她中線上高度 z 在畫面第幾列   // 她身上 1 單位 ≈ 幾個像素（K＝1），點乳頭圓之類用
         // 2026-11-05 cam.proj＝'look'（使用者：靠近時臉正常、越往下越短，胸部往前凸、腳變短＝從上往下看進去）：
         //   一般針孔（平面底片）越往畫面下面越被拉長；'look' 改成「每一列＝低頭到那個角度時正中間那條線」：列 v 的俯角＝pitch＋v/f（角度等距），
@@ -2139,6 +2188,10 @@
           B[0] = -2 * x / gw; B[1] = -2 * y / gw; B[2] = -2 * z;
         };
       }
+      const kneadOut = () => {   // 揉乳房：乳頭、指尖、乳房根部的畫面像素（畫黑手用；只有透視攝影機才給）
+        const kn = sh.knead; if (!kn || !camProj) return null;
+        return { side: kn.side, r: kn.r, pxPerUnit: camPx * K, nip: camProj(kn.nip), root: camProj(kn.root), fingers: kn.fingers.map(f => ({ thumb: f.thumb, p: camProj(f.q) })) };
+      };
       const RA = [0, 0, 0], RB = [0, 0, 0];
       const camAt = (px, py, t) => { camRay(px, py, RA, RB); return [RA[0] + t * RB[0], RA[1] + t * RB[1], RA[2] + t * RB[2]]; };
       const n = width * height;
@@ -2150,9 +2203,10 @@
       const carveIdx = []; for (let i = 0; i < np; i++) if (prims[i].carve) carveIdx.push(i);
       const hasSock = carveIdx.some(i => prims[i].carve === 2);   // 2026-11-05 有眼窩：臉部標記不被眼窩挖掉
       const CULL = opts.cull !== false, CULL_M = 1.5, cand = new Int32Array(np);   // 2026-11-03 光線先挑零件（opts.cull＝false 關掉）   // 2026-10-31：挖洞零件（從身體減掉，私處打開用）
-      for (let py = 0; py < (G0 || !np ? 0 : height); py++) {
+      const BOX = opts.box || null;   // 2026-11-07 揉乳房：只算這個框（像素 [x0, y0, x1, y1]），框外留空
+      for (let py = BOX ? Math.max(0, BOX[1]) : 0; py < (G0 || !np ? 0 : BOX ? Math.min(height, BOX[3]) : height); py++) {
         const sy = (py + .5) / K - ay;
-        for (let px = 0; px < width; px++) {
+        for (let px = BOX ? Math.max(0, BOX[0]) : 0; px < (BOX ? Math.min(width, BOX[2]) : width); px++) {
           const sx = SXF * ((px + .5) / K - ax);
           // ray: X = (sx*c - 2t*s)/gw, Y = (sx*s + 2t*c)/gw, Z = t - sy
           if (camRay) { camRay(px, py, RA, RB); dX = RB[0]; dY = RB[1]; dZ = RB[2]; dd = dX * dX + dY * dY + dZ * dZ; }
@@ -2234,7 +2288,7 @@
             }
           }
         }
-        return { width, height, hit, mat, tt, bust, limb };
+        return { width, height, hit, mat, tt, bust, limb, knead: kneadOut() };
       }
       // clean single-pixel specks and pinholes
       const m = new Uint8Array(n), holes = new Uint8Array(n);
@@ -2318,7 +2372,7 @@
         for (const j of [i - width, i + width, i - 1, i + 1]) if (j >= 0 && j < n && Number.isFinite(depth[j]) && hit[j]) { sum += depth[j]; cnt++; }
         depth[i] = cnt ? sum / cnt : 0;
       }
-      return { width, height, anchor: { x: ax * K, y: ay * K }, pixels, depth };
+      return { width, height, anchor: { x: ax * K, y: ay * K }, pixels, depth, knead: kneadOut() };
     }
     // 2026-11-01 拆圖層樣品：各部位分開算原始資料，每格取最近（tt 最大）的那個，再統一上色。union of SDF＝每格最近的表面，所以結果應與整張一起算相同。
     const PARTS = ['head', 'chest', 'waist', 'hips', 'torso', 'breast', 'armL', 'armR', 'legs', 'over'];   // 2026-11-03 torso 只剩各姿勢另加的小零件（手掌墊、手機…）

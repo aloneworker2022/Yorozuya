@@ -240,3 +240,11 @@ const up=()=>draw(B,+sl.value/100);
 im.onload=()=>{draw(A,1);up();setInterval(()=>{if(!auto)return;t+=.03;sl.value=Math.round((1+Math.cos(t))*50);up()},50)};
 sl.oninput=()=>{auto=false;up()};document.getElementById("lya").onclick=()=>{auto=true};
 im.src="/droom/self_ref.png?v=2";})();</script>
+<section id="knead" style="margin:28px auto 40px;max-width:420px;padding:0 16px">
+<h1>揉乳房（測試）</h1>
+<div class=bar><b>乳型</b><select id=kn_s></select></div><div class=bar><b>罩杯</b><select id=kn_c></select></div><div class=bar><b>乳暈</b><select id=kn_a></select></div><div class=bar><b>畫質</b><select id=kn_k></select></div>
+<canvas id="kn_cv" width="360" height="400" style="width:100%;max-width:360px;aspect-ratio:9/10;image-rendering:pixelated;background:#ece8e2;border-radius:10px;display:block;margin:8px auto"></canvas>
+<div id="kn_now" style="min-height:1.3em;color:#e8c0d8"></div><small id="kn_st"></small>
+<p><small>手指按住右邊那顆＝掐；按著往 8 個方向拖＝拉，拖遠跳第 2 段；放手會彈回去晃幾下。</small></p>
+</section>
+<script src="/droom/knead.js?v=2"></script>

@@ -322,3 +322,9 @@ play.html (/droom/play): Doom-style raycaster room, one wandering girl billboard
 - `dome`：底寬、隆起矮、往前凸得少（橢球 1.05r × 前後 0.6r × 上下 0.92r，中心貼近胸口）；根部錐半徑比前面那面小，不然會撐回圓形。
 - 樣本工具 `render_bust_sample.cjs`（每列一個罩杯、每欄 乳型 × 方向）：`SHAPES=round,dome CUPS=A,B,C,D,E DIRS=front,right K=4 Y0=.25 Y1=.46 OUT=samples/bust_dome.png node render_bust_sample.cjs`。
 - 樣本確認前不出 sheet。
+
+## 2026-11-07 揉乳房視窗（index.html 最下面，測試）
+- 選 乳型（圓形／鐘型／下垂／饅頭）、罩杯 A～I、乳暈、畫質 → 胸口正面近景（透視攝影機 `CAM`，脖子到胸下）。
+- 先做右邊那顆（畫面右，`doll.knead.side＝1`）。按住＝掐（一段，5 個指尖凹痕）；拖＝8 方向固定 × 2 段（16／52 CSS 像素）；放手＝先回一半再上下晃（往下拉的先往上彈），幅度看 `CUP_BOUNCE`；手感：饅頭 0.6、圓 1、鐘 1.1、下垂 1.3。
+- 模型：`doll.knead＝{side, o:[左右,前後,上下]（單位 r）, pinch}`；那顆的零件標 `kw`，算距離前反推回去（根部 0 → 乳頭 1 平滑）＝越前面拉越多；乳暈 stamp 跟著移。`render` 新增 `kneadSkip`／`kneadOnly`／`box`，回傳 `knead`（乳頭、指尖畫面座標，畫黑手用）。
+- 算圖在 `knead_worker.js`：底圖一次（除了那顆）＋每個狀態只算那顆附近的框；52 個狀態預先算好放著（桌機約 15 秒全部算完）。
