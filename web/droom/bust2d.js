@@ -1,123 +1,96 @@
-/* 2026-11-07 胸部像素圖（2D 直接畫，不用 3D 模型）：照使用者給的像素參考圖。
-   使用者：3D 算的爛透了，先從 C 罩杯畫一張看看。
-   一格一格畫：深色背景、脖子／肩／手臂／軀幹剪影、深紅棕外框；乳房＝一片淺桃色、上半融進胸口不描線、
-   下半＋外側＋乳溝描深線；乳房下面身體一塊深色投影；乳暈外圈深、裡面淺、乳頭深＋亮點；乳頭內側一道白亮點；鎖骨、肚臍。
+/* 2026-11-07 胸部像素圖（2D 直接畫，不用 3D 模型）。
+   第 2 版：照使用者第二張參考圖（胸部近景：鎖骨到乳房下、乳房佔滿畫面、兩顆在中間碰在一起；
+   上半很滑順地從胸口長出來、下半飽滿有深線；明暗柔和多階、用抖動（dither）過渡；乳暈大而深、乳頭深＋亮點、乳頭內上方一道濕亮）。
+   做法：2D 高度圖（軀幹＝圓柱、兩顆乳房＝凸起：上半邊緣平緩、下半邊緣陡＝摺痕；兩顆取 max＝中間有乳溝）
+   → 由高度算法線打光＋上方遮擋＝乳房下的陰影 → 量化成少數幾個顏色（4×4 Bayer 抖動）→ 外框：剪影、乳房下緣／外側陡降處。
    純計算：draw(opts) → { width, height, pixels }（RGBA）。前端、node 共用。 */
 (function (root, f) { const api = f(); if (typeof module === 'object' && module.exports) module.exports = api; else root.Bust2D = api; })(this, function () {
-  const P = {
-    bg: [29, 20, 34], out: [112, 38, 40], line: [150, 70, 66],
-    hi: [255, 242, 234], lite: [248, 210, 192], base: [240, 196, 178], shade: [226, 172, 154], deep: [204, 128, 112],
-    arRing: [200, 116, 112], ar: [228, 156, 146], nip: [178, 86, 90], nipDeep: [140, 58, 66],
-  };
-  // 罩杯 → 乳房半徑（格）、下垂、間距
-  const CUPS = { A: [6.5, 0], B: [8.5, .5], C: [10.5, 1], D: [12, 1.5], E: [13.5, 2], F: [14.5, 2.5], G: [15.5, 3], H: [16.5, 3.5], I: [17.5, 4] };
+  const SKIN = [[246, 212, 192], [226, 176, 150], [206, 152, 124], [188, 132, 106], [166, 110, 88], [140, 86, 70], [112, 62, 52]];   // 亮 → 暗
+  const AREOLA = [[204, 124, 108], [186, 104, 90], [166, 86, 76], [142, 68, 62], [118, 52, 50]];
+  const C = { bg: [122, 132, 152], out: [66, 26, 26], spec: [252, 238, 228], nip: [104, 44, 42] };
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + .5) / 16 - .5);
+  // 罩杯 → 乳房半徑（格）、往前凸多高、下垂
+  const CUPS = { A: [12, .4, 0], B: [15, .5, .5], C: [18, .62, 1], D: [19.5, .68, 1.5], E: [21, .74, 2.2], F: [19.5, .84, 2.8], G: [20.5, .88, 3.4], H: [21.5, .9, 4], I: [22.5, .92, 4.6] };
+  const sst = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
   function draw(opts = {}) {
-    const W = opts.width || 90, H = opts.height || 104, cx = W / 2;
-    const px = new Uint8ClampedArray(W * H * 4);
-    const id = new Uint8Array(W * H);   // 0 背景、1 身體、2 手臂、3 乳房、4 乳暈、5 乳頭
-    const col = new Array(W * H).fill(null);
-    const set = (x, y, c) => { x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= W || y >= H) return; col[y * W + x] = c; };
-    const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : id[y * W + x];
-
-    // ── 剪影：左半邊定義、右邊鏡像 ──
-    // 軀幹：每一列的半寬（從中線）。脖子 0～10、肩 11～18、胸廓 19～60（腰往內收）、下面再微微變寬
-    const torsoHalf = (y) => {
-      if (y < 6) return 7;                                                    // 脖子
-      if (y < 14) { const t = (y - 6) / 8; return 7 + 27 * t * t * (3 - 2 * t) ** .6; }   // 脖子 → 斜方肌 → 肩（圓滑）
-      if (y < 30) return 34 - (y - 14) * .1;                                 // 胸廓上半（手臂另外畫在外面）
-      if (y < 72) return 32.4 - (y - 30) * .14;                              // 胸廓 → 腰
-      return 26.5 + (y - 72) * .1;                                           // 腰 → 下腹
-    };
-    const shoulderR = 8.5, shoulderX = 35.5, shoulderY = 21;                 // 肩頭（圓）
-    const armOuter = (y) => y < shoulderY ? 0 : shoulderX + shoulderR - .5 + Math.min(1.5, (y - shoulderY) * .08) - Math.max(0, y - 62) * .06;
-    const armInner = (y) => y < 34 ? 0 : armOuter(y) - 9.5;
+    const W = opts.width || 90, H = opts.height || 112, cx = W / 2;
+    const [R, hk, sag] = CUPS[(opts.cup || 'C').toUpperCase()] || CUPS.C;
+    const h = new Float32Array(W * H), mask = new Uint8Array(W * H), part = new Uint8Array(W * H);   // part：0 身體、1 乳房、2 乳暈、3 乳頭
+    // 軀幹半寬：上面是肩膀（超出畫面），往下胸廓、腰慢慢收
+    const half = (y) => y < 10 ? 15 + y * 3.4 + y * y * .02 : 52;   // 上面：脖子 → 斜方肌往兩邊斜下到肩膀（之後超出畫面）
+    const breasts = [-1, 1].map(s => ({ s, x: cx + s * (R * .98 + .5), y: 56 + sag + (R - 18) * .4, R }));
+    let bump = new Float32Array(W * H), which = new Int8Array(W * H);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const dx = Math.abs(x + .5 - cx);
-      let v = 0;
-      if (dx <= torsoHalf(y)) v = 1;
-      if (y >= shoulderY && dx <= armOuter(y) && dx >= armInner(y) && dx > torsoHalf(y) - 1) v = 2;
-      if (y >= 10 && y < shoulderY + 1 && ((dx - shoulderX) ** 2 + (y - shoulderY) ** 2 <= shoulderR * shoulderR || (dx < shoulderX && y >= shoulderY - shoulderR + 1 && dx <= torsoHalf(y) + 6))) v = v || (dx > torsoHalf(y) ? 2 : 1);   // 肩頭圓
-      id[y * W + x] = v;
-    }
-
-    // ── 乳房 ──
-    const cup = CUPS[(opts.cup || 'C').toUpperCase()] || CUPS.C, R = cup[0], sag = cup[1];
-    const gap = 1.5 + R * .12;                  // 兩顆內緣到中線
-    const bcy = 36 + sag + R * .35;             // 乳房中心高度
-    const breasts = [-1, 1].map(s => ({ s, x: cx + s * (gap + R), y: bcy, rx: R, ry: R * .92 }));
-    for (const b of breasts) for (let y = Math.floor(b.y - b.ry - 2); y <= b.y + b.ry + 1; y++) for (let x = Math.floor(b.x - b.rx - 1); x <= b.x + b.rx + 1; x++) {
-      const u = (x + .5 - b.x) / b.rx, v = (y + .5 - b.y) / b.ry, e = u * u + v * v;
-      if (e <= 1 && at(x, y)) id[y * W + x] = 3;
-    }
-
-    // ── 上色：底色 ──
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const v = id[y * W + x]; col[y * W + x] = v ? P.base : P.bg; }
-    // 軀幹兩側、手臂內側：陰影一條
-    for (let y = 13; y < H; y++) for (let x = 0; x < W; x++) {
-      const v = id[y * W + x], dx = Math.abs(x + .5 - cx);
-      if (v === 1 && y > 28 && dx > torsoHalf(y) - 3.2) set(x, y, P.shade);
-      if (v === 2 && dx < armInner(y) + 2.5) set(x, y, P.shade);
-    }
-    // 乳房下面：一塊深色投影（外側比較寬，中線不暗）
-    for (const b of breasts) for (let y = Math.ceil(b.y); y < b.y + b.ry + 7; y++) for (let x = Math.floor(b.x - b.rx - 3); x <= b.x + b.rx + 2; x++) {
-      if (at(x, y) !== 1) continue;
-      const u = (x + .5 - b.x) / (b.rx + .2), outer = (x + .5 - b.x) * b.s;     // outer>0＝外側
-      const yb = b.y + b.ry * Math.sqrt(Math.max(0, 1 - u * u));               // 乳房下緣
-      const depth = 2.5 + Math.max(0, outer) * .35;                            // 外側投影比較長
-      if (Math.abs(u) <= 1.15 && y > yb - .5 && y < yb + depth && Math.abs(x + .5 - cx) > 2.5) set(x, y, P.deep);
-    }
-    // 乳房：上半一圈淡淡的（融進胸口）、下緣內側一條陰影
-    for (const b of breasts) for (let y = Math.floor(b.y - b.ry - 1); y <= b.y + b.ry; y++) for (let x = Math.floor(b.x - b.rx - 1); x <= b.x + b.rx; x++) {
-      if (at(x, y) !== 3) continue;
-      const u = (x + .5 - b.x) / b.rx, v = (y + .5 - b.y) / b.ry, e = Math.sqrt(u * u + v * v);
-      if (v < -.35 && e > .86 && (x + y) % 2 === 0) set(x, y, P.shade);                  // 上緣：點狀淡淡一圈
-      if (v > .2 && e > .8) set(x, y, P.shade);                                           // 下緣內側
-      if (v > .45 && e > .9 && u * b.s > -.2) set(x, y, P.deep);                          // 外下更暗
-      if (v < -.1 && v > -.75 && Math.abs(u + b.s * .15) < .45 && e < .75) set(x, y, P.lite);   // 上半中間微亮
-    }
-    // 乳暈、乳頭（中心偏外、偏下一點；乳頭微微朝外）
-    const AR = Math.max(2.2, R * .32);
-    for (const b of breasts) {
-      b.ax = b.x + b.s * R * .22; b.ay = b.y + R * .12;
-      for (let y = Math.floor(b.ay - AR - 1); y <= b.ay + AR + 1; y++) for (let x = Math.floor(b.ax - AR - 1); x <= b.ax + AR + 1; x++) {
-        const d = Math.hypot(x + .5 - b.ax, (y + .5 - b.ay) * 1.08);
-        if (d <= AR) { id[y * W + x] = 4; set(x, y, d > AR - 1 ? P.arRing : P.ar); }
+      const i = y * W + x, dx = x + .5 - cx, hw = half(y);
+      // 手臂：畫面兩邊（腋下以下跟身體之間留背景縫）
+      const gx0 = 38.5 - Math.max(0, y - 76) * .12;   // 腋下以下：手臂跟身體之間的背景縫（參考圖兩側）
+      const armGap = y > 76 && Math.abs(dx) > gx0 && Math.abs(dx) < gx0 + 2.2 + (y - 76) * .05;
+      if (Math.abs(dx) <= hw && !armGap) mask[i] = 1;
+      // 軀幹高度：圓柱＋鎖骨稜＋胸骨溝＋脖子
+      const u = dx / 50; let t = 9 * Math.sqrt(Math.max(0, 1 - u * u));
+      const clav = 10 + Math.abs(dx) * .06 - (Math.abs(dx) < 7 ? (7 - Math.abs(dx)) * .55 : 0);   // 鎖骨：中間 V 字往下
+      if (Math.abs(dx) > 3 && Math.abs(dx) < 40) t += 1.3 * Math.exp(-(((y - clav) / 1.3) ** 2));
+      if (y < 8 && Math.abs(dx) < 15) t += 2.5 * (1 - y / 8);                   // 脖子（往前一點）
+      t -= .9 * Math.exp(-(dx * dx) / 5) * sst(70, 90, y);                         // 胸骨溝（乳房下）
+      h[i] = t;
+      // 乳房凸起：上半半徑拉長、邊緣平緩（融進胸口）；下半邊緣陡（摺痕）
+      for (const b of breasts) {
+        const bx = (x + .5 - b.x) / b.R, by = (y + .5 - b.y) / b.R;
+        const up = by < 0, ry = up ? 1.55 : .96, rx = 1 + Math.max(0, -by) * .1;
+        const e = Math.hypot(bx / rx, by / ry); if (e >= 1) continue;
+        const k = sst(-.8, .45, by);                                               // 0＝上半、1＝下半
+        const prof = Math.pow(1 - e * e, .5 + (1 - k) * 1.3);                       // 上半指數大＝邊緣平緩
+        const v = b.R * hk * prof;
+        if (v > bump[i]) { bump[i] = v; which[i] = b.s; }
       }
-      const nx = b.ax + b.s * .4, ny = b.ay;
-      for (const [ox, oy, c] of [[0, 0, P.nip], [b.s, 0, P.nipDeep], [0, 1, P.nipDeep], [b.s, 1, P.nipDeep], [-b.s, -1, P.hi]]) { set(nx + ox, ny + oy, c); id[Math.round(ny + oy) * W + Math.round(nx + ox)] = 5; }
-      // 濕亮：乳頭內上方一道白
-      const hx = b.ax - b.s * (AR + 1.2), hy = b.ay - 1.5;
-      for (let k = 0; k < Math.max(2, Math.round(R * .25)); k++) set(hx - b.s * k, hy - k * .5, P.hi);
-      set(hx - b.s * 1, hy + 1, P.lite);
+      h[i] += bump[i]; if (bump[i] > .05) part[i] = 1;
     }
-
-    // ── 外框 ──
-    const isSkin = (x, y) => at(x, y) > 0;
+    // 乳暈、乳頭（中心偏外、略低）
+    const AR = R * .3;
+    for (const b of breasts) {
+      b.ax = b.x + b.s * R * .2; b.ay = b.y + R * .1;
+      for (let y = Math.floor(b.ay - AR - 2); y <= b.ay + AR + 2; y++) for (let x = Math.floor(b.ax - AR - 2); x <= b.ax + AR + 2; x++) {
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        const d = Math.hypot(x + .5 - b.ax, (y + .5 - b.ay) * 1.05), i = y * W + x;
+        if (d <= AR) { part[i] = 2; h[i] += .35 * (1 - d / AR); }
+        if (d <= AR * .38) { part[i] = 3; h[i] += .9 * (1 - d / (AR * .38)); }
+      }
+    }
+    const H_ = (x, y) => h[Math.max(0, Math.min(H - 1, y)) * W + Math.max(0, Math.min(W - 1, x))];
+    const L = (() => { const v = [-.05, .3, .95], l = Math.hypot(...v); return v.map(q => q / l); })();
+    const HV = (() => { const v = [-.2, .35, 1.9], l = Math.hypot(...v); return v.map(q => q / l); })();
+    const px = new Uint8ClampedArray(W * H * 4);
+    const put = (i, c) => { px[i * 4] = c[0]; px[i * 4 + 1] = c[1]; px[i * 4 + 2] = c[2]; px[i * 4 + 3] = 255; };
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const v = id[y * W + x]; if (!v) continue;
-      if (!isSkin(x - 1, y) || !isSkin(x + 1, y) || !isSkin(x, y - 1) || !isSkin(x, y + 1)) { set(x, y, P.out); continue; }
-      if (v === 2 && (at(x - 1, y) === 1 || at(x + 1, y) === 1) && y > 30) set(x, y, P.out);   // 手臂跟軀幹之間
+      const i = y * W + x;
+      if (!mask[i]) { put(i, C.bg); continue; }
+      // 外框：剪影；乳房下緣／外側往下陡降的地方（上半不描）
+      let edge = false;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const xx = x + ox, yy = y + oy; if (xx < 0 || yy < 0 || xx >= W || yy >= H || !mask[yy * W + xx]) edge = true; }
+      const drop = Math.max(h[i] - H_(x, y + 1), (h[i] - H_(x + 1, y)) * (which[i] > 0 ? 1 : 0), (h[i] - H_(x - 1, y)) * (which[i] < 0 ? 1 : 0), (h[i] - H_(x + which[i] * -1, y)) * (part[i] && Math.abs(x + .5 - cx) < R * .9 ? 1 : 0));
+      if (part[i] && drop > 2.4 && y > breasts[0].y - R * .25) edge = true;
+      if (edge) { put(i, C.out); continue; }
+      const gx = (H_(x + 1, y) - H_(x - 1, y)) / 2, gy = (H_(x, y + 1) - H_(x, y - 1)) / 2;
+      let nx = -gx, ny = gy, nz = 1.6; const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
+      const dif = Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]);
+      let occ = 0;   // 上方比自己高很多＝被擋（乳房下面）
+      for (let k = 1; k <= 9; k++) { const d = H_(x, y - k) - h[i] - k * .55; if (d > 0) occ = Math.max(occ, Math.min(1, d / 3)); }
+      // 色階：平的皮膚＝第 2 階（中間的棕褐），正對光的乳房亮到第 0～1 階，側面／下面暗到第 4～5 階，被擋再暗
+      let fi = 2 + (.94 - dif) * 20 + occ * 3.2 - (part[i] === 1 ? .35 : 0);
+      const spec = nx * HV[0] + ny * HV[1] + nz * HV[2];
+      const b = breasts[which[i] < 0 ? 0 : 1], dA = Math.hypot(x + .5 - b.ax, y + .5 - b.ay);
+      // 濕亮：只在乳頭內上方一小塊（參考圖）
+      if (part[i] === 1 && dA < AR * 2 && dA > AR * 1.05 && (x + .5 - b.ax) * b.s < 0 && y + .5 < b.ay + 1 && spec > .992) { put(i, C.spec); continue; }
+      if (part[i] === 3 && spec > .985 && (x + .5 - b.ax) * b.s < .5) { put(i, C.spec); continue; }
+      if (part[i] === 2 && dA > AR - 1.1) { put(i, AREOLA[Math.min(AREOLA.length - 1, 3)]); continue; }   // 乳暈外圈深
+      const pal = part[i] >= 2 ? AREOLA : SKIN, n = pal.length;
+      if (pal === AREOLA) fi = fi * .6;
+      let idx = Math.round(fi + BAYER[(y & 3) * 4 + (x & 3)] * .55);
+      idx = Math.max(0, Math.min(n - 1, idx));
+      put(i, part[i] === 3 ? (idx >= 2 ? C.nip : AREOLA[idx + 2]) : pal[idx]);
     }
-    // 乳房外框：下半＋外側＋內側（乳溝），上半不描
-    for (const b of breasts) for (let y = Math.floor(b.y - b.ry - 1); y <= b.y + b.ry + 1; y++) for (let x = Math.floor(b.x - b.rx - 1); x <= b.x + b.rx + 1; x++) {
-      if (at(x, y) !== 3) continue;
-      let border = false; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (at(x + ox, y + oy) !== 3 && at(x + ox, y + oy) !== 4 && at(x + ox, y + oy) !== 5) border = true;
-      if (!border) continue;
-      const u = (x + .5 - b.x) / b.rx, v = (y + .5 - b.y) / b.ry, ang = Math.atan2(v, u * b.s);   // 0＝外側、+＝往下
-      const outerUp = ang > -.75, innerMid = Math.abs(ang) > 2.2 && v > -.25;                   // 外側從斜上 40° 開始、乳溝從中間開始
-      if (v > 0 || outerUp || innerMid) set(x, y, P.out);
-    }
-    // 鎖骨、胸骨上窩、肚臍
-    for (const s of [-1, 1]) for (let k = 0; k < 13; k++) { set(cx + s * (5 + k), 14 + k * .12, P.line); if (k > 1) set(cx + s * (5 + k), 15 + k * .12, P.lite); }
-    set(cx - .5, 13, P.shade); set(cx - .5, 14, P.line);
-    const ny = Math.min(H - 6, 86);
-    for (let k = 0; k < 3; k++) set(cx - .5, ny + k, P.out); set(cx - 1.5, ny + 1, P.deep); set(cx + .5, ny + 1, P.deep); set(cx - 1.5, ny + 3, P.hi); set(cx + .5, ny + 3, P.hi);
-    // 肩膀小亮點
-    for (const s of [-1, 1]) { set(cx + s * 37, 16, P.hi); set(cx + s * 38, 17, P.lite); }
-
-    for (let i = 0; i < W * H; i++) { const c = col[i] || P.bg; px[i * 4] = c[0]; px[i * 4 + 1] = c[1]; px[i * 4 + 2] = c[2]; px[i * 4 + 3] = 255; }
     return { width: W, height: H, pixels: px, breasts };
   }
-  return { draw, CUPS, PALETTE: P };
+  return { draw, CUPS };
 });
