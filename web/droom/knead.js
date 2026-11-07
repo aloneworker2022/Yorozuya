@@ -12,7 +12,7 @@
   const SOFT = { dome: .6, round: 1, bell: 1.1, pendulous: 1.3 };   // 手感：饅頭硬、下垂軟
   const LV = [0, .32, .9];   // 第 1 段／第 2 段拉多遠（乳房半徑；使用者：第 2 段要大一點）
   const D1 = 16, D2 = 52;   // 拖多遠跳第一段／第二段（CSS 像素；使用者：這個距離可以）
-  const K = 2, GIRTH = 1.1;
+  const K = 2, GIRTH = 1.1, SHOW_HAND = false;
   const fill = (sel, list, def) => { sel.innerHTML = list.map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); sel.value = def; };
   fill($('kn_s'), SHAPES, 'round');
   fill($('kn_c'), CUPS.map(c => [c, c + ' 罩杯']), 'E');
@@ -21,7 +21,7 @@
   const cv = $('kn_cv'), off = document.createElement('canvas'), octx = off.getContext('2d');
   let ctx = cv.getContext('2d');
   const hcv = document.createElement('canvas'), hctx = hcv.getContext('2d');
-  const worker = new Worker('/droom/knead_worker.js?v=9');
+  const worker = new Worker('/droom/knead_worker.js?v=13');
   let gen = 0, base = null, W = 0, H = 0, cupBounce = .8, soft = 1, cam = null;
   const cache = new Map();   // key → { px, knead }
   let queue = [], busy = false, want = keyOf([0, 0, 0], 0), shown = null;
@@ -99,7 +99,8 @@
     const D = (i) => tt[i] * dW;
     const JUMP = 1.2;   // 深度差超過＝不同表面（輪廓）
     const R = Math.max(3, Math.round(ppy * 1.6));   // 陰影取樣半徑
-    const AO_DIRS = [...Array(12)].map((_, i) => [Math.cos(i * Math.PI / 6), Math.sin(i * Math.PI / 6)]);
+    // 只看上方（光從上面來）：乳房下面的身體會暗，乳房上面的胸口不會（使用者：上胸那條線很突兀）
+    const AO_DIRS = [...Array(7)].map((_, i) => { const a = Math.PI + i * Math.PI / 6; return [Math.cos(a), Math.sin(a)]; });
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x, o = i * 4;
       if (!hit[i]) { out[o] = BG[0]; out[o + 1] = BG[1]; out[o + 2] = BG[2]; out[o + 3] = 255; continue; }
@@ -119,11 +120,13 @@
       }
       const ao = 1 - .55 * Math.min(1, occ / (AO_DIRS.length * 2) * 2.2);
       let edge = false;   // 外輪廓：旁邊是空的，或旁邊比自己後面很多（乳房蓋在身體上的那條線）
-      for (const j of [i - 1, i + 1, i - W, i + W]) if (j < 0 || j >= n || !hit[j] || D(i) - D(j) > JUMP * 1.5) { edge = true; break; }
+      // 2026-11-07 使用者：上胸那條折線太突兀 → 深度跳的內線只畫在乳房下緣和兩側（往上那格不算），上半滑下來的地方不描線
+      for (const j of [i - 1, i + 1, i - W, i + W]) if (j < 0 || j >= n || !hit[j]) { edge = true; break; }
+      if (!edge && (c === 1 || c === 2)) for (const j of [i - 1, i + 1, i + W]) if (code[j] === 0 && D(i) - D(j) > JUMP * 1.5) { edge = true; break; }
       const pal = c === 3 ? TONES.nipple : c === 2 ? TONES.areola : TONES.skin;
       const lum = (.5 + .58 * dif) * ao;
       let tone = lum >= TONE_AT[0] ? 0 : lum >= TONE_AT[1] ? 1 : lum >= TONE_AT[2] ? 2 : 3;
-      if ((c === 121 || c === 122) && tone < 2) tone = 2;   // 鎖骨等線條：陰影色一條
+      // 模型的輔助線（胸骨中線、鎖骨等）不畫：使用者要乾淨的胸口
       const col = edge ? EDGE : pal[tone];
       out[o] = col[0]; out[o + 1] = col[1]; out[o + 2] = col[2]; out[o + 3] = 255;
     }
@@ -146,7 +149,7 @@
     const px = shadeSkin(merge(base, f.G));
     octx.putImageData(new ImageData(px, W, H), 0, 0);
     ctx.drawImage(off, 0, 0);
-    if (hold && f.knead && parseKey(want).pinch) drawHand(f.knead);
+    if (SHOW_HAND && hold && f.knead && parseKey(want).pinch) drawHand(f.knead);   // 使用者：手先不要，專注胸部
   }
 
   // ── 人手剪影（黑，真人大小）：模型給骨架（指尖、指根、手腕、拇指根／尖的畫面座標）——

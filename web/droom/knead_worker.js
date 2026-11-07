@@ -8,7 +8,7 @@ function pack(g) {
   return { hit: g.hit, tt, code };
 }
 const xfer = (G) => [G.hit.buffer, G.tt.buffer, G.code.buffer];
-importScripts('/droom/room_doll_full.js?v=11');
+importScripts('/droom/room_doll_full.js?v=15');
 const D = self.RoomDoll;
 const GIRTH = 1.1;   // room_doll_full.js 的 GIRTH（左右拉寬）
 let look = null, K = 2, cam = null, box = null;
@@ -36,13 +36,13 @@ self.onmessage = (e) => {
   if (m.type === 'setup') {
     look = m.look; K = m.K;
     cam = frameCam(m.maxPull || 1);
-    const g = D.render(mk([0, 0, 0], 0), 'idle', 0, 0, { scale: K, cam, gbuf: true, bakeStamps: true, kneadSkip: true, refine: true });
+    const g = D.render(mk([0, 0, 0], 0), 'idle', 0, 0, { scale: K, cam, gbuf: true, bakeStamps: true, kneadSkip: true, refine: true, noMarks: true });
     const k = g.knead, R = k.r * k.pxPerUnit, pad = R * (1.6 + (m.maxPull || 1) * 1.3);
     box = [Math.floor(k.nip[0] - pad), Math.floor(k.nip[1] - pad * 1.1), Math.ceil(k.nip[0] + pad), Math.ceil(k.nip[1] + pad * 1.3)];
     const G = pack(g);
     self.postMessage({ type: 'base', gen: m.gen, G, knead: k, W: g.width, H: g.height, cam, K, cupBounce: D.CUP_BOUNCE[look.cup] ?? .8 }, xfer(G));
   } else if (m.type === 'frame') {
-    const g = D.render(mk(m.o, m.pinch), 'idle', 0, 0, { scale: K, cam, gbuf: true, bakeStamps: true, kneadOnly: true, box, refine: true });
+    const g = D.render(mk(m.o, m.pinch), 'idle', 0, 0, { scale: K, cam, gbuf: true, bakeStamps: true, kneadOnly: true, box, refine: true, noMarks: true });
     const G = pack(g);
     self.postMessage({ type: 'frame', gen: m.gen, key: m.key, G, knead: g.knead }, xfer(G));
   }

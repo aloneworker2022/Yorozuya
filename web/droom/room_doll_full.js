@@ -633,7 +633,7 @@
       const SHP = doll.shape || 'round', r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
       const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
       // 2026-11-07 平滑乳房（使用者附圖：從胸口很滑順地下來、下半飽滿、下緣有摺痕）：上半跟胸口平滑接（k 大）、下緣接得很緊（摺痕）
-      if (doll.smoothBust) sh.smoothBust = { z0: zB - r * .15, z1: zB + r * .85, k: r * 1.1 + .6, kb: r * .55 + .3, kt: 1.6 };
+      if (doll.smoothBust) sh.smoothBust = { z0: zB - r * .15, z1: zB + r * .85, k: r * 1.1 + .6, kb: r * .95 + .4, kt: 1.6 };
       sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
       for (const s of doll._noBust ? [] : [-1, 1]) {   // _noBust：乳房另外畫（趴跪翹臀：擺好姿勢後在世界座標往下垂、壓在地上）
         const kn0 = sh.prims.length, ks0 = (sh.areolaStamps || []).length;   // 2026-11-07 揉乳房：記下這一顆從哪個零件開始
@@ -2164,6 +2164,7 @@
       const width = Math.round((CAM ? CAM.w : cv.w) * K), height = Math.round((CAM ? CAM.h : cv.h) * K), ax = cv.ax, ay = cv.ay;
       let prims = opts.onlyMat != null ? sh.prims.filter(p => p.mat === opts.onlyMat) : sh.prims;
       if (opts.parts) prims = prims.filter(p => p.carve || opts.parts.includes(p.part));   // 2026-11-01 拆圖層：只算某些部位
+      if (opts.noMarks) prims = prims.filter(p => p.mat !== MARK);   // 2026-11-07 揉乳房：輔助線（胸骨中線、乳房弧線等細管）不畫，打光才不會多一條稜
       // 2026-11-07 揉乳房：kneadOnly＝只畫被揉的那一顆（零件 kw、乳暈 kn）；kneadSkip＝其他全部（底圖畫一次）
       let stamps = sh.areolaStamps || [];
       if (opts.kneadOnly) { prims = prims.filter(p => p.kw || (sh.smoothBust && p.mat === 0 && !p.bust && !p.nip && !p.cloth)); stamps = stamps.filter(st => st.kn); }   // 平滑乳房要連身體一起算（才接得起來）
@@ -2226,9 +2227,9 @@
       const dist = [0, 0, 0];
       const carveIdx = []; for (let i = 0; i < np; i++) if (prims[i].carve) carveIdx.push(i);
       const hasSock = carveIdx.some(i => prims[i].carve === 2);   // 2026-11-05 有眼窩：臉部標記不被眼窩挖掉
-      const CULL = opts.cull !== false, CULL_M = 1.5, cand = new Int32Array(np);   // 2026-11-03 光線先挑零件（opts.cull＝false 關掉）   // 2026-10-31：挖洞零件（從身體減掉，私處打開用）
-      const REFINE = !!opts.refine;
       const SM = sh.smoothBust || null;   // 2026-11-07：doll.smoothBust＝乳房平滑接上身體（使用者：不是圓筒接一顆球）
+      const CULL = opts.cull !== false, CULL_M = SM ? Math.max(1.5, SM.k + .5) : 1.5, cand = new Int32Array(np);   // 2026-11-03 光線先挑零件（opts.cull＝false 關掉）   // 2026-10-31：挖洞零件（從身體減掉，私處打開用）
+      const REFINE = !!opts.refine;
       const BOX = opts.box || null;   // 2026-11-07 揉乳房：只算這個框（像素 [x0, y0, x1, y1]），框外留空
       for (let py = BOX ? Math.max(0, BOX[1]) : 0; py < (G0 || !np ? 0 : BOX ? Math.min(height, BOX[3]) : height); py++) {
         const sy = (py + .5) / K - ay;
@@ -2544,7 +2545,7 @@
     }
     /** 房間座位朝向 → 模型 yaw（left=往 +v 左下，right=往 +u 右下）。 */
     const SEAT_YAW = { left: -45, right: 45, 'back-right': 135, 'back-left': -135 };
-    return { ANIME_HEAD, bodyDist, FAINT_RGB, PARTS, renderParts, renderComposite, POSES, BROW_RGB, BROW_LO_RGB, LIPLO_RGB, LIPLO_LO_RGB, EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
+    return { ANIME_HEAD, bodyDist, primDist, smin, FAINT_RGB, PARTS, renderParts, renderComposite, POSES, BROW_RGB, BROW_LO_RGB, LIPLO_RGB, LIPLO_LO_RGB, EYE_RGB, EYE_LO_RGB, MOUTH_RGB, MOUTH_LO_RGB, NOSES, NOSE_STYLES, NOSE_RGB, NOSE_LO_RGB, BLINDS, BLIND_RGB, BLIND_LO_RGB, PUBICS, LABIAS, PANTS, PUBIC_RGB, PUBIC_EDGE_RGB, LABIA_RGB, OPEN_RGB, HOLE_RGB, LACE_RGB, LACE_LO_RGB, BAND_RGB, CLOTHES, TRIM_RGB, CHAIN_RGB, WEIGHT_RGB, WEIGHT_LO_RGB, CLOTH_RGB, CLOTH_LO_RGB, CLOTH_A, SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
       lookToDoll, dollKey, hairStyle, renderHairLayer, EDGE_RGB, CREASE_RGB, HAIR_BACK_A, BACK_HAIRS, FRONT_HAIRS, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
