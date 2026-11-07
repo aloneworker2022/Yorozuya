@@ -2121,17 +2121,17 @@
    ],
    "cup": [
     {
-     "text": "A 罩杯、平坦俐落",
-     "grade": "N",
-     "cup": "A"
-    },
-    {
      "text": "A 罩杯、小巧清秀",
      "grade": "N",
      "cup": "A"
     },
     {
-     "text": "A 罩杯、微微隆起的貧乳",
+     "text": "A 罩杯、幾乎平坦",
+     "grade": "N",
+     "cup": "A"
+    },
+    {
+     "text": "A 罩杯、小小的貧乳",
      "grade": "N",
      "cup": "A"
     },
@@ -2146,12 +2146,22 @@
      "cup": "B"
     },
     {
-     "text": "B 罩杯、挺俏",
+     "text": "C 罩杯、大小剛好",
      "grade": "R",
-     "cup": "B"
+     "cup": "C"
+    },
+    {
+     "text": "C 罩杯、勻稱適中",
+     "grade": "R",
+     "cup": "C"
     },
     {
      "text": "D 罩杯、飽滿有份量",
+     "grade": "S",
+     "cup": "D"
+    },
+    {
+     "text": "D 罩杯、豐盈好握",
      "grade": "S",
      "cup": "D"
     },
@@ -2161,37 +2171,41 @@
      "cup": "D"
     },
     {
-     "text": "D 罩杯、圓潤有份量",
-     "grade": "S",
-     "cup": "D"
-    },
-    {
      "text": "E 罩杯、傲人豐滿",
      "grade": "SS",
      "cup": "E"
     },
     {
-     "text": "E 罩杯、軟彈有乳溝",
+     "text": "E 罩杯、沉甸甸有份量",
      "grade": "SS",
      "cup": "E"
+    },
+    {
+     "text": "F 罩杯、份量十足的巨乳",
+     "grade": "SS",
+     "cup": "F"
+    },
+    {
+     "text": "G 罩杯、雙手捧不住的巨乳",
+     "grade": "SSR",
+     "cup": "G"
+    },
+    {
+     "text": "H 罩杯、壓迫感超巨乳",
+     "grade": "SSR",
+     "cup": "H"
     },
     {
      "text": "I 罩杯、不科學爆乳",
      "grade": "SSR",
      "cup": "I"
-    },
-    {
-     "text": "I 罩杯、壓迫感超巨乳",
-     "grade": "SSR",
-     "cup": "I"
-    },
-    {
-     "text": "I 罩杯、誇張巨乳",
-     "grade": "SSR",
-     "cup": "I"
     }
    ],
    "breast_shape": [
+    {
+     "text": "平坦／微隆",
+     "grade": "N"
+    },
     {
      "text": "半球型",
      "grade": "N"
@@ -2209,28 +2223,28 @@
      "grade": "R"
     },
     {
+     "text": "木瓜型",
+     "grade": "R"
+    },
+    {
      "text": "水滴型",
      "grade": "S"
     },
     {
-     "text": "木瓜型",
-     "grade": "S"
-    },
-    {
      "text": "鐘型",
-     "grade": "SS"
+     "grade": "S"
     },
     {
      "text": "外擴／八字",
      "grade": "SS"
     },
     {
-     "text": "母乳型沉重下垂",
-     "grade": "SSR"
+     "text": "極密著深溝",
+     "grade": "SS"
     },
     {
-     "text": "極密著深溝",
-     "grade": "SSR"
+     "text": "母乳型沉重下垂",
+     "grade": "SS"
     }
    ],
    "nipple": [

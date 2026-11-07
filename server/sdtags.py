@@ -52,9 +52,21 @@ CUP = {
     "I 罩杯、不科學爆乳": "gigantic breasts",
     "I 罩杯、壓迫感超巨乳": "gigantic breasts, hyper breasts",
     "I 罩杯、誇張巨乳": "gigantic breasts, huge breasts",
+    # 2026-11-07：罩杯字串只寫大小（形狀交給乳型），補 C／F／G／H
+    "A 罩杯、幾乎平坦": "flat chest",
+    "A 罩杯、小小的貧乳": "flat chest, tiny breasts",
+    "B 罩杯、小巧可愛": "small breasts",
+    "C 罩杯、大小剛好": "medium breasts",
+    "C 罩杯、勻稱適中": "medium breasts",
+    "D 罩杯、豐盈好握": "large breasts",
+    "E 罩杯、沉甸甸有份量": "large breasts, huge breasts",
+    "F 罩杯、份量十足的巨乳": "huge breasts",
+    "G 罩杯、雙手捧不住的巨乳": "huge breasts, gigantic breasts",
+    "H 罩杯、壓迫感超巨乳": "gigantic breasts, hyper breasts",
 }
 
 BREAST_SHAPE = {
+    "平坦／微隆": "flat chest",
     "半球型": "round breasts",
     "饅頭型": "round breasts, soft breasts",
     "挺俏上挺": "perky breasts",

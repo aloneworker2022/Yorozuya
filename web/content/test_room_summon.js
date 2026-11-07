@@ -1,5 +1,5 @@
 /* 試煉房抽妹子：人設跟 /testword 同一套。抽到後背景補半身立繪。不寫遊戲名冊。 */
-import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=5";
+import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=6";
 import {
   ensureBody,
   clampBody,
@@ -336,7 +336,7 @@ import * as Preg from "./pregnancy.js?v=1";
 import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
-import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=38";
+import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=39";
 import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=75";
 import { bindSwapBookmark } from "./swap_bookmark.js?v=15";
 import { canRental as swapCanAsk } from "./rental.js?v=7";

@@ -8,7 +8,7 @@ import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
 import { bindPairBox } from "./swap_pair_gen.js?v=29";
 import { wornOutfitOf } from "./outfit_pick.js?v=2";
 import { dateOutfitOf, withDateOutfit, lookCharacter, lookFor } from "./swap_outfit.js?v=8";
-import { loadPools, generateGirl, POOLS as _poolsRef } from "./girl_gen.js?v=5";
+import { loadPools, generateGirl, POOLS as _poolsRef } from "./girl_gen.js?v=6";
 import { rollHusband, enrichHusband, husbandLookEn } from "./husband_gen.js?v=1";
 
 // 2026-10-21 換妻約會場景背景：咖啡廳 1 張、酒吧 3 張（油畫風，bar3 已把右邊坐著的人修掉）；遊戲裡每次隨機抽一張

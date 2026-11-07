@@ -7,7 +7,7 @@ const dir = pathToFileURL(new URL("../web/content/", import.meta.url).pathname).
 const pools = JSON.parse(readFileSync(new URL("../web/content/persona_pools.json", import.meta.url)));
 
 // 必須跟原始碼 import 的 ?v= 一致，否則 node 會載成兩份模組，setPools 無效
-const G = await import(dir + "girl_gen.js?v=5");
+const G = await import(dir + "girl_gen.js?v=6");
 G.setPools(pools);
 
 const H = await import(dir + "husband_gen.js?v=1");
