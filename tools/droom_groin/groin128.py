@@ -28,100 +28,76 @@ def hsh(x, y, k=0):
     return ((h ^ (h >> 16)) & 0xffffffff) / 4294967296
 
 
-# ---------- 形狀 ----------
-def torso_hw(y):            # 腰（上）→ 胯（下）半寬
-    return 14.5 + 3 * sm(y / 40) + 13 * sm((y - 36) / 28)     # 腰細、到髖才往外張
-
-
-def in_torso(x, y):
-    return y <= 100 and abs(x - CX) < torso_hw(min(y, 64))
-
-
-def thigh(x, y, side):
-    """大腿＝從胯（內）到畫面外（外）的粗管，靠胯那頭粗一點、上緣微凸。回傳 (在裡面, 0..1 沿腿位置, 離上緣比例)。"""
-    px, py = CX + side * -13, 92          # 內端（胯旁）
-    qx, qy = CX + side * -96, 64          # 外端（畫面外，往外微微往上：膝蓋在畫面外抬著）
-    dx, dy = qx - px, qy - py
-    L2 = dx * dx + dy * dy
-    t = max(0.0, min(1.0, ((x - px) * dx + (y - py) * dy) / L2))
-    ex, ey = px + dx * t, py + dy * t
-    r = 25 - 5 * t
-    nx, ny = x - ex, y - ey
-    # 上緣往上鼓一點（大腿上面的肉）
-    bulge = 3.0 * math.sin(math.pi * min(1, t * 1.4)) if ny < 0 else 0
-    d = math.hypot(nx, ny)
-    return d < r + bulge, t, (ny / (r + bulge))
-
-
-def in_butt(x, y):
-    for bx in (CX - 15, CX + 15):
-        if ((x - bx) / 19) ** 2 + ((y - 116) / 15) ** 2 < 1:
-            return True
-    return False
-
-
-def in_body(x, y):
-    return in_torso(x, y) or thigh(x, y, 1)[0] or thigh(x, y, -1)[0] or in_butt(x, y)
+# ---------- 形狀（照使用者畫的結構線：棕線＝身體輪廓；藍線是骨頭，不畫）----------
+# 參考圖座標（850×540，中線 x≈430）→ 128 格：x' = 64 + (x−430)·S，y' = 116 − (436−y)·S
+S = 0.19
+BY = 121   # 底部凹口在第幾列
+def P(x, y): return (CX + (x - 430) * S, BY - (436 - y) * S)
+def mirror(pts): return [(2 * 430 - x, y) for (x, y) in pts]
+# 左半邊輪廓（從腰上方往下、往外、再沿下緣弧線回到中間底部凹口）
+LEFT = [(292, -260), (292, 0), (296, 60), (301, 110), (298, 150), (287, 195),      # 腰→髖（腰線微微往內再往外）
+        (270, 197), (230, 180), (190, 166), (160, 156), (53, 112), (-120, 40),     # 大腿上緣：從髖往外往上，延伸出畫面
+        (-120, 262), (53, 282), (120, 312),                                         # 大腿下緣（畫面外）回到弧線底
+        (150, 346), (200, 380), (260, 409), (330, 428), (395, 437), (422, 433)]    # 下緣大弧線收到中間底部
+OUTLINE = [P(*q) for q in LEFT] + [P(*q) for q in reversed(mirror(LEFT))]
+CREASE_L = [(287, 198), (318, 255), (352, 318), (385, 380), (410, 425)]              # V 字鼠蹊線
+ARC_L = [(165, 158), (178, 182), (172, 218), (152, 262), (124, 302)]                 # 大腿外側弧線（大腿往前那團肉的邊）
+BOTTOM_L = LEFT[15:]
 
 
 def draw(hair='triangle', opened=False, sweat=True):
-    img = [[None] * N for _ in range(N)]
+    from PIL import ImageDraw
+    m = Image.new('L', (N, N), 0)
+    ImageDraw.Draw(m).polygon(OUTLINE, fill=255)
+    M = m.load()
+    img = [[(SKIN if M[x, y] else None) for x in range(N)] for y in range(N)]
 
     def put(x, y, c):
         x, y = int(round(x)), int(round(y))
         if 0 <= x < N and 0 <= y < N and img[y][x] is not None:
             img[y][x] = c
 
-    # 底色
-    for y in range(N):
-        for x in range(N):
-            if in_body(x + .5, y + .5):
-                img[y][x] = SKIN
+    def line(pts, col, col2=None, split=1.0):
+        pts = [P(*q) for q in pts]
+        segs = list(zip(pts, pts[1:]))
+        tot = sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in segs)
+        acc = 0
+        for a, b in segs:
+            L = math.hypot(b[0] - a[0], b[1] - a[1]); n = max(1, int(L * 2))
+            for i in range(n + 1):
+                t = i / n
+                put(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, col if (acc + L * t) / tot < split or not col2 else col2)
+            acc += L
 
-    # 陰影：腰側（只在大腿以外）、大腿下緣、屁股下緣／內側
+    def near_edge(x, y, r):
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                xx, yy = x + dx, y + dy
+                if yy < 0: continue
+                if not (0 <= xx < N and yy < N) or not M[xx, yy]:
+                    return True
+        return False
+
+    # 陰影：腰兩側（髖以上）、下緣大弧線內側一條（屁股／大腿下面）
+    hipY = P(0, 195)[1]
     for y in range(N):
         for x in range(N):
             if img[y][x] is None: continue
-            fx, fy = x + .5, y + .5
-            inT = in_torso(fx, fy)
-            tL, tR = thigh(fx, fy, 1), thigh(fx, fy, -1)
-            onThigh = tL[0] or tR[0]
-            if inT and fy < 64 and not onThigh and not in_butt(fx, fy) and abs(fx - CX) > torso_hw(fy) - 2.2:
-                img[y][x] = SH
-            for th in (tL, tR):
-                if th[0] and th[2] > .84 and not in_butt(fx, fy):
-                    img[y][x] = SH          # 大腿下面那條陰影
-            if in_butt(fx, fy):
-                for bx, s in ((CX - 15, -1), (CX + 15, 1)):
-                    e = ((fx - bx) / 19) ** 2 + ((fy - 116) / 15) ** 2
-                    if e < 1 and (fy - 116) > 4 and e > .62:
-                        img[y][x] = SH      # 屁股下緣
+            if y < hipY and near_edge(x, y, 2) and y > 0: img[y][x] = SH
+            elif y > hipY + 6 and (not (0 <= y + 3 < N) or not M[x, min(N - 1, y + 3)]) and 4 < x < N - 5: img[y][x] = SH
 
-    # 肚臍（腰下面 1/3）＋肚子微亮
-    for y in range(14, 46):
-        for x in range(CX - 7, CX + 8):
-            if img[y][x] == SKIN and ((x - CX + 2) / 7) ** 2 + ((y - 30) / 14) ** 2 < 1 and hsh(x, y, 7) < .0:
-                img[y][x] = HI
-    put(CX, 30, DK); put(CX, 31, SH); put(CX - 1, 30, SH); put(CX, 29, SH)
-
-    # 鼠蹊線 V：從髖（腰側和大腿上緣交接）斜下到陰唇兩旁
-    for s in (-1, 1):
-        x0, y0, x1, y1 = CX + s * 25, 58, CX + s * 10, 102
-        for i in range(60):
-            t = i / 59
-            x = x0 + (x1 - x0) * t + s * 1.5 * math.sin(math.pi * t)   # 微微往外彎
-            y = y0 + (y1 - y0) * t
-            put(x, y, CREASE if t < .55 else SH)
-            if t > .8: put(x + s, y, SH)
-    # 屁股中間的縫＋會陰
-    for y in range(103, N):
-        put(CX, y, DK if y > 107 else SH)
-        if y > 110: put(CX - 1, y, SH); put(CX + 1, y, SH)
+    # 肚臍
+    ny = int(P(0, 95)[1]); put(CX, ny, DK); put(CX, ny + 1, SH); put(CX - 1, ny, SH); put(CX, ny - 1, SH)
+    # 結構線：V 字鼠蹊線（上淡下深）、大腿外側弧線
+    line(CREASE_L, CREASE, SH, .55); line(mirror(CREASE_L), CREASE, SH, .55)
+    line(ARC_L, CREASE); line(mirror(ARC_L), CREASE)
+    # 中間底部凹口（會陰）
+    put(CX, BY, DK); put(CX - 1, BY + 1, SH); put(CX + 1, BY + 1, SH)
 
     # ---------- 陰唇肉穴 ----------
-    top, bot = 78.0, 105.0
+    top, bot = P(0, 345)[1], P(0, 432)[1]
     H = bot - top
-    W = lambda v: 8.2 * max(0, math.sin(math.pi * min(1, max(0, v)))) ** .6 * (1 - .08 * v)
+    W = lambda v: 6.6 * max(0, math.sin(math.pi * min(1, max(0, v)))) ** .6 * (1 - .08 * v)
     op = .42 if opened else .22
     CW = lambda v: W(v) * op * max(0, math.sin(math.pi * v)) ** .45
     for y in range(int(top), int(bot) + 1):
@@ -146,14 +122,14 @@ def draw(hair='triangle', opened=False, sweat=True):
         put(CX + dx, hy + dy, LAB['holeDk'] if (dx, dy) == (0, 0) else LAB['hole'])
     put(CX - 1, top + H * .4, LAB['hi']); put(CX + 1, top + H * .55, LAB['hi'])
     put(CX - 4, top + H * .42, WHITE); put(CX + 3, top + H * .6, WHITE)          # 濕亮
-    put(CX, bot, DK)                                                              # 下面收進會陰
+    
 
     # ---------- 陰毛 ----------
     if hair != 'none':
         if hair == 'strip':
-            hx, hy0, hy1, hw = CX, 60, 82, 4
+            hx, hy0, hy1, hw = CX, int(P(0, 280)[1]), int(P(0, 366)[1]), 3.5
         else:
-            hx, hy0, hy1, hw = CX, 57, 84, 15
+            hx, hy0, hy1, hw = CX, int(P(0, 262)[1]), int(P(0, 368)[1]), 13
         hh = hy1 - hy0
 
         def dH(x, y):
@@ -168,7 +144,7 @@ def draw(hair='triangle', opened=False, sweat=True):
                 elif d < 1.08 and hsh(x, y, 2) < (1.08 - d) / .36 * .8:
                     put(x, y, HAIR[0])
         # 一根根捲毛（邊緣毛躁、往下往外翹；底下幾根垂到陰唇兩旁）
-        n = 110 if hair == 'triangle' else 30
+        n = 90 if hair == 'triangle' else 26
         for k in range(n):
             x = hx + (hsh(k, 3) * 2 - 1) * hw
             y = hy0 + hsh(k, 4) * hh
