@@ -42,6 +42,23 @@ SECT_L = arc(THIGH_E, -100, 98)                                                 
 BUTT_L = [ell(THIGH_E, -238), (16, 84), (24, 89.5), (34, 94), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 臀部下緣 → 凹口
 CREASE_L = [(44, 57.6), (47.2, 63.5), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
 NOTCH = [(61, 96), (67, 96)]
+# ---- 陰唇＋陰毛（使用者紅筆：陰毛從陰唇頂往上扇形散開、毛尖朝上，左邊幾根捲；陰唇細長杏仁、縫往上接進陰毛）----
+LAB_TOP, LAB_BOT, LAB_W = 68.5, 87.5, 2.6          # 陰唇上下、最寬半寬（最寬在偏下）
+LAB_EDGE = (196, 108, 118, 255)                    # droom 陰唇色
+LAB_IN = (230, 168, 168, 255)                      # 裡面淡粉
+LAB_SLIT = (170, 84, 98, 255)                      # 中間的縫
+HAIR = [(40, 28, 26, 255), (70, 52, 46, 255)]      # 陰毛（深、亮）
+# 每根毛：根（靠中間下面）→ 尖（往上往外），bend＝往外彎多少
+HAIR_STRANDS = [
+    ((63.5, 68), (61.5, 45.5), -1.0), ((64.5, 68), (66.5, 45), 1.0), ((63, 67), (58, 46.5), -1.5),
+    ((65, 67), (70, 46), 1.5), ((62.5, 66.5), (55, 48), -2.0), ((65.5, 66.5), (73, 47.5), 2.0),
+    ((62, 66), (52, 50), -2.0), ((66, 66), (76, 49.5), 2.0), ((62, 65), (49.5, 53), -1.8),
+    ((66, 65), (78.5, 52.5), 1.8), ((62.5, 64), (48, 57), -1.2), ((65.5, 64), (79.5, 56.5), 1.2),
+    ((63, 66), (60, 50), -0.6), ((65, 66), (68, 49), 0.6), ((64, 66.5), (64, 47), 0.3),
+    ((63.2, 63), (56, 52.5), -1.0), ((64.8, 63), (72, 52), 1.0), ((63.5, 62), (51.5, 55.5), -0.8),
+    ((64.5, 62), (76, 55), 0.8), ((63, 67.5), (53, 58.5), -0.6), ((65, 67.5), (75.5, 58), 0.6),
+]
+HAIR_CURLS = [[(50, 52), (48, 50.5), (47.6, 52.4), (49.2, 53.6), (51, 52.6)], [(53, 50), (51.4, 48.6), (50.6, 50.2), (52, 51.2)]]   # 左邊捲毛
 NAVEL = (64, 35)                                                                     # 肚臍（使用者標的＋）
 
 
@@ -107,6 +124,36 @@ def draw():
     px = im.load()
     nx, ny = NAVEL
     px[nx, ny] = SECT; px[nx, ny + 1] = LINE                                          # 肚臍：上淡下深兩格
+    # 陰唇：細長杏仁（最寬偏下），外緣陰唇色、裡面淡粉、中間一條縫（往上接進陰毛）
+    H = LAB_BOT - LAB_TOP
+    for y in range(int(LAB_TOP), int(LAB_BOT) + 1):
+        v = (y + .5 - LAB_TOP) / H
+        if not 0 <= v <= 1: continue
+        w = LAB_W * max(0, math.sin(math.pi * v ** 1.15)) ** .7
+        for x in range(MIDX - 4, MIDX + 5):
+            u = abs(x + .5 - MIDX)
+            if u > w: continue
+            px[x, y] = LAB_EDGE if u > w - 1 else LAB_IN
+    for y in range(int(LAB_TOP) - 4, int(LAB_BOT)):
+        px[MIDX, y] = LAB_SLIT
+    for (x, y) in pixel_perfect(stroke(cr([(MIDX - .3, LAB_BOT - 1.5), (MIDX - 1.2, LAB_BOT + .6)]))): px[x, y] = LAB_EDGE   # 下端小分岔
+    for (x, y) in pixel_perfect(stroke(cr([(MIDX + .3, LAB_BOT - 1.5), (MIDX + 1.2, LAB_BOT + .6)]))): px[x, y] = LAB_EDGE
+    # 陰毛：一根根從根往上往外，畫在陰唇上面
+    for k, (a, b, bend) in enumerate(HAIR_STRANDS):
+        L = .78 + .22 * ((k * 37) % 10) / 9                      # 長短不一
+        b = (a[0] + (b[0] - a[0]) * L, a[1] + (b[1] - a[1]) * L)
+        w = (1 if k % 2 else -1) * (.6 + (k % 3) * .3)          # 中段微彎、尖端往回勾一點（毛躁）
+        p1 = (a[0] + (b[0] - a[0]) * .35 + bend * .6, a[1] + (b[1] - a[1]) * .35)
+        p2 = (a[0] + (b[0] - a[0]) * .7 + bend + w, a[1] + (b[1] - a[1]) * .7)
+        tip = (b[0] - w * .5, b[1])
+        for i, (x, y) in enumerate(pixel_perfect(stroke(cr([a, p1, p2, tip])))):
+            px[x, y] = HAIR[1] if (k % 3 == 0 and i % 4 == 2) else HAIR[0]
+    for c in HAIR_CURLS:
+        for (x, y) in pixel_perfect(stroke(cr(c))): px[x, y] = HAIR[0]
+    # 根部密一點：陰唇頂上方一小團
+    for y in range(61, 69):
+        for x in range(MIDX - 2, MIDX + 3):
+            if abs(x - MIDX) <= 1 + (68 - y) * .25 and (x + y) % 2 == 0: px[x, y] = HAIR[0]
     for name, pts, col, smooth in STROKES:
         if name.startswith('squeeze'): pts = SQUEEZE_L if name.endswith('L') else mirror(SQUEEZE_L)
         pix = pixel_perfect(stroke(cr(pts) if smooth else pts))
