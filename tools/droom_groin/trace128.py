@@ -69,7 +69,9 @@ SPREAD = INSERT > 0.05                             # 插著：陰唇被撐開
 ENT_Y = 80.0 if SPREAD else OPEN_Y                 # 陰莖進到體內的那一列（撐開那一圈裡，看得到的莖到這裡為止）
 CERVIX_Y = 57.5                                    # 子宮頸（陰道頂；斜上方看，子宮趴在膀胱上、頸朝下）
 PEN_TIP = 85.5 - INSERT * (85.5 - (CERVIX_Y + 2.2))   # 龜頭頂（插到底＝抵在子宮頸下）
-XRAY = os.environ.get('XRAY', '1') == '1'          # 陰道子宮透視
+RUB = int(os.environ.get('RUB', '0'))             # 在外面磨蹭三格：1 沒碰到（陰唇腫脹微張）／2 往前碰到（大陰唇含著龜頭）／3 往下磨蹭撥弄
+if RUB: INSERT = 0.0; PEN_TIP = {1: 101.0, 2: 86.0, 3: 93.0}[RUB]
+XRAY = os.environ.get('XRAY', '0' if RUB else '1') == '1'   # 陰道子宮透視（磨蹭三格先不做）
 PEN_GLANS = 9.5                                    # 龜頭長
 PEN_COLORS = {
     'skin': dict(edge=(150, 96, 80, 255), base=(226, 172, 146, 255), sh=(200, 142, 118, 255), hi=(240, 194, 168, 255),
@@ -147,7 +149,7 @@ def draw():
     px[nx, ny] = SECT; px[nx, ny + 1] = LINE                                          # 肚臍：上淡下深兩格
     # 陰唇：細長杏仁（最寬偏下），外緣陰唇色、裡面淡粉、中間一條縫（往上接進陰毛）
     H = LAB_BOT - LAB_TOP
-    for y in (range(int(LAB_TOP), int(LAB_BOT) + 1) if not SPREAD else []):
+    for y in (range(int(LAB_TOP), int(LAB_BOT) + 1) if not (SPREAD or RUB) else []):
         v = (y + .5 - LAB_TOP) / H
         if not 0 <= v <= 1: continue
         w = LAB_W * max(0, math.sin(math.pi * v ** 1.15)) ** .7
@@ -155,9 +157,9 @@ def draw():
             u = abs(x + .5 - MIDX)
             if u > w: continue
             px[x, y] = LAB_EDGE if u > w - 1 else LAB_IN
-    for y in (range(int(LAB_TOP) - (4 if HAIR_ON else -1), int(LAB_BOT)) if not SPREAD else []):   # 有陰毛時縫往上接進陰毛
+    for y in (range(int(LAB_TOP) - (4 if HAIR_ON else -1), int(LAB_BOT)) if not (SPREAD or RUB) else []):   # 有陰毛時縫往上接進陰毛
         px[MIDX, y] = LAB_SLIT
-    for dx in ((-1, 1) if not SPREAD else ()):                                          # 頂端小開叉（陰蒂包皮那一點）
+    for dx in ((-1, 1) if not (SPREAD or RUB) else ()):                                          # 頂端小開叉（陰蒂包皮那一點）
         for (x, y) in pixel_perfect(stroke([(MIDX, LAB_TOP - 1.2), (MIDX + dx * 2, LAB_TOP + .9)])): px[x, y] = LAB_EDGE
     # 陰莖（畫在陰唇上面）：莖從畫面底往上微微收細；龜頭冠狀溝最寬、往上收成圓頭；左亮右暗
     if PENIS in PEN_COLORS:
@@ -218,6 +220,7 @@ def draw():
         for dx in (-1, 1):
             for (x, y) in pixel_perfect(stroke([(MIDX, ty - 1.4), (MIDX + dx * 2.4, ty + 1.2)])): px[x, y] = LAB_EDGE
         px[MIDX, int(ty) + 1] = (250, 176, 184, 255)
+    if RUB: rub_labia(px)
     # 陰毛：一根根從根往上往外，畫在陰唇上面
     for k, (a, b, bend) in enumerate(HAIR_STRANDS if HAIR_ON else []):
         L = .78 + .22 * ((k * 37) % 10) / 9                      # 長短不一
@@ -240,6 +243,55 @@ def draw():
         for i, (x, y) in enumerate(pix):
             px[x, y] = (CREASE_TOP if i < len(pix) * .3 else CREASE_COL) if col == 'crease' else col
     return im
+
+
+SW = dict(edge=(204, 96, 112, 255), lip=(238, 160, 166, 255), hi=(250, 198, 202, 255),
+          red=(208, 52, 72, 255), hole=(122, 14, 30, 255), clit=(252, 182, 190, 255))   # 腫脹（充血）的陰唇色
+
+
+def rub_labia(px):
+    """磨蹭三格的陰唇（畫在陰莖後面，嘴唇才能蓋在龜頭兩側）：
+    1 沒碰到：腫起來（更寬更鼓、更紅），縫微微張開露一點紅、下段穴口。
+    2 往前碰到：龜頭頂進縫的下半，兩片大陰唇被撐開、從兩側包住龜頭（含著）；龜頭上面的縫被頂開。
+    3 往下磨蹭：龜頭往下滑，陰唇被往下拖、包著龜頭往兩邊鼓；上段的縫被撥得更開，露出裡面。"""
+    top = LAB_TOP - .5
+    bot = LAB_BOT + (4.5 if RUB == 3 else 0)              # 3：被龜頭往下拖長
+    H = bot - top
+    tip, cor = PEN_TIP, PEN_TIP + PEN_GLANS
+    def gw(y):
+        if RUB == 1 or y < tip: return 0
+        if y < cor: return 5.9 * max(0, math.sin(math.pi / 2 * min(1, (y - tip) / PEN_GLANS * 1.25))) ** .5
+        return 4.8
+    for y in range(int(top), int(bot) + 2):
+        v = (y + .5 - top) / H
+        if not 0 <= v <= 1: continue
+        w = 3.9 * max(0, math.sin(math.pi * v ** 1.1)) ** .62
+        if RUB == 1: op = .6 * max(0, math.sin(math.pi * v)) ** .8
+        elif RUB == 2: op = 1.9 * min(1, max(0, (y - top) / max(1, tip - top))) ** 1.6 if y < tip else 0
+        else: op = 2.8 * max(0, math.sin(math.pi * min(1, v * 1.25))) ** .5 if y < tip else 0   # 3：上段被撥得更開
+        g = gw(y + .5)
+        LIP = 3.0 if RUB == 2 else 2.4                   # 包住龜頭的嘴唇厚度
+        if g > 0: w = max(w, g + LIP - 1.6)              # 嘴唇被撐開、繞到龜頭兩側（蓋住龜頭邊 1.6 格）
+        for x in range(MIDX - 10, MIDX + 11):
+            u = abs(x + .5 - MIDX)
+            if u > w: continue
+            if g > 0 and u < w - LIP: continue            # 中間露出龜頭（被含著）
+            if u <= op:                                   # 縫裡
+                px[x, y] = SW['red'] if (u < op - .7 or op < 1) else SW['lip']
+            else:
+                t = (u - op) / max(.5, w - op)
+                if u > w - 1: c = SW['edge']
+                elif g > 0 and u < w - LIP + 1: c = SW['edge']                   # 貼著龜頭的內緣
+                elif g > 0 and u < w - LIP + 2: c = SW['hi']                     # 包著龜頭那片濕亮
+                elif t < .45 and .12 < v < .62 and g == 0: c = SW['hi']         # 鼓起來的亮面
+                else: c = SW['lip']
+                px[x, y] = c
+    if RUB == 1:                                          # 穴口（縫的下段）
+        hy = int(top + H * .74); px[MIDX, hy] = SW['hole']; px[MIDX, hy + 1] = SW['hole']
+    # 陰蒂包皮∧＋陰蒂（腫起來，露出一點）
+    for dx in (-1, 1):
+        for (x, y) in pixel_perfect(stroke([(MIDX, top - 1.2), (MIDX + dx * 2.4, top + 1.2)])): px[x, y] = SW['edge']
+    px[MIDX, int(top) + 1] = SW['clit']
 
 
 def silhouette():
