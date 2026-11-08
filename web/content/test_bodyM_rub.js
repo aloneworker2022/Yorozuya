@@ -108,7 +108,7 @@ section.querySelector("#rub-reset").addEventListener("click", () => {
   draw();
 });
 
-Promise.all(["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open"].map((n) => load(`/test_bodyM/${n}.png?v=2`)))
+Promise.all(["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open"].map((n) => load(`/test_bodyM/${n}.png?v=3`)))
   .then(([closed, a35, a70, open]) => { sheets = { closed, a35, a70, open }; draw(); })
   .catch((e) => { info.textContent = e.message; console.error(e); });
 

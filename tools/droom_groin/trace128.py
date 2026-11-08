@@ -265,6 +265,26 @@ SW = dict(edge=(204, 96, 112, 255), lip=(238, 160, 166, 255), hi=(250, 198, 202,
           inrim=(214, 112, 124, 255), soft=(244, 178, 182, 255))   # 腫脹（充血）的陰唇色
 
 
+CLIT_HI, CLIT, CLIT_SH = (250, 160, 174, 255), (224, 92, 118, 255), (180, 60, 86, 255)
+URETHRA = (140, 34, 56, 255)
+
+
+def draw_clit(px, y):
+    """陰蒂：包皮∧底下一顆小肉粒（兩格高，上亮下深，兩側一點陰影）。"""
+    y = int(y)
+    px[MIDX, y] = CLIT_HI; px[MIDX, y + 1] = CLIT
+    for dx in (-1, 1):
+        if px[MIDX + dx, y + 1] not in PEN_SET: px[MIDX + dx, y + 1] = CLIT_SH
+
+
+def draw_urethra(px, y, big=False):
+    """尿道口：陰蒂和陰道口中間一個小深點（打開時是一條小縫）。"""
+    y = int(y)
+    if px[MIDX, y] in PEN_SET: return
+    px[MIDX, y] = URETHRA
+    if big and px[MIDX, y + 1] not in PEN_SET: px[MIDX, y + 1] = URETHRA
+
+
 def rub_labia(px, over=False):
     """磨蹭三格的陰唇（使用者紅筆）：外陰唇（大陰唇）＝兩邊「( )」鼓起來的肉；小陰唇在中間。
     1 沒碰到：大陰唇腫起來（( ) 鼓），小陰唇腫、微微張開露一點紅、下段穴口。
@@ -338,7 +358,8 @@ def rub_labia(px, over=False):
     ty = itop
     for dx in (-1, 1):
         for (x, y) in pixel_perfect(stroke([(MIDX, ty - 1.4), (MIDX + dx * 2.4, ty + 1.0)])): px[x, y] = SW['edge']
-    px[MIDX, int(ty) + 1] = SW['clit']
+    draw_clit(px, ty + .6)
+    if RUB == 1: draw_urethra(px, itop + (ibot - itop) * .46)
 
 
 def rub_open(px):
@@ -375,7 +396,8 @@ def rub_open(px):
     # 陰蒂包皮＋陰蒂（上面）
     for dx in (-1, 1):
         for (x, y) in pixel_perfect(stroke([(MIDX, top - 1.6), (MIDX + dx * 2.6, top + 1.0)])): px[x, y] = SW['edge']
-    px[MIDX, int(top)] = SW['clit']
+    draw_clit(px, top - .2)
+    draw_urethra(px, top + H * L(.46, .4), big=A > .5)         # 尿道口：前庭裡、陰道口上面
 
 
 def rub_press(px):
@@ -426,7 +448,9 @@ def rub_press(px):
     ty = LAB_TOP - .5
     for dx in (-1, 1):
         for (x, y) in pixel_perfect(stroke([(MIDX, ty - 1.4), (MIDX + dx * 2.4, ty + 1.0)])): px[x, y] = SW['edge']
-    px[MIDX, int(ty) + 1] = SW['clit']
+    draw_clit(px, ty + .6)
+    uy = apex + 4.5                                        # 尿道口：被擠開的那塊裡（龜頭還沒蓋到才看得到）
+    if uy < tip - 1 and flame(uy + .5) > 1.2: draw_urethra(px, uy)
 
 
 def silhouette():
