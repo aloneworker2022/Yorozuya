@@ -56,3 +56,4 @@ W=220 H=230 F=380 DIST=.40 EYE=.22 PITCH=12 CY=95 UP=3 OUT=out.png node groin_cl
   除錯 `window.TestBodyMRub.state()`。改圖後重跑 `python3 tools/droom_groin/gen_rub_sheets.py`，再 bump `rub_*.png?v=`。
 
 - 陰蒂＝包皮∧底下一顆小肉粒（`draw_clit`，上亮下深）；尿道口＝陰蒂和陰道口中間一個小深點（`draw_urethra`，打開時是一條小縫；龜頭頂著時被擠開那塊裡、還沒被龜頭蓋到才看得到）。
+- 陰唇打開後陰蒂微微勃起（`draw_clit(erect=OPEN_AMT)`）：跟著打開程度變大、冒出來，深色外框＋淡粉亮面；包皮往上退一點。

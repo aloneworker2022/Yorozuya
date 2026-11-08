@@ -269,12 +269,30 @@ CLIT_HI, CLIT, CLIT_SH = (250, 160, 174, 255), (224, 92, 118, 255), (180, 60, 86
 URETHRA = (140, 34, 56, 255)
 
 
-def draw_clit(px, y):
-    """陰蒂：包皮∧底下一顆小肉粒（兩格高，上亮下深，兩側一點陰影）。"""
+CLIT_ER = (236, 70, 104, 255)                         # 勃起：更紅
+
+
+def draw_clit(px, y, erect=0.0):
+    """陰蒂：包皮∧底下一顆小肉粒（兩格高，上亮下深，兩側一點陰影）。
+    erect（0～1，陰唇打開後）：微微勃起——變大一圈、更突出、更紅（往上多長一格，中間那列兩側也變肉粒）。"""
     y = int(y)
-    px[MIDX, y] = CLIT_HI; px[MIDX, y + 1] = CLIT
-    for dx in (-1, 1):
-        if px[MIDX + dx, y + 1] not in PEN_SET: px[MIDX + dx, y + 1] = CLIT_SH
+    def put(x, yy, c):
+        if px[x, yy] not in PEN_SET: px[x, yy] = c
+    if erect < .35:
+        put(MIDX, y, CLIT_HI); put(MIDX, y + 1, CLIT)
+        for dx in (-1, 1): put(MIDX + dx, y + 1, CLIT_SH)
+        return
+    # 勃起：一顆有深色外框的圓肉粒（淡粉亮面），從周圍的紅裡跳出來；越勃起越大
+    OUT, HI, BODY = (150, 40, 62, 255), (252, 214, 220, 255), (240, 150, 170, 255)
+    big = erect >= .7
+    if big:
+        put(MIDX, y - 1, OUT)
+        put(MIDX - 1, y, OUT); put(MIDX, y, HI); put(MIDX + 1, y, OUT)
+        put(MIDX - 1, y + 1, OUT); put(MIDX, y + 1, BODY); put(MIDX + 1, y + 1, OUT)
+        put(MIDX, y + 2, OUT)
+    else:
+        put(MIDX, y, HI); put(MIDX, y + 1, BODY)
+        put(MIDX - 1, y + 1, OUT); put(MIDX + 1, y + 1, OUT); put(MIDX, y + 2, OUT)
 
 
 def draw_urethra(px, y, big=False):
@@ -395,8 +413,8 @@ def rub_open(px):
                 px[x, y] = SKIN_LN if u > M - 1 else SKIN_PX                    # 外緣線（腫起）；裡面那條弧線不要
     # 陰蒂包皮＋陰蒂（上面）
     for dx in (-1, 1):
-        for (x, y) in pixel_perfect(stroke([(MIDX, top - 1.6), (MIDX + dx * 2.6, top + 1.0)])): px[x, y] = SW['edge']
-    draw_clit(px, top - .2)
+        for (x, y) in pixel_perfect(stroke([(MIDX, top - 1.6 - A), (MIDX + dx * 2.6, top + 1.0 - A)])): px[x, y] = SW['edge']   # 包皮往上退
+    draw_clit(px, top + .4 + .8 * A, erect=A)                  # 打開後陰蒂微微勃起（往下一點、在打開的那塊裡）
     draw_urethra(px, top + H * L(.46, .4), big=A > .5)         # 尿道口：前庭裡、陰道口上面
 
 
