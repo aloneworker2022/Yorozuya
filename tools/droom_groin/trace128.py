@@ -70,7 +70,7 @@ ENT_Y = 80.0 if SPREAD else OPEN_Y                 # 陰莖進到體內的那一
 CERVIX_Y = 57.5                                    # 子宮頸（陰道頂；斜上方看，子宮趴在膀胱上、頸朝下）
 PEN_TIP = 85.5 - INSERT * (85.5 - (CERVIX_Y + 2.2))   # 龜頭頂（插到底＝抵在子宮頸下）
 RUB = int(os.environ.get('RUB', '0'))             # 在外面磨蹭三格：1 沒碰到（陰唇腫脹微張）／2 往前碰到（大陰唇含著龜頭）／3 往下磨蹭撥弄
-if RUB: INSERT = 0.0; PEN_TIP = {1: 101.0, 2: 86.0, 3: 93.0}[RUB]
+if RUB: INSERT = 0.0; PEN_TIP = {1: 101.0, 2: 79.5, 3: 86.0}[RUB]
 XRAY = os.environ.get('XRAY', '0' if RUB else '1') == '1'   # 陰道子宮透視（磨蹭三格先不做）
 PEN_GLANS = 9.5                                    # 龜頭長
 PEN_COLORS = {
@@ -250,48 +250,70 @@ SW = dict(edge=(204, 96, 112, 255), lip=(238, 160, 166, 255), hi=(250, 198, 202,
 
 
 def rub_labia(px):
-    """磨蹭三格的陰唇（畫在陰莖後面，嘴唇才能蓋在龜頭兩側）：
-    1 沒碰到：腫起來（更寬更鼓、更紅），縫微微張開露一點紅、下段穴口。
-    2 往前碰到：龜頭頂進縫的下半，兩片大陰唇被撐開、從兩側包住龜頭（含著）；龜頭上面的縫被頂開。
-    3 往下磨蹭：龜頭往下滑，陰唇被往下拖、包著龜頭往兩邊鼓；上段的縫被撥得更開，露出裡面。"""
-    top = LAB_TOP - .5
-    bot = LAB_BOT + (4.5 if RUB == 3 else 0)              # 3：被龜頭往下拖長
-    H = bot - top
+    """磨蹭三格的陰唇（使用者紅筆）：外陰唇（大陰唇）＝兩邊「( )」鼓起來的肉；小陰唇在中間。
+    1 沒碰到：大陰唇腫起來（( ) 鼓），小陰唇腫、微微張開露一點紅、下段穴口。
+    2 往前碰到：龜頭頂進來，大陰唇被撐開（( ) 更寬、往兩邊），小陰唇圍成一圈拱在龜頭上面和兩側，圈裡龜頭上方露出紅色內裡。
+    3 往下磨蹭：同樣撐開，龜頭和陰唇一起被往下拖，上方的縫拉得更長。"""
+    SKIN_LN = (200, 146, 124, 255)                      # 外陰唇「( )」那道線
     tip, cor = PEN_TIP, PEN_TIP + PEN_GLANS
     def gw(y):
         if RUB == 1 or y < tip: return 0
         if y < cor: return 5.9 * max(0, math.sin(math.pi / 2 * min(1, (y - tip) / PEN_GLANS * 1.25))) ** .5
         return 4.8
-    for y in range(int(top), int(bot) + 2):
-        v = (y + .5 - top) / H
-        if not 0 <= v <= 1: continue
-        w = 3.9 * max(0, math.sin(math.pi * v ** 1.1)) ** .62
-        if RUB == 1: op = .6 * max(0, math.sin(math.pi * v)) ** .8
-        elif RUB == 2: op = 1.9 * min(1, max(0, (y - top) / max(1, tip - top))) ** 1.6 if y < tip else 0
-        else: op = 2.8 * max(0, math.sin(math.pi * min(1, v * 1.25))) ** .5 if y < tip else 0   # 3：上段被撥得更開
-        g = gw(y + .5)
-        LIP = 3.0 if RUB == 2 else 2.4                   # 包住龜頭的嘴唇厚度
-        if g > 0: w = max(w, g + LIP - 1.6)              # 嘴唇被撐開、繞到龜頭兩側（蓋住龜頭邊 1.6 格）
-        for x in range(MIDX - 10, MIDX + 11):
-            u = abs(x + .5 - MIDX)
-            if u > w: continue
-            if g > 0 and u < w - LIP: continue            # 中間露出龜頭（被含著）
-            if u <= op:                                   # 縫裡
-                px[x, y] = SW['red'] if (u < op - .7 or op < 1) else SW['lip']
+    # ---- 大陰唇：( ) ----
+    mtop, mbot, MW = {1: (70.0, 96.5, 9.0), 2: (67.5, 96.8, 11.2), 3: (69.5, 98.5, 11.6)}[RUB]
+    def maj(y):
+        v = (y - mtop) / (mbot - mtop)
+        return MW * max(0, math.sin(math.pi * min(1, max(0, v)) ** .9)) ** .55 if 0 <= v <= 1 else 0
+    # ---- 小陰唇 ----
+    if RUB == 1:
+        itop, ibot = LAB_TOP - .5, LAB_BOT
+        def inner(y):                                   # (開口, 外緣)
+            v = (y - itop) / (ibot - itop)
+            if not 0 <= v <= 1: return None
+            w = 3.9 * max(0, math.sin(math.pi * v ** 1.1)) ** .62
+            return (.6 * max(0, math.sin(math.pi * v)) ** .8, w)
+    else:
+        itop, ibot = mtop + 3.2, mbot - .3
+        def inner(y):
+            if y < itop or y > ibot: return None
+            g = gw(y)
+            if y < tip:                                  # 龜頭上方：圈的上半，裡面露紅
+                t = (y - itop) / max(1, tip - itop)
+                op = 2.6 * max(0, math.sin(math.pi / 2 * t)) ** .6
             else:
-                t = (u - op) / max(.5, w - op)
-                if u > w - 1: c = SW['edge']
-                elif g > 0 and u < w - LIP + 1: c = SW['edge']                   # 貼著龜頭的內緣
-                elif g > 0 and u < w - LIP + 2: c = SW['hi']                     # 包著龜頭那片濕亮
-                elif t < .45 and .12 < v < .62 and g == 0: c = SW['hi']         # 鼓起來的亮面
-                else: c = SW['lip']
-                px[x, y] = c
-    if RUB == 1:                                          # 穴口（縫的下段）
-        hy = int(top + H * .74); px[MIDX, hy] = SW['hole']; px[MIDX, hy + 1] = SW['hole']
-    # 陰蒂包皮∧＋陰蒂（腫起來，露出一點）
+                op = max(0, g - 1.4)                     # 圈包住龜頭兩側（蓋住龜頭邊 1.4 格）
+            v = (y - itop) / (ibot - itop)
+            return (op, op + 2.3 * (.55 + .45 * max(0, math.sin(math.pi * v)) ** .5))
+    for y in range(int(min(mtop, itop)) - 1, int(max(mbot, ibot)) + 2):
+        fy = y + .5
+        M_ = maj(fy); I_ = inner(fy)
+        for x in range(MIDX - 13, MIDX + 14):
+            u = abs(x + .5 - MIDX)
+            if I_ and u <= I_[1]:
+                op, iw = I_
+                if u <= op:
+                    if RUB != 1 and fy >= tip: continue  # 圈裡下段：龜頭
+                    px[x, y] = SW['red'] if (u < op - .6 or op < 1) else SW['lip']
+                else:
+                    if u > iw - 1 or u < op + .9: c = SW['edge']
+                    elif (u - op) < 1.9 and fy < (tip if RUB != 1 else 99) - 1: c = SW['hi']
+                    else: c = SW['lip']
+                    px[x, y] = c
+            elif M_ and u <= M_:
+                inner_w = I_[1] if I_ else 0
+                t = (u - inner_w) / max(.5, M_ - inner_w)
+                if u > M_ - 1: px[x, y] = SKIN_LN                         # ( ) 的線
+                elif t > .7: px[x, y] = SKIN_SH                           # 往外轉那面
+                elif t < .4 and (fy - mtop) / (mbot - mtop) < .7: px[x, y] = SKIN_HI   # 鼓起來的亮面
+                else: px[x, y] = SKIN_PX
+    if RUB == 1:                                          # 穴口
+        hy = int(itop + (ibot - itop) * .74); px[MIDX, hy] = SW['hole']; px[MIDX, hy + 1] = SW['hole']
+    # 陰蒂包皮∧＋陰蒂（圈／縫的最上面）
+    ty = itop
     for dx in (-1, 1):
-        for (x, y) in pixel_perfect(stroke([(MIDX, top - 1.2), (MIDX + dx * 2.4, top + 1.2)])): px[x, y] = SW['edge']
-    px[MIDX, int(top) + 1] = SW['clit']
+        for (x, y) in pixel_perfect(stroke([(MIDX, ty - 1.4), (MIDX + dx * 2.4, ty + 1.0)])): px[x, y] = SW['edge']
+    px[MIDX, int(ty) + 1] = SW['clit']
 
 
 def silhouette():
