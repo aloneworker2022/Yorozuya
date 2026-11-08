@@ -8,7 +8,8 @@
   4. 腹部肉（使用者給三張參考：漫畫素材「股のラインが一直線」、坐姿「肉擠壓感」、骨盆簡化）：
      腰中段最細 → 髂前上棘上方外腹斜肌的肉往外鼓 → 被大腿往上擠，壓出一道往內勾的摺（squeeze），鼠蹊線從摺尾開始；
      股溝線不是直線；肚臍在中線 y35。
-  5. 臀部肉感：每瓣下緣往下鼓圓、到中間才收進凹口；大腿剖面底和屁股接起來處一道肉摺；預覽下緣兩格陰影表現圓的體積。
+  5. 臀部（漫畫素材「お尻がない」）：屁股延伸到胯下下面——兩瓣從大腿下緣下面鼓出來，中間臀縫往上接胯下；
+     原本的大腿下緣變成大腿壓在屁股前面的線（下面一格影子）；屁股瓣下緣兩格陰影。
 用法：python3 trace128.py OUT.png [--up 6] [--fill]
 """
 import math, argparse
@@ -40,8 +41,10 @@ SQUEEZE_L = [(35.6, 50.5), (36.6, 53.2), (38.6, 55.4), (41.6, 56.8), (44, 57.6)]
 THIGH_TOP_L = [HIP, (30, 51), (24, 47.5), ell(THIGH_E, -100)]                     # 大腿上緣：髖 → 剖面頂
 OUTER_L = arc(THIGH_E, -100, -238)                                                   # 剖面外半邊（外輪廓，往外鼓）
 SECT_L = arc(THIGH_E, -100, 98)                                                      # 剖面內半邊（大腿肉的圓）
-BUTT_L = [ell(THIGH_E, -238), (14, 84), (20, 90), (28, 95.6), (37, 99.8), (46, 101.8), (53, 101.4), (58, 99.4), (61, 96)]   # 臀部下緣：每瓣往下鼓圓、到中間才往上收進凹口
-THIGH_BUTT_L = [ell(THIGH_E, 98), (18.5, 82.6), (23.5, 84.6), (28, 85.2)]          # 大腿剖面底和屁股接起來的肉摺（坐姿參考「連接起來」）
+UNDER_L = [ell(THIGH_E, -238), (16, 84), (24, 89.5), (34, 94), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 大腿下緣 → 胯下（大腿壓在屁股前面的那條線）
+# 屁股（漫畫素材「お尻がない」：お尻は股間より下まで伸びている）：兩瓣從大腿下面鼓出來、延伸到胯下下方，中間臀縫往上接胯下
+LOBE_L = [(19, 88), (21.5, 96), (27, 104), (35, 109.8), (44, 112.8), (52, 113), (58.5, 110.6), (62.4, 106.4), (64, 103)]
+CLEFT = [(64, 96.4), (64, 103)]
 CREASE_L = [(44, 57.6), (47.2, 63.5), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
 NOTCH = [(61, 96), (67, 96)]
 NAVEL = (64, 35)                                                                     # 肚臍（使用者標的＋）
@@ -56,10 +59,11 @@ STROKES = [  # (名字, 點, 色, 平滑)
     ('thigh_L', THIGH_TOP_L, LINE, True), ('thigh_R', mirror(THIGH_TOP_L), LINE, True),
     ('outer_L', OUTER_L, LINE, False), ('outer_R', mirror(OUTER_L), LINE, False),
     ('sect_L', SECT_L, SECT, False), ('sect_R', mirror(SECT_L), SECT, False),
-    ('butt_L', BUTT_L, LINE, True), ('butt_R', mirror(BUTT_L), LINE, True),
+    ('under_L', UNDER_L, LINE, True), ('under_R', mirror(UNDER_L), LINE, True),
     ('crease_L', CREASE_L, 'crease', True), ('crease_R', mirror(CREASE_L), 'crease', True),
     ('notch', NOTCH, LINE, False),
-    ('tb_L', THIGH_BUTT_L, SECT, True), ('tb_R', mirror(THIGH_BUTT_L), SECT, True),
+    ('lobe_L', LOBE_L, LINE, True), ('lobe_R', mirror(LOBE_L), LINE, True),
+    ('cleft', CLEFT, LINE, False),
 ]
 
 
@@ -119,7 +123,8 @@ def draw():
 
 
 def silhouette():
-    left = [(WAIST_L[0][0], -2)] + WAIST_L + cr(THIGH_TOP_L)[1:] + OUTER_L[1:] + cr(BUTT_L)[1:]
+    under = [p for p in cr(UNDER_L) if p[0] <= LOBE_L[0][0]]
+    left = [(WAIST_L[0][0], -2)] + WAIST_L + cr(THIGH_TOP_L)[1:] + OUTER_L[1:] + under[1:] + cr(LOBE_L)
     return left + mirror(left)[::-1]
 
 
@@ -148,8 +153,8 @@ def fill_preview(lines_img):
         for k in (1, 2):
             if px[x, yb - k][:3] == SKIN_: px[x, yb - k] = (216, 166, 140, 255)
         if abs(x - MIDX) <= 4 and px[x, yb - 1][:3] in (SKIN_, (216, 166, 140)): px[x, yb - 1] = (196, 140, 118, 255)
-    # 肉摺下面一格陰影
-    for side in (THIGH_BUTT_L, mirror(THIGH_BUTT_L)):
+    # 大腿壓在屁股前面：大腿下緣下面一格影子（落在屁股上）
+    for side in (UNDER_L, mirror(UNDER_L)):
         for (x, y) in pixel_perfect(stroke(cr(side)))[1:]:
             if y + 1 < N and px[x, y + 1][:3] == SKIN_: px[x, y + 1] = (216, 166, 140, 255)
     for side in (SQUEEZE_L, mirror(SQUEEZE_L)):
