@@ -619,8 +619,10 @@ def xray_section(im):
     WALL, CAV, RIM, OVA = (236, 112, 140), (196, 52, 86), (172, 52, 82), (246, 176, 186)
     CX = MIDX + .5
     # ---- 子宮（漏斗）----
-    F_TOP, F_BOT, F_W, NECK_W = 47.0, 56.0, 8.2, 2.4          # 子宮底、漏斗底、上寬、頸寬
-    CERV_BOT = 60.0                                          # 子宮頸伸到陰道頂
+    # 龜頭頂到子宮頸後再往裡推：子宮被往裡頂、壓扁變形（子宮頸跟著龜頭往裡、變短變寬；漏斗變矮、兩邊鼓；子宮底只退一點）
+    push = max(0.0, 60.0 - PEN_TIP) if (INSERT > .05 and PENIS in PEN_COLORS) else 0.0
+    F_TOP, F_BOT, F_W, NECK_W = 47.0 - .35 * push, 56.0 - .85 * push, 8.2 + .4 * push, 2.4 + .3 * push   # 子宮底、漏斗底、上寬、頸寬
+    CERV_BOT = 60.0 - push                                   # 子宮頸伸到陰道頂（被龜頭頂著走）
     def uw(y):
         if y < F_TOP: return 0
         if y <= F_BOT:
@@ -642,7 +644,7 @@ def xray_section(im):
     for (x, y) in pixel_perfect(stroke([(MIDX, F_TOP + 1.5), (MIDX, CERV_BOT)])): blend(x, y, CAV, .9)   # 頸管
     for d in (-1, 1):                                          # 子宮腔：倒三角的兩邊
         for (x, y) in pixel_perfect(stroke([(CX + d * (F_W - 3), F_TOP + 1), (CX + d * .4, F_BOT - .5)])): blend(x, y, CAV, .8)
-    for d, oy in ((-1, 50.0), (1, 49.0)):                     # 輸卵管＋卵巢
+    for d, oy in ((-1, 50.0 - .35 * push), (1, 49.0 - .35 * push)):  # 輸卵管＋卵巢（跟著子宮被頂上去）
         tube = [(CX + d * (F_W - .5), F_TOP - .2), (CX + d * (F_W + 3), F_TOP - 1.6), (CX + d * (F_W + 6), F_TOP - .2), (CX + d * (F_W + 7.2), oy - 1.2)]
         for (x, y) in pixel_perfect(stroke(cr(tube))): blend(x, y, RIM, .8)
         ox = CX + d * (F_W + 7.4)

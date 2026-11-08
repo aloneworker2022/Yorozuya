@@ -11,7 +11,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, '..', '..', 'web', 'test_bodyM')
 TIP0, TIP1 = 76, 106
-INS0, INS1 = 60, 84                                       # 插入：龜頭頂 60（頂到子宮頸）～84（剛進肉穴口）
+INS0, INS1 = 54, 84                                       # 插入：龜頭頂 54（頂到子宮頸再往裡推 6 格，子宮被壓扁）～84（剛進肉穴口）
 tips = list(range(TIP0, TIP1 + 1))
 with tempfile.TemporaryDirectory() as td:
     for mode, name, amt in ((5, 'rub_closed.png', 1), (6, 'rub_open.png', 1), (6, 'rub_open_a35.png', .35), (6, 'rub_open_a70.png', .7), (8, 'rub_insert.png', 1)):

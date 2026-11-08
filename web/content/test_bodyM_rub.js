@@ -14,7 +14,7 @@ const CONTACT_BELOW = 95.5;           // 龜頭頂高於這列＝碰到陰唇
 const RUB_DIST = 8;                   // 碰著陰唇時累積移動幾格算一下摩擦（不用換方向、不用離開；小幅度來回也算）
 const RUBS_TO_OPEN = 4;               // 摩擦幾下陰唇打開
 const PEN_HALF_W = 7;                 // 按得到陰莖的半寬（128 格）
-const INS0 = 60, INS1 = 84;           // 插入圖片條：龜頭頂 60（頂到子宮頸）～84（剛進肉穴口）
+const INS0 = 54, INS1 = 84;           // 插入圖片條：龜頭頂 54（頂到子宮頸再往裡推 6 格，子宮被壓扁）～84（剛進肉穴口）
 const AT_HOLE = 85;                   // 打開後龜頭拉到這列以下＝頂在肉穴口（對準了），往上推才插進去
 const OPEN_STEP_MS = 110;             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
 
@@ -125,7 +125,7 @@ section.querySelector("#rub-reset").addEventListener("click", () => {
   draw();
 });
 
-Promise.all(["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open", "rub_insert"].map((n) => load(`/test_bodyM/${n}.png?v=6`)))
+Promise.all(["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open", "rub_insert"].map((n) => load(`/test_bodyM/${n}.png?v=7`)))
   .then(([closed, a35, a70, open, insert]) => { sheets = { closed, a35, a70, open, insert }; draw(); })
   .catch((e) => { info.textContent = e.message; console.error(e); });
 
