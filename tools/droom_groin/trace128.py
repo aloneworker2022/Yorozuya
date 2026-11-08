@@ -60,6 +60,17 @@ HAIR_STRANDS = [
     ((64.5, 62), (76, 55), 0.8), ((63, 67.5), (53, 58.5), -0.6), ((65, 67.5), (75.5, 58), 0.6),
 ]
 HAIR_CURLS = [[(50, 52), (48, 50.5), (47.6, 52.4), (49.2, 53.6), (51, 52.6)], [(53, 50), (51.4, 48.6), (50.6, 50.2), (52, 51.2)]]   # 左邊捲毛
+# ---- 陰莖（第一人稱：從畫面下面往上伸，龜頭抵在穴口）----
+import os
+PENIS = os.environ.get('PENIS', 'skin')            # skin＝肉色（droom 低頭看自己那種）／shadow＝影子男黑剪影／none
+PEN_TIP = 85.5                                     # 龜頭頂（穴口在陰唇下段）
+PEN_GLANS = 9.5                                    # 龜頭長
+PEN_COLORS = {
+    'skin': dict(edge=(150, 96, 80, 255), base=(226, 172, 146, 255), sh=(200, 142, 118, 255), hi=(240, 194, 168, 255),
+                 g_base=(214, 128, 136, 255), g_sh=(184, 98, 110, 255), g_hi=(236, 162, 168, 255), slit=(120, 50, 64, 255)),
+    'shadow': dict(edge=(70, 62, 82, 255), base=(20, 18, 26, 255), sh=(12, 10, 16, 255), hi=(34, 30, 42, 255),
+                   g_base=(26, 22, 32, 255), g_sh=(14, 12, 18, 255), g_hi=(44, 38, 54, 255), slit=(6, 4, 8, 255)),
+}
 NAVEL = (64, 35)                                                                     # 肚臍（使用者標的＋）
 
 
@@ -139,6 +150,36 @@ def draw():
         px[MIDX, y] = LAB_SLIT
     for dx in (-1, 1):                                                                 # 頂端小開叉（陰蒂包皮那一點）
         for (x, y) in pixel_perfect(stroke([(MIDX, LAB_TOP - 1.2), (MIDX + dx * 2, LAB_TOP + .9)])): px[x, y] = LAB_EDGE
+    # 陰莖（畫在陰唇上面）：莖從畫面底往上微微收細；龜頭冠狀溝最寬、往上收成圓頭；左亮右暗
+    if PENIS in PEN_COLORS:
+        C = PEN_COLORS[PENIS]
+        cor = PEN_TIP + PEN_GLANS                       # 冠狀溝那一列
+        def shaft_w(y): return 4.8 + 1.4 * min(1, (y - cor) / (N - cor))
+        def glans_w(y):
+            t = (y - PEN_TIP) / PEN_GLANS                # 0 頂 → 1 冠狀溝
+            return 5.9 * max(0, math.sin(math.pi / 2 * min(1, t * 1.25))) ** .5 if t >= 0 else 0
+        for y in range(int(PEN_TIP), N):
+            g = y < cor
+            w = glans_w(y + .5) if g else shaft_w(y + .5)
+            for x in range(MIDX - 8, MIDX + 9):
+                u = x + .5 - MIDX
+                if abs(u) > w: continue
+                edge = abs(u) > w - 1 or (g and y == int(PEN_TIP)) or (not g and y == int(cor) and abs(u) > shaft_w(y) - .2)
+                t = u / max(1, w)                        # −1 左 … ＋1 右
+                if g: c = C['edge'] if edge else C['g_hi'] if t < -.35 and y < cor - 3 else C['g_sh'] if t > .4 or y >= cor - 1 else C['g_base']
+                else: c = C['edge'] if edge else C['hi'] if t < -.4 else C['sh'] if t > .35 else C['base']
+                px[x, y] = c
+        # 冠狀溝：龜頭底下比莖寬的那一圈＋下面一格陰影
+        cy = int(cor)
+        for x in range(MIDX - int(glans_w(cor - .5)), MIDX + int(glans_w(cor - .5)) + 1): px[x, cy] = C['edge']
+        for x in range(MIDX - 4, MIDX + 5):
+            if px[x, cy + 1][:3] not in ((255, 255, 255),): px[x, cy + 1] = C['sh']
+        # 尿道口（龜頭頂中間一小條）、繫帶（龜頭中線往下一點）
+        px[MIDX, int(PEN_TIP) + 1] = C['slit']; px[MIDX, int(PEN_TIP) + 2] = C['slit']
+        for y in range(int(PEN_TIP) + 5, int(cor)): px[MIDX, y] = C['g_sh']           # 繫帶（龜頭中線往下）
+        # 莖中線一條淡血管（左側）
+        for y in range(cy + 4, N - 2, 1):
+            px[MIDX - 1 - (1 if (y // 6) % 2 else 0), y] = C['sh'] if PENIS == 'skin' else C['hi']
     # 陰毛：一根根從根往上往外，畫在陰唇上面
     for k, (a, b, bend) in enumerate(HAIR_STRANDS if HAIR_ON else []):
         L = .78 + .22 * ((k * 37) % 10) / 9                      # 長短不一
