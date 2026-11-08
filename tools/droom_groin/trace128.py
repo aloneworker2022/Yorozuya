@@ -87,7 +87,7 @@ if INS_MODE:
     INSERT = 1.0 if PEN_TIP < HOLE_Y - 3.0 else 0.0  # 龜頭頂過了肉穴上緣＝插進去
     SPREAD = False                                 # 不用舊的「插著陰唇撐開」，陰唇照打開那張
     ENT_Y = HOLE_Y                                 # 看得到的莖到肉穴為止，往上是體內（透視）
-XRAY = os.environ.get('XRAY', '1' if INS_MODE else ('0' if RUB else '1')) == '1'   # 陰道子宮透視（磨蹭先不做；插入要）
+XRAY = os.environ.get('XRAY', ('1' if INSERT > 0 else '0') if INS_MODE else ('0' if RUB else '1')) == '1'   # 陰道子宮透視（磨蹭不做；插入：龜頭進去後才透視，頂著不透視）
 PEN_GLANS = 9.5                                    # 龜頭長
 PEN_COLORS = {
     'skin': dict(edge=(150, 96, 80, 255), base=(226, 172, 146, 255), sh=(200, 142, 118, 255), hi=(240, 194, 168, 255),

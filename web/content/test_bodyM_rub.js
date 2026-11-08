@@ -3,6 +3,9 @@
 //   rub_closed.png：還沒打開（碰到時大小陰唇包著龜頭，沒碰到是腫脹微張）
 //   rub_open.png  ：打開後（外翻陰唇＋肉穴，陰莖直接疊在上面）
 //   rub_open_a35.png／rub_open_a70.png：打開的過渡幀（打開一點／打開大半），打開時依序播，讓打開滑順
+//   rub_insert.png：插入（龜頭頂 INS0～INS1，陰道子宮剖面透視）
+// 插入：打開後要先把龜頭拉到肉穴口（龜頭頂 ≥ AT_HOLE＝對準），再往上推才插進去（最深到子宮頸）；
+//   在上面磨（沒對準）只是疊在陰唇上；插著時往下拉出肉穴口就回到疊著。
 // 操作：手指按住陰莖任何一段，上下拖動陰莖摩擦陰唇；碰著陰唇時累積移動距離，每 RUB_DIST 格算一下，
 // 摩擦 RUBS_TO_OPEN 下後陰唇打開（陰莖不用離開），之後改用打開那條。
 const TIP0 = 76, TIP1 = 106;          // 圖片條的龜頭高度範圍（128 格座標）
@@ -11,13 +14,15 @@ const CONTACT_BELOW = 95.5;           // 龜頭頂高於這列＝碰到陰唇
 const RUB_DIST = 8;                   // 碰著陰唇時累積移動幾格算一下摩擦（不用換方向、不用離開；小幅度來回也算）
 const RUBS_TO_OPEN = 4;               // 摩擦幾下陰唇打開
 const PEN_HALF_W = 7;                 // 按得到陰莖的半寬（128 格）
+const INS0 = 60, INS1 = 84;           // 插入圖片條：龜頭頂 60（頂到子宮頸）～84（剛進肉穴口）
+const AT_HOLE = 85;                   // 打開後龜頭拉到這列以下＝頂在肉穴口（對準了），往上推才插進去
 const OPEN_STEP_MS = 110;             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
 
 const section = document.createElement("section");
 section.className = "card";
 section.innerHTML = `
   <h2 style="margin-top:0">0. 磨蹭陰唇（像素）</h2>
-  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。</p>
+  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。</p>
   <div style="display:flex;justify-content:center">
     <canvas id="rub-cv" width="128" height="128"
       style="width:min(92vw,512px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
@@ -41,7 +46,7 @@ const load = (src) => new Promise((resolve, reject) => {
   im.src = src;
 });
 
-const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null };
+const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false };
 let openTimer = 0;
 let sheets = null;
 
@@ -49,9 +54,13 @@ function draw() {
   if (!sheets) return;
   const i = Math.round(st.tip) - TIP0;
   ctx.clearRect(0, 0, 128, 128);
-  const sheet = !st.opened ? sheets.closed : [sheets.a35, sheets.a70, sheets.open][Math.min(2, st.openStep)];
-  ctx.drawImage(sheet, i * 128, 0, 128, 128, 0, 0, 128, 128);
-  info.textContent = st.opened ? "陰唇打開了" : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`;
+  if (st.inserted) {
+    ctx.drawImage(sheets.insert, (Math.round(st.tip) - INS0) * 128, 0, 128, 128, 0, 0, 128, 128);
+  } else {
+    const sheet = !st.opened ? sheets.closed : [sheets.a35, sheets.a70, sheets.open][Math.min(2, st.openStep)];
+    ctx.drawImage(sheet, i * 128, 0, 128, 128, 0, 0, 128, 128);
+  }
+  info.textContent = st.inserted ? "插入中" : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`;
 }
 
 function toGrid(ev) {
@@ -89,10 +98,18 @@ cv.addEventListener("pointerdown", (ev) => {
 cv.addEventListener("pointermove", (ev) => {
   if (!st.drag || ev.pointerId !== st.drag.id) return;
   const p = toGrid(ev);
-  const next = Math.max(TIP0, Math.min(TIP1, Math.round(st.drag.tip0 + (p.y - st.drag.y0))));
+  const want = Math.round(st.drag.tip0 + (p.y - st.drag.y0));
+  // 插入：打開後對準肉穴口才能往上推進去；沒對準最高只到 TIP0（疊在陰唇上）
+  const canIn = st.opened && st.openStep >= 2 && (st.inserted || st.armed);
+  const next = Math.max(canIn ? INS0 : TIP0, Math.min(TIP1, want));
   if (next === st.tip) return;
   track(st.tip, next);
   st.tip = next;
+  if (st.opened && st.openStep >= 2) {
+    if (st.tip >= AT_HOLE) { st.inserted = false; st.armed = true; }        // 拉到肉穴口（或拉出來）＝對準
+    else if (st.armed || st.inserted) { st.inserted = st.tip <= INS1; }     // 對準後往上推＝插進去
+    if (!st.inserted && st.tip < AT_HOLE && !canIn) st.armed = false;
+  }
   draw();
 });
 const release = (ev) => {
@@ -104,12 +121,12 @@ cv.addEventListener("pointerup", release);
 cv.addEventListener("pointercancel", release);
 section.querySelector("#rub-reset").addEventListener("click", () => {
   clearInterval(openTimer);
-  Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null });
+  Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false });
   draw();
 });
 
-Promise.all(["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open"].map((n) => load(`/test_bodyM/${n}.png?v=4`)))
-  .then(([closed, a35, a70, open]) => { sheets = { closed, a35, a70, open }; draw(); })
+Promise.all(["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open", "rub_insert"].map((n) => load(`/test_bodyM/${n}.png?v=5`)))
+  .then(([closed, a35, a70, open, insert]) => { sheets = { closed, a35, a70, open, insert }; draw(); })
   .catch((e) => { info.textContent = e.message; console.error(e); });
 
 // 除錯：window.TestBodyMRub.state()

@@ -3,6 +3,7 @@
   rub_closed.png：還沒打開（RUB=5：碰到時大小陰唇包著龜頭、沒碰到是腫脹微張）
   rub_open.png  ：打開後（RUB=6：外翻陰唇＋肉穴，陰莖直接疊在上面）
   rub_open_a35.png／rub_open_a70.png：打開的過渡幀（OPEN_AMT＝0.35／0.7），讓打開滑順
+  rub_insert.png：插入（RUB=8，龜頭頂 INS0～INS1；龜頭進去後才有陰道子宮剖面透視）
 用法：python3 gen_rub_sheets.py [輸出資料夾，預設 web/test_bodyM]
 """
 import os, sys, subprocess, tempfile
@@ -10,15 +11,17 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, '..', '..', 'web', 'test_bodyM')
 TIP0, TIP1 = 76, 106
+INS0, INS1 = 60, 84                                       # 插入：龜頭頂 60（頂到子宮頸）～84（剛進肉穴口）
 tips = list(range(TIP0, TIP1 + 1))
 with tempfile.TemporaryDirectory() as td:
-    for mode, name, amt in ((5, 'rub_closed.png', 1), (6, 'rub_open.png', 1), (6, 'rub_open_a35.png', .35), (6, 'rub_open_a70.png', .7)):
-        sheet = Image.new('RGBA', (128 * len(tips), 128))
-        for i, t in enumerate(tips):
+    for mode, name, amt in ((5, 'rub_closed.png', 1), (6, 'rub_open.png', 1), (6, 'rub_open_a35.png', .35), (6, 'rub_open_a70.png', .7), (8, 'rub_insert.png', 1)):
+        ts = list(range(INS0, INS1 + 1)) if mode == 8 else tips
+        sheet = Image.new('RGBA', (128 * len(ts), 128))
+        for i, t in enumerate(ts):
             fp = os.path.join(td, f'{mode}_{t}.png')
             subprocess.run([sys.executable, os.path.join(HERE, 'trace128.py'), fp, '--fill'], check=True,
                            env={**os.environ, 'RUB': str(mode), 'PTIP': str(t), 'OPEN_AMT': str(amt)})
             sheet.paste(Image.open(fp).convert('RGBA'), (128 * i, 0))
         sheet.save(os.path.join(OUT, name), optimize=True)
         print(name, sheet.size)
-print('tips', TIP0, TIP1)
+print('tips', TIP0, TIP1, 'insert', INS0, INS1)
