@@ -77,8 +77,17 @@ if RUB in (5, 6):                                  # 互動用：PTIP 指定陰�
     if RUB == 6: OPEN_OVER = True; RUB = 4
     else: RUB = 2 if PEN_TIP < 85.0 else 1        # 拉到下面不用「陰唇被往下帶」那種（像黏著龜頭）：照第 1 格、陰莖疊在前面
     INSERT = 0.0
+elif RUB == 8:                                     # 插入（陰唇打開後）：PTIP＝龜頭頂；龜頭過了肉穴口就算插進去
+    PEN_TIP = float(os.environ.get('PTIP', '85'))
+    OPEN_OVER = True; RUB = 4
 elif RUB: INSERT = 0.0; PEN_TIP = {1: 101.0, 2: 79.5, 3: 86.0, 4: 101.0}[RUB]   # 4：摩擦以後（陰莖退回下面）
-XRAY = os.environ.get('XRAY', '0' if RUB else '1') == '1'   # 陰道子宮透視（磨蹭三格先不做）
+INS_MODE = os.environ.get('RUB') == '8'
+HOLE_Y = 87.4                                      # 打開後肉穴中心（rub_open 全開）
+if INS_MODE:
+    INSERT = 1.0 if PEN_TIP < HOLE_Y - 3.0 else 0.0  # 龜頭頂過了肉穴上緣＝插進去
+    SPREAD = False                                 # 不用舊的「插著陰唇撐開」，陰唇照打開那張
+    ENT_Y = HOLE_Y                                 # 看得到的莖到肉穴為止，往上是體內（透視）
+XRAY = os.environ.get('XRAY', '1' if INS_MODE else ('0' if RUB else '1')) == '1'   # 陰道子宮透視（磨蹭先不做；插入要）
 PEN_GLANS = 9.5                                    # 龜頭長
 PEN_COLORS = {
     'skin': dict(edge=(150, 96, 80, 255), base=(226, 172, 146, 255), sh=(200, 142, 118, 255), hi=(240, 194, 168, 255),
@@ -541,7 +550,7 @@ def xray(im):
     pen_in = INSERT > .05 and PENIS in PEN_COLORS
     cor = PEN_TIP + PEN_GLANS
     top_y = CERVIX_Y + 2.2
-    bot_y = ENT_Y if pen_in else LAB_TOP - 1
+    bot_y = ENT_Y if pen_in else (HOLE_Y - 3.5 if INS_MODE else LAB_TOP - 1)   # 插入模式沒插時：陰道一條線接到肉穴上緣
     def persp(y): return .78 + .22 * (y - top_y) / max(1, OPEN_Y - top_y)   # 越上越遠越窄
     def pen_w(y):
         if y < PEN_TIP: return 0
@@ -552,7 +561,12 @@ def xray(im):
     # 陰道＝圓筒：側面（筒壁往後轉）暗、中間亮；一圈圈皺褶環（從前下方看＝往下彎的弧）
     def lum_w(y): return max(.8, pen_w(y + .5) * persp(y) + .3) if pen_in and y >= PEN_TIP - .5 else 1.9 * persp(y)
     WALL_T = 2.0
-    for y in range(int(top_y), int(bot_y) + 1):
+    LINE_ONLY = INS_MODE and not pen_in                           # 插入模式還沒插：照使用者紅線，一條線＋橫皺褶（不畫粗管子，陰唇看得到）
+    for y in (range(int(top_y), int(bot_y) + 1) if LINE_ONLY else []):
+        blend(MIDX, y, RIM, .85)
+        if y % 3 == 0:
+            for x in range(MIDX - 1, MIDX + 2): blend(x, y, RIM, .7)
+    for y in (range(int(top_y), int(bot_y) + 1) if not LINE_ONLY else []):
         lum = lum_w(y); R = lum + WALL_T
         for x in range(MIDX - 12, MIDX + 13):
             u = abs(x + .5 - UX)
@@ -560,7 +574,7 @@ def xray(im):
             if u > R - 1: blend(x, y, RIM, .85)                  # 筒的外緣
             elif u > lum: blend(x, y, WALL, .6)                  # 筒壁側面
             else: blend(x, y, (236, 150, 170) if u < lum * .45 else WALL, .38)   # 筒內：中間亮、往兩側暗
-    RINGS = [y for y in range(int(top_y) + 2, int(bot_y) - 1, 3)]
+    RINGS = [] if LINE_ONLY else [y for y in range(int(top_y) + 2, int(bot_y) - 1, 3)]
     def ring(yr, a):
         R = lum_w(yr) + WALL_T - .6
         for x in range(MIDX - 12, MIDX + 13):
@@ -581,6 +595,12 @@ def xray(im):
         if cy < ENT_Y:
             for x in range(MIDX - 5, MIDX + 6): blend(x, cy, C['edge'], .8)
     for yr in RINGS: ring(yr, .4 if pen_in else .75)            # 環的前半圈在陰莖前面，淡淡蓋過去
+    if INS_MODE and pen_in:                                      # 肉穴口被撐開，一圈紅緊緊包著陰莖
+        for y in range(int(HOLE_Y) - 2, int(HOLE_Y) + 2):
+            w = pen_w(y + .5)
+            for x in range(MIDX - 9, MIDX + 10):
+                u = abs(x + .5 - UX)
+                if w - .3 < u <= w + 1.3: blend(x, y, (196, 48, 72), .9)
     return im
 
 
