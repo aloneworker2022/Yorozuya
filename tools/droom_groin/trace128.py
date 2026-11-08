@@ -161,6 +161,7 @@ def draw():
         px[MIDX, y] = LAB_SLIT
     for dx in ((-1, 1) if not (SPREAD or RUB) else ()):                                          # 頂端小開叉（陰蒂包皮那一點）
         for (x, y) in pixel_perfect(stroke([(MIDX, LAB_TOP - 1.2), (MIDX + dx * 2, LAB_TOP + .9)])): px[x, y] = LAB_EDGE
+    if RUB: rub_labia(px)                                 # 在外面磨蹭：陰唇先畫，陰莖壓在前面
     # 陰莖（畫在陰唇上面）：莖從畫面底往上微微收細；龜頭冠狀溝最寬、往上收成圓頭；左亮右暗
     if PENIS in PEN_COLORS:
         C = PEN_COLORS[PENIS]
@@ -220,7 +221,6 @@ def draw():
         for dx in (-1, 1):
             for (x, y) in pixel_perfect(stroke([(MIDX, ty - 1.4), (MIDX + dx * 2.4, ty + 1.2)])): px[x, y] = LAB_EDGE
         px[MIDX, int(ty) + 1] = (250, 176, 184, 255)
-    if RUB: rub_labia(px)
     # 陰毛：一根根從根往上往外，畫在陰唇上面
     for k, (a, b, bend) in enumerate(HAIR_STRANDS if HAIR_ON else []):
         L = .78 + .22 * ((k * 37) % 10) / 9                      # 長短不一
@@ -252,8 +252,9 @@ SW = dict(edge=(204, 96, 112, 255), lip=(238, 160, 166, 255), hi=(250, 198, 202,
 def rub_labia(px):
     """磨蹭三格的陰唇（使用者紅筆）：外陰唇（大陰唇）＝兩邊「( )」鼓起來的肉；小陰唇在中間。
     1 沒碰到：大陰唇腫起來（( ) 鼓），小陰唇腫、微微張開露一點紅、下段穴口。
-    2 往前碰到：龜頭頂進來，大陰唇被撐開（( ) 更寬、往兩邊），小陰唇圍成一圈拱在龜頭上面和兩側，圈裡龜頭上方露出紅色內裡。
-    3 往下磨蹭：同樣撐開，龜頭和陰唇一起被往下拖，上方的縫拉得更長。"""
+    2 往前碰到：龜頭壓在陰唇前面（沒插進去），大陰唇被擠開（( ) 更寬、往兩邊），小陰唇從龜頭兩側露出；龜頭上方的縫被擠開露紅。
+    3 往下磨蹭：同樣擠開，龜頭往下滑、陰唇被往下拖，上方的縫拉得更長。
+    只要微微腫脹：鼓一點、外緣線＋外側陰影，不打亮。"""
     SKIN_LN = (200, 146, 124, 255)                      # 外陰唇「( )」那道線
     tip, cor = PEN_TIP, PEN_TIP + PEN_GLANS
     def gw(y):
@@ -282,7 +283,7 @@ def rub_labia(px):
                 t = (y - itop) / max(1, tip - itop)
                 op = 2.6 * max(0, math.sin(math.pi / 2 * t)) ** .6
             else:
-                op = max(0, g - 1.4)                     # 圈包住龜頭兩側（蓋住龜頭邊 1.4 格）
+                op = max(0, g - 1.4)                     # 龜頭壓上來：小陰唇被擠到龜頭兩側（龜頭在前面蓋住中間）
             v = (y - itop) / (ibot - itop)
             return (op, op + 2.3 * (.55 + .45 * max(0, math.sin(math.pi * v)) ** .5))
     for y in range(int(min(mtop, itop)) - 1, int(max(mbot, ibot)) + 2):
@@ -293,19 +294,16 @@ def rub_labia(px):
             if I_ and u <= I_[1]:
                 op, iw = I_
                 if u <= op:
-                    if RUB != 1 and fy >= tip: continue  # 圈裡下段：龜頭
                     px[x, y] = SW['red'] if (u < op - .6 or op < 1) else SW['lip']
                 else:
                     if u > iw - 1 or u < op + .9: c = SW['edge']
-                    elif (u - op) < 1.9 and fy < (tip if RUB != 1 else 99) - 1: c = SW['hi']
                     else: c = SW['lip']
                     px[x, y] = c
             elif M_ and u <= M_:
                 inner_w = I_[1] if I_ else 0
                 t = (u - inner_w) / max(.5, M_ - inner_w)
                 if u > M_ - 1: px[x, y] = SKIN_LN                         # ( ) 的線
-                elif t > .7: px[x, y] = SKIN_SH                           # 往外轉那面
-                elif t < .4 and (fy - mtop) / (mbot - mtop) < .7: px[x, y] = SKIN_HI   # 鼓起來的亮面
+                elif t > .78: px[x, y] = SKIN_SH                          # 往外轉那面（微微腫脹，不打亮）
                 else: px[x, y] = SKIN_PX
     if RUB == 1:                                          # 穴口
         hy = int(itop + (ibot - itop) * .74); px[MIDX, hy] = SW['hole']; px[MIDX, hy + 1] = SW['hole']
