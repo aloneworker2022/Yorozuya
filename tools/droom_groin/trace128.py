@@ -39,6 +39,12 @@ SECT_L = arc(THIGH_E, -100, 98)                                                 
 BUTT_L = [ell(THIGH_E, -238), (16, 84), (24, 89.5), (34, 94), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 臀部下緣 → 凹口
 CREASE_L = [HIP, (45, 63), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
 NOTCH = [(61, 96), (67, 96)]
+import os
+BELLY = os.environ.get('BELLY', 'A')
+if BELLY == 'C':
+    WAIST_L = [(37, 22), (34.5, 30), (32.8, 38), (33, 46), (34.5, 51.5), HIP]          # C：腰到髖整條往外鼓（肚子圓）
+BELLY_ARC_L = [(38.5, 44), (44, 49.5), (52, 52.5), (60, 53.6), (64.5, 53.8)]         # A：小腹凸出的下緣（從腰側往中間）
+BELLY_HOOK_L = [(40, 45), (43, 47.5), (46, 48.5)]                                    # B：腰線下端往內勾（肚子肉的摺）
 NAVEL = (64, 35)                                                                     # 肚臍（使用者標的＋）
 
 
@@ -46,6 +52,7 @@ def mirror(pts): return [(2 * MIDX - x, y) for (x, y) in pts]
 
 
 STROKES = [  # (名字, 點, 色, 平滑)
+] + ([('belly_L', BELLY_ARC_L, SECT, True), ('belly_R', mirror(BELLY_ARC_L), SECT, True)] if BELLY == 'A' else [('hook_L', BELLY_HOOK_L, SECT, True), ('hook_R', mirror(BELLY_HOOK_L), SECT, True)] if BELLY == 'B' else []) + [
     ('waist_L', WAIST_L, LINE, True), ('waist_R', mirror(WAIST_L), LINE, True),
     ('thigh_L', THIGH_TOP_L, LINE, True), ('thigh_R', mirror(THIGH_TOP_L), LINE, True),
     ('outer_L', OUTER_L, LINE, False), ('outer_R', mirror(OUTER_L), LINE, False),
