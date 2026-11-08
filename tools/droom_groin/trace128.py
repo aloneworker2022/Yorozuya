@@ -43,7 +43,7 @@ BUTT_L = [ell(THIGH_E, -238), (16, 84), (24, 89.5), (34, 94), (45, 97.2), (54, 9
 CREASE_L = [(44, 57.6), (47.2, 63.5), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
 NOTCH = [(61, 96), (67, 96)]
 # ---- 陰唇＋陰毛（使用者紅筆：陰毛從陰唇頂往上扇形散開、毛尖朝上，左邊幾根捲；陰唇細長杏仁、縫往上接進陰毛）----
-LAB_TOP, LAB_BOT, LAB_W = 68.5, 87.5, 2.6          # 陰唇上下、最寬半寬（最寬在偏下）
+LAB_TOP, LAB_BOT, LAB_W = 73.5, 95.6, 3.0          # 陰唇上下、最寬半寬（使用者紅筆：在胯下最底部、下端到凹口；最寬偏下）
 LAB_EDGE = (196, 108, 118, 255)                    # droom 陰唇色
 LAB_IN = (230, 168, 168, 255)                      # 裡面淡粉
 LAB_SLIT = (170, 84, 98, 255)                      # 中間的縫
@@ -137,8 +137,8 @@ def draw():
             px[x, y] = LAB_EDGE if u > w - 1 else LAB_IN
     for y in range(int(LAB_TOP) - (4 if HAIR_ON else -1), int(LAB_BOT)):   # 有陰毛時縫往上接進陰毛
         px[MIDX, y] = LAB_SLIT
-    for (x, y) in pixel_perfect(stroke(cr([(MIDX - .3, LAB_BOT - 1.5), (MIDX - 1.2, LAB_BOT + .6)]))): px[x, y] = LAB_EDGE   # 下端小分岔
-    for (x, y) in pixel_perfect(stroke(cr([(MIDX + .3, LAB_BOT - 1.5), (MIDX + 1.2, LAB_BOT + .6)]))): px[x, y] = LAB_EDGE
+    for dx in (-1, 1):                                                                 # 頂端小開叉（陰蒂包皮那一點）
+        for (x, y) in pixel_perfect(stroke([(MIDX, LAB_TOP - 1.2), (MIDX + dx * 2, LAB_TOP + .9)])): px[x, y] = LAB_EDGE
     # 陰毛：一根根從根往上往外，畫在陰唇上面
     for k, (a, b, bend) in enumerate(HAIR_STRANDS if HAIR_ON else []):
         L = .78 + .22 * ((k * 37) % 10) / 9                      # 長短不一
