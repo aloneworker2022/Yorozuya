@@ -71,10 +71,11 @@ CERVIX_Y = 57.5                                    # 子宮頸（陰道頂；斜
 PEN_TIP = 85.5 - INSERT * (85.5 - (CERVIX_Y + 2.2))   # 龜頭頂（插到底＝抵在子宮頸下）
 RUB = int(os.environ.get('RUB', '0'))             # 在外面磨蹭三格：1 沒碰到（陰唇腫脹微張）／2 往前碰到（大陰唇含著龜頭）／3 往下磨蹭撥弄
 OPEN_OVER = False
+OPEN_AMT = float(os.environ.get('OPEN_AMT', '1'))   # 打開程度 0＝第 1 格（腫脹微張）… 1＝全開（中間過渡幀用）
 if RUB in (5, 6):                                  # 互動用：PTIP 指定陰莖高度（龜頭頂那一列）
     PEN_TIP = float(os.environ.get('PTIP', '101'))  # 5＝還沒打開（碰到就照 2 的畫法、沒碰到照 1）；6＝打開後（外翻陰唇，陰莖直接疊在上面）
     if RUB == 6: OPEN_OVER = True; RUB = 4
-    else: RUB = 2 if PEN_TIP < 95.5 else 1
+    else: RUB = 2 if PEN_TIP < 85.0 else 1        # 拉到下面不用「陰唇被往下帶」那種（像黏著龜頭）：照第 1 格、陰莖疊在前面
     INSERT = 0.0
 elif RUB: INSERT = 0.0; PEN_TIP = {1: 101.0, 2: 79.5, 3: 86.0, 4: 101.0}[RUB]   # 4：摩擦以後（陰莖退回下面）
 XRAY = os.environ.get('XRAY', '0' if RUB else '1') == '1'   # 陰道子宮透視（磨蹭三格先不做）
@@ -346,15 +347,17 @@ def rub_open(px):
     SKIN_LN = (186, 122, 108, 255)
     MJ, MJ_SH = (240, 188, 170, 255), (224, 162, 146, 255)
     VEST, HOLE_RIM = (230, 120, 136, 255), (196, 48, 72, 255)
-    top, bot = LAB_TOP - 2.0, LAB_BOT + .8
+    A = max(0.0, min(1.0, OPEN_AMT))
+    L = lambda a, b: a + (b - a) * A                             # 第 1 格 → 全開
+    top, bot = L(LAB_TOP - .5, LAB_TOP - 2.0), L(LAB_BOT, LAB_BOT + .8)
     H = bot - top
-    hx, hy, hrx, hry = MIDX + .5, top + H * .64, 3.1, 4.4      # 肉穴（打開變大）
+    hx, hy, hrx, hry = MIDX + .5, top + H * L(.74, .64), L(.7, 3.1), L(1.1, 4.4)   # 肉穴（打開變大）
     for y in range(int(top) - 4, int(bot) + 2):
         fy = y + .5
         v = (fy - top) / H
         if not 0 <= v <= 1: continue
-        V = 4.0 * max(0, math.sin(math.pi * v)) ** .55             # 前庭（打開的那塊）
-        P = V + 2.0 + .5 * math.sin(fy * 1.3)                      # 小陰唇花瓣外緣（翻開、波浪）
+        V = L(.6 * max(0, math.sin(math.pi * v)) ** .8, 4.0 * max(0, math.sin(math.pi * v)) ** .55)   # 前庭（打開的那塊）
+        P = max(V + 1.0, L(3.9 * max(0, math.sin(math.pi * v ** 1.1)) ** .62, V + 2.0 + .5 * math.sin(fy * 1.3)))   # 小陰唇（慢慢翻開）
         mv = (fy - 70.0) / (96.5 - 70.0)
         M = 9.0 * max(0, math.sin(math.pi * min(1, max(0, mv)) ** .9)) ** .55 if 0 <= mv <= 1 else 0   # 大陰唇：跟第 1 格同一條圓弧
         for x in range(MIDX - 13, MIDX + 14):
@@ -365,7 +368,7 @@ def rub_open(px):
             if u <= V: px[x, y] = VEST if u < V - .8 else SW['red']; continue
             if u <= P:                                              # 翻開的小陰唇：外緣深、中間一道摺
                 t = (u - V) / max(.5, P - V)
-                px[x, y] = SW['edge'] if (u > P - .9) else (SW['inrim'] if .4 < t < .6 else SW['lip']); continue
+                px[x, y] = SW['edge'] if (u > P - .9) else (SW['inrim'] if (.4 < t < .6 and P - V > 2.2) else SW['lip']); continue
             if u <= M:                                              # 大陰唇軟肉
                 t = (u - P) / max(.5, M - P)
                 px[x, y] = SKIN_LN if u > M - 1 else SKIN_PX                    # 外緣線（腫起）；裡面那條弧線不要

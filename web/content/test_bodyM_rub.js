@@ -2,6 +2,7 @@
 // 圖片條由 tools/droom_groin/gen_rub_sheets.py 產：陰莖龜頭頂從 TIP0 到 TIP1 每 1 格一張，128×128 橫排。
 //   rub_closed.png：還沒打開（碰到時大小陰唇包著龜頭，沒碰到是腫脹微張）
 //   rub_open.png  ：打開後（外翻陰唇＋肉穴，陰莖直接疊在上面）
+//   rub_open_a35.png／rub_open_a70.png：打開的過渡幀（打開一點／打開大半），打開時依序播，讓打開滑順
 // 操作：手指按住陰莖任何一段，上下拖動陰莖摩擦陰唇；摩擦 RUBS_TO_OPEN 下後陰唇打開，之後改用打開那條。
 const TIP0 = 76, TIP1 = 106;          // 圖片條的龜頭高度範圍（128 格座標）
 const TIP_START = 101;                // 一開始：沒碰到
@@ -9,6 +10,7 @@ const CONTACT_BELOW = 95.5;           // 龜頭頂高於這列＝碰到陰唇
 const RUB_MIN_TRAVEL = 3;             // 一下摩擦至少要移動幾格（碰到時來回）
 const RUBS_TO_OPEN = 4;               // 摩擦幾下陰唇打開
 const PEN_HALF_W = 7;                 // 按得到陰莖的半寬（128 格）
+const OPEN_STEP_MS = 110;             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
 
 const section = document.createElement("section");
 section.className = "card";
@@ -38,14 +40,16 @@ const load = (src) => new Promise((resolve, reject) => {
   im.src = src;
 });
 
-const st = { tip: TIP_START, opened: false, rubs: 0, dir: 0, turnAt: TIP_START, drag: null };
+const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, dir: 0, turnAt: TIP_START, drag: null };
+let openTimer = 0;
 let sheets = null;
 
 function draw() {
   if (!sheets) return;
   const i = Math.round(st.tip) - TIP0;
   ctx.clearRect(0, 0, 128, 128);
-  ctx.drawImage(st.opened ? sheets.open : sheets.closed, i * 128, 0, 128, 128, 0, 0, 128, 128);
+  const sheet = !st.opened ? sheets.closed : [sheets.a35, sheets.a70, sheets.open][Math.min(2, st.openStep)];
+  ctx.drawImage(sheet, i * 128, 0, 128, 128, 0, 0, 128, 128);
   info.textContent = st.opened ? "陰唇打開了" : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`;
 }
 
@@ -62,11 +66,22 @@ function track(prev, next) {
     const touching = Math.min(st.turnAt, prev) < CONTACT_BELOW;
     if (touching && Math.abs(prev - st.turnAt) >= RUB_MIN_TRAVEL && !st.opened) {
       st.rubs += 1;
-      if (st.rubs >= RUBS_TO_OPEN) st.opened = true;
+      if (st.rubs >= RUBS_TO_OPEN) startOpen();
     }
     st.turnAt = prev;
   }
   st.dir = d;
+}
+
+// 打開：打開一點 → 打開大半 → 全開，一格一格播
+function startOpen() {
+  st.opened = true; st.openStep = 0;
+  clearInterval(openTimer);
+  openTimer = setInterval(() => {
+    st.openStep += 1;
+    if (st.openStep >= 2) clearInterval(openTimer);
+    draw();
+  }, OPEN_STEP_MS);
 }
 
 cv.addEventListener("pointerdown", (ev) => {
@@ -94,12 +109,13 @@ const release = (ev) => {
 cv.addEventListener("pointerup", release);
 cv.addEventListener("pointercancel", release);
 section.querySelector("#rub-reset").addEventListener("click", () => {
-  Object.assign(st, { tip: TIP_START, opened: false, rubs: 0, dir: 0, turnAt: TIP_START, drag: null });
+  clearInterval(openTimer);
+  Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, dir: 0, turnAt: TIP_START, drag: null });
   draw();
 });
 
-Promise.all([load("/test_bodyM/rub_closed.png?v=1"), load("/test_bodyM/rub_open.png?v=1")])
-  .then(([closed, open]) => { sheets = { closed, open }; draw(); })
+Promise.all(["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open"].map((n) => load(`/test_bodyM/${n}.png?v=2`)))
+  .then(([closed, a35, a70, open]) => { sheets = { closed, a35, a70, open }; draw(); })
   .catch((e) => { info.textContent = e.message; console.error(e); });
 
 // 除錯：window.TestBodyMRub.state()
