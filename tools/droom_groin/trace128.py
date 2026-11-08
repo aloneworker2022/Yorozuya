@@ -256,7 +256,7 @@ SW = dict(edge=(204, 96, 112, 255), lip=(238, 160, 166, 255), hi=(250, 198, 202,
 def rub_labia(px):
     """磨蹭三格的陰唇（使用者紅筆）：外陰唇（大陰唇）＝兩邊「( )」鼓起來的肉；小陰唇在中間。
     1 沒碰到：大陰唇腫起來（( ) 鼓），小陰唇腫、微微張開露一點紅、下段穴口。
-    2 往前碰到：龜頭頂進兩片唇中間（沒插進去）。唇從上到下是同一對、連續的：上面一條縫，往下蓋過龜頭圓頭、順著龜頭兩側往下夾著龜頭；大陰唇 ( ) 更寬。
+    2 往前碰到：龜頭頂進兩片唇中間（沒插進去）。唇從上到下是同一對、連續的：上面一條縫，往下貼著龜頭圓頭、順著龜頭兩側往下夾著龜頭（只貼著邊，龜頭保持原大小；唇夠厚）；大陰唇 ( ) 更寬。
     3 往下磨蹭：同樣夾著，龜頭往下滑、陰唇被往下拖，龜頭上方那段縫拉長。
     只要微微腫脹：鼓一點、外緣線＋外側陰影，不打亮。"""
     SKIN_LN = (200, 146, 124, 255)                      # 外陰唇「( )」那道線
@@ -266,7 +266,7 @@ def rub_labia(px):
         if y < cor: return 5.9 * max(0, math.sin(math.pi / 2 * min(1, (y - tip) / PEN_GLANS * 1.25))) ** .5
         return 4.8
     # ---- 大陰唇：( ) ----
-    mtop, mbot, MW = {1: (70.0, 96.5, 9.0), 2: (67.5, 96.8, 11.2), 3: (69.5, 98.5, 11.6)}[RUB]
+    mtop, mbot, MW = {1: (70.0, 96.5, 9.0), 2: (67.0, 96.8, 12.4), 3: (69.0, 98.5, 12.8)}[RUB]
     def maj(y):
         v = (y - mtop) / (mbot - mtop)
         return MW * max(0, math.sin(math.pi * min(1, max(0, v)) ** .9)) ** .55 if 0 <= v <= 1 else 0
@@ -279,14 +279,14 @@ def rub_labia(px):
             w = 3.9 * max(0, math.sin(math.pi * v ** 1.1)) ** .62
             return (.6 * max(0, math.sin(math.pi * v)) ** .8, w)
     else:
-        itop, ibot = mtop + 3.2, mbot - .3
+        itop, ibot = mtop + 2.6, mbot - .3
         def inner(y):
             if y < itop or y > ibot: return None
             v = (y - itop) / (ibot - itop)
             # 同一對唇從上到下連續：上面照常一條縫，往下蓋過龜頭的圓頭、順著龜頭兩側往下（唇蓋住龜頭邊 1.5 格）
             slit = .6 * max(0, math.sin(math.pi * v)) ** .8
-            op = max(slit, gw(y) - 1.5)
-            return (op, op + 2.4 * (.55 + .45 * max(0, math.sin(math.pi * v)) ** .5))
+            op = max(slit, gw(y) - .4)                    # 唇只貼著龜頭邊、幾乎不蓋（龜頭保持原大小）
+            return (op, op + 3.4 * (.55 + .45 * max(0, math.sin(math.pi * v)) ** .5))   # 唇加厚（陰唇不要變小）
     for y in range(int(min(mtop, itop)) - 1, int(max(mbot, ibot)) + 2):
         fy = y + .5
         M_ = maj(fy); I_ = inner(fy)
