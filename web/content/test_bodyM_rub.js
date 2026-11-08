@@ -3,11 +3,12 @@
 //   rub_closed.png：還沒打開（碰到時大小陰唇包著龜頭，沒碰到是腫脹微張）
 //   rub_open.png  ：打開後（外翻陰唇＋肉穴，陰莖直接疊在上面）
 //   rub_open_a35.png／rub_open_a70.png：打開的過渡幀（打開一點／打開大半），打開時依序播，讓打開滑順
-// 操作：手指按住陰莖任何一段，上下拖動陰莖摩擦陰唇；摩擦 RUBS_TO_OPEN 下後陰唇打開，之後改用打開那條。
+// 操作：手指按住陰莖任何一段，上下拖動陰莖摩擦陰唇；碰著陰唇時累積移動距離，每 RUB_DIST 格算一下，
+// 摩擦 RUBS_TO_OPEN 下後陰唇打開（陰莖不用離開），之後改用打開那條。
 const TIP0 = 76, TIP1 = 106;          // 圖片條的龜頭高度範圍（128 格座標）
 const TIP_START = 101;                // 一開始：沒碰到
 const CONTACT_BELOW = 95.5;           // 龜頭頂高於這列＝碰到陰唇
-const RUB_MIN_TRAVEL = 3;             // 一下摩擦至少要移動幾格（碰到時來回）
+const RUB_DIST = 8;                   // 碰著陰唇時累積移動幾格算一下摩擦（不用換方向、不用離開；小幅度來回也算）
 const RUBS_TO_OPEN = 4;               // 摩擦幾下陰唇打開
 const PEN_HALF_W = 7;                 // 按得到陰莖的半寬（128 格）
 const OPEN_STEP_MS = 110;             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
@@ -40,7 +41,7 @@ const load = (src) => new Promise((resolve, reject) => {
   im.src = src;
 });
 
-const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, dir: 0, turnAt: TIP_START, drag: null };
+const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null };
 let openTimer = 0;
 let sheets = null;
 
@@ -58,19 +59,12 @@ function toGrid(ev) {
   return { x: (ev.clientX - r.left) / r.width * 128, y: (ev.clientY - r.top) / r.height * 128 };
 }
 
-// 碰到陰唇時每次換方向（而且這一段移動夠多）算一下摩擦
+// 碰著陰唇時移動就累積摩擦距離（磨的當下就會打開，陰莖不用離開）
 function track(prev, next) {
-  const d = Math.sign(next - prev);
-  if (!d) return;
-  if (st.dir && d !== st.dir) {
-    const touching = Math.min(st.turnAt, prev) < CONTACT_BELOW;
-    if (touching && Math.abs(prev - st.turnAt) >= RUB_MIN_TRAVEL && !st.opened) {
-      st.rubs += 1;
-      if (st.rubs >= RUBS_TO_OPEN) startOpen();
-    }
-    st.turnAt = prev;
-  }
-  st.dir = d;
+  if (st.opened || Math.min(prev, next) >= CONTACT_BELOW) return;
+  st.travel += Math.abs(next - prev);
+  st.rubs = Math.min(RUBS_TO_OPEN, Math.floor(st.travel / RUB_DIST));
+  if (st.rubs >= RUBS_TO_OPEN) startOpen();
 }
 
 // 打開：打開一點 → 打開大半 → 全開，一格一格播
@@ -110,7 +104,7 @@ cv.addEventListener("pointerup", release);
 cv.addEventListener("pointercancel", release);
 section.querySelector("#rub-reset").addEventListener("click", () => {
   clearInterval(openTimer);
-  Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, dir: 0, turnAt: TIP_START, drag: null });
+  Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null });
   draw();
 });
 

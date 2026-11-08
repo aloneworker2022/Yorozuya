@@ -52,5 +52,5 @@ W=220 H=230 F=380 DIST=.40 EYE=.22 PITCH=12 CY=95 UP=3 OUT=out.png node groin_cl
 
 - `gen_rub_sheets.py` 產兩條圖片條到 `web/test_bodyM/`：陰莖龜頭頂 76～106 每 1 格一張（128×128 橫排 31 張）。
   `rub_closed.png`＝還沒打開（`RUB=5 PTIP=n`：龜頭頂高於 85 照第 2 格的畫法；拉到下面不用「陰唇被往下帶」那種（使用者：像黏著龜頭），照第 1 格、陰莖疊在前面）；`rub_open.png`＝打開後（`RUB=6 PTIP=n`：外翻陰唇＋肉穴，陰莖直接疊在上面）；`rub_open_a35.png`／`rub_open_a70.png`＝打開過渡幀（`OPEN_AMT`），打開時 閉合 → 0.35 → 0.7 → 全開 每格 110ms。
-- `web/content/test_bodyM_rub.js`：放在 test_bodyM 最上面。手指按住陰莖任何一段上下拖；碰到陰唇時每次換方向（移動 ≥3 格）算一下摩擦，4 下後換成打開那條。「重來」回到一開始。
+- `web/content/test_bodyM_rub.js`：放在 test_bodyM 最上面。手指按住陰莖任何一段上下拖；龜頭碰著陰唇時累積移動距離、每 8 格算一下摩擦（不用換方向、陰莖不用離開，小幅度來回也算），4 下後播打開過渡再換成打開那條。「重來」回到一開始。
   除錯 `window.TestBodyMRub.state()`。改圖後重跑 `python3 tools/droom_groin/gen_rub_sheets.py`，再 bump `rub_*.png?v=`。
