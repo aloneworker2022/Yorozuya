@@ -604,6 +604,93 @@ def xray(im):
     return im
 
 
+def xray_section(im):
+    """插入用的透視＝剖面（使用者：不是圓管＋環）。微微斜角。
+    - 子宮：漏斗形——上面寬（子宮底，上緣一道橢圓弧＝斜著看），往下收窄，底下一段子宮頸（小圓頭伸進陰道頂、頸口）；剖面看得到裡面的子宮腔（倒三角＋頸管）。輸卵管＋卵巢。
+    - 陰道：剖面＝左右兩道陰道壁（內緣一節一節的皺褶），沒插時兩壁貼著＝一條縫；插著時兩壁被陰莖撐開、陰莖在中間；
+      靠陰道口那段被撐開、往外張，接到打開的陰唇（肉穴口一圈紅包著莖）。"""
+    px = im.load()
+    body = lambda x, y: px[x, y][:3] not in ((40, 34, 50), (255, 255, 255))
+    def blend(x, y, c, a):
+        x, y = int(x), int(y)
+        if not (0 <= x < N and 0 <= y < N) or not body(x, y): return
+        o = px[x, y]; px[x, y] = tuple(int(o[j] * (1 - a) + c[j] * a) for j in range(3)) + (255,)
+    WALL, CAV, RIM, OVA = (236, 112, 140), (196, 52, 86), (172, 52, 82), (246, 176, 186)
+    CX = MIDX + .5
+    # ---- 子宮（漏斗）----
+    F_TOP, F_BOT, F_W, NECK_W = 47.0, 56.0, 8.2, 2.4          # 子宮底、漏斗底、上寬、頸寬
+    CERV_BOT = 60.0                                          # 子宮頸伸到陰道頂
+    def uw(y):
+        if y < F_TOP: return 0
+        if y <= F_BOT:
+            t = (y - F_TOP) / (F_BOT - F_TOP)
+            return NECK_W + (F_W - NECK_W) * (1 - t) ** 1.25     # 漏斗：往下收窄（側邊微微鼓）
+        if y <= CERV_BOT: return NECK_W * (1 - .25 * ((y - F_BOT) / (CERV_BOT - F_BOT)) ** 2)   # 子宮頸
+        return 0
+    for y in range(int(F_TOP) - 3, int(CERV_BOT) + 1):
+        fy = y + .5
+        w = uw(fy)
+        # 上緣：一道橢圓弧（子宮底，斜著看）
+        for x in range(MIDX - 10, MIDX + 11):
+            u = x + .5 - CX
+            e = (u / F_W) ** 2 + ((fy - F_TOP) / 2.4) ** 2
+            if fy < F_TOP and e < 1: blend(x, y, RIM if e > .55 else WALL, .85 if e > .55 else .55)
+            if w and abs(u) <= w:
+                wall = abs(u) > w - 1.6
+                blend(x, y, RIM if abs(u) > w - .8 else (WALL if wall else CAV), .85 if wall else .5)
+    for (x, y) in pixel_perfect(stroke([(MIDX, F_TOP + 1.5), (MIDX, CERV_BOT)])): blend(x, y, CAV, .9)   # 頸管
+    for d in (-1, 1):                                          # 子宮腔：倒三角的兩邊
+        for (x, y) in pixel_perfect(stroke([(CX + d * (F_W - 3), F_TOP + 1), (CX + d * .4, F_BOT - .5)])): blend(x, y, CAV, .8)
+    for d, oy in ((-1, 50.0), (1, 49.0)):                     # 輸卵管＋卵巢
+        tube = [(CX + d * (F_W - .5), F_TOP - .2), (CX + d * (F_W + 3), F_TOP - 1.6), (CX + d * (F_W + 6), F_TOP - .2), (CX + d * (F_W + 7.2), oy - 1.2)]
+        for (x, y) in pixel_perfect(stroke(cr(tube))): blend(x, y, RIM, .8)
+        ox = CX + d * (F_W + 7.4)
+        for y in range(int(oy) - 2, int(oy) + 3):
+            for x in range(int(ox) - 3, int(ox) + 4):
+                e = ((x + .5 - ox) / 2.4) ** 2 + ((y + .5 - oy) / 1.7) ** 2
+                if e < 1: blend(x, y, RIM if e > .5 else OVA, .8 if e > .5 else .6)
+    # ---- 陰道（剖面）----
+    pen_in = INSERT > .05 and PENIS in PEN_COLORS
+    cor = PEN_TIP + PEN_GLANS
+    top_y, bot_y = CERV_BOT - 1.0, HOLE_Y - 1.5
+    def persp(y): return .82 + .18 * (y - top_y) / max(1, bot_y - top_y)   # 越上越遠一點點窄（斜角）
+    def pen_w(y):
+        if not pen_in or y < PEN_TIP: return 0
+        if y < cor:
+            t = (y - PEN_TIP) / PEN_GLANS
+            return 5.9 * max(0, math.sin(math.pi / 2 * min(1, t * 1.25))) ** .5
+        return 4.8 + 1.4 * min(1, (y - cor) / (N - cor))
+    WT = 1.8                                                   # 陰道壁厚
+    for y in range(int(top_y), int(bot_y) + 1):
+        fy = y + .5
+        g = pen_w(fy) * persp(fy)
+        flare = max(0, (fy - (bot_y - 5)) / 5) * 1.6 if pen_in else 0     # 靠陰道口那段被撐開、往外張
+        gap = (g + .2 + flare) if g > 0 else .5                  # 兩壁之間：插著＝陰莖寬；沒插＝貼著一條縫
+        rug = .7 if (y % 3 == 0) else 0                          # 皺褶：內緣一節一節往裡凸
+        for x in range(MIDX - 12, MIDX + 13):
+            u = abs(x + .5 - CX)
+            if gap - rug < u <= gap + WT:
+                blend(x, y, RIM if (u > gap + WT - .9 or u <= gap - rug + .8) else WALL, .85)
+            elif u <= gap and g == 0:
+                blend(x, y, CAV, .7)                              # 沒插：中間那條縫
+    # 體內那段陰莖（剖面裡，在兩壁中間；不再蓋環）
+    if pen_in:
+        C = PEN_COLORS[PENIS]
+        for y in range(int(PEN_TIP), int(ENT_Y)):
+            w = pen_w(y + .5) * persp(y + .5)
+            for x in range(MIDX - 7, MIDX + 8):
+                u = x + .5 - CX
+                if abs(u) > w: continue
+                edge = abs(u) > w - 1 or y == int(PEN_TIP)
+                blend(x, y, C['edge'] if edge else C['base'], .85)
+        for y in range(int(HOLE_Y) - 2, int(HOLE_Y) + 2):      # 肉穴口一圈紅包著莖
+            w = pen_w(y + .5)
+            for x in range(MIDX - 9, MIDX + 10):
+                u = abs(x + .5 - CX)
+                if w - .3 < u <= w + 1.3: blend(x, y, (196, 48, 72), .9)
+    return im
+
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('out'); ap.add_argument('--up', type=int, default=1); ap.add_argument('--fill', action='store_true')
@@ -611,6 +698,6 @@ if __name__ == '__main__':
     im = draw()
     if a.fill:
         im = fill_preview(im)
-        if XRAY: im = xray(im)
+        if XRAY: im = xray_section(im) if INS_MODE else xray(im)
     if a.up > 1: im = im.resize((N * a.up, N * a.up), Image.NEAREST)
     im.save(a.out)
