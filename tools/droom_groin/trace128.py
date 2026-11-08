@@ -1,64 +1,71 @@
 #!/usr/bin/env python3
-"""第一步：只照使用者的結構圖（structure_ref.jpg）描棕線，128×128、1px 像素線；藍線（骨頭）不描、不上色。
-線的座標是照原圖棕線位置手描（原圖 865×538），中間用 Catmull-Rom 補平順。
-用法：python3 trace128.py OUT.png [--up 6] [--over]（--over：把原圖淡淡墊在底下對照）
+"""droom 胯下（M 字腿正面、腰部以下）描線，128×128、1px 像素線。座標直接用 128 格（原本照 structure_ref.jpg 描，之後照使用者紅筆修）。
+
+2026-11-08 使用者修正：
+  1. 大腿內側有弧度（大腿肉飽滿）→ 鼠蹊線上半段往中間鼓。
+  2. 鼠蹊部下半段微微漲（陰唇的位置）→ 鼠蹊線下半段往外撐開一點，收到底部凹口。
+  3. 大腿剖面＝表現大腿肉 → 大腿盡頭是一個圓鼓的橢圓：外半邊是外輪廓（往外鼓），內半邊是剖面線。
+  4. 腰線上段往外，不往內縮。
+用法：python3 trace128.py OUT.png [--up 6] [--fill]
 """
-import argparse
-from PIL import Image
+import math, argparse
+from PIL import Image, ImageDraw
 
 N = 128
-CROP = (100, 50, 760, 470)                      # 原圖取這一塊
-S = (N - 8) / (CROP[2] - CROP[0])
-OX, OY = 4, (N - (CROP[3] - CROP[1]) * S) / 2
+MIDX = 64                      # 中線（左右鏡像）
+LINE = (132, 100, 70, 255)     # 輪廓線
+SECT = (168, 120, 96, 255)     # 大腿剖面線（內側，比輪廓淡一點）
+CREASE_COL = (216, 166, 140, 255)   # 鼠蹊：droom 陰影色（微微深）
+CREASE_TOP = (229, 185, 158, 255)   # 鼠蹊上段更淡
 
-# 大腿＋臀部：上緣 → 大腿剖面圓弧（使用者：外側弧線＝大腿的剖面，大腿到這裡結束）→ 下緣（臀部）連成一筆，轉角接起來，臀部兩瓣在中間凹口會合
-LEG_L = [(270, 210), (250, 198), (220, 180), (185, 165), (160, 157),            # 大腿上緣（從髖往外）
-         (168, 175), (173, 205), (170, 238), (158, 266), (140, 288), (121, 300),   # 大腿剖面的圓弧（大腿到這裡結束）
-         (126, 322), (150, 360), (200, 400), (260, 428), (320, 447), (370, 453),   # 臀部下緣（左瓣）
-         (402, 445), (418, 436), (430, 434)]                                        # 往上收到中間凹口
-LINES = {
-    'leg_L':    LEG_L,
-    'leg_R':    [(565, 207), (600, 190), (640, 178), (688, 164),                    # 右邊照原圖右邊的棕線（左右不完全對稱）
-                 (676, 188), (674, 222), (682, 256), (700, 286), (722, 306), (742, 318),
-                 (728, 345), (690, 378), (640, 412), (590, 440), (550, 455), (515, 459), (478, 452), (448, 440), (430, 434)],
-    'waist_L':  [(290, 62), (293, 95), (291, 125), (285, 158), (280, 188), (272, 208)],
-    'waist_R':  [(555, 62), (546, 95), (540, 130), (542, 165), (553, 192), (565, 206)],
-    # 鼠蹊線：從髖的轉折往內往下，收到底部中間（照原圖那兩條淡線，上段也補上）
-    'crease_L': [(282, 208), (328, 270), (370, 350), (410, 432)],
-    'crease_R': [(562, 208), (514, 270), (472, 350), (442, 432)],
-}
-MID = 430
-CREASE_COL = (216, 166, 140, 255)   # droom 陰影色：微微深
-CREASE_TOP = (229, 185, 158, 255)   # 上段淡一點，往髖那頭淡出
+HIP = (35, 55)
+THIGH_E = dict(cx=16, cy=62, rx=10.5, ry=18)          # 左大腿剖面橢圓
 
 
-def P(x, y): return ((x - CROP[0]) * S + OX, (y - CROP[1]) * S + OY)
+def ell(e, deg):
+    t = math.radians(deg)
+    return (e['cx'] + e['rx'] * math.cos(t), e['cy'] + e['ry'] * math.sin(t))
 
 
-def cr(pts, n=12):
+def arc(e, a0, a1, step=6):
+    n = max(2, int(abs(a1 - a0) / step))
+    return [ell(e, a0 + (a1 - a0) * i / n) for i in range(n + 1)]
+
+
+WAIST_L = [(34, 22), (37, 30), (38.5, 38), (38, 46), (36.5, 51), HIP]               # 腰：上段往外、到髖收
+THIGH_TOP_L = [HIP, (30, 51.5), (24, 47.5), ell(THIGH_E, -100)]                     # 大腿上緣：髖 → 剖面頂
+OUTER_L = arc(THIGH_E, -100, -238)                                                   # 剖面外半邊（外輪廓，往外鼓）
+SECT_L = arc(THIGH_E, -100, 98)                                                      # 剖面內半邊（大腿肉的圓）
+BUTT_L = [ell(THIGH_E, -238), (16, 84), (24, 89.5), (34, 94), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 臀部下緣 → 凹口
+CREASE_L = [HIP, (45, 63), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
+NOTCH = [(61, 96), (67, 96)]
+
+
+def mirror(pts): return [(2 * MIDX - x, y) for (x, y) in pts]
+
+
+STROKES = [  # (名字, 點, 色, 平滑)
+    ('waist_L', WAIST_L, LINE, True), ('waist_R', mirror(WAIST_L), LINE, True),
+    ('thigh_L', THIGH_TOP_L, LINE, True), ('thigh_R', mirror(THIGH_TOP_L), LINE, True),
+    ('outer_L', OUTER_L, LINE, False), ('outer_R', mirror(OUTER_L), LINE, False),
+    ('sect_L', SECT_L, SECT, False), ('sect_R', mirror(SECT_L), SECT, False),
+    ('butt_L', BUTT_L, LINE, True), ('butt_R', mirror(BUTT_L), LINE, True),
+    ('crease_L', CREASE_L, 'crease', True), ('crease_R', mirror(CREASE_L), 'crease', True),
+    ('notch', NOTCH, LINE, False),
+]
+
+
+def cr(pts, n=10):
     """Catmull-Rom 補點。"""
     out = []
-    p = [pts[0]] + pts + [pts[-1]]
+    p = [pts[0]] + list(pts) + [pts[-1]]
     for i in range(1, len(p) - 2):
         p0, p1, p2, p3 = p[i - 1], p[i], p[i + 1], p[i + 2]
         for k in range(n):
             t = k / n; t2, t3 = t * t, t * t * t
             out.append(tuple(.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3) for j in (0, 1)))
-    out.append(pts[-1])
+    out.append(tuple(pts[-1]))
     return out
-
-
-def plot(px, a, b, col):
-    x0, y0, x1, y1 = round(a[0]), round(a[1]), round(b[0]), round(b[1])
-    dx, dy = abs(x1 - x0), -abs(y1 - y0)
-    sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
-    e = dx + dy
-    while True:
-        if 0 <= x0 < N and 0 <= y0 < N: px[x0, y0] = col
-        if x0 == x1 and y0 == y1: break
-        e2 = 2 * e
-        if e2 >= dy: e += dy; x0 += sx
-        if e2 <= dx: e += dx; y0 += sy
 
 
 def stroke(q):
@@ -79,7 +86,7 @@ def stroke(q):
 
 
 def pixel_perfect(pts):
-    """像素線清乾淨：拿掉 L 形轉角多出來的那一格（前後兩格斜對角相連時，中間那格不要）。"""
+    """像素線清乾淨：拿掉 L 形轉角多出來的那一格。"""
     out = []
     for p in pts:
         if len(out) >= 2:
@@ -90,52 +97,45 @@ def pixel_perfect(pts):
     return out
 
 
-def draw(ref=None):
+def draw():
     im = Image.new('RGBA', (N, N), (255, 255, 255, 255))
-    if ref:
-        r = Image.open(ref).convert('RGBA').crop(CROP).resize((round((CROP[2] - CROP[0]) * S), round((CROP[3] - CROP[1]) * S)), Image.LANCZOS)
-        r.putalpha(70); im.alpha_composite(r, (OX, round(OY)))
     px = im.load()
-    for name, pts in LINES.items():
-        if pts is None: pts = [(2 * MID - x, y) for (x, y) in LINES[name.replace('_R', '_L')]]
-        q = [P(*p) for p in cr(pts)]
-        pix = pixel_perfect(stroke(q))
+    for name, pts, col, smooth in STROKES:
+        pix = pixel_perfect(stroke(cr(pts) if smooth else pts))
         for i, (x, y) in enumerate(pix):
-            if name.startswith('crease'):
-                px[x, y] = CREASE_TOP if i < len(pix) * .3 else CREASE_COL   # 上段更淡、往下微微深
-            else:
-                px[x, y] = (132, 100, 70, 255)
+            px[x, y] = (CREASE_TOP if i < len(pix) * .3 else CREASE_COL) if col == 'crease' else col
     return im
 
 
+def silhouette():
+    left = [(WAIST_L[0][0], -2)] + WAIST_L + cr(THIGH_TOP_L)[1:] + OUTER_L[1:] + cr(BUTT_L)[1:]
+    return left + mirror(left)[::-1]
+
+
 def fill_preview(lines_img):
-    """用外輪廓（腰、大腿、剖面、臀部）圍起來的範圍填 droom 肉色，外面 1px 白邊；線照畫在上面。只看肢體形狀用。"""
-    from PIL import ImageDraw
-    L = LINES
-    poly = L['waist_L'][::-1][:-1] and None
-    out = [P(*q) for q in [(290, -400)] + L['waist_L'] + L['leg_L']] + \
-          [P(*q) for q in L['leg_R'][::-1] + L['waist_R'][::-1] + [(555, -400)]]
-    m = Image.new('L', (N, N), 0); ImageDraw.Draw(m).polygon(out, fill=255); M = m.load()
+    """外輪廓圍起來填 droom 肉色、外面 1px 白邊，線畫在上面（輪廓線→深色、剖面／鼠蹊照原色）。只看肢體形狀用。"""
+    m = Image.new('L', (N, N), 0); ImageDraw.Draw(m).polygon(silhouette(), fill=255); M = m.load()
     im = Image.new('RGBA', (N, N), (40, 34, 50, 255)); px = im.load(); lp = lines_img.load()
     for y in range(N):
         for x in range(N):
-            if M[x, y]: px[x, y] = (242, 204, 177, 255)
-            elif any(0 <= x + dx < N and 0 <= y + dy < N and M[x + dx, y + dy] for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))): px[x, y] = (255, 255, 255, 255)
+            if M[x, y] or lp[x, y][:3] != (255, 255, 255): px[x, y] = (242, 204, 177, 255)
+    for y in range(N):
+        for x in range(N):
+            if px[x, y][:3] == (40, 34, 50) and any(0 <= x + dx < N and 0 <= y + dy < N and px[x + dx, y + dy][:3] not in ((40, 34, 50), (255, 255, 255)) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+                px[x, y] = (255, 255, 255, 255)
     for y in range(N):
         for x in range(N):
             c = lp[x, y]
-            if not M[x, y] or c[:3] == (255, 255, 255): continue
-            px[x, y] = c if c[:3] in (CREASE_COL[:3], CREASE_TOP[:3]) else (184, 124, 104, 255)
+            if c[:3] == (255, 255, 255): continue
+            px[x, y] = (184, 124, 104, 255) if c == LINE else (216, 166, 140, 255) if c == SECT else c
     return im
 
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('out'); ap.add_argument('--up', type=int, default=1); ap.add_argument('--over', action='store_true')
-    ap.add_argument('--fill', action='store_true')
+    ap.add_argument('out'); ap.add_argument('--up', type=int, default=1); ap.add_argument('--fill', action='store_true')
     a = ap.parse_args()
-    import os
-    im = draw(os.path.join(os.path.dirname(__file__), 'structure_ref.jpg') if a.over else None)
+    im = draw()
     if a.fill: im = fill_preview(im)
     if a.up > 1: im = im.resize((N * a.up, N * a.up), Image.NEAREST)
     im.save(a.out)
