@@ -70,7 +70,13 @@ ENT_Y = 80.0 if SPREAD else OPEN_Y                 # 陰莖進到體內的那一
 CERVIX_Y = 57.5                                    # 子宮頸（陰道頂；斜上方看，子宮趴在膀胱上、頸朝下）
 PEN_TIP = 85.5 - INSERT * (85.5 - (CERVIX_Y + 2.2))   # 龜頭頂（插到底＝抵在子宮頸下）
 RUB = int(os.environ.get('RUB', '0'))             # 在外面磨蹭三格：1 沒碰到（陰唇腫脹微張）／2 往前碰到（大陰唇含著龜頭）／3 往下磨蹭撥弄
-if RUB: INSERT = 0.0; PEN_TIP = {1: 101.0, 2: 79.5, 3: 86.0, 4: 101.0}[RUB]   # 4：摩擦以後（陰莖退回下面）
+OPEN_OVER = False
+if RUB in (5, 6):                                  # 互動用：PTIP 指定陰莖高度（龜頭頂那一列）
+    PEN_TIP = float(os.environ.get('PTIP', '101'))  # 5＝還沒打開（碰到就照 2 的畫法、沒碰到照 1）；6＝打開後（外翻陰唇，陰莖直接疊在上面）
+    if RUB == 6: OPEN_OVER = True; RUB = 4
+    else: RUB = 2 if PEN_TIP < 95.5 else 1
+    INSERT = 0.0
+elif RUB: INSERT = 0.0; PEN_TIP = {1: 101.0, 2: 79.5, 3: 86.0, 4: 101.0}[RUB]   # 4：摩擦以後（陰莖退回下面）
 XRAY = os.environ.get('XRAY', '0' if RUB else '1') == '1'   # 陰道子宮透視（磨蹭三格先不做）
 PEN_GLANS = 9.5                                    # 龜頭長
 PEN_COLORS = {
@@ -163,6 +169,7 @@ def draw():
     for dx in ((-1, 1) if not (SPREAD or RUB) else ()):                                          # 頂端小開叉（陰蒂包皮那一點）
         for (x, y) in pixel_perfect(stroke([(MIDX, LAB_TOP - 1.2), (MIDX + dx * 2, LAB_TOP + .9)])): px[x, y] = LAB_EDGE
     if RUB == 1: rub_labia(px)
+    if RUB == 4 and OPEN_OVER: rub_open(px)               # 打開後：陰莖直接疊在外翻的陰唇上
     # 陰莖（畫在陰唇上面）：莖從畫面底往上微微收細；龜頭冠狀溝最寬、往上收成圓頭；左亮右暗
     if PENIS in PEN_COLORS:
         C = PEN_COLORS[PENIS]
@@ -224,7 +231,7 @@ def draw():
         px[MIDX, int(ty) + 1] = (250, 176, 184, 255)
     if PENIS in PEN_COLORS: PEN_SET.update(PEN_COLORS[PENIS].values())
     if RUB in (2, 3): rub_press(px)                       # 龜頭揉進一團軟肉（大陰唇＋小陰唇包著龜頭）
-    if RUB == 4: rub_open(px)                             # 摩擦以後：陰唇外翻、肉穴打開變大
+    if RUB == 4 and not OPEN_OVER: rub_open(px)           # 摩擦以後：陰唇外翻、肉穴打開變大
     # 陰毛：一根根從根往上往外，畫在陰唇上面
     for k, (a, b, bend) in enumerate(HAIR_STRANDS if HAIR_ON else []):
         L = .78 + .22 * ((k * 37) % 10) / 9                      # 長短不一
