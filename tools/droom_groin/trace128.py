@@ -5,7 +5,7 @@
   1. 大腿內側有弧度（大腿肉飽滿）→ 鼠蹊線上半段往中間鼓。
   2. 鼠蹊部下半段微微漲（陰唇的位置）→ 鼠蹊線下半段往外撐開一點，收到底部凹口。
   3. 大腿剖面＝表現大腿肉 → 大腿盡頭是一個圓鼓的橢圓：外半邊是外輪廓（往外鼓），內半邊是剖面線。
-  4. 腰線上段往外，不往內縮。
+  4. 腰線：中段往內收（腰最細），往下到髖往外鼓＝下腹部的肉感；肚臍在中線 y35。
 用法：python3 trace128.py OUT.png [--up 6] [--fill]
 """
 import math, argparse
@@ -32,13 +32,14 @@ def arc(e, a0, a1, step=6):
     return [ell(e, a0 + (a1 - a0) * i / n) for i in range(n + 1)]
 
 
-WAIST_L = [(34, 22), (37, 30), (38.5, 38), (38, 46), (36.5, 51), HIP]               # 腰：上段往外、到髖收
+WAIST_L = [(35, 22), (38.5, 30), (41, 38), (40.3, 46), (37.8, 52), HIP]             # 腰：中段往內收（最細）、往下到髖往外鼓（下腹部的肉感）
 THIGH_TOP_L = [HIP, (30, 51.5), (24, 47.5), ell(THIGH_E, -100)]                     # 大腿上緣：髖 → 剖面頂
 OUTER_L = arc(THIGH_E, -100, -238)                                                   # 剖面外半邊（外輪廓，往外鼓）
 SECT_L = arc(THIGH_E, -100, 98)                                                      # 剖面內半邊（大腿肉的圓）
 BUTT_L = [ell(THIGH_E, -238), (16, 84), (24, 89.5), (34, 94), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 臀部下緣 → 凹口
 CREASE_L = [HIP, (45, 63), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
 NOTCH = [(61, 96), (67, 96)]
+NAVEL = (64, 35)                                                                     # 肚臍（使用者標的＋）
 
 
 def mirror(pts): return [(2 * MIDX - x, y) for (x, y) in pts]
@@ -100,6 +101,8 @@ def pixel_perfect(pts):
 def draw():
     im = Image.new('RGBA', (N, N), (255, 255, 255, 255))
     px = im.load()
+    nx, ny = NAVEL
+    px[nx, ny] = SECT; px[nx, ny + 1] = LINE                                          # 肚臍：上淡下深兩格
     for name, pts, col, smooth in STROKES:
         pix = pixel_perfect(stroke(cr(pts) if smooth else pts))
         for i, (x, y) in enumerate(pix):
