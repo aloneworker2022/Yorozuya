@@ -682,12 +682,19 @@ def xray_section(im):
                 u = x + .5 - CX
                 if abs(u) > w: continue
                 edge = abs(u) > w - 1 or y == int(PEN_TIP)
-                blend(x, y, C['edge'] if edge else C['base'], .85)
-        for y in range(int(HOLE_Y) - 2, int(HOLE_Y) + 2):      # 肉穴口一圈紅包著莖
-            w = pen_w(y + .5)
-            for x in range(MIDX - 9, MIDX + 10):
-                u = abs(x + .5 - CX)
-                if w - .3 < u <= w + 1.3: blend(x, y, (196, 48, 72), .9)
+                blend(x, y, C['edge'] if edge else C['base'], .85 if y < HOLE_Y - 8 else 1.0)   # 靠陰道口那段不透（蓋掉底下陰唇的紅邊）
+        # 陰道口＝斜著看的一圈肉環套在陰莖上（使用者紫線）：前半圈是一道往上拱的弧，跨過陰莖、兩端繞到兩側往下
+        RIMC, LIPC = (204, 96, 112), (238, 160, 166)
+        ry = 6.8
+        for k in range(3):                                      # 厚度 3 格：外緣深、中間淡、內緣深
+            rx = pen_w(HOLE_Y) + 1.4 - k * .55
+            for i in range(-40, 41):
+                t = i / 40 * math.pi / 2
+                x = CX + rx * math.sin(t)
+                y = HOLE_Y + 1.0 - ry * math.cos(t) + k * .7
+                blend(x, y, RIMC if k != 1 else LIPC, .95)
+            for y in range(int(HOLE_Y + 1.0) + k, int(HOLE_Y) + 4):   # 兩端繞到陰莖兩側往下
+                for sx in (-1, 1): blend(CX + sx * (rx - .4), y, RIMC if k != 1 else LIPC, .9)
     return im
 
 
