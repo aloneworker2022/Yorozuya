@@ -76,8 +76,9 @@ PEN_GLANS = 9.5                                    # 龜頭長
 PEN_COLORS = {
     'skin': dict(edge=(150, 96, 80, 255), base=(226, 172, 146, 255), sh=(200, 142, 118, 255), hi=(240, 194, 168, 255),
                  g_base=(214, 128, 136, 255), g_sh=(184, 98, 110, 255), g_hi=(236, 162, 168, 255), slit=(120, 50, 64, 255)),
-    'shadow': dict(edge=(70, 62, 82, 255), base=(20, 18, 26, 255), sh=(12, 10, 16, 255), hi=(34, 30, 42, 255),
-                   g_base=(26, 22, 32, 255), g_sh=(14, 12, 18, 255), g_hi=(44, 38, 54, 255), slit=(6, 4, 8, 255)),
+    # 影子男：實心黑（使用者：不要做透明的）——只有外框一圈，裡面一個顏色
+    'shadow': dict(edge=(70, 62, 82, 255), base=(20, 18, 26, 255), sh=(20, 18, 26, 255), hi=(20, 18, 26, 255),
+                   g_base=(20, 18, 26, 255), g_sh=(20, 18, 26, 255), g_hi=(20, 18, 26, 255), slit=(20, 18, 26, 255)),
 }
 SKIN_PX = (242, 204, 177, 255)
 SKIN_HI = (250, 222, 202, 255)
@@ -185,7 +186,7 @@ def draw():
                 px[x, y] = c
         # 冠狀溝：龜頭底下比莖寬的那一圈＋下面一格陰影
         cy = int(cor)
-        if not (inside and cy < ENT_Y):
+        if not (inside and cy < ENT_Y) and PENIS != 'shadow':
             for x in range(MIDX - int(glans_w(cor - .5)), MIDX + int(glans_w(cor - .5)) + 1): px[x, cy] = C['edge']
             for x in range(MIDX - 4, MIDX + 5):
                 if px[x, cy + 1][:3] not in ((255, 255, 255),): px[x, cy + 1] = C['sh']
@@ -240,7 +241,9 @@ def draw():
     for name, pts, col, smooth in STROKES:
         if name.startswith('squeeze'): pts = SQUEEZE_L if name.endswith('L') else mirror(SQUEEZE_L)
         pix = pixel_perfect(stroke(cr(pts) if smooth else pts))
+        PEN_PX = set(PEN_COLORS[PENIS].values()) if PENIS in PEN_COLORS else set()
         for i, (x, y) in enumerate(pix):
+            if px[x, y] in PEN_PX: continue                       # 陰莖在前面：身體的線不畫到陰莖上
             px[x, y] = (CREASE_TOP if i < len(pix) * .3 else CREASE_COL) if col == 'crease' else col
     return im
 
@@ -252,8 +255,8 @@ SW = dict(edge=(204, 96, 112, 255), lip=(238, 160, 166, 255), hi=(250, 198, 202,
 def rub_labia(px):
     """磨蹭三格的陰唇（使用者紅筆）：外陰唇（大陰唇）＝兩邊「( )」鼓起來的肉；小陰唇在中間。
     1 沒碰到：大陰唇腫起來（( ) 鼓），小陰唇腫、微微張開露一點紅、下段穴口。
-    2 往前碰到：龜頭壓在陰唇前面（沒插進去），大陰唇被擠開（( ) 更寬、往兩邊），小陰唇從龜頭兩側露出；龜頭上方的縫被擠開露紅。
-    3 往下磨蹭：同樣擠開，龜頭往下滑、陰唇被往下拖，上方的縫拉得更長。
+    2 往前碰到：龜頭頂進陰唇中間（沒插進去），陰唇被撥開到龜頭兩邊、整片看得到、夾著龜頭；大陰唇 ( ) 更寬；龜頭上方的縫被撥開露紅。
+    3 往下磨蹭：同樣撥開，龜頭往下滑、陰唇被往下拖，上方的縫拉得更長。
     只要微微腫脹：鼓一點、外緣線＋外側陰影，不打亮。"""
     SKIN_LN = (200, 146, 124, 255)                      # 外陰唇「( )」那道線
     tip, cor = PEN_TIP, PEN_TIP + PEN_GLANS
@@ -283,7 +286,7 @@ def rub_labia(px):
                 t = (y - itop) / max(1, tip - itop)
                 op = 2.6 * max(0, math.sin(math.pi / 2 * t)) ** .6
             else:
-                op = max(0, g - 1.4)                     # 龜頭壓上來：小陰唇被擠到龜頭兩側（龜頭在前面蓋住中間）
+                op = g + .2                              # 陰唇被撥開到龜頭兩邊、夾著龜頭（不蓋住、也不被壓住）
             v = (y - itop) / (ibot - itop)
             return (op, op + 2.3 * (.55 + .45 * max(0, math.sin(math.pi * v)) ** .5))
     for y in range(int(min(mtop, itop)) - 1, int(max(mbot, ibot)) + 2):
