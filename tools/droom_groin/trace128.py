@@ -279,15 +279,13 @@ def rub_labia(px):
             return (.6 * max(0, math.sin(math.pi * v)) ** .8, w)
     else:
         itop, ibot = mtop + 3.2, mbot - .3
+        GMAX = 5.9
         def inner(y):
             if y < itop or y > ibot: return None
-            g = gw(y)
-            if y < tip:                                  # 龜頭上方：圈的上半，裡面露紅
-                t = (y - itop) / max(1, tip - itop)
-                op = 2.6 * max(0, math.sin(math.pi / 2 * t)) ** .6
-            else:
-                op = g + .2                              # 陰唇被撥開到龜頭兩邊、夾著龜頭（不蓋住、也不被壓住）
             v = (y - itop) / (ibot - itop)
+            # 開口＝一個連續的杏仁形：從頂端順順張開、往下繞到龜頭兩側（龜頭那幾列至少要比龜頭寬），上下不斷開
+            smooth = GMAX * 1.02 * max(0, math.sin(math.pi * min(1, v * 1.08))) ** .55
+            op = max(smooth, gw(y) + .2)
             return (op, op + 2.3 * (.55 + .45 * max(0, math.sin(math.pi * v)) ** .5))
     for y in range(int(min(mtop, itop)) - 1, int(max(mbot, ibot)) + 2):
         fy = y + .5
@@ -297,7 +295,8 @@ def rub_labia(px):
             if I_ and u <= I_[1]:
                 op, iw = I_
                 if u <= op:
-                    px[x, y] = SW['red'] if (u < op - .6 or op < 1) else SW['lip']
+                    if op < 1: px[x, y] = SW['red']                                   # 1：微微張開的一條紅
+                    else: px[x, y] = SW['red'] if u < max(.7, op * .3) else (SW['edge'] if u > op - .8 else SW['lip'])   # 撥開的內面：粉紅、正中一條紅
                 else:
                     if u > iw - 1 or u < op + .9: c = SW['edge']
                     else: c = SW['lip']
