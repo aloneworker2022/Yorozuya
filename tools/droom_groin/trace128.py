@@ -47,6 +47,7 @@ LAB_TOP, LAB_BOT, LAB_W = 68.5, 87.5, 2.6          # 陰唇上下、最寬半寬
 LAB_EDGE = (196, 108, 118, 255)                    # droom 陰唇色
 LAB_IN = (230, 168, 168, 255)                      # 裡面淡粉
 LAB_SLIT = (170, 84, 98, 255)                      # 中間的縫
+HAIR_ON = False                                    # 使用者：陰毛先不要（程式留著，改 True 就回來）
 HAIR = [(40, 28, 26, 255), (70, 52, 46, 255)]      # 陰毛（深、亮）
 # 每根毛：根（靠中間下面）→ 尖（往上往外），bend＝往外彎多少
 HAIR_STRANDS = [
@@ -134,12 +135,12 @@ def draw():
             u = abs(x + .5 - MIDX)
             if u > w: continue
             px[x, y] = LAB_EDGE if u > w - 1 else LAB_IN
-    for y in range(int(LAB_TOP) - 4, int(LAB_BOT)):
+    for y in range(int(LAB_TOP) - (4 if HAIR_ON else -1), int(LAB_BOT)):   # 有陰毛時縫往上接進陰毛
         px[MIDX, y] = LAB_SLIT
     for (x, y) in pixel_perfect(stroke(cr([(MIDX - .3, LAB_BOT - 1.5), (MIDX - 1.2, LAB_BOT + .6)]))): px[x, y] = LAB_EDGE   # 下端小分岔
     for (x, y) in pixel_perfect(stroke(cr([(MIDX + .3, LAB_BOT - 1.5), (MIDX + 1.2, LAB_BOT + .6)]))): px[x, y] = LAB_EDGE
     # 陰毛：一根根從根往上往外，畫在陰唇上面
-    for k, (a, b, bend) in enumerate(HAIR_STRANDS):
+    for k, (a, b, bend) in enumerate(HAIR_STRANDS if HAIR_ON else []):
         L = .78 + .22 * ((k * 37) % 10) / 9                      # 長短不一
         b = (a[0] + (b[0] - a[0]) * L, a[1] + (b[1] - a[1]) * L)
         w = (1 if k % 2 else -1) * (.6 + (k % 3) * .3)          # 中段微彎、尖端往回勾一點（毛躁）
@@ -148,10 +149,10 @@ def draw():
         tip = (b[0] - w * .5, b[1])
         for i, (x, y) in enumerate(pixel_perfect(stroke(cr([a, p1, p2, tip])))):
             px[x, y] = HAIR[1] if (k % 3 == 0 and i % 4 == 2) else HAIR[0]
-    for c in HAIR_CURLS:
+    for c in (HAIR_CURLS if HAIR_ON else []):
         for (x, y) in pixel_perfect(stroke(cr(c))): px[x, y] = HAIR[0]
     # 根部密一點：陰唇頂上方一小團
-    for y in range(61, 69):
+    for y in (range(61, 69) if HAIR_ON else []):
         for x in range(MIDX - 2, MIDX + 3):
             if abs(x - MIDX) <= 1 + (68 - y) * .25 and (x + y) % 2 == 0: px[x, y] = HAIR[0]
     for name, pts, col, smooth in STROKES:
