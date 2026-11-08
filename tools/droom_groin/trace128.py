@@ -65,6 +65,8 @@ import os
 PENIS = os.environ.get('PENIS', 'shadow')           # skin＝肉色（droom 低頭看自己那種）／shadow＝影子男黑剪影／none
 INSERT = float(os.environ.get('INSERT', '0'))      # 0＝龜頭抵在穴口、1＝頂到子宮頸
 OPEN_Y = 89.0                                      # 陰道口（陰唇下段）
+SPREAD = INSERT > 0.05                             # 插著：陰唇被撐開
+ENT_Y = 80.0 if SPREAD else OPEN_Y                 # 陰莖進到體內的那一列（撐開那一圈裡，看得到的莖到這裡為止）
 CERVIX_Y = 57.5                                    # 子宮頸（陰道頂；斜上方看，子宮趴在膀胱上、頸朝下）
 PEN_TIP = 85.5 - INSERT * (85.5 - (CERVIX_Y + 2.2))   # 龜頭頂（插到底＝抵在子宮頸下）
 XRAY = os.environ.get('XRAY', '1') == '1'          # 陰道子宮透視
@@ -75,6 +77,9 @@ PEN_COLORS = {
     'shadow': dict(edge=(70, 62, 82, 255), base=(20, 18, 26, 255), sh=(12, 10, 16, 255), hi=(34, 30, 42, 255),
                    g_base=(26, 22, 32, 255), g_sh=(14, 12, 18, 255), g_hi=(44, 38, 54, 255), slit=(6, 4, 8, 255)),
 }
+SKIN_PX = (242, 204, 177, 255)
+SKIN_HI = (250, 222, 202, 255)
+SKIN_SH = (217, 168, 143, 255)
 NAVEL = (64, 35)                                                                     # 肚臍（使用者標的＋）
 
 
@@ -142,7 +147,7 @@ def draw():
     px[nx, ny] = SECT; px[nx, ny + 1] = LINE                                          # 肚臍：上淡下深兩格
     # 陰唇：細長杏仁（最寬偏下），外緣陰唇色、裡面淡粉、中間一條縫（往上接進陰毛）
     H = LAB_BOT - LAB_TOP
-    for y in range(int(LAB_TOP), int(LAB_BOT) + 1):
+    for y in (range(int(LAB_TOP), int(LAB_BOT) + 1) if not SPREAD else []):
         v = (y + .5 - LAB_TOP) / H
         if not 0 <= v <= 1: continue
         w = LAB_W * max(0, math.sin(math.pi * v ** 1.15)) ** .7
@@ -150,9 +155,9 @@ def draw():
             u = abs(x + .5 - MIDX)
             if u > w: continue
             px[x, y] = LAB_EDGE if u > w - 1 else LAB_IN
-    for y in range(int(LAB_TOP) - (4 if HAIR_ON else -1), int(LAB_BOT)):   # 有陰毛時縫往上接進陰毛
+    for y in (range(int(LAB_TOP) - (4 if HAIR_ON else -1), int(LAB_BOT)) if not SPREAD else []):   # 有陰毛時縫往上接進陰毛
         px[MIDX, y] = LAB_SLIT
-    for dx in (-1, 1):                                                                 # 頂端小開叉（陰蒂包皮那一點）
+    for dx in ((-1, 1) if not SPREAD else ()):                                          # 頂端小開叉（陰蒂包皮那一點）
         for (x, y) in pixel_perfect(stroke([(MIDX, LAB_TOP - 1.2), (MIDX + dx * 2, LAB_TOP + .9)])): px[x, y] = LAB_EDGE
     # 陰莖（畫在陰唇上面）：莖從畫面底往上微微收細；龜頭冠狀溝最寬、往上收成圓頭；左亮右暗
     if PENIS in PEN_COLORS:
@@ -164,7 +169,7 @@ def draw():
             return 5.9 * max(0, math.sin(math.pi / 2 * min(1, t * 1.25))) ** .5 if t >= 0 else 0
         inside = XRAY and INSERT > 0.05
         for y in range(int(PEN_TIP), N):
-            if inside and y < OPEN_Y: continue          # 體內那段：透視層再畫
+            if inside and y < ENT_Y: continue           # 體內那段：透視層再畫
             g = y < cor
             w = glans_w(y + .5) if g else shaft_w(y + .5)
             for x in range(MIDX - 8, MIDX + 9):
@@ -177,7 +182,7 @@ def draw():
                 px[x, y] = c
         # 冠狀溝：龜頭底下比莖寬的那一圈＋下面一格陰影
         cy = int(cor)
-        if not (inside and cy < OPEN_Y):
+        if not (inside and cy < ENT_Y):
             for x in range(MIDX - int(glans_w(cor - .5)), MIDX + int(glans_w(cor - .5)) + 1): px[x, cy] = C['edge']
             for x in range(MIDX - 4, MIDX + 5):
                 if px[x, cy + 1][:3] not in ((255, 255, 255),): px[x, cy + 1] = C['sh']
@@ -186,8 +191,33 @@ def draw():
             px[MIDX, int(PEN_TIP) + 1] = C['slit']; px[MIDX, int(PEN_TIP) + 2] = C['slit']
             for y in range(int(PEN_TIP) + 5, int(cor)): px[MIDX, y] = C['g_sh']       # 繫帶（龜頭中線往下）
         # 莖中線一條淡血管（左側）
-        for y in range(max(cy + 4, int(OPEN_Y) if inside else 0), N - 2, 1):
+        for y in range(max(cy + 4, int(ENT_Y) if inside else 0), N - 2, 1):
             px[MIDX - 1 - (1 if (y // 6) % 2 else 0), y] = C['sh'] if PENIS == 'skin' else C['hi']
+    # 插著：陰唇被撐開——小陰唇撐成一圈包住陰莖兩側，大陰唇的肉被往兩邊推、往大腿那邊鼓；陰蒂在那一圈最上面
+    if SPREAD:
+        sp = min(1.0, INSERT / 0.15)                     # 剛頂進去時慢慢撐開
+        PW = 5.0                                         # 莖半寬（撐開那一圈的寬）
+        for y in range(int(LAB_TOP) - 1, int(LAB_BOT) + 3):
+            v = (y + .5 - LAB_TOP) / (LAB_BOT - LAB_TOP + 1.5)
+            if not 0 <= v <= 1: continue
+            o = PW * sp * min(1, 1.35 * max(0, math.sin(math.pi * v)) ** .45)    # 開口（上下收尖）
+            mi = 2.0                                                             # 小陰唇那圈
+            ma = (4.2 + 2.4 * sp) * max(0, math.sin(math.pi * min(1, v * 1.05))) ** .65  # 大陰唇被推開的肉（往大腿那邊鼓）
+            for x in range(MIDX - 13, MIDX + 14):
+                u = abs(x + .5 - MIDX)
+                if u <= o: continue                       # 開口裡：陰莖（或體內）
+                if u <= o + mi: px[x, y] = LAB_EDGE if (u > o + mi - .9 or u < o + .7) else LAB_IN
+                elif u <= o + mi + ma:
+                    t = (u - o - mi) / max(.5, ma)
+                    if t > .86: px[x, y] = LINE                                           # 外緣（肉被推到大腿的那道摺）
+                    elif t > .6 or v > .85: px[x, y] = SKIN_SH                            # 往外轉的那面陰影
+                    elif t < .35 and .12 < v < .72: px[x, y] = SKIN_HI                    # 鼓起來的亮面
+                    else: px[x, y] = SKIN_PX
+        # 陰蒂包皮＋陰蒂：那一圈最上面
+        ty = LAB_TOP - .5
+        for dx in (-1, 1):
+            for (x, y) in pixel_perfect(stroke([(MIDX, ty - 1.4), (MIDX + dx * 2.4, ty + 1.2)])): px[x, y] = LAB_EDGE
+        px[MIDX, int(ty) + 1] = (250, 176, 184, 255)
     # 陰毛：一根根從根往上往外，畫在陰唇上面
     for k, (a, b, bend) in enumerate(HAIR_STRANDS if HAIR_ON else []):
         L = .78 + .22 * ((k * 37) % 10) / 9                      # 長短不一
@@ -282,7 +312,7 @@ def xray(im):
     pen_in = INSERT > .05 and PENIS in PEN_COLORS
     cor = PEN_TIP + PEN_GLANS
     top_y = CERVIX_Y + 2.2
-    bot_y = OPEN_Y if pen_in else LAB_TOP - 1
+    bot_y = ENT_Y if pen_in else LAB_TOP - 1
     def persp(y): return .78 + .22 * (y - top_y) / max(1, OPEN_Y - top_y)   # 越上越遠越窄
     def pen_w(y):
         if y < PEN_TIP: return 0
@@ -290,24 +320,28 @@ def xray(im):
             t = (y - PEN_TIP) / PEN_GLANS
             return 5.9 * max(0, math.sin(math.pi / 2 * min(1, t * 1.25))) ** .5
         return 4.8 + 1.4 * min(1, (y - cor) / (N - cor))
+    # 陰道＝圓筒：側面（筒壁往後轉）暗、中間亮；一圈圈皺褶環（從前下方看＝往下彎的弧）
+    def lum_w(y): return max(.8, pen_w(y + .5) * persp(y) + .3) if pen_in and y >= PEN_TIP - .5 else 1.9 * persp(y)
+    WALL_T = 2.0
     for y in range(int(top_y), int(bot_y) + 1):
-        if pen_in:
-            lum = max(.8, pen_w(y + .5) * persp(y) + .3)
-            band = 2.4 + (1 if (y % 3 == 0) else 0)              # 兩側皺褶帶：每三列鼓出一格（參考圖那種一節一節）
-            for x in range(MIDX - 11, MIDX + 12):
-                u = abs(x + .5 - UX)
-                if lum < u <= lum + band:
-                    out = u > lum + band - 1
-                    blend(x, y, RIM if out or y % 3 == 0 else WALL, .85 if out else .6)
-        else:
-            blend(MIDX, y, RIM, .8)                              # 一條線
-            if y % 3 == 0:                                        # 一道道橫皺褶（越上越短）
-                w = 1 + (1 if persp(y) > .9 else 0)
-                for x in range(MIDX - w, MIDX + w + 1): blend(x, y, RIM, .7)
+        lum = lum_w(y); R = lum + WALL_T
+        for x in range(MIDX - 12, MIDX + 13):
+            u = abs(x + .5 - UX)
+            if u > R: continue
+            if u > R - 1: blend(x, y, RIM, .85)                  # 筒的外緣
+            elif u > lum: blend(x, y, WALL, .6)                  # 筒壁側面
+            else: blend(x, y, (236, 150, 170) if u < lum * .45 else WALL, .38)   # 筒內：中間亮、往兩側暗
+    RINGS = [y for y in range(int(top_y) + 2, int(bot_y) - 1, 3)]
+    def ring(yr, a):
+        R = lum_w(yr) + WALL_T - .6
+        for x in range(MIDX - 12, MIDX + 13):
+            u = (x + .5 - UX) / max(1, R)
+            if abs(u) > 1: continue
+            blend(x, int(round(yr + 2.2 * (1 - u * u))), RIM, a)
     # 體內那段陰莖（黑剪影隔著肚皮透出來；越上越遠一點點窄）
     if pen_in:
         C = PEN_COLORS[PENIS]
-        for y in range(int(PEN_TIP), int(OPEN_Y)):
+        for y in range(int(PEN_TIP), int(ENT_Y)):
             w = pen_w(y + .5) * persp(y)
             for x in range(MIDX - 7, MIDX + 8):
                 u = x + .5 - UX
@@ -315,8 +349,9 @@ def xray(im):
                 edge = abs(u) > w - 1 or y == int(PEN_TIP)
                 blend(x, y, C['edge'] if edge else (C['hi'] if u < -w * .4 else C['base']), .8)
         cy = int(cor)
-        if cy < OPEN_Y:
+        if cy < ENT_Y:
             for x in range(MIDX - 5, MIDX + 6): blend(x, cy, C['edge'], .8)
+    for yr in RINGS: ring(yr, .4 if pen_in else .75)            # 環的前半圈在陰莖前面，淡淡蓋過去
     return im
 
 
