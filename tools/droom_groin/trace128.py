@@ -5,7 +5,9 @@
   1. 大腿內側有弧度（大腿肉飽滿）→ 鼠蹊線上半段往中間鼓。
   2. 鼠蹊部下半段微微漲（陰唇的位置）→ 鼠蹊線下半段往外撐開一點，收到底部凹口。
   3. 大腿剖面＝表現大腿肉 → 大腿盡頭是一個圓鼓的橢圓：外半邊是外輪廓（往外鼓），內半邊是剖面線。
-  4. 腰線：中段往內收（腰最細），往下到髖往外鼓＝下腹部的肉感；肚臍在中線 y35。
+  4. 腹部肉（使用者給三張參考：漫畫素材「股のラインが一直線」、坐姿「肉擠壓感」、骨盆簡化）：
+     腰中段最細 → 髂前上棘上方外腹斜肌的肉往外鼓 → 被大腿往上擠，壓出一道往內勾的摺（squeeze），鼠蹊線從摺尾開始；
+     股溝線不是直線；肚臍在中線 y35。
 用法：python3 trace128.py OUT.png [--up 6] [--fill]
 """
 import math, argparse
@@ -18,7 +20,7 @@ SECT = (168, 120, 96, 255)     # 大腿剖面線（內側，比輪廓淡一點�
 CREASE_COL = (216, 166, 140, 255)   # 鼠蹊：droom 陰影色（微微深）
 CREASE_TOP = (229, 185, 158, 255)   # 鼠蹊上段更淡
 
-HIP = (35, 55)
+HIP = (36.6, 53.2)                                         # 髂前上棘（髖的凸點；腰側的肉在這上面鼓、下面被大腿擠）
 THIGH_E = dict(cx=16, cy=62, rx=10.5, ry=18)          # 左大腿剖面橢圓
 
 
@@ -32,19 +34,14 @@ def arc(e, a0, a1, step=6):
     return [ell(e, a0 + (a1 - a0) * i / n) for i in range(n + 1)]
 
 
-WAIST_L = [(35, 22), (38.5, 30), (41, 38), (40.3, 46), (37.8, 52), HIP]             # 腰：中段往內收（最細）、往下到髖往外鼓（下腹部的肉感）
-THIGH_TOP_L = [HIP, (30, 51.5), (24, 47.5), ell(THIGH_E, -100)]                     # 大腿上緣：髖 → 剖面頂
+WAIST_L = [(35, 22), (38.5, 30), (41, 37), (39.6, 42), (36.6, 46.5), (35.2, 50), HIP]             # 腰：中段最細 → 外腹斜肌的肉在髂前上棘上方往外鼓
+SQUEEZE_L = [(35.6, 50.5), (36.6, 53.2), (38.6, 55.4), (41.6, 56.8), (44, 57.6)]                         # 肉擠壓：腹側的肉被大腿往上擠，壓出一道往內勾的摺（坐姿參考圖）
+THIGH_TOP_L = [HIP, (30, 51), (24, 47.5), ell(THIGH_E, -100)]                     # 大腿上緣：髖 → 剖面頂
 OUTER_L = arc(THIGH_E, -100, -238)                                                   # 剖面外半邊（外輪廓，往外鼓）
 SECT_L = arc(THIGH_E, -100, 98)                                                      # 剖面內半邊（大腿肉的圓）
 BUTT_L = [ell(THIGH_E, -238), (16, 84), (24, 89.5), (34, 94), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 臀部下緣 → 凹口
-CREASE_L = [HIP, (45, 63), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
+CREASE_L = [(44, 57.6), (47.2, 63.5), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
 NOTCH = [(61, 96), (67, 96)]
-import os
-BELLY = os.environ.get('BELLY', 'A')
-if BELLY == 'C':
-    WAIST_L = [(37, 22), (34.5, 30), (32.8, 38), (33, 46), (34.5, 51.5), HIP]          # C：腰到髖整條往外鼓（肚子圓）
-BELLY_ARC_L = [(38.5, 44), (44, 49.5), (52, 52.5), (60, 53.6), (64.5, 53.8)]         # A：小腹凸出的下緣（從腰側往中間）
-BELLY_HOOK_L = [(40, 45), (43, 47.5), (46, 48.5)]                                    # B：腰線下端往內勾（肚子肉的摺）
 NAVEL = (64, 35)                                                                     # 肚臍（使用者標的＋）
 
 
@@ -52,7 +49,7 @@ def mirror(pts): return [(2 * MIDX - x, y) for (x, y) in pts]
 
 
 STROKES = [  # (名字, 點, 色, 平滑)
-] + ([('belly_L', BELLY_ARC_L, SECT, True), ('belly_R', mirror(BELLY_ARC_L), SECT, True)] if BELLY == 'A' else [('hook_L', BELLY_HOOK_L, SECT, True), ('hook_R', mirror(BELLY_HOOK_L), SECT, True)] if BELLY == 'B' else []) + [
+    ('squeeze_L', None, LINE, True), ('squeeze_R', None, LINE, True),
     ('waist_L', WAIST_L, LINE, True), ('waist_R', mirror(WAIST_L), LINE, True),
     ('thigh_L', THIGH_TOP_L, LINE, True), ('thigh_R', mirror(THIGH_TOP_L), LINE, True),
     ('outer_L', OUTER_L, LINE, False), ('outer_R', mirror(OUTER_L), LINE, False),
@@ -111,6 +108,7 @@ def draw():
     nx, ny = NAVEL
     px[nx, ny] = SECT; px[nx, ny + 1] = LINE                                          # 肚臍：上淡下深兩格
     for name, pts, col, smooth in STROKES:
+        if name.startswith('squeeze'): pts = SQUEEZE_L if name.endswith('L') else mirror(SQUEEZE_L)
         pix = pixel_perfect(stroke(cr(pts) if smooth else pts))
         for i, (x, y) in enumerate(pix):
             px[x, y] = (CREASE_TOP if i < len(pix) * .3 else CREASE_COL) if col == 'crease' else col
@@ -138,6 +136,9 @@ def fill_preview(lines_img):
             c = lp[x, y]
             if c[:3] == (255, 255, 255): continue
             px[x, y] = (184, 124, 104, 255) if c == LINE else (216, 166, 140, 255) if c == SECT else c
+    for side in (SQUEEZE_L, mirror(SQUEEZE_L)):
+        for (x, y) in pixel_perfect(stroke(cr(side)))[1:]:
+            if y + 1 < N and px[x, y + 1][:3] == (242, 204, 177): px[x, y + 1] = (216, 166, 140, 255)
     return im
 
 
