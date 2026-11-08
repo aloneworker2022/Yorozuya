@@ -322,8 +322,7 @@ def rub_labia(px, over=False):
                 inner_w = I_[1] if I_ else 0
                 t = (u - inner_w) / max(.5, M_ - inner_w)
                 if u > M_ - 1: px[x, y] = SKIN_LN                         # ( ) 的線
-                elif t > .78: px[x, y] = SKIN_SH                          # 往外轉那面（微微腫脹，不打亮）
-                else: px[x, y] = SKIN_PX
+                else: px[x, y] = SKIN_PX                                  # 一般肉色，不畫陰影漸層
     if over: return
     if RUB == 1:                                          # 穴口
         hy = int(itop + (ibot - itop) * .74); px[MIDX, hy] = SW['hole']; px[MIDX, hy + 1] = SW['hole']
@@ -349,8 +348,8 @@ def rub_open(px):
         if not 0 <= v <= 1: continue
         V = 4.0 * max(0, math.sin(math.pi * v)) ** .55             # 前庭（打開的那塊）
         P = V + 2.0 + .5 * math.sin(fy * 1.3)                      # 小陰唇花瓣外緣（翻開、波浪）
-        ev = 1 - ((fy - (top + bot) / 2) / ((bot - top) / 2 + 2.5)) ** 2
-        M = max(P + 1.5, 12.5 * math.sqrt(max(0, ev)))                   # 大陰唇外緣：圓弧、往外開（比第 1 格寬）
+        mv = (fy - 70.0) / (96.5 - 70.0)
+        M = 9.0 * max(0, math.sin(math.pi * min(1, max(0, mv)) ** .9)) ** .55 if 0 <= mv <= 1 else 0   # 大陰唇：跟第 1 格同一條圓弧
         for x in range(MIDX - 13, MIDX + 14):
             u = abs(x + .5 - MIDX)
             e = ((x + .5 - hx) / hrx) ** 2 + ((fy - hy) / hry) ** 2
@@ -362,7 +361,7 @@ def rub_open(px):
                 px[x, y] = SW['edge'] if (u > P - .9) else (SW['inrim'] if .4 < t < .6 else SW['lip']); continue
             if u <= M:                                              # 大陰唇軟肉
                 t = (u - P) / max(.5, M - P)
-                px[x, y] = SKIN_LN if (u > M - 1 or u < P + .8) else SKIN_PX   # 一般肉色、不畫漸層
+                px[x, y] = SKIN_LN if u > M - 1 else SKIN_PX                    # 外緣線（腫起）；裡面那條弧線不要
     # 陰蒂包皮＋陰蒂（上面）
     for dx in (-1, 1):
         for (x, y) in pixel_perfect(stroke([(MIDX, top - 1.6), (MIDX + dx * 2.6, top + 1.0)])): px[x, y] = SW['edge']
@@ -381,9 +380,8 @@ def rub_press(px):
         return 4.8
     SKIN_LN = (186, 122, 108, 255)                         # 大陰唇外緣（深一點才看得出那團肉）
     MJ, MJ_SH, MJ_HI = (240, 188, 170, 255), (224, 162, 146, 255), (246, 204, 186, 255)   # 微微充血的肉色
-    apex = LAB_TOP - 1.5                                   # 火焰尖（陰蒂下面）
-    top = apex - 3.5                                       # 大陰唇最上面
-    end = cor + 1.5                                        # 大陰唇收口（冠狀溝下一點）
+    apex = LAB_TOP + .5                                    # 火焰尖（跟第 1 格的縫頂同高：陰唇不往上移）
+    top, end = 70.0, 96.5                                  # 大陰唇：跟第 1 格一樣大、一樣位置（只是打開）
     def flame(y):                                          # 火焰半寬：尖 → 龜頭頂那麼寬
         if y < apex or y > tip + 2: return -1
         t = (y - apex) / max(1, tip + 1.5 - apex)
@@ -391,12 +389,10 @@ def rub_press(px):
     def inner(y):                                          # 大陰唇內緣（小陰唇外緣）
         f = flame(y); g = gw(y)
         return max(f + 1.4, g + 1.0) if (f >= 0 or g > 0) else 0
-    OMW = 12.5                                             # 打開時外陰唇往外開（比第 1 格寬）
-    ocy, ory = (top + end) / 2, (end - top) / 2
-    def outer(y):                                          # 大陰唇外緣：圓順的圓弧（橢圓），下端自然收到龜頭邊
+    def outer(y):                                          # 大陰唇外緣：跟第 1 格同一條圓弧
         if y < top or y > end: return -1
-        e = 1 - ((y - ocy) / ory) ** 2
-        return max(gw(y) - .6, OMW * math.sqrt(max(0, e)))
+        v = (y - top) / (end - top)
+        return max(gw(y) - .6, 9.0 * max(0, math.sin(math.pi * min(1, max(0, v)) ** .9)) ** .55)
     for y in range(int(top) - 1, int(end) + 2):
         fy = y + .5
         f, g, io, oo = flame(fy), gw(fy), inner(fy), outer(fy)
@@ -414,13 +410,13 @@ def rub_press(px):
                 if pen and not (fy > end - 4 and u > g - 2.2): continue        # 只有收口那段蓋過龜頭邊（含著）
                 t = (u - io) / max(.5, oo - io)
                 if u > oo - 1: c = SKIN_LN                                     # 外緣（圓弧）
-                elif u < io + .9: c = SKIN_LN                                  # 和小陰唇交界的摺
-                else: c = SKIN_PX                                              # 跟身體一樣的肉色，不畫陰影漸層
+                else: c = SKIN_PX                                              # 一般肉色；裡面那條弧線不要（使用者）
                 px[x, y] = c
     # 陰蒂包皮＋陰蒂（火焰尖上面）
+    ty = LAB_TOP - .5
     for dx in (-1, 1):
-        for (x, y) in pixel_perfect(stroke([(MIDX, apex - 2.4), (MIDX + dx * 2.2, apex)])): px[x, y] = SW['edge']
-    px[MIDX, int(apex) - 1] = SW['clit']
+        for (x, y) in pixel_perfect(stroke([(MIDX, ty - 1.4), (MIDX + dx * 2.4, ty + 1.0)])): px[x, y] = SW['edge']
+    px[MIDX, int(ty) + 1] = SW['clit']
 
 
 def silhouette():
