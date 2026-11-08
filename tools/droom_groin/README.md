@@ -14,3 +14,10 @@
 DROOM=<claude-2026.10 的 web/droom 路徑> PUBIC=triangle LABIA=butterfly_open \
 W=220 H=230 F=380 DIST=.40 EYE=.22 PITCH=12 CY=95 UP=3 OUT=out.png node groin_close.cjs
 ```
+
+## 128×128 腰部以下（`groin128.py`，2026-11-08 使用者：先低解析 128×128、只要腰部以下、照參考圖結構）
+
+- 結構照參考圖：腰（上，細）→ 肚臍 → 髖往外張；兩條大腿往左右張到畫面外、微微往上（膝蓋在畫面外抬著）、上緣圓鼓；
+  V 字鼠蹊線從髖斜下到陰唇兩旁；陰毛在陰阜（倒三角，邊緣毛躁、一根根往下往外翹）；陰唇肉穴；最下面兩瓣屁股＋中間的縫；汗珠。
+- 上色照 droom：肉色三階（242,204,177／216,166,140／184,124,104）＋陰唇肉瓣一階亮、鼠蹊線色、外圈 1px 白邊，平塗不抖色。
+- `python3 groin128.py out.png [--hair triangle|strip|none] [--open] [--up 6] [--bg]`
