@@ -62,8 +62,12 @@ HAIR_STRANDS = [
 HAIR_CURLS = [[(50, 52), (48, 50.5), (47.6, 52.4), (49.2, 53.6), (51, 52.6)], [(53, 50), (51.4, 48.6), (50.6, 50.2), (52, 51.2)]]   # 左邊捲毛
 # ---- 陰莖（第一人稱：從畫面下面往上伸，龜頭抵在穴口）----
 import os
-PENIS = os.environ.get('PENIS', 'skin')            # skin＝肉色（droom 低頭看自己那種）／shadow＝影子男黑剪影／none
-PEN_TIP = 85.5                                     # 龜頭頂（穴口在陰唇下段）
+PENIS = os.environ.get('PENIS', 'shadow')           # skin＝肉色（droom 低頭看自己那種）／shadow＝影子男黑剪影／none
+INSERT = float(os.environ.get('INSERT', '0'))      # 0＝龜頭抵在穴口、1＝頂到子宮頸
+OPEN_Y = 89.0                                      # 陰道口（陰唇下段）
+CERVIX_Y = 61.0                                    # 子宮頸（陰道頂）
+PEN_TIP = 85.5 - INSERT * (85.5 - (CERVIX_Y + 0.5))   # 龜頭頂
+XRAY = os.environ.get('XRAY', '1') == '1'          # 陰道子宮透視
 PEN_GLANS = 9.5                                    # 龜頭長
 PEN_COLORS = {
     'skin': dict(edge=(150, 96, 80, 255), base=(226, 172, 146, 255), sh=(200, 142, 118, 255), hi=(240, 194, 168, 255),
@@ -158,7 +162,9 @@ def draw():
         def glans_w(y):
             t = (y - PEN_TIP) / PEN_GLANS                # 0 頂 → 1 冠狀溝
             return 5.9 * max(0, math.sin(math.pi / 2 * min(1, t * 1.25))) ** .5 if t >= 0 else 0
+        inside = XRAY and INSERT > 0.05
         for y in range(int(PEN_TIP), N):
+            if inside and y < OPEN_Y: continue          # 體內那段：透視層再畫
             g = y < cor
             w = glans_w(y + .5) if g else shaft_w(y + .5)
             for x in range(MIDX - 8, MIDX + 9):
@@ -171,14 +177,16 @@ def draw():
                 px[x, y] = c
         # 冠狀溝：龜頭底下比莖寬的那一圈＋下面一格陰影
         cy = int(cor)
-        for x in range(MIDX - int(glans_w(cor - .5)), MIDX + int(glans_w(cor - .5)) + 1): px[x, cy] = C['edge']
-        for x in range(MIDX - 4, MIDX + 5):
-            if px[x, cy + 1][:3] not in ((255, 255, 255),): px[x, cy + 1] = C['sh']
+        if not (inside and cy < OPEN_Y):
+            for x in range(MIDX - int(glans_w(cor - .5)), MIDX + int(glans_w(cor - .5)) + 1): px[x, cy] = C['edge']
+            for x in range(MIDX - 4, MIDX + 5):
+                if px[x, cy + 1][:3] not in ((255, 255, 255),): px[x, cy + 1] = C['sh']
         # 尿道口（龜頭頂中間一小條）、繫帶（龜頭中線往下一點）
-        px[MIDX, int(PEN_TIP) + 1] = C['slit']; px[MIDX, int(PEN_TIP) + 2] = C['slit']
-        for y in range(int(PEN_TIP) + 5, int(cor)): px[MIDX, y] = C['g_sh']           # 繫帶（龜頭中線往下）
+        if not inside:
+            px[MIDX, int(PEN_TIP) + 1] = C['slit']; px[MIDX, int(PEN_TIP) + 2] = C['slit']
+            for y in range(int(PEN_TIP) + 5, int(cor)): px[MIDX, y] = C['g_sh']       # 繫帶（龜頭中線往下）
         # 莖中線一條淡血管（左側）
-        for y in range(cy + 4, N - 2, 1):
+        for y in range(max(cy + 4, int(OPEN_Y) if inside else 0), N - 2, 1):
             px[MIDX - 1 - (1 if (y // 6) % 2 else 0), y] = C['sh'] if PENIS == 'skin' else C['hi']
     # 陰毛：一根根從根往上往外，畫在陰唇上面
     for k, (a, b, bend) in enumerate(HAIR_STRANDS if HAIR_ON else []):
@@ -231,11 +239,88 @@ def fill_preview(lines_img):
     return im
 
 
+def xray(im):
+    """陰道子宮透視：在她身上疊半透明粉紅（只蓋在身體上），陰道從穴口往上到子宮頸，子宮倒梨形＋子宮腔＋輸卵管＋卵巢；
+    陰莖插進去時陰道被撐開，體內那段陰莖隔著肚皮透出來。"""
+    px = im.load()
+    body = lambda x, y: px[x, y][:3] not in ((40, 34, 50), (255, 255, 255))
+    def blend(x, y, c, a):
+        if not (0 <= x < N and 0 <= y < N) or not body(x, y): return
+        o = px[x, y]; px[x, y] = tuple(int(o[j] * (1 - a) + c[j] * a) for j in range(3)) + (255,)
+    WALL, CAV, RIM, OVA = (236, 112, 140), (196, 52, 86), (172, 52, 82), (246, 176, 186)
+    # 子宮：倒梨形（底在上）
+    U_TOP, U_BOT = 44.0, 60.0
+    def uw(y):
+        t = (y - U_TOP) / (U_BOT - U_TOP)
+        return 3.0 + 6.2 * max(0, math.sin(math.pi * min(1, (t * .9 + .1)))) ** .6 * (1 - .55 * t)
+    for y in range(int(U_TOP), int(U_BOT) + 1):
+        w = uw(y + .5)
+        for x in range(MIDX - 10, MIDX + 11):
+            u = abs(x + .5 - MIDX)
+            if u > w: continue
+            edge = u > w - 1 or y == int(U_TOP)
+            blend(x, y, RIM if edge else WALL, .85 if edge else .42)
+    for y in range(int(U_TOP) + 3, int(U_BOT) - 1):          # 子宮腔：倒三角
+        t = (y - U_TOP - 3) / (U_BOT - U_TOP - 4)
+        w = 4.6 * (1 - t) + .6
+        for x in range(MIDX - 6, MIDX + 7):
+            if abs(x + .5 - MIDX) <= w: blend(x, y, CAV, .5)
+    # 輸卵管＋卵巢
+    for d in (-1, 1):
+        tube = [(MIDX + d * 7.5, 46.5), (MIDX + d * 11, 44.5), (MIDX + d * 14.5, 45.5), (MIDX + d * 16, 48.5), (MIDX + d * 15, 51)]
+        for (x, y) in pixel_perfect(stroke(cr(tube))): blend(x, y, RIM, .8)
+        ox, oy = MIDX + d * 12.5, 50.5
+        for y in range(48, 54):
+            for x in range(int(ox) - 3, int(ox) + 4):
+                e = ((x + .5 - ox) / 2.4) ** 2 + ((y + .5 - oy) / 1.6) ** 2
+                if e < 1: blend(x, y, RIM if e > .55 else OVA, .8 if e > .55 else .6)
+    # 子宮頸（陰道頂的小圓頭）＋頸口
+    for y in range(int(CERVIX_Y) - 2, int(CERVIX_Y) + 2):
+        for x in range(MIDX - 4, MIDX + 5):
+            e = ((x + .5 - MIDX) / 3.4) ** 2 + ((y + .5 - CERVIX_Y) / 2) ** 2
+            if e < 1: blend(x, y, RIM if e > .5 else WALL, .85 if e > .5 else .55)
+    blend(MIDX, int(CERVIX_Y) + 1, CAV, .9)
+    # 陰道：從穴口往上到子宮頸；沒插＝扁扁一條縫，插著＝被撐開到陰莖那麼寬（到龜頭為止）
+    pen_in = INSERT > .05 and PENIS in PEN_COLORS
+    cor = PEN_TIP + PEN_GLANS
+    def pen_w(y):
+        if y < PEN_TIP: return 0
+        if y < cor:
+            t = (y - PEN_TIP) / PEN_GLANS
+            return 5.9 * max(0, math.sin(math.pi / 2 * min(1, t * 1.25))) ** .5
+        return 4.8 + 1.4 * min(1, (y - cor) / (N - cor))
+    for y in range(int(CERVIX_Y) + 2, int(OPEN_Y if pen_in else LAB_TOP - 1) + 1):   # 沒插時只畫到陰唇上方（陰唇保持看得見）
+        lum = max(1.0, pen_w(y + .5) + .4) if pen_in else 1.0
+        wall = lum + 1.6
+        for x in range(MIDX - 9, MIDX + 10):
+            u = abs(x + .5 - MIDX)
+            if u > wall: continue
+            if u > wall - 1: blend(x, y, RIM, .85)
+            elif u > lum: blend(x, y, WALL if (y % 3) else RIM, .55 if (y % 3) else .65)   # 皺褶：每三列一道
+            else: blend(x, y, CAV, .55)
+    # 體內那段陰莖（黑剪影隔著肚皮透出來）
+    if pen_in:
+        C = PEN_COLORS[PENIS]
+        for y in range(int(PEN_TIP), int(OPEN_Y)):
+            w = pen_w(y + .5)
+            for x in range(MIDX - 7, MIDX + 8):
+                u = x + .5 - MIDX
+                if abs(u) > w: continue
+                edge = abs(u) > w - 1 or y == int(PEN_TIP)
+                blend(x, y, C['edge'] if edge else (C['hi'] if u < -w * .4 else C['base']), .8)
+        cy = int(cor)
+        if cy < OPEN_Y:
+            for x in range(MIDX - 5, MIDX + 6): blend(x, cy, C['edge'], .8)
+    return im
+
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('out'); ap.add_argument('--up', type=int, default=1); ap.add_argument('--fill', action='store_true')
     a = ap.parse_args()
     im = draw()
-    if a.fill: im = fill_preview(im)
+    if a.fill:
+        im = fill_preview(im)
+        if XRAY: im = xray(im)
     if a.up > 1: im = im.resize((N * a.up, N * a.up), Image.NEAREST)
     im.save(a.out)
