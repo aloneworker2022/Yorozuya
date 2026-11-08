@@ -23,10 +23,13 @@ LINES = {
                  (728, 345), (690, 378), (640, 412), (590, 440), (550, 455), (515, 459), (478, 452), (448, 440), (430, 434)],
     'waist_L':  [(290, 62), (293, 95), (291, 125), (285, 158), (280, 188), (272, 208)],
     'waist_R':  [(555, 62), (546, 95), (540, 130), (542, 165), (553, 192), (565, 206)],
-    'crease_L': [(362, 310), (372, 350), (385, 385), (400, 418), (412, 435)],
-    'crease_R': [(472, 310), (466, 345), (458, 380), (448, 410), (442, 432)],
+    # 鼠蹊線：從髖的轉折往內往下，收到底部中間（照原圖那兩條淡線，上段也補上）
+    'crease_L': [(282, 208), (328, 270), (370, 350), (410, 432)],
+    'crease_R': [(562, 208), (514, 270), (472, 350), (442, 432)],
 }
 MID = 430
+CREASE_COL = (216, 166, 140, 255)   # droom 陰影色：微微深
+CREASE_TOP = (229, 185, 158, 255)   # 上段淡一點，往髖那頭淡出
 
 
 def P(x, y): return ((x - CROP[0]) * S + OX, (y - CROP[1]) * S + OY)
@@ -96,7 +99,12 @@ def draw(ref=None):
     for name, pts in LINES.items():
         if pts is None: pts = [(2 * MID - x, y) for (x, y) in LINES[name.replace('_R', '_L')]]
         q = [P(*p) for p in cr(pts)]
-        for (x, y) in pixel_perfect(stroke(q)): px[x, y] = (132, 100, 70, 255)
+        pix = pixel_perfect(stroke(q))
+        for i, (x, y) in enumerate(pix):
+            if name.startswith('crease'):
+                px[x, y] = CREASE_TOP if i < len(pix) * .3 else CREASE_COL   # 上段更淡、往下微微深
+            else:
+                px[x, y] = (132, 100, 70, 255)
     return im
 
 
@@ -115,7 +123,9 @@ def fill_preview(lines_img):
             elif any(0 <= x + dx < N and 0 <= y + dy < N and M[x + dx, y + dy] for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))): px[x, y] = (255, 255, 255, 255)
     for y in range(N):
         for x in range(N):
-            if lp[x, y][0] < 200 and M[x, y]: px[x, y] = (184, 124, 104, 255)
+            c = lp[x, y]
+            if not M[x, y] or c[:3] == (255, 255, 255): continue
+            px[x, y] = c if c[:3] in (CREASE_COL[:3], CREASE_TOP[:3]) else (184, 124, 104, 255)
     return im
 
 
