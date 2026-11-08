@@ -397,6 +397,7 @@ def rub_open(px):
     VEST, HOLE_RIM = (230, 120, 136, 255), (196, 48, 72, 255)
     A = max(0.0, min(1.0, OPEN_AMT))
     L = lambda a, b: a + (b - a) * A                             # 第 1 格 → 全開
+    SP = 1.0 if (INS_MODE and INSERT > 0) else 0.0               # 插進去：陰道被撐開，小陰唇和外陰唇都再往外打開
     top, bot = L(LAB_TOP - .5, LAB_TOP - 2.0), L(LAB_BOT, LAB_BOT + .8)
     H = bot - top
     hx, hy, hrx, hry = MIDX + .5, top + H * L(.74, .64), L(.7, 3.1), L(1.1, 4.4)   # 肉穴（打開變大）
@@ -404,10 +405,10 @@ def rub_open(px):
         fy = y + .5
         v = (fy - top) / H
         if not 0 <= v <= 1: continue
-        V = L(.6 * max(0, math.sin(math.pi * v)) ** .8, 4.0 * max(0, math.sin(math.pi * v)) ** .55)   # 前庭（打開的那塊）
-        P = max(V + 1.0, L(3.9 * max(0, math.sin(math.pi * v ** 1.1)) ** .62, V + 2.0 + .5 * math.sin(fy * 1.3)))   # 小陰唇（慢慢翻開）
+        V = L(.6 * max(0, math.sin(math.pi * v)) ** .8, (4.0 + 2.2 * SP) * max(0, math.sin(math.pi * v)) ** .55)   # 前庭（打開的那塊；插著再撐開）
+        P = max(V + 1.0, L(3.9 * max(0, math.sin(math.pi * v ** 1.1)) ** .62, V + 2.0 + .6 * SP + .5 * math.sin(fy * 1.3)))   # 小陰唇（慢慢翻開；插著翻得更開）
         mv = (fy - 70.0) / (96.5 - 70.0)
-        M = 9.0 * max(0, math.sin(math.pi * min(1, max(0, mv)) ** .9)) ** .55 if 0 <= mv <= 1 else 0   # 大陰唇：跟第 1 格同一條圓弧
+        M = (9.0 + 3.0 * SP) * max(0, math.sin(math.pi * min(1, max(0, mv)) ** .9)) ** .55 if 0 <= mv <= 1 else 0   # 大陰唇：跟第 1 格同一條圓弧；插著往外撐大
         for x in range(MIDX - 13, MIDX + 14):
             u = abs(x + .5 - MIDX)
             e = ((x + .5 - hx) / hrx) ** 2 + ((fy - hy) / hry) ** 2
