@@ -11,22 +11,20 @@ CROP = (100, 50, 760, 470)                      # 原圖取這一塊
 S = (N - 8) / (CROP[2] - CROP[0])
 OX, OY = 4, (N - (CROP[3] - CROP[1]) * S) / 2
 
-# 大腿＋臀部：上緣 → 外側弧線 → 下緣（臀部）連成一筆，轉角接起來，臀部兩瓣在中間凹口會合
+# 大腿＋臀部：上緣 → 大腿剖面圓弧（使用者：外側弧線＝大腿的剖面，大腿到這裡結束）→ 下緣（臀部）連成一筆，轉角接起來，臀部兩瓣在中間凹口會合
 LEG_L = [(270, 210), (250, 198), (220, 180), (185, 165), (160, 157),            # 大腿上緣（從髖往外）
-         (167, 170), (171, 200), (168, 240), (155, 272), (138, 290), (121, 300),   # 外側弧線（往下、往外收）
+         (168, 175), (173, 205), (170, 238), (158, 266), (140, 288), (121, 300),   # 大腿剖面的圓弧（大腿到這裡結束）
          (126, 322), (150, 360), (200, 400), (260, 428), (320, 447), (370, 453),   # 臀部下緣（左瓣）
          (402, 445), (418, 436), (430, 434)]                                        # 往上收到中間凹口
 LINES = {
     'leg_L':    LEG_L,
     'leg_R':    [(565, 207), (600, 190), (640, 178), (688, 164),                    # 右邊照原圖右邊的棕線（左右不完全對稱）
-                 (674, 182), (672, 230), (685, 262), (705, 292), (728, 304), (742, 318),
+                 (676, 188), (674, 222), (682, 256), (700, 286), (722, 306), (742, 318),
                  (728, 345), (690, 378), (640, 412), (590, 440), (550, 455), (515, 459), (478, 452), (448, 440), (430, 434)],
     'waist_L':  [(290, 62), (293, 95), (291, 125), (285, 158), (280, 188), (272, 208)],
     'waist_R':  [(555, 62), (546, 95), (540, 130), (542, 165), (553, 192), (565, 206)],
     'crease_L': [(362, 310), (372, 350), (385, 385), (400, 418), (412, 435)],
     'crease_R': [(472, 310), (466, 345), (458, 380), (448, 410), (442, 432)],
-    'top':      [(300, 182), (340, 172), (380, 163), (420, 160), (458, 158)],
-    'top_R':    [(505, 175), (530, 180), (548, 188)],
 }
 MID = 430
 
@@ -102,11 +100,32 @@ def draw(ref=None):
     return im
 
 
+def fill_preview(lines_img):
+    """用外輪廓（腰、大腿、剖面、臀部）圍起來的範圍填 droom 肉色，外面 1px 白邊；線照畫在上面。只看肢體形狀用。"""
+    from PIL import ImageDraw
+    L = LINES
+    poly = L['waist_L'][::-1][:-1] and None
+    out = [P(*q) for q in [(290, -400)] + L['waist_L'] + L['leg_L']] + \
+          [P(*q) for q in L['leg_R'][::-1] + L['waist_R'][::-1] + [(555, -400)]]
+    m = Image.new('L', (N, N), 0); ImageDraw.Draw(m).polygon(out, fill=255); M = m.load()
+    im = Image.new('RGBA', (N, N), (40, 34, 50, 255)); px = im.load(); lp = lines_img.load()
+    for y in range(N):
+        for x in range(N):
+            if M[x, y]: px[x, y] = (242, 204, 177, 255)
+            elif any(0 <= x + dx < N and 0 <= y + dy < N and M[x + dx, y + dy] for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))): px[x, y] = (255, 255, 255, 255)
+    for y in range(N):
+        for x in range(N):
+            if lp[x, y][0] < 200 and M[x, y]: px[x, y] = (184, 124, 104, 255)
+    return im
+
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('out'); ap.add_argument('--up', type=int, default=1); ap.add_argument('--over', action='store_true')
+    ap.add_argument('--fill', action='store_true')
     a = ap.parse_args()
     import os
     im = draw(os.path.join(os.path.dirname(__file__), 'structure_ref.jpg') if a.over else None)
+    if a.fill: im = fill_preview(im)
     if a.up > 1: im = im.resize((N * a.up, N * a.up), Image.NEAREST)
     im.save(a.out)
