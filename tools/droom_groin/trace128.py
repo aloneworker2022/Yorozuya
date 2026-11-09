@@ -676,6 +676,17 @@ def xray_section(im):
                 blend(x, y, RIM if (u > gap + WT - .9 or u <= gap - rug + .8) else WALL, .85)
             elif u <= gap and g == 0:
                 blend(x, y, CAV, .7)                              # 沒插：中間那條縫
+    # 子宮口旁邊微微張開的空間（陰道穹窿）：陰道頂繞著子宮頸張開一小圈，精液會積在這裡（不會射進子宮）
+    FX_RX, FX_RY = 5.8, 2.8
+    for y in range(int(CERV_BOT - FX_RY) - 1, int(CERV_BOT + FX_RY) + 1):
+        for x in range(MIDX - 6, MIDX + 7):
+            e = ((x + .5 - CX) / FX_RX) ** 2 + ((y + .5 - CERV_BOT) / FX_RY) ** 2
+            if e < 1: blend(x, y, RIM if e > .62 else (240, 168, 184), .85 if e > .62 else .6)
+    for y in range(int(CERV_BOT) - 2, int(CERV_BOT) + 1):     # 子宮頸小圓頭露在空間裡（頸口）
+        for x in range(MIDX - 3, MIDX + 4):
+            e = ((x + .5 - CX) / (NECK_W * .9)) ** 2 + ((y + .5 - (CERV_BOT - 1)) / 1.6) ** 2
+            if e < 1: blend(x, y, RIM if e > .5 else WALL, .9)
+    blend(MIDX, int(CERV_BOT), CAV, .95)
     # 體內那段陰莖（剖面裡，在兩壁中間；不再蓋環）
     if pen_in:
         C = PEN_COLORS[PENIS]
