@@ -6,6 +6,7 @@
 //   rub_insert.png：插入（龜頭頂 INS0～INS1，陰道子宮剖面透視）
 //   rub_insert_g1～g3.png：插著的反應 1～3 階（陰道收緊、陰道口那圈纏住陰莖、陰道勃起變長＝子宮頸往上提 LIFT_PER_LV 格／階）
 //   rub_insert_g1p～g3p.png：同上、往外抽的那一下（陰道口那圈黏著莖被拖出來）
+//   rub_insert_g2s／g3s.png：2、3 階痙攣那一下（陰道因為興奮一抖一抖：整條再夾緊、上段縮回、兩旁「(( ))」）
 // 插入：打開後要先把龜頭拉到肉穴口（龜頭頂 ≥ AT_HOLE＝對準），再往上推才插進去（最深到子宮頸）；
 //   在上面磨（沒對準）只是疊在陰唇上；插著時往下拉出肉穴口就回到疊著。
 // 操作：手指按住陰莖任何一段，上下拖動陰莖摩擦陰唇；碰著陰唇時累積移動距離，每 RUB_DIST 格算一下，
@@ -33,6 +34,10 @@ const MILK = [246, 240, 236];         // 精液流進陰道後的乳白色（陰
 const REACT_PER_PX = 1 / 25, REACT_MAX = 3, REACT_IDLE_MS = 1500, REACT_DECAY = .15;
 const LIFT_PER_LV = 2;                // 陰道勃起：每階子宮頸往上提幾格（跟 trace128.py 的 LIFT＝6×AROUSE 一樣）
 const PULL_SHOW_MS = 180;             // 往外抽之後多久還用「拖出來」那條
+// 痙攣：插著、反應到 2 階以上時，每隔一陣子一抖一抖（一陣 SPASM_N 下，每下夾 SPASM_ON_MS、鬆 SPASM_OFF_MS）；不用抽送，停著也會抖
+const SPASM_GAP = { 2: [2600, 5200], 3: [1200, 3000] };   // 兩陣之間隔多久（ms，隨機）
+const SPASM_N = { 2: [2, 3], 3: [3, 5] };                  // 一陣抖幾下
+const SPASM_ON_MS = 130, SPASM_OFF_MS = 210;
 const cervix0 = (lv) => 60 - LIFT_PER_LV * lv;   // 這一階沒被頂到時子宮頸的位置
 const HOLE_Y = 87, BODY_BG = [40, 34, 50];             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
 
@@ -40,7 +45,7 @@ const section = document.createElement("section");
 section.className = "card";
 section.innerHTML = `
   <h2 style="margin-top:0">0. 磨蹭陰唇（像素）</h2>
-  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；停下來慢慢鬆回去。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p>
+  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；夠興奮時陰道會一抖一抖地痙攣（停著不動也會）；停下來慢慢鬆回去。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p>
   <div style="display:flex;justify-content:center">
     <canvas id="rub-cv" width="128" height="128"
       style="width:min(92vw,512px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
@@ -65,7 +70,7 @@ const load = (src) => new Promise((resolve, reject) => {
 });
 
 const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
-  shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0 };   // drops＝抽插時從陰道口帶出來、往下流的精液   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
+  shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0, spasm: false, spasmLeft: 0, spasmNext: 0, spasms: 0 };   // drops＝抽插時從陰道口帶出來、往下流的精液   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
 let openTimer = 0;
 let sheets = null;
 
@@ -76,7 +81,7 @@ function draw() {
   ctx.clearRect(0, 0, 128, 128);
   if (st.inserted) {
     const lv = level(), pulling = performance.now() - st.pullAt < PULL_SHOW_MS;
-    const sheet = lv ? (pulling ? sheets.pull[lv] : sheets.grip[lv]) : sheets.insert;
+    const sheet = lv ? (st.spasm && sheets.spasm[lv] ? sheets.spasm[lv] : pulling ? sheets.pull[lv] : sheets.grip[lv]) : sheets.insert;
     ctx.drawImage(sheet, Math.max(0, tipNow - INS0) * 128, 0, 128, 128, 0, 0, 128, 128);
   } else {
     const sheet = !st.opened ? sheets.closed : [sheets.a35, sheets.a70, sheets.open][Math.min(2, st.openStep)];
@@ -84,7 +89,7 @@ function draw() {
   }
   drawUrethra();
   drawCum();
-  info.textContent = (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? `插入中・${["", "陰道收緊", "陰道纏住、變長", "緊緊纏住、勃起變長"][level()] || "還鬆鬆的"}` : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
+  info.textContent = (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? `插入中・${["", "陰道收緊", "陰道纏住、變長", "緊緊纏住、勃起變長"][level()] || "還鬆鬆的"}${st.spasm || st.spasmLeft ? "・一抖一抖地痙攣" : ""}` : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
 }
 
 // 尿道：陰莖中線一條細線（根部 → 龜頭頂的尿道口）；只畫在陰莖上（被陰唇包住的地方不畫）
@@ -312,7 +317,7 @@ cv.addEventListener("pointercancel", release);
 section.querySelector("#rub-reset").addEventListener("click", () => {
   clearInterval(openTimer);
   Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
-    shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0 });
+    shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0, spasm: false, spasmLeft: 0, spasmNext: 0, spasms: 0 });
   draw();
 });
 
@@ -327,11 +332,34 @@ setInterval(() => {
 }, 250);
 setInterval(() => { if (st.pullAt && performance.now() - st.pullAt >= PULL_SHOW_MS && st.inserted) { st.pullAt = 0; draw(); } }, 60);
 
+// 痙攣排程：到 2 階以上才會抖；每一陣抖幾下（夾 → 鬆），抖完隔一陣子再來
+const rand = ([a, b]) => a + Math.random() * (b - a);
+setInterval(() => {
+  const lv = level(), now = performance.now();
+  if (!sheets || !st.inserted || lv < 2) {
+    if (st.spasm || st.spasmLeft) { st.spasm = false; st.spasmLeft = 0; draw(); }
+    st.spasmNext = 0; return;
+  }
+  if (!st.spasmNext) st.spasmNext = now + rand(SPASM_GAP[lv]);
+  if (st.spasmLeft || now < st.spasmNext) return;
+  st.spasmLeft = Math.round(rand(SPASM_N[lv]));
+  const twitch = () => {
+    if (!st.spasmLeft || !st.inserted) { st.spasm = false; st.spasmLeft = 0; draw(); return; }
+    st.spasm = true; st.spasms += 1; draw();
+    setTimeout(() => {
+      st.spasm = false; st.spasmLeft -= 1; draw();
+      if (st.spasmLeft > 0) setTimeout(twitch, SPASM_OFF_MS);
+      else st.spasmNext = performance.now() + rand(SPASM_GAP[level()] || SPASM_GAP[2]);
+    }, SPASM_ON_MS);
+  };
+  twitch();
+}, 100);
+
 const SHEETS = ["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open", "rub_insert",
-  "rub_insert_g1", "rub_insert_g2", "rub_insert_g3", "rub_insert_g1p", "rub_insert_g2p", "rub_insert_g3p"];
-Promise.all(SHEETS.map((n) => load(`/test_bodyM/${n}.png?v=10`)))
-  .then(([closed, a35, a70, open, insert, g1, g2, g3, p1, p2, p3]) => {
-    sheets = { closed, a35, a70, open, insert, grip: [null, g1, g2, g3], pull: [null, p1, p2, p3] };
+  "rub_insert_g1", "rub_insert_g2", "rub_insert_g3", "rub_insert_g1p", "rub_insert_g2p", "rub_insert_g3p", "rub_insert_g2s", "rub_insert_g3s"];
+Promise.all(SHEETS.map((n) => load(`/test_bodyM/${n}.png?v=11`)))
+  .then(([closed, a35, a70, open, insert, g1, g2, g3, p1, p2, p3, s2, s3]) => {
+    sheets = { closed, a35, a70, open, insert, grip: [null, g1, g2, g3], pull: [null, p1, p2, p3], spasm: [null, null, s2, s3] };
     draw();
   })
   .catch((e) => { info.textContent = e.message; console.error(e); });

@@ -6,6 +6,7 @@
   rub_insert.png：插入（RUB=8，龜頭頂 INS0～INS1；龜頭進去後才有陰道子宮剖面透視）
   rub_insert_g1～g3.png：插著的反應 1～3 階（GRIP＝AROUSE＝階/3：陰道收緊、陰道口那圈纏住、陰道勃起變長）
   rub_insert_g1p～g3p.png：同上、往外抽的那一下（PULL=1：陰道口那圈黏著莖被拖出來）
+  rub_insert_g2s／g3s.png：2、3 階的痙攣那一下（SPASM=1：陰道因為興奮一抖一抖，網頁一陣一陣跟平常那條交替）
 用法：python3 gen_rub_sheets.py [輸出資料夾，預設 web/test_bodyM]
 """
 import os, sys, subprocess, tempfile
@@ -20,6 +21,7 @@ with tempfile.TemporaryDirectory() as td:
     for lv in (1, 2, 3):                                  # 插著的反應：陰道收緊＋勃起變長，往外抽那一下另一條
         r = {'GRIP': str(lv / 3), 'AROUSE': str(lv / 3)}
         jobs += [(8, f'rub_insert_g{lv}.png', 1, r), (8, f'rub_insert_g{lv}p.png', 1, {**r, 'PULL': '1'})]
+        if lv >= 2: jobs.append((8, f'rub_insert_g{lv}s.png', 1, {**r, 'SPASM': '1'}))
     only = os.environ.get('ONLY')                         # 只重產某幾條（逗號分隔檔名）
     for mode, name, amt, extra in jobs:
         if only and name not in only.split(','): continue

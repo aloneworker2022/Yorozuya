@@ -92,6 +92,7 @@ GRIP = float(os.environ.get('GRIP', '0'))          # 收緊 0 鬆 → 1 緊：�
 AROUSE = float(os.environ.get('AROUSE', '0'))      # 陰道勃起 0 → 1：陰道變長（子宮頸、子宮往上提 LIFT 格），龜頭上面空著那段撐開（氣球），壁充血變紅
 PULL = float(os.environ.get('PULL', '0'))          # 抽插方向：>0 往外抽（陰道口那圈黏著莖被拖出來）／<0 往裡推（那圈被帶進去一點）
 LIFT = 6.0 * AROUSE
+SPASM = float(os.environ.get('SPASM', '0'))        # 痙攣（2026-11-09 使用者：陰道因為興奮一抖一抖）：0 平常 → 1 抽的那一下（整條再夾緊一次、上段縮回、陰道口那圈收進去、兩旁抖動記號）
 XRAY = os.environ.get('XRAY', ('1' if INSERT > 0 else '0') if INS_MODE else ('0' if RUB else '1')) == '1'   # 陰道子宮透視（磨蹭不做；插入：龜頭進去後才透視，頂著不透視）
 PEN_GLANS = 9.5                                    # 龜頭長
 PEN_COLORS = {
@@ -706,16 +707,16 @@ def xray_section(im):
     b1 = (PEN_TIP - .5) if pen_in else bot_y
     def balloon(fy):
         t = (fy - b0) / max(1, b1 - b0)
-        return 1.8 * AROUSE * math.sin(math.pi * t) ** .8 if 0 < t < 1 else 0
+        return 1.8 * AROUSE * (1 - .7 * SPASM) * math.sin(math.pi * t) ** .8 if 0 < t < 1 else 0   # 痙攣：撐開那段縮回去
     for y in range(int(top_y), int(bot_y) + 1):
         fy = y + .5
         g = pen_w(fy) * persp(fy)
         flare = max(0, (fy - (bot_y - 5)) / 5) * 1.6 if pen_in else 0     # 靠陰道口那段被撐開、往外張
         ch = chamber(fy)
         bl = balloon(fy) if g == 0 else 0
-        gap = max((g + .2 + flare - .5 * GRIP) if g > 0 else .5, ch + .5 if ch else 0, bl + .5 if bl else 0)   # 兩壁之間：插著＝陰莖寬（收緊時夾進去）；沒插＝一條縫；子宮口前鼓開一小塊；勃起時上段撐開
-        WT = 1.8 + GRIP * (.4 + 1.2 * outer3(fy))               # 陰道壁厚（收緊：靠陰道口那段腫厚）
-        rug = (.7 + .6 * GRIP) if is_rug(y) else 0               # 皺褶：內緣一節一節往裡凸（收緊：更深）
+        gap = max((g + .2 + flare - .5 * GRIP - .7 * SPASM) if g > 0 else .5, ch + .5 if ch else 0, bl + .5 if bl else 0)   # 兩壁之間：插著＝陰莖寬（收緊時夾進去）；沒插＝一條縫；子宮口前鼓開一小塊；勃起時上段撐開
+        WT = 1.8 + GRIP * (.4 + 1.2 * outer3(fy)) + .9 * SPASM               # 陰道壁厚（收緊：靠陰道口那段腫厚）
+        rug = (.7 + .6 * GRIP + .4 * SPASM) if is_rug(y) else 0               # 皺褶：內緣一節一節往裡凸（收緊：更深）
         for x in range(MIDX - 12, MIDX + 13):
             u = abs(x + .5 - CX)
             if gap - rug < u <= gap + WT:
@@ -738,19 +739,19 @@ def xray_section(im):
                 edge = abs(u) > w - 1 or y == int(PEN_TIP)
                 blend(x, y, C['edge'] if edge else C['base'], .85 if y < HOLE_Y - 8 else 1.0)   # 靠陰道口那段不透（蓋掉底下陰唇的紅邊）
         # 收緊：兩壁咬進莖邊（皺褶那幾列咬得深）＝一節一節夾著莖
-        if GRIP > .05:
+        if GRIP + SPASM > .05:
             for y in range(int(PEN_TIP) + 1, int(ENT_Y)):
                 fy = y + .5
                 w = pen_w(fy) * persp(fy)
-                bite = GRIP * ((1.2 if is_rug(y) else .5) + .6 * outer3(fy))
+                bite = GRIP * ((1.2 if is_rug(y) else .5) + .6 * outer3(fy)) + SPASM * (.9 if is_rug(y) else .5)
                 for x in range(MIDX - 8, MIDX + 9):
                     u = abs(x + .5 - CX)
                     if w - bite < u <= w + .3: blend(x, y, RIM if is_rug(y) else WALL_C, .8)
         # 陰道口＝斜著看的一圈肉環套在陰莖上（使用者紫線）：前半圈是一道往上拱的弧，跨過陰莖、兩端繞到兩側往下
         RIMC, LIPC, GRIPC = (204, 96, 112), (238, 160, 166), (208, 52, 72)
         ry = 6.8
-        dy_in = -1.2 * max(0.0, -PULL)                          # 往裡推：那圈被帶進去一點
-        K = 3 + (1 if GRIP > .4 else 0) + (1 if GRIP > .8 else 0)   # 收緊：那圈腫厚（3 → 5 格）
+        dy_in = -1.2 * max(0.0, -PULL) - .8 * SPASM             # 往裡推／痙攣：那圈被帶進去一點
+        K = 3 + (1 if GRIP > .4 else 0) + (1 if GRIP > .8 else 0) + (1 if SPASM > .5 else 0)   # 收緊：那圈腫厚（3 → 5 格；痙攣再厚一格）
         for k in range(K):                                      # 外緣深、中間淡、內緣深（收緊時內緣充血紅、咬進莖邊）
             rx = pen_w(HOLE_Y) + 1.4 + .3 * (K - 3) - k * .55
             c = RIMC if k in (0, K - 1) else LIPC
@@ -763,6 +764,14 @@ def xray_section(im):
             for y in range(int(HOLE_Y + 1.0 + dy_in) + k, int(HOLE_Y) + 4):   # 兩端繞到陰莖兩側往下
                 for sx in (-1, 1): blend(CX + sx * (rx - .4), y, c, .9)
         if PULL > 0: entry_drag(blend, pen_w, CX, RIMC, LIPC, GRIPC)   # 往外抽：陰道口那圈黏著莖被拖出來
+        if SPASM > .5:                                          # 痙攣：陰道兩旁的抖動記號「))」「((」（漫畫的ピクピク）
+            for my in (top_y + (bot_y - top_y) * .42, top_y + (bot_y - top_y) * .8):   # 照陰道長度放（不管插多深）
+                base = max(pen_w(my) * persp(my), balloon(my), 1.2) + 1.8 + GRIP * 1.2 + 2.6
+                for sx in (-1, 1):
+                    for j in range(2):
+                        ux = base + j * 3
+                        for (ox, oy) in ((0, -2), (1, -1), (1, 0), (1, 1), (0, 2)):
+                            blend(CX + sx * (ux + ox), my + oy, RIM, .9)
     return im
 
 
