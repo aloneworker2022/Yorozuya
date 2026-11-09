@@ -94,6 +94,8 @@ PULL = float(os.environ.get('PULL', '0'))          # 抽插方向：>0 往外抽
 LIFT = 6.0 * AROUSE
 SPASM = float(os.environ.get('SPASM', '0'))        # 痙攣（2026-11-09 使用者：陰道因為興奮一抖一抖鎖緊）：0 平常 → 1 抽的那一下（整條再夾緊一次、上段縮回、陰道口那圈收進去；不畫抖動符號）
 # 子宮的反應（2026-11-09 使用者：興奮時子宮腫脹、子宮口下降，上下吸吮下面的精液；龜頭頂著時子宮口親著龜頭、飄出愛心〔愛心網頁畫〕）
+CLIT_ER_AMT = float(os.environ.get('CLIT', '0'))   # 陰蒂勃起 0 → 1（高潮第 2 階；環境變數 CLIT）
+SWELL = float(os.environ.get('SWELL', '0'))        # 子宮腫脹 0 → 1（高潮第 4 階，跟子宮口下降、吸吮一起）
 DESC = float(os.environ.get('DESC', '0'))          # 子宮口下降幾格（整個子宮跟著降下來；抵掉陰道勃起往上提的 LIFT）
 BOB = os.environ.get('BOB', '0') == '1'            # 吸吮往上那一下：子宮口往上縮 3 格、頸口張開
 UTERUS = set()                                     # 子宮腔裡空著的格子（網頁讓吸進去的精液填子宮）；跟 LUMEN 一起輸出（綠）
@@ -435,7 +437,7 @@ def rub_open(px):
     # 陰蒂包皮＋陰蒂（上面）
     for dx in (-1, 1):
         for (x, y) in pixel_perfect(stroke([(MIDX, top - 1.6 - A), (MIDX + dx * 2.6, top + 1.0 - A)])): px[x, y] = SW['edge']   # 包皮往上退
-    draw_clit(px, top + .4 + .8 * A, erect=A)                  # 打開後陰蒂微微勃起（往下一點、在打開的那塊裡）
+    draw_clit(px, top + .4 + .8 * A, erect=CLIT_ER_AMT)             # 陰蒂勃起（2026-11-09 使用者：高潮第 2 階才勃起，陰唇外翻＝第 1 階時還沒）
     draw_urethra(px, top + H * L(.46, .4), big=A > .5)         # 尿道口：前庭裡、陰道口上面
 
 
@@ -658,7 +660,7 @@ def xray_section(im):
     DROP = DESC - LIFT                                       # 子宮整體位移（＋往下）
     cerv0 = 60.0 + DROP - (3.0 if BOB else 0.0)
     push = max(0.0, cerv0 - PEN_TIP) if (INSERT > .05 and PENIS in PEN_COLORS) else 0.0
-    SW_ = AROUSE                                             # 子宮腫脹：變大變圓、更紅
+    SW_ = SWELL                                              # 子宮腫脹：變大變圓、更紅
     F_TOP, F_BOT = 47.0 + DROP - 3.0 * SW_ - .35 * push, 56.0 + DROP - .85 * push
     F_W, NECK_W = 8.2 + 2.6 * SW_ + .4 * push, 2.4 + .6 * SW_ + .3 * push   # 子宮底、漏斗底、上寬、頸寬
     F_BOT = min(F_BOT, cerv0 - push - 2.5)
