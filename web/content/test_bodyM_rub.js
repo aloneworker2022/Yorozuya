@@ -19,13 +19,16 @@ const AT_HOLE = 85;                   // 打開後龜頭拉到這列以下＝頂
 const OPEN_STEP_MS = 110;
 // 尿道漲精液：碰著陰唇磨、或插著抽送時，每移動 1 格加 CUM_PER_PX；白色從根部往龜頭慢慢漲上去，漲滿停在尿道口
 const CUM_PER_PX = 1 / 160;
-const URETHRA_EMPTY = [56, 48, 66], CUM_WHITE = [250, 248, 252], CUM_SHADE = [214, 212, 226];             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
+const URETHRA_EMPTY = [56, 48, 66], CUM_WHITE = [250, 248, 252], CUM_SHADE = [214, 212, 226];
+// 射精：漲滿就射，分 SHOTS 股、每股間隔 SHOT_MS；插著＝內射（灌進陰道、子宮，拔出來從肉穴口流出），在外面＝噴在她身上
+const SHOTS = 4, SHOT_MS = 380;
+const HOLE_Y = 87, BODY_BG = [40, 34, 50];             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
 
 const section = document.createElement("section");
 section.className = "card";
 section.innerHTML = `
   <h2 style="margin-top:0">0. 磨蹭陰唇（像素）</h2>
-  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液。</p>
+  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射：插著是內射，在外面射在她身上。</p>
   <div style="display:flex;justify-content:center">
     <canvas id="rub-cv" width="128" height="128"
       style="width:min(92vw,512px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
@@ -49,7 +52,8 @@ const load = (src) => new Promise((resolve, reject) => {
   im.src = src;
 });
 
-const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0 };
+const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
+  shooting: 0, spurt: null, splats: [], inside: 0 };   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
 let openTimer = 0;
 let sheets = null;
 
@@ -64,7 +68,8 @@ function draw() {
     ctx.drawImage(sheet, i * 128, 0, 128, 128, 0, 0, 128, 128);
   }
   drawUrethra();
-  info.textContent = (st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? "插入中" : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
+  drawCum();
+  info.textContent = (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? "插入中" : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
 }
 
 // 尿道：陰莖中線一條細線（根部 → 龜頭頂的尿道口）；只畫在陰莖上（被陰唇包住的地方不畫）
@@ -83,6 +88,74 @@ function drawUrethra() {
     d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = 255;
   }
   ctx.putImageData(img, 64, top);
+}
+
+// ---- 射精 ----
+const put = (d, w, x, y, c, a = 1) => {
+  x = Math.round(x); y = Math.round(y);
+  if (x < 0 || y < 0 || x >= w || y >= 128) return;
+  const k = (y * w + x) * 4;
+  for (let j = 0; j < 3; j++) d[k + j] = d[k + j] * (1 - a) + c[j] * a;
+};
+const isBg = (d, x, y) => { const k = (y * 128 + x) * 4; return Math.abs(d[k] - BODY_BG[0]) < 6 && Math.abs(d[k + 1] - BODY_BG[1]) < 6 && Math.abs(d[k + 2] - BODY_BG[2]) < 6; };
+function blob(d, x, y, r, a = 1) {                          // 一坨精液：白、下緣一圈淡灰（厚度）
+  for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
+    const e = (dx * dx) / (r * r) + (dy * dy) / (r * r * .7);
+    if (e <= 1) put(d, 128, x + dx, y + dy, e > .55 && dy > 0 ? CUM_SHADE : CUM_WHITE, a);
+  }
+}
+function drawCum() {
+  if (!st.splats.length && !st.spurt && !st.inside) return;
+  const img = ctx.getImageData(0, 0, 128, 128), d = img.data;
+  for (const sp of st.splats) {                            // 身上的精液：一坨＋往下流一點
+    blob(d, sp.x, sp.y, sp.r);
+    for (let i = 1; i <= sp.drip; i++) put(d, 128, sp.x + (i > 2 ? .5 : 0), sp.y + sp.r * .6 + i, i % 2 ? CUM_SHADE : CUM_WHITE);
+  }
+  const tipY = Math.round(st.tip);
+  if (st.inside && st.inserted) {                           // 內射：透視裡陰道（龜頭上面）和子宮積著白色
+    const cerv = Math.max(52, Math.min(60, tipY - 1)), amt = st.inside;
+    for (let y = cerv; y < tipY; y++) for (let dx = -1; dx <= 1; dx++) put(d, 128, 64 + dx, y, CUM_WHITE, .8);
+    for (let y = 47; y <= 55; y++) {                         // 子宮腔（倒三角）慢慢灌滿
+      const w = Math.max(.5, 4.6 * (1 - (y - 47) / 9)) * Math.min(1, amt * 1.3);
+      if ((55 - y) / 8 > amt * 1.2) continue;
+      for (let x = Math.ceil(64.5 - w); x <= Math.floor(64.5 + w); x++) put(d, 128, x, y - (60 - cerv) * .85, CUM_WHITE, .75);
+    }
+  } else if (st.inside && st.opened) {                      // 拔出來：肉穴口流出白色
+    blob(d, 64.5, HOLE_Y + 1, 1.6 + st.inside);
+    for (let i = 0; i < 3 + Math.round(st.inside * 5); i++) put(d, 128, 64 + (i > 3 ? 1 : 0), HOLE_Y + 3 + i, i % 2 ? CUM_SHADE : CUM_WHITE);
+  }
+  if (st.spurt) {                                            // 這一股：從尿道口噴出去的白線
+    const sp = st.spurt;
+    const n = Math.max(12, Math.abs(sp.y1 - sp.y0));
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, x = 64.5 + (sp.x - 64.5) * t, y = sp.y0 + (sp.y1 - sp.y0) * t;
+      put(d, 128, x, y, CUM_WHITE); put(d, 128, x + 1, y, CUM_SHADE, .6);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+function shootOnce() {
+  const tipY = Math.round(st.tip);
+  if (st.inserted) {                                         // 內射：一股從龜頭射到子宮頸、灌進去
+    st.spurt = { x: 64.5, y0: tipY, y1: Math.max(50, tipY - 10) };
+    st.inside = Math.min(1, st.inside + 1 / SHOTS);
+  } else {                                                   // 在外面：往上噴到她的下腹、陰阜（一股比一股近）
+    const k = SHOTS - st.shooting;                           // 第幾股（0 最遠）
+    let x = 64.5 + (Math.random() * 2 - 1) * (2 + k * 2.5), y = 40 + k * 7 + Math.random() * 3;   // 下腹（肚臍下）→ 陰阜，第一股最遠
+    const d = ctx.getImageData(0, 0, 128, 128).data;
+    y = Math.max(30, Math.min(tipY - 12, y));
+    while (y > 20 && isBg(d, Math.round(x), Math.round(y))) y -= 1;   // 落在身上
+    st.spurt = { x, y0: tipY, y1: y };
+    st.splats.push({ x, y, r: 2.2 + Math.random() * 1.2 - k * .2, drip: 2 + Math.floor(Math.random() * 3) });
+    if (st.splats.length > 40) st.splats.shift();
+  }
+  st.cum = Math.max(0, st.cum - 1 / SHOTS);                  // 尿道裡的白色退一截
+  st.shooting -= 1;
+  draw();
+  setTimeout(() => { st.spurt = null; draw(); if (st.shooting > 0) shootOnce(); }, SHOT_MS);
+}
+function maybeShoot() {
+  if (st.cum >= 1 && !st.shooting) { st.shooting = SHOTS; shootOnce(); }
 }
 
 function toGrid(ev) {
@@ -126,7 +199,7 @@ cv.addEventListener("pointermove", (ev) => {
   const next = Math.max(canIn ? INS0 : TIP0, Math.min(TIP1, want));
   if (next === st.tip) return;
   track(st.tip, next);
-  if (st.inserted || Math.min(st.tip, next) < CONTACT_BELOW) st.cum = Math.min(1, st.cum + Math.abs(next - st.tip) * CUM_PER_PX);   // 磨／抽送：尿道慢慢漲精液
+  if (!st.shooting && (st.inserted || Math.min(st.tip, next) < CONTACT_BELOW)) st.cum = Math.min(1, st.cum + Math.abs(next - st.tip) * CUM_PER_PX);   // 磨／抽送：尿道慢慢漲精液
   st.tip = next;
   if (st.opened && st.openStep >= 2) {
     if (st.tip >= AT_HOLE) { st.inserted = false; st.armed = true; }        // 拉到肉穴口（或拉出來）＝對準
@@ -134,6 +207,7 @@ cv.addEventListener("pointermove", (ev) => {
     if (!st.inserted && st.tip < AT_HOLE && !canIn) st.armed = false;
   }
   draw();
+  maybeShoot();
 });
 const release = (ev) => {
   if (!st.drag || ev.pointerId !== st.drag.id) return;
@@ -144,7 +218,8 @@ cv.addEventListener("pointerup", release);
 cv.addEventListener("pointercancel", release);
 section.querySelector("#rub-reset").addEventListener("click", () => {
   clearInterval(openTimer);
-  Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0 });
+  Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
+    shooting: 0, spurt: null, splats: [], inside: 0 });
   draw();
 });
 
