@@ -4,6 +4,8 @@
 //   rub_open.png  ：打開後（外翻陰唇＋肉穴，陰莖直接疊在上面）
 //   rub_open_a35.png／rub_open_a70.png：打開的過渡幀（打開一點／打開大半），打開時依序播，讓打開滑順
 //   rub_insert.png：插入（龜頭頂 INS0～INS1，陰道子宮剖面透視）
+//   rub_insert_g1～g3.png：插著的反應 1～3 階（陰道收緊、陰道口那圈纏住陰莖、陰道勃起變長＝子宮頸往上提 LIFT_PER_LV 格／階）
+//   rub_insert_g1p～g3p.png：同上、往外抽的那一下（陰道口那圈黏著莖被拖出來）
 // 插入：打開後要先把龜頭拉到肉穴口（龜頭頂 ≥ AT_HOLE＝對準），再往上推才插進去（最深到子宮頸）；
 //   在上面磨（沒對準）只是疊在陰唇上；插著時往下拉出肉穴口就回到疊著。
 // 操作：手指按住陰莖任何一段，上下拖動陰莖摩擦陰唇；碰著陰唇時累積移動距離，每 RUB_DIST 格算一下，
@@ -27,13 +29,18 @@ const CH_H = 5.2, CH_W = 3.4;         // 子宮口前的小空間（陰道接子
 const chamberW = (y, cerv) => { const t = (y - (cerv - .8)) / CH_H; return t >= 0 && t <= 1 ? CH_W * Math.sin(Math.PI * t) ** .7 + .5 : 0; };
 const INSIDE_MAX = 3;
 const MILK = [246, 240, 236];         // 精液流進陰道後的乳白色（陰道染白、陰莖被包一層）                 // 射在裡面的量（1＝空間裝滿；超過就沿著陰莖往外流、從陰道口噴出來）
+// 插著的反應：抽送每移動 1 格加 REACT_PER_PX（0～3 階）；停下來 REACT_IDLE_MS 後每秒退 REACT_DECAY
+const REACT_PER_PX = 1 / 25, REACT_MAX = 3, REACT_IDLE_MS = 1500, REACT_DECAY = .15;
+const LIFT_PER_LV = 2;                // 陰道勃起：每階子宮頸往上提幾格（跟 trace128.py 的 LIFT＝6×AROUSE 一樣）
+const PULL_SHOW_MS = 180;             // 往外抽之後多久還用「拖出來」那條
+const cervix0 = (lv) => 60 - LIFT_PER_LV * lv;   // 這一階沒被頂到時子宮頸的位置
 const HOLE_Y = 87, BODY_BG = [40, 34, 50];             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
 
 const section = document.createElement("section");
 section.className = "card";
 section.innerHTML = `
   <h2 style="margin-top:0">0. 磨蹭陰唇（像素）</h2>
-  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p>
+  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；停下來慢慢鬆回去。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p>
   <div style="display:flex;justify-content:center">
     <canvas id="rub-cv" width="128" height="128"
       style="width:min(92vw,512px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
@@ -58,7 +65,7 @@ const load = (src) => new Promise((resolve, reject) => {
 });
 
 const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
-  shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [] };   // drops＝抽插時從陰道口帶出來、往下流的精液   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
+  shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0 };   // drops＝抽插時從陰道口帶出來、往下流的精液   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
 let openTimer = 0;
 let sheets = null;
 
@@ -68,17 +75,21 @@ function draw() {
   const i = Math.max(0, tipNow - TIP0);
   ctx.clearRect(0, 0, 128, 128);
   if (st.inserted) {
-    ctx.drawImage(sheets.insert, Math.max(0, tipNow - INS0) * 128, 0, 128, 128, 0, 0, 128, 128);
+    const lv = level(), pulling = performance.now() - st.pullAt < PULL_SHOW_MS;
+    const sheet = lv ? (pulling ? sheets.pull[lv] : sheets.grip[lv]) : sheets.insert;
+    ctx.drawImage(sheet, Math.max(0, tipNow - INS0) * 128, 0, 128, 128, 0, 0, 128, 128);
   } else {
     const sheet = !st.opened ? sheets.closed : [sheets.a35, sheets.a70, sheets.open][Math.min(2, st.openStep)];
     ctx.drawImage(sheet, i * 128, 0, 128, 128, 0, 0, 128, 128);
   }
   drawUrethra();
   drawCum();
-  info.textContent = (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? "插入中" : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
+  info.textContent = (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? `插入中・${["", "陰道收緊", "陰道纏住、變長", "緊緊纏住、勃起變長"][level()] || "還鬆鬆的"}` : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
 }
 
 // 尿道：陰莖中線一條細線（根部 → 龜頭頂的尿道口）；只畫在陰莖上（被陰唇包住的地方不畫）
+const level = () => Math.min(REACT_MAX, Math.floor(st.react));
+
 function drawUrethra() {
   const top = Math.round(st.tip) + st.jerk + 1;           // 尿道口（龜頭頂下一格）
   const len = 128 - top;
@@ -119,7 +130,7 @@ function drawCum() {
   }
   const tipY = Math.round(st.tip) + st.jerk;
   if (st.inside && st.inserted) {
-    const push = Math.max(0, 60 - tipY), cerv = 60 - push;     // 子宮頸被頂著走
+    const c0 = cervix0(level()), push = Math.max(0, c0 - tipY), cerv = c0 - push;   // 子宮頸被頂著走（陰道勃起變長：子宮頸往上提）
     const fill = Math.min(1, st.inside);                       // 子宮口前的小空間：從子宮口往下積滿
     for (let y = Math.floor(cerv - .8); y <= Math.ceil(cerv - .8 + CH_H); y++) {
       if ((y + .5 - (cerv - .8)) / CH_H > fill) continue;
@@ -195,7 +206,7 @@ function shootOnce() {
   st.jerk = -2;                                              // 往前抖一下
   setTimeout(() => { st.jerk = 0; draw(); }, JERK_MS);
   if (st.inserted) {                                         // 內射：一股從龜頭射到子宮口旁的空間（不進子宮）
-    const cerv = 60 - Math.max(0, 60 - tipY);
+    const c0 = cervix0(level()), cerv = c0 - Math.max(0, c0 - tipY);
     st.spurt = { x: 64.5, y0: tipY - 1, y1: Math.min(tipY - 1, cerv + 1.5) };
     const before = st.inside;
     st.inside = Math.min(INSIDE_MAX, st.inside + 1 / SHOTS);
@@ -274,6 +285,11 @@ cv.addEventListener("pointermove", (ev) => {
   const canIn = st.opened && st.openStep >= 2 && (st.inserted || st.armed);
   const next = Math.max(canIn ? INS0 : TIP0, Math.min(TIP1, want));
   if (next === st.tip) return;
+  if (st.inserted) {                                        // 抽送：陰道慢慢收緊、勃起變長；往外抽那一下陰道口那圈被拖出來
+    st.react = Math.min(REACT_MAX + .99, st.react + Math.abs(next - st.tip) * REACT_PER_PX);
+    if (next > st.tip) st.pullAt = performance.now(); else st.pullAt = 0;
+  }
+  st.moveAt = performance.now();
   if (st.inserted && next > st.tip && st.inside > 1 && Math.random() < .35 + .2 * Math.min(1, st.inside - 1)) spawnDrop();   // 往外抽：帶出精液
   track(st.tip, next);
   if (!st.shooting && (st.inserted || Math.min(st.tip, next) < CONTACT_BELOW)) st.cum = Math.min(1, st.cum + Math.abs(next - st.tip) * CUM_PER_PX);   // 磨／抽送：尿道慢慢漲精液
@@ -296,13 +312,29 @@ cv.addEventListener("pointercancel", release);
 section.querySelector("#rub-reset").addEventListener("click", () => {
   clearInterval(openTimer);
   Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
-    shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [] });
+    shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0 });
   draw();
 });
 
-Promise.all(["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open", "rub_insert"].map((n) => load(`/test_bodyM/${n}.png?v=9`)))
-  .then(([closed, a35, a70, open, insert]) => { sheets = { closed, a35, a70, open, insert }; draw(); })
+// 停下來：「拖出來」那條換回來；一陣子沒抽送，收緊／勃起慢慢退
+let lastShown = "";
+setInterval(() => {
+  if (!sheets) return;
+  const now = performance.now();
+  if (st.react > 0 && !st.drag && now - st.moveAt > REACT_IDLE_MS) st.react = Math.max(0, st.react - REACT_DECAY / 4);
+  const shown = `${st.inserted}|${level()}|${now - st.pullAt < PULL_SHOW_MS}`;
+  if (shown !== lastShown) { lastShown = shown; draw(); }
+}, 250);
+setInterval(() => { if (st.pullAt && performance.now() - st.pullAt >= PULL_SHOW_MS && st.inserted) { st.pullAt = 0; draw(); } }, 60);
+
+const SHEETS = ["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open", "rub_insert",
+  "rub_insert_g1", "rub_insert_g2", "rub_insert_g3", "rub_insert_g1p", "rub_insert_g2p", "rub_insert_g3p"];
+Promise.all(SHEETS.map((n) => load(`/test_bodyM/${n}.png?v=10`)))
+  .then(([closed, a35, a70, open, insert, g1, g2, g3, p1, p2, p3]) => {
+    sheets = { closed, a35, a70, open, insert, grip: [null, g1, g2, g3], pull: [null, p1, p2, p3] };
+    draw();
+  })
   .catch((e) => { info.textContent = e.message; console.error(e); });
 
 // 除錯：window.TestBodyMRub.state()
-window.TestBodyMRub = { state: () => ({ ...st, drag: !!st.drag }) };
+window.TestBodyMRub = { state: () => ({ ...st, drag: !!st.drag, level: level() }) };

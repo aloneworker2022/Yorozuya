@@ -87,6 +87,11 @@ if INS_MODE:
     INSERT = 1.0 if PEN_TIP < HOLE_Y - 3.0 else 0.0  # 龜頭頂過了肉穴上緣＝插進去
     SPREAD = False                                 # 不用舊的「插著陰唇撐開」，陰唇照打開那張
     ENT_Y = HOLE_Y                                 # 看得到的莖到肉穴為止，往上是體內（透視）
+# 插著時陰道的反應（2026-11-09 使用者：抽插會收緊，尤其陰道口那一圈纏住陰莖；陰道勃起變長）——只用在 RUB=8 的剖面
+GRIP = float(os.environ.get('GRIP', '0'))          # 收緊 0 鬆 → 1 緊：肉壁腫厚夾住莖、皺褶變密咬著莖，陰道口那圈變厚纏住
+AROUSE = float(os.environ.get('AROUSE', '0'))      # 陰道勃起 0 → 1：陰道變長（子宮頸、子宮往上提 LIFT 格），龜頭上面空著那段撐開（氣球），壁充血變紅
+PULL = float(os.environ.get('PULL', '0'))          # 抽插方向：>0 往外抽（陰道口那圈黏著莖被拖出來）／<0 往裡推（那圈被帶進去一點）
+LIFT = 6.0 * AROUSE
 XRAY = os.environ.get('XRAY', ('1' if INSERT > 0 else '0') if INS_MODE else ('0' if RUB else '1')) == '1'   # 陰道子宮透視（磨蹭不做；插入：龜頭進去後才透視，頂著不透視）
 PEN_GLANS = 9.5                                    # 龜頭長
 PEN_COLORS = {
@@ -605,6 +610,28 @@ def xray(im):
     return im
 
 
+def entry_drag(blend, pen_w, CX, RIMC, LIPC, GRIPC):
+    """往外抽時陰道口那一圈（穴口的肉＋小陰唇內裡）黏著莖被拖出來（使用者：陰道口那一圈會纏住陰莖）：
+    陰道口下面一截肉筒套著莖，上厚下薄、越下面越貼著莖，最下緣一圈紅邊；收得越緊（GRIP）拖得越長。"""
+    L = 5.5 * min(1.0, PULL) * (.35 + .65 * GRIP)
+    if L < .8: return
+    y0 = HOLE_Y + 2.0
+    for y in range(int(y0), int(y0 + L) + 1):
+        fy = y + .5
+        t = (fy - y0) / L                                    # 0 上 … 1 拖出來的最下緣
+        if t > 1: continue
+        sw = pen_w(fy)
+        w = sw + 2.2 * (1 - t) ** .8 + .6                    # 套在莖外面（上厚下薄）
+        for x in range(MIDX - 10, MIDX + 11):
+            u = abs(x + .5 - CX)
+            if u > w or u < sw - .8 - .5 * GRIP: continue    # 只有莖兩側那圈（咬進莖邊一點）
+            if t > .75: c = GRIPC                            # 被拉長的那圈紅邊
+            elif u > w - .9: c = RIMC
+            elif u < sw + .3: c = GRIPC                      # 貼著莖的內面（充血）
+            else: c = LIPC
+            blend(x, y, c, .95)
+
+
 def xray_section(im):
     """插入用的透視＝剖面（使用者：不是圓管＋環）。微微斜角。
     - 子宮：漏斗形——上面寬（子宮底，上緣一道橢圓弧＝斜著看），往下收窄，底下一段子宮頸（小圓頭伸進陰道頂、頸口）；剖面看得到裡面的子宮腔（倒三角＋頸管）。輸卵管＋卵巢。
@@ -620,9 +647,11 @@ def xray_section(im):
     CX = MIDX + .5
     # ---- 子宮（漏斗）----
     # 龜頭頂到子宮頸後再往裡推：子宮被往裡頂、壓扁變形（子宮頸跟著龜頭往裡、變短變寬；漏斗變矮、兩邊鼓；子宮底只退一點）
-    push = max(0.0, 60.0 - PEN_TIP) if (INSERT > .05 and PENIS in PEN_COLORS) else 0.0
-    F_TOP, F_BOT, F_W, NECK_W = 47.0 - .35 * push, 56.0 - .85 * push, 8.2 + .4 * push, 2.4 + .3 * push   # 子宮底、漏斗底、上寬、頸寬
-    CERV_BOT = 60.0 - push                                   # 子宮頸伸到陰道頂（被龜頭頂著走）
+    # 陰道勃起（AROUSE）：陰道變長＝整個子宮、子宮頸往上提 LIFT 格（同樣插到 54 就頂得比較淺）
+    cerv0 = 60.0 - LIFT
+    push = max(0.0, cerv0 - PEN_TIP) if (INSERT > .05 and PENIS in PEN_COLORS) else 0.0
+    F_TOP, F_BOT, F_W, NECK_W = 47.0 - LIFT - .35 * push, 56.0 - LIFT - .85 * push, 8.2 + .4 * push, 2.4 + .3 * push   # 子宮底、漏斗底、上寬、頸寬
+    CERV_BOT = cerv0 - push                                  # 子宮頸伸到陰道頂（被龜頭頂著走）
     def uw(y):
         if y < F_TOP: return 0
         if y <= F_BOT:
@@ -644,7 +673,7 @@ def xray_section(im):
     for (x, y) in pixel_perfect(stroke([(MIDX, F_TOP + 1.5), (MIDX, CERV_BOT)])): blend(x, y, CAV, .9)   # 頸管
     for d in (-1, 1):                                          # 子宮腔：倒三角的兩邊
         for (x, y) in pixel_perfect(stroke([(CX + d * (F_W - 3), F_TOP + 1), (CX + d * .4, F_BOT - .5)])): blend(x, y, CAV, .8)
-    for d, oy in ((-1, 50.0 - .35 * push), (1, 49.0 - .35 * push)):  # 輸卵管＋卵巢（跟著子宮被頂上去）
+    for d, oy in ((-1, 50.0 - LIFT - .35 * push), (1, 49.0 - LIFT - .35 * push)):  # 輸卵管＋卵巢（跟著子宮被頂上去）
         tube = [(CX + d * (F_W - .5), F_TOP - .2), (CX + d * (F_W + 3), F_TOP - 1.6), (CX + d * (F_W + 6), F_TOP - .2), (CX + d * (F_W + 7.2), oy - 1.2)]
         for (x, y) in pixel_perfect(stroke(cr(tube))): blend(x, y, RIM, .8)
         ox = CX + d * (F_W + 7.4)
@@ -668,19 +697,31 @@ def xray_section(im):
     def chamber(y):
         t = (y - CH_TOP) / CH_H
         return CH_W * math.sin(math.pi * t) ** .7 if 0 <= t <= 1 else 0
+    # 反應：收緊（GRIP）＝靠陰道口那 1/3 肉壁腫厚、皺褶變密變深、兩壁往裡夾住莖；勃起（AROUSE）＝壁充血、龜頭上面空著那段撐開
+    WALL_C = tuple(int(WALL[j] + (CAV[j] - WALL[j]) * .35 * max(GRIP, AROUSE)) for j in range(3))
+    def outer3(fy): return min(1.0, max(0.0, ((fy - top_y) / max(1, bot_y - top_y) - .5) / .4))   # 0 裡面 … 1 靠陰道口
+    RUG_STEP = 2 if GRIP > .5 else 3
+    def is_rug(y): return y % RUG_STEP == 0
+    b0 = CH_TOP + CH_H * .6                                   # 氣球：子宮口前那塊往下、到龜頭頂上面
+    b1 = (PEN_TIP - .5) if pen_in else bot_y
+    def balloon(fy):
+        t = (fy - b0) / max(1, b1 - b0)
+        return 1.8 * AROUSE * math.sin(math.pi * t) ** .8 if 0 < t < 1 else 0
     for y in range(int(top_y), int(bot_y) + 1):
         fy = y + .5
         g = pen_w(fy) * persp(fy)
         flare = max(0, (fy - (bot_y - 5)) / 5) * 1.6 if pen_in else 0     # 靠陰道口那段被撐開、往外張
         ch = chamber(fy)
-        gap = max((g + .2 + flare) if g > 0 else .5, ch + .5 if ch else 0)   # 兩壁之間：插著＝陰莖寬；沒插＝一條縫；子宮口前鼓開一小塊
-        rug = .7 if (y % 3 == 0) else 0                          # 皺褶：內緣一節一節往裡凸
+        bl = balloon(fy) if g == 0 else 0
+        gap = max((g + .2 + flare - .5 * GRIP) if g > 0 else .5, ch + .5 if ch else 0, bl + .5 if bl else 0)   # 兩壁之間：插著＝陰莖寬（收緊時夾進去）；沒插＝一條縫；子宮口前鼓開一小塊；勃起時上段撐開
+        WT = 1.8 + GRIP * (.4 + 1.2 * outer3(fy))               # 陰道壁厚（收緊：靠陰道口那段腫厚）
+        rug = (.7 + .6 * GRIP) if is_rug(y) else 0               # 皺褶：內緣一節一節往裡凸（收緊：更深）
         for x in range(MIDX - 12, MIDX + 13):
             u = abs(x + .5 - CX)
             if gap - rug < u <= gap + WT:
-                blend(x, y, RIM if (u > gap + WT - .9 or u <= gap - rug + .8) else WALL, .85)
+                blend(x, y, RIM if (u > gap + WT - .9 or u <= gap - rug + .8) else WALL_C, .85)
             elif u <= gap and g == 0:
-                blend(x, y, (240, 168, 184) if ch > .8 else CAV, .7)   # 沒插：中間那條縫；子宮口前的小空間淡粉
+                blend(x, y, (240, 168, 184) if (ch > .8 or bl > .8) else CAV, .7)   # 沒插：中間那條縫；子宮口前的小空間、撐開那段淡粉
     for y in range(int(CERV_BOT) - 2, int(CERV_BOT) + 1):     # 子宮頸小圓頭露在空間裡（頸口）
         for x in range(MIDX - 3, MIDX + 4):
             e = ((x + .5 - CX) / (NECK_W * .9)) ** 2 + ((y + .5 - (CERV_BOT - 1)) / 1.6) ** 2
@@ -696,18 +737,32 @@ def xray_section(im):
                 if abs(u) > w: continue
                 edge = abs(u) > w - 1 or y == int(PEN_TIP)
                 blend(x, y, C['edge'] if edge else C['base'], .85 if y < HOLE_Y - 8 else 1.0)   # 靠陰道口那段不透（蓋掉底下陰唇的紅邊）
+        # 收緊：兩壁咬進莖邊（皺褶那幾列咬得深）＝一節一節夾著莖
+        if GRIP > .05:
+            for y in range(int(PEN_TIP) + 1, int(ENT_Y)):
+                fy = y + .5
+                w = pen_w(fy) * persp(fy)
+                bite = GRIP * ((1.2 if is_rug(y) else .5) + .6 * outer3(fy))
+                for x in range(MIDX - 8, MIDX + 9):
+                    u = abs(x + .5 - CX)
+                    if w - bite < u <= w + .3: blend(x, y, RIM if is_rug(y) else WALL_C, .8)
         # 陰道口＝斜著看的一圈肉環套在陰莖上（使用者紫線）：前半圈是一道往上拱的弧，跨過陰莖、兩端繞到兩側往下
-        RIMC, LIPC = (204, 96, 112), (238, 160, 166)
+        RIMC, LIPC, GRIPC = (204, 96, 112), (238, 160, 166), (208, 52, 72)
         ry = 6.8
-        for k in range(3):                                      # 厚度 3 格：外緣深、中間淡、內緣深
-            rx = pen_w(HOLE_Y) + 1.4 - k * .55
+        dy_in = -1.2 * max(0.0, -PULL)                          # 往裡推：那圈被帶進去一點
+        K = 3 + (1 if GRIP > .4 else 0) + (1 if GRIP > .8 else 0)   # 收緊：那圈腫厚（3 → 5 格）
+        for k in range(K):                                      # 外緣深、中間淡、內緣深（收緊時內緣充血紅、咬進莖邊）
+            rx = pen_w(HOLE_Y) + 1.4 + .3 * (K - 3) - k * .55
+            c = RIMC if k in (0, K - 1) else LIPC
+            if k == K - 1 and GRIP > .3: c = GRIPC
             for i in range(-40, 41):
                 t = i / 40 * math.pi / 2
                 x = CX + rx * math.sin(t)
-                y = HOLE_Y + 1.0 - ry * math.cos(t) + k * .7
-                blend(x, y, RIMC if k != 1 else LIPC, .95)
-            for y in range(int(HOLE_Y + 1.0) + k, int(HOLE_Y) + 4):   # 兩端繞到陰莖兩側往下
-                for sx in (-1, 1): blend(CX + sx * (rx - .4), y, RIMC if k != 1 else LIPC, .9)
+                y = HOLE_Y + 1.0 - ry * math.cos(t) + k * .7 + dy_in
+                blend(x, y, c, .95)
+            for y in range(int(HOLE_Y + 1.0 + dy_in) + k, int(HOLE_Y) + 4):   # 兩端繞到陰莖兩側往下
+                for sx in (-1, 1): blend(CX + sx * (rx - .4), y, c, .9)
+        if PULL > 0: entry_drag(blend, pen_w, CX, RIMC, LIPC, GRIPC)   # 往外抽：陰道口那圈黏著莖被拖出來
     return im
 
 
