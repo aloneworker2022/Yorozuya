@@ -131,7 +131,7 @@ function drawCum() {
         put(d, 128, x, y, (x + y) % 3 ? CUM_WHITE : CUM_SHADE, .9);
       }
     }
-    const over = Math.max(0, st.inside - 1);                   // 太多：流進陰道（陰道變乳白、陰莖包一層；不再畫陰莖兩邊的白線）
+    const over = Math.max(0, st.inside - 1);                   // 太多：流進陰道（只填在陰道裡面、陰莖包一層；陰道壁保持肉色）
     const milk = Math.min(1, over / 1.2);                      // 0～1：陰道多白
     if (milk > 0) {
       const y0 = Math.floor(cerv - .8 + CH_H - 1);
@@ -140,13 +140,20 @@ function drawCum() {
         const inPen = y >= tipY;
         const g = inPen ? (y < tipY + 9.5 ? 5.6 : 5.0) * pf + .2 : .5;
         const flare = Math.max(0, (y - (HOLE_Y - 6.5)) / 5) * 1.6;
-        const band = g + flare + 1.8;                            // 陰道（壁＋裡面）
-        for (let x = Math.floor(64.5 - band); x <= Math.ceil(64.5 + band); x++) {
-          const u = Math.abs(x + .5 - 64.5);
-          if (u > band) continue;
-          const k = (y * 128 + x) * 4, dark = d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110;
-          if (dark) put(d, 128, x, y, u > g - 1 ? [168, 162, 180] : [222, 218, 226], .7 + .15 * milk);   // 陰莖整根被一層乳白蓋住（偏灰一點、邊深一圈，跟陰道的乳白分得開）
-          else put(d, 128, x, y, MILK, (.6 + .32 * milk));                                   // 陰道染乳白（濃、不太透）
+        // 只填在陰道裡面（壁保持肉色）：從中間往兩邊，陰莖那段整根蓋乳白，碰到壁前多塗一格白；龜頭上面＝那條縫
+        const isDark = (x) => { const k = (y * 128 + x) * 4; return d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110; };
+        const penRow = inPen && (isDark(62) || isDark(66));           // 中間那列是尿道（不是黑），看旁邊
+        if (!penRow) {
+          for (let x = 64; x <= 65; x++) put(d, 128, x, y, MILK, .85 + .1 * milk);
+        } else for (const sx of [-1, 1]) {
+          if (sx < 0) put(d, 128, 64, y, [222, 218, 226], .5);         // 尿道那列也蓋一層
+          let x = sx < 0 ? 63 : 65;
+          while (x >= 0 && x < 128 && isDark(x)) {
+            const edge = !isDark(x + sx);
+            put(d, 128, x, y, edge ? [168, 162, 180] : [222, 218, 226], .7 + .15 * milk);   // 陰莖整根被一層乳白蓋住（邊深一圈）
+            x += sx;
+          }
+          put(d, 128, x, y, MILK, .85);                             // 陰莖和壁之間那一層
         }
       }
     }
