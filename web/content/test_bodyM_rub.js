@@ -6,7 +6,8 @@
 //   rub_insert.png：插入（龜頭頂 INS0～INS1，陰道子宮剖面透視）
 //   rub_insert_g1～g3.png：插著的反應 1～3 階（陰道收緊、陰道口那圈纏住陰莖、陰道勃起變長＝子宮頸往上提 LIFT_PER_LV 格／階）
 //   rub_insert_g1p～g3p.png：同上、往外抽的那一下（陰道口那圈黏著莖被拖出來）
-//   rub_insert_g2s／g3s.png：2、3 階痙攣那一下（陰道因為興奮一抖一抖：整條再夾緊、上段縮回、兩旁「(( ))」）
+//   rub_insert_g2s／g3s.png：2、3 階痙攣那一下（陰道因為興奮一抖一抖鎖緊：整條再夾緊、上段縮回）
+//   rub_insert_lumen.png：上面插入那 9 條的陰道空間遮罩（一條一列，LUMEN_ROWS 順序；紅＝陰道裡空著）——內射的精液照陰道形狀流
 // 插入：打開後要先把龜頭拉到肉穴口（龜頭頂 ≥ AT_HOLE＝對準），再往上推才插進去（最深到子宮頸）；
 //   在上面磨（沒對準）只是疊在陰唇上；插著時往下拉出肉穴口就回到疊著。
 // 操作：手指按住陰莖任何一段，上下拖動陰莖摩擦陰唇；碰著陰唇時累積移動距離，每 RUB_DIST 格算一下，
@@ -26,8 +27,7 @@ const URETHRA_EMPTY = [56, 48, 66], CUM_WHITE = [250, 248, 252], CUM_SHADE = [21
 // 射精：漲滿就射，分 SHOTS 股、每股間隔 SHOT_MS；插著＝內射（灌進陰道、子宮，拔出來從肉穴口流出），在外面＝噴在她身上
 const SHOTS = 4, SHOT_MS = 380;
 const JERK_MS = 140;                  // 每一股陰莖往前抖一下（射精時不能前後拖）
-const CH_H = 5.2, CH_W = 3.4;         // 子宮口前的小空間（陰道接子宮口那段往兩邊微微鼓開）：內射只積在這裡，不會進子宮
-const chamberW = (y, cerv) => { const t = (y - (cerv - .8)) / CH_H; return t >= 0 && t <= 1 ? CH_W * Math.sin(Math.PI * t) ** .7 + .5 : 0; };
+const CH_H = 5.2;                     // 子宮口前的小空間（陰道接子宮口那段往兩邊微微鼓開）的高；內射先積在這裡，太多才順著陰道往外流
 const INSIDE_MAX = 3;
 const MILK = [246, 240, 236];         // 精液流進陰道後的乳白色（陰道染白、陰莖被包一層）                 // 射在裡面的量（1＝空間裝滿；超過就沿著陰莖往外流、從陰道口噴出來）
 // 插著的反應：抽送每移動 1 格加 REACT_PER_PX（0～3 階）；停下來 REACT_IDLE_MS 後每秒退 REACT_DECAY
@@ -81,8 +81,11 @@ function draw() {
   ctx.clearRect(0, 0, 128, 128);
   if (st.inserted) {
     const lv = level(), pulling = performance.now() - st.pullAt < PULL_SHOW_MS;
-    const sheet = lv ? (st.spasm && sheets.spasm[lv] ? sheets.spasm[lv] : pulling ? sheets.pull[lv] : sheets.grip[lv]) : sheets.insert;
-    ctx.drawImage(sheet, Math.max(0, tipNow - INS0) * 128, 0, 128, 128, 0, 0, 128, 128);
+    const spasm = st.spasm && sheets.spasm[lv];
+    const sheet = lv ? (spasm ? sheets.spasm[lv] : pulling ? sheets.pull[lv] : sheets.grip[lv]) : sheets.insert;
+    cur.variant = lv ? `g${lv}${spasm ? "s" : pulling ? "p" : ""}` : "insert";
+    cur.frame = Math.max(0, Math.min(INS1 - INS0, tipNow - INS0));
+    ctx.drawImage(sheet, cur.frame * 128, 0, 128, 128, 0, 0, 128, 128);
   } else {
     const sheet = !st.opened ? sheets.closed : [sheets.a35, sheets.a70, sheets.open][Math.min(2, st.openStep)];
     ctx.drawImage(sheet, i * 128, 0, 128, 128, 0, 0, 128, 128);
@@ -90,6 +93,81 @@ function draw() {
   drawUrethra();
   drawCum();
   info.textContent = (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? `插入中・${["", "陰道收緊", "陰道纏住、變長", "緊緊纏住、勃起變長"][level()] || "還鬆鬆的"}${st.spasm || st.spasmLeft ? "・一抖一抖地痙攣" : ""}` : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
+}
+
+// ---- 陰道空間遮罩（內射的精液照陰道形狀流，陰道腫脹撐開時也跟著） ----
+const LUMEN_ROWS = ["insert", "g1", "g1p", "g2", "g2p", "g2s", "g3", "g3p", "g3s"];
+const cur = { variant: "insert", frame: 0 };
+let lumenImg = null;
+const lumenCache = new Map();
+const lumenCv = document.createElement("canvas"); lumenCv.width = lumenCv.height = 128;
+const lumenCtx = lumenCv.getContext("2d", { willReadFrequently: true });
+function lumenMask() {                                      // 現在這一格：Uint8Array(128×128)，1＝陰道裡空著
+  if (!lumenImg) return null;
+  const key = `${cur.variant}|${cur.frame}`;
+  if (lumenCache.has(key)) return lumenCache.get(key);
+  const row = Math.max(0, LUMEN_ROWS.indexOf(cur.variant));
+  lumenCtx.clearRect(0, 0, 128, 128);
+  lumenCtx.drawImage(lumenImg, cur.frame * 128, row * 128, 128, 128, 0, 0, 128, 128);
+  const src = lumenCtx.getImageData(0, 0, 128, 128).data, m = new Uint8Array(128 * 128);
+  for (let i = 0; i < m.length; i++) m[i] = src[i * 4] > 128 ? 1 : 0;
+  lumenCache.set(key, m);
+  return m;
+}
+const hash = (x, y) => { let h = Math.imul(x * 374761393 + y * 668265263, 1274126177); h ^= h >>> 15; h = Math.imul(h, 2246822519); return ((h ^ (h >>> 13)) >>> 0) / 4294967296; };
+const LUMEN_PX_PER_SHOT = 7;                                 // 每股精液佔幾格（第 4 股剛好裝滿子宮口前那塊）
+// 精液能到的地方：陰道裡空著的格子＋皺褶齒縫（上下都空著的那格），液面才是圓順的、不會變成一節一節的梯子
+function fluidMask(m) {
+  const f = new Uint8Array(m);
+  for (let y = 1; y < 127; y++) for (let x = 1; x < 127; x++) {
+    const k = y * 128 + x;
+    if (!m[k] && m[k - 128] && m[k + 128]) f[k] = 1;
+  }
+  return f;
+}
+// 從起點一格一格往外漫（只走 f 裡面，連著的）：每次挑 key 最小的鄰格——往下（陰道口）容易、貼著壁容易、加一點固定雜訊（前緣參差、不會閃）
+function flood(f, seeds, count, seed = 0) {
+  const done = new Uint8Array(128 * 128), out = [], front = [];
+  const key = (x, y) => y - (!f[y * 128 + x - 1] || !f[y * 128 + x + 1] ? 1.3 : 0) + hash(x + seed, y) * 1.8;
+  const push = (x, y) => { const k = y * 128 + x; if (x < 1 || x > 126 || y < 1 || y > 126 || !f[k] || done[k]) return; done[k] = 1; front.push({ x, y, k: key(x, y) }); };
+  for (const [x, y] of seeds) push(x, y);
+  while (out.length < count && front.length) {
+    let bi = 0;
+    for (let i = 1; i < front.length; i++) if (front[i].k < front[bi].k) bi = i;
+    const c = front.splice(bi, 1)[0];
+    out.push(c);
+    push(c.x, c.y + 1); push(c.x - 1, c.y); push(c.x + 1, c.y); push(c.x, c.y - 1);
+  }
+  return out;
+}
+function paintFluid(d, f, cells) {
+  const on = new Uint8Array(128 * 128);
+  for (const c of cells) on[c.y * 128 + c.x] = 1;
+  for (const { x, y } of cells) {
+    const front = [[0, 1], [1, 0], [-1, 0]].some(([dx, dy]) => f[(y + dy) * 128 + x + dx] && !on[(y + dy) * 128 + x + dx]);
+    put(d, 128, x, y, front ? [226, 220, 230] : hash(x, y + 3) < .15 ? CUM_WHITE : MILK, front ? .8 : .92);   // 前緣淡一點、偶爾亮點
+  }
+}
+const topCells = (f) => {                                    // 最上面那一列（子宮口前）＝精液的起點
+  for (let y = 0; y < 128; y++) { const r = []; for (let x = 40; x < 88; x++) if (f[y * 128 + x]) r.push([x, y]); if (r.length) return r; }
+  return [];
+};
+// 從子宮口往陰道口流（重力往畫面下面）：先積在子宮口前那塊，太多就順著陰道往下流，照陰道的形狀（腫脹撐開時也跟著）
+function fillLumen(d, m, vol) {
+  const f = fluidMask(m);
+  paintFluid(d, f, flood(f, topCells(f), Math.round(vol * SHOTS * LUMEN_PX_PER_SHOT)));
+}
+// 這一股：一小團精液從龜頭頂往子宮口衝上去（沿著陰道空著的地方，不是一條線），到頂濺開
+const SPURT_FLY_MS = 150;
+function drawSpurtInside(d, m, sp) {
+  const f = fluidMask(m);
+  const t = Math.min(1, (performance.now() - sp.t0) / SPURT_FLY_MS);
+  const yc = Math.round(sp.y0 + (sp.y1 - sp.y0) * t);
+  let seed = null;
+  for (let dy = 0; dy < 4 && !seed; dy++) for (const dx of [0, -1, 1, -2, 2]) if (f[(yc + dy) * 128 + 64 + dx]) { seed = [64 + dx, yc + dy]; break; }
+  if (!seed) return;
+  const n = t < 1 ? 5 : 12;                                  // 飛的時候一小團，撞到子宮口濺開一片
+  for (const c of flood(f, [seed], n, sp.seed)) put(d, 128, c.x, c.y, hash(c.x, c.y) < .3 ? CUM_SHADE : CUM_WHITE, .95);
 }
 
 // 尿道：陰莖中線一條細線（根部 → 龜頭頂的尿道口）；只畫在陰莖上（被陰唇包住的地方不畫）
@@ -136,17 +214,8 @@ function drawCum() {
   const tipY = Math.round(st.tip) + st.jerk;
   if (st.inside && st.inserted) {
     const c0 = cervix0(level()), push = Math.max(0, c0 - tipY), cerv = c0 - push;   // 子宮頸被頂著走（陰道勃起變長：子宮頸往上提）
-    const fill = Math.min(1, st.inside);                       // 子宮口前的小空間：從子宮口往下積滿
-    for (let y = Math.floor(cerv - .8); y <= Math.ceil(cerv - .8 + CH_H); y++) {
-      if ((y + .5 - (cerv - .8)) / CH_H > fill) continue;
-      const w = chamberW(y + .5, cerv);
-      for (let x = Math.floor(64.5 - w); x <= Math.ceil(64.5 + w); x++) {
-        const u = x + .5 - 64.5;
-        if (Math.abs(u) > w - .4) continue;                      // 留著壁
-        if (Math.abs(u) < 2 && y < cerv + .5) continue;           // 子宮頸本身（頸口不灌進去）
-        put(d, 128, x, y, (x + y) % 3 ? CUM_WHITE : CUM_SHADE, .9);
-      }
-    }
+    const m = lumenMask();
+    if (m) fillLumen(d, m, st.inside);                         // 從子宮口前那塊開始積，太多就順著陰道往陰道口流（照陰道形狀）
     const over = Math.max(0, st.inside - 1);                   // 太多：流進陰道（只填在陰道裡面、陰莖包一層；陰道壁保持肉色）
     const milk = Math.min(1, over / 1.2);                      // 0～1：陰道多白
     if (milk > 0) {
@@ -159,9 +228,7 @@ function drawCum() {
         // 只填在陰道裡面（壁保持肉色）：從中間往兩邊，陰莖那段整根蓋乳白，碰到壁前多塗一格白；龜頭上面＝那條縫
         const isDark = (x) => { const k = (y * 128 + x) * 4; return d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110; };
         const penRow = inPen && (isDark(62) || isDark(66));           // 中間那列是尿道（不是黑），看旁邊
-        if (!penRow) {
-          for (let x = 64; x <= 65; x++) put(d, 128, x, y, MILK, .85 + .1 * milk);
-        } else for (const sx of [-1, 1]) {
+        if (penRow) for (const sx of [-1, 1]) {
           if (sx < 0) put(d, 128, 64, y, [222, 218, 226], .5);         // 尿道那列也蓋一層
           let x = sx < 0 ? 63 : 65;
           while (x >= 0 && x < 128 && isDark(x)) {
@@ -169,7 +236,6 @@ function drawCum() {
             put(d, 128, x, y, edge ? [168, 162, 180] : [222, 218, 226], .7 + .15 * milk);   // 陰莖整根被一層乳白蓋住（邊深一圈）
             x += sx;
           }
-          put(d, 128, x, y, MILK, .85);                             // 陰莖和壁之間那一層
         }
       }
     }
@@ -196,7 +262,9 @@ function drawCum() {
       }
   }
   for (const dr of st.drops) blob(d, dr.x, dr.y, dr.r);      // 抽插帶出來、往下流的精液
-  if (st.spurt) {                                            // 這一股：從尿道口噴出去的白線
+  const mSp = st.spurt && st.spurt.inside ? lumenMask() : null;
+  if (mSp) drawSpurtInside(d, mSp, st.spurt);                 // 內射這一股：彎彎曲曲沿著陰道
+  else if (st.spurt) {                                        // 在外面這一股：從尿道口噴出去的白線
     const sp = st.spurt;
     const n = Math.max(12, Math.abs(sp.y1 - sp.y0));
     for (let i = 0; i <= n; i++) {
@@ -212,7 +280,8 @@ function shootOnce() {
   setTimeout(() => { st.jerk = 0; draw(); }, JERK_MS);
   if (st.inserted) {                                         // 內射：一股從龜頭射到子宮口旁的空間（不進子宮）
     const c0 = cervix0(level()), cerv = c0 - Math.max(0, c0 - tipY);
-    st.spurt = { x: 64.5, y0: tipY - 1, y1: Math.min(tipY - 1, cerv + 1.5) };
+    st.spurt = { inside: true, seed: Math.floor(Math.random() * 1000), t0: performance.now(), y0: tipY - 2, y1: Math.min(tipY - 2, Math.round(cerv + 1)) };
+    const fly = setInterval(() => { if (!st.spurt || performance.now() - st.spurt.t0 > SPURT_FLY_MS + 40) clearInterval(fly); draw(); }, 30);
     const before = st.inside;
     st.inside = Math.min(INSIDE_MAX, st.inside + 1 / SHOTS);
     if (st.inside > 1.5 && before <= st.inside) { st.leak = 1; setTimeout(() => { st.leak = 0; draw(); }, 220); }   // 太多：噴出來
@@ -356,9 +425,10 @@ setInterval(() => {
 }, 100);
 
 const SHEETS = ["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open", "rub_insert",
-  "rub_insert_g1", "rub_insert_g2", "rub_insert_g3", "rub_insert_g1p", "rub_insert_g2p", "rub_insert_g3p", "rub_insert_g2s", "rub_insert_g3s"];
-Promise.all(SHEETS.map((n) => load(`/test_bodyM/${n}.png?v=11`)))
-  .then(([closed, a35, a70, open, insert, g1, g2, g3, p1, p2, p3, s2, s3]) => {
+  "rub_insert_g1", "rub_insert_g2", "rub_insert_g3", "rub_insert_g1p", "rub_insert_g2p", "rub_insert_g3p", "rub_insert_g2s", "rub_insert_g3s", "rub_insert_lumen"];
+Promise.all(SHEETS.map((n) => load(`/test_bodyM/${n}.png?v=12`)))
+  .then(([closed, a35, a70, open, insert, g1, g2, g3, p1, p2, p3, s2, s3, lumen]) => {
+    lumenImg = lumen;
     sheets = { closed, a35, a70, open, insert, grip: [null, g1, g2, g3], pull: [null, p1, p2, p3], spasm: [null, null, s2, s3] };
     draw();
   })

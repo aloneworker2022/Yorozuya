@@ -6,7 +6,8 @@
   rub_insert.png：插入（RUB=8，龜頭頂 INS0～INS1；龜頭進去後才有陰道子宮剖面透視）
   rub_insert_g1～g3.png：插著的反應 1～3 階（GRIP＝AROUSE＝階/3：陰道收緊、陰道口那圈纏住、陰道勃起變長）
   rub_insert_g1p～g3p.png：同上、往外抽的那一下（PULL=1：陰道口那圈黏著莖被拖出來）
-  rub_insert_g2s／g3s.png：2、3 階的痙攣那一下（SPASM=1：陰道因為興奮一抖一抖，網頁一陣一陣跟平常那條交替）
+  rub_insert_g2s／g3s.png：2、3 階的痙攣那一下（SPASM=1：陰道因為興奮一抖一抖鎖緊，網頁一陣一陣跟平常那條交替）
+  rub_insert_lumen.png：上面插入那 9 條的陰道空間遮罩（一條一列，照 LUMEN_ROWS 順序；紅＝陰道裡空著）——網頁讓內射的精液照陰道形狀流
 用法：python3 gen_rub_sheets.py [輸出資料夾，預設 web/test_bodyM]
 """
 import os, sys, subprocess, tempfile
@@ -22,6 +23,8 @@ with tempfile.TemporaryDirectory() as td:
         r = {'GRIP': str(lv / 3), 'AROUSE': str(lv / 3)}
         jobs += [(8, f'rub_insert_g{lv}.png', 1, r), (8, f'rub_insert_g{lv}p.png', 1, {**r, 'PULL': '1'})]
         if lv >= 2: jobs.append((8, f'rub_insert_g{lv}s.png', 1, {**r, 'SPASM': '1'}))
+    LUMEN_ROWS = [n for (m, n, a, e) in jobs if m == 8]
+    lumen = Image.new('RGB', (128 * (INS1 - INS0 + 1), 128 * len(LUMEN_ROWS)), (0, 0, 0))
     only = os.environ.get('ONLY')                         # 只重產某幾條（逗號分隔檔名）
     for mode, name, amt, extra in jobs:
         if only and name not in only.split(','): continue
@@ -30,8 +33,13 @@ with tempfile.TemporaryDirectory() as td:
         for i, t in enumerate(ts):
             fp = os.path.join(td, f'{mode}_{t}.png')
             subprocess.run([sys.executable, os.path.join(HERE, 'trace128.py'), fp, '--fill'], check=True,
-                           env={**os.environ, 'RUB': str(mode), 'PTIP': str(t), 'OPEN_AMT': str(amt), **extra})
+                           env={**os.environ, 'RUB': str(mode), 'PTIP': str(t), 'OPEN_AMT': str(amt), **extra,
+                                **({'LUMEN_OUT': fp + '.lumen.png'} if mode == 8 else {})})
             sheet.paste(Image.open(fp).convert('RGBA'), (128 * i, 0))
+            if mode == 8: lumen.paste(Image.open(fp + '.lumen.png'), (128 * i, 128 * LUMEN_ROWS.index(name)))
         sheet.save(os.path.join(OUT, name), optimize=True)
         print(name, sheet.size)
+    if not only or 'lumen' in only:
+        lumen.save(os.path.join(OUT, 'rub_insert_lumen.png'), optimize=True)
+        print('rub_insert_lumen.png', lumen.size, LUMEN_ROWS)
 print('tips', TIP0, TIP1, 'insert', INS0, INS1)

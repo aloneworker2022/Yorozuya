@@ -92,7 +92,8 @@ GRIP = float(os.environ.get('GRIP', '0'))          # 收緊 0 鬆 → 1 緊：�
 AROUSE = float(os.environ.get('AROUSE', '0'))      # 陰道勃起 0 → 1：陰道變長（子宮頸、子宮往上提 LIFT 格），龜頭上面空著那段撐開（氣球），壁充血變紅
 PULL = float(os.environ.get('PULL', '0'))          # 抽插方向：>0 往外抽（陰道口那圈黏著莖被拖出來）／<0 往裡推（那圈被帶進去一點）
 LIFT = 6.0 * AROUSE
-SPASM = float(os.environ.get('SPASM', '0'))        # 痙攣（2026-11-09 使用者：陰道因為興奮一抖一抖）：0 平常 → 1 抽的那一下（整條再夾緊一次、上段縮回、陰道口那圈收進去、兩旁抖動記號）
+SPASM = float(os.environ.get('SPASM', '0'))        # 痙攣（2026-11-09 使用者：陰道因為興奮一抖一抖鎖緊）：0 平常 → 1 抽的那一下（整條再夾緊一次、上段縮回、陰道口那圈收進去；不畫抖動符號）
+LUMEN = set()                                      # 陰道裡空著的格子（網頁用來讓精液照陰道形狀流）；LUMEN_OUT＝輸出遮罩 png
 XRAY = os.environ.get('XRAY', ('1' if INSERT > 0 else '0') if INS_MODE else ('0' if RUB else '1')) == '1'   # 陰道子宮透視（磨蹭不做；插入：龜頭進去後才透視，頂著不透視）
 PEN_GLANS = 9.5                                    # 龜頭長
 PEN_COLORS = {
@@ -719,6 +720,7 @@ def xray_section(im):
         rug = (.7 + .6 * GRIP + .4 * SPASM) if is_rug(y) else 0               # 皺褶：內緣一節一節往裡凸（收緊：更深）
         for x in range(MIDX - 12, MIDX + 13):
             u = abs(x + .5 - CX)
+            if u <= gap - rug and not (g > 0 and u <= g): LUMEN.add((x, y))
             if gap - rug < u <= gap + WT:
                 blend(x, y, RIM if (u > gap + WT - .9 or u <= gap - rug + .8) else WALL_C, .85)
             elif u <= gap and g == 0:
@@ -726,7 +728,7 @@ def xray_section(im):
     for y in range(int(CERV_BOT) - 2, int(CERV_BOT) + 1):     # 子宮頸小圓頭露在空間裡（頸口）
         for x in range(MIDX - 3, MIDX + 4):
             e = ((x + .5 - CX) / (NECK_W * .9)) ** 2 + ((y + .5 - (CERV_BOT - 1)) / 1.6) ** 2
-            if e < 1: blend(x, y, RIM if e > .5 else WALL, .9)
+            if e < 1: blend(x, y, RIM if e > .5 else WALL, .9); LUMEN.discard((x, y))   # 子宮頸本身不算空間
     blend(MIDX, int(CERV_BOT), CAV, .95)
     # 體內那段陰莖（剖面裡，在兩壁中間；不再蓋環）
     if pen_in:
@@ -764,14 +766,6 @@ def xray_section(im):
             for y in range(int(HOLE_Y + 1.0 + dy_in) + k, int(HOLE_Y) + 4):   # 兩端繞到陰莖兩側往下
                 for sx in (-1, 1): blend(CX + sx * (rx - .4), y, c, .9)
         if PULL > 0: entry_drag(blend, pen_w, CX, RIMC, LIPC, GRIPC)   # 往外抽：陰道口那圈黏著莖被拖出來
-        if SPASM > .5:                                          # 痙攣：陰道兩旁的抖動記號「))」「((」（漫畫的ピクピク）
-            for my in (top_y + (bot_y - top_y) * .42, top_y + (bot_y - top_y) * .8):   # 照陰道長度放（不管插多深）
-                base = max(pen_w(my) * persp(my), balloon(my), 1.2) + 1.8 + GRIP * 1.2 + 2.6
-                for sx in (-1, 1):
-                    for j in range(2):
-                        ux = base + j * 3
-                        for (ox, oy) in ((0, -2), (1, -1), (1, 0), (1, 1), (0, 2)):
-                            blend(CX + sx * (ux + ox), my + oy, RIM, .9)
     return im
 
 
@@ -783,5 +777,10 @@ if __name__ == '__main__':
     if a.fill:
         im = fill_preview(im)
         if XRAY: im = xray_section(im) if INS_MODE else xray(im)
+    if os.environ.get('LUMEN_OUT'):                     # 陰道空間遮罩：紅＝空著（陰莖、陰道壁、子宮頸以外）
+        m = Image.new('RGB', (N, N), (0, 0, 0)); mp = m.load()
+        for (x, y) in LUMEN:
+            if 0 <= x < N and 0 <= y < N and y < HOLE_Y: mp[x, y] = (255, 0, 0)
+        m.save(os.environ['LUMEN_OUT'])
     if a.up > 1: im = im.resize((N * a.up, N * a.up), Image.NEAREST)
     im.save(a.out)
