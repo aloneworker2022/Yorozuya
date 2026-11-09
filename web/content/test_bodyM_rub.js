@@ -16,13 +16,16 @@ const RUBS_TO_OPEN = 4;               // 摩擦幾下陰唇打開
 const PEN_HALF_W = 7;                 // 按得到陰莖的半寬（128 格）
 const INS0 = 54, INS1 = 84;           // 插入圖片條：龜頭頂 54（頂到子宮頸再往裡推 6 格，子宮被壓扁）～84（剛進肉穴口）
 const AT_HOLE = 85;                   // 打開後龜頭拉到這列以下＝頂在肉穴口（對準了），往上推才插進去
-const OPEN_STEP_MS = 110;             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
+const OPEN_STEP_MS = 110;
+// 尿道漲精液：碰著陰唇磨、或插著抽送時，每移動 1 格加 CUM_PER_PX；白色從根部往龜頭慢慢漲上去，漲滿停在尿道口
+const CUM_PER_PX = 1 / 160;
+const URETHRA_EMPTY = [56, 48, 66], CUM_WHITE = [250, 248, 252], CUM_SHADE = [214, 212, 226];             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
 
 const section = document.createElement("section");
 section.className = "card";
 section.innerHTML = `
   <h2 style="margin-top:0">0. 磨蹭陰唇（像素）</h2>
-  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。</p>
+  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液。</p>
   <div style="display:flex;justify-content:center">
     <canvas id="rub-cv" width="128" height="128"
       style="width:min(92vw,512px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
@@ -46,7 +49,7 @@ const load = (src) => new Promise((resolve, reject) => {
   im.src = src;
 });
 
-const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false };
+const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0 };
 let openTimer = 0;
 let sheets = null;
 
@@ -60,7 +63,26 @@ function draw() {
     const sheet = !st.opened ? sheets.closed : [sheets.a35, sheets.a70, sheets.open][Math.min(2, st.openStep)];
     ctx.drawImage(sheet, i * 128, 0, 128, 128, 0, 0, 128, 128);
   }
-  info.textContent = st.inserted ? "插入中" : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`;
+  drawUrethra();
+  info.textContent = (st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? "插入中" : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
+}
+
+// 尿道：陰莖中線一條細線（根部 → 龜頭頂的尿道口）；只畫在陰莖上（被陰唇包住的地方不畫）
+function drawUrethra() {
+  const top = Math.round(st.tip) + 1;                     // 尿道口（龜頭頂下一格）
+  const len = 128 - top;
+  if (len <= 0) return;
+  const img = ctx.getImageData(64, top, 1, len);
+  const d = img.data;
+  const fillFrom = 128 - st.cum * len;                     // 白色漲到這一列（從根部往上）
+  for (let i = 0; i < len; i++) {
+    const y = top + i, k = i * 4;
+    const isPen = d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110;   // 這格是陰莖（實心黑／透視裡的黑）
+    if (!isPen) continue;
+    const c = y >= fillFrom ? ((y & 1) ? CUM_SHADE : CUM_WHITE) : URETHRA_EMPTY;
+    d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = 255;
+  }
+  ctx.putImageData(img, 64, top);
 }
 
 function toGrid(ev) {
@@ -104,6 +126,7 @@ cv.addEventListener("pointermove", (ev) => {
   const next = Math.max(canIn ? INS0 : TIP0, Math.min(TIP1, want));
   if (next === st.tip) return;
   track(st.tip, next);
+  if (st.inserted || Math.min(st.tip, next) < CONTACT_BELOW) st.cum = Math.min(1, st.cum + Math.abs(next - st.tip) * CUM_PER_PX);   // 磨／抽送：尿道慢慢漲精液
   st.tip = next;
   if (st.opened && st.openStep >= 2) {
     if (st.tip >= AT_HOLE) { st.inserted = false; st.armed = true; }        // 拉到肉穴口（或拉出來）＝對準
@@ -121,7 +144,7 @@ cv.addEventListener("pointerup", release);
 cv.addEventListener("pointercancel", release);
 section.querySelector("#rub-reset").addEventListener("click", () => {
   clearInterval(openTimer);
-  Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false });
+  Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0 });
   draw();
 });
 
