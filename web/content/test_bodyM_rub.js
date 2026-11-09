@@ -25,14 +25,15 @@ const SHOTS = 4, SHOT_MS = 380;
 const JERK_MS = 140;                  // 每一股陰莖往前抖一下（射精時不能前後拖）
 const CH_H = 5.2, CH_W = 3.4;         // 子宮口前的小空間（陰道接子宮口那段往兩邊微微鼓開）：內射只積在這裡，不會進子宮
 const chamberW = (y, cerv) => { const t = (y - (cerv - .8)) / CH_H; return t >= 0 && t <= 1 ? CH_W * Math.sin(Math.PI * t) ** .7 + .5 : 0; };
-const INSIDE_MAX = 3;                 // 射在裡面的量（1＝空間裝滿；超過就沿著陰莖往外流、從陰道口噴出來）
+const INSIDE_MAX = 3;
+const MILK = [246, 240, 236];         // 精液流進陰道後的乳白色（陰道染白、陰莖被包一層）                 // 射在裡面的量（1＝空間裝滿；超過就沿著陰莖往外流、從陰道口噴出來）
 const HOLE_Y = 87, BODY_BG = [40, 34, 50];             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
 
 const section = document.createElement("section");
 section.className = "card";
 section.innerHTML = `
   <h2 style="margin-top:0">0. 磨蹭陰唇（像素）</h2>
-  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：插著是內射（積在子宮口旁，太多會從陰道口噴出來），在外面射在她身上。</p>
+  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p>
   <div style="display:flex;justify-content:center">
     <canvas id="rub-cv" width="128" height="128"
       style="width:min(92vw,512px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
@@ -57,7 +58,7 @@ const load = (src) => new Promise((resolve, reject) => {
 });
 
 const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
-  shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0 };   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
+  shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [] };   // drops＝抽插時從陰道口帶出來、往下流的精液   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
 let openTimer = 0;
 let sheets = null;
 
@@ -130,7 +131,25 @@ function drawCum() {
         put(d, 128, x, y, (x + y) % 3 ? CUM_WHITE : CUM_SHADE, .9);
       }
     }
-    const over = Math.max(0, st.inside - 1);                   // 太多：沿著陰莖兩邊往外流
+    const over = Math.max(0, st.inside - 1);                   // 太多：流進陰道
+    const milk = Math.min(1, over / 1.2);                      // 0～1：陰道多白
+    if (milk > 0) {
+      const y0 = Math.floor(cerv - .8 + CH_H - 1);
+      for (let y = y0; y < HOLE_Y + 1; y++) {
+        const pf = .82 + .18 * (y - 59) / 28;
+        const inPen = y >= tipY;
+        const g = inPen ? (y < tipY + 9.5 ? 5.6 : 5.0) * pf + .2 : .5;
+        const flare = Math.max(0, (y - (HOLE_Y - 6.5)) / 5) * 1.6;
+        const band = g + flare + 1.8;                            // 陰道（壁＋裡面）
+        for (let x = Math.floor(64.5 - band); x <= Math.ceil(64.5 + band); x++) {
+          const u = Math.abs(x + .5 - 64.5);
+          if (u > band) continue;
+          const k = (y * 128 + x) * 4, dark = d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110;
+          if (dark) put(d, 128, x, y, MILK, (u > g - 1.4 ? .6 : ((x + y) % 4 ? .1 : .3)) * (.5 + .5 * milk));   // 陰莖被包一層乳白（邊上一圈、中間薄薄一層）
+          else put(d, 128, x, y, MILK, (.25 + .4 * milk));                                   // 陰道染乳白
+        }
+      }
+    }
     if (over > 0) {
       const y0 = cerv - .8 + CH_H, y1 = y0 + (HOLE_Y - y0) * Math.min(1, over * 1.4);
       for (let y = Math.floor(y0); y <= y1; y++) {
@@ -151,6 +170,15 @@ function drawCum() {
     blob(d, 64.5, HOLE_Y + 1, 1.4 + v * .7);
     for (let i = 0; i < 3 + Math.round(v * 4); i++) put(d, 128, 64 + (i > 3 ? 1 : 0), HOLE_Y + 3 + i, i % 2 ? CUM_SHADE : CUM_WHITE);
   }
+  const milkOut = Math.min(1, Math.max(0, st.inside - 1) / 1.2);
+  if (milkOut > 0 && st.inserted) {                          // 露在外面、剛抽出來那段陰莖帶著一層乳白
+    for (let y = HOLE_Y + 1; y < HOLE_Y + 1 + 7 * milkOut; y++)
+      for (let x = 58; x <= 71; x++) {
+        const k = (y * 128 + x) * 4;
+        if (d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110) put(d, 128, x, y, MILK, .45 * (1 - (y - HOLE_Y) / (8 * milkOut + 1)));
+      }
+  }
+  for (const dr of st.drops) blob(d, dr.x, dr.y, dr.r);      // 抽插帶出來、往下流的精液
   if (st.spurt) {                                            // 這一股：從尿道口噴出去的白線
     const sp = st.spurt;
     const n = Math.max(12, Math.abs(sp.y1 - sp.y0));
@@ -186,6 +214,20 @@ function shootOnce() {
   draw();
   setTimeout(() => { st.spurt = null; draw(); if (st.shooting > 0) shootOnce(); }, SHOT_MS);
 }
+// 抽插往外抽的時候，陰道裡的精液被帶出來：陰道口兩邊冒出一滴，往下流
+let dropTimer = 0;
+function spawnDrop() {
+  if (st.drops.length > 14) return;
+  const sx = Math.random() < .5 ? -1 : 1;
+  st.drops.push({ x: 64.5 + sx * (5.5 + Math.random() * 1.5), y: HOLE_Y + 1, r: .9 + Math.random() * .7, vy: .35 + Math.random() * .25 });
+  if (!dropTimer) dropTimer = setInterval(() => {
+    for (const dr of st.drops) { dr.y += dr.vy; dr.vy += .05; }
+    st.drops = st.drops.filter((dr) => dr.y < 127);
+    if (!st.drops.length) { clearInterval(dropTimer); dropTimer = 0; }
+    draw();
+  }, 50);
+}
+
 function maybeShoot() {
   if (st.cum >= 1 && !st.shooting) { st.shooting = SHOTS; shootOnce(); }
 }
@@ -231,6 +273,7 @@ cv.addEventListener("pointermove", (ev) => {
   const canIn = st.opened && st.openStep >= 2 && (st.inserted || st.armed);
   const next = Math.max(canIn ? INS0 : TIP0, Math.min(TIP1, want));
   if (next === st.tip) return;
+  if (st.inserted && next > st.tip && st.inside > 1 && Math.random() < .35 + .2 * Math.min(1, st.inside - 1)) spawnDrop();   // 往外抽：帶出精液
   track(st.tip, next);
   if (!st.shooting && (st.inserted || Math.min(st.tip, next) < CONTACT_BELOW)) st.cum = Math.min(1, st.cum + Math.abs(next - st.tip) * CUM_PER_PX);   // 磨／抽送：尿道慢慢漲精液
   st.tip = next;
@@ -252,7 +295,7 @@ cv.addEventListener("pointercancel", release);
 section.querySelector("#rub-reset").addEventListener("click", () => {
   clearInterval(openTimer);
   Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
-    shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0 });
+    shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [] });
   draw();
 });
 
