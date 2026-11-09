@@ -64,10 +64,10 @@ const section = document.createElement("section");
 section.className = "card";
 section.innerHTML = `
   <h2 style="margin-top:0">0. 磨蹭陰唇（像素）</h2>
-  <p class="dim">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；高潮分階段：陰唇外翻 → 陰蒂勃起 → 陰道一抖一抖地痙攣（停著不動也會；陰道裡滿滿精液時痙攣過，拔出來陰道會一口一口吐出精液）→ 子宮腫脹、子宮口降下來，陰道裡有精液就一上一下吸進子宮；龜頭頂著子宮口時子宮口會親著龜頭、飄出愛心（這時候射直接灌進子宮）；停下來慢慢鬆回去。抽插時大腿、腹部跟著動，子宮高潮時雙腿忍不住往上。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p>
+  <details class="dim" style="margin:.2em 0 .4em"><summary>說明</summary><p style="margin:.3em 0 0">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；高潮分階段：陰唇外翻 → 陰蒂勃起 → 陰道一抖一抖地痙攣（停著不動也會；陰道裡滿滿精液時痙攣過，拔出來陰道會一口一口吐出精液）→ 子宮腫脹、子宮口降下來，陰道裡有精液就一上一下吸進子宮；龜頭頂著子宮口時子宮口會親著龜頭、飄出愛心（這時候射直接灌進子宮）；停下來慢慢鬆回去。抽插時大腿、腹部跟著動，子宮高潮時雙腿忍不住往上。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p></details>
   <div style="display:flex;justify-content:center">
     <canvas id="rub-cv" width="128" height="128"
-      style="width:min(92vw,512px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
+      style="width:min(70vw,384px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
   </div>
   <div class="row" style="justify-content:center;margin-top:.4em">
     <span id="rub-info" class="dim"></span>
