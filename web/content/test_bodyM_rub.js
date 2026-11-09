@@ -145,7 +145,7 @@ function drawCum() {
           const u = Math.abs(x + .5 - 64.5);
           if (u > band) continue;
           const k = (y * 128 + x) * 4, dark = d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110;
-          if (dark) put(d, 128, x, y, MILK, (u > g - 1.4 ? .88 : ((x + y) % 4 ? .32 : .55)) * (.6 + .4 * milk));   // 陰莖被包一層乳白（邊上一圈濃、中間一層）
+          if (dark) put(d, 128, x, y, u > g - 1 ? [168, 162, 180] : [222, 218, 226], .7 + .15 * milk);   // 陰莖整根被一層乳白蓋住（偏灰一點、邊深一圈，跟陰道的乳白分得開）
           else put(d, 128, x, y, MILK, (.6 + .32 * milk));                                   // 陰道染乳白（濃、不太透）
         }
       }
