@@ -23,7 +23,8 @@ const URETHRA_EMPTY = [56, 48, 66], CUM_WHITE = [250, 248, 252], CUM_SHADE = [21
 // 射精：漲滿就射，分 SHOTS 股、每股間隔 SHOT_MS；插著＝內射（灌進陰道、子宮，拔出來從肉穴口流出），在外面＝噴在她身上
 const SHOTS = 4, SHOT_MS = 380;
 const JERK_MS = 140;                  // 每一股陰莖往前抖一下（射精時不能前後拖）
-const POCKET_RX = 5.8, POCKET_RY = 2.8;   // 子宮口旁微微張開的空間（陰道穹窿）：內射只積在這裡，不會進子宮
+const CH_H = 5.2, CH_W = 3.4;         // 子宮口前的小空間（陰道接子宮口那段往兩邊微微鼓開）：內射只積在這裡，不會進子宮
+const chamberW = (y, cerv) => { const t = (y - (cerv - .8)) / CH_H; return t >= 0 && t <= 1 ? CH_W * Math.sin(Math.PI * t) ** .7 + .5 : 0; };
 const INSIDE_MAX = 3;                 // 射在裡面的量（1＝空間裝滿；超過就沿著陰莖往外流、從陰道口噴出來）
 const HOLE_Y = 87, BODY_BG = [40, 34, 50];             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
 
@@ -118,18 +119,20 @@ function drawCum() {
   const tipY = Math.round(st.tip) + st.jerk;
   if (st.inside && st.inserted) {
     const push = Math.max(0, 60 - tipY), cerv = 60 - push;     // 子宮頸被頂著走
-    const fill = Math.min(1, st.inside);                       // 子宮口旁的空間：從龜頭那邊往上積滿
-    for (let y = Math.floor(cerv - POCKET_RY); y <= Math.ceil(cerv + POCKET_RY); y++)
-      for (let x = Math.floor(64.5 - POCKET_RX); x <= Math.ceil(64.5 + POCKET_RX); x++) {
-        const u = x + .5 - 64.5, e = (u / POCKET_RX) ** 2 + ((y + .5 - cerv) / POCKET_RY) ** 2;
-        if (e >= .8) continue;
-        if (Math.abs(u) < 2.2 && y < cerv + .5) continue;        // 子宮頸本身（頸口不灌進去）
-        if ((y + .5 - (cerv - POCKET_RY)) / (2 * POCKET_RY) < 1 - fill) continue;
+    const fill = Math.min(1, st.inside);                       // 子宮口前的小空間：從子宮口往下積滿
+    for (let y = Math.floor(cerv - .8); y <= Math.ceil(cerv - .8 + CH_H); y++) {
+      if ((y + .5 - (cerv - .8)) / CH_H > fill) continue;
+      const w = chamberW(y + .5, cerv);
+      for (let x = Math.floor(64.5 - w); x <= Math.ceil(64.5 + w); x++) {
+        const u = x + .5 - 64.5;
+        if (Math.abs(u) > w - .4) continue;                      // 留著壁
+        if (Math.abs(u) < 2 && y < cerv + .5) continue;           // 子宮頸本身（頸口不灌進去）
         put(d, 128, x, y, (x + y) % 3 ? CUM_WHITE : CUM_SHADE, .9);
       }
+    }
     const over = Math.max(0, st.inside - 1);                   // 太多：沿著陰莖兩邊往外流
     if (over > 0) {
-      const y0 = cerv + POCKET_RY, y1 = y0 + (HOLE_Y - y0) * Math.min(1, over * 1.4);
+      const y0 = cerv - .8 + CH_H, y1 = y0 + (HOLE_Y - y0) * Math.min(1, over * 1.4);
       for (let y = Math.floor(y0); y <= y1; y++) {
         const pf = .82 + .18 * (y - 59) / 28;                  // 斜角：越上越窄
         const w = y < tipY ? 1.6 : (y < tipY + 9.5 ? 5.6 : 5.0) * pf + .4;   // 龜頭上面＝陰道那條縫；下面＝貼著陰莖兩邊
@@ -164,7 +167,7 @@ function shootOnce() {
   setTimeout(() => { st.jerk = 0; draw(); }, JERK_MS);
   if (st.inserted) {                                         // 內射：一股從龜頭射到子宮口旁的空間（不進子宮）
     const cerv = 60 - Math.max(0, 60 - tipY);
-    st.spurt = { x: 64.5, y0: tipY - 1, y1: Math.min(tipY - 1, cerv + 1) };
+    st.spurt = { x: 64.5, y0: tipY - 1, y1: Math.min(tipY - 1, cerv + 1.5) };
     const before = st.inside;
     st.inside = Math.min(INSIDE_MAX, st.inside + 1 / SHOTS);
     if (st.inside > 1.5 && before <= st.inside) { st.leak = 1; setTimeout(() => { st.leak = 0; draw(); }, 220); }   // 太多：噴出來
@@ -253,7 +256,7 @@ section.querySelector("#rub-reset").addEventListener("click", () => {
   draw();
 });
 
-Promise.all(["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open", "rub_insert"].map((n) => load(`/test_bodyM/${n}.png?v=8`)))
+Promise.all(["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open", "rub_insert"].map((n) => load(`/test_bodyM/${n}.png?v=9`)))
   .then(([closed, a35, a70, open, insert]) => { sheets = { closed, a35, a70, open, insert }; draw(); })
   .catch((e) => { info.textContent = e.message; console.error(e); });
 

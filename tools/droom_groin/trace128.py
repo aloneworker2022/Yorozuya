@@ -655,7 +655,7 @@ def xray_section(im):
     # ---- 陰道（剖面）----
     pen_in = INSERT > .05 and PENIS in PEN_COLORS
     cor = PEN_TIP + PEN_GLANS
-    top_y, bot_y = CERV_BOT - 1.0, HOLE_Y - 1.5
+    top_y, bot_y = CERV_BOT - 1.2, HOLE_Y - 1.5
     def persp(y): return .82 + .18 * (y - top_y) / max(1, bot_y - top_y)   # 越上越遠一點點窄（斜角）
     def pen_w(y):
         if not pen_in or y < PEN_TIP: return 0
@@ -664,24 +664,23 @@ def xray_section(im):
             return 5.9 * max(0, math.sin(math.pi / 2 * min(1, t * 1.25))) ** .5
         return 4.8 + 1.4 * min(1, (y - cor) / (N - cor))
     WT = 1.8                                                   # 陰道壁厚
+    CH_TOP, CH_H, CH_W = CERV_BOT - .8, 5.2, 3.4               # 子宮口前的小空間：陰道接子宮口那段，壁往兩邊微微鼓開
+    def chamber(y):
+        t = (y - CH_TOP) / CH_H
+        return CH_W * math.sin(math.pi * t) ** .7 if 0 <= t <= 1 else 0
     for y in range(int(top_y), int(bot_y) + 1):
         fy = y + .5
         g = pen_w(fy) * persp(fy)
         flare = max(0, (fy - (bot_y - 5)) / 5) * 1.6 if pen_in else 0     # 靠陰道口那段被撐開、往外張
-        gap = (g + .2 + flare) if g > 0 else .5                  # 兩壁之間：插著＝陰莖寬；沒插＝貼著一條縫
+        ch = chamber(fy)
+        gap = max((g + .2 + flare) if g > 0 else .5, ch + .5 if ch else 0)   # 兩壁之間：插著＝陰莖寬；沒插＝一條縫；子宮口前鼓開一小塊
         rug = .7 if (y % 3 == 0) else 0                          # 皺褶：內緣一節一節往裡凸
         for x in range(MIDX - 12, MIDX + 13):
             u = abs(x + .5 - CX)
             if gap - rug < u <= gap + WT:
                 blend(x, y, RIM if (u > gap + WT - .9 or u <= gap - rug + .8) else WALL, .85)
             elif u <= gap and g == 0:
-                blend(x, y, CAV, .7)                              # 沒插：中間那條縫
-    # 子宮口旁邊微微張開的空間（陰道穹窿）：陰道頂繞著子宮頸張開一小圈，精液會積在這裡（不會射進子宮）
-    FX_RX, FX_RY = 5.8, 2.8
-    for y in range(int(CERV_BOT - FX_RY) - 1, int(CERV_BOT + FX_RY) + 1):
-        for x in range(MIDX - 6, MIDX + 7):
-            e = ((x + .5 - CX) / FX_RX) ** 2 + ((y + .5 - CERV_BOT) / FX_RY) ** 2
-            if e < 1: blend(x, y, RIM if e > .62 else (240, 168, 184), .85 if e > .62 else .6)
+                blend(x, y, (240, 168, 184) if ch > .8 else CAV, .7)   # 沒插：中間那條縫；子宮口前的小空間淡粉
     for y in range(int(CERV_BOT) - 2, int(CERV_BOT) + 1):     # 子宮頸小圓頭露在空間裡（頸口）
         for x in range(MIDX - 3, MIDX + 4):
             e = ((x + .5 - CX) / (NECK_W * .9)) ** 2 + ((y + .5 - (CERV_BOT - 1)) / 1.6) ** 2
