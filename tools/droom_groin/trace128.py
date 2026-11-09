@@ -93,6 +93,10 @@ AROUSE = float(os.environ.get('AROUSE', '0'))      # 陰道勃起 0 → 1：陰�
 PULL = float(os.environ.get('PULL', '0'))          # 抽插方向：>0 往外抽（陰道口那圈黏著莖被拖出來）／<0 往裡推（那圈被帶進去一點）
 LIFT = 6.0 * AROUSE
 SPASM = float(os.environ.get('SPASM', '0'))        # 痙攣（2026-11-09 使用者：陰道因為興奮一抖一抖鎖緊）：0 平常 → 1 抽的那一下（整條再夾緊一次、上段縮回、陰道口那圈收進去；不畫抖動符號）
+# 子宮的反應（2026-11-09 使用者：興奮時子宮腫脹、子宮口下降，上下吸吮下面的精液；龜頭頂著時子宮口親著龜頭、飄出愛心〔愛心網頁畫〕）
+DESC = float(os.environ.get('DESC', '0'))          # 子宮口下降幾格（整個子宮跟著降下來；抵掉陰道勃起往上提的 LIFT）
+BOB = os.environ.get('BOB', '0') == '1'            # 吸吮往上那一下：子宮口往上縮 3 格、頸口張開
+UTERUS = set()                                     # 子宮腔裡空著的格子（網頁讓吸進去的精液填子宮）；跟 LUMEN 一起輸出（綠）
 LUMEN = set()                                      # 陰道裡空著的格子（網頁用來讓精液照陰道形狀流）；LUMEN_OUT＝輸出遮罩 png
 XRAY = os.environ.get('XRAY', ('1' if INSERT > 0 else '0') if INS_MODE else ('0' if RUB else '1')) == '1'   # 陰道子宮透視（磨蹭不做；插入：龜頭進去後才透視，頂著不透視）
 PEN_GLANS = 9.5                                    # 龜頭長
@@ -650,15 +654,23 @@ def xray_section(im):
     # ---- 子宮（漏斗）----
     # 龜頭頂到子宮頸後再往裡推：子宮被往裡頂、壓扁變形（子宮頸跟著龜頭往裡、變短變寬；漏斗變矮、兩邊鼓；子宮底只退一點）
     # 陰道勃起（AROUSE）：陰道變長＝整個子宮、子宮頸往上提 LIFT 格（同樣插到 54 就頂得比較淺）
-    cerv0 = 60.0 - LIFT
+    # 子宮口下降（DESC）：整個子宮降下來；吸吮（BOB）只有子宮口往上縮 2 格
+    DROP = DESC - LIFT                                       # 子宮整體位移（＋往下）
+    cerv0 = 60.0 + DROP - (3.0 if BOB else 0.0)
     push = max(0.0, cerv0 - PEN_TIP) if (INSERT > .05 and PENIS in PEN_COLORS) else 0.0
-    F_TOP, F_BOT, F_W, NECK_W = 47.0 - LIFT - .35 * push, 56.0 - LIFT - .85 * push, 8.2 + .4 * push, 2.4 + .3 * push   # 子宮底、漏斗底、上寬、頸寬
+    SW_ = AROUSE                                             # 子宮腫脹：變大變圓、更紅
+    F_TOP, F_BOT = 47.0 + DROP - 3.0 * SW_ - .35 * push, 56.0 + DROP - .85 * push
+    F_W, NECK_W = 8.2 + 2.6 * SW_ + .4 * push, 2.4 + .6 * SW_ + .3 * push   # 子宮底、漏斗底、上寬、頸寬
+    F_BOT = min(F_BOT, cerv0 - push - 2.5)
+    WALL_U = tuple(int(WALL[j] + (CAV[j] - WALL[j]) * .3 * SW_) for j in range(3))
     CERV_BOT = cerv0 - push                                  # 子宮頸伸到陰道頂（被龜頭頂著走）
     def uw(y):
         if y < F_TOP: return 0
         if y <= F_BOT:
             t = (y - F_TOP) / (F_BOT - F_TOP)
-            return NECK_W + (F_W - NECK_W) * (1 - t) ** 1.25     # 漏斗：往下收窄（側邊微微鼓）
+            fun = NECK_W + (F_W - NECK_W) * (1 - t) ** 1.25      # 漏斗：往下收窄（側邊微微鼓）
+            pear = max(NECK_W, F_W * max(0, 1 - t ** 1.7) ** .5)  # 腫脹：下半鼓圓（西洋梨）
+            return fun + (pear - fun) * SW_
         if y <= CERV_BOT: return NECK_W * (1 - .25 * ((y - F_BOT) / (CERV_BOT - F_BOT)) ** 2)   # 子宮頸
         return 0
     for y in range(int(F_TOP) - 3, int(CERV_BOT) + 1):
@@ -668,14 +680,15 @@ def xray_section(im):
         for x in range(MIDX - 10, MIDX + 11):
             u = x + .5 - CX
             e = (u / F_W) ** 2 + ((fy - F_TOP) / 2.4) ** 2
-            if fy < F_TOP and e < 1: blend(x, y, RIM if e > .55 else WALL, .85 if e > .55 else .55)
+            if fy < F_TOP and e < 1: blend(x, y, RIM if e > .55 else WALL_U, .85 if e > .55 else .55)
             if w and abs(u) <= w:
                 wall = abs(u) > w - 1.6
-                blend(x, y, RIM if abs(u) > w - .8 else (WALL if wall else CAV), .85 if wall else .5)
+                blend(x, y, RIM if abs(u) > w - .8 else (WALL_U if wall else CAV), .85 if wall else .5)
+                if not wall and fy < cerv0 - push - 1.5: UTERUS.add((x, y))
     for (x, y) in pixel_perfect(stroke([(MIDX, F_TOP + 1.5), (MIDX, CERV_BOT)])): blend(x, y, CAV, .9)   # 頸管
     for d in (-1, 1):                                          # 子宮腔：倒三角的兩邊
         for (x, y) in pixel_perfect(stroke([(CX + d * (F_W - 3), F_TOP + 1), (CX + d * .4, F_BOT - .5)])): blend(x, y, CAV, .8)
-    for d, oy in ((-1, 50.0 - LIFT - .35 * push), (1, 49.0 - LIFT - .35 * push)):  # 輸卵管＋卵巢（跟著子宮被頂上去）
+    for d, oy in ((-1, 50.0 + DROP - 1.2 * SW_ - .35 * push), (1, 49.0 + DROP - 1.2 * SW_ - .35 * push)):  # 輸卵管＋卵巢（跟著子宮被頂上去）
         tube = [(CX + d * (F_W - .5), F_TOP - .2), (CX + d * (F_W + 3), F_TOP - 1.6), (CX + d * (F_W + 6), F_TOP - .2), (CX + d * (F_W + 7.2), oy - 1.2)]
         for (x, y) in pixel_perfect(stroke(cr(tube))): blend(x, y, RIM, .8)
         ox = CX + d * (F_W + 7.4)
@@ -730,6 +743,9 @@ def xray_section(im):
             e = ((x + .5 - CX) / (NECK_W * .9)) ** 2 + ((y + .5 - (CERV_BOT - 1)) / 1.6) ** 2
             if e < 1: blend(x, y, RIM if e > .5 else WALL, .9); LUMEN.discard((x, y))   # 子宮頸本身不算空間
     blend(MIDX, int(CERV_BOT), CAV, .95)
+    if BOB:                                                  # 吸吮：頸口張開（深紅小洞）
+        for (x, y) in ((MIDX - 1, 0), (MIDX, 0), (MIDX + 1, 0), (MIDX, -1), (MIDX - 1, -1), (MIDX + 1, -1), (MIDX, 1)):
+            blend(x, int(CERV_BOT) + y, (150, 30, 60), .95)
     # 體內那段陰莖（剖面裡，在兩壁中間；不再蓋環）
     if pen_in:
         C = PEN_COLORS[PENIS]
@@ -740,6 +756,15 @@ def xray_section(im):
                 if abs(u) > w: continue
                 edge = abs(u) > w - 1 or y == int(PEN_TIP)
                 blend(x, y, C['edge'] if edge else C['base'], .85 if y < HOLE_Y - 8 else 1.0)   # 靠陰道口那段不透（蓋掉底下陰唇的紅邊）
+        # 龜頭頂著子宮口：子宮口親著龜頭——唇噘起來包住龜頭頂（愛心網頁畫）
+        if PEN_TIP <= cerv0 + .5:
+            ty = PEN_TIP                                         # 子宮口一顆噘起來的小圓頭壓在龜頭頂上（蓋過龜頭頂一點）
+            kx, ky, krx, kry = CX, ty + .2, 3.4, 2.3
+            for y in range(int(ky - kry) - 1, int(ky + kry) + 2):
+                for x in range(MIDX - 5, MIDX + 6):
+                    e = ((x + .5 - kx) / krx) ** 2 + ((y + .5 - ky) / kry) ** 2
+                    if e < 1: blend(x, y, RIM if e > .55 else ((252, 196, 206) if (y + .5 < ky - .3 and abs(x + .5 - kx) < 1.6) else WALL_U), .95)
+            for x in (MIDX, MIDX + 1): blend(x, int(ky + kry - .6), (150, 30, 60), .95)   # 嘴（頸口）貼著龜頭的尿道口
         # 收緊：兩壁咬進莖邊（皺褶那幾列咬得深）＝一節一節夾著莖
         if GRIP + SPASM > .05:
             for y in range(int(PEN_TIP) + 1, int(ENT_Y)):
@@ -781,6 +806,8 @@ if __name__ == '__main__':
         m = Image.new('RGB', (N, N), (0, 0, 0)); mp = m.load()
         for (x, y) in LUMEN:
             if 0 <= x < N and 0 <= y < N and y < HOLE_Y: mp[x, y] = (255, 0, 0)
+        for (x, y) in UTERUS:
+            if 0 <= x < N and 0 <= y < N: mp[x, y] = (mp[x, y][0], 255, 0)
         m.save(os.environ['LUMEN_OUT'])
     if a.up > 1: im = im.resize((N * a.up, N * a.up), Image.NEAREST)
     im.save(a.out)

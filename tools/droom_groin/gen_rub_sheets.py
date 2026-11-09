@@ -7,7 +7,9 @@
   rub_insert_g1～g3.png：插著的反應 1～3 階（GRIP＝AROUSE＝階/3：陰道收緊、陰道口那圈纏住、陰道勃起變長）
   rub_insert_g1p～g3p.png：同上、往外抽的那一下（PULL=1：陰道口那圈黏著莖被拖出來）
   rub_insert_g2s／g3s.png：2、3 階的痙攣那一下（SPASM=1：陰道因為興奮一抖一抖鎖緊，網頁一陣一陣跟平常那條交替）
-  rub_insert_lumen.png：上面插入那 9 條的陰道空間遮罩（一條一列，照 LUMEN_ROWS 順序；紅＝陰道裡空著）——網頁讓內射的精液照陰道形狀流
+  rub_insert_g2u／g3u.png：2、3 階子宮口吸吮往上那一下（BOB=1：子宮口往上縮、頸口張開；網頁上下交替吸陰道裡的精液）
+  2、3 階子宮腫脹、子宮口下降 DESC＝3／7 格（整個子宮降下來）；龜頭頂到子宮口就畫子宮口親著龜頭（愛心網頁畫）
+  rub_insert_lumen.png：上面插入那 11 條的陰道空間遮罩（一條一列，照 LUMEN_ROWS 順序；紅＝陰道裡空著、綠＝子宮腔）——網頁讓內射的精液照陰道形狀流
 用法：python3 gen_rub_sheets.py [輸出資料夾，預設 web/test_bodyM]
 """
 import os, sys, subprocess, tempfile
@@ -15,14 +17,15 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, '..', '..', 'web', 'test_bodyM')
 TIP0, TIP1 = 76, 106
+DESC_BY_LV = [0, 0, 3, 7]                                 # 子宮口下降幾格（跟網頁 DESC_BY_LV 一樣）
 INS0, INS1 = 54, 84                                       # 插入：龜頭頂 54（頂到子宮頸再往裡推 6 格，子宮被壓扁）～84（剛進肉穴口）
 tips = list(range(TIP0, TIP1 + 1))
 with tempfile.TemporaryDirectory() as td:
     jobs = [(5, 'rub_closed.png', 1, {}), (6, 'rub_open.png', 1, {}), (6, 'rub_open_a35.png', .35, {}), (6, 'rub_open_a70.png', .7, {}), (8, 'rub_insert.png', 1, {})]
     for lv in (1, 2, 3):                                  # 插著的反應：陰道收緊＋勃起變長，往外抽那一下另一條
-        r = {'GRIP': str(lv / 3), 'AROUSE': str(lv / 3)}
+        r = {'GRIP': str(lv / 3), 'AROUSE': str(lv / 3), 'DESC': str(DESC_BY_LV[lv])}
         jobs += [(8, f'rub_insert_g{lv}.png', 1, r), (8, f'rub_insert_g{lv}p.png', 1, {**r, 'PULL': '1'})]
-        if lv >= 2: jobs.append((8, f'rub_insert_g{lv}s.png', 1, {**r, 'SPASM': '1'}))
+        if lv >= 2: jobs += [(8, f'rub_insert_g{lv}s.png', 1, {**r, 'SPASM': '1'}), (8, f'rub_insert_g{lv}u.png', 1, {**r, 'BOB': '1'})]
     LUMEN_ROWS = [n for (m, n, a, e) in jobs if m == 8]
     lumen = Image.new('RGB', (128 * (INS1 - INS0 + 1), 128 * len(LUMEN_ROWS)), (0, 0, 0))
     only = os.environ.get('ONLY')                         # 只重產某幾條（逗號分隔檔名）
