@@ -131,7 +131,7 @@ function drawCum() {
         put(d, 128, x, y, (x + y) % 3 ? CUM_WHITE : CUM_SHADE, .9);
       }
     }
-    const over = Math.max(0, st.inside - 1);                   // 太多：流進陰道
+    const over = Math.max(0, st.inside - 1);                   // 太多：流進陰道（陰道變乳白、陰莖包一層；不再畫陰莖兩邊的白線）
     const milk = Math.min(1, over / 1.2);                      // 0～1：陰道多白
     if (milk > 0) {
       const y0 = Math.floor(cerv - .8 + CH_H - 1);
@@ -145,18 +145,12 @@ function drawCum() {
           const u = Math.abs(x + .5 - 64.5);
           if (u > band) continue;
           const k = (y * 128 + x) * 4, dark = d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110;
-          if (dark) put(d, 128, x, y, MILK, (u > g - 1.4 ? .6 : ((x + y) % 4 ? .1 : .3)) * (.5 + .5 * milk));   // 陰莖被包一層乳白（邊上一圈、中間薄薄一層）
-          else put(d, 128, x, y, MILK, (.25 + .4 * milk));                                   // 陰道染乳白
+          if (dark) put(d, 128, x, y, MILK, (u > g - 1.4 ? .88 : ((x + y) % 4 ? .32 : .55)) * (.6 + .4 * milk));   // 陰莖被包一層乳白（邊上一圈濃、中間一層）
+          else put(d, 128, x, y, MILK, (.6 + .32 * milk));                                   // 陰道染乳白（濃、不太透）
         }
       }
     }
     if (over > 0) {
-      const y0 = cerv - .8 + CH_H, y1 = y0 + (HOLE_Y - y0) * Math.min(1, over * 1.4);
-      for (let y = Math.floor(y0); y <= y1; y++) {
-        const pf = .82 + .18 * (y - 59) / 28;                  // 斜角：越上越窄
-        const w = y < tipY ? 1.6 : (y < tipY + 9.5 ? 5.6 : 5.0) * pf + .4;   // 龜頭上面＝陰道那條縫；下面＝貼著陰莖兩邊
-        for (const sx of [-1, 1]) put(d, 128, 64.5 + sx * w, y, CUM_WHITE, .9);
-      }
       if (over > .5) {                                          // 從陰道口噴出來：口旁兩坨＋往下流
         for (const sx of [-1, 1]) {
           blob(d, 64.5 + sx * 6, HOLE_Y + 1.5, 1.2 + Math.min(1.4, over * .6));
@@ -175,7 +169,7 @@ function drawCum() {
     for (let y = HOLE_Y + 1; y < HOLE_Y + 1 + 7 * milkOut; y++)
       for (let x = 58; x <= 71; x++) {
         const k = (y * 128 + x) * 4;
-        if (d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110) put(d, 128, x, y, MILK, .45 * (1 - (y - HOLE_Y) / (8 * milkOut + 1)));
+        if (d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110) put(d, 128, x, y, MILK, .75 * (1 - (y - HOLE_Y) / (8 * milkOut + 1)));
       }
   }
   for (const dr of st.drops) blob(d, dr.x, dr.y, dr.r);      // 抽插帶出來、往下流的精液
