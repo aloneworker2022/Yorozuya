@@ -1,5 +1,5 @@
 /* 試煉房抽妹子：人設跟 /testword 同一套。抽到後背景補半身立繪。不寫遊戲名冊。 */
-import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=6";
+import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES } from "./girl_gen.js?v=7";
 import {
   ensureBody,
   clampBody,
@@ -191,7 +191,10 @@ import {
   semenLow,
   canStartSexAt,
   marathonFinale,
+  passionTwoChance,
 } from "./sex_thrust.js?v=8";
+import { mountSexPixel } from "./sex_pixel.js?v=1";
+import { pixelLookFor } from "./sex_pixel_look.js?v=1";
 import {
   getMoodCarry,
   decayMoodByTime,
@@ -2991,6 +2994,10 @@ async function showSexPoseOpening(who) {
  * 數值／排程在 sex_thrust.js。
  * 局部動畫沿用舊做愛系統：她的 sexAnim[pose] → 同體位幀包 → 任一幀包；第一下 1-2-3-4、之後 2-3-4。 */
 const SEX_THRUST_CHAT = true;
+/** 肏的像素互動（2026-11-10 使用者）：正面體位（傳教士）的局部動圖換成 sex_pixel.js——沒有「肏」鈕，手指按住陰莖拖；
+ *  有碰到她而且在動才算數；玩家興奮＝尿道裡的精液量（漲滿就射）；她的高潮用陰唇／陰蒂／陰道／子宮表現（四階，子宮高潮＝她高潮）。
+ *  後背照舊（按鈕＋四幀動圖）。改 false 就整個回到舊的按鈕。 */
+const SEX_PIXEL_ON = true;
 let sexChat = null;
 let thrustFramesCache = null;
 
@@ -3081,9 +3088,17 @@ function renderSexHud() {
     row.classList.toggle("hot", !!hot);
   };
   const lim = THRUST.PASSION_ORGASM_ABOVE;
-  set("passion", (s.passion / (lim + 1)) * 100, `${s.passion}/${lim}`, s.passion >= lim - 3);
-  const cumAt = exciteCumAt();
-  set("excite", (s.excite / cumAt) * 100, `${s.excite}/${cumAt}`, s.excite >= cumAt * 0.8);
+  const pRow = el.querySelector('[data-g="passion"]'), eRow = el.querySelector('[data-g="excite"]');
+  if (pRow) pRow.querySelector("b").textContent = sexChat.pixel ? "高潮" : "激情";
+  if (eRow) eRow.hidden = !!sexChat.pixel;                   // 像素互動：玩家興奮＝陰莖尿道裡的精液（畫面上直接看）
+  if (sexChat.pixel) {
+    // 她的高潮：陰唇外翻 → 陰蒂勃起 → 陰道痙攣 → 子宮高潮（看她的身體；這條只是標示現在第幾階）
+    set("passion", (sexChat.pixStage / 4) * 100, sexChat.pixStageName || "—", sexChat.pixStage >= 3);
+  } else {
+    set("passion", (s.passion / (lim + 1)) * 100, `${s.passion}/${lim}`, s.passion >= lim - 3);
+    const cumAt = exciteCumAt();
+    set("excite", (s.excite / cumAt) * 100, `${s.excite}/${cumAt}`, s.excite >= cumAt * 0.8);
+  }
   set("semen", (Math.max(0, s.semen) / semenMaxCc()) * 100, `${s.semen}cc`, semenDanger(s));
   // 榨乾場：多一條她的飢渴（歸 0 才放你走）
   const m = sexChat.marathon;
@@ -3271,6 +3286,13 @@ function thrustFact() {
   if (news.includes("orgasm")) bits.push(THRUST.SQUIRT_IN_FLOW ? "你正在高潮，潮吹、全身痙攣。" : "你正在高潮，全身痙攣、裡面一陣陣夾緊他。");
   if (news.includes("bloodcum")) bits.push("他剛剛射在你裡面，可是射出來的是混著血的粉紅色精液（血精，他射過頭了），你嚇了一跳、很擔心他，但身體還在被肏的餘韻裡。");
   else if (news.includes("cum")) bits.push("他剛剛射在你裡面，很燙。");
+  else if (news.includes("cumout")) bits.push("他剛剛拔出來射在你的肚子上，很燙。");
+  if (news.includes("pee")) bits.push("你舒服到忍不住尿出來了，很丟臉。");
+  if (news.includes("gush")) bits.push("你的子宮已經被灌滿，被他一頂，精液從子宮裡噴回陰道。");
+  if (sexChat.pixel) {
+    if (!news.includes("orgasm") && sexChat.pixStage === 4) bits.push("你的子宮一陣一陣抽動、吸著他，高潮停不下來。");
+    else if (sexChat.pixStage === 3) bits.push("你的陰道一陣一陣痙攣夾緊他，快要高潮了。");
+  } else
   if (!news.includes("orgasm") && s.passion >= THRUST.PASSION_ORGASM_ABOVE - 4) bits.push("你快要高潮了。");
   // 榨乾場：貪得無厭的妻子
   const m = sexChat.marathon;
@@ -3349,6 +3371,28 @@ function newThrustPump() {
   });
 }
 
+/** 她高潮一次的結算（按鈕版：激情過線；像素互動：子宮高潮）：感情、餘韻、飢渴／榨乾場、開發度、對話紀錄、提示。lock＝藏「肏」等她那句（按鈕版）。 */
+function herOrgasm(o, lock = true) {
+  const s = sexChat.sess;
+  bumpAffection(o.affection, `她高潮（第 ${o.count} 次）`);
+  noteAfterglow(girl, "hers");
+  if (marathonLocked(sexChat.marathon)) {
+    // 榨乾場：每次高潮 −MARATHON_ORGASM_DROP；歸 0 才結束（這一輪在她那句打完、高潮圖停滿後收）
+    const mr = marathonOrgasm(girl, sexChat.marathon, { stageKey: girl.stage || "stranger" });
+    if (mr) pushDebug(`榨乾場：飢渴 ${Math.round(mr.before)}→${Math.round(mr.after)}（她高潮 ${sexChat.marathon.orgasms}）${mr.done ? "，滿足了" : `，還要約 ${mr.left} 次`}`);
+    if (mr?.done) {
+      s.ended = true;
+      sexChat.news.push("sated");
+    }
+  } else hungerRelief("orgasm");
+  organDevOrgasm();
+  sexChat.news.push("orgasm");
+  lines.push({ role: "user", content: THRUST.SQUIRT_IN_FLOW ? "（她高潮了，潮吹、全身痙攣。）" : "（她高潮了，全身痙攣。）" });
+  showClimaxTip(o.count > 1 ? `她又高潮了！（${o.count}）` : "她高潮了！");
+  pushDebug(lock ? `肏：激情 ${o.before}→${o.after}（高潮 ${o.count}）` : `肏：子宮高潮（高潮 ${o.count}）`);
+  if (lock) startOrgasmLock(o);
+}
+
 /** 她那句打完（或等太久）：判高潮、做這幾下累積的換圖。 */
 function flushThrustDeferred(why = "") {
   if (!sexChat) return;
@@ -3359,23 +3403,7 @@ function flushThrustDeferred(why = "") {
   const s = sexChat.sess;
   const o = checkOrgasm(s);
   if (o) {
-    bumpAffection(o.affection, `她高潮（第 ${o.count} 次）`);
-    noteAfterglow(girl, "hers");
-    if (marathonLocked(sexChat.marathon)) {
-      // 榨乾場：每次高潮 −MARATHON_ORGASM_DROP；歸 0 才結束（這一輪在她那句打完、高潮圖停滿後收）
-      const mr = marathonOrgasm(girl, sexChat.marathon, { stageKey: girl.stage || "stranger" });
-      if (mr) pushDebug(`榨乾場：飢渴 ${Math.round(mr.before)}→${Math.round(mr.after)}（她高潮 ${sexChat.marathon.orgasms}）${mr.done ? "，滿足了" : `，還要約 ${mr.left} 次`}`);
-      if (mr?.done) {
-        s.ended = true;
-        sexChat.news.push("sated");
-      }
-    } else hungerRelief("orgasm");
-    organDevOrgasm();
-    sexChat.news.push("orgasm");
-    lines.push({ role: "user", content: THRUST.SQUIRT_IN_FLOW ? "（她高潮了，潮吹、全身痙攣。）" : "（她高潮了，全身痙攣。）" });
-    showClimaxTip(o.count > 1 ? `她又高潮了！（${o.count}）` : "她高潮了！");
-    pushDebug(`肏：激情 ${o.before}→${o.after}（高潮 ${o.count}）`);
-    startOrgasmLock(o);
+    herOrgasm(o, true);
   } else if (sexChat.pendingSwitch) {
     const pool = sexThrustPool();
     const next = pickOtherImage(pool, sexChat.thrustImg);
@@ -3540,6 +3568,8 @@ function renderSexChatBar() {
   if (sexChat.step === "open") {
     // 沒有「下一步」：她開場那句打完才出「掏出陰莖」
     if (sexChat.opening === "done" && !sexChat.busy) add("draw", "掏出陰莖", () => void sexChatToJoin(), { id: "sex-draw" });
+  } else if (sexChat.pixel) {
+    // 像素互動：沒有「肏」鈕（手指按住陰莖拖）
   } else if (!sexChat.sess.ended) {
     // 動畫播放中／她高潮中藏「肏」（保留位置不跳版）
     const hide = thrustBtnHidden();
@@ -3577,6 +3607,10 @@ async function openSexChat(who) {
   sexChat = {
     marathon,
     pose,
+    pixel: SEX_PIXEL_ON && pose === "missionary",
+    pix: null,
+    pixStage: 0,
+    pixStageName: "",
     packId: "",
     step: "open",
     // 精液＝玩家真正剩下的（不是每場 18cc）
@@ -3666,7 +3700,10 @@ async function sexChatToJoin() {
     : sexChat.sess.semen < THRUST.SEMEN_END_BELOW ? `精液已見底（${sexChat.sess.semen}cc），射一次這一輪就結束。` : "";
   if (isBloodShot(sexChat.sess.semen)) prepBloodcum(who);
   const where = sexChat.pose === "doggy" ? "抵在她翹起的屁股中間" : "抵在她張開的腿間";
-  sexChatNarrate(`（你掏出陰莖，${where}。按「肏」開始。${dry}）`);
+  if (sexChat.pixel) mountSexPix(who);
+  sexChatNarrate(sexChat.pixel
+    ? `（你掏出陰莖，${where}。手指按住陰莖上下拖：先磨開陰唇，再把龜頭對準往上推進去。${dry}）`
+    : `（你掏出陰莖，${where}。按「肏」開始。${dry}）`);
   renderSexHud();
   renderSexChatBar();
   renderThrustDebug();
@@ -3679,9 +3716,211 @@ async function sexChatToJoin() {
   })();
 }
 
+/** 射精那一下的結算（按鈕版 doThrust 和像素互動 pixelEjac 共用）：扣玩家精液、子宮精液、餘韻、換內射／血精圖、對話紀錄。 */
+function thrustEjac(who, s, seq, r) {
+  // 扣玩家真正的精液（可到負）；這一場的數字跟著它
+  // 掉到 −7 以下＝腎虧：自動送醫、精液量回到 −1（settleKidney）
+  // 榨乾場：腎虧等她滿足才結算（finishSexChatRound → marathonFinale），這裡只扣
+  if (s.marathon) player = spendSemen(player, THRUST.SEMEN_PER_EJAC_CC).player;
+  else spendPlayerSemen(THRUST.SEMEN_PER_EJAC_CC, "sex");
+  s.semen = player.semenCc;
+  // 射完還 <6：「身體快不行了」（每射一次最多一張）
+  if (!s.marathon) warnIfSemenLow();
+  if (s.semen < THRUST.SEMEN_END_BELOW && !s.marathon) s.ended = true;
+  const o = ensureBody(who)?.organs;
+  // r.outside（像素互動：沒插著就射）：射在她身上——不進子宮、不算內射
+  if (o?.uterus && !r.outside) o.uterus.semen = Math.min(3, (Number(o.uterus.semen) || 0) + 1);
+  if (r.outside) noteAfterglow(who, "his");
+  else noteAfterglow(who, "his", { ejac: "creampie" });
+  // 榨乾場：內射不降（她要的是高潮）
+  if (!s.marathon && !r.outside) hungerRelief("creampie");
+  sexChat.news.push(r.blood ? "bloodcum" : r.outside ? "cumout" : "cum");
+  if (r.blood) sexChat.bloodShots = (sexChat.bloodShots || 0) + 1;
+  // 射精 → 立刻換 ⑥ 內射圖（留到下一下肏）；血精 → ⑦ 血精圖（快取有就直接用，沒有先用內射圖、產好再換）
+  sexChat.eventHold = true;
+  sexChat.pendingSwitch = false;
+  const ejacSeq = seq;
+  sexChat.ejacSeq = ejacSeq;
+  const showEvent = (p, st) => {
+    if (!sexChat || !p?.url || !sexChat.eventHold || sexChat.orgasmLock || sexChat.ejacSeq !== ejacSeq) return false;
+    setSexChatImage(p.url, st);
+    sexChat.eventsShown.push(st);
+    renderThrustDebug();
+    return true;
+  };
+  if (r.blood) {
+    const bloodJob = ensureSexStepUrl(who, sexChat.pose, "bloodcum", sexChat.packId);
+    void Promise.race([bloodJob, waitMs(300).then(() => null)]).then(async (quick) => {
+      if (quick?.url && showEvent(quick, "bloodcum")) return;
+      showEvent(await ensureSexStepUrl(who, sexChat?.pose, "cum", sexChat?.packId || ""), "cum");
+      const late = await bloodJob;
+      if (sexChat?.imgStep === "cum") showEvent(late, "bloodcum");
+    });
+    showClimaxTip("射出血精了……");
+  } else if (r.outside) {
+    sexChat.eventHold = false;                               // 射在外面：沒有內射圖
+  } else {
+    void ensureSexStepUrl(who, sexChat.pose, "cum", sexChat.packId).then((p) => showEvent(p, "cum"));
+  }
+  lines.push({ role: "user", content: r.blood
+    ? `（你射在她裡面了——可是精液不夠，射出來的是混著血的粉紅色血精。精液剩 ${s.semen} cc。）`
+    : r.outside ? `（你射在她身上了——精液剩 ${s.semen} cc。）`
+    : `（你射在她裡面了——精液剩 ${s.semen} cc。）` });
+  pushDebug(`肏：${r.blood ? "血精" : "射精"}（第 ${s.ejacs} 次）精液 ${r.semenBefore}→${s.semen}cc${s.ended ? "，見底結束" : ""}`);
+}
+
+/* ───────── 肏的像素互動（正面體位）：sex_pixel.js 的事件 → 這一場的數值 ───────── */
+
+/** 掛上像素畫面（放在原本局部動圖的框裡，常駐；可以按）。 */
+function mountSexPix(who = girl) {
+  if (!sexChat || sexChat.pix || !who) return;
+  const sc = sexChat;
+  const box = thrustAnimEl();
+  const img = box.querySelector("img");
+  if (img) img.hidden = true;
+  box.hidden = false;
+  box.setAttribute("aria-hidden", "false");
+  box.classList.add("on", "pix");
+  sc.pixLook = pixelLookFor(who);
+  sc.pix = mountSexPixel(box, {
+    look: sc.pixLook,
+    // 她的反應漲多快：性奮、關係越高越快（原本「激情一下拿 2 的機率」），陰道越敏感再快一點
+    reactMul: () => 0.7 + passionTwoChance(Number(girl?.bodyState?.arousal) || 0, girl?.stage || "stranger") + (ORGAN_DEV_ON && girl ? devPassionChance(girl) : 0),
+    // 尿道精液漲多快：興奮上限擴充越高，要抽越多下才射
+    cumMul: () => THRUST.EXCITE_CUM_AT / exciteCumAt(),
+    on: (type, data) => { if (sexChat === sc && girl) onSexPixEvent(type, data || {}); },
+  });
+  pushDebug(`肏：像素互動（體型 ${sc.pixLook.build}・陰唇 ${sc.pixLook.labia}／${sc.pixLook.labcol}・陰蒂 ${sc.pixLook.clit}・陰道 ${sc.pixLook.vlen}）`);
+}
+
+function unmountSexPix(sc) {
+  try { sc?.pix?.destroy(); } catch (err) { console.warn("[sexpix destroy]", err?.message || err); }
+  if (sc) sc.pix = null;
+  const box = $("thrust-anim");
+  if (!box) return;
+  box.classList.remove("pix");
+  const img = box.querySelector("img");
+  if (img) img.hidden = false;
+}
+
+function onSexPixEvent(type, d) {
+  if (!sexChat || sexChat.step === "open") return;
+  if (type === "stage") {
+    sexChat.pixStage = Number(d.stage) || 0;
+    sexChat.pixStageName = String(d.name || "");
+    renderSexHud();
+    renderThrustDebug();
+    return;
+  }
+  if (sexChat.sess.ended) return;
+  if (type === "thrust") pixelThrust();
+  else if (type === "ejac") pixelEjac(d.where);
+  else if (type === "orgasm") pixelOrgasm();
+  else if (type === "rub") { if (ORGAN_DEV_ON) organDevLevelUps(devNoteTouch(girl, ["labia"])?.levelUps); }
+  else if (type === "pee") sexChat.news.push("pee");
+  else if (type === "gush") sexChat.news.push("gush");
+}
+
+/** 插著抽送滿一下（sex_pixel THRUST_PX 格）：感情、開發度、失神欠帳、換圖、她說一句。興奮／激情不在這裡（看尿道精液、看她的身體）。 */
+function pixelThrust() {
+  const who = girl;
+  const s = sexChat.sess;
+  const seq = ++sexChat.seq;
+  syncSexSemen();
+  s.thrusts += 1;
+  organDevThrust(null);
+  bumpAffection(THRUST.AFF_PER_THRUST, "肏");
+  if (STUN_RECKONING_ON && undressDazed(who)) {
+    if (!sexChat.debtNoted) {
+      sexChat.debtNoted = true;
+      const normal = normalInvasionFor("cervix_rub", { stage: who.stage || "stranger", personality: basePersonality(who), stats: who.stats || null });
+      noteStunDebt(normal, "肏她");
+    } else {
+      addStunDebt(who, 0, "肏她");
+    }
+  }
+  const firstThrust = sexChat.step === "join";
+  if (firstThrust) sexChat.step = "thrust";
+  if (sexChat.eventHold) {
+    sexChat.eventHold = false;
+    if (sexChat.thrustImg) setSexChatImage(sexChat.thrustImg, "thrust");
+  }
+  if (firstThrust) {
+    const tUrl = sexThrustPool()[0] || "";
+    if (tUrl) {
+      sexChat.thrustImg = tUrl;
+      setSexChatImage(tUrl, "thrust");
+    } else {
+      void ensureSexStepUrl(who, sexChat.pose, "thrust", sexChat.packId).then((p) => {
+        if (!sexChat || !p?.url) return;
+        sexChat.thrustImg = p.url;
+        if (sexChat.imgStep === "join" && !sexChat.eventHold) setSexChatImage(p.url, "thrust");
+      });
+    }
+  } else if (Math.random() < THRUST.SWITCH_CHANCE) {
+    sexChat.pendingSwitch = true;
+  }
+  if (isBloodShot(s.semen)) prepBloodcum(who);
+  renderSexHud();
+  renderThrustDebug();
+  if (!sexChat.deferTimer) sexChat.deferTimer = setTimeout(() => sexChat && flushThrustDeferred("timeout"), THRUST.DEFER_MAX_MS);
+  sexChat.pump.press(seq);
+  persistRoom();
+}
+
+/** 尿道漲滿射了（where：womb 親著子宮口直接灌進子宮／inside 內射／outside 沒插著，射在她身上）。 */
+function pixelEjac(where) {
+  const who = girl;
+  const s = sexChat.sess;
+  const seq = ++sexChat.seq;
+  syncSexSemen();
+  const semenBefore = s.semen;
+  s.ejacs += 1;
+  const r = { ejac: true, blood: isBloodShot(semenBefore), semenBefore, outside: where === "outside", where };
+  thrustEjac(who, s, seq, r);
+  if (!r.blood) showClimaxTip(r.outside ? "射在她身上了！" : s.ended ? "射在裡面了……（見底）" : where === "womb" ? "直接灌進子宮了！" : "射在裡面了！");
+  renderSexHud();
+  renderThrustDebug();
+  if (!sexChat.deferTimer) sexChat.deferTimer = setTimeout(() => sexChat && flushThrustDeferred("timeout"), THRUST.DEFER_MAX_MS);
+  if (s.ended) {
+    sexChat.pix?.lock(true);
+    sexChat.pump.urgent(seq);
+    finishSexChatRound();
+    renderSexChatBar();
+  } else sexChat.pump.press(seq);
+  persistRoom();
+}
+
+/** 子宮高潮（進去那一陣、之後每幾陣子宮抽動一次）＝她高潮一次：不鎖畫面（可以連續高潮），換高潮圖到下一下抽送。 */
+function pixelOrgasm() {
+  const s = sexChat.sess;
+  s.orgasms += 1;
+  herOrgasm({ before: 0, after: 0, affection: THRUST.AFF_PER_ORGASM, count: s.orgasms }, false);
+  if (!sexChat) return;
+  const seq = ++sexChat.seq;
+  sexChat.eventHold = true;
+  sexChat.pendingSwitch = false;
+  const sc = sexChat;
+  void ensureSexStepUrl(girl, sc.pose, "orgasm", sc.packId || "").then((p) => {
+    if (sexChat !== sc || !p?.url || !sc.eventHold || sc.imgStep === "cum" || sc.imgStep === "bloodcum") return;
+    setSexChatImage(p.url, "orgasm");
+    sc.eventsShown.push("orgasm");
+    renderThrustDebug();
+  });
+  sexChat.pump.urgent(seq);
+  if (s.ended) {                                             // 榨乾場：她滿足了
+    sexChat.pix?.lock(true);
+    finishSexChatRound();
+    renderSexChatBar();
+  }
+  renderSexHud();
+  persistRoom();
+}
+
 /** 按一下「肏」。 */
 function doThrust() {
   if (!sexChat || !girl || sexChat.step === "open" || sexChat.animBusy || sexChat.orgasmLock || sexChat.sess.ended) return null;
+  if (sexChat.pixel) return null;                            // 像素互動：沒有「肏」鈕（手指拖）
   const who = girl;
   const s = sexChat.sess;
   const seq = ++sexChat.seq;
@@ -3724,52 +3963,7 @@ function doThrust() {
   } else if (r.switchRoll) {
     sexChat.pendingSwitch = true;
   }
-  if (r.ejac) {
-    // 扣玩家真正的精液（可到負）；這一場的數字跟著它
-    // 掉到 −7 以下＝腎虧：自動送醫、精液量回到 −1（settleKidney）
-    // 榨乾場：腎虧等她滿足才結算（finishSexChatRound → marathonFinale），這裡只扣
-    if (s.marathon) player = spendSemen(player, THRUST.SEMEN_PER_EJAC_CC).player;
-    else spendPlayerSemen(THRUST.SEMEN_PER_EJAC_CC, "sex");
-    s.semen = player.semenCc;
-    // 射完還 <6：「身體快不行了」（每射一次最多一張）
-    if (!s.marathon) warnIfSemenLow();
-    if (s.semen < THRUST.SEMEN_END_BELOW && !s.marathon) s.ended = true;
-    const o = ensureBody(who)?.organs;
-    if (o?.uterus) o.uterus.semen = Math.min(3, (Number(o.uterus.semen) || 0) + 1);
-    noteAfterglow(who, "his", { ejac: "creampie" });
-    // 榨乾場：內射不降（她要的是高潮）
-    if (!s.marathon) hungerRelief("creampie");
-    sexChat.news.push(r.blood ? "bloodcum" : "cum");
-    if (r.blood) sexChat.bloodShots = (sexChat.bloodShots || 0) + 1;
-    // 射精 → 立刻換 ⑥ 內射圖（留到下一下肏）；血精 → ⑦ 血精圖（快取有就直接用，沒有先用內射圖、產好再換）
-    sexChat.eventHold = true;
-    sexChat.pendingSwitch = false;
-    const ejacSeq = seq;
-    sexChat.ejacSeq = ejacSeq;
-    const showEvent = (p, st) => {
-      if (!sexChat || !p?.url || !sexChat.eventHold || sexChat.orgasmLock || sexChat.ejacSeq !== ejacSeq) return false;
-      setSexChatImage(p.url, st);
-      sexChat.eventsShown.push(st);
-      renderThrustDebug();
-      return true;
-    };
-    if (r.blood) {
-      const bloodJob = ensureSexStepUrl(who, sexChat.pose, "bloodcum", sexChat.packId);
-      void Promise.race([bloodJob, waitMs(300).then(() => null)]).then(async (quick) => {
-        if (quick?.url && showEvent(quick, "bloodcum")) return;
-        showEvent(await ensureSexStepUrl(who, sexChat?.pose, "cum", sexChat?.packId || ""), "cum");
-        const late = await bloodJob;
-        if (sexChat?.imgStep === "cum") showEvent(late, "bloodcum");
-      });
-      showClimaxTip("射出血精了……");
-    } else {
-      void ensureSexStepUrl(who, sexChat.pose, "cum", sexChat.packId).then((p) => showEvent(p, "cum"));
-    }
-    lines.push({ role: "user", content: r.blood
-      ? `（你射在她裡面了——可是精液不夠，射出來的是混著血的粉紅色血精。精液剩 ${s.semen} cc。）`
-      : `（你射在她裡面了——精液剩 ${s.semen} cc。）` });
-    pushDebug(`肏：${r.blood ? "血精" : "射精"}（第 ${s.ejacs} 次）精液 ${r.semenBefore}→${s.semen}cc${s.ended ? "，見底結束" : ""}`);
-  }
+  if (r.ejac) thrustEjac(who, s, seq, r);
   // 下一射會是血精 → 背景先產血精圖（同一組；只要一次）
   if (!s.ended && isBloodShot(s.semen)) prepBloodcum(who);
   renderSexHud();
@@ -3809,6 +4003,7 @@ function prepBloodcum(who = girl) {
 /** 這一輪結束：她對最後一射的那句先說完（最多等到那句打完），停一下再出結束旁白。 */
 function finishSexChatRound() {
   if (!sexChat || sexChat.finished) return;
+  sexChat.pix?.lock(true);
   const pump = sexChat.pump;
   if (pump && (pump.busy || pump.pendingSeq)) {
     sexChat.finishAfterReply = true;
@@ -3888,6 +4083,7 @@ function closeSexChat() {
   if (sc.lingerTimer) clearTimeout(sc.lingerTimer);
   if (sc.orgasmLock?.timer) clearTimeout(sc.orgasmLock.timer);
   if (sc.orgasmLock?.safety) clearTimeout(sc.orgasmLock.safety);
+  unmountSexPix(sc);
   hideThrustAnim();
   const hud = $("sex-hud");
   if (hud) hud.hidden = true;
@@ -12500,8 +12696,13 @@ window.RoomCompanion = {
       started: [...(sexChat.pump?.started || [])], done: [...(sexChat.pump?.done || [])], dropped: sexChat.pump?.dropped || 0,
       lastAnim: sexChat.lastAnim, animSource: sexChat.animSource, lastAnimHideMs: sexChat.lastAnimHideMs || 0, lastReply: sexChat.lastReply, lastFlush: sexChat.lastFlush,
       stuffed: girl?.bodyState?.organs?.vagina?.stuffed || "",
+      pixel: !!sexChat.pixel, pixStage: sexChat.pixStage, pixStageName: sexChat.pixStageName, pixLook: sexChat.pixLook || null, news: [...sexChat.news],
     } : null),
+    /** 像素互動的控制器（sex_pixel.js 的 api：state／set／reset／lock）；沒掛就是 null。 */
+    pix: () => sexChat?.pix || null,
     press: () => doThrust(),
+    /** 除錯：直接進做愛（等同全裸時按「做愛」）。 */
+    open: () => { if (!sheetOpen()) showSheet(); return openRoomScene("sex"); },
     draw: () => sexChatToJoin(),
     openingDirective: (stage, pose, personality) => openingDirective({ stage: stage || girl?.stage, pose: pose || sexChat?.pose || "missionary", personality: personality || basePersonality(girl) }),
     set: (patch = {}) => {

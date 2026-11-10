@@ -160,3 +160,13 @@ W=220 H=230 F=380 DIST=.40 EYE=.22 PITCH=12 CY=95 UP=3 OUT=out.png node groin_cl
 系統 `look.build` 13 種併成 5 種下半身：瘦（骨感清瘦／纖細苗條／高挑纖長）、標準（勻稱有致／嬌小玲瓏）、肉（微肉圓潤／軟肉感有腰）、結實（結實緊緻／運動健美）、寬臀（豐滿火辣／細腰寬臀／沙漏／漫畫比例）。
 細節線：瘦＝髖骨、肋骨下緣；肉＝小腹一道肉摺、腰側肉摺、肚臍深；結實＝腹肌線、人魚線；寬臀＝髖下一道圓弧。胯下（陰唇、透視）每種都一樣，`LEG` 大腿抬起照樣能用。
 樣品 `builds_preview.png`：左到右 瘦／標準／肉／結實／寬臀；上＝沒插、中＝插著第 4 階段、下＝同上大腿抬 6 格。圖片條（`gen_rub_sheets.py`）和網頁還沒接。
+
+## 接進房間的「肏」（2026-11-10 使用者）＋分層產圖
+
+- 互動本體搬到 `web/content/sex_pixel.js`（`mountSexPixel(host, opts)`；`/test_bodyM` 和房間的做愛共用）。舊的 `gen_rub_sheets.py`／`web/test_bodyM/rub_*.png` 不用了（圖已刪）。
+- 分層產圖 `python3 gen_sexpix.py`（約 4 分鐘）→ `web/sexpix/`：`body_<體型>`、`legs_<體型>`（大腿抬起 11 張）、`g_<陰唇>_<closed|a35|a70|open>`、
+  `g_<陰唇>_v<05|10|15>_<insert|g1…g3c>`、`lumen_v<長度>`、`clit_<大小>`（6 張：沒打開／過渡 2 張／打開沒勃起／半勃起／全勃起）。
+  胯下那幾層＝跟標準體型底圖不一樣的格子＋大陰唇那一塊，其他透明，所以五種體型的底圖都能疊；陰唇顏色在網頁換色。只產一部分：`ONLY=body,legs,clit,g,ins`。
+- `trace128.py` 新開關：`BUILD`（體型，每種一整組輪廓）、`LONG=1`（大腿加長出畫面）、`LABIA`、`LABCOL`、`CLITSIZE`（`none`＝不畫，分層用）、`VLEN`、`BASE=1`（只畫身體）、`LAYER=1`（大陰唇不跟體型變）。
+  預設值的輸出跟以前一樣。改圖後把 `sex_pixel.js` 的 `SEXPIX_VER` +1。
+- 房間怎麼接、數值怎麼算：`docs/PLAN-2026-10.md` 2026-11-10 那一列。

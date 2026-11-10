@@ -7,6 +7,7 @@
 // ============================================================
 
 import { applyDevLook } from "./organ_dev.js?v=1";
+import { rollVaginaLen } from "./sex_pixel_look.js?v=1";
 
 export let POOLS = null;
 
@@ -295,6 +296,8 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
     clitoris_size: txt(clitSize),
     labia_color: txt(labiaColor),
     pubic_hair: txt(pubicHair),
+    // 陰道長度（玩家陰莖＝1）：0.5／1／1.5 等機率；肏的像素互動用（sex_pixel_look.js）。伺服器不讀這欄。
+    vagina_len: rollVaginaLen(),
     eye_color: txt(eyeColor),
     face: txt(face),
     mouth: txt(mouth),
