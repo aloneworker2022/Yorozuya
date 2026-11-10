@@ -20,23 +20,59 @@ SECT = (168, 120, 96, 255)     # 大腿剖面線（內側，比輪廓淡一點�
 CREASE_COL = (216, 166, 140, 255)   # 鼠蹊：droom 陰影色（微微深）
 CREASE_TOP = (229, 185, 158, 255)   # 鼠蹊上段更淡
 
-# 體型（2026-11-10 使用者：下體要有幾種體型；系統 13 種 look.build 併成 5 種下半身）：BUILD＝slim 瘦／std 標準／plump 肉／firm 結實／wide 寬臀
-#   waist＝腰往裡收幾格、hip＝髖往外幾格、trx／try＝大腿剖面橢圓加粗、obl＝外腹斜肌那包肉鼓多少（1＝標準）、fold＝被大腿擠出的肉摺多深（1＝標準）
+# 體型（2026-11-10 使用者：下體要有幾種體型——每一種整組重畫，不是在同一個模板上加線）。系統 13 種 look.build 併成 5 種下半身：
+#   BUILD＝slim 瘦／std 標準／plump 肉／firm 結實／wide 寬臀。每種自己一整組：腰線、髖、被大腿擠出的肉摺、大腿上緣、大腿剖面橢圓、屁股下緣、鼠蹊線、肚臍、大陰唇鼓多少。
+#   只有胯下正中間（陰唇、肉穴、透視的位置；鼠蹊線最下面三點、凹口）每種都一樣，互動的圖片條才對得上。
 BUILDS = {
-    'std':   dict(waist=0,    hip=0,   trx=0,    try_=0,    obl=1.0, fold=1.0),
-    'slim':  dict(waist=2.6,  hip=-2.2, trx=-1.2, try_=-3.2, obl=.35, fold=.55),
-    'plump': dict(waist=-4.2, hip=3.0, trx=1.0,  try_=3.6,  obl=1.7, fold=1.6),
-    'firm':  dict(waist=.4,   hip=.8,  trx=.4,   try_=1.6,  obl=.45, fold=.8),
-    'wide':  dict(waist=3.2,  hip=4.6, trx=1.0,  try_=2.8,  obl=1.15, fold=1.2),
+    'std': dict(   # 標準（原本那張）
+        waist=[(35, 22), (38.5, 30), (41, 37), (39.6, 42), (36.6, 46.5), (35.2, 50)], hip=(36.6, 53.2),
+        squeeze=[(35.6, 50.5), (36.6, 53.2), (38.6, 55.4), (41.6, 56.8), (44, 57.6)],
+        top=[(30, 51), (24, 47.5)], thigh=dict(cx=16, cy=62, rx=10.5, ry=18),
+        butt=[(16, 84), (24, 89.5), (34, 94), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)],
+        crease=[(44, 57.6), (47.2, 63.5), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)], navel=(64, 35), mj=1.0),
+    'slim': dict(  # 瘦：軀幹窄、腰幾乎直、髖骨凸；大腿細（剖面小）、大腿和胯下之間有空隙；屁股小、下緣淺
+        waist=[(42, 22), (43.6, 30), (45, 37), (44.6, 42), (43.4, 46.5), (42.2, 50)], hip=(42.4, 53.6),
+        squeeze=[(42.2, 51.6), (42.4, 53.6), (43.4, 55), (45, 56.2), (47, 57)],
+        top=[(36, 54.4), (29, 54)], thigh=dict(cx=19.5, cy=65.5, rx=8, ry=12.5),
+        butt=[(19.5, 80.5), (27.5, 86), (37, 90.6), (47, 94.4), (55, 96.6), (59, 96.6), (61, 96)],
+        crease=[(47, 57), (50.6, 63), (54, 71.5), (56, 80), (56.6, 87), (58, 93), (61, 96)], navel=(64, 34), mj=.8),
+    'plump': dict( # 肉：軀幹寬、腰側一圈肉往外鼓再被大腿擠進去；大腿很粗（剖面大、頂到比髖還高）、大腿肉往胯下擠；屁股大、下緣深
+        waist=[(29.5, 22), (30.5, 29), (31, 35), (28.6, 40), (26, 44.6), (26.6, 48.6)], hip=(30, 52.4),
+        squeeze=[(27.6, 49.4), (30, 52.4), (34.5, 55.8), (40, 58), (45.5, 59.2)],
+        top=[(24, 47.6), (18.5, 41.6)], thigh=dict(cx=14, cy=60.5, rx=13, ry=23.5),
+        butt=[(13, 89.5), (22.5, 95.4), (34, 99.6), (45, 102), (54, 102.2), (59, 99.6), (61, 96)],
+        crease=[(45.5, 59.2), (50, 64.5), (54.2, 72.4), (56.4, 80.5), (56.8, 87.5), (58.2, 93.2), (61, 96)], navel=(64, 36), mj=1.18),
+    'firm': dict(  # 結實：軀幹直而寬、腰側沒有鬆肉；大腿粗而圓（肌肉）、屁股緊而翹（下緣高）
+        waist=[(34.5, 22), (36.6, 30), (38.2, 37), (38.4, 42), (37.8, 46.5), (37.2, 50)], hip=(37.6, 53),
+        squeeze=[(37.4, 51.2), (37.6, 53), (39.2, 54.8), (41.8, 56.2), (44, 57)],
+        top=[(31, 49.6), (24.5, 44.8)], thigh=dict(cx=16.5, cy=61, rx=12.5, ry=19.5),
+        butt=[(15.5, 84.5), (24, 89), (34, 92.6), (45, 95.8), (54, 97.6), (59, 97.2), (61, 96)],
+        crease=[(44, 57), (47.8, 63.5), (52, 72), (54.8, 80), (55.8, 87), (57.6, 93), (61, 96)], navel=(64, 35), mj=.94),
+    'wide': dict(  # 寬臀：腰很細、位置高，往下一路張開到很寬的髖；大腿粗、往外擺；屁股又大又圓、下緣深
+        waist=[(41, 22), (44, 29), (46, 35), (44.4, 40), (38.5, 45), (32, 49.4)], hip=(29, 53),
+        squeeze=[(30, 50.4), (29, 53), (32.6, 56), (38.5, 57.8), (44.5, 58.6)],
+        top=[(23.5, 49.4), (17.5, 44)], thigh=dict(cx=12, cy=62, rx=12, ry=22),
+        butt=[(12.5, 88.5), (22.5, 94.2), (34, 98.2), (45, 100.6), (54, 101), (59, 99), (61, 96)],
+        crease=[(44.5, 58.6), (48.4, 64.4), (52.4, 72.6), (55, 80.2), (55.9, 87.2), (57.7, 93), (61, 96)], navel=(64, 34), mj=1.08),
 }
 BUILD = os.environ.get('BUILD', 'std')
 BD = BUILDS[BUILD]
-HIP = (36.6 - BD['hip'], 53.2)                                         # 髂前上棘（髖的凸點；腰側的肉在這上面鼓、下面被大腿擠）
+# 小陰唇三種大小（系統 look.labia_size：內收小巧／適中微開／外翻飽滿）：LABIA=small|mid|large
+#   k＝小陰唇肉瓣寬幾倍；slit＝沒打開時縫張多開；wav＝外緣波浪（外翻飽滿的肉瓣邊緣皺皺的、鼓出大陰唇外面一點）
+LABIAS = {'small': dict(k=.55, slit=.3, wav=0.0), 'mid': dict(k=1.0, slit=.6, wav=.5), 'large': dict(k=1.5, slit=1.1, wav=1.0)}
+LABIA = os.environ.get('LABIA', 'mid')
+LIP_K, LIP_SLIT, LIP_WAV = LABIAS[LABIA]['k'], LABIAS[LABIA]['slit'], LABIAS[LABIA]['wav']
+# 陰蒂三種大小（2026-11-10 使用者）：CLITSIZE=small|mid|large。跟勃起有關：小的勃起也只是一小粒；中的＝原本那顆；
+#   大的沒勃起就看得到一顆肉粒，勃起時像一根小陰莖——一根圓頭的肉柱從包皮∧下面往上翹（使用者：不要有龜頭；整根一樣粗、沒有冠狀溝）
+CLITSIZE = os.environ.get('CLITSIZE', 'mid')
+MJ_K = BD['mj']                                               # 大陰唇鼓多少（肉的鼓、瘦的扁）
+HIP = BD['hip']                                               # 髂前上棘（髖的凸點；腰側的肉在這上面鼓、下面被大腿擠）
 # 大腿抬起（2026-11-10 使用者：大腿動態要實質重畫，不是加線條）：LEG＝大腿剖面往上抬幾格（負＝往下沉）。
 #   大腿以髖為軸往上轉：剖面橢圓往上、微微往外，抬越高剖面越正對鏡頭（變圓一點）；大腿上緣跟著變陡；
 #   大腿下緣（接屁股那條弧）外側跟著被帶上去、越靠胯下動越少；髖、腰、鼠蹊、胯下不動（網頁只換大腿那塊）。
 LEG = float(os.environ.get('LEG', '0'))
-THIGH_E = dict(cx=16 - .22 * LEG - .35 * BD['hip'], cy=62 - LEG, rx=10.5 + .06 * LEG + BD['trx'], ry=18 - .1 * LEG + BD['try_'])          # 左大腿剖面橢圓
+_T = BD['thigh']
+THIGH_E = dict(cx=_T['cx'] - .22 * LEG, cy=_T['cy'] - LEG, rx=_T['rx'] + .06 * LEG, ry=_T['ry'] - .1 * LEG)          # 左大腿剖面橢圓
 
 
 def ell(e, deg):
@@ -49,18 +85,28 @@ def arc(e, a0, a1, step=6):
     return [ell(e, a0 + (a1 - a0) * i / n) for i in range(n + 1)]
 
 
-_W, _H, _O = BD['waist'], BD['hip'], BD['obl'] - 1          # 腰：往裡收／髖：往外／外腹斜肌那包肉（腰最細處和髖中間往外鼓）
-WAIST_L = [(35 + _W * .8, 22), (38.5 + _W, 30), (41 + _W, 37), (39.6 + _W * .8 - _H * .25 - _O * 1.2, 42), (36.6 + _W * .4 - _H * .6 - _O * 2.0, 46.5), (35.2 - _H * .9 - _O * 1.4, 50), HIP]             # 腰：中段最細 → 外腹斜肌的肉在髂前上棘上方往外鼓
-_F = BD['fold'] - 1
-SQUEEZE_L = [(35.6 - _H - _O * 1.2, 50.5), (36.6 - _H, 53.2), (38.6 - _H * .6, 55.4 + _F * .8), (41.6 - _H * .2, 56.8 + _F * 1.0), (44, 57.6)]                         # 肉擠壓：腹側的肉被大腿往上擠，壓出一道往內勾的摺（坐姿參考圖）
-THIGH_TOP_L = [HIP, (30 - .05 * LEG - _H * .75, 51 - .3 * LEG - BD['try_'] * .25), (24 - .12 * LEG - _H * .5, 47.5 - .68 * LEG - BD['try_'] * .7), ell(THIGH_E, -100)]                     # 大腿上緣：髖 → 剖面頂
+
+WAIST_L = BD['waist'] + [HIP]                                # 腰 → 髖
+
+SQUEEZE_L = BD['squeeze']                                    # 肉擠壓：腹側的肉被大腿往上擠，壓出一道往內勾的摺
+(_t1, _t2), _b = BD['top'], BD['butt']
+THIGH_TOP_L = [HIP, (_t1[0] - .05 * LEG, _t1[1] - .3 * LEG), (_t2[0] - .12 * LEG, _t2[1] - .68 * LEG), ell(THIGH_E, -100)]   # 大腿上緣：髖 → 剖面頂
 OUTER_L = arc(THIGH_E, -100, -238)                                                   # 剖面外半邊（外輪廓，往外鼓）
 SECT_L = arc(THIGH_E, -100, 98)                                                      # 剖面內半邊（大腿肉的圓）
-BUTT_L = [ell(THIGH_E, -238), (16 - .1 * LEG - _H * .3, 84 - .8 * LEG + BD['try_'] * .75), (24, 89.5 - .45 * LEG + BD['try_'] * .45), (34, 94 + BD['try_'] * .15), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 臀部下緣 → 凹口
-CREASE_L = [(44, 57.6), (47.2, 63.5), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
+BUTT_L = [ell(THIGH_E, -238), (_b[0][0] - .1 * LEG, _b[0][1] - .8 * LEG), (_b[1][0], _b[1][1] - .45 * LEG)] + _b[2:]   # 臀部下緣 → 凹口
+CREASE_L = BD['crease']                                      # 鼠蹊線：上半往內鼓（大腿肉）、下半往外撐（陰唇）
 NOTCH = [(61, 96), (67, 96)]
+# 大腿加長、超出畫面（2026-11-10 使用者：大腿延伸到膝蓋 128 格放不下，改成加長、超過畫面就好）：LONG=1。
+#   大腿不在半路切斷（不畫剖面橢圓）：上緣、下緣順著原本的方向一路伸出畫面左右兩邊，越往外微微收細。
+LONG = os.environ.get('LONG', '0') == '1'
+if LONG:
+    _E2 = dict(cx=THIGH_E['cx'] - 34, cy=THIGH_E['cy'] - 1.5, rx=THIGH_E['rx'], ry=THIGH_E['ry'] * .9)   # 大腿盡頭推到畫面外
+    THIGH_TOP_L = THIGH_TOP_L[:-1] + [ell(_E2, -100)]
+    OUTER_L = arc(_E2, -100, -238)
+    SECT_L = []
+    BUTT_L = [ell(_E2, -238)] + BUTT_L[1:]
 # ---- 陰唇＋陰毛（使用者紅筆：陰毛從陰唇頂往上扇形散開、毛尖朝上，左邊幾根捲；陰唇細長杏仁、縫往上接進陰毛）----
-LAB_TOP, LAB_BOT, LAB_W = 73.5, 95.6, 3.0          # 陰唇上下、最寬半寬（使用者紅筆：在胯下最底部、下端到凹口；最寬偏下）
+LAB_TOP, LAB_BOT, LAB_W = 73.5, 95.6, 3.0 * (.6 + .4 * LIP_K)          # 陰唇上下、最寬半寬（使用者紅筆：在胯下最底部、下端到凹口；最寬偏下）
 LAB_EDGE = (196, 108, 118, 255)                    # droom 陰唇色
 LAB_IN = (230, 168, 168, 255)                      # 裡面淡粉
 LAB_SLIT = (170, 84, 98, 255)                      # 中間的縫
@@ -115,6 +161,11 @@ CLIT_ER_AMT = float(os.environ.get('CLIT', '0'))   # 陰蒂勃起 0 → 1（高�
 SWELL = float(os.environ.get('SWELL', '0'))        # 子宮腫脹 0 → 1（高潮第 4 階，跟子宮口下降、吸吮一起）
 DESC = float(os.environ.get('DESC', '0'))          # 子宮口下降幾格（整個子宮跟著降下來；抵掉陰道勃起往上提的 LIFT）
 BOB = os.environ.get('BOB', '0') == '1'            # 吸吮往上那一下：子宮口往上縮 3 格、頸口張開
+# 陰道長度三級（2026-11-10 使用者）：VLEN=0.5|1|1.5（玩家陰莖＝1，能前後移動的範圍固定：龜頭頂 54～84）。
+#   1＝原本（子宮口在 60，插到底剛好頂到、再推 6 格）；0.5＝陰道短一半（子宮口在 73.7，插一半就頂到，再往裡整個子宮被頂上去）；
+#   1.5＝陰道長（子宮口在 46.3，插到底也頂不到）。子宮口位置＝肉穴口 87.4 − 27.4×VLEN。
+VLEN = float(os.environ.get('VLEN', '1'))
+CERV_BASE = 60.0 if VLEN == 1 else 87.4 - 27.4 * VLEN
 CRAMP = float(os.environ.get('CRAMP', '0'))        # 子宮抽動（子宮高潮，2026-11-10 使用者）：抽的那一下整個子宮收縮——變窄、子宮底往下擠、壁變厚更紅、子宮腔被擠扁
 UTERUS = set()                                     # 子宮腔裡空著的格子（網頁讓吸進去的精液填子宮）；跟 LUMEN 一起輸出（綠）
 LUMEN = set()                                      # 陰道裡空著的格子（網頁用來讓精液照陰道形狀流）；LUMEN_OUT＝輸出遮罩 png
@@ -130,7 +181,7 @@ PEN_COLORS = {
 SKIN_PX = (242, 204, 177, 255)
 SKIN_HI = (250, 222, 202, 255)
 SKIN_SH = (217, 168, 143, 255)
-NAVEL = (64, 35)                                                                     # 肚臍（使用者標的＋）
+NAVEL = BD['navel']
 
 
 def mirror(pts): return [(2 * MIDX - x, y) for (x, y) in pts]
@@ -254,7 +305,7 @@ def draw():
             if not 0 <= v <= 1: continue
             o = PW * sp * min(1, 1.35 * max(0, math.sin(math.pi * v)) ** .45)    # 開口（上下收尖）
             mi = 2.0                                                             # 小陰唇那圈
-            ma = (4.2 + 2.4 * sp) * max(0, math.sin(math.pi * min(1, v * 1.05))) ** .65  # 大陰唇被推開的肉（往大腿那邊鼓）
+            ma = (4.2 + 2.4 * sp) * MJ_K * max(0, math.sin(math.pi * min(1, v * 1.05))) ** .65  # 大陰唇被推開的肉（往大腿那邊鼓）
             for x in range(MIDX - 13, MIDX + 14):
                 u = abs(x + .5 - MIDX)
                 if u <= o: continue                       # 開口裡：陰莖（或體內）
@@ -296,26 +347,48 @@ def draw():
         for i, (x, y) in enumerate(pix):
             if px[x, y] in PEN_PX: continue                       # 陰莖在前面：身體的線不畫到陰莖上
             px[x, y] = (CREASE_TOP if i < len(pix) * .3 else CREASE_COL) if col == 'crease' else col
-    # 體型的細節線（只畫在空白的肚皮上；淡色）
+    # 各體型自己的肉、骨、肌肉線（只畫在空白的皮膚上）
     def detail(pts, col, smooth=True):
         for side in (pts, mirror(pts)):
             for (x, y) in pixel_perfect(stroke(cr(side) if smooth else side)):
-                if px[x, y][:3] == (255, 255, 255): px[x, y] = col
-    if BUILD == 'slim':                                    # 瘦：髖骨凸出來一小道、肋骨下緣一點
-        detail([(41.5, 49.5), (43.6, 52), (44.6, 55)], SECT)
-        detail([(43, 24), (46, 27.5), (50.5, 29.5)], CREASE_TOP)
-    if BUILD == 'plump':                                   # 肉：小腹一圈肉（肚臍下一道往下彎的摺）、肚臍深一點、腰側多一道肉摺
-        detail([(46, 49.5), (52, 53.2), (58.5, 54.8), (64, 55.2)], SECT)
-        detail([(36.2, 41.5), (39.5, 43.2), (43, 43.4)], CREASE_COL)
-        px[nx - 1, ny] = SECT; px[nx + 1, ny] = SECT; px[nx, ny + 2] = LINE
-    if BUILD == 'firm':                                    # 結實：腹直肌兩側的線、中間一道白線、人魚線上段深一點
-        detail([(55.5, 22), (54.6, 32), (55.2, 42), (57.4, 50)], CREASE_COL)
-        detail([(64, 23), (64, 32)], CREASE_TOP, False)
-        detail([(64, 39), (64, 49)], CREASE_TOP, False)
-        detail([(57, 29), (60.5, 30), (63, 29.6)], CREASE_TOP)
-        detail([(44, 57.6), (46.2, 61.5), (48.6, 66)], SECT)
-    if BUILD == 'wide':                                    # 寬臀：髖最寬處往下一道圓弧（屁股的肉往兩邊鼓）
-        detail([(HIP[0] + 2.4, 56.5), (HIP[0] + 4.6, 60), (HIP[0] + 5.2, 64.5)], CREASE_TOP)
+                if 0 <= x < N and 0 <= y < N and px[x, y][:3] == (255, 255, 255): px[x, y] = col
+    if BUILD == 'slim':
+        detail([(46.6, 49), (48.8, 51.6), (49.8, 55)], SECT)                       # 髖骨凸出來
+        detail([(45.5, 23), (48.5, 27), (53, 29.4)], CREASE_COL)                   # 肋骨下緣
+        detail([(47, 31.5), (49.5, 33.6)], CREASE_TOP)
+        detail([(58.6, 55), (61, 58.4), (64, 59.4)], CREASE_TOP)                   # 恥骨上緣（小腹平、骨頭的形）
+        detail([(52.6, 76), (54, 82), (55.2, 87)], CREASE_COL)                     # 大腿根的凹（腿細，筋的線）
+        px[nx, ny - 1] = SECT                                                       # 肚臍：直的一條
+    if BUILD == 'plump':
+        detail([(38, 50.6), (46, 55.6), (55, 58.6), (64, 59.4)], LINE)             # 小腹的肉垂下來壓出一道摺
+        detail([(40, 52.6), (47, 57), (55.5, 59.8), (64, 60.5)], CREASE_COL)       # 摺下面的陰影
+        detail([(26.8, 39.6), (31.5, 41.8), (37, 42)], SECT)                       # 腰側的肉摺
+        detail([(56, 30.5), (58, 33.5), (61, 35.5)], CREASE_TOP)                   # 肚臍旁的肉往中間擠
+        detail([(56.4, 66.5), (60, 69.4), (64, 70.2)], CREASE_COL)                 # 陰阜鼓起來的弧
+        detail([(19, 87.6), (27, 91.2), (36, 92.6)], CREASE_COL)                   # 大腿和屁股中間的肉摺
+        detail([(33.5, 58.5), (30, 62.5), (28.6, 68)], CREASE_TOP)                 # 大腿上面的肉鼓
+        for dx in (-2, -1, 0, 1, 2): px[nx + dx, ny] = SECT if abs(dx) == 2 else LINE   # 肚臍：橫的、深
+        px[nx, ny + 1] = SECT
+    if BUILD == 'firm':
+        # 腹肌（2026-11-10 使用者：太小、形狀不對；要微微的線條才有立體感）：整片腹直肌——從畫面頂到恥骨，寬約腰的一半；
+        #   外緣（半月線）往下慢慢收到恥骨；中間白線；腱劃兩道在肚臍上面、一道在肚臍的高度，肚臍以下沒有腱劃。全部用最淡的線。
+        FAINT = (233, 192, 166, 255)
+        detail([(50.4, 0), (50, 10), (50.2, 22), (51.2, 34), (53.6, 46), (57.2, 56), (60.4, 62.5)], FAINT)   # 半月線
+        detail([(64, 0), (64, 31.5)], CREASE_TOP, False)                           # 白線（肚臍上，稍微明顯）
+        detail([(64, 39), (64, 60)], FAINT, False)                                 # 白線（肚臍下，淡）
+        detail([(51, 7.6), (57, 9.4), (63, 8.6)], FAINT)                           # 腱劃（兩邊微微往下彎）
+        detail([(50.8, 20.6), (57, 22.6), (63, 21.6)], FAINT)
+        detail([(51.8, 33.6), (57, 35.4), (61.6, 34.8)], FAINT)
+        detail([(41, 30), (44.4, 36), (46.6, 43), (47.6, 50)], FAINT)              # 外腹斜肌和腹直肌中間的凹
+        detail([(44, 57), (46.4, 61), (49, 66.4)], SECT)                           # 人魚線上段深
+        detail([(34.5, 56.6), (28.5, 57.4), (23.6, 60.6)], CREASE_COL)             # 大腿肌肉分界（股四頭）
+        detail([(36, 61), (31, 66.5), (28.6, 73)], CREASE_TOP)
+        detail([(51.6, 71), (53.8, 77), (55, 82.5)], CREASE_COL)                   # 內收肌的筋
+    if BUILD == 'wide':
+        detail([(31.6, 56.6), (34.4, 60.5), (35.2, 65.5)], CREASE_COL)             # 髖下屁股的肉往兩邊鼓
+        detail([(18.5, 86.6), (26.5, 90), (35.5, 91.2)], CREASE_COL)               # 大腿和屁股中間的摺
+        detail([(57.6, 62), (60.6, 65), (64, 65.8)], CREASE_TOP)                   # 小腹下緣（骨盆寬、小腹平滑的弧）
+        detail([(45.2, 30), (47, 35), (46, 40)], CREASE_TOP)                       # 腰最細處的凹
     return im
 
 
@@ -325,6 +398,14 @@ SW = dict(edge=(204, 96, 112, 255), lip=(238, 160, 166, 255), hi=(250, 198, 202,
           inrim=(214, 112, 124, 255), soft=(244, 178, 182, 255))   # 腫脹（充血）的陰唇色
 
 
+# 陰唇顏色三級（系統 look.labia_color：粉嫩／淺褐／深褐近黑；會跟著開發度變深）：LABCOL=pink|brown|dark
+#   只換小陰唇的肉瓣（外緣、肉面、內緣的摺、鼓起的軟肉）；裡面的黏膜（前庭、肉穴、縫裡的紅）、陰蒂不變
+LABCOL = os.environ.get('LABCOL', 'pink')
+_LC = {'brown': dict(edge=(146, 86, 80, 255), lip=(196, 136, 124, 255), hi=(222, 172, 160, 255), inrim=(168, 104, 96, 255), soft=(208, 152, 140, 255)),
+       'dark': dict(edge=(84, 54, 60, 255), lip=(134, 94, 96, 255), hi=(172, 130, 128, 255), inrim=(106, 70, 74, 255), soft=(150, 110, 110, 255))}
+if LABCOL in _LC:
+    SW.update(_LC[LABCOL])
+    LAB_EDGE, LAB_IN = _LC[LABCOL]['edge'], _LC[LABCOL]['lip']
 CLIT_HI, CLIT, CLIT_SH = (250, 160, 174, 255), (224, 92, 118, 255), (180, 60, 86, 255)
 URETHRA = (140, 34, 56, 255)
 
@@ -333,26 +414,50 @@ CLIT_ER = (236, 70, 104, 255)                         # 勃起：更紅
 
 
 def draw_clit(px, y, erect=0.0):
-    """陰蒂：包皮∧底下一顆小肉粒（兩格高，上亮下深，兩側一點陰影）。
-    erect（0～1，陰唇打開後）：微微勃起——變大一圈、更突出、更紅（往上多長一格，中間那列兩側也變肉粒）。"""
+    """陰蒂：包皮∧底下一顆肉粒。三種大小（CLITSIZE）×勃起（erect 0～1，≥.35 半勃起、≥.7 全勃起）：
+    small：沒勃起只有一格；勃起＝一小粒（兩格高、深色外框）。
+    mid（原本）：沒勃起兩格高；勃起＝一顆有深色外框的圓肉粒。
+    large：沒勃起就是一顆看得到的肉粒（3×3）；勃起＝像一根小陰莖但沒有龜頭——一根圓頭的肉柱（整根一樣粗）往上翹，根部在包皮∧下面。"""
     y = int(y)
     def put(x, yy, c):
-        if px[x, yy] not in PEN_SET: px[x, yy] = c
-    if erect < .35:
-        put(MIDX, y, CLIT_HI); put(MIDX, y + 1, CLIT)
-        for dx in (-1, 1): put(MIDX + dx, y + 1, CLIT_SH)
-        return
-    # 勃起：一顆有深色外框的圓肉粒（淡粉亮面），從周圍的紅裡跳出來；越勃起越大
+        if 0 <= x < N and 0 <= yy < N and px[x, yy] not in PEN_SET: px[x, yy] = c
     OUT, HI, BODY = (150, 40, 62, 255), (252, 214, 220, 255), (240, 150, 170, 255)
-    big = erect >= .7
-    if big:
+    def small_erect():
+        put(MIDX, y, HI); put(MIDX, y + 1, BODY)
+        put(MIDX - 1, y + 1, OUT); put(MIDX + 1, y + 1, OUT); put(MIDX, y + 2, OUT)
+    def bead():                                            # 一顆有深色外框的圓肉粒
         put(MIDX, y - 1, OUT)
         put(MIDX - 1, y, OUT); put(MIDX, y, HI); put(MIDX + 1, y, OUT)
         put(MIDX - 1, y + 1, OUT); put(MIDX, y + 1, BODY); put(MIDX + 1, y + 1, OUT)
         put(MIDX, y + 2, OUT)
-    else:
-        put(MIDX, y, HI); put(MIDX, y + 1, BODY)
-        put(MIDX - 1, y + 1, OUT); put(MIDX + 1, y + 1, OUT); put(MIDX, y + 2, OUT)
+    if CLITSIZE == 'small':
+        if erect < .7: put(MIDX, y + 1, CLIT if erect < .35 else CLIT_HI)
+        else: small_erect()
+        return
+    if CLITSIZE == 'mid':
+        if erect < .35:
+            put(MIDX, y, CLIT_HI); put(MIDX, y + 1, CLIT)
+            for dx in (-1, 1): put(MIDX + dx, y + 1, CLIT_SH)
+        elif erect >= .7: bead()
+        else: small_erect()
+        return
+    # large
+    if erect < .35:                                        # 沒勃起：包皮下面露出一顆肉粒
+        for dx in (-1, 0, 1): put(MIDX + dx, y, CLIT_HI if dx <= 0 else CLIT)
+        for dx in (-1, 0, 1): put(MIDX + dx, y + 1, CLIT)
+        put(MIDX - 2, y + 1, CLIT_SH); put(MIDX + 2, y + 1, CLIT_SH)
+        for dx in (-1, 0, 1): put(MIDX + dx, y + 2, CLIT_SH)
+        return
+    SH, SH_HI, SH_SH = (244, 160, 176, 255), (252, 204, 212, 255), (214, 112, 136, 255)
+    n = 5 if erect < .7 else 9                             # 露出來幾格長（半勃起短、全勃起長）
+    base = y + 1                                           # 根部（包皮∧下面）
+    top = base - n                                         # 頂端
+    for dx in (-1, 0, 1): put(MIDX + dx, top - 1, OUT)                                  # 圓圓的頂（沒有龜頭、沒有冠狀溝：整根一樣粗）
+    put(MIDX - 2, top, OUT); put(MIDX - 1, top, HI); put(MIDX, top, SH_HI); put(MIDX + 1, top, SH); put(MIDX + 2, top, OUT)
+    for k in range(1, n):                                  # 肉柱：左亮右暗
+        yy = top + k
+        put(MIDX - 2, yy, OUT); put(MIDX - 1, yy, SH_HI); put(MIDX, yy, SH); put(MIDX + 1, yy, SH_SH); put(MIDX + 2, yy, OUT)
+    for dx in (-1, 0, 1): put(MIDX + dx, base + 1, OUT)                                 # 根部
 
 
 def draw_urethra(px, y, big=False):
@@ -376,7 +481,7 @@ def rub_labia(px, over=False):
         if y < cor: return 5.9 * max(0, math.sin(math.pi / 2 * min(1, (y - tip) / PEN_GLANS * 1.25))) ** .5
         return 4.8
     # ---- 大陰唇：( ) ----
-    mtop, mbot, MW = {1: (70.0, 96.5, 9.0), 2: (68.5, 96.8, 11.6), 3: (69.2, 97.8, 11.6)}[RUB]   # 大陰唇：碰到／磨蹭時被撐開一些
+    mtop, mbot, MW = {1: (70.0, 96.5, 9.0 * MJ_K), 2: (68.5, 96.8, 11.6 * MJ_K), 3: (69.2, 97.8, 11.6 * MJ_K)}[RUB]   # 大陰唇：碰到／磨蹭時被撐開一些
     def maj(y):
         v = (y - mtop) / (mbot - mtop)
         return MW * max(0, math.sin(math.pi * min(1, max(0, v)) ** .9)) ** .55 if 0 <= v <= 1 else 0
@@ -386,14 +491,14 @@ def rub_labia(px, over=False):
         def inner(y):                                   # (開口, 外緣)
             v = (y - itop) / (ibot - itop)
             if not 0 <= v <= 1: return None
-            w = 3.9 * max(0, math.sin(math.pi * v ** 1.1)) ** .62
-            return (.6 * max(0, math.sin(math.pi * v)) ** .8, w)
+            w = 3.9 * LIP_K * max(0, math.sin(math.pi * v ** 1.1)) ** .62 + (LIP_WAV - .5) * .5 * math.sin(y * 1.3) * (LIP_K > 1)
+            return (LIP_SLIT * max(0, math.sin(math.pi * v)) ** .8, max(w, LIP_SLIT * max(0, math.sin(math.pi * v)) ** .8 + .9))
     else:
         # 碰到／磨蹭：陰唇保持彎的杏仁形（不是沿著龜頭的直條），撐大到包得住龜頭；
         # 內側開口：龜頭頂上方是一條縫，到龜頭頂附近才順著彎開、蓋過龜頭圓頭；往下兩片唇蓋住龜頭兩側一點點
         drag = 1.0 if RUB == 3 else 0.0
         itop, ibot = LAB_TOP - .5 + drag * .5, LAB_BOT + drag
-        OPMAX, LIPW = 5.4, 3.4
+        OPMAX, LIPW = 5.4, 3.4 * LIP_K
         def inner(y):
             v = (y - itop) / (ibot - itop)
             if not 0 <= v <= 1: return None
@@ -403,7 +508,7 @@ def rub_labia(px, over=False):
             op = max(slit, OPMAX * alm * ease)
             if y >= tip: op = max(op, gw(y) - .8)                          # 打開：唇在龜頭兩側分開，龜頭下面不合起來
             outer = (OPMAX + LIPW) * max(0, math.sin(math.pi * min(1, v * 1.05))) ** .5
-            return (op, max(outer, op + 2.2))
+            return (op, max(outer, op + 2.2 * LIP_K))
     for y in range(int(min(mtop, itop)) - 1, int(max(mbot, ibot)) + 2):
         fy = y + .5
         M_ = maj(fy); I_ = inner(fy)
@@ -457,9 +562,9 @@ def rub_open(px):
         v = (fy - top) / H
         if not 0 <= v <= 1: continue
         V = L(.6 * max(0, math.sin(math.pi * v)) ** .8, (4.0 + 2.2 * SP) * max(0, math.sin(math.pi * v)) ** .55)   # 前庭（打開的那塊；插著再撐開）
-        P = max(V + 1.0, L(3.9 * max(0, math.sin(math.pi * v ** 1.1)) ** .62, V + 2.0 + .6 * SP + .5 * math.sin(fy * 1.3)))   # 小陰唇（慢慢翻開；插著翻得更開）
+        P = max(V + 1.0, L(3.9 * LIP_K * max(0, math.sin(math.pi * v ** 1.1)) ** .62, V + (2.0 + .6 * SP) * LIP_K * (.45 + .55 * max(0, math.sin(math.pi * v)) ** .5 if LIP_K > 1 else 1) + LIP_WAV * math.sin(fy * 1.3)))   # 小陰唇（慢慢翻開；插著翻得更開）
         mv = (fy - 70.0) / (96.5 - 70.0)
-        M = (9.0 + 3.0 * SP) * max(0, math.sin(math.pi * min(1, max(0, mv)) ** .9)) ** .55 if 0 <= mv <= 1 else 0   # 大陰唇：跟第 1 格同一條圓弧；插著往外撐大
+        M = (9.0 + 3.0 * SP) * MJ_K * max(0, math.sin(math.pi * min(1, max(0, mv)) ** .9)) ** .55 if 0 <= mv <= 1 else 0   # 大陰唇：跟第 1 格同一條圓弧；插著往外撐大
         for x in range(MIDX - 13, MIDX + 14):
             u = abs(x + .5 - MIDX)
             e = ((x + .5 - hx) / hrx) ** 2 + ((fy - hy) / hry) ** 2
@@ -491,6 +596,7 @@ def rub_press(px):
         return 4.8
     SKIN_LN = (186, 122, 108, 255)                         # 大陰唇外緣（深一點才看得出那團肉）
     MJ, MJ_SH, MJ_HI = (240, 188, 170, 255), (224, 162, 146, 255), (246, 204, 186, 255)   # 微微充血的肉色
+    LT = max(1.0, 1.4 * LIP_K)                             # 小陰唇那圈肉多厚
     apex = LAB_TOP + .5                                    # 火焰尖（跟第 1 格的縫頂同高：陰唇不往上移）
     top, end = 70.0, 96.5                                  # 大陰唇：跟第 1 格一樣大、一樣位置（只是打開）
     def flame(y):                                          # 火焰半寬：尖 → 龜頭頂那麼寬
@@ -499,11 +605,11 @@ def rub_press(px):
         return 4.4 * min(1, t) ** 1.25
     def inner(y):                                          # 大陰唇內緣（小陰唇外緣）
         f = flame(y); g = gw(y)
-        return max(f + 1.4, g + 1.0) if (f >= 0 or g > 0) else 0
+        return max(f + LT, g + LT - .4) if (f >= 0 or g > 0) else 0
     def outer(y):                                          # 大陰唇外緣：跟第 1 格同一條圓弧
         if y < top or y > end: return -1
         v = (y - top) / (end - top)
-        return max(gw(y) - .6, 9.0 * max(0, math.sin(math.pi * min(1, max(0, v)) ** .9)) ** .55)
+        return max(gw(y) - .6, 9.0 * MJ_K * max(0, math.sin(math.pi * min(1, max(0, v)) ** .9)) ** .55)
     for y in range(int(top) - 1, int(end) + 2):
         fy = y + .5
         f, g, io, oo = flame(fy), gw(fy), inner(fy), outer(fy)
@@ -514,8 +620,8 @@ def rub_press(px):
             if f >= 0 and u <= f and not pen:
                 px[x, y] = SW['red'] if u < f - 1 else SW['lip']; continue
             # 小陰唇：火焰兩邊＋順著龜頭圓頭往下，貼著龜頭邊（蓋過龜頭邊 .7 格）
-            if (f >= 0 and f < u <= f + 1.4 and not pen) or (g > 0 and fy < cor + .5 and g - .7 < u <= g + 1.0):
-                px[x, y] = SW['edge'] if (u > max(f + 1.4, g + 1.0) - .9) else SW['lip']; continue
+            if (f >= 0 and f < u <= f + LT and not pen) or (g > 0 and fy < cor + .5 and g - .7 < u <= g + LT - .4):
+                px[x, y] = SW['edge'] if (u > max(f + LT, g + LT - .4) - .9) else SW['lip']; continue
             # 大陰唇：一團軟肉
             if oo > 0 and io < u <= oo:
                 if pen and not (fy > end - 4 and u > g - 2.2): continue        # 只有收口那段蓋過龜頭邊（含著）
@@ -696,15 +802,18 @@ def xray_section(im):
     # 陰道勃起（AROUSE）：陰道變長＝整個子宮、子宮頸往上提 LIFT 格（同樣插到 54 就頂得比較淺）
     # 子宮口下降（DESC）：整個子宮降下來；吸吮（BOB）只有子宮口往上縮 2 格
     DROP = DESC - LIFT                                       # 子宮整體位移（＋往下）
-    cerv0 = 60.0 + DROP - (3.0 if BOB else 0.0)
+    cerv0 = CERV_BASE + DROP - (3.0 if BOB else 0.0)
     push = max(0.0, cerv0 - PEN_TIP) if (INSERT > .05 and PENIS in PEN_COLORS) else 0.0
     SW_ = SWELL                                              # 子宮腫脹：變大變圓、更紅
+    PUSH_T = max(0.0, push - 8.0)                            # 推超過 8 格：子宮壓扁到極限，剩下的整個被頂上去（陰道短的時候）
+    push_, DROP_ = push, DROP
+    push, DROP = min(push, 8.0), DROP - PUSH_T + (CERV_BASE - 60.0)   # 以下子宮的形狀用「壓扁的量」和「整體位移」
     F_TOP, F_BOT = 47.0 + DROP - 3.0 * SW_ - .35 * push + 2.2 * CRAMP, 56.0 + DROP - .85 * push
     F_W, NECK_W = 8.2 + 2.6 * SW_ + .4 * push - 2.4 * CRAMP, 2.4 + .6 * SW_ + .3 * push + .5 * CRAMP   # 子宮底、漏斗底、上寬、頸寬
-    F_BOT = min(F_BOT, cerv0 - push - 2.5)
+    F_BOT = min(F_BOT, cerv0 - push_ - 2.5)
     WALL_U = tuple(int(WALL[j] + (CAV[j] - WALL[j]) * min(1, .3 * SW_ + .35 * CRAMP)) for j in range(3))
     UWT = 1.6 + 1.5 * CRAMP                                  # 子宮壁厚（抽動：收縮變厚）
-    CERV_BOT = cerv0 - push                                  # 子宮頸伸到陰道頂（被龜頭頂著走）
+    CERV_BOT = cerv0 - push_                                 # 子宮頸伸到陰道頂（被龜頭頂著走）
     def uw(y):
         if y < F_TOP: return 0
         if y <= F_BOT:
@@ -725,7 +834,7 @@ def xray_section(im):
             if w and abs(u) <= w:
                 wall = abs(u) > w - UWT
                 blend(x, y, RIM if abs(u) > w - .8 else (WALL_U if wall else CAV), .85 if wall else .5)
-                if not wall and fy < cerv0 - push - 1.5: UTERUS.add((x, y))
+                if not wall and fy < cerv0 - push_ - 1.5: UTERUS.add((x, y))
     for (x, y) in pixel_perfect(stroke([(MIDX, F_TOP + 1.5), (MIDX, CERV_BOT)])): blend(x, y, CAV, .9)   # 頸管
     for d in (-1, 1):                                          # 子宮腔：倒三角的兩邊
         for (x, y) in pixel_perfect(stroke([(CX + d * (F_W - 3), F_TOP + 1), (CX + d * .4, F_BOT - .5)])): blend(x, y, CAV, .8)
