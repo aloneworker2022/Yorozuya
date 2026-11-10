@@ -20,12 +20,23 @@ SECT = (168, 120, 96, 255)     # 大腿剖面線（內側，比輪廓淡一點�
 CREASE_COL = (216, 166, 140, 255)   # 鼠蹊：droom 陰影色（微微深）
 CREASE_TOP = (229, 185, 158, 255)   # 鼠蹊上段更淡
 
-HIP = (36.6, 53.2)                                         # 髂前上棘（髖的凸點；腰側的肉在這上面鼓、下面被大腿擠）
+# 體型（2026-11-10 使用者：下體要有幾種體型；系統 13 種 look.build 併成 5 種下半身）：BUILD＝slim 瘦／std 標準／plump 肉／firm 結實／wide 寬臀
+#   waist＝腰往裡收幾格、hip＝髖往外幾格、trx／try＝大腿剖面橢圓加粗、obl＝外腹斜肌那包肉鼓多少（1＝標準）、fold＝被大腿擠出的肉摺多深（1＝標準）
+BUILDS = {
+    'std':   dict(waist=0,    hip=0,   trx=0,    try_=0,    obl=1.0, fold=1.0),
+    'slim':  dict(waist=2.6,  hip=-2.2, trx=-1.2, try_=-3.2, obl=.35, fold=.55),
+    'plump': dict(waist=-4.2, hip=3.0, trx=1.0,  try_=3.6,  obl=1.7, fold=1.6),
+    'firm':  dict(waist=.4,   hip=.8,  trx=.4,   try_=1.6,  obl=.45, fold=.8),
+    'wide':  dict(waist=3.2,  hip=4.6, trx=1.0,  try_=2.8,  obl=1.15, fold=1.2),
+}
+BUILD = os.environ.get('BUILD', 'std')
+BD = BUILDS[BUILD]
+HIP = (36.6 - BD['hip'], 53.2)                                         # 髂前上棘（髖的凸點；腰側的肉在這上面鼓、下面被大腿擠）
 # 大腿抬起（2026-11-10 使用者：大腿動態要實質重畫，不是加線條）：LEG＝大腿剖面往上抬幾格（負＝往下沉）。
 #   大腿以髖為軸往上轉：剖面橢圓往上、微微往外，抬越高剖面越正對鏡頭（變圓一點）；大腿上緣跟著變陡；
 #   大腿下緣（接屁股那條弧）外側跟著被帶上去、越靠胯下動越少；髖、腰、鼠蹊、胯下不動（網頁只換大腿那塊）。
 LEG = float(os.environ.get('LEG', '0'))
-THIGH_E = dict(cx=16 - .22 * LEG, cy=62 - LEG, rx=10.5 + .06 * LEG, ry=18 - .1 * LEG)          # 左大腿剖面橢圓
+THIGH_E = dict(cx=16 - .22 * LEG - .35 * BD['hip'], cy=62 - LEG, rx=10.5 + .06 * LEG + BD['trx'], ry=18 - .1 * LEG + BD['try_'])          # 左大腿剖面橢圓
 
 
 def ell(e, deg):
@@ -38,12 +49,14 @@ def arc(e, a0, a1, step=6):
     return [ell(e, a0 + (a1 - a0) * i / n) for i in range(n + 1)]
 
 
-WAIST_L = [(35, 22), (38.5, 30), (41, 37), (39.6, 42), (36.6, 46.5), (35.2, 50), HIP]             # 腰：中段最細 → 外腹斜肌的肉在髂前上棘上方往外鼓
-SQUEEZE_L = [(35.6, 50.5), (36.6, 53.2), (38.6, 55.4), (41.6, 56.8), (44, 57.6)]                         # 肉擠壓：腹側的肉被大腿往上擠，壓出一道往內勾的摺（坐姿參考圖）
-THIGH_TOP_L = [HIP, (30 - .05 * LEG, 51 - .3 * LEG), (24 - .12 * LEG, 47.5 - .68 * LEG), ell(THIGH_E, -100)]                     # 大腿上緣：髖 → 剖面頂
+_W, _H, _O = BD['waist'], BD['hip'], BD['obl'] - 1          # 腰：往裡收／髖：往外／外腹斜肌那包肉（腰最細處和髖中間往外鼓）
+WAIST_L = [(35 + _W * .8, 22), (38.5 + _W, 30), (41 + _W, 37), (39.6 + _W * .8 - _H * .25 - _O * 1.2, 42), (36.6 + _W * .4 - _H * .6 - _O * 2.0, 46.5), (35.2 - _H * .9 - _O * 1.4, 50), HIP]             # 腰：中段最細 → 外腹斜肌的肉在髂前上棘上方往外鼓
+_F = BD['fold'] - 1
+SQUEEZE_L = [(35.6 - _H - _O * 1.2, 50.5), (36.6 - _H, 53.2), (38.6 - _H * .6, 55.4 + _F * .8), (41.6 - _H * .2, 56.8 + _F * 1.0), (44, 57.6)]                         # 肉擠壓：腹側的肉被大腿往上擠，壓出一道往內勾的摺（坐姿參考圖）
+THIGH_TOP_L = [HIP, (30 - .05 * LEG - _H * .75, 51 - .3 * LEG - BD['try_'] * .25), (24 - .12 * LEG - _H * .5, 47.5 - .68 * LEG - BD['try_'] * .7), ell(THIGH_E, -100)]                     # 大腿上緣：髖 → 剖面頂
 OUTER_L = arc(THIGH_E, -100, -238)                                                   # 剖面外半邊（外輪廓，往外鼓）
 SECT_L = arc(THIGH_E, -100, 98)                                                      # 剖面內半邊（大腿肉的圓）
-BUTT_L = [ell(THIGH_E, -238), (16 - .1 * LEG, 84 - .8 * LEG), (24, 89.5 - .45 * LEG), (34, 94), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 臀部下緣 → 凹口
+BUTT_L = [ell(THIGH_E, -238), (16 - .1 * LEG - _H * .3, 84 - .8 * LEG + BD['try_'] * .75), (24, 89.5 - .45 * LEG + BD['try_'] * .45), (34, 94 + BD['try_'] * .15), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 臀部下緣 → 凹口
 CREASE_L = [(44, 57.6), (47.2, 63.5), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
 NOTCH = [(61, 96), (67, 96)]
 # ---- 陰唇＋陰毛（使用者紅筆：陰毛從陰唇頂往上扇形散開、毛尖朝上，左邊幾根捲；陰唇細長杏仁、縫往上接進陰毛）----
@@ -283,6 +296,26 @@ def draw():
         for i, (x, y) in enumerate(pix):
             if px[x, y] in PEN_PX: continue                       # 陰莖在前面：身體的線不畫到陰莖上
             px[x, y] = (CREASE_TOP if i < len(pix) * .3 else CREASE_COL) if col == 'crease' else col
+    # 體型的細節線（只畫在空白的肚皮上；淡色）
+    def detail(pts, col, smooth=True):
+        for side in (pts, mirror(pts)):
+            for (x, y) in pixel_perfect(stroke(cr(side) if smooth else side)):
+                if px[x, y][:3] == (255, 255, 255): px[x, y] = col
+    if BUILD == 'slim':                                    # 瘦：髖骨凸出來一小道、肋骨下緣一點
+        detail([(41.5, 49.5), (43.6, 52), (44.6, 55)], SECT)
+        detail([(43, 24), (46, 27.5), (50.5, 29.5)], CREASE_TOP)
+    if BUILD == 'plump':                                   # 肉：小腹一圈肉（肚臍下一道往下彎的摺）、肚臍深一點、腰側多一道肉摺
+        detail([(46, 49.5), (52, 53.2), (58.5, 54.8), (64, 55.2)], SECT)
+        detail([(36.2, 41.5), (39.5, 43.2), (43, 43.4)], CREASE_COL)
+        px[nx - 1, ny] = SECT; px[nx + 1, ny] = SECT; px[nx, ny + 2] = LINE
+    if BUILD == 'firm':                                    # 結實：腹直肌兩側的線、中間一道白線、人魚線上段深一點
+        detail([(55.5, 22), (54.6, 32), (55.2, 42), (57.4, 50)], CREASE_COL)
+        detail([(64, 23), (64, 32)], CREASE_TOP, False)
+        detail([(64, 39), (64, 49)], CREASE_TOP, False)
+        detail([(57, 29), (60.5, 30), (63, 29.6)], CREASE_TOP)
+        detail([(44, 57.6), (46.2, 61.5), (48.6, 66)], SECT)
+    if BUILD == 'wide':                                    # 寬臀：髖最寬處往下一道圓弧（屁股的肉往兩邊鼓）
+        detail([(HIP[0] + 2.4, 56.5), (HIP[0] + 4.6, 60), (HIP[0] + 5.2, 64.5)], CREASE_TOP)
     return im
 
 
