@@ -749,7 +749,15 @@ body.room-home .room-summon-ritual:not([hidden]){display:block}
 html.room-page .scene,#main-room-stage .scene{position:relative}
 .room-order-tip[hidden]{display:none}
 .room-order-tip{position:absolute;left:6px;bottom:8px;z-index:3;margin:0;padding:.25em .6em;max-width:calc(100% - 12px);font-size:12px;color:#e9dcc8;background:rgba(32,28,40,.78);border-radius:4px;pointer-events:none}
-/* 肏的像素互動（sex_pixel.js，正面體位）：放在局部動圖的框裡，常駐、可以按（手指按住陰莖拖） */
-.thrust-anim.pix{pointer-events:auto;opacity:1;width:auto;max-width:96vw;padding:6px 6px 4px;background:rgba(6,10,24,.82)}
-.thrust-anim.pix .sexpix-cv{width:min(64vw,36svh,340px)!important;border-radius:6px}
-.thrust-anim.pix .sexpix-info{color:#f4fbff;font-size:11px;line-height:1.3;max-width:min(64vw,36svh,340px);display:block;text-align:center}
+/* 肏的像素互動（sex_pixel.js，正面體位；2026-11-10 使用者）：主圖＋對話框整組往上搬，畫面最下面一條橫幅放像素畫面（裁成紅框那塊，可以按：手指按住陰莖拖）。
+   --pix-w／--pix-h＝橫幅寬高（裁切 108×96，跟 test_room_summon.js 的 SEX_PIX_CROP 一樣）；--pix-top＝橫幅上緣離畫面底多高 */
+#portrait-sheet.sex-pix{--pix-w:min(calc(100vw - 16px),440px);--pix-h:calc(var(--pix-w) * 96 / 108);--pix-bottom:max(6px,env(safe-area-inset-bottom));--pix-top:calc(var(--pix-bottom) + var(--pix-h) + 8px)}
+#portrait-sheet.sex-pix .thrust-anim.pix{pointer-events:auto;opacity:1;left:50%;bottom:var(--pix-bottom);width:var(--pix-w);max-width:none;padding:2px;transform:translateX(-50%);border-radius:8px;background:rgba(6,10,24,.9);z-index:22}
+#portrait-sheet.sex-pix .thrust-anim.pix .sexpix-row{display:none}
+#portrait-sheet.sex-pix #portrait-img{bottom:var(--pix-top);height:min(calc(100svh - var(--pix-top) - 10px),720px)}
+body.room-ship #portrait-sheet.sex-pix #portrait-img{bottom:var(--pix-top)}
+body.room-home #portrait-sheet.sex-pix #portrait-img{bottom:var(--pix-top)}
+/* 主房間：對話框貼在橫幅上面（原本貼畫面底）；互動鍵列跟著上去 */
+body.room-home #portrait-sheet.sex-pix #talk-box{bottom:var(--pix-top)}
+body.room-home #portrait-sheet.sex-pix .talk-acts{bottom:calc(var(--pix-top) + var(--talk-box-h) + 2px)}
+body.room-ship #portrait-sheet.sex-pix #talk-panel{padding-bottom:var(--pix-top)}

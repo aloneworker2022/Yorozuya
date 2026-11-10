@@ -6,6 +6,7 @@
 //   on(type, data)  事件：stage {stage, name}／insert／pullout／thrust（插著每移動 THRUST_PX 格算一下）／rub（在外面碰著陰唇每 THRUST_PX 格）／
 //                   ejac {where: womb|inside|outside}／orgasm {count}（進子宮高潮的第一陣子宮抽動、之後每 ORGASM_EVERY 陣一次）／pee／squirt／gush
 //   reactMul()  她的反應漲多快（倍率，預設 1）；cumMul()  尿道精液漲多快（倍率，預設 1）
+//   crop { x, y, w, h }（128 格座標）只顯示這一塊（裁成橫幅；畫布本身還是 128×128，按的位置照算）；寬度跟著外框（100%）
 //   info（預設 true）顯示資訊列；resetButton（預設 false）；canvasId／infoId（測試頁用）
 // 回傳 { el, ready, look, state(), set(o), reset(), lock(on), destroy() }
 //
@@ -125,6 +126,17 @@ if (opts.canvasId) cv.id = opts.canvasId;
 if (opts.infoId) info.id = opts.infoId;
 if (opts.info === false) info.hidden = true;
 if (opts.resetButton) section.querySelector(".sexpix-reset").hidden = false;
+if (opts.crop) {                                            // 裁切：外面一層 overflow:hidden，畫布放大、往左上移，只露出 crop 那塊
+  const { x = 0, y = 0, w = 128, h = 128 } = opts.crop;
+  const win = document.createElement("div");
+  win.className = "sexpix-crop";
+  win.style.cssText = `position:relative;width:100%;aspect-ratio:${w}/${h};overflow:hidden;border-radius:6px;background:#28222f`;
+  cv.style.cssText += `;position:absolute;width:${(128 / w) * 100}%;height:auto;left:${(-x / w) * 100}%;top:${(-y / h) * 100}%;border-radius:0`;
+  cv.parentElement.replaceWith(win);
+  win.append(cv);
+  section.prepend(win);
+  if (opts.info === false && !opts.resetButton) section.querySelector(".sexpix-row").hidden = true;
+}
 
 const ctx = cv.getContext("2d");
 ctx.imageSmoothingEnabled = false;

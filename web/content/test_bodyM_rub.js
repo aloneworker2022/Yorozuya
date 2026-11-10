@@ -1,7 +1,7 @@
 // test_bodyM 最上面：像素「肏」互動的測試（本體在 sex_pixel.js，房間的做愛也用同一份）。
 // 這裡多一排選單：體型／陰唇大小／陰唇顏色／陰蒂大小／陰道長度，換了就重新掛一次。
 // 除錯：window.TestBodyMRub.state()／.set({...})；事件印在 console（[sexpix]）。
-import { mountSexPixel } from "/content/sex_pixel.js?v=1";
+import { mountSexPixel } from "/content/sex_pixel.js?v=2";
 
 const OPTS = {
   build: [["slim", "瘦"], ["std", "標準"], ["plump", "肉"], ["firm", "結實"], ["wide", "寬臀"]],

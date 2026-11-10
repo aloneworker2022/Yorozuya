@@ -193,7 +193,7 @@ import {
   marathonFinale,
   passionTwoChance,
 } from "./sex_thrust.js?v=8";
-import { mountSexPixel } from "./sex_pixel.js?v=1";
+import { mountSexPixel } from "./sex_pixel.js?v=2";
 import { pixelLookFor } from "./sex_pixel_look.js?v=1";
 import {
   getMoodCarry,
@@ -2998,6 +2998,8 @@ const SEX_THRUST_CHAT = true;
  *  有碰到她而且在動才算數；玩家興奮＝尿道裡的精液量（漲滿就射）；她的高潮用陰唇／陰蒂／陰道／子宮表現（四階，子宮高潮＝她高潮）。
  *  後背照舊（按鈕＋四幀動圖）。改 false 就整個回到舊的按鈕。 */
 const SEX_PIXEL_ON = true;
+/** 像素畫面裁成橫幅（128 格座標；使用者紅框：腰到陰莖、左右到大腿）。改這裡要一起改 test_room.css 的 --pix-ar。 */
+const SEX_PIX_CROP = { x: 10, y: 28, w: 108, h: 96 };
 let sexChat = null;
 let thrustFramesCache = null;
 
@@ -3578,7 +3580,8 @@ function renderSexChatBar() {
     b.setAttribute("aria-hidden", hide ? "true" : "false");
   }
   // 榨乾場：她滿足（飢渴歸 0）之前沒有「回到對話」
-  if (!sexMarathonLocked()) add("back", "回到對話", () => closeRoomScene(), { title: "離開做愛，回到一般對話" });
+  // 像素互動不顯示「回到對話」（2026-11-10 使用者；點畫面空白處一樣會離開）
+  if (!sexMarathonLocked() && !sexChat.pixel) add("back", "回到對話", () => closeRoomScene(), { title: "離開做愛，回到一般對話" });
 }
 
 function syncThrustButton() {
@@ -3782,8 +3785,12 @@ function mountSexPix(who = girl) {
   box.setAttribute("aria-hidden", "false");
   box.classList.add("on", "pix");
   sc.pixLook = pixelLookFor(who);
+  // 2026-11-10 使用者：做愛畫面整組（主圖＋對話框）往上搬，下面留給像素畫面；照紅框裁成橫幅（腰到陰莖、兩邊大腿），不顯示資訊列
+  $("portrait-sheet")?.classList.add("sex-pix");
   sc.pix = mountSexPixel(box, {
     look: sc.pixLook,
+    crop: SEX_PIX_CROP,
+    info: false,
     // 她的反應漲多快：性奮、關係越高越快（原本「激情一下拿 2 的機率」），陰道越敏感再快一點
     reactMul: () => 0.7 + passionTwoChance(Number(girl?.bodyState?.arousal) || 0, girl?.stage || "stranger") + (ORGAN_DEV_ON && girl ? devPassionChance(girl) : 0),
     // 尿道精液漲多快：興奮上限擴充越高，要抽越多下才射
@@ -3796,6 +3803,7 @@ function mountSexPix(who = girl) {
 function unmountSexPix(sc) {
   try { sc?.pix?.destroy(); } catch (err) { console.warn("[sexpix destroy]", err?.message || err); }
   if (sc) sc.pix = null;
+  $("portrait-sheet")?.classList.remove("sex-pix");
   const box = $("thrust-anim");
   if (!box) return;
   box.classList.remove("pix");
