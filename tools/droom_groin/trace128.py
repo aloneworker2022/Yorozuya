@@ -10,7 +10,7 @@
      股溝線不是直線；肚臍在中線 y35。
 用法：python3 trace128.py OUT.png [--up 6] [--fill]
 """
-import math, argparse
+import math, argparse, os
 from PIL import Image, ImageDraw
 
 N = 128
@@ -21,7 +21,11 @@ CREASE_COL = (216, 166, 140, 255)   # 鼠蹊：droom 陰影色（微微深）
 CREASE_TOP = (229, 185, 158, 255)   # 鼠蹊上段更淡
 
 HIP = (36.6, 53.2)                                         # 髂前上棘（髖的凸點；腰側的肉在這上面鼓、下面被大腿擠）
-THIGH_E = dict(cx=16, cy=62, rx=10.5, ry=18)          # 左大腿剖面橢圓
+# 大腿抬起（2026-11-10 使用者：大腿動態要實質重畫，不是加線條）：LEG＝大腿剖面往上抬幾格（負＝往下沉）。
+#   大腿以髖為軸往上轉：剖面橢圓往上、微微往外，抬越高剖面越正對鏡頭（變圓一點）；大腿上緣跟著變陡；
+#   大腿下緣（接屁股那條弧）外側跟著被帶上去、越靠胯下動越少；髖、腰、鼠蹊、胯下不動（網頁只換大腿那塊）。
+LEG = float(os.environ.get('LEG', '0'))
+THIGH_E = dict(cx=16 - .22 * LEG, cy=62 - LEG, rx=10.5 + .06 * LEG, ry=18 - .1 * LEG)          # 左大腿剖面橢圓
 
 
 def ell(e, deg):
@@ -36,10 +40,10 @@ def arc(e, a0, a1, step=6):
 
 WAIST_L = [(35, 22), (38.5, 30), (41, 37), (39.6, 42), (36.6, 46.5), (35.2, 50), HIP]             # 腰：中段最細 → 外腹斜肌的肉在髂前上棘上方往外鼓
 SQUEEZE_L = [(35.6, 50.5), (36.6, 53.2), (38.6, 55.4), (41.6, 56.8), (44, 57.6)]                         # 肉擠壓：腹側的肉被大腿往上擠，壓出一道往內勾的摺（坐姿參考圖）
-THIGH_TOP_L = [HIP, (30, 51), (24, 47.5), ell(THIGH_E, -100)]                     # 大腿上緣：髖 → 剖面頂
+THIGH_TOP_L = [HIP, (30 - .05 * LEG, 51 - .3 * LEG), (24 - .12 * LEG, 47.5 - .68 * LEG), ell(THIGH_E, -100)]                     # 大腿上緣：髖 → 剖面頂
 OUTER_L = arc(THIGH_E, -100, -238)                                                   # 剖面外半邊（外輪廓，往外鼓）
 SECT_L = arc(THIGH_E, -100, 98)                                                      # 剖面內半邊（大腿肉的圓）
-BUTT_L = [ell(THIGH_E, -238), (16, 84), (24, 89.5), (34, 94), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 臀部下緣 → 凹口
+BUTT_L = [ell(THIGH_E, -238), (16 - .1 * LEG, 84 - .8 * LEG), (24, 89.5 - .45 * LEG), (34, 94), (45, 97.2), (54, 98.6), (59, 97.6), (61, 96)]   # 臀部下緣 → 凹口
 CREASE_L = [(44, 57.6), (47.2, 63.5), (51.5, 72), (54.5, 80), (55.6, 87), (57.6, 93), (61, 96)]   # 上半往內鼓（大腿肉）、下半往外撐（陰唇）
 NOTCH = [(61, 96), (67, 96)]
 # ---- 陰唇＋陰毛（使用者紅筆：陰毛從陰唇頂往上扇形散開、毛尖朝上，左邊幾根捲；陰唇細長杏仁、縫往上接進陰毛）----
@@ -98,6 +102,7 @@ CLIT_ER_AMT = float(os.environ.get('CLIT', '0'))   # 陰蒂勃起 0 → 1（高�
 SWELL = float(os.environ.get('SWELL', '0'))        # 子宮腫脹 0 → 1（高潮第 4 階，跟子宮口下降、吸吮一起）
 DESC = float(os.environ.get('DESC', '0'))          # 子宮口下降幾格（整個子宮跟著降下來；抵掉陰道勃起往上提的 LIFT）
 BOB = os.environ.get('BOB', '0') == '1'            # 吸吮往上那一下：子宮口往上縮 3 格、頸口張開
+CRAMP = float(os.environ.get('CRAMP', '0'))        # 子宮抽動（子宮高潮，2026-11-10 使用者）：抽的那一下整個子宮收縮——變窄、子宮底往下擠、壁變厚更紅、子宮腔被擠扁
 UTERUS = set()                                     # 子宮腔裡空著的格子（網頁讓吸進去的精液填子宮）；跟 LUMEN 一起輸出（綠）
 LUMEN = set()                                      # 陰道裡空著的格子（網頁用來讓精液照陰道形狀流）；LUMEN_OUT＝輸出遮罩 png
 XRAY = os.environ.get('XRAY', ('1' if INSERT > 0 else '0') if INS_MODE else ('0' if RUB else '1')) == '1'   # 陰道子宮透視（磨蹭不做；插入：龜頭進去後才透視，頂著不透視）
@@ -661,10 +666,11 @@ def xray_section(im):
     cerv0 = 60.0 + DROP - (3.0 if BOB else 0.0)
     push = max(0.0, cerv0 - PEN_TIP) if (INSERT > .05 and PENIS in PEN_COLORS) else 0.0
     SW_ = SWELL                                              # 子宮腫脹：變大變圓、更紅
-    F_TOP, F_BOT = 47.0 + DROP - 3.0 * SW_ - .35 * push, 56.0 + DROP - .85 * push
-    F_W, NECK_W = 8.2 + 2.6 * SW_ + .4 * push, 2.4 + .6 * SW_ + .3 * push   # 子宮底、漏斗底、上寬、頸寬
+    F_TOP, F_BOT = 47.0 + DROP - 3.0 * SW_ - .35 * push + 2.2 * CRAMP, 56.0 + DROP - .85 * push
+    F_W, NECK_W = 8.2 + 2.6 * SW_ + .4 * push - 2.4 * CRAMP, 2.4 + .6 * SW_ + .3 * push + .5 * CRAMP   # 子宮底、漏斗底、上寬、頸寬
     F_BOT = min(F_BOT, cerv0 - push - 2.5)
-    WALL_U = tuple(int(WALL[j] + (CAV[j] - WALL[j]) * .3 * SW_) for j in range(3))
+    WALL_U = tuple(int(WALL[j] + (CAV[j] - WALL[j]) * min(1, .3 * SW_ + .35 * CRAMP)) for j in range(3))
+    UWT = 1.6 + 1.5 * CRAMP                                  # 子宮壁厚（抽動：收縮變厚）
     CERV_BOT = cerv0 - push                                  # 子宮頸伸到陰道頂（被龜頭頂著走）
     def uw(y):
         if y < F_TOP: return 0
@@ -684,7 +690,7 @@ def xray_section(im):
             e = (u / F_W) ** 2 + ((fy - F_TOP) / 2.4) ** 2
             if fy < F_TOP and e < 1: blend(x, y, RIM if e > .55 else WALL_U, .85 if e > .55 else .55)
             if w and abs(u) <= w:
-                wall = abs(u) > w - 1.6
+                wall = abs(u) > w - UWT
                 blend(x, y, RIM if abs(u) > w - .8 else (WALL_U if wall else CAV), .85 if wall else .5)
                 if not wall and fy < cerv0 - push - 1.5: UTERUS.add((x, y))
     for (x, y) in pixel_perfect(stroke([(MIDX, F_TOP + 1.5), (MIDX, CERV_BOT)])): blend(x, y, CAV, .9)   # 頸管

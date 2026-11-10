@@ -8,10 +8,13 @@
 //   rub_insert_g1p～g3p.png：同上、往外抽的那一下（陰道口那圈黏著莖被拖出來）
 //   rub_insert_g2s／g3s.png：2、3 階痙攣那一下（陰道因為興奮一抖一抖鎖緊：整條再夾緊、上段縮回）
 //   rub_insert_g3u.png：3 階子宮口吸吮往上那一下（子宮口往上縮、頸口張開）
+//   rub_insert_g3c.png：3 階子宮抽動那一下（子宮高潮：整個子宮收縮——變窄、子宮底往下擠、壁變厚）
+//   rub_legs.png：大腿抬起的姿勢（−2～8 格，一格一張；只有跟平常不一樣的格子，疊在上面，左右腿各挑一張）
 //   rub_open_e.png：打開後陰蒂勃起（反應 1 階以上、還沒插進去時）
-// 高潮分階段（使用者）：1 陰唇外翻（磨開）→ 2 陰蒂勃起（反應 1 階）→ 3 陰道痙攣（2 階）→ 4 子宮腫脹、下降、吸吮（3 階）
+// 高潮分階段（使用者）：1 陰唇外翻（磨開）→ 2 陰蒂勃起（反應 1 階）→ 3 陰道痙攣（2 階）→ 4 子宮高潮（3 階）
+//   子宮高潮（使用者 2026-11-10）＝子宮開始吸吮、然後子宮一抽一抽；可以連續高潮，不會結束（停下來才慢慢退）
 //   3 階子宮腫脹、子宮口下降 DESC_BY_LV 格；龜頭頂到子宮口的那幾格畫子宮口親著龜頭（愛心這裡畫）
-//   rub_insert_lumen.png：上面插入那 10 條的空間遮罩（一條一列，LUMEN_ROWS 順序；紅＝陰道裡空著、綠＝子宮腔）——內射的精液照陰道形狀流、吸進子宮
+//   rub_insert_lumen.png：上面插入那 11 條的空間遮罩（一條一列，LUMEN_ROWS 順序；紅＝陰道裡空著、綠＝子宮腔）——內射的精液照陰道形狀流、吸進子宮
 // 插入：打開後要先把龜頭拉到肉穴口（龜頭頂 ≥ AT_HOLE＝對準），再往上推才插進去（最深到子宮頸）；
 //   在上面磨（沒對準）只是疊在陰唇上；插著時往下拉出肉穴口就回到疊著。
 // 操作：手指按住陰莖任何一段，上下拖動陰莖摩擦陰唇；碰著陰唇時累積移動距離，每 RUB_DIST 格算一下，
@@ -24,7 +27,7 @@ const RUBS_TO_OPEN = 4;               // 摩擦幾下陰唇打開
 const PEN_HALF_W = 7;                 // 按得到陰莖的半寬（128 格）
 const INS0 = 54, INS1 = 84;           // 插入圖片條：龜頭頂 54（頂到子宮頸再往裡推 6 格，子宮被壓扁）～84（剛進肉穴口）
 const AT_HOLE = 85;                   // 打開後龜頭拉到這列以下＝頂在肉穴口（對準了），往上推才插進去
-const OPEN_STEP_MS = 110;
+const OPEN_STEP_MS = 110;              // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
 // 尿道漲精液：碰著陰唇磨、或插著抽送時，每移動 1 格加 CUM_PER_PX；白色從根部往龜頭慢慢漲上去，漲滿停在尿道口
 const CUM_PER_PX = 1 / 160;
 const URETHRA_EMPTY = [56, 48, 66], CUM_WHITE = [250, 248, 252], CUM_SHADE = [214, 212, 226];
@@ -32,10 +35,11 @@ const URETHRA_EMPTY = [56, 48, 66], CUM_WHITE = [250, 248, 252], CUM_SHADE = [21
 const SHOTS = 4, SHOT_MS = 380;
 const JERK_MS = 140;                  // 每一股陰莖往前抖一下（射精時不能前後拖）
 const CH_H = 5.2;                     // 子宮口前的小空間（陰道接子宮口那段往兩邊微微鼓開）的高；內射先積在這裡，太多才順著陰道往外流
-const INSIDE_MAX = 3;
-const MILK = [246, 240, 236];         // 精液流進陰道後的乳白色（陰道染白、陰莖被包一層）                 // 射在裡面的量（1＝空間裝滿；超過就沿著陰莖往外流、從陰道口噴出來）
+const INSIDE_MAX = 3;                 // 射在裡面的量（1＝空間裝滿；超過就沿著陰莖往外流、從陰道口噴出來）
+const MILK = [246, 240, 236];         // 精液流進陰道後的乳白色（陰道染白、陰莖被包一層）
 // 插著的反應：抽送每移動 1 格加 REACT_PER_PX（0～3 階）；停下來 REACT_IDLE_MS 後每秒退 REACT_DECAY
-const REACT_PER_PX = 1 / 25, REACT_MAX = 3, REACT_IDLE_MS = 1500, REACT_DECAY = .15;
+// 1/60＝來回抽一趟升一階（之前 1/25 兩下半就到子宮高潮，中間的階段看不到）；約 6 下到子宮高潮，跟第一次射精差不多時候
+const REACT_PER_PX = 1 / 60, REACT_MAX = 3, REACT_IDLE_MS = 1500, REACT_DECAY = .15;
 const LIFT_PER_LV = 2;                // 陰道勃起：每階子宮頸往上提幾格（跟 trace128.py 的 LIFT＝6×AROUSE 一樣）
 const PULL_SHOW_MS = 180;             // 往外抽之後多久還用「拖出來」那條
 // 痙攣：插著、反應到 2 階以上時，每隔一陣子一抖一抖（一陣 SPASM_N 下，每下夾 SPASM_ON_MS、鬆 SPASM_OFF_MS）；不用抽送，停著也會抖
@@ -44,27 +48,32 @@ const SPASM_N = { 2: [2, 3], 3: [3, 5] };                  // 一陣抖幾下
 const SPASM_ON_MS = 130, SPASM_OFF_MS = 210;
 // 子宮：興奮（2 階以上）腫脹、子宮口下降；陰道裡有精液就一上一下吸進子宮；龜頭頂著子宮口＝親著龜頭、飄出愛心
 const DESC_BY_LV = [0, 0, 0, 7];      // 子宮口下降幾格（跟 gen_rub_sheets.py 一樣；第 4 階段才下降）
-const STAGES = ["", "陰唇外翻", "陰蒂勃起", "陰道痙攣", "子宮下降吸吮"];
+const STAGES = ["", "陰唇外翻", "陰蒂勃起", "陰道痙攣", "子宮高潮"];
 const RUB_REACT_CAP = 1.99;           // 還沒插進去：在外面磨最多到陰蒂勃起（陰道、子宮的階段要插著）
 // 噴精：陰道裡精液滿了（≥ SQUIRT_FULL）時痙攣過，拔出陰莖的時候陰道一抽一抽把精液吐出來
 // 吐的樣子像嘔吐（使用者：不是噴口水那樣）：陰道口先鼓起來一團（HEAVE_MS），再一大口濃濃的湧出來、順著往下淌（不是飛散的點），停一下再吐下一口
 const SQUIRT_FULL = 1, SQUIRT_PULSES = [3, 5], HEAVE_MS = 280, HEAVE_PAUSE_MS = 320, POUR_LIFE_MS = 2600;
 // 身體動作（使用者：抽插時大腿、腹部跟著動，大腿上下微微扭；子宮高潮〔第 4 階段〕雙腿忍不住往上）
-// 整張畫面做垂直位移：陰莖、陰道口那塊（中間下面）不動，大腿往兩邊越外面動越多，腹部（中間上面）動一點
-const LEG_LIFT = 4.5, LEG_TREMBLE = .7;
+// 大腿＝重畫的姿勢圖（rub_legs.png：大腿以髖為軸往上抬 LEG0～LEG1 格，左右腿各挑一張疊上去），不是把畫面像素往上推；腹部還是整塊微微位移
+const LEG0 = -2, LEG1 = 8;             // 跟 gen_rub_sheets.py 一樣
+const LEG_LIFT = 5, LEG_TREMBLE = .8;
 const BOB_UP = 3;                     // 吸吮往上那一下子宮口縮幾格（跟 trace128.py 的 BOB 一樣）
 const BOB_MS = 260;                   // 吸吮：上、下各停多久
-const SUCK_PER_BOB = .1;              // 每吸一下從陰道吸進子宮多少（1＝一次射精 4 股的量）
-const WOMB_MAX = 3, WOMB_PX = 14;     // 子宮裡最多裝多少；每 1 的量填幾格
+const SUCK_PER_BOB = .04;             // 每吸一下從陰道吸進子宮多少（1＝一次射精 4 股的量）；使用者：子宮一次不會吸很多
+const WOMB_MAX = 2;                   // 子宮裡最多裝多少（畫面上＝子宮腔整個填滿）
+// 子宮滿了（吸滿、或親著龜頭被射滿）再被龜頭頂到子宮口：子宮把精液噴回陰道裡（使用者 2026-11-10）
+const GUSH = .5, GUSH_MS = 320;
+// 子宮抽動（子宮高潮）：3 階插著時一陣一陣抽（一陣 CRAMP_N 下，每下縮 CRAMP_ON_MS、鬆 CRAMP_OFF_MS），每抽一下大腿往上一抬
+const CRAMP_GAP = [1400, 3200], CRAMP_N = [2, 4], CRAMP_ON_MS = 150, CRAMP_OFF_MS = 230;
 const HEART_EVERY_MS = 420, HEART_LIFE_MS = 1400;
 const cervix0 = (lv, bob = false) => 60 - LIFT_PER_LV * lv + DESC_BY_LV[lv] - (bob ? BOB_UP : 0);   // 這一階沒被頂到時子宮頸的位置
-const HOLE_Y = 87, BODY_BG = [40, 34, 50];             // 打開過渡：每一格停多久（閉合 → 打開一點 → 打開大半 → 全開）
+const HOLE_Y = 87, BODY_BG = [40, 34, 50];
 
 const section = document.createElement("section");
 section.className = "card";
 section.innerHTML = `
   <h2 style="margin-top:0">0. 磨蹭陰唇（像素）</h2>
-  <details class="dim" style="margin:.2em 0 .4em"><summary>說明</summary><p style="margin:.3em 0 0">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；高潮分階段：陰唇外翻 → 陰蒂勃起 → 陰道一抖一抖地痙攣（停著不動也會；陰道裡滿滿精液時痙攣過，拔出來陰道會一口一口吐出精液）→ 子宮腫脹、子宮口降下來，陰道裡有精液就一上一下吸進子宮；龜頭頂著子宮口時子宮口會親著龜頭、飄出愛心（這時候射直接灌進子宮）；停下來慢慢鬆回去。抽插時大腿、腹部跟著動，子宮高潮時雙腿忍不住往上。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p></details>
+  <details class="dim" style="margin:.2em 0 .4em"><summary>說明</summary><p style="margin:.3em 0 0">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；高潮分階段：陰唇外翻 → 陰蒂勃起 → 陰道一抖一抖地痙攣（停著不動也會；陰道裡滿滿精液時痙攣過，拔出來陰道會一口一口吐出精液）→ 子宮高潮：子宮腫脹、子宮口降下來一上一下吸吮（陰道裡有精液就一點一點吸進子宮），子宮一抽一抽地收縮，可以一直連續高潮；龜頭頂著子宮口時子宮口會親著龜頭、飄出愛心（這時候射直接灌進子宮）；子宮滿了再被頂到，會把精液噴回陰道裡；停下來慢慢鬆回去。抽插時大腿、腹部跟著動，子宮高潮時雙腿忍不住往上抬、子宮每抽一下腿就一抬。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p></details>
   <div style="display:flex;justify-content:center">
     <canvas id="rub-cv" width="128" height="128"
       style="width:min(70vw,384px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
@@ -89,7 +98,7 @@ const load = (src) => new Promise((resolve, reject) => {
 });
 
 const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
-  shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0, spasm: false, spasmLeft: 0, spasmNext: 0, spasms: 0, womb: 0, bob: false, sucks: 0, hearts: [], kisses: 0, squirtReady: false, squirting: 0, squirts: 0, heave: 0, pours: [], vomit: 0 };   // drops＝抽插時從陰道口帶出來、往下流的精液   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
+  shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0, spasm: false, spasmLeft: 0, spasmNext: 0, spasms: 0, womb: 0, bob: false, sucks: 0, cramp: false, crampLeft: 0, crampNext: 0, cramps: 0, gush: -1e9, gushes: 0, hearts: [], kisses: 0, squirtReady: false, squirting: 0, squirts: 0, heave: 0, pours: [], vomit: 0 };   // drops＝抽插時從陰道口帶出來、往下流的精液   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
 let openTimer = 0;
 let sheets = null;
 
@@ -100,25 +109,26 @@ function draw() {
   ctx.clearRect(0, 0, 128, 128);
   if (st.inserted) {
     const lv = level(), pulling = performance.now() - st.pullAt < PULL_SHOW_MS;
-    const spasm = st.spasm && sheets.spasm[lv], bob = !spasm && !pulling && st.bob && sheets.bob[lv];
-    const sheet = lv ? (spasm ? sheets.spasm[lv] : pulling ? sheets.pull[lv] : bob ? sheets.bob[lv] : sheets.grip[lv]) : sheets.insert;
-    cur.variant = lv ? `g${lv}${spasm ? "s" : pulling ? "p" : bob ? "u" : ""}` : "insert";
+    const spasm = st.spasm && sheets.spasm[lv], cramp = !spasm && !pulling && st.cramp && sheets.cramp[lv], bob = !spasm && !pulling && !cramp && st.bob && sheets.bob[lv];
+    const sheet = lv ? (spasm ? sheets.spasm[lv] : pulling ? sheets.pull[lv] : cramp ? sheets.cramp[lv] : bob ? sheets.bob[lv] : sheets.grip[lv]) : sheets.insert;
+    cur.variant = lv ? `g${lv}${spasm ? "s" : pulling ? "p" : cramp ? "c" : bob ? "u" : ""}` : "insert";
     cur.frame = Math.max(0, Math.min(INS1 - INS0, tipNow - INS0));
     ctx.drawImage(sheet, cur.frame * 128, 0, 128, 128, 0, 0, 128, 128);
   } else {
     const sheet = !st.opened ? sheets.closed : st.openStep >= 2 && level() >= 1 ? sheets.openE : [sheets.a35, sheets.a70, sheets.open][Math.min(2, st.openStep)];
     ctx.drawImage(sheet, i * 128, 0, 128, 128, 0, 0, 128, 128);
   }
+  drawLegs();
   drawUrethra();
   drawCum();
   drawHearts();
   applyBody();
   const stg = stage();
-  info.textContent = (stg ? `【${stg}・${STAGES[stg]}】` : "") + (st.squirting ? "陰道把精液吐出來了！・" : "") + (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? `插入中・${["", "陰道收緊", "陰道纏住、變長", "緊緊纏住、勃起變長"][level()] || "還鬆鬆的"}${st.spasm || st.spasmLeft ? "・一抖一抖地痙攣" : ""}${kissing() ? "・子宮口親著龜頭♥" : st.bob || sucking() ? "・子宮口吸著精液" : ""}${st.womb > .05 ? `・子宮裡 ${Math.round(st.womb / WOMB_MAX * 100)}%` : ""}` : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
+  info.textContent = (stg ? `【${stg}・${STAGES[stg]}】` : "") + (st.squirting ? "陰道把精液吐出來了！・" : "") + (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? `插入中・${["", "陰道收緊", "陰道纏住、變長", "緊緊纏住、勃起變長"][level()] || "還鬆鬆的"}${st.spasm || st.spasmLeft ? "・一抖一抖地痙攣" : ""}${performance.now() - st.gush < 900 ? "・子宮把精液噴回陰道！" : ""}${st.cramp || st.crampLeft ? "・子宮一抽一抽" : ""}${kissing() ? "・子宮口親著龜頭♥" : bobbing() ? (canSuck() ? "・子宮口吸著精液" : "・子宮口一吸一吸") : ""}${st.womb > .05 ? `・子宮裡 ${Math.round(st.womb / WOMB_MAX * 100)}%` : ""}` : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
 }
 
 // ---- 陰道空間遮罩（內射的精液照陰道形狀流，陰道腫脹撐開時也跟著） ----
-const LUMEN_ROWS = ["insert", "g1", "g1p", "g2", "g2p", "g2s", "g3", "g3p", "g3s", "g3u"];
+const LUMEN_ROWS = ["insert", "g1", "g1p", "g2", "g2p", "g2s", "g3", "g3p", "g3s", "g3u", "g3c"];
 const cur = { variant: "insert", frame: 0 };
 let lumenImg = null;
 const lumenCache = new Map();
@@ -133,7 +143,7 @@ function lumenMask() {                                      // 現在這一格�
   lumenCtx.drawImage(lumenImg, cur.frame * 128, row * 128, 128, 128, 0, 0, 128, 128);
   const src = lumenCtx.getImageData(0, 0, 128, 128).data, m = new Uint8Array(128 * 128), w = new Uint8Array(128 * 128);
   for (let i = 0; i < m.length; i++) { m[i] = src[i * 4] > 128 ? 1 : 0; w[i] = src[i * 4 + 1] > 128 ? 1 : 0; }
-  m.womb = w;
+  m.womb = w; m.wombN = w.reduce((a, b) => a + b, 0);
   lumenCache.set(key, m);
   return m;
 }
@@ -179,12 +189,14 @@ const topCells = (f) => {                                    // 最上面那一�
 function fillLumen(d, m, vol) {
   const f = fluidMask(m);
   paintFluid(d, f, flood(f, topCells(f), Math.round(vol * SHOTS * LUMEN_PX_PER_SHOT)));
+  if (performance.now() - st.gush < GUSH_MS)                  // 子宮噴回來的那一下：子宮口前一團亮白濺開
+    for (const c of flood(f, topCells(f), 18, 11)) put(d, 128, c.x, c.y, hash(c.x, c.y + 9) < .25 ? CUM_SHADE : [255, 255, 255], .95);
 }
-// 子宮裡的精液：從頸管往子宮底填（往上漫）
-function fillWomb(d, w, vol) {
+// 子宮裡的精液：從頸管往子宮底填（往上漫）；填的格數照這一格子宮腔的大小算——WOMB_MAX＝整個子宮腔填滿（腫脹時子宮腔變大也一樣）
+function fillWomb(d, w, vol, total) {
   let seeds = [];
   for (let y = 127; y >= 0 && !seeds.length; y--) for (let x = 40; x < 88; x++) if (w[y * 128 + x]) seeds.push([x, y]);
-  paintFluid(d, w, flood(w, seeds, Math.round(vol * WOMB_PX), 3, true));
+  paintFluid(d, w, flood(w, seeds, Math.round(Math.min(1, vol / WOMB_MAX) * total), 3, true));
 }
 // 愛心：龜頭頂著子宮口時從那裡飄出來（往上飄、左右晃、最後淡掉）
 const HEART = ["01010", "11111", "11111", "01110", "00100"];
@@ -203,7 +215,7 @@ function drawHearts() {
   }
   ctx.putImageData(img, 0, 0);
 }
-// 高潮階段：1 陰唇外翻（打開）→ 2 陰蒂勃起（反應 1 階）→ 3 陰道痙攣（2 階，插著）→ 4 子宮下降吸吮（3 階，插著）
+// 高潮階段：1 陰唇外翻（打開）→ 2 陰蒂勃起（反應 1 階）→ 3 陰道痙攣（2 階，插著）→ 4 子宮高潮（3 階，插著：吸吮＋子宮抽動）
 const stage = () => !st.opened ? 0 : 1 + Math.min(st.inserted ? 3 : 1, level());
 // 吐精：一口一口（像嘔吐）——陰道口先鼓起一團（heave 0→1），然後一大口湧出來順著往下淌（pour），停一下再下一口；陰道裡的量跟著少
 let vomitLeft = 0, heaveT0 = 0, heaveNext = 0;
@@ -262,6 +274,7 @@ function drawVomit(d) {
 }
 
 // ---- 身體動作：三個彈簧（左腿、右腿、腹部），p＝往下幾格（負＝往上） ----
+// 大腿：彈簧的位置挑 rub_legs.png 的姿勢（真的重畫的大腿：剖面往上抬、上緣變陡、下緣跟著），左半、右半各疊一張
 const body = { L: { p: 0, v: 0, k: .22 }, R: { p: 0, v: 0, k: .28 }, B: { p: 0, v: 0, k: .3 } };
 function stepBody(now) {
   const orgasm = st.inserted && stage() === 4;              // 子宮高潮：雙腿忍不住往上（一直在抖）
@@ -275,18 +288,24 @@ function stepBody(now) {
   return moving;
 }
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const legIdx = (p) => Math.max(LEG0, Math.min(LEG1, Math.round(-p))) - LEG0;
+function drawLegs() {
+  const l = legIdx(body.L.p), r = legIdx(body.R.p);
+  if (l !== -LEG0) ctx.drawImage(sheets.legs, l * 128, 0, 64, 128, 0, 0, 64, 128);
+  if (r !== -LEG0) ctx.drawImage(sheets.legs, r * 128 + 64, 0, 64, 128, 64, 0, 64, 128);
+}
 let bodyBuf = null;
-function applyBody() {
-  const L = body.L.p, R = body.R.p, B = body.B.p;
-  if (Math.abs(L) < .3 && Math.abs(R) < .3 && Math.abs(B) < .3) return;
+function applyBody() {                                       // 腹部（中間、y<70）整塊微微位移
+  const B = body.B.p;
+  if (Math.abs(B) < .3) return;
   const img = ctx.getImageData(0, 0, 128, 128), src = img.data;
   if (!bodyBuf) bodyBuf = new Uint8ClampedArray(src.length);
   const out = bodyBuf;
   for (let x = 0; x < 128; x++) {
-    const wT = clamp01((Math.abs(x + .5 - 64.5) - 12) / 22), side = x < 64 ? L : R;
+    const wT = clamp01((Math.abs(x + .5 - 64.5) - 12) / 22);
     for (let y = 0; y < 128; y++) {
       const wB = (1 - wT) * clamp01((70 - y) / 22);
-      const sy = y - Math.round(side * wT + B * wB);
+      const sy = y - Math.round(B * wB);
       const o = (y * 128 + x) * 4, k = (Math.max(0, Math.min(127, sy)) * 128 + x) * 4;
       if (sy < 0 || sy > 127) { out[o] = BODY_BG[0]; out[o + 1] = BODY_BG[1]; out[o + 2] = BODY_BG[2]; out[o + 3] = 255; continue; }
       out[o] = src[k]; out[o + 1] = src[k + 1]; out[o + 2] = src[k + 2]; out[o + 3] = src[k + 3];
@@ -306,7 +325,17 @@ setInterval(() => {
 
 const tipNowY = () => Math.round(st.tip) + st.jerk;
 const kissing = () => st.inserted && tipNowY() <= cervix0(level()) + .5;            // 龜頭頂到（沒吸的時候的）子宮口
-const sucking = () => st.inserted && level() >= 3 && !kissing() && st.inside > .02 && st.womb < WOMB_MAX;
+const bobbing = () => st.inserted && level() >= 3 && !kissing();                   // 子宮高潮：子宮口一上一下吸吮（陰道裡沒精液也在吸）
+const canSuck = () => st.inside > .02 && st.womb < WOMB_MAX;                       // 吸得到東西
+// 子宮滿了被頂：把精液噴回陰道裡（陰道太滿就從陰道口噴出來）
+function wombGush() {
+  const v = Math.min(GUSH, st.womb);
+  st.womb -= v; st.inside = Math.min(INSIDE_MAX, st.inside + v);
+  st.gush = performance.now(); st.gushes += 1;
+  if (st.inside > 1.5) { st.leak = 1; setTimeout(() => { st.leak = 0; draw(); }, 220); }
+  body.B.v += .9; body.L.v -= .5; body.R.v -= .6;             // 肚子一鼓、腿一抖
+  setTimeout(draw, GUSH_MS + 20); setTimeout(draw, 920);
+}
 
 // 這一股：一小團精液從龜頭頂往子宮口衝上去（沿著陰道空著的地方，不是一條線），到頂濺開
 const SPURT_FLY_MS = 150;
@@ -363,7 +392,7 @@ function drawCum() {
     for (let i = 1; i <= sp.drip; i++) put(d, 128, sp.x + (i > 2 ? .5 : 0), sp.y + sp.r * .6 + i, i % 2 ? CUM_SHADE : CUM_WHITE);
   }
   const tipY = Math.round(st.tip) + st.jerk;
-  if (st.womb > 0 && st.inserted) { const m = lumenMask(); if (m) fillWomb(d, m.womb, st.womb); }   // 吸進子宮的精液
+  if (st.womb > 0 && st.inserted) { const m = lumenMask(); if (m) fillWomb(d, m.womb, st.womb, m.wombN); }   // 吸進子宮的精液
   if (st.inside && st.inserted) {
     const c0 = cervix0(level()), push = Math.max(0, c0 - tipY), cerv = c0 - push;   // 子宮頸被頂著走（陰道勃起變長：子宮頸往上提）
     const m = lumenMask();
@@ -429,9 +458,10 @@ function drawCum() {
 }
 function shootOnce() {
   const tipY = Math.round(st.tip);
+  const kiss = kissing();                                    // 抖之前就親著才算（不然差 2 格也會被算成親著）
   st.jerk = -2;                                              // 往前抖一下
   setTimeout(() => { st.jerk = 0; draw(); }, JERK_MS);
-  if (st.inserted && kissing()) {                            // 子宮口親著龜頭時射：直接灌進子宮
+  if (st.inserted && kiss) {                            // 子宮口親著龜頭時射：直接灌進子宮
     st.spurt = null;
     st.womb = Math.min(WOMB_MAX, st.womb + 1 / SHOTS);
     if (st.womb >= WOMB_MAX) st.inside = Math.min(INSIDE_MAX, st.inside + 1 / SHOTS);   // 子宮滿了才往陰道裡流
@@ -525,6 +555,7 @@ cv.addEventListener("pointermove", (ev) => {
     if (next > st.tip) st.pullAt = performance.now(); else st.pullAt = 0;
     const dd = next - st.tip;                                // 抽插：大腿跟著上下（左右不一樣＝扭）、腹部跟著被頂
     body.L.v += dd * .11; body.R.v += dd * .07; body.B.v += dd * .05;
+    if (dd < 0 && next <= cervix0(level()) && st.womb >= WOMB_MAX - .01) wombGush();   // 子宮滿了被頂到子宮口
   }
   st.moveAt = performance.now();
   if (st.inserted && next > st.tip && st.inside > 1 && Math.random() < .35 + .2 * Math.min(1, st.inside - 1)) spawnDrop();   // 往外抽：帶出精液
@@ -537,6 +568,7 @@ cv.addEventListener("pointermove", (ev) => {
     else if (st.armed || st.inserted) { st.inserted = st.tip <= INS1; }     // 對準後往上推＝插進去
     if (!st.inserted && st.tip < AT_HOLE && !canIn) st.armed = false;
   }
+  if (!wasIn && st.inserted) st.vomit = 0;                    // 插進去：之前吐在外面的痕跡清掉
   if (wasIn && !st.inserted && st.squirtReady) startSquirt();   // 拔出來：痙攣過又滿滿的＝陰道吐出精液
   draw();
   maybeShoot();
@@ -553,7 +585,7 @@ section.querySelector("#rub-reset").addEventListener("click", () => {
   vomitLeft = 0; heaveNext = 0;
   for (const sp of Object.values(body)) { sp.p = 0; sp.v = 0; }
   Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
-    shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0, spasm: false, spasmLeft: 0, spasmNext: 0, spasms: 0, womb: 0, bob: false, sucks: 0, hearts: [], kisses: 0, squirtReady: false, squirting: 0, squirts: 0, heave: 0, pours: [], vomit: 0 });
+    shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0, spasm: false, spasmLeft: 0, spasmNext: 0, spasms: 0, womb: 0, bob: false, sucks: 0, cramp: false, crampLeft: 0, crampNext: 0, cramps: 0, gush: -1e9, gushes: 0, hearts: [], kisses: 0, squirtReady: false, squirting: 0, squirts: 0, heave: 0, pours: [], vomit: 0 });
   draw();
 });
 
@@ -594,14 +626,38 @@ setInterval(() => {
   twitch();
 }, 100);
 
+// 子宮抽動排程（子宮高潮）：3 階插著就一陣一陣抽，不會結束（反應退下去才停）；每抽一下大腿往上一抬
+setInterval(() => {
+  const now = performance.now();
+  if (!sheets || !st.inserted || level() < 3) {
+    if (st.cramp || st.crampLeft) { st.cramp = false; st.crampLeft = 0; draw(); }
+    st.crampNext = 0; return;
+  }
+  if (!st.crampNext) st.crampNext = now + 500;               // 進子宮高潮：先吸一下，然後開始抽
+  if (st.crampLeft || now < st.crampNext) return;
+  st.crampLeft = Math.round(rand(CRAMP_N));
+  const twitch = () => {
+    if (!st.crampLeft || !st.inserted || level() < 3) { st.cramp = false; st.crampLeft = 0; draw(); return; }
+    st.cramp = true; st.cramps += 1;
+    body.L.v -= 1.5; body.R.v -= 1.2; body.B.v -= .5;        // 子宮一抽：大腿往上一抬、肚子一縮
+    draw();
+    setTimeout(() => {
+      st.cramp = false; st.crampLeft -= 1; draw();
+      if (st.crampLeft > 0) setTimeout(twitch, CRAMP_OFF_MS);
+      else st.crampNext = performance.now() + rand(CRAMP_GAP);
+    }, CRAMP_ON_MS);
+  };
+  twitch();
+}, 100);
+
 // 子宮口吸吮：一上一下，往上那一下從陰道吸一點進子宮；龜頭頂著子宮口時＝親著龜頭、飄愛心
 let heartAt = 0;
 setInterval(() => {
   if (!sheets) return;
   const now = performance.now();
-  if (sucking()) {
+  if (bobbing()) {
     st.bob = !st.bob;
-    if (st.bob) { const v = Math.min(SUCK_PER_BOB, st.inside, WOMB_MAX - st.womb); st.inside -= v; st.womb += v; st.sucks += 1; }
+    if (st.bob && canSuck()) { const v = Math.min(SUCK_PER_BOB, st.inside, WOMB_MAX - st.womb); st.inside -= v; st.womb += v; st.sucks += 1; }
     draw();
   } else if (st.bob) { st.bob = false; draw(); }
   if (kissing() && now - heartAt > HEART_EVERY_MS) {
@@ -617,11 +673,11 @@ setInterval(() => {                                          // 愛心動畫
 }, 60);
 
 const SHEETS = ["rub_closed", "rub_open_a35", "rub_open_a70", "rub_open", "rub_open_e", "rub_insert",
-  "rub_insert_g1", "rub_insert_g2", "rub_insert_g3", "rub_insert_g1p", "rub_insert_g2p", "rub_insert_g3p", "rub_insert_g2s", "rub_insert_g3s", "rub_insert_g3u", "rub_insert_lumen"];
-Promise.all(SHEETS.map((n) => load(`/test_bodyM/${n}.png?v=14`)))
-  .then(([closed, a35, a70, open, openE, insert, g1, g2, g3, p1, p2, p3, s2, s3, u3, lumen]) => {
+  "rub_insert_g1", "rub_insert_g2", "rub_insert_g3", "rub_insert_g1p", "rub_insert_g2p", "rub_insert_g3p", "rub_insert_g2s", "rub_insert_g3s", "rub_insert_g3u", "rub_insert_g3c", "rub_insert_lumen", "rub_legs"];
+Promise.all(SHEETS.map((n) => load(`/test_bodyM/${n}.png?v=15`)))
+  .then(([closed, a35, a70, open, openE, insert, g1, g2, g3, p1, p2, p3, s2, s3, u3, c3, lumen, legs]) => {
     lumenImg = lumen;
-    sheets = { closed, a35, a70, open, openE, insert, grip: [null, g1, g2, g3], pull: [null, p1, p2, p3], spasm: [null, null, s2, s3], bob: [null, null, null, u3] };
+    sheets = { closed, a35, a70, open, openE, insert, grip: [null, g1, g2, g3], pull: [null, p1, p2, p3], spasm: [null, null, s2, s3], bob: [null, null, null, u3], cramp: [null, null, null, c3], legs };
     draw();
   })
   .catch((e) => { info.textContent = e.message; console.error(e); });

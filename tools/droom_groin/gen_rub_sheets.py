@@ -8,9 +8,11 @@
   rub_insert_g1p～g3p.png：同上、往外抽的那一下（PULL=1：陰道口那圈黏著莖被拖出來）
   rub_insert_g2s／g3s.png：2、3 階的痙攣那一下（SPASM=1：陰道因為興奮一抖一抖鎖緊，網頁一陣一陣跟平常那條交替）
   rub_insert_g3u.png：3 階子宮口吸吮往上那一下（BOB=1：子宮口往上縮、頸口張開；網頁上下交替吸陰道裡的精液）
+  rub_insert_g3c.png：3 階子宮抽動那一下（CRAMP=1：子宮高潮＝吸吮＋子宮一抽一抽收縮）
+  rub_legs.png：大腿抬起的姿勢（LEG＝−2～8 格，一格一張共 11 張；只留跟平常不一樣的那幾格、其他透明——網頁疊在上面，左右腿各挑一張）
   rub_open_e.png：打開後陰蒂勃起（CLIT=1；反應 1 階以上、還沒插進去時用）
   1 階起陰蒂勃起（CLIT=1）；3 階子宮腫脹（SWELL=1）、子宮口下降 DESC＝7 格（整個子宮降下來）；龜頭頂到子宮口就畫子宮口親著龜頭（愛心網頁畫）
-  rub_insert_lumen.png：上面插入那 10 條的陰道空間遮罩（一條一列，照 LUMEN_ROWS 順序；紅＝陰道裡空著、綠＝子宮腔）——網頁讓內射的精液照陰道形狀流
+  rub_insert_lumen.png：上面插入那 11 條的陰道空間遮罩（一條一列，照 LUMEN_ROWS 順序；紅＝陰道裡空著、綠＝子宮腔）——網頁讓內射的精液照陰道形狀流
 用法：python3 gen_rub_sheets.py [輸出資料夾，預設 web/test_bodyM]
 """
 import os, sys, subprocess, tempfile
@@ -29,6 +31,7 @@ with tempfile.TemporaryDirectory() as td:
         jobs += [(8, f'rub_insert_g{lv}.png', 1, r), (8, f'rub_insert_g{lv}p.png', 1, {**r, 'PULL': '1'})]
         if lv >= 2: jobs.append((8, f'rub_insert_g{lv}s.png', 1, {**r, 'SPASM': '1'}))
         if lv == 3: jobs.append((8, f'rub_insert_g{lv}u.png', 1, {**r, 'BOB': '1'}))
+        if lv == 3: jobs.append((8, f'rub_insert_g{lv}c.png', 1, {**r, 'CRAMP': '1'}))
     LUMEN_ROWS = [n for (m, n, a, e) in jobs if m == 8]
     lumen = Image.new('RGB', (128 * (INS1 - INS0 + 1), 128 * len(LUMEN_ROWS)), (0, 0, 0))
     only = os.environ.get('ONLY')                         # 只重產某幾條（逗號分隔檔名）
@@ -48,4 +51,23 @@ with tempfile.TemporaryDirectory() as td:
     if not only or 'lumen' in only:
         lumen.save(os.path.join(OUT, 'rub_insert_lumen.png'), optimize=True)
         print('rub_insert_lumen.png', lumen.size, LUMEN_ROWS)
+    # 大腿抬起：每個姿勢跟平常（LEG=0）比，只留不一樣的格子（大腿、大腿下緣那塊；胯下、腰、透視都不會動到）
+    LEG0, LEG1 = -2, 8                                    # 跟網頁 LEG0／LEG1 一樣
+    if not only or 'rub_legs.png' in only.split(','):
+        def body(leg):
+            fp = os.path.join(td, f'leg_{leg}.png')
+            subprocess.run([sys.executable, os.path.join(HERE, 'trace128.py'), fp, '--fill'], check=True,
+                           env={**os.environ, 'RUB': '6', 'PTIP': '106', 'LEG': str(leg)})
+            return Image.open(fp).convert('RGBA')
+        base = body(0)
+        sheet = Image.new('RGBA', (128 * (LEG1 - LEG0 + 1), 128), (0, 0, 0, 0))
+        for i, leg in enumerate(range(LEG0, LEG1 + 1)):
+            im = body(leg); bp, ip, sp = base.load(), im.load(), sheet.load()
+            for y in range(128):
+                for x in range(128):
+                    if ip[x, y] != bp[x, y]:
+                        assert abs(x + .5 - 64) > 17, ('大腿姿勢動到中間了', leg, x, y)
+                        sp[128 * i + x, y] = ip[x, y]
+        sheet.save(os.path.join(OUT, 'rub_legs.png'), optimize=True)
+        print('rub_legs.png', sheet.size)
 print('tips', TIP0, TIP1, 'insert', INS0, INS1)
