@@ -757,7 +757,10 @@ html.room-page .scene,#main-room-stage .scene{position:relative}
 #portrait-sheet.sex-pix #portrait-img{bottom:var(--pix-top);height:min(calc(100svh - var(--pix-top) - 10px),720px)}
 body.room-ship #portrait-sheet.sex-pix #portrait-img{bottom:var(--pix-top)}
 body.room-home #portrait-sheet.sex-pix #portrait-img{bottom:var(--pix-top)}
-/* 主房間：對話框貼在橫幅上面（原本貼畫面底）；互動鍵列跟著上去 */
-body.room-home #portrait-sheet.sex-pix #talk-box{bottom:var(--pix-top)}
+/* 主房間：對話框貼在橫幅上面（原本貼畫面底）；互動鍵列跟著上去。
+   2026-11-10 使用者：對話框太大——縮矮（--talk-box-h 72～100px、上下內距縮小），往下移一點（壓到橫幅最上緣 12px，那裡是肚臍上面的空肚皮） */
+#portrait-sheet.sex-pix #talk-box{min-height:0;padding-top:6px;padding-bottom:6px}
+body.room-home #portrait-sheet.sex-pix{--talk-box-h:clamp(72px,12svh,100px)}
+body.room-home #portrait-sheet.sex-pix #talk-box{bottom:calc(var(--pix-top) - 12px);z-index:23}
 body.room-home #portrait-sheet.sex-pix .talk-acts{bottom:calc(var(--pix-top) + var(--talk-box-h) + 2px)}
 body.room-ship #portrait-sheet.sex-pix #talk-panel{padding-bottom:var(--pix-top)}
