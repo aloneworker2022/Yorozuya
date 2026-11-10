@@ -593,7 +593,7 @@ function peakIntercept(reason = "", userText = "") {
     return true;
   }
   if (begDialog && begDialog.phase !== "choose") return true;   // 她正在說
-  void peakBegReply(userText || `（你想${reason || "做別的事"}。）`);
+  void peakBegReply(userText || herView(`（你想${reason || "做別的事"}。）`));
   return true;
 }
 /** 頂點：她回一句（只求你做愛），下面只有「做愛」。 */
@@ -731,7 +731,7 @@ async function openBegDialog() {
   noteTalkExchange(who);
   if (MISS_YOU_ON) noteMissSeen(who);
   who.freshMeet = false;
-  lines.push({ role: "user", content: "（她自己走到你面前，扭扭捏捏地看著你。）" });
+  lines.push({ role: "user", content: herView("（她自己走到你面前，扭扭捏捏地看著你。）") });
   lines.push({ role: "assistant", content: line });
   rememberChat();
   persistRoom();
@@ -798,7 +798,7 @@ function begStripForSex(who = girl) {
   rollNudeStandee(who);
   void queueNudeActionPregen(who);
   void queueSexPosePregen(who);
-  lines.push({ role: "user", content: "（她迫不及待地自己把衣服全脫了。）" });
+  lines.push({ role: "user", content: herView("（她迫不及待地自己把衣服全脫了。）") });
   pushDebug("性飢渴：答應她 → 她自己脫光");
   persistRoom();
   try { paintHalfPortrait(who); } catch { /* ignore */ }
@@ -809,7 +809,7 @@ async function begAccept() {
   // 一般：精液 ≤0 跳紅卡擋下（留在選擇）；飢渴頂點例外（榨乾場）
   if (sexStartBlocked()) return;
   const who = girl;
-  lines.push({ role: "user", content: "（你答應了她。）" });
+  lines.push({ role: "user", content: herView("（你答應了她。）") });
   closeBeg(who);
   endBegDialog();
   begStripForSex(who);
@@ -826,7 +826,7 @@ async function begRefuse() {
   begDialog.phase = "busy";
   talkBusy = true;
   renderBegBar();
-  lines.push({ role: "user", content: "（你拒絕了她，現在不想做。）" });
+  lines.push({ role: "user", content: herView("（你拒絕了她，現在不想做。）") });
   $("portrait-name").textContent = who.name;
   setTyping(true);
   let line = "";
@@ -1260,7 +1260,7 @@ async function escortHug() {
   escortDialog.hugged = true;
   escortDialog.phase = "opening";
   refreshTalkActs();
-  lines.push({ role: "user", content: "（你抱了抱她。）" });
+  lines.push({ role: "user", content: herView("（你抱了抱她。）") });
   await typeLine(girl.name, HUG_LINES[Math.floor(Math.random() * HUG_LINES.length)]);
   if (!escortDialog) return;
   escortDialog.phase = "choose";
@@ -1292,7 +1292,7 @@ async function askEscort() {
   if (!canAskEscort() || talkBusy) return;
   const who = girl;
   const owing = debtOf(walletGold()) > 0;
-  lines.push({ role: "user", content: owing ? "（你拜託她幫忙去接客還債。）" : "（你請她再去接客。）" });
+  lines.push({ role: "user", content: herView(owing ? "（你拜託她幫忙去接客還債。）" : "（你請她再去接客。）") });
   const lim = limitOk(escortLog(who), Date.now());
   const mood = getMoodCarry(who);
   const p = askChanceFor(who, mood, HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0);
@@ -1436,7 +1436,7 @@ async function openPregOpener() {
   talkBusy = true;
   setTalkEnabled(false);
   $("portrait-name").textContent = who.name;
-  lines.push({ role: "user", content: tell ? "（她走到你面前，有話要說。）" : "（她看起來不太舒服。）" });
+  lines.push({ role: "user", content: herView(tell ? "（她走到你面前，有話要說。）" : "（她看起來不太舒服。）") });
   lines.push({ role: "assistant", content: line });
   persistRoom();
   await typeLine(who.name, line);
@@ -1467,7 +1467,7 @@ async function giveMedicine() {
   const who = girl;
   const p = Preg.endPregnancy(who, "med");
   pushDebug(`懷孕：吃了打胎藥（−${st.cost} 金，父親 ${p?.father?.name || "?"}）`);
-  lines.push({ role: "user", content: "（你把打胎藥交給她，她吃下去了。）" });
+  lines.push({ role: "user", content: herView("（你把打胎藥交給她，她吃下去了。）") });
   persistRoom();
   try { window.dispatchEvent(new CustomEvent("yoro-preg-end", { detail: { id: who.gameGirlId || who.id, why: "med", from: "room" } })); } catch { /* */ }
   talkBusy = true; refreshTalkActs();
@@ -3389,7 +3389,7 @@ function herOrgasm(o, lock = true) {
   } else hungerRelief("orgasm");
   organDevOrgasm();
   sexChat.news.push("orgasm");
-  lines.push({ role: "user", content: THRUST.SQUIRT_IN_FLOW ? "（她高潮了，潮吹、全身痙攣。）" : "（她高潮了，全身痙攣。）" });
+  lines.push({ role: "user", content: herView(THRUST.SQUIRT_IN_FLOW ? "（她高潮了，潮吹、全身痙攣。）" : "（她高潮了，全身痙攣。）") });
   showClimaxTip(o.count > 1 ? `她又高潮了！（${o.count}）` : "她高潮了！");
   pushDebug(lock ? `肏：激情 ${o.before}→${o.after}（高潮 ${o.count}）` : `肏：子宮高潮（高潮 ${o.count}）`);
   if (lock) startOrgasmLock(o);
@@ -3471,7 +3471,7 @@ async function runSexOpening(who, view, linePromise) {
   sexChat.openingSource = r.source;
   sexChat.openingBand = r.band;
   pushDebug(`肏：開場（${OPENING_BAND_ZH[r.band] || r.band}・${basePersonality(who)}・${r.source}）${line}`);
-  lines.push({ role: "user", content: `（你們要做愛了，${sexChat.pose === "doggy" ? "她趴著翹起屁股" : "她躺著張開腿"}。）` });
+  lines.push({ role: "user", content: herView(`（你們要做愛了，${sexChat.pose === "doggy" ? "她趴著翹起屁股" : "她躺著張開腿"}。）`) });
   // 對話紀錄記她想說的那句（同其他失神台詞）
   lines.push({ role: "assistant", content: r.text });
   rememberChat();
@@ -3765,10 +3765,10 @@ function thrustEjac(who, s, seq, r) {
   } else {
     void ensureSexStepUrl(who, sexChat.pose, "cum", sexChat.packId).then((p) => showEvent(p, "cum"));
   }
-  lines.push({ role: "user", content: r.blood
+  lines.push({ role: "user", content: herView(r.blood
     ? `（你射在她裡面了——可是精液不夠，射出來的是混著血的粉紅色血精。精液剩 ${s.semen} cc。）`
     : r.outside ? `（你射在她身上了——精液剩 ${s.semen} cc。）`
-    : `（你射在她裡面了——精液剩 ${s.semen} cc。）` });
+    : `（你射在她裡面了——精液剩 ${s.semen} cc。）`) });
   pushDebug(`肏：${r.blood ? "血精" : "射精"}（第 ${s.ejacs} 次）精液 ${r.semenBefore}→${s.semen}cc${s.ended ? "，見底結束" : ""}`);
 }
 
@@ -8322,13 +8322,13 @@ function stageTalk() {
   if (stage === "acquaintance") {
     return [
       "態度：愛理不理。話短、興趣低，能一句就一句，不要熱心接話、不要主動關心他。不要甜、不要撒嬌。",
-      name ? `他叫${name}。用「你」或這個名字，不要用綽號。` : "你還不知道他的名字。開場用短句問他怎麼稱呼就好。",
+      name ? `他叫${name}。用「你」或這個名字，不要用綽號。` : "你還不知道他的名字。開場用短句問他叫什麼名字就好（像「你叫什麼？」「怎麼稱呼你？」；不要說成「怎麼稱呼我」）。",
       "可有可無地接幾句。禁止主動愛意、禁止先約外出、禁止主動提外面男人。外面沒有特別的事就不要提。他問到只說表面，不要多解釋。",
     ];
   }
   return [
     "態度：愛理不理。話短、冷淡、興趣低。不要熱心、不要甜、不要撒嬌、不要親暱。能一句就一句。",
-    name ? `他叫${name}。用「你」或這個名字，不要用綽號。` : "你還不知道他的名字。開場用短句問他怎麼稱呼就好，問完不必熱心。",
+    name ? `他叫${name}。用「你」或這個名字，不要用綽號。` : "你還不知道他的名字。開場用短句問他叫什麼名字就好（像「你叫什麼？」「怎麼稱呼你？」；不要說成「怎麼稱呼我」），問完不必熱心。",
     "禁止主動表達愛意、禁止先約外出／約會、禁止主動提起外面男人。外面的事沒有就不要提。有的話也不要主動講。他問到只說表面，不要多聊。",
   ];
 }
@@ -8568,7 +8568,7 @@ function nameWaitOpener() {
   const idx = STAGE_INDEX[stage] ?? 0;
   if ((stage === "stranger" || stage === "acquaintance") && !girl.playerName) {
     girl.nameWait = "name";
-    return "（旁白：他剛走到你面前。你還不知道他的名字。用短句、冷淡一點問他怎麼稱呼就好，不要熱心。沒有特別的事就不要提外面。只輸出台詞。）";
+    return "（旁白：他剛走到你面前。你還不知道他的名字。用短句、冷淡一點問他叫什麼名字就好（像「你叫什麼？」「怎麼稱呼你？」；不要說成「怎麼稱呼我」），不要熱心。沒有特別的事就不要提外面。只輸出台詞。）";
   }
   if ((stage === "friend" || stage === "close_friend") && !girl.playerNick) {
     girl.nameWait = "nick";
@@ -8724,11 +8724,11 @@ function enterOpener(returning) {
   if (shyHint && line) line = `${line}（旁白補充：${shyHint}）`;
   const friendUp = consumeFriendUpBeat(girl);
   if (friendUp) {
-    line = `${friendUp}${line ? ` ${line}` : ""}`;
+    line = `${herView(friendUp)}${line ? ` ${line}` : ""}`;
   }
   const datingUp = consumeDatingUpBeat(girl);
   if (datingUp) {
-    line = `${datingUp}${line ? ` ${line}` : ""}`;
+    line = `${herView(datingUp)}${line ? ` ${line}` : ""}`;
   }
   const wifeUp = consumeWifeUpBeat(girl);
   if (wifeUp) {
@@ -8869,11 +8869,41 @@ function speechBodyPromptLines() {
   ];
 }
 
+/**
+ * 對話視角（2026-11-10 使用者：她把「你／我」弄反）：送給模型的 user 訊息一律用「她的視角」——
+ * 「你」＝她自己、「他」＝玩家。遊戲畫面上的旁白是玩家視角（「你抱了抱她」），
+ * 推進 lines 前用這個翻成「他抱了抱你」，不然同一串對話裡「你」一下是她、一下是玩家，她就會把玩家做的事當成自己做的。
+ * 只翻括號旁白；「」裡的引話（他說出口的話）不動；「你們」不動。
+ */
+function herView(text) {
+  return String(text || "").split(/(「[^」]*」)/).map((seg) => (seg.startsWith("「") ? seg
+    : seg.replace(/你們/g, "\u0001").replace(/你/g, "\u0002").replace(/她/g, "你").replace(/\u0002/g, "他").replace(/\u0001/g, "你們"))).join("");
+}
+
+/** 動作鈕的文字（「輕輕摟住她的腰」）→ 給模型的旁白「（他輕輕摟住你的腰。）」。 */
+function actForHer(text) {
+  const t = String(text || "").trim().replace(/[。.！!]+$/, "");
+  return t ? `（旁白：他${herView(t)}。）` : "";
+}
+
 function latestUserLine() {
   for (let i = lines.length - 1; i >= 0; i--) {
     if (lines[i]?.role === "user") return String(lines[i].content || "");
   }
   return "";
+}
+
+/** 人稱規則：她用「我」說自己、用「你」叫他；user 訊息裡他說的「我」是他、「你」是她。附對錯例句。 */
+function povPromptLines() {
+  return [
+    "【人稱（最重要，每句都要對）】",
+    `你就是${girl.name}本人，用第一人稱說話：「我」＝你自己（${girl.name}），「你」＝正在跟你說話的他（召喚你的人）。`,
+    "對話裡 user 的訊息是他對你說的話：他說的「我」是指他自己，他說的「你」是指你。不要照抄他的人稱，要換成你的角度回。",
+    "括號裡的旁白也是寫給你看的：旁白的「你」＝你自己，「他」＝他。旁白描述的動作是誰做的就是誰做的，不要把他做的事說成你做的。",
+    "例：要問他名字 → 對：「你叫什麼名字？」「我該怎麼稱呼你？」；錯：「怎麼稱呼我？」",
+    "例：他跟你打招呼「嗨」→ 對：「……嗨。你找我有事？」「你怎麼突然跟我打招呼？」；錯：「我怎麼這樣打招呼啊」",
+    "例：他摸你的頭 → 對：「你、你幹嘛摸我的頭……」；錯：「我幹嘛摸你的頭」",
+  ];
 }
 
 function talkSystem(userText = "") {
@@ -8892,6 +8922,7 @@ function talkSystem(userText = "") {
     sheIsOut()
       ? "人在日本，時間以日本為準。不要把現在說成別的時段。"
       : "人在這間房間，時間以台灣為準。日本那邊的時間只在你記得的生活裡，不要把它說成現在。",
+    ...povPromptLines(),
     "沒有過去不是沒有個性。語氣和脾氣照下面來,不要演成一張白紙。",
     `個性：${basePersonality()}。`,
     revealed("intimate") && kinkList().length ? `性癖標籤：${kinkList().join("、")}。（表現強度看下方揭示規則）` : "",
@@ -9085,17 +9116,17 @@ async function openTalk() {
       : deskTalk ? `「${deskTalk.title}」啊……嗯，我想想看怎麼說。` : "";
     if (deskTalk) {
       opener = `他從書櫃拿出「${deskTalk.title}」的報告遞給你，請你看看、說說心得。第一句用你的口氣說你的心得（一兩個重點就好，不要念報告），只寫說出口的話。`;
-      lines.push({ role: "user", content: `（你從書櫃拿出「${deskTalk.title}」的報告遞給她：「妳看看，說說心得？」）` });
+      lines.push({ role: "user", content: herView(`（你從書櫃拿出「${deskTalk.title}」的報告遞給她：「妳看看，說說心得？」）`) });
     }
     if (deskAsk) {
       opener = `她從書桌那邊走過來，有工作上的事要問他：${deskAsk.text}。第一句就用你的口氣${deskAsk.kind === "clarify" ? "問他這件事" : "簡單說要做什麼、問他可不可以"}，只寫說出口的話。`;
-      lines.push({ role: "user", content: "（她從書桌那邊走過來，看起來有工作上的事要問你。）" });
+      lines.push({ role: "user", content: herView("（她從書桌那邊走過來，看起來有工作上的事要問你。）") });
     }
     if (proOpen) {
       const ask = proactiveOpenerAsk(girl, proOpen);
       const extra = (opener.match(/（旁白補充：[^）]*）/g) || []).filter((x) => !/走到他面前來求|求他/.test(x)).join("");
       opener = `${ask}${extra}`;
-      lines.push({ role: "user", content: "（她自己走到你面前，看起來有話想跟你說。）" });
+      lines.push({ role: "user", content: herView("（她自己走到你面前，看起來有話想跟你說。）") });
     }
     let line = "";
     // 腦袋佔有度：≥95 講不出話；痙攣／失神仍問 LLM（她想說的那句），再依佔有度吃掉；餘韻（未到 65）走餘韻模板
@@ -9525,7 +9556,7 @@ async function deliverUserTalk(text, opts = {}) {
   if (peakBegNow()) {
     if (talkBusy && !(begDialog && begDialog.phase === "choose")) return;
     const act = opts.actId ? TALK_ACTS.find((a) => a.id === opts.actId) : null;
-    peakIntercept(act ? act.label || act.id : "說話", act ? `（你想${act.label || "碰她"}。）` : raw);
+    peakIntercept(act ? act.label || act.id : "說話", act ? herView(`（你想${act.label || "碰她"}。）`) : raw);
     return;
   }
   if (isFarewell(raw)) {
@@ -9575,7 +9606,7 @@ async function deliverUserTalk(text, opts = {}) {
     }
   }
 
-  lines.push({ role: "user", content: raw });
+  lines.push({ role: "user", content: opts.actId && !opts.typedAct ? actForHer(raw) : raw });
   talkBusy = true;
   setTalkEnabled(true);
   let moodTurn = null;
@@ -9596,7 +9627,7 @@ async function deliverUserTalk(text, opts = {}) {
     const redressedAtStart = settleUndressAfterStun(girl);
     if (redressedAtStart) {
       try { paintHalfPortrait(girl); } catch { /* ignore */ }
-      lines.push({ role: "assistant", content: REDRESS_NOTE });
+      lines.push({ role: "user", content: herView(REDRESS_NOTE) });
       await typeLine("旁白", REDRESS_NOTE);
       persistRoom();
     }
@@ -9776,18 +9807,18 @@ async function deliverUserTalk(text, opts = {}) {
     {
       const friendUp = consumeFriendUpBeat(girl);
       if (friendUp) {
-        lines.push({ role: "assistant", content: friendUp });
+        lines.push({ role: "user", content: herView(friendUp) });
         await typeLine("旁白", friendUp);
         persistRoom();
       }
     }
 
     if (climaxLine) {
-      lines.push({ role: "user", content: climaxLine });
+      lines.push({ role: "user", content: herView(climaxLine) });
       await typeLine("你", climaxLine);
     }
     if (spasmNote) {
-      lines.push({ role: "user", content: spasmNote });
+      lines.push({ role: "user", content: herView(spasmNote) });
       await typeLine("旁白", spasmNote);
     }
     if (climaxLine || spasmNote) persistRoom();
@@ -9832,7 +9863,7 @@ async function deliverUserTalk(text, opts = {}) {
       refreshTalkActs();
       if (invRoll.fled) {
         const fleeNote = `（旁白：侵犯感爆滿——${girl.name}推開你，慌忙逃離了房間。）`;
-        lines.push({ role: "assistant", content: fleeNote });
+        lines.push({ role: "user", content: herView(fleeNote) });
         await typeLine("旁白", fleeNote);
         persistRoom();
         await fleeRoomFromInvasion();
@@ -9842,7 +9873,7 @@ async function deliverUserTalk(text, opts = {}) {
 
     if (verbalTease?.res?.fled) {
       const fleeNote = `（旁白：侵犯感爆滿——${girl.name}推開你，慌忙逃離了房間。）`;
-      lines.push({ role: "assistant", content: fleeNote });
+      lines.push({ role: "user", content: herView(fleeNote) });
       await typeLine("旁白", fleeNote);
       persistRoom();
       await fleeRoomFromInvasion();
@@ -9921,7 +9952,7 @@ async function deliverUserTalk(text, opts = {}) {
         await typeLine(girl.name, line);
       }
       if (redressedAfter && girl && sheetOpen()) {
-        lines.push({ role: "assistant", content: REDRESS_NOTE });
+        lines.push({ role: "user", content: herView(REDRESS_NOTE) });
         await typeLine("旁白", REDRESS_NOTE);
         persistRoom();
       }
@@ -10203,13 +10234,13 @@ async function playUndress(mode) {
   setUndressDialogue("旁白", "……");
   try {
     const playerLine = help ? "（你動手脫她的衣服。）" : "（你叫她把衣服脫掉。）";
-    lines.push({ role: "user", content: playerLine });
+    lines.push({ role: "user", content: herView(playerLine) });
 
     const climax = applyTeaseClimax(player, help ? "undress_help" : "undress_tell");
     player = climax.player;
     settleKidney("tease");
     if (climax.climaxed && girl) {
-      if (climax.line) lines.push({ role: "user", content: climax.line });
+      if (climax.line) lines.push({ role: "user", content: herView(climax.line) });
       bumpAffection(2, "射精");
       noteAfterglow(girl, "his", { ejac: "external" });
       if (!girlInPenisSex(girl)) showClimaxTip("射精了！");
@@ -10254,7 +10285,7 @@ async function playUndress(mode) {
     if (!girl) return;
     // 叫她脫＝她自己脫：佔有度壓 30（好好講話＋一點呻吟）；幫她脫照實際佔有度
     const shownReply = presentUndressReply(reply, help ? {} : { cap: 30 });
-    lines.push({ role: "user", content: note });
+    lines.push({ role: "user", content: herView(note) });
     lines.push({ role: "assistant", content: reply });
     if (inAfterglow(girl) && !inSpasm(girl)) consumeAfterglowReply(girl);
     if (!inSpasm(girl)) consumeEjacTalk(girl);
@@ -10477,7 +10508,7 @@ async function dressHer() {
   talkBusy = true;
   refreshTalkActs();
   const note = "（你讓她把衣服穿回去。）";
-  lines.push({ role: "user", content: note });
+  lines.push({ role: "user", content: herView(note) });
   const canned = dressedReactionLine(before, girl.stage || "stranger", basePersonality(girl));
   let line = "";
   let streamed = false;
@@ -10562,7 +10593,7 @@ function startIdleDecay() {
     }
     let redressTyping = null;
     if (redressed) {
-      lines.push({ role: "assistant", content: REDRESS_NOTE });
+      lines.push({ role: "user", content: herView(REDRESS_NOTE) });
       redressTyping = typeLine("旁白", REDRESS_NOTE);
     }
     persistRoom();
@@ -11861,14 +11892,14 @@ async function settleStunReckoning({ redressed = false } = {}) {
   if (!line || /^[\s…。.]*$/.test(line)) line = reckoningFallback(r, pers);
   if (girl !== who) return { fled: false, spoke: false, line: "", r };
   const recap = r.acts ? `（旁白：她回過神來，想起你趁她失神時對她：${r.acts}。）` : "（旁白：她回過神來，想起你趁她失神時動手動腳。）";
-  lines.push({ role: "user", content: recap });
+  lines.push({ role: "user", content: herView(recap) });
   lines.push({ role: "assistant", content: line });
   rememberChat();
   persistRoom();
   await typeLine(who.name, line);
   if (r.fled) {
     const note = reckoningFleeNote(who.name);
-    lines.push({ role: "assistant", content: note });
+    lines.push({ role: "user", content: herView(note) });
     await typeLine("旁白", note);
     persistRoom();
     await fleeRoomFromInvasion({ cause: "趁你失神的時候對你動手動腳，回神後受不了逃走" });
