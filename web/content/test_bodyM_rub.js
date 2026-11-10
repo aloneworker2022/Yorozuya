@@ -52,7 +52,7 @@ const STAGES = ["", "陰唇外翻", "陰蒂勃起", "陰道痙攣", "子宮高�
 const RUB_REACT_CAP = 1.99;           // 還沒插進去：在外面磨最多到陰蒂勃起（陰道、子宮的階段要插著）
 // 噴精：陰道裡精液滿了（≥ SQUIRT_FULL）時痙攣過，拔出陰莖的時候陰道一抽一抽把精液吐出來
 // 吐的樣子像嘔吐（使用者：不是噴口水那樣）：陰道口先鼓起來一團（HEAVE_MS），再一大口濃濃的湧出來、順著往下淌（不是飛散的點），停一下再吐下一口
-const SQUIRT_FULL = 1, SQUIRT_PULSES = [3, 5], HEAVE_MS = 280, HEAVE_PAUSE_MS = 320, POUR_LIFE_MS = 2600;
+const SQUIRT_FULL = 1, SQUIRT_PULSES = [3, 5], HEAVE_MS = 280, HEAVE_PAUSE_MS = 320, POUR_LIFE_MS = 1500;
 // 身體動作（使用者：抽插時大腿、腹部跟著動，大腿上下微微扭；子宮高潮〔第 4 階段〕雙腿忍不住往上）
 // 大腿＝重畫的姿勢圖（rub_legs.png：大腿以髖為軸往上抬 LEG0～LEG1 格，左右腿各挑一張疊上去），不是把畫面像素往上推；腹部還是整塊微微位移
 const LEG0 = -2, LEG1 = 8;             // 跟 gen_rub_sheets.py 一樣
@@ -66,9 +66,13 @@ const GUSH = .5, GUSH_MS = 320;
 // 子宮抽動（子宮高潮）：3 階插著時一陣一陣抽（一陣 CRAMP_N 下，每下縮 CRAMP_ON_MS、鬆 CRAMP_OFF_MS），每抽一下大腿往上一抬
 const CRAMP_GAP = [1400, 3200], CRAMP_N = [2, 4], CRAMP_ON_MS = 150, CRAMP_OFF_MS = 230;
 const HEART_EVERY_MS = 420, HEART_LIFE_MS = 1400;
-// 流出來的精液不蓋到陰莖（使用者 2026-11-10）：陰莖在前面，精液從陰莖兩邊分開流；流出來的那一下帶幾滴往外噴（sprays）
-// 漏尿（使用者 2026-11-10）：子宮高潮時子宮每抽一下，尿道口（陰蒂和陰道口中間）噴出一小股尿、接著滴幾滴
-const PEE_X = 64.5, PEE_Y = 81, PEE_COL = [252, 234, 136], PEE_DRIBBLE_MS = 520, SPRAY_G = .13;
+// 體位（使用者 2026-11-10）：她躺在床上、屁股壓在床上；陰莖是從斜前方往斜下插進去（正常體位），不是在屁股下面。
+//   所以流出來的精液不會流到陰莖／龜頭上：從陰道口往後流過會陰、流到屁股那裡，在屁股下緣的床上積成一攤（st.vomit＝那一攤的量）；陰莖在前面，擋住的地方看不到。
+//   噴出來的小滴（sprays）落在床上那一帶。
+// 尿（使用者 2026-11-10）：子宮高潮時尿出來——一道連續的尿（PEE_MS，一開始強、後面變弱），不是一下一下；尿在床上積一攤。之後隔 PEE_AGAIN 再尿
+const GROUND = 97;                    // 會陰／屁股下緣（流到這裡就進那一攤）
+const POOL_Y = 101.5, PEE_POOL_Y = 107.5;   // 兩攤在床上的位置（陰莖在前面會擋住中間，所以要夠寬、兩邊才看得到）
+const PEE_X = 64.5, PEE_Y = 81, PEE_COL = [252, 234, 136], PEE_EDGE = [226, 200, 96], PEE_MS = 3800, PEE_AGAIN = [5000, 10000], SPRAY_G = .13;
 const cervix0 = (lv, bob = false) => 60 - LIFT_PER_LV * lv + DESC_BY_LV[lv] - (bob ? BOB_UP : 0);   // 這一階沒被頂到時子宮頸的位置
 const HOLE_Y = 87, BODY_BG = [40, 34, 50];
 
@@ -76,7 +80,7 @@ const section = document.createElement("section");
 section.className = "card";
 section.innerHTML = `
   <h2 style="margin-top:0">0. 磨蹭陰唇（像素）</h2>
-  <details class="dim" style="margin:.2em 0 .4em"><summary>說明</summary><p style="margin:.3em 0 0">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；高潮分階段：陰唇外翻 → 陰蒂勃起 → 陰道一抖一抖地痙攣（停著不動也會；陰道裡滿滿精液時痙攣過，拔出來陰道會一口一口吐出精液）→ 子宮高潮（會漏尿：子宮每抽一下尿道口噴一小股）：子宮腫脹、子宮口降下來一上一下吸吮（陰道裡有精液就一點一點吸進子宮），子宮一抽一抽地收縮，可以一直連續高潮；龜頭頂著子宮口時子宮口會親著龜頭、飄出愛心（這時候射直接灌進子宮）；子宮滿了再被頂到，會把精液噴回陰道裡；停下來慢慢鬆回去。抽插時大腿、腹部跟著動，子宮高潮時雙腿忍不住往上抬、子宮每抽一下腿就一抬。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來；流出來的精液不會蓋到陰莖、會帶幾滴往外噴），在外面射在她身上。</p></details>
+  <details class="dim" style="margin:.2em 0 .4em"><summary>說明</summary><p style="margin:.3em 0 0">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；高潮分階段：陰唇外翻 → 陰蒂勃起 → 陰道一抖一抖地痙攣（停著不動也會；陰道裡滿滿精液時痙攣過，拔出來陰道會一口一口吐出精液）→ 子宮高潮（會尿出來：一道連續的尿、落在床上積一攤）：子宮腫脹、子宮口降下來一上一下吸吮（陰道裡有精液就一點一點吸進子宮），子宮一抽一抽地收縮，可以一直連續高潮；龜頭頂著子宮口時子宮口會親著龜頭、飄出愛心（這時候射直接灌進子宮）；子宮滿了再被頂到，會把精液噴回陰道裡；停下來慢慢鬆回去。抽插時大腿、腹部跟著動，子宮高潮時雙腿忍不住往上抬、子宮每抽一下腿就一抬。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來；她躺在床上，流出來的精液往後流到屁股下緣的床上積一攤、不會流到陰莖上，會帶幾滴往外噴），在外面射在她身上。</p></details>
   <div style="display:flex;justify-content:center">
     <canvas id="rub-cv" width="128" height="128"
       style="width:min(70vw,384px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
@@ -101,7 +105,7 @@ const load = (src) => new Promise((resolve, reject) => {
 });
 
 const st = { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
-  shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0, spasm: false, spasmLeft: 0, spasmNext: 0, spasms: 0, womb: 0, bob: false, sucks: 0, cramp: false, crampLeft: 0, crampNext: 0, cramps: 0, gush: -1e9, gushes: 0, hearts: [], kisses: 0, squirtReady: false, squirting: 0, squirts: 0, heave: 0, pours: [], vomit: 0, sprays: [], pees: 0, peeUntil: 0 };   // drops＝抽插時從陰道口帶出來、往下流的精液   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
+  shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0, spasm: false, spasmLeft: 0, spasmNext: 0, spasms: 0, womb: 0, bob: false, sucks: 0, cramp: false, crampLeft: 0, crampNext: 0, cramps: 0, gush: -1e9, gushes: 0, hearts: [], kisses: 0, squirtReady: false, squirting: 0, squirts: 0, heave: 0, pours: [], vomit: 0, sprays: [], pees: 0, peeT0: 0, peeUntil: 0, peeNext: 0, peePool: 0 };   // drops＝抽插時從陰道口帶出來、往下流的精液   // shooting＝還剩幾股；spurt＝這一股的噴射（畫一下）；splats＝身上的精液；inside＝射在裡面的量（0～1）
 let openTimer = 0;
 let sheets = null;
 
@@ -127,7 +131,7 @@ function draw() {
   drawHearts();
   applyBody();
   const stg = stage();
-  info.textContent = (stg ? `【${stg}・${STAGES[stg]}】` : "") + (st.squirting ? "陰道把精液吐出來了！・" : "") + (performance.now() < st.peeUntil ? "漏尿了・" : "") + (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? `插入中・${["", "陰道收緊", "陰道纏住、變長", "緊緊纏住、勃起變長"][level()] || "還鬆鬆的"}${st.spasm || st.spasmLeft ? "・一抖一抖地痙攣" : ""}${performance.now() - st.gush < 900 ? "・子宮把精液噴回陰道！" : ""}${st.cramp || st.crampLeft ? "・子宮一抽一抽" : ""}${kissing() ? "・子宮口親著龜頭♥" : bobbing() ? (canSuck() ? "・子宮口吸著精液" : "・子宮口一吸一吸") : ""}${st.womb > .05 ? `・子宮裡 ${Math.round(st.womb / WOMB_MAX * 100)}%` : ""}` : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
+  info.textContent = (stg ? `【${stg}・${STAGES[stg]}】` : "") + (st.squirting ? "陰道把精液吐出來了！・" : "") + (performance.now() < st.peeUntil ? "尿出來了・" : "") + (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? `插入中・${["", "陰道收緊", "陰道纏住、變長", "緊緊纏住、勃起變長"][level()] || "還鬆鬆的"}${st.spasm || st.spasmLeft ? "・一抖一抖地痙攣" : ""}${performance.now() - st.gush < 900 ? "・子宮把精液噴回陰道！" : ""}${st.cramp || st.crampLeft ? "・子宮一抽一抽" : ""}${kissing() ? "・子宮口親著龜頭♥" : bobbing() ? (canSuck() ? "・子宮口吸著精液" : "・子宮口一吸一吸") : ""}${st.womb > .05 ? `・子宮裡 ${Math.round(st.womb / WOMB_MAX * 100)}%` : ""}` : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
 }
 
 // ---- 陰道空間遮罩（內射的精液照陰道形狀流，陰道腫脹撐開時也跟著） ----
@@ -245,32 +249,33 @@ function stepVomit(now) {
 }
 function drawVomit(d) {
   const now = performance.now();
-  if (st.vomit > 0 && !st.inserted) {                        // 吐過留下來的：陰道口往下一道濃濃的痕（不規則邊）＋屁股下緣一攤
-    const w = .8 + Math.min(2.2, st.vomit * 1.4);
-    for (let y = HOLE_Y + 1; y <= 97; y++) {
+  pool(d, 64.5, PEE_POOL_Y, st.peePool, PEE_COL, PEE_EDGE, .8);              // 床上的尿
+  pool(d, 64.5, POOL_Y, st.vomit, MILK, CUM_SHADE, .95);                     // 屁股下緣床上的那一攤精液（陰莖在前面，擋住的看不到）
+  if (st.vomit > 0 && !st.inserted) {                        // 流過的痕跡：陰道口往後流過會陰到屁股
+    const w = .8 + Math.min(1.6, st.vomit * 1.2);
+    for (let y = HOLE_Y + 1; y <= GROUND; y++) {
       const hw = w * (.75 + .5 * hash(5, y)), cx = 64.5 + Math.sin(y * .5) * .5;
       rowOut(d, y, cx, hw, (u) => u > hw - .8 ? CUM_SHADE : MILK, .9);
     }
-    blobOut(d, 64.5, 97.5, 1.6 + Math.min(2.4, st.vomit * 1.2));
   }
   if (st.squirting && st.heave > 0) {                       // 鼓起來的那一團（越鼓越大，快吐出來）
     const r = 1.4 + 2.6 * st.heave ** .8;
     blob(d, 64.5, HOLE_Y + .3 + r * .35, r, 1, true);
     if (!onPen(64 - r * .3, HOLE_Y + .4)) { put(d, 128, 63.5 - r * .3, HOLE_Y - r * .1, CUM_WHITE); put(d, 128, 64 - r * .3, HOLE_Y + .4, [255, 255, 255]); }   // 亮點
   }
-  for (const p of st.pours) {                                // 湧出來往下淌的那一大口：上面接著陰道口、越來越細，前端一大坨
+  for (const p of st.pours) {                                // 湧出來的那一大口：從陰道口往後淌到屁股下緣，流進那一攤
     const e = now - p.t0, w0 = 3.6 + p.v * 8;                 // 一大口：濃、寬
     const flow = e * .016 + (e / 1000) ** 2 * 12;               // 黏稠：慢慢淌、越來越快
-    const front = HOLE_Y + 3 + flow;
-    const wTop = w0 * Math.max(.25, 1 - e / 1600);
-    for (let y = HOLE_Y + 1; y <= Math.min(127, front); y++) {
+    const front = Math.min(GROUND, HOLE_Y + 3 + flow);
+    const wTop = w0 * Math.max(.25, 1 - e / POUR_LIFE_MS);
+    for (let y = HOLE_Y + 1; y <= front; y++) {
       const t = (y - HOLE_Y) / Math.max(1, front - HOLE_Y);
       const lump = (hash(Math.round(y - flow), p.ph * 100 | 0) - .5) * 1.6;   // 一團一團的（跟著往下流）
       const hw = Math.max(.6, (wTop * (1 - t) + w0 * .7 * t) / 2 + lump * .5);
       const cx = p.x + Math.sin(y * .25 + p.ph) * .8;
       rowOut(d, y, cx, hw, (u) => u > hw - .8 ? CUM_SHADE : (hash(Math.round(cx + u), y) < .12 ? CUM_WHITE : MILK), .95);
     }
-    if (front < 130) blobOut(d, p.x + Math.sin(front * .25 + p.ph) * .8, front, w0 * .62);   // 前端一大坨
+    if (front < GROUND) blob(d, p.x + Math.sin(front * .25 + p.ph) * .8, front, w0 * .62, 1, true);   // 還沒流到屁股：前端一大坨
   }
 }
 
@@ -319,8 +324,10 @@ function applyBody() {                                       // 腹部（中間�
 setInterval(() => {
   if (!sheets) return;
   const now = performance.now();
-  const a = stepBody(now), b = stepVomit(now), c = stepSprays() || now < st.peeUntil + 80;
-  st.pours = st.pours.filter((p) => { if (now - p.t0 < POUR_LIFE_MS) return true; st.vomit += p.v; return false; });
+  const a = stepBody(now), b = stepVomit(now), c0 = stepSprays(), c = stepPee(now) || c0 || now < st.peeUntil + 80;
+  for (const p of st.pours) if (now - p.t0 > 450) { const dv = Math.min(p.v - (p.given || 0), p.v * 40 / (POUR_LIFE_MS - 450)); p.given = (p.given || 0) + dv; st.vomit += dv; }   // 流到屁股：那一攤慢慢變大
+  st.pours = st.pours.filter((p) => { if (now - p.t0 < POUR_LIFE_MS) return true; st.vomit += p.v - (p.given || 0); return false; });
+  if (!st.inserted && st.opened && st.inside > 0 && !st.squirting) { const v = Math.min(st.inside, .0016); st.inside -= v; st.vomit += v; }   // 拔出來後裡面的慢慢流出來
   if (a || b || c || st.pours.length) draw();
 }, 40);
 
@@ -387,9 +394,10 @@ function blob(d, x, y, r, a = 1, out = false) {             // 一坨精液：�
   }
 }
 // 露在外面的陰莖（陰道口以下）：畫精液之前先記下來，流出來的精液不畫在上面
-const penMask = new Uint8Array(128 * 128);
+const penMask = new Uint8Array(128 * 128), bgMask = new Uint8Array(128 * 128);
 function markPen(d) {
   penMask.fill(0);
+  for (let y = 88; y < 128; y++) for (let x = 20; x < 108; x++) bgMask[y * 128 + x] = isBg(d, x, y) ? 1 : 0;   // 床（背景）
   for (let y = HOLE_Y - 2; y < 128; y++) for (let x = 50; x < 79; x++) {
     const k = (y * 128 + x) * 4;
     if (d[k] < 90 && d[k + 1] < 90 && d[k + 2] < 110 && !isBg(d, x, y)) penMask[y * 128 + x] = 1;
@@ -397,46 +405,62 @@ function markPen(d) {
 }
 const onPen = (x, y) => { x = Math.round(x); y = Math.round(y); return x >= 0 && y >= 0 && x < 128 && y < 128 && penMask[y * 128 + x] === 1; };
 const penSpan = (y) => { y = Math.round(y); let xl = -1, xr = -1; if (y < 0 || y > 127) return null; for (let x = 50; x < 79; x++) if (penMask[y * 128 + x]) { if (xl < 0) xl = x; xr = x; } return xl < 0 ? null : [xl, xr]; };
-// 往下流的一列：中心 cx、半寬 hw；陰莖擋在那裡就分成兩道貼著陰莖兩邊流
+// 流出來的一列：中心 cx、半寬 hw；陰莖在前面，擋住的格子不畫
 function rowOut(d, y, cx, hw, col, a) {
-  const sp = penSpan(y);
-  if (!sp || cx + hw < sp[0] || cx - hw > sp[1] + 1) {
-    for (let x = Math.floor(cx - hw); x <= Math.ceil(cx + hw); x++) { const u = Math.abs(x + .5 - cx); if (u <= hw && !onPen(x, y)) put(d, 128, x, y, col(u), a); }
-    return;
+  for (let x = Math.floor(cx - hw); x <= Math.ceil(cx + hw); x++) { const u = Math.abs(x + .5 - cx); if (u <= hw && !onPen(x, y)) put(d, 128, x, y, col(u), a); }
+}
+// 床上的一攤（扁扁的橢圓，量越多越寬）：只畫在床上（背景格），身體、陰莖擋住的地方不畫
+function pool(d, cx, cy, vol, colIn, colEdge, a) {
+  if (vol <= .01) return;
+  const rx = Math.min(26, 5 + 10 * Math.sqrt(vol)), ry = Math.min(4.2, 1.5 + 1.4 * Math.sqrt(vol));
+  for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++) for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
+    if (x < 0 || x > 127 || y < 0 || y > 127 || !bgMask[y * 128 + x]) continue;
+    const e = ((x + .5 - cx) / (rx + (hash(y, 31) - .5) * 2)) ** 2 + ((y + .5 - cy) / ry) ** 2;
+    if (e <= 1) put(d, 128, x, y, e > .62 && y + .5 > cy ? colEdge : colIn, a);
   }
-  const w = Math.max(1, Math.round(hw * .7));
-  for (let k = 0; k < w; k++) { const c = col(k === w - 1 ? hw : 0); put(d, 128, sp[0] - 1 - k, y, c, a); put(d, 128, sp[1] + 1 + k, y, c, a); }
 }
-function blobOut(d, x, y, r) {                               // 流出來的一坨：陰莖擋著就分成兩邊各一小坨
-  const sp = penSpan(y);
-  if (sp && x >= sp[0] - 1 && x <= sp[1] + 2) { blob(d, sp[0] - r * .5, y, r * .65, 1, true); blob(d, sp[1] + 1 + r * .5, y, r * .65, 1, true); }
-  else blob(d, x, y, r, 1, true);
-}
-// 噴出來的小滴（精液／尿）：飛出去、往下掉
+// 噴出來的小滴（精液／尿）：飛出去、落在床上（g＝落地那一列）
 function spray(kind, x, y, n, vx, vy0, vy1) {
-  const now = performance.now();
   for (let i = 0; i < n && st.sprays.length < 90; i++)
-    st.sprays.push({ kind, x: x + (Math.random() - .5) * 1.5, y, vx: (Math.random() * 2 - 1) * vx, vy: -(vy0 + Math.random() * (vy1 - vy0)), t0: now });
+    st.sprays.push({ kind, x: x + (Math.random() - .5) * 1.5, y, vx: (Math.random() * 2 - 1) * vx, vy: -(vy0 + Math.random() * (vy1 - vy0)), g: (kind === "pee" ? 103 : 98) + Math.random() * 5 });
 }
 function stepSprays() {
   if (!st.sprays.length) return false;
   for (const q of st.sprays) { q.px = q.x; q.py = q.y; q.x += q.vx; q.y += q.vy; q.vy += SPRAY_G; }
-  st.sprays = st.sprays.filter((q) => q.y < 128 && q.x > 0 && q.x < 128);
+  st.sprays = st.sprays.filter((q) => { if (q.x <= 0 || q.x >= 128) return false; if (q.vy > 0 && q.y >= q.g) { if (q.kind === "cum") st.vomit += .008; return false; } return true; });
+  return true;
+}
+// 尿的強度：一開始很快變強、中間持續、最後慢慢變弱（一道連續的尿）
+const peeStrength = (now) => { if (now >= st.peeUntil) return 0; const u = (now - st.peeT0) / PEE_MS; return u < .08 ? u / .08 : u < .65 ? 1 : Math.max(.12, (1 - u) / .35); };
+function stepPee(now) {
+  if (st.inserted && stage() === 4) {                        // 子宮高潮：尿出來；一直高潮的話隔一陣子再尿
+    if (!st.peeNext) st.peeNext = now + 900;
+    if (now >= st.peeNext) { st.peeT0 = now; st.peeUntil = now + PEE_MS; st.pees += 1; st.peeNext = now + PEE_MS + rand(PEE_AGAIN); }
+  } else st.peeNext = 0;
+  const s = peeStrength(now);
+  if (s <= 0) return false;
+  st.peePool = Math.min(4, st.peePool + .006 * s);
+  if (Math.random() < s * .7) spray("pee", st.peeLand || PEE_X, 100 + 5 * s, 1, .9, .3, .9);   // 落在床上濺起來
   return true;
 }
 function drawSprays(d) {
-  const now = performance.now();
-  for (const q of st.sprays) {
-    if (q.kind === "pee") { put(d, 128, q.x, q.y, PEE_COL, .9); if (q.px !== undefined) put(d, 128, q.px, q.py, PEE_COL, .5); }   // 尿在最前面（朝鏡頭噴）
-    else if (!onPen(q.x, q.y)) { put(d, 128, q.x, q.y, CUM_WHITE, .95); if (q.px !== undefined && !onPen(q.px, q.py)) put(d, 128, q.px, q.py, CUM_SHADE, .7); }
+  const now = performance.now(), s = peeStrength(now);
+  if (s > 0) {                                               // 一道尿：從尿道口尿出來、落在前面的床上（朝鏡頭這邊，所以在最前面）；強的時候尿得遠
+    let x = PEE_X, y = PEE_Y, vy = -(.15 + .55 * s);
+    const vx = .1 * Math.sin(now / 450), end = 100 + 6 * s;
+    for (let i = 0; i < 300 && y < end; i++) {
+      put(d, 128, x, y, PEE_COL, .92); if (s > .6) put(d, 128, x + 1, y, i % 5 ? PEE_COL : [255, 250, 200], .8);
+      x += vx * .5 + Math.sin(now / 90 + y * .4) * .06; y += vy * .5; vy += .11 * .5;
+    }
+    st.peeLand = x;
   }
-  if (now < st.peeUntil && st.inserted) {                    // 噴完滴滴答答：尿道口往下一小道
-    const left = (st.peeUntil - now) / PEE_DRIBBLE_MS, n = Math.round(2 + 5 * left);
-    for (let i = 0; i < n; i++) put(d, 128, PEE_X + Math.sin((i + now / 60) * .9) * .6, PEE_Y + 1 + i, PEE_COL, .8 - .08 * i);
+  for (const q of st.sprays) {
+    if (q.kind === "pee") { put(d, 128, q.x, q.y, PEE_COL, .9); if (q.px !== undefined) put(d, 128, q.px, q.py, PEE_COL, .5); }
+    else if (!onPen(q.x, q.y)) { put(d, 128, q.x, q.y, CUM_WHITE, .95); if (q.px !== undefined && !onPen(q.px, q.py)) put(d, 128, q.px, q.py, CUM_SHADE, .7); }
   }
 }
 function drawCum() {
-  if (!st.splats.length && !st.spurt && !st.inside && !st.womb && !st.pours.length && !st.vomit && !st.squirting && !st.drops.length && !st.sprays.length && performance.now() > st.peeUntil) return;
+  if (!st.splats.length && !st.spurt && !st.inside && !st.womb && !st.pours.length && !st.vomit && !st.squirting && !st.drops.length && !st.sprays.length && !st.peePool && performance.now() > st.peeUntil) return;
   const img = ctx.getImageData(0, 0, 128, 128), d = img.data;
   markPen(d);
   for (const sp of st.splats) {                            // 身上的精液：一坨＋往下流一點
@@ -485,7 +509,7 @@ function drawCum() {
   } else if (st.inside && st.opened) {                      // 拔出來：肉穴口流出白色（射越多流越多）
     const v = Math.min(INSIDE_MAX, st.inside);
     blob(d, 64.5, HOLE_Y + 1, 1.4 + v * .7, 1, true);
-    for (let i = 0; i < 3 + Math.round(v * 4); i++) rowOut(d, HOLE_Y + 3 + i, 64.5, .6, () => i % 2 ? CUM_SHADE : CUM_WHITE, 1);
+    for (let i = 0; i < 3 + Math.round(v * 4) && HOLE_Y + 3 + i <= GROUND; i++) rowOut(d, HOLE_Y + 3 + i, 64.5, .6, () => i % 2 ? CUM_SHADE : CUM_WHITE, 1);
   }
   for (const dr of st.drops) blob(d, dr.x, dr.y, dr.r, 1, true);      // 抽插帶出來、往下流的精液
   drawVomit(d);                                              // 陰道吐出來的精液（一口一口往下淌）
@@ -539,10 +563,11 @@ function spawnDrop() {
   if (st.drops.length > 14) return;
   const sx = Math.random() < .5 ? -1 : 1;
   if (Math.random() < .5) spray("cum", 64.5 + sx * 7, HOLE_Y + 1, 1 + Math.round(Math.random()), 1, .2, .9);   // 帶出來時噴一兩滴
+  st.inside = Math.max(0, st.inside - .03);                    // 帶出來的那一滴是從裡面少掉的
   st.drops.push({ x: 64.5 + sx * (7 + Math.random() * 1.5), y: HOLE_Y + 1, r: .9 + Math.random() * .7, vy: .35 + Math.random() * .25 });
   if (!dropTimer) dropTimer = setInterval(() => {
     for (const dr of st.drops) { dr.y += dr.vy; dr.vy += .05; }
-    st.drops = st.drops.filter((dr) => dr.y < 127);
+    st.drops = st.drops.filter((dr) => { if (dr.y < GROUND + 1) return true; st.vomit += .03; return false; });   // 流到屁股下緣：進那一攤
     if (!st.drops.length) { clearInterval(dropTimer); dropTimer = 0; }
     draw();
   }, 50);
@@ -615,7 +640,6 @@ cv.addEventListener("pointermove", (ev) => {
     else if (st.armed || st.inserted) { st.inserted = st.tip <= INS1; }     // 對準後往上推＝插進去
     if (!st.inserted && st.tip < AT_HOLE && !canIn) st.armed = false;
   }
-  if (!wasIn && st.inserted) st.vomit = 0;                    // 插進去：之前吐在外面的痕跡清掉
   if (wasIn && !st.inserted && st.squirtReady) startSquirt();   // 拔出來：痙攣過又滿滿的＝陰道吐出精液
   draw();
   maybeShoot();
@@ -632,7 +656,7 @@ section.querySelector("#rub-reset").addEventListener("click", () => {
   vomitLeft = 0; heaveNext = 0;
   for (const sp of Object.values(body)) { sp.p = 0; sp.v = 0; }
   Object.assign(st, { tip: TIP_START, opened: false, openStep: 0, rubs: 0, travel: 0, drag: null, armed: false, inserted: false, cum: 0,
-    shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0, spasm: false, spasmLeft: 0, spasmNext: 0, spasms: 0, womb: 0, bob: false, sucks: 0, cramp: false, crampLeft: 0, crampNext: 0, cramps: 0, gush: -1e9, gushes: 0, hearts: [], kisses: 0, squirtReady: false, squirting: 0, squirts: 0, heave: 0, pours: [], vomit: 0, sprays: [], pees: 0, peeUntil: 0 });
+    shooting: 0, spurt: null, splats: [], inside: 0, jerk: 0, leak: 0, drops: [], react: 0, pullAt: 0, moveAt: 0, spasm: false, spasmLeft: 0, spasmNext: 0, spasms: 0, womb: 0, bob: false, sucks: 0, cramp: false, crampLeft: 0, crampNext: 0, cramps: 0, gush: -1e9, gushes: 0, hearts: [], kisses: 0, squirtReady: false, squirting: 0, squirts: 0, heave: 0, pours: [], vomit: 0, sprays: [], pees: 0, peeT0: 0, peeUntil: 0, peeNext: 0, peePool: 0 });
   draw();
 });
 
@@ -687,7 +711,6 @@ setInterval(() => {
     if (!st.crampLeft || !st.inserted || level() < 3) { st.cramp = false; st.crampLeft = 0; draw(); return; }
     st.cramp = true; st.cramps += 1;
     body.L.v -= 1.5; body.R.v -= 1.2; body.B.v -= .5;        // 子宮一抽：大腿往上一抬、肚子一縮
-    spray("pee", PEE_X, PEE_Y, 7 + Math.round(Math.random() * 5), .55, .9, 2.1); st.pees += 1; st.peeUntil = performance.now() + PEE_DRIBBLE_MS;   // 漏尿：尿道口噴一小股
     draw();
     setTimeout(() => {
       st.cramp = false; st.crampLeft -= 1; draw();
