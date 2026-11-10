@@ -52,6 +52,15 @@ const SQUIRT_FULL = 1, SQUIRT_PULSES = [3, 5], HEAVE_MS = 280, HEAVE_PAUSE_MS = 
 // 身體動作（使用者：抽插時大腿、腹部跟著動，大腿上下微微扭；子宮高潮〔第 4 階段〕雙腿忍不住往上）
 // 整張畫面做垂直位移：陰莖、陰道口那塊（中間下面）不動，大腿往兩邊越外面動越多，腹部（中間上面）動一點
 const LEG_LIFT = 4.5, LEG_TREMBLE = .7;
+// 大腿抽動痙攣（2026-11-10 使用者紅筆）：陰道痙攣那一陣大腿抬起來（SPASM_LEG_HOLD），每抽一下再往上猛抬一下（SPASM_LEG_JERK）；
+// 抬起來時大腿內側的肌肉繃緊，從胯下沿著大腿內側往上到髖浮出幾條線（THIGH_LINES，左腿座標，右腿鏡像），跟著大腿動
+const SPASM_LEG_HOLD = 1.6, SPASM_LEG_JERK = 2.8;
+const THIGH_LINES = [
+  [[53, 97], [50.5, 86], [47.5, 74], [43.5, 62], [39, 52]],   // 內收肌（最長那條，胯下 → 髖）
+  [[48, 93], [45, 82], [41.5, 71], [37, 61]],                 // 旁邊一條
+  [[41, 89], [38.5, 80], [35.5, 72]],                         // 外面短的
+];
+const TENSE_COL = [196, 138, 114];
 const BOB_UP = 3;                     // 吸吮往上那一下子宮口縮幾格（跟 trace128.py 的 BOB 一樣）
 const BOB_MS = 260;                   // 吸吮：上、下各停多久
 const SUCK_PER_BOB = .1;              // 每吸一下從陰道吸進子宮多少（1＝一次射精 4 股的量）
@@ -64,7 +73,7 @@ const section = document.createElement("section");
 section.className = "card";
 section.innerHTML = `
   <h2 style="margin-top:0">0. 磨蹭陰唇（像素）</h2>
-  <details class="dim" style="margin:.2em 0 .4em"><summary>說明</summary><p style="margin:.3em 0 0">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；高潮分階段：陰唇外翻 → 陰蒂勃起 → 陰道一抖一抖地痙攣（停著不動也會；陰道裡滿滿精液時痙攣過，拔出來陰道會一口一口吐出精液）→ 子宮腫脹、子宮口降下來，陰道裡有精液就一上一下吸進子宮；龜頭頂著子宮口時子宮口會親著龜頭、飄出愛心（這時候射直接灌進子宮）；停下來慢慢鬆回去。抽插時大腿、腹部跟著動，子宮高潮時雙腿忍不住往上。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p></details>
+  <details class="dim" style="margin:.2em 0 .4em"><summary>說明</summary><p style="margin:.3em 0 0">手指按住陰莖任何一段，上下拖動來摩擦陰唇。摩擦 ${RUBS_TO_OPEN} 下陰唇會打開；打開後陰莖直接疊在陰唇上。把龜頭往下拉到肉穴口再往上推就插進去（插進去才看得到裡面）。磨蹭、抽送時陰莖的尿道會慢慢漲白色精液，漲滿就射（射的時候陰莖一抖一抖、不能前後）：抽送越多陰道越收緊、陰道口那一圈纏住陰莖（往外抽時被拖出來），陰道勃起變長（子宮頸往上提）；高潮分階段：陰唇外翻 → 陰蒂勃起 → 陰道一抖一抖地痙攣（停著不動也會；陰道裡滿滿精液時痙攣過，拔出來陰道會一口一口吐出精液）→ 子宮腫脹、子宮口降下來，陰道裡有精液就一上一下吸進子宮；龜頭頂著子宮口時子宮口會親著龜頭、飄出愛心（這時候射直接灌進子宮）；停下來慢慢鬆回去。抽插時大腿、腹部跟著動；陰道痙攣時大腿抬起來一抽一抽（內側肌肉繃緊浮出線條）；子宮高潮時雙腿忍不住往上。插著是內射（積在子宮口前，太多流進陰道變乳白、陰莖被包一層，抽插時從陰道口流出來），在外面射在她身上。</p></details>
   <div style="display:flex;justify-content:center">
     <canvas id="rub-cv" width="128" height="128"
       style="width:min(70vw,384px);height:auto;aspect-ratio:1;image-rendering:pixelated;touch-action:none;background:#28222f;cursor:grab"></canvas>
@@ -113,6 +122,7 @@ function draw() {
   drawCum();
   drawHearts();
   applyBody();
+  drawThighTension();
   const stg = stage();
   info.textContent = (stg ? `【${stg}・${STAGES[stg]}】` : "") + (st.squirting ? "陰道把精液吐出來了！・" : "") + (st.shooting ? (st.inserted ? "內射中！・" : "射精中！・") : st.cum > 0 ? `精液 ${Math.round(st.cum * 100)}%・` : "") + (st.inserted ? `插入中・${["", "陰道收緊", "陰道纏住、變長", "緊緊纏住、勃起變長"][level()] || "還鬆鬆的"}${st.spasm || st.spasmLeft ? "・一抖一抖地痙攣" : ""}${kissing() ? "・子宮口親著龜頭♥" : st.bob || sucking() ? "・子宮口吸著精液" : ""}${st.womb > .05 ? `・子宮裡 ${Math.round(st.womb / WOMB_MAX * 100)}%` : ""}` : st.opened ? (st.armed ? "對準肉穴口了，往上推插進去" : "陰唇打開了：把陰莖往下拉到肉穴口") : `摩擦 ${st.rubs} / ${RUBS_TO_OPEN}`);
 }
@@ -267,7 +277,8 @@ function stepBody(now) {
   const orgasm = st.inserted && stage() === 4;              // 子宮高潮：雙腿忍不住往上（一直在抖）
   let moving = false;
   for (const [key, sp] of Object.entries(body)) {
-    const rest = key === "B" ? (orgasm ? -.6 : 0) : (orgasm ? -LEG_LIFT + LEG_TREMBLE * Math.sin(now / (key === "L" ? 47 : 59)) : 0);
+    const spasmLift = st.inserted && (st.spasm || st.spasmLeft) ? -SPASM_LEG_HOLD - (st.spasm ? SPASM_LEG_JERK : 0) : 0;   // 痙攣那一陣：腿抬著、每抽一下猛抬
+    const rest = key === "B" ? (orgasm ? -.6 : 0) + spasmLift * .2 : Math.min(orgasm ? -LEG_LIFT + LEG_TREMBLE * Math.sin(now / (key === "L" ? 47 : 59)) : 0, spasmLift * (key === "L" ? 1 : .85));
     sp.v += -sp.k * (sp.p - rest) - .32 * sp.v;
     sp.p += sp.v;
     if (Math.abs(sp.v) > .02 || Math.abs(sp.p - rest) > .05 || Math.abs(sp.p) > .05) moving = true;
@@ -276,6 +287,43 @@ function stepBody(now) {
 }
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 let bodyBuf = null;
+// 大腿抬起來時內側肌肉繃緊的線（抬越高越清楚）；畫在位移之後、照位移後的位置畫（線才連著、跟著大腿動）
+function drawThighTension() {
+  const lifts = [Math.max(0, -body.L.p), Math.max(0, -body.R.p)];
+  if (Math.max(...lifts) < 1) return;
+  const img = ctx.getImageData(0, 0, 128, 128), d = img.data;
+  lifts.forEach((lift, side) => {
+    const a = clamp01((lift - 1) / 2.2) * .9;
+    if (a <= 0) return;
+    for (const line of THIGH_LINES) {
+      const pts = [];                                         // 先沿著線取點、位移，再把相鄰的點連起來（不會斷）
+      for (let i = 0; i < line.length - 1; i++) {
+        const [x0, y0] = line[i], [x1, y1] = line[i + 1], n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2);
+        for (let k = 0; k <= n; k++) {
+          let x = Math.round(x0 + (x1 - x0) * k / n), y = Math.round(y0 + (y1 - y0) * k / n);
+          if (side) x = 127 - x;
+          pts.push([x, y + bodyDy(x, y)]);
+        }
+      }
+      const seen = new Set();
+      for (let i = 0; i < pts.length - 1; i++) {
+        let [x, y] = pts[i]; const [x1, y1] = pts[i + 1];
+        while (true) {
+          const key = x * 128 + y;
+          if (!seen.has(key) && !isBg(d, x, y)) { seen.add(key); put(d, 128, x, y, TENSE_COL, a); }
+          if (x === x1 && y === y1) break;
+          if (y !== y1) y += Math.sign(y1 - y); else x += Math.sign(x1 - x);
+          if (x !== x1 && y === y1) { x += Math.sign(x1 - x); }
+        }
+      }
+    }
+  });
+  ctx.putImageData(img, 0, 0);
+}
+const bodyDy = (x, y) => {                                  // 這一格往下位移幾格（大腿越外面越多、腹部中間上面一點）
+  const wT = clamp01((Math.abs(x + .5 - 64.5) - 12) / 22), wB = (1 - wT) * clamp01((70 - y) / 22);
+  return Math.round((x < 64 ? body.L.p : body.R.p) * wT + body.B.p * wB);
+};
 function applyBody() {
   const L = body.L.p, R = body.R.p, B = body.B.p;
   if (Math.abs(L) < .3 && Math.abs(R) < .3 && Math.abs(B) < .3) return;
@@ -283,10 +331,8 @@ function applyBody() {
   if (!bodyBuf) bodyBuf = new Uint8ClampedArray(src.length);
   const out = bodyBuf;
   for (let x = 0; x < 128; x++) {
-    const wT = clamp01((Math.abs(x + .5 - 64.5) - 12) / 22), side = x < 64 ? L : R;
     for (let y = 0; y < 128; y++) {
-      const wB = (1 - wT) * clamp01((70 - y) / 22);
-      const sy = y - Math.round(side * wT + B * wB);
+      const sy = y - bodyDy(x, y);
       const o = (y * 128 + x) * 4, k = (Math.max(0, Math.min(127, sy)) * 128 + x) * 4;
       if (sy < 0 || sy > 127) { out[o] = BODY_BG[0]; out[o + 1] = BODY_BG[1]; out[o + 2] = BODY_BG[2]; out[o + 3] = 255; continue; }
       out[o] = src[k]; out[o + 1] = src[k + 1]; out[o + 2] = src[k + 2]; out[o + 3] = src[k + 3];
@@ -582,7 +628,7 @@ setInterval(() => {
   const twitch = () => {
     if (!st.spasmLeft || !st.inserted) { st.spasm = false; st.spasmLeft = 0; draw(); return; }
     st.spasm = true; st.spasms += 1;
-    body.L.v -= .6; body.R.v -= .45; body.B.v -= .25;          // 痙攣：腿一抽
+    body.L.v -= 1.6; body.R.v -= 1.3; body.B.v -= .3;           // 痙攣：大腿往上猛抽一下
     if (st.inside >= SQUIRT_FULL) st.squirtReady = true;      // 陰道裡滿滿的精液時痙攣：拔出來會噴
     draw();
     setTimeout(() => {
