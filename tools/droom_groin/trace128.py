@@ -65,7 +65,8 @@ LIP_K, LIP_SLIT, LIP_WAV = LABIAS[LABIA]['k'], LABIAS[LABIA]['slit'], LABIAS[LAB
 # 陰蒂三種大小（2026-11-10 使用者）：CLITSIZE=small|mid|large。跟勃起有關：小的勃起也只是一小粒；中的＝原本那顆；
 #   大的沒勃起就看得到一顆肉粒，勃起時像一根小陰莖——一根圓頭的肉柱從包皮∧下面往上翹（使用者：不要有龜頭；整根一樣粗、沒有冠狀溝）
 CLITSIZE = os.environ.get('CLITSIZE', 'mid')
-MJ_K = BD['mj']                                               # 大陰唇鼓多少（肉的鼓、瘦的扁）
+MJ_K = 1.0 if os.environ.get('LAYER') == '1' else BD['mj']   # 分層輸出（gen_sexpix.py）：胯下那塊每種體型共用，大陰唇不跟體型變
+_MJ_UNUSED = BD['mj']                                               # 大陰唇鼓多少（肉的鼓、瘦的扁）
 HIP = BD['hip']                                               # 髂前上棘（髖的凸點；腰側的肉在這上面鼓、下面被大腿擠）
 # 大腿抬起（2026-11-10 使用者：大腿動態要實質重畫，不是加線條）：LEG＝大腿剖面往上抬幾格（負＝往下沉）。
 #   大腿以髖為軸往上轉：剖面橢圓往上、微微往外，抬越高剖面越正對鏡頭（變圓一點）；大腿上緣跟著變陡；
@@ -145,6 +146,8 @@ elif RUB == 8:                                     # 插入（陰唇打開後）
     OPEN_OVER = True; RUB = 4
 elif RUB: INSERT = 0.0; PEN_TIP = {1: 101.0, 2: 79.5, 3: 86.0, 4: 101.0}[RUB]   # 4：摩擦以後（陰莖退回下面）
 INS_MODE = os.environ.get('RUB') == '8'
+if os.environ.get('BASE') == '1':                  # 只畫身體（沒有陰唇、陰莖、透視）：分層輸出的底圖
+    RUB = 9; INSERT = 0.0; PENIS = 'none'; INS_MODE = False
 HOLE_Y = 87.4                                      # 打開後肉穴中心（rub_open 全開）
 if INS_MODE:
     INSERT = 1.0 if PEN_TIP < HOLE_Y - 3.0 else 0.0  # 龜頭頂過了肉穴上緣＝插進去
@@ -419,6 +422,7 @@ def draw_clit(px, y, erect=0.0):
     mid（原本）：沒勃起兩格高；勃起＝一顆有深色外框的圓肉粒。
     large：沒勃起就是一顆看得到的肉粒（3×3）；勃起＝像一根小陰莖但沒有龜頭——一根圓頭的肉柱（整根一樣粗）往上翹，根部在包皮∧下面。"""
     y = int(y)
+    if CLITSIZE == 'none': return                          # 分層輸出：陰蒂另外一層
     def put(x, yy, c):
         if 0 <= x < N and 0 <= yy < N and px[x, yy] not in PEN_SET: px[x, yy] = c
     OUT, HI, BODY = (150, 40, 62, 255), (252, 214, 220, 255), (240, 150, 170, 255)
