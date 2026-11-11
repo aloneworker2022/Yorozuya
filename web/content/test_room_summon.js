@@ -194,6 +194,7 @@ import {
   passionTwoChance,
 } from "./sex_thrust.js?v=8";
 import { mountSexPixel } from "./sex_pixel.js?v=2";
+import { mountSexPixelBack } from "./sex_pixel_back.js?v=1";
 import { pixelLookFor } from "./sex_pixel_look.js?v=1";
 import {
   getMoodCarry,
@@ -2996,10 +2997,16 @@ async function showSexPoseOpening(who) {
 const SEX_THRUST_CHAT = true;
 /** 肏的像素互動（2026-11-10 使用者）：正面體位（傳教士）的局部動圖換成 sex_pixel.js——沒有「肏」鈕，手指按住陰莖拖；
  *  有碰到她而且在動才算數；玩家興奮＝尿道裡的精液量（漲滿就射）；她的高潮用陰唇／陰蒂／陰道／子宮表現（四階，子宮高潮＝她高潮）。
- *  後背照舊（按鈕＋四幀動圖）。改 false 就整個回到舊的按鈕。 */
+ *  改 false 就整個回到舊的按鈕。 */
 const SEX_PIXEL_ON = true;
+/** 後背（2026-11-11 使用者）：局部動圖也換成像素互動 sex_pixel_back.js——她跪著翹起屁股，畫面最底是玩家的腹部；
+ *  一隻手指上下拖＝前後扭腰，兩隻手指按住兩瓣屁股往下拉＝把她的臀部往後拉（插得更深），撞到腹部屁股壓扁、果凍晃；
+ *  射精、陰道／子宮高潮跟正面一樣（事件也一樣），沒有尿。改 false 後背回到舊的按鈕＋四幀動圖。 */
+const SEX_PIXEL_BACK_ON = true;
 /** 像素畫面裁成橫幅（128 格座標；使用者紅框：腰到陰莖、左右到大腿）。改這裡要一起改 test_room.css 的 --pix-ar。 */
 const SEX_PIX_CROP = { x: 10, y: 28, w: 108, h: 96 };
+/** 後背的裁切（同一個比例 108:96，CSS 不用改）：腰（子宮）到玩家的腹部。 */
+const SEX_PIX_CROP_BACK = { x: 10, y: 18, w: 108, h: 96 };
 let sexChat = null;
 let thrustFramesCache = null;
 
@@ -3610,7 +3617,7 @@ async function openSexChat(who) {
   sexChat = {
     marathon,
     pose,
-    pixel: SEX_PIXEL_ON && pose === "missionary",
+    pixel: SEX_PIXEL_ON && (pose === "missionary" || (pose === "doggy" && SEX_PIXEL_BACK_ON)),
     pix: null,
     pixStage: 0,
     pixStageName: "",
@@ -3705,7 +3712,9 @@ async function sexChatToJoin() {
   const where = sexChat.pose === "doggy" ? "抵在她翹起的屁股中間" : "抵在她張開的腿間";
   if (sexChat.pixel) mountSexPix(who);
   sexChatNarrate(sexChat.pixel
-    ? `（你掏出陰莖，${where}。手指按住陰莖上下拖：先磨開陰唇，再把龜頭對準往上推進去。${dry}）`
+    ? (sexChat.pose === "doggy"
+      ? `（你掏出陰莖，${where}。手指按住畫面上下拖＝前後扭腰：先磨開陰唇，再往前頂進去；兩隻手指按住她的兩瓣屁股往下拉，把她的臀部往後拉，插得更深。${dry}）`
+      : `（你掏出陰莖，${where}。手指按住陰莖上下拖：先磨開陰唇，再把龜頭對準往上推進去。${dry}）`)
     : `（你掏出陰莖，${where}。按「肏」開始。${dry}）`);
   renderSexHud();
   renderSexChatBar();
@@ -3772,7 +3781,7 @@ function thrustEjac(who, s, seq, r) {
   pushDebug(`肏：${r.blood ? "血精" : "射精"}（第 ${s.ejacs} 次）精液 ${r.semenBefore}→${s.semen}cc${s.ended ? "，見底結束" : ""}`);
 }
 
-/* ───────── 肏的像素互動（正面體位）：sex_pixel.js 的事件 → 這一場的數值 ───────── */
+/* ───────── 肏的像素互動（正面 sex_pixel.js／後背 sex_pixel_back.js）：事件 → 這一場的數值 ───────── */
 
 /** 掛上像素畫面（放在原本局部動圖的框裡，常駐；可以按）。 */
 function mountSexPix(who = girl) {
@@ -3787,9 +3796,10 @@ function mountSexPix(who = girl) {
   sc.pixLook = pixelLookFor(who);
   // 2026-11-10 使用者：做愛畫面整組（主圖＋對話框）往上搬，下面留給像素畫面；照紅框裁成橫幅（腰到陰莖、兩邊大腿），不顯示資訊列
   $("portrait-sheet")?.classList.add("sex-pix");
-  sc.pix = mountSexPixel(box, {
+  const back = sc.pose === "doggy";
+  sc.pix = (back ? mountSexPixelBack : mountSexPixel)(box, {
     look: sc.pixLook,
-    crop: SEX_PIX_CROP,
+    crop: back ? SEX_PIX_CROP_BACK : SEX_PIX_CROP,
     info: false,
     // 她的反應漲多快：性奮、關係越高越快（原本「激情一下拿 2 的機率」），陰道越敏感再快一點
     reactMul: () => 0.7 + passionTwoChance(Number(girl?.bodyState?.arousal) || 0, girl?.stage || "stranger") + (ORGAN_DEV_ON && girl ? devPassionChance(girl) : 0),
@@ -3797,7 +3807,7 @@ function mountSexPix(who = girl) {
     cumMul: () => THRUST.EXCITE_CUM_AT / exciteCumAt(),
     on: (type, data) => { if (sexChat === sc && girl) onSexPixEvent(type, data || {}); },
   });
-  pushDebug(`肏：像素互動（體型 ${sc.pixLook.build}・陰唇 ${sc.pixLook.labia}／${sc.pixLook.labcol}・陰蒂 ${sc.pixLook.clit}・陰道 ${sc.pixLook.vlen}）`);
+  pushDebug(`肏：像素互動${back ? "・後背" : ""}（體型 ${sc.pixLook.build}・陰唇 ${sc.pixLook.labia}／${sc.pixLook.labcol}・陰蒂 ${sc.pixLook.clit}・陰道 ${sc.pixLook.vlen}）`);
 }
 
 function unmountSexPix(sc) {
