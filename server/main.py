@@ -6113,6 +6113,19 @@ def frames_unhang(body: dict | None = None):
     return {"frame": _frames(lambda c: room_frames.unhang(c, (body or {}).get("slot")))}
 
 
+@app.get("/api/frames/mode")
+def frames_mode_get(slot: int = -1):
+    """那幅的使用者模式（誰來用、誰可以看、查看時間）。"""
+    return {"mode": _frames(lambda c: room_frames.get_mode(c, slot))}
+
+
+@app.post("/api/frames/mode")
+def frames_mode_set(body: dict | None = None):
+    """玩家設定使用者模式：{slot, operator: her|hermes|both|'', viewers: [you,her,hermes], start, end, dateFrom, dateTo}。"""
+    b = body or {}
+    return {"frame": _frames(lambda c: room_frames.set_mode(c, b.get("slot"), b))}
+
+
 @app.post("/api/frames/ask")
 def frames_ask(body: dict | None = None):
     """請她寫一個網頁掛在這格：{slot, what, girlId, girlName} → 放一件上她的桌，做完她自己掛。"""

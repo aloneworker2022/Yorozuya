@@ -9,6 +9,13 @@
 - 掛滿（四個都有）不能再掛，要先拿下一幅。
 - 看：/frames/<fid>/<path>，CSP sandbox allow-scripts（沒有 allow-same-origin）→ 可以是會動的 app，
   但跑在不透明來源，碰不到遊戲的 cookie／localStorage／接口。
+- 使用者模式（2026-11-12）：相框外層（不是她寫的網頁）由玩家設定
+  operator 誰來用：her｜hermes｜both（沒選＝''）；viewers 誰可以看：you／her／hermes；
+  查看時間：每天幾點到幾點（start／end "HH:MM"，跨午夜可）＋可選的日期起訖（dateFrom／dateTo "YYYY-MM-DD"），
+  空的＝不限。時間一律台北時間（UTC+8，沒有夏令時間）。
+  設定存在 room_frame_modes，一幅（fid）一列，另記 run_id＋entry（哪一份網頁）。拿下來不刪；
+  同一件同一頁再掛上去（新的 fid）就抄最近一次的設定，所以設定還在。同一頁同時掛兩格各自設定。
+  預設（沒設定過）：只有你看得到、誰來用沒選；她和 Hermes 要你打勾才看得到。
 """
 from __future__ import annotations
 
@@ -16,7 +23,9 @@ import os
 import secrets
 import shutil
 import sqlite3
+import re
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import desk_agent
@@ -27,6 +36,12 @@ COPY_MAX = 30 * 1024 * 1024     # 一幅最多複製多少（整個資料夾）
 HTML_EXT = (".html", ".htm")
 ASK_MARK = "寫一個網頁掛在牆上"   # 請她寫的那件的標題開頭
 CANDIDATES_MAX = 40
+OPERATORS = ("her", "hermes", "both")
+VIEWERS = ("you", "her", "hermes")
+DEFAULT_VIEWERS = ("you",)
+TPE = timezone(timedelta(hours=8))   # 台北（沒有夏令時間）
+_HM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+_YMD = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class FrameError(Exception):
@@ -65,22 +80,146 @@ def init(conn: sqlite3.Connection) -> None:
             created INTEGER NOT NULL
         )"""
     )
+    # 使用者模式（相框外層的設定）：一幅一列；拿下來不刪，同一頁再掛回去照抄
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS room_frame_modes (
+            fid       TEXT PRIMARY KEY,
+            run_id    INTEGER NOT NULL,
+            entry     TEXT NOT NULL,
+            operator  TEXT NOT NULL DEFAULT '',
+            viewers   TEXT NOT NULL DEFAULT 'you',
+            win_start TEXT NOT NULL DEFAULT '',
+            win_end   TEXT NOT NULL DEFAULT '',
+            date_from TEXT NOT NULL DEFAULT '',
+            date_to   TEXT NOT NULL DEFAULT '',
+            updated   INTEGER NOT NULL DEFAULT 0
+        )"""
+    )
+    # 舊的 room_frame_modes（之後加欄位就照這裡補）
+    have = {r[1] for r in conn.execute("PRAGMA table_info(room_frame_modes)").fetchall()}
+    for col, ddl in (("operator", "TEXT NOT NULL DEFAULT ''"), ("viewers", "TEXT NOT NULL DEFAULT 'you'"),
+                     ("win_start", "TEXT NOT NULL DEFAULT ''"), ("win_end", "TEXT NOT NULL DEFAULT ''"),
+                     ("date_from", "TEXT NOT NULL DEFAULT ''"), ("date_to", "TEXT NOT NULL DEFAULT ''"),
+                     ("updated", "INTEGER NOT NULL DEFAULT 0")):
+        if col not in have:
+            conn.execute(f"ALTER TABLE room_frame_modes ADD COLUMN {col} {ddl}")
     conn.commit()
+
+
+def default_mode() -> dict:
+    return {"operator": "", "viewers": list(DEFAULT_VIEWERS), "start": "", "end": "", "dateFrom": "", "dateTo": "", "set": False}
+
+
+def _mode_row(m) -> dict:
+    if not m:
+        return default_mode()
+    viewers = [v for v in VIEWERS if v in str(m[1] or "").split(",")]
+    return {"operator": m[0] if m[0] in OPERATORS else "", "viewers": viewers, "start": m[2] or "", "end": m[3] or "",
+            "dateFrom": m[4] or "", "dateTo": m[5] or "", "set": True}
 
 
 def _row(r) -> dict:
     return {"slot": r[0], "fid": r[1], "title": r[2], "entry": r[3], "girlId": r[4], "girlName": r[5],
             "runId": r[6], "by": r[7], "hung": r[8], "wall": WALLS[r[0]] if 0 <= r[0] < SLOTS else "",
-            "url": f"/frames/{r[1]}/{r[3]}"}
+            "url": f"/frames/{r[1]}/{r[3]}", "mode": _mode_row(r[9:] if len(r) > 9 and r[9] is not None else None)}
 
 
 def frames(conn: sqlite3.Connection) -> list[dict | None]:
-    """四個位置，空的是 None。"""
+    """四個位置，空的是 None。每幅帶 mode（使用者模式）。"""
     out: list[dict | None] = [None] * SLOTS
-    for r in conn.execute("SELECT slot, fid, title, entry, girl_id, girl_name, run_id, by, hung FROM room_frames").fetchall():
+    for r in conn.execute("SELECT f.slot, f.fid, f.title, f.entry, f.girl_id, f.girl_name, f.run_id, f.by, f.hung, "
+                          "m.operator, m.viewers, m.win_start, m.win_end, m.date_from, m.date_to "
+                          "FROM room_frames f LEFT JOIN room_frame_modes m ON m.fid = f.fid").fetchall():
         if 0 <= r[0] < SLOTS:
             out[r[0]] = _row(r)
     return out
+
+
+def _slot(v) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return -1
+
+
+def _valid_date(s: str) -> bool:
+    if not _YMD.match(s):
+        return False
+    try:
+        datetime.strptime(s, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
+
+
+def set_mode(conn: sqlite3.Connection, slot, body: dict) -> dict:
+    """玩家設定那幅的使用者模式：{operator, viewers[], start, end, dateFrom, dateTo} → 那幅（含 mode）。"""
+    slot = _slot(slot)
+    cur = frames(conn)[slot] if 0 <= slot < SLOTS else None
+    if not cur:
+        raise FrameError("那個位置是空的", 404)
+    b = body or {}
+    op = str(b.get("operator") or "").strip()
+    if op and op not in OPERATORS:
+        raise FrameError("誰來用只能選：她、Hermes、她跟 Hermes 一起")
+    raw = b.get("viewers")
+    if raw is None:
+        raw = []
+    if isinstance(raw, str):
+        raw = [x for x in raw.split(",") if x]
+    if not isinstance(raw, (list, tuple)):
+        raise FrameError("誰可以看格式不對")
+    bad = [v for v in raw if v not in VIEWERS]
+    if bad:
+        raise FrameError("誰可以看只能勾：你、她、Hermes")
+    viewers = [v for v in VIEWERS if v in raw]
+    start, end = str(b.get("start") or "").strip(), str(b.get("end") or "").strip()
+    if bool(start) != bool(end):
+        raise FrameError("查看時間要開始和結束都填，或都空著（不限）")
+    for t in (start, end):
+        if t and not _HM.match(t):
+            raise FrameError("時間要寫成 HH:MM（例如 18:00）")
+    if start and start == end:
+        raise FrameError("開始和結束時間不能一樣")
+    d0, d1 = str(b.get("dateFrom") or "").strip(), str(b.get("dateTo") or "").strip()
+    for d in (d0, d1):
+        if d and not _valid_date(d):
+            raise FrameError("日期要寫成 YYYY-MM-DD")
+    if d0 and d1 and d0 > d1:
+        raise FrameError("開始日期不能晚於結束日期")
+    conn.execute("INSERT OR REPLACE INTO room_frame_modes (fid, run_id, entry, operator, viewers, win_start, win_end, date_from, date_to, updated) "
+                 "VALUES (?,?,?,?,?,?,?,?,?,?)", (cur["fid"], cur["runId"], cur["entry"], op, ",".join(viewers), start, end, d0, d1, now_ms()))
+    conn.commit()
+    return frames(conn)[slot]
+
+
+def get_mode(conn: sqlite3.Connection, slot) -> dict:
+    slot = _slot(slot)
+    cur = frames(conn)[slot] if 0 <= slot < SLOTS else None
+    if not cur:
+        raise FrameError("那個位置是空的", 404)
+    return cur["mode"]
+
+
+def in_window(mode: dict, now: datetime | None = None) -> bool:
+    """現在（台北）在不在查看時間裡。沒設＝一直都在。"""
+    t = (now or datetime.now(TPE)).astimezone(TPE)
+    day = t.strftime("%Y-%m-%d")
+    if mode.get("dateFrom") and day < mode["dateFrom"]:
+        return False
+    if mode.get("dateTo") and day > mode["dateTo"]:
+        return False
+    s, e = mode.get("start") or "", mode.get("end") or ""
+    if not s or not e:
+        return True
+    hm = t.strftime("%H:%M")
+    return s <= hm < e if s < e else (hm >= s or hm < e)   # 跨午夜：22:00–02:00
+
+
+def can_view(frame: dict, who: str, now: datetime | None = None) -> bool:
+    """who（you／her／hermes）現在看得到這幅網頁嗎（名單裡＋在時間內）。玩家永遠打得開外層改設定。"""
+    m = frame.get("mode") or default_mode()
+    return who in m.get("viewers", []) and in_window(m, now)
 
 
 def wants(conn: sqlite3.Connection) -> list[dict]:
@@ -150,6 +289,10 @@ def hang(conn: sqlite3.Connection, run_id, name: str = "", slot=None, by: str = 
     conn.execute("INSERT INTO room_frames (slot, fid, title, entry, girl_id, girl_name, run_id, by, hung) VALUES (?,?,?,?,?,?,?,?,?)",
                  (slot, fid, _title_of(run, name), name, run.get("girlId") or "", run.get("girlName") or "", run["id"],
                   "her" if by == "her" else "you", now_ms()))
+    # 同一件同一頁之前掛過、設過使用者模式 → 照抄最近那次（拿下來再掛回去設定還在）
+    conn.execute("INSERT OR REPLACE INTO room_frame_modes (fid, run_id, entry, operator, viewers, win_start, win_end, date_from, date_to, updated) "
+                 "SELECT ?, run_id, entry, operator, viewers, win_start, win_end, date_from, date_to, ? FROM room_frame_modes "
+                 "WHERE run_id=? AND entry=? AND fid<>? ORDER BY updated DESC LIMIT 1", (fid, now_ms(), run["id"], name, fid))
     conn.commit()
     return frames(conn)[slot]
 

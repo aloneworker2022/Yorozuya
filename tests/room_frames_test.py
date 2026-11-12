@@ -90,6 +90,65 @@ async def main():
         pass
     c.close()
     print("room_frames ok")
+    modes(run["id"])
+
+
+def modes(run_id):
+    """使用者模式（2026-11-12）：預設、驗證、時間窗、拿下來再掛回去設定還在、同頁兩格各自設定、舊 DB 升級。"""
+    from datetime import datetime
+    c = connect()
+    for s in range(F.SLOTS):
+        if F.frames(c)[s]:
+            F.unhang(c, s)
+    f = F.hang(c, run_id, "index.html", 1)
+    # 預設：只有你看得到、誰來用沒選；她和 Hermes 看不到
+    assert f["mode"] == F.default_mode(), f["mode"]
+    assert F.can_view(f, "you") and not F.can_view(f, "her") and not F.can_view(f, "hermes")
+    # 驗證
+    for bad in ({"operator": "boss"}, {"viewers": ["you", "cat"]}, {"start": "18:00"}, {"start": "25:00", "end": "26:00"},
+                {"start": "18:00", "end": "18:00"}, {"dateFrom": "2026-13-01"}, {"dateFrom": "2026-12-02", "dateTo": "2026-12-01"},
+                {"viewers": 3}):
+        try:
+            F.set_mode(c, 1, bad)
+            raise AssertionError(f"應該擋：{bad}")
+        except F.FrameError as e:
+            assert e.status == 400, (bad, e.status)
+    try:
+        F.set_mode(c, 0, {"operator": "her"})
+        raise AssertionError("空位不能設")
+    except F.FrameError as e:
+        assert e.status == 404
+    # 設定 → 帶在 frames()、get_mode
+    m = F.set_mode(c, 1, {"operator": "both", "viewers": ["her", "you", "hermes"], "start": "18:00", "end": "22:00",
+                          "dateFrom": "2026-11-01", "dateTo": ""})["mode"]
+    assert m["operator"] == "both" and m["viewers"] == ["you", "her", "hermes"] and m["start"] == "18:00", m
+    assert F.get_mode(c, 1) == m == F.frames(c)[1]["mode"]
+    tpe = lambda s: datetime.strptime(s, "%Y-%m-%d %H:%M").replace(tzinfo=F.TPE)
+    fr = F.frames(c)[1]
+    assert F.can_view(fr, "her", tpe("2026-11-12 19:30"))
+    assert not F.can_view(fr, "her", tpe("2026-11-12 22:00")) and not F.can_view(fr, "her", tpe("2026-11-12 08:00"))
+    assert not F.can_view(fr, "her", tpe("2026-10-31 19:00")), "開始日期前看不到"
+    # 跨午夜
+    assert F.in_window({"start": "22:00", "end": "02:00"}, tpe("2026-11-12 23:10"))
+    assert F.in_window({"start": "22:00", "end": "02:00"}, tpe("2026-11-13 01:59"))
+    assert not F.in_window({"start": "22:00", "end": "02:00"}, tpe("2026-11-13 02:00"))
+    # 拿下來再掛回去（新的 fid）→ 設定還在；同頁另一格各自設
+    F.unhang(c, 1)
+    back = F.hang(c, run_id, "index.html", 2)
+    assert back["fid"] != fr["fid"] and back["mode"]["operator"] == "both" and back["mode"]["start"] == "18:00", back["mode"]
+    F.set_mode(c, 2, {"operator": "hermes", "viewers": ["hermes"]})
+    other = F.hang(c, run_id, "index.html", 3)
+    assert other["mode"]["operator"] == "hermes"            # 抄最近那次
+    F.set_mode(c, 3, {"operator": "her", "viewers": ["you", "her"]})
+    assert F.frames(c)[2]["mode"]["operator"] == "hermes", "同頁兩格各自設定"
+    # 不勾你：你打不開內容（外層仍可設定）
+    assert not F.can_view(F.frames(c)[2], "you")
+    c.close()
+    # 舊 DB：init 再跑一次不會壞，資料還在
+    c = connect()
+    assert F.frames(c)[3]["mode"]["operator"] == "her"
+    c.close()
+    print("room_frames modes ok")
 
 
 asyncio.run(main())
