@@ -1117,21 +1117,22 @@
       const TL = 34 * h;
       sh.xf = xf;
       // 2026-10-15：骨盆／屁股左右收窄，她的臀肉在接觸點才露在他前面（撞擊時的壓扁、彈晃看得到）
-      sh.ell(BODY, [0, -.5, 2], [6.8 * w, 5.8 * wd, 6.5]);                               // 骨盆
-      for (const s of [-1, 1]) sh.ell(BODY, [s * 3.4 * w, -3.2, .5], [4.2 * w, 4.6 * wd, 5.6]);   // 屁股
-      sh.ell(BODY, [0, 0, 12], [7.4 * w, 5.2 * wd, 9.5]);                                 // 腰腹
-      sh.ell(BODY, [0, .3 + 1.2 * stoop, 23.5], [10.2 * w, 6.4 * wd + (M.chest ? 1.2 : 0), 9.8]);   // 胸廓
+      sh.ell(BODY, [0, -1.0, 2], [6.8 * w, 6.6 * wd, 6.8]);                               // 骨盆
+      for (const s of [-1, 1]) sh.ell(BODY, [s * 3.4 * w, -4.4, .8], [4.2 * w, 5.2 * wd, 6.0]);   // 屁股
+      sh.ell(BODY, [0, -.6, 12], [7.4 * w, 6.3 * wd, 9.5]);                                 // 腰腹
+      sh.ell(BODY, [0, -.4 + 1.2 * stoop, 23.5], [10.2 * w, 7.9 * wd + (M.chest ? 1.2 : 0), 10.2]);
+      sh.ell(BODY, [0, -3.6 + 1.6 * stoop, 27.5], [9.4 * w, 5.2 * wd, 6.4]);                 // 上背（肩胛那一塊，側面才有厚度）   // 胸廓
       if (M.chest) for (const s of [-1, 1]) sh.ell(BODY, [s * 4.6 * w, 5.4 * wd, 25.5], [5.2 * w, 2.6, 4.2]);   // 胸肌
       if (belly) sh.ell(BODY, [0, 3.5 + 5 * belly, 10.5], [(7 + 2 * belly) * w, 4 + 5 * belly, 8 + 2 * belly]);   // 肚子
       const shY = -.5 + 2.6 * stoop, shZ = TL - 1.5 - 1.5 * stoop;
       sh.cone(BODY, [-10.6 * w, shY, shZ], [10.6 * w, shY, shZ], 3.9 * w ** .5, 3.9 * w ** .5);   // 肩
       for (const s of [-1, 1]) sh.cone(BODY, [s * 4.2 * w, shY - .6, shZ + .4], [0, shY + .2, TL + 3], 3.4, 3.2);   // 斜方肌
-      const neckB = [0, shY + .3, TL], neckT = [0, shY + 1 + 2.2 * stoop, TL + 6 - 1.2 * stoop];
-      sh.cone(BODY, neckB, neckT, 3.5 * w ** .3, 3.1);
+      const neckB = [0, shY + .3, TL], neckT = [0, shY + 1.2 + 2.2 * stoop, TL + 4.6 - 1.2 * stoop];
+      sh.cone(BODY, neckB, neckT, 4.5 * w ** .3, 3.8);
       sh.xf = compose(xf, about(g.headR || [1, 0, 0, 0, 1, 0, 0, 0, 1], neckT));
-      sh.ell(BODY, [0, neckT[1] + .9, neckT[2] + 7.2], [5.8, 6.6, 7.9]);                  // 頭
-      sh.ell(BODY, [0, neckT[1] + 3.4, neckT[2] + 2.6], [4.3, 4.0, 3.2]);                 // 下巴
-      sh.ell(HAIR, [0, neckT[1] - .3, neckT[2] + 9.2], [6.3, 7.0, 6.4], { y0: neckT[1] + 1, zc: neckT[2] + 7.2, bang: 4.2, bottom: neckT[2] + 4.5, cut: null });   // 短髮
+      sh.ell(BODY, [0, neckT[1] + .9, neckT[2] + 6.6], [5.6, 6.3, 7.3]);                  // 頭
+      sh.ell(BODY, [0, neckT[1] + 3.2, neckT[2] + 2.2], [4.3, 4.0, 3.2]);                 // 下巴
+      sh.ell(HAIR, [0, neckT[1] - .3, neckT[2] + 8.6], [6.1, 6.7, 6.0], { y0: neckT[1] + 1, zc: neckT[2] + 6.6, bang: 4.2, bottom: neckT[2] + 4.0, cut: null });   // 短髮
       sh.xf = null;
       const W = (l) => toWorld(xf, l);
       const Lt = 27 * h, Ls = 25 * h, Lu = 19 * h, Lf = 17 * h;
@@ -1139,17 +1140,17 @@
         // 2026-10-15：大腿根往內收（4.0）、上端細一點，不然從側面整片蓋住她被撞的臀部
         const hip = W([s * 4.0 * w, 0, 0]), knee = g.knee(s), ank = g.ankle(s);
         const mid = hip.map((v, i) => v + (knee[i] - v) * .45);
-        sh.cone(BODY, hip, mid, 5.0 * lm, 4.9 * lm);
-        sh.cone(BODY, mid, knee, 4.9 * lm, 3.5 * lm);
+        sh.cone(BODY, hip, mid, 5.6 * lm, 5.3 * lm);
+        sh.cone(BODY, mid, knee, 5.3 * lm, 3.8 * lm);
         const calf = knee.map((v, i) => v + (ank[i] - v) * .3);
-        sh.cone(BODY, knee, calf, 3.4 * lm, 3.9 * lm);
-        sh.cone(BODY, calf, ank, 3.9 * lm, 2.0 * lm ** .5);
+        sh.cone(BODY, knee, calf, 3.7 * lm, 4.2 * lm);
+        sh.cone(BODY, calf, ank, 4.2 * lm, 2.2 * lm ** .5);
         const t = g.toe, fl = 8 * h;
         sh.cone(BODY, ank, [ank[0] + t[0] * fl, ank[1] + t[1] * fl, ank[2] + t[2] * fl], 2.2, 1.5);
         const shj = W([s * 10.2 * w, shY, shZ - .5]), wr = g.wrist(s);
         const el = ik(shj, wr, Lu, Lf, g.epole(s));
-        sh.cone(BODY, shj, el, 3.5 * lm, 2.6 * lm);
-        sh.cone(BODY, el, wr, 2.7 * lm, 1.9 * lm);
+        sh.cone(BODY, shj, el, 3.9 * lm, 3.0 * lm);
+        sh.cone(BODY, el, wr, 3.0 * lm, 2.1 * lm);
         let d = [wr[0] - el[0], wr[1] - el[1], wr[2] - el[2]]; const n = hypot3(...d) || 1; d = d.map(v => v / n);
         const pl = g.palm || 1, tip = wr.map((v, i) => v + d[i] * 5 * pl);
         sh.cone(BODY, wr, tip, 2.3 * pl, 1.8 * pl);                                       // 手掌
@@ -1325,8 +1326,9 @@
     // 2026-10-15：紫灰影子 → 暖燈下的膚色（使用者：太假）
     const SIDE_PAL = { body: [170, 118, 108], hi: [212, 158, 138], lo: [116, 76, 80], line: [70, 40, 48], hair: [38, 26, 34], hairHi: [76, 54, 62],
       bust: [226, 176, 156], a: 236, flat: true };   // flat：身體也平塗（使用者），只留前後重疊的分界線和乳房弧線
-    const MAN_PAL = { body: [52, 86, 178], hi: [86, 124, 216], lo: [34, 58, 132], line: [22, 36, 96], hair: [26, 44, 108], hairHi: [26, 44, 108],
-      bust: [52, 86, 178], a: 240 };
+    // 2026-11-12：亮藍三階明暗像塑膠假人（使用者：黑影做得不好）→ 平塗的深色影子，只留前後重疊的分界線（手臂壓在身上那種）
+    const MAN_PAL = { body: [30, 34, 54], hi: [30, 34, 54], lo: [30, 34, 54], line: [58, 68, 104], hair: [20, 22, 36], hairHi: [20, 22, 36],
+      bust: [30, 34, 54], a: 240, flat: true };
     const LIGHT = (() => { const v = [.55, -.55, .65], n = Math.hypot(...v); return v.map(c => c / n); })();
     /** 側面一格的明暗：用深度圖（世界 x）估法線，跟燈的方向做 Lambert，切成亮／中／暗三階。 */
     function sideTone(hit, mat, tt, i, x, y, w, h, k) {
