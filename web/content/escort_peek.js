@@ -9,7 +9,7 @@ const LW = 195, LH = 422;                    // 邏輯像素（畫面 ×2 放大
 const DX0 = 8, DX1 = 187, DY0 = 112, DY1 = 340;
 const BED = 298;                              // 床面（世界 z＝0）的邏輯 y
 /** 她骨盆（世界 y＝0）的邏輯 x：每個體位擺得讓她大半在門縫裡、客人大半在門後。 */
-const HIPX = { missionary: DX0 + 70, cowgirl: DX0 + 68, doggy: DX0 + 68, kiss: DX0 + 66, reverse: DX0 + 64 };
+const HIPX = { missionary: DX0 + 76, cowgirl: DX0 + 68, doggy: DX0 + 68, kiss: DX0 + 66, reverse: DX0 + 64 };
 const OPEN = 0.6;                            // 門半開：門縫佔門框寬度
 const BLUE = "rgba(46,82,170,0.95)";
 const POSE_ID = { missionary: "sex_missionary", cowgirl: "sex_cowgirl", doggy: "sex_doggy", kiss: "sex_kiss", reverse: "sex_reverse" };

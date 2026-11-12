@@ -278,7 +278,8 @@
     }
     function torso(sh, P, doll, dy = 0, dz = 0, lean = 0, bounce = [0, 0, 0, 0], noHead = false, jig = null) {
       const b = P.b, zc = P.zc + dz, S = P.S + dz, C = P.C + dz, T = P.T;
-      const yl = (z) => dy + (z - C) * lean;
+      // lean 可以是函式（偷看體位，2026-11-12）：t＝0 胯下～1 肩，回傳前後位移 → 背脊可以彎（腰凹、拱背），不再是一根直筒
+      const yl = typeof lean === 'function' ? (z) => dy + lean((z - C) / T) : (z) => dy + (z - C) * lean;
       const soft = b.soft;
       if (!noHead) headPart(sh, P, yl, zc);
       const neck_r = 2.7 * b.frame * (1 + .12 * soft + .06 * b.muscle);
@@ -900,6 +901,7 @@
     }
 
     // -------------------------------------------------- 接客偷看的四種體位（側面；世界 +y＝往右＝客人那邊，床面 z＝0）
+    const HEADX_DOGGY = 40;
     const DOGGY_R = [-1, 0, 0, 0, 0, -1, 0, -1, 0];   // 局部「上」→ 世界 −y（頭朝左）、局部「前」→ 世界 −z（胸口朝床）
     /**
      * v2 姿勢（2026-10-10，照人體力學重做；規格見 docs/PLAN-2026-10.md「偷看體位 v2」）。
@@ -914,18 +916,20 @@
       const soft = 1 + .25 * b.soft;          // 肉多的被撞位移大一點
       if (pose === 'sex_missionary') {
         // 仰躺、骨盆被枕著微微後傾抬起；膝彎、小腿靠他肩；手抓他上臂。撞擊沿她骨盆軸 → 整個人往枕頭滑、上身晚一格、頭往後仰。
-        const H = [0, -3.6 * j * soft, 6.8 + .5 * j];
-        return { p, j, u, H, R: mulR(rotX(80), rotX(-6 * u)), lean: -.04 * u, headR: rotX(-22 - 10 * u),
-          ankles: (s) => [s * (6 + hipW * .3), H[1] + 17 + (s > 0 ? 2 : 0), 30 + 2 * j], pole: (s) => [s * .35, -.6, 1],
+        // 2026-11-12：被頂的時候腰拱離床（arch）、胸挺起來、頭往後仰；腿收彎一點（膝靠胸、小腿翹在他肩旁），被撞時腳跟著晃
+        const H = [0, 2 - 4.2 * j * soft, 7.2 + 1.1 * j];
+        return { p, j, u, H, R: mulR(rotX(91), rotX(-4 * u)), lean: 0, arch: 1.6 + 2.6 * u, headR: rotX(-18 - 16 * u),
+          ankles: (s) => [s * (8.5 + hipW * .3), H[1] + 23 + (s > 0 ? 1.5 : 0) - 2 * (u - .5), 13 + 4 * (j - .5) - (s > 0 ? 0 : 2)], pole: (s) => [s * .5, -.25, 1],
           wrists: (s) => [s * 7.5, 15 - 3 * j, 25], apole: (s) => [s * .8, -.3, -.2],
-          toe: [0, .55, .85], axis: 'y', amp: 3.6 };
+          toe: [0, .55, .85], axis: 'y', amp: 4.8 };
       }
       if (pose === 'sex_cowgirl') {
         // 跨坐、膝在他腰兩側、小腿貼床往後；上身前傾 ~18°、手撐他胸口（肩在手腕正上方）。
         // 起：慢慢抬（ease），落：快、坐到底時骨盆前後一擺；上半身晚一格、反向擺（counter-rock）。
         const rise = 1 - p;                     // 0＝坐到底
-        const H = [0, 3 + 1.4 * j, 10.5 + 13 * rise ** 1.3];
-        return { p, j, u, H, R: mulR(rotZ(180), rotX(-4 * u)), lean: .2 + .06 * (u - rise), headR: rotX(16 - 8 * u),
+        // 2026-11-12：不再是一根棍子上下——坐下去時骨盆往前送、腰凹、胸挺出去；抬起來時腰放鬆、上身往前趴一點；頭晚一格往後甩
+        const H = [0, 3.5 - 2.6 * (j - .5), 10.5 + 11 * rise ** 1.3];
+        return { p, j, u, H, R: mulR(rotZ(180), rotX(7 * (u - .5))), lean: .16 + .1 * (rise - .5), arch: 1.4 + 2.6 * u, headR: rotX(10 - 16 * (u - .4)),
           ankles: (s) => [s * (7.5 + hipW * .25), H[1] + 15, 1.5], pole: (s) => [s * .35, -1, .1],
           wrists: (s) => [s * 6, -13, Math.max(9.5, 9.5 + 2 * rise)], apole: (s) => [s * .7, .4, -.1],
           toe: [0, .25, -.95], axis: 'z', amp: 15 };
@@ -933,21 +937,22 @@
       if (pose === 'sex_doggy') {
         // 四肢著地：膝在髖正下方、手腕在肩正下方；腰微塌（骨盆前傾）、背平；臉朝枕頭、頸跟背一直線微抬。
         // 撞擊從臀部推進：骨盆往前、肩晚一格、頭再晚；膝不動（大腿跟著斜一點）。
-        const H = [0, 8 - 3.4 * j * soft, Lt + 1.2];
-        // 背的斜度由手臂長度決定：肩高≈手臂長×0.8（手腕在肩正下方、手肘彎著撐；背接近水平、腰微塌），髖高≈大腿長（膝在髖正下方）
-        const armZ = P.H * .3 * .8, back = (P.S - P.hipz) * .92;
-        const tilt = -Math.asin(Math.max(-.6, Math.min(.6, (H[2] - armZ) / back))) * 180 / Math.PI;
-        return { p, j, u, H, R: mulR(DOGGY_R, rotX(tilt - 12 + 2.5 * u)), lean: -.05 - .03 * u, headR: rotX(26 + 6 * u),
-          knees: (s) => [s * hipW * .85, 8 + .3, 1.8], ankles: (s) => [s * hipW * .75, 8 + Ls + .5, 1.2],
-          wrists: 'under', apole: (s) => [s * .3, .6, .2],
-          toe: [0, .2, -.98], axis: 'y', amp: 3.2 };
+        // 2026-11-12 重做（使用者：肢體、律動都不好，原本像一張桌子）：前臂撐床、肩壓低、屁股翹高、腰凹下去。
+        // 律動：骨盆被撞往前（j）→ 腰更凹（arch）→ 肩晚一格往前滑、手肘跟著彎（u）→ 頭再晚一格往上仰。
+        const H = [0, 8 - 4.6 * j * soft, Lt + 1.6 + .7 * j];
+        const Lu = P.H * .16, shZ = Lu * .78 + 2.6 - 1.2 * u, back = (P.S - P.hipz) * .92;
+        const tilt = -Math.asin(Math.max(-.85, Math.min(.85, (H[2] - shZ) / back))) * 180 / Math.PI;
+        return { p, j, u, H, R: mulR(DOGGY_R, rotX(tilt)), lean: 0, arch: 2.6 + 2.2 * j, headR: rotX(HEADX_DOGGY + 12 * u),
+          knees: (s) => [s * hipW * .95, 8 + .3, 1.8], ankles: (s) => [s * hipW * .85, 8 + Ls + .5, 1.2],
+          wrists: (s, sj) => [s * 5.2, sj[1] - P.H * .14 * .92 + 1.5 * (u - .5), 1.5], apole: (s) => [s * .25, .25, -1],
+          toe: [0, .2, -.98], axis: 'y', amp: 4.6 };
       }
       if (pose === 'sex_reverse') {
         // 背向坐在他腿上（他坐著、在她背後 +y）：她面朝 −y、背貼他胸口；膝往前、腳掌平放床上；手撐他大腿。
         // 她上下套（慢起快落、幅度小於騎乘）；他雙手從後面抓她胸（乳房被壓扁、不太晃）。
         const rise = 1 - p / 1.06;
         const H = [0, 5 + .8 * j, 12 + 7 * rise];
-        return { p, j, u, H, R: mulR(rotZ(180), rotX(-8 - 3 * u)), lean: -.06, headR: rotX(-12 - 8 * u),
+        return { p, j, u, H, R: mulR(rotZ(180), rotX(-6 - 5 * (u - .5))), lean: -.1, arch: 1.8 + 2.2 * u, headR: rotX(-10 - 14 * (u - .4)),
           ankles: (s) => [s * 8, -15, 1.4], pole: (s) => [s * .5, -1, .6],
           wrists: (s) => [s * 9.5, -3, 9 + 2 * rise], apole: (s) => [s * 1, .3, -.2],
           toe: [0, -1, -.05], foot: 'flat', axis: 'z', amp: 6, grope: true };
@@ -955,8 +960,8 @@
       // sex_kiss（v3）：坐在他腿上面對面深吻。不是上下套：骨盆前後畫圈磨（hip roll），上身反向前後＋左右搖，頭側一邊、跟他一起動。
       // 腳：小腿繞到他背後、腳踝自然伸直（腳背順著小腿），兩腳在他腰後交叉。
       const ph = 2 * Math.PI * i / 6, roll = Math.sin(ph), fwd = Math.cos(ph) * (.6 + .4 * SEX_DEPTH[i]);
-      const H = [.9 * roll, -4 + 1.2 * fwd, 13.5 + .5 * (1 - Math.abs(fwd))];
-      return { p, j, u, H, R: mulR(rotY(6 * roll), rotX(3 * fwd)), lean: .19 + .02 * fwd, headR: mulR(rotY(-18 + 4 * roll), rotX(-12 - 4 * fwd)),
+      const H = [.9 * roll, -4 + 2.0 * fwd, 13.5 + 1.4 * (1 - Math.abs(fwd))];
+      return { p, j, u, H, R: mulR(rotY(6 * roll), rotX(5 * fwd)), lean: .15 + .03 * fwd, arch: 2.0 + 1.4 * fwd, headR: mulR(rotY(-18 + 4 * roll), rotX(-12 - 4 * fwd)),
         ankles: (s) => [s * 3.5, 23.5, 15 + s], pole: (s) => [s * 1, .25, .4],
         wrists: (s) => [s * 4, 15.5 + .8 * fwd, 40.5], apole: (s) => [s * 1, -.2, -.4],
         toe: 'shin', axis: 'y', amp: 4, sway: roll, fwd };
@@ -964,7 +969,8 @@
     function buildSex(doll, pose, f, opts = {}) {
       const P = proportions(doll), sh = makeShape();
       // 2026-10-13：側面畫布只有 1.28 px／單位，前臂、小腿只剩 2 px 像棍子 → 偷看裡四肢加粗一點（房間人偶不動）
-      P.b = { ...P.b, arm: P.b.arm * 1.18, calf: P.b.calf * 1.1 };
+      // 2026-11-12：側面看整個人像一片薄板（使用者：肢體不好）→ 臀、大腿、小腿在側面加肉（房間人偶不動）
+      P.b = { ...P.b, arm: P.b.arm * 1.18, calf: P.b.calf * 1.2, butt: P.b.butt * 1.28, thigh: P.b.thigh * 1.14 };
       const b = P.b;
       const g = { ...sexRig(P, pose, f) };
       {
@@ -977,7 +983,7 @@
         g.lean = g.lean + .05 * (lag - .5) * (pose === 'sex_cowgirl' ? 1 : -1);
         g.headR = mulR(g.headR || rotX(0), mulR(rotZ(9 * slow2), mulR(rotY(5 * slow), rotX(KW * whip + 5 * (g.j - .5) * Math.sign(KW)))));
         const wr = g.wrists, an = g.ankles;
-        if (typeof wr === 'function') g.wrists = (sd) => { const w = wr(sd); return [w[0] + .6 * sd * slow, w[1] - 1.4 * (lag - .5), w[2] + .9 * Math.sin(ph * 2 + sd)]; };
+        if (typeof wr === 'function') g.wrists = (sd, sj) => { const w = wr(sd, sj); return [w[0] + .6 * sd * slow, w[1] - 1.4 * (lag - .5), w[2] + .9 * Math.sin(ph * 2 + sd)]; };
         if (pose === 'sex_missionary') g.ankles = (sd) => { const a = an(sd); return [a[0] + 1.3 * sd * slow, a[1] + 1.6 * (lag - .5), a[2] + 1.4 * g.j]; };
         g.face = { mouth: Math.min(1, .35 + .65 * g.j) };
       }
@@ -1018,7 +1024,10 @@
         jig = { d: [ax[0] * jv * A, ax[1] * jv * A, ax[2] * jv * A], sq: Math.max(-.08, Math.min(.2, .16 * imp + .05 * jv)),
           thigh: [ax[0] * jv1 * A * .7, ax[1] * jv1 * A * .7, ax[2] * jv1 * A * .7] };
       }
-      const tor = torso(sh, P, doll, 0, 0, g.lean, bnc, true, jig);
+      // 背脊曲線：直線前傾（lean）＋腰的弧度（arch，＋＝肚子往前挺、腰凹下去；－＝拱背）
+      const archV = g.arch || 0, leanV = g.lean, cl01 = (t) => Math.max(0, Math.min(1, t));
+      const spine = (t) => leanV * t * P.T + archV * Math.sin(Math.PI * cl01(t)) ** 1.3;
+      const tor = torso(sh, P, doll, 0, 0, archV ? spine : g.lean, bnc, true, jig);
       for (const s of [-1, 1]) {
         const hipL = [s * hip_x, 0, P.hipz], hipW = toWorld(xf, hipL), ankW = g.ankles(s);
         const kneeW = g.knees ? g.knees(s) : ik(hipW, ankW, Lt, Ls, g.pole(s));
@@ -1028,7 +1037,7 @@
       }
       for (const s of [-1, 1]) {
         const sj = [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) - .4, tor.S - 2.6], sjW = toWorld(xf, sj);
-        const wW = g.wrists === 'under' ? [s * 6.5 * F(b, 'sh'), sjW[1] - 5, 1.2] : g.wrists(s);   // v6：手腕略往前，側面看得到垂下的胸
+        const wW = g.wrists === 'under' ? [s * 6.5 * F(b, 'sh'), sjW[1] - 5, 1.2] : g.wrists(s, sjW);   // v6：手腕略往前，側面看得到垂下的胸
         const eW = ik(sjW, wW, Lu, Lf, g.apole(s));
         arm(sh, P, sj, toLocal(xf, eW), toLocal(xf, wW));
       }
