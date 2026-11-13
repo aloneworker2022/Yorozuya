@@ -6828,7 +6828,101 @@ function syncTalkBoxVis() {
 function setTalkEnabled(on) {
   if ($("talk-input")) $("talk-input").disabled = !on;
   if ($("talk-send")) $("talk-send").disabled = !on || talkBusy;
+  if ($("talk-mic")) $("talk-mic").disabled = (!on || talkBusy) && !micRec;
   refreshTalkActs();
+}
+
+/* ── 語音輸入（2026-11-13 使用者：按一下說話、說完就送，像發現 App 那樣）──
+   同 /widget 那套 Web Speech API（zh-TW、邊說邊把字填進輸入框、continuous false＝停頓就結束），結束就走 sendTalk 同一條路。
+   再按一下＝取消（不送）。瀏覽器只在 https 或 localhost 給麥克風；App 殼（http 區網＋WebView）多半不能用，會在輸入框提示。 */
+const SpeechRec = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition || null) : null;
+let micRec = null;
+let micHintTimer = 0;
+const MIC_ERR = {
+  "not-allowed": "不能用麥克風（要允許麥克風；http 開的網頁瀏覽器不給，要 https）",
+  "service-not-allowed": "這裡不能語音輸入（要 https，或瀏覽器沒有語音服務）",
+  "no-speech": "沒聽到聲音，再按一次麥克風",
+  "audio-capture": "找不到麥克風",
+  "network": "語音辨識連不上網路",
+  "language-not-supported": "這個瀏覽器不支援中文語音輸入",
+};
+
+function micHint(msg) {
+  const input = $("talk-input");
+  if (!input) return;
+  if (!input.dataset.ph) input.dataset.ph = input.placeholder || "";
+  input.placeholder = msg;
+  clearTimeout(micHintTimer);
+  micHintTimer = setTimeout(() => { input.placeholder = input.dataset.ph || ""; }, 3500);
+}
+
+function setMicOn(on) {
+  const btn = $("talk-mic");
+  if (!btn) return;
+  btn.classList.toggle("on", !!on);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.setAttribute("aria-label", on ? "在聽…再按一下取消" : "語音輸入");
+  btn.disabled = !on && (talkBusy || !!$("talk-input")?.disabled);
+}
+
+/** 跟 sendTalk 同一組條件：她在回話、在想、出門辦事、輸入框關著都不開 */
+function micCanTalk() {
+  return !!girl && sheetOpen() && talkFor === girl.id && !talkBusy && !girl.errand && !$("talk-input")?.disabled;
+}
+
+function cancelMic(keepText = false) {
+  const rec = micRec;
+  if (!rec) return;
+  rec.cancelled = keepText ? "keep" : "undo";
+  try { rec.abort(); } catch { /* ignore */ }
+}
+
+function toggleMic() {
+  if (micRec) { cancelMic(); return; }
+  if (!SpeechRec) { micHint("這個瀏覽器不能語音輸入，請用鍵盤上的麥克風"); return; }
+  if (typeof window !== "undefined" && window.isSecureContext === false) { micHint("語音輸入要用 https 或 localhost 開網頁"); return; }
+  if (!micCanTalk()) return;
+  const input = $("talk-input");
+  const base = String(input?.value || "").trim();
+  const cap = Number(input?.maxLength) > 0 ? Number(input.maxLength) : 300;
+  let heard = "";
+  let rec;
+  try { rec = new SpeechRec(); } catch { micHint("語音輸入開不起來"); return; }
+  rec.lang = "zh-TW";
+  rec.interimResults = true;
+  rec.continuous = false;
+  rec.maxAlternatives = 1;
+  rec.onresult = (e) => {
+    heard = Array.from(e.results).map((r) => r[0]?.transcript || "").join("").trim();
+    if (input && micRec === rec) input.value = ((base ? `${base} ` : "") + heard).slice(0, cap);
+  };
+  rec.onerror = (e) => {
+    rec.failed = e.error || "error";
+    if (e.error === "aborted" || rec.cancelled) return;
+    micHint(MIC_ERR[e.error] || `語音輸入出錯（${e.error}）`);
+  };
+  rec.onend = () => {
+    if (micRec === rec) micRec = null;
+    setMicOn(false);
+    if (rec.cancelled) { if (input && rec.cancelled === "undo") input.value = base; return; }
+    if (!heard) {
+      if (input) input.value = base;
+      if (!rec.failed) micHint("沒聽清楚，再按一次麥克風");
+      return;
+    }
+    // 說完就送（送不出去——例如她剛好在忙——字留在框裡，自己按送出）
+    if (!micCanTalk()) return;
+    const form = $("talk-input-row");
+    if (form?.requestSubmit) form.requestSubmit();
+    else sendTalk({ preventDefault() {} });
+  };
+  micRec = rec;
+  setMicOn(true);
+  try { rec.start(); } catch {
+    micRec = null;
+    setMicOn(false);
+    micHint("語音輸入開不起來");
+  }
 }
 
 function cleanLine(raw) {
@@ -11301,6 +11395,7 @@ function hideSheet() {
   if (MISS_YOU_ON && girl) noteMissSeen(girl);
   typeJob += 1;
   setTyping(false);
+  cancelMic();   // 關掉對話：還在聽就取消，不送
   talkBusy = false;
   endTalkSession();
   lines = [];
@@ -12545,7 +12640,8 @@ bindRentalDebug();
 bindPregDebug();
 bindOrganDevDebug();
 bindReckonDebug();
-onId("talk-input-row", "submit", (event) => { sendTalk(event); });
+onId("talk-input-row", "submit", (event) => { cancelMic(true); sendTalk(event); });
+onId("talk-mic", "click", () => { toggleMic(); });
 onId("portrait-backdrop", "click", () => {
   if (sexMarathonLocked()) { nagMarathonLocked(); return; }
   if (peakBlockClose()) return;
