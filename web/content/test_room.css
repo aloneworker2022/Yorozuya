@@ -167,16 +167,20 @@ button.furniture-card{display:flex;flex-direction:column;align-items:center;gap:
 #talk-nameline{display:flex;align-items:center;gap:.6em;margin-bottom:.45em}
 #portrait-name{font-size:.85em;letter-spacing:.15em;color:#ffe14a;font-weight:400;text-shadow:1px 1px 0 #1a2748;font-family:RoomPixel,system-ui,sans-serif}
 #portrait-meta{font-size:1em;line-height:1.65;white-space:pre-wrap;word-break:break-word;margin:0;color:inherit;font-family:RoomPixel,system-ui,sans-serif;-webkit-font-smoothing:none;font-smooth:never}
-#talk-typing i{display:inline-block;width:5px;height:5px;margin-right:4px;border-radius:0;background:#ffe14a;animation:talk-pulse 1s steps(1,end) infinite}
+#talk-typing i{display:inline-block;width:5px;height:5px;margin-right:4px;border-radius:0;background:#ffe14a;animation:talk-pulse 1.25s steps(1,end) infinite}
 #talk-typing i:nth-child(2){animation-delay:.25s}
 #talk-typing i:nth-child(3){animation-delay:.5s}
+#talk-typing i:nth-child(4){animation-delay:.75s}
+#talk-typing i:nth-child(5){animation-delay:1s}
 @keyframes talk-pulse{0%,100%{opacity:.35}50%{opacity:1}}
 /* 2026-11-13 使用者：送出後到她開口前畫面什麼都沒有，像當機。room-home 在想時整個對話框是藏著的（syncTalkBoxVis），
    所以另外放一顆像素「……」泡泡（setTyping 一起開關）：方點、steps() 一格一格跳、不糊邊 */
 #talk-think{display:none}
 body.room-home #talk-think:not([hidden]){
   display:flex;align-items:flex-end;gap:6px;
-  position:fixed;left:50%;top:50%;bottom:auto;transform:translate(-50%,-50%);z-index:5;   /* 畫面正中間（2026-11-13 使用者：高一點、大概中間） */
+  position:fixed;left:50%;bottom:auto;transform:translate(-50%,-50%);z-index:5;
+  /* 2026-11-13 使用者：正中間太高，放回下面一點——大約畫面 68%（中間和對話框之間）；矮螢幕也不壓到對話框和上面那排互動鍵（中心離對話框上緣至少 80px） */
+  top:min(68%, calc(100% - var(--talk-bottom) - var(--talk-box-h) - 80px));
   padding:10px 14px 8px;box-sizing:border-box;
   background:rgba(10,16,40,.86);border:2px solid #fff;border-radius:0;
   box-shadow:4px 4px 0 rgba(10,16,40,.55);
@@ -187,9 +191,11 @@ body.room-home #talk-think:not([hidden])::before,
 body.room-home #talk-think:not([hidden])::after{content:"";position:absolute;left:50%;width:6px;height:6px;background:#fff;margin-left:-3px}
 body.room-home #talk-think:not([hidden])::before{top:-8px}
 body.room-home #talk-think:not([hidden])::after{top:-16px;width:4px;height:4px;margin-left:1px}
-#talk-think i{display:block;width:8px;height:8px;background:#ffe14a;box-shadow:2px 2px 0 #1a2748;animation:talk-think-hop 1.2s steps(1,end) infinite}
+#talk-think i{display:block;width:8px;height:8px;background:#ffe14a;box-shadow:2px 2px 0 #1a2748;animation:talk-think-hop 1.5s steps(1,end) infinite}
 #talk-think i:nth-child(2){animation-delay:.2s}
 #talk-think i:nth-child(3){animation-delay:.4s}
+#talk-think i:nth-child(4){animation-delay:.6s}
+#talk-think i:nth-child(5){animation-delay:.8s}
 @keyframes talk-think-hop{0%{transform:translateY(0);opacity:.45}20%{transform:translateY(-4px);opacity:1}40%{transform:translateY(0);opacity:1}60%,100%{transform:translateY(0);opacity:.45}}
 @media(prefers-reduced-motion:reduce){#talk-think i,#talk-typing i{animation:none;opacity:1}}
 #talk-input-row{display:flex;gap:.5em;width:100%;box-sizing:border-box;background:rgba(10,16,40,.72);padding:8px 10px;margin:0;pointer-events:auto;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);font-family:RoomPixel,system-ui,sans-serif}
