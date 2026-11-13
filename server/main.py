@@ -4732,11 +4732,29 @@ async def _life_browse(data: dict, action: dict) -> tuple[str, list]:
     return text, ["上網", word, bits[0] if bits else ""]
 
 
+async def _life_grow(data: dict, action: dict) -> None:
+    """每晚沉澱：模型看最近一天的經歷，挑出會留下來的變化，併進她的 growth。模型沒回或回壞就只把舊的淡一次。"""
+    system, user = life_agent.growth_prompt(action)
+    reply = await _life_say(data, system, user)
+    new = life_agent.parse_growth(reply, action.get("memories") or [])
+    gid = action["id"]
+    now2 = int(time.time() * 1000)
+
+    def commit(fresh):
+        life_agent.absorb(fresh, _dd_read_save() or data, now2)
+        life_agent.commit_growth(fresh, gid, new, now2)
+
+    fresh = _life_mutate(commit)
+    rec = (fresh.get("girls") or {}).get(gid) or {}
+    now_list = "；".join(g.get("text") or "" for g in rec.get("growth") or [])
+    print(f"[生活] {action.get('name') or '她'} 睡前沉澱：新 {len(new)} 條｜現在：{now_list[:120] or '沒有'}", flush=True)
+
+
 async def _life_once() -> None:
     """一輪：不用模型的事全部做完（排下一件、沒做夢的睡醒），再最多結算一件要寫字的（最久沒結算的先）。"""
     data = _dd_read_save() or {}
     now_ms = int(time.time() * 1000)
-    box = {"action": None, "logs": []}
+    box = {"action": None, "logs": [], "grow": None}
 
     def prep(store):
         life_agent.absorb(store, data, now_ms)
@@ -4744,12 +4762,20 @@ async def _life_once() -> None:
         started = life_agent.auto_escort(store, data, now_ms)
         if started:
             box["logs"].append(f"接客還債開班：{(started.get('event') or {}).get('escort', {}).get('clients')} 位客人")
+        # 每晚沉澱：睡前打的旗先做（這一輪的模型就給它，要寫字的事下一輪再結）
+        gg = life_agent.next_growth(store)
+        box["grow"] = life_agent.prepare_growth(store, gg, now_ms) if gg else None
+        if box["grow"]:
+            return
         gid = life_agent.next_due(store, now_ms)
         box["action"] = life_agent.prepare_resolve(store, gid, now_ms) if gid else None
 
     _life_mutate(prep)
     for line in box["logs"]:
         print(f"[生活] {line}", flush=True)
+    if box["grow"]:
+        await _life_grow(data, box["grow"])
+        return
     action = box["action"]
     if not action:
         return

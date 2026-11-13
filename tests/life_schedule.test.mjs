@@ -138,4 +138,26 @@ t("沒人理她才走：非妻子 60 分、妻子帶 180 分（2026-11-06）", (
   assert.equal(S.neglectMs(true), 180 * 60 * 1000);
 });
 
+t("每晚沉澱：world.growth 同步、【最近的她】一直在、LINE 不給私事來的（2026-11-13）", () => {
+  const growth = [
+    { kind: "interest", text: "迷上看流星", why: "上網看到流星雨", weight: 1.8 },
+    { kind: "attitude", text: "看到河堤會臉紅", why: "河堤那件事", private: "ero", weight: 1 },
+  ];
+  const world = {};
+  S.paintLifeRow(world, { growth });
+  assert.deepEqual(world.growth, growth);
+  S.paintLifeRow(world, { growth: [] });
+  assert.deepEqual(world.growth, []);
+  const who = { stage: "stranger", world: { growth, mind: { immediate: [], mid: [], long: [], seeded: true } } };
+  const room = M.lifeMemoryPromptLines(who, "嗨", { here: "room" }).join("\n");
+  assert.match(room, /【最近的她】/);
+  assert.match(room, /・迷上：迷上看流星（因為上網看到流星雨）/);
+  assert.match(room, /看到河堤會臉紅（來由是私事：這件很害羞，打死不提/);
+  assert.doesNotMatch(room, /河堤那件事/);
+  const line = M.lifeMemoryPromptLines(who, "嗨", { here: "line" }).join("\n");
+  assert.match(line, /迷上看流星/);
+  assert.doesNotMatch(line, /河堤/);
+  assert.deepEqual(M.lifeMemoryPromptLines({ world: {} }, "嗨", { here: "room" }), []);
+});
+
 console.log(`${pass} passed`);

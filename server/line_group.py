@@ -546,6 +546,10 @@ def life_bits(rec: dict | None, now_ms: int) -> list[str]:
             and now_ms - int(m.get("at") or 0) < 8 * HOUR_MS]
     for m in mems[-3:]:
         out.append(f"最近的事（{life_agent.japan_clock(int(m.get('at') or now_ms))['label']}）：{m.get('text')}")
+    # 每晚沉澱（life_agent growth）：私事來的不進群
+    grow = [g for g in rec.get("growth") or [] if isinstance(g, dict) and g.get("text") and not _private(g)]
+    if grow:
+        out.append(f"最近的你（日本生活留下的變化，自然帶進打字的話題和語氣，不要照念）：{'；'.join(g['text'] for g in grow[:5])}。")
     return out
 
 

@@ -165,6 +165,17 @@ def _hobby_names(girl: dict) -> list[str]:
     return names
 
 
+def _name_list(items, cap: int = 4) -> list[str]:
+    names = []
+    for item in items if isinstance(items, list) else []:
+        name = item.strip() if isinstance(item, str) else (str(item.get("name") or "").strip() if isinstance(item, dict) else "")
+        if name and name not in names:
+            names.append(name[:24])
+        if len(names) >= cap:
+            break
+    return names
+
+
 def _home_of(girl: dict) -> dict | None:
     world = girl.get("world") if isinstance(girl.get("world"), dict) else None
     home = world.get("home") if isinstance(world, dict) else None
@@ -215,6 +226,7 @@ def _blank(gid: str) -> dict:
         "nakedKeys": [],
         "last": None,
         "memories": [],
+        "growth": [],
         "notedHome": False,
         "note": "",
     }
@@ -311,6 +323,8 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
             store["girls"][gid] = rec
         rec["name"] = str(girl.get("name") or rec.get("name") or "她")
         rec["hobbies"] = _hobby_names(girl)
+        rec["likes"] = _name_list(girl.get("likes"))
+        rec["dislikes"] = _name_list(girl.get("dislikes"))
         chrono = girl.get("chrono") if isinstance(girl.get("chrono"), dict) else {}
         rec["chrono"] = str(chrono.get("name") or rec.get("chrono") or "")
         rec["archetype"] = str(girl.get("archetype") or rec.get("archetype") or "")
@@ -707,6 +721,7 @@ def arm(rec: dict, kind: str, now_ms: int, rnd=None, ms: int | None = None) -> d
         rec["tidyAt"] = now_ms
     elif kind == "sleep" and ms >= 3 * HOUR_MS:
         write_home_day(rec, now_ms)
+        mark_growth_due(rec, now_ms)
     if kind == "work":
         ensure_job(rec, rnd)
         log = [t for t in (rec.get("workLog") or []) if now_ms - _ms(t) < 48 * HOUR_MS]
@@ -1442,6 +1457,206 @@ def write_home_day(rec: dict, now_ms: int) -> dict | None:
     return _remember(rec, "home", text, now_ms, ["住所", "在家", home], {"place": home, "moodBefore": mood, "moodAfter": mood})
 
 
+# ───────────────────────── 每晚沉澱 ─────────────────────────
+# 2026-11-13：睡前（排到 3 小時以上的睡覺、write_home_day 那時）打一個旗 growthDue；
+# main.py _life_once 下一輪叫模型看最近一天的經歷，挑出會留下來的變化（新興趣、習慣、對某件事的態度、說話的小改變），
+# 併進 rec["growth"]（同步到 world.growth）。每晚舊的淡一點，又出現就加強，淡到底就拿掉，最多 8 條。
+# 聊天提示詞（life_memory.js lifeMemoryPromptLines【最近的她】）一直帶著，當成她現在的一部分。
+GROWTH_CAP = 8
+GROWTH_KINDS = {"interest": "迷上", "habit": "習慣", "attitude": "態度", "speech": "說話"}
+GROWTH_DECAY = 0.8        # 每晚沉澱一次，舊的乘一次
+GROWTH_DROP = 0.3         # 低於這個就拿掉（沒再加強的大約 6 晚後淡掉）
+GROWTH_MAX_WEIGHT = 3.0
+GROWTH_GAP_MS = 16 * HOUR_MS   # 一天最多一次（午睡、補眠不算）
+GROWTH_LOOK_MS = 30 * HOUR_MS  # 看最近一天多的經歷
+GROWTH_MEM_CAP = 14
+GROWTH_TEXT_CAP = 40
+GROWTH_WHY_CAP = 50
+
+
+def mark_growth_due(rec: dict, now_ms: int) -> bool:
+    if rec.get("phase") != "japan":
+        return False
+    if now_ms - _ms(rec.get("growthAt")) < GROWTH_GAP_MS:
+        return False
+    if not _ms(rec.get("growthDue")):
+        rec["growthDue"] = now_ms
+    return True
+
+
+def next_growth(store: dict) -> str:
+    best, best_at = "", 0
+    for gid, rec in (store.get("girls") or {}).items():
+        due = _ms(rec.get("growthDue"))
+        if due and (not best or due < best_at):
+            best, best_at = gid, due
+    return best
+
+
+def _growth_mems(rec: dict, now_ms: int) -> list[dict]:
+    since = max(now_ms - GROWTH_LOOK_MS, _ms(rec.get("growthAt")) - HOUR_MS)
+    mems = [m for m in rec.get("memories") or [] if isinstance(m, dict) and m.get("text") and _ms(m.get("at")) >= since]
+    return mems[-GROWTH_MEM_CAP:]
+
+
+def prepare_growth(store: dict, gid: str, now_ms: int) -> dict | None:
+    """要沉澱的那位：沒有新經歷就只把舊的淡一次、清旗，不叫模型（回 None）。"""
+    rec = (store.get("girls") or {}).get(gid)
+    if not rec or not _ms(rec.get("growthDue")):
+        return None
+    mems = _growth_mems(rec, now_ms)
+    if not mems:
+        commit_growth(store, gid, [], now_ms)
+        return None
+    return {
+        "op": "growth",
+        "id": gid,
+        "name": rec.get("name") or "她",
+        # 個性只給 archetype（personality 清單裡可能混著性癖，不給）
+        "personality": [rec["archetype"]] if rec.get("archetype") else [],
+        "tone": rec.get("tone") or "",
+        "hobbies": list(rec.get("hobbies") or []),
+        "likes": list(rec.get("likes") or []),
+        "dislikes": list(rec.get("dislikes") or []),
+        "growth": [dict(g) for g in rec.get("growth") or [] if isinstance(g, dict)],
+        "memories": [{"text": m.get("text") or "", "at": _ms(m.get("at")), "kind": m.get("kind") or "",
+                      "place": m.get("place") or "", "person": m.get("person") or "", "private": m.get("private") or ""}
+                     for m in mems],
+    }
+
+
+GROWTH_SYSTEM = (
+    "你替一個住在日本的魅魔整理「這陣子的生活在她身上留下什麼」。"
+    "只看下面列的經歷，挑出真的會留下來的變化：迷上的東西（interest）、新的小習慣（habit）、"
+    "對某個地方／人／東西的態度（attitude，例如怕、在意、喜歡上）、說話方式的小改變（speech，例如學到一句口頭禪）。"
+    "每一條都要能指出是哪幾件經歷造成的；只是發生過、不會改變她的事不要寫。沒有就回空陣列。"
+    "不要編沒列出的事，不要改掉她原本的個性，只寫小小的、具體的變化。"
+    "已經有的變化如果這次又被加強，用差不多的寫法再寫一次。"
+    "只回 JSON 陣列，最多 3 條，格式："
+    '[{"kind":"interest|habit|attitude|speech","text":"她的變化（第三人稱、20 字內）","why":"來由（30 字內）","from":[經歷編號]}]'
+    "。用台灣繁體中文。不要其他字。"
+)
+
+
+def growth_prompt(action: dict) -> tuple[str, str]:
+    lines = [f"她是{action.get('name') or '她'}。"]
+    if action.get("personality"):
+        lines.append(f"個性：{'、'.join(action['personality'])}。")
+    if action.get("tone"):
+        lines.append(f"語氣：{action['tone']}")
+    for key, label in (("hobbies", "興趣"), ("likes", "喜歡"), ("dislikes", "討厭")):
+        if action.get(key):
+            lines.append(f"{label}：{'、'.join(action[key])}。")
+    if action.get("growth"):
+        lines.append("已經有的變化：")
+        for g in action["growth"]:
+            lines.append(f"- [{g.get('kind')}] {g.get('text')}（{g.get('why') or ''}）")
+    lines.append("最近的經歷（日本時間）：")
+    for i, m in enumerate(action.get("memories") or [], 1):
+        when = japan_clock(m["at"])["label"] if m.get("at") else ""
+        lines.append(f"{i}. （{when}）{m.get('text')}")
+    return GROWTH_SYSTEM, "\n".join(lines)
+
+
+def _clip(text, cap: int) -> str:
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    return text[:cap]
+
+
+def parse_growth(raw: str, mems: list[dict]) -> list[dict]:
+    """模型回的 JSON → 新變化。from 指到私事（色情奇遇／越線／接客）的就標 private；from 沒寫對又有私事，也當私事。"""
+    import json
+    text = str(raw or "")
+    a, b = text.find("["), text.rfind("]")
+    if a < 0 or b <= a:
+        return []
+    try:
+        rows = json.loads(text[a:b + 1])
+    except Exception:
+        return []
+    any_private = next((m.get("private") for m in mems if m.get("private")), "")
+    out = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        kind = str(row.get("kind") or "").strip()
+        body = _clip(row.get("text"), GROWTH_TEXT_CAP)
+        if kind not in GROWTH_KINDS or len(body) < 2:
+            continue
+        refs = [int(x) for x in row.get("from") or [] if isinstance(x, (int, float)) or (isinstance(x, str) and x.isdigit())]
+        refs = [mems[i - 1] for i in refs if 1 <= i <= len(mems)]
+        if refs:
+            private = next((m.get("private") for m in refs if m.get("private")), "")
+        else:
+            private = any_private
+        item = {"kind": kind, "text": body, "why": _clip(row.get("why"), GROWTH_WHY_CAP)}
+        if private:
+            item["private"] = str(private)
+        out.append(item)
+        if len(out) >= 3:
+            break
+    return out
+
+
+def _bigrams(text: str) -> set:
+    t = re.sub(r"[\s，。、！？「」（）,.!?]", "", str(text or ""))
+    return {t[i:i + 2] for i in range(len(t) - 1)} or ({t} if t else set())
+
+
+def _same_growth(a: dict, b: dict) -> bool:
+    if a.get("kind") != b.get("kind"):
+        return False
+    x, y = str(a.get("text") or ""), str(b.get("text") or "")
+    if not x or not y:
+        return False
+    if x == y or x in y or y in x:
+        return True
+    ga, gb = _bigrams(x), _bigrams(y)
+    return bool(ga and gb) and len(ga & gb) / min(len(ga), len(gb)) >= 0.5
+
+
+def merge_growth(old: list, new: list, now_ms: int) -> list[dict]:
+    """舊的淡一次（×0.8）；新的跟舊的同一件就加強（+1、寫法換成新的），不同就加一條（1.0）；
+    低於 0.3 拿掉；照分數留 8 條。私事只要有一次是私事來的就一直是私事。"""
+    items = []
+    for g in old or []:
+        if not isinstance(g, dict) or not g.get("text") or g.get("kind") not in GROWTH_KINDS:
+            continue
+        g = dict(g)
+        g["weight"] = round(float(_num(g.get("weight"), 1.0)) * GROWTH_DECAY, 3)
+        items.append(g)
+    for n in new or []:
+        hit = next((g for g in items if _same_growth(g, n)), None)
+        if hit:
+            hit["weight"] = round(min(GROWTH_MAX_WEIGHT, float(hit["weight"]) + 1.0), 3)
+            hit["text"] = n["text"]
+            if n.get("why"):
+                hit["why"] = n["why"]
+            hit["at"] = now_ms
+            hit["times"] = int(hit.get("times") or 1) + 1
+            if n.get("private") and not hit.get("private"):
+                hit["private"] = n["private"]
+        else:
+            item = {"id": f"gr{now_ms}{len(items)}", "kind": n["kind"], "text": n["text"], "why": n.get("why") or "",
+                    "at": now_ms, "since": now_ms, "weight": 1.0, "times": 1}
+            if n.get("private"):
+                item["private"] = n["private"]
+            items.append(item)
+    items = [g for g in items if float(g.get("weight") or 0) >= GROWTH_DROP]
+    items.sort(key=lambda g: (-float(g.get("weight") or 0), -_ms(g.get("at"))))
+    return items[:GROWTH_CAP]
+
+
+def commit_growth(store: dict, gid: str, new: list, now_ms: int) -> bool:
+    rec = (store.get("girls") or {}).get(gid)
+    if not rec:
+        return False
+    rec["growth"] = merge_growth(rec.get("growth") or [], new, now_ms)
+    rec["growthAt"] = now_ms
+    rec.pop("growthDue", None)
+    return True
+
+
 # ───────────────────────── 排程與結算 ─────────────────────────
 def quick_step(store: dict, now_ms: int, rnd=None) -> list[str]:
     """不用模型的事一次做完：替每個空檔的人排下一件、睡醒但沒做夢的人直接結算。"""
@@ -1983,6 +2198,7 @@ def view_of(rec: dict) -> dict:
         "escort": escort_view(rec),
         "pregnancy": rec.get("pregnancy") or None,
         "memories": list(rec.get("memories") or []),
+        "growth": [dict(g) for g in rec.get("growth") or [] if isinstance(g, dict)],
         "note": rec.get("note") or "",
     }
 
@@ -2071,6 +2287,9 @@ def _paint_world(girl: dict, row: dict) -> None:
         world["escort"] = row["escort"]
     if row.get("pregnancy"):
         world["pregnancyRp5"] = row["pregnancy"]
+    if isinstance(row.get("growth"), list):
+        # 每晚沉澱（RP5 是真相）：整份蓋過去，淡掉的也跟著拿掉
+        world["growth"] = row["growth"]
     world.pop("settlingHome", None)
     for item in row.get("memories") or []:
         if isinstance(item, dict) and item.get("id") and item.get("text"):

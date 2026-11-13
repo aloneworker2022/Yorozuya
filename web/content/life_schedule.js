@@ -125,6 +125,8 @@ export function paintLifeRow(world, row) {
   if (row.escort && typeof row.escort === "object") world.escort = row.escort;
   // 懷孕（2026-10-10）：RP5 受孕 → 手機用 key 收一次（pregnancy.js adoptServer）
   if (row.pregnancy && typeof row.pregnancy === "object") world.pregnancyRp5 = row.pregnancy;
+  // 每晚沉澱（2026-11-13）：RP5 是真相，整份蓋過去（淡掉的也跟著拿掉）
+  if (Array.isArray(row.growth)) world.growth = row.growth;
   if (!world.mind || typeof world.mind !== "object" || Array.isArray(world.mind)) {
     world.mind = { immediate: [], mid: [], long: [], seeded: true };
   }

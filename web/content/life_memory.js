@@ -297,6 +297,33 @@ function boredHits(long) {
   return hits;
 }
 
+const GROWTH_KIND_ZH = { interest: "迷上", habit: "習慣", attitude: "態度", speech: "說話" };
+
+/**
+ * 每晚沉澱（2026-11-13，RP5 life_agent growth → world.growth）：日本生活留在她身上的變化。
+ * 一直放在提示詞裡，當成她現在的一部分。LINE 群：私事來的整條不給。
+ * 房間：私事來的照記得的事那套規則（來由怎麼講看關係），來由不寫出來。
+ */
+export function growthPromptLines(who, opts = {}) {
+  const line = opts.here === "line";
+  const stageKey = who?.roomStage || who?.stage || "stranger";
+  const list = Array.isArray(who?.world?.growth) ? who.world.growth : [];
+  const items = list.filter((g) => g?.text && !(line && g.private)).slice(0, 8);
+  if (!items.length) return [];
+  const out = ["【最近的她】在日本過的日子留在你身上的變化，這就是現在的你：自然帶進你的話題、反應和說話方式，不要每句都提，也不要照著念。沒列的事不要編成發生過。"];
+  for (const g of items) {
+    const tag = GROWTH_KIND_ZH[g.kind] || "變化";
+    if (g.private) {
+      const rule = g.private === "escort" ? escortDisclosure(stageKey)
+        : g.private === "ero" ? eroDisclosure(stageKey, 1) : affairDisclosure(stageKey);
+      out.push(`・${tag}：${g.text}（來由是私事：${rule}）`);
+    } else {
+      out.push(`・${tag}：${g.text}${g.why ? `（因為${g.why}）` : ""}`);
+    }
+  }
+  return out;
+}
+
 export function lifeMemoryPromptLines(who, utterance, opts = {}) {
   const here = opts.here === "line" ? "line" : "room";
   const stageKey = who?.roomStage || who?.stage || "stranger";
@@ -333,7 +360,9 @@ export function lifeMemoryPromptLines(who, utterance, opts = {}) {
     }
   }
   if (hidden) recall.push("這是全名冊都看得到的群組。最近有些私事（在外面看到的色色的事、跟別人越線的事、去接客還債的事）絕對不在群裡講；接客的事只說在工作；被問到就含糊帶過、轉開話題。");
-  if (!imm.length && !mid.length && !recall.length) return [];
+  const grown = growthPromptLines(who, { here });
+  if (!imm.length && !mid.length && !recall.length) return grown;
+  lines.push(...grown);
   if (here === "room") lines.push("人現在在房間。下面是記得的日本生活，不是現在站的地方。");
   if (imm.length || mid.length) {
     lines.push("【記得的事】跟這句話有關才提，不要每句都報。沒有列在這裡的事不要編成已經發生。時間是發生當時的日本時間，不要把那個時段說成現在。");
