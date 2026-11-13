@@ -6845,6 +6845,7 @@ const MIC_ERR = {
   "audio-capture": "找不到麥克風",
   "network": "語音辨識連不上網路",
   "language-not-supported": "這個瀏覽器不支援中文語音輸入",
+  "unavailable": "這支手機沒有語音輸入（要裝 Google 語音服務）",
 };
 
 function micHint(msg) {
@@ -6870,44 +6871,45 @@ function micCanTalk() {
   return !!girl && sheetOpen() && talkFor === girl.id && !talkBusy && !girl.errand && !$("talk-input")?.disabled;
 }
 
+/** App 殼（8.4／versionCode 14 起）有原生語音輸入：window.YoroAndroid.startVoice()／cancelVoice()，結果回 __onVoiceResult／__onVoiceError */
+function nativeVoice() {
+  const B = typeof window !== "undefined" ? window.YoroAndroid : null;
+  return B && typeof B.startVoice === "function" ? B : null;
+}
+
 function cancelMic(keepText = false) {
   const rec = micRec;
   if (!rec) return;
   rec.cancelled = keepText ? "keep" : "undo";
+  if (rec.native) {
+    try { rec.native.cancelVoice?.(); } catch { /* ignore */ }
+    rec.onend();   // 原生那邊關掉不一定會回呼，這裡直接收尾
+    return;
+  }
   try { rec.abort(); } catch { /* ignore */ }
 }
 
-function toggleMic() {
-  if (micRec) { cancelMic(); return; }
-  if (!SpeechRec) { micHint("這個瀏覽器不能語音輸入，請用鍵盤上的麥克風"); return; }
-  if (typeof window !== "undefined" && window.isSecureContext === false) { micHint("語音輸入要用 https 或 localhost 開網頁"); return; }
-  if (!micCanTalk()) return;
-  const input = $("talk-input");
-  const base = String(input?.value || "").trim();
-  const cap = Number(input?.maxLength) > 0 ? Number(input.maxLength) : 300;
-  let heard = "";
-  let rec;
-  try { rec = new SpeechRec(); } catch { micHint("語音輸入開不起來"); return; }
-  rec.lang = "zh-TW";
-  rec.interimResults = true;
-  rec.continuous = false;
-  rec.maxAlternatives = 1;
-  rec.onresult = (e) => {
-    heard = Array.from(e.results).map((r) => r[0]?.transcript || "").join("").trim();
-    if (input && micRec === rec) input.value = ((base ? `${base} ` : "") + heard).slice(0, cap);
+/** 一次聽寫的收尾（原生／Web Speech 共用）：取消就還原、沒字不送、有字走 sendTalk */
+function micSession(input, base, cap) {
+  const st = { heard: "", failed: "", cancelled: "", ended: false };
+  st.show = (text) => {
+    st.heard = String(text || "").trim();
+    if (input && micRec === st) input.value = ((base ? `${base} ` : "") + st.heard).slice(0, cap);
   };
-  rec.onerror = (e) => {
-    rec.failed = e.error || "error";
-    if (e.error === "aborted" || rec.cancelled) return;
-    micHint(MIC_ERR[e.error] || `語音輸入出錯（${e.error}）`);
+  st.fail = (code) => {
+    st.failed = code || "error";
+    if (code === "aborted" || st.cancelled) return;
+    micHint(MIC_ERR[code] || `語音輸入出錯（${code}）`);
   };
-  rec.onend = () => {
-    if (micRec === rec) micRec = null;
+  st.onend = () => {
+    if (st.ended) return;
+    st.ended = true;
+    if (micRec === st) micRec = null;
     setMicOn(false);
-    if (rec.cancelled) { if (input && rec.cancelled === "undo") input.value = base; return; }
-    if (!heard) {
+    if (st.cancelled) { if (input && st.cancelled === "undo") input.value = base; return; }
+    if (!st.heard) {
       if (input) input.value = base;
-      if (!rec.failed) micHint("沒聽清楚，再按一次麥克風");
+      if (!st.failed) micHint("沒聽清楚，再按一次麥克風");
       return;
     }
     // 說完就送（送不出去——例如她剛好在忙——字留在框裡，自己按送出）
@@ -6916,7 +6918,53 @@ function toggleMic() {
     if (form?.requestSubmit) form.requestSubmit();
     else sendTalk({ preventDefault() {} });
   };
-  micRec = rec;
+  return st;
+}
+
+function toggleMic() {
+  if (micRec) { cancelMic(); return; }
+  const B = nativeVoice();
+  if (!B && !SpeechRec) {
+    micHint(typeof window !== "undefined" && window.YoroAndroid ? "App 要更新到 8.4 才能語音輸入（到 /download 重裝）" : "這個瀏覽器不能語音輸入，請用鍵盤上的麥克風");
+    return;
+  }
+  if (!B && typeof window !== "undefined" && window.isSecureContext === false) { micHint("語音輸入要用 https 或 localhost 開網頁"); return; }
+  if (!micCanTalk()) return;
+  const input = $("talk-input");
+  const base = String(input?.value || "").trim();
+  const cap = Number(input?.maxLength) > 0 ? Number(input.maxLength) : 300;
+  const st = micSession(input, base, cap);
+  if (B) {
+    // App：系統語音辨識畫面（同發現小工具），說完停頓自己結束、一次回整句
+    st.native = B;
+    window.__onVoiceResult = (text, final) => {
+      if (micRec !== st) return;
+      st.show(text);
+      if (final !== false) st.onend();
+    };
+    window.__onVoiceError = (code) => {
+      if (micRec !== st) return;
+      st.fail(code === "unavailable" ? "unavailable" : code === "no-match" ? "no-speech" : code);
+      st.onend();
+    };
+    micRec = st;
+    setMicOn(true);
+    let ok = false;
+    try { ok = B.startVoice() !== false; } catch { ok = false; }
+    if (!ok) { st.fail("unavailable"); st.onend(); }
+    return;
+  }
+  let rec;
+  try { rec = new SpeechRec(); } catch { micHint("語音輸入開不起來"); return; }
+  rec.lang = "zh-TW";
+  rec.interimResults = true;
+  rec.continuous = false;
+  rec.maxAlternatives = 1;
+  st.abort = () => rec.abort();
+  rec.onresult = (e) => st.show(Array.from(e.results).map((r) => r[0]?.transcript || "").join(""));
+  rec.onerror = (e) => st.fail(e.error);
+  rec.onend = () => st.onend();
+  micRec = st;
   setMicOn(true);
   try { rec.start(); } catch {
     micRec = null;

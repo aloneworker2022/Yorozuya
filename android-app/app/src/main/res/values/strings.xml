@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">魅魔萬事屋</string>
     <string name="setup_title">設定伺服器</string>
+    <string name="voice_prompt">跟她說…（說完就送出）</string>
     <string name="setup_heading">連到萬事屋伺服器</string>
     <string name="setup_desc">輸入跑 FastAPI（uvicorn）那台電腦的網址。手機和伺服器要在同一個網路（同一個 Wi‑Fi，或都連上 Tailscale）。</string>
     <string name="setup_hint">http://192.168.x.x:8000</string>

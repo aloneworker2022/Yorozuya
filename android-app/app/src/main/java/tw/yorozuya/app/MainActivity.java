@@ -13,6 +13,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.speech.RecognizerIntent;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -41,6 +42,7 @@ import java.util.List;
 public class MainActivity extends Activity {
     private static final String TAG = "Yorozuya";
     private static final int REQ_FILE = 1001;
+    private static final int REQ_VOICE = 1002;
 
     private WebView web;
     private HeadTracker head;   // droom VR 追頭
@@ -52,6 +54,8 @@ public class MainActivity extends Activity {
     private String failedUrl;
     private boolean mainFrameError;
     private ValueCallback<Uri[]> fileCallback;
+    private boolean voiceOpen;        // 系統語音辨識畫面開著
+    private String pendingVoiceJs;    // 辨識結果：等 WebView onResume 再丟給網頁
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -267,6 +271,10 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_VOICE) {
+            onVoiceResult(resultCode, data);
+            return;
+        }
         if (requestCode != REQ_FILE) {
             super.onActivityResult(requestCode, resultCode, data);
             return;
@@ -287,6 +295,62 @@ public class MainActivity extends Activity {
         }
         fileCallback.onReceiveValue(result);
         fileCallback = null;
+    }
+
+    // ---------- 語音輸入（房間聊天的麥克風） ----------
+
+    /**
+     * 2026-11-13：跟發現小工具（android-widget AddActivity）同一招——叫系統的語音辨識畫面（RecognizerIntent，zh-TW，
+     * 不用麥克風權限；畫面由系統／Google 給，說完停頓自己結束）。結果丟回網頁：
+     * window.__onVoiceResult(text, true)；取消／沒聽到／手機沒有語音服務：window.__onVoiceError(code)。
+     */
+    void startVoice() {
+        if (voiceOpen) return;
+        Intent it = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        it.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        it.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW");
+        it.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-TW");
+        it.putExtra(RecognizerIntent.EXTRA_PROMPT, getString(R.string.voice_prompt));
+        it.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        try {
+            startActivityForResult(it, REQ_VOICE);
+            voiceOpen = true;
+        } catch (ActivityNotFoundException e) {
+            voiceJs("window.__onVoiceError&&window.__onVoiceError('unavailable')", true);
+        }
+    }
+
+    void cancelVoice() {
+        if (!voiceOpen) return;
+        voiceOpen = false;
+        try {
+            finishActivity(REQ_VOICE);
+        } catch (Exception ignored) {
+            // 系統畫面已經關了
+        }
+    }
+
+    private void voiceJs(String js, boolean now) {
+        if (web == null) return;
+        if (now) web.evaluateJavascript(js, null);
+        else pendingVoiceJs = js;
+    }
+
+    private void onVoiceResult(int resultCode, Intent data) {
+        boolean wasOpen = voiceOpen;
+        voiceOpen = false;
+        if (!wasOpen) return;   // 網頁已經取消了
+        String js;
+        if (resultCode != RESULT_OK || data == null) {
+            js = "window.__onVoiceError&&window.__onVoiceError('aborted')";
+        } else {
+            ArrayList<String> got = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+            String said = got == null || got.isEmpty() || got.get(0) == null ? "" : got.get(0).trim();
+            js = said.isEmpty()
+                    ? "window.__onVoiceError&&window.__onVoiceError('no-match')"
+                    : "window.__onVoiceResult&&window.__onVoiceResult(" + AndroidBridge.jsString(said) + ",true)";
+        }
+        voiceJs(js, false);
     }
 
     // ---------- 下載（匯出存檔） ----------
@@ -349,6 +413,10 @@ public class MainActivity extends Activity {
             web.onResume();
             // true = 剛從鎖屏或別的 App 回來。時間若已到，頁面會算未完成。
             web.evaluateJavascript("window.__pomoBack&&window.__pomoBack(true)", null);
+            if (pendingVoiceJs != null) {
+                web.evaluateJavascript(pendingVoiceJs, null);
+                pendingVoiceJs = null;
+            }
         }
     }
 

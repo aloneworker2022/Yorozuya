@@ -54,6 +54,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000   # 一定要 0.0.0.0，127.0.0.1 �
 | 番茄鐘橫向 | `YoroAndroid.setLandscape(true/false)`：轉 `SENSOR_LANDSCAPE`＋收起狀態列／導覽列，結束轉回直式。網頁偵測不到這個方法（舊殼）會提示重裝 |
 | 番茄鐘螢幕不休眠 | `YoroAndroid.setKeepScreenOn(true/false)`：視窗 `FLAG_KEEP_SCREEN_ON`（不用權限），鐘開著時加、任何結束方式或換頁都清掉。8.2 起才有；舊殼會提示重裝 |
 | droom VR 追頭 | `YoroAndroid.startHeadTracking()／stopHeadTracking()`（`HeadTracker`）：讀 `GAME_ROTATION_VECTOR`（沒有才用 `ROTATION_VECTOR`），把手機背面的方位角／仰角丟給網頁 `window.yoroHead(h, p)`，約 70 次／秒；App 切背景自動停、回來再開。網頁的 deviceorientation 在 `http://區網IP` 拿不到（要 https），所以由殼來讀。8.3（versionCode 13）起才有；舊殼網頁會提示重裝 |
+| 房間聊天語音輸入 | `YoroAndroid.startVoice()／cancelVoice()`：跟發現小工具同一招，叫系統語音辨識畫面（`RecognizerIntent`，zh-TW，不用麥克風權限；手機要有 Google 語音服務），說完停頓自己結束，整句丟回網頁 `window.__onVoiceResult(text, true)`，取消／沒聽到／沒有語音服務回 `window.__onVoiceError(code)`；網頁收到就直接送出。WebView 本身沒有 Web Speech、`http://區網IP` 也拿不到麥克風，所以由殼來做。8.4（versionCode 14）起才有；舊殼網頁會提示重裝 |
 | debug 除錯 | debug 版開了 `setWebContentsDebuggingEnabled`，USB 接電腦用 `chrome://inspect` |
 
 ### 已知限制

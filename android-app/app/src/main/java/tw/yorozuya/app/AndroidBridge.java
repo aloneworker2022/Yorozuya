@@ -31,6 +31,7 @@ import java.io.OutputStream;
  * - setLandscape(on)：番茄鐘翻頁鐘轉橫向／轉回直向；setKeepScreenOn(on)：番茄鐘開著時螢幕不休眠；
  *   appVersion()：殼的 versionCode
  * - startHeadTracking()／stopHeadTracking()：droom VR 用手機旋轉感測器追頭 → window.yoroHead(h, p)（13 起才有）
+ * - startVoice()／cancelVoice()：房間聊天的語音輸入（系統語音辨識，結果回 window.__onVoiceResult／__onVoiceError；14 起才有）
  * - saveFile(name, mime, base64)：WebView 不會處理 &lt;a download href="blob:..."&gt;，
  *   遊戲「匯出存檔」靠這個存到手機的「下載」資料夾
  * 只會注入到使用者設定的伺服器（同源）頁面。
@@ -85,6 +86,19 @@ final class AndroidBridge {
         if (head == null || !head.available()) return false;
         activity.runOnUiThread(head::start);
         return true;
+    }
+
+    /** 語音輸入：開系統語音辨識畫面（MainActivity.startVoice）。殼不是 MainActivity 時回 false。 */
+    @JavascriptInterface
+    public boolean startVoice() {
+        if (!(activity instanceof MainActivity)) return false;
+        activity.runOnUiThread(((MainActivity) activity)::startVoice);
+        return true;
+    }
+
+    @JavascriptInterface
+    public void cancelVoice() {
+        if (activity instanceof MainActivity) activity.runOnUiThread(((MainActivity) activity)::cancelVoice);
     }
 
     @JavascriptInterface
