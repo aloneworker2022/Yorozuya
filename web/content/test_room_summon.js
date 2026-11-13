@@ -9489,7 +9489,9 @@ async function maybeHandleSwapAsk(raw) {
   talkBusy = true; setTalkEnabled(true);
   let d = null;
   try {
-    await typeLine("你", raw);
+    // 2026-11-13 使用者：玩家打的話不再打在對話框，直接亮「……」等她回（歷史照記）
+    typeJob += 1;
+    setTyping(true);
     d = swapDecide(who, { mood: getMoodCarry(who), hunger: HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0 });
     pushDebug(`換妻：問${who.name}（答應機率 ${Math.round(d.p * 100)}%）→ ${d.yes ? "答應" : "拒絕"}`);
     let line = "";
@@ -9534,7 +9536,8 @@ async function maybeHandleClothesAsk(raw) {
   talkBusy = true;
   setTalkEnabled(true);
   try {
-    await typeLine("你", raw);
+    typeJob += 1;   // 玩家打的話不再打在對話框（2026-11-13），直接亮「……」
+    setTyping(true);
     const next = pickChangeOutfit(girl.look, wornOutfit(girl));
     if (!next) {
       const line = "就這一套，沒有別的可以換。";
@@ -9638,8 +9641,13 @@ async function deliverUserTalk(text, opts = {}) {
   }
 
   try {
-    // 先立刻顯示玩家台詞，避免等 LLM／判定時畫面上無反應
-    await typeLine("你", raw);
+    // 2026-11-13 使用者：玩家打完的話不用再顯示在對話框——直接亮像素「……」等她回（lines 照記，模型看得到）。
+    // 按鈕動作（不是打字）照舊把動作那句打出來。
+    if (opts.actId && !opts.typedAct) await typeLine("你", raw);
+    else {
+      typeJob += 1;   // 停掉上一句還在打的字
+      setTyping(true);
+    }
     // 失神／痙攣剛退（閒置 tick 還沒輪到）：半脫的她先穿回去，再回這句
     const redressedAtStart = settleUndressAfterStun(girl);
     if (redressedAtStart) {
