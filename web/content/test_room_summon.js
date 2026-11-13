@@ -6792,6 +6792,9 @@ function sheetOpen() {
 function setTyping(on) {
   const el = $("talk-typing");
   if (el) el.hidden = !on;
+  // 像素「……」泡泡（2026-11-13）：在想的時候對話框藏著，靠它表示她在想；開口、出錯、關掉都跟著收
+  const think = $("talk-think");
+  if (think) think.hidden = !on;
   syncTalkBoxVis();
 }
 
@@ -9186,6 +9189,7 @@ async function openTalk() {
     if (girl) girl.freshMeet = false;
     await typeLine(girl.name, talkError(err));
   }
+  setTyping(false);
   if (girl?.world) girl.world.justBack = false;
   renderBodyPanel();
   talkBusy = false;
@@ -9489,11 +9493,12 @@ async function maybeHandleSwapAsk(raw) {
     d = swapDecide(who, { mood: getMoodCarry(who), hunger: HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0 });
     pushDebug(`換妻：問${who.name}（答應機率 ${Math.round(d.p * 100)}%）→ ${d.yes ? "答應" : "拒絕"}`);
     let line = "";
+    setTyping(true);
     try { line = scrubHusband(cleanLine(await withTimeout(askGirl(d.ask), 12000, "")), who.stage || "stranger", who.playerPet || ""); } catch { /* 句庫 */ }
     line = swapActLine(line, d.act) || d.fallback;
     lines.push({ role: "assistant", content: line });
     await typeLine(who.name, line);
-  } finally { talkBusy = false; setTalkEnabled(true); }
+  } finally { setTyping(false); talkBusy = false; setTalkEnabled(true); }
   if (d?.yes) setTimeout(() => openSwapSelect(swapCtxOf(who)), 1500);   // 讓她那句先看清楚
   return true;
 }
@@ -9537,6 +9542,7 @@ async function maybeHandleClothesAsk(raw) {
       await typeLine(girl.name, line);
       return true;
     }
+    setTyping(true);
     const willing = await judgeClothesWilling(raw);
     if (!willing) {
       const line = await clothesRefusalLine();
@@ -9550,6 +9556,7 @@ async function maybeHandleClothesAsk(raw) {
     await runClothesErrand(next);
     return true;
   } finally {
+    setTyping(false);
     if (girl?.errand !== "clothes") talkBusy = false;
     if (sheetOpen() && talkFor === girl?.id && girl?.errand !== "clothes") setTalkEnabled(true);
     try { persistRoom(); } catch { /* */ }
@@ -9979,6 +9986,7 @@ async function deliverUserTalk(text, opts = {}) {
     setTyping(false);
     try { await typeLine(girl.name, talkError(err)); } catch { /* ignore */ }
   } finally {
+    setTyping(false);   // 不管哪條路（回完、出錯、中途 return）都把「……」收掉
     if (moodTurn) {
       noteTurnMood(opts.actId || "", opts, moodTurn);
       persistRoom();
@@ -9998,11 +10006,19 @@ async function sendTalk(event) {
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
-  // 她在等工作上的回答 → 這句就是回答；不然看是不是把委託交給她（放上桌）；都不是才看是不是叫她去工作／睡覺
-  const ans = await noteDeskAnswer(text);
-  const give = ans ? null : await noteDeskGive(text);
-  const order = ans ? ans.ask : give ? give.ask : noteRoomOrderAsk(text);
-  await deliverUserTalk(text);
+  // 送出那一刻就亮像素「……」（書桌交辦要等伺服器）；她開口（typeLine／串流）就收，這裡最後再保險收一次
+  const think = !talkBusy && talkFor === girl.id && !girl.errand && !peakBegNow() && !isFarewell(text);
+  if (think) setTyping(true);
+  let order = null;
+  try {
+    // 她在等工作上的回答 → 這句就是回答；不然看是不是把委託交給她（放上桌）；都不是才看是不是叫她去工作／睡覺
+    const ans = await noteDeskAnswer(text);
+    const give = ans ? null : await noteDeskGive(text);
+    order = ans ? ans.ask : give ? give.ask : noteRoomOrderAsk(text);
+    await deliverUserTalk(text);
+  } finally {
+    if (think && !talkBusy) setTyping(false);
+  }
   deskGiveAsk = null;
   deskAnswerSaid = null;
   if (order) closeAfterOrderReply(order);
