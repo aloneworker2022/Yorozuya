@@ -9066,8 +9066,8 @@ function talkSystem(userText = "") {
   const lived = lifeNotes(userText);
   const bits = [
     lived.length
-      ? `你是${girl.name}。你是魅魔。被召喚來之前沒有更早的過去。離開之後在日本發生的事是真的，但人現在不在那裡。`
-      : `你是${girl.name}。你是魅魔,一個沒有過去、沒有經歷的魔女。`,
+      ? `你是${girl.name}。你是魅魔。被召喚來之前沒有更早的過去。離開之後在日本發生的事是真的，但人現在不在那裡。那些是你學著過日子的經歷：碰過的你才懂，沒碰過的你不懂、會好奇、會想問他。`
+      : `你是${girl.name}。你是魅魔,一個沒有過去、沒有經歷的魔女。這個世界的日常你還一件都沒碰過，不懂的就是不懂，不要裝懂。`,
     roomSight(),
     ...activityPromptLines(),
     ...roomOrderPromptLines(),
